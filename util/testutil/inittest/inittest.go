@@ -23,10 +23,10 @@ func GenesisParams(slot ...core.TimeSlot) (state.IdentityData, ed25519.PrivateKe
 		e = core.LogicalTimeNow().TimeSlot()
 	}
 	retState := state.IdentityData{
-		Description:              "test state",
-		InitialSupply:            InitSupply,
-		GenesisControllerAddress: core.AddressED25519FromPrivateKey(privKey),
-		GenesisTimeSlot:          e,
+		Description:                "test state",
+		InitialSupply:              InitSupply,
+		GenesisControllerPublicKey: privKey.Public().(ed25519.PublicKey),
+		GenesisTimeSlot:            e,
 	}
 	return retState, privKey
 }

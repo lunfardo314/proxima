@@ -58,7 +58,7 @@ func (id *IdentityData) Bytes() []byte {
 }
 
 func MustIdentityDataFromBytes(data []byte) *IdentityData {
-	arr, err := lazyslice.ParseArrayFromBytesReadOnly(data, 4)
+	arr, err := lazyslice.ParseArrayFromBytesReadOnly(data, 7)
 	util.AssertNoError(err)
 	publicKey := ed25519.PublicKey(arr.At(2))
 	util.Assertf(len(publicKey) == ed25519.PublicKeySize, "len(publicKey)==ed25519.PublicKeySize")
@@ -71,7 +71,7 @@ func MustIdentityDataFromBytes(data []byte) *IdentityData {
 		BaselineTime:               time.Unix(0, int64(binary.BigEndian.Uint64(arr.At(3)))),
 		TimeTickDuration:           time.Duration(binary.BigEndian.Uint64(arr.At(4))),
 		MaxTimeTickValueInTimeSlot: maxTick[0],
-		GenesisTimeSlot:            core.MustTimeSlotFromBytes(arr.At(3)),
+		GenesisTimeSlot:            core.MustTimeSlotFromBytes(arr.At(6)),
 	}
 }
 

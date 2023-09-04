@@ -109,7 +109,8 @@ func CreateGenesisUTXOTangle(par state.IdentityData, stateStore general.StateSto
 }
 
 func CreateGenesisUTXOTangleWithDistribution(par state.IdentityData, originPrivateKey ed25519.PrivateKey, genesisDistribution []txbuilder.LockBalance, stateStore general.StateStore, txBytesStore common.KVStore) (*UTXOTangle, core.ChainID, core.TransactionID) {
-	util.Assertf(core.AddressED25519FromPrivateKey(originPrivateKey).String() == par.GenesisControllerAddress.String(), "inconsistent parameters")
+	pubKeyOrig := originPrivateKey.Public().(ed25519.PublicKey)
+	util.Assertf(pubKeyOrig.Equal(par.GenesisControllerPublicKey), "inconsistent parameters")
 
 	ret, bootstrapSequencerID, genesisStateRoot := CreateGenesisUTXOTangle(par, stateStore, txBytesStore)
 

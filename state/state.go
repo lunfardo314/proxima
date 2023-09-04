@@ -49,7 +49,8 @@ func InitLedgerState(par IdentityData, store general.StateStore) (core.ChainID, 
 	trie, err := immutable.NewTrieUpdatable(core.CommitmentModel, store, emptyRoot)
 	util.AssertNoError(err)
 
-	gout := GenesisOutput(par.InitialSupply, par.GenesisControllerAddress, par.GenesisTimeSlot)
+	genesisAddr := core.AddressED25519FromPublicKey(par.GenesisControllerPublicKey)
+	gout := GenesisOutput(par.InitialSupply, genesisAddr, par.GenesisTimeSlot)
 	gStemOut := GenesisStemOutput(par.InitialSupply, par.GenesisTimeSlot)
 
 	// write genesis outputs

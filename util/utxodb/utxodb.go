@@ -55,10 +55,10 @@ func NewUTXODB(trace ...bool) *UTXODB {
 	genesisSlot := core.LogicalTimeNow().TimeSlot()
 
 	initLedgerParams := state.IdentityData{
-		Description:              utxodbDscr,
-		InitialSupply:            supplyForTesting,
-		GenesisControllerAddress: genesisAddr,
-		GenesisTimeSlot:          genesisSlot,
+		Description:                utxodbDscr,
+		InitialSupply:              supplyForTesting,
+		GenesisControllerPublicKey: genesisPubKey,
+		GenesisTimeSlot:            genesisSlot,
 	}
 
 	faucetPrivateKey := testutil.GetTestingPrivateKey(31415926535)
