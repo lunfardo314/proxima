@@ -153,6 +153,10 @@ func (r *Readable) GetUTXO(oid *core.OutputID) ([]byte, bool) {
 	return ret, true
 }
 
+func (r *Readable) HasUTXO(oid *core.OutputID) bool {
+	return common.MakeReaderPartition(r.trie, PartitionLedgerState).Has(oid[:])
+}
+
 func (r *Readable) GetUTXOsLockedInAccount(addr core.AccountID) ([]*core.OutputDataWithID, error) {
 	if len(addr) > 255 {
 		return nil, fmt.Errorf("accountID length should be <= 255")

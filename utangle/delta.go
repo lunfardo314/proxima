@@ -173,7 +173,7 @@ func (d *UTXOStateDelta) CanBeConsumedBySequencer(wOut WrappedOutput, ut *UTXOTa
 		VirtualTx: func(_ *VirtualTransaction) {
 			rdr, ok := ut.StateReaderOfSequencerMilestone(d.baselineBranch)
 			util.Assertf(ok, "CanBeConsumedBySequencer: cannot read state of branch %s", func() any { return d.baselineBranch.IDShort() })
-			_, canBeConsumed = rdr.GetUTXO(wOut.DecodeID())
+			canBeConsumed = rdr.HasUTXO(wOut.DecodeID())
 		},
 	})
 	return canBeConsumed

@@ -12,9 +12,9 @@ import (
 )
 
 type (
-	// TODO add HasUTXO
 	StateReader interface {
 		GetUTXO(id *core.OutputID) ([]byte, bool)
+		HasUTXO(id *core.OutputID) bool
 	}
 
 	StateIndexReader interface {

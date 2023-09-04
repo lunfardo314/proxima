@@ -227,6 +227,16 @@ func (ut *UTXOTangle) GetUTXO(oid *core.OutputID) ([]byte, bool) {
 	return ut.HeaviestStateForLatestTimeSlot().GetUTXO(oid)
 }
 
+func (ut *UTXOTangle) HasUTXO(oid *core.OutputID) bool {
+	txid := oid.TransactionID()
+	if vid, found := ut.GetVertex(&txid); found {
+		if o, err := vid.OutputAt(oid.Index()); err == nil && o != nil {
+			return true
+		}
+	}
+	return ut.HeaviestStateForLatestTimeSlot().HasUTXO(oid)
+}
+
 func (ut *UTXOTangle) GetBranch(vid *WrappedTx) (branch, bool) {
 	ut.mutex.RLock()
 	defer ut.mutex.RUnlock()
