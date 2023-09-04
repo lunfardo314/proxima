@@ -3,18 +3,18 @@ package state
 import (
 	"fmt"
 
-	"github.com/lunfardo314/proxima"
 	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/general"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/txutils"
 	"github.com/lunfardo314/unitrie/common"
 )
 
 type SugaredStateReader struct {
-	proxima.IndexedStateReader
+	general.IndexedStateReader
 }
 
-func MakeSugared(s proxima.IndexedStateReader) SugaredStateReader {
+func MakeSugared(s general.IndexedStateReader) SugaredStateReader {
 	return SugaredStateReader{s}
 }
 

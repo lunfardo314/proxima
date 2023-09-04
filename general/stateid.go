@@ -1,4 +1,4 @@
-package proxima
+package general
 
 import (
 	"encoding/binary"
@@ -7,41 +7,6 @@ import (
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lazyslice"
-	"github.com/lunfardo314/proxima/util/testutil"
-	"github.com/lunfardo314/unitrie/common"
-)
-
-type (
-	StateReader interface {
-		GetUTXO(id *core.OutputID) ([]byte, bool)
-		HasUTXO(id *core.OutputID) bool
-	}
-
-	StateIndexReader interface {
-		GetUTXOsLockedInAccount(accountID core.AccountID) ([]*core.OutputDataWithID, error)
-		GetUTXOForChainID(id *core.ChainID) (*core.OutputDataWithID, error)
-		Root() common.VCommitment
-		IdentityData() *StateIdentityData
-	}
-
-	// IndexedStateReader state and indexer readers packing together
-	IndexedStateReader interface {
-		StateReader
-		StateIndexReader
-	}
-
-	StateStore interface {
-		common.KVReader
-		common.BatchedUpdatable
-		common.Traversable
-	}
-
-	StateIdentityData struct {
-		Description              string
-		InitialSupply            uint64
-		GenesisControllerAddress core.AddressED25519
-		GenesisTimeSlot          core.TimeSlot
-	}
 )
 
 const (
@@ -68,7 +33,7 @@ func (id *StateIdentityData) OriginChainID() core.ChainID {
 func (id *StateIdentityData) String() string {
 	originChainID := id.OriginChainID()
 	return fmt.Sprintf("Description: '%s'\nInitial supply: %s\nController: %s\nGenesis time slot: %d\nOrigin chainID: %s",
-		id.Description, testutil.GoThousands(id.InitialSupply), id.GenesisControllerAddress.String(), id.GenesisTimeSlot, originChainID.String())
+		id.Description, util.GoThousands(id.InitialSupply), id.GenesisControllerAddress.String(), id.GenesisTimeSlot, originChainID.String())
 }
 
 func MustIdentityDataFromBytes(data []byte) *StateIdentityData {

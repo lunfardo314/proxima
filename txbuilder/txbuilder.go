@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lunfardo314/proxima"
 	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/general"
 	"github.com/lunfardo314/proxima/state"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lazyslice"
@@ -593,7 +593,7 @@ func NewUnlockBlock() *UnlockParams {
 	}
 }
 
-func GetChainAccount(chainID core.ChainID, srdr proxima.IndexedStateReader, desc ...bool) (*core.OutputWithChainID, []*core.OutputWithID, error) {
+func GetChainAccount(chainID core.ChainID, srdr general.IndexedStateReader, desc ...bool) (*core.OutputWithChainID, []*core.OutputWithID, error) {
 	chainOutData, err := srdr.GetUTXOForChainID(&chainID)
 	if err != nil {
 		return nil, nil, err

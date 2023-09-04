@@ -5,7 +5,6 @@ import (
 
 	"github.com/lunfardo314/proxima/utangle"
 	"github.com/lunfardo314/proxima/util"
-	"github.com/lunfardo314/proxima/util/testutil"
 )
 
 func (seq *Sequencer) updateInfo(msOutput utangle.WrappedOutput) {
@@ -57,8 +56,8 @@ func (seq *Sequencer) LogMilestoneSubmitDefault(vid *utangle.WrappedTx) {
 		info.MsCounter,
 		info.BranchCounter,
 		vid.IDShort(),
-		testutil.GoThousands(info.LedgerCoverage),
-		testutil.GoThousands(info.PrevLedgerCoverage),
+		util.GoThousands(info.LedgerCoverage),
+		util.GoThousands(info.PrevLedgerCoverage),
 		info.In,
 		info.Out,
 		info.NumConsumedFeeOutputs,

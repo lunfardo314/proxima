@@ -6,9 +6,9 @@ import (
 
 	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lazyslice"
 	"github.com/lunfardo314/proxima/util/lines"
-	"github.com/lunfardo314/proxima/util/testutil"
 	"golang.org/x/crypto/blake2b"
 )
 
@@ -88,6 +88,6 @@ func (ctx *TransactionContext) Lines(prefix ...string) *lines.Lines {
 			Add(chainIdStr)
 		return true
 	})
-	ret.Add("TOTAL: %s", testutil.GoThousands(totalSum))
+	ret.Add("TOTAL: %s", util.GoThousands(totalSum))
 	return ret
 }

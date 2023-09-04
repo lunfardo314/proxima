@@ -3,8 +3,8 @@ package utxodb
 import (
 	"testing"
 
-	"github.com/lunfardo314/proxima"
 	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/general"
 	"github.com/lunfardo314/proxima/util/testutil"
 	"github.com/stretchr/testify/require"
 )
@@ -12,14 +12,14 @@ import (
 func TestUTXODB(t *testing.T) {
 	t.Run("origin", func(t *testing.T) {
 		u := NewUTXODB()
-		genesisStemOutputID := proxima.GenesisStemOutputID(u.GenesisTimeSlot())
-		genesisOutputID := proxima.GenesisChainOutputID(u.GenesisTimeSlot())
+		genesisStemOutputID := general.GenesisStemOutputID(u.GenesisTimeSlot())
+		genesisOutputID := general.GenesisChainOutputID(u.GenesisTimeSlot())
 		t.Logf("genesis time slot: %d", u.GenesisTimeSlot())
-		t.Logf("genesis addr: %s, balance: %s", u.GenesisControllerAddress().String(), testutil.GoThousands(u.Balance(u.GenesisControllerAddress())))
-		t.Logf("faucet addr: %s, balance: %s", u.FaucetAddress().String(), testutil.GoThousands(u.Balance(u.FaucetAddress())))
+		t.Logf("genesis addr: %s, balance: %s", u.GenesisControllerAddress().String(), util.GoThousands(u.Balance(u.GenesisControllerAddress())))
+		t.Logf("faucet addr: %s, balance: %s", u.FaucetAddress().String(), util.GoThousands(u.Balance(u.FaucetAddress())))
 		controlledByChain, onChain, err := u.BalanceOnChain(*u.GenesisChainID())
 		require.NoError(t, err)
-		t.Logf("bootstrap chainID: %s, on-chain balance: %s, controlled by chain: %s", u.GenesisChainID().String(), testutil.GoThousands(onChain), testutil.GoThousands(controlledByChain))
+		t.Logf("bootstrap chainID: %s, on-chain balance: %s, controlled by chain: %s", u.GenesisChainID().String(), util.GoThousands(onChain), util.GoThousands(controlledByChain))
 		t.Logf("origin output: %s\n%s", genesisOutputID.String(), u.genesisOutput.ToString("   "))
 		t.Logf("origin stem output: %s\n%s", genesisStemOutputID.String(), u.genesisStemOutput.ToString("   "))
 

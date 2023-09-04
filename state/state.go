@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"fmt"
 
-	"github.com/lunfardo314/proxima"
 	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/general"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/unitrie/common"
 	"github.com/lunfardo314/unitrie/immutable"
@@ -16,7 +16,7 @@ type (
 	// Suitable for chained updates
 	Updatable struct {
 		trie  *immutable.TrieUpdatable
-		store proxima.StateStore
+		store general.StateStore
 	}
 
 	// Readable is a read-only ledger state, with the particular root
@@ -40,7 +40,7 @@ const (
 
 // InitLedgerState initializes origin ledger state in the empty store
 // Returns root commitment to the genesis ledger state and genesis chainID
-func InitLedgerState(par proxima.StateIdentityData, store proxima.StateStore) (core.ChainID, common.VCommitment) {
+func InitLedgerState(par general.StateIdentityData, store general.StateStore) (core.ChainID, common.VCommitment) {
 	batch := store.BatchedWriter()
 	emptyRoot := immutable.MustInitRoot(batch, core.CommitmentModel, par.Bytes())
 	err := batch.Commit()
@@ -64,7 +64,7 @@ func InitLedgerState(par proxima.StateIdentityData, store proxima.StateStore) (c
 }
 
 func GenesisOutput(initialSupply uint64, controllerAddress core.AddressED25519, genesisSlot core.TimeSlot) *core.OutputWithChainID {
-	oid := proxima.GenesisChainOutputID(genesisSlot)
+	oid := general.GenesisChainOutputID(genesisSlot)
 	return &core.OutputWithChainID{
 		OutputWithID: core.OutputWithID{
 			ID: oid,
@@ -82,7 +82,7 @@ func GenesisOutput(initialSupply uint64, controllerAddress core.AddressED25519, 
 
 func GenesisStemOutput(initialSupply uint64, genesisTimeSlot core.TimeSlot) *core.OutputWithID {
 	return &core.OutputWithID{
-		ID: proxima.GenesisStemOutputID(genesisTimeSlot),
+		ID: general.GenesisStemOutputID(genesisTimeSlot),
 		Output: core.NewOutput(func(o *core.Output) {
 			o.WithAmount(0).
 				WithLock(core.NewStemLock(initialSupply, 0, core.OutputID{}))
@@ -124,7 +124,7 @@ func MustNewSugaredStateReader(store common.KVReader, root common.VCommitment, c
 
 // NewUpdatable creates updatable state with the given root. After updated, the root changes.
 // Suitable for chained updates of the ledger state
-func NewUpdatable(store proxima.StateStore, root common.VCommitment) (*Updatable, error) {
+func NewUpdatable(store general.StateStore, root common.VCommitment) (*Updatable, error) {
 	trie, err := immutable.NewTrieUpdatable(core.CommitmentModel, store, root)
 	if err != nil {
 		return nil, err
@@ -135,7 +135,7 @@ func NewUpdatable(store proxima.StateStore, root common.VCommitment) (*Updatable
 	}, nil
 }
 
-func MustNewUpdatable(store proxima.StateStore, root common.VCommitment) *Updatable {
+func MustNewUpdatable(store general.StateStore, root common.VCommitment) *Updatable {
 	ret, err := NewUpdatable(store, root)
 	util.AssertNoError(err)
 	return ret
@@ -230,8 +230,8 @@ func (r *Readable) GetStem() (core.TimeSlot, []byte) {
 	return retSlot, retBytes
 }
 
-func (r *Readable) IdentityData() *proxima.StateIdentityData {
-	return proxima.MustIdentityDataFromBytes(r.trie.Get(nil))
+func (r *Readable) IdentityData() *general.StateIdentityData {
+	return general.MustIdentityDataFromBytes(r.trie.Get(nil))
 }
 
 func (r *Readable) HasTransactionOutputs(txid *core.TransactionID, indexMap ...map[byte]struct{}) (bool, bool) {
@@ -345,7 +345,7 @@ type BranchData struct {
 }
 
 // FetchBranchData returns not sorted list of stem outputs in the DB
-func FetchBranchData(store proxima.StateStore, fromSlot ...core.TimeSlot) []*BranchData {
+func FetchBranchData(store general.StateStore, fromSlot ...core.TimeSlot) []*BranchData {
 	var from core.TimeSlot
 	if len(fromSlot) > 0 {
 		from = fromSlot[0]

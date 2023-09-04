@@ -13,7 +13,6 @@ import (
 	"github.com/lunfardo314/proxima/state"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/set"
-	"github.com/lunfardo314/proxima/util/testutil"
 )
 
 var (
@@ -56,7 +55,7 @@ func sequencerNodeAttributes(v *Vertex, coverage uint64, dict map[core.ChainID]i
 	copy(ret, seqNodeAttributes)
 	ret = append(ret, graph.VertexAttribute("fillcolor", strconv.Itoa(dict[seqID])))
 	if coverage > 0 {
-		ret = append(ret, graph.VertexAttribute("xlabel", testutil.GoThousands(coverage)))
+		ret = append(ret, graph.VertexAttribute("xlabel", util.GoThousands(coverage)))
 	}
 	return ret
 }
@@ -96,7 +95,7 @@ func makeGraphEdges(vid *WrappedTx, gr graph.Graph[string, string]) {
 			o, err := v.getConsumedOutput(i)
 			util.AssertNoError(err)
 			edgeAttributes := []func(_ *graph.EdgeProperties){
-				graph.EdgeAttribute("label", fmt.Sprintf("%s(#%d)", testutil.GoThousands(o.Amount()), i)),
+				graph.EdgeAttribute("label", fmt.Sprintf("%s(#%d)", util.GoThousands(o.Amount()), i)),
 				graph.EdgeAttribute("fontsize", "10"),
 			}
 			_ = gr.AddEdge(id, inp.IDVeryShort(), edgeAttributes...)
@@ -227,7 +226,7 @@ func branchNodeAttributes(seqID *core.ChainID, coverage uint64, dict map[core.Ch
 	copy(ret, _branchNodeAttributes)
 	ret = append(ret, graph.VertexAttribute("fillcolor", strconv.Itoa(dict[*seqID])))
 	if coverage > 0 {
-		ret = append(ret, graph.VertexAttribute("xlabel", testutil.GoThousands(coverage)))
+		ret = append(ret, graph.VertexAttribute("xlabel", util.GoThousands(coverage)))
 	}
 	return ret
 }

@@ -271,8 +271,6 @@ func init() {
 	initSequencerConstraint()
 
 	runCommonUnitTests()
-
-	easyfl.PrintLibraryStats()
 }
 
 // DataContext is the data structure passed to the eval call. It contains:

@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lunfardo314/proxima"
 	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/general"
 	"github.com/lunfardo314/proxima/sequencer"
 	"github.com/lunfardo314/proxima/state"
 	"github.com/lunfardo314/proxima/txbuilder"
@@ -33,7 +33,7 @@ const (
 
 type sequencerTestData struct {
 	t                           *testing.T
-	stateIdentity               proxima.StateIdentityData
+	stateIdentity               general.StateIdentityData
 	originControllerPrivateKey  ed25519.PrivateKey
 	originDistribution          []txbuilder.LockBalance
 	faucetPrivateKeys           []ed25519.PrivateKey
@@ -52,7 +52,7 @@ type sequencerTestData struct {
 }
 
 func TestMax(t *testing.T) {
-	t.Logf("Max uint64 = %s", testutil.GoThousands(uint64(math.MaxUint64)))
+	t.Logf("Max uint64 = %s", util.GoThousands(uint64(math.MaxUint64)))
 }
 
 func initSequencerTestData(t *testing.T, nFaucets, nAdditionalChains int, logicalNow core.LogicalTime, workflowDebugConfig workflow.DebugConfig) *sequencerTestData {

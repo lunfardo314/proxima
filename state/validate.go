@@ -10,7 +10,6 @@ import (
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lazyslice"
-	"github.com/lunfardo314/proxima/util/testutil"
 	"github.com/lunfardo314/unitrie/common"
 	"go.uber.org/atomic"
 	"golang.org/x/crypto/blake2b"
@@ -74,7 +73,7 @@ func (ctx *TransactionContext) Validate() error {
 	}
 	if inSum != outSum {
 		return fmt.Errorf("unbalanced amount between inputs and outputs: inputs %s, outputs %s",
-			testutil.GoThousands(inSum), testutil.GoThousands(outSum))
+			util.GoThousands(inSum), util.GoThousands(outSum))
 	}
 	return nil
 }
@@ -126,7 +125,7 @@ func (ctx *TransactionContext) ValidateWithReportOnConsumedOutputs() ([]byte, er
 	}
 	if inSum != outSum {
 		return nil, fmt.Errorf("unbalanced amount between inputs and outputs: inputs %s, outputs %s",
-			testutil.GoThousands(inSum), testutil.GoThousands(outSum))
+			util.GoThousands(inSum), util.GoThousands(outSum))
 	}
 	return nil, nil
 }

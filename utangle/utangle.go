@@ -11,7 +11,6 @@ import (
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
 	"github.com/lunfardo314/proxima/util/set"
-	"github.com/lunfardo314/proxima/util/testutil"
 	"github.com/lunfardo314/unitrie/common"
 )
 
@@ -205,7 +204,7 @@ func (ut *UTXOTangle) InfoLines(verbose ...bool) *lines.Lines {
 			coverage := vid.LedgerCoverage(TipSlots)
 			seqID, isAvailable := vid.SequencerIDIfAvailable()
 			util.Assertf(isAvailable, "sequencer ID expected in %s", vid.IDShort())
-			ln.Add("    branch %s, seqID: %s, coverage: %s", vid.IDShort(), seqID.Short(), testutil.GoThousands(coverage))
+			ln.Add("    branch %s, seqID: %s, coverage: %s", vid.IDShort(), seqID.Short(), util.GoThousands(coverage))
 			if verb {
 				ln.Add("    == root: " + br.root.String()).
 					Append(vid.Lines("    "))

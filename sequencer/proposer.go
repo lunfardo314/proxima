@@ -10,7 +10,6 @@ import (
 	utangle "github.com/lunfardo314/proxima/utangle"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/set"
-	"github.com/lunfardo314/proxima/util/testutil"
 	"go.uber.org/atomic"
 )
 
@@ -187,7 +186,7 @@ func (c *proposerTaskGeneric) placeProposalIfRelevant(mdProposed *milestoneWithD
 
 			if proposedCoverage <= baselineCoverage {
 				return fmt.Sprintf("%s SKIPPED: no increase in coverage %s <- %s)",
-					mdProposed.IDShort(), testutil.GoThousands(proposedCoverage), testutil.GoThousands(baselineCoverage))
+					mdProposed.IDShort(), util.GoThousands(proposedCoverage), util.GoThousands(baselineCoverage))
 			}
 		}
 	}
@@ -205,8 +204,8 @@ func (c *proposerTaskGeneric) placeProposalIfRelevant(mdProposed *milestoneWithD
 	c.factory.log.Debugf("(%s): ACCEPTED %s, coverage: %s (base: %s), elapsed: %v/%v, inputs: %d, mempool: %d",
 		mdProposed.proposedBy,
 		mdProposed.IDShort(),
-		testutil.GoThousands(ledgerCoverageProposed),
-		testutil.GoThousands(baselineCoverage),
+		util.GoThousands(ledgerCoverageProposed),
+		util.GoThousands(baselineCoverage),
 		mdProposed.elapsed,
 		mdProposed.makeVertexElapsed,
 		mdProposed.VID.NumInputs(),

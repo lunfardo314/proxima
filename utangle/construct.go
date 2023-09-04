@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/lunfardo314/proxima"
 	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/general"
 	state "github.com/lunfardo314/proxima/state"
 	"github.com/lunfardo314/proxima/txbuilder"
 	"github.com/lunfardo314/proxima/util"
@@ -19,7 +19,7 @@ import (
 type (
 	UTXOTangle struct {
 		mutex        sync.RWMutex
-		stateStore   proxima.StateStore
+		stateStore   general.StateStore
 		txBytesStore common.KVStore
 		vertices     map[core.TransactionID]*WrappedTx
 		branches     map[core.TimeSlot]map[*WrappedTx]branch
@@ -66,7 +66,7 @@ type (
 
 const TipSlots = 5
 
-func newUTXOTangle(stateStore proxima.StateStore, txBytesStore common.KVStore) *UTXOTangle {
+func newUTXOTangle(stateStore general.StateStore, txBytesStore common.KVStore) *UTXOTangle {
 	return &UTXOTangle{
 		stateStore:   stateStore,
 		txBytesStore: txBytesStore,
@@ -75,26 +75,26 @@ func newUTXOTangle(stateStore proxima.StateStore, txBytesStore common.KVStore) *
 	}
 }
 
-func InitGenesisState(par proxima.StateIdentityData, stateStore proxima.StateStore) (common.VCommitment, core.ChainID, *core.OutputWithID, *core.OutputWithID) {
+func InitGenesisState(par general.StateIdentityData, stateStore general.StateStore) (common.VCommitment, core.ChainID, *core.OutputWithID, *core.OutputWithID) {
 	bootstrapSequencerID, genesisStateRoot := state.InitLedgerState(par, stateStore)
 	// now genesisStateRoot contains origin chain and stem outputs
 	// fetch origin chain and stem outputs
 	genesisStateReader := state.MustNewSugaredStateReader(stateStore, genesisStateRoot)
-	genesisOutputID := proxima.GenesisChainOutputID(par.GenesisTimeSlot)
+	genesisOutputID := general.GenesisChainOutputID(par.GenesisTimeSlot)
 	genesisOutput := genesisStateReader.MustGetOutput(&genesisOutputID)
 	genesisStemOutput := genesisStateReader.GetStemOutput()
 
 	return genesisStateRoot, bootstrapSequencerID, genesisOutput, genesisStemOutput
 }
 
-func CreateGenesisUTXOTangle(par proxima.StateIdentityData, stateStore proxima.StateStore, txBytesStore common.KVStore) (*UTXOTangle, core.ChainID, common.VCommitment) {
+func CreateGenesisUTXOTangle(par general.StateIdentityData, stateStore general.StateStore, txBytesStore common.KVStore) (*UTXOTangle, core.ChainID, common.VCommitment) {
 	genesisStateRoot, bootstrapSequencerID, genesisOutput, genesisStemOutput := InitGenesisState(par, stateStore)
 
 	// create virtual transaction for genesis outputs
-	genesisVirtualTx := newVirtualTx(proxima.GenesisTransactionID(par.GenesisTimeSlot))
-	genesisVirtualTx.addOutput(proxima.GenesisOutputIndex, genesisOutput.Output)
-	genesisVirtualTx.addOutput(proxima.GenesisStemOutputIndex, genesisStemOutput.Output)
-	genesisVirtualTx.addSequencerIndices(proxima.GenesisOutputIndex, proxima.GenesisStemOutputIndex)
+	genesisVirtualTx := newVirtualTx(general.GenesisTransactionID(par.GenesisTimeSlot))
+	genesisVirtualTx.addOutput(general.GenesisOutputIndex, genesisOutput.Output)
+	genesisVirtualTx.addOutput(general.GenesisStemOutputIndex, genesisStemOutput.Output)
+	genesisVirtualTx.addSequencerIndices(general.GenesisOutputIndex, general.GenesisStemOutputIndex)
 	genesisVID := genesisVirtualTx.Wrap()
 
 	util.Assertf(genesisVID.IsBranchTransaction(), "genesisVID.IsBranchTransaction()")
@@ -108,7 +108,7 @@ func CreateGenesisUTXOTangle(par proxima.StateIdentityData, stateStore proxima.S
 	return ret, bootstrapSequencerID, genesisStateRoot
 }
 
-func CreateGenesisUTXOTangleWithDistribution(par proxima.StateIdentityData, originPrivateKey ed25519.PrivateKey, genesisDistribution []txbuilder.LockBalance, stateStore proxima.StateStore, txBytesStore common.KVStore) (*UTXOTangle, core.ChainID, core.TransactionID) {
+func CreateGenesisUTXOTangleWithDistribution(par general.StateIdentityData, originPrivateKey ed25519.PrivateKey, genesisDistribution []txbuilder.LockBalance, stateStore general.StateStore, txBytesStore common.KVStore) (*UTXOTangle, core.ChainID, core.TransactionID) {
 	util.Assertf(core.AddressED25519FromPrivateKey(originPrivateKey).String() == par.GenesisControllerAddress.String(), "inconsistent parameters")
 
 	ret, bootstrapSequencerID, genesisStateRoot := CreateGenesisUTXOTangle(par, stateStore, txBytesStore)
@@ -127,7 +127,7 @@ func CreateGenesisUTXOTangleWithDistribution(par proxima.StateIdentityData, orig
 
 	// sanity check genesis outputs
 	genesisStateReader := state.MustNewSugaredStateReader(stateStore, genesisStateRoot)
-	genesisOutputID := proxima.GenesisChainOutputID(par.GenesisTimeSlot)
+	genesisOutputID := general.GenesisChainOutputID(par.GenesisTimeSlot)
 	genesisOutput := genesisStateReader.MustGetOutput(&genesisOutputID)
 	genesisStemOutput := genesisStateReader.GetStemOutput()
 

@@ -7,7 +7,6 @@ import (
 
 	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/proxima/util"
-	"github.com/lunfardo314/proxima/util/testutil"
 )
 
 const (
@@ -81,7 +80,7 @@ func (st *StemLock) Bytes() []byte {
 }
 
 func (st *StemLock) String() string {
-	return fmt.Sprintf("stem(%s, %d, %s)", testutil.GoThousands(st.Supply), st.PredecessorIdx, st.PredecessorOutputID.String())
+	return fmt.Sprintf("stem(%s, %d, %s)", util.GoThousands(st.Supply), st.PredecessorIdx, st.PredecessorOutputID.String())
 }
 
 func (st *StemLock) Accounts() []Accountable {

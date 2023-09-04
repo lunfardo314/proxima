@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lunfardo314/proxima"
 	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/general"
 	state "github.com/lunfardo314/proxima/state"
 	"github.com/lunfardo314/proxima/txbuilder"
 	"github.com/lunfardo314/proxima/utangle"
@@ -76,7 +76,7 @@ type conflictTestRunData struct {
 	bootstrapChainID core.ChainID
 	privKey          ed25519.PrivateKey
 	addr             core.AddressED25519
-	stateIdentity    proxima.StateIdentityData
+	stateIdentity    general.StateIdentityData
 	originBranchTxid core.TransactionID
 	forkOutput       *core.OutputWithID
 	txBytes          [][]byte
@@ -110,7 +110,7 @@ func initConflictTest(t *testing.T, nConflicts int, printTx bool) *conflictTestR
 	t.Logf("bootstrap chain id: %s", ret.bootstrapChainID.String())
 	t.Logf("origing branch txid: %s", ret.originBranchTxid.Short())
 	for i := range distrib {
-		t.Logf("distributed %s -> %s", testutil.GoThousands(distrib[i].Balance), distrib[i].Lock.String())
+		t.Logf("distributed %s -> %s", util.GoThousands(distrib[i].Balance), distrib[i].Lock.String())
 	}
 	t.Logf("%s", ret.ut.Info())
 
@@ -331,7 +331,7 @@ func TestEndorsements1(t *testing.T) {
 		util.RequirePanicOrErrorWith(t, func() error {
 			_, err = txbuilder.MakeTransferTransaction(td)
 			return err
-		}, "can't endorse transaction from another slot")
+		}, "can't endorse transaction from another time slot")
 	})
 }
 
@@ -345,7 +345,7 @@ type multiChainTestData struct {
 	faucetPrivKey      ed25519.PrivateKey
 	faucetAddr         core.AddressED25519
 	faucetOrigin       *core.OutputWithID
-	sPar               proxima.StateIdentityData
+	sPar               general.StateIdentityData
 	tPar               txbuilder.OriginDistributionParams
 	originBranchTxid   core.TransactionID
 	txBytesChainOrigin []byte

@@ -3,8 +3,8 @@ package txbuilder
 import (
 	"crypto/ed25519"
 
-	"github.com/lunfardo314/proxima"
 	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/general"
 	state "github.com/lunfardo314/proxima/state"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/unitrie/common"
@@ -13,7 +13,7 @@ import (
 type (
 	OriginDistributionParams struct {
 		BootstrapSequencerID        core.ChainID
-		StateStore                  proxima.StateStore
+		StateStore                  general.StateStore
 		GenesisStateRoot            common.VCommitment
 		GenesisControllerPrivateKey ed25519.PrivateKey
 		InitialSupply               uint64

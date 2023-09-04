@@ -3,8 +3,8 @@ package state
 import (
 	"fmt"
 
-	"github.com/lunfardo314/proxima"
 	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/general"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
 	"github.com/lunfardo314/unitrie/common"
@@ -125,7 +125,7 @@ func makeChainIDKey(chainID *core.ChainID) []byte {
 }
 
 // BalanceOnLock returns balance and number of outputs
-func BalanceOnLock(rdr proxima.StateIndexReader, account core.Accountable) (uint64, int) {
+func BalanceOnLock(rdr general.StateIndexReader, account core.Accountable) (uint64, int) {
 	oDatas, err := rdr.GetUTXOsLockedInAccount(account.AccountID())
 	util.AssertNoError(err)
 
@@ -140,7 +140,7 @@ func BalanceOnLock(rdr proxima.StateIndexReader, account core.Accountable) (uint
 	return balance, num
 }
 
-func BalanceOnChainOutput(rdr proxima.StateIndexReader, chainID *core.ChainID) uint64 {
+func BalanceOnChainOutput(rdr general.StateIndexReader, chainID *core.ChainID) uint64 {
 	oData, err := rdr.GetUTXOForChainID(chainID)
 	if err != nil {
 		return 0

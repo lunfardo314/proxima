@@ -2,9 +2,22 @@ package util
 
 import (
 	"sort"
+	"strings"
 
 	"github.com/lunfardo314/proxima/util/set"
+	"golang.org/x/text/language"
+	"golang.org/x/text/message"
 )
+
+type Integer interface {
+	int | uint16 | uint32 | uint64 | int16 | int32 | int64
+}
+
+var prn = message.NewPrinter(language.English)
+
+func GoThousands[T Integer](v T) string {
+	return strings.Replace(prn.Sprintf("%d", v), ",", "_", -1)
+}
 
 func ForEachUniquePair[T any](sl []T, fun func(a1, a2 T) bool) {
 	for i, r1 := range sl {

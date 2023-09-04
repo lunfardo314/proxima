@@ -6,7 +6,6 @@ import (
 
 	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/proxima/util"
-	"github.com/lunfardo314/proxima/util/testutil"
 )
 
 const amountSource = `
@@ -65,7 +64,7 @@ func (a Amount) Bytes() []byte {
 }
 
 func (a Amount) String() string {
-	return fmt.Sprintf("%s(%s)", AmountConstraintName, testutil.GoThousands(int(a)))
+	return fmt.Sprintf("%s(%s)", AmountConstraintName, util.GoThousands(int(a)))
 }
 
 func NewAmount(a uint64) Amount {
