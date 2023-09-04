@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/core"
-	utxo_tangle "github.com/lunfardo314/proxima/utangle"
+	utangle "github.com/lunfardo314/proxima/utangle"
 	"github.com/lunfardo314/proxima/util"
 	"go.uber.org/atomic"
 )
@@ -17,7 +17,7 @@ const SolidifyConsumerName = "[solidify]"
 type (
 	SolidifyInputData struct {
 		// if not nil, its is a message to notify Solidify consumer that new transaction (valid and solid) has arrived to the tangle
-		newSolidDependency *utxo_tangle.WrappedTx
+		newSolidDependency *utangle.WrappedTx
 		// used if newTx is == nil
 		*PrimaryInputConsumerData
 		// If true, PrimaryInputConsumerData bears txid to be removed
@@ -37,7 +37,7 @@ type (
 
 	draftVertexData struct {
 		*PrimaryInputConsumerData
-		draftVertex *utxo_tangle.Vertex
+		draftVertex *utangle.Vertex
 	}
 
 	txDependency struct {
@@ -141,7 +141,7 @@ func (c *SolidifyConsumer) newVertexToSolidify(inp *SolidifyInputData) {
 }
 
 // returns if draftVertex was placed into the solidifier for further tracking
-func (c *SolidifyConsumer) putIntoSolidifierIfNeeded(inp *SolidifyInputData, draftVertex *utxo_tangle.Vertex) bool {
+func (c *SolidifyConsumer) putIntoSolidifierIfNeeded(inp *SolidifyInputData, draftVertex *utangle.Vertex) bool {
 	unknownInputTxIDs := draftVertex.MissingInputTxIDSet()
 	if len(unknownInputTxIDs) == 0 {
 		c.IncCounter("new.solid")
