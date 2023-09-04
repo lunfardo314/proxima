@@ -8,8 +8,8 @@ import (
 )
 
 const timelockSource = `
-// enforces output can be unlocked only after specified epoch is reached
-// $0 is epoch
+// enforces output can be unlocked only after specified time slot is reached
+// $0 is time slot
 func timelock: and(
     mustValidTimeSlot($0),
 	or(
@@ -31,8 +31,8 @@ type Timelock TimeSlot
 
 var NilTimelock = Timelock(0)
 
-func NewTimelock(epoch TimeSlot) Timelock {
-	return Timelock(epoch)
+func NewTimelock(timeSlot TimeSlot) Timelock {
+	return Timelock(timeSlot)
 }
 
 func (t Timelock) Name() string {

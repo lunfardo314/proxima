@@ -40,7 +40,7 @@ type (
 		Description              string
 		InitialSupply            uint64
 		GenesisControllerAddress core.AddressED25519
-		GenesisEpoch             core.TimeSlot
+		GenesisTimeSlot          core.TimeSlot
 	}
 )
 
@@ -56,19 +56,19 @@ func (id *StateIdentityData) Bytes() []byte {
 		[]byte(id.Description),
 		supplyBin[:],
 		id.GenesisControllerAddress.Bytes(),
-		id.GenesisEpoch.Bytes(),
+		id.GenesisTimeSlot.Bytes(),
 	).Bytes()
 }
 
 func (id *StateIdentityData) OriginChainID() core.ChainID {
-	oid := GenesisChainOutputID(id.GenesisEpoch)
+	oid := GenesisChainOutputID(id.GenesisTimeSlot)
 	return core.OriginChainID(&oid)
 }
 
 func (id *StateIdentityData) String() string {
 	originChainID := id.OriginChainID()
 	return fmt.Sprintf("Description: '%s'\nInitial supply: %s\nController: %s\nGenesis time slot: %d\nOrigin chainID: %s",
-		id.Description, testutil.GoThousands(id.InitialSupply), id.GenesisControllerAddress.String(), id.GenesisEpoch, originChainID.String())
+		id.Description, testutil.GoThousands(id.InitialSupply), id.GenesisControllerAddress.String(), id.GenesisTimeSlot, originChainID.String())
 }
 
 func MustIdentityDataFromBytes(data []byte) *StateIdentityData {
@@ -78,12 +78,12 @@ func MustIdentityDataFromBytes(data []byte) *StateIdentityData {
 		Description:              string(arr.At(0)),
 		InitialSupply:            binary.BigEndian.Uint64(arr.At(1)),
 		GenesisControllerAddress: core.MustAddressED25519FromBytes(arr.At(2)),
-		GenesisEpoch:             core.MustTimeSlotFromBytes(arr.At(3)),
+		GenesisTimeSlot:          core.MustTimeSlotFromBytes(arr.At(3)),
 	}
 }
 
-func GenesisTransactionID(genesisEpoch core.TimeSlot) *core.TransactionID {
-	ret := core.NewTransactionID(core.MustNewLogicalTime(genesisEpoch, 0), core.All0TransactionHash, true, true)
+func GenesisTransactionID(genesisTimeSlot core.TimeSlot) *core.TransactionID {
+	ret := core.NewTransactionID(core.MustNewLogicalTime(genesisTimeSlot, 0), core.All0TransactionHash, true, true)
 	return &ret
 }
 

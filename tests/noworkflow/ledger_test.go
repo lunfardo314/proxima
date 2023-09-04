@@ -141,29 +141,29 @@ func TestTimelock(t *testing.T) {
 		par, err := u.MakeTransferInputData(privKey0, nil, ts)
 		require.NoError(t, err)
 
-		timelockEpoch := ts.TimeSlot() + 1
+		timelockSlot := ts.TimeSlot() + 1
 
 		par.WithAmount(200).
 			WithTargetLock(addr1).
-			WithConstraint(core.NewTimelock(timelockEpoch))
+			WithConstraint(core.NewTimelock(timelockSlot))
 		txBytes, err := txbuilder.MakeTransferTransaction(par)
 		require.NoError(t, err)
 
 		err = u.AddTransaction(txBytes)
 		require.NoError(t, err)
-		t.Logf("200 timelocked until epoch %d in addr1", timelockEpoch)
+		t.Logf("200 timelocked until slot %d in addr1", timelockSlot)
 
 		require.EqualValues(t, 200, u.Balance(addr1))
 
-		timelockEpoch = ts.TimeSlot() + (1 + 10)
+		timelockSlot = ts.TimeSlot() + (1 + 10)
 		par, err = u.MakeTransferInputData(privKey0, nil, ts.AddTimeSlots(1))
 		require.NoError(t, err)
 		par.WithAmount(2000).
 			WithTargetLock(addr1).
-			WithConstraint(core.NewTimelock(timelockEpoch))
+			WithConstraint(core.NewTimelock(timelockSlot))
 		err = u.DoTransfer(par)
 		require.NoError(t, err)
-		t.Logf("2000 timelocked until epoch %d in addr1", timelockEpoch)
+		t.Logf("2000 timelocked until slot %d in addr1", timelockSlot)
 
 		// total 2200, but with different timelocks
 		require.EqualValues(t, 2200, u.Balance(addr1))
@@ -183,7 +183,7 @@ func TestTimelock(t *testing.T) {
 		t.Logf("failed tx with ts %s", par.Timestamp)
 
 		txTs = ts.AddTimeSlots(14)
-		require.True(t, txTs.TimeSlot() > timelockEpoch)
+		require.True(t, txTs.TimeSlot() > timelockSlot)
 		par, err = u.MakeTransferInputData(priv1, nil, txTs)
 		require.NoError(t, err)
 		t.Logf("tx time: %s", par.Timestamp)
@@ -195,7 +195,7 @@ func TestTimelock(t *testing.T) {
 			tx, err1 := state.TransactionFromBytesAllChecks(txBytes)
 			require.NoError(t, err1)
 			t.Logf("resulting tx ts: %s", tx.Timestamp())
-			require.True(t, tx.Timestamp().TimeSlot() > timelockEpoch)
+			require.True(t, tx.Timestamp().TimeSlot() > timelockSlot)
 		}
 		require.NoError(t, err)
 		require.EqualValues(t, 200, u.Balance(addr1))

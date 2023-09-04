@@ -183,7 +183,7 @@ func (seq *Sequencer) chooseNextMilestoneTargetTime() core.LogicalTime {
 	if nowis.TimeSlot() == target.TimeSlot() {
 		// same slot
 		if !core.ValidTimePace(target, target.NextTimeSlotBoundary()) {
-			// too close to the epoch boundary -> issue branch transaction
+			// too close to the slot boundary -> issue branch transaction
 			target = target.NextTimeSlotBoundary()
 			return target
 		}
@@ -195,7 +195,7 @@ func (seq *Sequencer) chooseNextMilestoneTargetTime() core.LogicalTime {
 		return target
 	}
 	if core.ValidTimePace(currentMilestoneTs, currentMilestoneTs.NextTimeSlotBoundary()) {
-		// if it is valid ts next epoch boundary, do the branch transaction
+		// if it is valid ts next slot boundary, do the branch transaction
 		target = currentMilestoneTs.NextTimeSlotBoundary()
 		return target
 	}
@@ -227,7 +227,7 @@ func (seq *Sequencer) mainLoop() {
 	milestoneCount := 0
 	branchCount := 0
 
-	var currentEpoch core.TimeSlot
+	var currentTimeSlot core.TimeSlot
 
 	for !seq.exit.Load() {
 		if seq.par.MaxMilestones != 0 && milestoneCount >= seq.par.MaxMilestones {
@@ -249,9 +249,9 @@ func (seq *Sequencer) mainLoop() {
 			break
 		}
 
-		if currentEpoch != targetTs.TimeSlot() {
-			currentEpoch = targetTs.TimeSlot()
-			seq.log.Infof("TIME SLOT %d", currentEpoch)
+		if currentTimeSlot != targetTs.TimeSlot() {
+			currentTimeSlot = targetTs.TimeSlot()
+			seq.log.Infof("TIME SLOT %d", currentTimeSlot)
 		}
 
 		seq.trace("target ts: %s. Now is: %s", targetTs, core.LogicalTimeNow())

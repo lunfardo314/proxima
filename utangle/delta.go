@@ -249,7 +249,7 @@ func (d *UTXOStateDelta) LinesRecursive(prefix ...string) *lines.Lines {
 	return ret
 }
 
-// collectDeltasDesc past deltas sorted by epoch
+// collectDeltasDesc past deltas sorted by slot
 func (d *UTXOStateDelta) pastDeltas() map[core.TimeSlot]*UTXOStateDelta {
 	if d.baselineBranch == nil {
 		return make(map[core.TimeSlot]*UTXOStateDelta)

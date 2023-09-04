@@ -321,7 +321,7 @@ func (ut *UTXOTangle) HeaviestStateRootForLatestTimeSlot() common.VCommitment {
 	return ut.heaviestBranchForLatestTimeSlot().root
 }
 
-// HeaviestStateForLatestTimeSlot returns the heaviest input state (by ledger coverage) for the latest epoch which have one
+// HeaviestStateForLatestTimeSlot returns the heaviest input state (by ledger coverage) for the latest slot which have one
 func (ut *UTXOTangle) HeaviestStateForLatestTimeSlot() state.SugaredStateReader {
 	root := ut.HeaviestStateRootForLatestTimeSlot()
 	ret, err := state.NewReadable(ut.stateStore, root)

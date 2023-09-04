@@ -250,7 +250,7 @@ func TestBootstrapSequencer(t *testing.T) {
 		require.EqualValues(t, 2*maxSlots+2, numTx)
 	})
 	t.Run("run add chain origins tx", func(t *testing.T) {
-		const maxEpochs = 10
+		const maxTimeSlots = 10
 
 		wrkDbg := workflow.DebugConfig{
 			//workflow.PrimaryInputConsumerName: zapcore.DebugLevel,
@@ -274,8 +274,8 @@ func TestBootstrapSequencer(t *testing.T) {
 			ControllerKey: r.originControllerPrivateKey,
 			Pace:          5,
 			LogLevel:      zapcore.DebugLevel,
-			//MaxTargetTs:   core.LogicalTimeNow().AddTimeSlots(maxEpochs + 2),
-			MaxMilestones: maxEpochs,
+			//MaxTargetTs:   core.LogicalTimeNow().AddTimeSlots(maxTimeSlots + 2),
+			MaxMilestones: maxTimeSlots,
 		})
 		require.NoError(t, err)
 
@@ -306,7 +306,7 @@ func TestBootstrapSequencer(t *testing.T) {
 	})
 	t.Run("1 faucet txs sync", func(t *testing.T) {
 		const (
-			maxEpochs             = 5
+			maxSlots              = 5
 			numFaucetTransactions = 10
 			transferAmount        = 100
 		)
@@ -333,7 +333,7 @@ func TestBootstrapSequencer(t *testing.T) {
 			ControllerKey: r.originControllerPrivateKey,
 			Pace:          5,
 			LogLevel:      zapcore.InfoLevel,
-			MaxTargetTs:   core.LogicalTimeNow().AddTimeSlots(maxEpochs),
+			MaxTargetTs:   core.LogicalTimeNow().AddTimeSlots(maxSlots),
 		})
 		require.NoError(t, err)
 
@@ -456,7 +456,7 @@ func TestBootstrapSequencer(t *testing.T) {
 	})
 	t.Run("N faucets async", func(t *testing.T) {
 		const (
-			maxEpochs             = 10
+			maxSlots              = 10
 			numFaucets            = 3
 			numFaucetTransactions = 50
 			transferAmount        = 100
@@ -485,7 +485,7 @@ func TestBootstrapSequencer(t *testing.T) {
 			ControllerKey: r.originControllerPrivateKey,
 			Pace:          10,
 			LogLevel:      zapcore.InfoLevel,
-			MaxTargetTs:   core.LogicalTimeNow().AddTimeSlots(maxEpochs),
+			MaxTargetTs:   core.LogicalTimeNow().AddTimeSlots(maxSlots),
 			MaxFeeInputs:  maxInputs,
 		})
 		var allFeeInputsConsumed atomic.Bool
@@ -543,7 +543,7 @@ func TestBootstrapSequencer(t *testing.T) {
 	})
 }
 
-func (r *sequencerTestData) createSequencers(maxInputsInTx, maxEpochs, pace int, loglevel zapcore.Level) {
+func (r *sequencerTestData) createSequencers(maxInputsInTx, maxSlots, pace int, loglevel zapcore.Level) {
 	var err error
 	r.bootstrapSeq, err = sequencer.StartNew(sequencer.Params{
 		SequencerName: "boot",
@@ -552,7 +552,7 @@ func (r *sequencerTestData) createSequencers(maxInputsInTx, maxEpochs, pace int,
 		ControllerKey: r.originControllerPrivateKey,
 		Pace:          pace,
 		LogLevel:      loglevel,
-		MaxTargetTs:   core.LogicalTimeNow().AddTimeSlots(maxEpochs),
+		MaxTargetTs:   core.LogicalTimeNow().AddTimeSlots(maxSlots),
 		MaxFeeInputs:  maxInputsInTx,
 	})
 	require.NoError(r.t, err)
@@ -566,7 +566,7 @@ func (r *sequencerTestData) createSequencers(maxInputsInTx, maxEpochs, pace int,
 			ControllerKey: r.chainControllersPrivateKeys[i],
 			Pace:          pace,
 			LogLevel:      loglevel,
-			MaxTargetTs:   core.LogicalTimeNow().AddTimeSlots(maxEpochs),
+			MaxTargetTs:   core.LogicalTimeNow().AddTimeSlots(maxSlots),
 			MaxFeeInputs:  maxInputsInTx,
 			ProvideBootstrapSequencers: func() ([]core.ChainID, uint64) {
 				return []core.ChainID{r.bootstrapChainID}, feeAmount
@@ -704,7 +704,7 @@ func TestNSequencers(t *testing.T) {
 
 		heaviestState = r.ut.HeaviestStateForLatestTimeSlot()
 		latest := r.ut.LatestTimeSlot()
-		t.Logf("latest epoch: %d", latest)
+		t.Logf("latest slot: %d", latest)
 		for _, o := range r.chainOrigins {
 			found := r.wrk.UTXOTangle().HasOutputInTimeSlot(latest, &o.ID)
 			require.False(t, found)
@@ -718,7 +718,7 @@ func TestNSequencers(t *testing.T) {
 	t.Run("2 seq, transfers 1", func(t *testing.T) {
 		const (
 			nSequencers       = 2
-			maxEpochs         = 20
+			maxSlots          = 20
 			numFaucets        = 2
 			numTxPerFaucet    = 10
 			maxTxInputs       = 0
@@ -746,7 +746,7 @@ func TestNSequencers(t *testing.T) {
 
 		sequencer.SetTraceProposer(sequencer.BacktrackProposerName, false)
 
-		r.createSequencers(maxTxInputs, maxEpochs, 5, zapcore.InfoLevel)
+		r.createSequencers(maxTxInputs, maxSlots, 5, zapcore.InfoLevel)
 
 		var allFeeInputsConsumed atomic.Bool
 		branchesAfterAllConsumed := 0
@@ -792,7 +792,7 @@ func TestNSequencers(t *testing.T) {
 		r.ut.SaveTree(fnameFromTestName(t) + "_TREE")
 
 		latest := r.ut.LatestTimeSlot()
-		t.Logf("latest epoch: %d", latest)
+		t.Logf("latest slot: %d", latest)
 		for _, o := range r.chainOrigins {
 			found := r.wrk.UTXOTangle().HasOutputInTimeSlot(latest, &o.ID)
 			require.False(t, found)
@@ -821,7 +821,7 @@ func TestNSequencers(t *testing.T) {
 	t.Run("2 seq, transfers 2", func(t *testing.T) {
 		const (
 			nSequencers       = 2
-			maxEpochs         = 20
+			maxSlots          = 20
 			numFaucets        = 2
 			numTxPerFaucet    = 10
 			maxTxInputs       = 100
@@ -849,7 +849,7 @@ func TestNSequencers(t *testing.T) {
 
 		sequencer.SetTraceProposer(sequencer.BacktrackProposerName, false)
 
-		r.createSequencers(maxTxInputs, maxEpochs, 5, zapcore.InfoLevel)
+		r.createSequencers(maxTxInputs, maxSlots, 5, zapcore.InfoLevel)
 
 		var allFeeInputsConsumed atomic.Bool
 		branchesAfterAllConsumed := 0
@@ -908,7 +908,7 @@ func TestNSequencers(t *testing.T) {
 		r.ut.SaveTree(fnameFromTestName(t) + "_TREE")
 
 		latest := r.ut.LatestTimeSlot()
-		t.Logf("latest epoch: %d", latest)
+		t.Logf("latest slot: %d", latest)
 		for _, o := range r.chainOrigins {
 			found := r.wrk.UTXOTangle().HasOutputInTimeSlot(latest, &o.ID)
 			require.False(t, found)
@@ -936,7 +936,7 @@ func TestNSequencers(t *testing.T) {
 	})
 	t.Run("3 seq", func(t *testing.T) {
 		const (
-			maxEpochs             = 20
+			maxSlot               = 20
 			numFaucets            = 1
 			numFaucetTransactions = 1
 			maxTxInputs           = 200
@@ -964,7 +964,7 @@ func TestNSequencers(t *testing.T) {
 
 		sequencer.SetTraceProposer(sequencer.BacktrackProposerName, false)
 
-		r.createSequencers(maxTxInputs, maxEpochs, 5, zapcore.InfoLevel)
+		r.createSequencers(maxTxInputs, maxSlot, 5, zapcore.InfoLevel)
 
 		var allFeeInputsConsumed atomic.Bool
 		branchesAfterAllConsumed := 0
@@ -999,7 +999,7 @@ func TestNSequencers(t *testing.T) {
 
 		heaviestState = r.ut.HeaviestStateForLatestTimeSlot()
 		latest := r.ut.LatestTimeSlot()
-		t.Logf("latest epoch: %d", latest)
+		t.Logf("latest slot: %d", latest)
 		for _, o := range r.chainOrigins {
 			found := r.wrk.UTXOTangle().HasOutputInTimeSlot(latest, &o.ID)
 			require.False(t, found)
@@ -1013,7 +1013,7 @@ func TestNSequencers(t *testing.T) {
 	})
 	t.Run("5 seq", func(t *testing.T) {
 		const (
-			maxEpochs             = 20
+			maxSlot               = 20
 			numFaucets            = 2
 			numFaucetTransactions = 10
 			maxTxInputs           = 200
@@ -1041,7 +1041,7 @@ func TestNSequencers(t *testing.T) {
 
 		sequencer.SetTraceProposer(sequencer.BacktrackProposerName, false)
 
-		r.createSequencers(maxTxInputs, maxEpochs, 5, zapcore.InfoLevel)
+		r.createSequencers(maxTxInputs, maxSlot, 5, zapcore.InfoLevel)
 
 		var allFeeInputsConsumed atomic.Bool
 		branchesAfterAllConsumed := 0
@@ -1076,7 +1076,7 @@ func TestNSequencers(t *testing.T) {
 
 		heaviestState = r.ut.HeaviestStateForLatestTimeSlot()
 		latest := r.ut.LatestTimeSlot()
-		t.Logf("latest epoch: %d", latest)
+		t.Logf("latest slot: %d", latest)
 		for _, o := range r.chainOrigins {
 			found := r.wrk.UTXOTangle().HasOutputInTimeSlot(latest, &o.ID)
 			require.False(t, found)
@@ -1093,7 +1093,7 @@ func TestNSequencers(t *testing.T) {
 func TestPruning(t *testing.T) {
 	t.Run("3 seq prune once", func(t *testing.T) {
 		const (
-			maxEpochs             = 20
+			maxSlots              = 20
 			numFaucets            = 1
 			numFaucetTransactions = 1
 			maxTxInputs           = 200
@@ -1123,7 +1123,7 @@ func TestPruning(t *testing.T) {
 
 		sequencer.SetTraceProposer(sequencer.BacktrackProposerName, false)
 
-		r.createSequencers(maxTxInputs, maxEpochs, 5, zapcore.InfoLevel)
+		r.createSequencers(maxTxInputs, maxSlots, 5, zapcore.InfoLevel)
 
 		var allFeeInputsConsumed atomic.Bool
 		branchesAfterAllConsumed := 0
@@ -1158,7 +1158,7 @@ func TestPruning(t *testing.T) {
 
 		heaviestState = r.ut.HeaviestStateForLatestTimeSlot()
 		latest := r.ut.LatestTimeSlot()
-		t.Logf("latest epoch: %d", latest)
+		t.Logf("latest slot: %d", latest)
 		for _, o := range r.chainOrigins {
 			found := r.wrk.UTXOTangle().HasOutputInTimeSlot(latest, &o.ID)
 			require.False(t, found)
@@ -1208,7 +1208,7 @@ func TestPruning(t *testing.T) {
 	})
 	t.Run("3 seq pruner", func(t *testing.T) {
 		const (
-			maxEpochs             = 40
+			maxSlots              = 40
 			numFaucets            = 1
 			numFaucetTransactions = 1
 			maxTxInputs           = 200
@@ -1239,7 +1239,7 @@ func TestPruning(t *testing.T) {
 
 		sequencer.SetTraceProposer(sequencer.BacktrackProposerName, false)
 
-		r.createSequencers(maxTxInputs, maxEpochs, 5, zapcore.InfoLevel)
+		r.createSequencers(maxTxInputs, maxSlots, 5, zapcore.InfoLevel)
 
 		var allFeeInputsConsumed atomic.Bool
 		branchesAfterAllConsumed := 0
@@ -1274,7 +1274,7 @@ func TestPruning(t *testing.T) {
 
 		heaviestState = r.ut.HeaviestStateForLatestTimeSlot()
 		latest := r.ut.LatestTimeSlot()
-		t.Logf("latest epoch: %d", latest)
+		t.Logf("latest slot: %d", latest)
 		for _, o := range r.chainOrigins {
 			found := r.wrk.UTXOTangle().HasOutputInTimeSlot(latest, &o.ID)
 			require.False(t, found)

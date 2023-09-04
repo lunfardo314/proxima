@@ -87,9 +87,9 @@ func TimeConstantsToString() string {
 }
 
 type (
-	// TimeSlot represents a particular epoch.
-	// Starting epoch 0 at genesis
-	// 3.1 mil epoch per year (for 100 msec/slot and epoch is 100 slots)
+	// TimeSlot represents a particular time slot.
+	// Starting slot 0 at genesis
+	// 3.1 mil slots per year (for 100 msec/tick and slot is 100 ticks)
 	// uint32 enough for approx 1361 years
 	TimeSlot uint32
 
@@ -97,7 +97,7 @@ type (
 	TimeTick byte
 
 	// LogicalTime
-	// bytes 0:3 represents epoch (bigendian)
+	// bytes 0:3 represents time slot (bigendian)
 	// byte 4 represents slot
 	LogicalTime [LogicalTimeByteLength]byte
 )

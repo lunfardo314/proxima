@@ -62,15 +62,6 @@ type (
 	branch struct {
 		root common.VCommitment
 	}
-	// for one epoch
-
-	FinalityStatus uint32
-)
-
-const (
-	FinalityStatusNotFinal = FinalityStatus(iota)
-	FinalityStatusCovered
-	FinalityStatusOrphaned
 )
 
 const TipSlots = 5
@@ -89,7 +80,7 @@ func InitGenesisState(par proxima.StateIdentityData, stateStore proxima.StateSto
 	// now genesisStateRoot contains origin chain and stem outputs
 	// fetch origin chain and stem outputs
 	genesisStateReader := state.MustNewSugaredStateReader(stateStore, genesisStateRoot)
-	genesisOutputID := proxima.GenesisChainOutputID(par.GenesisEpoch)
+	genesisOutputID := proxima.GenesisChainOutputID(par.GenesisTimeSlot)
 	genesisOutput := genesisStateReader.MustGetOutput(&genesisOutputID)
 	genesisStemOutput := genesisStateReader.GetStemOutput()
 
@@ -100,14 +91,14 @@ func CreateGenesisUTXOTangle(par proxima.StateIdentityData, stateStore proxima.S
 	genesisStateRoot, bootstrapSequencerID, genesisOutput, genesisStemOutput := InitGenesisState(par, stateStore)
 
 	// create virtual transaction for genesis outputs
-	genesisVirtualTx := newVirtualTx(proxima.GenesisTransactionID(par.GenesisEpoch))
+	genesisVirtualTx := newVirtualTx(proxima.GenesisTransactionID(par.GenesisTimeSlot))
 	genesisVirtualTx.addOutput(proxima.GenesisOutputIndex, genesisOutput.Output)
 	genesisVirtualTx.addOutput(proxima.GenesisStemOutputIndex, genesisStemOutput.Output)
 	genesisVirtualTx.addSequencerIndices(proxima.GenesisOutputIndex, proxima.GenesisStemOutputIndex)
 	genesisVID := genesisVirtualTx.Wrap()
 
 	util.Assertf(genesisVID.IsBranchTransaction(), "genesisVID.IsBranchTransaction()")
-	util.Assertf(genesisVID.TimeSlot() == par.GenesisEpoch, "genesisVID.TimeTick() == par.GenesisEpoch")
+	util.Assertf(genesisVID.TimeSlot() == par.GenesisTimeSlot, "genesisVID.TimeTick() == par.GenesisTimeSlot")
 
 	// create genesis UTXO tangle object
 	ret := newUTXOTangle(stateStore, txBytesStore)
@@ -136,7 +127,7 @@ func CreateGenesisUTXOTangleWithDistribution(par proxima.StateIdentityData, orig
 
 	// sanity check genesis outputs
 	genesisStateReader := state.MustNewSugaredStateReader(stateStore, genesisStateRoot)
-	genesisOutputID := proxima.GenesisChainOutputID(par.GenesisEpoch)
+	genesisOutputID := proxima.GenesisChainOutputID(par.GenesisTimeSlot)
 	genesisOutput := genesisStateReader.MustGetOutput(&genesisOutputID)
 	genesisStemOutput := genesisStateReader.GetStemOutput()
 
@@ -358,16 +349,4 @@ func (ut *UTXOTangle) finalizeBranch(newBranchVertex *WrappedTx) error {
 	}
 	ut.numAddedBranches++
 	return nil
-}
-
-func (f FinalityStatus) String() string {
-	switch f {
-	case FinalityStatusNotFinal:
-		return "undef"
-	case FinalityStatusCovered:
-		return "covered"
-	case FinalityStatusOrphaned:
-		return "orphaned"
-	}
-	return fmt.Sprintf("unsupported finality status %d", f)
 }

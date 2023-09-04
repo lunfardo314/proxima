@@ -127,7 +127,7 @@ func TestWorkflow(t *testing.T) {
 
 		t.Logf("timestamp now: %s", core.LogicalTimeNow().String())
 		t.Logf("distribution timestamp: %s", wd.distributionTxID.Timestamp().String())
-		t.Logf("origin slot: %d", wd.initLedgerStatePar.GenesisEpoch)
+		t.Logf("origin slot: %d", wd.initLedgerStatePar.GenesisTimeSlot)
 
 		estimatedTimeout := (time.Duration(numRuns) * core.TransactionTimePaceDuration()) + (5 * time.Second)
 		waitCounter := countdown.New(numRuns, estimatedTimeout)
@@ -165,7 +165,7 @@ func TestWorkflow(t *testing.T) {
 
 		t.Logf("timestamp now: %s", core.LogicalTimeNow().String())
 		t.Logf("distribution timestamp: %s", wd.distributionTxID.Timestamp().String())
-		t.Logf("origin slot: %d", wd.initLedgerStatePar.GenesisEpoch)
+		t.Logf("origin slot: %d", wd.initLedgerStatePar.GenesisTimeSlot)
 
 		estimatedTimeout := (time.Duration(numRuns) * core.TransactionTimePaceDuration()) + (5 * time.Second)
 		waitCounter := countdown.New(numRuns, estimatedTimeout)
@@ -248,7 +248,7 @@ func TestWorkflow(t *testing.T) {
 
 		t.Logf("timestamp now: %s", core.LogicalTimeNow().String())
 		t.Logf("distribution timestamp: %s", wd.distributionTxID.Timestamp().String())
-		t.Logf("origin slot: %d", wd.initLedgerStatePar.GenesisEpoch)
+		t.Logf("origin slot: %d", wd.initLedgerStatePar.GenesisTimeSlot)
 
 		estimatedTimeout := (time.Duration(numRuns) * core.TransactionTimePaceDuration()) + (6 * time.Second)
 		waitCounter := countdown.New(numRuns, estimatedTimeout)
@@ -643,7 +643,7 @@ func (r *multiChainTestData) createSequencerChain1(chainIdx int, pace int, print
 		if printtx {
 			ce := ""
 			if prevTs.TimeSlot() != curTs.TimeSlot() {
-				ce = "(cross-epoch)"
+				ce = "(cross-slot)"
 			}
 			r.t.Logf("tx %d : %s    %s", i, tx.IDShort(), ce)
 		}

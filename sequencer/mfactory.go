@@ -97,8 +97,8 @@ func ensureSequencerStartOutputs(chainOut, stemOut utangle.WrappedOutput, par Pa
 	// it is a plain chain output, without sequencer constraint. Need to create sequencer output
 	// We take current branch transaction ID from stem
 	// timestamp is
-	// - current time if it fits the current epoch
-	// - last slot in the epoch
+	// - current time if it fits the current slot
+	// - last tick in the slot
 	ts := core.MaxLogicalTime(core.LogicalTimeNow(), chainOut.Timestamp().AddTimeTicks(core.TransactionTimePaceInTicks))
 	if ts.TimeSlot() != stemOut.TimeSlot() {
 		ts = core.MustNewLogicalTime(stemOut.TimeSlot(), core.TimeTicksPerSlot-1)

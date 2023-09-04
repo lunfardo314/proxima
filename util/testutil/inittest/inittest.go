@@ -13,12 +13,12 @@ const (
 	InitSupply = 100_000_000_000
 )
 
-func GenesisParams(epoch ...core.TimeSlot) (proxima.StateIdentityData, ed25519.PrivateKey) {
+func GenesisParams(slot ...core.TimeSlot) (proxima.StateIdentityData, ed25519.PrivateKey) {
 	privKey := testutil.GetTestingPrivateKey()
-	// creating origin 1 epoch before now. More convenient for the workflow tests
+	// creating origin 1 slot before now. More convenient for the workflow tests
 	var e core.TimeSlot
-	if len(epoch) > 0 {
-		e = epoch[0]
+	if len(slot) > 0 {
+		e = slot[0]
 	} else {
 		e = core.LogicalTimeNow().TimeSlot()
 	}
@@ -26,13 +26,13 @@ func GenesisParams(epoch ...core.TimeSlot) (proxima.StateIdentityData, ed25519.P
 		Description:              "test state",
 		InitialSupply:            InitSupply,
 		GenesisControllerAddress: core.AddressED25519FromPrivateKey(privKey),
-		GenesisEpoch:             e,
+		GenesisTimeSlot:          e,
 	}
 	return retState, privKey
 }
 
-func GenesisParamsWithPreDistribution(n int, initBalance uint64, epoch ...core.TimeSlot) (proxima.StateIdentityData, ed25519.PrivateKey, []txbuilder.LockBalance, []ed25519.PrivateKey, []core.AddressED25519) {
-	sPar, originPrivKey := GenesisParams(epoch...)
+func GenesisParamsWithPreDistribution(n int, initBalance uint64, slot ...core.TimeSlot) (proxima.StateIdentityData, ed25519.PrivateKey, []txbuilder.LockBalance, []ed25519.PrivateKey, []core.AddressED25519) {
+	sPar, originPrivKey := GenesisParams(slot...)
 	privateKeys := testutil.GetTestingPrivateKeys(n)
 	addresses := core.AddressesED25519FromPrivateKeys(privateKeys)
 	distrib := make([]txbuilder.LockBalance, len(addresses))

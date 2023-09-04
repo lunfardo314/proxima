@@ -19,7 +19,7 @@ func TestBasics(t *testing.T) {
 		t.Logf("orig pub key: %s", easyfl.Fmt(pub))
 		t.Logf("origin address: %s", easyfl.Fmt(u.GenesisControllerAddress()))
 
-		t.Logf("genesis epoch: %d", u.GenesisEpoch())
+		t.Logf("genesis time slot: %d", u.GenesisTimeSlot())
 		t.Logf("current timestamp: %s", core.LogicalTimeNow().String())
 		_, _, addr := u.GenerateAddress(0)
 		err := u.TokensFromFaucet(addr, 100)
@@ -30,7 +30,7 @@ func TestBasics(t *testing.T) {
 		require.EqualValues(t, 1, u.NumUTXOs(addr))
 
 		e, stemOutData := u.StateReader().GetStem()
-		require.EqualValues(t, u.LastEpoch(), e)
+		require.EqualValues(t, u.LastTimeSlot(), e)
 
 		stemOut, _, _, err := core.OutputFromBytesMain(stemOutData)
 		require.NoError(t, err)

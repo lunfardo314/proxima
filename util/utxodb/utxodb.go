@@ -22,13 +22,13 @@ import (
 // It is mainly used for testing of constraints
 type UTXODB struct {
 	state             *state.Updatable
-	lastEpoch         core.TimeSlot
+	lastSlot          core.TimeSlot
 	genesisChainID    core.ChainID
 	supply            uint64
 	genesisPrivateKey ed25519.PrivateKey
 	genesisPublicKey  ed25519.PublicKey
 	genesisAddress    core.AddressED25519
-	genesisEpoch      core.TimeSlot
+	genesisSlot       core.TimeSlot
 	faucetPrivateKey  ed25519.PrivateKey
 	faucetAddress     core.AddressED25519
 	trace             bool
@@ -53,13 +53,13 @@ func NewUTXODB(trace ...bool) *UTXODB {
 	genesisAddr := core.AddressED25519FromPublicKey(genesisPubKey)
 
 	stateStore := common.NewInMemoryKVStore()
-	genesisEpoch := core.LogicalTimeNow().TimeSlot()
+	genesisSlot := core.LogicalTimeNow().TimeSlot()
 
 	initLedgerParams := proxima.StateIdentityData{
 		Description:              utxodbDscr,
 		InitialSupply:            supplyForTesting,
 		GenesisControllerAddress: genesisAddr,
-		GenesisEpoch:             genesisEpoch,
+		GenesisTimeSlot:          genesisSlot,
 	}
 
 	faucetPrivateKey := testutil.GetTestingPrivateKey(31415926535)
@@ -87,13 +87,13 @@ func NewUTXODB(trace ...bool) *UTXODB {
 
 	ret := &UTXODB{
 		state:                     updatable,
-		lastEpoch:                 genesisEpoch,
+		lastSlot:                  genesisSlot,
 		genesisChainID:            originChainID,
 		supply:                    supplyForTesting,
 		genesisPrivateKey:         genesisPrivateKey,
 		genesisPublicKey:          genesisPubKey,
 		genesisAddress:            genesisAddr,
-		genesisEpoch:              genesisEpoch,
+		genesisSlot:               genesisSlot,
 		faucetPrivateKey:          faucetPrivateKey,
 		faucetAddress:             faucetAddress,
 		trace:                     len(trace) > 0 && trace[0],
@@ -112,8 +112,8 @@ func (u *UTXODB) StateIdentityData() *proxima.StateIdentityData {
 	return u.StateReader().IdentityData()
 }
 
-func (u *UTXODB) GenesisEpoch() core.TimeSlot {
-	return u.genesisEpoch
+func (u *UTXODB) GenesisTimeSlot() core.TimeSlot {
+	return u.genesisSlot
 }
 
 func (u *UTXODB) GenesisChainID() *core.ChainID {
@@ -153,12 +153,12 @@ func (u *UTXODB) AddTransaction(txBytes []byte, onValidationError ...func(ctx *s
 	if err != nil {
 		return err
 	}
-	u.lastEpoch = tx.TimeSlot()
+	u.lastSlot = tx.TimeSlot()
 	return nil
 }
 
-func (u *UTXODB) LastEpoch() core.TimeSlot {
-	return u.lastEpoch
+func (u *UTXODB) LastTimeSlot() core.TimeSlot {
+	return u.lastSlot
 }
 
 func (u *UTXODB) MakeTransactionFromFaucet(addr core.AddressED25519, amountPar ...uint64) ([]byte, error) {
@@ -507,8 +507,8 @@ func (u *UTXODB) CreateChainOrigin(controllerPrivateKey ed25519.PrivateKey, ts c
 }
 
 func (u *UTXODB) OriginDistributionTransactionString() string {
-	genesisStemOutputID := proxima.GenesisStemOutputID(u.GenesisEpoch())
-	genesisOutputID := proxima.GenesisChainOutputID(u.GenesisEpoch())
+	genesisStemOutputID := proxima.GenesisStemOutputID(u.GenesisTimeSlot())
+	genesisOutputID := proxima.GenesisChainOutputID(u.GenesisTimeSlot())
 
 	return state.TransactionBytesToString(u.originDistributionTxBytes, func(oid *core.OutputID) ([]byte, bool) {
 		switch *oid {

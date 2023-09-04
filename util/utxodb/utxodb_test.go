@@ -10,22 +10,11 @@ import (
 )
 
 func TestUTXODB(t *testing.T) {
-	//t.Run("mutations", func(t *testing.T) {
-	//	genesisEpoch := core.LogicalTimeNow().TimeTick()
-	//	const supply = 1_000_000
-	//	gOutData := state.GenesisOutput(supply, core.AddressED25519Null(), genesisEpoch)
-	//	gOut, _ := gOutData.Parse()
-	//	sOutData := state.GenesisStemOutput(supply, genesisEpoch)
-	//	sOut, _ := sOutData.Parse()
-	//	mut := state.NewGenesisMutations(gOut, sOut)
-	//	t.Logf("genesis mutations:\n%s", mut.String())
-	//	t.Logf("genesis ledger coverage:\n%s", mut.LedgerCoverage().String())
-	//})
 	t.Run("origin", func(t *testing.T) {
 		u := NewUTXODB()
-		genesisStemOutputID := proxima.GenesisStemOutputID(u.GenesisEpoch())
-		genesisOutputID := proxima.GenesisChainOutputID(u.GenesisEpoch())
-		t.Logf("genesis epoch: %d", u.GenesisEpoch())
+		genesisStemOutputID := proxima.GenesisStemOutputID(u.GenesisTimeSlot())
+		genesisOutputID := proxima.GenesisChainOutputID(u.GenesisTimeSlot())
+		t.Logf("genesis time slot: %d", u.GenesisTimeSlot())
 		t.Logf("genesis addr: %s, balance: %s", u.GenesisControllerAddress().String(), testutil.GoThousands(u.Balance(u.GenesisControllerAddress())))
 		t.Logf("faucet addr: %s, balance: %s", u.FaucetAddress().String(), testutil.GoThousands(u.Balance(u.FaucetAddress())))
 		controlledByChain, onChain, err := u.BalanceOnChain(*u.GenesisChainID())

@@ -45,7 +45,7 @@ func MakeSequencerTransaction(par MakeSequencerTransactionParams) ([]byte, error
 		return nil, errP("wrong timestamp for branch transaction: %s", par.Timestamp.String())
 	}
 	if par.Timestamp.TimeSlot() > par.ChainInput.ID.TimeSlot() && par.Timestamp.TimeTick() != 0 && len(par.Endorsements) == 0 {
-		return nil, errP("cross-epoch sequencer tx must endorse another sequencer tx: chain input ts: %s, target: %s",
+		return nil, errP("cross-slot sequencer tx must endorse another sequencer tx: chain input ts: %s, target: %s",
 			par.ChainInput.ID.Timestamp(), par.Timestamp)
 	}
 	txb := NewTransactionBuilder()

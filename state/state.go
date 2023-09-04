@@ -49,8 +49,8 @@ func InitLedgerState(par proxima.StateIdentityData, store proxima.StateStore) (c
 	trie, err := immutable.NewTrieUpdatable(core.CommitmentModel, store, emptyRoot)
 	util.AssertNoError(err)
 
-	gout := GenesisOutput(par.InitialSupply, par.GenesisControllerAddress, par.GenesisEpoch)
-	gStemOut := GenesisStemOutput(par.InitialSupply, par.GenesisEpoch)
+	gout := GenesisOutput(par.InitialSupply, par.GenesisControllerAddress, par.GenesisTimeSlot)
+	gStemOut := GenesisStemOutput(par.InitialSupply, par.GenesisTimeSlot)
 
 	// write genesis outputs
 	err = UpdateTrie(trie, genesisUpdateCommands(&gout.OutputWithID, gStemOut))
@@ -63,8 +63,8 @@ func InitLedgerState(par proxima.StateIdentityData, store proxima.StateStore) (c
 	return gout.ChainID, root
 }
 
-func GenesisOutput(initialSupply uint64, controllerAddress core.AddressED25519, genesisEpoch core.TimeSlot) *core.OutputWithChainID {
-	oid := proxima.GenesisChainOutputID(genesisEpoch)
+func GenesisOutput(initialSupply uint64, controllerAddress core.AddressED25519, genesisSlot core.TimeSlot) *core.OutputWithChainID {
+	oid := proxima.GenesisChainOutputID(genesisSlot)
 	return &core.OutputWithChainID{
 		OutputWithID: core.OutputWithID{
 			ID: oid,
@@ -80,9 +80,9 @@ func GenesisOutput(initialSupply uint64, controllerAddress core.AddressED25519, 
 	}
 }
 
-func GenesisStemOutput(initialSupply uint64, genesisEpoch core.TimeSlot) *core.OutputWithID {
+func GenesisStemOutput(initialSupply uint64, genesisTimeSlot core.TimeSlot) *core.OutputWithID {
 	return &core.OutputWithID{
-		ID: proxima.GenesisStemOutputID(genesisEpoch),
+		ID: proxima.GenesisStemOutputID(genesisTimeSlot),
 		Output: core.NewOutput(func(o *core.Output) {
 			o.WithAmount(0).
 				WithLock(core.NewStemLock(initialSupply, 0, core.OutputID{}))
@@ -212,7 +212,7 @@ func (r *Readable) GetStem() (core.TimeSlot, []byte) {
 	accountPrefix := common.Concat(PartitionAccounts, byte(len(core.StemAccountID)), core.StemAccountID)
 
 	var found bool
-	var retEpoch core.TimeSlot
+	var retSlot core.TimeSlot
 	var retBytes []byte
 
 	// we iterate one element. Stem output ust always be present in the state
@@ -222,12 +222,12 @@ func (r *Readable) GetStem() (core.TimeSlot, []byte) {
 		count++
 		id, err := core.OutputIDFromBytes(k[len(accountPrefix):])
 		util.AssertNoError(err)
-		retEpoch = id.TimeSlot()
+		retSlot = id.TimeSlot()
 		retBytes, found = r.GetUTXO(&id)
 		util.Assertf(found, "can't find stem output")
 		return true
 	})
-	return retEpoch, retBytes
+	return retSlot, retBytes
 }
 
 func (r *Readable) IdentityData() *proxima.StateIdentityData {
@@ -345,10 +345,10 @@ type BranchData struct {
 }
 
 // FetchBranchData returns not sorted list of stem outputs in the DB
-func FetchBranchData(store proxima.StateStore, fromEpoch ...core.TimeSlot) []*BranchData {
+func FetchBranchData(store proxima.StateStore, fromSlot ...core.TimeSlot) []*BranchData {
 	var from core.TimeSlot
-	if len(fromEpoch) > 0 {
-		from = fromEpoch[0]
+	if len(fromSlot) > 0 {
+		from = fromSlot[0]
 	}
 	ret := make([]*BranchData, 0)
 	store.Iterator([]byte{rootRecordDBPartition}).Iterate(func(k, data []byte) bool {

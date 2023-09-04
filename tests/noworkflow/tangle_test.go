@@ -300,9 +300,9 @@ func TestEndorsements1(t *testing.T) {
 			WithTargetLock(it.addr)
 		txBytesOut, err := txbuilder.MakeTransferTransaction(td)
 		if err != nil {
-			// it can happen to cross the epoch boundary
-			require.Contains(t, err.Error(), "can't endorse transaction from another epoch")
-			t.Logf("warning: generated endorsement crosses epoch boundary")
+			// it can happen to cross the slot boundary
+			require.Contains(t, err.Error(), "can't endorse transaction from another slot")
+			t.Logf("warning: generated endorsement crosses slot boundary")
 			return
 		}
 
@@ -311,7 +311,7 @@ func TestEndorsements1(t *testing.T) {
 		_, err = it.ut.SolidifyInputsFromTxBytes(txBytesOut)
 		require.Contains(t, err.Error(), "non-sequencer tx can't contain endorsements")
 	})
-	t.Run("check txbuilder no endorse cross epoch", func(t *testing.T) {
+	t.Run("check txbuilder no endorse cross slot", func(t *testing.T) {
 		const (
 			nConflicts = 2
 			howLong    = 100
@@ -331,7 +331,7 @@ func TestEndorsements1(t *testing.T) {
 		util.RequirePanicOrErrorWith(t, func() error {
 			_, err = txbuilder.MakeTransferTransaction(td)
 			return err
-		}, "can't endorse transaction from another epoch")
+		}, "can't endorse transaction from another slot")
 	})
 }
 
@@ -357,15 +357,15 @@ type multiChainTestData struct {
 
 const onChainAmount = 10_000
 
-func initMultiChainTest(t *testing.T, nChains int, printTx bool, epoch ...core.TimeSlot) *multiChainTestData {
+func initMultiChainTest(t *testing.T, nChains int, printTx bool, timeSlot ...core.TimeSlot) *multiChainTestData {
 	t.Logf("initMultiChainTest: now is: %s, %v", core.LogicalTimeNow().String(), time.Now())
-	if len(epoch) > 0 {
-		t.Logf("initMultiChainTest: epoch now is assumed: %d, %v", epoch[0], core.MustNewLogicalTime(epoch[0], 0).Time())
+	if len(timeSlot) > 0 {
+		t.Logf("initMultiChainTest: timeSlot now is assumed: %d, %v", timeSlot[0], core.MustNewLogicalTime(timeSlot[0], 0).Time())
 	}
 	ret := &multiChainTestData{t: t}
 	var privKeys []ed25519.PrivateKey
 	var addrs []core.AddressED25519
-	par, genesisPrivKey, distrib, privKeys, addrs := inittest.GenesisParamsWithPreDistribution(2, onChainAmount*uint64(nChains), epoch...)
+	par, genesisPrivKey, distrib, privKeys, addrs := inittest.GenesisParamsWithPreDistribution(2, onChainAmount*uint64(nChains), timeSlot...)
 	ret.sPar = par
 	ret.privKey = privKeys[0]
 	ret.addr = addrs[0]
@@ -529,7 +529,7 @@ func (r *multiChainTestData) createSequencerChain1(chainIdx int, pace int, print
 		if printtx {
 			ce := ""
 			if prevTs.TimeSlot() != curTs.TimeSlot() {
-				ce = "(cross-epoch)"
+				ce = "(cross-slot)"
 			}
 			r.t.Logf("tx %d : %s    %s", i, tx.IDShort(), ce)
 		}

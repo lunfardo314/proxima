@@ -88,20 +88,20 @@ func DeadlineLockFromBytes(data []byte) (*DeadlineLock, error) {
 		return nil, err
 	}
 	ret := &DeadlineLock{}
-	epochBin := easyfl.StripDataPrefix(args[0])
-	slotBin := easyfl.StripDataPrefix(args[1])
-	if sym != DeadlineLockName || len(epochBin) != TimeSlotByteLength || len(slotBin) != 1 {
+	slotBin := easyfl.StripDataPrefix(args[0])
+	tickBin := easyfl.StripDataPrefix(args[1])
+	if sym != DeadlineLockName || len(slotBin) != TimeSlotByteLength || len(tickBin) != 1 {
 		return nil, fmt.Errorf("can't parse deadline lock")
 	}
-	epoch, err := TimeSlotFromBytes(epochBin)
+	slot, err := TimeSlotFromBytes(slotBin)
 	if err != nil {
 		return nil, err
 	}
-	slot, err := TimeSlotFromByte(slotBin[0])
+	tick, err := TimeSlotFromByte(tickBin[0])
 	if err != nil {
 		return nil, err
 	}
-	ret.Deadline = MustNewLogicalTime(epoch, slot)
+	ret.Deadline = MustNewLogicalTime(slot, tick)
 	if ret.ConstraintMain, err = AccountableFromBytes(args[2]); err != nil {
 		return nil, err
 	}

@@ -314,7 +314,7 @@ func CheckEndorsements() TxValidationOption {
 				return false
 			}
 			if endorsedTxID.TimeSlot() != txSlot {
-				err = fmt.Errorf("tx %s can't endorse tx from another epoch: %s", tx.IDShort(), endorsedTxID.Short())
+				err = fmt.Errorf("tx %s can't endorse tx from another slot: %s", tx.IDShort(), endorsedTxID.Short())
 				return false
 			}
 			return true

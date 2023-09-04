@@ -59,7 +59,7 @@ func MakeDistributionTransaction(par OriginDistributionParams) []byte {
 	util.AssertNoError(err)
 	genesisStemIn := sugaredGenesisReader.GetStemOutput()
 
-	// create origin branch transaction at the next epoch after genesis epoch
+	// create origin branch transaction at the next slot after genesis time slot
 	txBytes, err := MakeSequencerTransaction(MakeSequencerTransactionParams{
 		ChainInput: &core.OutputWithChainID{
 			OutputWithID: *genesisIn,

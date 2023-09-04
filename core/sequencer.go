@@ -11,7 +11,7 @@ import (
 const sequencerConstraintSource = `
 
 // $0 chain predecessor input index
-func _inputSameEpoch :
+func _inputSameSlot :
 equal(
 	txTimeSlot,
 	timeSlotOfInputByIndex($0)
@@ -26,30 +26,30 @@ and(
 )
 
 // $0 chain predecessor input index
-// chain predecessor is on the same epoch
-func _sameEpochPredecessorCase : 
+// chain predecessor is on the same slot
+func _sameSlotPredecessorCase : 
 require( 
 	or(sequencerFlagON(inputIDByIndex($0)), not(isZero(numEndorsements))),
-	!!!sequencer_chain_predecessor_on_the_same_epoch_must_be_either_a_sequencer_tx_too_or_endorse_another_sequencer_tx  
+	!!!sequencer_chain_predecessor_on_the_same_time_slot_must_be_either_a_sequencer_tx_too_or_endorse_another_sequencer_tx  
 )
 
 // $0 chain predecessor input index
-// chain predecessor is on past epoch
-func _crossEpochPredecessorCase : 
+// chain predecessor is on past time slot
+func _crossSlotPredecessorCase : 
 require(
 	or(
 		and(isBranchTransaction, sequencerFlagON(inputIDByIndex($0))), 
 		not(isZero(numEndorsements))
 	), 
-	!!!sequencer_tx_has_incorrect_cross-epoch_chain_predecessor_or_dont_have_any_endorsements
+	!!!sequencer_tx_has_incorrect_cross_slot_chain_predecessor_or_dont_have_any_endorsements
 )
 
 // $0 chain predecessor input index
 func _sequencer :
 or(
 	and( equal($0, 0xff), _noChainPredecessorCase ),
-	and( _inputSameEpoch($0), _sameEpochPredecessorCase($0)),
-	and( not(_inputSameEpoch($0)), _crossEpochPredecessorCase($0))
+	and( _inputSameSlot($0), _sameSlotPredecessorCase($0)),
+	and( not(_inputSameSlot($0)), _crossSlotPredecessorCase($0))
 )
 
 // $0 chain constraint index

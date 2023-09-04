@@ -44,7 +44,7 @@ func (b *baseProposer) run() {
 func (b *baseProposer) proposeBase() (*state.Transaction, bool) {
 	latestMilestone := b.factory.getLastMilestone()
 	if b.targetTs.TimeTick() != 0 && latestMilestone.TimeSlot() != b.targetTs.TimeSlot() {
-		// cross epoch. Skip
+		// cross slot. Skip
 		return nil, true
 	}
 
