@@ -2,7 +2,7 @@ package utxodb
 
 import (
 	"github.com/lunfardo314/proxima/core"
-	state "github.com/lunfardo314/proxima/state"
+	"github.com/lunfardo314/proxima/state"
 )
 
 func updateValidateNoDebug(u *state.Updatable, txBytes []byte) (*state.Transaction, error) {
