@@ -21,22 +21,23 @@ import (
 
 func TestOriginTangle(t *testing.T) {
 	t.Run("origin", func(t *testing.T) {
-		par, _ := inittest.GenesisParams()
-		tg, bootstrapChainID, root := utangle.CreateGenesisUTXOTangle(par, common.NewInMemoryKVStore(), common.NewInMemoryKVStore())
+		par := genesis.DefaultIdentityData(testutil.GetTestingPrivateKey())
+		tg, bootstrapChainID, root := utangle.CreateGenesisUTXOTangle(*par, common.NewInMemoryKVStore(), common.NewInMemoryKVStore())
 		require.True(t, tg != nil)
 		t.Logf("bootstrap chain id: %s", bootstrapChainID.String())
 		t.Logf("genesis root: %s", root.String())
 		t.Logf("%s", tg.Info(true))
 	})
 	t.Run("origin with distribution", func(t *testing.T) {
-		par, privKey := inittest.GenesisParams()
+		privKey := testutil.GetTestingPrivateKey()
+		par := genesis.DefaultIdentityData(privKey)
 		addr1 := core.AddressED25519FromPrivateKey(testutil.GetTestingPrivateKey(1))
 		addr2 := core.AddressED25519FromPrivateKey(testutil.GetTestingPrivateKey(2))
 		distrib := []txbuilder.LockBalance{
 			{Lock: addr1, Balance: 1_000_000},
 			{Lock: addr2, Balance: 2_000_000},
 		}
-		ut, bootstrapChainID, distribTxID := utangle.CreateGenesisUTXOTangleWithDistribution(par, privKey, distrib, common.NewInMemoryKVStore(), common.NewInMemoryKVStore())
+		ut, bootstrapChainID, distribTxID := utangle.CreateGenesisUTXOTangleWithDistribution(*par, privKey, distrib, common.NewInMemoryKVStore(), common.NewInMemoryKVStore())
 		require.True(t, ut != nil)
 		t.Logf("bootstrap chain id: %s", bootstrapChainID.String())
 		t.Logf("genesis branch txid: %s", distribTxID.Short())
@@ -51,7 +52,7 @@ func TestOriginTangle(t *testing.T) {
 		require.EqualValues(t, 0, stemOut.Output.Amount())
 		stemLock, ok := stemOut.Output.StemLock()
 		require.True(t, ok)
-		require.EqualValues(t, 100_000_000_000, int(stemLock.Supply))
+		require.EqualValues(t, genesis.DefaultSupply, int(stemLock.Supply))
 
 		rdr := ut.HeaviestStateForLatestTimeSlot()
 		bal1, n1 := state.BalanceOnLock(rdr, addr1)
@@ -67,7 +68,7 @@ func TestOriginTangle(t *testing.T) {
 		require.EqualValues(t, 0, nChain)
 
 		balChain = state.BalanceOnChainOutput(rdr, &bootstrapChainID)
-		require.EqualValues(t, 100_000_000_000-1_000_000-2_000_000, int(balChain))
+		require.EqualValues(t, genesis.DefaultSupply-1_000_000-2_000_000, int(balChain))
 	})
 }
 
@@ -87,9 +88,11 @@ type conflictTestRunData struct {
 
 func initConflictTest(t *testing.T, nConflicts int, printTx bool) *conflictTestRunData {
 	const initBalance = 10_000
-	par, genesisPrivKey, distrib, privKeys, addrs := inittest.GenesisParamsWithPreDistribution(1, initBalance)
+	genesisPrivKey := testutil.GetTestingPrivateKey()
+	par := genesis.DefaultIdentityData(genesisPrivKey)
+	distrib, privKeys, addrs := inittest.GenesisParamsWithPreDistribution(1, initBalance)
 	ret := &conflictTestRunData{
-		stateIdentity: par,
+		stateIdentity: *par,
 		privKey:       privKeys[0],
 		addr:          addrs[0],
 	}
@@ -365,8 +368,10 @@ func initMultiChainTest(t *testing.T, nChains int, printTx bool, timeSlot ...cor
 	ret := &multiChainTestData{t: t}
 	var privKeys []ed25519.PrivateKey
 	var addrs []core.AddressED25519
-	par, genesisPrivKey, distrib, privKeys, addrs := inittest.GenesisParamsWithPreDistribution(2, onChainAmount*uint64(nChains), timeSlot...)
-	ret.sPar = par
+
+	genesisPrivKey := testutil.GetTestingPrivateKey()
+	distrib, privKeys, addrs := inittest.GenesisParamsWithPreDistribution(2, onChainAmount*uint64(nChains), timeSlot...)
+	ret.sPar = *genesis.DefaultIdentityData(genesisPrivKey)
 	ret.privKey = privKeys[0]
 	ret.addr = addrs[0]
 	ret.faucetPrivKey = privKeys[1]

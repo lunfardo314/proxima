@@ -13,8 +13,8 @@ import (
 func TestUTXODB(t *testing.T) {
 	t.Run("origin", func(t *testing.T) {
 		u := NewUTXODB()
-		genesisStemOutputID := genesis.GenesisStemOutputID(u.GenesisTimeSlot())
-		genesisOutputID := genesis.GenesisChainOutputID(u.GenesisTimeSlot())
+		genesisStemOutputID := genesis.StemOutputID(u.GenesisTimeSlot())
+		genesisOutputID := genesis.InitialSupplyOutputID(u.GenesisTimeSlot())
 		t.Logf("genesis time slot: %d", u.GenesisTimeSlot())
 		t.Logf("genesis addr: %s, balance: %s", u.GenesisControllerAddress().String(), util.GoThousands(u.Balance(u.GenesisControllerAddress())))
 		t.Logf("faucet addr: %s, balance: %s", u.FaucetAddress().String(), util.GoThousands(u.Balance(u.FaucetAddress())))

@@ -21,8 +21,8 @@ func InitLedgerState(par IdentityData, store general.StateStore) (core.ChainID, 
 	util.AssertNoError(err)
 
 	genesisAddr := core.AddressED25519FromPublicKey(par.GenesisControllerPublicKey)
-	gout := GenesisOutput(par.InitialSupply, genesisAddr, par.GenesisTimeSlot)
-	gStemOut := GenesisStemOutput(par.InitialSupply, par.GenesisTimeSlot)
+	gout := InitialSupplyOutput(par.InitialSupply, genesisAddr, par.GenesisTimeSlot)
+	gStemOut := StemOutput(par.InitialSupply, par.GenesisTimeSlot)
 
 	// write genesis outputs
 	err = state.UpdateTrie(trie, genesisUpdateCommands(&gout.OutputWithID, gStemOut))
@@ -35,8 +35,8 @@ func InitLedgerState(par IdentityData, store general.StateStore) (core.ChainID, 
 	return gout.ChainID, root
 }
 
-func GenesisOutput(initialSupply uint64, controllerAddress core.AddressED25519, genesisSlot core.TimeSlot) *core.OutputWithChainID {
-	oid := GenesisChainOutputID(genesisSlot)
+func InitialSupplyOutput(initialSupply uint64, controllerAddress core.AddressED25519, genesisSlot core.TimeSlot) *core.OutputWithChainID {
+	oid := InitialSupplyOutputID(genesisSlot)
 	return &core.OutputWithChainID{
 		OutputWithID: core.OutputWithID{
 			ID: oid,
@@ -52,9 +52,9 @@ func GenesisOutput(initialSupply uint64, controllerAddress core.AddressED25519, 
 	}
 }
 
-func GenesisStemOutput(initialSupply uint64, genesisTimeSlot core.TimeSlot) *core.OutputWithID {
+func StemOutput(initialSupply uint64, genesisTimeSlot core.TimeSlot) *core.OutputWithID {
 	return &core.OutputWithID{
-		ID: GenesisStemOutputID(genesisTimeSlot),
+		ID: StemOutputID(genesisTimeSlot),
 		Output: core.NewOutput(func(o *core.Output) {
 			o.WithAmount(0).
 				WithLock(core.NewStemLock(initialSupply, 0, core.OutputID{}))
@@ -75,19 +75,19 @@ func genesisUpdateCommands(genesisOut, genesisStemOut *core.OutputWithID) []stat
 	}
 }
 
-func GenesisTransactionID(genesisTimeSlot core.TimeSlot) *core.TransactionID {
+func InitialSupplyTransactionID(genesisTimeSlot core.TimeSlot) *core.TransactionID {
 	ret := core.NewTransactionID(core.MustNewLogicalTime(genesisTimeSlot, 0), core.All0TransactionHash, true, true)
 	return &ret
 }
 
-func GenesisChainOutputID(e core.TimeSlot) (ret core.OutputID) {
+func InitialSupplyOutputID(e core.TimeSlot) (ret core.OutputID) {
 	// we are placing sequencer flag = true into the genesis tx ID to please sequencer constraint
 	// of the origin branch transaction. It is the only exception
-	ret = core.NewOutputID(GenesisTransactionID(e), GenesisOutputIndex)
+	ret = core.NewOutputID(InitialSupplyTransactionID(e), GenesisOutputIndex)
 	return
 }
 
-func GenesisStemOutputID(e core.TimeSlot) (ret core.OutputID) {
-	ret = core.NewOutputID(GenesisTransactionID(e), GenesisStemOutputIndex)
+func StemOutputID(e core.TimeSlot) (ret core.OutputID) {
+	ret = core.NewOutputID(InitialSupplyTransactionID(e), GenesisStemOutputIndex)
 	return
 }

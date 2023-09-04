@@ -3,9 +3,11 @@ package genesis
 import (
 	"crypto/ed25519"
 	"encoding/binary"
+	"fmt"
 	"time"
 
 	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/general"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lazyslice"
 	"github.com/lunfardo314/proxima/util/lines"
@@ -84,12 +86,14 @@ func (id *IdentityData) TimeTicksPerTimeSlot() int {
 }
 
 func (id *IdentityData) OriginChainID() core.ChainID {
-	oid := GenesisChainOutputID(id.GenesisTimeSlot)
+	oid := InitialSupplyOutputID(id.GenesisTimeSlot)
 	return core.OriginChainID(&oid)
 }
 
 func (id *IdentityData) String() string {
 	originChainID := id.OriginChainID()
+	initialSupplyOutputID := InitialSupplyOutputID(id.GenesisTimeSlot)
+	genesisStemOutputID := StemOutputID(id.GenesisTimeSlot)
 	return lines.New().
 		Add("Description: '%s'", id.Description).
 		Add("Initial supply: %s", util.GoThousands(id.InitialSupply)).
@@ -97,7 +101,30 @@ func (id *IdentityData) String() string {
 		Add("Baseline time: %s", id.BaselineTime.Format(time.RFC3339)).
 		Add("Time tick duration: %v", id.TimeTickDuration).
 		Add("Time ticks per time slot: %d", id.TimeTicksPerTimeSlot()).
-		Add("Genesis time slot: %s", id.GenesisTimeSlot).
+		Add("Genesis time slot: %d", id.GenesisTimeSlot).
 		Add("Origin chain ID: %s", originChainID.String()).
+		Add("Initial supply output ID: %s", initialSupplyOutputID.String()).
+		Add("Genesis stem output ID: %s", genesisStemOutputID.String()).
 		String()
+}
+
+const DefaultSupply = 1_000_000_000_000
+
+func DefaultIdentityData(privateKey ed25519.PrivateKey, slot ...core.TimeSlot) *IdentityData {
+	// creating origin 1 slot before now. More convenient for the workflow tests
+	var sl core.TimeSlot
+	if len(slot) > 0 {
+		sl = slot[0]
+	} else {
+		sl = core.LogicalTimeNow().TimeSlot()
+	}
+	return &IdentityData{
+		Description:                fmt.Sprintf("Proxima prototype version %s", general.Version),
+		InitialSupply:              DefaultSupply,
+		GenesisControllerPublicKey: privateKey.Public().(ed25519.PublicKey),
+		BaselineTime:               core.BaselineTime,
+		TimeTickDuration:           core.TimeTickDuration(),
+		MaxTimeTickValueInTimeSlot: core.TimeTicksPerSlot - 1,
+		GenesisTimeSlot:            sl,
+	}
 }

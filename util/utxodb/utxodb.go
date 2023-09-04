@@ -507,8 +507,8 @@ func (u *UTXODB) CreateChainOrigin(controllerPrivateKey ed25519.PrivateKey, ts c
 }
 
 func (u *UTXODB) OriginDistributionTransactionString() string {
-	genesisStemOutputID := genesis.GenesisStemOutputID(u.GenesisTimeSlot())
-	genesisOutputID := genesis.GenesisChainOutputID(u.GenesisTimeSlot())
+	genesisStemOutputID := genesis.StemOutputID(u.GenesisTimeSlot())
+	genesisOutputID := genesis.InitialSupplyOutputID(u.GenesisTimeSlot())
 
 	return state.TransactionBytesToString(u.originDistributionTxBytes, func(oid *core.OutputID) ([]byte, bool) {
 		switch *oid {

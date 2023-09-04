@@ -81,7 +81,7 @@ func InitGenesisState(par genesis.IdentityData, stateStore general.StateStore) (
 	// now genesisStateRoot contains origin chain and stem outputs
 	// fetch origin chain and stem outputs
 	genesisStateReader := state.MustNewSugaredStateReader(stateStore, genesisStateRoot)
-	genesisOutputID := genesis.GenesisChainOutputID(par.GenesisTimeSlot)
+	genesisOutputID := genesis.InitialSupplyOutputID(par.GenesisTimeSlot)
 	genesisOutput := genesisStateReader.MustGetOutput(&genesisOutputID)
 	genesisStemOutput := genesisStateReader.GetStemOutput()
 
@@ -92,7 +92,7 @@ func CreateGenesisUTXOTangle(par genesis.IdentityData, stateStore general.StateS
 	genesisStateRoot, bootstrapSequencerID, genesisOutput, genesisStemOutput := InitGenesisState(par, stateStore)
 
 	// create virtual transaction for genesis outputs
-	genesisVirtualTx := newVirtualTx(genesis.GenesisTransactionID(par.GenesisTimeSlot))
+	genesisVirtualTx := newVirtualTx(genesis.InitialSupplyTransactionID(par.GenesisTimeSlot))
 	genesisVirtualTx.addOutput(genesis.GenesisOutputIndex, genesisOutput.Output)
 	genesisVirtualTx.addOutput(genesis.GenesisStemOutputIndex, genesisStemOutput.Output)
 	genesisVirtualTx.addSequencerIndices(genesis.GenesisOutputIndex, genesis.GenesisStemOutputIndex)
@@ -129,7 +129,7 @@ func CreateGenesisUTXOTangleWithDistribution(par genesis.IdentityData, originPri
 
 	// sanity check genesis outputs
 	genesisStateReader := state.MustNewSugaredStateReader(stateStore, genesisStateRoot)
-	genesisOutputID := genesis.GenesisChainOutputID(par.GenesisTimeSlot)
+	genesisOutputID := genesis.InitialSupplyOutputID(par.GenesisTimeSlot)
 	genesisOutput := genesisStateReader.MustGetOutput(&genesisOutputID)
 	genesisStemOutput := genesisStateReader.GetStemOutput()
 
