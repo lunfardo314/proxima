@@ -318,8 +318,7 @@ func (ut *UTXOTangle) finalizeBranch(newBranchVertex *WrappedTx) error {
 			}
 			util.Assertf(ok, "finalizeBranch %s: can't find previous branch %s", newBranchVertex.IDShort(), v.StateDelta.baselineBranch.IDShort())
 
-			upd, err1 := state.NewUpdatable(ut.stateStore, prevBranch.root)
-			util.AssertNoError(err1)
+			upd := state.MustNewUpdatable(ut.stateStore, prevBranch.root)
 			cmds := v.StateDelta.getUpdateCommands()
 
 			err = upd.UpdateWithCommands(cmds, &nextStemOutputID, &seqData.SequencerID)

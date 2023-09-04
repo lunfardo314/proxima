@@ -81,9 +81,8 @@ func NewUTXODB(trace ...bool) *UTXODB {
 
 	distributionTxBytes := txbuilder.MakeDistributionTransaction(originDistribution)
 
-	updatable, err := state.NewUpdatable(stateStore, genesisRoot)
-	util.AssertNoError(err)
-	_, err = updateValidateDebug(updatable, distributionTxBytes)
+	updatable := state.MustNewUpdatable(stateStore, genesisRoot)
+	_, err := updateValidateDebug(updatable, distributionTxBytes)
 	util.AssertNoError(err)
 
 	ret := &UTXODB{
