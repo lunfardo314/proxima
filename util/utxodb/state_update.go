@@ -3,27 +3,28 @@ package utxodb
 import (
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/state"
+	"github.com/lunfardo314/proxima/transaction"
 )
 
-func updateValidateNoDebug(u *state.Updatable, txBytes []byte) (*state.Transaction, error) {
-	return updateValidateOptions(u, txBytes, state.TraceOptionNone, nil)
+func updateValidateNoDebug(u *state.Updatable, txBytes []byte) (*transaction.Transaction, error) {
+	return updateValidateOptions(u, txBytes, transaction.TraceOptionNone, nil)
 }
 
-func updateValidateDebug(u *state.Updatable, txBytes []byte, onValidation ...func(ctx *state.TransactionContext, err error) error) (*state.Transaction, error) {
-	var fun func(ctx *state.TransactionContext, err error) error
+func updateValidateDebug(u *state.Updatable, txBytes []byte, onValidation ...func(ctx *transaction.TransactionContext, err error) error) (*transaction.Transaction, error) {
+	var fun func(ctx *transaction.TransactionContext, err error) error
 	if len(onValidation) > 0 {
 		fun = onValidation[0]
 	}
-	return updateValidateOptions(u, txBytes, state.TraceOptionFailedConstraints, fun)
+	return updateValidateOptions(u, txBytes, transaction.TraceOptionFailedConstraints, fun)
 }
 
 // updateValidateNoDebug updates/mutates the ledger state by transaction. For testing mostly
-func updateValidateOptions(u *state.Updatable, txBytes []byte, traceOption int, onValidation func(ctx *state.TransactionContext, err error) error) (*state.Transaction, error) {
-	tx, err := state.TransactionFromBytesAllChecks(txBytes)
+func updateValidateOptions(u *state.Updatable, txBytes []byte, traceOption int, onValidation func(ctx *transaction.TransactionContext, err error) error) (*transaction.Transaction, error) {
+	tx, err := transaction.TransactionFromBytesAllChecks(txBytes)
 	if err != nil {
 		return nil, err
 	}
-	ctx, err := state.TransactionContextFromTransaction(tx, tx.InputLoaderByIndex(u.Readable().GetUTXO), traceOption)
+	ctx, err := transaction.ContextFromTransaction(tx, tx.InputLoaderByIndex(u.Readable().GetUTXO), traceOption)
 	if err != nil {
 		return nil, err
 	}

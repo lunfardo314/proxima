@@ -3,7 +3,7 @@ package workflow
 import (
 	"time"
 
-	"github.com/lunfardo314/proxima/state"
+	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/util/wait"
 )
 
@@ -53,7 +53,7 @@ func (c *PreValidateConsumer) consume(inp *PreValidateConsumerInputData) {
 	// transaction is rejected if it is too far in the future wrt the local clock
 	nowis := time.Now()
 	timeUpperBound := nowis.Add(c.glb.maxDurationInTheFuture())
-	err = inp.Tx.Validate(state.CheckTimestampUpperBound(timeUpperBound))
+	err = inp.Tx.Validate(transaction.CheckTimestampUpperBound(timeUpperBound))
 	if err != nil {
 		if enforceTimeBounds {
 			c.IncCounter("invalid")
@@ -63,7 +63,7 @@ func (c *PreValidateConsumer) consume(inp *PreValidateConsumerInputData) {
 		c.Warnf(inp.PrimaryInputConsumerData, "checking time bounds: '%v'", err)
 	}
 	// run remaining validations on the transaction
-	if err = inp.Tx.Validate(state.MainTxValidationOptions...); err != nil {
+	if err = inp.Tx.Validate(transaction.MainTxValidationOptions...); err != nil {
 		c.IncCounter("invalid")
 		c.RejectTransaction(inp.PrimaryInputConsumerData, "%v", err)
 		return

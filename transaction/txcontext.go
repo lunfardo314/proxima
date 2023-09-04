@@ -1,4 +1,4 @@
-package state
+package transaction
 
 import (
 	"fmt"
@@ -28,7 +28,7 @@ const (
 	TraceOptionFailedConstraints
 )
 
-func TransactionContextFromTransaction(tx *Transaction, inputLoaderByIndex func(i byte) (*core.Output, error), traceOption ...int) (*TransactionContext, error) {
+func ContextFromTransaction(tx *Transaction, inputLoaderByIndex func(i byte) (*core.Output, error), traceOption ...int) (*TransactionContext, error) {
 	ret := &TransactionContext{
 		tree:        nil,
 		traceOption: TraceOptionNone,
@@ -43,10 +43,10 @@ func TransactionContextFromTransaction(tx *Transaction, inputLoaderByIndex func(
 	for i := 0; i < tx.NumInputs(); i++ {
 		o, err := inputLoaderByIndex(byte(i))
 		if err != nil {
-			return nil, fmt.Errorf("TransactionContextFromTransaction: '%v'", err)
+			return nil, fmt.Errorf("ContextFromTransaction: '%v'", err)
 		}
 		if o == nil {
-			return nil, fmt.Errorf("TransactionContextFromTransaction: input not solid at index %d", i)
+			return nil, fmt.Errorf("ContextFromTransaction: input not solid at index %d", i)
 		}
 		consumedOutputsArray.Push(o.Bytes())
 	}
@@ -56,13 +56,13 @@ func TransactionContextFromTransaction(tx *Transaction, inputLoaderByIndex func(
 	return ret, nil
 }
 
-// TransactionContextFromTransferableBytes constructs lazytree from transaction bytes and consumed outputs
-func TransactionContextFromTransferableBytes(txBytes []byte, fetchInput func(oid *core.OutputID) ([]byte, bool), traceOption ...int) (*TransactionContext, error) {
+// ContextFromTransferableBytes constructs lazytree from transaction bytes and consumed outputs
+func ContextFromTransferableBytes(txBytes []byte, fetchInput func(oid *core.OutputID) ([]byte, bool), traceOption ...int) (*TransactionContext, error) {
 	tx, err := TransactionFromBytes(txBytes)
 	if err != nil {
 		return nil, err
 	}
-	return TransactionContextFromTransaction(tx, tx.InputLoaderByIndex(fetchInput), traceOption...)
+	return ContextFromTransaction(tx, tx.InputLoaderByIndex(fetchInput), traceOption...)
 }
 
 // unlockScriptBinary finds script from unlock block

@@ -1,4 +1,4 @@
-package state
+package transaction
 
 import (
 	"bytes"
@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/state"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lazyslice"
 	"github.com/lunfardo314/unitrie/common"
@@ -681,7 +682,7 @@ func OutputWithIDFromTransactionBytes(txBytes []byte, idx byte) (*core.OutputWit
 }
 
 func (tx *Transaction) ToString(fetchOutput func(oid *core.OutputID) ([]byte, bool)) string {
-	ctx, err := TransactionContextFromTransaction(tx, func(i byte) (*core.Output, error) {
+	ctx, err := ContextFromTransaction(tx, func(i byte) (*core.Output, error) {
 		oid, err1 := tx.InputAt(i)
 		if err1 != nil {
 			return nil, err1
@@ -785,17 +786,17 @@ func (tx *Transaction) ProducedOutputsToString() string {
 	return strings.Join(ret, "\n")
 }
 
-func (tx *Transaction) UpdateCommands() []UpdateCmd {
-	ret := make([]UpdateCmd, 0, tx.NumInputs()+tx.NumProducedOutputs())
+func (tx *Transaction) UpdateCommands() []state.UpdateCmd {
+	ret := make([]state.UpdateCmd, 0, tx.NumInputs()+tx.NumProducedOutputs())
 	tx.ForEachInput(func(i byte, oid *core.OutputID) bool {
-		ret = append(ret, UpdateCmd{
+		ret = append(ret, state.UpdateCmd{
 			ID:     oid,
 			Output: nil,
 		})
 		return true
 	})
 	tx.ForEachProducedOutput(func(_ byte, o *core.Output, oid *core.OutputID) bool {
-		ret = append(ret, UpdateCmd{
+		ret = append(ret, state.UpdateCmd{
 			ID:     oid,
 			Output: o,
 		})

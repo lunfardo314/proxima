@@ -11,7 +11,7 @@ import (
 
 	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/proxima/core"
-	state "github.com/lunfardo314/proxima/state"
+	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/txbuilder"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/txutils"
@@ -192,7 +192,7 @@ func TestTimelock(t *testing.T) {
 			WithTargetLock(addr0),
 		)
 		if err != nil {
-			tx, err1 := state.TransactionFromBytesAllChecks(txBytes)
+			tx, err1 := transaction.TransactionFromBytesAllChecks(txBytes)
 			require.NoError(t, err1)
 			t.Logf("resulting tx ts: %s", tx.Timestamp())
 			require.True(t, tx.Timestamp().TimeSlot() > timelockSlot)
@@ -880,7 +880,7 @@ func TestHashUnlock(t *testing.T) {
 	txbytes, err := txbuilder.MakeTransferTransaction(par)
 	require.NoError(t, err)
 
-	ctx, err := state.TransactionContextFromTransferableBytes(txbytes, u.StateReader().GetUTXO)
+	ctx, err := transaction.ContextFromTransferableBytes(txbytes, u.StateReader().GetUTXO)
 	require.NoError(t, err)
 
 	t.Logf("%s", ctx.String())
@@ -900,7 +900,7 @@ func TestHashUnlock(t *testing.T) {
 	txbytes, err = txbuilder.MakeTransferTransaction(par)
 	require.NoError(t, err)
 
-	ctx, err = state.TransactionContextFromTransferableBytes(txbytes, u.StateReader().GetUTXO)
+	ctx, err = transaction.ContextFromTransferableBytes(txbytes, u.StateReader().GetUTXO)
 	require.NoError(t, err)
 
 	t.Logf("---- transaction without hash unlock: FAILING\n %s", ctx.String())
@@ -913,7 +913,7 @@ func TestHashUnlock(t *testing.T) {
 	txbytes, err = txbuilder.MakeTransferTransaction(par)
 	require.NoError(t, err)
 
-	ctx, err = state.TransactionContextFromTransferableBytes(txbytes, u.StateReader().GetUTXO)
+	ctx, err = transaction.ContextFromTransferableBytes(txbytes, u.StateReader().GetUTXO)
 	require.NoError(t, err)
 
 	t.Logf("---- transaction with hash unlock, the library/script: SUCCESS\n %s", ctx.String())

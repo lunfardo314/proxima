@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/lunfardo314/proxima/core"
-	"github.com/lunfardo314/proxima/state"
+	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/util/utxodb"
 	"github.com/stretchr/testify/require"
 )
@@ -15,7 +15,7 @@ func TestVID(t *testing.T) {
 		u := utxodb.NewUTXODB()
 		txBytes, err := u.MakeTransactionFromFaucet(core.AddressED25519Null())
 		require.NoError(t, err)
-		tx, err := state.TransactionFromBytesAllChecks(txBytes)
+		tx, err := transaction.TransactionFromBytesAllChecks(txBytes)
 		require.NoError(t, err)
 		txid := tx.ID()
 

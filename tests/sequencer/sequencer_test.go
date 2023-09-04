@@ -13,7 +13,7 @@ import (
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/genesis"
 	"github.com/lunfardo314/proxima/sequencer"
-	"github.com/lunfardo314/proxima/state"
+	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/txbuilder"
 	"github.com/lunfardo314/proxima/utangle"
 	"github.com/lunfardo314/proxima/util"
@@ -45,7 +45,7 @@ type sequencerTestData struct {
 	bootstrapChainID            core.ChainID
 	distributionTxID            core.TransactionID
 	chainOrigins                []*core.OutputWithChainID
-	txChainOrigins              *state.Transaction
+	txChainOrigins              *transaction.Transaction
 	ut                          *utangle.UTXOTangle
 	wrk                         *workflow.Workflow
 	bootstrapSeq                *sequencer.Sequencer
@@ -139,7 +139,7 @@ func (r *sequencerTestData) makeAdditionalChainOrigins(faucetIdx int, nChains in
 
 	txBytesChainOrigins := txb.Transaction.Bytes()
 
-	r.txChainOrigins, err = state.TransactionFromBytesAllChecks(txBytesChainOrigins)
+	r.txChainOrigins, err = transaction.TransactionFromBytesAllChecks(txBytesChainOrigins)
 	require.NoError(r.t, err)
 
 	r.txChainOrigins.ForEachProducedOutput(func(idx byte, o *core.Output, oid *core.OutputID) bool {
@@ -169,7 +169,7 @@ func (r *sequencerTestData) allSequencerIDs() []core.ChainID {
 	return ret
 }
 
-func (r *sequencerTestData) makeFaucetTransaction(targetSeqID core.ChainID, faucetIdx int, targetLock core.Lock, amount uint64) *state.Transaction {
+func (r *sequencerTestData) makeFaucetTransaction(targetSeqID core.ChainID, faucetIdx int, targetLock core.Lock, amount uint64) *transaction.Transaction {
 	txb := txbuilder.NewTransactionBuilder()
 	_, err := txb.ConsumeOutputWithID(r.faucetOutputs[faucetIdx])
 	require.NoError(r.t, err)
@@ -200,7 +200,7 @@ func (r *sequencerTestData) makeFaucetTransaction(targetSeqID core.ChainID, fauc
 	txb.Transaction.InputCommitment = txb.InputCommitment()
 	txb.SignED25519(r.faucetPrivateKeys[faucetIdx])
 
-	tx, err := state.TransactionFromBytesAllChecks(txb.Transaction.Bytes())
+	tx, err := transaction.TransactionFromBytesAllChecks(txb.Transaction.Bytes())
 	r.faucetOutputs[faucetIdx] = tx.MustProducedOutputWithIDAt(remainderIdx)
 	//r.t.Logf("++++++ tx %s\n%s", tx.IDShort(), tx.ProducedOutputsToString())
 	return tx
@@ -227,7 +227,7 @@ func TestBootstrapSequencer(t *testing.T) {
 			//workflow.AppendTxConsumerName:     zapcore.DebugLevel,
 		}
 		r := initSequencerTestData(t, 1, 0, core.LogicalTimeNow(), wrkDbg)
-		state.SetPrintEasyFLTraceOnFail(true)
+		transaction.SetPrintEasyFLTraceOnFail(true)
 		r.wrk.Start()
 
 		sequencer.SetTraceProposer(sequencer.BaseProposerName, false)
@@ -265,7 +265,7 @@ func TestBootstrapSequencer(t *testing.T) {
 			//workflow.EventsName:               zapcore.DebugLevel,
 		}
 		r := initSequencerTestData(t, 1, 1, core.LogicalTimeNow(), wrkDbg)
-		state.SetPrintEasyFLTraceOnFail(false)
+		transaction.SetPrintEasyFLTraceOnFail(false)
 		r.wrk.Start()
 
 		sequencer.SetTraceAll(false)
@@ -324,7 +324,7 @@ func TestBootstrapSequencer(t *testing.T) {
 			//workflow.EventsName:               zapcore.DebugLevel,
 		}
 		r := initSequencerTestData(t, 1, 1, core.LogicalTimeNow(), wrkDbg)
-		state.SetPrintEasyFLTraceOnFail(false)
+		transaction.SetPrintEasyFLTraceOnFail(false)
 		r.wrk.Start()
 
 		sequencer.SetTraceAll(false)
@@ -390,7 +390,7 @@ func TestBootstrapSequencer(t *testing.T) {
 			//workflow.EventsName:               zapcore.DebugLevel,
 		}
 		r := initSequencerTestData(t, 1, 1, core.LogicalTimeNow(), wrkDbg)
-		state.SetPrintEasyFLTraceOnFail(false)
+		transaction.SetPrintEasyFLTraceOnFail(false)
 		r.wrk.Start()
 
 		sequencer.SetTraceAll(false)
@@ -476,7 +476,7 @@ func TestBootstrapSequencer(t *testing.T) {
 			//workflow.EventsName:               zapcore.DebugLevel,
 		}
 		r := initSequencerTestData(t, numFaucets, 1, core.LogicalTimeNow(), wrkDbg)
-		state.SetPrintEasyFLTraceOnFail(false)
+		transaction.SetPrintEasyFLTraceOnFail(false)
 		r.wrk.Start()
 
 		sequencer.SetTraceAll(false)
@@ -664,7 +664,7 @@ func TestNSequencers(t *testing.T) {
 			//workflow.EventsName:               zapcore.DebugLevel,
 		}
 		r := initSequencerTestData(t, numFaucets, 1, core.LogicalTimeNow(), wrkDbg)
-		state.SetPrintEasyFLTraceOnFail(false)
+		transaction.SetPrintEasyFLTraceOnFail(false)
 		r.wrk.Start()
 		//r.createTransactionLogger()
 		// add transaction with chain origins
@@ -739,7 +739,7 @@ func TestNSequencers(t *testing.T) {
 			//workflow.EventsName:               zapcore.DebugLevel,
 		}
 		r := initSequencerTestData(t, numFaucets, nSequencers-1, core.LogicalTimeNow(), wrkDbg)
-		state.SetPrintEasyFLTraceOnFail(false)
+		transaction.SetPrintEasyFLTraceOnFail(false)
 		r.wrk.Start()
 		//r.createTransactionLogger()
 		// add transaction with chain origins
@@ -842,7 +842,7 @@ func TestNSequencers(t *testing.T) {
 			//workflow.EventsName:               zapcore.DebugLevel,
 		}
 		r := initSequencerTestData(t, numFaucets, nSequencers-1, core.LogicalTimeNow(), wrkDbg)
-		state.SetPrintEasyFLTraceOnFail(false)
+		transaction.SetPrintEasyFLTraceOnFail(false)
 		r.wrk.Start()
 		//r.createTransactionLogger()
 		// add transaction with chain origins
@@ -957,7 +957,7 @@ func TestNSequencers(t *testing.T) {
 			//workflow.EventsName:               zapcore.DebugLevel,
 		}
 		r := initSequencerTestData(t, numFaucets, nSequencers-1, core.LogicalTimeNow(), wrkDbg)
-		state.SetPrintEasyFLTraceOnFail(false)
+		transaction.SetPrintEasyFLTraceOnFail(false)
 		r.wrk.Start()
 		//r.createTransactionLogger()
 		// add transaction with chain origins
@@ -1034,7 +1034,7 @@ func TestNSequencers(t *testing.T) {
 			//workflow.EventsName:               zapcore.DebugLevel,
 		}
 		r := initSequencerTestData(t, numFaucets, nSequencers-1, core.LogicalTimeNow(), wrkDbg)
-		state.SetPrintEasyFLTraceOnFail(false)
+		transaction.SetPrintEasyFLTraceOnFail(false)
 		r.wrk.Start()
 		//r.createTransactionLogger()
 		// add transaction with chain origins
@@ -1114,7 +1114,7 @@ func TestPruning(t *testing.T) {
 			//workflow.EventsName:               zapcore.DebugLevel,
 		}
 		r := initSequencerTestData(t, numFaucets, nSequencers-1, core.LogicalTimeNow(), wrkDbg)
-		state.SetPrintEasyFLTraceOnFail(false)
+		transaction.SetPrintEasyFLTraceOnFail(false)
 
 		r.wrk.Start()
 
@@ -1229,7 +1229,7 @@ func TestPruning(t *testing.T) {
 			//workflow.EventsName:               zapcore.DebugLevel,
 		}
 		r := initSequencerTestData(t, numFaucets, nSequencers-1, core.LogicalTimeNow(), wrkDbg)
-		state.SetPrintEasyFLTraceOnFail(false)
+		transaction.SetPrintEasyFLTraceOnFail(false)
 
 		r.wrk.Start()
 		r.wrk.StartPruner()

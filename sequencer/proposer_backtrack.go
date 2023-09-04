@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/core"
-	"github.com/lunfardo314/proxima/state"
+	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/utangle"
 	"github.com/lunfardo314/proxima/util"
 )
@@ -75,7 +75,7 @@ func (b *backtrackProposer) run() {
 	}
 }
 
-func (b *backtrackProposer) generateCandidate(extend utangle.WrappedOutput) *state.Transaction {
+func (b *backtrackProposer) generateCandidate(extend utangle.WrappedOutput) *transaction.Transaction {
 	util.Assertf(extend.VID != b.endorse, "extend.VID != b.endorse")
 	if extend.VID.IsBranchTransaction() && b.endorse.IsBranchTransaction() {
 		// cannot extend one branch and endorse another TODO

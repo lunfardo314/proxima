@@ -4,7 +4,7 @@ import (
 	"crypto/ed25519"
 
 	"github.com/lunfardo314/proxima/core"
-	"github.com/lunfardo314/proxima/state"
+	transaction2 "github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/util"
 )
 
@@ -30,7 +30,7 @@ func MakeTransactionSequence(howLong int, firstUTXO *core.OutputWithID, privK ed
 			return nil, err
 		}
 		ret[i] = txBytes
-		tx, err := state.TransactionFromBytes(txBytes)
+		tx, err := transaction2.TransactionFromBytes(txBytes)
 		if err != nil {
 			return nil, err
 		}

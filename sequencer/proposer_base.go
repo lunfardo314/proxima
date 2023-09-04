@@ -4,7 +4,7 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/core"
-	"github.com/lunfardo314/proxima/state"
+	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/util"
 )
 
@@ -26,7 +26,7 @@ func init() {
 
 func (b *baseProposer) run() {
 	startTime := time.Now()
-	var tx *state.Transaction
+	var tx *transaction.Transaction
 	var forceExit bool
 	for b.factory.proposal.continueCandidateProposing(b.targetTs) {
 		tx, forceExit = b.proposeBase()
@@ -41,7 +41,7 @@ func (b *baseProposer) run() {
 	}
 }
 
-func (b *baseProposer) proposeBase() (*state.Transaction, bool) {
+func (b *baseProposer) proposeBase() (*transaction.Transaction, bool) {
 	latestMilestone := b.factory.getLastMilestone()
 	if b.targetTs.TimeTick() != 0 && latestMilestone.TimeSlot() != b.targetTs.TimeSlot() {
 		// cross slot. Skip

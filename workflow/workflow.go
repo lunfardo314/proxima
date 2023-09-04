@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/core"
-	"github.com/lunfardo314/proxima/state"
+	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/utangle"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/consumer"
@@ -107,7 +107,7 @@ func (c *Consumer[T]) Infof(inp *PrimaryInputConsumerData, format string, args .
 	inp.txLog.Logf(c.TxLogPrefix()+format, args...)
 }
 
-func (c *Consumer[T]) TraceMilestones(tx *state.Transaction, txid *core.TransactionID, msg string) {
+func (c *Consumer[T]) TraceMilestones(tx *transaction.Transaction, txid *core.TransactionID, msg string) {
 	if !c.glb.traceMilestones.Load() {
 		return
 	}

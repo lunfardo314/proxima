@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/core"
-	"github.com/lunfardo314/proxima/state"
+	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/txbuilder"
 	utangle "github.com/lunfardo314/proxima/utangle"
 	"github.com/lunfardo314/proxima/util"
@@ -151,7 +151,7 @@ func (mf *milestoneFactory) trace(format string, args ...any) {
 	}
 }
 
-func (mf *milestoneFactory) makeMilestone(chainIn, stemIn *utangle.WrappedOutput, feeInputs []utangle.WrappedOutput, endorse []*utangle.WrappedTx, targetTs core.LogicalTime) (*state.Transaction, error) {
+func (mf *milestoneFactory) makeMilestone(chainIn, stemIn *utangle.WrappedOutput, feeInputs []utangle.WrappedOutput, endorse []*utangle.WrappedTx, targetTs core.LogicalTime) (*transaction.Transaction, error) {
 	chainInReal, err := chainIn.Unwrap()
 	if err != nil || chainInReal == nil {
 		return nil, err
@@ -192,7 +192,7 @@ func (mf *milestoneFactory) makeMilestone(chainIn, stemIn *utangle.WrappedOutput
 	if err != nil {
 		return nil, err
 	}
-	return state.TransactionFromBytesAllChecks(txBytes)
+	return transaction.TransactionFromBytesAllChecks(txBytes)
 }
 
 // selectFeeInputs chooses unspent fee outputs which can be combined with seqMutations in one vid

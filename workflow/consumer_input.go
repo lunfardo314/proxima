@@ -5,7 +5,7 @@ import (
 	"sync"
 
 	"github.com/lunfardo314/proxima/core"
-	"github.com/lunfardo314/proxima/state"
+	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/utangle"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/eventtype"
@@ -21,7 +21,7 @@ const PrimaryInputConsumerName = "[input]"
 type (
 	// PrimaryInputConsumerData is an input message type for this consumer
 	PrimaryInputConsumerData struct {
-		Tx      *state.Transaction
+		Tx      *transaction.Transaction
 		txLog   *txlog.TransactionLog
 		insider bool // for insider transactions do not check time bounds, only report as warning
 	}
@@ -116,12 +116,12 @@ func (w *Workflow) TransactionInWithLog(txBytes []byte, givenLogName string) err
 	return err
 }
 
-func (w *Workflow) transactionInWithOptions(txBytes []byte, insider bool, logit bool, givenLogName string, doFun func(*PrimaryInputConsumerData) error) (*state.Transaction, error) {
+func (w *Workflow) transactionInWithOptions(txBytes []byte, insider bool, logit bool, givenLogName string, doFun func(*PrimaryInputConsumerData) error) (*transaction.Transaction, error) {
 	util.Assertf(w.IsRunning(), "workflow has not been started yet")
 	out := &PrimaryInputConsumerData{insider: insider}
 	var err error
 	// base validation
-	out.Tx, err = state.TransactionFromBytes(txBytes)
+	out.Tx, err = transaction.TransactionFromBytes(txBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -134,7 +134,7 @@ func (w *Workflow) transactionInWithOptions(txBytes []byte, insider bool, logit 
 }
 
 // TransactionInWaitAppendSyncTx for testing
-func (w *Workflow) TransactionInWaitAppendSyncTx(txBytes []byte, insider ...bool) (*state.Transaction, error) {
+func (w *Workflow) TransactionInWaitAppendSyncTx(txBytes []byte, insider ...bool) (*transaction.Transaction, error) {
 	special := false
 	if len(insider) > 0 {
 		special = insider[0]

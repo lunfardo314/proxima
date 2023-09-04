@@ -11,7 +11,7 @@ import (
 
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/general"
-	"github.com/lunfardo314/proxima/state"
+	transaction2 "github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lazyslice"
 	"github.com/lunfardo314/proxima/util/txutils"
@@ -190,7 +190,7 @@ func (tx *transaction) Bytes() []byte {
 }
 
 func (tx *transaction) EssenceBytes() []byte {
-	return state.EssenceBytesFromTransactionDataTree(tx.ToArray().AsTree())
+	return transaction2.EssenceBytesFromTransactionDataTree(tx.ToArray().AsTree())
 }
 
 var rnd = rand.New(rand.NewSource(time.Now().UnixNano()))
@@ -476,7 +476,7 @@ func MakeSimpleTransferTransactionWithRemainder(par *TransferData, disableEndors
 	txBytes := txb.Transaction.Bytes()
 	var rem *core.OutputWithID
 	if remainderOut != nil {
-		if rem, err = state.OutputWithIDFromTransactionBytes(txBytes, remainderIndex); err != nil {
+		if rem, err = transaction2.OutputWithIDFromTransactionBytes(txBytes, remainderIndex); err != nil {
 			return nil, nil, err
 		}
 	}

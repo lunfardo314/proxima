@@ -149,11 +149,3 @@ func BalanceOnChainOutput(rdr general.StateIndexReader, chainID *core.ChainID) u
 	util.AssertNoError(err)
 	return o.Output.Amount()
 }
-
-func TransactionBytesToString(txBytes []byte, fetchOutput func(oid *core.OutputID) ([]byte, bool)) string {
-	ctx, err := TransactionContextFromTransferableBytes(txBytes, fetchOutput)
-	if err != nil {
-		return err.Error()
-	}
-	return ctx.String()
-}

@@ -8,6 +8,7 @@ import (
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/genesis"
 	"github.com/lunfardo314/proxima/state"
+	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/txbuilder"
 	"github.com/lunfardo314/proxima/utangle"
 	"github.com/lunfardo314/proxima/util"
@@ -142,8 +143,8 @@ func (u *UTXODB) FaucetAddress() core.AddressED25519 {
 // AddTransaction validates transaction and updates ledger state and indexer
 // Ledger state and indexer are on different DB transactions, so ledger state can
 // succeed while indexer fails. In that case indexer can be updated from ledger state
-func (u *UTXODB) AddTransaction(txBytes []byte, onValidationError ...func(ctx *state.TransactionContext, err error) error) error {
-	var tx *state.Transaction
+func (u *UTXODB) AddTransaction(txBytes []byte, onValidationError ...func(ctx *transaction.TransactionContext, err error) error) error {
+	var tx *transaction.Transaction
 	var err error
 	if u.trace {
 		tx, err = updateValidateDebug(u.state, txBytes, onValidationError...)
@@ -250,7 +251,7 @@ func (u *UTXODB) TokensFromFaucet(addr core.AddressED25519, amount ...uint64) er
 		return err
 	}
 
-	return u.AddTransaction(txBytes, func(ctx *state.TransactionContext, err error) error {
+	return u.AddTransaction(txBytes, func(ctx *transaction.TransactionContext, err error) error {
 		if err != nil {
 			return fmt.Errorf("Error: %v\n%s", err, ctx.String())
 		}
@@ -267,7 +268,7 @@ func (u *UTXODB) TokensFromFaucetMulti(addrs []core.AddressED25519, amount ...ui
 		if err != nil {
 			return err
 		}
-		return u.AddTransaction(txBytes, func(ctx *state.TransactionContext, err error) error {
+		return u.AddTransaction(txBytes, func(ctx *transaction.TransactionContext, err error) error {
 			if err != nil {
 				return fmt.Errorf("Error: %v\n%s", err, ctx.String())
 			}
@@ -355,12 +356,12 @@ func (u *UTXODB) makeTransferDataChainLock(par *txbuilder.TransferData, chainLoc
 	return nil
 }
 
-func (u *UTXODB) TransferTokensReturnTx(privKey ed25519.PrivateKey, targetLock core.Lock, amount uint64) (*state.Transaction, error) {
+func (u *UTXODB) TransferTokensReturnTx(privKey ed25519.PrivateKey, targetLock core.Lock, amount uint64) (*transaction.Transaction, error) {
 	txBytes, err := u.transferTokens(privKey, targetLock, amount)
 	if err != nil {
 		return nil, err
 	}
-	return state.TransactionFromBytesAllChecks(txBytes)
+	return transaction.TransactionFromBytesAllChecks(txBytes)
 }
 
 func (u *UTXODB) transferTokens(privKey ed25519.PrivateKey, targetLock core.Lock, amount uint64) ([]byte, error) {
@@ -374,7 +375,7 @@ func (u *UTXODB) transferTokens(privKey ed25519.PrivateKey, targetLock core.Lock
 	if err != nil {
 		return nil, err
 	}
-	return txBytes, u.AddTransaction(txBytes, func(ctx *state.TransactionContext, err error) error {
+	return txBytes, u.AddTransaction(txBytes, func(ctx *transaction.TransactionContext, err error) error {
 		if err != nil {
 			return fmt.Errorf("Error: %v\n%s", err, ctx.String())
 		}
@@ -437,7 +438,7 @@ func (u *UTXODB) DoTransferTx(par *txbuilder.TransferData) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return txBytes, u.AddTransaction(txBytes, func(ctx *state.TransactionContext, err error) error {
+	return txBytes, u.AddTransaction(txBytes, func(ctx *transaction.TransactionContext, err error) error {
 		if err != nil {
 			return fmt.Errorf("Error: %v\n%s", err, ctx.String())
 		}
@@ -450,7 +451,7 @@ func (u *UTXODB) DoTransferOutputs(par *txbuilder.TransferData) ([]*core.OutputW
 	if err != nil {
 		return nil, err
 	}
-	if err = u.AddTransaction(txBytes, func(ctx *state.TransactionContext, err error) error {
+	if err = u.AddTransaction(txBytes, func(ctx *transaction.TransactionContext, err error) error {
 		if err != nil {
 			return fmt.Errorf("Error: %v\n%s", err, ctx.String())
 		}
@@ -458,7 +459,7 @@ func (u *UTXODB) DoTransferOutputs(par *txbuilder.TransferData) ([]*core.OutputW
 	}); err != nil {
 		return nil, err
 	}
-	tx, err := state.TransactionFromBytes(txBytes)
+	tx, err := transaction.TransactionFromBytes(txBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -470,8 +471,8 @@ func (u *UTXODB) DoTransfer(par *txbuilder.TransferData) error {
 	return err
 }
 
-func (u *UTXODB) ValidationContextFromTransaction(txBytes []byte) (*state.TransactionContext, error) {
-	return state.TransactionContextFromTransferableBytes(txBytes, u.state.Readable().GetUTXO)
+func (u *UTXODB) ValidationContextFromTransaction(txBytes []byte) (*transaction.TransactionContext, error) {
+	return transaction.ContextFromTransferableBytes(txBytes, u.state.Readable().GetUTXO)
 }
 
 func (u *UTXODB) TxToString(txbytes []byte) string {
@@ -510,7 +511,7 @@ func (u *UTXODB) OriginDistributionTransactionString() string {
 	genesisStemOutputID := genesis.StemOutputID(u.GenesisTimeSlot())
 	genesisOutputID := genesis.InitialSupplyOutputID(u.GenesisTimeSlot())
 
-	return state.TransactionBytesToString(u.originDistributionTxBytes, func(oid *core.OutputID) ([]byte, bool) {
+	return transaction.ParseBytesToString(u.originDistributionTxBytes, func(oid *core.OutputID) ([]byte, bool) {
 		switch *oid {
 		case genesisOutputID:
 			return u.genesisOutput.Bytes(), true

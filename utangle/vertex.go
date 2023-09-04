@@ -8,6 +8,7 @@ import (
 
 	"github.com/lunfardo314/proxima/core"
 	state "github.com/lunfardo314/proxima/state"
+	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
 	"github.com/lunfardo314/proxima/util/set"
@@ -71,12 +72,12 @@ func (v *Vertex) getConsumedOutput(i byte) (*core.Output, error) {
 }
 
 func (v *Vertex) Validate(bypassConstraintValidation ...bool) error {
-	traceOption := state.TraceOptionFailedConstraints
+	traceOption := transaction.TraceOptionFailedConstraints
 	bypass := len(bypassConstraintValidation) > 0 && !bypassConstraintValidation[0]
 	if bypass {
-		traceOption = state.TraceOptionNone
+		traceOption = transaction.TraceOptionNone
 	}
-	ctx, err := state.TransactionContextFromTransaction(v.Tx, v.getConsumedOutput, traceOption)
+	ctx, err := transaction.ContextFromTransaction(v.Tx, v.getConsumedOutput, traceOption)
 	if err != nil {
 		return err
 	}
@@ -87,7 +88,7 @@ func (v *Vertex) Validate(bypassConstraintValidation ...bool) error {
 }
 
 func (v *Vertex) ValidateDebug() (string, error) {
-	ctx, err := state.TransactionContextFromTransaction(v.Tx, v.getConsumedOutput)
+	ctx, err := transaction.ContextFromTransaction(v.Tx, v.getConsumedOutput)
 	if err != nil {
 		return "", err
 	}
@@ -216,7 +217,7 @@ func (v *Vertex) String() string {
 }
 
 func (v *Vertex) Lines(prefix ...string) *lines.Lines {
-	ctx, err := state.TransactionContextFromTransaction(v.Tx, func(i byte) (*core.Output, error) {
+	ctx, err := transaction.ContextFromTransaction(v.Tx, func(i byte) (*core.Output, error) {
 		if v.Inputs[i] == nil {
 			return nil, fmt.Errorf("input #%d not solid", i)
 		}

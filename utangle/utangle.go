@@ -8,6 +8,7 @@ import (
 
 	"github.com/lunfardo314/proxima/core"
 	state "github.com/lunfardo314/proxima/state"
+	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
 	"github.com/lunfardo314/proxima/util/set"
@@ -82,7 +83,7 @@ func (ut *UTXOTangle) vertexByOutputID(oid *core.OutputID) (*WrappedTx, error) {
 }
 
 // mustGetFirstEndorsedVertex returns first endorsement or nil if not solid
-func (ut *UTXOTangle) mustGetFirstEndorsedVertex(tx *state.Transaction) *WrappedTx {
+func (ut *UTXOTangle) mustGetFirstEndorsedVertex(tx *transaction.Transaction) *WrappedTx {
 	util.Assertf(tx.NumEndorsements() > 0, "tx.NumEndorsements() > 0 @ %s", func() any { return tx.IDShort() })
 	txid := tx.EndorsementAt(0)
 	if ret, ok := ut.GetVertex(&txid); ok {

@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/core"
-	"github.com/lunfardo314/proxima/state"
+	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/utangle"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/testutil"
@@ -112,7 +112,7 @@ func (seq *Sequencer) OnMilestoneSubmitted(fun func(seq *Sequencer, vid *utangle
 	seq.onMilestoneSubmitted = fun
 }
 
-func (seq *Sequencer) OnMilestoneTransactionSubmitted(fun func(seq *Sequencer, tx *state.Transaction)) {
+func (seq *Sequencer) OnMilestoneTransactionSubmitted(fun func(seq *Sequencer, tx *transaction.Transaction)) {
 	seq.onMilestoneSubmitted = func(seq *Sequencer, vid *utangle.WrappedTx) {
 		vid.Unwrap(utangle.UnwrapOptions{Vertex: func(v *utangle.Vertex) {
 			fun(seq, v.Tx)

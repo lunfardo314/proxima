@@ -9,6 +9,7 @@ import (
 	"github.com/lunfardo314/proxima/general"
 	"github.com/lunfardo314/proxima/genesis"
 	state "github.com/lunfardo314/proxima/state"
+	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/txbuilder"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/set"
@@ -36,7 +37,7 @@ type (
 
 	Vertex struct {
 		txLog        *txlog.TransactionLog
-		Tx           *state.Transaction
+		Tx           *transaction.Transaction
 		StateDelta   UTXOStateDelta //
 		Inputs       []*WrappedTx
 		Endorsements []*WrappedTx
@@ -190,14 +191,14 @@ func (ut *UTXOTangle) addBranch(branchVID *WrappedTx, root common.VCommitment) {
 }
 
 func (ut *UTXOTangle) SolidifyInputsFromTxBytes(txBytes []byte) (*Vertex, error) {
-	tx, err := state.TransactionFromBytesAllChecks(txBytes)
+	tx, err := transaction.TransactionFromBytesAllChecks(txBytes)
 	if err != nil {
 		return nil, err
 	}
 	return ut.SolidifyInputs(tx)
 }
 
-func newVertex(tx *state.Transaction, txLog *txlog.TransactionLog) *Vertex {
+func newVertex(tx *transaction.Transaction, txLog *txlog.TransactionLog) *Vertex {
 	return &Vertex{
 		Tx:           tx,
 		txLog:        txLog,
@@ -207,7 +208,7 @@ func newVertex(tx *state.Transaction, txLog *txlog.TransactionLog) *Vertex {
 	}
 }
 
-func (ut *UTXOTangle) SolidifyInputs(tx *state.Transaction, txl ...*txlog.TransactionLog) (*Vertex, error) {
+func (ut *UTXOTangle) SolidifyInputs(tx *transaction.Transaction, txl ...*txlog.TransactionLog) (*Vertex, error) {
 	var txLog *txlog.TransactionLog
 	if len(txl) > 0 {
 		txLog = txl[0]
@@ -263,7 +264,7 @@ func (ut *UTXOTangle) AppendVertex(vid *WrappedTx) error {
 }
 
 func (ut *UTXOTangle) AppendVertexFromTransactionBytes(txBytes []byte) (*WrappedTx, error) {
-	tx, err := state.TransactionFromBytesAllChecks(txBytes)
+	tx, err := transaction.TransactionFromBytesAllChecks(txBytes)
 	if err != nil {
 		return nil, err
 	}

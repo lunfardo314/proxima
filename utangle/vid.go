@@ -8,6 +8,7 @@ import (
 
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/state"
+	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
 	"github.com/lunfardo314/proxima/util/set"
@@ -288,8 +289,8 @@ func (vid *WrappedTx) UnwrapVertex() (ret *Vertex, retOk bool) {
 	return
 }
 
-func (vid *WrappedTx) UnwrapTransaction() *state.Transaction {
-	var ret *state.Transaction
+func (vid *WrappedTx) UnwrapTransaction() *transaction.Transaction {
+	var ret *transaction.Transaction
 	vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
 		ret = v.Tx
 	}})

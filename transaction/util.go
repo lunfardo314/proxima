@@ -1,4 +1,4 @@
-package state
+package transaction
 
 import (
 	"bytes"
@@ -90,4 +90,12 @@ func (ctx *TransactionContext) Lines(prefix ...string) *lines.Lines {
 	})
 	ret.Add("TOTAL: %s", util.GoThousands(totalSum))
 	return ret
+}
+
+func ParseBytesToString(txBytes []byte, fetchOutput func(oid *core.OutputID) ([]byte, bool)) string {
+	ctx, err := ContextFromTransferableBytes(txBytes, fetchOutput)
+	if err != nil {
+		return err.Error()
+	}
+	return ctx.String()
 }

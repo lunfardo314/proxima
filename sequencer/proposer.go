@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/core"
-	"github.com/lunfardo314/proxima/state"
+	"github.com/lunfardo314/proxima/transaction"
 	utangle "github.com/lunfardo314/proxima/utangle"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/set"
@@ -17,7 +17,7 @@ type (
 	proposerTask interface {
 		run()
 		name() string
-		makeMilestone(chainIn, stemIn *utangle.WrappedOutput, feeInputs []utangle.WrappedOutput, endorse []*utangle.WrappedTx) *state.Transaction
+		makeMilestone(chainIn, stemIn *utangle.WrappedOutput, feeInputs []utangle.WrappedOutput, endorse []*utangle.WrappedTx) *transaction.Transaction
 		trace(format string, args ...any)
 		setTraceNAhead(n int64)
 	}
@@ -88,7 +88,7 @@ func (c *proposerTaskGeneric) forceTrace(format string, args ...any) {
 	c.trace(format, args...)
 }
 
-func (c *proposerTaskGeneric) makeMilestone(chainIn, stemIn *utangle.WrappedOutput, feeInputs []utangle.WrappedOutput, endorse []*utangle.WrappedTx) *state.Transaction {
+func (c *proposerTaskGeneric) makeMilestone(chainIn, stemIn *utangle.WrappedOutput, feeInputs []utangle.WrappedOutput, endorse []*utangle.WrappedTx) *transaction.Transaction {
 	util.Assertf(chainIn != nil, "chainIn != nil")
 	util.Assertf(c.targetTs.TimeTick() != 0 || len(endorse) == 0, "proposer task %s: targetTs.TimeTick() != 0 || len(endorse) == 0", c.name())
 	util.Assertf(len(feeInputs) <= c.factory.maxFeeInputs, "proposer task %s: len(feeInputs) <= mf.maxFeeInputs", c.name())
@@ -104,7 +104,7 @@ func (c *proposerTaskGeneric) makeMilestone(chainIn, stemIn *utangle.WrappedOutp
 }
 
 // assessAndAcceptProposal returns reject reason of empty string, if accepted
-func (c *proposerTaskGeneric) assessAndAcceptProposal(tx *state.Transaction, startTime time.Time, taskName string) {
+func (c *proposerTaskGeneric) assessAndAcceptProposal(tx *transaction.Transaction, startTime time.Time, taskName string) {
 	c.trace("inside assessAndAcceptProposal: %s", tx.IDShort())
 
 	// prevent repeating transactions with same inputs
