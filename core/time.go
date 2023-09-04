@@ -80,7 +80,7 @@ func TimeConstantsToString() string {
 		Add("TimeSlotsPerYear = %d", TimeSlotsPerYear()).
 		Add("seconds per year = %d", 60*60*24*365).
 		Add("YearsPerMaxTimeSlot = %d", YearsPerMaxTimeSlot()).
-		Add("BaselineTime = %v", BaselineTime).
+		Add("BaselineTime = %v, unix nano: %d, unix seconds: %d", BaselineTime, BaselineTimeUnixNano, BaselineTime.Unix()).
 		Add("timestamp BaselineTime = %s", LogicalTimeFromTime(BaselineTime)).
 		Add("timestamp now = %s, now is %v", LogicalTimeNow().String(), time.Now()).
 		String()

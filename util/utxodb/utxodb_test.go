@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/lunfardo314/proxima/core"
-	"github.com/lunfardo314/proxima/general"
+	"github.com/lunfardo314/proxima/state"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/testutil"
 	"github.com/stretchr/testify/require"
@@ -13,8 +13,8 @@ import (
 func TestUTXODB(t *testing.T) {
 	t.Run("origin", func(t *testing.T) {
 		u := NewUTXODB()
-		genesisStemOutputID := general.GenesisStemOutputID(u.GenesisTimeSlot())
-		genesisOutputID := general.GenesisChainOutputID(u.GenesisTimeSlot())
+		genesisStemOutputID := state.GenesisStemOutputID(u.GenesisTimeSlot())
+		genesisOutputID := state.GenesisChainOutputID(u.GenesisTimeSlot())
 		t.Logf("genesis time slot: %d", u.GenesisTimeSlot())
 		t.Logf("genesis addr: %s, balance: %s", u.GenesisControllerAddress().String(), util.GoThousands(u.Balance(u.GenesisControllerAddress())))
 		t.Logf("faucet addr: %s, balance: %s", u.FaucetAddress().String(), util.GoThousands(u.Balance(u.FaucetAddress())))

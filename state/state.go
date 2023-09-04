@@ -40,7 +40,7 @@ const (
 
 // InitLedgerState initializes origin ledger state in the empty store
 // Returns root commitment to the genesis ledger state and genesis chainID
-func InitLedgerState(par general.StateIdentityData, store general.StateStore) (core.ChainID, common.VCommitment) {
+func InitLedgerState(par IdentityData, store general.StateStore) (core.ChainID, common.VCommitment) {
 	batch := store.BatchedWriter()
 	emptyRoot := immutable.MustInitRoot(batch, core.CommitmentModel, par.Bytes())
 	err := batch.Commit()
@@ -64,7 +64,7 @@ func InitLedgerState(par general.StateIdentityData, store general.StateStore) (c
 }
 
 func GenesisOutput(initialSupply uint64, controllerAddress core.AddressED25519, genesisSlot core.TimeSlot) *core.OutputWithChainID {
-	oid := general.GenesisChainOutputID(genesisSlot)
+	oid := GenesisChainOutputID(genesisSlot)
 	return &core.OutputWithChainID{
 		OutputWithID: core.OutputWithID{
 			ID: oid,
@@ -82,7 +82,7 @@ func GenesisOutput(initialSupply uint64, controllerAddress core.AddressED25519, 
 
 func GenesisStemOutput(initialSupply uint64, genesisTimeSlot core.TimeSlot) *core.OutputWithID {
 	return &core.OutputWithID{
-		ID: general.GenesisStemOutputID(genesisTimeSlot),
+		ID: GenesisStemOutputID(genesisTimeSlot),
 		Output: core.NewOutput(func(o *core.Output) {
 			o.WithAmount(0).
 				WithLock(core.NewStemLock(initialSupply, 0, core.OutputID{}))
@@ -230,8 +230,8 @@ func (r *Readable) GetStem() (core.TimeSlot, []byte) {
 	return retSlot, retBytes
 }
 
-func (r *Readable) IdentityData() *general.StateIdentityData {
-	return general.MustIdentityDataFromBytes(r.trie.Get(nil))
+func (r *Readable) IdentityBytes() []byte {
+	return r.trie.Get(nil)
 }
 
 func (r *Readable) HasTransactionOutputs(txid *core.TransactionID, indexMap ...map[byte]struct{}) (bool, bool) {

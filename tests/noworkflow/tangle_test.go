@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/core"
-	"github.com/lunfardo314/proxima/general"
 	state "github.com/lunfardo314/proxima/state"
 	"github.com/lunfardo314/proxima/txbuilder"
 	"github.com/lunfardo314/proxima/utangle"
@@ -76,7 +75,7 @@ type conflictTestRunData struct {
 	bootstrapChainID core.ChainID
 	privKey          ed25519.PrivateKey
 	addr             core.AddressED25519
-	stateIdentity    general.StateIdentityData
+	stateIdentity    state.IdentityData
 	originBranchTxid core.TransactionID
 	forkOutput       *core.OutputWithID
 	txBytes          [][]byte
@@ -345,7 +344,7 @@ type multiChainTestData struct {
 	faucetPrivKey      ed25519.PrivateKey
 	faucetAddr         core.AddressED25519
 	faucetOrigin       *core.OutputWithID
-	sPar               general.StateIdentityData
+	sPar               state.IdentityData
 	tPar               txbuilder.OriginDistributionParams
 	originBranchTxid   core.TransactionID
 	txBytesChainOrigin []byte
@@ -381,7 +380,7 @@ func initMultiChainTest(t *testing.T, nChains int, printTx bool, timeSlot ...cor
 	require.True(t, ret.ut != nil)
 	stateReader := ret.ut.HeaviestStateForLatestTimeSlot()
 
-	t.Logf("state identity:\n%s", stateReader.IdentityData().String())
+	t.Logf("state identity:\n%s", state.MustIdentityDataFromBytes(stateReader.IdentityBytes()).String())
 	t.Logf("origin branch txid: %s", ret.originBranchTxid.Short())
 	t.Logf("%s", ret.ut.Info())
 

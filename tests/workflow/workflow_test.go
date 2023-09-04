@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/core"
-	"github.com/lunfardo314/proxima/general"
 	state "github.com/lunfardo314/proxima/state"
 	"github.com/lunfardo314/proxima/txbuilder"
 	utxo_tangle "github.com/lunfardo314/proxima/utangle"
@@ -25,7 +24,7 @@ import (
 )
 
 type workflowTestData struct {
-	initLedgerStatePar      general.StateIdentityData
+	initLedgerStatePar      state.IdentityData
 	distributionPrivateKeys []ed25519.PrivateKey
 	distributionAddrs       []core.AddressED25519
 	faucetOutputs           []*core.OutputWithID
@@ -456,7 +455,7 @@ type multiChainTestData struct {
 	faucetPrivKey      ed25519.PrivateKey
 	faucetAddr         core.AddressED25519
 	faucetOrigin       *core.OutputWithID
-	sPar               general.StateIdentityData
+	sPar               state.IdentityData
 	tPar               txbuilder.OriginDistributionParams
 	originBranchTxid   core.TransactionID
 	txBytesChainOrigin []byte
@@ -495,7 +494,7 @@ func initMultiChainTest(t *testing.T, nChains int, printTx bool, timeSlot ...cor
 	require.True(t, ret.ut != nil)
 	stateReader := ret.ut.HeaviestStateForLatestTimeSlot()
 
-	t.Logf("state identity:\n%s", stateReader.IdentityData().String())
+	t.Logf("state identity:\n%s", stateReader.IdentityBytes().String())
 	t.Logf("origin branch txid: %s", ret.originBranchTxid.Short())
 	t.Logf("%s", ret.ut.Info())
 

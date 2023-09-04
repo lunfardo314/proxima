@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/core"
-	"github.com/lunfardo314/proxima/general"
 	"github.com/lunfardo314/proxima/sequencer"
 	"github.com/lunfardo314/proxima/state"
 	"github.com/lunfardo314/proxima/txbuilder"
@@ -34,7 +33,7 @@ const (
 
 type sequencerTestData struct {
 	t                           *testing.T
-	stateIdentity               general.StateIdentityData
+	stateIdentity               state.IdentityData
 	originControllerPrivateKey  ed25519.PrivateKey
 	originDistribution          []txbuilder.LockBalance
 	faucetPrivateKeys           []ed25519.PrivateKey
@@ -86,7 +85,7 @@ func initSequencerTestData(t *testing.T, nFaucets, nAdditionalChains int, logica
 
 	ret.makeAdditionalChainOrigins(0, nAdditionalChains)
 
-	t.Logf("state identity:\n%s", ret.ut.HeaviestStateForLatestTimeSlot().IdentityData().String())
+	t.Logf("state identity:\n%s", ret.ut.HeaviestStateForLatestTimeSlot().IdentityBytes().String())
 	ret.wrk = workflow.New(ret.ut, workflowDebugConfig)
 	return ret
 }

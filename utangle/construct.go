@@ -75,26 +75,26 @@ func newUTXOTangle(stateStore general.StateStore, txBytesStore common.KVStore) *
 	}
 }
 
-func InitGenesisState(par general.StateIdentityData, stateStore general.StateStore) (common.VCommitment, core.ChainID, *core.OutputWithID, *core.OutputWithID) {
+func InitGenesisState(par state.IdentityData, stateStore general.StateStore) (common.VCommitment, core.ChainID, *core.OutputWithID, *core.OutputWithID) {
 	bootstrapSequencerID, genesisStateRoot := state.InitLedgerState(par, stateStore)
 	// now genesisStateRoot contains origin chain and stem outputs
 	// fetch origin chain and stem outputs
 	genesisStateReader := state.MustNewSugaredStateReader(stateStore, genesisStateRoot)
-	genesisOutputID := general.GenesisChainOutputID(par.GenesisTimeSlot)
+	genesisOutputID := state.GenesisChainOutputID(par.GenesisTimeSlot)
 	genesisOutput := genesisStateReader.MustGetOutput(&genesisOutputID)
 	genesisStemOutput := genesisStateReader.GetStemOutput()
 
 	return genesisStateRoot, bootstrapSequencerID, genesisOutput, genesisStemOutput
 }
 
-func CreateGenesisUTXOTangle(par general.StateIdentityData, stateStore general.StateStore, txBytesStore common.KVStore) (*UTXOTangle, core.ChainID, common.VCommitment) {
+func CreateGenesisUTXOTangle(par state.IdentityData, stateStore general.StateStore, txBytesStore common.KVStore) (*UTXOTangle, core.ChainID, common.VCommitment) {
 	genesisStateRoot, bootstrapSequencerID, genesisOutput, genesisStemOutput := InitGenesisState(par, stateStore)
 
 	// create virtual transaction for genesis outputs
-	genesisVirtualTx := newVirtualTx(general.GenesisTransactionID(par.GenesisTimeSlot))
-	genesisVirtualTx.addOutput(general.GenesisOutputIndex, genesisOutput.Output)
-	genesisVirtualTx.addOutput(general.GenesisStemOutputIndex, genesisStemOutput.Output)
-	genesisVirtualTx.addSequencerIndices(general.GenesisOutputIndex, general.GenesisStemOutputIndex)
+	genesisVirtualTx := newVirtualTx(state.GenesisTransactionID(par.GenesisTimeSlot))
+	genesisVirtualTx.addOutput(state.GenesisOutputIndex, genesisOutput.Output)
+	genesisVirtualTx.addOutput(state.GenesisStemOutputIndex, genesisStemOutput.Output)
+	genesisVirtualTx.addSequencerIndices(state.GenesisOutputIndex, state.GenesisStemOutputIndex)
 	genesisVID := genesisVirtualTx.Wrap()
 
 	util.Assertf(genesisVID.IsBranchTransaction(), "genesisVID.IsBranchTransaction()")
@@ -108,7 +108,7 @@ func CreateGenesisUTXOTangle(par general.StateIdentityData, stateStore general.S
 	return ret, bootstrapSequencerID, genesisStateRoot
 }
 
-func CreateGenesisUTXOTangleWithDistribution(par general.StateIdentityData, originPrivateKey ed25519.PrivateKey, genesisDistribution []txbuilder.LockBalance, stateStore general.StateStore, txBytesStore common.KVStore) (*UTXOTangle, core.ChainID, core.TransactionID) {
+func CreateGenesisUTXOTangleWithDistribution(par state.IdentityData, originPrivateKey ed25519.PrivateKey, genesisDistribution []txbuilder.LockBalance, stateStore general.StateStore, txBytesStore common.KVStore) (*UTXOTangle, core.ChainID, core.TransactionID) {
 	util.Assertf(core.AddressED25519FromPrivateKey(originPrivateKey).String() == par.GenesisControllerAddress.String(), "inconsistent parameters")
 
 	ret, bootstrapSequencerID, genesisStateRoot := CreateGenesisUTXOTangle(par, stateStore, txBytesStore)
@@ -127,7 +127,7 @@ func CreateGenesisUTXOTangleWithDistribution(par general.StateIdentityData, orig
 
 	// sanity check genesis outputs
 	genesisStateReader := state.MustNewSugaredStateReader(stateStore, genesisStateRoot)
-	genesisOutputID := general.GenesisChainOutputID(par.GenesisTimeSlot)
+	genesisOutputID := state.GenesisChainOutputID(par.GenesisTimeSlot)
 	genesisOutput := genesisStateReader.MustGetOutput(&genesisOutputID)
 	genesisStemOutput := genesisStateReader.GetStemOutput()
 

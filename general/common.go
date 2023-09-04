@@ -15,7 +15,7 @@ type (
 		GetUTXOsLockedInAccount(accountID core.AccountID) ([]*core.OutputDataWithID, error)
 		GetUTXOForChainID(id *core.ChainID) (*core.OutputDataWithID, error)
 		Root() common.VCommitment
-		IdentityData() *StateIdentityData
+		IdentityBytes() []byte
 	}
 
 	// IndexedStateReader state and indexer readers packing together
@@ -28,12 +28,5 @@ type (
 		common.KVReader
 		common.BatchedUpdatable
 		common.Traversable
-	}
-
-	StateIdentityData struct {
-		Description              string
-		InitialSupply            uint64
-		GenesisControllerAddress core.AddressED25519
-		GenesisTimeSlot          core.TimeSlot
 	}
 )
