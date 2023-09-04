@@ -76,11 +76,11 @@ func InitialSupplyTransactionID(genesisTimeSlot core.TimeSlot) *core.Transaction
 func InitialSupplyOutputID(e core.TimeSlot) (ret core.OutputID) {
 	// we are placing sequencer flag = true into the genesis tx ID to please sequencer constraint
 	// of the origin branch transaction. It is the only exception
-	ret = core.NewOutputID(InitialSupplyTransactionID(e), GenesisOutputIndex)
+	ret = core.NewOutputID(InitialSupplyTransactionID(e), InitialSupplyOutputIndex)
 	return
 }
 
 func StemOutputID(e core.TimeSlot) (ret core.OutputID) {
-	ret = core.NewOutputID(InitialSupplyTransactionID(e), GenesisStemOutputIndex)
+	ret = core.NewOutputID(InitialSupplyTransactionID(e), StemOutputIndex)
 	return
 }

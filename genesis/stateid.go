@@ -33,8 +33,8 @@ type IdentityData struct {
 }
 
 const (
-	GenesisOutputIndex     = byte(0)
-	GenesisStemOutputIndex = byte(1)
+	InitialSupplyOutputIndex = byte(0)
+	StemOutputIndex          = byte(1)
 )
 
 func (id *IdentityData) Bytes() []byte {

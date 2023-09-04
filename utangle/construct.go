@@ -94,9 +94,9 @@ func CreateGenesisUTXOTangle(par genesis.IdentityData, stateStore general.StateS
 
 	// create virtual transaction for genesis outputs
 	genesisVirtualTx := newVirtualTx(genesis.InitialSupplyTransactionID(par.GenesisTimeSlot))
-	genesisVirtualTx.addOutput(genesis.GenesisOutputIndex, genesisOutput.Output)
-	genesisVirtualTx.addOutput(genesis.GenesisStemOutputIndex, genesisStemOutput.Output)
-	genesisVirtualTx.addSequencerIndices(genesis.GenesisOutputIndex, genesis.GenesisStemOutputIndex)
+	genesisVirtualTx.addOutput(genesis.InitialSupplyOutputIndex, genesisOutput.Output)
+	genesisVirtualTx.addOutput(genesis.StemOutputIndex, genesisStemOutput.Output)
+	genesisVirtualTx.addSequencerIndices(genesis.InitialSupplyOutputIndex, genesis.StemOutputIndex)
 	genesisVID := genesisVirtualTx.Wrap()
 
 	util.Assertf(genesisVID.IsBranchTransaction(), "genesisVID.IsBranchTransaction()")
