@@ -28,6 +28,11 @@ type (
 		Root        common.VCommitment
 		SequencerID core.ChainID
 	}
+
+	BranchData struct {
+		RootData
+		Stem *core.OutputWithID
+	}
 )
 
 // partitions of the state store on the trie
@@ -279,11 +284,6 @@ func (u *Updatable) updateUTXOLedgerDB(updateFun func(updatable *immutable.TrieU
 	return nil
 }
 
-type BranchData struct {
-	Stem        *core.OutputWithID
-	SequencerID core.ChainID
-}
-
 // FetchBranchData returns not sorted list of stem outputs in the DB
 func FetchBranchData(store general.StateStore, fromSlot ...core.TimeSlot) []*BranchData {
 	var from core.TimeSlot
@@ -304,8 +304,8 @@ func FetchBranchData(store general.StateStore, fromSlot ...core.TimeSlot) []*Bra
 		util.AssertNoError(err)
 
 		ret = append(ret, &BranchData{
-			Stem:        rdr.GetStemOutput(),
-			SequencerID: rootData.SequencerID,
+			RootData: *rootData,
+			Stem:     rdr.GetStemOutput(),
 		})
 		return true
 	})
