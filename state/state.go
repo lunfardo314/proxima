@@ -284,21 +284,23 @@ func (u *Updatable) updateUTXOLedgerDB(updateFun func(updatable *immutable.TrieU
 	return nil
 }
 
-// FetchBranchData returns not sorted list of stem outputs in the DB
-func FetchBranchData(store general.StateStore, fromSlot ...core.TimeSlot) []*BranchData {
-	var from core.TimeSlot
-	if len(fromSlot) > 0 {
-		from = fromSlot[0]
+// FetchBranchData returns filtered and sorted by output ID list of branch data in the DB
+func FetchBranchData(store general.StateStore, filter ...func(oid *core.OutputID, rootData *RootData) bool) []*BranchData {
+	filterFun := func(_ *core.OutputID, _ *RootData) bool { return true }
+	if len(filter) > 0 {
+		filterFun = filter[0]
 	}
+
 	ret := make([]*BranchData, 0)
 	store.Iterator([]byte{rootRecordDBPartition}).Iterate(func(k, data []byte) bool {
 		oid, err := core.OutputIDFromBytes(k[1:])
 		util.AssertNoError(err)
-		if oid.TimeSlot() < from {
-			return true
-		}
+
 		rootData, err := RootDataFromBytes(data)
 		util.AssertNoError(err)
+		if !filterFun(&oid, rootData) {
+			return true
+		}
 
 		rdr, err := NewSugaredReadableState(store, rootData.Root)
 		util.AssertNoError(err)

@@ -78,7 +78,7 @@ type conflictTestRunData struct {
 	bootstrapChainID core.ChainID
 	privKey          ed25519.PrivateKey
 	addr             core.AddressED25519
-	stateIdentity    genesis.IdentityData
+	stateIdentity    genesis.StateIdentityData
 	originBranchTxid core.TransactionID
 	forkOutput       *core.OutputWithID
 	txBytes          [][]byte
@@ -349,7 +349,7 @@ type multiChainTestData struct {
 	faucetPrivKey      ed25519.PrivateKey
 	faucetAddr         core.AddressED25519
 	faucetOrigin       *core.OutputWithID
-	sPar               genesis.IdentityData
+	sPar               genesis.StateIdentityData
 	tPar               txbuilder.OriginDistributionParams
 	originBranchTxid   core.TransactionID
 	txBytesChainOrigin []byte
@@ -387,7 +387,7 @@ func initMultiChainTest(t *testing.T, nChains int, printTx bool, timeSlot ...cor
 	require.True(t, ret.ut != nil)
 	stateReader := ret.ut.HeaviestStateForLatestTimeSlot()
 
-	t.Logf("state identity:\n%s", genesis.MustIdentityDataFromBytes(stateReader.StateIdentityBytes()).String())
+	t.Logf("state identity:\n%s", genesis.MustStateIdentityDataFromBytes(stateReader.StateIdentityBytes()).String())
 	t.Logf("origin branch txid: %s", ret.originBranchTxid.Short())
 	t.Logf("%s", ret.ut.Info())
 

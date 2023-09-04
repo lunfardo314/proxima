@@ -34,7 +34,7 @@ const (
 
 type sequencerTestData struct {
 	t                           *testing.T
-	stateIdentity               genesis.IdentityData
+	stateIdentity               genesis.StateIdentityData
 	originControllerPrivateKey  ed25519.PrivateKey
 	originDistribution          []txbuilder.LockBalance
 	faucetPrivateKeys           []ed25519.PrivateKey
@@ -88,7 +88,7 @@ func initSequencerTestData(t *testing.T, nFaucets, nAdditionalChains int, logica
 
 	ret.makeAdditionalChainOrigins(0, nAdditionalChains)
 
-	t.Logf("state identity:\n%s", genesis.MustIdentityDataFromBytes(ret.ut.HeaviestStateForLatestTimeSlot().StateIdentityBytes()).String())
+	t.Logf("state identity:\n%s", genesis.MustStateIdentityDataFromBytes(ret.ut.HeaviestStateForLatestTimeSlot().StateIdentityBytes()).String())
 	ret.wrk = workflow.New(ret.ut, workflowDebugConfig)
 	return ret
 }

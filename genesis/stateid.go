@@ -13,9 +13,9 @@ import (
 	"github.com/lunfardo314/proxima/util/lines"
 )
 
-// IdentityData is provided at genesis and will remain immutable during lifetime
+// StateIdentityData is provided at genesis and will remain immutable during lifetime
 // All integers are serialized as big-endian
-type IdentityData struct {
+type StateIdentityData struct {
 	// arbitrary string up 255 bytes
 	Description string
 	// initial supply of tokens
@@ -37,7 +37,7 @@ const (
 	StemOutputIndex          = byte(1)
 )
 
-func (id *IdentityData) Bytes() []byte {
+func (id *StateIdentityData) Bytes() []byte {
 	var supplyBin [8]byte
 	binary.BigEndian.PutUint64(supplyBin[:], id.InitialSupply)
 	var baselineTimeBin [8]byte
@@ -59,14 +59,14 @@ func (id *IdentityData) Bytes() []byte {
 	).Bytes()
 }
 
-func MustIdentityDataFromBytes(data []byte) *IdentityData {
+func MustStateIdentityDataFromBytes(data []byte) *StateIdentityData {
 	arr, err := lazyslice.ParseArrayFromBytesReadOnly(data, 7)
 	util.AssertNoError(err)
 	publicKey := ed25519.PublicKey(arr.At(2))
 	util.Assertf(len(publicKey) == ed25519.PublicKeySize, "len(publicKey)==ed25519.PublicKeySize")
 	maxTick := arr.At(5)
 	util.Assertf(len(maxTick) == 1, "len(maxTick)==1")
-	return &IdentityData{
+	return &StateIdentityData{
 		Description:                string(arr.At(0)),
 		InitialSupply:              binary.BigEndian.Uint64(arr.At(1)),
 		GenesisControllerPublicKey: publicKey,
@@ -77,20 +77,20 @@ func MustIdentityDataFromBytes(data []byte) *IdentityData {
 	}
 }
 
-func (id *IdentityData) GenesisControlledAddress() core.AddressED25519 {
+func (id *StateIdentityData) GenesisControlledAddress() core.AddressED25519 {
 	return core.AddressED25519FromPublicKey(id.GenesisControllerPublicKey)
 }
 
-func (id *IdentityData) TimeTicksPerTimeSlot() int {
+func (id *StateIdentityData) TimeTicksPerTimeSlot() int {
 	return int(id.MaxTimeTickValueInTimeSlot) + 1
 }
 
-func (id *IdentityData) OriginChainID() core.ChainID {
+func (id *StateIdentityData) OriginChainID() core.ChainID {
 	oid := InitialSupplyOutputID(id.GenesisTimeSlot)
 	return core.OriginChainID(&oid)
 }
 
-func (id *IdentityData) String() string {
+func (id *StateIdentityData) String() string {
 	originChainID := id.OriginChainID()
 	initialSupplyOutputID := InitialSupplyOutputID(id.GenesisTimeSlot)
 	genesisStemOutputID := StemOutputID(id.GenesisTimeSlot)
@@ -110,7 +110,7 @@ func (id *IdentityData) String() string {
 
 const DefaultSupply = 1_000_000_000_000
 
-func DefaultIdentityData(privateKey ed25519.PrivateKey, slot ...core.TimeSlot) *IdentityData {
+func DefaultIdentityData(privateKey ed25519.PrivateKey, slot ...core.TimeSlot) *StateIdentityData {
 	// creating origin 1 slot before now. More convenient for the workflow tests
 	var sl core.TimeSlot
 	if len(slot) > 0 {
@@ -118,7 +118,7 @@ func DefaultIdentityData(privateKey ed25519.PrivateKey, slot ...core.TimeSlot) *
 	} else {
 		sl = core.LogicalTimeNow().TimeSlot()
 	}
-	return &IdentityData{
+	return &StateIdentityData{
 		Description:                fmt.Sprintf("Proxima prototype version %s", general.Version),
 		InitialSupply:              DefaultSupply,
 		GenesisControllerPublicKey: privateKey.Public().(ed25519.PublicKey),

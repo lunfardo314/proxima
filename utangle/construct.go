@@ -77,7 +77,7 @@ func newUTXOTangle(stateStore general.StateStore, txBytesStore common.KVStore) *
 	}
 }
 
-func InitGenesisState(par genesis.IdentityData, stateStore general.StateStore) (common.VCommitment, core.ChainID, *core.OutputWithID, *core.OutputWithID) {
+func InitGenesisState(par genesis.StateIdentityData, stateStore general.StateStore) (common.VCommitment, core.ChainID, *core.OutputWithID, *core.OutputWithID) {
 	bootstrapSequencerID, genesisStateRoot := genesis.InitLedgerState(par, stateStore)
 	// now genesisStateRoot contains origin chain and stem outputs
 	// fetch origin chain and stem outputs
@@ -89,7 +89,7 @@ func InitGenesisState(par genesis.IdentityData, stateStore general.StateStore) (
 	return genesisStateRoot, bootstrapSequencerID, genesisOutput, genesisStemOutput
 }
 
-func CreateGenesisUTXOTangle(par genesis.IdentityData, stateStore general.StateStore, txBytesStore common.KVStore) (*UTXOTangle, core.ChainID, common.VCommitment) {
+func CreateGenesisUTXOTangle(par genesis.StateIdentityData, stateStore general.StateStore, txBytesStore common.KVStore) (*UTXOTangle, core.ChainID, common.VCommitment) {
 	genesisStateRoot, bootstrapSequencerID, genesisOutput, genesisStemOutput := InitGenesisState(par, stateStore)
 
 	// create virtual transaction for genesis outputs
@@ -110,7 +110,7 @@ func CreateGenesisUTXOTangle(par genesis.IdentityData, stateStore general.StateS
 	return ret, bootstrapSequencerID, genesisStateRoot
 }
 
-func CreateGenesisUTXOTangleWithDistribution(par genesis.IdentityData, originPrivateKey ed25519.PrivateKey, genesisDistribution []txbuilder.LockBalance, stateStore general.StateStore, txBytesStore common.KVStore) (*UTXOTangle, core.ChainID, core.TransactionID) {
+func CreateGenesisUTXOTangleWithDistribution(par genesis.StateIdentityData, originPrivateKey ed25519.PrivateKey, genesisDistribution []txbuilder.LockBalance, stateStore general.StateStore, txBytesStore common.KVStore) (*UTXOTangle, core.ChainID, core.TransactionID) {
 	pubKeyOrig := originPrivateKey.Public().(ed25519.PublicKey)
 	util.Assertf(pubKeyOrig.Equal(par.GenesisControllerPublicKey), "inconsistent parameters")
 

@@ -1,9 +1,13 @@
 package genesis
 
 import (
+	"crypto/ed25519"
+
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/general"
 	"github.com/lunfardo314/proxima/state"
+	"github.com/lunfardo314/proxima/transaction"
+	"github.com/lunfardo314/proxima/txbuilder"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/unitrie/common"
 	"github.com/lunfardo314/unitrie/immutable"
@@ -12,7 +16,7 @@ import (
 // InitLedgerState initializes origin ledger state in the empty store
 // Writes initial supply and origin stem outputs. Plus writes root record into the DB
 // Returns root commitment to the genesis ledger state and genesis chainID
-func InitLedgerState(par IdentityData, store general.StateStore) (core.ChainID, common.VCommitment) {
+func InitLedgerState(par StateIdentityData, store general.StateStore) (core.ChainID, common.VCommitment) {
 	batch := store.BatchedWriter()
 	emptyRoot := immutable.MustInitRoot(batch, core.CommitmentModel, par.Bytes())
 	err := batch.Commit()
@@ -83,4 +87,67 @@ func InitialSupplyOutputID(e core.TimeSlot) (ret core.OutputID) {
 func StemOutputID(e core.TimeSlot) (ret core.OutputID) {
 	ret = core.NewOutputID(InitialSupplyTransactionID(e), StemOutputIndex)
 	return
+}
+
+const (
+	MinimumBalanceOnBoostrapSequencer = 1_000_000
+)
+
+func DistributeInitialSupply(stateStore general.StateStore, originPrivateKey ed25519.PrivateKey, genesisDistribution []txbuilder.LockBalance, txBytesStore common.KVStore) {
+	branchData := state.FetchBranchData(stateStore)
+	util.Assertf(len(branchData) != 1, "expected to find exactly 1 branch in the genesis state")
+	rdr := state.MustNewSugaredReadableState(stateStore, branchData[0].Root)
+	stateID := MustStateIdentityDataFromBytes(rdr.StateIdentityBytes())
+
+	originPublicKey := originPrivateKey.Public().(ed25519.PublicKey)
+	util.Assertf(originPublicKey.Equal(stateID.GenesisControllerPublicKey), "private and public keys does not match")
+	util.Assertf(len(genesisDistribution) < 253, "too many addresses in the genesis distribution")
+
+	distributeTotal := uint64(0)
+	for i := range genesisDistribution {
+		distributeTotal += genesisDistribution[i].Balance
+		util.Assertf(distributeTotal+MinimumBalanceOnBoostrapSequencer <= stateID.InitialSupply,
+			"distributeTotal(%d) + MinimumBalanceOnBoostrapSequencer(%d) < parState.InitialSupply(%d)",
+			distributeTotal, MinimumBalanceOnBoostrapSequencer, stateID.InitialSupply)
+	}
+	genesisDistributionOutputs := make([]*core.Output, len(genesisDistribution))
+	for i := range genesisDistribution {
+		genesisDistributionOutputs[i] = core.NewOutput(func(o *core.Output) {
+			o.WithAmount(genesisDistribution[i].Balance).
+				WithLock(genesisDistribution[i].Lock)
+		})
+	}
+
+	genesisStem := rdr.GetStemOutput()
+	bootstrapChainID := stateID.OriginChainID()
+	initSupplyOutput, err := rdr.GetChainOutput(&bootstrapChainID)
+	util.AssertNoError(err)
+
+	// create origin branch transaction at the next slot after genesis time slot
+	txBytes, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
+		ChainInput: &core.OutputWithChainID{
+			OutputWithID: *initSupplyOutput,
+			ChainID:      bootstrapChainID,
+		},
+		StemInput:         genesisStem,
+		Timestamp:         core.MustNewLogicalTime(genesisStem.Timestamp().TimeSlot()+1, 0),
+		MinimumFee:        0,
+		AdditionalInputs:  nil,
+		AdditionalOutputs: genesisDistributionOutputs,
+		Endorsements:      nil,
+		PrivateKey:        originPrivateKey,
+		TotalSupply:       stateID.InitialSupply,
+	})
+	util.AssertNoError(err)
+
+	tx, err := transaction.TransactionFromBytes(txBytes)
+	util.AssertNoError(err)
+
+	nextStem := tx.FindStemProducedOutput()
+	cmds := tx.UpdateCommands()
+
+	updatableOrigin := state.MustNewUpdatable(stateStore, branchData[0].Root)
+	updatableOrigin.MustUpdateWithCommands(cmds, &nextStem.ID, &bootstrapChainID)
+
+	txBytesStore.Set(tx.ID()[:], txBytes)
 }

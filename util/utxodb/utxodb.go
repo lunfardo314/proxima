@@ -56,7 +56,7 @@ func NewUTXODB(trace ...bool) *UTXODB {
 	stateStore := common.NewInMemoryKVStore()
 	genesisSlot := core.LogicalTimeNow().TimeSlot()
 
-	initLedgerParams := genesis.IdentityData{
+	initLedgerParams := genesis.StateIdentityData{
 		Description:                utxodbDscr,
 		InitialSupply:              supplyForTesting,
 		GenesisControllerPublicKey: genesisPubKey,
@@ -108,8 +108,8 @@ func (u *UTXODB) Supply() uint64 {
 	return u.supply
 }
 
-func (u *UTXODB) StateIdentityData() *genesis.IdentityData {
-	return genesis.MustIdentityDataFromBytes(u.StateReader().StateIdentityBytes())
+func (u *UTXODB) StateIdentityData() *genesis.StateIdentityData {
+	return genesis.MustStateIdentityDataFromBytes(u.StateReader().StateIdentityBytes())
 }
 
 func (u *UTXODB) GenesisTimeSlot() core.TimeSlot {
