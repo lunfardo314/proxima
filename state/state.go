@@ -213,6 +213,11 @@ func (u *Updatable) UpdateWithCommands(cmds []UpdateCmd, rootStemOutputID *core.
 	}, rootStemOutputID, rootSeqID)
 }
 
+func (u *Updatable) MustUpdateWithCommands(cmds []UpdateCmd, rootStemOutputID *core.OutputID, rootSeqID *core.ChainID) {
+	err := u.UpdateWithCommands(cmds, rootStemOutputID, rootSeqID)
+	common.AssertNoError(err)
+}
+
 const rootRecordDBPartition = immutable.PartitionOther
 
 func writeRootRecord(w common.KVWriter, stemOutputID core.OutputID, rootData RootData) {

@@ -10,6 +10,7 @@ import (
 )
 
 // InitLedgerState initializes origin ledger state in the empty store
+// Writes initial supply and origin stem outputs. Plus writes root record into the DB
 // Returns root commitment to the genesis ledger state and genesis chainID
 func InitLedgerState(par IdentityData, store general.StateStore) (core.ChainID, common.VCommitment) {
 	batch := store.BatchedWriter()
@@ -17,22 +18,14 @@ func InitLedgerState(par IdentityData, store general.StateStore) (core.ChainID, 
 	err := batch.Commit()
 	util.AssertNoError(err)
 
-	trie, err := immutable.NewTrieUpdatable(core.CommitmentModel, store, emptyRoot)
-	util.AssertNoError(err)
-
 	genesisAddr := core.AddressED25519FromPublicKey(par.GenesisControllerPublicKey)
 	gout := InitialSupplyOutput(par.InitialSupply, genesisAddr, par.GenesisTimeSlot)
 	gStemOut := StemOutput(par.InitialSupply, par.GenesisTimeSlot)
 
-	// write genesis outputs
-	err = state.UpdateTrie(trie, genesisUpdateCommands(&gout.OutputWithID, gStemOut))
-	util.AssertNoError(err)
+	updatable := state.MustNewUpdatable(store, emptyRoot)
+	updatable.MustUpdateWithCommands(genesisUpdateCommands(&gout.OutputWithID, gStemOut), &gStemOut.ID, &gout.ChainID)
 
-	batch = store.BatchedWriter()
-	root := trie.Commit(batch)
-	err = batch.Commit()
-	util.AssertNoError(err)
-	return gout.ChainID, root
+	return gout.ChainID, updatable.Root()
 }
 
 func InitialSupplyOutput(initialSupply uint64, controllerAddress core.AddressED25519, genesisSlot core.TimeSlot) *core.OutputWithChainID {
