@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/genesis"
 	"github.com/lunfardo314/proxima/state"
 	"github.com/lunfardo314/proxima/txbuilder"
 	"github.com/lunfardo314/proxima/utangle"
@@ -54,7 +55,7 @@ func NewUTXODB(trace ...bool) *UTXODB {
 	stateStore := common.NewInMemoryKVStore()
 	genesisSlot := core.LogicalTimeNow().TimeSlot()
 
-	initLedgerParams := state.IdentityData{
+	initLedgerParams := genesis.IdentityData{
 		Description:                utxodbDscr,
 		InitialSupply:              supplyForTesting,
 		GenesisControllerPublicKey: genesisPubKey,
@@ -107,8 +108,8 @@ func (u *UTXODB) Supply() uint64 {
 	return u.supply
 }
 
-func (u *UTXODB) StateIdentityData() *state.IdentityData {
-	return state.MustIdentityDataFromBytes(u.StateReader().IdentityBytes())
+func (u *UTXODB) StateIdentityData() *genesis.IdentityData {
+	return genesis.MustIdentityDataFromBytes(u.StateReader().IdentityBytes())
 }
 
 func (u *UTXODB) GenesisTimeSlot() core.TimeSlot {
@@ -506,8 +507,8 @@ func (u *UTXODB) CreateChainOrigin(controllerPrivateKey ed25519.PrivateKey, ts c
 }
 
 func (u *UTXODB) OriginDistributionTransactionString() string {
-	genesisStemOutputID := state.GenesisStemOutputID(u.GenesisTimeSlot())
-	genesisOutputID := state.GenesisChainOutputID(u.GenesisTimeSlot())
+	genesisStemOutputID := genesis.GenesisStemOutputID(u.GenesisTimeSlot())
+	genesisOutputID := genesis.GenesisChainOutputID(u.GenesisTimeSlot())
 
 	return state.TransactionBytesToString(u.originDistributionTxBytes, func(oid *core.OutputID) ([]byte, bool) {
 		switch *oid {

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/genesis"
 	state "github.com/lunfardo314/proxima/state"
 	"github.com/lunfardo314/proxima/txbuilder"
 	utxo_tangle "github.com/lunfardo314/proxima/utangle"
@@ -24,7 +25,7 @@ import (
 )
 
 type workflowTestData struct {
-	initLedgerStatePar      state.IdentityData
+	initLedgerStatePar      genesis.IdentityData
 	distributionPrivateKeys []ed25519.PrivateKey
 	distributionAddrs       []core.AddressED25519
 	faucetOutputs           []*core.OutputWithID
@@ -455,7 +456,7 @@ type multiChainTestData struct {
 	faucetPrivKey      ed25519.PrivateKey
 	faucetAddr         core.AddressED25519
 	faucetOrigin       *core.OutputWithID
-	sPar               state.IdentityData
+	sPar               genesis.IdentityData
 	tPar               txbuilder.OriginDistributionParams
 	originBranchTxid   core.TransactionID
 	txBytesChainOrigin []byte

@@ -1,4 +1,4 @@
-package state
+package genesis
 
 import (
 	"crypto/ed25519"
@@ -100,21 +100,4 @@ func (id *IdentityData) String() string {
 		Add("Genesis time slot: %s", id.GenesisTimeSlot).
 		Add("Origin chain ID: %s", originChainID.String()).
 		String()
-}
-
-func GenesisTransactionID(genesisTimeSlot core.TimeSlot) *core.TransactionID {
-	ret := core.NewTransactionID(core.MustNewLogicalTime(genesisTimeSlot, 0), core.All0TransactionHash, true, true)
-	return &ret
-}
-
-func GenesisChainOutputID(e core.TimeSlot) (ret core.OutputID) {
-	// we are placing sequencer flag = true into the genesis tx ID to please sequencer constraint
-	// of the origin branch transaction. It is the only exception
-	ret = core.NewOutputID(GenesisTransactionID(e), GenesisOutputIndex)
-	return
-}
-
-func GenesisStemOutputID(e core.TimeSlot) (ret core.OutputID) {
-	ret = core.NewOutputID(GenesisTransactionID(e), GenesisStemOutputIndex)
-	return
 }

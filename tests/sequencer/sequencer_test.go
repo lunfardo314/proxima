@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/genesis"
 	"github.com/lunfardo314/proxima/sequencer"
 	"github.com/lunfardo314/proxima/state"
 	"github.com/lunfardo314/proxima/txbuilder"
@@ -33,7 +34,7 @@ const (
 
 type sequencerTestData struct {
 	t                           *testing.T
-	stateIdentity               state.IdentityData
+	stateIdentity               genesis.IdentityData
 	originControllerPrivateKey  ed25519.PrivateKey
 	originDistribution          []txbuilder.LockBalance
 	faucetPrivateKeys           []ed25519.PrivateKey
