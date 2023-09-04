@@ -65,7 +65,9 @@ func initSequencerTestData(t *testing.T, nFaucets, nAdditionalChains int, logica
 	t.Logf("now is: %v, %s", now.Format("04:05.00000"), core.LogicalTimeFromTime(now).String())
 	t.Logf("logical now: %v, %s", logicalNow.Time().Format("04:05.00000"), logicalNow.String())
 	ret := &sequencerTestData{t: t}
-	ret.stateIdentity, ret.originControllerPrivateKey, ret.originDistribution, ret.faucetPrivateKeys, ret.faucetAddresses =
+	ret.originControllerPrivateKey = testutil.GetTestingPrivateKey()
+	ret.stateIdentity = *genesis.DefaultIdentityData(ret.originControllerPrivateKey)
+	ret.originDistribution, ret.faucetPrivateKeys, ret.faucetAddresses =
 		inittest.GenesisParamsWithPreDistribution(nFaucets, initFaucetBalance)
 
 	ret.ut, ret.bootstrapChainID, ret.distributionTxID = utangle.CreateGenesisUTXOTangleWithDistribution(

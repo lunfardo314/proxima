@@ -16,6 +16,7 @@ import (
 	utxo_tangle "github.com/lunfardo314/proxima/utangle"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/countdown"
+	"github.com/lunfardo314/proxima/util/testutil"
 	"github.com/lunfardo314/proxima/util/testutil/inittest"
 	"github.com/lunfardo314/proxima/workflow"
 	"github.com/lunfardo314/unitrie/common"
@@ -40,7 +41,9 @@ const initDistributedBalance = 10_000_000
 func initWorkflowTest(t *testing.T, nDistribution int, nowis core.LogicalTime, debugConfig ...workflow.DebugConfig) *workflowTestData {
 	core.SetTimeTickDuration(10 * time.Millisecond)
 	t.Logf("nowis timestamp: %s", nowis.String())
-	par, genesisPrivKey, distrib, privKeys, addrs := inittest.GenesisParamsWithPreDistribution(nDistribution, initDistributedBalance, nowis.TimeSlot())
+	genesisPrivKey := testutil.GetTestingPrivateKey()
+	par := *genesis.DefaultIdentityData(genesisPrivKey)
+	distrib, privKeys, addrs := inittest.GenesisParamsWithPreDistribution(nDistribution, initDistributedBalance, nowis.TimeSlot())
 	ret := &workflowTestData{
 		initLedgerStatePar:      par,
 		distributionPrivateKeys: privKeys,
@@ -479,8 +482,10 @@ func initMultiChainTest(t *testing.T, nChains int, printTx bool, timeSlot ...cor
 	ret := &multiChainTestData{t: t}
 	var privKeys []ed25519.PrivateKey
 	var addrs []core.AddressED25519
-	par, genesisPrivKey, distrib, privKeys, addrs := inittest.GenesisParamsWithPreDistribution(2, onChainAmount*uint64(nChains), timeSlot...)
-	ret.sPar = par
+
+	genesisPrivKey := testutil.GetTestingPrivateKey()
+	ret.sPar = *genesis.DefaultIdentityData(genesisPrivKey)
+	distrib, privKeys, addrs := inittest.GenesisParamsWithPreDistribution(2, onChainAmount*uint64(nChains), timeSlot...)
 	ret.privKey = privKeys[0]
 	ret.addr = addrs[0]
 	ret.faucetPrivKey = privKeys[1]
