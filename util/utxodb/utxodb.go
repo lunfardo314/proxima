@@ -109,7 +109,7 @@ func (u *UTXODB) Supply() uint64 {
 }
 
 func (u *UTXODB) StateIdentityData() *genesis.IdentityData {
-	return genesis.MustIdentityDataFromBytes(u.StateReader().IdentityBytes())
+	return genesis.MustIdentityDataFromBytes(u.StateReader().StateIdentityBytes())
 }
 
 func (u *UTXODB) GenesisTimeSlot() core.TimeSlot {

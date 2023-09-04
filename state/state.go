@@ -170,7 +170,7 @@ func (r *Readable) GetStem() (core.TimeSlot, []byte) {
 	return retSlot, retBytes
 }
 
-func (r *Readable) IdentityBytes() []byte {
+func (r *Readable) StateIdentityBytes() []byte {
 	return r.trie.Get(nil)
 }
 

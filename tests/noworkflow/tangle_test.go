@@ -387,7 +387,7 @@ func initMultiChainTest(t *testing.T, nChains int, printTx bool, timeSlot ...cor
 	require.True(t, ret.ut != nil)
 	stateReader := ret.ut.HeaviestStateForLatestTimeSlot()
 
-	t.Logf("state identity:\n%s", genesis.MustIdentityDataFromBytes(stateReader.IdentityBytes()).String())
+	t.Logf("state identity:\n%s", genesis.MustIdentityDataFromBytes(stateReader.StateIdentityBytes()).String())
 	t.Logf("origin branch txid: %s", ret.originBranchTxid.Short())
 	t.Logf("%s", ret.ut.Info())
 
