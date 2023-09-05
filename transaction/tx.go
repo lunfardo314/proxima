@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/general"
 	"github.com/lunfardo314/proxima/state"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lazyslice"
@@ -42,7 +43,7 @@ type (
 	}
 )
 
-// MainTxValidationOptions is all except Base and time bounds
+// MainTxValidationOptions is all except Base, time bounds and input context validation
 var MainTxValidationOptions = []TxValidationOption{
 	CheckSequencerData(),
 	CheckSender(),
@@ -54,19 +55,26 @@ var MainTxValidationOptions = []TxValidationOption{
 	CheckSizeOfOutputCommitment(),
 }
 
-func TransactionFromBytes(txBytes []byte, opt ...TxValidationOption) (*Transaction, error) {
+func FromBytes(txBytes []byte, opt ...TxValidationOption) (*Transaction, error) {
 	ret, err := transactionFromBytes(txBytes, BaseValidation())
 	if err != nil {
-		return nil, fmt.Errorf("TransactionFromBytes: basic parse failed: '%v'", err)
+		return nil, fmt.Errorf("FromBytes: basic parse failed: '%v'", err)
 	}
 	if err = ret.Validate(opt...); err != nil {
-		return nil, fmt.Errorf("TransactionFromBytes: validation failed, txid = %s: '%v'", ret.IDShort(), err)
+		return nil, fmt.Errorf("FromBytes: validation failed, txid = %s: '%v'", ret.IDShort(), err)
 	}
 	return ret, nil
 }
 
-func TransactionFromBytesAllChecks(txBytes []byte) (*Transaction, error) {
-	return TransactionFromBytes(txBytes, MainTxValidationOptions...)
+func FromBytesMainChecksWithOpt(txBytes []byte, additional ...TxValidationOption) (*Transaction, error) {
+	tx, err := FromBytes(txBytes, MainTxValidationOptions...)
+	if err != nil {
+		return nil, err
+	}
+	if err = tx.Validate(additional...); err != nil {
+		return nil, err
+	}
+	return tx, nil
 }
 
 func transactionFromBytes(txBytes []byte, opt ...TxValidationOption) (*Transaction, error) {
@@ -80,8 +88,8 @@ func transactionFromBytes(txBytes []byte, opt ...TxValidationOption) (*Transacti
 	return ret, nil
 }
 
-func TransactionIDAndTimestampFromTransactionBytes(txBytes []byte) (core.TransactionID, core.LogicalTime, error) {
-	tx, err := TransactionFromBytes(txBytes)
+func IDAndTimestampFromTransactionBytes(txBytes []byte) (core.TransactionID, core.LogicalTime, error) {
+	tx, err := FromBytes(txBytes)
 	if err != nil {
 		return core.TransactionID{}, core.LogicalTime{}, err
 	}
@@ -359,6 +367,16 @@ func CheckSizeOfOutputCommitment() TxValidationOption {
 	}
 }
 
+func ValidateOptionWithFullContext(inputLoaderByIndex func(i byte) (*core.Output, error)) TxValidationOption {
+	return func(tx *Transaction) error {
+		ctx, err := ContextFromTransaction(tx, inputLoaderByIndex)
+		if err != nil {
+			return err
+		}
+		return ctx.Validate()
+	}
+}
+
 func (tx *Transaction) ID() *core.TransactionID {
 	ret := core.NewTransactionID(tx.timestamp, tx.txHash, tx.sequencerMilestoneFlag, tx.branchTransactionFlag)
 	return &ret
@@ -602,16 +620,6 @@ func (tx *Transaction) HashInputsAndEndorsements() [32]byte {
 	buf.Write(tx.tree.BytesAtPath(Path(core.TxInputIDs)))
 	buf.Write(tx.tree.BytesAtPath(Path(core.TxEndorsements)))
 
-	//tx.tree.ForEach(func(_ byte, data []byte) bool {
-	//	buf.Write(data)
-	//	return true
-	//}, Path(core.TxInputIDs))
-	//
-	//tx.tree.ForEach(func(_ byte, data []byte) bool {
-	//	buf.Write(data)
-	//	return true
-	//}, Path(core.TxEndorsements))
-
 	return blake2b.Sum256(buf.Bytes())
 }
 
@@ -671,7 +679,7 @@ func (tx *Transaction) OutputID(idx byte) core.OutputID {
 }
 
 func OutputWithIDFromTransactionBytes(txBytes []byte, idx byte) (*core.OutputWithID, error) {
-	tx, err := TransactionFromBytes(txBytes)
+	tx, err := FromBytes(txBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -716,6 +724,12 @@ func (tx *Transaction) InputLoaderByIndex(fetchOutput func(oid *core.OutputID) (
 		}
 		return o, nil
 	}
+}
+
+func (tx *Transaction) InputLoaderFromState(rdr general.StateReader) func(idx byte) (*core.Output, error) {
+	return tx.InputLoaderByIndex(func(oid *core.OutputID) ([]byte, bool) {
+		return rdr.GetUTXO(oid)
+	})
 }
 
 // SequencerChainPredecessorOutputID returns chain predecessor output ID

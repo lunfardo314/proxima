@@ -169,7 +169,7 @@ func initConflictTest(t *testing.T, nConflicts int, printTx bool) *conflictTestR
 	ret.outs = make([]*core.OutputWithID, nConflicts)
 	ret.total = 0
 	for i := range ret.outs {
-		tx, err := transaction.TransactionFromBytesAllChecks(ret.txBytes[i])
+		tx, err := transaction.FromBytesMainChecksWithOpt(ret.txBytes[i])
 		require.NoError(t, err)
 		ret.outs[i] = tx.MustProducedOutputWithIDAt(1)
 		require.EqualValues(t, 100+i, int(ret.outs[i].Output.Amount()))
@@ -206,7 +206,7 @@ func initLongConflictTest(t *testing.T, nConflicts int, howLong int, printTx boo
 
 	ret.lastOuts = make([]*core.OutputWithID, nConflicts)
 	for i := range ret.lastOuts {
-		lastTx, err := transaction.TransactionFromBytesAllChecks(txBytesSeq[i][howLong-1])
+		lastTx, err := transaction.FromBytesMainChecksWithOpt(txBytesSeq[i][howLong-1])
 		require.NoError(t, err)
 		require.EqualValues(t, 1, lastTx.NumProducedOutputs())
 		ret.lastOuts[i] = lastTx.MustProducedOutputWithIDAt(0)
@@ -229,7 +229,7 @@ func TestBookingDoubleSpends(t *testing.T) {
 		outs := make([]*core.OutputWithID, howMany)
 		total := uint64(0)
 		for i := range outs {
-			tx, err := transaction.TransactionFromBytesAllChecks(it.txBytes[i])
+			tx, err := transaction.FromBytesMainChecksWithOpt(it.txBytes[i])
 			require.NoError(t, err)
 			outs[i] = tx.MustProducedOutputWithIDAt(1)
 			require.EqualValues(t, 100+i, int(outs[i].Output.Amount()))
@@ -322,7 +322,7 @@ func TestEndorsements1(t *testing.T) {
 		)
 		it := initLongConflictTest(t, nConflicts, howLong, false)
 		// endorsed first tx
-		endorseTxid, _, err := transaction.TransactionIDAndTimestampFromTransactionBytes(it.txBytes[nConflicts-1])
+		endorseTxid, _, err := transaction.IDAndTimestampFromTransactionBytes(it.txBytes[nConflicts-1])
 		total := it.total - it.lastOuts[nConflicts-1].Output.Amount()
 
 		// testing if tx builder allows incorrect endorsements
@@ -436,13 +436,13 @@ func initMultiChainTest(t *testing.T, nChains int, printTx bool, timeSlot ...cor
 		require.NoError(t, err)
 	}
 
-	txb.Transaction.Timestamp = ret.ts
-	txb.Transaction.InputCommitment = txb.InputCommitment()
+	txb.TransactionData.Timestamp = ret.ts
+	txb.TransactionData.InputCommitment = txb.InputCommitment()
 	txb.SignED25519(ret.privKey)
 
-	ret.txBytesChainOrigin = txb.Transaction.Bytes()
+	ret.txBytesChainOrigin = txb.TransactionData.Bytes()
 
-	tx, err := transaction.TransactionFromBytesAllChecks(ret.txBytesChainOrigin)
+	tx, err := transaction.FromBytesMainChecksWithOpt(ret.txBytesChainOrigin)
 	require.NoError(t, err)
 
 	if printTx {
@@ -529,7 +529,7 @@ func (r *multiChainTestData) createSequencerChain1(chainIdx int, pace int, print
 		ret = append(ret, txBytes)
 		require.NoError(r.t, err)
 
-		tx, err = transaction.TransactionFromBytesAllChecks(txBytes)
+		tx, err = transaction.FromBytesMainChecksWithOpt(txBytes)
 		require.NoError(r.t, err)
 
 		if printtx {
@@ -576,7 +576,7 @@ func TestMultiChain(t *testing.T) {
 		transaction.SetPrintEasyFLTraceOnFail(false)
 
 		for i, txBytes := range txBytesSeq {
-			tx, err := transaction.TransactionFromBytes(txBytes)
+			tx, err := transaction.FromBytes(txBytes)
 			require.NoError(r.t, err)
 			if tx.IsBranchTransaction() {
 				t.Logf("append %d txid = %s <-- branch transaction", i, tx.IDShort())
@@ -618,7 +618,7 @@ func TestMultiChain(t *testing.T) {
 		for seqIdx := range txBytesSeq {
 			for i, txBytes := range txBytesSeq[seqIdx] {
 				//r.t.Logf("tangle info: %s", r.ut.Info())
-				tx, err := transaction.TransactionFromBytes(txBytes)
+				tx, err := transaction.FromBytes(txBytes)
 				require.NoError(r.t, err)
 				//if tx.IsBranchTransaction() {
 				//	t.Logf("append seq = %d, # = %d txid = %s <-- branch transaction", seqIdx, i, tx.IDShort())
@@ -665,7 +665,7 @@ func TestMultiChain(t *testing.T) {
 
 		for seqIdx := range txBytesSeq {
 			for i, txBytes := range txBytesSeq[seqIdx] {
-				tx, err := transaction.TransactionFromBytes(txBytes)
+				tx, err := transaction.FromBytes(txBytes)
 				require.NoError(r.t, err)
 				//if tx.IsBranchTransaction() {
 				//	t.Logf("append seq = %d, # = %d txid = %s <-- branch transaction", seqIdx, i, tx.IDShort())
@@ -687,7 +687,7 @@ func TestMultiChain(t *testing.T) {
 		r.t.Logf("tangle info: %s", r.ut.Info())
 		// take the last transaction of the second sequence
 		txBytes := txBytesSeq[1][len(txBytesSeq[1])-1]
-		txEndorser, err := transaction.TransactionFromBytesAllChecks(txBytes)
+		txEndorser, err := transaction.FromBytesMainChecksWithOpt(txBytes)
 		require.NoError(t, err)
 		require.True(t, txEndorser.IsSequencerMilestone())
 		require.False(t, txEndorser.IsBranchTransaction())
@@ -695,7 +695,7 @@ func TestMultiChain(t *testing.T) {
 		out := txEndorser.MustProducedOutputWithIDAt(0)
 		t.Logf("output to consume:\n%s", out.Short())
 
-		idToBeEndorsed, tsToBeEndorsed, err := transaction.TransactionIDAndTimestampFromTransactionBytes(txBytesSeq[0][len(txBytesSeq[0])-1])
+		idToBeEndorsed, tsToBeEndorsed, err := transaction.IDAndTimestampFromTransactionBytes(txBytesSeq[0][len(txBytesSeq[0])-1])
 		require.NoError(t, err)
 		ts := core.MaxLogicalTime(tsToBeEndorsed, txEndorser.Timestamp())
 		ts = ts.AddTimeTicks(core.TransactionTimePaceInTicks)
@@ -733,7 +733,7 @@ func TestMultiChain(t *testing.T) {
 		transaction.SetPrintEasyFLTraceOnFail(false)
 
 		for i, txBytes := range txBytesSeq {
-			tx, err := transaction.TransactionFromBytes(txBytes)
+			tx, err := transaction.FromBytes(txBytes)
 			require.NoError(r.t, err)
 			//if tx.IsBranchTransaction() {
 			//	t.Logf("append seq = %d, # = %d txid = %s <-- branch transaction", seqIdx, i, tx.IDShort())
@@ -767,7 +767,7 @@ func TestMultiChain(t *testing.T) {
 		transaction.SetPrintEasyFLTraceOnFail(false)
 
 		for i, txBytes := range txBytesSeq {
-			tx, err := transaction.TransactionFromBytes(txBytes)
+			tx, err := transaction.FromBytes(txBytes)
 			require.NoError(r.t, err)
 			//if tx.IsBranchTransaction() {
 			//	t.Logf("append seq = %d, # = %d txid = %s <-- branch transaction", seqIdx, i, tx.IDShort())
@@ -802,7 +802,7 @@ func TestMultiChain(t *testing.T) {
 		transaction.SetPrintEasyFLTraceOnFail(false)
 
 		for i, txBytes := range txBytesSeq {
-			tx, err := transaction.TransactionFromBytes(txBytes)
+			tx, err := transaction.FromBytes(txBytes)
 			require.NoError(r.t, err)
 			//if tx.IsBranchTransaction() {
 			//	t.Logf("append seq = %d, # = %d txid = %s <-- branch transaction", seqIdx, i, tx.IDShort())
@@ -843,7 +843,7 @@ func (r *multiChainTestData) createSequencerChains1(pace int, howLong int) [][]b
 			PrivateKey:   r.privKey,
 		})
 		require.NoError(r.t, err)
-		tx, err := transaction.TransactionFromBytesAllChecks(txBytes)
+		tx, err := transaction.FromBytesMainChecksWithOpt(txBytes)
 		require.NoError(r.t, err)
 		sequences[counter] = []*transaction.Transaction{tx}
 		ret = append(ret, txBytes)
@@ -894,7 +894,7 @@ func (r *multiChainTestData) createSequencerChains1(pace int, howLong int) [][]b
 			PrivateKey:   r.privKey,
 		})
 		require.NoError(r.t, err)
-		tx, err := transaction.TransactionFromBytesAllChecks(txBytes)
+		tx, err := transaction.FromBytesMainChecksWithOpt(txBytes)
 		require.NoError(r.t, err)
 		sequences[nextChainIdx] = append(sequences[nextChainIdx], tx)
 		ret = append(ret, txBytes)
@@ -931,7 +931,7 @@ func (r *multiChainTestData) createSequencerChains2(pace int, howLong int) [][]b
 			PrivateKey:   r.privKey,
 		})
 		require.NoError(r.t, err)
-		tx, err := transaction.TransactionFromBytesAllChecks(txBytes)
+		tx, err := transaction.FromBytesMainChecksWithOpt(txBytes)
 		require.NoError(r.t, err)
 		sequences[counter] = []*transaction.Transaction{tx}
 		ret = append(ret, txBytes)
@@ -999,7 +999,7 @@ func (r *multiChainTestData) createSequencerChains2(pace int, howLong int) [][]b
 			PrivateKey:   r.privKey,
 		})
 		require.NoError(r.t, err)
-		tx, err := transaction.TransactionFromBytesAllChecks(txBytes)
+		tx, err := transaction.FromBytesMainChecksWithOpt(txBytes)
 		require.NoError(r.t, err)
 		sequences[nextChainIdx] = append(sequences[nextChainIdx], tx)
 		ret = append(ret, txBytes)
@@ -1041,7 +1041,7 @@ func (r *multiChainTestData) createSequencerChains3(pace int, howLong int, print
 			PrivateKey:   r.privKey,
 		})
 		require.NoError(r.t, err)
-		tx, err := transaction.TransactionFromBytesAllChecks(txBytes)
+		tx, err := transaction.FromBytesMainChecksWithOpt(txBytes)
 		require.NoError(r.t, err)
 		sequences[counter] = []*transaction.Transaction{tx}
 		ret = append(ret, txBytes)
@@ -1074,7 +1074,7 @@ func (r *multiChainTestData) createSequencerChains3(pace int, howLong int, print
 			MustWithInputs(faucetOutput)
 		txBytes, err = txbuilder.MakeTransferTransaction(td)
 		require.NoError(r.t, err)
-		tx, err = transaction.TransactionFromBytesAllChecks(txBytes)
+		tx, err = transaction.FromBytesMainChecksWithOpt(txBytes)
 		require.NoError(r.t, err)
 		faucetOutput = tx.MustProducedOutputWithIDAt(0)
 		feeOutput := tx.MustProducedOutputWithIDAt(1)
@@ -1132,7 +1132,7 @@ func (r *multiChainTestData) createSequencerChains3(pace int, howLong int, print
 			PrivateKey:       r.privKey,
 		})
 		require.NoError(r.t, err)
-		tx, err := transaction.TransactionFromBytesAllChecks(txBytes)
+		tx, err := transaction.FromBytesMainChecksWithOpt(txBytes)
 		require.NoError(r.t, err)
 		sequences[nextChainIdx] = append(sequences[nextChainIdx], tx)
 		ret = append(ret, txBytes)

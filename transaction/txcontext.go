@@ -58,7 +58,7 @@ func ContextFromTransaction(tx *Transaction, inputLoaderByIndex func(i byte) (*c
 
 // ContextFromTransferableBytes constructs lazytree from transaction bytes and consumed outputs
 func ContextFromTransferableBytes(txBytes []byte, fetchInput func(oid *core.OutputID) ([]byte, bool), traceOption ...int) (*TransactionContext, error) {
-	tx, err := TransactionFromBytes(txBytes)
+	tx, err := FromBytes(txBytes)
 	if err != nil {
 		return nil, err
 	}

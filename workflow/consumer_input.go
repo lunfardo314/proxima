@@ -121,7 +121,7 @@ func (w *Workflow) transactionInWithOptions(txBytes []byte, insider bool, logit 
 	out := &PrimaryInputConsumerData{insider: insider}
 	var err error
 	// base validation
-	out.Tx, err = transaction.TransactionFromBytes(txBytes)
+	out.Tx, err = transaction.FromBytes(txBytes)
 	if err != nil {
 		return nil, err
 	}

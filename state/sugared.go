@@ -32,7 +32,7 @@ func MustNewSugaredReadableState(store common.KVReader, root common.VCommitment)
 	return ret
 }
 
-func (s SugaredStateReader) GetOutput(oid *core.OutputID) (*core.OutputWithID, error) {
+func (s SugaredStateReader) GetOutputWithID(oid *core.OutputID) (*core.OutputWithID, error) {
 	oData, found := s.IndexedStateReader.GetUTXO(oid)
 	if !found {
 		return nil, fmt.Errorf("can't found output %s", oid.Short())
@@ -48,8 +48,20 @@ func (s SugaredStateReader) GetOutput(oid *core.OutputID) (*core.OutputWithID, e
 	}, nil
 }
 
+func (s SugaredStateReader) GetOutput(oid *core.OutputID) (*core.Output, error) {
+	oData, found := s.IndexedStateReader.GetUTXO(oid)
+	if !found {
+		return nil, fmt.Errorf("can't found output %s", oid.Short())
+	}
+	ret, err := core.OutputFromBytesReadOnly(oData)
+	if err != nil {
+		return nil, err
+	}
+	return ret, nil
+}
+
 func (s SugaredStateReader) MustGetOutput(oid *core.OutputID) *core.OutputWithID {
-	ret, err := s.GetOutput(oid)
+	ret, err := s.GetOutputWithID(oid)
 	util.AssertNoError(err)
 	return ret
 }

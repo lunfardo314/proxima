@@ -192,7 +192,7 @@ func (mf *milestoneFactory) makeMilestone(chainIn, stemIn *utangle.WrappedOutput
 	if err != nil {
 		return nil, err
 	}
-	return transaction.TransactionFromBytesAllChecks(txBytes)
+	return transaction.FromBytesMainChecksWithOpt(txBytes)
 }
 
 // selectFeeInputs chooses unspent fee outputs which can be combined with seqMutations in one vid

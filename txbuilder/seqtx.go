@@ -163,11 +163,11 @@ func MakeSequencerTransaction(par MakeSequencerTransactionParams) ([]byte, error
 		return nil, errP(err)
 	}
 	txb.PushEndorsements(par.Endorsements...)
-	txb.Transaction.Timestamp = par.Timestamp
-	txb.Transaction.SequencerOutputIndex = chainOutIndex
-	txb.Transaction.StemOutputIndex = stemOutputIndex
-	txb.Transaction.InputCommitment = txb.InputCommitment()
+	txb.TransactionData.Timestamp = par.Timestamp
+	txb.TransactionData.SequencerOutputIndex = chainOutIndex
+	txb.TransactionData.StemOutputIndex = stemOutputIndex
+	txb.TransactionData.InputCommitment = txb.InputCommitment()
 	txb.SignED25519(par.PrivateKey)
 
-	return txb.Transaction.Bytes(), nil
+	return txb.TransactionData.Bytes(), nil
 }

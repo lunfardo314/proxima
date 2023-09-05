@@ -133,13 +133,13 @@ func (r *sequencerTestData) makeAdditionalChainOrigins(faucetIdx int, nChains in
 	})
 	faucetRemainderIdx, err := txb.ProduceOutput(oFaucetRemainder)
 
-	txb.Transaction.Timestamp = ts
-	txb.Transaction.InputCommitment = txb.InputCommitment()
+	txb.TransactionData.Timestamp = ts
+	txb.TransactionData.InputCommitment = txb.InputCommitment()
 	txb.SignED25519(r.faucetPrivateKeys[faucetIdx])
 
-	txBytesChainOrigins := txb.Transaction.Bytes()
+	txBytesChainOrigins := txb.TransactionData.Bytes()
 
-	r.txChainOrigins, err = transaction.TransactionFromBytesAllChecks(txBytesChainOrigins)
+	r.txChainOrigins, err = transaction.FromBytesMainChecksWithOpt(txBytesChainOrigins)
 	require.NoError(r.t, err)
 
 	r.txChainOrigins.ForEachProducedOutput(func(idx byte, o *core.Output, oid *core.OutputID) bool {
@@ -196,11 +196,11 @@ func (r *sequencerTestData) makeFaucetTransaction(targetSeqID core.ChainID, fauc
 	remainderIdx, err := txb.ProduceOutput(remainderOut)
 	require.NoError(r.t, err)
 
-	txb.Transaction.Timestamp = r.faucetOutputs[faucetIdx].Timestamp().AddTimeTicks(core.TransactionTimePaceInTicks)
-	txb.Transaction.InputCommitment = txb.InputCommitment()
+	txb.TransactionData.Timestamp = r.faucetOutputs[faucetIdx].Timestamp().AddTimeTicks(core.TransactionTimePaceInTicks)
+	txb.TransactionData.InputCommitment = txb.InputCommitment()
 	txb.SignED25519(r.faucetPrivateKeys[faucetIdx])
 
-	tx, err := transaction.TransactionFromBytesAllChecks(txb.Transaction.Bytes())
+	tx, err := transaction.FromBytesMainChecksWithOpt(txb.TransactionData.Bytes())
 	r.faucetOutputs[faucetIdx] = tx.MustProducedOutputWithIDAt(remainderIdx)
 	//r.t.Logf("++++++ tx %s\n%s", tx.IDShort(), tx.ProducedOutputsToString())
 	return tx

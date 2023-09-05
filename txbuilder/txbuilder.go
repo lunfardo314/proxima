@@ -11,7 +11,7 @@ import (
 
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/general"
-	transaction2 "github.com/lunfardo314/proxima/transaction"
+	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lazyslice"
 	"github.com/lunfardo314/proxima/util/txutils"
@@ -22,10 +22,10 @@ import (
 type (
 	TransactionBuilder struct {
 		ConsumedOutputs []*core.Output
-		Transaction     *transaction
+		TransactionData *transactionData
 	}
 
-	transaction struct {
+	transactionData struct {
 		InputIDs             []*core.OutputID
 		Outputs              []*core.Output
 		UnlockBlocks         []*UnlockParams
@@ -46,7 +46,7 @@ type (
 func NewTransactionBuilder() *TransactionBuilder {
 	return &TransactionBuilder{
 		ConsumedOutputs: make([]*core.Output, 0),
-		Transaction: &transaction{
+		TransactionData: &transactionData{
 			InputIDs:             make([]*core.OutputID, 0),
 			Outputs:              make([]*core.Output, 0),
 			UnlockBlocks:         make([]*UnlockParams, 0),
@@ -62,12 +62,12 @@ func NewTransactionBuilder() *TransactionBuilder {
 
 func (txb *TransactionBuilder) NumInputs() int {
 	ret := len(txb.ConsumedOutputs)
-	util.Assertf(ret == len(txb.Transaction.InputIDs), "ret==len(ctx.Transaction.InputIDs)")
+	util.Assertf(ret == len(txb.TransactionData.InputIDs), "ret==len(ctx.Transaction.InputIDs)")
 	return ret
 }
 
 func (txb *TransactionBuilder) NumOutputs() int {
-	return len(txb.Transaction.Outputs)
+	return len(txb.TransactionData.Outputs)
 }
 
 func (txb *TransactionBuilder) ConsumeOutput(out *core.Output, oid core.OutputID) (byte, error) {
@@ -75,8 +75,8 @@ func (txb *TransactionBuilder) ConsumeOutput(out *core.Output, oid core.OutputID
 		return 0, fmt.Errorf("too many consumed outputs")
 	}
 	txb.ConsumedOutputs = append(txb.ConsumedOutputs, out)
-	txb.Transaction.InputIDs = append(txb.Transaction.InputIDs, &oid)
-	txb.Transaction.UnlockBlocks = append(txb.Transaction.UnlockBlocks, NewUnlockBlock())
+	txb.TransactionData.InputIDs = append(txb.TransactionData.InputIDs, &oid)
+	txb.TransactionData.UnlockBlocks = append(txb.TransactionData.UnlockBlocks, NewUnlockBlock())
 
 	return byte(len(txb.ConsumedOutputs) - 1), nil
 }
@@ -104,7 +104,7 @@ func (txb *TransactionBuilder) ConsumeOutputs(outs ...*core.OutputWithID) (uint6
 }
 
 func (txb *TransactionBuilder) PutUnlockParams(inputIndex, constraintIndex byte, unlockParamData []byte) {
-	txb.Transaction.UnlockBlocks[inputIndex].array.PutAtIdxGrow(constraintIndex, unlockParamData)
+	txb.TransactionData.UnlockBlocks[inputIndex].array.PutAtIdxGrow(constraintIndex, unlockParamData)
 }
 
 // PutSignatureUnlock marker 0xff references signature of the transaction.
@@ -123,15 +123,15 @@ func (txb *TransactionBuilder) PutUnlockReference(inputIndex, constraintIndex, r
 }
 
 func (txb *TransactionBuilder) PushEndorsements(txid ...*core.TransactionID) {
-	txb.Transaction.Endorsements = append(txb.Transaction.Endorsements, txid...)
+	txb.TransactionData.Endorsements = append(txb.TransactionData.Endorsements, txid...)
 }
 
 func (txb *TransactionBuilder) ProduceOutput(out *core.Output) (byte, error) {
 	if txb.NumOutputs() >= 256 {
 		return 0, fmt.Errorf("too many produced outputs")
 	}
-	txb.Transaction.Outputs = append(txb.Transaction.Outputs, out)
-	return byte(len(txb.Transaction.Outputs) - 1), nil
+	txb.TransactionData.Outputs = append(txb.TransactionData.Outputs, out)
+	return byte(len(txb.TransactionData.Outputs) - 1), nil
 }
 
 func (txb *TransactionBuilder) ProduceOutputs(outs ...*core.Output) (uint64, error) {
@@ -153,7 +153,7 @@ func (txb *TransactionBuilder) InputCommitment() [32]byte {
 	return blake2b.Sum256(arr.Bytes())
 }
 
-func (tx *transaction) ToArray() *lazyslice.Array {
+func (tx *transactionData) ToArray() *lazyslice.Array {
 	unlockParams := lazyslice.EmptyArray(256)
 	inputIDs := lazyslice.EmptyArray(256)
 	outputs := lazyslice.EmptyArray(256)
@@ -185,21 +185,21 @@ func (tx *transaction) ToArray() *lazyslice.Array {
 	return lazyslice.MakeArrayReadOnly(elems...)
 }
 
-func (tx *transaction) Bytes() []byte {
+func (tx *transactionData) Bytes() []byte {
 	return tx.ToArray().Bytes()
 }
 
-func (tx *transaction) EssenceBytes() []byte {
-	return transaction2.EssenceBytesFromTransactionDataTree(tx.ToArray().AsTree())
+func (tx *transactionData) EssenceBytes() []byte {
+	return transaction.EssenceBytesFromTransactionDataTree(tx.ToArray().AsTree())
 }
 
 var rnd = rand.New(rand.NewSource(time.Now().UnixNano()))
 
 func (txb *TransactionBuilder) SignED25519(privKey ed25519.PrivateKey) {
-	sig, err := privKey.Sign(rnd, txb.Transaction.EssenceBytes(), crypto.Hash(0))
+	sig, err := privKey.Sign(rnd, txb.TransactionData.EssenceBytes(), crypto.Hash(0))
 	util.AssertNoError(err)
 	pubKey := privKey.Public().(ed25519.PublicKey)
-	txb.Transaction.Signature = common.Concat(sig, []byte(pubKey))
+	txb.TransactionData.Signature = common.Concat(sig, []byte(pubKey))
 }
 
 type TransferData struct {
@@ -468,15 +468,15 @@ func MakeSimpleTransferTransactionWithRemainder(par *TransferData, disableEndors
 	for _, un := range par.UnlockData {
 		txb.PutUnlockParams(un.OutputIndex, un.ConstraintIndex, un.Data)
 	}
-	txb.Transaction.Timestamp = adjustedTs
-	txb.Transaction.Endorsements = par.Endorsements
-	txb.Transaction.InputCommitment = txb.InputCommitment()
+	txb.TransactionData.Timestamp = adjustedTs
+	txb.TransactionData.Endorsements = par.Endorsements
+	txb.TransactionData.InputCommitment = txb.InputCommitment()
 	txb.SignED25519(par.SenderPrivateKey)
 
-	txBytes := txb.Transaction.Bytes()
+	txBytes := txb.TransactionData.Bytes()
 	var rem *core.OutputWithID
 	if remainderOut != nil {
-		if rem, err = transaction2.OutputWithIDFromTransactionBytes(txBytes, remainderIndex); err != nil {
+		if rem, err = transaction.OutputWithIDFromTransactionBytes(txBytes, remainderIndex); err != nil {
 			return nil, nil, err
 		}
 	}
@@ -509,7 +509,7 @@ func MakeChainTransferTransaction(par *TransferData, disableEndorsementChecking 
 		return nil, err
 	}
 	if par.MarkAsSequencerTx {
-		txb.Transaction.SequencerOutputIndex = 0
+		txb.TransactionData.SequencerOutputIndex = 0
 	}
 	checkAmount, inputTs, err := txb.ConsumeOutputs(consumedOuts...)
 	if err != nil {
@@ -573,11 +573,11 @@ func MakeChainTransferTransaction(par *TransferData, disableEndorsementChecking 
 		util.AssertNoError(err)
 	}
 
-	txb.Transaction.Timestamp = adjustedTs
-	txb.Transaction.InputCommitment = txb.InputCommitment()
+	txb.TransactionData.Timestamp = adjustedTs
+	txb.TransactionData.InputCommitment = txb.InputCommitment()
 	txb.SignED25519(par.SenderPrivateKey)
 
-	txBytes := txb.Transaction.Bytes()
+	txBytes := txb.TransactionData.Bytes()
 	return txBytes, nil
 }
 
@@ -648,17 +648,17 @@ func (txb *TransactionBuilder) InsertSimpleChainTransition(inChainData *core.Out
 func (txb *TransactionBuilder) String() string {
 	ret := []string{"TransactionBuilder:"}
 	ret = append(ret, fmt.Sprintf("Consumed outputs (%d):", len(txb.ConsumedOutputs)))
-	util.Assertf(len(txb.ConsumedOutputs) == len(txb.Transaction.InputIDs), "len(txb.ConsumedOutputs) == len(txb.Transaction.InputIDs)")
+	util.Assertf(len(txb.ConsumedOutputs) == len(txb.TransactionData.InputIDs), "len(txb.ConsumedOutputs) == len(txb.Transaction.InputIDs)")
 	for i := range txb.ConsumedOutputs {
-		ret = append(ret, fmt.Sprintf("%d : %s\n", i, txb.Transaction.InputIDs[i].Short()))
+		ret = append(ret, fmt.Sprintf("%d : %s\n", i, txb.TransactionData.InputIDs[i].Short()))
 		ret = append(ret, txb.ConsumedOutputs[i].ToString("     "))
 	}
-	ret = append(ret, fmt.Sprintf("Produced outputs (%d):", len(txb.Transaction.Outputs)))
-	for i, o := range txb.Transaction.Outputs {
+	ret = append(ret, fmt.Sprintf("Produced outputs (%d):", len(txb.TransactionData.Outputs)))
+	for i, o := range txb.TransactionData.Outputs {
 		ret = append(ret, fmt.Sprintf("%d :%s", i, o.ToString("    ")))
 	}
-	ret = append(ret, fmt.Sprintf("Endorsements (%d):", len(txb.Transaction.Endorsements)))
-	for i, txid := range txb.Transaction.Endorsements {
+	ret = append(ret, fmt.Sprintf("Endorsements (%d):", len(txb.TransactionData.Endorsements)))
+	for i, txid := range txb.TransactionData.Endorsements {
 		ret = append(ret, fmt.Sprintf("%d : %s", i, txid.Short()))
 	}
 	return strings.Join(ret, "\n")

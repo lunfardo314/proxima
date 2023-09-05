@@ -30,7 +30,7 @@ func MakeTransactionSequence(howLong int, firstUTXO *core.OutputWithID, privK ed
 			return nil, err
 		}
 		ret[i] = txBytes
-		tx, err := transaction2.TransactionFromBytes(txBytes)
+		tx, err := transaction2.FromBytes(txBytes)
 		if err != nil {
 			return nil, err
 		}

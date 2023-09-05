@@ -192,7 +192,7 @@ func TestTimelock(t *testing.T) {
 			WithTargetLock(addr0),
 		)
 		if err != nil {
-			tx, err1 := transaction.TransactionFromBytesAllChecks(txBytes)
+			tx, err1 := transaction.FromBytesMainChecksWithOpt(txBytes)
 			require.NoError(t, err1)
 			t.Logf("resulting tx ts: %s", tx.Timestamp())
 			require.True(t, tx.Timestamp().TimeSlot() > timelockSlot)
@@ -459,14 +459,14 @@ func TestChain1(t *testing.T) {
 		_, err = txb.ProduceOutput(outNonChain)
 		require.NoError(t, err)
 
-		txb.Transaction.Timestamp = ts
-		txb.Transaction.InputCommitment = txb.InputCommitment()
+		txb.TransactionData.Timestamp = ts
+		txb.TransactionData.InputCommitment = txb.InputCommitment()
 
 		txb.PutUnlockParams(consumedIndex, predecessorConstraintIndex, []byte{0xff, 0xff, 0xff})
 		txb.PutSignatureUnlock(consumedIndex)
 		txb.SignED25519(privKey0)
 
-		txbytes := txb.Transaction.Bytes()
+		txbytes := txb.TransactionData.Bytes()
 		err = u.AddTransaction(txbytes)
 		require.NoError(t, err)
 
@@ -576,12 +576,12 @@ func TestChain2(t *testing.T) {
 		}
 		txb.PutSignatureUnlock(0)
 
-		txb.Transaction.Timestamp = ts
-		txb.Transaction.InputCommitment = txb.InputCommitment()
+		txb.TransactionData.Timestamp = ts
+		txb.TransactionData.InputCommitment = txb.InputCommitment()
 
 		txb.SignED25519(privKey0)
 
-		txbytes := txb.Transaction.Bytes()
+		txbytes := txb.TransactionData.Bytes()
 		err = u.AddTransaction(txbytes)
 		if err != nil {
 			return err
@@ -700,12 +700,12 @@ func TestChain3(t *testing.T) {
 	txb.PutUnlockParams(predIdx, constraintIdx, []byte{succIdx, constraintIdx, 0})
 	txb.PutSignatureUnlock(0)
 
-	txb.Transaction.Timestamp = ts
-	txb.Transaction.InputCommitment = txb.InputCommitment()
+	txb.TransactionData.Timestamp = ts
+	txb.TransactionData.InputCommitment = txb.InputCommitment()
 
 	txb.SignED25519(privKey0)
 
-	txbytes := txb.Transaction.Bytes()
+	txbytes := txb.TransactionData.Bytes()
 	err = u.AddTransaction(txbytes)
 	require.NoError(t, err)
 
@@ -1055,12 +1055,12 @@ func TestImmutable(t *testing.T) {
 	txb.PutUnlockParams(predIdx, chainConstraintIdx, []byte{succIdx, chainConstraintIdx, 0})
 	txb.PutSignatureUnlock(0)
 
-	txb.Transaction.Timestamp = ts
-	txb.Transaction.InputCommitment = txb.InputCommitment()
+	txb.TransactionData.Timestamp = ts
+	txb.TransactionData.InputCommitment = txb.InputCommitment()
 
 	txb.SignED25519(privKey)
 
-	txbytes = txb.Transaction.Bytes()
+	txbytes = txb.TransactionData.Bytes()
 	t.Logf("tx2 = %s", u.TxToString(txbytes))
 	err = u.AddTransaction(txbytes)
 	require.NoError(t, err)
@@ -1091,12 +1091,12 @@ func TestImmutable(t *testing.T) {
 	// skip immutable unlock
 	txb.PutSignatureUnlock(0)
 
-	txb.Transaction.Timestamp = ts
-	txb.Transaction.InputCommitment = txb.InputCommitment()
+	txb.TransactionData.Timestamp = ts
+	txb.TransactionData.InputCommitment = txb.InputCommitment()
 
 	txb.SignED25519(privKey)
 
-	txbytes = txb.Transaction.Bytes()
+	txbytes = txb.TransactionData.Bytes()
 	t.Logf("tx3 = %s", u.TxToString(txbytes))
 	err = u.AddTransaction(txbytes)
 
@@ -1136,12 +1136,12 @@ func TestImmutable(t *testing.T) {
 	// skip immutable unlock
 	txb.PutSignatureUnlock(0)
 
-	txb.Transaction.Timestamp = ts
-	txb.Transaction.InputCommitment = txb.InputCommitment()
+	txb.TransactionData.Timestamp = ts
+	txb.TransactionData.InputCommitment = txb.InputCommitment()
 
 	txb.SignED25519(privKey)
 
-	txbytes = txb.Transaction.Bytes()
+	txbytes = txb.TransactionData.Bytes()
 	t.Logf("tx4 = %s", u.TxToString(txbytes))
 	err = u.AddTransaction(txbytes)
 
@@ -1182,12 +1182,12 @@ func TestImmutable(t *testing.T) {
 	// skip immutable unlock
 	txb.PutSignatureUnlock(0)
 
-	txb.Transaction.Timestamp = ts
-	txb.Transaction.InputCommitment = txb.InputCommitment()
+	txb.TransactionData.Timestamp = ts
+	txb.TransactionData.InputCommitment = txb.InputCommitment()
 
 	txb.SignED25519(privKey)
 
-	txbytes = txb.Transaction.Bytes()
+	txbytes = txb.TransactionData.Bytes()
 	t.Logf("tx5 = %s", u.TxToString(txbytes))
 	err = u.AddTransaction(txbytes)
 	require.NoError(t, err)

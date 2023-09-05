@@ -136,7 +136,7 @@ func CreateGenesisUTXOTangleWithDistribution(par genesis.StateIdentityData, orig
 
 	stemBack := ret.HeaviestStemOutput()
 	util.Assertf(stemBack.ID == genesisStemOutput.ID, "stemBack.ID == genesisStemOutput.ID")
-	genesisBack, err := ret.HeaviestStateForLatestTimeSlot().GetOutput(&genesisOutput.ID)
+	genesisBack, err := ret.HeaviestStateForLatestTimeSlot().GetOutputWithID(&genesisOutput.ID)
 	util.AssertNoError(err)
 	util.Assertf(genesisBack.ID == genesisOutputID, "genesisBack.ID == genesisOutputID")
 
@@ -191,7 +191,7 @@ func (ut *UTXOTangle) addBranch(branchVID *WrappedTx, root common.VCommitment) {
 }
 
 func (ut *UTXOTangle) SolidifyInputsFromTxBytes(txBytes []byte) (*Vertex, error) {
-	tx, err := transaction.TransactionFromBytesAllChecks(txBytes)
+	tx, err := transaction.FromBytesMainChecksWithOpt(txBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -264,7 +264,7 @@ func (ut *UTXOTangle) AppendVertex(vid *WrappedTx) error {
 }
 
 func (ut *UTXOTangle) AppendVertexFromTransactionBytes(txBytes []byte) (*WrappedTx, error) {
-	tx, err := transaction.TransactionFromBytesAllChecks(txBytes)
+	tx, err := transaction.FromBytesMainChecksWithOpt(txBytes)
 	if err != nil {
 		return nil, err
 	}

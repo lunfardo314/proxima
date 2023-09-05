@@ -238,10 +238,10 @@ func (u *UTXODB) makeTransactionTokensFromFaucetMulti(addrs []core.AddressED2551
 			return nil, err
 		}
 	}
-	txb.Transaction.Timestamp = ts
-	txb.Transaction.InputCommitment = txb.InputCommitment()
+	txb.TransactionData.Timestamp = ts
+	txb.TransactionData.InputCommitment = txb.InputCommitment()
 	txb.SignED25519(u.faucetPrivateKey)
-	return txb.Transaction.Bytes(), nil
+	return txb.TransactionData.Bytes(), nil
 }
 
 func (u *UTXODB) TokensFromFaucet(addr core.AddressED25519, amount ...uint64) error {
@@ -360,7 +360,7 @@ func (u *UTXODB) TransferTokensReturnTx(privKey ed25519.PrivateKey, targetLock c
 	if err != nil {
 		return nil, err
 	}
-	return transaction.TransactionFromBytesAllChecks(txBytes)
+	return transaction.FromBytesMainChecksWithOpt(txBytes)
 }
 
 func (u *UTXODB) transferTokens(privKey ed25519.PrivateKey, targetLock core.Lock, amount uint64) ([]byte, error) {
@@ -458,7 +458,7 @@ func (u *UTXODB) DoTransferOutputs(par *txbuilder.TransferData) ([]*core.OutputW
 	}); err != nil {
 		return nil, err
 	}
-	tx, err := transaction.TransactionFromBytes(txBytes)
+	tx, err := transaction.FromBytes(txBytes)
 	if err != nil {
 		return nil, err
 	}

@@ -15,7 +15,7 @@ func TestVID(t *testing.T) {
 		u := utxodb.NewUTXODB()
 		txBytes, err := u.MakeTransactionFromFaucet(core.AddressED25519Null())
 		require.NoError(t, err)
-		tx, err := transaction.TransactionFromBytesAllChecks(txBytes)
+		tx, err := transaction.FromBytesMainChecksWithOpt(txBytes)
 		require.NoError(t, err)
 		txid := tx.ID()
 

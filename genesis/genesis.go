@@ -2,6 +2,7 @@ package genesis
 
 import (
 	"crypto/ed25519"
+	"fmt"
 
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/general"
@@ -93,21 +94,36 @@ const (
 	MinimumBalanceOnBoostrapSequencer = 1_000_000
 )
 
-func DistributeInitialSupply(stateStore general.StateStore, originPrivateKey ed25519.PrivateKey, genesisDistribution []txbuilder.LockBalance, txBytesStore common.KVStore) {
+// DistributeInitialSupply updates genesis state and branch records according to initial supply distribution parameters by
+// adding initial distribution transaction.
+// Distribution transaction is a branch transaction in the slot next after the genesis.
+// Distribution parameter is added to the transaction store
+func DistributeInitialSupply(stateStore general.StateStore, originPrivateKey ed25519.PrivateKey, genesisDistribution []txbuilder.LockBalance, txBytesStore common.KVStore) error {
+	err := util.CatchPanicOrError(func() error {
+		MustDistributeInitialSupply(stateStore, originPrivateKey, genesisDistribution, txBytesStore)
+		return nil
+	})
+	if err != nil {
+		err = fmt.Errorf("DistributeInitialSupply: %v", err)
+	}
+	return err
+}
+
+func MustDistributeInitialSupply(stateStore general.StateStore, originPrivateKey ed25519.PrivateKey, genesisDistribution []txbuilder.LockBalance, txBytesStore common.KVStore) {
 	branchData := state.FetchBranchData(stateStore)
-	util.Assertf(len(branchData) != 1, "expected to find exactly 1 branch in the genesis state")
+	util.Assertf(len(branchData) == 1, "not a genesis state: expected to find exactly 1 branch")
 	rdr := state.MustNewSugaredReadableState(stateStore, branchData[0].Root)
 	stateID := MustStateIdentityDataFromBytes(rdr.StateIdentityBytes())
 
 	originPublicKey := originPrivateKey.Public().(ed25519.PublicKey)
 	util.Assertf(originPublicKey.Equal(stateID.GenesisControllerPublicKey), "private and public keys does not match")
-	util.Assertf(len(genesisDistribution) < 253, "too many addresses in the genesis distribution")
+	util.Assertf(len(genesisDistribution) < 253, "too many addresses in the genesis distribution. Maximum is 252")
 
 	distributeTotal := uint64(0)
 	for i := range genesisDistribution {
 		distributeTotal += genesisDistribution[i].Balance
 		util.Assertf(distributeTotal+MinimumBalanceOnBoostrapSequencer <= stateID.InitialSupply,
-			"distributeTotal(%d) + MinimumBalanceOnBoostrapSequencer(%d) < parState.InitialSupply(%d)",
+			"condition failed: distributeTotal(%d) + MinimumBalanceOnBoostrapSequencer(%d) < InitialSupply(%d)",
 			distributeTotal, MinimumBalanceOnBoostrapSequencer, stateID.InitialSupply)
 	}
 	genesisDistributionOutputs := make([]*core.Output, len(genesisDistribution))
@@ -140,10 +156,14 @@ func DistributeInitialSupply(stateStore general.StateStore, originPrivateKey ed2
 	})
 	util.AssertNoError(err)
 
-	tx, err := transaction.TransactionFromBytes(txBytes)
+	tx, err := transaction.FromBytesMainChecksWithOpt(txBytes)
+	util.AssertNoError(err)
+
+	err = tx.Validate(transaction.ValidateOptionWithFullContext(tx.InputLoaderFromState(rdr)))
 	util.AssertNoError(err)
 
 	nextStem := tx.FindStemProducedOutput()
+	util.Assertf(nextStem != nil, "nextStem != nil")
 	cmds := tx.UpdateCommands()
 
 	updatableOrigin := state.MustNewUpdatable(stateStore, branchData[0].Root)
