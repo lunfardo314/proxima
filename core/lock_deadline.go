@@ -97,7 +97,7 @@ func DeadlineLockFromBytes(data []byte) (*DeadlineLock, error) {
 	if err != nil {
 		return nil, err
 	}
-	tick, err := TimeSlotFromByte(tickBin[0])
+	tick, err := TimeTickFromByte(tickBin[0])
 	if err != nil {
 		return nil, err
 	}

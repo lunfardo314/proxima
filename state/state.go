@@ -7,6 +7,7 @@ import (
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/general"
 	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/proxima/util/set"
 	"github.com/lunfardo314/unitrie/common"
 	"github.com/lunfardo314/unitrie/immutable"
 )
@@ -223,11 +224,28 @@ func (u *Updatable) MustUpdateWithCommands(cmds []UpdateCmd, rootStemOutputID *c
 	common.AssertNoError(err)
 }
 
-const rootRecordDBPartition = immutable.PartitionOther
+const (
+	rootRecordDBPartition = immutable.PartitionOther
+	latestSlotDBPartition = rootRecordDBPartition + 1
+)
 
 func writeRootRecord(w common.KVWriter, stemOutputID core.OutputID, rootData RootData) {
 	key := common.ConcatBytes([]byte{rootRecordDBPartition}, stemOutputID[:])
 	w.Set(key, rootData.Bytes())
+}
+
+func writeLatestSlot(w common.KVWriter, slot core.TimeSlot) {
+	w.Set([]byte{latestSlotDBPartition}, slot.Bytes())
+}
+
+func FetchLatestSlot(store general.StateStore) core.TimeSlot {
+	bin := store.Get([]byte{latestSlotDBPartition})
+	if len(bin) == 0 {
+		return 0
+	}
+	ret, err := core.TimeSlotFromBytes(bin)
+	common.AssertNoError(err)
+	return ret
 }
 
 func (r *RootData) Bytes() []byte {
@@ -269,6 +287,10 @@ func (u *Updatable) updateUTXOLedgerDB(updateFun func(updatable *immutable.TrieU
 	batch := u.store.BatchedWriter()
 	newRoot := u.trie.Commit(batch)
 	if stemOutputID != nil {
+		latestSlot := FetchLatestSlot(u.store)
+		if latestSlot < stemOutputID.TimeSlot() {
+			writeLatestSlot(batch, stemOutputID.TimeSlot())
+		}
 		writeRootRecord(batch, *stemOutputID, RootData{
 			Root:        newRoot,
 			SequencerID: *seqID,
@@ -312,4 +334,34 @@ func FetchBranchData(store general.StateStore, filter ...func(oid *core.OutputID
 		return true
 	})
 	return ret
+}
+
+func FetchLatestNSlotsBranchData(store general.StateStore, nLatest int) []*BranchData {
+	latestSlot := FetchLatestSlot(store)
+	if latestSlot == 0 {
+		return nil
+	}
+	oldestHorizon := uint32(latestSlot) - 3*uint32(nLatest)
+	allSlots := set.New[core.TimeSlot]()
+	preFiltered := FetchBranchData(store, func(oid *core.OutputID, rootData *RootData) bool {
+		if uint32(oid.TimeSlot()) >= oldestHorizon {
+			allSlots.Insert(oid.TimeSlot())
+			return true
+		}
+		return false
+	})
+	if len(allSlots) <= nLatest {
+		return preFiltered
+	}
+	slotsOrdered := allSlots.Ordered(func(el1, el2 core.TimeSlot) bool {
+		// descending
+		return el1 > el2
+	})
+	util.Assertf(len(slotsOrdered) > nLatest, "len(slotsOrdered)>nLatest")
+	slotsOrdered = slotsOrdered[:nLatest]
+	slotsToInclude := set.New[core.TimeSlot](slotsOrdered...)
+
+	return util.FilterSlice(preFiltered, func(el *BranchData) bool {
+		return slotsToInclude.Contains(el.Stem.Timestamp().TimeSlot())
+	})
 }

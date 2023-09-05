@@ -125,11 +125,11 @@ func MustTimeSlotFromBytes(data []byte) TimeSlot {
 	return ret
 }
 
-func TimeSlotFromByte(d byte) (ret TimeTick, err error) {
+func TimeTickFromByte(d byte) (ret TimeTick, err error) {
 	if ret = TimeTick(d); ret.Valid() {
 		return
 	}
-	err = fmt.Errorf("wrong slot value")
+	err = fmt.Errorf("wrong time tick value")
 	return
 }
 
@@ -167,7 +167,7 @@ func LogicalTimeFromBytes(data []byte) (ret LogicalTime, err error) {
 		return
 	}
 	var s TimeTick
-	s, err = TimeSlotFromByte(data[4])
+	s, err = TimeTickFromByte(data[4])
 	if err != nil {
 		return
 	}
