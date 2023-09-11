@@ -1,8 +1,10 @@
-package log
+package console
 
 import (
+	"bufio"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 )
@@ -27,17 +29,49 @@ func Infof(format string, args ...any) {
 
 func Debugf(format string, args ...any) {
 	if debugFlag {
-		fmt.Printf(format, args...)
+		fmt.Printf(format+"\n", args...)
 	}
 }
 
 func Verbosef(format string, args ...any) {
 	if verboseFlag {
-		fmt.Printf(format, args...)
+		fmt.Printf(format+"\n", args...)
 	}
 }
 
 func Fatalf(format string, args ...any) {
-	fmt.Printf(format, args...)
+	fmt.Printf("Error: "+format+"\n", args...)
 	os.Exit(1)
+}
+
+func NoError(err error) {
+	if err != nil {
+		Fatalf("error: %v", err)
+	}
+}
+
+func YesNoPrompt(label string, def bool) bool {
+	choices := "Y/n"
+	if !def {
+		choices = "y/N"
+	}
+
+	r := bufio.NewReader(os.Stdin)
+	var s string
+
+	for {
+		fmt.Printf("%s (%s) ", label, choices)
+		s, _ = r.ReadString('\n')
+		s = strings.TrimSpace(s)
+		if s == "" {
+			return def
+		}
+		s = strings.ToLower(s)
+		if s == "y" || s == "yes" {
+			return true
+		}
+		if s == "n" || s == "no" {
+			return false
+		}
+	}
 }

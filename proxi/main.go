@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/lunfardo314/proxima/proxi/log"
+	"github.com/lunfardo314/proxima/proxi/console"
 	"github.com/lunfardo314/proxima/proxi/setup"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -28,24 +28,18 @@ It provides:
 	Run: func(cmd *cobra.Command, args []string) {
 		_ = cmd.Help()
 	},
-	PersistentPreRun: func(cmd *cobra.Command, args []string) {
-		//viper.SetConfigFile(configFile)
-		if err := viper.ReadInConfig(); err == nil {
-			_, _ = fmt.Fprintf(os.Stderr, "Using proxi profile: %s\n", viper.ConfigFileUsed())
-		}
-	},
 }
 
 func init() {
-	cobra.OnInitialize(initConfig)
-
 	initRoot()
-	log.Init(rootCmd)
+	initConfig()
+	console.Init(rootCmd)
 	setup.Init(rootCmd)
 }
 
 // initConfig reads in config file and ENV variables if set.
 func initConfig() {
+	console.Infof("config file is: '%s'", configFile)
 	if configFile != "" {
 		// Use config file from the flag.
 		viper.SetConfigFile(configFile)
@@ -55,16 +49,18 @@ func initConfig() {
 		cobra.CheckErr(err)
 		// Search config in current directory with name ".proxi" (without extension).
 		viper.AddConfigPath(home)
-
+		viper.SetConfigFile(".proxi.yaml")
 		viper.SetConfigType("yaml")
-		viper.SetConfigName(".proxi")
 	}
 
 	viper.AutomaticEnv() // read in environment variables that match
+
+	if err := viper.ReadInConfig(); err == nil {
+		_, _ = fmt.Fprintf(os.Stderr, "Using config profile: %s\n", viper.ConfigFileUsed())
+	}
 }
 
 func initRoot() {
-
 	rootCmd = &cobra.Command{
 		Use:   "proxi",
 		Short: "a simple CLI for the Proxima project",
@@ -75,11 +71,6 @@ It provides:
 `,
 		Run: func(cmd *cobra.Command, args []string) {
 			_ = cmd.Help()
-		},
-		PersistentPreRun: func(cmd *cobra.Command, args []string) {
-			if err := viper.ReadInConfig(); err == nil {
-				_, _ = fmt.Fprintf(os.Stderr, "Using proxi profile: %s\n", viper.ConfigFileUsed())
-			}
 		},
 	}
 
