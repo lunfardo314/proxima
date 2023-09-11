@@ -13,6 +13,14 @@ import (
 	"github.com/spf13/viper"
 )
 
+func init() {
+	cobra.OnInitialize(initConfig)
+
+	initRoot()
+	console.Init(rootCmd)
+	setup.Init(rootCmd)
+}
+
 var (
 	configFile string
 )
@@ -30,16 +38,10 @@ It provides:
 	},
 }
 
-func init() {
-	initRoot()
-	initConfig()
-	console.Init(rootCmd)
-	setup.Init(rootCmd)
-}
-
 // initConfig reads in config file and ENV variables if set.
 func initConfig() {
-	console.Infof("config file is: '%s'", configFile)
+	fmt.Printf("++++++ inside init config\n")
+	console.Infof("++++++++ config file is: '%s'", configFile)
 	if configFile != "" {
 		// Use config file from the flag.
 		viper.SetConfigFile(configFile)
@@ -61,6 +63,7 @@ func initConfig() {
 }
 
 func initRoot() {
+	fmt.Printf("+++++++++ args = %v\n", os.Args)
 	rootCmd = &cobra.Command{
 		Use:   "proxi",
 		Short: "a simple CLI for the Proxima project",
@@ -74,7 +77,19 @@ It provides:
 		},
 	}
 
-	rootCmd.PersistentFlags().StringVarP(&configFile, "config", "c", "", "config file (default is .proxi.yaml)")
+	var mmm string
+	rootCmd.PersistentFlags().StringVarP(&mmm, "aflag", "a", "kuku-aflag", "random")
+	//err := rootCmd.PersistentFlags().Parse([]string{"aflag"})
+	//console.NoError(err)
+	fmt.Printf("+++++++++++++ aflag '%s'\n", mmm)
+	//viper.BindPFlag("aflag", rootCmd.PersistentFlags().Lookup("aflag"))
+
+	var sss string
+	rootCmd.PersistentFlags().StringVarP(&sss, "config", "c", "kuku", "config file (default is .proxi.yaml)")
+	fmt.Printf("+++++++++++++ config '%s'\n", sss)
+	viper.BindPFlag("config", rootCmd.PersistentFlags().Lookup("config"))
+	//fmt.Printf("+++++++++++ get string: '%s'\n", viper.GetString("config"))
+
 }
 
 func main() {
