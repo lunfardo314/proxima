@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/lunfardo314/proxima/core"
-	"github.com/lunfardo314/proxima/state"
+	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/util"
 )
 
@@ -56,7 +56,7 @@ func (v *VirtualTransaction) OutputAt(idx byte) (*core.Output, bool) {
 	return nil, false
 }
 
-func (v *VirtualTransaction) ensureOutputAt(idx byte, stateReader func() state.SugaredStateReader) (*core.Output, error) {
+func (v *VirtualTransaction) ensureOutputAt(idx byte, stateReader func() multistate.SugaredStateReader) (*core.Output, error) {
 	ret, ok := v.OutputAt(idx)
 	if ok {
 		return ret, nil

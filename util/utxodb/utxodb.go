@@ -7,7 +7,7 @@ import (
 
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/genesis"
-	"github.com/lunfardo314/proxima/state"
+	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/txbuilder"
 	"github.com/lunfardo314/proxima/utangle"
@@ -22,7 +22,7 @@ import (
 // It is always final, does not have finality gadget nor the milestone chain
 // It is mainly used for testing of constraints
 type UTXODB struct {
-	state             *state.Updatable
+	state             *multistate.Updatable
 	lastSlot          core.TimeSlot
 	genesisChainID    core.ChainID
 	supply            uint64
@@ -81,7 +81,7 @@ func NewUTXODB(trace ...bool) *UTXODB {
 
 	distributionTxBytes := txbuilder.MakeDistributionTransaction(originDistribution)
 
-	updatable := state.MustNewUpdatable(stateStore, genesisRoot)
+	updatable := multistate.MustNewUpdatable(stateStore, genesisRoot)
 	_, err := updateValidateDebug(updatable, distributionTxBytes)
 	util.AssertNoError(err)
 
@@ -123,7 +123,7 @@ func (u *UTXODB) GenesisChainID() *core.ChainID {
 func (u *UTXODB) Root() common.VCommitment {
 	return u.state.Root()
 }
-func (u *UTXODB) StateReader() *state.Readable {
+func (u *UTXODB) StateReader() *multistate.Readable {
 	return u.state.Readable()
 }
 

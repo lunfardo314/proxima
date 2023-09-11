@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/lunfardo314/proxima/core"
-	"github.com/lunfardo314/proxima/state"
+	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/util/testutil"
 	"github.com/lunfardo314/unitrie/common"
 	"github.com/stretchr/testify/require"
@@ -38,12 +38,12 @@ func TestInitOrigin(t *testing.T) {
 	store := common.NewInMemoryKVStore()
 	bootstrapSeqID, genesisRoot := InitLedgerState(*id, store)
 
-	branches := state.FetchBranchData(store)
+	branches := multistate.FetchBranchData(store)
 	require.EqualValues(t, 1, len(branches))
 	require.EqualValues(t, bootstrapSeqID, branches[0].SequencerID)
 	require.True(t, core.CommitmentModel.EqualCommitments(genesisRoot, branches[0].Root))
 
-	rdr := state.MustNewSugaredReadableState(store, genesisRoot)
+	rdr := multistate.MustNewSugaredReadableState(store, genesisRoot)
 
 	stemBack := rdr.GetStemOutput()
 	require.EqualValues(t, StemOutputID(id.GenesisTimeSlot), stemBack.ID)

@@ -4,7 +4,7 @@ import (
 	"sort"
 
 	"github.com/lunfardo314/proxima/core"
-	"github.com/lunfardo314/proxima/state"
+	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
 	"github.com/lunfardo314/proxima/util/set"
@@ -40,8 +40,8 @@ func (d *UTXOStateDelta) BaselineBranch() *WrappedTx {
 }
 
 // getUpdateCommands generates state update commands for closed delta
-func (d *UTXOStateDelta) getUpdateCommands() []state.UpdateCmd {
-	ret := make([]state.UpdateCmd, 0)
+func (d *UTXOStateDelta) getUpdateCommands() []multistate.UpdateCmd {
+	ret := make([]multistate.UpdateCmd, 0)
 	for vid, td := range d.transactions {
 		if !td.includedThisDelta {
 			continue
@@ -57,7 +57,7 @@ func (d *UTXOStateDelta) getUpdateCommands() []state.UpdateCmd {
 					}
 				}
 				if produce {
-					ret = append(ret, state.UpdateCmd{
+					ret = append(ret, multistate.UpdateCmd{
 						ID:     oid,
 						Output: o,
 					})
@@ -69,7 +69,7 @@ func (d *UTXOStateDelta) getUpdateCommands() []state.UpdateCmd {
 				tdInp, ok := d.transactions[v.Inputs[i]]
 				util.Assertf(ok, "getUpdateCommands: missing input %s in transaction %s", v.Inputs[i].IDShort(), v.Tx.IDShort())
 				if !tdInp.includedThisDelta || v.Inputs[i].IsVirtualTx() {
-					ret = append(ret, state.UpdateCmd{
+					ret = append(ret, multistate.UpdateCmd{
 						ID: oid,
 					})
 				}

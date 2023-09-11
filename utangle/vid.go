@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/core"
-	"github.com/lunfardo314/proxima/state"
+	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
@@ -511,7 +511,7 @@ func (vid *WrappedTx) DeltaString(skipCommands ...bool) string {
 			if !skipCmd {
 				cmds := v.StateDelta.getUpdateCommands()
 				ret.Add("== update commands of %s (%d commands)", vid.IDShort(), len(cmds))
-				ret.Append(state.UpdateCommandsToLines(cmds))
+				ret.Append(multistate.UpdateCommandsToLines(cmds))
 			}
 		}, VirtualTx: func(v *VirtualTransaction) {
 			ret.Add("   (booked transaction)")

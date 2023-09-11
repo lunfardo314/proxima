@@ -10,7 +10,7 @@ import (
 	"github.com/dominikbraun/graph"
 	"github.com/dominikbraun/graph/draw"
 	"github.com/lunfardo314/proxima/core"
-	"github.com/lunfardo314/proxima/state"
+	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/set"
 )
@@ -233,8 +233,8 @@ func branchNodeAttributes(seqID *core.ChainID, coverage uint64, dict map[core.Ch
 
 func (ut *UTXOTangle) MakeTree() graph.Graph[string, string] {
 	ret := graph.New(graph.StringHash, graph.Directed(), graph.Acyclic())
-	branches := state.FetchBranchData(ut.stateStore)
-	byOid := make(map[core.OutputID]*state.BranchData)
+	branches := multistate.FetchBranchData(ut.stateStore)
+	byOid := make(map[core.OutputID]*multistate.BranchData)
 	idDict := make(map[core.ChainID]int)
 	for _, b := range branches {
 		byOid[b.Stem.ID] = b

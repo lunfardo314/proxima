@@ -6,7 +6,7 @@ import (
 
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/general"
-	"github.com/lunfardo314/proxima/state"
+	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/txbuilder"
 	"github.com/lunfardo314/proxima/util"
@@ -27,7 +27,7 @@ func InitLedgerState(par StateIdentityData, store general.StateStore) (core.Chai
 	gout := InitialSupplyOutput(par.InitialSupply, genesisAddr, par.GenesisTimeSlot)
 	gStemOut := StemOutput(par.InitialSupply, par.GenesisTimeSlot)
 
-	updatable := state.MustNewUpdatable(store, emptyRoot)
+	updatable := multistate.MustNewUpdatable(store, emptyRoot)
 	updatable.MustUpdateWithCommands(genesisUpdateCommands(&gout.OutputWithID, gStemOut), &gStemOut.ID, &gout.ChainID)
 
 	return gout.ChainID, updatable.Root()
@@ -60,8 +60,8 @@ func StemOutput(initialSupply uint64, genesisTimeSlot core.TimeSlot) *core.Outpu
 	}
 }
 
-func genesisUpdateCommands(genesisOut, genesisStemOut *core.OutputWithID) []state.UpdateCmd {
-	return []state.UpdateCmd{
+func genesisUpdateCommands(genesisOut, genesisStemOut *core.OutputWithID) []multistate.UpdateCmd {
+	return []multistate.UpdateCmd{
 		{
 			ID:     &genesisOut.ID,
 			Output: genesisOut.Output,
@@ -110,9 +110,9 @@ func DistributeInitialSupply(stateStore general.StateStore, originPrivateKey ed2
 }
 
 func MustDistributeInitialSupply(stateStore general.StateStore, originPrivateKey ed25519.PrivateKey, genesisDistribution []txbuilder.LockBalance, txBytesStore common.KVStore) {
-	branchData := state.FetchBranchData(stateStore)
+	branchData := multistate.FetchBranchData(stateStore)
 	util.Assertf(len(branchData) == 1, "not a genesis state: expected to find exactly 1 branch")
-	rdr := state.MustNewSugaredReadableState(stateStore, branchData[0].Root)
+	rdr := multistate.MustNewSugaredReadableState(stateStore, branchData[0].Root)
 	stateID := MustStateIdentityDataFromBytes(rdr.StateIdentityBytes())
 
 	originPublicKey := originPrivateKey.Public().(ed25519.PublicKey)
@@ -166,7 +166,7 @@ func MustDistributeInitialSupply(stateStore general.StateStore, originPrivateKey
 	util.Assertf(nextStem != nil, "nextStem != nil")
 	cmds := tx.UpdateCommands()
 
-	updatableOrigin := state.MustNewUpdatable(stateStore, branchData[0].Root)
+	updatableOrigin := multistate.MustNewUpdatable(stateStore, branchData[0].Root)
 	updatableOrigin.MustUpdateWithCommands(cmds, &nextStem.ID, &bootstrapChainID)
 
 	txBytesStore.Set(tx.ID()[:], txBytes)

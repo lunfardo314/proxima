@@ -5,7 +5,7 @@ import (
 
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/general"
-	"github.com/lunfardo314/proxima/state"
+	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/unitrie/common"
 )
@@ -52,9 +52,9 @@ func MakeDistributionTransaction(par OriginDistributionParams) []byte {
 		})
 	}
 
-	genesisReader, err := state.NewReadable(par.StateStore, par.GenesisStateRoot)
+	genesisReader, err := multistate.NewReadable(par.StateStore, par.GenesisStateRoot)
 	util.AssertNoError(err)
-	sugaredGenesisReader := state.MakeSugared(genesisReader)
+	sugaredGenesisReader := multistate.MakeSugared(genesisReader)
 	genesisIn, err := sugaredGenesisReader.GetChainOutput(&par.BootstrapSequencerID)
 	util.AssertNoError(err)
 	genesisStemIn := sugaredGenesisReader.GetStemOutput()

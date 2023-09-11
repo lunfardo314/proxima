@@ -11,7 +11,7 @@ import (
 
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/genesis"
-	state "github.com/lunfardo314/proxima/state"
+	state "github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/txbuilder"
 	utxo_tangle "github.com/lunfardo314/proxima/utangle"

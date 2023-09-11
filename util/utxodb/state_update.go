@@ -2,15 +2,15 @@ package utxodb
 
 import (
 	"github.com/lunfardo314/proxima/core"
-	"github.com/lunfardo314/proxima/state"
+	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/transaction"
 )
 
-func updateValidateNoDebug(u *state.Updatable, txBytes []byte) (*transaction.Transaction, error) {
+func updateValidateNoDebug(u *multistate.Updatable, txBytes []byte) (*transaction.Transaction, error) {
 	return updateValidateOptions(u, txBytes, transaction.TraceOptionNone, nil)
 }
 
-func updateValidateDebug(u *state.Updatable, txBytes []byte, onValidation ...func(ctx *transaction.TransactionContext, err error) error) (*transaction.Transaction, error) {
+func updateValidateDebug(u *multistate.Updatable, txBytes []byte, onValidation ...func(ctx *transaction.TransactionContext, err error) error) (*transaction.Transaction, error) {
 	var fun func(ctx *transaction.TransactionContext, err error) error
 	if len(onValidation) > 0 {
 		fun = onValidation[0]
@@ -19,7 +19,7 @@ func updateValidateDebug(u *state.Updatable, txBytes []byte, onValidation ...fun
 }
 
 // updateValidateNoDebug updates/mutates the ledger state by transaction. For testing mostly
-func updateValidateOptions(u *state.Updatable, txBytes []byte, traceOption int, onValidation func(ctx *transaction.TransactionContext, err error) error) (*transaction.Transaction, error) {
+func updateValidateOptions(u *multistate.Updatable, txBytes []byte, traceOption int, onValidation func(ctx *transaction.TransactionContext, err error) error) (*transaction.Transaction, error) {
 	tx, err := transaction.FromBytesMainChecksWithOpt(txBytes)
 	if err != nil {
 		return nil, err
@@ -36,15 +36,15 @@ func updateValidateOptions(u *state.Updatable, txBytes []byte, traceOption int, 
 		return nil, err
 	}
 
-	commands := make([]state.UpdateCmd, 0)
+	commands := make([]multistate.UpdateCmd, 0)
 	tx.ForEachInput(func(i byte, oid *core.OutputID) bool {
-		commands = append(commands, state.UpdateCmd{
+		commands = append(commands, multistate.UpdateCmd{
 			ID: oid,
 		})
 		return true
 	})
 	tx.ForEachProducedOutput(func(idx byte, o *core.Output, oid *core.OutputID) bool {
-		commands = append(commands, state.UpdateCmd{
+		commands = append(commands, multistate.UpdateCmd{
 			ID:     oid,
 			Output: o,
 		})

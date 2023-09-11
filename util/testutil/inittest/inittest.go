@@ -4,12 +4,13 @@ import (
 	"crypto/ed25519"
 
 	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/genesis"
 	"github.com/lunfardo314/proxima/txbuilder"
 	"github.com/lunfardo314/proxima/util/testutil"
 )
 
 const (
-	InitSupply = 100_000_000_000
+	InitSupply = genesis.DefaultSupply
 )
 
 func GenesisParamsWithPreDistribution(n int, initBalance uint64, slot ...core.TimeSlot) ([]txbuilder.LockBalance, []ed25519.PrivateKey, []core.AddressED25519) {

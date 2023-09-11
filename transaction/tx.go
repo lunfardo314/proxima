@@ -9,7 +9,7 @@ import (
 
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/general"
-	"github.com/lunfardo314/proxima/state"
+	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lazyslice"
 	"github.com/lunfardo314/unitrie/common"
@@ -800,17 +800,17 @@ func (tx *Transaction) ProducedOutputsToString() string {
 	return strings.Join(ret, "\n")
 }
 
-func (tx *Transaction) UpdateCommands() []state.UpdateCmd {
-	ret := make([]state.UpdateCmd, 0, tx.NumInputs()+tx.NumProducedOutputs())
+func (tx *Transaction) UpdateCommands() []multistate.UpdateCmd {
+	ret := make([]multistate.UpdateCmd, 0, tx.NumInputs()+tx.NumProducedOutputs())
 	tx.ForEachInput(func(i byte, oid *core.OutputID) bool {
-		ret = append(ret, state.UpdateCmd{
+		ret = append(ret, multistate.UpdateCmd{
 			ID:     oid,
 			Output: nil,
 		})
 		return true
 	})
 	tx.ForEachProducedOutput(func(_ byte, o *core.Output, oid *core.OutputID) bool {
-		ret = append(ret, state.UpdateCmd{
+		ret = append(ret, multistate.UpdateCmd{
 			ID:     oid,
 			Output: o,
 		})
