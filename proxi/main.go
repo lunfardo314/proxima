@@ -9,6 +9,7 @@ import (
 
 	"github.com/lunfardo314/proxima/proxi/config"
 	"github.com/lunfardo314/proxima/proxi/console"
+	"github.com/lunfardo314/proxima/proxi/db_cmd"
 	"github.com/lunfardo314/proxima/proxi/genesis_cmd"
 	"github.com/lunfardo314/proxima/proxi/info_cmd"
 	"github.com/spf13/cobra"
@@ -21,6 +22,7 @@ func init() {
 	config.Init(rootCmd)
 	genesis_cmd.Init(rootCmd)
 	info_cmd.Init(rootCmd)
+	db_cmd.Init(rootCmd)
 }
 
 var (

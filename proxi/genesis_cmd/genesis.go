@@ -78,6 +78,7 @@ func runGenesis(_ *cobra.Command, args []string) {
 
 	txStoreDB := badger_adaptor.MustCreateOrOpenBadgerDB(txStoreName, badger.DefaultOptions(txStoreName))
 	console.NoError(txStoreDB.Close())
+
 	console.Infof("Transaction store DB '%s' has been created successfully", dbName)
 
 	config.SetKeyValue("state_db", dbName)
