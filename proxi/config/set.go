@@ -1,4 +1,4 @@
-package setup
+package config
 
 import (
 	"github.com/lunfardo314/proxima/proxi/console"
@@ -23,15 +23,15 @@ func runConfigSetCmd(cmd *cobra.Command, args []string) {
 	}
 	switch v {
 	case "true":
-		_set(args[0], true)
+		SetKeyValue(args[0], true)
 	case "false":
-		_set(args[0], false)
+		SetKeyValue(args[0], false)
 	default:
-		_set(args[0], v)
+		SetKeyValue(args[0], v)
 	}
 }
 
-func _set(key string, value interface{}) {
+func SetKeyValue(key string, value interface{}) {
 	viper.Set(key, value)
 	console.NoError(viper.WriteConfig())
 }

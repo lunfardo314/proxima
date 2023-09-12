@@ -7,10 +7,10 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/lunfardo314/proxima/proxi/config"
 	"github.com/lunfardo314/proxima/proxi/console"
 	"github.com/lunfardo314/proxima/proxi/genesis_cmd"
 	"github.com/lunfardo314/proxima/proxi/info_cmd"
-	"github.com/lunfardo314/proxima/proxi/setup"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -18,7 +18,7 @@ import (
 func init() {
 	initRoot()
 	console.Init(rootCmd)
-	setup.Init(rootCmd)
+	config.Init(rootCmd)
 	genesis_cmd.Init(rootCmd)
 	info_cmd.Init(rootCmd)
 }

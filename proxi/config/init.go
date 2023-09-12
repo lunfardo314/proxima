@@ -1,4 +1,4 @@
-package setup
+package config
 
 import (
 	"github.com/lunfardo314/proxima/proxi/console"

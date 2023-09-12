@@ -1,4 +1,4 @@
-package setup
+package config
 
 import (
 	"crypto/ed25519"
@@ -63,7 +63,7 @@ func runSetKeyCommand(_ *cobra.Command, args []string) {
 		seed := blake2b.Sum256(common.Concat(userSeed, osSeed[:]))
 		privateKey = ed25519.NewKeyFromSeed(seed[:])
 	}
-	_set("private_key", hex.EncodeToString(privateKey))
+	SetKeyValue("private_key", hex.EncodeToString(privateKey))
 	console.Infof("Private key has been generated. ED25519 address is: %s", hex.EncodeToString(AddressBytes()))
 }
 

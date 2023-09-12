@@ -4,10 +4,12 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/dgraph-io/badger/v4"
 	"github.com/lunfardo314/proxima/genesis"
+	"github.com/lunfardo314/proxima/proxi/config"
 	"github.com/lunfardo314/proxima/proxi/console"
-	"github.com/lunfardo314/proxima/proxi/setup"
 	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/unitrie/adaptors/badger_adaptor"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -34,6 +36,27 @@ func Init(rootCmd *cobra.Command) {
 }
 
 func runInfoCmd(_ *cobra.Command, _ []string) {
+	stateDbName := viper.GetString("state_db")
+	if stateDbName == "" {
+		stateDbName = "(not set)"
+	}
+	txStoreDbName := viper.GetString("tx_store_db")
+	if txStoreDbName == "" {
+		txStoreDbName = "(not set)"
+	}
+
 	console.Infof("Proxi config profile: %s", viper.ConfigFileUsed())
-	console.Infof("Controlling address: %s", setup.AddressHex())
+	console.Infof("Controlling address: %s", config.AddressHex())
+	console.Infof("State DB name: %s", stateDbName)
+	console.Infof("Transaction store DB name: %s", txStoreDbName)
+
+	if stateDbName == "(not set)" {
+		return
+	}
+
+	storeDB := badger_adaptor.MustCreateOrOpenBadgerDB(stateDbName, badger.DefaultOptions(stateDbName))
+	console.NoError(storeDB.Close())
+
+	//multistate.NewSugaredReadableState(badger_adaptor.New(stateDB), )
+
 }
