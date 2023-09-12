@@ -17,7 +17,7 @@ func Init(rootCmd *cobra.Command) {
 		Short: "specifies subcommand on the database",
 		Args:  cobra.MaximumNArgs(1),
 		Run: func(_ *cobra.Command, _ []string) {
-			displayNames()
+			displayDBNames()
 		},
 	}
 
@@ -31,13 +31,14 @@ func Init(rootCmd *cobra.Command) {
 
 	dbCmd.InitDefaultHelpCmd()
 	initDBInfoCmd(dbCmd)
+	initDBTreeCmd(dbCmd)
 
 	rootCmd.AddCommand(dbCmd)
 }
 
-func displayNames() {
-	console.Infof("state DB: '%s'", GetStateStoreName())
-	console.Infof("tx store DB: '%s'", GetTxStoreName())
+func displayDBNames() {
+	console.Infof("Multi-state store DB: '%s'", GetStateStoreName())
+	console.Infof("Transaction store DB: '%s'", GetTxStoreName())
 }
 
 func GetStateStoreName() string {

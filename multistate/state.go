@@ -336,6 +336,13 @@ func FetchBranchData(store general.StateStore, filter ...func(oid *core.OutputID
 	return ret
 }
 
+func FetchLatestBranches(store general.StateStore) []*BranchData {
+	latestSlot := FetchLatestSlot(store)
+	return FetchBranchData(store, func(oid *core.OutputID, rootData *RootData) bool {
+		return oid.TimeSlot() == latestSlot
+	})
+}
+
 func FetchLatestNSlotsBranchData(store general.StateStore, nLatest int) []*BranchData {
 	latestSlot := FetchLatestSlot(store)
 	if latestSlot == 0 {

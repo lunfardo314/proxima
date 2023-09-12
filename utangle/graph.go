@@ -10,6 +10,7 @@ import (
 	"github.com/dominikbraun/graph"
 	"github.com/dominikbraun/graph/draw"
 	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/general"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/set"
@@ -231,9 +232,11 @@ func branchNodeAttributes(seqID *core.ChainID, coverage uint64, dict map[core.Ch
 	return ret
 }
 
-func (ut *UTXOTangle) MakeTree() graph.Graph[string, string] {
+// TODO MakeTree and SaveTree move to multistate
+
+func MakeTree(stateStore general.StateStore) graph.Graph[string, string] {
 	ret := graph.New(graph.StringHash, graph.Directed(), graph.Acyclic())
-	branches := multistate.FetchBranchData(ut.stateStore)
+	branches := multistate.FetchBranchData(stateStore)
 	byOid := make(map[core.OutputID]*multistate.BranchData)
 	idDict := make(map[core.ChainID]int)
 	for _, b := range branches {
@@ -261,7 +264,11 @@ func (ut *UTXOTangle) MakeTree() graph.Graph[string, string] {
 }
 
 func (ut *UTXOTangle) SaveTree(fname string) {
-	gr := ut.MakeTree()
+	SaveTree(ut.stateStore, fname)
+}
+
+func SaveTree(stateStore general.StateStore, fname string) {
+	gr := MakeTree(stateStore)
 	dotFile, _ := os.Create(fname + ".gv")
 	err := draw.DOT(gr, dotFile)
 	util.AssertNoError(err)
