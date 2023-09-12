@@ -25,6 +25,6 @@ func initInitCmd() *cobra.Command {
 
 const minimumSeedLength = 8
 
-func runInitCommand(_ *cobra.Command, args []string) {
+func runInitCommand(_ *cobra.Command, _ []string) {
 	console.NoError(viper.SafeWriteConfig())
 }

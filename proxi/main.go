@@ -4,6 +4,7 @@ Copyright © 2023 NAME HERE <EMAIL ADDRESS>
 package main
 
 import (
+	"encoding/hex"
 	"fmt"
 	"os"
 
@@ -14,7 +15,7 @@ import (
 )
 
 func init() {
-	cobra.OnInitialize(initConfig)
+	//cobra.OnInitialize(initConfig)
 
 	initRoot()
 	console.Init(rootCmd)
@@ -22,7 +23,8 @@ func init() {
 }
 
 var (
-	configFile string
+	configFile    string
+	privateKeyStr string
 )
 
 var rootCmd = &cobra.Command{
@@ -33,6 +35,9 @@ It provides:
       - database level access to the Proxima ledger for admin purposes, including genesis creation
       - access to ledger via the Proxima node API. This includes simple wallet functions
 `,
+	PersistentPreRun: func(_ *cobra.Command, _ []string) {
+		initConfig()
+	},
 	Run: func(cmd *cobra.Command, args []string) {
 		_ = cmd.Help()
 	},
@@ -40,18 +45,12 @@ It provides:
 
 // initConfig reads in config file and ENV variables if set.
 func initConfig() {
-	fmt.Printf("++++++ inside init config\n")
-	console.Infof("++++++++ config file is: '%s'", configFile)
 	if configFile != "" {
 		// Use config file from the flag.
-		viper.SetConfigFile(configFile)
+		viper.SetConfigName(configFile)
 	} else {
 		viper.AddConfigPath(".")
-		home, err := os.UserHomeDir()
-		cobra.CheckErr(err)
-		// Search config in current directory with name ".proxi" (without extension).
-		viper.AddConfigPath(home)
-		viper.SetConfigFile(".proxi.yaml")
+		viper.SetConfigName(".proxi")
 		viper.SetConfigType("yaml")
 	}
 
@@ -63,7 +62,6 @@ func initConfig() {
 }
 
 func initRoot() {
-	fmt.Printf("+++++++++ args = %v\n", os.Args)
 	rootCmd = &cobra.Command{
 		Use:   "proxi",
 		Short: "a simple CLI for the Proxima project",
@@ -72,24 +70,24 @@ It provides:
       - database level access to the Proxima ledger for admin purposes, including genesis creation
       - access to ledger via the Proxima node API. This includes simple wallet functions
 `,
+		PersistentPreRun: func(cmd *cobra.Command, args []string) {
+			initConfig()
+
+			if addr := setup.AddressBytes(); len(addr) > 0 {
+				console.Infof("Private key corresponds to address %s", hex.EncodeToString(addr))
+			} else {
+				console.Infof("Private key not set")
+			}
+		},
 		Run: func(cmd *cobra.Command, args []string) {
 			_ = cmd.Help()
 		},
 	}
 
-	var mmm string
-	rootCmd.PersistentFlags().StringVarP(&mmm, "aflag", "a", "kuku-aflag", "random")
-	//err := rootCmd.PersistentFlags().Parse([]string{"aflag"})
-	//console.NoError(err)
-	fmt.Printf("+++++++++++++ aflag '%s'\n", mmm)
-	//viper.BindPFlag("aflag", rootCmd.PersistentFlags().Lookup("aflag"))
-
-	var sss string
-	rootCmd.PersistentFlags().StringVarP(&sss, "config", "c", "kuku", "config file (default is .proxi.yaml)")
-	fmt.Printf("+++++++++++++ config '%s'\n", sss)
-	viper.BindPFlag("config", rootCmd.PersistentFlags().Lookup("config"))
-	//fmt.Printf("+++++++++++ get string: '%s'\n", viper.GetString("config"))
-
+	rootCmd.PersistentFlags().StringVarP(&configFile, "config", "c", "", "config file (default is .proxi.yaml)")
+	rootCmd.PersistentFlags().StringVar(&privateKeyStr, "private_key", "", "an ED25519 private key in hexadecimal")
+	err := viper.BindPFlag("private_key", rootCmd.PersistentFlags().Lookup("private_key"))
+	console.NoError(err)
 }
 
 func main() {

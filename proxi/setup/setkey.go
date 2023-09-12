@@ -16,41 +16,14 @@ import (
 	"golang.org/x/crypto/ssh/terminal"
 )
 
-var (
-	privateKeyStr string
-	privateKey    ed25519.PrivateKey
-)
-
 func initSetKeyCmd() *cobra.Command {
-	setPrivateKeyCmd := &cobra.Command{
+	return &cobra.Command{
 		Use:     "set_private_key [<key>]",
 		Aliases: []string{"setpk"},
 		Short:   "Set a private key",
 		Args:    cobra.MaximumNArgs(1),
 		Run:     runSetKeyCommand,
 	}
-	setPrivateKeyCmd.Flags().StringVar(&privateKeyStr, "private_key", "", "an ED25519 private key in hexadecimal")
-	if privateKeyStr != "" {
-		mustDecodePrivateKey(privateKeyStr)
-		console.Infof("Address: %s", hex.EncodeToString(addressBytes()))
-	}
-	return setPrivateKeyCmd
-}
-
-func mustDecodePrivateKey(pkStr string) {
-	var err error
-	privateKey, err = hex.DecodeString(pkStr)
-	console.NoError(err)
-
-	if len(privateKey) != ed25519.PrivateKeySize {
-		console.Fatalf("wrong private key size")
-	}
-}
-
-func addressBytes() []byte {
-	publicKey := privateKey.Public().(ed25519.PublicKey)
-	address := blake2b.Sum256(publicKey)
-	return address[:]
 }
 
 func runSetKeyCommand(_ *cobra.Command, args []string) {
@@ -58,19 +31,23 @@ func runSetKeyCommand(_ *cobra.Command, args []string) {
 		console.Fatalf("error: config profile not set")
 	}
 
-	if len(privateKey) != 0 {
+	if GetPrivateKey() != nil {
 		if !console.YesNoPrompt("Are you sure you want to replace current private key? (y/N):", false) {
 			os.Exit(1)
 		}
 	}
 
+	var privateKey ed25519.PrivateKey
 	if len(args) == 1 {
-		mustDecodePrivateKey(args[1])
+		privateKey = decodePrivateKey(args[0])
+		if len(privateKey) == 0 {
+			console.Fatalf("wrong private key")
+		}
 	} else {
 		console.Infof("Private key will be generated")
 		console.Printf("Enter random seed (minimum %d characters): ", minimumSeedLength)
 		userSeed, err := terminal.ReadPassword(syscall.Stdin)
-		cobra.CheckErr(err)
+		console.NoError(err)
 
 		if len(userSeed) < minimumSeedLength {
 			cobra.CheckErr(fmt.Errorf("must be at least %d characters of the seed", minimumSeedLength))
@@ -86,7 +63,34 @@ func runSetKeyCommand(_ *cobra.Command, args []string) {
 		seed := blake2b.Sum256(common.Concat(userSeed, osSeed[:]))
 		privateKey = ed25519.NewKeyFromSeed(seed[:])
 	}
-
 	_set("private_key", hex.EncodeToString(privateKey))
-	console.Infof("Private key has been generated. ED25519 address is: %s", hex.EncodeToString(addressBytes()))
+	console.Infof("Private key has been generated. ED25519 address is: %s", hex.EncodeToString(AddressBytes()))
+}
+
+func decodePrivateKey(pkstr string) ed25519.PrivateKey {
+	privateKey, err := hex.DecodeString(pkstr)
+	console.NoError(err)
+
+	if len(privateKey) != ed25519.PrivateKeySize {
+		console.Fatalf("wrong private key size")
+	}
+	return privateKey
+}
+
+func GetPrivateKey() ed25519.PrivateKey {
+	privateKeyStr := viper.GetString("private_key")
+	if privateKeyStr == "" {
+		return nil
+	}
+	return decodePrivateKey(privateKeyStr)
+}
+
+func AddressBytes() []byte {
+	privateKey := GetPrivateKey()
+	if len(privateKey) == 0 {
+		return nil
+	}
+	publicKey := privateKey.Public().(ed25519.PublicKey)
+	address := blake2b.Sum256(publicKey)
+	return address[:]
 }
