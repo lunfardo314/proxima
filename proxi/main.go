@@ -4,12 +4,12 @@ Copyright © 2023 NAME HERE <EMAIL ADDRESS>
 package main
 
 import (
-	"encoding/hex"
 	"fmt"
 	"os"
 
 	"github.com/lunfardo314/proxima/proxi/console"
 	"github.com/lunfardo314/proxima/proxi/genesis_cmd"
+	"github.com/lunfardo314/proxima/proxi/info_cmd"
 	"github.com/lunfardo314/proxima/proxi/setup"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -19,11 +19,12 @@ func init() {
 	initRoot()
 	console.Init(rootCmd)
 	setup.Init(rootCmd)
-	genesis_cmd.InitGenesisCmd(rootCmd)
+	genesis_cmd.Init(rootCmd)
+	info_cmd.Init(rootCmd)
 }
 
 var (
-	configFile    string
+	configName    string
 	privateKeyStr string
 )
 
@@ -45,16 +46,17 @@ It provides:
 
 // initConfig reads in config file and ENV variables if set.
 func initConfig() {
-	if configFile != "" {
-		// Use config file from the flag.
-		viper.SetConfigName(configFile)
-	} else {
-		viper.AddConfigPath(".")
-		viper.SetConfigName(".proxi")
-		viper.SetConfigType("yaml")
+	if configName == "" {
+		configName = "proxi"
 	}
+	viper.AddConfigPath(".")
+	viper.SetConfigType("yaml")
+	viper.SetConfigName(configName)
+	viper.SetConfigFile("./" + configName + ".yaml")
 
 	viper.AutomaticEnv() // read in environment variables that match
+
+	_, _ = fmt.Fprintf(os.Stderr, "Config profile: %s\n", viper.ConfigFileUsed())
 
 	if err := viper.ReadInConfig(); err == nil {
 		_, _ = fmt.Fprintf(os.Stderr, "Using config profile: %s\n", viper.ConfigFileUsed())
@@ -72,19 +74,13 @@ It provides:
 `,
 		PersistentPreRun: func(cmd *cobra.Command, args []string) {
 			initConfig()
-
-			if addr := setup.AddressBytes(); len(addr) > 0 {
-				console.Infof("Private key corresponds to address %s", hex.EncodeToString(addr))
-			} else {
-				console.Infof("Private key not set")
-			}
 		},
 		Run: func(cmd *cobra.Command, args []string) {
 			_ = cmd.Help()
 		},
 	}
 
-	rootCmd.PersistentFlags().StringVarP(&configFile, "config", "c", "", "config file (default is .proxi.yaml)")
+	rootCmd.PersistentFlags().StringVarP(&configName, "config", "c", "", "config file (default is .proxi.yaml)")
 	rootCmd.PersistentFlags().StringVar(&privateKeyStr, "private_key", "", "an ED25519 private key in hexadecimal")
 	err := viper.BindPFlag("private_key", rootCmd.PersistentFlags().Lookup("private_key"))
 	console.NoError(err)

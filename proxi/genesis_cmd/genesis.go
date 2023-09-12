@@ -7,6 +7,7 @@ import (
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/genesis"
 	"github.com/lunfardo314/proxima/proxi/console"
+	"github.com/lunfardo314/proxima/proxi/setup"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/spf13/cobra"
 )
@@ -17,7 +18,7 @@ var (
 	nowis       time.Time
 )
 
-func InitGenesisCmd(rootCmd *cobra.Command) {
+func Init(rootCmd *cobra.Command) {
 	genesisCmd := &cobra.Command{
 		Use:   "genesis <dbname> [--supply <supply>] [--desc 'description']",
 		Short: "create genesis ledger state database and transaction store database",
@@ -33,6 +34,10 @@ func InitGenesisCmd(rootCmd *cobra.Command) {
 }
 
 func runGenesis(_ *cobra.Command, args []string) {
+	address := setup.AddressBytes()
+	if len(address) == 0 {
+		console.Fatalf("private key not set. Use 'proxi setpk'")
+	}
 	console.Infof("Creating genesis ledger state...")
 	console.Infof("Multi-state database : %s", args[0])
 	console.Infof("Transaction store database : %s", args[0]+".txstore")

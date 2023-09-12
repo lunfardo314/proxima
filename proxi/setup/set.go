@@ -8,7 +8,7 @@ import (
 
 func initConfigSetCmd() *cobra.Command {
 	setConfigCmd := &cobra.Command{
-		Use:   "set <key> <value>",
+		Use:   "set <key> <value> [-c <config name>]",
 		Short: "Set a configuration value",
 		Args:  cobra.ExactArgs(2),
 		Run:   runConfigSetCmd,

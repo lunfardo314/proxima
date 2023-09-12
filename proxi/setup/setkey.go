@@ -18,7 +18,7 @@ import (
 
 func initSetKeyCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:     "set_private_key [<key>]",
+		Use:     "set_private_key [<key>] [-c <config name>]",
 		Aliases: []string{"setpk"},
 		Short:   "Set a private key",
 		Args:    cobra.MaximumNArgs(1),
@@ -93,4 +93,12 @@ func AddressBytes() []byte {
 	publicKey := privateKey.Public().(ed25519.PublicKey)
 	address := blake2b.Sum256(publicKey)
 	return address[:]
+}
+
+func AddressHex() string {
+	addr := AddressBytes()
+	if len(addr) == 0 {
+		return "(unknown)"
+	}
+	return hex.EncodeToString(addr)
 }
