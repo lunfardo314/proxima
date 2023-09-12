@@ -9,17 +9,17 @@ import (
 	"os"
 
 	"github.com/lunfardo314/proxima/proxi/console"
+	"github.com/lunfardo314/proxima/proxi/genesis_cmd"
 	"github.com/lunfardo314/proxima/proxi/setup"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
 
 func init() {
-	//cobra.OnInitialize(initConfig)
-
 	initRoot()
 	console.Init(rootCmd)
 	setup.Init(rootCmd)
+	genesis_cmd.InitGenesisCmd(rootCmd)
 }
 
 var (
