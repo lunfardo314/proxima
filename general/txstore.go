@@ -6,11 +6,19 @@ import (
 	"github.com/lunfardo314/unitrie/common"
 )
 
-type SimpleTransactionStore struct {
+type SimpleTxByteStore struct {
 	s common.KVStore
 }
 
-func (s SimpleTransactionStore) SaveTxBytes(txBytes []byte) error {
+type DummyTxByteStore struct {
+	s common.KVStore
+}
+
+func NewSimpleTxByteStore(store common.KVStore) SimpleTxByteStore {
+	return SimpleTxByteStore{store}
+}
+
+func (s SimpleTxByteStore) SaveTxBytes(txBytes []byte) error {
 	txid, _, err := transaction.IDAndTimestampFromTransactionBytes(txBytes)
 	if err != nil {
 		return err
@@ -19,10 +27,18 @@ func (s SimpleTransactionStore) SaveTxBytes(txBytes []byte) error {
 	return nil
 }
 
-func (s SimpleTransactionStore) GetTxBytes(txid *core.TransactionID) []byte {
+func (s SimpleTxByteStore) GetTxBytes(txid *core.TransactionID) []byte {
 	return s.s.Get(txid[:])
 }
 
-func NewSimpleTransactionStore(store common.KVStore) SimpleTransactionStore {
-	return SimpleTransactionStore{store}
+func NewDummyTxByteStore(store common.KVStore) DummyTxByteStore {
+	return DummyTxByteStore{}
+}
+
+func (d DummyTxByteStore) SaveTxBytes(_ []byte) error {
+	return nil
+}
+
+func (d DummyTxByteStore) GetTxBytes(id *core.TransactionID) []byte {
+	return nil
 }
