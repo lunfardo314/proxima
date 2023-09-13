@@ -3,6 +3,7 @@ package transaction
 import (
 	"bytes"
 	"encoding/hex"
+	"os"
 
 	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/proxima/core"
@@ -20,6 +21,20 @@ func StoreTransactionBytes(txBytes []byte, store common.KVWriter) error {
 	}
 	store.Set(txID[:], txBytes)
 	return nil
+}
+
+func SaveTransactionAsFile(txBytes []byte, fname ...string) error {
+	var fn string
+	if len(fname) > 0 {
+		fn = fname[0]
+	} else {
+		txID, _, err := IDAndTimestampFromTransactionBytes(txBytes)
+		if err != nil {
+			return err
+		}
+		fn = txID.AsFileName()
+	}
+	return os.WriteFile(fn, txBytes, 0644)
 }
 
 func (ctx *TransactionContext) String() string {

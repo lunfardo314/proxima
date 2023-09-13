@@ -108,21 +108,43 @@ func timestampPrefixString(ts LogicalTime, seqMilestoneFlag, branchFlag bool, sh
 		s = ""
 	}
 	if len(shortTimeSlot) > 0 && shortTimeSlot[0] {
-		return fmt.Sprintf("[%s%s]", ts.Short(), s)
+		return fmt.Sprintf("%s%s", ts.Short(), s)
 	}
-	return fmt.Sprintf("[%s%s]", ts.String(), s)
+	return fmt.Sprintf("%s%s", ts.String(), s)
+}
+
+func timestampPrefixStringAsFileName(ts LogicalTime, seqMilestoneFlag, branchFlag bool, shortTimeSlot ...bool) string {
+	var s string
+	switch {
+	case seqMilestoneFlag && branchFlag:
+		s = "br"
+	case seqMilestoneFlag && !branchFlag:
+		s = "sq"
+	case !seqMilestoneFlag && branchFlag:
+		s = "??"
+	case !seqMilestoneFlag && !branchFlag:
+		s = ""
+	}
+	if len(shortTimeSlot) > 0 && shortTimeSlot[0] {
+		return fmt.Sprintf("%s%s", ts.AsFileName(), s)
+	}
+	return fmt.Sprintf("%s%s", ts.AsFileName(), s)
 }
 
 func TransactionIDString(ts LogicalTime, txHash TransactionHash, sequencerFlag, branchFlag bool) string {
-	return fmt.Sprintf("%s%s", timestampPrefixString(ts, sequencerFlag, branchFlag), hex.EncodeToString(txHash[:]))
+	return fmt.Sprintf("[%s]%s", timestampPrefixString(ts, sequencerFlag, branchFlag), hex.EncodeToString(txHash[:]))
 }
 
 func TransactionIDShort(ts LogicalTime, txHash TransactionHash, sequencerFlag, branchFlag bool) string {
-	return fmt.Sprintf("%s%s..", timestampPrefixString(ts, sequencerFlag, branchFlag), hex.EncodeToString(txHash[:3]))
+	return fmt.Sprintf("[%s]%s..", timestampPrefixString(ts, sequencerFlag, branchFlag), hex.EncodeToString(txHash[:3]))
 }
 
 func TransactionIDVeryShort(ts LogicalTime, txHash TransactionHash, sequencerFlag, branchFlag bool) string {
-	return fmt.Sprintf("%s%s..", timestampPrefixString(ts, sequencerFlag, branchFlag, true), hex.EncodeToString(txHash[:3]))
+	return fmt.Sprintf("[%s]%s..", timestampPrefixString(ts, sequencerFlag, branchFlag, true), hex.EncodeToString(txHash[:3]))
+}
+
+func TransactionIDAsFileName(ts LogicalTime, txHash TransactionHash, sequencerFlag, branchFlag bool) string {
+	return fmt.Sprintf("%s_%s.tx", timestampPrefixStringAsFileName(ts, sequencerFlag, branchFlag), hex.EncodeToString(txHash[:]))
 }
 
 func (txid *TransactionID) String() string {
@@ -135,6 +157,10 @@ func (txid *TransactionID) Short() string {
 
 func (txid *TransactionID) VeryShort() string {
 	return TransactionIDVeryShort(txid.Timestamp(), txid.TransactionHash(), txid.SequencerFlagON(), txid.BranchFlagON())
+}
+
+func (txid *TransactionID) AsFileName() string {
+	return TransactionIDAsFileName(txid.Timestamp(), txid.TransactionHash(), txid.SequencerFlagON(), txid.BranchFlagON())
 }
 
 func NewOutputID(id *TransactionID, idx byte) (ret OutputID) {

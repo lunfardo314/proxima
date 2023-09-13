@@ -110,11 +110,29 @@ func DistributeInitialSupply(stateStore general.StateStore, originPrivateKey ed2
 	return ret, nil
 }
 
-func MustDistributeInitialSupply(stateStore general.StateStore, originPrivateKey ed25519.PrivateKey, genesisDistribution []txbuilder.LockBalance) []byte {
+// ScanGenesisState TODO more checks
+func ScanGenesisState(stateStore general.StateStore) (*StateIdentityData, common.VCommitment, error) {
 	branchData := multistate.FetchBranchData(stateStore)
-	util.Assertf(len(branchData) == 1, "not a genesis state: expected to find exactly 1 branch")
+	if len(branchData) != 1 {
+		return nil, nil, fmt.Errorf("ScanGenesisState: exactly 1 branch expected. Not a genesis state")
+	}
 	rdr := multistate.MustNewSugaredReadableState(stateStore, branchData[0].Root)
 	stateID := MustStateIdentityDataFromBytes(rdr.StateIdentityBytes())
+
+	genesisOid := InitialSupplyOutputID(stateID.GenesisTimeSlot)
+	out, err := rdr.GetOutput(&genesisOid)
+	if err != nil {
+		return nil, nil, err
+	}
+	if out.Amount() != stateID.InitialSupply {
+		return nil, nil, fmt.Errorf("different amounts in genesis output and state identity")
+	}
+	return stateID, branchData[0].Root, nil
+}
+
+func MustDistributeInitialSupply(stateStore general.StateStore, originPrivateKey ed25519.PrivateKey, genesisDistribution []txbuilder.LockBalance) []byte {
+	stateID, genesisRoot, err := ScanGenesisState(stateStore)
+	util.AssertNoError(err)
 
 	originPublicKey := originPrivateKey.Public().(ed25519.PublicKey)
 	util.Assertf(originPublicKey.Equal(stateID.GenesisControllerPublicKey), "private and public keys does not match")
@@ -134,6 +152,8 @@ func MustDistributeInitialSupply(stateStore general.StateStore, originPrivateKey
 				WithLock(genesisDistribution[i].Lock)
 		})
 	}
+
+	rdr := multistate.MustNewSugaredReadableState(stateStore, genesisRoot)
 
 	genesisStem := rdr.GetStemOutput()
 	bootstrapChainID := stateID.OriginChainID()
@@ -167,7 +187,7 @@ func MustDistributeInitialSupply(stateStore general.StateStore, originPrivateKey
 	util.Assertf(nextStem != nil, "nextStem != nil")
 	cmds := tx.UpdateCommands()
 
-	updatableOrigin := multistate.MustNewUpdatable(stateStore, branchData[0].Root)
+	updatableOrigin := multistate.MustNewUpdatable(stateStore, genesisRoot)
 	updatableOrigin.MustUpdateWithCommands(cmds, &nextStem.ID, &bootstrapChainID)
 
 	return txBytes

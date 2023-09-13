@@ -245,6 +245,10 @@ func (t LogicalTime) String() string {
 	return fmt.Sprintf("%d|%d", t.TimeSlot(), t.TimeTick())
 }
 
+func (t LogicalTime) AsFileName() string {
+	return fmt.Sprintf("%d_%d", t.TimeSlot(), t.TimeTick())
+}
+
 func (t LogicalTime) Short() string {
 	e := t.TimeSlot() % 1000
 	return fmt.Sprintf(".%d|%d", e, t.TimeTick())

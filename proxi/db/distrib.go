@@ -1,7 +1,6 @@
 package db
 
 import (
-	"os"
 	"strconv"
 
 	"github.com/dgraph-io/badger/v4"
@@ -45,37 +44,54 @@ func runDBDistributeCmd(_ *cobra.Command, args []string) {
 		console.Assertf(err == nil, "%v in argument %d", err, i)
 	}
 
-	console.Infof("Check distribution list:")
+	stateStore := badger_adaptor.New(stateDb)
+	stateID, _, err := genesis.ScanGenesisState(stateStore)
+	console.NoError(err)
+
+	console.Infof("Re-check the distribution list:")
+	totalToDistribute := uint64(0)
 	for i := range distribution {
 		console.Infof("%s -> %s", util.GoThousands(distribution[i].Balance), distribution[i].Lock.String())
+		console.Assertf(stateID.InitialSupply-distribution[i].Balance > totalToDistribute, "wrong distribution sum")
+		totalToDistribute += distribution[i].Balance
 	}
+	console.Infof("Total to distribute: %s", util.GoThousands(totalToDistribute))
+	console.Infof("Total initial supply: %s", util.GoThousands(stateID.InitialSupply))
+	console.Infof("Will remain on origin account: %s", util.GoThousands(stateID.InitialSupply-totalToDistribute))
 
 	if !console.YesNoPrompt("Continue?", false) {
+		console.Infof("Exit. Genesis state hasn't been modified")
 		return
 	}
 
-	stateStore := badger_adaptor.New(stateDb)
-	config.GetPrivateKey()
 	txBytes, err := genesis.DistributeInitialSupply(stateStore, config.GetPrivateKey(), distribution)
 	console.NoError(err)
 
-	txStoreDb := GetTxStoreName()
+	txID, _, err := transaction.IDAndTimestampFromTransactionBytes(txBytes)
+	console.NoError(err)
+
+	console.Infof("Distribution transaction ID: %s", txID.String())
+	fname := txID.AsFileName()
+	console.Infof("Saving distribution transaction to the file '%s'", fname)
+	err = transaction.SaveTransactionAsFile(txBytes, fname)
+	console.NoError(err)
+
+	txDBName := GetTxStoreName()
+	console.Infof("Storing transaction into DB '%s'...", txDBName)
+
 	var txDB *badger.DB
 	err = util.CatchPanicOrError(func() error {
-		txDB = badger_adaptor.MustCreateOrOpenBadgerDB(txStoreDb)
+		txDB = badger_adaptor.MustCreateOrOpenBadgerDB(txDBName)
 		return nil
 	})
 
-	// TODO
 	if err != nil {
 		console.Infof("Warning: can't open tx store DB due to error '%v'", err)
-		console.Infof("Saving distribution transaction to the file 'distribution.tx'")
-		err = os.WriteFile("distribution.tx", txBytes, 0644)
-		console.NoError(err)
 		return
 	}
 	defer txDB.Close()
 
 	err = transaction.StoreTransactionBytes(txBytes, badger_adaptor.New(txDB))
 	console.NoError(err)
+	console.Infof("Success")
 }
