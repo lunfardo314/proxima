@@ -29,4 +29,9 @@ type (
 		common.BatchedUpdatable
 		common.Traversable
 	}
+
+	TransactionStore interface {
+		SaveTxBytes([]byte) error
+		GetTxBytes(id *core.TransactionID) []byte // returns empty slice on absence
+	}
 )
