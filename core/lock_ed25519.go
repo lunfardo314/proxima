@@ -34,10 +34,12 @@ func AddressED25519FromBytes(data []byte) (AddressED25519, error) {
 	return addrBin, nil
 }
 
-func MustAddressED25519FromBytes(data []byte) AddressED25519 {
-	ret, err := AddressED25519FromBytes(data)
-	util.AssertNoError(err)
-	return ret
+func AddressED25519FromSource(src string) (AddressED25519, error) {
+	bin, err := binFromSource(src)
+	if err != nil {
+		return nil, err
+	}
+	return AddressED25519FromBytes(bin)
 }
 
 func AddressED25519FromPublicKey(pubKey ed25519.PublicKey) AddressED25519 {

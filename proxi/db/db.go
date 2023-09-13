@@ -1,4 +1,4 @@
-package db_cmd
+package db
 
 import (
 	"github.com/lunfardo314/proxima/proxi/console"
@@ -32,16 +32,17 @@ func Init(rootCmd *cobra.Command) {
 	dbCmd.InitDefaultHelpCmd()
 	initDBInfoCmd(dbCmd)
 	initDBTreeCmd(dbCmd)
+	initDBDistributeCmd(dbCmd)
 
 	rootCmd.AddCommand(dbCmd)
 }
 
 func displayDBNames() {
-	console.Infof("Multi-state store DB: '%s'", GetStateStoreName())
+	console.Infof("Multi-state store DB: '%s'", GetMultiStateStoreName())
 	console.Infof("Transaction store DB: '%s'", GetTxStoreName())
 }
 
-func GetStateStoreName() string {
+func GetMultiStateStoreName() string {
 	ret := viper.GetString("state_db")
 	if ret == "" {
 		ret = "(not set)"

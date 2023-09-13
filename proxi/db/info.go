@@ -1,4 +1,4 @@
-package db_cmd
+package db
 
 import (
 	"bytes"
@@ -26,7 +26,7 @@ func runDbInfoCmd(_ *cobra.Command, _ []string) {
 	console.Infof("---------------- multi-state DB info ------------------")
 	displayDBNames()
 
-	dbName := GetStateStoreName()
+	dbName := GetMultiStateStoreName()
 	if dbName == "(not set)" {
 		return
 	}

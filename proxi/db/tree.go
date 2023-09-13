@@ -1,4 +1,4 @@
-package db_cmd
+package db
 
 import (
 	"github.com/lunfardo314/proxima/utangle"
@@ -22,7 +22,7 @@ func initDBTreeCmd(dbCmd *cobra.Command) {
 }
 
 func runDbTreeCmd(_ *cobra.Command, _ []string) {
-	dbName := GetStateStoreName()
+	dbName := GetMultiStateStoreName()
 	if dbName == "(not set)" {
 		return
 	}

@@ -74,9 +74,14 @@ func parserByPrefix(prefix []byte) (Parser, bool) {
 }
 
 func mustBinFromSource(src string) []byte {
-	_, _, binCode, err := easyfl.CompileExpression(src)
+	ret, err := binFromSource(src)
 	util.AssertNoError(err)
-	return binCode
+	return ret
+}
+
+func binFromSource(src string) ([]byte, error) {
+	_, _, binCode, err := easyfl.CompileExpression(src)
+	return binCode, err
 }
 
 func EqualConstraints(l1, l2 Constraint) bool {

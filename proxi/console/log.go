@@ -50,6 +50,12 @@ func NoError(err error) {
 	}
 }
 
+func Assertf(cond bool, format string, args ...any) {
+	if !cond {
+		Fatalf(format, args...)
+	}
+}
+
 func YesNoPrompt(label string, def bool) bool {
 	choices := "Y/n"
 	if !def {
