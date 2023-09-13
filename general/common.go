@@ -30,7 +30,7 @@ type (
 		common.Traversable
 	}
 
-	TransactionStore interface {
+	TxByteStore interface {
 		SaveTxBytes([]byte) error
 		GetTxBytes(id *core.TransactionID) []byte // returns empty slice on absence
 	}
