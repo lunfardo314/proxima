@@ -13,7 +13,7 @@ const (
 	InitSupply = genesis.DefaultSupply
 )
 
-func GenesisParamsWithPreDistribution(n int, initBalance uint64, slot ...core.TimeSlot) ([]txbuilder.LockBalance, []ed25519.PrivateKey, []core.AddressED25519) {
+func GenesisParamsWithPreDistribution(n int, initBalance uint64) ([]txbuilder.LockBalance, []ed25519.PrivateKey, []core.AddressED25519) {
 	privateKeys := testutil.GetTestingPrivateKeys(n)
 	addresses := core.AddressesED25519FromPrivateKeys(privateKeys)
 	distrib := make([]txbuilder.LockBalance, len(addresses))

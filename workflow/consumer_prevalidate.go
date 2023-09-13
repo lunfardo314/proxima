@@ -85,6 +85,7 @@ func (c *PreValidateConsumer) consume(inp *PreValidateConsumerInputData) {
 	// - immediately if timestamp is in the past
 	// - with delay if timestamp is in the future
 	txTime := inp.Tx.TimestampTime()
+
 	if txTime.Before(nowis) {
 		// timestamp is in the past, pass it to the solidifier
 		c.Debugf(inp.PrimaryInputConsumerData, "->"+c.glb.solidifyConsumer.Name())

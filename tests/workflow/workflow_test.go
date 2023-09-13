@@ -44,8 +44,8 @@ func initWorkflowTest(t *testing.T, nDistribution int, nowis core.LogicalTime, d
 	core.SetTimeTickDuration(10 * time.Millisecond)
 	t.Logf("nowis timestamp: %s", nowis.String())
 	genesisPrivKey := testutil.GetTestingPrivateKey()
-	par := *genesis.DefaultIdentityData(genesisPrivKey)
-	distrib, privKeys, addrs := inittest.GenesisParamsWithPreDistribution(nDistribution, initDistributedBalance, nowis.TimeSlot())
+	par := *genesis.DefaultIdentityData(genesisPrivKey, nowis.TimeSlot())
+	distrib, privKeys, addrs := inittest.GenesisParamsWithPreDistribution(nDistribution, initDistributedBalance)
 	ret := &workflowTestData{
 		initLedgerStatePar:      par,
 		distributionPrivateKeys: privKeys,
@@ -473,21 +473,21 @@ type multiChainTestData struct {
 
 const onChainAmount = 10_000
 
-func initMultiChainTest(t *testing.T, nChains int, printTx bool, timeSlot ...core.TimeSlot) *multiChainTestData {
+func initMultiChainTest(t *testing.T, nChains int, printTx bool, secondsInThePast int) *multiChainTestData {
 	core.SetTimeTickDuration(10 * time.Millisecond)
+	nowisTs := core.LogicalTimeFromTime(time.Now().Add(time.Duration(-secondsInThePast) * time.Second))
+
 	t.Logf("initMultiChainTest: now is: %s, %v", core.LogicalTimeNow().String(), time.Now())
 	t.Logf("time tick duration is %v", core.TimeTickDuration())
+	t.Logf("initMultiChainTest: timeSlot now is assumed: %d, %v", nowisTs.TimeSlot(), core.MustNewLogicalTime(nowisTs.TimeSlot(), 0).Time())
 
-	if len(timeSlot) > 0 {
-		t.Logf("initMultiChainTest: timeSlot now is assumed: %d, %v", timeSlot[0], core.MustNewLogicalTime(timeSlot[0], 0).Time())
-	}
 	ret := &multiChainTestData{t: t}
 	var privKeys []ed25519.PrivateKey
 	var addrs []core.AddressED25519
 
 	genesisPrivKey := testutil.GetTestingPrivateKey()
-	ret.sPar = *genesis.DefaultIdentityData(genesisPrivKey)
-	distrib, privKeys, addrs := inittest.GenesisParamsWithPreDistribution(2, onChainAmount*uint64(nChains), timeSlot...)
+	ret.sPar = *genesis.DefaultIdentityData(genesisPrivKey, nowisTs.TimeSlot())
+	distrib, privKeys, addrs := inittest.GenesisParamsWithPreDistribution(2, onChainAmount*uint64(nChains))
 	ret.privKey = privKeys[0]
 	ret.addr = addrs[0]
 	ret.faucetPrivKey = privKeys[1]
@@ -1011,12 +1011,11 @@ func TestMultiChainWorkflow(t *testing.T) {
 	t.Run("one chain past time", func(t *testing.T) {
 		const (
 			nChains              = 1
-			howLong              = 50
+			howLong              = 100
 			chainPaceInTimeTicks = 23
 			printBranchTx        = false
 		)
-		nowisTs := core.LogicalTimeFromTime(time.Now().Add(-60 * time.Second))
-		r := initMultiChainTest(t, nChains, false, nowisTs.TimeSlot())
+		r := initMultiChainTest(t, nChains, false, 60)
 		txBytesSeq := r.createSequencerChain1(0, chainPaceInTimeTicks, true, func(i int, tx *transaction.Transaction) bool {
 			return i == howLong
 		})
@@ -1074,7 +1073,7 @@ func TestMultiChainWorkflow(t *testing.T) {
 			chainPaceInTimeSlots = 23
 			printBranchTx        = false
 		)
-		r := initMultiChainTest(t, nChains, false)
+		r := initMultiChainTest(t, nChains, false, 0)
 		txBytesSeq := r.createSequencerChain1(0, chainPaceInTimeSlots, true, func(i int, tx *transaction.Transaction) bool {
 			return i == howLong
 		})
@@ -1123,7 +1122,7 @@ func TestMultiChainWorkflow(t *testing.T) {
 			chainPaceInTimeSlots = 13
 			printBranchTx        = false
 		)
-		r := initMultiChainTest(t, nChains, false)
+		r := initMultiChainTest(t, nChains, false, 0)
 
 		txBytesSeq := make([][][]byte, nChains)
 		for i := range txBytesSeq {
@@ -1186,8 +1185,7 @@ func TestMultiChainWorkflow(t *testing.T) {
 			chainPaceInTimeSlots = 13
 			printBranchTx        = false
 		)
-		nowisTs := core.LogicalTimeFromTime(time.Now().Add(-60 * time.Second))
-		r := initMultiChainTest(t, nChains, false, nowisTs.TimeSlot())
+		r := initMultiChainTest(t, nChains, false, 60)
 
 		txBytesSeq := make([][][]byte, nChains)
 		for i := range txBytesSeq {
@@ -1254,10 +1252,9 @@ func TestMultiChainWorkflow(t *testing.T) {
 		)
 		var r *multiChainTestData
 		if realTime {
-			r = initMultiChainTest(t, nChains, false)
+			r = initMultiChainTest(t, nChains, false, 0)
 		} else {
-			nowisTs := core.LogicalTimeFromTime(time.Now().Add(-60 * time.Second))
-			r = initMultiChainTest(t, nChains, false, nowisTs.TimeSlot())
+			r = initMultiChainTest(t, nChains, false, 60)
 		}
 
 		dbg := workflow.DebugConfig{
@@ -1359,10 +1356,9 @@ func TestMultiChainWorkflow(t *testing.T) {
 		)
 		var r *multiChainTestData
 		if realTime {
-			r = initMultiChainTest(t, nChains, false)
+			r = initMultiChainTest(t, nChains, false, 0)
 		} else {
-			nowisTs := core.LogicalTimeFromTime(time.Now().Add(-60 * time.Second))
-			r = initMultiChainTest(t, nChains, false, nowisTs.TimeSlot())
+			r = initMultiChainTest(t, nChains, false, 60)
 		}
 
 		dbg := workflow.DebugConfig{
@@ -1416,10 +1412,9 @@ func TestMultiChainWorkflow(t *testing.T) {
 		)
 		var r *multiChainTestData
 		if realTime {
-			r = initMultiChainTest(t, nChains, false)
+			r = initMultiChainTest(t, nChains, false, 0)
 		} else {
-			nowisTs := core.LogicalTimeFromTime(time.Now().Add(-60 * time.Second))
-			r = initMultiChainTest(t, nChains, false, nowisTs.TimeSlot())
+			r = initMultiChainTest(t, nChains, false, 60)
 		}
 
 		dbg := workflow.DebugConfig{
@@ -1473,10 +1468,9 @@ func TestMultiChainWorkflow(t *testing.T) {
 		)
 		var r *multiChainTestData
 		if realTime {
-			r = initMultiChainTest(t, nChains, false)
+			r = initMultiChainTest(t, nChains, false, 0)
 		} else {
-			nowisTs := core.LogicalTimeFromTime(time.Now().Add(-60 * time.Second))
-			r = initMultiChainTest(t, nChains, false, nowisTs.TimeSlot())
+			r = initMultiChainTest(t, nChains, false, 60)
 		}
 
 		dbg := workflow.DebugConfig{
