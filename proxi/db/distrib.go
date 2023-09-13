@@ -1,10 +1,15 @@
 package db
 
 import (
+	"os"
 	"strconv"
 
+	"github.com/dgraph-io/badger/v4"
 	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/genesis"
+	"github.com/lunfardo314/proxima/proxi/config"
 	"github.com/lunfardo314/proxima/proxi/console"
+	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/txbuilder"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/unitrie/adaptors/badger_adaptor"
@@ -48,8 +53,29 @@ func runDBDistributeCmd(_ *cobra.Command, args []string) {
 	if !console.YesNoPrompt("Continue?", false) {
 		return
 	}
-	console.Infof("Checking genesis")
 
-	//stateStore := badger_adaptor.New(stateDb)
+	stateStore := badger_adaptor.New(stateDb)
+	config.GetPrivateKey()
+	txBytes, err := genesis.DistributeInitialSupply(stateStore, config.GetPrivateKey(), distribution)
+	console.NoError(err)
 
+	txStoreDb := GetTxStoreName()
+	var txDB *badger.DB
+	err = util.CatchPanicOrError(func() error {
+		txDB = badger_adaptor.MustCreateOrOpenBadgerDB(txStoreDb)
+		return nil
+	})
+
+	// TODO
+	if err != nil {
+		console.Infof("Warning: can't open tx store DB due to error '%v'", err)
+		console.Infof("Saving distribution transaction to the file 'distribution.tx'")
+		err = os.WriteFile("distribution.tx", txBytes, 0644)
+		console.NoError(err)
+		return
+	}
+	defer txDB.Close()
+
+	err = transaction.StoreTransactionBytes(txBytes, badger_adaptor.New(txDB))
+	console.NoError(err)
 }

@@ -98,18 +98,19 @@ const (
 // adding initial distribution transaction.
 // Distribution transaction is a branch transaction in the slot next after the genesis.
 // Distribution parameter is added to the transaction store
-func DistributeInitialSupply(stateStore general.StateStore, originPrivateKey ed25519.PrivateKey, genesisDistribution []txbuilder.LockBalance, txBytesStore common.KVStore) error {
+func DistributeInitialSupply(stateStore general.StateStore, originPrivateKey ed25519.PrivateKey, genesisDistribution []txbuilder.LockBalance) ([]byte, error) {
+	var ret []byte
 	err := util.CatchPanicOrError(func() error {
-		MustDistributeInitialSupply(stateStore, originPrivateKey, genesisDistribution, txBytesStore)
+		ret = MustDistributeInitialSupply(stateStore, originPrivateKey, genesisDistribution)
 		return nil
 	})
 	if err != nil {
-		err = fmt.Errorf("DistributeInitialSupply: %v", err)
+		return nil, fmt.Errorf("DistributeInitialSupply: %v", err)
 	}
-	return err
+	return ret, nil
 }
 
-func MustDistributeInitialSupply(stateStore general.StateStore, originPrivateKey ed25519.PrivateKey, genesisDistribution []txbuilder.LockBalance, txBytesStore common.KVStore) {
+func MustDistributeInitialSupply(stateStore general.StateStore, originPrivateKey ed25519.PrivateKey, genesisDistribution []txbuilder.LockBalance) []byte {
 	branchData := multistate.FetchBranchData(stateStore)
 	util.Assertf(len(branchData) == 1, "not a genesis state: expected to find exactly 1 branch")
 	rdr := multistate.MustNewSugaredReadableState(stateStore, branchData[0].Root)
@@ -169,5 +170,5 @@ func MustDistributeInitialSupply(stateStore general.StateStore, originPrivateKey
 	updatableOrigin := multistate.MustNewUpdatable(stateStore, branchData[0].Root)
 	updatableOrigin.MustUpdateWithCommands(cmds, &nextStem.ID, &bootstrapChainID)
 
-	txBytesStore.Set(tx.ID()[:], txBytes)
+	return txBytes
 }

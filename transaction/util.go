@@ -9,8 +9,18 @@ import (
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lazyslice"
 	"github.com/lunfardo314/proxima/util/lines"
+	"github.com/lunfardo314/unitrie/common"
 	"golang.org/x/crypto/blake2b"
 )
+
+func StoreTransactionBytes(txBytes []byte, store common.KVWriter) error {
+	txID, _, err := IDAndTimestampFromTransactionBytes(txBytes)
+	if err != nil {
+		return err
+	}
+	store.Set(txID[:], txBytes)
+	return nil
+}
 
 func (ctx *TransactionContext) String() string {
 	return ctx.Lines().String()
