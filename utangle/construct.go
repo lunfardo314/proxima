@@ -22,7 +22,7 @@ type (
 	UTXOTangle struct {
 		mutex        sync.RWMutex
 		stateStore   general.StateStore
-		txBytesStore common.KVStore
+		txBytesStore general.TxBytesStore
 		vertices     map[core.TransactionID]*WrappedTx
 		branches     map[core.TimeSlot]map[*WrappedTx]branch
 
@@ -68,7 +68,7 @@ type (
 
 const TipSlots = 5
 
-func newUTXOTangle(stateStore general.StateStore, txBytesStore common.KVStore) *UTXOTangle {
+func newUTXOTangle(stateStore general.StateStore, txBytesStore general.TxBytesStore) *UTXOTangle {
 	return &UTXOTangle{
 		stateStore:   stateStore,
 		txBytesStore: txBytesStore,
@@ -89,7 +89,7 @@ func InitGenesisState(par genesis.StateIdentityData, stateStore general.StateSto
 	return genesisStateRoot, bootstrapSequencerID, genesisOutput, genesisStemOutput
 }
 
-func CreateGenesisUTXOTangle(par genesis.StateIdentityData, stateStore general.StateStore, txBytesStore common.KVStore) (*UTXOTangle, core.ChainID, common.VCommitment) {
+func CreateGenesisUTXOTangle(par genesis.StateIdentityData, stateStore general.StateStore, txBytesStore general.TxBytesStore) (*UTXOTangle, core.ChainID, common.VCommitment) {
 	genesisStateRoot, bootstrapSequencerID, genesisOutput, genesisStemOutput := InitGenesisState(par, stateStore)
 
 	// create virtual transaction for genesis outputs
@@ -110,7 +110,7 @@ func CreateGenesisUTXOTangle(par genesis.StateIdentityData, stateStore general.S
 	return ret, bootstrapSequencerID, genesisStateRoot
 }
 
-func CreateGenesisUTXOTangleWithDistribution(par genesis.StateIdentityData, originPrivateKey ed25519.PrivateKey, genesisDistribution []txbuilder.LockBalance, stateStore general.StateStore, txBytesStore common.KVStore) (*UTXOTangle, core.ChainID, core.TransactionID) {
+func CreateGenesisUTXOTangleWithDistribution(par genesis.StateIdentityData, originPrivateKey ed25519.PrivateKey, genesisDistribution []txbuilder.LockBalance, stateStore general.StateStore, txBytesStore general.TxBytesStore) (*UTXOTangle, core.ChainID, core.TransactionID) {
 	pubKeyOrig := originPrivateKey.Public().(ed25519.PublicKey)
 	util.Assertf(pubKeyOrig.Equal(par.GenesisControllerPublicKey), "inconsistent parameters")
 
@@ -144,11 +144,6 @@ func CreateGenesisUTXOTangleWithDistribution(par genesis.StateIdentityData, orig
 	distributionTxVID, err := ret.AppendVertexFromTransactionBytes(distributionTxBytes)
 	util.AssertNoError(err)
 
-	// store distribution transaction
-	txBytesStore.Set(distributionTxVID.ID().Bytes(), distributionTxBytes)
-
-	//fmt.Printf("++ delta of distribution tx:\n%s\n", distributionTxVID.DeltaString())
-
 	stemBack = ret.HeaviestStemOutput()
 	util.Assertf(stemBack.ID.TimeSlot() == genesisStemOutput.ID.TimeSlot()+1, "stemBack.ID.TimeTick() == genesisStemOutput.ID.TimeTick()+1")
 	return ret, bootstrapSequencerID, *distributionTxVID.ID()
@@ -167,6 +162,12 @@ func (ut *UTXOTangle) addVertex(vids ...*WrappedTx) {
 		_, already := ut.vertices[*txid]
 		util.Assertf(!already, "addVertex: repeating transaction %s", txid.Short())
 		ut.vertices[*txid] = vid
+
+		// saving transaction bytes to the transaction store
+		vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
+			err := ut.txBytesStore.SaveTxBytes(v.Tx.Bytes())
+			util.AssertNoError(err)
+		}})
 	}
 	ut.numAddedVertices += len(vids)
 }

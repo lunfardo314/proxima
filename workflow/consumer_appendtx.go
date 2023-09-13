@@ -49,8 +49,6 @@ func (w *Workflow) initAppendTxConsumer() {
 }
 
 func (c *AppendTxConsumer) consume(inp *AppendTxConsumerInputData) {
-	// once validated, tx bytes are stored
-	c.glb.utxoTangle.TxBytesStore().Set(inp.Tx.ID()[:], inp.Tx.Bytes())
 	// append to the UTXO tangle
 	err := c.glb.utxoTangle.AppendVertex(inp.VID)
 	if err != nil {

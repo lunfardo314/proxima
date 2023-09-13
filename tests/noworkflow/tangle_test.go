@@ -12,6 +12,7 @@ import (
 	state "github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/txbuilder"
+	"github.com/lunfardo314/proxima/txstore"
 	"github.com/lunfardo314/proxima/utangle"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/testutil"
@@ -23,7 +24,7 @@ import (
 func TestOriginTangle(t *testing.T) {
 	t.Run("origin", func(t *testing.T) {
 		par := genesis.DefaultIdentityData(testutil.GetTestingPrivateKey())
-		tg, bootstrapChainID, root := utangle.CreateGenesisUTXOTangle(*par, common.NewInMemoryKVStore(), common.NewInMemoryKVStore())
+		tg, bootstrapChainID, root := utangle.CreateGenesisUTXOTangle(*par, common.NewInMemoryKVStore(), txstore.NewDummyTxBytesStore())
 		require.True(t, tg != nil)
 		t.Logf("bootstrap chain id: %s", bootstrapChainID.String())
 		t.Logf("genesis root: %s", root.String())
@@ -38,7 +39,7 @@ func TestOriginTangle(t *testing.T) {
 			{Lock: addr1, Balance: 1_000_000},
 			{Lock: addr2, Balance: 2_000_000},
 		}
-		ut, bootstrapChainID, distribTxID := utangle.CreateGenesisUTXOTangleWithDistribution(*par, privKey, distrib, common.NewInMemoryKVStore(), common.NewInMemoryKVStore())
+		ut, bootstrapChainID, distribTxID := utangle.CreateGenesisUTXOTangleWithDistribution(*par, privKey, distrib, common.NewInMemoryKVStore(), txstore.NewDummyTxBytesStore())
 		require.True(t, ut != nil)
 		t.Logf("bootstrap chain id: %s", bootstrapChainID.String())
 		t.Logf("genesis branch txid: %s", distribTxID.Short())
@@ -109,7 +110,7 @@ func initConflictTest(t *testing.T, nConflicts int, printTx bool) *conflictTestR
 		genesisPrivKey,
 		distrib,
 		common.NewInMemoryKVStore(),
-		common.NewInMemoryKVStore(),
+		txstore.NewDummyTxBytesStore(),
 	)
 	t.Logf("bootstrap chain id: %s", ret.bootstrapChainID.String())
 	t.Logf("origing branch txid: %s", ret.originBranchTxid.Short())
@@ -383,7 +384,7 @@ func initMultiChainTest(t *testing.T, nChains int, printTx bool, timeSlot ...cor
 		ret.pkController[i] = ret.privKey
 	}
 
-	ret.ut, ret.bootstrapChainID, ret.originBranchTxid = utangle.CreateGenesisUTXOTangleWithDistribution(ret.sPar, genesisPrivKey, distrib, common.NewInMemoryKVStore(), common.NewInMemoryKVStore())
+	ret.ut, ret.bootstrapChainID, ret.originBranchTxid = utangle.CreateGenesisUTXOTangleWithDistribution(ret.sPar, genesisPrivKey, distrib, common.NewInMemoryKVStore(), txstore.NewDummyTxBytesStore())
 	require.True(t, ret.ut != nil)
 	stateReader := ret.ut.HeaviestStateForLatestTimeSlot()
 

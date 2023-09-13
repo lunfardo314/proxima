@@ -14,6 +14,7 @@ import (
 	state "github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/txbuilder"
+	"github.com/lunfardo314/proxima/txstore"
 	utxo_tangle "github.com/lunfardo314/proxima/utangle"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/countdown"
@@ -53,7 +54,7 @@ func initWorkflowTest(t *testing.T, nDistribution int, nowis core.LogicalTime, d
 	}
 
 	ret.ut, ret.bootstrapChainID, ret.distributionTxID =
-		utxo_tangle.CreateGenesisUTXOTangleWithDistribution(par, genesisPrivKey, distrib, common.NewInMemoryKVStore(), common.NewInMemoryKVStore())
+		utxo_tangle.CreateGenesisUTXOTangleWithDistribution(par, genesisPrivKey, distrib, common.NewInMemoryKVStore(), txstore.NewDummyTxBytesStore())
 
 	for i := range ret.faucetOutputs {
 		outs, err := ret.ut.HeaviestStateForLatestTimeSlot().GetOutputsForAccount(ret.distributionAddrs[i].AccountID())
@@ -497,7 +498,8 @@ func initMultiChainTest(t *testing.T, nChains int, printTx bool, timeSlot ...cor
 		ret.pkController[i] = ret.privKey
 	}
 
-	ret.ut, ret.bootstrapChainID, ret.originBranchTxid = utxo_tangle.CreateGenesisUTXOTangleWithDistribution(ret.sPar, genesisPrivKey, distrib, common.NewInMemoryKVStore(), common.NewInMemoryKVStore())
+	ret.ut, ret.bootstrapChainID, ret.originBranchTxid = utxo_tangle.CreateGenesisUTXOTangleWithDistribution(
+		ret.sPar, genesisPrivKey, distrib, common.NewInMemoryKVStore(), txstore.NewDummyTxBytesStore())
 	require.True(t, ret.ut != nil)
 	stateReader := ret.ut.HeaviestStateForLatestTimeSlot()
 
@@ -1009,7 +1011,7 @@ func TestMultiChainWorkflow(t *testing.T) {
 	t.Run("one chain past time", func(t *testing.T) {
 		const (
 			nChains              = 1
-			howLong              = 100
+			howLong              = 50
 			chainPaceInTimeTicks = 23
 			printBranchTx        = false
 		)

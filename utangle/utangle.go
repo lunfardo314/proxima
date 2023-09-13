@@ -15,10 +15,6 @@ import (
 	"github.com/lunfardo314/unitrie/common"
 )
 
-func (ut *UTXOTangle) TxBytesStore() common.KVStore {
-	return ut.txBytesStore
-}
-
 func (ut *UTXOTangle) GetVertex(txid *core.TransactionID) (*WrappedTx, bool) {
 	ut.mutex.RLock()
 	defer ut.mutex.RUnlock()
