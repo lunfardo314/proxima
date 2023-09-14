@@ -38,10 +38,12 @@ func TestInitOrigin(t *testing.T) {
 	store := common.NewInMemoryKVStore()
 	bootstrapSeqID, genesisRoot := InitLedgerState(*id, store)
 
-	branches := multistate.FetchBranchDataOld(store)
-	require.EqualValues(t, 1, len(branches))
-	require.EqualValues(t, bootstrapSeqID, branches[0].SequencerID)
-	require.True(t, core.CommitmentModel.EqualCommitments(genesisRoot, branches[0].Root))
+	rootData := multistate.FetchAllRootRecords(store)
+	require.EqualValues(t, 1, len(rootData))
+
+	branchData := multistate.FetchBranchData(store, rootData[0])
+	require.EqualValues(t, bootstrapSeqID, branchData.SequencerID)
+	require.True(t, core.CommitmentModel.EqualCommitments(genesisRoot, branchData.Root))
 
 	rdr := multistate.MustNewSugaredReadableState(store, genesisRoot)
 

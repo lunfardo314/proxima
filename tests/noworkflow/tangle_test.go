@@ -362,17 +362,14 @@ type multiChainTestData struct {
 
 const onChainAmount = 10_000
 
-func initMultiChainTest(t *testing.T, nChains int, printTx bool, timeSlot ...core.TimeSlot) *multiChainTestData {
+func initMultiChainTest(t *testing.T, nChains int, printTx bool) *multiChainTestData {
 	t.Logf("initMultiChainTest: now is: %s, %v", core.LogicalTimeNow().String(), time.Now())
-	if len(timeSlot) > 0 {
-		t.Logf("initMultiChainTest: timeSlot now is assumed: %d, %v", timeSlot[0], core.MustNewLogicalTime(timeSlot[0], 0).Time())
-	}
 	ret := &multiChainTestData{t: t}
 	var privKeys []ed25519.PrivateKey
 	var addrs []core.AddressED25519
 
 	genesisPrivKey := testutil.GetTestingPrivateKey()
-	distrib, privKeys, addrs := inittest.GenesisParamsWithPreDistribution(2, onChainAmount*uint64(nChains), timeSlot...)
+	distrib, privKeys, addrs := inittest.GenesisParamsWithPreDistribution(2, onChainAmount*uint64(nChains))
 	ret.sPar = *genesis.DefaultIdentityData(genesisPrivKey)
 	ret.privKey = privKeys[0]
 	ret.addr = addrs[0]

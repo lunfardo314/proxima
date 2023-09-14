@@ -7,7 +7,6 @@ import (
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/general"
 	"github.com/lunfardo314/proxima/util"
-	"github.com/lunfardo314/proxima/util/set"
 	"github.com/lunfardo314/unitrie/common"
 	"github.com/lunfardo314/unitrie/immutable"
 )
@@ -347,6 +346,15 @@ func IterateRootRecords(store general.StateStore, fun func(stemOid core.OutputID
 	iterateRootRecordsOfParticularSlots(store, fun, optSlot)
 }
 
+func FetchAllRootRecords(store general.StateStore) []RootData {
+	ret := make([]RootData, 0)
+	IterateRootRecords(store, func(stemOid core.OutputID, rootData RootData) bool {
+		ret = append(ret, rootData)
+		return true
+	})
+	return ret
+}
+
 func FetchRootRecords(store general.StateStore, slots ...core.TimeSlot) []RootData {
 	if len(slots) == 0 {
 		return nil
@@ -374,70 +382,25 @@ func FetchBranchData(store general.StateStore, rootData RootData) BranchData {
 	}
 }
 
-// FetchBranchDataOld returns filtered and sorted by output ID list of branch data in the DB
-// Deprecated
-func FetchBranchDataOld(store general.StateStore, filter ...func(oid *core.OutputID, rootData *RootData) bool) []*BranchData {
-	filterFun := func(_ *core.OutputID, _ *RootData) bool { return true }
-	if len(filter) > 0 {
-		filterFun = filter[0]
+func FetchBranchDataMulti(store general.StateStore, rootData ...RootData) []*BranchData {
+	ret := make([]*BranchData, len(rootData))
+	for i, rd := range rootData {
+		bd := FetchBranchData(store, rd)
+		ret[i] = &bd
 	}
-
-	ret := make([]*BranchData, 0)
-	store.Iterator([]byte{rootRecordDBPartition}).Iterate(func(k, data []byte) bool {
-		oid, err := core.OutputIDFromBytes(k[1:])
-		util.AssertNoError(err)
-
-		rootData, err := RootDataFromBytes(data)
-		util.AssertNoError(err)
-		if !filterFun(&oid, rootData) {
-			return true
-		}
-
-		rdr, err := NewSugaredReadableState(store, rootData.Root)
-		util.AssertNoError(err)
-
-		ret = append(ret, &BranchData{
-			RootData: *rootData,
-			Stem:     rdr.GetStemOutput(),
-		})
-		return true
-	})
 	return ret
 }
 
 func FetchLatestBranches(store general.StateStore) []*BranchData {
-	latestSlot := FetchLatestSlot(store)
-	return FetchBranchDataOld(store, func(oid *core.OutputID, rootData *RootData) bool {
-		return oid.TimeSlot() == latestSlot
-	})
+	return FetchBranchDataMulti(store, FetchRootRecords(store, FetchLatestSlot(store))...)
 }
 
 func FetchLatestNSlotsBranchData(store general.StateStore, nLatest int) []*BranchData {
+	util.Assertf(nLatest > 0, "nLatest>0")
 	latestSlot := FetchLatestSlot(store)
 	if latestSlot == 0 {
 		return nil
 	}
-	oldestHorizon := uint32(latestSlot) - 3*uint32(nLatest)
-	allSlots := set.New[core.TimeSlot]()
-	preFiltered := FetchBranchDataOld(store, func(oid *core.OutputID, rootData *RootData) bool {
-		if uint32(oid.TimeSlot()) >= oldestHorizon {
-			allSlots.Insert(oid.TimeSlot())
-			return true
-		}
-		return false
-	})
-	if len(allSlots) <= nLatest {
-		return preFiltered
-	}
-	slotsOrdered := allSlots.Ordered(func(el1, el2 core.TimeSlot) bool {
-		// descending
-		return el1 > el2
-	})
-	util.Assertf(len(slotsOrdered) > nLatest, "len(slotsOrdered)>nLatest")
-	slotsOrdered = slotsOrdered[:nLatest]
-	slotsToInclude := set.New[core.TimeSlot](slotsOrdered...)
-
-	return util.FilterSlice(preFiltered, func(el *BranchData) bool {
-		return slotsToInclude.Contains(el.Stem.Timestamp().TimeSlot())
-	})
+	oldestHorizon := core.TimeSlot(uint32(latestSlot) - 3*uint32(nLatest))
+	return FetchBranchDataMulti(store, FetchRootRecords(store, util.NewRange(oldestHorizon, latestSlot)...)...)
 }

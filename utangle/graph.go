@@ -236,7 +236,9 @@ func branchNodeAttributes(seqID *core.ChainID, coverage uint64, dict map[core.Ch
 
 func MakeTree(stateStore general.StateStore) graph.Graph[string, string] {
 	ret := graph.New(graph.StringHash, graph.Directed(), graph.Acyclic())
-	branches := multistate.FetchBranchDataOld(stateStore)
+
+	branches := multistate.FetchBranchDataMulti(stateStore, multistate.FetchAllRootRecords(stateStore)...)
+
 	byOid := make(map[core.OutputID]*multistate.BranchData)
 	idDict := make(map[core.ChainID]int)
 	for _, b := range branches {

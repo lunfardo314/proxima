@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/lunfardo314/proxima/util/set"
+	"golang.org/x/exp/constraints"
 	"golang.org/x/text/language"
 	"golang.org/x/text/message"
 )
@@ -199,5 +200,14 @@ func FindFirstKeyInMap[K comparable, V any](m map[K]V, cond ...func(k K) bool) (
 func MustTakeFirstKeyInMap[K comparable, V any](m map[K]V) K {
 	ret, ok := FindFirstKeyInMap(m)
 	Assertf(ok, "MustTakeFirstKeyInMap: empty map")
+	return ret
+}
+
+func NewRange[T constraints.Integer](from, toIncl T) []T {
+	Assertf(from <= toIncl, "from<=toIncl")
+	ret := make([]T, toIncl-from+1)
+	for i := range ret {
+		ret[i] = from + T(i)
+	}
 	return ret
 }
