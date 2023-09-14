@@ -77,6 +77,28 @@ func newUTXOTangle(stateStore general.StateStore, txBytesStore general.TxBytesSt
 	}
 }
 
+// Load fetches latest branches from the multi-state and creates an UTXO tangle with those branches as virtual transactions
+func Load(stateStore general.StateStore, txBytesStore general.TxBytesStore) *UTXOTangle {
+	ret := newUTXOTangle(stateStore, txBytesStore)
+	// fetch branches of the latest slot
+	branches := state.FetchLatestBranches(stateStore)
+
+	for _, br := range branches {
+		txid := br.Stem.ID.TransactionID()
+		// make a virtual transaction
+		v := newVirtualTx(&txid)
+		v.addSequencerIndices(br.SeqOutput.ID.Index(), br.Stem.ID.Index())
+		vid := v.Wrap()
+		// add the transaction to the utxo tangle data structure
+		ret.addVertex(vid)
+		// add the corresponding branch
+		ret.addBranch(vid, br.Root)
+	}
+	return ret
+}
+
+// InitGenesisState
+// Deprecated
 func InitGenesisState(par genesis.StateIdentityData, stateStore general.StateStore) (common.VCommitment, core.ChainID, *core.OutputWithID, *core.OutputWithID) {
 	bootstrapSequencerID, genesisStateRoot := genesis.InitLedgerState(par, stateStore)
 	// now genesisStateRoot contains origin chain and stem outputs
@@ -89,6 +111,8 @@ func InitGenesisState(par genesis.StateIdentityData, stateStore general.StateSto
 	return genesisStateRoot, bootstrapSequencerID, genesisOutput, genesisStemOutput
 }
 
+// CreateGenesisUTXOTangle
+// Deprecated
 func CreateGenesisUTXOTangle(par genesis.StateIdentityData, stateStore general.StateStore, txBytesStore general.TxBytesStore) (*UTXOTangle, core.ChainID, common.VCommitment) {
 	genesisStateRoot, bootstrapSequencerID, genesisOutput, genesisStemOutput := InitGenesisState(par, stateStore)
 
@@ -110,6 +134,8 @@ func CreateGenesisUTXOTangle(par genesis.StateIdentityData, stateStore general.S
 	return ret, bootstrapSequencerID, genesisStateRoot
 }
 
+// CreateGenesisUTXOTangleWithDistribution
+// Deprecated
 func CreateGenesisUTXOTangleWithDistribution(par genesis.StateIdentityData, originPrivateKey ed25519.PrivateKey, genesisDistribution []txbuilder.LockBalance, stateStore general.StateStore, txBytesStore general.TxBytesStore) (*UTXOTangle, core.ChainID, core.TransactionID) {
 	pubKeyOrig := originPrivateKey.Public().(ed25519.PublicKey)
 	util.Assertf(pubKeyOrig.Equal(par.GenesisControllerPublicKey), "inconsistent parameters")
