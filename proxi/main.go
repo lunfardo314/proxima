@@ -10,7 +10,6 @@ import (
 	"github.com/lunfardo314/proxima/proxi/config"
 	"github.com/lunfardo314/proxima/proxi/console"
 	"github.com/lunfardo314/proxima/proxi/db"
-	"github.com/lunfardo314/proxima/proxi/genesis_cmd"
 	"github.com/lunfardo314/proxima/proxi/info_cmd"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -20,7 +19,7 @@ func init() {
 	initRoot()
 	console.Init(rootCmd)
 	config.Init(rootCmd)
-	genesis_cmd.Init(rootCmd)
+	db.Init(rootCmd)
 	info_cmd.Init(rootCmd)
 	db.Init(rootCmd)
 }

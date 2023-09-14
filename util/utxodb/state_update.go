@@ -50,8 +50,7 @@ func updateValidateOptions(u *multistate.Updatable, txBytes []byte, traceOption 
 		})
 		return true
 	})
-	//fmt.Printf("Commands:\n%s\n", state.UpdateCommandsToString(commands))
-	if err = u.UpdateWithCommands(commands, nil, nil); err != nil {
+	if err = u.UpdateWithCommands(commands, nil, nil, 0); err != nil {
 		return nil, err
 	}
 	return tx, nil

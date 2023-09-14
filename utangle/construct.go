@@ -306,6 +306,8 @@ func (ut *UTXOTangle) finalizeBranch(newBranchVertex *WrappedTx) error {
 	var newRoot common.VCommitment
 	var nextStemOutputID core.OutputID
 
+	coverage := newBranchVertex.LedgerCoverage(TipSlots)
+
 	newBranchVertex.Unwrap(UnwrapOptions{
 
 		Vertex: func(v *Vertex) {
@@ -321,8 +323,7 @@ func (ut *UTXOTangle) finalizeBranch(newBranchVertex *WrappedTx) error {
 
 			upd := state.MustNewUpdatable(ut.stateStore, prevBranch.root)
 			cmds := v.StateDelta.getUpdateCommands()
-
-			err = upd.UpdateWithCommands(cmds, &nextStemOutputID, &seqData.SequencerID)
+			err = upd.UpdateWithCommands(cmds, &nextStemOutputID, &seqData.SequencerID, coverage)
 			util.Assertf(err == nil, "finalizeBranch %s: '%v'\n=== Delta: %s\n=== Commands: %s",
 				v.Tx.IDShort(), err, v.StateDelta.LinesRecursive().String(), state.UpdateCommandsToLines(cmds))
 			newRoot = upd.Root()

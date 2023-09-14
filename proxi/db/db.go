@@ -33,6 +33,7 @@ func Init(rootCmd *cobra.Command) {
 	initDBInfoCmd(dbCmd)
 	initDBTreeCmd(dbCmd)
 	initDBDistributeCmd(dbCmd)
+	initDbGenesis(dbCmd)
 
 	rootCmd.AddCommand(dbCmd)
 }

@@ -28,7 +28,7 @@ func InitLedgerState(par StateIdentityData, store general.StateStore) (core.Chai
 	gStemOut := StemOutput(par.InitialSupply, par.GenesisTimeSlot)
 
 	updatable := multistate.MustNewUpdatable(store, emptyRoot)
-	updatable.MustUpdateWithCommands(genesisUpdateCommands(&gout.OutputWithID, gStemOut), &gStemOut.ID, &gout.ChainID)
+	updatable.MustUpdateWithCommands(genesisUpdateCommands(&gout.OutputWithID, gStemOut), &gStemOut.ID, &gout.ChainID, par.InitialSupply)
 
 	return gout.ChainID, updatable.Root()
 }
@@ -186,7 +186,7 @@ func MustDistributeInitialSupply(stateStore general.StateStore, originPrivateKey
 	cmds := tx.UpdateCommands()
 
 	updatableOrigin := multistate.MustNewUpdatable(stateStore, genesisRoot)
-	updatableOrigin.MustUpdateWithCommands(cmds, &nextStem.ID, &bootstrapChainID)
+	updatableOrigin.MustUpdateWithCommands(cmds, &nextStem.ID, &bootstrapChainID, stateID.InitialSupply)
 
 	return txBytes
 }

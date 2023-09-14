@@ -1,4 +1,4 @@
-package genesis_cmd
+package db
 
 import (
 	"crypto/ed25519"
@@ -14,6 +14,7 @@ import (
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/unitrie/adaptors/badger_adaptor"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
 var (
@@ -22,11 +23,11 @@ var (
 	nowis       time.Time
 )
 
-func Init(rootCmd *cobra.Command) {
+func initDbGenesis(dbCmd *cobra.Command) {
 	genesisCmd := &cobra.Command{
-		Use:   "genesis <dbname> [--supply <supply>] [--desc 'description']",
-		Short: "create genesis ledger state database and transaction store database",
-		Args:  cobra.ExactArgs(1),
+		Use:   "genesis [--state_db] [--tx_store_db] [--supply <supply>] [--desc 'description']",
+		Short: "creates genesis ledger state database and transaction store database",
+		Args:  cobra.NoArgs,
 		Run:   runGenesis,
 	}
 	nowis = time.Now()
@@ -34,7 +35,7 @@ func Init(rootCmd *cobra.Command) {
 	defaultDesc := fmt.Sprintf("genesis has been created at Unix time (nanoseconds) %d", nowis.UnixNano())
 	genesisCmd.Flags().StringVar(&description, "desc", defaultDesc, fmt.Sprintf("default is '%s'", defaultDesc))
 
-	rootCmd.AddCommand(genesisCmd)
+	dbCmd.AddCommand(genesisCmd)
 }
 
 func runGenesis(_ *cobra.Command, args []string) {
@@ -42,8 +43,13 @@ func runGenesis(_ *cobra.Command, args []string) {
 	if len(address) == 0 {
 		console.Fatalf("private key not set. Use 'proxi setpk'")
 	}
-	dbName := args[0]
-	txStoreName := dbName + ".txstore"
+	dbName := viper.GetString("state_db")
+	util.Assertf(dbName != "", "genesis database name not set")
+
+	txStoreName := viper.GetString("tx_store_db")
+	if txStoreName == "" {
+		txStoreName = dbName + ".txstore"
+	}
 
 	mustNotExist(dbName)
 	mustNotExist(txStoreName)
@@ -57,8 +63,8 @@ func runGenesis(_ *cobra.Command, args []string) {
 	console.Infof("Genesis time slot: %d", nowisTs.TimeSlot())
 	console.Infof("Genesis controller address: %s", config.AddressHex())
 
-	if !console.YesNoPrompt(fmt.Sprintf("Create Proxima database '%s' and transactions store '%s'?", dbName, txStoreName), true) {
-		console.Fatalf("genesis database wasn't created")
+	if !console.YesNoPrompt(fmt.Sprintf("Create Proxima genesis '%s' and transactions store '%s'?", dbName, txStoreName), true) {
+		console.Fatalf("exit: genesis database wasn't created")
 	}
 	stateDb := badger_adaptor.MustCreateOrOpenBadgerDB(dbName, badger.DefaultOptions(dbName))
 	stateStore := badger_adaptor.New(stateDb)

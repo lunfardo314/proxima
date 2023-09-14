@@ -7,6 +7,7 @@ import (
 	"github.com/lunfardo314/proxima/genesis"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/proxi/console"
+	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/unitrie/adaptors/badger_adaptor"
 	"github.com/spf13/cobra"
 )
@@ -46,9 +47,10 @@ func runDbInfoCmd(_ *cobra.Command, _ []string) {
 		return bytes.Compare(branchData[i].SequencerID[:], branchData[j].SequencerID[:]) < 0
 	})
 
-	console.Infof(" ##: stemID, seqID, root\n------------------------------------------------------")
+	console.Infof(" ##: stemID, seqID, root, coverage\n------------------------------------------------------")
 	for i, br := range branchData {
-		console.Infof(" %2d: %s, %s, %s", i, br.Stem.IDShort(), br.SequencerID.Short(), br.Root.String())
+		console.Infof(" %2d: %s, %s, %s, %s",
+			i, br.Stem.IDShort(), br.SequencerID.Short(), br.Root.String(), util.GoThousands(br.Coverage))
 	}
 
 	reader, err := multistate.NewSugaredReadableState(stateStore, branchData[0].Root)

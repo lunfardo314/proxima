@@ -1,12 +1,13 @@
 package multistate
 
 import (
-	"bytes"
+	"encoding/binary"
 	"fmt"
 
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/general"
 	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/proxima/util/lazyslice"
 	"github.com/lunfardo314/unitrie/common"
 	"github.com/lunfardo314/unitrie/immutable"
 )
@@ -27,6 +28,7 @@ type (
 	RootData struct {
 		Root        common.VCommitment
 		SequencerID core.ChainID
+		Coverage    uint64
 	}
 
 	BranchData struct {
@@ -213,14 +215,14 @@ func (u *Updatable) Root() common.VCommitment {
 
 // UpdateWithCommands updates trie with commands.
 // If rootStemOutputID != nil, also writes root partition record
-func (u *Updatable) UpdateWithCommands(cmds []UpdateCmd, rootStemOutputID *core.OutputID, rootSeqID *core.ChainID) error {
+func (u *Updatable) UpdateWithCommands(cmds []UpdateCmd, rootStemOutputID *core.OutputID, rootSeqID *core.ChainID, coverage uint64) error {
 	return u.updateUTXOLedgerDB(func(trie *immutable.TrieUpdatable) error {
 		return UpdateTrie(u.trie, cmds)
-	}, rootStemOutputID, rootSeqID)
+	}, rootStemOutputID, rootSeqID, coverage)
 }
 
-func (u *Updatable) MustUpdateWithCommands(cmds []UpdateCmd, rootStemOutputID *core.OutputID, rootSeqID *core.ChainID) {
-	err := u.UpdateWithCommands(cmds, rootStemOutputID, rootSeqID)
+func (u *Updatable) MustUpdateWithCommands(cmds []UpdateCmd, rootStemOutputID *core.OutputID, rootSeqID *core.ChainID, coverage uint64) {
+	err := u.UpdateWithCommands(cmds, rootStemOutputID, rootSeqID, coverage)
 	common.AssertNoError(err)
 }
 
@@ -249,38 +251,44 @@ func FetchLatestSlot(store general.StateStore) core.TimeSlot {
 }
 
 func (r *RootData) Bytes() []byte {
-	var buf bytes.Buffer
-	buf.Write(r.SequencerID.Bytes())
-	rootBin := r.Root.Bytes()
-	util.Assertf(len(rootBin) <= 255, "len(rootBin)<=255")
-	buf.WriteByte(byte(len(rootBin)))
-	buf.Write(rootBin)
-	return buf.Bytes()
+	arr := lazyslice.EmptyArray(3)
+	arr.Push(r.SequencerID.Bytes())
+	arr.Push(r.Root.Bytes())
+	var coverageBin [8]byte
+	binary.BigEndian.PutUint64(coverageBin[:], r.Coverage)
+	arr.Push(coverageBin[:])
+
+	return arr.Bytes()
 }
 
 var errWrongDataSize = fmt.Errorf("RootDataFromBytes: wrong data size")
 
 func RootDataFromBytes(data []byte) (RootData, error) {
-	if len(data) < 1+core.ChainIDLength {
-		return RootData{}, errWrongDataSize
-	}
-	chainID, err := core.ChainIDFromBytes(data[:core.ChainIDLength])
-	util.AssertNoError(err)
-	rootBin := data[core.ChainIDLength+1:]
-	if len(rootBin) != int(data[core.ChainIDLength]) {
-		return RootData{}, errWrongDataSize
-	}
-	root, err := common.VectorCommitmentFromBytes(core.CommitmentModel, rootBin)
+	arr, err := lazyslice.ParseArrayFromBytesReadOnly(data, 3)
 	if err != nil {
 		return RootData{}, err
 	}
+	chainID, err := core.ChainIDFromBytes(arr.At(0))
+	if err != nil {
+		return RootData{}, err
+	}
+	root, err := common.VectorCommitmentFromBytes(core.CommitmentModel, arr.At(1))
+	if err != nil {
+		return RootData{}, err
+	}
+	if len(arr.At(2)) != 8 {
+		return RootData{}, fmt.Errorf("wrong data length")
+	}
+	coverage := binary.BigEndian.Uint64(arr.At(2))
+
 	return RootData{
 		Root:        root,
 		SequencerID: chainID,
+		Coverage:    coverage,
 	}, nil
 }
 
-func (u *Updatable) updateUTXOLedgerDB(updateFun func(updatable *immutable.TrieUpdatable) error, stemOutputID *core.OutputID, seqID *core.ChainID) error {
+func (u *Updatable) updateUTXOLedgerDB(updateFun func(updatable *immutable.TrieUpdatable) error, stemOutputID *core.OutputID, seqID *core.ChainID, coverage uint64) error {
 	if err := updateFun(u.trie); err != nil {
 		return err
 	}
@@ -294,6 +302,7 @@ func (u *Updatable) updateUTXOLedgerDB(updateFun func(updatable *immutable.TrieU
 		writeRootRecord(batch, *stemOutputID, RootData{
 			Root:        newRoot,
 			SequencerID: *seqID,
+			Coverage:    coverage,
 		})
 	}
 	var err error
