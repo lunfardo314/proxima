@@ -15,6 +15,7 @@ import (
 	"github.com/lunfardo314/proxima/sequencer"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/txbuilder"
+	"github.com/lunfardo314/proxima/txstore"
 	"github.com/lunfardo314/proxima/utangle"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/testutil"
@@ -70,13 +71,21 @@ func initSequencerTestData(t *testing.T, nFaucets, nAdditionalChains int, logica
 	ret.originDistribution, ret.faucetPrivateKeys, ret.faucetAddresses =
 		inittest.GenesisParamsWithPreDistribution(nFaucets, initFaucetBalance)
 
-	ret.ut, ret.bootstrapChainID, ret.distributionTxID = utangle.CreateGenesisUTXOTangleWithDistribution(
-		ret.stateIdentity,
-		ret.originControllerPrivateKey,
-		ret.originDistribution,
-		common.NewInMemoryKVStore(),
-		common.NewInMemoryKVStore(),
-	)
+	stateStore := common.NewInMemoryKVStore()
+	txStore := txstore.NewDummyTxBytesStore()
+
+	ret.bootstrapChainID, _ = genesis.InitLedgerState(ret.stateIdentity, stateStore)
+	txBytes, err := genesis.DistributeInitialSupply(stateStore, ret.originControllerPrivateKey, ret.originDistribution)
+	require.NoError(t, err)
+
+	err = txStore.SaveTxBytes(txBytes)
+	require.NoError(t, err)
+
+	ret.ut = utangle.Load(stateStore, txStore)
+
+	ret.distributionTxID, _, err = transaction.IDAndTimestampFromTransactionBytes(txBytes)
+	require.NoError(t, err)
+
 	stateReader := ret.ut.HeaviestStateForLatestTimeSlot()
 	ret.faucetOutputs = make([]*core.OutputWithID, nFaucets)
 	for i := range ret.faucetOutputs {
@@ -250,7 +259,7 @@ func TestBootstrapSequencer(t *testing.T) {
 		r.ut.SaveGraph(fnameFromTestName(t))
 		r.ut.SaveTree(fnameFromTestName(t) + "_TREE")
 		numTx := r.ut.NumVertices()
-		require.EqualValues(t, 2*maxSlots+2, numTx)
+		require.EqualValues(t, 2*maxSlots+1, numTx)
 	})
 	t.Run("run add chain origins tx", func(t *testing.T) {
 		const maxTimeSlots = 10

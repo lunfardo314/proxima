@@ -118,13 +118,17 @@ func initConflictTest(t *testing.T, nConflicts int, printTx bool) *conflictTestR
 		ret.pkController[i] = ret.privKey
 	}
 
-	ret.ut, ret.bootstrapChainID, ret.originBranchTxid = utangle.CreateGenesisUTXOTangleWithDistribution(
-		ret.stateIdentity,
-		genesisPrivKey,
-		distrib,
-		common.NewInMemoryKVStore(),
-		txstore.NewDummyTxBytesStore(),
-	)
+	stateStore := common.NewInMemoryKVStore()
+	txStore := txstore.NewDummyTxBytesStore()
+
+	ret.bootstrapChainID, _ = genesis.InitLedgerState(ret.stateIdentity, stateStore)
+	txBytes, err := genesis.DistributeInitialSupply(stateStore, genesisPrivKey, distrib)
+	require.NoError(t, err)
+	err = txStore.SaveTxBytes(txBytes)
+	require.NoError(t, err)
+
+	ret.ut = utangle.Load(stateStore, txStore)
+
 	t.Logf("bootstrap chain id: %s", ret.bootstrapChainID.String())
 	t.Logf("origing branch txid: %s", ret.originBranchTxid.Short())
 	for i := range distrib {
@@ -394,8 +398,21 @@ func initMultiChainTest(t *testing.T, nChains int, printTx bool) *multiChainTest
 		ret.pkController[i] = ret.privKey
 	}
 
-	ret.ut, ret.bootstrapChainID, ret.originBranchTxid = utangle.CreateGenesisUTXOTangleWithDistribution(ret.sPar, genesisPrivKey, distrib, common.NewInMemoryKVStore(), txstore.NewDummyTxBytesStore())
-	require.True(t, ret.ut != nil)
+	stateStore := common.NewInMemoryKVStore()
+	txStore := txstore.NewDummyTxBytesStore()
+
+	ret.bootstrapChainID, _ = genesis.InitLedgerState(ret.sPar, stateStore)
+	txBytes, err := genesis.DistributeInitialSupply(stateStore, genesisPrivKey, distrib)
+	require.NoError(t, err)
+
+	err = txStore.SaveTxBytes(txBytes)
+	require.NoError(t, err)
+
+	ret.ut = utangle.Load(stateStore, txStore)
+
+	ret.originBranchTxid, _, err = transaction.IDAndTimestampFromTransactionBytes(txBytes)
+	require.NoError(t, err)
+
 	stateReader := ret.ut.HeaviestStateForLatestTimeSlot()
 
 	t.Logf("state identity:\n%s", genesis.MustStateIdentityDataFromBytes(stateReader.StateIdentityBytes()).String())

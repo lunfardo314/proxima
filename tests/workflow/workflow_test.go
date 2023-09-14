@@ -11,11 +11,11 @@ import (
 
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/genesis"
-	state "github.com/lunfardo314/proxima/multistate"
+	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/txbuilder"
 	"github.com/lunfardo314/proxima/txstore"
-	utxo_tangle "github.com/lunfardo314/proxima/utangle"
+	"github.com/lunfardo314/proxima/utangle"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/countdown"
 	"github.com/lunfardo314/proxima/util/testutil"
@@ -32,7 +32,7 @@ type workflowTestData struct {
 	distributionPrivateKeys []ed25519.PrivateKey
 	distributionAddrs       []core.AddressED25519
 	faucetOutputs           []*core.OutputWithID
-	ut                      *utxo_tangle.UTXOTangle
+	ut                      *utangle.UTXOTangle
 	bootstrapChainID        core.ChainID
 	distributionTxID        core.TransactionID
 	w                       *workflow.Workflow
@@ -53,8 +53,20 @@ func initWorkflowTest(t *testing.T, nDistribution int, nowis core.LogicalTime, d
 		faucetOutputs:           make([]*core.OutputWithID, nDistribution),
 	}
 
-	ret.ut, ret.bootstrapChainID, ret.distributionTxID =
-		utxo_tangle.CreateGenesisUTXOTangleWithDistribution(par, genesisPrivKey, distrib, common.NewInMemoryKVStore(), txstore.NewDummyTxBytesStore())
+	stateStore := common.NewInMemoryKVStore()
+	txStore := txstore.NewDummyTxBytesStore()
+
+	ret.bootstrapChainID, _ = genesis.InitLedgerState(par, stateStore)
+	txBytes, err := genesis.DistributeInitialSupply(stateStore, genesisPrivKey, distrib)
+	require.NoError(t, err)
+
+	err = txStore.SaveTxBytes(txBytes)
+	require.NoError(t, err)
+
+	ret.ut = utangle.Load(stateStore, txStore)
+
+	ret.distributionTxID, _, err = transaction.IDAndTimestampFromTransactionBytes(txBytes)
+	require.NoError(t, err)
 
 	for i := range ret.faucetOutputs {
 		outs, err := ret.ut.HeaviestStateForLatestTimeSlot().GetOutputsForAccount(ret.distributionAddrs[i].AccountID())
@@ -265,7 +277,7 @@ func TestWorkflow(t *testing.T) {
 		require.NoError(t, err)
 
 		listenerCounter := 0
-		err = wd.w.Events().ListenAccount(wd.distributionAddrs[0], func(_ utxo_tangle.WrappedOutput) {
+		err = wd.w.Events().ListenAccount(wd.distributionAddrs[0], func(_ utangle.WrappedOutput) {
 			listenerCounter++
 		})
 		require.NoError(t, err)
@@ -454,7 +466,7 @@ func TestSolidifier(t *testing.T) {
 type multiChainTestData struct {
 	t                  *testing.T
 	ts                 core.LogicalTime
-	ut                 *utxo_tangle.UTXOTangle
+	ut                 *utangle.UTXOTangle
 	bootstrapChainID   core.ChainID
 	privKey            ed25519.PrivateKey
 	addr               core.AddressED25519
@@ -498,9 +510,21 @@ func initMultiChainTest(t *testing.T, nChains int, printTx bool, secondsInThePas
 		ret.pkController[i] = ret.privKey
 	}
 
-	ret.ut, ret.bootstrapChainID, ret.originBranchTxid = utxo_tangle.CreateGenesisUTXOTangleWithDistribution(
-		ret.sPar, genesisPrivKey, distrib, common.NewInMemoryKVStore(), txstore.NewDummyTxBytesStore())
-	require.True(t, ret.ut != nil)
+	stateStore := common.NewInMemoryKVStore()
+	txStore := txstore.NewDummyTxBytesStore()
+
+	ret.bootstrapChainID, _ = genesis.InitLedgerState(ret.sPar, stateStore)
+	txBytes, err := genesis.DistributeInitialSupply(stateStore, genesisPrivKey, distrib)
+	require.NoError(t, err)
+
+	err = txStore.SaveTxBytes(txBytes)
+	require.NoError(t, err)
+
+	ret.ut = utangle.Load(stateStore, txStore)
+
+	ret.originBranchTxid, _, err = transaction.IDAndTimestampFromTransactionBytes(txBytes)
+	require.NoError(t, err)
+
 	stateReader := ret.ut.HeaviestStateForLatestTimeSlot()
 
 	t.Logf("state identity:\n%s", genesis.MustStateIdentityDataFromBytes(stateReader.StateIdentityBytes()).String())
@@ -511,9 +535,9 @@ func initMultiChainTest(t *testing.T, nChains int, printTx bool, secondsInThePas
 		ID:     core.NewOutputID(&ret.originBranchTxid, 0),
 		Output: nil,
 	}
-	bal, _ := state.BalanceOnLock(stateReader, ret.addr)
+	bal, _ := multistate.BalanceOnLock(stateReader, ret.addr)
 	require.EqualValues(t, onChainAmount*int(nChains), int(bal))
-	bal, _ = state.BalanceOnLock(stateReader, ret.faucetAddr)
+	bal, _ = multistate.BalanceOnLock(stateReader, ret.faucetAddr)
 	require.EqualValues(t, onChainAmount*int(nChains), int(bal))
 
 	oDatas, err := stateReader.GetUTXOsLockedInAccount(ret.addr.AccountID())
@@ -1035,7 +1059,7 @@ func TestMultiChainWorkflow(t *testing.T) {
 			cd.Tick()
 		})
 		listenCounter := 0
-		err := wrk.Events().ListenSequencer(r.chainOrigins[0].ChainID, func(vid *utxo_tangle.WrappedTx) {
+		err := wrk.Events().ListenSequencer(r.chainOrigins[0].ChainID, func(vid *utangle.WrappedTx) {
 			//t.Logf("listen seq %s: %s", r.chainOrigins[0].ChainID.Short(), vertex.Tx.IDShort())
 			listenCounter++
 		})

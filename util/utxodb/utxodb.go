@@ -10,7 +10,6 @@ import (
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/txbuilder"
-	"github.com/lunfardo314/proxima/utangle"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/testutil"
 	"github.com/lunfardo314/proxima/util/txutils"
@@ -66,7 +65,13 @@ func NewUTXODB(trace ...bool) *UTXODB {
 	faucetPrivateKey := testutil.GetTestingPrivateKey(31415926535)
 	faucetAddress := core.AddressED25519FromPrivateKey(faucetPrivateKey)
 
-	genesisRoot, originChainID, genesisOut, genesisStemOut := utangle.InitGenesisState(initLedgerParams, stateStore)
+	originChainID, genesisRoot := genesis.InitLedgerState(initLedgerParams, stateStore)
+	rdr := multistate.MustNewSugaredReadableState(stateStore, genesisRoot)
+
+	genesisOut, err := rdr.GetChainOutput(&originChainID)
+	util.AssertNoError(err)
+
+	genesisStemOut := rdr.GetStemOutput()
 
 	originDistribution := txbuilder.OriginDistributionParams{
 		BootstrapSequencerID:        originChainID,
@@ -82,7 +87,7 @@ func NewUTXODB(trace ...bool) *UTXODB {
 	distributionTxBytes := txbuilder.MakeDistributionTransaction(originDistribution)
 
 	updatable := multistate.MustNewUpdatable(stateStore, genesisRoot)
-	_, err := updateValidateDebug(updatable, distributionTxBytes)
+	_, err = updateValidateDebug(updatable, distributionTxBytes)
 	util.AssertNoError(err)
 
 	ret := &UTXODB{
