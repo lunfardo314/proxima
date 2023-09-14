@@ -10,6 +10,7 @@ import (
 	"github.com/lunfardo314/proxima/proxi/console"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/txbuilder"
+	"github.com/lunfardo314/proxima/txstore"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/unitrie/adaptors/badger_adaptor"
 	"github.com/spf13/cobra"
@@ -31,6 +32,10 @@ func runDBDistributeCmd(_ *cobra.Command, args []string) {
 
 	dbName := GetMultiStateStoreName()
 	console.Assertf(dbName != "(not set)", "multi-state database not set")
+	console.Infof("Multi-state database: %s", dbName)
+
+	txDBName := GetTxStoreName()
+	console.Infof("Transaction store database: %s", txDBName)
 
 	stateDb := badger_adaptor.MustCreateOrOpenBadgerDB(dbName)
 	defer stateDb.Close()
@@ -46,7 +51,7 @@ func runDBDistributeCmd(_ *cobra.Command, args []string) {
 
 	stateStore := badger_adaptor.New(stateDb)
 	stateID, _, err := genesis.ScanGenesisState(stateStore)
-	console.NoError(err)
+	console.AssertNoError(err)
 
 	console.Infof("Re-check the distribution list:")
 	totalToDistribute := uint64(0)
@@ -65,20 +70,25 @@ func runDBDistributeCmd(_ *cobra.Command, args []string) {
 	}
 
 	txBytes, err := genesis.DistributeInitialSupply(stateStore, config.GetPrivateKey(), distribution)
-	console.NoError(err)
+	console.AssertNoError(err)
 
 	txID, _, err := transaction.IDAndTimestampFromTransactionBytes(txBytes)
-	console.NoError(err)
+	console.AssertNoError(err)
 
-	console.Infof("Distribution transaction ID: %s", txID.String())
+	console.Infof("New branch has been created. Distribution transaction ID: %s", txID.String())
 	fname := txID.AsFileName()
 	console.Infof("Saving distribution transaction to the file '%s'", fname)
 	err = transaction.SaveTransactionAsFile(txBytes, fname)
-	console.NoError(err)
+	console.AssertNoError(err)
+	console.Infof("Success")
 
-	txDBName := GetTxStoreName()
+	if txDBName == "(not set)" {
+		return
+	}
+
 	console.Infof("Storing transaction into DB '%s'...", txDBName)
 
+	// try to save distribution transaction in the transaction store
 	var txDB *badger.DB
 	err = util.CatchPanicOrError(func() error {
 		txDB = badger_adaptor.MustCreateOrOpenBadgerDB(txDBName)
@@ -91,7 +101,8 @@ func runDBDistributeCmd(_ *cobra.Command, args []string) {
 	}
 	defer txDB.Close()
 
-	err = transaction.StoreTransactionBytes(txBytes, badger_adaptor.New(txDB))
-	console.NoError(err)
+	err = txstore.NewSimpleTxBytesStore(badger_adaptor.New(txDB)).SaveTxBytes(txBytes)
+	console.AssertNoError(err)
+
 	console.Infof("Success")
 }

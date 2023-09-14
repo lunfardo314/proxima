@@ -18,10 +18,6 @@ func NewSimpleTxBytesStore(store common.KVStore) SimpleTxBytesStore {
 	return SimpleTxBytesStore{store}
 }
 
-func NewSimpleInMemoryTxBytesStore() SimpleTxBytesStore {
-	return NewSimpleTxBytesStore(common.NewInMemoryKVStore())
-}
-
 func (s SimpleTxBytesStore) SaveTxBytes(txBytes []byte) error {
 	txid, _, err := transaction.IDAndTimestampFromTransactionBytes(txBytes)
 	if err != nil {

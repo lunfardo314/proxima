@@ -72,12 +72,12 @@ func runGenesis(_ *cobra.Command, args []string) {
 		MaxTimeTickValueInTimeSlot: core.TimeTicksPerSlot - 1,
 		GenesisTimeSlot:            core.LogicalTimeFromTime(nowis).TimeSlot(),
 	}, stateStore)
-	console.NoError(stateDb.Close())
+	console.AssertNoError(stateDb.Close())
 
 	console.Infof("Genesis state DB '%s' has been created successfully.\nBootstrap sequencer chainID: %s", dbName, bootstrapChainID.String())
 
 	txStoreDB := badger_adaptor.MustCreateOrOpenBadgerDB(txStoreName, badger.DefaultOptions(txStoreName))
-	console.NoError(txStoreDB.Close())
+	console.AssertNoError(txStoreDB.Close())
 
 	console.Infof("Transaction store DB '%s' has been created successfully", dbName)
 
@@ -91,7 +91,7 @@ func mustNotExist(dir string) {
 		console.Fatalf("'%s' already exists", dir)
 	} else {
 		if !os.IsNotExist(err) {
-			console.NoError(err)
+			console.AssertNoError(err)
 		}
 	}
 }

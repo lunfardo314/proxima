@@ -55,7 +55,7 @@ func runInfoCmd(_ *cobra.Command, _ []string) {
 	}
 
 	storeDB := badger_adaptor.MustCreateOrOpenBadgerDB(stateDbName, badger.DefaultOptions(stateDbName))
-	console.NoError(storeDB.Close())
+	console.AssertNoError(storeDB.Close())
 
 	//multistate.NewSugaredReadableState(badger_adaptor.New(stateDB), )
 

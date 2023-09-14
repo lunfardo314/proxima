@@ -44,7 +44,7 @@ func Fatalf(format string, args ...any) {
 	os.Exit(1)
 }
 
-func NoError(err error) {
+func AssertNoError(err error) {
 	if err != nil {
 		Fatalf("error: %v", err)
 	}

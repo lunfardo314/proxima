@@ -85,7 +85,7 @@ It provides:
 	rootCmd.PersistentFlags().StringVarP(&configName, "config", "c", "", "config file (default is .proxi.yaml)")
 	rootCmd.PersistentFlags().StringVar(&privateKeyStr, "private_key", "", "an ED25519 private key in hexadecimal")
 	err := viper.BindPFlag("private_key", rootCmd.PersistentFlags().Lookup("private_key"))
-	console.NoError(err)
+	console.AssertNoError(err)
 }
 
 func main() {

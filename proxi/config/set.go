@@ -33,5 +33,5 @@ func runConfigSetCmd(cmd *cobra.Command, args []string) {
 
 func SetKeyValue(key string, value interface{}) {
 	viper.Set(key, value)
-	console.NoError(viper.WriteConfig())
+	console.AssertNoError(viper.WriteConfig())
 }

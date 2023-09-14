@@ -94,22 +94,6 @@ const (
 	MinimumBalanceOnBoostrapSequencer = 1_000_000
 )
 
-// DistributeInitialSupply updates genesis state and branch records according to initial supply distribution parameters by
-// adding initial distribution transaction.
-// Distribution transaction is a branch transaction in the slot next after the genesis.
-// Distribution parameter is added to the transaction store
-func DistributeInitialSupply(stateStore general.StateStore, originPrivateKey ed25519.PrivateKey, genesisDistribution []txbuilder.LockBalance) ([]byte, error) {
-	var ret []byte
-	err := util.CatchPanicOrError(func() error {
-		ret = MustDistributeInitialSupply(stateStore, originPrivateKey, genesisDistribution)
-		return nil
-	})
-	if err != nil {
-		return nil, fmt.Errorf("DistributeInitialSupply: %v", err)
-	}
-	return ret, nil
-}
-
 // ScanGenesisState TODO more checks
 func ScanGenesisState(stateStore general.StateStore) (*StateIdentityData, common.VCommitment, error) {
 	branchData := multistate.FetchBranchData(stateStore)
@@ -135,7 +119,7 @@ func MustDistributeInitialSupply(stateStore general.StateStore, originPrivateKey
 	util.AssertNoError(err)
 
 	originPublicKey := originPrivateKey.Public().(ed25519.PublicKey)
-	util.Assertf(originPublicKey.Equal(stateID.GenesisControllerPublicKey), "private and public keys does not match")
+	util.Assertf(originPublicKey.Equal(stateID.GenesisControllerPublicKey), "private and public keys do not match")
 	util.Assertf(len(genesisDistribution) < 253, "too many addresses in the genesis distribution. Maximum is 252")
 
 	distributeTotal := uint64(0)
@@ -191,4 +175,20 @@ func MustDistributeInitialSupply(stateStore general.StateStore, originPrivateKey
 	updatableOrigin.MustUpdateWithCommands(cmds, &nextStem.ID, &bootstrapChainID)
 
 	return txBytes
+}
+
+// DistributeInitialSupply updates genesis state and branch records according to initial supply distribution parameters by
+// adding initial distribution transaction.
+// Distribution transaction is a branch transaction in the slot next after the genesis.
+// Distribution parameter is added to the transaction store
+func DistributeInitialSupply(stateStore general.StateStore, originPrivateKey ed25519.PrivateKey, genesisDistribution []txbuilder.LockBalance) ([]byte, error) {
+	var ret []byte
+	err := util.CatchPanicOrError(func() error {
+		ret = MustDistributeInitialSupply(stateStore, originPrivateKey, genesisDistribution)
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("DistributeInitialSupply: %v", err)
+	}
+	return ret, nil
 }

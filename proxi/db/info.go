@@ -52,7 +52,7 @@ func runDbInfoCmd(_ *cobra.Command, _ []string) {
 	}
 
 	reader, err := multistate.NewSugaredReadableState(stateStore, branchData[0].Root)
-	console.NoError(err)
+	console.AssertNoError(err)
 
 	id := genesis.MustStateIdentityDataFromBytes(reader.StateIdentityBytes())
 

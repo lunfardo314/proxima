@@ -47,7 +47,7 @@ func runSetKeyCommand(_ *cobra.Command, args []string) {
 		console.Infof("Private key will be generated")
 		console.Printf("Enter random seed (minimum %d characters): ", minimumSeedLength)
 		userSeed, err := terminal.ReadPassword(syscall.Stdin)
-		console.NoError(err)
+		console.AssertNoError(err)
 
 		if len(userSeed) < minimumSeedLength {
 			cobra.CheckErr(fmt.Errorf("must be at least %d characters of the seed", minimumSeedLength))
@@ -69,7 +69,7 @@ func runSetKeyCommand(_ *cobra.Command, args []string) {
 
 func decodePrivateKey(pkstr string) ed25519.PrivateKey {
 	privateKey, err := hex.DecodeString(pkstr)
-	console.NoError(err)
+	console.AssertNoError(err)
 
 	if len(privateKey) != ed25519.PrivateKeySize {
 		console.Fatalf("wrong private key size")

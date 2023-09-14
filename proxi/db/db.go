@@ -23,11 +23,11 @@ func Init(rootCmd *cobra.Command) {
 
 	dbCmd.PersistentFlags().StringVar(&stateDBName, "state_db", "", "name of the ledger state DB")
 	err := viper.BindPFlag("state_db", dbCmd.PersistentFlags().Lookup("state_db"))
-	console.NoError(err)
+	console.AssertNoError(err)
 
 	dbCmd.PersistentFlags().StringVar(&txStoreDB, "tx_store_db", "", "name of the transaction store")
 	err = viper.BindPFlag("tx_store_db", dbCmd.PersistentFlags().Lookup("tx_store_db"))
-	console.NoError(err)
+	console.AssertNoError(err)
 
 	dbCmd.InitDefaultHelpCmd()
 	initDBInfoCmd(dbCmd)
