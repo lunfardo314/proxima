@@ -96,11 +96,25 @@ const (
 
 // ScanGenesisState TODO more checks
 func ScanGenesisState(stateStore general.StateStore) (*StateIdentityData, common.VCommitment, error) {
-	branchData := multistate.FetchBranchData(stateStore)
-	if len(branchData) != 1 {
+	var genesisRootRecord multistate.RootData
+
+	// expecting a single branch in the genesis state
+	fetched, moreThan1 := false, false
+	multistate.IterateRootRecords(stateStore, func(stemOid core.OutputID, rootData multistate.RootData) bool {
+		if fetched {
+			moreThan1 = true
+			return false
+		}
+		genesisRootRecord = rootData
+		fetched = true
+		return true
+	})
+	if !fetched || moreThan1 {
 		return nil, nil, fmt.Errorf("ScanGenesisState: exactly 1 branch expected. Not a genesis state")
 	}
-	rdr := multistate.MustNewSugaredReadableState(stateStore, branchData[0].Root)
+
+	branchData := multistate.FetchBranchData(stateStore, genesisRootRecord)
+	rdr := multistate.MustNewSugaredReadableState(stateStore, branchData.Root)
 	stateID := MustStateIdentityDataFromBytes(rdr.StateIdentityBytes())
 
 	genesisOid := InitialSupplyOutputID(stateID.GenesisTimeSlot)
@@ -111,7 +125,7 @@ func ScanGenesisState(stateStore general.StateStore) (*StateIdentityData, common
 	if out.Amount() != stateID.InitialSupply {
 		return nil, nil, fmt.Errorf("different amounts in genesis output and state identity")
 	}
-	return stateID, branchData[0].Root, nil
+	return stateID, branchData.Root, nil
 }
 
 func MustDistributeInitialSupply(stateStore general.StateStore, originPrivateKey ed25519.PrivateKey, genesisDistribution []txbuilder.LockBalance) []byte {

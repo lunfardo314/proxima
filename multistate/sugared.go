@@ -18,8 +18,8 @@ func MakeSugared(s general.IndexedStateReader) SugaredStateReader {
 	return SugaredStateReader{s}
 }
 
-func NewSugaredReadableState(store common.KVReader, root common.VCommitment) (SugaredStateReader, error) {
-	rdr, err := NewReadable(store, root)
+func NewSugaredReadableState(store common.KVReader, root common.VCommitment, clearCacheAsSize ...int) (SugaredStateReader, error) {
+	rdr, err := NewReadable(store, root, clearCacheAsSize...)
 	if err != nil {
 		return SugaredStateReader{}, err
 	}

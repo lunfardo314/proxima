@@ -51,6 +51,18 @@ func NewTransactionID(ts LogicalTime, h TransactionHash, sequencerTxFlag, branch
 	return
 }
 
+// NewTransactionIDPrefix used for database iteration by prefix, i.e. all transaction IDs of specific slot
+func NewTransactionIDPrefix(slot TimeSlot, sequencerTxFlag, branchTxFlag bool) (ret [4]byte) {
+	copy(ret[:], slot.Bytes())
+	if sequencerTxFlag {
+		ret[0] = ret[0] | SequencerTxFlagHigherByte
+	}
+	if branchTxFlag {
+		ret[0] = ret[0] | BranchTxFlagHigherByte
+	}
+	return
+}
+
 func TransactionIDFromBytes(data []byte) (ret TransactionID, err error) {
 	if len(data) != TransactionIDLength {
 		err = errors.New("TransactionIDFromBytes: wrong data length")
