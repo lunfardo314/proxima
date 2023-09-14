@@ -84,17 +84,23 @@ func Load(stateStore general.StateStore, txBytesStore general.TxBytesStore) *UTX
 	branches := state.FetchLatestBranches(stateStore)
 
 	for _, br := range branches {
-		txid := br.Stem.ID.TransactionID()
 		// make a virtual transaction
-		v := newVirtualTx(&txid)
-		v.addSequencerIndices(br.SeqOutput.ID.Index(), br.Stem.ID.Index())
-		vid := v.Wrap()
+		vid := newVirtualBranchTx(br).Wrap()
 		// add the transaction to the utxo tangle data structure
 		ret.addVertex(vid)
 		// add the corresponding branch
 		ret.addBranch(vid, br.Root)
 	}
 	return ret
+}
+
+func newVirtualBranchTx(br *state.BranchData) *VirtualTransaction {
+	txid := br.Stem.ID.TransactionID()
+	v := newVirtualTx(&txid)
+	v.addSequencerIndices(br.SeqOutput.ID.Index(), br.Stem.ID.Index())
+	v.addOutput(br.SeqOutput.ID.Index(), br.SeqOutput.Output)
+	v.addOutput(br.Stem.ID.Index(), br.Stem.Output)
+	return v
 }
 
 // InitGenesisState

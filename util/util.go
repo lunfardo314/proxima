@@ -203,7 +203,7 @@ func MustTakeFirstKeyInMap[K comparable, V any](m map[K]V) K {
 	return ret
 }
 
-func NewRange[T constraints.Integer](from, toIncl T) []T {
+func MakeRange[T constraints.Integer](from, toIncl T) []T {
 	Assertf(from <= toIncl, "from<=toIncl")
 	ret := make([]T, toIncl-from+1)
 	for i := range ret {

@@ -514,9 +514,9 @@ func (vid *WrappedTx) DeltaString(skipCommands ...bool) string {
 				ret.Append(multistate.UpdateCommandsToLines(cmds))
 			}
 		}, VirtualTx: func(v *VirtualTransaction) {
-			ret.Add("   (booked transaction)")
+			ret.Add("   (virtualTx)")
 		}, Orphaned: func() {
-			ret.Add("   (orphaned vertex)")
+			ret.Add("   (orphanedTx)")
 		},
 	})
 	return ret.String()

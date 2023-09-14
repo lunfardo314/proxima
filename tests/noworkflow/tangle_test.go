@@ -24,11 +24,12 @@ import (
 func TestOriginTangle(t *testing.T) {
 	t.Run("origin", func(t *testing.T) {
 		par := genesis.DefaultIdentityData(testutil.GetTestingPrivateKey())
-		tg, bootstrapChainID, root := utangle.CreateGenesisUTXOTangle(*par, common.NewInMemoryKVStore(), txstore.NewDummyTxBytesStore())
-		require.True(t, tg != nil)
+		stateStore := common.NewInMemoryKVStore()
+		bootstrapChainID, root := genesis.InitLedgerState(*par, stateStore)
+		ut := utangle.Load(stateStore, txstore.NewDummyTxBytesStore())
 		t.Logf("bootstrap chain id: %s", bootstrapChainID.String())
 		t.Logf("genesis root: %s", root.String())
-		t.Logf("%s", tg.Info(true))
+		t.Logf("%s", ut.Info(true))
 	})
 	t.Run("origin with distribution", func(t *testing.T) {
 		privKey := testutil.GetTestingPrivateKey()
@@ -39,9 +40,21 @@ func TestOriginTangle(t *testing.T) {
 			{Lock: addr1, Balance: 1_000_000},
 			{Lock: addr2, Balance: 2_000_000},
 		}
-		ut, bootstrapChainID, distribTxID := utangle.CreateGenesisUTXOTangleWithDistribution(*par, privKey, distrib, common.NewInMemoryKVStore(), txstore.NewDummyTxBytesStore())
-		require.True(t, ut != nil)
+		stateStore := common.NewInMemoryKVStore()
+		bootstrapChainID, _ := genesis.InitLedgerState(*par, stateStore)
+		txBytes, err := genesis.DistributeInitialSupply(stateStore, privKey, distrib)
+		require.NoError(t, err)
+
+		txStore := txstore.NewSimpleTxBytesStore(common.NewInMemoryKVStore())
+		err = txStore.SaveTxBytes(txBytes)
+		require.NoError(t, err)
+
+		ut := utangle.Load(stateStore, txStore)
 		t.Logf("bootstrap chain id: %s", bootstrapChainID.String())
+
+		distribTxID, _, err := transaction.IDAndTimestampFromTransactionBytes(txBytes)
+		require.NoError(t, err)
+
 		t.Logf("genesis branch txid: %s", distribTxID.Short())
 		t.Logf("%s", ut.Info())
 

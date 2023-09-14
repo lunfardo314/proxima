@@ -416,5 +416,5 @@ func FetchLatestNSlotsBranchData(store general.StateStore, nLatest int) []*Branc
 		return nil
 	}
 	oldestHorizon := core.TimeSlot(uint32(latestSlot) - 3*uint32(nLatest))
-	return FetchBranchDataMulti(store, FetchRootRecords(store, util.NewRange(oldestHorizon, latestSlot)...)...)
+	return FetchBranchDataMulti(store, FetchRootRecords(store, util.MakeRange(oldestHorizon, latestSlot)...)...)
 }
