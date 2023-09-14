@@ -211,3 +211,8 @@ func NewRange[T constraints.Integer](from, toIncl T) []T {
 	}
 	return ret
 }
+
+func Sort[T any](slice []T, less func(i, j int) bool) []T {
+	sort.Slice(slice, less)
+	return slice
+}

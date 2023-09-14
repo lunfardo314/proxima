@@ -400,8 +400,13 @@ func FetchBranchDataMulti(store general.StateStore, rootData ...RootData) []*Bra
 	return ret
 }
 
+// FetchLatestBranches branches of the latest slot sorted by coverage descending
 func FetchLatestBranches(store general.StateStore) []*BranchData {
-	return FetchBranchDataMulti(store, FetchRootRecords(store, FetchLatestSlot(store))...)
+	ret := FetchBranchDataMulti(store, FetchRootRecords(store, FetchLatestSlot(store))...)
+
+	return util.Sort(ret, func(i, j int) bool {
+		return ret[i].Coverage > ret[j].Coverage
+	})
 }
 
 func FetchLatestNSlotsBranchData(store general.StateStore, nLatest int) []*BranchData {
