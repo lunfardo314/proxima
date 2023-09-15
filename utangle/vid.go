@@ -447,7 +447,7 @@ func (vid *WrappedTx) StartNextSequencerMilestoneDelta(otherSeqMs ...*WrappedTx)
 			ret = v.StateDelta.Clone()
 		},
 		VirtualTx: func(_ *VirtualTransaction) {
-			ret = NewUTXOStateDelta(nil)
+			ret = NewUTXOStateDelta(vid)
 		},
 	})
 	if ret == nil {

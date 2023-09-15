@@ -1,7 +1,6 @@
 package sequencer
 
 import (
-	"fmt"
 	"time"
 
 	"github.com/lunfardo314/proxima/core"
@@ -55,7 +54,7 @@ func (b *baseProposer) proposeBase() (*transaction.Transaction, bool) {
 	}
 	// non-branch
 	targetDelta, conflict, _ := latestMilestone.VID.StartNextSequencerMilestoneDelta()
-	fmt.Printf("============= vid: %s\n=================target delta:\n%s\n", latestMilestone.VID.String(), targetDelta.LinesRecursive().String())
+	//fmt.Printf("============= vid: %s\n=================target delta:\n%s\n", latestMilestone.VID.String(), targetDelta.LinesRecursive().String())
 
 	util.Assertf(conflict == nil, "conflict == nil")
 	util.Assertf(targetDelta != nil, "latest milestone is orphaned: %s", latestMilestone.VID.IDShort())
