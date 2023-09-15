@@ -216,3 +216,12 @@ func Sort[T any](slice []T, less func(i, j int) bool) []T {
 	sort.Slice(slice, less)
 	return slice
 }
+
+func Find[T comparable](lst []T, el T) int {
+	for i, e := range lst {
+		if e == el {
+			return i
+		}
+	}
+	return -1
+}

@@ -1,0 +1,10 @@
+# Configuration of the Proxima node
+
+multistate:
+  name: proximadb
+
+txstore:
+  type: dummy
+
+logger:
+  level: info
