@@ -228,7 +228,7 @@ func makeAddresses(n int) ([]core.AddressED25519, []ed25519.PrivateKey) {
 
 func Test1Sequencer(t *testing.T) {
 	t.Run("run idle", func(t *testing.T) {
-		const maxSlots = 5
+		const maxSlots = 10
 		wrkDbg := workflow.DebugConfig{
 			//workflow.PrimaryInputConsumerName: zapcore.DebugLevel,
 			//workflow.PreValidateConsumerName:  zapcore.DebugLevel,
@@ -833,7 +833,7 @@ func TestNSequencers(t *testing.T) {
 	t.Run("2 seq, transfers 2", func(t *testing.T) {
 		const (
 			nSequencers       = 2
-			maxSlots          = 20
+			maxSlots          = 40
 			numFaucets        = 2
 			numTxPerFaucet    = 10
 			maxTxInputs       = 100
