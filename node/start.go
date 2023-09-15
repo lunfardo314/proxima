@@ -1,7 +1,10 @@
 package node
 
 import (
+	"os"
+	"os/signal"
 	"strings"
+	"time"
 
 	"github.com/dgraph-io/badger/v4"
 	"github.com/lunfardo314/proxima/general"
@@ -32,8 +35,19 @@ func Start() {
 
 	Node.startup()
 
-	Node.Log.Info("Proxima node has been started successfully")
+	killChan := make(chan os.Signal, 1)
+	signal.Notify(killChan, os.Interrupt)
+	go func() {
+		<-killChan
+		Node.cleanup()
+		Node.Log.Info("node has been interrupted")
+		os.Exit(0)
+	}()
+
+	Node.Log.Infof("Proxima node has been started successfully with multistate db '%s'", Node.GetMultiStateDBName())
 	Node.Log.Debug("running in debug mode")
+
+	time.Sleep(1 * time.Minute)
 }
 
 func (p *ProximaNode) startup() {
