@@ -226,9 +226,9 @@ func makeAddresses(n int) ([]core.AddressED25519, []ed25519.PrivateKey) {
 	return retAddrs, retPrivKeys
 }
 
-func TestBootstrapSequencer(t *testing.T) {
+func Test1Sequencer(t *testing.T) {
 	t.Run("run idle", func(t *testing.T) {
-		const maxSlots = 15
+		const maxSlots = 5
 		wrkDbg := workflow.DebugConfig{
 			//workflow.PrimaryInputConsumerName: zapcore.DebugLevel,
 			//workflow.PreValidateConsumerName:  zapcore.DebugLevel,
@@ -616,7 +616,7 @@ func (r *sequencerTestData) createTransactionLogger() {
 }
 
 func fnameFromTestName(t *testing.T) string {
-	return strings.Replace(t.Name(), "/", "_", -1)
+	return "test-out/" + strings.Replace(t.Name(), "/", "_", -1)
 }
 
 const transferAmount = 1_000

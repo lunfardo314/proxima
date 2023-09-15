@@ -162,14 +162,15 @@ func (d *UTXOStateDelta) getConsumedSet(vid *WrappedTx) (ret set.Set[byte], txFo
 }
 
 func (d *UTXOStateDelta) CanBeConsumedBySequencer(wOut WrappedOutput, ut *UTXOTangle) bool {
+	consumed, _ := d.getConsumedSet(wOut.VID)
+	if consumed.Contains(wOut.Index) {
+		return false
+	}
+
 	util.Assertf(d.baselineBranch != nil, "CanBeConsumedBySequencer: sequencer delta expected, baselineBranch must be not nil")
 
-	canBeConsumed := false
+	canBeConsumed := true // if it is vertex and not in the consumed set, it can be consumed
 	wOut.VID.Unwrap(UnwrapOptions{
-		Vertex: func(_ *Vertex) {
-			consumed, _ := d.getConsumedSet(wOut.VID) // if tx nt found can be consumed
-			canBeConsumed = !consumed.Contains(wOut.Index)
-		},
 		VirtualTx: func(_ *VirtualTransaction) {
 			rdr, ok := ut.StateReaderOfSequencerMilestone(d.baselineBranch)
 			util.Assertf(ok, "CanBeConsumedBySequencer: cannot read state of branch %s", func() any { return d.baselineBranch.IDShort() })
