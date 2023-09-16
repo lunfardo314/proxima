@@ -23,7 +23,7 @@ func main() {
 	n, err := strconv.Atoi(os.Args[2])
 	util.AssertNoError(err)
 	util.Assertf(n > 0, "must be a positive number")
-	fmt.Printf("FOR TESTING PURPOSES ONLY! DO NOT USE IN PRODUCTION!\nGenerate %d private keys and ED25519 addresses to the file %s.yaml\n", n, os.Args[2])
+	fmt.Printf("FOR TESTING PURPOSES ONLY! DO NOT USE IN PRODUCTION!\nGenerate %d private keys and ED25519 addresses to the file %s.yaml\n", n, os.Args[1])
 
 	privateKeys := testutil.GetTestingPrivateKeys(n, rand.Int())
 	addresses := make([]core.AddressED25519, len(privateKeys))

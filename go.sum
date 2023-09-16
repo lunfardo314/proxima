@@ -178,6 +178,8 @@ github.com/lunfardo314/easyfl v0.0.0-20230825063006-6de44567651c h1:cVF6Af2RrIjQ
 github.com/lunfardo314/easyfl v0.0.0-20230825063006-6de44567651c/go.mod h1:sbC4lEPEdSVEi0VyMUQa6jz987/MDB+2EM2co4MfMbk=
 github.com/lunfardo314/unitrie v0.0.0-20230904050147-26dea3d65b7f h1:HhrHwZ9SPkEYjfcMljEgGoqG623kqDNW/+suBwanpSU=
 github.com/lunfardo314/unitrie v0.0.0-20230904050147-26dea3d65b7f/go.mod h1:Y/lrU1Lq5IiV7jOeKLSeQ9zTAaDVSizYgr0EdPn3Nx8=
+github.com/lunfardo314/unitrie v0.0.0-20230916092201-974dd18e2c04 h1:vFH8RM24eepqZToTD05I/ko7p/Z0UeZ4MJkSErbrhNA=
+github.com/lunfardo314/unitrie v0.0.0-20230916092201-974dd18e2c04/go.mod h1:Y/lrU1Lq5IiV7jOeKLSeQ9zTAaDVSizYgr0EdPn3Nx8=
 github.com/magiconair/properties v1.8.7 h1:IeQXZAiQcpL9mgcAe1Nu6cX9LLw6ExEHKjN0VQdvPDY=
 github.com/magiconair/properties v1.8.7/go.mod h1:Dhd985XPs7jluiymwWYZ0G4Z61jb3vdS329zhj2hYo0=
 github.com/mitchellh/mapstructure v1.5.0 h1:jeMsZIYE/09sWLaz43PL7Gy6RuMjD2eJVyuac5Z2hdY=

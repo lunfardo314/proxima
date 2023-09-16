@@ -72,8 +72,13 @@ func (p *ProximaNode) GetMultiStateDBName() string {
 }
 
 func (p *ProximaNode) startMultiStateDB() {
-	p.multiStateDB = badger_adaptor.MustCreateOrOpenBadgerDB(p.GetMultiStateDBName())
-	p.log.Infof("opened multi-state DB '%s", p.GetMultiStateDBName())
+	dbname := p.GetMultiStateDBName()
+	var err error
+	p.multiStateDB, err = badger_adaptor.OpenBadgerDB(dbname)
+	if err != nil {
+		p.log.Fatalf("can't open '%s'", dbname)
+	}
+	p.log.Infof("opened multi-state DB '%s", dbname)
 }
 
 func (p *ProximaNode) startTxStore() {
