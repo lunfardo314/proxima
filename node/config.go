@@ -17,9 +17,9 @@ func init() {
 	pflag.String("logger.timelayout", "2006-01-02 15:04:05.000", "time format")
 	pflag.String("logger.output", "stdout", "a list where to write log")
 
-	pflag.String("multistate.name", "proximadb", "name of the multi-state database")
-	pflag.String("txstore.type", "dummy", "one of: db | dummy | url")
-	pflag.String("txstore.name", "", "depending on type: name of the db or url")
+	pflag.String(general.ConfigKeyMultiStateDbName, "proximadb", "name of the multi-state database")
+	pflag.String(general.ConfigKeyTxStoreType, "dummy", "one of: db | dummy | url")
+	pflag.String(general.ConfigKeyTxStoreName, "", "depending on type: name of the db or url")
 }
 
 func initConfig(log *zap.SugaredLogger) {
@@ -27,13 +27,13 @@ func initConfig(log *zap.SugaredLogger) {
 	err := viper.BindPFlags(pflag.CommandLine)
 	util.AssertNoError(err)
 
-	viper.SetConfigName(".proxima")
+	viper.SetConfigName("proxima")
 	viper.SetConfigType("yaml")
 	viper.AddConfigPath(".")
 	err = viper.ReadInConfig()
 	util.AssertNoError(err)
 
-	if viper.GetString("multistate.name") == "" {
+	if viper.GetString(general.ConfigKeyMultiStateDbName) == "" {
 		log.Errorf("multistate database not specified, cannot start the node")
 		os.Exit(1)
 	}

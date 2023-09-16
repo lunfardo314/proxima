@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/lunfardo314/proxima/proxi/config"
 	"github.com/lunfardo314/proxima/proxi/console"
@@ -83,6 +84,7 @@ It provides:
 }
 
 func main() {
+	console.Infof("------ proxi invoked. Command line: '%s'\n", strings.Join(os.Args, " "))
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
 	}

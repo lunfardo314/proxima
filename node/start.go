@@ -9,6 +9,7 @@ import (
 	state "github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/txstore"
 	"github.com/lunfardo314/proxima/utangle"
+	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/unitrie/adaptors/badger_adaptor"
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
@@ -82,13 +83,13 @@ func (p *ProximaNode) startMultiStateDB() {
 }
 
 func (p *ProximaNode) startTxStore() {
-	switch viper.GetString("txstore.type") {
+	switch viper.GetString(general.ConfigKeyTxStoreType) {
 	case "dummy":
 		p.log.Infof("transaction store is 'dummy'")
 		p.txStore = txstore.NewDummyTxBytesStore()
 
 	case "db":
-		name := viper.GetString("txstore.name")
+		name := viper.GetString(general.ConfigKeyTxStoreName)
 		p.log.Infof("transaction store database name is '%s'", name)
 		if name == "" {
 			p.log.Errorf("transaction store database name not specified. Cannot start the node")
@@ -103,7 +104,7 @@ func (p *ProximaNode) startTxStore() {
 		panic("'url' type of transaction store is not supported yet")
 
 	default:
-		p.log.Errorf("transaction store type '%s' is wrong", viper.GetString("txstore.type"))
+		p.log.Errorf("transaction store type '%s' is wrong", viper.GetString(general.ConfigKeyTxStoreType))
 		p.Stop()
 		os.Exit(1)
 	}
@@ -121,7 +122,7 @@ func (p *ProximaNode) loadUTXOTangle() {
 	p.log.Infof("latest time slot %d contains %d branches", latestSlot, len(branches))
 	for _, br := range branches {
 		txid := br.Stem.ID.TransactionID()
-		p.log.Infof("branch %d : sequencer: %s, coverage: %d", txid.Short(), br.SequencerID.Short(), br.Coverage)
+		p.log.Infof("    branch %s : sequencer: %s, coverage: %s", txid.Short(), br.SequencerID.Short(), util.GoThousands(br.Coverage))
 	}
 	p.log.Infof("UTXO tangle has been created successfully")
 }
