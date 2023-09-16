@@ -8,7 +8,7 @@ import (
 	"github.com/lunfardo314/proxima/util/eventtype"
 )
 
-const RejectConsumerName = "[reject]"
+const RejectConsumerName = "reject"
 
 type (
 	RejectInputData struct {

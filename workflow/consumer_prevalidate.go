@@ -10,7 +10,7 @@ import (
 // PreValidateConsumer performs syntactic and semantic checks on te basic structure of the transaction
 // before solidification and full validation
 
-const PreValidateConsumerName = "[prevalid]"
+const PreValidateConsumerName = "prevalid"
 
 type (
 	// PreValidateConsumerInputData input data type of the consumer

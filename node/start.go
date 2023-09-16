@@ -10,6 +10,7 @@ import (
 	"github.com/lunfardo314/proxima/txstore"
 	"github.com/lunfardo314/proxima/utangle"
 	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/proxima/workflow"
 	"github.com/lunfardo314/unitrie/adaptors/badger_adaptor"
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
@@ -20,7 +21,8 @@ type ProximaNode struct {
 	multiStateDB *badger.DB
 	txStoreDB    *badger.DB
 	txStore      general.TxBytesStore
-	utangle      *utangle.UTXOTangle
+	uTangle      *utangle.UTXOTangle
+	workflow     *workflow.Workflow
 }
 
 func Start() *ProximaNode {
@@ -47,6 +49,7 @@ func (p *ProximaNode) startup() {
 	p.startMultiStateDB()
 	p.startTxStore()
 	p.loadUTXOTangle()
+	p.startWorkflow()
 }
 
 func (p *ProximaNode) Stop() {
@@ -64,6 +67,9 @@ func (p *ProximaNode) Stop() {
 		} else {
 			p.log.Warnf("error while closing transaction store database: %v", err)
 		}
+	}
+	if p.workflow != nil {
+		p.workflow.Stop()
 	}
 	p.log.Info("node stopped")
 }
@@ -112,8 +118,8 @@ func (p *ProximaNode) startTxStore() {
 
 func (p *ProximaNode) loadUTXOTangle() {
 	stateStore := badger_adaptor.New(p.multiStateDB)
-	p.utangle = utangle.Load(stateStore, p.txStore)
-	latestSlot := p.utangle.LatestTimeSlot()
+	p.uTangle = utangle.Load(stateStore, p.txStore)
+	latestSlot := p.uTangle.LatestTimeSlot()
 	currentSlot := core.LogicalTimeNow().TimeSlot()
 	p.log.Infof("current time slot: %d, latest time slot in the multi-state: %d, lagging behind: %d slots",
 		currentSlot, latestSlot, currentSlot-latestSlot)
@@ -125,4 +131,13 @@ func (p *ProximaNode) loadUTXOTangle() {
 		p.log.Infof("    branch %s : sequencer: %s, coverage: %s", txid.Short(), br.SequencerID.Short(), util.GoThousands(br.Coverage))
 	}
 	p.log.Infof("UTXO tangle has been created successfully")
+}
+
+func (p *ProximaNode) startWorkflow() {
+	p.workflow = workflow.New(p.uTangle)
+	p.workflow.Start()
+}
+
+func wokrflowDebugConfig() workflow.DebugConfig {
+
 }

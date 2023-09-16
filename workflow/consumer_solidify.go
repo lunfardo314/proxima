@@ -12,7 +12,7 @@ import (
 	"go.uber.org/atomic"
 )
 
-const SolidifyConsumerName = "[solidify]"
+const SolidifyConsumerName = "solidify"
 
 type (
 	SolidifyInputData struct {

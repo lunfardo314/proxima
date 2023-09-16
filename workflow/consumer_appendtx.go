@@ -5,7 +5,7 @@ import (
 	"github.com/lunfardo314/proxima/util/eventtype"
 )
 
-const AppendTxConsumerName = "[addtx]"
+const AppendTxConsumerName = "addtx"
 
 type (
 	AppendTxConsumerInputData struct {

@@ -6,7 +6,7 @@ import (
 	"github.com/lunfardo314/proxima/util/workerpool"
 )
 
-const ValidateConsumerName = "[validate]"
+const ValidateConsumerName = "validate"
 
 type (
 	ValidateConsumerInputData struct {

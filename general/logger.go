@@ -9,6 +9,9 @@ import (
 const defaultTimeLayout = "2006-01-02 15:04:05.000"
 
 func NewLogger(name string, level zapcore.Level, outputs []string, timeLayout string) *zap.SugaredLogger {
+	if len(outputs) == 0 {
+		outputs = []string{"stdout"}
+	}
 	cfg := zap.Config{
 		Level:            zap.NewAtomicLevelAt(level),
 		Development:      true,

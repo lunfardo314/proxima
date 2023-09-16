@@ -15,7 +15,7 @@ import (
 
 // PrimaryInputConsumer is where transaction enters the workflow pipeline
 
-const PrimaryInputConsumerName = "[input]"
+const PrimaryInputConsumerName = "input"
 
 // PrimaryInputConsumerData is a basic data of the raw transaction
 type (

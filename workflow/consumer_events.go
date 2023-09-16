@@ -5,7 +5,7 @@ import (
 	"github.com/lunfardo314/proxima/util/eventtype"
 )
 
-const EventsName = "[events]"
+const EventsName = "events"
 
 type (
 	EventsInputData struct {

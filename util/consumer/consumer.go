@@ -3,7 +3,7 @@ package consumer
 import (
 	"sync"
 
-	"github.com/lunfardo314/proxima/util/testutil"
+	"github.com/lunfardo314/proxima/general"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
@@ -27,7 +27,7 @@ func NewConsumerWithBufferSize[T any](name string, bufSize int, logLevel ...zapc
 	if len(logLevel) > 0 {
 		lvl = logLevel[0]
 	}
-	log := testutil.NewNamedLogger(name, lvl)
+	log := general.NewLogger("["+name+"]", lvl, nil, "")
 	ret := &Consumer[T]{
 		name:      name,
 		que:       New[T](bufSize),

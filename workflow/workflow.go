@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/general"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/utangle"
 	"github.com/lunfardo314/proxima/util"
@@ -60,26 +61,36 @@ type (
 )
 
 var (
+	AllConsumerNames = []string{
+		AppendTxConsumerName,
+		EventsName,
+		PrimaryInputConsumerName,
+		PreValidateConsumerName,
+		RejectConsumerName,
+		SolidifyConsumerName,
+		ValidateConsumerName,
+	}
+
 	AllDebugLevel = DebugConfig{"all": zapcore.DebugLevel}
 	AllInfoLevel  = DebugConfig{}
 )
 
-func NewConsumer[T any](name string, pi *Workflow) *Consumer[T] {
+func NewConsumer[T any](name string, wrk *Workflow) *Consumer[T] {
 	lvl := zapcore.InfoLevel
-	if len(pi.debugConfig) > 0 {
-		if l, ok := pi.debugConfig["all"]; ok {
+	if len(wrk.debugConfig) > 0 {
+		if l, ok := wrk.debugConfig["all"]; ok {
 			lvl = l
 		}
-		if l, ok := pi.debugConfig[name]; ok {
+		if l, ok := wrk.debugConfig[name]; ok {
 			lvl = l
 		}
 	}
 	ret := &Consumer[T]{
 		Consumer: consumer.NewConsumer[T](name, lvl),
-		glb:      pi,
+		glb:      wrk,
 	}
 	ret.AddOnConsume(func(_ T) {
-		pi.IncCounter(name + ".in")
+		wrk.IncCounter(name + ".in")
 	})
 	return ret
 }
@@ -137,15 +148,21 @@ func (c *Consumer[T]) InfoStr() string {
 
 const TxStatusDefaultWaitingTimeout = 2 * time.Second
 
-func New(tg *utangle.UTXOTangle, debugConfig ...DebugConfig) *Workflow {
+func New(ut *utangle.UTXOTangle, debugConfig ...DebugConfig) *Workflow {
 	var loglevel DebugConfig
 	if len(debugConfig) > 0 {
 		loglevel = debugConfig[0]
 	}
+
+	topLogLevel := zap.InfoLevel
+	if lv, ok := loglevel["workflow"]; ok {
+		topLogLevel = lv
+	}
+
 	ret := &Workflow{
-		log:           testutil.NewNamedLogger("-glb-"),
+		log:           general.NewLogger("pipe", topLogLevel, []string{"stdout"}, ""),
 		debugConfig:   loglevel,
-		utxoTangle:    tg,
+		utxoTangle:    ut,
 		debugCounters: testutil.NewSynCounters(),
 		eventHandlers: make(map[eventtype.EventCode][]func(any)),
 	}
