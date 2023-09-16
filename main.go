@@ -1,7 +1,18 @@
 package main
 
-import "github.com/lunfardo314/proxima/node"
+import (
+	"os"
+	"os/signal"
+
+	"github.com/lunfardo314/proxima/node"
+)
 
 func main() {
-	node.Start()
+	n := node.Start()
+
+	killChan := make(chan os.Signal, 1)
+	signal.Notify(killChan, os.Interrupt)
+	<-killChan
+
+	n.Stop()
 }

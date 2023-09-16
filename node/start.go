@@ -1,15 +1,11 @@
 package node
 
 import (
-	"os"
-	"os/signal"
 	"strings"
-	"time"
 
 	"github.com/dgraph-io/badger/v4"
 	"github.com/lunfardo314/proxima/general"
 	"github.com/lunfardo314/proxima/util"
-	"github.com/lunfardo314/unitrie/common"
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -21,33 +17,22 @@ type ProximaNode struct {
 	TxStoreDB *badger.DB
 }
 
-var Node *ProximaNode
-
-func Start() {
+func Start() *ProximaNode {
 	log := newBootstrapLogger()
 	log.Info(general.BannerString())
 
 	initConfig(log)
 
-	Node = &ProximaNode{
+	ret := &ProximaNode{
 		Log: newLogger(),
 	}
 
-	Node.startup()
+	ret.startup()
 
-	killChan := make(chan os.Signal, 1)
-	signal.Notify(killChan, os.Interrupt)
-	go func() {
-		<-killChan
-		Node.cleanup()
-		Node.Log.Info("node has been interrupted")
-		os.Exit(0)
-	}()
+	ret.Log.Infof("Proxima node has been started successfully with multistate db '%s'", ret.GetMultiStateDBName())
+	ret.Log.Debug("running in debug mode")
 
-	Node.Log.Infof("Proxima node has been started successfully with multistate db '%s'", Node.GetMultiStateDBName())
-	Node.Log.Debug("running in debug mode")
-
-	time.Sleep(1 * time.Minute)
+	return ret
 }
 
 func (p *ProximaNode) startup() {
@@ -55,14 +40,15 @@ func (p *ProximaNode) startup() {
 
 }
 
-func (p *ProximaNode) cleanup() {
-	p.Log.Info("cleaning up..")
+func (p *ProximaNode) Stop() {
+	p.Log.Info("stopping the node..")
 	if p.DB != nil {
 		p.DB.Close()
 	}
 	if p.TxStoreDB != nil {
 		p.TxStoreDB.Close()
 	}
+	p.Log.Info("node stopped")
 }
 
 func (p *ProximaNode) GetMultiStateDBName() string {
@@ -70,21 +56,7 @@ func (p *ProximaNode) GetMultiStateDBName() string {
 }
 
 func newBootstrapLogger() *zap.SugaredLogger {
-	cfg := zap.Config{
-		Level:            zap.NewAtomicLevelAt(zap.InfoLevel),
-		Development:      true,
-		Encoding:         "console",
-		EncoderConfig:    zap.NewDevelopmentEncoderConfig(),
-		OutputPaths:      []string{"stderr"},
-		ErrorOutputPaths: []string{"stderr"},
-		DisableCaller:    true,
-	}
-	cfg.EncoderConfig.EncodeTime = zapcore.TimeEncoderOfLayout("2006-01-02 15:04:05.000")
-	log, err := cfg.Build()
-	common.AssertNoError(err)
-	log.Core()
-	log = log.WithOptions(zap.IncreaseLevel(zap.InfoLevel), zap.AddStacktrace(zapcore.FatalLevel))
-	return log.Sugar().Named("-boot-")
+	return general.NewLogger("-boot", zap.InfoLevel, []string{"stderr"}, "")
 }
 
 func newLogger() *zap.SugaredLogger {
@@ -99,20 +71,5 @@ func newLogger() *zap.SugaredLogger {
 		outputs = append(outputs, "stdout")
 	}
 
-	cfg := zap.Config{
-		Level:            zap.NewAtomicLevelAt(logLevel),
-		Development:      true,
-		Encoding:         "console",
-		EncoderConfig:    zap.NewDevelopmentEncoderConfig(),
-		OutputPaths:      outputs,
-		ErrorOutputPaths: outputs,
-		DisableCaller:    true,
-	}
-	cfg.EncoderConfig.EncodeTime = zapcore.TimeEncoderOfLayout(viper.GetString("logger.timelayout"))
-	log, err := cfg.Build()
-	common.AssertNoError(err)
-	log.Core()
-	log = log.WithOptions(zap.IncreaseLevel(logLevel), zap.AddStacktrace(zapcore.FatalLevel))
-
-	return log.Sugar().Named("-top-")
+	return general.NewLogger("-top", logLevel, outputs, viper.GetString("logger.timelayout"))
 }
