@@ -2,11 +2,14 @@ package node
 
 import (
 	"os"
+	"strings"
 
+	"github.com/lunfardo314/proxima/general"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
 func init() {
@@ -31,29 +34,26 @@ func initConfig(log *zap.SugaredLogger) {
 	util.AssertNoError(err)
 
 	if viper.GetString("multistate.name") == "" {
-		log.Errorf("multistate database not specified")
+		log.Errorf("multistate database not specified, cannot start the node")
 		os.Exit(1)
 	}
-	log.Infof("multistate database is '%s'", viper.GetString("multistate.name"))
+}
 
-	switch viper.GetString("txstore.type") {
-	case "dummy":
-		log.Infof("transaction store is 'dummy'")
-	case "db":
-		name := viper.GetString("txstore.name")
-		log.Infof("transaction store database name is '%s'", name)
-		if name == "" {
-			log.Errorf("transaction store database name not specified")
-			os.Exit(1)
-		}
-	case "url":
-		name := viper.GetString("txstore.name")
-		log.Infof("transaction store URL is '%s'", name)
-		if name == "" {
-			log.Errorf("transaction store URL not specified")
-		}
-	default:
-		log.Errorf("transaction store type '%s' is wrong", viper.GetString("txstore.type"))
-		os.Exit(1)
+func newBootstrapLogger() *zap.SugaredLogger {
+	return general.NewLogger("boot", zap.InfoLevel, []string{"stderr"}, "")
+}
+
+func newTopLogger() *zap.SugaredLogger {
+	logLevel := zapcore.InfoLevel
+	if viper.GetString("logger.level") == "debug" {
+		logLevel = zapcore.DebugLevel
 	}
+
+	outputStr := viper.GetString("logger.output")
+	outputs := strings.Split(outputStr, ",")
+	if util.Find(outputs, "stdout") < 0 {
+		outputs = append(outputs, "stdout")
+	}
+
+	return general.NewLogger("top", logLevel, outputs, viper.GetString("logger.timelayout"))
 }

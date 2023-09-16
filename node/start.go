@@ -1,20 +1,25 @@
 package node
 
 import (
-	"strings"
+	"os"
 
 	"github.com/dgraph-io/badger/v4"
+	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/general"
-	"github.com/lunfardo314/proxima/util"
+	state "github.com/lunfardo314/proxima/multistate"
+	"github.com/lunfardo314/proxima/txstore"
+	"github.com/lunfardo314/proxima/utangle"
+	"github.com/lunfardo314/unitrie/adaptors/badger_adaptor"
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
 )
 
 type ProximaNode struct {
-	Log       *zap.SugaredLogger
-	DB        *badger.DB
-	TxStoreDB *badger.DB
+	log          *zap.SugaredLogger
+	multiStateDB *badger.DB
+	txStoreDB    *badger.DB
+	txStore      general.TxBytesStore
+	utangle      *utangle.UTXOTangle
 }
 
 func Start() *ProximaNode {
@@ -24,52 +29,94 @@ func Start() *ProximaNode {
 	initConfig(log)
 
 	ret := &ProximaNode{
-		Log: newLogger(),
+		log: newTopLogger(),
 	}
 
 	ret.startup()
 
-	ret.Log.Infof("Proxima node has been started successfully with multistate db '%s'", ret.GetMultiStateDBName())
-	ret.Log.Debug("running in debug mode")
+	ret.log.Infof("Proxima node has been started successfully")
+	ret.log.Debug("running in debug mode")
 
 	return ret
 }
 
 func (p *ProximaNode) startup() {
-	p.Log.Info("starting up..")
+	p.log.Info("starting up..")
 
+	p.startMultiStateDB()
+	p.startTxStore()
+	p.loadUTXOTangle()
 }
 
 func (p *ProximaNode) Stop() {
-	p.Log.Info("stopping the node..")
-	if p.DB != nil {
-		p.DB.Close()
+	p.log.Info("stopping the node..")
+	if p.multiStateDB != nil {
+		if err := p.multiStateDB.Close(); err == nil {
+			p.log.Infof("multi-state database has been closed")
+		} else {
+			p.log.Warnf("error while closing multi-state database: %v", err)
+		}
 	}
-	if p.TxStoreDB != nil {
-		p.TxStoreDB.Close()
+	if p.txStoreDB != nil {
+		if err := p.txStoreDB.Close(); err == nil {
+			p.log.Infof("transaction store database has been closed")
+		} else {
+			p.log.Warnf("error while closing transaction store database: %v", err)
+		}
 	}
-	p.Log.Info("node stopped")
+	p.log.Info("node stopped")
 }
 
 func (p *ProximaNode) GetMultiStateDBName() string {
 	return viper.GetString("multistate.name")
 }
 
-func newBootstrapLogger() *zap.SugaredLogger {
-	return general.NewLogger("-boot", zap.InfoLevel, []string{"stderr"}, "")
+func (p *ProximaNode) startMultiStateDB() {
+	p.multiStateDB = badger_adaptor.MustCreateOrOpenBadgerDB(p.GetMultiStateDBName())
+	p.log.Infof("opened multi-state DB '%s", p.GetMultiStateDBName())
 }
 
-func newLogger() *zap.SugaredLogger {
-	logLevel := zapcore.InfoLevel
-	if viper.GetString("logger.level") == "debug" {
-		logLevel = zapcore.DebugLevel
-	}
+func (p *ProximaNode) startTxStore() {
+	switch viper.GetString("txstore.type") {
+	case "dummy":
+		p.log.Infof("transaction store is 'dummy'")
+		p.txStore = txstore.NewDummyTxBytesStore()
 
-	outputStr := viper.GetString("logger.output")
-	outputs := strings.Split(outputStr, ",")
-	if util.Find(outputs, "stdout") < 0 {
-		outputs = append(outputs, "stdout")
-	}
+	case "db":
+		name := viper.GetString("txstore.name")
+		p.log.Infof("transaction store database name is '%s'", name)
+		if name == "" {
+			p.log.Errorf("transaction store database name not specified. Cannot start the node")
+			p.Stop()
+			os.Exit(1)
+		}
+		p.txStoreDB = badger_adaptor.MustCreateOrOpenBadgerDB(name)
+		p.txStore = txstore.NewSimpleTxBytesStore(badger_adaptor.New(p.txStoreDB))
+		p.log.Infof("opened DB '%s' as transaction store", name)
 
-	return general.NewLogger("-top", logLevel, outputs, viper.GetString("logger.timelayout"))
+	case "url":
+		panic("'url' type of transaction store is not supported yet")
+
+	default:
+		p.log.Errorf("transaction store type '%s' is wrong", viper.GetString("txstore.type"))
+		p.Stop()
+		os.Exit(1)
+	}
+}
+
+func (p *ProximaNode) loadUTXOTangle() {
+	stateStore := badger_adaptor.New(p.multiStateDB)
+	p.utangle = utangle.Load(stateStore, p.txStore)
+	latestSlot := p.utangle.LatestTimeSlot()
+	currentSlot := core.LogicalTimeNow().TimeSlot()
+	p.log.Infof("current time slot: %d, latest time slot in the multi-state: %d, lagging behind: %d slots",
+		currentSlot, latestSlot, currentSlot-latestSlot)
+
+	branches := state.FetchLatestBranches(stateStore)
+	p.log.Infof("latest time slot %d contains %d branches", latestSlot, len(branches))
+	for _, br := range branches {
+		txid := br.Stem.ID.TransactionID()
+		p.log.Infof("branch %d : sequencer: %s, coverage: %d", txid.Short(), br.SequencerID.Short(), br.Coverage)
+	}
+	p.log.Infof("UTXO tangle has been created successfully")
 }
