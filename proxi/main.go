@@ -1,6 +1,3 @@
-/*
-Copyright © 2023 NAME HERE <EMAIL ADDRESS>
-*/
 package main
 
 import (
@@ -16,18 +13,13 @@ import (
 )
 
 func init() {
-	initRoot()
+	initRootCmd()
 	console.Init(rootCmd)
 	config.Init(rootCmd)
 	db.Init(rootCmd)
 	info_cmd.Init(rootCmd)
 	db.Init(rootCmd)
 }
-
-var (
-	configName    string
-	privateKeyStr string
-)
 
 var rootCmd = &cobra.Command{
 	Use:   "proxi",
@@ -38,15 +30,17 @@ It provides:
       - access to ledger via the Proxima node API. This includes simple wallet functions
 `,
 	PersistentPreRun: func(_ *cobra.Command, _ []string) {
-		initConfig()
+		readInConfig()
 	},
 	Run: func(cmd *cobra.Command, args []string) {
 		_ = cmd.Help()
 	},
 }
 
-// initConfig reads in config file and ENV variables if set.
-func initConfig() {
+// readInConfig reads in config file and ENV variables if set.
+func readInConfig() {
+
+	configName := viper.GetString("config")
 	if configName == "" {
 		configName = "proxi"
 	}
@@ -64,7 +58,7 @@ func initConfig() {
 	}
 }
 
-func initRoot() {
+func initRootCmd() {
 	rootCmd = &cobra.Command{
 		Use:   "proxi",
 		Short: "a simple CLI for the Proxima project",
@@ -74,15 +68,16 @@ It provides:
       - access to ledger via the Proxima node API. This includes simple wallet functions
 `,
 		PersistentPreRun: func(cmd *cobra.Command, args []string) {
-			initConfig()
+			readInConfig()
 		},
 		Run: func(cmd *cobra.Command, args []string) {
 			_ = cmd.Help()
 		},
 	}
 
-	rootCmd.PersistentFlags().StringVarP(&configName, "config", "c", "", "config file (default is .proxi.yaml)")
-	rootCmd.PersistentFlags().StringVar(&privateKeyStr, "private_key", "", "an ED25519 private key in hexadecimal")
+	rootCmd.PersistentFlags().StringVarP(&config.ConfigName, "config", "c", "", "config file (default is proxi.yaml)")
+
+	rootCmd.PersistentFlags().String("private_key", "", "an ED25519 private key in hexadecimal")
 	err := viper.BindPFlag("private_key", rootCmd.PersistentFlags().Lookup("private_key"))
 	console.AssertNoError(err)
 }

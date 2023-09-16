@@ -7,16 +7,17 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-)
-
-var (
-	verboseFlag bool
-	debugFlag   bool
+	"github.com/spf13/viper"
 )
 
 func Init(rootCmd *cobra.Command) {
-	rootCmd.PersistentFlags().BoolVarP(&verboseFlag, "verbose", "v", false, "verbose")
-	rootCmd.PersistentFlags().BoolVarP(&debugFlag, "debug", "d", false, "verbose")
+	rootCmd.PersistentFlags().BoolP("verbose", "v", false, "verbose")
+	err := viper.BindPFlag("verbose", rootCmd.PersistentFlags().Lookup("verbose"))
+	AssertNoError(err)
+
+	rootCmd.PersistentFlags().BoolP("debug", "d", false, "verbose")
+	err = viper.BindPFlag("debug", rootCmd.PersistentFlags().Lookup("debug"))
+	AssertNoError(err)
 }
 
 func Printf(format string, args ...any) {
@@ -28,13 +29,13 @@ func Infof(format string, args ...any) {
 }
 
 func Debugf(format string, args ...any) {
-	if debugFlag {
+	if viper.GetBool("debug") {
 		fmt.Printf(format+"\n", args...)
 	}
 }
 
 func Verbosef(format string, args ...any) {
-	if verboseFlag {
+	if viper.GetBool("verbose") {
 		fmt.Printf(format+"\n", args...)
 	}
 }

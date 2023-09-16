@@ -8,6 +8,7 @@ import (
 	"os"
 	"syscall"
 
+	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/proxi/console"
 	"github.com/lunfardo314/unitrie/common"
 	"github.com/spf13/cobra"
@@ -16,14 +17,20 @@ import (
 	"golang.org/x/crypto/ssh/terminal"
 )
 
+var forceSetPrivateKey bool
+
 func initSetKeyCmd() *cobra.Command {
-	return &cobra.Command{
+	setKeyCmd := &cobra.Command{
 		Use:     "set_private_key [<key>] [-c <config name>]",
 		Aliases: []string{"setpk"},
 		Short:   "Set a private key",
 		Args:    cobra.MaximumNArgs(1),
 		Run:     runSetKeyCommand,
 	}
+
+	setKeyCmd.Flags().BoolVarP(&forceSetPrivateKey, "force", "f", false, "force set private key to the config profile")
+
+	return setKeyCmd
 }
 
 func runSetKeyCommand(_ *cobra.Command, args []string) {
@@ -31,11 +38,15 @@ func runSetKeyCommand(_ *cobra.Command, args []string) {
 		console.Fatalf("error: config profile not set")
 	}
 
-	if GetPrivateKey() != nil {
-		if !console.YesNoPrompt("Are you sure you want to replace current private key? (y/N):", false) {
-			os.Exit(1)
+	if !forceSetPrivateKey {
+		if GetPrivateKey() != nil {
+			if !console.YesNoPrompt("Are you sure you want to replace current private key? (y/N):", false) {
+				os.Exit(1)
+			}
 		}
 	}
+
+	console.Assertf(!forceSetPrivateKey || len(args) == 1, "private key must be provided explicitly")
 
 	var privateKey ed25519.PrivateKey
 	if len(args) == 1 {
@@ -43,6 +54,8 @@ func runSetKeyCommand(_ *cobra.Command, args []string) {
 		if len(privateKey) == 0 {
 			console.Fatalf("wrong private key")
 		}
+		addr := core.AddressED25519FromPrivateKey(privateKey)
+		console.Infof("Private key has been set. ED25519 address is: %s", addr.String())
 	} else {
 		console.Infof("Private key will be generated")
 		console.Printf("Enter random seed (minimum %d characters): ", minimumSeedLength)
@@ -62,9 +75,10 @@ func runSetKeyCommand(_ *cobra.Command, args []string) {
 		}
 		seed := blake2b.Sum256(common.Concat(userSeed, osSeed[:]))
 		privateKey = ed25519.NewKeyFromSeed(seed[:])
+		addr := core.AddressED25519FromPrivateKey(privateKey)
+		console.Infof("Private key has been generated. ED25519 address is: %s", addr)
 	}
 	SetKeyValue("private_key", hex.EncodeToString(privateKey))
-	console.Infof("Private key has been generated. ED25519 address is: %s", hex.EncodeToString(AddressBytes()))
 }
 
 func decodePrivateKey(pkstr string) ed25519.PrivateKey {

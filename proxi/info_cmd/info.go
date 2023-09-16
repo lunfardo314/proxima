@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/dgraph-io/badger/v4"
+	"github.com/lunfardo314/proxima/general"
 	"github.com/lunfardo314/proxima/genesis"
 	"github.com/lunfardo314/proxima/proxi/config"
 	"github.com/lunfardo314/proxima/proxi/console"
@@ -36,11 +37,11 @@ func Init(rootCmd *cobra.Command) {
 }
 
 func runInfoCmd(_ *cobra.Command, _ []string) {
-	stateDbName := viper.GetString("state_db")
+	stateDbName := viper.GetString(general.ConfigKeyMultiStateDbName)
 	if stateDbName == "" {
 		stateDbName = "(not set)"
 	}
-	txStoreDbName := viper.GetString("tx_store_db")
+	txStoreDbName := viper.GetString(general.ConfigKeyTxStoreName)
 	if txStoreDbName == "" {
 		txStoreDbName = "(not set)"
 	}

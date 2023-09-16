@@ -16,7 +16,7 @@ func initConfigSetCmd() *cobra.Command {
 	return setConfigCmd
 }
 
-func runConfigSetCmd(cmd *cobra.Command, args []string) {
+func runConfigSetCmd(_ *cobra.Command, args []string) {
 	v := args[1]
 	if args[0] == "private_key" {
 		console.Fatalf("use 'proxi set_private_key [<key>]' command to set a private key")

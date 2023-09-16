@@ -8,6 +8,7 @@ import (
 
 	"github.com/dgraph-io/badger/v4"
 	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/general"
 	"github.com/lunfardo314/proxima/genesis"
 	"github.com/lunfardo314/proxima/proxi/config"
 	"github.com/lunfardo314/proxima/proxi/console"
@@ -43,10 +44,10 @@ func runGenesis(_ *cobra.Command, args []string) {
 	if len(address) == 0 {
 		console.Fatalf("private key not set. Use 'proxi setpk'")
 	}
-	dbName := viper.GetString("state_db")
+	dbName := viper.GetString(general.ConfigKeyMultiStateDbName)
 	util.Assertf(dbName != "", "genesis database name not set")
 
-	txStoreName := viper.GetString("tx_store_db")
+	txStoreName := viper.GetString(general.ConfigKeyTxStoreName)
 	if txStoreName == "" {
 		txStoreName = dbName + ".txstore"
 	}
@@ -87,8 +88,8 @@ func runGenesis(_ *cobra.Command, args []string) {
 
 	console.Infof("Transaction store DB '%s' has been created successfully", dbName)
 
-	config.SetKeyValue("state_db", dbName)
-	config.SetKeyValue("tx_store_db", txStoreName)
+	config.SetKeyValue(general.ConfigKeyMultiStateDbName, dbName)
+	config.SetKeyValue(general.ConfigKeyTxStoreName, txStoreName)
 }
 
 func mustNotExist(dir string) {

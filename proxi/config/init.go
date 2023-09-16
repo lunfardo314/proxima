@@ -6,6 +6,8 @@ import (
 	"github.com/spf13/viper"
 )
 
+var ConfigName string
+
 // Init adds all commands in the package to the root command
 func Init(rootCmd *cobra.Command) {
 	rootCmd.AddCommand(initInitCmd())
@@ -26,5 +28,11 @@ func initInitCmd() *cobra.Command {
 const minimumSeedLength = 8
 
 func runInitCommand(_ *cobra.Command, _ []string) {
-	console.AssertNoError(viper.SafeWriteConfig())
+	var configFname string
+	if ConfigName == "" {
+		configFname = "proxi.yaml"
+	} else {
+		configFname = ConfigName + ".yaml"
+	}
+	console.AssertNoError(viper.SafeWriteConfigAs(configFname))
 }

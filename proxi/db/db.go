@@ -1,6 +1,7 @@
 package db
 
 import (
+	"github.com/lunfardo314/proxima/general"
 	"github.com/lunfardo314/proxima/proxi/console"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -21,12 +22,12 @@ func Init(rootCmd *cobra.Command) {
 		},
 	}
 
-	dbCmd.PersistentFlags().StringVar(&stateDBName, "state_db", "", "name of the ledger state DB")
-	err := viper.BindPFlag("state_db", dbCmd.PersistentFlags().Lookup("state_db"))
+	dbCmd.PersistentFlags().StringVar(&stateDBName, general.ConfigKeyMultiStateDbName, "", "name of the ledger state DB")
+	err := viper.BindPFlag(general.ConfigKeyMultiStateDbName, dbCmd.PersistentFlags().Lookup(general.ConfigKeyMultiStateDbName))
 	console.AssertNoError(err)
 
-	dbCmd.PersistentFlags().StringVar(&txStoreDB, "tx_store_db", "", "name of the transaction store")
-	err = viper.BindPFlag("tx_store_db", dbCmd.PersistentFlags().Lookup("tx_store_db"))
+	dbCmd.PersistentFlags().StringVar(&txStoreDB, general.ConfigKeyTxStoreName, "", "name of the transaction store")
+	err = viper.BindPFlag(general.ConfigKeyTxStoreName, dbCmd.PersistentFlags().Lookup(general.ConfigKeyTxStoreName))
 	console.AssertNoError(err)
 
 	dbCmd.InitDefaultHelpCmd()
@@ -44,7 +45,7 @@ func displayDBNames() {
 }
 
 func GetMultiStateStoreName() string {
-	ret := viper.GetString("state_db")
+	ret := viper.GetString(general.ConfigKeyMultiStateDbName)
 	if ret == "" {
 		ret = "(not set)"
 	}
@@ -52,7 +53,7 @@ func GetMultiStateStoreName() string {
 }
 
 func GetTxStoreName() string {
-	ret := viper.GetString("tx_store_db")
+	ret := viper.GetString(general.ConfigKeyTxStoreName)
 	if ret == "" {
 		ret = "(not set)"
 	}
