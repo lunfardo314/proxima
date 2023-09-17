@@ -7,6 +7,7 @@ import (
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/general"
 	state "github.com/lunfardo314/proxima/multistate"
+	"github.com/lunfardo314/proxima/sequencer"
 	"github.com/lunfardo314/proxima/txstore"
 	"github.com/lunfardo314/proxima/utangle"
 	"github.com/lunfardo314/proxima/util"
@@ -50,6 +51,7 @@ func (p *ProximaNode) startup() {
 	p.startTxStore()
 	p.loadUTXOTangle()
 	p.startWorkflow()
+	p.startSequencers()
 }
 
 func (p *ProximaNode) Stop() {
@@ -137,4 +139,34 @@ func (p *ProximaNode) startWorkflow() {
 	p.workflow = workflow.New(p.uTangle, workflow.WithGlobalConfigOptions)
 	p.workflow.Start()
 	p.workflow.StartPruner()
+}
+
+func (p *ProximaNode) startSequencers() {
+	sequencers := viper.GetStringMap("sequencers")
+	if len(sequencers) == 0 {
+		p.log.Infof("No sequencers will be started")
+		return
+	}
+	p.log.Infof("%d sequencer config profiles has been found", len(sequencers))
+
+	seqNames := util.SortKeys(sequencers, func(k1, k2 string) bool {
+		return k1 < k2
+	})
+	configsByName := p.readSequencerConfigs(seqNames)
+	sortedNames := util.SortKeys(configsByName, func(k1, k2 string) bool {
+		return k1 < k2
+	})
+
+	// TODO
+	for _, name := range sortedNames {
+		_, _ = sequencer.StartFromConfig(name, configsByName[name])
+	}
+}
+
+func (p *ProximaNode) readSequencerConfigs(names []string) map[string]*viper.Viper {
+	ret := make(map[string]*viper.Viper)
+	for _, n := range names {
+		ret[n] = viper.Sub("sequencers." + n)
+	}
+	return ret
 }

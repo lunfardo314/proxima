@@ -25,3 +25,11 @@ workflow:
     loglevel: info
   validate:
     loglevel: info
+
+sequencers:
+  seq1:
+    id: kuku
+    pace: 5
+  seq2:
+    id: mumu
+    pace: 15

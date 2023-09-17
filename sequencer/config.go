@@ -3,6 +3,7 @@ package sequencer
 import (
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/util"
+	"github.com/spf13/viper"
 	"go.uber.org/zap/zapcore"
 )
 
@@ -50,4 +51,8 @@ func WithMaxBranches(maxBranches int) ConfigOpt {
 	return func(o *ConfigOptions) {
 		o.MaxBranches = maxBranches
 	}
+}
+
+func ReadSequencerConfig() map[string][]string {
+	return viper.GetStringMapStringSlice("sequencers")
 }

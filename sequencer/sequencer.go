@@ -13,6 +13,7 @@ import (
 	"github.com/lunfardo314/proxima/utangle"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/workflow"
+	"github.com/spf13/viper"
 	"go.uber.org/atomic"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -131,6 +132,14 @@ func StartNew(par Params, opts ...ConfigOpt) (*Sequencer, error) {
 	go ret.mainLoop()
 	ret.log.Info("sequencer started")
 	return ret, nil
+}
+
+func StartFromConfig(name string, cfg *viper.Viper) (*Sequencer, error) {
+	fmt.Printf("StartFromConfig: '%s'\n", name)
+	fmt.Printf("  id: %s\n", cfg.GetString("id"))
+	fmt.Printf("  pace: %d\n", cfg.GetInt("pace"))
+
+	return nil, nil
 }
 
 func (seq *Sequencer) setTraceAhead(n int64) {

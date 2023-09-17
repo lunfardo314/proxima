@@ -32,7 +32,7 @@ func (w *Workflow) pruneOrphanedLoop() {
 		w.log.Infof("Slot %d. Pruned %d orphaned transactions and %d branches out of total %d vertices in %v, Deleted slots: %d",
 			core.LogicalTimeNow().TimeSlot(), nOrphaned, nOrphanedBranches, nVertices, time.Since(startTime), nDeletedSlots)
 	}
-	w.log.Infof("'Prune orphaned' loop stopped")
+	w.log.Infof("Pruner loop stopped")
 }
 
 func (w *Workflow) cutFinalLoop() {
@@ -50,5 +50,5 @@ func (w *Workflow) cutFinalLoop() {
 			w.utxoTangle.SetLastCutFinal(time.Now())
 		}
 	}
-	w.log.Infof("'Cut final' loop stopped")
+	w.log.Infof("Branch cutter loop stopped")
 }
