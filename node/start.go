@@ -44,7 +44,7 @@ func Start() *ProximaNode {
 }
 
 func (p *ProximaNode) startup() {
-	p.log.Info("starting up..")
+	p.log.Info("---------------- starting up Proxima node --------------")
 
 	p.startMultiStateDB()
 	p.startTxStore()

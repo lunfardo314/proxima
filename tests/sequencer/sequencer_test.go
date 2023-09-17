@@ -57,7 +57,7 @@ func TestMax(t *testing.T) {
 	t.Logf("Max uint64 = %s", util.GoThousands(uint64(math.MaxUint64)))
 }
 
-func initSequencerTestData(t *testing.T, nFaucets, nAdditionalChains int, logicalNow core.LogicalTime, workflowDebugConfig workflow.DebugConfig) *sequencerTestData {
+func initSequencerTestData(t *testing.T, nFaucets, nAdditionalChains int, logicalNow core.LogicalTime, workflowOpt ...workflow.ConfigOption) *sequencerTestData {
 	core.SetTimeTickDuration(10 * time.Millisecond)
 
 	require.True(t, nFaucets >= 0)
@@ -98,7 +98,7 @@ func initSequencerTestData(t *testing.T, nFaucets, nAdditionalChains int, logica
 	ret.makeAdditionalChainOrigins(0, nAdditionalChains)
 
 	t.Logf("state identity:\n%s", genesis.MustStateIdentityDataFromBytes(ret.ut.HeaviestStateForLatestTimeSlot().StateIdentityBytes()).String())
-	ret.wrk = workflow.New(ret.ut, workflowDebugConfig)
+	ret.wrk = workflow.New(ret.ut, workflowOpt...)
 	return ret
 }
 
@@ -228,14 +228,8 @@ func makeAddresses(n int) ([]core.AddressED25519, []ed25519.PrivateKey) {
 
 func Test1Sequencer(t *testing.T) {
 	t.Run("run idle", func(t *testing.T) {
-		const maxSlots = 10
-		wrkDbg := workflow.DebugConfig{
-			//workflow.PrimaryInputConsumerName: zapcore.DebugLevel,
-			//workflow.PreValidateConsumerName:  zapcore.DebugLevel,
-			//workflow.SolidifyConsumerName:     zapcore.DebugLevel,
-			//workflow.AppendTxConsumerName:     zapcore.DebugLevel,
-		}
-		r := initSequencerTestData(t, 1, 0, core.LogicalTimeNow(), wrkDbg)
+		const maxSlots = 5
+		r := initSequencerTestData(t, 1, 0, core.LogicalTimeNow())
 		transaction.SetPrintEasyFLTraceOnFail(true)
 		r.wrk.Start()
 
@@ -264,16 +258,7 @@ func Test1Sequencer(t *testing.T) {
 	t.Run("run add chain origins tx", func(t *testing.T) {
 		const maxTimeSlots = 10
 
-		wrkDbg := workflow.DebugConfig{
-			//workflow.PrimaryInputConsumerName: zapcore.DebugLevel,
-			//workflow.PreValidateConsumerName:  zapcore.DebugLevel,
-			//workflow.SolidifyConsumerName:     zapcore.DebugLevel,
-			//workflow.ValidateConsumerName:     zapcore.DebugLevel,
-			//workflow.AppendTxConsumerName:     zapcore.DebugLevel,
-			//workflow.RejectConsumerName:       zapcore.DebugLevel,
-			//workflow.EventsName:               zapcore.DebugLevel,
-		}
-		r := initSequencerTestData(t, 1, 1, core.LogicalTimeNow(), wrkDbg)
+		r := initSequencerTestData(t, 1, 1, core.LogicalTimeNow())
 		transaction.SetPrintEasyFLTraceOnFail(false)
 		r.wrk.Start()
 
@@ -323,16 +308,7 @@ func Test1Sequencer(t *testing.T) {
 			transferAmount        = 100
 		)
 
-		wrkDbg := workflow.DebugConfig{
-			//workflow.PrimaryInputConsumerName: zapcore.DebugLevel,
-			//workflow.PreValidateConsumerName:  zapcore.DebugLevel,
-			//workflow.SolidifyConsumerName:     zapcore.DebugLevel,
-			//workflow.ValidateConsumerName:     zapcore.DebugLevel,
-			//workflow.AppendTxConsumerName:     zapcore.DebugLevel,
-			//workflow.RejectConsumerName:       zapcore.DebugLevel,
-			//workflow.EventsName:               zapcore.DebugLevel,
-		}
-		r := initSequencerTestData(t, 1, 1, core.LogicalTimeNow(), wrkDbg)
+		r := initSequencerTestData(t, 1, 1, core.LogicalTimeNow())
 		transaction.SetPrintEasyFLTraceOnFail(false)
 		r.wrk.Start()
 
@@ -389,16 +365,7 @@ func Test1Sequencer(t *testing.T) {
 			maxInputs             = 60
 		)
 
-		wrkDbg := workflow.DebugConfig{
-			//workflow.PrimaryInputConsumerName: zapcore.DebugLevel,
-			//workflow.PreValidateConsumerName:  zapcore.DebugLevel,
-			//workflow.SolidifyConsumerName:     zapcore.DebugLevel,
-			//workflow.ValidateConsumerName:     zapcore.DebugLevel,
-			//workflow.AppendTxConsumerName:     zapcore.DebugLevel,
-			//workflow.RejectConsumerName:       zapcore.DebugLevel,
-			//workflow.EventsName:               zapcore.DebugLevel,
-		}
-		r := initSequencerTestData(t, 1, 1, core.LogicalTimeNow(), wrkDbg)
+		r := initSequencerTestData(t, 1, 1, core.LogicalTimeNow())
 		transaction.SetPrintEasyFLTraceOnFail(false)
 		r.wrk.Start()
 
@@ -475,16 +442,7 @@ func Test1Sequencer(t *testing.T) {
 			maxInputs             = 100
 		)
 		t.Logf("numFaucets: %d, numFaucetTransactions: %d", numFaucets, numFaucetTransactions)
-		wrkDbg := workflow.DebugConfig{
-			//workflow.PrimaryInputConsumerName: zapcore.DebugLevel,
-			//workflow.PreValidateConsumerName: zapcore.DebugLevel,
-			//workflow.SolidifyConsumerName:     zapcore.DebugLevel,
-			//workflow.ValidateConsumerName:     zapcore.DebugLevel,
-			//workflow.AppendTxConsumerName: zapcore.DebugLevel,
-			//workflow.RejectConsumerName: zapcore.DebugLevel,
-			//workflow.EventsName:               zapcore.DebugLevel,
-		}
-		r := initSequencerTestData(t, numFaucets, 1, core.LogicalTimeNow(), wrkDbg)
+		r := initSequencerTestData(t, numFaucets, 1, core.LogicalTimeNow())
 		transaction.SetPrintEasyFLTraceOnFail(false)
 		r.wrk.Start()
 
@@ -663,16 +621,7 @@ func TestNSequencers(t *testing.T) {
 			stopAfterBranches     = 20
 		)
 		t.Logf("\n   numFaucets: %d\n   numFaucetTransactions: %d\n", numFaucets, numFaucetTransactions)
-		wrkDbg := workflow.DebugConfig{
-			//workflow.PrimaryInputConsumerName: zapcore.DebugLevel,
-			//workflow.PreValidateConsumerName: zapcore.DebugLevel,
-			//workflow.SolidifyConsumerName:     zapcore.DebugLevel,
-			//workflow.ValidateConsumerName:     zapcore.DebugLevel,
-			//workflow.AppendTxConsumerName: zapcore.DebugLevel,
-			//workflow.RejectConsumerName: zapcore.DebugLevel,
-			//workflow.EventsName:               zapcore.DebugLevel,
-		}
-		r := initSequencerTestData(t, numFaucets, 1, core.LogicalTimeNow(), wrkDbg)
+		r := initSequencerTestData(t, numFaucets, 1, core.LogicalTimeNow())
 		transaction.SetPrintEasyFLTraceOnFail(false)
 		r.wrk.Start()
 		//r.createTransactionLogger()
@@ -738,16 +687,7 @@ func TestNSequencers(t *testing.T) {
 		)
 		t.Logf("\n   numFaucets: %d\n   numTxPerFaucet: %d\n   transferAmount: %d",
 			numFaucets, numTxPerFaucet, transferAmount)
-		wrkDbg := workflow.DebugConfig{
-			//workflow.PrimaryInputConsumerName: zapcore.DebugLevel,
-			//workflow.PreValidateConsumerName: zapcore.DebugLevel,
-			//workflow.SolidifyConsumerName:     zapcore.DebugLevel,
-			//workflow.ValidateConsumerName:     zapcore.DebugLevel,
-			//workflow.AppendTxConsumerName: zapcore.DebugLevel,
-			//workflow.RejectConsumerName: zapcore.DebugLevel,
-			//workflow.EventsName:               zapcore.DebugLevel,
-		}
-		r := initSequencerTestData(t, numFaucets, nSequencers-1, core.LogicalTimeNow(), wrkDbg)
+		r := initSequencerTestData(t, numFaucets, nSequencers-1, core.LogicalTimeNow())
 		transaction.SetPrintEasyFLTraceOnFail(false)
 		r.wrk.Start()
 		//r.createTransactionLogger()
@@ -841,16 +781,7 @@ func TestNSequencers(t *testing.T) {
 		)
 		t.Logf("\n   numFaucets: %d\n   numTxPerFaucet: %d\n   transferAmount: %d",
 			numFaucets, numTxPerFaucet, transferAmount)
-		wrkDbg := workflow.DebugConfig{
-			//workflow.PrimaryInputConsumerName: zapcore.DebugLevel,
-			//workflow.PreValidateConsumerName: zapcore.DebugLevel,
-			//workflow.SolidifyConsumerName:     zapcore.DebugLevel,
-			//workflow.ValidateConsumerName:     zapcore.DebugLevel,
-			//workflow.AppendTxConsumerName: zapcore.DebugLevel,
-			//workflow.RejectConsumerName: zapcore.DebugLevel,
-			//workflow.EventsName:               zapcore.DebugLevel,
-		}
-		r := initSequencerTestData(t, numFaucets, nSequencers-1, core.LogicalTimeNow(), wrkDbg)
+		r := initSequencerTestData(t, numFaucets, nSequencers-1, core.LogicalTimeNow())
 		transaction.SetPrintEasyFLTraceOnFail(false)
 		r.wrk.Start()
 		//r.createTransactionLogger()
@@ -956,16 +887,7 @@ func TestNSequencers(t *testing.T) {
 			nSequencers           = 3
 		)
 		t.Logf("\n   numFaucets: %d\n   numFaucetTransactions: %d\n", numFaucets, numFaucetTransactions)
-		wrkDbg := workflow.DebugConfig{
-			//workflow.PrimaryInputConsumerName: zapcore.DebugLevel,
-			//workflow.PreValidateConsumerName: zapcore.DebugLevel,
-			//workflow.SolidifyConsumerName:     zapcore.DebugLevel,
-			//workflow.ValidateConsumerName:     zapcore.DebugLevel,
-			//workflow.AppendTxConsumerName: zapcore.DebugLevel,
-			//workflow.RejectConsumerName: zapcore.DebugLevel,
-			//workflow.EventsName:               zapcore.DebugLevel,
-		}
-		r := initSequencerTestData(t, numFaucets, nSequencers-1, core.LogicalTimeNow(), wrkDbg)
+		r := initSequencerTestData(t, numFaucets, nSequencers-1, core.LogicalTimeNow())
 		transaction.SetPrintEasyFLTraceOnFail(false)
 		r.wrk.Start()
 		//r.createTransactionLogger()
@@ -1033,16 +955,7 @@ func TestNSequencers(t *testing.T) {
 			nSequencers           = 5
 		)
 		t.Logf("\n   numFaucets: %d\n   numFaucetTransactions: %d\n", numFaucets, numFaucetTransactions)
-		wrkDbg := workflow.DebugConfig{
-			//workflow.PrimaryInputConsumerName: zapcore.DebugLevel,
-			//workflow.PreValidateConsumerName: zapcore.DebugLevel,
-			//workflow.SolidifyConsumerName:     zapcore.DebugLevel,
-			//workflow.ValidateConsumerName:     zapcore.DebugLevel,
-			//workflow.AppendTxConsumerName: zapcore.DebugLevel,
-			//workflow.RejectConsumerName: zapcore.DebugLevel,
-			//workflow.EventsName:               zapcore.DebugLevel,
-		}
-		r := initSequencerTestData(t, numFaucets, nSequencers-1, core.LogicalTimeNow(), wrkDbg)
+		r := initSequencerTestData(t, numFaucets, nSequencers-1, core.LogicalTimeNow())
 		transaction.SetPrintEasyFLTraceOnFail(false)
 		r.wrk.Start()
 		//r.createTransactionLogger()
@@ -1113,16 +1026,7 @@ func TestPruning(t *testing.T) {
 			nSequencers           = 3
 		)
 		t.Logf("\n   numFaucets: %d\n   numFaucetTransactions: %d\n", numFaucets, numFaucetTransactions)
-		wrkDbg := workflow.DebugConfig{
-			//workflow.PrimaryInputConsumerName: zapcore.DebugLevel,
-			//workflow.PreValidateConsumerName: zapcore.DebugLevel,
-			//workflow.SolidifyConsumerName:     zapcore.DebugLevel,
-			//workflow.ValidateConsumerName:     zapcore.DebugLevel,
-			//workflow.AppendTxConsumerName: zapcore.DebugLevel,
-			//workflow.RejectConsumerName: zapcore.DebugLevel,
-			//workflow.EventsName:               zapcore.DebugLevel,
-		}
-		r := initSequencerTestData(t, numFaucets, nSequencers-1, core.LogicalTimeNow(), wrkDbg)
+		r := initSequencerTestData(t, numFaucets, nSequencers-1, core.LogicalTimeNow())
 		transaction.SetPrintEasyFLTraceOnFail(false)
 
 		r.wrk.Start()
@@ -1228,16 +1132,7 @@ func TestPruning(t *testing.T) {
 			nSequencers           = 3
 		)
 		t.Logf("\n   numFaucets: %d\n   numFaucetTransactions: %d\n", numFaucets, numFaucetTransactions)
-		wrkDbg := workflow.DebugConfig{
-			//workflow.PrimaryInputConsumerName: zapcore.DebugLevel,
-			//workflow.PreValidateConsumerName: zapcore.DebugLevel,
-			//workflow.SolidifyConsumerName:     zapcore.DebugLevel,
-			//workflow.ValidateConsumerName:     zapcore.DebugLevel,
-			//workflow.AppendTxConsumerName: zapcore.DebugLevel,
-			//workflow.RejectConsumerName: zapcore.DebugLevel,
-			//workflow.EventsName:               zapcore.DebugLevel,
-		}
-		r := initSequencerTestData(t, numFaucets, nSequencers-1, core.LogicalTimeNow(), wrkDbg)
+		r := initSequencerTestData(t, numFaucets, nSequencers-1, core.LogicalTimeNow())
 		transaction.SetPrintEasyFLTraceOnFail(false)
 
 		r.wrk.Start()
