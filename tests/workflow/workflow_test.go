@@ -40,7 +40,7 @@ type workflowTestData struct {
 
 const initDistributedBalance = 10_000_000
 
-func initWorkflowTest(t *testing.T, nDistribution int, nowis core.LogicalTime, debugConfig ...workflow.DebugConfig) *workflowTestData {
+func initWorkflowTest(t *testing.T, nDistribution int, nowis core.LogicalTime, configOptions ...workflow.ConfigOption) *workflowTestData {
 	core.SetTimeTickDuration(10 * time.Millisecond)
 	t.Logf("nowis timestamp: %s", nowis.String())
 	genesisPrivKey := testutil.GetTestingPrivateKey()
@@ -75,7 +75,7 @@ func initWorkflowTest(t *testing.T, nDistribution int, nowis core.LogicalTime, d
 		ret.faucetOutputs[i] = outs[0]
 
 	}
-	ret.w = workflow.New(ret.ut, debugConfig...)
+	ret.w = workflow.New(ret.ut, configOptions...)
 	return ret
 }
 
@@ -108,7 +108,7 @@ func (wd *workflowTestData) setNewVertexCounter(waitCounter *countdown.Countdown
 
 func TestWorkflowBasic(t *testing.T) {
 	t.Run("1", func(t *testing.T) {
-		wd := initWorkflowTest(t, 1, core.LogicalTimeNow(), workflow.DebugConfig{"all": zapcore.DebugLevel})
+		wd := initWorkflowTest(t, 1, core.LogicalTimeNow(), workflow.WithLogLevel(zapcore.DebugLevel))
 		wd.w.SetLogTransactions(true)
 		wd.w.Start()
 		time.Sleep(10 * time.Millisecond)
@@ -116,7 +116,7 @@ func TestWorkflowBasic(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	})
 	t.Run("2", func(t *testing.T) {
-		wd := initWorkflowTest(t, 1, core.LogicalTimeNow(), workflow.DebugConfig{"all": zapcore.DebugLevel})
+		wd := initWorkflowTest(t, 1, core.LogicalTimeNow(), workflow.WithLogLevel(zapcore.DebugLevel))
 		wd.w.SetLogTransactions(true)
 		wd.w.Start()
 		err := wd.w.TransactionIn(nil)
@@ -136,10 +136,7 @@ func TestWorkflow(t *testing.T) {
 	t.Run("1 sync", func(t *testing.T) {
 		const numRuns = 200
 
-		dbg := workflow.DebugConfig{
-			//PreValidateConsumerName: zapcore.DebugLevel,
-		}
-		wd := initWorkflowTest(t, 1, core.LogicalTimeNow(), dbg)
+		wd := initWorkflowTest(t, 1, core.LogicalTimeNow())
 		wd.w.SetLogTransactions(true)
 
 		t.Logf("timestamp now: %s", core.LogicalTimeNow().String())
@@ -174,10 +171,7 @@ func TestWorkflow(t *testing.T) {
 	t.Run("1 async", func(t *testing.T) {
 		const numRuns = 200
 
-		dbg := workflow.DebugConfig{
-			//PreValidateConsumerName: zapcore.DebugLevel,
-		}
-		wd := initWorkflowTest(t, 1, core.LogicalTimeNow(), dbg)
+		wd := initWorkflowTest(t, 1, core.LogicalTimeNow())
 		wd.w.SetLogTransactions(true)
 
 		t.Logf("timestamp now: %s", core.LogicalTimeNow().String())
@@ -257,10 +251,7 @@ func TestWorkflow(t *testing.T) {
 	t.Run("listen", func(t *testing.T) {
 		const numRuns = 200
 
-		dbg := workflow.DebugConfig{
-			//PreValidateConsumerName: zapcore.DebugLevel,
-		}
-		wd := initWorkflowTest(t, 1, core.LogicalTimeNow(), dbg)
+		wd := initWorkflowTest(t, 1, core.LogicalTimeNow())
 		wd.w.SetLogTransactions(true)
 
 		t.Logf("timestamp now: %s", core.LogicalTimeNow().String())
@@ -303,7 +294,7 @@ func TestWorkflow(t *testing.T) {
 
 func TestSolidifier(t *testing.T) {
 	t.Run("one tx", func(t *testing.T) {
-		wd := initWorkflowTest(t, 1, core.LogicalTimeNow(), workflow.AllDebugLevel)
+		wd := initWorkflowTest(t, 1, core.LogicalTimeNow(), workflow.WithLogLevel(zapcore.DebugLevel))
 		wd.w.SetLogTransactions(true)
 		cd := countdown.New(1, 3*time.Second)
 		wd.setNewVertexCounter(cd)
@@ -320,12 +311,12 @@ func TestSolidifier(t *testing.T) {
 		wd.w.Stop()
 
 		t.Logf(wd.w.CounterInfo())
-		err = wd.w.CheckDebugCounters(map[string]int{"[addtx].ok": 1})
+		err = wd.w.CheckDebugCounters(map[string]int{"addtx.ok": 1})
 		require.NoError(t, err)
 	})
 	t.Run("several tx usual seq", func(t *testing.T) {
 		const howMany = 100
-		wd := initWorkflowTest(t, 1, core.LogicalTimeNow(), workflow.AllInfoLevel)
+		wd := initWorkflowTest(t, 1, core.LogicalTimeNow(), workflow.WithLogLevel(zapcore.DebugLevel))
 		wd.w.SetLogTransactions(true)
 		cd := countdown.New(howMany, 10*time.Second)
 		wd.setNewVertexCounter(cd)
@@ -351,11 +342,7 @@ func TestSolidifier(t *testing.T) {
 	})
 	t.Run("several tx reverse seq", func(t *testing.T) {
 		const howMany = 10
-		dbg := workflow.DebugConfig{
-			//PrimaryInputConsumerName: zapcore.DebugLevel,
-			//PreValidateConsumerName:  zapcore.DebugLevel,
-		}
-		wd := initWorkflowTest(t, 1, core.LogicalTimeNow(), dbg)
+		wd := initWorkflowTest(t, 1, core.LogicalTimeNow())
 		wd.w.SetLogTransactions(true)
 		cd := countdown.New(howMany, 10*time.Second)
 		wd.setNewVertexCounter(cd)
@@ -381,15 +368,10 @@ func TestSolidifier(t *testing.T) {
 	})
 	t.Run("several tx reverse seq no waiting room", func(t *testing.T) {
 		const howMany = 100
-		dbg := workflow.DebugConfig{
-			//PrimaryInputConsumerName: zapcore.DebugLevel,
-			//PreValidateConsumerName:  zapcore.DebugLevel,
-			//SolidifyConsumerName: zapcore.DebugLevel,
-		}
 		// create all tx in the past, so that won't wait in the waiting room
 		// all are sent to solidifier in the reverse order
 		nowis := time.Now().Add(-10 * time.Second)
-		wd := initWorkflowTest(t, 1, core.LogicalTimeFromTime(nowis), dbg)
+		wd := initWorkflowTest(t, 1, core.LogicalTimeFromTime(nowis))
 		wd.w.SetLogTransactions(true)
 		cd := countdown.New(howMany, 10*time.Second)
 		wd.setNewVertexCounter(cd)
@@ -418,15 +400,10 @@ func TestSolidifier(t *testing.T) {
 			howMany    = 50
 			nAddresses = 5
 		)
-		dbg := workflow.DebugConfig{
-			//PrimaryInputConsumerName: zapcore.DebugLevel,
-			//PreValidateConsumerName:  zapcore.DebugLevel,
-			//SolidifyConsumerName: zapcore.DebugLevel,
-		}
 		// create all tx in the past, so that won't wait in the waiting room
 		// all are sent to solidifier in the reverse order
 		nowis := time.Now().Add(-10 * time.Second)
-		wd := initWorkflowTest(t, nAddresses, core.LogicalTimeFromTime(nowis), dbg)
+		wd := initWorkflowTest(t, nAddresses, core.LogicalTimeFromTime(nowis))
 		wd.w.SetLogTransactions(true)
 		cd := countdown.New(howMany*nAddresses, 10*time.Second)
 		wd.setNewVertexCounter(cd)
@@ -1046,14 +1023,8 @@ func TestMultiChainWorkflow(t *testing.T) {
 		require.EqualValues(t, howLong, len(txBytesSeq))
 
 		transaction.SetPrintEasyFLTraceOnFail(false)
-		dbg := workflow.DebugConfig{
-			//workflow.PrimaryInputConsumerName: zapcore.DebugLevel,
-			//workflow.PreValidateConsumerName:  zapcore.DebugLevel,
-			//workflow.SolidifyConsumerName: zapcore.DebugLevel,
-			//workflow.AppendTxConsumerName: zapcore.DebugLevel,
-		}
 
-		wrk := workflow.New(r.ut, dbg)
+		wrk := workflow.New(r.ut)
 		cd := countdown.New(howLong*nChains, 10*time.Second)
 		wrk.MustOnEvent(workflow.EventNewVertex, func(_ *workflow.NewVertexEventData) {
 			cd.Tick()
@@ -1104,14 +1075,8 @@ func TestMultiChainWorkflow(t *testing.T) {
 		require.EqualValues(t, howLong, len(txBytesSeq))
 
 		transaction.SetPrintEasyFLTraceOnFail(false)
-		dbg := workflow.DebugConfig{
-			//workflow.PrimaryInputConsumerName: zapcore.DebugLevel,
-			//workflow.PreValidateConsumerName: zapcore.DebugLevel,
-			//workflow.SolidifyConsumerName: zapcore.DebugLevel,
-			//workflow.AppendTxConsumerName: zapcore.DebugLevel,
-		}
 
-		wrk := workflow.New(r.ut, dbg)
+		wrk := workflow.New(r.ut)
 		cd := countdown.New(howLong*nChains, 10*time.Second)
 		wrk.MustOnEvent(workflow.EventNewVertex, func(_ *workflow.NewVertexEventData) {
 			cd.Tick()
@@ -1159,14 +1124,7 @@ func TestMultiChainWorkflow(t *testing.T) {
 
 		transaction.SetPrintEasyFLTraceOnFail(false)
 
-		dbg := workflow.DebugConfig{
-			//workflow.PrimaryInputConsumerName: zapcore.DebugLevel,
-			workflow.PreValidateConsumerName: zapcore.DebugLevel,
-			//workflow.SolidifyConsumerName:    zapcore.DebugLevel,
-			//workflow.AppendTxConsumerName:    zapcore.DebugLevel,
-		}
-
-		wrk := workflow.New(r.ut, dbg)
+		wrk := workflow.New(r.ut, workflow.WithConsumerLogLevel(workflow.PreValidateConsumerName, zapcore.DebugLevel))
 		nTransactions := 0
 		for i := range txBytesSeq {
 			nTransactions += len(txBytesSeq[i])
@@ -1222,14 +1180,7 @@ func TestMultiChainWorkflow(t *testing.T) {
 
 		transaction.SetPrintEasyFLTraceOnFail(false)
 
-		dbg := workflow.DebugConfig{
-			//workflow.PrimaryInputConsumerName: zapcore.DebugLevel,
-			//workflow.PreValidateConsumerName: zapcore.DebugLevel,
-			//workflow.SolidifyConsumerName:    zapcore.DebugLevel,
-			//workflow.AppendTxConsumerName:    zapcore.DebugLevel,
-		}
-
-		wrk := workflow.New(r.ut, dbg)
+		wrk := workflow.New(r.ut)
 		nTransactions := 0
 		for i := range txBytesSeq {
 			nTransactions += len(txBytesSeq[i])
@@ -1281,14 +1232,6 @@ func TestMultiChainWorkflow(t *testing.T) {
 			r = initMultiChainTest(t, nChains, false, 60)
 		}
 
-		dbg := workflow.DebugConfig{
-			//workflow.PrimaryInputConsumerName: zapcore.DebugLevel,
-			//workflow.PreValidateConsumerName: zapcore.DebugLevel,
-			//workflow.SolidifyConsumerName:    zapcore.DebugLevel,
-			//workflow.AppendTxConsumerName:    zapcore.DebugLevel,
-			//workflow.ValidateConsumerName: zapcore.DebugLevel,
-		}
-
 		txBytesSeq := make([][][]byte, nChains)
 		for i := range txBytesSeq {
 			numBranches := 0
@@ -1332,7 +1275,7 @@ func TestMultiChainWorkflow(t *testing.T) {
 
 		transaction.SetPrintEasyFLTraceOnFail(false)
 
-		wrk := workflow.New(r.ut, dbg)
+		wrk := workflow.New(r.ut)
 		nTransactions := 0
 		for i := range txBytesSeq {
 			nTransactions += len(txBytesSeq[i])
@@ -1385,19 +1328,11 @@ func TestMultiChainWorkflow(t *testing.T) {
 			r = initMultiChainTest(t, nChains, false, 60)
 		}
 
-		dbg := workflow.DebugConfig{
-			//workflow.PrimaryInputConsumerName: zapcore.DebugLevel,
-			//workflow.PreValidateConsumerName: zapcore.DebugLevel,
-			//workflow.SolidifyConsumerName:    zapcore.DebugLevel,
-			//workflow.AppendTxConsumerName:    zapcore.DebugLevel,
-			//workflow.ValidateConsumerName: zapcore.DebugLevel,
-		}
-
 		txBytesSeq := r.createSequencerChains1(chainPaceInTimeSlots, howLong)
 		require.EqualValues(t, howLong, len(txBytesSeq))
 		transaction.SetPrintEasyFLTraceOnFail(false)
 
-		wrk := workflow.New(r.ut, dbg)
+		wrk := workflow.New(r.ut)
 		cd := countdown.New(howLong, 10*time.Second)
 		wrk.MustOnEvent(workflow.EventNewVertex, func(_ *workflow.NewVertexEventData) {
 			cd.Tick()
@@ -1441,19 +1376,11 @@ func TestMultiChainWorkflow(t *testing.T) {
 			r = initMultiChainTest(t, nChains, false, 60)
 		}
 
-		dbg := workflow.DebugConfig{
-			//workflow.PrimaryInputConsumerName: zapcore.DebugLevel,
-			//workflow.PreValidateConsumerName: zapcore.DebugLevel,
-			//workflow.SolidifyConsumerName:    zapcore.DebugLevel,
-			//workflow.AppendTxConsumerName:    zapcore.DebugLevel,
-			//workflow.ValidateConsumerName: zapcore.DebugLevel,
-		}
-
 		txBytesSeq := r.createSequencerChains2(chainPaceInTimeSlots, howLong)
 
 		transaction.SetPrintEasyFLTraceOnFail(false)
 
-		wrk := workflow.New(r.ut, dbg)
+		wrk := workflow.New(r.ut)
 		cd := countdown.New(howLong, 10*time.Second)
 		wrk.MustOnEvent(workflow.EventNewVertex, func(_ *workflow.NewVertexEventData) {
 			cd.Tick()
@@ -1497,19 +1424,11 @@ func TestMultiChainWorkflow(t *testing.T) {
 			r = initMultiChainTest(t, nChains, false, 60)
 		}
 
-		dbg := workflow.DebugConfig{
-			//workflow.PrimaryInputConsumerName: zapcore.DebugLevel,
-			//workflow.PreValidateConsumerName: zapcore.DebugLevel,
-			//workflow.SolidifyConsumerName:    zapcore.DebugLevel,
-			//workflow.AppendTxConsumerName:    zapcore.DebugLevel,
-			//workflow.ValidateConsumerName: zapcore.DebugLevel,
-		}
-
 		txBytesSeq := r.createSequencerChains3(chainPaceInTimeSlots, howLong, printTx)
 
 		transaction.SetPrintEasyFLTraceOnFail(false)
 
-		wrk := workflow.New(r.ut, dbg)
+		wrk := workflow.New(r.ut)
 		cd := countdown.New(len(txBytesSeq), 20*time.Second)
 		wrk.MustOnEvent(workflow.EventNewVertex, func(_ *workflow.NewVertexEventData) {
 			cd.Tick()

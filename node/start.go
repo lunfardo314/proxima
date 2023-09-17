@@ -134,10 +134,6 @@ func (p *ProximaNode) loadUTXOTangle() {
 }
 
 func (p *ProximaNode) startWorkflow() {
-	p.workflow = workflow.New(p.uTangle)
+	p.workflow = workflow.New(p.uTangle, workflow.WithGlobalConfigOptions)
 	p.workflow.Start()
-}
-
-func wokrflowDebugConfig() workflow.DebugConfig {
-
 }

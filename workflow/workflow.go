@@ -16,7 +16,6 @@ import (
 	"github.com/lunfardo314/proxima/util/testutil"
 	"go.uber.org/atomic"
 	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
 )
 
 type (
@@ -26,7 +25,7 @@ type (
 		working         atomic.Bool
 		startPrunerOnce sync.Once
 		log             *zap.SugaredLogger
-		debugConfig     DebugConfig
+		configParams    ConfigParams
 		utxoTangle      *utangle.UTXOTangle
 		debugCounters   *testutil.SyncCounters
 
@@ -56,34 +55,22 @@ type (
 		*consumer.Consumer[T]
 		glb *Workflow
 	}
-
-	DebugConfig map[string]zapcore.Level
 )
 
-var (
-	AllConsumerNames = []string{
-		AppendTxConsumerName,
-		EventsName,
-		PrimaryInputConsumerName,
-		PreValidateConsumerName,
-		RejectConsumerName,
-		SolidifyConsumerName,
-		ValidateConsumerName,
-	}
-
-	AllDebugLevel = DebugConfig{"all": zapcore.DebugLevel}
-	AllInfoLevel  = DebugConfig{}
-)
+var AllConsumerNames = []string{
+	AppendTxConsumerName,
+	EventsName,
+	PrimaryInputConsumerName,
+	PreValidateConsumerName,
+	RejectConsumerName,
+	SolidifyConsumerName,
+	ValidateConsumerName,
+}
 
 func NewConsumer[T any](name string, wrk *Workflow) *Consumer[T] {
-	lvl := zapcore.InfoLevel
-	if len(wrk.debugConfig) > 0 {
-		if l, ok := wrk.debugConfig["all"]; ok {
-			lvl = l
-		}
-		if l, ok := wrk.debugConfig[name]; ok {
-			lvl = l
-		}
+	lvl := wrk.configParams.logLevel
+	if l, ok := wrk.configParams.consumerLogLevel[name]; ok {
+		lvl = l
 	}
 	ret := &Consumer[T]{
 		Consumer: consumer.NewConsumer[T](name, lvl),
@@ -148,20 +135,15 @@ func (c *Consumer[T]) InfoStr() string {
 
 const TxStatusDefaultWaitingTimeout = 2 * time.Second
 
-func New(ut *utangle.UTXOTangle, debugConfig ...DebugConfig) *Workflow {
-	var loglevel DebugConfig
-	if len(debugConfig) > 0 {
-		loglevel = debugConfig[0]
-	}
-
-	topLogLevel := zap.InfoLevel
-	if lv, ok := loglevel["workflow"]; ok {
-		topLogLevel = lv
+func New(ut *utangle.UTXOTangle, configOptions ...ConfigOption) *Workflow {
+	cfg := defaultConfigParams()
+	for _, opt := range configOptions {
+		opt(&cfg)
 	}
 
 	ret := &Workflow{
-		log:           general.NewLogger("pipe", topLogLevel, []string{"stdout"}, ""),
-		debugConfig:   loglevel,
+		configParams:  cfg,
+		log:           general.NewLogger("[pipe]", cfg.logLevel, cfg.logOutput, cfg.logTimeLayout),
 		utxoTangle:    ut,
 		debugCounters: testutil.NewSynCounters(),
 		eventHandlers: make(map[eventtype.EventCode][]func(any)),

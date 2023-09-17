@@ -1,6 +1,7 @@
 package workflow
 
 import (
+	"github.com/lunfardo314/proxima/general"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
@@ -9,71 +10,60 @@ import (
 
 type (
 	ConfigParams struct {
-		topLogLevel      zapcore.Level
+		logLevel         zapcore.Level
 		consumerLogLevel map[string]zapcore.Level
 		logOutput        []string
+		logTimeLayout    string
 	}
 
 	ConfigOption func(c *ConfigParams)
 )
 
-func defaultConfigParams() *ConfigParams {
-	return &ConfigParams{
-		topLogLevel:      zap.InfoLevel,
+func defaultConfigParams() ConfigParams {
+	return ConfigParams{
+		logLevel:         zap.InfoLevel,
 		consumerLogLevel: make(map[string]zapcore.Level),
 		logOutput:        []string{"stdout"},
+		logTimeLayout:    general.TimeLayoutDefault,
 	}
 }
 
-func (c *ConfigParams) SetConsumerLogLevel(name string, lvl zapcore.Level) {
-	c.consumerLogLevel[name] = lvl
-}
-
-func (c *ConfigParams) SetLogLevel(lvl zapcore.Level) {
-	c.topLogLevel = lvl
-}
-
-func (c *ConfigParams) AddLogOutput(out string) {
-	if util.Find(c.logOutput, out) == -1 {
-		c.logOutput = append(c.logOutput, out)
-	}
-}
-
-func LogLevel(lvl zapcore.Level) ConfigOption {
+func WithLogLevel(lvl zapcore.Level) ConfigOption {
 	return func(c *ConfigParams) {
-		c.SetLogLevel(lvl)
+		c.logLevel = lvl
 	}
 }
 
-func ConsumerLogLevel(name string, lvl zapcore.Level) ConfigOption {
+func WithConsumerLogLevel(name string, lvl zapcore.Level) ConfigOption {
 	return func(c *ConfigParams) {
-		c.SetConsumerLogLevel(name, lvl)
+		c.consumerLogLevel[name] = lvl
 	}
 }
 
-func LogOutput(out string) ConfigOption {
+func WithLogOutput(out string) ConfigOption {
 	return func(c *ConfigParams) {
-		c.AddLogOutput(out)
-	}
-}
-
-func GlobalConfigOptions(forceGlobalLevel ...zapcore.Level) ConfigOption {
-	return func(c *ConfigParams) {
-		if len(forceGlobalLevel) > 0 {
-			c.SetLogLevel(forceGlobalLevel[0])
-		} else {
-			c.SetLogLevel(parseLevel("logger.level", zap.InfoLevel))
+		if out != "" && util.Find(c.logOutput, out) == -1 {
+			c.logOutput = append(c.logOutput, out)
 		}
-
-		for _, n := range AllConsumerNames {
-			if len(forceGlobalLevel) > 0 {
-				c.SetLogLevel(forceGlobalLevel[0])
-			} else {
-				c.SetLogLevel(parseLevel("workflow."+n+".loglevel", zap.InfoLevel))
-			}
-		}
-		c.AddLogOutput(viper.GetString("workflow.output"))
 	}
+}
+
+func WithLogTimeLayout(layout string) ConfigOption {
+	return func(c *ConfigParams) {
+		if layout != "" {
+			c.logTimeLayout = layout
+		}
+	}
+}
+
+func WithGlobalConfigOptions(c *ConfigParams) {
+	WithLogLevel(parseLevel("logger.level", zap.InfoLevel))(c)
+
+	for _, n := range AllConsumerNames {
+		WithLogLevel(parseLevel("workflow."+n+".loglevel", zap.InfoLevel))(c)
+	}
+	WithLogOutput(viper.GetString("workflow.output"))(c)
+	WithLogTimeLayout(viper.GetString("logger.timelayout"))
 }
 
 func parseLevel(key string, def zapcore.Level) zapcore.Level {
