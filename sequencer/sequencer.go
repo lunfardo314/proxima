@@ -3,14 +3,15 @@ package sequencer
 import (
 	"crypto/ed25519"
 	"fmt"
+	"math"
 	"sync"
 	"time"
 
 	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/general"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/utangle"
 	"github.com/lunfardo314/proxima/util"
-	"github.com/lunfardo314/proxima/util/testutil"
 	"github.com/lunfardo314/proxima/workflow"
 	"go.uber.org/atomic"
 	"go.uber.org/zap"
@@ -19,7 +20,7 @@ import (
 
 type (
 	Sequencer struct {
-		par                  Params
+		config               configuration
 		log                  *zap.SugaredLogger
 		factory              *milestoneFactory
 		exit                 atomic.Bool
@@ -31,22 +32,34 @@ type (
 		traceNAhead          atomic.Int64
 	}
 
+	configuration struct {
+		Params
+		ConfigOptions
+	}
+
 	Params struct {
+		Glb                 *workflow.Workflow
+		ChainID             core.ChainID
+		ControllerKey       ed25519.PrivateKey
+		ProvideStartOutputs func() (utangle.WrappedOutput, utangle.WrappedOutput, error)
+		// ProvideBootstrapSequencers returns list of sequencerIDs and fee amount where to send fees (bribe) for faster bootup of the sequencer
+		ProvideBootstrapSequencers func() ([]core.ChainID, uint64)
+	}
+
+	ConfigOptions struct {
 		SequencerName string
-		Glb           *workflow.Workflow
-		ChainID       core.ChainID
-		ControllerKey ed25519.PrivateKey
 		Pace          int // pace in slots
 		LogLevel      zapcore.Level
+		LogOutputs    []string
+		LogTimeLayout string
 		MaxFeeInputs  int
 		MaxTargetTs   core.LogicalTime
 		MaxMilestones int
 		MaxBranches   int
 		// ProvideStartOutputs explicitly returns sequencer and stem outputs where to start chain
-		ProvideStartOutputs func() (utangle.WrappedOutput, utangle.WrappedOutput, error)
-		// ProvideBootstrapSequencers returns list of sequencerIDs and fee amount where to send fees (bribe) for faster bootup of the sequencer
-		ProvideBootstrapSequencers func() ([]core.ChainID, uint64)
 	}
+
+	ConfigOpt func(options *ConfigOptions)
 
 	Info struct {
 		MsCounter              int
@@ -62,7 +75,8 @@ type (
 )
 
 const (
-	PaceMinimumSlots = 5
+	PaceMinimumTicks    = 5
+	DefaultMaxFeeInputs = 50
 )
 
 var traceAll atomic.Bool
@@ -71,30 +85,45 @@ func SetTraceAll(value bool) {
 	traceAll.Store(value)
 }
 
-func StartNew(par Params) (*Sequencer, error) {
+func defaultConfigOptions() ConfigOptions {
+	return ConfigOptions{
+		SequencerName: "seq",
+		Pace:          PaceMinimumTicks,
+		LogLevel:      zap.InfoLevel,
+		LogOutputs:    []string{"stdout"},
+		LogTimeLayout: general.TimeLayoutDefault,
+		MaxFeeInputs:  DefaultMaxFeeInputs,
+		MaxTargetTs:   core.NilLogicalTime,
+		MaxMilestones: math.MaxInt,
+		MaxBranches:   math.MaxInt,
+	}
+}
+
+func StartNew(par Params, opts ...ConfigOpt) (*Sequencer, error) {
 	var err error
 
-	name := par.SequencerName
-	if name == "" {
-		name = "seq"
+	cfg := defaultConfigOptions()
+	for _, opt := range opts {
+		opt(&cfg)
 	}
-	name = fmt.Sprintf("[%s-%s]", name, par.ChainID.VeryShort())
+	logName := fmt.Sprintf("[%s-%s]", cfg.SequencerName, par.ChainID.VeryShort())
+
 	ret := &Sequencer{
-		par: par,
+		config: configuration{
+			Params:        par,
+			ConfigOptions: cfg,
+		},
+		log: general.NewLogger(logName, cfg.LogLevel, cfg.LogOutputs, cfg.LogTimeLayout),
 	}
+
 	ret.onMilestoneSubmitted = func(seq *Sequencer, vid *utangle.WrappedTx) {
 		seq.LogMilestoneSubmitDefault(vid)
 	}
-	ret.log = testutil.NewNamedLogger(name, par.LogLevel)
-	if int64(ret.par.Pace) < PaceMinimumSlots {
-		ret.par.Pace = PaceMinimumSlots
-		ret.log.Infof("sequencer pace has been adjusted to minimum value %d", PaceMinimumSlots)
-	} else {
-		ret.log.Infof("sequencer pace is %d time slots (%v)", ret.par.Pace, time.Duration(ret.par.Pace)*core.TransactionTimePaceDuration())
-	}
-	util.Assertf(par.MaxFeeInputs <= 254, "par.MaxFeeInputs <=254")
+	ret.log.Infof("sequencer pace is %d time slots (%v)",
+		ret.config.Pace, time.Duration(ret.config.Pace)*core.TransactionTimePaceDuration())
+
 	ret.log.Debugf("sequencer starting..")
-	ret.factory, err = createMilestoneFactory(par)
+	ret.factory, err = createMilestoneFactory(&ret.config)
 	if err != nil {
 		return nil, err
 	}
@@ -174,12 +203,12 @@ func (seq *Sequencer) chooseNextMilestoneTargetTime() core.LogicalTime {
 	seq.trace("chooseNextMilestoneTargetTime: latestMilestone: %s, nowis: %s", currentMs.IDShort(), nowis)
 
 	var target core.LogicalTime
-	if toNextBoundary <= (3*seq.par.Pace)/2 && toNextBoundary >= core.TransactionTimePaceInTicks {
+	if toNextBoundary <= (3*seq.config.Pace)/2 && toNextBoundary >= core.TransactionTimePaceInTicks {
 		target = nowis.NextTimeSlotBoundary()
 		return target
 	}
 
-	target = core.MaxLogicalTime(nowis, currentMilestoneTs).AddTimeTicks(seq.par.Pace) // preliminary target ts
+	target = core.MaxLogicalTime(nowis, currentMilestoneTs).AddTimeTicks(seq.config.Pace) // preliminary target ts
 	if nowis.TimeSlot() == target.TimeSlot() {
 		// same slot
 		if !core.ValidTimePace(target, target.NextTimeSlotBoundary()) {
@@ -230,21 +259,21 @@ func (seq *Sequencer) mainLoop() {
 	var currentTimeSlot core.TimeSlot
 
 	for !seq.exit.Load() {
-		if seq.par.MaxMilestones != 0 && milestoneCount >= seq.par.MaxMilestones {
-			seq.log.Infof("reached max limit of milestones %d -> stopping", seq.par.MaxMilestones)
+		if seq.config.MaxMilestones != 0 && milestoneCount >= seq.config.MaxMilestones {
+			seq.log.Infof("reached max limit of milestones %d -> stopping", seq.config.MaxMilestones)
 			go seq.Stop()
 			break
 		}
-		if seq.par.MaxBranches != 0 && branchCount >= seq.par.MaxBranches {
-			seq.log.Infof("reached max limit of branch milestones %d -> stopping", seq.par.MaxBranches)
+		if seq.config.MaxBranches != 0 && branchCount >= seq.config.MaxBranches {
+			seq.log.Infof("reached max limit of branch milestones %d -> stopping", seq.config.MaxBranches)
 			go seq.Stop()
 			break
 		}
 
 		targetTs := seq.chooseNextMilestoneTargetTime()
 
-		if seq.par.MaxTargetTs != core.NilLogicalTime && targetTs.After(seq.par.MaxTargetTs) {
-			seq.log.Infof("next target ts %s is after maximum ts %s -> stopping", targetTs, seq.par.MaxTargetTs)
+		if seq.config.MaxTargetTs != core.NilLogicalTime && targetTs.After(seq.config.MaxTargetTs) {
+			seq.log.Infof("next target ts %s is after maximum ts %s -> stopping", targetTs, seq.config.MaxTargetTs)
 			go seq.Stop()
 			break
 		}
@@ -284,7 +313,7 @@ func (seq *Sequencer) submitTransaction(tmpMsOutput utangle.WrappedOutput) *utan
 	tx := tmpMsOutput.VID.UnwrapTransaction()
 	util.Assertf(tx != nil, "tx != nil")
 
-	retVID, err := seq.par.Glb.TransactionInWaitAppendSync(tx.Bytes(), true)
+	retVID, err := seq.config.Glb.TransactionInWaitAppendSync(tx.Bytes(), true)
 	if err != nil {
 		seq.log.Errorf("submitTransaction: %v", err)
 		return nil

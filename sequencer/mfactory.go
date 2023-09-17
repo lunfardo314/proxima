@@ -45,7 +45,7 @@ type (
 	}
 )
 
-func createMilestoneFactory(par Params) (*milestoneFactory, error) {
+func createMilestoneFactory(par *configuration) (*milestoneFactory, error) {
 	log := testutil.NewNamedLogger(fmt.Sprintf("[%sF-%s]", par.SequencerName, par.ChainID.VeryShort()), par.LogLevel)
 	var chainOut, stemOut utangle.WrappedOutput
 	var err error
@@ -57,7 +57,7 @@ func createMilestoneFactory(par Params) (*milestoneFactory, error) {
 	if err != nil {
 		return nil, err
 	}
-	chainOut, stemOut, created, err := ensureSequencerStartOutputs(chainOut, stemOut, par)
+	chainOut, stemOut, created, err := ensureSequencerStartOutputs(chainOut, stemOut, par.Params)
 	if err != nil {
 		return nil, err
 	}

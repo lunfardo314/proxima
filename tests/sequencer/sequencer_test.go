@@ -236,15 +236,14 @@ func Test1Sequencer(t *testing.T) {
 		sequencer.SetTraceProposer(sequencer.BaseProposerName, false)
 
 		seq, err := sequencer.StartNew(sequencer.Params{
-			SequencerName: "boot",
 			Glb:           r.wrk,
 			ChainID:       r.bootstrapChainID,
 			ControllerKey: r.originControllerPrivateKey,
-			Pace:          5,
-			LogLevel:      zapcore.InfoLevel,
-			MaxBranches:   maxSlots,
-			MaxTargetTs:   core.LogicalTimeNow().AddTimeSlots(maxSlots + 2),
-		})
+		},
+			sequencer.WithPace(5),
+			sequencer.WithMaxBranches(maxSlots),
+			sequencer.WithMaxTargetTs(core.LogicalTimeNow().AddTimeSlots(maxSlots+2)),
+		)
 		require.NoError(t, err)
 
 		seq.WaitStop()
@@ -264,7 +263,7 @@ func Test1Sequencer(t *testing.T) {
 
 		sequencer.SetTraceAll(false)
 
-		seq, err := sequencer.StartNew(sequencer.Params{
+		seq, err := sequencer.StartNew(sequencer.ConfigOptions{
 			SequencerName: "boot",
 			Glb:           r.wrk,
 			ChainID:       r.bootstrapChainID,
@@ -314,7 +313,7 @@ func Test1Sequencer(t *testing.T) {
 
 		sequencer.SetTraceAll(false)
 
-		seq, err := sequencer.StartNew(sequencer.Params{
+		seq, err := sequencer.StartNew(sequencer.ConfigOptions{
 			SequencerName: "boot",
 			Glb:           r.wrk,
 			ChainID:       r.bootstrapChainID,
@@ -371,7 +370,7 @@ func Test1Sequencer(t *testing.T) {
 
 		sequencer.SetTraceAll(false)
 
-		seq, err := sequencer.StartNew(sequencer.Params{
+		seq, err := sequencer.StartNew(sequencer.ConfigOptions{
 			SequencerName: "boot",
 			Glb:           r.wrk,
 			ChainID:       r.bootstrapChainID,
@@ -448,7 +447,7 @@ func Test1Sequencer(t *testing.T) {
 
 		sequencer.SetTraceAll(false)
 
-		seq, err := sequencer.StartNew(sequencer.Params{
+		seq, err := sequencer.StartNew(sequencer.ConfigOptions{
 			SequencerName: "boot",
 			Glb:           r.wrk,
 			ChainID:       r.bootstrapChainID,
@@ -515,7 +514,7 @@ func Test1Sequencer(t *testing.T) {
 
 func (r *sequencerTestData) createSequencers(maxInputsInTx, maxSlots, pace int, loglevel zapcore.Level) {
 	var err error
-	r.bootstrapSeq, err = sequencer.StartNew(sequencer.Params{
+	r.bootstrapSeq, err = sequencer.StartNew(sequencer.ConfigOptions{
 		SequencerName: "boot",
 		Glb:           r.wrk,
 		ChainID:       r.bootstrapChainID,
@@ -526,10 +525,10 @@ func (r *sequencerTestData) createSequencers(maxInputsInTx, maxSlots, pace int, 
 		MaxFeeInputs:  maxInputsInTx,
 	})
 	require.NoError(r.t, err)
-	par := make([]sequencer.Params, len(r.chainOrigins))
+	par := make([]sequencer.ConfigOptions, len(r.chainOrigins))
 
 	for i := range par {
-		par[i] = sequencer.Params{
+		par[i] = sequencer.ConfigOptions{
 			SequencerName: fmt.Sprintf("seq%d", i),
 			Glb:           r.wrk,
 			ChainID:       r.chainOrigins[i].ChainID,
