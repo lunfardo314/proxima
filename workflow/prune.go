@@ -29,8 +29,8 @@ func (w *Workflow) pruneOrphanedLoop() {
 
 		w.utxoTangle.SetLastPrunedOrphaned(time.Now())
 
-		w.log.Infof("PRUNED %d orphaned transactions and %d branches out of total %d vertices in %v, Deleted slots: %d",
-			nOrphaned, nOrphanedBranches, nVertices, time.Since(startTime), nDeletedSlots)
+		w.log.Infof("Slot %d. Pruned %d orphaned transactions and %d branches out of total %d vertices in %v, Deleted slots: %d",
+			core.LogicalTimeNow().TimeSlot(), nOrphaned, nOrphanedBranches, nVertices, time.Since(startTime), nDeletedSlots)
 	}
 	w.log.Infof("'Prune orphaned' loop stopped")
 }
