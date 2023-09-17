@@ -9,3 +9,19 @@ txstore:
 logger:
   level: info
   output: testlog.log
+
+workflow:
+  addtx:
+    loglevel: info
+  events:
+    loglevel: info
+  input:
+    loglevel: info
+  reject:
+    loglevel: info
+  prevalid:
+    loglevel: info
+  solidify:
+    loglevel: info
+  validate:
+    loglevel: info

@@ -32,7 +32,7 @@ func Start() *ProximaNode {
 	initConfig(log)
 
 	ret := &ProximaNode{
-		log: newTopLogger(),
+		log: newNodeLogger(),
 	}
 
 	ret.startup()

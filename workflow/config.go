@@ -60,7 +60,7 @@ func WithGlobalConfigOptions(c *ConfigParams) {
 	WithLogLevel(parseLevel("logger.level", zap.InfoLevel))(c)
 
 	for _, n := range AllConsumerNames {
-		WithLogLevel(parseLevel("workflow."+n+".loglevel", zap.InfoLevel))(c)
+		WithConsumerLogLevel(n, parseLevel("workflow."+n+".loglevel", zap.InfoLevel))(c)
 	}
 	WithLogOutput(viper.GetString("workflow.output"))(c)
 	WithLogTimeLayout(viper.GetString("logger.timelayout"))

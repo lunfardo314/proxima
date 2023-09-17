@@ -14,7 +14,7 @@ import (
 
 func init() {
 	pflag.String("logger.level", "info", "log level")
-	pflag.String("logger.timelayout", "2006-01-02 15:04:05.000", "time format")
+	pflag.String("logger.timelayout", general.TimeLayoutDefault, "time format")
 	pflag.String("logger.output", "stdout", "a list where to write log")
 
 	pflag.String(general.ConfigKeyMultiStateDbName, "proximadb", "name of the multi-state database")
@@ -39,11 +39,16 @@ func initConfig(log *zap.SugaredLogger) {
 	}
 }
 
+const (
+	bootstrapLoggerName = "[boot]"
+	nodeLoggerName      = "[node]"
+)
+
 func newBootstrapLogger() *zap.SugaredLogger {
-	return general.NewLogger("boot", zap.InfoLevel, []string{"stderr"}, "")
+	return general.NewLogger(bootstrapLoggerName, zap.InfoLevel, []string{"stderr"}, "")
 }
 
-func newTopLogger() *zap.SugaredLogger {
+func newNodeLogger() *zap.SugaredLogger {
 	logLevel := zapcore.InfoLevel
 	if viper.GetString("logger.level") == "debug" {
 		logLevel = zapcore.DebugLevel
@@ -55,5 +60,5 @@ func newTopLogger() *zap.SugaredLogger {
 		outputs = append(outputs, "stdout")
 	}
 
-	return general.NewLogger("top", logLevel, outputs, viper.GetString("logger.timelayout"))
+	return general.NewLogger(nodeLoggerName, logLevel, outputs, viper.GetString("logger.timelayout"))
 }
