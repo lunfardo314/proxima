@@ -240,6 +240,7 @@ func Test1Sequencer(t *testing.T) {
 			ChainID:       r.bootstrapChainID,
 			ControllerKey: r.originControllerPrivateKey,
 		},
+			sequencer.WithName("boot"),
 			sequencer.WithPace(5),
 			sequencer.WithMaxBranches(maxSlots),
 			sequencer.WithMaxTargetTs(core.LogicalTimeNow().AddTimeSlots(maxSlots+2)),
@@ -263,16 +264,16 @@ func Test1Sequencer(t *testing.T) {
 
 		sequencer.SetTraceAll(false)
 
-		seq, err := sequencer.StartNew(sequencer.ConfigOptions{
-			SequencerName: "boot",
+		seq, err := sequencer.StartNew(sequencer.Params{
 			Glb:           r.wrk,
 			ChainID:       r.bootstrapChainID,
 			ControllerKey: r.originControllerPrivateKey,
-			Pace:          5,
-			LogLevel:      zapcore.DebugLevel,
-			//MaxTargetTs:   core.LogicalTimeNow().AddTimeSlots(maxTimeSlots + 2),
-			MaxMilestones: maxTimeSlots,
-		})
+		},
+			sequencer.WithName("boot"),
+			sequencer.WithPace(5),
+			sequencer.WithMaxBranches(maxTimeSlots),
+			sequencer.WithMaxTargetTs(core.LogicalTimeNow().AddTimeSlots(maxTimeSlots+2)),
+		)
 		require.NoError(t, err)
 
 		t.Logf("chain origins tx:\n%s", r.txChainOrigins.ToString(r.ut.HeaviestStateForLatestTimeSlot().GetUTXO))
@@ -313,15 +314,16 @@ func Test1Sequencer(t *testing.T) {
 
 		sequencer.SetTraceAll(false)
 
-		seq, err := sequencer.StartNew(sequencer.ConfigOptions{
-			SequencerName: "boot",
+		seq, err := sequencer.StartNew(sequencer.Params{
 			Glb:           r.wrk,
 			ChainID:       r.bootstrapChainID,
 			ControllerKey: r.originControllerPrivateKey,
-			Pace:          5,
-			LogLevel:      zapcore.InfoLevel,
-			MaxTargetTs:   core.LogicalTimeNow().AddTimeSlots(maxSlots),
-		})
+		},
+			sequencer.WithName("boot"),
+			sequencer.WithPace(5),
+			sequencer.WithMaxBranches(maxSlots),
+			sequencer.WithMaxTargetTs(core.LogicalTimeNow().AddTimeSlots(maxSlots+2)),
+		)
 		require.NoError(t, err)
 
 		heaviestState := r.ut.HeaviestStateForLatestTimeSlot()
@@ -370,16 +372,19 @@ func Test1Sequencer(t *testing.T) {
 
 		sequencer.SetTraceAll(false)
 
-		seq, err := sequencer.StartNew(sequencer.ConfigOptions{
-			SequencerName: "boot",
+		seq, err := sequencer.StartNew(sequencer.Params{
 			Glb:           r.wrk,
 			ChainID:       r.bootstrapChainID,
 			ControllerKey: r.originControllerPrivateKey,
-			Pace:          5,
-			LogLevel:      zapcore.InfoLevel,
-			MaxBranches:   maxSlots + 2,
-			MaxFeeInputs:  maxInputs,
-		})
+		},
+			sequencer.WithName("boot"),
+			sequencer.WithPace(5),
+			sequencer.WithMaxBranches(maxSlots+2),
+			sequencer.WithMaxTargetTs(core.LogicalTimeNow().AddTimeSlots(maxSlots+2)),
+			sequencer.WithMaxFeeInputs(maxInputs),
+		)
+		require.NoError(t, err)
+
 		var allFeeInputsConsumed atomic.Bool
 		seq.OnMilestoneSubmitted(func(seq *sequencer.Sequencer, vid *utangle.WrappedTx) {
 			seq.LogMilestoneSubmitDefault(vid)
@@ -447,16 +452,19 @@ func Test1Sequencer(t *testing.T) {
 
 		sequencer.SetTraceAll(false)
 
-		seq, err := sequencer.StartNew(sequencer.ConfigOptions{
-			SequencerName: "boot",
+		seq, err := sequencer.StartNew(sequencer.Params{
 			Glb:           r.wrk,
 			ChainID:       r.bootstrapChainID,
 			ControllerKey: r.originControllerPrivateKey,
-			Pace:          10,
-			LogLevel:      zapcore.InfoLevel,
-			MaxTargetTs:   core.LogicalTimeNow().AddTimeSlots(maxSlots),
-			MaxFeeInputs:  maxInputs,
-		})
+		},
+			sequencer.WithName("boot"),
+			sequencer.WithPace(5),
+			sequencer.WithMaxBranches(maxSlots),
+			sequencer.WithMaxTargetTs(core.LogicalTimeNow().AddTimeSlots(maxSlots+2)),
+			sequencer.WithMaxFeeInputs(maxInputs),
+		)
+		require.NoError(t, err)
+
 		var allFeeInputsConsumed atomic.Bool
 		seq.OnMilestoneSubmitted(func(seq *sequencer.Sequencer, vid *utangle.WrappedTx) {
 			seq.LogMilestoneSubmitDefault(vid)
@@ -514,46 +522,53 @@ func Test1Sequencer(t *testing.T) {
 
 func (r *sequencerTestData) createSequencers(maxInputsInTx, maxSlots, pace int, loglevel zapcore.Level) {
 	var err error
-	r.bootstrapSeq, err = sequencer.StartNew(sequencer.ConfigOptions{
-		SequencerName: "boot",
+	r.bootstrapSeq, err = sequencer.StartNew(sequencer.Params{
 		Glb:           r.wrk,
 		ChainID:       r.bootstrapChainID,
 		ControllerKey: r.originControllerPrivateKey,
-		Pace:          pace,
-		LogLevel:      loglevel,
-		MaxTargetTs:   core.LogicalTimeNow().AddTimeSlots(maxSlots),
-		MaxFeeInputs:  maxInputsInTx,
-	})
+	},
+		sequencer.WithName("boot"),
+		sequencer.WithLogLevel(loglevel),
+		sequencer.WithPace(pace),
+		sequencer.WithMaxBranches(maxSlots),
+		sequencer.WithMaxTargetTs(core.LogicalTimeNow().AddTimeSlots(maxSlots)),
+		sequencer.WithMaxFeeInputs(maxInputsInTx),
+	)
 	require.NoError(r.t, err)
-	par := make([]sequencer.ConfigOptions, len(r.chainOrigins))
+
+	par := make([]sequencer.Params, len(r.chainOrigins))
+	wStem, ok := r.ut.WrapOutput(r.ut.HeaviestStemOutput())
+	require.True(r.t, ok)
 
 	for i := range par {
-		par[i] = sequencer.ConfigOptions{
-			SequencerName: fmt.Sprintf("seq%d", i),
+		par[i] = sequencer.Params{
 			Glb:           r.wrk,
 			ChainID:       r.chainOrigins[i].ChainID,
 			ControllerKey: r.chainControllersPrivateKeys[i],
-			Pace:          pace,
-			LogLevel:      loglevel,
-			MaxTargetTs:   core.LogicalTimeNow().AddTimeSlots(maxSlots),
-			MaxFeeInputs:  maxInputsInTx,
 			ProvideBootstrapSequencers: func() ([]core.ChainID, uint64) {
 				return []core.ChainID{r.bootstrapChainID}, feeAmount
 			},
+			ProvideStartOutputs: func() (utangle.WrappedOutput, utangle.WrappedOutput, error) {
+				wOrig, ok := r.ut.WrapOutput(&r.chainOrigins[i].OutputWithID)
+				require.True(r.t, ok)
+				return wOrig, wStem, nil
+			},
 		}
+		r.t.Logf("chain origins #%d: %s", i, r.chainOrigins[i].OutputWithID.String())
+		r.t.Logf("chain controller addr #%d: %s", i, core.AddressED25519FromPrivateKey(r.chainControllersPrivateKeys[i]).String())
+
 	}
-	r.sequencers = make([]*sequencer.Sequencer, len(r.chainOrigins))
-	stemOut := r.ut.HeaviestStemOutput()
+	maxTargetTs := core.LogicalTimeNow().AddTimeSlots(maxSlots)
+	r.sequencers = make([]*sequencer.Sequencer, len(par))
 	for i := range par {
-		require.NoError(r.t, err)
-		par[i].ProvideStartOutputs = func() (utangle.WrappedOutput, utangle.WrappedOutput, error) {
-			wOrig, ok := r.ut.WrapOutput(&r.chainOrigins[i].OutputWithID)
-			require.True(r.t, ok)
-			wStem, ok := r.ut.WrapOutput(stemOut)
-			require.True(r.t, ok)
-			return wOrig, wStem, nil
-		}
-		r.sequencers[i], err = sequencer.StartNew(par[i])
+		r.sequencers[i], err = sequencer.StartNew(par[i],
+			sequencer.WithName(fmt.Sprintf("seq%d", i)),
+			sequencer.WithLogLevel(loglevel),
+			sequencer.WithPace(pace),
+			sequencer.WithMaxTargetTs(maxTargetTs),
+			sequencer.WithMaxFeeInputs(maxInputsInTx),
+		)
+		r.t.Logf("new seq #%d: %v", i, err)
 		require.NoError(r.t, err)
 	}
 }
