@@ -520,7 +520,7 @@ func Test1Sequencer(t *testing.T) {
 	})
 }
 
-func (r *sequencerTestData) createSequencers(maxInputsInTx, maxSlots, pace int, loglevel zapcore.Level) {
+func (r *sequencerTestData) createSequencers(maxInputsInTx, maxSlots, pace int, loglevel zapcore.Level, dontTagAlong ...bool) {
 	var err error
 	r.bootstrapSeq, err = sequencer.StartNew(sequencer.Params{
 		Glb:           r.wrk,
@@ -540,16 +540,22 @@ func (r *sequencerTestData) createSequencers(maxInputsInTx, maxSlots, pace int, 
 	wStem, ok := r.ut.WrapOutput(r.ut.HeaviestStemOutput())
 	require.True(r.t, ok)
 
+	tagAlongFun := func() ([]core.ChainID, uint64) {
+		return []core.ChainID{r.bootstrapChainID}, feeAmount
+	}
+	if len(dontTagAlong) > 0 && dontTagAlong[0] {
+		tagAlongFun = nil
+	}
+
 	for i := range par {
+		iCopy := i
 		par[i] = sequencer.Params{
-			Glb:           r.wrk,
-			ChainID:       r.chainOrigins[i].ChainID,
-			ControllerKey: r.chainControllersPrivateKeys[i],
-			ProvideBootstrapSequencers: func() ([]core.ChainID, uint64) {
-				return []core.ChainID{r.bootstrapChainID}, feeAmount
-			},
+			Glb:                       r.wrk,
+			ChainID:                   r.chainOrigins[i].ChainID,
+			ControllerKey:             r.chainControllersPrivateKeys[i],
+			ProvideTagAlongSequencers: tagAlongFun,
 			ProvideStartOutputs: func() (utangle.WrappedOutput, utangle.WrappedOutput, error) {
-				wOrig, ok := r.ut.WrapOutput(&r.chainOrigins[i].OutputWithID)
+				wOrig, ok := r.ut.WrapOutput(&r.chainOrigins[iCopy].OutputWithID)
 				require.True(r.t, ok)
 				return wOrig, wStem, nil
 			},
@@ -633,6 +639,7 @@ func TestNSequencers(t *testing.T) {
 			numFaucetTransactions = 1
 			maxTxInputs           = 100
 			stopAfterBranches     = 20
+			tagAlong              = false
 		)
 		t.Logf("\n   numFaucets: %d\n   numFaucetTransactions: %d\n", numFaucets, numFaucetTransactions)
 		r := initSequencerTestData(t, numFaucets, 1, core.LogicalTimeNow())
@@ -646,7 +653,7 @@ func TestNSequencers(t *testing.T) {
 
 		sequencer.SetTraceProposer(sequencer.BacktrackProposerName, false)
 
-		r.createSequencers(maxTxInputs, maxSlots, 5, zapcore.InfoLevel)
+		r.createSequencers(maxTxInputs, maxSlots, 5, zapcore.InfoLevel, !tagAlong)
 
 		var allFeeInputsConsumed atomic.Bool
 		branchesAfterAllConsumed := 0
@@ -688,7 +695,11 @@ func TestNSequencers(t *testing.T) {
 		bal := heaviestState.BalanceOnChain(&r.bootstrapChainID)
 		r.ut.SaveGraph(fnameFromTestName(t))
 		r.ut.SaveTree(fnameFromTestName(t) + "_TREE")
-		require.EqualValues(t, int(initOnSeqBalance+(numFaucetTransactions*numFaucets+1)*feeAmount), int(bal))
+		if tagAlong {
+			require.EqualValues(t, int(initOnSeqBalance+(numFaucetTransactions*numFaucets+1)*feeAmount), int(bal))
+		} else {
+			require.EqualValues(t, int(initOnSeqBalance+(numFaucetTransactions*numFaucets)*feeAmount), int(bal))
+		}
 	})
 	t.Run("2 seq, transfers 1", func(t *testing.T) {
 		const (
@@ -698,6 +709,7 @@ func TestNSequencers(t *testing.T) {
 			numTxPerFaucet    = 10
 			maxTxInputs       = 0
 			stopAfterBranches = 20
+			tagAlong          = true
 		)
 		t.Logf("\n   numFaucets: %d\n   numTxPerFaucet: %d\n   transferAmount: %d",
 			numFaucets, numTxPerFaucet, transferAmount)
@@ -712,7 +724,7 @@ func TestNSequencers(t *testing.T) {
 
 		sequencer.SetTraceProposer(sequencer.BacktrackProposerName, false)
 
-		r.createSequencers(maxTxInputs, maxSlots, 5, zapcore.InfoLevel)
+		r.createSequencers(maxTxInputs, maxSlots, 5, zapcore.InfoLevel, !tagAlong)
 
 		var allFeeInputsConsumed atomic.Bool
 		branchesAfterAllConsumed := 0
@@ -899,6 +911,7 @@ func TestNSequencers(t *testing.T) {
 			maxTxInputs           = 200
 			stopAfterBranches     = 20
 			nSequencers           = 3
+			tagAlong              = true
 		)
 		t.Logf("\n   numFaucets: %d\n   numFaucetTransactions: %d\n", numFaucets, numFaucetTransactions)
 		r := initSequencerTestData(t, numFaucets, nSequencers-1, core.LogicalTimeNow())
@@ -912,7 +925,7 @@ func TestNSequencers(t *testing.T) {
 
 		sequencer.SetTraceProposer(sequencer.BacktrackProposerName, false)
 
-		r.createSequencers(maxTxInputs, maxSlot, 5, zapcore.InfoLevel)
+		r.createSequencers(maxTxInputs, maxSlot, 5, zapcore.InfoLevel, !tagAlong)
 
 		var allFeeInputsConsumed atomic.Bool
 		branchesAfterAllConsumed := 0

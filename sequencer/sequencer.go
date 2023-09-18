@@ -43,8 +43,8 @@ type (
 		ChainID             core.ChainID
 		ControllerKey       ed25519.PrivateKey
 		ProvideStartOutputs func() (utangle.WrappedOutput, utangle.WrappedOutput, error)
-		// ProvideBootstrapSequencers returns list of sequencerIDs and fee amount where to send fees (bribe) for faster bootup of the sequencer
-		ProvideBootstrapSequencers func() ([]core.ChainID, uint64)
+		// ProvideTagAlongSequencers returns list of sequencerIDs and fee amount where to send fees (bribe) for faster bootup of the sequencer
+		ProvideTagAlongSequencers func() ([]core.ChainID, uint64)
 	}
 
 	ConfigOptions struct {
@@ -134,10 +134,14 @@ func StartNew(par Params, opts ...ConfigOpt) (*Sequencer, error) {
 	return ret, nil
 }
 
-func StartFromConfig(name string, cfg *viper.Viper) (*Sequencer, error) {
-	fmt.Printf("StartFromConfig: '%s'\n", name)
-	fmt.Printf("  id: %s\n", cfg.GetString("id"))
-	fmt.Printf("  pace: %d\n", cfg.GetInt("pace"))
+func StartByName(name string) (*Sequencer, error) {
+	subViper := viper.Sub("sequencers." + name)
+	if subViper == nil {
+		return nil, fmt.Errorf("can't read config for the sequencer")
+	}
+
+	fmt.Printf("  id: %s\n", subViper.GetString("id"))
+	fmt.Printf("  pace: %d\n", subViper.GetInt("pace"))
 
 	return nil, nil
 }

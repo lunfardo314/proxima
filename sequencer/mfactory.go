@@ -89,7 +89,7 @@ func createMilestoneFactory(par *configuration) (*milestoneFactory, error) {
 }
 
 func ensureSequencerStartOutputs(chainOut, stemOut utangle.WrappedOutput, par Params) (utangle.WrappedOutput, utangle.WrappedOutput, bool, error) {
-	if chainOut.VID.IsSequencerMilestone() && par.ProvideBootstrapSequencers == nil {
+	if chainOut.VID.IsSequencerMilestone() && par.ProvideTagAlongSequencers == nil {
 		// chain has sequencer output is already at start
 		return chainOut, stemOut, false, nil
 	}
@@ -108,8 +108,8 @@ func ensureSequencerStartOutputs(chainOut, stemOut utangle.WrappedOutput, par Pa
 
 	// to speed up finalization of the sequencer we optionally "bribe" some other sequencers by paying fees to them
 	var feeOutputs []*core.Output
-	if par.ProvideBootstrapSequencers != nil {
-		bootstrapSequencerIDs, feeAmount := par.ProvideBootstrapSequencers()
+	if par.ProvideTagAlongSequencers != nil {
+		bootstrapSequencerIDs, feeAmount := par.ProvideTagAlongSequencers()
 		feeOutputs = make([]*core.Output, len(bootstrapSequencerIDs))
 		for i := range feeOutputs {
 			feeOutputs[i] = core.NewOutput(func(o *core.Output) {

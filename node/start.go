@@ -152,21 +152,11 @@ func (p *ProximaNode) startSequencers() {
 	seqNames := util.SortKeys(sequencers, func(k1, k2 string) bool {
 		return k1 < k2
 	})
-	configsByName := p.readSequencerConfigs(seqNames)
-	sortedNames := util.SortKeys(configsByName, func(k1, k2 string) bool {
-		return k1 < k2
-	})
+	for _, name := range seqNames {
+		if _, err := sequencer.StartByName(name); err == nil {
 
-	// TODO
-	for _, name := range sortedNames {
-		_, _ = sequencer.StartFromConfig(name, configsByName[name])
+		} else {
+			p.log.Errorf("can't start sequencer '%s': '%v'", name, err)
+		}
 	}
-}
-
-func (p *ProximaNode) readSequencerConfigs(names []string) map[string]*viper.Viper {
-	ret := make(map[string]*viper.Viper)
-	for _, n := range names {
-		ret[n] = viper.Sub("sequencers." + n)
-	}
-	return ret
 }

@@ -27,9 +27,7 @@ workflow:
     loglevel: info
 
 sequencers:
-  seq1:
-    id: kuku
+  boot:
+    sequencer_id: kuku
+    private_key: kkk
     pace: 5
-  seq2:
-    id: mumu
-    pace: 15
