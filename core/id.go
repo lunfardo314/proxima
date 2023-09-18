@@ -231,6 +231,10 @@ func (oid *OutputID) String() string {
 	return fmt.Sprintf("%s[%d]", txid.String(), oid.Index())
 }
 
+func (oid *OutputID) StringHex() string {
+	return hex.EncodeToString(oid[:])
+}
+
 func (oid *OutputID) Short() string {
 	txid := oid.TransactionID()
 	return fmt.Sprintf("%s[%d]", txid.Short(), oid.Index())
