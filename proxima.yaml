@@ -1,5 +1,9 @@
 # Configuration of the Proxima node
 
+api:
+  server:
+    port: 4000
+
 multistate:
   name: proximadb
 

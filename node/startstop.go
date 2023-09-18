@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"github.com/dgraph-io/badger/v4"
+	"github.com/labstack/echo/v4"
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/general"
 	state "github.com/lunfardo314/proxima/multistate"
@@ -26,6 +27,7 @@ type ProximaNode struct {
 	uTangle      *utangle.UTXOTangle
 	workflow     *workflow.Workflow
 	sequencers   []*sequencer.Sequencer
+	echoServer   *echo.Echo
 }
 
 func Start() *ProximaNode {
@@ -55,6 +57,7 @@ func (p *ProximaNode) startup() {
 	p.loadUTXOTangle()
 	p.startWorkflow()
 	p.startSequencers()
+	p.startApiServer()
 }
 
 func (p *ProximaNode) Stop() {
@@ -73,6 +76,9 @@ func (p *ProximaNode) Stop() {
 			p.log.Warnf("error while closing transaction store database: %v", err)
 		}
 	}
+
+	p.stopApiServer()
+
 	if len(p.sequencers) > 0 {
 		// stop sequencers
 		var wg sync.WaitGroup
