@@ -160,6 +160,15 @@ func (p *ProximaNode) startWorkflow() {
 }
 
 func (p *ProximaNode) startSequencers() {
+	traceProposers := viper.GetStringMap("trace_proposers")
+
+	for pname := range traceProposers {
+		if viper.GetBool("trace_proposers." + pname) {
+			sequencer.SetTraceProposer(pname, true)
+			p.log.Infof("will be tracing proposer '%s'", pname)
+		}
+	}
+
 	sequencers := viper.GetStringMap("sequencers")
 	if len(sequencers) == 0 {
 		p.log.Infof("No sequencers will be started")

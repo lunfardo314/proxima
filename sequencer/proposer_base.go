@@ -10,7 +10,7 @@ import (
 
 // Base proposer just consumes fee outputs. It also generates branches
 
-const BaseProposerName = "BASE"
+const BaseProposerName = "base"
 
 type baseProposer struct {
 	proposerTaskGeneric

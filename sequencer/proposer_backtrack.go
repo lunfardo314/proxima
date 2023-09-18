@@ -17,7 +17,7 @@ type backtrackProposer struct {
 	extensionChoices []utangle.WrappedOutput
 }
 
-const BacktrackProposerName = "BTrack"
+const BacktrackProposerName = "btrack"
 
 func init() {
 	registerProposingStrategy(BacktrackProposerName, func(mf *milestoneFactory, targetTs core.LogicalTime) proposerTask {

@@ -1,8 +1,6 @@
 package sequencer
 
 import (
-	"runtime"
-
 	"github.com/lunfardo314/proxima/utangle"
 	"github.com/lunfardo314/proxima/util"
 )
@@ -44,14 +42,12 @@ func (seq *Sequencer) Info() Info {
 }
 
 func (seq *Sequencer) LogMilestoneSubmitDefault(vid *utangle.WrappedTx) {
-	var mstats runtime.MemStats
-	runtime.ReadMemStats(&mstats)
 	info := seq.Info()
 	msType := "MS"
 	if vid.IsBranchTransaction() {
 		msType = "BRANCH"
 	}
-	seq.log.Infof("%s #%d(%d): %s, cov: %s<-%s, in/out: %d/%d, feeOut: %d, mem: %d/%d, alloc (gortn): %.1f MB (%d)",
+	seq.log.Infof("%s #%d(%d): %s, cov: %s<-%s, in/out: %d/%d, feeOut: %d, mem: %d/%d",
 		msType,
 		info.MsCounter,
 		info.BranchCounter,
@@ -63,7 +59,5 @@ func (seq *Sequencer) LogMilestoneSubmitDefault(vid *utangle.WrappedTx) {
 		info.NumConsumedFeeOutputs,
 		info.NumFeeOutputsInMempool,
 		info.NumOtherMsInMempool,
-		float32(mstats.Alloc*10/(1024*1024))/10,
-		runtime.NumGoroutine(),
 	)
 }

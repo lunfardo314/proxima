@@ -45,5 +45,5 @@ tag_along_sequencer:
 
 # specify milestone proposers to trace
 trace_proposers:
-  BASE: true
-  BTrack: false
+  base: false
+  btrack: false
