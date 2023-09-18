@@ -36,6 +36,7 @@ tag_along_sequencer:
 sequencers:
   boot:
     enable: true
+    loglevel: info
     sequencer_id: 108c086a4183c3434392f0d16f07c6895990a96dd74753d1a5695bad3e9934b4
     controller_key: bac35c97b1870da242b77c9db1faf4ceb58af75571a1b742f44134248702144a4aabf9a37382b2ebdd1a0e17970e6ed8ed0a05d67380296e11fbf40934dbb4c4
     pace: 5

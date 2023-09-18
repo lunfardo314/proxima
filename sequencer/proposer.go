@@ -49,7 +49,9 @@ func registerProposingStrategy(strategyName string, constructor proposerTaskCons
 }
 
 func SetTraceProposer(name string, v bool) {
-	allProposingStrategies[name].trace.Store(v)
+	if _, ok := allProposingStrategies[name]; ok {
+		allProposingStrategies[name].trace.Store(v)
+	}
 }
 
 func newProposerGeneric(mf *milestoneFactory, targetTs core.LogicalTime, strategyName string) proposerTaskGeneric {

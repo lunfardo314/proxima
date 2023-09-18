@@ -19,7 +19,6 @@ type baseProposer struct {
 func init() {
 	registerProposingStrategy(BaseProposerName, func(mf *milestoneFactory, targetTs core.LogicalTime) proposerTask {
 		ret := &baseProposer{newProposerGeneric(mf, targetTs, BaseProposerName)}
-		ret.trace("created..")
 		return ret
 	})
 }
@@ -49,6 +48,7 @@ func (b *baseProposer) proposeBase() (*transaction.Transaction, bool) {
 	}
 
 	if b.targetTs.TimeTick() == 0 {
+		b.trace("making branch")
 		// generate branch, no fee outputs are consumed
 		return b.makeMilestone(&latestMilestone, latestMilestone.VID.BaseStemOutput(), nil, nil), false
 	}
@@ -59,5 +59,6 @@ func (b *baseProposer) proposeBase() (*transaction.Transaction, bool) {
 	util.Assertf(targetDelta != nil, "latest milestone is orphaned: %s", latestMilestone.VID.IDShort())
 	feeOutputsToConsume := b.factory.selectFeeInputs(targetDelta, b.targetTs)
 
+	b.trace("making ordinary milestone")
 	return b.makeMilestone(&latestMilestone, nil, feeOutputsToConsume, nil), false
 }

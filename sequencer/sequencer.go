@@ -130,7 +130,7 @@ func StartNew(par Params, opts ...ConfigOpt) (*Sequencer, error) {
 	}
 	ret.stopWG.Add(1)
 	go ret.mainLoop()
-	ret.log.Info("sequencer started")
+	ret.log.Infof("sequencer has been started (loglevel=%s)", ret.log.Level().String())
 	return ret, nil
 }
 
@@ -194,7 +194,7 @@ func StartFromConfig(glb *workflow.Workflow, name string) (*Sequencer, error) {
 
 func parseLogLevel(glb *workflow.Workflow, subViper *viper.Viper) zapcore.Level {
 	lvl, err := zapcore.ParseLevel(subViper.GetString("loglevel"))
-	if err != nil {
+	if err == nil {
 		return lvl
 	}
 	return glb.LogLevel()
@@ -376,7 +376,7 @@ func (seq *Sequencer) mainLoop() {
 
 		if currentTimeSlot != targetTs.TimeSlot() {
 			currentTimeSlot = targetTs.TimeSlot()
-			seq.log.Infof("TIME SLOT %d", currentTimeSlot)
+			//seq.log.Infof("TIME SLOT %d", currentTimeSlot)
 		}
 
 		seq.trace("target ts: %s. Now is: %s", targetTs, core.LogicalTimeNow())

@@ -222,16 +222,30 @@ func (vid *WrappedTx) SequencerPredecessor() *WrappedTx {
 
 func (vid *WrappedTx) BaseStemOutput() *WrappedOutput {
 	var ret *WrappedOutput
-	vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
-		if vid.IsBranchTransaction() {
-			ret = vid.StemOutput()
-		} else {
-			if b := v.StateDelta.BaselineBranch(); b != nil {
-				util.Assertf(b.IsBranchTransaction(), "b.IsBranchTransaction()")
-				ret = b.StemOutput()
+	vid.Unwrap(UnwrapOptions{
+		Vertex: func(v *Vertex) {
+			if vid.IsBranchTransaction() {
+				ret = vid.StemOutput()
+			} else {
+				if b := v.StateDelta.BaselineBranch(); b != nil {
+					util.Assertf(b.IsBranchTransaction(), "b.IsBranchTransaction()")
+					ret = b.StemOutput()
+				}
 			}
-		}
-	}})
+		},
+		VirtualTx: func(v *VirtualTransaction) {
+			util.Assertf(v.sequencerOutputs != nil || v.sequencerOutputs[1] == 0xff,
+				"stem output index not available in virtualTx")
+			_, found := v.outputs[v.sequencerOutputs[1]]
+			util.Assertf(found, "stem output not available at index %s", v.sequencerOutputs[1])
+
+			ret = &WrappedOutput{
+				VID:   vid,
+				Index: v.sequencerOutputs[1],
+			}
+		},
+	},
+	)
 	return ret
 }
 
