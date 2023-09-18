@@ -129,8 +129,12 @@ func StartNew(par Params, opts ...ConfigOpt) (*Sequencer, error) {
 		return nil, err
 	}
 	ret.stopWG.Add(1)
+
 	go ret.mainLoop()
-	ret.log.Infof("sequencer has been started (loglevel=%s)", ret.log.Level().String())
+
+	lms := ret.factory.getLastMilestone()
+	ret.log.Infof("sequencer has been started at %s (loglevel=%s)",
+		lms.IDShort(), ret.log.Level().String())
 	return ret, nil
 }
 

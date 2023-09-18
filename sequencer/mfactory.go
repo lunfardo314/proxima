@@ -66,7 +66,7 @@ func createMilestoneFactory(par *configuration) (*milestoneFactory, error) {
 		log.Infof("created sequencer start output %s", chainOut.DecodeID().Short())
 	}
 
-	mempool, err := startMempool(par.SequencerName, par.Glb, par.ChainID, par.LogLevel)
+	tippool, err := startTipPool(par.SequencerName, par.Glb, par.ChainID, par.LogLevel)
 	if err != nil {
 		return nil, err
 	}
@@ -74,7 +74,7 @@ func createMilestoneFactory(par *configuration) (*milestoneFactory, error) {
 	ret := &milestoneFactory{
 		log:     log,
 		tangle:  par.Glb.UTXOTangle(),
-		tipPool: mempool,
+		tipPool: tippool,
 		ownMilestones: map[*utangle.WrappedTx]utangle.WrappedOutput{
 			chainOut.VID: chainOut,
 		},

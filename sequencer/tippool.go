@@ -31,7 +31,7 @@ type sequencerTipPool struct {
 
 const fetchLastNTimeSlotsUponStartup = 5
 
-func startMempool(seqName string, wrk *workflow.Workflow, seqID core.ChainID, logLevel zapcore.Level) (*sequencerTipPool, error) {
+func startTipPool(seqName string, wrk *workflow.Workflow, seqID core.ChainID, logLevel zapcore.Level) (*sequencerTipPool, error) {
 	// must be finalized somewhere
 	name := fmt.Sprintf("[%sM-%s]", seqName, seqID.VeryShort())
 	accountAddress := core.CloneAccountable(seqID.AsChainLock())

@@ -2,6 +2,7 @@ package node
 
 import (
 	"os"
+	"sync"
 
 	"github.com/dgraph-io/badger/v4"
 	"github.com/lunfardo314/proxima/core"
@@ -72,6 +73,21 @@ func (p *ProximaNode) Stop() {
 			p.log.Warnf("error while closing transaction store database: %v", err)
 		}
 	}
+	if len(p.sequencers) > 0 {
+		// stop sequencers
+		var wg sync.WaitGroup
+		for _, seq := range p.sequencers {
+			seqCopy := seq
+			wg.Add(1)
+			go func() {
+				seqCopy.Stop()
+				wg.Done()
+			}()
+		}
+		wg.Wait()
+		p.log.Infof("all sequencers stopped")
+	}
+
 	if p.workflow != nil {
 		p.workflow.Stop()
 	}
