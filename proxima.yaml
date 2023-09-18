@@ -26,8 +26,17 @@ workflow:
   validate:
     loglevel: info
 
+# optional sequencer id to send fee upon creation of the first sequencer transaction in the chain
+# for all sequencers
+tag_along_sequencer:
+  enabled: true
+  sequencer_id: 108c086a4183c3434392f0d16f07c6895990a96dd74753d1a5695bad3e9934b4
+  fee: 100
+
 sequencers:
   boot:
-    sequencer_id: kuku
-    private_key: kkk
+    enable: true
+    sequencer_id: 108c086a4183c3434392f0d16f07c6895990a96dd74753d1a5695bad3e9934b4
+    controller_key: bac35c97b1870da242b77c9db1faf4ceb58af75571a1b742f44134248702144a4aabf9a37382b2ebdd1a0e17970e6ed8ed0a05d67380296e11fbf40934dbb4c4
     pace: 5
+    max_fee_inputs: 50

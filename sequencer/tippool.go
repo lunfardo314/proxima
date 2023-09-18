@@ -16,7 +16,7 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
-// TODO rewrite mempool only with IDs, no pointers
+// TODO rewrite tipPool only with IDs, no pointers
 
 type sequencerTipPool struct {
 	mutex            sync.RWMutex
@@ -43,7 +43,7 @@ func startMempool(seqName string, wrk *workflow.Workflow, seqID core.ChainID, lo
 		chainID:          seqID,
 		latestMilestones: make(map[core.ChainID]*utangle.WrappedTx),
 	}
-	ret.log.Debugf("starting mempool..")
+	ret.log.Debugf("starting tipPool..")
 
 	ret.mutex.RLock()
 	defer ret.mutex.RUnlock()
@@ -77,7 +77,7 @@ func startMempool(seqName string, wrk *workflow.Workflow, seqID core.ChainID, lo
 	})
 	util.AssertNoError(err)
 
-	// fetch all account into mempool once
+	// fetch all account into tipPool once
 	ret.outputs = wrk.UTXOTangle().ScanAccount(accountAddress.AccountID(), fetchLastNTimeSlotsUponStartup)
 	return ret, nil
 }
@@ -95,7 +95,7 @@ func (mem *sequencerTipPool) _clearOrphanedOutputsIfNeeded() {
 		}})
 	}
 	for _, wOut := range toDelete {
-		mem.log.Infof("removed orphaned output %s from tippool", wOut.IDShort())
+		mem.log.Infof("removed orphaned output %s from tipPool", wOut.IDShort())
 		delete(mem.outputs, wOut)
 	}
 	mem.lastPruned = time.Now()

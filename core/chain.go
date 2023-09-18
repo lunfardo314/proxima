@@ -68,11 +68,19 @@ func (id *ChainID) AsAccountID() AccountID {
 
 func ChainIDFromBytes(data []byte) (ret ChainID, err error) {
 	if len(data) != ChainIDLength {
-		err = fmt.Errorf("ChainIDFromBytes: wrong data length")
+		err = fmt.Errorf("ChainIDFromBytes: wrong data length %d", len(data))
 		return
 	}
 	copy(ret[:], data)
 	return
+}
+
+func ChainIDFromHexString(str string) (ret ChainID, err error) {
+	data, err := hex.DecodeString(str)
+	if err != nil {
+		return [32]byte{}, err
+	}
+	return ChainIDFromBytes(data)
 }
 
 func OriginChainID(oid *OutputID) ChainID {

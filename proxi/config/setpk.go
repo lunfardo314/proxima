@@ -10,6 +10,7 @@ import (
 
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/proxi/console"
+	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/unitrie/common"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -49,11 +50,12 @@ func runSetKeyCommand(_ *cobra.Command, args []string) {
 	console.Assertf(!forceSetPrivateKey || len(args) == 1, "private key must be provided explicitly")
 
 	var privateKey ed25519.PrivateKey
+	var err error
+
 	if len(args) == 1 {
-		privateKey = decodePrivateKey(args[0])
-		if len(privateKey) == 0 {
-			console.Fatalf("wrong private key")
-		}
+		privateKey, err = util.ED25519PrivateKeyFromHexString(args[0])
+		console.AssertNoError(err)
+
 		addr := core.AddressED25519FromPrivateKey(privateKey)
 		console.Infof("Private key has been set. ED25519 address is: %s", addr.String())
 	} else {
@@ -81,22 +83,11 @@ func runSetKeyCommand(_ *cobra.Command, args []string) {
 	SetKeyValue("private_key", hex.EncodeToString(privateKey))
 }
 
-func decodePrivateKey(pkstr string) ed25519.PrivateKey {
-	privateKey, err := hex.DecodeString(pkstr)
-	console.AssertNoError(err)
-
-	if len(privateKey) != ed25519.PrivateKeySize {
-		console.Fatalf("wrong private key size")
-	}
-	return privateKey
-}
-
 func GetPrivateKey() ed25519.PrivateKey {
 	privateKeyStr := viper.GetString("private_key")
-	if privateKeyStr == "" {
-		return nil
-	}
-	return decodePrivateKey(privateKeyStr)
+	ret, err := util.ED25519PrivateKeyFromHexString(privateKeyStr)
+	console.AssertNoError(err)
+	return ret
 }
 
 func AddressBytes() []byte {

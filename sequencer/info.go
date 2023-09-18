@@ -29,8 +29,8 @@ func (seq *Sequencer) updateInfo(msOutput utangle.WrappedOutput) {
 		In:                     msOutput.VID.NumInputs(),
 		Out:                    msOutput.VID.NumProducedOutputs(),
 		NumConsumedFeeOutputs:  nConsumed,
-		NumFeeOutputsInMempool: seq.factory.mempool.numOutputsInBuffer(),
-		NumOtherMsInMempool:    seq.factory.mempool.numOtherMilestones(),
+		NumFeeOutputsInMempool: seq.factory.tipPool.numOutputsInBuffer(),
+		NumOtherMsInMempool:    seq.factory.tipPool.numOtherMilestones(),
 		LedgerCoverage:         msOutput.VID.LedgerCoverage(utangle.TipSlots),
 		PrevLedgerCoverage:     seq.info.LedgerCoverage,
 	}

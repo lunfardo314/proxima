@@ -1,6 +1,9 @@
 package util
 
 import (
+	"crypto/ed25519"
+	"encoding/hex"
+	"fmt"
 	"sort"
 	"strings"
 
@@ -224,4 +227,15 @@ func Find[T comparable](lst []T, el T) int {
 		}
 	}
 	return -1
+}
+
+func ED25519PrivateKeyFromHexString(str string) (ed25519.PrivateKey, error) {
+	privateKey, err := hex.DecodeString(str)
+	if err != nil {
+		return nil, err
+	}
+	if len(privateKey) != ed25519.PrivateKeySize {
+		return nil, fmt.Errorf("wrong private key size")
+	}
+	return privateKey, nil
 }

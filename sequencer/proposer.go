@@ -201,7 +201,7 @@ func (c *proposerTaskGeneric) placeProposalIfRelevant(mdProposed *milestoneWithD
 	c.factory.proposal.bestSoFar = c.factory.proposal.current
 	ledgerCoverageProposed := c.factory.proposal.current.VID.LedgerCoverage(utangle.TipSlots)
 
-	c.factory.log.Debugf("(%s): ACCEPTED %s, coverage: %s (base: %s), elapsed: %v/%v, inputs: %d, mempool: %d",
+	c.factory.log.Debugf("(%s): ACCEPTED %s, coverage: %s (base: %s), elapsed: %v/%v, inputs: %d, tipPool: %d",
 		mdProposed.proposedBy,
 		mdProposed.IDShort(),
 		util.GoThousands(ledgerCoverageProposed),
@@ -209,7 +209,7 @@ func (c *proposerTaskGeneric) placeProposalIfRelevant(mdProposed *milestoneWithD
 		mdProposed.elapsed,
 		mdProposed.makeVertexElapsed,
 		mdProposed.VID.NumInputs(),
-		c.factory.mempool.numOutputsInBuffer(),
+		c.factory.tipPool.numOutputsInBuffer(),
 	)
 	return ""
 }

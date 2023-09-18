@@ -24,6 +24,7 @@ type ProximaNode struct {
 	txStore      general.TxBytesStore
 	uTangle      *utangle.UTXOTangle
 	workflow     *workflow.Workflow
+	sequencers   []*sequencer.Sequencer
 }
 
 func Start() *ProximaNode {
@@ -33,7 +34,8 @@ func Start() *ProximaNode {
 	initConfig(log)
 
 	ret := &ProximaNode{
-		log: newNodeLogger(),
+		log:        newNodeLogger(),
+		sequencers: make([]*sequencer.Sequencer, 0),
 	}
 
 	ret.startup()
@@ -153,10 +155,16 @@ func (p *ProximaNode) startSequencers() {
 		return k1 < k2
 	})
 	for _, name := range seqNames {
-		if _, err := sequencer.StartByName(name); err == nil {
-
-		} else {
+		seq, err := sequencer.StartFromConfig(p.workflow, name)
+		if err != nil {
 			p.log.Errorf("can't start sequencer '%s': '%v'", name, err)
+			continue
 		}
+		if seq == nil {
+			p.log.Infof("skipping sequencer '%s'", name)
+			continue
+		}
+		p.log.Infof("started sequencer '%s', seqID: %s", name, seq.ID().String())
+		p.sequencers = append(p.sequencers, seq)
 	}
 }

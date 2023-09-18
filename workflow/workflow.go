@@ -15,6 +15,7 @@ import (
 	"github.com/lunfardo314/proxima/util/testutil"
 	"go.uber.org/atomic"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
 type (
@@ -82,6 +83,10 @@ func New(ut *utangle.UTXOTangle, configOptions ...ConfigOption) *Workflow {
 	ret.initEventsConsumer()
 
 	return ret
+}
+
+func (w *Workflow) LogLevel() zapcore.Level {
+	return w.log.Level()
 }
 
 func (w *Workflow) SetLogTransactions(f bool) {

@@ -44,7 +44,7 @@ func milestoneSliceString(path []utangle.WrappedOutput) string {
 func (b *backtrackProposer) run() {
 	startTime := time.Now()
 	for {
-		b.endorse = b.factory.mempool.getHeaviestAnotherMilestoneToEndorse(b.targetTs)
+		b.endorse = b.factory.tipPool.getHeaviestAnotherMilestoneToEndorse(b.targetTs)
 		if b.endorse != nil {
 			break
 		}

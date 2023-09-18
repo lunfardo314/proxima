@@ -21,7 +21,7 @@ type (
 		mutex         sync.RWMutex
 		log           *zap.SugaredLogger
 		tangle        *utangle.UTXOTangle
-		mempool       *sequencerTipPool
+		tipPool       *sequencerTipPool
 		controllerKey ed25519.PrivateKey
 		proposal      latestMilestoneProposal
 		ownMilestones map[*utangle.WrappedTx]utangle.WrappedOutput
@@ -57,6 +57,7 @@ func createMilestoneFactory(par *configuration) (*milestoneFactory, error) {
 	if err != nil {
 		return nil, err
 	}
+	// creates sequencer output out of chain origin and tags along, if necessary
 	chainOut, stemOut, created, err := ensureSequencerStartOutputs(chainOut, stemOut, par.Params)
 	if err != nil {
 		return nil, err
@@ -73,7 +74,7 @@ func createMilestoneFactory(par *configuration) (*milestoneFactory, error) {
 	ret := &milestoneFactory{
 		log:     log,
 		tangle:  par.Glb.UTXOTangle(),
-		mempool: mempool,
+		tipPool: mempool,
 		ownMilestones: map[*utangle.WrappedTx]utangle.WrappedOutput{
 			chainOut.VID: chainOut,
 		},
@@ -181,7 +182,7 @@ func (mf *milestoneFactory) makeMilestone(chainIn, stemIn *utangle.WrappedOutput
 	txBytes, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
 		ChainInput: &core.OutputWithChainID{
 			OutputWithID: *chainInReal,
-			ChainID:      mf.mempool.ChainID(),
+			ChainID:      mf.tipPool.ChainID(),
 		},
 		StemInput:        stemInReal,
 		Timestamp:        targetTs,
@@ -200,7 +201,7 @@ func (mf *milestoneFactory) makeMilestone(chainIn, stemIn *utangle.WrappedOutput
 func (mf *milestoneFactory) selectFeeInputs(seqDelta *utangle.UTXOStateDelta, targetTs core.LogicalTime) []utangle.WrappedOutput {
 	util.Assertf(seqDelta != nil, "seqDelta != nil")
 
-	selected := mf.mempool.filterAndSortOutputs(func(o utangle.WrappedOutput) bool {
+	selected := mf.tipPool.filterAndSortOutputs(func(o utangle.WrappedOutput) bool {
 		if !core.ValidTimePace(o.Timestamp(), targetTs) {
 			return false
 		}
@@ -375,7 +376,7 @@ func (mf *milestoneFactory) ownForksInAnotherSequencerPastCone(anotherSeqVertex 
 	if !available {
 		return nil
 	}
-	rootOutput, err := stateRdr.GetChainOutput(&mf.mempool.chainID)
+	rootOutput, err := stateRdr.GetChainOutput(&mf.tipPool.chainID)
 	if err != nil {
 		// cannot find own seqID in the state of anotherSeqID. The tree is empty
 		return nil

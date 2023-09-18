@@ -134,16 +134,99 @@ func StartNew(par Params, opts ...ConfigOpt) (*Sequencer, error) {
 	return ret, nil
 }
 
-func StartByName(name string) (*Sequencer, error) {
+func StartFromConfig(glb *workflow.Workflow, name string) (*Sequencer, error) {
 	subViper := viper.Sub("sequencers." + name)
 	if subViper == nil {
-		return nil, fmt.Errorf("can't read config for the sequencer")
+		return nil, fmt.Errorf("can't read config")
 	}
 
-	fmt.Printf("  id: %s\n", subViper.GetString("id"))
-	fmt.Printf("  pace: %d\n", subViper.GetInt("pace"))
+	if !subViper.GetBool("enable") {
+		return nil, nil
+	}
+	seqID, err := core.ChainIDFromHexString(subViper.GetString("sequencer_id"))
+	if err != nil {
+		return nil, fmt.Errorf("StartFromConfig: can't parse sequencer ID: %v", err)
+	}
+	controllerKey, err := util.ED25519PrivateKeyFromHexString(subViper.GetString("controller_key"))
+	if err != nil {
+		return nil, fmt.Errorf("StartFromConfig: can't parse private key: %v", err)
+	}
+	pace := subViper.GetInt(name + ".pace")
+	if pace < PaceMinimumTicks {
+		pace = PaceMinimumTicks
+	}
 
-	return nil, nil
+	tagAlongOption, err := getGlobalTagAlongOption(seqID)
+	if err != nil {
+		return nil, err
+	}
+
+	maxFeeInputs := subViper.GetInt("max_fee_inputs")
+	if maxFeeInputs < 1 {
+		maxFeeInputs = 1
+	}
+	if maxFeeInputs > 254 {
+		maxFeeInputs = 254
+	}
+
+	maxBranches := subViper.GetInt("max_branches")
+	maxMilestones := subViper.GetInt("max_milestones")
+
+	par := Params{
+		Glb:                       glb,
+		ChainID:                   seqID,
+		ControllerKey:             controllerKey,
+		ProvideStartOutputs:       nil, // default loader
+		ProvideTagAlongSequencers: tagAlongOption,
+	}
+
+	opts := []ConfigOpt{
+		WithName(name),
+		WithLogLevel(parseLogLevel(glb, subViper)),
+		WithPace(pace),
+		WithMaxFeeInputs(maxFeeInputs),
+		WithMaxBranches(maxBranches),
+		WithMaxMilestones(maxMilestones),
+	}
+
+	return StartNew(par, opts...)
+}
+
+func parseLogLevel(glb *workflow.Workflow, subViper *viper.Viper) zapcore.Level {
+	lvl, err := zapcore.ParseLevel(subViper.GetString("loglevel"))
+	if err != nil {
+		return lvl
+	}
+	return glb.LogLevel()
+}
+
+const minimumTagAlongFee = 100
+
+func getGlobalTagAlongOption(chainID core.ChainID) (func() ([]core.ChainID, uint64), error) {
+	if !viper.GetBool("tag_along_sequencer.enabled") {
+		return nil, nil
+	}
+	chainIDToTagAlong, err := core.ChainIDFromHexString(viper.GetString("tag_along_sequencer.sequencer_id"))
+	if err != nil {
+		return nil, fmt.Errorf("can't parse tag-along sequencer ID: %v", err)
+	}
+	if chainID == chainIDToTagAlong {
+		// no need to tag along to itself
+		return nil, nil
+	}
+	fee := viper.GetUint64("tag_along_sequencer.fee")
+	if fee < minimumTagAlongFee {
+		fee = minimumTagAlongFee
+	}
+
+	return func() ([]core.ChainID, uint64) {
+		return []core.ChainID{chainIDToTagAlong}, fee
+	}, nil
+}
+
+func (seq *Sequencer) ID() *core.ChainID {
+	ret := seq.factory.tipPool.chainID
+	return &ret
 }
 
 func (seq *Sequencer) setTraceAhead(n int64) {
