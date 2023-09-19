@@ -27,6 +27,8 @@ func Init(rootCmd *cobra.Command) {
 
 	apiCmd.InitDefaultHelpCmd()
 	initGetOutputsCmd(apiCmd)
+	initGetUTXOCmd(apiCmd)
+	initGetChainOutputCmd(apiCmd)
 
 	rootCmd.AddCommand(apiCmd)
 }

@@ -404,7 +404,7 @@ func (o *OutputWithID) Clone() *OutputWithID {
 }
 
 func (o *OutputWithID) String() string {
-	return fmt.Sprintf("%s\n%s", o.ID.String(), o.Output.ToString("   "))
+	return fmt.Sprintf(" ID: %s\nHex: %s\n%s", o.ID.String(), o.ID.StringHex(), o.Output.ToString("     "))
 }
 
 func (o *OutputWithID) Short() string {

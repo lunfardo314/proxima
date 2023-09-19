@@ -9,7 +9,7 @@ import (
 
 func initGetOutputsCmd(apiCmd *cobra.Command) {
 	getOutputsCmd := &cobra.Command{
-		Use:   "get_outputs <accountable in the EasyF source>",
+		Use:   "get_outputs <accountable in the EasyFl source of the lock constraint>",
 		Short: `returns all outputs locked in the accountable from the heaviest state of the latest epoch`,
 		Args:  cobra.ExactArgs(1),
 		Run:   runGetOutputsCmd,
@@ -19,7 +19,7 @@ func initGetOutputsCmd(apiCmd *cobra.Command) {
 
 }
 
-func runGetOutputsCmd(cmd *cobra.Command, args []string) {
+func runGetOutputsCmd(_ *cobra.Command, args []string) {
 	accountable, err := core.AccountableFromSource(args[0])
 	console.AssertNoError(err)
 
@@ -29,7 +29,7 @@ func runGetOutputsCmd(cmd *cobra.Command, args []string) {
 	outs, err := txutils.ParseAndSortOutputData(oData, nil)
 	console.AssertNoError(err)
 
-	console.Infof("------- %d outputs locked in the account %s", len(outs), accountable.String())
+	console.Infof("%d outputs locked in the account %s", len(outs), accountable.String())
 	for _, o := range outs {
 		console.Infof(o.String())
 	}
