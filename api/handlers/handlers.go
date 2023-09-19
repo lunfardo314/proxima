@@ -5,25 +5,17 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/lunfardo314/proxima/api"
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/utangle"
 	"github.com/lunfardo314/proxima/util"
 )
 
-// OutputList is returned by 'get_account_outputs'
-type OutputList struct {
-	// empty string when no error
-	Error string `json:"error,omitempty"`
-	// key is hex-encoded outputID bytes
-	// value is hex-encoded raw output data
-	Outputs map[string]string `json:"outputs,omitempty"`
-}
-
 func RegisterHandlers(ut *utangle.UTXOTangle) {
 	// request format: 'get_account_outputs?accountable=<EasyFL source form of the accountable lock constraint>'
-	http.HandleFunc("/get_account_outputs", getAccountOutputsHandle(ut))
-	http.HandleFunc("/get_chain_output", getChainOutputHandle(ut))
-	http.HandleFunc("/get_output", getOutputHandle(ut))
+	http.HandleFunc(api.PathGetAccountOutputs, getAccountOutputsHandle(ut))
+	http.HandleFunc(api.PathGetChainOutput, getChainOutputHandle(ut))
+	http.HandleFunc(api.PathGetOutput, getOutputHandle(ut))
 }
 
 func getAccountOutputsHandle(ut *utangle.UTXOTangle) func(w http.ResponseWriter, r *http.Request) {
@@ -44,7 +36,7 @@ func getAccountOutputsHandle(ut *utangle.UTXOTangle) func(w http.ResponseWriter,
 			writeErr(w, err.Error())
 			return
 		}
-		resp := &OutputList{}
+		resp := &api.OutputList{}
 		if len(oData) > 0 {
 			resp.Outputs = make(map[string]string)
 			for _, o := range oData {
@@ -60,16 +52,6 @@ func getAccountOutputsHandle(ut *utangle.UTXOTangle) func(w http.ResponseWriter,
 		_, err = w.Write(respBin)
 		util.AssertNoError(err)
 	}
-}
-
-// ChainOutput is returned by 'get_chain_output'
-type ChainOutput struct {
-	// empty string when no error
-	Error string `json:"error,omitempty"`
-	// hex-encoded outputID
-	OutputID string `json:"output_id,omitempty"`
-	// hex-encoded output data
-	OutputData string `json:"output_data,omitempty"`
 }
 
 func getChainOutputHandle(ut *utangle.UTXOTangle) func(w http.ResponseWriter, r *http.Request) {
@@ -90,7 +72,7 @@ func getChainOutputHandle(ut *utangle.UTXOTangle) func(w http.ResponseWriter, r 
 			writeErr(w, err.Error())
 			return
 		}
-		resp := &ChainOutput{
+		resp := &api.ChainOutput{
 			OutputID:   oData.ID.StringHex(),
 			OutputData: hex.EncodeToString(oData.Output.Bytes()),
 		}
@@ -103,15 +85,6 @@ func getChainOutputHandle(ut *utangle.UTXOTangle) func(w http.ResponseWriter, r 
 		_, err = w.Write(respBin)
 		util.AssertNoError(err)
 	}
-
-}
-
-// OutputData is returned by 'get_output'
-type OutputData struct {
-	// empty string when no error
-	Error string `json:"error,omitempty"`
-	// hex-encoded output data
-	OutputData string `json:"output_data,omitempty"`
 }
 
 func getOutputHandle(ut *utangle.UTXOTangle) func(w http.ResponseWriter, r *http.Request) {
@@ -131,7 +104,7 @@ func getOutputHandle(ut *utangle.UTXOTangle) func(w http.ResponseWriter, r *http
 			writeErr(w, "output not found")
 			return
 		}
-		resp := &OutputData{
+		resp := &api.OutputData{
 			OutputData: hex.EncodeToString(oData),
 		}
 
@@ -146,7 +119,7 @@ func getOutputHandle(ut *utangle.UTXOTangle) func(w http.ResponseWriter, r *http
 }
 
 func writeErr(w http.ResponseWriter, errStr string) {
-	respBytes, err := json.Marshal(&OutputList{Error: errStr})
+	respBytes, err := json.Marshal(&api.Error{Error: errStr})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

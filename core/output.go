@@ -28,8 +28,7 @@ type (
 
 	OutputDataWithChainID struct {
 		OutputDataWithID
-		ChainID                    ChainID
-		PredecessorConstraintIndex byte
+		ChainID ChainID
 	}
 
 	OutputWithChainID struct {
