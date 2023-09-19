@@ -1,4 +1,4 @@
-package handlers
+package server
 
 import (
 	"encoding/hex"
@@ -11,10 +11,12 @@ import (
 	"github.com/lunfardo314/proxima/util"
 )
 
-func RegisterHandlers(ut *utangle.UTXOTangle) {
+func registerHandlers(ut *utangle.UTXOTangle) {
 	// request format: 'get_account_outputs?accountable=<EasyFL source form of the accountable lock constraint>'
 	http.HandleFunc(api.PathGetAccountOutputs, getAccountOutputsHandle(ut))
+	// request format: 'get_chain_output?chainid=<hex-encoded chain ID>'
 	http.HandleFunc(api.PathGetChainOutput, getChainOutputHandle(ut))
+	// request format: 'get_output?id=<hex-encoded output ID>'
 	http.HandleFunc(api.PathGetOutput, getOutputHandle(ut))
 }
 
@@ -125,5 +127,11 @@ func writeErr(w http.ResponseWriter, errStr string) {
 		return
 	}
 	_, err = w.Write(respBytes)
+	util.AssertNoError(err)
+}
+
+func RunOn(addr string, ut *utangle.UTXOTangle) {
+	registerHandlers(ut)
+	err := http.ListenAndServe(addr, nil)
 	util.AssertNoError(err)
 }

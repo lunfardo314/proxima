@@ -2,10 +2,8 @@ package node
 
 import (
 	"fmt"
-	"net/http"
 
-	"github.com/lunfardo314/proxima/api/handlers"
-	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/proxima/api/server"
 	"github.com/spf13/viper"
 )
 
@@ -14,12 +12,7 @@ func (p *ProximaNode) startApiServer() {
 	addr := fmt.Sprintf(":%d", port)
 	p.log.Infof("starting API server on %s", addr)
 
-	handlers.RegisterHandlers(p.uTangle)
-
-	go func() {
-		err := http.ListenAndServe(addr, nil)
-		util.AssertNoError(err)
-	}()
+	go server.RunOn(addr, p.uTangle)
 }
 
 func (p *ProximaNode) stopApiServer() {

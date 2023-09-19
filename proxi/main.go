@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/lunfardo314/proxima/proxi/api"
 	"github.com/lunfardo314/proxima/proxi/config"
 	"github.com/lunfardo314/proxima/proxi/console"
 	"github.com/lunfardo314/proxima/proxi/db"
@@ -17,9 +18,9 @@ func init() {
 	initRootCmd()
 	console.Init(rootCmd)
 	config.Init(rootCmd)
-	db.Init(rootCmd)
 	info_cmd.Init(rootCmd)
 	db.Init(rootCmd)
+	api.Init(rootCmd)
 }
 
 var rootCmd = &cobra.Command{
