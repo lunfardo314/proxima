@@ -37,7 +37,7 @@ func AddressED25519FromBytes(data []byte) (AddressED25519, error) {
 func AddressED25519FromSource(src string) (AddressED25519, error) {
 	bin, err := binFromSource(src)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("EasyFL compile error: %v", err)
 	}
 	return AddressED25519FromBytes(bin)
 }

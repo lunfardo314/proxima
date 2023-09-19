@@ -3,6 +3,7 @@ package core
 import (
 	"bytes"
 	"crypto/ed25519"
+	"encoding/hex"
 	"fmt"
 
 	"github.com/lunfardo314/easyfl"
@@ -154,6 +155,22 @@ func AccountableFromBytes(data []byte) (Accountable, error) {
 		return StemLockFromBytes(data)
 	}
 	return nil, fmt.Errorf("not a indexable constraint '%s'", name)
+}
+
+func AccountableFromSource(src string) (Accountable, error) {
+	data, err := binFromSource(src)
+	if err != nil {
+		return nil, fmt.Errorf("EasyFL compile error: %v", err)
+	}
+	return AccountableFromBytes(data)
+}
+
+func AccountableFromHexString(str string) (Accountable, error) {
+	data, err := hex.DecodeString(str)
+	if err != nil {
+		return nil, err
+	}
+	return AccountableFromBytes(data)
 }
 
 func CloneAccountable(a Accountable) Accountable {

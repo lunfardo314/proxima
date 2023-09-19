@@ -76,6 +76,15 @@ func TransactionIDFromBytes(data []byte) (ret TransactionID, err error) {
 	return
 }
 
+func TransactionIDFromHexString(str string) (ret TransactionID, err error) {
+	var data []byte
+	if data, err = hex.DecodeString(str); err != nil {
+		return
+	}
+	ret, err = TransactionIDFromBytes(data)
+	return
+}
+
 func (txid *TransactionID) TransactionHash() (ret TransactionHash) {
 	copy(ret[:], txid[LogicalTimeByteLength:])
 	return
@@ -163,6 +172,10 @@ func (txid *TransactionID) String() string {
 	return TransactionIDString(txid.Timestamp(), txid.TransactionHash(), txid.SequencerFlagON(), txid.BranchFlagON())
 }
 
+func (txid *TransactionID) StringHex() string {
+	return hex.EncodeToString(txid[:])
+}
+
 func (txid *TransactionID) Short() string {
 	return TransactionIDShort(txid.Timestamp(), txid.TransactionHash(), txid.SequencerFlagON(), txid.BranchFlagON())
 }
@@ -187,6 +200,15 @@ func OutputIDFromBytes(data []byte) (ret OutputID, err error) {
 		return
 	}
 	copy(ret[:], data)
+	return
+}
+
+func OutputIDFromHexString(str string) (ret OutputID, err error) {
+	var data []byte
+	if data, err = hex.DecodeString(str); err != nil {
+		return
+	}
+	ret, err = OutputIDFromBytes(data)
 	return
 }
 

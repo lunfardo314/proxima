@@ -161,7 +161,7 @@ func (r *Readable) GetStem() (core.TimeSlot, []byte) {
 	// we iterate one element. Stem output ust always be present in the state
 	count := 0
 	r.trie.Iterator(accountPrefix).IterateKeys(func(k []byte) bool {
-		util.Assertf(count == 0, "inconsistency: must be exactly 1 one index record for stem output")
+		util.Assertf(count == 0, "inconsistency: must be exactly 1 index record for stem output")
 		count++
 		id, err := core.OutputIDFromBytes(k[len(accountPrefix):])
 		util.AssertNoError(err)
