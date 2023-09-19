@@ -128,6 +128,34 @@ func (c *APIClient) GetOutputData(oid *core.OutputID) ([]byte, error) {
 	return oData, nil
 }
 
+func (c *APIClient) SubmitTransaction(txBytes []byte) error {
+	url := c.prefix + api.PathSubmitTransaction
+	req, err := http.NewRequest(http.MethodPost, url, bytes.NewBuffer(txBytes))
+	if err != nil {
+		return err
+	}
+	resp, err := c.c.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+
+	var res api.Error
+	err = json.Unmarshal(body, &res)
+	if err != nil {
+		return err
+	}
+	if res.Error != "" {
+		return fmt.Errorf("from server: %s", res.Error)
+	}
+	return nil
+}
+
 func (c *APIClient) getBody(path string) ([]byte, error) {
 	url := c.prefix + path
 	resp, err := c.c.Get(url)

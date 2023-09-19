@@ -239,3 +239,9 @@ func ED25519PrivateKeyFromHexString(str string) (ed25519.PrivateKey, error) {
 	}
 	return privateKey, nil
 }
+
+func CloneExactCap(data []byte) []byte {
+	ret := make([]byte, len(data))
+	copy(ret, data)
+	return ret
+}

@@ -3,21 +3,26 @@ package server
 import (
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
 
 	"github.com/lunfardo314/proxima/api"
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/utangle"
 	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/proxima/workflow"
 )
 
-func registerHandlers(ut *utangle.UTXOTangle) {
-	// request format: 'get_account_outputs?accountable=<EasyFL source form of the accountable lock constraint>'
-	http.HandleFunc(api.PathGetAccountOutputs, getAccountOutputsHandle(ut))
-	// request format: 'get_chain_output?chainid=<hex-encoded chain ID>'
-	http.HandleFunc(api.PathGetChainOutput, getChainOutputHandle(ut))
-	// request format: 'get_output?id=<hex-encoded output ID>'
-	http.HandleFunc(api.PathGetOutput, getOutputHandle(ut))
+func registerHandlers(wflow *workflow.Workflow) {
+	// GET request format: 'get_account_outputs?accountable=<EasyFL source form of the accountable lock constraint>'
+	http.HandleFunc(api.PathGetAccountOutputs, getAccountOutputsHandle(wflow.UTXOTangle()))
+	// GET request format: 'get_chain_output?chainid=<hex-encoded chain ID>'
+	http.HandleFunc(api.PathGetChainOutput, getChainOutputHandle(wflow.UTXOTangle()))
+	// GET request format: 'get_output?id=<hex-encoded output ID>'
+	http.HandleFunc(api.PathGetOutput, getOutputHandle(wflow.UTXOTangle()))
+	// POST request format 'submit_tx'
+	http.HandleFunc(api.PathSubmitTransaction, submitTxHandle(wflow))
 }
 
 func getAccountOutputsHandle(ut *utangle.UTXOTangle) func(w http.ResponseWriter, r *http.Request) {
@@ -120,6 +125,28 @@ func getOutputHandle(ut *utangle.UTXOTangle) func(w http.ResponseWriter, r *http
 	}
 }
 
+const maxTxUploadSize = 64 * (1 << 10)
+
+func submitTxHandle(wFlow *workflow.Workflow) func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		r.Body = http.MaxBytesReader(w, r.Body, maxTxUploadSize)
+		txBytes, err := io.ReadAll(r.Body)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		txBytes = util.CloneExactCap(txBytes)
+
+		if err = wFlow.TransactionIn(txBytes); err != nil {
+			writeErr(w, fmt.Sprintf("submit_tx: %v", err))
+		}
+	}
+}
+
 func writeErr(w http.ResponseWriter, errStr string) {
 	respBytes, err := json.Marshal(&api.Error{Error: errStr})
 	if err != nil {
@@ -130,8 +157,8 @@ func writeErr(w http.ResponseWriter, errStr string) {
 	util.AssertNoError(err)
 }
 
-func RunOn(addr string, ut *utangle.UTXOTangle) {
-	registerHandlers(ut)
+func RunOn(addr string, wflow *workflow.Workflow) {
+	registerHandlers(wflow)
 	err := http.ListenAndServe(addr, nil)
 	util.AssertNoError(err)
 }

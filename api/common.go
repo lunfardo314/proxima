@@ -4,6 +4,7 @@ const (
 	PathGetAccountOutputs = "/get_account_outputs"
 	PathGetChainOutput    = "/get_chain_output"
 	PathGetOutput         = "/get_output"
+	PathSubmitTransaction = "/submit_tx"
 )
 
 type Error struct {

@@ -12,7 +12,7 @@ func (p *ProximaNode) startApiServer() {
 	addr := fmt.Sprintf(":%d", port)
 	p.log.Infof("starting API server on %s", addr)
 
-	go server.RunOn(addr, p.uTangle)
+	go server.RunOn(addr, p.workflow)
 }
 
 func (p *ProximaNode) stopApiServer() {
