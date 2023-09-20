@@ -37,7 +37,7 @@ type sequencerTestData struct {
 	t                           *testing.T
 	stateIdentity               genesis.StateIdentityData
 	originControllerPrivateKey  ed25519.PrivateKey
-	originDistribution          []txbuilder.LockBalance
+	originDistribution          []genesis.LockBalance
 	faucetPrivateKeys           []ed25519.PrivateKey
 	faucetAddresses             []core.AddressED25519
 	faucetOutputs               []*core.OutputWithID

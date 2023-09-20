@@ -7,11 +7,28 @@ import (
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/general"
 	"github.com/lunfardo314/proxima/multistate"
+	"github.com/lunfardo314/proxima/sequencer"
 	"github.com/lunfardo314/proxima/transaction"
-	"github.com/lunfardo314/proxima/txbuilder"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/unitrie/common"
 	"github.com/lunfardo314/unitrie/immutable"
+)
+
+type (
+	// Deprecated:
+	OriginDistributionParams struct {
+		BootstrapSequencerID        core.ChainID
+		StateStore                  general.StateStore
+		GenesisStateRoot            common.VCommitment
+		GenesisControllerPrivateKey ed25519.PrivateKey
+		InitialSupply               uint64
+		GenesisDistribution         []LockBalance
+	}
+
+	LockBalance struct {
+		Lock    core.Lock
+		Balance uint64
+	}
 )
 
 // InitLedgerState initializes origin ledger state in the empty store
@@ -90,9 +107,7 @@ func StemOutputID(e core.TimeSlot) (ret core.OutputID) {
 	return
 }
 
-const (
-	MinimumBalanceOnBoostrapSequencer = 1_000_000
-)
+const MinimumBalanceOnBoostrapSequencer = 1_000_000
 
 // ScanGenesisState TODO more checks
 func ScanGenesisState(stateStore general.StateStore) (*StateIdentityData, common.VCommitment, error) {
@@ -128,7 +143,7 @@ func ScanGenesisState(stateStore general.StateStore) (*StateIdentityData, common
 	return stateID, branchData.Root, nil
 }
 
-func MustDistributeInitialSupply(stateStore general.StateStore, originPrivateKey ed25519.PrivateKey, genesisDistribution []txbuilder.LockBalance) []byte {
+func MustDistributeInitialSupply(stateStore general.StateStore, originPrivateKey ed25519.PrivateKey, genesisDistribution []LockBalance) []byte {
 	stateID, genesisRoot, err := ScanGenesisState(stateStore)
 	util.AssertNoError(err)
 
@@ -159,7 +174,7 @@ func MustDistributeInitialSupply(stateStore general.StateStore, originPrivateKey
 	util.AssertNoError(err)
 
 	// create origin branch transaction at the next slot after genesis time slot
-	txBytes, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
+	txBytes, err := sequencer.MakeSequencerTransaction(sequencer.MakeSequencerTransactionParams{
 		ChainInput: &core.OutputWithChainID{
 			OutputWithID: *initSupplyOutput,
 			ChainID:      bootstrapChainID,
@@ -195,7 +210,7 @@ func MustDistributeInitialSupply(stateStore general.StateStore, originPrivateKey
 // adding initial distribution transaction.
 // Distribution transaction is a branch transaction in the slot next after the genesis.
 // Distribution parameter is added to the transaction store
-func DistributeInitialSupply(stateStore general.StateStore, originPrivateKey ed25519.PrivateKey, genesisDistribution []txbuilder.LockBalance) ([]byte, error) {
+func DistributeInitialSupply(stateStore general.StateStore, originPrivateKey ed25519.PrivateKey, genesisDistribution []LockBalance) ([]byte, error) {
 	var ret []byte
 	err := util.CatchPanicOrError(func() error {
 		ret = MustDistributeInitialSupply(stateStore, originPrivateKey, genesisDistribution)

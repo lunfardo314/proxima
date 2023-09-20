@@ -56,26 +56,6 @@ func GetTestingPrivateKeys(n int, offsIndex ...int) []ed25519.PrivateKey {
 	return ret
 }
 
-func MakeErrFuncForPrefix(prefix string) func(err interface{}, args ...interface{}) error {
-	return func(err interface{}, args ...interface{}) error {
-		if util.IsNil(err) {
-			return nil
-		}
-		s := ""
-		switch err := err.(type) {
-		case string:
-			s = fmt.Sprintf(err, args...)
-		case interface{ Error() string }:
-			s = fmt.Sprintf(err.Error(), args...)
-		case interface{ String() string }:
-			s = fmt.Sprintf(err.String(), args...)
-		default:
-			s = fmt.Sprintf("wrong error argument type: '%T'", err)
-		}
-		return fmt.Errorf("%s: '%s'", prefix, s)
-	}
-}
-
 func PrintRTStatsForSomeTime(d time.Duration) {
 	var mstats runtime.MemStats
 

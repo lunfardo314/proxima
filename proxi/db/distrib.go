@@ -9,7 +9,6 @@ import (
 	"github.com/lunfardo314/proxima/proxi/config"
 	"github.com/lunfardo314/proxima/proxi/console"
 	"github.com/lunfardo314/proxima/transaction"
-	"github.com/lunfardo314/proxima/txbuilder"
 	"github.com/lunfardo314/proxima/txstore"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/unitrie/adaptors/badger_adaptor"
@@ -40,7 +39,7 @@ func runDBDistributeCmd(_ *cobra.Command, args []string) {
 	stateDb := badger_adaptor.MustCreateOrOpenBadgerDB(dbName)
 	defer stateDb.Close()
 
-	distribution := make([]txbuilder.LockBalance, len(args)/2)
+	distribution := make([]genesis.LockBalance, len(args)/2)
 	var err error
 	for i := 0; i < len(args); i += 2 {
 		distribution[i/2].Lock, err = core.AddressED25519FromSource(args[i])

@@ -1,38 +1,16 @@
-package txbuilder
+package genesis
 
 import (
-	"crypto/ed25519"
-
 	"github.com/lunfardo314/proxima/core"
-	"github.com/lunfardo314/proxima/general"
 	"github.com/lunfardo314/proxima/multistate"
+	"github.com/lunfardo314/proxima/sequencer"
 	"github.com/lunfardo314/proxima/util"
-	"github.com/lunfardo314/unitrie/common"
-)
-
-type (
-	OriginDistributionParams struct {
-		BootstrapSequencerID        core.ChainID
-		StateStore                  general.StateStore
-		GenesisStateRoot            common.VCommitment
-		GenesisControllerPrivateKey ed25519.PrivateKey
-		InitialSupply               uint64
-		GenesisDistribution         []LockBalance
-	}
-
-	LockBalance struct {
-		Lock    core.Lock
-		Balance uint64
-	}
-)
-
-const (
-	MinimumBalanceOnBoostrapSequencer = 1_000_000
 )
 
 // MakeDistributionTransaction
 // - inits ledger state, returns it root and bootstrap sequencer ID
 // - makes and returns origin distribution transaction
+// Deprecated:
 func MakeDistributionTransaction(par OriginDistributionParams) []byte {
 	util.Assertf(len(par.GenesisDistribution) < 253, "too many addresses in the genesis distribution")
 
@@ -60,7 +38,7 @@ func MakeDistributionTransaction(par OriginDistributionParams) []byte {
 	genesisStemIn := sugaredGenesisReader.GetStemOutput()
 
 	// create origin branch transaction at the next slot after genesis time slot
-	txBytes, err := MakeSequencerTransaction(MakeSequencerTransactionParams{
+	txBytes, err := sequencer.MakeSequencerTransaction(sequencer.MakeSequencerTransactionParams{
 		ChainInput: &core.OutputWithChainID{
 			OutputWithID: *genesisIn,
 			ChainID:      par.BootstrapSequencerID,

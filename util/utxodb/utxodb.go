@@ -73,18 +73,18 @@ func NewUTXODB(trace ...bool) *UTXODB {
 
 	genesisStemOut := rdr.GetStemOutput()
 
-	originDistribution := txbuilder.OriginDistributionParams{
+	originDistribution := genesis.OriginDistributionParams{
 		BootstrapSequencerID:        originChainID,
 		StateStore:                  stateStore,
 		GenesisStateRoot:            genesisRoot,
 		GenesisControllerPrivateKey: genesisPrivateKey,
 		InitialSupply:               initLedgerParams.InitialSupply,
-		GenesisDistribution: []txbuilder.LockBalance{
+		GenesisDistribution: []genesis.LockBalance{
 			{faucetAddress, initFaucetBalance},
 		},
 	}
 
-	distributionTxBytes := txbuilder.MakeDistributionTransaction(originDistribution)
+	distributionTxBytes := genesis.MakeDistributionTransaction(originDistribution)
 
 	updatable := multistate.MustNewUpdatable(stateStore, genesisRoot)
 	_, err = updateValidateDebug(updatable, distributionTxBytes)

@@ -1,10 +1,11 @@
-package txbuilder
+package sequencer
 
 import (
 	"crypto/ed25519"
 
 	"github.com/lunfardo314/proxima/core"
-	"github.com/lunfardo314/proxima/util/testutil"
+	"github.com/lunfardo314/proxima/txbuilder"
+	"github.com/lunfardo314/proxima/util"
 )
 
 type MakeSequencerTransactionParams struct {
@@ -30,7 +31,7 @@ type MakeSequencerTransactionParams struct {
 }
 
 func MakeSequencerTransaction(par MakeSequencerTransactionParams) ([]byte, error) {
-	errP := testutil.MakeErrFuncForPrefix("MakeSequencerTransaction")
+	errP := util.MakeErrFuncForPrefix("MakeSequencerTransaction")
 
 	nIn := len(par.AdditionalInputs) + 1
 	if par.StemInput != nil {
@@ -49,7 +50,7 @@ func MakeSequencerTransaction(par MakeSequencerTransactionParams) ([]byte, error
 		return nil, errP("cross-slot sequencer tx must endorse another sequencer tx: chain input ts: %s, target: %s",
 			par.ChainInput.ID.Timestamp(), par.Timestamp)
 	}
-	txb := NewTransactionBuilder()
+	txb := txbuilder.NewTransactionBuilder()
 	// count sums
 	additionalIn, additionalOut := uint64(0), uint64(0)
 	for _, o := range par.AdditionalInputs {

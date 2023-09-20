@@ -8,7 +8,6 @@ import (
 
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/transaction"
-	"github.com/lunfardo314/proxima/txbuilder"
 	utangle "github.com/lunfardo314/proxima/utangle"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/set"
@@ -128,7 +127,7 @@ func ensureSequencerStartOutputs(chainOut, stemOut utangle.WrappedOutput, par Pa
 	if err != nil || chainOutWithID == nil {
 		return utangle.WrappedOutput{}, utangle.WrappedOutput{}, false, err
 	}
-	txBytes, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
+	txBytes, err := MakeSequencerTransaction(MakeSequencerTransactionParams{
 		ChainInput: &core.OutputWithChainID{
 			OutputWithID: *chainOutWithID,
 			ChainID:      par.ChainID,
@@ -187,7 +186,7 @@ func (mf *milestoneFactory) makeMilestone(chainIn, stemIn *utangle.WrappedOutput
 	if err != nil {
 		return nil, err
 	}
-	txBytes, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
+	txBytes, err := MakeSequencerTransaction(MakeSequencerTransactionParams{
 		ChainInput: &core.OutputWithChainID{
 			OutputWithID: *chainInReal,
 			ChainID:      mf.tipPool.ChainID(),

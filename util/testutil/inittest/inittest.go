@@ -5,7 +5,6 @@ import (
 
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/genesis"
-	"github.com/lunfardo314/proxima/txbuilder"
 	"github.com/lunfardo314/proxima/util/testutil"
 )
 
@@ -13,12 +12,12 @@ const (
 	InitSupply = genesis.DefaultSupply
 )
 
-func GenesisParamsWithPreDistribution(n int, initBalance uint64) ([]txbuilder.LockBalance, []ed25519.PrivateKey, []core.AddressED25519) {
+func GenesisParamsWithPreDistribution(n int, initBalance uint64) ([]genesis.LockBalance, []ed25519.PrivateKey, []core.AddressED25519) {
 	privateKeys := testutil.GetTestingPrivateKeys(n)
 	addresses := core.AddressesED25519FromPrivateKeys(privateKeys)
-	distrib := make([]txbuilder.LockBalance, len(addresses))
+	distrib := make([]genesis.LockBalance, len(addresses))
 	for i := range addresses {
-		distrib[i] = txbuilder.LockBalance{
+		distrib[i] = genesis.LockBalance{
 			Lock:    addresses[i],
 			Balance: initBalance,
 		}
