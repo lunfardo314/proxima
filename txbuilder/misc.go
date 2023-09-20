@@ -10,6 +10,7 @@ import (
 
 // MakeTransactionSequence make sequence of transactions, which moves all tokens from firstUTXO to the same adddress
 // again and again. Timestamps are auto automatically adjusted according to tx pace
+// Deprecated: will be moved to testing tools
 func MakeTransactionSequence(howLong int, firstUTXO *core.OutputWithID, privK ed25519.PrivateKey) ([][]byte, error) {
 	pubK := privK.Public().(ed25519.PublicKey)
 	addr := core.AddressED25519FromPublicKey(pubK)
@@ -43,6 +44,7 @@ func MakeTransactionSequence(howLong int, firstUTXO *core.OutputWithID, privK ed
 	return ret, nil
 }
 
+// Deprecated: will be moved to testing tools
 func MakeTransactionSequences(howLong int, firstUTXO []*core.OutputWithID, privK []ed25519.PrivateKey) ([][][]byte, error) {
 	util.Assertf(len(firstUTXO) == len(privK), "len(firstUTXO)==len(privK)")
 	ret := make([][][]byte, len(firstUTXO))
