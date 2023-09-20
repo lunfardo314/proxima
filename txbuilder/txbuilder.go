@@ -425,7 +425,7 @@ func MakeSimpleTransferTransactionWithRemainder(par *TransferData, disableEndors
 		o.WithAmount(amount).WithLock(par.Lock)
 		if par.AddSender {
 			senderAddr := core.AddressED25519FromPublicKey(par.SenderPublicKey)
-			if _, err = o.PushConstraint(core.NewSenderAddressED25519(senderAddr).Bytes()); err != nil {
+			if _, err = o.PushConstraint(core.NewSenderED25519(senderAddr).Bytes()); err != nil {
 				return
 			}
 		}
@@ -545,7 +545,7 @@ func MakeChainTransferTransaction(par *TransferData, disableEndorsementChecking 
 		o.WithAmount(amount).WithLock(par.Lock)
 		if par.AddSender {
 			senderAddr := core.AddressED25519FromPublicKey(par.SenderPublicKey)
-			if _, err = o.PushConstraint(core.NewSenderAddressED25519(senderAddr).Bytes()); err != nil {
+			if _, err = o.PushConstraint(core.NewSenderED25519(senderAddr).Bytes()); err != nil {
 				return
 			}
 		}

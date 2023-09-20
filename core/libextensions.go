@@ -260,7 +260,7 @@ func init() {
 	initDeadlineLockConstraint()
 	initTimelockConstraint()
 	initStemLockConstraint()
-	initSenderConstraint()
+	initSenderED25519Constraint()
 	initChainConstraint()
 	initChainLockConstraint()
 	initRoyaltiesED25519Constraint()

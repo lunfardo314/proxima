@@ -326,8 +326,8 @@ func TestSenderAddressED25519(t *testing.T) {
 	require.NoError(t, err)
 
 	require.EqualValues(t, 1, len(outs))
-	saddr, ok := outs[0].Output.SenderAddressED25519()
-	require.True(t, ok)
+	saddr, idx := outs[0].Output.SenderED25519()
+	require.True(t, idx != 0xff)
 	require.True(t, core.EqualConstraints(addr0, saddr))
 }
 
