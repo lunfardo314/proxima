@@ -28,8 +28,8 @@ import (
 )
 
 const (
-	initFaucetBalance  = 1_000_000_000
-	initOnChainBalance = 10_000
+	initFaucetBalance  = 20_000_000
+	initOnChainBalance = 2_000_000
 	feeAmount          = 100
 )
 
@@ -137,8 +137,12 @@ func (r *sequencerTestData) makeAdditionalChainOrigins(faucetIdx int, nChains in
 	_, err = txb.ProduceOutput(oFee)
 	require.NoError(r.t, err)
 
+	consumedAmount := feeAmount + uint64(nChains)*initOnChainBalance
+	require.True(r.t, initFaucetBalance > consumedAmount)
+
 	oFaucetRemainder := core.NewOutput(func(o *core.Output) {
-		o.WithAmount(initFaucetBalance - feeAmount - uint64(nChains)*initOnChainBalance).WithLock(r.faucetAddresses[faucetIdx])
+		o.WithAmount(initFaucetBalance - consumedAmount).
+			WithLock(r.faucetAddresses[faucetIdx])
 	})
 	faucetRemainderIdx, err := txb.ProduceOutput(oFaucetRemainder)
 

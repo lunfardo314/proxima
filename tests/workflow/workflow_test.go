@@ -460,7 +460,7 @@ type multiChainTestData struct {
 	pkController       []ed25519.PrivateKey
 }
 
-const onChainAmount = 10_000
+const onChainAmount = 1_000_000
 
 func initMultiChainTest(t *testing.T, nChains int, printTx bool, secondsInThePast int) *multiChainTestData {
 	core.SetTimeTickDuration(10 * time.Millisecond)

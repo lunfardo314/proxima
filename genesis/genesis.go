@@ -107,7 +107,9 @@ func StemOutputID(e core.TimeSlot) (ret core.OutputID) {
 	return
 }
 
-const MinimumBalanceOnBoostrapSequencer = 1_000_000
+const (
+	MinimumBalanceOnBoostrapSequencer = core.MinimumAmountOnSequencer
+)
 
 // ScanGenesisState TODO more checks
 func ScanGenesisState(stateStore general.StateStore) (*StateIdentityData, common.VCommitment, error) {
@@ -154,9 +156,9 @@ func MustDistributeInitialSupply(stateStore general.StateStore, originPrivateKey
 	distributeTotal := uint64(0)
 	for i := range genesisDistribution {
 		distributeTotal += genesisDistribution[i].Balance
-		util.Assertf(distributeTotal+MinimumBalanceOnBoostrapSequencer <= stateID.InitialSupply,
+		util.Assertf(distributeTotal+core.MinimumAmountOnSequencer <= stateID.InitialSupply,
 			"condition failed: distributeTotal(%d) + MinimumBalanceOnBoostrapSequencer(%d) < InitialSupply(%d)",
-			distributeTotal, MinimumBalanceOnBoostrapSequencer, stateID.InitialSupply)
+			distributeTotal, core.MinimumAmountOnSequencer, stateID.InitialSupply)
 	}
 	genesisDistributionOutputs := make([]*core.Output, len(genesisDistribution))
 	for i := range genesisDistribution {

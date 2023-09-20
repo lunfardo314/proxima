@@ -156,7 +156,7 @@ func (mf *milestoneFactory) trace(format string, args ...any) {
 	}
 }
 
-func (mf *milestoneFactory) makeMilestone(chainIn, stemIn *utangle.WrappedOutput, feeInputs []utangle.WrappedOutput, endorse []*utangle.WrappedTx, targetTs core.LogicalTime) (*transaction.Transaction, error) {
+func (mf *milestoneFactory) makeMilestone(chainIn, stemIn *utangle.WrappedOutput, preSelectedFeeInputs []utangle.WrappedOutput, endorse []*utangle.WrappedTx, targetTs core.LogicalTime) (*transaction.Transaction, error) {
 	chainInReal, err := chainIn.Unwrap()
 	if err != nil || chainInReal == nil {
 		return nil, err
@@ -168,8 +168,8 @@ func (mf *milestoneFactory) makeMilestone(chainIn, stemIn *utangle.WrappedOutput
 			return nil, err
 		}
 	}
-	feeInputsReal := make([]*core.OutputWithID, len(feeInputs))
-	for i, wOut := range feeInputs {
+	feeInputsReal := make([]*core.OutputWithID, len(preSelectedFeeInputs))
+	for i, wOut := range preSelectedFeeInputs {
 		feeInputsReal[i], err = wOut.Unwrap()
 		if err != nil {
 			return nil, err
@@ -178,8 +178,13 @@ func (mf *milestoneFactory) makeMilestone(chainIn, stemIn *utangle.WrappedOutput
 			return nil, nil
 		}
 	}
-	// interpret sequencer commands contained in fee inputs
-	additionalOutputs := mf.makeAdditionalOutputsFromSequencerCommands(feeInputsReal)
+	// interpret sequencer commands contained in fee inputs. This also possibly adjusts inputs
+	var additionalOutputs []*core.Output
+	capWithdrawals := uint64(0)
+	if chainInReal.Output.Amount() > core.MinimumAmountOnSequencer {
+		capWithdrawals = chainInReal.Output.Amount() - core.MinimumAmountOnSequencer
+	}
+	feeInputsReal, additionalOutputs = mf.makeAdditionalInputsOutputs(feeInputsReal, capWithdrawals)
 
 	endorseReal := utangle.DecodeIDs(endorse...)
 
@@ -400,9 +405,14 @@ func (mf *milestoneFactory) ownForksInAnotherSequencerPastCone(anotherSeqVertex 
 	return mf.futureConeMilestonesOrdered(rootVID)
 }
 
-func (mf *milestoneFactory) makeAdditionalOutputsFromSequencerCommands(inputs []*core.OutputWithID) []*core.Output {
-	ret := make([]*core.Output, 0)
+// makeAdditionalInputsOutputs makes additional outputs according to commands in imputs.
+// Filters inputs so that transfer commands would not exceed maximumTotal
+func (mf *milestoneFactory) makeAdditionalInputsOutputs(inputs []*core.OutputWithID, maximumTotal uint64) ([]*core.OutputWithID, []*core.Output) {
+	retImp := make([]*core.OutputWithID, 0)
+	retOut := make([]*core.Output, 0)
+
 	myAddr := core.AddressED25519FromPrivateKey(mf.controllerKey)
+	total := uint64(0)
 	for _, inp := range inputs {
 		if cmdData := parseSenderCommandDataRaw(myAddr, inp); len(cmdData) > 0 {
 			o, err := makeOutputFromCommandData(cmdData)
@@ -410,9 +420,14 @@ func (mf *milestoneFactory) makeAdditionalOutputsFromSequencerCommands(inputs []
 				mf.log.Warnf("error while parsing sequncer command in input %s: %v", inp.IDShort(), err)
 				continue
 			}
-			ret = append(ret, o)
+			if o.Amount() <= maximumTotal-total {
+				retImp = append(retImp, inp)
+				retOut = append(retOut, o)
+			}
+		} else {
+			retImp = append(retImp, inp)
 		}
 	}
-	util.Assertf(len(ret) <= maxAdditionalOutputs, "len(ret)<=maxAdditionalOutputs")
-	return ret
+	util.Assertf(len(retOut) <= maxAdditionalOutputs, "len(ret)<=maxAdditionalOutputs")
+	return retImp, retOut
 }

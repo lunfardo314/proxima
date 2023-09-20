@@ -377,7 +377,7 @@ type multiChainTestData struct {
 	pkController       []ed25519.PrivateKey
 }
 
-const onChainAmount = 10_000
+const onChainAmount = 2_000_000
 
 func initMultiChainTest(t *testing.T, nChains int, printTx bool) *multiChainTestData {
 	t.Logf("initMultiChainTest: now is: %s, %v", core.LogicalTimeNow().String(), time.Now())

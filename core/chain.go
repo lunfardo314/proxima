@@ -2,9 +2,9 @@ package core
 
 import (
 	"bytes"
+	"crypto/rand"
 	"encoding/hex"
 	"fmt"
-	"math/rand"
 
 	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/proxima/util"
@@ -37,7 +37,8 @@ var (
 	NilChainID ChainID
 	RndChainID = func() ChainID {
 		var ret ChainID
-		rand.Read(ret[:])
+		_, err := rand.Read(ret[:])
+		util.AssertNoError(err)
 		return ret
 	}()
 )

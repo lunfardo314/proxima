@@ -8,6 +8,15 @@ import (
 	"github.com/lunfardo314/proxima/util"
 )
 
+const mustMinSeqAmountTemplate = `
+	require(
+	 not(lessThan(selfAmountValue, u64/%d)), 
+	 !!!minimum_sequencer_amount_constraint_failed
+	)
+`
+
+var minuimumAmountOnSeqSource = fmt.Sprintf(mustMinSeqAmountTemplate, MinimumAmountOnSequencer)
+
 const sequencerConstraintSource = `
 
 // $0 chain predecessor input index
@@ -66,6 +75,7 @@ func zeroTickOnBranchOnly : or(
 func sequencer: and(
 	mustSize($0,1),
 	mustSize($1,8),
+    mustMinimumAmountOnSequencer, // enforcing minimum amount on sequencer
 	or(
 		selfIsConsumedOutput,  // constraint on consumed not checked
 		and(
@@ -84,6 +94,8 @@ func sequencer: and(
 const (
 	SequencerConstraintName     = "sequencer"
 	sequencerConstraintTemplate = SequencerConstraintName + "(%d, u64/%d)"
+
+	MinimumAmountOnSequencer = 1_000_000 // TODO must be increased in reality
 )
 
 type (
@@ -141,6 +153,7 @@ func SequencerConstraintFromBytes(data []byte) (*SequencerConstraint, error) {
 }
 
 func initSequencerConstraint() {
+	easyfl.Extend("mustMinimumAmountOnSequencer", minuimumAmountOnSeqSource)
 	easyfl.MustExtendMany(sequencerConstraintSource)
 
 	example := NewSequencerConstraint(4, 100)
