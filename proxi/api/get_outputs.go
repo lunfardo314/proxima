@@ -2,26 +2,42 @@ package api
 
 import (
 	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/proxi/config"
 	"github.com/lunfardo314/proxima/proxi/console"
+	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/txutils"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
 func initGetOutputsCmd(apiCmd *cobra.Command) {
 	getOutputsCmd := &cobra.Command{
-		Use:   "get_outputs <accountable in the EasyFl source of the lock constraint>",
+		Use:   "get_outputs",
 		Short: `returns all outputs locked in the accountable from the heaviest state of the latest epoch`,
-		Args:  cobra.ExactArgs(1),
+		Args:  cobra.NoArgs,
 		Run:   runGetOutputsCmd,
 	}
+
 	getOutputsCmd.InitDefaultHelpCmd()
 	apiCmd.AddCommand(getOutputsCmd)
-
 }
 
-func runGetOutputsCmd(_ *cobra.Command, args []string) {
-	accountable, err := core.AccountableFromSource(args[0])
+func mustGetAccount() core.Accountable {
+	str := viper.GetString("target")
+	if str == "" {
+		ownPrivateKey := config.GetPrivateKey()
+		util.Assertf(ownPrivateKey != nil, "private key undefined")
+		ret := core.AddressED25519FromPrivateKey(ownPrivateKey)
+		console.Infof("own account will be used: %s", ret.String())
+		return ret
+	}
+	accountable, err := core.AccountableFromSource(str)
 	console.AssertNoError(err)
+	return accountable
+}
+
+func runGetOutputsCmd(_ *cobra.Command, _ []string) {
+	accountable := mustGetAccount()
 
 	oData, err := getClient().GetAccountOutputs(accountable)
 	console.AssertNoError(err)

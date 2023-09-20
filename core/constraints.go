@@ -137,6 +137,14 @@ func LockFromBytes(data []byte) (Lock, error) {
 	return nil, fmt.Errorf("not a lock constraint '%s'", name)
 }
 
+func LockFromSource(src string) (Lock, error) {
+	_, _, bytecode, err := easyfl.CompileExpression(src)
+	if err != nil {
+		return nil, err
+	}
+	return LockFromBytes(bytecode)
+}
+
 func AccountableFromBytes(data []byte) (Accountable, error) {
 	prefix, err := easyfl.ParseBytecodePrefix(data)
 	if err != nil {

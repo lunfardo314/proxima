@@ -7,3 +7,5 @@ private_key: bac35c97b1870da242b77c9db1faf4ceb58af75571a1b742f44134248702144a4aa
 txstore:
     name: proximadb.txstore
 verbose: false
+sequencer:
+    id: 108c086a4183c3434392f0d16f07c6895990a96dd74753d1a5695bad3e9934b4
