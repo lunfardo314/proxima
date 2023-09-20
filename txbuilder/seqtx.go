@@ -17,6 +17,7 @@ type MakeSequencerTransactionParams struct {
 	// minimum fee
 	MinimumFee uint64
 	// additional inputs to consume. Must be unlockable by chain
+	// can contain sender commands to the sequencer
 	AdditionalInputs []*core.OutputWithID
 	// additional outputs to produce
 	AdditionalOutputs []*core.Output

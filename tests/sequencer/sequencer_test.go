@@ -233,7 +233,7 @@ func Test1Sequencer(t *testing.T) {
 		transaction.SetPrintEasyFLTraceOnFail(true)
 		r.wrk.Start()
 
-		sequencer.SetTraceProposer(sequencer.BaseProposerName, false)
+		sequencer.SetTraceProposer(sequencer.BaseProposerName, true)
 
 		seq, err := sequencer.StartNew(sequencer.Params{
 			Glb:           r.wrk,
@@ -244,6 +244,7 @@ func Test1Sequencer(t *testing.T) {
 			sequencer.WithPace(5),
 			sequencer.WithMaxBranches(maxSlots),
 			sequencer.WithMaxTargetTs(core.LogicalTimeNow().AddTimeSlots(maxSlots+2)),
+			sequencer.WithLogLevel(zapcore.DebugLevel),
 		)
 		require.NoError(t, err)
 

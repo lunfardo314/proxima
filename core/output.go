@@ -152,7 +152,7 @@ func (o *Output) PutLock(lock Lock) {
 	o.PutConstraint(lock.Bytes(), ConstraintIndexLock)
 }
 
-func (o *Output) Constraint(idx byte) []byte {
+func (o *Output) ConstraintAt(idx byte) []byte {
 	return o.arr.At(int(idx))
 }
 

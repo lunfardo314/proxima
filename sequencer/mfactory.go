@@ -45,6 +45,11 @@ type (
 	}
 )
 
+const (
+	maxAdditionalOutputs = 256 - 2              // 1 for chain output, 1 for stem
+	veryMaxFeeInputs     = maxAdditionalOutputs // edge case with sequencer commands
+)
+
 func createMilestoneFactory(par *configuration) (*milestoneFactory, error) {
 	log := testutil.NewNamedLogger(fmt.Sprintf("[%sF-%s]", par.SequencerName, par.ChainID.VeryShort()), par.LogLevel)
 	var chainOut, stemOut utangle.WrappedOutput
@@ -82,8 +87,8 @@ func createMilestoneFactory(par *configuration) (*milestoneFactory, error) {
 		controllerKey: par.ControllerKey,
 		maxFeeInputs:  par.MaxFeeInputs,
 	}
-	if ret.maxFeeInputs == 0 {
-		ret.maxFeeInputs = 254
+	if ret.maxFeeInputs == 0 || ret.maxFeeInputs > veryMaxFeeInputs {
+		ret.maxFeeInputs = veryMaxFeeInputs
 	}
 	ret.log.Debugf("milestone factory started")
 	return ret, nil
@@ -108,12 +113,12 @@ func ensureSequencerStartOutputs(chainOut, stemOut utangle.WrappedOutput, par Pa
 		chainOut.Timestamp(), ts)
 
 	// to speed up finalization of the sequencer we optionally "bribe" some other sequencers by paying fees to them
-	var feeOutputs []*core.Output
+	var tagAlongFeeOutputs []*core.Output
 	if par.ProvideTagAlongSequencers != nil {
 		bootstrapSequencerIDs, feeAmount := par.ProvideTagAlongSequencers()
-		feeOutputs = make([]*core.Output, len(bootstrapSequencerIDs))
-		for i := range feeOutputs {
-			feeOutputs[i] = core.NewOutput(func(o *core.Output) {
+		tagAlongFeeOutputs = make([]*core.Output, len(bootstrapSequencerIDs))
+		for i := range tagAlongFeeOutputs {
+			tagAlongFeeOutputs[i] = core.NewOutput(func(o *core.Output) {
 				o.WithAmount(feeAmount).
 					WithLock(core.ChainLockFromChainID(bootstrapSequencerIDs[i]))
 			})
@@ -129,7 +134,7 @@ func ensureSequencerStartOutputs(chainOut, stemOut utangle.WrappedOutput, par Pa
 			ChainID:      par.ChainID,
 		},
 		Timestamp:         ts,
-		AdditionalOutputs: feeOutputs,
+		AdditionalOutputs: tagAlongFeeOutputs,
 		Endorsements:      util.List(stemOut.VID.ID()),
 		PrivateKey:        par.ControllerKey,
 		TotalSupply:       0,
@@ -174,6 +179,9 @@ func (mf *milestoneFactory) makeMilestone(chainIn, stemIn *utangle.WrappedOutput
 			return nil, nil
 		}
 	}
+	// interpret sequencer commands contained in fee inputs
+	additionalOutputs := mf.makeAdditionalOutputsFromSequencerCommands(feeInputsReal)
+
 	endorseReal := utangle.DecodeIDs(endorse...)
 
 	if err != nil {
@@ -184,11 +192,12 @@ func (mf *milestoneFactory) makeMilestone(chainIn, stemIn *utangle.WrappedOutput
 			OutputWithID: *chainInReal,
 			ChainID:      mf.tipPool.ChainID(),
 		},
-		StemInput:        stemInReal,
-		Timestamp:        targetTs,
-		AdditionalInputs: feeInputsReal,
-		Endorsements:     endorseReal,
-		PrivateKey:       mf.controllerKey,
+		StemInput:         stemInReal,
+		Timestamp:         targetTs,
+		AdditionalInputs:  feeInputsReal,
+		AdditionalOutputs: additionalOutputs,
+		Endorsements:      endorseReal,
+		PrivateKey:        mf.controllerKey,
 	})
 	if err != nil {
 		return nil, err
@@ -390,4 +399,21 @@ func (mf *milestoneFactory) ownForksInAnotherSequencerPastCone(anotherSeqVertex 
 		return nil
 	}
 	return mf.futureConeMilestonesOrdered(rootVID)
+}
+
+func (mf *milestoneFactory) makeAdditionalOutputsFromSequencerCommands(inputs []*core.OutputWithID) []*core.Output {
+	ret := make([]*core.Output, 0)
+	myAddr := core.AddressED25519FromPrivateKey(mf.controllerKey)
+	for _, inp := range inputs {
+		if cmdData := parseSenderCommandData(myAddr, inp); len(cmdData) > 0 {
+			o, err := makeOutputFromCommandData(cmdData)
+			if err != nil {
+				mf.log.Warnf("error while parsing sequncer command in input %s: %v", inp.IDShort(), err)
+				continue
+			}
+			ret = append(ret, o)
+		}
+	}
+	util.Assertf(len(ret) <= maxAdditionalOutputs, "len(ret)<=maxAdditionalOutputs")
+	return ret
 }
