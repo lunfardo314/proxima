@@ -6,13 +6,13 @@ import (
 	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/util"
-	"github.com/lunfardo314/proxima/util/lazyslice"
+	"github.com/lunfardo314/proxima/util/lazybytes"
 	"github.com/lunfardo314/unitrie/common"
 )
 
 // TransactionContext is a data structure, which contains transferable transaction, consumed outputs and constraint library
 type TransactionContext struct {
-	tree        *lazyslice.Tree
+	tree        *lazybytes.Tree
 	traceOption int
 	// cached values
 	dataContext *core.DataContext
@@ -20,7 +20,7 @@ type TransactionContext struct {
 	sender      core.AddressED25519
 }
 
-var Path = lazyslice.Path
+var Path = lazybytes.Path
 
 const (
 	TraceOptionNone = iota
@@ -39,7 +39,7 @@ func ContextFromTransaction(tx *Transaction, inputLoaderByIndex func(i byte) (*c
 	if len(traceOption) > 0 {
 		ret.traceOption = traceOption[0]
 	}
-	consumedOutputsArray := lazyslice.EmptyArray(256)
+	consumedOutputsArray := lazybytes.EmptyArray(256)
 	for i := 0; i < tx.NumInputs(); i++ {
 		o, err := inputLoaderByIndex(byte(i))
 		if err != nil {
@@ -50,8 +50,8 @@ func ContextFromTransaction(tx *Transaction, inputLoaderByIndex func(i byte) (*c
 		}
 		consumedOutputsArray.Push(o.Bytes())
 	}
-	e := lazyslice.MakeArrayReadOnly(consumedOutputsArray) // one level deeper
-	ret.tree = lazyslice.TreeFromTreesReadOnly(tx.tree, e.AsTree())
+	e := lazybytes.MakeArrayReadOnly(consumedOutputsArray) // one level deeper
+	ret.tree = lazybytes.TreeFromTreesReadOnly(tx.tree, e.AsTree())
 	ret.dataContext = core.NewDataContext(ret.tree)
 	return ret, nil
 }
@@ -66,7 +66,7 @@ func ContextFromTransferableBytes(txBytes []byte, fetchInput func(oid *core.Outp
 }
 
 // unlockScriptBinary finds script from unlock block
-func (ctx *TransactionContext) unlockScriptBinary(invocationFullPath lazyslice.TreePath) []byte {
+func (ctx *TransactionContext) unlockScriptBinary(invocationFullPath lazybytes.TreePath) []byte {
 	unlockBlockPath := common.Concat(invocationFullPath)
 	unlockBlockPath[1] = core.TxUnlockParams
 	return ctx.tree.BytesAtPath(unlockBlockPath)

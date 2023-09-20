@@ -13,7 +13,7 @@ import (
 	"github.com/lunfardo314/proxima/general"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/util"
-	"github.com/lunfardo314/proxima/util/lazyslice"
+	"github.com/lunfardo314/proxima/util/lazybytes"
 	"github.com/lunfardo314/proxima/util/txutils"
 	"github.com/lunfardo314/unitrie/common"
 	"golang.org/x/crypto/blake2b"
@@ -39,7 +39,7 @@ type (
 	}
 
 	UnlockParams struct {
-		array *lazyslice.Array
+		array *lazybytes.Array
 	}
 )
 
@@ -146,18 +146,18 @@ func (txb *TransactionBuilder) ProduceOutputs(outs ...*core.Output) (uint64, err
 }
 
 func (txb *TransactionBuilder) InputCommitment() [32]byte {
-	arr := lazyslice.EmptyArray(256)
+	arr := lazybytes.EmptyArray(256)
 	for _, o := range txb.ConsumedOutputs {
 		arr.Push(o.Bytes())
 	}
 	return blake2b.Sum256(arr.Bytes())
 }
 
-func (tx *transactionData) ToArray() *lazyslice.Array {
-	unlockParams := lazyslice.EmptyArray(256)
-	inputIDs := lazyslice.EmptyArray(256)
-	outputs := lazyslice.EmptyArray(256)
-	endorsements := lazyslice.EmptyArray(256)
+func (tx *transactionData) ToArray() *lazybytes.Array {
+	unlockParams := lazybytes.EmptyArray(256)
+	inputIDs := lazybytes.EmptyArray(256)
+	outputs := lazybytes.EmptyArray(256)
+	endorsements := lazybytes.EmptyArray(256)
 
 	for _, b := range tx.UnlockBlocks {
 		unlockParams.Push(b.Bytes())
@@ -181,8 +181,8 @@ func (tx *transactionData) ToArray() *lazyslice.Array {
 	elems[core.TxTimestamp] = tx.Timestamp.Bytes()
 	elems[core.TxInputCommitment] = tx.InputCommitment[:]
 	elems[core.TxEndorsements] = endorsements
-	elems[core.TxLocalLibraries] = lazyslice.MakeArrayFromDataReadOnly(tx.LocalLibraries...)
-	return lazyslice.MakeArrayReadOnly(elems...)
+	elems[core.TxLocalLibraries] = lazybytes.MakeArrayFromDataReadOnly(tx.LocalLibraries...)
+	return lazybytes.MakeArrayReadOnly(elems...)
 }
 
 func (tx *transactionData) Bytes() []byte {
@@ -589,7 +589,7 @@ func (u *UnlockParams) Bytes() []byte {
 
 func NewUnlockBlock() *UnlockParams {
 	return &UnlockParams{
-		array: lazyslice.EmptyArray(256),
+		array: lazybytes.EmptyArray(256),
 	}
 }
 

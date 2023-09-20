@@ -7,15 +7,19 @@ import (
 	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/util"
-	"github.com/lunfardo314/proxima/util/lazyslice"
+	"github.com/lunfardo314/proxima/util/lazybytes"
 )
 
 const (
+	// CommandCodeSendAmount is a command to the sequencer to send specified amount to the target lock
 	CommandCodeSendAmount = byte(0xff)
+
+	MinimumAmountToRequestFromSequencer = 100_000
 )
 
-func parseSenderCommandData(myAddr core.AddressED25519, o *core.OutputWithID) []byte {
-	senderAddr, senderConstraintIdx := o.Output.SenderED25519()
+// parseSenderCommandDataRaw analyzes the input and parses out raw sequencer command data, if any
+func parseSenderCommandDataRaw(myAddr core.AddressED25519, input *core.OutputWithID) []byte {
+	senderAddr, senderConstraintIdx := input.Output.SenderED25519()
 	if senderConstraintIdx == 0xff {
 		return nil
 	}
@@ -27,13 +31,13 @@ func parseSenderCommandData(myAddr core.AddressED25519, o *core.OutputWithID) []
 	// command data is expected in the constraint at the index next after the sender. The data itself is
 	// evaluation of the constraint without context. It can't be nil because each input is a valid output
 	commandDataIndex := senderConstraintIdx + 1
-	if int(commandDataIndex) >= o.Output.NumConstraints() {
+	if int(commandDataIndex) >= input.Output.NumConstraints() {
 		// command data does not exist, ignore command
 		return nil
 	}
 	// evaluating constraint without context to get the real command data
 	// Usually, data cmd is concat(....)
-	cmdDataConstrBytecode := o.Output.ConstraintAt(commandDataIndex)
+	cmdDataConstrBytecode := input.Output.ConstraintAt(commandDataIndex)
 	cmdData, err := easyfl.EvalFromBinary(nil, cmdDataConstrBytecode)
 	if err != nil {
 		// this means constraint cannot be evaluated without context of the transaction
@@ -44,13 +48,16 @@ func parseSenderCommandData(myAddr core.AddressED25519, o *core.OutputWithID) []
 	return cmdData
 }
 
+// makeOutputFromCommandData parses command data and makes output from it.
+// The output will be produced by the transaction which consumes inouts with command
+// Sequencer command raw data is parsed the following way
 // expected:
-// 0 byte: command code
-// [1:] bytes is lazy array of parameters
-func makeOutputFromCommandData(cmdData []byte) (*core.Output, error) {
-	util.Assertf(len(cmdData) > 0, "len(cmdData)>0")
-	commandCode := cmdData[0]
-	cmdParams, err := lazyslice.ParseArrayFromBytesReadOnly(cmdData[1:])
+// - byte 0: command code
+// - bytes [1:] is lazy array of parameters, interpreted depending on the command code
+func makeOutputFromCommandData(cmdDataRaw []byte) (*core.Output, error) {
+	util.Assertf(len(cmdDataRaw) > 0, "len(cmdDataRaw)>0")
+	commandCode := cmdDataRaw[0]
+	cmdParams, err := lazybytes.ParseArrayFromBytesReadOnly(cmdDataRaw[1:])
 	if err != nil {
 		return nil, err
 	}
@@ -58,8 +65,8 @@ func makeOutputFromCommandData(cmdData []byte) (*core.Output, error) {
 	switch commandCode {
 	case CommandCodeSendAmount:
 		// expected 2 parameters:
-		// - 0 target lock bytecode
-		// - 1 amount 8 bytes
+		// - #0 target lock bytecode
+		// - #1 amount 8 bytes
 		if cmdParams.NumElements() != 2 || len(cmdParams.At(1)) != 8 {
 			return nil, fmt.Errorf("wrong params")
 		}
@@ -68,6 +75,10 @@ func makeOutputFromCommandData(cmdData []byte) (*core.Output, error) {
 			return nil, err
 		}
 		amount := binary.BigEndian.Uint64(cmdParams.At(1))
+		if amount < MinimumAmountToRequestFromSequencer {
+			return nil, fmt.Errorf("the requested amount %d is less than minimum (%d). Command igored",
+				amount, MinimumAmountToRequestFromSequencer)
+		}
 		return core.NewOutput(func(o *core.Output) {
 			o.WithAmount(amount).WithLock(targetLock)
 		}), nil

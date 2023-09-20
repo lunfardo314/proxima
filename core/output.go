@@ -6,14 +6,14 @@ import (
 	"strings"
 
 	"github.com/lunfardo314/proxima/util"
-	"github.com/lunfardo314/proxima/util/lazyslice"
+	"github.com/lunfardo314/proxima/util/lazybytes"
 	"github.com/lunfardo314/proxima/util/lines"
 	"golang.org/x/crypto/blake2b"
 )
 
 type (
 	Output struct {
-		arr *lazyslice.Array
+		arr *lazybytes.Array
 	}
 
 	OutputWithID struct {
@@ -47,7 +47,7 @@ type (
 
 func NewOutput(overrideReadOnly ...func(o *Output)) *Output {
 	ret := &Output{
-		arr: lazyslice.EmptyArray(256),
+		arr: lazybytes.EmptyArray(256),
 	}
 	if len(overrideReadOnly) > 0 {
 		overrideReadOnly[0](ret)
@@ -69,7 +69,7 @@ func OutputFromBytesReadOnly(data []byte) (*Output, error) {
 
 func OutputFromBytesMain(data []byte) (*Output, Amount, Lock, error) {
 	ret := &Output{
-		arr: lazyslice.ArrayFromBytesReadOnly(data, 256),
+		arr: lazybytes.ArrayFromBytesReadOnly(data, 256),
 	}
 	var amount Amount
 	var lock Lock
@@ -109,7 +109,7 @@ func (o *Output) WithLock(lock Lock) *Output {
 	return o
 }
 
-func (o *Output) AsArray() *lazyslice.Array {
+func (o *Output) AsArray() *lazybytes.Array {
 	return o.arr
 }
 

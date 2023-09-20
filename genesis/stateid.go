@@ -9,7 +9,7 @@ import (
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/general"
 	"github.com/lunfardo314/proxima/util"
-	"github.com/lunfardo314/proxima/util/lazyslice"
+	"github.com/lunfardo314/proxima/util/lazybytes"
 	"github.com/lunfardo314/proxima/util/lines"
 )
 
@@ -48,7 +48,7 @@ func (id *StateIdentityData) Bytes() []byte {
 	var genesisTimesSlotBin [4]byte
 	binary.BigEndian.PutUint32(genesisTimesSlotBin[:], uint32(id.GenesisTimeSlot))
 
-	return lazyslice.MakeArrayFromDataReadOnly(
+	return lazybytes.MakeArrayFromDataReadOnly(
 		[]byte(id.Description),        // 0
 		supplyBin[:],                  // 1
 		id.GenesisControllerPublicKey, // 2
@@ -60,7 +60,7 @@ func (id *StateIdentityData) Bytes() []byte {
 }
 
 func MustStateIdentityDataFromBytes(data []byte) *StateIdentityData {
-	arr, err := lazyslice.ParseArrayFromBytesReadOnly(data, 7)
+	arr, err := lazybytes.ParseArrayFromBytesReadOnly(data, 7)
 	util.AssertNoError(err)
 	publicKey := ed25519.PublicKey(arr.At(2))
 	util.Assertf(len(publicKey) == ed25519.PublicKeySize, "len(publicKey)==ed25519.PublicKeySize")

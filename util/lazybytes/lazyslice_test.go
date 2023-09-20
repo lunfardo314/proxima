@@ -1,4 +1,4 @@
-package lazyslice
+package lazybytes
 
 import (
 	"bytes"

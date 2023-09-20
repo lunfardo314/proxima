@@ -11,7 +11,7 @@ import (
 	"github.com/lunfardo314/proxima/general"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/util"
-	"github.com/lunfardo314/proxima/util/lazyslice"
+	"github.com/lunfardo314/proxima/util/lazybytes"
 	"github.com/lunfardo314/unitrie/common"
 	"golang.org/x/crypto/blake2b"
 	"golang.org/x/crypto/ed25519"
@@ -20,7 +20,7 @@ import (
 // Transaction provides access to the tree of transferable transaction
 type (
 	Transaction struct {
-		tree                     *lazyslice.Tree
+		tree                     *lazybytes.Tree
 		txHash                   core.TransactionHash
 		sequencerMilestoneFlag   bool
 		branchTransactionFlag    bool
@@ -79,7 +79,7 @@ func FromBytesMainChecksWithOpt(txBytes []byte, additional ...TxValidationOption
 
 func transactionFromBytes(txBytes []byte, opt ...TxValidationOption) (*Transaction, error) {
 	ret := &Transaction{
-		tree:     lazyslice.TreeFromBytesReadOnly(txBytes),
+		tree:     lazybytes.TreeFromBytesReadOnly(txBytes),
 		byteSize: len(txBytes),
 	}
 	if err := ret.Validate(opt...); err != nil {
@@ -470,7 +470,7 @@ func (tx *Transaction) TotalAmount() core.Amount {
 	return tx.totalAmount
 }
 
-func EssenceBytesFromTransactionDataTree(txTree *lazyslice.Tree) []byte {
+func EssenceBytesFromTransactionDataTree(txTree *lazybytes.Tree) []byte {
 	return common.Concat(
 		txTree.BytesAtPath([]byte{core.TxInputIDs}),
 		txTree.BytesAtPath([]byte{core.TxOutputs}),

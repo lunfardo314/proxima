@@ -9,7 +9,7 @@ import (
 	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/util"
-	"github.com/lunfardo314/proxima/util/lazyslice"
+	"github.com/lunfardo314/proxima/util/lazybytes"
 	"github.com/lunfardo314/unitrie/common"
 	"go.uber.org/atomic"
 	"golang.org/x/crypto/blake2b"
@@ -31,7 +31,7 @@ func (ctx *TransactionContext) evalContext(path []byte) easyfl.GlobalData {
 
 // checkConstraint checks the constraint at path. In-line and unlock scripts are ignored
 // for 'produces output' context
-func (ctx *TransactionContext) checkConstraint(constraintData []byte, constraintPath lazyslice.TreePath) ([]byte, string, error) {
+func (ctx *TransactionContext) checkConstraint(constraintData []byte, constraintPath lazybytes.TreePath) ([]byte, string, error) {
 	var ret []byte
 	var name string
 	err := util.CatchPanicOrError(func() error {
@@ -140,7 +140,7 @@ func (ctx *TransactionContext) validateOutputsFailFast(consumedBranch bool) (uin
 // If err != nil and failFast = false, returns list of failed consumed and produced output respectively
 // if failFast = true, returns (totalAmount, nil, nil, error)
 func (ctx *TransactionContext) _validateOutputs(consumedBranch bool, failFast bool) (uint64, []byte, error) {
-	var branch lazyslice.TreePath
+	var branch lazybytes.TreePath
 	if consumedBranch {
 		branch = Path(core.ConsumedBranch, core.ConsumedOutputsBranch)
 	} else {
@@ -203,7 +203,7 @@ func (ctx *TransactionContext) UnlockParams(consumedOutputIdx, constraintIdx byt
 }
 
 // runOutput checks constraints of the output one-by-one
-func (ctx *TransactionContext) runOutput(consumedBranch bool, output *core.Output, path lazyslice.TreePath) (uint32, error) {
+func (ctx *TransactionContext) runOutput(consumedBranch bool, output *core.Output, path lazybytes.TreePath) (uint32, error) {
 	blockPath := common.Concat(path, byte(0))
 	var err error
 	extraStorageDepositWeight := uint32(0)
@@ -341,7 +341,7 @@ func constraintName(binCode []byte) string {
 	return fmt.Sprintf("constraint_call_prefix(%s)", easyfl.Fmt(prefix))
 }
 
-func (ctx *TransactionContext) evalConstraint(constr []byte, path lazyslice.TreePath) ([]byte, string, error) {
+func (ctx *TransactionContext) evalConstraint(constr []byte, path lazybytes.TreePath) ([]byte, string, error) {
 	if len(constr) == 0 {
 		return nil, "", fmt.Errorf("constraint can't be empty")
 	}
@@ -359,7 +359,7 @@ func (ctx *TransactionContext) evalConstraint(constr []byte, path lazyslice.Tree
 		ret, err = easyfl.EvalFromBinary(evalCtx, constr)
 	} else {
 		// array constraint TODO do we need it?
-		arr := lazyslice.ArrayFromBytesReadOnly(constr[1:], 256)
+		arr := lazybytes.ArrayFromBytesReadOnly(constr[1:], 256)
 		if arr.NumElements() == 0 {
 			err = fmt.Errorf("can't evaluate empty array")
 		} else {

@@ -7,7 +7,7 @@ import (
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/general"
 	"github.com/lunfardo314/proxima/util"
-	"github.com/lunfardo314/proxima/util/lazyslice"
+	"github.com/lunfardo314/proxima/util/lazybytes"
 	"github.com/lunfardo314/unitrie/common"
 	"github.com/lunfardo314/unitrie/immutable"
 )
@@ -251,7 +251,7 @@ func FetchLatestSlot(store general.StateStore) core.TimeSlot {
 }
 
 func (r *RootData) Bytes() []byte {
-	arr := lazyslice.EmptyArray(3)
+	arr := lazybytes.EmptyArray(3)
 	arr.Push(r.SequencerID.Bytes())
 	arr.Push(r.Root.Bytes())
 	var coverageBin [8]byte
@@ -264,7 +264,7 @@ func (r *RootData) Bytes() []byte {
 var errWrongDataSize = fmt.Errorf("RootDataFromBytes: wrong data size")
 
 func RootDataFromBytes(data []byte) (RootData, error) {
-	arr, err := lazyslice.ParseArrayFromBytesReadOnly(data, 3)
+	arr, err := lazybytes.ParseArrayFromBytesReadOnly(data, 3)
 	if err != nil {
 		return RootData{}, err
 	}

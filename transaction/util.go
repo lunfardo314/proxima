@@ -8,7 +8,7 @@ import (
 	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/util"
-	"github.com/lunfardo314/proxima/util/lazyslice"
+	"github.com/lunfardo314/proxima/util/lazybytes"
 	"github.com/lunfardo314/proxima/util/lines"
 	"golang.org/x/crypto/blake2b"
 )
@@ -70,7 +70,7 @@ func (ctx *TransactionContext) Lines(prefix ...string) *lines.Lines {
 			return true
 		}
 		unlockBin := ctx.UnlockData(idx)
-		arr := lazyslice.ArrayFromBytesReadOnly(unlockBin)
+		arr := lazybytes.ArrayFromBytesReadOnly(unlockBin)
 		ret.Add("  #%d: %s", idx, oid.String()).
 			Add("       bytes (%d): %s", len(out.Bytes()), hex.EncodeToString(out.Bytes())).
 			Append(out.ToLines("     ")).

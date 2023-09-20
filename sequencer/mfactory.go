@@ -405,7 +405,7 @@ func (mf *milestoneFactory) makeAdditionalOutputsFromSequencerCommands(inputs []
 	ret := make([]*core.Output, 0)
 	myAddr := core.AddressED25519FromPrivateKey(mf.controllerKey)
 	for _, inp := range inputs {
-		if cmdData := parseSenderCommandData(myAddr, inp); len(cmdData) > 0 {
+		if cmdData := parseSenderCommandDataRaw(myAddr, inp); len(cmdData) > 0 {
 			o, err := makeOutputFromCommandData(cmdData)
 			if err != nil {
 				mf.log.Warnf("error while parsing sequncer command in input %s: %v", inp.IDShort(), err)

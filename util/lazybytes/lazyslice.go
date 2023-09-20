@@ -1,4 +1,10 @@
-package lazyslice
+// Package lazybytes is a way to treat byte data as serialized arrays or, recursively, as trees of byte slices
+// It is used for fast, safe and uniform serialization/deserialization in 'lazy' way: the bytes are only deserialized
+// when there's a need to access element of the array or a tree
+// The read-only lazy array and tree are thread safe. Non-read only are not thread safe
+// It is used for the (de)serialization of Proxima transactions into the tree form, where every element (a byte slice)
+// can be accessed with a path of indices (bytes)
+package lazybytes
 
 import (
 	"bytes"

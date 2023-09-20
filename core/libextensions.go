@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"github.com/lunfardo314/easyfl"
-	"github.com/lunfardo314/proxima/util/lazyslice"
+	"github.com/lunfardo314/proxima/util/lazybytes"
 	"github.com/lunfardo314/unitrie/common"
 )
 
@@ -15,7 +15,7 @@ All integers are treated big-endian. This way lexicographical order coincides wi
 
 The validation context is a tree-like data structure which is validated by evaluating all constraints in it
 consumed and produced outputs. The rest of the validation should be done by the logic outside the data itself.
-The tree-like data structure is a lazyslice.Array, treated as a tree.
+The tree-like data structure is a lazybytes.Array, treated as a tree.
 
 Constants which define validation context data tree branches. Structure of the data tree:
 
@@ -64,16 +64,16 @@ const (
 )
 
 var (
-	PathToConsumedOutputs               = lazyslice.Path(ConsumedBranch, ConsumedOutputsBranch)
-	PathToProducedOutputs               = lazyslice.Path(TransactionBranch, TxOutputs)
-	PathToUnlockParams                  = lazyslice.Path(TransactionBranch, TxUnlockParams)
-	PathToInputIDs                      = lazyslice.Path(TransactionBranch, TxInputIDs)
-	PathToSignature                     = lazyslice.Path(TransactionBranch, TxSignature)
-	PathToSequencerAndStemOutputIndices = lazyslice.Path(TransactionBranch, TxSequencerAndStemOutputIndices)
-	PathToInputCommitment               = lazyslice.Path(TransactionBranch, TxInputCommitment)
-	PathToEndorsements                  = lazyslice.Path(TransactionBranch, TxEndorsements)
-	PathToLocalLibraries                = lazyslice.Path(TransactionBranch, TxLocalLibraries)
-	PathToTimestamp                     = lazyslice.Path(TransactionBranch, TxTimestamp)
+	PathToConsumedOutputs               = lazybytes.Path(ConsumedBranch, ConsumedOutputsBranch)
+	PathToProducedOutputs               = lazybytes.Path(TransactionBranch, TxOutputs)
+	PathToUnlockParams                  = lazybytes.Path(TransactionBranch, TxUnlockParams)
+	PathToInputIDs                      = lazybytes.Path(TransactionBranch, TxInputIDs)
+	PathToSignature                     = lazybytes.Path(TransactionBranch, TxSignature)
+	PathToSequencerAndStemOutputIndices = lazybytes.Path(TransactionBranch, TxSequencerAndStemOutputIndices)
+	PathToInputCommitment               = lazybytes.Path(TransactionBranch, TxInputCommitment)
+	PathToEndorsements                  = lazybytes.Path(TransactionBranch, TxEndorsements)
+	PathToLocalLibraries                = lazybytes.Path(TransactionBranch, TxLocalLibraries)
+	PathToTimestamp                     = lazybytes.Path(TransactionBranch, TxTimestamp)
 )
 
 // Mandatory output block indices
@@ -91,7 +91,7 @@ func init() {
 	//-------------------------------- standard EasyFL library extensions ------------------------------
 
 	// data context access
-	// data context is a lazyslice.Tree
+	// data context is a lazybytes.Tree
 	easyfl.EmbedShort("@", 0, evalPath, true)
 	// returns data bytes at the given path of the data context (lazy tree)
 	easyfl.EmbedShort("@Path", 1, evalAtPath)
@@ -277,23 +277,23 @@ func init() {
 // - tree: all validation context of the transaction, all data which is to be validated
 // - path: a path in the validation context of the constraint being validated in the eval call
 type DataContext struct {
-	tree *lazyslice.Tree
-	path lazyslice.TreePath
+	tree *lazybytes.Tree
+	path lazybytes.TreePath
 }
 
-func NewDataContext(tree *lazyslice.Tree) *DataContext {
+func NewDataContext(tree *lazybytes.Tree) *DataContext {
 	return &DataContext{tree: tree}
 }
 
-func (c *DataContext) DataTree() *lazyslice.Tree {
+func (c *DataContext) DataTree() *lazybytes.Tree {
 	return c.tree
 }
 
-func (c *DataContext) Path() lazyslice.TreePath {
+func (c *DataContext) Path() lazybytes.TreePath {
 	return c.path
 }
 
-func (c *DataContext) SetPath(path lazyslice.TreePath) {
+func (c *DataContext) SetPath(path lazybytes.TreePath) {
 	c.path = common.Concat(path.Bytes())
 }
 
@@ -306,7 +306,7 @@ func evalAtPath(ctx *easyfl.CallParams) []byte {
 }
 
 func evalAtArray8(ctx *easyfl.CallParams) []byte {
-	arr := lazyslice.ArrayFromBytesReadOnly(ctx.Arg(0))
+	arr := lazybytes.ArrayFromBytesReadOnly(ctx.Arg(0))
 	idx := ctx.Arg(1)
 	if len(idx) != 1 {
 		panic("evalAtArray8: 1-byte value expected")
@@ -315,7 +315,7 @@ func evalAtArray8(ctx *easyfl.CallParams) []byte {
 }
 
 func evalNumElementsOfArray(ctx *easyfl.CallParams) []byte {
-	arr := lazyslice.ArrayFromBytesReadOnly(ctx.Arg(0))
+	arr := lazybytes.ArrayFromBytesReadOnly(ctx.Arg(0))
 	return []byte{byte(arr.NumElements())}
 }
 
@@ -325,7 +325,7 @@ func CompileLocalLibrary(source string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	ret := lazyslice.MakeArrayFromDataReadOnly(libBin...)
+	ret := lazybytes.MakeArrayFromDataReadOnly(libBin...)
 	return ret.Bytes(), nil
 }
 
@@ -333,7 +333,7 @@ func CompileLocalLibrary(source string) ([]byte, error) {
 // arg 1 - 1-byte index of then function in the library
 // arg 2 ... arg 15 optional arguments
 func evalCallLocalLibrary(ctx *easyfl.CallParams) []byte {
-	arr := lazyslice.ArrayFromBytesReadOnly(ctx.Arg(0))
+	arr := lazybytes.ArrayFromBytesReadOnly(ctx.Arg(0))
 	libData := arr.Parsed()
 	idx := ctx.Arg(1)
 	if len(idx) != 1 || int(idx[0]) >= len(libData) {

@@ -7,7 +7,7 @@ import (
 
 	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/proxima/util"
-	"github.com/lunfardo314/proxima/util/lazyslice"
+	"github.com/lunfardo314/proxima/util/lazybytes"
 )
 
 const sequencerRequestSource = `
@@ -23,13 +23,13 @@ const (
 
 type SequencerRequest struct {
 	OpCode byte
-	Params *lazyslice.Array
+	Params *lazybytes.Array
 }
 
 func NewSequencerRequest(opCode byte, params ...[]byte) *SequencerRequest {
 	return &SequencerRequest{
 		OpCode: opCode,
-		Params: lazyslice.MakeArrayFromDataReadOnly(params...),
+		Params: lazybytes.MakeArrayFromDataReadOnly(params...),
 	}
 }
 
@@ -67,7 +67,7 @@ func SequencerRequestFromBytes(data []byte) (*SequencerRequest, error) {
 		return nil, fmt.Errorf("wrong opcode parameter")
 	}
 	opCode := opCodeBin[0]
-	arr, err := lazyslice.ParseArrayFromBytesReadOnly(args[1])
+	arr, err := lazybytes.ParseArrayFromBytesReadOnly(args[1])
 	if err != nil {
 		return nil, err
 	}
@@ -88,7 +88,7 @@ func initSequencerRequestConstraint() {
 	opCodeBin := easyfl.StripDataPrefix(args[0])
 	util.Assertf(len(opCodeBin) == 1, "len(opCodeBin)==1")
 	util.Assertf(opCodeBin[0] == 1, "opCodeBin[0]==1")
-	arr, err := lazyslice.ParseArrayFromBytesReadOnly(easyfl.StripDataPrefix(args[1]))
+	arr, err := lazybytes.ParseArrayFromBytesReadOnly(easyfl.StripDataPrefix(args[1]))
 	util.AssertNoError(err)
 	util.Assertf(arr.NumElements() == 0, "arr.NumElements() == 0")
 	registerConstraint(SequencerRequestName, prefix, func(data []byte) (Constraint, error) {
