@@ -5,7 +5,6 @@ import (
 	"sync"
 
 	"github.com/dgraph-io/badger/v4"
-	"github.com/labstack/echo/v4"
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/general"
 	"github.com/lunfardo314/proxima/genesis"
@@ -28,7 +27,7 @@ type ProximaNode struct {
 	uTangle      *utangle.UTXOTangle
 	workflow     *workflow.Workflow
 	sequencers   []*sequencer.Sequencer
-	echoServer   *echo.Echo
+	stopOnce     sync.Once
 }
 
 func Start() *ProximaNode {
@@ -62,6 +61,12 @@ func (p *ProximaNode) startup() {
 }
 
 func (p *ProximaNode) Stop() {
+	p.stopOnce.Do(func() {
+		p.stop()
+	})
+}
+
+func (p *ProximaNode) stop() {
 	p.log.Info("stopping the node..")
 	if p.multiStateDB != nil {
 		if err := p.multiStateDB.Close(); err == nil {
@@ -99,6 +104,7 @@ func (p *ProximaNode) Stop() {
 		p.workflow.Stop()
 	}
 	p.log.Info("node stopped")
+
 }
 
 func (p *ProximaNode) GetMultiStateDBName() string {

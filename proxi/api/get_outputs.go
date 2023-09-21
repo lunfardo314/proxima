@@ -31,7 +31,8 @@ func runGetOutputsCmd(_ *cobra.Command, _ []string) {
 	console.AssertNoError(err)
 
 	console.Infof("%d outputs locked in the account %s", len(outs), accountable.String())
-	for _, o := range outs {
+	for i, o := range outs {
+		console.Infof("-- output %d --", i)
 		console.Infof(o.String())
 		console.Verbosef("Raw bytes: %s", hex.EncodeToString(o.Output.Bytes()))
 	}

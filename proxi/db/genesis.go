@@ -2,11 +2,13 @@ package db
 
 import (
 	"crypto/ed25519"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"time"
 
 	"github.com/dgraph-io/badger/v4"
+	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/general"
 	"github.com/lunfardo314/proxima/genesis"
@@ -39,7 +41,7 @@ func initDbGenesis(dbCmd *cobra.Command) {
 	dbCmd.AddCommand(genesisCmd)
 }
 
-func runGenesis(_ *cobra.Command, args []string) {
+func runGenesis(_ *cobra.Command, _ []string) {
 	address := glb.AddressBytes()
 	if len(address) == 0 {
 		console.Fatalf("private key not set. Use 'proxi setpk'")
@@ -55,6 +57,8 @@ func runGenesis(_ *cobra.Command, args []string) {
 	mustNotExist(dbName)
 	mustNotExist(txStoreName)
 
+	libraryHash := easyfl.LibraryHash()
+
 	console.Infof("Creating genesis ledger state...")
 	console.Infof("Multi-state database : %s", dbName)
 	console.Infof("Transaction store database : %s", txStoreName)
@@ -63,6 +67,7 @@ func runGenesis(_ *cobra.Command, args []string) {
 	nowisTs := core.LogicalTimeFromTime(nowis)
 	console.Infof("Genesis time slot: %d", nowisTs.TimeSlot())
 	console.Infof("Genesis controller address: %s", glb.AddressHex())
+	console.Infof("Constraint library hash: %s", hex.EncodeToString(libraryHash[:]))
 
 	if !console.YesNoPrompt(fmt.Sprintf("Create Proxima genesis '%s' and transactions store '%s'?", dbName, txStoreName), true) {
 		console.Fatalf("exit: genesis database wasn't created")
@@ -78,6 +83,7 @@ func runGenesis(_ *cobra.Command, args []string) {
 		TimeTickDuration:           core.TimeTickDuration(),
 		MaxTimeTickValueInTimeSlot: core.TimeTicksPerSlot - 1,
 		GenesisTimeSlot:            core.LogicalTimeFromTime(nowis).TimeSlot(),
+		CoreLibraryHash:            libraryHash,
 	}, stateStore)
 	console.AssertNoError(stateDb.Close())
 

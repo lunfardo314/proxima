@@ -73,16 +73,31 @@ func MustStateIdentityDataFromBytes(data []byte) *StateIdentityData {
 	maxTick := arr.At(5)
 	util.Assertf(len(maxTick) == 1, "len(maxTick)==1")
 
+	// check library hashes
 	libraryHash := easyfl.LibraryHash()
 	msg := "node's constraint library is incompatible with the multi-state identity\nExpected library hash %s, got %s"
 	util.Assertf(bytes.Equal(libraryHash[:], arr.At(7)), msg, hex.EncodeToString(libraryHash[:]), hex.EncodeToString(arr.At(7)))
+
+	// check baseline time
+	baselineTime := time.Unix(0, int64(binary.BigEndian.Uint64(arr.At(3))))
+	msg = "node assumes baseline time different from state baseline time: expected %v, got %v"
+	util.Assertf(baselineTime.UnixNano() == core.BaselineTimeUnixNano, msg, core.BaselineTimeUnixNano, baselineTime)
+
+	// check time tick duration
+	timeTickDuration := time.Duration(binary.BigEndian.Uint64(arr.At(4)))
+	msg = "node assumes time tick duration different from state baseline duration: expected %dns, got %dns"
+	util.Assertf(timeTickDuration == core.TimeTickDuration(), msg, core.TimeTickDuration().Nanoseconds(), timeTickDuration.Nanoseconds())
+
+	// check time ticks per slot
+	msg = "node assumes time ticks per slot different from state assumption: expected %d, got %d"
+	util.Assertf(maxTick[0]+1 == core.TimeTicksPerSlot, msg, core.TimeTicksPerSlot, maxTick[0]+1)
 
 	ret := &StateIdentityData{
 		Description:                string(arr.At(0)),
 		InitialSupply:              binary.BigEndian.Uint64(arr.At(1)),
 		GenesisControllerPublicKey: publicKey,
-		BaselineTime:               time.Unix(0, int64(binary.BigEndian.Uint64(arr.At(3)))),
-		TimeTickDuration:           time.Duration(binary.BigEndian.Uint64(arr.At(4))),
+		BaselineTime:               baselineTime,
+		TimeTickDuration:           timeTickDuration,
 		MaxTimeTickValueInTimeSlot: maxTick[0],
 		GenesisTimeSlot:            core.MustTimeSlotFromBytes(arr.At(6)),
 	}
@@ -109,6 +124,7 @@ func (id *StateIdentityData) String() string {
 	genesisStemOutputID := StemOutputID(id.GenesisTimeSlot)
 	return lines.New().
 		Add("Description: '%s'", id.Description).
+		Add("Constraint library hash: %s", hex.EncodeToString(id.CoreLibraryHash[:])).
 		Add("Initial supply: %s", util.GoThousands(id.InitialSupply)).
 		Add("Genesis controller address: %s", id.GenesisControlledAddress().String()).
 		Add("Baseline time: %s", id.BaselineTime.Format(time.RFC3339)).

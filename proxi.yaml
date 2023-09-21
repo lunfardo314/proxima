@@ -1,11 +1,14 @@
+amount: "1000000"
 api:
     endpoint: http://localhost:4000
 debug: false
+force_withdraw: false
 multistate:
     name: proximadb
-private_key: bac35c97b1870da242b77c9db1faf4ceb58af75571a1b742f44134248702144a4aabf9a37382b2ebdd1a0e17970e6ed8ed0a05d67380296e11fbf40934dbb4c4
+private_key: 136381bd4dea7b2f0fa6c6ca14ee660dc7929975b47e6cdb85adee9e26032a810530b790e0e7de626f36e20ba656f09e324c68203de899d0daf9f98fcb3cf684
+sequencer:
+    id: 599410a4c89be497b9574dcd63fb6a4f8c726e8461f27d1d593b18dd3ae06594
+target: ""
 txstore:
     name: proximadb.txstore
 verbose: false
-sequencer:
-    id: 108c086a4183c3434392f0d16f07c6895990a96dd74753d1a5695bad3e9934b4
