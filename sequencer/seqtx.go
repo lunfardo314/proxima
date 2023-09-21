@@ -38,9 +38,15 @@ type MakeSequencerTransactionParams struct {
 
 func MustValidSequencerOutput(chainOut *core.Output) {
 	chainOut.MustValidOutput()
-	util.Assertf(chainOut.NumConstraints() == 4, "chainOut.NumConstraints() == 4")
-	chainOut.MustHaveConstraintAnyOfAt(2, core.ChainConstraintName)
-	chainOut.MustHaveConstraintAnyOfAt(3, core.SequencerConstraintName)
+	switch chainOut.NumConstraints() {
+	case 3:
+		chainOut.MustHaveConstraintAnyOfAt(2, core.ChainConstraintName)
+	case 4:
+		chainOut.MustHaveConstraintAnyOfAt(2, core.ChainConstraintName)
+		chainOut.MustHaveConstraintAnyOfAt(3, core.SequencerConstraintName)
+	default:
+		util.Panicf("3 or 4 constraints expected")
+	}
 }
 
 func MakeSequencerTransaction(par MakeSequencerTransactionParams) ([]byte, error) {
@@ -103,25 +109,12 @@ func MakeSequencerTransaction(par MakeSequencerTransactionParams) ([]byte, error
 	chainConstraint = core.NewChainConstraint(seqID, chainPredIdx, chainConstraintIdx, 0)
 	sequencerConstraint := core.NewSequencerConstraint(chainConstraintIdx, par.MinimumFee)
 
-	var idx byte
 	chainOut := core.NewOutput(func(o *core.Output) {
 		o.PutAmount(chainOutAmount)
 		o.PutLock(par.ChainInput.Output.Lock())
-		idx, err = o.PushConstraint(chainConstraint.Bytes())
-		if err != nil {
-			return
-		}
-		util.Assertf(idx == 2, "idx == 2")
-		idx, err = o.PushConstraint(sequencerConstraint.Bytes())
-		if err != nil {
-			return
-		}
-		util.Assertf(idx == 3, "idx == 3")
+		_, _ = o.PushConstraint(chainConstraint.Bytes())
+		_, _ = o.PushConstraint(sequencerConstraint.Bytes())
 	})
-
-	if err != nil {
-		return nil, errP(err)
-	}
 	MustValidSequencerOutput(chainOut)
 
 	chainOutIndex, err := txb.ProduceOutput(chainOut)
@@ -137,18 +130,15 @@ func MakeSequencerTransaction(par MakeSequencerTransactionParams) ([]byte, error
 		if err != nil {
 			return nil, errP(err)
 		}
-		stemOut := par.StemInput.Output.Clone(func(o *core.Output) {
-			lck, ok := o.StemLock()
-			if !ok {
 
-				err = errP("can't find stem lock")
-				return
-			}
-			o.PutLock(core.NewStemLock(lck.Supply, stemInIndex, par.StemInput.ID))
-		})
-		if err != nil {
-			return nil, errP(err)
+		lck, ok := par.StemInput.Output.StemLock()
+		if !ok {
+			return nil, errP("can't find stem lock")
 		}
+		stemOut := core.NewOutput(func(o *core.Output) {
+			o.WithAmount(par.StemInput.Output.Amount())
+			o.WithLock(core.NewStemLock(lck.Supply, stemInIndex, par.StemInput.ID))
+		})
 		stemOutputIndex, err = txb.ProduceOutput(stemOut)
 		if err != nil {
 			return nil, errP(err)

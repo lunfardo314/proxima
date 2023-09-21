@@ -2,8 +2,6 @@ package core
 
 import (
 	"fmt"
-	"io"
-	"strings"
 
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lazybytes"
@@ -62,9 +60,17 @@ func OutputBasic(amount uint64, lock Lock) *Output {
 	})
 }
 
-func OutputFromBytesReadOnly(data []byte) (*Output, error) {
+func OutputFromBytesReadOnly(data []byte, validateOpt ...func(*Output) error) (*Output, error) {
 	ret, _, _, err := OutputFromBytesMain(data)
-	return ret, err
+	if err != nil {
+		return nil, err
+	}
+	for _, validate := range validateOpt {
+		if err := validate(ret); err != nil {
+			return nil, err
+		}
+	}
+	return ret, nil
 }
 
 func OutputFromBytesMain(data []byte) (*Output, Amount, Lock, error) {
@@ -289,26 +295,6 @@ func (o *Output) SequencerOutputData() (*SequencerOutputData, bool) {
 	}, true
 }
 
-func (o *Output) ConstraintWithName(name string) (Constraint, byte, bool) {
-	var ret Constraint
-	var retIdx byte
-	var found bool
-	o.ForEachConstraint(func(idx byte, data []byte) bool {
-		constr, err := FromBytes(data)
-		if err != nil {
-			return false
-		}
-		if constr.Name() == name {
-			ret = constr
-			retIdx = idx
-			found = true
-			return false
-		}
-		return true
-	})
-	return ret, retIdx, found
-}
-
 func (o *Output) ToString(prefix ...string) string {
 	return o.ToLines(prefix...).String()
 }
@@ -331,30 +317,8 @@ func (o *Output) ToLines(prefix ...string) *lines.Lines {
 	return ret
 }
 
-func (o *Output) WriteHTML(w io.Writer) {
-	_, _ = w.Write([]byte("<table>"))
-	o.arr.ForEach(func(i int, data []byte) bool {
-		_, _ = w.Write([]byte("<tr>"))
-		c, err := FromBytes(data)
-		if err != nil {
-			_, _ = fmt.Fprintf(w, "<td>%d:</td> <td><pre>%v</pre></td> <td>(%d bytes)</td>\n", i, err, len(data))
-		} else {
-			_, _ = fmt.Fprintf(w, "<td>%d:</td> <td>%s</td> <td>(%d bytes)</td>\n", i, c.String(), len(data))
-		}
-		_, _ = w.Write([]byte("</tr>"))
-		return true
-	})
-	_, _ = w.Write([]byte("</table>"))
-}
-
-func (o *Output) ToHTMLTableString() string {
-	var buf strings.Builder
-	o.WriteHTML(&buf)
-	return buf.String()
-}
-
-func (o *OutputDataWithID) Parse() (*OutputWithID, error) {
-	ret, err := OutputFromBytesReadOnly(o.OutputData)
+func (o *OutputDataWithID) Parse(validOpt ...func(o *Output) error) (*OutputWithID, error) {
+	ret, err := OutputFromBytesReadOnly(o.OutputData, validOpt...)
 	if err != nil {
 		return nil, err
 	}
@@ -365,22 +329,28 @@ func (o *OutputDataWithID) Parse() (*OutputWithID, error) {
 }
 
 func (o *OutputDataWithID) ParseAsChainOutput() (*OutputWithChainID, byte, error) {
-	oWithID, err := o.Parse()
+	var chainConstr *ChainConstraint
+	var idx byte
+	var chainID ChainID
+
+	ret, err := o.Parse(func(oParsed *Output) error {
+		chainConstr, idx = oParsed.ChainConstraint()
+		if idx == 0xff {
+			return fmt.Errorf("can't find chain constraint")
+		}
+		chainID = chainConstr.ID
+		if chainID == NilChainID {
+			chainID = blake2b.Sum256(o.ID[:])
+		}
+		return nil
+	})
 	if err != nil {
 		return nil, 0, err
 	}
-	constr, idx := oWithID.Output.ChainConstraint()
-	if idx == 0xff {
-		return nil, 0, fmt.Errorf("can't find chain constraint")
-	}
-	chainID := constr.ID
-	if chainID == NilChainID {
-		chainID = blake2b.Sum256(oWithID.ID[:])
-	}
 	return &OutputWithChainID{
-		OutputWithID:               *oWithID,
+		OutputWithID:               *ret,
 		ChainID:                    chainID,
-		PredecessorConstraintIndex: constr.PredecessorInputIndex,
+		PredecessorConstraintIndex: chainConstr.PredecessorInputIndex,
 	}, idx, nil
 }
 

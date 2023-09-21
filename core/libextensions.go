@@ -217,6 +217,7 @@ func init() {
 	easyfl.Extend("selfOutputPath", "slice(@,0,2)")
 	easyfl.Extend("selfSiblingConstraint", "@Array8(@Path(selfOutputPath), $0)")
 	easyfl.Extend("selfOutputBytes", "@Path(selfOutputPath)")
+	easyfl.Extend("selfNumConstraints", "ArrayLength8(selfOutputBytes)")
 
 	// unlock param branch (0 - transaction, 0 unlock params)
 	// invoked output block

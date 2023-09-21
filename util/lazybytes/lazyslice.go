@@ -216,6 +216,7 @@ func (a *Array) ensureParsed() {
 	if a.parsedNotNil() {
 		return
 	}
+
 	a.mutex.Lock()
 	defer a.mutex.Unlock()
 
