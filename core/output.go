@@ -86,6 +86,15 @@ func OutputFromBytesMain(data []byte) (*Output, Amount, Lock, error) {
 	return ret, amount, lock, nil
 }
 
+func (o *Output) ConstraintsRawBytes() [][]byte {
+	ret := make([][]byte, o.NumConstraints())
+	o.arr.ForEach(func(i int, data []byte) bool {
+		ret[i] = data
+		return true
+	})
+	return ret
+}
+
 func (o *Output) StemLock() (*StemLock, bool) {
 	ret, ok := o.Lock().(*StemLock)
 	return ret, ok
@@ -423,4 +432,31 @@ func OutputsWithIdToString(outs ...*OutputWithID) string {
 			Append(o.Output.ToLines("      "))
 	}
 	return ret.String()
+}
+
+func (o *Output) hasConstraintAt(pos byte, constraintName string) bool {
+	constr, err := FromBytes(o.ConstraintAt(pos))
+	util.AssertNoError(err)
+
+	return constr.Name() == constraintName
+}
+
+func (o *Output) MustHaveConstraintAnyOfAt(pos byte, names ...string) {
+	util.Assertf(o.NumConstraints() >= int(pos), "no constraint at position %d", pos)
+
+	constr, err := FromBytes(o.ConstraintAt(pos))
+	util.AssertNoError(err)
+
+	for _, n := range names {
+		if constr.Name() == n {
+			return
+		}
+	}
+	util.Panicf("any of %+v was expected at the position %d, got '%s' instead", names, pos, constr.Name())
+}
+
+// MustValidOutput checks if amount and lock constraints are as expected
+func (o *Output) MustValidOutput() {
+	o.MustHaveConstraintAnyOfAt(0, AmountConstraintName)
+	o.MustHaveConstraintAnyOfAt(1, AllLockNames...)
 }

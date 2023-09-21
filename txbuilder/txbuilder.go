@@ -126,11 +126,12 @@ func (txb *TransactionBuilder) PushEndorsements(txid ...*core.TransactionID) {
 	txb.TransactionData.Endorsements = append(txb.TransactionData.Endorsements, txid...)
 }
 
-func (txb *TransactionBuilder) ProduceOutput(out *core.Output) (byte, error) {
+func (txb *TransactionBuilder) ProduceOutput(o *core.Output) (byte, error) {
+	o.MustValidOutput()
 	if txb.NumOutputs() >= 256 {
 		return 0, fmt.Errorf("too many produced outputs")
 	}
-	txb.TransactionData.Outputs = append(txb.TransactionData.Outputs, out)
+	txb.TransactionData.Outputs = append(txb.TransactionData.Outputs, o)
 	return byte(len(txb.TransactionData.Outputs) - 1), nil
 }
 

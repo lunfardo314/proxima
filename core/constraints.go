@@ -115,6 +115,13 @@ func (acc AccountID) Bytes() []byte {
 	return acc
 }
 
+var AllLockNames = []string{
+	AddressED25519Name,
+	ChainLockName,
+	StemLockName,
+	DeadlineLockName,
+}
+
 func LockFromBytes(data []byte) (Lock, error) {
 	prefix, err := easyfl.ParseBytecodePrefix(data)
 	if err != nil {

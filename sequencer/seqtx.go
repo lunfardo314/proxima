@@ -30,7 +30,22 @@ type MakeSequencerTransactionParams struct {
 	TotalSupply uint64
 }
 
+// Sequencer chain output has the following structure
+// 0: amount constraint
+// 1: AddressED25519 lock constraint
+// 2: chain constraint
+// 4: sequencer constraint
+
+func MustValidSequencerOutput(chainOut *core.Output) {
+	chainOut.MustValidOutput()
+	util.Assertf(chainOut.NumConstraints() == 4, "chainOut.NumConstraints() == 4")
+	chainOut.MustHaveConstraintAnyOfAt(2, core.ChainConstraintName)
+	chainOut.MustHaveConstraintAnyOfAt(3, core.SequencerConstraintName)
+}
+
 func MakeSequencerTransaction(par MakeSequencerTransactionParams) ([]byte, error) {
+	MustValidSequencerOutput(par.ChainInput.Output)
+
 	errP := util.MakeErrFuncForPrefix("MakeSequencerTransaction")
 
 	nIn := len(par.AdditionalInputs) + 1
@@ -84,24 +99,30 @@ func MakeSequencerTransaction(par MakeSequencerTransactionParams) ([]byte, error
 	if chainConstraint.IsOrigin() {
 		seqID = core.OriginChainID(&par.ChainInput.ID)
 	}
-	chainConstraint = core.NewChainConstraint(seqID, chainPredIdx, chainConstraintIdx, 0)
 
-	seqInData, isSequencerInput := par.ChainInput.Output.SequencerOutputData()
+	chainConstraint = core.NewChainConstraint(seqID, chainPredIdx, chainConstraintIdx, 0)
 	sequencerConstraint := core.NewSequencerConstraint(chainConstraintIdx, par.MinimumFee)
 
-	chainOut := par.ChainInput.Output.Clone(func(o *core.Output) {
+	var idx byte
+	chainOut := core.NewOutput(func(o *core.Output) {
 		o.PutAmount(chainOutAmount)
-		o.PutConstraint(chainConstraint.Bytes(), chainConstraintIdx)
-		if isSequencerInput {
-			o.PutConstraint(sequencerConstraint.Bytes(), seqInData.SequencerConstraintIndex)
-		} else {
-			// it is sequencer origin
-			_, err = o.PushConstraint(sequencerConstraint.Bytes())
+		o.PutLock(par.ChainInput.Output.Lock())
+		idx, err = o.PushConstraint(chainConstraint.Bytes())
+		if err != nil {
+			return
 		}
+		util.Assertf(idx == 2, "idx == 2")
+		idx, err = o.PushConstraint(sequencerConstraint.Bytes())
+		if err != nil {
+			return
+		}
+		util.Assertf(idx == 3, "idx == 3")
 	})
+
 	if err != nil {
 		return nil, errP(err)
 	}
+	MustValidSequencerOutput(chainOut)
 
 	chainOutIndex, err := txb.ProduceOutput(chainOut)
 	if err != nil {
