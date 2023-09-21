@@ -7,7 +7,7 @@ multistate:
     name: proximadb
 private_key: 136381bd4dea7b2f0fa6c6ca14ee660dc7929975b47e6cdb85adee9e26032a810530b790e0e7de626f36e20ba656f09e324c68203de899d0daf9f98fcb3cf684
 sequencer:
-    id: 599410a4c89be497b9574dcd63fb6a4f8c726e8461f27d1d593b18dd3ae06594
+    id: 764eee5d178dab62fe1bdf05a775b78dab061c09d8a771c2902219787db700fa
 target: ""
 txstore:
     name: proximadb.txstore

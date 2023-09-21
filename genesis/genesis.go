@@ -59,7 +59,7 @@ func InitialSupplyOutput(initialSupply uint64, controllerAddress core.AddressED2
 				o.WithAmount(initialSupply).WithLock(controllerAddress)
 				chainIdx, err := o.PushConstraint(core.NewChainOrigin().Bytes())
 				util.AssertNoError(err)
-				_, err = o.PushConstraint(core.NewSequencerConstraint(chainIdx, 0).Bytes())
+				_, err = o.PushConstraint(core.NewSequencerConstraint(chainIdx).Bytes())
 				util.AssertNoError(err)
 			}),
 		},

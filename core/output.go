@@ -306,7 +306,7 @@ func (o *Output) ToLines(prefix ...string) *lines.Lines {
 		pref = prefix[0]
 	}
 	o.arr.ForEach(func(i int, data []byte) bool {
-		c, err := FromBytes(data)
+		c, err := ConstraintFromBytes(data)
 		if err != nil {
 			ret.Add("%s%d: %v (%d bytes)", pref, i, err, len(data))
 		} else {
@@ -405,7 +405,7 @@ func OutputsWithIdToString(outs ...*OutputWithID) string {
 }
 
 func (o *Output) hasConstraintAt(pos byte, constraintName string) bool {
-	constr, err := FromBytes(o.ConstraintAt(pos))
+	constr, err := ConstraintFromBytes(o.ConstraintAt(pos))
 	util.AssertNoError(err)
 
 	return constr.Name() == constraintName
@@ -414,7 +414,7 @@ func (o *Output) hasConstraintAt(pos byte, constraintName string) bool {
 func (o *Output) MustHaveConstraintAnyOfAt(pos byte, names ...string) {
 	util.Assertf(o.NumConstraints() >= int(pos), "no constraint at position %d", pos)
 
-	constr, err := FromBytes(o.ConstraintAt(pos))
+	constr, err := ConstraintFromBytes(o.ConstraintAt(pos))
 	util.AssertNoError(err)
 
 	for _, n := range names {

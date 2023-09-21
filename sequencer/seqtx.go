@@ -2,56 +2,53 @@ package sequencer
 
 import (
 	"crypto/ed25519"
+	"encoding/binary"
+	"encoding/hex"
+	"fmt"
+	"strings"
 
+	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/txbuilder"
 	"github.com/lunfardo314/proxima/util"
 )
 
-type MakeSequencerTransactionParams struct {
-	// predecessor
-	ChainInput *core.OutputWithChainID
-	//
-	StemInput *core.OutputWithID // it is branch tx if != nil
-	// timestamp of the transaction
-	Timestamp core.LogicalTime
-	// minimum fee
-	MinimumFee uint64
-	// additional inputs to consume. Must be unlockable by chain
-	// can contain sender commands to the sequencer
-	AdditionalInputs []*core.OutputWithID
-	// additional outputs to produce
-	AdditionalOutputs []*core.Output
-	// Endorsements
-	Endorsements []*core.TransactionID
-	// chain controller
-	PrivateKey ed25519.PrivateKey
-	//
-	TotalSupply uint64
-}
-
-// Sequencer chain output has the following structure
-// 0: amount constraint
-// 1: AddressED25519 lock constraint
-// 2: chain constraint
-// 4: sequencer constraint
-
-func MustValidSequencerOutput(chainOut *core.Output) {
-	chainOut.MustValidOutput()
-	switch chainOut.NumConstraints() {
-	case 3:
-		chainOut.MustHaveConstraintAnyOfAt(2, core.ChainConstraintName)
-	case 4:
-		chainOut.MustHaveConstraintAnyOfAt(2, core.ChainConstraintName)
-		chainOut.MustHaveConstraintAnyOfAt(3, core.SequencerConstraintName)
-	default:
-		util.Panicf("3 or 4 constraints expected")
+type (
+	MakeSequencerTransactionParams struct {
+		// sequencer name
+		SeqName string
+		// predecessor
+		ChainInput *core.OutputWithChainID
+		//
+		StemInput *core.OutputWithID // it is branch tx if != nil
+		// timestamp of the transaction
+		Timestamp core.LogicalTime
+		// minimum fee
+		MinimumFee uint64
+		// additional inputs to consume. Must be unlockable by chain
+		// can contain sender commands to the sequencer
+		AdditionalInputs []*core.OutputWithID
+		// additional outputs to produce
+		AdditionalOutputs []*core.Output
+		// Endorsements
+		Endorsements []*core.TransactionID
+		// chain controller
+		PrivateKey ed25519.PrivateKey
+		//
+		TotalSupply uint64
 	}
-}
+
+	// OutputData data which is on sequencer as 'or(..)' constraint. It is not enforced by the ledger, yet maintained
+	// by the sequencer
+	OutputData struct {
+		Description string // < 256
+		MinimumFee  uint64
+		ChainIndex  uint32
+		BranchIndex uint32
+	}
+)
 
 func MakeSequencerTransaction(par MakeSequencerTransactionParams) ([]byte, error) {
-	MustValidSequencerOutput(par.ChainInput.Output)
-
 	errP := util.MakeErrFuncForPrefix("MakeSequencerTransaction")
 
 	nIn := len(par.AdditionalInputs) + 1
@@ -107,15 +104,29 @@ func MakeSequencerTransaction(par MakeSequencerTransactionParams) ([]byte, error
 	}
 
 	chainConstraint = core.NewChainConstraint(seqID, chainPredIdx, chainConstraintIdx, 0)
-	sequencerConstraint := core.NewSequencerConstraint(chainConstraintIdx, par.MinimumFee)
+	sequencerConstraint := core.NewSequencerConstraint(chainConstraintIdx)
 
 	chainOut := core.NewOutput(func(o *core.Output) {
 		o.PutAmount(chainOutAmount)
 		o.PutLock(par.ChainInput.Output.Lock())
 		_, _ = o.PushConstraint(chainConstraint.Bytes())
 		_, _ = o.PushConstraint(sequencerConstraint.Bytes())
+		outData := ParseSequencerOutputData(par.ChainInput.Output)
+		if outData == nil {
+			outData = &OutputData{
+				Description: par.SeqName,
+				MinimumFee:  par.MinimumFee,
+				BranchIndex: 0,
+				ChainIndex:  0,
+			}
+		} else {
+			outData.ChainIndex += 1
+			if par.StemInput != nil {
+				outData.BranchIndex += 1
+			}
+		}
+		_, _ = o.PushConstraint(outData.AsConstraint().Bytes())
 	})
-	MustValidSequencerOutput(chainOut)
 
 	chainOutIndex, err := txb.ProduceOutput(chainOut)
 	if err != nil {
@@ -183,4 +194,63 @@ func MakeSequencerTransaction(par MakeSequencerTransactionParams) ([]byte, error
 	txb.SignED25519(par.PrivateKey)
 
 	return txb.TransactionData.Bytes(), nil
+}
+
+// ParseSequencerOutputData expected at index 4, otherwise nil
+func ParseSequencerOutputData(o *core.Output) *OutputData {
+	if o.NumConstraints() < 5 {
+		return nil
+	}
+	ret, err := OutputDataFromConstraint(o.ConstraintAt(4))
+	if err != nil {
+		return nil
+	}
+	return ret
+}
+
+func (od *OutputData) AsConstraint() core.Constraint {
+	dscrBin := []byte(od.Description)
+	if len(dscrBin) > 255 {
+		dscrBin = dscrBin[:256]
+	}
+	dscrBinStr := fmt.Sprintf("0x%s", hex.EncodeToString(dscrBin))
+	chainIndexStr := fmt.Sprintf("u32/%d", od.ChainIndex)
+	branchIndexStr := fmt.Sprintf("u32/%d", od.BranchIndex)
+	minFeeStr := fmt.Sprintf("u64/%d", od.MinimumFee)
+
+	src := fmt.Sprintf("or(%s)", strings.Join([]string{dscrBinStr, chainIndexStr, branchIndexStr, minFeeStr}, ","))
+	_, _, bytecode, err := easyfl.CompileExpression(src)
+	util.AssertNoError(err)
+
+	constr, err := core.ConstraintFromBytes(bytecode)
+	util.AssertNoError(err)
+
+	return constr
+}
+
+func OutputDataFromConstraint(constr []byte) (*OutputData, error) {
+	sym, _, args, err := easyfl.ParseBytecodeOneLevel(constr)
+	if err != nil {
+		return nil, err
+	}
+	if sym != "or" {
+		return nil, fmt.Errorf("sequencer.OutputDataFromConstraint: unexpected function '%s'", sym)
+	}
+	if len(args) != 4 {
+		return nil, fmt.Errorf("sequencer.OutputDataFromConstraint: expected exactly 4 arguments, got %d", len(args))
+	}
+	dscrBin := easyfl.StripDataPrefix(args[0])
+	chainIdxBin := easyfl.StripDataPrefix(args[1])
+	branchIdxBin := easyfl.StripDataPrefix(args[2])
+	minFeeBin := easyfl.StripDataPrefix(args[3])
+	if len(chainIdxBin) != 4 || len(branchIdxBin) != 4 || len(minFeeBin) != 8 {
+		return nil, fmt.Errorf("sequencer.OutputDataFromConstraint: unexpected argument sizes %d, %d, %d, %d",
+			len(args[0]), len(args[1]), len(args[2]), len(args[3]))
+	}
+	return &OutputData{
+		Description: string(dscrBin),
+		ChainIndex:  binary.BigEndian.Uint32(chainIdxBin),
+		BranchIndex: binary.BigEndian.Uint32(branchIdxBin),
+		MinimumFee:  binary.BigEndian.Uint64(minFeeBin),
+	}, nil
 }

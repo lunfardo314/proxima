@@ -99,13 +99,13 @@ func EqualAccountIDs(a1, a2 AccountID) bool {
 	return bytes.Equal(a1, a2)
 }
 
-func FromBytes(data []byte) (Constraint, error) {
+func ConstraintFromBytes(data []byte) (Constraint, error) {
 	prefix, err := easyfl.ParseBytecodePrefix(data)
 	if err != nil {
 		return nil, err
 	}
-	parser, ok := parserByPrefix(prefix)
-	if ok {
+
+	if parser, ok := parserByPrefix(prefix); ok {
 		return parser(data)
 	}
 	return NewGeneralScript(data), nil
