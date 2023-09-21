@@ -84,6 +84,10 @@ func MustNewUpdatable(store general.StateStore, root common.VCommitment) *Updata
 	return ret
 }
 
+func (u *Updatable) Desugar() general.IndexedStateReader {
+	return u.Readable()
+}
+
 func (u *Updatable) Readable() *Readable {
 	return &Readable{u.trie.TrieReader}
 }
@@ -94,6 +98,10 @@ func (r *Readable) GetUTXO(oid *core.OutputID) ([]byte, bool) {
 		return nil, false
 	}
 	return ret, true
+}
+
+func (r *Readable) Desugar() general.IndexedStateReader {
+	return r
 }
 
 func (r *Readable) HasUTXO(oid *core.OutputID) bool {
@@ -173,7 +181,7 @@ func (r *Readable) GetStem() (core.TimeSlot, []byte) {
 	return retSlot, retBytes
 }
 
-func (r *Readable) StateIdentityBytes() []byte {
+func (r *Readable) MustStateIdentityBytes() []byte {
 	return r.trie.Get(nil)
 }
 

@@ -8,7 +8,8 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/general"
-	state "github.com/lunfardo314/proxima/multistate"
+	"github.com/lunfardo314/proxima/genesis"
+	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/sequencer"
 	"github.com/lunfardo314/proxima/txstore"
 	"github.com/lunfardo314/proxima/utangle"
@@ -142,15 +143,36 @@ func (p *ProximaNode) startTxStore() {
 	}
 }
 
+// MustCompatibleStateBootstrapData branches of the latest slot sorted by coverage descending
+func mustReadStateIdentity(store general.StateStore) {
+	rootRecords := multistate.FetchRootRecords(store, multistate.FetchLatestSlot(store))
+	util.Assertf(len(rootRecords) > 0, "at least on root record expected")
+	stateReader, err := multistate.NewSugaredReadableState(store, rootRecords[0].Root)
+	util.AssertNoError(err)
+
+	// it will panic if constraint libraries are incompatible
+	genesis.MustStateIdentityDataFromBytes(stateReader.MustStateIdentityBytes())
+}
+
 func (p *ProximaNode) loadUTXOTangle() {
 	stateStore := badger_adaptor.New(p.multiStateDB)
+
+	err := util.CatchPanicOrError(func() error {
+		mustReadStateIdentity(stateStore)
+		return nil
+	})
+	if err != nil {
+		p.log.Errorf("can't read state indentity: '%v'", err)
+		p.Stop()
+		os.Exit(1)
+	}
 	p.uTangle = utangle.Load(stateStore, p.txStore)
 	latestSlot := p.uTangle.LatestTimeSlot()
 	currentSlot := core.LogicalTimeNow().TimeSlot()
 	p.log.Infof("current time slot: %d, latest time slot in the multi-state: %d, lagging behind: %d slots",
 		currentSlot, latestSlot, currentSlot-latestSlot)
 
-	branches := state.FetchLatestBranches(stateStore)
+	branches := multistate.FetchLatestBranches(stateStore)
 	p.log.Infof("latest time slot %d contains %d branches", latestSlot, len(branches))
 	for _, br := range branches {
 		txid := br.Stem.ID.TransactionID()

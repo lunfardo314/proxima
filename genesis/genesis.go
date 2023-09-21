@@ -132,7 +132,7 @@ func ScanGenesisState(stateStore general.StateStore) (*StateIdentityData, common
 
 	branchData := multistate.FetchBranchData(stateStore, genesisRootRecord)
 	rdr := multistate.MustNewSugaredReadableState(stateStore, branchData.Root)
-	stateID := MustStateIdentityDataFromBytes(rdr.StateIdentityBytes())
+	stateID := MustStateIdentityDataFromBytes(rdr.MustStateIdentityBytes())
 
 	genesisOid := InitialSupplyOutputID(stateID.GenesisTimeSlot)
 	out, err := rdr.GetOutput(&genesisOid)

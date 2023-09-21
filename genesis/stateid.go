@@ -1,11 +1,14 @@
 package genesis
 
 import (
+	"bytes"
 	"crypto/ed25519"
 	"encoding/binary"
+	"encoding/hex"
 	"fmt"
 	"time"
 
+	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/general"
 	"github.com/lunfardo314/proxima/util"
@@ -30,6 +33,8 @@ type StateIdentityData struct {
 	MaxTimeTickValueInTimeSlot uint8
 	// time slot of the genesis
 	GenesisTimeSlot core.TimeSlot
+	// core constraint library hash. For checking of ledger version compatibility with the node
+	CoreLibraryHash [32]byte
 }
 
 const (
@@ -56,17 +61,23 @@ func (id *StateIdentityData) Bytes() []byte {
 		timeTickDurationBin[:],        // 4
 		maxTickBin[:],                 // 5
 		genesisTimesSlotBin[:],        // 6
+		id.CoreLibraryHash[:],         // 7
 	).Bytes()
 }
 
 func MustStateIdentityDataFromBytes(data []byte) *StateIdentityData {
-	arr, err := lazybytes.ParseArrayFromBytesReadOnly(data, 7)
+	arr, err := lazybytes.ParseArrayFromBytesReadOnly(data, 8)
 	util.AssertNoError(err)
 	publicKey := ed25519.PublicKey(arr.At(2))
 	util.Assertf(len(publicKey) == ed25519.PublicKeySize, "len(publicKey)==ed25519.PublicKeySize")
 	maxTick := arr.At(5)
 	util.Assertf(len(maxTick) == 1, "len(maxTick)==1")
-	return &StateIdentityData{
+
+	libraryHash := easyfl.LibraryHash()
+	msg := "node's constraint library is incompatible with the multi-state identity\nExpected library hash %s, got %s"
+	util.Assertf(bytes.Equal(libraryHash[:], arr.At(7)), msg, hex.EncodeToString(libraryHash[:]), hex.EncodeToString(arr.At(7)))
+
+	ret := &StateIdentityData{
 		Description:                string(arr.At(0)),
 		InitialSupply:              binary.BigEndian.Uint64(arr.At(1)),
 		GenesisControllerPublicKey: publicKey,
@@ -75,6 +86,8 @@ func MustStateIdentityDataFromBytes(data []byte) *StateIdentityData {
 		MaxTimeTickValueInTimeSlot: maxTick[0],
 		GenesisTimeSlot:            core.MustTimeSlotFromBytes(arr.At(6)),
 	}
+	copy(ret.CoreLibraryHash[:], arr.At(7))
+	return ret
 }
 
 func (id *StateIdentityData) GenesisControlledAddress() core.AddressED25519 {
@@ -119,6 +132,7 @@ func DefaultIdentityData(privateKey ed25519.PrivateKey, slot ...core.TimeSlot) *
 		sl = core.LogicalTimeNow().TimeSlot()
 	}
 	return &StateIdentityData{
+		CoreLibraryHash:            easyfl.LibraryHash(),
 		Description:                fmt.Sprintf("Proxima prototype version %s", general.Version),
 		InitialSupply:              DefaultSupply,
 		GenesisControllerPublicKey: privateKey.Public().(ed25519.PublicKey),

@@ -15,7 +15,7 @@ type (
 		GetUTXOsLockedInAccount(accountID core.AccountID) ([]*core.OutputDataWithID, error)
 		GetUTXOForChainID(id *core.ChainID) (*core.OutputDataWithID, error)
 		Root() common.VCommitment
-		StateIdentityBytes() []byte
+		MustStateIdentityBytes() []byte // either state identity consistent or panic
 	}
 
 	// IndexedStateReader state and indexer readers packing together

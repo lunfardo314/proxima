@@ -6,7 +6,7 @@ import (
 
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/general"
-	state "github.com/lunfardo314/proxima/multistate"
+	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/set"
@@ -78,7 +78,7 @@ func newUTXOTangle(stateStore general.StateStore, txBytesStore general.TxBytesSt
 func Load(stateStore general.StateStore, txBytesStore general.TxBytesStore) *UTXOTangle {
 	ret := newUTXOTangle(stateStore, txBytesStore)
 	// fetch branches of the latest slot
-	branches := state.FetchLatestBranches(stateStore)
+	branches := multistate.FetchLatestBranches(stateStore)
 
 	for _, br := range branches {
 		// make a virtual transaction
@@ -91,7 +91,7 @@ func Load(stateStore general.StateStore, txBytesStore general.TxBytesStore) *UTX
 	return ret
 }
 
-func newVirtualBranchTx(br *state.BranchData) *VirtualTransaction {
+func newVirtualBranchTx(br *multistate.BranchData) *VirtualTransaction {
 	txid := br.Stem.ID.TransactionID()
 	v := newVirtualTx(&txid)
 	v.addSequencerIndices(br.SeqOutput.ID.Index(), br.Stem.ID.Index())
@@ -272,11 +272,11 @@ func (ut *UTXOTangle) finalizeBranch(newBranchVertex *WrappedTx) error {
 			}
 			util.Assertf(ok, "finalizeBranch %s: can't find previous branch %s", newBranchVertex.IDShort(), v.StateDelta.baselineBranch.IDShort())
 
-			upd := state.MustNewUpdatable(ut.stateStore, prevBranch.root)
+			upd := multistate.MustNewUpdatable(ut.stateStore, prevBranch.root)
 			cmds := v.StateDelta.getUpdateCommands()
 			err = upd.UpdateWithCommands(cmds, &nextStemOutputID, &seqData.SequencerID, coverage)
 			util.Assertf(err == nil, "finalizeBranch %s: '%v'\n=== Delta: %s\n=== Commands: %s",
-				v.Tx.IDShort(), err, v.StateDelta.LinesRecursive().String(), state.UpdateCommandsToLines(cmds))
+				v.Tx.IDShort(), err, v.StateDelta.LinesRecursive().String(), multistate.UpdateCommandsToLines(cmds))
 			newRoot = upd.Root()
 		},
 
@@ -289,7 +289,7 @@ func (ut *UTXOTangle) finalizeBranch(newBranchVertex *WrappedTx) error {
 	}
 
 	// assert consistency
-	rdr, err := state.NewSugaredReadableState(ut.stateStore, newRoot)
+	rdr, err := multistate.NewSugaredReadableState(ut.stateStore, newRoot)
 	util.AssertNoError(err)
 	util.Assertf(rdr.GetStemOutput().ID == nextStemOutputID, "rdr.GetStemOutput().ID == nextStemOutputID")
 

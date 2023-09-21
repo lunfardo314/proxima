@@ -56,7 +56,7 @@ func runDbInfoCmd(_ *cobra.Command, _ []string) {
 	reader, err := multistate.NewSugaredReadableState(stateStore, branchData[0].Root)
 	console.AssertNoError(err)
 
-	id := genesis.MustStateIdentityDataFromBytes(reader.StateIdentityBytes())
+	id := genesis.MustStateIdentityDataFromBytes(reader.MustStateIdentityBytes())
 
 	console.Infof("\n----------------- Ledger state identity ----------------")
 	console.Infof("%s", id.String())

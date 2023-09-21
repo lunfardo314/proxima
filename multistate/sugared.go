@@ -32,6 +32,10 @@ func MustNewSugaredReadableState(store common.KVReader, root common.VCommitment)
 	return ret
 }
 
+func (s SugaredStateReader) Desugar() general.IndexedStateReader {
+	return s.IndexedStateReader
+}
+
 func (s SugaredStateReader) GetOutputWithID(oid *core.OutputID) (*core.OutputWithID, error) {
 	oData, found := s.IndexedStateReader.GetUTXO(oid)
 	if !found {

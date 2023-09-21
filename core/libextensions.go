@@ -2,6 +2,7 @@ package core
 
 import (
 	"encoding/binary"
+	"encoding/hex"
 	"fmt"
 
 	"github.com/lunfardo314/easyfl"
@@ -272,6 +273,9 @@ func init() {
 	initSequencerConstraint()
 
 	runCommonUnitTests()
+
+	libraryHash := easyfl.LibraryHash()
+	fmt.Printf("Core constraint library hash is: %s\n", hex.EncodeToString(libraryHash[:]))
 }
 
 // DataContext is the data structure passed to the eval call. It contains:
