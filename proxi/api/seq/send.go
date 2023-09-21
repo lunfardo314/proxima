@@ -9,31 +9,28 @@ import (
 
 const defaultAmount = 1_000_000
 
-var (
-	sendAmount uint64
-)
-
-func initSeqSendCmd(seqCmd *cobra.Command) {
+func initSeqWithdrawCmd(seqCmd *cobra.Command) {
 	seqSendCmd := &cobra.Command{
-		Use:   "send <target lock>",
-		Short: `sends tokens from sequencer to the target lock`,
-		Args:  cobra.ExactArgs(1),
-		Run:   runSeqSendCmd,
+		Use:     "withdraw <target lock>",
+		Aliases: util.List("send"),
+		Short:   `withdraw tokens from sequencer to the target lock`,
+		Args:    cobra.ExactArgs(1),
+		Run:     runSeqWithdrawCmd,
 	}
 
-	seqSendCmd.Flags().Uint64P("amount", "a", defaultAmount, "amount to send from sequencer")
+	seqSendCmd.Flags().Uint64P("amount", "a", defaultAmount, "amount to withdraw/send from sequencer")
 	err := viper.BindPFlag("amount", seqSendCmd.Flags().Lookup("amount"))
 	console.AssertNoError(err)
 
-	seqSendCmd.Flags().BoolP("force_send", "f", false, "force send")
-	err = viper.BindPFlag("force_send", seqSendCmd.Flags().Lookup("force_send"))
+	seqSendCmd.Flags().BoolP("force_withdraw", "f", false, "force withdraw")
+	err = viper.BindPFlag("force_withdraw", seqSendCmd.Flags().Lookup("force_withdraw"))
 	console.AssertNoError(err)
 
 	seqSendCmd.InitDefaultHelpCmd()
 	seqCmd.AddCommand(seqSendCmd)
 }
 
-func runSeqSendCmd(_ *cobra.Command, args []string) {
+func runSeqWithdrawCmd(_ *cobra.Command, args []string) {
 	console.Infof("sequencer ID (source): %s", getSequencerID().String())
 	targetLock := mustGetTargetAccount()
 	console.Infof("target lock: %s", targetLock.String())

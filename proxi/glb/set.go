@@ -1,4 +1,4 @@
-package config
+package glb
 
 import (
 	"github.com/lunfardo314/proxima/proxi/console"

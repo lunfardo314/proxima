@@ -69,8 +69,7 @@ func zeroTickOnBranchOnly : or(
 	isBranchTransaction
 )
 
-// $0 is chain constraint sibling index
-// 0xff value means it is genesis output. 
+// $0 is chain constraint sibling index. 0xff value means it is genesis output. 
 // $1 u64 minimum fee accepted by the sequencer
 func sequencer: and(
 	mustSize($0,1),

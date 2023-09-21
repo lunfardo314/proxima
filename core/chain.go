@@ -222,7 +222,7 @@ func chainID : slice($0, 0, 31)
 func transitionMode: byte($0, 34)
 func predecessorConstraintIndex : slice($0, 32, 33) // 2 bytes
 
-// accessing to predecessor data
+// accessing predecessor data
 func predecessorInputID : inputIDByIndex(byte($0,32))
 
 // unlock parameters for the chain constraint. 3 bytes: 

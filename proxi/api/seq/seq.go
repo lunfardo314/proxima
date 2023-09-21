@@ -3,8 +3,8 @@ package api
 import (
 	"github.com/lunfardo314/proxima/api/client"
 	"github.com/lunfardo314/proxima/core"
-	"github.com/lunfardo314/proxima/proxi/config"
 	"github.com/lunfardo314/proxima/proxi/console"
+	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -27,7 +27,7 @@ func Init(apiCmd *cobra.Command) {
 	err := viper.BindPFlag("sequencer.id", seqCmd.PersistentFlags().Lookup("sequencer.id"))
 	console.AssertNoError(err)
 
-	initSeqSendCmd(seqCmd)
+	initSeqWithdrawCmd(seqCmd)
 	seqCmd.InitDefaultHelpCmd()
 	apiCmd.AddCommand(seqCmd)
 }
@@ -45,7 +45,7 @@ func getClient() *client.APIClient {
 func mustGetTargetAccount() core.Lock {
 	str := viper.GetString("target")
 	if str == "" {
-		ownPrivateKey := config.GetPrivateKey()
+		ownPrivateKey := glb.GetPrivateKey()
 		util.Assertf(ownPrivateKey != nil, "private key undefined")
 		ret := core.AddressED25519FromPrivateKey(ownPrivateKey)
 		console.Infof("own account will be used as target: %s", ret.String())

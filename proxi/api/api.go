@@ -8,10 +8,6 @@ import (
 	"github.com/spf13/viper"
 )
 
-var (
-	serverEndpoint string
-)
-
 func Init(rootCmd *cobra.Command) {
 	apiCmd := &cobra.Command{
 		Use:   "api [<subcommand>]",
@@ -19,7 +15,7 @@ func Init(rootCmd *cobra.Command) {
 		Args:  cobra.MaximumNArgs(1),
 	}
 
-	apiCmd.PersistentFlags().StringVar(&serverEndpoint, "api.endpoint", "", "<DNS name>:port")
+	apiCmd.PersistentFlags().String("api.endpoint", "", "<DNS name>:port")
 	err := viper.BindPFlag("api.endpoint", apiCmd.PersistentFlags().Lookup("api.endpoint"))
 	console.AssertNoError(err)
 

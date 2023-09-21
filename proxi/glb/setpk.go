@@ -1,4 +1,4 @@
-package config
+package glb
 
 import (
 	"crypto/ed25519"
@@ -81,29 +81,4 @@ func runSetKeyCommand(_ *cobra.Command, args []string) {
 		console.Infof("Private key has been generated. ED25519 address is: %s", addr)
 	}
 	SetKeyValue("private_key", hex.EncodeToString(privateKey))
-}
-
-func GetPrivateKey() ed25519.PrivateKey {
-	privateKeyStr := viper.GetString("private_key")
-	ret, err := util.ED25519PrivateKeyFromHexString(privateKeyStr)
-	console.AssertNoError(err)
-	return ret
-}
-
-func AddressBytes() []byte {
-	privateKey := GetPrivateKey()
-	if len(privateKey) == 0 {
-		return nil
-	}
-	publicKey := privateKey.Public().(ed25519.PublicKey)
-	address := blake2b.Sum256(publicKey)
-	return address[:]
-}
-
-func AddressHex() string {
-	addr := AddressBytes()
-	if len(addr) == 0 {
-		return "(unknown)"
-	}
-	return hex.EncodeToString(addr)
 }

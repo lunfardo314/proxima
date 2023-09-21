@@ -6,9 +6,9 @@ import (
 	"strings"
 
 	"github.com/lunfardo314/proxima/proxi/api"
-	"github.com/lunfardo314/proxima/proxi/config"
 	"github.com/lunfardo314/proxima/proxi/console"
 	"github.com/lunfardo314/proxima/proxi/db"
+	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/proxi/info_cmd"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -17,7 +17,7 @@ import (
 func init() {
 	initRootCmd()
 	console.Init(rootCmd)
-	config.Init(rootCmd)
+	glb.Init(rootCmd)
 	info_cmd.Init(rootCmd)
 	db.Init(rootCmd)
 	api.Init(rootCmd)
@@ -77,7 +77,7 @@ It provides:
 		},
 	}
 
-	rootCmd.PersistentFlags().StringVarP(&config.ConfigName, "config", "c", "", "config file (default is proxi.yaml)")
+	rootCmd.PersistentFlags().StringVarP(&glb.ConfigName, "config", "c", "", "config file (default is proxi.yaml)")
 
 	rootCmd.PersistentFlags().String("private_key", "", "an ED25519 private key in hexadecimal")
 	err := viper.BindPFlag("private_key", rootCmd.PersistentFlags().Lookup("private_key"))

@@ -6,8 +6,8 @@ import (
 	"github.com/dgraph-io/badger/v4"
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/genesis"
-	"github.com/lunfardo314/proxima/proxi/config"
 	"github.com/lunfardo314/proxima/proxi/console"
+	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/txstore"
 	"github.com/lunfardo314/proxima/util"
@@ -68,7 +68,7 @@ func runDBDistributeCmd(_ *cobra.Command, args []string) {
 		return
 	}
 
-	txBytes, err := genesis.DistributeInitialSupply(stateStore, config.GetPrivateKey(), distribution)
+	txBytes, err := genesis.DistributeInitialSupply(stateStore, glb.GetPrivateKey(), distribution)
 	console.AssertNoError(err)
 
 	txID, _, err := transaction.IDAndTimestampFromTransactionBytes(txBytes)

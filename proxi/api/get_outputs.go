@@ -1,13 +1,12 @@
 package api
 
 import (
-	"github.com/lunfardo314/proxima/core"
-	"github.com/lunfardo314/proxima/proxi/config"
+	"encoding/hex"
+
 	"github.com/lunfardo314/proxima/proxi/console"
-	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/util/txutils"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 )
 
 func initGetOutputsCmd(apiCmd *cobra.Command) {
@@ -22,22 +21,8 @@ func initGetOutputsCmd(apiCmd *cobra.Command) {
 	apiCmd.AddCommand(getOutputsCmd)
 }
 
-func mustGetAccount() core.Accountable {
-	str := viper.GetString("target")
-	if str == "" {
-		ownPrivateKey := config.GetPrivateKey()
-		util.Assertf(ownPrivateKey != nil, "private key undefined")
-		ret := core.AddressED25519FromPrivateKey(ownPrivateKey)
-		console.Infof("own account will be used: %s", ret.String())
-		return ret
-	}
-	accountable, err := core.AccountableFromSource(str)
-	console.AssertNoError(err)
-	return accountable
-}
-
 func runGetOutputsCmd(_ *cobra.Command, _ []string) {
-	accountable := mustGetAccount()
+	accountable := glb.MustGetTarget()
 
 	oData, err := getClient().GetAccountOutputs(accountable)
 	console.AssertNoError(err)
@@ -48,5 +33,6 @@ func runGetOutputsCmd(_ *cobra.Command, _ []string) {
 	console.Infof("%d outputs locked in the account %s", len(outs), accountable.String())
 	for _, o := range outs {
 		console.Infof(o.String())
+		console.Verbosef("Raw bytes: %s", hex.EncodeToString(o.Output.Bytes()))
 	}
 }

@@ -7,8 +7,8 @@ import (
 	"github.com/dgraph-io/badger/v4"
 	"github.com/lunfardo314/proxima/general"
 	"github.com/lunfardo314/proxima/genesis"
-	"github.com/lunfardo314/proxima/proxi/config"
 	"github.com/lunfardo314/proxima/proxi/console"
+	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/unitrie/adaptors/badger_adaptor"
 	"github.com/spf13/cobra"
@@ -47,7 +47,7 @@ func runInfoCmd(_ *cobra.Command, _ []string) {
 	}
 
 	console.Infof("Proxi config profile: %s", viper.ConfigFileUsed())
-	console.Infof("Controlling address: %s", config.AddressHex())
+	console.Infof("Controlling address: %s", glb.AddressHex())
 	console.Infof("State DB name: %s", stateDbName)
 	console.Infof("Transaction store DB name: %s", txStoreDbName)
 

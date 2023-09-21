@@ -10,8 +10,8 @@ import (
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/general"
 	"github.com/lunfardo314/proxima/genesis"
-	"github.com/lunfardo314/proxima/proxi/config"
 	"github.com/lunfardo314/proxima/proxi/console"
+	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/unitrie/adaptors/badger_adaptor"
 	"github.com/spf13/cobra"
@@ -40,7 +40,7 @@ func initDbGenesis(dbCmd *cobra.Command) {
 }
 
 func runGenesis(_ *cobra.Command, args []string) {
-	address := config.AddressBytes()
+	address := glb.AddressBytes()
 	if len(address) == 0 {
 		console.Fatalf("private key not set. Use 'proxi setpk'")
 	}
@@ -62,7 +62,7 @@ func runGenesis(_ *cobra.Command, args []string) {
 	console.Infof("Description: '%s'", description)
 	nowisTs := core.LogicalTimeFromTime(nowis)
 	console.Infof("Genesis time slot: %d", nowisTs.TimeSlot())
-	console.Infof("Genesis controller address: %s", config.AddressHex())
+	console.Infof("Genesis controller address: %s", glb.AddressHex())
 
 	if !console.YesNoPrompt(fmt.Sprintf("Create Proxima genesis '%s' and transactions store '%s'?", dbName, txStoreName), true) {
 		console.Fatalf("exit: genesis database wasn't created")
@@ -73,7 +73,7 @@ func runGenesis(_ *cobra.Command, args []string) {
 	bootstrapChainID, _ := genesis.InitLedgerState(genesis.StateIdentityData{
 		Description:                description,
 		InitialSupply:              supply,
-		GenesisControllerPublicKey: config.GetPrivateKey().Public().(ed25519.PublicKey),
+		GenesisControllerPublicKey: glb.GetPrivateKey().Public().(ed25519.PublicKey),
 		BaselineTime:               core.BaselineTime,
 		TimeTickDuration:           core.TimeTickDuration(),
 		MaxTimeTickValueInTimeSlot: core.TimeTicksPerSlot - 1,
@@ -88,8 +88,8 @@ func runGenesis(_ *cobra.Command, args []string) {
 
 	console.Infof("Transaction store DB '%s' has been created successfully", dbName)
 
-	config.SetKeyValue(general.ConfigKeyMultiStateDbName, dbName)
-	config.SetKeyValue(general.ConfigKeyTxStoreName, txStoreName)
+	glb.SetKeyValue(general.ConfigKeyMultiStateDbName, dbName)
+	glb.SetKeyValue(general.ConfigKeyTxStoreName, txStoreName)
 }
 
 func mustNotExist(dir string) {

@@ -15,9 +15,9 @@ func Init(rootCmd *cobra.Command) {
 	err := viper.BindPFlag("verbose", rootCmd.PersistentFlags().Lookup("verbose"))
 	AssertNoError(err)
 
-	rootCmd.PersistentFlags().BoolP("debug", "d", false, "verbose")
-	err = viper.BindPFlag("debug", rootCmd.PersistentFlags().Lookup("debug"))
-	AssertNoError(err)
+	//rootCmd.PersistentFlags().BoolP("debug", "d", false, "verbose")
+	//err = viper.BindPFlag("debug", rootCmd.PersistentFlags().Lookup("debug"))
+	//AssertNoError(err)
 }
 
 func Printf(format string, args ...any) {
