@@ -69,18 +69,12 @@ func (p *ProximaNode) Stop() {
 func (p *ProximaNode) stop() {
 	p.log.Info("stopping the node..")
 	if p.multiStateDB != nil {
-		if err := p.multiStateDB.Close(); err == nil {
-			p.log.Infof("multi-state database has been closed")
-		} else {
-			p.log.Warnf("error while closing multi-state database: %v", err)
-		}
+		_ = p.multiStateDB.Close()
+		p.log.Infof("multi-state database has been closed")
 	}
 	if p.txStoreDB != nil {
-		if err := p.txStoreDB.Close(); err == nil {
-			p.log.Infof("transaction store database has been closed")
-		} else {
-			p.log.Warnf("error while closing transaction store database: %v", err)
-		}
+		_ = p.txStoreDB.Close()
+		p.log.Infof("transaction store database has been closed")
 	}
 
 	p.stopApiServer()
