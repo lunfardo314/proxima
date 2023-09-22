@@ -9,7 +9,6 @@ import (
 
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/general"
-	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/utangle"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/workflow"
@@ -27,7 +26,7 @@ type (
 		exit                 atomic.Bool
 		stopWG               sync.WaitGroup
 		stopOnce             sync.Once
-		onMilestoneSubmitted func(seq *Sequencer, vid *utangle.WrappedTx)
+		onMilestoneSubmitted func(seq *Sequencer, vid *utangle.WrappedOutput)
 		infoMutex            sync.RWMutex
 		info                 Info
 		traceNAhead          atomic.Int64
@@ -63,8 +62,6 @@ type (
 	ConfigOpt func(options *ConfigOptions)
 
 	Info struct {
-		MsCounter              int
-		BranchCounter          int
 		In                     int
 		Out                    int
 		NumConsumedFeeOutputs  int
@@ -117,8 +114,8 @@ func StartNew(par Params, opts ...ConfigOpt) (*Sequencer, error) {
 		log: general.NewLogger(logName, cfg.LogLevel, cfg.LogOutputs, cfg.LogTimeLayout),
 	}
 
-	ret.onMilestoneSubmitted = func(seq *Sequencer, vid *utangle.WrappedTx) {
-		seq.LogMilestoneSubmitDefault(vid)
+	ret.onMilestoneSubmitted = func(seq *Sequencer, wOut *utangle.WrappedOutput) {
+		seq.LogMilestoneSubmitDefault(wOut)
 	}
 	ret.log.Infof("sequencer pace is %d time slots (%v)",
 		ret.config.Pace, time.Duration(ret.config.Pace)*core.TransactionTimePaceDuration())
@@ -237,16 +234,8 @@ func (seq *Sequencer) setTraceAhead(n int64) {
 	seq.traceNAhead.Store(n)
 }
 
-func (seq *Sequencer) OnMilestoneSubmitted(fun func(seq *Sequencer, vid *utangle.WrappedTx)) {
+func (seq *Sequencer) OnMilestoneSubmitted(fun func(seq *Sequencer, vid *utangle.WrappedOutput)) {
 	seq.onMilestoneSubmitted = fun
-}
-
-func (seq *Sequencer) OnMilestoneTransactionSubmitted(fun func(seq *Sequencer, tx *transaction.Transaction)) {
-	seq.onMilestoneSubmitted = func(seq *Sequencer, vid *utangle.WrappedTx) {
-		vid.Unwrap(utangle.UnwrapOptions{Vertex: func(v *utangle.Vertex) {
-			fun(seq, v.Tx)
-		}})
-	}
 }
 
 func (seq *Sequencer) trace(format string, args ...any) {
@@ -402,7 +391,7 @@ func (seq *Sequencer) mainLoop() {
 			branchCount++
 		}
 		seq.setLastMilestone(*msOutput)
-		seq.onMilestoneSubmitted(seq, msOutput.VID)
+		seq.onMilestoneSubmitted(seq, msOutput)
 	}
 	seq.stopWG.Done()
 }

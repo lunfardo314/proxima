@@ -391,12 +391,12 @@ func Test1Sequencer(t *testing.T) {
 		require.NoError(t, err)
 
 		var allFeeInputsConsumed atomic.Bool
-		seq.OnMilestoneSubmitted(func(seq *sequencer.Sequencer, vid *utangle.WrappedTx) {
-			seq.LogMilestoneSubmitDefault(vid)
+		seq.OnMilestoneSubmitted(func(seq *sequencer.Sequencer, wOut *utangle.WrappedOutput) {
+			seq.LogMilestoneSubmitDefault(wOut)
 			if seq.Info().NumConsumedFeeOutputs >= numFaucetTransactions {
 				allFeeInputsConsumed.Store(true)
 			}
-			if allFeeInputsConsumed.Load() && vid.IsBranchTransaction() {
+			if allFeeInputsConsumed.Load() && wOut.VID.IsBranchTransaction() {
 				go seq.Stop()
 			}
 		})
@@ -471,12 +471,12 @@ func Test1Sequencer(t *testing.T) {
 		require.NoError(t, err)
 
 		var allFeeInputsConsumed atomic.Bool
-		seq.OnMilestoneSubmitted(func(seq *sequencer.Sequencer, vid *utangle.WrappedTx) {
-			seq.LogMilestoneSubmitDefault(vid)
+		seq.OnMilestoneSubmitted(func(seq *sequencer.Sequencer, wOut *utangle.WrappedOutput) {
+			seq.LogMilestoneSubmitDefault(wOut)
 			if seq.Info().NumConsumedFeeOutputs >= numFaucetTransactions*numFaucets {
 				allFeeInputsConsumed.Store(true)
 			}
-			if allFeeInputsConsumed.Load() && vid.IsBranchTransaction() {
+			if allFeeInputsConsumed.Load() && wOut.VID.IsBranchTransaction() {
 				go seq.Stop()
 			}
 		})
@@ -663,13 +663,13 @@ func TestNSequencers(t *testing.T) {
 		var allFeeInputsConsumed atomic.Bool
 		branchesAfterAllConsumed := 0
 		cnt := 0
-		r.bootstrapSeq.OnMilestoneSubmitted(func(seq *sequencer.Sequencer, vid *utangle.WrappedTx) {
-			seq.LogMilestoneSubmitDefault(vid)
+		r.bootstrapSeq.OnMilestoneSubmitted(func(seq *sequencer.Sequencer, wOut *utangle.WrappedOutput) {
+			seq.LogMilestoneSubmitDefault(wOut)
 			cnt++
 			if seq.Info().NumConsumedFeeOutputs >= numFaucetTransactions*numFaucets {
 				allFeeInputsConsumed.Store(true)
 			}
-			if allFeeInputsConsumed.Load() && vid.IsBranchTransaction() {
+			if allFeeInputsConsumed.Load() && wOut.VID.IsBranchTransaction() {
 				branchesAfterAllConsumed++
 			}
 			if branchesAfterAllConsumed >= stopAfterBranches {
@@ -734,13 +734,13 @@ func TestNSequencers(t *testing.T) {
 		var allFeeInputsConsumed atomic.Bool
 		branchesAfterAllConsumed := 0
 		cnt := 0
-		r.bootstrapSeq.OnMilestoneSubmitted(func(seq *sequencer.Sequencer, vid *utangle.WrappedTx) {
-			seq.LogMilestoneSubmitDefault(vid)
+		r.bootstrapSeq.OnMilestoneSubmitted(func(seq *sequencer.Sequencer, wOut *utangle.WrappedOutput) {
+			seq.LogMilestoneSubmitDefault(wOut)
 			cnt++
 			if seq.Info().NumConsumedFeeOutputs >= numTxPerFaucet*numFaucets {
 				allFeeInputsConsumed.Store(true)
 			}
-			if allFeeInputsConsumed.Load() && vid.IsBranchTransaction() {
+			if allFeeInputsConsumed.Load() && wOut.VID.IsBranchTransaction() {
 				branchesAfterAllConsumed++
 			}
 			if branchesAfterAllConsumed >= stopAfterBranches {
@@ -847,13 +847,13 @@ func TestNSequencers(t *testing.T) {
 		var glbMutex sync.Mutex
 		totalAmountToTargetAddress := uint64(0)
 		branchCount := 0
-		r.bootstrapSeq.OnMilestoneSubmitted(func(seq *sequencer.Sequencer, vid *utangle.WrappedTx) {
-			seq.LogMilestoneSubmitDefault(vid)
+		r.bootstrapSeq.OnMilestoneSubmitted(func(seq *sequencer.Sequencer, wOut *utangle.WrappedOutput) {
+			seq.LogMilestoneSubmitDefault(wOut)
 			cnt++
 			if seq.Info().NumConsumedFeeOutputs >= numTxPerFaucet*numFaucets {
 				allFeeInputsConsumed.Store(true)
 			}
-			if allFeeInputsConsumed.Load() && vid.IsBranchTransaction() {
+			if allFeeInputsConsumed.Load() && wOut.VID.IsBranchTransaction() {
 				branchesAfterAllConsumed++
 			}
 			if branchesAfterAllConsumed >= stopAfterBranches {
@@ -862,7 +862,7 @@ func TestNSequencers(t *testing.T) {
 				return
 			}
 
-			if vid.IsBranchTransaction() {
+			if wOut.VID.IsBranchTransaction() {
 				if branchCount < stopAfterBranches/2 {
 					// issue transfers
 					glbMutex.Lock()
@@ -935,13 +935,13 @@ func TestNSequencers(t *testing.T) {
 		var allFeeInputsConsumed atomic.Bool
 		branchesAfterAllConsumed := 0
 		cnt := 0
-		r.bootstrapSeq.OnMilestoneSubmitted(func(seq *sequencer.Sequencer, vid *utangle.WrappedTx) {
-			seq.LogMilestoneSubmitDefault(vid)
+		r.bootstrapSeq.OnMilestoneSubmitted(func(seq *sequencer.Sequencer, wOut *utangle.WrappedOutput) {
+			seq.LogMilestoneSubmitDefault(wOut)
 			cnt++
 			if seq.Info().NumConsumedFeeOutputs >= numFaucetTransactions*numFaucets {
 				allFeeInputsConsumed.Store(true)
 			}
-			if allFeeInputsConsumed.Load() && vid.IsBranchTransaction() {
+			if allFeeInputsConsumed.Load() && wOut.VID.IsBranchTransaction() {
 				branchesAfterAllConsumed++
 			}
 			if branchesAfterAllConsumed >= stopAfterBranches {
@@ -1003,13 +1003,13 @@ func TestNSequencers(t *testing.T) {
 		var allFeeInputsConsumed atomic.Bool
 		branchesAfterAllConsumed := 0
 		cnt := 0
-		r.bootstrapSeq.OnMilestoneSubmitted(func(seq *sequencer.Sequencer, vid *utangle.WrappedTx) {
-			seq.LogMilestoneSubmitDefault(vid)
+		r.bootstrapSeq.OnMilestoneSubmitted(func(seq *sequencer.Sequencer, wOut *utangle.WrappedOutput) {
+			seq.LogMilestoneSubmitDefault(wOut)
 			cnt++
 			if seq.Info().NumConsumedFeeOutputs >= numFaucetTransactions*numFaucets {
 				allFeeInputsConsumed.Store(true)
 			}
-			if allFeeInputsConsumed.Load() && vid.IsBranchTransaction() {
+			if allFeeInputsConsumed.Load() && wOut.VID.IsBranchTransaction() {
 				branchesAfterAllConsumed++
 			}
 			if branchesAfterAllConsumed >= stopAfterBranches {
@@ -1076,13 +1076,13 @@ func TestPruning(t *testing.T) {
 		var allFeeInputsConsumed atomic.Bool
 		branchesAfterAllConsumed := 0
 		cnt := 0
-		r.bootstrapSeq.OnMilestoneSubmitted(func(seq *sequencer.Sequencer, vid *utangle.WrappedTx) {
-			seq.LogMilestoneSubmitDefault(vid)
+		r.bootstrapSeq.OnMilestoneSubmitted(func(seq *sequencer.Sequencer, wOut *utangle.WrappedOutput) {
+			seq.LogMilestoneSubmitDefault(wOut)
 			cnt++
 			if seq.Info().NumConsumedFeeOutputs >= numFaucetTransactions*numFaucets {
 				allFeeInputsConsumed.Store(true)
 			}
-			if allFeeInputsConsumed.Load() && vid.IsBranchTransaction() {
+			if allFeeInputsConsumed.Load() && wOut.VID.IsBranchTransaction() {
 				branchesAfterAllConsumed++
 			}
 			if branchesAfterAllConsumed >= stopAfterBranches {
@@ -1183,13 +1183,13 @@ func TestPruning(t *testing.T) {
 		var allFeeInputsConsumed atomic.Bool
 		branchesAfterAllConsumed := 0
 		cnt := 0
-		r.bootstrapSeq.OnMilestoneSubmitted(func(seq *sequencer.Sequencer, vid *utangle.WrappedTx) {
-			seq.LogMilestoneSubmitDefault(vid)
+		r.bootstrapSeq.OnMilestoneSubmitted(func(seq *sequencer.Sequencer, wOut *utangle.WrappedOutput) {
+			seq.LogMilestoneSubmitDefault(wOut)
 			cnt++
 			if seq.Info().NumConsumedFeeOutputs >= numFaucetTransactions*numFaucets {
 				allFeeInputsConsumed.Store(true)
 			}
-			if allFeeInputsConsumed.Load() && vid.IsBranchTransaction() {
+			if allFeeInputsConsumed.Load() && wOut.VID.IsBranchTransaction() {
 				branchesAfterAllConsumed++
 			}
 			if branchesAfterAllConsumed >= stopAfterBranches {

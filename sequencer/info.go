@@ -9,21 +9,13 @@ func (seq *Sequencer) updateInfo(msOutput utangle.WrappedOutput) {
 	seq.infoMutex.Lock()
 	defer seq.infoMutex.Unlock()
 
-	msCounter := seq.info.MsCounter
-	branchCounter := seq.info.BranchCounter
 	util.Assertf(msOutput.VID.IsSequencerMilestone(), "msOutput.VID.IsSequencerMilestone()")
-	msCounter++
-	if msOutput.VID.IsBranchTransaction() {
-		branchCounter++
-	}
 
 	nConsumed := msOutput.VID.NumInputs() - 1
 	if msOutput.VID.IsBranchTransaction() {
 		nConsumed -= 1
 	}
 	seq.info = Info{
-		MsCounter:              msCounter,
-		BranchCounter:          branchCounter,
 		In:                     msOutput.VID.NumInputs(),
 		Out:                    msOutput.VID.NumProducedOutputs(),
 		NumConsumedFeeOutputs:  nConsumed,
@@ -41,17 +33,30 @@ func (seq *Sequencer) Info() Info {
 	return seq.info
 }
 
-func (seq *Sequencer) LogMilestoneSubmitDefault(vid *utangle.WrappedTx) {
+func (seq *Sequencer) LogMilestoneSubmitDefault(wOut *utangle.WrappedOutput) {
 	info := seq.Info()
 	msType := "MS"
-	if vid.IsBranchTransaction() {
+	if wOut.VID.IsBranchTransaction() {
 		msType = "BRANCH"
 	}
-	seq.log.Infof("%s #%d(%d): %s, cov: %s<-%s, in/out: %d/%d, feeOut: %d, mem: %d/%d",
+
+	o, err := wOut.Unwrap()
+	if err != nil {
+		seq.log.Errorf("LogMilestoneSubmitDefault: can't unwrap milestone output %s", wOut.IDShort())
+		return
+	}
+
+	var branchIndex, msIndex uint32
+	if od := ParseSequencerOutputData(o.Output); od != nil {
+		branchIndex = od.BranchIndex
+		msIndex = od.ChainIndex
+	}
+
+	seq.log.Infof("%s %d/%d: %s, cov: %s<-%s, in/out: %d/%d, feeOut: %d, mem: %d/%d",
 		msType,
-		info.MsCounter,
-		info.BranchCounter,
-		vid.IDShort(),
+		msIndex,
+		branchIndex,
+		wOut.IDShort(),
 		util.GoThousands(info.LedgerCoverage),
 		util.GoThousands(info.PrevLedgerCoverage),
 		info.In,
