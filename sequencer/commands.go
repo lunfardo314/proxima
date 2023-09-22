@@ -11,8 +11,8 @@ import (
 )
 
 const (
-	// CommandCodeSendAmount is a command to the sequencer to send specified amount to the target lock
-	CommandCodeSendAmount = byte(0xff)
+	// CommandCodeWithdrawAmount is a command to the sequencer to send specified amount to the target lock
+	CommandCodeWithdrawAmount = byte(0xff)
 
 	MinimumAmountToRequestFromSequencer = 100_000
 )
@@ -63,7 +63,7 @@ func makeOutputFromCommandData(cmdDataRaw []byte) (*core.Output, error) {
 	}
 
 	switch commandCode {
-	case CommandCodeSendAmount:
+	case CommandCodeWithdrawAmount:
 		// expected 2 parameters:
 		// - #0 target lock bytecode
 		// - #1 amount 8 bytes
