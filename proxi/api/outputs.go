@@ -11,7 +11,7 @@ import (
 
 func initGetOutputsCmd(apiCmd *cobra.Command) {
 	getOutputsCmd := &cobra.Command{
-		Use:   "get_outputs",
+		Use:   "outputs",
 		Short: `returns all outputs locked in the accountable from the heaviest state of the latest epoch`,
 		Args:  cobra.NoArgs,
 		Run:   runGetOutputsCmd,
@@ -36,4 +36,6 @@ func runGetOutputsCmd(_ *cobra.Command, _ []string) {
 		console.Infof(o.String())
 		console.Verbosef("Raw bytes: %s", hex.EncodeToString(o.Output.Bytes()))
 	}
+	console.Infof("TOTALS:")
+	displayTotals(outs)
 }

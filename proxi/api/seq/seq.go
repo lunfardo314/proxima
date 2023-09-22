@@ -19,7 +19,7 @@ func Init(apiCmd *cobra.Command) {
 		Short:   `defines subcommands for the sequencer`,
 		Args:    cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
-			console.Infof("target sequencer ID is %s", getSequencerID().String())
+			console.Infof("target sequencer ID is %s", glb.GetSequencerID().String())
 		},
 	}
 
@@ -30,12 +30,6 @@ func Init(apiCmd *cobra.Command) {
 	initSeqWithdrawCmd(seqCmd)
 	seqCmd.InitDefaultHelpCmd()
 	apiCmd.AddCommand(seqCmd)
-}
-
-func getSequencerID() *core.ChainID {
-	ret, err := core.ChainIDFromHexString(viper.GetString("sequencer.id"))
-	console.AssertNoError(err)
-	return &ret
 }
 
 func getClient() *client.APIClient {

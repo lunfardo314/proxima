@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/hex"
 	"os"
+	"slices"
 
 	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/proxima/core"
@@ -113,4 +114,16 @@ func ParseBytesToString(txBytes []byte, fetchOutput func(oid *core.OutputID) ([]
 		return err.Error()
 	}
 	return ctx.String()
+}
+
+func PickOutputFromListFunc(lst []*core.OutputWithID) func(oid *core.OutputID) ([]byte, bool) {
+	return func(oid *core.OutputID) ([]byte, bool) {
+		idx := slices.IndexFunc(lst, func(o *core.OutputWithID) bool {
+			return o.ID == *oid
+		})
+		if idx < 0 {
+			return nil, false
+		}
+		return lst[idx].Output.Bytes(), true
+	}
 }

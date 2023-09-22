@@ -141,14 +141,26 @@ func submitTxHandle(wFlow *workflow.Workflow) func(w http.ResponseWriter, r *htt
 		}
 		txBytes = util.CloneExactCap(txBytes)
 
-		if err = wFlow.TransactionIn(txBytes); err != nil {
+		if _, err = wFlow.TransactionInWaitAppendSync(txBytes); err != nil {
 			writeErr(w, fmt.Sprintf("submit_tx: %v", err))
+			return
 		}
+		writeOk(w)
 	}
 }
 
 func writeErr(w http.ResponseWriter, errStr string) {
 	respBytes, err := json.Marshal(&api.Error{Error: errStr})
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	_, err = w.Write(respBytes)
+	util.AssertNoError(err)
+}
+
+func writeOk(w http.ResponseWriter) {
+	respBytes, err := json.Marshal(&api.Error{})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

@@ -4,7 +4,6 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
-	"slices"
 
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/proxi/console"
@@ -20,7 +19,10 @@ import (
 	"github.com/spf13/viper"
 )
 
-const defaultAmount = 1_000_000
+const (
+	defaultAmount = 1_000_000
+	feeAmount     = 500
+)
 
 func initSeqWithdrawCmd(seqCmd *cobra.Command) {
 	seqSendCmd := &cobra.Command{
@@ -35,18 +37,16 @@ func initSeqWithdrawCmd(seqCmd *cobra.Command) {
 	err := viper.BindPFlag("amount", seqSendCmd.Flags().Lookup("amount"))
 	console.AssertNoError(err)
 
-	seqSendCmd.Flags().BoolP("force_withdraw", "f", false, "force withdraw")
-	err = viper.BindPFlag("force_withdraw", seqSendCmd.Flags().Lookup("force_withdraw"))
+	seqSendCmd.Flags().BoolP("force", "f", false, "force (bypass yes/no prompt)")
+	err = viper.BindPFlag("force", seqSendCmd.Flags().Lookup("force"))
 	console.AssertNoError(err)
 
 	seqSendCmd.InitDefaultHelpCmd()
 	seqCmd.AddCommand(seqSendCmd)
 }
 
-const feeAmount = 500
-
 func runSeqWithdrawCmd(_ *cobra.Command, args []string) {
-	seqID := getSequencerID()
+	seqID := glb.GetSequencerID()
 	console.Infof("sequencer ID (source): %s", seqID.String())
 	wallet := glb.GetWalletAccount()
 	console.Infof("wallet account is: %s", wallet.String())
@@ -69,7 +69,7 @@ func runSeqWithdrawCmd(_ *cobra.Command, args []string) {
 		console.Infof("%d : %s : %s", i, o.ID.Short(), util.GoThousands(o.Output.Amount()))
 	}
 
-	if !viper.GetBool("force_send") {
+	if !viper.GetBool("force") {
 		prompt := fmt.Sprintf("withdraw %s from %s to the target %s?",
 			util.GoThousands(getAmount()), seqID.Short(), targetLock.String())
 		if !console.YesNoPrompt(prompt, false) {
@@ -96,18 +96,11 @@ func runSeqWithdrawCmd(_ *cobra.Command, args []string) {
 	txBytes, err := txbuilder.MakeSimpleTransferTransaction(transferData)
 	console.AssertNoError(err)
 
-	txStr := transaction.ParseBytesToString(txBytes, func(oid *core.OutputID) ([]byte, bool) {
-		idx := slices.IndexFunc(walletOutputs, func(o *core.OutputWithID) bool {
-			return o.ID == *oid
-		})
-		if idx < 0 {
-			return nil, false
-		}
-		return walletOutputs[idx].Output.Bytes(), true
-	})
+	txStr := transaction.ParseBytesToString(txBytes, transaction.PickOutputFromListFunc(walletOutputs))
 
-	console.Infof("request transaction:\n%s", txStr)
-	console.Infof("submit transaction...")
+	console.Verbosef("---- request transaction ------\n%s\n------------------", txStr)
+
+	console.Infof("submitting the transaction...")
 
 	err = getClient().SubmitTransaction(txBytes)
 	console.AssertNoError(err)

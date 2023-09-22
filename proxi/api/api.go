@@ -2,8 +2,10 @@ package api
 
 import (
 	"github.com/lunfardo314/proxima/api/client"
+	"github.com/lunfardo314/proxima/core"
 	api "github.com/lunfardo314/proxima/proxi/api/seq"
 	"github.com/lunfardo314/proxima/proxi/console"
+	"github.com/lunfardo314/proxima/util"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -27,7 +29,8 @@ func Init(rootCmd *cobra.Command) {
 	initGetOutputsCmd(apiCmd)
 	initGetUTXOCmd(apiCmd)
 	initGetChainOutputCmd(apiCmd)
-	initTestSubmitCmd(apiCmd)
+	initCompactOutputsCmd(apiCmd)
+
 	api.Init(apiCmd)
 
 	rootCmd.AddCommand(apiCmd)
@@ -35,4 +38,26 @@ func Init(rootCmd *cobra.Command) {
 
 func getClient() *client.APIClient {
 	return client.New(viper.GetString("api.endpoint"))
+}
+
+func displayTotals(outs []*core.OutputWithID) {
+	var sumOnChains, sumOutsideChains uint64
+	var numChains, numNonChains int
+
+	for _, o := range outs {
+		if _, idx := o.Output.ChainConstraint(); idx != 0xff {
+			numChains++
+			sumOnChains += o.Output.Amount()
+		} else {
+			numNonChains++
+			sumOutsideChains += o.Output.Amount()
+		}
+	}
+	if numNonChains > 0 {
+		console.Infof("amount controlled on %d non-chain outputs: %s", numNonChains, util.GoThousands(sumOutsideChains))
+	}
+	if numChains > 0 {
+		console.Infof("amount controlled on %d chain outputs: %s", numChains, util.GoThousands(sumOnChains))
+	}
+	console.Infof("TOTAL controlled on %d outputs: %s", numChains+numNonChains, util.GoThousands(sumOnChains+sumOutsideChains))
 }

@@ -91,3 +91,13 @@ func MustGetTarget() core.Accountable {
 	}
 	return ret
 }
+
+func GetSequencerID() *core.ChainID {
+	seqIDStr := viper.GetString("sequencer.id")
+	if seqIDStr == "" {
+		return nil
+	}
+	ret, err := core.ChainIDFromHexString(seqIDStr)
+	console.AssertNoError(err)
+	return &ret
+}
