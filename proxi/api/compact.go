@@ -26,6 +26,17 @@ func initCompactOutputsCmd(apiCmd *cobra.Command) {
 }
 
 func runCompactCmd(_ *cobra.Command, _ []string) {
+	tagAlongSeqID := glb.GetSequencerID()
+	console.Assertf(tagAlongSeqID != nil, "tag-along sequencer not specified")
+
+	md, err := getClient().GetMilestoneData(*tagAlongSeqID)
+	console.AssertNoError(err)
+
+	feeAmount := uint64(defaultFeeAmount)
+	if md != nil && md.MinimumFee > feeAmount {
+		feeAmount = md.MinimumFee
+	}
+
 	wallet := glb.GetWalletAccount()
 
 	oData, err := getClient().GetAccountOutputs(wallet)
@@ -42,22 +53,19 @@ func runCompactCmd(_ *cobra.Command, _ []string) {
 	}, true)
 	console.AssertNoError(err)
 
-	console.Infof("%d ED25519 output(s) are unlockable know in the wallet account %s", len(walletOutputs), wallet.String())
+	console.Infof("%d ED25519 output(s) are unlockable now in the wallet account %s", len(walletOutputs), wallet.String())
 	if len(walletOutputs) <= 1 {
 		console.Infof("no need for compacting")
 		os.Exit(0)
 	}
 
-	tagAlongSeqID := glb.GetSequencerID()
-	console.Assertf(tagAlongSeqID != nil, "tag-along sequencer not specified")
-
-	prompt := fmt.Sprintf("compacting will cost %d of fees paid to the tag-along sequencer %s. Proceed?", defaultFeeAmount, tagAlongSeqID.Short())
+	prompt := fmt.Sprintf("compacting will cost %d of fees paid to the tag-along sequencer %s. Proceed?", feeAmount, tagAlongSeqID.Short())
 	if !console.YesNoPrompt(prompt, true) {
 		console.Infof("exit")
 		os.Exit(0)
 	}
 
-	numCompacted, txStr, err := getClient().CompactED25519Outputs(glb.GetPrivateKey(), *tagAlongSeqID, defaultFeeAmount)
+	numCompacted, txStr, err := getClient().CompactED25519Outputs(glb.GetPrivateKey(), *tagAlongSeqID, feeAmount)
 	if err != nil {
 		if txStr != "" {
 			console.Verbosef("------- transfer transaction -------- \n%s\n--------------------------", txStr)

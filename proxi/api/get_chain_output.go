@@ -21,10 +21,7 @@ func runGetChainOutputCmd(_ *cobra.Command, args []string) {
 	chainID, err := core.ChainIDFromHexString(args[0])
 	console.AssertNoError(err)
 
-	oData, err := getClient().GetChainOutput(chainID)
-	console.AssertNoError(err)
-
-	o, err := oData.Parse()
+	o, _, err := getClient().GetChainOutput(chainID)
 	console.AssertNoError(err)
 
 	console.Infof(o.String())

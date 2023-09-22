@@ -47,7 +47,7 @@ func (seq *Sequencer) LogMilestoneSubmitDefault(wOut *utangle.WrappedOutput) {
 	}
 
 	var branchIndex, msIndex uint32
-	if od := ParseSequencerOutputData(o.Output); od != nil {
+	if od := ParseMilestoneData(o.Output); od != nil {
 		branchIndex = od.BranchIndex
 		msIndex = od.ChainIndex
 	}

@@ -38,9 +38,9 @@ type (
 		TotalSupply uint64
 	}
 
-	// OutputData data which is on sequencer as 'or(..)' constraint. It is not enforced by the ledger, yet maintained
+	// MilestoneData data which is on sequencer as 'or(..)' constraint. It is not enforced by the ledger, yet maintained
 	// by the sequencer
-	OutputData struct {
+	MilestoneData struct {
 		Description string // < 256
 		MinimumFee  uint64
 		ChainIndex  uint32
@@ -111,9 +111,9 @@ func MakeSequencerTransaction(par MakeSequencerTransactionParams) ([]byte, error
 		o.PutLock(par.ChainInput.Output.Lock())
 		_, _ = o.PushConstraint(chainConstraint.Bytes())
 		_, _ = o.PushConstraint(sequencerConstraint.Bytes())
-		outData := ParseSequencerOutputData(par.ChainInput.Output)
+		outData := ParseMilestoneData(par.ChainInput.Output)
 		if outData == nil {
-			outData = &OutputData{
+			outData = &MilestoneData{
 				Description: par.SeqName,
 				MinimumFee:  par.MinimumFee,
 				BranchIndex: 0,
@@ -196,8 +196,8 @@ func MakeSequencerTransaction(par MakeSequencerTransactionParams) ([]byte, error
 	return txb.TransactionData.Bytes(), nil
 }
 
-// ParseSequencerOutputData expected at index 4, otherwise nil
-func ParseSequencerOutputData(o *core.Output) *OutputData {
+// ParseMilestoneData expected at index 4, otherwise nil
+func ParseMilestoneData(o *core.Output) *MilestoneData {
 	if o.NumConstraints() < 5 {
 		return nil
 	}
@@ -208,7 +208,7 @@ func ParseSequencerOutputData(o *core.Output) *OutputData {
 	return ret
 }
 
-func (od *OutputData) AsConstraint() core.Constraint {
+func (od *MilestoneData) AsConstraint() core.Constraint {
 	dscrBin := []byte(od.Description)
 	if len(dscrBin) > 255 {
 		dscrBin = dscrBin[:256]
@@ -228,7 +228,7 @@ func (od *OutputData) AsConstraint() core.Constraint {
 	return constr
 }
 
-func OutputDataFromConstraint(constr []byte) (*OutputData, error) {
+func OutputDataFromConstraint(constr []byte) (*MilestoneData, error) {
 	sym, _, args, err := easyfl.ParseBytecodeOneLevel(constr)
 	if err != nil {
 		return nil, err
@@ -247,7 +247,7 @@ func OutputDataFromConstraint(constr []byte) (*OutputData, error) {
 		return nil, fmt.Errorf("sequencer.OutputDataFromConstraint: unexpected argument sizes %d, %d, %d, %d",
 			len(args[0]), len(args[1]), len(args[2]), len(args[3]))
 	}
-	return &OutputData{
+	return &MilestoneData{
 		Description: string(dscrBin),
 		ChainIndex:  binary.BigEndian.Uint32(chainIdxBin),
 		BranchIndex: binary.BigEndian.Uint32(branchIdxBin),

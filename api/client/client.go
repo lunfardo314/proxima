@@ -13,6 +13,7 @@ import (
 
 	"github.com/lunfardo314/proxima/api"
 	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/sequencer"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/txbuilder"
 	"github.com/lunfardo314/proxima/util/txutils"
@@ -77,7 +78,7 @@ func (c *APIClient) GetAccountOutputs(accountable core.Accountable) ([]*core.Out
 	return ret, nil
 }
 
-func (c *APIClient) GetChainOutput(chainID core.ChainID) (*core.OutputDataWithID, error) {
+func (c *APIClient) GetChainOutputData(chainID core.ChainID) (*core.OutputDataWithID, error) {
 	path := fmt.Sprintf(api.PathGetChainOutput+"?chainid=%s", chainID.StringHex())
 	body, err := c.getBody(path)
 	if err != nil {
@@ -106,6 +107,25 @@ func (c *APIClient) GetChainOutput(chainID core.ChainID) (*core.OutputDataWithID
 		ID:         oid,
 		OutputData: oData,
 	}, nil
+}
+
+func (c *APIClient) GetChainOutput(chainID core.ChainID) (*core.OutputWithChainID, byte, error) {
+	oData, err := c.GetChainOutputData(chainID)
+	if err != nil {
+		return nil, 0, err
+	}
+	return oData.ParseAsChainOutput()
+}
+
+func (c *APIClient) GetMilestoneData(chainID core.ChainID) (*sequencer.MilestoneData, error) {
+	o, _, err := c.GetChainOutput(chainID)
+	if err != nil {
+		return nil, err
+	}
+	if !o.ID.IsSequencerTransaction() {
+		return nil, fmt.Errorf("not a sequencer milestone: %s", chainID.Short())
+	}
+	return sequencer.ParseMilestoneData(o.Output), nil
 }
 
 func (c *APIClient) GetOutputData(oid *core.OutputID) ([]byte, error) {

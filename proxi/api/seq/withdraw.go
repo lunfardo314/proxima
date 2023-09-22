@@ -20,8 +20,8 @@ import (
 )
 
 const (
-	defaultAmount = 1_000_000
-	feeAmount     = 500
+	defaultAmount    = 1_000_000
+	defaultFeeAmount = 500
 )
 
 func initSeqWithdrawCmd(seqCmd *cobra.Command) {
@@ -48,6 +48,16 @@ func initSeqWithdrawCmd(seqCmd *cobra.Command) {
 func runSeqWithdrawCmd(_ *cobra.Command, args []string) {
 	seqID := glb.GetSequencerID()
 	console.Infof("sequencer ID (source): %s", seqID.String())
+
+	md, err := getClient().GetMilestoneData(*seqID)
+	console.AssertNoError(err)
+
+	// TODO ensure at least storage deficit
+	feeAmount := uint64(defaultFeeAmount)
+	if md != nil && md.MinimumFee > defaultFeeAmount {
+		feeAmount = md.MinimumFee
+	}
+
 	wallet := glb.GetWalletAccount()
 	console.Infof("wallet account is: %s", wallet.String())
 	targetLock := mustGetTargetAccount()
