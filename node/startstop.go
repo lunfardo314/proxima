@@ -4,7 +4,6 @@ import (
 	"os"
 	"sync"
 
-	"github.com/dgraph-io/badger/v4"
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/general"
 	"github.com/lunfardo314/proxima/genesis"
@@ -20,14 +19,14 @@ import (
 )
 
 type ProximaNode struct {
-	log          *zap.SugaredLogger
-	multiStateDB *badger.DB
-	txStoreDB    *badger.DB
-	txStore      general.TxBytesStore
-	uTangle      *utangle.UTXOTangle
-	workflow     *workflow.Workflow
-	sequencers   []*sequencer.Sequencer
-	stopOnce     sync.Once
+	log             *zap.SugaredLogger
+	multiStateStore *badger_adaptor.DB
+	txStoreDB       *badger_adaptor.DB
+	txStore         general.TxBytesStore
+	uTangle         *utangle.UTXOTangle
+	workflow        *workflow.Workflow
+	sequencers      []*sequencer.Sequencer
+	stopOnce        sync.Once
 }
 
 func Start() *ProximaNode {
@@ -68,8 +67,8 @@ func (p *ProximaNode) Stop() {
 
 func (p *ProximaNode) stop() {
 	p.log.Info("stopping the node..")
-	if p.multiStateDB != nil {
-		_ = p.multiStateDB.Close()
+	if p.multiStateStore != nil {
+		_ = p.multiStateStore.Close()
 		p.log.Infof("multi-state database has been closed")
 	}
 	if p.txStoreDB != nil {
@@ -108,10 +107,11 @@ func (p *ProximaNode) GetMultiStateDBName() string {
 func (p *ProximaNode) startMultiStateDB() {
 	dbname := p.GetMultiStateDBName()
 	var err error
-	p.multiStateDB, err = badger_adaptor.OpenBadgerDB(dbname)
+	bdb, err := badger_adaptor.OpenBadgerDB(dbname)
 	if err != nil {
 		p.log.Fatalf("can't open '%s'", dbname)
 	}
+	p.multiStateStore = badger_adaptor.New(bdb)
 	p.log.Infof("opened multi-state DB '%s", dbname)
 }
 
@@ -129,8 +129,8 @@ func (p *ProximaNode) startTxStore() {
 			p.Stop()
 			os.Exit(1)
 		}
-		p.txStoreDB = badger_adaptor.MustCreateOrOpenBadgerDB(name)
-		p.txStore = txstore.NewSimpleTxBytesStore(badger_adaptor.New(p.txStoreDB))
+		p.txStoreDB = badger_adaptor.New(badger_adaptor.MustCreateOrOpenBadgerDB(name))
+		p.txStore = txstore.NewSimpleTxBytesStore(p.txStoreDB)
 		p.log.Infof("opened DB '%s' as transaction store", name)
 
 	case "url":
@@ -155,10 +155,8 @@ func mustReadStateIdentity(store general.StateStore) {
 }
 
 func (p *ProximaNode) loadUTXOTangle() {
-	stateStore := badger_adaptor.New(p.multiStateDB)
-
 	err := util.CatchPanicOrError(func() error {
-		mustReadStateIdentity(stateStore)
+		mustReadStateIdentity(p.multiStateStore)
 		return nil
 	})
 	if err != nil {
@@ -166,13 +164,13 @@ func (p *ProximaNode) loadUTXOTangle() {
 		p.Stop()
 		os.Exit(1)
 	}
-	p.uTangle = utangle.Load(stateStore, p.txStore)
+	p.uTangle = utangle.Load(p.multiStateStore, p.txStore)
 	latestSlot := p.uTangle.LatestTimeSlot()
 	currentSlot := core.LogicalTimeNow().TimeSlot()
 	p.log.Infof("current time slot: %d, latest time slot in the multi-state: %d, lagging behind: %d slots",
 		currentSlot, latestSlot, currentSlot-latestSlot)
 
-	branches := multistate.FetchLatestBranches(stateStore)
+	branches := multistate.FetchLatestBranches(p.multiStateStore)
 	p.log.Infof("latest time slot %d contains %d branches", latestSlot, len(branches))
 	for _, br := range branches {
 		txid := br.Stem.ID.TransactionID()

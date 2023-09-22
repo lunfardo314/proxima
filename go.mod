@@ -8,7 +8,7 @@ require (
 	github.com/gammazero/deque v0.2.1
 	github.com/labstack/echo/v4 v4.11.1
 	github.com/lunfardo314/easyfl v0.0.0-20230921101619-c5a7ff5f793e
-	github.com/lunfardo314/unitrie v0.0.0-20230916092201-974dd18e2c04
+	github.com/lunfardo314/unitrie v0.0.0-20230922171244-d3d987f2f618
 	github.com/spf13/cobra v1.7.0
 	github.com/spf13/pflag v1.0.5
 	github.com/spf13/viper v1.16.0
