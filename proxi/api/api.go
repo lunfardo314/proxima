@@ -10,6 +10,8 @@ import (
 	"github.com/spf13/viper"
 )
 
+const defaultTagAlongFee = 500
+
 func Init(rootCmd *cobra.Command) {
 	apiCmd := &cobra.Command{
 		Use:   "api [<subcommand>]",
@@ -25,11 +27,16 @@ func Init(rootCmd *cobra.Command) {
 	err = viper.BindPFlag("target", apiCmd.PersistentFlags().Lookup("target"))
 	console.AssertNoError(err)
 
+	apiCmd.PersistentFlags().Uint64("fee", defaultFeeAmount, "tag along fee for issued transactions")
+	err = viper.BindPFlag("fee", apiCmd.PersistentFlags().Lookup("fee"))
+	console.AssertNoError(err)
+
 	apiCmd.InitDefaultHelpCmd()
 	initGetOutputsCmd(apiCmd)
 	initGetUTXOCmd(apiCmd)
 	initGetChainOutputCmd(apiCmd)
 	initCompactOutputsCmd(apiCmd)
+	initTransferCmd(apiCmd)
 
 	api.Init(apiCmd)
 
@@ -60,4 +67,8 @@ func displayTotals(outs []*core.OutputWithID) {
 		console.Infof("amount controlled on %d chain outputs: %s", numChains, util.GoThousands(sumOnChains))
 	}
 	console.Infof("TOTAL controlled on %d outputs: %s", numChains+numNonChains, util.GoThousands(sumOnChains+sumOutsideChains))
+}
+
+func getTagAlongFee() uint64 {
+	return viper.GetUint64("fee")
 }

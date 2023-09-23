@@ -26,19 +26,23 @@ func initCompactOutputsCmd(apiCmd *cobra.Command) {
 }
 
 func runCompactCmd(_ *cobra.Command, _ []string) {
-	tagAlongSeqID := glb.GetSequencerID()
-	console.Assertf(tagAlongSeqID != nil, "tag-along sequencer not specified")
+	var tagAlongSeqID *core.ChainID
+	feeAmount := getTagAlongFee() // 0 interpreted as no fee output
+	if feeAmount > 0 {
+		tagAlongSeqID = glb.GetSequencerID()
+		console.Assertf(tagAlongSeqID != nil, "tag-along sequencer not specified")
 
-	md, err := getClient().GetMilestoneData(*tagAlongSeqID)
-	console.AssertNoError(err)
+		md, err := getClient().GetMilestoneData(*tagAlongSeqID)
+		console.AssertNoError(err)
 
-	feeAmount := uint64(defaultFeeAmount)
-	if md != nil && md.MinimumFee > feeAmount {
-		feeAmount = md.MinimumFee
+		if feeAmount > 0 {
+			if md != nil && md.MinimumFee > feeAmount {
+				feeAmount = md.MinimumFee
+			}
+		}
 	}
 
 	wallet := glb.GetWalletAccount()
-
 	oData, err := getClient().GetAccountOutputs(wallet)
 	console.AssertNoError(err)
 
@@ -59,18 +63,23 @@ func runCompactCmd(_ *cobra.Command, _ []string) {
 		os.Exit(0)
 	}
 
-	prompt := fmt.Sprintf("compacting will cost %d of fees paid to the tag-along sequencer %s. Proceed?", feeAmount, tagAlongSeqID.Short())
+	var prompt string
+	if feeAmount > 0 {
+		prompt = fmt.Sprintf("compacting will cost %d of fees paid to the tag-along sequencer %s. Proceed?", feeAmount, tagAlongSeqID.Short())
+	} else {
+		prompt = "compacting transaction will not have tag-along fee output (fee-less). Proceed?"
+	}
 	if !console.YesNoPrompt(prompt, true) {
 		console.Infof("exit")
 		os.Exit(0)
 	}
 
-	numCompacted, txStr, err := getClient().CompactED25519Outputs(glb.GetPrivateKey(), *tagAlongSeqID, feeAmount)
+	txCtx, err := getClient().CompactED25519Outputs(glb.GetPrivateKey(), tagAlongSeqID, feeAmount)
 	if err != nil {
-		if txStr != "" {
-			console.Verbosef("------- transfer transaction -------- \n%s\n--------------------------", txStr)
+		if txCtx != nil {
+			console.Verbosef("------- failed transaction -------- \n%s\n--------------------------", txCtx.String())
 		}
 		console.AssertNoError(err)
 	}
-	console.Infof("Success: %d outputs have been compacted into one", numCompacted)
+	console.Infof("Success: %d outputs have been compacted into one", txCtx.NumInputs())
 }

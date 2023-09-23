@@ -9,7 +9,6 @@ import (
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/proxi/console"
 	"github.com/lunfardo314/proxima/proxi/glb"
-	"github.com/lunfardo314/proxima/util/txutils"
 	"github.com/spf13/cobra"
 )
 
@@ -32,42 +31,34 @@ func runTransferCmd(_ *cobra.Command, args []string) {
 	target, err := core.LockFromSource(args[1])
 	console.AssertNoError(err)
 
-	tagAlongSeqID := glb.GetSequencerID()
-	console.Assertf(tagAlongSeqID != nil, "tag-along sequencer not specified")
+	var tagAlongSeqID *core.ChainID
+	feeAmount := getTagAlongFee()
+	if feeAmount > 0 {
+		tagAlongSeqID = glb.GetSequencerID()
+		console.Assertf(tagAlongSeqID != nil, "tag-along sequencer not specified")
 
-	md, err := getClient().GetMilestoneData(*tagAlongSeqID)
-	console.AssertNoError(err)
+		md, err := getClient().GetMilestoneData(*tagAlongSeqID)
+		console.AssertNoError(err)
 
-	feeAmount := uint64(defaultFeeAmount)
-	if md != nil && md.MinimumFee > feeAmount {
-		feeAmount = md.MinimumFee
+		if feeAmount > 0 {
+			if md != nil && md.MinimumFee > feeAmount {
+				feeAmount = md.MinimumFee
+			}
+		}
 	}
 
-	wallet := glb.GetWalletAccount()
-
-	oData, err := getClient().GetAccountOutputs(wallet)
-	console.AssertNoError(err)
-
-	nowisTs := core.LogicalTimeNow()
-	walletOutputs, err := txutils.ParseAndSortOutputData(oData, func(o *core.Output) bool {
-		// filter out chain outputs controlled by the wallet
-		_, idx := o.ChainConstraint()
-		if idx != 0xff {
-			return false
-		}
-		return o.Lock().UnlockableWith(wallet.AccountID(), nowisTs)
-	}, true)
-	console.AssertNoError(err)
-
-	console.Verbosef("%d ED25519 output(s) are unlockable now in the wallet account %s", len(walletOutputs), wallet.String())
-
-	prompt := fmt.Sprintf("transfer will cost %d of fees paid to the tag-along sequencer %s. Proceed?", feeAmount, tagAlongSeqID.Short())
+	var prompt string
+	if feeAmount > 0 {
+		prompt = fmt.Sprintf("trasfer will cost %d of fees paid to the tag-along sequencer %s. Proceed?", feeAmount, tagAlongSeqID.Short())
+	} else {
+		prompt = "transfer transaction will not have tag-along fee output (fee-less). Proceed?"
+	}
 	if !console.YesNoPrompt(prompt, true) {
 		console.Infof("exit")
 		os.Exit(0)
 	}
 
-	txStr, err := getClient().TransferFromED25519Wallet(client.TransferFromED25519WalletParams{
+	txCtx, err := getClient().TransferFromED25519Wallet(client.TransferFromED25519WalletParams{
 		WalletPrivateKey: glb.GetPrivateKey(),
 		TagAlongSeqID:    *tagAlongSeqID,
 		TagAlongFee:      feeAmount,
@@ -75,8 +66,8 @@ func runTransferCmd(_ *cobra.Command, args []string) {
 		Target:           target,
 	})
 	if err != nil {
-		if txStr != "" {
-			console.Verbosef("-------- failed tx ---------\n%s\n----------------", txStr)
+		if txCtx != nil {
+			console.Verbosef("-------- failed tx ---------\n%s\n----------------", txCtx.String())
 		}
 		console.AssertNoError(err)
 	}
