@@ -1,10 +1,11 @@
 package api
 
 const (
-	PathGetAccountOutputs = "/get_account_outputs"
-	PathGetChainOutput    = "/get_chain_output"
-	PathGetOutput         = "/get_output"
-	PathSubmitTransaction = "/submit_tx"
+	PathGetAccountOutputs       = "/get_account_outputs"
+	PathGetChainOutput          = "/get_chain_output"
+	PathGetOutput               = "/get_output"
+	PathSubmitTransactionWait   = "/submit_wait"   // wait appending to the utangle
+	PathSubmitTransactionNowait = "/submit_nowait" // async submitting
 )
 
 type Error struct {

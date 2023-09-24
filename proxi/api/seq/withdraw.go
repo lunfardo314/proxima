@@ -13,7 +13,6 @@ import (
 	"github.com/lunfardo314/proxima/txbuilder"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lazybytes"
-	"github.com/lunfardo314/proxima/util/txutils"
 	"github.com/lunfardo314/unitrie/common"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -64,14 +63,11 @@ func runSeqWithdrawCmd(_ *cobra.Command, args []string) {
 	console.Infof("amount: %s", util.GoThousands(getAmount()))
 
 	console.Infof("querying wallet's outputs..")
-	oData, err := getClient().GetAccountOutputs(wallet)
-	console.AssertNoError(err)
-
-	walletOutputs, err := txutils.ParseAndSortOutputData(oData, func(o *core.Output) bool {
+	walletOutputs, err := getClient().GetAccountOutputs(wallet, func(o *core.Output) bool {
 		// filter out chain outputs controlled by the wallet
 		_, idx := o.ChainConstraint()
 		return idx == 0xff
-	}, true)
+	})
 	console.AssertNoError(err)
 
 	console.Infof("will be using fee amount of %d from the wallet. Outputs in the wallet:", feeAmount)

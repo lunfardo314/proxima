@@ -21,8 +21,10 @@ func registerHandlers(wflow *workflow.Workflow) {
 	http.HandleFunc(api.PathGetChainOutput, getChainOutputHandle(wflow.UTXOTangle()))
 	// GET request format: 'get_output?id=<hex-encoded output ID>'
 	http.HandleFunc(api.PathGetOutput, getOutputHandle(wflow.UTXOTangle()))
-	// POST request format 'submit_tx'
-	http.HandleFunc(api.PathSubmitTransaction, submitTxHandle(wflow))
+	// POST request format 'submit_wait'. Waiting until added to utangle or rejected
+	http.HandleFunc(api.PathSubmitTransactionWait, submitTxHandle(wflow, true))
+	// POST request format 'submit_nowait'. Async posting to utangle. No feedback in case of wrong tx
+	http.HandleFunc(api.PathSubmitTransactionNowait, submitTxHandle(wflow, false))
 }
 
 func getAccountOutputsHandle(ut *utangle.UTXOTangle) func(w http.ResponseWriter, r *http.Request) {
@@ -127,7 +129,7 @@ func getOutputHandle(ut *utangle.UTXOTangle) func(w http.ResponseWriter, r *http
 
 const maxTxUploadSize = 64 * (1 << 10)
 
-func submitTxHandle(wFlow *workflow.Workflow) func(w http.ResponseWriter, r *http.Request) {
+func submitTxHandle(wFlow *workflow.Workflow, wait bool) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "POST" {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -141,7 +143,12 @@ func submitTxHandle(wFlow *workflow.Workflow) func(w http.ResponseWriter, r *htt
 		}
 		txBytes = util.CloneExactCap(txBytes)
 
-		if _, err = wFlow.TransactionInWaitAppendSync(txBytes); err != nil {
+		if wait {
+			err = wFlow.TransactionIn(txBytes)
+		} else {
+			_, err = wFlow.TransactionInWaitAppendSync(txBytes)
+		}
+		if err != nil {
 			writeErr(w, fmt.Sprintf("submit_tx: %v", err))
 			return
 		}

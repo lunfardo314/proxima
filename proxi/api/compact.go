@@ -7,7 +7,6 @@ import (
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/proxi/console"
 	"github.com/lunfardo314/proxima/proxi/glb"
-	"github.com/lunfardo314/proxima/util/txutils"
 	"github.com/spf13/cobra"
 )
 
@@ -43,18 +42,15 @@ func runCompactCmd(_ *cobra.Command, _ []string) {
 	}
 
 	wallet := glb.GetWalletAccount()
-	oData, err := getClient().GetAccountOutputs(wallet)
-	console.AssertNoError(err)
-
 	nowisTs := core.LogicalTimeNow()
-	walletOutputs, err := txutils.ParseAndSortOutputData(oData, func(o *core.Output) bool {
+	walletOutputs, err := getClient().GetAccountOutputs(wallet, func(o *core.Output) bool {
 		// filter out chain outputs controlled by the wallet
 		_, idx := o.ChainConstraint()
 		if idx != 0xff {
 			return false
 		}
 		return o.Lock().UnlockableWith(wallet.AccountID(), nowisTs)
-	}, true)
+	})
 	console.AssertNoError(err)
 
 	console.Infof("%d ED25519 output(s) are unlockable now in the wallet account %s", len(walletOutputs), wallet.String())

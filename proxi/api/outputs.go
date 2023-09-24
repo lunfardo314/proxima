@@ -5,7 +5,6 @@ import (
 
 	"github.com/lunfardo314/proxima/proxi/console"
 	"github.com/lunfardo314/proxima/proxi/glb"
-	"github.com/lunfardo314/proxima/util/txutils"
 	"github.com/spf13/cobra"
 )
 
@@ -24,10 +23,7 @@ func initGetOutputsCmd(apiCmd *cobra.Command) {
 func runGetOutputsCmd(_ *cobra.Command, _ []string) {
 	accountable := glb.MustGetTarget()
 
-	oData, err := getClient().GetAccountOutputs(accountable)
-	console.AssertNoError(err)
-
-	outs, err := txutils.ParseAndSortOutputData(oData, nil)
+	outs, err := getClient().GetAccountOutputs(accountable)
 	console.AssertNoError(err)
 
 	console.Infof("%d outputs locked in the account %s", len(outs), accountable.String())

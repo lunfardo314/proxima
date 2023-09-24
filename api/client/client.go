@@ -13,7 +13,6 @@ import (
 
 	"github.com/lunfardo314/proxima/api"
 	"github.com/lunfardo314/proxima/core"
-	"github.com/lunfardo314/proxima/proxi/console"
 	"github.com/lunfardo314/proxima/sequencer"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/txbuilder"
@@ -40,7 +39,8 @@ func New(serverURL string, timeout ...time.Duration) *APIClient {
 	}
 }
 
-func (c *APIClient) GetAccountOutputs(accountable core.Accountable) ([]*core.OutputDataWithID, error) {
+// getAccountOutputs fetches all outputs of the account
+func (c *APIClient) getAccountOutputs(accountable core.Accountable) ([]*core.OutputDataWithID, error) {
 	path := fmt.Sprintf(api.PathGetAccountOutputs+"?accountable=%s", accountable.String())
 	body, err := c.getBody(path)
 	if err != nil {
@@ -153,8 +153,11 @@ func (c *APIClient) GetOutputData(oid *core.OutputID) ([]byte, error) {
 	return oData, nil
 }
 
-func (c *APIClient) SubmitTransaction(txBytes []byte) error {
-	url := c.prefix + api.PathSubmitTransaction
+func (c *APIClient) SubmitTransaction(txBytes []byte, nowait ...bool) error {
+	url := c.prefix + api.PathSubmitTransactionWait
+	if len(nowait) > 0 && nowait[0] {
+		url = c.prefix + api.PathSubmitTransactionNowait
+	}
 	req, err := http.NewRequest(http.MethodPost, url, bytes.NewBuffer(txBytes))
 	if err != nil {
 		return err
@@ -181,22 +184,40 @@ func (c *APIClient) SubmitTransaction(txBytes []byte) error {
 	return nil
 }
 
-func (c *APIClient) CompactED25519Outputs(walletPrivateKey ed25519.PrivateKey, tagAlongSeqID *core.ChainID, tagAlongFee uint64) (*transaction.TransactionContext, error) {
-	walletAccount := core.AddressED25519FromPrivateKey(walletPrivateKey)
-	oData, err := c.GetAccountOutputs(walletAccount)
+func (c *APIClient) GetAccountOutputs(account core.Accountable, filter ...func(o *core.Output) bool) ([]*core.OutputWithID, error) {
+	filterFun := func(o *core.Output) bool { return true }
+	if len(filter) > 0 {
+		filterFun = filter[0]
+	}
+	oData, err := c.getAccountOutputs(account)
 	if err != nil {
 		return nil, err
 	}
 
+	outs, err := txutils.ParseAndSortOutputData(oData, filterFun, true)
+	if err != nil {
+		return nil, err
+	}
+	return outs, nil
+}
+
+func (c *APIClient) CompactED25519Outputs(walletPrivateKey ed25519.PrivateKey, tagAlongSeqID *core.ChainID, tagAlongFee uint64) (*transaction.TransactionContext, error) {
+	walletAccount := core.AddressED25519FromPrivateKey(walletPrivateKey)
+
 	nowisTs := core.LogicalTimeNow()
-	walletOutputs, err := txutils.ParseAndSortOutputData(oData, func(o *core.Output) bool {
+	inTotal := uint64(0)
+	walletOutputs, err := c.GetAccountOutputs(walletAccount, func(o *core.Output) bool {
 		// filter out chain outputs controlled by the wallet
 		_, idx := o.ChainConstraint()
 		if idx != 0xff {
 			return false
 		}
-		return o.Lock().UnlockableWith(walletAccount.AccountID(), nowisTs)
-	}, true)
+		if !o.Lock().UnlockableWith(walletAccount.AccountID(), nowisTs) {
+			return false
+		}
+		inTotal += o.Amount()
+		return true
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -206,49 +227,21 @@ func (c *APIClient) CompactED25519Outputs(walletPrivateKey ed25519.PrivateKey, t
 	if len(walletOutputs) > 256 {
 		walletOutputs = walletOutputs[:256]
 	}
-
-	txb := txbuilder.NewTransactionBuilder()
-	inTotal, inTs, err := txb.ConsumeOutputs(walletOutputs...)
+	if inTotal < tagAlongFee {
+		return nil, fmt.Errorf("non enough balance for fees")
+	}
+	txBytes, err := makeTransferTransaction(makeTransferTransactionParams{
+		inputs:           walletOutputs,
+		target:           walletAccount,
+		amount:           inTotal - tagAlongFee,
+		walletPrivateKey: walletPrivateKey,
+		tagAlongSeqID:    tagAlongSeqID,
+		tagAlongFee:      tagAlongFee,
+		nowisTs:          nowisTs,
+	})
 	if err != nil {
 		return nil, err
 	}
-	if !core.ValidTimePace(inTs, nowisTs) {
-		return nil, fmt.Errorf("inconsistency: wrong time constraints")
-	}
-	if inTotal <= tagAlongFee {
-		return nil, fmt.Errorf("not enough balance even for fees")
-	}
-
-	for i := range walletOutputs {
-		if i == 0 {
-			txb.PutSignatureUnlock(0)
-		} else {
-			_ = txb.PutUnlockReference(byte(i), core.ConstraintIndexLock, 0)
-		}
-	}
-	if tagAlongFee > 0 {
-		console.Assertf(tagAlongSeqID != nil, "tagAlongSeqID != nil")
-		feeOut := core.NewOutput(func(o *core.Output) {
-			o.WithAmount(tagAlongFee).
-				WithLock(core.ChainLockFromChainID(*tagAlongSeqID))
-		})
-		if _, err = txb.ProduceOutput(feeOut); err != nil {
-			return nil, err
-		}
-	}
-
-	remainderOut := core.NewOutput(func(o *core.Output) {
-		o.WithAmount(inTotal - tagAlongFee).
-			WithLock(walletAccount)
-	})
-	if _, err = txb.ProduceOutput(remainderOut); err != nil {
-		return nil, err
-	}
-
-	txb.TransactionData.Timestamp = nowisTs
-	txb.TransactionData.InputCommitment = txb.InputCommitment()
-	txb.SignED25519(walletPrivateKey)
-	txBytes := txb.TransactionData.Bytes()
 
 	txCtx, err := transaction.ContextFromTransferableBytes(txBytes, transaction.PickOutputFromListFunc(walletOutputs))
 	if err != nil {
@@ -261,7 +254,7 @@ func (c *APIClient) CompactED25519Outputs(walletPrivateKey ed25519.PrivateKey, t
 
 type TransferFromED25519WalletParams struct {
 	WalletPrivateKey ed25519.PrivateKey
-	TagAlongSeqID    core.ChainID
+	TagAlongSeqID    *core.ChainID
 	TagAlongFee      uint64 // 0 means no fee output will be produced
 	Amount           uint64
 	Target           core.Lock
@@ -276,67 +269,34 @@ func (c *APIClient) TransferFromED25519Wallet(par TransferFromED25519WalletParam
 		return nil, fmt.Errorf("minimum transfer amount is %d", minimumAmount)
 	}
 	walletAccount := core.AddressED25519FromPrivateKey(par.WalletPrivateKey)
-	oData, err := c.GetAccountOutputs(walletAccount)
-	if err != nil {
-		return nil, err
-	}
-
 	nowisTs := core.LogicalTimeNow()
-	walletOutputs, _, _, err := txutils.ParseAndSortOutputDataUpToAmount(oData, par.Amount+par.TagAlongFee, func(o *core.Output) bool {
+	walletOutputs, err := c.GetAccountOutputs(walletAccount, func(o *core.Output) bool {
 		// filter out chain outputs controlled by the wallet
 		_, idx := o.ChainConstraint()
 		if idx != 0xff {
 			return false
 		}
 		return o.Lock().UnlockableWith(walletAccount.AccountID(), nowisTs)
-	}, true)
+	})
 	if err != nil {
 		return nil, err
 	}
-
 	if len(walletOutputs) == 0 || len(walletOutputs) > 256 {
 		return nil, fmt.Errorf("cannot transfer this amount from the wallet")
 	}
 
-	txb := txbuilder.NewTransactionBuilder()
-	inTotal, inTs, err := txb.ConsumeOutputs(walletOutputs...)
+	txBytes, err := makeTransferTransaction(makeTransferTransactionParams{
+		inputs:           walletOutputs,
+		target:           par.Target,
+		amount:           par.Amount,
+		walletPrivateKey: par.WalletPrivateKey,
+		tagAlongSeqID:    par.TagAlongSeqID,
+		tagAlongFee:      par.TagAlongFee,
+		nowisTs:          nowisTs,
+	})
 	if err != nil {
 		return nil, err
 	}
-	if !core.ValidTimePace(inTs, nowisTs) {
-		return nil, fmt.Errorf("inconsistency: wrong time constraints")
-	}
-
-	for i := range walletOutputs {
-		if i == 0 {
-			txb.PutSignatureUnlock(0)
-		} else {
-			_ = txb.PutUnlockReference(byte(i), core.ConstraintIndexLock, 0)
-		}
-	}
-	if par.TagAlongFee > 0 {
-		feeOut := core.NewOutput(func(o *core.Output) {
-			o.WithAmount(par.TagAlongFee).
-				WithLock(core.ChainLockFromChainID(par.TagAlongSeqID))
-		})
-		if _, err = txb.ProduceOutput(feeOut); err != nil {
-			return nil, err
-		}
-	}
-
-	remainderOut := core.NewOutput(func(o *core.Output) {
-		o.WithAmount(inTotal - par.TagAlongFee - par.Amount).
-			WithLock(walletAccount)
-	})
-	if _, err = txb.ProduceOutput(remainderOut); err != nil {
-		return nil, err
-	}
-
-	txb.TransactionData.Timestamp = nowisTs
-	txb.TransactionData.InputCommitment = txb.InputCommitment()
-	txb.SignED25519(par.WalletPrivateKey)
-	txBytes := txb.TransactionData.Bytes()
-
 	txCtx, err := transaction.ContextFromTransferableBytes(txBytes, transaction.PickOutputFromListFunc(walletOutputs))
 	if err != nil {
 		return nil, err
@@ -358,4 +318,81 @@ func (c *APIClient) getBody(path string) ([]byte, error) {
 		return nil, err
 	}
 	return body, nil
+}
+
+type makeTransferTransactionParams struct {
+	inputs           []*core.OutputWithID
+	target           core.Lock
+	amount           uint64
+	remainder        core.Lock
+	walletPrivateKey ed25519.PrivateKey
+	tagAlongSeqID    *core.ChainID
+	tagAlongFee      uint64
+	nowisTs          core.LogicalTime
+}
+
+func makeTransferTransaction(par makeTransferTransactionParams) ([]byte, error) {
+	if par.amount < minimumAmount {
+		return nil, fmt.Errorf("minimum transfer amount is %d", minimumAmount)
+	}
+	txb := txbuilder.NewTransactionBuilder()
+	inTotal, inTs, err := txb.ConsumeOutputs(par.inputs...)
+	if err != nil {
+		return nil, err
+	}
+	if !core.ValidTimePace(inTs, par.nowisTs) {
+		return nil, fmt.Errorf("inconsistency: wrong time constraints")
+	}
+	if inTotal < par.amount+par.tagAlongFee {
+		return nil, fmt.Errorf("not enough balance")
+	}
+
+	for i := range par.inputs {
+		if i == 0 {
+			txb.PutSignatureUnlock(0)
+		} else {
+			_ = txb.PutUnlockReference(byte(i), core.ConstraintIndexLock, 0)
+		}
+	}
+
+	mainOut := core.NewOutput(func(o *core.Output) {
+		o.WithAmount(par.amount).
+			WithLock(par.target)
+	})
+	if _, err = txb.ProduceOutput(mainOut); err != nil {
+		return nil, err
+	}
+	// produce tag-along fee output, if needed
+	if par.tagAlongFee > 0 {
+		if par.tagAlongSeqID == nil {
+			return nil, fmt.Errorf("tag-along sequencer not specified")
+		}
+		feeOut := core.NewOutput(func(o *core.Output) {
+			o.WithAmount(par.tagAlongFee).
+				WithLock(core.ChainLockFromChainID(*par.tagAlongSeqID))
+		})
+		if _, err = txb.ProduceOutput(feeOut); err != nil {
+			return nil, err
+		}
+	}
+	// produce remainder if needed
+	if inTotal > par.amount+par.tagAlongFee {
+		remainderLock := par.remainder
+		if remainderLock == nil {
+			remainderLock = core.AddressED25519FromPrivateKey(par.walletPrivateKey)
+		}
+		remainderOut := core.NewOutput(func(o *core.Output) {
+			o.WithAmount(inTotal - par.amount - par.tagAlongFee).
+				WithLock(remainderLock)
+		})
+		if _, err = txb.ProduceOutput(remainderOut); err != nil {
+			return nil, err
+		}
+	}
+
+	txb.TransactionData.Timestamp = par.nowisTs
+	txb.TransactionData.InputCommitment = txb.InputCommitment()
+	txb.SignED25519(par.walletPrivateKey)
+
+	return txb.TransactionData.Bytes(), nil
 }

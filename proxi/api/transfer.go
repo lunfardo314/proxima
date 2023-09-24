@@ -40,10 +40,8 @@ func runTransferCmd(_ *cobra.Command, args []string) {
 		md, err := getClient().GetMilestoneData(*tagAlongSeqID)
 		console.AssertNoError(err)
 
-		if feeAmount > 0 {
-			if md != nil && md.MinimumFee > feeAmount {
-				feeAmount = md.MinimumFee
-			}
+		if md != nil && md.MinimumFee > feeAmount {
+			feeAmount = md.MinimumFee
 		}
 	}
 
@@ -60,7 +58,7 @@ func runTransferCmd(_ *cobra.Command, args []string) {
 
 	txCtx, err := getClient().TransferFromED25519Wallet(client.TransferFromED25519WalletParams{
 		WalletPrivateKey: glb.GetPrivateKey(),
-		TagAlongSeqID:    *tagAlongSeqID,
+		TagAlongSeqID:    tagAlongSeqID,
 		TagAlongFee:      feeAmount,
 		Amount:           amount,
 		Target:           target,
