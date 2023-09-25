@@ -40,8 +40,8 @@ func Assertf(cond bool, format string, args ...any) {
 	}
 }
 
-func YesNoPrompt(label string, def bool) bool {
-	if viper.GetBool("force") {
+func YesNoPrompt(label string, def bool, force ...bool) bool {
+	if len(force) > 0 && force[0] {
 		return def
 	}
 	choices := "Y/n"

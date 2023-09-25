@@ -16,7 +16,7 @@ func Init(apiCmd *cobra.Command) {
 		Short:   `defines subcommands for the sequencer`,
 		Args:    cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
-			glb.Infof("target sequencer ID is %s", glb.GetSequencerID().String())
+			glb.Infof("target sequencer ID is %s", glb.GetOwnSequencerID().String())
 		},
 	}
 

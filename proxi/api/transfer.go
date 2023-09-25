@@ -26,6 +26,7 @@ func initTransferCmd(apiCmd *cobra.Command) {
 func runTransferCmd(_ *cobra.Command, args []string) {
 	walletData := glb.GetWalletData()
 
+	glb.Infof("source is the wallet account: %s", walletData.Account.String())
 	amount, err := strconv.ParseUint(args[0], 10, 64)
 	glb.AssertNoError(err)
 
@@ -34,7 +35,7 @@ func runTransferCmd(_ *cobra.Command, args []string) {
 	var tagAlongSeqID *core.ChainID
 	feeAmount := getTagAlongFee()
 	if feeAmount > 0 {
-		tagAlongSeqID = glb.GetSequencerID()
+		tagAlongSeqID = glb.GetTagAlongSequencerID()
 		glb.Assertf(tagAlongSeqID != nil, "tag-along sequencer not specified")
 
 		md, err := getClient().GetMilestoneData(*tagAlongSeqID)
@@ -68,6 +69,8 @@ func runTransferCmd(_ *cobra.Command, args []string) {
 			glb.Verbosef("-------- failed tx ---------\n%s\n----------------", txCtx.String())
 		}
 		glb.AssertNoError(err)
+	} else {
+		glb.Verbosef("-------- transfer tx ---------\n%s\n----------------", txCtx.String())
 	}
 	glb.Infof("success")
 }

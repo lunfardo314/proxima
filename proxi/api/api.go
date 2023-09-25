@@ -60,5 +60,5 @@ func displayTotals(outs []*core.OutputWithID) {
 }
 
 func getTagAlongFee() uint64 {
-	return viper.GetUint64("fee")
+	return viper.GetUint64("tag-along.fee")
 }

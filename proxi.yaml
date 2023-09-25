@@ -1,14 +1,19 @@
-amount: "1000000"
 api:
     endpoint: http://localhost:4000
-debug: false
-force_withdraw: false
+config: ""
+force: true
 multistate:
     name: proximadb
-private_key: 136381bd4dea7b2f0fa6c6ca14ee660dc7929975b47e6cdb85adee9e26032a810530b790e0e7de626f36e20ba656f09e324c68203de899d0daf9f98fcb3cf684
 sequencer:
-    id: 764eee5d178dab62fe1bdf05a775b78dab061c09d8a771c2902219787db700fa
-target: ""
+    id: ""
+tag-along:
+    fee: 500
+    sequencer: 764eee5d178dab62fe1bdf05a775b78dab061c09d8a771c2902219787db700fa
 txstore:
     name: proximadb.txstore
 verbose: false
+wallet:
+    account: addressED25519(0x3faf090d38f18ea211936b8bcf19b7b30cdcb8e224394a5c30f9ba644f8bb2fb)
+    name: test wallet
+    pk: 136381bd4dea7b2f0fa6c6ca14ee660dc7929975b47e6cdb85adee9e26032a810530b790e0e7de626f36e20ba656f09e324c68203de899d0daf9f98fcb3cf684
+    sequencer: 764eee5d178dab62fe1bdf05a775b78dab061c09d8a771c2902219787db700fa

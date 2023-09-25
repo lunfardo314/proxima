@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"os"
 	"strings"
 
@@ -53,11 +52,7 @@ func readInConfig() {
 
 	viper.AutomaticEnv() // read in environment variables that match
 
-	_, _ = fmt.Fprintf(os.Stderr, "Config profile: %s\n", viper.ConfigFileUsed())
-
-	if err := viper.ReadInConfig(); err == nil {
-		_, _ = fmt.Fprintf(os.Stderr, "Using config profile: %s\n", viper.ConfigFileUsed())
-	}
+	_ = viper.ReadInConfig()
 }
 
 func initRootCmd() {
@@ -71,6 +66,7 @@ It provides:
 `,
 		PersistentPreRun: func(cmd *cobra.Command, args []string) {
 			readInConfig()
+			glb.Infof("verbose = %v", viper.GetBool("verbose"))
 		},
 		Run: func(cmd *cobra.Command, args []string) {
 			_ = cmd.Help()
@@ -97,9 +93,17 @@ It provides:
 	err = viper.BindPFlag("wallet.sequencer", rootCmd.PersistentFlags().Lookup("wallet.sequencer"))
 	glb.AssertNoError(err)
 
-	rootCmd.PersistentFlags().Bool("force", false, "bypass yes/no prompts with the default") // fixme not working
+	rootCmd.PersistentFlags().Bool("force", false, "bypass yes/no prompts with the default")
+	err = viper.BindPFlag("force", rootCmd.PersistentFlags().Lookup("force"))
+	glb.AssertNoError(err)
+
 	rootCmd.PersistentFlags().BoolP("verbose", "v", false, "verbose")
+	err = viper.BindPFlag("verbose", rootCmd.PersistentFlags().Lookup("verbose"))
+	glb.AssertNoError(err)
+
 	rootCmd.PersistentFlags().StringP("target", "t", "", "target account")
+	err = viper.BindPFlag("target", rootCmd.PersistentFlags().Lookup("target"))
+	glb.AssertNoError(err)
 
 	rootCmd.PersistentFlags().String("tag-along.sequencer", "", "tag-along sequencer ID")
 	err = viper.BindPFlag("tag-along.sequencer", rootCmd.PersistentFlags().Lookup("tag-along.sequencer"))

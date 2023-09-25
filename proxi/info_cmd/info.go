@@ -51,9 +51,9 @@ func runInfoCmd(_ *cobra.Command, _ []string) {
 	walletData := glb.GetWalletData()
 	glb.Infof("Wallet name: '%s'", walletData.Name)
 	glb.Infof("Wallet account: '%s'", walletData.Account.String())
-	glb.Infof("Sequencer controlled by wallet: '%s'", walletData.Sequencer)
-	glb.Infof("Tag-along sequencer: '%s'", viper.GetString("tag-along.sequencer"))
-	glb.Infof("Tag-along fee (default): '%d'", viper.GetUint64("tag-along.fee"))
+	glb.Infof("Sequencer controlled by wallet: %s", walletData.Sequencer)
+	glb.Infof("Tag-along sequencer: %s", viper.GetString("tag-along.sequencer"))
+	glb.Infof("Tag-along fee (default): %d", viper.GetUint64("tag-along.fee"))
 
 	if stateDbName == "(not set)" {
 		return

@@ -49,7 +49,7 @@ func GetWalletData() (ret WalletData) {
 	ret.Name = viper.GetString("wallet.name")
 	ret.PrivateKey = mustGetPrivateKey()
 	ret.Account = core.AddressED25519FromPrivateKey(ret.PrivateKey)
-	ret.Sequencer = GetSequencerID()
+	ret.Sequencer = GetOwnSequencerID()
 	return
 }
 
@@ -75,8 +75,18 @@ func MustGetTarget() core.Accountable {
 	return ret
 }
 
-func GetSequencerID() *core.ChainID {
+func GetOwnSequencerID() *core.ChainID {
 	seqIDStr := viper.GetString("wallet.sequencer")
+	if seqIDStr == "" {
+		return nil
+	}
+	ret, err := core.ChainIDFromHexString(seqIDStr)
+	AssertNoError(err)
+	return &ret
+}
+
+func GetTagAlongSequencerID() *core.ChainID {
+	seqIDStr := viper.GetString("tag-along.sequencer")
 	if seqIDStr == "" {
 		return nil
 	}
