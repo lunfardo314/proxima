@@ -19,10 +19,9 @@ wallet:
     sequencer: 764eee5d178dab62fe1bdf05a775b78dab061c09d8a771c2902219787db700fa
 spammer:
     scenario: standard
-    minimum_balance: 5000
     output_amount: 1000
     pace: 3 # transaction pace in ticks
-    bundle_size: 30
+    bundle_size: 10
     max_transactions: 0 # 0 means no limit
     max_duration_minutes: 0 # 0 means no limit
     tag_along:

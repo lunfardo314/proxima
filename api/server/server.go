@@ -144,9 +144,9 @@ func submitTxHandle(wFlow *workflow.Workflow, wait bool) func(w http.ResponseWri
 		txBytes = util.CloneExactCap(txBytes)
 
 		if wait {
-			err = wFlow.TransactionIn(txBytes)
-		} else {
 			_, err = wFlow.TransactionInWaitAppendSync(txBytes)
+		} else {
+			err = wFlow.TransactionIn(txBytes)
 		}
 		if err != nil {
 			writeErr(w, fmt.Sprintf("submit_tx: %v", err))

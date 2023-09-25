@@ -51,6 +51,7 @@ type (
 		Pace          int // pace in slots
 		LogLevel      zapcore.Level
 		LogOutputs    []string
+		TraceTippool  bool
 		LogTimeLayout string
 		MaxFeeInputs  int
 		MaxTargetTs   core.LogicalTime
@@ -188,6 +189,7 @@ func StartFromConfig(glb *workflow.Workflow, name string) (*Sequencer, error) {
 		WithMaxFeeInputs(maxFeeInputs),
 		WithMaxBranches(maxBranches),
 		WithMaxMilestones(maxMilestones),
+		WithTraceTippool(subViper.GetBool("trace_tippool")),
 	}
 
 	return StartNew(par, opts...)

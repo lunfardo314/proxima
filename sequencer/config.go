@@ -19,6 +19,12 @@ func WithLogLevel(lvl zapcore.Level) ConfigOpt {
 	}
 }
 
+func WithTraceTippool(trace bool) ConfigOpt {
+	return func(o *ConfigOptions) {
+		o.TraceTippool = trace
+	}
+}
+
 func WithPace(pace int) ConfigOpt {
 	util.Assertf(pace >= PaceMinimumTicks, "pace>=PaceMinimumTicks")
 

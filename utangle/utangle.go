@@ -309,7 +309,9 @@ func (ut *UTXOTangle) StateReaderOfSequencerMilestone(vid *WrappedTx) (state.Sug
 		return state.SugaredStateReader{}, false
 	}
 	rdr, err := state.NewReadable(ut.stateStore, root, 0)
-	util.AssertNoError(err)
+	if err != nil {
+		return state.SugaredStateReader{}, false
+	}
 	return state.MakeSugared(rdr), true
 }
 

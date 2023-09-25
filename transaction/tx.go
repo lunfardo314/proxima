@@ -689,6 +689,22 @@ func OutputWithIDFromTransactionBytes(txBytes []byte, idx byte) (*core.OutputWit
 	return tx.ProducedOutputWithIDAt(idx)
 }
 
+func OutputsWithIDFromTransactionBytes(txBytes []byte) ([]*core.OutputWithID, error) {
+	tx, err := FromBytes(txBytes)
+	if err != nil {
+		return nil, err
+	}
+
+	ret := make([]*core.OutputWithID, tx.NumProducedOutputs())
+	for idx := 0; idx < tx.NumProducedOutputs(); idx++ {
+		ret[idx], err = tx.ProducedOutputWithIDAt(byte(idx))
+		if err != nil {
+			return nil, err
+		}
+	}
+	return ret, nil
+}
+
 func (tx *Transaction) ToString(fetchOutput func(oid *core.OutputID) ([]byte, bool)) string {
 	ctx, err := ContextFromTransaction(tx, func(i byte) (*core.Output, error) {
 		oid, err1 := tx.InputAt(i)

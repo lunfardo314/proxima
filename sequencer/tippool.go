@@ -7,10 +7,10 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/general"
 	"github.com/lunfardo314/proxima/utangle"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/set"
-	"github.com/lunfardo314/proxima/util/testutil"
 	"github.com/lunfardo314/proxima/workflow"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -33,12 +33,12 @@ const fetchLastNTimeSlotsUponStartup = 5
 
 func startTipPool(seqName string, wrk *workflow.Workflow, seqID core.ChainID, logLevel zapcore.Level) (*sequencerTipPool, error) {
 	// must be finalized somewhere
-	name := fmt.Sprintf("[%sM-%s]", seqName, seqID.VeryShort())
+	name := fmt.Sprintf("[%sT-%s]", seqName, seqID.VeryShort())
 	accountAddress := core.CloneAccountable(seqID.AsChainLock())
 	ret := &sequencerTipPool{
 		glb:              wrk,
 		accountable:      accountAddress,
-		log:              testutil.NewNamedLogger(name, logLevel),
+		log:              general.NewLogger(name, logLevel, []string{"stdout"}, general.TimeLayoutDefault),
 		outputs:          set.New[utangle.WrappedOutput](),
 		chainID:          seqID,
 		latestMilestones: make(map[core.ChainID]*utangle.WrappedTx),
@@ -55,6 +55,7 @@ func startTipPool(seqName string, wrk *workflow.Workflow, seqID core.ChainID, lo
 
 		ret._clearOrphanedOutputsIfNeeded()
 		ret.outputs.Insert(wOut)
+		ret.log.Debugf("IN %s", wOut.IDShort())
 	})
 	util.AssertNoError(err)
 

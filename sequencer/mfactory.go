@@ -13,6 +13,7 @@ import (
 	"github.com/lunfardo314/proxima/util/set"
 	"github.com/lunfardo314/proxima/util/testutil"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
 type (
@@ -70,7 +71,11 @@ func createMilestoneFactory(par *configuration) (*milestoneFactory, error) {
 		log.Infof("created sequencer start output %s", chainOut.DecodeID().Short())
 	}
 
-	tippool, err := startTipPool(par.SequencerName, par.Glb, par.ChainID, par.LogLevel)
+	tippoolLoglevel := par.LogLevel
+	if par.TraceTippool {
+		tippoolLoglevel = zapcore.DebugLevel
+	}
+	tippool, err := startTipPool(par.SequencerName, par.Glb, par.ChainID, tippoolLoglevel)
 	if err != nil {
 		return nil, err
 	}

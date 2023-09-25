@@ -4,8 +4,10 @@ import (
 	"math"
 	"time"
 
+	"github.com/lunfardo314/proxima/api/client"
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/proxi/glb"
+	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -13,7 +15,6 @@ import (
 
 type spammerConfig struct {
 	scenario          string
-	minBalance        uint64
 	outputAmount      uint64
 	bundleSize        int
 	pace              int
@@ -44,10 +45,6 @@ func initSpamCmd(apiCmd *cobra.Command) {
 	err = viper.BindPFlag("spammer.max_duration_minutes", spamCmd.PersistentFlags().Lookup("spammer.max_duration_minutes"))
 	glb.AssertNoError(err)
 
-	spamCmd.PersistentFlags().Uint64("spammer.minimum_balance", 1000, "minimum balance on wallet account")
-	err = viper.BindPFlag("spammer.minimum_balance", spamCmd.PersistentFlags().Lookup("spammer.minimum_balance"))
-	glb.AssertNoError(err)
-
 	spamCmd.PersistentFlags().Uint64("spammer.output_amount", 500, "amount on the output")
 	err = viper.BindPFlag("spammer.output_amount", spamCmd.PersistentFlags().Lookup("spammer.output_amount"))
 	glb.AssertNoError(err)
@@ -69,7 +66,6 @@ func initSpamCmd(apiCmd *cobra.Command) {
 
 func readSpammerConfigIn(sub *viper.Viper) (ret spammerConfig) {
 	ret.scenario = sub.GetString("scenario")
-	ret.minBalance = sub.GetUint64("scenario")
 	ret.outputAmount = sub.GetUint64("output_amount")
 	ret.bundleSize = sub.GetInt("bundle_size")
 	ret.pace = sub.GetInt("pace")
@@ -88,7 +84,6 @@ func readSpammerConfigIn(sub *viper.Viper) (ret spammerConfig) {
 func displaySpammerConfig() spammerConfig {
 	cfg := readSpammerConfigIn(viper.Sub("spammer"))
 	glb.Infof("scenario: %s", cfg.scenario)
-	glb.Infof("minimum wallet balance: %d", cfg.minBalance)
 	glb.Infof("output amount: %d", cfg.outputAmount)
 	glb.Infof("bundle size: %d", cfg.bundleSize)
 	glb.Infof("pace: %d", cfg.pace)
@@ -101,13 +96,12 @@ func displaySpammerConfig() spammerConfig {
 	glb.Infof("source account (wallet): %s", walletData.Account.String())
 	glb.Infof("target account: %s", cfg.target.String())
 
-	glb.Assertf(glb.YesNoPrompt("start spamming?", false), "exit")
+	glb.Assertf(glb.YesNoPrompt("start spamming?", true, glb.BypassYesNoPrompt()), "exit")
 
 	return cfg
 }
 
 func runSpamCmd(_ *cobra.Command, args []string) {
-	//cfg, walletData, target :=
 	cfg := displaySpammerConfig()
 
 	switch cfg.scenario {
@@ -117,6 +111,8 @@ func runSpamCmd(_ *cobra.Command, args []string) {
 		standardScenario(cfg)
 	}
 }
+
+const minimumBalance = 1000
 
 func standardScenario(cfg spammerConfig) {
 	walletData := glb.GetWalletData()
@@ -134,37 +130,88 @@ func standardScenario(cfg spammerConfig) {
 		glb.Assertf(time.Now().Before(deadline), "spam duration limit has been reached")
 
 		nowisTs := core.LogicalTimeNow()
-		balance, numOuts, err := getClient().GetTransferableBalance(walletData.Account, nowisTs)
+		_, balance, err := getClient().GetTransferableOutputs(walletData.Account, nowisTs, cfg.bundleSize)
 		glb.AssertNoError(err)
 
 		glb.Infof("transferable balance: %s", util.GoThousands(balance))
-		requiredBalance := cfg.minBalance + cfg.outputAmount*uint64(cfg.bundleSize) + cfg.tagAlongFee
+		requiredBalance := minimumBalance + cfg.outputAmount*uint64(cfg.bundleSize) + cfg.tagAlongFee
 		if balance < requiredBalance {
 			glb.Infof("transferable balance (%s) is too small for the bundle (required is %s). Waiting for more..",
 				util.GoThousands(balance), util.GoThousands(requiredBalance))
+
 			continue
 		}
 
-		bundle, oid := prepareBundle(walletData, numOuts > 1)
+		bundle, oid := prepareBundle(walletData, cfg)
+
 		c := getClient()
 		for _, txBytes := range bundle {
 			err = c.SubmitTransaction(txBytes)
 			glb.AssertNoError(err)
 		}
 		glb.Infof("%d transactions submitted", len(bundle))
-		if err = c.WaitOutputFinal(oid, core.TimeSlotDuration()*2); err != nil {
-			glb.Infof("%v", err)
-		}
+		glb.Verbosef("wait for %s finalized", oid.Short())
+		err = c.WaitOutputFinal(&oid, core.TimeSlotDuration()*2)
+		glb.AssertNoError(err)
+		glb.Infof("output %s has been finalized", oid.Short())
 	}
 }
 
-func prepareBundle(walletData glb.WalletData, compact bool) ([][]byte, *core.OutputID) {
-	txCtx, err := getClient().CompactED25519Outputs(walletData.PrivateKey, nil, 0)
+func maxTimestamp(outs []*core.OutputWithID) (ret core.LogicalTime) {
+	for _, o := range outs {
+		ret = core.MaxLogicalTime(ret, o.Timestamp())
+	}
+	return
+}
+
+func prepareBundle(walletData glb.WalletData, cfg spammerConfig) ([][]byte, core.OutputID) {
+	ret := make([][]byte, 0)
+	c := getClient()
+	txCtx, err := c.CompactED25519Outputs(walletData.PrivateKey, nil, 0, cfg.bundleSize)
 	glb.AssertNoError(err)
 
+	numTx := cfg.bundleSize
+	var lastOuts []*core.OutputWithID
 	if txCtx != nil {
-		_, err = txCtx.ProducedOutput(0)
+		ret = append(ret, txCtx.TransactionBytes())
+		lastOut, _ := txCtx.ProducedOutput(0)
+		lastOuts = []*core.OutputWithID{lastOut}
+		numTx--
+	} else {
+		lastOuts, _, err = c.GetTransferableOutputs(walletData.Account, core.LogicalTimeNow(), cfg.bundleSize)
 		glb.AssertNoError(err)
 	}
-	return nil, nil
+
+	for i := 0; i < numTx; i++ {
+		fee := uint64(0)
+		if i == numTx-1 {
+			fee = cfg.tagAlongFee
+		}
+		ts := core.MaxLogicalTime(maxTimestamp(lastOuts).AddTimeTicks(cfg.pace), core.LogicalTimeNow())
+		txBytes, err := client.MakeTransferTransaction(client.MakeTransferTransactionParams{
+			Inputs:        lastOuts,
+			Target:        cfg.target.AsLock(),
+			Amount:        cfg.outputAmount,
+			Remainder:     walletData.Account,
+			PrivateKey:    walletData.PrivateKey,
+			TagAlongSeqID: &cfg.tagAlongSequencer,
+			TagAlongFee:   fee,
+			Timestamp:     ts,
+		})
+		glb.AssertNoError(err)
+
+		ret = append(ret, txBytes)
+
+		lastOuts, err = transaction.OutputsWithIDFromTransactionBytes(txBytes)
+		glb.AssertNoError(err)
+		lastOuts = util.FilterSlice(lastOuts, func(o *core.OutputWithID) bool {
+			return core.EqualConstraints(o.Output.Lock(), walletData.Account)
+		})
+	}
+	glb.Verbosef("last outputs in the bundle:")
+	for i, o := range lastOuts {
+		glb.Verbosef("--- %d:\n%s", i, o.String())
+	}
+
+	return ret, lastOuts[0].ID
 }
