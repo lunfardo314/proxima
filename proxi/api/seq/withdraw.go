@@ -6,7 +6,6 @@ import (
 	"fmt"
 
 	"github.com/lunfardo314/proxima/core"
-	"github.com/lunfardo314/proxima/proxi/console"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/sequencer"
 	"github.com/lunfardo314/proxima/transaction"
@@ -18,11 +17,6 @@ import (
 	"github.com/spf13/viper"
 )
 
-const (
-	defaultAmount    = 1_000_000
-	defaultFeeAmount = 500
-)
-
 func initSeqWithdrawCmd(seqCmd *cobra.Command) {
 	seqSendCmd := &cobra.Command{
 		Use:     "withdraw",
@@ -32,54 +26,46 @@ func initSeqWithdrawCmd(seqCmd *cobra.Command) {
 		Run:     runSeqWithdrawCmd,
 	}
 
-	seqSendCmd.Flags().Uint64P("amount", "a", defaultAmount, "amount to withdraw/send from sequencer")
-	err := viper.BindPFlag("amount", seqSendCmd.Flags().Lookup("amount"))
-	console.AssertNoError(err)
-
-	seqSendCmd.Flags().BoolP("force", "f", false, "force (bypass yes/no prompt)")
-	err = viper.BindPFlag("force", seqSendCmd.Flags().Lookup("force"))
-	console.AssertNoError(err)
-
 	seqSendCmd.InitDefaultHelpCmd()
 	seqCmd.AddCommand(seqSendCmd)
 }
 
-func runSeqWithdrawCmd(_ *cobra.Command, args []string) {
+func runSeqWithdrawCmd(_ *cobra.Command, _ []string) {
 	seqID := glb.GetSequencerID()
-	console.Infof("sequencer ID (source): %s", seqID.String())
+	glb.Infof("sequencer ID (source): %s", seqID.String())
 
 	md, err := getClient().GetMilestoneData(*seqID)
-	console.AssertNoError(err)
+	glb.AssertNoError(err)
 
 	// TODO ensure at least storage deficit
-	feeAmount := uint64(defaultFeeAmount)
-	if md != nil && md.MinimumFee > defaultFeeAmount {
+	feeAmount := viper.GetUint64("tag-along.fee")
+	if md != nil && md.MinimumFee > feeAmount {
 		feeAmount = md.MinimumFee
 	}
 
-	wallet := glb.GetWalletAccount()
-	console.Infof("wallet account is: %s", wallet.String())
-	targetLock := mustGetTargetAccount()
-	console.Infof("amount: %s", util.GoThousands(getAmount()))
+	walletData := glb.GetWalletData()
+	glb.Infof("wallet account is: %s", walletData.Account.String())
+	targetLock := glb.MustGetTarget()
+	glb.Infof("amount: %s", util.GoThousands(getAmount()))
 
-	console.Infof("querying wallet's outputs..")
-	walletOutputs, err := getClient().GetAccountOutputs(wallet, func(o *core.Output) bool {
+	glb.Infof("querying wallet's outputs..")
+	walletOutputs, err := getClient().GetAccountOutputs(walletData.Account, func(o *core.Output) bool {
 		// filter out chain outputs controlled by the wallet
 		_, idx := o.ChainConstraint()
 		return idx == 0xff
 	})
-	console.AssertNoError(err)
+	glb.AssertNoError(err)
 
-	console.Infof("will be using fee amount of %d from the wallet. Outputs in the wallet:", feeAmount)
+	glb.Infof("will be using fee amount of %d from the wallet. Outputs in the wallet:", feeAmount)
 	for i, o := range walletOutputs {
-		console.Infof("%d : %s : %s", i, o.ID.Short(), util.GoThousands(o.Output.Amount()))
+		glb.Infof("%d : %s : %s", i, o.ID.Short(), util.GoThousands(o.Output.Amount()))
 	}
 
 	if !viper.GetBool("force") {
 		prompt := fmt.Sprintf("withdraw %s from %s to the target %s?",
 			util.GoThousands(getAmount()), seqID.Short(), targetLock.String())
-		if !console.YesNoPrompt(prompt, false) {
-			console.Infof("exit")
+		if !glb.YesNoPrompt(prompt, false) {
+			glb.Infof("exit")
 			return
 		}
 	}
@@ -90,9 +76,9 @@ func runSeqWithdrawCmd(_ *cobra.Command, args []string) {
 	cmdData := common.Concat(sequencer.CommandCodeWithdrawAmount, cmdParArr)
 	constrSource := fmt.Sprintf("concat(0x%s)", hex.EncodeToString(cmdData))
 	cmdConstr, err := core.NewGeneralScriptFromSource(constrSource)
-	console.AssertNoError(err)
+	glb.AssertNoError(err)
 
-	transferData := txbuilder.NewTransferData(glb.GetPrivateKey(), glb.GetWalletAccount(), core.LogicalTimeNow()).
+	transferData := txbuilder.NewTransferData(walletData.PrivateKey, walletData.Account, core.LogicalTimeNow()).
 		WithAmount(feeAmount).
 		WithTargetLock(core.ChainLockFromChainID(*seqID)).
 		MustWithInputs(walletOutputs...).
@@ -100,16 +86,16 @@ func runSeqWithdrawCmd(_ *cobra.Command, args []string) {
 		WithConstraint(cmdConstr)
 
 	txBytes, err := txbuilder.MakeSimpleTransferTransaction(transferData)
-	console.AssertNoError(err)
+	glb.AssertNoError(err)
 
 	txStr := transaction.ParseBytesToString(txBytes, transaction.PickOutputFromListFunc(walletOutputs))
 
-	console.Verbosef("---- request transaction ------\n%s\n------------------", txStr)
+	glb.Verbosef("---- request transaction ------\n%s\n------------------", txStr)
 
-	console.Infof("submitting the transaction...")
+	glb.Infof("submitting the transaction...")
 
 	err = getClient().SubmitTransaction(txBytes)
-	console.AssertNoError(err)
+	glb.AssertNoError(err)
 }
 
 func getAmount() uint64 {

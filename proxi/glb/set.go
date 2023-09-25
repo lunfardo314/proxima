@@ -1,7 +1,6 @@
 package glb
 
 import (
-	"github.com/lunfardo314/proxima/proxi/console"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -18,8 +17,8 @@ func initConfigSetCmd() *cobra.Command {
 
 func runConfigSetCmd(_ *cobra.Command, args []string) {
 	v := args[1]
-	if args[0] == "private_key" {
-		console.Fatalf("use 'proxi set_private_key [<key>]' command to set a private key")
+	if args[0] == "wallet.pk" {
+		Fatalf("use 'proxi set_private_key [<key>]' command to set a private key")
 	}
 	switch v {
 	case "true":
@@ -33,5 +32,5 @@ func runConfigSetCmd(_ *cobra.Command, args []string) {
 
 func SetKeyValue(key string, value interface{}) {
 	viper.Set(key, value)
-	console.AssertNoError(viper.WriteConfig())
+	AssertNoError(viper.WriteConfig())
 }

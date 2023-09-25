@@ -4,13 +4,11 @@ import (
 	"github.com/lunfardo314/proxima/api/client"
 	"github.com/lunfardo314/proxima/core"
 	api "github.com/lunfardo314/proxima/proxi/api/seq"
-	"github.com/lunfardo314/proxima/proxi/console"
+	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
-
-const defaultTagAlongFee = 500
 
 func Init(rootCmd *cobra.Command) {
 	apiCmd := &cobra.Command{
@@ -21,15 +19,7 @@ func Init(rootCmd *cobra.Command) {
 
 	apiCmd.PersistentFlags().String("api.endpoint", "", "<DNS name>:port")
 	err := viper.BindPFlag("api.endpoint", apiCmd.PersistentFlags().Lookup("api.endpoint"))
-	console.AssertNoError(err)
-
-	apiCmd.PersistentFlags().StringP("target", "t", "", "target account as an EasyFl source of the accountable constraint")
-	err = viper.BindPFlag("target", apiCmd.PersistentFlags().Lookup("target"))
-	console.AssertNoError(err)
-
-	apiCmd.PersistentFlags().Uint64("fee", defaultFeeAmount, "tag along fee for issued transactions")
-	err = viper.BindPFlag("fee", apiCmd.PersistentFlags().Lookup("fee"))
-	console.AssertNoError(err)
+	glb.AssertNoError(err)
 
 	apiCmd.InitDefaultHelpCmd()
 	initGetOutputsCmd(apiCmd)
@@ -61,12 +51,12 @@ func displayTotals(outs []*core.OutputWithID) {
 		}
 	}
 	if numNonChains > 0 {
-		console.Infof("amount controlled on %d non-chain outputs: %s", numNonChains, util.GoThousands(sumOutsideChains))
+		glb.Infof("amount controlled on %d non-chain outputs: %s", numNonChains, util.GoThousands(sumOutsideChains))
 	}
 	if numChains > 0 {
-		console.Infof("amount controlled on %d chain outputs: %s", numChains, util.GoThousands(sumOnChains))
+		glb.Infof("amount controlled on %d chain outputs: %s", numChains, util.GoThousands(sumOnChains))
 	}
-	console.Infof("TOTAL controlled on %d outputs: %s", numChains+numNonChains, util.GoThousands(sumOnChains+sumOutsideChains))
+	glb.Infof("TOTAL controlled on %d outputs: %s", numChains+numNonChains, util.GoThousands(sumOnChains+sumOutsideChains))
 }
 
 func getTagAlongFee() uint64 {

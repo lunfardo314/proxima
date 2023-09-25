@@ -2,7 +2,7 @@ package api
 
 import (
 	"github.com/lunfardo314/proxima/core"
-	"github.com/lunfardo314/proxima/proxi/console"
+	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/spf13/cobra"
 )
 
@@ -20,15 +20,15 @@ func initGetUTXOCmd(apiCmd *cobra.Command) {
 
 func runGetUTXOCmd(cmd *cobra.Command, args []string) {
 	oid, err := core.OutputIDFromHexString(args[0])
-	console.AssertNoError(err)
+	glb.AssertNoError(err)
 
 	oData, err := getClient().GetOutputData(&oid)
-	console.AssertNoError(err)
+	glb.AssertNoError(err)
 
 	out, err := core.OutputFromBytesReadOnly(oData)
-	console.AssertNoError(err)
+	glb.AssertNoError(err)
 
-	console.Infof((&core.OutputWithID{
+	glb.Infof((&core.OutputWithID{
 		ID:     oid,
 		Output: out,
 	}).String())

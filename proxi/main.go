@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/lunfardo314/proxima/proxi/api"
-	"github.com/lunfardo314/proxima/proxi/console"
 	"github.com/lunfardo314/proxima/proxi/db"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/proxi/info_cmd"
@@ -16,12 +15,13 @@ import (
 
 func init() {
 	initRootCmd()
-	console.Init(rootCmd)
 	glb.Init(rootCmd)
 	info_cmd.Init(rootCmd)
 	db.Init(rootCmd)
 	api.Init(rootCmd)
 }
+
+const DefaultTagAlongFee = 500
 
 var rootCmd = &cobra.Command{
 	Use:   "proxi",
@@ -77,15 +77,41 @@ It provides:
 		},
 	}
 
-	rootCmd.PersistentFlags().StringVarP(&glb.ConfigName, "config", "c", "", "config file (default is proxi.yaml)")
+	rootCmd.PersistentFlags().StringP("config", "c", "", "config file (default is proxi.yaml)")
+	err := viper.BindPFlag("config", rootCmd.PersistentFlags().Lookup("config"))
+	glb.AssertNoError(err)
 
-	rootCmd.PersistentFlags().String("private_key", "", "an ED25519 private key in hexadecimal")
-	err := viper.BindPFlag("private_key", rootCmd.PersistentFlags().Lookup("private_key"))
-	console.AssertNoError(err)
+	rootCmd.PersistentFlags().String("wallet.name", "", "wallet name")
+	err = viper.BindPFlag("wallet.name", rootCmd.PersistentFlags().Lookup("wallet.name"))
+	glb.AssertNoError(err)
+
+	rootCmd.PersistentFlags().String("wallet.pk", "", "an ED25519 private key in hexadecimal")
+	err = viper.BindPFlag("wallet.pk", rootCmd.PersistentFlags().Lookup("wallet.pk"))
+	glb.AssertNoError(err)
+
+	rootCmd.PersistentFlags().String("wallet.account", "", "Address25519 lock of the account")
+	err = viper.BindPFlag("wallet.account", rootCmd.PersistentFlags().Lookup("wallet.account"))
+	glb.AssertNoError(err)
+
+	rootCmd.PersistentFlags().String("wallet.sequencer", "", "Sequencer, controlled by the wallet")
+	err = viper.BindPFlag("wallet.sequencer", rootCmd.PersistentFlags().Lookup("wallet.sequencer"))
+	glb.AssertNoError(err)
+
+	rootCmd.PersistentFlags().Bool("force", false, "bypass yes/no prompts with the default") // fixme not working
+	rootCmd.PersistentFlags().BoolP("verbose", "v", false, "verbose")
+	rootCmd.PersistentFlags().StringP("target", "t", "", "target account")
+
+	rootCmd.PersistentFlags().String("tag-along.sequencer", "", "tag-along sequencer ID")
+	err = viper.BindPFlag("tag-along.sequencer", rootCmd.PersistentFlags().Lookup("tag-along.sequencer"))
+	glb.AssertNoError(err)
+
+	rootCmd.PersistentFlags().Uint64("tag-along.fee", DefaultTagAlongFee, "tag-along fee")
+	err = viper.BindPFlag("tag-along.fee", rootCmd.PersistentFlags().Lookup("tag-along.fee"))
+	glb.AssertNoError(err)
 }
 
 func main() {
-	console.Infof("------ proxi invoked. Command line: '%s'\n", strings.Join(os.Args, " "))
+	glb.Infof("Command line: '%s'\n", strings.Join(os.Args, " "))
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
 	}

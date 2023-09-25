@@ -6,7 +6,7 @@ import (
 
 	"github.com/lunfardo314/proxima/genesis"
 	"github.com/lunfardo314/proxima/multistate"
-	"github.com/lunfardo314/proxima/proxi/console"
+	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/unitrie/adaptors/badger_adaptor"
 	"github.com/spf13/cobra"
@@ -24,7 +24,7 @@ func initDBInfoCmd(dbCmd *cobra.Command) {
 }
 
 func runDbInfoCmd(_ *cobra.Command, _ []string) {
-	console.Infof("---------------- multi-state DB info ------------------")
+	glb.Infof("---------------- multi-state DB info ------------------")
 	displayDBNames()
 
 	dbName := GetMultiStateStoreName()
@@ -38,26 +38,26 @@ func runDbInfoCmd(_ *cobra.Command, _ []string) {
 
 	branchData := multistate.FetchLatestBranches(stateStore)
 	if len(branchData) == 0 {
-		console.Infof("no branches found")
+		glb.Infof("no branches found")
 		return
 	}
-	console.Infof("Total %d latest branches (slot %d)", len(branchData), branchData[0].Stem.Timestamp().TimeSlot())
+	glb.Infof("Total %d latest branches (slot %d)", len(branchData), branchData[0].Stem.Timestamp().TimeSlot())
 
 	sort.Slice(branchData, func(i, j int) bool {
 		return bytes.Compare(branchData[i].SequencerID[:], branchData[j].SequencerID[:]) < 0
 	})
 
-	console.Infof(" ##: stemID, seqID, root, coverage\n------------------------------------------------------")
+	glb.Infof(" ##: stemID, seqID, root, coverage\n------------------------------------------------------")
 	for i, br := range branchData {
-		console.Infof(" %2d: %s, %s, %s, %s",
+		glb.Infof(" %2d: %s, %s, %s, %s",
 			i, br.Stem.IDShort(), br.SequencerID.Short(), br.Root.String(), util.GoThousands(br.Coverage))
 	}
 
 	reader, err := multistate.NewSugaredReadableState(stateStore, branchData[0].Root)
-	console.AssertNoError(err)
+	glb.AssertNoError(err)
 
 	id := genesis.MustStateIdentityDataFromBytes(reader.MustStateIdentityBytes())
 
-	console.Infof("\n----------------- Ledger state identity ----------------")
-	console.Infof("%s", id.String())
+	glb.Infof("\n----------------- Ledger state identity ----------------")
+	glb.Infof("%s", id.String())
 }

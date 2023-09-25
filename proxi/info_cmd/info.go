@@ -7,7 +7,6 @@ import (
 	"github.com/dgraph-io/badger/v4"
 	"github.com/lunfardo314/proxima/general"
 	"github.com/lunfardo314/proxima/genesis"
-	"github.com/lunfardo314/proxima/proxi/console"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/unitrie/adaptors/badger_adaptor"
@@ -46,17 +45,22 @@ func runInfoCmd(_ *cobra.Command, _ []string) {
 		txStoreDbName = "(not set)"
 	}
 
-	console.Infof("Proxi config profile: %s", viper.ConfigFileUsed())
-	console.Infof("Controlling address: %s", glb.AddressHex())
-	console.Infof("State DB name: %s", stateDbName)
-	console.Infof("Transaction store DB name: %s", txStoreDbName)
+	glb.Infof("Proxi config profile: %s", viper.ConfigFileUsed())
+	glb.Infof("State DB name: %s", stateDbName)
+	glb.Infof("Transaction store DB name: %s", txStoreDbName)
+	walletData := glb.GetWalletData()
+	glb.Infof("Wallet name: '%s'", walletData.Name)
+	glb.Infof("Wallet account: '%s'", walletData.Account.String())
+	glb.Infof("Sequencer controlled by wallet: '%s'", walletData.Sequencer)
+	glb.Infof("Tag-along sequencer: '%s'", viper.GetString("tag-along.sequencer"))
+	glb.Infof("Tag-along fee (default): '%d'", viper.GetUint64("tag-along.fee"))
 
 	if stateDbName == "(not set)" {
 		return
 	}
 
 	storeDB := badger_adaptor.MustCreateOrOpenBadgerDB(stateDbName, badger.DefaultOptions(stateDbName))
-	console.AssertNoError(storeDB.Close())
+	glb.AssertNoError(storeDB.Close())
 
 	//multistate.NewSugaredReadableState(badger_adaptor.New(stateDB), )
 

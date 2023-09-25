@@ -3,7 +3,6 @@ package api
 import (
 	"encoding/hex"
 
-	"github.com/lunfardo314/proxima/proxi/console"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/spf13/cobra"
 )
@@ -24,14 +23,14 @@ func runGetOutputsCmd(_ *cobra.Command, _ []string) {
 	accountable := glb.MustGetTarget()
 
 	outs, err := getClient().GetAccountOutputs(accountable)
-	console.AssertNoError(err)
+	glb.AssertNoError(err)
 
-	console.Infof("%d outputs locked in the account %s", len(outs), accountable.String())
+	glb.Infof("%d outputs locked in the account %s", len(outs), accountable.String())
 	for i, o := range outs {
-		console.Infof("-- output %d --", i)
-		console.Infof(o.String())
-		console.Verbosef("Raw bytes: %s", hex.EncodeToString(o.Output.Bytes()))
+		glb.Infof("-- output %d --", i)
+		glb.Infof(o.String())
+		glb.Verbosef("Raw bytes: %s", hex.EncodeToString(o.Output.Bytes()))
 	}
-	console.Infof("TOTALS:")
+	glb.Infof("TOTALS:")
 	displayTotals(outs)
 }

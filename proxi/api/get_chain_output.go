@@ -2,7 +2,7 @@ package api
 
 import (
 	"github.com/lunfardo314/proxima/core"
-	"github.com/lunfardo314/proxima/proxi/console"
+	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/spf13/cobra"
 )
 
@@ -19,10 +19,10 @@ func initGetChainOutputCmd(apiCmd *cobra.Command) {
 
 func runGetChainOutputCmd(_ *cobra.Command, args []string) {
 	chainID, err := core.ChainIDFromHexString(args[0])
-	console.AssertNoError(err)
+	glb.AssertNoError(err)
 
 	o, _, err := getClient().GetChainOutput(chainID)
-	console.AssertNoError(err)
+	glb.AssertNoError(err)
 
-	console.Infof(o.String())
+	glb.Infof(o.String())
 }

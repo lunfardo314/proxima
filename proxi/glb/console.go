@@ -1,4 +1,4 @@
-package console
+package glb
 
 import (
 	"bufio"
@@ -6,19 +6,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
-
-func Init(rootCmd *cobra.Command) {
-	rootCmd.PersistentFlags().BoolP("verbose", "v", false, "verbose")
-	err := viper.BindPFlag("verbose", rootCmd.PersistentFlags().Lookup("verbose"))
-	AssertNoError(err)
-
-	//rootCmd.PersistentFlags().BoolP("debug", "d", false, "verbose")
-	//err = viper.BindPFlag("debug", rootCmd.PersistentFlags().Lookup("debug"))
-	//AssertNoError(err)
-}
 
 func Printf(format string, args ...any) {
 	fmt.Printf(format, args...)
@@ -26,12 +15,6 @@ func Printf(format string, args ...any) {
 
 func Infof(format string, args ...any) {
 	fmt.Printf(format+"\n", args...)
-}
-
-func Debugf(format string, args ...any) {
-	if viper.GetBool("debug") {
-		fmt.Printf(format+"\n", args...)
-	}
 }
 
 func Verbosef(format string, args ...any) {
@@ -58,6 +41,9 @@ func Assertf(cond bool, format string, args ...any) {
 }
 
 func YesNoPrompt(label string, def bool) bool {
+	if viper.GetBool("force") {
+		return def
+	}
 	choices := "Y/n"
 	if !def {
 		choices = "y/N"

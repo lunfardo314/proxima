@@ -5,7 +5,6 @@ import (
 	"os"
 
 	"github.com/lunfardo314/proxima/core"
-	"github.com/lunfardo314/proxima/proxi/console"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/spf13/cobra"
 )
@@ -29,10 +28,10 @@ func runCompactCmd(_ *cobra.Command, _ []string) {
 	feeAmount := getTagAlongFee() // 0 interpreted as no fee output
 	if feeAmount > 0 {
 		tagAlongSeqID = glb.GetSequencerID()
-		console.Assertf(tagAlongSeqID != nil, "tag-along sequencer not specified")
+		glb.Assertf(tagAlongSeqID != nil, "tag-along sequencer not specified")
 
 		md, err := getClient().GetMilestoneData(*tagAlongSeqID)
-		console.AssertNoError(err)
+		glb.AssertNoError(err)
 
 		if feeAmount > 0 {
 			if md != nil && md.MinimumFee > feeAmount {
@@ -41,21 +40,21 @@ func runCompactCmd(_ *cobra.Command, _ []string) {
 		}
 	}
 
-	wallet := glb.GetWalletAccount()
+	walletData := glb.GetWalletData()
 	nowisTs := core.LogicalTimeNow()
-	walletOutputs, err := getClient().GetAccountOutputs(wallet, func(o *core.Output) bool {
+	walletOutputs, err := getClient().GetAccountOutputs(walletData.Account, func(o *core.Output) bool {
 		// filter out chain outputs controlled by the wallet
 		_, idx := o.ChainConstraint()
 		if idx != 0xff {
 			return false
 		}
-		return o.Lock().UnlockableWith(wallet.AccountID(), nowisTs)
+		return o.Lock().UnlockableWith(walletData.Account.AccountID(), nowisTs)
 	})
-	console.AssertNoError(err)
+	glb.AssertNoError(err)
 
-	console.Infof("%d ED25519 output(s) are unlockable now in the wallet account %s", len(walletOutputs), wallet.String())
+	glb.Infof("%d ED25519 output(s) are unlockable now in the wallet account %s", len(walletOutputs), walletData.Account.String())
 	if len(walletOutputs) <= 1 {
-		console.Infof("no need for compacting")
+		glb.Infof("no need for compacting")
 		os.Exit(0)
 	}
 
@@ -65,17 +64,17 @@ func runCompactCmd(_ *cobra.Command, _ []string) {
 	} else {
 		prompt = "compacting transaction will not have tag-along fee output (fee-less). Proceed?"
 	}
-	if !console.YesNoPrompt(prompt, true) {
-		console.Infof("exit")
+	if !glb.YesNoPrompt(prompt, true) {
+		glb.Infof("exit")
 		os.Exit(0)
 	}
 
-	txCtx, err := getClient().CompactED25519Outputs(glb.GetPrivateKey(), tagAlongSeqID, feeAmount)
+	txCtx, err := getClient().CompactED25519Outputs(walletData.PrivateKey, tagAlongSeqID, feeAmount)
 	if err != nil {
 		if txCtx != nil {
-			console.Verbosef("------- failed transaction -------- \n%s\n--------------------------", txCtx.String())
+			glb.Verbosef("------- failed transaction -------- \n%s\n--------------------------", txCtx.String())
 		}
-		console.AssertNoError(err)
+		glb.AssertNoError(err)
 	}
-	console.Infof("Success: %d outputs have been compacted into one", txCtx.NumInputs())
+	glb.Infof("Success: %d outputs have been compacted into one", txCtx.NumInputs())
 }
