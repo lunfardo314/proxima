@@ -157,6 +157,18 @@ func (ctx *TransactionContext) ProducedOutputData(idx byte) []byte {
 	return ctx.tree.BytesAtPath(Path(core.TransactionBranch, core.TxOutputs, idx))
 }
 
+func (ctx *TransactionContext) ProducedOutput(idx byte) (*core.OutputWithID, error) {
+	data := ctx.ProducedOutputData(idx)
+	o, _, _, err := core.OutputFromBytesMain(data)
+	if err != nil {
+		return nil, err
+	}
+	return &core.OutputWithID{
+		ID:     ctx.OutputID(idx),
+		Output: o,
+	}, err
+}
+
 func (ctx *TransactionContext) NumProducedOutputs() int {
 	return ctx.tree.NumElements([]byte{core.TransactionBranch, core.TxOutputs})
 }

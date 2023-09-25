@@ -27,6 +27,7 @@ func Init(rootCmd *cobra.Command) {
 	initGetChainOutputCmd(apiCmd)
 	initCompactOutputsCmd(apiCmd)
 	initTransferCmd(apiCmd)
+	initSpamCmd(apiCmd)
 
 	api.Init(apiCmd)
 

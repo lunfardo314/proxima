@@ -1,0 +1,18 @@
+api:
+    endpoint: http://localhost:4000
+config: k2
+force: true
+multistate:
+    name: ""
+sequencer:
+    id: ""
+tag-along:
+    fee: 500
+    sequencer: 764eee5d178dab62fe1bdf05a775b78dab061c09d8a771c2902219787db700fa
+txstore:
+    name: ""
+wallet:
+    account: addressED25519(0x62c733803a83a26d4db1ce9f22206281f64af69401da6eb26390d34e6a88c5fa)
+    name: ""
+    pk: 3a2ed3c4f738a06e9543f80e032fd870be5e524585e0144f2499d1a28bc4797902e2a7a85bd158469adae3294a615e17ef49e72642c4eb58ff00d92301b9bb88
+    sequencer: ""

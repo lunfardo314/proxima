@@ -201,6 +201,34 @@ func (c *APIClient) GetAccountOutputs(account core.Accountable, filter ...func(o
 	return outs, nil
 }
 
+func (c *APIClient) GetTransferableBalance(account core.Accountable, ts core.LogicalTime) (uint64, int, error) {
+	walletOutputs, err := c.GetAccountOutputs(account, func(o *core.Output) bool {
+		// filter out chain outputs controlled by the wallet
+		_, idx := o.ChainConstraint()
+		if idx != 0xff {
+			return false
+		}
+		if !o.Lock().UnlockableWith(account.AccountID(), ts) {
+			return false
+		}
+		return true
+	})
+	if err != nil {
+		return 0, 0, err
+	}
+	if len(walletOutputs) == 0 {
+		return 0, 0, nil
+	}
+	if len(walletOutputs) > 256 {
+		walletOutputs = walletOutputs[:256]
+	}
+	sum := uint64(0)
+	for _, o := range walletOutputs {
+		sum += o.Output.Amount()
+	}
+	return sum, len(walletOutputs), nil
+}
+
 func (c *APIClient) CompactED25519Outputs(walletPrivateKey ed25519.PrivateKey, tagAlongSeqID *core.ChainID, tagAlongFee uint64) (*transaction.TransactionContext, error) {
 	walletAccount := core.AddressED25519FromPrivateKey(walletPrivateKey)
 
