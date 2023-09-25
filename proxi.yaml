@@ -21,7 +21,8 @@ spammer:
     scenario: standard
     minimum_balance: 5000
     output_amount: 1000
-    pace: 5 # transaction pace in ticks
+    pace: 3 # transaction pace in ticks
+    bundle_size: 30
     max_transactions: 0 # 0 means no limit
     max_duration_minutes: 0 # 0 means no limit
     tag_along:

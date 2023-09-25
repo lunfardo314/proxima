@@ -15,6 +15,7 @@ type spammerConfig struct {
 	scenario          string
 	minBalance        uint64
 	outputAmount      uint64
+	bundleSize        int
 	pace              int
 	maxTransactions   int
 	maxDuration       time.Duration
@@ -51,6 +52,10 @@ func initSpamCmd(apiCmd *cobra.Command) {
 	err = viper.BindPFlag("spammer.output_amount", spamCmd.PersistentFlags().Lookup("spammer.output_amount"))
 	glb.AssertNoError(err)
 
+	spamCmd.PersistentFlags().Uint64("spammer.bundle_size", 30, "transaction bundle size")
+	err = viper.BindPFlag("spammer.bundle_size", spamCmd.PersistentFlags().Lookup("spammer.bundle_size"))
+	glb.AssertNoError(err)
+
 	spamCmd.PersistentFlags().String("spammer.tag_along.sequencer", "", "spammer.tag_along.sequencer")
 	err = viper.BindPFlag("spammer.tag_along.sequencer", spamCmd.PersistentFlags().Lookup("spammer.tag_along.sequencer"))
 	glb.AssertNoError(err)
@@ -66,6 +71,7 @@ func readSpammerConfigIn(sub *viper.Viper) (ret spammerConfig) {
 	ret.scenario = sub.GetString("scenario")
 	ret.minBalance = sub.GetUint64("scenario")
 	ret.outputAmount = sub.GetUint64("output_amount")
+	ret.bundleSize = sub.GetInt("bundle_size")
 	ret.pace = sub.GetInt("pace")
 	ret.maxTransactions = sub.GetInt("max_transactions")
 	ret.maxDuration = time.Duration(sub.GetInt("max_duration_minutes")) * time.Minute
@@ -84,6 +90,7 @@ func displaySpammerConfig() spammerConfig {
 	glb.Infof("scenario: %s", cfg.scenario)
 	glb.Infof("minimum wallet balance: %d", cfg.minBalance)
 	glb.Infof("output amount: %d", cfg.outputAmount)
+	glb.Infof("bundle size: %d", cfg.bundleSize)
 	glb.Infof("pace: %d", cfg.pace)
 	glb.Infof("max transactions: %d", cfg.maxTransactions)
 	glb.Infof("max duration: %v", cfg.maxDuration)
@@ -130,23 +137,34 @@ func standardScenario(cfg spammerConfig) {
 		balance, numOuts, err := getClient().GetTransferableBalance(walletData.Account, nowisTs)
 		glb.AssertNoError(err)
 
-		if numOuts > 1 {
-			glb.Infof("compacting...")
-			_ = compactWalletWait(walletData)
-		}
 		glb.Infof("transferable balance: %s", util.GoThousands(balance))
-		if balance < cfg.minBalance+cfg.outputAmount+cfg.tagAlongFee {
-			glb.Infof("transferable balance (%s) is too small (required is %s). Waiting..", util.GoThousands(balance), util.GoThousands(cfg.minBalance+cfg.outputAmount+cfg.tagAlongFee))
+		requiredBalance := cfg.minBalance + cfg.outputAmount*uint64(cfg.bundleSize) + cfg.tagAlongFee
+		if balance < requiredBalance {
+			glb.Infof("transferable balance (%s) is too small for the bundle (required is %s). Waiting for more..",
+				util.GoThousands(balance), util.GoThousands(requiredBalance))
 			continue
+		}
+
+		bundle, oid := prepareBundle(walletData, numOuts > 1)
+		c := getClient()
+		for _, txBytes := range bundle {
+			err = c.SubmitTransaction(txBytes)
+			glb.AssertNoError(err)
+		}
+		glb.Infof("%d transactions submitted", len(bundle))
+		if err = c.WaitOutputFinal(oid, core.TimeSlotDuration()*2); err != nil {
+			glb.Infof("%v", err)
 		}
 	}
 }
 
-func compactWalletWait(walletData glb.WalletData) *core.OutputWithID {
+func prepareBundle(walletData glb.WalletData, compact bool) ([][]byte, *core.OutputID) {
 	txCtx, err := getClient().CompactED25519Outputs(walletData.PrivateKey, nil, 0)
 	glb.AssertNoError(err)
 
-	ret, err := txCtx.ProducedOutput(0)
-	glb.AssertNoError(err)
-	return ret
+	if txCtx != nil {
+		_, err = txCtx.ProducedOutput(0)
+		glb.AssertNoError(err)
+	}
+	return nil, nil
 }

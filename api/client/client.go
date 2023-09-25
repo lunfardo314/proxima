@@ -153,6 +153,19 @@ func (c *APIClient) GetOutputData(oid *core.OutputID) ([]byte, error) {
 	return oData, nil
 }
 
+func (c *APIClient) WaitOutputFinal(oid *core.OutputID, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	for {
+		if _, err := c.GetOutputData(oid); err != nil {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("WaitOutputFinal: timeout")
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+}
+
 func (c *APIClient) SubmitTransaction(txBytes []byte, nowait ...bool) error {
 	url := c.prefix + api.PathSubmitTransactionWait
 	if len(nowait) > 0 && nowait[0] {
