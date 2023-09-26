@@ -18,6 +18,7 @@ type spammerConfig struct {
 	outputAmount      uint64
 	bundleSize        int
 	pace              int
+	submitNowait      bool
 	maxTransactions   int
 	maxDuration       time.Duration
 	tagAlongSequencer core.ChainID
@@ -53,6 +54,14 @@ func initSpamCmd(apiCmd *cobra.Command) {
 	err = viper.BindPFlag("spammer.bundle_size", spamCmd.PersistentFlags().Lookup("spammer.bundle_size"))
 	glb.AssertNoError(err)
 
+	spamCmd.PersistentFlags().Uint64("spammer.pace", 3, "pace in ticks")
+	err = viper.BindPFlag("spammer.pace", spamCmd.PersistentFlags().Lookup("spammer.pace"))
+	glb.AssertNoError(err)
+
+	spamCmd.PersistentFlags().Bool("spammer.submit_nowait", false, "submit transaction without waiting for validation result")
+	err = viper.BindPFlag("spammer.submit_nowait", spamCmd.PersistentFlags().Lookup("spammer.submit_nowait"))
+	glb.AssertNoError(err)
+
 	spamCmd.PersistentFlags().String("spammer.tag_along.sequencer", "", "spammer.tag_along.sequencer")
 	err = viper.BindPFlag("spammer.tag_along.sequencer", spamCmd.PersistentFlags().Lookup("spammer.tag_along.sequencer"))
 	glb.AssertNoError(err)
@@ -69,6 +78,7 @@ func readSpammerConfigIn(sub *viper.Viper) (ret spammerConfig) {
 	ret.outputAmount = sub.GetUint64("output_amount")
 	ret.bundleSize = sub.GetInt("bundle_size")
 	ret.pace = sub.GetInt("pace")
+	ret.submitNowait = sub.GetBool("submit_nowait")
 	ret.maxTransactions = sub.GetInt("max_transactions")
 	ret.maxDuration = time.Duration(sub.GetInt("max_duration_minutes")) * time.Minute
 	ret.tagAlongFee = sub.GetUint64("tag_along.fee")
@@ -87,6 +97,7 @@ func displaySpammerConfig() spammerConfig {
 	glb.Infof("output amount: %d", cfg.outputAmount)
 	glb.Infof("bundle size: %d", cfg.bundleSize)
 	glb.Infof("pace: %d", cfg.pace)
+	glb.Infof("submit nowait: %v", cfg.submitNowait)
 	glb.Infof("max transactions: %d", cfg.maxTransactions)
 	glb.Infof("max duration: %v", cfg.maxDuration)
 	glb.Infof("tag-along sequencer: %s", cfg.tagAlongSequencer.String())
@@ -123,6 +134,7 @@ func standardScenario(cfg spammerConfig) {
 		deadline = time.Now().Add(cfg.maxDuration)
 	}
 
+	beginTime := time.Now()
 	for {
 		time.Sleep(time.Duration(cfg.pace) * core.TimeTickDuration())
 
@@ -143,17 +155,25 @@ func standardScenario(cfg spammerConfig) {
 		}
 
 		bundle, oid := prepareBundle(walletData, cfg)
+		bundlePace := cfg.pace * len(bundle)
+		bundleDuration := time.Duration(bundlePace) * core.TimeTickDuration()
+		glb.Infof("submitting bundle of %d transactions, total duration %d ticks, %v", len(bundle), bundlePace, bundleDuration)
 
 		c := getClient()
+		startTime := time.Now()
 		for _, txBytes := range bundle {
-			err = c.SubmitTransaction(txBytes)
+			err = c.SubmitTransaction(txBytes, cfg.submitNowait)
 			glb.AssertNoError(err)
 		}
-		glb.Infof("%d transactions submitted", len(bundle))
-		glb.Verbosef("wait for %s finalized", oid.Short())
-		err = c.WaitOutputFinal(&oid, core.TimeSlotDuration()*2)
+		glb.Verbosef("%d transactions submitted", len(bundle))
+		tout := core.TimeSlotDuration() * 2
+		glb.Verbosef("wait for %s finalized, timeout %v", oid.Short(), tout)
+		err = c.WaitOutputFinal(&oid, tout)
 		glb.AssertNoError(err)
-		glb.Infof("output %s has been finalized", oid.Short())
+		glb.Infof("bundle with closing output %s has been submitted finalized in %v", oid.Short(), time.Since(startTime))
+		txCounter += len(bundle)
+		timeSinceBeginning := time.Since(beginTime)
+		glb.Infof("tx counter: %d, TPS avg: %2f", txCounter, float32(txCounter)/float32(timeSinceBeginning/time.Second))
 	}
 }
 

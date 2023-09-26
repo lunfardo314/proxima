@@ -36,3 +36,5 @@ type OutputData struct {
 	// hex-encoded output data
 	OutputData string `json:"output_data,omitempty"`
 }
+
+const ErrGetOutputNotFound = "output not found"

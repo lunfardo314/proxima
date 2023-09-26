@@ -129,6 +129,8 @@ func (c *APIClient) GetMilestoneData(chainID core.ChainID) (*sequencer.Milestone
 	return sequencer.ParseMilestoneData(o.Output), nil
 }
 
+// GetOutputData returns output data from the latest heaviest state, if it exists there
+// Returns nil, nil if output does not exist
 func (c *APIClient) GetOutputData(oid *core.OutputID) ([]byte, error) {
 	path := fmt.Sprintf(api.PathGetOutput+"?id=%s", oid.StringHex())
 	body, err := c.getBody(path)
@@ -141,28 +143,40 @@ func (c *APIClient) GetOutputData(oid *core.OutputID) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	if res.Error.Error == api.ErrGetOutputNotFound {
+		return nil, nil
+	}
 	if res.Error.Error != "" {
 		return nil, fmt.Errorf("from server: %s", res.Error.Error)
 	}
 
 	oData, err := hex.DecodeString(res.OutputData)
 	if err != nil {
-		return nil, fmt.Errorf("wrong output data from server: %s", res.OutputData)
+		return nil, fmt.Errorf("can't decode output data: %v", err)
 	}
 
 	return oData, nil
 }
 
+const waitOutputFinalPollPeriod = 500 * time.Millisecond
+
+// WaitOutputFinal return true once output is found in the latest heaviest branch.
+// Polls node until success or timeout
 func (c *APIClient) WaitOutputFinal(oid *core.OutputID, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
+	var res []byte
+	var err error
 	for {
-		if _, err := c.GetOutputData(oid); err == nil {
+		if res, err = c.GetOutputData(oid); err != nil {
+			return err
+		}
+		if len(res) > 0 {
 			return nil
 		}
 		if time.Now().After(deadline) {
 			return fmt.Errorf("WaitOutputFinal %s: timeout %v", oid.Short(), timeout)
 		}
-		time.Sleep(500 * time.Millisecond)
+		time.Sleep(waitOutputFinalPollPeriod)
 	}
 }
 

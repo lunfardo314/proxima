@@ -110,7 +110,7 @@ func getOutputHandle(ut *utangle.UTXOTangle) func(w http.ResponseWriter, r *http
 		}
 		oData, found := ut.HeaviestStateForLatestTimeSlot().GetUTXO(&oid)
 		if !found {
-			writeErr(w, "output not found")
+			writeErr(w, api.ErrGetOutputNotFound)
 			return
 		}
 		resp := &api.OutputData{

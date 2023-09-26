@@ -18,7 +18,7 @@ func initGetUTXOCmd(apiCmd *cobra.Command) {
 
 }
 
-func runGetUTXOCmd(cmd *cobra.Command, args []string) {
+func runGetUTXOCmd(_ *cobra.Command, args []string) {
 	oid, err := core.OutputIDFromHexString(args[0])
 	glb.AssertNoError(err)
 

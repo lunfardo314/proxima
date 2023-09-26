@@ -272,11 +272,18 @@ func (ut *UTXOTangle) finalizeBranch(newBranchVertex *WrappedTx) error {
 			}
 			util.Assertf(ok, "finalizeBranch %s: can't find previous branch %s", newBranchVertex.IDShort(), v.StateDelta.baselineBranch.IDShort())
 
-			upd := multistate.MustNewUpdatable(ut.stateStore, prevBranch.root)
+			upd, err1 := multistate.NewUpdatable(ut.stateStore, prevBranch.root)
+			if err1 != nil {
+				err = err1
+				return
+			}
 			cmds := v.StateDelta.getUpdateCommands()
-			err = upd.UpdateWithCommands(cmds, &nextStemOutputID, &seqData.SequencerID, coverage)
-			util.Assertf(err == nil, "finalizeBranch %s: '%v'\n=== Delta: %s\n=== Commands: %s",
-				v.Tx.IDShort(), err, v.StateDelta.LinesRecursive().String(), multistate.UpdateCommandsToLines(cmds))
+			err1 = upd.UpdateWithCommands(cmds, &nextStemOutputID, &seqData.SequencerID, coverage)
+			if err1 != nil {
+				err = fmt.Errorf("finalizeBranch %s: '%v'\n=== Delta: %s\n=== Commands: %s",
+					v.Tx.IDShort(), err, v.StateDelta.LinesRecursive().String(), multistate.UpdateCommandsToLines(cmds))
+				return
+			}
 			newRoot = upd.Root()
 		},
 
@@ -290,7 +297,9 @@ func (ut *UTXOTangle) finalizeBranch(newBranchVertex *WrappedTx) error {
 
 	// assert consistency
 	rdr, err := multistate.NewSugaredReadableState(ut.stateStore, newRoot)
-	util.AssertNoError(err)
+	if err != nil {
+		return err
+	}
 	util.Assertf(rdr.GetStemOutput().ID == nextStemOutputID, "rdr.GetStemOutput().ID == nextStemOutputID")
 
 	// store new branch to the tangle data structure
