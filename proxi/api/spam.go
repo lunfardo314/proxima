@@ -142,10 +142,10 @@ func standardScenario(cfg spammerConfig) {
 		glb.Assertf(time.Now().Before(deadline), "spam duration limit has been reached")
 
 		nowisTs := core.LogicalTimeNow()
-		_, balance, err := getClient().GetTransferableOutputs(walletData.Account, nowisTs, cfg.bundleSize)
+		outs, balance, err := getClient().GetTransferableOutputs(walletData.Account, nowisTs, cfg.bundleSize)
 		glb.AssertNoError(err)
 
-		glb.Infof("transferable balance: %s", util.GoThousands(balance))
+		glb.Infof("transferable balance: %s, number of outputs: %d", util.GoThousands(balance), len(outs))
 		requiredBalance := minimumBalance + cfg.outputAmount*uint64(cfg.bundleSize) + cfg.tagAlongFee
 		if balance < requiredBalance {
 			glb.Infof("transferable balance (%s) is too small for the bundle (required is %s). Waiting for more..",
