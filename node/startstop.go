@@ -51,6 +51,7 @@ func Start() *ProximaNode {
 func (p *ProximaNode) startup() {
 	p.log.Info("---------------- starting up Proxima node --------------")
 
+	p.startPProfIfEnabled()
 	p.startMultiStateDB()
 	p.startTxStore()
 	p.loadUTXOTangle()

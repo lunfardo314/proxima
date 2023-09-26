@@ -20,6 +20,9 @@ func init() {
 	pflag.String(general.ConfigKeyMultiStateDbName, "proximadb", "name of the multi-state database")
 	pflag.String(general.ConfigKeyTxStoreType, "dummy", "one of: db | dummy | url")
 	pflag.String(general.ConfigKeyTxStoreName, "", "depending on type: name of the db or url")
+
+	pflag.Bool("pprof.enable", false, "enable pprof")
+	pflag.Int("pprof.port", 8080, "default pprof port")
 }
 
 func initConfig(log *zap.SugaredLogger) {
