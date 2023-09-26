@@ -1,20 +1,20 @@
 api:
     endpoint: http://localhost:4000
-config: k3
+config: k2
 force: false
 multistate:
     name: ""
 sequencer:
-    id: ""
+    id: a4225cb6851d164a3a260dc3c29048b1f76b317f0876159dafd790bee08edfa1
 tag-along:
     fee: 500
     sequencer: 764eee5d178dab62fe1bdf05a775b78dab061c09d8a771c2902219787db700fa
 txstore:
     name: ""
 wallet:
-    account: addressED25519(0x62c733803a83a26d4db1ce9f22206281f64af69401da6eb26390d34e6a88c5fa)
-    name: "key 2 wallet"
-    pk: 3a2ed3c4f738a06e9543f80e032fd870be5e524585e0144f2499d1a28bc4797902e2a7a85bd158469adae3294a615e17ef49e72642c4eb58ff00d92301b9bb88
+    account: addressED25519(0x24db3c3d477f29d558fbe6f215b0c9d198dcc878866fb60cba023ba3c3d74a03)
+    name: "key 3 wallet"
+    pk: 34d39e13811f8cd25d78c0779ca3673e03710f50ecf9d723ea6c775ca88fcfd3b6bc2f88cb000d0fd63121d99bf57ab5c184cefe0ba89cf0f96ee60858696d78
     sequencer: ""
 spammer:
     scenario: standard
@@ -27,4 +27,4 @@ spammer:
     tag_along:
         sequencer: 764eee5d178dab62fe1bdf05a775b78dab061c09d8a771c2902219787db700fa
         fee: 500
-    target: addressED25519(0x24db3c3d477f29d558fbe6f215b0c9d198dcc878866fb60cba023ba3c3d74a03)
+    target: addressED25519(0x62c733803a83a26d4db1ce9f22206281f64af69401da6eb26390d34e6a88c5fa)

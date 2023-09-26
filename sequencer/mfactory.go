@@ -422,7 +422,7 @@ func (mf *milestoneFactory) makeAdditionalInputsOutputs(inputs []*core.OutputWit
 		if cmdData := parseSenderCommandDataRaw(myAddr, inp); len(cmdData) > 0 {
 			o, err := makeOutputFromCommandData(cmdData)
 			if err != nil {
-				mf.log.Warnf("error while parsing sequncer command in input %s: %v", inp.IDShort(), err)
+				mf.log.Warnf("error while parsing sequencer command in input %s: %v", inp.IDShort(), err)
 				continue
 			}
 			if o.Amount() <= maximumTotal-total {

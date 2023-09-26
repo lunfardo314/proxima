@@ -13,10 +13,13 @@ import (
 
 	"github.com/lunfardo314/proxima/api"
 	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/sequencer"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/txbuilder"
+	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/txutils"
+	"golang.org/x/crypto/blake2b"
 )
 
 const apiDefaultClientTimeout = 3 * time.Second
@@ -350,6 +353,94 @@ func (c *APIClient) getBody(path string) ([]byte, error) {
 		return nil, err
 	}
 	return body, nil
+}
+
+func (c *APIClient) MakeChainOrigin(par TransferFromED25519WalletParams) (*transaction.TransactionContext, core.ChainID, error) {
+	if par.Amount < minimumAmount {
+		return nil, core.NilChainID, fmt.Errorf("minimum transfer amount is %d", minimumAmount)
+	}
+	if par.Amount > 0 && par.TagAlongSeqID == nil {
+		return nil, [32]byte{}, fmt.Errorf("tag-along sequencer not specified")
+	}
+
+	walletAccount := core.AddressED25519FromPrivateKey(par.WalletPrivateKey)
+
+	ts := core.LogicalTimeNow()
+	inps, totalInputs, err := c.GetTransferableOutputs(walletAccount, ts)
+	if err != nil {
+		return nil, [32]byte{}, err
+	}
+	if totalInputs < par.Amount+par.TagAlongFee {
+		return nil, [32]byte{}, fmt.Errorf("not enough source balance %s", util.GoThousands(totalInputs))
+	}
+
+	totalInputs = 0
+	inps = util.FilterSlice(inps, func(o *core.OutputWithID) bool {
+		if totalInputs < par.Amount+par.TagAlongFee {
+			totalInputs += o.Output.Amount()
+			return true
+		}
+		return false
+	})
+
+	txb := txbuilder.NewTransactionBuilder()
+	_, ts1, err := txb.ConsumeOutputs(inps...)
+	if err != nil {
+		return nil, [32]byte{}, err
+	}
+	ts = core.MaxLogicalTime(ts1.AddTimeTicks(core.TransactionTimePaceInTicks), ts)
+
+	err = txb.PutStandardInputUnlocks(len(inps))
+	glb.AssertNoError(err)
+
+	chainOut := core.NewOutput(func(o *core.Output) {
+		_, _ = o.WithAmount(par.Amount).
+			WithLock(par.Target).
+			PushConstraint(core.NewChainOrigin().Bytes())
+	})
+	_, err = txb.ProduceOutput(chainOut)
+	glb.AssertNoError(err)
+
+	if par.TagAlongFee > 0 {
+		tagAlongFeeOut := core.NewOutput(func(o *core.Output) {
+			o.WithAmount(par.TagAlongFee).
+				WithLock(core.ChainLockFromChainID(*par.TagAlongSeqID))
+		})
+		if _, err = txb.ProduceOutput(tagAlongFeeOut); err != nil {
+			return nil, [32]byte{}, err
+		}
+	}
+
+	if totalInputs > par.Amount+par.TagAlongFee {
+		remainder := core.NewOutput(func(o *core.Output) {
+			o.WithAmount(totalInputs - par.Amount - par.TagAlongFee).
+				WithLock(walletAccount)
+		})
+		if _, err = txb.ProduceOutput(remainder); err != nil {
+			return nil, [32]byte{}, err
+		}
+	}
+	txb.TransactionData.Timestamp = ts
+	txb.TransactionData.InputCommitment = txb.InputCommitment()
+	txb.SignED25519(par.WalletPrivateKey)
+
+	txBytes := txb.TransactionData.Bytes()
+
+	txCtx, err := transaction.ContextFromTransferableBytes(txBytes, transaction.PickOutputFromListFunc(inps))
+	if err != nil {
+		return nil, [32]byte{}, err
+	}
+	if err = c.SubmitTransaction(txBytes); err != nil {
+		return nil, [32]byte{}, err
+	}
+
+	oChain, err := transaction.OutputWithIDFromTransactionBytes(txBytes, 0)
+	if err != nil {
+		return nil, [32]byte{}, err
+	}
+
+	chainID := blake2b.Sum256(oChain.ID[:])
+	return txCtx, chainID, err
 }
 
 type MakeTransferTransactionParams struct {

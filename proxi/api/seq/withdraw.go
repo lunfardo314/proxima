@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"strconv"
 
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/proxi/glb"
@@ -19,10 +20,10 @@ import (
 
 func initSeqWithdrawCmd(seqCmd *cobra.Command) {
 	seqSendCmd := &cobra.Command{
-		Use:     "withdraw",
+		Use:     "withdraw <amount>",
 		Aliases: util.List("send"),
 		Short:   `withdraw tokens from sequencer to the target lock`,
-		Args:    cobra.NoArgs,
+		Args:    cobra.ExactArgs(1),
 		Run:     runSeqWithdrawCmd,
 	}
 
@@ -30,7 +31,7 @@ func initSeqWithdrawCmd(seqCmd *cobra.Command) {
 	seqCmd.AddCommand(seqSendCmd)
 }
 
-func runSeqWithdrawCmd(_ *cobra.Command, _ []string) {
+func runSeqWithdrawCmd(_ *cobra.Command, args []string) {
 	seqID := glb.GetOwnSequencerID()
 	glb.Infof("sequencer ID (source): %s", seqID.String())
 
@@ -46,7 +47,14 @@ func runSeqWithdrawCmd(_ *cobra.Command, _ []string) {
 	walletData := glb.GetWalletData()
 	glb.Infof("wallet account is: %s", walletData.Account.String())
 	targetLock := glb.MustGetTarget()
-	glb.Infof("amount: %s", util.GoThousands(getAmount()))
+
+	amount, err := strconv.ParseUint(args[0], 10, 64)
+	glb.AssertNoError(err)
+
+	glb.Assertf(amount >= sequencer.MinimumAmountToRequestFromSequencer, "amount must be at least %s",
+		util.GoThousands(sequencer.MinimumAmountToRequestFromSequencer))
+
+	glb.Infof("amount: %s", util.GoThousands(amount))
 
 	glb.Infof("querying wallet's outputs..")
 	walletOutputs, err := getClient().GetAccountOutputs(walletData.Account, func(o *core.Output) bool {
@@ -61,17 +69,15 @@ func runSeqWithdrawCmd(_ *cobra.Command, _ []string) {
 		glb.Infof("%d : %s : %s", i, o.ID.Short(), util.GoThousands(o.Output.Amount()))
 	}
 
-	if !viper.GetBool("force") {
-		prompt := fmt.Sprintf("withdraw %s from %s to the target %s?",
-			util.GoThousands(getAmount()), seqID.Short(), targetLock.String())
-		if !glb.YesNoPrompt(prompt, false) {
-			glb.Infof("exit")
-			return
-		}
+	prompt := fmt.Sprintf("withdraw %s from %s to the target %s?",
+		util.GoThousands(amount), seqID.Short(), targetLock.String())
+	if !glb.YesNoPrompt(prompt, false) {
+		glb.Infof("exit")
+		return
 	}
 
 	var amountBin [8]byte
-	binary.BigEndian.PutUint64(amountBin[:], getAmount())
+	binary.BigEndian.PutUint64(amountBin[:], amount)
 	cmdParArr := lazybytes.MakeArrayFromDataReadOnly(targetLock.Bytes(), amountBin[:])
 	cmdData := common.Concat(sequencer.CommandCodeWithdrawAmount, cmdParArr)
 	constrSource := fmt.Sprintf("concat(0x%s)", hex.EncodeToString(cmdData))
@@ -96,8 +102,4 @@ func runSeqWithdrawCmd(_ *cobra.Command, _ []string) {
 
 	err = getClient().SubmitTransaction(txBytes)
 	glb.AssertNoError(err)
-}
-
-func getAmount() uint64 {
-	return viper.GetUint64("amount")
 }

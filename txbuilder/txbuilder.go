@@ -122,6 +122,17 @@ func (txb *TransactionBuilder) PutUnlockReference(inputIndex, constraintIndex, r
 	return nil
 }
 
+func (txb *TransactionBuilder) PutStandardInputUnlocks(n int) error {
+	util.Assertf(n > 0, "n > 0")
+	txb.PutSignatureUnlock(0)
+	for i := 1; i < n; i++ {
+		if err := txb.PutUnlockReference(byte(i), core.ConstraintIndexLock, 0); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (txb *TransactionBuilder) PushEndorsements(txid ...*core.TransactionID) {
 	txb.TransactionData.Endorsements = append(txb.TransactionData.Endorsements, txid...)
 }
