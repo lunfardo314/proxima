@@ -26,8 +26,10 @@ func Init(rootCmd *cobra.Command) {
 	initGetUTXOCmd(apiCmd)
 	initGetChainOutputCmd(apiCmd)
 	initCompactOutputsCmd(apiCmd)
+	initBalanceCmd(apiCmd)
 	initTransferCmd(apiCmd)
 	initSpamCmd(apiCmd)
+	initMakeChainCmd(apiCmd)
 
 	api.Init(apiCmd)
 
