@@ -63,7 +63,7 @@ func createMilestoneFactory(par *configuration) (*milestoneFactory, error) {
 		return nil, err
 	}
 	// creates sequencer output out of chain origin and tags along, if necessary
-	chainOut, stemOut, created, err := ensureSequencerStartOutputs(chainOut, stemOut, par.Params)
+	chainOut, created, err := ensureSequencerStartOutput(chainOut, stemOut.VID, par.Params)
 	if err != nil {
 		return nil, err
 	}
@@ -98,10 +98,13 @@ func createMilestoneFactory(par *configuration) (*milestoneFactory, error) {
 	return ret, nil
 }
 
-func ensureSequencerStartOutputs(chainOut, stemOut utangle.WrappedOutput, par Params) (utangle.WrappedOutput, utangle.WrappedOutput, bool, error) {
+func ensureSequencerStartOutput(chainOut utangle.WrappedOutput, endorseBranch *utangle.WrappedTx, par Params) (utangle.WrappedOutput, bool, error) {
 	if chainOut.VID.IsSequencerMilestone() && par.ProvideTagAlongSequencers == nil {
-		// chain has sequencer output is already at start
-		return chainOut, stemOut, false, nil
+		// chain already has sequencer output
+		return chainOut, false, nil
+	}
+	if !endorseBranch.IsBranchTransaction() {
+		return utangle.WrappedOutput{}, false, fmt.Errorf("ensureSequencerStartOutput: must endorse branch tx")
 	}
 
 	// it is a plain chain output, without sequencer constraint. Need to create sequencer output
@@ -110,8 +113,8 @@ func ensureSequencerStartOutputs(chainOut, stemOut utangle.WrappedOutput, par Pa
 	// - current time if it fits the current slot
 	// - last tick in the slot
 	ts := core.MaxLogicalTime(core.LogicalTimeNow(), chainOut.Timestamp().AddTimeTicks(core.TransactionTimePaceInTicks))
-	if ts.TimeSlot() != stemOut.TimeSlot() {
-		ts = core.MustNewLogicalTime(stemOut.TimeSlot(), core.TimeTicksPerSlot-1)
+	if ts.TimeSlot() != endorseBranch.TimeSlot() {
+		ts = core.MustNewLogicalTime(endorseBranch.TimeSlot(), core.TimeTicksPerSlot-1)
 	}
 	util.Assertf(core.ValidTimePace(chainOut.Timestamp(), ts), "core.ValidTimePace(chainOut.LogicalTime(), ts) %s, %s",
 		chainOut.Timestamp(), ts)
@@ -130,7 +133,7 @@ func ensureSequencerStartOutputs(chainOut, stemOut utangle.WrappedOutput, par Pa
 	}
 	chainOutWithID, err := chainOut.Unwrap()
 	if err != nil || chainOutWithID == nil {
-		return utangle.WrappedOutput{}, utangle.WrappedOutput{}, false, err
+		return utangle.WrappedOutput{}, false, err
 	}
 	txBytes, err := MakeSequencerTransaction(MakeSequencerTransactionParams{
 		ChainInput: &core.OutputWithChainID{
@@ -139,20 +142,20 @@ func ensureSequencerStartOutputs(chainOut, stemOut utangle.WrappedOutput, par Pa
 		},
 		Timestamp:         ts,
 		AdditionalOutputs: tagAlongFeeOutputs,
-		Endorsements:      util.List(stemOut.VID.ID()),
+		Endorsements:      util.List(endorseBranch.ID()),
 		PrivateKey:        par.ControllerKey,
 		TotalSupply:       0,
 	})
 	if err != nil {
-		return utangle.WrappedOutput{}, utangle.WrappedOutput{}, false, err
+		return utangle.WrappedOutput{}, false, err
 	}
 
 	vid, err := par.Glb.TransactionInWaitAppendSync(txBytes)
 	if err != nil {
-		return utangle.WrappedOutput{}, utangle.WrappedOutput{}, false, err
+		return utangle.WrappedOutput{}, false, err
 	}
 	util.Assertf(vid.IsSequencerMilestone(), "vid.IsSequencerMilestone()")
-	return *vid.SequencerOutput(), stemOut, true, nil
+	return *vid.SequencerOutput(), true, nil
 }
 
 func (mf *milestoneFactory) trace(format string, args ...any) {
