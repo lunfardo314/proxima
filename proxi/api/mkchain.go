@@ -15,7 +15,7 @@ import (
 func initMakeChainCmd(apiCmd *cobra.Command) {
 	getMakeChainCmd := &cobra.Command{
 		Use:   "mkchain [<initial on-chain balance>]",
-		Short: `creates new chain origin`,
+		Short: `creates new chain origin (not a sequencer)`,
 		Args:  cobra.MaximumNArgs(1),
 		Run:   runMakeChainCmd,
 	}

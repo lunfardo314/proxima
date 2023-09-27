@@ -163,8 +163,6 @@ func parseLogLevel(glb *workflow.Workflow, subViper *viper.Viper) zapcore.Level 
 	return glb.LogLevel()
 }
 
-const minimumTagAlongFee = 100
-
 func (seq *Sequencer) ID() *core.ChainID {
 	ret := seq.factory.tipPool.chainID
 	return &ret

@@ -41,10 +41,10 @@ type (
 	// MilestoneData data which is on sequencer as 'or(..)' constraint. It is not enforced by the ledger, yet maintained
 	// by the sequencer
 	MilestoneData struct {
-		Description string // < 256
-		MinimumFee  uint64
-		ChainIndex  uint32
-		BranchIndex uint32
+		Description  string // < 256
+		MinimumFee   uint64
+		ChainHeight  uint32
+		BranchHeight uint32
 	}
 )
 
@@ -114,15 +114,15 @@ func MakeSequencerTransaction(par MakeSequencerTransactionParams) ([]byte, error
 		outData := ParseMilestoneData(par.ChainInput.Output)
 		if outData == nil {
 			outData = &MilestoneData{
-				Description: par.SeqName,
-				MinimumFee:  par.MinimumFee,
-				BranchIndex: 0,
-				ChainIndex:  0,
+				Description:  par.SeqName,
+				MinimumFee:   par.MinimumFee,
+				BranchHeight: 0,
+				ChainHeight:  0,
 			}
 		} else {
-			outData.ChainIndex += 1
+			outData.ChainHeight += 1
 			if par.StemInput != nil {
-				outData.BranchIndex += 1
+				outData.BranchHeight += 1
 			}
 		}
 		_, _ = o.PushConstraint(outData.AsConstraint().Bytes())
@@ -214,8 +214,8 @@ func (od *MilestoneData) AsConstraint() core.Constraint {
 		dscrBin = dscrBin[:256]
 	}
 	dscrBinStr := fmt.Sprintf("0x%s", hex.EncodeToString(dscrBin))
-	chainIndexStr := fmt.Sprintf("u32/%d", od.ChainIndex)
-	branchIndexStr := fmt.Sprintf("u32/%d", od.BranchIndex)
+	chainIndexStr := fmt.Sprintf("u32/%d", od.ChainHeight)
+	branchIndexStr := fmt.Sprintf("u32/%d", od.BranchHeight)
 	minFeeStr := fmt.Sprintf("u64/%d", od.MinimumFee)
 
 	src := fmt.Sprintf("or(%s)", strings.Join([]string{dscrBinStr, chainIndexStr, branchIndexStr, minFeeStr}, ","))
@@ -248,9 +248,9 @@ func OutputDataFromConstraint(constr []byte) (*MilestoneData, error) {
 			len(args[0]), len(args[1]), len(args[2]), len(args[3]))
 	}
 	return &MilestoneData{
-		Description: string(dscrBin),
-		ChainIndex:  binary.BigEndian.Uint32(chainIdxBin),
-		BranchIndex: binary.BigEndian.Uint32(branchIdxBin),
-		MinimumFee:  binary.BigEndian.Uint64(minFeeBin),
+		Description:  string(dscrBin),
+		ChainHeight:  binary.BigEndian.Uint32(chainIdxBin),
+		BranchHeight: binary.BigEndian.Uint32(branchIdxBin),
+		MinimumFee:   binary.BigEndian.Uint64(minFeeBin),
 	}, nil
 }

@@ -48,8 +48,8 @@ func (seq *Sequencer) LogMilestoneSubmitDefault(wOut *utangle.WrappedOutput) {
 
 	var branchIndex, msIndex uint32
 	if od := ParseMilestoneData(o.Output); od != nil {
-		branchIndex = od.BranchIndex
-		msIndex = od.ChainIndex
+		branchIndex = od.BranchHeight
+		msIndex = od.ChainHeight
 	}
 
 	seq.log.Infof("%s %d/%d: %s, cov: %s<-%s, in/out: %d/%d, feeOut: %d, mem: %d/%d",

@@ -56,6 +56,12 @@ func (seq *Sequencer) createMilestoneFactory() error {
 	var err error
 	if seq.config.StartupTxOptions == nil || seq.config.StartupTxOptions.ChainOutput == nil {
 		chainOut, err = seq.glb.UTXOTangle().WrapChainOutput(seq.chainID)
+		if err != nil {
+			return err
+		}
+		if !chainOut.VID.IsSequencerMilestone() {
+			return fmt.Errorf("sequncer can only be started from sequencer output. Got %s", chainOut.IDShort())
+		}
 	} else {
 		var created bool
 		// creates sequencer output out of chain origin and tags along, if necessary
