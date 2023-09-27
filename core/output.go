@@ -384,7 +384,18 @@ func (o *OutputWithID) Clone() *OutputWithID {
 }
 
 func (o *OutputWithID) String() string {
-	return fmt.Sprintf("    ID: %s\nHex ID: %s\n%s", o.ID.String(), o.ID.StringHex(), o.Output.ToString("     "))
+	chainIDStr := ""
+	if cc, idx := o.Output.ChainConstraint(); idx != 0xff {
+		var chainID ChainID
+		if cc.IsOrigin() {
+			chainID = ChainID(blake2b.Sum256(o.ID[:]))
+		} else {
+			chainID = cc.ID
+		}
+		chainIDStr = fmt.Sprintf("\nChainID: %s", chainID.String())
+	}
+	ret := fmt.Sprintf("     ID: %s\n Hex ID: %s%s\n%s", o.ID.String(), o.ID.StringHex(), chainIDStr, o.Output.ToString("     "))
+	return ret
 }
 
 func (o *OutputWithID) Short() string {

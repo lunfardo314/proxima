@@ -45,6 +45,15 @@ sequencers:
     pace: 5
     max_fee_inputs: 50
 
+  seq0:
+    enable: true
+    loglevel: info
+    trace_tippool: false
+    sequencer_id: 4c9971adc4fcd7626704ee776da06e4c592b46c69a40d586fd6ae66a70879d85
+    controller_key: 136381bd4dea7b2f0fa6c6ca14ee660dc7929975b47e6cdb85adee9e26032a810530b790e0e7de626f36e20ba656f09e324c68203de899d0daf9f98fcb3cf684
+    pace: 5
+    max_fee_inputs: 50
+
 # optional sequencer id to send fee upon creation of the first sequencer transaction in the chain
 # for all sequencers
 tag_along_sequencer:
