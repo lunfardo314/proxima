@@ -2,9 +2,36 @@ package sequencer
 
 import (
 	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/utangle"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/spf13/viper"
 	"go.uber.org/zap/zapcore"
+)
+
+type (
+	ConfigOptions struct {
+		SequencerName    string
+		Pace             int // pace in slots
+		LogLevel         zapcore.Level
+		LogOutputs       []string
+		TraceTippool     bool
+		LogTimeLayout    string
+		MaxFeeInputs     int
+		MaxTargetTs      core.LogicalTime
+		MaxMilestones    int
+		MaxBranches      int
+		StartupTxOptions *StartupTxOptions
+	}
+
+	// StartupTxOptions used for testing, to create interim sequencer milestone
+	StartupTxOptions struct {
+		ChainOutput        *utangle.WrappedOutput
+		EndorseBranch      *core.TransactionID
+		TagAlongSequencers []core.ChainID
+		TagAlongFee        uint64
+	}
+
+	ConfigOpt func(options *ConfigOptions)
 )
 
 func WithName(name string) ConfigOpt {
@@ -56,6 +83,12 @@ func WithMaxMilestones(maxMs int) ConfigOpt {
 func WithMaxBranches(maxBranches int) ConfigOpt {
 	return func(o *ConfigOptions) {
 		o.MaxBranches = maxBranches
+	}
+}
+
+func WithStartupTxOptions(opt *StartupTxOptions) ConfigOpt {
+	return func(o *ConfigOptions) {
+		o.StartupTxOptions = opt
 	}
 }
 

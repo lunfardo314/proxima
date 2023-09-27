@@ -50,86 +50,80 @@ const (
 	veryMaxFeeInputs     = maxAdditionalOutputs // edge case with sequencer commands
 )
 
-func createMilestoneFactory(par *configuration) (*milestoneFactory, error) {
-	log := testutil.NewNamedLogger(fmt.Sprintf("[%sF-%s]", par.SequencerName, par.ChainID.VeryShort()), par.LogLevel)
-	var chainOut, stemOut utangle.WrappedOutput
+func (seq *Sequencer) createMilestoneFactory() error {
+	log := testutil.NewNamedLogger(fmt.Sprintf("[%sF-%s]", seq.config.SequencerName, seq.chainID.VeryShort()), seq.config.LogLevel)
+	var chainOut utangle.WrappedOutput
 	var err error
-	if par.ProvideStartOutputs != nil {
-		chainOut, stemOut, err = par.ProvideStartOutputs()
+	if seq.config.StartupTxOptions == nil || seq.config.StartupTxOptions.ChainOutput == nil {
+		chainOut, err = seq.glb.UTXOTangle().WrapChainOutput(seq.chainID)
 	} else {
-		chainOut, stemOut, err = par.Glb.UTXOTangle().LoadSequencerStartOutputsDefault(par.ChainID)
-	}
-	if err != nil {
-		return nil, err
-	}
-	// creates sequencer output out of chain origin and tags along, if necessary
-	chainOut, created, err := ensureSequencerStartOutput(chainOut, stemOut.VID, par.Params)
-	if err != nil {
-		return nil, err
-	}
-	if created {
-		log.Infof("created sequencer start output %s", chainOut.DecodeID().Short())
+		var created bool
+		// creates sequencer output out of chain origin and tags along, if necessary
+		chainOut, created, err = seq.ensureSequencerStartOutput()
+		if err != nil {
+			return err
+		}
+		if created {
+			log.Infof("created sequencer start output %s", chainOut.DecodeID().Short())
+		}
 	}
 
-	tippoolLoglevel := par.LogLevel
-	if par.TraceTippool {
+	tippoolLoglevel := seq.config.LogLevel
+	if seq.config.TraceTippool {
 		tippoolLoglevel = zapcore.DebugLevel
 	}
-	tippool, err := startTipPool(par.SequencerName, par.Glb, par.ChainID, tippoolLoglevel)
+	tippool, err := startTipPool(seq.config.SequencerName, seq.glb, seq.chainID, tippoolLoglevel)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	ret := &milestoneFactory{
 		log:     log,
-		tangle:  par.Glb.UTXOTangle(),
+		tangle:  seq.glb.UTXOTangle(),
 		tipPool: tippool,
 		ownMilestones: map[*utangle.WrappedTx]utangle.WrappedOutput{
 			chainOut.VID: chainOut,
 		},
 		lastMilestone: chainOut,
-		controllerKey: par.ControllerKey,
-		maxFeeInputs:  par.MaxFeeInputs,
+		controllerKey: seq.controllerKey,
+		maxFeeInputs:  seq.config.MaxFeeInputs,
 	}
 	if ret.maxFeeInputs == 0 || ret.maxFeeInputs > veryMaxFeeInputs {
 		ret.maxFeeInputs = veryMaxFeeInputs
 	}
 	ret.log.Debugf("milestone factory started")
-	return ret, nil
+
+	seq.factory = ret
+	return nil
 }
 
-func ensureSequencerStartOutput(chainOut utangle.WrappedOutput, endorseBranch *utangle.WrappedTx, par Params) (utangle.WrappedOutput, bool, error) {
-	if chainOut.VID.IsSequencerMilestone() && par.ProvideTagAlongSequencers == nil {
-		// chain already has sequencer output
-		return chainOut, false, nil
-	}
-	if !endorseBranch.IsBranchTransaction() {
+func (seq *Sequencer) ensureSequencerStartOutput() (utangle.WrappedOutput, bool, error) {
+	util.Assertf(seq.config.StartupTxOptions != nil && seq.config.StartupTxOptions.ChainOutput != nil, "ensureSequencerStartOutput: chain output not specified")
+
+	if seq.config.StartupTxOptions.EndorseBranch == nil || !seq.config.StartupTxOptions.EndorseBranch.BranchFlagON() {
 		return utangle.WrappedOutput{}, false, fmt.Errorf("ensureSequencerStartOutput: must endorse branch tx")
 	}
 
-	// it is a plain chain output, without sequencer constraint. Need to create sequencer output
+	chainOut := seq.config.StartupTxOptions.ChainOutput
 	// We take current branch transaction ID from stem
 	// timestamp is
 	// - current time if it fits the current slot
 	// - last tick in the slot
 	ts := core.MaxLogicalTime(core.LogicalTimeNow(), chainOut.Timestamp().AddTimeTicks(core.TransactionTimePaceInTicks))
-	if ts.TimeSlot() != endorseBranch.TimeSlot() {
-		ts = core.MustNewLogicalTime(endorseBranch.TimeSlot(), core.TimeTicksPerSlot-1)
+	endorse := seq.config.StartupTxOptions.EndorseBranch
+	if endorse != nil && ts.TimeSlot() != endorse.TimeSlot() {
+		ts = core.MustNewLogicalTime(endorse.TimeSlot(), core.TimeTicksPerSlot-1)
 	}
 	util.Assertf(core.ValidTimePace(chainOut.Timestamp(), ts), "core.ValidTimePace(chainOut.LogicalTime(), ts) %s, %s",
 		chainOut.Timestamp(), ts)
 
-	// to speed up finalization of the sequencer we optionally "bribe" some other sequencers by paying fees to them
-	var tagAlongFeeOutputs []*core.Output
-	if par.ProvideTagAlongSequencers != nil {
-		bootstrapSequencerIDs, feeAmount := par.ProvideTagAlongSequencers()
-		tagAlongFeeOutputs = make([]*core.Output, len(bootstrapSequencerIDs))
-		for i := range tagAlongFeeOutputs {
-			tagAlongFeeOutputs[i] = core.NewOutput(func(o *core.Output) {
-				o.WithAmount(feeAmount).
-					WithLock(core.ChainLockFromChainID(bootstrapSequencerIDs[i]))
-			})
-		}
+	tagAlongSequencers := seq.config.StartupTxOptions.TagAlongSequencers
+	tagAlongFeeOutputs := make([]*core.Output, len(tagAlongSequencers))
+	for i := range tagAlongFeeOutputs {
+		tagAlongFeeOutputs[i] = core.NewOutput(func(o *core.Output) {
+			o.WithAmount(seq.config.StartupTxOptions.TagAlongFee).
+				WithLock(core.ChainLockFromChainID(tagAlongSequencers[i]))
+		})
 	}
 	chainOutWithID, err := chainOut.Unwrap()
 	if err != nil || chainOutWithID == nil {
@@ -138,19 +132,19 @@ func ensureSequencerStartOutput(chainOut utangle.WrappedOutput, endorseBranch *u
 	txBytes, err := MakeSequencerTransaction(MakeSequencerTransactionParams{
 		ChainInput: &core.OutputWithChainID{
 			OutputWithID: *chainOutWithID,
-			ChainID:      par.ChainID,
+			ChainID:      seq.chainID,
 		},
 		Timestamp:         ts,
+		Endorsements:      []*core.TransactionID{endorse},
 		AdditionalOutputs: tagAlongFeeOutputs,
-		Endorsements:      util.List(endorseBranch.ID()),
-		PrivateKey:        par.ControllerKey,
+		PrivateKey:        seq.controllerKey,
 		TotalSupply:       0,
 	})
 	if err != nil {
 		return utangle.WrappedOutput{}, false, err
 	}
 
-	vid, err := par.Glb.TransactionInWaitAppendSync(txBytes)
+	vid, err := seq.glb.TransactionInWaitAppendSync(txBytes)
 	if err != nil {
 		return utangle.WrappedOutput{}, false, err
 	}

@@ -481,6 +481,16 @@ func (ut *UTXOTangle) ScanAccount(addr core.AccountID, lastNTimeSlots int) set.S
 	return ret
 }
 
+func (ut *UTXOTangle) WrapChainOutput(chainID core.ChainID) (WrappedOutput, error) {
+	rdr := ut.HeaviestStateForLatestTimeSlot()
+	chainOut, err := rdr.GetChainOutput(&chainID)
+	if err != nil {
+		return WrappedOutput{}, fmt.Errorf("can't find chain output for %s: %v", chainID.Short(), err)
+	}
+
+	return ut.MustWrapOutput(chainOut), nil
+}
+
 func (ut *UTXOTangle) LoadSequencerStartOutputs(seqID core.ChainID, stateReader func() state.SugaredStateReader) (WrappedOutput, WrappedOutput, error) {
 	rdr := stateReader()
 	chainOut, err := rdr.GetChainOutput(&seqID)

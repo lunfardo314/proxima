@@ -239,11 +239,7 @@ func Test1Sequencer(t *testing.T) {
 
 		sequencer.SetTraceProposer(sequencer.BaseProposerName, false)
 
-		seq, err := sequencer.StartNew(sequencer.Params{
-			Glb:           r.wrk,
-			ChainID:       r.bootstrapChainID,
-			ControllerKey: r.originControllerPrivateKey,
-		},
+		seq, err := sequencer.StartNew(r.wrk, r.bootstrapChainID, r.originControllerPrivateKey,
 			sequencer.WithName("boot"),
 			sequencer.WithPace(5),
 			sequencer.WithMaxBranches(maxSlots),
@@ -269,11 +265,7 @@ func Test1Sequencer(t *testing.T) {
 
 		sequencer.SetTraceAll(false)
 
-		seq, err := sequencer.StartNew(sequencer.Params{
-			Glb:           r.wrk,
-			ChainID:       r.bootstrapChainID,
-			ControllerKey: r.originControllerPrivateKey,
-		},
+		seq, err := sequencer.StartNew(r.wrk, r.bootstrapChainID, r.originControllerPrivateKey,
 			sequencer.WithName("boot"),
 			sequencer.WithPace(5),
 			sequencer.WithMaxBranches(maxTimeSlots),
@@ -319,11 +311,7 @@ func Test1Sequencer(t *testing.T) {
 
 		sequencer.SetTraceAll(false)
 
-		seq, err := sequencer.StartNew(sequencer.Params{
-			Glb:           r.wrk,
-			ChainID:       r.bootstrapChainID,
-			ControllerKey: r.originControllerPrivateKey,
-		},
+		seq, err := sequencer.StartNew(r.wrk, r.bootstrapChainID, r.originControllerPrivateKey,
 			sequencer.WithName("boot"),
 			sequencer.WithPace(5),
 			sequencer.WithMaxBranches(maxSlots),
@@ -377,11 +365,7 @@ func Test1Sequencer(t *testing.T) {
 
 		sequencer.SetTraceAll(false)
 
-		seq, err := sequencer.StartNew(sequencer.Params{
-			Glb:           r.wrk,
-			ChainID:       r.bootstrapChainID,
-			ControllerKey: r.originControllerPrivateKey,
-		},
+		seq, err := sequencer.StartNew(r.wrk, r.bootstrapChainID, r.originControllerPrivateKey,
 			sequencer.WithName("boot"),
 			sequencer.WithPace(5),
 			sequencer.WithMaxBranches(maxSlots+2),
@@ -457,11 +441,7 @@ func Test1Sequencer(t *testing.T) {
 
 		sequencer.SetTraceAll(false)
 
-		seq, err := sequencer.StartNew(sequencer.Params{
-			Glb:           r.wrk,
-			ChainID:       r.bootstrapChainID,
-			ControllerKey: r.originControllerPrivateKey,
-		},
+		seq, err := sequencer.StartNew(r.wrk, r.bootstrapChainID, r.originControllerPrivateKey,
 			sequencer.WithName("boot"),
 			sequencer.WithPace(5),
 			sequencer.WithMaxBranches(maxSlots),
@@ -527,11 +507,9 @@ func Test1Sequencer(t *testing.T) {
 
 func (r *sequencerTestData) createSequencers(maxInputsInTx, maxSlots, pace int, loglevel zapcore.Level, dontTagAlong ...bool) {
 	var err error
-	r.bootstrapSeq, err = sequencer.StartNew(sequencer.Params{
-		Glb:           r.wrk,
-		ChainID:       r.bootstrapChainID,
-		ControllerKey: r.originControllerPrivateKey,
-	},
+	endorse := r.ut.HeaviestStemOutput().ID.TransactionID()
+	r.t.Logf("endorse: %v", endorse.String())
+	r.bootstrapSeq, err = sequencer.StartNew(r.wrk, r.bootstrapChainID, r.originControllerPrivateKey,
 		sequencer.WithName("boot"),
 		sequencer.WithLogLevel(loglevel),
 		sequencer.WithPace(pace),
@@ -541,43 +519,30 @@ func (r *sequencerTestData) createSequencers(maxInputsInTx, maxSlots, pace int, 
 	)
 	require.NoError(r.t, err)
 
-	par := make([]sequencer.Params, len(r.chainOrigins))
-	wStem, ok := r.ut.WrapOutput(r.ut.HeaviestStemOutput())
-	require.True(r.t, ok)
-
-	tagAlongFun := func() ([]core.ChainID, uint64) {
-		return []core.ChainID{r.bootstrapChainID}, feeAmount
-	}
+	var tagAlongSeq []core.ChainID
+	tagAlongSeq = []core.ChainID{r.bootstrapChainID}
 	if len(dontTagAlong) > 0 && dontTagAlong[0] {
-		tagAlongFun = nil
+		tagAlongSeq = nil
 	}
 
-	for i := range par {
-		iCopy := i
-		par[i] = sequencer.Params{
-			Glb:                       r.wrk,
-			ChainID:                   r.chainOrigins[i].ChainID,
-			ControllerKey:             r.chainControllersPrivateKeys[i],
-			ProvideTagAlongSequencers: tagAlongFun,
-			ProvideStartOutputs: func() (utangle.WrappedOutput, utangle.WrappedOutput, error) {
-				wOrig, ok := r.ut.WrapOutput(&r.chainOrigins[iCopy].OutputWithID)
-				require.True(r.t, ok)
-				return wOrig, wStem, nil
-			},
-		}
-		r.t.Logf("chain origins #%d: %s", i, r.chainOrigins[i].OutputWithID.String())
-		r.t.Logf("chain controller addr #%d: %s", i, core.AddressED25519FromPrivateKey(r.chainControllersPrivateKeys[i]).String())
-
-	}
 	maxTargetTs := core.LogicalTimeNow().AddTimeSlots(maxSlots)
-	r.sequencers = make([]*sequencer.Sequencer, len(par))
-	for i := range par {
-		r.sequencers[i], err = sequencer.StartNew(par[i],
+	r.sequencers = make([]*sequencer.Sequencer, len(r.chainOrigins))
+	for i := range r.chainOrigins {
+		chainOut, ok := r.ut.WrapOutput(&r.chainOrigins[i].OutputWithID)
+		require.True(r.t, ok)
+		startupOpt := sequencer.StartupTxOptions{
+			ChainOutput:        &chainOut,
+			TagAlongSequencers: tagAlongSeq,
+			EndorseBranch:      &endorse,
+			TagAlongFee:        feeAmount,
+		}
+		r.sequencers[i], err = sequencer.StartNew(r.wrk, r.chainOrigins[i].ChainID, r.chainControllersPrivateKeys[i],
 			sequencer.WithName(fmt.Sprintf("seq%d", i)),
 			sequencer.WithLogLevel(loglevel),
 			sequencer.WithPace(pace),
 			sequencer.WithMaxTargetTs(maxTargetTs),
 			sequencer.WithMaxFeeInputs(maxInputsInTx),
+			sequencer.WithStartupTxOptions(&startupOpt),
 		)
 		r.t.Logf("new seq #%d: %v", i, err)
 		require.NoError(r.t, err)
@@ -643,7 +608,7 @@ func TestNSequencers(t *testing.T) {
 			numFaucets            = 1
 			numFaucetTransactions = 1
 			maxTxInputs           = 100
-			stopAfterBranches     = 20
+			stopAfterBranches     = 10
 			tagAlong              = false
 		)
 		t.Logf("\n   numFaucets: %d\n   numFaucetTransactions: %d\n", numFaucets, numFaucetTransactions)

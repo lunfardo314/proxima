@@ -20,7 +20,11 @@ import (
 
 type (
 	Sequencer struct {
-		config               configuration
+		glb           *workflow.Workflow
+		chainID       core.ChainID
+		controllerKey ed25519.PrivateKey
+		config        ConfigOptions
+
 		log                  *zap.SugaredLogger
 		factory              *milestoneFactory
 		exit                 atomic.Bool
@@ -31,36 +35,6 @@ type (
 		info                 Info
 		traceNAhead          atomic.Int64
 	}
-
-	configuration struct {
-		Params
-		ConfigOptions
-	}
-
-	Params struct {
-		Glb                 *workflow.Workflow
-		ChainID             core.ChainID
-		ControllerKey       ed25519.PrivateKey
-		ProvideStartOutputs func() (utangle.WrappedOutput, utangle.WrappedOutput, error)
-		// ProvideTagAlongSequencers returns list of sequencerIDs and fee amount where to send fees (bribe) for faster bootup of the sequencer
-		ProvideTagAlongSequencers func() ([]core.ChainID, uint64)
-	}
-
-	ConfigOptions struct {
-		SequencerName string
-		Pace          int // pace in slots
-		LogLevel      zapcore.Level
-		LogOutputs    []string
-		TraceTippool  bool
-		LogTimeLayout string
-		MaxFeeInputs  int
-		MaxTargetTs   core.LogicalTime
-		MaxMilestones int
-		MaxBranches   int
-		// ProvideStartOutputs explicitly returns sequencer and stem outputs where to start chain
-	}
-
-	ConfigOpt func(options *ConfigOptions)
 
 	Info struct {
 		In                     int
@@ -98,21 +72,21 @@ func defaultConfigOptions() ConfigOptions {
 	}
 }
 
-func StartNew(par Params, opts ...ConfigOpt) (*Sequencer, error) {
+func StartNew(glb *workflow.Workflow, seqID core.ChainID, controllerKey ed25519.PrivateKey, opts ...ConfigOpt) (*Sequencer, error) {
 	var err error
 
 	cfg := defaultConfigOptions()
 	for _, opt := range opts {
 		opt(&cfg)
 	}
-	logName := fmt.Sprintf("[%s-%s]", cfg.SequencerName, par.ChainID.VeryShort())
+	logName := fmt.Sprintf("[%s-%s]", cfg.SequencerName, seqID.VeryShort())
 
 	ret := &Sequencer{
-		config: configuration{
-			Params:        par,
-			ConfigOptions: cfg,
-		},
-		log: general.NewLogger(logName, cfg.LogLevel, cfg.LogOutputs, cfg.LogTimeLayout),
+		glb:           glb,
+		chainID:       seqID,
+		controllerKey: controllerKey,
+		config:        cfg,
+		log:           general.NewLogger(logName, cfg.LogLevel, cfg.LogOutputs, cfg.LogTimeLayout),
 	}
 
 	ret.onMilestoneSubmitted = func(seq *Sequencer, wOut *utangle.WrappedOutput) {
@@ -122,8 +96,7 @@ func StartNew(par Params, opts ...ConfigOpt) (*Sequencer, error) {
 		ret.config.Pace, time.Duration(ret.config.Pace)*core.TransactionTimePaceDuration())
 
 	ret.log.Debugf("sequencer starting..")
-	ret.factory, err = createMilestoneFactory(&ret.config)
-	if err != nil {
+	if err = ret.createMilestoneFactory(); err != nil {
 		return nil, err
 	}
 	ret.stopWG.Add(1)
@@ -158,11 +131,6 @@ func StartFromConfig(glb *workflow.Workflow, name string) (*Sequencer, error) {
 		pace = PaceMinimumTicks
 	}
 
-	tagAlongOption, err := getGlobalTagAlongOption(seqID)
-	if err != nil {
-		return nil, err
-	}
-
 	maxFeeInputs := subViper.GetInt("max_fee_inputs")
 	if maxFeeInputs < 1 {
 		maxFeeInputs = 1
@@ -174,14 +142,6 @@ func StartFromConfig(glb *workflow.Workflow, name string) (*Sequencer, error) {
 	maxBranches := subViper.GetInt("max_branches")
 	maxMilestones := subViper.GetInt("max_milestones")
 
-	par := Params{
-		Glb:                       glb,
-		ChainID:                   seqID,
-		ControllerKey:             controllerKey,
-		ProvideStartOutputs:       nil, // default loader
-		ProvideTagAlongSequencers: tagAlongOption,
-	}
-
 	opts := []ConfigOpt{
 		WithName(name),
 		WithLogLevel(parseLogLevel(glb, subViper)),
@@ -192,7 +152,7 @@ func StartFromConfig(glb *workflow.Workflow, name string) (*Sequencer, error) {
 		WithTraceTippool(subViper.GetBool("trace_tippool")),
 	}
 
-	return StartNew(par, opts...)
+	return StartNew(glb, seqID, controllerKey, opts...)
 }
 
 func parseLogLevel(glb *workflow.Workflow, subViper *viper.Viper) zapcore.Level {
@@ -404,7 +364,7 @@ func (seq *Sequencer) submitTransaction(tmpMsOutput utangle.WrappedOutput) *utan
 	tx := tmpMsOutput.VID.UnwrapTransaction()
 	util.Assertf(tx != nil, "tx != nil")
 
-	retVID, err := seq.config.Glb.TransactionInWaitAppendSync(tx.Bytes(), true)
+	retVID, err := seq.glb.TransactionInWaitAppendSync(tx.Bytes(), true)
 	if err != nil {
 		seq.log.Errorf("submitTransaction: %v", err)
 		return nil
