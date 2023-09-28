@@ -84,7 +84,7 @@ func (b *backtrackProposer) generateCandidate(extend utangle.WrappedOutput) *tra
 
 	b.trace("trying extend %s to endorse %s", extend.VID.IDShort(), b.endorse.IDShort())
 
-	targetDelta, conflict, consumer := extend.VID.StartNextSequencerMilestoneDelta(b.endorse)
+	targetDelta, conflict, consumer := b.endorse.StartNextSequencerMilestoneDelta()
 	if conflict != nil {
 		b.trace("CANNOT extend %s to endorse: %s due to %s (consumer %s)",
 			extend.VID.IDShort(), b.endorse.IDShort(), conflict.DecodeID().Short(), consumer.IDShort())

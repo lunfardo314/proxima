@@ -7,6 +7,8 @@ import (
 	"github.com/lunfardo314/proxima/util"
 )
 
+const MinimumAmountOnSequencer = 1_000_000 // TODO must be increased in reality
+
 const mustMinSeqAmountTemplate = `
 	require(
 	 not(lessThan(selfAmountValue, u64/%d)), 
@@ -90,8 +92,6 @@ func sequencer: and(
 const (
 	SequencerConstraintName     = "sequencer"
 	sequencerConstraintTemplate = SequencerConstraintName + "(%d)"
-
-	MinimumAmountOnSequencer = 1_000_000 // TODO must be increased in reality
 )
 
 type (

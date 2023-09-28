@@ -24,6 +24,11 @@ func init() {
 }
 
 func (b *baseProposer) run() {
+	lastMs := b.factory.getLastMilestone()
+	if !lastMs.VID.IsSequencerMilestone() {
+		b.trace("exit. Cannot extend non-sequencer milestone %s", lastMs.IDShort())
+		return
+	}
 	startTime := time.Now()
 	var tx *transaction.Transaction
 	var forceExit bool

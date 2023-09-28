@@ -59,9 +59,6 @@ func (seq *Sequencer) createMilestoneFactory() error {
 		if err != nil {
 			return err
 		}
-		if !chainOut.VID.IsSequencerMilestone() {
-			return fmt.Errorf("sequncer can only be started from sequencer output. Got %s", chainOut.IDShort())
-		}
 	} else {
 		var created bool
 		// creates sequencer output out of chain origin and tags along, if necessary
@@ -72,6 +69,15 @@ func (seq *Sequencer) createMilestoneFactory() error {
 		if created {
 			log.Infof("created sequencer start output %s", chainOut.DecodeID().Short())
 		}
+	}
+
+	chainOutUnwrapped, err := chainOut.Unwrap()
+	if err != nil {
+		return err
+	}
+	if chainOutUnwrapped.Output.Amount() < core.MinimumAmountOnSequencer {
+		return fmt.Errorf("cannot start sequncer: not enough balance on chain output, must be at least %s",
+			util.GoThousands(core.MinimumAmountOnSequencer))
 	}
 
 	tippoolLoglevel := seq.config.LogLevel
