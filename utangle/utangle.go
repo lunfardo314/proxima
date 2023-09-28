@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/core"
-	state "github.com/lunfardo314/proxima/multistate"
+	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
@@ -93,7 +93,7 @@ func (ut *UTXOTangle) mustGetFirstEndorsedVertex(tx *transaction.Transaction) *W
 // - nil, nil if output cannot be solidified yet, but no error
 // - nil, err if output cannot be solidified ever
 // - vid, nil if solid reference has been found
-func (ut *UTXOTangle) solidifyOutput(oid *core.OutputID, baseStateReader func() state.SugaredStateReader) (*WrappedTx, error) {
+func (ut *UTXOTangle) solidifyOutput(oid *core.OutputID, baseStateReader func() multistate.SugaredStateReader) (*WrappedTx, error) {
 	txid := oid.TransactionID()
 	ret, found := ut.GetVertex(&txid)
 	if found {
@@ -302,17 +302,17 @@ func (ut *UTXOTangle) GetBaseStateRootOfSequencerMilestone(vSeq *WrappedTx) (com
 	return br.root, true
 }
 
-func (ut *UTXOTangle) StateReaderOfSequencerMilestone(vid *WrappedTx) (state.SugaredStateReader, bool) {
+func (ut *UTXOTangle) StateReaderOfSequencerMilestone(vid *WrappedTx) (multistate.SugaredStateReader, bool) {
 	util.Assertf(vid.IsSequencerMilestone(), "StateReaderOfSequencerMilestone: must be sequencer milestone")
 	root, available := ut.GetBaseStateRootOfSequencerMilestone(vid)
 	if !available {
-		return state.SugaredStateReader{}, false
+		return multistate.SugaredStateReader{}, false
 	}
-	rdr, err := state.NewReadable(ut.stateStore, root, 0)
+	rdr, err := multistate.NewReadable(ut.stateStore, root, 0)
 	if err != nil {
-		return state.SugaredStateReader{}, false
+		return multistate.SugaredStateReader{}, false
 	}
-	return state.MakeSugared(rdr), true
+	return multistate.MakeSugared(rdr), true
 }
 
 func (ut *UTXOTangle) HeaviestStateRootForLatestTimeSlot() common.VCommitment {
@@ -320,11 +320,11 @@ func (ut *UTXOTangle) HeaviestStateRootForLatestTimeSlot() common.VCommitment {
 }
 
 // HeaviestStateForLatestTimeSlot returns the heaviest input state (by ledger coverage) for the latest slot which have one
-func (ut *UTXOTangle) HeaviestStateForLatestTimeSlot() state.SugaredStateReader {
+func (ut *UTXOTangle) HeaviestStateForLatestTimeSlot() multistate.SugaredStateReader {
 	root := ut.HeaviestStateRootForLatestTimeSlot()
-	ret, err := state.NewReadable(ut.stateStore, root)
+	ret, err := multistate.NewReadable(ut.stateStore, root)
 	util.AssertNoError(err)
-	return state.MakeSugared(ret)
+	return multistate.MakeSugared(ret)
 }
 
 // heaviestBranchForLatestTimeSlot return branch transaction vertex with the highest ledger coverage
@@ -370,14 +370,14 @@ func (ut *UTXOTangle) HeaviestStemOutput() *core.OutputWithID {
 	return ut.HeaviestStateForLatestTimeSlot().GetStemOutput()
 }
 
-func (ut *UTXOTangle) ForEachBranchState(e core.TimeSlot, fun func(rdr state.SugaredStateReader) bool) error {
+func (ut *UTXOTangle) ForEachBranchState(e core.TimeSlot, fun func(rdr multistate.SugaredStateReader) bool) error {
 	ut.mutex.RLock()
 	defer ut.mutex.RUnlock()
 
 	ut.forEachBranchSorted(e, func(vid *WrappedTx, br branch) bool {
-		r, err := state.NewReadable(ut.stateStore, br.root)
+		r, err := multistate.NewReadable(ut.stateStore, br.root)
 		util.AssertNoError(err)
-		return fun(state.MakeSugared(r))
+		return fun(multistate.MakeSugared(r))
 	})
 	return nil
 }
@@ -400,7 +400,7 @@ func (ut *UTXOTangle) forEachBranchSorted(e core.TimeSlot, fun func(vid *Wrapped
 
 func (ut *UTXOTangle) HasOutputInTimeSlot(e core.TimeSlot, oid *core.OutputID) bool {
 	ret := false
-	err := ut.ForEachBranchState(e, func(rdr state.SugaredStateReader) bool {
+	err := ut.ForEachBranchState(e, func(rdr multistate.SugaredStateReader) bool {
 		_, ret = rdr.GetUTXO(oid)
 		return !ret
 	})
@@ -408,12 +408,14 @@ func (ut *UTXOTangle) HasOutputInTimeSlot(e core.TimeSlot, oid *core.OutputID) b
 	return ret
 }
 
-// WrapOutput fetches output in encoded form. Creates VirtualTransaction vertex, if necessary
+// WrapOutput fetches output in encoded form. Creates VirtualTransaction vertex and branch, if necessary
 func (ut *UTXOTangle) WrapOutput(o *core.OutputWithID) (WrappedOutput, bool) {
 	txid := o.ID.TransactionID()
+
 	vid, found := ut.GetVertex(&txid)
 	available := true
 	if found {
+		// the transaction is on the UTXO tangle, i.e. already wrapped
 		vid.Unwrap(UnwrapOptions{
 			Vertex: func(v *Vertex) {
 				if int(o.ID.Index()) > v.Tx.NumProducedOutputs() {
@@ -428,10 +430,29 @@ func (ut *UTXOTangle) WrapOutput(o *core.OutputWithID) (WrappedOutput, bool) {
 			},
 		})
 	} else {
+		// the transaction is not on the tangle, i.e. not wrapped. Creating virtual tx for it
 		v := newVirtualTx(&txid)
 		v.outputs[o.ID.Index()] = o.Output
 		vid = v.Wrap()
-		ut.AddVertex(vid)
+
+		if o.ID.BranchFlagON() {
+			// the corresponding transaction is branch tx. It must exist in the state.
+			// Reaching it out and wrapping it with chain and stem outputs
+			bd, foundBranchData := multistate.FetchBranchDataByTransactionID(ut.stateStore, txid)
+			if foundBranchData {
+				v.outputs[bd.Stem.ID.Index()] = bd.Stem.Output
+				v.outputs[bd.SeqOutput.ID.Index()] = bd.SeqOutput.Output
+				v.addSequencerIndices(bd.SeqOutput.ID.Index(), bd.Stem.ID.Index())
+
+				ut.AddBranchAndVertex(vid, bd.Root)
+			} else {
+				// branch tx is not on the state, it means it does not exist
+				available = false
+			}
+		} else {
+			ut.AddVertexNoSaveTx(vid)
+
+		}
 	}
 	return WrappedOutput{vid, o.ID.Index()}, available
 }
@@ -452,7 +473,7 @@ func (ut *UTXOTangle) ScanAccount(addr core.AccountID, lastNTimeSlots int) set.S
 	for _, vid := range toScan {
 		if vid.IsBranchTransaction() {
 			br := ut.mustGetBranch(vid)
-			rdr := state.MustNewSugaredStateReader(ut.stateStore, br.root)
+			rdr := multistate.MustNewSugaredStateReader(ut.stateStore, br.root)
 			outs, err := rdr.GetOutputsForAccount(addr)
 			util.AssertNoError(err)
 			for _, o := range outs {
@@ -491,7 +512,7 @@ func (ut *UTXOTangle) WrapChainOutput(chainID core.ChainID) (WrappedOutput, erro
 	return ut.MustWrapOutput(chainOut), nil
 }
 
-func (ut *UTXOTangle) LoadSequencerStartOutputs(seqID core.ChainID, stateReader func() state.SugaredStateReader) (WrappedOutput, WrappedOutput, error) {
+func (ut *UTXOTangle) LoadSequencerStartOutputs(seqID core.ChainID, stateReader func() multistate.SugaredStateReader) (WrappedOutput, WrappedOutput, error) {
 	rdr := stateReader()
 	chainOut, err := rdr.GetChainOutput(&seqID)
 	if err != nil {
@@ -503,7 +524,7 @@ func (ut *UTXOTangle) LoadSequencerStartOutputs(seqID core.ChainID, stateReader 
 }
 
 func (ut *UTXOTangle) LoadSequencerStartOutputsDefault(seqID core.ChainID) (WrappedOutput, WrappedOutput, error) {
-	chainOut, stemOut, err := ut.LoadSequencerStartOutputs(seqID, func() state.SugaredStateReader {
+	chainOut, stemOut, err := ut.LoadSequencerStartOutputs(seqID, func() multistate.SugaredStateReader {
 		return ut.HeaviestStateForLatestTimeSlot()
 	})
 	if err == nil {

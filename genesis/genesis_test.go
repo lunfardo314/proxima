@@ -41,7 +41,7 @@ func TestInitOrigin(t *testing.T) {
 	rootData := multistate.FetchAllRootRecords(store)
 	require.EqualValues(t, 1, len(rootData))
 
-	branchData := multistate.FetchBranchData(store, rootData[0])
+	branchData := multistate.FetchBranchDataByRoot(store, rootData[0])
 	require.EqualValues(t, bootstrapSeqID, branchData.SequencerID)
 	require.True(t, core.CommitmentModel.EqualCommitments(genesisRoot, branchData.Root))
 

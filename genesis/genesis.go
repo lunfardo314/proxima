@@ -130,7 +130,7 @@ func ScanGenesisState(stateStore general.StateStore) (*StateIdentityData, common
 		return nil, nil, fmt.Errorf("ScanGenesisState: exactly 1 branch expected. Not a genesis state")
 	}
 
-	branchData := multistate.FetchBranchData(stateStore, genesisRootRecord)
+	branchData := multistate.FetchBranchDataByRoot(stateStore, genesisRootRecord)
 	rdr := multistate.MustNewSugaredReadableState(stateStore, branchData.Root)
 	stateID := MustStateIdentityDataFromBytes(rdr.MustStateIdentityBytes())
 
