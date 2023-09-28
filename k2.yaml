@@ -25,6 +25,6 @@ spammer:
     max_transactions: 0 # 0 means no limit
     max_duration_minutes: 0 # 0 means no limit
     tag_along:
-        sequencer: c4eeade04c09642478e3086fcc709674c1145201cfe2590c645fddb400f2e386
+        sequencer: 3340a99ea187bc37fe91b922d4357f3fdb21a60af3316a41e1e0959bd3b0d6e8
         fee: 500
-    target: addressED25519(0x24db3c3d477f29d558fbe6f215b0c9d198dcc878866fb60cba023ba3c3d74a03)
+    target: addressED25519(0x3faf090d38f18ea211936b8bcf19b7b30cdcb8e224394a5c30f9ba644f8bb2fb)
