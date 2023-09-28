@@ -5,10 +5,23 @@ force: true
 multistate:
     name: proximadb
 sequencer:
-    id: ""
+    id: f250c91271533923fac05cbffe9d8f8ad834a306b109d15f948e8323496dd8f4
+spammer:
+    bundle_size: 30
+    max_duration_minutes: 0
+    max_transactions: 0
+    output_amount: 1000
+    pace: 3
+    scenario: standard
+    submit_nowait: true
+    tag_along:
+        fee: 500
+        sequencer: ""
+    target: addressED25519(0x62c733803a83a26d4db1ce9f22206281f64af69401da6eb26390d34e6a88c5fa)
 tag-along:
     fee: 500
-    sequencer: 764eee5d178dab62fe1bdf05a775b78dab061c09d8a771c2902219787db700fa
+    sequencer: f250c91271533923fac05cbffe9d8f8ad834a306b109d15f948e8323496dd8f4
+target: ""
 txstore:
     name: proximadb.txstore
 verbose: false
@@ -16,16 +29,4 @@ wallet:
     account: addressED25519(0x3faf090d38f18ea211936b8bcf19b7b30cdcb8e224394a5c30f9ba644f8bb2fb)
     name: test wallet
     pk: 136381bd4dea7b2f0fa6c6ca14ee660dc7929975b47e6cdb85adee9e26032a810530b790e0e7de626f36e20ba656f09e324c68203de899d0daf9f98fcb3cf684
-    sequencer: 764eee5d178dab62fe1bdf05a775b78dab061c09d8a771c2902219787db700fa
-spammer:
-    scenario: standard
-    output_amount: 1000
-    submit_nowait: true
-    pace: 3 # transaction pace in ticks
-    bundle_size: 30
-    max_transactions: 0 # 0 means no limit
-    max_duration_minutes: 0 # 0 means no limit
-    tag_along:
-        sequencer: 764eee5d178dab62fe1bdf05a775b78dab061c09d8a771c2902219787db700fa
-        fee: 500
-    target: addressED25519(0x62c733803a83a26d4db1ce9f22206281f64af69401da6eb26390d34e6a88c5fa)
+    sequencer: f250c91271533923fac05cbffe9d8f8ad834a306b109d15f948e8323496dd8f4

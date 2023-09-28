@@ -40,26 +40,20 @@ sequencers:
     enable: true
     loglevel: info
     trace_tippool: false
-    sequencer_id: 764eee5d178dab62fe1bdf05a775b78dab061c09d8a771c2902219787db700fa
+    sequencer_id: f250c91271533923fac05cbffe9d8f8ad834a306b109d15f948e8323496dd8f4
     controller_key: 136381bd4dea7b2f0fa6c6ca14ee660dc7929975b47e6cdb85adee9e26032a810530b790e0e7de626f36e20ba656f09e324c68203de899d0daf9f98fcb3cf684
     pace: 5
     max_fee_inputs: 50
 
   seq0:
+    # on k2
     enable: true
     loglevel: info
     trace_tippool: false
-    sequencer_id: 4c9971adc4fcd7626704ee776da06e4c592b46c69a40d586fd6ae66a70879d85
-    controller_key: 136381bd4dea7b2f0fa6c6ca14ee660dc7929975b47e6cdb85adee9e26032a810530b790e0e7de626f36e20ba656f09e324c68203de899d0daf9f98fcb3cf684
+    sequencer_id: 3915aabc4bd195bb92d80e9b813c53fd2737624ae26d4c331fba00f3e54277ae
+    controller_key: 3a2ed3c4f738a06e9543f80e032fd870be5e524585e0144f2499d1a28bc4797902e2a7a85bd158469adae3294a615e17ef49e72642c4eb58ff00d92301b9bb88
     pace: 5
     max_fee_inputs: 50
-
-# optional sequencer id to send fee upon creation of the first sequencer transaction in the chain
-# for all sequencers
-tag_along_sequencer:
-  enabled: true
-  sequencer_id: 764eee5d178dab62fe1bdf05a775b78dab061c09d8a771c2902219787db700fa
-  fee: 100
 
 # specify milestone proposers to trace
 trace_proposers:
