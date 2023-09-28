@@ -363,6 +363,17 @@ func IterateRootRecords(store general.StateStore, fun func(stemOid core.OutputID
 	iterateRootRecordsOfParticularSlots(store, fun, optSlot)
 }
 
+func FetchRootRecordsNSlotsBack(store general.StateStore, nBack int) []RootData {
+	latestSlot := FetchLatestSlot(store)
+	if core.TimeSlot(nBack) >= latestSlot {
+		return FetchAllRootRecords(store)
+	}
+	if latestSlot == 0 {
+		return nil
+	}
+	return FetchRootRecords(store, util.MakeRange(latestSlot-core.TimeSlot(nBack), latestSlot)...)
+}
+
 func FetchAllRootRecords(store general.StateStore) []RootData {
 	ret := make([]RootData, 0)
 	IterateRootRecords(store, func(stemOid core.OutputID, rootData RootData) bool {
@@ -415,14 +426,4 @@ func FetchLatestBranches(store general.StateStore) []*BranchData {
 	return util.Sort(ret, func(i, j int) bool {
 		return ret[i].Coverage > ret[j].Coverage
 	})
-}
-
-func FetchLatestNSlotsBranchData(store general.StateStore, nLatest int) []*BranchData {
-	util.Assertf(nLatest > 0, "nLatest>0")
-	latestSlot := FetchLatestSlot(store)
-	if latestSlot == 0 {
-		return nil
-	}
-	oldestHorizon := core.TimeSlot(uint32(latestSlot) - 3*uint32(nLatest))
-	return FetchBranchDataMulti(store, FetchRootRecords(store, util.MakeRange(oldestHorizon, latestSlot)...)...)
 }

@@ -1,6 +1,9 @@
 package db
 
 import (
+	"strconv"
+
+	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/utangle"
 	"github.com/lunfardo314/unitrie/adaptors/badger_adaptor"
 	"github.com/spf13/cobra"
@@ -12,7 +15,7 @@ func initDBTreeCmd(dbCmd *cobra.Command) {
 	dbTreeCmd := &cobra.Command{
 		Use:   "tree",
 		Short: "create .DOT file for the tree of all branches",
-		Args:  cobra.NoArgs,
+		Args:  cobra.MaximumNArgs(1),
 		Run:   runDbTreeCmd,
 	}
 	dbTreeCmd.PersistentFlags().StringVarP(&outputFile, "output", "o", "", "output file")
@@ -21,7 +24,7 @@ func initDBTreeCmd(dbCmd *cobra.Command) {
 	dbCmd.AddCommand(dbTreeCmd)
 }
 
-func runDbTreeCmd(_ *cobra.Command, _ []string) {
+func runDbTreeCmd(_ *cobra.Command, args []string) {
 	dbName := GetMultiStateStoreName()
 	if dbName == "(not set)" {
 		return
@@ -35,5 +38,11 @@ func runDbTreeCmd(_ *cobra.Command, _ []string) {
 
 	stateStore := badger_adaptor.New(stateDb)
 
-	utangle.SaveTree(stateStore, outFile)
+	if len(args) == 0 {
+		utangle.SaveTree(stateStore, outFile)
+	} else {
+		slots, err := strconv.Atoi(args[0])
+		glb.AssertNoError(err)
+		utangle.SaveTree(stateStore, outFile, slots)
+	}
 }

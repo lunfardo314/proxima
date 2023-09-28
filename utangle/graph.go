@@ -234,10 +234,15 @@ func branchNodeAttributes(seqID *core.ChainID, coverage uint64, dict map[core.Ch
 
 // TODO MakeTree and SaveTree move to multistate
 
-func MakeTree(stateStore general.StateStore) graph.Graph[string, string] {
+func MakeTree(stateStore general.StateStore, slots ...int) graph.Graph[string, string] {
 	ret := graph.New(graph.StringHash, graph.Directed(), graph.Acyclic())
 
-	branches := multistate.FetchBranchDataMulti(stateStore, multistate.FetchAllRootRecords(stateStore)...)
+	var branches []*multistate.BranchData
+	if len(slots) == 0 {
+		branches = multistate.FetchBranchDataMulti(stateStore, multistate.FetchAllRootRecords(stateStore)...)
+	} else {
+		branches = multistate.FetchBranchDataMulti(stateStore, multistate.FetchRootRecordsNSlotsBack(stateStore, slots[0])...)
+	}
 
 	byOid := make(map[core.OutputID]*multistate.BranchData)
 	idDict := make(map[core.ChainID]int)
@@ -269,8 +274,8 @@ func (ut *UTXOTangle) SaveTree(fname string) {
 	SaveTree(ut.stateStore, fname)
 }
 
-func SaveTree(stateStore general.StateStore, fname string) {
-	gr := MakeTree(stateStore)
+func SaveTree(stateStore general.StateStore, fname string, slotsBack ...int) {
+	gr := MakeTree(stateStore, slotsBack...)
 	dotFile, _ := os.Create(fname + ".gv")
 	err := draw.DOT(gr, dotFile)
 	util.AssertNoError(err)
