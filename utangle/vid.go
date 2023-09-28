@@ -220,35 +220,6 @@ func (vid *WrappedTx) SequencerPredecessor() *WrappedTx {
 	return ret
 }
 
-func (vid *WrappedTx) BaseStemOutput() *WrappedOutput {
-	var ret *WrappedOutput
-	vid.Unwrap(UnwrapOptions{
-		Vertex: func(v *Vertex) {
-			if vid.IsBranchTransaction() {
-				ret = vid.StemOutput()
-			} else {
-				if b := v.StateDelta.BaselineBranch(); b != nil {
-					util.Assertf(b.IsBranchTransaction(), "b.IsBranchTransaction()")
-					ret = b.StemOutput()
-				}
-			}
-		},
-		VirtualTx: func(v *VirtualTransaction) {
-			util.Assertf(v.sequencerOutputs != nil || v.sequencerOutputs[1] == 0xff,
-				"stem output index not available in virtualTx")
-			_, found := v.outputs[v.sequencerOutputs[1]]
-			util.Assertf(found, "stem output not available at index %s", v.sequencerOutputs[1])
-
-			ret = &WrappedOutput{
-				VID:   vid,
-				Index: v.sequencerOutputs[1],
-			}
-		},
-	},
-	)
-	return ret
-}
-
 func (vid *WrappedTx) SequencerOutput() *WrappedOutput {
 	if !vid.IsSequencerMilestone() {
 		return nil
@@ -287,6 +258,40 @@ func (vid *WrappedTx) StemOutput() *WrappedOutput {
 				ret.Index = v.sequencerOutputs[1]
 			} else {
 				ret = nil
+			}
+		},
+	})
+	return ret
+}
+
+func (vid *WrappedTx) BaseStemOutput() *WrappedOutput {
+	var ret *WrappedOutput
+	isBranchTx := vid.IsBranchTransaction()
+	vid.Unwrap(UnwrapOptions{
+		Vertex: func(v *Vertex) {
+			if isBranchTx {
+				ret = &WrappedOutput{
+					VID:   vid,
+					Index: v.Tx.SequencerTransactionData().StemOutputIndex,
+				}
+			} else {
+				if b := v.StateDelta.BaselineBranch(); b != nil {
+					util.Assertf(b.IsBranchTransaction(), "%s is not a branch transaction", b.IDShort())
+					ret = b.StemOutput()
+				}
+			}
+		},
+		VirtualTx: func(v *VirtualTransaction) {
+			if isBranchTx {
+				util.Assertf(v.sequencerOutputs != nil && v.sequencerOutputs[1] != 0xff,
+					"stem output index not available in virtualTx %s", v.txid.Short())
+				_, found := v.outputs[v.sequencerOutputs[1]]
+				util.Assertf(found, "stem output not available at index %s in %s", v.sequencerOutputs[1], v.txid.Short())
+
+				ret = &WrappedOutput{
+					VID:   vid,
+					Index: v.sequencerOutputs[1],
+				}
 			}
 		},
 	})
@@ -452,7 +457,7 @@ func (vid *WrappedTx) PastConeSet() set.Set[*WrappedTx] {
 	return ret
 }
 
-func (vid *WrappedTx) StartNextSequencerMilestoneDelta(otherSeqMs ...*WrappedTx) (*UTXOStateDelta, *WrappedOutput, *WrappedTx) {
+func (vid *WrappedTx) StartNextSequencerMilestoneDelta(other ...*WrappedTx) (*UTXOStateDelta, *WrappedOutput, *WrappedTx) {
 	util.Assertf(vid.IsSequencerMilestone(), "vid.IsSequencerMilestone()")
 
 	var ret *UTXOStateDelta
@@ -473,11 +478,16 @@ func (vid *WrappedTx) StartNextSequencerMilestoneDelta(otherSeqMs ...*WrappedTx)
 
 	var notOrphaned bool
 
-	for _, seqVID := range otherSeqMs {
-		seqVID.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
-			conflict, consumer = v.StateDelta.MergeInto(ret)
-			notOrphaned = true
-		}})
+	for _, seqVID := range other {
+		seqVID.Unwrap(UnwrapOptions{
+			Vertex: func(v *Vertex) {
+				conflict, consumer = v.StateDelta.MergeInto(ret)
+				notOrphaned = true
+			},
+			VirtualTx: func(v *VirtualTransaction) {
+				notOrphaned = true
+			},
+		})
 		if conflict != nil {
 			return nil, conflict, consumer
 		}

@@ -8,7 +8,7 @@ sequencer:
     id: a4225cb6851d164a3a260dc3c29048b1f76b317f0876159dafd790bee08edfa1
 tag-along:
     fee: 500
-    sequencer: f250c91271533923fac05cbffe9d8f8ad834a306b109d15f948e8323496dd8f4
+    sequencer: c4eeade04c09642478e3086fcc709674c1145201cfe2590c645fddb400f2e386
 txstore:
     name: ""
 wallet:
@@ -25,6 +25,6 @@ spammer:
     max_transactions: 0 # 0 means no limit
     max_duration_minutes: 0 # 0 means no limit
     tag_along:
-        sequencer: f250c91271533923fac05cbffe9d8f8ad834a306b109d15f948e8323496dd8f4
+        sequencer: c4eeade04c09642478e3086fcc709674c1145201cfe2590c645fddb400f2e386
         fee: 500
     target: addressED25519(0x62c733803a83a26d4db1ce9f22206281f64af69401da6eb26390d34e6a88c5fa)

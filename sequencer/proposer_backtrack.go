@@ -91,7 +91,7 @@ func (b *backtrackProposer) generateCandidate(extend utangle.WrappedOutput) *tra
 		return nil
 	}
 	if targetDelta == nil {
-		b.trace("CANNOT generate candidate: %s or %s has been orphaned", extend.VID, b.endorse)
+		b.trace("CANNOT generate candidate: %s or %s has been orphaned", extend.VID.IDShort(), b.endorse.IDShort())
 		return nil
 	}
 	if !targetDelta.CanBeConsumedBySequencer(extend, b.factory.tangle) {

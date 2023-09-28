@@ -4,8 +4,6 @@ config: ""
 force: true
 multistate:
     name: proximadb
-sequencer:
-    id: f250c91271533923fac05cbffe9d8f8ad834a306b109d15f948e8323496dd8f4
 spammer:
     bundle_size: 30
     max_duration_minutes: 0
@@ -16,17 +14,17 @@ spammer:
     submit_nowait: true
     tag_along:
         fee: 500
-        sequencer: ""
+        sequencer: c4eeade04c09642478e3086fcc709674c1145201cfe2590c645fddb400f2e386
     target: addressED25519(0x62c733803a83a26d4db1ce9f22206281f64af69401da6eb26390d34e6a88c5fa)
 tag-along:
     fee: 500
-    sequencer: f250c91271533923fac05cbffe9d8f8ad834a306b109d15f948e8323496dd8f4
+    sequencer: c4eeade04c09642478e3086fcc709674c1145201cfe2590c645fddb400f2e386
 target: ""
 txstore:
     name: proximadb.txstore
 verbose: false
 wallet:
     account: addressED25519(0x3faf090d38f18ea211936b8bcf19b7b30cdcb8e224394a5c30f9ba644f8bb2fb)
-    name: test wallet
+    name: test wallet key 0
     pk: 136381bd4dea7b2f0fa6c6ca14ee660dc7929975b47e6cdb85adee9e26032a810530b790e0e7de626f36e20ba656f09e324c68203de899d0daf9f98fcb3cf684
-    sequencer: f250c91271533923fac05cbffe9d8f8ad834a306b109d15f948e8323496dd8f4
+    sequencer: c4eeade04c09642478e3086fcc709674c1145201cfe2590c645fddb400f2e386
