@@ -19,6 +19,12 @@ type baseProposer struct {
 func init() {
 	registerProposingStrategy(BaseProposerName, func(mf *milestoneFactory, targetTs core.LogicalTime) proposerTask {
 		ret := &baseProposer{newProposerGeneric(mf, targetTs, BaseProposerName)}
+
+		if targetTs.TimeTick() == 0 {
+			ret.setTraceNAhead(1000)
+			ret.trace("start for %s", targetTs.String())
+		}
+
 		return ret
 	})
 }

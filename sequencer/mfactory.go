@@ -333,6 +333,7 @@ func (mf *milestoneFactory) startProposingForTargetLogicalTime(targetTs core.Log
 }
 
 func (mf *milestoneFactory) startProposerWorkers(targetTime core.LogicalTime) {
+
 	for strategyName, rec := range allProposingStrategies {
 		task := rec.constructor(mf, targetTime)
 		if task != nil {
@@ -344,8 +345,10 @@ func (mf *milestoneFactory) startProposerWorkers(targetTime core.LogicalTime) {
 }
 
 func (mf *milestoneFactory) runProposerTask(task proposerTask) {
+	task.setTraceNAhead(1)
 	task.trace(" START proposer %s. Last ms: %s", task.name(), mf.lastMilestone.IDShort())
 	task.run()
+	task.setTraceNAhead(1)
 	task.trace(" END proposer %s", task.name())
 }
 

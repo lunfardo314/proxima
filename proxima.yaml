@@ -47,7 +47,7 @@ sequencers:
 
   seq0:
     # on k2
-    enable: true
+    enable: false
     loglevel: info
     trace_tippool: false
     sequencer_id: 3340a99ea187bc37fe91b922d4357f3fdb21a60af3316a41e1e0959bd3b0d6e8
@@ -57,5 +57,5 @@ sequencers:
 
 # specify milestone proposers to trace
 trace_proposers:
-  base: false
-  btrack: false
+  base: true
+  btrack: true

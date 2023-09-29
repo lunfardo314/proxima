@@ -261,6 +261,7 @@ func (seq *Sequencer) chooseNextMilestoneTargetTime() core.LogicalTime {
 
 // Returns nil if fails to generate acceptable bestSoFar until the deadline
 func (seq *Sequencer) generateNextMilestoneForTargetTime(targetTs core.LogicalTime) *utangle.WrappedOutput {
+	seq.setTraceAhead(1)
 	seq.trace("generateNextMilestoneForTargetTime %s", targetTs)
 
 	timeout := time.Duration(seq.config.Pace) * core.TimeTickDuration()
@@ -319,6 +320,7 @@ func (seq *Sequencer) mainLoop() {
 			//seq.log.Infof("TIME SLOT %d", currentTimeSlot)
 		}
 
+		seq.setTraceAhead(1)
 		seq.trace("target ts: %s. Now is: %s", targetTs, core.LogicalTimeNow())
 
 		tmpMsOutput := seq.generateNextMilestoneForTargetTime(targetTs)
