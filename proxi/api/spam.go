@@ -187,7 +187,7 @@ func maxTimestamp(outs []*core.OutputWithID) (ret core.LogicalTime) {
 func prepareBundle(walletData glb.WalletData, cfg spammerConfig) ([][]byte, core.OutputID) {
 	ret := make([][]byte, 0)
 	c := getClient()
-	txCtx, err := c.CompactED25519Outputs(walletData.PrivateKey, nil, 0, cfg.bundleSize)
+	txCtx, err := c.CompactED25519Outputs(walletData.PrivateKey, nil, 0, cfg.bundleSize*3)
 	glb.AssertNoError(err)
 
 	numTx := cfg.bundleSize

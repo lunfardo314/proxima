@@ -7,11 +7,11 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/general"
 	"github.com/lunfardo314/proxima/transaction"
-	utangle "github.com/lunfardo314/proxima/utangle"
+	"github.com/lunfardo314/proxima/utangle"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/set"
-	"github.com/lunfardo314/proxima/util/testutil"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
@@ -51,7 +51,8 @@ const (
 )
 
 func (seq *Sequencer) createMilestoneFactory() error {
-	log := testutil.NewNamedLogger(fmt.Sprintf("[%sF-%s]", seq.config.SequencerName, seq.chainID.VeryShort()), seq.config.LogLevel)
+	logname := fmt.Sprintf("[%sF-%s]", seq.config.SequencerName, seq.chainID.VeryShort())
+	log := general.NewLogger(logname, seq.config.LogLevel, seq.config.LogOutputs, seq.config.LogTimeLayout)
 	var chainOut utangle.WrappedOutput
 	var err error
 	if seq.config.StartupTxOptions == nil || seq.config.StartupTxOptions.ChainOutput == nil {

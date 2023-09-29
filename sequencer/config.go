@@ -1,6 +1,8 @@
 package sequencer
 
 import (
+	"slices"
+
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/utangle"
 	"github.com/lunfardo314/proxima/util"
@@ -43,6 +45,20 @@ func WithName(name string) ConfigOpt {
 func WithLogLevel(lvl zapcore.Level) ConfigOpt {
 	return func(o *ConfigOptions) {
 		o.LogLevel = lvl
+	}
+}
+
+func WithLogOutput(logOutput string) ConfigOpt {
+	return func(o *ConfigOptions) {
+		if logOutput != "" && slices.Index(o.LogOutputs, logOutput) < 0 {
+			o.LogOutputs = append(o.LogOutputs, logOutput)
+		}
+	}
+}
+
+func WithLogTimeLayout(logTimeLayout string) ConfigOpt {
+	return func(o *ConfigOptions) {
+		o.LogTimeLayout = logTimeLayout
 	}
 }
 

@@ -145,6 +145,7 @@ func StartFromConfig(glb *workflow.Workflow, name string) (*Sequencer, error) {
 	opts := []ConfigOpt{
 		WithName(name),
 		WithLogLevel(parseLogLevel(glb, subViper)),
+		WithLogOutput(viper.GetString("logger.output")),
 		WithPace(pace),
 		WithMaxFeeInputs(maxFeeInputs),
 		WithMaxBranches(maxBranches),
