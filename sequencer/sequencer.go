@@ -262,7 +262,10 @@ func (seq *Sequencer) chooseNextMilestoneTargetTime() core.LogicalTime {
 // Returns nil if fails to generate acceptable bestSoFar until the deadline
 func (seq *Sequencer) generateNextMilestoneForTargetTime(targetTs core.LogicalTime) *utangle.WrappedOutput {
 	seq.trace("generateNextMilestoneForTargetTime %s", targetTs)
-	absoluteDeadline := targetTs.Time().Add(10 * time.Millisecond)
+
+	timeout := time.Duration(seq.config.Pace) * core.TimeTickDuration()
+	absoluteDeadline := targetTs.Time().Add(timeout)
+
 	for {
 		if time.Now().After(absoluteDeadline) {
 			// too late, was too slow, failed to meet the target deadline
@@ -271,10 +274,15 @@ func (seq *Sequencer) generateNextMilestoneForTargetTime(targetTs core.LogicalTi
 
 		msOutput := seq.factory.startProposingForTargetLogicalTime(targetTs)
 
-		if !time.Now().After(absoluteDeadline) && msOutput != nil {
+		if msOutput != nil {
 			util.Assertf(msOutput.Timestamp() == targetTs, "msOutput.output.Timestamp() (%v) == targetTs (%v)",
 				msOutput.Timestamp(), targetTs)
 			return msOutput
+		}
+
+		if time.Now().After(absoluteDeadline) {
+			// too late, was too slow, failed to meet the target deadline
+			return nil
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
