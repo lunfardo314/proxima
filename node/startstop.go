@@ -3,6 +3,7 @@ package node
 import (
 	"os"
 	"sync"
+	"time"
 
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/general"
@@ -218,5 +219,6 @@ func (p *ProximaNode) startSequencers() {
 		}
 		p.log.Infof("started sequencer '%s', seqID: %s", name, seq.ID().String())
 		p.sequencers = append(p.sequencers, seq)
+		time.Sleep(500 * time.Millisecond)
 	}
 }
