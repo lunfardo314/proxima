@@ -283,14 +283,11 @@ func (vid *WrappedTx) BaseStemOutput() *WrappedOutput {
 		},
 		VirtualTx: func(v *VirtualTransaction) {
 			if isBranchTx {
-				util.Assertf(v.sequencerOutputs != nil && v.sequencerOutputs[1] != 0xff,
-					"stem output index not available in virtualTx %s", v.txid.Short())
-				_, found := v.outputs[v.sequencerOutputs[1]]
-				util.Assertf(found, "stem output not available at index %s in %s", v.sequencerOutputs[1], v.txid.Short())
-
-				ret = &WrappedOutput{
-					VID:   vid,
-					Index: v.sequencerOutputs[1],
+				if _, stemOut := v.SequencerOutputs(); stemOut != nil {
+					ret = &WrappedOutput{
+						VID:   vid,
+						Index: v.sequencerOutputs[1],
+					}
 				}
 			}
 		},

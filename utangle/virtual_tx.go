@@ -56,6 +56,27 @@ func (v *VirtualTransaction) OutputAt(idx byte) (*core.Output, bool) {
 	return nil, false
 }
 
+// SequencerOutputs returns <seq output>, <branch output> or respective nils
+func (v *VirtualTransaction) SequencerOutputs() (*core.Output, *core.Output) {
+	v.mutex.RLock()
+	defer v.mutex.RUnlock()
+
+	if v.sequencerOutputs == nil {
+		return nil, nil
+	}
+	var seqOut, stemOut *core.Output
+	var ok bool
+
+	seqOut, ok = v.outputs[v.sequencerOutputs[0]]
+	util.Assertf(ok, "inconsistency 1 in virtual tx %s", v.txid.Short())
+
+	if v.sequencerOutputs[1] != 0xff {
+		stemOut, ok = v.outputs[v.sequencerOutputs[1]]
+		util.Assertf(ok, "inconsistency 2 in virtual tx %s", v.txid.Short())
+	}
+	return seqOut, stemOut
+}
+
 func (v *VirtualTransaction) ensureOutputAt(idx byte, stateReader func() multistate.SugaredStateReader) (*core.Output, error) {
 	ret, ok := v.OutputAt(idx)
 	if ok {
