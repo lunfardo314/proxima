@@ -113,16 +113,16 @@ func (ut *UTXOTangle) solidifyOutput(oid *core.OutputID, baseStateReader func() 
 		}
 		return ret, nil
 	}
-	// corresponding vertex has not been found. Create virtual transaction
-	virtualTx := newVirtualTx(&txid)
-	if _, err := virtualTx.ensureOutputAt(oid.Index(), baseStateReader); err != nil {
-		// cannot find solid reference for output, but it is not an error
-		return nil, nil
+
+	o, err := baseStateReader().GetOutputWithID(oid)
+	if err != nil {
+		return nil, err
 	}
-	// store new virtual TX to the tangle
-	ret = virtualTx.Wrap()
-	ut.AddVertexWithSaveTx(ret)
-	return ret, nil
+	wOut, success := ut.WrapNewOutput(o)
+	if !success {
+		return nil, fmt.Errorf("can't find %s", o.ID.Short())
+	}
+	return wOut.VID, nil
 }
 
 func (ut *UTXOTangle) timeSlotsOrdered(descOrder ...bool) []core.TimeSlot {
@@ -412,10 +412,9 @@ func (ut *UTXOTangle) HasOutputInTimeSlot(e core.TimeSlot, oid *core.OutputID) b
 func (ut *UTXOTangle) WrapOutput(o *core.OutputWithID) (WrappedOutput, bool) {
 	txid := o.ID.TransactionID()
 
-	vid, found := ut.GetVertex(&txid)
-	available := true
-	if found {
+	if vid, found := ut.GetVertex(&txid); found {
 		// the transaction is on the UTXO tangle, i.e. already wrapped
+		available := true
 		vid.Unwrap(UnwrapOptions{
 			Vertex: func(v *Vertex) {
 				if int(o.ID.Index()) > v.Tx.NumProducedOutputs() {
@@ -429,32 +428,36 @@ func (ut *UTXOTangle) WrapOutput(o *core.OutputWithID) (WrappedOutput, bool) {
 				available = false
 			},
 		})
-	} else {
-		// the transaction is not on the tangle, i.e. not wrapped. Creating virtual tx for it
-
-		if o.ID.BranchFlagON() {
-			// the corresponding transaction is branch tx. It must exist in the state.
-			// Reaching it out and wrapping it with chain and stem outputs
-			bd, foundBranchData := multistate.FetchBranchDataByTransactionID(ut.stateStore, txid)
-			if foundBranchData {
-				vid = newVirtualBranchTx(&bd).Wrap()
-				ut.AddVertexAndBranch(vid, bd.Root)
-			} else {
-				// branch tx is not on the state, it means it does not exist
-				available = false
-			}
-		} else {
-			v := newVirtualTx(&txid)
-			v.addOutput(o.ID.Index(), o.Output)
-			vid = v.Wrap()
-			ut.AddVertexNoSaveTx(vid)
-
+		if available {
+			return WrappedOutput{vid, o.ID.Index()}, true
 		}
+		return WrappedOutput{}, false
 	}
-	if available {
-		return WrappedOutput{vid, o.ID.Index()}, true
+	// the transaction is not on the tangle, i.e. not wrapped. Creating virtual tx for it
+	return ut.WrapNewOutput(o)
+}
+
+// WrapNewOutput creates virtual transaction for transaction which is not on the UTXO tangle
+func (ut *UTXOTangle) WrapNewOutput(o *core.OutputWithID) (WrappedOutput, bool) {
+	txid := o.ID.TransactionID()
+	if o.ID.BranchFlagON() {
+		// the corresponding transaction is branch tx. It must exist in the state.
+		// Reaching it out and wrapping it with chain and stem outputs
+		bd, foundBranchData := multistate.FetchBranchDataByTransactionID(ut.stateStore, txid)
+		if foundBranchData {
+			ret := newVirtualBranchTx(&bd).Wrap()
+			ut.AddVertexAndBranch(ret, bd.Root)
+			return WrappedOutput{VID: ret, Index: o.ID.Index()}, true
+		}
+		return WrappedOutput{}, false
 	}
-	return WrappedOutput{}, false
+
+	v := newVirtualTx(&txid)
+	v.addOutput(o.ID.Index(), o.Output)
+	ret := v.Wrap()
+	ut.AddVertexNoSaveTx(ret)
+
+	return WrappedOutput{VID: ret, Index: o.ID.Index()}, true
 }
 
 func (ut *UTXOTangle) MustWrapOutput(o *core.OutputWithID) WrappedOutput {
