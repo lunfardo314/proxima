@@ -344,7 +344,7 @@ func (mf *milestoneFactory) startProposerWorkers(targetTime core.LogicalTime) {
 }
 
 func (mf *milestoneFactory) runProposerTask(task proposerTask) {
-	task.trace(" START proposer %s", task.name())
+	task.trace(" START proposer %s. Last ms: %s", task.name(), mf.lastMilestone.IDShort())
 	task.run()
 	task.trace(" END proposer %s", task.name())
 }

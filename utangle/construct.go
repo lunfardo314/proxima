@@ -100,30 +100,30 @@ func newVirtualBranchTx(br *multistate.BranchData) *VirtualTransaction {
 	return v
 }
 
-func (ut *UTXOTangle) AddVertex(vids ...*WrappedTx) {
+func (ut *UTXOTangle) AddVertexWithSaveTx(vids ...*WrappedTx) {
 	ut.mutex.Lock()
 	defer ut.mutex.Unlock()
 
-	ut.addVertex(vids...)
+	ut.addVertexWithSaveTx(vids...)
 }
 
 func (ut *UTXOTangle) AddVertexNoSaveTx(vid *WrappedTx) {
 	ut.mutex.Lock()
 	defer ut.mutex.Unlock()
 
-	ut._addVertex(vid)
+	ut.addVertex(vid)
 }
 
-func (ut *UTXOTangle) _addVertex(vid *WrappedTx) {
+func (ut *UTXOTangle) addVertex(vid *WrappedTx) {
 	txid := vid.ID()
 	_, already := ut.vertices[*txid]
 	util.Assertf(!already, "addVertex: repeating transaction %s", txid.Short())
 	ut.vertices[*txid] = vid
 }
 
-func (ut *UTXOTangle) addVertex(vids ...*WrappedTx) {
+func (ut *UTXOTangle) addVertexWithSaveTx(vids ...*WrappedTx) {
 	for _, vid := range vids {
-		ut._addVertex(vid)
+		ut.addVertex(vid)
 
 		// saving transaction bytes to the transaction store
 		vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
@@ -142,11 +142,11 @@ func (ut *UTXOTangle) deleteVertex(txid *core.TransactionID) {
 	delete(ut.vertices, *txid)
 }
 
-func (ut *UTXOTangle) AddBranchAndVertex(branchVID *WrappedTx, root common.VCommitment) {
+func (ut *UTXOTangle) AddVertexAndBranch(branchVID *WrappedTx, root common.VCommitment) {
 	ut.mutex.Lock()
 	defer ut.mutex.Unlock()
 
-	ut._addVertex(branchVID)
+	ut.addVertex(branchVID)
 	ut.addBranch(branchVID, root)
 }
 
@@ -223,7 +223,7 @@ func (ut *UTXOTangle) AppendVertex(vid *WrappedTx) error {
 	ut.mutex.Lock()
 	defer ut.mutex.Unlock()
 
-	ut.addVertex(vid)
+	ut.addVertexWithSaveTx(vid)
 
 	if vid.IsBranchTransaction() {
 		if err := ut.finalizeBranch(vid); err != nil {

@@ -48,10 +48,11 @@ func (b *baseProposer) run() {
 func (b *baseProposer) proposeBase() (*transaction.Transaction, bool) {
 	latestMilestone := b.factory.getLastMilestone()
 	if !latestMilestone.VID.IsSequencerMilestone() {
+		b.trace("proposeBase.exit: not a sequencer milestone")
 		return nil, false
 	}
 	if b.targetTs.TimeTick() != 0 && latestMilestone.TimeSlot() != b.targetTs.TimeSlot() {
-		// cross slot. Skip
+		b.trace("proposeBase.force exit: cross-slot")
 		return nil, true
 	}
 
@@ -61,8 +62,8 @@ func (b *baseProposer) proposeBase() (*transaction.Transaction, bool) {
 		baseStem := latestMilestone.VID.BaseStemOutput()
 		if baseStem == nil {
 			// base stem is not available for a milestone which is virtual and non-branch
-			b.trace("%s cannot be extended to branch", latestMilestone.IDShort())
-			return nil, false
+			b.trace("proposeBase.force exit: stem not available, %s cannot be extended to branch", latestMilestone.IDShort())
+			return nil, true
 		}
 		return b.makeMilestone(&latestMilestone, baseStem, nil, nil), false
 	}
