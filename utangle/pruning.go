@@ -133,7 +133,7 @@ func (ut *UTXOTangle) PruneOrphaned(nLatestSlots int) (int, int, int) {
 
 func (ut *UTXOTangle) _oldestNonEmptySlot() (core.TimeSlot, int) {
 	// ascending
-	slots := util.FilterSlice(ut.timeSlotsOrdered(), func(el core.TimeSlot) bool {
+	slots := util.FilterSlice(ut._timeSlotsOrdered(), func(el core.TimeSlot) bool {
 		return len(ut.branches[el]) > 0
 	})
 	if len(slots) < TipSlots+2 {

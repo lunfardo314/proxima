@@ -43,26 +43,14 @@ func milestoneSliceString(path []utangle.WrappedOutput) string {
 
 func (b *backtrackProposer) run() {
 	startTime := time.Now()
-	for {
-		b.endorse = b.factory.tipPool.getHeaviestAnotherMilestoneToEndorse(b.targetTs)
-		if b.endorse != nil {
-			break
-		}
-		time.Sleep(5 * time.Millisecond)
-		if core.LogicalTimeNow().After(b.targetTs) {
-			b.trace("EXIT: didn't find another milestone to endorse")
-			return
-		}
+	b.calcExtensionChoices()
+	if len(b.extensionChoices) == 0 {
+		b.trace("EXIT: didn't find another milestone to endorse")
+		return
 	}
-	b.extensionChoices = b.factory.ownForksInAnotherSequencerPastCone(b.endorse)
 
 	b.trace("RUNNING with %s to endorse:", b.endorse.IDShort())
 	b.trace("own forks in another ms:\n%s", milestoneSliceString(b.extensionChoices))
-
-	if len(b.extensionChoices) == 0 {
-		last := b.factory.getLastMilestone()
-		b.extensionChoices = util.List(last)
-	}
 
 	for _, ms := range b.extensionChoices {
 		if !b.factory.proposal.continueCandidateProposing(b.targetTs) {
@@ -105,4 +93,22 @@ func (b *backtrackProposer) generateCandidate(extend utangle.WrappedOutput) *tra
 	feeOutputsToConsume := b.factory.selectFeeInputs(targetDelta, b.targetTs)
 	return b.makeMilestone(&extend, nil, feeOutputsToConsume, util.List(b.endorse))
 
+}
+
+func (b *backtrackProposer) calcExtensionChoices() {
+	for {
+		endorsable := b.factory.tipPool.preSelectEndorsableMilestones(b.targetTs)
+		for _, vid := range endorsable {
+			b.extensionChoices = b.factory.ownForksInAnotherSequencerPastCone(vid)
+			if len(b.extensionChoices) > 0 {
+				break
+			}
+		}
+		if len(b.extensionChoices) > 0 {
+			break
+		}
+		if time.Sleep(5 * time.Millisecond); core.LogicalTimeNow().After(b.targetTs) {
+			return
+		}
+	}
 }

@@ -25,7 +25,6 @@ type (
 		controllerKey ed25519.PrivateKey
 		proposal      latestMilestoneProposal
 		ownMilestones map[*utangle.WrappedTx]utangle.WrappedOutput
-		lastMilestone utangle.WrappedOutput
 		maxFeeInputs  int
 		lastPruned    time.Time
 	}
@@ -53,14 +52,10 @@ const (
 func (seq *Sequencer) createMilestoneFactory() error {
 	logname := fmt.Sprintf("[%sF-%s]", seq.config.SequencerName, seq.chainID.VeryShort())
 	log := general.NewLogger(logname, seq.config.LogLevel, seq.config.LogOutputs, seq.config.LogTimeLayout)
+
 	var chainOut utangle.WrappedOutput
 	var err error
-	if seq.config.StartupTxOptions == nil || seq.config.StartupTxOptions.ChainOutput == nil {
-		chainOut, err = seq.glb.UTXOTangle().WrapChainOutput(seq.chainID)
-		if err != nil {
-			return err
-		}
-	} else {
+	if seq.config.StartupTxOptions != nil && seq.config.StartupTxOptions.ChainOutput != nil {
 		var created bool
 		// creates sequencer output out of chain origin and tags along, if necessary
 		chainOut, created, err = seq.ensureSequencerStartOutput()
@@ -72,13 +67,9 @@ func (seq *Sequencer) createMilestoneFactory() error {
 		}
 	}
 
-	chainOutUnwrapped, err := chainOut.Unwrap()
-	if err != nil {
-		return err
-	}
-	if chainOutUnwrapped.Output.Amount() < core.MinimumAmountOnSequencer {
-		return fmt.Errorf("cannot start sequncer: not enough balance on chain output, must be at least %s",
-			util.GoThousands(core.MinimumAmountOnSequencer))
+	ownMilestones := make(map[*utangle.WrappedTx]utangle.WrappedOutput)
+	if chainOut.VID != nil {
+		ownMilestones[chainOut.VID] = chainOut
 	}
 
 	tippoolLoglevel := seq.config.LogLevel
@@ -91,13 +82,10 @@ func (seq *Sequencer) createMilestoneFactory() error {
 	}
 
 	ret := &milestoneFactory{
-		log:     log,
-		tangle:  seq.glb.UTXOTangle(),
-		tipPool: tippool,
-		ownMilestones: map[*utangle.WrappedTx]utangle.WrappedOutput{
-			chainOut.VID: chainOut,
-		},
-		lastMilestone: chainOut,
+		log:           log,
+		tangle:        seq.glb.UTXOTangle(),
+		tipPool:       tippool,
+		ownMilestones: ownMilestones,
 		controllerKey: seq.controllerKey,
 		maxFeeInputs:  seq.config.MaxFeeInputs,
 	}
@@ -139,6 +127,12 @@ func (seq *Sequencer) ensureSequencerStartOutput() (utangle.WrappedOutput, bool,
 		})
 	}
 	chainOutWithID, err := chainOut.Unwrap()
+
+	if chainOutWithID.Output.Amount() < core.MinimumAmountOnSequencer {
+		return utangle.WrappedOutput{}, false, fmt.Errorf("ensureSequencerStartOutput: cannot start sequncer: not enough balance on chain output, must be at least %s",
+			util.GoThousands(core.MinimumAmountOnSequencer))
+	}
+
 	if err != nil || chainOutWithID == nil {
 		return utangle.WrappedOutput{}, false, err
 	}
@@ -269,19 +263,16 @@ func (mf *milestoneFactory) selectFeeInputs(seqDelta *utangle.UTXOStateDelta, ta
 	return ret
 }
 
-func (mf *milestoneFactory) setLastMilestone(msOutput utangle.WrappedOutput) {
-	mf.mutex.Lock()
-	defer mf.mutex.Unlock()
-
-	mf.lastMilestone = msOutput
-	mf.ownMilestones[msOutput.VID] = msOutput
-}
-
-func (mf *milestoneFactory) getLastMilestone() utangle.WrappedOutput {
+func (mf *milestoneFactory) getLatestMilestone() (ret utangle.WrappedOutput) {
 	mf.mutex.RLock()
 	defer mf.mutex.RUnlock()
 
-	return mf.ownMilestones[mf.lastMilestone.VID]
+	for _, ms := range mf.ownMilestones {
+		if ret.VID == nil || ret.Timestamp().After(ret.Timestamp()) {
+			ret = ms
+		}
+	}
+	return ret
 }
 
 // setNewTarget signals proposer allMilestoneProposingStrategies about new timestamp,
@@ -346,7 +337,7 @@ func (mf *milestoneFactory) startProposerWorkers(targetTime core.LogicalTime) {
 
 func (mf *milestoneFactory) runProposerTask(task proposerTask) {
 	task.setTraceNAhead(1)
-	task.trace(" START proposer %s. Last ms: %s", task.name(), mf.lastMilestone.IDShort())
+	task.trace(" START proposer %s", task.name())
 	task.run()
 	task.setTraceNAhead(1)
 	task.trace(" END proposer %s", task.name())
@@ -412,15 +403,11 @@ func (mf *milestoneFactory) ownForksInAnotherSequencerPastCone(anotherSeqVertex 
 		// cannot find own seqID in the state of anotherSeqID. The tree is empty
 		return nil
 	}
-	if !rootOutput.ID.IsSequencerTransaction() {
-		return nil
-	}
-	txid := rootOutput.ID.TransactionID()
-	rootVID, ok := mf.tangle.GetVertex(&txid)
+	rootWrapped, ok := mf.tangle.WrapOutput(rootOutput)
 	if !ok {
 		return nil
 	}
-	return mf.futureConeMilestonesOrdered(rootVID)
+	return mf.futureConeMilestonesOrdered(rootWrapped.VID)
 }
 
 // makeAdditionalInputsOutputs makes additional outputs according to commands in imputs.

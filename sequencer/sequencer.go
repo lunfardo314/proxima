@@ -103,7 +103,7 @@ func StartNew(glb *workflow.Workflow, seqID core.ChainID, controllerKey ed25519.
 
 	go ret.mainLoop()
 
-	lms := ret.factory.getLastMilestone()
+	lms := ret.factory.getLatestMilestone()
 	ret.log.Infof("sequencer has been started at %s (loglevel=%s)",
 		lms.IDShort(), ret.log.Level().String())
 	return ret, nil
@@ -210,7 +210,7 @@ func (seq *Sequencer) setLastMilestone(msOutput utangle.WrappedOutput) {
 const sleepWaitingCurrentMilestoneTime = 10 * time.Millisecond
 
 func (seq *Sequencer) chooseNextMilestoneTargetTime() core.LogicalTime {
-	currentMs := seq.factory.getLastMilestone()
+	currentMs := seq.factory.getLatestMilestone()
 	currentMilestoneTs := currentMs.Timestamp()
 
 	nowis := core.LogicalTimeNow()

@@ -122,23 +122,20 @@ func (mem *sequencerTipPool) ChainID() core.ChainID {
 	return mem.chainID
 }
 
-func (mem *sequencerTipPool) getHeaviestAnotherMilestoneToEndorse(targetTs core.LogicalTime) *utangle.WrappedTx {
+func (mem *sequencerTipPool) preSelectEndorsableMilestones(targetTs core.LogicalTime) []*utangle.WrappedTx {
 	mem.mutex.RLock()
 	defer mem.mutex.RUnlock()
 
-	var ret *utangle.WrappedTx
-
+	ret := make([]*utangle.WrappedTx, 0)
 	for _, ms := range mem.latestMilestones {
-		switch {
-		case ms.TimeSlot() != targetTs.TimeSlot() || !core.ValidTimePace(ms.Timestamp(), targetTs):
-			// must be in the same time slot and with valid time pace
+		if ms.TimeSlot() != targetTs.TimeSlot() || !core.ValidTimePace(ms.Timestamp(), targetTs) {
 			continue
-		case ret == nil:
-			ret = ms
-		case isPreferredMilestoneAgainstTheOther(ms, ret):
-			ret = ms
 		}
+		ret = append(ret, ms)
 	}
+	sort.Slice(ret, func(i, j int) bool {
+		return isPreferredMilestoneAgainstTheOther(ret[j], ret[i])
+	})
 	return ret
 }
 

@@ -8,7 +8,7 @@ import (
 	"github.com/lunfardo314/proxima/util"
 )
 
-// Base proposer just consumes fee outputs. It also generates branches
+// Base proposer generates branches and bootstraps sequencer when no other sequencers are around
 
 const BaseProposerName = "base"
 
@@ -19,22 +19,11 @@ type baseProposer struct {
 func init() {
 	registerProposingStrategy(BaseProposerName, func(mf *milestoneFactory, targetTs core.LogicalTime) proposerTask {
 		ret := &baseProposer{newProposerGeneric(mf, targetTs, BaseProposerName)}
-
-		if targetTs.TimeTick() == 0 {
-			ret.setTraceNAhead(1000)
-			ret.trace("start for %s", targetTs.String())
-		}
-
 		return ret
 	})
 }
 
 func (b *baseProposer) run() {
-	lastMs := b.factory.getLastMilestone()
-	if !lastMs.VID.IsSequencerMilestone() {
-		b.trace("exit. Cannot extend non-sequencer milestone %s", lastMs.IDShort())
-		return
-	}
 	startTime := time.Now()
 	var tx *transaction.Transaction
 	var forceExit bool
@@ -52,11 +41,25 @@ func (b *baseProposer) run() {
 }
 
 func (b *baseProposer) proposeBase() (*transaction.Transaction, bool) {
-	latestMilestone := b.factory.getLastMilestone()
-	if !latestMilestone.VID.IsSequencerMilestone() {
-		b.trace("proposeBase.exit: not a sequencer milestone %s", latestMilestone.IDShort())
-		return nil, false
+	latestMilestone := b.factory.getLatestMilestone()
+	if latestMilestone.VID == nil {
+		// startup situation
+		if b.targetTs.TimeTick() != 0 {
+			// can only start up with branch target
+			b.trace("no latest own milestones to extend. Postpone until branch target")
+			return nil, true
+		}
+		// start-up: find own output and stem in the state and create branch with it
+		seqOut, stemOut, found := b.factory.tangle.GetSequencerBootstrapOutputs(b.factory.tipPool.chainID)
+		if !found {
+			b.factory.log.Errorf("cannot find bootstrap outputs for the sequencer")
+			return nil, true
+		}
+		// create branch. In case it is the only sequencer around, the branch will survive
+		// and will help to bootstrap other sequencers. Otherwise, it will be orphaned most likely
+		return b.makeMilestone(&seqOut, &stemOut, nil, nil), false
 	}
+	// own latest milestone exists
 	if b.targetTs.TimeTick() != 0 && latestMilestone.TimeSlot() != b.targetTs.TimeSlot() {
 		b.trace("proposeBase.force exit: cross-slot %s", latestMilestone.IDShort())
 		return nil, true
@@ -68,9 +71,10 @@ func (b *baseProposer) proposeBase() (*transaction.Transaction, bool) {
 		baseStem := latestMilestone.VID.BaseStemOutput()
 		if baseStem == nil {
 			// base stem is not available for a milestone which is virtual and non-branch
-			b.trace("proposeBase.force exit: stem not available, %s cannot be extended to a branch", latestMilestone.IDShort())
+			b.factory.log.Errorf("proposeBase.force exit: stem not available, %s cannot be extended to a branch", latestMilestone.IDShort())
 			return nil, true
 		}
+		// create branch
 		return b.makeMilestone(&latestMilestone, baseStem, nil, nil), false
 	}
 	// non-branch

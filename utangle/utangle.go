@@ -125,7 +125,7 @@ func (ut *UTXOTangle) solidifyOutput(oid *core.OutputID, baseStateReader func() 
 	return wOut.VID, nil
 }
 
-func (ut *UTXOTangle) timeSlotsOrdered(descOrder ...bool) []core.TimeSlot {
+func (ut *UTXOTangle) _timeSlotsOrdered(descOrder ...bool) []core.TimeSlot {
 	desc := false
 	if len(descOrder) > 0 {
 		desc = descOrder[0]
@@ -178,7 +178,7 @@ func (ut *UTXOTangle) InfoLines(verbose ...bool) *lines.Lines {
 	defer ut.mutex.RUnlock()
 
 	ln := lines.New()
-	slots := ut.timeSlotsOrdered()
+	slots := ut._timeSlotsOrdered()
 
 	verb := false
 	if len(verbose) > 0 {
@@ -330,35 +330,28 @@ func (ut *UTXOTangle) HeaviestStateForLatestTimeSlot() multistate.SugaredStateRe
 // heaviestBranchForLatestTimeSlot return branch transaction vertex with the highest ledger coverage
 // Returns cached full root or nil
 func (ut *UTXOTangle) heaviestBranchForLatestTimeSlot() branch {
+	var largestBranch branch
+	var found bool
+
 	ut.mutex.RLock()
 	defer ut.mutex.RUnlock()
 
-	desc := ut.timeSlotsOrdered(true)
-	coverage := uint64(0)
-	var largestVID *WrappedTx
-	for _, e := range desc {
-		branches := ut.branches[e]
-		if len(branches) == 0 {
-			continue
-		}
-		for vid := range branches {
-			cov := vid.LedgerCoverage(TipSlots)
-			if coverage == 0 || cov > coverage {
-				coverage = cov
-				largestVID = vid
-			}
-		}
-		return branches[largestVID]
-	}
-	util.Assertf(false, "inconsistency: cannot find heaviest finalized state")
-	return branch{}
+	ut.forEachBranchSorted(ut.LatestTimeSlot(), func(vid *WrappedTx, br branch) bool {
+		largestBranch = br
+		found = true
+		return false
+	}, true)
+
+	util.Assertf(found, "inconsistency: cannot find heaviest finalized state")
+	return largestBranch
 }
 
+// LatestTimeSlot latest time slot with some branches
 func (ut *UTXOTangle) LatestTimeSlot() core.TimeSlot {
 	ut.mutex.RLock()
 	defer ut.mutex.RUnlock()
 
-	for _, e := range ut.timeSlotsOrdered(true) {
+	for _, e := range ut._timeSlotsOrdered(true) {
 		if len(ut.branches[e]) > 0 {
 			return e
 		}
@@ -370,25 +363,28 @@ func (ut *UTXOTangle) HeaviestStemOutput() *core.OutputWithID {
 	return ut.HeaviestStateForLatestTimeSlot().GetStemOutput()
 }
 
-func (ut *UTXOTangle) ForEachBranchState(e core.TimeSlot, fun func(rdr multistate.SugaredStateReader) bool) error {
+func (ut *UTXOTangle) ForEachBranchStateDesc(e core.TimeSlot, fun func(rdr multistate.SugaredStateReader) bool) error {
 	ut.mutex.RLock()
 	defer ut.mutex.RUnlock()
 
 	ut.forEachBranchSorted(e, func(vid *WrappedTx, br branch) bool {
-		r, err := multistate.NewReadable(ut.stateStore, br.root)
+		r, err := multistate.NewReadable(ut.stateStore, br.root, 0)
 		util.AssertNoError(err)
 		return fun(multistate.MakeSugared(r))
-	})
+	}, true)
 	return nil
 }
 
-func (ut *UTXOTangle) forEachBranchSorted(e core.TimeSlot, fun func(vid *WrappedTx, br branch) bool) {
+func (ut *UTXOTangle) forEachBranchSorted(e core.TimeSlot, fun func(vid *WrappedTx, br branch) bool, desc bool) {
 	branches, ok := ut.branches[e]
 	if !ok {
 		return
 	}
 
 	vids := util.SortKeys(branches, func(vid1, vid2 *WrappedTx) bool {
+		if desc {
+			return vid1.LedgerCoverage(TipSlots) > vid2.LedgerCoverage(TipSlots)
+		}
 		return vid1.LedgerCoverage(TipSlots) < vid2.LedgerCoverage(TipSlots)
 	})
 	for _, vid := range vids {
@@ -398,9 +394,32 @@ func (ut *UTXOTangle) forEachBranchSorted(e core.TimeSlot, fun func(vid *Wrapped
 	}
 }
 
+func (ut *UTXOTangle) GetSequencerBootstrapOutputs(seqID core.ChainID) (chainOut WrappedOutput, stemOut WrappedOutput, found bool) {
+	var seqOut, stem *core.OutputWithID
+	var err error
+
+	err = ut.ForEachBranchStateDesc(ut.LatestTimeSlot(), func(rdr multistate.SugaredStateReader) bool {
+		if seqOut, err = rdr.GetChainOutput(&seqID); err == nil {
+			stem = rdr.GetStemOutput()
+			found = true
+		}
+		return !found
+	})
+	util.AssertNoError(err)
+
+	if !found {
+		return
+	}
+	if chainOut, found = ut.WrapOutput(seqOut); !found {
+		return
+	}
+	stemOut, found = ut.WrapOutput(stem)
+	return
+}
+
 func (ut *UTXOTangle) HasOutputInTimeSlot(e core.TimeSlot, oid *core.OutputID) bool {
 	ret := false
-	err := ut.ForEachBranchState(e, func(rdr multistate.SugaredStateReader) bool {
+	err := ut.ForEachBranchStateDesc(e, func(rdr multistate.SugaredStateReader) bool {
 		_, ret = rdr.GetUTXO(oid)
 		return !ret
 	})
@@ -541,7 +560,7 @@ func (ut *UTXOTangle) _baselineTime(nLatestSlots int) (time.Time, int) {
 
 	var earliestSlot core.TimeSlot
 	count := 0
-	for _, s := range ut.timeSlotsOrdered(true) {
+	for _, s := range ut._timeSlotsOrdered(true) {
 		if len(ut.branches[s]) > 0 {
 			earliestSlot = s
 			count++
