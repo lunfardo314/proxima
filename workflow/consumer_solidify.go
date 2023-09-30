@@ -114,7 +114,6 @@ func (c *SolidifyConsumer) consume(inp *SolidifyInputData) {
 }
 
 func (c *SolidifyConsumer) newVertexToSolidify(inp *SolidifyInputData) {
-	//c.Log().Debugf("inside newVertexToSolidify %s", inp.Tx.IDShort())
 	_, already := c.txPending[*inp.Tx.ID()]
 	util.Assertf(!already, "transaction is in the solidifier already: %s", inp.Tx.IDString())
 
@@ -124,7 +123,7 @@ func (c *SolidifyConsumer) newVertexToSolidify(inp *SolidifyInputData) {
 		// non solidifiable
 		c.Debugf(inp.PrimaryInputConsumerData, "%v", err)
 		c.IncCounter("err")
-		c.removeNonSolidifiableFutureCone(draftVertex.Tx.ID())
+		c.removeNonSolidifiableFutureCone(inp.Tx.ID())
 		c.RejectTransaction(inp.PrimaryInputConsumerData, "%v", err)
 		return
 	}

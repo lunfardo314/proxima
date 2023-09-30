@@ -46,6 +46,7 @@ type (
 		LedgerCoverage         uint64
 		PrevLedgerCoverage     uint64
 		AvgProposalDuration    time.Duration
+		NumProposals           int
 	}
 )
 
@@ -270,7 +271,7 @@ func (seq *Sequencer) chooseNextTargetTime(avgProposalDuration time.Duration) co
 }
 
 // Returns nil if fails to generate acceptable bestSoFar until the deadline
-func (seq *Sequencer) generateNextMilestoneForTargetTime(targetTs core.LogicalTime) (*utangle.WrappedOutput, time.Duration) {
+func (seq *Sequencer) generateNextMilestoneForTargetTime(targetTs core.LogicalTime) (*utangle.WrappedOutput, time.Duration, int) {
 	seq.trace("generateNextMilestoneForTargetTime %s", targetTs)
 
 	timeout := time.Duration(seq.config.Pace) * core.TimeTickDuration()
@@ -279,20 +280,20 @@ func (seq *Sequencer) generateNextMilestoneForTargetTime(targetTs core.LogicalTi
 	for {
 		if time.Now().After(absoluteDeadline) {
 			// too late, was too slow, failed to meet the target deadline
-			return nil, 0
+			return nil, 0, 0
 		}
 
-		msOutput, avgProposalDuration := seq.factory.startProposingForTargetLogicalTime(targetTs)
+		msOutput, avgProposalDuration, numProposals := seq.factory.startProposingForTargetLogicalTime(targetTs)
 
 		if msOutput != nil {
 			util.Assertf(msOutput.Timestamp() == targetTs, "msOutput.output.Timestamp() (%v) == targetTs (%v)",
 				msOutput.Timestamp(), targetTs)
-			return msOutput, avgProposalDuration
+			return msOutput, avgProposalDuration, numProposals
 		}
 
 		if time.Now().After(absoluteDeadline) {
 			// too late, was too slow, failed to meet the target deadline
-			return nil, avgProposalDuration
+			return nil, avgProposalDuration, numProposals
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
@@ -339,7 +340,8 @@ func (seq *Sequencer) mainLoop() {
 		seq.trace("target ts: %s. Now is: %s", targetTs, core.LogicalTimeNow())
 
 		var tmpMsOutput *utangle.WrappedOutput
-		tmpMsOutput, avgProposalDuration = seq.generateNextMilestoneForTargetTime(targetTs)
+		var numProposals int
+		tmpMsOutput, avgProposalDuration, numProposals = seq.generateNextMilestoneForTargetTime(targetTs)
 		if tmpMsOutput == nil {
 			// failed to generate transaction for target time. Start over with new target time
 			time.Sleep(10 * time.Millisecond)
@@ -361,7 +363,7 @@ func (seq *Sequencer) mainLoop() {
 		if msOutput.VID.IsBranchTransaction() {
 			branchCount++
 		}
-		seq.updateInfo(*msOutput, avgProposalDuration)
+		seq.updateInfo(*msOutput, avgProposalDuration, numProposals)
 		seq.onMilestoneSubmitted(seq, msOutput)
 	}
 	seq.stopWG.Done()
@@ -383,4 +385,8 @@ func (seq *Sequencer) submitTransaction(tmpMsOutput utangle.WrappedOutput) *utan
 		VID:   retVID,
 		Index: tmpMsOutput.Index,
 	}
+}
+
+func (seq *Sequencer) NumOutputsInPool() int {
+	return seq.factory.tipPool.numOutputsInBuffer()
 }

@@ -2,6 +2,7 @@ package utangle
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"time"
@@ -115,12 +116,16 @@ func (ut *UTXOTangle) solidifyOutput(oid *core.OutputID, baseStateReader func() 
 	}
 
 	o, err := baseStateReader().GetOutputWithID(oid)
+	if errors.Is(err, multistate.ErrNotFound) {
+		// error means nothing because output might not exist yet
+		return nil, nil
+	}
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("solidifyOutput: %w", err)
 	}
 	wOut, success := ut.WrapNewOutput(o)
 	if !success {
-		return nil, fmt.Errorf("can't find %s", o.ID.Short())
+		return nil, fmt.Errorf("can't wrap %s", o.ID.Short())
 	}
 	return wOut.VID, nil
 }

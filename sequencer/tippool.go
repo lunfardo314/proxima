@@ -83,7 +83,7 @@ func startTipPool(seqName string, wrk *workflow.Workflow, seqID core.ChainID, lo
 	return ret, nil
 }
 
-const cleanupPeriod = 1 * time.Second
+const cleanupPeriod = 5 * time.Second
 
 func (mem *sequencerTipPool) _clearOrphanedOutputsIfNeeded() {
 	if time.Since(mem.lastPruned) < cleanupPeriod {

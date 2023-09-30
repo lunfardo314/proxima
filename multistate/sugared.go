@@ -1,7 +1,7 @@
 package multistate
 
 import (
-	"fmt"
+	"errors"
 
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/general"
@@ -9,6 +9,8 @@ import (
 	"github.com/lunfardo314/proxima/util/txutils"
 	"github.com/lunfardo314/unitrie/common"
 )
+
+var ErrNotFound = errors.New("object not found")
 
 type SugaredStateReader struct {
 	general.IndexedStateReader
@@ -39,7 +41,7 @@ func (s SugaredStateReader) Desugar() general.IndexedStateReader {
 func (s SugaredStateReader) GetOutputWithID(oid *core.OutputID) (*core.OutputWithID, error) {
 	oData, found := s.IndexedStateReader.GetUTXO(oid)
 	if !found {
-		return nil, fmt.Errorf("can't found output %s", oid.Short())
+		return nil, ErrNotFound
 	}
 	ret, err := core.OutputFromBytesReadOnly(oData)
 	if err != nil {
@@ -55,7 +57,7 @@ func (s SugaredStateReader) GetOutputWithID(oid *core.OutputID) (*core.OutputWit
 func (s SugaredStateReader) GetOutput(oid *core.OutputID) (*core.Output, error) {
 	oData, found := s.IndexedStateReader.GetUTXO(oid)
 	if !found {
-		return nil, fmt.Errorf("can't found output %s", oid.Short())
+		return nil, ErrNotFound
 	}
 	ret, err := core.OutputFromBytesReadOnly(oData)
 	if err != nil {

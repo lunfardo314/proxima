@@ -7,7 +7,7 @@ import (
 	"github.com/lunfardo314/proxima/util"
 )
 
-func (seq *Sequencer) updateInfo(msOutput utangle.WrappedOutput, avgProposalDuration time.Duration) {
+func (seq *Sequencer) updateInfo(msOutput utangle.WrappedOutput, avgProposalDuration time.Duration, numProposals int) {
 	seq.infoMutex.Lock()
 	defer seq.infoMutex.Unlock()
 
@@ -26,6 +26,7 @@ func (seq *Sequencer) updateInfo(msOutput utangle.WrappedOutput, avgProposalDura
 		LedgerCoverage:         msOutput.VID.LedgerCoverage(utangle.TipSlots),
 		PrevLedgerCoverage:     seq.info.LedgerCoverage,
 		AvgProposalDuration:    avgProposalDuration,
+		NumProposals:           numProposals,
 	}
 }
 
@@ -55,7 +56,7 @@ func (seq *Sequencer) LogMilestoneSubmitDefault(wOut *utangle.WrappedOutput) {
 		msIndex = od.ChainHeight
 	}
 
-	seq.log.Infof("%s %d/%d: %s, cov: %s<-%s, in/out: %d/%d, feeOut: %d, avgProposal: %v, mem: %d/%d",
+	seq.log.Infof("%s %d/%d: %s, cov: %s<-%s, in/out: %d/%d, feeOut: %d, avgProposal: %v x %d, mem: %d/%d",
 		msType,
 		msIndex,
 		branchIndex,
@@ -66,6 +67,7 @@ func (seq *Sequencer) LogMilestoneSubmitDefault(wOut *utangle.WrappedOutput) {
 		info.Out,
 		info.NumConsumedFeeOutputs,
 		info.AvgProposalDuration,
+		info.NumProposals,
 		info.NumFeeOutputsInTippool,
 		info.NumOtherMsInTippool,
 	)

@@ -307,8 +307,8 @@ func Test1Sequencer(t *testing.T) {
 	})
 	t.Run("1 faucet txs sync", func(t *testing.T) {
 		const (
-			maxSlots              = 5
-			numFaucetTransactions = 10
+			maxSlots              = 10
+			numFaucetTransactions = 200
 			transferAmount        = 100
 		)
 
@@ -360,13 +360,20 @@ func Test1Sequencer(t *testing.T) {
 	})
 	t.Run("1 faucet txs async", func(t *testing.T) {
 		const (
-			maxSlots              = 7
-			numFaucetTransactions = 402 // limit
+			maxSlots              = 20
+			numFaucetTransactions = 400 // 402 // limit
 			transferAmount        = 100
-			maxInputs             = 60
+			maxInputs             = 40
 		)
 
 		r := initSequencerTestData(t, 1, 1, core.LogicalTimeNow())
+		//workflow.WithConsumerLogLevel(workflow.RejectConsumerName, zapcore.DebugLevel),
+		//workflow.WithConsumerLogLevel(workflow.PreValidateConsumerName, zapcore.DebugLevel),
+		//workflow.WithConsumerLogLevel(workflow.SolidifyConsumerName, zapcore.DebugLevel),
+
+		r.wrk.MustOnEvent(workflow.EventRejectedTx, func(inp *workflow.RejectInputData) {
+			r.t.Logf("rejected %s : '%s'", inp.TxID.Short(), inp.Msg)
+		})
 		transaction.SetPrintEasyFLTraceOnFail(false)
 		r.wrk.Start()
 
@@ -383,7 +390,6 @@ func Test1Sequencer(t *testing.T) {
 
 		var allFeeInputsConsumed atomic.Bool
 		seq.OnMilestoneSubmitted(func(seq *sequencer.Sequencer, wOut *utangle.WrappedOutput) {
-			seq.LogMilestoneSubmitDefault(wOut)
 			if seq.Info().NumConsumedFeeOutputs >= numFaucetTransactions {
 				allFeeInputsConsumed.Store(true)
 			}
@@ -415,8 +421,8 @@ func Test1Sequencer(t *testing.T) {
 		r.wrk.Stop()
 		t.Logf("%s", r.ut.Info())
 
+		t.Logf("---- counter info ------\n%s", r.wrk.CounterInfo())
 		//r.wrk.UTXOTangle().SaveGraph("utxo_tangle")
-		//testutil.PrintRTStatsForSomeTime(3 * time.Second)
 
 		heaviestState = r.ut.HeaviestStateForLatestTimeSlot()
 		t.Logf("stem output of the heaviest state: %s", heaviestState.GetStemOutput().ID.Short())
@@ -424,6 +430,7 @@ func Test1Sequencer(t *testing.T) {
 			_, found := heaviestState.GetUTXO(&o.ID)
 			require.True(t, found)
 		}
+		require.EqualValues(t, numFaucetTransactions+1, seq.NumOutputsInPool())
 		nOuts := heaviestState.NumOutputs(addrs[0].AccountID())
 		require.EqualValues(t, numFaucetTransactions, nOuts)
 		bal := heaviestState.BalanceOf(addrs[0].AccountID())
@@ -439,7 +446,7 @@ func Test1Sequencer(t *testing.T) {
 			numFaucets            = 3
 			numFaucetTransactions = 50
 			transferAmount        = 100
-			maxInputs             = 100
+			maxInputs             = 50
 		)
 		t.Logf("numFaucets: %d, numFaucetTransactions: %d", numFaucets, numFaucetTransactions)
 		r := initSequencerTestData(t, numFaucets, 1, core.LogicalTimeNow())

@@ -301,15 +301,15 @@ func (mf *milestoneFactory) storeProposalDuration(d time.Duration) {
 	mf.proposal.durations = append(mf.proposal.durations, d)
 }
 
-func (mf *milestoneFactory) averageProposalDuration() time.Duration {
+func (mf *milestoneFactory) averageProposalDuration() (time.Duration, int) {
 	if len(mf.proposal.durations) == 0 {
-		return 0
+		return 0, 0
 	}
 	sum := int64(0)
 	for _, d := range mf.proposal.durations {
 		sum += int64(d)
 	}
-	return time.Duration(sum / int64(len(mf.proposal.durations)))
+	return time.Duration(sum / int64(len(mf.proposal.durations))), len(mf.proposal.durations)
 }
 
 // continueCandidateProposing the proposing strategy checks if its assumed target timestamp
@@ -328,12 +328,12 @@ func (mc *latestMilestoneProposal) getLatestProposal() *utangle.WrappedOutput {
 	return mc.current
 }
 
-func (mf *milestoneFactory) startProposingForTargetLogicalTime(targetTs core.LogicalTime) (*utangle.WrappedOutput, time.Duration) {
+func (mf *milestoneFactory) startProposingForTargetLogicalTime(targetTs core.LogicalTime) (*utangle.WrappedOutput, time.Duration, int) {
 	deadline := targetTs.Time()
 	nowis := time.Now()
 
 	if deadline.Before(nowis) {
-		return nil, 0
+		return nil, 0, 0
 	}
 	// start worker(s)
 	mf.setNewTarget(targetTs)
@@ -343,9 +343,9 @@ func (mf *milestoneFactory) startProposingForTargetLogicalTime(targetTs core.Log
 
 	ret := mf.proposal.getLatestProposal() // will return nil if wasn't able to generate transaction
 	// set target time to nil -> signal workers to exit
-	avgProposalDuration := mf.averageProposalDuration()
+	avgProposalDuration, numProposals := mf.averageProposalDuration()
 	mf.setNewTarget(core.NilLogicalTime)
-	return ret, avgProposalDuration
+	return ret, avgProposalDuration, numProposals
 }
 
 func (mf *milestoneFactory) startProposerWorkers(targetTime core.LogicalTime) {
