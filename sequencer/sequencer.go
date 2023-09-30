@@ -176,7 +176,15 @@ func (seq *Sequencer) setTraceAhead(n int64) {
 }
 
 func (seq *Sequencer) OnMilestoneSubmitted(fun func(seq *Sequencer, vid *utangle.WrappedOutput)) {
-	seq.onMilestoneSubmitted = fun
+	if seq.onMilestoneSubmitted == nil {
+		seq.onMilestoneSubmitted = fun
+	} else {
+		prevFun := seq.onMilestoneSubmitted
+		seq.onMilestoneSubmitted = func(seq *Sequencer, vid *utangle.WrappedOutput) {
+			prevFun(seq, vid)
+			fun(seq, vid)
+		}
+	}
 }
 
 func (seq *Sequencer) trace(format string, args ...any) {
@@ -327,7 +335,7 @@ func (seq *Sequencer) mainLoop() {
 			//seq.log.Infof("TIME SLOT %d", currentTimeSlot)
 		}
 
-		seq.setTraceAhead(1)
+		//seq.setTraceAhead(1)
 		seq.trace("target ts: %s. Now is: %s", targetTs, core.LogicalTimeNow())
 
 		var tmpMsOutput *utangle.WrappedOutput
