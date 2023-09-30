@@ -232,7 +232,7 @@ func makeAddresses(n int) ([]core.AddressED25519, []ed25519.PrivateKey) {
 
 func Test1Sequencer(t *testing.T) {
 	t.Run("run idle", func(t *testing.T) {
-		const maxSlots = 5
+		const maxSlots = 20
 		r := initSequencerTestData(t, 1, 0, core.LogicalTimeNow())
 		transaction.SetPrintEasyFLTraceOnFail(true)
 		r.wrk.Start()
@@ -244,7 +244,7 @@ func Test1Sequencer(t *testing.T) {
 			sequencer.WithPace(5),
 			sequencer.WithMaxBranches(maxSlots),
 			sequencer.WithMaxTargetTs(core.LogicalTimeNow().AddTimeSlots(maxSlots+2)),
-			sequencer.WithLogLevel(zapcore.DebugLevel),
+			sequencer.WithLogLevel(zapcore.InfoLevel),
 		)
 		require.NoError(t, err)
 

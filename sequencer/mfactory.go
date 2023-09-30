@@ -41,6 +41,7 @@ type (
 		targetTs  core.LogicalTime
 		bestSoFar *utangle.WrappedOutput
 		current   *utangle.WrappedOutput
+		durations []time.Duration
 	}
 )
 
@@ -218,6 +219,13 @@ func (mf *milestoneFactory) makeMilestone(chainIn, stemIn *utangle.WrappedOutput
 	return transaction.FromBytesMainChecksWithOpt(txBytes)
 }
 
+func (mf *milestoneFactory) addOwnMilestone(wOut utangle.WrappedOutput) {
+	mf.mutex.Lock()
+	defer mf.mutex.Unlock()
+
+	mf.ownMilestones[wOut.VID] = wOut
+}
+
 // selectFeeInputs chooses unspent fee outputs which can be combined with seqMutations in one vid
 // Quite expensive
 func (mf *milestoneFactory) selectFeeInputs(seqDelta *utangle.UTXOStateDelta, targetTs core.LogicalTime) []utangle.WrappedOutput {
@@ -268,7 +276,7 @@ func (mf *milestoneFactory) getLatestMilestone() (ret utangle.WrappedOutput) {
 	defer mf.mutex.RUnlock()
 
 	for _, ms := range mf.ownMilestones {
-		if ret.VID == nil || ret.Timestamp().After(ret.Timestamp()) {
+		if ret.VID == nil || ms.Timestamp().After(ret.Timestamp()) {
 			ret = ms
 		}
 	}
@@ -281,11 +289,27 @@ func (mf *milestoneFactory) setNewTarget(ts core.LogicalTime) {
 	mf.proposal.mutex.Lock()
 	defer mf.proposal.mutex.Unlock()
 
-	//if mf.proposal.targetTs.TimeTick() == 0 {
-	//	mf.proposal.bestSoFar = nil // clearing baseline for comparison each slot
-	//}
 	mf.proposal.targetTs = ts
 	mf.proposal.current = nil
+	mf.proposal.durations = make([]time.Duration, 0)
+}
+
+func (mf *milestoneFactory) storeProposalDuration(d time.Duration) {
+	mf.proposal.mutex.Lock()
+	defer mf.proposal.mutex.Unlock()
+
+	mf.proposal.durations = append(mf.proposal.durations, d)
+}
+
+func (mf *milestoneFactory) averageProposalDuration() time.Duration {
+	if len(mf.proposal.durations) == 0 {
+		return 0
+	}
+	sum := int64(0)
+	for _, d := range mf.proposal.durations {
+		sum += int64(d)
+	}
+	return time.Duration(sum / int64(len(mf.proposal.durations)))
 }
 
 // continueCandidateProposing the proposing strategy checks if its assumed target timestamp
@@ -304,12 +328,12 @@ func (mc *latestMilestoneProposal) getLatestProposal() *utangle.WrappedOutput {
 	return mc.current
 }
 
-func (mf *milestoneFactory) startProposingForTargetLogicalTime(targetTs core.LogicalTime) *utangle.WrappedOutput {
+func (mf *milestoneFactory) startProposingForTargetLogicalTime(targetTs core.LogicalTime) (*utangle.WrappedOutput, time.Duration) {
 	deadline := targetTs.Time()
 	nowis := time.Now()
 
 	if deadline.Before(nowis) {
-		return nil
+		return nil, 0
 	}
 	// start worker(s)
 	mf.setNewTarget(targetTs)
@@ -319,8 +343,9 @@ func (mf *milestoneFactory) startProposingForTargetLogicalTime(targetTs core.Log
 
 	ret := mf.proposal.getLatestProposal() // will return nil if wasn't able to generate transaction
 	// set target time to nil -> signal workers to exit
+	avgProposalDuration := mf.averageProposalDuration()
 	mf.setNewTarget(core.NilLogicalTime)
-	return ret
+	return ret, avgProposalDuration
 }
 
 func (mf *milestoneFactory) startProposerWorkers(targetTime core.LogicalTime) {
@@ -336,10 +361,8 @@ func (mf *milestoneFactory) startProposerWorkers(targetTime core.LogicalTime) {
 }
 
 func (mf *milestoneFactory) runProposerTask(task proposerTask) {
-	task.setTraceNAhead(1)
 	task.trace(" START proposer %s", task.name())
 	task.run()
-	task.setTraceNAhead(1)
 	task.trace(" END proposer %s", task.name())
 }
 

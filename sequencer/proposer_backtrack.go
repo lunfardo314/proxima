@@ -56,6 +56,8 @@ func (b *backtrackProposer) run() {
 		if !b.factory.proposal.continueCandidateProposing(b.targetTs) {
 			return
 		}
+
+		b.startProposingTime()
 		if tx := b.generateCandidate(ms); tx != nil {
 			b.assessAndAcceptProposal(tx, startTime, b.name())
 		}

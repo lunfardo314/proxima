@@ -213,6 +213,10 @@ func (t LogicalTime) TimeTick() TimeTick {
 	return ret
 }
 
+func (t LogicalTime) IsSlotBoundary() bool {
+	return t.TimeTick() == 0
+}
+
 func (t LogicalTime) UnixNano() int64 {
 	return BaselineTimeUnixNano +
 		int64(t.TimeSlot())*int64(TimeSlotDuration()) + int64(TimeTickDuration())*int64(t.TimeTick())

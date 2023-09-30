@@ -610,6 +610,9 @@ func (o *WrappedOutput) DecodeID() *core.OutputID {
 }
 
 func (o *WrappedOutput) IDShort() string {
+	if o == nil {
+		return "<nil>"
+	}
 	return o.DecodeID().Short()
 }
 

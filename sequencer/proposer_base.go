@@ -19,6 +19,10 @@ type baseProposer struct {
 func init() {
 	registerProposingStrategy(BaseProposerName, func(mf *milestoneFactory, targetTs core.LogicalTime) proposerTask {
 		ret := &baseProposer{newProposerGeneric(mf, targetTs, BaseProposerName)}
+
+		//if !targetTs.IsSlotBoundary() {
+		//	ret.setTraceNAhead(100)
+		//}
 		return ret
 	})
 }
@@ -28,7 +32,9 @@ func (b *baseProposer) run() {
 	var tx *transaction.Transaction
 	var forceExit bool
 	for b.factory.proposal.continueCandidateProposing(b.targetTs) {
+		b.startProposingTime()
 		tx, forceExit = b.proposeBase()
+
 		if forceExit {
 			break
 		}
@@ -44,9 +50,9 @@ func (b *baseProposer) proposeBase() (*transaction.Transaction, bool) {
 	latestMilestone := b.factory.getLatestMilestone()
 	if latestMilestone.VID == nil {
 		// startup situation
-		if b.targetTs.TimeTick() != 0 {
+		if !b.targetTs.IsSlotBoundary() {
 			// can only start up with branch target
-			b.trace("no latest own milestones to extend. Postpone until branch target")
+			b.trace(" no latest own milestones to extend has been found. Postpone until branch target")
 			return nil, true
 		}
 		// start-up: find own output and stem in the state and create branch with it
@@ -60,7 +66,7 @@ func (b *baseProposer) proposeBase() (*transaction.Transaction, bool) {
 		return b.makeMilestone(&seqOut, &stemOut, nil, nil), false
 	}
 	// own latest milestone exists
-	if b.targetTs.TimeTick() != 0 && latestMilestone.TimeSlot() != b.targetTs.TimeSlot() {
+	if !b.targetTs.IsSlotBoundary() && latestMilestone.TimeSlot() != b.targetTs.TimeSlot() {
 		b.trace("proposeBase.force exit: cross-slot %s", latestMilestone.IDShort())
 		return nil, true
 	}

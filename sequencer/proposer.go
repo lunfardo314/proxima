@@ -28,6 +28,7 @@ type (
 		targetTs        core.LogicalTime
 		alreadyProposed set.Set[[32]byte]
 		traceNAhead     atomic.Int64
+		startTime       time.Time
 	}
 
 	proposerTaskConstructor func(mf *milestoneFactory, targetTs core.LogicalTime) proposerTask
@@ -88,6 +89,10 @@ func (c *proposerTaskGeneric) trace(format string, args ...any) {
 func (c *proposerTaskGeneric) forceTrace(format string, args ...any) {
 	c.setTraceNAhead(1)
 	c.trace(format, args...)
+}
+
+func (c *proposerTaskGeneric) startProposingTime() {
+	c.startTime = time.Now()
 }
 
 func (c *proposerTaskGeneric) makeMilestone(chainIn, stemIn *utangle.WrappedOutput, feeInputs []utangle.WrappedOutput, endorse []*utangle.WrappedTx) *transaction.Transaction {
@@ -155,10 +160,15 @@ func (c *proposerTaskGeneric) assessAndAcceptProposal(tx *transaction.Transactio
 		makeVertexElapsed: time.Since(makeVertexStartTime),
 		proposedBy:        taskName,
 	}
-	//c.setTraceNAhead(1)
 	if rejectReason := c.placeProposalIfRelevant(msData); rejectReason != "" {
 		c.trace(rejectReason)
+	} else {
+		c.storeProposalDuration()
 	}
+}
+
+func (c *proposerTaskGeneric) storeProposalDuration() {
+	c.factory.storeProposalDuration(time.Since(c.startTime))
 }
 
 func (c *proposerTaskGeneric) placeProposalIfRelevant(mdProposed *milestoneWithData) string {
