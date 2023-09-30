@@ -41,10 +41,11 @@ type (
 		In                     int
 		Out                    int
 		NumConsumedFeeOutputs  int
-		NumFeeOutputsInMempool int
-		NumOtherMsInMempool    int
+		NumFeeOutputsInTippool int
+		NumOtherMsInTippool    int
 		LedgerCoverage         uint64
 		PrevLedgerCoverage     uint64
+		AvgProposalDuration    time.Duration
 	}
 )
 
@@ -209,13 +210,7 @@ func (seq *Sequencer) chooseNextTargetTime(avgProposalDuration time.Duration) co
 	var target core.LogicalTime
 	var prevMilestoneTs core.LogicalTime
 
-	defer func() {
-		// sanity check
-		util.Assertf(target.After(seq.prevTimeTarget), "target.After(seq.prevTimeTarget)")
-	}()
-
-	currentMs := seq.factory.getLatestMilestone()
-	if currentMs.VID != nil {
+	if currentMs := seq.factory.getLatestMilestone(); currentMs.VID != nil {
 		prevMilestoneTs = currentMs.Timestamp()
 	} else {
 		seqOut, stemOut, found := seq.factory.tangle.GetSequencerBootstrapOutputs(seq.factory.tipPool.chainID)
@@ -223,8 +218,9 @@ func (seq *Sequencer) chooseNextTargetTime(avgProposalDuration time.Duration) co
 
 		prevMilestoneTs = core.MaxLogicalTime(seqOut.Timestamp(), stemOut.Timestamp())
 	}
-	nowis := core.LogicalTimeNow()
 
+	nowis := core.LogicalTimeNow()
+	// synchronize clock
 	if nowis.Before(prevMilestoneTs) {
 		waitDuration := time.Duration(core.DiffTimeTicks(prevMilestoneTs, nowis)) * core.TimeTickDuration()
 		seq.log.Warnf("nowis (%s) is before last milestone ts (%s). Sleep %v",
@@ -238,40 +234,28 @@ func (seq *Sequencer) chooseNextTargetTime(avgProposalDuration time.Duration) co
 		time.Sleep(sleepWaitingCurrentMilestoneTime)
 	}
 
-	seq.trace("chooseNextTargetTime: latestMilestone: %s, nowis: %s", currentMs.IDShort(), nowis)
+	const howManyAvgProposals = 10
+	timeTicksForSomeProposals := int((howManyAvgProposals * avgProposalDuration) / core.TimeTickDuration())
+	nowis = core.LogicalTimeNow()
+	// earliest reasonable. In next steps will move target further, if necessary
+	target = core.MaxLogicalTime(prevMilestoneTs.AddTimeTicks(seq.config.Pace), nowis.AddTimeTicks(timeTicksForSomeProposals))
+
+	seq.trace("chooseNextTargetTime: nowis: %s, preliminary target: %s", nowis.String(), target.String())
 
 	if seq.prevTimeTarget == core.NilLogicalTime {
-		target = nowis.NextTimeSlotBoundary()
+		// it is first milestone, go right to branch generation
+		target = target.NextTimeSlotBoundary()
 		return target
 	}
 
-	util.Assertf(nowis.After(seq.prevTimeTarget), "nowis (%s) should be after seq.prevTimeTarget (%s)", nowis.String(), seq.prevTimeTarget.String())
-
-	timeTickReserve := int((5 * avgProposalDuration) / core.TimeTickDuration())
-	toNextBoundary := nowis.TimesTicksToNextSlotBoundary()
-	if toNextBoundary < timeTickReserve {
-		target = nowis.NextTimeSlotBoundary()
+	if target.TimesTicksToNextSlotBoundary() <= seq.config.Pace {
+		// it is too close to the boundary
+		target = target.NextTimeSlotBoundary()
 		return target
 	}
 
-	target = core.MaxLogicalTime(nowis, prevMilestoneTs).AddTimeTicks(seq.config.Pace) // preliminary target ts
-	if nowis.TimeSlot() == target.TimeSlot() {
-		// same slot
-		if !core.ValidTimePace(target, target.NextTimeSlotBoundary()) {
-			// too close to the slot boundary -> issue branch transaction
-			target = target.NextTimeSlotBoundary()
-			return target
-		}
-		return target
-	}
-	// jumping over slot boundary
 	if target.TimeTick() == 0 {
 		// right on the slot boundary
-		return target
-	}
-	if core.ValidTimePace(prevMilestoneTs, prevMilestoneTs.NextTimeSlotBoundary()) {
-		// if it is valid ts next slot boundary, do the branch transaction
-		target = prevMilestoneTs.NextTimeSlotBoundary()
 		return target
 	}
 	return target
@@ -328,6 +312,8 @@ func (seq *Sequencer) mainLoop() {
 		timerStart := time.Now()
 
 		targetTs := seq.chooseNextTargetTime(avgProposalDuration)
+		util.Assertf(targetTs.After(seq.prevTimeTarget), "target (%s) must be after seq.prevTimeTarget (%s)",
+			targetTs.String(), seq.prevTimeTarget.String())
 		seq.prevTimeTarget = targetTs
 
 		if seq.config.MaxTargetTs != core.NilLogicalTime && targetTs.After(seq.config.MaxTargetTs) {
@@ -352,7 +338,7 @@ func (seq *Sequencer) mainLoop() {
 			continue
 		}
 
-		seq.setTraceAhead(1)
+		//seq.setTraceAhead(1)
 		seq.trace("produced milestone %s for the target logical time %s in %v, avg proposal: %v",
 			tmpMsOutput.IDShort(), targetTs, time.Since(timerStart), avgProposalDuration)
 
@@ -367,7 +353,7 @@ func (seq *Sequencer) mainLoop() {
 		if msOutput.VID.IsBranchTransaction() {
 			branchCount++
 		}
-		seq.updateInfo(*msOutput)
+		seq.updateInfo(*msOutput, avgProposalDuration)
 		seq.onMilestoneSubmitted(seq, msOutput)
 	}
 	seq.stopWG.Done()

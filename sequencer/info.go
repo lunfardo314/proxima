@@ -1,11 +1,13 @@
 package sequencer
 
 import (
+	"time"
+
 	"github.com/lunfardo314/proxima/utangle"
 	"github.com/lunfardo314/proxima/util"
 )
 
-func (seq *Sequencer) updateInfo(msOutput utangle.WrappedOutput) {
+func (seq *Sequencer) updateInfo(msOutput utangle.WrappedOutput, avgProposalDuration time.Duration) {
 	seq.infoMutex.Lock()
 	defer seq.infoMutex.Unlock()
 
@@ -19,10 +21,11 @@ func (seq *Sequencer) updateInfo(msOutput utangle.WrappedOutput) {
 		In:                     msOutput.VID.NumInputs(),
 		Out:                    msOutput.VID.NumProducedOutputs(),
 		NumConsumedFeeOutputs:  nConsumed,
-		NumFeeOutputsInMempool: seq.factory.tipPool.numOutputsInBuffer(),
-		NumOtherMsInMempool:    seq.factory.tipPool.numOtherMilestones(),
+		NumFeeOutputsInTippool: seq.factory.tipPool.numOutputsInBuffer(),
+		NumOtherMsInTippool:    seq.factory.tipPool.numOtherMilestones(),
 		LedgerCoverage:         msOutput.VID.LedgerCoverage(utangle.TipSlots),
 		PrevLedgerCoverage:     seq.info.LedgerCoverage,
+		AvgProposalDuration:    avgProposalDuration,
 	}
 }
 
@@ -52,7 +55,7 @@ func (seq *Sequencer) LogMilestoneSubmitDefault(wOut *utangle.WrappedOutput) {
 		msIndex = od.ChainHeight
 	}
 
-	seq.log.Infof("%s %d/%d: %s, cov: %s<-%s, in/out: %d/%d, feeOut: %d, mem: %d/%d",
+	seq.log.Infof("%s %d/%d: %s, cov: %s<-%s, in/out: %d/%d, feeOut: %d, avgProposal: %v, mem: %d/%d",
 		msType,
 		msIndex,
 		branchIndex,
@@ -62,7 +65,8 @@ func (seq *Sequencer) LogMilestoneSubmitDefault(wOut *utangle.WrappedOutput) {
 		info.In,
 		info.Out,
 		info.NumConsumedFeeOutputs,
-		info.NumFeeOutputsInMempool,
-		info.NumOtherMsInMempool,
+		info.AvgProposalDuration,
+		info.NumFeeOutputsInTippool,
+		info.NumOtherMsInTippool,
 	)
 }

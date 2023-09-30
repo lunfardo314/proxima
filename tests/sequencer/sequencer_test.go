@@ -232,7 +232,7 @@ func makeAddresses(n int) ([]core.AddressED25519, []ed25519.PrivateKey) {
 
 func Test1Sequencer(t *testing.T) {
 	t.Run("run idle", func(t *testing.T) {
-		const maxSlots = 20
+		const maxSlots = 15
 		r := initSequencerTestData(t, 1, 0, core.LogicalTimeNow())
 		transaction.SetPrintEasyFLTraceOnFail(true)
 		r.wrk.Start()
@@ -248,13 +248,20 @@ func Test1Sequencer(t *testing.T) {
 		)
 		require.NoError(t, err)
 
+		msCounter := 0
+		seq.OnMilestoneSubmitted(func(seq *sequencer.Sequencer, vid *utangle.WrappedOutput) {
+			msCounter++
+		})
+
 		seq.WaitStop()
 		r.wrk.Stop()
 		t.Logf("%s", r.ut.Info())
 		r.ut.SaveGraph(fnameFromTestName(t))
 		r.ut.SaveTree(fnameFromTestName(t) + "_TREE")
 		numTx := r.ut.NumVertices()
-		require.EqualValues(t, 2*maxSlots+1, numTx)
+		t.Logf("number of transactions on UTXO tangle: %d", numTx)
+		t.Logf("ms counter: %d", msCounter)
+		require.EqualValues(t, numTx, msCounter+1)
 	})
 	t.Run("run add chain origins tx", func(t *testing.T) {
 		const maxTimeSlots = 10
