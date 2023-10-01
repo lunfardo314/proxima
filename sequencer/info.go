@@ -56,7 +56,7 @@ func (seq *Sequencer) LogMilestoneSubmitDefault(wOut *utangle.WrappedOutput) {
 		msIndex = od.ChainHeight
 	}
 
-	seq.log.Infof("%s %d/%d: %s, cov: %s<-%s, in/out: %d/%d, feeOut: %d, avgProposal: %v x %d, mem: %d/%d",
+	seq.log.Infof("%s %d/%d: %s, cov: %s<-%s, in/out: %d/%d, feeOut: %d, proposal: %v x %d, mem: %d/%d",
 		msType,
 		msIndex,
 		branchIndex,

@@ -36,13 +36,15 @@ func (b *baseProposer) run() {
 		tx, forceExit = b.proposeBase()
 
 		if forceExit {
+			b.storeProposalDuration()
 			break
 		}
 		if tx != nil {
 			b.trace("generated %s", tx.IDShort())
 			b.assessAndAcceptProposal(tx, startTime, b.name())
-			time.Sleep(10 * time.Millisecond)
 		}
+		b.storeProposalDuration()
+		time.Sleep(10 * time.Millisecond)
 	}
 }
 

@@ -162,8 +162,6 @@ func (c *proposerTaskGeneric) assessAndAcceptProposal(tx *transaction.Transactio
 	}
 	if rejectReason := c.placeProposalIfRelevant(msData); rejectReason != "" {
 		c.trace(rejectReason)
-	} else {
-		c.storeProposalDuration()
 	}
 }
 
