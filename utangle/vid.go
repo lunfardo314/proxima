@@ -211,7 +211,7 @@ func (vid *WrappedTx) MustSequencerID() core.ChainID {
 }
 
 func (vid *WrappedTx) SequencerPredecessor() *WrappedTx {
-	util.Assertf(vid.IsSequencerMilestone(), "vid.IsSequencerMilestone()")
+	util.Assertf(vid.IsSequencerMilestone(), "SequencerPredecessor: %s is not a sequencer milestone", func() any { return vid.IDShort() })
 
 	var ret *WrappedTx
 	vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {

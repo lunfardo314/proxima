@@ -104,6 +104,7 @@ func (b *backtrackProposer) calcExtensionChoices() {
 		for _, vid := range endorsable {
 			b.extensionChoices = b.factory.ownForksInAnotherSequencerPastCone(vid, b)
 			if len(b.extensionChoices) > 0 {
+				b.endorse = vid
 				break
 			}
 		}

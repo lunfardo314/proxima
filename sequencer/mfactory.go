@@ -410,7 +410,7 @@ func (mf *milestoneFactory) futureConeMilestonesOrdered(rootVID *utangle.Wrapped
 	visited := set.New[*utangle.WrappedTx](rootVID)
 	ret := append(make([]utangle.WrappedOutput, 0, len(ordered)), rootOut)
 	for _, vid := range ordered {
-		if !vid.IsOrphaned() && visited.Contains(vid.SequencerPredecessor()) {
+		if !vid.IsOrphaned() && vid.IsSequencerMilestone() && visited.Contains(vid.SequencerPredecessor()) {
 			visited.Insert(vid)
 			ret = append(ret, mf.ownMilestones[vid])
 		}
@@ -437,6 +437,7 @@ func (mf *milestoneFactory) ownForksInAnotherSequencerPastCone(anotherSeqVertex 
 		p.trace("cannot wrap root output %s", rootOutput.IDShort())
 		return nil
 	}
+	mf.addOwnMilestone(rootWrapped) // to ensure it is among own milestones
 	return mf.futureConeMilestonesOrdered(rootWrapped.VID, p)
 }
 
