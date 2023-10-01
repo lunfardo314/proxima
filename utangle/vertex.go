@@ -285,9 +285,11 @@ func (v *Vertex) fetchBranchDependency(ut *UTXOTangle) error {
 		v.StateDelta.baselineBranch = branchConeTipVertex
 	} else {
 		// inherit branch root
-		branchConeTipVertex.Unwrap(UnwrapOptions{Vertex: func(vUnwrap *Vertex) {
-			v.StateDelta.baselineBranch = vUnwrap.StateDelta.baselineBranch
-		}})
+		branchConeTipVertex.Unwrap(UnwrapOptions{
+			Vertex: func(vUnwrap *Vertex) {
+				v.StateDelta.baselineBranch = vUnwrap.StateDelta.baselineBranch
+			},
+		})
 		util.Assertf(v.StateDelta.baselineBranch != nil, "v.Branch != nil")
 	}
 	return nil

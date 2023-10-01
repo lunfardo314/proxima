@@ -57,5 +57,5 @@ sequencers:
 
 # specify milestone proposers to trace
 trace_proposers:
-  base: true
-  btrack: true
+  base: false
+  btrack: false
