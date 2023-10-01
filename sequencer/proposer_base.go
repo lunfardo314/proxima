@@ -19,10 +19,6 @@ type baseProposer struct {
 func init() {
 	registerProposingStrategy(BaseProposerName, func(mf *milestoneFactory, targetTs core.LogicalTime) proposerTask {
 		ret := &baseProposer{newProposerGeneric(mf, targetTs, BaseProposerName)}
-
-		//if !targetTs.IsSlotBoundary() {
-		//	ret.setTraceNAhead(100)
-		//}
 		return ret
 	})
 }
@@ -40,7 +36,7 @@ func (b *baseProposer) run() {
 			break
 		}
 		if tx != nil {
-			b.trace("generated %s", tx.IDShort())
+			b.trace("generated %s", func() any { return tx.IDShort() })
 			b.assessAndAcceptProposal(tx, startTime, b.name())
 		}
 		b.storeProposalDuration()
@@ -89,7 +85,8 @@ func (b *baseProposer) proposeBase() (*transaction.Transaction, bool) {
 	targetDelta, conflict, _ := latestMilestone.VID.StartNextSequencerMilestoneDelta()
 
 	util.Assertf(conflict == nil, "conflict == nil")
-	util.Assertf(targetDelta != nil, "latest milestone is orphaned: %s", latestMilestone.VID.IDShort())
+	util.Assertf(targetDelta != nil, "latest milestone is orphaned: %s", func() any { return latestMilestone.VID.IDShort() })
+
 	feeOutputsToConsume := b.factory.selectFeeInputs(targetDelta, b.targetTs)
 
 	b.trace("making ordinary milestone")

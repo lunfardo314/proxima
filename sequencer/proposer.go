@@ -82,7 +82,7 @@ func (c *proposerTaskGeneric) traceEnabled() bool {
 func (c *proposerTaskGeneric) trace(format string, args ...any) {
 	if c.traceEnabled() {
 		pref := fmt.Sprintf("TRACE(%s) --", c.name())
-		c.factory.log.Infof(pref+format, args...)
+		c.factory.log.Infof(pref+format, util.EvalLazyArgs(args...)...)
 	}
 }
 

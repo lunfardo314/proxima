@@ -9,18 +9,22 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func EvalLazyArgs(args ...any) []any {
+	ret := make([]any, len(args))
+	for i, arg := range args {
+		if arg1, isClosure := arg.(func() any); isClosure {
+			ret[i] = arg1()
+		} else {
+			ret[i] = arg
+		}
+	}
+	return ret
+}
+
 // Assertf with optionally deferred evaluation of arguments
 func Assertf(cond bool, format string, args ...any) {
 	if !cond {
-		args1 := make([]any, len(args))
-		for i, arg := range args {
-			if arg1, isClosure := arg.(func() any); isClosure {
-				args1[i] = arg1()
-			} else {
-				args1[i] = arg
-			}
-		}
-		panic(fmt.Sprintf("assertion failed:: "+format, args1...))
+		panic(fmt.Sprintf("assertion failed:: "+format, EvalLazyArgs(args...)...))
 	}
 }
 
