@@ -100,8 +100,9 @@ func (b *backtrackProposer) generateCandidate(extend utangle.WrappedOutput) *tra
 func (b *backtrackProposer) calcExtensionChoices() {
 	for {
 		endorsable := b.factory.tipPool.preSelectEndorsableMilestones(b.targetTs)
+		b.trace("preselected %d milestones", len(endorsable))
 		for _, vid := range endorsable {
-			b.extensionChoices = b.factory.ownForksInAnotherSequencerPastCone(vid)
+			b.extensionChoices = b.factory.ownForksInAnotherSequencerPastCone(vid, b)
 			if len(b.extensionChoices) > 0 {
 				break
 			}
@@ -109,8 +110,9 @@ func (b *backtrackProposer) calcExtensionChoices() {
 		if len(b.extensionChoices) > 0 {
 			break
 		}
-		if time.Sleep(5 * time.Millisecond); core.LogicalTimeNow().After(b.targetTs) {
+		if !b.factory.proposal.continueCandidateProposing(b.targetTs) {
 			return
 		}
+		time.Sleep(5 * time.Millisecond)
 	}
 }

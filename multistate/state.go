@@ -141,7 +141,7 @@ func (r *Readable) GetUTXOForChainID(id *core.ChainID) (*core.OutputDataWithID, 
 	}
 	outID := common.MakeReaderPartition(r.trie, PartitionChainID).Get(id[:])
 	if len(outID) == 0 {
-		return nil, fmt.Errorf("GetUTXOForChainID: indexer record for chainID '%s' has not not been found", id.Short())
+		return nil, ErrNotFound
 	}
 	oid, err := core.OutputIDFromBytes(outID)
 	if err != nil {

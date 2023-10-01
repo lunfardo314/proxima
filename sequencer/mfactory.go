@@ -2,12 +2,14 @@ package sequencer
 
 import (
 	"crypto/ed25519"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
 
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/general"
+	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/utangle"
 	"github.com/lunfardo314/proxima/util"
@@ -388,16 +390,17 @@ func (mf *milestoneFactory) cleanOwnMilestonesIfNecessary() {
 	}
 }
 
-func (mf *milestoneFactory) futureConeMilestonesOrdered(rootVID *utangle.WrappedTx) []utangle.WrappedOutput {
+func (mf *milestoneFactory) futureConeMilestonesOrdered(rootVID *utangle.WrappedTx, p proposerTask) []utangle.WrappedOutput {
 	mf.cleanOwnMilestonesIfNecessary()
 
 	mf.mutex.RLock()
 	defer mf.mutex.RUnlock()
 
+	p.trace("futureConeMilestonesOrdered for root %s. Total %d own milestones", rootVID.IDShort(), len(mf.ownMilestones))
+
 	rootOut, ok := mf.ownMilestones[rootVID]
-	if !ok {
-		return nil
-	}
+	util.Assertf(ok, "futureConeMilestonesOrdered: milestone %s of chain %s is expected to be among set of own milestones (%d)",
+		rootVID.IDShort(), mf.tipPool.chainID.Short(), len(mf.ownMilestones))
 
 	ordered := util.SortKeys(mf.ownMilestones, func(vid1, vid2 *utangle.WrappedTx) bool {
 		// by timestamp -> equivalent to topological order, descending, i.e. older first
@@ -416,21 +419,25 @@ func (mf *milestoneFactory) futureConeMilestonesOrdered(rootVID *utangle.Wrapped
 }
 
 // ownForksInAnotherSequencerPastCone sorted by coverage descending
-func (mf *milestoneFactory) ownForksInAnotherSequencerPastCone(anotherSeqVertex *utangle.WrappedTx) []utangle.WrappedOutput {
+func (mf *milestoneFactory) ownForksInAnotherSequencerPastCone(anotherSeqVertex *utangle.WrappedTx, p proposerTask) []utangle.WrappedOutput {
 	stateRdr, available := mf.tangle.StateReaderOfSequencerMilestone(anotherSeqVertex)
 	if !available {
+		p.trace("state reader not available for vertex %s", anotherSeqVertex.IDShort())
 		return nil
 	}
 	rootOutput, err := stateRdr.GetChainOutput(&mf.tipPool.chainID)
-	if err != nil {
+	if errors.Is(err, multistate.ErrNotFound) {
 		// cannot find own seqID in the state of anotherSeqID. The tree is empty
+		p.trace("cannot find own seqID %s in the state of another seq %s. The tree is empty", mf.tipPool.chainID.Short(), anotherSeqVertex.IDShort())
 		return nil
 	}
+	util.AssertNoError(err)
 	rootWrapped, ok := mf.tangle.WrapOutput(rootOutput)
 	if !ok {
+		p.trace("cannot wrap root output %s", rootOutput.IDShort())
 		return nil
 	}
-	return mf.futureConeMilestonesOrdered(rootWrapped.VID)
+	return mf.futureConeMilestonesOrdered(rootWrapped.VID, p)
 }
 
 // makeAdditionalInputsOutputs makes additional outputs according to commands in imputs.

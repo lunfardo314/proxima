@@ -155,6 +155,7 @@ func (r *sequencerTestData) makeAdditionalChainOrigins(faucetIdx int, nChains in
 	r.txChainOrigins, err = transaction.FromBytesMainChecksWithOpt(txBytesChainOrigins)
 	require.NoError(r.t, err)
 
+	r.t.Logf("chain origins transaction: %s", r.txChainOrigins.IDShort())
 	r.txChainOrigins.ForEachProducedOutput(func(idx byte, o *core.Output, oid *core.OutputID) bool {
 		out := core.OutputWithID{
 			ID:     *oid,
@@ -167,6 +168,7 @@ func (r *sequencerTestData) makeAdditionalChainOrigins(faucetIdx int, nChains in
 				OutputWithID: out,
 				ChainID:      chainID,
 			}
+			r.t.Logf(" --- chain ID %s @ origin %s", chainID.Short(), oid.Short())
 		}
 		return true
 	})
@@ -618,7 +620,7 @@ func (r *sequencerTestData) issueTransfersWithSeqID(targetAddress core.Lock, tar
 func TestNSequencers(t *testing.T) {
 	t.Run("2 seq", func(t *testing.T) {
 		const (
-			maxSlots              = 10
+			maxSlots              = 5
 			numFaucets            = 1
 			numFaucetTransactions = 1
 			maxTxInputs           = 100
@@ -635,7 +637,7 @@ func TestNSequencers(t *testing.T) {
 		require.NoError(t, err)
 		t.Logf("chain origins transaction has been added to the tangle: %s", r.txChainOrigins.IDShort())
 
-		sequencer.SetTraceProposer(sequencer.BacktrackProposerName, false)
+		sequencer.SetTraceProposer(sequencer.BacktrackProposerName, true)
 
 		r.createSequencers(maxTxInputs, maxSlots, 5, zapcore.InfoLevel, !tagAlong)
 
@@ -643,7 +645,6 @@ func TestNSequencers(t *testing.T) {
 		branchesAfterAllConsumed := 0
 		cnt := 0
 		r.bootstrapSeq.OnMilestoneSubmitted(func(seq *sequencer.Sequencer, wOut *utangle.WrappedOutput) {
-			seq.LogMilestoneSubmitDefault(wOut)
 			cnt++
 			if seq.Info().NumConsumedFeeOutputs >= numFaucetTransactions*numFaucets {
 				allFeeInputsConsumed.Store(true)
