@@ -264,37 +264,6 @@ func (v *Vertex) ConsumedInputsToLines() *lines.Lines {
 	return ret
 }
 
-func (v *Vertex) fetchBranchDependency(ut *UTXOTangle) error {
-	// find a vertex which to follow towards branch transaction
-	// If tx itself is a branch tx, it will point towards previous transaction in the sequencer chain
-	// Each sequencer transaction belongs to a branch
-	branchConeTipVertex, err := ut.getBranchConeTipVertex(v)
-	if err != nil {
-		// something wrong with the transaction
-		return err
-	}
-	if branchConeTipVertex == nil {
-		// the vertex has no solid root, cannot be solidified (yet or never)
-		return nil
-	}
-	// vertex has solid branch
-	util.Assertf(branchConeTipVertex.IsSequencerMilestone(), "branchConeTipVertex.Tx.IsSequencerMilestone()")
-
-	if branchConeTipVertex.IsBranchTransaction() {
-		util.Assertf(ut.isValidBranch(branchConeTipVertex), "ut.isValidBranch(branchConeTipVertex)")
-		v.StateDelta.baselineBranch = branchConeTipVertex
-	} else {
-		// inherit branch root
-		branchConeTipVertex.Unwrap(UnwrapOptions{
-			Vertex: func(vUnwrap *Vertex) {
-				v.StateDelta.baselineBranch = vUnwrap.StateDelta.baselineBranch
-			},
-		})
-		util.Assertf(v.StateDelta.baselineBranch != nil, "v.Branch != nil")
-	}
-	return nil
-}
-
 func (v *Vertex) mustGetBaseState(ut *UTXOTangle) state.SugaredStateReader {
 	util.Assertf(!v.Tx.IsSequencerMilestone() || v.StateDelta.baselineBranch != nil, "!v.Tx.IsSequencerMilestone() || v.Branch != nil")
 	// determining base state for outputs not on the tangle
@@ -304,52 +273,6 @@ func (v *Vertex) mustGetBaseState(ut *UTXOTangle) state.SugaredStateReader {
 		return state.MakeSugared(rdr)
 	}
 	return ut.HeaviestStateForLatestTimeSlot()
-}
-
-// FetchMissingDependencies check solidity of inputs and fetches what is available
-// Does not obtain global lock on the tangle
-// It means in general the result is non-deterministic, because some dependencies may be unavailable. This is ok for solidifier
-// Once transaction has all dependencies solid, the result is deterministic
-func (v *Vertex) FetchMissingDependencies(ut *UTXOTangle) error {
-	var err error
-	if v.Tx.IsSequencerMilestone() && v.StateDelta.baselineBranch == nil {
-		if err = v.fetchBranchDependency(ut); err != nil {
-			return err
-		}
-		if v.StateDelta.baselineBranch == nil {
-			// not solid yet, can't continue with solidification of the sequencer tx
-			return nil
-		}
-	}
-	// ---- solidify inputs
-	v.Tx.ForEachInput(func(i byte, oid *core.OutputID) bool {
-		if v.Inputs[i] != nil {
-			// it is already solid
-			return true
-		}
-		v.Inputs[i], err = ut.solidifyOutput(oid, func() state.SugaredStateReader {
-			return v.mustGetBaseState(ut)
-		})
-		return err == nil
-	})
-	if err != nil {
-		return err
-	}
-
-	//----  solidify endorsements
-	v.Tx.ForEachEndorsement(func(i byte, txid *core.TransactionID) bool {
-		if v.Endorsements[i] != nil {
-			// already solid
-			return true
-		}
-		util.Assertf(v.Tx.TimeSlot() == txid.TimeSlot(), "tx.TimeTick() == txid.TimeTick()")
-		if vEnd, solid := ut.GetVertex(txid); solid {
-			util.Assertf(vEnd.IsSequencerMilestone(), "vEnd.IsSequencerMilestone()")
-			v.Endorsements[i] = vEnd
-		}
-		return true
-	})
-	return nil
 }
 
 func (v *Vertex) Wrap() *WrappedTx {

@@ -1,10 +1,7 @@
 package utangle
 
 import (
-	"fmt"
-
 	"github.com/lunfardo314/proxima/core"
-	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/util"
 )
 
@@ -75,24 +72,4 @@ func (v *VirtualTransaction) SequencerOutputs() (*core.Output, *core.Output) {
 		util.Assertf(ok, "inconsistency 2 in virtual tx %s", v.txid.Short())
 	}
 	return seqOut, stemOut
-}
-
-func (v *VirtualTransaction) ensureOutputAt(idx byte, stateReader func() multistate.SugaredStateReader) (*core.Output, error) {
-	ret, ok := v.OutputAt(idx)
-	if ok {
-		return ret, nil
-	}
-
-	v.mutex.Lock()
-	defer v.mutex.Unlock()
-
-	oid := core.NewOutputID(&v.txid, idx)
-	oData, found := stateReader().GetUTXO(&oid)
-	if !found {
-		return nil, fmt.Errorf("output not found in the state: %s", oid.Short())
-	}
-	o, err := core.OutputFromBytesReadOnly(oData)
-	util.AssertNoError(err)
-	v.outputs[idx] = o
-	return o, nil
 }
