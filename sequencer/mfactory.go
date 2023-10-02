@@ -435,9 +435,11 @@ func (mf *milestoneFactory) ownForksInAnotherSequencerPastCone(anotherSeqVertex 
 		return nil
 	}
 	util.AssertNoError(err)
-	rootWrapped, ok := mf.tangle.WrapOutput(rootOutput)
+	rootWrapped, ok, _ := mf.tangle.GetWrappedOutput(&rootOutput.ID, func() multistate.SugaredStateReader {
+		return stateRdr
+	})
 	if !ok {
-		p.trace("cannot wrap root output %s", rootOutput.IDShort())
+		p.trace("cannot fetch wrapped root output %s", rootOutput.IDShort())
 		return nil
 	}
 	mf.addOwnMilestone(rootWrapped) // to ensure it is among own milestones
