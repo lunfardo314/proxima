@@ -32,7 +32,7 @@ type (
 		_id() *core.TransactionID
 		_time() time.Time
 		_outputAt(idx byte) (*core.Output, error)
-		_hasOutputAt(idx byte) bool
+		_hasOutputAt(idx byte) (bool, bool)
 	}
 
 	_vertex struct {
@@ -73,8 +73,11 @@ func (v _vertex) _outputAt(idx byte) (*core.Output, error) {
 	return v.Tx.ProducedOutputAt(idx)
 }
 
-func (v _vertex) _hasOutputAt(idx byte) bool {
-	return int(idx) < v.Tx.NumProducedOutputs()
+func (v _vertex) _hasOutputAt(idx byte) (bool, bool) {
+	if int(idx) >= v.Tx.NumProducedOutputs() {
+		return false, true
+	}
+	return true, false
 }
 
 func (v _virtualTx) _id() *core.TransactionID {
@@ -92,9 +95,9 @@ func (v _virtualTx) _outputAt(idx byte) (*core.Output, error) {
 	return nil, nil
 }
 
-func (v _virtualTx) _hasOutputAt(idx byte) bool {
+func (v _virtualTx) _hasOutputAt(idx byte) (bool, bool) {
 	_, hasIt := v.OutputAt(idx)
-	return hasIt
+	return hasIt, false
 }
 
 func (v _orphanedTx) _id() *core.TransactionID {
@@ -109,7 +112,7 @@ func (v _orphanedTx) _outputAt(_ byte) (*core.Output, error) {
 	panic("orphaned vertex should not be accessed")
 }
 
-func (v _orphanedTx) _hasOutputAt(idx byte) bool {
+func (v _orphanedTx) _hasOutputAt(idx byte) (bool, bool) {
 	panic("orphaned vertex should not be accessed")
 }
 
@@ -192,7 +195,7 @@ func (vid *WrappedTx) OutputAt(idx byte) (*core.Output, error) {
 	return vid._outputAt(idx)
 }
 
-func (vid *WrappedTx) HasOutputAt(idx byte) bool {
+func (vid *WrappedTx) HasOutputAt(idx byte) (bool, bool) {
 	vid.mutex.RLock()
 	defer vid.mutex.RUnlock()
 

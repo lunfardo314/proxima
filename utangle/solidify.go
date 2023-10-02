@@ -13,10 +13,14 @@ import (
 func (ut *UTXOTangle) GetWrappedOutput(oid *core.OutputID, getState ...func() multistate.SugaredStateReader) (WrappedOutput, bool, bool) {
 	txid := oid.TransactionID()
 	if vid, found := ut.GetVertex(&txid); found {
-		if vid.HasOutputAt(oid.Index()) {
+		hasIt, invalid := vid.HasOutputAt(oid.Index())
+		if invalid {
+			return WrappedOutput{}, false, true
+		}
+		if hasIt {
 			return WrappedOutput{VID: vid, Index: oid.Index()}, true, false
 		}
-		panic("not implemented")
+		// Don't have output, it may be virtualTx
 	}
 	panic("not implemented")
 }
