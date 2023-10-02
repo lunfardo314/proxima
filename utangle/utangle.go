@@ -307,26 +307,24 @@ func (ut *UTXOTangle) forEachBranchSorted(e core.TimeSlot, fun func(vid *Wrapped
 }
 
 func (ut *UTXOTangle) GetSequencerBootstrapOutputs(seqID core.ChainID) (chainOut WrappedOutput, stemOut WrappedOutput, found bool) {
-	var seqOut, stem *core.OutputWithID
-	var err error
+	branches := multistate.FetchLatestBranches(ut.stateStore)
+	for _, bd := range branches {
+		rdr := multistate.MustNewSugaredStateReader(ut.stateStore, bd.Root)
+		if seqOut, err := rdr.GetChainOutput(&seqID); err == nil {
+			retStem, ok, _ := ut.GetWrappedOutput(&bd.Stem.ID, func() multistate.SugaredStateReader {
+				return rdr
+			})
+			util.Assertf(ok, "can't get wrapped stem output %s", bd.Stem.ID.Short())
 
-	err = ut.ForEachBranchStateDesc(ut.LatestTimeSlot(), func(rdr multistate.SugaredStateReader) bool {
-		if seqOut, err = rdr.GetChainOutput(&seqID); err == nil {
-			stem = rdr.GetStemOutput()
-			found = true
+			retSeq, ok, _ := ut.GetWrappedOutput(&seqOut.ID, func() multistate.SugaredStateReader {
+				return rdr
+			})
+			util.Assertf(ok, "can't get wrapped sequencer output %s", seqOut.ID.Short())
+
+			return retSeq, retStem, true
 		}
-		return !found
-	})
-	util.AssertNoError(err)
-
-	if !found {
-		return
 	}
-	if chainOut, found = ut.WrapOutput(seqOut); !found {
-		return
-	}
-	stemOut, found = ut.WrapOutput(stem)
-	return
+	return WrappedOutput{}, WrappedOutput{}, false
 }
 
 func (ut *UTXOTangle) HasOutputInTimeSlot(e core.TimeSlot, oid *core.OutputID) bool {
