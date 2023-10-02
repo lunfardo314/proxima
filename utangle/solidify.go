@@ -10,6 +10,17 @@ import (
 	"github.com/lunfardo314/proxima/util"
 )
 
+func (ut *UTXOTangle) GetWrappedOutput(oid *core.OutputID, getState ...func() multistate.SugaredStateReader) (WrappedOutput, bool, bool) {
+	txid := oid.TransactionID()
+	if vid, found := ut.GetVertex(&txid); found {
+		if vid.HasOutputAt(oid.Index()) {
+			return WrappedOutput{VID: vid, Index: oid.Index()}, true, false
+		}
+		panic("not implemented")
+	}
+	panic("not implemented")
+}
+
 // WrapOutput fetches output in encoded form. Creates VirtualTransaction vertex and branch, if necessary
 func (ut *UTXOTangle) WrapOutput(o *core.OutputWithID) (WrappedOutput, bool) {
 	txid := o.ID.TransactionID()
