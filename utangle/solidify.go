@@ -166,7 +166,7 @@ func (v *Vertex) FetchMissingDependencies(ut *UTXOTangle) error {
 		if err = v.fetchBranchDependency(ut); err != nil {
 			return err
 		}
-		if v.StateDelta.baselineBranch == nil {
+		if v.StateDelta.baselineBranch == nil { // TODO <<<<<<<<<<<<<
 			// not solid yet, can't continue with solidification of the sequencer tx
 			return nil
 		}
@@ -202,11 +202,22 @@ func (v *Vertex) FetchMissingDependencies(ut *UTXOTangle) error {
 	return nil
 }
 
+func (v *Vertex) mustGetBaseState(ut *UTXOTangle) multistate.SugaredStateReader {
+	util.Assertf(!v.Tx.IsSequencerMilestone() || v.StateDelta.baselineBranch != nil, "!v.Tx.IsSequencerMilestone() || v.Branch != nil")
+	// determining base state for outputs not on the tangle
+	if v.Tx.IsSequencerMilestone() {
+		rdr, err := multistate.NewReadable(ut.stateStore, ut.mustGetBranch(v.StateDelta.baselineBranch).root)
+		util.AssertNoError(err)
+		return multistate.MakeSugared(rdr)
+	}
+	return ut.HeaviestStateForLatestTimeSlot()
+}
+
 func (v *Vertex) fetchBranchDependency(ut *UTXOTangle) error {
 	// find a vertex which to follow towards branch transaction
 	// If tx itself is a branch tx, it will point towards previous transaction in the sequencer chain
 	// Each sequencer transaction belongs to a branch
-	branchConeTipVertex, err := ut.getBranchConeTipVertex(v)
+	branchConeTipVertex, err := ut.getBranchConeTipVertex(v.Tx)
 	if err != nil {
 		// something wrong with the transaction
 		return err
@@ -228,7 +239,8 @@ func (v *Vertex) fetchBranchDependency(ut *UTXOTangle) error {
 				v.StateDelta.baselineBranch = vUnwrap.StateDelta.baselineBranch
 			},
 		})
-		util.Assertf(v.StateDelta.baselineBranch != nil, "v.Branch != nil")
+		//util.Assertf(v.StateDelta.baselineBranch != nil, "\n-- vertex: %s\n-- branchConeTipVertex: %s\n-- baseline branch: nil (unexpected)",
+		//	v.Tx.IDShort(), func() any { return branchConeTipVertex.String() })
 	}
 	return nil
 }
@@ -239,25 +251,25 @@ func (v *Vertex) fetchBranchDependency(ut *UTXOTangle) error {
 // - nil, nil if it is not solid
 // - nil, err if input is wrong, i.e. it cannot be solidified
 // - vertex, nil if vertex, the branch cone tip, has been found
-func (ut *UTXOTangle) getBranchConeTipVertex(v *Vertex) (*WrappedTx, error) {
-	util.Assertf(v.Tx.IsSequencerMilestone(), "tx.IsSequencerMilestone()")
-	oid := v.Tx.SequencerChainPredecessorOutputID()
+func (ut *UTXOTangle) getBranchConeTipVertex(tx *transaction.Transaction) (*WrappedTx, error) {
+	util.Assertf(tx.IsSequencerMilestone(), "tx.IsSequencerMilestone()")
+	oid := tx.SequencerChainPredecessorOutputID()
 	if oid == nil {
 		// this transaction is chain origin, i.e. it does not have predecessor
 		// follow the first endorsement. It enforced by transaction constraint layer
-		return ut.mustGetFirstEndorsedVertex(v.Tx), nil
+		return ut.mustGetFirstEndorsedVertex(tx), nil
 	}
 	// sequencer chain predecessor exists
-	if oid.TimeSlot() == v.TimeSlot() {
+	if oid.TimeSlot() == tx.TimeSlot() {
 		if oid.SequencerFlagON() {
 			return ut.vertexByOutputID(oid)
 		}
-		return ut.mustGetFirstEndorsedVertex(v.Tx), nil
+		return ut.mustGetFirstEndorsedVertex(tx), nil
 	}
-	if v.Tx.IsBranchTransaction() {
+	if tx.IsBranchTransaction() {
 		return ut.vertexByOutputID(oid)
 	}
-	return ut.mustGetFirstEndorsedVertex(v.Tx), nil
+	return ut.mustGetFirstEndorsedVertex(tx), nil
 }
 
 // vertexByOutputID returns nil if transaction is not on the tangle or orphaned. Error indicates wrong output index

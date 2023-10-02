@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/core"
-	state "github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
@@ -262,17 +261,6 @@ func (v *Vertex) ConsumedInputsToLines() *lines.Lines {
 		}
 	}
 	return ret
-}
-
-func (v *Vertex) mustGetBaseState(ut *UTXOTangle) state.SugaredStateReader {
-	util.Assertf(!v.Tx.IsSequencerMilestone() || v.StateDelta.baselineBranch != nil, "!v.Tx.IsSequencerMilestone() || v.Branch != nil")
-	// determining base state for outputs not on the tangle
-	if v.Tx.IsSequencerMilestone() {
-		rdr, err := state.NewReadable(ut.stateStore, ut.mustGetBranch(v.StateDelta.baselineBranch).root)
-		util.AssertNoError(err)
-		return state.MakeSugared(rdr)
-	}
-	return ut.HeaviestStateForLatestTimeSlot()
 }
 
 func (v *Vertex) Wrap() *WrappedTx {

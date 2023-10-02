@@ -444,12 +444,16 @@ func (vid *WrappedTx) _traversePastCone(opt *_unwrapOptionsTraverse) bool {
 	ret := true
 	vid.Unwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
-			v.forEachInputDependency(func(_ byte, inp *WrappedTx) bool {
+			v.forEachInputDependency(func(i byte, inp *WrappedTx) bool {
+				util.Assertf(inp != nil, "_traversePastCone: input %d is nil (not solidified) in %s",
+					i, func() any { return v.Tx.IDShort() })
 				ret = inp._traversePastCone(opt)
 				return ret
 			})
 			if ret {
-				v.forEachEndorsement(func(_ byte, inpEnd *WrappedTx) bool {
+				v.forEachEndorsement(func(i byte, inpEnd *WrappedTx) bool {
+					util.Assertf(inpEnd != nil, "_traversePastCone: endorsement %d is nil (not solidified) in %s",
+						i, func() any { return v.Tx.IDShort() })
 					ret = inpEnd._traversePastCone(opt)
 					return ret
 				})

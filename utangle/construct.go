@@ -205,10 +205,10 @@ func _calcDelta(vid *WrappedTx) error {
 }
 
 func MakeVertex(draftVertex *Vertex, bypassConstraintValidation ...bool) (*WrappedTx, error) {
-	if !draftVertex.IsSolid() {
-		return nil, fmt.Errorf("some inputs or endorsements are not solid")
-	}
 	retVID := draftVertex.Wrap()
+	if !draftVertex.IsSolid() {
+		return retVID, fmt.Errorf("some inputs or endorsements are not solid")
+	}
 
 	if err := draftVertex.Validate(bypassConstraintValidation...); err != nil {
 		return retVID, fmt.Errorf("validate %s : '%v'", draftVertex.Tx.IDShort(), err)
