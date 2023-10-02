@@ -348,26 +348,27 @@ func (ut *UTXOTangle) ScanAccount(addr core.AccountID, lastNTimeSlots int) set.S
 		if vid.IsBranchTransaction() {
 			br := ut.mustGetBranch(vid)
 			rdr := multistate.MustNewSugaredStateReader(ut.stateStore, br.root)
-			outs, err := rdr.GetOutputsForAccount(addr)
+			outs, err := rdr.GetIDSLockedInAccount(addr)
 			util.AssertNoError(err)
-			for _, o := range outs {
-				ow, ok := ut.WrapOutput(o)
-				util.Assertf(ok, "ScanAccount: can't fetch output %s", o.IDShort())
+
+			for i := range outs {
+				ow, ok, _ := ut.GetWrappedOutput(&outs[i], func() multistate.SugaredStateReader {
+					return rdr
+				})
+				util.Assertf(ok, "ScanAccount: can't fetch output %s", outs[i].Short())
 				ret.Insert(ow)
 			}
 		}
 
 		vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
-			v.Tx.ForEachProducedOutput(func(_ byte, o *core.Output, oid *core.OutputID) bool {
+			v.Tx.ForEachProducedOutput(func(i byte, o *core.Output, oid *core.OutputID) bool {
 				lck := o.Lock()
 				// Note, that stem output is unlockable with any account
 				if lck.Name() != core.StemLockName && lck.UnlockableWith(addr) {
-					ow, ok := ut.WrapOutput(&core.OutputWithID{
-						ID:     *oid,
-						Output: o,
+					ret.Insert(WrappedOutput{
+						VID:   vid,
+						Index: i,
 					})
-					util.Assertf(ok, "ScanAccount: can't fetch output %s", oid.Short())
-					ret.Insert(ow)
 				}
 				return true
 			})

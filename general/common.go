@@ -12,6 +12,7 @@ type (
 	}
 
 	StateIndexReader interface {
+		GetIDSLockedInAccount(addr core.AccountID) ([]core.OutputID, error)
 		GetUTXOsLockedInAccount(accountID core.AccountID) ([]*core.OutputDataWithID, error)
 		GetUTXOForChainID(id *core.ChainID) (*core.OutputDataWithID, error)
 		Root() common.VCommitment

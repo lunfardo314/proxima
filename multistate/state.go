@@ -106,6 +106,30 @@ func (r *Readable) HasUTXO(oid *core.OutputID) bool {
 	return common.MakeReaderPartition(r.trie, PartitionLedgerState).Has(oid[:])
 }
 
+func (r *Readable) GetIDSLockedInAccount(addr core.AccountID) ([]core.OutputID, error) {
+	if len(addr) > 255 {
+		return nil, fmt.Errorf("accountID length should be <= 255")
+	}
+	ret := make([]core.OutputID, 0)
+	var oid core.OutputID
+	var err error
+
+	accountPrefix := common.Concat(PartitionAccounts, byte(len(addr)), addr)
+	r.trie.Iterator(accountPrefix).IterateKeys(func(k []byte) bool {
+		oid, err = core.OutputIDFromBytes(k[len(accountPrefix):])
+		if err != nil {
+			return false
+		}
+		ret = append(ret, oid)
+		return true
+	})
+
+	if err != nil {
+		return nil, err
+	}
+	return ret, nil
+}
+
 func (r *Readable) GetUTXOsLockedInAccount(addr core.AccountID) ([]*core.OutputDataWithID, error) {
 	if len(addr) > 255 {
 		return nil, fmt.Errorf("accountID length should be <= 255")
