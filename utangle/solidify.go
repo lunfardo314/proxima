@@ -21,8 +21,11 @@ func (ut *UTXOTangle) GetWrappedOutput(oid *core.OutputID, getState ...func() mu
 			return WrappedOutput{VID: vid, Index: oid.Index()}, true, false
 		}
 		if oid.IsBranchTransaction() {
+			// it means a virtual branch vertex exist but the output is not cached on it.
+			// It won't be a seq or stem output
 			return ut.wrapNewIntoExistingBranch(vid, oid)
 		}
+		// it is a virtual tx, output not cached
 		return wrapNewIntoExistingNonBranch(vid, oid, getState...)
 	}
 	// transaction not on UTXO tangle
