@@ -193,12 +193,6 @@ func (ut *UTXOTangle) WrapNewOutput(o *core.OutputWithID) (WrappedOutput, bool) 
 	return WrappedOutput{VID: ret, Index: o.ID.Index()}, true
 }
 
-func (ut *UTXOTangle) MustWrapOutput(o *core.OutputWithID) WrappedOutput {
-	ret, ok := ut.WrapOutput(o)
-	util.Assertf(ok, "can't wrap output %s", func() any { return o.IDShort() })
-	return ret
-}
-
 // solidifyOutput returns:
 // - nil, nil if output cannot be solidified yet, but no error
 // - nil, err if output cannot be solidified ever

@@ -386,7 +386,12 @@ func (ut *UTXOTangle) LoadSequencerStartOutputs(seqID core.ChainID, stateReader 
 	}
 	stemOut := rdr.GetStemOutput()
 
-	return ut.MustWrapOutput(chainOut), ut.MustWrapOutput(stemOut), nil
+	retStem, ok, _ := ut.GetWrappedOutput(&stemOut.ID)
+	util.Assertf(ok, "can't get wrapped output %s", stemOut.ID.Short())
+	retSeq, ok, _ := ut.GetWrappedOutput(&chainOut.ID)
+	util.Assertf(ok, "can't get wrapped output %s", chainOut.ID.Short())
+
+	return retStem, retSeq, nil
 }
 
 func (ut *UTXOTangle) LoadSequencerStartOutputsDefault(seqID core.ChainID) (WrappedOutput, WrappedOutput, error) {
