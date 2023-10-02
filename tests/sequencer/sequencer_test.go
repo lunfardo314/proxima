@@ -544,7 +544,8 @@ func (r *sequencerTestData) createSequencers(maxInputsInTx, maxSlots, pace int, 
 	maxTargetTs := core.LogicalTimeNow().AddTimeSlots(maxSlots)
 	r.sequencers = make([]*sequencer.Sequencer, len(r.chainOrigins))
 	for i := range r.chainOrigins {
-		chainOut, ok := r.ut.WrapOutput(&r.chainOrigins[i].OutputWithID)
+		chainOut, ok, wrong := r.ut.GetWrappedOutput(&r.chainOrigins[i].OutputWithID.ID)
+		require.False(r.t, wrong)
 		require.True(r.t, ok)
 		startupOpt := sequencer.StartupTxOptions{
 			ChainOutput:        &chainOut,

@@ -141,116 +141,19 @@ func (ut *UTXOTangle) wrapNewIntoExistingBranch(vid *WrappedTx, oid *core.Output
 	return ret, available, invalid
 }
 
-// WrapOutput fetches output in encoded form. Creates VirtualTransaction vertex and branch, if necessary
-func (ut *UTXOTangle) WrapOutput(o *core.OutputWithID) (WrappedOutput, bool) {
-	txid := o.ID.TransactionID()
-
-	if vid, found := ut.GetVertex(&txid); found {
-		// the transaction is on the UTXO tangle, i.e. already wrapped
-		available := true
-		vid.Unwrap(UnwrapOptions{
-			Vertex: func(v *Vertex) {
-				if int(o.ID.Index()) > v.Tx.NumProducedOutputs() {
-					available = false
-				}
-			},
-			VirtualTx: func(v *VirtualTransaction) {
-				v.outputs[o.ID.Index()] = o.Output
-			},
-			Orphaned: func() {
-				available = false
-			},
-		})
-		if available {
-			return WrappedOutput{vid, o.ID.Index()}, true
-		}
-		return WrappedOutput{}, false
-	}
-	// the transaction is not on the tangle, i.e. not wrapped. Creating virtual tx for it
-	return ut.WrapNewOutput(o)
-}
-
-// WrapNewOutput creates virtual transaction for transaction which is not on the UTXO tangle
-func (ut *UTXOTangle) WrapNewOutput(o *core.OutputWithID) (WrappedOutput, bool) {
-	txid := o.ID.TransactionID()
-	if o.ID.BranchFlagON() {
-		// the corresponding transaction is branch tx. It must exist in the state.
-		// Reaching it out and wrapping it with chain and stem outputs
-		bd, foundBranchData := multistate.FetchBranchDataByTransactionID(ut.stateStore, txid)
-		if foundBranchData {
-			ret := newVirtualBranchTx(&bd).Wrap()
-			ut.AddVertexAndBranch(ret, bd.Root)
-			return WrappedOutput{VID: ret, Index: o.ID.Index()}, true
-		}
-		return WrappedOutput{}, false
-	}
-
-	v := newVirtualTx(&txid)
-	v.addOutput(o.ID.Index(), o.Output)
-	ret := v.Wrap()
-	ut.AddVertexNoSaveTx(ret)
-
-	return WrappedOutput{VID: ret, Index: o.ID.Index()}, true
-}
-
 // solidifyOutput returns:
 // - nil, nil if output cannot be solidified yet, but no error
 // - nil, err if output cannot be solidified ever
 // - vid, nil if solid reference has been found
 func (ut *UTXOTangle) solidifyOutput(oid *core.OutputID, baseStateReader func() multistate.SugaredStateReader) (*WrappedTx, error) {
-	txid := oid.TransactionID()
-	ret, found := ut.GetVertex(&txid)
-	if found {
-		var err error
-		ret.Unwrap(UnwrapOptions{
-			Vertex: func(v *Vertex) {
-				if int(oid.Index()) >= v.Tx.NumProducedOutputs() {
-					err = fmt.Errorf("wrong output %s", oid.Short())
-				}
-			},
-			VirtualTx: func(v *VirtualTransaction) {
-				_, err = v.ensureOutputAt(oid.Index(), baseStateReader)
-			},
-		})
-		if err != nil {
-			return nil, err
-		}
-		return ret, nil
+	ret, ok, invalid := ut.GetWrappedOutput(oid, baseStateReader)
+	if invalid {
+		return nil, fmt.Errorf("output %s cannot be solidified", oid.Short())
 	}
-
-	o, err := baseStateReader().GetOutputWithID(oid)
-	if errors.Is(err, multistate.ErrNotFound) {
-		// error means nothing because output might not exist yet
+	if !ok {
 		return nil, nil
 	}
-	if err != nil {
-		return nil, fmt.Errorf("solidifyOutput: %w", err)
-	}
-	wOut, success := ut.WrapNewOutput(o)
-	if !success {
-		return nil, fmt.Errorf("can't wrap %s", o.ID.Short())
-	}
-	return wOut.VID, nil
-}
-
-func (v *VirtualTransaction) ensureOutputAt(idx byte, stateReader func() multistate.SugaredStateReader) (*core.Output, error) {
-	ret, ok := v.OutputAt(idx)
-	if ok {
-		return ret, nil
-	}
-
-	v.mutex.Lock()
-	defer v.mutex.Unlock()
-
-	oid := core.NewOutputID(&v.txid, idx)
-	oData, found := stateReader().GetUTXO(&oid)
-	if !found {
-		return nil, fmt.Errorf("output not found in the state: %s", oid.Short())
-	}
-	o, err := core.OutputFromBytesReadOnly(oData)
-	util.AssertNoError(err)
-	v.outputs[idx] = o
-	return o, nil
+	return ret.VID, nil
 }
 
 // FetchMissingDependencies check solidity of inputs and fetches what is available
