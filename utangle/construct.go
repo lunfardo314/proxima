@@ -33,11 +33,12 @@ type (
 	}
 
 	Vertex struct {
-		txLog        *txlog.TransactionLog
-		Tx           *transaction.Transaction
-		StateDelta   UTXOStateDelta //
-		Inputs       []*WrappedTx
-		Endorsements []*WrappedTx
+		txLog              *txlog.TransactionLog
+		Tx                 *transaction.Transaction
+		StateDelta         UTXOStateDelta
+		BranchConeTipSolid bool // to distinguish with the StateDelta.baselineBranch == nil
+		Inputs             []*WrappedTx
+		Endorsements       []*WrappedTx
 	}
 
 	UTXOStateDelta struct {

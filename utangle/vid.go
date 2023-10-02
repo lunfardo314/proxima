@@ -143,6 +143,12 @@ func (vid *WrappedTx) IDShort() string {
 	return vid.ID().Short()
 }
 
+func (vid *WrappedTx) LazyIDShort() func() any {
+	return func() any {
+		return vid.IDShort()
+	}
+}
+
 func (vid *WrappedTx) IDVeryShort() string {
 	return vid.ID().VeryShort()
 }

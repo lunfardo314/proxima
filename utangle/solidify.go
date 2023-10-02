@@ -166,8 +166,8 @@ func (v *Vertex) FetchMissingDependencies(ut *UTXOTangle) error {
 		if err = v.fetchBranchDependency(ut); err != nil {
 			return err
 		}
-		if v.StateDelta.baselineBranch == nil { // TODO <<<<<<<<<<<<<
-			// not solid yet, can't continue with solidification of the sequencer tx
+		if !v.BranchConeTipSolid {
+			// branch cone tip not solid yet, can't continue with solidification of the sequencer tx
 			return nil
 		}
 	}
@@ -177,10 +177,17 @@ func (v *Vertex) FetchMissingDependencies(ut *UTXOTangle) error {
 			// it is already solid
 			return true
 		}
-		v.Inputs[i], err = ut.solidifyOutput(oid, func() multistate.SugaredStateReader {
+		wOut, ok, invalid := ut.GetWrappedOutput(oid, func() multistate.SugaredStateReader {
 			return v.mustGetBaseState(ut)
 		})
-		return err == nil
+		if invalid {
+			err = fmt.Errorf("wrong output %s", oid.Short())
+			return false
+		}
+		if ok {
+			v.Inputs[i] = wOut.VID
+		}
+		return true
 	})
 	if err != nil {
 		return err
@@ -203,9 +210,9 @@ func (v *Vertex) FetchMissingDependencies(ut *UTXOTangle) error {
 }
 
 func (v *Vertex) mustGetBaseState(ut *UTXOTangle) multistate.SugaredStateReader {
-	util.Assertf(!v.Tx.IsSequencerMilestone() || v.StateDelta.baselineBranch != nil, "!v.Tx.IsSequencerMilestone() || v.Branch != nil")
+	util.Assertf(!v.Tx.IsSequencerMilestone() || v.BranchConeTipSolid, "!v.Tx.IsSequencerMilestone() || v.BranchConeTipSolid")
 	// determining base state for outputs not on the tangle
-	if v.Tx.IsSequencerMilestone() {
+	if v.Tx.IsSequencerMilestone() && v.StateDelta.baselineBranch != nil {
 		rdr, err := multistate.NewReadable(ut.stateStore, ut.mustGetBranch(v.StateDelta.baselineBranch).root)
 		util.AssertNoError(err)
 		return multistate.MakeSugared(rdr)
@@ -226,8 +233,10 @@ func (v *Vertex) fetchBranchDependency(ut *UTXOTangle) error {
 		// the vertex has no solid root, cannot be solidified (yet or never)
 		return nil
 	}
-	// vertex has solid branch
-	util.Assertf(branchConeTipVertex.IsSequencerMilestone(), "branchConeTipVertex.Tx.IsSequencerMilestone()")
+	// vertex has solid branch tip (the state baseline can still be mil
+	v.BranchConeTipSolid = true
+	util.Assertf(branchConeTipVertex.IsSequencerMilestone(), "expected branch conde tip %s to me a sequencer tx",
+		branchConeTipVertex.LazyIDShort())
 
 	if branchConeTipVertex.IsBranchTransaction() {
 		util.Assertf(ut.isValidBranch(branchConeTipVertex), "ut.isValidBranch(branchConeTipVertex)")
