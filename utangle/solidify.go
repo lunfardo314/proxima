@@ -262,27 +262,28 @@ func (ut *UTXOTangle) getBranchConeTipVertex(tx *transaction.Transaction) (*Wrap
 	// sequencer chain predecessor exists
 	if oid.TimeSlot() == tx.TimeSlot() {
 		if oid.SequencerFlagON() {
-			return ut.vertexByOutputID(oid)
+			ret, ok, invalid := ut.GetWrappedOutput(oid)
+			if invalid {
+				return nil, fmt.Errorf("wrong output %s", oid.Short())
+			}
+			if !ok {
+				return nil, nil
+			}
+			return ret.VID, nil
 		}
 		return ut.mustGetFirstEndorsedVertex(tx), nil
 	}
 	if tx.IsBranchTransaction() {
-		return ut.vertexByOutputID(oid)
+		ret, ok, invalid := ut.GetWrappedOutput(oid)
+		if invalid {
+			return nil, fmt.Errorf("wrong output %s", oid.Short())
+		}
+		if !ok {
+			return nil, nil
+		}
+		return ret.VID, nil
 	}
 	return ut.mustGetFirstEndorsedVertex(tx), nil
-}
-
-// vertexByOutputID returns nil if transaction is not on the tangle or orphaned. Error indicates wrong output index
-func (ut *UTXOTangle) vertexByOutputID(oid *core.OutputID) (*WrappedTx, error) {
-	txid := oid.TransactionID()
-	ret, found := ut.GetVertex(&txid)
-	if !found {
-		return nil, nil
-	}
-	if _, err := ret.OutputWithIDAt(oid.Index()); err != nil {
-		return nil, err
-	}
-	return ret, nil
 }
 
 // mustGetFirstEndorsedVertex returns first endorsement or nil if not solid
