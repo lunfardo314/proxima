@@ -20,9 +20,122 @@ func (ut *UTXOTangle) GetWrappedOutput(oid *core.OutputID, getState ...func() mu
 		if hasIt {
 			return WrappedOutput{VID: vid, Index: oid.Index()}, true, false
 		}
-		// Don't have output, it may be virtualTx
+		if oid.IsBranchTransaction() {
+			return ut.wrapNewIntoExistingBranch(vid, oid)
+		}
+		return wrapNewIntoExistingNonBranch(vid, oid, getState...)
 	}
-	panic("not implemented")
+	// transaction not on UTXO tangle
+	if oid.BranchFlagON() {
+		return ut.fetchAndWrapBranch(oid)
+	}
+	// non-branch not on the utxo tangle
+	if len(getState) == 0 {
+		// no info on input, maybe later
+		return WrappedOutput{}, false, false
+	}
+	// looking for output in the provided state
+	o, err := getState[0]().GetOutput(oid)
+	if err != nil {
+		return WrappedOutput{}, false, !errors.Is(err, multistate.ErrNotFound)
+	}
+	// found. Creating and wrapping new virtual tx
+	vt := newVirtualTx(&txid)
+	vt.addOutput(oid.Index(), o)
+	vid := vt.Wrap()
+	ut.AddVertexNoSaveTx(vid)
+
+	return WrappedOutput{VID: vid, Index: oid.Index()}, true, false
+}
+
+func (ut *UTXOTangle) fetchAndWrapBranch(oid *core.OutputID) (WrappedOutput, bool, bool) {
+	// it is a branch tx output, fetch the whole branch
+	bd, branchFound := multistate.FetchBranchDataByTransactionID(ut.stateStore, oid.TransactionID())
+	if !branchFound {
+		// maybe later
+		return WrappedOutput{}, false, false
+	}
+	// branch found. Create virtualTx with seq and stem outputs
+	vt := newVirtualBranchTx(&bd)
+	if oid.Index() != bd.SeqOutput.ID.Index() && oid.Index() != bd.Stem.ID.Index() {
+		// not seq or stem
+		rdr := multistate.MustNewSugaredStateReader(ut.stateStore, bd.Root)
+		o, err := rdr.GetOutput(oid)
+		if err != nil {
+			// if the output cannot be fetched from the branch state, it does not exist
+			return WrappedOutput{}, false, true
+		}
+		vt.addOutput(oid.Index(), o)
+	}
+	vid := vt.Wrap()
+	ut.AddVertexAndBranch(vid, bd.Root)
+	return WrappedOutput{VID: vid, Index: oid.Index()}, true, false
+}
+
+func wrapNewIntoExistingNonBranch(vid *WrappedTx, oid *core.OutputID, getState ...func() multistate.SugaredStateReader) (WrappedOutput, bool, bool) {
+	util.Assertf(!oid.BranchFlagON(), "%s should not be branch", oid.Short())
+	// Don't have output in existing vertex, but it may be a virtualTx
+	if len(getState) == 0 {
+		return WrappedOutput{}, false, false
+	}
+	var ret WrappedOutput
+	var available, invalid bool
+	vid.Unwrap(UnwrapOptions{
+		VirtualTx: func(v *VirtualTransaction) {
+			o, err := getState[0]().GetOutput(oid)
+			if errors.Is(err, multistate.ErrNotFound) {
+				return // null, false, false
+			}
+			if err != nil {
+				invalid = true
+				return // null, false, true
+			}
+			v.addOutput(oid.Index(), o)
+			ret = WrappedOutput{VID: vid, Index: oid.Index()}
+			available = true
+			return // ret, true, false
+		},
+	})
+	return ret, available, invalid
+}
+
+func (ut *UTXOTangle) wrapNewIntoExistingBranch(vid *WrappedTx, oid *core.OutputID) (WrappedOutput, bool, bool) {
+	util.Assertf(oid.BranchFlagON(), "%s should be a branch", oid.Short())
+
+	var ret WrappedOutput
+	var available, invalid bool
+
+	vid.Unwrap(UnwrapOptions{
+		Vertex: func(v *Vertex) {
+			util.Panicf("should be a virtualTx %s", oid.Short())
+		},
+		VirtualTx: func(v *VirtualTransaction) {
+			_, already := v.OutputAt(oid.Index())
+			util.Assertf(!already, "inconsistency: output %s should not exist in the virtualTx", func() any { return oid.Short() })
+
+			bd, branchFound := multistate.FetchBranchDataByTransactionID(ut.stateStore, oid.TransactionID())
+			util.Assertf(branchFound, "inconsistency: branch %s must exist", oid.Short())
+
+			rdr := multistate.MustNewSugaredStateReader(ut.stateStore, bd.Root)
+
+			o, err := rdr.GetOutput(oid)
+			if errors.Is(err, multistate.ErrNotFound) {
+				return // null, false, false
+			}
+			if err != nil {
+				invalid = true
+				return // null, false, true
+			}
+			v.addOutput(oid.Index(), o)
+			ret = WrappedOutput{VID: vid, Index: oid.Index()}
+			available = true
+			return // ret, true, false
+		},
+		Orphaned: func() {
+			util.Panicf("should be a virtualTx %s", oid.Short())
+		},
+	})
+	return ret, available, invalid
 }
 
 // WrapOutput fetches output in encoded form. Creates VirtualTransaction vertex and branch, if necessary
