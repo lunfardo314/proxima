@@ -280,23 +280,24 @@ func (ut *UTXOTangle) finalizeBranch(newBranchVertex *WrappedTx) error {
 	coverage := newBranchVertex.LedgerCoverage(TipSlots)
 
 	newBranchVertex.Unwrap(UnwrapOptions{
-
 		Vertex: func(v *Vertex) {
+			util.Assertf(v.BranchConeTipSolid, "branch cone tip not solid in %s", v.Tx.IDShort())
+
+			// determine baseline state
 			seqData := v.Tx.SequencerTransactionData()
 			nextStemOutputID = v.Tx.OutputID(seqData.StemOutputIndex)
-			util.Assertf(v.StateDelta.baselineBranch != nil, "v.StateDelta.baselineBranch != nil")
-			prevBranch, ok := ut.getBranch(v.StateDelta.baselineBranch)
-
-			if !ok {
-				SaveGraphPastCone(newBranchVertex, "branch_prob")
-			}
-			util.Assertf(ok, "finalizeBranch %s: can't find previous branch %s", newBranchVertex.IDShort(), v.StateDelta.baselineBranch.IDShort())
-
-			upd, err1 := multistate.NewUpdatable(ut.stateStore, prevBranch.root)
+			stemOut, err := v.Tx.ProducedOutputAt(seqData.StemOutputIndex)
+			util.AssertNoError(err)
+			stemLock, ok := stemOut.StemLock()
+			util.Assertf(ok, "can't find stem lock")
+			prevBranchData, ok := multistate.FetchBranchDataByTransactionID(ut.stateStore, stemLock.PredecessorOutputID.TransactionID())
+			util.Assertf(ok, "can't find previous branch data")
+			upd, err1 := multistate.NewUpdatable(ut.stateStore, prevBranchData.Root)
 			if err1 != nil {
 				err = err1
 				return
 			}
+
 			cmds := v.StateDelta.getUpdateCommands()
 			err1 = upd.UpdateWithCommands(cmds, &nextStemOutputID, &seqData.SequencerID, coverage)
 			if err1 != nil {

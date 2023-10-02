@@ -124,7 +124,7 @@ func (v *Vertex) MissingInputTxIDString() string {
 }
 
 func (v *Vertex) IsSolid() bool {
-	if v.Tx.IsSequencerMilestone() && v.StateDelta.baselineBranch == nil {
+	if v.Tx.IsSequencerMilestone() && !v.BranchConeTipSolid {
 		return false
 	}
 	for _, d := range v.Inputs {
