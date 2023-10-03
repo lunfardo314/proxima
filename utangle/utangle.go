@@ -275,14 +275,14 @@ func (ut *UTXOTangle) HeaviestStemOutput() *core.OutputWithID {
 	return ut.HeaviestStateForLatestTimeSlot().GetStemOutput()
 }
 
-func (ut *UTXOTangle) ForEachBranchStateDesc(e core.TimeSlot, fun func(rdr multistate.SugaredStateReader) bool) error {
+func (ut *UTXOTangle) ForEachBranchStateDesc(e core.TimeSlot, fun func(vid *WrappedTx, rdr multistate.SugaredStateReader) bool) error {
 	ut.mutex.RLock()
 	defer ut.mutex.RUnlock()
 
 	ut.forEachBranchSorted(e, func(vid *WrappedTx, br branch) bool {
 		r, err := multistate.NewReadable(ut.stateStore, br.root, 0)
 		util.AssertNoError(err)
-		return fun(multistate.MakeSugared(r))
+		return fun(vid, multistate.MakeSugared(r))
 	}, true)
 	return nil
 }
@@ -329,7 +329,7 @@ func (ut *UTXOTangle) GetSequencerBootstrapOutputs(seqID core.ChainID) (chainOut
 
 func (ut *UTXOTangle) HasOutputInTimeSlot(e core.TimeSlot, oid *core.OutputID) bool {
 	ret := false
-	err := ut.ForEachBranchStateDesc(e, func(rdr multistate.SugaredStateReader) bool {
+	err := ut.ForEachBranchStateDesc(e, func(_ *WrappedTx, rdr multistate.SugaredStateReader) bool {
 		_, ret = rdr.GetUTXO(oid)
 		return !ret
 	})

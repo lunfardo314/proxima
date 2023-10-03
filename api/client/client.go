@@ -161,6 +161,39 @@ func (c *APIClient) GetOutputDataFromHeaviestState(oid *core.OutputID) ([]byte, 
 	return oData, nil
 }
 
+func (c *APIClient) GetOutputDataWithInclusion(oid *core.OutputID) ([]byte, []api.InclusionDecoded, error) {
+	path := fmt.Sprintf(api.PathGetOutputWithInclusion+"?id=%s", oid.StringHex())
+	body, err := c.getBody(path)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	var res api.OutputData
+	err = json.Unmarshal(body, &res)
+	if err != nil {
+		return nil, nil, err
+	}
+	if res.Error.Error == api.ErrGetOutputNotFound {
+		return nil, nil, nil
+	}
+	if res.Error.Error != "" {
+		return nil, nil, fmt.Errorf("from server: %s", res.Error.Error)
+	}
+
+	oData, err := hex.DecodeString(res.OutputData)
+	if err != nil {
+		return nil, nil, fmt.Errorf("can't decode output data: %v", err)
+	}
+	ret := make([]api.InclusionDecoded, len(res.Inclusion))
+	for i := range ret {
+		ret[i], err = res.Inclusion[i].Decode()
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+	return oData, ret, nil
+}
+
 const waitOutputFinalPollPeriod = 500 * time.Millisecond
 
 // WaitOutputInTheHeaviestState return true once output is found in the latest heaviest branch.

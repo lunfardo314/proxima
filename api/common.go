@@ -1,11 +1,16 @@
 package api
 
+import (
+	"github.com/lunfardo314/proxima/core"
+)
+
 const (
 	PathGetAccountOutputs       = "/get_account_outputs"
 	PathGetChainOutput          = "/get_chain_output"
 	PathGetOutput               = "/get_output"
 	PathSubmitTransactionWait   = "/submit_wait"   // wait appending to the utangle
 	PathSubmitTransactionNowait = "/submit_nowait" // async submitting
+	PathGetOutputWithInclusion  = "/inclusion"     // async submitting
 )
 
 type Error struct {
@@ -34,7 +39,32 @@ type ChainOutput struct {
 type OutputData struct {
 	Error
 	// hex-encoded output data
-	OutputData string `json:"output_data,omitempty"`
+	OutputData string      `json:"output_data,omitempty"`
+	Inclusion  []Inclusion `json:"inclusion,omitempty"`
+}
+
+type Inclusion struct {
+	BranchID string `json:"branch_id"`
+	Coverage uint64 `json:"coverage"`
+	Included bool   `json:"included"`
+}
+
+type InclusionDecoded struct {
+	BranchID core.TransactionID
+	Coverage uint64
+	Included bool
 }
 
 const ErrGetOutputNotFound = "output not found"
+
+func (i *Inclusion) Decode() (InclusionDecoded, error) {
+	txid, err := core.TransactionIDFromHexString(i.BranchID)
+	if err != nil {
+		return InclusionDecoded{}, err
+	}
+	return InclusionDecoded{
+		BranchID: txid,
+		Coverage: i.Coverage,
+		Included: i.Included,
+	}, nil
+}

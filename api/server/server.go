@@ -9,6 +9,7 @@ import (
 
 	"github.com/lunfardo314/proxima/api"
 	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/utangle"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/workflow"
@@ -21,6 +22,8 @@ func registerHandlers(wflow *workflow.Workflow) {
 	http.HandleFunc(api.PathGetChainOutput, getChainOutputHandle(wflow.UTXOTangle()))
 	// GET request format: 'get_output?id=<hex-encoded output ID>'
 	http.HandleFunc(api.PathGetOutput, getOutputHandle(wflow.UTXOTangle()))
+	// GET request format: 'inclusion?id=<hex-encoded output ID>'
+	http.HandleFunc(api.PathGetOutputWithInclusion, getOutputWithInclusionHandle(wflow.UTXOTangle()))
 	// POST request format 'submit_wait'. Waiting until added to utangle or rejected
 	http.HandleFunc(api.PathSubmitTransactionWait, submitTxHandle(wflow, true))
 	// POST request format 'submit_nowait'. Async posting to utangle. No feedback in case of wrong tx
@@ -115,6 +118,66 @@ func getOutputHandle(ut *utangle.UTXOTangle) func(w http.ResponseWriter, r *http
 		}
 		resp := &api.OutputData{
 			OutputData: hex.EncodeToString(oData),
+		}
+
+		respBin, err := json.MarshalIndent(resp, "", "  ")
+		if err != nil {
+			writeErr(w, err.Error())
+			return
+		}
+		_, err = w.Write(respBin)
+		util.AssertNoError(err)
+	}
+}
+
+func getOutputWithInclusionHandle(ut *utangle.UTXOTangle) func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		lst, ok := r.URL.Query()["id"]
+		if !ok || len(lst) != 1 {
+			writeErr(w, "wrong parameter in request 'get_output'")
+			return
+		}
+		oid, err := core.OutputIDFromHexString(lst[0])
+		if err != nil {
+			writeErr(w, err.Error())
+			return
+		}
+
+		type branchState struct {
+			vid *utangle.WrappedTx
+			rdr multistate.SugaredStateReader
+		}
+		allBranches := make([]branchState, 0)
+		err = ut.ForEachBranchStateDesc(ut.LatestTimeSlot(), func(vid *utangle.WrappedTx, rdr multistate.SugaredStateReader) bool {
+			allBranches = append(allBranches, branchState{
+				vid: vid,
+				rdr: rdr,
+			})
+			return true
+		})
+		if err != nil {
+			writeErr(w, err.Error())
+			return
+		}
+		var oData []byte
+		var found bool
+		incl := make([]api.Inclusion, len(allBranches))
+
+		for i, bs := range allBranches {
+			if len(oData) == 0 {
+				oData, found = bs.rdr.GetUTXO(&oid)
+			} else {
+				found = bs.rdr.HasUTXO(&oid)
+			}
+			incl[i] = api.Inclusion{
+				BranchID: bs.vid.ID().StringHex(),
+				Coverage: bs.vid.LedgerCoverage(utangle.TipSlots),
+				Included: found,
+			}
+		}
+		resp := &api.OutputData{
+			OutputData: hex.EncodeToString(oData),
+			Inclusion:  incl,
 		}
 
 		respBin, err := json.MarshalIndent(resp, "", "  ")
