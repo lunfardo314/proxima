@@ -20,15 +20,17 @@ import (
 
 type (
 	milestoneFactory struct {
-		mutex         sync.RWMutex
-		log           *zap.SugaredLogger
-		tangle        *utangle.UTXOTangle
-		tipPool       *sequencerTipPool
-		controllerKey ed25519.PrivateKey
-		proposal      latestMilestoneProposal
-		ownMilestones map[*utangle.WrappedTx]utangle.WrappedOutput
-		maxFeeInputs  int
-		lastPruned    time.Time
+		mutex                       sync.RWMutex
+		log                         *zap.SugaredLogger
+		tangle                      *utangle.UTXOTangle
+		tipPool                     *sequencerTipPool
+		controllerKey               ed25519.PrivateKey
+		proposal                    latestMilestoneProposal
+		ownMilestones               map[*utangle.WrappedTx]utangle.WrappedOutput
+		maxFeeInputs                int
+		lastPruned                  time.Time
+		ownMilestoneCount           int
+		removedMilestonesSinceReset int
 	}
 
 	milestoneWithData struct {
@@ -44,6 +46,13 @@ type (
 		bestSoFar *utangle.WrappedOutput
 		current   *utangle.WrappedOutput
 		durations []time.Duration
+	}
+
+	factoryStats struct {
+		numOwnMilestones            int
+		ownMilestoneCount           int
+		removedMilestonesSinceReset int
+		tipPoolStats
 	}
 )
 
@@ -226,6 +235,7 @@ func (mf *milestoneFactory) addOwnMilestone(wOut utangle.WrappedOutput) {
 	defer mf.mutex.Unlock()
 
 	mf.ownMilestones[wOut.VID] = wOut
+	mf.ownMilestoneCount++
 }
 
 // selectFeeInputs chooses unspent fee outputs which can be combined with seqMutations in one vid
@@ -385,9 +395,9 @@ func (mf *milestoneFactory) cleanOwnMilestonesIfNecessary() {
 		}})
 	}
 	for _, vid := range toDelete {
-		mf.log.Infof("removed orphaned milestone %s", vid.IDShort())
 		delete(mf.ownMilestones, vid)
 	}
+	mf.removedMilestonesSinceReset += len(toDelete)
 }
 
 func (mf *milestoneFactory) futureConeMilestonesOrdered(rootVID *utangle.WrappedTx, p proposerTask) []utangle.WrappedOutput {
@@ -471,4 +481,18 @@ func (mf *milestoneFactory) makeAdditionalInputsOutputs(inputs []*core.OutputWit
 	}
 	util.Assertf(len(retOut) <= maxAdditionalOutputs, "len(ret)<=maxAdditionalOutputs")
 	return retImp, retOut
+}
+
+func (mf *milestoneFactory) getStatsAndReset() (ret factoryStats) {
+	mf.mutex.RLock()
+	defer mf.mutex.RUnlock()
+
+	ret = factoryStats{
+		numOwnMilestones:            len(mf.ownMilestones),
+		ownMilestoneCount:           mf.ownMilestoneCount,
+		removedMilestonesSinceReset: mf.removedMilestonesSinceReset,
+		tipPoolStats:                mf.tipPool.getStatsAndReset(),
+	}
+	mf.removedMilestonesSinceReset = 0
+	return
 }

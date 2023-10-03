@@ -94,6 +94,7 @@ func StartNew(glb *workflow.Workflow, seqID core.ChainID, controllerKey ed25519.
 
 	ret.onMilestoneSubmitted = func(seq *Sequencer, wOut *utangle.WrappedOutput) {
 		seq.LogMilestoneSubmitDefault(wOut)
+		seq.LogStats()
 	}
 	ret.log.Infof("sequencer pace is %d time slots (%v)",
 		ret.config.Pace, time.Duration(ret.config.Pace)*core.TransactionTimePaceDuration())
@@ -106,9 +107,7 @@ func StartNew(glb *workflow.Workflow, seqID core.ChainID, controllerKey ed25519.
 
 	go ret.mainLoop()
 
-	lms := ret.factory.getLatestMilestone()
-	ret.log.Infof("sequencer has been started at %s (loglevel=%s)",
-		lms.IDShort(), ret.log.Level().String())
+	ret.log.Infof("sequencer has been started (loglevel=%s)", ret.log.Level().String())
 	return ret, nil
 }
 

@@ -31,7 +31,7 @@ func _collectReachableSet(rootVID *WrappedTx, ret set.Set[*WrappedTx]) {
 	ret.Insert(rootVID)
 	rootVID.Unwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
-			if v.Tx.IsSequencerMilestone() {
+			if v.Tx.IsSequencerMilestone() && v.StateDelta.baselineBranch != nil {
 				_collectReachableSet(v.StateDelta.baselineBranch, ret)
 			}
 			v.forEachInputDependency(func(_ byte, inp *WrappedTx) bool {

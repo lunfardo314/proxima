@@ -113,7 +113,7 @@ func (c *APIClient) GetChainOutputData(chainID core.ChainID) (*core.OutputDataWi
 	}, nil
 }
 
-func (c *APIClient) GetChainOutput(chainID core.ChainID) (*core.OutputWithChainID, byte, error) {
+func (c *APIClient) GetChainOutputFromHeaviestState(chainID core.ChainID) (*core.OutputWithChainID, byte, error) {
 	oData, err := c.GetChainOutputData(chainID)
 	if err != nil {
 		return nil, 0, err
@@ -121,8 +121,8 @@ func (c *APIClient) GetChainOutput(chainID core.ChainID) (*core.OutputWithChainI
 	return oData.ParseAsChainOutput()
 }
 
-func (c *APIClient) GetMilestoneData(chainID core.ChainID) (*sequencer.MilestoneData, error) {
-	o, _, err := c.GetChainOutput(chainID)
+func (c *APIClient) GetMilestoneDataFromHeaviestState(chainID core.ChainID) (*sequencer.MilestoneData, error) {
+	o, _, err := c.GetChainOutputFromHeaviestState(chainID)
 	if err != nil {
 		return nil, err
 	}
@@ -132,9 +132,9 @@ func (c *APIClient) GetMilestoneData(chainID core.ChainID) (*sequencer.Milestone
 	return sequencer.ParseMilestoneData(o.Output), nil
 }
 
-// GetOutputData returns output data from the latest heaviest state, if it exists there
+// GetOutputDataFromHeaviestState returns output data from the latest heaviest state, if it exists there
 // Returns nil, nil if output does not exist
-func (c *APIClient) GetOutputData(oid *core.OutputID) ([]byte, error) {
+func (c *APIClient) GetOutputDataFromHeaviestState(oid *core.OutputID) ([]byte, error) {
 	path := fmt.Sprintf(api.PathGetOutput+"?id=%s", oid.StringHex())
 	body, err := c.getBody(path)
 	if err != nil {
@@ -163,21 +163,21 @@ func (c *APIClient) GetOutputData(oid *core.OutputID) ([]byte, error) {
 
 const waitOutputFinalPollPeriod = 500 * time.Millisecond
 
-// WaitOutputFinal return true once output is found in the latest heaviest branch.
+// WaitOutputInTheHeaviestState return true once output is found in the latest heaviest branch.
 // Polls node until success or timeout
-func (c *APIClient) WaitOutputFinal(oid *core.OutputID, timeout time.Duration) error {
+func (c *APIClient) WaitOutputInTheHeaviestState(oid *core.OutputID, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
 	var res []byte
 	var err error
 	for {
-		if res, err = c.GetOutputData(oid); err != nil {
+		if res, err = c.GetOutputDataFromHeaviestState(oid); err != nil {
 			return err
 		}
 		if len(res) > 0 {
 			return nil
 		}
 		if time.Now().After(deadline) {
-			return fmt.Errorf("WaitOutputFinal %s: timeout %v", oid.Short(), timeout)
+			return fmt.Errorf("WaitOutputInTheHeaviestState %s: timeout %v", oid.Short(), timeout)
 		}
 		time.Sleep(waitOutputFinalPollPeriod)
 	}

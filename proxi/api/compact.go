@@ -30,7 +30,7 @@ func runCompactCmd(_ *cobra.Command, _ []string) {
 		tagAlongSeqID = glb.GetTagAlongSequencerID()
 		glb.Assertf(tagAlongSeqID != nil, "tag-along sequencer not specified")
 
-		md, err := getClient().GetMilestoneData(*tagAlongSeqID)
+		md, err := getClient().GetMilestoneDataFromHeaviestState(*tagAlongSeqID)
 		glb.AssertNoError(err)
 
 		if feeAmount > 0 {

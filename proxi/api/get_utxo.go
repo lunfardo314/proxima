@@ -22,7 +22,7 @@ func runGetUTXOCmd(_ *cobra.Command, args []string) {
 	oid, err := core.OutputIDFromHexString(args[0])
 	glb.AssertNoError(err)
 
-	oData, err := getClient().GetOutputData(&oid)
+	oData, err := getClient().GetOutputDataFromHeaviestState(&oid)
 	glb.AssertNoError(err)
 
 	out, err := core.OutputFromBytesReadOnly(oData)

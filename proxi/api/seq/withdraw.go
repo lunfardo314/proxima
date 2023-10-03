@@ -35,7 +35,7 @@ func runSeqWithdrawCmd(_ *cobra.Command, args []string) {
 	seqID := glb.GetOwnSequencerID()
 	glb.Infof("sequencer ID (source): %s", seqID.String())
 
-	md, err := getClient().GetMilestoneData(*seqID)
+	md, err := getClient().GetMilestoneDataFromHeaviestState(*seqID)
 	glb.AssertNoError(err)
 
 	// TODO ensure at least storage deficit

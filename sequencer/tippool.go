@@ -16,18 +16,27 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
-// TODO rewrite tipPool only with IDs, no pointers
+type (
+	sequencerTipPool struct {
+		mutex                    sync.RWMutex
+		glb                      *workflow.Workflow
+		accountable              core.Accountable
+		outputs                  set.Set[utangle.WrappedOutput]
+		log                      *zap.SugaredLogger
+		chainID                  core.ChainID
+		latestMilestones         map[core.ChainID]*utangle.WrappedTx
+		lastPruned               time.Time
+		outputCount              int
+		removedOutputsSinceReset int
+	}
 
-type sequencerTipPool struct {
-	mutex            sync.RWMutex
-	glb              *workflow.Workflow
-	accountable      core.Accountable
-	outputs          set.Set[utangle.WrappedOutput]
-	log              *zap.SugaredLogger
-	chainID          core.ChainID
-	latestMilestones map[core.ChainID]*utangle.WrappedTx
-	lastPruned       time.Time
-}
+	tipPoolStats struct {
+		numOtherSequencers       int
+		numOutputs               int
+		outputCount              int
+		removedOutputsSinceReset int
+	}
+)
 
 const fetchLastNTimeSlotsUponStartup = 5
 
@@ -55,6 +64,7 @@ func startTipPool(seqName string, wrk *workflow.Workflow, seqID core.ChainID, lo
 
 		ret._clearOrphanedOutputsIfNeeded()
 		ret.outputs.Insert(wOut)
+		ret.outputCount++
 		ret.log.Debugf("IN %s", wOut.IDShort())
 	})
 	util.AssertNoError(err)
@@ -85,30 +95,30 @@ func startTipPool(seqName string, wrk *workflow.Workflow, seqID core.ChainID, lo
 
 const cleanupPeriod = 5 * time.Second
 
-func (mem *sequencerTipPool) _clearOrphanedOutputsIfNeeded() {
-	if time.Since(mem.lastPruned) < cleanupPeriod {
+func (tp *sequencerTipPool) _clearOrphanedOutputsIfNeeded() {
+	if time.Since(tp.lastPruned) < cleanupPeriod {
 		return
 	}
 	toDelete := make([]utangle.WrappedOutput, 0)
-	for wOut := range mem.outputs {
+	for wOut := range tp.outputs {
 		wOut.VID.Unwrap(utangle.UnwrapOptions{Orphaned: func() {
 			toDelete = append(toDelete, wOut)
 		}})
 	}
 	for _, wOut := range toDelete {
-		mem.log.Infof("removed orphaned output %s from tipPool", wOut.IDShort())
-		delete(mem.outputs, wOut)
+		delete(tp.outputs, wOut)
 	}
-	mem.lastPruned = time.Now()
+	tp.removedOutputsSinceReset += len(toDelete)
+	tp.lastPruned = time.Now()
 }
 
-func (mem *sequencerTipPool) filterAndSortOutputs(filter func(o utangle.WrappedOutput) bool) []utangle.WrappedOutput {
-	mem.mutex.RLock()
-	defer mem.mutex.RUnlock()
+func (tp *sequencerTipPool) filterAndSortOutputs(filter func(o utangle.WrappedOutput) bool) []utangle.WrappedOutput {
+	tp.mutex.RLock()
+	defer tp.mutex.RUnlock()
 
-	mem._clearOrphanedOutputsIfNeeded()
+	tp._clearOrphanedOutputsIfNeeded()
 
-	ret := util.Keys(mem.outputs, func(o utangle.WrappedOutput) bool {
+	ret := util.Keys(tp.outputs, func(o utangle.WrappedOutput) bool {
 		return !o.VID.IsOrphaned() && filter(o)
 	})
 	sort.Slice(ret, func(i, j int) bool {
@@ -118,16 +128,16 @@ func (mem *sequencerTipPool) filterAndSortOutputs(filter func(o utangle.WrappedO
 	return ret
 }
 
-func (mem *sequencerTipPool) ChainID() core.ChainID {
-	return mem.chainID
+func (tp *sequencerTipPool) ChainID() core.ChainID {
+	return tp.chainID
 }
 
-func (mem *sequencerTipPool) preSelectEndorsableMilestones(targetTs core.LogicalTime) []*utangle.WrappedTx {
-	mem.mutex.RLock()
-	defer mem.mutex.RUnlock()
+func (tp *sequencerTipPool) preSelectEndorsableMilestones(targetTs core.LogicalTime) []*utangle.WrappedTx {
+	tp.mutex.RLock()
+	defer tp.mutex.RUnlock()
 
 	ret := make([]*utangle.WrappedTx, 0)
-	for _, ms := range mem.latestMilestones {
+	for _, ms := range tp.latestMilestones {
 		if ms.TimeSlot() != targetTs.TimeSlot() || !core.ValidTimePace(ms.Timestamp(), targetTs) {
 			continue
 		}
@@ -139,16 +149,30 @@ func (mem *sequencerTipPool) preSelectEndorsableMilestones(targetTs core.Logical
 	return ret
 }
 
-func (mem *sequencerTipPool) numOutputsInBuffer() int {
-	mem.mutex.RLock()
-	defer mem.mutex.RUnlock()
+func (tp *sequencerTipPool) numOutputsInBuffer() int {
+	tp.mutex.RLock()
+	defer tp.mutex.RUnlock()
 
-	return len(mem.outputs)
+	return len(tp.outputs)
 }
 
-func (mem *sequencerTipPool) numOtherMilestones() int {
-	mem.mutex.RLock()
-	defer mem.mutex.RUnlock()
+func (tp *sequencerTipPool) numOtherMilestones() int {
+	tp.mutex.RLock()
+	defer tp.mutex.RUnlock()
 
-	return len(mem.latestMilestones)
+	return len(tp.latestMilestones)
+}
+
+func (tp *sequencerTipPool) getStatsAndReset() (ret tipPoolStats) {
+	tp.mutex.RLock()
+	defer tp.mutex.RUnlock()
+
+	ret = tipPoolStats{
+		numOtherSequencers:       len(tp.latestMilestones),
+		numOutputs:               len(tp.outputs),
+		outputCount:              tp.outputCount,
+		removedOutputsSinceReset: tp.removedOutputsSinceReset,
+	}
+	tp.removedOutputsSinceReset = 0
+	return
 }

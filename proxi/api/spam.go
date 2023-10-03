@@ -168,7 +168,7 @@ func standardScenario(cfg spammerConfig) {
 		glb.Verbosef("%d transactions submitted", len(bundle))
 		tout := core.TimeSlotDuration() * 2
 		glb.Verbosef("wait for %s finalized, timeout %v", oid.Short(), tout)
-		err = c.WaitOutputFinal(&oid, tout)
+		err = c.WaitOutputInTheHeaviestState(&oid, tout)
 		glb.AssertNoError(err)
 		glb.Infof("bundle with closing output %s has been submitted finalized in %v", oid.Short(), time.Since(startTime))
 		txCounter += len(bundle)
