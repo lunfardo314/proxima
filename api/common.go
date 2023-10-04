@@ -10,7 +10,7 @@ const (
 	PathGetOutput               = "/get_output"
 	PathSubmitTransactionWait   = "/submit_wait"   // wait appending to the utangle
 	PathSubmitTransactionNowait = "/submit_nowait" // async submitting
-	PathGetOutputWithInclusion  = "/inclusion"     // async submitting
+	PathGetOutputInclusion      = "/inclusion"     // async submitting
 )
 
 type Error struct {
@@ -39,17 +39,17 @@ type ChainOutput struct {
 type OutputData struct {
 	Error
 	// hex-encoded output data
-	OutputData string      `json:"output_data,omitempty"`
-	Inclusion  []Inclusion `json:"inclusion,omitempty"`
+	OutputData string                 `json:"output_data,omitempty"`
+	Inclusion  []InclusionDataEncoded `json:"inclusion,omitempty"`
 }
 
-type Inclusion struct {
+type InclusionDataEncoded struct {
 	BranchID string `json:"branch_id"`
 	Coverage uint64 `json:"coverage"`
 	Included bool   `json:"included"`
 }
 
-type InclusionDecoded struct {
+type InclusionData struct {
 	BranchID core.TransactionID
 	Coverage uint64
 	Included bool
@@ -57,12 +57,12 @@ type InclusionDecoded struct {
 
 const ErrGetOutputNotFound = "output not found"
 
-func (i *Inclusion) Decode() (InclusionDecoded, error) {
+func (i *InclusionDataEncoded) Decode() (InclusionData, error) {
 	txid, err := core.TransactionIDFromHexString(i.BranchID)
 	if err != nil {
-		return InclusionDecoded{}, err
+		return InclusionData{}, err
 	}
-	return InclusionDecoded{
+	return InclusionData{
 		BranchID: txid,
 		Coverage: i.Coverage,
 		Included: i.Included,

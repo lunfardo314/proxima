@@ -23,7 +23,7 @@ func registerHandlers(wflow *workflow.Workflow) {
 	// GET request format: 'get_output?id=<hex-encoded output ID>'
 	http.HandleFunc(api.PathGetOutput, getOutputHandle(wflow.UTXOTangle()))
 	// GET request format: 'inclusion?id=<hex-encoded output ID>'
-	http.HandleFunc(api.PathGetOutputWithInclusion, getOutputWithInclusionHandle(wflow.UTXOTangle()))
+	http.HandleFunc(api.PathGetOutputInclusion, getOutputInclusionHandle(wflow.UTXOTangle()))
 	// POST request format 'submit_wait'. Waiting until added to utangle or rejected
 	http.HandleFunc(api.PathSubmitTransactionWait, submitTxHandle(wflow, true))
 	// POST request format 'submit_nowait'. Async posting to utangle. No feedback in case of wrong tx
@@ -130,7 +130,7 @@ func getOutputHandle(ut *utangle.UTXOTangle) func(w http.ResponseWriter, r *http
 	}
 }
 
-func getOutputWithInclusionHandle(ut *utangle.UTXOTangle) func(w http.ResponseWriter, r *http.Request) {
+func getOutputInclusionHandle(ut *utangle.UTXOTangle) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		lst, ok := r.URL.Query()["id"]
 		if !ok || len(lst) != 1 {
@@ -159,25 +159,16 @@ func getOutputWithInclusionHandle(ut *utangle.UTXOTangle) func(w http.ResponseWr
 			writeErr(w, err.Error())
 			return
 		}
-		var oData []byte
-		var found bool
-		incl := make([]api.Inclusion, len(allBranches))
+		resp := &api.OutputData{
+			Inclusion: make([]api.InclusionDataEncoded, len(allBranches)),
+		}
 
 		for i, bs := range allBranches {
-			if len(oData) == 0 {
-				oData, found = bs.rdr.GetUTXO(&oid)
-			} else {
-				found = bs.rdr.HasUTXO(&oid)
-			}
-			incl[i] = api.Inclusion{
+			resp.Inclusion[i] = api.InclusionDataEncoded{
 				BranchID: bs.vid.ID().StringHex(),
 				Coverage: bs.vid.LedgerCoverage(utangle.TipSlots),
-				Included: found,
+				Included: bs.rdr.HasUTXO(&oid),
 			}
-		}
-		resp := &api.OutputData{
-			OutputData: hex.EncodeToString(oData),
-			Inclusion:  incl,
 		}
 
 		respBin, err := json.MarshalIndent(resp, "", "  ")
