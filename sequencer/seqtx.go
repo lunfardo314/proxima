@@ -58,9 +58,9 @@ func MakeSequencerTransaction(par MakeSequencerTransactionParams) ([]byte, error
 	if nIn > 256 {
 		return nil, errP("too many inputs")
 	}
-	if par.StemInput != nil && !par.ChainInput.ID.SequencerFlagON() {
-		return nil, errP("chain input in the branch transaction must be a sequencer's output: %s", par.ChainInput.ID.Short())
-	}
+	//if par.StemInput != nil && !par.ChainInput.ID.SequencerFlagON() {
+	//	return nil, errP("chain input in the branch transaction must be a sequencer's output: %s", par.ChainInput.ID.Short())
+	//}
 	if par.StemInput != nil && par.Timestamp.TimeTick() != 0 {
 		return nil, errP("wrong timestamp for branch transaction: %s", par.Timestamp.String())
 	}
@@ -94,8 +94,8 @@ func MakeSequencerTransaction(par MakeSequencerTransactionParams) ([]byte, error
 	}
 	txb.PutSignatureUnlock(chainPredIdx)
 
-	if !par.ChainInput.ID.SequencerFlagON() && len(par.Endorsements) == 0 {
-		return nil, errP("chain predecessor is not a sequencer transaction -> endorsement of sequencer transaction is mandatory")
+	if !par.ChainInput.ID.SequencerFlagON() && par.StemInput == nil && len(par.Endorsements) == 0 {
+		return nil, errP("chain predecessor is not a sequencer transaction -> endorsement of sequencer transaction is mandatory (unless making a branch)")
 	}
 
 	seqID := chainConstraint.ID

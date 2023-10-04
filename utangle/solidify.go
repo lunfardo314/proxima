@@ -235,8 +235,8 @@ func (v *Vertex) fetchBranchDependency(ut *UTXOTangle) error {
 	}
 	// vertex has solid branch tip (the state baseline can still be mil
 	v.BranchConeTipSolid = true
-	util.Assertf(branchConeTipVertex.IsSequencerMilestone(), "expected branch conde tip %s to me a sequencer tx",
-		branchConeTipVertex.LazyIDShort())
+	//util.Assertf(branchConeTipVertex.IsSequencerMilestone(), "expected branch cone tip %s to be a sequencer tx",
+	//	branchConeTipVertex.LazyIDShort())
 
 	if branchConeTipVertex.IsBranchTransaction() {
 		util.Assertf(ut.isValidBranch(branchConeTipVertex), "ut.isValidBranch(branchConeTipVertex)")

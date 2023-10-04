@@ -48,7 +48,9 @@ require(
 func _crossSlotPredecessorCase : 
 require(
 	or(
-		and(isBranchTransaction, sequencerFlagON(inputIDByIndex($0))), 
+		//  and(isBranchTransaction, sequencerFlagON(inputIDByIndex($0))),  
+        //  <<<<<<< modified Oct 4, 2023. Otherwise sequencer can't start from pure chain'
+		isBranchTransaction, 
 		not(isZero(numEndorsements))
 	), 
 	!!!sequencer_tx_has_incorrect_cross_slot_chain_predecessor_or_dont_have_any_endorsements
@@ -59,7 +61,7 @@ func _sequencer :
 or(
 	and( equal($0, 0xff), _noChainPredecessorCase ),
 	and( _inputSameSlot($0), _sameSlotPredecessorCase($0)),
-	and( not(_inputSameSlot($0)), _crossSlotPredecessorCase($0))
+	and( not(_inputSameSlot($0)), _crossSlotPredecessorCase)
 )
 
 // $0 chain constraint index
