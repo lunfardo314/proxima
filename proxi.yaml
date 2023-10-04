@@ -5,7 +5,7 @@ force: true
 multistate:
     name: proximadb
 spammer:
-    bundle_size: 30
+    bundle_size: 10
     max_duration_minutes: 0
     max_transactions: 0
     output_amount: 1000

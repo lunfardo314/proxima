@@ -55,6 +55,17 @@ sequencers:
     pace: 5
     max_fee_inputs: 50
 
+  seq1:
+    # on k3
+    enable: true
+    loglevel: info
+    trace_tippool: false
+    sequencer_id: 758f84a184d544564eab82f67715375442f8031a3a0d875807736133e126600a
+    controller_key: 34d39e13811f8cd25d78c0779ca3673e03710f50ecf9d723ea6c775ca88fcfd3b6bc2f88cb000d0fd63121d99bf57ab5c184cefe0ba89cf0f96ee60858696d78
+    pace: 5
+    max_fee_inputs: 50
+
+
 # specify milestone proposers to trace
 trace_proposers:
   base: false

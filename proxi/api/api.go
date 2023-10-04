@@ -30,6 +30,7 @@ func Init(rootCmd *cobra.Command) {
 	initTransferCmd(apiCmd)
 	initSpamCmd(apiCmd)
 	initMakeChainCmd(apiCmd)
+	initChainsCmd(apiCmd)
 
 	api.Init(apiCmd)
 

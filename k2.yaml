@@ -21,7 +21,7 @@ spammer:
     output_amount: 1000
     submit_nowait: true
     pace: 3 # transaction pace in ticks
-    bundle_size: 30
+    bundle_size: 10
     max_transactions: 0 # 0 means no limit
     max_duration_minutes: 0 # 0 means no limit
     tag_along:
