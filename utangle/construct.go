@@ -279,7 +279,7 @@ func (ut *UTXOTangle) finalizeBranch(newBranchVertex *WrappedTx) error {
 	return nil
 }
 
-// finalizeBranch also starts new delta on mutations
+// _finalizeBranch commits state delta the database and writes branch record
 func (ut *UTXOTangle) _finalizeBranch(newBranchVertex *WrappedTx) error {
 	util.Assertf(newBranchVertex.IsBranchTransaction(), "v.IsBranchTransaction()")
 

@@ -40,27 +40,27 @@ sequencers:
     enable: true
     loglevel: info
     trace_tippool: false
-    sequencer_id: c4eeade04c09642478e3086fcc709674c1145201cfe2590c645fddb400f2e386
+    sequencer_id:
     controller_key: 136381bd4dea7b2f0fa6c6ca14ee660dc7929975b47e6cdb85adee9e26032a810530b790e0e7de626f36e20ba656f09e324c68203de899d0daf9f98fcb3cf684
     pace: 5
     max_fee_inputs: 50
 
   seq0:
     # on k2
-    enable: true
+    enable: false
     loglevel: info
     trace_tippool: false
-    sequencer_id: 3340a99ea187bc37fe91b922d4357f3fdb21a60af3316a41e1e0959bd3b0d6e8
+    sequencer_id:
     controller_key: 3a2ed3c4f738a06e9543f80e032fd870be5e524585e0144f2499d1a28bc4797902e2a7a85bd158469adae3294a615e17ef49e72642c4eb58ff00d92301b9bb88
     pace: 5
     max_fee_inputs: 50
 
   seq1:
     # on k3
-    enable: true
+    enable: false
     loglevel: info
     trace_tippool: false
-    sequencer_id: 758f84a184d544564eab82f67715375442f8031a3a0d875807736133e126600a
+    sequencer_id:
     controller_key: 34d39e13811f8cd25d78c0779ca3673e03710f50ecf9d723ea6c775ca88fcfd3b6bc2f88cb000d0fd63121d99bf57ab5c184cefe0ba89cf0f96ee60858696d78
     pace: 5
     max_fee_inputs: 50
