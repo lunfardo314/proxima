@@ -1,8 +1,10 @@
 package api
 
 import (
+	"github.com/lunfardo314/proxima/api"
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/proxi/glb"
+	"github.com/lunfardo314/proxima/util"
 	"github.com/spf13/cobra"
 )
 
@@ -24,12 +26,32 @@ func runGetUTXOCmd(_ *cobra.Command, args []string) {
 
 	oData, err := getClient().GetOutputDataFromHeaviestState(&oid)
 	glb.AssertNoError(err)
+	if len(oData) > 0 {
+		out, err := core.OutputFromBytesReadOnly(oData)
+		glb.AssertNoError(err)
 
-	out, err := core.OutputFromBytesReadOnly(oData)
+		glb.Infof((&core.OutputWithID{
+			ID:     oid,
+			Output: out,
+		}).String())
+	}
+	glb.Assertf(glb.IsVerbose(), "output not found in the heaviest state. Use '--verbose, -v' to retrieve inclusions state")
+
+	glb.Infof("Inclusion state:")
+	inclusion, err := getClient().GetOutputInclusion(&oid)
 	glb.AssertNoError(err)
 
-	glb.Infof((&core.OutputWithID{
-		ID:     oid,
-		Output: out,
-	}).String())
+	displayInclusionState(inclusion)
+}
+
+func displayInclusionState(inclusion []api.InclusionData) {
+	yn := ""
+	for i := range inclusion {
+		if inclusion[i].Included {
+			yn = "YES"
+		} else {
+			yn = " NO"
+		}
+		glb.Infof("%s   %s    %s", yn, inclusion[i].BranchID.Short(), util.GoThousands(inclusion[i].Coverage))
+	}
 }

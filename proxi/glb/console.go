@@ -17,8 +17,12 @@ func Infof(format string, args ...any) {
 	fmt.Printf(format+"\n", args...)
 }
 
+func IsVerbose() bool {
+	return viper.GetBool("verbose")
+}
+
 func Verbosef(format string, args ...any) {
-	if viper.GetBool("verbose") {
+	if IsVerbose() {
 		fmt.Printf(format+"\n", args...)
 	}
 }
