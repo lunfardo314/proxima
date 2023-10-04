@@ -84,6 +84,7 @@ func (b *backtrackProposer) generateCandidate(extend utangle.WrappedOutput) *tra
 		b.trace("CANNOT generate candidate: %s or %s has been orphaned", extend.VID.IDShort(), b.endorse.IDShort())
 		return nil
 	}
+
 	if !targetDelta.CanBeConsumedBySequencer(extend, b.factory.tangle) {
 		// past cones are not conflicting but the output itself is already consumed
 		b.trace("CANNOT extend %s (is already consumed) to endorse: %s", extend.VID.IDShort(), b.endorse.IDShort())

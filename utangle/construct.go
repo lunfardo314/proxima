@@ -296,21 +296,22 @@ func (ut *UTXOTangle) _finalizeBranch(newBranchVertex *WrappedTx) error {
 			// determine baseline state
 			seqData := v.Tx.SequencerTransactionData()
 			nextStemOutputID = v.Tx.OutputID(seqData.StemOutputIndex)
-			stemOut, err := v.Tx.ProducedOutputAt(seqData.StemOutputIndex)
+			var stemOut *core.Output
+			stemOut, err = v.Tx.ProducedOutputAt(seqData.StemOutputIndex)
 			util.AssertNoError(err)
 			stemLock, ok := stemOut.StemLock()
 			util.Assertf(ok, "can't find stem lock")
 			prevBranchData, ok := multistate.FetchBranchDataByTransactionID(ut.stateStore, stemLock.PredecessorOutputID.TransactionID())
 			util.Assertf(ok, "can't find previous branch data")
-			upd, err1 := multistate.NewUpdatable(ut.stateStore, prevBranchData.Root)
-			if err1 != nil {
-				err = err1
+			var upd *multistate.Updatable
+			upd, err = multistate.NewUpdatable(ut.stateStore, prevBranchData.Root)
+			if err != nil {
 				return
 			}
 
 			cmds := v.StateDelta.getUpdateCommands()
-			err1 = upd.UpdateWithCommands(cmds, &nextStemOutputID, &seqData.SequencerID, coverage)
-			if err1 != nil {
+			err = upd.UpdateWithCommands(cmds, &nextStemOutputID, &seqData.SequencerID, coverage)
+			if err != nil {
 				err = fmt.Errorf("finalizeBranch %s: '%v'\n=== Delta: %s\n=== Commands: %s",
 					v.Tx.IDShort(), err, v.StateDelta.LinesRecursive().String(), multistate.UpdateCommandsToLines(cmds))
 				return

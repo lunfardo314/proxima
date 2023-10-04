@@ -8,7 +8,7 @@ sequencer:
     id: a4225cb6851d164a3a260dc3c29048b1f76b317f0876159dafd790bee08edfa1
 tag-along:
     fee: 500
-    sequencer:
+    sequencer: 90819a05a3a54eb67807abc7627acc4aa144f5b4de5456ee23d822e14bffc177
 txstore:
     name: ""
 wallet:

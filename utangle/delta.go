@@ -161,24 +161,33 @@ func (d *UTXOStateDelta) getConsumedSet(vid *WrappedTx) (ret set.Set[byte], txFo
 	return
 }
 
-func (d *UTXOStateDelta) CanBeConsumedBySequencer(wOut WrappedOutput, ut *UTXOTangle) bool {
+func (d *UTXOStateDelta) CanBeConsumed(wOut WrappedOutput, getState func() multistate.SugaredStateReader) bool {
 	consumed, _ := d.getConsumedSet(wOut.VID)
 	if consumed.Contains(wOut.Index) {
 		return false
 	}
-
-	util.Assertf(d.baselineBranch != nil, "CanBeConsumedBySequencer: sequencer delta expected, baselineBranch must be not nil")
-
 	canBeConsumed := true
 	wOut.VID.Unwrap(UnwrapOptions{
 		// if it is a vertex and not in the consumed set, it can be consumed
 		VirtualTx: func(_ *VirtualTransaction) {
-			// if it is a virtual transaction, we check state in the context
-			rdr, ok := ut.StateReaderOfSequencerMilestone(d.baselineBranch)
-			canBeConsumed = ok && rdr.HasUTXO(wOut.DecodeID())
+			canBeConsumed = getState().HasUTXO(wOut.DecodeID())
 		},
 	})
 	return canBeConsumed
+}
+
+func (d *UTXOStateDelta) CanBeConsumedBySequencer(wOut WrappedOutput, ut *UTXOTangle) bool {
+	return d.CanBeConsumed(wOut, func() (ret multistate.SugaredStateReader) {
+		var ok bool
+		if d.baselineBranch != nil {
+			ret, ok = ut.StateReaderOfSequencerMilestone(d.baselineBranch)
+			util.Assertf(ok, "can't get state for the baseline branch %s", d.baselineBranch.IDShort())
+		} else {
+			// TODO if d belongs to a branch, then we must check the branch
+			util.Panicf("WIP not implemented when baselineBranch == nil")
+		}
+		return
+	})
 }
 
 // MustConsume adds new consumed output record into the delta.
