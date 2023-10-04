@@ -161,6 +161,7 @@ func (d *UTXOStateDelta) getConsumedSet(vid *WrappedTx) (ret set.Set[byte], txFo
 	return
 }
 
+// CanBeConsumed first checks delta, then the provided state, if necessary
 func (d *UTXOStateDelta) CanBeConsumed(wOut WrappedOutput, getState func() multistate.SugaredStateReader) bool {
 	consumed, _ := d.getConsumedSet(wOut.VID)
 	if consumed.Contains(wOut.Index) {
