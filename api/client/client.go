@@ -190,12 +190,15 @@ func (c *APIClient) GetOutputInclusion(oid *core.OutputID) ([]api.InclusionData,
 	return ret, nil
 }
 
-const waitOutputFinalPollPeriod = 500 * time.Millisecond
+const waitOutputFinalPollPeriod = 1 * time.Second
 
 // WaitOutputInTheHeaviestState return true once output is found in the latest heaviest branch.
 // Polls node until success or timeout
 func (c *APIClient) WaitOutputInTheHeaviestState(oid *core.OutputID, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
+	if timeout == 0 {
+		deadline = time.Now().Add(1 * time.Hour)
+	}
 	var res []byte
 	var err error
 	for {

@@ -265,3 +265,12 @@ func MakeErrFuncForPrefix(prefix string) func(err interface{}, args ...interface
 		return fmt.Errorf("%s: '%s'", prefix, s)
 	}
 }
+
+func DoUntil(bodyFun func(), cond func() bool) {
+	for {
+		bodyFun()
+		if cond() {
+			break
+		}
+	}
+}

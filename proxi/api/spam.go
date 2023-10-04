@@ -4,6 +4,7 @@ import (
 	"math"
 	"time"
 
+	"github.com/lunfardo314/proxima/api"
 	"github.com/lunfardo314/proxima/api/client"
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/proxi/glb"
@@ -166,15 +167,36 @@ func standardScenario(cfg spammerConfig) {
 			glb.AssertNoError(err)
 		}
 		glb.Verbosef("%d transactions submitted", len(bundle))
-		tout := core.TimeSlotDuration() * 2
-		glb.Verbosef("wait for %s finalized, timeout %v", oid.Short(), tout)
+		tout := core.TimeSlotDuration() * 6
+		glb.Verbosef("wait for %s inclusion into the heaviest state, timeout %v", oid.Short(), tout)
 		err = c.WaitOutputInTheHeaviestState(&oid, tout)
 		glb.AssertNoError(err)
-		glb.Infof("bundle with closing output %s has been submitted finalized in %v", oid.Short(), time.Since(startTime))
+		glb.Infof("bundle %s has been included into the heaviest state in %v", oid.Short(), time.Since(startTime))
+
+		var inclusion []api.InclusionData
+		util.DoUntil(func() {
+			inclusion, err = c.GetOutputInclusion(&oid)
+			glb.AssertNoError(err)
+		}, func() bool {
+			return allIncluded(inclusion)
+		})
+		glb.Infof("bundle %s has reached full inclusion in %v", oid.Short(), time.Since(startTime))
+
 		txCounter += len(bundle)
 		timeSinceBeginning := time.Since(beginTime)
 		glb.Infof("tx counter: %d, TPS avg: %2f", txCounter, float32(txCounter)/float32(timeSinceBeginning/time.Second))
 	}
+}
+
+func allIncluded(incl []api.InclusionData) bool {
+	glb.Assertf(len(incl) > 0, "len(incl)>0")
+
+	for i := range incl {
+		if !incl[i].Included {
+			return false
+		}
+	}
+	return true
 }
 
 func maxTimestamp(outs []*core.OutputWithID) (ret core.LogicalTime) {
