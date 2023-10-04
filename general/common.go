@@ -29,6 +29,7 @@ type (
 		common.KVReader
 		common.BatchedUpdatable
 		common.Traversable
+		IsClosed() bool
 	}
 
 	TxBytesStore interface {

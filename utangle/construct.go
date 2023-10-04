@@ -269,8 +269,18 @@ func (ut *UTXOTangle) AppendVertexFromTransactionBytesDebug(txBytes []byte) (*Wr
 	return ret, retTxStr, err
 }
 
-// finalizeBranch also starts new delta on mutations
 func (ut *UTXOTangle) finalizeBranch(newBranchVertex *WrappedTx) error {
+	err := util.CatchPanicOrError(func() error {
+		return ut._finalizeBranch(newBranchVertex)
+	})
+	if !ut.stateStore.IsClosed() {
+		return err
+	}
+	return nil
+}
+
+// finalizeBranch also starts new delta on mutations
+func (ut *UTXOTangle) _finalizeBranch(newBranchVertex *WrappedTx) error {
 	util.Assertf(newBranchVertex.IsBranchTransaction(), "v.IsBranchTransaction()")
 
 	var err error
@@ -319,7 +329,7 @@ func (ut *UTXOTangle) finalizeBranch(newBranchVertex *WrappedTx) error {
 	// assert consistency
 	rdr, err := multistate.NewSugaredReadableState(ut.stateStore, newRoot)
 	if err != nil {
-		return err
+		return fmt.Errorf("finalizeBranch: double check failed: '%v'", err)
 	}
 	util.Assertf(rdr.GetStemOutput().ID == nextStemOutputID, "rdr.GetStemOutput().ID == nextStemOutputID")
 

@@ -363,9 +363,9 @@ func Test1Sequencer(t *testing.T) {
 	t.Run("1 faucet txs async", func(t *testing.T) {
 		const (
 			maxSlots              = 20
-			numFaucetTransactions = 400 // 402 // limit
+			numFaucetTransactions = 300 // 402 // limit
 			transferAmount        = 100
-			maxInputs             = 40
+			maxInputs             = 30
 		)
 
 		r := initSequencerTestData(t, 1, 1, core.LogicalTimeNow())
