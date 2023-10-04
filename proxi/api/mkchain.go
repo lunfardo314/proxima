@@ -34,8 +34,7 @@ func runMakeChainCmd(_ *cobra.Command, args []string) {
 	wallet := glb.GetWalletData()
 	target := glb.MustGetTarget()
 
-	tagAlongSeqID := glb.GetTagAlongSequencerID()
-	glb.Assertf(tagAlongSeqID != nil, "tag-along sequencer not specified")
+	tagAlongSeqID := GetTagAlongSequencerID()
 	tagAlongFee := viper.GetUint64("tag-along.fee")
 	if tagAlongFee < minimumFee {
 		tagAlongFee = defaultTagAlongFee
@@ -73,7 +72,7 @@ func runMakeChainCmd(_ *cobra.Command, args []string) {
 		return false
 	})
 
-	_, chainID, err := getClient().MakeChainOrigin(client.TransferFromED25519WalletParams{
+	txCtx, chainID, err := getClient().MakeChainOrigin(client.TransferFromED25519WalletParams{
 		WalletPrivateKey: wallet.PrivateKey,
 		TagAlongSeqID:    tagAlongSeqID,
 		TagAlongFee:      tagAlongFee,
@@ -81,5 +80,8 @@ func runMakeChainCmd(_ *cobra.Command, args []string) {
 		Target:           target.AsLock(),
 	})
 	glb.AssertNoError(err)
-	glb.Infof("new chain ID is %s", chainID.String())
+	glb.Infof("new chain ID will be %s", chainID.String())
+	if !NoWait() {
+		waitForInclusion(txCtx.OutputID(0))
+	}
 }

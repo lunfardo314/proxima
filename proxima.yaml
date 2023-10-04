@@ -40,7 +40,7 @@ sequencers:
     enable: true
     loglevel: info
     trace_tippool: false
-    sequencer_id:
+    sequencer_id: 41341247d3a52b0d2429dd7b4c6de86458fd4779523a849f31361383061295be
     controller_key: 136381bd4dea7b2f0fa6c6ca14ee660dc7929975b47e6cdb85adee9e26032a810530b790e0e7de626f36e20ba656f09e324c68203de899d0daf9f98fcb3cf684
     pace: 5
     max_fee_inputs: 50

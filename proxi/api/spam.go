@@ -188,17 +188,6 @@ func standardScenario(cfg spammerConfig) {
 	}
 }
 
-func allIncluded(incl []api.InclusionData) bool {
-	glb.Assertf(len(incl) > 0, "len(incl)>0")
-
-	for i := range incl {
-		if !incl[i].Included {
-			return false
-		}
-	}
-	return true
-}
-
 func maxTimestamp(outs []*core.OutputWithID) (ret core.LogicalTime) {
 	for _, o := range outs {
 		ret = core.MaxLogicalTime(ret, o.Timestamp())

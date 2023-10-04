@@ -21,6 +21,10 @@ func Init(rootCmd *cobra.Command) {
 	err := viper.BindPFlag("api.endpoint", apiCmd.PersistentFlags().Lookup("api.endpoint"))
 	glb.AssertNoError(err)
 
+	apiCmd.PersistentFlags().BoolP("nowait", "n", false, "do not wait for inclusion")
+	err = viper.BindPFlag("nowait", apiCmd.PersistentFlags().Lookup("nowait"))
+	glb.AssertNoError(err)
+
 	apiCmd.InitDefaultHelpCmd()
 	initGetOutputsCmd(apiCmd)
 	initGetUTXOCmd(apiCmd)
@@ -65,4 +69,24 @@ func displayTotals(outs []*core.OutputWithID) {
 
 func getTagAlongFee() uint64 {
 	return viper.GetUint64("tag-along.fee")
+}
+
+func GetTagAlongSequencerID() *core.ChainID {
+	seqIDStr := viper.GetString("tag-along.sequencer")
+	if seqIDStr == "" {
+		return nil
+	}
+	ret, err := core.ChainIDFromHexString(seqIDStr)
+	glb.AssertNoError(err)
+
+	o, err := getClient().GetChainOutputData(ret)
+	glb.AssertNoError(err)
+	glb.Assertf(o.ID.IsSequencerTransaction(), "can't get tag-along sequencer %s: chain output %s is not a sequencer output",
+		ret.Short(), o.ID.Short())
+
+	return &ret
+}
+
+func NoWait() bool {
+	return viper.GetBool("nowait")
 }

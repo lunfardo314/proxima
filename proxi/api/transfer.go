@@ -6,11 +6,12 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/lunfardo314/proxima/api"
 	"github.com/lunfardo314/proxima/api/client"
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/proxi/glb"
+	"github.com/lunfardo314/proxima/util"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 )
 
 func initTransferCmd(apiCmd *cobra.Command) {
@@ -20,10 +21,6 @@ func initTransferCmd(apiCmd *cobra.Command) {
 		Args:  cobra.ExactArgs(1),
 		Run:   runTransferCmd,
 	}
-
-	apiCmd.PersistentFlags().BoolP("wait", "w", false, "wait for inclusion")
-	err := viper.BindPFlag("wait", apiCmd.PersistentFlags().Lookup("wait"))
-	glb.AssertNoError(err)
 
 	transferCmd.InitDefaultHelpCmd()
 	apiCmd.AddCommand(transferCmd)
@@ -41,7 +38,7 @@ func runTransferCmd(_ *cobra.Command, args []string) {
 	var tagAlongSeqID *core.ChainID
 	feeAmount := getTagAlongFee()
 	if feeAmount > 0 {
-		tagAlongSeqID = glb.GetTagAlongSequencerID()
+		tagAlongSeqID = GetTagAlongSequencerID()
 		glb.Assertf(tagAlongSeqID != nil, "tag-along sequencer not specified")
 
 		md, err := getClient().GetMilestoneDataFromHeaviestState(*tagAlongSeqID)
@@ -77,31 +74,43 @@ func runTransferCmd(_ *cobra.Command, args []string) {
 	glb.Assertf(txCtx != nil, "inconsistency: txCtx == nil")
 	glb.Infof("transaction submitted successfully")
 
-	if !viper.GetBool("wait") {
+	if NoWait() {
 		return
 	}
-	glb.Infof("Tracking inclusion state:")
-	startTime := time.Now()
-	time.Sleep(1 * time.Second)
-	for {
-		oid := txCtx.OutputID(0)
-		glb.Infof("Inclusion state in %.1f seconds:", time.Since(startTime).Seconds())
-		inclusion, err := getClient().GetOutputInclusion(&oid)
-		glb.AssertNoError(err)
+	waitForInclusion(txCtx.OutputID(0))
+}
 
-		displayInclusionState(inclusion)
-		time.Sleep(1 * time.Second)
+func allIncluded(incl []api.InclusionData) bool {
+	glb.Assertf(len(incl) > 0, "len(incl)>0")
 
-		allIncluded := true
-		for i := range inclusion {
-			if !inclusion[i].Included {
-				allIncluded = false
-				break
-			}
-		}
-		if allIncluded {
-			glb.Infof("full inclusion reached")
-			os.Exit(0)
+	for i := range incl {
+		if !incl[i].Included {
+			return false
 		}
 	}
+	return true
+}
+
+func waitForInclusion(oid core.OutputID) {
+	glb.Infof("Tracking inclusion of %s:", oid.Short())
+	startTime := time.Now()
+	time.Sleep(1 * time.Second)
+
+	var inclusionData []api.InclusionData
+	var err error
+
+	util.DoUntil(func() {
+		glb.Infof("Inclusion state in %.1f seconds:", time.Since(startTime).Seconds())
+		inclusionData, err = getClient().GetOutputInclusion(&oid)
+		glb.AssertNoError(err)
+
+		displayInclusionState(inclusionData)
+	}, func() bool {
+		if allIncluded(inclusionData) {
+			glb.Infof("full inclusion reached")
+			return true
+		}
+		time.Sleep(1 * time.Second)
+		return false
+	})
 }

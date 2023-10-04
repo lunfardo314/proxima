@@ -85,16 +85,6 @@ func GetOwnSequencerID() *core.ChainID {
 	return &ret
 }
 
-func GetTagAlongSequencerID() *core.ChainID {
-	seqIDStr := viper.GetString("tag-along.sequencer")
-	if seqIDStr == "" {
-		return nil
-	}
-	ret, err := core.ChainIDFromHexString(seqIDStr)
-	AssertNoError(err)
-	return &ret
-}
-
 func BypassYesNoPrompt() bool {
 	return viper.GetBool("force")
 }

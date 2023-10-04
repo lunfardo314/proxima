@@ -27,9 +27,7 @@ func runCompactCmd(_ *cobra.Command, _ []string) {
 	var tagAlongSeqID *core.ChainID
 	feeAmount := getTagAlongFee() // 0 interpreted as no fee output
 	if feeAmount > 0 {
-		tagAlongSeqID = glb.GetTagAlongSequencerID()
-		glb.Assertf(tagAlongSeqID != nil, "tag-along sequencer not specified")
-
+		tagAlongSeqID = GetTagAlongSequencerID()
 		md, err := getClient().GetMilestoneDataFromHeaviestState(*tagAlongSeqID)
 		glb.AssertNoError(err)
 
@@ -77,4 +75,7 @@ func runCompactCmd(_ *cobra.Command, _ []string) {
 		glb.AssertNoError(err)
 	}
 	glb.Infof("Success: %d outputs have been compacted into one", txCtx.NumInputs())
+	if !NoWait() {
+		waitForInclusion(txCtx.OutputID(0))
+	}
 }
