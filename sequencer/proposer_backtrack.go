@@ -49,8 +49,7 @@ func (b *backtrackProposer) run() {
 		return
 	}
 
-	b.trace("RUNNING with %s to endorse:", b.endorse.IDShort())
-	b.trace("own forks in another ms:\n%s", milestoneSliceString(b.extensionChoices))
+	b.trace("RUN: preliminary extension choices in the endorsement target %s:\n%s", b.endorse.IDShort(), milestoneSliceString(b.extensionChoices))
 
 	for _, ms := range b.extensionChoices {
 		if !b.factory.proposal.continueCandidateProposing(b.targetTs) {

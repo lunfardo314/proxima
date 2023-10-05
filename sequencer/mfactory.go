@@ -432,16 +432,16 @@ func (mf *milestoneFactory) futureConeMilestonesOrdered(rootVID *utangle.Wrapped
 }
 
 // ownForksInAnotherSequencerPastCone sorted by coverage descending
-func (mf *milestoneFactory) ownForksInAnotherSequencerPastCone(anotherSeqVertex *utangle.WrappedTx, p proposerTask) []utangle.WrappedOutput {
-	stateRdr, available := mf.tangle.StateReaderOfSequencerMilestone(anotherSeqVertex)
+func (mf *milestoneFactory) ownForksInAnotherSequencerPastCone(anotherSeqMs *utangle.WrappedTx, p proposerTask) []utangle.WrappedOutput {
+	stateRdr, available := mf.tangle.StateReaderOfSequencerMilestone(anotherSeqMs)
 	if !available {
-		p.trace("state reader not available for vertex %s", anotherSeqVertex.IDShort())
+		mf.log.Warnf("ownForksInAnotherSequencerPastCone: state reader not available for vertex %s", anotherSeqMs.IDShort())
 		return nil
 	}
 	rootOutput, err := stateRdr.GetChainOutput(&mf.tipPool.chainID)
 	if errors.Is(err, multistate.ErrNotFound) {
 		// cannot find own seqID in the state of anotherSeqID. The tree is empty
-		p.trace("cannot find own seqID %s in the state of another seq %s. The tree is empty", mf.tipPool.chainID.Short(), anotherSeqVertex.IDShort())
+		p.trace("cannot find own seqID %s in the state of another seq %s. The tree is empty", mf.tipPool.chainID.Short(), anotherSeqMs.IDShort())
 		return nil
 	}
 	util.AssertNoError(err)

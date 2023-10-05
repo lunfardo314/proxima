@@ -180,7 +180,8 @@ func (ut *UTXOTangle) isValidBranch(br *WrappedTx) bool {
 	return found
 }
 
-// GetBaseStateRootOfSequencerMilestone returns root of the base state of the sequencer milestone, if possible
+// GetBaseStateRootOfSequencerMilestone returns root of the base state of the sequencer milestone, if possible.
+// If returned, the root must be deterministic on every node and for every sequencer
 func (ut *UTXOTangle) GetBaseStateRootOfSequencerMilestone(vSeq *WrappedTx) (common.VCommitment, bool) {
 	if !vSeq.IsSequencerMilestone() {
 		return nil, false
@@ -214,6 +215,7 @@ func (ut *UTXOTangle) GetBaseStateRootOfSequencerMilestone(vSeq *WrappedTx) (com
 	return br.root, true
 }
 
+// StateReaderOfSequencerMilestone state for the sequencer milestone. Must be deterministic on every node and every sequencer
 func (ut *UTXOTangle) StateReaderOfSequencerMilestone(vid *WrappedTx) (multistate.SugaredStateReader, bool) {
 	util.Assertf(vid.IsSequencerMilestone(), "StateReaderOfSequencerMilestone: must be sequencer milestone")
 	root, available := ut.GetBaseStateRootOfSequencerMilestone(vid)
