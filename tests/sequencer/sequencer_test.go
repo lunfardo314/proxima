@@ -58,7 +58,7 @@ func TestMax(t *testing.T) {
 }
 
 func initSequencerTestData(t *testing.T, nFaucets, nAdditionalChains int, logicalNow core.LogicalTime, workflowOpt ...workflow.ConfigOption) *sequencerTestData {
-	core.SetTimeTickDuration(10 * time.Millisecond)
+	core.SetTimeTickDuration(20 * time.Millisecond)
 
 	require.True(t, nFaucets >= 0)
 	t.Logf("time tick duration: %v, time slot duration: %v", core.TimeTickDuration(), core.TimeSlotDuration())
@@ -621,7 +621,7 @@ func (r *sequencerTestData) issueTransfersWithSeqID(targetAddress core.Lock, tar
 func TestNSequencers(t *testing.T) {
 	t.Run("2 seq", func(t *testing.T) {
 		const (
-			maxSlots              = 20
+			maxSlots              = 40
 			numFaucets            = 1
 			numFaucetTransactions = 1
 			maxTxInputs           = 100

@@ -213,7 +213,7 @@ func SaveGraphFromVertexSet(vertices set.Set[*WrappedTx], fname string) {
 
 var _branchNodeAttributes = []func(*graph.VertexProperties){
 	fontsizeAttribute,
-	graph.VertexAttribute("colorscheme", "blues3"),
+	graph.VertexAttribute("colorscheme", "accent8"),
 	graph.VertexAttribute("style", "filled"),
 	graph.VertexAttribute("color", "2"),
 	graph.VertexAttribute("fillcolor", "1"),
@@ -250,7 +250,7 @@ func MakeTree(stateStore general.StateStore, slots ...int) graph.Graph[string, s
 		byOid[b.Stem.ID] = b
 		txid := b.Stem.ID.TransactionID()
 		id := txid.Short()
-		err := ret.AddVertex(id, branchNodeAttributes(&b.SequencerID, 0, idDict)...)
+		err := ret.AddVertex(id, branchNodeAttributes(&b.SequencerID, b.Coverage, idDict)...)
 		util.AssertNoError(err)
 	}
 
@@ -258,7 +258,7 @@ func MakeTree(stateStore general.StateStore, slots ...int) graph.Graph[string, s
 		txid := b.Stem.ID.TransactionID()
 		id := txid.Short()
 		stemLock, stemLockFound := b.Stem.Output.StemLock()
-		util.Assertf(stemLockFound, "stem lock not fond")
+		util.Assertf(stemLockFound, "stem lock not found")
 
 		if pred, ok := byOid[stemLock.PredecessorOutputID]; ok {
 			txid := pred.Stem.ID.TransactionID()
