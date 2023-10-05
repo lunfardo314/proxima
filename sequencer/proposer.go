@@ -195,8 +195,9 @@ func (c *proposerTaskGeneric) placeProposalIfRelevant(mdProposed *milestoneWithD
 			baselineCoverage := c.factory.proposal.bestSoFar.VID.LedgerCoverage()
 
 			if proposedCoverage <= baselineCoverage {
-				return fmt.Sprintf("%s SKIPPED: no increase in coverage %s <- %s)",
-					mdProposed.IDShort(), util.GoThousands(proposedCoverage), util.GoThousands(baselineCoverage))
+				return fmt.Sprintf("%s SKIPPED: no increase in coverage %s <- %s of %s)",
+					mdProposed.IDShort(), util.GoThousands(proposedCoverage),
+					util.GoThousands(baselineCoverage), c.factory.proposal.bestSoFar.VID.IDShort())
 			}
 		}
 	}

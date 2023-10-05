@@ -829,7 +829,6 @@ func TestNSequencers(t *testing.T) {
 		totalAmountToTargetAddress := uint64(0)
 		branchCount := 0
 		r.bootstrapSeq.OnMilestoneSubmitted(func(seq *sequencer.Sequencer, wOut *utangle.WrappedOutput) {
-			seq.LogMilestoneSubmitDefault(wOut)
 			cnt++
 			if seq.Info().NumConsumedFeeOutputs >= numTxPerFaucet*numFaucets {
 				allFeeInputsConsumed.Store(true)
@@ -917,7 +916,6 @@ func TestNSequencers(t *testing.T) {
 		branchesAfterAllConsumed := 0
 		cnt := 0
 		r.bootstrapSeq.OnMilestoneSubmitted(func(seq *sequencer.Sequencer, wOut *utangle.WrappedOutput) {
-			seq.LogMilestoneSubmitDefault(wOut)
 			cnt++
 			if seq.Info().NumConsumedFeeOutputs >= numFaucetTransactions*numFaucets {
 				allFeeInputsConsumed.Store(true)

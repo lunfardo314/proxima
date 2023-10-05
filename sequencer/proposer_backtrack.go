@@ -66,31 +66,32 @@ func (b *backtrackProposer) run() {
 
 func (b *backtrackProposer) generateCandidate(extend utangle.WrappedOutput) *transaction.Transaction {
 	util.Assertf(extend.VID != b.endorse, "extend.VID != b.endorse")
-	if extend.VID.IsBranchTransaction() && b.endorse.IsBranchTransaction() {
-		// cannot extend one branch and endorse another TODO
-		return nil
-	}
+	//if extend.VID.IsBranchTransaction() && b.endorse.IsBranchTransaction() {
+	//	// cannot extend one branch and endorse another TODO
+	//	b.trace("CANNOT extend branch tx %s and endorse another branch %s", extend.VID.IDShort(), b.endorse.IDShort())
+	//	return nil
+	//}
 
-	b.trace("trying extend %s to endorse %s", extend.VID.IDShort(), b.endorse.IDShort())
+	b.trace("trying to extend %s with endorsement target %s", extend.IDShort(), b.endorse.IDShort())
 
 	targetDelta, conflict, consumer := b.endorse.StartNextSequencerMilestoneDelta(extend.VID)
 	if conflict != nil {
-		b.trace("CANNOT extend %s to endorse: %s due to %s (consumer %s)",
-			extend.VID.IDShort(), b.endorse.IDShort(), conflict.DecodeID().Short(), consumer.IDShort())
+		b.trace("CANNOT extend %s with endorsement target %s due to %s (consumer %s)",
+			extend.IDShort(), b.endorse.IDShort(), conflict.DecodeID().Short(), consumer.IDShort())
 		return nil
 	}
 	if targetDelta == nil {
-		b.trace("CANNOT generate candidate: %s or %s has been orphaned", extend.VID.IDShort(), b.endorse.IDShort())
+		b.trace("CANNOT generate candidate: %s or %s has been orphaned", extend.IDShort(), b.endorse.IDShort())
 		return nil
 	}
 
 	if !targetDelta.CanBeConsumedBySequencer(extend, b.factory.tangle) {
 		// past cones are not conflicting but the output itself is already consumed
-		b.trace("CANNOT extend %s (is already consumed) to endorse: %s", extend.VID.IDShort(), b.endorse.IDShort())
+		b.trace("CANNOT extend %s (is already consumed) with endorsement target %s", extend.IDShort(), b.endorse.IDShort())
 		return nil
 	}
 
-	b.trace("CAN extend %s to endorse: %s", extend.VID.IDShort(), b.endorse.IDShort())
+	b.trace("CAN extend %s with endorsement target %s", extend.IDShort(), b.endorse.IDShort())
 
 	feeOutputsToConsume := b.factory.selectFeeInputs(targetDelta, b.targetTs)
 	return b.makeMilestone(&extend, nil, feeOutputsToConsume, util.List(b.endorse))
