@@ -69,7 +69,7 @@ func makeGraphNode(vid *WrappedTx, gr graph.Graph[string, string], seqDict map[c
 	vid.Unwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
 			if v.Tx.IsSequencerMilestone() {
-				attr = sequencerNodeAttributes(v, vid.LedgerCoverage(TipSlots), seqDict)
+				attr = sequencerNodeAttributes(v, vid.LedgerCoverage(), seqDict)
 			}
 			if v.Tx.IsBranchTransaction() {
 				attr = append(attr, graph.VertexAttribute("shape", "box"))

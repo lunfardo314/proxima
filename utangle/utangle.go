@@ -110,7 +110,7 @@ func (ut *UTXOTangle) InfoLines(verbose ...bool) *lines.Lines {
 		ln.Add("---- slot %8d : branches: %d", e, len(branches))
 		for _, vid := range branches {
 			br := ut.branches[e][vid]
-			coverage := vid.LedgerCoverage(TipSlots)
+			coverage := vid.LedgerCoverage()
 			seqID, isAvailable := vid.SequencerIDIfAvailable()
 			util.Assertf(isAvailable, "sequencer ID expected in %s", vid.IDShort())
 			ln.Add("    branch %s, seqID: %s, coverage: %s", vid.IDShort(), seqID.Short(), util.GoThousands(coverage))
@@ -295,9 +295,9 @@ func (ut *UTXOTangle) forEachBranchSorted(e core.TimeSlot, fun func(vid *Wrapped
 
 	vids := util.SortKeys(branches, func(vid1, vid2 *WrappedTx) bool {
 		if desc {
-			return vid1.LedgerCoverage(TipSlots) > vid2.LedgerCoverage(TipSlots)
+			return vid1.LedgerCoverage() > vid2.LedgerCoverage()
 		}
-		return vid1.LedgerCoverage(TipSlots) < vid2.LedgerCoverage(TipSlots)
+		return vid1.LedgerCoverage() < vid2.LedgerCoverage()
 	})
 	for _, vid := range vids {
 		if !fun(vid, branches[vid]) {

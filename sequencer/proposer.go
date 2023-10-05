@@ -191,8 +191,8 @@ func (c *proposerTaskGeneric) placeProposalIfRelevant(mdProposed *milestoneWithD
 	if !mdProposed.VID.IsBranchTransaction() {
 		// if not branch, check if it increases coverage
 		if c.factory.proposal.bestSoFar != nil {
-			proposedCoverage := mdProposed.VID.LedgerCoverage(utangle.TipSlots)
-			baselineCoverage := c.factory.proposal.bestSoFar.VID.LedgerCoverage(utangle.TipSlots)
+			proposedCoverage := mdProposed.VID.LedgerCoverage()
+			baselineCoverage := c.factory.proposal.bestSoFar.VID.LedgerCoverage()
 
 			if proposedCoverage <= baselineCoverage {
 				return fmt.Sprintf("%s SKIPPED: no increase in coverage %s <- %s)",
@@ -205,11 +205,11 @@ func (c *proposerTaskGeneric) placeProposalIfRelevant(mdProposed *milestoneWithD
 
 	var baselineCoverage uint64
 	if c.factory.proposal.bestSoFar != nil {
-		baselineCoverage = c.factory.proposal.bestSoFar.VID.LedgerCoverage(utangle.TipSlots)
+		baselineCoverage = c.factory.proposal.bestSoFar.VID.LedgerCoverage()
 	}
 	c.factory.proposal.current = &mdProposed.WrappedOutput
 	c.factory.proposal.bestSoFar = c.factory.proposal.current
-	ledgerCoverageProposed := c.factory.proposal.current.VID.LedgerCoverage(utangle.TipSlots)
+	ledgerCoverageProposed := c.factory.proposal.current.VID.LedgerCoverage()
 
 	c.trace("(%s): ACCEPTED %s, coverage: %s (base: %s), elapsed: %v/%v, inputs: %d, tipPool: %d",
 		mdProposed.proposedBy,
@@ -235,8 +235,8 @@ func isPreferredMilestoneAgainstTheOther(vid1, vid2 *utangle.WrappedTx) bool {
 		return true
 	}
 
-	coverage1 := vid1.LedgerCoverage(utangle.TipSlots)
-	coverage2 := vid2.LedgerCoverage(utangle.TipSlots)
+	coverage1 := vid1.LedgerCoverage()
+	coverage2 := vid2.LedgerCoverage()
 	switch {
 	case coverage1 > coverage2:
 		return true
