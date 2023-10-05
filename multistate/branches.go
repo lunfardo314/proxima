@@ -197,3 +197,59 @@ func FetchLatestBranches(store general.StateStore) []*BranchData {
 		return ret[i].Coverage > ret[j].Coverage
 	})
 }
+
+func FetchHeaviestBranchChainNSlotsBack(store general.StateStore, nBack int) []*BranchData {
+	rootData := make(map[core.TransactionID]RootData)
+	latestSlot := FetchLatestSlot(store)
+	//insertRootData := func(stemOid core.OutputID, rd RootData) {
+	//	rootData[stemOid.TransactionID()] = rd
+	//}
+
+	if nBack < 0 {
+		IterateRootRecords(store, func(stemOid core.OutputID, rd RootData) bool {
+			rootData[stemOid.TransactionID()] = rd
+			return true
+		})
+	} else {
+		IterateRootRecords(store, func(stemOid core.OutputID, rd RootData) bool {
+			rootData[stemOid.TransactionID()] = rd
+			return true
+		}, util.MakeRange(latestSlot-core.TimeSlot(nBack), latestSlot)...)
+	}
+
+	sortedTxIDs := util.SortKeys(rootData, func(k1, k2 core.TransactionID) bool {
+		return k1.TimeSlot() > k2.TimeSlot()
+	})
+
+	latestBD := FetchLatestBranches(store)
+	var heaviestBD *BranchData
+
+	for _, bd := range latestBD {
+		if heaviestBD == nil || heaviestBD.Coverage < bd.Coverage {
+			heaviestBD = bd
+		}
+	}
+
+	ret := make([]*BranchData, 0)
+	lastInTheChain := heaviestBD
+	ret = append(ret, lastInTheChain)
+
+	for _, txid := range sortedTxIDs {
+		rd := rootData[txid]
+		bd := FetchBranchDataByRoot(store, rd)
+
+		if bd.SeqOutput.ID.TimeSlot() == lastInTheChain.Stem.ID.TimeSlot() {
+			continue
+		}
+		util.Assertf(bd.SeqOutput.ID.TimeSlot() < lastInTheChain.Stem.ID.TimeSlot(), "bd.SeqOutput.ID.TimeSlot() < lastInTheChain.TimeSlot()")
+
+		stemLock, ok := lastInTheChain.Stem.Output.StemLock()
+		util.Assertf(ok, "stem out[ut expected")
+
+		if stemLock.PredecessorOutputID == lastInTheChain.Stem.ID {
+			ret = append(ret, &bd)
+			lastInTheChain = &bd
+		}
+	}
+	return ret
+}
