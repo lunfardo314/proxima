@@ -168,7 +168,7 @@ func (seq *Sequencer) ensureSequencerStartOutput() (utangle.WrappedOutput, bool,
 		return utangle.WrappedOutput{}, false, err
 	}
 	util.Assertf(vid.IsSequencerMilestone(), "vid.IsSequencerMilestone()")
-	return *vid.SequencerOutput(), true, nil
+	return *vid.MustSequencerOutput(), true, nil
 }
 
 func (mf *milestoneFactory) trace(format string, args ...any) {

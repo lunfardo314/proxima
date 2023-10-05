@@ -155,7 +155,7 @@ func (c *proposerTaskGeneric) assessAndAcceptProposal(tx *transaction.Transactio
 		return
 	}
 	msData := &milestoneWithData{
-		WrappedOutput:     *vid.SequencerOutput(),
+		WrappedOutput:     *vid.MustSequencerOutput(),
 		elapsed:           time.Since(startTime),
 		makeVertexElapsed: time.Since(makeVertexStartTime),
 		proposedBy:        taskName,
@@ -240,8 +240,10 @@ func isPreferredMilestoneAgainstTheOther(vid1, vid2 *utangle.WrappedTx) bool {
 	coverage2 := vid2.LedgerCoverage()
 	switch {
 	case coverage1 > coverage2:
+		// main preference is by ledger coverage
 		return true
 	case coverage1 == coverage2:
+		// in case of equal coverage hash will be used
 		return bytes.Compare(vid1.ID()[:], vid2.ID()[:]) > 0
 	default:
 		return false

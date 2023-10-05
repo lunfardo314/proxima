@@ -49,7 +49,9 @@ func (b *backtrackProposer) run() {
 		return
 	}
 
-	b.trace("RUN: preliminary extension choices in the endorsement target %s:\n%s", b.endorse.IDShort(), milestoneSliceString(b.extensionChoices))
+	endorseSeqID := b.endorse.MustSequencerID()
+	b.trace("RUN: preliminary extension choices in the endorsement target %s (ms %s):\n%s",
+		endorseSeqID.VeryShort(), b.endorse.IDShort(), milestoneSliceString(b.extensionChoices))
 
 	for _, ms := range b.extensionChoices {
 		if !b.factory.proposal.continueCandidateProposing(b.targetTs) {
@@ -66,13 +68,10 @@ func (b *backtrackProposer) run() {
 
 func (b *backtrackProposer) generateCandidate(extend utangle.WrappedOutput) *transaction.Transaction {
 	util.Assertf(extend.VID != b.endorse, "extend.VID != b.endorse")
-	//if extend.VID.IsBranchTransaction() && b.endorse.IsBranchTransaction() {
-	//	// cannot extend one branch and endorse another TODO
-	//	b.trace("CANNOT extend branch tx %s and endorse another branch %s", extend.VID.IDShort(), b.endorse.IDShort())
-	//	return nil
-	//}
 
-	b.trace("trying to extend %s with endorsement target %s", extend.IDShort(), b.endorse.IDShort())
+	endorseSeqID := b.endorse.MustSequencerID()
+	b.trace("trying to extend %s with endorsement target %s (ms %s)",
+		extend.IDShort(), endorseSeqID.VeryShort(), b.endorse.IDShort())
 
 	targetDelta, conflict, consumer := b.endorse.StartNextSequencerMilestoneDelta(extend.VID)
 	if conflict != nil {
@@ -87,7 +86,8 @@ func (b *backtrackProposer) generateCandidate(extend utangle.WrappedOutput) *tra
 
 	if !targetDelta.CanBeConsumedBySequencer(extend, b.factory.tangle) {
 		// past cones are not conflicting but the output itself is already consumed
-		b.trace("CANNOT extend %s (is already consumed) with endorsement target %s", extend.IDShort(), b.endorse.IDShort())
+		b.trace("CANNOT extend %s (is already consumed) with endorsement target %s (ms %s)",
+			extend.IDShort(), endorseSeqID.VeryShort(), b.endorse.IDShort())
 		return nil
 	}
 
@@ -100,8 +100,9 @@ func (b *backtrackProposer) generateCandidate(extend utangle.WrappedOutput) *tra
 
 func (b *backtrackProposer) calcExtensionChoices() {
 	for {
-		endorsable := b.factory.tipPool.preSelectEndorsableMilestones(b.targetTs)
+		endorsable := b.factory.tipPool.preSelectAndSortEndorsableMilestones(b.targetTs)
 		b.trace("preselected %d milestones", len(endorsable))
+		// assumed order is descending ledger coverage
 		for _, vid := range endorsable {
 			b.extensionChoices = b.factory.ownForksInAnotherSequencerPastCone(vid, b)
 			if len(b.extensionChoices) > 0 {

@@ -132,7 +132,7 @@ func (tp *sequencerTipPool) ChainID() core.ChainID {
 	return tp.chainID
 }
 
-func (tp *sequencerTipPool) preSelectEndorsableMilestones(targetTs core.LogicalTime) []*utangle.WrappedTx {
+func (tp *sequencerTipPool) preSelectAndSortEndorsableMilestones(targetTs core.LogicalTime) []*utangle.WrappedTx {
 	tp.mutex.RLock()
 	defer tp.mutex.RUnlock()
 
@@ -144,7 +144,7 @@ func (tp *sequencerTipPool) preSelectEndorsableMilestones(targetTs core.LogicalT
 		ret = append(ret, ms)
 	}
 	sort.Slice(ret, func(i, j int) bool {
-		return isPreferredMilestoneAgainstTheOther(ret[j], ret[i])
+		return isPreferredMilestoneAgainstTheOther(ret[i], ret[j]) // order is important !!!
 	})
 	return ret
 }

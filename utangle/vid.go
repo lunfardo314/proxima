@@ -250,7 +250,7 @@ func (vid *WrappedTx) SequencerPredecessor() *WrappedTx {
 	return ret
 }
 
-func (vid *WrappedTx) SequencerOutput() *WrappedOutput {
+func (vid *WrappedTx) MustSequencerOutput() *WrappedOutput {
 	if !vid.IsSequencerMilestone() {
 		return nil
 	}
@@ -262,11 +262,8 @@ func (vid *WrappedTx) SequencerOutput() *WrappedOutput {
 			ret.Index = v.Tx.SequencerTransactionData().SequencerOutputIndex
 		},
 		VirtualTx: func(v *VirtualTransaction) {
-			if v.sequencerOutputs != nil {
-				ret.Index = v.sequencerOutputs[0]
-			} else {
-				ret = nil
-			}
+			util.Assertf(v.sequencerOutputs != nil, "sequencer output data not available in virtual tx %s", v.txid.Short())
+			ret.Index = v.sequencerOutputs[0]
 		},
 	})
 	return ret

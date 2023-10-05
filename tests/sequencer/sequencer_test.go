@@ -890,7 +890,7 @@ func TestNSequencers(t *testing.T) {
 	})
 	t.Run("3 seq", func(t *testing.T) {
 		const (
-			maxSlot               = 5
+			maxSlot               = 20
 			numFaucets            = 1
 			numFaucetTransactions = 1
 			maxTxInputs           = 200
@@ -908,7 +908,7 @@ func TestNSequencers(t *testing.T) {
 		require.NoError(t, err)
 		t.Logf("chain origins transaction has been added to the tangle: %s", r.txChainOrigins.IDShort())
 
-		sequencer.SetTraceProposer(sequencer.BacktrackProposerName, true)
+		sequencer.SetTraceProposer(sequencer.BacktrackProposerName, false)
 
 		r.createSequencers(maxTxInputs, maxSlot, 5, zapcore.InfoLevel, !tagAlong)
 
