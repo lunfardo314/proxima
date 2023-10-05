@@ -76,6 +76,6 @@ func runCompactCmd(_ *cobra.Command, _ []string) {
 	}
 	glb.Infof("Success: %d outputs have been compacted into one", txCtx.NumInputs())
 	if !NoWait() {
-		waitForInclusion(txCtx.OutputID(0))
+		glb.AssertNoError(waitForInclusion(txCtx.OutputID(0)))
 	}
 }

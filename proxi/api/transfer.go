@@ -77,7 +77,7 @@ func runTransferCmd(_ *cobra.Command, args []string) {
 	if NoWait() {
 		return
 	}
-	waitForInclusion(txCtx.OutputID(0))
+	glb.AssertNoError(waitForInclusion(txCtx.OutputID(0)))
 }
 
 func allIncluded(incl []api.InclusionData) bool {
@@ -91,9 +91,15 @@ func allIncluded(incl []api.InclusionData) bool {
 	return true
 }
 
-func waitForInclusion(oid core.OutputID) {
+func waitForInclusion(oid core.OutputID, timeout ...time.Duration) error {
 	glb.Infof("Tracking inclusion of %s:", oid.Short())
 	startTime := time.Now()
+	var deadline time.Time
+	if len(timeout) > 0 {
+		deadline = startTime.Add(timeout[0])
+	} else {
+		deadline = startTime.Add(2 * time.Minute)
+	}
 	time.Sleep(1 * time.Second)
 
 	var inclusionData []api.InclusionData
@@ -110,7 +116,12 @@ func waitForInclusion(oid core.OutputID) {
 			glb.Infof("full inclusion reached")
 			return true
 		}
+		if time.Now().After(deadline) {
+			err = fmt.Errorf("waitForInclusion: timeout")
+			return true
+		}
 		time.Sleep(1 * time.Second)
 		return false
 	})
+	return err
 }
