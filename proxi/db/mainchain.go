@@ -30,20 +30,13 @@ func runMainChainCmd(_ *cobra.Command, args []string) {
 	fname := viper.GetString("output")
 
 	makeFile := fname != ""
-	if makeFile {
-		glb.Infof("output file is %s", fname)
-	} else {
-		glb.Infof("main chain data wont be written to a file")
-	}
 
 	dbName := GetMultiStateStoreName()
 	if dbName == "(not set)" {
 		makeFile = false
 	}
-	stateDb := badger_adaptor.MustCreateOrOpenBadgerDB(dbName)
-	defer stateDb.Close()
-
-	stateStore := badger_adaptor.New(stateDb)
+	stateStore := badger_adaptor.New(badger_adaptor.MustCreateOrOpenBadgerDB(dbName))
+	defer stateStore.Close()
 
 	mainBranches := multistate.FetchHeaviestBranchChainNSlotsBack(stateStore, -1)
 	if makeFile {
@@ -64,7 +57,9 @@ func runMainChainCmd(_ *cobra.Command, args []string) {
 	for _, bd := range mainBranches {
 		sd := bySeqID[bd.SequencerID]
 		sd.numOccurrences++
-		sd.onChainBalance = bd.SeqOutput.Output.Amount()
+		if sd.onChainBalance == 0 {
+			sd.onChainBalance = bd.SeqOutput.Output.Amount()
+		}
 		bySeqID[bd.SequencerID] = sd
 	}
 	sorted := util.SortKeys(bySeqID, func(k1, k2 core.ChainID) bool {
@@ -73,7 +68,8 @@ func runMainChainCmd(_ *cobra.Command, args []string) {
 	glb.Infof("stats by sequencer ID:")
 	for _, k := range sorted {
 		sd := bySeqID[k]
-		glb.Infof("%s  %8d       %d", k.Short(), sd.numOccurrences, sd.onChainBalance)
+		glb.Infof("%s  %8d (%2d%%)       %s", k.Short(),
+			sd.numOccurrences, (100*sd.numOccurrences)/len(mainBranches), util.GoThousands(sd.onChainBalance))
 	}
 
 }
