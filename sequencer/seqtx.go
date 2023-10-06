@@ -41,7 +41,7 @@ type (
 	// MilestoneData data which is on sequencer as 'or(..)' constraint. It is not enforced by the ledger, yet maintained
 	// by the sequencer
 	MilestoneData struct {
-		Description  string // < 256
+		Name         string // < 256
 		MinimumFee   uint64
 		ChainHeight  uint32
 		BranchHeight uint32
@@ -114,7 +114,7 @@ func MakeSequencerTransaction(par MakeSequencerTransactionParams) ([]byte, error
 		outData := ParseMilestoneData(par.ChainInput.Output)
 		if outData == nil {
 			outData = &MilestoneData{
-				Description:  par.SeqName,
+				Name:         par.SeqName,
 				MinimumFee:   par.MinimumFee,
 				BranchHeight: 0,
 				ChainHeight:  0,
@@ -124,6 +124,7 @@ func MakeSequencerTransaction(par MakeSequencerTransactionParams) ([]byte, error
 			if par.StemInput != nil {
 				outData.BranchHeight += 1
 			}
+			outData.Name = par.SeqName
 		}
 		_, _ = o.PushConstraint(outData.AsConstraint().Bytes())
 	})
@@ -209,7 +210,7 @@ func ParseMilestoneData(o *core.Output) *MilestoneData {
 }
 
 func (od *MilestoneData) AsConstraint() core.Constraint {
-	dscrBin := []byte(od.Description)
+	dscrBin := []byte(od.Name)
 	if len(dscrBin) > 255 {
 		dscrBin = dscrBin[:256]
 	}
@@ -248,7 +249,7 @@ func OutputDataFromConstraint(constr []byte) (*MilestoneData, error) {
 			len(args[0]), len(args[1]), len(args[2]), len(args[3]))
 	}
 	return &MilestoneData{
-		Description:  string(dscrBin),
+		Name:         string(dscrBin),
 		ChainHeight:  binary.BigEndian.Uint32(chainIdxBin),
 		BranchHeight: binary.BigEndian.Uint32(branchIdxBin),
 		MinimumFee:   binary.BigEndian.Uint64(minFeeBin),

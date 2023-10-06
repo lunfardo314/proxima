@@ -7,6 +7,7 @@ import (
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/proxi/glb"
+	"github.com/lunfardo314/proxima/sequencer"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/unitrie/adaptors/badger_adaptor"
 	"github.com/spf13/cobra"
@@ -51,6 +52,7 @@ func runMainChainCmd(_ *cobra.Command, args []string) {
 	type seqData struct {
 		numOccurrences int
 		onChainBalance uint64
+		name           string
 	}
 	bySeqID := make(map[core.ChainID]seqData)
 
@@ -60,6 +62,11 @@ func runMainChainCmd(_ *cobra.Command, args []string) {
 		if sd.onChainBalance == 0 {
 			sd.onChainBalance = bd.SeqOutput.Output.Amount()
 		}
+		if sd.name == "" {
+			if md := sequencer.ParseMilestoneData(bd.SeqOutput.Output); md != nil {
+				sd.name = md.Name
+			}
+		}
 		bySeqID[bd.SequencerID] = sd
 	}
 	sorted := util.SortKeys(bySeqID, func(k1, k2 core.ChainID) bool {
@@ -68,7 +75,7 @@ func runMainChainCmd(_ *cobra.Command, args []string) {
 	glb.Infof("stats by sequencer ID:")
 	for _, k := range sorted {
 		sd := bySeqID[k]
-		glb.Infof("%s  %8d (%2d%%)       %s", k.Short(),
+		glb.Infof("%10s %s  %8d (%2d%%)       %s", sd.name, k.Short(),
 			sd.numOccurrences, (100*sd.numOccurrences)/len(mainBranches), util.GoThousands(sd.onChainBalance))
 	}
 
