@@ -21,6 +21,7 @@ import (
 type (
 	milestoneFactory struct {
 		mutex                       sync.RWMutex
+		seqName                     string
 		log                         *zap.SugaredLogger
 		tangle                      *utangle.UTXOTangle
 		tipPool                     *sequencerTipPool
@@ -94,6 +95,7 @@ func (seq *Sequencer) createMilestoneFactory() error {
 	}
 
 	ret := &milestoneFactory{
+		seqName:       seq.config.SequencerName,
 		log:           log,
 		tangle:        seq.glb.UTXOTangle(),
 		tipPool:       tippool,
@@ -149,6 +151,7 @@ func (seq *Sequencer) ensureSequencerStartOutput() (utangle.WrappedOutput, bool,
 		return utangle.WrappedOutput{}, false, err
 	}
 	txBytes, err := MakeSequencerTransaction(MakeSequencerTransactionParams{
+		SeqName: seq.config.SequencerName,
 		ChainInput: &core.OutputWithChainID{
 			OutputWithID: *chainOutWithID,
 			ChainID:      seq.chainID,
@@ -213,6 +216,7 @@ func (mf *milestoneFactory) makeMilestone(chainIn, stemIn *utangle.WrappedOutput
 		return nil, err
 	}
 	txBytes, err := MakeSequencerTransaction(MakeSequencerTransactionParams{
+		SeqName: mf.seqName,
 		ChainInput: &core.OutputWithChainID{
 			OutputWithID: *chainInReal,
 			ChainID:      mf.tipPool.ChainID(),

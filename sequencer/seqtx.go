@@ -202,7 +202,7 @@ func ParseMilestoneData(o *core.Output) *MilestoneData {
 	if o.NumConstraints() < 5 {
 		return nil
 	}
-	ret, err := OutputDataFromConstraint(o.ConstraintAt(4))
+	ret, err := MilestoneDataFromConstraint(o.ConstraintAt(4))
 	if err != nil {
 		return nil
 	}
@@ -229,23 +229,23 @@ func (od *MilestoneData) AsConstraint() core.Constraint {
 	return constr
 }
 
-func OutputDataFromConstraint(constr []byte) (*MilestoneData, error) {
+func MilestoneDataFromConstraint(constr []byte) (*MilestoneData, error) {
 	sym, _, args, err := easyfl.ParseBytecodeOneLevel(constr)
 	if err != nil {
 		return nil, err
 	}
 	if sym != "or" {
-		return nil, fmt.Errorf("sequencer.OutputDataFromConstraint: unexpected function '%s'", sym)
+		return nil, fmt.Errorf("sequencer.MilestoneDataFromConstraint: unexpected function '%s'", sym)
 	}
 	if len(args) != 4 {
-		return nil, fmt.Errorf("sequencer.OutputDataFromConstraint: expected exactly 4 arguments, got %d", len(args))
+		return nil, fmt.Errorf("sequencer.MilestoneDataFromConstraint: expected exactly 4 arguments, got %d", len(args))
 	}
 	dscrBin := easyfl.StripDataPrefix(args[0])
 	chainIdxBin := easyfl.StripDataPrefix(args[1])
 	branchIdxBin := easyfl.StripDataPrefix(args[2])
 	minFeeBin := easyfl.StripDataPrefix(args[3])
 	if len(chainIdxBin) != 4 || len(branchIdxBin) != 4 || len(minFeeBin) != 8 {
-		return nil, fmt.Errorf("sequencer.OutputDataFromConstraint: unexpected argument sizes %d, %d, %d, %d",
+		return nil, fmt.Errorf("sequencer.MilestoneDataFromConstraint: unexpected argument sizes %d, %d, %d, %d",
 			len(args[0]), len(args[1]), len(args[2]), len(args[3]))
 	}
 	return &MilestoneData{
