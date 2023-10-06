@@ -152,6 +152,10 @@ func (ut *UTXOTangle) GetBranch(vid *WrappedTx) (branch, bool) {
 	return ut.getBranch(vid)
 }
 
+func (ut *UTXOTangle) GetBranchState(vid *WrappedTx) multistate.SugaredStateReader {
+	panic("GetBranchState not implemented")
+}
+
 func (ut *UTXOTangle) getBranch(vid *WrappedTx) (branch, bool) {
 	eb, found := ut.branches[vid.TimeSlot()]
 	if !found {

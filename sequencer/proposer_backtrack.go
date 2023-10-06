@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/utangle"
 	"github.com/lunfardo314/proxima/util"
@@ -84,12 +85,32 @@ func (b *backtrackProposer) generateCandidate(extend utangle.WrappedOutput) *tra
 		return nil
 	}
 
-	if !targetDelta.CanBeConsumedBySequencer(extend, b.factory.tangle) {
+	if !targetDelta.CanBeConsumed(extend, func() (ret multistate.SugaredStateReader) {
+		var ok bool
+		bb := targetDelta.BaselineBranch()
+		if bb != nil {
+			ret, ok = b.factory.tangle.StateReaderOfSequencerMilestone(bb)
+			util.Assertf(ok, "can't get state for the baseline branch %s", bb.IDShort())
+		} else {
+			// TODO if d belongs to a branch, then we must check the branch
+			//util.Panicf("WIP not implemented when baselineBranch == nil")
+			util.Assertf(b.endorse.IsBranchTransaction(), "b.endorse.IsBranchTransaction()")
+			ret = b.factory.tangle.GetBranchState(b.endorse)
+		}
+		return
+	}) {
 		// past cones are not conflicting but the output itself is already consumed
 		b.trace("CANNOT extend %s (is already consumed) with endorsement target %s (ms %s)",
 			extend.IDShort(), endorseSeqID.VeryShort(), b.endorse.IDShort())
 		return nil
 	}
+
+	//if !targetDelta.CanBeConsumedBySequencer(extend, b.factory.tangle) {
+	//	// past cones are not conflicting but the output itself is already consumed
+	//	b.trace("CANNOT extend %s (is already consumed) with endorsement target %s (ms %s)",
+	//		extend.IDShort(), endorseSeqID.VeryShort(), b.endorse.IDShort())
+	//	return nil
+	//}
 
 	b.trace("CAN extend %s with endorsement target %s", extend.IDShort(), b.endorse.IDShort())
 
