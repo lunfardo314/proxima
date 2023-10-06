@@ -7,6 +7,8 @@ import (
 
 const EventsName = "events"
 
+// TODO implement remove handler
+
 type (
 	EventsInputData struct {
 		EventCode eventtype.EventCode
@@ -34,11 +36,8 @@ func (c *EventsConsumer) consume(inp *EventsInputData) {
 	c.glb.handlersMutex.RLock()
 	defer c.glb.handlersMutex.RUnlock()
 
-	lst, ok := c.glb.eventHandlers[inp.EventCode]
-	if ok {
-		for _, h := range lst {
-			h(inp.Arg)
-		}
+	for _, h := range c.glb.eventHandlers[inp.EventCode] {
+		h(inp.Arg)
 	}
 }
 

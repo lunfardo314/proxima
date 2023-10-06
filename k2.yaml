@@ -19,7 +19,7 @@ wallet:
 spammer:
     scenario: standard
     output_amount: 1000
-    submit_nowait: true
+    submit_nowait: false
     pace: 3 # transaction pace in ticks
     bundle_size: 10
     max_transactions: 0 # 0 means no limit

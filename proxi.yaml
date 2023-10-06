@@ -1,7 +1,7 @@
 api:
     endpoint: http://localhost:4000
 config: ""
-force: true
+force: false
 multistate:
     name: proximadb
 sequencer:
@@ -13,7 +13,7 @@ spammer:
     output_amount: 1000
     pace: 3
     scenario: standard
-    submit_nowait: true
+    submit_nowait: false
     tag_along:
         fee: 500
         sequencer: 41341247d3a52b0d2429dd7b4c6de86458fd4779523a849f31361383061295be

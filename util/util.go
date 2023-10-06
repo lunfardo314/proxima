@@ -161,6 +161,9 @@ func RangeReverse[T any](slice []T, fun func(i int, elem T) bool) {
 }
 
 func FilterSlice[T any](slice []T, filter func(el T) bool) []T {
+	if len(slice) == 0 {
+		return slice
+	}
 	ret := slice[:0]
 	for _, el := range slice {
 		if filter(el) {
