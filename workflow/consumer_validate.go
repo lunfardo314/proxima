@@ -40,12 +40,15 @@ func (w *Workflow) initValidateConsumer() {
 }
 
 func (c *ValidateConsumer) consume(inp *ValidateConsumerInputData) {
+	inp.eventCallback(ValidateConsumerName+".in.new", inp.Tx)
+
 	util.Assertf(inp.draftVertex.IsSolid(), "inp.draftVertex.IsSolid()")
 	// will start a worker goroutine or block util worker is available
 	c.workerPool.Work(func() {
 		// will check for conflicts
 		vid, err := utangle.MakeVertex(inp.draftVertex)
 		if err != nil {
+			inp.eventCallback(ValidateConsumerName+".fail", inp.Tx)
 			c.IncCounter("err")
 			c.glb.RejectTransaction(*inp.Tx.ID(), "%v", err)
 			// inform solidifier

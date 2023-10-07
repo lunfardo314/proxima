@@ -416,7 +416,7 @@ func Test1Sequencer(t *testing.T) {
 		t.Logf("additional address: %s", addrs[0].String())
 		for i := 0; i < numFaucetTransactions; i++ {
 			tx := r.makeFaucetTransaction(r.bootstrapChainID, 0, addrs[0], transferAmount)
-			err = r.wrk.TransactionIn(tx.Bytes()) // <- async
+			err = r.wrk.TransactionInAPI(tx.Bytes()) // <- async
 			require.NoError(t, err)
 		}
 		seq.WaitStop()
@@ -494,7 +494,7 @@ func Test1Sequencer(t *testing.T) {
 		for i := 0; i < numFaucets; i++ {
 			for j := 0; j < numFaucetTransactions; j++ {
 				tx := r.makeFaucetTransaction(r.bootstrapChainID, i, addrs[0], transferAmount)
-				err = r.wrk.TransactionIn(tx.Bytes()) // <- async
+				err = r.wrk.TransactionInAPI(tx.Bytes()) // <- async
 				//_, err = r.wrk.TransactionInWaitAppendSyncTx(tx.Bytes()) // sync
 				require.NoError(t, err)
 			}
@@ -594,7 +594,7 @@ func (r *sequencerTestData) issueTransfersRndSeq(targetAddress core.Lock, numFau
 		for j := 0; j < numFaucetTransactions; j++ {
 			targetSeqID := seqIDs[targetSeqIdx]
 			tx := r.makeFaucetTransaction(targetSeqID, i, targetAddress, transferAmount)
-			err := r.wrk.TransactionIn(tx.Bytes()) // <- async
+			err := r.wrk.TransactionInAPI(tx.Bytes()) // <- async
 			//_, err = r.wrk.TransactionInWaitAppendSyncTx(tx.Bytes()) // sync
 			require.NoError(r.t, err)
 			expected[targetSeqID] += feeAmount
@@ -609,7 +609,7 @@ func (r *sequencerTestData) issueTransfersWithSeqID(targetAddress core.Lock, tar
 	for i := 0; i < numFaucets; i++ {
 		for j := 0; j < numFaucetTransactions; j++ {
 			tx := r.makeFaucetTransaction(targetSeqID, i, targetAddress, transferAmount)
-			err := r.wrk.TransactionIn(tx.Bytes()) // <- async
+			err := r.wrk.TransactionInAPI(tx.Bytes()) // <- async
 			//_, err = r.wrk.TransactionInWaitAppendSyncTx(tx.Bytes()) // sync
 			require.NoError(r.t, err)
 			expected[targetSeqID] += feeAmount

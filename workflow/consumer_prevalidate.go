@@ -46,9 +46,13 @@ func (w *Workflow) initPreValidateConsumer() {
 
 // process the input message
 func (c *PreValidateConsumer) consume(inp *PreValidateConsumerInputData) {
+	inp.eventCallback(PreValidateConsumerName+".in", inp.Tx)
+
 	var err error
 	// time bounds are checked if it is not an insider transaction, and it is not in the solidifier pipeline
-	enforceTimeBounds := !inp.insider && !c.glb.solidifyConsumer.IsWaitedTransaction(inp.Tx.ID())
+	enforceTimeBounds := inp.Source == TransactionSourceAPI ||
+		inp.Source == TransactionSourcePeer ||
+		c.glb.solidifyConsumer.IsWaitedTransaction(inp.Tx.ID())
 
 	// transaction is rejected if it is too far in the future wrt the local clock
 	nowis := time.Now()

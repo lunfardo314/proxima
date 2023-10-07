@@ -120,12 +120,12 @@ func TestWorkflowBasic(t *testing.T) {
 		wd := initWorkflowTest(t, 1, core.LogicalTimeNow(), workflow.WithLogLevel(zapcore.DebugLevel))
 		wd.w.SetLogTransactions(true)
 		wd.w.Start()
-		err := wd.w.TransactionIn(nil)
+		err := wd.w.TransactionInAPI(nil)
 		require.Error(t, err)
-		err = wd.w.TransactionIn([]byte("abc"))
+		err = wd.w.TransactionInAPI([]byte("abc"))
 		require.Error(t, err)
 		util.RequirePanicOrErrorWith(t, func() error {
-			return wd.w.TransactionIn([]byte("0000000000"))
+			return wd.w.TransactionInAPI([]byte("0000000000"))
 		}, "basic parse failed")
 		time.Sleep(1000 * time.Millisecond)
 		wd.w.Stop()
@@ -194,7 +194,7 @@ func TestWorkflow(t *testing.T) {
 			txBytes, err := wd.makeTxFromFaucet(100+uint64(i), wd.distributionAddrs[0])
 			require.NoError(t, err)
 
-			err = wd.w.TransactionIn(txBytes)
+			err = wd.w.TransactionInAPI(txBytes)
 			require.NoError(t, err)
 		}
 		err = waitCounter.Wait()
@@ -235,7 +235,7 @@ func TestWorkflow(t *testing.T) {
 
 		for i := 0; i < numRuns; i++ {
 			for j := range txBytes {
-				err = wd.w.TransactionIn(txBytes[j])
+				err = wd.w.TransactionInAPI(txBytes[j])
 				require.NoError(t, err)
 			}
 		}
@@ -276,7 +276,7 @@ func TestWorkflow(t *testing.T) {
 			txBytes, err := wd.makeTxFromFaucet(100+uint64(i), wd.distributionAddrs[0])
 			require.NoError(t, err)
 
-			err = wd.w.TransactionIn(txBytes)
+			err = wd.w.TransactionInAPI(txBytes)
 			require.NoError(t, err)
 		}
 		err = waitCounter.Wait()
@@ -300,7 +300,7 @@ func TestSolidifier(t *testing.T) {
 		require.NoError(t, err)
 
 		wd.w.Start()
-		err = wd.w.TransactionIn(txBytes)
+		err = wd.w.TransactionInAPI(txBytes)
 		require.NoError(t, err)
 
 		err = cd.Wait()
@@ -327,7 +327,7 @@ func TestSolidifier(t *testing.T) {
 		}
 		wd.w.Start()
 		for i := range txBytes {
-			err = wd.w.TransactionIn(txBytes[i])
+			err = wd.w.TransactionInAPI(txBytes[i])
 			require.NoError(t, err)
 		}
 		err = cd.Wait()
@@ -353,7 +353,7 @@ func TestSolidifier(t *testing.T) {
 		}
 		wd.w.Start()
 		for i := len(txBytes) - 1; i >= 0; i-- {
-			err = wd.w.TransactionIn(txBytes[i])
+			err = wd.w.TransactionInAPI(txBytes[i])
 			require.NoError(t, err)
 		}
 		err = cd.Wait()
@@ -382,7 +382,7 @@ func TestSolidifier(t *testing.T) {
 		}
 		wd.w.Start()
 		for i := len(txBytes) - 1; i >= 0; i-- {
-			err = wd.w.TransactionIn(txBytes[i])
+			err = wd.w.TransactionInAPI(txBytes[i])
 			require.NoError(t, err)
 		}
 		err = cd.Wait()
@@ -423,7 +423,7 @@ func TestSolidifier(t *testing.T) {
 		wd.w.Start()
 		for iSeq := range txSequences {
 			for i := len(txSequences[iSeq]) - 1; i >= 0; i-- {
-				err = wd.w.TransactionIn(txSequences[iSeq][i])
+				err = wd.w.TransactionInAPI(txSequences[iSeq][i])
 				require.NoError(t, err)
 			}
 		}
@@ -1046,7 +1046,7 @@ func TestMultiChainWorkflow(t *testing.T) {
 					t.Logf("branch tx %d : %s", i, transaction.ParseBytesToString(txBytes, r.ut.GetUTXO))
 				}
 			}
-			err = wrk.TransactionIn(txBytes)
+			err = wrk.TransactionInAPI(txBytes)
 			require.NoError(r.t, err)
 		}
 
@@ -1092,7 +1092,7 @@ func TestMultiChainWorkflow(t *testing.T) {
 					t.Logf("branch tx %d : %s", i, transaction.ParseBytesToString(txBytes, r.ut.GetUTXO))
 				}
 			}
-			err = wrk.TransactionIn(txBytes)
+			err = wrk.TransactionInAPI(txBytes)
 			require.NoError(r.t, err)
 		}
 
@@ -1147,7 +1147,7 @@ func TestMultiChainWorkflow(t *testing.T) {
 						t.Logf("branch tx %d : %s", i, transaction.ParseBytesToString(txBytes, r.ut.GetUTXO))
 					}
 				}
-				err = wrk.TransactionIn(txBytes)
+				err = wrk.TransactionInAPI(txBytes)
 				require.NoError(r.t, err)
 			}
 
@@ -1203,7 +1203,7 @@ func TestMultiChainWorkflow(t *testing.T) {
 						t.Logf("branch tx %d : %s", i, transaction.ParseBytesToString(txBytes, r.ut.GetUTXO))
 					}
 				}
-				err = wrk.TransactionIn(txBytes)
+				err = wrk.TransactionInAPI(txBytes)
 				require.NoError(r.t, err)
 			}
 
@@ -1297,11 +1297,11 @@ func TestMultiChainWorkflow(t *testing.T) {
 						t.Logf("branch tx %d : %s", i, transaction.ParseBytesToString(txBytes, r.ut.GetUTXO))
 					}
 				}
-				err = wrk.TransactionIn(txBytes)
+				err = wrk.TransactionInAPI(txBytes)
 				require.NoError(r.t, err)
 			}
 		}
-		err = wrk.TransactionIn(txBytesConflict)
+		err = wrk.TransactionInAPI(txBytesConflict)
 		require.NoError(r.t, err)
 
 		err = cd.Wait()
@@ -1348,7 +1348,7 @@ func TestMultiChainWorkflow(t *testing.T) {
 					t.Logf("branch tx %d : %s", i, transaction.ParseBytesToString(txBytes, r.ut.GetUTXO))
 				}
 			}
-			err = wrk.TransactionIn(txBytes)
+			err = wrk.TransactionInAPI(txBytes)
 			require.NoError(r.t, err)
 		}
 
@@ -1396,7 +1396,7 @@ func TestMultiChainWorkflow(t *testing.T) {
 					t.Logf("branch tx %d : %s", i, transaction.ParseBytesToString(txBytes, r.ut.GetUTXO))
 				}
 			}
-			err = wrk.TransactionIn(txBytes)
+			err = wrk.TransactionInAPI(txBytes)
 			require.NoError(r.t, err)
 		}
 		err := cd.Wait()
@@ -1444,7 +1444,7 @@ func TestMultiChainWorkflow(t *testing.T) {
 					t.Logf("branch tx %d : %s", i, transaction.ParseBytesToString(txBytes, r.ut.GetUTXO))
 				}
 			}
-			err = wrk.TransactionIn(txBytes)
+			err = wrk.TransactionInAPI(txBytes)
 			require.NoError(r.t, err)
 		}
 		err := cd.Wait()

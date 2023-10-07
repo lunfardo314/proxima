@@ -60,7 +60,6 @@ func (c *Consumer[T]) TraceMilestones(tx *transaction.Transaction, txid *core.Tr
 	if tx.IsSequencerMilestone() {
 		c.Log().Infof("%s  %s -- %s", msg, tx.SequencerInfoString(), txid.Short())
 	}
-
 }
 
 func (c *Consumer[T]) RejectTransaction(inp *PrimaryInputConsumerData, format string, args ...any) {

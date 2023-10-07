@@ -93,7 +93,8 @@ func (c *SolidifyConsumer) IsWaitedTransaction(txid *core.TransactionID) bool {
 }
 
 func (c *SolidifyConsumer) consume(inp *SolidifyInputData) {
-	//c.Log().Debugf("inside consume %s", inp.Tx.IDShort())
+	inp.eventCallback(SolidifyConsumerName+".in", inp.Tx)
+
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
@@ -104,10 +105,12 @@ func (c *SolidifyConsumer) consume(inp *SolidifyInputData) {
 	}
 	if inp.newSolidDependency == nil {
 		// new transaction for solidification arrived
+		inp.eventCallback(SolidifyConsumerName+".in.new", inp.Tx)
 		c.glb.IncCounter(c.Name() + ".in.new")
 		c.newVertexToSolidify(inp)
 	} else {
 		// new solid transaction has been appended to the tangle, probably some transactions are waiting for it
+		inp.eventCallback(SolidifyConsumerName+".in.check", inp.Tx)
 		c.glb.IncCounter(c.Name() + ".in.check")
 		c.checkNewDependency(inp)
 	}
@@ -121,6 +124,7 @@ func (c *SolidifyConsumer) newVertexToSolidify(inp *SolidifyInputData) {
 	draftVertex, err := c.glb.utxoTangle.SolidifyInputs(inp.Tx)
 	if err != nil {
 		// non solidifiable
+		inp.eventCallback(SolidifyConsumerName+".fail", err)
 		c.Debugf(inp.PrimaryInputConsumerData, "%v", err)
 		c.IncCounter("err")
 		c.removeNonSolidifiableFutureCone(inp.Tx.ID())
@@ -147,6 +151,8 @@ func (c *SolidifyConsumer) putIntoSolidifierIfNeeded(inp *SolidifyInputData, dra
 		return false
 	}
 	// some inputs unknown
+	inp.eventCallback(SolidifyConsumerName+".notsolid", inp.Tx)
+
 	util.Assertf(!draftVertex.IsSolid(), "inconsistency 1")
 	c.IncCounter("new.notsolid")
 	for unknownTxID := range unknownInputTxIDs {

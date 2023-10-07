@@ -200,7 +200,7 @@ func submitTxHandle(wFlow *workflow.Workflow, wait bool) func(w http.ResponseWri
 		if wait {
 			_, err = wFlow.TransactionInWaitAppendSync(txBytes)
 		} else {
-			err = wFlow.TransactionIn(txBytes)
+			err = wFlow.TransactionInAPI(txBytes)
 		}
 		if err != nil {
 			writeErr(w, fmt.Sprintf("submit_tx: %v", err))
