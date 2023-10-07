@@ -81,17 +81,6 @@ func runTransferCmd(_ *cobra.Command, args []string) {
 	glb.AssertNoError(waitForInclusion(txCtx.OutputID(0)))
 }
 
-func allIncluded(incl []api.InclusionData) bool {
-	glb.Assertf(len(incl) > 0, "len(incl)>0")
-
-	for i := range incl {
-		if !incl[i].Included {
-			return false
-		}
-	}
-	return true
-}
-
 func waitForInclusion(oid core.OutputID, timeout ...time.Duration) error {
 	glb.Infof("Tracking inclusion of %s:", oid.Short())
 	startTime := time.Now()
