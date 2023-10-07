@@ -404,9 +404,13 @@ type _unwrapOptionsTraverse struct {
 	visited set.Set[*WrappedTx]
 }
 
+const trackNestedUnwraps = true
+
 func (vid *WrappedTx) Unwrap(opt UnwrapOptions) {
 	// to trace possible deadlocks in case of nested unwrapping
-	vid._mustNotUnwrapped()
+	if trackNestedUnwraps {
+		vid._mustNotUnwrapped()
+	}
 
 	vid.mutex.RLock()
 	defer vid.mutex.RUnlock()
@@ -414,21 +418,33 @@ func (vid *WrappedTx) Unwrap(opt UnwrapOptions) {
 	switch v := vid._genericWrapper.(type) {
 	case _vertex:
 		if opt.Vertex != nil {
-			vid._toggleUnwrapped()
+			if trackNestedUnwraps {
+				vid._toggleUnwrapped()
+			}
 			opt.Vertex(v.Vertex)
-			vid._toggleUnwrapped()
+			if trackNestedUnwraps {
+				vid._toggleUnwrapped()
+			}
 		}
 	case _virtualTx:
 		if opt.VirtualTx != nil {
-			vid._toggleUnwrapped()
+			if trackNestedUnwraps {
+				vid._toggleUnwrapped()
+			}
 			opt.VirtualTx(v.VirtualTransaction)
-			vid._toggleUnwrapped()
+			if trackNestedUnwraps {
+				vid._toggleUnwrapped()
+			}
 		}
 	case _orphanedTx:
 		if opt.Orphaned != nil {
-			vid._toggleUnwrapped()
+			if trackNestedUnwraps {
+				vid._toggleUnwrapped()
+			}
 			opt.Orphaned()
-			vid._toggleUnwrapped()
+			if trackNestedUnwraps {
+				vid._toggleUnwrapped()
+			}
 		}
 	default:
 		util.Assertf(false, "inconsistency: unsupported wrapped type")
