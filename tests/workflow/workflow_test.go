@@ -24,6 +24,7 @@ import (
 	"github.com/lunfardo314/proxima/workflow"
 	"github.com/lunfardo314/unitrie/common"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/atomic"
 	"go.uber.org/zap/zapcore"
 	"golang.org/x/crypto/blake2b"
 )
@@ -146,10 +147,10 @@ func TestWorkflow(t *testing.T) {
 
 		estimatedTimeout := (time.Duration(numRuns) * core.TransactionTimePaceDuration()) + (5 * time.Second)
 		waitCounter := countdown.New(numRuns, estimatedTimeout)
-		cnt := 0
+		var cnt atomic.Int32
 		err := wd.w.OnEvent(workflow.EventNewVertex, func(v *workflow.NewVertexEventData) {
 			waitCounter.Tick()
-			cnt++
+			cnt.Inc()
 		})
 		require.NoError(t, err)
 
@@ -167,7 +168,7 @@ func TestWorkflow(t *testing.T) {
 
 		wd.w.Stop()
 		t.Logf("UTXO tangle:\n%s", wd.ut.Info())
-		require.EqualValues(t, numRuns, cnt)
+		require.EqualValues(t, numRuns, cnt.Load())
 	})
 	t.Run("1 async", func(t *testing.T) {
 		const numRuns = 200
@@ -181,10 +182,10 @@ func TestWorkflow(t *testing.T) {
 
 		estimatedTimeout := (time.Duration(numRuns) * core.TransactionTimePaceDuration()) + (5 * time.Second)
 		waitCounter := countdown.New(numRuns, estimatedTimeout)
-		cnt := 0
+		var cnt atomic.Uint32
 		err := wd.w.OnEvent(workflow.EventNewVertex, func(v *workflow.NewVertexEventData) {
 			waitCounter.Tick()
-			cnt++
+			cnt.Inc()
 		})
 		require.NoError(t, err)
 
@@ -202,7 +203,7 @@ func TestWorkflow(t *testing.T) {
 
 		wd.w.Stop()
 		t.Logf("UTXO tangle:\n%s", wd.ut.Info())
-		require.EqualValues(t, numRuns, cnt)
+		require.EqualValues(t, numRuns, cnt.Load())
 	})
 	t.Run("duplicates", func(t *testing.T) {
 		const (
@@ -261,16 +262,14 @@ func TestWorkflow(t *testing.T) {
 
 		estimatedTimeout := (time.Duration(numRuns) * core.TransactionTimePaceDuration()) + (6 * time.Second)
 		waitCounter := countdown.New(numRuns, estimatedTimeout)
-		cnt := 0
 		err := wd.w.OnEvent(workflow.EventNewVertex, func(v *workflow.NewVertexEventData) {
 			waitCounter.Tick()
-			cnt++
 		})
 		require.NoError(t, err)
 
-		listenerCounter := 0
+		var listenerCounter atomic.Uint32
 		err = wd.w.Events().ListenAccount(wd.distributionAddrs[0], func(_ utangle.WrappedOutput) {
-			listenerCounter++
+			listenerCounter.Inc()
 		})
 		require.NoError(t, err)
 
@@ -285,7 +284,7 @@ func TestWorkflow(t *testing.T) {
 		}
 		err = waitCounter.Wait()
 		require.NoError(t, err)
-		require.EqualValues(t, 2*numRuns, listenerCounter)
+		require.EqualValues(t, 2*numRuns, listenerCounter.Load())
 
 		wd.w.Stop()
 		t.Logf("UTXO tangle:\n%s", wd.ut.Info())
@@ -1029,10 +1028,10 @@ func TestMultiChainWorkflow(t *testing.T) {
 		wrk.MustOnEvent(workflow.EventNewVertex, func(_ *workflow.NewVertexEventData) {
 			cd.Tick()
 		})
-		listenCounter := 0
+		var listenCounter atomic.Uint32
 		err := wrk.Events().ListenSequencer(r.chainOrigins[0].ChainID, func(vid *utangle.WrappedTx) {
 			//t.Logf("listen seq %s: %s", r.chainOrigins[0].ChainID.Short(), vertex.Tx.IDShort())
-			listenCounter++
+			listenCounter.Inc()
 		})
 
 		wrk.Start()
@@ -1057,7 +1056,7 @@ func TestMultiChainWorkflow(t *testing.T) {
 		err = cd.Wait()
 		require.NoError(t, err)
 		wrk.Stop()
-		require.EqualValues(t, howLong*nChains, listenCounter)
+		require.EqualValues(t, howLong*nChains, listenCounter.Load())
 
 		t.Logf("%s", r.ut.Info())
 	})

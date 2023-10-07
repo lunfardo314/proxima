@@ -29,7 +29,7 @@ func (v *VirtualTransaction) addSequencerIndices(seqIdx, stemIdx byte) {
 }
 
 func (v *VirtualTransaction) Wrap() *WrappedTx {
-	return _newVID(_virtualTx{v})
+	return _newVID(_virtualTx{VirtualTransaction: v})
 }
 
 func (v *VirtualTransaction) outputWithIDAt(idx byte) (*core.OutputWithID, bool) {

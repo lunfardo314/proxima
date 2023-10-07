@@ -12,6 +12,7 @@ import (
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
 	"github.com/lunfardo314/proxima/util/set"
+	"go.uber.org/atomic"
 )
 
 type (
@@ -33,19 +34,24 @@ type (
 		_time() time.Time
 		_outputAt(idx byte) (*core.Output, error)
 		_hasOutputAt(idx byte) (bool, bool)
+		_mustNotUnwrapped()
+		_toggleUnwrapped()
 	}
 
 	_vertex struct {
 		*Vertex
 		whenWrapped time.Time
+		unwrapped   atomic.Bool
 	}
 
 	_virtualTx struct {
 		*VirtualTransaction
+		unwrapped atomic.Bool
 	}
 
 	_orphanedTx struct {
 		core.TransactionID
+		unwrapped atomic.Bool
 	}
 
 	UnwrapOptions struct {
@@ -80,6 +86,14 @@ func (v _vertex) _hasOutputAt(idx byte) (bool, bool) {
 	return true, false
 }
 
+func (v _vertex) _mustNotUnwrapped() {
+	util.Assertf(!v.unwrapped.Load(), "nested unwrapping not allowed")
+}
+
+func (v _vertex) _toggleUnwrapped() {
+	v.unwrapped.Toggle()
+}
+
 func (v _virtualTx) _id() *core.TransactionID {
 	return &v.txid
 }
@@ -100,6 +114,14 @@ func (v _virtualTx) _hasOutputAt(idx byte) (bool, bool) {
 	return hasIt, false
 }
 
+func (v _virtualTx) _mustNotUnwrapped() {
+	util.Assertf(!v.unwrapped.Load(), "nested unwrapping not allowed")
+}
+
+func (v _virtualTx) _toggleUnwrapped() {
+	v.unwrapped.Toggle()
+}
+
 func (v _orphanedTx) _id() *core.TransactionID {
 	return &v.TransactionID
 }
@@ -114,6 +136,14 @@ func (v _orphanedTx) _outputAt(_ byte) (*core.Output, error) {
 
 func (v _orphanedTx) _hasOutputAt(idx byte) (bool, bool) {
 	panic("orphaned vertex should not be accessed")
+}
+
+func (v _orphanedTx) _mustNotUnwrapped() {
+	util.Assertf(!v.unwrapped.Load(), "nested unwrapping not allowed")
+}
+
+func (v _orphanedTx) _toggleUnwrapped() {
+	v.unwrapped.Toggle()
 }
 
 func _newVID(g _genericWrapper) *WrappedTx {
@@ -172,10 +202,10 @@ func (vid *WrappedTx) TimeSlot() core.TimeSlot {
 func (vid *WrappedTx) MarkOrphaned() {
 	vid.Unwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
-			vid._put(_orphanedTx{*v.Tx.ID()})
+			vid._put(_orphanedTx{TransactionID: *v.Tx.ID()})
 		},
 		VirtualTx: func(v *VirtualTransaction) {
-			vid._put(_orphanedTx{v.txid})
+			vid._put(_orphanedTx{TransactionID: v.txid})
 		},
 	})
 }
@@ -375,21 +405,30 @@ type _unwrapOptionsTraverse struct {
 }
 
 func (vid *WrappedTx) Unwrap(opt UnwrapOptions) {
+	// to trace possible deadlocks in case of nested unwrapping
+	vid._mustNotUnwrapped()
+
 	vid.mutex.RLock()
 	defer vid.mutex.RUnlock()
 
 	switch v := vid._genericWrapper.(type) {
 	case _vertex:
 		if opt.Vertex != nil {
+			vid._toggleUnwrapped()
 			opt.Vertex(v.Vertex)
+			vid._toggleUnwrapped()
 		}
 	case _virtualTx:
 		if opt.VirtualTx != nil {
+			vid._toggleUnwrapped()
 			opt.VirtualTx(v.VirtualTransaction)
+			vid._toggleUnwrapped()
 		}
 	case _orphanedTx:
 		if opt.Orphaned != nil {
+			vid._toggleUnwrapped()
 			opt.Orphaned()
+			vid._toggleUnwrapped()
 		}
 	default:
 		util.Assertf(false, "inconsistency: unsupported wrapped type")
@@ -666,7 +705,7 @@ func (o *WrappedOutput) TimeSlot() core.TimeSlot {
 func (vid *WrappedTx) ConvertToVirtualTx() {
 	vid.Unwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
-			vid._put(_virtualTx{v.convertToVirtualTx()})
+			vid._put(_virtualTx{VirtualTransaction: v.convertToVirtualTx()})
 		},
 		Orphaned: func() {
 			panic("ConvertToVirtualTx: orphaned should not be accessed")
