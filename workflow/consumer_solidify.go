@@ -118,7 +118,7 @@ func (c *SolidifyConsumer) newVertexToSolidify(inp *SolidifyInputData) {
 	util.Assertf(!already, "transaction is in the solidifier already: %s", inp.Tx.IDString())
 
 	// fetches available inputs, makes draftVertex
-	draftVertex, err := c.glb.utxoTangle.SolidifyInputs(inp.Tx, inp.txLog)
+	draftVertex, err := c.glb.utxoTangle.SolidifyInputs(inp.Tx)
 	if err != nil {
 		// non solidifiable
 		c.Debugf(inp.PrimaryInputConsumerData, "%v", err)
@@ -229,7 +229,6 @@ func (c *SolidifyConsumer) checkNewDependency(inp *SolidifyInputData) {
 		}
 		if err := pending.draftVertex.FetchMissingDependencies(c.glb.utxoTangle); err != nil {
 			// tx cannot be solidified, remove
-			c.LogfVertex(pending.draftVertex, "%v", err)
 			c.removeNonSolidifiableFutureCone(txid)
 			c.glb.RejectTransaction(*txid, "%v", err)
 			continue
@@ -313,18 +312,6 @@ func (c *SolidifyConsumer) DumpPendingDependencies() string {
 		for _, txid1 := range dep.consumingTxIDs {
 			_, _ = fmt.Fprintf(&buf, "              %s\n", txid1.String())
 		}
-	}
-	return buf.String()
-}
-
-func (c *SolidifyConsumer) DumpPendingTxLogs() string {
-	c.mutex.RLock()
-	defer c.mutex.RUnlock()
-
-	var buf strings.Builder
-	_, _ = fmt.Fprintf(&buf, "pending transaction logs: %d\n", len(c.txPending))
-	for _, v := range c.txPending {
-		_, _ = fmt.Fprintf(&buf, "%s\n", v.txLog.String())
 	}
 	return buf.String()
 }

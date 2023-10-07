@@ -2,7 +2,6 @@ package utangle
 
 import (
 	"fmt"
-	"io"
 	"strings"
 	"time"
 
@@ -179,20 +178,6 @@ func (v *Vertex) SequencerMilestonePredecessorOutputID() core.OutputID {
 	util.Assertf(v.Tx.IsSequencerMilestone(), "v.Tx.SequencerFlagON()")
 	predOutIdx := v.Tx.SequencerTransactionData().SequencerOutputData.ChainConstraint.PredecessorInputIndex
 	return v.Tx.MustInputAt(predOutIdx)
-}
-
-func (v *Vertex) Logf(format string, args ...any) {
-	v.txLog.Logf(format, args...)
-}
-
-func (v *Vertex) WriteLog(w io.Writer) {
-	v.txLog.WriteLog(w)
-}
-
-func (v *Vertex) DumpLog() string {
-	var buf strings.Builder
-	v.WriteLog(&buf)
-	return buf.String()
 }
 
 func (v *Vertex) forEachInputDependency(fun func(i byte, inp *WrappedTx) bool) {

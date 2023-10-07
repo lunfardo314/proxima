@@ -3,7 +3,6 @@ package utangle
 import (
 	"bytes"
 	"fmt"
-	"io"
 	"time"
 
 	"github.com/lunfardo314/proxima/core"
@@ -48,30 +47,6 @@ func (ut *UTXOTangle) _timeSlotsOrdered(descOrder ...bool) []core.TimeSlot {
 		}
 		return e1 < e2
 	})
-}
-
-func (ut *UTXOTangle) WriteTransactionLog(w io.Writer) {
-	ut.mutex.RLock()
-	defer ut.mutex.RUnlock()
-
-	sortedKeys := util.SortKeys(ut.vertices, func(k1, k2 core.TransactionID) bool {
-		return bytes.Compare(k1[:], k2[:]) < 0
-	})
-	for _, txid := range sortedKeys {
-		ut.vertices[txid].Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
-			if v.txLog == nil {
-				_, _ = fmt.Fprintf(w, "-- Transaction %s does not have log\n", v.Tx.IDShort())
-			} else {
-				v.txLog.WriteLog(w)
-			}
-		}})
-	}
-}
-
-func (ut *UTXOTangle) TransactionLogAsString() string {
-	var buf bytes.Buffer
-	ut.WriteTransactionLog(&buf)
-	return buf.String()
 }
 
 func (ut *UTXOTangle) NumVertices() int {

@@ -19,7 +19,7 @@ func TestVID(t *testing.T) {
 		require.NoError(t, err)
 		txid := tx.ID()
 
-		v := newVertex(tx, nil)
+		v := newVertex(tx)
 		vid := v.Wrap()
 		txidBack := vid.ID()
 		require.EqualValues(t, *txid, *txidBack)

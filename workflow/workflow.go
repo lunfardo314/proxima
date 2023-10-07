@@ -142,10 +142,6 @@ func (w *Workflow) maxDurationInTheFuture() time.Duration {
 	return time.Duration(maxWaitingTimeSlots) * core.TransactionTimePaceDuration()
 }
 
-func (w *Workflow) DumpTransactionLog() string {
-	return w.utxoTangle.TransactionLogAsString()
-}
-
 func (w *Workflow) AddCounter(name string, i int) {
 	w.debugCounters.Add(name, i)
 }
@@ -177,12 +173,4 @@ func (w *Workflow) CounterInfo() string {
 
 func (w *Workflow) CheckDebugCounters(expect map[string]int) error {
 	return w.debugCounters.CheckValues(expect)
-}
-
-func (w *Workflow) DumpPending() string {
-	return w.solidifyConsumer.DumpPendingDependencies()
-}
-
-func (w *Workflow) DumpPendingTxLogs() string {
-	return w.solidifyConsumer.DumpPendingTxLogs()
 }

@@ -3,7 +3,6 @@ package workflow
 import (
 	"bytes"
 	"crypto/ed25519"
-	"fmt"
 	"sort"
 	"strings"
 	"testing"
@@ -236,7 +235,7 @@ func TestWorkflow(t *testing.T) {
 
 		for i := 0; i < numRuns; i++ {
 			for j := range txBytes {
-				err = wd.w.TransactionInWithLog(txBytes[j], fmt.Sprintf("%d", j))
+				err = wd.w.TransactionIn(txBytes[j])
 				require.NoError(t, err)
 			}
 		}
@@ -247,8 +246,6 @@ func TestWorkflow(t *testing.T) {
 
 		wd.w.Stop()
 		t.Logf("%s", wd.w.UTXOTangle().Info())
-		t.Logf("%s", wd.w.DumpTransactionLog())
-
 	})
 	t.Run("listen", func(t *testing.T) {
 		const numRuns = 200
@@ -1304,7 +1301,7 @@ func TestMultiChainWorkflow(t *testing.T) {
 				require.NoError(r.t, err)
 			}
 		}
-		err = wrk.TransactionInWithLog(txBytesConflict, "conflictingTx")
+		err = wrk.TransactionIn(txBytesConflict)
 		require.NoError(r.t, err)
 
 		err = cd.Wait()

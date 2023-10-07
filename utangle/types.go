@@ -7,7 +7,6 @@ import (
 	"github.com/lunfardo314/proxima/general"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/util/set"
-	"github.com/lunfardo314/proxima/util/txlog"
 	"github.com/lunfardo314/unitrie/common"
 	"go.uber.org/atomic"
 )
@@ -30,7 +29,6 @@ type (
 	}
 
 	Vertex struct {
-		txLog              *txlog.TransactionLog
 		Tx                 *transaction.Transaction
 		StateDelta         UTXOStateDelta
 		BranchConeTipSolid bool // to distinguish with the StateDelta.baselineBranch == nil

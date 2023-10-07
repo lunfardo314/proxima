@@ -5,7 +5,6 @@ import (
 
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/transaction"
-	"github.com/lunfardo314/proxima/utangle"
 	"github.com/lunfardo314/proxima/util/consumer"
 )
 
@@ -44,17 +43,14 @@ func (c *Consumer[T]) TxLogPrefix() string {
 
 func (c *Consumer[T]) Debugf(inp *PrimaryInputConsumerData, format string, args ...any) {
 	c.Log().Debugf(format+"   "+inp.Tx.IDShort(), args...)
-	inp.txLog.Logf(c.TxLogPrefix()+format, args...)
 }
 
 func (c *Consumer[T]) Warnf(inp *PrimaryInputConsumerData, format string, args ...any) {
 	c.Log().Warnf(format+"    "+inp.Tx.IDShort(), args...)
-	inp.txLog.Logf(c.TxLogPrefix()+format, args...)
 }
 
 func (c *Consumer[T]) Infof(inp *PrimaryInputConsumerData, format string, args ...any) {
 	c.Log().Infof(format+"    "+inp.Tx.IDShort(), args...)
-	inp.txLog.Logf(c.TxLogPrefix()+format, args...)
 }
 
 func (c *Consumer[T]) TraceMilestones(tx *transaction.Transaction, txid *core.TransactionID, msg string) {
@@ -65,10 +61,6 @@ func (c *Consumer[T]) TraceMilestones(tx *transaction.Transaction, txid *core.Tr
 		c.Log().Infof("%s  %s -- %s", msg, tx.SequencerInfoString(), txid.Short())
 	}
 
-}
-
-func (c *Consumer[T]) LogfVertex(v *utangle.Vertex, format string, args ...any) {
-	v.Logf(c.TxLogPrefix()+format, args...)
 }
 
 func (c *Consumer[T]) RejectTransaction(inp *PrimaryInputConsumerData, format string, args ...any) {

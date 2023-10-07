@@ -69,7 +69,6 @@ func (c *AppendTxConsumer) consume(inp *AppendTxConsumerInputData) {
 		VID:                      inp.VID,
 	})
 
-	inp.txLog.Logf(c.TxLogPrefix() + "added to the tangle")
 	c.glb.IncCounter(c.Name() + ".ok")
 
 	c.Log().Debugf("added to the tangle: %s", inp.VID.IDShort())

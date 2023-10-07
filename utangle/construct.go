@@ -8,7 +8,6 @@ import (
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/util"
-	"github.com/lunfardo314/proxima/util/txlog"
 	"github.com/lunfardo314/unitrie/common"
 )
 
@@ -116,22 +115,17 @@ func (ut *UTXOTangle) SolidifyInputsFromTxBytes(txBytes []byte) (*Vertex, error)
 	return ut.SolidifyInputs(tx)
 }
 
-func newVertex(tx *transaction.Transaction, txLog *txlog.TransactionLog) *Vertex {
+func newVertex(tx *transaction.Transaction) *Vertex {
 	return &Vertex{
 		Tx:           tx,
-		txLog:        txLog,
 		Inputs:       make([]*WrappedTx, tx.NumInputs()),
 		Endorsements: make([]*WrappedTx, tx.NumEndorsements()),
 		StateDelta:   *NewUTXOStateDelta(nil),
 	}
 }
 
-func (ut *UTXOTangle) SolidifyInputs(tx *transaction.Transaction, txl ...*txlog.TransactionLog) (*Vertex, error) {
-	var txLog *txlog.TransactionLog
-	if len(txl) > 0 {
-		txLog = txl[0]
-	}
-	ret := newVertex(tx, txLog)
+func (ut *UTXOTangle) SolidifyInputs(tx *transaction.Transaction) (*Vertex, error) {
+	ret := newVertex(tx)
 	if err := ret.FetchMissingDependencies(ut); err != nil {
 		return nil, err
 	}

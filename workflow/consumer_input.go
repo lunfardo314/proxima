@@ -10,7 +10,6 @@ import (
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/eventtype"
 	"github.com/lunfardo314/proxima/util/seenset"
-	"github.com/lunfardo314/proxima/util/txlog"
 )
 
 // PrimaryInputConsumer is where transaction enters the workflow pipeline
@@ -22,7 +21,6 @@ type (
 	// PrimaryInputConsumerData is an input message type for this consumer
 	PrimaryInputConsumerData struct {
 		Tx      *transaction.Transaction
-		txLog   *txlog.TransactionLog
 		insider bool // for insider transactions do not check time bounds, only report as warning
 	}
 
@@ -92,7 +90,7 @@ func (c *PrimaryConsumer) isDuplicate(txid *core.TransactionID) bool {
 }
 
 func (w *Workflow) TransactionIn(txBytes []byte) error {
-	_, err := w.transactionInWithOptions(txBytes, false, false, "", func(inData *PrimaryInputConsumerData) error {
+	_, err := w.transactionInWithOptions(txBytes, false, func(inData *PrimaryInputConsumerData) error {
 		w.primaryInputConsumer.Push(inData)
 		return nil
 	})
@@ -101,22 +99,14 @@ func (w *Workflow) TransactionIn(txBytes []byte) error {
 
 // TransactionInInsider explicitly states do not enforce time bounds
 func (w *Workflow) TransactionInInsider(txBytes []byte) error {
-	_, err := w.transactionInWithOptions(txBytes, true, false, "", func(inData *PrimaryInputConsumerData) error {
+	_, err := w.transactionInWithOptions(txBytes, true, func(inData *PrimaryInputConsumerData) error {
 		w.primaryInputConsumer.Push(inData)
 		return nil
 	})
 	return err
 }
 
-func (w *Workflow) TransactionInWithLog(txBytes []byte, givenLogName string) error {
-	_, err := w.transactionInWithOptions(txBytes, false, true, givenLogName, func(inData *PrimaryInputConsumerData) error {
-		w.primaryInputConsumer.Push(inData)
-		return nil
-	})
-	return err
-}
-
-func (w *Workflow) transactionInWithOptions(txBytes []byte, insider bool, logit bool, givenLogName string, doFun func(*PrimaryInputConsumerData) error) (*transaction.Transaction, error) {
+func (w *Workflow) transactionInWithOptions(txBytes []byte, insider bool, doFun func(*PrimaryInputConsumerData) error) (*transaction.Transaction, error) {
 	util.Assertf(w.IsRunning(), "workflow has not been started yet")
 	out := &PrimaryInputConsumerData{insider: insider}
 	var err error
@@ -127,9 +117,6 @@ func (w *Workflow) transactionInWithOptions(txBytes []byte, insider bool, logit 
 	}
 	// if raw transaction data passes the basic check, it means it is identifiable as a transaction and main properties
 	// are correct: ID, timestamp, sequencer and branch transaction flags. The signature and semantic has not been checked yet
-	if logit || w.logTransaction.Load() {
-		out.txLog = txlog.NewTransactionLog(out.Tx.ID(), givenLogName)
-	}
 	return out.Tx, doFun(out)
 }
 
@@ -143,7 +130,7 @@ func (w *Workflow) TransactionInWaitAppendSyncTx(txBytes []byte, insider ...bool
 	wg.Add(1)
 
 	var err error
-	tx, err1 := w.transactionInWithOptions(txBytes, special, false, "", func(inData *PrimaryInputConsumerData) error {
+	tx, err1 := w.transactionInWithOptions(txBytes, special, func(inData *PrimaryInputConsumerData) error {
 		err2 := w.defaultTxStatusWaitingList.OnTransactionStatus(inData.Tx.ID(), func(statusMsg *TxStatusMsg) {
 			defer wg.Done()
 
