@@ -1,12 +1,15 @@
 package workflow
 
 import (
+	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/utangle"
 	"github.com/lunfardo314/proxima/util"
+	"go.uber.org/atomic"
 )
 
 func (w *Workflow) TransactionInAPI(txBytes []byte) error {
@@ -128,4 +131,20 @@ func WithOnWorkflowEvent(event string, fun func(data any)) TransactionInOption {
 			fun(data)
 		}
 	})
+}
+
+// TODO make it with context
+func (w *Workflow) TransactionInWaitAppend(txBytes []byte, timeout time.Duration, opts ...TransactionInOption) (*transaction.Transaction, error) {
+	waitCh := make(chan struct{})
+	var err atomic.Error
+
+	waitFailOpt := WithOnWorkflowEvent(AppendTxConsumerName, func(data any) {
+		errStr := data.(string)
+		if errStr != "" {
+			err.Store(errors.New(errStr))
+		}
+		close(waitCh)
+
+	})
+
 }
