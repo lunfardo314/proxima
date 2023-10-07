@@ -103,13 +103,6 @@ func (b *backtrackProposer) generateCandidate(extend utangle.WrappedOutput) *tra
 		return nil
 	}
 
-	//if !targetDelta.CanBeConsumedBySequencer(extend, b.factory.tangle) {
-	//	// past cones are not conflicting but the output itself is already consumed
-	//	b.trace("CANNOT extend %s (is already consumed) with endorsement target %s (ms %s)",
-	//		extend.IDShort(), endorseSeqID.VeryShort(), b.endorse.IDShort())
-	//	return nil
-	//}
-
 	b.trace("CAN extend %s with endorsement target %s", extend.IDShort(), b.endorse.IDShort())
 
 	feeOutputsToConsume := b.factory.selectFeeInputs(targetDelta, b.targetTs)

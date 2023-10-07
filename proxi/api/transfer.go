@@ -9,6 +9,7 @@ import (
 	"github.com/lunfardo314/proxima/api"
 	"github.com/lunfardo314/proxima/api/client"
 	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/genesis"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/spf13/cobra"
@@ -106,13 +107,14 @@ func waitForInclusion(oid core.OutputID, timeout ...time.Duration) error {
 	var err error
 
 	util.DoUntil(func() {
-		glb.Infof("Inclusion state in %.1f seconds:", time.Since(startTime).Seconds())
 		inclusionData, err = getClient().GetOutputInclusion(&oid)
 		glb.AssertNoError(err)
 
-		displayInclusionState(inclusionData)
+		displayInclusionState(inclusionData, time.Since(startTime).Seconds())
 	}, func() bool {
-		if allIncluded(inclusionData) {
+		// TODO not 100% correct because depends on the number of active sequencers
+		_, _, percOfDominating := glb.InclusionScore(inclusionData, genesis.DefaultSupply)
+		if percOfDominating == 100 {
 			glb.Infof("full inclusion reached in %v", time.Since(startTime))
 			return true
 		}

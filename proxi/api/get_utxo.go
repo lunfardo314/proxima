@@ -1,8 +1,11 @@
 package api
 
 import (
+	"fmt"
+
 	"github.com/lunfardo314/proxima/api"
 	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/genesis"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/spf13/cobra"
@@ -44,7 +47,13 @@ func runGetUTXOCmd(_ *cobra.Command, args []string) {
 	displayInclusionState(inclusion)
 }
 
-func displayInclusionState(inclusion []api.InclusionData) {
+func displayInclusionState(inclusion []api.InclusionData, inSec ...float64) {
+	scoreAll, scorePercTotal, scorePercDominating := glb.InclusionScore(inclusion, genesis.DefaultSupply)
+	inSecStr := ""
+	if len(inSec) > 0 {
+		inSecStr = fmt.Sprintf(" in %.2f sec", inSec[0])
+	}
+	glb.Infof("Inclusion score%s: %d, %d, %d", inSecStr, scoreAll, scorePercTotal, scorePercDominating)
 	yn := ""
 	for i := range inclusion {
 		if inclusion[i].Included {
@@ -52,6 +61,6 @@ func displayInclusionState(inclusion []api.InclusionData) {
 		} else {
 			yn = " NO"
 		}
-		glb.Infof("%s   %s    %s", yn, inclusion[i].BranchID.Short(), util.GoThousands(inclusion[i].Coverage))
+		glb.Verbosef("   %s   %s    %s", yn, inclusion[i].BranchID.Short(), util.GoThousands(inclusion[i].Coverage))
 	}
 }

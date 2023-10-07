@@ -115,7 +115,6 @@ func displaySpammerConfig() spammerConfig {
 
 func runSpamCmd(_ *cobra.Command, args []string) {
 	cfg := displaySpammerConfig()
-
 	switch cfg.scenario {
 	case "standard":
 		standardScenario(cfg)
@@ -166,11 +165,6 @@ func standardScenario(cfg spammerConfig) {
 			glb.AssertNoError(err)
 		}
 		glb.Verbosef("%d transactions submitted", len(bundle))
-		//tout := core.TimeSlotDuration() * 6
-		//glb.Verbosef("wait for %s inclusion into the heaviest state, timeout %v", oid.Short(), tout)
-		//err = c.WaitOutputInTheHeaviestState(&oid, tout)
-		//glb.AssertNoError(err)
-		//glb.Infof("bundle %s has been included into the heaviest state in %v", oid.Short(), time.Since(startTime))
 
 		glb.AssertNoError(waitForInclusion(oid))
 
