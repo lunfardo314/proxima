@@ -92,10 +92,8 @@ func (b *backtrackProposer) generateCandidate(extend utangle.WrappedOutput) *tra
 			ret, ok = b.factory.tangle.StateReaderOfSequencerMilestone(bb)
 			util.Assertf(ok, "can't get state for the baseline branch %s", bb.IDShort())
 		} else {
-			// TODO if d belongs to a branch, then we must check the branch
-			//util.Panicf("WIP not implemented when baselineBranch == nil")
-			util.Assertf(b.endorse.IsBranchTransaction(), "b.endorse.IsBranchTransaction()")
-			ret = b.factory.tangle.GetBranchState(b.endorse)
+			// TODO if d belongs to a branch, then we must check the branch. Ugly solution, refactor
+			ret = b.factory.tangle.MustGetBranchState(b.endorse)
 		}
 		return
 	}) {

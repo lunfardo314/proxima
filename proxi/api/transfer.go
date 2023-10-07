@@ -113,7 +113,7 @@ func waitForInclusion(oid core.OutputID, timeout ...time.Duration) error {
 		displayInclusionState(inclusionData)
 	}, func() bool {
 		if allIncluded(inclusionData) {
-			glb.Infof("full inclusion reached")
+			glb.Infof("full inclusion reached in %v", time.Since(startTime))
 			return true
 		}
 		if time.Now().After(deadline) {

@@ -74,6 +74,7 @@ func initSpamCmd(apiCmd *cobra.Command) {
 }
 
 func readSpammerConfigIn(sub *viper.Viper) (ret spammerConfig) {
+	glb.Assertf(sub != nil, "spammer configuration unavailable")
 	ret.scenario = sub.GetString("scenario")
 	ret.outputAmount = sub.GetUint64("output_amount")
 	ret.bundleSize = sub.GetInt("bundle_size")

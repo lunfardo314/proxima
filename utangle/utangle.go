@@ -152,8 +152,16 @@ func (ut *UTXOTangle) GetBranch(vid *WrappedTx) (branch, bool) {
 	return ut.getBranch(vid)
 }
 
-func (ut *UTXOTangle) GetBranchState(vid *WrappedTx) multistate.SugaredStateReader {
-	panic("GetBranchState not implemented")
+// MustGetBranchState returns state reader corresponding to the branch transaction
+func (ut *UTXOTangle) MustGetBranchState(vid *WrappedTx) multistate.SugaredStateReader {
+	util.Assertf(vid.IsBranchTransaction(), "vid.IsBranchTransaction()")
+	rootData, ok := multistate.FetchRootDataByTransactionID(ut.stateStore, *vid.ID())
+	util.Assertf(ok, "can't get root data for branch transaction")
+
+	ret, err := multistate.NewSugaredReadableState(ut.stateStore, rootData.Root, 0)
+	util.AssertNoError(err)
+
+	return ret
 }
 
 func (ut *UTXOTangle) getBranch(vid *WrappedTx) (branch, bool) {
