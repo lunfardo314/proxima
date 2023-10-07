@@ -318,6 +318,9 @@ func (mf *milestoneFactory) storeProposalDuration(d time.Duration) {
 }
 
 func (mf *milestoneFactory) averageProposalDuration() (time.Duration, int) {
+	mf.proposal.mutex.RLock()
+	defer mf.proposal.mutex.RUnlock()
+
 	if len(mf.proposal.durations) == 0 {
 		return 0, 0
 	}

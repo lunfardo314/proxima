@@ -12,6 +12,7 @@ import (
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/set"
 	"github.com/lunfardo314/proxima/workflow"
+	"go.uber.org/atomic"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
@@ -25,7 +26,7 @@ type (
 		log                      *zap.SugaredLogger
 		chainID                  core.ChainID
 		latestMilestones         map[core.ChainID]*utangle.WrappedTx
-		lastPruned               time.Time
+		lastPruned               atomic.Time
 		outputCount              int
 		removedOutputsSinceReset int
 	}
@@ -96,7 +97,7 @@ func startTipPool(seqName string, wrk *workflow.Workflow, seqID core.ChainID, lo
 const cleanupPeriod = 5 * time.Second
 
 func (tp *sequencerTipPool) _clearOrphanedOutputsIfNeeded() {
-	if time.Since(tp.lastPruned) < cleanupPeriod {
+	if time.Since(tp.lastPruned.Load()) < cleanupPeriod {
 		return
 	}
 	toDelete := make([]utangle.WrappedOutput, 0)
@@ -109,7 +110,7 @@ func (tp *sequencerTipPool) _clearOrphanedOutputsIfNeeded() {
 		delete(tp.outputs, wOut)
 	}
 	tp.removedOutputsSinceReset += len(toDelete)
-	tp.lastPruned = time.Now()
+	tp.lastPruned.Store(time.Now())
 }
 
 func (tp *sequencerTipPool) filterAndSortOutputs(filter func(o utangle.WrappedOutput) bool) []utangle.WrappedOutput {

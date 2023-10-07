@@ -25,16 +25,19 @@ type (
 		controllerKey ed25519.PrivateKey
 		config        ConfigOptions
 
-		log                  *zap.SugaredLogger
-		factory              *milestoneFactory
-		exit                 atomic.Bool
-		stopWG               sync.WaitGroup
-		stopOnce             sync.Once
-		onMilestoneSubmitted func(seq *Sequencer, vid *utangle.WrappedOutput)
-		infoMutex            sync.RWMutex
-		info                 Info
-		traceNAhead          atomic.Int64
-		prevTimeTarget       core.LogicalTime
+		log      *zap.SugaredLogger
+		factory  *milestoneFactory
+		exit     atomic.Bool
+		stopWG   sync.WaitGroup
+		stopOnce sync.Once
+
+		onMilestoneSubmittedMutex sync.RWMutex
+		onMilestoneSubmitted      func(seq *Sequencer, vid *utangle.WrappedOutput)
+
+		infoMutex      sync.RWMutex
+		info           Info
+		traceNAhead    atomic.Int64
+		prevTimeTarget core.LogicalTime
 	}
 
 	Info struct {
@@ -176,6 +179,9 @@ func (seq *Sequencer) setTraceAhead(n int64) {
 }
 
 func (seq *Sequencer) OnMilestoneSubmitted(fun func(seq *Sequencer, vid *utangle.WrappedOutput)) {
+	seq.onMilestoneSubmittedMutex.Lock()
+	defer seq.onMilestoneSubmittedMutex.Unlock()
+
 	if seq.onMilestoneSubmitted == nil {
 		seq.onMilestoneSubmitted = fun
 	} else {
@@ -184,6 +190,15 @@ func (seq *Sequencer) OnMilestoneSubmitted(fun func(seq *Sequencer, vid *utangle
 			prevFun(seq, vid)
 			fun(seq, vid)
 		}
+	}
+}
+
+func (seq *Sequencer) RunOnMilestoneSubmitted(wOut *utangle.WrappedOutput) {
+	seq.onMilestoneSubmittedMutex.RLock()
+	defer seq.onMilestoneSubmittedMutex.RUnlock()
+
+	if seq.onMilestoneSubmitted != nil {
+		seq.onMilestoneSubmitted(seq, wOut)
 	}
 }
 
@@ -332,7 +347,6 @@ func (seq *Sequencer) mainLoop() {
 
 		if currentTimeSlot != targetTs.TimeSlot() {
 			currentTimeSlot = targetTs.TimeSlot()
-			//seq.log.Infof("TIME SLOT %d", currentTimeSlot)
 		}
 
 		//seq.setTraceAhead(1)
@@ -363,7 +377,7 @@ func (seq *Sequencer) mainLoop() {
 			branchCount++
 		}
 		seq.updateInfo(*msOutput, avgProposalDuration, numProposals)
-		seq.onMilestoneSubmitted(seq, msOutput)
+		seq.RunOnMilestoneSubmitted(msOutput)
 	}
 	seq.stopWG.Done()
 }
