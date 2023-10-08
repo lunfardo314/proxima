@@ -251,7 +251,6 @@ func TestWorkflowSync(t *testing.T) {
 		wd.w.Stop()
 		t.Logf("UTXO tangle:\n%s", wd.ut.Info())
 	})
-
 }
 
 func TestWorkflowAsync(t *testing.T) {

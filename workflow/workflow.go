@@ -46,9 +46,6 @@ type (
 		// if flag is set true, PrepareVertex creates log for each transaction
 		logTransaction  atomic.Bool
 		traceMilestones atomic.Bool
-
-		// default transaction waiting list
-		defaultTxStatusWaitingList *TxStatusWaitingList
 	}
 
 	Consumer[T any] struct {
@@ -73,7 +70,6 @@ func New(ut *utangle.UTXOTangle, configOptions ...ConfigOption) *Workflow {
 		debugCounters: testutil.NewSynCounters(),
 		eventHandlers: make(map[eventtype.EventCode][]func(any)),
 	}
-	ret.defaultTxStatusWaitingList = ret.StartTxStatusWaitingList(TxStatusDefaultWaitingTimeout)
 	ret.initPrimaryInputConsumer()
 	ret.initPreValidateConsumer()
 	ret.initSolidifyConsumer()
@@ -123,7 +119,6 @@ func (w *Workflow) StartPruner() {
 func (w *Workflow) Stop() {
 	w.stopOnce.Do(func() {
 		util.Assertf(w.working.Swap(false), "wasn't started yet")
-		w.defaultTxStatusWaitingList.Stop()
 		w.startWG.Wait()
 		w.primaryInputConsumer.Stop()
 		w.terminateWG.Wait()
