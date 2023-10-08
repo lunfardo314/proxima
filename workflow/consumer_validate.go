@@ -48,7 +48,7 @@ func (c *ValidateConsumer) consume(inp *ValidateConsumerInputData) {
 		// will check for conflicts
 		vid, err := utangle.MakeVertex(inp.draftVertex)
 		if err != nil {
-			inp.eventCallback(ValidateConsumerName+".fail", inp.Tx)
+			inp.eventCallback("finish."+ValidateConsumerName, err.Error())
 			c.IncCounter("err")
 			c.glb.RejectTransaction(*inp.Tx.ID(), "%v", err)
 			// inform solidifier

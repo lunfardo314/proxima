@@ -285,7 +285,7 @@ func Test1Sequencer(t *testing.T) {
 		t.Logf("chain origins tx:\n%s", r.txChainOrigins.ToString(r.ut.HeaviestStateForLatestTimeSlot().GetUTXO))
 
 		// add transaction with chain origins
-		_, err = r.wrk.TransactionInWaitAppendSyncTx(r.txChainOrigins.Bytes())
+		_, err = r.wrk.TransactionInWaitAppend(r.txChainOrigins.Bytes(), 5*time.Second)
 		require.NoError(t, err)
 		t.Logf("chain origins transaction has been added to the tangle: %s", r.txChainOrigins.IDShort())
 
@@ -333,7 +333,7 @@ func Test1Sequencer(t *testing.T) {
 		require.EqualValues(t, inittest.InitSupply-initFaucetBalance, int(initOnSeqBalance))
 
 		// add transaction with chain origins
-		_, err = r.wrk.TransactionInWaitAppendSyncTx(r.txChainOrigins.Bytes())
+		_, err = r.wrk.TransactionInWaitAppend(r.txChainOrigins.Bytes(), 5*time.Second)
 		require.NoError(t, err)
 		t.Logf("chain origins transaction has been added to the tangle: %s", r.txChainOrigins.IDShort())
 
@@ -341,7 +341,7 @@ func Test1Sequencer(t *testing.T) {
 		t.Logf("additional address: %s", addrs[0].String())
 		for i := 0; i < numFaucetTransactions; i++ {
 			tx := r.makeFaucetTransaction(r.bootstrapChainID, 0, addrs[0], transferAmount)
-			_, err = r.wrk.TransactionInWaitAppendSyncTx(tx.Bytes())
+			_, err = r.wrk.TransactionInWaitAppend(tx.Bytes(), 5*time.Second)
 			require.NoError(t, err)
 		}
 		seq.WaitStop()
@@ -406,7 +406,7 @@ func Test1Sequencer(t *testing.T) {
 		require.EqualValues(t, inittest.InitSupply-initFaucetBalance, int(initOnSeqBalance))
 
 		// add transaction with chain origins
-		_, err = r.wrk.TransactionInWaitAppendSyncTx(r.txChainOrigins.Bytes())
+		_, err = r.wrk.TransactionInWaitAppend(r.txChainOrigins.Bytes(), 5*time.Second)
 		require.NoError(t, err)
 		t.Logf("chain origins transaction has been added to the tangle: %s", r.txChainOrigins.IDShort())
 
@@ -483,7 +483,7 @@ func Test1Sequencer(t *testing.T) {
 		require.EqualValues(t, inittest.InitSupply-initFaucetBalance*numFaucets, int(initOnSeqBalance))
 
 		// add transaction with chain origins
-		_, err = r.wrk.TransactionInWaitAppendSyncTx(r.txChainOrigins.Bytes())
+		_, err = r.wrk.TransactionInWaitAppend(r.txChainOrigins.Bytes(), 5*time.Second)
 		require.NoError(t, err)
 		t.Logf("chain origins transaction has been added to the tangle: %s", r.txChainOrigins.IDShort())
 
@@ -495,7 +495,7 @@ func Test1Sequencer(t *testing.T) {
 			for j := 0; j < numFaucetTransactions; j++ {
 				tx := r.makeFaucetTransaction(r.bootstrapChainID, i, addrs[0], transferAmount)
 				err = r.wrk.TransactionInAPI(tx.Bytes()) // <- async
-				//_, err = r.wrk.TransactionInWaitAppendSyncTx(tx.Bytes()) // sync
+				//_, err = r.wrk.TransactionInWaitAppend(tx.Bytes()) // sync
 				require.NoError(t, err)
 			}
 		}
@@ -595,7 +595,7 @@ func (r *sequencerTestData) issueTransfersRndSeq(targetAddress core.Lock, numFau
 			targetSeqID := seqIDs[targetSeqIdx]
 			tx := r.makeFaucetTransaction(targetSeqID, i, targetAddress, transferAmount)
 			err := r.wrk.TransactionInAPI(tx.Bytes()) // <- async
-			//_, err = r.wrk.TransactionInWaitAppendSyncTx(tx.Bytes()) // sync
+			//_, err = r.wrk.TransactionInWaitAppend(tx.Bytes()) // sync
 			require.NoError(r.t, err)
 			expected[targetSeqID] += feeAmount
 			targetSeqIdx = (targetSeqIdx + 1) % len(seqIDs)
@@ -610,7 +610,7 @@ func (r *sequencerTestData) issueTransfersWithSeqID(targetAddress core.Lock, tar
 		for j := 0; j < numFaucetTransactions; j++ {
 			tx := r.makeFaucetTransaction(targetSeqID, i, targetAddress, transferAmount)
 			err := r.wrk.TransactionInAPI(tx.Bytes()) // <- async
-			//_, err = r.wrk.TransactionInWaitAppendSyncTx(tx.Bytes()) // sync
+			//_, err = r.wrk.TransactionInWaitAppend(tx.Bytes()) // sync
 			require.NoError(r.t, err)
 			expected[targetSeqID] += feeAmount
 		}
@@ -634,7 +634,7 @@ func TestNSequencers(t *testing.T) {
 		r.wrk.Start()
 		//r.createTransactionLogger()
 		// add transaction with chain origins
-		_, err := r.wrk.TransactionInWaitAppendSyncTx(r.txChainOrigins.Bytes())
+		_, err := r.wrk.TransactionInWaitAppend(r.txChainOrigins.Bytes(), 5*time.Second)
 		require.NoError(t, err)
 		t.Logf("chain origins transaction has been added to the tangle: %s", r.txChainOrigins.IDShort())
 
@@ -704,7 +704,7 @@ func TestNSequencers(t *testing.T) {
 		r.wrk.Start()
 		//r.createTransactionLogger()
 		// add transaction with chain origins
-		_, err := r.wrk.TransactionInWaitAppendSyncTx(r.txChainOrigins.Bytes())
+		_, err := r.wrk.TransactionInWaitAppend(r.txChainOrigins.Bytes(), 5*time.Second)
 		require.NoError(t, err)
 		t.Logf("chain origins transaction has been added to the tangle: %s", r.txChainOrigins.IDShort())
 
@@ -798,7 +798,7 @@ func TestNSequencers(t *testing.T) {
 		r.wrk.Start()
 		//r.createTransactionLogger()
 		// add transaction with chain origins
-		_, err := r.wrk.TransactionInWaitAppendSyncTx(r.txChainOrigins.Bytes())
+		_, err := r.wrk.TransactionInWaitAppend(r.txChainOrigins.Bytes(), 5*time.Second)
 		require.NoError(t, err)
 		t.Logf("chain origins transaction has been added to the tangle: %s", r.txChainOrigins.IDShort())
 
@@ -904,7 +904,7 @@ func TestNSequencers(t *testing.T) {
 		r.wrk.Start()
 		//r.createTransactionLogger()
 		// add transaction with chain origins
-		_, err := r.wrk.TransactionInWaitAppendSyncTx(r.txChainOrigins.Bytes())
+		_, err := r.wrk.TransactionInWaitAppend(r.txChainOrigins.Bytes(), 5*time.Second)
 		require.NoError(t, err)
 		t.Logf("chain origins transaction has been added to the tangle: %s", r.txChainOrigins.IDShort())
 
@@ -971,7 +971,7 @@ func TestNSequencers(t *testing.T) {
 		r.wrk.Start()
 		//r.createTransactionLogger()
 		// add transaction with chain origins
-		_, err := r.wrk.TransactionInWaitAppendSyncTx(r.txChainOrigins.Bytes())
+		_, err := r.wrk.TransactionInWaitAppend(r.txChainOrigins.Bytes(), 5*time.Second)
 		require.NoError(t, err)
 		t.Logf("chain origins transaction has been added to the tangle: %s", r.txChainOrigins.IDShort())
 
@@ -1044,7 +1044,7 @@ func TestPruning(t *testing.T) {
 
 		//r.createTransactionLogger()
 		// add transaction with chain origins
-		_, err := r.wrk.TransactionInWaitAppendSyncTx(r.txChainOrigins.Bytes())
+		_, err := r.wrk.TransactionInWaitAppend(r.txChainOrigins.Bytes(), 5*time.Second)
 		require.NoError(t, err)
 		t.Logf("chain origins transaction has been added to the tangle: %s", r.txChainOrigins.IDShort())
 
@@ -1151,7 +1151,7 @@ func TestPruning(t *testing.T) {
 
 		//r.createTransactionLogger()
 		// add transaction with chain origins
-		_, err := r.wrk.TransactionInWaitAppendSyncTx(r.txChainOrigins.Bytes())
+		_, err := r.wrk.TransactionInWaitAppend(r.txChainOrigins.Bytes(), 5*time.Second)
 		require.NoError(t, err)
 		t.Logf("chain origins transaction has been added to the tangle: %s", r.txChainOrigins.IDShort())
 

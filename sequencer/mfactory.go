@@ -14,6 +14,7 @@ import (
 	"github.com/lunfardo314/proxima/utangle"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/set"
+	"github.com/lunfardo314/proxima/workflow"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
@@ -166,7 +167,7 @@ func (seq *Sequencer) ensureSequencerStartOutput() (utangle.WrappedOutput, bool,
 		return utangle.WrappedOutput{}, false, err
 	}
 
-	vid, err := seq.glb.TransactionInWaitAppendSync(txBytes)
+	vid, err := seq.glb.TransactionInWaitAppendWrap(txBytes, 5*time.Second, workflow.WithTransactionSource(workflow.TransactionSourceSequencer))
 	if err != nil {
 		return utangle.WrappedOutput{}, false, err
 	}

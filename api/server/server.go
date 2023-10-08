@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/lunfardo314/proxima/api"
 	"github.com/lunfardo314/proxima/core"
@@ -198,7 +199,7 @@ func submitTxHandle(wFlow *workflow.Workflow, wait bool) func(w http.ResponseWri
 		txBytes = util.CloneExactCap(txBytes)
 
 		if wait {
-			_, err = wFlow.TransactionInWaitAppendSync(txBytes)
+			_, err = wFlow.TransactionInWaitAppend(txBytes, 5*time.Second, workflow.WithTransactionSource(workflow.TransactionSourceAPI))
 		} else {
 			err = wFlow.TransactionInAPI(txBytes)
 		}

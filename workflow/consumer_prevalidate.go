@@ -61,6 +61,7 @@ func (c *PreValidateConsumer) consume(inp *PreValidateConsumerInputData) {
 	if err != nil {
 		if enforceTimeBounds {
 			c.IncCounter("invalid")
+			inp.eventCallback("finish."+PreValidateConsumerName, err.Error())
 			c.RejectTransaction(inp.PrimaryInputConsumerData, "%v", err)
 			return
 		}

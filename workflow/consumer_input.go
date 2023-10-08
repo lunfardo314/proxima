@@ -74,6 +74,7 @@ func (c *PrimaryConsumer) consume(inp *PrimaryInputConsumerData) {
 	// the input is preparse transaction with base validation ok. It means it is identifiable as a transaction
 	if c.isDuplicate(inp.Tx.ID()) {
 		// if duplicate, rise the event
+		inp.eventCallback("finish."+PrimaryInputConsumerName, "duplicate")
 		c.glb.PostEvent(EventCodeDuplicateTx, inp.Tx.ID())
 		return
 	}

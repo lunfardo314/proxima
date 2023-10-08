@@ -382,13 +382,15 @@ func (seq *Sequencer) mainLoop() {
 	seq.stopWG.Done()
 }
 
+const submitTransactionTimeout = 5 * time.Second
+
 // submitTransaction submits transaction to the workflow and waits for deterministic status: either added to the tangle or rejected
 // The temporary VID of the transaction is replaced with the real one upon submission
 func (seq *Sequencer) submitTransaction(tmpMsOutput utangle.WrappedOutput) *utangle.WrappedOutput {
 	tx := tmpMsOutput.VID.UnwrapTransaction()
 	util.Assertf(tx != nil, "tx != nil")
 
-	retVID, err := seq.glb.TransactionInWaitAppendSync(tx.Bytes(), true)
+	retVID, err := seq.glb.TransactionInWaitAppendWrap(tx.Bytes(), submitTransactionTimeout, workflow.WithTransactionSource(workflow.TransactionSourceSequencer))
 	if err != nil {
 		seq.log.Errorf("submitTransaction: %v", err)
 		return nil
