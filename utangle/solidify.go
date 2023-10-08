@@ -213,7 +213,7 @@ func (v *Vertex) mustGetBaseState(ut *UTXOTangle) multistate.SugaredStateReader 
 	util.Assertf(!v.Tx.IsSequencerMilestone() || v.BranchConeTipSolid, "!v.Tx.IsSequencerMilestone() || v.BranchConeTipSolid")
 	// determining base state for outputs not on the tangle
 	if v.Tx.IsSequencerMilestone() && v.StateDelta.baselineBranch != nil {
-		rdr, err := multistate.NewReadable(ut.stateStore, ut.mustGetBranch(v.StateDelta.baselineBranch).root)
+		rdr, err := multistate.NewReadable(ut.stateStore, ut.mustGetBranch(v.StateDelta.baselineBranch))
 		util.AssertNoError(err)
 		return multistate.MakeSugared(rdr)
 	}

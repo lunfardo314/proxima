@@ -16,7 +16,7 @@ func newUTXOTangle(stateStore general.StateStore, txBytesStore general.TxBytesSt
 		stateStore:   stateStore,
 		txBytesStore: txBytesStore,
 		vertices:     make(map[core.TransactionID]*WrappedTx),
-		branches:     make(map[core.TimeSlot]map[*WrappedTx]branch),
+		branches:     make(map[core.TimeSlot]map[*WrappedTx]common.VCommitment),
 	}
 }
 
@@ -99,11 +99,9 @@ func (ut *UTXOTangle) AddVertexAndBranch(branchVID *WrappedTx, root common.VComm
 func (ut *UTXOTangle) addBranch(branchVID *WrappedTx, root common.VCommitment) {
 	m, exist := ut.branches[branchVID.TimeSlot()]
 	if !exist {
-		m = make(map[*WrappedTx]branch)
+		m = make(map[*WrappedTx]common.VCommitment)
 	}
-	m[branchVID] = branch{
-		root: root,
-	}
+	m[branchVID] = root
 	ut.branches[branchVID.TimeSlot()] = m
 }
 
@@ -277,12 +275,10 @@ func (ut *UTXOTangle) _finalizeBranch(newBranchVertex *WrappedTx) error {
 	// store new branch to the tangle data structure
 	branches := ut.branches[newBranchVertex.TimeSlot()]
 	if len(branches) == 0 {
-		branches = make(map[*WrappedTx]branch)
+		branches = make(map[*WrappedTx]common.VCommitment)
 		ut.branches[newBranchVertex.TimeSlot()] = branches
 	}
-	branches[newBranchVertex] = branch{
-		root: newRoot,
-	}
+	branches[newBranchVertex] = newRoot
 	ut.numAddedBranches++
 	return nil
 }

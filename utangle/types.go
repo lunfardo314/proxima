@@ -17,7 +17,7 @@ type (
 		stateStore   general.StateStore
 		txBytesStore general.TxBytesStore
 		vertices     map[core.TransactionID]*WrappedTx
-		branches     map[core.TimeSlot]map[*WrappedTx]branch
+		branches     map[core.TimeSlot]map[*WrappedTx]common.VCommitment
 
 		lastPrunedOrphaned atomic.Time
 		lastCutFinal       atomic.Time
@@ -52,10 +52,6 @@ type (
 		mutex            sync.RWMutex
 		outputs          map[byte]*core.Output
 		sequencerOutputs *[2]byte // if nil, it is unknown
-	}
-
-	branch struct {
-		root common.VCommitment
 	}
 )
 

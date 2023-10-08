@@ -84,13 +84,12 @@ func (ut *UTXOTangle) InfoLines(verbose ...bool) *lines.Lines {
 
 		ln.Add("---- slot %8d : branches: %d", e, len(branches))
 		for _, vid := range branches {
-			br := ut.branches[e][vid]
 			coverage := vid.LedgerCoverage()
 			seqID, isAvailable := vid.SequencerIDIfAvailable()
 			util.Assertf(isAvailable, "sequencer ID expected in %s", vid.IDShort())
 			ln.Add("    branch %s, seqID: %s, coverage: %s", vid.IDShort(), seqID.Short(), util.GoThousands(coverage))
 			if verb {
-				ln.Add("    == root: " + br.root.String()).
+				ln.Add("    == root: " + ut.branches[e][vid].String()).
 					Append(vid.Lines("    "))
 			}
 		}
@@ -120,7 +119,7 @@ func (ut *UTXOTangle) HasUTXO(oid *core.OutputID) bool {
 	return ut.HeaviestStateForLatestTimeSlot().HasUTXO(oid)
 }
 
-func (ut *UTXOTangle) GetBranch(vid *WrappedTx) (branch, bool) {
+func (ut *UTXOTangle) GetBranch(vid *WrappedTx) (common.VCommitment, bool) {
 	ut.mutex.RLock()
 	defer ut.mutex.RUnlock()
 
@@ -139,18 +138,18 @@ func (ut *UTXOTangle) MustGetBranchState(vid *WrappedTx) multistate.SugaredState
 	return ret
 }
 
-func (ut *UTXOTangle) getBranch(vid *WrappedTx) (branch, bool) {
+func (ut *UTXOTangle) getBranch(vid *WrappedTx) (common.VCommitment, bool) {
 	eb, found := ut.branches[vid.TimeSlot()]
 	if !found {
-		return branch{}, false
+		return nil, false
 	}
 	if ret, found := eb[vid]; found {
 		return ret, true
 	}
-	return branch{}, false
+	return nil, false
 }
 
-func (ut *UTXOTangle) mustGetBranch(vid *WrappedTx) branch {
+func (ut *UTXOTangle) mustGetBranch(vid *WrappedTx) common.VCommitment {
 	ret, ok := ut.getBranch(vid)
 	util.Assertf(ok, "can't get branch %s", vid.IDShort())
 	return ret
@@ -193,13 +192,8 @@ func (ut *UTXOTangle) GetBaseStateRootOfSequencerMilestone(vSeq *WrappedTx) (com
 	if branchVID == nil {
 		return nil, false
 	}
-	var br branch
-	var ok bool
 
-	br, ok = ut.GetBranch(branchVID)
-	util.Assertf(ok, "can't find branch")
-
-	return br.root, true
+	return ut.mustGetBranch(branchVID), true
 }
 
 // StateReaderOfSequencerMilestone state for the sequencer milestone. Must be deterministic on every node and every sequencer
@@ -217,7 +211,7 @@ func (ut *UTXOTangle) StateReaderOfSequencerMilestone(vid *WrappedTx) (multistat
 }
 
 func (ut *UTXOTangle) HeaviestStateRootForLatestTimeSlot() common.VCommitment {
-	return ut.heaviestBranchForLatestTimeSlot().root
+	return ut.heaviestBranchForLatestTimeSlot()
 }
 
 // HeaviestStateForLatestTimeSlot returns the heaviest input state (by ledger coverage) for the latest slot which have one
@@ -230,15 +224,15 @@ func (ut *UTXOTangle) HeaviestStateForLatestTimeSlot() multistate.SugaredStateRe
 
 // heaviestBranchForLatestTimeSlot return branch transaction vertex with the highest ledger coverage
 // Returns cached full root or nil
-func (ut *UTXOTangle) heaviestBranchForLatestTimeSlot() branch {
-	var largestBranch branch
+func (ut *UTXOTangle) heaviestBranchForLatestTimeSlot() common.VCommitment {
+	var largestBranch common.VCommitment
 	var found bool
 
 	ut.mutex.RLock()
 	defer ut.mutex.RUnlock()
 
-	ut.forEachBranchSorted(ut.LatestTimeSlot(), func(vid *WrappedTx, br branch) bool {
-		largestBranch = br
+	ut.forEachBranchSorted(ut.LatestTimeSlot(), func(vid *WrappedTx, root common.VCommitment) bool {
+		largestBranch = root
 		found = true
 		return false
 	}, true)
@@ -268,15 +262,15 @@ func (ut *UTXOTangle) ForEachBranchStateDesc(e core.TimeSlot, fun func(vid *Wrap
 	ut.mutex.RLock()
 	defer ut.mutex.RUnlock()
 
-	ut.forEachBranchSorted(e, func(vid *WrappedTx, br branch) bool {
-		r, err := multistate.NewReadable(ut.stateStore, br.root, 0)
+	ut.forEachBranchSorted(e, func(vid *WrappedTx, root common.VCommitment) bool {
+		r, err := multistate.NewReadable(ut.stateStore, root, 0)
 		util.AssertNoError(err)
 		return fun(vid, multistate.MakeSugared(r))
 	}, true)
 	return nil
 }
 
-func (ut *UTXOTangle) forEachBranchSorted(e core.TimeSlot, fun func(vid *WrappedTx, br branch) bool, desc bool) {
+func (ut *UTXOTangle) forEachBranchSorted(e core.TimeSlot, fun func(vid *WrappedTx, root common.VCommitment) bool, desc bool) {
 	branches, ok := ut.branches[e]
 	if !ok {
 		return
@@ -335,8 +329,7 @@ func (ut *UTXOTangle) ScanAccount(addr core.AccountID, lastNTimeSlots int) set.S
 
 	for _, vid := range toScan {
 		if vid.IsBranchTransaction() {
-			br := ut.mustGetBranch(vid)
-			rdr := multistate.MustNewSugaredStateReader(ut.stateStore, br.root)
+			rdr := multistate.MustNewSugaredStateReader(ut.stateStore, ut.mustGetBranch(vid))
 			outs, err := rdr.GetIDSLockedInAccount(addr)
 			util.AssertNoError(err)
 
