@@ -67,14 +67,17 @@ func runCompactCmd(_ *cobra.Command, _ []string) {
 		os.Exit(0)
 	}
 
-	txCtx, err := getClient().CompactED25519Outputs(walletData.PrivateKey, tagAlongSeqID, feeAmount)
+	txCtx, err := getClient().MakeCompactTransaction(walletData.PrivateKey, tagAlongSeqID, feeAmount)
 	if err != nil {
 		if txCtx != nil {
 			glb.Verbosef("------- failed transaction -------- \n%s\n--------------------------", txCtx.String())
 		}
 		glb.AssertNoError(err)
 	}
-	glb.Infof("Success: %d outputs have been compacted into one", txCtx.NumInputs())
+	glb.Infof("Submitting compact transaction with %d inputs..", txCtx.NumInputs())
+	err = getClient().SubmitTransaction(txCtx.TransactionBytes())
+	glb.AssertNoError(err)
+
 	if !NoWait() {
 		glb.AssertNoError(waitForInclusion(txCtx.OutputID(0)))
 	}

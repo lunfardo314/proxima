@@ -295,7 +295,8 @@ func (c *APIClient) GetTransferableOutputs(account core.Accountable, ts core.Log
 	return ret, sum, nil
 }
 
-func (c *APIClient) CompactED25519Outputs(walletPrivateKey ed25519.PrivateKey, tagAlongSeqID *core.ChainID, tagAlongFee uint64, maxOutputs ...int) (*transaction.TransactionContext, error) {
+// MakeCompactTransaction requests server and creates a compact transaction for ED25519 outputs in the form of transaction context. Does not submit it
+func (c *APIClient) MakeCompactTransaction(walletPrivateKey ed25519.PrivateKey, tagAlongSeqID *core.ChainID, tagAlongFee uint64, maxOutputs ...int) (*transaction.TransactionContext, error) {
 	walletAccount := core.AddressED25519FromPrivateKey(walletPrivateKey)
 
 	nowisTs := core.LogicalTimeNow()
@@ -325,8 +326,6 @@ func (c *APIClient) CompactED25519Outputs(walletPrivateKey ed25519.PrivateKey, t
 	if err != nil {
 		return nil, err
 	}
-
-	err = c.SubmitTransaction(txBytes)
 	return txCtx, err
 }
 
