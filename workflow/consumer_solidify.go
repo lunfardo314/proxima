@@ -124,7 +124,7 @@ func (c *SolidifyConsumer) newVertexToSolidify(inp *SolidifyInputData) {
 	draftVertex, err := c.glb.utxoTangle.SolidifyInputs(inp.Tx)
 	if err != nil {
 		// non solidifiable
-		inp.eventCallback(SolidifyConsumerName+".fail", err)
+		inp.eventCallback("finish."+SolidifyConsumerName, err)
 		c.Debugf(inp.PrimaryInputConsumerData, "%v", err)
 		c.IncCounter("err")
 		c.removeNonSolidifiableFutureCone(inp.Tx.ID())

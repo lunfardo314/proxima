@@ -3,13 +3,13 @@ package workflow
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/utangle"
 	"github.com/lunfardo314/proxima/util"
-	"go.uber.org/atomic"
 )
 
 func (w *Workflow) TransactionInAPI(txBytes []byte) error {
@@ -22,16 +22,17 @@ func (w *Workflow) TransactionInAPI(txBytes []byte) error {
 
 func (w *Workflow) transactionInWithOptions(txBytes []byte, insider bool, doFun func(*PrimaryInputConsumerData) error) (*transaction.Transaction, error) {
 	util.Assertf(w.IsRunning(), "workflow has not been started yet")
-	out := &PrimaryInputConsumerData{eventCallback: func(_ string, _ any) {}}
-	if insider {
-		out.Source = TransactionSourceSequencer
-	}
-	var err error
 	// base validation
-	out.Tx, err = transaction.FromBytes(txBytes)
+	tx, err := transaction.FromBytes(txBytes)
 	if err != nil {
 		return nil, err
 	}
+
+	out := newPrimaryInputConsumerData(tx)
+	if insider {
+		out.Source = TransactionSourceSequencer
+	}
+
 	// if raw transaction data passes the basic check, it means it is identifiable as a transaction and main properties
 	// are correct: ID, timestamp, sequencer and branch transaction flags. The signature and semantic has not been checked yet
 	return out.Tx, doFun(out)
@@ -104,8 +105,9 @@ func (w *Workflow) TransactionInWithOptions(txBytes []byte, opts ...TransactionI
 
 func newPrimaryInputConsumerData(tx *transaction.Transaction) *PrimaryInputConsumerData {
 	return &PrimaryInputConsumerData{
-		Tx:     tx,
-		Source: TransactionSourceAPI,
+		Tx:            tx,
+		Source:        TransactionSourceAPI,
+		eventCallback: func(_ string, _ any) {},
 	}
 }
 
@@ -125,26 +127,53 @@ func WithWorkflowEventCallback(fun func(event string, data any)) TransactionInOp
 	}
 }
 
-func WithOnWorkflowEvent(event string, fun func(data any)) TransactionInOption {
-	return WithWorkflowEventCallback(func(event1 string, data any) {
-		if event1 == event {
-			fun(data)
+func WithOnWorkflowEventPrefix(eventPrefix string, fun func(event string, data any)) TransactionInOption {
+	return WithWorkflowEventCallback(func(event string, data any) {
+		if strings.HasPrefix(event, eventPrefix) {
+			fun(event, data)
 		}
 	})
 }
 
-// TODO make it with context
 func (w *Workflow) TransactionInWaitAppend(txBytes []byte, timeout time.Duration, opts ...TransactionInOption) (*transaction.Transaction, error) {
-	waitCh := make(chan struct{})
-	var err atomic.Error
+	errCh := make(chan error)
+	var closed bool
+	var closeMutex sync.Mutex
 
-	waitFailOpt := WithOnWorkflowEvent(AppendTxConsumerName, func(data any) {
-		errStr := data.(string)
+	waitFailOpt := WithOnWorkflowEventPrefix("finish", func(event string, data any) {
+		errStr, ok := data.(string)
+		util.Assertf(ok, "wrong data type, string expected")
+		var err error
 		if errStr != "" {
-			err.Store(errors.New(errStr))
+			err = errors.New(errStr)
 		}
-		close(waitCh)
 
+		closeMutex.Lock()
+		defer closeMutex.Unlock()
+
+		if !closed {
+			errCh <- err
+		}
 	})
 
+	defer func() {
+		closeMutex.Lock()
+		defer closeMutex.Unlock()
+
+		close(errCh)
+		closed = true
+	}()
+
+	opts = append(opts, waitFailOpt)
+	tx, err := w.TransactionInWithOptions(txBytes, opts...)
+	if err != nil {
+		return nil, err
+	}
+	select {
+	case err = <-errCh:
+		return nil, err
+	case <-time.After(timeout):
+		return nil, fmt.Errorf("timeout of %v exceed", timeout)
+	}
+	return tx, nil
 }

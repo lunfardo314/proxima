@@ -159,6 +159,45 @@ func TestWorkflow(t *testing.T) {
 			txBytes, err := wd.makeTxFromFaucet(100+uint64(i), wd.distributionAddrs[0])
 			require.NoError(t, err)
 
+			_, err = wd.w.TransactionInWaitAppend(txBytes, 5*time.Second)
+			require.NoError(t, err)
+		}
+		err = waitCounter.Wait()
+		require.NoError(t, err)
+
+		wd.w.Stop()
+		t.Logf("UTXO tangle:\n%s", wd.ut.Info())
+		require.EqualValues(t, numRuns, cnt.Load())
+	})
+
+}
+
+func TestWorkflowOld(t *testing.T) {
+	t.Run("1 sync", func(t *testing.T) {
+		const numRuns = 200
+
+		wd := initWorkflowTest(t, 1, core.LogicalTimeNow())
+		wd.w.SetLogTransactions(true)
+
+		t.Logf("timestamp now: %s", core.LogicalTimeNow().String())
+		t.Logf("distribution timestamp: %s", wd.distributionTxID.Timestamp().String())
+		t.Logf("origin slot: %d", wd.initLedgerStatePar.GenesisTimeSlot)
+
+		estimatedTimeout := (time.Duration(numRuns) * core.TransactionTimePaceDuration()) + (5 * time.Second)
+		waitCounter := countdown.New(numRuns, estimatedTimeout)
+		var cnt atomic.Int32
+		err := wd.w.OnEvent(workflow.EventNewVertex, func(v *workflow.NewVertexEventData) {
+			waitCounter.Tick()
+			cnt.Inc()
+		})
+		require.NoError(t, err)
+
+		wd.w.Start()
+
+		for i := 0; i < numRuns; i++ {
+			txBytes, err := wd.makeTxFromFaucet(100+uint64(i), wd.distributionAddrs[0])
+			require.NoError(t, err)
+
 			_, err = wd.w.TransactionInWaitAppendSyncTx(txBytes)
 			require.NoError(t, err)
 		}
