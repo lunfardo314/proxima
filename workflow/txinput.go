@@ -12,33 +12,12 @@ import (
 	"github.com/lunfardo314/proxima/util"
 )
 
-func (w *Workflow) TransactionInAPI(txBytes []byte) error {
-	_, err := w.transactionInWithOptions(txBytes, false, func(inData *PrimaryInputConsumerData) error {
-		w.primaryInputConsumer.Push(inData)
-		return nil
-	})
+func (w *Workflow) TransactionIn(txBytes []byte, opts ...TransactionInOption) error {
+	_, err := w.TransactionInReturnTx(txBytes, opts...)
 	return err
 }
 
-func (w *Workflow) transactionInWithOptions(txBytes []byte, insider bool, doFun func(*PrimaryInputConsumerData) error) (*transaction.Transaction, error) {
-	util.Assertf(w.IsRunning(), "workflow has not been started yet")
-	// base validation
-	tx, err := transaction.FromBytes(txBytes)
-	if err != nil {
-		return nil, err
-	}
-
-	out := newPrimaryInputConsumerData(tx)
-	if insider {
-		out.Source = TransactionSourceSequencer
-	}
-
-	// if raw transaction data passes the basic check, it means it is identifiable as a transaction and main properties
-	// are correct: ID, timestamp, sequencer and branch transaction flags. The signature and semantic has not been checked yet
-	return out.Tx, doFun(out)
-}
-
-func (w *Workflow) TransactionInWithOptions(txBytes []byte, opts ...TransactionInOption) (*transaction.Transaction, error) {
+func (w *Workflow) TransactionInReturnTx(txBytes []byte, opts ...TransactionInOption) (*transaction.Transaction, error) {
 	util.Assertf(w.IsRunning(), "workflow has not been started yet")
 	// base validation
 	tx, err := transaction.FromBytes(txBytes)
@@ -70,6 +49,8 @@ func WithTransactionSource(src TransactionSource) TransactionInOption {
 		data.Source = src
 	}
 }
+
+var OptionWithSourceSequencer = WithTransactionSource(TransactionSourceSequencer)
 
 func WithWorkflowEventCallback(fun func(event string, data any)) TransactionInOption {
 	return func(data *PrimaryInputConsumerData) {
@@ -119,7 +100,7 @@ func (w *Workflow) TransactionInWaitAppend(txBytes []byte, timeout time.Duration
 	}()
 
 	opts = append(opts, waitFailOpt)
-	tx, err := w.TransactionInWithOptions(txBytes, opts...)
+	tx, err := w.TransactionInReturnTx(txBytes, opts...)
 	if err != nil {
 		return nil, err
 	}

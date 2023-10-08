@@ -390,7 +390,7 @@ func (seq *Sequencer) submitTransaction(tmpMsOutput utangle.WrappedOutput) *utan
 	tx := tmpMsOutput.VID.UnwrapTransaction()
 	util.Assertf(tx != nil, "tx != nil")
 
-	retVID, err := seq.glb.TransactionInWaitAppendWrap(tx.Bytes(), submitTransactionTimeout, workflow.WithTransactionSource(workflow.TransactionSourceSequencer))
+	retVID, err := seq.glb.TransactionInWaitAppendWrap(tx.Bytes(), submitTransactionTimeout, workflow.OptionWithSourceSequencer)
 	if err != nil {
 		seq.log.Errorf("submitTransaction: %v", err)
 		return nil

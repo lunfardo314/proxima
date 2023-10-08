@@ -167,7 +167,7 @@ func (seq *Sequencer) ensureSequencerStartOutput() (utangle.WrappedOutput, bool,
 		return utangle.WrappedOutput{}, false, err
 	}
 
-	vid, err := seq.glb.TransactionInWaitAppendWrap(txBytes, 5*time.Second, workflow.WithTransactionSource(workflow.TransactionSourceSequencer))
+	vid, err := seq.glb.TransactionInWaitAppendWrap(txBytes, 5*time.Second, workflow.OptionWithSourceSequencer)
 	if err != nil {
 		return utangle.WrappedOutput{}, false, err
 	}
