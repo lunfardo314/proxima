@@ -138,6 +138,38 @@ func List[T any](elems ...T) []T {
 	return elems
 }
 
+func Maximum[T any](lst []T, less func(el1, el2 T) bool) T {
+	var ret T
+	first := true
+	for _, el := range lst {
+		if first {
+			ret = el
+			first = false
+			continue
+		}
+		if less(ret, el) {
+			ret = el
+		}
+	}
+	return ret
+}
+
+func Minimum[T any](lst []T, less func(el1, el2 T) bool) T {
+	var ret T
+	first := true
+	for _, el := range lst {
+		if first {
+			ret = el
+			first = false
+			continue
+		}
+		if less(el, ret) {
+			ret = el
+		}
+	}
+	return ret
+}
+
 func CloneArglistShallow[T any](elems ...T) []T {
 	ret := make([]T, len(elems))
 	copy(ret, elems)

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/general"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
@@ -166,15 +167,18 @@ func (ut *UTXOTangle) isValidBranch(br *WrappedTx) bool {
 	return found
 }
 
-func (ut *UTXOTangle) GetStateReader(root common.VCommitment) (multistate.SugaredStateReader, error) {
-	return multistate.NewSugaredReadableState(ut.stateStore, root, 0)
+func (ut *UTXOTangle) GetStateReader(branchTxID *core.TransactionID) (general.StateReader, error) {
+	rr, found := multistate.FetchRootRecord(ut.stateStore, *branchTxID)
+	if !found {
+		return nil, fmt.Errorf("root record for %s has not been found", branchTxID.Short())
+	}
+	return multistate.NewReadable(ut.stateStore, rr.Root)
 }
 
-func (ut *UTXOTangle) MustGetStateReader(root common.VCommitment) (ret multistate.SugaredStateReader) {
-	var err error
-	ret, err = ut.GetStateReader(root)
+func (ut *UTXOTangle) MustGetStateReader(branchTxID *core.TransactionID) general.StateReader {
+	ret, err := ut.GetStateReader(branchTxID)
 	util.AssertNoError(err)
-	return
+	return ret
 }
 
 // GetBaseStateRootOfSequencerMilestone returns root of the base state of the sequencer milestone, if possible.

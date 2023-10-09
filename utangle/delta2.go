@@ -1,145 +1,149 @@
 package utangle
 
 import (
+	"sort"
+
+	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/general"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/set"
-	"github.com/lunfardo314/unitrie/common"
 )
 
 type (
+	utxoStateDelta map[*WrappedTx]set.Set[byte]
+
 	UTXOStateDelta2 struct {
+		utxoStateDelta
 		// baseline state root.
 		// - if root != nil, delta is root-bound or state-bound, i.e. it is linked to a particular state.
 		//   It can only bne applied to that state, and it is guaranteed that it will always succeed
 		// - if root == nil delta is not dependent on a particular baseline state and can be applied to any (with or without success)
-		root         common.VCommitment
-		transactions map[*WrappedTx]set.Set[byte]
+		branchTxID *core.TransactionID
 	}
 )
 
-func NewUTXOStateDelta2(root ...common.VCommitment) *UTXOStateDelta2 {
-	ret := &UTXOStateDelta2{
-		transactions: make(map[*WrappedTx]set.Set[byte]),
+func NewUTXOStateDelta2(branchTxID *core.TransactionID) *UTXOStateDelta2 {
+	return &UTXOStateDelta2{
+		utxoStateDelta: make(utxoStateDelta),
+		branchTxID:     branchTxID,
 	}
-	if len(root) > 0 {
-		ret.root = root[0]
+}
+
+func (d utxoStateDelta) getConsumedSet(vid *WrappedTx) set.Set[byte] {
+	return d[vid]
+}
+
+func (d utxoStateDelta) consume(wOut WrappedOutput, baselineState ...general.StateReader) bool {
+	consumedSet, found := d[wOut.VID]
+	if found {
+		return !consumedSet.Contains(wOut.Index)
 	}
-	return ret
-}
-
-func (d *UTXOStateDelta2) isStateBound() bool {
-	return d.root == common.VCommitment(nil)
-}
-
-func (d *UTXOStateDelta2) getConsumedSet(vid *WrappedTx) set.Set[byte] {
-	return d.transactions[vid]
-}
-
-// TODO optimize with WrappedOutput iterator, better GC-wise
-
-func (d *UTXOStateDelta2) consume(getStateReader func(root common.VCommitment) general.StateReader, wOuts ...WrappedOutput) WrappedOutput {
-	util.Assertf(!d.isStateBound() || getStateReader != nil, "state reader closure must be provided for state-bound delta")
-
-	var rdr general.StateReader
-	var stateReaderLoaded bool
-
-	for _, wOut := range wOuts {
-		consumedSet := d.getConsumedSet(wOut.VID)
-		if consumedSet.Contains(wOut.Index) {
-			return wOut
+	// transaction is not on the delta, check the baseline state if provided
+	if len(baselineState) > 0 {
+		if !baselineState[0].HasUTXO(wOut.DecodeID()) {
+			return false
 		}
-		// not found in the consumed set
-		if d.isStateBound() {
-			// check in the state
-			if !stateReaderLoaded {
-				rdr = getStateReader(d.root)
-				stateReaderLoaded = true
-			}
-			if !rdr.HasUTXO(wOut.DecodeID()) {
-				return wOut
-			}
-		}
-		if len(consumedSet) == 0 {
-			consumedSet = set.New[byte](wOut.Index)
-		} else {
-			consumedSet.Insert(wOut.Index)
-		}
-		d.transactions[wOut.VID] = consumedSet
 	}
-	return WrappedOutput{}
+	if len(consumedSet) == 0 {
+		d[wOut.VID] = set.New[byte](wOut.Index)
+	} else {
+		d[wOut.VID].Insert(wOut.Index)
+	}
+	return true
 }
 
-func (d *UTXOStateDelta2) isIncluded(vid *WrappedTx) bool {
-	_, included := d.transactions[vid]
+func (d utxoStateDelta) isIncluded(vid *WrappedTx) bool {
+	_, included := d[vid]
 	return included
 }
 
-func (d *UTXOStateDelta2) include(getStateReader func(root common.VCommitment) general.StateReader, vid *WrappedTx) (conflict WrappedOutput) {
-	if !d.isIncluded(vid) {
-		d.transactions[vid] = nil
-		conflict = d.consume(getStateReader, vid.WrappedInputs()...)
+func (d utxoStateDelta) include(vid *WrappedTx, baselineState ...general.StateReader) (ret WrappedOutput) {
+	if d.isIncluded(vid) {
+		return
+	}
+	for _, wOut := range vid.WrappedInputs() {
+		if !d.consume(wOut, baselineState...) {
+			return wOut
+		}
 	}
 	return
 }
 
-func mergeDeltas(getStateReader func(root common.VCommitment) general.StateReader, deltas ...*UTXOStateDelta2) (ret *UTXOStateDelta2, conflict WrappedOutput) {
+func (d *UTXOStateDelta2) Include(vid *WrappedTx, getStateReader ...func(branchTxID *core.TransactionID) general.StateReader) (ret WrappedOutput) {
+	if d.branchTxID == nil {
+		return d.utxoStateDelta.include(vid)
+	}
+	util.Assertf(len(getStateReader) > 0, "can't create state reader")
+	return d.utxoStateDelta.include(vid, getStateReader[0](d.branchTxID))
+}
+
+func (d *UTXOStateDelta2) Consume(wOut WrappedOutput, getStateReader ...func(branchTxID *core.TransactionID) general.StateReader) bool {
+	if d.branchTxID == nil {
+		return d.utxoStateDelta.consume(wOut)
+	}
+	util.Assertf(len(getStateReader) > 0, "state constructor must be provided")
+	return d.utxoStateDelta.consume(wOut, getStateReader[0](d.branchTxID))
+}
+
+func MergeDeltas(getStateReader func(branchTxID *core.TransactionID) general.StateReader, deltas ...*UTXOStateDelta2) (*UTXOStateDelta2, WrappedOutput) {
+	ret := make(utxoStateDelta)
 	if len(deltas) == 0 {
-		return
+		return &UTXOStateDelta2{utxoStateDelta: ret}, WrappedOutput{}
 	}
 
 	stateBound := make([]*UTXOStateDelta2, 0)
-	notStateBound := make([]*UTXOStateDelta2, 0)
+	notStateBound := make([]utxoStateDelta, 0)
 	for _, d := range deltas {
-		if d.isStateBound() {
+		if d.branchTxID != nil {
 			stateBound = append(stateBound, d)
 		} else {
-			notStateBound = append(notStateBound, d)
+			notStateBound = append(notStateBound, d.utxoStateDelta)
 		}
 	}
-	ret, conflict = mergeStateIndependentDeltas(notStateBound...)
+	conflict := ret.append(nil, notStateBound...)
 	if conflict.VID != nil {
-		return
+		return nil, conflict
 	}
-	switch {
-	case len(stateBound) == 0:
-		return
-	case len(stateBound) == 1:
-		// not GC-efficient
-		ret.root = stateBound[0].root
-		wrappedOutputs := make([]WrappedOutput, 0)
-		for vid, consumedSet := range stateBound[0].transactions {
-			for idx := range consumedSet {
-				wrappedOutputs = append(wrappedOutputs, WrappedOutput{
-					VID:   vid,
-					Index: idx,
-				})
-			}
-		}
-		conflict = ret.consume(getStateReader, wrappedOutputs...)
+	if len(stateBound) == 0 {
+		return &UTXOStateDelta2{utxoStateDelta: ret}, WrappedOutput{}
+	}
+
+	sort.Slice(stateBound, func(i, j int) bool {
+		return stateBound[i].branchTxID.TimeSlot() < stateBound[j].branchTxID.TimeSlot()
+	})
+
+	latestDelta := stateBound[len(stateBound)-1]
+	util.Assertf(getStateReader != nil, "baseline state is not provided")
+
+	baselineState := getStateReader(latestDelta.branchTxID)
+	for _, d := range stateBound {
+		conflict = ret.append(baselineState, d.utxoStateDelta)
 		if conflict.VID != nil {
-			ret = nil
-			return
+			return nil, conflict
 		}
-	default:
-		panic("not implemented")
 	}
-	return
+	return &UTXOStateDelta2{utxoStateDelta: ret, branchTxID: latestDelta.branchTxID}, WrappedOutput{}
 }
 
-func mergeStateIndependentDeltas(deltas ...*UTXOStateDelta2) (ret *UTXOStateDelta2, conflict WrappedOutput) {
-	ret = NewUTXOStateDelta2()
-	for _, d := range deltas {
-		for vid, consumedSet := range d.transactions {
-			consumedSet.ForEach(func(i byte) bool {
-				conflict = ret.consume(nil, WrappedOutput{
+func (d utxoStateDelta) append(baselineState general.StateReader, deltas ...utxoStateDelta) (conflict WrappedOutput) {
+	var stateReader []general.StateReader
+	if baselineState != nil {
+		stateReader = util.List(baselineState)
+	}
+	for _, d1 := range deltas {
+		for vid, consumeSet := range d1 {
+			consumeSet.ForEach(func(i byte) bool {
+				wOut := WrappedOutput{
 					VID:   vid,
 					Index: i,
-				})
-				return conflict.VID != nil
+				}
+				ok := d.consume(wOut, stateReader...)
+				if !ok {
+					conflict = wOut
+				}
+				return ok
 			})
 			if conflict.VID != nil {
-				ret = nil
 				return
 			}
 		}
