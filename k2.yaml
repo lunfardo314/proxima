@@ -8,14 +8,14 @@ sequencer:
     id: ""
 tag-along:
     fee: 500
-    sequencer: 41341247d3a52b0d2429dd7b4c6de86458fd4779523a849f31361383061295be
+    sequencer:
 txstore:
     name: ""
 wallet:
     account: addressED25519(0x62c733803a83a26d4db1ce9f22206281f64af69401da6eb26390d34e6a88c5fa)
     name: "key 2 wallet"
     pk: 3a2ed3c4f738a06e9543f80e032fd870be5e524585e0144f2499d1a28bc4797902e2a7a85bd158469adae3294a615e17ef49e72642c4eb58ff00d92301b9bb88
-    sequencer: ""
+    sequencer:
 spammer:
     scenario: standard
     output_amount: 1000
@@ -25,6 +25,6 @@ spammer:
     max_transactions: 0 # 0 means no limit
     max_duration_minutes: 0 # 0 means no limit
     tag_along:
-        sequencer: 90819a05a3a54eb67807abc7627acc4aa144f5b4de5456ee23d822e14bffc177
+        sequencer:
         fee: 500
     target: addressED25519(0x3faf090d38f18ea211936b8bcf19b7b30cdcb8e224394a5c30f9ba644f8bb2fb)

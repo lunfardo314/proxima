@@ -16,11 +16,11 @@ spammer:
     submit_nowait: false
     tag_along:
         fee: 500
-        sequencer: 41341247d3a52b0d2429dd7b4c6de86458fd4779523a849f31361383061295be
+        sequencer:
     target: addressED25519(0x62c733803a83a26d4db1ce9f22206281f64af69401da6eb26390d34e6a88c5fa)
 tag-along:
     fee: 500
-    sequencer: 41341247d3a52b0d2429dd7b4c6de86458fd4779523a849f31361383061295be
+    sequencer:
 target: ""
 txstore:
     name: proximadb.txstore
@@ -30,4 +30,4 @@ wallet:
     account: addressED25519(0x3faf090d38f18ea211936b8bcf19b7b30cdcb8e224394a5c30f9ba644f8bb2fb)
     name: test wallet key 0
     pk: 136381bd4dea7b2f0fa6c6ca14ee660dc7929975b47e6cdb85adee9e26032a810530b790e0e7de626f36e20ba656f09e324c68203de899d0daf9f98fcb3cf684
-    sequencer: 41341247d3a52b0d2429dd7b4c6de86458fd4779523a849f31361383061295be
+    sequencer:

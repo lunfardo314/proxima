@@ -239,7 +239,7 @@ func (ut *UTXOTangle) _finalizeBranch(newBranchVertex *WrappedTx) error {
 			util.AssertNoError(err)
 			stemLock, ok := stemOut.StemLock()
 			util.Assertf(ok, "can't find stem lock")
-			prevBranchData, ok := multistate.FetchBranchDataByTransactionID(ut.stateStore, stemLock.PredecessorOutputID.TransactionID())
+			prevBranchData, ok := multistate.FetchBranchData(ut.stateStore, stemLock.PredecessorOutputID.TransactionID())
 			util.Assertf(ok, "can't find previous branch data")
 			var upd *multistate.Updatable
 			upd, err = multistate.NewUpdatable(ut.stateStore, prevBranchData.Root)

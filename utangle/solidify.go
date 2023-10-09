@@ -53,7 +53,7 @@ func (ut *UTXOTangle) GetWrappedOutput(oid *core.OutputID, getState ...func() mu
 
 func (ut *UTXOTangle) fetchAndWrapBranch(oid *core.OutputID) (WrappedOutput, bool, bool) {
 	// it is a branch tx output, fetch the whole branch
-	bd, branchFound := multistate.FetchBranchDataByTransactionID(ut.stateStore, oid.TransactionID())
+	bd, branchFound := multistate.FetchBranchData(ut.stateStore, oid.TransactionID())
 	if !branchFound {
 		// maybe later
 		return WrappedOutput{}, false, false
@@ -116,7 +116,7 @@ func (ut *UTXOTangle) wrapNewIntoExistingBranch(vid *WrappedTx, oid *core.Output
 			_, already := v.OutputAt(oid.Index())
 			util.Assertf(!already, "inconsistency: output %s should not exist in the virtualTx", func() any { return oid.Short() })
 
-			bd, branchFound := multistate.FetchBranchDataByTransactionID(ut.stateStore, oid.TransactionID())
+			bd, branchFound := multistate.FetchBranchData(ut.stateStore, oid.TransactionID())
 			util.Assertf(branchFound, "inconsistency: branch %s must exist", oid.Short())
 
 			rdr := multistate.MustNewSugaredStateReader(ut.stateStore, bd.Root)

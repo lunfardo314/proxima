@@ -81,7 +81,6 @@ func (w *Workflow) TransactionInWaitAppend(txBytes []byte, timeout time.Duration
 		var err error
 		if errStr != "" {
 			err = errors.New(errStr)
-			fmt.Printf(">>>>>>>>>>>>>>>>>>>> event: %s: %v\n", event, err)
 		}
 
 		closeMutex.Lock()

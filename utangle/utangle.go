@@ -129,7 +129,7 @@ func (ut *UTXOTangle) GetBranch(vid *WrappedTx) (common.VCommitment, bool) {
 // MustGetBranchState returns state reader corresponding to the branch transaction
 func (ut *UTXOTangle) MustGetBranchState(vid *WrappedTx) multistate.SugaredStateReader {
 	util.Assertf(vid.IsBranchTransaction(), "vid.IsBranchTransaction()")
-	rootData, ok := multistate.FetchRootDataByTransactionID(ut.stateStore, *vid.ID())
+	rootData, ok := multistate.FetchRootRecord(ut.stateStore, *vid.ID())
 	util.Assertf(ok, "can't get root data for branch transaction")
 
 	ret, err := multistate.NewSugaredReadableState(ut.stateStore, rootData.Root, 0)

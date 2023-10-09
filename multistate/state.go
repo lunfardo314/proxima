@@ -23,14 +23,14 @@ type (
 		trie *immutable.TrieReader
 	}
 
-	RootData struct {
+	RootRecord struct {
 		Root        common.VCommitment
 		SequencerID core.ChainID
 		Coverage    uint64
 	}
 
 	BranchData struct {
-		RootData
+		RootRecord
 		Stem      *core.OutputWithID
 		SeqOutput *core.OutputWithID
 	}
@@ -267,7 +267,7 @@ func (u *Updatable) updateUTXOLedgerDB(updateFun func(updatable *immutable.TrieU
 		if latestSlot < stemOutputID.TimeSlot() {
 			writeLatestSlot(batch, stemOutputID.TimeSlot())
 		}
-		writeRootRecord(batch, *stemOutputID, RootData{
+		writeRootRecord(batch, stemOutputID.TransactionID(), RootRecord{
 			Root:        newRoot,
 			SequencerID: *seqID,
 			Coverage:    coverage,

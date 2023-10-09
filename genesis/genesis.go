@@ -113,11 +113,11 @@ const (
 
 // ScanGenesisState TODO more checks
 func ScanGenesisState(stateStore general.StateStore) (*StateIdentityData, common.VCommitment, error) {
-	var genesisRootRecord multistate.RootData
+	var genesisRootRecord multistate.RootRecord
 
 	// expecting a single branch in the genesis state
 	fetched, moreThan1 := false, false
-	multistate.IterateRootRecords(stateStore, func(stemOid core.OutputID, rootData multistate.RootData) bool {
+	multistate.IterateRootRecords(stateStore, func(_ core.TransactionID, rootData multistate.RootRecord) bool {
 		if fetched {
 			moreThan1 = true
 			return false
