@@ -51,7 +51,7 @@ func (s Set[K]) Clone() Set[K] {
 
 // Contains nil-safe
 func (s Set[K]) Contains(el K) bool {
-	if s == nil {
+	if len(s) == 0 {
 		return false
 	}
 	_, contains := s[el]
@@ -60,7 +60,7 @@ func (s Set[K]) Contains(el K) bool {
 
 // AsList is non-deterministic
 func (s Set[K]) AsList() []K {
-	if s == nil {
+	if len(s) == 0 {
 		return nil
 	}
 	ret := make([]K, 0, len(s))

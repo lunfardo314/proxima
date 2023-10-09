@@ -166,6 +166,17 @@ func (ut *UTXOTangle) isValidBranch(br *WrappedTx) bool {
 	return found
 }
 
+func (ut *UTXOTangle) GetStateReader(root common.VCommitment) (multistate.SugaredStateReader, error) {
+	return multistate.NewSugaredReadableState(ut.stateStore, root, 0)
+}
+
+func (ut *UTXOTangle) MustGetStateReader(root common.VCommitment) (ret multistate.SugaredStateReader) {
+	var err error
+	ret, err = ut.GetStateReader(root)
+	util.AssertNoError(err)
+	return
+}
+
 // GetBaseStateRootOfSequencerMilestone returns root of the base state of the sequencer milestone, if possible.
 // If returned, the root must be deterministic on every node and for every sequencer
 func (ut *UTXOTangle) GetBaseStateRootOfSequencerMilestone(vSeq *WrappedTx) (common.VCommitment, bool) {
