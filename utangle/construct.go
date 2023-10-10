@@ -130,17 +130,15 @@ func (ut *UTXOTangle) SolidifyInputs(tx *transaction.Transaction) (*Vertex, erro
 	return ret, nil
 }
 
-func _calcDelta(vid *WrappedTx) error {
-	v, ok := vid.UnwrapVertex()
-	util.Assertf(ok, "vertex expected")
-
-	if err := v.mergeInputDeltas(); err != nil {
-		return err
+func (v *Vertex) CalcDeltaAndWrap(ut *UTXOTangle) (*WrappedTx, error) {
+	if err := v.mergeInputDeltas(ut); err != nil {
+		return nil, err
 	}
-	if conflict := v.StateDelta.include(vid); conflict != nil {
-		return fmt.Errorf("conflict %s while including %s into delta:\n%s", conflict.IDShort(), vid.IDShort(), v.StateDelta.LinesRecursive().String())
+	vid := v.Wrap()
+	if conflict := v.StateDelta.Include(vid); conflict.VID != nil {
+		return nil, fmt.Errorf("conflict %s while including %s into delta", conflict.IDShort(), vid.IDShort())
 	}
-	return nil
+	return vid, nil
 }
 
 func MakeVertex(draftVertex *Vertex, bypassConstraintValidation ...bool) (*WrappedTx, error) {
@@ -171,23 +169,6 @@ func (ut *UTXOTangle) AppendVertex(vid *WrappedTx) error {
 		}
 	}
 	return nil
-}
-
-func (ut *UTXOTangle) AppendVertexFromTransactionBytes(txBytes []byte) (*WrappedTx, error) {
-	tx, err := transaction.FromBytesMainChecksWithOpt(txBytes)
-	if err != nil {
-		return nil, err
-	}
-	vertexDraft, err := ut.SolidifyInputs(tx)
-	if err != nil {
-		return nil, err
-	}
-	ret, err := MakeVertex(vertexDraft)
-	if err != nil {
-		return nil, err
-	}
-	err = ut.AppendVertex(ret)
-	return ret, err
 }
 
 // AppendVertexFromTransactionBytesDebug for testing mainly

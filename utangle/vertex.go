@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/general"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
@@ -22,40 +23,24 @@ func (v *Vertex) getSequencerPredecessor() *WrappedTx {
 	return v.Inputs[predIdx]
 }
 
-func (v *Vertex) mergeInputDeltas() error {
-	var err error
-	v.forEachInputDependency(func(i byte, inp *WrappedTx) bool {
-		inp.Unwrap(UnwrapOptions{
-			Vertex: func(vInp *Vertex) {
-				conflict, consumer := vInp.StateDelta.MergeInto(&v.StateDelta)
-				if conflict != nil {
-					err = fmt.Errorf("conflict %s while including tx %s into delta:\n%s", conflict.IDShort(), consumer.IDShort(), v.StateDelta.LinesRecursive().String())
-				}
-			},
-			VirtualTx: func(_ *VirtualTransaction) {
-				v.StateDelta.include(inp)
-			},
-		})
-		return err == nil
-	})
-	if err != nil {
-		return err
-	}
+func (v *Vertex) mergeInputDeltas(ut *UTXOTangle) error {
+	util.Assertf(v.IsSolid(), "some inputs are not solid")
+	deltas := make([]*UTXOStateDelta2, 0, v.Tx.NumInputs()+v.Tx.NumEndorsements())
 
-	v.forEachEndorsement(func(i byte, vEnd *WrappedTx) bool {
-		vEnd.Unwrap(UnwrapOptions{
-			Vertex: func(vInp *Vertex) {
-				conflict, consumer := vInp.StateDelta.MergeInto(&v.StateDelta)
-				if conflict != nil {
-					err = fmt.Errorf("conflict %s while including tx %s into delta:\n%s",
-						conflict.IDShort(), consumer.IDShort(), v.StateDelta.LinesRecursive().String())
-				}
-			}, VirtualTx: func(_ *VirtualTransaction) {
-				v.StateDelta.include(vEnd)
-			}})
-		return err == nil
+	// traverse tx inputs and endorsements
+	v.forEachDependency(func(inp *WrappedTx) bool {
+		deltas = append(deltas, inp.GetUTXOStateDelta())
+		return true
 	})
-	return err
+
+	delta, conflict := MergeDeltas(func(branchTxID *core.TransactionID) general.StateReader {
+		return ut.MustGetStateReader(branchTxID)
+	}, deltas...)
+	if conflict != nil {
+		return fmt.Errorf("conflict in the past cone at %s", conflict.IDShort())
+	}
+	v.StateDelta = *delta
+	return nil
 }
 
 // getConsumedOutput return consumed output at index i or nil, nil if input is orphaned
@@ -123,9 +108,6 @@ func (v *Vertex) MissingInputTxIDString() string {
 }
 
 func (v *Vertex) IsSolid() bool {
-	if v.Tx.IsSequencerMilestone() && !v.BranchConeTipSolid {
-		return false
-	}
 	for _, d := range v.Inputs {
 		if d == nil {
 			return false
@@ -196,6 +178,16 @@ func (v *Vertex) forEachEndorsement(fun func(i byte, vEnd *WrappedTx) bool) {
 	}
 }
 
+// forEachDependency traverses first all input links, then all endorsements
+func (v *Vertex) forEachDependency(fun func(inp *WrappedTx) bool) {
+	v.forEachInputDependency(func(_ byte, inp *WrappedTx) bool {
+		return fun(inp)
+	})
+	v.forEachEndorsement(func(_ byte, inp *WrappedTx) bool {
+		return fun(inp)
+	})
+}
+
 func (v *Vertex) String() string {
 	return v.Lines().String()
 }
@@ -224,9 +216,6 @@ func (v *Vertex) ConsumedInputsToString() string {
 func (v *Vertex) ConsumedInputsToLines() *lines.Lines {
 	ret := lines.New()
 	ret.Add("Consumed outputs (%d) of vertex %s", v.Tx.NumInputs(), v.Tx.IDShort())
-	if v.Tx.IsSequencerMilestone() {
-		ret.Add("    branch: %s", v.StateDelta.baselineBranch.IDShort())
-	}
 	for i, dep := range v.Inputs {
 		id, err := v.Tx.InputAt(byte(i))
 		util.AssertNoError(err)

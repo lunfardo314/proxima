@@ -167,7 +167,7 @@ func (ut *UTXOTangle) isValidBranch(br *WrappedTx) bool {
 	return found
 }
 
-func (ut *UTXOTangle) GetStateReader(branchTxID *core.TransactionID) (general.StateReader, error) {
+func (ut *UTXOTangle) GetStateReader(branchTxID *core.TransactionID) (general.IndexedStateReader, error) {
 	rr, found := multistate.FetchRootRecord(ut.stateStore, *branchTxID)
 	if !found {
 		return nil, fmt.Errorf("root record for %s has not been found", branchTxID.Short())
@@ -175,10 +175,14 @@ func (ut *UTXOTangle) GetStateReader(branchTxID *core.TransactionID) (general.St
 	return multistate.NewReadable(ut.stateStore, rr.Root)
 }
 
-func (ut *UTXOTangle) MustGetStateReader(branchTxID *core.TransactionID) general.StateReader {
+func (ut *UTXOTangle) MustGetStateReader(branchTxID *core.TransactionID) general.IndexedStateReader {
 	ret, err := ut.GetStateReader(branchTxID)
 	util.AssertNoError(err)
 	return ret
+}
+
+func (ut *UTXOTangle) MustGetSugaredStateReader(branchTxID *core.TransactionID) multistate.SugaredStateReader {
+	return multistate.MakeSugared(ut.MustGetStateReader(branchTxID))
 }
 
 // GetBaseStateRootOfSequencerMilestone returns root of the base state of the sequencer milestone, if possible.

@@ -744,3 +744,30 @@ func (vid *WrappedTx) WrappedInputs() []WrappedOutput {
 	})
 	return ret
 }
+
+func (vid *WrappedTx) BaseBranchTXID() (ret *core.TransactionID) {
+	vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
+		ret = v.StateDelta.branchTxID
+	}})
+	return
+}
+
+// GetUTXOStateDelta returns a pointer, not to be mutated, must be cloned first! Never nil
+// For branch it returns empty delta with the branch as baseline
+func (vid *WrappedTx) GetUTXOStateDelta() (ret *UTXOStateDelta2) {
+	if vid.IsBranchTransaction() {
+		return NewUTXOStateDelta2(vid.BaseBranchTXID())
+	}
+	vid.Unwrap(UnwrapOptions{
+		Vertex: func(v *Vertex) {
+			ret = &v.StateDelta
+		},
+		VirtualTx: func(v *VirtualTransaction) {
+			ret = NewUTXOStateDelta2(nil)
+		},
+		Orphaned: func() {
+			util.Panicf("orphaned vertex should not be accesses")
+		},
+	})
+	return
+}

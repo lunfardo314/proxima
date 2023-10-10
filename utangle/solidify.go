@@ -8,9 +8,10 @@ import (
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/proxima/util/set"
 )
 
-func (ut *UTXOTangle) GetWrappedOutput(oid *core.OutputID, getState ...func() multistate.SugaredStateReader) (WrappedOutput, bool, bool) {
+func (ut *UTXOTangle) GetWrappedOutput(oid *core.OutputID, baselineState ...multistate.SugaredStateReader) (WrappedOutput, bool, bool) {
 	txid := oid.TransactionID()
 	if vid, found := ut.GetVertex(&txid); found {
 		hasIt, invalid := vid.HasOutputAt(oid.Index())
@@ -26,19 +27,19 @@ func (ut *UTXOTangle) GetWrappedOutput(oid *core.OutputID, getState ...func() mu
 			return ut.wrapNewIntoExistingBranch(vid, oid)
 		}
 		// it is a virtual tx, output not cached
-		return wrapNewIntoExistingNonBranch(vid, oid, getState...)
+		return wrapNewIntoExistingNonBranch(vid, oid, baselineState...)
 	}
 	// transaction not on UTXO tangle
 	if oid.BranchFlagON() {
 		return ut.fetchAndWrapBranch(oid)
 	}
 	// non-branch not on the utxo tangle
-	if len(getState) == 0 {
+	if len(baselineState) == 0 {
 		// no info on input, maybe later
 		return WrappedOutput{}, false, false
 	}
 	// looking for output in the provided state
-	o, err := getState[0]().GetOutput(oid)
+	o, err := baselineState[0].GetOutput(oid)
 	if err != nil {
 		return WrappedOutput{}, false, !errors.Is(err, multistate.ErrNotFound)
 	}
@@ -75,17 +76,17 @@ func (ut *UTXOTangle) fetchAndWrapBranch(oid *core.OutputID) (WrappedOutput, boo
 	return WrappedOutput{VID: vid, Index: oid.Index()}, true, false
 }
 
-func wrapNewIntoExistingNonBranch(vid *WrappedTx, oid *core.OutputID, getState ...func() multistate.SugaredStateReader) (WrappedOutput, bool, bool) {
+func wrapNewIntoExistingNonBranch(vid *WrappedTx, oid *core.OutputID, baselineState ...multistate.SugaredStateReader) (WrappedOutput, bool, bool) {
 	util.Assertf(!oid.BranchFlagON(), "%s should not be branch", oid.Short())
 	// Don't have output in existing vertex, but it may be a virtualTx
-	if len(getState) == 0 {
+	if len(baselineState) == 0 {
 		return WrappedOutput{}, false, false
 	}
 	var ret WrappedOutput
 	var available, invalid bool
 	vid.Unwrap(UnwrapOptions{
 		VirtualTx: func(v *VirtualTransaction) {
-			o, err := getState[0]().GetOutput(oid)
+			o, err := baselineState[0].GetOutput(oid)
 			if errors.Is(err, multistate.ErrNotFound) {
 				return // null, false, false
 			}
@@ -159,41 +160,27 @@ func (ut *UTXOTangle) solidifyOutput(oid *core.OutputID, baseStateReader func() 
 // FetchMissingDependencies check solidity of inputs and fetches what is available
 // Does not obtain global lock on the tangle
 // It means in general the result is non-deterministic, because some dependencies may be unavailable. This is ok for solidifier
-// Once transaction has all dependencies solid, the result is deterministic
+// Once transaction has all dependencies solid, further on the result is deterministic
 func (v *Vertex) FetchMissingDependencies(ut *UTXOTangle) error {
-	var err error
-	if v.Tx.IsSequencerMilestone() && v.StateDelta.baselineBranch == nil {
-		if err = v.fetchBranchDependency(ut); err != nil {
-			return err
+	if v.Tx.IsSequencerMilestone() {
+		// baseline state must ultimately be determined
+		baselineState, conflict := v.getInputBaselineState(ut.MustGetSugaredStateReader)
+		if conflict {
+			return fmt.Errorf("conflicting inputs in %s", v.Tx.IDShort())
 		}
-		if !v.BranchConeTipSolid {
-			// branch cone tip not solid yet, can't continue with solidification of the sequencer tx
-			return nil
+		if baselineState != nil {
+			return v.fetchMissingSequencerDependencies(ut, *baselineState)
 		}
+		return v.fetchMissingSequencerDependencies(ut)
 	}
-	// ---- solidify inputs
-	v.Tx.ForEachInput(func(i byte, oid *core.OutputID) bool {
-		if v.Inputs[i] != nil {
-			// it is already solid
-			return true
-		}
-		wOut, ok, invalid := ut.GetWrappedOutput(oid, func() multistate.SugaredStateReader {
-			return v.mustGetBaseState(ut)
-		})
-		if invalid {
-			err = fmt.Errorf("wrong output %s", oid.Short())
-			return false
-		}
-		if ok {
-			v.Inputs[i] = wOut.VID
-		}
-		return true
-	})
-	if err != nil {
+	// not a sequencer transaction, baseline state does not exist
+	return v.fetchMissingNonSequencerDependencies(ut)
+}
+
+func (v *Vertex) fetchMissingSequencerDependencies(ut *UTXOTangle, baselineState ...multistate.SugaredStateReader) error {
+	if err := v.fetchMissingInputs(ut, baselineState...); err != nil {
 		return err
 	}
-
-	//----  solidify endorsements
 	v.Tx.ForEachEndorsement(func(i byte, txid *core.TransactionID) bool {
 		if v.Endorsements[i] != nil {
 			// already solid
@@ -209,15 +196,80 @@ func (v *Vertex) FetchMissingDependencies(ut *UTXOTangle) error {
 	return nil
 }
 
-func (v *Vertex) mustGetBaseState(ut *UTXOTangle) multistate.SugaredStateReader {
-	util.Assertf(!v.Tx.IsSequencerMilestone() || v.BranchConeTipSolid, "!v.Tx.IsSequencerMilestone() || v.BranchConeTipSolid")
-	// determining base state for outputs not on the tangle
-	if v.Tx.IsSequencerMilestone() && v.StateDelta.baselineBranch != nil {
-		rdr, err := multistate.NewReadable(ut.stateStore, ut.mustGetBranch(v.StateDelta.baselineBranch))
-		util.AssertNoError(err)
-		return multistate.MakeSugared(rdr)
+func (v *Vertex) fetchMissingNonSequencerDependencies(ut *UTXOTangle) error {
+	// TODO search outputs in several roots?
+	baselineState := ut.HeaviestStateForLatestTimeSlot()
+	return v.fetchMissingInputs(ut, baselineState)
+}
+
+func (v *Vertex) fetchMissingInputs(ut *UTXOTangle, baselineState ...multistate.SugaredStateReader) error {
+	var err error
+	var ok, invalid bool
+	var wOut WrappedOutput
+
+	v.Tx.ForEachInput(func(i byte, oid *core.OutputID) bool {
+		if v.Inputs[i] != nil {
+			// it is already solid
+			return true
+		}
+		wOut, ok, invalid = ut.GetWrappedOutput(oid, baselineState...)
+		if invalid {
+			err = fmt.Errorf("wrong output %s", oid.Short())
+			return false
+		}
+		if ok {
+			v.Inputs[i] = wOut.VID
+		}
+		return true
+	})
+	return err
+}
+
+// getInputBaselineState returns baseline state of inputs if it exists.
+// Return conflict flag if inputs belongs to conflicting branches
+// Note, that not all inputs may not be solid. the baseline branch is the latest among not-nil branches
+// In non-conflicting case return nil if all known inputs are state-independent
+func (v *Vertex) getInputBaselineState(getStateReader func(branchTxID *core.TransactionID) multistate.SugaredStateReader) (ret *multistate.SugaredStateReader, conflict bool) {
+	branchIDs := set.New[core.TransactionID]()
+	v.forEachInputDependency(func(i byte, inp *WrappedTx) bool {
+		if inp == nil {
+			return true
+		}
+		if branchTxID := inp.BaseBranchTXID(); branchTxID != nil {
+			branchIDs.Insert(*branchTxID)
+		}
+		return true
+	})
+	v.forEachEndorsement(func(i byte, vEnd *WrappedTx) bool {
+		if vEnd == nil {
+			return true
+		}
+		if branchTxID := vEnd.BaseBranchTXID(); branchTxID != nil {
+			branchIDs.Insert(*branchTxID)
+		}
+		return true
+	})
+	if len(branchIDs) == 0 {
+		return
 	}
-	return ut.HeaviestStateForLatestTimeSlot()
+	branchIDsSorted := branchIDs.Ordered(func(branchTxID1, branchTxID2 core.TransactionID) bool {
+		return branchTxID1.TimeSlot() > branchTxID2.TimeSlot()
+	})
+	// check for conflicting branches
+	for i, txid := range branchIDsSorted {
+		if i+1 >= len(branchIDs) {
+			break
+		}
+		txid1 := branchIDsSorted[i+1]
+		if txid.TimeSlot() == txid1.TimeSlot() && txid != txid1 {
+			// two different branches on the same slot are conflicting
+			conflict = true
+			return
+		}
+	}
+	rdr := getStateReader(&branchIDsSorted[0])
+	ret = &rdr
+	return
 }
 
 func (v *Vertex) fetchBranchDependency(ut *UTXOTangle) error {
