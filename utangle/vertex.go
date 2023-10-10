@@ -43,6 +43,17 @@ func (v *Vertex) mergeInputDeltas(ut *UTXOTangle) error {
 	return nil
 }
 
+func (v *Vertex) CalcDeltaAndWrap(ut *UTXOTangle) (*WrappedTx, error) {
+	if err := v.mergeInputDeltas(ut); err != nil {
+		return nil, err
+	}
+	vid := v.Wrap()
+	if conflict := v.StateDelta.Include(vid); conflict.VID != nil {
+		return nil, fmt.Errorf("conflict %s while including %s into delta", conflict.IDShort(), vid.IDShort())
+	}
+	return vid, nil
+}
+
 // getConsumedOutput return consumed output at index i or nil, nil if input is orphaned
 func (v *Vertex) getConsumedOutput(i byte) (*core.Output, error) {
 	if int(i) >= len(v.Inputs) {
