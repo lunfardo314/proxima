@@ -75,7 +75,7 @@ func initSequencerTestData(t *testing.T, nFaucets, nAdditionalChains int, logica
 	txStore := txstore.NewDummyTxBytesStore()
 
 	ret.bootstrapChainID, _ = genesis.InitLedgerState(ret.stateIdentity, stateStore)
-	txBytes, err := genesis.DistributeInitialSupply(stateStore, ret.originControllerPrivateKey, ret.originDistribution)
+	txBytes, err := txbuilder.DistributeInitialSupply(stateStore, ret.originControllerPrivateKey, ret.originDistribution)
 	require.NoError(t, err)
 
 	err = txStore.SaveTxBytes(txBytes)

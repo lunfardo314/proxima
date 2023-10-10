@@ -8,6 +8,7 @@ import (
 	"github.com/lunfardo314/proxima/genesis"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/transaction"
+	"github.com/lunfardo314/proxima/txbuilder"
 	"github.com/lunfardo314/proxima/txstore"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/unitrie/adaptors/badger_adaptor"
@@ -68,7 +69,7 @@ func runDBDistributeCmd(_ *cobra.Command, args []string) {
 	}
 
 	walletData := glb.GetWalletData()
-	txBytes, err := genesis.DistributeInitialSupply(stateStore, walletData.PrivateKey, distribution)
+	txBytes, err := txbuilder.DistributeInitialSupply(stateStore, walletData.PrivateKey, distribution)
 	glb.AssertNoError(err)
 
 	txID, _, err := transaction.IDAndTimestampFromTransactionBytes(txBytes)

@@ -9,7 +9,7 @@ import (
 	"github.com/lunfardo314/proxima/genesis"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/proxi/glb"
-	"github.com/lunfardo314/proxima/sequencer"
+	"github.com/lunfardo314/proxima/txbuilder"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/unitrie/adaptors/badger_adaptor"
 	"github.com/spf13/cobra"
@@ -67,7 +67,7 @@ func DisplayBranchData(branches []*multistate.BranchData) {
 	glb.Infof(strings.Repeat("-", 150))
 	for i, br := range branches {
 		name := "(no name)"
-		if msData := sequencer.ParseMilestoneData(br.SeqOutput.Output); msData != nil {
+		if msData := txbuilder.ParseMilestoneData(br.SeqOutput.Output); msData != nil {
 			name = msData.Name
 		}
 		name = fmt.Sprintf("%s (%s)", name, br.SequencerID.VeryShort())

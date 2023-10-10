@@ -14,7 +14,6 @@ import (
 	"github.com/lunfardo314/proxima/api"
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/proxi/glb"
-	"github.com/lunfardo314/proxima/sequencer"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/txbuilder"
 	"github.com/lunfardo314/proxima/util"
@@ -121,7 +120,7 @@ func (c *APIClient) GetChainOutputFromHeaviestState(chainID core.ChainID) (*core
 	return oData.ParseAsChainOutput()
 }
 
-func (c *APIClient) GetMilestoneDataFromHeaviestState(chainID core.ChainID) (*sequencer.MilestoneData, error) {
+func (c *APIClient) GetMilestoneDataFromHeaviestState(chainID core.ChainID) (*txbuilder.MilestoneData, error) {
 	o, _, err := c.GetChainOutputFromHeaviestState(chainID)
 	if err != nil {
 		return nil, err
@@ -129,7 +128,7 @@ func (c *APIClient) GetMilestoneDataFromHeaviestState(chainID core.ChainID) (*se
 	if !o.ID.IsSequencerTransaction() {
 		return nil, fmt.Errorf("not a sequencer milestone: %s", chainID.Short())
 	}
-	return sequencer.ParseMilestoneData(o.Output), nil
+	return txbuilder.ParseMilestoneData(o.Output), nil
 }
 
 // GetOutputDataFromHeaviestState returns output data from the latest heaviest state, if it exists there

@@ -39,6 +39,11 @@ type (
 		prefix []byte
 		parser Parser
 	}
+
+	LockBalance struct {
+		Lock    Lock
+		Balance uint64
+	}
 )
 
 var (

@@ -7,7 +7,7 @@ import (
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/proxi/glb"
-	"github.com/lunfardo314/proxima/sequencer"
+	"github.com/lunfardo314/proxima/txbuilder"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/unitrie/adaptors/badger_adaptor"
 	"github.com/spf13/cobra"
@@ -63,7 +63,7 @@ func runMainChainCmd(_ *cobra.Command, args []string) {
 			sd.onChainBalance = bd.SeqOutput.Output.Amount()
 		}
 		if sd.name == "" {
-			if md := sequencer.ParseMilestoneData(bd.SeqOutput.Output); md != nil {
+			if md := txbuilder.ParseMilestoneData(bd.SeqOutput.Output); md != nil {
 				sd.name = md.Name
 			}
 		}

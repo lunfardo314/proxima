@@ -3,6 +3,7 @@ package sequencer
 import (
 	"time"
 
+	"github.com/lunfardo314/proxima/txbuilder"
 	"github.com/lunfardo314/proxima/utangle"
 	"github.com/lunfardo314/proxima/util"
 )
@@ -51,7 +52,7 @@ func (seq *Sequencer) LogMilestoneSubmitDefault(wOut *utangle.WrappedOutput) {
 	}
 
 	var branchIndex, msIndex uint32
-	if od := ParseMilestoneData(o.Output); od != nil {
+	if od := txbuilder.ParseMilestoneData(o.Output); od != nil {
 		branchIndex = od.BranchHeight
 		msIndex = od.ChainHeight
 	}

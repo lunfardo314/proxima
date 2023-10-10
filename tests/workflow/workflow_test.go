@@ -11,7 +11,6 @@ import (
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/genesis"
 	"github.com/lunfardo314/proxima/multistate"
-	"github.com/lunfardo314/proxima/sequencer"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/txbuilder"
 	"github.com/lunfardo314/proxima/txstore"
@@ -58,7 +57,7 @@ func initWorkflowTest(t *testing.T, nDistribution int, nowis core.LogicalTime, c
 	txStore := txstore.NewDummyTxBytesStore()
 
 	ret.bootstrapChainID, _ = genesis.InitLedgerState(par, stateStore)
-	txBytes, err := genesis.DistributeInitialSupply(stateStore, genesisPrivKey, distrib)
+	txBytes, err := txbuilder.DistributeInitialSupply(stateStore, genesisPrivKey, distrib)
 	require.NoError(t, err)
 
 	err = txStore.SaveTxBytes(txBytes)
@@ -571,7 +570,7 @@ func initMultiChainTest(t *testing.T, nChains int, printTx bool, secondsInThePas
 	txStore := txstore.NewDummyTxBytesStore()
 
 	ret.bootstrapChainID, _ = genesis.InitLedgerState(ret.sPar, stateStore)
-	txBytes, err := genesis.DistributeInitialSupply(stateStore, genesisPrivKey, distrib)
+	txBytes, err := txbuilder.DistributeInitialSupply(stateStore, genesisPrivKey, distrib)
 	require.NoError(t, err)
 
 	err = txStore.SaveTxBytes(txBytes)
@@ -683,7 +682,7 @@ func (r *multiChainTestData) createSequencerChain1(chainIdx int, pace int, print
 	r.t.Logf("chain #%d, ID: %s, origin: %s", chainIdx, outConsumeChain.ChainID.Short(), outConsumeChain.ID.Short())
 	chainID := outConsumeChain.ChainID
 
-	par := sequencer.MakeSequencerTransactionParams{
+	par := txbuilder.MakeSequencerTransactionParams{
 		ChainInput:        outConsumeChain,
 		StemInput:         nil,
 		Timestamp:         outConsumeChain.Timestamp(),
@@ -721,7 +720,7 @@ func (r *multiChainTestData) createSequencerChain1(chainIdx int, pace int, print
 			par.Endorsements = []*core.TransactionID{&lastBranchID}
 		}
 
-		txBytes, err := sequencer.MakeSequencerTransaction(par)
+		txBytes, err := txbuilder.MakeSequencerTransaction(par)
 		require.NoError(r.t, err)
 		ret = append(ret, txBytes)
 		require.NoError(r.t, err)
@@ -765,7 +764,7 @@ func (r *multiChainTestData) createSequencerChains1(pace int, howLong int) [][]b
 	counter := 0
 	for range sequences {
 		// sequencer tx
-		txBytes, err := sequencer.MakeSequencerTransaction(sequencer.MakeSequencerTransactionParams{
+		txBytes, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
 			ChainInput:   r.chainOrigins[counter],
 			Timestamp:    r.chainOrigins[counter].Timestamp().AddTimeTicks(pace),
 			Endorsements: []*core.TransactionID{&r.originBranchTxid},
@@ -812,7 +811,7 @@ func (r *multiChainTestData) createSequencerChains1(pace int, howLong int) [][]b
 			// endorse previous sequencer tx
 			endorse = []*core.TransactionID{lastInChain(curChainIdx).ID()}
 		}
-		txBytes, err = sequencer.MakeSequencerTransaction(sequencer.MakeSequencerTransactionParams{
+		txBytes, err = txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
 			ChainInput: &core.OutputWithChainID{
 				OutputWithID: *chainIn,
 				ChainID:      r.chainOrigins[nextChainIdx].ChainID,
@@ -853,7 +852,7 @@ func (r *multiChainTestData) createSequencerChains2(pace int, howLong int) [][]b
 	sequences := make([][]*transaction.Transaction, nChains)
 	counter := 0
 	for range sequences {
-		txBytes, err := sequencer.MakeSequencerTransaction(sequencer.MakeSequencerTransactionParams{
+		txBytes, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
 			ChainInput:   r.chainOrigins[counter],
 			Timestamp:    r.chainOrigins[counter].Timestamp().AddTimeTicks(pace),
 			Endorsements: []*core.TransactionID{&r.originBranchTxid},
@@ -917,7 +916,7 @@ func (r *multiChainTestData) createSequencerChains2(pace int, howLong int) [][]b
 				}
 			}
 		}
-		txBytes, err = sequencer.MakeSequencerTransaction(sequencer.MakeSequencerTransactionParams{
+		txBytes, err = txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
 			ChainInput: &core.OutputWithChainID{
 				OutputWithID: *chainIn,
 				ChainID:      r.chainOrigins[nextChainIdx].ChainID,
@@ -963,7 +962,7 @@ func (r *multiChainTestData) createSequencerChains3(pace int, howLong int, print
 	sequences := make([][]*transaction.Transaction, nChains)
 	counter := 0
 	for range sequences {
-		txBytes, err := sequencer.MakeSequencerTransaction(sequencer.MakeSequencerTransactionParams{
+		txBytes, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
 			ChainInput:   r.chainOrigins[counter],
 			Timestamp:    r.chainOrigins[counter].Timestamp().AddTimeTicks(pace),
 			Endorsements: []*core.TransactionID{&r.originBranchTxid},
@@ -1049,7 +1048,7 @@ func (r *multiChainTestData) createSequencerChains3(pace int, howLong int, print
 				}
 			}
 		}
-		txBytes, err = sequencer.MakeSequencerTransaction(sequencer.MakeSequencerTransactionParams{
+		txBytes, err = txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
 			ChainInput: &core.OutputWithChainID{
 				OutputWithID: *chainIn,
 				ChainID:      r.chainOrigins[nextChainIdx].ChainID,
@@ -1342,7 +1341,7 @@ func TestMultiChainWorkflow(t *testing.T) {
 		require.True(t, ts.TimeSlot() != 0 && ts.TimeSlot() == txEndorser.Timestamp().TimeSlot())
 		t.Logf("ID to be endorsed: %s", idToBeEndorsed.Short())
 
-		txBytesConflict, err := sequencer.MakeSequencerTransaction(sequencer.MakeSequencerTransactionParams{
+		txBytesConflict, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
 			ChainInput: &core.OutputWithChainID{
 				OutputWithID: *out,
 				ChainID:      r.chainOrigins[1].ChainID,
