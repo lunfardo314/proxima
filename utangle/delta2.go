@@ -5,7 +5,9 @@ import (
 
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/general"
+	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/proxima/util/lines"
 	"github.com/lunfardo314/proxima/util/set"
 )
 
@@ -73,6 +75,23 @@ func (d utxoStateDelta) include(vid *WrappedTx, baselineState ...general.StateRe
 		if !d.consume(wOut, baselineState...) {
 			return wOut
 		}
+	}
+	return
+}
+
+func (d utxoStateDelta) coverage() (ret uint64) {
+	for vid, consumedSet := range d {
+		vid.Unwrap(UnwrapOptions{
+			Vertex: func(v *Vertex) {
+				ret += uint64(v.Tx.TotalAmount())
+				consumedSet.ForEach(func(idx byte) bool {
+					o, ok := v.MustProducedOutput(idx)
+					util.Assertf(ok, "can't get output")
+					ret -= o.Amount()
+					return true
+				})
+			},
+		})
 	}
 	return
 }
@@ -153,6 +172,16 @@ func MergeDeltas(getStateReader func(branchTxID *core.TransactionID) general.Sta
 	}, nil
 }
 
+func (d *UTXOStateDelta2) Coverage(stateStore general.StateStore) uint64 {
+	if d.branchTxID == nil {
+		return 0
+	}
+	rr, found := multistate.FetchRootRecord(stateStore, *d.branchTxID)
+	util.Assertf(found, "can't fetch root record")
+
+	return rr.Coverage + d.coverage()
+}
+
 func (d utxoStateDelta) append(baselineState general.StateReader, delta utxoStateDelta) (conflict WrappedOutput) {
 	var stateReader []general.StateReader
 	if baselineState != nil {
@@ -175,4 +204,71 @@ func (d utxoStateDelta) append(baselineState general.StateReader, delta utxoStat
 		}
 	}
 	return
+}
+
+func (d utxoStateDelta) isConsumedInThisDelta(wOut WrappedOutput) bool {
+	consumedSet, found := d[wOut.VID]
+	if !found {
+		return false
+	}
+	return consumedSet.Contains(wOut.Index)
+}
+
+func (d utxoStateDelta) getUpdateCommands() []multistate.UpdateCmd {
+	ret := make([]multistate.UpdateCmd, 0)
+
+	for vid, consumedSet := range d {
+		vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
+			v.Tx.ForEachProducedOutput(func(idx byte, o *core.Output, oid *core.OutputID) bool {
+				if !consumedSet.Contains(idx) {
+					ret = append(ret, multistate.UpdateCmd{
+						ID:     oid,
+						Output: o,
+					})
+				}
+				return true
+			})
+			v.forEachInputDependency(func(i byte, inp *WrappedTx) bool {
+				if !d.isConsumedInThisDelta(WrappedOutput{VID: inp, Index: i}) {
+					oid := v.Tx.MustInputAt(i)
+					ret = append(ret, multistate.UpdateCmd{
+						ID: &oid,
+					})
+				}
+				return true
+			})
+		}})
+	}
+	return ret
+}
+
+func (d utxoStateDelta) lines(prefix ...string) *lines.Lines {
+	ret := lines.New(prefix...)
+
+	sorted := util.SortKeys(d, func(vid1, vid2 *WrappedTx) bool {
+		return vid1.Timestamp().Before(vid2.Timestamp())
+	})
+	for _, vid := range sorted {
+		consumedSet := d[vid]
+		ret.Add("%s consumed: %+v", vid.IDShort(), util.Keys(consumedSet))
+	}
+	return ret
+}
+
+func (d *UTXOStateDelta2) Lines(prefix ...string) *lines.Lines {
+	ret := lines.New(prefix...)
+	var baseline string
+	if d.branchTxID == nil {
+		baseline = "(none)"
+	} else {
+		baseline = d.branchTxID.Short()
+	}
+	ret.Add("------ START delta. Baseline: %s", baseline)
+	prefix1 := ""
+	if len(prefix) > 0 {
+		prefix1 = prefix[0]
+	}
+	ret.Append(d.utxoStateDelta.lines("    " + prefix1))
+	ret.Add("------ END delta")
+	return ret
 }
