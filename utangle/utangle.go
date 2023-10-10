@@ -185,6 +185,14 @@ func (ut *UTXOTangle) MustGetSugaredStateReader(branchTxID *core.TransactionID) 
 	return multistate.MakeSugared(ut.MustGetStateReader(branchTxID))
 }
 
+func (ut *UTXOTangle) GetStateUpdatable(branchTxID *core.TransactionID) (*multistate.Updatable, error) {
+	rr, found := multistate.FetchRootRecord(ut.stateStore, *branchTxID)
+	if !found {
+		return nil, fmt.Errorf("root record for %s has not been found", branchTxID.Short())
+	}
+	return multistate.NewUpdatable(ut.stateStore, rr.Root)
+}
+
 // GetBaseStateRootOfSequencerMilestone returns root of the base state of the sequencer milestone, if possible.
 // If returned, the root must be deterministic on every node and for every sequencer
 func (ut *UTXOTangle) GetBaseStateRootOfSequencerMilestone(vSeq *WrappedTx) (common.VCommitment, bool) {

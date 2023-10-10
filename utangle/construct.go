@@ -201,25 +201,14 @@ func (ut *UTXOTangle) _finalizeBranch(newBranchVertex *WrappedTx) error {
 
 	newBranchVertex.Unwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
-			// determine baseline state
-			seqData := v.Tx.SequencerTransactionData()
-			nextStemOutputID = v.Tx.OutputID(seqData.StemOutputIndex)
-			var stemOut *core.Output
-			stemOut, err = v.Tx.ProducedOutputAt(seqData.StemOutputIndex)
-			util.AssertNoError(err)
-
-			stemLock, ok := stemOut.StemLock()
-			util.Assertf(ok, "can't find stem lock")
-			prevBranchData, ok := multistate.FetchBranchData(ut.stateStore, stemLock.PredecessorOutputID.TransactionID())
-			util.Assertf(ok, "can't find previous branch data")
-			var upd *multistate.Updatable
-			upd, err = multistate.NewUpdatable(ut.stateStore, prevBranchData.Root)
+			util.Assertf(v.StateDelta.branchTxID != nil, "expected not nil baseline tx in %s", func() any { return v.Tx.IDShort() })
+			upd, err := ut.GetStateUpdatable(v.StateDelta.branchTxID)
 			if err != nil {
 				return
 			}
 
 			cmds := v.StateDelta.getUpdateCommands()
-			err = upd.UpdateWithCommands(cmds, &nextStemOutputID, &seqData.SequencerID, coverage)
+			err = upd.UpdateWithCommands(cmds, &nextStemOutputID, &v.Tx.SequencerTransactionData().SequencerID, coverage)
 			if err != nil {
 				err = fmt.Errorf("finalizeBranch %s: '%v'", v.Tx.IDShort(), err)
 				return
