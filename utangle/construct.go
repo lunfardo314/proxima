@@ -113,7 +113,7 @@ func (ut *UTXOTangle) SolidifyInputsFromTxBytes(txBytes []byte) (*Vertex, error)
 	return ut.SolidifyInputs(tx)
 }
 
-func newVertex(tx *transaction.Transaction) *Vertex {
+func NewVertex(tx *transaction.Transaction) *Vertex {
 	return &Vertex{
 		Tx:           tx,
 		Inputs:       make([]*WrappedTx, tx.NumInputs()),
@@ -123,7 +123,7 @@ func newVertex(tx *transaction.Transaction) *Vertex {
 }
 
 func (ut *UTXOTangle) SolidifyInputs(tx *transaction.Transaction) (*Vertex, error) {
-	ret := newVertex(tx)
+	ret := NewVertex(tx)
 	if err := ret.FetchMissingDependencies(ut); err != nil {
 		return nil, err
 	}

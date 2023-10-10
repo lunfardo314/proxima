@@ -46,7 +46,7 @@ func (c *ValidateConsumer) consume(inp *ValidateConsumerInputData) {
 	// will start a worker goroutine or block util worker is available
 	c.workerPool.Work(func() {
 		// will check for conflicts
-		vid, err := utangle.MakeVertex(inp.draftVertex)
+		vid, err := c.glb.utxoTangle.MakeVertex(inp.draftVertex)
 		if err != nil {
 			inp.eventCallback("finish."+ValidateConsumerName, err.Error())
 			c.IncCounter("err")
