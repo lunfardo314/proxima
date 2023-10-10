@@ -269,7 +269,9 @@ func TestBookingDoubleSpends(t *testing.T) {
 		fmt.Printf("*********** expected error\n")
 		_, err = it.ut.MakeVertex(vDraft)
 		t.Logf("expected error: '%v'", err)
-		util.RequirePanicOrErrorWith(t, func() error { return err }, "conflict", it.forkOutput.ID.Short())
+
+		conflictTxID := it.forkOutput.ID.TransactionID()
+		util.RequirePanicOrErrorWith(t, func() error { return err }, "conflict", conflictTxID.Short())
 		t.Logf("UTXOTangle at the end:\n%s", it.ut.Info())
 	})
 	t.Run("conflict long", func(t *testing.T) { // TODO
@@ -294,7 +296,8 @@ func TestBookingDoubleSpends(t *testing.T) {
 
 		_, err = it.ut.MakeVertex(vDraft)
 		t.Logf("expected error: '%v'", err)
-		util.RequirePanicOrErrorWith(t, func() error { return err }, "conflict", it.forkOutput.ID.Short())
+		conflictTxID := it.forkOutput.ID.TransactionID()
+		util.RequirePanicOrErrorWith(t, func() error { return err }, "conflict", conflictTxID.Short())
 		t.Logf("UTXOTangle at the end:\n%s", it.ut.Info())
 
 		//tangle.SaveGraphPastCone(vid, "long_conflict")
