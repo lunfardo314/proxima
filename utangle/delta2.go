@@ -29,8 +29,16 @@ func NewUTXOStateDelta2(branchTxID *core.TransactionID) *UTXOStateDelta2 {
 	}
 }
 
-func (d utxoStateDelta) getConsumedSet(vid *WrappedTx) set.Set[byte] {
-	return d[vid]
+func (d utxoStateDelta) clone() utxoStateDelta {
+	ret := make(utxoStateDelta)
+	for vid, consumedSet := range d {
+		if consumedSet.IsEmpty() {
+			ret[vid] = nil
+		} else {
+			ret[vid] = consumedSet.Clone()
+		}
+	}
+	return ret
 }
 
 func (d utxoStateDelta) consume(wOut WrappedOutput, baselineState ...general.StateReader) bool {
@@ -85,67 +93,85 @@ func (d *UTXOStateDelta2) Consume(wOut WrappedOutput, getStateReader ...func(bra
 	return d.utxoStateDelta.consume(wOut, getStateReader[0](d.branchTxID))
 }
 
-func MergeDeltas(getStateReader func(branchTxID *core.TransactionID) general.StateReader, deltas ...*UTXOStateDelta2) (*UTXOStateDelta2, WrappedOutput) {
+func MergeDeltas(getStateReader func(branchTxID *core.TransactionID) general.StateReader, deltas ...*UTXOStateDelta2) (*UTXOStateDelta2, *WrappedOutput) {
 	ret := make(utxoStateDelta)
 	if len(deltas) == 0 {
-		return &UTXOStateDelta2{utxoStateDelta: ret}, WrappedOutput{}
+		return &UTXOStateDelta2{utxoStateDelta: ret}, nil
 	}
 
-	stateBound := make([]*UTXOStateDelta2, 0)
-	notStateBound := make([]utxoStateDelta, 0)
-	for _, d := range deltas {
-		if d.branchTxID != nil {
-			stateBound = append(stateBound, d)
-		} else {
-			notStateBound = append(notStateBound, d.utxoStateDelta)
+	deltasSorted := util.CloneArglistShallow(deltas...)
+	sort.Slice(deltasSorted, func(i, j int) bool {
+		bi := deltasSorted[i].branchTxID
+		bj := deltasSorted[j].branchTxID
+		switch {
+		case bi != nil && bj == nil:
+			return true
+		case bi != nil && bj != nil:
+			return bi.TimeSlot() > bj.TimeSlot()
 		}
-	}
-	conflict := ret.append(nil, notStateBound...)
-	if conflict.VID != nil {
-		return nil, conflict
-	}
-	if len(stateBound) == 0 {
-		return &UTXOStateDelta2{utxoStateDelta: ret}, WrappedOutput{}
-	}
-
-	sort.Slice(stateBound, func(i, j int) bool {
-		return stateBound[i].branchTxID.TimeSlot() < stateBound[j].branchTxID.TimeSlot()
+		return false
 	})
 
-	latestDelta := stateBound[len(stateBound)-1]
-	util.Assertf(getStateReader != nil, "baseline state is not provided")
-
-	baselineState := getStateReader(latestDelta.branchTxID)
-	for _, d := range stateBound {
-		conflict = ret.append(baselineState, d.utxoStateDelta)
-		if conflict.VID != nil {
-			return nil, conflict
+	// check conflicting branches
+	for i, d := range deltasSorted {
+		if d.branchTxID == nil {
+			break
+		}
+		if i+1 >= len(deltasSorted) {
+			break
+		}
+		d1 := deltasSorted[i+1]
+		if d1.branchTxID == nil {
+			break
+		}
+		if d.branchTxID.TimeSlot() == d1.branchTxID.TimeSlot() && *d.branchTxID != *d1.branchTxID {
+			// two different branches on the same slot conflicts
+			return nil, &WrappedOutput{}
 		}
 	}
-	return &UTXOStateDelta2{utxoStateDelta: ret, branchTxID: latestDelta.branchTxID}, WrappedOutput{}
+
+	// deltasSorted are all non-conflicting and sorted descending by slot with nil-branches at the end
+	var baselineState general.StateReader
+	latestBranchTxID := deltasSorted[0].branchTxID
+	if latestBranchTxID != nil {
+		baselineState = getStateReader(latestBranchTxID)
+	}
+
+	var conflict WrappedOutput
+	for i, d := range deltasSorted {
+		if i == 0 {
+			ret = deltasSorted[0].utxoStateDelta.clone()
+			continue
+		}
+		if conflict = ret.append(baselineState, d.utxoStateDelta); conflict.VID != nil {
+			return nil, &conflict
+		}
+	}
+	return &UTXOStateDelta2{
+		utxoStateDelta: ret,
+		branchTxID:     latestBranchTxID,
+	}, nil
 }
 
-func (d utxoStateDelta) append(baselineState general.StateReader, deltas ...utxoStateDelta) (conflict WrappedOutput) {
+func (d utxoStateDelta) append(baselineState general.StateReader, delta utxoStateDelta) (conflict WrappedOutput) {
 	var stateReader []general.StateReader
 	if baselineState != nil {
 		stateReader = util.List(baselineState)
 	}
-	for _, d1 := range deltas {
-		for vid, consumeSet := range d1 {
-			consumeSet.ForEach(func(i byte) bool {
-				wOut := WrappedOutput{
-					VID:   vid,
-					Index: i,
-				}
-				ok := d.consume(wOut, stateReader...)
-				if !ok {
-					conflict = wOut
-				}
-				return ok
-			})
-			if conflict.VID != nil {
-				return
+	for vid, consumeSet := range delta {
+		consumeSet.ForEach(func(i byte) bool {
+			wOut := WrappedOutput{
+				VID:   vid,
+				Index: i,
 			}
+			ok := d.consume(wOut, stateReader...)
+			if !ok {
+				conflict = wOut
+			}
+			return ok
+		})
+		if conflict.VID != nil {
+			return
 		}
 	}
 	return
