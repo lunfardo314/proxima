@@ -188,31 +188,32 @@ func (ut *UTXOTangle) MustGetSugaredStateReader(branchTxID *core.TransactionID) 
 // GetBaseStateRootOfSequencerMilestone returns root of the base state of the sequencer milestone, if possible.
 // If returned, the root must be deterministic on every node and for every sequencer
 func (ut *UTXOTangle) GetBaseStateRootOfSequencerMilestone(vSeq *WrappedTx) (common.VCommitment, bool) {
-	if !vSeq.IsSequencerMilestone() {
-		return nil, false
-	}
-
-	var branchVID *WrappedTx
-	isBranch := vSeq.IsBranchTransaction()
-	vSeq.Unwrap(UnwrapOptions{
-		Vertex: func(v *Vertex) {
-			if isBranch {
-				branchVID = vSeq
-			} else {
-				branchVID = v.StateDelta.baselineBranch
-			}
-		},
-		VirtualTx: func(v *VirtualTransaction) {
-			if isBranch {
-				branchVID = vSeq
-			}
-		},
-	})
-	if branchVID == nil {
-		return nil, false
-	}
-
-	return ut.mustGetBranch(branchVID), true
+	panic("not implemented")
+	//if !vSeq.IsSequencerMilestone() {
+	//	return nil, false
+	//}
+	//
+	//var branchVID *WrappedTx
+	//isBranch := vSeq.IsBranchTransaction()
+	//vSeq.Unwrap(UnwrapOptions{
+	//	Vertex: func(v *Vertex) {
+	//		if isBranch {
+	//			branchVID = vSeq
+	//		} else {
+	//			branchVID = v.StateDelta.baselineBranch
+	//		}
+	//	},
+	//	VirtualTx: func(v *VirtualTransaction) {
+	//		if isBranch {
+	//			branchVID = vSeq
+	//		}
+	//	},
+	//})
+	//if branchVID == nil {
+	//	return nil, false
+	//}
+	//
+	//return ut.mustGetBranch(branchVID), true
 }
 
 // StateReaderOfSequencerMilestone state for the sequencer milestone. Must be deterministic on every node and every sequencer
@@ -313,14 +314,10 @@ func (ut *UTXOTangle) GetSequencerBootstrapOutputs(seqID core.ChainID) (chainOut
 	for _, bd := range branches {
 		rdr := multistate.MustNewSugaredStateReader(ut.stateStore, bd.Root)
 		if seqOut, err := rdr.GetChainOutput(&seqID); err == nil {
-			retStem, ok, _ := ut.GetWrappedOutput(&bd.Stem.ID, func() multistate.SugaredStateReader {
-				return rdr
-			})
+			retStem, ok, _ := ut.GetWrappedOutput(&bd.Stem.ID, rdr)
 			util.Assertf(ok, "can't get wrapped stem output %s", bd.Stem.ID.Short())
 
-			retSeq, ok, _ := ut.GetWrappedOutput(&seqOut.ID, func() multistate.SugaredStateReader {
-				return rdr
-			})
+			retSeq, ok, _ := ut.GetWrappedOutput(&seqOut.ID, rdr)
 			util.Assertf(ok, "can't get wrapped sequencer output %s", seqOut.ID.Short())
 
 			return retSeq, retStem, true
@@ -353,9 +350,7 @@ func (ut *UTXOTangle) ScanAccount(addr core.AccountID, lastNTimeSlots int) set.S
 			util.AssertNoError(err)
 
 			for i := range outs {
-				ow, ok, _ := ut.GetWrappedOutput(&outs[i], func() multistate.SugaredStateReader {
-					return rdr
-				})
+				ow, ok, _ := ut.GetWrappedOutput(&outs[i], rdr)
 				util.Assertf(ok, "ScanAccount: can't fetch output %s", outs[i].Short())
 				ret.Insert(ow)
 			}

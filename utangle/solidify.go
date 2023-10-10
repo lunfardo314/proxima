@@ -142,21 +142,6 @@ func (ut *UTXOTangle) wrapNewIntoExistingBranch(vid *WrappedTx, oid *core.Output
 	return ret, available, invalid
 }
 
-// solidifyOutput returns:
-// - nil, nil if output cannot be solidified yet, but no error
-// - nil, err if output cannot be solidified ever
-// - vid, nil if solid reference has been found
-func (ut *UTXOTangle) solidifyOutput(oid *core.OutputID, baseStateReader func() multistate.SugaredStateReader) (*WrappedTx, error) {
-	ret, ok, invalid := ut.GetWrappedOutput(oid, baseStateReader)
-	if invalid {
-		return nil, fmt.Errorf("output %s cannot be solidified", oid.Short())
-	}
-	if !ok {
-		return nil, nil
-	}
-	return ret.VID, nil
-}
-
 // FetchMissingDependencies check solidity of inputs and fetches what is available
 // Does not obtain global lock on the tangle
 // It means in general the result is non-deterministic, because some dependencies may be unavailable. This is ok for solidifier
@@ -270,40 +255,6 @@ func (v *Vertex) getInputBaselineState(getStateReader func(branchTxID *core.Tran
 	rdr := getStateReader(&branchIDsSorted[0])
 	ret = &rdr
 	return
-}
-
-func (v *Vertex) fetchBranchDependency(ut *UTXOTangle) error {
-	// find a vertex which to follow towards branch transaction
-	// If tx itself is a branch tx, it will point towards previous transaction in the sequencer chain
-	// Each sequencer transaction belongs to a branch
-	branchConeTipVertex, err := ut.getBranchConeTipVertex(v.Tx)
-	if err != nil {
-		// something wrong with the transaction
-		return err
-	}
-	if branchConeTipVertex == nil {
-		// the vertex has no solid root, cannot be solidified (yet or never)
-		return nil
-	}
-	// vertex has solid branch tip (the state baseline can still be mil
-	v.BranchConeTipSolid = true
-	//util.Assertf(branchConeTipVertex.IsSequencerMilestone(), "expected branch cone tip %s to be a sequencer tx",
-	//	branchConeTipVertex.LazyIDShort())
-
-	if branchConeTipVertex.IsBranchTransaction() {
-		util.Assertf(ut.isValidBranch(branchConeTipVertex), "ut.isValidBranch(branchConeTipVertex)")
-		v.StateDelta.baselineBranch = branchConeTipVertex
-	} else {
-		// inherit branch root
-		branchConeTipVertex.Unwrap(UnwrapOptions{
-			Vertex: func(vUnwrap *Vertex) {
-				v.StateDelta.baselineBranch = vUnwrap.StateDelta.baselineBranch
-			},
-		})
-		//util.Assertf(v.StateDelta.baselineBranch != nil, "\n-- vertex: %s\n-- branchConeTipVertex: %s\n-- baseline branch: nil (unexpected)",
-		//	v.Tx.IDShort(), func() any { return branchConeTipVertex.String() })
-	}
-	return nil
 }
 
 // getBranchConeTipVertex for a sequencer transaction, it finds a vertex which is to follow towards

@@ -118,7 +118,7 @@ func newVertex(tx *transaction.Transaction) *Vertex {
 		Tx:           tx,
 		Inputs:       make([]*WrappedTx, tx.NumInputs()),
 		Endorsements: make([]*WrappedTx, tx.NumEndorsements()),
-		StateDelta:   *NewUTXOStateDelta(nil),
+		StateDelta:   *NewUTXOStateDelta2(nil),
 	}
 }
 
@@ -201,14 +201,13 @@ func (ut *UTXOTangle) _finalizeBranch(newBranchVertex *WrappedTx) error {
 
 	newBranchVertex.Unwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
-			util.Assertf(v.BranchConeTipSolid, "branch cone tip not solid in %s", v.Tx.IDShort())
-
 			// determine baseline state
 			seqData := v.Tx.SequencerTransactionData()
 			nextStemOutputID = v.Tx.OutputID(seqData.StemOutputIndex)
 			var stemOut *core.Output
 			stemOut, err = v.Tx.ProducedOutputAt(seqData.StemOutputIndex)
 			util.AssertNoError(err)
+
 			stemLock, ok := stemOut.StemLock()
 			util.Assertf(ok, "can't find stem lock")
 			prevBranchData, ok := multistate.FetchBranchData(ut.stateStore, stemLock.PredecessorOutputID.TransactionID())
@@ -222,8 +221,7 @@ func (ut *UTXOTangle) _finalizeBranch(newBranchVertex *WrappedTx) error {
 			cmds := v.StateDelta.getUpdateCommands()
 			err = upd.UpdateWithCommands(cmds, &nextStemOutputID, &seqData.SequencerID, coverage)
 			if err != nil {
-				err = fmt.Errorf("finalizeBranch %s: '%v'\n=== Delta: %s\n=== Commands: %s",
-					v.Tx.IDShort(), err, v.StateDelta.LinesRecursive().String(), multistate.UpdateCommandsToLines(cmds))
+				err = fmt.Errorf("finalizeBranch %s: '%v'", v.Tx.IDShort(), err)
 				return
 			}
 			newRoot = upd.Root()

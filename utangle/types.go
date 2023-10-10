@@ -29,7 +29,7 @@ type (
 
 	Vertex struct {
 		Tx           *transaction.Transaction
-		StateDelta   UTXOStateDelta2
+		StateDelta   UTXOStateDelta
 		Inputs       []*WrappedTx
 		Endorsements []*WrappedTx
 	}

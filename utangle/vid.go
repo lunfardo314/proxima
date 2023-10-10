@@ -1,8 +1,6 @@
 package utangle
 
 import (
-	"fmt"
-	"os"
 	"sync"
 	"time"
 
@@ -322,34 +320,35 @@ func (vid *WrappedTx) StemOutput() *WrappedOutput {
 }
 
 func (vid *WrappedTx) BaseStemOutput() *WrappedOutput {
-	var ret *WrappedOutput
-	isBranchTx := vid.IsBranchTransaction()
-	vid.Unwrap(UnwrapOptions{
-		Vertex: func(v *Vertex) {
-			if isBranchTx {
-				ret = &WrappedOutput{
-					VID:   vid,
-					Index: v.Tx.SequencerTransactionData().StemOutputIndex,
-				}
-			} else {
-				if b := v.StateDelta.BaselineBranch(); b != nil {
-					util.Assertf(b.IsBranchTransaction(), "%s is not a branch transaction", b.IDShort())
-					ret = b.StemOutput()
-				}
-			}
-		},
-		VirtualTx: func(v *VirtualTransaction) {
-			if isBranchTx {
-				if _, stemOut := v.SequencerOutputs(); stemOut != nil {
-					ret = &WrappedOutput{
-						VID:   vid,
-						Index: v.sequencerOutputs[1],
-					}
-				}
-			}
-		},
-	})
-	return ret
+	panic("not implemented")
+	//var ret *WrappedOutput
+	//isBranchTx := vid.IsBranchTransaction()
+	//vid.Unwrap(UnwrapOptions{
+	//	Vertex: func(v *Vertex) {
+	//		if isBranchTx {
+	//			ret = &WrappedOutput{
+	//				VID:   vid,
+	//				Index: v.Tx.SequencerTransactionData().StemOutputIndex,
+	//			}
+	//		} else {
+	//			if b := v.StateDelta.BaselineBranch(); b != nil {
+	//				util.Assertf(b.IsBranchTransaction(), "%s is not a branch transaction", b.IDShort())
+	//				ret = b.StemOutput()
+	//			}
+	//		}
+	//	},
+	//	VirtualTx: func(v *VirtualTransaction) {
+	//		if isBranchTx {
+	//			if _, stemOut := v.SequencerOutputs(); stemOut != nil {
+	//				ret = &WrappedOutput{
+	//					VID:   vid,
+	//					Index: v.sequencerOutputs[1],
+	//				}
+	//			}
+	//		}
+	//	},
+	//})
+	//return ret
 }
 
 func (vid *WrappedTx) UnwrapVertex() (ret *Vertex, retOk bool) {
@@ -458,24 +457,32 @@ func (vid *WrappedTx) Time() time.Time {
 	return vid._genericWrapper._time()
 }
 
-func (vid *WrappedTx) LedgerCoverage() uint64 {
-	return vid._ledgerCoverage(LedgerCoverageSlots)
+// TODO temporary
+
+func (vid *WrappedTx) LedgerCoverage() (ret uint64) {
+	vid.Unwrap(UnwrapOptions{
+		Vertex: func(v *Vertex) {
+			ret = v.StateDelta.coverage()
+		},
+	})
+	return // vid._ledgerCoverage(LedgerCoverageSlots)
 }
 
-func (vid *WrappedTx) _ledgerCoverage(nSlotsBack int) uint64 {
-	if !vid.IsSequencerMilestone() {
-		return 0
-	}
-	if vid.IsBranchTransaction() {
-		// this is needed to make baselines of comparison between branch and non-branch milestones equal
-		nSlotsBack--
-	}
-	var ret uint64
-	vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
-		ret = v.StateDelta.ledgerCoverage(nSlotsBack)
-	}})
-	return ret
-}
+//
+//func (vid *WrappedTx) _ledgerCoverage(nSlotsBack int) uint64 {
+//	if !vid.IsSequencerMilestone() {
+//		return 0
+//	}
+//	if vid.IsBranchTransaction() {
+//		// this is needed to make baselines of comparison between branch and non-branch milestones equal
+//		nSlotsBack--
+//	}
+//	var ret uint64
+//	vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
+//		ret = v.StateDelta.ledgerCoverage(nSlotsBack)
+//	}})
+//	return ret
+//}
 
 // TraversePastConeDepthFirst performs depth-first traverse of the DAG. Visiting once each node
 // and calling vertex-type specific function if provided on each.
@@ -545,44 +552,45 @@ func (vid *WrappedTx) PastConeSet() set.Set[*WrappedTx] {
 }
 
 func (vid *WrappedTx) StartNextSequencerMilestoneDelta(other ...*WrappedTx) (*UTXOStateDelta, *WrappedOutput, *WrappedTx) {
-	util.Assertf(vid.IsSequencerMilestone(), "vid.IsSequencerMilestone()")
-
-	var ret *UTXOStateDelta
-	vid.Unwrap(UnwrapOptions{
-		Vertex: func(v *Vertex) {
-			ret = v.StateDelta.Clone()
-		},
-		VirtualTx: func(_ *VirtualTransaction) {
-			ret = NewUTXOStateDelta(vid)
-		},
-	})
-	if ret == nil {
-		// orphaned
-		return nil, nil, nil
-	}
-	var conflict *WrappedOutput
-	var consumer *WrappedTx
-
-	var notOrphaned bool
-
-	for _, seqVID := range other {
-		seqVID.Unwrap(UnwrapOptions{
-			Vertex: func(v *Vertex) {
-				conflict, consumer = v.StateDelta.MergeInto(ret)
-				notOrphaned = true
-			},
-			VirtualTx: func(v *VirtualTransaction) {
-				notOrphaned = true
-			},
-		})
-		if conflict != nil {
-			return nil, conflict, consumer
-		}
-		if !notOrphaned {
-			return nil, nil, nil
-		}
-	}
-	return ret, nil, nil
+	panic("no implemented")
+	//util.Assertf(vid.IsSequencerMilestone(), "vid.IsSequencerMilestone()")
+	//
+	//var ret *UTXOStateDelta
+	//vid.Unwrap(UnwrapOptions{
+	//	Vertex: func(v *Vertex) {
+	//		ret = v.StateDelta.Clone()
+	//	},
+	//	VirtualTx: func(_ *VirtualTransaction) {
+	//		ret = NewUTXOStateDelta(vid)
+	//	},
+	//})
+	//if ret == nil {
+	//	// orphaned
+	//	return nil, nil, nil
+	//}
+	//var conflict *WrappedOutput
+	//var consumer *WrappedTx
+	//
+	//var notOrphaned bool
+	//
+	//for _, seqVID := range other {
+	//	seqVID.Unwrap(UnwrapOptions{
+	//		Vertex: func(v *Vertex) {
+	//			conflict, consumer = v.StateDelta.MergeInto(ret)
+	//			notOrphaned = true
+	//		},
+	//		VirtualTx: func(v *VirtualTransaction) {
+	//			notOrphaned = true
+	//		},
+	//	})
+	//	if conflict != nil {
+	//		return nil, conflict, consumer
+	//	}
+	//	if !notOrphaned {
+	//		return nil, nil, nil
+	//	}
+	//}
+	//return ret, nil, nil
 }
 
 func (vid *WrappedTx) String() string {
@@ -633,20 +641,6 @@ func (vid *WrappedTx) DeltaString(skipCommands ...bool) string {
 	return ret.String()
 }
 
-func (vid *WrappedTx) DeltaStringRecursive() string {
-	ret := lines.New().Add("== delta of %s", vid.IDShort())
-	vid.Unwrap(UnwrapOptions{
-		Vertex: func(v *Vertex) {
-			ret.Append(v.StateDelta.LinesRecursive())
-		}, VirtualTx: func(v *VirtualTransaction) {
-			ret.Add("   (booked transaction)")
-		}, Orphaned: func() {
-			ret.Add("   (orphaned vertex)")
-		},
-	})
-	return ret.String()
-}
-
 func (vid *WrappedTx) NumInputs() int {
 	ret := 0
 	vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
@@ -661,33 +655,6 @@ func (vid *WrappedTx) NumProducedOutputs() int {
 		ret = v.Tx.NumProducedOutputs()
 	}})
 	return ret
-}
-
-// SaveTransactionsPastCone for testing TODO traverse without unwrap
-func (vid *WrappedTx) SaveTransactionsPastCone(fname string) {
-	logFile, err := os.Create(fname + ".transactions")
-	util.AssertNoError(err)
-	defer logFile.Close()
-
-	prnVertex := func(vid *WrappedTx) {
-		_, _ = fmt.Fprintf(logFile, "-------------------------------\n%s\n+++++%s\n", vid.String(), vid.DeltaStringRecursive())
-	}
-
-	vid.TraversePastConeDepthFirst(UnwrapOptionsForTraverse{
-		Vertex: func(vid *WrappedTx, _ *Vertex) bool {
-			prnVertex(vid)
-			vid.DeltaString(true)
-			return true
-		},
-		VirtualTx: func(vid *WrappedTx, _ *VirtualTransaction) bool {
-			prnVertex(vid)
-			return true
-		},
-		Orphaned: func(vid *WrappedTx) bool {
-			prnVertex(vid)
-			return true
-		},
-	})
 }
 
 func (o *WrappedOutput) DecodeID() *core.OutputID {
@@ -754,7 +721,7 @@ func (vid *WrappedTx) BaseBranchTXID() (ret *core.TransactionID) {
 
 // GetUTXOStateDelta returns a pointer, not to be mutated, must be cloned first! Never nil
 // For branch it returns empty delta with the branch as baseline
-func (vid *WrappedTx) GetUTXOStateDelta() (ret *UTXOStateDelta2) {
+func (vid *WrappedTx) GetUTXOStateDelta() (ret *UTXOStateDelta) {
 	if vid.IsBranchTransaction() {
 		return NewUTXOStateDelta2(vid.BaseBranchTXID())
 	}

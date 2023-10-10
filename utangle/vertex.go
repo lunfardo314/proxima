@@ -25,7 +25,7 @@ func (v *Vertex) getSequencerPredecessor() *WrappedTx {
 
 func (v *Vertex) mergeInputDeltas(ut *UTXOTangle) error {
 	util.Assertf(v.IsSolid(), "some inputs are not solid")
-	deltas := make([]*UTXOStateDelta2, 0, v.Tx.NumInputs()+v.Tx.NumEndorsements())
+	deltas := make([]*UTXOStateDelta, 0, v.Tx.NumInputs()+v.Tx.NumEndorsements())
 
 	// traverse tx inputs and endorsements
 	v.forEachDependency(func(inp *WrappedTx) bool {

@@ -4,59 +4,223 @@ import (
 	"sort"
 
 	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/general"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
 	"github.com/lunfardo314/proxima/util/set"
 )
 
-func NewUTXOStateDelta(baselineBranch *WrappedTx) *UTXOStateDelta {
-	util.Assertf(baselineBranch == nil || baselineBranch.IsBranchTransaction(), "NewUTXOStateDelta: wrong base branch: %s", func() any {
-		return baselineBranch.IDShort()
-	})
+type (
+	utxoStateDelta map[*WrappedTx]set.Set[byte]
+
+	UTXOStateDelta struct {
+		utxoStateDelta
+		// baseline state root.
+		// - if root != nil, delta is root-bound or state-bound, i.e. it is linked to a particular state.
+		//   It can only bne applied to that state, and it is guaranteed that it will always succeed
+		// - if root == nil delta is not dependent on a particular baseline state and can be applied to any (with or without success)
+		branchTxID *core.TransactionID
+	}
+)
+
+func NewUTXOStateDelta2(branchTxID *core.TransactionID) *UTXOStateDelta {
 	return &UTXOStateDelta{
-		baselineBranch: baselineBranch,
-		transactions:   make(map[*WrappedTx]transactionData),
+		utxoStateDelta: make(utxoStateDelta),
+		branchTxID:     branchTxID,
 	}
 }
 
-func (d *UTXOStateDelta) Clone() *UTXOStateDelta {
-	ret := &UTXOStateDelta{
-		baselineBranch: d.baselineBranch,
-		transactions:   make(map[*WrappedTx]transactionData),
-		coverage:       d.coverage,
-	}
-	for vid, td := range d.transactions {
-		ret.transactions[vid] = transactionData{
-			consumed:          util.CloneMapShallow(td.consumed),
-			includedThisDelta: td.includedThisDelta,
+func (d utxoStateDelta) clone() utxoStateDelta {
+	ret := make(utxoStateDelta)
+	for vid, consumedSet := range d {
+		if consumedSet.IsEmpty() {
+			ret[vid] = nil
+		} else {
+			ret[vid] = consumedSet.Clone()
 		}
 	}
 	return ret
 }
 
-func (d *UTXOStateDelta) BaselineBranch() *WrappedTx {
-	return d.baselineBranch
+func (d utxoStateDelta) consume(wOut WrappedOutput, baselineState ...general.StateReader) bool {
+	consumedSet, found := d[wOut.VID]
+	if found {
+		return !consumedSet.Contains(wOut.Index)
+	}
+	// transaction is not on the delta, check the baseline state if provided
+	if len(baselineState) > 0 {
+		if !baselineState[0].HasUTXO(wOut.DecodeID()) {
+			return false
+		}
+	}
+	if len(consumedSet) == 0 {
+		d[wOut.VID] = set.New[byte](wOut.Index)
+	} else {
+		d[wOut.VID].Insert(wOut.Index)
+	}
+	return true
 }
 
-// getUpdateCommands generates state update commands for closed delta
-func (d *UTXOStateDelta) getUpdateCommands() []multistate.UpdateCmd {
-	ret := make([]multistate.UpdateCmd, 0)
-	for vid, td := range d.transactions {
-		if !td.includedThisDelta {
+func (d utxoStateDelta) isIncluded(vid *WrappedTx) bool {
+	_, included := d[vid]
+	return included
+}
+
+func (d utxoStateDelta) include(vid *WrappedTx, baselineState ...general.StateReader) (ret WrappedOutput) {
+	if d.isIncluded(vid) {
+		return
+	}
+	for _, wOut := range vid.WrappedInputs() {
+		if !d.consume(wOut, baselineState...) {
+			return wOut
+		}
+	}
+	return
+}
+
+func (d utxoStateDelta) coverage() (ret uint64) {
+	for vid, consumedSet := range d {
+		vid.Unwrap(UnwrapOptions{
+			Vertex: func(v *Vertex) {
+				ret += uint64(v.Tx.TotalAmount())
+				consumedSet.ForEach(func(idx byte) bool {
+					o, ok := v.MustProducedOutput(idx)
+					util.Assertf(ok, "can't get output")
+					ret -= o.Amount()
+					return true
+				})
+			},
+		})
+	}
+	return
+}
+
+func (d *UTXOStateDelta) Include(vid *WrappedTx, getStateReader ...func(branchTxID *core.TransactionID) general.StateReader) (ret WrappedOutput) {
+	if d.branchTxID == nil {
+		return d.utxoStateDelta.include(vid)
+	}
+	util.Assertf(len(getStateReader) > 0, "can't create state reader")
+	return d.utxoStateDelta.include(vid, getStateReader[0](d.branchTxID))
+}
+
+func (d *UTXOStateDelta) Consume(wOut WrappedOutput, getStateReader ...func(branchTxID *core.TransactionID) general.StateReader) bool {
+	if d.branchTxID == nil {
+		return d.utxoStateDelta.consume(wOut)
+	}
+	util.Assertf(len(getStateReader) > 0, "state constructor must be provided")
+	return d.utxoStateDelta.consume(wOut, getStateReader[0](d.branchTxID))
+}
+
+func MergeDeltas(getStateReader func(branchTxID *core.TransactionID) general.StateReader, deltas ...*UTXOStateDelta) (*UTXOStateDelta, *WrappedOutput) {
+	ret := make(utxoStateDelta)
+	if len(deltas) == 0 {
+		return &UTXOStateDelta{utxoStateDelta: ret}, nil
+	}
+
+	deltasSorted := util.CloneArglistShallow(deltas...)
+	sort.Slice(deltasSorted, func(i, j int) bool {
+		bi := deltasSorted[i].branchTxID
+		bj := deltasSorted[j].branchTxID
+		switch {
+		case bi != nil && bj == nil:
+			return true
+		case bi != nil && bj != nil:
+			return bi.TimeSlot() > bj.TimeSlot()
+		}
+		return false
+	})
+
+	// check conflicting branches
+	for i, d := range deltasSorted {
+		if d.branchTxID == nil {
+			break
+		}
+		if i+1 >= len(deltasSorted) {
+			break
+		}
+		d1 := deltasSorted[i+1]
+		if d1.branchTxID == nil {
+			break
+		}
+		if d.branchTxID.TimeSlot() == d1.branchTxID.TimeSlot() && *d.branchTxID != *d1.branchTxID {
+			// two different branches on the same slot conflicts
+			return nil, &WrappedOutput{}
+		}
+	}
+
+	// deltasSorted are all non-conflicting and sorted descending by slot with nil-branches at the end
+	var baselineState general.StateReader
+	latestBranchTxID := deltasSorted[0].branchTxID
+	if latestBranchTxID != nil {
+		baselineState = getStateReader(latestBranchTxID)
+	}
+
+	var conflict WrappedOutput
+	for i, d := range deltasSorted {
+		if i == 0 {
+			ret = deltasSorted[0].utxoStateDelta.clone()
 			continue
 		}
+		if conflict = ret.append(baselineState, d.utxoStateDelta); conflict.VID != nil {
+			return nil, &conflict
+		}
+	}
+	return &UTXOStateDelta{
+		utxoStateDelta: ret,
+		branchTxID:     latestBranchTxID,
+	}, nil
+}
+
+func (d *UTXOStateDelta) Coverage(stateStore general.StateStore) uint64 {
+	if d.branchTxID == nil {
+		return 0
+	}
+	rr, found := multistate.FetchRootRecord(stateStore, *d.branchTxID)
+	util.Assertf(found, "can't fetch root record")
+
+	return rr.Coverage + d.coverage()
+}
+
+func (d utxoStateDelta) append(baselineState general.StateReader, delta utxoStateDelta) (conflict WrappedOutput) {
+	var stateReader []general.StateReader
+	if baselineState != nil {
+		stateReader = util.List(baselineState)
+	}
+	for vid, consumeSet := range delta {
+		consumeSet.ForEach(func(i byte) bool {
+			wOut := WrappedOutput{
+				VID:   vid,
+				Index: i,
+			}
+			ok := d.consume(wOut, stateReader...)
+			if !ok {
+				conflict = wOut
+			}
+			return ok
+		})
+		if conflict.VID != nil {
+			return
+		}
+	}
+	return
+}
+
+func (d utxoStateDelta) isConsumedInThisDelta(wOut WrappedOutput) bool {
+	consumedSet, found := d[wOut.VID]
+	if !found {
+		return false
+	}
+	return consumedSet.Contains(wOut.Index)
+}
+
+func (d utxoStateDelta) getUpdateCommands() []multistate.UpdateCmd {
+	ret := make([]multistate.UpdateCmd, 0)
+
+	for vid, consumedSet := range d {
 		vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
 			v.Tx.ForEachProducedOutput(func(idx byte, o *core.Output, oid *core.OutputID) bool {
-				produce := false
-				if td.consumed == nil {
-					produce = true
-				} else {
-					if _, isConsumed := td.consumed[idx]; !isConsumed {
-						produce = true
-					}
-				}
-				if produce {
+				if !consumedSet.Contains(idx) {
 					ret = append(ret, multistate.UpdateCmd{
 						ID:     oid,
 						Output: o,
@@ -64,259 +228,47 @@ func (d *UTXOStateDelta) getUpdateCommands() []multistate.UpdateCmd {
 				}
 				return true
 			})
-
-			v.Tx.ForEachInput(func(i byte, oid *core.OutputID) bool {
-				tdInp, ok := d.transactions[v.Inputs[i]]
-				util.Assertf(ok, "getUpdateCommands: missing input %s in transaction %s", v.Inputs[i].IDShort(), v.Tx.IDShort())
-				if !tdInp.includedThisDelta || v.Inputs[i].IsVirtualTx() {
+			v.forEachInputDependency(func(i byte, inp *WrappedTx) bool {
+				if !d.isConsumedInThisDelta(WrappedOutput{VID: inp, Index: i}) {
+					oid := v.Tx.MustInputAt(i)
 					ret = append(ret, multistate.UpdateCmd{
-						ID: oid,
+						ID: &oid,
 					})
 				}
 				return true
 			})
 		}})
 	}
-	sort.Slice(ret, func(i, j int) bool {
-		// first DELs than ADDs
-		return ret[i].Output == nil && ret[j].Output != nil
-	})
 	return ret
 }
 
-// include includes transaction into the delta
-func (d *UTXOStateDelta) include(vid *WrappedTx) (conflict *WrappedOutput) {
-	if d.isIncluded(vid) {
-		return nil
-	}
+func (d utxoStateDelta) lines(prefix ...string) *lines.Lines {
+	ret := lines.New(prefix...)
 
-	d.transactions[vid] = transactionData{includedThisDelta: true}
-
-	vid.Unwrap(UnwrapOptions{
-		Vertex: func(v *Vertex) {
-			v.Tx.ForEachInput(func(i byte, oid *core.OutputID) bool {
-				wOut := WrappedOutput{
-					VID:   v.Inputs[i],
-					Index: oid.Index(),
-				}
-				success, decrementCoverage := d.MustConsume(wOut)
-				if !success {
-					conflict = &wOut
-					return false
-				}
-				if decrementCoverage {
-					o, err := v.Inputs[i].OutputAt(oid.Index())
-					util.AssertNoError(err)
-					util.Assertf(o != nil, "output %s not available", oid.Short())
-					util.Assertf(d.coverage >= o.Amount(), "d.coverage >= o.Amount()")
-					d.coverage -= o.Amount()
-				}
-				return true
-			})
-			d.coverage += uint64(v.Tx.TotalAmount())
-		},
+	sorted := util.SortKeys(d, func(vid1, vid2 *WrappedTx) bool {
+		return vid1.Timestamp().Before(vid2.Timestamp())
 	})
-	if conflict != nil {
-		return conflict
+	for _, vid := range sorted {
+		consumedSet := d[vid]
+		ret.Add("%s consumed: %+v", vid.IDShort(), util.Keys(consumedSet))
 	}
-	return nil
-}
-
-func (d *UTXOStateDelta) traverseBack(fun func(dCur *UTXOStateDelta) bool) {
-	for dCur, exit := d, false; !exit; {
-		if !fun(dCur) {
-			return
-		}
-		exit = true
-		if prev := dCur.baselineBranch; prev != nil {
-			prev.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
-				dCur = &v.StateDelta
-				exit = false
-			}})
-		}
-	}
-}
-
-// isIncluded returns true if delta or one of its predecessor contains transaction
-func (d *UTXOStateDelta) isIncluded(vid *WrappedTx) bool {
-	already := false
-	d.traverseBack(func(dCur *UTXOStateDelta) bool {
-		_, already = dCur.transactions[vid]
-		return !already
-	})
-	return already
-}
-
-// getConsumedSet returns:
-// - consumed set either from the current delta (if tx exists) or inherited from the past
-// - true/false if transaction was found at all
-func (d *UTXOStateDelta) getConsumedSet(vid *WrappedTx) (ret set.Set[byte], txFound bool) {
-	var td transactionData
-	d.traverseBack(func(dCur *UTXOStateDelta) bool {
-		if td, txFound = dCur.transactions[vid]; txFound {
-			ret = td.consumed
-		}
-		return !txFound
-	})
-	return
-}
-
-// CanBeConsumed first checks delta, then the provided state, if necessary
-func (d *UTXOStateDelta) CanBeConsumed(wOut WrappedOutput, getState func() multistate.SugaredStateReader) bool {
-	if consumed, hasConsumedSet := d.getConsumedSet(wOut.VID); hasConsumedSet {
-		return !consumed.Contains(wOut.Index)
-	}
-	canBeConsumed := true
-	wOut.VID.Unwrap(UnwrapOptions{
-		// if it is a vertex and not in the consumed set, it can be consumed
-		VirtualTx: func(_ *VirtualTransaction) {
-			canBeConsumed = getState().HasUTXO(wOut.DecodeID())
-		},
-	})
-	return canBeConsumed
-}
-
-func (d *UTXOStateDelta) CanBeConsumedBySequencer(wOut WrappedOutput, ut *UTXOTangle) bool {
-	return d.CanBeConsumed(wOut, func() (ret multistate.SugaredStateReader) {
-		var ok bool
-		if d.baselineBranch != nil {
-			ret, ok = ut.StateReaderOfSequencerMilestone(d.baselineBranch)
-			util.Assertf(ok, "can't get state for the baseline branch %s", d.baselineBranch.IDShort())
-		} else {
-			// TODO if d belongs to a branch, then we must check the branch
-			util.Panicf("WIP not implemented when baselineBranch == nil")
-		}
-		return
-	})
-}
-
-// MustConsume adds new consumed output record into the delta.
-// Wrapped transaction of the output must be present in the delta, otherwise it panics.
-// In case of conflict (double spend), returns false and does not modify receiver
-// If success return flag if ledger coverage must be decremented by the amount of the output
-func (d *UTXOStateDelta) MustConsume(wOut WrappedOutput) (bool, bool) {
-	consumed, txFound := d.getConsumedSet(wOut.VID)
-	util.Assertf(txFound, "UTXOStateDelta.MustConsume: transaction %s has not been found in the delta:\n%s",
-		func() any { return wOut.VID.IDShort() },
-		func() any { return d.LinesRecursive().String() },
-	)
-
-	if consumed != nil {
-		if _, isConsumed := consumed[wOut.Index]; isConsumed {
-			// conflict
-			return false, false
-		}
-	}
-
-	td := d.transactions[wOut.VID]
-	if td.consumed == nil {
-		// nil -> empty set
-		td.consumed = set.New[byte]().AddAll(consumed)
-	}
-
-	td.consumed.Insert(wOut.Index)
-	d.transactions[wOut.VID] = td
-
-	decrementCoverage := td.includedThisDelta && wOut.VID.IsWrappedTx()
-	return true, decrementCoverage
+	return ret
 }
 
 func (d *UTXOStateDelta) Lines(prefix ...string) *lines.Lines {
 	ret := lines.New(prefix...)
-	baseBranchName := "(nil)"
-	if d.baselineBranch != nil {
-		d.baselineBranch.Unwrap(UnwrapOptions{
-			Vertex: func(v *Vertex) {
-				baseBranchName = d.baselineBranch.IDShort() + "(wrappedTx)"
-			},
-			VirtualTx: func(v *VirtualTransaction) {
-				baseBranchName = d.baselineBranch.IDShort() + "(virtual Tx)"
-			},
-		})
+	var baseline string
+	if d.branchTxID == nil {
+		baseline = "(none)"
+	} else {
+		baseline = d.branchTxID.Short()
 	}
-
-	ret.Add("    Delta base: %s, num tx: %d", baseBranchName, len(d.transactions))
-	for _, vid := range d.orderedTransactions() {
-		td := d.transactions[vid]
-		c := td.consumed.Ordered(func(el1, el2 byte) bool {
-			return el1 < el2
-		})
-		ret.Add("        %s (this delta: %v, consumed: %+v)", vid.IDShort(), td.includedThisDelta, c)
+	ret.Add("------ START delta. Baseline: %s", baseline)
+	prefix1 := ""
+	if len(prefix) > 0 {
+		prefix1 = prefix[0]
 	}
-	return ret
-}
-
-func (d *UTXOStateDelta) String() string {
-	return d.Lines().String()
-}
-
-func (d *UTXOStateDelta) LinesRecursive(prefix ...string) *lines.Lines {
-	ret := lines.New()
-
-	d.traverseBack(func(dCur *UTXOStateDelta) bool {
-		ret.Append(dCur.Lines(prefix...))
-		return true
-	})
-	return ret
-}
-
-// collectDeltasDesc past deltas sorted by slot
-func (d *UTXOStateDelta) pastDeltas() map[core.TimeSlot]*UTXOStateDelta {
-	if d.baselineBranch == nil {
-		return make(map[core.TimeSlot]*UTXOStateDelta)
-	}
-	var ret map[core.TimeSlot]*UTXOStateDelta
-	d.baselineBranch.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
-		ret = v.StateDelta.pastDeltas()
-		ret[v.TimeSlot()] = d
-	}})
-	return ret
-}
-
-// orderedTransactions sorting by timestamp is equivalent to topological sorting by DAG
-func (d *UTXOStateDelta) orderedTransactions() []*WrappedTx {
-	return util.SortKeys(d.transactions, func(vid1, vid2 *WrappedTx) bool {
-		return vid1.Timestamp().Before(vid2.Timestamp())
-	})
-}
-
-// _mergeInto return conflicting output and the transaction which was trying to include
-func (d *UTXOStateDelta) _mergeInto(target *UTXOStateDelta) (*WrappedOutput, *WrappedTx) {
-	for _, vid := range d.orderedTransactions() {
-		if conflict := target.include(vid); conflict != nil {
-			return conflict, vid
-		}
-	}
-	return nil, nil
-}
-
-func (d *UTXOStateDelta) MergeInto(target *UTXOStateDelta) (*WrappedOutput, *WrappedTx) {
-	// list all deltas until the one which has baselineBranch included into the target
-	deltasToMerge := make([]*UTXOStateDelta, 0)
-	d.traverseBack(func(dCur *UTXOStateDelta) bool {
-		util.Assertf(dCur != nil, "dCur != nil")
-		deltasToMerge = append(deltasToMerge, dCur)
-		if dCur.baselineBranch == nil || target.isIncluded(dCur.baselineBranch) {
-			return false
-		}
-		return true
-	})
-
-	var conflict *WrappedOutput
-	var consumer *WrappedTx
-	util.RangeReverse(deltasToMerge, func(_ int, dCur *UTXOStateDelta) bool {
-		conflict, consumer = dCur._mergeInto(target)
-		return conflict == nil
-	})
-	return conflict, consumer
-}
-
-func (d *UTXOStateDelta) ledgerCoverage(nSlotsBack int) uint64 {
-	ret := uint64(0)
-	d.traverseBack(func(dCur *UTXOStateDelta) bool {
-		ret += dCur.coverage
-		nSlotsBack--
-		return nSlotsBack > 0
-	})
+	ret.Append(d.utxoStateDelta.lines("    " + prefix1))
+	ret.Add("------ END delta")
 	return ret
 }
