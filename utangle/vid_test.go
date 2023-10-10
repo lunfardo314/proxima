@@ -1,18 +1,17 @@
-package tests
+package utangle
 
 import (
 	"testing"
 
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/transaction"
-	"github.com/lunfardo314/proxima/utangle"
 	"github.com/lunfardo314/proxima/util/utxodb"
 	"github.com/stretchr/testify/require"
 )
 
 func TestVID(t *testing.T) {
 	t.Run("1", func(t *testing.T) {
-		dict := make(map[core.TransactionID]*utangle.WrappedTx)
+		dict := make(map[core.TransactionID]*WrappedTx)
 		u := utxodb.NewUTXODB()
 		txBytes, err := u.MakeTransactionFromFaucet(core.AddressED25519Null())
 		require.NoError(t, err)
@@ -20,7 +19,7 @@ func TestVID(t *testing.T) {
 		require.NoError(t, err)
 		txid := tx.ID()
 
-		v := utangle.NewVertex(tx)
+		v := NewVertex(tx)
 		vid := v.Wrap()
 		txidBack := vid.ID()
 		require.EqualValues(t, *txid, *txidBack)
