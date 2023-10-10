@@ -12,12 +12,12 @@ const (
 	InitSupply = genesis.DefaultSupply
 )
 
-func GenesisParamsWithPreDistribution(n int, initBalance uint64) ([]genesis.LockBalance, []ed25519.PrivateKey, []core.AddressED25519) {
+func GenesisParamsWithPreDistribution(n int, initBalance uint64) ([]core.LockBalance, []ed25519.PrivateKey, []core.AddressED25519) {
 	privateKeys := testutil.GetTestingPrivateKeys(n)
 	addresses := core.AddressesED25519FromPrivateKeys(privateKeys)
-	distrib := make([]genesis.LockBalance, len(addresses))
+	distrib := make([]core.LockBalance, len(addresses))
 	for i := range addresses {
-		distrib[i] = genesis.LockBalance{
+		distrib[i] = core.LockBalance{
 			Lock:    addresses[i],
 			Balance: initBalance,
 		}

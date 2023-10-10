@@ -36,7 +36,7 @@ func TestOriginTangle(t *testing.T) {
 		par := genesis.DefaultIdentityData(privKey)
 		addr1 := core.AddressED25519FromPrivateKey(testutil.GetTestingPrivateKey(1))
 		addr2 := core.AddressED25519FromPrivateKey(testutil.GetTestingPrivateKey(2))
-		distrib := []genesis.LockBalance{
+		distrib := []core.LockBalance{
 			{Lock: addr1, Balance: 1_000_000},
 			{Lock: addr2, Balance: 2_000_000},
 		}
@@ -171,7 +171,7 @@ func initConflictTest(t *testing.T, nConflicts int, printTx bool) *conflictTestR
 		//err = vDraft.CheckConflicts()
 		//require.NoError(t, err)
 
-		vid, err := utangle.MakeVertex(vDraft)
+		vid, err := ret.ut.MakeVertex(vDraft)
 		if err != nil {
 			utangle.SaveGraphPastCone(vid, "make_vertex")
 			t.Logf("***** failed transaction %d:\n%s\n*****", i, vid.String())
@@ -267,7 +267,7 @@ func TestBookingDoubleSpends(t *testing.T) {
 		require.True(t, vDraft.IsSolid())
 
 		fmt.Printf("*********** expected error\n")
-		_, err = utangle.MakeVertex(vDraft)
+		_, err = it.ut.MakeVertex(vDraft)
 		t.Logf("expected error: '%v'", err)
 		util.RequirePanicOrErrorWith(t, func() error { return err }, "conflict", it.forkOutput.ID.Short())
 		t.Logf("UTXOTangle at the end:\n%s", it.ut.Info())
@@ -292,7 +292,7 @@ func TestBookingDoubleSpends(t *testing.T) {
 		require.NoError(t, err)
 		require.True(t, vDraft.IsSolid())
 
-		_, err = utangle.MakeVertex(vDraft)
+		_, err = it.ut.MakeVertex(vDraft)
 		t.Logf("expected error: '%v'", err)
 		util.RequirePanicOrErrorWith(t, func() error { return err }, "conflict", it.forkOutput.ID.Short())
 		t.Logf("UTXOTangle at the end:\n%s", it.ut.Info())
