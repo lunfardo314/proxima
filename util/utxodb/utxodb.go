@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 
+	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/genesis"
 	"github.com/lunfardo314/proxima/multistate"
@@ -59,7 +60,11 @@ func NewUTXODB(trace ...bool) *UTXODB {
 		Description:                utxodbDscr,
 		InitialSupply:              supplyForTesting,
 		GenesisControllerPublicKey: genesisPubKey,
+		BaselineTime:               core.BaselineTime,
+		TimeTickDuration:           core.TimeTickDuration(),
+		MaxTimeTickValueInTimeSlot: core.TimeTicksPerSlot - 1,
 		GenesisTimeSlot:            genesisSlot,
+		CoreLibraryHash:            easyfl.LibraryHash(),
 	}
 
 	faucetPrivateKey := testutil.GetTestingPrivateKey(31415926535)
