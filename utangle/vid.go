@@ -698,22 +698,24 @@ func (vid *WrappedTx) ConvertToVirtualTx() {
 
 func (vid *WrappedTx) WrappedInputs() []WrappedOutput {
 	ret := make([]WrappedOutput, vid.NumInputs())
-	vid.Unwrap(UnwrapOptions{
-		Vertex: func(v *Vertex) {
-			v.forEachInputDependency(func(i byte, inp *WrappedTx) bool {
-				inpID := v.Tx.MustInputAt(i)
-				ret[i] = WrappedOutput{
-					VID:   inp,
-					Index: inpID.Index(),
-				}
-				return true
-			})
-		},
-	})
+	vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
+		v.forEachInputDependency(func(i byte, inp *WrappedTx) bool {
+			inpID := v.Tx.MustInputAt(i)
+			ret[i] = WrappedOutput{
+				VID:   inp,
+				Index: inpID.Index(),
+			}
+			return true
+		})
+	}})
 	return ret
 }
 
 func (vid *WrappedTx) BaseBranchTXID() (ret *core.TransactionID) {
+	if vid.IsBranchTransaction() {
+		ret = vid.ID()
+		return
+	}
 	vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
 		ret = v.StateDelta.branchTxID
 	}})

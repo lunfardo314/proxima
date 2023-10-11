@@ -49,10 +49,11 @@ func Keys[K comparable, V any](m map[K]V, filter ...func(k K) bool) []K {
 	return ret
 }
 
-func ValuesByKeys[K comparable, V any](m map[K]V, keys []K) []V {
-	ret := make([]V, 0, len(keys))
-	for _, k := range keys {
-		ret = append(ret, m[k])
+// Values returns slice of values. Non-deterministic
+func Values[K comparable, V any](m map[K]V) []V {
+	ret := make([]V, 0, len(m))
+	for _, v := range m {
+		ret = append(ret, v)
 	}
 	return ret
 }
@@ -75,6 +76,14 @@ func KeySet[K comparable, V any](m map[K]V, filter ...func(k K) bool) set.Set[K]
 
 func SortKeys[K comparable, V any](m map[K]V, less func(k1, k2 K) bool) []K {
 	ret := Keys(m)
+	sort.Slice(ret, func(i, j int) bool {
+		return less(ret[i], ret[j])
+	})
+	return ret
+}
+
+func SortValues[K comparable, V any](m map[K]V, less func(v1, v2 V) bool) []V {
+	ret := Values(m)
 	sort.Slice(ret, func(i, j int) bool {
 		return less(ret[i], ret[j])
 	})

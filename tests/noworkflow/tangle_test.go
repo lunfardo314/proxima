@@ -216,7 +216,6 @@ func initLongConflictTest(t *testing.T, nConflicts int, howLong int, printTx boo
 			if err != nil {
 				t.Logf("seq %d, tx %d : %v\n%s", i, j, err, txStr)
 			}
-			//t.Logf("++++ delta:\n%s", vid.DeltaString())
 			require.NoError(t, err)
 		}
 	}

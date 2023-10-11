@@ -31,7 +31,7 @@ const (
 var (
 	timeTickDurationVar = timeTickDuration
 
-	BaselineTime         = time.Date(2023, 9, 21, 0, 0, 0, 0, time.UTC)
+	BaselineTime         = time.Date(2023, 10, 11, 0, 0, 0, 0, time.UTC)
 	BaselineTimeUnixNano = BaselineTime.UnixNano()
 )
 

@@ -8,7 +8,6 @@ import (
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/util"
-	"github.com/lunfardo314/proxima/util/set"
 )
 
 func (ut *UTXOTangle) GetWrappedOutput(oid *core.OutputID, baselineState ...multistate.SugaredStateReader) (WrappedOutput, bool, bool) {
@@ -147,44 +146,37 @@ func (ut *UTXOTangle) wrapNewIntoExistingBranch(vid *WrappedTx, oid *core.Output
 // It means in general the result is non-deterministic, because some dependencies may be unavailable. This is ok for solidifier
 // Once transaction has all dependencies solid, further on the result is deterministic
 func (v *Vertex) FetchMissingDependencies(ut *UTXOTangle) error {
+	var err error
+
+	if v.StateDelta.branchTxID == nil {
+		// if baseline not known yet, first try to solidify from the utxo tangle or from the heaviest state
+		if err = v.fetchMissingInputs(ut, ut.HeaviestStateForLatestTimeSlot()); err != nil {
+			return err
+		}
+		v.fetchMissingEndorsements(ut)
+	}
+
 	if v.Tx.IsSequencerMilestone() {
-		// baseline state must ultimately be determined
-		baselineState, conflict := v.getInputBaselineState(ut.MustGetSugaredStateReader)
+		// baseline state must ultimately be determined for milestone
+		baselineBranchID, conflict := v.getInputBaselineBranchID()
 		if conflict {
-			return fmt.Errorf("conflicting inputs in %s", v.Tx.IDShort())
+			return fmt.Errorf("conflicting branches among inputs of %s", v.Tx.IDShort())
 		}
-		if baselineState != nil {
-			return v.fetchMissingSequencerDependencies(ut, *baselineState)
+		if baselineBranchID == nil {
+			if v.IsSolid() {
+				return fmt.Errorf("can't determine baseline branch from inputs of %s", v.Tx.IDShort())
+			}
+			util.Panicf("inconsistency in %s", v.Tx.IDShort())
 		}
-		return v.fetchMissingSequencerDependencies(ut)
+		v.StateDelta.branchTxID = baselineBranchID
+		if !v.IsSolid() {
+			// if still not solid, try to fetch remaining inputs with baseline state
+			if err = v.fetchMissingInputs(ut, ut.MustGetSugaredStateReader(baselineBranchID)); err != nil {
+				return err
+			}
+		}
 	}
-	// not a sequencer transaction, baseline state does not exist
-	return v.fetchMissingNonSequencerDependencies(ut)
-}
-
-func (v *Vertex) fetchMissingSequencerDependencies(ut *UTXOTangle, baselineState ...multistate.SugaredStateReader) error {
-	if err := v.fetchMissingInputs(ut, baselineState...); err != nil {
-		return err
-	}
-	v.Tx.ForEachEndorsement(func(i byte, txid *core.TransactionID) bool {
-		if v.Endorsements[i] != nil {
-			// already solid
-			return true
-		}
-		util.Assertf(v.Tx.TimeSlot() == txid.TimeSlot(), "tx.TimeTick() == txid.TimeTick()")
-		if vEnd, solid := ut.GetVertex(txid); solid {
-			util.Assertf(vEnd.IsSequencerMilestone(), "vEnd.IsSequencerMilestone()")
-			v.Endorsements[i] = vEnd
-		}
-		return true
-	})
 	return nil
-}
-
-func (v *Vertex) fetchMissingNonSequencerDependencies(ut *UTXOTangle) error {
-	// TODO search outputs in several roots?
-	baselineState := ut.HeaviestStateForLatestTimeSlot()
-	return v.fetchMissingInputs(ut, baselineState)
 }
 
 func (v *Vertex) fetchMissingInputs(ut *UTXOTangle, baselineState ...multistate.SugaredStateReader) error {
@@ -210,50 +202,56 @@ func (v *Vertex) fetchMissingInputs(ut *UTXOTangle, baselineState ...multistate.
 	return err
 }
 
-// getInputBaselineState returns baseline state of inputs if it exists.
-// Return conflict flag if inputs belongs to conflicting branches
-// Note, that not all inputs may not be solid. the baseline branch is the latest among not-nil branches
-// In non-conflicting case return nil if all known inputs are state-independent
-func (v *Vertex) getInputBaselineState(getStateReader func(branchTxID *core.TransactionID) multistate.SugaredStateReader) (ret *multistate.SugaredStateReader, conflict bool) {
-	branchIDs := set.New[core.TransactionID]()
-	v.forEachInputDependency(func(i byte, inp *WrappedTx) bool {
+func (v *Vertex) fetchMissingEndorsements(ut *UTXOTangle) {
+	v.Tx.ForEachEndorsement(func(i byte, txid *core.TransactionID) bool {
+		if v.Endorsements[i] != nil {
+			// already solid
+			return true
+		}
+		util.Assertf(v.Tx.TimeSlot() == txid.TimeSlot(), "tx.TimeTick() == txid.TimeTick()")
+		if vEnd, solid := ut.GetVertex(txid); solid {
+			util.Assertf(vEnd.IsSequencerMilestone(), "vEnd.IsSequencerMilestone()")
+			v.Endorsements[i] = vEnd
+		}
+		return true
+	})
+}
+
+// getInputBaselineBranchID scans known (solid) inputs and extracts baseline branch ID. Returns:
+// - conflict == true if inputs belongs to conflicting branches
+// - nil, false if known inputs does not give a common baseline (yet)
+// - txid, false if known inputs has latest branchID (even if not all solid yet)
+func (v *Vertex) getInputBaselineBranchID() (ret *core.TransactionID, conflict bool) {
+	branchIDsBySlot := make(map[core.TimeSlot]*core.TransactionID)
+	v.forEachDependency(func(inp *WrappedTx) bool {
 		if inp == nil {
 			return true
 		}
-		if branchTxID := inp.BaseBranchTXID(); branchTxID != nil {
-			branchIDs.Insert(*branchTxID)
-		}
-		return true
-	})
-	v.forEachEndorsement(func(i byte, vEnd *WrappedTx) bool {
-		if vEnd == nil {
+		branchTxID := inp.BaseBranchTXID()
+		if branchTxID == nil {
 			return true
 		}
-		if branchTxID := vEnd.BaseBranchTXID(); branchTxID != nil {
-			branchIDs.Insert(*branchTxID)
+		slot := branchTxID.TimeSlot()
+		if branchTxID1, already := branchIDsBySlot[slot]; already {
+			if *branchTxID != *branchTxID1 {
+				// two different branches in the same slot -> conflict
+				conflict = true
+				return false
+			}
+		} else {
+			branchIDsBySlot[slot] = branchTxID
 		}
 		return true
 	})
-	if len(branchIDs) == 0 {
+	if conflict {
 		return
 	}
-	branchIDsSorted := branchIDs.Ordered(func(branchTxID1, branchTxID2 core.TransactionID) bool {
-		return branchTxID1.TimeSlot() > branchTxID2.TimeSlot()
-	})
-	// check for conflicting branches
-	for i, txid := range branchIDsSorted {
-		if i+1 >= len(branchIDs) {
-			break
-		}
-		txid1 := branchIDsSorted[i+1]
-		if txid.TimeSlot() == txid1.TimeSlot() && txid != txid1 {
-			// two different branches on the same slot are conflicting
-			conflict = true
-			return
-		}
+	if len(branchIDsBySlot) == 0 {
+		return
 	}
-	rdr := getStateReader(&branchIDsSorted[0])
-	ret = &rdr
+	ret = util.Maximum(util.Values(branchIDsBySlot), func(branchTxID1, branchTxID2 *core.TransactionID) bool {
+		return branchTxID1.TimeSlot() < branchTxID2.TimeSlot()
+	})
 	return
 }
 

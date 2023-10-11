@@ -48,7 +48,12 @@ func (v *Vertex) CalcDeltaAndWrap(ut *UTXOTangle) (*WrappedTx, error) {
 		return nil, err
 	}
 	vid := v.Wrap()
-	if conflict := v.StateDelta.Include(vid); conflict.VID != nil {
+
+	getStateReader := func(branchTxID *core.TransactionID) general.StateReader {
+		return ut.MustGetStateReader(branchTxID)
+	}
+	if conflict := v.StateDelta.Include(vid, getStateReader); conflict.VID != nil {
+		fmt.Printf("%s\n", v.StateDelta.Lines().String())
 		return nil, fmt.Errorf("conflict %s while including %s into delta", conflict.IDShort(), vid.IDShort())
 	}
 	return vid, nil
@@ -129,6 +134,7 @@ func (v *Vertex) IsSolid() bool {
 			return false
 		}
 	}
+	util.Assertf(!v.Tx.IsSequencerMilestone() || v.StateDelta.branchTxID != nil, "inconsistency: unknown baseline branch in the solid sequencer transaction")
 	return true
 }
 
