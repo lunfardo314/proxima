@@ -49,10 +49,10 @@ func (v *Vertex) CalcDeltaAndWrap(ut *UTXOTangle) (*WrappedTx, error) {
 	}
 	vid := v.Wrap()
 
-	getStateReader := func(branchTxID *core.TransactionID) general.StateReader {
+	getState := func(branchTxID *core.TransactionID) general.StateReader {
 		return ut.MustGetStateReader(branchTxID)
 	}
-	if conflict := v.StateDelta.Include(vid, getStateReader); conflict.VID != nil {
+	if conflict := v.StateDelta.Include(vid, getState); conflict.VID != nil {
 		fmt.Printf("%s\n", v.StateDelta.Lines().String())
 		return nil, fmt.Errorf("conflict %s while including %s into delta", conflict.IDShort(), vid.IDShort())
 	}

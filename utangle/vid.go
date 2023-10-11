@@ -699,6 +699,8 @@ func (vid *WrappedTx) ConvertToVirtualTx() {
 func (vid *WrappedTx) WrappedInputs() []WrappedOutput {
 	ret := make([]WrappedOutput, vid.NumInputs())
 	vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
+		util.Assertf(v.IsSolid(), "not solid inputs of %s", v.Tx.IDShort())
+
 		v.forEachInputDependency(func(i byte, inp *WrappedTx) bool {
 			inpID := v.Tx.MustInputAt(i)
 			ret[i] = WrappedOutput{
@@ -726,14 +728,14 @@ func (vid *WrappedTx) BaseBranchTXID() (ret *core.TransactionID) {
 // For branch it returns empty delta with the branch as baseline
 func (vid *WrappedTx) GetUTXOStateDelta() (ret *UTXOStateDelta) {
 	if vid.IsBranchTransaction() {
-		return NewUTXOStateDelta2(vid.BaseBranchTXID())
+		return NewUTXOStateDelta(vid.BaseBranchTXID())
 	}
 	vid.Unwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
 			ret = &v.StateDelta
 		},
 		VirtualTx: func(v *VirtualTransaction) {
-			ret = NewUTXOStateDelta2(nil)
+			ret = NewUTXOStateDelta(nil)
 		},
 		Orphaned: func() {
 			util.Panicf("orphaned vertex should not be accesses")

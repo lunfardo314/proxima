@@ -167,8 +167,6 @@ func initConflictTest(t *testing.T, nConflicts int, printTx bool) *conflictTestR
 		require.NoError(t, err)
 
 		require.True(t, vDraft.IsSolid())
-		//err = vDraft.CheckConflicts()
-		//require.NoError(t, err)
 
 		vid, err := ret.ut.MakeVertex(vDraft)
 		if err != nil {
@@ -300,7 +298,6 @@ func TestBookingDoubleSpends(t *testing.T) {
 
 		//tangle.SaveGraphPastCone(vid, "long_conflict")
 	})
-
 }
 
 func TestEndorsements1(t *testing.T) {

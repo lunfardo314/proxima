@@ -24,7 +24,7 @@ type (
 	}
 )
 
-func NewUTXOStateDelta2(branchTxID *core.TransactionID) *UTXOStateDelta {
+func NewUTXOStateDelta(branchTxID *core.TransactionID) *UTXOStateDelta {
 	return &UTXOStateDelta{
 		utxoStateDelta: make(utxoStateDelta),
 		branchTxID:     branchTxID,
@@ -43,16 +43,14 @@ func (d utxoStateDelta) clone() utxoStateDelta {
 	return ret
 }
 
-func (d utxoStateDelta) consume(wOut WrappedOutput, baselineState ...general.StateReader) bool {
+func (d utxoStateDelta) mustConsume(wOut WrappedOutput, mustExist bool) bool {
 	consumedSet, found := d[wOut.VID]
-	if found {
-		return !consumedSet.Contains(wOut.Index)
+	if mustExist {
+		util.Assertf(found, "transaction %s not found on the delta", wOut.VID.IDShort())
 	}
-	// transaction is not on the delta, check the baseline state if provided
-	if len(baselineState) > 0 {
-		if !baselineState[0].HasUTXO(wOut.DecodeID()) {
-			return false
-		}
+
+	if consumedSet.Contains(wOut.Index) {
+		return false
 	}
 	if len(consumedSet) == 0 {
 		d[wOut.VID] = set.New[byte](wOut.Index)
@@ -67,14 +65,35 @@ func (d utxoStateDelta) isIncluded(vid *WrappedTx) bool {
 	return included
 }
 
-func (d utxoStateDelta) include(vid *WrappedTx, baselineState ...general.StateReader) (ret WrappedOutput) {
+func (d utxoStateDelta) include(vid *WrappedTx, baselineState ...general.StateReader) (conflict WrappedOutput) {
 	if d.isIncluded(vid) {
 		return
 	}
+	// transaction is not in the delta
+	// it is expected all inputs are either in the delta or can be consumed from baseline state
+	d[vid] = nil
 	for _, wOut := range vid.WrappedInputs() {
-		if !d.consume(wOut, baselineState...) {
-			return wOut
-		}
+		wOut.VID.Unwrap(UnwrapOptions{
+			Vertex: func(v *Vertex) {
+				if !d.mustConsume(wOut, true) {
+					conflict = wOut
+				}
+			},
+			VirtualTx: func(v *VirtualTransaction) {
+				if len(baselineState) > 0 {
+					if !baselineState[0].HasUTXO(wOut.DecodeID()) {
+						conflict = wOut
+						return
+					}
+				}
+				if !d.mustConsume(wOut, false) {
+					conflict = wOut
+				}
+			},
+			Orphaned: func() {
+				util.Panicf("orphaned output cannot be accessed")
+			},
+		})
 	}
 	return
 }
@@ -96,20 +115,11 @@ func (d utxoStateDelta) coverage() (ret uint64) {
 	return
 }
 
-func (d *UTXOStateDelta) Include(vid *WrappedTx, getStateReader ...func(branchTxID *core.TransactionID) general.StateReader) (ret WrappedOutput) {
-	if d.branchTxID == nil {
-		return d.utxoStateDelta.include(vid)
+func (d *UTXOStateDelta) Include(vid *WrappedTx, getBaselineState func(branchTxID *core.TransactionID) general.StateReader) (ret WrappedOutput) {
+	if d.branchTxID != nil {
+		return d.utxoStateDelta.include(vid, getBaselineState(d.branchTxID))
 	}
-	util.Assertf(len(getStateReader) > 0, "can't create state reader")
-	return d.utxoStateDelta.include(vid, getStateReader[0](d.branchTxID))
-}
-
-func (d *UTXOStateDelta) Consume(wOut WrappedOutput, getStateReader ...func(branchTxID *core.TransactionID) general.StateReader) bool {
-	if d.branchTxID == nil {
-		return d.utxoStateDelta.consume(wOut)
-	}
-	util.Assertf(len(getStateReader) > 0, "state constructor must be provided")
-	return d.utxoStateDelta.consume(wOut, getStateReader[0](d.branchTxID))
+	return d.utxoStateDelta.include(vid)
 }
 
 func MergeDeltas(getStateReader func(branchTxID *core.TransactionID) general.StateReader, deltas ...*UTXOStateDelta) (*UTXOStateDelta, *WrappedOutput) {
@@ -182,26 +192,37 @@ func (d *UTXOStateDelta) Coverage(stateStore general.StateStore) uint64 {
 	return rr.Coverage + d.coverage()
 }
 
+// append baselineState must be the baseline state of d. d must be consistent with the baselineState
 func (d utxoStateDelta) append(baselineState general.StateReader, delta utxoStateDelta) (conflict WrappedOutput) {
-	var stateReader []general.StateReader
-	if baselineState != nil {
-		stateReader = util.List(baselineState)
-	}
-	for vid, consumeSet := range delta {
-		consumeSet.ForEach(func(i byte) bool {
-			wOut := WrappedOutput{
-				VID:   vid,
-				Index: i,
-			}
-			ok := d.consume(wOut, stateReader...)
-			if !ok {
-				conflict = wOut
-			}
-			return ok
+	for vid, deltaConsumedSet := range delta {
+		// union of 2 sets
+		dConsumedSet := d[vid]
+		if len(dConsumedSet) == 0 {
+			dConsumedSet = set.New[byte]()
+		}
+		deltaConsumedSet.ForEach(func(idx byte) bool {
+			dConsumedSet.Insert(idx)
+			return true
 		})
+		// for virtual tx check if each of new consumed output can be consumed in the baseline state
+		vid.Unwrap(UnwrapOptions{VirtualTx: func(v *VirtualTransaction) {
+			deltaConsumedSet.ForEach(func(idx byte) bool {
+				if dConsumedSet.Contains(idx) {
+					// it is already consumed in the target
+					return true
+				}
+				oid := core.NewOutputID(&v.txid, idx)
+				if !baselineState.HasUTXO(&oid) {
+					conflict = WrappedOutput{VID: vid, Index: idx}
+					return false
+				}
+				return true
+			})
+		}})
 		if conflict.VID != nil {
 			return
 		}
+		d[vid] = dConsumedSet
 	}
 	return
 }
