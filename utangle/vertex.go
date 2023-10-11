@@ -27,7 +27,7 @@ func (v *Vertex) mergeInputDeltas(ut *UTXOTangle) error {
 	util.Assertf(v.IsSolid(), "some inputs are not solid")
 	deltas := make([]*UTXOStateDelta, 0, v.Tx.NumInputs()+v.Tx.NumEndorsements())
 
-	// traverse tx inputs and endorsements
+	// traverse tx inputs AND endorsements
 	v.forEachDependency(func(inp *WrappedTx) bool {
 		deltas = append(deltas, inp.GetUTXOStateDelta())
 		return true

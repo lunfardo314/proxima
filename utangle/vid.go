@@ -701,9 +701,10 @@ func (vid *WrappedTx) WrappedInputs() []WrappedOutput {
 	vid.Unwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
 			v.forEachInputDependency(func(i byte, inp *WrappedTx) bool {
+				inpID := v.Tx.MustInputAt(i)
 				ret[i] = WrappedOutput{
 					VID:   inp,
-					Index: i,
+					Index: inpID.Index(),
 				}
 				return true
 			})

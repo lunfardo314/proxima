@@ -2,7 +2,6 @@ package noworkflow
 
 import (
 	"crypto/ed25519"
-	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -147,7 +146,7 @@ func initConflictTest(t *testing.T, nConflicts int, printTx bool) *conflictTestR
 	ret.forkOutput, err = oDatas[0].Parse()
 	require.NoError(t, err)
 	require.EqualValues(t, initBalance, int(ret.forkOutput.Output.Amount()))
-	t.Logf("forked output:\n%s", ret.forkOutput.String())
+	t.Logf("forked output ID: %s", ret.forkOutput.IDShort())
 
 	ret.txBytes = make([][]byte, nConflicts)
 
@@ -241,7 +240,7 @@ func TestBookingDoubleSpends(t *testing.T) {
 		initConflictTest(t, howMany, false)
 	})
 	t.Run("conflict short", func(t *testing.T) {
-		const howMany = 2
+		const howMany = 10
 		it := initConflictTest(t, howMany, false)
 
 		outs := make([]*core.OutputWithID, howMany)
@@ -249,6 +248,9 @@ func TestBookingDoubleSpends(t *testing.T) {
 		for i := range outs {
 			tx, err := transaction.FromBytesMainChecksWithOpt(it.txBytes[i])
 			require.NoError(t, err)
+
+			//t.Logf("------ tx #%d: \n%s\n", i, tx.ToString(it.ut.GetUTXO))
+
 			outs[i] = tx.MustProducedOutputWithIDAt(1)
 			require.EqualValues(t, 100+i, int(outs[i].Output.Amount()))
 			total += outs[i].Output.Amount()
@@ -260,21 +262,19 @@ func TestBookingDoubleSpends(t *testing.T) {
 		txBytesOut, err := txbuilder.MakeTransferTransaction(td)
 		require.NoError(t, err)
 
-		//t.Logf("------ double spending tx: \n%s\n", state.ParseBytesToString(txBytesOut, it.ut.GetUTXO))
+		//t.Logf("------ double spending tx: \n%s\n", transaction.ParseBytesToString(txBytesOut, it.ut.GetUTXO))
 
 		vDraft, err := it.ut.SolidifyInputsFromTxBytes(txBytesOut)
 		require.NoError(t, err)
 		require.True(t, vDraft.IsSolid())
 
-		fmt.Printf("*********** expected error\n")
 		_, err = it.ut.MakeVertex(vDraft)
-		t.Logf("expected error: '%v'", err)
+		t.Logf("expected error: '%v' with output %s", err, it.forkOutput.ID.Short())
 
-		conflictTxID := it.forkOutput.ID.TransactionID()
-		util.RequirePanicOrErrorWith(t, func() error { return err }, "conflict", conflictTxID.Short())
+		util.RequirePanicOrErrorWith(t, func() error { return err }, "conflict", it.forkOutput.IDShort())
 		t.Logf("UTXOTangle at the end:\n%s", it.ut.Info())
 	})
-	t.Run("conflict long", func(t *testing.T) { // TODO
+	t.Run("conflict long", func(t *testing.T) {
 		const (
 			howMany = 5
 			howLong = 10
@@ -296,8 +296,7 @@ func TestBookingDoubleSpends(t *testing.T) {
 
 		_, err = it.ut.MakeVertex(vDraft)
 		t.Logf("expected error: '%v'", err)
-		conflictTxID := it.forkOutput.ID.TransactionID()
-		util.RequirePanicOrErrorWith(t, func() error { return err }, "conflict", conflictTxID.Short())
+		util.RequirePanicOrErrorWith(t, func() error { return err }, "conflict", it.forkOutput.IDShort())
 		t.Logf("UTXOTangle at the end:\n%s", it.ut.Info())
 
 		//tangle.SaveGraphPastCone(vid, "long_conflict")

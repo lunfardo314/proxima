@@ -131,13 +131,12 @@ func (ut *UTXOTangle) SolidifyInputs(tx *transaction.Transaction) (*Vertex, erro
 }
 
 func (ut *UTXOTangle) MakeVertex(draftVertex *Vertex, bypassConstraintValidation ...bool) (*WrappedTx, error) {
-	retVID := draftVertex.Wrap()
 	if !draftVertex.IsSolid() {
-		return retVID, fmt.Errorf("some inputs or endorsements are not solid")
+		return draftVertex.Wrap(), fmt.Errorf("some inputs or endorsements are not solid")
 	}
 
 	if err := draftVertex.Validate(bypassConstraintValidation...); err != nil {
-		return retVID, fmt.Errorf("validate %s : '%v'", draftVertex.Tx.IDShort(), err)
+		return draftVertex.Wrap(), fmt.Errorf("validate %s : '%v'", draftVertex.Tx.IDShort(), err)
 	}
 
 	retVID, err := draftVertex.CalcDeltaAndWrap(ut)
