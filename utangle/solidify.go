@@ -10,6 +10,22 @@ import (
 	"github.com/lunfardo314/proxima/util"
 )
 
+func (ut *UTXOTangle) SolidifyInputsFromTxBytes(txBytes []byte) (*Vertex, error) {
+	tx, err := transaction.FromBytesMainChecksWithOpt(txBytes)
+	if err != nil {
+		return nil, err
+	}
+	return ut.SolidifyInputs(tx)
+}
+
+func (ut *UTXOTangle) SolidifyInputs(tx *transaction.Transaction) (*Vertex, error) {
+	ret := NewVertex(tx)
+	if err := ret.FetchMissingDependencies(ut); err != nil {
+		return nil, err
+	}
+	return ret, nil
+}
+
 func (ut *UTXOTangle) GetWrappedOutput(oid *core.OutputID, baselineState ...multistate.SugaredStateReader) (WrappedOutput, bool, bool) {
 	txid := oid.TransactionID()
 	if vid, found := ut.GetVertex(&txid); found {

@@ -105,29 +105,13 @@ func (ut *UTXOTangle) addBranch(branchVID *WrappedTx, root common.VCommitment) {
 	ut.branches[branchVID.TimeSlot()] = m
 }
 
-func (ut *UTXOTangle) SolidifyInputsFromTxBytes(txBytes []byte) (*Vertex, error) {
-	tx, err := transaction.FromBytesMainChecksWithOpt(txBytes)
-	if err != nil {
-		return nil, err
-	}
-	return ut.SolidifyInputs(tx)
-}
-
 func NewVertex(tx *transaction.Transaction) *Vertex {
 	return &Vertex{
 		Tx:           tx,
 		Inputs:       make([]*WrappedTx, tx.NumInputs()),
 		Endorsements: make([]*WrappedTx, tx.NumEndorsements()),
-		StateDelta:   *NewUTXOStateDelta(nil),
+		StateDelta:   *NewUTXOState(nil),
 	}
-}
-
-func (ut *UTXOTangle) SolidifyInputs(tx *transaction.Transaction) (*Vertex, error) {
-	ret := NewVertex(tx)
-	if err := ret.FetchMissingDependencies(ut); err != nil {
-		return nil, err
-	}
-	return ret, nil
 }
 
 func (ut *UTXOTangle) MakeVertex(draftVertex *Vertex, bypassConstraintValidation ...bool) (*WrappedTx, error) {

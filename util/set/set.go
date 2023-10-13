@@ -46,6 +46,9 @@ func (s Set[K]) AddAll(another Set[K]) Set[K] {
 }
 
 func (s Set[K]) Clone() Set[K] {
+	if s == nil {
+		return nil
+	}
 	return New[K]().AddAll(s)
 }
 

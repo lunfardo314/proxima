@@ -561,7 +561,7 @@ func (vid *WrappedTx) StartNextSequencerMilestoneDelta(other ...*WrappedTx) (*UT
 	//		ret = v.StateDelta.Clone()
 	//	},
 	//	VirtualTx: func(_ *VirtualTransaction) {
-	//		ret = NewUTXOStateDelta(vid)
+	//		ret = NewUTXOState(vid)
 	//	},
 	//})
 	//if ret == nil {
@@ -728,18 +728,22 @@ func (vid *WrappedTx) BaseBranchTXID() (ret *core.TransactionID) {
 // For branch it returns empty delta with the branch as baseline
 func (vid *WrappedTx) GetUTXOStateDelta() (ret *UTXOStateDelta) {
 	if vid.IsBranchTransaction() {
-		return NewUTXOStateDelta(vid.BaseBranchTXID())
+		return NewUTXOState(vid.BaseBranchTXID())
 	}
 	vid.Unwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
 			ret = &v.StateDelta
 		},
 		VirtualTx: func(v *VirtualTransaction) {
-			ret = NewUTXOStateDelta(nil)
+			ret = NewUTXOState(nil)
 		},
 		Orphaned: func() {
 			util.Panicf("orphaned vertex should not be accesses")
 		},
 	})
 	return
+}
+
+func PanicOrphaned() {
+	util.Panicf("orphaned transaction should not be accessed")
 }

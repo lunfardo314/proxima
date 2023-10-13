@@ -49,6 +49,14 @@ func Keys[K comparable, V any](m map[K]V, filter ...func(k K) bool) []K {
 	return ret
 }
 
+func KeysSorted[K comparable, V any](m map[K]V, less func(k1, k2 K) bool) []K {
+	ret := Keys(m)
+	sort.Slice(ret, func(i, j int) bool {
+		return less(ret[i], ret[j])
+	})
+	return ret
+}
+
 // Values returns slice of values. Non-deterministic
 func Values[K comparable, V any](m map[K]V) []V {
 	ret := make([]V, 0, len(m))
