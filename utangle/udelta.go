@@ -33,39 +33,46 @@ func (d utxoStateDelta) clone() utxoStateDelta {
 	return ret
 }
 
-func (d utxoStateDelta) consume(wOut WrappedOutput, baselineState ...general.StateReader) bool {
+func (d utxoStateDelta) consume(wOut WrappedOutput, baselineState ...general.StateReader) WrappedOutput {
 	consumedSet, found := d[wOut.VID]
-	if !found {
-		if len(baselineState) == 0 {
-			d[wOut.VID] = consumed{set: set.New[byte](wOut.Index)}
-			return true
+	if found {
+		// corresponding tx is already in the delta
+		if consumedSet.set.Contains(wOut.Index) {
+			return wOut
 		}
-		// baseline state provided
+		if consumedSet.inTheState {
+			util.Assertf(len(baselineState) > 0, "baseline state not provided")
+			if !baselineState[0].HasUTXO(wOut.DecodeID()) {
+				return wOut
+			}
+		}
+		if len(consumedSet.set) == 0 {
+			consumedSet.set = set.New[byte](wOut.Index)
+		} else {
+			consumedSet.set.Insert(wOut.Index)
+		}
+		return WrappedOutput{}
+	}
+	// there's no corresponding tx in the delta
+	if len(baselineState) > 0 {
 		if baselineState[0].HasUTXO(wOut.DecodeID()) {
-			d[wOut.VID] = consumed{set: set.New[byte](wOut.Index), inTheState: true}
-			return true
-		}
-		return false
-	}
-	if consumedSet.set.Contains(wOut.Index) {
-		// double-spend
-		return false
-	}
-	if consumedSet.inTheState {
-		util.Assertf(len(baselineState) > 0, "baseline state not provided")
-		if !baselineState[0].HasUTXO(wOut.DecodeID()) {
-			// output not in the state
-			return false
+			d[wOut.VID] = consumed{
+				set:        set.New[byte](wOut.Index),
+				inTheState: true,
+			}
+			return WrappedOutput{}
 		}
 	}
-	if len(consumedSet.set) == 0 {
-		consumedSet.set = set.New[byte](wOut.Index)
-	} else {
-		consumedSet.set.Insert(wOut.Index)
+	// no baseline state or output is not in the baseline state
+	if conflict := d.include(wOut.VID, baselineState...); conflict.VID != nil {
+		return conflict
 	}
-	d[wOut.VID] = consumedSet
+	consumedSet, found = d[wOut.VID]
+	util.Assertf(found && !consumedSet.inTheState, "found && !consumedSet.inTheState")
 
-	return true
+	consumedSet.set = set.New[byte](wOut.Index)
+	d[wOut.VID] = consumedSet
+	return WrappedOutput{}
 }
 
 func (d utxoStateDelta) include(vid *WrappedTx, baselineState ...general.StateReader) (conflict WrappedOutput) {
@@ -73,18 +80,12 @@ func (d utxoStateDelta) include(vid *WrappedTx, baselineState ...general.StateRe
 		return
 	}
 	for _, wOut := range vid.WrappedInputs() {
-		conflict = d.include(wOut.VID, baselineState...)
-		if conflict.VID != nil {
-			return
-		}
-		if !d.consume(wOut, baselineState...) {
-			conflict = wOut
+		// virtual tx has 0 WrappedInputs
+		if conflict = d.consume(wOut, baselineState...); conflict.VID != nil {
 			return
 		}
 	}
-	if conflict.VID == nil {
-		d[vid] = consumed{}
-	}
+	d[vid] = consumed{}
 	return
 }
 
