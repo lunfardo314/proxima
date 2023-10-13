@@ -181,17 +181,19 @@ func (ut *UTXOTangle) _finalizeBranch(newBranchVertex *WrappedTx) error {
 	var nextStemOutputID core.OutputID
 
 	coverage := newBranchVertex.LedgerCoverage()
-
 	newBranchVertex.Unwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
 			util.Assertf(v.StateDelta.branchTxID != nil, "expected not nil baseline tx in %s", func() any { return v.Tx.IDShort() })
-			upd, err := ut.GetStateUpdatable(v.StateDelta.branchTxID)
-			if err != nil {
+			upd, err1 := ut.GetStateUpdatable(v.StateDelta.branchTxID)
+			if err1 != nil {
+				err = err1
 				return
 			}
 
+			seqTxData := v.Tx.SequencerTransactionData()
+			nextStemOutputID = v.Tx.OutputID(seqTxData.StemOutputIndex)
 			cmds := v.StateDelta.getUpdateCommands()
-			err = upd.UpdateWithCommands(cmds, &nextStemOutputID, &v.Tx.SequencerTransactionData().SequencerID, coverage)
+			err = upd.UpdateWithCommands(cmds, &nextStemOutputID, &seqTxData.SequencerID, coverage)
 			if err != nil {
 				err = fmt.Errorf("finalizeBranch %s: '%v'", v.Tx.IDShort(), err)
 				return
@@ -200,7 +202,7 @@ func (ut *UTXOTangle) _finalizeBranch(newBranchVertex *WrappedTx) error {
 		},
 
 		VirtualTx: func(_ *VirtualTransaction) {
-			util.Assertf(false, "finalizeBranch: must be a branch vertex")
+			util.Panicf("finalizeBranch: must be a branch vertex")
 		},
 	})
 	if err != nil {
@@ -210,9 +212,12 @@ func (ut *UTXOTangle) _finalizeBranch(newBranchVertex *WrappedTx) error {
 	// assert consistency
 	rdr, err := multistate.NewSugaredReadableState(ut.stateStore, newRoot)
 	if err != nil {
-		return fmt.Errorf("finalizeBranch: double check failed: '%v'", err)
+		return fmt.Errorf("finalizeBranch: double check failed: '%v'\n%s", err, newBranchVertex.String())
 	}
-	util.Assertf(rdr.GetStemOutput().ID == nextStemOutputID, "rdr.GetStemOutput().ID == nextStemOutputID")
+	stemID := rdr.GetStemOutput().ID
+	util.Assertf(stemID == nextStemOutputID, "rdr.GetStemOutput().ID == nextStemOutputID\n%s != %s\n%s",
+		stemID.Short(), nextStemOutputID.Short(),
+		newBranchVertex.DeltaString())
 
 	// store new branch to the tangle data structure
 	branches := ut.branches[newBranchVertex.TimeSlot()]
