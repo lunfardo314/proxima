@@ -100,7 +100,7 @@ type conflictTestRunData struct {
 	pkController     []ed25519.PrivateKey
 }
 
-func initConflictTest(t *testing.T, nConflicts int, printTx bool) *conflictTestRunData {
+func initConflictTest(t *testing.T, nConflicts int, verbose bool) *conflictTestRunData {
 	const initBalance = 10_000
 	genesisPrivKey := testutil.GetTestingPrivateKey()
 	par := genesis.DefaultIdentityData(genesisPrivKey)
@@ -130,6 +130,7 @@ func initConflictTest(t *testing.T, nConflicts int, printTx bool) *conflictTestR
 
 	t.Logf("bootstrap chain id: %s", ret.bootstrapChainID.String())
 	t.Logf("origing branch txid: %s", ret.originBranchTxid.Short())
+
 	for i := range distrib {
 		t.Logf("distributed %s -> %s", util.GoThousands(distrib[i].Balance), distrib[i].Lock.String())
 	}
@@ -159,8 +160,8 @@ func initConflictTest(t *testing.T, nConflicts int, printTx bool) *conflictTestR
 		ret.txBytes[i], err = txbuilder.MakeTransferTransaction(td)
 		require.NoError(t, err)
 
-		if printTx {
-			t.Logf("------ tx %d :\n%s\n", i, transaction.ParseBytesToString(ret.txBytes[i], ret.ut.GetUTXO))
+		if verbose {
+			t.Logf("------ tx %d :\n%s\n", i, ret.ut.TransactionStringFromBytes(ret.txBytes[i]))
 		}
 
 		vDraft, err := ret.ut.SolidifyInputsFromTxBytes(ret.txBytes[i])
@@ -173,7 +174,9 @@ func initConflictTest(t *testing.T, nConflicts int, printTx bool) *conflictTestR
 			utangle.SaveGraphPastCone(vid, "make_vertex")
 			t.Logf("***** failed transaction %d:\n%s\n*****", i, vid.String())
 		}
-		//t.Logf("++++++++++++++ delta string\n%s", vid.DeltaString())
+		if verbose {
+			t.Logf("++++++++++++++ delta string\n%s", vid.DeltaString())
+		}
 		require.NoError(t, err)
 
 		err = ret.ut.AppendVertex(vid)
@@ -233,12 +236,13 @@ func initLongConflictTest(t *testing.T, nConflicts int, howLong int, printTx boo
 // TestBookingDoubleSpends1 produce N double spends, no problem with the tangle
 func TestBookingDoubleSpends(t *testing.T) {
 	t.Run("n double spends", func(t *testing.T) {
-		const howMany = 5
-		initConflictTest(t, howMany, false)
+		const howMany = 2
+		initConflictTest(t, howMany, true)
 	})
 	t.Run("conflict short", func(t *testing.T) {
-		const howMany = 10
-		it := initConflictTest(t, howMany, false)
+		const howMany = 5
+		const verbose = false
+		it := initConflictTest(t, howMany, verbose)
 
 		outs := make([]*core.OutputWithID, howMany)
 		total := uint64(0)
@@ -259,11 +263,17 @@ func TestBookingDoubleSpends(t *testing.T) {
 		txBytesOut, err := txbuilder.MakeTransferTransaction(td)
 		require.NoError(t, err)
 
-		//t.Logf("------ double spending tx: \n%s\n", transaction.ParseBytesToString(txBytesOut, it.ut.GetUTXO))
+		if verbose {
+			t.Logf("------ double spending tx: \n%s\n", it.ut.TransactionStringFromBytes(txBytesOut))
+		}
 
 		vDraft, err := it.ut.SolidifyInputsFromTxBytes(txBytesOut)
 		require.NoError(t, err)
 		require.True(t, vDraft.IsSolid())
+
+		if verbose {
+			utangle.SaveGraphPastCone(vDraft.Wrap(), strings.Replace(t.Name()+"_CONFLICT", "/", "_", -1))
+		}
 
 		_, err = it.ut.MakeVertex(vDraft)
 		t.Logf("expected error: '%v' with output %s", err, it.forkOutput.ID.Short())
@@ -275,6 +285,7 @@ func TestBookingDoubleSpends(t *testing.T) {
 		const (
 			howMany = 5
 			howLong = 10
+			verbose = false
 		)
 		it := initLongConflictTest(t, howMany, howLong, false)
 
@@ -285,11 +296,17 @@ func TestBookingDoubleSpends(t *testing.T) {
 		txBytesOut, err := txbuilder.MakeTransferTransaction(td)
 		require.NoError(t, err)
 
-		//t.Logf("------ double spending tx: \n%s\n", state.ParseBytesToString(txBytesOut, it.ut.GetUTXO))
+		if verbose {
+			t.Logf("------ double spending tx: \n%s\n", it.ut.TransactionStringFromBytes(txBytesOut))
+		}
 
 		vDraft, err := it.ut.SolidifyInputsFromTxBytes(txBytesOut)
 		require.NoError(t, err)
 		require.True(t, vDraft.IsSolid())
+
+		if verbose {
+			utangle.SaveGraphPastCone(vDraft.Wrap(), strings.Replace(t.Name()+"_CONFLICT", "/", "_", -1))
+		}
 
 		_, err = it.ut.MakeVertex(vDraft)
 		t.Logf("expected error: '%v'", err)

@@ -224,3 +224,7 @@ func (ut *UTXOTangle) _finalizeBranch(newBranchVertex *WrappedTx) error {
 	ut.numAddedBranches++
 	return nil
 }
+
+func (ut *UTXOTangle) TransactionStringFromBytes(txBytes []byte) string {
+	return transaction.ParseBytesToString(txBytes, ut.GetUTXO)
+}
