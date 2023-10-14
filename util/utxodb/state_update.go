@@ -1,7 +1,6 @@
 package utxodb
 
 import (
-	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/transaction"
 )
@@ -36,21 +35,8 @@ func updateValidateOptions(u *multistate.Updatable, txBytes []byte, traceOption 
 		return nil, err
 	}
 
-	commands := make([]multistate.UpdateCmd, 0)
-	tx.ForEachInput(func(i byte, oid *core.OutputID) bool {
-		commands = append(commands, multistate.UpdateCmd{
-			ID: oid,
-		})
-		return true
-	})
-	tx.ForEachProducedOutput(func(idx byte, o *core.Output, oid *core.OutputID) bool {
-		commands = append(commands, multistate.UpdateCmd{
-			ID:     oid,
-			Output: o,
-		})
-		return true
-	})
-	if err = u.UpdateWithCommands(commands, nil, nil, 0); err != nil {
+	muts := tx.StateMutations()
+	if err = u.Update(muts, nil, nil, 0); err != nil {
 		return nil, err
 	}
 	return tx, nil

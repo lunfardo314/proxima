@@ -25,7 +25,7 @@ func InitLedgerState(par StateIdentityData, store general.StateStore) (core.Chai
 	gStemOut := StemOutput(par.InitialSupply, par.GenesisTimeSlot)
 
 	updatable := multistate.MustNewUpdatable(store, emptyRoot)
-	updatable.MustUpdateWithCommands(genesisUpdateCommands(&gout.OutputWithID, gStemOut), &gStemOut.ID, &gout.ChainID, par.InitialSupply)
+	updatable.MustUpdate(genesisUpdateMutations(&gout.OutputWithID, gStemOut), &gStemOut.ID, &gout.ChainID, par.InitialSupply)
 
 	return gout.ChainID, updatable.Root()
 }
@@ -57,17 +57,11 @@ func StemOutput(initialSupply uint64, genesisTimeSlot core.TimeSlot) *core.Outpu
 	}
 }
 
-func genesisUpdateCommands(genesisOut, genesisStemOut *core.OutputWithID) []multistate.UpdateCmd {
-	return []multistate.UpdateCmd{
-		{
-			ID:     &genesisOut.ID,
-			Output: genesisOut.Output,
-		},
-		{
-			ID:     &genesisStemOut.ID,
-			Output: genesisStemOut.Output,
-		},
-	}
+func genesisUpdateMutations(genesisOut, genesisStemOut *core.OutputWithID) *multistate.Mutations {
+	ret := multistate.NewMutations()
+	ret.InsertAddOutputMutation(genesisOut.ID, genesisOut.Output)
+	ret.InsertAddOutputMutation(genesisStemOut.ID, genesisStemOut.Output)
+	return ret
 }
 
 func InitialSupplyTransactionID(genesisTimeSlot core.TimeSlot) *core.TransactionID {

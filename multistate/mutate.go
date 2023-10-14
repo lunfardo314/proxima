@@ -33,12 +33,6 @@ type (
 	Mutations struct {
 		mut []mutationCmd
 	}
-
-	// Deprecated
-	UpdateCmd struct {
-		ID     *core.OutputID
-		Output *core.Output // nil means delete
-	}
 )
 
 func (m *mutationCmdAddOutput) mutate(trie *immutable.TrieUpdatable) error {
@@ -65,10 +59,14 @@ func (m *mutationCmdAddTx) text() string {
 	return fmt.Sprintf("ADDTX %s", m.ID.Short())
 }
 
-func (mut *Mutations) NewMutations() *Mutations {
+func NewMutations() *Mutations {
 	return &Mutations{
 		mut: make([]mutationCmd, 0),
 	}
+}
+
+func (mut *Mutations) Len() int {
+	return len(mut.mut)
 }
 
 func (mut *Mutations) InsertAddOutputMutation(id core.OutputID, o *core.Output) {
@@ -177,39 +175,4 @@ func UpdateTrie(trie *immutable.TrieUpdatable, mut *Mutations) (err error) {
 		}
 	}
 	return
-}
-
-//======================================================================================
-
-// UpdateCommandsToLines
-// Deprecated
-func UpdateCommandsToLines(cmds []UpdateCmd, prefix ...string) *lines.Lines {
-	ret := lines.New(prefix...)
-	cmdStr := ""
-	for i := range cmds {
-		if cmds[i].Output == nil {
-			cmdStr = "DEL"
-		} else {
-			cmdStr = "ADD"
-		}
-		ret.Add("%d : %s <- %s", i, cmds[i].ID.Short(), cmdStr)
-	}
-	return ret
-}
-
-// UpdateTrieOld
-// Deprecated
-func UpdateTrieOld(trie *immutable.TrieUpdatable, commands []UpdateCmd) error {
-	var err error
-	for i := range commands {
-		if commands[i].Output != nil {
-			err = addOutputToTrie(trie, commands[i].ID, commands[i].Output)
-		} else {
-			err = deleteOutputFromTrie(trie, commands[i].ID)
-		}
-		if err != nil {
-			return fmt.Errorf("UpdateTrieOld: %v", err)
-		}
-	}
-	return nil
 }

@@ -816,20 +816,14 @@ func (tx *Transaction) ProducedOutputsToString() string {
 	return strings.Join(ret, "\n")
 }
 
-func (tx *Transaction) UpdateCommands() []multistate.UpdateCmd {
-	ret := make([]multistate.UpdateCmd, 0, tx.NumInputs()+tx.NumProducedOutputs())
+func (tx *Transaction) StateMutations() *multistate.Mutations {
+	ret := multistate.NewMutations()
 	tx.ForEachInput(func(i byte, oid *core.OutputID) bool {
-		ret = append(ret, multistate.UpdateCmd{
-			ID:     oid,
-			Output: nil,
-		})
+		ret.InsertDelOutputMutation(*oid)
 		return true
 	})
 	tx.ForEachProducedOutput(func(_ byte, o *core.Output, oid *core.OutputID) bool {
-		ret = append(ret, multistate.UpdateCmd{
-			ID:     oid,
-			Output: o,
-		})
+		ret.InsertAddOutputMutation(*oid, o)
 		return true
 	})
 	return ret

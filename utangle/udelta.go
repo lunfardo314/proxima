@@ -124,18 +124,15 @@ func (d utxoStateDelta) isConsumed(wOut WrappedOutput) (bool, bool) {
 	return consumedSet.set.Contains(wOut.Index), consumedSet.inTheState
 }
 
-func (d utxoStateDelta) getUpdateCommands() []multistate.UpdateCmd {
-	ret := make([]multistate.UpdateCmd, 0)
+func (d utxoStateDelta) getMutations() *multistate.Mutations {
+	ret := multistate.NewMutations()
 
 	for vid, consumedSet := range d {
 		vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
 			// SET mutations
 			v.Tx.ForEachProducedOutput(func(idx byte, o *core.Output, oid *core.OutputID) bool {
 				if !consumedSet.set.Contains(idx) {
-					ret = append(ret, multistate.UpdateCmd{
-						ID:     oid,
-						Output: o,
-					})
+					ret.InsertAddOutputMutation(*oid, o)
 				}
 				return true
 			})
@@ -143,10 +140,7 @@ func (d utxoStateDelta) getUpdateCommands() []multistate.UpdateCmd {
 			v.forEachInputDependency(func(i byte, inp *WrappedTx) bool {
 				isConsumed, inTheState := d.isConsumed(WrappedOutput{VID: inp, Index: i})
 				if isConsumed && inTheState {
-					oid := v.Tx.MustInputAt(i)
-					ret = append(ret, multistate.UpdateCmd{
-						ID: &oid,
-					})
+					ret.InsertDelOutputMutation(v.Tx.MustInputAt(i))
 				}
 				return true
 			})

@@ -67,10 +67,10 @@ func MustDistributeInitialSupply(stateStore general.StateStore, originPrivateKey
 
 	nextStem := tx.FindStemProducedOutput()
 	util.Assertf(nextStem != nil, "nextStem != nil")
-	cmds := tx.UpdateCommands()
+	muts := tx.StateMutations()
 
 	updatableOrigin := multistate.MustNewUpdatable(stateStore, genesisRoot)
-	updatableOrigin.MustUpdateWithCommands(cmds, &nextStem.ID, &bootstrapChainID, stateID.InitialSupply)
+	updatableOrigin.MustUpdate(muts, &nextStem.ID, &bootstrapChainID, stateID.InitialSupply)
 
 	return txBytes
 }
