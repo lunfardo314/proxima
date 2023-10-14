@@ -766,7 +766,7 @@ func TestMultiChain(t *testing.T) {
 			nChains              = 10
 			chainPaceInTimeSlots = 7
 			printBranchTx        = false
-			howLong              = 170 // 169 0k
+			howLong              = 300 // 169 0k
 		)
 		r := initMultiChainTest(t, nChains, false)
 
@@ -835,7 +835,7 @@ func TestMultiChain(t *testing.T) {
 			nChains              = 5
 			chainPaceInTimeSlots = 7
 			printBranchTx        = false
-			printTx              = false
+			printTx              = true
 			howLong              = 504 // 505 fails due to not enough tokens in the faucet
 		)
 		r := initMultiChainTest(t, nChains, false)

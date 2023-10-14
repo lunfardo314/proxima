@@ -140,14 +140,7 @@ func (d utxoStateDelta) getMutations(targetSlot core.TimeSlot) *multistate.Mutat
 
 	for vid, consumedSet := range d {
 		vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
-			// SET mutations
-			v.Tx.ForEachProducedOutput(func(idx byte, o *core.Output, oid *core.OutputID) bool {
-				if !consumedSet.set.Contains(idx) {
-					ret.InsertAddOutputMutation(*oid, o)
-				}
-				return true
-			})
-			// DEL mutations
+			// DEL mutations: deleting from the baseline state all inputs which are marked consumed
 			v.forEachInputDependency(func(i byte, inp *WrappedTx) bool {
 				isConsumed, inTheState := d.isConsumed(WrappedOutput{VID: inp, Index: i})
 				if isConsumed && inTheState {
@@ -155,7 +148,20 @@ func (d utxoStateDelta) getMutations(targetSlot core.TimeSlot) *multistate.Mutat
 				}
 				return true
 			})
-			// ADDTX mutation
+			if consumedSet.inTheState {
+				// do not produce anything if transaction is already in the state
+				return
+			}
+			// SET mutations: adding outputs of not-in-the-state state transaction which are not
+			// marked consumed. If all outputs are consumed, adding nothing
+			v.Tx.ForEachProducedOutput(func(idx byte, o *core.Output, oid *core.OutputID) bool {
+				if !consumedSet.set.Contains(idx) {
+					ret.InsertAddOutputMutation(*oid, o)
+				}
+				return true
+			})
+			// ADDTX mutation: adding records for all transactions not in the state. Even those which have
+			// no produced outputs, because all of them were consumed in the delta
 			ret.InsertAddTxMutation(*v.Tx.ID(), targetSlot)
 		}})
 	}
