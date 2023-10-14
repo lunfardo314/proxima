@@ -244,7 +244,7 @@ func (u *Updatable) Root() common.VCommitment {
 	return u.trie.Root()
 }
 
-// Update updates trie with commands.
+// Update updates trie with mutations
 // If rootStemOutputID != nil, also writes root partition record
 func (u *Updatable) Update(muts *Mutations, rootStemOutputID *core.OutputID, rootSeqID *core.ChainID, coverage uint64) error {
 	return u.updateUTXOLedgerDB(func(trie *immutable.TrieUpdatable) error {

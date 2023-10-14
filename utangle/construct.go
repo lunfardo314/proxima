@@ -192,10 +192,10 @@ func (ut *UTXOTangle) _finalizeBranch(newBranchVertex *WrappedTx) error {
 
 			seqTxData := v.Tx.SequencerTransactionData()
 			nextStemOutputID = v.Tx.OutputID(seqTxData.StemOutputIndex)
-			cmds := v.StateDelta.getMutations()
-			err = upd.Update(cmds, &nextStemOutputID, &seqTxData.SequencerID, coverage)
+			muts := v.StateDelta.getMutations(v.Tx.TimeSlot())
+			err = upd.Update(muts, &nextStemOutputID, &seqTxData.SequencerID, coverage)
 			if err != nil {
-				err = fmt.Errorf("finalizeBranch %s: '%v'", v.Tx.IDShort(), err)
+				err = fmt.Errorf("finalizeBranch %s: '%v'\n=== mutations: %d\n%s", v.Tx.IDShort(), err, muts.Len(), muts.Lines().String())
 				return
 			}
 			newRoot = upd.Root()

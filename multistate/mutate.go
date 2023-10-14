@@ -2,6 +2,7 @@ package multistate
 
 import (
 	"fmt"
+	"sort"
 
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/util"
@@ -14,18 +15,19 @@ type (
 	mutationCmd interface {
 		mutate(trie *immutable.TrieUpdatable) error
 		text() string
+		sortOrder() byte
 	}
 
-	mutationCmdAddOutput struct {
+	mutationAddOutput struct {
 		ID     core.OutputID
 		Output *core.Output // nil means delete
 	}
 
-	mutationCmdDelOutput struct {
+	mutationDelOutput struct {
 		ID core.OutputID
 	}
 
-	mutationCmdAddTx struct {
+	mutationAddTx struct {
 		ID       core.TransactionID
 		TimeSlot core.TimeSlot
 	}
@@ -35,28 +37,40 @@ type (
 	}
 )
 
-func (m *mutationCmdAddOutput) mutate(trie *immutable.TrieUpdatable) error {
-	return addOutputToTrie(trie, &m.ID, m.Output)
-}
-
-func (m *mutationCmdAddOutput) text() string {
-	return fmt.Sprintf("ADD   %s", m.ID.Short())
-}
-
-func (m *mutationCmdDelOutput) mutate(trie *immutable.TrieUpdatable) error {
+func (m *mutationDelOutput) mutate(trie *immutable.TrieUpdatable) error {
 	return deleteOutputFromTrie(trie, &m.ID)
 }
 
-func (m *mutationCmdDelOutput) text() string {
+func (m *mutationDelOutput) text() string {
 	return fmt.Sprintf("DEL   %s", m.ID.Short())
 }
 
-func (m *mutationCmdAddTx) mutate(trie *immutable.TrieUpdatable) error {
+func (m *mutationDelOutput) sortOrder() byte {
+	return 0
+}
+
+func (m *mutationAddOutput) mutate(trie *immutable.TrieUpdatable) error {
+	return addOutputToTrie(trie, &m.ID, m.Output)
+}
+
+func (m *mutationAddOutput) text() string {
+	return fmt.Sprintf("ADD   %s", m.ID.Short())
+}
+
+func (m *mutationAddOutput) sortOrder() byte {
+	return 1
+}
+
+func (m *mutationAddTx) mutate(trie *immutable.TrieUpdatable) error {
 	return addTxToTrie(trie, &m.ID, m.TimeSlot)
 }
 
-func (m *mutationCmdAddTx) text() string {
-	return fmt.Sprintf("ADDTX %s", m.ID.Short())
+func (m *mutationAddTx) text() string {
+	return fmt.Sprintf("ADDTX %s : slot %d", m.ID.Short(), m.TimeSlot)
+}
+
+func (m *mutationAddTx) sortOrder() byte {
+	return 2
 }
 
 func NewMutations() *Mutations {
@@ -69,19 +83,26 @@ func (mut *Mutations) Len() int {
 	return len(mut.mut)
 }
 
+func (mut *Mutations) Sort() *Mutations {
+	sort.Slice(mut.mut, func(i, j int) bool {
+		return mut.mut[i].sortOrder() < mut.mut[j].sortOrder()
+	})
+	return mut
+}
+
 func (mut *Mutations) InsertAddOutputMutation(id core.OutputID, o *core.Output) {
-	mut.mut = append(mut.mut, &mutationCmdAddOutput{
+	mut.mut = append(mut.mut, &mutationAddOutput{
 		ID:     id,
 		Output: o.Clone(),
 	})
 }
 
 func (mut *Mutations) InsertDelOutputMutation(id core.OutputID) {
-	mut.mut = append(mut.mut, &mutationCmdDelOutput{ID: id})
+	mut.mut = append(mut.mut, &mutationDelOutput{ID: id})
 }
 
-func (mut *Mutations) InsertAddTxMutation(id core.TransactionID) {
-	mut.mut = append(mut.mut, &mutationCmdAddTx{ID: id})
+func (mut *Mutations) InsertAddTxMutation(id core.TransactionID, slot core.TimeSlot) {
+	mut.mut = append(mut.mut, &mutationAddTx{ID: id, TimeSlot: slot})
 }
 
 func (mut *Mutations) Lines(prefix ...string) *lines.Lines {

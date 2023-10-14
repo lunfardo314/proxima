@@ -124,7 +124,7 @@ func (d utxoStateDelta) isConsumed(wOut WrappedOutput) (bool, bool) {
 	return consumedSet.set.Contains(wOut.Index), consumedSet.inTheState
 }
 
-func (d utxoStateDelta) getMutations() *multistate.Mutations {
+func (d utxoStateDelta) getMutations(targetSlot core.TimeSlot) *multistate.Mutations {
 	ret := multistate.NewMutations()
 
 	for vid, consumedSet := range d {
@@ -144,9 +144,11 @@ func (d utxoStateDelta) getMutations() *multistate.Mutations {
 				}
 				return true
 			})
+			// ADDTX mutation
+			ret.InsertAddTxMutation(*v.Tx.ID(), targetSlot)
 		}})
 	}
-	return ret
+	return ret.Sort()
 }
 
 func (d utxoStateDelta) lines(prefix ...string) *lines.Lines {

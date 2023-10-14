@@ -627,7 +627,7 @@ func (vid *WrappedTx) DeltaString(skipCommands ...bool) string {
 		Vertex: func(v *Vertex) {
 			ret.Append(v.StateDelta.Lines())
 			if !skipCmd {
-				muts := v.StateDelta.getMutations()
+				muts := v.StateDelta.getMutations(v.Tx.TimeSlot())
 				ret.Add("== state mutations of %s (%d commands)", vid.IDShort(), muts.Len())
 				ret.Append(muts.Lines())
 			}
