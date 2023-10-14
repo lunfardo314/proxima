@@ -9,7 +9,7 @@ type (
 	StateReader interface {
 		GetUTXO(id *core.OutputID) ([]byte, bool)
 		HasUTXO(id *core.OutputID) bool
-		KnowsTransaction(txid *core.TransactionID) bool // all txids are kept in the state for some time
+		KnowsCommittedTransaction(txid *core.TransactionID) bool // all txids are kept in the state for some time
 	}
 
 	StateIndexReader interface {

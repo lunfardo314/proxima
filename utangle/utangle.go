@@ -120,7 +120,7 @@ func (ut *UTXOTangle) HasUTXO(oid *core.OutputID) bool {
 	return ut.HeaviestStateForLatestTimeSlot().HasUTXO(oid)
 }
 
-func (ut *UTXOTangle) KnowsTransaction(txid *core.TransactionID) bool {
+func (ut *UTXOTangle) KnowsCommittedTransaction(txid *core.TransactionID) bool {
 	return ut.HasTransactionOnTangle(txid)
 }
 

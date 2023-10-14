@@ -171,7 +171,7 @@ func addOutputToTrie(trie *immutable.TrieUpdatable, oid *core.OutputID, out *cor
 
 func addTxToTrie(trie *immutable.TrieUpdatable, txid *core.TransactionID, slot core.TimeSlot) error {
 	var stateKey [1 + core.TransactionIDLength]byte
-	stateKey[0] = PartitionTransactionID
+	stateKey[0] = PartitionCommittedTransactionID
 	copy(stateKey[1:], txid[:])
 
 	if trie.Update(stateKey[:], slot.Bytes()) {

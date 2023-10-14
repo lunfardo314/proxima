@@ -42,7 +42,7 @@ const (
 	PartitionLedgerState = byte(iota)
 	PartitionAccounts
 	PartitionChainID
-	PartitionTransactionID
+	PartitionCommittedTransactionID
 )
 
 // NewReadable creates read-only ledger state with the given root
@@ -82,6 +82,7 @@ func MustNewUpdatable(store general.StateStore, root common.VCommitment) *Updata
 	util.AssertNoError(err)
 	return ret
 }
+
 func (u *Updatable) Readable() *Readable {
 	return &Readable{u.trie.TrieReader}
 }
@@ -98,9 +99,9 @@ func (r *Readable) HasUTXO(oid *core.OutputID) bool {
 	return common.MakeReaderPartition(r.trie, PartitionLedgerState).Has(oid[:])
 }
 
-// KnowsTransaction transaction IDs are purged after some time, so the result may be
-func (r *Readable) KnowsTransaction(txid *core.TransactionID) bool {
-	return common.MakeReaderPartition(r.trie, PartitionTransactionID).Has(txid[:])
+// KnowsCommittedTransaction transaction IDs are purged after some time, so the result may be
+func (r *Readable) KnowsCommittedTransaction(txid *core.TransactionID) bool {
+	return common.MakeReaderPartition(r.trie, PartitionCommittedTransactionID).Has(txid[:])
 }
 
 func (r *Readable) GetIDSLockedInAccount(addr core.AccountID) ([]core.OutputID, error) {
@@ -226,6 +227,21 @@ func (r *Readable) HasTransactionOutputs(txid *core.TransactionID, indexMap ...m
 		return true
 	})
 	return hasTransaction, allOutputsExist
+}
+
+// IterateKnownCommittedTransactions utility function to collect old transaction IDs which may be purged from the state
+// Those txid serve no purpose after corresponding branches become committed and may appear only as virtual transactions
+func (r *Readable) IterateKnownCommittedTransactions(fun func(txid *core.TransactionID, slot core.TimeSlot) bool) {
+	iter := common.MakeTraversableReaderPartition(r.trie, PartitionCommittedTransactionID).Iterator(nil)
+	var slot core.TimeSlot
+	iter.Iterate(func(k, v []byte) bool {
+		txid, err := core.TransactionIDFromBytes(k)
+		util.AssertNoError(err)
+		slot, err = core.TimeSlotFromBytes(v)
+		util.AssertNoError(err)
+
+		return fun(&txid, slot)
+	})
 }
 
 func (r *Readable) Root() common.VCommitment {

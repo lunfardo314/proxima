@@ -83,7 +83,7 @@ func (d utxoStateDelta) hasAlreadyIncluded(vid *WrappedTx, baselineState ...gene
 		return false
 	}
 
-	return baselineState[0].KnowsTransaction(vid.ID())
+	return baselineState[0].KnowsCommittedTransaction(vid.ID())
 }
 
 func (d utxoStateDelta) include(vid *WrappedTx, baselineState ...general.StateReader) (conflict WrappedOutput) {
