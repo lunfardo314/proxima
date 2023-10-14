@@ -1,14 +1,13 @@
 package workflow
 
 import (
-	"fmt"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/lunfardo314/proxima/core"
 	utangle "github.com/lunfardo314/proxima/utangle"
 	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/proxima/util/lines"
 	"go.uber.org/atomic"
 )
 
@@ -306,18 +305,15 @@ func (c *SolidifyConsumer) doBackgroundCheck() {
 	}
 }
 
-func (c *SolidifyConsumer) DumpPendingDependencies() string {
+func (c *SolidifyConsumer) DumpPending() *lines.Lines {
 	c.mutex.RLock()
 	defer c.mutex.RUnlock()
 
-	var buf strings.Builder
-
-	_, _ = fmt.Fprintf(&buf, "-------------------- solidifier: dependencies (%d)\n", len(c.txDependencies))
-	for txid, dep := range c.txDependencies {
-		_, _ = fmt.Fprintf(&buf, "%s (%d)\n", txid.String(), len(dep.consumingTxIDs))
-		for _, txid1 := range dep.consumingTxIDs {
-			_, _ = fmt.Fprintf(&buf, "              %s\n", txid1.String())
-		}
+	ret := lines.New()
+	ret.Add("======= transactions pending in solidifier")
+	for txid, v := range c.txPending {
+		ret.Add("pending %s", txid.Short())
+		ret.Append(v.draftVertex.PendingDependenciesLines("  "))
 	}
-	return buf.String()
+	return ret
 }

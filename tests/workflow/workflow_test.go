@@ -541,7 +541,7 @@ type multiChainTestData struct {
 
 const onChainAmount = 1_000_000
 
-func initMultiChainTest(t *testing.T, nChains int, printTx bool, secondsInThePast int) *multiChainTestData {
+func initMultiChainTest(t *testing.T, nChains int, verbose bool, secondsInThePast int) *multiChainTestData {
 	core.SetTimeTickDuration(10 * time.Millisecond)
 	nowisTs := core.LogicalTimeFromTime(time.Now().Add(time.Duration(-secondsInThePast) * time.Second))
 
@@ -641,7 +641,7 @@ func initMultiChainTest(t *testing.T, nChains int, printTx bool, secondsInThePas
 	tx, err := transaction.FromBytesMainChecksWithOpt(ret.txBytesChainOrigin)
 	require.NoError(t, err)
 
-	if printTx {
+	if verbose {
 		t.Logf("chain origin tx: %s", tx.ToString(stateReader.GetUTXO))
 	}
 
@@ -661,7 +661,7 @@ func initMultiChainTest(t *testing.T, nChains int, printTx bool, secondsInThePas
 		return true
 	})
 
-	if printTx {
+	if verbose {
 		cstr := make([]string, 0)
 		for _, o := range ret.chainOrigins {
 			cstr = append(cstr, o.ChainID.Short())
@@ -1245,6 +1245,7 @@ func TestMultiChainWorkflow(t *testing.T) {
 			nChains              = 15
 			chainPaceInTimeSlots = 13
 			printBranchTx        = false
+			nowait               = true
 		)
 		r := initMultiChainTest(t, nChains, false, 60)
 
@@ -1259,7 +1260,11 @@ func TestMultiChainWorkflow(t *testing.T) {
 
 		transaction.SetPrintEasyFLTraceOnFail(false)
 
-		wrk := workflow.New(r.ut)
+		wrk := workflow.New(r.ut) //workflow.WithConsumerLogLevel(workflow.PreValidateConsumerName, zapcore.DebugLevel),
+		//workflow.WithConsumerLogLevel(workflow.SolidifyConsumerName, zapcore.DebugLevel),
+		//workflow.WithConsumerLogLevel(workflow.ValidateConsumerName, zapcore.DebugLevel),
+		//workflow.WithConsumerLogLevel(workflow.AppendTxConsumerName, zapcore.DebugLevel),
+
 		nTransactions := 0
 		for i := range txBytesSeq {
 			nTransactions += len(txBytesSeq[i])
@@ -1283,15 +1288,25 @@ func TestMultiChainWorkflow(t *testing.T) {
 				//}
 				if tx.IsBranchTransaction() {
 					if printBranchTx {
-						t.Logf("branch tx %d : %s", i, transaction.ParseBytesToString(txBytes, r.ut.GetUTXO))
+						t.Logf("branch tx %d : %s", i, r.ut.TransactionStringFromBytes(txBytes))
 					}
 				}
-				err = wrk.TransactionIn(txBytes)
+				if nowait {
+					err = wrk.TransactionIn(txBytes, workflow.WithOnWorkflowEventPrefix(workflow.SolidifyConsumerName+".notsolid", func(event string, data any) {
+						//fmt.Printf("======= nostsolid =======\n")
+					}))
+				} else {
+					_, err = wrk.TransactionInWaitAppend(txBytes, 5*time.Second)
+				}
 				require.NoError(r.t, err)
 			}
 
 		}
 		err := cd.Wait()
+		if err != nil {
+			t.Logf("==== counter info: %s", wrk.CounterInfo())
+			t.Logf("====== %s", wrk.DumpPending().String())
+		}
 		require.NoError(t, err)
 		wrk.Stop()
 		t.Logf("UTXO tangle:\n%s", r.ut.Info())
@@ -1399,6 +1414,7 @@ func TestMultiChainWorkflow(t *testing.T) {
 			printBranchTx        = false
 			howLong              = 1000
 			realTime             = false
+			nowait               = true
 		)
 		var r *multiChainTestData
 		if realTime {
@@ -1431,11 +1447,18 @@ func TestMultiChainWorkflow(t *testing.T) {
 					t.Logf("branch tx %d : %s", i, transaction.ParseBytesToString(txBytes, r.ut.GetUTXO))
 				}
 			}
-			err = wrk.TransactionIn(txBytes)
+			if nowait {
+				err = wrk.TransactionIn(txBytes)
+			} else {
+				_, err = wrk.TransactionInWaitAppend(txBytes, 5*time.Second)
+			}
 			require.NoError(r.t, err)
 		}
 
 		err := cd.Wait()
+		if err != nil {
+			t.Logf("===== counters: %s", wrk.CounterInfo())
+		}
 		require.NoError(t, err)
 		wrk.Stop()
 		t.Logf("UTXO tangle:\n%s", r.ut.Info())

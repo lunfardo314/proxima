@@ -12,6 +12,7 @@ import (
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/consumer"
 	"github.com/lunfardo314/proxima/util/eventtype"
+	"github.com/lunfardo314/proxima/util/lines"
 	"github.com/lunfardo314/proxima/util/testutil"
 	"go.uber.org/atomic"
 	"go.uber.org/zap"
@@ -168,4 +169,8 @@ func (w *Workflow) CounterInfo() string {
 
 func (w *Workflow) CheckDebugCounters(expect map[string]int) error {
 	return w.debugCounters.CheckValues(expect)
+}
+
+func (w *Workflow) DumpPending() *lines.Lines {
+	return w.solidifyConsumer.DumpPending()
 }

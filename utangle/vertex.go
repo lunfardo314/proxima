@@ -277,3 +277,25 @@ func (v *Vertex) convertToVirtualTx() *VirtualTransaction {
 	})
 	return ret
 }
+
+func (v *Vertex) PendingDependenciesLines(prefix ...string) *lines.Lines {
+	ret := lines.New(prefix...)
+
+	ret.Add("not solid inputs:")
+	v.forEachInputDependency(func(i byte, inp *WrappedTx) bool {
+		if inp == nil {
+			oid := v.Tx.MustInputAt(i)
+			ret.Add("   %d : %s", i, oid.Short())
+		}
+		return true
+	})
+	ret.Add("not solid endorsements:")
+	v.forEachEndorsement(func(i byte, vEnd *WrappedTx) bool {
+		if vEnd == nil {
+			txid := v.Tx.EndorsementAt(i)
+			ret.Add("   %d : %s", i, txid.Short())
+		}
+		return true
+	})
+	return ret
+}

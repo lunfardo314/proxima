@@ -26,7 +26,10 @@ func (ut *UTXOTangle) SolidifyInputs(tx *transaction.Transaction) (*Vertex, erro
 	return ret, nil
 }
 
-func (ut *UTXOTangle) GetWrappedOutput(oid *core.OutputID, baselineState ...multistate.SugaredStateReader) (WrappedOutput, bool, bool) {
+func (ut *UTXOTangle) getExistingWrappedOutput(oid *core.OutputID, baselineState ...multistate.SugaredStateReader) (WrappedOutput, bool, bool) {
+	ut.mutex.RLock()
+	defer ut.mutex.RUnlock()
+
 	txid := oid.TransactionID()
 	if vid, found := ut.GetVertex(&txid); found {
 		hasIt, invalid := vid.HasOutputAt(oid.Index())
@@ -44,6 +47,18 @@ func (ut *UTXOTangle) GetWrappedOutput(oid *core.OutputID, baselineState ...mult
 		// it is a virtual tx, output not cached
 		return wrapNewIntoExistingNonBranch(vid, oid, baselineState...)
 	}
+	return WrappedOutput{}, false, false
+}
+
+func (ut *UTXOTangle) GetWrappedOutput(oid *core.OutputID, baselineState ...multistate.SugaredStateReader) (WrappedOutput, bool, bool) {
+	ret, found, invalid := ut.getExistingWrappedOutput(oid, baselineState...)
+	if found || invalid {
+		return ret, found, invalid
+	}
+
+	ut.mutex.Lock()
+	defer ut.mutex.Unlock()
+
 	// transaction not on UTXO tangle
 	if oid.BranchFlagON() {
 		return ut.fetchAndWrapBranch(oid)
@@ -59,10 +74,11 @@ func (ut *UTXOTangle) GetWrappedOutput(oid *core.OutputID, baselineState ...mult
 		return WrappedOutput{}, false, !errors.Is(err, multistate.ErrNotFound)
 	}
 	// found. Creating and wrapping new virtual tx
+	txid := oid.TransactionID()
 	vt := newVirtualTx(&txid)
 	vt.addOutput(oid.Index(), o)
 	vid := vt.Wrap()
-	ut.AddVertexNoSaveTx(vid)
+	ut.addVertex(vid)
 
 	return WrappedOutput{VID: vid, Index: oid.Index()}, true, false
 }
@@ -162,14 +178,12 @@ func (ut *UTXOTangle) wrapNewIntoExistingBranch(vid *WrappedTx, oid *core.Output
 // It means in general the result is non-deterministic, because some dependencies may be unavailable. This is ok for solidifier
 // Once transaction has all dependencies solid, further on the result is deterministic
 func (v *Vertex) FetchMissingDependencies(ut *UTXOTangle) error {
-	var err error
+	v.fetchMissingEndorsements(ut)
 
 	if v.StateDelta.branchTxID == nil {
-		// if baseline not known yet, first try to solidify from the utxo tangle or from the heaviest state
-		if err = v.fetchMissingInputs(ut, ut.HeaviestStateForLatestTimeSlot()); err != nil {
+		if err := v.fetchMissingInputs(ut); err != nil {
 			return err
 		}
-		v.fetchMissingEndorsements(ut)
 	}
 
 	if v.Tx.IsSequencerMilestone() {
@@ -178,16 +192,10 @@ func (v *Vertex) FetchMissingDependencies(ut *UTXOTangle) error {
 		if conflict {
 			return fmt.Errorf("conflicting branches among inputs of %s", v.Tx.IDShort())
 		}
-		if baselineBranchID == nil {
-			if v.IsSolid() {
-				return fmt.Errorf("can't determine baseline branch from inputs of %s", v.Tx.IDShort())
-			}
-			util.Panicf("inconsistency in %s", v.Tx.IDShort())
-		}
 		v.StateDelta.branchTxID = baselineBranchID
-		if !v.IsSolid() {
+		if !v.IsSolid() && baselineBranchID != nil {
 			// if still not solid, try to fetch remaining inputs with baseline state
-			if err = v.fetchMissingInputs(ut, ut.MustGetSugaredStateReader(baselineBranchID)); err != nil {
+			if err := v.fetchMissingInputs(ut, ut.MustGetSugaredStateReader(baselineBranchID)); err != nil {
 				return err
 			}
 		}

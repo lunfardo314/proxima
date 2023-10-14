@@ -14,12 +14,17 @@ import (
 	"github.com/lunfardo314/unitrie/common"
 )
 
+func (ut *UTXOTangle) getVertex(txid *core.TransactionID) (*WrappedTx, bool) {
+	ret, found := ut.vertices[*txid]
+
+	return ret, found
+}
+
 func (ut *UTXOTangle) GetVertex(txid *core.TransactionID) (*WrappedTx, bool) {
 	ut.mutex.RLock()
 	defer ut.mutex.RUnlock()
 
-	ret, found := ut.vertices[*txid]
-	return ret, found
+	return ut.getVertex(txid)
 }
 
 func (ut *UTXOTangle) MustGetVertex(txid *core.TransactionID) *WrappedTx {
