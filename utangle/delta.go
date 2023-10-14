@@ -82,7 +82,7 @@ func (d utxoStateDelta) consume(wOut WrappedOutput, baselineState ...general.Sta
 	return WrappedOutput{}
 }
 
-func (d utxoStateDelta) hasAlreadyIncluded(vid *WrappedTx, baselineState ...general.StateReader) bool {
+func (d utxoStateDelta) isAlreadyIncluded(vid *WrappedTx, baselineState ...general.StateReader) bool {
 	if _, alreadyIncluded := d[vid]; alreadyIncluded {
 		return true
 	}
@@ -94,7 +94,7 @@ func (d utxoStateDelta) hasAlreadyIncluded(vid *WrappedTx, baselineState ...gene
 }
 
 func (d utxoStateDelta) include(vid *WrappedTx, baselineState ...general.StateReader) (conflict WrappedOutput) {
-	if d.hasAlreadyIncluded(vid, baselineState...) {
+	if d.isAlreadyIncluded(vid, baselineState...) {
 		return
 	}
 	for _, wOut := range vid.WrappedInputs() {
@@ -146,31 +146,35 @@ func (d utxoStateDelta) getMutations(targetSlot core.TimeSlot) *multistate.Mutat
 	ret := multistate.NewMutations()
 
 	for vid, consumedSet := range d {
-		vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
-			// DEL mutations: deleting from the baseline state all inputs which are marked consumed
-			v.forEachInputDependency(func(i byte, inp *WrappedTx) bool {
-				isConsumed, inTheState := d.isConsumed(WrappedOutput{VID: inp, Index: i})
-				if isConsumed && inTheState {
-					ret.InsertDelOutputMutation(v.Tx.MustInputAt(i))
+		// do not touch virtual transactions
+		vid.Unwrap(UnwrapOptions{
+			Vertex: func(v *Vertex) {
+				// DEL mutations: deleting from the baseline state all inputs which are marked consumed
+				v.forEachInputDependency(func(i byte, inp *WrappedTx) bool {
+					isConsumed, inTheState := d.isConsumed(WrappedOutput{VID: inp, Index: i})
+					if isConsumed && inTheState {
+						ret.InsertDelOutputMutation(v.Tx.MustInputAt(i))
+					}
+					return true
+				})
+				if consumedSet.inTheState {
+					// do not produce anything if transaction is already in the state
+					return
 				}
-				return true
-			})
-			if consumedSet.inTheState {
-				// do not produce anything if transaction is already in the state
-				return
-			}
-			// SET mutations: adding outputs of not-in-the-state state transaction which are not
-			// marked consumed. If all outputs are consumed, adding nothing
-			v.Tx.ForEachProducedOutput(func(idx byte, o *core.Output, oid *core.OutputID) bool {
-				if !consumedSet.set.Contains(idx) {
-					ret.InsertAddOutputMutation(*oid, o)
-				}
-				return true
-			})
-			// ADDTX mutation: adding records for all transactions not in the state. Even those which have
-			// no produced outputs, because all of them were consumed in the delta
-			ret.InsertAddTxMutation(*v.Tx.ID(), targetSlot)
-		}})
+				// SET mutations: adding outputs of not-in-the-state state transaction which are not
+				// marked as consumed. If all outputs are consumed, adding nothing
+				v.Tx.ForEachProducedOutput(func(idx byte, o *core.Output, oid *core.OutputID) bool {
+					if !consumedSet.set.Contains(idx) {
+						ret.InsertAddOutputMutation(*oid, o)
+					}
+					return true
+				})
+				// ADDTX mutation: adding records for all new transactions (not in the state already).
+				// Even of those which have no produced outputs, because all of them have been consumed in the delta
+				ret.InsertAddTxMutation(*v.Tx.ID(), targetSlot)
+			},
+			Orphaned: PanicOrphaned,
+		})
 	}
 	return ret.Sort()
 }
