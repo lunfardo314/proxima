@@ -42,6 +42,7 @@ const (
 	PartitionLedgerState = byte(iota)
 	PartitionAccounts
 	PartitionChainID
+	PartitionTransactionID
 )
 
 // NewReadable creates read-only ledger state with the given root
@@ -247,7 +248,7 @@ func (u *Updatable) Root() common.VCommitment {
 // If rootStemOutputID != nil, also writes root partition record
 func (u *Updatable) UpdateWithCommands(cmds []UpdateCmd, rootStemOutputID *core.OutputID, rootSeqID *core.ChainID, coverage uint64) error {
 	return u.updateUTXOLedgerDB(func(trie *immutable.TrieUpdatable) error {
-		return UpdateTrie(u.trie, cmds)
+		return UpdateTrieOld(u.trie, cmds)
 	}, rootStemOutputID, rootSeqID, coverage)
 }
 
