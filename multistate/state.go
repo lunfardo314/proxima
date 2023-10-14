@@ -82,11 +82,6 @@ func MustNewUpdatable(store general.StateStore, root common.VCommitment) *Updata
 	util.AssertNoError(err)
 	return ret
 }
-
-func (u *Updatable) Desugar() general.IndexedStateReader {
-	return u.Readable()
-}
-
 func (u *Updatable) Readable() *Readable {
 	return &Readable{u.trie.TrieReader}
 }
@@ -99,12 +94,13 @@ func (r *Readable) GetUTXO(oid *core.OutputID) ([]byte, bool) {
 	return ret, true
 }
 
-func (r *Readable) Desugar() general.IndexedStateReader {
-	return r
-}
-
 func (r *Readable) HasUTXO(oid *core.OutputID) bool {
 	return common.MakeReaderPartition(r.trie, PartitionLedgerState).Has(oid[:])
+}
+
+// KnowsTransaction transaction IDs are purged after some time, so the result may be
+func (r *Readable) KnowsTransaction(txid *core.TransactionID) bool {
+	return common.MakeReaderPartition(r.trie, PartitionTransactionID).Has(txid[:])
 }
 
 func (r *Readable) GetIDSLockedInAccount(addr core.AccountID) ([]core.OutputID, error) {
@@ -230,10 +226,6 @@ func (r *Readable) HasTransactionOutputs(txid *core.TransactionID, indexMap ...m
 		return true
 	})
 	return hasTransaction, allOutputsExist
-}
-
-func (r *Readable) HasTransaction(txid *core.TransactionID) bool {
-	return common.HasWithPrefix(common.MakeTraversableReaderPartition(r.trie, PartitionLedgerState), txid[:])
 }
 
 func (r *Readable) Root() common.VCommitment {

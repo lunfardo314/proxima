@@ -75,8 +75,19 @@ func (d utxoStateDelta) consume(wOut WrappedOutput, baselineState ...general.Sta
 	return WrappedOutput{}
 }
 
-func (d utxoStateDelta) include(vid *WrappedTx, baselineState ...general.StateReader) (conflict WrappedOutput) {
+func (d utxoStateDelta) hasAlreadyIncluded(vid *WrappedTx, baselineState ...general.StateReader) bool {
 	if _, alreadyIncluded := d[vid]; alreadyIncluded {
+		return true
+	}
+	if len(baselineState) == 0 {
+		return false
+	}
+
+	return baselineState[0].KnowsTransaction(vid.ID())
+}
+
+func (d utxoStateDelta) include(vid *WrappedTx, baselineState ...general.StateReader) (conflict WrappedOutput) {
+	if d.hasAlreadyIncluded(vid, baselineState...) {
 		return
 	}
 	for _, wOut := range vid.WrappedInputs() {

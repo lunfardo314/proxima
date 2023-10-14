@@ -120,6 +120,10 @@ func (ut *UTXOTangle) HasUTXO(oid *core.OutputID) bool {
 	return ut.HeaviestStateForLatestTimeSlot().HasUTXO(oid)
 }
 
+func (ut *UTXOTangle) KnowsTransaction(txid *core.TransactionID) bool {
+	return ut.HasTransactionOnTangle(txid)
+}
+
 func (ut *UTXOTangle) GetBranch(vid *WrappedTx) (common.VCommitment, bool) {
 	ut.mutex.RLock()
 	defer ut.mutex.RUnlock()
