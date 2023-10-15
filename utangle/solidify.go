@@ -26,6 +26,8 @@ func (ut *UTXOTangle) SolidifyInputs(tx *transaction.Transaction) (*Vertex, erro
 	return ret, nil
 }
 
+// getExistingWrappedOutput returns wrapped output if vertex already in on the tangle
+// If output belongs to the virtual tx but is not cached there, loads it (if state is provided)
 func (ut *UTXOTangle) getExistingWrappedOutput(oid *core.OutputID, baselineState ...multistate.SugaredStateReader) (WrappedOutput, bool, bool) {
 	ut.mutex.RLock()
 	defer ut.mutex.RUnlock()
@@ -39,15 +41,80 @@ func (ut *UTXOTangle) getExistingWrappedOutput(oid *core.OutputID, baselineState
 		if hasIt {
 			return WrappedOutput{VID: vid, Index: oid.Index()}, true, false
 		}
+		// here it can only be a virtual tx
+		util.Assertf(vid.IsVirtualTx(), "virtual tx expected")
+
 		if oid.IsBranchTransaction() {
 			// it means a virtual branch vertex exist but the output is not cached on it.
-			// It won't be a seq or stem output
-			return ut.wrapNewIntoExistingBranch(vid, oid)
+			// It won't be a seq or stem output, because those are cached always in the branch virtual tx
+			return ut.wrapNewIntoExistingVirtualBranch(vid, oid)
 		}
 		// it is a virtual tx, output not cached
-		return wrapNewIntoExistingNonBranch(vid, oid, baselineState...)
+		return wrapNewIntoExistingVirtualNonBranch(vid, oid, baselineState...)
 	}
 	return WrappedOutput{}, false, false
+}
+
+func (ut *UTXOTangle) wrapNewIntoExistingVirtualBranch(vid *WrappedTx, oid *core.OutputID) (WrappedOutput, bool, bool) {
+	util.Assertf(oid.BranchFlagON(), "%s should be a branch", oid.Short())
+
+	var ret WrappedOutput
+	var available, invalid bool
+
+	vid.Unwrap(UnwrapOptions{
+		VirtualTx: func(v *VirtualTransaction) {
+			_, already := v.OutputAt(oid.Index())
+			util.Assertf(!already, "inconsistency: output %s should not exist in the virtualTx", func() any { return oid.Short() })
+
+			bd, branchFound := multistate.FetchBranchData(ut.stateStore, oid.TransactionID())
+			util.Assertf(branchFound, "inconsistency: branch %s must exist", oid.Short())
+
+			rdr := multistate.MustNewSugaredStateReader(ut.stateStore, bd.Root)
+
+			o, err := rdr.GetOutput(oid)
+			if errors.Is(err, multistate.ErrNotFound) {
+				return // null, false, false
+			}
+			if err != nil {
+				invalid = true
+				return // null, false, true
+			}
+			v.addOutput(oid.Index(), o)
+			ret = WrappedOutput{VID: vid, Index: oid.Index()}
+			available = true
+			return // ret, true, false
+		},
+		Orphaned: PanicOrphaned,
+	})
+	return ret, available, invalid
+}
+
+func wrapNewIntoExistingVirtualNonBranch(vid *WrappedTx, oid *core.OutputID, baselineState ...multistate.SugaredStateReader) (WrappedOutput, bool, bool) {
+	util.Assertf(!oid.BranchFlagON(), "%s should not be branch", oid.Short())
+	// Don't have output in existing vertex, but it may be a virtualTx
+	if len(baselineState) == 0 {
+		return WrappedOutput{}, false, false
+	}
+	var ret WrappedOutput
+	var available, invalid bool
+	vid.Unwrap(UnwrapOptions{
+		VirtualTx: func(v *VirtualTransaction) {
+			o, err := baselineState[0].GetOutput(oid)
+			if errors.Is(err, multistate.ErrNotFound) {
+				return // null, false, false
+			}
+			if err != nil {
+				invalid = true
+				return // null, false, true
+			}
+			v.addOutput(oid.Index(), o)
+			ret = WrappedOutput{VID: vid, Index: oid.Index()}
+			available = true
+			return // ret, true, false
+		},
+		Orphaned: PanicOrphaned,
+	})
+	return ret, available, invalid
 }
 
 func (ut *UTXOTangle) GetWrappedOutput(oid *core.OutputID, baselineState ...multistate.SugaredStateReader) (WrappedOutput, bool, bool) {
@@ -105,72 +172,6 @@ func (ut *UTXOTangle) fetchAndWrapBranch(oid *core.OutputID) (WrappedOutput, boo
 	vid := vt.Wrap()
 	ut.AddVertexAndBranch(vid, bd.Root)
 	return WrappedOutput{VID: vid, Index: oid.Index()}, true, false
-}
-
-func wrapNewIntoExistingNonBranch(vid *WrappedTx, oid *core.OutputID, baselineState ...multistate.SugaredStateReader) (WrappedOutput, bool, bool) {
-	util.Assertf(!oid.BranchFlagON(), "%s should not be branch", oid.Short())
-	// Don't have output in existing vertex, but it may be a virtualTx
-	if len(baselineState) == 0 {
-		return WrappedOutput{}, false, false
-	}
-	var ret WrappedOutput
-	var available, invalid bool
-	vid.Unwrap(UnwrapOptions{
-		VirtualTx: func(v *VirtualTransaction) {
-			o, err := baselineState[0].GetOutput(oid)
-			if errors.Is(err, multistate.ErrNotFound) {
-				return // null, false, false
-			}
-			if err != nil {
-				invalid = true
-				return // null, false, true
-			}
-			v.addOutput(oid.Index(), o)
-			ret = WrappedOutput{VID: vid, Index: oid.Index()}
-			available = true
-			return // ret, true, false
-		},
-	})
-	return ret, available, invalid
-}
-
-func (ut *UTXOTangle) wrapNewIntoExistingBranch(vid *WrappedTx, oid *core.OutputID) (WrappedOutput, bool, bool) {
-	util.Assertf(oid.BranchFlagON(), "%s should be a branch", oid.Short())
-
-	var ret WrappedOutput
-	var available, invalid bool
-
-	vid.Unwrap(UnwrapOptions{
-		Vertex: func(v *Vertex) {
-			util.Panicf("should be a virtualTx %s", oid.Short())
-		},
-		VirtualTx: func(v *VirtualTransaction) {
-			_, already := v.OutputAt(oid.Index())
-			util.Assertf(!already, "inconsistency: output %s should not exist in the virtualTx", func() any { return oid.Short() })
-
-			bd, branchFound := multistate.FetchBranchData(ut.stateStore, oid.TransactionID())
-			util.Assertf(branchFound, "inconsistency: branch %s must exist", oid.Short())
-
-			rdr := multistate.MustNewSugaredStateReader(ut.stateStore, bd.Root)
-
-			o, err := rdr.GetOutput(oid)
-			if errors.Is(err, multistate.ErrNotFound) {
-				return // null, false, false
-			}
-			if err != nil {
-				invalid = true
-				return // null, false, true
-			}
-			v.addOutput(oid.Index(), o)
-			ret = WrappedOutput{VID: vid, Index: oid.Index()}
-			available = true
-			return // ret, true, false
-		},
-		Orphaned: func() {
-			util.Panicf("should be a virtualTx %s", oid.Short())
-		},
-	})
-	return ret, available, invalid
 }
 
 // FetchMissingDependencies check solidity of inputs and fetches what is available
