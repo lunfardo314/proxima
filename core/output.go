@@ -108,7 +108,7 @@ func (o *Output) StemLock() (*StemLock, bool) {
 
 // WithAmount can only be used inside r/o override closure
 func (o *Output) WithAmount(amount uint64) *Output {
-	o.arr.PutAtIdxGrow(ConstraintIndexAmount, NewAmount(amount).Bytes())
+	o.arr.PutAtIdxWithPadding(ConstraintIndexAmount, NewAmount(amount).Bytes())
 	return o
 }
 
@@ -156,7 +156,7 @@ func (o *Output) PushConstraint(c []byte) (byte, error) {
 
 // PutConstraint can only be used inside r/o override closure
 func (o *Output) PutConstraint(c []byte, idx byte) {
-	o.arr.PutAtIdxGrow(idx, c)
+	o.arr.PutAtIdxWithPadding(idx, c)
 }
 
 func (o *Output) PutAmount(amount uint64) {

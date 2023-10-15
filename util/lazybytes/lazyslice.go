@@ -39,7 +39,7 @@ type Array struct {
 
 type lenPrefixType uint16
 
-// prefix of the serialized slice array are two bytes interpreted as uint16
+// prefix of the serialized slice array are two bytes interpreted as uint16 big-endian
 // The highest 2 bits are interpreted as 4 possible dataLenBytes (0, 1, 2 and 4 bytes)
 // The rest is interpreted as uint16 of the number of elements in the array. Max 2^14-1 =
 // 0 byte with ArrayMaxData code, the number of bits reserved for element data length
@@ -151,7 +151,7 @@ func (a *Array) SetEmptyArray() {
 
 func (a *Array) mustEditable() {
 	if a.readonly {
-		panic("attempt to write to a read only lazy array")
+		panic("attempt to write to a read-only lazy array")
 	}
 }
 
@@ -178,8 +178,8 @@ func (a *Array) PutAtIdx(idx byte, data []byte) {
 	a.bytes = nil // invalidate bytes
 }
 
-// PutAtIdxGrow puts data at index, grows array of necessary
-func (a *Array) PutAtIdxGrow(idx byte, data []byte) {
+// PutAtIdxWithPadding puts data at index, pads elements with nils if necessary
+func (a *Array) PutAtIdxWithPadding(idx byte, data []byte) {
 	a.mustEditable()
 	for int(idx) >= a.NumElements() {
 		a.Push(nil)

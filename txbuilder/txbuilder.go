@@ -104,7 +104,7 @@ func (txb *TransactionBuilder) ConsumeOutputs(outs ...*core.OutputWithID) (uint6
 }
 
 func (txb *TransactionBuilder) PutUnlockParams(inputIndex, constraintIndex byte, unlockParamData []byte) {
-	txb.TransactionData.UnlockBlocks[inputIndex].array.PutAtIdxGrow(constraintIndex, unlockParamData)
+	txb.TransactionData.UnlockBlocks[inputIndex].array.PutAtIdxWithPadding(constraintIndex, unlockParamData)
 }
 
 // PutSignatureUnlock marker 0xff references signature of the transaction.
