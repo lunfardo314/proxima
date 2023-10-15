@@ -628,7 +628,7 @@ func GetChainAccount(chainID core.ChainID, srdr general.IndexedStateReader, desc
 	return chainData[0], ret, nil
 }
 
-// InsertSimpleChainTransition inserts a simple chain transition. Takes output with chain constraint from parameters,
+// InsertSimpleChainTransition inserts a simple chain transition (surprise, surprise). Takes output with chain constraint from parameters,
 // Produces identical output, only modifies timestamp. Unlocks chain-input lock with signature reference
 func (txb *TransactionBuilder) InsertSimpleChainTransition(inChainData *core.OutputDataWithChainID, ts core.LogicalTime) error {
 	chainIN, err := core.OutputFromBytesReadOnly(inChainData.OutputData)

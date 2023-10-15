@@ -15,7 +15,6 @@ import (
 	"github.com/lunfardo314/proxima/utangle"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/set"
-	"github.com/lunfardo314/proxima/workflow"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
@@ -68,23 +67,21 @@ func (seq *Sequencer) createMilestoneFactory() error {
 	logname := fmt.Sprintf("[%sF-%s]", seq.config.SequencerName, seq.chainID.VeryShort())
 	log := general.NewLogger(logname, seq.config.LogLevel, seq.config.LogOutputs, seq.config.LogTimeLayout)
 
-	var chainOut utangle.WrappedOutput
-	var err error
-	if seq.config.StartupTxOptions != nil && seq.config.StartupTxOptions.ChainOutput != nil {
-		var created bool
-		// creates sequencer output out of chain origin and tags along, if necessary
-		chainOut, created, err = seq.ensureSequencerStartOutput()
+	chainOut := seq.config.StartOutput
+	if chainOut.VID == nil {
+		rdr := seq.glb.UTXOTangle().HeaviestStateForLatestTimeSlot()
+		odata, err := rdr.GetUTXOForChainID(&seq.chainID)
 		if err != nil {
-			return err
+			return fmt.Errorf("can't get chain output: %v", err)
 		}
-		if created {
-			log.Infof("created sequencer start output %s", chainOut.DecodeID().Short())
-		}
+		var hasIt, invalid bool
+		chainOut, hasIt, invalid = seq.glb.UTXOTangle().GetWrappedOutput(&odata.ID, rdr)
+		util.Assertf(hasIt && !invalid, "can't retrieve chain output")
 	}
+	var err error
 
-	ownMilestones := make(map[*utangle.WrappedTx]utangle.WrappedOutput)
-	if chainOut.VID != nil {
-		ownMilestones[chainOut.VID] = chainOut
+	ownMilestones := map[*utangle.WrappedTx]utangle.WrappedOutput{
+		chainOut.VID: chainOut,
 	}
 
 	tippoolLoglevel := seq.config.LogLevel
@@ -112,68 +109,6 @@ func (seq *Sequencer) createMilestoneFactory() error {
 
 	seq.factory = ret
 	return nil
-}
-
-func (seq *Sequencer) ensureSequencerStartOutput() (utangle.WrappedOutput, bool, error) {
-	util.Assertf(seq.config.StartupTxOptions != nil && seq.config.StartupTxOptions.ChainOutput != nil, "ensureSequencerStartOutput: chain output not specified")
-
-	if seq.config.StartupTxOptions.EndorseBranch == nil || !seq.config.StartupTxOptions.EndorseBranch.BranchFlagON() {
-		return utangle.WrappedOutput{}, false, fmt.Errorf("ensureSequencerStartOutput: must endorse branch tx")
-	}
-
-	chainOut := seq.config.StartupTxOptions.ChainOutput
-	// We take current branch transaction ID from stem
-	// timestamp is
-	// - current time if it fits the current slot
-	// - last tick in the slot
-	ts := core.MaxLogicalTime(core.LogicalTimeNow(), chainOut.Timestamp().AddTimeTicks(core.TransactionTimePaceInTicks))
-	endorse := seq.config.StartupTxOptions.EndorseBranch
-	if endorse != nil && ts.TimeSlot() != endorse.TimeSlot() {
-		ts = core.MustNewLogicalTime(endorse.TimeSlot(), core.TimeTicksPerSlot-1)
-	}
-	util.Assertf(core.ValidTimePace(chainOut.Timestamp(), ts), "core.ValidTimePace(chainOut.LogicalTime(), ts) %s, %s",
-		chainOut.Timestamp(), ts)
-
-	tagAlongSequencers := seq.config.StartupTxOptions.TagAlongSequencers
-	tagAlongFeeOutputs := make([]*core.Output, len(tagAlongSequencers))
-	for i := range tagAlongFeeOutputs {
-		tagAlongFeeOutputs[i] = core.NewOutput(func(o *core.Output) {
-			o.WithAmount(seq.config.StartupTxOptions.TagAlongFee).
-				WithLock(core.ChainLockFromChainID(tagAlongSequencers[i]))
-		})
-	}
-	chainOutWithID, err := chainOut.Unwrap()
-
-	if chainOutWithID.Output.Amount() < core.MinimumAmountOnSequencer {
-		return utangle.WrappedOutput{}, false, fmt.Errorf("ensureSequencerStartOutput: cannot start sequncer: not enough balance on chain output, must be at least %s",
-			util.GoThousands(core.MinimumAmountOnSequencer))
-	}
-
-	if err != nil || chainOutWithID == nil {
-		return utangle.WrappedOutput{}, false, err
-	}
-	txBytes, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
-		SeqName: seq.config.SequencerName,
-		ChainInput: &core.OutputWithChainID{
-			OutputWithID: *chainOutWithID,
-			ChainID:      seq.chainID,
-		},
-		Timestamp:         ts,
-		Endorsements:      []*core.TransactionID{endorse},
-		AdditionalOutputs: tagAlongFeeOutputs,
-		PrivateKey:        seq.controllerKey,
-		TotalSupply:       0,
-	})
-	if err != nil {
-		return utangle.WrappedOutput{}, false, err
-	}
-
-	vid, err := seq.glb.TransactionInWaitAppendWrap(txBytes, 5*time.Second, workflow.OptionWithSourceSequencer)
-	if err != nil {
-		return utangle.WrappedOutput{}, false, err
-	}
-	util.Assertf(vid.IsSequencerMilestone(), "vid.IsSequencerMilestone()")
-	return *vid.MustSequencerOutput(), true, nil
 }
 
 func (mf *milestoneFactory) trace(format string, args ...any) {
@@ -298,6 +233,7 @@ func (mf *milestoneFactory) getLatestMilestone() (ret utangle.WrappedOutput) {
 			ret = ms
 		}
 	}
+	util.Assertf(ret.VID != nil, "ret.VID != nil")
 	return ret
 }
 

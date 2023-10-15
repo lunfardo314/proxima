@@ -736,9 +736,7 @@ func (vid *WrappedTx) GetUTXOStateDelta() (ret *UTXOStateDelta) {
 		VirtualTx: func(v *VirtualTransaction) {
 			ret = NewUTXOState(nil)
 		},
-		Orphaned: func() {
-			util.Panicf("orphaned vertex should not be accesses")
-		},
+		Orphaned: PanicOrphaned,
 	})
 	return
 }

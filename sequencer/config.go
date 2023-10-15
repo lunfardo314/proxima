@@ -12,26 +12,26 @@ import (
 
 type (
 	ConfigOptions struct {
-		SequencerName    string
-		Pace             int // pace in slots
-		LogLevel         zapcore.Level
-		LogOutputs       []string
-		TraceTippool     bool
-		LogTimeLayout    string
-		MaxFeeInputs     int
-		MaxTargetTs      core.LogicalTime
-		MaxMilestones    int
-		MaxBranches      int
-		StartupTxOptions *StartupTxOptions
+		SequencerName string
+		Pace          int // pace in slots
+		LogLevel      zapcore.Level
+		LogOutputs    []string
+		TraceTippool  bool
+		LogTimeLayout string
+		MaxFeeInputs  int
+		MaxTargetTs   core.LogicalTime
+		MaxMilestones int
+		MaxBranches   int
+		StartOutput   utangle.WrappedOutput
 	}
 
 	// StartupTxOptions used for testing, to create interim sequencer milestone
-	StartupTxOptions struct {
-		ChainOutput        *utangle.WrappedOutput
-		EndorseBranch      *core.TransactionID
-		TagAlongSequencers []core.ChainID
-		TagAlongFee        uint64
-	}
+	//StartupTxOptions struct {
+	//	ChainOutput        *utangle.WrappedOutput
+	//	EndorseBranch      *core.TransactionID
+	//	TagAlongSequencers []core.ChainID
+	//	TagAlongFee        uint64
+	//}
 
 	ConfigOpt func(options *ConfigOptions)
 )
@@ -102,9 +102,9 @@ func WithMaxBranches(maxBranches int) ConfigOpt {
 	}
 }
 
-func WithStartupTxOptions(opt *StartupTxOptions) ConfigOpt {
+func WithStartOutput(wOut utangle.WrappedOutput) ConfigOpt {
 	return func(o *ConfigOptions) {
-		o.StartupTxOptions = opt
+		o.StartOutput = wOut
 	}
 }
 

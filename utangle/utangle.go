@@ -465,3 +465,9 @@ func (ut *UTXOTangle) TipList(nLatestSlots int) ([]*WrappedTx, time.Time, int) {
 
 	return ut._tipList(nLatestSlots)
 }
+
+func (ut *UTXOTangle) MergeVertexDeltas(vids ...*WrappedTx) (*UTXOStateDelta, *WrappedOutput) {
+	return MergeVertexDeltas(func(branchTxID *core.TransactionID) general.StateReader {
+		return ut.MustGetStateReader(branchTxID)
+	}, vids...)
+}

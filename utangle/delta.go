@@ -206,6 +206,14 @@ func (d *UTXOStateDelta) Include(vid *WrappedTx, getBaselineState func(branchTxI
 	return d.utxoStateDelta.include(vid)
 }
 
+func MergeVertexDeltas(getStateReader func(branchTxID *core.TransactionID) general.StateReader, vids ...*WrappedTx) (*UTXOStateDelta, *WrappedOutput) {
+	deltas := make([]*UTXOStateDelta, len(vids))
+	for i, vid := range vids {
+		deltas[i] = vid.GetUTXOStateDelta()
+	}
+	return MergeDeltas(getStateReader, deltas...)
+}
+
 func MergeDeltas(getStateReader func(branchTxID *core.TransactionID) general.StateReader, deltas ...*UTXOStateDelta) (*UTXOStateDelta, *WrappedOutput) {
 	ret := make(utxoStateDelta)
 	if len(deltas) == 0 {
