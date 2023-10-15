@@ -1,7 +1,6 @@
 package txutils
 
 import (
-	"bytes"
 	"fmt"
 	"sort"
 
@@ -76,31 +75,6 @@ func ParseAndSortOutputDataUpToAmount(outs []*core.OutputDataWithID, amount uint
 		return nil, 0, core.NilLogicalTime, fmt.Errorf("not enough tokens")
 	}
 	return retOuts, retSum, retTs, nil
-}
-
-type transactionBytesWithID struct {
-	txBytes []byte
-	txid    core.TransactionID
-}
-
-// SortTransactionSequenceByID random sorting for testing
-func SortTransactionSequenceByID(seq [][]byte) {
-	arr := make([]*transactionBytesWithID, len(seq))
-	for i, txBytes := range seq {
-
-		arr[i] = &transactionBytesWithID{
-			txBytes: txBytes,
-			txid:    blake2b.Sum256(txBytes),
-		}
-	}
-	sort.Slice(arr, func(i, j int) bool {
-		return bytes.Compare(arr[i].txid[:], arr[j].txid[:]) < 0
-	})
-	for i, el := range arr {
-		if bytes.Equal(seq[i], el.txBytes) {
-		}
-		seq[i] = el.txBytes
-	}
 }
 
 func FilterChainOutputs(outs []*core.OutputWithID) ([]*core.OutputWithChainID, error) {

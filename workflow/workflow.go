@@ -174,3 +174,7 @@ func (w *Workflow) CheckDebugCounters(expect map[string]int) error {
 func (w *Workflow) DumpPending() *lines.Lines {
 	return w.solidifyConsumer.DumpPending()
 }
+
+func (w *Workflow) DumpUnresolvedDependencies() *lines.Lines {
+	return w.solidifyConsumer.DumpUnresolvedDependencies()
+}

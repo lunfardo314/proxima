@@ -1,6 +1,8 @@
 package workflow
 
 import (
+	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -92,13 +94,12 @@ func (c *SolidifyConsumer) IsWaitedTransaction(txid *core.TransactionID) bool {
 }
 
 func (c *SolidifyConsumer) consume(inp *SolidifyInputData) {
-	inp.eventCallback(SolidifyConsumerName+".in", inp.Tx)
-
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
 	if inp.Remove {
 		// command to remove the transaction and other depending on it from the solidification pool
+		inp.eventCallback(SolidifyConsumerName+".in.remove", inp.Tx)
 		c.removeNonSolidifiableFutureCone(inp.Tx.ID())
 		return
 	}
@@ -123,7 +124,6 @@ func (c *SolidifyConsumer) newVertexToSolidify(inp *SolidifyInputData) {
 	draftVertex, err := c.glb.utxoTangle.SolidifyInputs(inp.Tx)
 	if err != nil {
 		// non solidifiable
-		inp.eventCallback("finish."+SolidifyConsumerName, err)
 		c.Debugf(inp.PrimaryInputConsumerData, "%v", err)
 		c.IncCounter("err")
 		c.removeNonSolidifiableFutureCone(inp.Tx.ID())
@@ -150,7 +150,7 @@ func (c *SolidifyConsumer) putIntoSolidifierIfNeeded(inp *SolidifyInputData, dra
 		return false
 	}
 	// some inputs unknown
-	inp.eventCallback(SolidifyConsumerName+".notsolid", inp.Tx)
+	inp.eventCallback("notsolid."+SolidifyConsumerName, inp.Tx)
 
 	util.Assertf(!draftVertex.IsSolid(), "inconsistency 1")
 	c.IncCounter("new.notsolid")
@@ -200,6 +200,10 @@ func (c *SolidifyConsumer) removeNonSolidifiableFutureCone(txid *core.Transactio
 	ns := make(map[core.TransactionID]struct{})
 	c.collectDependingFutureCone(txid, ns)
 	for txid1 := range ns {
+		if v, ok := c.txPending[txid1]; ok {
+			v.PrimaryInputConsumerData.eventCallback("finish.remove."+SolidifyConsumerName, txid1)
+		}
+
 		delete(c.txPending, txid1)
 		delete(c.txDependencies, txid1)
 
@@ -210,11 +214,8 @@ func (c *SolidifyConsumer) removeNonSolidifiableFutureCone(txid *core.Transactio
 // checkNewDependency checks all pending transactions waiting for the new incoming transaction
 // The new vertex has just been added to the tangle
 func (c *SolidifyConsumer) checkNewDependency(inp *SolidifyInputData) {
-	//c.Log().Debugf("inside checkNewDependency %s", inp.Tx.IDShort())
 	dep, isKnownDependency := c.txDependencies[*inp.Tx.ID()]
 	if !isKnownDependency {
-		//c.Log().Debugf("nobody is waiting for %s", inp.Tx.IDShort())
-		// nobody is waiting. Ignore
 		return
 	}
 	// it is not needed in the dependencies list anymore
@@ -235,6 +236,7 @@ func (c *SolidifyConsumer) checkNewDependency(inp *SolidifyInputData) {
 		if err := pending.draftVertex.FetchMissingDependencies(c.glb.utxoTangle); err != nil {
 			// tx cannot be solidified, remove
 			c.removeNonSolidifiableFutureCone(txid)
+			inp.eventCallback("finish."+SolidifyConsumerName, err.Error())
 			c.glb.RejectTransaction(*txid, "%v", err)
 			continue
 		}
@@ -303,6 +305,26 @@ func (c *SolidifyConsumer) doBackgroundCheck() {
 			c.glb.RejectTransaction(toRemove[i], "solidification timeout")
 		}
 	}
+}
+
+func (d *txDependency) text(dep *core.TransactionID) string {
+	txids := make([]string, 0)
+	for _, id := range d.consumingTxIDs {
+		txids = append(txids, id.Short())
+	}
+	return fmt.Sprintf("%s <- [%s]", dep.Short(), strings.Join(txids, ","))
+}
+
+func (c *SolidifyConsumer) DumpUnresolvedDependencies() *lines.Lines {
+	c.mutex.RLock()
+	defer c.mutex.RUnlock()
+
+	ret := lines.New()
+	ret.Add("======= unresolved dependencies in solidifier")
+	for txid, v := range c.txDependencies {
+		ret.Add(v.text(&txid))
+	}
+	return ret
 }
 
 func (c *SolidifyConsumer) DumpPending() *lines.Lines {

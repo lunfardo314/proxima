@@ -31,7 +31,7 @@ func (ut *UTXOTangle) getExistingWrappedOutput(oid *core.OutputID, baselineState
 	defer ut.mutex.RUnlock()
 
 	txid := oid.TransactionID()
-	if vid, found := ut.GetVertex(&txid); found {
+	if vid, found := ut.getVertex(&txid); found {
 		hasIt, invalid := vid.HasOutputAt(oid.Index())
 		if invalid {
 			return WrappedOutput{}, false, true
@@ -189,6 +189,7 @@ func (v *Vertex) FetchMissingDependencies(ut *UTXOTangle) error {
 	if v.Tx.IsSequencerMilestone() {
 		// baseline state must ultimately be determined for milestone
 		baselineBranchID, conflict := v.getInputBaselineBranchID()
+
 		if conflict {
 			return fmt.Errorf("conflicting branches among inputs of %s", v.Tx.IDShort())
 		}

@@ -1270,7 +1270,7 @@ func TestMultiChainWorkflow(t *testing.T) {
 			nTransactions += len(txBytesSeq[i])
 		}
 		t.Logf("number of transactions: %d", nTransactions)
-		cd := countdown.New(nTransactions, 10*time.Second)
+		cd := countdown.New(nTransactions, 5*time.Second)
 		wrk.MustOnEvent(workflow.EventNewVertex, func(_ *workflow.NewVertexEventData) {
 			cd.Tick()
 		})
@@ -1292,9 +1292,7 @@ func TestMultiChainWorkflow(t *testing.T) {
 					}
 				}
 				if nowait {
-					err = wrk.TransactionIn(txBytes, workflow.WithOnWorkflowEventPrefix(workflow.SolidifyConsumerName+".notsolid", func(event string, data any) {
-						//fmt.Printf("======= nostsolid =======\n")
-					}))
+					err = wrk.TransactionIn(txBytes)
 				} else {
 					_, err = wrk.TransactionInWaitAppend(txBytes, 5*time.Second)
 				}
@@ -1305,7 +1303,7 @@ func TestMultiChainWorkflow(t *testing.T) {
 		err := cd.Wait()
 		if err != nil {
 			t.Logf("==== counter info: %s", wrk.CounterInfo())
-			t.Logf("====== %s", wrk.DumpPending().String())
+			//t.Logf("====== %s", wrk.DumpUnresolvedDependencies().String()) // <<<<<< ???
 		}
 		require.NoError(t, err)
 		wrk.Stop()
