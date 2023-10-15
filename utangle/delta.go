@@ -192,10 +192,17 @@ func (d utxoStateDelta) lines(prefix ...string) *lines.Lines {
 	return ret
 }
 
-func NewUTXOState(branchTxID *core.TransactionID) *UTXOStateDelta {
+func NewUTXOStateDelta(branchTxID *core.TransactionID) *UTXOStateDelta {
 	return &UTXOStateDelta{
 		utxoStateDelta: make(utxoStateDelta),
 		branchTxID:     branchTxID,
+	}
+}
+
+func (d *UTXOStateDelta) Clone() *UTXOStateDelta {
+	return &UTXOStateDelta{
+		utxoStateDelta: d.utxoStateDelta.clone(),
+		branchTxID:     d.branchTxID,
 	}
 }
 

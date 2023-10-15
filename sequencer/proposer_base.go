@@ -5,7 +5,6 @@ import (
 
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/transaction"
-	"github.com/lunfardo314/proxima/util"
 )
 
 // Base proposer generates branches and bootstraps sequencer when no other sequencers are around
@@ -46,25 +45,9 @@ func (b *baseProposer) run() {
 
 func (b *baseProposer) proposeBase() (*transaction.Transaction, bool) {
 	latestMilestone := b.factory.getLatestMilestone()
-	if latestMilestone.VID == nil {
-		// startup situation
-		if !b.targetTs.IsSlotBoundary() {
-			// can only start up with branch target
-			b.trace(" no latest own milestones to extend has been found. Postpone until branch target")
-			return nil, true
-		}
-		// start-up: find own output and stem in the state and create branch with it
-		seqOut, stemOut, found := b.factory.tangle.GetSequencerBootstrapOutputs(b.factory.tipPool.chainID)
-		if !found {
-			b.factory.log.Errorf("cannot find bootstrap outputs for the sequencer")
-			return nil, true
-		}
-		// create branch. In case it is the only sequencer around, the branch will survive
-		// and will help to bootstrap other sequencers. Otherwise, it will be orphaned most likely
-		return b.makeMilestone(&seqOut, &stemOut, nil, nil), false
-	}
 	// own latest milestone exists
 	if !b.targetTs.IsSlotBoundary() && latestMilestone.TimeSlot() != b.targetTs.TimeSlot() {
+		// on startup or cross-slot will only produce branches
 		b.trace("proposeBase.force exit: cross-slot %s", latestMilestone.IDShort())
 		return nil, true
 	}
@@ -82,10 +65,7 @@ func (b *baseProposer) proposeBase() (*transaction.Transaction, bool) {
 		return b.makeMilestone(&latestMilestone, baseStem, nil, nil), false
 	}
 	// non-branch
-	targetDelta, conflict, _ := latestMilestone.VID.StartNextSequencerMilestoneDelta()
-
-	util.Assertf(conflict == nil, "conflict == nil")
-	util.Assertf(targetDelta != nil, "latest milestone is orphaned: %s", func() any { return latestMilestone.VID.IDShort() })
+	targetDelta := latestMilestone.VID.GetUTXOStateDelta().Clone()
 
 	feeOutputsToConsume := b.factory.selectFeeInputs(targetDelta, b.targetTs)
 

@@ -560,7 +560,7 @@ func (vid *WrappedTx) StartNextSequencerMilestoneDelta(other ...*WrappedTx) (*UT
 	//		ret = v.StateDelta.Clone()
 	//	},
 	//	VirtualTx: func(_ *VirtualTransaction) {
-	//		ret = NewUTXOState(vid)
+	//		ret = NewUTXOStateDelta(vid)
 	//	},
 	//})
 	//if ret == nil {
@@ -727,14 +727,14 @@ func (vid *WrappedTx) BaseBranchTXID() (ret *core.TransactionID) {
 // For branch it returns empty delta with the branch as baseline
 func (vid *WrappedTx) GetUTXOStateDelta() (ret *UTXOStateDelta) {
 	if vid.IsBranchTransaction() {
-		return NewUTXOState(vid.BaseBranchTXID())
+		return NewUTXOStateDelta(vid.BaseBranchTXID())
 	}
 	vid.Unwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
 			ret = &v.StateDelta
 		},
 		VirtualTx: func(v *VirtualTransaction) {
-			ret = NewUTXOState(nil)
+			ret = NewUTXOStateDelta(nil)
 		},
 		Orphaned: PanicOrphaned,
 	})

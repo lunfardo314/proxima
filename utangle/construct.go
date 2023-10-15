@@ -110,7 +110,7 @@ func NewVertex(tx *transaction.Transaction) *Vertex {
 		Tx:           tx,
 		Inputs:       make([]*WrappedTx, tx.NumInputs()),
 		Endorsements: make([]*WrappedTx, tx.NumEndorsements()),
-		StateDelta:   *NewUTXOState(nil),
+		StateDelta:   *NewUTXOStateDelta(nil),
 	}
 }
 
