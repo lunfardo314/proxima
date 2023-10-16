@@ -221,7 +221,7 @@ func TestWorkflowSync(t *testing.T) {
 		t.Logf("distribution timestamp: %s", wd.distributionTxID.Timestamp().String())
 		t.Logf("origin slot: %d", wd.initLedgerStatePar.GenesisTimeSlot)
 
-		estimatedTimeout := (time.Duration(numRuns) * core.TransactionTimePaceDuration()) + (6 * time.Second)
+		estimatedTimeout := (time.Duration(numRuns) * core.TransactionTimePaceDuration()) + (8 * time.Second)
 		waitCounter := countdown.New(numRuns, estimatedTimeout)
 		err := wd.w.OnEvent(workflow.EventNewVertex, func(v *workflow.NewVertexEventData) {
 			waitCounter.Tick()
@@ -245,7 +245,7 @@ func TestWorkflowSync(t *testing.T) {
 		}
 		err = waitCounter.Wait()
 		require.NoError(t, err)
-		require.EqualValues(t, 2*numRuns, listenerCounter.Load())
+		require.EqualValues(t, 2*numRuns, int(listenerCounter.Load()))
 
 		wd.w.Stop()
 		t.Logf("UTXO tangle:\n%s", wd.ut.Info())

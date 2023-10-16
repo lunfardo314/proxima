@@ -41,11 +41,11 @@ func (d utxoStateDelta) clone() utxoStateDelta {
 	return util.CloneMapShallow(d)
 }
 
-func makeBuffered(d utxoStateDelta, cached bool) *utxoStateDeltaBuffered {
+func makeBuffered(d utxoStateDelta, buffered bool) *utxoStateDeltaBuffered {
 	ret := &utxoStateDeltaBuffered{
 		utxoStateDelta: d,
 	}
-	if cached {
+	if buffered {
 		ret.cache = make(utxoStateDelta)
 	}
 	return ret
@@ -146,7 +146,7 @@ func (dc *utxoStateDeltaBuffered) put(vid *WrappedTx, consumedSet consumed) {
 	dc.cache[vid] = consumedSet
 }
 
-func (dc *utxoStateDeltaBuffered) commit() utxoStateDelta {
+func (dc *utxoStateDeltaBuffered) flush() utxoStateDelta {
 	if dc.cache == nil {
 		return dc.utxoStateDelta
 	}
@@ -259,24 +259,14 @@ func (d *UTXOStateDelta) Include(vid *WrappedTx, getBaselineState func(branchTxI
 	return dc.include(vid)
 }
 
-func MergeVertexDeltas(getStateReader func(branchTxID *core.TransactionID) general.StateReader, vids ...*WrappedTx) (*UTXOStateDelta, *WrappedOutput) {
-	deltas := make([]*UTXOStateDelta, len(vids))
-	for i, vid := range vids {
-		deltas[i] = vid.GetUTXOStateDelta()
-	}
-	return MergeDeltas(getStateReader, deltas...)
-}
-
-func MergeDeltas(getStateReader func(branchTxID *core.TransactionID) general.StateReader, deltas ...*UTXOStateDelta) (*UTXOStateDelta, *WrappedOutput) {
-	if len(deltas) == 0 {
-		return &UTXOStateDelta{utxoStateDelta: make(utxoStateDelta)}, nil
-	}
-
-	// find baseline state, the latest not-nil state
-	deltasSorted := util.CloneArglistShallow(deltas...)
-	sort.Slice(deltasSorted, func(i, j int) bool {
-		bi := deltasSorted[i].branchTxID
-		bj := deltasSorted[j].branchTxID
+// sortDeltas sorts deltas descending by baselineBranches, the latest are on top (if not nil)
+// checks for conflicting baseline states
+// the first in the sorted list will be the latest one, the others will be merged into it
+func sortDeltas(deltas ...*UTXOStateDelta) ([]*UTXOStateDelta, bool) {
+	ret := util.CloneArglistShallow(deltas...)
+	sort.Slice(ret, func(i, j int) bool {
+		bi := ret[i].branchTxID
+		bj := ret[j].branchTxID
 		switch {
 		case bi != nil && bj == nil:
 			return true
@@ -287,21 +277,35 @@ func MergeDeltas(getStateReader func(branchTxID *core.TransactionID) general.Sta
 	})
 
 	// check conflicting branches
-	for i, d := range deltasSorted {
+	for i, d := range ret {
 		if d.branchTxID == nil {
 			break
 		}
-		if i+1 >= len(deltasSorted) {
+		if i+1 >= len(ret) {
 			break
 		}
-		d1 := deltasSorted[i+1]
+		d1 := ret[i+1]
 		if d1.branchTxID == nil {
 			break
 		}
 		if d.branchTxID.TimeSlot() == d1.branchTxID.TimeSlot() && *d.branchTxID != *d1.branchTxID {
 			// two different branches on the same slot conflicts
-			return nil, &WrappedOutput{}
+			return nil, false
 		}
+	}
+	return ret, true
+}
+
+// MergeDeltas returns new copy of merged deltas. Arguments are not touched
+func MergeDeltas(getStateReader func(branchTxID *core.TransactionID) general.StateReader, deltas ...*UTXOStateDelta) (*UTXOStateDelta, *WrappedOutput) {
+	if len(deltas) == 0 {
+		return &UTXOStateDelta{utxoStateDelta: make(utxoStateDelta)}, nil
+	}
+
+	// find baseline state
+	deltasSorted, ok := sortDeltas(deltas...)
+	if !ok {
+		return nil, &WrappedOutput{}
 	}
 
 	// deltasSorted are all non-conflicting and sorted descending by slot with nil-branches at the end
@@ -316,7 +320,8 @@ func MergeDeltas(getStateReader func(branchTxID *core.TransactionID) general.Sta
 
 	for i, d := range deltasSorted {
 		if i == 0 {
-			retTmp = makeBuffered(deltasSorted[0].utxoStateDelta, true)
+			// here we clone the first and will merge the rest into it. No buffering
+			retTmp = makeBuffered(deltasSorted[0].utxoStateDelta.clone(), false)
 			continue
 		}
 		if conflict = retTmp.append(d.utxoStateDelta, baselineStateArg...); conflict.VID != nil {
@@ -325,9 +330,67 @@ func MergeDeltas(getStateReader func(branchTxID *core.TransactionID) general.Sta
 	}
 
 	return &UTXOStateDelta{
-		utxoStateDelta: retTmp.commit(),
+		utxoStateDelta: retTmp.flush(),
 		branchTxID:     latestBranchTxID,
 	}, nil
+}
+
+func MergeVertexDeltas(getStateReader func(branchTxID *core.TransactionID) general.StateReader, vids ...*WrappedTx) (*UTXOStateDelta, *WrappedOutput) {
+	deltas := make([]*UTXOStateDelta, len(vids))
+	for i, vid := range vids {
+		deltas[i] = vid.GetUTXOStateDelta()
+	}
+	return MergeDeltas(getStateReader, deltas...)
+}
+
+// MergeDeltas merges other deltas into the receiver. In case of success, receiver d is mutated
+// In case of conflict, d is inconsistent (buffer is not flushed)
+func (d *UTXOStateDelta) MergeDeltas(getStateReader func(branchTxID *core.TransactionID) general.StateReader, deltas ...*UTXOStateDelta) *WrappedOutput {
+	if len(deltas) == 0 {
+		return nil
+	}
+	if d.branchTxID == nil {
+		return &WrappedOutput{} // cannot merge into not-state bound delta
+	}
+
+	// d.branchTxID must be a dominating/latest branch
+	deltasSorted, fail := sortDeltas(deltas...)
+	if fail {
+		return &WrappedOutput{}
+	}
+	if deltasSorted[0].branchTxID != d.branchTxID && deltasSorted[0].branchTxID != nil {
+		if deltasSorted[0].branchTxID.TimeSlot() > d.branchTxID.TimeSlot() {
+			return &WrappedOutput{}
+		}
+	}
+
+	// deltasSorted are all non-conflicting and sorted descending by slot with nil-branches at the end
+	var baselineStateArg []general.StateReader
+	latestBranchTxID := d.branchTxID
+	if latestBranchTxID != nil {
+		baselineStateArg = util.List(getStateReader(latestBranchTxID))
+	}
+
+	var conflict WrappedOutput
+	ret := makeBuffered(d.utxoStateDelta, true)
+
+	for _, d1 := range deltasSorted {
+		if conflict = ret.append(d1.utxoStateDelta, baselineStateArg...); conflict.VID != nil {
+			return &conflict
+		}
+	}
+	ret.flush() // only flushed if no conflicts
+	return nil
+}
+
+// MergeVertexDeltas merge deltas of vertices into the target delta.
+// The target delta is not mutated in case of conflict
+func (d *UTXOStateDelta) MergeVertexDeltas(getStateReader func(branchTxID *core.TransactionID) general.StateReader, vids ...*WrappedTx) *WrappedOutput {
+	deltas := make([]*UTXOStateDelta, len(vids))
+	for i, vid := range vids {
+		deltas[i] = vid.GetUTXOStateDelta()
+	}
+	return d.MergeDeltas(getStateReader, deltas...)
 }
 
 func (d *UTXOStateDelta) Coverage(stateStore general.StateStore) uint64 {
