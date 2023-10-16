@@ -127,19 +127,6 @@ func (dc *utxoStateDeltaBuffered) append(delta utxoStateDelta, baselineState ...
 	return
 }
 
-func (d utxoStateDelta) lines(prefix ...string) *lines.Lines {
-	ret := lines.New(prefix...)
-
-	sorted := util.SortKeys(d, func(vid1, vid2 *WrappedTx) bool {
-		return vid1.Timestamp().Before(vid2.Timestamp())
-	})
-	for _, vid := range sorted {
-		consumedSet := d[vid]
-		ret.Add("%s consumed: %+v (inTheState = %v)", vid.IDShort(), consumedSet.set.String(), consumedSet.inTheState)
-	}
-	return ret
-}
-
 func (dc *utxoStateDeltaBuffered) get(vid *WrappedTx) (ret consumed, found bool) {
 	if dc.cache == nil {
 		ret, found = dc.utxoStateDelta[vid]
@@ -147,9 +134,6 @@ func (dc *utxoStateDeltaBuffered) get(vid *WrappedTx) (ret consumed, found bool)
 	}
 	if ret, found = dc.cache[vid]; found {
 		return
-	}
-	if ret, found = dc.utxoStateDelta[vid]; found {
-		dc.cache[vid] = ret
 	}
 	return
 }
@@ -174,6 +158,19 @@ func (dc *utxoStateDeltaBuffered) commit() utxoStateDelta {
 	dc.utxoStateDelta = nil
 	dc.cache = nil
 
+	return ret
+}
+
+func (d utxoStateDelta) lines(prefix ...string) *lines.Lines {
+	ret := lines.New(prefix...)
+
+	sorted := util.SortKeys(d, func(vid1, vid2 *WrappedTx) bool {
+		return vid1.Timestamp().Before(vid2.Timestamp())
+	})
+	for _, vid := range sorted {
+		consumedSet := d[vid]
+		ret.Add("%s consumed: %+v (inTheState = %v)", vid.IDShort(), consumedSet.set.String(), consumedSet.inTheState)
+	}
 	return ret
 }
 
