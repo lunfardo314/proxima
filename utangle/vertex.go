@@ -33,12 +33,11 @@ func (v *Vertex) mergeInputDeltas(ut *UTXOTangle) error {
 		return true
 	})
 
-	delta, conflict := MergeDeltas(func(branchTxID *core.TransactionID) general.StateReader {
-		return ut.MustGetStateReader(branchTxID)
-	}, deltas...)
+	delta, conflict := ut.MergeDeltas(deltas...)
 	if conflict != nil {
 		return fmt.Errorf("conflict in the past cone at %s", conflict.IDShort())
 	}
+	util.Assertf(delta.utxoStateDelta != nil, "delta.utxoStateDelta != nil")
 	v.StateDelta = *delta
 	return nil
 }

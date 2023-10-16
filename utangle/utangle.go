@@ -471,3 +471,9 @@ func (ut *UTXOTangle) MergeVertexDeltas(vids ...*WrappedTx) (*UTXOStateDelta, *W
 		return ut.MustGetStateReader(branchTxID)
 	}, vids...)
 }
+
+func (ut *UTXOTangle) MergeDeltas(deltas ...*UTXOStateDelta) (*UTXOStateDelta, *WrappedOutput) {
+	return MergeDeltas(func(branchTxID *core.TransactionID) general.StateReader {
+		return ut.MustGetStateReader(branchTxID)
+	}, deltas...)
+}

@@ -672,6 +672,9 @@ func TestMultiChain(t *testing.T) {
 						t.Logf("branch tx %d : %s", i, transaction.ParseBytesToString(txBytes, r.ut.GetUTXO))
 					}
 				}
+				if seqIdx == 1 && i == 7 {
+					t.Logf("---")
+				}
 				_, txStr, err := r.ut.AppendVertexFromTransactionBytesDebug(txBytes)
 				if err != nil {
 					t.Logf("================= failed tx ======================= %s", txStr)

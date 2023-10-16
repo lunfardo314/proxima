@@ -14,6 +14,14 @@ import (
 type (
 	utxoStateDelta map[*WrappedTx]consumed
 
+	// structure needed to prevent making target delta invalid in case of conflict during update
+	// all mutations are collected in the cache, at the (successful) end case is committed to the target delta
+	// this is an optimization in order not to have to clone the whole target delta each time
+	utxoStateDeltaBuffered struct {
+		utxoStateDelta
+		cache utxoStateDelta
+	}
+
 	consumed struct {
 		set        set.ByteSet
 		inTheState bool
@@ -33,8 +41,18 @@ func (d utxoStateDelta) clone() utxoStateDelta {
 	return util.CloneMapShallow(d)
 }
 
-func (d utxoStateDelta) isAlreadyIncluded(vid *WrappedTx, baselineState ...general.StateReader) bool {
-	if _, alreadyIncluded := d[vid]; alreadyIncluded {
+func makeBuffered(d utxoStateDelta, cached bool) *utxoStateDeltaBuffered {
+	ret := &utxoStateDeltaBuffered{
+		utxoStateDelta: d,
+	}
+	if cached {
+		ret.cache = make(utxoStateDelta)
+	}
+	return ret
+}
+
+func (dc *utxoStateDeltaBuffered) isAlreadyIncluded(vid *WrappedTx, baselineState ...general.StateReader) bool {
+	if _, alreadyIncluded := dc.get(vid); alreadyIncluded {
 		return true
 	}
 	if len(baselineState) == 0 {
@@ -44,8 +62,8 @@ func (d utxoStateDelta) isAlreadyIncluded(vid *WrappedTx, baselineState ...gener
 	return baselineState[0].KnowsCommittedTransaction(vid.ID())
 }
 
-func (d utxoStateDelta) consume(wOut WrappedOutput, baselineState ...general.StateReader) WrappedOutput {
-	consumedSet, found := d[wOut.VID]
+func (dc *utxoStateDeltaBuffered) consume(wOut WrappedOutput, baselineState ...general.StateReader) WrappedOutput {
+	consumedSet, found := dc.get(wOut.VID)
 	if found {
 		// corresponding tx is already in the delta
 		if consumedSet.set.Contains(wOut.Index) {
@@ -58,60 +76,105 @@ func (d utxoStateDelta) consume(wOut WrappedOutput, baselineState ...general.Sta
 			}
 		}
 		consumedSet.set.Insert(wOut.Index)
-		d[wOut.VID] = consumedSet
+		dc.put(wOut.VID, consumedSet)
 		return WrappedOutput{}
 	}
 	// there's no corresponding tx in the delta
 	if len(baselineState) > 0 {
 		if baselineState[0].HasUTXO(wOut.DecodeID()) {
-			d[wOut.VID] = consumed{
+			dc.put(wOut.VID, consumed{
 				set:        set.NewByteSet(wOut.Index),
 				inTheState: true,
-			}
+			})
 			return WrappedOutput{}
 		}
 	}
-	// no baseline state or output is not in the baseline state
-	if conflict := d.include(wOut.VID, baselineState...); conflict.VID != nil {
+	// no baseline state provide or output is not in the baseline state
+	if conflict := dc.include(wOut.VID, baselineState...); conflict.VID != nil {
 		return conflict
 	}
-	consumedSet, found = d[wOut.VID]
-	util.Assertf(found && !consumedSet.inTheState, "found && !consumedSet.inTheState")
+	consumedSet, found = dc.get(wOut.VID)
 
-	consumedSet.set = set.NewByteSet(wOut.Index)
-	d[wOut.VID] = consumedSet
+	util.Assertf(found && !consumedSet.inTheState, "found && !consumedSet.inTheState")
+	util.Assertf(consumedSet.set.IsEmpty(), "consumedSet.set.IsEmpty()")
+
+	consumedSet.set.Insert(wOut.Index)
+	dc.put(wOut.VID, consumedSet)
 	return WrappedOutput{}
 }
 
-func (d *UTXOStateDelta) Include(vid *WrappedTx, getBaselineState func(branchTxID *core.TransactionID) general.StateReader) (ret WrappedOutput) {
-	if d.branchTxID != nil {
-		return d.utxoStateDelta.include(vid, getBaselineState(d.branchTxID))
-	}
-	return d.utxoStateDelta.include(vid)
-}
-
-func (d utxoStateDelta) include(vid *WrappedTx, baselineState ...general.StateReader) (conflict WrappedOutput) {
-	if d.isAlreadyIncluded(vid, baselineState...) {
+func (dc *utxoStateDeltaBuffered) include(vid *WrappedTx, baselineState ...general.StateReader) (conflict WrappedOutput) {
+	if dc.isAlreadyIncluded(vid, baselineState...) {
 		return
 	}
 	for _, wOut := range vid.WrappedInputs() {
 		// virtual tx has 0 WrappedInputs
-		if conflict = d.consume(wOut, baselineState...); conflict.VID != nil {
+		if conflict = dc.consume(wOut, baselineState...); conflict.VID != nil {
 			return
 		}
 	}
-	d[vid] = consumed{}
+	dc.put(vid, consumed{})
 	return
 }
 
 // append baselineState must be the baseline state of d. d must be consistent with the baselineState
-func (d utxoStateDelta) append(delta utxoStateDelta, baselineState ...general.StateReader) (conflict WrappedOutput) {
+func (dc *utxoStateDeltaBuffered) append(delta utxoStateDelta, baselineState ...general.StateReader) (conflict WrappedOutput) {
 	for vid := range delta {
-		if conflict = d.include(vid, baselineState...); conflict.VID != nil {
+		if conflict = dc.include(vid, baselineState...); conflict.VID != nil {
 			return
 		}
 	}
 	return
+}
+
+func (d utxoStateDelta) lines(prefix ...string) *lines.Lines {
+	ret := lines.New(prefix...)
+
+	sorted := util.SortKeys(d, func(vid1, vid2 *WrappedTx) bool {
+		return vid1.Timestamp().Before(vid2.Timestamp())
+	})
+	for _, vid := range sorted {
+		consumedSet := d[vid]
+		ret.Add("%s consumed: %+v (inTheState = %v)", vid.IDShort(), consumedSet.set.String(), consumedSet.inTheState)
+	}
+	return ret
+}
+
+func (dc *utxoStateDeltaBuffered) get(vid *WrappedTx) (ret consumed, found bool) {
+	if dc.cache == nil {
+		ret, found = dc.utxoStateDelta[vid]
+		return
+	}
+	if ret, found = dc.cache[vid]; found {
+		return
+	}
+	if ret, found = dc.utxoStateDelta[vid]; found {
+		dc.cache[vid] = ret
+	}
+	return
+}
+
+func (dc *utxoStateDeltaBuffered) put(vid *WrappedTx, consumedSet consumed) {
+	if dc.cache == nil {
+		dc.utxoStateDelta[vid] = consumedSet
+		return
+	}
+	dc.cache[vid] = consumedSet
+}
+
+func (dc *utxoStateDeltaBuffered) commit() utxoStateDelta {
+	if dc.cache == nil {
+		return dc.utxoStateDelta
+	}
+	ret := dc.utxoStateDelta
+	for vid, consumedSet := range dc.cache {
+		ret[vid] = consumedSet
+	}
+	// invalidate
+	dc.utxoStateDelta = nil
+	dc.cache = nil
+
+	return ret
 }
 
 func (d utxoStateDelta) coverage() (ret uint64) {
@@ -176,19 +239,6 @@ func (d utxoStateDelta) getMutations(targetSlot core.TimeSlot) *multistate.Mutat
 	return ret.Sort()
 }
 
-func (d utxoStateDelta) lines(prefix ...string) *lines.Lines {
-	ret := lines.New(prefix...)
-
-	sorted := util.SortKeys(d, func(vid1, vid2 *WrappedTx) bool {
-		return vid1.Timestamp().Before(vid2.Timestamp())
-	})
-	for _, vid := range sorted {
-		consumedSet := d[vid]
-		ret.Add("%s consumed: %+v (inTheState = %v)", vid.IDShort(), consumedSet.set.String(), consumedSet.inTheState)
-	}
-	return ret
-}
-
 func NewUTXOStateDelta(branchTxID *core.TransactionID) *UTXOStateDelta {
 	return &UTXOStateDelta{
 		utxoStateDelta: make(utxoStateDelta),
@@ -203,6 +253,15 @@ func (d *UTXOStateDelta) Clone() *UTXOStateDelta {
 	}
 }
 
+// Include inconsistent target delta in case of conflict
+func (d *UTXOStateDelta) Include(vid *WrappedTx, getBaselineState func(branchTxID *core.TransactionID) general.StateReader) (ret WrappedOutput) {
+	dc := makeBuffered(d.utxoStateDelta, false) // no cached
+	if d.branchTxID != nil {
+		return dc.include(vid, getBaselineState(d.branchTxID))
+	}
+	return dc.include(vid)
+}
+
 func MergeVertexDeltas(getStateReader func(branchTxID *core.TransactionID) general.StateReader, vids ...*WrappedTx) (*UTXOStateDelta, *WrappedOutput) {
 	deltas := make([]*UTXOStateDelta, len(vids))
 	for i, vid := range vids {
@@ -212,9 +271,8 @@ func MergeVertexDeltas(getStateReader func(branchTxID *core.TransactionID) gener
 }
 
 func MergeDeltas(getStateReader func(branchTxID *core.TransactionID) general.StateReader, deltas ...*UTXOStateDelta) (*UTXOStateDelta, *WrappedOutput) {
-	ret := make(utxoStateDelta)
 	if len(deltas) == 0 {
-		return &UTXOStateDelta{utxoStateDelta: ret}, nil
+		return &UTXOStateDelta{utxoStateDelta: make(utxoStateDelta)}, nil
 	}
 
 	// find baseline state, the latest not-nil state
@@ -257,17 +315,20 @@ func MergeDeltas(getStateReader func(branchTxID *core.TransactionID) general.Sta
 	}
 
 	var conflict WrappedOutput
+	var retTmp *utxoStateDeltaBuffered
+
 	for i, d := range deltasSorted {
 		if i == 0 {
-			ret = deltasSorted[0].utxoStateDelta.clone()
+			retTmp = makeBuffered(deltasSorted[0].utxoStateDelta, true)
 			continue
 		}
-		if conflict = ret.append(d.utxoStateDelta, baselineStateArg...); conflict.VID != nil {
+		if conflict = retTmp.append(d.utxoStateDelta, baselineStateArg...); conflict.VID != nil {
 			return nil, &conflict
 		}
 	}
+
 	return &UTXOStateDelta{
-		utxoStateDelta: ret,
+		utxoStateDelta: retTmp.commit(),
 		branchTxID:     latestBranchTxID,
 	}, nil
 }
