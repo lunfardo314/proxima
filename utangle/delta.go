@@ -15,7 +15,7 @@ type (
 	utxoStateDelta map[*WrappedTx]consumed
 
 	consumed struct {
-		set        set.Set[byte]
+		set        set.ByteSet
 		inTheState bool
 	}
 
@@ -53,18 +53,15 @@ func (d utxoStateDelta) consume(wOut WrappedOutput, baselineState ...general.Sta
 				return wOut
 			}
 		}
-		if len(consumedSet.set) == 0 {
-			consumedSet.set = set.New[byte](wOut.Index)
-		} else {
-			consumedSet.set.Insert(wOut.Index)
-		}
+		consumedSet.set.Insert(wOut.Index)
+		d[wOut.VID] = consumedSet
 		return WrappedOutput{}
 	}
 	// there's no corresponding tx in the delta
 	if len(baselineState) > 0 {
 		if baselineState[0].HasUTXO(wOut.DecodeID()) {
 			d[wOut.VID] = consumed{
-				set:        set.New[byte](wOut.Index),
+				set:        set.NewByteSet(wOut.Index),
 				inTheState: true,
 			}
 			return WrappedOutput{}
@@ -77,7 +74,7 @@ func (d utxoStateDelta) consume(wOut WrappedOutput, baselineState ...general.Sta
 	consumedSet, found = d[wOut.VID]
 	util.Assertf(found && !consumedSet.inTheState, "found && !consumedSet.inTheState")
 
-	consumedSet.set = set.New[byte](wOut.Index)
+	consumedSet.set = set.NewByteSet(wOut.Index)
 	d[wOut.VID] = consumedSet
 	return WrappedOutput{}
 }
@@ -187,7 +184,7 @@ func (d utxoStateDelta) lines(prefix ...string) *lines.Lines {
 	})
 	for _, vid := range sorted {
 		consumedSet := d[vid]
-		ret.Add("%s consumed: %+v (inTheState = %v)", vid.IDShort(), util.Keys(consumedSet.set), consumedSet.inTheState)
+		ret.Add("%s consumed: %+v (inTheState = %v)", vid.IDShort(), consumedSet.set.String(), consumedSet.inTheState)
 	}
 	return ret
 }

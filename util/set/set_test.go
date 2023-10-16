@@ -66,3 +66,13 @@ func TestByteSet(t *testing.T) {
 	t.Logf("s3 = %s", str)
 	require.EqualValues(t, "[0 1 5 8 10 63 150 255]", str)
 }
+
+func TestByteSetWithMap(t *testing.T) {
+	m := make(map[int]ByteSet)
+
+	s := m[1]
+	s.Insert(5, 214)
+	m[1] = s
+	s1 := m[1]
+	t.Logf(s1.String())
+}
