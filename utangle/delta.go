@@ -83,6 +83,13 @@ func (d utxoStateDelta) consume(wOut WrappedOutput, baselineState ...general.Sta
 	return WrappedOutput{}
 }
 
+func (d *UTXOStateDelta) Include(vid *WrappedTx, getBaselineState func(branchTxID *core.TransactionID) general.StateReader) (ret WrappedOutput) {
+	if d.branchTxID != nil {
+		return d.utxoStateDelta.include(vid, getBaselineState(d.branchTxID))
+	}
+	return d.utxoStateDelta.include(vid)
+}
+
 func (d utxoStateDelta) include(vid *WrappedTx, baselineState ...general.StateReader) (conflict WrappedOutput) {
 	if d.isAlreadyIncluded(vid, baselineState...) {
 		return
