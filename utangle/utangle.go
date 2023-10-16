@@ -204,48 +204,48 @@ func (ut *UTXOTangle) GetStateUpdatable(branchTxID *core.TransactionID) (*multis
 
 // GetBaseStateRootOfSequencerMilestone returns root of the base state of the sequencer milestone, if possible.
 // If returned, the root must be deterministic on every node and for every sequencer
-func (ut *UTXOTangle) GetBaseStateRootOfSequencerMilestone(vSeq *WrappedTx) (common.VCommitment, bool) {
-	panic("not implemented")
-	//if !vSeq.IsSequencerMilestone() {
-	//	return nil, false
-	//}
-	//
-	//var branchVID *WrappedTx
-	//isBranch := vSeq.IsBranchTransaction()
-	//vSeq.Unwrap(UnwrapOptions{
-	//	Vertex: func(v *Vertex) {
-	//		if isBranch {
-	//			branchVID = vSeq
-	//		} else {
-	//			branchVID = v.StateDelta.baselineBranch
-	//		}
-	//	},
-	//	VirtualTx: func(v *VirtualTransaction) {
-	//		if isBranch {
-	//			branchVID = vSeq
-	//		}
-	//	},
-	//})
-	//if branchVID == nil {
-	//	return nil, false
-	//}
-	//
-	//return ut.mustGetBranch(branchVID), true
-}
+//func (ut *UTXOTangle) GetBaseStateRootOfSequencerMilestone(vSeq *WrappedTx) (common.VCommitment, bool) {
+//	panic("not implemented")
+//	//if !vSeq.IsSequencerMilestone() {
+//	//	return nil, false
+//	//}
+//	//
+//	//var branchVID *WrappedTx
+//	//isBranch := vSeq.IsBranchTransaction()
+//	//vSeq.Unwrap(UnwrapOptions{
+//	//	Vertex: func(v *Vertex) {
+//	//		if isBranch {
+//	//			branchVID = vSeq
+//	//		} else {
+//	//			branchVID = v.StateDelta.baselineBranch
+//	//		}
+//	//	},
+//	//	VirtualTx: func(v *VirtualTransaction) {
+//	//		if isBranch {
+//	//			branchVID = vSeq
+//	//		}
+//	//	},
+//	//})
+//	//if branchVID == nil {
+//	//	return nil, false
+//	//}
+//	//
+//	//return ut.mustGetBranch(branchVID), true
+//}
 
 // StateReaderOfSequencerMilestone state for the sequencer milestone. Must be deterministic on every node and every sequencer
-func (ut *UTXOTangle) StateReaderOfSequencerMilestone(vid *WrappedTx) (multistate.SugaredStateReader, bool) {
-	util.Assertf(vid.IsSequencerMilestone(), "StateReaderOfSequencerMilestone: must be sequencer milestone")
-	root, available := ut.GetBaseStateRootOfSequencerMilestone(vid)
-	if !available {
-		return multistate.SugaredStateReader{}, false
-	}
-	rdr, err := multistate.NewReadable(ut.stateStore, root, 0)
-	if err != nil {
-		return multistate.SugaredStateReader{}, false
-	}
-	return multistate.MakeSugared(rdr), true
-}
+//func (ut *UTXOTangle) StateReaderOfSequencerMilestone(vid *WrappedTx) (multistate.SugaredStateReader, bool) {
+//	util.Assertf(vid.IsSequencerMilestone(), "StateReaderOfSequencerMilestone: must be sequencer milestone")
+//	root, available := ut.GetBaseStateRootOfSequencerMilestone(vid)
+//	if !available {
+//		return multistate.SugaredStateReader{}, false
+//	}
+//	rdr, err := multistate.NewReadable(ut.stateStore, root, 0)
+//	if err != nil {
+//		return multistate.SugaredStateReader{}, false
+//	}
+//	return multistate.MakeSugared(rdr), true
+//}
 
 func (ut *UTXOTangle) HeaviestStateRootForLatestTimeSlot() common.VCommitment {
 	return ut.heaviestBranchForLatestTimeSlot()
@@ -476,4 +476,8 @@ func (ut *UTXOTangle) MergeDeltas(deltas ...*UTXOStateDelta) (*UTXOStateDelta, *
 	return MergeDeltas(func(branchTxID *core.TransactionID) general.StateReader {
 		return ut.MustGetStateReader(branchTxID)
 	}, deltas...)
+}
+
+func (ut *UTXOTangle) FetchBranchData(branchTxID *core.TransactionID) (multistate.BranchData, bool) {
+	return multistate.FetchBranchData(ut.stateStore, *branchTxID)
 }

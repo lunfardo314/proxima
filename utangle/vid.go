@@ -1,10 +1,13 @@
 package utangle
 
 import (
+	"fmt"
 	"sync"
 	"time"
 
 	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/general"
+	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
@@ -318,36 +321,28 @@ func (vid *WrappedTx) StemOutput() *WrappedOutput {
 	return ret
 }
 
-func (vid *WrappedTx) BaseStemOutput() *WrappedOutput {
-	panic("not implemented")
-	//var ret *WrappedOutput
-	//isBranchTx := vid.IsBranchTransaction()
-	//vid.Unwrap(UnwrapOptions{
-	//	Vertex: func(v *Vertex) {
-	//		if isBranchTx {
-	//			ret = &WrappedOutput{
-	//				VID:   vid,
-	//				Index: v.Tx.SequencerTransactionData().StemOutputIndex,
-	//			}
-	//		} else {
-	//			if b := v.StateDelta.BaselineBranch(); b != nil {
-	//				util.Assertf(b.IsBranchTransaction(), "%s is not a branch transaction", b.IDShort())
-	//				ret = b.StemOutput()
-	//			}
-	//		}
-	//	},
-	//	VirtualTx: func(v *VirtualTransaction) {
-	//		if isBranchTx {
-	//			if _, stemOut := v.SequencerOutputs(); stemOut != nil {
-	//				ret = &WrappedOutput{
-	//					VID:   vid,
-	//					Index: v.sequencerOutputs[1],
-	//				}
-	//			}
-	//		}
-	//	},
-	//})
-	//return ret
+func (vid *WrappedTx) BaselineStateOfSequencerMilestone(ut *UTXOTangle) (general.IndexedStateReader, error) {
+	branchTxID := vid.BaseBranchTxID()
+	if branchTxID == nil {
+		return nil, fmt.Errorf("branch transaction not available")
+	}
+	return ut.GetStateReader(branchTxID)
+}
+
+// BaseStemOutput returns wrapped stem output for the branch state or nil if unavailable
+func (vid *WrappedTx) BaseStemOutput(ut *UTXOTangle) *WrappedOutput {
+	branchTxID := vid.BaseBranchTxID()
+	if branchTxID == nil {
+		return nil
+	}
+	oid, ok := multistate.FetchStemOutputID(ut.stateStore, *branchTxID)
+	if !ok {
+		return nil
+	}
+	ret, found, invalid := ut.GetWrappedOutput(&oid)
+	util.Assertf(found && !invalid, "found & !invalid")
+
+	return &ret
 }
 
 func (vid *WrappedTx) UnwrapVertex() (ret *Vertex, retOk bool) {
@@ -466,22 +461,6 @@ func (vid *WrappedTx) LedgerCoverage() (ret uint64) {
 	})
 	return // vid._ledgerCoverage(LedgerCoverageSlots)
 }
-
-//
-//func (vid *WrappedTx) _ledgerCoverage(nSlotsBack int) uint64 {
-//	if !vid.IsSequencerMilestone() {
-//		return 0
-//	}
-//	if vid.IsBranchTransaction() {
-//		// this is needed to make baselines of comparison between branch and non-branch milestones equal
-//		nSlotsBack--
-//	}
-//	var ret uint64
-//	vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
-//		ret = v.StateDelta.ledgerCoverage(nSlotsBack)
-//	}})
-//	return ret
-//}
 
 // TraversePastConeDepthFirst performs depth-first traverse of the DAG. Visiting once each node
 // and calling vertex-type specific function if provided on each.
@@ -712,7 +691,7 @@ func (vid *WrappedTx) WrappedInputs() []WrappedOutput {
 	return ret
 }
 
-func (vid *WrappedTx) BaseBranchTXID() (ret *core.TransactionID) {
+func (vid *WrappedTx) BaseBranchTxID() (ret *core.TransactionID) {
 	if vid.IsBranchTransaction() {
 		ret = vid.ID()
 		return
@@ -727,7 +706,7 @@ func (vid *WrappedTx) BaseBranchTXID() (ret *core.TransactionID) {
 // For branch it returns empty delta with the branch as baseline
 func (vid *WrappedTx) GetUTXOStateDelta() (ret *UTXOStateDelta) {
 	if vid.IsBranchTransaction() {
-		return NewUTXOStateDelta(vid.BaseBranchTXID())
+		return NewUTXOStateDelta(vid.BaseBranchTxID())
 	}
 	vid.Unwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {

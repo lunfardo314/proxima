@@ -179,50 +179,70 @@ func (mf *milestoneFactory) addOwnMilestone(wOut utangle.WrappedOutput) {
 	mf.ownMilestoneCount++
 }
 
-// selectFeeInputs chooses unspent fee outputs which can be combined with seqMutations in one vid
-// Quite expensive
-func (mf *milestoneFactory) selectFeeInputs(seqDelta *utangle.UTXOStateDelta, targetTs core.LogicalTime) []utangle.WrappedOutput {
-	util.Assertf(seqDelta != nil, "seqDelta != nil")
+func (mf *milestoneFactory) selectFeeInputs(targetTs core.LogicalTime, seqVIDs ...*utangle.WrappedTx) ([]utangle.WrappedOutput, *utangle.WrappedOutput) {
+	util.Assertf(len(seqVIDs) > 0, "len(seqVIDs)>0")
 
+	targetDelta, conflict := mf.tangle.MergeVertexDeltas(seqVIDs...)
+	if conflict != nil {
+		return nil, conflict
+	}
 	selected := mf.tipPool.filterAndSortOutputs(func(o utangle.WrappedOutput) bool {
 		if !core.ValidTimePace(o.Timestamp(), targetTs) {
 			return false
 		}
-		if !seqDelta.CanBeConsumedBySequencer(o, mf.tangle) {
-			return false
-		}
+		conflict = targetDelta.MergeDeltas(func(branchTxID *core.TransactionID) general.StateReader {
+			return mf.tangle.MustGetStateReader(branchTxID)
+		}, o.VID.GetUTXOStateDelta())
 
-		//fmt.Printf("******** suspicious false positive: %s\n%s\n***************\n", o.IDShort(), seqDelta.LinesRecursive().String())
-		//seqDelta.CanBeConsumedBySequencer(o, mf.tangle)
-		return true
+		return conflict == nil
 	})
-	ret := make([]utangle.WrappedOutput, 0, mf.maxFeeInputs)
-
-	targetDelta := seqDelta.Clone()
-
-	for _, o := range selected {
-		o.VID.Unwrap(utangle.UnwrapOptions{
-			Vertex: func(v *utangle.Vertex) {
-				// cloning each time because MergeInto always mutates the target
-				tmpTarget := targetDelta.Clone()
-				if conflict, _ := v.StateDelta.MergeInto(tmpTarget); conflict == nil {
-					ret = append(ret, o)
-					targetDelta = tmpTarget
-				}
-			},
-			VirtualTx: func(v *utangle.VirtualTransaction) {
-				// do not need to clone because MustConsume does not mutate target in case of failure
-				if success, _ := targetDelta.MustConsume(o); success {
-					ret = append(ret, o)
-				}
-			},
-		})
-		if len(ret) >= mf.maxFeeInputs {
-			break
-		}
-	}
-	return ret
+	return selected, nil
 }
+
+// selectFeeInputsOld chooses unspent fee outputs which can be combined with seqMutations in one vid
+// Quite expensive
+//func (mf *milestoneFactory) selectFeeInputsOld(seqDelta *utangle.UTXOStateDelta, targetTs core.LogicalTime) []utangle.WrappedOutput {
+//	util.Assertf(seqDelta != nil, "seqDelta != nil")
+//
+//	selected := mf.tipPool.filterAndSortOutputs(func(o utangle.WrappedOutput) bool {
+//		if !core.ValidTimePace(o.Timestamp(), targetTs) {
+//			return false
+//		}
+//		if !seqDelta.CanBeConsumedBySequencer(o, mf.tangle) {
+//			return false
+//		}
+//
+//		//fmt.Printf("******** suspicious false positive: %s\n%s\n***************\n", o.IDShort(), seqDelta.LinesRecursive().String())
+//		//seqDelta.CanBeConsumedBySequencer(o, mf.tangle)
+//		return true
+//	})
+//	ret := make([]utangle.WrappedOutput, 0, mf.maxFeeInputs)
+//
+//	targetDelta := seqDelta.Clone()
+//
+//	for _, o := range selected {
+//		o.VID.Unwrap(utangle.UnwrapOptions{
+//			Vertex: func(v *utangle.Vertex) {
+//				// cloning each time because MergeInto always mutates the target
+//				tmpTarget := targetDelta.Clone()
+//				if conflict, _ := v.StateDelta.MergeInto(tmpTarget); conflict == nil {
+//					ret = append(ret, o)
+//					targetDelta = tmpTarget
+//				}
+//			},
+//			VirtualTx: func(v *utangle.VirtualTransaction) {
+//				// do not need to clone because MustConsume does not mutate target in case of failure
+//				if success, _ := targetDelta.MustConsume(o); success {
+//					ret = append(ret, o)
+//				}
+//			},
+//		})
+//		if len(ret) >= mf.maxFeeInputs {
+//			break
+//		}
+//	}
+//	return ret
+//}
 
 func (mf *milestoneFactory) getLatestMilestone() (ret utangle.WrappedOutput) {
 	mf.mutex.RLock()
@@ -378,21 +398,21 @@ func (mf *milestoneFactory) futureConeMilestonesOrdered(rootVID *utangle.Wrapped
 
 // ownForksInAnotherSequencerPastCone sorted by coverage descending
 func (mf *milestoneFactory) ownForksInAnotherSequencerPastCone(anotherSeqMs *utangle.WrappedTx, p proposerTask) []utangle.WrappedOutput {
-	stateRdr, available := mf.tangle.StateReaderOfSequencerMilestone(anotherSeqMs)
-	if !available {
-		mf.log.Warnf("ownForksInAnotherSequencerPastCone: state reader not available for vertex %s", anotherSeqMs.IDShort())
+	stateRdr, err := anotherSeqMs.BaselineStateOfSequencerMilestone(mf.tangle)
+	if err != nil {
+		mf.log.Warnf("ownForksInAnotherSequencerPastCone: state reader not available for vertex %s: %v",
+			anotherSeqMs.IDShort(), err)
 		return nil
 	}
-	rootOutput, err := stateRdr.GetChainOutput(&mf.tipPool.chainID)
+	rdr := multistate.MakeSugared(stateRdr)
+	rootOutput, err := rdr.GetChainOutput(&mf.tipPool.chainID)
 	if errors.Is(err, multistate.ErrNotFound) {
 		// cannot find own seqID in the state of anotherSeqID. The tree is empty
 		p.trace("cannot find own seqID %s in the state of another seq %s. The tree is empty", mf.tipPool.chainID.Short(), anotherSeqMs.IDShort())
 		return nil
 	}
 	util.AssertNoError(err)
-	rootWrapped, ok, _ := mf.tangle.GetWrappedOutput(&rootOutput.ID, func() multistate.SugaredStateReader {
-		return stateRdr
-	})
+	rootWrapped, ok, _ := mf.tangle.GetWrappedOutput(&rootOutput.ID, rdr)
 	if !ok {
 		p.trace("cannot fetch wrapped root output %s", rootOutput.IDShort())
 		return nil

@@ -301,6 +301,9 @@ func MergeDeltas(getStateReader func(branchTxID *core.TransactionID) general.Sta
 	if len(deltas) == 0 {
 		return &UTXOStateDelta{utxoStateDelta: make(utxoStateDelta)}, nil
 	}
+	if len(deltas) == 1 {
+		return deltas[0].Clone(), nil
+	}
 
 	// find baseline state
 	deltasSorted, ok := sortDeltas(deltas...)

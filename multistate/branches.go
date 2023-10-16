@@ -113,9 +113,9 @@ func IterateRootRecords(store general.StateStore, fun func(branchTxID core.Trans
 }
 
 // FetchRootRecord returns root data, stem output index and existence flag
-// Exactly one root record must exist for the transaction
-func FetchRootRecord(store general.StateStore, txid core.TransactionID) (ret RootRecord, found bool) {
-	key := common.Concat(rootRecordDBPartition, txid[:])
+// Exactly one root record must exist for the branch transaction
+func FetchRootRecord(store general.StateStore, branchTxID core.TransactionID) (ret RootRecord, found bool) {
+	key := common.Concat(rootRecordDBPartition, branchTxID[:])
 	data := store.Get(key)
 	if len(data) == 0 {
 		return
@@ -157,6 +157,18 @@ func FetchRootRecords(store general.StateStore, slots ...core.TimeSlot) []RootRe
 	}, slots...)
 
 	return ret
+}
+
+func FetchStemOutputID(store general.StateStore, branchTxID core.TransactionID) (core.OutputID, bool) {
+	rr, ok := FetchRootRecord(store, branchTxID)
+	if !ok {
+		return core.OutputID{}, false
+	}
+	rdr, err := NewSugaredReadableState(store, rr.Root, 0)
+	util.AssertNoError(err)
+
+	o := rdr.GetStemOutput()
+	return o.ID, true
 }
 
 func FetchBranchData(store general.StateStore, branchTxID core.TransactionID) (BranchData, bool) {

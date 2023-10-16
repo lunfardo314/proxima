@@ -105,7 +105,7 @@ func (b *backtrackProposer) generateCandidate(extend utangle.WrappedOutput) *tra
 
 	b.trace("CAN extend %s with endorsement target %s", extend.IDShort(), b.endorse.IDShort())
 
-	feeOutputsToConsume := b.factory.selectFeeInputs(targetDelta, b.targetTs)
+	feeOutputsToConsume := b.factory.selectFeeInputsOld(targetDelta, b.targetTs)
 	return b.makeMilestone(&extend, nil, feeOutputsToConsume, util.List(b.endorse))
 
 }

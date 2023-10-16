@@ -5,6 +5,7 @@ import (
 
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/transaction"
+	"github.com/lunfardo314/proxima/util"
 )
 
 // Base proposer generates branches and bootstraps sequencer when no other sequencers are around
@@ -55,7 +56,7 @@ func (b *baseProposer) proposeBase() (*transaction.Transaction, bool) {
 	if b.targetTs.TimeTick() == 0 {
 		b.trace("making branch, extending %s", latestMilestone.IDShort())
 		// generate branch, no fee outputs are consumed
-		baseStem := latestMilestone.VID.BaseStemOutput()
+		baseStem := latestMilestone.VID.BaseStemOutput(b.factory.tangle)
 		if baseStem == nil {
 			// base stem is not available for a milestone which is virtual and non-branch
 			b.factory.log.Errorf("proposeBase.force exit: stem not available, %s cannot be extended to a branch", latestMilestone.IDShort())
@@ -65,9 +66,9 @@ func (b *baseProposer) proposeBase() (*transaction.Transaction, bool) {
 		return b.makeMilestone(&latestMilestone, baseStem, nil, nil), false
 	}
 	// non-branch
-	targetDelta := latestMilestone.VID.GetUTXOStateDelta().Clone()
 
-	feeOutputsToConsume := b.factory.selectFeeInputs(targetDelta, b.targetTs)
+	feeOutputsToConsume, conflict := b.selectFeeInputs(latestMilestone.VID)
+	util.Assertf(conflict == nil, "unexpected conflict")
 
 	b.trace("making ordinary milestone")
 	return b.makeMilestone(&latestMilestone, nil, feeOutputsToConsume, nil), false

@@ -95,6 +95,10 @@ func (c *proposerTaskGeneric) startProposingTime() {
 	c.startTime = time.Now()
 }
 
+func (c *proposerTaskGeneric) selectFeeInputs(seqVIDs ...*utangle.WrappedTx) ([]utangle.WrappedOutput, *utangle.WrappedOutput) {
+	return c.factory.selectFeeInputs(c.targetTs, seqVIDs...)
+}
+
 func (c *proposerTaskGeneric) makeMilestone(chainIn, stemIn *utangle.WrappedOutput, feeInputs []utangle.WrappedOutput, endorse []*utangle.WrappedTx) *transaction.Transaction {
 	util.Assertf(chainIn != nil, "chainIn != nil")
 	util.Assertf(c.targetTs.TimeTick() != 0 || len(endorse) == 0, "proposer task %s: targetTs.TimeTick() != 0 || len(endorse) == 0", c.name())
@@ -129,16 +133,16 @@ func (c *proposerTaskGeneric) assessAndAcceptProposal(tx *transaction.Transactio
 		c.factory.log.Errorf("assessAndAcceptProposal (%s, %s)::SolidifyInputs: %v", tx.Timestamp(), taskName, err)
 		return
 	}
-	vid, err := utangle.MakeVertex(draftVertex, true)
+	vid, err := c.factory.tangle.MakeVertex(draftVertex, true)
 
 	const panicOnConflict = true
 	{ // ----------- for testing only. Conflicts are possible at this point, no need to panic
 		if err != nil && panicOnConflict {
 			utangle.SaveGraphPastCone(vid, "makevertex")
-			vid.SaveTransactionsPastCone("makevertex")
+			//vid.SaveTransactionsPastCone("makevertex")
 
-			util.Assertf(false, "assessAndAcceptProposal: (%s): '%v'\n========= Failed transaction ======\n%s\n%s",
-				taskName, err, vid.String(), vid.DeltaStringRecursive())
+			//util.Assertf(false, "assessAndAcceptProposal: (%s): '%v'\n========= Failed transaction ======\n%s\n%s",
+			//	taskName, err, vid.String(), vid.DeltaStringRecursive())
 		}
 	}
 
