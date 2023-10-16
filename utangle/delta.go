@@ -30,14 +30,18 @@ type (
 )
 
 func (d utxoStateDelta) clone() utxoStateDelta {
-	ret := make(utxoStateDelta)
-	for vid, consumedSet := range d {
-		ret[vid] = consumed{
-			set:        consumedSet.set.Clone(),
-			inTheState: consumedSet.inTheState,
-		}
+	return util.CloneMapShallow(d)
+}
+
+func (d utxoStateDelta) isAlreadyIncluded(vid *WrappedTx, baselineState ...general.StateReader) bool {
+	if _, alreadyIncluded := d[vid]; alreadyIncluded {
+		return true
 	}
-	return ret
+	if len(baselineState) == 0 {
+		return false
+	}
+
+	return baselineState[0].KnowsCommittedTransaction(vid.ID())
 }
 
 func (d utxoStateDelta) consume(wOut WrappedOutput, baselineState ...general.StateReader) WrappedOutput {
@@ -77,17 +81,6 @@ func (d utxoStateDelta) consume(wOut WrappedOutput, baselineState ...general.Sta
 	consumedSet.set = set.NewByteSet(wOut.Index)
 	d[wOut.VID] = consumedSet
 	return WrappedOutput{}
-}
-
-func (d utxoStateDelta) isAlreadyIncluded(vid *WrappedTx, baselineState ...general.StateReader) bool {
-	if _, alreadyIncluded := d[vid]; alreadyIncluded {
-		return true
-	}
-	if len(baselineState) == 0 {
-		return false
-	}
-
-	return baselineState[0].KnowsCommittedTransaction(vid.ID())
 }
 
 func (d utxoStateDelta) include(vid *WrappedTx, baselineState ...general.StateReader) (conflict WrappedOutput) {
@@ -201,13 +194,6 @@ func (d *UTXOStateDelta) Clone() *UTXOStateDelta {
 		utxoStateDelta: d.utxoStateDelta.clone(),
 		branchTxID:     d.branchTxID,
 	}
-}
-
-func (d *UTXOStateDelta) Include(vid *WrappedTx, getBaselineState func(branchTxID *core.TransactionID) general.StateReader) (ret WrappedOutput) {
-	if d.branchTxID != nil {
-		return d.utxoStateDelta.include(vid, getBaselineState(d.branchTxID))
-	}
-	return d.utxoStateDelta.include(vid)
 }
 
 func MergeVertexDeltas(getStateReader func(branchTxID *core.TransactionID) general.StateReader, vids ...*WrappedTx) (*UTXOStateDelta, *WrappedOutput) {
