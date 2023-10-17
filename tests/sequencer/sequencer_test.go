@@ -37,7 +37,7 @@ type sequencerTestData struct {
 	t                           *testing.T
 	stateIdentity               genesis.StateIdentityData
 	originControllerPrivateKey  ed25519.PrivateKey
-	originDistribution          []genesis.LockBalance
+	originDistribution          []core.LockBalance
 	faucetPrivateKeys           []ed25519.PrivateKey
 	faucetAddresses             []core.AddressED25519
 	faucetOutputs               []*core.OutputWithID
@@ -535,31 +535,19 @@ func (r *sequencerTestData) createSequencers(maxInputsInTx, maxSlots, pace int, 
 	)
 	require.NoError(r.t, err)
 
-	var tagAlongSeq []core.ChainID
-	tagAlongSeq = []core.ChainID{r.bootstrapChainID}
-	if len(dontTagAlong) > 0 && dontTagAlong[0] {
-		tagAlongSeq = nil
-	}
-
 	maxTargetTs := core.LogicalTimeNow().AddTimeSlots(maxSlots)
 	r.sequencers = make([]*sequencer.Sequencer, len(r.chainOrigins))
 	for i := range r.chainOrigins {
 		chainOut, ok, wrong := r.ut.GetWrappedOutput(&r.chainOrigins[i].OutputWithID.ID)
 		require.False(r.t, wrong)
 		require.True(r.t, ok)
-		startupOpt := sequencer.StartupTxOptions{
-			ChainOutput:        &chainOut,
-			TagAlongSequencers: tagAlongSeq,
-			EndorseBranch:      &endorse,
-			TagAlongFee:        feeAmount,
-		}
 		r.sequencers[i], err = sequencer.StartNew(r.wrk, r.chainOrigins[i].ChainID, r.chainControllersPrivateKeys[i],
 			sequencer.WithName(fmt.Sprintf("seq%d", i)),
 			sequencer.WithLogLevel(loglevel),
 			sequencer.WithPace(pace),
 			sequencer.WithMaxTargetTs(maxTargetTs),
 			sequencer.WithMaxFeeInputs(maxInputsInTx),
-			sequencer.WithStartupTxOptions(&startupOpt),
+			sequencer.WithStartOutput(chainOut),
 		)
 		r.t.Logf("new seq #%d: %v", i, err)
 		require.NoError(r.t, err)
