@@ -199,6 +199,8 @@ func (d utxoStateDelta) isConsumed(wOut WrappedOutput) (bool, bool) {
 	return consumedSet.set.Contains(wOut.Index), consumedSet.inTheState
 }
 
+// TODO get rid of inTheState flag
+
 func (d utxoStateDelta) getMutations(targetSlot core.TimeSlot) *multistate.Mutations {
 	ret := multistate.NewMutations()
 

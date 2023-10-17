@@ -368,6 +368,7 @@ func (seq *Sequencer) mainLoop() {
 		msOutput := seq.submitTransaction(*tmpMsOutput)
 		if msOutput == nil {
 			seq.log.Warnf("failed to submit milestone %d -- %s", milestoneCount+1, tmpMsOutput.IDShort())
+			util.Panicf("debug exit")
 			continue
 		}
 		seq.factory.addOwnMilestone(*msOutput)
