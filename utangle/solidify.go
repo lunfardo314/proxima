@@ -253,7 +253,7 @@ func (v *Vertex) getInputBaselineBranchID() (ret *core.TransactionID, conflict b
 		if inp == nil {
 			return true
 		}
-		branchTxID := inp.BaseBranchTxID()
+		branchTxID := inp.DeltaBranchID()
 		if branchTxID == nil {
 			return true
 		}

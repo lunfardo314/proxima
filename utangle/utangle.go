@@ -487,5 +487,5 @@ func (ut *UTXOTangle) StateStore() general.StateStore {
 }
 
 func (ut *UTXOTangle) LedgerCoverage(vid *WrappedTx) uint64 {
-	return vid.GetUTXOStateDelta().Coverage(ut.StateStore)
+	return vid.LedgerCoverage(ut.StateStore)
 }

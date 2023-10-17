@@ -239,7 +239,7 @@ func Test1Sequencer(t *testing.T) {
 		transaction.SetPrintEasyFLTraceOnFail(true)
 		r.wrk.Start()
 
-		sequencer.SetTraceProposer(sequencer.BaseProposerName, true)
+		sequencer.SetTraceProposer(sequencer.BaseProposerName, false)
 
 		seq, err := sequencer.StartNew(r.wrk, r.bootstrapChainID, r.originControllerPrivateKey,
 			sequencer.WithName("boot"),

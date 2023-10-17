@@ -176,7 +176,7 @@ func (d utxoStateDelta) lines(prefix ...string) *lines.Lines {
 	return ret
 }
 
-func (d utxoStateDelta) coverage() (ret uint64) {
+func (d utxoStateDelta) Coverage() (ret uint64) {
 	for vid, consumedSet := range d {
 		vid.Unwrap(UnwrapOptions{
 			Vertex: func(v *Vertex) {
@@ -396,19 +396,6 @@ func (d *UTXOStateDelta) MergeVertexDeltas(getStateReader func(branchTxID *core.
 		deltas[i] = vid.GetUTXOStateDelta()
 	}
 	return d.MergeDeltas(getStateReader, deltas...)
-}
-
-func (d *UTXOStateDelta) Coverage(getStateStore func() general.StateStore) uint64 {
-	if d.branchTxID == nil {
-		return 0
-	}
-	if d.baselineCoverage == 0 && getStateStore != nil {
-		rr, found := multistate.FetchRootRecord(getStateStore(), *d.branchTxID)
-		util.Assertf(found, "can't fetch root record for %s", d.branchTxID.Short())
-
-		d.baselineCoverage = rr.Coverage
-	}
-	return d.baselineCoverage + d.coverage()
 }
 
 func (d *UTXOStateDelta) Lines(prefix ...string) *lines.Lines {
