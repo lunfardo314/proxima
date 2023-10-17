@@ -195,8 +195,8 @@ func (c *proposerTaskGeneric) placeProposalIfRelevant(mdProposed *milestoneWithD
 	if !mdProposed.VID.IsBranchTransaction() {
 		// if not branch, check if it increases coverage
 		if c.factory.proposal.bestSoFar != nil {
-			proposedCoverage := mdProposed.VID.LedgerCoverage()
-			baselineCoverage := c.factory.proposal.bestSoFar.VID.LedgerCoverage()
+			proposedCoverage := c.factory.tangle.LedgerCoverage(mdProposed.VID)
+			baselineCoverage := c.factory.tangle.LedgerCoverage(c.factory.proposal.bestSoFar.VID)
 
 			if proposedCoverage <= baselineCoverage {
 				return fmt.Sprintf("%s SKIPPED: no increase in coverage %s <- %s of %s)",
@@ -210,11 +210,11 @@ func (c *proposerTaskGeneric) placeProposalIfRelevant(mdProposed *milestoneWithD
 
 	var baselineCoverage uint64
 	if c.factory.proposal.bestSoFar != nil {
-		baselineCoverage = c.factory.proposal.bestSoFar.VID.LedgerCoverage()
+		baselineCoverage = c.factory.tangle.LedgerCoverage(c.factory.proposal.bestSoFar.VID)
 	}
 	c.factory.proposal.current = &mdProposed.WrappedOutput
 	c.factory.proposal.bestSoFar = c.factory.proposal.current
-	ledgerCoverageProposed := c.factory.proposal.current.VID.LedgerCoverage()
+	ledgerCoverageProposed := c.factory.tangle.LedgerCoverage(c.factory.proposal.current.VID)
 
 	c.trace("(%s): ACCEPTED %s, coverage: %s (base: %s), elapsed: %v/%v, inputs: %d, tipPool: %d",
 		mdProposed.proposedBy,
@@ -230,7 +230,7 @@ func (c *proposerTaskGeneric) placeProposalIfRelevant(mdProposed *milestoneWithD
 }
 
 // betterMilestone returns if vid1 is strongly better than vid2
-func isPreferredMilestoneAgainstTheOther(vid1, vid2 *utangle.WrappedTx) bool {
+func isPreferredMilestoneAgainstTheOther(ut *utangle.UTXOTangle, vid1, vid2 *utangle.WrappedTx) bool {
 	util.Assertf(vid1.IsSequencerMilestone() && vid2.IsSequencerMilestone(), "vid1.IsSequencerMilestone() && vid2.IsSequencerMilestone()")
 
 	if vid1 == vid2 {
@@ -240,8 +240,8 @@ func isPreferredMilestoneAgainstTheOther(vid1, vid2 *utangle.WrappedTx) bool {
 		return true
 	}
 
-	coverage1 := vid1.LedgerCoverage()
-	coverage2 := vid2.LedgerCoverage()
+	coverage1 := ut.LedgerCoverage(vid1)
+	coverage2 := ut.LedgerCoverage(vid2)
 	switch {
 	case coverage1 > coverage2:
 		// main preference is by ledger coverage

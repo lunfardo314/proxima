@@ -90,7 +90,7 @@ func (ut *UTXOTangle) InfoLines(verbose ...bool) *lines.Lines {
 
 		ln.Add("---- slot %8d : branches: %d", e, len(branches))
 		for _, vid := range branches {
-			coverage := vid.LedgerCoverage()
+			coverage := ut.LedgerCoverage(vid)
 			seqID, isAvailable := vid.SequencerIDIfAvailable()
 			util.Assertf(isAvailable, "sequencer ID expected in %s", vid.IDShort())
 			ln.Add("    branch %s, seqID: %s, coverage: %s", vid.IDShort(), seqID.Short(), util.GoThousands(coverage))
@@ -315,9 +315,9 @@ func (ut *UTXOTangle) forEachBranchSorted(e core.TimeSlot, fun func(vid *Wrapped
 
 	vids := util.SortKeys(branches, func(vid1, vid2 *WrappedTx) bool {
 		if desc {
-			return vid1.LedgerCoverage() > vid2.LedgerCoverage()
+			return ut.LedgerCoverage(vid1) > ut.LedgerCoverage(vid2)
 		}
-		return vid1.LedgerCoverage() < vid2.LedgerCoverage()
+		return ut.LedgerCoverage(vid1) < ut.LedgerCoverage(vid2)
 	})
 	for _, vid := range vids {
 		if !fun(vid, branches[vid]) {
@@ -480,4 +480,12 @@ func (ut *UTXOTangle) MergeDeltas(deltas ...*UTXOStateDelta) (*UTXOStateDelta, *
 
 func (ut *UTXOTangle) FetchBranchData(branchTxID *core.TransactionID) (multistate.BranchData, bool) {
 	return multistate.FetchBranchData(ut.stateStore, *branchTxID)
+}
+
+func (ut *UTXOTangle) StateStore() general.StateStore {
+	return ut.stateStore
+}
+
+func (ut *UTXOTangle) LedgerCoverage(vid *WrappedTx) uint64 {
+	return vid.GetUTXOStateDelta().Coverage(ut.StateStore)
 }

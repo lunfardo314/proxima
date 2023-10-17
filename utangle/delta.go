@@ -34,6 +34,8 @@ type (
 		//   It can only be applied to that state, and it is guaranteed that it will always succeed
 		// - if root == nil delta is not dependent on a particular baseline state and can be applied to any (with or without success)
 		branchTxID *core.TransactionID
+		// ledger coverage of the baseline state
+		baselineCoverage uint64
 	}
 )
 
@@ -396,14 +398,17 @@ func (d *UTXOStateDelta) MergeVertexDeltas(getStateReader func(branchTxID *core.
 	return d.MergeDeltas(getStateReader, deltas...)
 }
 
-func (d *UTXOStateDelta) Coverage(stateStore general.StateStore) uint64 {
+func (d *UTXOStateDelta) Coverage(getStateStore func() general.StateStore) uint64 {
 	if d.branchTxID == nil {
 		return 0
 	}
-	rr, found := multistate.FetchRootRecord(stateStore, *d.branchTxID)
-	util.Assertf(found, "can't fetch root record")
+	if d.baselineCoverage == 0 && getStateStore != nil {
+		rr, found := multistate.FetchRootRecord(getStateStore(), *d.branchTxID)
+		util.Assertf(found, "can't fetch root record for %s", d.branchTxID.Short())
 
-	return rr.Coverage + d.coverage()
+		d.baselineCoverage = rr.Coverage
+	}
+	return d.baselineCoverage + d.coverage()
 }
 
 func (d *UTXOStateDelta) Lines(prefix ...string) *lines.Lines {

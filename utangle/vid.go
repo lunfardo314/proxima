@@ -451,17 +451,6 @@ func (vid *WrappedTx) Time() time.Time {
 	return vid._genericWrapper._time()
 }
 
-// TODO temporary
-
-func (vid *WrappedTx) LedgerCoverage() (ret uint64) {
-	vid.Unwrap(UnwrapOptions{
-		Vertex: func(v *Vertex) {
-			ret = v.StateDelta.coverage()
-		},
-	})
-	return // vid._ledgerCoverage(LedgerCoverageSlots)
-}
-
 // TraversePastConeDepthFirst performs depth-first traverse of the DAG. Visiting once each node
 // and calling vertex-type specific function if provided on each.
 // If function returns false, the traverse is cancelled globally.
@@ -722,4 +711,8 @@ func (vid *WrappedTx) GetUTXOStateDelta() (ret *UTXOStateDelta) {
 
 func PanicOrphaned() {
 	util.Panicf("orphaned transaction should not be accessed")
+}
+
+func (vid *WrappedTx) LedgerCoverage(getStateStore func() general.StateStore) uint64 {
+	return vid.GetUTXOStateDelta().Coverage(getStateStore)
 }

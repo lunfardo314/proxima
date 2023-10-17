@@ -145,7 +145,7 @@ func (tp *sequencerTipPool) preSelectAndSortEndorsableMilestones(targetTs core.L
 		ret = append(ret, ms)
 	}
 	sort.Slice(ret, func(i, j int) bool {
-		return isPreferredMilestoneAgainstTheOther(ret[i], ret[j]) // order is important !!!
+		return isPreferredMilestoneAgainstTheOther(tp.glb.UTXOTangle(), ret[i], ret[j]) // order is important !!!
 	})
 	return ret
 }

@@ -234,12 +234,12 @@ func makeAddresses(n int) ([]core.AddressED25519, []ed25519.PrivateKey) {
 
 func Test1Sequencer(t *testing.T) {
 	t.Run("run idle", func(t *testing.T) {
-		const maxSlots = 15
+		const maxSlots = 7
 		r := initSequencerTestData(t, 1, 0, core.LogicalTimeNow())
 		transaction.SetPrintEasyFLTraceOnFail(true)
 		r.wrk.Start()
 
-		sequencer.SetTraceProposer(sequencer.BaseProposerName, false)
+		sequencer.SetTraceProposer(sequencer.BaseProposerName, true)
 
 		seq, err := sequencer.StartNew(r.wrk, r.bootstrapChainID, r.originControllerPrivateKey,
 			sequencer.WithName("boot"),

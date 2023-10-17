@@ -180,7 +180,7 @@ func (ut *UTXOTangle) _finalizeBranch(newBranchVertex *WrappedTx) error {
 	var newRoot common.VCommitment
 	var nextStemOutputID core.OutputID
 
-	coverage := newBranchVertex.LedgerCoverage()
+	coverage := ut.LedgerCoverage(newBranchVertex)
 	newBranchVertex.Unwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
 			util.Assertf(v.StateDelta.branchTxID != nil, "expected not nil baseline tx in %s", func() any { return v.Tx.IDShort() })
