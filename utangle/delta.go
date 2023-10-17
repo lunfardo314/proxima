@@ -91,17 +91,15 @@ func (dc *utxoStateDeltaBuffered) consume(wOut WrappedOutput, baselineState ...g
 			return WrappedOutput{}
 		}
 	}
-	// no baseline state provide or output is not in the baseline state
+	// no baseline state provided or output is not in the baseline state
 	if conflict := dc.include(wOut.VID, baselineState...); conflict.VID != nil {
 		return conflict
 	}
-	consumedSet, found = dc.get(wOut.VID)
-
-	util.Assertf(found && !consumedSet.inTheState, "found && !consumedSet.inTheState")
 	util.Assertf(consumedSet.set.IsEmpty(), "consumedSet.set.IsEmpty()")
 
-	consumedSet.set.Insert(wOut.Index)
-	dc.put(wOut.VID, consumedSet)
+	dc.put(wOut.VID, consumed{
+		set: set.NewByteSet(wOut.Index),
+	})
 	return WrappedOutput{}
 }
 
@@ -359,8 +357,8 @@ func (d *UTXOStateDelta) MergeDeltas(getStateReader func(branchTxID *core.Transa
 	}
 
 	// d.branchTxID must be a dominating/latest branch
-	deltasSorted, fail := sortDeltas(deltas...)
-	if fail {
+	deltasSorted, ok := sortDeltas(deltas...)
+	if !ok {
 		return &WrappedOutput{}
 	}
 	if deltasSorted[0].branchTxID != d.branchTxID && deltasSorted[0].branchTxID != nil {
