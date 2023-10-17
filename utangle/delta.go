@@ -15,11 +15,11 @@ type (
 	utxoStateDelta map[*WrappedTx]consumed
 
 	// structure needed to prevent making target delta invalid in case of conflict during update
-	// all mutations are collected in the cache, at the (successful) end case is committed to the target delta
+	// all mutations are collected in the buffer, at the (successful) end case is committed to the target delta
 	// this is an optimization in order not to have to clone the whole target delta each time
 	utxoStateDeltaBuffered struct {
 		utxoStateDelta
-		cache utxoStateDelta
+		buffer utxoStateDelta
 	}
 
 	consumed struct {
@@ -48,7 +48,7 @@ func makeBuffered(d utxoStateDelta, buffered bool) *utxoStateDeltaBuffered {
 		utxoStateDelta: d,
 	}
 	if buffered {
-		ret.cache = make(utxoStateDelta)
+		ret.buffer = make(utxoStateDelta)
 	}
 	return ret
 }
@@ -64,6 +64,7 @@ func (dc *utxoStateDeltaBuffered) isAlreadyIncluded(vid *WrappedTx, baselineStat
 	return baselineState[0].KnowsCommittedTransaction(vid.ID())
 }
 
+// consume does not mutate state in case of conflict
 func (dc *utxoStateDeltaBuffered) consume(wOut WrappedOutput, baselineState ...general.StateReader) WrappedOutput {
 	consumedSet, found := dc.get(wOut.VID)
 	if found {
@@ -128,35 +129,34 @@ func (dc *utxoStateDeltaBuffered) append(delta utxoStateDelta, baselineState ...
 }
 
 func (dc *utxoStateDeltaBuffered) get(vid *WrappedTx) (ret consumed, found bool) {
-	if dc.cache == nil {
-		ret, found = dc.utxoStateDelta[vid]
-		return
+	if dc.buffer != nil {
+		if ret, found = dc.buffer[vid]; found {
+			return
+		}
 	}
-	if ret, found = dc.cache[vid]; found {
-		return
-	}
+	ret, found = dc.utxoStateDelta[vid]
 	return
 }
 
 func (dc *utxoStateDeltaBuffered) put(vid *WrappedTx, consumedSet consumed) {
-	if dc.cache == nil {
+	if dc.buffer == nil {
 		dc.utxoStateDelta[vid] = consumedSet
 		return
 	}
-	dc.cache[vid] = consumedSet
+	dc.buffer[vid] = consumedSet
 }
 
 func (dc *utxoStateDeltaBuffered) flush() utxoStateDelta {
-	if dc.cache == nil {
+	if dc.buffer == nil {
 		return dc.utxoStateDelta
 	}
 	ret := dc.utxoStateDelta
-	for vid, consumedSet := range dc.cache {
+	for vid, consumedSet := range dc.buffer {
 		ret[vid] = consumedSet
 	}
 	// invalidate
 	dc.utxoStateDelta = nil
-	dc.cache = nil
+	dc.buffer = nil
 
 	return ret
 }
@@ -257,6 +257,16 @@ func (d *UTXOStateDelta) Include(vid *WrappedTx, getBaselineState func(branchTxI
 		return dc.include(vid, getBaselineState(d.branchTxID))
 	}
 	return dc.include(vid)
+}
+
+// Consume does not mutate delta in case of conflict
+func (d *UTXOStateDelta) Consume(wOut WrappedOutput, getBaselineState func(branchTxID *core.TransactionID) general.StateReader) WrappedOutput {
+	// do not buffer it because it mutates delta on in case of success
+	dc := makeBuffered(d.utxoStateDelta, false)
+	if d.branchTxID != nil {
+		return dc.consume(wOut, getBaselineState(d.branchTxID))
+	}
+	return dc.consume(wOut)
 }
 
 // sortDeltas sorts deltas descending by baselineBranches, the latest are on top (if not nil)

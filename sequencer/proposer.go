@@ -141,8 +141,8 @@ func (c *proposerTaskGeneric) assessAndAcceptProposal(tx *transaction.Transactio
 			utangle.SaveGraphPastCone(vid, "makevertex")
 			//vid.SaveTransactionsPastCone("makevertex")
 
-			//util.Assertf(false, "assessAndAcceptProposal: (%s): '%v'\n========= Failed transaction ======\n%s\n%s",
-			//	taskName, err, vid.String(), vid.DeltaStringRecursive())
+			util.Panicf("assessAndAcceptProposal: (%s): '%v'\n========= Failed transaction ======\n%s",
+				taskName, err, vid.String())
 		}
 	}
 

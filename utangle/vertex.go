@@ -53,7 +53,7 @@ func (v *Vertex) CalcDeltaAndWrap(ut *UTXOTangle) (*WrappedTx, error) {
 	}
 	cloneTmp := v.StateDelta.Clone()
 	if conflict := v.StateDelta.Include(vid, getState); conflict.VID != nil {
-		fmt.Printf("before ==\n%s\n== afrer\n%s\n", cloneTmp.Lines().String(), v.StateDelta.Lines().String())
+		fmt.Printf("before ==\n%s\n== after\n%s\n", cloneTmp.Lines().String(), v.StateDelta.Lines().String())
 		return vid, fmt.Errorf("conflict %s while including %s into delta", conflict.IDShort(), vid.IDShort())
 	}
 	return vid, nil

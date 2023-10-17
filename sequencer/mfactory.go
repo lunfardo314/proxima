@@ -183,66 +183,30 @@ func (mf *milestoneFactory) selectFeeInputs(targetTs core.LogicalTime, seqVIDs .
 	util.Assertf(len(seqVIDs) > 0, "len(seqVIDs)>0")
 
 	targetDelta, conflict := mf.tangle.MergeVertexDeltas(seqVIDs...)
+
 	if conflict != nil {
 		return nil, conflict
 	}
-	selected := mf.tipPool.filterAndSortOutputs(func(o utangle.WrappedOutput) bool {
-		if !core.ValidTimePace(o.Timestamp(), targetTs) {
+	selected := mf.tipPool.filterAndSortOutputs(func(wOut utangle.WrappedOutput) bool {
+		if !core.ValidTimePace(wOut.Timestamp(), targetTs) {
 			return false
 		}
+
+		wOutDelta := wOut.VID.GetUTXOStateDelta()
+
 		conflict = targetDelta.MergeDeltas(func(branchTxID *core.TransactionID) general.StateReader {
 			return mf.tangle.MustGetStateReader(branchTxID)
-		}, o.VID.GetUTXOStateDelta())
-
-		return conflict == nil
+		}, wOutDelta)
+		if conflict != nil {
+			return false
+		}
+		conflictOut := targetDelta.Consume(wOut, func(branchTxID *core.TransactionID) general.StateReader {
+			return mf.tangle.MustGetStateReader(branchTxID)
+		})
+		return conflictOut.VID == nil
 	})
 	return selected, nil
 }
-
-// selectFeeInputsOld chooses unspent fee outputs which can be combined with seqMutations in one vid
-// Quite expensive
-//func (mf *milestoneFactory) selectFeeInputsOld(seqDelta *utangle.UTXOStateDelta, targetTs core.LogicalTime) []utangle.WrappedOutput {
-//	util.Assertf(seqDelta != nil, "seqDelta != nil")
-//
-//	selected := mf.tipPool.filterAndSortOutputs(func(o utangle.WrappedOutput) bool {
-//		if !core.ValidTimePace(o.Timestamp(), targetTs) {
-//			return false
-//		}
-//		if !seqDelta.CanBeConsumedBySequencer(o, mf.tangle) {
-//			return false
-//		}
-//
-//		//fmt.Printf("******** suspicious false positive: %s\n%s\n***************\n", o.IDShort(), seqDelta.LinesRecursive().String())
-//		//seqDelta.CanBeConsumedBySequencer(o, mf.tangle)
-//		return true
-//	})
-//	ret := make([]utangle.WrappedOutput, 0, mf.maxFeeInputs)
-//
-//	targetDelta := seqDelta.Clone()
-//
-//	for _, o := range selected {
-//		o.VID.Unwrap(utangle.UnwrapOptions{
-//			Vertex: func(v *utangle.Vertex) {
-//				// cloning each time because MergeInto always mutates the target
-//				tmpTarget := targetDelta.Clone()
-//				if conflict, _ := v.StateDelta.MergeInto(tmpTarget); conflict == nil {
-//					ret = append(ret, o)
-//					targetDelta = tmpTarget
-//				}
-//			},
-//			VirtualTx: func(v *utangle.VirtualTransaction) {
-//				// do not need to clone because MustConsume does not mutate target in case of failure
-//				if success, _ := targetDelta.MustConsume(o); success {
-//					ret = append(ret, o)
-//				}
-//			},
-//		})
-//		if len(ret) >= mf.maxFeeInputs {
-//			break
-//		}
-//	}
-//	return ret
-//}
 
 func (mf *milestoneFactory) getLatestMilestone() (ret utangle.WrappedOutput) {
 	mf.mutex.RLock()

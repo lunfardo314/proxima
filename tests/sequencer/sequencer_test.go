@@ -274,6 +274,8 @@ func Test1Sequencer(t *testing.T) {
 
 		sequencer.SetTraceAll(false)
 
+		t.Logf("chain origins tx:\n%s", r.txChainOrigins.ToString(r.ut.HeaviestStateForLatestTimeSlot().GetUTXO))
+
 		seq, err := sequencer.StartNew(r.wrk, r.bootstrapChainID, r.originControllerPrivateKey,
 			sequencer.WithName("boot"),
 			sequencer.WithPace(5),
@@ -281,8 +283,6 @@ func Test1Sequencer(t *testing.T) {
 			sequencer.WithMaxTargetTs(core.LogicalTimeNow().AddTimeSlots(maxTimeSlots+2)),
 		)
 		require.NoError(t, err)
-
-		t.Logf("chain origins tx:\n%s", r.txChainOrigins.ToString(r.ut.HeaviestStateForLatestTimeSlot().GetUTXO))
 
 		// add transaction with chain origins
 		_, err = r.wrk.TransactionInWaitAppend(r.txChainOrigins.Bytes(), 5*time.Second)

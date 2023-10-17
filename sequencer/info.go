@@ -57,11 +57,12 @@ func (seq *Sequencer) LogMilestoneSubmitDefault(wOut *utangle.WrappedOutput) {
 		msIndex = od.ChainHeight
 	}
 
-	seq.log.Infof("%s %d/%d: %s, cov: %s<-%s, in/out: %d/%d, feeOut: %d, proposal: %v x %d, mem: %d/%d",
+	seq.log.Infof("%s %d/%d: %s, bl: %s, cov: %s<-%s, in/out: %d/%d, feeOut: %d, proposal: %v x %d, mem: %d/%d",
 		msType,
 		msIndex,
 		branchIndex,
 		wOut.IDShort(),
+		wOut.VID.BaselineBranchID().Short(),
 		util.GoThousands(info.LedgerCoverage),
 		util.GoThousands(info.PrevLedgerCoverage),
 		info.In,
@@ -72,6 +73,9 @@ func (seq *Sequencer) LogMilestoneSubmitDefault(wOut *utangle.WrappedOutput) {
 		info.NumFeeOutputsInTippool,
 		info.NumOtherMsInTippool,
 	)
+	//if msType == "MS" {
+	//	seq.log.Infof("MS DELTA:\n%s", wOut.VID.GetUTXOStateDelta().Lines("     ").String())
+	//}
 }
 
 func (seq *Sequencer) LogStats() {
