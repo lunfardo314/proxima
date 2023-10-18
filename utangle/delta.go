@@ -192,32 +192,23 @@ func (d utxoStateDelta) Coverage() (ret uint64) {
 func (d utxoStateDelta) getMutations(targetSlot core.TimeSlot, baselineState general.StateReader) *multistate.Mutations {
 	ret := multistate.NewMutations()
 
-	inTheState := set.New[*WrappedTx]()
-	for vid := range d {
-		if vid.IsVirtualTx() || baselineState.KnowsCommittedTransaction(vid.ID()) {
-			inTheState.Insert(vid)
-		}
-	}
-
 	for vid, consumedSet := range d {
+		if baselineState.KnowsCommittedTransaction(vid.ID()) {
+			// do not produce anything if transaction is already in the state
+			continue
+		}
 		// do not touch virtual transactions
 		vid.Unwrap(UnwrapOptions{
 			Vertex: func(v *Vertex) {
 				// DEL mutations: deleting all inputs of transactions which are in the state
 				v.forEachInputDependency(func(i byte, inp *WrappedTx) bool {
 					inpID := v.Tx.MustInputAt(i)
-					util.Assertf(util.HasKey(d, inp), "input of %s must be in the delta: %s\n==== delta: %s\n",
-						v.Tx.IDShort(), func() any { return inpID.Short() }, func() any { return d.lines().String() })
-
-					if inTheState.Contains(inp) {
+					// TODO suboptimal check every input in the state
+					if baselineState.HasUTXO(&inpID) {
 						ret.InsertDelOutputMutation(inpID)
 					}
 					return true
 				})
-				if inTheState.Contains(vid) {
-					// do not produce anything if transaction is already in the state
-					return
-				}
 				// SET mutations: adding outputs of not-in-the-state state transaction which are not
 				// marked as consumed. If all outputs are consumed, adding nothing
 				v.Tx.ForEachProducedOutput(func(idx byte, o *core.Output, oid *core.OutputID) bool {
@@ -234,23 +225,6 @@ func (d utxoStateDelta) getMutations(targetSlot core.TimeSlot, baselineState gen
 		})
 	}
 	return ret.Sort()
-}
-
-func (d utxoStateDelta) mustCheckConsistency() {
-	for vid := range d {
-		vid.Unwrap(UnwrapOptions{
-			Vertex: func(v *Vertex) {
-				v.forEachInputDependency(func(i byte, inp *WrappedTx) bool {
-					util.Assertf(util.HasKey(d, inp), "mustCheckConsistency: input %s of %s must be in the delta:\n%s",
-						func() any { return inp.IDShort() },
-						func() any { return vid.IDShort() },
-						func() any { return d.lines().String() },
-					)
-					return true
-				})
-			},
-		})
-	}
 }
 
 func NewUTXOStateDelta(branchTxID *core.TransactionID) *UTXOStateDelta {
@@ -361,8 +335,6 @@ func MergeDeltas(getStateReader func(branchTxID *core.TransactionID) general.Sta
 
 	ret := retTmp.flush()
 
-	ret.mustCheckConsistency()
-
 	return &UTXOStateDelta{
 		utxoStateDelta: ret,
 		branchTxID:     latestBranchTxID,
@@ -415,7 +387,6 @@ func (d *UTXOStateDelta) MergeDeltas(getStateReader func(branchTxID *core.Transa
 	}
 	ret.flush() // only flushed if no conflicts
 
-	d.utxoStateDelta.mustCheckConsistency()
 	return nil
 }
 
@@ -445,4 +416,43 @@ func (d *UTXOStateDelta) Lines(prefix ...string) *lines.Lines {
 	ret.Append(d.utxoStateDelta.lines("    " + prefix1))
 	ret.Add("------ END delta")
 	return ret
+}
+
+const enableCheckDeltaConsistency = true
+
+func (d *UTXOStateDelta) MustCheckConsistency(getStateReader ...func(branchTxID *core.TransactionID) general.StateReader) {
+	if enableCheckDeltaConsistency {
+		d._mustCheckConsistency(getStateReader...)
+	}
+}
+
+func (d *UTXOStateDelta) _mustCheckConsistency(getStateReader ...func(branchTxID *core.TransactionID) general.StateReader) {
+	stateProvided := len(getStateReader) > 0
+	var stateReader general.StateReader
+	if stateProvided {
+		stateReader = getStateReader[0](d.branchTxID)
+	}
+	for vid := range d.utxoStateDelta {
+		if vid.IsBranchTransaction() {
+			continue
+		}
+		txid := vid.ID()
+		vid.Unwrap(UnwrapOptions{
+			Vertex: func(v *Vertex) {
+				v.forEachInputDependency(func(i byte, inp *WrappedTx) bool {
+					if util.HasKey(d.utxoStateDelta, inp) {
+						return true
+					}
+					if stateProvided {
+						if stateReader.KnowsCommittedTransaction(txid) {
+							return true
+						}
+					}
+					util.Panicf("MustCheckConsistency: input %s of %s must be in the delta:\n%s",
+						inp.IDShort(), vid.IDShort(), d.lines().String())
+					return true
+				})
+			},
+		})
+	}
 }

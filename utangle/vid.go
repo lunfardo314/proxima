@@ -694,10 +694,14 @@ func (vid *WrappedTx) BaselineBranchID() (ret *core.TransactionID) {
 
 // GetUTXOStateDelta returns a pointer, not to be mutated, must be cloned first! Never nil
 // For branch it returns empty delta with the branch as baseline
-func (vid *WrappedTx) GetUTXOStateDelta() (ret *UTXOStateDelta) {
+func (vid *WrappedTx) GetUTXOStateDelta() *UTXOStateDelta {
 	if vid.IsBranchTransaction() {
 		return NewUTXOStateDelta(vid.DeltaBranchID())
 	}
+	return vid.GetBaselineDelta()
+}
+
+func (vid *WrappedTx) GetBaselineDelta() (ret *UTXOStateDelta) {
 	vid.Unwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
 			ret = &v.StateDelta
@@ -727,4 +731,15 @@ func (vid *WrappedTx) LedgerCoverage(getStateStore func() general.StateStore) ui
 	}
 
 	return deltaCoverage + vid.GetUTXOStateDelta().Coverage()
+}
+
+func (vid *WrappedTx) MustConsistentDelta(ut *UTXOTangle) {
+	err := util.CatchPanicOrError(func() error {
+		vid.GetBaselineDelta().MustCheckConsistency(ut.MustGetStateReader)
+		return nil
+	})
+	if err != nil {
+		SaveGraphPastCone(vid, "inconsistent_delta")
+		panic(err)
+	}
 }

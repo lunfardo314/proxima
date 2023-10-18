@@ -183,6 +183,7 @@ func (mf *milestoneFactory) selectFeeInputs(targetTs core.LogicalTime, seqVIDs .
 	util.Assertf(len(seqVIDs) > 0, "len(seqVIDs)>0")
 
 	targetDelta, conflict := mf.tangle.MergeVertexDeltas(seqVIDs...)
+	targetDelta.MustCheckConsistency()
 
 	if conflict != nil {
 		return nil, conflict
@@ -194,15 +195,15 @@ func (mf *milestoneFactory) selectFeeInputs(targetTs core.LogicalTime, seqVIDs .
 
 		wOutDelta := wOut.VID.GetUTXOStateDelta()
 
-		conflict = targetDelta.MergeDeltas(func(branchTxID *core.TransactionID) general.StateReader {
-			return mf.tangle.MustGetStateReader(branchTxID)
-		}, wOutDelta)
+		conflict = targetDelta.MergeDeltas(mf.tangle.MustGetStateReader, wOutDelta)
 		if conflict != nil {
 			return false
 		}
-		conflictOut := targetDelta.Consume(wOut, func(branchTxID *core.TransactionID) general.StateReader {
-			return mf.tangle.MustGetStateReader(branchTxID)
-		})
+
+		targetDelta.MustCheckConsistency()
+		conflictOut := targetDelta.Consume(wOut, mf.tangle.MustGetStateReader)
+
+		targetDelta.MustCheckConsistency()
 		return conflictOut.VID == nil
 	})
 	return selected, nil

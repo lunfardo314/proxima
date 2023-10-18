@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/core"
-	"github.com/lunfardo314/proxima/general"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
@@ -46,16 +45,17 @@ func (v *Vertex) CalcDeltaAndWrap(ut *UTXOTangle) (*WrappedTx, error) {
 	if err := v.mergeInputDeltas(ut); err != nil {
 		return nil, err
 	}
-	vid := v.Wrap()
 
-	getState := func(branchTxID *core.TransactionID) general.StateReader {
-		return ut.MustGetStateReader(branchTxID)
-	}
+	vid := v.Wrap()
+	vid.MustConsistentDelta(ut)
+
 	cloneTmp := v.StateDelta.Clone()
-	if conflict := v.StateDelta.Include(vid, getState); conflict.VID != nil {
+	if conflict := v.StateDelta.Include(vid, ut.MustGetStateReader); conflict.VID != nil {
 		fmt.Printf("before ==\n%s\n== after\n%s\n", cloneTmp.Lines().String(), v.StateDelta.Lines().String())
 		return vid, fmt.Errorf("conflict %s while including %s into delta", conflict.IDShort(), vid.IDShort())
 	}
+	vid.MustConsistentDelta(ut)
+
 	return vid, nil
 }
 
