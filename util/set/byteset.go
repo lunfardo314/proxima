@@ -9,6 +9,8 @@ import (
 
 type ByteSet [4]uint64
 
+var EmptyByteSet = ByteSet{}
+
 func NewByteSet(el ...byte) (ret ByteSet) {
 	ret.Insert(el...)
 	return
@@ -104,8 +106,6 @@ func (s *ByteSet) ForEach(fun func(el byte) bool) {
 		}
 	}
 }
-
-var EmptyByteSet = ByteSet{}
 
 func (s *ByteSet) IsEmpty() bool {
 	return *s == EmptyByteSet

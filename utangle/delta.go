@@ -12,7 +12,7 @@ import (
 )
 
 type (
-	utxoStateDelta map[*WrappedTx]consumed
+	utxoStateDelta map[*WrappedTx]set.ByteSet
 
 	// structure needed to prevent making target delta invalid in case of conflict during update
 	// all mutations are collected in the buffer, at the (successful) end case is committed to the target delta
@@ -20,11 +20,6 @@ type (
 	utxoStateDeltaBuffered struct {
 		utxoStateDelta
 		buffer utxoStateDelta
-	}
-
-	consumed struct {
-		set        set.ByteSet
-		inTheState bool
 	}
 
 	UTXOStateDelta struct {
@@ -66,41 +61,44 @@ func (dc *utxoStateDeltaBuffered) isAlreadyIncluded(vid *WrappedTx, baselineStat
 
 // consume does not mutate state in case of conflict
 func (dc *utxoStateDeltaBuffered) consume(wOut WrappedOutput, baselineState ...general.StateReader) WrappedOutput {
-	consumedSet, found := dc.get(wOut.VID)
-	if found {
+	if consumedSet, found := dc.get(wOut.VID); found {
 		// corresponding tx is already in the delta
-		if consumedSet.set.Contains(wOut.Index) {
+		if consumedSet.Contains(wOut.Index) {
 			return wOut
 		}
-		if consumedSet.inTheState {
-			util.Assertf(len(baselineState) > 0, "baseline state not provided")
+		if len(baselineState) > 0 {
 			if !baselineState[0].HasUTXO(wOut.DecodeID()) {
-				return wOut
+				// output is not in the state
+				if wOut.VID.IsVirtualTx() {
+					// virtual inputs must be in the state
+					return wOut
+				}
+				if baselineState[0].KnowsCommittedTransaction(wOut.VID.ID()) {
+					// transaction is committed but output is not in the state
+					return wOut
+				}
 			}
 		}
-		consumedSet.set.Insert(wOut.Index)
+		// output exists and is not consumed
+		consumedSet.Insert(wOut.Index)
 		dc.put(wOut.VID, consumedSet)
 		return WrappedOutput{}
 	}
+
 	// there's no corresponding tx in the delta
 	if len(baselineState) > 0 {
+		// output is in the state
 		if baselineState[0].HasUTXO(wOut.DecodeID()) {
-			dc.put(wOut.VID, consumed{
-				set:        set.NewByteSet(wOut.Index),
-				inTheState: true,
-			})
+			dc.put(wOut.VID, set.NewByteSet(wOut.Index))
 			return WrappedOutput{}
 		}
 	}
-	// no baseline state provided or output is not in the baseline state
+	// no baseline state provided or output is not in the baseline state (it is on the vertex)
 	if conflict := dc.include(wOut.VID, baselineState...); conflict.VID != nil {
 		return conflict
 	}
-	util.Assertf(consumedSet.set.IsEmpty(), "consumedSet.set.IsEmpty()")
+	dc.put(wOut.VID, set.NewByteSet(wOut.Index))
 
-	dc.put(wOut.VID, consumed{
-		set: set.NewByteSet(wOut.Index),
-	})
 	return WrappedOutput{}
 }
 
@@ -114,7 +112,7 @@ func (dc *utxoStateDeltaBuffered) include(vid *WrappedTx, baselineState ...gener
 			return
 		}
 	}
-	dc.put(vid, consumed{})
+	dc.put(vid, set.EmptyByteSet)
 	return
 }
 
@@ -128,7 +126,7 @@ func (dc *utxoStateDeltaBuffered) append(delta utxoStateDelta, baselineState ...
 	return
 }
 
-func (dc *utxoStateDeltaBuffered) get(vid *WrappedTx) (ret consumed, found bool) {
+func (dc *utxoStateDeltaBuffered) get(vid *WrappedTx) (ret set.ByteSet, found bool) {
 	if dc.buffer != nil {
 		if ret, found = dc.buffer[vid]; found {
 			return
@@ -138,7 +136,7 @@ func (dc *utxoStateDeltaBuffered) get(vid *WrappedTx) (ret consumed, found bool)
 	return
 }
 
-func (dc *utxoStateDeltaBuffered) put(vid *WrappedTx, consumedSet consumed) {
+func (dc *utxoStateDeltaBuffered) put(vid *WrappedTx, consumedSet set.ByteSet) {
 	if dc.buffer == nil {
 		dc.utxoStateDelta[vid] = consumedSet
 		return
@@ -169,7 +167,7 @@ func (d utxoStateDelta) lines(prefix ...string) *lines.Lines {
 	})
 	for _, vid := range sorted {
 		consumedSet := d[vid]
-		ret.Add("%s consumed: %+v (inTheState = %v)", vid.IDShort(), consumedSet.set.String(), consumedSet.inTheState)
+		ret.Add("%s consumed: %+v", vid.IDShort(), consumedSet.String())
 	}
 	return ret
 }
@@ -179,7 +177,7 @@ func (d utxoStateDelta) Coverage() (ret uint64) {
 		vid.Unwrap(UnwrapOptions{
 			Vertex: func(v *Vertex) {
 				ret += uint64(v.Tx.TotalAmount())
-				consumedSet.set.ForEach(func(idx byte) bool {
+				consumedSet.ForEach(func(idx byte) bool {
 					o, ok := v.MustProducedOutput(idx)
 					util.Assertf(ok, "can't get output")
 					ret -= o.Amount()
@@ -191,39 +189,39 @@ func (d utxoStateDelta) Coverage() (ret uint64) {
 	return
 }
 
-func (d utxoStateDelta) isConsumed(wOut WrappedOutput) (bool, bool) {
-	consumedSet, found := d[wOut.VID]
-	if !found {
-		return false, false
-	}
-	return consumedSet.set.Contains(wOut.Index), consumedSet.inTheState
-}
-
-// TODO get rid of inTheState flag
-
-func (d utxoStateDelta) getMutations(targetSlot core.TimeSlot) *multistate.Mutations {
+func (d utxoStateDelta) getMutations(targetSlot core.TimeSlot, baselineState general.StateReader) *multistate.Mutations {
 	ret := multistate.NewMutations()
+
+	inTheState := set.New[*WrappedTx]()
+	for vid := range d {
+		if vid.IsVirtualTx() || baselineState.KnowsCommittedTransaction(vid.ID()) {
+			inTheState.Insert(vid)
+		}
+	}
 
 	for vid, consumedSet := range d {
 		// do not touch virtual transactions
 		vid.Unwrap(UnwrapOptions{
 			Vertex: func(v *Vertex) {
-				// DEL mutations: deleting from the baseline state all inputs which are marked consumed
+				// DEL mutations: deleting all inputs of transactions which are in the state
 				v.forEachInputDependency(func(i byte, inp *WrappedTx) bool {
-					isConsumed, inTheState := d.isConsumed(WrappedOutput{VID: inp, Index: i})
-					if isConsumed && inTheState {
-						ret.InsertDelOutputMutation(v.Tx.MustInputAt(i))
+					inpID := v.Tx.MustInputAt(i)
+					util.Assertf(util.HasKey(d, inp), "input of %s must be in the delta: %s\n==== delta: %s\n",
+						v.Tx.IDShort(), func() any { return inpID.Short() }, func() any { return d.lines().String() })
+
+					if inTheState.Contains(inp) {
+						ret.InsertDelOutputMutation(inpID)
 					}
 					return true
 				})
-				if consumedSet.inTheState {
+				if inTheState.Contains(vid) {
 					// do not produce anything if transaction is already in the state
 					return
 				}
 				// SET mutations: adding outputs of not-in-the-state state transaction which are not
 				// marked as consumed. If all outputs are consumed, adding nothing
 				v.Tx.ForEachProducedOutput(func(idx byte, o *core.Output, oid *core.OutputID) bool {
-					if !consumedSet.set.Contains(idx) {
+					if !consumedSet.Contains(idx) {
 						ret.InsertAddOutputMutation(*oid, o)
 					}
 					return true

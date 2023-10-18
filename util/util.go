@@ -49,6 +49,11 @@ func Keys[K comparable, V any](m map[K]V, filter ...func(k K) bool) []K {
 	return ret
 }
 
+func HasKey[K comparable, V any](m map[K]V, k K) bool {
+	_, yes := m[k]
+	return yes
+}
+
 func KeysSorted[K comparable, V any](m map[K]V, less func(k1, k2 K) bool) []K {
 	ret := Keys(m)
 	sort.Slice(ret, func(i, j int) bool {

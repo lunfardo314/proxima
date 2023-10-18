@@ -588,17 +588,11 @@ func (vid *WrappedTx) Lines(prefix ...string) *lines.Lines {
 	return ret
 }
 
-func (vid *WrappedTx) DeltaString(skipCommands ...bool) string {
+func (vid *WrappedTx) DeltaString() string {
 	ret := lines.New().Add("== delta of %s", vid.IDShort())
-	skipCmd := len(skipCommands) > 0 && skipCommands[0]
 	vid.Unwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
 			ret.Append(v.StateDelta.Lines())
-			if !skipCmd {
-				muts := v.StateDelta.getMutations(v.Tx.TimeSlot())
-				ret.Add("== state mutations of %s (%d commands)", vid.IDShort(), muts.Len())
-				ret.Append(muts.Lines())
-			}
 		}, VirtualTx: func(v *VirtualTransaction) {
 			ret.Add("   (virtualTx)")
 		}, Orphaned: func() {

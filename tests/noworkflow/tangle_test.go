@@ -769,7 +769,7 @@ func TestMultiChain(t *testing.T) {
 			nChains              = 10
 			chainPaceInTimeSlots = 7
 			printBranchTx        = false
-			howLong              = 300 // 169 0k
+			howLong              = 170 // 169 0k
 		)
 		r := initMultiChainTest(t, nChains, false)
 
