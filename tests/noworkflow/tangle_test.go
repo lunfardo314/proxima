@@ -766,10 +766,10 @@ func TestMultiChain(t *testing.T) {
 	})
 	t.Run("cross endorsing chains 1", func(t *testing.T) {
 		const (
-			nChains              = 2  //10
-			chainPaceInTimeSlots = 17 // 7
+			nChains              = 10
+			chainPaceInTimeSlots = 7
 			printBranchTx        = false
-			howLong              = 10 // 170 // 169 0k
+			howLong              = 400
 		)
 		r := initMultiChainTest(t, nChains, false)
 
