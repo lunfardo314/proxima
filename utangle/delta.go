@@ -236,6 +236,23 @@ func (d utxoStateDelta) getMutations(targetSlot core.TimeSlot, baselineState gen
 	return ret.Sort()
 }
 
+func (d utxoStateDelta) mustCheckConsistency() {
+	for vid := range d {
+		vid.Unwrap(UnwrapOptions{
+			Vertex: func(v *Vertex) {
+				v.forEachInputDependency(func(i byte, inp *WrappedTx) bool {
+					util.Assertf(util.HasKey(d, inp), "mustCheckConsistency: input %s of %s must be in the delta:\n%s",
+						func() any { return inp.IDShort() },
+						func() any { return vid.IDShort() },
+						func() any { return d.lines().String() },
+					)
+					return true
+				})
+			},
+		})
+	}
+}
+
 func NewUTXOStateDelta(branchTxID *core.TransactionID) *UTXOStateDelta {
 	return &UTXOStateDelta{
 		utxoStateDelta: make(utxoStateDelta),
@@ -342,8 +359,12 @@ func MergeDeltas(getStateReader func(branchTxID *core.TransactionID) general.Sta
 		}
 	}
 
+	ret := retTmp.flush()
+
+	ret.mustCheckConsistency()
+
 	return &UTXOStateDelta{
-		utxoStateDelta: retTmp.flush(),
+		utxoStateDelta: ret,
 		branchTxID:     latestBranchTxID,
 	}, nil
 }
@@ -393,6 +414,8 @@ func (d *UTXOStateDelta) MergeDeltas(getStateReader func(branchTxID *core.Transa
 		}
 	}
 	ret.flush() // only flushed if no conflicts
+
+	d.utxoStateDelta.mustCheckConsistency()
 	return nil
 }
 
