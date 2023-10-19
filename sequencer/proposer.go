@@ -158,7 +158,7 @@ func (c *proposerTaskGeneric) assessAndAcceptProposal(tx *transaction.Transactio
 		//	draftVertex.Tx.IDShort(), mStr, draftVertex.String())
 		return
 	}
-	msData := &milestoneWithData{
+	msData := &proposedMilestoneWithData{
 		WrappedOutput:     *vid.MustSequencerOutput(),
 		elapsed:           time.Since(startTime),
 		makeVertexElapsed: time.Since(makeVertexStartTime),
@@ -175,7 +175,7 @@ func (c *proposerTaskGeneric) storeProposalDuration() {
 	c.factory.storeProposalDuration(time.Since(c.startTime))
 }
 
-func (c *proposerTaskGeneric) placeProposalIfRelevant(mdProposed *milestoneWithData) string {
+func (c *proposerTaskGeneric) placeProposalIfRelevant(mdProposed *proposedMilestoneWithData) string {
 	c.factory.proposal.mutex.Lock()
 	defer c.factory.proposal.mutex.Unlock()
 

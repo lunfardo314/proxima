@@ -28,14 +28,19 @@ type (
 		tipPool                     *sequencerTipPool
 		controllerKey               ed25519.PrivateKey
 		proposal                    latestMilestoneProposal
-		ownMilestones               map[*utangle.WrappedTx]utangle.WrappedOutput
+		ownMilestones               map[*utangle.WrappedTx]ownMilestone
 		maxFeeInputs                int
 		lastPruned                  time.Time
 		ownMilestoneCount           int
 		removedMilestonesSinceReset int
 	}
 
-	milestoneWithData struct {
+	ownMilestone struct {
+		utangle.WrappedOutput
+		inputs set.Set[utangle.WrappedOutput]
+	}
+
+	proposedMilestoneWithData struct {
 		utangle.WrappedOutput
 		elapsed           time.Duration
 		makeVertexElapsed time.Duration
@@ -81,8 +86,8 @@ func (seq *Sequencer) createMilestoneFactory() error {
 	}
 	var err error
 
-	ownMilestones := map[*utangle.WrappedTx]utangle.WrappedOutput{
-		chainOut.VID: chainOut,
+	ownMilestones := map[*utangle.WrappedTx]ownMilestone{
+		chainOut.VID: newOwnMilestone(chainOut),
 	}
 
 	tippoolLoglevel := seq.config.LogLevel
@@ -115,6 +120,13 @@ func (seq *Sequencer) createMilestoneFactory() error {
 func (mf *milestoneFactory) trace(format string, args ...any) {
 	if traceAll.Load() {
 		mf.log.Infof("TRACE "+format, args...)
+	}
+}
+
+func newOwnMilestone(wOut utangle.WrappedOutput, inputs ...utangle.WrappedOutput) ownMilestone {
+	return ownMilestone{
+		WrappedOutput: wOut,
+		inputs:        set.New[utangle.WrappedOutput](inputs...),
 	}
 }
 
@@ -173,10 +185,12 @@ func (mf *milestoneFactory) makeMilestone(chainIn, stemIn *utangle.WrappedOutput
 }
 
 func (mf *milestoneFactory) addOwnMilestone(wOut utangle.WrappedOutput) {
+	om := newOwnMilestone(wOut, wOut.VID.WrappedInputs()...)
+
 	mf.mutex.Lock()
 	defer mf.mutex.Unlock()
 
-	mf.ownMilestones[wOut.VID] = wOut
+	mf.ownMilestones[wOut.VID] = om
 	mf.ownMilestoneCount++
 }
 
@@ -220,7 +234,7 @@ func (mf *milestoneFactory) getLatestMilestone() (ret utangle.WrappedOutput) {
 
 	for _, ms := range mf.ownMilestones {
 		if ret.VID == nil || ms.Timestamp().After(ret.Timestamp()) {
-			ret = ms
+			ret = ms.WrappedOutput
 		}
 	}
 	util.Assertf(ret.VID != nil, "ret.VID != nil")
@@ -344,12 +358,13 @@ func (mf *milestoneFactory) futureConeMilestonesOrdered(rootVID *utangle.Wrapped
 	p.trace("futureConeMilestonesOrdered for root %s. Total %d own milestones",
 		func() any { return rootVID.IDShort() }, len(mf.ownMilestones))
 
-	rootOut, ok := mf.ownMilestones[rootVID]
+	om, ok := mf.ownMilestones[rootVID]
 	util.Assertf(ok, "futureConeMilestonesOrdered: milestone %s of chain %s is expected to be among set of own milestones (%d)",
 		func() any { return rootVID.IDShort() },
 		func() any { return mf.tipPool.chainID.Short() },
 		len(mf.ownMilestones))
 
+	rootOut := om.WrappedOutput
 	ordered := util.SortKeys(mf.ownMilestones, func(vid1, vid2 *utangle.WrappedTx) bool {
 		// by timestamp -> equivalent to topological order, descending, i.e. older first
 		return vid1.Timestamp().After(vid2.Timestamp())
@@ -360,7 +375,7 @@ func (mf *milestoneFactory) futureConeMilestonesOrdered(rootVID *utangle.Wrapped
 	for _, vid := range ordered {
 		if !vid.IsOrphaned() && vid.IsSequencerMilestone() && visited.Contains(vid.SequencerPredecessor()) {
 			visited.Insert(vid)
-			ret = append(ret, mf.ownMilestones[vid])
+			ret = append(ret, mf.ownMilestones[vid].WrappedOutput)
 		}
 	}
 	return ret
