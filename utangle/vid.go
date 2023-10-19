@@ -280,6 +280,16 @@ func (vid *WrappedTx) SequencerPredecessor() *WrappedTx {
 	return ret
 }
 
+// SequencerPastPath collects all path of the chain back to the first not nil (wrapped tx)
+// ordered descending in time
+func (vid *WrappedTx) SequencerPastPath() []*WrappedTx {
+	ret := make([]*WrappedTx, 0)
+	for vid1 := vid; vid1 != nil; vid1 = vid1.SequencerPredecessor() {
+		ret = append(ret, vid1)
+	}
+	return ret
+}
+
 func (vid *WrappedTx) MustSequencerOutput() *WrappedOutput {
 	if !vid.IsSequencerMilestone() {
 		return nil

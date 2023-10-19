@@ -95,8 +95,8 @@ func (c *proposerTaskGeneric) startProposingTime() {
 	c.startTime = time.Now()
 }
 
-func (c *proposerTaskGeneric) selectFeeInputs(seqVIDs ...*utangle.WrappedTx) ([]utangle.WrappedOutput, *utangle.WrappedOutput) {
-	return c.factory.selectFeeInputs(c.targetTs, seqVIDs...)
+func (c *proposerTaskGeneric) selectFeeInputs(ownMs *utangle.WrappedTx, seqVIDs ...*utangle.WrappedTx) ([]utangle.WrappedOutput, *utangle.WrappedOutput) {
+	return c.factory.selectFeeInputs(c.targetTs, ownMs, seqVIDs...)
 }
 
 func (c *proposerTaskGeneric) makeMilestone(chainIn, stemIn *utangle.WrappedOutput, feeInputs []utangle.WrappedOutput, endorse []*utangle.WrappedTx) *transaction.Transaction {
@@ -118,7 +118,7 @@ func (c *proposerTaskGeneric) makeMilestone(chainIn, stemIn *utangle.WrappedOutp
 func (c *proposerTaskGeneric) assessAndAcceptProposal(tx *transaction.Transaction, startTime time.Time, taskName string) {
 	c.trace("inside assessAndAcceptProposal: %s", tx.IDShort())
 
-	// prevent repeating transactions with same inputs
+	// prevent repeating transactions with same consumedInThePastPath
 	hashOfProposal := tx.HashInputsAndEndorsements()
 	if c.alreadyProposed.Contains(hashOfProposal) {
 		c.trace("repeating proposal in '%s', wait 10ms %s", c.name(), tx.IDShort())
@@ -221,7 +221,7 @@ func (c *proposerTaskGeneric) placeProposalIfRelevant(mdProposed *proposedMilest
 	c.factory.proposal.bestSoFar = c.factory.proposal.current
 	ledgerCoverageProposed := c.factory.tangle.LedgerCoverage(c.factory.proposal.current.VID)
 
-	c.trace("(%s): ACCEPTED %s, coverage: %s (base: %s), elapsed: %v/%v, inputs: %d, tipPool: %d",
+	c.trace("(%s): ACCEPTED %s, coverage: %s (base: %s), elapsed: %v/%v, consumedInThePastPath: %d, tipPool: %d",
 		mdProposed.proposedBy,
 		mdProposed.IDShort(),
 		util.GoThousands(ledgerCoverageProposed),

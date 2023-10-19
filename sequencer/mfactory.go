@@ -37,7 +37,7 @@ type (
 
 	ownMilestone struct {
 		utangle.WrappedOutput
-		inputs set.Set[utangle.WrappedOutput]
+		consumedInThePastPath set.Set[utangle.WrappedOutput]
 	}
 
 	proposedMilestoneWithData struct {
@@ -125,8 +125,8 @@ func (mf *milestoneFactory) trace(format string, args ...any) {
 
 func newOwnMilestone(wOut utangle.WrappedOutput, inputs ...utangle.WrappedOutput) ownMilestone {
 	return ownMilestone{
-		WrappedOutput: wOut,
-		inputs:        set.New[utangle.WrappedOutput](inputs...),
+		WrappedOutput:         wOut,
+		consumedInThePastPath: set.New[utangle.WrappedOutput](inputs...),
 	}
 }
 
@@ -152,7 +152,7 @@ func (mf *milestoneFactory) makeMilestone(chainIn, stemIn *utangle.WrappedOutput
 			return nil, nil
 		}
 	}
-	// interpret sequencer commands contained in fee inputs. This also possibly adjusts inputs
+	// interpret sequencer commands contained in fee consumedInThePastPath. This also possibly adjusts consumedInThePastPath
 	var additionalOutputs []*core.Output
 	capWithdrawals := uint64(0)
 	if chainInReal.Output.Amount() > core.MinimumAmountOnSequencer {
@@ -185,19 +185,32 @@ func (mf *milestoneFactory) makeMilestone(chainIn, stemIn *utangle.WrappedOutput
 }
 
 func (mf *milestoneFactory) addOwnMilestone(wOut utangle.WrappedOutput) {
-	om := newOwnMilestone(wOut, wOut.VID.WrappedInputs()...)
-
+	inputs := wOut.VID.WrappedInputs()
 	mf.mutex.Lock()
 	defer mf.mutex.Unlock()
+
+	om := newOwnMilestone(wOut, inputs...)
+	if prev := wOut.VID.SequencerPredecessor(); prev != nil {
+		if prevOm, found := mf.ownMilestones[prev]; found {
+			om.consumedInThePastPath.AddAll(prevOm.consumedInThePastPath)
+		}
+	}
 
 	mf.ownMilestones[wOut.VID] = om
 	mf.ownMilestoneCount++
 }
 
-func (mf *milestoneFactory) selectFeeInputs(targetTs core.LogicalTime, seqVIDs ...*utangle.WrappedTx) ([]utangle.WrappedOutput, *utangle.WrappedOutput) {
-	util.Assertf(len(seqVIDs) > 0, "len(seqVIDs)>0")
+func (mf *milestoneFactory) isConsumedInThePastPath(wOut utangle.WrappedOutput, ms *utangle.WrappedTx) bool {
+	mf.mutex.RLock()
+	defer mf.mutex.RUnlock()
 
-	targetDelta, conflict := mf.tangle.MergeVertexDeltas(seqVIDs...)
+	return mf.ownMilestones[ms].consumedInThePastPath.Contains(wOut)
+}
+
+func (mf *milestoneFactory) selectFeeInputs(targetTs core.LogicalTime, ownMs *utangle.WrappedTx, otherSeqVIDs ...*utangle.WrappedTx) ([]utangle.WrappedOutput, *utangle.WrappedOutput) {
+	allSeqVIDs := append(util.CloneArglistShallow(otherSeqVIDs...), ownMs)
+
+	targetDelta, conflict := mf.tangle.MergeVertexDeltas(allSeqVIDs...)
 	targetDelta.MustCheckConsistency(mf.tangle.MustGetStateReader)
 
 	if conflict != nil {
@@ -206,7 +219,14 @@ func (mf *milestoneFactory) selectFeeInputs(targetTs core.LogicalTime, seqVIDs .
 
 	// pre-selects not orphaned and with suitable timestamp outputs, sorts by timestamp ascending
 	selected := mf.tipPool.filterAndSortOutputs(func(wOut utangle.WrappedOutput) bool {
-		return core.ValidTimePace(wOut.Timestamp(), targetTs)
+		if !core.ValidTimePace(wOut.Timestamp(), targetTs) {
+			return false
+		}
+		if mf.isConsumedInThePastPath(wOut, ownMs) {
+			// fast filtering out already consumed outputs
+			return false
+		}
+		return true
 	})
 
 	// filters outputs which can be merged into the target delta but no more than maxFeeInputs limit
@@ -407,7 +427,7 @@ func (mf *milestoneFactory) ownForksInAnotherSequencerPastCone(anotherSeqMs *uta
 }
 
 // makeAdditionalInputsOutputs makes additional outputs according to commands in imputs.
-// Filters inputs so that transfer commands would not exceed maximumTotal
+// Filters consumedInThePastPath so that transfer commands would not exceed maximumTotal
 func (mf *milestoneFactory) makeAdditionalInputsOutputs(inputs []*core.OutputWithID, maximumTotal uint64) ([]*core.OutputWithID, []*core.Output) {
 	retImp := make([]*core.OutputWithID, 0)
 	retOut := make([]*core.Output, 0)

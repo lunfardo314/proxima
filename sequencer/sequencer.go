@@ -55,7 +55,7 @@ type (
 
 const (
 	PaceMinimumTicks    = 5
-	DefaultMaxFeeInputs = 50
+	DefaultMaxFeeInputs = 20
 )
 
 var traceAll atomic.Bool

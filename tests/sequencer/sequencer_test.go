@@ -309,10 +309,10 @@ func Test1Sequencer(t *testing.T) {
 	})
 	t.Run("1 faucet txs sync", func(t *testing.T) {
 		const (
-			maxSlots              = 10  // 10
-			numFaucetTransactions = 100 // 79 // 200
 			transferAmount        = 100
-			maxFeeInputs          = 20 // sequencer.DefaultMaxFeeInputs
+			numFaucetTransactions = 120 // 79 // 200 // more than 150 does not work with this pace
+			maxFeeInputs          = sequencer.DefaultMaxFeeInputs
+			maxSlots              = numFaucetTransactions/maxFeeInputs + 3 // 10
 		)
 
 		r := initSequencerTestData(t, 1, 1, core.LogicalTimeNow())
@@ -366,10 +366,10 @@ func Test1Sequencer(t *testing.T) {
 	})
 	t.Run("1 faucet txs async", func(t *testing.T) {
 		const (
-			maxSlots              = 20
-			numFaucetTransactions = 300 // 402 // limit
+			numFaucetTransactions = 120 // 300 // 402 // limit
 			transferAmount        = 100
-			maxInputs             = 30
+			maxInputs             = sequencer.DefaultMaxFeeInputs
+			maxSlots              = numFaucetTransactions/maxInputs + 3
 		)
 
 		r := initSequencerTestData(t, 1, 1, core.LogicalTimeNow())
@@ -448,11 +448,11 @@ func Test1Sequencer(t *testing.T) {
 	})
 	t.Run("N faucets async", func(t *testing.T) {
 		const (
-			maxSlots              = 10
 			numFaucets            = 3
 			numFaucetTransactions = 50
 			transferAmount        = 100
-			maxInputs             = 50
+			maxInputs             = sequencer.DefaultMaxFeeInputs
+			maxSlots              = numFaucetTransactions*numFaucets/maxInputs + 3
 		)
 		t.Logf("numFaucets: %d, numFaucetTransactions: %d", numFaucets, numFaucetTransactions)
 		r := initSequencerTestData(t, numFaucets, 1, core.LogicalTimeNow())
