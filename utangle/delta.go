@@ -1,6 +1,7 @@
 package utangle
 
 import (
+	"fmt"
 	"sort"
 
 	"github.com/lunfardo314/proxima/core"
@@ -87,13 +88,18 @@ func (dc *utxoStateDeltaBuffered) consume(wOut WrappedOutput, baselineState ...g
 
 	// there's no corresponding tx in the delta
 	if len(baselineState) > 0 {
-		// output is in the state
 		if baselineState[0].HasUTXO(wOut.DecodeID()) {
+			// has output, can be consumed
 			dc.put(wOut.VID, set.NewByteSet(wOut.Index))
 			return WrappedOutput{}
 		}
+		if baselineState[0].KnowsCommittedTransaction(wOut.VID.ID()) {
+			// no output in the delta, but tx is there, so it cannot be consumed
+			return wOut
+		}
 	}
-	// no baseline state provided or output is not in the baseline state (it is on the vertex)
+
+	// no baseline state provided, recursively include all until virtual transactions
 	if conflict := dc.include(wOut.VID, baselineState...); conflict.VID != nil {
 		return conflict
 	}
@@ -108,8 +114,14 @@ func (dc *utxoStateDeltaBuffered) include(vid *WrappedTx, baselineState ...gener
 	}
 	for _, wOut := range vid.WrappedInputs() {
 		// virtual tx has 0 WrappedInputs
+		stop := false
 		if conflict = dc.consume(wOut, baselineState...); conflict.VID != nil {
-			return
+			stop = true
+		}
+		if stop {
+			if conflict = dc.consume(wOut, baselineState...); conflict.VID != nil {
+				return
+			}
 		}
 	}
 	dc.put(vid, set.EmptyByteSet)
@@ -187,44 +199,6 @@ func (d utxoStateDelta) Coverage() (ret uint64) {
 		})
 	}
 	return
-}
-
-func (d utxoStateDelta) getMutations(targetSlot core.TimeSlot, baselineState general.StateReader) *multistate.Mutations {
-	ret := multistate.NewMutations()
-
-	for vid, consumedSet := range d {
-		if baselineState.KnowsCommittedTransaction(vid.ID()) {
-			// do not produce anything if transaction is already in the state
-			continue
-		}
-		// do not touch virtual transactions
-		vid.Unwrap(UnwrapOptions{
-			Vertex: func(v *Vertex) {
-				// DEL mutations: deleting all inputs of transactions which are in the state
-				v.forEachInputDependency(func(i byte, inp *WrappedTx) bool {
-					inpID := v.Tx.MustInputAt(i)
-					// TODO suboptimal check every input in the state
-					if baselineState.HasUTXO(&inpID) {
-						ret.InsertDelOutputMutation(inpID)
-					}
-					return true
-				})
-				// SET mutations: adding outputs of not-in-the-state state transaction which are not
-				// marked as consumed. If all outputs are consumed, adding nothing
-				v.Tx.ForEachProducedOutput(func(idx byte, o *core.Output, oid *core.OutputID) bool {
-					if !consumedSet.Contains(idx) {
-						ret.InsertAddOutputMutation(*oid, o)
-					}
-					return true
-				})
-				// ADDTX mutation: adding records for all new transactions (not in the state already).
-				// Even of those which have no produced outputs, because all of them have been consumed in the delta
-				ret.InsertAddTxMutation(*v.Tx.ID(), targetSlot)
-			},
-			Orphaned: PanicOrphaned,
-		})
-	}
-	return ret.Sort()
 }
 
 func NewUTXOStateDelta(branchTxID *core.TransactionID) *UTXOStateDelta {
@@ -418,41 +392,110 @@ func (d *UTXOStateDelta) Lines(prefix ...string) *lines.Lines {
 	return ret
 }
 
+func (d utxoStateDelta) getMutations(targetSlot core.TimeSlot, baselineState general.StateReader) *multistate.Mutations {
+	ret := multistate.NewMutations()
+
+	for vid, consumedSet := range d {
+		if baselineState.KnowsCommittedTransaction(vid.ID()) {
+			// do not produce anything if transaction is already in the state
+			continue
+		}
+		// do not touch virtual transactions
+		vid.Unwrap(UnwrapOptions{
+			Vertex: func(v *Vertex) {
+				// DEL mutations: deleting all inputs of transactions which are in the state
+				v.forEachInputDependency(func(i byte, inp *WrappedTx) bool {
+					inpID := v.Tx.MustInputAt(i)
+					// TODO suboptimal check every input in the state
+					if baselineState.HasUTXO(&inpID) {
+						ret.InsertDelOutputMutation(inpID)
+					}
+					return true
+				})
+				// SET mutations: adding outputs of not-in-the-state state transaction which are not
+				// marked as consumed. If all outputs are consumed, adding nothing
+				v.Tx.ForEachProducedOutput(func(idx byte, o *core.Output, oid *core.OutputID) bool {
+					if !consumedSet.Contains(idx) {
+						ret.InsertAddOutputMutation(*oid, o)
+					}
+					return true
+				})
+				// ADDTX mutation: adding records for all new transactions (not in the state already).
+				// Even of those which have no produced outputs, because all of them have been consumed in the delta
+				ret.InsertAddTxMutation(*v.Tx.ID(), targetSlot)
+			},
+			Orphaned: PanicOrphaned,
+		})
+	}
+	return ret.Sort()
+}
+
 const enableCheckDeltaConsistency = true
 
-func (d *UTXOStateDelta) MustCheckConsistency(getStateReader ...func(branchTxID *core.TransactionID) general.StateReader) {
+func (d *UTXOStateDelta) MustCheckConsistency(getStateReader func(branchTxID *core.TransactionID) general.StateReader) {
 	if enableCheckDeltaConsistency {
-		d._mustCheckConsistency(getStateReader...)
+		d._mustCheckConsistency(getStateReader)
 	}
 }
 
-func (d *UTXOStateDelta) _mustCheckConsistency(getStateReader ...func(branchTxID *core.TransactionID) general.StateReader) {
-	stateProvided := len(getStateReader) > 0
+func (d *UTXOStateDelta) _mustCheckConsistency(getStateReader func(branchTxID *core.TransactionID) general.StateReader) {
+	stateProvided := d.branchTxID != nil
 	var stateReader general.StateReader
+	inTheStateSet := set.New[*WrappedTx]()
 	if stateProvided {
-		stateReader = getStateReader[0](d.branchTxID)
+		stateReader = getStateReader(d.branchTxID)
+		for vid := range d.utxoStateDelta {
+			if stateReader.KnowsCommittedTransaction(vid.ID()) {
+				inTheStateSet.Insert(vid)
+			}
+		}
 	}
+
+	var err error
 	for vid := range d.utxoStateDelta {
-		if vid.IsBranchTransaction() {
+		if inTheStateSet.Contains(vid) {
 			continue
 		}
 		txid := vid.ID()
 		vid.Unwrap(UnwrapOptions{
 			Vertex: func(v *Vertex) {
 				v.forEachInputDependency(func(i byte, inp *WrappedTx) bool {
-					if util.HasKey(d.utxoStateDelta, inp) {
+					if inp.IsBranchTransaction() {
 						return true
 					}
-					if stateProvided {
-						if stateReader.KnowsCommittedTransaction(txid) {
-							return true
+					if !util.HasKey(d.utxoStateDelta, inp) {
+						err = fmt.Errorf("MustCheckConsistency: input %s of %s must be in the delta", inp.IDShort(), txid.Short())
+						return false
+					}
+
+					if !stateProvided {
+						return true
+					}
+					if stateReader.KnowsCommittedTransaction(inp.ID()) {
+						oid := v.Tx.MustInputAt(i)
+						if !stateReader.HasUTXO(&oid) {
+							err = fmt.Errorf("outputs %s not in the state", oid.Short())
+							return false
 						}
 					}
-					util.Panicf("MustCheckConsistency: input %s of %s must be in the delta:\n%s",
-						inp.IDShort(), vid.IDShort(), d.lines().String())
 					return true
 				})
 			},
 		})
+		if err != nil {
+			break
+		}
 	}
+	util.Assertf(err == nil, "%s:\n%s\nIn the state IDs: %s", err,
+		func() any { return d.Lines().String() },
+		func() any { return linesIDs(util.Keys(inTheStateSet)...).String() },
+	) // without lazy evaluation too slow
+}
+
+func linesIDs(vids ...*WrappedTx) *lines.Lines {
+	ret := lines.New()
+	for _, vid := range vids {
+		ret.Add(vid.IDShort())
+	}
+	return ret
 }

@@ -307,6 +307,8 @@ func (seq *Sequencer) generateNextMilestoneForTargetTime(targetTs core.LogicalTi
 
 		if time.Now().After(absoluteDeadline) {
 			// too late, was too slow, failed to meet the target deadline
+			seq.log.Warnf("proposal is late for the time target %s. Avg proposal duration %v, num proposals: %d",
+				targetTs.String(), avgProposalDuration, numProposals)
 			return nil, avgProposalDuration, numProposals
 		}
 		time.Sleep(10 * time.Millisecond)

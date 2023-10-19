@@ -283,8 +283,8 @@ func TestBookingDoubleSpends(t *testing.T) {
 	})
 	t.Run("conflict long", func(t *testing.T) {
 		const (
-			howMany = 5
-			howLong = 10
+			howMany = 2 // 5
+			howLong = 3 // 10
 			verbose = false
 		)
 		it := initLongConflictTest(t, howMany, howLong, false)

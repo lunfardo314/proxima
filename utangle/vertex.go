@@ -210,7 +210,7 @@ func (v *Vertex) String() string {
 }
 
 func (v *Vertex) Lines(prefix ...string) *lines.Lines {
-	ctx, err := transaction.ContextFromTransaction(v.Tx, func(i byte) (*core.Output, error) {
+	return v.Tx.Lines(func(i byte) (*core.Output, error) {
 		if v.Inputs[i] == nil {
 			return nil, fmt.Errorf("input #%d not solid", i)
 		}
@@ -219,11 +219,7 @@ func (v *Vertex) Lines(prefix ...string) *lines.Lines {
 			return nil, fmt.Errorf("input #%d: %v", i, err)
 		}
 		return v.Inputs[i].OutputAt(inpOid.Index())
-	})
-	if err != nil {
-		return lines.New(prefix...).Add("failed to create context of %s : %v", v.Tx.IDShort(), err)
-	}
-	return ctx.Lines(prefix...)
+	}, prefix...)
 }
 
 func (v *Vertex) ConsumedInputsToString() string {

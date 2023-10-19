@@ -25,14 +25,6 @@ type (
 		StartOutput   utangle.WrappedOutput
 	}
 
-	// StartupTxOptions used for testing, to create interim sequencer milestone
-	//StartupTxOptions struct {
-	//	ChainOutput        *utangle.WrappedOutput
-	//	EndorseBranch      *core.TransactionID
-	//	TagAlongSequencers []core.ChainID
-	//	TagAlongFee        uint64
-	//}
-
 	ConfigOpt func(options *ConfigOptions)
 )
 

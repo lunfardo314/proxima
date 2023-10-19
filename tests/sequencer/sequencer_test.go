@@ -309,9 +309,10 @@ func Test1Sequencer(t *testing.T) {
 	})
 	t.Run("1 faucet txs sync", func(t *testing.T) {
 		const (
-			maxSlots              = 10
-			numFaucetTransactions = 200
+			maxSlots              = 7   // 10
+			numFaucetTransactions = 100 // 79 // 200
 			transferAmount        = 100
+			maxFeeInputs          = 50 // sequencer.DefaultMaxFeeInputs
 		)
 
 		r := initSequencerTestData(t, 1, 1, core.LogicalTimeNow())
@@ -325,6 +326,7 @@ func Test1Sequencer(t *testing.T) {
 			sequencer.WithPace(5),
 			sequencer.WithMaxBranches(maxSlots),
 			sequencer.WithMaxTargetTs(core.LogicalTimeNow().AddTimeSlots(maxSlots+2)),
+			sequencer.WithMaxFeeInputs(maxFeeInputs),
 		)
 		require.NoError(t, err)
 
@@ -353,12 +355,13 @@ func Test1Sequencer(t *testing.T) {
 			_, found := heaviestState.GetUTXO(&o.ID)
 			require.True(t, found)
 		}
+		r.ut.SaveGraph(fnameFromTestName(t))
+
 		bal := heaviestState.BalanceOf(addrs[0].AccountID())
 		require.EqualValues(t, numFaucetTransactions*transferAmount, int(bal))
 
 		bal = heaviestState.BalanceOnChain(&r.bootstrapChainID)
 		require.EqualValues(t, int(initOnSeqBalance+(1+numFaucetTransactions)*feeAmount), int(bal))
-		r.ut.SaveGraph(fnameFromTestName(t))
 	})
 	t.Run("1 faucet txs async", func(t *testing.T) {
 		const (

@@ -183,16 +183,19 @@ func (mf *milestoneFactory) selectFeeInputs(targetTs core.LogicalTime, seqVIDs .
 	util.Assertf(len(seqVIDs) > 0, "len(seqVIDs)>0")
 
 	targetDelta, conflict := mf.tangle.MergeVertexDeltas(seqVIDs...)
-	targetDelta.MustCheckConsistency()
+	targetDelta.MustCheckConsistency(mf.tangle.MustGetStateReader)
 
 	if conflict != nil {
 		return nil, conflict
 	}
-	selected := mf.tipPool.filterAndSortOutputs(func(wOut utangle.WrappedOutput) bool {
-		if !core.ValidTimePace(wOut.Timestamp(), targetTs) {
-			return false
-		}
 
+	// pre-selects not orphaned and with suitable timestamp outputs, sorts by timestamp ascending
+	selected := mf.tipPool.filterAndSortOutputs(func(wOut utangle.WrappedOutput) bool {
+		return core.ValidTimePace(wOut.Timestamp(), targetTs)
+	})
+
+	// filters outputs which can be merged into the target delta but no more than maxFeeInputs limit
+	selected = util.FilterSlice(selected, func(wOut utangle.WrappedOutput) bool {
 		wOutDelta := wOut.VID.GetUTXOStateDelta()
 
 		conflict = targetDelta.MergeDeltas(mf.tangle.MustGetStateReader, wOutDelta)
@@ -200,12 +203,13 @@ func (mf *milestoneFactory) selectFeeInputs(targetTs core.LogicalTime, seqVIDs .
 			return false
 		}
 
-		targetDelta.MustCheckConsistency()
+		targetDelta.MustCheckConsistency(mf.tangle.MustGetStateReader)
 		conflictOut := targetDelta.Consume(wOut, mf.tangle.MustGetStateReader)
 
-		targetDelta.MustCheckConsistency()
+		targetDelta.MustCheckConsistency(mf.tangle.MustGetStateReader)
 		return conflictOut.VID == nil
-	})
+	}, mf.maxFeeInputs)
+
 	return selected, nil
 }
 

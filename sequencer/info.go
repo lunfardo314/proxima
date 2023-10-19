@@ -76,6 +76,10 @@ func (seq *Sequencer) LogMilestoneSubmitDefault(wOut *utangle.WrappedOutput) {
 	if msType == "MS" {
 		seq.log.Infof("MS DELTA:\n%s", wOut.VID.GetUTXOStateDelta().Lines("     ").String())
 	}
+	const printTx = false
+	if printTx {
+		seq.log.Infof("=============================\n%s", wOut.VID.Lines().String())
+	}
 }
 
 func (seq *Sequencer) LogStats() {

@@ -12,6 +12,7 @@ import (
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lazybytes"
+	"github.com/lunfardo314/proxima/util/lines"
 	"github.com/lunfardo314/unitrie/common"
 	"golang.org/x/crypto/blake2b"
 	"golang.org/x/crypto/ed25519"
@@ -827,4 +828,14 @@ func (tx *Transaction) StateMutations() *multistate.Mutations {
 		return true
 	})
 	return ret
+}
+
+func (tx *Transaction) Lines(inputLoaderByIndex func(i byte) (*core.Output, error), prefix ...string) *lines.Lines {
+	ctx, err := ContextFromTransaction(tx, inputLoaderByIndex)
+	if err != nil {
+		ret := lines.New(prefix...)
+		ret.Add("can't create context of transaction %s: '%v'", tx.IDShort(), err)
+		return ret
+	}
+	return ctx.Lines(prefix...)
 }
