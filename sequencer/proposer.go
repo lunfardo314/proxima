@@ -163,8 +163,10 @@ func (c *proposerTaskGeneric) assessAndAcceptProposal(tx *transaction.Transactio
 		elapsed:           time.Since(startTime),
 		makeVertexElapsed: time.Since(makeVertexStartTime),
 		proposedBy:        taskName,
+		numInputs:         tx.NumInputs(),
 	}
 	if rejectReason := c.placeProposalIfRelevant(msData); rejectReason != "" {
+		c.setTraceNAhead(1)
 		c.trace(rejectReason)
 	}
 }
@@ -176,6 +178,9 @@ func (c *proposerTaskGeneric) storeProposalDuration() {
 func (c *proposerTaskGeneric) placeProposalIfRelevant(mdProposed *milestoneWithData) string {
 	c.factory.proposal.mutex.Lock()
 	defer c.factory.proposal.mutex.Unlock()
+
+	c.setTraceNAhead(1)
+	c.trace("proposed %s: numIN: %d, elapsed: %v", mdProposed.proposedBy, mdProposed.numInputs, mdProposed.elapsed)
 
 	if c.factory.proposal.targetTs == core.NilLogicalTime {
 		return fmt.Sprintf("%s SKIPPED: target is nil", mdProposed.IDShort())

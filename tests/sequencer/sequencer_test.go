@@ -309,10 +309,10 @@ func Test1Sequencer(t *testing.T) {
 	})
 	t.Run("1 faucet txs sync", func(t *testing.T) {
 		const (
-			maxSlots              = 7   // 10
+			maxSlots              = 10  // 10
 			numFaucetTransactions = 100 // 79 // 200
 			transferAmount        = 100
-			maxFeeInputs          = 50 // sequencer.DefaultMaxFeeInputs
+			maxFeeInputs          = 20 // sequencer.DefaultMaxFeeInputs
 		)
 
 		r := initSequencerTestData(t, 1, 1, core.LogicalTimeNow())
@@ -320,6 +320,7 @@ func Test1Sequencer(t *testing.T) {
 		r.wrk.Start()
 
 		sequencer.SetTraceAll(false)
+		sequencer.SetTraceProposer(sequencer.BaseProposerName, false)
 
 		seq, err := sequencer.StartNew(r.wrk, r.bootstrapChainID, r.originControllerPrivateKey,
 			sequencer.WithName("boot"),

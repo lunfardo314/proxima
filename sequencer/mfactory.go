@@ -40,6 +40,7 @@ type (
 		elapsed           time.Duration
 		makeVertexElapsed time.Duration
 		proposedBy        string
+		numInputs         int
 	}
 
 	latestMilestoneProposal struct {
