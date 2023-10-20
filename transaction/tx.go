@@ -827,6 +827,7 @@ func (tx *Transaction) StateMutations() *multistate.Mutations {
 		ret.InsertAddOutputMutation(*oid, o)
 		return true
 	})
+	ret.InsertAddTxMutation(*tx.ID(), tx.TimeSlot())
 	return ret
 }
 

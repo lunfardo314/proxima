@@ -61,6 +61,7 @@ func genesisUpdateMutations(genesisOut, genesisStemOut *core.OutputWithID) *mult
 	ret := multistate.NewMutations()
 	ret.InsertAddOutputMutation(genesisOut.ID, genesisOut.Output)
 	ret.InsertAddOutputMutation(genesisStemOut.ID, genesisStemOut.Output)
+	ret.InsertAddTxMutation(*InitialSupplyTransactionID(genesisOut.ID.TimeSlot()), genesisOut.ID.TimeSlot())
 	return ret
 }
 
@@ -80,10 +81,6 @@ func StemOutputID(e core.TimeSlot) (ret core.OutputID) {
 	ret = core.NewOutputID(InitialSupplyTransactionID(e), StemOutputIndex)
 	return
 }
-
-const (
-	MinimumBalanceOnBoostrapSequencer = core.MinimumAmountOnSequencer
-)
 
 // ScanGenesisState TODO more checks
 func ScanGenesisState(stateStore general.StateStore) (*StateIdentityData, common.VCommitment, error) {

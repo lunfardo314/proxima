@@ -239,7 +239,8 @@ func (d *UTXOStateDelta) Consume(wOut WrappedOutput, getBaselineState func(branc
 // sortDeltas sorts deltas descending by baselineBranches, the latest are on top (if not nil)
 // checks for conflicting baseline states
 // the first in the sorted list will be the latest one, the others will be merged into it
-func sortDeltas(deltas ...*UTXOStateDelta) ([]*UTXOStateDelta, bool) {
+func sortDeltas(deltas ...*UTXOStateDelta) []*UTXOStateDelta {
+	util.Assertf(len(deltas) > 0, "len(deltas)>0")
 	ret := util.CloneArglistShallow(deltas...)
 	sort.Slice(ret, func(i, j int) bool {
 		bi := ret[i].baselineVID
@@ -252,25 +253,16 @@ func sortDeltas(deltas ...*UTXOStateDelta) ([]*UTXOStateDelta, bool) {
 		}
 		return false
 	})
+	return ret
+}
 
-	// check conflicting branches
-	for i, d := range ret {
-		if d.baselineVID == nil {
-			break
-		}
-		if i+1 >= len(ret) {
-			break
-		}
-		d1 := ret[i+1]
-		if d1.baselineVID == nil {
-			break
-		}
-		if d.baselineVID.TimeSlot() == d1.baselineVID.TimeSlot() && d.baselineVID != d1.baselineVID {
-			// two different branches on the same slot conflicts
-			return nil, false
+func branchesConsistentWithTheState(stateReader general.StateReader, deltas ...*UTXOStateDelta) bool {
+	for _, d := range deltas {
+		if d.baselineVID != nil && !stateReader.KnowsCommittedTransaction(d.baselineVID.ID()) {
+			return false
 		}
 	}
-	return ret, true
+	return true
 }
 
 // MergeDeltas returns new copy of merged deltas. Arguments are not touched
@@ -283,16 +275,17 @@ func MergeDeltas(getStateReader func(branchTxID *core.TransactionID) general.Sta
 	}
 
 	// find baseline state
-	deltasSorted, ok := sortDeltas(deltas...)
-	if !ok {
-		return nil, &WrappedOutput{}
-	}
+	deltasSorted := sortDeltas(deltas...)
 
 	// deltasSorted are all non-conflicting and sorted descending by slot with nil-branches at the end
 	var baselineStateArg []general.StateReader
 	latestBranchVID := deltasSorted[0].baselineVID
 	if latestBranchVID != nil {
-		baselineStateArg = util.List(getStateReader(latestBranchVID.ID()))
+		stateReader := getStateReader(latestBranchVID.ID())
+		if !branchesConsistentWithTheState(stateReader, deltasSorted...) {
+			return nil, &WrappedOutput{}
+		}
+		baselineStateArg = util.List(stateReader)
 	}
 
 	var conflict WrappedOutput
@@ -336,21 +329,17 @@ func (d *UTXOStateDelta) MergeDeltas(getStateReader func(branchTxID *core.Transa
 	}
 
 	// d.baselineVID must be a dominating/latest branch
-	deltasSorted, ok := sortDeltas(deltas...)
-	if !ok {
-		return &WrappedOutput{}
-	}
-	if deltasSorted[0].baselineVID != d.baselineVID && deltasSorted[0].baselineVID != nil {
-		if deltasSorted[0].baselineVID.TimeSlot() > d.baselineVID.TimeSlot() {
-			return &WrappedOutput{}
-		}
-	}
+	deltasSorted := sortDeltas(deltas...)
 
 	// deltasSorted are all non-conflicting and sorted descending by slot with nil-branches at the end
 	var baselineStateArg []general.StateReader
 	latestBranchVID := d.baselineVID
 	if latestBranchVID != nil {
-		baselineStateArg = util.List(getStateReader(latestBranchVID.ID()))
+		stateReader := getStateReader(d.baselineVID.ID())
+		if !branchesConsistentWithTheState(stateReader, deltasSorted...) {
+			return &WrappedOutput{}
+		}
+		baselineStateArg = util.List(stateReader)
 	}
 
 	var conflict WrappedOutput
@@ -499,5 +488,14 @@ func linesIDs(vids ...*WrappedTx) *lines.Lines {
 	for _, vid := range vids {
 		ret.Add(vid.IDShort())
 	}
+	return ret
+}
+
+func LinesDeltaMulti(deltas ...*UTXOStateDelta) *lines.Lines {
+	ret := lines.New().Add("===== multi deltas START")
+	for _, d := range deltas {
+		ret.Append(d.Lines("   "))
+	}
+	ret = ret.Add("===== multi deltas END")
 	return ret
 }

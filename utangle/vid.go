@@ -270,14 +270,13 @@ func (vid *WrappedTx) MustSequencerID() core.ChainID {
 	return ret
 }
 
-func (vid *WrappedTx) SequencerPredecessor() *WrappedTx {
-	util.Assertf(vid.IsSequencerMilestone(), "SequencerPredecessor: %s is not a sequencer milestone", func() any { return vid.IDShort() })
-
-	var ret *WrappedTx
+func (vid *WrappedTx) SequencerPredecessor() (ret *WrappedTx) {
 	vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
-		ret = v.Inputs[v.Tx.SequencerTransactionData().SequencerOutputData.ChainConstraint.PredecessorInputIndex]
+		if seqData := v.Tx.SequencerTransactionData(); seqData != nil {
+			ret = v.Inputs[seqData.SequencerOutputData.ChainConstraint.PredecessorInputIndex]
+		}
 	}})
-	return ret
+	return
 }
 
 // SequencerPastPath collects all path of the chain back to the first not nil (wrapped tx)

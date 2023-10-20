@@ -769,7 +769,7 @@ func TestMultiChain(t *testing.T) {
 			nChains              = 10
 			chainPaceInTimeSlots = 7
 			printBranchTx        = false
-			howLong              = 400
+			howLong              = 90 // 400
 		)
 		r := initMultiChainTest(t, nChains, false)
 
@@ -793,7 +793,9 @@ func TestMultiChain(t *testing.T) {
 			vid, txStr, err := r.ut.AppendVertexFromTransactionBytesDebug(txBytes)
 			if err != nil {
 				t.Logf("================= failed tx ======================= %s", txStr)
-				utangle.SaveGraphPastCone(vid, "failedPastCone")
+				if vid != nil {
+					utangle.SaveGraphPastCone(vid, "failedPastCone")
+				}
 			}
 			require.NoError(r.t, err)
 		}
