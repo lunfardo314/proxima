@@ -95,8 +95,8 @@ func (c *proposerTaskGeneric) startProposingTime() {
 	c.startTime = time.Now()
 }
 
-func (c *proposerTaskGeneric) selectFeeInputs(ownMs *utangle.WrappedTx, seqVIDs ...*utangle.WrappedTx) ([]utangle.WrappedOutput, *utangle.WrappedOutput) {
-	return c.factory.selectFeeInputs(c.targetTs, ownMs, seqVIDs...)
+func (c *proposerTaskGeneric) selectInputs(ownMs utangle.WrappedOutput, seqVIDs ...*utangle.WrappedTx) ([]utangle.WrappedOutput, *utangle.WrappedOutput) {
+	return c.factory.selectInputs(c.targetTs, ownMs, seqVIDs...)
 }
 
 func (c *proposerTaskGeneric) makeMilestone(chainIn, stemIn *utangle.WrappedOutput, feeInputs []utangle.WrappedOutput, endorse []*utangle.WrappedTx) *transaction.Transaction {

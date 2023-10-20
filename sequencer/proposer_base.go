@@ -67,7 +67,7 @@ func (b *baseProposer) proposeBase() (*transaction.Transaction, bool) {
 	}
 	// non-branch
 
-	feeOutputsToConsume, conflict := b.selectFeeInputs(latestMilestone.VID)
+	feeOutputsToConsume, conflict := b.selectInputs(latestMilestone)
 	util.Assertf(conflict == nil, "unexpected conflict")
 
 	b.trace("making ordinary milestone")

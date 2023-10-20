@@ -73,10 +73,7 @@ func (b *backtrackProposer) generateCandidate(extend utangle.WrappedOutput) *tra
 	b.trace("trying to extend %s with endorsement target %s (ms %s)",
 		extend.IDShort(), endorseSeqID.VeryShort(), b.endorse.IDShort())
 
-	if extend.VID.IsBranchTransaction() && b.endorse.IsBranchTransaction() {
-		b.trace("======= suspected problem with extend %s and endorse %s", extend.VID.IDShort(), b.endorse.IDShort())
-	}
-	feeOutputsToConsume, conflict := b.selectFeeInputs(extend.VID, b.endorse)
+	feeOutputsToConsume, conflict := b.selectInputs(extend, b.endorse)
 	if conflict != nil {
 		b.trace("CANNOT extend %s with endorsement target %s due to conflict %s",
 			extend.IDShort(), b.endorse.IDShort(), conflict.DecodeID().Short())

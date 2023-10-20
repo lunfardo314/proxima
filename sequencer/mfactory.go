@@ -208,8 +208,8 @@ func (mf *milestoneFactory) isConsumedInThePastPath(wOut utangle.WrappedOutput, 
 	return mf.ownMilestones[ms].consumedInThePastPath.Contains(wOut)
 }
 
-func (mf *milestoneFactory) selectFeeInputs(targetTs core.LogicalTime, ownMs *utangle.WrappedTx, otherSeqVIDs ...*utangle.WrappedTx) ([]utangle.WrappedOutput, *utangle.WrappedOutput) {
-	allSeqVIDs := append(util.CloneArglistShallow(otherSeqVIDs...), ownMs)
+func (mf *milestoneFactory) selectInputs(targetTs core.LogicalTime, ownMs utangle.WrappedOutput, otherSeqVIDs ...*utangle.WrappedTx) ([]utangle.WrappedOutput, *utangle.WrappedOutput) {
+	allSeqVIDs := append(util.CloneArglistShallow(otherSeqVIDs...), ownMs.VID)
 
 	targetDelta, conflict := mf.tangle.MergeVertexDeltas(allSeqVIDs...)
 	if conflict != nil {
@@ -217,12 +217,17 @@ func (mf *milestoneFactory) selectFeeInputs(targetTs core.LogicalTime, ownMs *ut
 	}
 	targetDelta.MustCheckConsistency(mf.tangle.MustGetStateReader)
 
+	// check if ownMs can be consumed in the target delta
+	if conflictOut := targetDelta.Consume(ownMs, mf.tangle.MustGetStateReader); conflictOut.VID != nil {
+		return nil, &conflictOut
+	}
+
 	// pre-selects not orphaned and with suitable timestamp outputs, sorts by timestamp ascending
 	selected := mf.tipPool.filterAndSortOutputs(func(wOut utangle.WrappedOutput) bool {
 		if !core.ValidTimePace(wOut.Timestamp(), targetTs) {
 			return false
 		}
-		if mf.isConsumedInThePastPath(wOut, ownMs) {
+		if mf.isConsumedInThePastPath(wOut, ownMs.VID) {
 			// fast filtering out already consumed outputs
 			return false
 		}

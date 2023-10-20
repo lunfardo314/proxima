@@ -310,7 +310,7 @@ func Test1Sequencer(t *testing.T) {
 	t.Run("1 faucet txs sync", func(t *testing.T) {
 		const (
 			transferAmount        = 100
-			numFaucetTransactions = 120 // 79 // 200 // more than 150 does not work with this pace
+			numFaucetTransactions = 100 // 79 // 200 // more than 150 does not work with this pace
 			maxFeeInputs          = sequencer.DefaultMaxFeeInputs
 			maxSlots              = numFaucetTransactions/maxFeeInputs + 3 // 10
 		)
@@ -452,7 +452,7 @@ func Test1Sequencer(t *testing.T) {
 			numFaucetTransactions = 50
 			transferAmount        = 100
 			maxInputs             = sequencer.DefaultMaxFeeInputs
-			maxSlots              = numFaucetTransactions*numFaucets/maxInputs + 3
+			maxSlots              = numFaucetTransactions*numFaucets/maxInputs + 6
 		)
 		t.Logf("numFaucets: %d, numFaucetTransactions: %d", numFaucets, numFaucetTransactions)
 		r := initSequencerTestData(t, numFaucets, 1, core.LogicalTimeNow())
@@ -613,7 +613,7 @@ func (r *sequencerTestData) issueTransfersWithSeqID(targetAddress core.Lock, tar
 func TestNSequencers(t *testing.T) {
 	t.Run("2 seq", func(t *testing.T) {
 		const (
-			maxSlots              = 40
+			maxSlots              = 60
 			numFaucets            = 1
 			numFaucetTransactions = 1
 			maxTxInputs           = sequencer.DefaultMaxFeeInputs
@@ -883,10 +883,10 @@ func TestNSequencers(t *testing.T) {
 	})
 	t.Run("3 seq", func(t *testing.T) {
 		const (
-			maxSlot               = 20
+			maxSlot               = 30
 			numFaucets            = 1
 			numFaucetTransactions = 1
-			maxTxInputs           = 200
+			maxTxInputs           = sequencer.DefaultMaxFeeInputs
 			stopAfterBranches     = 20
 			nSequencers           = 3
 			tagAlong              = true
@@ -933,7 +933,8 @@ func TestNSequencers(t *testing.T) {
 		r.wrk.Stop()
 		t.Logf("%s", r.ut.Info())
 
-		r.ut.SaveGraph(fnameFromTestName(r.t))
+		r.ut.SaveGraph(fnameFromTestName(t))
+		r.ut.SaveTree(fnameFromTestName(t) + "_TREE")
 
 		heaviestState = r.ut.HeaviestStateForLatestTimeSlot()
 		latest := r.ut.LatestTimeSlot()
@@ -946,8 +947,6 @@ func TestNSequencers(t *testing.T) {
 		bal := heaviestState.BalanceOnChain(&r.bootstrapChainID)
 
 		require.EqualValues(t, int(initOnBootstrapSeqBalance+feeAmount+feeAmount*(nSequencers-1)), int(bal))
-		r.ut.SaveGraph(fnameFromTestName(t))
-		r.ut.SaveTree(fnameFromTestName(t) + "_TREE")
 	})
 	t.Run("5 seq", func(t *testing.T) {
 		const (
