@@ -181,7 +181,7 @@ func (ut *UTXOTangle) fetchAndWrapBranch(oid *core.OutputID) (WrappedOutput, boo
 func (v *Vertex) FetchMissingDependencies(ut *UTXOTangle) error {
 	v.fetchMissingEndorsements(ut)
 
-	if v.StateDelta.branchTxID == nil {
+	if v.StateDelta.baselineVID == nil {
 		if err := v.fetchMissingInputs(ut); err != nil {
 			return err
 		}
@@ -189,15 +189,15 @@ func (v *Vertex) FetchMissingDependencies(ut *UTXOTangle) error {
 
 	if v.Tx.IsSequencerMilestone() {
 		// baseline state must ultimately be determined for milestone
-		baselineBranchID, conflict := v.getInputBaselineBranchID()
+		baselineBranchID, conflict := v.getInputBaselineBranchVID()
 
 		if conflict {
 			return fmt.Errorf("conflicting branches among inputs of %s", v.Tx.IDShort())
 		}
-		v.StateDelta.branchTxID = baselineBranchID
+		v.StateDelta.baselineVID = baselineBranchID
 		if !v.IsSolid() && baselineBranchID != nil {
 			// if still not solid, try to fetch remaining inputs with baseline state
-			if err := v.fetchMissingInputs(ut, ut.MustGetSugaredStateReader(baselineBranchID)); err != nil {
+			if err := v.fetchMissingInputs(ut, ut.MustGetSugaredStateReader(baselineBranchID.ID())); err != nil {
 				return err
 			}
 		}
@@ -243,40 +243,40 @@ func (v *Vertex) fetchMissingEndorsements(ut *UTXOTangle) {
 	})
 }
 
-// getInputBaselineBranchID scans known (solid) inputs and extracts baseline branch ID. Returns:
+// getInputBaselineBranchVID scans known (solid) inputs and extracts baseline branch ID. Returns:
 // - conflict == true if inputs belongs to conflicting branches
 // - nil, false if known inputs does not give a common baseline (yet)
 // - txid, false if known inputs has latest branchID (even if not all solid yet)
-func (v *Vertex) getInputBaselineBranchID() (ret *core.TransactionID, conflict bool) {
-	branchIDsBySlot := make(map[core.TimeSlot]*core.TransactionID)
+func (v *Vertex) getInputBaselineBranchVID() (ret *WrappedTx, conflict bool) {
+	branchVIDsBySlot := make(map[core.TimeSlot]*WrappedTx)
 	v.forEachDependency(func(inp *WrappedTx) bool {
 		if inp == nil {
 			return true
 		}
-		branchTxID := inp.DeltaBranchID()
-		if branchTxID == nil {
+		branchVID := inp.DeltaBranchVID()
+		if branchVID == nil {
 			return true
 		}
-		slot := branchTxID.TimeSlot()
-		if branchTxID1, already := branchIDsBySlot[slot]; already {
-			if *branchTxID != *branchTxID1 {
+		slot := branchVID.TimeSlot()
+		if branchVID1, already := branchVIDsBySlot[slot]; already {
+			if branchVID != branchVID1 {
 				// two different branches in the same slot -> conflict
 				conflict = true
 				return false
 			}
 		} else {
-			branchIDsBySlot[slot] = branchTxID
+			branchVIDsBySlot[slot] = branchVID
 		}
 		return true
 	})
 	if conflict {
 		return
 	}
-	if len(branchIDsBySlot) == 0 {
+	if len(branchVIDsBySlot) == 0 {
 		return
 	}
-	ret = util.Maximum(util.Values(branchIDsBySlot), func(branchTxID1, branchTxID2 *core.TransactionID) bool {
-		return branchTxID1.TimeSlot() < branchTxID2.TimeSlot()
+	ret = util.Maximum(util.Values(branchVIDsBySlot), func(branchVID1, branchVID2 *WrappedTx) bool {
+		return branchVID1.TimeSlot() < branchVID2.TimeSlot()
 	})
 	return
 }

@@ -29,7 +29,7 @@ type (
 		// - if root != nil, delta is root-bound or state-bound, i.e. it is linked to a particular state.
 		//   It can only be applied to that state, and it is guaranteed that it will always succeed
 		// - if root == nil delta is not dependent on a particular baseline state and can be applied to any (with or without success)
-		branchTxID *core.TransactionID
+		baselineVID *WrappedTx
 		// ledger coverage of the baseline state
 		baselineCoverage uint64
 	}
@@ -201,25 +201,27 @@ func (d utxoStateDelta) Coverage() (ret uint64) {
 	return
 }
 
-func NewUTXOStateDelta(branchTxID *core.TransactionID) *UTXOStateDelta {
+func NewUTXOStateDelta(baselineVID *WrappedTx) *UTXOStateDelta {
+	util.Assertf(baselineVID == nil || baselineVID.IsBranchTransaction(), "baselineVID==nil||baselineVID.IsBranchTransaction()")
+
 	return &UTXOStateDelta{
 		utxoStateDelta: make(utxoStateDelta),
-		branchTxID:     branchTxID,
+		baselineVID:    baselineVID,
 	}
 }
 
 func (d *UTXOStateDelta) Clone() *UTXOStateDelta {
 	return &UTXOStateDelta{
 		utxoStateDelta: d.utxoStateDelta.clone(),
-		branchTxID:     d.branchTxID,
+		baselineVID:    d.baselineVID,
 	}
 }
 
 // Include inconsistent target delta in case of conflict
 func (d *UTXOStateDelta) Include(vid *WrappedTx, getBaselineState func(branchTxID *core.TransactionID) general.StateReader) (ret WrappedOutput) {
 	dc := makeBuffered(d.utxoStateDelta, false) // no cached
-	if d.branchTxID != nil {
-		return dc.include(vid, getBaselineState(d.branchTxID))
+	if d.baselineVID != nil {
+		return dc.include(vid, getBaselineState(d.baselineVID.ID()))
 	}
 	return dc.include(vid)
 }
@@ -228,8 +230,8 @@ func (d *UTXOStateDelta) Include(vid *WrappedTx, getBaselineState func(branchTxI
 func (d *UTXOStateDelta) Consume(wOut WrappedOutput, getBaselineState func(branchTxID *core.TransactionID) general.StateReader) WrappedOutput {
 	// do not buffer it because it mutates delta on in case of success
 	dc := makeBuffered(d.utxoStateDelta, false)
-	if d.branchTxID != nil {
-		return dc.consume(wOut, getBaselineState(d.branchTxID))
+	if d.baselineVID != nil {
+		return dc.consume(wOut, getBaselineState(d.baselineVID.ID()))
 	}
 	return dc.consume(wOut)
 }
@@ -240,8 +242,8 @@ func (d *UTXOStateDelta) Consume(wOut WrappedOutput, getBaselineState func(branc
 func sortDeltas(deltas ...*UTXOStateDelta) ([]*UTXOStateDelta, bool) {
 	ret := util.CloneArglistShallow(deltas...)
 	sort.Slice(ret, func(i, j int) bool {
-		bi := ret[i].branchTxID
-		bj := ret[j].branchTxID
+		bi := ret[i].baselineVID
+		bj := ret[j].baselineVID
 		switch {
 		case bi != nil && bj == nil:
 			return true
@@ -253,17 +255,17 @@ func sortDeltas(deltas ...*UTXOStateDelta) ([]*UTXOStateDelta, bool) {
 
 	// check conflicting branches
 	for i, d := range ret {
-		if d.branchTxID == nil {
+		if d.baselineVID == nil {
 			break
 		}
 		if i+1 >= len(ret) {
 			break
 		}
 		d1 := ret[i+1]
-		if d1.branchTxID == nil {
+		if d1.baselineVID == nil {
 			break
 		}
-		if d.branchTxID.TimeSlot() == d1.branchTxID.TimeSlot() && *d.branchTxID != *d1.branchTxID {
+		if d.baselineVID.TimeSlot() == d1.baselineVID.TimeSlot() && d.baselineVID != d1.baselineVID {
 			// two different branches on the same slot conflicts
 			return nil, false
 		}
@@ -288,9 +290,9 @@ func MergeDeltas(getStateReader func(branchTxID *core.TransactionID) general.Sta
 
 	// deltasSorted are all non-conflicting and sorted descending by slot with nil-branches at the end
 	var baselineStateArg []general.StateReader
-	latestBranchTxID := deltasSorted[0].branchTxID
-	if latestBranchTxID != nil {
-		baselineStateArg = util.List(getStateReader(latestBranchTxID))
+	latestBranchVID := deltasSorted[0].baselineVID
+	if latestBranchVID != nil {
+		baselineStateArg = util.List(getStateReader(latestBranchVID.ID()))
 	}
 
 	var conflict WrappedOutput
@@ -311,7 +313,7 @@ func MergeDeltas(getStateReader func(branchTxID *core.TransactionID) general.Sta
 
 	return &UTXOStateDelta{
 		utxoStateDelta: ret,
-		branchTxID:     latestBranchTxID,
+		baselineVID:    latestBranchVID,
 	}, nil
 }
 
@@ -329,26 +331,26 @@ func (d *UTXOStateDelta) MergeDeltas(getStateReader func(branchTxID *core.Transa
 	if len(deltas) == 0 {
 		return nil
 	}
-	if d.branchTxID == nil {
+	if d.baselineVID == nil {
 		return &WrappedOutput{} // cannot merge into not-state bound delta
 	}
 
-	// d.branchTxID must be a dominating/latest branch
+	// d.baselineVID must be a dominating/latest branch
 	deltasSorted, ok := sortDeltas(deltas...)
 	if !ok {
 		return &WrappedOutput{}
 	}
-	if deltasSorted[0].branchTxID != d.branchTxID && deltasSorted[0].branchTxID != nil {
-		if deltasSorted[0].branchTxID.TimeSlot() > d.branchTxID.TimeSlot() {
+	if deltasSorted[0].baselineVID != d.baselineVID && deltasSorted[0].baselineVID != nil {
+		if deltasSorted[0].baselineVID.TimeSlot() > d.baselineVID.TimeSlot() {
 			return &WrappedOutput{}
 		}
 	}
 
 	// deltasSorted are all non-conflicting and sorted descending by slot with nil-branches at the end
 	var baselineStateArg []general.StateReader
-	latestBranchTxID := d.branchTxID
-	if latestBranchTxID != nil {
-		baselineStateArg = util.List(getStateReader(latestBranchTxID))
+	latestBranchVID := d.baselineVID
+	if latestBranchVID != nil {
+		baselineStateArg = util.List(getStateReader(latestBranchVID.ID()))
 	}
 
 	var conflict WrappedOutput
@@ -377,10 +379,10 @@ func (d *UTXOStateDelta) MergeVertexDeltas(getStateReader func(branchTxID *core.
 func (d *UTXOStateDelta) Lines(prefix ...string) *lines.Lines {
 	ret := lines.New(prefix...)
 	var baseline string
-	if d.branchTxID == nil {
+	if d.baselineVID == nil {
 		baseline = "(none)"
 	} else {
-		baseline = d.branchTxID.Short()
+		baseline = d.baselineVID.IDShort()
 	}
 	ret.Add("------ START delta. Baseline: %s", baseline)
 	prefix1 := ""
@@ -439,11 +441,11 @@ func (d *UTXOStateDelta) MustCheckConsistency(getStateReader func(branchTxID *co
 }
 
 func (d *UTXOStateDelta) _mustCheckConsistency(getStateReader func(branchTxID *core.TransactionID) general.StateReader) {
-	stateProvided := d.branchTxID != nil
+	stateProvided := d.baselineVID != nil
 	var stateReader general.StateReader
 	inTheStateSet := set.New[*WrappedTx]()
 	if stateProvided {
-		stateReader = getStateReader(d.branchTxID)
+		stateReader = getStateReader(d.baselineVID.ID())
 		for vid := range d.utxoStateDelta {
 			if stateReader.KnowsCommittedTransaction(vid.ID()) {
 				inTheStateSet.Insert(vid)

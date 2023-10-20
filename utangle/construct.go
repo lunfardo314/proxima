@@ -183,8 +183,8 @@ func (ut *UTXOTangle) _finalizeBranch(newBranchVertex *WrappedTx) error {
 	coverage := ut.LedgerCoverage(newBranchVertex)
 	newBranchVertex.Unwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
-			util.Assertf(v.StateDelta.branchTxID != nil, "expected not nil baseline tx in %s", func() any { return v.Tx.IDShort() })
-			upd, err1 := ut.GetStateUpdatable(v.StateDelta.branchTxID)
+			util.Assertf(v.StateDelta.baselineVID != nil, "expected not nil baseline tx in %s", func() any { return v.Tx.IDShort() })
+			upd, err1 := ut.GetStateUpdatable(v.StateDelta.baselineVID.ID())
 			if err1 != nil {
 				err = err1
 				return

@@ -332,20 +332,20 @@ func (vid *WrappedTx) StemOutput() *WrappedOutput {
 }
 
 func (vid *WrappedTx) BaselineStateOfSequencerMilestone(ut *UTXOTangle) (general.IndexedStateReader, error) {
-	branchTxID := vid.DeltaBranchID()
+	branchTxID := vid.DeltaBranchVID()
 	if branchTxID == nil {
 		return nil, fmt.Errorf("branch transaction not available")
 	}
-	return ut.GetStateReader(branchTxID)
+	return ut.GetStateReader(branchTxID.ID())
 }
 
 // BaseStemOutput returns wrapped stem output for the branch state or nil if unavailable
 func (vid *WrappedTx) BaseStemOutput(ut *UTXOTangle) *WrappedOutput {
-	branchTxID := vid.DeltaBranchID()
-	if branchTxID == nil {
+	branchVID := vid.DeltaBranchVID()
+	if branchVID == nil {
 		return nil
 	}
-	oid, ok := multistate.FetchStemOutputID(ut.stateStore, *branchTxID)
+	oid, ok := multistate.FetchStemOutputID(ut.stateStore, *branchVID.ID())
 	if !ok {
 		return nil
 	}
@@ -671,20 +671,20 @@ func (vid *WrappedTx) WrappedInputs() []WrappedOutput {
 	return ret
 }
 
-// DeltaBranchID returns txID of the state to which the delta will be applied
+// DeltaBranchVID returns txID of the state to which the delta will be applied
 // For the branch transaction it is the txID of itself
-func (vid *WrappedTx) DeltaBranchID() (ret *core.TransactionID) {
+func (vid *WrappedTx) DeltaBranchVID() (ret *WrappedTx) {
 	if vid.IsBranchTransaction() {
-		ret = vid.ID()
+		ret = vid
 		return
 	}
-	ret = vid.BaselineBranchID()
+	ret = vid.BaselineBranchVID()
 	return
 }
 
-func (vid *WrappedTx) BaselineBranchID() (ret *core.TransactionID) {
+func (vid *WrappedTx) BaselineBranchVID() (ret *WrappedTx) {
 	vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
-		ret = v.StateDelta.branchTxID
+		ret = v.StateDelta.baselineVID
 	}})
 	return
 }
@@ -693,7 +693,7 @@ func (vid *WrappedTx) BaselineBranchID() (ret *core.TransactionID) {
 // For branch it returns empty delta with the branch as baseline
 func (vid *WrappedTx) GetUTXOStateDelta() *UTXOStateDelta {
 	if vid.IsBranchTransaction() {
-		return NewUTXOStateDelta(vid.DeltaBranchID())
+		return NewUTXOStateDelta(vid.DeltaBranchVID())
 	}
 	return vid.GetBaselineDelta()
 }
@@ -716,14 +716,14 @@ func PanicOrphaned() {
 }
 
 func (vid *WrappedTx) LedgerCoverage(getStateStore func() general.StateStore) uint64 {
-	baselineTxID := vid.BaselineBranchID()
-	if baselineTxID == nil {
+	baselineVID := vid.BaselineBranchVID()
+	if baselineVID == nil {
 		return vid.GetUTXOStateDelta().Coverage()
 	}
 	deltaCoverage := uint64(0)
 	if getStateStore != nil {
-		bd, ok := multistate.FetchBranchData(getStateStore(), *baselineTxID)
-		util.Assertf(ok, "can't fetch branch data for %s", baselineTxID.Short())
+		bd, ok := multistate.FetchBranchData(getStateStore(), *baselineVID.ID())
+		util.Assertf(ok, "can't fetch branch data for %s", baselineVID.IDShort())
 		deltaCoverage = bd.Coverage
 	}
 

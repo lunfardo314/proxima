@@ -139,7 +139,7 @@ func (v *Vertex) IsSolid() bool {
 			return false
 		}
 	}
-	util.Assertf(!v.Tx.IsSequencerMilestone() || v.StateDelta.branchTxID != nil, "inconsistency: unknown baseline branch in the solid sequencer transaction")
+	util.Assertf(!v.Tx.IsSequencerMilestone() || v.StateDelta.baselineVID != nil, "inconsistency: unknown baseline branch in the solid sequencer transaction")
 	return true
 }
 

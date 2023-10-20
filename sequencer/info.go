@@ -62,7 +62,7 @@ func (seq *Sequencer) LogMilestoneSubmitDefault(wOut *utangle.WrappedOutput) {
 		msIndex,
 		branchIndex,
 		wOut.IDShort(),
-		wOut.VID.BaselineBranchID().Short(),
+		wOut.VID.BaselineBranchVID().IDShort(),
 		util.GoThousands(info.LedgerCoverage),
 		util.GoThousands(info.PrevLedgerCoverage),
 		info.In,
