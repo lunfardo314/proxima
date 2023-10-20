@@ -218,7 +218,7 @@ func (ut *UTXOTangle) _finalizeBranch(newBranchVertex *WrappedTx) error {
 	stemID := rdr.GetStemOutput().ID
 	util.Assertf(stemID == nextStemOutputID, "rdr.GetStemOutput().ID == nextStemOutputID\n%s != %s\n%s",
 		stemID.Short(), nextStemOutputID.Short(),
-		newBranchVertex.DeltaString())
+		func() any { return newBranchVertex.DeltaString() })
 
 	// store new branch to the tangle data structure
 	branches := ut.branches[newBranchVertex.TimeSlot()]

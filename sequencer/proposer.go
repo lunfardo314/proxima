@@ -135,14 +135,22 @@ func (c *proposerTaskGeneric) assessAndAcceptProposal(tx *transaction.Transactio
 	}
 	vid, err := c.factory.tangle.MakeVertex(draftVertex, true)
 
-	const panicOnConflict = true
+	const (
+		panicOnConflict  = true
+		printTx          = false
+		printInputDeltas = true
+	)
 	{ // ----------- for testing only. Conflicts are possible at this point, no need to panic
 		if err != nil && panicOnConflict {
 			utangle.SaveGraphPastCone(vid, "makevertex")
-			//vid.SaveTransactionsPastCone("makevertex")
 
-			util.Panicf("assessAndAcceptProposal: (%s): '%v'\n========= Failed transaction ======\n%s",
-				taskName, err, vid.String())
+			if printTx {
+				fmt.Printf("========= Failed transaction ======\n%s\n", vid.String())
+			}
+			if printInputDeltas {
+				fmt.Printf("========= Failed input deltas =====\n%s\n", vid.LinesOfInputDeltas().String())
+			}
+			util.Panicf("assessAndAcceptProposal: (%s--%s): '%v'", c.factory.seqName, taskName, err)
 		}
 	}
 

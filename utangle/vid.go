@@ -528,48 +528,6 @@ func (vid *WrappedTx) PastConeSet() set.Set[*WrappedTx] {
 	return ret
 }
 
-func (vid *WrappedTx) StartNextSequencerMilestoneDelta(other ...*WrappedTx) (*UTXOStateDelta, *WrappedOutput, *WrappedTx) {
-	panic("no implemented")
-	//util.Assertf(vid.IsSequencerMilestone(), "vid.IsSequencerMilestone()")
-	//
-	//var ret *UTXOStateDelta
-	//vid.Unwrap(UnwrapOptions{
-	//	Vertex: func(v *Vertex) {
-	//		ret = v.StateDelta.Clone()
-	//	},
-	//	VirtualTx: func(_ *VirtualTransaction) {
-	//		ret = NewUTXOStateDelta(vid)
-	//	},
-	//})
-	//if ret == nil {
-	//	// orphaned
-	//	return nil, nil, nil
-	//}
-	//var conflict *WrappedOutput
-	//var consumer *WrappedTx
-	//
-	//var notOrphaned bool
-	//
-	//for _, seqVID := range other {
-	//	seqVID.Unwrap(UnwrapOptions{
-	//		Vertex: func(v *Vertex) {
-	//			conflict, consumer = v.StateDelta.MergeInto(ret)
-	//			notOrphaned = true
-	//		},
-	//		VirtualTx: func(v *VirtualTransaction) {
-	//			notOrphaned = true
-	//		},
-	//	})
-	//	if conflict != nil {
-	//		return nil, conflict, consumer
-	//	}
-	//	if !notOrphaned {
-	//		return nil, nil, nil
-	//	}
-	//}
-	//return ret, nil, nil
-}
-
 func (vid *WrappedTx) String() string {
 	return vid.Lines().String()
 }
@@ -595,6 +553,35 @@ func (vid *WrappedTx) Lines(prefix ...string) *lines.Lines {
 			ret.Add("== orphaned vertex")
 		},
 	})
+	return ret
+}
+
+func (vid *WrappedTx) LinesOfInputDeltas(prefix ...string) *lines.Lines {
+	ret := lines.New(prefix...)
+	ret.Add("=== delta lines of %s START", vid.IDShort())
+	vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
+		v.forEachInputDependency(func(i byte, inp *WrappedTx) bool {
+			oid := v.Tx.MustInputAt(i)
+			if inp == nil {
+				ret.Add("INPUT %2d: %s : not solid", i, oid.Short())
+				return true
+			}
+			ret.Add("INPUT %2d: %s", i, oid.Short())
+			ret.Append(v.Inputs[i].GetUTXOStateDelta().Lines("   "))
+			return true
+		})
+		v.forEachEndorsement(func(i byte, vEnd *WrappedTx) bool {
+			txid := v.Tx.EndorsementAt(i)
+			if vEnd == nil {
+				ret.Add("ENDORSE %2d: %s : not solid", i, txid.Short())
+				return true
+			}
+			ret.Add("ENDORSE %2d: %s", i, txid.Short())
+			ret.Append(vEnd.GetUTXOStateDelta().Lines("   "))
+			return true
+		})
+	}})
+	ret.Add("=== delta lines of %s END", vid.IDShort())
 	return ret
 }
 

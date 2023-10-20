@@ -50,8 +50,13 @@ func (v *Vertex) CalcDeltaAndWrap(ut *UTXOTangle) (*WrappedTx, error) {
 	vid.MustConsistentDelta(ut)
 
 	cloneTmp := v.StateDelta.Clone()
+
+	const printBeforeAfter = false
+
 	if conflict := v.StateDelta.Include(vid, ut.MustGetStateReader); conflict.VID != nil {
-		fmt.Printf("before ==\n%s\n== after\n%s\n", cloneTmp.Lines().String(), v.StateDelta.Lines().String())
+		if printBeforeAfter {
+			fmt.Printf("before ==\n%s\n== after\n%s\n", cloneTmp.Lines().String(), v.StateDelta.Lines().String())
+		}
 		return vid, fmt.Errorf("conflict %s while including %s into delta", conflict.IDShort(), vid.IDShort())
 	}
 	vid.MustConsistentDelta(ut)

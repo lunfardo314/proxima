@@ -190,12 +190,13 @@ func (mf *milestoneFactory) addOwnMilestone(wOut utangle.WrappedOutput) {
 	defer mf.mutex.Unlock()
 
 	om := newOwnMilestone(wOut, inputs...)
-	if prev := wOut.VID.SequencerPredecessor(); prev != nil {
-		if prevOm, found := mf.ownMilestones[prev]; found {
-			om.consumedInThePastPath.AddAll(prevOm.consumedInThePastPath)
+	if wOut.VID.IsSequencerMilestone() {
+		if prev := wOut.VID.SequencerPredecessor(); prev != nil {
+			if prevOm, found := mf.ownMilestones[prev]; found {
+				om.consumedInThePastPath.AddAll(prevOm.consumedInThePastPath)
+			}
 		}
 	}
-
 	mf.ownMilestones[wOut.VID] = om
 	mf.ownMilestoneCount++
 }
@@ -211,11 +212,10 @@ func (mf *milestoneFactory) selectFeeInputs(targetTs core.LogicalTime, ownMs *ut
 	allSeqVIDs := append(util.CloneArglistShallow(otherSeqVIDs...), ownMs)
 
 	targetDelta, conflict := mf.tangle.MergeVertexDeltas(allSeqVIDs...)
-	targetDelta.MustCheckConsistency(mf.tangle.MustGetStateReader)
-
 	if conflict != nil {
 		return nil, conflict
 	}
+	targetDelta.MustCheckConsistency(mf.tangle.MustGetStateReader)
 
 	// pre-selects not orphaned and with suitable timestamp outputs, sorts by timestamp ascending
 	selected := mf.tipPool.filterAndSortOutputs(func(wOut utangle.WrappedOutput) bool {
@@ -409,14 +409,19 @@ func (mf *milestoneFactory) ownForksInAnotherSequencerPastCone(anotherSeqMs *uta
 			anotherSeqMs.IDShort(), err)
 		return nil
 	}
+	anotherSeqID := anotherSeqMs.MustSequencerID()
 	rdr := multistate.MakeSugared(stateRdr)
 	rootOutput, err := rdr.GetChainOutput(&mf.tipPool.chainID)
 	if errors.Is(err, multistate.ErrNotFound) {
 		// cannot find own seqID in the state of anotherSeqID. The tree is empty
-		p.trace("cannot find own seqID %s in the state of another seq %s. The tree is empty", mf.tipPool.chainID.Short(), anotherSeqMs.IDShort())
+		p.trace("cannot find own seqID %s in the state of another seq %s (%s). The tree is empty",
+			mf.tipPool.chainID.VeryShort(), anotherSeqMs.IDShort(), anotherSeqID.VeryShort())
 		return nil
 	}
 	util.AssertNoError(err)
+	p.trace("found own seqID %s in the state of another seq %s (%s)",
+		mf.tipPool.chainID.VeryShort(), anotherSeqMs.IDShort(), anotherSeqID.VeryShort())
+
 	rootWrapped, ok, _ := mf.tangle.GetWrappedOutput(&rootOutput.ID, rdr)
 	if !ok {
 		p.trace("cannot fetch wrapped root output %s", rootOutput.IDShort())

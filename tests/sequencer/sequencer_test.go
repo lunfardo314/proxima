@@ -616,7 +616,7 @@ func TestNSequencers(t *testing.T) {
 			maxSlots              = 40
 			numFaucets            = 1
 			numFaucetTransactions = 1
-			maxTxInputs           = 100
+			maxTxInputs           = sequencer.DefaultMaxFeeInputs
 			stopAfterBranches     = 10
 			tagAlong              = false
 		)
@@ -624,13 +624,14 @@ func TestNSequencers(t *testing.T) {
 		r := initSequencerTestData(t, numFaucets, 1, core.LogicalTimeNow())
 		transaction.SetPrintEasyFLTraceOnFail(false)
 		r.wrk.Start()
-		//r.createTransactionLogger()
 		// add transaction with chain origins
 		_, err := r.wrk.TransactionInWaitAppend(r.txChainOrigins.Bytes(), 5*time.Second)
 		require.NoError(t, err)
 		t.Logf("chain origins transaction has been added to the tangle: %s", r.txChainOrigins.IDShort())
 
 		sequencer.SetTraceProposer(sequencer.BacktrackProposerName, false)
+
+		sequencer.SetTraceProposer(sequencer.BacktrackProposerName, true)
 
 		r.createSequencers(maxTxInputs, maxSlots, 5, zapcore.InfoLevel, !tagAlong)
 
