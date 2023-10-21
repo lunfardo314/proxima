@@ -1130,7 +1130,7 @@ func TestPruning(t *testing.T) {
 			maxSlots              = 40
 			numFaucets            = 1
 			numFaucetTransactions = 1
-			maxTxInputs           = 200
+			maxTxInputs           = sequencer.DefaultMaxFeeInputs
 			stopAfterBranches     = 40
 			nSequencers           = 3
 		)

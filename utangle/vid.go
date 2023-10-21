@@ -22,6 +22,9 @@ type (
 	WrappedTx struct {
 		mutex sync.RWMutex
 		_genericWrapper
+		mutexFutureCone sync.RWMutex
+		descendants     set.Set[*WrappedTx]
+		consumers       map[byte]uint16
 	}
 
 	WrappedOutput struct {
@@ -147,7 +150,9 @@ func (v _orphanedTx) _toggleUnwrapped() {
 }
 
 func _newVID(g _genericWrapper) *WrappedTx {
-	return &WrappedTx{_genericWrapper: g}
+	return &WrappedTx{
+		_genericWrapper: g,
+	}
 }
 
 func (vid *WrappedTx) _put(g _genericWrapper) {
@@ -738,4 +743,40 @@ func (vid *WrappedTx) MustConsistentDelta(ut *UTXOTangle) {
 		SaveGraphPastCone(vid, "inconsistent_delta")
 		panic(err)
 	}
+}
+
+// TODO
+
+func (vid *WrappedTx) AddConsumer(consumer *WrappedTx, outputIndex byte, ut *UTXOTangle) {
+	vid.mutexFutureCone.RLock()
+	defer vid.mutexFutureCone.RUnlock()
+
+	if vid.descendants == nil {
+		vid.descendants = set.New[*WrappedTx]()
+	}
+	if vid.consumers == nil {
+		vid.consumers = make(map[byte]uint16)
+	}
+	vid.descendants.Insert(consumer)
+
+	sn := vid.consumers[outputIndex]
+	vid.consumers[outputIndex] = sn + 1
+
+	if sn == 1 {
+		// propagate fork to te future cone
+	}
+}
+
+func (ut *UTXOTangle) propagateNewForkToFutureCone() {
+
+}
+
+func (vid *WrappedTx) AddEndorser(endorser *WrappedTx) {
+	vid.mutexFutureCone.RLock()
+	defer vid.mutexFutureCone.RUnlock()
+
+	if vid.descendants == nil {
+		vid.descendants = set.New[*WrappedTx]()
+	}
+	vid.descendants.Insert(endorser)
 }

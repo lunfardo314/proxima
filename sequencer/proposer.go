@@ -140,7 +140,7 @@ func (c *proposerTaskGeneric) assessAndAcceptProposal(tx *transaction.Transactio
 		printTx          = false
 		printInputDeltas = true
 	)
-	{ // ----------- for testing only. Conflicts are possible at this point, no need to panic
+	{ // ----------- for testing only. HasConflict are possible at this point, no need to panic
 		if err != nil && panicOnConflict {
 			utangle.SaveGraphPastCone(vid, "makevertex")
 
