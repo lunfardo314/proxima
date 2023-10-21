@@ -22,10 +22,10 @@ type (
 	WrappedTx struct {
 		mutex sync.RWMutex
 		_genericWrapper
-		mutexFutureCone sync.RWMutex
-		descendants     set.Set[*WrappedTx]
-		consumers       map[byte]uint16
-		forks           ForkSet
+		mutexFutureConeAndForks sync.RWMutex
+		descendants             set.Set[*WrappedTx]
+		consumers               map[byte]uint16
+		forks                   ForkSet
 	}
 
 	WrappedOutput struct {
@@ -747,8 +747,8 @@ func (vid *WrappedTx) MustConsistentDelta(ut *UTXOTangle) {
 }
 
 func (vid *WrappedTx) addFork(f Fork) {
-	vid.mutexFutureCone.Lock()
-	defer vid.mutexFutureCone.Unlock()
+	vid.mutexFutureConeAndForks.Lock()
+	defer vid.mutexFutureConeAndForks.Unlock()
 
 	if vid.forks == nil {
 		vid.forks = make(ForkSet)
@@ -778,8 +778,8 @@ func (vid *WrappedTx) _propagateNewForkToFutureCone(f Fork, ut *UTXOTangle, visi
 
 // AddConsumer must be called from globally locked utangle environment
 func (vid *WrappedTx) addConsumer(consumer *WrappedTx, outputIndex byte, ut *UTXOTangle) {
-	vid.mutexFutureCone.Lock()
-	defer vid.mutexFutureCone.Unlock()
+	vid.mutexFutureConeAndForks.Lock()
+	defer vid.mutexFutureConeAndForks.Unlock()
 
 	if vid.descendants == nil {
 		vid.descendants = set.New[*WrappedTx]()
@@ -800,8 +800,8 @@ func (vid *WrappedTx) addConsumer(consumer *WrappedTx, outputIndex byte, ut *UTX
 }
 
 func (vid *WrappedTx) addEndorser(endorser *WrappedTx) {
-	vid.mutexFutureCone.RLock()
-	defer vid.mutexFutureCone.RUnlock()
+	vid.mutexFutureConeAndForks.RLock()
+	defer vid.mutexFutureConeAndForks.RUnlock()
 
 	if vid.descendants == nil {
 		vid.descendants = set.New[*WrappedTx]()
