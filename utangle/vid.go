@@ -25,6 +25,7 @@ type (
 		mutexFutureCone sync.RWMutex
 		descendants     set.Set[*WrappedTx]
 		consumers       map[byte]uint16
+		forks           ForkSet
 	}
 
 	WrappedOutput struct {
@@ -745,11 +746,40 @@ func (vid *WrappedTx) MustConsistentDelta(ut *UTXOTangle) {
 	}
 }
 
-// TODO
+func (vid *WrappedTx) addFork(f Fork) {
+	vid.mutexFutureCone.Lock()
+	defer vid.mutexFutureCone.Unlock()
 
-func (vid *WrappedTx) AddConsumer(consumer *WrappedTx, outputIndex byte, ut *UTXOTangle) {
-	vid.mutexFutureCone.RLock()
-	defer vid.mutexFutureCone.RUnlock()
+	if vid.forks == nil {
+		vid.forks = make(ForkSet)
+	}
+	vid.forks.Insert(f)
+}
+
+func (vid *WrappedTx) propagateNewForkToFutureCone(f Fork, ut *UTXOTangle) {
+	vid.descendants.ForEach(func(descendant *WrappedTx) bool {
+		descendant._propagateNewForkToFutureCone(f, ut, set.New[*WrappedTx]())
+		return true
+	})
+}
+
+func (vid *WrappedTx) _propagateNewForkToFutureCone(f Fork, ut *UTXOTangle, visited set.Set[*WrappedTx]) {
+	if visited.Contains(vid) {
+		return
+	}
+	visited.Insert(vid)
+	vid.addFork(f)
+
+	vid.descendants.ForEach(func(descendant *WrappedTx) bool {
+		descendant._propagateNewForkToFutureCone(f, ut, visited)
+		return true
+	})
+}
+
+// AddConsumer must be called from globally locked utangle environment
+func (vid *WrappedTx) addConsumer(consumer *WrappedTx, outputIndex byte, ut *UTXOTangle) {
+	vid.mutexFutureCone.Lock()
+	defer vid.mutexFutureCone.Unlock()
 
 	if vid.descendants == nil {
 		vid.descendants = set.New[*WrappedTx]()
@@ -763,15 +793,13 @@ func (vid *WrappedTx) AddConsumer(consumer *WrappedTx, outputIndex byte, ut *UTX
 	vid.consumers[outputIndex] = sn + 1
 
 	if sn == 1 {
-		// propagate fork to te future cone
+		// It means it is the second consumer, i.e. new double spend. Propagate it to the future cone
+		f := NewFork(WrappedOutput{VID: vid, Index: outputIndex}, sn)
+		vid.propagateNewForkToFutureCone(f, ut)
 	}
 }
 
-func (ut *UTXOTangle) propagateNewForkToFutureCone() {
-
-}
-
-func (vid *WrappedTx) AddEndorser(endorser *WrappedTx) {
+func (vid *WrappedTx) addEndorser(endorser *WrappedTx) {
 	vid.mutexFutureCone.RLock()
 	defer vid.mutexFutureCone.RUnlock()
 
