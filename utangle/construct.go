@@ -110,24 +110,17 @@ func NewVertex(tx *transaction.Transaction) *Vertex {
 		Tx:           tx,
 		Inputs:       make([]*WrappedTx, tx.NumInputs()),
 		Endorsements: make([]*WrappedTx, tx.NumEndorsements()),
-		StateDelta:   *NewUTXOStateDelta(nil),
 	}
 }
 
 func (ut *UTXOTangle) MakeVertex(draftVertex *Vertex, bypassConstraintValidation ...bool) (*WrappedTx, error) {
 	if !draftVertex.IsSolid() {
-		return draftVertex.Wrap(), fmt.Errorf("some inputs or endorsements are not solid")
+		return draftVertex.Wrap(), fmt.Errorf("MakeVertex: some inputs in %s or endorsements are not solid", draftVertex.Tx.IDShort())
 	}
-
 	if err := draftVertex.Validate(bypassConstraintValidation...); err != nil {
-		return draftVertex.Wrap(), fmt.Errorf("validate %s : '%v'", draftVertex.Tx.IDShort(), err)
+		return draftVertex.Wrap(), fmt.Errorf("MakeVertex: validate %s : '%v'", draftVertex.Tx.IDShort(), err)
 	}
-
-	retVID, err := draftVertex.CalcDeltaAndWrap(ut)
-	if err != nil {
-		return retVID, fmt.Errorf("MakeVertex: %v", err)
-	}
-	return retVID, nil
+	return draftVertex.Wrap(), nil
 }
 
 func (ut *UTXOTangle) AppendVertex(vid *WrappedTx) error {

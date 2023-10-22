@@ -139,7 +139,7 @@ func (v *Vertex) IsSolid() bool {
 			return false
 		}
 	}
-	util.Assertf(!v.Tx.IsSequencerMilestone() || v.StateDelta.baselineVID != nil, "inconsistency: unknown baseline branch in the solid sequencer transaction")
+	//util.Assertf(!v.Tx.IsSequencerMilestone() || v.BaselineBranch() != nil, "inconsistency: unknown baseline branch in the solid sequencer transaction")
 	return true
 }
 
@@ -299,4 +299,24 @@ func (v *Vertex) PendingDependenciesLines(prefix ...string) *lines.Lines {
 		return true
 	})
 	return ret
+}
+
+func (v *Vertex) addFork(f Fork) bool {
+	if v.forks == nil {
+		v.forks = make(ForkSet)
+	}
+	return v.forks.Insert(f)
+}
+
+func (v *Vertex) mergeForkSet(fs ForkSet) (conflict WrappedOutput) {
+	if v.forks == nil {
+		v.forks = fs.Clone()
+		return
+	}
+	conflict = v.forks.Absorb(fs)
+	return
+}
+
+func (v *Vertex) BaselineBranch() *WrappedTx {
+	return v.forks.BaselineBranch()
 }

@@ -756,7 +756,8 @@ func (vid *WrappedTx) _propagateNewForkToFutureCone(f Fork, ut *UTXOTangle, visi
 		return
 	}
 	visited.Insert(vid)
-	vid.addFork(f)
+	success := vid.addFork(f)
+	util.Assertf(success, "unexpected conflict while propagating new fork")
 
 	vid.descendants.ForEach(func(descendant *WrappedTx) bool {
 		descendant._propagateNewForkToFutureCone(f, ut, visited)
@@ -764,10 +765,12 @@ func (vid *WrappedTx) _propagateNewForkToFutureCone(f Fork, ut *UTXOTangle, visi
 	})
 }
 
-func (vid *WrappedTx) addFork(f Fork) {
+func (vid *WrappedTx) addFork(f Fork) bool {
+	ret := true
 	vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
-		v.forks.Insert(f)
+		ret = v.addFork(f)
 	}})
+	return ret
 }
 
 // addConsumer must be called from globally locked utangle environment

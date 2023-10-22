@@ -28,12 +28,10 @@ type (
 	}
 
 	Vertex struct {
-		Tx             *transaction.Transaction
-		StateDelta     UTXOStateDelta
-		Inputs         []*WrappedTx
-		Endorsements   []*WrappedTx
-		baselineBranch *WrappedTx
-		forks          ForkSet
+		Tx           *transaction.Transaction
+		Inputs       []*WrappedTx
+		Endorsements []*WrappedTx
+		forks        ForkSet
 	}
 
 	VirtualTransaction struct {

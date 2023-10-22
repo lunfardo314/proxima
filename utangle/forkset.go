@@ -50,6 +50,7 @@ func HasConflict(fs1, fs2 ForkSet) (conflict WrappedOutput) {
 	return
 }
 
+// Absorb in case of conflict receiver is not consistent
 func (fs ForkSet) Absorb(fs1 ForkSet) WrappedOutput {
 	for csid, sn := range fs1 {
 		if !fs.Insert(NewFork(csid, sn)) {
@@ -59,8 +60,8 @@ func (fs ForkSet) Absorb(fs1 ForkSet) WrappedOutput {
 	return WrappedOutput{}
 }
 
-// AbsorbAtomic same as Absorb but leaves receiver untouched in case of conflict
-func (fs ForkSet) AbsorbAtomic(fs1 ForkSet) (conflict WrappedOutput) {
+// AbsorbSafe same as Absorb but leaves receiver untouched in case of conflict
+func (fs ForkSet) AbsorbSafe(fs1 ForkSet) (conflict WrappedOutput) {
 	if conflict = HasConflict(fs, fs1); conflict.VID != nil {
 		return
 	}
