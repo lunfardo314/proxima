@@ -28,10 +28,12 @@ type (
 	}
 
 	Vertex struct {
-		Tx           *transaction.Transaction
-		StateDelta   UTXOStateDelta
-		Inputs       []*WrappedTx
-		Endorsements []*WrappedTx
+		Tx             *transaction.Transaction
+		StateDelta     UTXOStateDelta
+		Inputs         []*WrappedTx
+		Endorsements   []*WrappedTx
+		baselineBranch *WrappedTx
+		forks          ForkSet
 	}
 
 	VirtualTransaction struct {
@@ -42,7 +44,4 @@ type (
 	}
 )
 
-const (
-	TipSlots            = 5
-	LedgerCoverageSlots = 2
-)
+const TipSlots = 5

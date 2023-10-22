@@ -189,7 +189,7 @@ func (v *Vertex) FetchMissingDependencies(ut *UTXOTangle) error {
 
 	if v.Tx.IsSequencerMilestone() {
 		// baseline state must ultimately be determined for milestone
-		baselineBranchID, conflict := v.getInputBaselineBranchVID()
+		baselineBranchID, conflict := v.getInputBaselineBranchVIDOld()
 
 		if conflict {
 			return fmt.Errorf("conflicting branches among inputs of %s", v.Tx.IDShort())
@@ -243,11 +243,16 @@ func (v *Vertex) fetchMissingEndorsements(ut *UTXOTangle) {
 	})
 }
 
-// getInputBaselineBranchVID scans known (solid) inputs and extracts baseline branch ID. Returns:
+func (v *Vertex) getInputBaselineBranchVID() (ret *WrappedTx, conflict bool) {
+	panic("not implemented")
+}
+
+// getInputBaselineBranchVIDOld scans known (solid) inputs and extracts baseline branch ID. Returns:
 // - conflict == true if inputs belongs to conflicting branches
 // - nil, false if known inputs does not give a common baseline (yet)
 // - txid, false if known inputs has latest branchID (even if not all solid yet)
-func (v *Vertex) getInputBaselineBranchVID() (ret *WrappedTx, conflict bool) {
+// Deprecate:
+func (v *Vertex) getInputBaselineBranchVIDOld() (ret *WrappedTx, conflict bool) {
 	branchVIDsBySlot := make(map[core.TimeSlot]*WrappedTx)
 	v.forEachDependency(func(inp *WrappedTx) bool {
 		if inp == nil {

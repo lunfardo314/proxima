@@ -22,10 +22,8 @@ type (
 	WrappedTx struct {
 		mutex sync.RWMutex
 		_genericWrapper
-		mutexFutureConeAndForks sync.RWMutex
-		descendants             set.Set[*WrappedTx]
-		consumers               map[byte]uint16
-		forks                   ForkSet
+		descendants set.Set[*WrappedTx] // protected under global utangle lock
+		consumers   map[byte]uint16
 	}
 
 	WrappedOutput struct {
@@ -746,16 +744,6 @@ func (vid *WrappedTx) MustConsistentDelta(ut *UTXOTangle) {
 	}
 }
 
-func (vid *WrappedTx) addFork(f Fork) {
-	vid.mutexFutureConeAndForks.Lock()
-	defer vid.mutexFutureConeAndForks.Unlock()
-
-	if vid.forks == nil {
-		vid.forks = make(ForkSet)
-	}
-	vid.forks.Insert(f)
-}
-
 func (vid *WrappedTx) propagateNewForkToFutureCone(f Fork, ut *UTXOTangle) {
 	vid.descendants.ForEach(func(descendant *WrappedTx) bool {
 		descendant._propagateNewForkToFutureCone(f, ut, set.New[*WrappedTx]())
@@ -776,11 +764,14 @@ func (vid *WrappedTx) _propagateNewForkToFutureCone(f Fork, ut *UTXOTangle, visi
 	})
 }
 
-// AddConsumer must be called from globally locked utangle environment
-func (vid *WrappedTx) addConsumer(consumer *WrappedTx, outputIndex byte, ut *UTXOTangle) {
-	vid.mutexFutureConeAndForks.Lock()
-	defer vid.mutexFutureConeAndForks.Unlock()
+func (vid *WrappedTx) addFork(f Fork) {
+	vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
+		v.forks.Insert(f)
+	}})
+}
 
+// addConsumer must be called from globally locked utangle environment
+func (vid *WrappedTx) addConsumer(consumer *WrappedTx, outputIndex byte, ut *UTXOTangle) {
 	if vid.descendants == nil {
 		vid.descendants = set.New[*WrappedTx]()
 	}
@@ -793,16 +784,14 @@ func (vid *WrappedTx) addConsumer(consumer *WrappedTx, outputIndex byte, ut *UTX
 	vid.consumers[outputIndex] = sn + 1
 
 	if sn == 1 {
-		// It means it is the second consumer, i.e. new double spend. Propagate it to the future cone
+		// it is the second consumer, i.e. new double spend. Propagate it to the future cone
+		// for subsequent consumers no need to propagate
 		f := NewFork(WrappedOutput{VID: vid, Index: outputIndex}, sn)
 		vid.propagateNewForkToFutureCone(f, ut)
 	}
 }
 
 func (vid *WrappedTx) addEndorser(endorser *WrappedTx) {
-	vid.mutexFutureConeAndForks.RLock()
-	defer vid.mutexFutureConeAndForks.RUnlock()
-
 	if vid.descendants == nil {
 		vid.descendants = set.New[*WrappedTx]()
 	}
