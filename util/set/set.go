@@ -82,12 +82,19 @@ func (s Set[K]) Ordered(less func(el1, el2 K) bool) []K {
 	return ret
 }
 
-func (s Set[K]) Max(less func(el1, el2 K) bool) (ret K) {
+func (s Set[K]) Max(less func(el1, el2 K) bool, suchAs ...func(el K) bool) (ret K) {
 	if len(s) == 0 {
 		return
 	}
 	first := true
+	suchAsFun := func(_ K) bool { return true }
+	if len(suchAs) > 0 {
+		suchAsFun = suchAs[0]
+	}
 	s.ForEach(func(el K) bool {
+		if !suchAsFun(el) {
+			return true
+		}
 		if first {
 			ret = el
 			first = false
@@ -100,10 +107,10 @@ func (s Set[K]) Max(less func(el1, el2 K) bool) (ret K) {
 	return
 }
 
-func (s Set[K]) Min(less func(el1, el2 K) bool) (ret K) {
+func (s Set[K]) Min(less func(el1, el2 K) bool, suchAs ...func(el K) bool) (ret K) {
 	return s.Max(func(el1, el2 K) bool {
 		return !less(el1, el2)
-	})
+	}, suchAs...)
 }
 
 func Union[K comparable](sets ...Set[K]) Set[K] {

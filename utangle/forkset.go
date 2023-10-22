@@ -88,9 +88,21 @@ func Merge(fSets ...ForkSet) (ret ForkSet, conflict WrappedOutput) {
 	return
 }
 
-func (fs ForkSet) BaselineBranch() *WrappedTx {
-	if len(fs) == 0 {
-		return nil
+// BaselineBranch baseline branch is the latest branch in the fork set, if any
+func (fs ForkSet) BaselineBranch() (ret *WrappedTx) {
+	first := true
+	for conflictSetID := range fs {
+		if !conflictSetID.VID.IsBranchTransaction() {
+			continue
+		}
+		if first {
+			ret = conflictSetID.VID
+			first = false
+			continue
+		}
+		if conflictSetID.Timestamp().After(ret.Timestamp()) {
+			ret = conflictSetID.VID
+		}
 	}
-
+	return
 }
