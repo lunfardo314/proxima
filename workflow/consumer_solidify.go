@@ -121,7 +121,7 @@ func (c *SolidifyConsumer) newVertexToSolidify(inp *SolidifyInputData) {
 	util.Assertf(!already, "transaction is in the solidifier already: %s", inp.Tx.IDString())
 
 	// fetches available inputs, makes draftVertex
-	draftVertex, err := c.glb.utxoTangle.SolidifyInputs(inp.Tx)
+	draftVertex, err := c.glb.utxoTangle.MakeDraftVertex(inp.Tx)
 	if err != nil {
 		// non solidifiable
 		c.Debugf(inp.PrimaryInputConsumerData, "%v", err)

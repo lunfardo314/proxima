@@ -22,48 +22,6 @@ func (v *Vertex) getSequencerPredecessor() *WrappedTx {
 	return v.Inputs[predIdx]
 }
 
-func (v *Vertex) mergeInputDeltas(ut *UTXOTangle) error {
-	util.Assertf(v.IsSolid(), "some inputs are not solid")
-	deltas := make([]*UTXOStateDelta, 0, v.Tx.NumInputs()+v.Tx.NumEndorsements())
-
-	// traverse tx inputs AND endorsements
-	v.forEachDependency(func(inp *WrappedTx) bool {
-		deltas = append(deltas, inp.GetUTXOStateDelta())
-		return true
-	})
-
-	delta, conflict := ut.MergeDeltas(deltas...)
-	if conflict != nil {
-		return fmt.Errorf("conflict in the past cone at %s", conflict.IDShort())
-	}
-	util.Assertf(delta.utxoStateDelta != nil, "delta.utxoStateDelta != nil")
-	v.StateDelta = *delta
-	return nil
-}
-
-func (v *Vertex) CalcDeltaAndWrap(ut *UTXOTangle) (*WrappedTx, error) {
-	if err := v.mergeInputDeltas(ut); err != nil {
-		return nil, err
-	}
-
-	vid := v.Wrap()
-	vid.MustConsistentDelta(ut)
-
-	cloneTmp := v.StateDelta.Clone()
-
-	const printBeforeAfter = false
-
-	if conflict := v.StateDelta.Include(vid, ut.MustGetStateReader); conflict.VID != nil {
-		if printBeforeAfter {
-			fmt.Printf("before ==\n%s\n== after\n%s\n", cloneTmp.Lines().String(), v.StateDelta.Lines().String())
-		}
-		return vid, fmt.Errorf("conflict %s while including %s into delta", conflict.IDShort(), vid.IDShort())
-	}
-	vid.MustConsistentDelta(ut)
-
-	return vid, nil
-}
-
 // getConsumedOutput return consumed output at index i or nil, nil if input is orphaned
 func (v *Vertex) getConsumedOutput(i byte) (*core.Output, error) {
 	if int(i) >= len(v.Inputs) {

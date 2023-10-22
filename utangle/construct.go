@@ -21,6 +21,7 @@ func newUTXOTangle(stateStore general.StateStore, txBytesStore general.TxBytesSt
 }
 
 // Load fetches latest branches from the multi-state and creates an UTXO tangle with those branches as virtual transactions
+// TODO load latest common branch too
 func Load(stateStore general.StateStore, txBytesStore general.TxBytesStore) *UTXOTangle {
 	ret := newUTXOTangle(stateStore, txBytesStore)
 	// fetch branches of the latest slot
@@ -46,38 +47,33 @@ func newVirtualBranchTx(br *multistate.BranchData) *VirtualTransaction {
 	return v
 }
 
-func (ut *UTXOTangle) AddVertexWithSaveTx(vids ...*WrappedTx) {
-	ut.mutex.Lock()
-	defer ut.mutex.Unlock()
-
-	ut.addVertexWithSaveTx(vids...)
-}
-
-func (ut *UTXOTangle) AddVertexNoSaveTx(vid *WrappedTx) {
-	ut.mutex.Lock()
-	defer ut.mutex.Unlock()
-
-	ut.addVertex(vid)
-}
-
 func (ut *UTXOTangle) addVertex(vid *WrappedTx) {
+	vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
+		v.forEachInputDependency(func(i byte, inp *WrappedTx) bool {
+			inp.addConsumer(vid, i, ut)
+			return true
+		})
+		v.forEachEndorsement(func(_ byte, vEnd *WrappedTx) bool {
+			vEnd.addEndorser(vid)
+			return true
+		})
+	}})
+
 	txid := vid.ID()
 	_, already := ut.vertices[*txid]
 	util.Assertf(!already, "addVertex: repeating transaction %s", txid.Short())
 	ut.vertices[*txid] = vid
 }
 
-func (ut *UTXOTangle) addVertexWithSaveTx(vids ...*WrappedTx) {
-	for _, vid := range vids {
-		ut.addVertex(vid)
+func (ut *UTXOTangle) addVertexWithSaveTx(vid *WrappedTx) {
+	ut.addVertex(vid)
 
-		// saving transaction bytes to the transaction store
-		vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
-			err := ut.txBytesStore.SaveTxBytes(v.Tx.Bytes())
-			util.AssertNoError(err)
-		}})
-	}
-	ut.numAddedVertices += len(vids)
+	// saving transaction bytes to the transaction store
+	vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
+		err := ut.txBytesStore.SaveTxBytes(v.Tx.Bytes())
+		util.AssertNoError(err)
+	}})
+	ut.numAddedVertices++
 }
 
 func (ut *UTXOTangle) deleteVertex(txid *core.TransactionID) {
@@ -113,12 +109,12 @@ func NewVertex(tx *transaction.Transaction) *Vertex {
 	}
 }
 
-func (ut *UTXOTangle) MakeVertex(draftVertex *Vertex, bypassConstraintValidation ...bool) (*WrappedTx, error) {
+func (ut *UTXOTangle) ValidateAndWrapDraftVertex(draftVertex *Vertex, bypassConstraintValidation ...bool) (*WrappedTx, error) {
 	if !draftVertex.IsSolid() {
-		return draftVertex.Wrap(), fmt.Errorf("MakeVertex: some inputs in %s or endorsements are not solid", draftVertex.Tx.IDShort())
+		return draftVertex.Wrap(), fmt.Errorf("ValidateAndWrapDraftVertex: some inputs in %s or endorsements are not solid", draftVertex.Tx.IDShort())
 	}
 	if err := draftVertex.Validate(bypassConstraintValidation...); err != nil {
-		return draftVertex.Wrap(), fmt.Errorf("MakeVertex: validate %s : '%v'", draftVertex.Tx.IDShort(), err)
+		return draftVertex.Wrap(), fmt.Errorf("ValidateAndWrapDraftVertex: validate %s : '%v'", draftVertex.Tx.IDShort(), err)
 	}
 	return draftVertex.Wrap(), nil
 }
@@ -140,13 +136,13 @@ func (ut *UTXOTangle) AppendVertex(vid *WrappedTx) error {
 
 // AppendVertexFromTransactionBytesDebug for testing mainly
 func (ut *UTXOTangle) AppendVertexFromTransactionBytesDebug(txBytes []byte) (*WrappedTx, string, error) {
-	vertexDraft, err := ut.SolidifyInputsFromTxBytes(txBytes)
+	vertexDraft, err := ut.MakeDraftVertexFromTxBytes(txBytes)
 	if err != nil {
 		return nil, "", err
 	}
 	retTxStr := vertexDraft.String()
 
-	ret, err := ut.MakeVertex(vertexDraft)
+	ret, err := ut.ValidateAndWrapDraftVertex(vertexDraft)
 	if err != nil {
 		return ret, retTxStr, err
 	}
@@ -173,7 +169,19 @@ func (ut *UTXOTangle) _finalizeBranch(newBranchVertex *WrappedTx) error {
 	var newRoot common.VCommitment
 	var nextStemOutputID core.OutputID
 
+	tx := newBranchVertex.UnwrapTransaction()
+
+	seqTxData := tx.SequencerTransactionData()
+	nextStemOutputID = tx.OutputID(seqTxData.StemOutputIndex)
+
+	baselineVID := newBranchVertex.BaselineBranchVID()
+	util.Assertf(baselineVID != nil, "can't get baseline branch")
+	upd, err := ut.GetStateUpdatable(baselineVID.ID())
+	if err != nil {
+		return err
+	}
 	coverage := ut.LedgerCoverage(newBranchVertex)
+
 	newBranchVertex.Unwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
 			util.Assertf(v.StateDelta.baselineVID != nil, "expected not nil baseline tx in %s", func() any { return v.Tx.IDShort() })

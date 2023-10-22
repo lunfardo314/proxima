@@ -128,12 +128,12 @@ func (c *proposerTaskGeneric) assessAndAcceptProposal(tx *transaction.Transactio
 	c.alreadyProposed.Insert(hashOfProposal)
 
 	makeVertexStartTime := time.Now()
-	draftVertex, err := c.factory.tangle.SolidifyInputs(tx)
+	draftVertex, err := c.factory.tangle.MakeDraftVertex(tx)
 	if err != nil {
-		c.factory.log.Errorf("assessAndAcceptProposal (%s, %s)::SolidifyInputs: %v", tx.Timestamp(), taskName, err)
+		c.factory.log.Errorf("assessAndAcceptProposal (%s, %s)::MakeDraftVertex: %v", tx.Timestamp(), taskName, err)
 		return
 	}
-	vid, err := c.factory.tangle.MakeVertex(draftVertex, true)
+	vid, err := c.factory.tangle.ValidateAndWrapDraftVertex(draftVertex, true)
 
 	const (
 		panicOnConflict  = true
@@ -155,8 +155,8 @@ func (c *proposerTaskGeneric) assessAndAcceptProposal(tx *transaction.Transactio
 	}
 
 	if err != nil {
-		//c.factory.log.Warnf("assessAndAcceptProposal::MakeVertex (%s, %s): %v", tx.Timestamp(), taskName, err)
-		//c.factory.log.Errorf("assessAndAcceptProposal::MakeVertex (%s, %s): %v\nEndorsements: [%s]\n",
+		//c.factory.log.Warnf("assessAndAcceptProposal::ValidateAndWrapDraftVertex (%s, %s): %v", tx.Timestamp(), taskName, err)
+		//c.factory.log.Errorf("assessAndAcceptProposal::ValidateAndWrapDraftVertex (%s, %s): %v\nEndorsements: [%s]\n",
 		//	vid.Timestamp(), taskName, err, draftVertex.Tx.EndorsementsVeryShort())
 		//mStr := "mutations = nil"
 		//if mut != nil {

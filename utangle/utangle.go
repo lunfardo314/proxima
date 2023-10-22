@@ -176,22 +176,22 @@ func (ut *UTXOTangle) isValidBranch(br *WrappedTx) bool {
 	return found
 }
 
-func (ut *UTXOTangle) GetStateReader(branchTxID *core.TransactionID) (general.IndexedStateReader, error) {
+func (ut *UTXOTangle) GetIndexedStateReader(branchTxID *core.TransactionID, clearCacheAtSize ...int) (general.IndexedStateReader, error) {
 	rr, found := multistate.FetchRootRecord(ut.stateStore, *branchTxID)
 	if !found {
 		return nil, fmt.Errorf("root record for %s has not been found", branchTxID.Short())
 	}
-	return multistate.NewReadable(ut.stateStore, rr.Root)
+	return multistate.NewReadable(ut.stateStore, rr.Root, clearCacheAtSize...)
 }
 
-func (ut *UTXOTangle) MustGetIndexedStateReader(branchTxID *core.TransactionID) general.IndexedStateReader {
-	ret, err := ut.GetStateReader(branchTxID)
+func (ut *UTXOTangle) MustGetIndexedStateReader(branchTxID *core.TransactionID, clearCacheAtSize ...int) general.IndexedStateReader {
+	ret, err := ut.GetIndexedStateReader(branchTxID, clearCacheAtSize...)
 	util.AssertNoError(err)
 	return ret
 }
 
-func (ut *UTXOTangle) MustGetStateReader(branchTxID *core.TransactionID) general.StateReader {
-	return ut.MustGetIndexedStateReader(branchTxID)
+func (ut *UTXOTangle) MustGetStateReader(branchTxID *core.TransactionID, clearCacheAtSize ...int) general.StateReader {
+	return ut.MustGetIndexedStateReader(branchTxID, clearCacheAtSize...)
 }
 
 func (ut *UTXOTangle) MustGetSugaredStateReader(branchTxID *core.TransactionID) multistate.SugaredStateReader {

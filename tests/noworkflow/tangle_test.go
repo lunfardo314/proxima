@@ -164,12 +164,12 @@ func initConflictTest(t *testing.T, nConflicts int, verbose bool) *conflictTestR
 			t.Logf("------ tx %d :\n%s\n", i, ret.ut.TransactionStringFromBytes(ret.txBytes[i]))
 		}
 
-		vDraft, err := ret.ut.SolidifyInputsFromTxBytes(ret.txBytes[i])
+		vDraft, err := ret.ut.MakeDraftVertexFromTxBytes(ret.txBytes[i])
 		require.NoError(t, err)
 
 		require.True(t, vDraft.IsSolid())
 
-		vid, err := ret.ut.MakeVertex(vDraft)
+		vid, err := ret.ut.ValidateAndWrapDraftVertex(vDraft)
 		if err != nil {
 			utangle.SaveGraphPastCone(vid, "make_vertex")
 			t.Logf("***** failed transaction %d:\n%s\n*****", i, vid.String())
@@ -267,7 +267,7 @@ func TestBookingDoubleSpends(t *testing.T) {
 			t.Logf("------ double spending tx: \n%s\n", it.ut.TransactionStringFromBytes(txBytesOut))
 		}
 
-		vDraft, err := it.ut.SolidifyInputsFromTxBytes(txBytesOut)
+		vDraft, err := it.ut.MakeDraftVertexFromTxBytes(txBytesOut)
 		require.NoError(t, err)
 		require.True(t, vDraft.IsSolid())
 
@@ -275,7 +275,7 @@ func TestBookingDoubleSpends(t *testing.T) {
 			utangle.SaveGraphPastCone(vDraft.Wrap(), strings.Replace(t.Name()+"_CONFLICT", "/", "_", -1))
 		}
 
-		_, err = it.ut.MakeVertex(vDraft)
+		_, err = it.ut.ValidateAndWrapDraftVertex(vDraft)
 		t.Logf("expected error: '%v' with output %s", err, it.forkOutput.ID.Short())
 
 		util.RequirePanicOrErrorWith(t, func() error { return err }, "conflict", it.forkOutput.IDShort())
@@ -300,7 +300,7 @@ func TestBookingDoubleSpends(t *testing.T) {
 			t.Logf("------ double spending tx: \n%s\n", it.ut.TransactionStringFromBytes(txBytesOut))
 		}
 
-		vDraft, err := it.ut.SolidifyInputsFromTxBytes(txBytesOut)
+		vDraft, err := it.ut.MakeDraftVertexFromTxBytes(txBytesOut)
 		require.NoError(t, err)
 		require.True(t, vDraft.IsSolid())
 
@@ -308,7 +308,7 @@ func TestBookingDoubleSpends(t *testing.T) {
 			utangle.SaveGraphPastCone(vDraft.Wrap(), strings.Replace(t.Name()+"_CONFLICT", "/", "_", -1))
 		}
 
-		_, err = it.ut.MakeVertex(vDraft)
+		_, err = it.ut.ValidateAndWrapDraftVertex(vDraft)
 		t.Logf("expected error: '%v'", err)
 		util.RequirePanicOrErrorWith(t, func() error { return err }, "conflict", it.forkOutput.IDShort())
 		t.Logf("UTXOTangle at the end:\n%s", it.ut.Info())
@@ -345,7 +345,7 @@ func TestEndorsements1(t *testing.T) {
 
 		t.Logf("------ double spending tx: \n%s\n", transaction.ParseBytesToString(txBytesOut, it.ut.GetUTXO))
 
-		_, err = it.ut.SolidifyInputsFromTxBytes(txBytesOut)
+		_, err = it.ut.MakeDraftVertexFromTxBytes(txBytesOut)
 		require.Contains(t, err.Error(), "non-sequencer tx can't contain endorsements")
 	})
 	t.Run("check txbuilder no endorse cross slot", func(t *testing.T) {

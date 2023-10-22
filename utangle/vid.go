@@ -339,7 +339,7 @@ func (vid *WrappedTx) BaselineStateOfSequencerMilestone(ut *UTXOTangle) (general
 	if branchTxID == nil {
 		return nil, fmt.Errorf("branch transaction not available")
 	}
-	return ut.GetStateReader(branchTxID.ID())
+	return ut.GetIndexedStateReader(branchTxID.ID())
 }
 
 // BaseStemOutput returns wrapped stem output for the branch state or nil if unavailable
@@ -366,6 +366,12 @@ func (vid *WrappedTx) UnwrapVertex() (ret *Vertex, retOk bool) {
 		},
 	})
 	return
+}
+
+func (vid *WrappedTx) MustUnwrapVertex() *Vertex {
+	ret, ok := vid.UnwrapVertex()
+	util.Assertf(ok, "must be a Vertex")
+	return ret
 }
 
 func (vid *WrappedTx) UnwrapTransaction() *transaction.Transaction {
@@ -799,4 +805,89 @@ func (vid *WrappedTx) addEndorser(endorser *WrappedTx) {
 		vid.descendants = set.New[*WrappedTx]()
 	}
 	vid.descendants.Insert(endorser)
+}
+
+func (vid *WrappedTx) BaselineBranch() (ret *WrappedTx) {
+	vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
+		ret = v.BaselineBranch()
+	}})
+	return
+}
+
+type _mutationData struct {
+	outputMutations     map[core.OutputID]*core.Output
+	addTxMutations      []*core.TransactionID
+	visited             set.Set[*WrappedTx]
+	baselineStateReader general.StateReader
+}
+
+func (vid *WrappedTx) _collectMutationData(md *_mutationData) (conflict WrappedOutput) {
+	if md.visited.Contains(vid) {
+		return
+	}
+	md.visited.Insert(vid)
+	if md.baselineStateReader.KnowsCommittedTransaction(vid.ID()) {
+		return
+	}
+
+	md.addTxMutations = append(md.addTxMutations, vid.ID())
+
+	vid.Unwrap(UnwrapOptions{
+		Vertex: func(v *Vertex) {
+			v.forEachInputDependency(func(i byte, inp *WrappedTx) bool {
+				inp._collectMutationData(md)
+
+				inputID := v.Tx.MustInputAt(i)
+				if o, produced := md.outputMutations[inputID]; produced {
+					util.Assertf(o != nil, "unexpected double DEL mutation at %s", inputID.Short())
+					delete(md.outputMutations, inputID)
+				} else {
+					if md.baselineStateReader.HasUTXO(&inputID) {
+						md.outputMutations[inputID] = nil
+					} else {
+						// output does not exist in the state
+						conflict = WrappedOutput{VID: inp, Index: v.Tx.MustOutputIndexOfTheInput(i)}
+						return false
+					}
+				}
+				return true
+			})
+			v.Tx.ForEachProducedOutput(func(idx byte, o *core.Output, oid *core.OutputID) bool {
+				md.outputMutations[*oid] = o
+				return true
+			})
+		},
+		Orphaned: PanicOrphaned,
+	})
+	return
+}
+
+func (vid *WrappedTx) getBranchMutations(ut *UTXOTangle) (*multistate.Mutations, WrappedOutput) {
+	util.Assertf(vid.IsBranchTransaction(), "%s not a branch transaction", vid.IDShort())
+
+	baselineBranchVID := vid.BaselineBranch()
+	util.Assertf(baselineBranchVID != nil, "can't get baseline branch for %s", vid.IDShort())
+
+	md := &_mutationData{
+		outputMutations:     make(map[core.OutputID]*core.Output),
+		addTxMutations:      make([]*core.TransactionID, 0),
+		visited:             set.New[*WrappedTx](),
+		baselineStateReader: ut.MustGetStateReader(baselineBranchVID.ID(), 1000),
+	}
+	if conflict := vid._collectMutationData(md); conflict.VID != nil {
+		return nil, conflict
+	}
+	ret := multistate.NewMutations()
+	for oid, o := range md.outputMutations {
+		if o != nil {
+			ret.InsertAddOutputMutation(oid, o)
+		} else {
+			ret.InsertDelOutputMutation(oid)
+		}
+	}
+	slot := vid.TimeSlot()
+	for _, txid := range md.addTxMutations {
+		ret.InsertAddTxMutation(*txid, slot)
+	}
+	return ret.Sort(), WrappedOutput{}
 }

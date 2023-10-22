@@ -10,19 +10,19 @@ import (
 	"github.com/lunfardo314/proxima/util"
 )
 
-func (ut *UTXOTangle) SolidifyInputsFromTxBytes(txBytes []byte) (*Vertex, error) {
+func (ut *UTXOTangle) MakeDraftVertexFromTxBytes(txBytes []byte) (*Vertex, error) {
 	tx, err := transaction.FromBytesMainChecksWithOpt(txBytes)
 	if err != nil {
 		return nil, err
 	}
-	ret, conflict := ut.SolidifyInputs(tx)
+	ret, conflict := ut.MakeDraftVertex(tx)
 	if conflict.VID != nil {
 		return nil, fmt.Errorf("can't solidify inputs of %s due to %s", tx.IDShort(), conflict.IDShort())
 	}
 	return ret, nil
 }
 
-func (ut *UTXOTangle) SolidifyInputs(tx *transaction.Transaction) (*Vertex, WrappedOutput) {
+func (ut *UTXOTangle) MakeDraftVertex(tx *transaction.Transaction) (*Vertex, WrappedOutput) {
 	ret := NewVertex(tx)
 	if conflict := ret.FetchMissingDependencies(ut); conflict.VID != nil {
 		return nil, conflict
@@ -181,8 +181,7 @@ func (ut *UTXOTangle) fetchAndWrapBranch(oid *core.OutputID) (WrappedOutput, boo
 }
 
 // FetchMissingDependencies check solidity of inputs and fetches what is available
-// Does not obtain global lock on the tangle
-// It means in general the result is non-deterministic, because some dependencies may be unavailable. This is ok for solidifier
+// In general, the result is non-deterministic because some dependencies may be unavailable. This is ok for solidifier
 // Once transaction has all dependencies solid, further on the result is deterministic
 func (v *Vertex) FetchMissingDependencies(ut *UTXOTangle) (conflict WrappedOutput) {
 	if conflict = v.fetchMissingEndorsements(ut); conflict.VID == nil {
@@ -238,99 +237,4 @@ func (v *Vertex) fetchMissingEndorsements(ut *UTXOTangle) (conflict WrappedOutpu
 		return true
 	})
 	return
-}
-
-func (v *Vertex) getInputBaselineBranchVID() (ret *WrappedTx, conflict bool) {
-	panic("not implemented")
-}
-
-// getInputBaselineBranchVIDOld scans known (solid) inputs and extracts baseline branch ID. Returns:
-// - conflict == true if inputs belongs to conflicting branches
-// - nil, false if known inputs does not give a common baseline (yet)
-// - txid, false if known inputs has latest branchID (even if not all solid yet)
-// Deprecate:
-func (v *Vertex) getInputBaselineBranchVIDOld() (ret *WrappedTx, conflict bool) {
-	branchVIDsBySlot := make(map[core.TimeSlot]*WrappedTx)
-	v.forEachDependency(func(inp *WrappedTx) bool {
-		if inp == nil {
-			return true
-		}
-		branchVID := inp.DeltaBranchVID()
-		if branchVID == nil {
-			return true
-		}
-		slot := branchVID.TimeSlot()
-		if branchVID1, already := branchVIDsBySlot[slot]; already {
-			if branchVID != branchVID1 {
-				// two different branches in the same slot -> conflict
-				conflict = true
-				return false
-			}
-		} else {
-			branchVIDsBySlot[slot] = branchVID
-		}
-		return true
-	})
-	if conflict {
-		return
-	}
-	if len(branchVIDsBySlot) == 0 {
-		return
-	}
-	ret = util.Maximum(util.Values(branchVIDsBySlot), func(branchVID1, branchVID2 *WrappedTx) bool {
-		return branchVID1.TimeSlot() < branchVID2.TimeSlot()
-	})
-	return
-}
-
-// getBranchConeTipVertex for a sequencer transaction, it finds a vertex which is to follow towards
-// the branch transaction
-// Returns:
-// - nil, nil if it is not solid
-// - nil, err if input is wrong, i.e. it cannot be solidified
-// - vertex, nil if vertex, the branch cone tip, has been found
-func (ut *UTXOTangle) getBranchConeTipVertex(tx *transaction.Transaction) (*WrappedTx, error) {
-	util.Assertf(tx.IsSequencerMilestone(), "tx.IsSequencerMilestone()")
-	oid := tx.SequencerChainPredecessorOutputID()
-	if oid == nil {
-		// this transaction is chain origin, i.e. it does not have predecessor
-		// follow the first endorsement. It enforced by transaction constraint layer
-		return ut.mustGetFirstEndorsedVertex(tx), nil
-	}
-	// sequencer chain predecessor exists
-	if oid.TimeSlot() == tx.TimeSlot() {
-		if oid.SequencerFlagON() {
-			ret, ok, invalid := ut.GetWrappedOutput(oid)
-			if invalid {
-				return nil, fmt.Errorf("wrong output %s", oid.Short())
-			}
-			if !ok {
-				return nil, nil
-			}
-			return ret.VID, nil
-		}
-		return ut.mustGetFirstEndorsedVertex(tx), nil
-	}
-	if tx.IsBranchTransaction() {
-		ret, ok, invalid := ut.GetWrappedOutput(oid)
-		if invalid {
-			return nil, fmt.Errorf("wrong output %s", oid.Short())
-		}
-		if !ok {
-			return nil, nil
-		}
-		return ret.VID, nil
-	}
-	return ut.mustGetFirstEndorsedVertex(tx), nil
-}
-
-// mustGetFirstEndorsedVertex returns first endorsement or nil if not solid
-func (ut *UTXOTangle) mustGetFirstEndorsedVertex(tx *transaction.Transaction) *WrappedTx {
-	util.Assertf(tx.NumEndorsements() > 0, "tx.NumEndorsements() > 0 @ %s", func() any { return tx.IDShort() })
-	txid := tx.EndorsementAt(0)
-	if ret, ok := ut.GetVertex(&txid); ok {
-		return ret
-	}
-	// not solid
-	return nil
 }
