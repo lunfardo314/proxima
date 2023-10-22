@@ -87,3 +87,10 @@ func Merge(fSets ...ForkSet) (ret ForkSet, conflict WrappedOutput) {
 	}
 	return
 }
+
+func (fs ForkSet) BaselineBranch() *WrappedTx {
+	if len(fs) == 0 {
+		return nil
+	}
+
+}

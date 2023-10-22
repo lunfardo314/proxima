@@ -82,6 +82,30 @@ func (s Set[K]) Ordered(less func(el1, el2 K) bool) []K {
 	return ret
 }
 
+func (s Set[K]) Max(less func(el1, el2 K) bool) (ret K) {
+	if len(s) == 0 {
+		return
+	}
+	first := true
+	s.ForEach(func(el K) bool {
+		if first {
+			ret = el
+			first = false
+		}
+		if less(ret, el) {
+			ret = el
+		}
+		return true
+	})
+	return
+}
+
+func (s Set[K]) Min(less func(el1, el2 K) bool) (ret K) {
+	return s.Max(func(el1, el2 K) bool {
+		return !less(el1, el2)
+	})
+}
+
 func Union[K comparable](sets ...Set[K]) Set[K] {
 	ret := New[K]()
 	for _, s := range sets {
