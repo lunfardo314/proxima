@@ -59,7 +59,7 @@ func TestOriginTangle(t *testing.T) {
 
 		distribVID, ok := ut.GetVertex(&distribTxID)
 		require.True(t, ok)
-		t.Logf("delta of distribution transaction:\n%s", distribVID.DeltaString())
+		t.Logf("forks of distribution transaction:\n%s", distribVID.LinesForks().String())
 
 		stemOut := ut.HeaviestStemOutput()
 		require.EqualValues(t, int(stemOut.ID.TimeSlot()), int(distribTxID.TimeSlot()))
@@ -175,7 +175,7 @@ func initConflictTest(t *testing.T, nConflicts int, verbose bool) *conflictTestR
 			t.Logf("***** failed transaction %d:\n%s\n*****", i, vid.String())
 		}
 		if verbose {
-			t.Logf("++++++++++++++ delta string\n%s", vid.DeltaString())
+			t.Logf("++++++++++++++ forks string\n%s", vid.LinesForks().String())
 		}
 		require.NoError(t, err)
 

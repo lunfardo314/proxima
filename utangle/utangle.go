@@ -425,14 +425,6 @@ func (ut *UTXOTangle) TipList(nLatestSlots int) ([]*WrappedTx, time.Time, int) {
 	return ut._tipList(nLatestSlots)
 }
 
-func (ut *UTXOTangle) MergeVertexDeltas(vids ...*WrappedTx) (*UTXOStateDelta, *WrappedOutput) {
-	return MergeVertexDeltas(ut.MustGetStateReader, vids...)
-}
-
-func (ut *UTXOTangle) MergeDeltas(deltas ...*UTXOStateDelta) (*UTXOStateDelta, *WrappedOutput) {
-	return MergeDeltas(ut.MustGetStateReader, deltas...)
-}
-
 func (ut *UTXOTangle) FetchBranchData(branchTxID *core.TransactionID) (multistate.BranchData, bool) {
 	return multistate.FetchBranchData(ut.stateStore, *branchTxID)
 }

@@ -47,10 +47,11 @@ func newVirtualBranchTx(br *multistate.BranchData) *VirtualTransaction {
 	return v
 }
 
+// addVertex can return conflict if number of 256 double spends of an output is exceeded
 func (ut *UTXOTangle) addVertex(vid *WrappedTx) {
 	vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
 		v.forEachInputDependency(func(i byte, inp *WrappedTx) bool {
-			inp.addConsumer(vid, i, ut)
+			inp.addConsumer(i, vid, ut)
 			return true
 		})
 		v.forEachEndorsement(func(_ byte, vEnd *WrappedTx) bool {
@@ -58,16 +59,15 @@ func (ut *UTXOTangle) addVertex(vid *WrappedTx) {
 			return true
 		})
 	}})
-
 	txid := vid.ID()
 	_, already := ut.vertices[*txid]
 	util.Assertf(!already, "addVertex: repeating transaction %s", txid.Short())
 	ut.vertices[*txid] = vid
+	return
 }
 
 func (ut *UTXOTangle) addVertexWithSaveTx(vid *WrappedTx) {
 	ut.addVertex(vid)
-
 	// saving transaction bytes to the transaction store
 	vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
 		err := ut.txBytesStore.SaveTxBytes(v.Tx.Bytes())
@@ -165,70 +165,55 @@ func (ut *UTXOTangle) finalizeBranch(newBranchVertex *WrappedTx) error {
 func (ut *UTXOTangle) _finalizeBranch(newBranchVertex *WrappedTx) error {
 	util.Assertf(newBranchVertex.IsBranchTransaction(), "v.IsBranchTransaction()")
 
-	var err error
 	var newRoot common.VCommitment
 	var nextStemOutputID core.OutputID
 
 	tx := newBranchVertex.UnwrapTransaction()
-
 	seqTxData := tx.SequencerTransactionData()
 	nextStemOutputID = tx.OutputID(seqTxData.StemOutputIndex)
 
-	baselineVID := newBranchVertex.BaselineBranchVID()
+	baselineVID := newBranchVertex.BaselineBranch()
 	util.Assertf(baselineVID != nil, "can't get baseline branch")
-	upd, err := ut.GetStateUpdatable(baselineVID.ID())
-	if err != nil {
-		return err
+
+	{
+		// calculate mutations, update the state and get new root
+		muts, conflict := newBranchVertex.getBranchMutations(ut)
+		if conflict.VID != nil {
+			return fmt.Errorf("conflict while calculating mutations: %s", conflict.DecodeID().Short())
+		}
+		upd, err := ut.GetStateUpdatable(baselineVID.ID())
+		if err != nil {
+			return err
+		}
+		coverage := ut.LedgerCoverage(newBranchVertex)
+		err = upd.Update(muts, &nextStemOutputID, &seqTxData.SequencerID, coverage)
+		if err != nil {
+			return fmt.Errorf("finalizeBranch %s: '%v'=== mutations: %d\n%s",
+				newBranchVertex.IDShort(), err, muts.Len(), muts.Lines().String())
+		}
+		newRoot = upd.Root()
 	}
-	coverage := ut.LedgerCoverage(newBranchVertex)
-
-	newBranchVertex.Unwrap(UnwrapOptions{
-		Vertex: func(v *Vertex) {
-			util.Assertf(v.StateDelta.baselineVID != nil, "expected not nil baseline tx in %s", func() any { return v.Tx.IDShort() })
-			upd, err1 := ut.GetStateUpdatable(v.StateDelta.baselineVID.ID())
-			if err1 != nil {
-				err = err1
-				return
-			}
-
-			seqTxData := v.Tx.SequencerTransactionData()
-			nextStemOutputID = v.Tx.OutputID(seqTxData.StemOutputIndex)
-			muts := v.StateDelta.getMutations(v.Tx.TimeSlot(), upd.Readable())
-			err = upd.Update(muts, &nextStemOutputID, &seqTxData.SequencerID, coverage)
-			if err != nil {
-				err = fmt.Errorf("finalizeBranch %s: '%v'\nDelta%s\n=== mutations: %d\n%s",
-					v.Tx.IDShort(), err, v.StateDelta.Lines().String(), muts.Len(), muts.Lines().String())
-				return
-			}
-			newRoot = upd.Root()
-		},
-
-		VirtualTx: func(_ *VirtualTransaction) {
-			util.Panicf("finalizeBranch: must be a branch vertex")
-		},
-	})
-	if err != nil {
-		return err
+	{
+		// assert consistency
+		rdr, err := multistate.NewSugaredReadableState(ut.stateStore, newRoot)
+		if err != nil {
+			return fmt.Errorf("finalizeBranch: double check failed: '%v'\n%s", err, newBranchVertex.String())
+		}
+		stemID := rdr.GetStemOutput().ID
+		util.Assertf(stemID == nextStemOutputID, "rdr.GetStemOutput().ID == nextStemOutputID\n%s != %s\n%s",
+			stemID.Short(), nextStemOutputID.Short(),
+			func() any { return newBranchVertex.LinesForks().String() })
 	}
-
-	// assert consistency
-	rdr, err := multistate.NewSugaredReadableState(ut.stateStore, newRoot)
-	if err != nil {
-		return fmt.Errorf("finalizeBranch: double check failed: '%v'\n%s", err, newBranchVertex.String())
+	{
+		// store new branch to the tangle data structure
+		branches := ut.branches[newBranchVertex.TimeSlot()]
+		if len(branches) == 0 {
+			branches = make(map[*WrappedTx]common.VCommitment)
+			ut.branches[newBranchVertex.TimeSlot()] = branches
+		}
+		branches[newBranchVertex] = newRoot
+		ut.numAddedBranches++
 	}
-	stemID := rdr.GetStemOutput().ID
-	util.Assertf(stemID == nextStemOutputID, "rdr.GetStemOutput().ID == nextStemOutputID\n%s != %s\n%s",
-		stemID.Short(), nextStemOutputID.Short(),
-		func() any { return newBranchVertex.DeltaString() })
-
-	// store new branch to the tangle data structure
-	branches := ut.branches[newBranchVertex.TimeSlot()]
-	if len(branches) == 0 {
-		branches = make(map[*WrappedTx]common.VCommitment)
-		ut.branches[newBranchVertex.TimeSlot()] = branches
-	}
-	branches[newBranchVertex] = newRoot
-	ut.numAddedBranches++
 	return nil
 }
 

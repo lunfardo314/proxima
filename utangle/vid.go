@@ -1,7 +1,9 @@
 package utangle
 
 import (
+	"bytes"
 	"fmt"
+	"math"
 	"sync"
 	"time"
 
@@ -22,8 +24,9 @@ type (
 	WrappedTx struct {
 		mutex sync.RWMutex
 		_genericWrapper
-		descendants set.Set[*WrappedTx] // protected under global utangle lock
-		consumers   map[byte]uint16
+		// future cone references
+		consumers map[byte][]*WrappedTx
+		endorsers []*WrappedTx
 	}
 
 	WrappedOutput struct {
@@ -335,7 +338,7 @@ func (vid *WrappedTx) StemOutput() *WrappedOutput {
 }
 
 func (vid *WrappedTx) BaselineStateOfSequencerMilestone(ut *UTXOTangle) (general.IndexedStateReader, error) {
-	branchTxID := vid.DeltaBranchVID()
+	branchTxID := vid.BaselineBranch()
 	if branchTxID == nil {
 		return nil, fmt.Errorf("branch transaction not available")
 	}
@@ -344,11 +347,17 @@ func (vid *WrappedTx) BaselineStateOfSequencerMilestone(ut *UTXOTangle) (general
 
 // BaseStemOutput returns wrapped stem output for the branch state or nil if unavailable
 func (vid *WrappedTx) BaseStemOutput(ut *UTXOTangle) *WrappedOutput {
-	branchVID := vid.DeltaBranchVID()
-	if branchVID == nil {
-		return nil
+	var branchTxID *core.TransactionID
+	if vid.IsBranchTransaction() {
+		branchTxID = vid.ID()
+	} else {
+		baselineVID := vid.BaselineBranch()
+		if baselineVID == nil {
+			return nil
+		}
+		branchTxID = baselineVID.ID()
 	}
-	oid, ok := multistate.FetchStemOutputID(ut.stateStore, *branchVID.ID())
+	oid, ok := multistate.FetchStemOutputID(ut.stateStore, *branchTxID)
 	if !ok {
 		return nil
 	}
@@ -565,47 +574,14 @@ func (vid *WrappedTx) Lines(prefix ...string) *lines.Lines {
 	return ret
 }
 
-func (vid *WrappedTx) LinesOfInputDeltas(prefix ...string) *lines.Lines {
+func (vid *WrappedTx) LinesForks(prefix ...string) *lines.Lines {
 	ret := lines.New(prefix...)
-	ret.Add("=== delta lines of %s START", vid.IDShort())
+	ret.Add("=== forks of %s START", vid.IDShort())
 	vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
-		v.forEachInputDependency(func(i byte, inp *WrappedTx) bool {
-			oid := v.Tx.MustInputAt(i)
-			if inp == nil {
-				ret.Add("INPUT %2d: %s : not solid", i, oid.Short())
-				return true
-			}
-			ret.Add("INPUT %2d: %s", i, oid.Short())
-			ret.Append(v.Inputs[i].GetUTXOStateDelta().Lines("   "))
-			return true
-		})
-		v.forEachEndorsement(func(i byte, vEnd *WrappedTx) bool {
-			txid := v.Tx.EndorsementAt(i)
-			if vEnd == nil {
-				ret.Add("ENDORSE %2d: %s : not solid", i, txid.Short())
-				return true
-			}
-			ret.Add("ENDORSE %2d: %s", i, txid.Short())
-			ret.Append(vEnd.GetUTXOStateDelta().Lines("   "))
-			return true
-		})
+		ret.Append(v.forks.Lines())
 	}})
-	ret.Add("=== delta lines of %s END", vid.IDShort())
+	ret.Add("=== forks of %s END", vid.IDShort())
 	return ret
-}
-
-func (vid *WrappedTx) DeltaString() string {
-	ret := lines.New().Add("== delta of %s", vid.IDShort())
-	vid.Unwrap(UnwrapOptions{
-		Vertex: func(v *Vertex) {
-			ret.Append(v.StateDelta.Lines())
-		}, VirtualTx: func(v *VirtualTransaction) {
-			ret.Add("   (virtualTx)")
-		}, Orphaned: func() {
-			ret.Add("   (orphanedTx)")
-		},
-	})
-	return ret.String()
 }
 
 func (vid *WrappedTx) NumInputs() int {
@@ -680,84 +656,58 @@ func (vid *WrappedTx) WrappedInputs() []WrappedOutput {
 	return ret
 }
 
-// DeltaBranchVID returns txID of the state to which the delta will be applied
-// For the branch transaction it is the txID of itself
-func (vid *WrappedTx) DeltaBranchVID() (ret *WrappedTx) {
-	if vid.IsBranchTransaction() {
-		ret = vid
-		return
-	}
-	ret = vid.BaselineBranchVID()
-	return
-}
-
-func (vid *WrappedTx) BaselineBranchVID() (ret *WrappedTx) {
-	vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
-		ret = v.StateDelta.baselineVID
-	}})
-	return
-}
-
-// GetUTXOStateDelta returns a pointer, not to be mutated, must be cloned first! Never nil
-// For branch it returns empty delta with the branch as baseline
-func (vid *WrappedTx) GetUTXOStateDelta() *UTXOStateDelta {
-	if vid.IsBranchTransaction() {
-		return NewUTXOStateDelta(vid.DeltaBranchVID())
-	}
-	return vid.GetBaselineDelta()
-}
-
-func (vid *WrappedTx) GetBaselineDelta() (ret *UTXOStateDelta) {
-	vid.Unwrap(UnwrapOptions{
-		Vertex: func(v *Vertex) {
-			ret = &v.StateDelta
-		},
-		VirtualTx: func(v *VirtualTransaction) {
-			ret = NewUTXOStateDelta(nil)
-		},
-		Orphaned: PanicOrphaned,
-	})
-	return
-}
-
 func PanicOrphaned() {
 	util.Panicf("orphaned transaction should not be accessed")
 }
 
 func (vid *WrappedTx) LedgerCoverage(getStateStore func() general.StateStore) uint64 {
-	baselineVID := vid.BaselineBranchVID()
-	if baselineVID == nil {
-		return vid.GetUTXOStateDelta().Coverage()
-	}
-	deltaCoverage := uint64(0)
-	if getStateStore != nil {
-		bd, ok := multistate.FetchBranchData(getStateStore(), *baselineVID.ID())
-		util.Assertf(ok, "can't fetch branch data for %s", baselineVID.IDShort())
-		deltaCoverage = bd.Coverage
-	}
-
-	return deltaCoverage + vid.GetUTXOStateDelta().Coverage()
+	panic("implement me")
+	//baselineVID := vid.BaselineBranchVID()
+	//if baselineVID == nil {
+	//	return vid.GetUTXOStateDelta().Coverage()
+	//}
+	//deltaCoverage := uint64(0)
+	//if getStateStore != nil {
+	//	bd, ok := multistate.FetchBranchData(getStateStore(), *baselineVID.ID())
+	//	util.Assertf(ok, "can't fetch branch data for %s", baselineVID.IDShort())
+	//	deltaCoverage = bd.Coverage
+	//}
+	//
+	//return deltaCoverage + vid.GetUTXOStateDelta().Coverage()
 }
 
-func (vid *WrappedTx) MustConsistentDelta(ut *UTXOTangle) {
-	err := util.CatchPanicOrError(func() error {
-		vid.GetBaselineDelta().MustCheckConsistency(ut.MustGetStateReader)
-		return nil
-	})
-	if err != nil {
-		SaveGraphPastCone(vid, "inconsistent_delta")
-		panic(err)
+// addConsumer must be called from globally locked utangle environment
+// returns true if number of double spends exceeds 255
+func (vid *WrappedTx) addConsumer(outputIndex byte, consumer *WrappedTx, ut *UTXOTangle) {
+	if vid.consumers == nil {
+		vid.consumers = make(map[byte][]*WrappedTx)
 	}
+	descendants := vid.consumers[outputIndex]
+	util.Assertf(len(descendants) < math.MaxUint16, "len(descendants)<math.MaxUint16")
+
+	sn := uint16(len(descendants))
+	switch sn {
+	case 0:
+		if vid.IsSequencerMilestone() {
+			// for the sequencers we always store the first fork in the consumer
+			// for others we only propagate double spends.
+			// That is an optimization of memory and the propagation mechanism
+			consumer.addFork(NewFork(WrappedOutput{VID: vid, Index: outputIndex}, 0))
+		}
+		descendants = []*WrappedTx{consumer}
+	case 1:
+		// a new double spend
+		if !vid.IsSequencerMilestone() {
+			// for sequencers do not need to propagate. it is already there
+			f := NewFork(WrappedOutput{VID: vid, Index: outputIndex}, 0)
+			descendants[0].propagateNewForkToFutureCone(f, ut, set.New[*WrappedTx]())
+		}
+		consumer.addFork(NewFork(WrappedOutput{VID: vid, Index: outputIndex}, 1))
+	}
+	vid.consumers[outputIndex] = append(descendants, consumer) // may result in repeating but that is ok
 }
 
-func (vid *WrappedTx) propagateNewForkToFutureCone(f Fork, ut *UTXOTangle) {
-	vid.descendants.ForEach(func(descendant *WrappedTx) bool {
-		descendant._propagateNewForkToFutureCone(f, ut, set.New[*WrappedTx]())
-		return true
-	})
-}
-
-func (vid *WrappedTx) _propagateNewForkToFutureCone(f Fork, ut *UTXOTangle, visited set.Set[*WrappedTx]) {
+func (vid *WrappedTx) propagateNewForkToFutureCone(f Fork, ut *UTXOTangle, visited set.Set[*WrappedTx]) {
 	if visited.Contains(vid) {
 		return
 	}
@@ -765,10 +715,11 @@ func (vid *WrappedTx) _propagateNewForkToFutureCone(f Fork, ut *UTXOTangle, visi
 	success := vid.addFork(f)
 	util.Assertf(success, "unexpected conflict while propagating new fork")
 
-	vid.descendants.ForEach(func(descendant *WrappedTx) bool {
-		descendant._propagateNewForkToFutureCone(f, ut, visited)
-		return true
-	})
+	for _, descendants := range vid.consumers {
+		for _, vidDesc := range descendants {
+			vidDesc.propagateNewForkToFutureCone(f, ut, visited)
+		}
+	}
 }
 
 func (vid *WrappedTx) addFork(f Fork) bool {
@@ -779,32 +730,12 @@ func (vid *WrappedTx) addFork(f Fork) bool {
 	return ret
 }
 
-// addConsumer must be called from globally locked utangle environment
-func (vid *WrappedTx) addConsumer(consumer *WrappedTx, outputIndex byte, ut *UTXOTangle) {
-	if vid.descendants == nil {
-		vid.descendants = set.New[*WrappedTx]()
-	}
-	if vid.consumers == nil {
-		vid.consumers = make(map[byte]uint16)
-	}
-	vid.descendants.Insert(consumer)
-
-	sn := vid.consumers[outputIndex]
-	vid.consumers[outputIndex] = sn + 1
-
-	if sn == 1 {
-		// it is the second consumer, i.e. new double spend. Propagate it to the future cone
-		// for subsequent consumers no need to propagate
-		f := NewFork(WrappedOutput{VID: vid, Index: outputIndex}, sn)
-		vid.propagateNewForkToFutureCone(f, ut)
-	}
-}
-
 func (vid *WrappedTx) addEndorser(endorser *WrappedTx) {
-	if vid.descendants == nil {
-		vid.descendants = set.New[*WrappedTx]()
+	if len(vid.endorsers) == 0 {
+		vid.endorsers = []*WrappedTx{endorser}
+	} else {
+		vid.endorsers = append(vid.endorsers, endorser)
 	}
-	vid.descendants.Insert(endorser)
 }
 
 func (vid *WrappedTx) BaselineBranch() (ret *WrappedTx) {
@@ -890,4 +821,15 @@ func (vid *WrappedTx) getBranchMutations(ut *UTXOTangle) (*multistate.Mutations,
 		ret.InsertAddTxMutation(*txid, slot)
 	}
 	return ret.Sort(), WrappedOutput{}
+}
+
+func (vid *WrappedTx) Less(vid1 *WrappedTx) bool {
+	return bytes.Compare(vid.ID()[:], vid1.ID()[:]) < 0
+}
+
+func (o *WrappedOutput) Less(o1 *WrappedOutput) bool {
+	if o.VID == o1.VID {
+		return o.Index < o1.Index
+	}
+	return o.VID.Less(o1.VID)
 }

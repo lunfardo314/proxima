@@ -1,17 +1,22 @@
 package utangle
 
-import "github.com/lunfardo314/proxima/util"
+import (
+	"fmt"
+
+	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/proxima/util/lines"
+)
 
 type (
 	Fork struct {
 		ConflictSetID WrappedOutput
-		SN            uint16
+		SN            byte // max 256 double spends per output. Tx will be dropped if exceeded
 	}
 
-	ForkSet map[WrappedOutput]uint16
+	ForkSet map[WrappedOutput]byte
 )
 
-func NewFork(wOut WrappedOutput, forkSN uint16) Fork {
+func NewFork(wOut WrappedOutput, forkSN byte) Fork {
 	return Fork{
 		ConflictSetID: wOut,
 		SN:            forkSN,
@@ -22,8 +27,23 @@ func (f Fork) ConflictsWith(fs ForkSet) bool {
 	return fs.ConflictsWith(f)
 }
 
+func (f Fork) String() string {
+	return fmt.Sprintf("%s:%d", f.ConflictSetID.IDShort(), f.SN)
+}
+
 func (fs ForkSet) Clone() ForkSet {
 	return util.CloneMapShallow(fs)
+}
+
+func (fs ForkSet) Lines(prefix ...string) *lines.Lines {
+	ret := lines.New(prefix...)
+	sorted := util.KeysSorted(fs, func(o1, o2 WrappedOutput) bool {
+		return o1.Less(&o2)
+	})
+	for _, o := range sorted {
+		ret.Add(NewFork(o, fs[o]).String())
+	}
+	return ret
 }
 
 func (fs ForkSet) ConflictsWith(f Fork) bool {

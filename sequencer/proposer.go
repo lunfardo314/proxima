@@ -148,7 +148,7 @@ func (c *proposerTaskGeneric) assessAndAcceptProposal(tx *transaction.Transactio
 				fmt.Printf("========= Failed transaction ======\n%s\n", vid.String())
 			}
 			if printInputDeltas {
-				fmt.Printf("========= Failed input deltas =====\n%s\n", vid.LinesOfInputDeltas().String())
+				fmt.Printf("========= Failed input deltas =====\n%s\n", vid.LinesForks().String())
 			}
 			util.Panicf("assessAndAcceptProposal: (%s--%s): '%v'", c.factory.seqName, taskName, err)
 		}
