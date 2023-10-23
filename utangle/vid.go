@@ -810,7 +810,7 @@ func (vid *WrappedTx) _collectCoverage(baselineStateReader general.StateReader, 
 	vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
 		v.forEachInputDependency(func(i byte, inp *WrappedTx) bool {
 			if baselineStateReader.KnowsCommittedTransaction(inp.ID()) {
-				o, _ := v.MustProducedOutput(i)
+				o, _ := inp.OutputAt(v.Tx.MustOutputIndexOfTheInput(i))
 				ret += o.Amount()
 			} else {
 				ret += inp._collectCoverage(baselineStateReader, visited)
@@ -826,6 +826,10 @@ func (vid *WrappedTx) _collectCoverage(baselineStateReader general.StateReader, 
 }
 
 func (vid *WrappedTx) LedgerCoverage(ut *UTXOTangle) uint64 {
+	if ut == nil {
+		// TODO temporary
+		return 0
+	}
 	baselineBranchVID := vid.BaselineBranch()
 	if baselineBranchVID == nil {
 		return 0
