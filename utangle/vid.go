@@ -660,22 +660,6 @@ func PanicOrphaned() {
 	util.Panicf("orphaned transaction should not be accessed")
 }
 
-func (vid *WrappedTx) LedgerCoverage(getStateStore func() general.StateStore) uint64 {
-	panic("implement me")
-	//baselineVID := vid.BaselineBranchVID()
-	//if baselineVID == nil {
-	//	return vid.GetUTXOStateDelta().Coverage()
-	//}
-	//deltaCoverage := uint64(0)
-	//if getStateStore != nil {
-	//	bd, ok := multistate.FetchBranchData(getStateStore(), *baselineVID.ID())
-	//	util.Assertf(ok, "can't fetch branch data for %s", baselineVID.IDShort())
-	//	deltaCoverage = bd.Coverage
-	//}
-	//
-	//return deltaCoverage + vid.GetUTXOStateDelta().Coverage()
-}
-
 // addConsumer must be called from globally locked utangle environment
 // returns true if number of double spends exceeds 255
 func (vid *WrappedTx) addConsumer(outputIndex byte, consumer *WrappedTx, ut *UTXOTangle) {
@@ -821,6 +805,44 @@ func (vid *WrappedTx) getBranchMutations(ut *UTXOTangle) (*multistate.Mutations,
 		ret.InsertAddTxMutation(*txid, slot)
 	}
 	return ret.Sort(), WrappedOutput{}
+}
+
+func (vid *WrappedTx) _collectCoverage(baselineStateReader general.StateReader, visited set.Set[*WrappedTx]) (ret uint64) {
+	if visited.Contains(vid) {
+		return
+	}
+	visited.Insert(vid)
+
+	vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
+		v.forEachInputDependency(func(i byte, inp *WrappedTx) bool {
+			if baselineStateReader.KnowsCommittedTransaction(inp.ID()) {
+				o, _ := v.MustProducedOutput(i)
+				ret += o.Amount()
+			} else {
+				ret += inp._collectCoverage(baselineStateReader, visited)
+			}
+			return true
+		})
+		v.forEachEndorsement(func(i byte, vEnd *WrappedTx) bool {
+			ret += vEnd._collectCoverage(baselineStateReader, visited)
+			return true
+		})
+	}})
+	return
+}
+
+func (vid *WrappedTx) LedgerCoverage(ut *UTXOTangle) uint64 {
+	baselineBranchVID := vid.BaselineBranch()
+	if baselineBranchVID == nil {
+		return 0
+	}
+	baselineTxID := baselineBranchVID.ID()
+	stateReader := ut.MustGetStateReader(baselineTxID)
+	ret := vid._collectCoverage(stateReader, set.New[*WrappedTx]())
+
+	bd, ok := multistate.FetchBranchData(ut.stateStore, *baselineTxID)
+	util.Assertf(ok, "can't fetch branch data for %s", baselineTxID.Short())
+	return ret + bd.Coverage
 }
 
 func (vid *WrappedTx) Less(vid1 *WrappedTx) bool {
