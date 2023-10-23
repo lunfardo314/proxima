@@ -173,6 +173,9 @@ func (ut *UTXOTangle) _finalizeBranch(newBranchVertex *WrappedTx) error {
 	nextStemOutputID = tx.OutputID(seqTxData.StemOutputIndex)
 
 	baselineVID := newBranchVertex.BaselineBranch()
+	if baselineVID == nil {
+		newBranchVertex.BaselineBranch()
+	}
 	util.Assertf(baselineVID != nil, "can't get baseline branch")
 
 	{

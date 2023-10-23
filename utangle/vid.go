@@ -671,10 +671,15 @@ func (vid *WrappedTx) addConsumerOf(outputIndex byte, consumer *WrappedTx, ut *U
 	sn := uint16(len(descendants))
 	switch sn {
 	case 0:
+		if vid.IsSequencerMilestone() {
+			consumer.addFork(NewFork(WrappedOutput{VID: vid, Index: outputIndex}, 0))
+		}
 		descendants = make([]*WrappedTx, 0, 2)
 	case 1:
-		f := NewFork(WrappedOutput{VID: vid, Index: outputIndex}, 0)
-		descendants[0].propagateNewForkToFutureCone(f, ut, set.New[*WrappedTx]())
+		if !vid.IsSequencerMilestone() {
+			f := NewFork(WrappedOutput{VID: vid, Index: outputIndex}, 0)
+			descendants[0].propagateNewForkToFutureCone(f, ut, set.New[*WrappedTx]())
+		}
 		consumer.addFork(NewFork(WrappedOutput{VID: vid, Index: outputIndex}, 1))
 	}
 	vid.consumers[outputIndex] = append(descendants, consumer) // may result in repeating but that is ok
