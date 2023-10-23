@@ -233,11 +233,12 @@ func (c *SolidifyConsumer) checkNewDependency(inp *SolidifyInputData) {
 			// not pending anymore
 			return
 		}
-		if err := pending.draftVertex.FetchMissingDependencies(c.glb.utxoTangle); err != nil {
+		if conflict := pending.draftVertex.FetchMissingDependencies(c.glb.utxoTangle); conflict != nil {
 			// tx cannot be solidified, remove
 			c.removeNonSolidifiableFutureCone(txid)
-			inp.eventCallback("finish.fail."+SolidifyConsumerName, err.Error())
-			c.glb.RejectTransaction(*txid, "%v", err)
+			errStr := fmt.Errorf("conflict at %s", conflict.Short())
+			inp.eventCallback("finish.fail."+SolidifyConsumerName, errStr)
+			c.glb.RejectTransaction(*txid, "%v", errStr)
 			continue
 		}
 		if pending.draftVertex.IsSolid() {
