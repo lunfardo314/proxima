@@ -16,18 +16,18 @@ func (ut *UTXOTangle) MakeDraftVertexFromTxBytes(txBytes []byte) (*Vertex, error
 		return nil, err
 	}
 	ret, conflict := ut.MakeDraftVertex(tx)
-	if conflict.VID != nil {
-		return nil, fmt.Errorf("can't solidify inputs of %s due to %s", tx.IDShort(), conflict.IDShort())
+	if conflict != nil {
+		return nil, fmt.Errorf("can't solidify %s due to conflict in the past cone %s", tx.IDShort(), conflict.Short())
 	}
 	return ret, nil
 }
 
-func (ut *UTXOTangle) MakeDraftVertex(tx *transaction.Transaction) (*Vertex, WrappedOutput) {
+func (ut *UTXOTangle) MakeDraftVertex(tx *transaction.Transaction) (*Vertex, *core.OutputID) {
 	ret := NewVertex(tx)
-	if conflict := ret.FetchMissingDependencies(ut); conflict.VID != nil {
+	if conflict := ret.FetchMissingDependencies(ut); conflict != nil {
 		return nil, conflict
 	}
-	return ret, WrappedOutput{}
+	return ret, nil
 }
 
 // getExistingWrappedOutput returns wrapped output if vertex already in on the tangle
@@ -183,17 +183,14 @@ func (ut *UTXOTangle) fetchAndWrapBranch(oid *core.OutputID) (WrappedOutput, boo
 // FetchMissingDependencies check solidity of inputs and fetches what is available
 // In general, the result is non-deterministic because some dependencies may be unavailable. This is ok for solidifier
 // Once transaction has all dependencies solid, further on the result is deterministic
-func (v *Vertex) FetchMissingDependencies(ut *UTXOTangle) (conflict WrappedOutput) {
-	if conflict = v.fetchMissingEndorsements(ut); conflict.VID == nil {
+func (v *Vertex) FetchMissingDependencies(ut *UTXOTangle) (conflict *core.OutputID) {
+	if conflict = v.fetchMissingEndorsements(ut); conflict == nil {
 		conflict = v.fetchMissingInputs(ut)
 	}
 	return
 }
 
-func (v *Vertex) fetchMissingInputs(ut *UTXOTangle) (conflict WrappedOutput) {
-	var ok, invalid bool
-	var wOut WrappedOutput
-
+func (v *Vertex) fetchMissingInputs(ut *UTXOTangle) (conflict *core.OutputID) {
 	var baselineStateArgs []multistate.SugaredStateReader
 	if baselineBranch := v.BaselineBranch(); baselineBranch != nil {
 		baselineStateArgs = []multistate.SugaredStateReader{ut.MustGetSugaredStateReader(baselineBranch.ID())}
@@ -204,8 +201,9 @@ func (v *Vertex) fetchMissingInputs(ut *UTXOTangle) (conflict WrappedOutput) {
 			// it is already solid
 			return true
 		}
-		conflict, ok, invalid = ut.GetWrappedOutput(oid, baselineStateArgs...)
+		wOut, ok, invalid := ut.GetWrappedOutput(oid, baselineStateArgs...)
 		if invalid {
+			conflict = oid
 			return false
 		}
 		if ok {
@@ -216,7 +214,9 @@ func (v *Vertex) fetchMissingInputs(ut *UTXOTangle) (conflict WrappedOutput) {
 	return
 }
 
-func (v *Vertex) fetchMissingEndorsements(ut *UTXOTangle) (conflict WrappedOutput) {
+func (v *Vertex) fetchMissingEndorsements(ut *UTXOTangle) (conflict *core.OutputID) {
+	var conflictWrapped WrappedOutput
+
 	v.Tx.ForEachEndorsement(func(i byte, txid *core.TransactionID) bool {
 		if v.Endorsements[i] != nil {
 			// already solid and merged
@@ -227,9 +227,10 @@ func (v *Vertex) fetchMissingEndorsements(ut *UTXOTangle) (conflict WrappedOutpu
 			util.Assertf(vEnd.IsSequencerMilestone(), "vEnd.IsSequencerMilestone()")
 
 			vEnd.Unwrap(UnwrapOptions{Vertex: func(vEndUnwrapped *Vertex) {
-				conflict = v.mergeForkSet(vEndUnwrapped.forks)
+				conflictWrapped = v.mergeForkSet(vEndUnwrapped.forks)
 			}})
-			if conflict.VID != nil {
+			if conflictWrapped.VID != nil {
+				conflict = conflictWrapped.DecodeID()
 				return false
 			}
 			v.Endorsements[i] = vEnd
