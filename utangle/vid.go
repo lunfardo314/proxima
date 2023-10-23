@@ -661,7 +661,6 @@ func PanicOrphaned() {
 }
 
 // addConsumerOf must be called from globally locked utangle environment
-// returns true if number of double spends exceeds 255
 func (vid *WrappedTx) addConsumerOf(outputIndex byte, consumer *WrappedTx, ut *UTXOTangle) {
 	if vid.consumers == nil {
 		vid.consumers = make(map[byte][]*WrappedTx)
@@ -672,20 +671,10 @@ func (vid *WrappedTx) addConsumerOf(outputIndex byte, consumer *WrappedTx, ut *U
 	sn := uint16(len(descendants))
 	switch sn {
 	case 0:
-		if vid.IsSequencerMilestone() {
-			// for the sequencers we always store the first fork in the consumer
-			// for others we only propagate double spends.
-			// That is an optimization of memory and the propagation mechanism
-			consumer.addFork(NewFork(WrappedOutput{VID: vid, Index: outputIndex}, 0))
-		}
 		descendants = make([]*WrappedTx, 0, 2)
 	case 1:
-		// a new double spend
-		if !vid.IsSequencerMilestone() {
-			// for sequencers do not need to propagate. it is already there
-			f := NewFork(WrappedOutput{VID: vid, Index: outputIndex}, 0)
-			descendants[0].propagateNewForkToFutureCone(f, ut, set.New[*WrappedTx]())
-		}
+		f := NewFork(WrappedOutput{VID: vid, Index: outputIndex}, 0)
+		descendants[0].propagateNewForkToFutureCone(f, ut, set.New[*WrappedTx]())
 		consumer.addFork(NewFork(WrappedOutput{VID: vid, Index: outputIndex}, 1))
 	}
 	vid.consumers[outputIndex] = append(descendants, consumer) // may result in repeating but that is ok
