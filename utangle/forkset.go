@@ -7,24 +7,11 @@ import (
 	"github.com/lunfardo314/proxima/util/lines"
 )
 
-type (
-	Fork struct {
-		ConflictSetID WrappedOutput
-		SN            byte // max 256 double spends per output. Tx will be dropped if exceeded
-	}
-
-	ForkSet map[WrappedOutput]byte
-)
-
 func NewFork(wOut WrappedOutput, forkSN byte) Fork {
 	return Fork{
 		ConflictSetID: wOut,
 		SN:            forkSN,
 	}
-}
-
-func (f Fork) ConflictsWith(fs ForkSet) bool {
-	return fs.ConflictsWith(f)
 }
 
 func (f Fork) String() string {

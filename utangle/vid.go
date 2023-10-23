@@ -838,7 +838,7 @@ func (vid *WrappedTx) LedgerCoverage(ut *UTXOTangle) uint64 {
 	stateReader := ut.MustGetStateReader(baselineTxID)
 	ret := vid._collectCoverage(stateReader, set.New[*WrappedTx]())
 
-	bd, ok := multistate.FetchBranchData(ut.stateStore, *baselineTxID)
+	bd, ok := ut.FetchBranchData(baselineTxID)
 	util.Assertf(ok, "can't fetch branch data for %s", baselineTxID.Short())
 	return ret + bd.Coverage
 }

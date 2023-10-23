@@ -40,6 +40,13 @@ type (
 		outputs          map[byte]*core.Output
 		sequencerOutputs *[2]byte // if nil, it is unknown
 	}
+
+	Fork struct {
+		ConflictSetID WrappedOutput
+		SN            byte // max 256 double spends per output. Tx will be dropped if exceeded
+	}
+
+	ForkSet map[WrappedOutput]byte
 )
 
 const TipSlots = 5

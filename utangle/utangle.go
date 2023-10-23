@@ -349,32 +349,6 @@ func (ut *UTXOTangle) ScanAccount(addr core.AccountID, lastNTimeSlots int) set.S
 	return ret
 }
 
-func (ut *UTXOTangle) LoadSequencerStartOutputs(seqID core.ChainID, stateReader func() multistate.SugaredStateReader) (WrappedOutput, WrappedOutput, error) {
-	rdr := stateReader()
-	chainOut, err := rdr.GetChainOutput(&seqID)
-	if err != nil {
-		return WrappedOutput{}, WrappedOutput{}, fmt.Errorf("can't find chain output for %s: %v", seqID.Short(), err)
-	}
-	stemOut := rdr.GetStemOutput()
-
-	retStem, ok, _ := ut.GetWrappedOutput(&stemOut.ID)
-	util.Assertf(ok, "can't get wrapped output %s", stemOut.ID.Short())
-	retSeq, ok, _ := ut.GetWrappedOutput(&chainOut.ID)
-	util.Assertf(ok, "can't get wrapped output %s", chainOut.ID.Short())
-
-	return retStem, retSeq, nil
-}
-
-func (ut *UTXOTangle) LoadSequencerStartOutputsDefault(seqID core.ChainID) (WrappedOutput, WrappedOutput, error) {
-	chainOut, stemOut, err := ut.LoadSequencerStartOutputs(seqID, func() multistate.SugaredStateReader {
-		return ut.HeaviestStateForLatestTimeSlot()
-	})
-	if err == nil {
-		return chainOut, stemOut, nil
-	}
-	return WrappedOutput{}, WrappedOutput{}, fmt.Errorf("LoadSequencerStartOutputsDefault: %v", err)
-}
-
 func (ut *UTXOTangle) _baselineTime(nLatestSlots int) (time.Time, int) {
 	util.Assertf(nLatestSlots > 0, "nLatestSlots > 0")
 

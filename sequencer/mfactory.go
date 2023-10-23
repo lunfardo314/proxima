@@ -380,12 +380,11 @@ func (mf *milestoneFactory) futureConeMilestonesOrdered(rootVID *utangle.Wrapped
 	mf.mutex.RLock()
 	defer mf.mutex.RUnlock()
 
-	p.trace("futureConeMilestonesOrdered for root %s. Total %d own milestones",
-		func() any { return rootVID.IDShort() }, len(mf.ownMilestones))
+	p.trace("futureConeMilestonesOrdered for root %s. Total %d own milestones", rootVID.LazyIDShort, len(mf.ownMilestones))
 
 	om, ok := mf.ownMilestones[rootVID]
 	util.Assertf(ok, "futureConeMilestonesOrdered: milestone %s of chain %s is expected to be among set of own milestones (%d)",
-		func() any { return rootVID.IDShort() },
+		rootVID.LazyIDShort,
 		func() any { return mf.tipPool.chainID.Short() },
 		len(mf.ownMilestones))
 
