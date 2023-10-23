@@ -196,6 +196,8 @@ func (v *Vertex) fetchMissingInputs(ut *UTXOTangle) (conflict *core.OutputID) {
 		baselineStateArgs = []multistate.SugaredStateReader{ut.MustGetSugaredStateReader(baselineBranch.ID())}
 	}
 
+	var conflictWrapped WrappedOutput
+
 	v.Tx.ForEachInput(func(i byte, oid *core.OutputID) bool {
 		if v.Inputs[i] != nil {
 			// it is already solid
@@ -207,6 +209,13 @@ func (v *Vertex) fetchMissingInputs(ut *UTXOTangle) (conflict *core.OutputID) {
 			return false
 		}
 		if ok {
+			wOut.VID.Unwrap(UnwrapOptions{Vertex: func(vInp *Vertex) {
+				conflictWrapped = v.mergeForkSet(vInp.forks)
+			}})
+			if conflictWrapped.VID != nil {
+				conflict = conflictWrapped.DecodeID()
+				return false
+			}
 			v.Inputs[i] = wOut.VID
 		}
 		return true

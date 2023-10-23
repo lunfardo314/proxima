@@ -154,6 +154,7 @@ func initConflictTest(t *testing.T, nConflicts int, verbose bool) *conflictTestR
 	td := txbuilder.NewTransferData(ret.privKey, ret.addr, core.LogicalTimeNow()).
 		MustWithInputs(ret.forkOutput)
 
+	vids := make([]*utangle.WrappedTx, 0)
 	for i := 0; i < nConflicts; i++ {
 		td.WithAmount(uint64(100 + i)).
 			WithTargetLock(ret.addr)
@@ -174,15 +175,19 @@ func initConflictTest(t *testing.T, nConflicts int, verbose bool) *conflictTestR
 			utangle.SaveGraphPastCone(vid, "make_vertex")
 			t.Logf("***** failed transaction %d:\n%s\n*****", i, vid.String())
 		}
-		if verbose {
-			t.Logf("++++++++++++++ forks string\n%s", vid.LinesForks().String())
-		}
 		require.NoError(t, err)
 
 		err = ret.ut.AppendVertex(vid)
 		require.NoError(t, err)
+		vids = append(vids, vid)
 	}
 	require.EqualValues(t, nConflicts, len(ret.txBytes))
+
+	if verbose {
+		for i, vid := range vids {
+			t.Logf("++++++++++++++ forks string of %d\n%s", i, vid.LinesForks().String())
+		}
+	}
 
 	ret.outs = make([]*core.OutputWithID, nConflicts)
 	ret.total = 0
@@ -236,8 +241,8 @@ func initLongConflictTest(t *testing.T, nConflicts int, howLong int, printTx boo
 // TestBookingDoubleSpends1 produce N double spends, no problem with the tangle
 func TestBookingDoubleSpends(t *testing.T) {
 	t.Run("n double spends", func(t *testing.T) {
-		const howMany = 2
-		initConflictTest(t, howMany, true)
+		const howMany = 10
+		initConflictTest(t, howMany, false)
 	})
 	t.Run("conflict short", func(t *testing.T) {
 		const howMany = 5
@@ -267,17 +272,8 @@ func TestBookingDoubleSpends(t *testing.T) {
 			t.Logf("------ double spending tx: \n%s\n", it.ut.TransactionStringFromBytes(txBytesOut))
 		}
 
-		vDraft, err := it.ut.MakeDraftVertexFromTxBytes(txBytesOut)
-		require.NoError(t, err)
-		require.True(t, vDraft.IsSolid())
-
-		if verbose {
-			utangle.SaveGraphPastCone(vDraft.Wrap(), strings.Replace(t.Name()+"_CONFLICT", "/", "_", -1))
-		}
-
-		_, err = it.ut.ValidateAndWrapDraftVertex(vDraft)
-		t.Logf("expected error: '%v' with output %s", err, it.forkOutput.ID.Short())
-
+		_, err = it.ut.MakeDraftVertexFromTxBytes(txBytesOut)
+		t.Logf("expected error: '%v'", err)
 		util.RequirePanicOrErrorWith(t, func() error { return err }, "conflict", it.forkOutput.IDShort())
 		t.Logf("UTXOTangle at the end:\n%s", it.ut.Info())
 	})
@@ -300,20 +296,11 @@ func TestBookingDoubleSpends(t *testing.T) {
 			t.Logf("------ double spending tx: \n%s\n", it.ut.TransactionStringFromBytes(txBytesOut))
 		}
 
-		vDraft, err := it.ut.MakeDraftVertexFromTxBytes(txBytesOut)
-		require.NoError(t, err)
-		require.True(t, vDraft.IsSolid())
-
-		if verbose {
-			utangle.SaveGraphPastCone(vDraft.Wrap(), strings.Replace(t.Name()+"_CONFLICT", "/", "_", -1))
-		}
-
-		_, err = it.ut.ValidateAndWrapDraftVertex(vDraft)
+		_, err = it.ut.MakeDraftVertexFromTxBytes(txBytesOut)
 		t.Logf("expected error: '%v'", err)
 		util.RequirePanicOrErrorWith(t, func() error { return err }, "conflict", it.forkOutput.IDShort())
 		t.Logf("UTXOTangle at the end:\n%s", it.ut.Info())
-
-		//tangle.SaveGraphPastCone(vid, "long_conflict")
+		t.Logf("UTXOTangle at the end:\n%s", it.ut.Info())
 	})
 }
 

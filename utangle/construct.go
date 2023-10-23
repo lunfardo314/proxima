@@ -51,7 +51,7 @@ func newVirtualBranchTx(br *multistate.BranchData) *VirtualTransaction {
 func (ut *UTXOTangle) addVertex(vid *WrappedTx) {
 	vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
 		v.forEachInputDependency(func(i byte, inp *WrappedTx) bool {
-			inp.addConsumer(i, vid, ut)
+			inp.addConsumerOf(v.Tx.MustOutputIndexOfTheInput(i), vid, ut)
 			return true
 		})
 		v.forEachEndorsement(func(_ byte, vEnd *WrappedTx) bool {

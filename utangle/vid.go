@@ -660,9 +660,9 @@ func PanicOrphaned() {
 	util.Panicf("orphaned transaction should not be accessed")
 }
 
-// addConsumer must be called from globally locked utangle environment
+// addConsumerOf must be called from globally locked utangle environment
 // returns true if number of double spends exceeds 255
-func (vid *WrappedTx) addConsumer(outputIndex byte, consumer *WrappedTx, ut *UTXOTangle) {
+func (vid *WrappedTx) addConsumerOf(outputIndex byte, consumer *WrappedTx, ut *UTXOTangle) {
 	if vid.consumers == nil {
 		vid.consumers = make(map[byte][]*WrappedTx)
 	}
@@ -678,7 +678,7 @@ func (vid *WrappedTx) addConsumer(outputIndex byte, consumer *WrappedTx, ut *UTX
 			// That is an optimization of memory and the propagation mechanism
 			consumer.addFork(NewFork(WrappedOutput{VID: vid, Index: outputIndex}, 0))
 		}
-		descendants = []*WrappedTx{consumer}
+		descendants = make([]*WrappedTx, 0, 2)
 	case 1:
 		// a new double spend
 		if !vid.IsSequencerMilestone() {
