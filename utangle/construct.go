@@ -55,7 +55,7 @@ func (ut *UTXOTangle) attach(vid *WrappedTx) (conflict WrappedOutput) {
 			return true
 		})
 		// forks must be recalculated after all new double spends are detected and propagated
-		conflict = v.calcForks()
+		conflict = v.reMergeParentForkSets()
 	}})
 	if conflict.VID != nil {
 		return
@@ -132,14 +132,15 @@ func (ut *UTXOTangle) _appendVertex(vid *WrappedTx) error {
 	return nil
 }
 
-func (ut *UTXOTangle) AppendVertex(v *Vertex) (*WrappedTx, error) {
+func (ut *UTXOTangle) AppendVertex(v *Vertex, bypassValidation ...bool) (*WrappedTx, error) {
 	if !v.IsSolid() {
 		return nil, fmt.Errorf("AppendVertex: some inputs are not solid")
 	}
-	if err := v.Validate(); err != nil {
-		return nil, fmt.Errorf("AppendVertex.validate: %v", err)
+	if len(bypassValidation) == 0 || !bypassValidation[0] {
+		if err := v.Validate(); err != nil {
+			return nil, fmt.Errorf("AppendVertex.validate: %v", err)
+		}
 	}
-
 	vid := v.Wrap()
 	return vid, ut._appendVertex(vid)
 }

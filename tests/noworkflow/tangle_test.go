@@ -674,7 +674,7 @@ func TestMultiChain(t *testing.T) {
 	t.Run("endorse conflicting chain", func(t *testing.T) {
 		const (
 			nChains                = 2
-			chainPaceInTimeSlots   = 7
+			chainPaceInTimeSlots   = 30 // 7
 			printBranchTx          = false
 			atLeastNumTransactions = 2
 		)

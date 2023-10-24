@@ -45,9 +45,7 @@ func (c *ValidateConsumer) consume(inp *ValidateConsumerInputData) {
 	util.Assertf(inp.draftVertex.IsSolid(), "inp.draftVertex.IsSolid()")
 	// will start a worker goroutine or block util worker is available
 	c.workerPool.Work(func() {
-		// will check for conflicts
-		vid, err := c.glb.utxoTangle.ValidateAndWrapDraftVertex(inp.draftVertex)
-		if err != nil {
+		if err := inp.draftVertex.Validate(); err != nil {
 			inp.eventCallback("finish."+ValidateConsumerName, err.Error())
 			c.IncCounter("err")
 			c.glb.RejectTransaction(*inp.Tx.ID(), "%v", err)
@@ -63,7 +61,7 @@ func (c *ValidateConsumer) consume(inp *ValidateConsumerInputData) {
 		// send to appender
 		c.glb.appendTxConsumer.Push(&AppendTxConsumerInputData{
 			PrimaryInputConsumerData: inp.PrimaryInputConsumerData,
-			VID:                      vid,
+			Vertex:                   inp.draftVertex,
 		})
 	})
 }

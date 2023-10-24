@@ -33,18 +33,11 @@ func (v *Vertex) getConsumedOutput(i byte) (*core.Output, error) {
 	return v.Inputs[i].OutputAt(v.Tx.MustOutputIndexOfTheInput(i))
 }
 
-func (v *Vertex) Validate(bypassConstraintValidation ...bool) error {
+func (v *Vertex) Validate() error {
 	traceOption := transaction.TraceOptionFailedConstraints
-	bypass := len(bypassConstraintValidation) > 0 && !bypassConstraintValidation[0]
-	if bypass {
-		traceOption = transaction.TraceOptionNone
-	}
 	ctx, err := transaction.ContextFromTransaction(v.Tx, v.getConsumedOutput, traceOption)
 	if err != nil {
 		return err
-	}
-	if bypass {
-		return nil
 	}
 	return ctx.Validate()
 }
@@ -269,14 +262,15 @@ func (v *Vertex) BaselineBranch() *WrappedTx {
 	return v.forks.BaselineBranch()
 }
 
-func (v *Vertex) calcForks() (conflict WrappedOutput) {
+// reMergeParentForkSets merges input forks into the fork set again. It is needed to adjust fork set
+// after new double spends are propagated
+func (v *Vertex) reMergeParentForkSets() (conflict WrappedOutput) {
+	if v.forks == nil {
+		v.forks = make(ForkSet)
+	}
 	v.forEachInputDependency(func(i byte, inp *WrappedTx) bool {
 		inp.Unwrap(UnwrapOptions{Vertex: func(inpVertex *Vertex) {
-			if i == 0 {
-				v.forks = inpVertex.forks.Clone()
-			} else {
-				conflict = v.forks.Absorb(inpVertex.forks)
-			}
+			conflict = v.forks.Absorb(inpVertex.forks)
 		}})
 		return conflict.VID == nil
 	})
