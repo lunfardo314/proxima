@@ -660,8 +660,8 @@ func PanicOrphaned() {
 	util.Panicf("orphaned transaction should not be accessed")
 }
 
-// addConsumerOf must be called from globally locked utangle environment
-func (vid *WrappedTx) addConsumerOf(outputIndex byte, consumer *WrappedTx, ut *UTXOTangle) {
+// addConsumerOfOutput must be called from globally locked utangle environment
+func (vid *WrappedTx) addConsumerOfOutput(outputIndex byte, consumer *WrappedTx, ut *UTXOTangle) {
 	if vid.consumers == nil {
 		vid.consumers = make(map[byte][]*WrappedTx)
 	}
@@ -852,4 +852,35 @@ func (o *WrappedOutput) Less(o1 *WrappedOutput) bool {
 		return o.Index < o1.Index
 	}
 	return o.VID.Less(o1.VID)
+}
+
+func (vid *WrappedTx) ForkLines(prefix ...string) *lines.Lines {
+	ret := lines.New(prefix...)
+
+	ret.Add("==== BEGIN forks of %s", vid.IDShort())
+	vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
+		v.forEachInputDependency(func(i byte, inp *WrappedTx) bool {
+			input := v.Tx.MustInputAt(i)
+			if inp == nil {
+				ret.Add("  INPUT %d : %s (not solid)", i, input.Short())
+			} else {
+				ret.Add("  INPUT %d : %s ", i, input.Short())
+				inp.Unwrap(UnwrapOptions{Vertex: func(vInp *Vertex) {
+					ret.Append(vInp.forks.Lines("     "))
+				}})
+			}
+			return true
+		})
+		v.forEachEndorsement(func(i byte, vEnd *WrappedTx) bool {
+			ret.Add("  ENDORSEMENT %d : %s ", i, vEnd.IDShort())
+			vEnd.Unwrap(UnwrapOptions{Vertex: func(vEnd *Vertex) {
+				ret.Append(vEnd.forks.Lines("     "))
+			}})
+			return true
+		})
+		ret.Add("  MERGED:")
+		ret.Append(v.forks.Lines("      "))
+	}})
+	ret.Add("==== END forks of %s", vid.IDShort())
+	return ret
 }

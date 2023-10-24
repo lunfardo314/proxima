@@ -151,7 +151,8 @@ func (ut *UTXOTangle) GetWrappedOutput(oid *core.OutputID, baselineState ...mult
 	vt := newVirtualTx(&txid)
 	vt.addOutput(oid.Index(), o)
 	vid := vt.Wrap()
-	ut.addVertex(vid)
+	conflict := ut.attach(vid)
+	util.Assertf(conflict.VID == nil, "inconsistency: unexpected conflict %s", conflict.IDShort())
 
 	return WrappedOutput{VID: vid, Index: oid.Index()}, true, false
 }

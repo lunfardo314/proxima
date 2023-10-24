@@ -26,14 +26,8 @@ func Load(stateStore general.StateStore, txBytesStore general.TxBytesStore) *UTX
 	ret := newUTXOTangle(stateStore, txBytesStore)
 	// fetch branches of the latest slot
 	branches := multistate.FetchLatestBranches(stateStore)
-
 	for _, br := range branches {
-		// make a virtual transaction
-		vid := newVirtualBranchTx(br).Wrap()
-		// add the transaction to the utxo tangle data structure
-		ret.addVertex(vid)
-		// add the corresponding branch
-		ret.addBranch(vid, br.Root)
+		ret.AddVertexAndBranch(newVirtualBranchTx(br).Wrap(), br.Root)
 	}
 	return ret
 }
@@ -47,33 +41,43 @@ func newVirtualBranchTx(br *multistate.BranchData) *VirtualTransaction {
 	return v
 }
 
-// addVertex can return conflict if number of 256 double spends of an output is exceeded
-func (ut *UTXOTangle) addVertex(vid *WrappedTx) {
+// attach attaches transaction to the utxo tangle. It must be called within global utangle lock critical section
+func (ut *UTXOTangle) attach(vid *WrappedTx) (conflict WrappedOutput) {
 	vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
+		// book consumer into the inputs. Store forks (double spends), detect new ones and propagate to the future cone
 		v.forEachInputDependency(func(i byte, inp *WrappedTx) bool {
-			inp.addConsumerOf(v.Tx.MustOutputIndexOfTheInput(i), vid, ut)
+			inp.addConsumerOfOutput(v.Tx.MustOutputIndexOfTheInput(i), vid, ut)
 			return true
 		})
+		// maintain endorser list in predecessors
 		v.forEachEndorsement(func(_ byte, vEnd *WrappedTx) bool {
 			vEnd.addEndorser(vid)
 			return true
 		})
+		// forks must be recalculated after all new double spends are detected and propagated
+		conflict = v.calcForks()
 	}})
+	if conflict.VID != nil {
+		return
+	}
 	txid := vid.ID()
 	_, already := ut.vertices[*txid]
-	util.Assertf(!already, "addVertex: repeating transaction %s", txid.Short())
+	util.Assertf(!already, "attach: repeating transaction %s", txid.Short())
 	ut.vertices[*txid] = vid
 	return
 }
 
-func (ut *UTXOTangle) addVertexWithSaveTx(vid *WrappedTx) {
-	ut.addVertex(vid)
+func (ut *UTXOTangle) attachWithSaveTx(vid *WrappedTx) (conflict WrappedOutput) {
+	if conflict = ut.attach(vid); conflict.VID != nil {
+		return
+	}
 	// saving transaction bytes to the transaction store
 	vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
 		err := ut.txBytesStore.SaveTxBytes(v.Tx.Bytes())
 		util.AssertNoError(err)
 	}})
 	ut.numAddedVertices++
+	return
 }
 
 func (ut *UTXOTangle) deleteVertex(txid *core.TransactionID) {
@@ -88,7 +92,9 @@ func (ut *UTXOTangle) AddVertexAndBranch(branchVID *WrappedTx, root common.VComm
 	ut.mutex.Lock()
 	defer ut.mutex.Unlock()
 
-	ut.addVertex(branchVID)
+	conflict := ut.attach(branchVID)
+	util.Assertf(conflict.VID == nil, "AddVertexAndBranch: conflict %s", conflict.IDShort())
+
 	ut.addBranch(branchVID, root)
 }
 
@@ -109,21 +115,13 @@ func NewVertex(tx *transaction.Transaction) *Vertex {
 	}
 }
 
-func (ut *UTXOTangle) ValidateAndWrapDraftVertex(draftVertex *Vertex, bypassConstraintValidation ...bool) (*WrappedTx, error) {
-	if !draftVertex.IsSolid() {
-		return draftVertex.Wrap(), fmt.Errorf("ValidateAndWrapDraftVertex: some inputs in %s or endorsements are not solid", draftVertex.Tx.IDShort())
-	}
-	if err := draftVertex.Validate(bypassConstraintValidation...); err != nil {
-		return draftVertex.Wrap(), fmt.Errorf("ValidateAndWrapDraftVertex: validate %s : '%v'", draftVertex.Tx.IDShort(), err)
-	}
-	return draftVertex.Wrap(), nil
-}
-
-func (ut *UTXOTangle) AppendVertex(vid *WrappedTx) error {
+func (ut *UTXOTangle) _appendVertex(vid *WrappedTx) error {
 	ut.mutex.Lock()
 	defer ut.mutex.Unlock()
 
-	ut.addVertexWithSaveTx(vid)
+	if conflict := ut.attachWithSaveTx(vid); conflict.VID != nil {
+		return fmt.Errorf("AppendVertex: conflict at %s", conflict.IDShort())
+	}
 
 	if vid.IsBranchTransaction() {
 		if err := ut.finalizeBranch(vid); err != nil {
@@ -134,6 +132,18 @@ func (ut *UTXOTangle) AppendVertex(vid *WrappedTx) error {
 	return nil
 }
 
+func (ut *UTXOTangle) AppendVertex(v *Vertex) (*WrappedTx, error) {
+	if !v.IsSolid() {
+		return nil, fmt.Errorf("AppendVertex: some inputs are not solid")
+	}
+	if err := v.Validate(); err != nil {
+		return nil, fmt.Errorf("AppendVertex.validate: %v", err)
+	}
+
+	vid := v.Wrap()
+	return vid, ut._appendVertex(vid)
+}
+
 // AppendVertexFromTransactionBytesDebug for testing mainly
 func (ut *UTXOTangle) AppendVertexFromTransactionBytesDebug(txBytes []byte) (*WrappedTx, string, error) {
 	vertexDraft, err := ut.MakeDraftVertexFromTxBytes(txBytes)
@@ -142,12 +152,7 @@ func (ut *UTXOTangle) AppendVertexFromTransactionBytesDebug(txBytes []byte) (*Wr
 	}
 	retTxStr := vertexDraft.String()
 
-	ret, err := ut.ValidateAndWrapDraftVertex(vertexDraft)
-	if err != nil {
-		return ret, retTxStr, err
-	}
-	err = ut.AppendVertex(ret)
-	retTxStr += "\n-------\n\n" + vertexDraft.ConsumedInputsToString()
+	ret, err := ut.AppendVertex(vertexDraft)
 	return ret, retTxStr, err
 }
 

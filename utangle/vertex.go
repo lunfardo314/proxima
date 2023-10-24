@@ -158,16 +158,6 @@ func (v *Vertex) forEachEndorsement(fun func(i byte, vEnd *WrappedTx) bool) {
 	}
 }
 
-// forEachDependency traverses first all input links, then all endorsements
-func (v *Vertex) forEachDependency(fun func(inp *WrappedTx) bool) {
-	v.forEachInputDependency(func(_ byte, inp *WrappedTx) bool {
-		return fun(inp)
-	})
-	v.forEachEndorsement(func(_ byte, inp *WrappedTx) bool {
-		return fun(inp)
-	})
-}
-
 func (v *Vertex) String() string {
 	return v.Lines().String()
 }
@@ -277,4 +267,27 @@ func (v *Vertex) mergeForkSet(fs ForkSet) (conflict WrappedOutput) {
 
 func (v *Vertex) BaselineBranch() *WrappedTx {
 	return v.forks.BaselineBranch()
+}
+
+func (v *Vertex) calcForks() (conflict WrappedOutput) {
+	v.forEachInputDependency(func(i byte, inp *WrappedTx) bool {
+		inp.Unwrap(UnwrapOptions{Vertex: func(inpVertex *Vertex) {
+			if i == 0 {
+				v.forks = inpVertex.forks.Clone()
+			} else {
+				conflict = v.forks.Absorb(inpVertex.forks)
+			}
+		}})
+		return conflict.VID == nil
+	})
+	if conflict.VID != nil {
+		return
+	}
+	v.forEachEndorsement(func(_ byte, vidEnd *WrappedTx) bool {
+		vidEnd.Unwrap(UnwrapOptions{Vertex: func(vEnd *Vertex) {
+			conflict = v.forks.Absorb(vEnd.forks)
+		}})
+		return conflict.VID == nil
+	})
+	return
 }

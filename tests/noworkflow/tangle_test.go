@@ -170,14 +170,14 @@ func initConflictTest(t *testing.T, nConflicts int, verbose bool) *conflictTestR
 
 		require.True(t, vDraft.IsSolid())
 
-		vid, err := ret.ut.ValidateAndWrapDraftVertex(vDraft)
+		vid, err := ret.ut.AppendVertex(vDraft)
 		if err != nil {
-			utangle.SaveGraphPastCone(vid, "make_vertex")
-			t.Logf("***** failed transaction %d:\n%s\n*****", i, vid.String())
+			if vid != nil {
+				utangle.SaveGraphPastCone(vid, "make_vertex")
+				t.Logf("***** failed transaction %d:\n%s\n*****", i, vid.String())
+			}
 		}
-		require.NoError(t, err)
 
-		err = ret.ut.AppendVertex(vid)
 		require.NoError(t, err)
 		vids = append(vids, vid)
 	}
@@ -746,7 +746,11 @@ func TestMultiChain(t *testing.T) {
 		})
 		require.NoError(t, err)
 		util.RequirePanicOrErrorWith(t, func() error {
-			_, _, err := r.ut.AppendVertexFromTransactionBytesDebug(txBytes)
+			vid, _, err := r.ut.AppendVertexFromTransactionBytesDebug(txBytes)
+			if err == nil && vid != nil {
+				t.Logf("\n%s", vid.ForkLines().String())
+				utangle.SaveGraphPastCone(vid, "err_expected")
+			}
 			// t.Logf("==============================\n%s", txStr)
 			return err
 		}, "conflict")
