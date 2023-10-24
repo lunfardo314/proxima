@@ -41,7 +41,9 @@ func newVirtualBranchTx(br *multistate.BranchData) *VirtualTransaction {
 	return v
 }
 
-// attach attaches transaction to the utxo tangle. It must be called within global utangle lock critical section
+// attach attaches transaction to the utxo tangle. It must be called from within global utangle lock critical section
+// If conflict occurs, newly propagated forks, if any, will do no harm.
+// The transaction is marked orphaned, so it will be ignored in the future cones
 func (ut *UTXOTangle) attach(vid *WrappedTx) (conflict WrappedOutput) {
 	vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
 		// book consumer into the inputs. Store forks (double spends), detect new ones and propagate to the future cone
@@ -58,6 +60,9 @@ func (ut *UTXOTangle) attach(vid *WrappedTx) (conflict WrappedOutput) {
 		conflict = v.reMergeParentForkSets()
 	}})
 	if conflict.VID != nil {
+		// mark orphaned and do not add to the utangle. If it was added to the descendants lists, it will be ignored
+		// upon traversal of the future cone
+		vid.MarkOrphaned()
 		return
 	}
 	txid := vid.ID()

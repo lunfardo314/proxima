@@ -686,6 +686,9 @@ func (vid *WrappedTx) addConsumerOfOutput(outputIndex byte, consumer *WrappedTx,
 }
 
 func (vid *WrappedTx) propagateNewForkToFutureCone(f Fork, ut *UTXOTangle, visited set.Set[*WrappedTx]) {
+	if vid.IsOrphaned() {
+		return
+	}
 	if visited.Contains(vid) {
 		return
 	}
