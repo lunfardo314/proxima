@@ -41,18 +41,17 @@ type (
 	}
 
 	proposedMilestoneWithData struct {
-		utangle.WrappedOutput
-		elapsed           time.Duration
-		makeVertexElapsed time.Duration
-		proposedBy        string
-		numInputs         int
+		tx         *transaction.Transaction
+		coverage   uint64
+		elapsed    time.Duration
+		proposedBy string
 	}
 
 	latestMilestoneProposal struct {
 		mutex     sync.RWMutex
 		targetTs  core.LogicalTime
-		bestSoFar *utangle.WrappedOutput
-		current   *utangle.WrappedOutput
+		bestSoFar *transaction.Transaction
+		current   *transaction.Transaction
 		durations []time.Duration
 	}
 
@@ -211,15 +210,13 @@ func (mf *milestoneFactory) isConsumedInThePastPath(wOut utangle.WrappedOutput, 
 func (mf *milestoneFactory) selectInputs(targetTs core.LogicalTime, ownMs utangle.WrappedOutput, otherSeqVIDs ...*utangle.WrappedTx) ([]utangle.WrappedOutput, *utangle.WrappedOutput) {
 	allSeqVIDs := append(util.CloneArglistShallow(otherSeqVIDs...), ownMs.VID)
 
-	targetDelta, conflict := mf.tangle.MergeVertexDeltas(allSeqVIDs...)
-	if conflict != nil {
-		return nil, conflict
+	targetForkSet, conflict := utangle.MergeForkSets(allSeqVIDs...)
+	if conflict.VID != nil {
+		return nil, &conflict
 	}
-	targetDelta.MustCheckConsistency(mf.tangle.MustGetStateReader)
 
-	// check if ownMs can be consumed in the target delta
-	if conflictOut := targetDelta.Consume(ownMs, mf.tangle.MustGetStateReader); conflictOut.VID != nil {
-		return nil, &conflictOut
+	if targetForkSet.ContainsOutput(ownMs) {
+		return nil, &ownMs
 	}
 
 	// pre-selects not orphaned and with suitable timestamp outputs, sorts by timestamp ascending
@@ -236,18 +233,11 @@ func (mf *milestoneFactory) selectInputs(targetTs core.LogicalTime, ownMs utangl
 
 	// filters outputs which can be merged into the target delta but no more than maxFeeInputs limit
 	selected = util.FilterSlice(selected, func(wOut utangle.WrappedOutput) bool {
-		wOutDelta := wOut.VID.GetUTXOStateDelta()
-
-		conflict = targetDelta.MergeDeltas(mf.tangle.MustGetStateReader, wOutDelta)
-		if conflict != nil {
+		conflict = targetForkSet.AbsorbVIDSafe(wOut.VID)
+		if targetForkSet.ContainsOutput(wOut) {
 			return false
 		}
-
-		targetDelta.MustCheckConsistency(mf.tangle.MustGetStateReader)
-		conflictOut := targetDelta.Consume(wOut, mf.tangle.MustGetStateReader)
-
-		targetDelta.MustCheckConsistency(mf.tangle.MustGetStateReader)
-		return conflictOut.VID == nil
+		return conflict.VID == nil
 	}, mf.maxFeeInputs)
 
 	return selected, nil

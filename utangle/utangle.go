@@ -8,6 +8,7 @@ import (
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/general"
 	"github.com/lunfardo314/proxima/multistate"
+	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
 	"github.com/lunfardo314/proxima/util/set"
@@ -409,4 +410,15 @@ func (ut *UTXOTangle) StateStore() general.StateStore {
 
 func (ut *UTXOTangle) LedgerCoverage(vid *WrappedTx) uint64 {
 	return vid.LedgerCoverage(ut)
+}
+
+func (ut *UTXOTangle) LedgerCoverageFromTransaction(tx *transaction.Transaction) (uint64, error) {
+	tmpVertex, conflict := ut.MakeDraftVertex(tx)
+	if conflict != nil {
+		return 0, fmt.Errorf("conflict in the past cone at %s", conflict.Short())
+	}
+	if !tmpVertex.IsSolid() {
+		return 0, fmt.Errorf("some inputs are not solid")
+	}
+	return ut.LedgerCoverage(tmpVertex.Wrap()), nil
 }

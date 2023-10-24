@@ -126,52 +126,56 @@ func (c *proposerTaskGeneric) assessAndAcceptProposal(tx *transaction.Transactio
 		return
 	}
 	c.alreadyProposed.Insert(hashOfProposal)
+	//
+	//makeVertexStartTime := time.Now()
+	//tmpVertex, err := c.factory.tangle.MakeDraftVertex(tx)
+	//if err != nil {
+	//	c.factory.log.Errorf("assessAndAcceptProposal (%s, %s)::MakeDraftVertex: %v", tx.Timestamp(), taskName, err)
+	//	return
+	//}
+	//vid, err := c.factory.tangle.ValidateAndWrapDraftVertex(tmpVertex, true)
+	//
+	//const (
+	//	panicOnConflict  = true
+	//	printTx          = false
+	//	printInputDeltas = true
+	//)
+	//{ // ----------- for testing only. HasConflict are possible at this point, no need to panic
+	//	if err != nil && panicOnConflict {
+	//		utangle.SaveGraphPastCone(vid, "makevertex")
+	//
+	//		if printTx {
+	//			fmt.Printf("========= Failed transaction ======\n%s\n", vid.String())
+	//		}
+	//		if printInputDeltas {
+	//			fmt.Printf("========= Failed input deltas =====\n%s\n", vid.LinesForks().String())
+	//		}
+	//		util.Panicf("assessAndAcceptProposal: (%s--%s): '%v'", c.factory.seqName, taskName, err)
+	//	}
+	//}
 
-	makeVertexStartTime := time.Now()
-	draftVertex, err := c.factory.tangle.MakeDraftVertex(tx)
+	//if err != nil {
+	//	//c.factory.log.Warnf("assessAndAcceptProposal::ValidateAndWrapDraftVertex (%s, %s): %v", tx.Timestamp(), taskName, err)
+	//	//c.factory.log.Errorf("assessAndAcceptProposal::ValidateAndWrapDraftVertex (%s, %s): %v\nEndorsements: [%s]\n",
+	//	//	vid.Timestamp(), taskName, err, tmpVertex.Tx.EndorsementsVeryShort())
+	//	//mStr := "mutations = nil"
+	//	//if mut != nil {
+	//	//	mStr = mut.String()
+	//	//}
+	//	//testutil.LogToFile("test.log", "----- %s\n===== mutations: %s\n===== transaction: %s\n",
+	//	//	tmpVertex.Tx.IDShort(), mStr, tmpVertex.String())
+	//	return
+	//}
+
+	coverage, err := c.factory.tangle.LedgerCoverageFromTransaction(tx)
 	if err != nil {
-		c.factory.log.Errorf("assessAndAcceptProposal (%s, %s)::MakeDraftVertex: %v", tx.Timestamp(), taskName, err)
-		return
-	}
-	vid, err := c.factory.tangle.ValidateAndWrapDraftVertex(draftVertex, true)
-
-	const (
-		panicOnConflict  = true
-		printTx          = false
-		printInputDeltas = true
-	)
-	{ // ----------- for testing only. HasConflict are possible at this point, no need to panic
-		if err != nil && panicOnConflict {
-			utangle.SaveGraphPastCone(vid, "makevertex")
-
-			if printTx {
-				fmt.Printf("========= Failed transaction ======\n%s\n", vid.String())
-			}
-			if printInputDeltas {
-				fmt.Printf("========= Failed input deltas =====\n%s\n", vid.LinesForks().String())
-			}
-			util.Panicf("assessAndAcceptProposal: (%s--%s): '%v'", c.factory.seqName, taskName, err)
-		}
-	}
-
-	if err != nil {
-		//c.factory.log.Warnf("assessAndAcceptProposal::ValidateAndWrapDraftVertex (%s, %s): %v", tx.Timestamp(), taskName, err)
-		//c.factory.log.Errorf("assessAndAcceptProposal::ValidateAndWrapDraftVertex (%s, %s): %v\nEndorsements: [%s]\n",
-		//	vid.Timestamp(), taskName, err, draftVertex.Tx.EndorsementsVeryShort())
-		//mStr := "mutations = nil"
-		//if mut != nil {
-		//	mStr = mut.String()
-		//}
-		//testutil.LogToFile("test.log", "----- %s\n===== mutations: %s\n===== transaction: %s\n",
-		//	draftVertex.Tx.IDShort(), mStr, draftVertex.String())
-		return
+		c.factory.log.Warnf("assessAndAcceptProposal::LedgerCoverageFromTransaction (%s, %s): %v", tx.Timestamp(), taskName, err)
 	}
 	msData := &proposedMilestoneWithData{
-		WrappedOutput:     *vid.MustSequencerOutput(),
-		elapsed:           time.Since(startTime),
-		makeVertexElapsed: time.Since(makeVertexStartTime),
-		proposedBy:        taskName,
-		numInputs:         tx.NumInputs(),
+		tx:         tx,
+		coverage:   coverage,
+		elapsed:    time.Since(startTime),
+		proposedBy: taskName,
 	}
 	if rejectReason := c.placeProposalIfRelevant(msData); rejectReason != "" {
 		c.setTraceNAhead(1)
@@ -188,24 +192,24 @@ func (c *proposerTaskGeneric) placeProposalIfRelevant(mdProposed *proposedMilest
 	defer c.factory.proposal.mutex.Unlock()
 
 	c.setTraceNAhead(1)
-	c.trace("proposed %s: numIN: %d, elapsed: %v", mdProposed.proposedBy, mdProposed.numInputs, mdProposed.elapsed)
+	c.trace("proposed %s: numIN: %d, elapsed: %v", mdProposed.proposedBy, mdProposed.tx.NumInputs(), mdProposed.elapsed)
 
 	if c.factory.proposal.targetTs == core.NilLogicalTime {
-		return fmt.Sprintf("%s SKIPPED: target is nil", mdProposed.IDShort())
+		return fmt.Sprintf("%s SKIPPED: target is nil", mdProposed.tx.IDShort())
 	}
 
 	// decide if it is not lagging behind the target
-	if mdProposed.Timestamp() != c.factory.proposal.targetTs {
-		c.factory.log.Warnf("%s: proposed milestone (%s) is lagging behind target %s. Generation duration: %v/%v",
-			mdProposed.proposedBy, mdProposed.Timestamp().String(), c.factory.proposal.targetTs.String(), mdProposed.elapsed, mdProposed.makeVertexElapsed)
-		return fmt.Sprintf("%s SKIPPED: task is behind target", mdProposed.IDShort())
+	if mdProposed.tx.Timestamp() != c.factory.proposal.targetTs {
+		c.factory.log.Warnf("%s: proposed milestone (%s) is lagging behind target %s. Generation duration: %v",
+			mdProposed.proposedBy, mdProposed.tx.Timestamp().String(), c.factory.proposal.targetTs.String(), mdProposed.elapsed)
+		return fmt.Sprintf("%s SKIPPED: task is behind target", mdProposed.tx.IDShort())
 	}
 
 	if c.factory.proposal.bestSoFar != nil && *c.factory.proposal.bestSoFar == mdProposed.WrappedOutput {
-		return fmt.Sprintf("%s SKIPPED: repeating", mdProposed.IDShort())
+		return fmt.Sprintf("%s SKIPPED: repeating", mdProposed.tx.IDShort())
 	}
 
-	if !mdProposed.VID.IsBranchTransaction() {
+	if !mdProposed.tx.IsBranchTransaction() {
 		// if not branch, check if it increases coverage
 		if c.factory.proposal.bestSoFar != nil {
 			proposedCoverage := c.factory.tangle.LedgerCoverage(mdProposed.VID)

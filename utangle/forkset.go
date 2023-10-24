@@ -78,19 +78,38 @@ func (fs ForkSet) AbsorbSafe(fs1 ForkSet) (conflict WrappedOutput) {
 	return
 }
 
-func Merge(fSets ...ForkSet) (ret ForkSet, conflict WrappedOutput) {
-	if len(fSets) == 0 {
+func (fs ForkSet) AbsorbVIDSafe(vid *WrappedTx) (conflict WrappedOutput) {
+	vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
+		conflict = fs.AbsorbSafe(v.forks)
+	}})
+	return
+}
+
+func (fs ForkSet) ContainsOutput(wOut WrappedOutput) (ret bool) {
+	_, ret = fs[wOut]
+	return
+}
+
+// MergeForkSets fork sets are non-deterministic, therefore result of merging in npt deterministic too
+// It is guaranteed that conflict sets made up of sequencer outputs are all propagated.
+// So, if a set of sequencer transactions produce conflict-less merge, the resulting fork set will include
+// each fork set from the past cone
+func MergeForkSets(vids ...*WrappedTx) (ret ForkSet, conflict WrappedOutput) {
+	if len(vids) == 0 {
 		ret = make(ForkSet)
 		return
 	}
-	for i, fs := range fSets {
-		if i == 0 {
-			ret = fSets[0].Clone()
-			continue
-		}
-		conflict = ret.Absorb(fs)
+	for i, vid := range vids {
+		vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
+			if i == 0 {
+				ret = v.forks.Clone()
+			} else {
+				conflict = ret.Absorb(v.forks)
+			}
+		}})
 		if conflict.VID != nil {
-			return nil, conflict
+			ret = nil
+			return
 		}
 	}
 	return
