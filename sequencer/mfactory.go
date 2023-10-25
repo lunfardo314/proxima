@@ -373,18 +373,19 @@ func (mf *milestoneFactory) futureConeMilestonesOrdered(rootVID *utangle.Wrapped
 	mf.mutex.RLock()
 	defer mf.mutex.RUnlock()
 
-	p.trace("futureConeMilestonesOrdered for root %s. Total %d own milestones", rootVID.LazyIDShort, len(mf.ownMilestones))
+	p.setTraceNAhead(1)
+	p.trace("futureConeMilestonesOrdered for root %s. Total %d own milestones", rootVID.LazyIDShort(), len(mf.ownMilestones))
 
 	om, ok := mf.ownMilestones[rootVID]
 	util.Assertf(ok, "futureConeMilestonesOrdered: milestone %s of chain %s is expected to be among set of own milestones (%d)",
-		rootVID.LazyIDShort,
+		rootVID.LazyIDShort(),
 		func() any { return mf.tipPool.chainID.Short() },
 		len(mf.ownMilestones))
 
 	rootOut := om.WrappedOutput
 	ordered := util.SortKeys(mf.ownMilestones, func(vid1, vid2 *utangle.WrappedTx) bool {
-		// by timestamp -> equivalent to topological order, descending, i.e. older first
-		return vid1.Timestamp().After(vid2.Timestamp())
+		// by timestamp -> equivalent to topological order, ascending, i.e. older first
+		return vid1.Timestamp().Before(vid2.Timestamp())
 	})
 
 	visited := set.New[*utangle.WrappedTx](rootVID)
@@ -393,6 +394,12 @@ func (mf *milestoneFactory) futureConeMilestonesOrdered(rootVID *utangle.Wrapped
 		if !vid.IsOrphaned() && vid.IsSequencerMilestone() && visited.Contains(vid.SequencerPredecessor()) {
 			visited.Insert(vid)
 			ret = append(ret, mf.ownMilestones[vid].WrappedOutput)
+
+			//p.setTraceNAhead(1)
+			//p.trace("DO insert milestone into future cone: %s", vid.IDShort())
+		} else {
+			//p.setTraceNAhead(1)
+			//p.trace("DO NOT insert milestone into future cone: %s", vid.IDShort())
 		}
 	}
 	return ret

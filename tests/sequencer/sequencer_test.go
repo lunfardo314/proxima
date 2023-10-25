@@ -629,8 +629,7 @@ func TestNSequencers(t *testing.T) {
 		require.NoError(t, err)
 		t.Logf("chain origins transaction has been added to the tangle: %s", r.txChainOrigins.IDShort())
 
-		sequencer.SetTraceProposer(sequencer.BacktrackProposerName, false)
-
+		sequencer.SetTraceProposer(sequencer.BaseProposerName, false)
 		sequencer.SetTraceProposer(sequencer.BacktrackProposerName, true)
 
 		r.createSequencers(maxTxInputs, maxSlots, 5, zapcore.InfoLevel, !tagAlong)
@@ -661,7 +660,8 @@ func TestNSequencers(t *testing.T) {
 		r.wrk.Stop()
 		t.Logf("%s", r.ut.Info())
 
-		r.ut.SaveGraph(fnameFromTestName(r.t))
+		r.ut.SaveGraph(fnameFromTestName(t))
+		r.ut.SaveTree(fnameFromTestName(t) + "_TREE")
 
 		heaviestState = r.ut.HeaviestStateForLatestTimeSlot()
 		latest := r.ut.LatestTimeSlot()
@@ -672,8 +672,6 @@ func TestNSequencers(t *testing.T) {
 		}
 
 		bal := heaviestState.BalanceOnChain(&r.bootstrapChainID)
-		r.ut.SaveGraph(fnameFromTestName(t))
-		r.ut.SaveTree(fnameFromTestName(t) + "_TREE")
 		if tagAlong {
 			require.EqualValues(t, int(initOnSeqBalance+(numFaucetTransactions*numFaucets+1)*feeAmount), int(bal))
 		} else {
