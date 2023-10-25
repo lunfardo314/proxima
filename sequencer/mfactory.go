@@ -50,7 +50,6 @@ type (
 	latestMilestoneProposal struct {
 		mutex             sync.RWMutex
 		targetTs          core.LogicalTime
-		bestSoFarTx       *transaction.Transaction
 		bestSoFarCoverage uint64
 		current           *transaction.Transaction
 		durations         []time.Duration
@@ -265,6 +264,9 @@ func (mf *milestoneFactory) setNewTarget(ts core.LogicalTime) {
 
 	mf.proposal.targetTs = ts
 	mf.proposal.current = nil
+	if ts.TimeTick() == 0 {
+		mf.proposal.bestSoFarCoverage = 0
+	}
 	mf.proposal.durations = make([]time.Duration, 0)
 }
 

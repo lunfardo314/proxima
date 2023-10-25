@@ -357,7 +357,8 @@ func (seq *Sequencer) mainLoop() {
 
 		ms, avgProposalDuration, numProposals := seq.generateNextMilestoneForTargetTime(targetTs)
 		if ms == nil {
-			// failed to generate transaction for target time. Start over with new target time
+			seq.setTraceAhead(1)
+			seq.trace("failed to generate ms for target: %s. Now is: %s", targetTs, core.LogicalTimeNow())
 			time.Sleep(10 * time.Millisecond)
 			continue
 		}

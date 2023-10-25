@@ -126,46 +126,6 @@ func (c *proposerTaskGeneric) assessAndAcceptProposal(tx *transaction.Transactio
 		return
 	}
 	c.alreadyProposed.Insert(hashOfProposal)
-	//
-	//makeVertexStartTime := time.Now()
-	//tmpVertex, err := c.factory.tangle.MakeDraftVertex(tx)
-	//if err != nil {
-	//	c.factory.log.Errorf("assessAndAcceptProposal (%s, %s)::MakeDraftVertex: %v", tx.Timestamp(), taskName, err)
-	//	return
-	//}
-	//vid, err := c.factory.tangle.ValidateAndWrapDraftVertex(tmpVertex, true)
-	//
-	//const (
-	//	panicOnConflict  = true
-	//	printTx          = false
-	//	printInputDeltas = true
-	//)
-	//{ // ----------- for testing only. HasConflict are possible at this point, no need to panic
-	//	if err != nil && panicOnConflict {
-	//		utangle.SaveGraphPastCone(vid, "makevertex")
-	//
-	//		if printTx {
-	//			fmt.Printf("========= Failed transaction ======\n%s\n", vid.String())
-	//		}
-	//		if printInputDeltas {
-	//			fmt.Printf("========= Failed input deltas =====\n%s\n", vid.LinesForks().String())
-	//		}
-	//		util.Panicf("assessAndAcceptProposal: (%s--%s): '%v'", c.factory.seqName, taskName, err)
-	//	}
-	//}
-
-	//if err != nil {
-	//	//c.factory.log.Warnf("assessAndAcceptProposal::ValidateAndWrapDraftVertex (%s, %s): %v", tx.Timestamp(), taskName, err)
-	//	//c.factory.log.Errorf("assessAndAcceptProposal::ValidateAndWrapDraftVertex (%s, %s): %v\nEndorsements: [%s]\n",
-	//	//	vid.Timestamp(), taskName, err, tmpVertex.Tx.EndorsementsVeryShort())
-	//	//mStr := "mutations = nil"
-	//	//if mut != nil {
-	//	//	mStr = mut.String()
-	//	//}
-	//	//testutil.LogToFile("test.log", "----- %s\n===== mutations: %s\n===== transaction: %s\n",
-	//	//	tmpVertex.Tx.IDShort(), mStr, tmpVertex.String())
-	//	return
-	//}
 
 	coverage, err := c.factory.tangle.LedgerCoverageFromTransaction(tx)
 	if err != nil {
@@ -192,7 +152,8 @@ func (c *proposerTaskGeneric) placeProposalIfRelevant(mdProposed *proposedMilest
 	defer c.factory.proposal.mutex.Unlock()
 
 	c.setTraceNAhead(1)
-	c.trace("proposed %s: numIN: %d, elapsed: %v", mdProposed.proposedBy, mdProposed.tx.NumInputs(), mdProposed.elapsed)
+	c.trace("proposed %s: coverage: %s, numIN: %d, elapsed: %v",
+		mdProposed.proposedBy, util.GoThousands(mdProposed.coverage), mdProposed.tx.NumInputs(), mdProposed.elapsed)
 
 	if c.factory.proposal.targetTs == core.NilLogicalTime {
 		return fmt.Sprintf("%s SKIPPED: target is nil", mdProposed.tx.IDShort())
@@ -205,29 +166,26 @@ func (c *proposerTaskGeneric) placeProposalIfRelevant(mdProposed *proposedMilest
 		return fmt.Sprintf("%s SKIPPED: task is behind target", mdProposed.tx.IDShort())
 	}
 
-	if c.factory.proposal.bestSoFarTx != nil && *c.factory.proposal.bestSoFarTx.ID() == *mdProposed.tx.ID() {
+	if c.factory.proposal.current != nil && *c.factory.proposal.current.ID() == *mdProposed.tx.ID() {
 		return fmt.Sprintf("%s SKIPPED: repeating", mdProposed.tx.IDShort())
 	}
 
+	baselineCoverage := c.factory.proposal.bestSoFarCoverage
+
 	if !mdProposed.tx.IsBranchTransaction() {
 		// if not branch, check if it increases coverage
-		if c.factory.proposal.bestSoFarTx != nil {
-			if mdProposed.coverage <= c.factory.proposal.bestSoFarCoverage {
-				return fmt.Sprintf("%s SKIPPED: no increase in coverage %s <- %s of %s)",
-					mdProposed.tx.IDShort(), util.GoThousands(mdProposed.coverage),
-					util.GoThousands(c.factory.proposal.bestSoFarCoverage), c.factory.proposal.bestSoFarTx.IDShort())
-			}
+		if mdProposed.coverage <= baselineCoverage {
+			return fmt.Sprintf("%s SKIPPED: no increase in coverage %s <- %s of %s)",
+				mdProposed.tx.IDShort(), util.GoThousands(mdProposed.coverage),
+				util.GoThousands(c.factory.proposal.bestSoFarCoverage), c.factory.proposal.current.IDShort())
 		}
 	}
 
 	// branch proposals always accepted
+	c.factory.proposal.bestSoFarCoverage = mdProposed.coverage
+	c.factory.proposal.current = mdProposed.tx
 
-	var baselineCoverage uint64
-	if c.factory.proposal.bestSoFarTx != nil {
-		c.factory.proposal.bestSoFarCoverage = mdProposed.coverage
-	}
-	c.factory.proposal.bestSoFarTx = mdProposed.tx
-
+	c.setTraceNAhead(1)
 	c.trace("(%s): ACCEPTED %s, coverage: %s (base: %s), elapsed: %v, inputs: %d, tipPool: %d",
 		mdProposed.proposedBy,
 		mdProposed.tx.IDShort(),
