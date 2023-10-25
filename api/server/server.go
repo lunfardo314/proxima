@@ -167,7 +167,7 @@ func getOutputInclusionHandle(ut *utangle.UTXOTangle) func(w http.ResponseWriter
 		for i, bs := range allBranches {
 			resp.Inclusion[i] = api.InclusionDataEncoded{
 				BranchID: bs.vid.ID().StringHex(),
-				Coverage: bs.vid.LedgerCoverage(),
+				Coverage: bs.vid.LedgerCoverage(ut),
 				Included: bs.rdr.HasUTXO(&oid),
 			}
 		}

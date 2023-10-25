@@ -142,7 +142,7 @@ func (c *proposerTaskGeneric) assessAndAcceptProposal(tx *transaction.Transactio
 		proposedBy: taskName,
 	}
 	if rejectReason := c.placeProposalIfRelevant(msData); rejectReason != "" {
-		c.setTraceNAhead(1)
+		//c.setTraceNAhead(1)
 		c.trace(rejectReason)
 	}
 }

@@ -310,8 +310,8 @@ func Test1Sequencer(t *testing.T) {
 	t.Run("1 faucet txs sync", func(t *testing.T) {
 		const (
 			transferAmount        = 100
-			numFaucetTransactions = 100 // 79 // 200 // more than 150 does not work with this pace
-			maxFeeInputs          = sequencer.DefaultMaxFeeInputs
+			numFaucetTransactions = 300                                    // 79 // 200 // more than 150 does not work with this pace
+			maxFeeInputs          = 100                                    // sequencer.DefaultMaxFeeInputs
 			maxSlots              = numFaucetTransactions/maxFeeInputs + 3 // 10
 		)
 
@@ -451,7 +451,7 @@ func Test1Sequencer(t *testing.T) {
 			numFaucets            = 3
 			numFaucetTransactions = 50
 			transferAmount        = 100
-			maxInputs             = sequencer.DefaultMaxFeeInputs
+			maxInputs             = 254 // sequencer.DefaultMaxFeeInputs
 			maxSlots              = numFaucetTransactions*numFaucets/maxInputs + 6
 		)
 		t.Logf("numFaucets: %d, numFaucetTransactions: %d", numFaucets, numFaucetTransactions)
