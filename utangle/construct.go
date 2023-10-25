@@ -206,14 +206,18 @@ func (ut *UTXOTangle) _finalizeBranch(newBranchVertex *WrappedTx) error {
 				newBranchVertex.IDShort(), err, muts.Len(), muts.Lines().String())
 		}
 		newRoot = upd.Root()
-	}
-	{
 		// assert consistency
 		rdr, err := multistate.NewSugaredReadableState(ut.stateStore, newRoot)
 		if err != nil {
 			return fmt.Errorf("finalizeBranch: double check failed: '%v'\n%s", err, newBranchVertex.String())
 		}
-		stemID := rdr.GetStemOutput().ID
+
+		var stemID core.OutputID
+		err = util.CatchPanicOrError(func() error {
+			stemID = rdr.GetStemOutput().ID
+			return nil
+		})
+		util.Assertf(err == nil, "double check failed: %v\n%s", err, muts.Lines().String())
 		util.Assertf(stemID == nextStemOutputID, "rdr.GetStemOutput().ID == nextStemOutputID\n%s != %s\n%s",
 			stemID.Short(), nextStemOutputID.Short(),
 			func() any { return newBranchVertex.LinesForks().String() })

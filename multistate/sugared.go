@@ -2,6 +2,7 @@ package multistate
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/general"
@@ -83,6 +84,9 @@ func (s SugaredStateReader) GetOutputsForAccount(addr core.AccountID) ([]*core.O
 func (s SugaredStateReader) GetStemOutput() *core.OutputWithID {
 	oData, err := s.IndexedStateReader.GetUTXOsLockedInAccount(core.StemAccountID)
 	util.AssertNoError(err)
+	if len(oData) != 1 {
+		fmt.Println()
+	}
 	util.Assertf(len(oData) == 1, "inconsistency: stem output must be unique in the state, found %d stem output records", len(oData))
 	ret, err := oData[0].Parse()
 	util.AssertNoError(err)
