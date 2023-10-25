@@ -48,11 +48,12 @@ type (
 	}
 
 	latestMilestoneProposal struct {
-		mutex     sync.RWMutex
-		targetTs  core.LogicalTime
-		bestSoFar *transaction.Transaction
-		current   *transaction.Transaction
-		durations []time.Duration
+		mutex             sync.RWMutex
+		targetTs          core.LogicalTime
+		bestSoFarTx       *transaction.Transaction
+		bestSoFarCoverage uint64
+		current           *transaction.Transaction
+		durations         []time.Duration
 	}
 
 	factoryStats struct {
@@ -297,14 +298,14 @@ func (mc *latestMilestoneProposal) continueCandidateProposing(ts core.LogicalTim
 	return mc.targetTs == ts
 }
 
-func (mc *latestMilestoneProposal) getLatestProposal() *utangle.WrappedOutput {
+func (mc *latestMilestoneProposal) getLatestProposal() *transaction.Transaction {
 	mc.mutex.RLock()
 	defer mc.mutex.RUnlock()
 
 	return mc.current
 }
 
-func (mf *milestoneFactory) startProposingForTargetLogicalTime(targetTs core.LogicalTime) (*utangle.WrappedOutput, time.Duration, int) {
+func (mf *milestoneFactory) startProposingForTargetLogicalTime(targetTs core.LogicalTime) (*transaction.Transaction, time.Duration, int) {
 	deadline := targetTs.Time()
 	nowis := time.Now()
 

@@ -24,7 +24,7 @@ func (seq *Sequencer) updateInfo(msOutput utangle.WrappedOutput, avgProposalDura
 		NumConsumedFeeOutputs:  nConsumed,
 		NumFeeOutputsInTippool: seq.factory.tipPool.numOutputsInBuffer(),
 		NumOtherMsInTippool:    seq.factory.tipPool.numOtherMilestones(),
-		LedgerCoverage:         msOutput.VID.LedgerCoverage(seq.factory.tangle.StateStore),
+		LedgerCoverage:         seq.factory.tangle.LedgerCoverage(msOutput.VID),
 		PrevLedgerCoverage:     seq.info.LedgerCoverage,
 		AvgProposalDuration:    avgProposalDuration,
 		NumProposals:           numProposals,
@@ -62,7 +62,7 @@ func (seq *Sequencer) LogMilestoneSubmitDefault(wOut *utangle.WrappedOutput) {
 		msIndex,
 		branchIndex,
 		wOut.IDShort(),
-		wOut.VID.BaselineBranchVID().IDShort(),
+		wOut.VID.BaselineBranch().IDShort(),
 		util.GoThousands(info.LedgerCoverage),
 		util.GoThousands(info.PrevLedgerCoverage),
 		info.In,
@@ -73,10 +73,10 @@ func (seq *Sequencer) LogMilestoneSubmitDefault(wOut *utangle.WrappedOutput) {
 		info.NumFeeOutputsInTippool,
 		info.NumOtherMsInTippool,
 	)
-	const printDelta = false
-	if printDelta {
+	const printForkSet = false
+	if printForkSet {
 		if msType == "MS" {
-			seq.log.Infof("MS DELTA:\n%s", wOut.VID.GetUTXOStateDelta().Lines("     ").String())
+			seq.log.Infof("MS FORK SET:\n%s", wOut.VID.ForkLines("       ").String())
 		}
 	}
 	const printTx = false

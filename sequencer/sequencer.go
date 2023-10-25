@@ -9,6 +9,7 @@ import (
 
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/general"
+	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/utangle"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/workflow"
@@ -284,8 +285,8 @@ func (seq *Sequencer) chooseNextTargetTime(avgProposalDuration time.Duration) co
 	return target
 }
 
-// Returns nil if fails to generate acceptable bestSoFar until the deadline
-func (seq *Sequencer) generateNextMilestoneForTargetTime(targetTs core.LogicalTime) (*utangle.WrappedOutput, time.Duration, int) {
+// Returns nil if fails to generate acceptable bestSoFarTx until the deadline
+func (seq *Sequencer) generateNextMilestoneForTargetTime(targetTs core.LogicalTime) (*transaction.Transaction, time.Duration, int) {
 	seq.trace("generateNextMilestoneForTargetTime %s", targetTs)
 
 	timeout := time.Duration(seq.config.Pace) * core.TimeTickDuration()
@@ -297,12 +298,12 @@ func (seq *Sequencer) generateNextMilestoneForTargetTime(targetTs core.LogicalTi
 			return nil, 0, 0
 		}
 
-		msOutput, avgProposalDuration, numProposals := seq.factory.startProposingForTargetLogicalTime(targetTs)
+		ms, avgProposalDuration, numProposals := seq.factory.startProposingForTargetLogicalTime(targetTs)
 
-		if msOutput != nil {
-			util.Assertf(msOutput.Timestamp() == targetTs, "msOutput.output.Timestamp() (%v) == targetTs (%v)",
-				msOutput.Timestamp(), targetTs)
-			return msOutput, avgProposalDuration, numProposals
+		if ms != nil {
+			util.Assertf(ms.Timestamp() == targetTs, "msOutput.output.Timestamp() (%v) == targetTs (%v)",
+				ms.Timestamp(), targetTs)
+			return ms, avgProposalDuration, numProposals
 		}
 
 		if time.Now().After(absoluteDeadline) {
@@ -354,10 +355,8 @@ func (seq *Sequencer) mainLoop() {
 		//seq.setTraceAhead(1)
 		seq.trace("target ts: %s. Now is: %s", targetTs, core.LogicalTimeNow())
 
-		var tmpMsOutput *utangle.WrappedOutput
-		var numProposals int
-		tmpMsOutput, avgProposalDuration, numProposals = seq.generateNextMilestoneForTargetTime(targetTs)
-		if tmpMsOutput == nil {
+		ms, avgProposalDuration, numProposals := seq.generateNextMilestoneForTargetTime(targetTs)
+		if ms == nil {
 			// failed to generate transaction for target time. Start over with new target time
 			time.Sleep(10 * time.Millisecond)
 			continue
@@ -365,11 +364,11 @@ func (seq *Sequencer) mainLoop() {
 
 		//seq.setTraceAhead(1)
 		seq.trace("produced milestone %s for the target logical time %s in %v, avg proposal: %v",
-			tmpMsOutput.IDShort(), targetTs, time.Since(timerStart), avgProposalDuration)
+			ms.IDShort(), targetTs, time.Since(timerStart), avgProposalDuration)
 
-		msOutput := seq.submitTransaction(*tmpMsOutput)
+		msOutput := seq.submitTransaction(ms)
 		if msOutput == nil {
-			seq.log.Warnf("failed to submit milestone %d -- %s", milestoneCount+1, tmpMsOutput.IDShort())
+			seq.log.Warnf("failed to submit milestone %d -- %s", milestoneCount+1, msOutput.IDShort())
 			util.Panicf("debug exit")
 			continue
 		}
@@ -389,8 +388,7 @@ const submitTransactionTimeout = 5 * time.Second
 
 // submitTransaction submits transaction to the workflow and waits for deterministic status: either added to the tangle or rejected
 // The temporary VID of the transaction is replaced with the real one upon submission
-func (seq *Sequencer) submitTransaction(tmpMsOutput utangle.WrappedOutput) *utangle.WrappedOutput {
-	tx := tmpMsOutput.VID.UnwrapTransaction()
+func (seq *Sequencer) submitTransaction(tx *transaction.Transaction) *utangle.WrappedOutput {
 	util.Assertf(tx != nil, "tx != nil")
 
 	retVID, err := seq.glb.TransactionInWaitAppendWrap(tx.Bytes(), submitTransactionTimeout, workflow.OptionWithSourceSequencer)
@@ -401,7 +399,7 @@ func (seq *Sequencer) submitTransaction(tmpMsOutput utangle.WrappedOutput) *utan
 	seq.log.Debugf("submited milestone:: %s", tx.IDShort())
 	return &utangle.WrappedOutput{
 		VID:   retVID,
-		Index: tmpMsOutput.Index,
+		Index: tx.SequencerTransactionData().SequencerOutputIndex,
 	}
 }
 

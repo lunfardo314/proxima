@@ -205,20 +205,17 @@ func (c *proposerTaskGeneric) placeProposalIfRelevant(mdProposed *proposedMilest
 		return fmt.Sprintf("%s SKIPPED: task is behind target", mdProposed.tx.IDShort())
 	}
 
-	if c.factory.proposal.bestSoFar != nil && *c.factory.proposal.bestSoFar == mdProposed.WrappedOutput {
+	if c.factory.proposal.bestSoFarTx != nil && *c.factory.proposal.bestSoFarTx.ID() == *mdProposed.tx.ID() {
 		return fmt.Sprintf("%s SKIPPED: repeating", mdProposed.tx.IDShort())
 	}
 
 	if !mdProposed.tx.IsBranchTransaction() {
 		// if not branch, check if it increases coverage
-		if c.factory.proposal.bestSoFar != nil {
-			proposedCoverage := c.factory.tangle.LedgerCoverage(mdProposed.VID)
-			baselineCoverage := c.factory.tangle.LedgerCoverage(c.factory.proposal.bestSoFar.VID)
-
-			if proposedCoverage <= baselineCoverage {
+		if c.factory.proposal.bestSoFarTx != nil {
+			if mdProposed.coverage <= c.factory.proposal.bestSoFarCoverage {
 				return fmt.Sprintf("%s SKIPPED: no increase in coverage %s <- %s of %s)",
-					mdProposed.IDShort(), util.GoThousands(proposedCoverage),
-					util.GoThousands(baselineCoverage), c.factory.proposal.bestSoFar.VID.IDShort())
+					mdProposed.tx.IDShort(), util.GoThousands(mdProposed.coverage),
+					util.GoThousands(c.factory.proposal.bestSoFarCoverage), c.factory.proposal.bestSoFarTx.IDShort())
 			}
 		}
 	}
@@ -226,21 +223,18 @@ func (c *proposerTaskGeneric) placeProposalIfRelevant(mdProposed *proposedMilest
 	// branch proposals always accepted
 
 	var baselineCoverage uint64
-	if c.factory.proposal.bestSoFar != nil {
-		baselineCoverage = c.factory.tangle.LedgerCoverage(c.factory.proposal.bestSoFar.VID)
+	if c.factory.proposal.bestSoFarTx != nil {
+		c.factory.proposal.bestSoFarCoverage = mdProposed.coverage
 	}
-	c.factory.proposal.current = &mdProposed.WrappedOutput
-	c.factory.proposal.bestSoFar = c.factory.proposal.current
-	ledgerCoverageProposed := c.factory.tangle.LedgerCoverage(c.factory.proposal.current.VID)
+	c.factory.proposal.bestSoFarTx = mdProposed.tx
 
-	c.trace("(%s): ACCEPTED %s, coverage: %s (base: %s), elapsed: %v/%v, consumedInThePastPath: %d, tipPool: %d",
+	c.trace("(%s): ACCEPTED %s, coverage: %s (base: %s), elapsed: %v, inputs: %d, tipPool: %d",
 		mdProposed.proposedBy,
-		mdProposed.IDShort(),
-		util.GoThousands(ledgerCoverageProposed),
+		mdProposed.tx.IDShort(),
+		util.GoThousands(mdProposed.coverage),
 		util.GoThousands(baselineCoverage),
 		mdProposed.elapsed,
-		mdProposed.makeVertexElapsed,
-		mdProposed.VID.NumInputs(),
+		mdProposed.tx.NumInputs(),
 		c.factory.tipPool.numOutputsInBuffer(),
 	)
 	return ""
