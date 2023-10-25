@@ -214,7 +214,7 @@ func (t LogicalTime) TimeTick() TimeTick {
 }
 
 func (t LogicalTime) IsSlotBoundary() bool {
-	return t.TimeTick() == 0
+	return t != NilLogicalTime && t.TimeTick() == 0
 }
 
 func (t LogicalTime) UnixNano() int64 {

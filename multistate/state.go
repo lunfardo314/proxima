@@ -24,15 +24,15 @@ type (
 	}
 
 	RootRecord struct {
-		Root        common.VCommitment
-		SequencerID core.ChainID
-		Coverage    uint64
+		Root          common.VCommitment
+		SequencerID   core.ChainID
+		CoverageDelta uint64
 	}
 
 	BranchData struct {
 		RootRecord
-		Stem      *core.OutputWithID
-		SeqOutput *core.OutputWithID
+		Stem            *core.OutputWithID
+		SequencerOutput *core.OutputWithID
 	}
 )
 
@@ -265,7 +265,7 @@ func (u *Updatable) MustUpdate(muts *Mutations, rootStemOutputID *core.OutputID,
 	common.AssertNoError(err)
 }
 
-func (u *Updatable) updateUTXOLedgerDB(updateFun func(updatable *immutable.TrieUpdatable) error, stemOutputID *core.OutputID, seqID *core.ChainID, coverage uint64) error {
+func (u *Updatable) updateUTXOLedgerDB(updateFun func(updatable *immutable.TrieUpdatable) error, stemOutputID *core.OutputID, seqID *core.ChainID, coverageDelta uint64) error {
 	if err := updateFun(u.trie); err != nil {
 		return err
 	}
@@ -277,9 +277,9 @@ func (u *Updatable) updateUTXOLedgerDB(updateFun func(updatable *immutable.TrieU
 			writeLatestSlot(batch, stemOutputID.TimeSlot())
 		}
 		writeRootRecord(batch, stemOutputID.TransactionID(), RootRecord{
-			Root:        newRoot,
-			SequencerID: *seqID,
-			Coverage:    coverage,
+			Root:          newRoot,
+			SequencerID:   *seqID,
+			CoverageDelta: coverageDelta,
 		})
 	}
 	var err error

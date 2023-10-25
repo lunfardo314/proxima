@@ -41,7 +41,7 @@ func (r *RootRecord) Bytes() []byte {
 	arr.Push(r.SequencerID.Bytes())
 	arr.Push(r.Root.Bytes())
 	var coverageBin [8]byte
-	binary.BigEndian.PutUint64(coverageBin[:], r.Coverage)
+	binary.BigEndian.PutUint64(coverageBin[:], r.CoverageDelta)
 	arr.Push(coverageBin[:])
 
 	return arr.Bytes()
@@ -66,9 +66,9 @@ func RootRecordFromBytes(data []byte) (RootRecord, error) {
 	coverage := binary.BigEndian.Uint64(arr.At(2))
 
 	return RootRecord{
-		Root:        root,
-		SequencerID: chainID,
-		Coverage:    coverage,
+		Root:          root,
+		SequencerID:   chainID,
+		CoverageDelta: coverage,
 	}, nil
 }
 
@@ -186,9 +186,9 @@ func FetchBranchDataByRoot(store general.StateStore, rootData RootRecord) Branch
 	util.AssertNoError(err)
 
 	return BranchData{
-		RootRecord: rootData,
-		Stem:       rdr.GetStemOutput(),
-		SeqOutput:  seqOut,
+		RootRecord:      rootData,
+		Stem:            rdr.GetStemOutput(),
+		SequencerOutput: seqOut,
 	}
 }
 
@@ -206,7 +206,7 @@ func FetchLatestBranches(store general.StateStore) []*BranchData {
 	ret := FetchBranchDataMulti(store, FetchRootRecords(store, FetchLatestSlot(store))...)
 
 	return util.Sort(ret, func(i, j int) bool {
-		return ret[i].Coverage > ret[j].Coverage
+		return ret[i].CoverageDelta > ret[j].CoverageDelta
 	})
 }
 
@@ -235,7 +235,7 @@ func FetchHeaviestBranchChainNSlotsBack(store general.StateStore, nBack int) []*
 	var lastInTheChain *BranchData
 
 	for _, bd := range latestBD {
-		if lastInTheChain == nil || bd.Coverage > lastInTheChain.Coverage {
+		if lastInTheChain == nil || bd.CoverageDelta > lastInTheChain.CoverageDelta {
 			lastInTheChain = bd
 		}
 	}
@@ -246,10 +246,10 @@ func FetchHeaviestBranchChainNSlotsBack(store general.StateStore, nBack int) []*
 		rd := rootData[txid]
 		bd := FetchBranchDataByRoot(store, rd)
 
-		if bd.SeqOutput.ID.TimeSlot() == lastInTheChain.Stem.ID.TimeSlot() {
+		if bd.SequencerOutput.ID.TimeSlot() == lastInTheChain.Stem.ID.TimeSlot() {
 			continue
 		}
-		util.Assertf(bd.SeqOutput.ID.TimeSlot() < lastInTheChain.Stem.ID.TimeSlot(), "bd.SeqOutput.ID.TimeSlot() < lastInTheChain.TimeSlot()")
+		util.Assertf(bd.SequencerOutput.ID.TimeSlot() < lastInTheChain.Stem.ID.TimeSlot(), "bd.SequencerOutput.ID.TimeSlot() < lastInTheChain.TimeSlot()")
 
 		stemLock, ok := lastInTheChain.Stem.Output.StemLock()
 		util.Assertf(ok, "stem output expected")

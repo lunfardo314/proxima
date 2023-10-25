@@ -67,12 +67,12 @@ func DisplayBranchData(branches []*multistate.BranchData) {
 	glb.Infof(strings.Repeat("-", 150))
 	for i, br := range branches {
 		name := "(no name)"
-		if msData := txbuilder.ParseMilestoneData(br.SeqOutput.Output); msData != nil {
+		if msData := txbuilder.ParseMilestoneData(br.SequencerOutput.Output); msData != nil {
 			name = msData.Name
 		}
 		name = fmt.Sprintf("%s (%s)", name, br.SequencerID.VeryShort())
-		onChainAmount := br.SeqOutput.Output.Amount()
+		onChainAmount := br.SequencerOutput.Output.Amount()
 		glb.Infof(" %2d: %20s %10s %20s %20s    %-70s",
-			i, br.Stem.IDShort(), name, util.GoThousands(onChainAmount), util.GoThousands(br.Coverage), br.Root.String())
+			i, br.Stem.IDShort(), name, util.GoThousands(onChainAmount), util.GoThousands(br.CoverageDelta), br.Root.String())
 	}
 }

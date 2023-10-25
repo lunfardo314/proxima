@@ -264,7 +264,7 @@ func (mf *milestoneFactory) setNewTarget(ts core.LogicalTime) {
 
 	mf.proposal.targetTs = ts
 	mf.proposal.current = nil
-	if ts.TimeTick() == 0 {
+	if ts.IsSlotBoundary() {
 		mf.proposal.bestSoFarCoverage = 0
 	}
 	mf.proposal.durations = make([]time.Duration, 0)

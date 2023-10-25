@@ -35,8 +35,8 @@ func Load(stateStore general.StateStore, txBytesStore general.TxBytesStore) *UTX
 func newVirtualBranchTx(br *multistate.BranchData) *VirtualTransaction {
 	txid := br.Stem.ID.TransactionID()
 	v := newVirtualTx(&txid)
-	v.addSequencerIndices(br.SeqOutput.ID.Index(), br.Stem.ID.Index())
-	v.addOutput(br.SeqOutput.ID.Index(), br.SeqOutput.Output)
+	v.addSequencerIndices(br.SequencerOutput.ID.Index(), br.Stem.ID.Index())
+	v.addOutput(br.SequencerOutput.ID.Index(), br.SequencerOutput.Output)
 	v.addOutput(br.Stem.ID.Index(), br.Stem.Output)
 	return v
 }
@@ -199,7 +199,7 @@ func (ut *UTXOTangle) _finalizeBranch(newBranchVertex *WrappedTx) error {
 		if err != nil {
 			return err
 		}
-		coverage := ut.LedgerCoverage(newBranchVertex)
+		coverage := ut.LedgerCoverageDelta(newBranchVertex)
 		err = upd.Update(muts, &nextStemOutputID, &seqTxData.SequencerID, coverage)
 		if err != nil {
 			return fmt.Errorf("finalizeBranch %s: '%v'=== mutations: %d\n%s",

@@ -828,22 +828,32 @@ func (vid *WrappedTx) _collectCoverage(baselineStateReader general.StateReader, 
 	return
 }
 
-func (vid *WrappedTx) LedgerCoverage(ut *UTXOTangle) uint64 {
+func (vid *WrappedTx) CoverageDelta(ut *UTXOTangle) (*core.TransactionID, uint64) {
 	if ut == nil {
 		// TODO temporary
-		return 0
+		return nil, 0
 	}
 	baselineBranchVID := vid.BaselineBranch()
 	if baselineBranchVID == nil {
-		return 0
+		return nil, 0
 	}
 	baselineTxID := baselineBranchVID.ID()
-	stateReader := ut.MustGetStateReader(baselineTxID)
-	ret := vid._collectCoverage(stateReader, set.New[*WrappedTx]())
+	return baselineTxID, vid._collectCoverage(ut.MustGetStateReader(baselineTxID), set.New[*WrappedTx]())
+}
 
-	bd, ok := ut.FetchBranchData(baselineTxID)
-	util.Assertf(ok, "can't fetch branch data for %s", baselineTxID.Short())
-	return ret + bd.Coverage
+func (vid *WrappedTx) LedgerCoverage(ut *UTXOTangle) uint64 {
+	var deltaCoverage uint64
+	var branchTxID *core.TransactionID
+
+	if !vid.IsBranchTransaction() {
+		branchTxID, deltaCoverage = vid.CoverageDelta(ut)
+	}
+	if branchTxID == nil {
+		return 0
+	}
+	bd, ok := ut.FetchBranchData(branchTxID)
+	util.Assertf(ok, "can't fetch branch data for %s", func() any { return branchTxID.Short() })
+	return deltaCoverage + bd.CoverageDelta
 }
 
 func (vid *WrappedTx) Less(vid1 *WrappedTx) bool {

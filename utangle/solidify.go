@@ -166,7 +166,7 @@ func (ut *UTXOTangle) fetchAndWrapBranch(oid *core.OutputID) (WrappedOutput, boo
 	}
 	// branch found. Create virtualTx with seq and stem outputs
 	vt := newVirtualBranchTx(&bd)
-	if oid.Index() != bd.SeqOutput.ID.Index() && oid.Index() != bd.Stem.ID.Index() {
+	if oid.Index() != bd.SequencerOutput.ID.Index() && oid.Index() != bd.Stem.ID.Index() {
 		// not seq or stem
 		rdr := multistate.MustNewSugaredStateReader(ut.stateStore, bd.Root)
 		o, err := rdr.GetOutput(oid)

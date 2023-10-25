@@ -46,7 +46,7 @@ func runMainChainCmd(_ *cobra.Command, args []string) {
 
 		for _, bd := range mainBranches {
 			_, _ = fmt.Fprintf(outFile, "%s, %d, %s, %s\n",
-				bd.SequencerID.String(), bd.Coverage, bd.Stem.ID.String(), util.GoThousands(bd.SeqOutput.Output.Amount()))
+				bd.SequencerID.String(), bd.CoverageDelta, bd.Stem.ID.String(), util.GoThousands(bd.SequencerOutput.Output.Amount()))
 		}
 	}
 	type seqData struct {
@@ -60,10 +60,10 @@ func runMainChainCmd(_ *cobra.Command, args []string) {
 		sd := bySeqID[bd.SequencerID]
 		sd.numOccurrences++
 		if sd.onChainBalance == 0 {
-			sd.onChainBalance = bd.SeqOutput.Output.Amount()
+			sd.onChainBalance = bd.SequencerOutput.Output.Amount()
 		}
 		if sd.name == "" {
-			if md := txbuilder.ParseMilestoneData(bd.SeqOutput.Output); md != nil {
+			if md := txbuilder.ParseMilestoneData(bd.SequencerOutput.Output); md != nil {
 				sd.name = md.Name
 			}
 		}

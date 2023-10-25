@@ -131,6 +131,10 @@ func (c *proposerTaskGeneric) assessAndAcceptProposal(tx *transaction.Transactio
 	if err != nil {
 		c.factory.log.Warnf("assessAndAcceptProposal::LedgerCoverageFromTransaction (%s, %s): %v", tx.Timestamp(), taskName, err)
 	}
+
+	//c.setTraceNAhead(1)
+	//c.trace("LedgerCoverageFromTransaction %s = %d", tx.IDShort(), coverage)
+
 	msData := &proposedMilestoneWithData{
 		tx:         tx,
 		coverage:   coverage,
@@ -151,9 +155,10 @@ func (c *proposerTaskGeneric) placeProposalIfRelevant(mdProposed *proposedMilest
 	c.factory.proposal.mutex.Lock()
 	defer c.factory.proposal.mutex.Unlock()
 
-	c.setTraceNAhead(1)
-	c.trace("proposed %s: coverage: %s, numIN: %d, elapsed: %v",
-		mdProposed.proposedBy, util.GoThousands(mdProposed.coverage), mdProposed.tx.NumInputs(), mdProposed.elapsed)
+	//c.setTraceNAhead(1)
+	c.trace("proposed %s: coverage: %s (base %s), numIN: %d, elapsed: %v",
+		mdProposed.proposedBy, util.GoThousands(mdProposed.coverage), util.GoThousands(c.factory.proposal.bestSoFarCoverage),
+		mdProposed.tx.NumInputs(), mdProposed.elapsed)
 
 	if c.factory.proposal.targetTs == core.NilLogicalTime {
 		return fmt.Sprintf("%s SKIPPED: target is nil", mdProposed.tx.IDShort())
@@ -175,9 +180,8 @@ func (c *proposerTaskGeneric) placeProposalIfRelevant(mdProposed *proposedMilest
 	if !mdProposed.tx.IsBranchTransaction() {
 		// if not branch, check if it increases coverage
 		if mdProposed.coverage <= baselineCoverage {
-			return fmt.Sprintf("%s SKIPPED: no increase in coverage %s <- %s of %s)",
-				mdProposed.tx.IDShort(), util.GoThousands(mdProposed.coverage),
-				util.GoThousands(c.factory.proposal.bestSoFarCoverage), c.factory.proposal.current.IDShort())
+			return fmt.Sprintf("%s SKIPPED: no increase in coverage %s <- %s)",
+				mdProposed.tx.IDShort(), util.GoThousands(mdProposed.coverage), util.GoThousands(c.factory.proposal.bestSoFarCoverage))
 		}
 	}
 
@@ -185,7 +189,7 @@ func (c *proposerTaskGeneric) placeProposalIfRelevant(mdProposed *proposedMilest
 	c.factory.proposal.bestSoFarCoverage = mdProposed.coverage
 	c.factory.proposal.current = mdProposed.tx
 
-	c.setTraceNAhead(1)
+	//c.setTraceNAhead(1)
 	c.trace("(%s): ACCEPTED %s, coverage: %s (base: %s), elapsed: %v, inputs: %d, tipPool: %d",
 		mdProposed.proposedBy,
 		mdProposed.tx.IDShort(),
