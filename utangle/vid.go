@@ -347,6 +347,8 @@ func (vid *WrappedTx) BaselineStateOfSequencerMilestone(ut *UTXOTangle) (general
 
 // BaseStemOutput returns wrapped stem output for the branch state or nil if unavailable
 func (vid *WrappedTx) BaseStemOutput(ut *UTXOTangle) *WrappedOutput {
+	fmt.Printf("+++++++++++ BaseStemOutput for %s :\n%s\n", vid.IDShort(), vid.BranchForkLines("     "))
+
 	var branchTxID *core.TransactionID
 	if vid.IsBranchTransaction() {
 		branchTxID = vid.ID()
@@ -363,6 +365,8 @@ func (vid *WrappedTx) BaseStemOutput(ut *UTXOTangle) *WrappedOutput {
 	}
 	ret, found, invalid := ut.GetWrappedOutput(&oid)
 	util.Assertf(found && !invalid, "found & !invalid")
+
+	fmt.Printf("+++++++++++++++ fetch stem for %s from baseline branch %s -> %s\n", vid.IDShort(), branchTxID.Short(), ret.IDShort())
 
 	return &ret
 }
@@ -717,6 +721,9 @@ func (vid *WrappedTx) addEndorser(endorser *WrappedTx) {
 	} else {
 		vid.endorsers = append(vid.endorsers, endorser)
 	}
+	if vid.IsSequencerMilestone() {
+		// TODO must add fork to the endorser
+	}
 }
 
 func (vid *WrappedTx) BaselineBranch() (ret *WrappedTx) {
@@ -895,5 +902,19 @@ func (vid *WrappedTx) ForkLines(prefix ...string) *lines.Lines {
 		ret.Append(v.forks.Lines("      "))
 	}})
 	ret.Add("==== END forks of %s", vid.IDShort())
+	return ret
+}
+
+func (vid *WrappedTx) BranchForkLines(prefix ...string) *lines.Lines {
+	ret := lines.New(prefix...)
+	vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
+		for conflictSetID, sn := range v.forks {
+			if !conflictSetID.VID.IsBranchTransaction() {
+				continue
+			}
+			f := NewFork(conflictSetID, sn)
+			ret.Add(f.String())
+		}
+	}})
 	return ret
 }
