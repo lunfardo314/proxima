@@ -18,8 +18,6 @@ import (
 )
 
 type (
-	VertexType byte
-
 	// WrappedTx value of *WrappedTx is used as transaction code in the UTXO tangle
 	WrappedTx struct {
 		mutex sync.RWMutex
@@ -917,4 +915,17 @@ func (vid *WrappedTx) BranchForkLines(prefix ...string) *lines.Lines {
 		}
 	}})
 	return ret
+}
+
+func (vid *WrappedTx) dominates(vid1 *WrappedTx) bool {
+	if vid == nil {
+		return false
+	}
+	if vid1 == nil {
+		return true
+	}
+	if vid.TimeSlot() != vid1.TimeSlot() {
+		return vid.Timestamp().After(vid1.Timestamp())
+	}
+	return vid1.Less(vid)
 }

@@ -188,6 +188,10 @@ func (v *Vertex) FetchMissingDependencies(ut *UTXOTangle) (conflict *core.Output
 	if conflict = v.fetchMissingEndorsements(ut); conflict == nil {
 		conflict = v.fetchMissingInputs(ut)
 	}
+	if v._isSolid() {
+		v.baselineBranch = v.BaselineBranch()
+		v.isSolid = true
+	}
 	return
 }
 

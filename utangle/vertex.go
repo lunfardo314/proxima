@@ -80,6 +80,10 @@ func (v *Vertex) MissingInputTxIDString() string {
 }
 
 func (v *Vertex) IsSolid() bool {
+	return v.isSolid
+}
+
+func (v *Vertex) _isSolid() bool {
 	for _, d := range v.Inputs {
 		if d == nil {
 			return false
@@ -90,7 +94,6 @@ func (v *Vertex) IsSolid() bool {
 			return false
 		}
 	}
-	//util.Assertf(!v.Tx.IsSequencerMilestone() || v.BaselineBranch() != nil, "inconsistency: unknown baseline branch in the solid sequencer transaction")
 	return true
 }
 
@@ -135,7 +138,7 @@ func (v *Vertex) SequencerMilestonePredecessorOutputID() core.OutputID {
 	return v.Tx.MustInputAt(predOutIdx)
 }
 
-func (v *Vertex) forEachInputDependency(fun func(i byte, inp *WrappedTx) bool) {
+func (v *Vertex) forEachInputDependency(fun func(i byte, vidInput *WrappedTx) bool) {
 	for i, inp := range v.Inputs {
 		if !fun(byte(i), inp) {
 			return
@@ -143,7 +146,7 @@ func (v *Vertex) forEachInputDependency(fun func(i byte, inp *WrappedTx) bool) {
 	}
 }
 
-func (v *Vertex) forEachEndorsement(fun func(i byte, vEnd *WrappedTx) bool) {
+func (v *Vertex) forEachEndorsement(fun func(i byte, vidEndorsed *WrappedTx) bool) {
 	for i, vEnd := range v.Endorsements {
 		if !fun(byte(i), vEnd) {
 			return
@@ -258,10 +261,6 @@ func (v *Vertex) mergeForkSet(fs ForkSet) (conflict WrappedOutput) {
 	return
 }
 
-func (v *Vertex) BaselineBranch() *WrappedTx {
-	return v.forks.BaselineBranch()
-}
-
 // reMergeParentForkSets merges input forks into the fork set again. It is needed to adjust fork set
 // after new double spends are propagated
 func (v *Vertex) reMergeParentForkSets() (conflict WrappedOutput) {
@@ -282,6 +281,51 @@ func (v *Vertex) reMergeParentForkSets() (conflict WrappedOutput) {
 			conflict = v.forks.Absorb(vEnd.forks)
 		}})
 		return conflict.VID == nil
+	})
+	return
+}
+
+// BaselineBranch is the latest branch vertex the current vertex is descendent of.
+// Vertex is not necessarily solid. For pending inputs and endorsements are considered nil branch tx.
+// If v is not a sequencer milestone, or it is a virtual transaction, BaselineBranch == nil
+// If v is a branch itself, the BaselineBranch is the predecessor branch
+func (v *Vertex) BaselineBranch() (ret *WrappedTx) {
+	if v.IsSolid() {
+		return v.baselineBranch
+	}
+
+	v.forEachInputDependency(func(_ byte, vidInput *WrappedTx) bool {
+		if vidInput == nil {
+			return true
+		}
+		if vidInput.IsBranchTransaction() {
+			if vidInput.dominates(ret) {
+				ret = vidInput
+			}
+		} else {
+			br := vidInput.BaselineBranch()
+			if br.dominates(ret) {
+				ret = br
+			}
+		}
+		return true
+	})
+
+	v.forEachEndorsement(func(_ byte, vidEndorsed *WrappedTx) bool {
+		if vidEndorsed == nil {
+			return true
+		}
+		if vidEndorsed.IsBranchTransaction() {
+			if vidEndorsed.dominates(ret) {
+				ret = vidEndorsed
+			}
+		} else {
+			br := vidEndorsed.BaselineBranch()
+			if br.dominates(ret) {
+				ret = br
+			}
+		}
+		return true
 	})
 	return
 }
