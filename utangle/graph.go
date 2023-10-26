@@ -95,8 +95,9 @@ func makeGraphEdges(vid *WrappedTx, gr graph.Graph[string, string]) {
 		v.forEachInputDependency(func(i byte, inp *WrappedTx) bool {
 			o, err := v.getConsumedOutput(i)
 			util.AssertNoError(err)
+			outIndex := v.Tx.MustOutputIndexOfTheInput(i)
 			edgeAttributes := []func(_ *graph.EdgeProperties){
-				graph.EdgeAttribute("label", fmt.Sprintf("%s(#%d)", util.GoThousands(o.Amount()), i)),
+				graph.EdgeAttribute("label", fmt.Sprintf("%s(#%d)", util.GoThousands(o.Amount()), outIndex)),
 				graph.EdgeAttribute("fontsize", "10"),
 			}
 			_ = gr.AddEdge(id, inp.IDVeryShort(), edgeAttributes...)
