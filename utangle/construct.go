@@ -214,7 +214,7 @@ func (ut *UTXOTangle) _finalizeBranch(newBranchVertex *WrappedTx) error {
 			stemID = rdr.GetStemOutput().ID
 			return nil
 		})
-		util.Assertf(err == nil, "double check failed: %v\n%s", err, muts.Lines().String())
+		util.Assertf(err == nil, "double check failed: %v\n%s\n%s", err, muts.Lines().String(), newBranchVertex.ForkLines("   "))
 		util.Assertf(stemID == nextStemOutputID, "rdr.GetStemOutput().ID == nextStemOutputID\n%s != %s\n%s",
 			stemID.Short(), nextStemOutputID.Short(),
 			func() any { return newBranchVertex.LinesForks().String() })

@@ -2,7 +2,6 @@ package utangle
 
 import (
 	"bytes"
-	"fmt"
 	"math"
 	"sync"
 	"time"
@@ -337,8 +336,6 @@ func (vid *WrappedTx) StemOutput() *WrappedOutput {
 
 // BaseStemOutput returns wrapped stem output for the branch state or nil if unavailable
 func (vid *WrappedTx) BaseStemOutput(ut *UTXOTangle) *WrappedOutput {
-	fmt.Printf("+++++++++++ BaseStemOutput for %s :\n%s\n", vid.IDShort(), vid.BranchForkLines("     "))
-
 	var branchTxID *core.TransactionID
 	if vid.IsBranchTransaction() {
 		branchTxID = vid.ID()
@@ -355,8 +352,6 @@ func (vid *WrappedTx) BaseStemOutput(ut *UTXOTangle) *WrappedOutput {
 	}
 	ret, found, invalid := ut.GetWrappedOutput(&oid)
 	util.Assertf(found && !invalid, "found & !invalid")
-
-	fmt.Printf("+++++++++++++++ fetch stem for %s from baseline branch %s -> %s\n", vid.IDShort(), branchTxID.Short(), ret.IDShort())
 
 	return &ret
 }

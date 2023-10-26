@@ -617,7 +617,7 @@ func TestNSequencers(t *testing.T) {
 			numFaucets            = 1
 			numFaucetTransactions = 1
 			maxTxInputs           = sequencer.DefaultMaxFeeInputs
-			stopAfterBranches     = 10
+			stopAfterBranches     = 20
 			tagAlong              = false
 		)
 		t.Logf("\n   numFaucets: %d\n   numFaucetTransactions: %d\n", numFaucets, numFaucetTransactions)
@@ -630,7 +630,7 @@ func TestNSequencers(t *testing.T) {
 		t.Logf("chain origins transaction has been added to the tangle: %s", r.txChainOrigins.IDShort())
 
 		sequencer.SetTraceProposer(sequencer.BaseProposerName, false)
-		sequencer.SetTraceProposer(sequencer.BacktrackProposerName, true)
+		sequencer.SetTraceProposer(sequencer.BacktrackProposerName, false)
 
 		r.createSequencers(maxTxInputs, maxSlots, 5, zapcore.InfoLevel, !tagAlong)
 
@@ -686,7 +686,7 @@ func TestNSequencers(t *testing.T) {
 			numTxPerFaucet    = 10
 			maxTxInputs       = 0
 			stopAfterBranches = 20
-			tagAlong          = true
+			tagAlong          = false
 		)
 		t.Logf("\n   numFaucets: %d\n   numTxPerFaucet: %d\n   transferAmount: %d",
 			numFaucets, numTxPerFaucet, transferAmount)
@@ -707,7 +707,6 @@ func TestNSequencers(t *testing.T) {
 		branchesAfterAllConsumed := 0
 		cnt := 0
 		r.bootstrapSeq.OnMilestoneSubmitted(func(seq *sequencer.Sequencer, wOut *utangle.WrappedOutput) {
-			seq.LogMilestoneSubmitDefault(wOut)
 			cnt++
 			if seq.Info().NumConsumedFeeOutputs >= numTxPerFaucet*numFaucets {
 				allFeeInputsConsumed.Store(true)
@@ -732,9 +731,9 @@ func TestNSequencers(t *testing.T) {
 		allSeqIDs := r.allSequencerIDs()
 		expectedOnChainBalancePerSeqID := make(map[core.ChainID]uint64)
 		for _, seqID := range allSeqIDs {
-			expectedOnChainBalancePerSeqID[seqID] = initOnChainBalance - feeAmount // each sequencer spends fee for boostrap once
+			expectedOnChainBalancePerSeqID[seqID] = initOnChainBalance // each sequencer spends fee for boostrap once
 		}
-		expectedOnChainBalancePerSeqID[r.bootstrapChainID] = initOnBootstrapSeqBalance + feeAmount + uint64(feeAmount*len(r.chainOrigins))
+		expectedOnChainBalancePerSeqID[r.bootstrapChainID] = initOnBootstrapSeqBalance + uint64(feeAmount*len(r.chainOrigins))
 
 		totalAmountToTargetAddress := r.issueTransfersRndSeq(targetAddress, numFaucets, numTxPerFaucet, expectedOnChainBalancePerSeqID)
 
@@ -760,18 +759,19 @@ func TestNSequencers(t *testing.T) {
 		require.EqualValues(t, int(totalAmountToTargetAddress), int(bal))
 
 		// check balance on the bootstrap sequencer
-		oneIsWrong := false
+		wrong := false
 		for _, seqID := range allSeqIDs {
 			if bal = heaviestState.BalanceOnChain(&seqID); expectedOnChainBalancePerSeqID[seqID] != bal {
-				oneIsWrong = true
+				wrong = true
 			}
 			boot := " "
 			if seqID == r.bootstrapChainID {
 				boot = " bootstrap "
 			}
-			t.Logf("chain balance on%ssequencer %s: %d (expected %d)", boot, seqID.Short(), bal, expectedOnChainBalancePerSeqID[seqID])
+			t.Logf("chain balance on%ssequencer %s: %s (expected %s), diff: %d", boot, seqID.Short(),
+				util.GoThousands(bal), util.GoThousands(expectedOnChainBalancePerSeqID[seqID]), int64(bal)-int64(expectedOnChainBalancePerSeqID[seqID]))
 		}
-		require.False(t, oneIsWrong)
+		require.False(t, wrong)
 	})
 	t.Run("2 seq, transfers 2", func(t *testing.T) {
 		const (
@@ -812,9 +812,9 @@ func TestNSequencers(t *testing.T) {
 		allSeqIDs := r.allSequencerIDs()
 		expectedOnChainBalancePerSeqID := make(map[core.ChainID]uint64)
 		for _, seqID := range allSeqIDs {
-			expectedOnChainBalancePerSeqID[seqID] = initOnChainBalance - feeAmount // each sequencer spends fee for boostrap once
+			expectedOnChainBalancePerSeqID[seqID] = initOnChainBalance // each sequencer spends fee for boostrap once
 		}
-		expectedOnChainBalancePerSeqID[r.bootstrapChainID] = initOnBootstrapSeqBalance + feeAmount + uint64(feeAmount*len(r.chainOrigins))
+		expectedOnChainBalancePerSeqID[r.bootstrapChainID] = initOnBootstrapSeqBalance + uint64(feeAmount*len(r.chainOrigins))
 
 		var glbMutex sync.Mutex
 		totalAmountToTargetAddress := uint64(0)

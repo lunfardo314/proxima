@@ -373,7 +373,7 @@ func (mf *milestoneFactory) futureConeMilestonesOrdered(rootVID *utangle.Wrapped
 	mf.mutex.RLock()
 	defer mf.mutex.RUnlock()
 
-	p.setTraceNAhead(1)
+	//p.setTraceNAhead(1)
 	p.trace("futureConeMilestonesOrdered for root %s. Total %d own milestones", rootVID.LazyIDShort(), len(mf.ownMilestones))
 
 	om, ok := mf.ownMilestones[rootVID]
