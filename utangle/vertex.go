@@ -291,7 +291,11 @@ func (v *Vertex) reMergeParentForkSets() (conflict WrappedOutput) {
 // If v is a branch itself, the BaselineBranch is the predecessor branch
 func (v *Vertex) BaselineBranch() (ret *WrappedTx) {
 	if v.IsSolid() {
-		return v.baselineBranch
+		if len(v.branches) == 0 {
+			return
+		}
+		ret = v.branches[len(v.branches)-1]
+		return
 	}
 
 	v.forEachInputDependency(func(_ byte, vidInput *WrappedTx) bool {

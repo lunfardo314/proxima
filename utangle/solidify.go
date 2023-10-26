@@ -189,10 +189,39 @@ func (v *Vertex) FetchMissingDependencies(ut *UTXOTangle) (conflict *core.Output
 		conflict = v.fetchMissingInputs(ut)
 	}
 	if v._isSolid() {
-		v.baselineBranch = v.BaselineBranch()
+		past, consistent := v.longestPastBranches()
+		if !consistent {
+			return &core.OutputID{}
+		}
+		v.branches = make([]*WrappedTx, len(past), len(past)+1)
 		v.isSolid = true
 	}
 	return
+}
+
+// TODO
+
+func (v *Vertex) longestPastBranches() ([]*WrappedTx, bool) {
+	var ret []*WrappedTx
+	var longestVID *WrappedTx
+	var consistent bool
+
+	v.forEachInputDependency(func(_ byte, vidInput *WrappedTx) bool {
+		ret, consistent = util.SuperSlice(ret, v.branches)
+		return consistent
+	})
+	if !consistent {
+		return nil, false
+	}
+	v.forEachEndorsement(func(_ byte, vidEndorsed *WrappedTx) bool {
+		ret, consistent = util.SuperSlice(ret, v.branches)
+		return consistent
+	})
+	if !consistent {
+		return nil, false
+	}
+
+	return ret, true
 }
 
 func (v *Vertex) fetchMissingInputs(ut *UTXOTangle) (conflict *core.OutputID) {

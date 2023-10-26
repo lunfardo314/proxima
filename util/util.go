@@ -234,6 +234,29 @@ func FilterSlice[T any](slice []T, filter func(el T) bool, maxElems ...int) []T 
 	return ret
 }
 
+// SuperSlice returns:
+// - longer of s1 and s2 and true if one is superset of the other
+// - nil, false if neither is a superset of the other
+// - s1 if both are empty
+func SuperSlice[T comparable](s1, s2 []T) ([]T, bool) {
+	var nilRet []T
+	i := 0
+	for ; i < len(s1) && i < len(s2); i++ {
+		if s1[i] != s2[i] {
+			return nilRet, false
+		}
+	}
+	if len(s1[i:]) > 0 {
+		return s1, true
+	}
+	if len(s2[i:]) > 0 {
+		return s2, true
+	}
+	// equal
+	return s1[i:], true
+
+}
+
 func FindFirst[T any](slice []T, cond func(el T) bool) (T, bool) {
 	for _, el := range slice {
 		if cond(el) {
