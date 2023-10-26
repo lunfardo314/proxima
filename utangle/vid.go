@@ -335,14 +335,6 @@ func (vid *WrappedTx) StemOutput() *WrappedOutput {
 	return ret
 }
 
-func (vid *WrappedTx) BaselineStateOfSequencerMilestone(ut *UTXOTangle) (general.IndexedStateReader, error) {
-	branchTxID := vid.BaselineBranch()
-	if branchTxID == nil {
-		return nil, fmt.Errorf("branch transaction not available")
-	}
-	return ut.GetIndexedStateReader(branchTxID.ID())
-}
-
 // BaseStemOutput returns wrapped stem output for the branch state or nil if unavailable
 func (vid *WrappedTx) BaseStemOutput(ut *UTXOTangle) *WrappedOutput {
 	fmt.Printf("+++++++++++ BaseStemOutput for %s :\n%s\n", vid.IDShort(), vid.BranchForkLines("     "))

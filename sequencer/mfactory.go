@@ -407,12 +407,8 @@ func (mf *milestoneFactory) futureConeMilestonesOrdered(rootVID *utangle.Wrapped
 
 // ownForksInAnotherSequencerPastCone sorted by coverage descending
 func (mf *milestoneFactory) ownForksInAnotherSequencerPastCone(anotherSeqMs *utangle.WrappedTx, p proposerTask) []utangle.WrappedOutput {
-	stateRdr, err := anotherSeqMs.BaselineStateOfSequencerMilestone(mf.tangle)
-	if err != nil {
-		mf.log.Warnf("ownForksInAnotherSequencerPastCone: state reader not available for vertex %s: %v",
-			anotherSeqMs.IDShort(), err)
-		return nil
-	}
+	stateRdr := mf.tangle.MustGetBaselineState(anotherSeqMs)
+
 	anotherSeqID := anotherSeqMs.MustSequencerID()
 	rdr := multistate.MakeSugared(stateRdr)
 	rootOutput, err := rdr.GetChainOutput(&mf.tipPool.chainID)

@@ -8,6 +8,7 @@ import (
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/general"
 	"github.com/lunfardo314/proxima/multistate"
+	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
@@ -236,6 +237,23 @@ func (ut *UTXOTangle) heaviestBranchForLatestTimeSlot() common.VCommitment {
 
 	util.Assertf(found, "inconsistency: cannot find heaviest finalized state")
 	return largestBranch
+}
+
+func (ut *UTXOTangle) GetBaselineState(vid *WrappedTx) (general.IndexedStateReader, error) {
+	if vid.IsBranchTransaction() {
+		return ut.GetIndexedStateReader(vid.ID())
+	}
+	branchTxID := vid.BaselineBranch()
+	if branchTxID == nil {
+		return nil, fmt.Errorf("branch transaction not available")
+	}
+	return ut.GetIndexedStateReader(branchTxID.ID())
+}
+
+func (ut *UTXOTangle) MustGetBaselineState(vid *WrappedTx) general.IndexedStateReader {
+	ret, err := ut.GetBaselineState(vid)
+	glb.AssertNoError(err)
+	return ret
 }
 
 // LatestTimeSlot latest time slot with some branches
