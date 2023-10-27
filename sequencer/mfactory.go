@@ -208,7 +208,7 @@ func (mf *milestoneFactory) isConsumedInThePastPath(wOut utangle.WrappedOutput, 
 }
 
 func (mf *milestoneFactory) selectInputs(targetTs core.LogicalTime, ownMs utangle.WrappedOutput, otherSeqVIDs ...*utangle.WrappedTx) ([]utangle.WrappedOutput, *utangle.WrappedOutput) {
-	if utangle.ExistsInAnyPastCone(ownMs.VID, otherSeqVIDs...) {
+	if ownMs.IsConsumed(otherSeqVIDs...) {
 		return nil, &ownMs
 	}
 
@@ -233,14 +233,10 @@ func (mf *milestoneFactory) selectInputs(targetTs core.LogicalTime, ownMs utangl
 
 	// filters outputs which can be merged into the target delta but no more than maxFeeInputs limit
 	selected = util.FilterSlice(selected, func(wOut utangle.WrappedOutput) bool {
-		conflict = consolidatedPastTrack.AbsorbVIDSafe(wOut.VID)
-		if conflict.VID != nil {
+		if conflict = consolidatedPastTrack.AbsorbVIDSafe(wOut.VID); conflict != nil {
 			return false
 		}
-		if consolidatedPastTrack.MustGetBaselineState(mf.tangle).KnowsCommittedTransaction(wOut.VID.ID()) {
-			return false
-		}
-		return true
+		return !wOut.IsConsumed(otherSeqVIDs...)
 	}, mf.maxFeeInputs)
 
 	return selected, nil

@@ -911,17 +911,22 @@ func MergePastTracks(vids ...*WrappedTx) (ret *PastTrack, conflict *WrappedOutpu
 	return
 }
 
-func ExistsInAnyPastCone(target *WrappedTx, vids ...*WrappedTx) bool {
+func (o *WrappedOutput) IsConsumed(tips ...*WrappedTx) bool {
+	if len(tips) == 0 {
+		return false
+	}
 	visited := set.New[*WrappedTx]()
-	for _, vid := range vids {
-		if vid._existsInThePastCone(target, visited) {
-			return true
+
+	consumed := false
+	for _, tip := range tips {
+		if consumed = o._isConsumedInThePastConeOf(tip, visited); consumed {
+			break
 		}
 	}
-	return false
+	return consumed
 }
 
-func (vid *WrappedTx) _existsInThePastCone(target *WrappedTx, visited set.Set[*WrappedTx]) (found bool) {
+func (o *WrappedOutput) _isConsumedInThePastConeOf(vid *WrappedTx, visited set.Set[*WrappedTx]) (consumed bool) {
 	if visited.Contains(vid) {
 		return
 	}
@@ -929,23 +934,20 @@ func (vid *WrappedTx) _existsInThePastCone(target *WrappedTx, visited set.Set[*W
 
 	vid.Unwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
-			v.forEachInputDependency(func(_ byte, vidInput *WrappedTx) bool {
-				if found = target == vidInput; found {
-					return false
+			v.forEachInputDependency(func(i byte, vidInput *WrappedTx) bool {
+				if o.VID == vidInput {
+					consumed = o.Index == v.Tx.MustOutputIndexOfTheInput(i)
+				} else {
+					consumed = o._isConsumedInThePastConeOf(vidInput, visited)
 				}
-				found = vidInput._existsInThePastCone(target, visited)
-				return !found
+				return !consumed
 			})
-			if found {
-				return
+			if !consumed {
+				v.forEachEndorsement(func(_ byte, vidEndorsed *WrappedTx) bool {
+					consumed = o._isConsumedInThePastConeOf(vidEndorsed, visited)
+					return !consumed
+				})
 			}
-			v.forEachEndorsement(func(_ byte, vidEndorsed *WrappedTx) bool {
-				if found = target == vidEndorsed; found {
-					return false
-				}
-				found = vidEndorsed._existsInThePastCone(target, visited)
-				return !found
-			})
 		},
 	})
 	return

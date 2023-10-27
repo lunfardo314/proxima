@@ -311,6 +311,9 @@ func (v *Vertex) reMergeParentForkSets() (conflict WrappedOutput) {
 }
 
 func (p *PastTrack) absorb(p1 *PastTrack) *WrappedOutput {
+	if p.forks == nil {
+		p.forks = make(ForkSet)
+	}
 	if conflict := p.forks.Absorb(p1.forks); conflict.VID != nil {
 		return &conflict
 	}
@@ -326,6 +329,9 @@ func (p *PastTrack) AbsorbVIDSafe(vid *WrappedTx) *WrappedOutput {
 	var conflict WrappedOutput
 	vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
 		if v.pastTrack != nil {
+			if v.pastTrack.forks == nil {
+				v.pastTrack.forks = make(ForkSet)
+			}
 			conflict = v.pastTrack.forks.AbsorbSafe(v.pastTrack.forks)
 		}
 	}})

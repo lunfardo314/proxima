@@ -50,6 +50,7 @@ func (b *backtrackProposer) run() {
 	}
 
 	endorseSeqID := b.endorse.MustSequencerID()
+	//b.setTraceNAhead(1)
 	b.trace("RUN: preliminary extension choices in the endorsement target %s (ms %s):\n%s",
 		endorseSeqID.VeryShort(), b.endorse.IDShort(), milestoneSliceString(b.extensionChoices))
 
@@ -70,13 +71,19 @@ func (b *backtrackProposer) generateCandidate(extend utangle.WrappedOutput) *tra
 	util.Assertf(extend.VID != b.endorse, "extend.VID != b.endorse")
 
 	endorseSeqID := b.endorse.MustSequencerID()
+	//b.setTraceNAhead(1)
 	b.trace("trying to extend %s with endorsement target %s (ms %s)",
 		extend.IDShort(), endorseSeqID.VeryShort(), b.endorse.IDShort())
 
 	feeOutputsToConsume, conflict := b.selectInputs(extend, b.endorse)
 	if conflict != nil {
+		//b.setTraceNAhead(1)
 		b.trace("CANNOT extend %s with endorsement target %s due to conflict %s",
 			extend.IDShort(), b.endorse.IDShort(), conflict.DecodeID().Short())
+		//b.setTraceNAhead(1)
+		//b.trace("\n+++++++++ extension past track lines:\n%s", extend.VID.PastTrackLines("     ").String())
+		//b.setTraceNAhead(1)
+		//b.trace("\n+++++++++ endorsement past track lines:\n%s", b.endorse.PastTrackLines("     ").String())
 		return nil
 	}
 
