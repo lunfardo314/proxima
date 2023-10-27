@@ -76,7 +76,7 @@ func (seq *Sequencer) LogMilestoneSubmitDefault(wOut *utangle.WrappedOutput) {
 	const printForkSet = false
 	if printForkSet {
 		if msType == "MS" {
-			seq.log.Infof("MS FORK SET:\n%s", wOut.VID.ForkLines("       ").String())
+			seq.log.Infof("MS FORK SET:\n%s", wOut.VID.PastTrackLines("       ").String())
 		}
 	}
 	const printTx = false

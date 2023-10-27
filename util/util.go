@@ -4,6 +4,7 @@ import (
 	"crypto/ed25519"
 	"encoding/hex"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -234,29 +235,6 @@ func FilterSlice[T any](slice []T, filter func(el T) bool, maxElems ...int) []T 
 	return ret
 }
 
-// SuperSlice returns:
-// - longer of s1 and s2 and true if one is superset of the other
-// - nil, false if neither is a superset of the other
-// - s1 if both are empty
-func SuperSlice[T comparable](s1, s2 []T) ([]T, bool) {
-	var nilRet []T
-	i := 0
-	for ; i < len(s1) && i < len(s2); i++ {
-		if s1[i] != s2[i] {
-			return nilRet, false
-		}
-	}
-	if len(s1[i:]) > 0 {
-		return s1, true
-	}
-	if len(s2[i:]) > 0 {
-		return s2, true
-	}
-	// equal
-	return s1[i:], true
-
-}
-
 func FindFirst[T any](slice []T, cond func(el T) bool) (T, bool) {
 	for _, el := range slice {
 		if cond(el) {
@@ -281,6 +259,41 @@ func FindFirstKeyInMap[K comparable, V any](m map[K]V, cond ...func(k K) bool) (
 	}
 	var nilK K
 	return nilK, false
+}
+
+// WeldSlices returns:
+// - nil, false if s1 and s2 do not have equal suffix and prefix respectively
+// - <extended slice>, true otherwise, where <extended slice> is equal concatenating s1 with suffix of s2
+// It is used in merging past branch paths
+func WeldSlices[T comparable](s1, s2 []T) ([]T, bool) {
+	if len(s1) == 0 {
+		return slices.Clone(s2), true
+	}
+	if len(s2) == 0 {
+		return slices.Clone(s1), true
+	}
+	idxLater := slices.Index(s1, s2[0])
+	if idxLater < 0 {
+		// do not overlap -> cannot be merged
+		return nil, false
+	}
+	// check overlapping part
+	for i := 0; i+idxLater < len(s1) && i < len(s2); i++ {
+		if s2[i] != s1[i+idxLater] {
+			return nil, false
+		}
+	}
+	if len(s1[idxLater:]) > len(s2) {
+		return slices.Clone(s1), true
+	}
+	return append(slices.Clone(s1[:idxLater]), s2...), true
+}
+
+func AppendNew[T comparable](slice []T, el T) []T {
+	if slices.Index(slice, el) >= 0 {
+		return slice
+	}
+	return append(slice, el)
 }
 
 func MustTakeFirstKeyInMap[K comparable, V any](m map[K]V) K {

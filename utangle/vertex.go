@@ -2,6 +2,7 @@ package utangle
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -246,43 +247,39 @@ func (v *Vertex) PendingDependenciesLines(prefix ...string) *lines.Lines {
 }
 
 func (v *Vertex) addFork(f Fork) bool {
-	if v.forks == nil {
-		v.forks = make(ForkSet)
+	if v.pastTrack == nil {
+		v.pastTrack = &pastTrack{
+			forks:    make(ForkSet),
+			branches: make([]*WrappedTx, 0),
+		}
 	}
-	return v.forks.Insert(f)
+	return v.pastTrack.forks.Insert(f)
 }
 
-func (v *Vertex) mergeForkSet(fs ForkSet) (conflict WrappedOutput) {
-	if v.forks == nil {
-		v.forks = fs.Clone()
-		return
+func (v *Vertex) mergePastTrack(p *pastTrack) *WrappedOutput {
+	if v.pastTrack == nil {
+		v.pastTrack = &pastTrack{
+			forks:    p.forks.Clone(),
+			branches: slices.Clone(p.branches),
+		}
+		return nil
 	}
-	conflict = v.forks.Absorb(fs)
-	return
+	return v.pastTrack.absorb(p)
 }
 
-// reMergeParentForkSets merges input forks into the fork set again. It is needed to adjust fork set
-// after new double spends are propagated
-func (v *Vertex) reMergeParentForkSets() (conflict WrappedOutput) {
-	if v.forks == nil {
-		v.forks = make(ForkSet)
+func (p *pastTrack) Lines(prefix ...string) *lines.Lines {
+	ret := lines.New(prefix...)
+	if p == nil {
+		ret.Add("<nil>")
+	} else {
+		ret.Add("---- forks")
+		ret.Append(p.forks.Lines())
+		ret.Add("---- branches")
+		for _, br := range p.branches {
+			ret.Add("        %s", br.IDShort())
+		}
 	}
-	v.forEachInputDependency(func(i byte, inp *WrappedTx) bool {
-		inp.Unwrap(UnwrapOptions{Vertex: func(inpVertex *Vertex) {
-			conflict = v.forks.Absorb(inpVertex.forks)
-		}})
-		return conflict.VID == nil
-	})
-	if conflict.VID != nil {
-		return
-	}
-	v.forEachEndorsement(func(_ byte, vidEnd *WrappedTx) bool {
-		vidEnd.Unwrap(UnwrapOptions{Vertex: func(vEnd *Vertex) {
-			conflict = v.forks.Absorb(vEnd.forks)
-		}})
-		return conflict.VID == nil
-	})
-	return
+	return ret
 }
 
 // BaselineBranch is the latest branch vertex the current vertex is descendent of.
@@ -290,46 +287,8 @@ func (v *Vertex) reMergeParentForkSets() (conflict WrappedOutput) {
 // If v is not a sequencer milestone, or it is a virtual transaction, BaselineBranch == nil
 // If v is a branch itself, the BaselineBranch is the predecessor branch
 func (v *Vertex) BaselineBranch() (ret *WrappedTx) {
-	if v.IsSolid() {
-		if len(v.branches) == 0 {
-			return
-		}
-		ret = v.branches[len(v.branches)-1]
-		return
+	if v.pastTrack == nil || len(v.pastTrack.branches) == 0 {
+		return nil
 	}
-
-	v.forEachInputDependency(func(_ byte, vidInput *WrappedTx) bool {
-		if vidInput == nil {
-			return true
-		}
-		if vidInput.IsBranchTransaction() {
-			if vidInput.dominates(ret) {
-				ret = vidInput
-			}
-		} else {
-			br := vidInput.BaselineBranch()
-			if br.dominates(ret) {
-				ret = br
-			}
-		}
-		return true
-	})
-
-	v.forEachEndorsement(func(_ byte, vidEndorsed *WrappedTx) bool {
-		if vidEndorsed == nil {
-			return true
-		}
-		if vidEndorsed.IsBranchTransaction() {
-			if vidEndorsed.dominates(ret) {
-				ret = vidEndorsed
-			}
-		} else {
-			br := vidEndorsed.BaselineBranch()
-			if br.dominates(ret) {
-				ret = br
-			}
-		}
-		return true
-	})
-	return
+	return v.pastTrack.branches[len(v.pastTrack.branches)-1]
 }

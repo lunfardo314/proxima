@@ -80,7 +80,7 @@ func (fs ForkSet) AbsorbSafe(fs1 ForkSet) (conflict WrappedOutput) {
 
 func (fs ForkSet) AbsorbVIDSafe(vid *WrappedTx) (conflict WrappedOutput) {
 	vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
-		conflict = fs.AbsorbSafe(v.forks)
+		conflict = fs.AbsorbSafe(v.pastTrack.forks)
 	}})
 	return
 }
@@ -102,9 +102,9 @@ func MergeForkSets(vids ...*WrappedTx) (ret ForkSet, conflict WrappedOutput) {
 	for i, vid := range vids {
 		vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
 			if i == 0 {
-				ret = v.forks.Clone()
+				ret = v.pastTrack.forks.Clone()
 			} else {
-				conflict = ret.Absorb(v.forks)
+				conflict = ret.Absorb(v.pastTrack.forks)
 			}
 		}})
 		if conflict.VID != nil {

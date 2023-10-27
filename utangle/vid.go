@@ -563,13 +563,13 @@ func (vid *WrappedTx) Lines(prefix ...string) *lines.Lines {
 	return ret
 }
 
-func (vid *WrappedTx) LinesForks(prefix ...string) *lines.Lines {
+func (vid *WrappedTx) LinesPastTrack(prefix ...string) *lines.Lines {
 	ret := lines.New(prefix...)
-	ret.Add("=== forks of %s START", vid.IDShort())
+	ret.Add("=== past track of %s START", vid.IDShort())
 	vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
-		ret.Append(v.forks.Lines())
+		ret.Append(v.pastTrack.Lines("   "))
 	}})
-	ret.Add("=== forks of %s END", vid.IDShort())
+	ret.Add("=== past track of %s END", vid.IDShort())
 	return ret
 }
 
@@ -859,7 +859,7 @@ func (o *WrappedOutput) Less(o1 *WrappedOutput) bool {
 	return o.VID.Less(o1.VID)
 }
 
-func (vid *WrappedTx) ForkLines(prefix ...string) *lines.Lines {
+func (vid *WrappedTx) PastTrackLines(prefix ...string) *lines.Lines {
 	ret := lines.New(prefix...)
 
 	ret.Add("==== BEGIN forks of %s", vid.IDShort())
@@ -871,7 +871,7 @@ func (vid *WrappedTx) ForkLines(prefix ...string) *lines.Lines {
 			} else {
 				ret.Add("  INPUT %d : %s ", i, input.Short())
 				inp.Unwrap(UnwrapOptions{Vertex: func(vInp *Vertex) {
-					ret.Append(vInp.forks.Lines("     "))
+					ret.Append(vInp.pastTrack.Lines("      "))
 				}})
 			}
 			return true
@@ -879,40 +879,13 @@ func (vid *WrappedTx) ForkLines(prefix ...string) *lines.Lines {
 		v.forEachEndorsement(func(i byte, vEnd *WrappedTx) bool {
 			ret.Add("  ENDORSEMENT %d : %s ", i, vEnd.IDShort())
 			vEnd.Unwrap(UnwrapOptions{Vertex: func(vEnd *Vertex) {
-				ret.Append(vEnd.forks.Lines("     "))
+				ret.Append(vEnd.pastTrack.Lines("     "))
 			}})
 			return true
 		})
 		ret.Add("  MERGED:")
-		ret.Append(v.forks.Lines("      "))
+		ret.Append(v.pastTrack.Lines("      "))
 	}})
 	ret.Add("==== END forks of %s", vid.IDShort())
 	return ret
-}
-
-func (vid *WrappedTx) BranchForkLines(prefix ...string) *lines.Lines {
-	ret := lines.New(prefix...)
-	vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
-		for conflictSetID, sn := range v.forks {
-			if !conflictSetID.VID.IsBranchTransaction() {
-				continue
-			}
-			f := NewFork(conflictSetID, sn)
-			ret.Add(f.String())
-		}
-	}})
-	return ret
-}
-
-func (vid *WrappedTx) dominates(vid1 *WrappedTx) bool {
-	if vid == nil {
-		return false
-	}
-	if vid1 == nil {
-		return true
-	}
-	if vid.TimeSlot() != vid1.TimeSlot() {
-		return vid.Timestamp().After(vid1.Timestamp())
-	}
-	return vid1.Less(vid)
 }

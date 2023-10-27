@@ -32,6 +32,14 @@ func Load(stateStore general.StateStore, txBytesStore general.TxBytesStore) *UTX
 	return ret
 }
 
+func NewVertex(tx *transaction.Transaction) *Vertex {
+	return &Vertex{
+		Tx:           tx,
+		Inputs:       make([]*WrappedTx, tx.NumInputs()),
+		Endorsements: make([]*WrappedTx, tx.NumEndorsements()),
+	}
+}
+
 func newVirtualBranchTx(br *multistate.BranchData) *VirtualTransaction {
 	txid := br.Stem.ID.TransactionID()
 	v := newVirtualTx(&txid)
@@ -110,14 +118,6 @@ func (ut *UTXOTangle) addBranch(branchVID *WrappedTx, root common.VCommitment) {
 	}
 	m[branchVID] = root
 	ut.branches[branchVID.TimeSlot()] = m
-}
-
-func NewVertex(tx *transaction.Transaction) *Vertex {
-	return &Vertex{
-		Tx:           tx,
-		Inputs:       make([]*WrappedTx, tx.NumInputs()),
-		Endorsements: make([]*WrappedTx, tx.NumEndorsements()),
-	}
 }
 
 func (ut *UTXOTangle) _appendVertex(vid *WrappedTx) error {
@@ -214,10 +214,10 @@ func (ut *UTXOTangle) _finalizeBranch(newBranchVertex *WrappedTx) error {
 			stemID = rdr.GetStemOutput().ID
 			return nil
 		})
-		util.Assertf(err == nil, "double check failed: %v\n%s\n%s", err, muts.Lines().String(), newBranchVertex.ForkLines("   "))
+		util.Assertf(err == nil, "double check failed: %v\n%s\n%s", err, muts.Lines().String(), newBranchVertex.PastTrackLines("   "))
 		util.Assertf(stemID == nextStemOutputID, "rdr.GetStemOutput().ID == nextStemOutputID\n%s != %s\n%s",
 			stemID.Short(), nextStemOutputID.Short(),
-			func() any { return newBranchVertex.LinesForks().String() })
+			func() any { return newBranchVertex.LinesPastTrack().String() })
 	}
 	{
 		// store new branch to the tangle data structure

@@ -59,7 +59,7 @@ func TestOriginTangle(t *testing.T) {
 
 		distribVID, ok := ut.GetVertex(&distribTxID)
 		require.True(t, ok)
-		t.Logf("forks of distribution transaction:\n%s", distribVID.LinesForks().String())
+		t.Logf("forks of distribution transaction:\n%s", distribVID.LinesPastTrack().String())
 
 		stemOut := ut.HeaviestStemOutput()
 		require.EqualValues(t, int(stemOut.ID.TimeSlot()), int(distribTxID.TimeSlot()))
@@ -185,7 +185,7 @@ func initConflictTest(t *testing.T, nConflicts int, verbose bool) *conflictTestR
 
 	if verbose {
 		for i, vid := range vids {
-			t.Logf("++++++++++++++ forks string of %d\n%s", i, vid.LinesForks().String())
+			t.Logf("++++++++++++++ forks string of %d\n%s", i, vid.LinesPastTrack().String())
 		}
 	}
 
@@ -748,7 +748,7 @@ func TestMultiChain(t *testing.T) {
 		util.RequirePanicOrErrorWith(t, func() error {
 			vid, _, err := r.ut.AppendVertexFromTransactionBytesDebug(txBytes)
 			if err == nil && vid != nil {
-				t.Logf("\n%s", vid.ForkLines().String())
+				t.Logf("\n%s", vid.PastTrackLines().String())
 				utangle.SaveGraphPastCone(vid, "err_expected")
 			}
 			// t.Logf("==============================\n%s", txStr)

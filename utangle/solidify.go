@@ -189,39 +189,25 @@ func (v *Vertex) FetchMissingDependencies(ut *UTXOTangle) (conflict *core.Output
 		conflict = v.fetchMissingInputs(ut)
 	}
 	if v._isSolid() {
-		past, consistent := v.longestPastBranches()
-		if !consistent {
-			return &core.OutputID{}
-		}
-		v.branches = make([]*WrappedTx, len(past), len(past)+1)
+		v.cleanPastTrack()
 		v.isSolid = true
 	}
 	return
 }
 
-// TODO
-
-func (v *Vertex) longestPastBranches() ([]*WrappedTx, bool) {
-	var ret []*WrappedTx
-	var longestVID *WrappedTx
-	var consistent bool
-
-	v.forEachInputDependency(func(_ byte, vidInput *WrappedTx) bool {
-		ret, consistent = util.SuperSlice(ret, v.branches)
-		return consistent
-	})
-	if !consistent {
-		return nil, false
+func (v *Vertex) cleanPastTrack() {
+	toDeleteForks := make([]WrappedOutput, 0)
+	for wOut := range v.pastTrack.forks {
+		if wOut.VID.IsOrphaned() {
+			toDeleteForks = append(toDeleteForks, wOut)
+		}
 	}
-	v.forEachEndorsement(func(_ byte, vidEndorsed *WrappedTx) bool {
-		ret, consistent = util.SuperSlice(ret, v.branches)
-		return consistent
-	})
-	if !consistent {
-		return nil, false
+	for _, wOut := range toDeleteForks {
+		delete(v.pastTrack.forks, wOut)
 	}
-
-	return ret, true
+	v.pastTrack.branches = util.FilterSlice(v.pastTrack.branches, func(vid *WrappedTx) bool {
+		return !vid.IsOrphaned()
+	})
 }
 
 func (v *Vertex) fetchMissingInputs(ut *UTXOTangle) (conflict *core.OutputID) {
@@ -230,7 +216,7 @@ func (v *Vertex) fetchMissingInputs(ut *UTXOTangle) (conflict *core.OutputID) {
 		baselineStateArgs = []multistate.SugaredStateReader{ut.MustGetSugaredStateReader(baselineBranch.ID())}
 	}
 
-	var conflictWrapped WrappedOutput
+	var conflictWrapped *WrappedOutput
 
 	v.Tx.ForEachInput(func(i byte, oid *core.OutputID) bool {
 		if v.Inputs[i] != nil {
@@ -244,11 +230,14 @@ func (v *Vertex) fetchMissingInputs(ut *UTXOTangle) (conflict *core.OutputID) {
 		}
 		if ok {
 			wOut.VID.Unwrap(UnwrapOptions{Vertex: func(vInp *Vertex) {
-				conflictWrapped = v.mergeForkSet(vInp.forks)
+				conflictWrapped = v.mergePastTrack(vInp.pastTrack)
 			}})
 			if conflictWrapped.VID != nil {
 				conflict = conflictWrapped.DecodeID()
 				return false
+			}
+			if wOut.VID.IsBranchTransaction() {
+				v.pastTrack.branches = util.AppendNew(v.pastTrack.branches, wOut.VID)
 			}
 			v.Inputs[i] = wOut.VID
 		}
@@ -258,7 +247,7 @@ func (v *Vertex) fetchMissingInputs(ut *UTXOTangle) (conflict *core.OutputID) {
 }
 
 func (v *Vertex) fetchMissingEndorsements(ut *UTXOTangle) (conflict *core.OutputID) {
-	var conflictWrapped WrappedOutput
+	var conflictWrapped *WrappedOutput
 
 	v.Tx.ForEachEndorsement(func(i byte, txid *core.TransactionID) bool {
 		if v.Endorsements[i] != nil {
@@ -270,15 +259,47 @@ func (v *Vertex) fetchMissingEndorsements(ut *UTXOTangle) (conflict *core.Output
 			util.Assertf(vEnd.IsSequencerMilestone(), "vEnd.IsSequencerMilestone()")
 
 			vEnd.Unwrap(UnwrapOptions{Vertex: func(vEndUnwrapped *Vertex) {
-				conflictWrapped = v.mergeForkSet(vEndUnwrapped.forks)
+				conflictWrapped = v.mergePastTrack(vEndUnwrapped.pastTrack)
 			}})
 			if conflictWrapped.VID != nil {
 				conflict = conflictWrapped.DecodeID()
 				return false
+			}
+			if vEnd.IsBranchTransaction() {
+				// append the endorsed branch at the end of the past track
+				v.pastTrack.branches = util.AppendNew(v.pastTrack.branches, vEnd)
 			}
 			v.Endorsements[i] = vEnd
 		}
 		return true
 	})
 	return
+}
+
+func weldBranches(b1, b2 []*WrappedTx) ([]*WrappedTx, bool) {
+	if len(b1) == 0 {
+		return util.CloneArglistShallow(b2...), true
+	}
+	if len(b2) == 0 {
+		return util.CloneArglistShallow(b1...), true
+	}
+	earlier := b1
+	later := b2
+	if later[0].TimeSlot() > earlier[0].TimeSlot() {
+		earlier = b2
+		later = b1
+	}
+	return util.WeldSlices(earlier, later)
+}
+
+func (p *pastTrack) absorb(p1 *pastTrack) *WrappedOutput {
+	if conflict := p.forks.Absorb(p1.forks); conflict.VID != nil {
+		return &conflict
+	}
+	res, ok := weldBranches(p.branches, p1.branches)
+	if !ok {
+		return &WrappedOutput{}
+	}
+	p.branches = res
+	return nil
 }
