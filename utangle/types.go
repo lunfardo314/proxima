@@ -27,7 +27,7 @@ type (
 		numDeletedBranches int
 	}
 
-	pastTrack struct {
+	PastTrack struct {
 		forks    ForkSet
 		branches []*WrappedTx
 	}
@@ -35,7 +35,7 @@ type (
 		Tx           *transaction.Transaction
 		Inputs       []*WrappedTx
 		Endorsements []*WrappedTx
-		pastTrack    *pastTrack
+		pastTrack    *PastTrack
 		isSolid      bool
 	}
 

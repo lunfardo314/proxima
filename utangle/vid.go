@@ -660,15 +660,10 @@ func (vid *WrappedTx) addConsumerOfOutput(outputIndex byte, consumer *WrappedTx,
 	sn := uint16(len(descendants))
 	switch sn {
 	case 0:
-		if vid.IsSequencerMilestone() {
-			consumer.addFork(NewFork(WrappedOutput{VID: vid, Index: outputIndex}, 0))
-		}
-		descendants = make([]*WrappedTx, 0, 2)
+		descendants = make([]*WrappedTx, 0, 1)
 	case 1:
-		if !vid.IsSequencerMilestone() {
-			f := NewFork(WrappedOutput{VID: vid, Index: outputIndex}, 0)
-			descendants[0].propagateNewForkToFutureCone(f, ut, set.New[*WrappedTx]())
-		}
+		f := NewFork(WrappedOutput{VID: vid, Index: outputIndex}, 0)
+		descendants[0].propagateNewForkToFutureCone(f, ut, set.New[*WrappedTx]())
 		consumer.addFork(NewFork(WrappedOutput{VID: vid, Index: outputIndex}, 1))
 	}
 	vid.consumers[outputIndex] = append(descendants, consumer) // may result in repeating but that is ok
@@ -705,9 +700,6 @@ func (vid *WrappedTx) addEndorser(endorser *WrappedTx) {
 		vid.endorsers = []*WrappedTx{endorser}
 	} else {
 		vid.endorsers = append(vid.endorsers, endorser)
-	}
-	if vid.IsSequencerMilestone() {
-		// TODO must add fork to the endorser
 	}
 }
 
@@ -888,4 +880,11 @@ func (vid *WrappedTx) PastTrackLines(prefix ...string) *lines.Lines {
 	}})
 	ret.Add("==== END forks of %s", vid.IDShort())
 	return ret
+}
+
+func (vid *WrappedTx) PastTrackData() (ret *PastTrack) {
+	vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
+		ret = v.pastTrack
+	}})
+	return
 }

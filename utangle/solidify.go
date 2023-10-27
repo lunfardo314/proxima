@@ -292,7 +292,7 @@ func weldBranches(b1, b2 []*WrappedTx) ([]*WrappedTx, bool) {
 	return util.WeldSlices(earlier, later)
 }
 
-func (p *pastTrack) absorb(p1 *pastTrack) *WrappedOutput {
+func (p *PastTrack) absorb(p1 *PastTrack) *WrappedOutput {
 	if conflict := p.forks.Absorb(p1.forks); conflict.VID != nil {
 		return &conflict
 	}

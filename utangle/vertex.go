@@ -248,7 +248,7 @@ func (v *Vertex) PendingDependenciesLines(prefix ...string) *lines.Lines {
 
 func (v *Vertex) addFork(f Fork) bool {
 	if v.pastTrack == nil {
-		v.pastTrack = &pastTrack{
+		v.pastTrack = &PastTrack{
 			forks:    make(ForkSet),
 			branches: make([]*WrappedTx, 0),
 		}
@@ -256,9 +256,9 @@ func (v *Vertex) addFork(f Fork) bool {
 	return v.pastTrack.forks.Insert(f)
 }
 
-func (v *Vertex) mergePastTrack(p *pastTrack) *WrappedOutput {
+func (v *Vertex) mergePastTrack(p *PastTrack) *WrappedOutput {
 	if v.pastTrack == nil {
-		v.pastTrack = &pastTrack{
+		v.pastTrack = &PastTrack{
 			forks:    p.forks.Clone(),
 			branches: slices.Clone(p.branches),
 		}
@@ -267,7 +267,34 @@ func (v *Vertex) mergePastTrack(p *pastTrack) *WrappedOutput {
 	return v.pastTrack.absorb(p)
 }
 
-func (p *pastTrack) Lines(prefix ...string) *lines.Lines {
+func (v *Vertex) reMergeParentForkSets() (conflict WrappedOutput) {
+	v.forEachInputDependency(func(i byte, vidInput *WrappedTx) bool {
+		util.Assertf(vidInput != nil, "vidInput != nil")
+		pastTrackInput := vidInput.PastTrackData()
+		if i == 0 {
+			if v.pastTrack == nil {
+				v.pastTrack = &PastTrack{
+					forks: pastTrackInput.forks.Clone(),
+				}
+			} else {
+				v.pastTrack.forks = pastTrackInput.forks.Clone()
+			}
+			return true
+		}
+		conflict = pastTrackInput.forks.Absorb(vidInput.PastTrackData().forks)
+		return conflict.VID == nil
+	})
+	if conflict.VID != nil {
+		return
+	}
+	v.forEachEndorsement(func(_ byte, vidEndorsed *WrappedTx) bool {
+		conflict = v.pastTrack.forks.Absorb(vidEndorsed.PastTrackData().forks)
+		return conflict.VID == nil
+	})
+	return
+}
+
+func (p *PastTrack) Lines(prefix ...string) *lines.Lines {
 	ret := lines.New(prefix...)
 	if p == nil {
 		ret.Add("<nil>")
