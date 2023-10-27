@@ -208,15 +208,15 @@ func (mf *milestoneFactory) isConsumedInThePastPath(wOut utangle.WrappedOutput, 
 }
 
 func (mf *milestoneFactory) selectInputs(targetTs core.LogicalTime, ownMs utangle.WrappedOutput, otherSeqVIDs ...*utangle.WrappedTx) ([]utangle.WrappedOutput, *utangle.WrappedOutput) {
-	allSeqVIDs := append(util.CloneArglistShallow(otherSeqVIDs...), ownMs.VID)
-
-	targetForkSet, conflict := utangle.MergeForkSets(allSeqVIDs...)
-	if conflict.VID != nil {
-		return nil, &conflict
+	if utangle.ExistsInAnyPastCone(ownMs.VID, otherSeqVIDs...) {
+		return nil, &ownMs
 	}
 
-	if targetForkSet.ContainsOutput(ownMs) {
-		return nil, &ownMs
+	allSeqVIDs := append(util.CloneArglistShallow(otherSeqVIDs...), ownMs.VID)
+
+	consolidatedPastTrack, conflict := utangle.MergePastTracks(allSeqVIDs...)
+	if conflict != nil {
+		return nil, conflict
 	}
 
 	// pre-selects not orphaned and with suitable timestamp outputs, sorts by timestamp ascending
@@ -233,11 +233,14 @@ func (mf *milestoneFactory) selectInputs(targetTs core.LogicalTime, ownMs utangl
 
 	// filters outputs which can be merged into the target delta but no more than maxFeeInputs limit
 	selected = util.FilterSlice(selected, func(wOut utangle.WrappedOutput) bool {
-		conflict = targetForkSet.AbsorbVIDSafe(wOut.VID)
-		if targetForkSet.ContainsOutput(wOut) {
+		conflict = consolidatedPastTrack.AbsorbVIDSafe(wOut.VID)
+		if conflict.VID != nil {
 			return false
 		}
-		return conflict.VID == nil
+		if consolidatedPastTrack.MustGetBaselineState(mf.tangle).KnowsCommittedTransaction(wOut.VID.ID()) {
+			return false
+		}
+		return true
 	}, mf.maxFeeInputs)
 
 	return selected, nil

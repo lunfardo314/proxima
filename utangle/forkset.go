@@ -78,60 +78,7 @@ func (fs ForkSet) AbsorbSafe(fs1 ForkSet) (conflict WrappedOutput) {
 	return
 }
 
-func (fs ForkSet) AbsorbVIDSafe(vid *WrappedTx) (conflict WrappedOutput) {
-	vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
-		conflict = fs.AbsorbSafe(v.pastTrack.forks)
-	}})
-	return
-}
-
 func (fs ForkSet) ContainsOutput(wOut WrappedOutput) (ret bool) {
 	_, ret = fs[wOut]
 	return
 }
-
-// MergeForkSets fork sets are non-deterministic, therefore result of merging in npt deterministic too
-// It is guaranteed that conflict sets made up of sequencer outputs are all propagated.
-// So, if a set of sequencer transactions produce conflict-less merge, the resulting fork set will include
-// each fork set from the past cone
-func MergeForkSets(vids ...*WrappedTx) (ret ForkSet, conflict WrappedOutput) {
-	if len(vids) == 0 {
-		ret = make(ForkSet)
-		return
-	}
-	for i, vid := range vids {
-		vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
-			if i == 0 {
-				ret = v.pastTrack.forks.Clone()
-			} else {
-				conflict = ret.Absorb(v.pastTrack.forks)
-			}
-		}})
-		if conflict.VID != nil {
-			ret = nil
-			return
-		}
-	}
-	return
-}
-
-//
-//// BaselineBranch baseline branch is the latest branch in the fork set, if any
-////
-//func (fs ForkSet) BaselineBranch() (ret *WrappedTx) {
-//	first := true
-//	for conflictSetID := range fs {
-//		if !conflictSetID.VID.IsBranchTransaction() {
-//			continue
-//		}
-//		if first {
-//			ret = conflictSetID.VID
-//			first = false
-//			continue
-//		}
-//		if conflictSetID.Timestamp().After(ret.Timestamp()) {
-//			ret = conflictSetID.VID
-//		}
-//	}
-//	return
-//}

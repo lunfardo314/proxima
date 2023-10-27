@@ -888,3 +888,65 @@ func (vid *WrappedTx) PastTrackData() (ret *PastTrack) {
 	}})
 	return
 }
+
+func MergePastTracks(vids ...*WrappedTx) (ret *PastTrack, conflict *WrappedOutput) {
+	if len(vids) == 0 {
+		return
+	}
+	for _, vid := range vids {
+		vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
+			if v.pastTrack == nil {
+				return
+			}
+			if ret == nil {
+				ret = &PastTrack{}
+			}
+			conflict = ret.absorb(v.pastTrack)
+		}})
+		if conflict != nil {
+			ret = nil
+			return
+		}
+	}
+	return
+}
+
+func ExistsInAnyPastCone(target *WrappedTx, vids ...*WrappedTx) bool {
+	visited := set.New[*WrappedTx]()
+	for _, vid := range vids {
+		if vid._existsInThePastCone(target, visited) {
+			return true
+		}
+	}
+	return false
+}
+
+func (vid *WrappedTx) _existsInThePastCone(target *WrappedTx, visited set.Set[*WrappedTx]) (found bool) {
+	if visited.Contains(vid) {
+		return
+	}
+	visited.Insert(vid)
+
+	vid.Unwrap(UnwrapOptions{
+		Vertex: func(v *Vertex) {
+			v.forEachInputDependency(func(_ byte, vidInput *WrappedTx) bool {
+				if found = target == vidInput; found {
+					return false
+				}
+				found = vidInput._existsInThePastCone(target, visited)
+				return !found
+			})
+			if found {
+				return
+			}
+			v.forEachEndorsement(func(_ byte, vidEndorsed *WrappedTx) bool {
+				if found = target == vidEndorsed; found {
+					return false
+				}
+				found = vidEndorsed._existsInThePastCone(target, visited)
+				return !found
+			})
+		},
+	})
+	return
+}

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/general"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
@@ -309,6 +310,42 @@ func (v *Vertex) reMergeParentForkSets() (conflict WrappedOutput) {
 	return
 }
 
+func (p *PastTrack) absorb(p1 *PastTrack) *WrappedOutput {
+	if conflict := p.forks.Absorb(p1.forks); conflict.VID != nil {
+		return &conflict
+	}
+	res, ok := weldBranches(p.branches, p1.branches)
+	if !ok {
+		return &WrappedOutput{}
+	}
+	p.branches = res
+	return nil
+}
+
+func (p *PastTrack) AbsorbVIDSafe(vid *WrappedTx) *WrappedOutput {
+	var conflict WrappedOutput
+	vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
+		if v.pastTrack != nil {
+			conflict = v.pastTrack.forks.AbsorbSafe(v.pastTrack.forks)
+		}
+	}})
+	if conflict.VID != nil {
+		return &conflict
+	}
+	return nil
+}
+
+func (p *PastTrack) BaselineBranch() *WrappedTx {
+	if p == nil || len(p.branches) == 0 {
+		return nil
+	}
+	return p.branches[len(p.branches)-1]
+}
+
+func (p *PastTrack) MustGetBaselineState(ut *UTXOTangle) general.IndexedStateReader {
+	return ut.MustGetBaselineState(p.BaselineBranch())
+}
+
 func (p *PastTrack) Lines(prefix ...string) *lines.Lines {
 	ret := lines.New(prefix...)
 	if p == nil {
@@ -328,9 +365,6 @@ func (p *PastTrack) Lines(prefix ...string) *lines.Lines {
 // Vertex is not necessarily solid. For pending inputs and endorsements are considered nil branch tx.
 // If v is not a sequencer milestone, or it is a virtual transaction, BaselineBranch == nil
 // If v is a branch itself, the BaselineBranch is the predecessor branch
-func (v *Vertex) BaselineBranch() (ret *WrappedTx) {
-	if v.pastTrack == nil || len(v.pastTrack.branches) == 0 {
-		return nil
-	}
-	return v.pastTrack.branches[len(v.pastTrack.branches)-1]
+func (v *Vertex) BaselineBranch() *WrappedTx {
+	return v.pastTrack.BaselineBranch()
 }
