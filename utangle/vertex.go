@@ -253,6 +253,9 @@ func (v *Vertex) addFork(f Fork) bool {
 			branches: make([]*WrappedTx, 0),
 		}
 	}
+	if v.pastTrack.forks == nil {
+		v.pastTrack.forks = make(ForkSet)
+	}
 	return v.pastTrack.forks.Insert(f)
 }
 
@@ -271,6 +274,9 @@ func (v *Vertex) reMergeParentForkSets() (conflict WrappedOutput) {
 	v.forEachInputDependency(func(i byte, vidInput *WrappedTx) bool {
 		util.Assertf(vidInput != nil, "vidInput != nil")
 		pastTrackInput := vidInput.PastTrackData()
+		if pastTrackInput == nil {
+			return true
+		}
 		if i == 0 {
 			if v.pastTrack == nil {
 				v.pastTrack = &PastTrack{
@@ -288,7 +294,16 @@ func (v *Vertex) reMergeParentForkSets() (conflict WrappedOutput) {
 		return
 	}
 	v.forEachEndorsement(func(_ byte, vidEndorsed *WrappedTx) bool {
-		conflict = v.pastTrack.forks.Absorb(vidEndorsed.PastTrackData().forks)
+		util.Assertf(vidEndorsed != nil, "vidEndorsed != nil")
+		if v.pastTrack == nil {
+			v.pastTrack = &PastTrack{}
+		}
+		if v.pastTrack.forks == nil {
+			v.pastTrack.forks = make(ForkSet)
+		}
+		if endorsedPastTrack := vidEndorsed.PastTrackData(); endorsedPastTrack != nil {
+			conflict = v.pastTrack.forks.Absorb(endorsedPastTrack.forks)
+		}
 		return conflict.VID == nil
 	})
 	return

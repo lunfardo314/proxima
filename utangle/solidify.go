@@ -232,12 +232,18 @@ func (v *Vertex) fetchMissingInputs(ut *UTXOTangle) (conflict *core.OutputID) {
 			wOut.VID.Unwrap(UnwrapOptions{Vertex: func(vInp *Vertex) {
 				conflictWrapped = v.mergePastTrack(vInp.pastTrack)
 			}})
-			if conflictWrapped.VID != nil {
+			if conflictWrapped != nil {
 				conflict = conflictWrapped.DecodeID()
 				return false
 			}
 			if wOut.VID.IsBranchTransaction() {
-				v.pastTrack.branches = util.AppendNew(v.pastTrack.branches, wOut.VID)
+				if v.pastTrack == nil {
+					v.pastTrack = &PastTrack{
+						branches: []*WrappedTx{wOut.VID},
+					}
+				} else {
+					v.pastTrack.branches = util.AppendNew(v.pastTrack.branches, wOut.VID)
+				}
 			}
 			v.Inputs[i] = wOut.VID
 		}
@@ -261,12 +267,15 @@ func (v *Vertex) fetchMissingEndorsements(ut *UTXOTangle) (conflict *core.Output
 			vEnd.Unwrap(UnwrapOptions{Vertex: func(vEndUnwrapped *Vertex) {
 				conflictWrapped = v.mergePastTrack(vEndUnwrapped.pastTrack)
 			}})
-			if conflictWrapped.VID != nil {
+			if conflictWrapped != nil {
 				conflict = conflictWrapped.DecodeID()
 				return false
 			}
 			if vEnd.IsBranchTransaction() {
 				// append the endorsed branch at the end of the past track
+				if v.pastTrack == nil {
+					v.pastTrack = &PastTrack{}
+				}
 				v.pastTrack.branches = util.AppendNew(v.pastTrack.branches, vEnd)
 			}
 			v.Endorsements[i] = vEnd

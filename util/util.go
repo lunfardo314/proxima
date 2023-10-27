@@ -290,6 +290,9 @@ func WeldSlices[T comparable](s1, s2 []T) ([]T, bool) {
 }
 
 func AppendNew[T comparable](slice []T, el T) []T {
+	if len(slice) == 0 {
+		return []T{el}
+	}
 	if slices.Index(slice, el) >= 0 {
 		return slice
 	}
