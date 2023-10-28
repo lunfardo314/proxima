@@ -254,14 +254,13 @@ func (v *Vertex) addFork(f Fork) bool {
 }
 
 func (v *Vertex) reMergeParentPastTracks() (conflict *WrappedOutput) {
-	v.pastTrack = PastTrack{}
 	v.forEachInputDependency(func(i byte, vidInput *WrappedTx) bool {
 		util.Assertf(vidInput != nil, "vidInput != nil")
 		conflict = v.pastTrack.AbsorbPastTrack(vidInput)
 		return conflict == nil
 	})
 
-	if conflict.VID != nil {
+	if conflict != nil {
 		return
 	}
 	v.forEachEndorsement(func(_ byte, vidEndorsed *WrappedTx) bool {
@@ -320,13 +319,13 @@ func (p *PastTrack) _absorbPastTrack(vid *WrappedTx, safe bool) (conflict *Wrapp
 			conflict = &WrappedOutput{}
 			return
 		}
-		if v.pastTrack.forks == nil {
-			v.pastTrack.forks = make(ForkSet)
+		if p.forks == nil {
+			p.forks = make(ForkSet)
 		}
 		if safe {
-			wrappedConflict = v.pastTrack.forks.AbsorbSafe(v.pastTrack.forks)
+			wrappedConflict = p.forks.AbsorbSafe(v.pastTrack.forks)
 		} else {
-			wrappedConflict = v.pastTrack.forks.Absorb(v.pastTrack.forks)
+			wrappedConflict = p.forks.Absorb(v.pastTrack.forks)
 		}
 		if wrappedConflict.VID != nil {
 			conflict = &wrappedConflict
@@ -338,9 +337,6 @@ func (p *PastTrack) _absorbPastTrack(vid *WrappedTx, safe bool) (conflict *Wrapp
 }
 
 func (p *PastTrack) BaselineBranch() *WrappedTx {
-	if p == nil {
-		return nil
-	}
 	return p.baselineBranch
 }
 

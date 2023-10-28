@@ -124,7 +124,7 @@ func (ut *UTXOTangle) _appendVertex(vid *WrappedTx) error {
 	ut.mutex.Lock()
 	defer ut.mutex.Unlock()
 
-	if conflict := ut.attachWithSaveTx(vid); conflict.VID != nil {
+	if conflict := ut.attachWithSaveTx(vid); conflict != nil {
 		return fmt.Errorf("AppendVertex: conflict at %s", conflict.IDShort())
 	}
 
@@ -217,7 +217,7 @@ func (ut *UTXOTangle) _finalizeBranch(newBranchVertex *WrappedTx) error {
 		util.Assertf(err == nil, "double check failed: %v\n%s\n%s", err, muts.Lines().String(), newBranchVertex.PastTrackLines("   "))
 		util.Assertf(stemID == nextStemOutputID, "rdr.GetStemOutput().ID == nextStemOutputID\n%s != %s\n%s",
 			stemID.Short(), nextStemOutputID.Short(),
-			func() any { return newBranchVertex.LinesPastTrack().String() })
+			func() any { return newBranchVertex.PastTrackLines().String() })
 	}
 	{
 		// store new branch to the tangle data structure

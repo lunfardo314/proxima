@@ -563,16 +563,6 @@ func (vid *WrappedTx) Lines(prefix ...string) *lines.Lines {
 	return ret
 }
 
-func (vid *WrappedTx) LinesPastTrack(prefix ...string) *lines.Lines {
-	ret := lines.New(prefix...)
-	ret.Add("=== past track of %s START", vid.IDShort())
-	vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
-		ret.Append(v.pastTrack.Lines("   "))
-	}})
-	ret.Add("=== past track of %s END", vid.IDShort())
-	return ret
-}
-
 func (vid *WrappedTx) NumInputs() int {
 	ret := 0
 	vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
@@ -850,6 +840,17 @@ func (o *WrappedOutput) Less(o1 *WrappedOutput) bool {
 	}
 	return o.VID.Less(o1.VID)
 }
+
+//func (vid *WrappedTx) LinesPastTrack(prefix ...string) *lines.Lines {
+//	ret := lines.New(prefix...)
+//	ret.Add("=== past track of %s START", vid.IDShort())
+//	vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
+//		ret.Append(v.pastTrack.Lines("   "))
+//	}})
+//	ret.Add("=== past track of %s END", vid.IDShort())
+//	return ret
+//}
+//
 
 func (vid *WrappedTx) PastTrackLines(prefix ...string) *lines.Lines {
 	ret := lines.New(prefix...)

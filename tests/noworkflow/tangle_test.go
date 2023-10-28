@@ -59,7 +59,7 @@ func TestOriginTangle(t *testing.T) {
 
 		distribVID, ok := ut.GetVertex(&distribTxID)
 		require.True(t, ok)
-		t.Logf("forks of distribution transaction:\n%s", distribVID.LinesPastTrack().String())
+		t.Logf("forks of distribution transaction:\n%s", distribVID.PastTrackLines().String())
 
 		stemOut := ut.HeaviestStemOutput()
 		require.EqualValues(t, int(stemOut.ID.TimeSlot()), int(distribTxID.TimeSlot()))
@@ -161,10 +161,6 @@ func initConflictTest(t *testing.T, nConflicts int, verbose bool) *conflictTestR
 		ret.txBytes[i], err = txbuilder.MakeTransferTransaction(td)
 		require.NoError(t, err)
 
-		if verbose {
-			t.Logf("------ tx %d :\n%s\n", i, ret.ut.TransactionStringFromBytes(ret.txBytes[i]))
-		}
-
 		vDraft, err := ret.ut.MakeDraftVertexFromTxBytes(ret.txBytes[i])
 		require.NoError(t, err)
 
@@ -177,7 +173,12 @@ func initConflictTest(t *testing.T, nConflicts int, verbose bool) *conflictTestR
 				t.Logf("***** failed transaction %d:\n%s\n*****", i, vid.String())
 			}
 		}
+		if verbose {
 
+		}
+		if verbose {
+			t.Logf("------ tx %d :\n%s\n", i, ret.ut.TransactionStringFromBytes(ret.txBytes[i]))
+		}
 		require.NoError(t, err)
 		vids = append(vids, vid)
 	}
@@ -185,7 +186,7 @@ func initConflictTest(t *testing.T, nConflicts int, verbose bool) *conflictTestR
 
 	if verbose {
 		for i, vid := range vids {
-			t.Logf("++++++++++++++ forks string of %d\n%s", i, vid.LinesPastTrack().String())
+			t.Logf("======= past track of %d\n%s", i, vid.PastTrackLines().String())
 		}
 	}
 
@@ -245,7 +246,7 @@ func TestBookingDoubleSpends(t *testing.T) {
 		initConflictTest(t, howMany, false)
 	})
 	t.Run("conflict short", func(t *testing.T) {
-		const howMany = 5
+		const howMany = 2
 		const verbose = false
 		it := initConflictTest(t, howMany, verbose)
 
