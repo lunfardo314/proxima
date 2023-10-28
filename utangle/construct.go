@@ -184,8 +184,8 @@ func (ut *UTXOTangle) _finalizeBranch(newBranchVertex *WrappedTx) error {
 	nextStemOutputID = tx.OutputID(seqTxData.StemOutputIndex)
 
 	baselineVID := newBranchVertex.BaselineBranch()
-	util.Assertf(baselineVID != nil, "can't get baseline branch")
-
+	util.Assertf(baselineVID != nil, "can't get baseline branch. Past track:\n%s",
+		func() any { return newBranchVertex.PastTrackLines().String() })
 	{
 		// calculate mutations, update the state and get new root
 		muts, conflict := newBranchVertex.getBranchMutations(ut)

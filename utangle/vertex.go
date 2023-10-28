@@ -309,16 +309,17 @@ func (p *PastTrack) _absorbPastTrack(vid *WrappedTx, safe bool) (conflict *Wrapp
 	var baselineBranch *WrappedTx
 	var wrappedConflict WrappedOutput
 
+	if vid.IsBranchTransaction() {
+		baselineBranch, success = mergeBranches(p.baselineBranch, vid)
+	} else {
+		baselineBranch, success = mergeBranches(p.baselineBranch, vid.BaselineBranch())
+	}
+	if !success {
+		conflict = &WrappedOutput{}
+		return
+	}
+
 	vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
-		if vid.IsBranchTransaction() {
-			baselineBranch, success = mergeBranches(p.baselineBranch, vid)
-		} else {
-			baselineBranch, success = mergeBranches(p.baselineBranch, vid.BaselineBranch())
-		}
-		if !success {
-			conflict = &WrappedOutput{}
-			return
-		}
 		if p.forks == nil {
 			p.forks = make(ForkSet)
 		}
@@ -331,8 +332,10 @@ func (p *PastTrack) _absorbPastTrack(vid *WrappedTx, safe bool) (conflict *Wrapp
 			conflict = &wrappedConflict
 			return
 		}
-		p.baselineBranch = baselineBranch
 	}})
+	if conflict == nil {
+		p.baselineBranch = baselineBranch
+	}
 	return
 }
 
