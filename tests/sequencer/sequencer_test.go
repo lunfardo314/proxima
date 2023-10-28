@@ -944,7 +944,7 @@ func TestNSequencers(t *testing.T) {
 
 		bal := heaviestState.BalanceOnChain(&r.bootstrapChainID)
 
-		require.EqualValues(t, int(initOnBootstrapSeqBalance+feeAmount+feeAmount*(nSequencers-1)), int(bal))
+		require.EqualValues(t, int(initOnBootstrapSeqBalance+feeAmount*nSequencers), int(bal))
 	})
 	t.Run("5 seq", func(t *testing.T) {
 		const (
@@ -1010,7 +1010,7 @@ func TestNSequencers(t *testing.T) {
 
 		bal := heaviestState.BalanceOnChain(&r.bootstrapChainID)
 
-		require.EqualValues(t, int(initOnBootstrapSeqBalance+feeAmount+feeAmount*(nSequencers-1)), int(bal))
+		require.EqualValues(t, int(initOnBootstrapSeqBalance+feeAmount*nSequencers), int(bal))
 		r.ut.SaveGraph(fnameFromTestName(t))
 		r.ut.SaveTree(fnameFromTestName(t) + "_TREE")
 	})
