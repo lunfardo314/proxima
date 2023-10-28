@@ -52,7 +52,7 @@ func newVirtualBranchTx(br *multistate.BranchData) *VirtualTransaction {
 // attach attaches transaction to the utxo tangle. It must be called from within global utangle lock critical section
 // If conflict occurs, newly propagated forks, if any, will do no harm.
 // The transaction is marked orphaned, so it will be ignored in the future cones
-func (ut *UTXOTangle) attach(vid *WrappedTx) (conflict WrappedOutput) {
+func (ut *UTXOTangle) attach(vid *WrappedTx) (conflict *WrappedOutput) {
 	vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
 		// book consumer into the inputs. Store forks (double spends), detect new ones and propagate to the future cone
 		v.forEachInputDependency(func(i byte, inp *WrappedTx) bool {
@@ -65,9 +65,9 @@ func (ut *UTXOTangle) attach(vid *WrappedTx) (conflict WrappedOutput) {
 			return true
 		})
 		// forks must be recalculated after all new double spends are detected and propagated
-		conflict = v.reMergeParentForkSets()
+		conflict = v.reMergeParentPastTracks()
 	}})
-	if conflict.VID != nil {
+	if conflict != nil {
 		// mark orphaned and do not add to the utangle. If it was added to the descendants lists, it will be ignored
 		// upon traversal of the future cone
 		vid.MarkOrphaned()
@@ -80,8 +80,8 @@ func (ut *UTXOTangle) attach(vid *WrappedTx) (conflict WrappedOutput) {
 	return
 }
 
-func (ut *UTXOTangle) attachWithSaveTx(vid *WrappedTx) (conflict WrappedOutput) {
-	if conflict = ut.attach(vid); conflict.VID != nil {
+func (ut *UTXOTangle) attachWithSaveTx(vid *WrappedTx) (conflict *WrappedOutput) {
+	if conflict = ut.attach(vid); conflict != nil {
 		return
 	}
 	// saving transaction bytes to the transaction store
@@ -106,7 +106,7 @@ func (ut *UTXOTangle) AddVertexAndBranch(branchVID *WrappedTx, root common.VComm
 	defer ut.mutex.Unlock()
 
 	conflict := ut.attach(branchVID)
-	util.Assertf(conflict.VID == nil, "AddVertexAndBranch: conflict %s", conflict.IDShort())
+	util.Assertf(conflict == nil, "AddVertexAndBranch: conflict %s", conflict.IDShort())
 
 	ut.addBranch(branchVID, root)
 }

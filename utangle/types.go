@@ -28,14 +28,14 @@ type (
 	}
 
 	PastTrack struct {
-		forks    ForkSet
-		branches []*WrappedTx
+		forks          ForkSet
+		baselineBranch *WrappedTx
 	}
 	Vertex struct {
 		Tx           *transaction.Transaction
 		Inputs       []*WrappedTx
 		Endorsements []*WrappedTx
-		pastTrack    *PastTrack
+		pastTrack    PastTrack
 		isSolid      bool
 	}
 

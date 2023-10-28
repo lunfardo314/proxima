@@ -152,7 +152,7 @@ func (ut *UTXOTangle) GetWrappedOutput(oid *core.OutputID, baselineState ...mult
 	vt.addOutput(oid.Index(), o)
 	vid := vt.Wrap()
 	conflict := ut.attach(vid)
-	util.Assertf(conflict.VID == nil, "inconsistency: unexpected conflict %s", conflict.IDShort())
+	util.Assertf(conflict == nil, "inconsistency: unexpected conflict %s", conflict.IDShort())
 
 	return WrappedOutput{VID: vid, Index: oid.Index()}, true, false
 }
@@ -196,6 +196,7 @@ func (v *Vertex) FetchMissingDependencies(ut *UTXOTangle) (conflict *core.Output
 }
 
 func (v *Vertex) cleanPastTrack() {
+	util.Assertf(v.pastTrack.baselineBranch == nil || !v.pastTrack.baselineBranch.IsOrphaned(), "baseline branch can't be orphaned")
 	toDeleteForks := make([]WrappedOutput, 0)
 	for wOut := range v.pastTrack.forks {
 		if wOut.VID.IsOrphaned() {
@@ -205,9 +206,6 @@ func (v *Vertex) cleanPastTrack() {
 	for _, wOut := range toDeleteForks {
 		delete(v.pastTrack.forks, wOut)
 	}
-	v.pastTrack.branches = util.FilterSlice(v.pastTrack.branches, func(vid *WrappedTx) bool {
-		return !vid.IsOrphaned()
-	})
 }
 
 func (v *Vertex) fetchMissingInputs(ut *UTXOTangle) (conflict *core.OutputID) {
@@ -223,29 +221,17 @@ func (v *Vertex) fetchMissingInputs(ut *UTXOTangle) (conflict *core.OutputID) {
 			// it is already solid
 			return true
 		}
-		wOut, ok, invalid := ut.GetWrappedOutput(oid, baselineStateArgs...)
+		inputWrapped, ok, invalid := ut.GetWrappedOutput(oid, baselineStateArgs...)
 		if invalid {
 			conflict = oid
 			return false
 		}
 		if ok {
-			wOut.VID.Unwrap(UnwrapOptions{Vertex: func(vInp *Vertex) {
-				conflictWrapped = v.mergePastTrack(vInp.pastTrack)
-			}})
-			if conflictWrapped != nil {
+			if conflictWrapped = v.pastTrack.AbsorbPastTrack(inputWrapped.VID); conflictWrapped != nil {
 				conflict = conflictWrapped.DecodeID()
 				return false
 			}
-			if wOut.VID.IsBranchTransaction() {
-				if v.pastTrack == nil {
-					v.pastTrack = &PastTrack{
-						branches: []*WrappedTx{wOut.VID},
-					}
-				} else {
-					v.pastTrack.branches = util.AppendNew(v.pastTrack.branches, wOut.VID)
-				}
-			}
-			v.Inputs[i] = wOut.VID
+			v.Inputs[i] = inputWrapped.VID
 		}
 		return true
 	})
@@ -261,42 +247,57 @@ func (v *Vertex) fetchMissingEndorsements(ut *UTXOTangle) (conflict *core.Output
 			return true
 		}
 		util.Assertf(v.Tx.TimeSlot() == txid.TimeSlot(), "tx.TimeTick() == txid.TimeTick()")
-		if vEnd, found := ut.GetVertex(txid); found {
-			util.Assertf(vEnd.IsSequencerMilestone(), "vEnd.IsSequencerMilestone()")
-
-			vEnd.Unwrap(UnwrapOptions{Vertex: func(vEndUnwrapped *Vertex) {
-				conflictWrapped = v.mergePastTrack(vEndUnwrapped.pastTrack)
-			}})
-			if conflictWrapped != nil {
+		if vEndorsement, found := ut.GetVertex(txid); found {
+			if conflictWrapped = v.pastTrack.AbsorbPastTrack(vEndorsement); conflictWrapped != nil {
 				conflict = conflictWrapped.DecodeID()
 				return false
 			}
-			if vEnd.IsBranchTransaction() {
-				// append the endorsed branch at the end of the past track
-				if v.pastTrack == nil {
-					v.pastTrack = &PastTrack{}
-				}
-				v.pastTrack.branches = util.AppendNew(v.pastTrack.branches, vEnd)
-			}
-			v.Endorsements[i] = vEnd
+			v.Endorsements[i] = vEndorsement
 		}
 		return true
 	})
 	return
 }
 
-func weldBranches(b1, b2 []*WrappedTx) ([]*WrappedTx, bool) {
-	if len(b1) == 0 {
-		return util.CloneArglistShallow(b2...), true
+// mergeBranches return <branch>, <success>
+func mergeBranches(b1, b2 *WrappedTx) (*WrappedTx, bool) {
+	switch {
+	case b1 == b2:
+		return b1, true
+	case b1 == nil:
+		return b2, true
+	case b2 == nil:
+		return b1, true
+	case b1.TimeSlot() == b2.TimeSlot():
+		// two different branches on the same slot conflicts
+		return nil, false
+	case b1.TimeSlot() > b2.TimeSlot():
+		if isDesc := b1.isDescendantBranchOf(b2); isDesc {
+			return b1, true
+		}
+	default:
+		if isDesc := b2.isDescendantBranchOf(b1); isDesc {
+			return b2, true
+		}
 	}
-	if len(b2) == 0 {
-		return util.CloneArglistShallow(b1...), true
+	return nil, false
+}
+
+func (vid *WrappedTx) isDescendantBranchOf(vidPred *WrappedTx) bool {
+	util.Assertf(vid != nil && vidPred != nil && vid.IsBranchTransaction() && vidPred.IsBranchTransaction(), "isDescendantBranchOf: must be a branch tx")
+	return vid._isDescendantBranchOf(vidPred)
+}
+
+func (vid *WrappedTx) _isDescendantBranchOf(vidPred *WrappedTx) (isDesc bool) {
+	if vid.TimeSlot() <= vidPred.TimeSlot() {
+		return
 	}
-	earlier := b1
-	later := b2
-	if later[0].TimeSlot() > earlier[0].TimeSlot() {
-		earlier = b2
-		later = b1
-	}
-	return util.WeldSlices(earlier, later)
+	vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
+		_, stemOutputIdx := v.Tx.SequencerAndStemOutputIndices()
+		next := v.Inputs[stemOutputIdx]
+		if isDesc = next == vidPred; !isDesc {
+			isDesc = next._isDescendantBranchOf(vidPred)
+		}
+	}})
+	return
 }

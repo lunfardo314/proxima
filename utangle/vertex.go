@@ -2,7 +2,6 @@ package utangle
 
 import (
 	"fmt"
-	"slices"
 	"strings"
 	"time"
 
@@ -248,104 +247,101 @@ func (v *Vertex) PendingDependenciesLines(prefix ...string) *lines.Lines {
 }
 
 func (v *Vertex) addFork(f Fork) bool {
-	if v.pastTrack == nil {
-		v.pastTrack = &PastTrack{
-			forks:    make(ForkSet),
-			branches: make([]*WrappedTx, 0),
-		}
-	}
 	if v.pastTrack.forks == nil {
 		v.pastTrack.forks = make(ForkSet)
 	}
 	return v.pastTrack.forks.Insert(f)
 }
 
-func (v *Vertex) mergePastTrack(p *PastTrack) *WrappedOutput {
-	if v.pastTrack == nil {
-		v.pastTrack = &PastTrack{
-			forks:    p.forks.Clone(),
-			branches: slices.Clone(p.branches),
-		}
-		return nil
-	}
-	return v.pastTrack.absorb(p)
-}
-
-func (v *Vertex) reMergeParentForkSets() (conflict WrappedOutput) {
+func (v *Vertex) reMergeParentPastTracks() (conflict *WrappedOutput) {
+	v.pastTrack = PastTrack{}
 	v.forEachInputDependency(func(i byte, vidInput *WrappedTx) bool {
 		util.Assertf(vidInput != nil, "vidInput != nil")
-		pastTrackInput := vidInput.PastTrackData()
-		if pastTrackInput == nil {
-			return true
-		}
-		if i == 0 {
-			if v.pastTrack == nil {
-				v.pastTrack = &PastTrack{
-					forks: pastTrackInput.forks.Clone(),
-				}
-			} else {
-				v.pastTrack.forks = pastTrackInput.forks.Clone()
-			}
-			return true
-		}
-		conflict = pastTrackInput.forks.Absorb(vidInput.PastTrackData().forks)
-		return conflict.VID == nil
+		conflict = v.pastTrack.AbsorbPastTrack(vidInput)
+		return conflict == nil
 	})
+
 	if conflict.VID != nil {
 		return
 	}
 	v.forEachEndorsement(func(_ byte, vidEndorsed *WrappedTx) bool {
 		util.Assertf(vidEndorsed != nil, "vidEndorsed != nil")
-		if v.pastTrack == nil {
-			v.pastTrack = &PastTrack{}
-		}
-		if v.pastTrack.forks == nil {
-			v.pastTrack.forks = make(ForkSet)
-		}
-		if endorsedPastTrack := vidEndorsed.PastTrackData(); endorsedPastTrack != nil {
-			conflict = v.pastTrack.forks.Absorb(endorsedPastTrack.forks)
-		}
-		return conflict.VID == nil
+		conflict = v.pastTrack.AbsorbPastTrack(vidEndorsed)
+		return conflict == nil
 	})
 	return
 }
 
+func (p *PastTrack) clone() PastTrack {
+	return PastTrack{
+		forks:          p.forks.Clone(),
+		baselineBranch: p.baselineBranch,
+	}
+}
+
 func (p *PastTrack) absorb(p1 *PastTrack) *WrappedOutput {
+	util.Assertf(p != nil, "p!=nil")
+
 	if p.forks == nil {
 		p.forks = make(ForkSet)
 	}
+
+	var success bool
+	if p.baselineBranch, success = mergeBranches(p.baselineBranch, p1.baselineBranch); !success {
+		return &WrappedOutput{}
+	}
+
 	if conflict := p.forks.Absorb(p1.forks); conflict.VID != nil {
 		return &conflict
 	}
-	res, ok := weldBranches(p.branches, p1.branches)
-	if !ok {
-		return &WrappedOutput{}
-	}
-	p.branches = res
 	return nil
 }
 
-func (p *PastTrack) AbsorbVIDSafe(vid *WrappedTx) *WrappedOutput {
-	var conflict WrappedOutput
+func (p *PastTrack) AbsorbPastTrack(vid *WrappedTx) (conflict *WrappedOutput) {
+	return p._absorbPastTrack(vid, false)
+}
+
+func (p *PastTrack) AbsorbPastTrackSafe(vid *WrappedTx) (conflict *WrappedOutput) {
+	return p._absorbPastTrack(vid, true)
+}
+
+func (p *PastTrack) _absorbPastTrack(vid *WrappedTx, safe bool) (conflict *WrappedOutput) {
+	var success bool
+	var baselineBranch *WrappedTx
+	var wrappedConflict WrappedOutput
+
 	vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
-		if v.pastTrack != nil {
-			if v.pastTrack.forks == nil {
-				v.pastTrack.forks = make(ForkSet)
-			}
-			conflict = v.pastTrack.forks.AbsorbSafe(v.pastTrack.forks)
+		if vid.IsBranchTransaction() {
+			baselineBranch, success = mergeBranches(p.baselineBranch, vid)
+		} else {
+			baselineBranch, success = mergeBranches(p.baselineBranch, vid.BaselineBranch())
 		}
+		if !success {
+			conflict = &WrappedOutput{}
+			return
+		}
+		if v.pastTrack.forks == nil {
+			v.pastTrack.forks = make(ForkSet)
+		}
+		if safe {
+			wrappedConflict = v.pastTrack.forks.AbsorbSafe(v.pastTrack.forks)
+		} else {
+			wrappedConflict = v.pastTrack.forks.Absorb(v.pastTrack.forks)
+		}
+		if wrappedConflict.VID != nil {
+			conflict = &wrappedConflict
+			return
+		}
+		p.baselineBranch = baselineBranch
 	}})
-	if conflict.VID != nil {
-		return &conflict
-	}
-	return nil
+	return
 }
 
 func (p *PastTrack) BaselineBranch() *WrappedTx {
-	if p == nil || len(p.branches) == 0 {
+	if p == nil {
 		return nil
 	}
-	return p.branches[len(p.branches)-1]
+	return p.baselineBranch
 }
 
 func (p *PastTrack) MustGetBaselineState(ut *UTXOTangle) general.IndexedStateReader {
@@ -357,12 +353,13 @@ func (p *PastTrack) Lines(prefix ...string) *lines.Lines {
 	if p == nil {
 		ret.Add("<nil>")
 	} else {
+		if p.baselineBranch == nil {
+			ret.Add("----- baseline branch: <nil>")
+		} else {
+			ret.Add("----- baseline branch: %s", p.baselineBranch.IDShort())
+		}
 		ret.Add("---- forks")
 		ret.Append(p.forks.Lines())
-		ret.Add("---- branches")
-		for _, br := range p.branches {
-			ret.Add("        %s", br.IDShort())
-		}
 	}
 	return ret
 }

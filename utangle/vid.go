@@ -882,32 +882,19 @@ func (vid *WrappedTx) PastTrackLines(prefix ...string) *lines.Lines {
 	return ret
 }
 
-func (vid *WrappedTx) PastTrackData() (ret *PastTrack) {
-	vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
-		ret = v.pastTrack
-	}})
-	return
-}
-
-func MergePastTracks(vids ...*WrappedTx) (ret *PastTrack, conflict *WrappedOutput) {
+func MergePastTracks(vids ...*WrappedTx) (ret PastTrack, conflict *WrappedOutput) {
 	if len(vids) == 0 {
 		return
 	}
+
+	retTmp := PastTrack{}
 	for _, vid := range vids {
-		vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
-			if v.pastTrack == nil {
-				return
-			}
-			if ret == nil {
-				ret = &PastTrack{}
-			}
-			conflict = ret.absorb(v.pastTrack)
-		}})
+		conflict = ret.AbsorbPastTrack(vid)
 		if conflict != nil {
-			ret = nil
 			return
 		}
 	}
+	ret = retTmp
 	return
 }
 
