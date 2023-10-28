@@ -8,6 +8,7 @@ import (
 
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/general"
+	"github.com/lunfardo314/proxima/genesis"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/util"
@@ -537,6 +538,12 @@ func (o *WrappedOutput) Unwrap() (ret *core.OutputWithID, err error) {
 	return o.VID.OutputWithIDAt(o.Index)
 }
 
+func (o *WrappedOutput) Amount() uint64 {
+	out, err := o.VID.OutputAt(o.Index)
+	util.AssertNoError(err)
+	return out.Amount()
+}
+
 func (o *WrappedOutput) Timestamp() core.LogicalTime {
 	return o.VID.Timestamp()
 }
@@ -716,7 +723,7 @@ func (vid *WrappedTx) getBranchMutations(ut *UTXOTangle) (*multistate.Mutations,
 	return ret.Sort(), WrappedOutput{}
 }
 
-func (vid *WrappedTx) _collectCoverage(baselineStateReader general.StateReader, visited set.Set[*WrappedTx]) (ret uint64) {
+func (vid *WrappedTx) _collectBaselineOutputs(baselineStateReader general.StateReader, visited set.Set[*WrappedTx], baselineOutputs set.Set[WrappedOutput]) {
 	if visited.Contains(vid) {
 		return
 	}
@@ -724,16 +731,19 @@ func (vid *WrappedTx) _collectCoverage(baselineStateReader general.StateReader, 
 
 	vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
 		v.forEachInputDependency(func(i byte, inp *WrappedTx) bool {
-			if baselineStateReader.KnowsCommittedTransaction(inp.ID()) {
-				o, _ := inp.OutputAt(v.Tx.MustOutputIndexOfTheInput(i))
-				ret += o.Amount()
+			wInp := WrappedOutput{
+				VID:   inp,
+				Index: v.Tx.MustOutputIndexOfTheInput(i),
+			}
+			if baselineStateReader.HasUTXO(wInp.DecodeID()) {
+				baselineOutputs.Insert(wInp)
 			} else {
-				ret += inp._collectCoverage(baselineStateReader, visited)
+				inp._collectBaselineOutputs(baselineStateReader, visited, baselineOutputs)
 			}
 			return true
 		})
 		v.forEachEndorsement(func(i byte, vEnd *WrappedTx) bool {
-			ret += vEnd._collectCoverage(baselineStateReader, visited)
+			vEnd._collectBaselineOutputs(baselineStateReader, visited, baselineOutputs)
 			return true
 		})
 	}})
@@ -749,8 +759,20 @@ func (vid *WrappedTx) CoverageDelta(ut *UTXOTangle) (*core.TransactionID, uint64
 	if baselineBranchVID == nil {
 		return nil, 0
 	}
+
 	baselineTxID := baselineBranchVID.ID()
-	return baselineTxID, vid._collectCoverage(ut.MustGetStateReader(baselineTxID), set.New[*WrappedTx]())
+	baselineOutputs := set.New[WrappedOutput]()
+	vid._collectBaselineOutputs(ut.MustGetStateReader(baselineTxID), set.New[*WrappedTx](), baselineOutputs)
+
+	ret := uint64(0)
+
+	baselineOutputs.ForEach(func(o WrappedOutput) bool {
+		ret += o.Amount()
+		return true
+	})
+	util.Assertf(ret <= genesis.DefaultSupply, "coverage %d > supply (%d). Outputs:\n%s", ret, genesis.DefaultSupply)
+
+	return baselineTxID, ret
 }
 
 func (vid *WrappedTx) LedgerCoverage(ut *UTXOTangle) uint64 {
@@ -763,6 +785,7 @@ func (vid *WrappedTx) LedgerCoverage(ut *UTXOTangle) uint64 {
 	if branchTxID == nil {
 		return 0
 	}
+
 	bd, ok := ut.FetchBranchData(branchTxID)
 	util.Assertf(ok, "can't fetch branch data for %s", func() any { return branchTxID.Short() })
 
@@ -779,17 +802,6 @@ func (o *WrappedOutput) Less(o1 *WrappedOutput) bool {
 	}
 	return o.VID.Less(o1.VID)
 }
-
-//func (vid *WrappedTx) LinesPastTrack(prefix ...string) *lines.Lines {
-//	ret := lines.New(prefix...)
-//	ret.Add("=== past track of %s START", vid.IDShort())
-//	vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
-//		ret.Append(v.pastTrack.Lines("   "))
-//	}})
-//	ret.Add("=== past track of %s END", vid.IDShort())
-//	return ret
-//}
-//
 
 func (vid *WrappedTx) PastTrackLines(prefix ...string) *lines.Lines {
 	ret := lines.New(prefix...)
