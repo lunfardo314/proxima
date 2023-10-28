@@ -170,7 +170,7 @@ func initConflictTest(t *testing.T, nConflicts int, verbose bool) *conflictTestR
 		if err != nil {
 			if vid != nil {
 				utangle.SaveGraphPastCone(vid, "make_vertex")
-				t.Logf("***** failed transaction %d:\n%s\n*****", i, vid.String())
+				t.Logf("***** failed transaction %d:\n%s\n*****", i, vid.Lines().String())
 			}
 		}
 		if verbose {

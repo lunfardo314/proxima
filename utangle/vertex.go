@@ -95,6 +95,7 @@ func (v *Vertex) _isSolid() bool {
 			return false
 		}
 	}
+	util.Assertf(!v.Tx.IsSequencerMilestone() || v.pastTrack.baselineBranch != nil, "inconsistency: baseline branch is unknown in a sequencer transaction")
 	return true
 }
 
@@ -115,30 +116,6 @@ func (v *Vertex) producedOutputData(idx byte) ([]byte, bool) {
 	return v.Tx.MustOutputDataAt(idx), true
 }
 
-func (v *Vertex) StemOutput() *core.OutputWithID {
-	util.Assertf(v.Tx.IsSequencerMilestone(), "v.Tx.SequencerFlagON()")
-	seqMeta := v.Tx.SequencerTransactionData()
-	o, ok := v.MustProducedOutput(seqMeta.StemOutputIndex)
-	util.Assertf(ok, "can't get stem output")
-	return &core.OutputWithID{
-		ID:     v.Tx.OutputID(seqMeta.StemOutputIndex),
-		Output: o,
-	}
-}
-
-func (v *Vertex) SequencerID() core.ChainID {
-	util.Assertf(v.Tx.IsSequencerMilestone(), "v.Tx.SequencerFlagON()")
-	seqMeta := v.Tx.SequencerTransactionData()
-	return seqMeta.SequencerID
-}
-
-// SequencerMilestonePredecessorOutputID returns with .Vertex == nil if predecessor is finalized
-func (v *Vertex) SequencerMilestonePredecessorOutputID() core.OutputID {
-	util.Assertf(v.Tx.IsSequencerMilestone(), "v.Tx.SequencerFlagON()")
-	predOutIdx := v.Tx.SequencerTransactionData().SequencerOutputData.ChainConstraint.PredecessorInputIndex
-	return v.Tx.MustInputAt(predOutIdx)
-}
-
 func (v *Vertex) forEachInputDependency(fun func(i byte, vidInput *WrappedTx) bool) {
 	for i, inp := range v.Inputs {
 		if !fun(byte(i), inp) {
@@ -155,10 +132,6 @@ func (v *Vertex) forEachEndorsement(fun func(i byte, vidEndorsed *WrappedTx) boo
 	}
 }
 
-func (v *Vertex) String() string {
-	return v.Lines().String()
-}
-
 func (v *Vertex) Lines(prefix ...string) *lines.Lines {
 	return v.Tx.Lines(func(i byte) (*core.Output, error) {
 		if v.Inputs[i] == nil {
@@ -170,34 +143,6 @@ func (v *Vertex) Lines(prefix ...string) *lines.Lines {
 		}
 		return v.Inputs[i].OutputAt(inpOid.Index())
 	}, prefix...)
-}
-
-func (v *Vertex) ConsumedInputsToString() string {
-	return v.ConsumedInputsToLines().String()
-}
-
-func (v *Vertex) ConsumedInputsToLines() *lines.Lines {
-	ret := lines.New()
-	ret.Add("Consumed outputs (%d) of vertex %s", v.Tx.NumInputs(), v.Tx.IDShort())
-	for i, dep := range v.Inputs {
-		id, err := v.Tx.InputAt(byte(i))
-		util.AssertNoError(err)
-		if dep == nil {
-			ret.Add("   %d %s : not solid", i, id.Short())
-		} else {
-			o, err := dep.OutputAt(byte(i))
-			if err == nil {
-				if o != nil {
-					ret.Add("   %d %s : \n%s", i, id.Short(), o.ToString("     "))
-				} else {
-					ret.Add("   %d %s : (not available)", i, id.Short())
-				}
-			} else {
-				ret.Add("   %d %s : %v", i, id.Short(), err)
-			}
-		}
-	}
-	return ret
 }
 
 func (v *Vertex) Wrap() *WrappedTx {
@@ -269,6 +214,10 @@ func (v *Vertex) reMergeParentPastTracks() (conflict *WrappedOutput) {
 		return conflict == nil
 	})
 	return
+}
+
+func (v *Vertex) BaselineBranch() *WrappedTx {
+	return v.pastTrack.BaselineBranch()
 }
 
 func (p *PastTrack) clone() PastTrack {
@@ -361,12 +310,4 @@ func (p *PastTrack) Lines(prefix ...string) *lines.Lines {
 		ret.Append(p.forks.Lines())
 	}
 	return ret
-}
-
-// BaselineBranch is the latest branch vertex the current vertex is descendent of.
-// Vertex is not necessarily solid. For pending inputs and endorsements are considered nil branch tx.
-// If v is not a sequencer milestone, or it is a virtual transaction, BaselineBranch == nil
-// If v is a branch itself, the BaselineBranch is the predecessor branch
-func (v *Vertex) BaselineBranch() *WrappedTx {
-	return v.pastTrack.BaselineBranch()
 }

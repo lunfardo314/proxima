@@ -252,7 +252,7 @@ func (c *SolidifyConsumer) checkNewDependency(inp *SolidifyInputData) {
 			continue
 		}
 		c.Log().Debugf("%s not solid yet. Missing: %s\nTransaction: %s",
-			pending.Tx.IDShort(), pending.draftVertex.MissingInputTxIDString(), pending.draftVertex.String())
+			pending.Tx.IDShort(), pending.draftVertex.MissingInputTxIDString(), pending.draftVertex.Lines().String())
 	}
 	for i := range solidified {
 		delete(c.txPending, solidified[i])

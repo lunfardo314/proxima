@@ -283,57 +283,6 @@ func (vid *WrappedTx) SequencerPredecessor() (ret *WrappedTx) {
 	return
 }
 
-// SequencerPastPath collects all path of the chain back to the first not nil (wrapped tx)
-// ordered descending in time
-func (vid *WrappedTx) SequencerPastPath() []*WrappedTx {
-	ret := make([]*WrappedTx, 0)
-	for vid1 := vid; vid1 != nil; vid1 = vid1.SequencerPredecessor() {
-		ret = append(ret, vid1)
-	}
-	return ret
-}
-
-func (vid *WrappedTx) MustSequencerOutput() *WrappedOutput {
-	if !vid.IsSequencerMilestone() {
-		return nil
-	}
-	ret := &WrappedOutput{
-		VID: vid,
-	}
-	vid.Unwrap(UnwrapOptions{
-		Vertex: func(v *Vertex) {
-			ret.Index = v.Tx.SequencerTransactionData().SequencerOutputIndex
-		},
-		VirtualTx: func(v *VirtualTransaction) {
-			util.Assertf(v.sequencerOutputs != nil, "sequencer output data not available in virtual tx %s", v.txid.Short())
-			ret.Index = v.sequencerOutputs[0]
-		},
-	})
-	return ret
-}
-
-func (vid *WrappedTx) StemOutput() *WrappedOutput {
-	if !vid.IsBranchTransaction() {
-		return nil
-	}
-	ret := &WrappedOutput{
-		VID: vid,
-	}
-	vid.Unwrap(UnwrapOptions{
-		Vertex: func(v *Vertex) {
-			ret.Index = v.Tx.SequencerTransactionData().StemOutputIndex
-		},
-		VirtualTx: func(v *VirtualTransaction) {
-			if v.sequencerOutputs != nil {
-				ret.Index = v.sequencerOutputs[1]
-			} else {
-				ret = nil
-			}
-		},
-	})
-	return ret
-}
-
 // BaseStemOutput returns wrapped stem output for the branch state or nil if unavailable
 func (vid *WrappedTx) BaseStemOutput(ut *UTXOTangle) *WrappedOutput {
 	var branchTxID *core.TransactionID
@@ -380,15 +329,8 @@ func (vid *WrappedTx) UnwrapTransaction() *transaction.Transaction {
 	return ret
 }
 
-func (vid *WrappedTx) IsVirtualTx() (ret bool) {
+func (vid *WrappedTx) isVirtualTx() (ret bool) {
 	vid.Unwrap(UnwrapOptions{VirtualTx: func(_ *VirtualTransaction) {
-		ret = true
-	}})
-	return
-}
-
-func (vid *WrappedTx) IsWrappedTx() (ret bool) {
-	vid.Unwrap(UnwrapOptions{Vertex: func(_ *Vertex) {
 		ret = true
 	}})
 	return
@@ -533,10 +475,6 @@ func (vid *WrappedTx) PastConeSet() set.Set[*WrappedTx] {
 	ret := set.New[*WrappedTx]()
 	vid.TraversePastConeDepthFirst(UnwrapOptionsForTraverse{}, ret)
 	return ret
-}
-
-func (vid *WrappedTx) String() string {
-	return vid.Lines().String()
 }
 
 func (vid *WrappedTx) Lines(prefix ...string) *lines.Lines {

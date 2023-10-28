@@ -4,7 +4,6 @@ import (
 	"crypto/ed25519"
 	"encoding/hex"
 	"fmt"
-	"slices"
 	"sort"
 	"strings"
 
@@ -193,12 +192,6 @@ func Minimum[T any](lst []T, less func(el1, el2 T) bool) T {
 	return ret
 }
 
-func CloneArglistShallow[T any](elems ...T) []T {
-	ret := make([]T, len(elems))
-	copy(ret, elems)
-	return ret
-}
-
 func CloneMapShallow[K comparable, V any](m map[K]V) map[K]V {
 	ret := make(map[K]V)
 	for k, v := range m {
@@ -235,16 +228,6 @@ func FilterSlice[T any](slice []T, filter func(el T) bool, maxElems ...int) []T 
 	return ret
 }
 
-func FindFirst[T any](slice []T, cond func(el T) bool) (T, bool) {
-	for _, el := range slice {
-		if cond(el) {
-			return el, true
-		}
-	}
-	var nilElem T
-	return nilElem, false
-}
-
 func FindFirstKeyInMap[K comparable, V any](m map[K]V, cond ...func(k K) bool) (K, bool) {
 	var fun func(k K) bool
 	if len(cond) > 0 {
@@ -259,44 +242,6 @@ func FindFirstKeyInMap[K comparable, V any](m map[K]V, cond ...func(k K) bool) (
 	}
 	var nilK K
 	return nilK, false
-}
-
-// WeldSlices returns:
-// - nil, false if s1 and s2 do not have equal suffix and prefix respectively
-// - <extended slice>, true otherwise, where <extended slice> is equal concatenating s1 with suffix of s2
-// It is used in merging past branch paths
-func WeldSlices[T comparable](s1, s2 []T) ([]T, bool) {
-	if len(s1) == 0 {
-		return slices.Clone(s2), true
-	}
-	if len(s2) == 0 {
-		return slices.Clone(s1), true
-	}
-	idxLater := slices.Index(s1, s2[0])
-	if idxLater < 0 {
-		// do not overlap -> cannot be merged
-		return nil, false
-	}
-	// check overlapping part
-	for i := 0; i+idxLater < len(s1) && i < len(s2); i++ {
-		if s2[i] != s1[i+idxLater] {
-			return nil, false
-		}
-	}
-	if len(s1[idxLater:]) > len(s2) {
-		return slices.Clone(s1), true
-	}
-	return append(slices.Clone(s1[:idxLater]), s2...), true
-}
-
-func AppendNew[T comparable](slice []T, el T) []T {
-	if len(slice) == 0 {
-		return []T{el}
-	}
-	if slices.Index(slice, el) >= 0 {
-		return slice
-	}
-	return append(slice, el)
 }
 
 func MustTakeFirstKeyInMap[K comparable, V any](m map[K]V) K {

@@ -156,10 +156,9 @@ func (ut *UTXOTangle) AppendVertexFromTransactionBytesDebug(txBytes []byte) (*Wr
 	if err != nil {
 		return nil, "", err
 	}
-	retTxStr := vertexDraft.String()
 
 	ret, err := ut.AppendVertex(vertexDraft)
-	return ret, retTxStr, err
+	return ret, vertexDraft.Lines().String(), err
 }
 
 func (ut *UTXOTangle) finalizeBranch(newBranchVertex *WrappedTx) error {
@@ -206,7 +205,7 @@ func (ut *UTXOTangle) _finalizeBranch(newBranchVertex *WrappedTx) error {
 		// assert consistency
 		rdr, err := multistate.NewSugaredReadableState(ut.stateStore, newRoot)
 		if err != nil {
-			return fmt.Errorf("finalizeBranch: double check failed: '%v'\n%s", err, newBranchVertex.String())
+			return fmt.Errorf("finalizeBranch: double check failed: '%v'\n%s", err, newBranchVertex.Lines().String())
 		}
 
 		var stemID core.OutputID

@@ -4,6 +4,7 @@ import (
 	"crypto/ed25519"
 	"errors"
 	"fmt"
+	"slices"
 	"sync"
 	"time"
 
@@ -212,7 +213,7 @@ func (mf *milestoneFactory) selectInputs(targetTs core.LogicalTime, ownMs utangl
 		return nil, &ownMs
 	}
 
-	allSeqVIDs := append(util.CloneArglistShallow(otherSeqVIDs...), ownMs.VID)
+	allSeqVIDs := append(slices.Clone(otherSeqVIDs), ownMs.VID)
 
 	consolidatedPastTrack, conflict := utangle.MergePastTracks(allSeqVIDs...)
 	if conflict != nil {
