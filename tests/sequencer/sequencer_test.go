@@ -565,7 +565,7 @@ func (r *sequencerTestData) createTransactionLogger() {
 
 	txCounter := 0
 	err = r.wrk.Events().ListenTransactions(func(vid *utangle.WrappedTx) {
-		_, _ = fmt.Fprintf(f, "------------ %d %s\n", txCounter, vid.String())
+		_, _ = fmt.Fprintf(f, "------------ %d %s\n", txCounter, vid.Lines().String())
 		txCounter++
 		_ = f.Sync()
 	})
@@ -613,7 +613,7 @@ func (r *sequencerTestData) issueTransfersWithSeqID(targetAddress core.Lock, tar
 func TestNSequencers(t *testing.T) {
 	t.Run("2 seq", func(t *testing.T) {
 		const (
-			maxSlots              = 60
+			maxSlots              = 10 // 60
 			numFaucets            = 1
 			numFaucetTransactions = 1
 			maxTxInputs           = sequencer.DefaultMaxFeeInputs

@@ -196,6 +196,7 @@ func (ut *UTXOTangle) _finalizeBranch(newBranchVertex *WrappedTx) error {
 			return err
 		}
 		coverage := ut.LedgerCoverageDelta(newBranchVertex)
+
 		err = upd.Update(muts, &nextStemOutputID, &seqTxData.SequencerID, coverage)
 		if err != nil {
 			return fmt.Errorf("finalizeBranch %s: '%v'=== mutations: %d\n%s",

@@ -765,6 +765,7 @@ func (vid *WrappedTx) LedgerCoverage(ut *UTXOTangle) uint64 {
 	}
 	bd, ok := ut.FetchBranchData(branchTxID)
 	util.Assertf(ok, "can't fetch branch data for %s", func() any { return branchTxID.Short() })
+
 	return deltaCoverage + bd.CoverageDelta
 }
 
