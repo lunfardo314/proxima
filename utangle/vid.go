@@ -779,11 +779,9 @@ func (vid *WrappedTx) LedgerCoverage(ut *UTXOTangle) uint64 {
 	var deltaCoverage uint64
 	var branchTxID *core.TransactionID
 
-	if !vid.IsBranchTransaction() {
-		branchTxID, deltaCoverage = vid.CoverageDelta(ut)
-	}
-	if branchTxID == nil {
-		return 0
+	branchTxID, deltaCoverage = vid.CoverageDelta(ut)
+	if vid.IsBranchTransaction() || branchTxID == nil {
+		return deltaCoverage
 	}
 
 	bd, ok := ut.FetchBranchData(branchTxID)
