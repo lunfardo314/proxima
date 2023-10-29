@@ -36,8 +36,11 @@ func FetchLatestSlot(store general.StateStore) core.TimeSlot {
 	return ret
 }
 
-func (lc *LedgerCoverage) MakeNext(nextDelta uint64) (ret LedgerCoverage) {
-	copy(ret[1:], lc[:])
+func (lc *LedgerCoverage) MakeNext(shift int, nextDelta uint64) (ret LedgerCoverage) {
+	util.Assertf(shift >= 1, "shift >= 1")
+	if shift < HistoryCoverageDeltas {
+		copy(ret[shift:], lc[:])
+	}
 	ret[0] = nextDelta
 	return
 }

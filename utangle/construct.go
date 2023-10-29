@@ -172,22 +172,22 @@ func (ut *UTXOTangle) finalizeBranch(newBranchVertex *WrappedTx) error {
 }
 
 // _finalizeBranch commits state delta the database and writes branch record
-func (ut *UTXOTangle) _finalizeBranch(newBranchVertex *WrappedTx) error {
-	util.Assertf(newBranchVertex.IsBranchTransaction(), "v.IsBranchTransaction()")
+func (ut *UTXOTangle) _finalizeBranch(newBranchVID *WrappedTx) error {
+	util.Assertf(newBranchVID.IsBranchTransaction(), "v.IsBranchTransaction()")
 
 	var newRoot common.VCommitment
 	var nextStemOutputID core.OutputID
 
-	tx := newBranchVertex.UnwrapTransaction()
+	tx := newBranchVID.UnwrapTransaction()
 	seqTxData := tx.SequencerTransactionData()
 	nextStemOutputID = tx.OutputID(seqTxData.StemOutputIndex)
 
-	baselineVID := newBranchVertex.BaselineBranch()
+	baselineVID := newBranchVID.BaselineBranch()
 	util.Assertf(baselineVID != nil, "can't get baseline branch. Past track:\n%s",
-		func() any { return newBranchVertex.PastTrackLines().String() })
+		func() any { return newBranchVID.PastTrackLines().String() })
 	{
 		// calculate mutations, update the state and get new root
-		muts, conflict := newBranchVertex.getBranchMutations(ut)
+		muts, conflict := newBranchVID.getBranchMutations(ut)
 		if conflict.VID != nil {
 			return fmt.Errorf("conflict while calculating mutations: %s", conflict.DecodeID().Short())
 		}
@@ -195,7 +195,7 @@ func (ut *UTXOTangle) _finalizeBranch(newBranchVertex *WrappedTx) error {
 		if err != nil {
 			return err
 		}
-		coverageDelta := ut.LedgerCoverageDelta(newBranchVertex)
+		coverageDelta := ut.LedgerCoverageDelta(newBranchVID)
 
 		var prevCoverage multistate.LedgerCoverage
 		if multistate.HistoryCoverageDeltas > 1 {
@@ -204,16 +204,18 @@ func (ut *UTXOTangle) _finalizeBranch(newBranchVertex *WrappedTx) error {
 
 			prevCoverage = rr.LedgerCoverage
 		}
-		err = upd.Update(muts, &nextStemOutputID, &seqTxData.SequencerID, prevCoverage.MakeNext(coverageDelta))
+		nextCoverage := prevCoverage.MakeNext(int(newBranchVID.TimeSlot())-int(baselineVID.TimeSlot()), coverageDelta)
+
+		err = upd.Update(muts, &nextStemOutputID, &seqTxData.SequencerID, nextCoverage)
 		if err != nil {
 			return fmt.Errorf("finalizeBranch %s: '%v'=== mutations: %d\n%s",
-				newBranchVertex.IDShort(), err, muts.Len(), muts.Lines().String())
+				newBranchVID.IDShort(), err, muts.Len(), muts.Lines().String())
 		}
 		newRoot = upd.Root()
 		// assert consistency
 		rdr, err := multistate.NewSugaredReadableState(ut.stateStore, newRoot)
 		if err != nil {
-			return fmt.Errorf("finalizeBranch: double check failed: '%v'\n%s", err, newBranchVertex.Lines().String())
+			return fmt.Errorf("finalizeBranch: double check failed: '%v'\n%s", err, newBranchVID.Lines().String())
 		}
 
 		var stemID core.OutputID
@@ -221,19 +223,19 @@ func (ut *UTXOTangle) _finalizeBranch(newBranchVertex *WrappedTx) error {
 			stemID = rdr.GetStemOutput().ID
 			return nil
 		})
-		util.Assertf(err == nil, "double check failed: %v\n%s\n%s", err, muts.Lines().String(), newBranchVertex.PastTrackLines("   "))
+		util.Assertf(err == nil, "double check failed: %v\n%s\n%s", err, muts.Lines().String(), newBranchVID.PastTrackLines("   "))
 		util.Assertf(stemID == nextStemOutputID, "rdr.GetStemOutput().ID == nextStemOutputID\n%s != %s\n%s",
 			stemID.Short(), nextStemOutputID.Short(),
-			func() any { return newBranchVertex.PastTrackLines().String() })
+			func() any { return newBranchVID.PastTrackLines().String() })
 	}
 	{
 		// store new branch to the tangle data structure
-		branches := ut.branches[newBranchVertex.TimeSlot()]
+		branches := ut.branches[newBranchVID.TimeSlot()]
 		if len(branches) == 0 {
 			branches = make(map[*WrappedTx]common.VCommitment)
-			ut.branches[newBranchVertex.TimeSlot()] = branches
+			ut.branches[newBranchVID.TimeSlot()] = branches
 		}
-		branches[newBranchVertex] = newRoot
+		branches[newBranchVID] = newRoot
 		ut.numAddedBranches++
 	}
 	return nil

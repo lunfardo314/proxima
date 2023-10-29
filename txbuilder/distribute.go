@@ -71,7 +71,7 @@ func MustDistributeInitialSupply(stateStore general.StateStore, originPrivateKey
 
 	updatableOrigin := multistate.MustNewUpdatable(stateStore, genesisRoot)
 	var coverage multistate.LedgerCoverage
-	updatableOrigin.MustUpdate(muts, &nextStem.ID, &bootstrapChainID, coverage.MakeNext(stateID.InitialSupply))
+	updatableOrigin.MustUpdate(muts, &nextStem.ID, &bootstrapChainID, coverage.MakeNext(1, stateID.InitialSupply))
 
 	return txBytes
 }
