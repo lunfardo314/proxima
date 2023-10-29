@@ -40,7 +40,7 @@ type (
 
 // partitions of the state store on the trie
 
-const HistoryCoverageDeltas = 1
+const HistoryCoverageDeltas = 2
 
 func init() {
 	util.Assertf(HistoryCoverageDeltas*8 <= 256, "HistoryCoverageDeltas*8 <= 256")

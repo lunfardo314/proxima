@@ -199,7 +199,10 @@ func (ut *UTXOTangle) _finalizeBranch(newBranchVertex *WrappedTx) error {
 
 		var prevCoverage multistate.LedgerCoverage
 		if multistate.HistoryCoverageDeltas > 1 {
-			panic("not implemented HistoryCoverageDeltas > 1")
+			rr, found := multistate.FetchRootRecord(ut.stateStore, *baselineVID.ID())
+			util.Assertf(found, "can't fetch root record for %s", baselineVID.IDShort())
+
+			prevCoverage = rr.LedgerCoverage
 		}
 		err = upd.Update(muts, &nextStemOutputID, &seqTxData.SequencerID, prevCoverage.MakeNext(coverageDelta))
 		if err != nil {
