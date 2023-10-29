@@ -54,14 +54,14 @@ func (b *backtrackProposer) run() {
 	b.trace("RUN: preliminary extension choices in the endorsement target %s (ms %s):\n%s",
 		endorseSeqID.VeryShort(), b.endorse.IDShort(), milestoneSliceString(b.extensionChoices))
 
-	for _, ms := range b.extensionChoices {
+	for _, extend := range b.extensionChoices {
 		if !b.factory.proposal.continueCandidateProposing(b.targetTs) {
 			return
 		}
 
 		b.startProposingTime()
-		if tx := b.generateCandidate(ms); tx != nil {
-			b.assessAndAcceptProposal(tx, startTime, b.name())
+		if tx := b.generateCandidate(extend); tx != nil {
+			b.assessAndAcceptProposal(tx, extend, startTime, b.name())
 		}
 		time.Sleep(10 * time.Millisecond)
 	}

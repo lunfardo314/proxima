@@ -115,7 +115,7 @@ func (c *proposerTaskGeneric) makeMilestone(chainIn, stemIn *utangle.WrappedOutp
 }
 
 // assessAndAcceptProposal returns reject reason of empty string, if accepted
-func (c *proposerTaskGeneric) assessAndAcceptProposal(tx *transaction.Transaction, startTime time.Time, taskName string) {
+func (c *proposerTaskGeneric) assessAndAcceptProposal(tx *transaction.Transaction, extend utangle.WrappedOutput, startTime time.Time, taskName string) {
 	c.trace("inside assessAndAcceptProposal: %s", tx.IDShort())
 
 	// prevent repeating transactions with same consumedInThePastPath
@@ -137,6 +137,7 @@ func (c *proposerTaskGeneric) assessAndAcceptProposal(tx *transaction.Transactio
 
 	msData := &proposedMilestoneWithData{
 		tx:         tx,
+		extended:   extend,
 		coverage:   coverage,
 		elapsed:    time.Since(startTime),
 		proposedBy: taskName,
@@ -178,7 +179,6 @@ func (c *proposerTaskGeneric) placeProposalIfRelevant(mdProposed *proposedMilest
 	baselineCoverage := c.factory.proposal.bestSoFarCoverage
 
 	if !mdProposed.tx.IsBranchTransaction() {
-		// if not branch, check if it increases coverage
 		if mdProposed.coverage <= baselineCoverage {
 			return fmt.Sprintf("%s SKIPPED: no increase in coverage %s <- %s)",
 				mdProposed.tx.IDShort(), util.GoThousands(mdProposed.coverage), util.GoThousands(c.factory.proposal.bestSoFarCoverage))
@@ -188,6 +188,7 @@ func (c *proposerTaskGeneric) placeProposalIfRelevant(mdProposed *proposedMilest
 	// branch proposals always accepted
 	c.factory.proposal.bestSoFarCoverage = mdProposed.coverage
 	c.factory.proposal.current = mdProposed.tx
+	c.factory.proposal.currentExtended = mdProposed.extended
 
 	//c.setTraceNAhead(1)
 	c.trace("(%s): ACCEPTED %s, coverage: %s (base: %s), elapsed: %v, inputs: %d, tipPool: %d",

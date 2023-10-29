@@ -5,6 +5,7 @@ import (
 
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/transaction"
+	"github.com/lunfardo314/proxima/utangle"
 	"github.com/lunfardo314/proxima/util"
 )
 
@@ -29,47 +30,45 @@ func (b *baseProposer) run() {
 	var forceExit bool
 	for b.factory.proposal.continueCandidateProposing(b.targetTs) {
 		b.startProposingTime()
-		tx, forceExit = b.proposeBase()
-
-		if forceExit {
+		latestMs := b.factory.getLatestMilestone()
+		if tx, forceExit = b.proposeBase(latestMs); forceExit {
 			b.storeProposalDuration()
 			break
 		}
 		if tx != nil {
 			b.trace("generated %s", func() any { return tx.IDShort() })
-			b.assessAndAcceptProposal(tx, startTime, b.name())
+			b.assessAndAcceptProposal(tx, latestMs, startTime, b.name())
 		}
 		b.storeProposalDuration()
 		time.Sleep(10 * time.Millisecond)
 	}
 }
 
-func (b *baseProposer) proposeBase() (*transaction.Transaction, bool) {
-	latestMilestone := b.factory.getLatestMilestone()
+func (b *baseProposer) proposeBase(extend utangle.WrappedOutput) (*transaction.Transaction, bool) {
 	// own latest milestone exists
-	if !b.targetTs.IsSlotBoundary() && latestMilestone.TimeSlot() != b.targetTs.TimeSlot() {
+	if !b.targetTs.IsSlotBoundary() && extend.TimeSlot() != b.targetTs.TimeSlot() {
 		// on startup or cross-slot will only produce branches
-		b.trace("proposeBase.force exit: cross-slot %s", latestMilestone.IDShort())
+		b.trace("proposeBase.force exit: cross-slot %s", extend.IDShort())
 		return nil, true
 	}
 
 	if b.targetTs.TimeTick() == 0 {
-		b.trace("making branch, extending %s", latestMilestone.IDShort())
+		b.trace("making branch, extending %s", extend.IDShort())
 		// generate branch, no fee outputs are consumed
-		baseStem := latestMilestone.VID.BaseStemOutput(b.factory.tangle)
+		baseStem := extend.VID.BaseStemOutput(b.factory.tangle)
 		if baseStem == nil {
 			// base stem is not available for a milestone which is virtual and non-branch
-			b.factory.log.Errorf("proposeBase.force exit: stem not available, %s cannot be extended to a branch", latestMilestone.IDShort())
+			b.factory.log.Errorf("proposeBase.force exit: stem not available, %s cannot be extended to a branch", extend.IDShort())
 			return nil, true
 		}
 		// create branch
-		return b.makeMilestone(&latestMilestone, baseStem, nil, nil), false
+		return b.makeMilestone(&extend, baseStem, nil, nil), false
 	}
 	// non-branch
 
-	feeOutputsToConsume, conflict := b.selectInputs(latestMilestone)
+	feeOutputsToConsume, conflict := b.selectInputs(extend)
 	util.Assertf(conflict == nil, "unexpected conflict")
 
 	b.trace("making ordinary milestone")
-	return b.makeMilestone(&latestMilestone, nil, feeOutputsToConsume, nil), false
+	return b.makeMilestone(&extend, nil, feeOutputsToConsume, nil), false
 }

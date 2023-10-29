@@ -43,6 +43,7 @@ type (
 
 	proposedMilestoneWithData struct {
 		tx         *transaction.Transaction
+		extended   utangle.WrappedOutput
 		coverage   uint64
 		elapsed    time.Duration
 		proposedBy string
@@ -53,6 +54,7 @@ type (
 		targetTs          core.LogicalTime
 		bestSoFarCoverage uint64
 		current           *transaction.Transaction
+		currentExtended   utangle.WrappedOutput
 		durations         []time.Duration
 	}
 
@@ -394,12 +396,6 @@ func (mf *milestoneFactory) futureConeMilestonesOrdered(rootVID *utangle.Wrapped
 		if !vid.IsOrphaned() && vid.IsSequencerMilestone() && visited.Contains(vid.SequencerPredecessor()) {
 			visited.Insert(vid)
 			ret = append(ret, mf.ownMilestones[vid].WrappedOutput)
-
-			//p.setTraceNAhead(1)
-			//p.trace("DO insert milestone into future cone: %s", vid.IDShort())
-		} else {
-			//p.setTraceNAhead(1)
-			//p.trace("DO NOT insert milestone into future cone: %s", vid.IDShort())
 		}
 	}
 	return ret

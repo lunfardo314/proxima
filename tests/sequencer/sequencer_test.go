@@ -887,13 +887,12 @@ func TestNSequencers(t *testing.T) {
 			maxTxInputs           = sequencer.DefaultMaxFeeInputs
 			stopAfterBranches     = 20
 			nSequencers           = 3
-			tagAlong              = true
+			tagAlong              = true // <<<<   ????????
 		)
 		t.Logf("\n   numFaucets: %d\n   numFaucetTransactions: %d\n", numFaucets, numFaucetTransactions)
 		r := initSequencerTestData(t, numFaucets, nSequencers-1, core.LogicalTimeNow())
 		transaction.SetPrintEasyFLTraceOnFail(false)
 		r.wrk.Start()
-		//r.createTransactionLogger()
 		// add transaction with chain origins
 		_, err := r.wrk.TransactionInWaitAppend(r.txChainOrigins.Bytes(), 5*time.Second)
 		require.NoError(t, err)
