@@ -46,7 +46,7 @@ func runMainChainCmd(_ *cobra.Command, args []string) {
 
 		for _, bd := range mainBranches {
 			_, _ = fmt.Fprintf(outFile, "%s, %d, %s, %s\n",
-				bd.SequencerID.String(), bd.CoverageDelta, bd.Stem.ID.String(), util.GoThousands(bd.SequencerOutput.Output.Amount()))
+				bd.SequencerID.String(), bd.LedgerCoverage, bd.Stem.ID.String(), util.GoThousands(bd.SequencerOutput.Output.Amount()))
 		}
 	}
 	type seqData struct {

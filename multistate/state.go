@@ -23,10 +23,12 @@ type (
 		trie *immutable.TrieReader
 	}
 
+	LedgerCoverage [HistoryCoverageDeltas]uint64
+
 	RootRecord struct {
-		Root          common.VCommitment
-		SequencerID   core.ChainID
-		CoverageDelta uint64
+		Root           common.VCommitment
+		SequencerID    core.ChainID
+		LedgerCoverage LedgerCoverage
 	}
 
 	BranchData struct {
@@ -37,6 +39,12 @@ type (
 )
 
 // partitions of the state store on the trie
+
+const HistoryCoverageDeltas = 1
+
+func init() {
+	util.Assertf(HistoryCoverageDeltas*8 <= 256, "HistoryCoverageDeltas*8 <= 256")
+}
 
 const (
 	PartitionLedgerState = byte(iota)
@@ -254,18 +262,18 @@ func (u *Updatable) Root() common.VCommitment {
 
 // Update updates trie with mutations
 // If rootStemOutputID != nil, also writes root partition record
-func (u *Updatable) Update(muts *Mutations, rootStemOutputID *core.OutputID, rootSeqID *core.ChainID, coverage uint64) error {
+func (u *Updatable) Update(muts *Mutations, rootStemOutputID *core.OutputID, rootSeqID *core.ChainID, coverage LedgerCoverage) error {
 	return u.updateUTXOLedgerDB(func(trie *immutable.TrieUpdatable) error {
 		return UpdateTrie(u.trie, muts)
 	}, rootStemOutputID, rootSeqID, coverage)
 }
 
-func (u *Updatable) MustUpdate(muts *Mutations, rootStemOutputID *core.OutputID, rootSeqID *core.ChainID, coverage uint64) {
+func (u *Updatable) MustUpdate(muts *Mutations, rootStemOutputID *core.OutputID, rootSeqID *core.ChainID, coverage LedgerCoverage) {
 	err := u.Update(muts, rootStemOutputID, rootSeqID, coverage)
 	common.AssertNoError(err)
 }
 
-func (u *Updatable) updateUTXOLedgerDB(updateFun func(updatable *immutable.TrieUpdatable) error, stemOutputID *core.OutputID, seqID *core.ChainID, coverageDelta uint64) error {
+func (u *Updatable) updateUTXOLedgerDB(updateFun func(updatable *immutable.TrieUpdatable) error, stemOutputID *core.OutputID, seqID *core.ChainID, coverage LedgerCoverage) error {
 	if err := updateFun(u.trie); err != nil {
 		return err
 	}
@@ -277,9 +285,9 @@ func (u *Updatable) updateUTXOLedgerDB(updateFun func(updatable *immutable.TrieU
 			writeLatestSlot(batch, stemOutputID.TimeSlot())
 		}
 		writeRootRecord(batch, stemOutputID.TransactionID(), RootRecord{
-			Root:          newRoot,
-			SequencerID:   *seqID,
-			CoverageDelta: coverageDelta,
+			Root:           newRoot,
+			SequencerID:    *seqID,
+			LedgerCoverage: coverage,
 		})
 	}
 	var err error

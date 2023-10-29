@@ -195,9 +195,13 @@ func (ut *UTXOTangle) _finalizeBranch(newBranchVertex *WrappedTx) error {
 		if err != nil {
 			return err
 		}
-		coverage := ut.LedgerCoverageDelta(newBranchVertex)
+		coverageDelta := ut.LedgerCoverageDelta(newBranchVertex)
 
-		err = upd.Update(muts, &nextStemOutputID, &seqTxData.SequencerID, coverage)
+		var prevCoverage multistate.LedgerCoverage
+		if multistate.HistoryCoverageDeltas > 1 {
+			panic("not implemented HistoryCoverageDeltas > 1")
+		}
+		err = upd.Update(muts, &nextStemOutputID, &seqTxData.SequencerID, prevCoverage.MakeNext(coverageDelta))
 		if err != nil {
 			return fmt.Errorf("finalizeBranch %s: '%v'=== mutations: %d\n%s",
 				newBranchVertex.IDShort(), err, muts.Len(), muts.Lines().String())

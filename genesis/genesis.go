@@ -25,7 +25,8 @@ func InitLedgerState(par StateIdentityData, store general.StateStore) (core.Chai
 	gStemOut := StemOutput(par.InitialSupply, par.GenesisTimeSlot)
 
 	updatable := multistate.MustNewUpdatable(store, emptyRoot)
-	updatable.MustUpdate(genesisUpdateMutations(&gout.OutputWithID, gStemOut), &gStemOut.ID, &gout.ChainID, par.InitialSupply)
+	var coverage multistate.LedgerCoverage
+	updatable.MustUpdate(genesisUpdateMutations(&gout.OutputWithID, gStemOut), &gStemOut.ID, &gout.ChainID, coverage.MakeNext(par.InitialSupply))
 
 	return gout.ChainID, updatable.Root()
 }

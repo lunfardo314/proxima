@@ -36,14 +36,44 @@ func FetchLatestSlot(store general.StateStore) core.TimeSlot {
 	return ret
 }
 
+func (lc *LedgerCoverage) MakeNext(nextDelta uint64) (ret LedgerCoverage) {
+	copy(ret[1:], lc[:])
+	ret[0] = nextDelta
+	return
+}
+
+func (lc *LedgerCoverage) Sum() (ret uint64) {
+	for _, v := range lc {
+		ret += v
+	}
+	return
+}
+
+func (lc *LedgerCoverage) Bytes() []byte {
+	util.Assertf(len(lc) == HistoryCoverageDeltas, "len(lc) == HistoryCoverageDeltas")
+	ret := make([]byte, len(lc)*8)
+	for i, d := range lc {
+		binary.BigEndian.PutUint64(ret[i*8:(i+1)*8], d)
+	}
+	return ret
+}
+
+func LedgerCoverageFromBytes(data []byte) (ret LedgerCoverage, err error) {
+	if len(data) != HistoryCoverageDeltas*8 {
+		err = fmt.Errorf("LedgerCoverageFromBytes: wrong data size")
+		return
+	}
+	for i := 0; i < HistoryCoverageDeltas; i++ {
+		ret[i] = binary.BigEndian.Uint64(data[i*8 : (i+1)*8])
+	}
+	return
+}
+
 func (r *RootRecord) Bytes() []byte {
 	arr := lazybytes.EmptyArray(3)
 	arr.Push(r.SequencerID.Bytes())
 	arr.Push(r.Root.Bytes())
-	var coverageBin [8]byte
-	binary.BigEndian.PutUint64(coverageBin[:], r.CoverageDelta)
-	arr.Push(coverageBin[:])
-
+	arr.Push(r.LedgerCoverage.Bytes())
 	return arr.Bytes()
 }
 
@@ -63,12 +93,15 @@ func RootRecordFromBytes(data []byte) (RootRecord, error) {
 	if len(arr.At(2)) != 8 {
 		return RootRecord{}, fmt.Errorf("wrong data length")
 	}
-	coverage := binary.BigEndian.Uint64(arr.At(2))
+	coverage, err := LedgerCoverageFromBytes(arr.At(2))
+	if err != nil {
+		return RootRecord{}, err
+	}
 
 	return RootRecord{
-		Root:          root,
-		SequencerID:   chainID,
-		CoverageDelta: coverage,
+		Root:           root,
+		SequencerID:    chainID,
+		LedgerCoverage: coverage,
 	}, nil
 }
 
@@ -206,7 +239,7 @@ func FetchLatestBranches(store general.StateStore) []*BranchData {
 	ret := FetchBranchDataMulti(store, FetchRootRecords(store, FetchLatestSlot(store))...)
 
 	return util.Sort(ret, func(i, j int) bool {
-		return ret[i].CoverageDelta > ret[j].CoverageDelta
+		return ret[i].LedgerCoverage.Sum() > ret[j].LedgerCoverage.Sum()
 	})
 }
 
@@ -235,7 +268,7 @@ func FetchHeaviestBranchChainNSlotsBack(store general.StateStore, nBack int) []*
 	var lastInTheChain *BranchData
 
 	for _, bd := range latestBD {
-		if lastInTheChain == nil || bd.CoverageDelta > lastInTheChain.CoverageDelta {
+		if lastInTheChain == nil || bd.LedgerCoverage.Sum() > lastInTheChain.LedgerCoverage.Sum() {
 			lastInTheChain = bd
 		}
 	}
