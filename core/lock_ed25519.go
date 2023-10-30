@@ -5,10 +5,10 @@ import (
 	"crypto/ed25519"
 	"encoding/hex"
 	"fmt"
+	"slices"
 
 	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/proxima/util"
-	"github.com/lunfardo314/unitrie/common"
 	"golang.org/x/crypto/blake2b"
 )
 
@@ -76,7 +76,7 @@ func (a AddressED25519) Bytes() []byte {
 }
 
 func (a AddressED25519) Clone() AddressED25519 {
-	return common.CloneBytes(a)
+	return slices.Clone(a)
 }
 
 func (a AddressED25519) Accounts() []Accountable {
