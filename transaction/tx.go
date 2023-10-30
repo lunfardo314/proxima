@@ -2,6 +2,7 @@ package transaction
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
 	"math"
 	"strings"
@@ -59,7 +60,7 @@ var MainTxValidationOptions = []TxValidationOption{
 func FromBytes(txBytes []byte, opt ...TxValidationOption) (*Transaction, error) {
 	ret, err := transactionFromBytes(txBytes, BaseValidation())
 	if err != nil {
-		return nil, fmt.Errorf("FromBytes: basic parse failed: '%v'", err)
+		return nil, fmt.Errorf("transaction.FromBytes: basic parse failed: '%v'", err)
 	}
 	if err = ret.Validate(opt...); err != nil {
 		return nil, fmt.Errorf("FromBytes: validation failed, txid = %s: '%v'", ret.IDShort(), err)
@@ -116,7 +117,6 @@ func BaseValidation() TxValidationOption {
 		var err error
 		outputIndexData := tx.tree.BytesAtPath(Path(core.TxSequencerAndStemOutputIndices))
 		if len(outputIndexData) != 2 {
-			// must always be 1 byte value
 			return fmt.Errorf("wrong sequencer and stem output indices, must be 2 bytes")
 		}
 
@@ -133,6 +133,13 @@ func BaseValidation() TxValidationOption {
 			// non-sequencer transactions with tick == 0 are still allowed
 			return fmt.Errorf("when on time slot boundary, a sequencer transaction must be a branch")
 		}
+
+		totalAmountBin := tx.tree.BytesAtPath(Path(core.TxTotalProducedAmount))
+		if len(totalAmountBin) != 8 {
+			return fmt.Errorf("wrong total amount bytes, must be 8 bytes")
+		}
+		tx.totalAmount = core.Amount(binary.BigEndian.Uint64(totalAmountBin))
+
 		tx.txHash = core.HashTransactionBytes(tx.tree.Bytes())
 
 		return nil
@@ -353,7 +360,9 @@ func ScanOutputs() TxValidationOption {
 			}
 			totalAmount += amount
 		}
-		tx.totalAmount = totalAmount
+		if tx.totalAmount != totalAmount {
+			return fmt.Errorf("wrong total produced amount value")
+		}
 		return nil
 	}
 }

@@ -54,6 +54,7 @@ const (
 	TxSignature
 	TxSequencerAndStemOutputIndices
 	TxTimestamp
+	TxTotalProducedAmount
 	TxInputCommitment
 	TxEndorsements
 	TxLocalLibraries
@@ -75,6 +76,7 @@ var (
 	PathToEndorsements                  = lazybytes.Path(TransactionBranch, TxEndorsements)
 	PathToLocalLibraries                = lazybytes.Path(TransactionBranch, TxLocalLibraries)
 	PathToTimestamp                     = lazybytes.Path(TransactionBranch, TxTimestamp)
+	PathToTotalProducedAmount           = lazybytes.Path(TransactionBranch, TxTotalProducedAmount)
 )
 
 // Mandatory output block indices
@@ -154,6 +156,7 @@ func init() {
 	easyfl.Extend("pathToEndorsements", fmt.Sprintf("0x%s", PathToEndorsements.Hex()))
 	easyfl.Extend("pathToLocalLibrary", fmt.Sprintf("0x%s", PathToLocalLibraries.Hex()))
 	easyfl.Extend("pathToTimestamp", fmt.Sprintf("0x%s", PathToTimestamp.Hex()))
+	easyfl.Extend("pathToTotalProducedAmount", fmt.Sprintf("0x%s", PathToTotalProducedAmount.Hex()))
 
 	// mandatory block indices in the output
 	easyfl.Extend("amountBlockIndex", fmt.Sprintf("%d", ConstraintIndexAmount))
@@ -193,6 +196,7 @@ func init() {
 	easyfl.Extend("txBytes", "@Path(pathToTransaction)")
 	easyfl.Extend("txSignature", "@Path(pathToSignature)")
 	easyfl.Extend("txTimestampBytes", "@Path(pathToTimestamp)")
+	easyfl.Extend("txTotalProducedAmountBytes", "@Path(pathToTotalProducedAmount)")
 	easyfl.Extend("txTimeSlot", "timeSlotPrefix(txTimestampBytes)")
 	easyfl.Extend("txTimeTick", "timeTickFromTimestamp(txTimestampBytes)")
 	easyfl.Extend("txSequencerOutputIndex", "byte(@Path(pathToSeqAndStemOutputIndices), 0)")
@@ -271,6 +275,7 @@ func init() {
 	initStateIndexConstraint()
 	initSequencerRequestConstraint()
 	initSequencerConstraint()
+	initTotalAmountConstraint()
 
 	runCommonUnitTests()
 

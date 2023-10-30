@@ -125,13 +125,17 @@ func MakeArrayFromDataReadOnly(element ...[]byte) *Array {
 func MakeArrayReadOnly(element ...any) *Array {
 	ret := EmptyArray(len(element))
 	for _, el := range element {
+		if el == nil {
+			ret.Push(nil)
+			continue
+		}
 		switch e := el.(type) {
 		case []byte:
 			ret.Push(e)
 		case interface{ Bytes() []byte }:
 			ret.Push(e.Bytes())
 		default:
-			panic("lazyarray.Make: only '[]byte' and 'interface{Bytes() []byte}' types are allowed as arguments")
+			panic(fmt.Errorf("lazyarray.Make: only '[]byte' and 'interface{Bytes() []byte}' types are allowed as arguments. Got %T", el))
 		}
 	}
 	ret.SetReadOnly(true)
