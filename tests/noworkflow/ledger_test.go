@@ -1192,6 +1192,7 @@ func TestImmutable(t *testing.T) {
 	err = u.AddTransaction(txbytes)
 	require.NoError(t, err)
 }
+
 func TestGGG(t *testing.T) {
 	t.Logf("now = %d", uint32(time.Now().Unix()))
 	loc, err := time.LoadLocation("UTC")

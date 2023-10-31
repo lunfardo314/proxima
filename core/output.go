@@ -311,6 +311,7 @@ func (o *Output) SequencerOutputData() (*SequencerOutputData, bool) {
 		SequencerConstraint:      seqConstraint,
 		ChainConstraint:          chainConstraint,
 		AmountOnChain:            o.Amount(),
+		InflationAmount:          o.InflationAmount(),
 	}, true
 }
 

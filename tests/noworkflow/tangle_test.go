@@ -2,6 +2,7 @@ package noworkflow
 
 import (
 	"crypto/ed25519"
+	"math/rand"
 	"strings"
 	"testing"
 	"time"
@@ -1196,5 +1197,165 @@ func (r *multiChainTestData) createSequencerChains3(pace int, howLong int, print
 		}
 		curChainIdx = nextChainIdx
 	}
+	return ret
+}
+
+func TestInflation(t *testing.T) {
+	t.Run("fixed inflation", func(t *testing.T) {
+		const (
+			chainPaceInTimeSlots = 20
+			printBranchTx        = false
+			howLong              = 400
+			fixedInflation       = 100
+		)
+		r := initMultiChainTest(t, 1, false)
+
+		txBytesSeq := r.create1SequencerChain(chainPaceInTimeSlots, howLong, func() uint64 {
+			return fixedInflation
+		})
+
+		transaction.SetPrintEasyFLTraceOnFail(false)
+
+		branchCount := 0
+		lastBranchTxStr := ""
+		for i, txBytes := range txBytesSeq {
+			tx, err := transaction.FromBytes(txBytes)
+			require.NoError(r.t, err)
+			if tx.IsBranchTransaction() {
+				if printBranchTx {
+					t.Logf("branch tx %d : %s", i, transaction.ParseBytesToString(txBytes, r.ut.GetUTXO))
+				}
+			}
+			vid, txStr, err := r.ut.AppendVertexFromTransactionBytesDebug(txBytes)
+			if err != nil {
+				t.Logf("================= failed tx ======================= %s", txStr)
+				if vid != nil {
+					utangle.SaveGraphPastCone(vid, "failedPastCone")
+				}
+			}
+			require.NoError(r.t, err)
+			if vid.IsBranchTransaction() {
+				lastBranchTxStr = txStr
+				branchCount++
+				require.EqualValues(t, onChainAmount+branchCount*fixedInflation, tx.TotalAmount())
+			}
+		}
+		t.Logf("============ last branch tx ================\n%s", lastBranchTxStr)
+		t.Logf("tangle info: %s", r.ut.Info())
+	})
+	t.Run("random inflation", func(t *testing.T) {
+		const (
+			chainPaceInTimeSlots = 20
+			printBranchTx        = false
+			howLong              = 400
+		)
+		r := initMultiChainTest(t, 1, false)
+
+		txBytesSeq := r.create1SequencerChain(chainPaceInTimeSlots, howLong, func() uint64 {
+			return uint64(100 + rand.Intn(50))
+		})
+
+		transaction.SetPrintEasyFLTraceOnFail(false)
+
+		lastBranchTxStr := ""
+		var lastTx *transaction.Transaction
+		sumInflation := uint64(0)
+
+		for i, txBytes := range txBytesSeq {
+			tx, err := transaction.FromBytesMainChecksWithOpt(txBytes)
+			require.NoError(t, err)
+			if tx.IsBranchTransaction() {
+				if printBranchTx {
+					t.Logf("branch tx %d : %s", i, transaction.ParseBytesToString(txBytes, r.ut.GetUTXO))
+				}
+			}
+			sumInflation += tx.SequencerTransactionData().SequencerOutputData.InflationAmount
+			vid, txStr, err := r.ut.AppendVertexFromTransactionBytesDebug(txBytes)
+			if err != nil {
+				t.Logf("================= failed tx ======================= %s", txStr)
+				if vid != nil {
+					utangle.SaveGraphPastCone(vid, "failedPastCone")
+				}
+			}
+			require.NoError(t, err)
+			lastTx = tx
+			if vid.IsBranchTransaction() {
+				lastBranchTxStr = txStr
+			}
+		}
+
+		lastChainOut := lastTx.FindChainOutput(r.chainOrigins[0].ChainID)
+
+		require.EqualValues(t, int(sumInflation+onChainAmount), lastChainOut.Output.Amount())
+
+		t.Logf("============ last branch tx ================\n%s", lastBranchTxStr)
+		//t.Logf("tangle info: %s", r.ut.Info())
+	})
+}
+
+// n parallel sequencer chains. Each chain endorses one previous, if possible
+// Branch transactions make inflation
+func (r *multiChainTestData) create1SequencerChain(pace int, howLong int, inflation func() uint64) [][]byte {
+	require.True(r.t, pace >= core.TransactionTimePaceInTicks*2)
+
+	ret := make([][]byte, 0)
+	// sequencer tx
+	txBytes, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
+		ChainInput:   r.chainOrigins[0],
+		Timestamp:    r.chainOrigins[0].Timestamp().AddTimeTicks(pace),
+		Endorsements: []*core.TransactionID{&r.originBranchTxid},
+		PrivateKey:   r.privKey,
+	})
+	require.NoError(r.t, err)
+	tx, err := transaction.FromBytesMainChecksWithOpt(txBytes)
+	require.NoError(r.t, err)
+	r.t.Logf("chainID: %s, origin: %s, seq start: %s",
+		r.chainOrigins[0].ChainID.Short(), r.chainOrigins[0].ID.Short(), tx.IDShort())
+
+	lastStemOutput := r.ut.HeaviestStemOutput()
+	lastInChain := tx
+	ret = append(ret, txBytes)
+	for i := 0; i < howLong; i++ {
+		ts := core.MaxLogicalTime(
+			lastInChain.Timestamp().AddTimeTicks(pace),
+			lastInChain.Timestamp().AddTimeTicks(core.TransactionTimePaceInTicks),
+		)
+		chainIn := lastInChain.MustProducedOutputWithIDAt(0)
+		if ts.TimesTicksToNextSlotBoundary() < 2*pace {
+			ts = ts.NextTimeSlotBoundary()
+		}
+		var stemOut *core.OutputWithID
+		var inflationAmount uint64
+		if ts.TimeTick() == 0 {
+			// create branch tx
+			stemOut = lastStemOutput
+			inflationAmount = inflation()
+		}
+		txBytes, err = txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
+			ChainInput: &core.OutputWithChainID{
+				OutputWithID: *chainIn,
+				ChainID:      r.chainOrigins[0].ChainID,
+			},
+			StemInput:  stemOut,
+			Inflation:  inflationAmount,
+			Timestamp:  ts,
+			PrivateKey: r.privKey,
+		})
+		require.NoError(r.t, err)
+		tx, err = transaction.FromBytesMainChecksWithOpt(txBytes)
+		require.NoError(r.t, err)
+
+		ret = append(ret, txBytes)
+		lastInChain = tx
+		if stemOut != nil {
+			lastStemOutput = tx.FindStemProducedOutput()
+		}
+		if stemOut == nil {
+			r.t.Logf("%3d: %s", i, tx.IDShort())
+		} else {
+			r.t.Logf("%3d: %s <- branch tx", i, tx.IDShort())
+		}
+	}
+
 	return ret
 }
