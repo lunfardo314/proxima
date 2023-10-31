@@ -219,11 +219,13 @@ func destroyUnlockParams : 0xffffff
 // parsing chain constraint data
 // $0 - chain constraint data
 func chainID : slice($0, 0, 31)
+func parsePredecessorInputIndexFromChainData : byte($0, 32)
+
 func transitionMode: byte($0, 34)
 func predecessorConstraintIndex : slice($0, 32, 33) // 2 bytes
 
 // accessing predecessor data
-func predecessorInputID : inputIDByIndex(byte($0,32))
+func chainPredecessorInputID : inputIDByIndex(byte($0,32))
 
 // unlock parameters for the chain constraint. 3 bytes: 
 // 0 - successor output index 
@@ -239,7 +241,7 @@ func validPredecessorData : and(
 		and(
 			// case 1: predecessor is origin. ChainID must be blake2b hash of the corresponding input ID 
 			equal($1, originChainData),
-			equal(chainID($0), blake2b(predecessorInputID($0)))
+			equal(chainID($0), blake2b(chainPredecessorInputID($0)))
 		),
 		and(
 			// case 2: normal transition
@@ -288,7 +290,7 @@ func chainSuccessorData :
 // $0 - 35-bytes data: 
 //     32 bytes chain id
 //     1 byte predecessor output index 
-//     1 byte predecessor block index
+//     1 byte predecessor constraint index
 //     1 byte transition mode
 // Transition mode: 
 //     0x00 - state transition

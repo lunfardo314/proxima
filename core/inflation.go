@@ -102,12 +102,36 @@ func initInflationConstraint() {
 // TODO not finished
 
 const InflationLockConstraintSource = `
+
+// $0 is sequencer constraint
+func totalAmountFromSequencerConstraint: parseBytecodeArg($0, #sequencer, 0)
+
+// $0 output data
+// $1 sequencer constraint index
+func totalAmountFromSequencerConstraintByConstraintIndex: totalAmountFromSequencerConstraint(@Array8($0, $1))
+
+// $0 - sibling sequencer constraint index
+func siblingChainConstraintIndex: parseBytecodeArg(selfSiblingConstraint($0), #sequencer, 0) 
+
+// $0 - sibling sequencer constraint index
+func chainConstraintData: parseBytecodeArg(selfSiblingConstraint(siblingChainConstraintIndex($0)), #chain, 0)
+
+// $0 - sibling sequencer constraint index
+func predInputIdx: parsePredecessorInputIndexFromChainData(chainConstraintData($0))
+
+// $0 - sibling sequencer constraint index
+func predecessorOutput: consumedOutputByIndex(predInputIdx($0))
+
+// $0 - sibling sequencer constraint index
+// $1 - sequencer constraint index on the chain predecessor output
+func predAmount: totalAmountFromSequencerConstraintByConstraintIndex(predInputIdx($0), $1)
+
 // $0 - inflation amount
 // $1 - sequencer constraint index on the current output
 // $2 - sequencer constraint index on the chain predecessor output
 func inflation: or(
 	selfIsConsumedOutput,
-	require(isBranchTransaction, !!!inflation_can-only_be_on_branch_transaction),
-    $0, $1, $2
+	require(isBranchTransaction, !!!inflation_can_only_be_on_branch_transaction),
+    require(equal(txTotalProducedAmountBytes, totalAmountFromSequencerConstraintByConstraintIndex($1, $2)), !!!)
 )
 `

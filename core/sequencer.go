@@ -20,7 +20,6 @@ const mustMinSeqAmountTemplate = `
 var minimumAmountOnSeqSource = fmt.Sprintf(mustMinSeqAmountTemplate, MinimumAmountOnSequencer)
 
 const sequencerConstraintSource = `
-
 // $0 chain predecessor input index
 func _inputSameSlot :
 equal(
