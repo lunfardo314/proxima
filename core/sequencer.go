@@ -127,7 +127,7 @@ func (s *SequencerConstraint) Bytes() []byte {
 }
 
 func (s *SequencerConstraint) String() string {
-	return s.source()
+	return fmt.Sprintf("%s(%d, %s)", SequencerConstraintName, s.ChainConstraintIndex, util.GoThousands(s.TotalProducedAmount))
 }
 
 func (s *SequencerConstraint) source() string {

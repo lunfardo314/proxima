@@ -56,7 +56,7 @@ func MakeSequencerTransaction(par MakeSequencerTransactionParams) ([]byte, error
 	if par.StemInput != nil {
 		nIn++
 	}
-	switch{
+	switch {
 	case nIn > 256:
 		return nil, errP("too many inputs")
 	case par.StemInput != nil && par.Timestamp.TimeTick() != 0:
@@ -80,6 +80,7 @@ func MakeSequencerTransaction(par MakeSequencerTransactionParams) ([]byte, error
 		additionalOut += o.Amount()
 	}
 	chainInAmount := par.ChainInput.Output.Amount()
+	predSeqData, predecessorIsSequencer := par.ChainInput.Output.SequencerOutputData()
 
 	// TODO safe arithmetics and checking against total supply etc. Temporary!!!!!
 	totalProducedAmount := chainInAmount + additionalIn + par.Inflation
@@ -108,7 +109,7 @@ func MakeSequencerTransaction(par MakeSequencerTransactionParams) ([]byte, error
 		o.PutAmount(chainOutAmount)
 		o.PutLock(par.ChainInput.Output.Lock())
 		_, _ = o.PushConstraint(chainConstraint.Bytes())
-		_, _ = o.PushConstraint(sequencerConstraint.Bytes())
+		seqConstraintIndex, _ := o.PushConstraint(sequencerConstraint.Bytes())
 		outData := ParseMilestoneData(par.ChainInput.Output)
 		if outData == nil {
 			outData = &MilestoneData{
@@ -125,9 +126,9 @@ func MakeSequencerTransaction(par MakeSequencerTransactionParams) ([]byte, error
 			outData.Name = par.SeqName
 		}
 		_, _ = o.PushConstraint(outData.AsConstraint().Bytes())
-		if par.Inflation > 0{
-			core.NewInflationConstraint(par.Inflation, ???)
-			// TODO
+		if predecessorIsSequencer && par.Inflation > 0 {
+			inflationConstraint := core.NewInflationConstraint(par.Inflation, seqConstraintIndex, predSeqData.SequencerConstraintIndex)
+			_, _ = o.PushConstraint(inflationConstraint.Bytes())
 		}
 	})
 
