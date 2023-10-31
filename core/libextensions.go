@@ -276,7 +276,7 @@ func init() {
 	initSequencerRequestConstraint()
 	initSequencerConstraint()
 	initTotalAmountConstraint()
-	initInflationLockConstraint()
+	initInflationConstraint()
 
 	runCommonUnitTests()
 

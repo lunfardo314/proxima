@@ -40,6 +40,7 @@ type (
 		ChainConstraint          *ChainConstraint
 		AmountOnChain            uint64
 		SequencerConstraintIndex byte
+		InflationAmount          uint64
 	}
 )
 
@@ -259,6 +260,24 @@ func (o *Output) ChainConstraint() (*ChainConstraint, byte) {
 		return ret, found
 	}
 	return nil, 0xff
+}
+
+// InflationAmount should be 0 for non-branch transactions
+func (o *Output) InflationAmount() (ret uint64) {
+	var err error
+	var infl *InflationConstraint
+
+	o.ForEachConstraint(func(idx byte, constr []byte) bool {
+		if idx < ConstraintIndexFirstOptionalConstraint {
+			return true
+		}
+		if infl, err = InflationConstraintFromBytes(constr); err == nil {
+			ret = infl.Amount
+			return false
+		}
+		return true
+	})
+	return
 }
 
 func (o *Output) SequencerOutputData() (*SequencerOutputData, bool) {

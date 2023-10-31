@@ -35,6 +35,8 @@ type (
 		PrivateKey ed25519.PrivateKey
 		//
 		TotalSupply uint64
+		//
+		Inflation uint64
 	}
 
 	// MilestoneData data which is on sequencer as 'or(..)' constraint. It is not enforced by the ledger, yet maintained
@@ -54,19 +56,20 @@ func MakeSequencerTransaction(par MakeSequencerTransactionParams) ([]byte, error
 	if par.StemInput != nil {
 		nIn++
 	}
-	if nIn > 256 {
+	switch{
+	case nIn > 256:
 		return nil, errP("too many inputs")
-	}
-	//if par.StemInput != nil && !par.ChainInput.ID.SequencerFlagON() {
-	//	return nil, errP("chain input in the branch transaction must be a sequencer's output: %s", par.ChainInput.ID.Short())
-	//}
-	if par.StemInput != nil && par.Timestamp.TimeTick() != 0 {
+	case par.StemInput != nil && par.Timestamp.TimeTick() != 0:
 		return nil, errP("wrong timestamp for branch transaction: %s", par.Timestamp.String())
-	}
-	if par.Timestamp.TimeSlot() > par.ChainInput.ID.TimeSlot() && par.Timestamp.TimeTick() != 0 && len(par.Endorsements) == 0 {
+	case par.Timestamp.TimeSlot() > par.ChainInput.ID.TimeSlot() && par.Timestamp.TimeTick() != 0 && len(par.Endorsements) == 0:
 		return nil, errP("cross-slot sequencer tx must endorse another sequencer tx: chain input ts: %s, target: %s",
 			par.ChainInput.ID.Timestamp(), par.Timestamp)
+	case par.Inflation > 0 && par.StemInput == nil:
+		return nil, errP("inflation must be 0 on non-branch sequencer transaction")
+	case !par.ChainInput.ID.SequencerFlagON() && par.StemInput == nil && len(par.Endorsements) == 0:
+		return nil, errP("chain predecessor is not a sequencer transaction -> endorsement of sequencer transaction is mandatory (unless making a branch)")
 	}
+
 	txb := NewTransactionBuilder()
 	// count sums
 	additionalIn, additionalOut := uint64(0), uint64(0)
@@ -78,9 +81,9 @@ func MakeSequencerTransaction(par MakeSequencerTransactionParams) ([]byte, error
 	}
 	chainInAmount := par.ChainInput.Output.Amount()
 
-	// TODO safe arithmetics and checking against total supply etc
-
-	chainOutAmount := chainInAmount + additionalIn - additionalOut // TODO this is temporary!!!!
+	// TODO safe arithmetics and checking against total supply etc. Temporary!!!!!
+	totalProducedAmount := chainInAmount + additionalIn + par.Inflation
+	chainOutAmount := totalProducedAmount - additionalOut
 
 	// make chain input/output
 	chainConstraint, chainConstraintIdx := par.ChainInput.Output.ChainConstraint()
@@ -93,17 +96,13 @@ func MakeSequencerTransaction(par MakeSequencerTransactionParams) ([]byte, error
 	}
 	txb.PutSignatureUnlock(chainPredIdx)
 
-	if !par.ChainInput.ID.SequencerFlagON() && par.StemInput == nil && len(par.Endorsements) == 0 {
-		return nil, errP("chain predecessor is not a sequencer transaction -> endorsement of sequencer transaction is mandatory (unless making a branch)")
-	}
-
 	seqID := chainConstraint.ID
 	if chainConstraint.IsOrigin() {
 		seqID = core.OriginChainID(&par.ChainInput.ID)
 	}
 
 	chainConstraint = core.NewChainConstraint(seqID, chainPredIdx, chainConstraintIdx, 0)
-	sequencerConstraint := core.NewSequencerConstraint(chainConstraintIdx)
+	sequencerConstraint := core.NewSequencerConstraint(chainConstraintIdx, totalProducedAmount)
 
 	chainOut := core.NewOutput(func(o *core.Output) {
 		o.PutAmount(chainOutAmount)
@@ -126,6 +125,10 @@ func MakeSequencerTransaction(par MakeSequencerTransactionParams) ([]byte, error
 			outData.Name = par.SeqName
 		}
 		_, _ = o.PushConstraint(outData.AsConstraint().Bytes())
+		if par.Inflation > 0{
+			core.NewInflationConstraint(par.Inflation, ???)
+			// TODO
+		}
 	})
 
 	chainOutIndex, err := txb.ProduceOutput(chainOut)
