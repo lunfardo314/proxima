@@ -11,14 +11,23 @@ import (
 
 const (
 	StemLockName = "stemLock"
-	stemTemplate = StemLockName + "(u64/%d, %d, 0x%s)"
+	stemTemplate = StemLockName + "(u64/%d, %d, 0x%s, %d)"
 )
 
 const stemLockSource = `
 
+// $0 predecessor input index
+func predecessorSupply :
+    unwrapBytecodeArg(
+       consumedLockByInputIndex($0),
+       selfBytecodePrefix,  
+       0,   
+    )
+
 // $0 - supply
 // $1 - predecessor input index
 // $2 - predecessor output ID
+// $3 - inflation constraint index on the sequencer output 
 // unlock parameters is 1 byte of the successor stem output
 func stemLock: and(
 	require(isBranchTransaction, !!!must_be_a_branch_transaction),
@@ -28,6 +37,16 @@ func stemLock: and(
 	require(isZero(txTimeTick), !!!time_tick_must_be_0),
 	mustSize($0, 8),
 	mustSize($1, 1),
+    require(
+        equal(
+           $0,
+           sum64(
+              predecessorSupply($1),
+              inflationAmount($3),
+           )
+        ),
+        !!!supply_on_stem_lock_is_not_consistent_with_inflation_and_previous_supply  
+    ),
 	or(
 		and(
 			selfIsConsumedOutput,
@@ -44,11 +63,13 @@ func stemLock: and(
 		)
 	)
 )
+
 `
 
 type (
 	StemOutputData struct {
-		Supply uint64
+		Supply                   uint64
+		InflationConstraintIndex byte // index of the constraint on the sequencer output
 	}
 
 	StemLock struct {
@@ -73,7 +94,7 @@ func (st *StemLock) Name() string {
 }
 
 func (st *StemLock) source() string {
-	return fmt.Sprintf(stemTemplate, st.Supply, st.PredecessorIdx, hex.EncodeToString(st.PredecessorOutputID[:]))
+	return fmt.Sprintf(stemTemplate, st.Supply, st.PredecessorIdx, hex.EncodeToString(st.PredecessorOutputID[:]), st.InflationConstraintIndex)
 }
 
 func (st *StemLock) Bytes() []byte {
@@ -81,7 +102,8 @@ func (st *StemLock) Bytes() []byte {
 }
 
 func (st *StemLock) String() string {
-	return fmt.Sprintf("stem(%s, %d, %s)", util.GoThousands(st.Supply), st.PredecessorIdx, st.PredecessorOutputID.String())
+	return fmt.Sprintf("stem(%s, %d, %s, %d)",
+		util.GoThousands(st.Supply), st.PredecessorIdx, st.PredecessorOutputID.String(), st.InflationConstraintIndex)
 }
 
 func (st *StemLock) Accounts() []Accountable {
@@ -92,10 +114,11 @@ func (st *StemLock) UnlockableWith(_ AccountID, _ ...LogicalTime) bool {
 	return true
 }
 
-func NewStemLock(supply uint64, predecessorInputIndex byte, predecessorOutputID OutputID) *StemLock {
+func NewStemLock(supply uint64, predecessorInputIndex byte, predecessorOutputID OutputID, inflationConstraintIndex byte) *StemLock {
 	return &StemLock{
 		StemOutputData: StemOutputData{
-			Supply: supply,
+			Supply:                   supply,
+			InflationConstraintIndex: inflationConstraintIndex,
 		},
 		PredecessorIdx:      predecessorInputIndex,
 		PredecessorOutputID: predecessorOutputID,
@@ -106,10 +129,10 @@ func initStemLockConstraint() {
 	easyfl.MustExtendMany(stemLockSource)
 	// sanity check
 	predID := NewOutputID(&TransactionID{}, 42)
-	example := NewStemLock(10_000_000_000, 1, predID)
+	example := NewStemLock(10_000_000_000, 1, predID, 4)
 	stem, err := StemLockFromBytes(example.Bytes())
 	util.AssertNoError(err)
-	util.Assertf(stem.Supply == 10_000_000_000 && stem.PredecessorIdx == 1 && stem.PredecessorOutputID == predID,
+	util.Assertf(stem.Supply == 10_000_000_000 && stem.PredecessorIdx == 1 && stem.PredecessorOutputID == predID && stem.InflationConstraintIndex == 4,
 		"'stem' consistency check failed")
 	prefix, err := easyfl.ParseBytecodePrefix(example.Bytes())
 	util.AssertNoError(err)
@@ -119,7 +142,7 @@ func initStemLockConstraint() {
 }
 
 func StemLockFromBytes(data []byte) (*StemLock, error) {
-	sym, _, args, err := easyfl.ParseBytecodeOneLevel(data, 3)
+	sym, _, args, err := easyfl.ParseBytecodeOneLevel(data, 4)
 	if err != nil {
 		return nil, err
 	}
@@ -129,26 +152,21 @@ func StemLockFromBytes(data []byte) (*StemLock, error) {
 	supplyBin := easyfl.StripDataPrefix(args[0])
 	predIdxBin := easyfl.StripDataPrefix(args[1])
 	predIDBin := easyfl.StripDataPrefix(args[2])
-	if len(supplyBin) != 8 || len(predIdxBin) != 1 || len(predIDBin) != OutputIDLength {
+	inflationIdxBin := easyfl.StripDataPrefix(args[3])
+	if len(supplyBin) != 8 || len(predIdxBin) != 1 || len(predIDBin) != OutputIDLength || len(inflationIdxBin) != 1 {
 		return nil, fmt.Errorf("wrong data length")
 	}
 	oid, err := OutputIDFromBytes(predIDBin)
 	if err != nil {
 		return nil, err
 	}
+
 	return &StemLock{
 		StemOutputData: StemOutputData{
-			Supply: binary.BigEndian.Uint64(supplyBin),
+			Supply:                   binary.BigEndian.Uint64(supplyBin),
+			InflationConstraintIndex: inflationIdxBin[0],
 		},
 		PredecessorIdx:      predIdxBin[0],
 		PredecessorOutputID: oid,
 	}, nil
-}
-
-func StemOutput(oData StemOutputData, predIdx byte, predID OutputID) *Output {
-	ret := NewOutput(func(o *Output) {
-		_, err := o.PushConstraint(NewStemLock(oData.Supply, predIdx, predID).Bytes())
-		util.AssertNoError(err)
-	})
-	return ret
 }

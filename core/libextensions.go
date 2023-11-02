@@ -186,7 +186,7 @@ func init() {
 	easyfl.Extend("consumedConstraintByIndex", "@Array8(consumedOutputByIndex(byte($0,0)), byte($0,1))")
 	easyfl.Extend("unlockParamsByConstraintIndex", "@Array8(unlockParamsByIndex(byte($0,0)), byte($0,1))")
 
-	easyfl.Extend("consumedLockByOutputIndex", "consumedConstraintByIndex(concat($0, lockBlockIndex))")
+	easyfl.Extend("consumedLockByInputIndex", "consumedConstraintByIndex(concat($0, lockBlockIndex))")
 
 	easyfl.Extend("inputIDByIndex", "@Path(concat(pathToInputIDs,$0))")
 	easyfl.Extend("timeSlotOfInputByIndex", "timeSlotFromTimeSlotPrefix(timeSlotPrefix(inputIDByIndex($0)))")
@@ -265,18 +265,18 @@ func init() {
 	initAddressED25519Constraint()
 	initDeadlineLockConstraint()
 	initTimelockConstraint()
+	initChainConstraint()
+	initSequencerConstraint()
+	initInflationConstraint()
 	initStemLockConstraint()
 	initSenderED25519Constraint()
-	initChainConstraint()
 	initChainLockConstraint()
 	initRoyaltiesED25519Constraint()
 	initImmutableConstraint()
 	initCommitToSiblingConstraint()
 	initStateIndexConstraint()
 	initSequencerRequestConstraint()
-	initSequencerConstraint()
 	initTotalAmountConstraint()
-	initInflationConstraint()
 
 	runCommonUnitTests()
 

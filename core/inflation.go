@@ -141,8 +141,26 @@ func inflation: if(
 	selfIsProducedOutput,
     and(
 		require(isBranchTransaction, !!!inflation_can_only_be_on_branch_transaction),
-		require(equal(txTotalProducedAmountBytes, predecessorAmount($1, $2)), !!!not_equal_amount)
+		require(
+            equal(
+               txTotalProducedAmountBytes, 
+               sum64($0, predecessorAmount($1, $2))
+            ), 
+            !!!inconsistent_inflation_amount
+        )
     ),
     true
 )
+
+// $0 inflation constraint index on the sequencer output
+func inflationAmount :
+    if(
+        lessThan($0, 4),  // not amount, lock, chain or sequencer constraint
+        u64/0,
+		unwrapBytecodeArg(
+			@Array8(producedOutputByIndex(txSequencerOutputIndex), $0),
+			#inflation,
+			0
+		)
+    )
 `

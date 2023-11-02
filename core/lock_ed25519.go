@@ -145,7 +145,7 @@ func unlockedWithSigED25519: and(
 func unlockedByReference: and(
 	lessThan(selfUnlockParameters, selfOutputIndex),              // unlock parameter must point to another input with 
 							                                      // strictly smaller index. This prevents reference cycles	
-	equal(self, consumedLockByOutputIndex(selfUnlockParameters))  // the referenced constraint bytes must be equal to the self constraint bytes
+	equal(self, consumedLockByInputIndex(selfUnlockParameters))  // the referenced constraint bytes must be equal to the self constraint bytes
 )
 
 // if it is 'produced' invocation context (constraint invoked in the input), only size of the address is checked
