@@ -38,8 +38,8 @@ type (
 	// SequencerTransactionData represents sequencer and stem data on the transaction
 	SequencerTransactionData struct {
 		SequencerOutputData  *core.SequencerOutputData
-		StemOutputData       *core.StemOutputData // nil if does not contain stem output
-		SequencerID          core.ChainID         // adjusted for chain origin
+		StemOutputData       *core.StemLock // nil if does not contain stem output
+		SequencerID          core.ChainID   // adjusted for chain origin
 		SequencerOutputIndex byte
 		StemOutputIndex      byte // 0xff if not a branch transaction
 	}
@@ -222,7 +222,7 @@ func CheckSequencerData() TxValidationOption {
 		if lock.Name() != core.StemLockName {
 			return fmt.Errorf("CheckSequencerData: not a stem lock")
 		}
-		tx.sequencerTransactionData.StemOutputData = &lock.(*core.StemLock).StemOutputData
+		tx.sequencerTransactionData.StemOutputData = lock.(*core.StemLock)
 		return nil
 	}
 }
@@ -443,7 +443,7 @@ func (tx *Transaction) IsBranchTransaction() bool {
 	return tx.sequencerMilestoneFlag && tx.branchTransactionFlag
 }
 
-func (tx *Transaction) StemOutputData() *core.StemOutputData {
+func (tx *Transaction) StemOutputData() *core.StemLock {
 	if tx.sequencerTransactionData != nil {
 		return tx.sequencerTransactionData.StemOutputData
 	}

@@ -159,13 +159,13 @@ func init() {
 	easyfl.Extend("pathToTotalProducedAmount", fmt.Sprintf("0x%s", PathToTotalProducedAmount.Hex()))
 
 	// mandatory block indices in the output
-	easyfl.Extend("amountBlockIndex", fmt.Sprintf("%d", ConstraintIndexAmount))
-	easyfl.Extend("lockBlockIndex", fmt.Sprintf("%d", ConstraintIndexLock))
+	easyfl.Extend("amountConstraintIndex", fmt.Sprintf("%d", ConstraintIndexAmount))
+	easyfl.Extend("lockConstraintIndex", fmt.Sprintf("%d", ConstraintIndexLock))
 
 	// mandatory constraints and values
 	// $0 is output binary as lazy array
-	easyfl.Extend("amountConstraint", "@Array8($0, amountBlockIndex)")
-	easyfl.Extend("lockConstraint", "@Array8($0, lockBlockIndex)")
+	easyfl.Extend("amountConstraint", "@Array8($0, amountConstraintIndex)")
+	easyfl.Extend("lockConstraint", "@Array8($0, lockConstraintIndex)")
 
 	// recognize what kind of path is at $0
 	easyfl.Extend("isPathToConsumedOutput", "hasPrefix($0, pathToConsumedOutputs)")
@@ -186,7 +186,7 @@ func init() {
 	easyfl.Extend("consumedConstraintByIndex", "@Array8(consumedOutputByIndex(byte($0,0)), byte($0,1))")
 	easyfl.Extend("unlockParamsByConstraintIndex", "@Array8(unlockParamsByIndex(byte($0,0)), byte($0,1))")
 
-	easyfl.Extend("consumedLockByInputIndex", "consumedConstraintByIndex(concat($0, lockBlockIndex))")
+	easyfl.Extend("consumedLockByInputIndex", "consumedConstraintByIndex(concat($0, lockConstraintIndex))")
 
 	easyfl.Extend("inputIDByIndex", "@Path(concat(pathToInputIDs,$0))")
 	easyfl.Extend("timeSlotOfInputByIndex", "timeSlotFromTimeSlotPrefix(timeSlotPrefix(inputIDByIndex($0)))")
@@ -266,9 +266,8 @@ func init() {
 	initDeadlineLockConstraint()
 	initTimelockConstraint()
 	initChainConstraint()
-	initSequencerConstraint()
-	initInflationConstraint()
 	initStemLockConstraint()
+	initSequencerConstraint()
 	initSenderED25519Constraint()
 	initChainLockConstraint()
 	initRoyaltiesED25519Constraint()

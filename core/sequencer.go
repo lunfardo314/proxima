@@ -72,27 +72,34 @@ func zeroTickOnBranchOnly : or(
 	isBranchTransaction
 )
 
+// check is inflation amount is valid
+func validInflation: !!!validInflation_not_implemented
+
 // $0 is chain constraint sibling index. 0xff value means it is genesis output. 
 // $1 is total produced amount by transaction, 8 bytes big-endian
 func sequencer: and(
 	mustSize($0,1),
-    require(
-        or(selfIsConsumedOutput, equal($1, txTotalProducedAmountBytes)), 
-        !!!wrong_total_produced_amount_in_sequencer_constraint
-    ),
     mustMinimumAmountOnSequencer, // enforcing minimum amount on sequencer
-	or(
-		selfIsConsumedOutput,  // constraint on consumed not checked
+    if(
+        selfIsConsumedOutput,
+        require( equal(txTotalProducedAmountBytes, sum64($1, txInflationAmount)), !!!inconsistent_total_with_inflation_amount ),
+        true
+    ),
+    if(
+        selfIsProducedOutput,
 		and(
 			// produced
 			require(not(equal(selfOutputIndex, 0xff)), !!!sequencer_output_can't_be_at_index_0xff),
 			require(equal(selfOutputIndex, txSequencerOutputIndex), !!!inconsistent_sequencer_output_index_on_transaction),
 			require(not(equal($0, 0xff)), !!!chain_constraint_index_0xff_is_not_alowed),
             require(zeroTickOnBranchOnly, !!!non-branch_sequencer_transaction_cant_be_on_slot_boundary), 
+            require(equal($1, txTotalProducedAmountBytes), !!!wrong_total_on_sequencer_output),
+            require(validInflation, !!!invalid_inflation_amount),
                 // check chain's past'
 			_sequencer( chainPredecessorInputIndex($0) )
-		)
-	)
+		),
+        true
+    )
 )
 `
 

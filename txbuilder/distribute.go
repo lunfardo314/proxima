@@ -62,6 +62,8 @@ func MustDistributeInitialSupply(stateStore general.StateStore, originPrivateKey
 	tx, err := transaction.FromBytesMainChecksWithOpt(txBytes)
 	util.AssertNoError(err)
 
+	fmt.Printf("=======================\n%s=======================\n", tx.Lines(tx.InputLoaderFromState(rdr)).String())
+
 	err = tx.Validate(transaction.ValidateOptionWithFullContext(tx.InputLoaderFromState(rdr)))
 	util.AssertNoError(err)
 

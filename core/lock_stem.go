@@ -11,23 +11,23 @@ import (
 
 const (
 	StemLockName = "stemLock"
-	stemTemplate = StemLockName + "(u64/%d, %d, 0x%s, %d)"
+	stemTemplate = StemLockName + "(%d, u64/%d, u64/%d, 0x%s)"
 )
 
 const stemLockSource = `
 
-// $0 predecessor input index
+// $0 - predecessor input index
 func predecessorSupply :
     unwrapBytecodeArg(
        consumedLockByInputIndex($0),
        selfBytecodePrefix,  
-       0,   
+       1,   
     )
 
-// $0 - supply
-// $1 - predecessor input index
-// $2 - predecessor output ID
-// $3 - inflation constraint index on the sequencer output 
+// $0 - stem predecessor input index
+// $1 - supply u64/ (must be predecessor supply + inflation)
+// $2 - inflation amount u64/
+// $3 - predecessor output ID
 // unlock parameters is 1 byte of the successor stem output
 func stemLock: and(
 	require(isBranchTransaction, !!!must_be_a_branch_transaction),
@@ -35,18 +35,10 @@ func stemLock: and(
 	require(equal(selfBlockIndex,1), !!!locks_must_be_at_block_1), 
 	require(isZero(selfAmountValue), !!!amount_must_be_zero),
 	require(isZero(txTimeTick), !!!time_tick_must_be_0),
-	mustSize($0, 8),
-	mustSize($1, 1),
-    require(
-        equal(
-           $0,
-           sum64(
-              predecessorSupply($1),
-              inflationAmount($3),
-           )
-        ),
-        !!!supply_on_stem_lock_is_not_consistent_with_inflation_and_previous_supply  
-    ),
+	mustSize($0, 1),
+	mustSize($1, 8),
+	mustSize($2, 8),
+	mustSize($3, 33),
 	or(
 		and(
 			selfIsConsumedOutput,
@@ -57,25 +49,36 @@ func stemLock: and(
 			equal(selfOutputIndex, txStemOutputIndex),
 			isZero(unwrapBytecodeArg(selfSiblingConstraint(0), #amount, 0)), 
             require(
-                 equal($2, inputIDByIndex($1)), 
-                 !!!parameter_#2_must_be_equal_to_predecessor_input_ID
-            ) 
+                 equal($3, inputIDByIndex($1)), 
+                 !!!parameter_#3_must_be_equal_to_predecessor_input_ID
+            ),
+            require(
+                 equal($1, sum64(predecessorSupply($0), $2)),
+                 !!!total_supply_inconsistent_with_inflation
+            ),
 		)
 	)
 )
 
+func txInflationAmount : 
+    if(
+        isBranchTransaction,
+		unwrapBytecodeArg(
+		   @Array8(producedOutputByIndex(txStemOutputIndex), lockConstraintIndex),
+		   #stemLock,  
+		   3,   
+		),
+        u64/0
+    )
+
 `
 
 type (
-	StemOutputData struct {
-		Supply                   uint64
-		InflationConstraintIndex byte // index of the constraint on the sequencer output
-	}
-
 	StemLock struct {
-		StemOutputData
-		PredecessorIdx      byte
+		Supply              uint64
+		InflationAmount     uint64
 		PredecessorOutputID OutputID
+		StemPredecessorIdx  byte
 	}
 )
 
@@ -94,7 +97,8 @@ func (st *StemLock) Name() string {
 }
 
 func (st *StemLock) source() string {
-	return fmt.Sprintf(stemTemplate, st.Supply, st.PredecessorIdx, hex.EncodeToString(st.PredecessorOutputID[:]), st.InflationConstraintIndex)
+	return fmt.Sprintf(stemTemplate,
+		st.StemPredecessorIdx, st.Supply, st.InflationAmount, hex.EncodeToString(st.PredecessorOutputID[:]))
 }
 
 func (st *StemLock) Bytes() []byte {
@@ -102,8 +106,9 @@ func (st *StemLock) Bytes() []byte {
 }
 
 func (st *StemLock) String() string {
-	return fmt.Sprintf("stem(%s, %d, %s, %d)",
-		util.GoThousands(st.Supply), st.PredecessorIdx, st.PredecessorOutputID.String(), st.InflationConstraintIndex)
+	return fmt.Sprintf("stem(%d, %s, %s, %s)",
+		st.StemPredecessorIdx, util.GoThousands(st.Supply),
+		util.GoThousands(st.InflationAmount), st.PredecessorOutputID.Short())
 }
 
 func (st *StemLock) Accounts() []Accountable {
@@ -114,26 +119,22 @@ func (st *StemLock) UnlockableWith(_ AccountID, _ ...LogicalTime) bool {
 	return true
 }
 
-func NewStemLock(supply uint64, predecessorInputIndex byte, predecessorOutputID OutputID, inflationConstraintIndex byte) *StemLock {
-	return &StemLock{
-		StemOutputData: StemOutputData{
-			Supply:                   supply,
-			InflationConstraintIndex: inflationConstraintIndex,
-		},
-		PredecessorIdx:      predecessorInputIndex,
-		PredecessorOutputID: predecessorOutputID,
-	}
-}
-
 func initStemLockConstraint() {
 	easyfl.MustExtendMany(stemLockSource)
 	// sanity check
 	predID := NewOutputID(&TransactionID{}, 42)
-	example := NewStemLock(10_000_000_000, 1, predID, 4)
+	example := StemLock{
+		Supply:              10_000_000_000,
+		InflationAmount:     314,
+		PredecessorOutputID: predID,
+		StemPredecessorIdx:  1,
+	}
 	stem, err := StemLockFromBytes(example.Bytes())
 	util.AssertNoError(err)
-	util.Assertf(stem.Supply == 10_000_000_000 && stem.PredecessorIdx == 1 && stem.PredecessorOutputID == predID && stem.InflationConstraintIndex == 4,
-		"'stem' consistency check failed")
+	util.Assertf(stem.Supply == 10_000_000_000, "stem.Supply == 10_000_000_000")
+	util.Assertf(stem.InflationAmount == 314, "stem.InflationAmount == 314")
+	util.Assertf(stem.PredecessorOutputID == predID, "stem.PredecessorOutputID == predID")
+	util.Assertf(stem.StemPredecessorIdx == 1, "stem.StemPredecessorIdx == 1")
 	prefix, err := easyfl.ParseBytecodePrefix(example.Bytes())
 	util.AssertNoError(err)
 	registerConstraint(StemLockName, prefix, func(data []byte) (Constraint, error) {
@@ -149,11 +150,15 @@ func StemLockFromBytes(data []byte) (*StemLock, error) {
 	if sym != StemLockName {
 		return nil, fmt.Errorf("not a 'stem' constraint")
 	}
-	supplyBin := easyfl.StripDataPrefix(args[0])
-	predIdxBin := easyfl.StripDataPrefix(args[1])
-	predIDBin := easyfl.StripDataPrefix(args[2])
-	inflationIdxBin := easyfl.StripDataPrefix(args[3])
-	if len(supplyBin) != 8 || len(predIdxBin) != 1 || len(predIDBin) != OutputIDLength || len(inflationIdxBin) != 1 {
+	predIdxBin := easyfl.StripDataPrefix(args[0])
+	predSupplyBin := easyfl.StripDataPrefix(args[1])
+	inflationAmountBin := easyfl.StripDataPrefix(args[2])
+	predIDBin := easyfl.StripDataPrefix(args[3])
+
+	if len(predSupplyBin) != 8 ||
+		len(inflationAmountBin) != 8 ||
+		len(predIDBin) != OutputIDLength ||
+		len(predIdxBin) != 1 {
 		return nil, fmt.Errorf("wrong data length")
 	}
 	oid, err := OutputIDFromBytes(predIDBin)
@@ -162,11 +167,9 @@ func StemLockFromBytes(data []byte) (*StemLock, error) {
 	}
 
 	return &StemLock{
-		StemOutputData: StemOutputData{
-			Supply:                   binary.BigEndian.Uint64(supplyBin),
-			InflationConstraintIndex: inflationIdxBin[0],
-		},
-		PredecessorIdx:      predIdxBin[0],
+		Supply:              binary.BigEndian.Uint64(predSupplyBin),
+		InflationAmount:     binary.BigEndian.Uint64(inflationAmountBin),
 		PredecessorOutputID: oid,
+		StemPredecessorIdx:  predIdxBin[0],
 	}, nil
 }
