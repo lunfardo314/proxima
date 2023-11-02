@@ -111,7 +111,7 @@ func immutable : or(
 		),
 		equal(
 			// the 'immutable' constraint must repeat itself on the successor side too
-			parseBytecodeArg(
+			unwrapBytecodeArg(
 				producedConstraintByIndex(
 					concat(
 						byte(selfSiblingUnlockBlock(byte($0,0)),0), // successor output index

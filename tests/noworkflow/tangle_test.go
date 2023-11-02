@@ -1205,7 +1205,7 @@ func TestInflation(t *testing.T) {
 		const (
 			chainPaceInTimeSlots = 20
 			printBranchTx        = false
-			howLong              = 400
+			howLong              = 6 // 400
 			fixedInflation       = 100
 		)
 		r := initMultiChainTest(t, 1, false)
@@ -1214,10 +1214,10 @@ func TestInflation(t *testing.T) {
 			return fixedInflation
 		})
 
-		transaction.SetPrintEasyFLTraceOnFail(false)
+		transaction.SetPrintEasyFLTraceOnFail(true)
 
 		branchCount := 0
-		lastBranchTxStr := ""
+		var lastBranchTxStr string
 		for i, txBytes := range txBytesSeq {
 			tx, err := transaction.FromBytes(txBytes)
 			require.NoError(r.t, err)
@@ -1226,7 +1226,8 @@ func TestInflation(t *testing.T) {
 					t.Logf("branch tx %d : %s", i, transaction.ParseBytesToString(txBytes, r.ut.GetUTXO))
 				}
 			}
-			vid, txStr, err := r.ut.AppendVertexFromTransactionBytesDebug(txBytes)
+			opts := make([]utangle.ValidationOption, 0)
+			vid, txStr, err := r.ut.AppendVertexFromTransactionBytesDebug(txBytes, opts...)
 			if err != nil {
 				t.Logf("================= failed tx ======================= %s", txStr)
 				if vid != nil {

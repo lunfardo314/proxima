@@ -36,7 +36,7 @@ func stemLock: and(
 		and(
 			selfIsProducedOutput,
 			equal(selfOutputIndex, txStemOutputIndex),
-			isZero(parseBytecodeArg(selfSiblingConstraint(0), #amount, 0)), 
+			isZero(unwrapBytecodeArg(selfSiblingConstraint(0), #amount, 0)), 
             require(
                  equal($2, inputIDByIndex($1)), 
                  !!!parameter_#2_must_be_equal_to_predecessor_input_ID

@@ -103,35 +103,46 @@ func initInflationConstraint() {
 
 const InflationLockConstraintSource = `
 
-// $0 is sequencer constraint
-func totalAmountFromSequencerConstraint: parseBytecodeArg($0, #sequencer, 0)
+// $0 - sequencer constraint index on produced output
+// Returns - chain predecessor (consumed) output 
+// by following 'sequencer' -> 'chain' -> chain predecessor index -> chain predecessor
+func sequencerPredecessorOutput: 
+	consumedOutputByIndex(
+		 // take chain predecessor index frm chain data 
+		 predecessorInputIndexFromChainData(
+			  // 'chain' constraint, 0 arg -> chain data  
+			  unwrapBytecodeArg(
+				   selfSiblingConstraint(
+						// 'sequencer' constraint, arg 0 -> sibling chain constraint index (on same self output)
+						unwrapBytecodeArg(
+							 selfSiblingConstraint($0), 
+							 #sequencer, 
+							 0
+						)
+				   ), 
+				   #chain, 
+				   0
+			  )
+		 )
+	)
 
-// $0 output data
-// $1 sequencer constraint index
-func totalAmountFromSequencerConstraintByConstraintIndex: totalAmountFromSequencerConstraint(@Array8($0, $1))
-
-// $0 - sibling sequencer constraint index
-func siblingChainConstraintIndex: parseBytecodeArg(selfSiblingConstraint($0), #sequencer, 0) 
-
-// $0 - sibling sequencer constraint index
-func chainConstraintData: parseBytecodeArg(selfSiblingConstraint(siblingChainConstraintIndex($0)), #chain, 0)
-
-// $0 - sibling sequencer constraint index
-func predInputIdx: parsePredecessorInputIndexFromChainData(chainConstraintData($0))
-
-// $0 - sibling sequencer constraint index
-func predecessorOutput: consumedOutputByIndex(predInputIdx($0))
-
-// $0 - sibling sequencer constraint index
-// $1 - sequencer constraint index on the chain predecessor output
-func predAmount: totalAmountFromSequencerConstraintByConstraintIndex(predInputIdx($0), $1)
+// $0 - sequencer constraint index on the current (produced) output
+// $1 - sequencer constraint index on the chain predecessor output (consumed)
+func predecessorAmount: unwrapBytecodeArg(
+    @Array8( sequencerPredecessorOutput($0), $1 ), 
+    #sequencer, 
+    1
+)
 
 // $0 - inflation amount
-// $1 - sequencer constraint index on the current output
-// $2 - sequencer constraint index on the chain predecessor output
-func inflation: or(
-	selfIsConsumedOutput,
-	require(isBranchTransaction, !!!inflation_can_only_be_on_branch_transaction),
-    require(equal(txTotalProducedAmountBytes, totalAmountFromSequencerConstraintByConstraintIndex($1, $2)), !!!)
+// $1 - sequencer constraint index on the current (produced) output
+// $2 - sequencer constraint index on the chain predecessor output (consumed)
+func inflation: if(
+	selfIsProducedOutput,
+    and(
+		require(isBranchTransaction, !!!inflation_can_only_be_on_branch_transaction),
+		require(equal(txTotalProducedAmountBytes, predecessorAmount($1, $2)), !!!not_equal_amount)
+    ),
+    true
 )
 `

@@ -137,12 +137,37 @@ func (ut *UTXOTangle) _appendVertex(vid *WrappedTx) error {
 	return nil
 }
 
-func (ut *UTXOTangle) AppendVertex(v *Vertex, bypassValidation ...bool) (*WrappedTx, error) {
+type (
+	appendVertexOptions struct {
+		bypassValidation bool
+		traceOption      int
+	}
+
+	ValidationOption func(options *appendVertexOptions)
+)
+
+func BypassValidation() func(options *appendVertexOptions) {
+	return func(opt *appendVertexOptions) {
+		opt.bypassValidation = true
+	}
+}
+
+func WithValidationTraceOption(traceOpt int) func(options *appendVertexOptions) {
+	return func(opt *appendVertexOptions) {
+		opt.traceOption = traceOpt
+	}
+}
+
+func (ut *UTXOTangle) AppendVertex(v *Vertex, opts ...ValidationOption) (*WrappedTx, error) {
+	validationOpt := appendVertexOptions{traceOption: transaction.TraceOptionFailedConstraints}
+	for _, opt := range opts {
+		opt(&validationOpt)
+	}
 	if !v.IsSolid() {
 		return nil, fmt.Errorf("AppendVertex: some inputs are not solid")
 	}
-	if len(bypassValidation) == 0 || !bypassValidation[0] {
-		if err := v.Validate(); err != nil {
+	if !validationOpt.bypassValidation {
+		if err := v.Validate(validationOpt.traceOption); err != nil {
 			return nil, fmt.Errorf("AppendVertex.validate: %v", err)
 		}
 	}
@@ -151,13 +176,13 @@ func (ut *UTXOTangle) AppendVertex(v *Vertex, bypassValidation ...bool) (*Wrappe
 }
 
 // AppendVertexFromTransactionBytesDebug for testing mainly
-func (ut *UTXOTangle) AppendVertexFromTransactionBytesDebug(txBytes []byte) (*WrappedTx, string, error) {
+func (ut *UTXOTangle) AppendVertexFromTransactionBytesDebug(txBytes []byte, opts ...ValidationOption) (*WrappedTx, string, error) {
 	vertexDraft, err := ut.MakeDraftVertexFromTxBytes(txBytes)
 	if err != nil {
 		return nil, "", err
 	}
 
-	ret, err := ut.AppendVertex(vertexDraft)
+	ret, err := ut.AppendVertex(vertexDraft, opts...)
 	return ret, vertexDraft.Lines().String(), err
 }
 

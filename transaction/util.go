@@ -43,6 +43,8 @@ func (ctx *TransactionContext) Lines(prefix ...string) *lines.Lines {
 	ret.Add("Sequencer output index: %d, sequencer milestone: %v", seqIdx, seqIdx != 0xff)
 	ret.Add("Stem output index: %d, stem output: %v", stemIdx, seqIdx != 0xff && stemIdx != 0xff)
 
+	ret.Add("Total amount stored: %s", util.GoThousands(ctx.TotalAmountStored()))
+
 	inpCom := ctx.InputCommitment()
 	ret.Add("Input commitment: %s", easyfl.Fmt(inpCom))
 	h := ctx.ConsumedOutputHash()

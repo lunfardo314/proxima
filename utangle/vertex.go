@@ -34,9 +34,12 @@ func (v *Vertex) getConsumedOutput(i byte) (*core.Output, error) {
 	return v.Inputs[i].OutputAt(v.Tx.MustOutputIndexOfTheInput(i))
 }
 
-func (v *Vertex) Validate() error {
-	traceOption := transaction.TraceOptionFailedConstraints
-	ctx, err := transaction.ContextFromTransaction(v.Tx, v.getConsumedOutput, traceOption)
+func (v *Vertex) Validate(traceOption ...int) error {
+	traceOpt := transaction.TraceOptionFailedConstraints
+	if len(traceOption) > 0 {
+		traceOpt = traceOption[0]
+	}
+	ctx, err := transaction.ContextFromTransaction(v.Tx, v.getConsumedOutput, traceOpt)
 	if err != nil {
 		return err
 	}

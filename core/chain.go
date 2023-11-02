@@ -219,7 +219,7 @@ func destroyUnlockParams : 0xffffff
 // parsing chain constraint data
 // $0 - chain constraint data
 func chainID : slice($0, 0, 31)
-func parsePredecessorInputIndexFromChainData : byte($0, 32)
+func predecessorInputIndexFromChainData : byte($0, 32)
 
 func transitionMode: byte($0, 34)
 func predecessorConstraintIndex : slice($0, 32, 33) // 2 bytes
@@ -257,7 +257,7 @@ func validPredecessorData : and(
 
 // $0 - predecessor constraint index
 func chainPredecessorData: 
-	parseBytecodeArg(
+	unwrapBytecodeArg(
 		consumedConstraintByIndex($0),
 		selfBytecodePrefix,
 		0
@@ -280,7 +280,7 @@ func validSuccessorData : and(
 // chain successor data is computed form in the context of the consumed output
 // from the selfUnlock data
 func chainSuccessorData : 
-	parseBytecodeArg(
+	unwrapBytecodeArg(
 		producedConstraintByIndex(slice(selfUnlockParameters,0,1)),
 		selfBytecodePrefix,
 		0
