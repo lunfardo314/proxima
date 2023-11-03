@@ -46,12 +46,12 @@ func (ctx *TransactionContext) checkConstraint(constraintData []byte, constraint
 }
 
 func (ctx *TransactionContext) Validate() error {
-	var inSum, outSum, inflationAmount uint64
+	var inSum, outSum uint64
 	var err error
 
 	err = util.CatchPanicOrError(func() error {
 		var err1 error
-		inSum, _, err1 = ctx.validateOutputsFailFast(true)
+		inSum, err1 = ctx.validateOutputsFailFast(true)
 		return err1
 	})
 	if err != nil {
@@ -59,7 +59,7 @@ func (ctx *TransactionContext) Validate() error {
 	}
 	err = util.CatchPanicOrError(func() error {
 		var err1 error
-		outSum, inflationAmount, err1 = ctx.validateOutputsFailFast(false)
+		outSum, err1 = ctx.validateOutputsFailFast(false)
 		return err1
 	})
 	if err != nil {
@@ -71,9 +71,9 @@ func (ctx *TransactionContext) Validate() error {
 	if err != nil {
 		return err
 	}
-	if inSum+inflationAmount != outSum {
+	if inSum+ctx.inflationAmount != outSum {
 		return fmt.Errorf("unbalanced amount between inputs and outputs: inputs %s, outputs %s, inflation: %s",
-			util.GoThousands(inSum), util.GoThousands(outSum), util.GoThousands(inflationAmount))
+			util.GoThousands(inSum), util.GoThousands(outSum), util.GoThousands(ctx.inflationAmount))
 	}
 	return nil
 }
@@ -96,13 +96,13 @@ func (ctx *TransactionContext) writeStateMutationsTo(mut common.KVWriter) {
 // ValidateWithReportOnConsumedOutputs validates the transaction and returns indices of failing consumed outputs, if any
 // This for the convenience of automated VMs and sequencers
 func (ctx *TransactionContext) ValidateWithReportOnConsumedOutputs() ([]byte, error) {
-	var inSum, outSum, inflationAmount uint64
+	var inSum, outSum uint64
 	var err error
 	var retFailedConsumed []byte
 
 	err = util.CatchPanicOrError(func() error {
 		var err1 error
-		inSum, _, retFailedConsumed, err1 = ctx._validateOutputs(true, false)
+		inSum, retFailedConsumed, err1 = ctx._validateOutputs(true, false)
 		return err1
 	})
 	if err != nil {
@@ -111,7 +111,7 @@ func (ctx *TransactionContext) ValidateWithReportOnConsumedOutputs() ([]byte, er
 	}
 	err = util.CatchPanicOrError(func() error {
 		var err1 error
-		outSum, inflationAmount, _, err1 = ctx._validateOutputs(false, true)
+		outSum, _, err1 = ctx._validateOutputs(false, true)
 		return err1
 	})
 	if err != nil {
@@ -123,23 +123,24 @@ func (ctx *TransactionContext) ValidateWithReportOnConsumedOutputs() ([]byte, er
 	if err != nil {
 		return nil, err
 	}
-	if inSum+inflationAmount != outSum {
+
+	if inSum+ctx.inflationAmount != outSum {
 		return nil, fmt.Errorf("unbalanced amount between inputs and outputs: inputs %s, outputs %s, inflation: %s",
-			util.GoThousands(inSum), util.GoThousands(outSum), util.GoThousands(inflationAmount))
+			util.GoThousands(inSum), util.GoThousands(outSum), util.GoThousands(ctx.inflationAmount))
 	}
 	return nil, nil
 }
 
-func (ctx *TransactionContext) validateOutputsFailFast(consumedBranch bool) (uint64, uint64, error) {
-	totalAmount, inflationAmount, _, err := ctx._validateOutputs(consumedBranch, true)
-	return totalAmount, inflationAmount, err
+func (ctx *TransactionContext) validateOutputsFailFast(consumedBranch bool) (uint64, error) {
+	totalAmount, _, err := ctx._validateOutputs(consumedBranch, true)
+	return totalAmount, err
 }
 
 // _validateOutputs validates consumed or produced outputs and, optionally, either fails fast,
 // or return the list of indices of failed outputs
 // If err != nil and failFast = false, returns list of failed consumed and produced output respectively
 // if failFast = true, returns (totalAmount, nil, nil, error)
-func (ctx *TransactionContext) _validateOutputs(consumedBranch bool, failFast bool) (uint64, uint64, []byte, error) {
+func (ctx *TransactionContext) _validateOutputs(consumedBranch bool, failFast bool) (uint64, []byte, error) {
 	var branch lazybytes.TreePath
 	if consumedBranch {
 		branch = Path(core.ConsumedBranch, core.ConsumedOutputsBranch)
@@ -147,7 +148,7 @@ func (ctx *TransactionContext) _validateOutputs(consumedBranch bool, failFast bo
 		branch = Path(core.TransactionBranch, core.TxOutputs)
 	}
 	var lastErr error
-	var sum, sumInflation uint64
+	var sum uint64
 	var extraDepositWeight uint32
 	var failedOutputs bytes.Buffer
 
@@ -189,16 +190,13 @@ func (ctx *TransactionContext) _validateOutputs(consumedBranch bool, failFast bo
 			return !failFast
 		}
 		sum += amount
-		if !consumedBranch {
-			sumInflation += o.InflationAmount() // != 0 only once
-		}
 		return true
 	}, branch)
 	if lastErr != nil {
 		util.Assertf(failFast || failedOutputs.Len() > 0, "failedOutputs.Len()>0")
-		return 0, 0, failedOutputs.Bytes(), lastErr
+		return 0, failedOutputs.Bytes(), lastErr
 	}
-	return sum, sumInflation, nil, nil
+	return sum, nil, nil
 }
 
 func (ctx *TransactionContext) UnlockParams(consumedOutputIdx, constraintIdx byte) []byte {

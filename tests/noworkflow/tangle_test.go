@@ -1270,7 +1270,7 @@ func TestInflation(t *testing.T) {
 					t.Logf("branch tx %d : %s", i, transaction.ParseBytesToString(txBytes, r.ut.GetUTXO))
 				}
 			}
-			sumInflation += tx.SequencerTransactionData().SequencerOutputData.InflationAmount
+			sumInflation += tx.SequencerTransactionData().StemOutputData.InflationAmount
 			vid, txStr, err := r.ut.AppendVertexFromTransactionBytesDebug(txBytes)
 			if err != nil {
 				t.Logf("================= failed tx ======================= %s", txStr)

@@ -53,7 +53,11 @@ func StemOutput(initialSupply uint64, genesisTimeSlot core.TimeSlot) *core.Outpu
 		ID: StemOutputID(genesisTimeSlot),
 		Output: core.NewOutput(func(o *core.Output) {
 			o.WithAmount(0).
-				WithLock(core.NewStemLock(initialSupply, 0, core.OutputID{}, 0))
+				WithLock(&core.StemLock{
+					Supply:              initialSupply,
+					InflationAmount:     0,
+					PredecessorOutputID: core.OutputID{},
+				})
 		}),
 	}
 }

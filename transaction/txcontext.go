@@ -16,9 +16,10 @@ type TransactionContext struct {
 	tree        *lazybytes.Tree
 	traceOption int
 	// cached values
-	dataContext *core.DataContext
-	txid        *core.TransactionID
-	sender      core.AddressED25519
+	dataContext     *core.DataContext
+	txid            *core.TransactionID
+	sender          core.AddressED25519
+	inflationAmount uint64
 }
 
 var Path = lazybytes.Path
@@ -31,11 +32,12 @@ const (
 
 func ContextFromTransaction(tx *Transaction, inputLoaderByIndex func(i byte) (*core.Output, error), traceOption ...int) (*TransactionContext, error) {
 	ret := &TransactionContext{
-		tree:        nil,
-		traceOption: TraceOptionNone,
-		dataContext: nil,
-		txid:        tx.ID(),
-		sender:      tx.SenderAddress(),
+		tree:            nil,
+		traceOption:     TraceOptionNone,
+		dataContext:     nil,
+		txid:            tx.ID(),
+		sender:          tx.SenderAddress(),
+		inflationAmount: tx.InflationAmount(),
 	}
 	if len(traceOption) > 0 {
 		ret.traceOption = traceOption[0]

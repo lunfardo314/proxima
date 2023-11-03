@@ -379,7 +379,13 @@ func CheckSizeOfOutputCommitment() TxValidationOption {
 
 func ValidateOptionWithFullContext(inputLoaderByIndex func(i byte) (*core.Output, error)) TxValidationOption {
 	return func(tx *Transaction) error {
-		ctx, err := ContextFromTransaction(tx, inputLoaderByIndex)
+		var ctx *TransactionContext
+		var err error
+		if __printLogOnFail.Load() {
+			ctx, err = ContextFromTransaction(tx, inputLoaderByIndex, TraceOptionAll)
+		} else {
+			ctx, err = ContextFromTransaction(tx, inputLoaderByIndex)
+		}
 		if err != nil {
 			return err
 		}
@@ -686,6 +692,13 @@ func (tx *Transaction) SequencerAndStemOutputIndices() (byte, byte) {
 
 func (tx *Transaction) OutputID(idx byte) core.OutputID {
 	return core.NewOutputID(tx.ID(), idx)
+}
+
+func (tx *Transaction) InflationAmount() uint64 {
+	if tx.IsBranchTransaction() {
+		return tx.SequencerTransactionData().StemOutputData.InflationAmount
+	}
+	return 0
 }
 
 func OutputWithIDFromTransactionBytes(txBytes []byte, idx byte) (*core.OutputWithID, error) {

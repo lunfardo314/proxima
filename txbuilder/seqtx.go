@@ -80,7 +80,6 @@ func MakeSequencerTransaction(par MakeSequencerTransactionParams) ([]byte, error
 		additionalOut += o.Amount()
 	}
 	chainInAmount := par.ChainInput.Output.Amount()
-	predSeqData, predecessorIsSequencer := par.ChainInput.Output.SequencerOutputData()
 
 	// TODO safe arithmetics and checking against total supply etc. Temporary!!!!!
 	totalProducedAmount := chainInAmount + additionalIn + par.Inflation
@@ -104,13 +103,12 @@ func MakeSequencerTransaction(par MakeSequencerTransactionParams) ([]byte, error
 
 	chainConstraint = core.NewChainConstraint(seqID, chainPredIdx, chainConstraintIdx, 0)
 	sequencerConstraint := core.NewSequencerConstraint(chainConstraintIdx, totalProducedAmount)
-	var inflationConstraintIndex byte
 
 	chainOut := core.NewOutput(func(o *core.Output) {
 		o.PutAmount(chainOutAmount)
 		o.PutLock(par.ChainInput.Output.Lock())
 		_, _ = o.PushConstraint(chainConstraint.Bytes())
-		seqConstraintIndex, _ := o.PushConstraint(sequencerConstraint.Bytes())
+		_, _ = o.PushConstraint(sequencerConstraint.Bytes())
 		outData := ParseMilestoneData(par.ChainInput.Output)
 		if outData == nil {
 			outData = &MilestoneData{
@@ -127,10 +125,6 @@ func MakeSequencerTransaction(par MakeSequencerTransactionParams) ([]byte, error
 			outData.Name = par.SeqName
 		}
 		_, _ = o.PushConstraint(outData.AsConstraint().Bytes())
-		if predecessorIsSequencer && par.Inflation > 0 {
-			inflationConstraint := core.NewInflationConstraint(par.Inflation, seqConstraintIndex, predSeqData.SequencerConstraintIndex)
-			inflationConstraintIndex, _ = o.PushConstraint(inflationConstraint.Bytes())
-		}
 	})
 
 	chainOutIndex, err := txb.ProduceOutput(chainOut)
@@ -142,7 +136,7 @@ func MakeSequencerTransaction(par MakeSequencerTransactionParams) ([]byte, error
 	// make stem input/output if it is a branch transaction
 	stemOutputIndex := byte(0xff)
 	if par.StemInput != nil {
-		stemInIndex, err := txb.ConsumeOutput(par.StemInput.Output, par.StemInput.ID)
+		_, err = txb.ConsumeOutput(par.StemInput.Output, par.StemInput.ID)
 		if err != nil {
 			return nil, errP(err)
 		}
@@ -153,13 +147,16 @@ func MakeSequencerTransaction(par MakeSequencerTransactionParams) ([]byte, error
 		}
 		stemOut := core.NewOutput(func(o *core.Output) {
 			o.WithAmount(par.StemInput.Output.Amount())
-			o.WithLock(core.NewStemLock(lck.Supply, stemInIndex, par.StemInput.ID, inflationConstraintIndex))
+			o.WithLock(&core.StemLock{
+				Supply:              lck.Supply + par.Inflation,
+				InflationAmount:     par.Inflation,
+				PredecessorOutputID: par.StemInput.ID,
+			})
 		})
 		stemOutputIndex, err = txb.ProduceOutput(stemOut)
 		if err != nil {
 			return nil, errP(err)
 		}
-		txb.PutUnlockParams(stemInIndex, core.ConstraintIndexLock, []byte{stemOutputIndex})
 	}
 
 	// consume and unlock additional inputs/outputs

@@ -13,6 +13,8 @@ import (
 
 func TestBasics(t *testing.T) {
 	t.Run("utxodb 1", func(t *testing.T) {
+		//transaction.SetPrintEasyFLTraceOnFail(true)
+
 		u := utxodb.NewUTXODB(true)
 		priv, pub := u.GenesisKeys()
 		t.Logf("orig priv key: %s", easyfl.Fmt(priv))

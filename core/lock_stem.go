@@ -106,17 +106,10 @@ func StemLockFromBytes(data []byte) (*StemLock, error) {
 
 const stemLockSource = `
 
-// $0 - predecessor input index
-func predecessorSupply :
-    unwrapBytecodeArg(
-       consumedLockByInputIndex($0),
-       selfBytecodePrefix,  
-       1,   
-    )
-
-func _supply : unwrapBytecodeArg(producedOutputByIndex(txStemOutputIndex), selfBytecodePrefix, 0)
-func _inflation : unwrapBytecodeArg(producedOutputByIndex(txStemOutputIndex), selfBytecodePrefix, 1)
-func _predOutputID : unwrapBytecodeArg(producedOutputByIndex(txStemOutputIndex), selfBytecodePrefix, 2)
+func _producedStem : lockConstraint(producedOutputByIndex(txStemOutputIndex))
+func _supply : unwrapBytecodeArg(_producedStem, selfBytecodePrefix, 0)
+func _inflation : unwrapBytecodeArg(_producedStem, selfBytecodePrefix, 1)
+func _predOutputID : unwrapBytecodeArg(_producedStem, selfBytecodePrefix, 2)
 
 // $0 - supply u64/ (must be predecessor supply + inflation)
 // $1 - inflation amount u64/
@@ -125,7 +118,7 @@ func _predOutputID : unwrapBytecodeArg(producedOutputByIndex(txStemOutputIndex),
 func stemLock: and(
 	require(isBranchTransaction, !!!must_be_a_branch_transaction),
     require(equal(selfNumConstraints, 2), !!!stem_output_must_contain_exactly_2_constraints),
-	require(equal(selfConstraintIndex,1), !!!locks_must_be_at_block_1), 
+	require(equal(selfBlockIndex,1), !!!locks_must_be_at_block_1), 
 	require(isZero(selfAmountValue), !!!amount_must_be_zero),
 	require(isZero(txTimeTick), !!!time_tick_must_be_0),
 	mustSize($0, 8),
@@ -147,7 +140,7 @@ func txInflationAmount :
 		unwrapBytecodeArg(
 		   @Array8(producedOutputByIndex(txStemOutputIndex), lockConstraintIndex),
 		   #stemLock,  
-		   3,   
+		   1,   
 		),
         u64/0
     )
