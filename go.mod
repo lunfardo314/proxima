@@ -6,7 +6,7 @@ require (
 	github.com/dgraph-io/badger/v4 v4.2.0
 	github.com/dominikbraun/graph v0.23.0
 	github.com/gammazero/deque v0.2.1
-	github.com/lunfardo314/easyfl v0.0.0-20231102124201-e63ba997106a
+	github.com/lunfardo314/easyfl v0.0.0-20231103170835-b03544245694
 	github.com/lunfardo314/unitrie v0.0.0-20231004102839-7d284c448bdd
 	github.com/spf13/cobra v1.7.0
 	github.com/spf13/pflag v1.0.5

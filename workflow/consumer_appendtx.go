@@ -51,7 +51,7 @@ func (w *Workflow) initAppendTxConsumer() {
 func (c *AppendTxConsumer) consume(inp *AppendTxConsumerInputData) {
 	inp.eventCallback(AppendTxConsumerName+".in", inp.Tx)
 	// append to the UTXO tangle
-	vid, err := c.glb.utxoTangle.AppendVertex(inp.Vertex, true)
+	vid, err := c.glb.utxoTangle.AppendVertex(inp.Vertex, utangle.BypassValidation)
 	if err != nil {
 		inp.eventCallback("finish."+AppendTxConsumerName, err.Error())
 		c.Debugf(inp.PrimaryInputConsumerData, "can't append vertex to the tangle: '%v'", err)

@@ -44,8 +44,6 @@ type (
 		terminateWG sync.WaitGroup
 		startWG     sync.WaitGroup
 
-		// if flag is set true, PrepareVertex creates log for each transaction
-		logTransaction  atomic.Bool
 		traceMilestones atomic.Bool
 	}
 
@@ -84,10 +82,6 @@ func New(ut *utangle.UTXOTangle, configOptions ...ConfigOption) *Workflow {
 
 func (w *Workflow) LogLevel() zapcore.Level {
 	return w.log.Level()
-}
-
-func (w *Workflow) SetLogTransactions(f bool) {
-	w.logTransaction.Store(f)
 }
 
 func (w *Workflow) SetTraceMilestones(f bool) {

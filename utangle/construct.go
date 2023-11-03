@@ -146,10 +146,8 @@ type (
 	ValidationOption func(options *appendVertexOptions)
 )
 
-func BypassValidation() func(options *appendVertexOptions) {
-	return func(opt *appendVertexOptions) {
-		opt.bypassValidation = true
-	}
+func BypassValidation(options *appendVertexOptions) {
+	options.bypassValidation = true
 }
 
 func WithValidationTraceOption(traceOpt int) func(options *appendVertexOptions) {

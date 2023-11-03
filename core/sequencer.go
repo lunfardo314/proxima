@@ -73,12 +73,15 @@ func zeroTickOnBranchOnly : or(
 )
 
 // check is inflation amount is valid
-// $0 inflation amount
+// $0 - total produced amount on predecessor. It does not matter for simple sequencer tx, it is equal 
+//    to total inout amount of the branch tx   
+// $1 - inflation amount
 func validInflation:
     if(
        isBranchTransaction,
-       require(lessThan($0, u64/1000), !!!wrong_inflation_amount_on_branch_transaction),
-       require(isZero($0), !!!inflation_must_be_zero_on_non_branch_transaction)
+            // TEMPORARY!!!!
+       require(lessThan($1, div64($0, u64/10000)), !!!wrong_inflation_amount_on_branch_transaction),
+       require(isZero($1), !!!inflation_must_be_zero_on_non_branch_transaction)
     )
 
 // $0 is chain constraint sibling index. 0xff value means it is genesis output. 
@@ -88,10 +91,7 @@ func sequencer: and(
     mustMinimumAmountOnSequencer, // enforcing minimum amount on sequencer
     if(
         selfIsConsumedOutput,
- 		and(
-			require( equal(txTotalProducedAmount, sum64($1, txInflationAmount)), !!!inconsistent_total_with_inflation_amount ),
-            require( validInflation(txInflationAmount), !!!wrong_inflation_amount )
-        ),
+		require( validInflation($1, txInflationAmount), !!!wrong_inflation_amount ),
 		and(
 			// produced
 			require(not(equal(selfOutputIndex, 0xff)), !!!sequencer_output_can't_be_at_index_0xff),

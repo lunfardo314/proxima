@@ -1253,7 +1253,7 @@ func TestInflation(t *testing.T) {
 		r := initMultiChainTest(t, 1, false)
 
 		txBytesSeq := r.create1SequencerChain(chainPaceInTimeSlots, howLong, func() uint64 {
-			return uint64(100 + rand.Intn(50))
+			return uint64(10 + rand.Intn(50))
 		})
 
 		transaction.SetPrintEasyFLTraceOnFail(false)
@@ -1269,8 +1269,8 @@ func TestInflation(t *testing.T) {
 				if printBranchTx {
 					t.Logf("branch tx %d : %s", i, transaction.ParseBytesToString(txBytes, r.ut.GetUTXO))
 				}
+				sumInflation += tx.SequencerTransactionData().StemOutputData.InflationAmount
 			}
-			sumInflation += tx.SequencerTransactionData().StemOutputData.InflationAmount
 			vid, txStr, err := r.ut.AppendVertexFromTransactionBytesDebug(txBytes)
 			if err != nil {
 				t.Logf("================= failed tx ======================= %s", txStr)

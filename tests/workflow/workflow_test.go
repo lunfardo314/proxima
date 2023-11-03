@@ -109,7 +109,6 @@ func (wd *workflowTestData) setNewVertexCounter(waitCounter *countdown.Countdown
 func TestWorkflowBasic(t *testing.T) {
 	t.Run("1", func(t *testing.T) {
 		wd := initWorkflowTest(t, 1, core.LogicalTimeNow(), workflow.WithLogLevel(zapcore.DebugLevel))
-		wd.w.SetLogTransactions(true)
 		wd.w.Start()
 		time.Sleep(10 * time.Millisecond)
 		wd.w.Stop()
@@ -117,7 +116,6 @@ func TestWorkflowBasic(t *testing.T) {
 	})
 	t.Run("2", func(t *testing.T) {
 		wd := initWorkflowTest(t, 1, core.LogicalTimeNow(), workflow.WithLogLevel(zapcore.DebugLevel))
-		wd.w.SetLogTransactions(true)
 		wd.w.Start()
 		err := wd.w.TransactionIn(nil)
 		require.Error(t, err)
@@ -137,7 +135,6 @@ func TestWorkflowSync(t *testing.T) {
 		const numRuns = 200
 
 		wd := initWorkflowTest(t, 1, core.LogicalTimeNow())
-		wd.w.SetLogTransactions(true)
 
 		t.Logf("timestamp now: %s", core.LogicalTimeNow().String())
 		t.Logf("distribution timestamp: %s", wd.distributionTxID.Timestamp().String())
@@ -175,7 +172,6 @@ func TestWorkflowSync(t *testing.T) {
 		)
 
 		wd := initWorkflowTest(t, 1, core.LogicalTimeNow()) //, DebugConfig{PrimaryInputConsumerName: zapcore.DebugLevel})
-		wd.w.SetLogTransactions(true)
 
 		var err error
 		txBytes := make([][]byte, numTx)
@@ -215,7 +211,6 @@ func TestWorkflowSync(t *testing.T) {
 		const numRuns = 200
 
 		wd := initWorkflowTest(t, 1, core.LogicalTimeNow())
-		wd.w.SetLogTransactions(true)
 
 		t.Logf("timestamp now: %s", core.LogicalTimeNow().String())
 		t.Logf("distribution timestamp: %s", wd.distributionTxID.Timestamp().String())
@@ -244,6 +239,9 @@ func TestWorkflowSync(t *testing.T) {
 			require.NoError(t, err)
 		}
 		err = waitCounter.Wait()
+
+		time.Sleep(100 * time.Millisecond) // otherwise listen counter sometimes fails
+
 		require.NoError(t, err)
 		require.EqualValues(t, 2*numRuns, int(listenerCounter.Load()))
 
@@ -257,7 +255,6 @@ func TestWorkflowAsync(t *testing.T) {
 		const numRuns = 200
 
 		wd := initWorkflowTest(t, 1, core.LogicalTimeNow())
-		wd.w.SetLogTransactions(true)
 
 		t.Logf("timestamp now: %s", core.LogicalTimeNow().String())
 		t.Logf("distribution timestamp: %s", wd.distributionTxID.Timestamp().String())
@@ -295,7 +292,6 @@ func TestWorkflowAsync(t *testing.T) {
 		)
 
 		wd := initWorkflowTest(t, 1, core.LogicalTimeNow()) //, DebugConfig{PrimaryInputConsumerName: zapcore.DebugLevel})
-		wd.w.SetLogTransactions(true)
 
 		var err error
 		txBytes := make([][]byte, numTx)
@@ -335,7 +331,6 @@ func TestWorkflowAsync(t *testing.T) {
 		const numRuns = 200
 
 		wd := initWorkflowTest(t, 1, core.LogicalTimeNow())
-		wd.w.SetLogTransactions(true)
 
 		t.Logf("timestamp now: %s", core.LogicalTimeNow().String())
 		t.Logf("distribution timestamp: %s", wd.distributionTxID.Timestamp().String())
@@ -375,7 +370,6 @@ func TestWorkflowAsync(t *testing.T) {
 func TestSolidifier(t *testing.T) {
 	t.Run("one tx", func(t *testing.T) {
 		wd := initWorkflowTest(t, 1, core.LogicalTimeNow(), workflow.WithLogLevel(zapcore.DebugLevel))
-		wd.w.SetLogTransactions(true)
 		cd := countdown.New(1, 3*time.Second)
 		wd.setNewVertexCounter(cd)
 
@@ -397,7 +391,6 @@ func TestSolidifier(t *testing.T) {
 	t.Run("several tx usual seq", func(t *testing.T) {
 		const howMany = 100
 		wd := initWorkflowTest(t, 1, core.LogicalTimeNow(), workflow.WithLogLevel(zapcore.DebugLevel))
-		wd.w.SetLogTransactions(true)
 		cd := countdown.New(howMany, 10*time.Second)
 		wd.setNewVertexCounter(cd)
 
@@ -423,7 +416,6 @@ func TestSolidifier(t *testing.T) {
 	t.Run("several tx reverse seq", func(t *testing.T) {
 		const howMany = 10
 		wd := initWorkflowTest(t, 1, core.LogicalTimeNow())
-		wd.w.SetLogTransactions(true)
 		cd := countdown.New(howMany, 10*time.Second)
 		wd.setNewVertexCounter(cd)
 
@@ -452,7 +444,6 @@ func TestSolidifier(t *testing.T) {
 		// all are sent to solidifier in the reverse order
 		nowis := time.Now().Add(-10 * time.Second)
 		wd := initWorkflowTest(t, 1, core.LogicalTimeFromTime(nowis))
-		wd.w.SetLogTransactions(true)
 		cd := countdown.New(howMany, 10*time.Second)
 		wd.setNewVertexCounter(cd)
 
@@ -484,7 +475,6 @@ func TestSolidifier(t *testing.T) {
 		// all are sent to solidifier in the reverse order
 		nowis := time.Now().Add(-10 * time.Second)
 		wd := initWorkflowTest(t, nAddresses, core.LogicalTimeFromTime(nowis))
-		wd.w.SetLogTransactions(true)
 		cd := countdown.New(howMany*nAddresses, 10*time.Second)
 		wd.setNewVertexCounter(cd)
 
