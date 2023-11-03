@@ -196,7 +196,7 @@ func init() {
 	easyfl.Extend("txBytes", "@Path(pathToTransaction)")
 	easyfl.Extend("txSignature", "@Path(pathToSignature)")
 	easyfl.Extend("txTimestampBytes", "@Path(pathToTimestamp)")
-	easyfl.Extend("txTotalProducedAmountBytes", "@Path(pathToTotalProducedAmount)")
+	easyfl.Extend("txTotalProducedAmount", "@Path(pathToTotalProducedAmount)")
 	easyfl.Extend("txTimeSlot", "timeSlotPrefix(txTimestampBytes)")
 	easyfl.Extend("txTimeTick", "timeTickFromTimestamp(txTimestampBytes)")
 	easyfl.Extend("txSequencerOutputIndex", "byte(@Path(pathToSeqAndStemOutputIndices), 0)")

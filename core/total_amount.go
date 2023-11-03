@@ -14,7 +14,7 @@ const totalAmountSource = `
 func total: require(
 	or(
 		selfIsConsumedOutput,
-        equal($0, txTotalProducedAmountBytes),
+        equal($0, txTotalProducedAmount),
 	),
     !!!total_amount_constraint_failed
 )
