@@ -29,7 +29,7 @@ import (
 
 const (
 	initFaucetBalance  = 20_000_000
-	initOnChainBalance = 2_000_000
+	initOnChainBalance = 5 * core.MinimumAmountOnSequencer // 2_000_000
 	feeAmount          = 100
 )
 
@@ -331,6 +331,11 @@ func Test1Sequencer(t *testing.T) {
 		)
 		require.NoError(t, err)
 
+		totalInflation := uint64(0)
+		seq.OnMilestoneSubmitted(func(seq *sequencer.Sequencer, msOutput *utangle.WrappedOutput) {
+			totalInflation += msOutput.VID.InflationAmount()
+		})
+
 		heaviestState := r.ut.HeaviestStateForLatestTimeSlot()
 		initOnSeqBalance := heaviestState.BalanceOnChain(&r.bootstrapChainID)
 		require.EqualValues(t, inittest.InitSupply-initFaucetBalance, int(initOnSeqBalance))
@@ -362,7 +367,7 @@ func Test1Sequencer(t *testing.T) {
 		require.EqualValues(t, numFaucetTransactions*transferAmount, int(bal))
 
 		bal = heaviestState.BalanceOnChain(&r.bootstrapChainID)
-		require.EqualValues(t, int(initOnSeqBalance+(1+numFaucetTransactions)*feeAmount), int(bal))
+		require.EqualValues(t, util.GoThousands(initOnSeqBalance+totalInflation+(1+numFaucetTransactions)*feeAmount), util.GoThousands(bal))
 	})
 	t.Run("1 faucet txs async", func(t *testing.T) {
 		const (
@@ -393,6 +398,11 @@ func Test1Sequencer(t *testing.T) {
 			sequencer.WithMaxFeeInputs(maxInputs),
 		)
 		require.NoError(t, err)
+
+		totalInflation := uint64(0)
+		seq.OnMilestoneSubmitted(func(seq *sequencer.Sequencer, msOutput *utangle.WrappedOutput) {
+			totalInflation += msOutput.VID.InflationAmount()
+		})
 
 		var allFeeInputsConsumed atomic.Bool
 		seq.OnMilestoneSubmitted(func(seq *sequencer.Sequencer, wOut *utangle.WrappedOutput) {
@@ -443,7 +453,7 @@ func Test1Sequencer(t *testing.T) {
 		require.EqualValues(t, numFaucetTransactions*transferAmount, int(bal))
 
 		bal = heaviestState.BalanceOnChain(&r.bootstrapChainID)
-		require.EqualValues(t, int(initOnSeqBalance+(1+numFaucetTransactions)*feeAmount), int(bal))
+		require.EqualValues(t, int(initOnSeqBalance+totalInflation+(1+numFaucetTransactions)*feeAmount), int(bal))
 		r.ut.SaveGraph(fnameFromTestName(t))
 	})
 	t.Run("N faucets async", func(t *testing.T) {
@@ -469,6 +479,11 @@ func Test1Sequencer(t *testing.T) {
 			sequencer.WithMaxFeeInputs(maxInputs),
 		)
 		require.NoError(t, err)
+
+		totalInflation := uint64(0)
+		seq.OnMilestoneSubmitted(func(seq *sequencer.Sequencer, msOutput *utangle.WrappedOutput) {
+			totalInflation += msOutput.VID.InflationAmount()
+		})
 
 		var allFeeInputsConsumed atomic.Bool
 		seq.OnMilestoneSubmitted(func(seq *sequencer.Sequencer, wOut *utangle.WrappedOutput) {
@@ -519,7 +534,7 @@ func Test1Sequencer(t *testing.T) {
 		require.EqualValues(t, numFaucetTransactions*numFaucets*transferAmount, int(bal))
 
 		bal = heaviestState.BalanceOnChain(&r.bootstrapChainID)
-		require.EqualValues(t, int(initOnSeqBalance+(1+numFaucetTransactions*numFaucets)*feeAmount), int(bal))
+		require.EqualValues(t, int(initOnSeqBalance+totalInflation+(1+numFaucetTransactions*numFaucets)*feeAmount), int(bal))
 
 		r.ut.SaveGraph(fnameFromTestName(t))
 	})

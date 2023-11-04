@@ -8,7 +8,6 @@ import (
 
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/general"
-	"github.com/lunfardo314/proxima/genesis"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/util"
@@ -770,8 +769,6 @@ func (vid *WrappedTx) CoverageDelta(ut *UTXOTangle) (*core.TransactionID, uint64
 		ret += o.Amount()
 		return true
 	})
-	util.Assertf(ret <= genesis.DefaultSupply, "coverage %d > supply (%d). Outputs:\n%s", ret, genesis.DefaultSupply)
-
 	return baselineTxID, ret
 }
 
@@ -788,6 +785,26 @@ func (vid *WrappedTx) LedgerCoverage(ut *UTXOTangle) uint64 {
 	util.Assertf(ok, "can't fetch branch data for %s", func() any { return branchTxID.Short() })
 
 	return deltaCoverage + bd.LedgerCoverage.Sum()
+}
+
+func (vid *WrappedTx) InflationAmount() (ret uint64) {
+	if !vid.IsBranchTransaction() {
+		return
+	}
+	vid.Unwrap(UnwrapOptions{
+		Vertex: func(v *Vertex) {
+			ret = v.Tx.InflationAmount()
+		},
+		VirtualTx: func(v *VirtualTransaction) {
+			_, stemOut := v.SequencerOutputs()
+			util.Assertf(stemOut != nil, "can't get stem output")
+			lck, ok := stemOut.StemLock()
+			util.Assertf(ok, "can't get stem output")
+			ret = lck.InflationAmount
+		},
+		Orphaned: PanicOrphaned,
+	})
+	return
 }
 
 func (vid *WrappedTx) Less(vid1 *WrappedTx) bool {

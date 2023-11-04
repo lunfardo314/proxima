@@ -138,6 +138,7 @@ func (mf *milestoneFactory) makeMilestone(chainIn, stemIn *utangle.WrappedOutput
 		return nil, err
 	}
 	var stemInReal *core.OutputWithID
+
 	if stemIn != nil {
 		stemInReal, err = stemIn.Unwrap()
 		if err != nil || stemInReal == nil {
@@ -160,8 +161,14 @@ func (mf *milestoneFactory) makeMilestone(chainIn, stemIn *utangle.WrappedOutput
 	if chainInReal.Output.Amount() > core.MinimumAmountOnSequencer {
 		capWithdrawals = chainInReal.Output.Amount() - core.MinimumAmountOnSequencer
 	}
-	feeInputsReal, additionalOutputs = mf.makeAdditionalInputsOutputs(feeInputsReal, capWithdrawals)
 
+	// calculate inflation
+	var inflationAmount uint64
+	if stemIn != nil {
+		inflationAmount = core.MaxInflationFromPredecessorAmount(chainInReal.Output.Amount())
+	}
+
+	feeInputsReal, additionalOutputs = mf.makeAdditionalInputsOutputs(feeInputsReal, capWithdrawals)
 	endorseReal := utangle.DecodeIDs(endorse...)
 
 	if err != nil {
@@ -174,6 +181,7 @@ func (mf *milestoneFactory) makeMilestone(chainIn, stemIn *utangle.WrappedOutput
 			ChainID:      mf.tipPool.ChainID(),
 		},
 		StemInput:         stemInReal,
+		Inflation:         inflationAmount,
 		Timestamp:         targetTs,
 		AdditionalInputs:  feeInputsReal,
 		AdditionalOutputs: additionalOutputs,

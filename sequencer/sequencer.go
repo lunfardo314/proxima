@@ -44,6 +44,7 @@ type (
 	Info struct {
 		In                     int
 		Out                    int
+		InflationAmount        uint64
 		NumConsumedFeeOutputs  int
 		NumFeeOutputsInTippool int
 		NumOtherMsInTippool    int
@@ -179,7 +180,7 @@ func (seq *Sequencer) setTraceAhead(n int64) {
 	seq.traceNAhead.Store(n)
 }
 
-func (seq *Sequencer) OnMilestoneSubmitted(fun func(seq *Sequencer, vid *utangle.WrappedOutput)) {
+func (seq *Sequencer) OnMilestoneSubmitted(fun func(seq *Sequencer, msOutput *utangle.WrappedOutput)) {
 	seq.onMilestoneSubmittedMutex.Lock()
 	defer seq.onMilestoneSubmittedMutex.Unlock()
 
@@ -187,9 +188,9 @@ func (seq *Sequencer) OnMilestoneSubmitted(fun func(seq *Sequencer, vid *utangle
 		seq.onMilestoneSubmitted = fun
 	} else {
 		prevFun := seq.onMilestoneSubmitted
-		seq.onMilestoneSubmitted = func(seq *Sequencer, vid *utangle.WrappedOutput) {
-			prevFun(seq, vid)
-			fun(seq, vid)
+		seq.onMilestoneSubmitted = func(seq *Sequencer, msOutput *utangle.WrappedOutput) {
+			prevFun(seq, msOutput)
+			fun(seq, msOutput)
 		}
 	}
 }

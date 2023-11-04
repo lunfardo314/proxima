@@ -21,6 +21,7 @@ func (seq *Sequencer) updateInfo(msOutput utangle.WrappedOutput, avgProposalDura
 	seq.info = Info{
 		In:                     msOutput.VID.NumInputs(),
 		Out:                    msOutput.VID.NumProducedOutputs(),
+		InflationAmount:        msOutput.VID.InflationAmount(),
 		NumConsumedFeeOutputs:  nConsumed,
 		NumFeeOutputsInTippool: seq.factory.tipPool.numOutputsInBuffer(),
 		NumOtherMsInTippool:    seq.factory.tipPool.numOtherMilestones(),
@@ -57,7 +58,7 @@ func (seq *Sequencer) LogMilestoneSubmitDefault(wOut *utangle.WrappedOutput) {
 		msIndex = od.ChainHeight
 	}
 
-	seq.log.Infof("%s %d/%d: %s, bl: %s, cov: %s<-%s, in/out: %d/%d, feeOut: %d, proposal: %v x %d, mem: %d/%d",
+	seq.log.Infof("%s %d/%d: %s, bl: %s, cov: %s<-%s (infl: %s), in/out: %d/%d, feeOut: %d, proposal: %v x %d, mem: %d/%d",
 		msType,
 		msIndex,
 		branchIndex,
@@ -65,6 +66,7 @@ func (seq *Sequencer) LogMilestoneSubmitDefault(wOut *utangle.WrappedOutput) {
 		wOut.VID.BaselineBranch().IDShort(),
 		util.GoThousands(info.LedgerCoverage),
 		util.GoThousands(info.PrevLedgerCoverage),
+		util.GoThousands(info.InflationAmount),
 		info.In,
 		info.Out,
 		info.NumConsumedFeeOutputs,
