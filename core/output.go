@@ -106,6 +106,12 @@ func (o *Output) StemLock() (*StemLock, bool) {
 	return ret, ok
 }
 
+func (o *Output) MustStemLock() *StemLock {
+	ret, ok := o.StemLock()
+	util.Assertf(ok, "can't get stem output")
+	return ret
+}
+
 // WithAmount can only be used inside r/o override closure
 func (o *Output) WithAmount(amount uint64) *Output {
 	o.arr.PutAtIdxWithPadding(ConstraintIndexAmount, NewAmount(amount).Bytes())

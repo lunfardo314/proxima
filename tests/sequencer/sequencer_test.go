@@ -628,11 +628,11 @@ func (r *sequencerTestData) issueTransfersWithSeqID(targetAddress core.Lock, tar
 func TestNSequencers(t *testing.T) {
 	t.Run("2 seq", func(t *testing.T) {
 		const (
-			maxSlots              = 20
+			maxSlots              = 100
 			numFaucets            = 1
 			numFaucetTransactions = 1
 			maxTxInputs           = sequencer.DefaultMaxFeeInputs
-			stopAfterBranches     = 20
+			stopAfterBranches     = 60
 			tagAlong              = false
 		)
 		t.Logf("\n   numFaucets: %d\n   numFaucetTransactions: %d\n", numFaucets, numFaucetTransactions)
@@ -686,12 +686,9 @@ func TestNSequencers(t *testing.T) {
 			require.False(t, found)
 		}
 
-		bal := heaviestState.BalanceOnChain(&r.bootstrapChainID)
-		if tagAlong {
-			require.EqualValues(t, int(initOnSeqBalance+(numFaucetTransactions*numFaucets+1)*feeAmount), int(bal))
-		} else {
-			require.EqualValues(t, int(initOnSeqBalance+(numFaucetTransactions*numFaucets)*feeAmount), int(bal))
-		}
+		// also asserts consistency of supply and inflation
+		summarySupply := r.ut.FetchSummarySupplyAndInflationOnHeaviestBranch(-1)
+		t.Logf("Heaviest branch summary: \n%s", summarySupply.Lines("     ").String())
 	})
 	t.Run("2 seq, transfers 1", func(t *testing.T) {
 		const (

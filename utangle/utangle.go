@@ -445,3 +445,7 @@ func (ut *UTXOTangle) LedgerCoverageFromTransaction(tx *transaction.Transaction)
 	}
 	return ut.LedgerCoverage(tmpVertex.Wrap()), nil
 }
+
+func (ut *UTXOTangle) FetchSummarySupplyAndInflationOnHeaviestBranch(nBack int) multistate.SummarySupplyAndInflation {
+	return multistate.FetchSummarySupplyAndInflation(ut.stateStore, nBack)
+}
