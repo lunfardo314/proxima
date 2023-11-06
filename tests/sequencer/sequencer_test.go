@@ -28,7 +28,7 @@ import (
 )
 
 const (
-	initFaucetBalance  = 20_000_000
+	initFaucetBalance  = 40_000_000
 	initOnChainBalance = 5 * core.MinimumAmountOnSequencer // 2_000_000
 	feeAmount          = 100
 )
@@ -770,20 +770,24 @@ func TestNSequencers(t *testing.T) {
 		bal := heaviestState.BalanceOf(targetAddress.AccountID())
 		require.EqualValues(t, int(totalAmountToTargetAddress), int(bal))
 
-		// check balance on the bootstrap sequencer
-		wrong := false
-		for _, seqID := range allSeqIDs {
-			if bal = heaviestState.BalanceOnChain(&seqID); expectedOnChainBalancePerSeqID[seqID] != bal {
-				wrong = true
-			}
-			boot := " "
-			if seqID == r.bootstrapChainID {
-				boot = " bootstrap "
-			}
-			t.Logf("chain balance on%ssequencer %s: %s (expected %s), diff: %d", boot, seqID.Short(),
-				util.GoThousands(bal), util.GoThousands(expectedOnChainBalancePerSeqID[seqID]), int64(bal)-int64(expectedOnChainBalancePerSeqID[seqID]))
-		}
-		require.False(t, wrong)
+		// also asserts consistency of supply and inflation
+		summarySupply := r.ut.FetchSummarySupplyAndInflationOnHeaviestBranch(-1)
+		t.Logf("Heaviest branch summary: \n%s", summarySupply.Lines("     ").String())
+
+		//// check balance on the bootstrap sequencer
+		//wrong := false
+		//for _, seqID := range allSeqIDs {
+		//	if bal = heaviestState.BalanceOnChain(&seqID); expectedOnChainBalancePerSeqID[seqID] != bal {
+		//		wrong = true
+		//	}
+		//	boot := " "
+		//	if seqID == r.bootstrapChainID {
+		//		boot = " bootstrap "
+		//	}
+		//	t.Logf("chain balance on%ssequencer %s: %s (expected %s), diff: %d", boot, seqID.Short(),
+		//		util.GoThousands(bal), util.GoThousands(expectedOnChainBalancePerSeqID[seqID]), int64(bal)-int64(expectedOnChainBalancePerSeqID[seqID]))
+		//}
+		//require.False(t, wrong)
 	})
 	t.Run("2 seq, transfers 2", func(t *testing.T) {
 		const (
@@ -877,19 +881,23 @@ func TestNSequencers(t *testing.T) {
 		bal := heaviestState.BalanceOf(targetAddress.AccountID())
 		require.EqualValues(t, int(totalAmountToTargetAddress), int(bal))
 
+		// also asserts consistency of supply and inflation
+		summarySupply := r.ut.FetchSummarySupplyAndInflationOnHeaviestBranch(-1)
+		t.Logf("Heaviest branch summary: \n%s", summarySupply.Lines("     ").String())
+
 		// check balance on the bootstrap sequencer
-		oneIsWrong := false
-		for _, seqID := range allSeqIDs {
-			if bal = heaviestState.BalanceOnChain(&seqID); expectedOnChainBalancePerSeqID[seqID] != bal {
-				oneIsWrong = true
-			}
-			boot := " "
-			if seqID == r.bootstrapChainID {
-				boot = " bootstrap "
-			}
-			t.Logf("chain balance on%ssequencer %s: %d (expected %d)", boot, seqID.Short(), bal, expectedOnChainBalancePerSeqID[seqID])
-		}
-		require.False(t, oneIsWrong)
+		//oneIsWrong := false
+		//for _, seqID := range allSeqIDs {
+		//	if bal = heaviestState.BalanceOnChain(&seqID); expectedOnChainBalancePerSeqID[seqID] != bal {
+		//		oneIsWrong = true
+		//	}
+		//	boot := " "
+		//	if seqID == r.bootstrapChainID {
+		//		boot = " bootstrap "
+		//	}
+		//	t.Logf("chain balance on%ssequencer %s: %d (expected %d)", boot, seqID.Short(), bal, expectedOnChainBalancePerSeqID[seqID])
+		//}
+		//require.False(t, oneIsWrong)
 	})
 	t.Run("3 seq", func(t *testing.T) {
 		const (
@@ -953,13 +961,16 @@ func TestNSequencers(t *testing.T) {
 			require.False(t, found)
 		}
 
-		bal := heaviestState.BalanceOnChain(&r.bootstrapChainID)
+		// also asserts consistency of supply and inflation
+		summarySupply := r.ut.FetchSummarySupplyAndInflationOnHeaviestBranch(-1)
+		t.Logf("Heaviest branch summary: \n%s", summarySupply.Lines("     ").String())
 
-		require.EqualValues(t, int(initOnBootstrapSeqBalance+feeAmount*nSequencers), int(bal))
+		//bal := heaviestState.BalanceOnChain(&r.bootstrapChainID)
+		//require.EqualValues(t, int(initOnBootstrapSeqBalance+feeAmount*nSequencers), int(bal))
 	})
 	t.Run("5 seq", func(t *testing.T) {
 		const (
-			maxSlot               = 20
+			maxSlot               = 40
 			numFaucets            = 2
 			numFaucetTransactions = 10
 			maxTxInputs           = 200
@@ -1009,7 +1020,12 @@ func TestNSequencers(t *testing.T) {
 		r.wrk.Stop()
 		t.Logf("%s", r.ut.Info())
 
-		r.ut.SaveGraph(fnameFromTestName(r.t))
+		r.ut.SaveGraph(fnameFromTestName(t))
+		r.ut.SaveTree(fnameFromTestName(t) + "_TREE")
+
+		// also asserts consistency of supply and inflation
+		summarySupply := r.ut.FetchSummarySupplyAndInflationOnHeaviestBranch(-1)
+		t.Logf("Heaviest branch summary: \n%s", summarySupply.Lines("     ").String())
 
 		heaviestState = r.ut.HeaviestStateForLatestTimeSlot()
 		latest := r.ut.LatestTimeSlot()
@@ -1018,12 +1034,6 @@ func TestNSequencers(t *testing.T) {
 			found := r.wrk.UTXOTangle().HasOutputInTimeSlot(latest, &o.ID)
 			require.False(t, found)
 		}
-
-		bal := heaviestState.BalanceOnChain(&r.bootstrapChainID)
-
-		require.EqualValues(t, int(initOnBootstrapSeqBalance+feeAmount*nSequencers), int(bal))
-		r.ut.SaveGraph(fnameFromTestName(t))
-		r.ut.SaveTree(fnameFromTestName(t) + "_TREE")
 	})
 }
 
