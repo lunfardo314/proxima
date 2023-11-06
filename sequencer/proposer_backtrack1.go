@@ -11,22 +11,22 @@ import (
 )
 
 // Deprecate
-type backtrackProposer struct {
+type backtrackProposer1 struct {
 	proposerTaskGeneric
 	endorse          *utangle.WrappedTx
 	extensionChoices []utangle.WrappedOutput
 }
 
-const BacktrackProposerName = "btrack"
+const BacktrackProposer1Name = "btrack1"
 
 func init() {
-	registerProposingStrategy(BacktrackProposerName, func(mf *milestoneFactory, targetTs core.LogicalTime) proposerTask {
+	registerProposingStrategy(BacktrackProposer1Name, func(mf *milestoneFactory, targetTs core.LogicalTime) proposerTask {
 		if targetTs.TimeTick() == 0 {
 			// doesn't propose branches
 			return nil
 		}
-		ret := &backtrackProposer{
-			proposerTaskGeneric: newProposerGeneric(mf, targetTs, BacktrackProposerName),
+		ret := &backtrackProposer1{
+			proposerTaskGeneric: newProposerGeneric(mf, targetTs, BacktrackProposer1Name),
 		}
 		ret.trace("STARTING")
 		return ret
@@ -41,7 +41,7 @@ func milestoneSliceString(path []utangle.WrappedOutput) string {
 	return strings.Join(ret, "\n")
 }
 
-func (b *backtrackProposer) run() {
+func (b *backtrackProposer1) run() {
 	startTime := time.Now()
 	b.calcExtensionChoices()
 	if len(b.extensionChoices) == 0 {
@@ -67,7 +67,7 @@ func (b *backtrackProposer) run() {
 	}
 }
 
-func (b *backtrackProposer) generateCandidate(extend utangle.WrappedOutput) *transaction.Transaction {
+func (b *backtrackProposer1) generateCandidate(extend utangle.WrappedOutput) *transaction.Transaction {
 	util.Assertf(extend.VID != b.endorse, "extend.VID != b.endorse")
 
 	endorseSeqID := b.endorse.MustSequencerID()
@@ -90,7 +90,7 @@ func (b *backtrackProposer) generateCandidate(extend utangle.WrappedOutput) *tra
 	return b.makeMilestone(&extend, nil, feeOutputsToConsume, util.List(b.endorse))
 }
 
-func (b *backtrackProposer) calcExtensionChoices() {
+func (b *backtrackProposer1) calcExtensionChoices() {
 	for {
 		endorsable := b.factory.tipPool.preSelectAndSortEndorsableMilestones(b.targetTs)
 		b.trace("preselected %d milestones", len(endorsable))

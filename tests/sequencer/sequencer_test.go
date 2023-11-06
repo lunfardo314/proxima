@@ -645,7 +645,7 @@ func TestNSequencers(t *testing.T) {
 		t.Logf("chain origins transaction has been added to the tangle: %s", r.txChainOrigins.IDShort())
 
 		sequencer.SetTraceProposer(sequencer.BaseProposerName, false)
-		sequencer.SetTraceProposer(sequencer.BacktrackProposerName, false)
+		sequencer.SetTraceProposer(sequencer.BacktrackProposer1Name, false)
 
 		r.createSequencers(maxTxInputs, maxSlots, 5, zapcore.InfoLevel, !tagAlong)
 
@@ -711,7 +711,7 @@ func TestNSequencers(t *testing.T) {
 		require.NoError(t, err)
 		t.Logf("chain origins transaction has been added to the tangle: %s", r.txChainOrigins.IDShort())
 
-		sequencer.SetTraceProposer(sequencer.BacktrackProposerName, false)
+		sequencer.SetTraceProposer(sequencer.BacktrackProposer1Name, false)
 
 		r.createSequencers(maxTxInputs, maxSlots, 5, zapcore.InfoLevel, !tagAlong)
 
@@ -773,21 +773,6 @@ func TestNSequencers(t *testing.T) {
 		// also asserts consistency of supply and inflation
 		summarySupply := r.ut.FetchSummarySupplyAndInflationOnHeaviestBranch(-1)
 		t.Logf("Heaviest branch summary: \n%s", summarySupply.Lines("     ").String())
-
-		//// check balance on the bootstrap sequencer
-		//wrong := false
-		//for _, seqID := range allSeqIDs {
-		//	if bal = heaviestState.BalanceOnChain(&seqID); expectedOnChainBalancePerSeqID[seqID] != bal {
-		//		wrong = true
-		//	}
-		//	boot := " "
-		//	if seqID == r.bootstrapChainID {
-		//		boot = " bootstrap "
-		//	}
-		//	t.Logf("chain balance on%ssequencer %s: %s (expected %s), diff: %d", boot, seqID.Short(),
-		//		util.GoThousands(bal), util.GoThousands(expectedOnChainBalancePerSeqID[seqID]), int64(bal)-int64(expectedOnChainBalancePerSeqID[seqID]))
-		//}
-		//require.False(t, wrong)
 	})
 	t.Run("2 seq, transfers 2", func(t *testing.T) {
 		const (
@@ -809,7 +794,7 @@ func TestNSequencers(t *testing.T) {
 		require.NoError(t, err)
 		t.Logf("chain origins transaction has been added to the tangle: %s", r.txChainOrigins.IDShort())
 
-		sequencer.SetTraceProposer(sequencer.BacktrackProposerName, false)
+		sequencer.SetTraceProposer(sequencer.BacktrackProposer1Name, false)
 
 		r.createSequencers(maxTxInputs, maxSlots, 5, zapcore.InfoLevel)
 
@@ -885,19 +870,6 @@ func TestNSequencers(t *testing.T) {
 		summarySupply := r.ut.FetchSummarySupplyAndInflationOnHeaviestBranch(-1)
 		t.Logf("Heaviest branch summary: \n%s", summarySupply.Lines("     ").String())
 
-		// check balance on the bootstrap sequencer
-		//oneIsWrong := false
-		//for _, seqID := range allSeqIDs {
-		//	if bal = heaviestState.BalanceOnChain(&seqID); expectedOnChainBalancePerSeqID[seqID] != bal {
-		//		oneIsWrong = true
-		//	}
-		//	boot := " "
-		//	if seqID == r.bootstrapChainID {
-		//		boot = " bootstrap "
-		//	}
-		//	t.Logf("chain balance on%ssequencer %s: %d (expected %d)", boot, seqID.Short(), bal, expectedOnChainBalancePerSeqID[seqID])
-		//}
-		//require.False(t, oneIsWrong)
 	})
 	t.Run("3 seq", func(t *testing.T) {
 		const (
@@ -918,7 +890,7 @@ func TestNSequencers(t *testing.T) {
 		require.NoError(t, err)
 		t.Logf("chain origins transaction has been added to the tangle: %s", r.txChainOrigins.IDShort())
 
-		sequencer.SetTraceProposer(sequencer.BacktrackProposerName, false)
+		sequencer.SetTraceProposer(sequencer.BacktrackProposer1Name, false)
 
 		r.createSequencers(maxTxInputs, maxSlot, 5, zapcore.InfoLevel, !tagAlong)
 
@@ -987,7 +959,7 @@ func TestNSequencers(t *testing.T) {
 		require.NoError(t, err)
 		t.Logf("chain origins transaction has been added to the tangle: %s", r.txChainOrigins.IDShort())
 
-		sequencer.SetTraceProposer(sequencer.BacktrackProposerName, false)
+		sequencer.SetTraceProposer(sequencer.BacktrackProposer1Name, false)
 
 		r.createSequencers(maxTxInputs, maxSlot, 5, zapcore.InfoLevel)
 
@@ -1059,7 +1031,7 @@ func TestPruning(t *testing.T) {
 		require.NoError(t, err)
 		t.Logf("chain origins transaction has been added to the tangle: %s", r.txChainOrigins.IDShort())
 
-		sequencer.SetTraceProposer(sequencer.BacktrackProposerName, false)
+		sequencer.SetTraceProposer(sequencer.BacktrackProposer1Name, false)
 
 		r.createSequencers(maxTxInputs, maxSlots, 5, zapcore.InfoLevel)
 
@@ -1166,7 +1138,7 @@ func TestPruning(t *testing.T) {
 		require.NoError(t, err)
 		t.Logf("chain origins transaction has been added to the tangle: %s", r.txChainOrigins.IDShort())
 
-		sequencer.SetTraceProposer(sequencer.BacktrackProposerName, false)
+		sequencer.SetTraceProposer(sequencer.BacktrackProposer1Name, false)
 
 		r.createSequencers(maxTxInputs, maxSlots, 5, zapcore.InfoLevel)
 
