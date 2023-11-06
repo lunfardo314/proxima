@@ -17,9 +17,15 @@ type backtrackProposer1 struct {
 	extensionChoices []utangle.WrappedOutput
 }
 
-const BacktrackProposer1Name = "btrack1"
+const (
+	BacktrackProposer1Name   = "btrack1"
+	EnableBacktrackProposer1 = false
+)
 
 func init() {
+	if !EnableBacktrackProposer1 {
+		return
+	}
 	registerProposingStrategy(BacktrackProposer1Name, func(mf *milestoneFactory, targetTs core.LogicalTime) proposerTask {
 		if targetTs.TimeTick() == 0 {
 			// doesn't propose branches

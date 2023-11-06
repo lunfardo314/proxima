@@ -60,6 +60,7 @@ type (
 		Vertex    func(v *Vertex)
 		VirtualTx func(v *VirtualTransaction)
 		Orphaned  func()
+		WriteLock bool
 	}
 
 	UnwrapOptionsForTraverse struct {
@@ -211,6 +212,7 @@ func (vid *WrappedTx) MarkOrphaned() {
 		VirtualTx: func(v *VirtualTransaction) {
 			vid._put(_orphanedTx{TransactionID: v.txid})
 		},
+		WriteLock: true,
 	})
 }
 
@@ -305,7 +307,7 @@ func (vid *WrappedTx) BaseStemOutput(ut *UTXOTangle) *WrappedOutput {
 	return &ret
 }
 
-func (vid *WrappedTx) UnwrapVertex() (ret *Vertex, retOk bool) {
+func (vid *WrappedTx) UnwrapVertexForReadOnly() (ret *Vertex, retOk bool) {
 	vid.Unwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
 			ret = v
@@ -313,12 +315,6 @@ func (vid *WrappedTx) UnwrapVertex() (ret *Vertex, retOk bool) {
 		},
 	})
 	return
-}
-
-func (vid *WrappedTx) MustUnwrapVertex() *Vertex {
-	ret, ok := vid.UnwrapVertex()
-	util.Assertf(ok, "must be a Vertex")
-	return ret
 }
 
 func (vid *WrappedTx) UnwrapTransaction() *transaction.Transaction {
@@ -356,7 +352,7 @@ type _unwrapOptionsTraverse struct {
 	visited set.Set[*WrappedTx]
 }
 
-const trackNestedUnwraps = true
+const trackNestedUnwraps = false
 
 func (vid *WrappedTx) Unwrap(opt UnwrapOptions) {
 	// to trace possible deadlocks in case of nested unwrapping
@@ -364,8 +360,15 @@ func (vid *WrappedTx) Unwrap(opt UnwrapOptions) {
 		vid._mustNotUnwrapped()
 	}
 
-	vid.mutex.RLock()
-	defer vid.mutex.RUnlock()
+	if opt.WriteLock {
+		vid.mutex.Lock()
+		defer vid.mutex.Unlock()
+		//vid.mutex.RLock()
+		//defer vid.mutex.RUnlock()
+	} else {
+		vid.mutex.RLock()
+		defer vid.mutex.RUnlock()
+	}
 
 	switch v := vid._genericWrapper.(type) {
 	case _vertex:
@@ -559,6 +562,7 @@ func (vid *WrappedTx) ConvertToVirtualTx() {
 		Orphaned: func() {
 			panic("ConvertToVirtualTx: orphaned should not be accessed")
 		},
+		WriteLock: true,
 	})
 }
 
@@ -623,9 +627,12 @@ func (vid *WrappedTx) propagateNewForkToFutureCone(f Fork, ut *UTXOTangle, visit
 
 func (vid *WrappedTx) addFork(f Fork) bool {
 	ret := true
-	vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
-		ret = v.addFork(f)
-	}})
+	vid.Unwrap(UnwrapOptions{
+		Vertex: func(v *Vertex) {
+			ret = v.addFork(f)
+		},
+		WriteLock: true, // FIXME deadlock sometimes
+	})
 	return ret
 }
 

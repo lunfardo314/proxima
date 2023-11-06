@@ -73,10 +73,14 @@ func (c *proposerTaskGeneric) setTraceNAhead(n int64) {
 }
 
 func (c *proposerTaskGeneric) traceEnabled() bool {
+	reg, registered := allProposingStrategies[c.strategyName]
+	if !registered {
+		return false
+	}
 	if c.traceNAhead.Dec() >= 0 {
 		return true
 	}
-	return allProposingStrategies[c.strategyName].trace.Load()
+	return reg.trace.Load()
 }
 
 func (c *proposerTaskGeneric) trace(format string, args ...any) {

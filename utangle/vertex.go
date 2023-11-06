@@ -278,7 +278,7 @@ func (p *PastTrack) _absorbPastTrack(vid *WrappedTx, safe bool) (conflict *Wrapp
 		if safe {
 			wrappedConflict = p.forks.AbsorbSafe(v.pastTrack.forks)
 		} else {
-			wrappedConflict = p.forks.Absorb(v.pastTrack.forks)
+			wrappedConflict = p.forks.Absorb(v.pastTrack.forks) // FIXME race condition with conflict propagation
 		}
 		if wrappedConflict.VID != nil {
 			conflict = &wrappedConflict
