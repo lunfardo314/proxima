@@ -41,9 +41,15 @@ func (b *backtrackProposer2) run() {
 	startTime := time.Now()
 	for b.factory.proposal.continueCandidateProposing(b.targetTs) {
 		endorse, extensionChoices := b.calcExtensionChoices()
+
+		//b.setTraceNAhead(1)
 		if len(extensionChoices) > 0 {
+			b.trace("calcExtensionChoices: endorse: %s, extension choices:\n%s", endorse.IDShort(), milestoneSliceString(extensionChoices))
 			b.startProposingTime()
+		} else {
+			b.trace("calcExtensionChoices: <empty>")
 		}
+
 		for _, extend := range extensionChoices {
 			pair := extendEndorsePair{
 				extend:  extend.VID,
@@ -55,6 +61,8 @@ func (b *backtrackProposer2) run() {
 			if tx := b.generateCandidate(extend, endorse); tx != nil {
 				b.assessAndAcceptProposal(tx, extend, startTime, b.name())
 				b.visited.Insert(pair)
+				//b.setTraceNAhead(1)
+				b.trace("marked visited: extend: %s, endorse: %s", extend.IDShort(), endorse.IDShort())
 			}
 		}
 		time.Sleep(10 * time.Millisecond)

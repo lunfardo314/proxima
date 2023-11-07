@@ -1,7 +1,6 @@
 package sequencer
 
 import (
-	"strings"
 	"time"
 
 	"github.com/lunfardo314/proxima/core"
@@ -36,14 +35,6 @@ func init() {
 		ret.trace("STARTING")
 		return ret
 	})
-}
-
-func milestoneSliceString(path []utangle.WrappedOutput) string {
-	ret := make([]string, 0)
-	for _, md := range path {
-		ret = append(ret, "       "+md.IDShort())
-	}
-	return strings.Join(ret, "\n")
 }
 
 func (b *backtrackProposer1) run() {

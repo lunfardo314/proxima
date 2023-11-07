@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/lunfardo314/proxima/core"
@@ -316,4 +317,12 @@ func isPreferredMilestoneAgainstTheOther(ut *utangle.UTXOTangle, vid1, vid2 *uta
 	default:
 		return false
 	}
+}
+
+func milestoneSliceString(path []utangle.WrappedOutput) string {
+	ret := make([]string, 0)
+	for _, md := range path {
+		ret = append(ret, "       "+md.IDShort())
+	}
+	return strings.Join(ret, "\n")
 }

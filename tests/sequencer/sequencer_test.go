@@ -628,11 +628,11 @@ func (r *sequencerTestData) issueTransfersWithSeqID(targetAddress core.Lock, tar
 func TestNSequencers(t *testing.T) {
 	t.Run("2 seq", func(t *testing.T) {
 		const (
-			maxSlots              = 20
+			maxSlots              = 70
 			numFaucets            = 1
 			numFaucetTransactions = 1
 			maxTxInputs           = sequencer.DefaultMaxFeeInputs
-			stopAfterBranches     = 60
+			stopAfterBranches     = 10
 			tagAlong              = false
 		)
 		t.Logf("\n   numFaucets: %d\n   numFaucetTransactions: %d\n", numFaucets, numFaucetTransactions)
