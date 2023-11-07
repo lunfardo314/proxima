@@ -91,7 +91,7 @@ func (b *backtrackProposer2) calcExtensionChoices() (endorse *utangle.WrappedTx,
 	for b.factory.proposal.continueCandidateProposing(b.targetTs) {
 		endorsable := b.factory.tipPool.preSelectAndSortEndorsableMilestones(b.targetTs)
 		//b.setTraceNAhead(1)
-		b.trace("preselected %d milestones", len(endorsable))
+		b.trace("pre-selected %d endorsable milestones", len(endorsable))
 		// assumed order is descending ledger coverage
 		for _, vid := range endorsable {
 			extensionChoices = b.extensionChoicesInEndorsementTargetPastCone(vid)

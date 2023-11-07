@@ -171,7 +171,7 @@ func (c *proposerTaskGeneric) assessAndAcceptProposal(tx *transaction.Transactio
 		proposedBy: taskName,
 	}
 	if rejectReason := c.placeProposalIfRelevant(msData); rejectReason != "" {
-		//c.setTraceNAhead(1)
+		c.setTraceNAhead(1)
 		c.trace(rejectReason)
 	}
 }
@@ -218,7 +218,7 @@ func (c *proposerTaskGeneric) placeProposalIfRelevant(mdProposed *proposedMilest
 	c.factory.proposal.current = mdProposed.tx
 	c.factory.proposal.currentExtended = mdProposed.extended
 
-	//c.setTraceNAhead(1)
+	c.setTraceNAhead(1)
 	c.trace("(%s): ACCEPTED %s, coverage: %s (base: %s), elapsed: %v, inputs: %d, tipPool: %d",
 		mdProposed.proposedBy,
 		mdProposed.tx.IDShort(),
