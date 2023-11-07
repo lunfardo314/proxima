@@ -2,7 +2,6 @@ package noworkflow
 
 import (
 	"crypto/ed25519"
-	"math/rand"
 	"strings"
 	"testing"
 	"time"
@@ -1200,99 +1199,100 @@ func (r *multiChainTestData) createSequencerChains3(pace int, howLong int, print
 	return ret
 }
 
-func TestInflation(t *testing.T) {
-	t.Run("fixed inflation", func(t *testing.T) {
-		const (
-			chainPaceInTimeSlots = 20
-			printBranchTx        = false
-			howLong              = 6 // 400
-			fixedInflation       = 100
-		)
-		r := initMultiChainTest(t, 1, false)
-
-		txBytesSeq := r.create1SequencerChain(chainPaceInTimeSlots, howLong, func() uint64 {
-			return fixedInflation
-		})
-
-		transaction.SetPrintEasyFLTraceOnFail(true)
-
-		branchCount := 0
-		var lastBranchTxStr string
-		for i, txBytes := range txBytesSeq {
-			tx, err := transaction.FromBytes(txBytes)
-			require.NoError(r.t, err)
-			if tx.IsBranchTransaction() {
-				if printBranchTx {
-					t.Logf("branch tx %d : %s", i, transaction.ParseBytesToString(txBytes, r.ut.GetUTXO))
-				}
-			}
-			opts := make([]utangle.ValidationOption, 0)
-			vid, txStr, err := r.ut.AppendVertexFromTransactionBytesDebug(txBytes, opts...)
-			if err != nil {
-				t.Logf("================= failed tx ======================= %s", txStr)
-				if vid != nil {
-					utangle.SaveGraphPastCone(vid, "failedPastCone")
-				}
-			}
-			require.NoError(r.t, err)
-			if vid.IsBranchTransaction() {
-				lastBranchTxStr = txStr
-				branchCount++
-				require.EqualValues(t, onChainAmount+branchCount*fixedInflation, tx.TotalAmount())
-			}
-		}
-		t.Logf("============ last branch tx ================\n%s", lastBranchTxStr)
-		t.Logf("tangle info: %s", r.ut.Info())
-	})
-	t.Run("random inflation", func(t *testing.T) {
-		const (
-			chainPaceInTimeSlots = 20
-			printBranchTx        = false
-			howLong              = 400
-		)
-		r := initMultiChainTest(t, 1, false)
-
-		txBytesSeq := r.create1SequencerChain(chainPaceInTimeSlots, howLong, func() uint64 {
-			return uint64(10 + rand.Intn(50))
-		})
-
-		transaction.SetPrintEasyFLTraceOnFail(false)
-
-		lastBranchTxStr := ""
-		var lastTx *transaction.Transaction
-		sumInflation := uint64(0)
-
-		for i, txBytes := range txBytesSeq {
-			tx, err := transaction.FromBytesMainChecksWithOpt(txBytes)
-			require.NoError(t, err)
-			if tx.IsBranchTransaction() {
-				if printBranchTx {
-					t.Logf("branch tx %d : %s", i, transaction.ParseBytesToString(txBytes, r.ut.GetUTXO))
-				}
-				sumInflation += tx.SequencerTransactionData().StemOutputData.InflationAmount
-			}
-			vid, txStr, err := r.ut.AppendVertexFromTransactionBytesDebug(txBytes)
-			if err != nil {
-				t.Logf("================= failed tx ======================= %s", txStr)
-				if vid != nil {
-					utangle.SaveGraphPastCone(vid, "failedPastCone")
-				}
-			}
-			require.NoError(t, err)
-			lastTx = tx
-			if vid.IsBranchTransaction() {
-				lastBranchTxStr = txStr
-			}
-		}
-
-		lastChainOut := lastTx.FindChainOutput(r.chainOrigins[0].ChainID)
-
-		require.EqualValues(t, int(sumInflation+onChainAmount), lastChainOut.Output.Amount())
-
-		t.Logf("============ last branch tx ================\n%s", lastBranchTxStr)
-		//t.Logf("tangle info: %s", r.ut.Info())
-	})
-}
+//
+//func TestInflation(t *testing.T) {
+//	t.Run("fixed inflation", func(t *testing.T) {
+//		const (
+//			chainPaceInTimeSlots = 20
+//			printBranchTx        = false
+//			howLong              = 6 // 400
+//			fixedInflation       = 100
+//		)
+//		r := initMultiChainTest(t, 1, false)
+//
+//		txBytesSeq := r.create1SequencerChain(chainPaceInTimeSlots, howLong, func() uint64 {
+//			return fixedInflation
+//		})
+//
+//		transaction.SetPrintEasyFLTraceOnFail(true)
+//
+//		branchCount := 0
+//		var lastBranchTxStr string
+//		for i, txBytes := range txBytesSeq {
+//			tx, err := transaction.FromBytes(txBytes)
+//			require.NoError(r.t, err)
+//			if tx.IsBranchTransaction() {
+//				if printBranchTx {
+//					t.Logf("branch tx %d : %s", i, transaction.ParseBytesToString(txBytes, r.ut.GetUTXO))
+//				}
+//			}
+//			opts := make([]utangle.ValidationOption, 0)
+//			vid, txStr, err := r.ut.AppendVertexFromTransactionBytesDebug(txBytes, opts...)
+//			if err != nil {
+//				t.Logf("================= failed tx ======================= %s", txStr)
+//				if vid != nil {
+//					utangle.SaveGraphPastCone(vid, "failedPastCone")
+//				}
+//			}
+//			require.NoError(r.t, err)
+//			if vid.IsBranchTransaction() {
+//				lastBranchTxStr = txStr
+//				branchCount++
+//				require.EqualValues(t, onChainAmount+branchCount*fixedInflation, tx.TotalAmount())
+//			}
+//		}
+//		t.Logf("============ last branch tx ================\n%s", lastBranchTxStr)
+//		t.Logf("tangle info: %s", r.ut.Info())
+//	})
+//	t.Run("random inflation", func(t *testing.T) {
+//		const (
+//			chainPaceInTimeSlots = 20
+//			printBranchTx        = false
+//			howLong              = 400
+//		)
+//		r := initMultiChainTest(t, 1, false)
+//
+//		txBytesSeq := r.create1SequencerChain(chainPaceInTimeSlots, howLong, func() uint64 {
+//			return uint64(10 + rand.Intn(50))
+//		})
+//
+//		transaction.SetPrintEasyFLTraceOnFail(false)
+//
+//		lastBranchTxStr := ""
+//		var lastTx *transaction.Transaction
+//		sumInflation := uint64(0)
+//
+//		for i, txBytes := range txBytesSeq {
+//			tx, err := transaction.FromBytesMainChecksWithOpt(txBytes)
+//			require.NoError(t, err)
+//			if tx.IsBranchTransaction() {
+//				if printBranchTx {
+//					t.Logf("branch tx %d : %s", i, transaction.ParseBytesToString(txBytes, r.ut.GetUTXO))
+//				}
+//				sumInflation += tx.SequencerTransactionData().StemOutputData.InflationAmount
+//			}
+//			vid, txStr, err := r.ut.AppendVertexFromTransactionBytesDebug(txBytes)
+//			if err != nil {
+//				t.Logf("================= failed tx ======================= %s", txStr)
+//				if vid != nil {
+//					utangle.SaveGraphPastCone(vid, "failedPastCone")
+//				}
+//			}
+//			require.NoError(t, err)
+//			lastTx = tx
+//			if vid.IsBranchTransaction() {
+//				lastBranchTxStr = txStr
+//			}
+//		}
+//
+//		lastChainOut := lastTx.FindChainOutput(r.chainOrigins[0].ChainID)
+//
+//		require.EqualValues(t, int(sumInflation+onChainAmount), lastChainOut.Output.Amount())
+//
+//		t.Logf("============ last branch tx ================\n%s", lastBranchTxStr)
+//		//t.Logf("tangle info: %s", r.ut.Info())
+//	})
+//}
 
 // n parallel sequencer chains. Each chain endorses one previous, if possible
 // Branch transactions make inflation

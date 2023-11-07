@@ -196,7 +196,7 @@ func (v *Vertex) PendingDependenciesLines(prefix ...string) *lines.Lines {
 
 func (v *Vertex) addFork(f Fork) bool {
 	if v.pastTrack.forks == nil {
-		v.pastTrack.forks = make(ForkSet)
+		v.pastTrack.forks = NewForkSet()
 	}
 	return v.pastTrack.forks.Insert(f)
 }
@@ -223,6 +223,12 @@ func (v *Vertex) BaselineBranch() *WrappedTx {
 	return v.pastTrack.BaselineBranch()
 }
 
+func newPastTrack() PastTrack {
+	return PastTrack{
+		forks: NewForkSet(),
+	}
+}
+
 func (p *PastTrack) clone() PastTrack {
 	return PastTrack{
 		forks:          p.forks.Clone(),
@@ -232,10 +238,6 @@ func (p *PastTrack) clone() PastTrack {
 
 func (p *PastTrack) absorb(p1 *PastTrack) *WrappedOutput {
 	util.Assertf(p != nil, "p!=nil")
-
-	if p.forks == nil {
-		p.forks = make(ForkSet)
-	}
 
 	var success bool
 	if p.baselineBranch, success = mergeBranches(p.baselineBranch, p1.baselineBranch); !success {
@@ -248,10 +250,14 @@ func (p *PastTrack) absorb(p1 *PastTrack) *WrappedOutput {
 	return nil
 }
 
+// AbsorbPastTrack merges branches and forks of vid into the pas track. In case a conflict is detected,
+// the target PastTrack is left inconsistent and must be abandoned
 func (p *PastTrack) AbsorbPastTrack(vid *WrappedTx) (conflict *WrappedOutput) {
 	return p._absorbPastTrack(vid, false)
 }
 
+// AbsorbPastTrackSafe same as AbsorbPastTrack but leaves target untouched in case conflict is detected.
+// It copies the target, so it somehow slower
 func (p *PastTrack) AbsorbPastTrackSafe(vid *WrappedTx) (conflict *WrappedOutput) {
 	return p._absorbPastTrack(vid, true)
 }
@@ -272,13 +278,10 @@ func (p *PastTrack) _absorbPastTrack(vid *WrappedTx, safe bool) (conflict *Wrapp
 	}
 
 	vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
-		if p.forks == nil {
-			p.forks = make(ForkSet)
-		}
 		if safe {
 			wrappedConflict = p.forks.AbsorbSafe(v.pastTrack.forks)
 		} else {
-			wrappedConflict = p.forks.Absorb(v.pastTrack.forks) // FIXME race condition with conflict propagation
+			wrappedConflict = p.forks.Absorb(v.pastTrack.forks)
 		}
 		if wrappedConflict.VID != nil {
 			conflict = &wrappedConflict

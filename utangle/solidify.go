@@ -189,23 +189,10 @@ func (v *Vertex) FetchMissingDependencies(ut *UTXOTangle) (conflict *core.Output
 		conflict = v.fetchMissingInputs(ut)
 	}
 	if v._isSolid() {
-		v.cleanPastTrack()
+		v.pastTrack.forks.CleanOrphaned()
 		v.isSolid = true
 	}
 	return
-}
-
-func (v *Vertex) cleanPastTrack() {
-	util.Assertf(v.pastTrack.baselineBranch == nil || !v.pastTrack.baselineBranch.IsOrphaned(), "baseline branch can't be orphaned")
-	toDeleteForks := make([]WrappedOutput, 0)
-	for wOut := range v.pastTrack.forks {
-		if wOut.VID.IsOrphaned() {
-			toDeleteForks = append(toDeleteForks, wOut)
-		}
-	}
-	for _, wOut := range toDeleteForks {
-		delete(v.pastTrack.forks, wOut)
-	}
 }
 
 func (v *Vertex) fetchMissingInputs(ut *UTXOTangle) (conflict *core.OutputID) {

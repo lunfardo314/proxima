@@ -29,7 +29,7 @@ func init() {
 			return nil
 		}
 		ret := &backtrackProposer2{
-			proposerTaskGeneric: newProposerGeneric(mf, targetTs, BacktrackProposer1Name),
+			proposerTaskGeneric: newProposerGeneric(mf, targetTs, BacktrackProposer2Name),
 		}
 		ret.trace("STARTING")
 		return ret

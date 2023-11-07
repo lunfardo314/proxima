@@ -28,7 +28,7 @@ type (
 	}
 
 	PastTrack struct {
-		forks          ForkSet
+		forks          *ForkSet
 		baselineBranch *WrappedTx
 	}
 	Vertex struct {
@@ -51,7 +51,10 @@ type (
 		SN            byte // max 256 double spends per output. Tx will be dropped if exceeded
 	}
 
-	ForkSet map[WrappedOutput]byte
+	ForkSet struct {
+		m     map[WrappedOutput]byte
+		mutex sync.RWMutex
+	}
 )
 
 const TipSlots = 5

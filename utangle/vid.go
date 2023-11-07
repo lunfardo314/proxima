@@ -17,11 +17,12 @@ import (
 )
 
 type (
-	// WrappedTx value of *WrappedTx is used as transaction code in the UTXO tangle
+	// WrappedTx value of *WrappedTx is used as transaction identity on the UTXO tangle
+	// Behind this identity can be wrapped usual vertex, virtual or orphaned transactions
 	WrappedTx struct {
-		mutex sync.RWMutex
+		mutex sync.RWMutex // protects _genericWrapper
 		_genericWrapper
-		// future cone references
+		// future cone references. Protected by global utangle lock
 		consumers map[byte][]*WrappedTx
 		endorsers []*WrappedTx
 	}
@@ -31,13 +32,14 @@ type (
 		Index byte
 	}
 
+	// _genericWrapper generic types of vertex hiding behind WrappedTx identity
 	_genericWrapper interface {
 		_id() *core.TransactionID
 		_time() time.Time
 		_outputAt(idx byte) (*core.Output, error)
 		_hasOutputAt(idx byte) (bool, bool)
-		_mustNotUnwrapped()
-		_toggleUnwrapped()
+		_mustNotUnwrapped() // helper for debugging
+		_toggleUnwrapped()  // helper for debugging
 	}
 
 	_vertex struct {
@@ -60,7 +62,6 @@ type (
 		Vertex    func(v *Vertex)
 		VirtualTx func(v *VirtualTransaction)
 		Orphaned  func()
-		WriteLock bool
 	}
 
 	UnwrapOptionsForTraverse struct {
@@ -205,15 +206,17 @@ func (vid *WrappedTx) TimeSlot() core.TimeSlot {
 }
 
 func (vid *WrappedTx) MarkOrphaned() {
-	vid.Unwrap(UnwrapOptions{
-		Vertex: func(v *Vertex) {
-			vid._put(_orphanedTx{TransactionID: *v.Tx.ID()})
-		},
-		VirtualTx: func(v *VirtualTransaction) {
-			vid._put(_orphanedTx{TransactionID: v.txid})
-		},
-		WriteLock: true,
-	})
+	vid.mutex.Lock()
+	defer vid.mutex.Unlock()
+
+	switch v := vid._genericWrapper.(type) {
+	case _vertex:
+		vid._put(_orphanedTx{TransactionID: *v.Tx.ID()})
+	case _virtualTx:
+		vid._put(_orphanedTx{TransactionID: v.txid})
+	case _orphanedTx:
+		PanicOrphaned()
+	}
 }
 
 func (vid *WrappedTx) OutputWithIDAt(idx byte) (*core.OutputWithID, error) {
@@ -352,7 +355,7 @@ type _unwrapOptionsTraverse struct {
 	visited set.Set[*WrappedTx]
 }
 
-const trackNestedUnwraps = false
+const trackNestedUnwraps = true
 
 func (vid *WrappedTx) Unwrap(opt UnwrapOptions) {
 	// to trace possible deadlocks in case of nested unwrapping
@@ -360,15 +363,8 @@ func (vid *WrappedTx) Unwrap(opt UnwrapOptions) {
 		vid._mustNotUnwrapped()
 	}
 
-	if opt.WriteLock {
-		vid.mutex.Lock()
-		defer vid.mutex.Unlock()
-		//vid.mutex.RLock()
-		//defer vid.mutex.RUnlock()
-	} else {
-		vid.mutex.RLock()
-		defer vid.mutex.RUnlock()
-	}
+	vid.mutex.RLock()
+	defer vid.mutex.RUnlock()
 
 	switch v := vid._genericWrapper.(type) {
 	case _vertex:
@@ -555,15 +551,15 @@ func (o *WrappedOutput) TimeSlot() core.TimeSlot {
 }
 
 func (vid *WrappedTx) ConvertToVirtualTx() {
-	vid.Unwrap(UnwrapOptions{
-		Vertex: func(v *Vertex) {
-			vid._put(_virtualTx{VirtualTransaction: v.convertToVirtualTx()})
-		},
-		Orphaned: func() {
-			panic("ConvertToVirtualTx: orphaned should not be accessed")
-		},
-		WriteLock: true,
-	})
+	vid.mutex.Lock()
+	defer vid.mutex.Unlock()
+
+	switch v := vid._genericWrapper.(type) {
+	case _vertex:
+		vid._put(_virtualTx{VirtualTransaction: v.convertToVirtualTx()})
+	case _orphanedTx:
+		PanicOrphaned()
+	}
 }
 
 func (vid *WrappedTx) WrappedInputs() []WrappedOutput {
@@ -631,7 +627,6 @@ func (vid *WrappedTx) addFork(f Fork) bool {
 		Vertex: func(v *Vertex) {
 			ret = v.addFork(f)
 		},
-		WriteLock: true, // FIXME deadlock sometimes
 	})
 	return ret
 }
@@ -861,9 +856,9 @@ func MergePastTracks(vids ...*WrappedTx) (ret PastTrack, conflict *WrappedOutput
 		return
 	}
 
-	retTmp := PastTrack{}
+	retTmp := newPastTrack()
 	for _, vid := range vids {
-		conflict = ret.AbsorbPastTrack(vid)
+		conflict = retTmp.AbsorbPastTrack(vid)
 		if conflict != nil {
 			return
 		}

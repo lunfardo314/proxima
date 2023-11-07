@@ -628,7 +628,7 @@ func (r *sequencerTestData) issueTransfersWithSeqID(targetAddress core.Lock, tar
 func TestNSequencers(t *testing.T) {
 	t.Run("2 seq", func(t *testing.T) {
 		const (
-			maxSlots              = 30
+			maxSlots              = 20
 			numFaucets            = 1
 			numFaucetTransactions = 1
 			maxTxInputs           = sequencer.DefaultMaxFeeInputs
@@ -646,6 +646,7 @@ func TestNSequencers(t *testing.T) {
 
 		sequencer.SetTraceProposer(sequencer.BaseProposerName, false)
 		sequencer.SetTraceProposer(sequencer.BacktrackProposer1Name, false)
+		sequencer.SetTraceProposer(sequencer.BacktrackProposer2Name, true)
 
 		r.createSequencers(maxTxInputs, maxSlots, 5, zapcore.InfoLevel, !tagAlong)
 

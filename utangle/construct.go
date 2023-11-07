@@ -21,7 +21,6 @@ func newUTXOTangle(stateStore general.StateStore, txBytesStore general.TxBytesSt
 }
 
 // Load fetches latest branches from the multi-state and creates an UTXO tangle with those branches as virtual transactions
-// TODO load latest common branch too
 func Load(stateStore general.StateStore, txBytesStore general.TxBytesStore) *UTXOTangle {
 	ret := newUTXOTangle(stateStore, txBytesStore)
 	// fetch branches of the latest slot
@@ -37,6 +36,7 @@ func NewVertex(tx *transaction.Transaction) *Vertex {
 		Tx:           tx,
 		Inputs:       make([]*WrappedTx, tx.NumInputs()),
 		Endorsements: make([]*WrappedTx, tx.NumEndorsements()),
+		pastTrack:    newPastTrack(),
 	}
 }
 
