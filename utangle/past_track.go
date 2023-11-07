@@ -1,0 +1,80 @@
+package utangle
+
+import (
+	"github.com/lunfardo314/proxima/general"
+	"github.com/lunfardo314/proxima/util/lines"
+)
+
+func newPastTrack() PastTrack {
+	return PastTrack{
+		forks: newForkSet(),
+	}
+}
+
+// AbsorbPastTrack merges branches and forks of vid into the pas track. In case a conflict is detected,
+// the target PastTrack is left inconsistent and must be abandoned
+func (p *PastTrack) AbsorbPastTrack(vid *WrappedTx) (conflict *WrappedOutput) {
+	return p._absorbPastTrack(vid, false)
+}
+
+// AbsorbPastTrackSafe same as AbsorbPastTrack but leaves target untouched in case conflict is detected.
+// It copies the target, so it somehow slower
+func (p *PastTrack) AbsorbPastTrackSafe(vid *WrappedTx) (conflict *WrappedOutput) {
+	return p._absorbPastTrack(vid, true)
+}
+
+func (p *PastTrack) _absorbPastTrack(vid *WrappedTx, safe bool) (conflict *WrappedOutput) {
+	var success bool
+	var baselineBranch *WrappedTx
+	var wrappedConflict WrappedOutput
+
+	if vid.IsBranchTransaction() {
+		baselineBranch, success = mergeBranches(p.baselineBranch, vid)
+	} else {
+		baselineBranch, success = mergeBranches(p.baselineBranch, vid.BaselineBranch())
+	}
+	if !success {
+		conflict = &WrappedOutput{}
+		return
+	}
+
+	vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
+		if safe {
+			wrappedConflict = p.forks.absorbSafe(v.pastTrack.forks)
+		} else {
+			wrappedConflict = p.forks.absorb(v.pastTrack.forks)
+		}
+		if wrappedConflict.VID != nil {
+			conflict = &wrappedConflict
+			return
+		}
+	}})
+	if conflict == nil {
+		p.baselineBranch = baselineBranch
+	}
+	return
+}
+
+func (p *PastTrack) BaselineBranch() *WrappedTx {
+	return p.baselineBranch
+}
+
+func (p *PastTrack) MustGetBaselineState(ut *UTXOTangle) general.IndexedStateReader {
+	return ut.MustGetBaselineState(p.BaselineBranch())
+}
+
+func (p *PastTrack) Lines(prefix ...string) *lines.Lines {
+	ret := lines.New(prefix...)
+	if p == nil {
+		ret.Add("<nil>")
+	} else {
+		if p.baselineBranch == nil {
+			ret.Add("----- baseline branch: <nil>")
+		} else {
+			ret.Add("----- baseline branch: %s", p.baselineBranch.IDShort())
+		}
+		ret.Add("---- forks")
+		ret.Append(p.forks.lines())
+	}
+	return ret
+}

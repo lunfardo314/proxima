@@ -596,9 +596,9 @@ func (vid *WrappedTx) addConsumerOfOutput(outputIndex byte, consumer *WrappedTx,
 	case 0:
 		descendants = make([]*WrappedTx, 0, 1)
 	case 1:
-		f := NewFork(WrappedOutput{VID: vid, Index: outputIndex}, 0)
+		f := newFork(WrappedOutput{VID: vid, Index: outputIndex}, 0)
 		descendants[0].propagateNewForkToFutureCone(f, ut, set.New[*WrappedTx]())
-		consumer.addFork(NewFork(WrappedOutput{VID: vid, Index: outputIndex}, 1))
+		consumer.addFork(newFork(WrappedOutput{VID: vid, Index: outputIndex}, 1))
 	}
 	vid.consumers[outputIndex] = append(descendants, consumer) // may result in repeating but that is ok
 }
@@ -625,7 +625,7 @@ func (vid *WrappedTx) addFork(f Fork) bool {
 	ret := true
 	vid.Unwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
-			ret = v.addFork(f)
+			ret = v.pastTrack.forks.insert(f)
 		},
 	})
 	return ret

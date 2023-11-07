@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/core"
-	"github.com/lunfardo314/proxima/general"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
@@ -194,13 +193,6 @@ func (v *Vertex) PendingDependenciesLines(prefix ...string) *lines.Lines {
 	return ret
 }
 
-func (v *Vertex) addFork(f Fork) bool {
-	if v.pastTrack.forks == nil {
-		v.pastTrack.forks = NewForkSet()
-	}
-	return v.pastTrack.forks.Insert(f)
-}
-
 func (v *Vertex) reMergeParentPastTracks() (conflict *WrappedOutput) {
 	v.forEachInputDependency(func(i byte, vidInput *WrappedTx) bool {
 		util.Assertf(vidInput != nil, "vidInput != nil")
@@ -221,99 +213,4 @@ func (v *Vertex) reMergeParentPastTracks() (conflict *WrappedOutput) {
 
 func (v *Vertex) BaselineBranch() *WrappedTx {
 	return v.pastTrack.BaselineBranch()
-}
-
-func newPastTrack() PastTrack {
-	return PastTrack{
-		forks: NewForkSet(),
-	}
-}
-
-func (p *PastTrack) clone() PastTrack {
-	return PastTrack{
-		forks:          p.forks.Clone(),
-		baselineBranch: p.baselineBranch,
-	}
-}
-
-func (p *PastTrack) absorb(p1 *PastTrack) *WrappedOutput {
-	util.Assertf(p != nil, "p!=nil")
-
-	var success bool
-	if p.baselineBranch, success = mergeBranches(p.baselineBranch, p1.baselineBranch); !success {
-		return &WrappedOutput{}
-	}
-
-	if conflict := p.forks.Absorb(p1.forks); conflict.VID != nil {
-		return &conflict
-	}
-	return nil
-}
-
-// AbsorbPastTrack merges branches and forks of vid into the pas track. In case a conflict is detected,
-// the target PastTrack is left inconsistent and must be abandoned
-func (p *PastTrack) AbsorbPastTrack(vid *WrappedTx) (conflict *WrappedOutput) {
-	return p._absorbPastTrack(vid, false)
-}
-
-// AbsorbPastTrackSafe same as AbsorbPastTrack but leaves target untouched in case conflict is detected.
-// It copies the target, so it somehow slower
-func (p *PastTrack) AbsorbPastTrackSafe(vid *WrappedTx) (conflict *WrappedOutput) {
-	return p._absorbPastTrack(vid, true)
-}
-
-func (p *PastTrack) _absorbPastTrack(vid *WrappedTx, safe bool) (conflict *WrappedOutput) {
-	var success bool
-	var baselineBranch *WrappedTx
-	var wrappedConflict WrappedOutput
-
-	if vid.IsBranchTransaction() {
-		baselineBranch, success = mergeBranches(p.baselineBranch, vid)
-	} else {
-		baselineBranch, success = mergeBranches(p.baselineBranch, vid.BaselineBranch())
-	}
-	if !success {
-		conflict = &WrappedOutput{}
-		return
-	}
-
-	vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
-		if safe {
-			wrappedConflict = p.forks.AbsorbSafe(v.pastTrack.forks)
-		} else {
-			wrappedConflict = p.forks.Absorb(v.pastTrack.forks)
-		}
-		if wrappedConflict.VID != nil {
-			conflict = &wrappedConflict
-			return
-		}
-	}})
-	if conflict == nil {
-		p.baselineBranch = baselineBranch
-	}
-	return
-}
-
-func (p *PastTrack) BaselineBranch() *WrappedTx {
-	return p.baselineBranch
-}
-
-func (p *PastTrack) MustGetBaselineState(ut *UTXOTangle) general.IndexedStateReader {
-	return ut.MustGetBaselineState(p.BaselineBranch())
-}
-
-func (p *PastTrack) Lines(prefix ...string) *lines.Lines {
-	ret := lines.New(prefix...)
-	if p == nil {
-		ret.Add("<nil>")
-	} else {
-		if p.baselineBranch == nil {
-			ret.Add("----- baseline branch: <nil>")
-		} else {
-			ret.Add("----- baseline branch: %s", p.baselineBranch.IDShort())
-		}
-		ret.Add("---- forks")
-		ret.Append(p.forks.Lines())
-	}
-	return ret
 }

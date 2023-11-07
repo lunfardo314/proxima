@@ -28,9 +28,10 @@ type (
 	}
 
 	PastTrack struct {
-		forks          *ForkSet
+		forks          *forkSet
 		baselineBranch *WrappedTx
 	}
+
 	Vertex struct {
 		Tx           *transaction.Transaction
 		Inputs       []*WrappedTx
@@ -51,7 +52,7 @@ type (
 		SN            byte // max 256 double spends per output. Tx will be dropped if exceeded
 	}
 
-	ForkSet struct {
+	forkSet struct {
 		m     map[WrappedOutput]byte
 		mutex sync.RWMutex
 	}

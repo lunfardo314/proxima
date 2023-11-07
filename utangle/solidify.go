@@ -189,7 +189,7 @@ func (v *Vertex) FetchMissingDependencies(ut *UTXOTangle) (conflict *core.Output
 		conflict = v.fetchMissingInputs(ut)
 	}
 	if v._isSolid() {
-		v.pastTrack.forks.CleanOrphaned()
+		v.pastTrack.forks.cleanOrphaned()
 		v.isSolid = true
 	}
 	return

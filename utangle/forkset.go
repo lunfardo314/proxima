@@ -7,7 +7,7 @@ import (
 	"github.com/lunfardo314/proxima/util/lines"
 )
 
-func NewFork(wOut WrappedOutput, forkSN byte) Fork {
+func newFork(wOut WrappedOutput, forkSN byte) Fork {
 	return Fork{
 		ConflictSetID: wOut,
 		SN:            forkSN,
@@ -18,20 +18,13 @@ func (f Fork) String() string {
 	return fmt.Sprintf("%s:%d", f.ConflictSetID.IDShort(), f.SN)
 }
 
-func NewForkSet() *ForkSet {
-	return &ForkSet{
+func newForkSet() *forkSet {
+	return &forkSet{
 		m: make(map[WrappedOutput]byte),
 	}
 }
 
-func (fs *ForkSet) Clone() *ForkSet {
-	fs.mutex.RLock()
-	defer fs.mutex.RUnlock()
-
-	return &ForkSet{m: util.CloneMapShallow(fs.m)}
-}
-
-func (fs *ForkSet) Lines(prefix ...string) *lines.Lines {
+func (fs *forkSet) lines(prefix ...string) *lines.Lines {
 	ret := lines.New(prefix...)
 
 	fs.mutex.RLock()
@@ -41,12 +34,12 @@ func (fs *ForkSet) Lines(prefix ...string) *lines.Lines {
 		return o1.Less(&o2)
 	})
 	for _, o := range sorted {
-		ret.Add(NewFork(o, fs.m[o]).String())
+		ret.Add(newFork(o, fs.m[o]).String())
 	}
 	return ret
 }
 
-func (fs *ForkSet) ConflictsWith(f Fork) bool {
+func (fs *forkSet) conflictsWith(f Fork) bool {
 	fs.mutex.RLock()
 	defer fs.mutex.RUnlock()
 
@@ -54,7 +47,7 @@ func (fs *ForkSet) ConflictsWith(f Fork) bool {
 	return found && sn != f.SN
 }
 
-func (fs *ForkSet) Insert(f Fork) bool {
+func (fs *forkSet) insert(f Fork) bool {
 	fs.mutex.Lock()
 	defer fs.mutex.Unlock()
 
@@ -66,7 +59,7 @@ func (fs *ForkSet) Insert(f Fork) bool {
 	return true
 }
 
-func HasConflict(fs1, fs2 *ForkSet) (conflict WrappedOutput) {
+func hasConflict(fs1, fs2 *forkSet) (conflict WrappedOutput) {
 	if fs1 == fs2 {
 		return
 	}
@@ -75,7 +68,7 @@ func HasConflict(fs1, fs2 *ForkSet) (conflict WrappedOutput) {
 	defer fs1.mutex.RUnlock()
 
 	for csid, sn := range fs1.m {
-		if fs2.ConflictsWith(NewFork(csid, sn)) {
+		if fs2.conflictsWith(newFork(csid, sn)) {
 			conflict = csid
 			return
 		}
@@ -83,8 +76,8 @@ func HasConflict(fs1, fs2 *ForkSet) (conflict WrappedOutput) {
 	return
 }
 
-// Absorb in case of conflict receiver is not consistent
-func (fs *ForkSet) Absorb(fs1 *ForkSet) (ret WrappedOutput) {
+// absorb in case of conflict receiver is not consistent
+func (fs *forkSet) absorb(fs1 *forkSet) (ret WrappedOutput) {
 	if fs == fs1 || fs1 == nil {
 		return
 	}
@@ -93,20 +86,20 @@ func (fs *ForkSet) Absorb(fs1 *ForkSet) (ret WrappedOutput) {
 	defer fs1.mutex.RUnlock()
 
 	for csid, sn := range fs1.m {
-		if !fs.Insert(NewFork(csid, sn)) {
+		if !fs.insert(newFork(csid, sn)) {
 			return csid
 		}
 	}
 	return
 }
 
-// AbsorbSafe same as Absorb but leaves receiver untouched in case of conflict
-func (fs *ForkSet) AbsorbSafe(fs1 *ForkSet) (conflict WrappedOutput) {
+// absorbSafe same as absorb but leaves receiver untouched in case of conflict
+func (fs *forkSet) absorbSafe(fs1 *forkSet) (conflict WrappedOutput) {
 	if fs == fs1 || fs1 == nil {
 		return
 	}
 
-	if conflict = HasConflict(fs, fs1); conflict.VID != nil {
+	if conflict = hasConflict(fs, fs1); conflict.VID != nil {
 		return
 	}
 
@@ -122,15 +115,7 @@ func (fs *ForkSet) AbsorbSafe(fs1 *ForkSet) (conflict WrappedOutput) {
 	return
 }
 
-func (fs *ForkSet) ContainsOutput(wOut WrappedOutput) (ret bool) {
-	fs.mutex.RLock()
-	defer fs.mutex.RUnlock()
-
-	_, ret = fs.m[wOut]
-	return
-}
-
-func (fs *ForkSet) CleanOrphaned() {
+func (fs *forkSet) cleanOrphaned() {
 	if fs == nil {
 		return
 	}
