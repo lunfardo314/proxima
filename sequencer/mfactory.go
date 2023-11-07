@@ -2,7 +2,6 @@ package sequencer
 
 import (
 	"crypto/ed25519"
-	"errors"
 	"fmt"
 	"slices"
 	"sync"
@@ -10,7 +9,6 @@ import (
 
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/general"
-	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/txbuilder"
 	"github.com/lunfardo314/proxima/utangle"
@@ -25,7 +23,7 @@ type (
 		mutex                       sync.RWMutex
 		seqName                     string
 		log                         *zap.SugaredLogger
-		tangle                      *utangle.UTXOTangle
+		utangle                     *utangle.UTXOTangle
 		tipPool                     *sequencerTipPool
 		controllerKey               ed25519.PrivateKey
 		proposal                    latestMilestoneProposal
@@ -104,7 +102,7 @@ func (seq *Sequencer) createMilestoneFactory() error {
 	ret := &milestoneFactory{
 		seqName:       seq.config.SequencerName,
 		log:           log,
-		tangle:        seq.glb.UTXOTangle(),
+		utangle:       seq.glb.UTXOTangle(),
 		tipPool:       tippool,
 		ownMilestones: ownMilestones,
 		controllerKey: seq.controllerKey,
@@ -375,64 +373,6 @@ func (mf *milestoneFactory) cleanOwnMilestonesIfNecessary() {
 		delete(mf.ownMilestones, vid)
 	}
 	mf.removedMilestonesSinceReset += len(toDelete)
-}
-
-func (mf *milestoneFactory) futureConeMilestonesOrdered(rootVID *utangle.WrappedTx, p proposerTask) []utangle.WrappedOutput {
-	mf.cleanOwnMilestonesIfNecessary()
-
-	mf.mutex.RLock()
-	defer mf.mutex.RUnlock()
-
-	//p.setTraceNAhead(1)
-	p.trace("futureConeMilestonesOrdered for root %s. Total %d own milestones", rootVID.LazyIDShort(), len(mf.ownMilestones))
-
-	om, ok := mf.ownMilestones[rootVID]
-	util.Assertf(ok, "futureConeMilestonesOrdered: milestone %s of chain %s is expected to be among set of own milestones (%d)",
-		rootVID.LazyIDShort(),
-		func() any { return mf.tipPool.chainID.Short() },
-		len(mf.ownMilestones))
-
-	rootOut := om.WrappedOutput
-	ordered := util.SortKeys(mf.ownMilestones, func(vid1, vid2 *utangle.WrappedTx) bool {
-		// by timestamp -> equivalent to topological order, ascending, i.e. older first
-		return vid1.Timestamp().Before(vid2.Timestamp())
-	})
-
-	visited := set.New[*utangle.WrappedTx](rootVID)
-	ret := append(make([]utangle.WrappedOutput, 0, len(ordered)), rootOut)
-	for _, vid := range ordered {
-		if !vid.IsOrphaned() && vid.IsSequencerMilestone() && visited.Contains(vid.SequencerPredecessor()) {
-			visited.Insert(vid)
-			ret = append(ret, mf.ownMilestones[vid].WrappedOutput)
-		}
-	}
-	return ret
-}
-
-// ownForksInAnotherSequencerPastCone sorted by coverage descending
-func (mf *milestoneFactory) ownForksInAnotherSequencerPastCone(anotherSeqMs *utangle.WrappedTx, p proposerTask) []utangle.WrappedOutput {
-	stateRdr := mf.tangle.MustGetBaselineState(anotherSeqMs)
-
-	anotherSeqID := anotherSeqMs.MustSequencerID()
-	rdr := multistate.MakeSugared(stateRdr)
-	rootOutput, err := rdr.GetChainOutput(&mf.tipPool.chainID)
-	if errors.Is(err, multistate.ErrNotFound) {
-		// cannot find own seqID in the state of anotherSeqID. The tree is empty
-		p.trace("cannot find own seqID %s in the state of another seq %s (%s). The tree is empty",
-			mf.tipPool.chainID.VeryShort(), anotherSeqMs.IDShort(), anotherSeqID.VeryShort())
-		return nil
-	}
-	util.AssertNoError(err)
-	p.trace("found own seqID %s in the state of another seq %s (%s)",
-		mf.tipPool.chainID.VeryShort(), anotherSeqMs.IDShort(), anotherSeqID.VeryShort())
-
-	rootWrapped, ok, _ := mf.tangle.GetWrappedOutput(&rootOutput.ID, rdr)
-	if !ok {
-		p.trace("cannot fetch wrapped root output %s", rootOutput.IDShort())
-		return nil
-	}
-	mf.addOwnMilestone(rootWrapped) // to ensure it is among own milestones
-	return mf.futureConeMilestonesOrdered(rootWrapped.VID, p)
 }
 
 // makeAdditionalInputsOutputs makes additional outputs according to commands in imputs.

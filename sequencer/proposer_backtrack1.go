@@ -10,7 +10,6 @@ import (
 	"github.com/lunfardo314/proxima/util"
 )
 
-// Deprecate
 type backtrackProposer1 struct {
 	proposerTaskGeneric
 	endorse          *utangle.WrappedTx
@@ -102,7 +101,7 @@ func (b *backtrackProposer1) calcExtensionChoices() {
 		b.trace("preselected %d milestones", len(endorsable))
 		// assumed order is descending ledger coverage
 		for _, vid := range endorsable {
-			b.extensionChoices = b.factory.ownForksInAnotherSequencerPastCone(vid, b)
+			b.extensionChoices = b.extensionChoicesInEndorsementTargetPastCone(vid)
 			if len(b.extensionChoices) > 0 {
 				b.endorse = vid
 				break

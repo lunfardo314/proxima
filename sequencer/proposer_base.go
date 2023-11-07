@@ -55,7 +55,7 @@ func (b *baseProposer) proposeBase(extend utangle.WrappedOutput) (*transaction.T
 	if b.targetTs.TimeTick() == 0 {
 		b.trace("making branch, extending %s", extend.IDShort())
 		// generate branch, no fee outputs are consumed
-		baseStem := extend.VID.BaseStemOutput(b.factory.tangle)
+		baseStem := extend.VID.BaseStemOutput(b.factory.utangle)
 		if baseStem == nil {
 			// base stem is not available for a milestone which is virtual and non-branch
 			b.factory.log.Errorf("proposeBase.force exit: stem not available, %s cannot be extended to a branch", extend.IDShort())

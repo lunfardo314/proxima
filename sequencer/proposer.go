@@ -2,10 +2,12 @@ package sequencer
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/transaction"
 	utangle "github.com/lunfardo314/proxima/utangle"
 	"github.com/lunfardo314/proxima/util"
@@ -29,6 +31,12 @@ type (
 		alreadyProposed set.Set[[32]byte]
 		traceNAhead     atomic.Int64
 		startTime       time.Time
+		visited         set.Set[extendEndorsePair]
+	}
+
+	extendEndorsePair struct {
+		extend  *utangle.WrappedTx
+		endorse *utangle.WrappedTx
 	}
 
 	proposerTaskConstructor func(mf *milestoneFactory, targetTs core.LogicalTime) proposerTask
@@ -61,7 +69,22 @@ func newProposerGeneric(mf *milestoneFactory, targetTs core.LogicalTime, strateg
 		targetTs:        targetTs,
 		strategyName:    strategyName,
 		alreadyProposed: set.New[[32]byte](),
+		visited:         set.New[extendEndorsePair](),
 	}
+}
+
+func (c *proposerTaskGeneric) storeVisited(extend, endorse *utangle.WrappedTx) {
+	c.visited.Insert(extendEndorsePair{
+		extend:  extend,
+		endorse: endorse,
+	})
+}
+
+func (c *proposerTaskGeneric) alreadyVisited(extend, endorse *utangle.WrappedTx) bool {
+	return c.visited.Contains(extendEndorsePair{
+		extend:  extend,
+		endorse: endorse,
+	})
 }
 
 func (c *proposerTaskGeneric) name() string {
@@ -131,7 +154,7 @@ func (c *proposerTaskGeneric) assessAndAcceptProposal(tx *transaction.Transactio
 	}
 	c.alreadyProposed.Insert(hashOfProposal)
 
-	coverage, err := c.factory.tangle.LedgerCoverageFromTransaction(tx)
+	coverage, err := c.factory.utangle.LedgerCoverageFromTransaction(tx)
 	if err != nil {
 		c.factory.log.Warnf("assessAndAcceptProposal::LedgerCoverageFromTransaction (%s, %s): %v", tx.Timestamp(), taskName, err)
 	}
@@ -205,6 +228,69 @@ func (c *proposerTaskGeneric) placeProposalIfRelevant(mdProposed *proposedMilest
 		c.factory.tipPool.numOutputsInBuffer(),
 	)
 	return ""
+}
+
+// extensionChoicesInEndorsementTargetPastCone sorted by coverage descending
+// excludes those pairs which are marked already visited
+func (c *proposerTaskGeneric) extensionChoicesInEndorsementTargetPastCone(endorsementTarget *utangle.WrappedTx) []utangle.WrappedOutput {
+	stateRdr := c.factory.utangle.MustGetBaselineState(endorsementTarget)
+
+	anotherSeqID := endorsementTarget.MustSequencerID()
+	rdr := multistate.MakeSugared(stateRdr)
+	rootOutput, err := rdr.GetChainOutput(&c.factory.tipPool.chainID)
+	if errors.Is(err, multistate.ErrNotFound) {
+		// cannot find own seqID in the state of anotherSeqID. The tree is empty
+		c.trace("cannot find own seqID %s in the state of another seq %s (%s). The tree is empty",
+			c.factory.tipPool.chainID.VeryShort(), endorsementTarget.IDShort(), anotherSeqID.VeryShort())
+		return nil
+	}
+	util.AssertNoError(err)
+	c.trace("found own seqID %s in the state of another seq %s (%s)",
+		c.factory.tipPool.chainID.VeryShort(), endorsementTarget.IDShort(), anotherSeqID.VeryShort())
+
+	rootWrapped, ok, _ := c.factory.utangle.GetWrappedOutput(&rootOutput.ID, rdr)
+	if !ok {
+		c.trace("cannot fetch wrapped root output %s", rootOutput.IDShort())
+		return nil
+	}
+	c.factory.addOwnMilestone(rootWrapped) // to ensure it is among own milestones
+
+	cone := c.futureConeMilestonesOrdered(rootWrapped.VID)
+	return util.FilterSlice(cone, func(extensionChoice utangle.WrappedOutput) bool {
+		return !c.alreadyVisited(extensionChoice.VID, endorsementTarget)
+	})
+}
+
+func (c *proposerTaskGeneric) futureConeMilestonesOrdered(rootVID *utangle.WrappedTx) []utangle.WrappedOutput {
+	c.factory.cleanOwnMilestonesIfNecessary()
+
+	c.factory.mutex.RLock()
+	defer c.factory.mutex.RUnlock()
+
+	//p.setTraceNAhead(1)
+	c.trace("futureConeMilestonesOrdered for root %s. Total %d own milestones", rootVID.LazyIDShort(), len(c.factory.ownMilestones))
+
+	om, ok := c.factory.ownMilestones[rootVID]
+	util.Assertf(ok, "futureConeMilestonesOrdered: milestone %s of chain %s is expected to be among set of own milestones (%d)",
+		rootVID.LazyIDShort(),
+		func() any { return c.factory.tipPool.chainID.Short() },
+		len(c.factory.ownMilestones))
+
+	rootOut := om.WrappedOutput
+	ordered := util.SortKeys(c.factory.ownMilestones, func(vid1, vid2 *utangle.WrappedTx) bool {
+		// by timestamp -> equivalent to topological order, ascending, i.e. older first
+		return vid1.Timestamp().Before(vid2.Timestamp())
+	})
+
+	visited := set.New[*utangle.WrappedTx](rootVID)
+	ret := append(make([]utangle.WrappedOutput, 0, len(ordered)), rootOut)
+	for _, vid := range ordered {
+		if !vid.IsOrphaned() && vid.IsSequencerMilestone() && visited.Contains(vid.SequencerPredecessor()) {
+			visited.Insert(vid)
+			ret = append(ret, c.factory.ownMilestones[vid].WrappedOutput)
+		}
+	}
+	return ret
 }
 
 // betterMilestone returns if vid1 is strongly better than vid2

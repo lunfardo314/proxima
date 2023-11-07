@@ -25,7 +25,7 @@ func (seq *Sequencer) updateInfo(msOutput utangle.WrappedOutput, avgProposalDura
 		NumConsumedFeeOutputs:  nConsumed,
 		NumFeeOutputsInTippool: seq.factory.tipPool.numOutputsInBuffer(),
 		NumOtherMsInTippool:    seq.factory.tipPool.numOtherMilestones(),
-		LedgerCoverage:         seq.factory.tangle.LedgerCoverage(msOutput.VID),
+		LedgerCoverage:         seq.factory.utangle.LedgerCoverage(msOutput.VID),
 		PrevLedgerCoverage:     seq.info.LedgerCoverage,
 		AvgProposalDuration:    avgProposalDuration,
 		NumProposals:           numProposals,

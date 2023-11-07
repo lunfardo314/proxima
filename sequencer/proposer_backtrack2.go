@@ -9,10 +9,11 @@ import (
 	"github.com/lunfardo314/proxima/util"
 )
 
-// Deprecate
-type backtrackProposer2 struct {
-	proposerTaskGeneric
-}
+type (
+	backtrackProposer2 struct {
+		proposerTaskGeneric
+	}
+)
 
 const (
 	BacktrackProposer2Name    = "btrack2"
@@ -40,16 +41,20 @@ func (b *backtrackProposer2) run() {
 	startTime := time.Now()
 	for b.factory.proposal.continueCandidateProposing(b.targetTs) {
 		endorse, extensionChoices := b.calcExtensionChoices()
-		if len(extensionChoices) == 0 {
-			time.Sleep(10 * time.Millisecond)
-			continue
+		if len(extensionChoices) > 0 {
+			b.startProposingTime()
 		}
-		util.Assertf(endorse != nil, "endorse != nil")
-
-		b.startProposingTime()
 		for _, extend := range extensionChoices {
+			pair := extendEndorsePair{
+				extend:  extend.VID,
+				endorse: endorse,
+			}
+			if b.visited.Contains(pair) {
+				continue
+			}
 			if tx := b.generateCandidate(extend, endorse); tx != nil {
 				b.assessAndAcceptProposal(tx, extend, startTime, b.name())
+				b.visited.Insert(pair)
 			}
 		}
 		time.Sleep(10 * time.Millisecond)
@@ -81,7 +86,7 @@ func (b *backtrackProposer2) calcExtensionChoices() (endorse *utangle.WrappedTx,
 		b.trace("preselected %d milestones", len(endorsable))
 		// assumed order is descending ledger coverage
 		for _, vid := range endorsable {
-			extensionChoices = b.factory.ownForksInAnotherSequencerPastCone(vid, b)
+			extensionChoices = b.extensionChoicesInEndorsementTargetPastCone(vid)
 			if len(extensionChoices) > 0 {
 				endorse = vid
 				return

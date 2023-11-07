@@ -238,7 +238,7 @@ func (seq *Sequencer) chooseNextTargetTime(avgProposalDuration time.Duration) co
 	if currentMs := seq.factory.getLatestMilestone(); currentMs.VID != nil {
 		prevMilestoneTs = currentMs.Timestamp()
 	} else {
-		seqOut, stemOut, found := seq.factory.tangle.GetSequencerBootstrapOutputs(seq.factory.tipPool.chainID)
+		seqOut, stemOut, found := seq.factory.utangle.GetSequencerBootstrapOutputs(seq.factory.tipPool.chainID)
 		util.Assertf(found, "GetSequencerBootstrapOutputs failed")
 
 		prevMilestoneTs = core.MaxLogicalTime(seqOut.Timestamp(), stemOut.Timestamp())

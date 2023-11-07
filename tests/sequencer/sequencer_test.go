@@ -646,7 +646,7 @@ func TestNSequencers(t *testing.T) {
 
 		sequencer.SetTraceProposer(sequencer.BaseProposerName, false)
 		sequencer.SetTraceProposer(sequencer.BacktrackProposer1Name, false)
-		sequencer.SetTraceProposer(sequencer.BacktrackProposer2Name, true)
+		sequencer.SetTraceProposer(sequencer.BacktrackProposer2Name, false)
 
 		r.createSequencers(maxTxInputs, maxSlots, 5, zapcore.InfoLevel, !tagAlong)
 
