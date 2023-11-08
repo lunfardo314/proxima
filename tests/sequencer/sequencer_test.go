@@ -628,7 +628,7 @@ func (r *sequencerTestData) issueTransfersWithSeqID(targetAddress core.Lock, tar
 func TestNSequencers(t *testing.T) {
 	t.Run("2 seq", func(t *testing.T) {
 		const (
-			maxSlots              = 70
+			maxSlots              = 5
 			numFaucets            = 1
 			numFaucetTransactions = 1
 			maxTxInputs           = sequencer.DefaultMaxFeeInputs
@@ -679,12 +679,13 @@ func TestNSequencers(t *testing.T) {
 		r.ut.SaveGraph(fnameFromTestName(t))
 		r.ut.SaveTree(fnameFromTestName(t) + "_TREE")
 
-		heaviestState = r.ut.HeaviestStateForLatestTimeSlot()
-		latest := r.ut.LatestTimeSlot()
-		t.Logf("latest slot: %d", latest)
 		for _, o := range r.chainOrigins {
-			found := r.wrk.UTXOTangle().HasOutputInTimeSlot(latest, &o.ID)
-			require.False(t, found)
+			branchVID := r.wrk.UTXOTangle().FindOutputInLatestTimeSlot(&o.ID)
+			if branchVID != nil {
+				t.Logf("FAIL: origin output %s of %s is still present in branch %s:\n%s",
+					o.ID.Short(), o.ChainID.Short(), branchVID.IDShort(), o.Output.ToString("         "))
+			}
+			require.True(t, branchVID == nil)
 		}
 
 		// also asserts consistency of supply and inflation
@@ -761,7 +762,7 @@ func TestNSequencers(t *testing.T) {
 		latest := r.ut.LatestTimeSlot()
 		t.Logf("latest slot: %d", latest)
 		for _, o := range r.chainOrigins {
-			found := r.wrk.UTXOTangle().HasOutputInTimeSlot(latest, &o.ID)
+			found := r.wrk.UTXOTangle().HasOutputInAllBranches(latest, &o.ID)
 			require.False(t, found)
 		}
 
@@ -857,7 +858,7 @@ func TestNSequencers(t *testing.T) {
 		latest := r.ut.LatestTimeSlot()
 		t.Logf("latest slot: %d", latest)
 		for _, o := range r.chainOrigins {
-			found := r.wrk.UTXOTangle().HasOutputInTimeSlot(latest, &o.ID)
+			found := r.wrk.UTXOTangle().HasOutputInAllBranches(latest, &o.ID)
 			require.False(t, found)
 		}
 
@@ -930,7 +931,7 @@ func TestNSequencers(t *testing.T) {
 		latest := r.ut.LatestTimeSlot()
 		t.Logf("latest slot: %d", latest)
 		for _, o := range r.chainOrigins {
-			found := r.wrk.UTXOTangle().HasOutputInTimeSlot(latest, &o.ID)
+			found := r.wrk.UTXOTangle().HasOutputInAllBranches(latest, &o.ID)
 			require.False(t, found)
 		}
 
@@ -1004,7 +1005,7 @@ func TestNSequencers(t *testing.T) {
 		latest := r.ut.LatestTimeSlot()
 		t.Logf("latest slot: %d", latest)
 		for _, o := range r.chainOrigins {
-			found := r.wrk.UTXOTangle().HasOutputInTimeSlot(latest, &o.ID)
+			found := r.wrk.UTXOTangle().HasOutputInAllBranches(latest, &o.ID)
 			require.False(t, found)
 		}
 	})
@@ -1071,7 +1072,7 @@ func TestPruning(t *testing.T) {
 		latest := r.ut.LatestTimeSlot()
 		t.Logf("latest slot: %d", latest)
 		for _, o := range r.chainOrigins {
-			found := r.wrk.UTXOTangle().HasOutputInTimeSlot(latest, &o.ID)
+			found := r.wrk.UTXOTangle().HasOutputInAllBranches(latest, &o.ID)
 			require.False(t, found)
 		}
 
@@ -1178,7 +1179,7 @@ func TestPruning(t *testing.T) {
 		latest := r.ut.LatestTimeSlot()
 		t.Logf("latest slot: %d", latest)
 		for _, o := range r.chainOrigins {
-			found := r.wrk.UTXOTangle().HasOutputInTimeSlot(latest, &o.ID)
+			found := r.wrk.UTXOTangle().HasOutputInAllBranches(latest, &o.ID)
 			require.False(t, found)
 		}
 

@@ -76,7 +76,7 @@ func (ctx *TransactionContext) Lines(prefix ...string) *lines.Lines {
 		arr := lazybytes.ArrayFromBytesReadOnly(unlockBin)
 		ret.Add("  #%d: %s", idx, oid.String()).
 			Add("       bytes (%d): %s", len(out.Bytes()), hex.EncodeToString(out.Bytes())).
-			Append(out.ToLines("     ")).
+			Append(out.Lines("     ")).
 			Add("     Unlock data: %s", arr.ParsedString())
 		return true
 	})
@@ -102,7 +102,7 @@ func (ctx *TransactionContext) Lines(prefix ...string) *lines.Lines {
 		}
 		ret.Add("  #%d %s", idx, oid.String()).
 			Add("       bytes (%d): %s", len(out.Bytes()), hex.EncodeToString(out.Bytes())).
-			Append(out.ToLines("     ")).
+			Append(out.Lines("     ")).
 			Add(chainIdStr)
 		return true
 	})

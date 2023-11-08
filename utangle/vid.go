@@ -2,6 +2,7 @@ package utangle
 
 import (
 	"bytes"
+	"fmt"
 	"math"
 	"sync"
 	"time"
@@ -490,7 +491,7 @@ func (vid *WrappedTx) Lines(prefix ...string) *lines.Lines {
 			})
 			for _, i := range idxs {
 				ret.Add("    #%d :", i)
-				ret.Append(v.outputs[i].ToLines("     "))
+				ret.Append(v.outputs[i].Lines("     "))
 			}
 		},
 		Orphaned: func() {
@@ -596,8 +597,14 @@ func (vid *WrappedTx) addConsumerOfOutput(outputIndex byte, consumer *WrappedTx,
 	case 0:
 		descendants = make([]*WrappedTx, 0, 1)
 	case 1:
+		fmt.Printf(">>>>>>>>> adding consumer %s of output %d of %s\n", consumer.IDShort(), outputIndex, vid.IDShort())
+
 		f := newFork(WrappedOutput{VID: vid, Index: outputIndex}, 0)
-		descendants[0].propagateNewForkToFutureCone(f, ut, set.New[*WrappedTx]())
+
+		fmt.Printf(">>>>>>>>> %s already has 1 consumer %s -> propagate fork %s\n", vid.IDShort(), descendants[0].IDShort(), f.String())
+
+		descendants[0].propagateNewForkToFutureCone(f, ut, set.New[*WrappedTx]()) // FIXME bug
+
 		consumer.addFork(newFork(WrappedOutput{VID: vid, Index: outputIndex}, 1))
 	}
 	vid.consumers[outputIndex] = append(descendants, consumer) // may result in repeating but that is ok
@@ -611,6 +618,9 @@ func (vid *WrappedTx) propagateNewForkToFutureCone(f Fork, ut *UTXOTangle, visit
 		return
 	}
 	visited.Insert(vid)
+
+	fmt.Printf(">>>>>>>>>>> propagateNewForkToFutureCone: inserted fork %s to %s\n", f.String(), vid.IDShort())
+
 	success := vid.addFork(f)
 	util.Assertf(success, "unexpected conflict while propagating new fork")
 

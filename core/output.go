@@ -302,10 +302,10 @@ func (o *Output) SequencerOutputData() (*SequencerOutputData, bool) {
 }
 
 func (o *Output) ToString(prefix ...string) string {
-	return o.ToLines(prefix...).String()
+	return o.Lines(prefix...).String()
 }
 
-func (o *Output) ToLines(prefix ...string) *lines.Lines {
+func (o *Output) Lines(prefix ...string) *lines.Lines {
 	ret := lines.New()
 	pref := ""
 	if len(prefix) > 0 {
@@ -416,7 +416,7 @@ func OutputsWithIdToString(outs ...*OutputWithID) string {
 	ret := lines.New()
 	for i, o := range outs {
 		ret.Add("%d : %s", i, o.ID.Short()).
-			Append(o.Output.ToLines("      "))
+			Append(o.Output.Lines("      "))
 	}
 	return ret.String()
 }

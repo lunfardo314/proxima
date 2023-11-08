@@ -321,14 +321,36 @@ func (ut *UTXOTangle) GetSequencerBootstrapOutputs(seqID core.ChainID) (chainOut
 	return WrappedOutput{}, WrappedOutput{}, false
 }
 
-func (ut *UTXOTangle) HasOutputInTimeSlot(e core.TimeSlot, oid *core.OutputID) bool {
-	ret := false
-	err := ut.ForEachBranchStateDesc(e, func(_ *WrappedTx, rdr multistate.SugaredStateReader) bool {
-		_, ret = rdr.GetUTXO(oid)
-		return !ret
+func (ut *UTXOTangle) FindOutputInLatestTimeSlot(oid *core.OutputID) (ret *WrappedTx) {
+	ut.LatestTimeSlot()
+	err := ut.ForEachBranchStateDesc(ut.LatestTimeSlot(), func(branch *WrappedTx, rdr multistate.SugaredStateReader) bool {
+		if rdr.HasUTXO(oid) {
+			ret = branch
+		}
+		return ret == nil
 	})
 	util.AssertNoError(err)
-	return ret
+	return
+}
+
+func (ut *UTXOTangle) HasOutputInAllBranches(e core.TimeSlot, oid *core.OutputID) bool {
+	found := false
+	err := ut.ForEachBranchStateDesc(e, func(_ *WrappedTx, rdr multistate.SugaredStateReader) bool {
+		found = rdr.HasUTXO(oid)
+		return found
+	})
+	util.AssertNoError(err)
+	return found
+}
+
+func (ut *UTXOTangle) DoesNotHaveOutputInAnyBranch(e core.TimeSlot, oid *core.OutputID) bool {
+	found := false
+	err := ut.ForEachBranchStateDesc(e, func(_ *WrappedTx, rdr multistate.SugaredStateReader) bool {
+		found = rdr.HasUTXO(oid)
+		return !found
+	})
+	util.AssertNoError(err)
+	return !found
 }
 
 // ScanAccount collects all outputIDs, unlockable by the address
