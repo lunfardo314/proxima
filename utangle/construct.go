@@ -56,7 +56,7 @@ func (ut *UTXOTangle) attach(vid *WrappedTx) (conflict *WrappedOutput) {
 	vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
 		// book consumer into the inputs. Store forks (double spends), detect new ones and propagate to the future cone
 		v.forEachInputDependency(func(i byte, inp *WrappedTx) bool {
-			inp.addConsumerOfOutput(v.Tx.MustOutputIndexOfTheInput(i), vid, ut)
+			inp.addConsumerOfOutput(v.Tx.MustOutputIndexOfTheInput(i), vid)
 			return true
 		})
 		// maintain endorser list in predecessors

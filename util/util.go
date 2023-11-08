@@ -4,6 +4,7 @@ import (
 	"crypto/ed25519"
 	"encoding/hex"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -226,6 +227,16 @@ func FilterSlice[T any](slice []T, filter func(el T) bool, maxElems ...int) []T 
 		slice[i] = nilElem
 	}
 	return ret
+}
+
+func AppendUnique[T comparable](slice []T, elems ...T) []T {
+	slice = slices.Grow(slice, len(elems))
+	for _, el := range elems {
+		if slices.Index(slice, el) < 0 {
+			slice = append(slice, el)
+		}
+	}
+	return slice
 }
 
 func FindFirstKeyInMap[K comparable, V any](m map[K]V, cond ...func(k K) bool) (K, bool) {

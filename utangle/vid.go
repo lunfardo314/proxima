@@ -2,8 +2,6 @@ package utangle
 
 import (
 	"bytes"
-	"fmt"
-	"math"
 	"sync"
 	"time"
 
@@ -24,8 +22,10 @@ type (
 		mutex sync.RWMutex // protects _genericWrapper
 		_genericWrapper
 		// future cone references. Protected by global utangle lock
-		consumers map[byte][]*WrappedTx
-		endorsers []*WrappedTx
+		// numConsumers contains number of consumers for outputs
+		numConsumers map[byte]uint16
+		// descendants is a list of consumers and endorsers, repeated once
+		descendants []*WrappedTx
 	}
 
 	WrappedOutput struct {
@@ -585,32 +585,29 @@ func PanicOrphaned() {
 }
 
 // addConsumerOfOutput must be called from globally locked utangle environment
-func (vid *WrappedTx) addConsumerOfOutput(outputIndex byte, consumer *WrappedTx, ut *UTXOTangle) {
-	if vid.consumers == nil {
-		vid.consumers = make(map[byte][]*WrappedTx)
+func (vid *WrappedTx) addConsumerOfOutput(outputIndex byte, consumer *WrappedTx) {
+	if vid.numConsumers == nil {
+		vid.numConsumers = make(map[byte]uint16)
 	}
-	descendants := vid.consumers[outputIndex]
-	util.Assertf(len(descendants) < math.MaxUint16, "len(descendants)<math.MaxUint16")
-
-	sn := uint16(len(descendants))
+	if len(vid.descendants) == 0 {
+		vid.descendants = make([]*WrappedTx, 0)
+	}
+	sn := vid.numConsumers[outputIndex]
 	switch sn {
 	case 0:
-		descendants = make([]*WrappedTx, 0, 1)
+		vid.numConsumers[outputIndex] = 1
 	case 1:
-		fmt.Printf(">>>>>>>>> adding consumer %s of output %d of %s\n", consumer.IDShort(), outputIndex, vid.IDShort())
-
 		f := newFork(WrappedOutput{VID: vid, Index: outputIndex}, 0)
-
-		fmt.Printf(">>>>>>>>> %s already has 1 consumer %s -> propagate fork %s\n", vid.IDShort(), descendants[0].IDShort(), f.String())
-
-		descendants[0].propagateNewForkToFutureCone(f, ut, set.New[*WrappedTx]()) // FIXME bug
-
+		//fmt.Printf(">>>>>>>>> adding consumer %s of output %d of %s\n", consumer.IDShort(), outputIndex, vid.IDShort())
+		//fmt.Printf(">>>>>>>>> %s already has 1 consumer %s -> propagate fork %s\n", vid.IDShort(), descendants[0].IDShort(), f.String())
+		vid.propagateNewForkToFutureCone(f, set.New[*WrappedTx]())
 		consumer.addFork(newFork(WrappedOutput{VID: vid, Index: outputIndex}, 1))
 	}
-	vid.consumers[outputIndex] = append(descendants, consumer) // may result in repeating but that is ok
+	vid.descendants = util.AppendUnique(vid.descendants, consumer)
+	vid.numConsumers[outputIndex] = sn + 1
 }
 
-func (vid *WrappedTx) propagateNewForkToFutureCone(f Fork, ut *UTXOTangle, visited set.Set[*WrappedTx]) {
+func (vid *WrappedTx) propagateNewForkToFutureCone(f Fork, visited set.Set[*WrappedTx]) {
 	if vid.IsOrphaned() {
 		return
 	}
@@ -619,15 +616,14 @@ func (vid *WrappedTx) propagateNewForkToFutureCone(f Fork, ut *UTXOTangle, visit
 	}
 	visited.Insert(vid)
 
-	fmt.Printf(">>>>>>>>>>> propagateNewForkToFutureCone: inserted fork %s to %s\n", f.String(), vid.IDShort())
+	if f.ConflictSetID.VID != vid {
+		ok := vid.addFork(f)
+		util.Assertf(ok, "unexpected conflict while propagating new fork")
+		//fmt.Printf(">>>>>>>>>>> propagateNewForkToFutureCone: inserted fork %s to %s\n", f.String(), vid.IDShort())
+	}
 
-	success := vid.addFork(f)
-	util.Assertf(success, "unexpected conflict while propagating new fork")
-
-	for _, descendants := range vid.consumers {
-		for _, vidDesc := range descendants {
-			vidDesc.propagateNewForkToFutureCone(f, ut, visited)
-		}
+	for _, d := range vid.descendants {
+		d.propagateNewForkToFutureCone(f, visited)
 	}
 }
 
@@ -642,11 +638,10 @@ func (vid *WrappedTx) addFork(f Fork) bool {
 }
 
 func (vid *WrappedTx) addEndorser(endorser *WrappedTx) {
-	if len(vid.endorsers) == 0 {
-		vid.endorsers = []*WrappedTx{endorser}
-	} else {
-		vid.endorsers = append(vid.endorsers, endorser)
+	if len(vid.descendants) == 0 {
+		vid.descendants = make([]*WrappedTx, 0)
 	}
+	vid.descendants = util.AppendUnique(vid.descendants, endorser)
 }
 
 func (vid *WrappedTx) BaselineBranch() (ret *WrappedTx) {
