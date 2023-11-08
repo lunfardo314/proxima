@@ -197,6 +197,10 @@ func (v *Vertex) reMergeParentPastTracks() (conflict *WrappedOutput) {
 	v.forEachInputDependency(func(i byte, vidInput *WrappedTx) bool {
 		util.Assertf(vidInput != nil, "vidInput != nil")
 		conflict = v.pastTrack.AbsorbPastTrack(vidInput)
+		//if conflict != nil {
+		//	fmt.Printf(">>>>>>>>>>>>>> conflict %s\n >>>>>>> while merging input %s:\n%s\n>>>>>>>>> into\n%s\n",
+		//		conflict.IDShort(), vidInput.IDShort(), vidInput.PastTrackLines().String(), v.pastTrack.Lines().String())
+		//}
 		return conflict == nil
 	})
 
@@ -206,6 +210,8 @@ func (v *Vertex) reMergeParentPastTracks() (conflict *WrappedOutput) {
 	v.forEachEndorsement(func(_ byte, vidEndorsed *WrappedTx) bool {
 		util.Assertf(vidEndorsed != nil, "vidEndorsed != nil")
 		conflict = v.pastTrack.AbsorbPastTrack(vidEndorsed)
+		//fmt.Printf(">>>>>>>>>>>>>> conflict %s\n >>>>>>> while merging endorsement %s:\n%s\n>>>>>>>>> into\n%s\n",
+		//	conflict.IDShort(), vidEndorsed.IDShort(), vidEndorsed.PastTrackLines().String(), v.pastTrack.Lines().String())
 		return conflict == nil
 	})
 	return

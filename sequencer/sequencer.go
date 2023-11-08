@@ -339,7 +339,7 @@ func (seq *Sequencer) mainLoop() {
 		timerStart := time.Now()
 
 		targetTs := seq.chooseNextTargetTime(avgProposalDuration)
-		util.Assertf(targetTs.After(seq.prevTimeTarget), "target (%s) must be after seq.prevTimeTarget (%s)",
+		util.Assertf(!targetTs.Before(seq.prevTimeTarget), "wrong target ts %s:  must be before previous: %s",
 			targetTs.String(), seq.prevTimeTarget.String())
 		seq.prevTimeTarget = targetTs
 
@@ -368,10 +368,10 @@ func (seq *Sequencer) mainLoop() {
 		seq.trace("produced milestone %s for the target logical time %s in %v, avg proposal: %v",
 			ms.IDShort(), targetTs, time.Since(timerStart), avgProposalDuration)
 
-		msOutput := seq.submitTransaction(ms)
+		msOutput := seq.submitMilestone(ms)
 		if msOutput == nil {
-			seq.log.Warnf("failed to submit milestone %d -- %s", milestoneCount+1, msOutput.IDShort())
-			util.Panicf("debug exit")
+			//seq.log.Warnf("failed to submit milestone %d", milestoneCount+1, msOutput.IDShort())
+			//util.Panicf("debug exit")
 			continue
 		}
 		seq.factory.addOwnMilestone(*msOutput)
@@ -388,14 +388,17 @@ func (seq *Sequencer) mainLoop() {
 
 const submitTransactionTimeout = 5 * time.Second
 
-// submitTransaction submits transaction to the workflow and waits for deterministic status: either added to the tangle or rejected
+// submitMilestone submits transaction to the workflow and waits for deterministic status: either added to the tangle or rejected
 // The temporary VID of the transaction is replaced with the real one upon submission
-func (seq *Sequencer) submitTransaction(tx *transaction.Transaction) *utangle.WrappedOutput {
+func (seq *Sequencer) submitMilestone(tx *transaction.Transaction) *utangle.WrappedOutput {
 	util.Assertf(tx != nil, "tx != nil")
 
 	retVID, err := seq.glb.TransactionInWaitAppendWrap(tx.Bytes(), submitTransactionTimeout, workflow.OptionWithSourceSequencer)
 	if err != nil {
-		seq.log.Errorf("submitTransaction: %v", err)
+		seq.log.Warnf("submitMilestone: %v", err)
+		seq.log.Errorf("====================== failed milestone ==================\n%s", tx.ToString(seq.factory.utangle.GetUTXO))
+		seq.factory.utangle.SaveGraph("submit_milestone_fail")
+		util.Panicf("submitMilestone: %v", err)
 		return nil
 	}
 	seq.log.Debugf("submited milestone:: %s", tx.IDShort())

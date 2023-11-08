@@ -644,6 +644,8 @@ func TestNSequencers(t *testing.T) {
 		require.NoError(t, err)
 		t.Logf("chain origins transaction has been added to the tangle: %s", r.txChainOrigins.IDShort())
 
+		t.Logf(">>>>>>>>> chain origins tx:\n%s", r.txChainOrigins.Lines(r.txChainOrigins.InputLoaderByIndex(r.ut.GetUTXO)))
+
 		sequencer.SetTraceProposer(sequencer.BaseProposerName, false)
 		sequencer.SetTraceProposer(sequencer.BacktrackProposer1Name, false)
 		sequencer.SetTraceProposer(sequencer.BacktrackProposer2Name, false)
@@ -684,6 +686,11 @@ func TestNSequencers(t *testing.T) {
 			if branchVID != nil {
 				t.Logf("FAIL: origin output %s of %s is still present in branch %s:\n%s",
 					o.ID.Short(), o.ChainID.Short(), branchVID.IDShort(), o.Output.ToString("         "))
+
+				//rdr := r.wrk.UTXOTangle().MustGetIndexedStateReader(branchVID.ID())
+				//o1, err := rdr.GetUTXOForChainID(&o.ChainID)
+				//require.NoError(t, err)
+				//t.Logf("branch: %s, chainID: %s, oid: %s", branchVID.IDShort(), o.ChainID.VeryShort(), o1.ID.Short())
 			}
 			require.True(t, branchVID == nil)
 		}
