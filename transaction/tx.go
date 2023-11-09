@@ -306,7 +306,7 @@ func CheckTimePace() TxValidationOption {
 		ts := tx.Timestamp()
 		tx.ForEachInput(func(_ byte, oid *core.OutputID) bool {
 			if !core.ValidTimePace(oid.Timestamp(), ts) {
-				err = fmt.Errorf("timestamp of input can't be in the future: %s", oid.Short())
+				err = fmt.Errorf("timestamp of input violates time pace constraint: %s", oid.Short())
 				return false
 			}
 			return true

@@ -42,6 +42,11 @@ func (b *backtrackProposer2) run() {
 	for b.factory.proposal.continueCandidateProposing(b.targetTs) {
 		endorse, extensionChoices := b.calcExtensionChoices()
 
+		for _, ext := range extensionChoices {
+			util.Assertf(core.ValidTimePace(ext.Timestamp(), b.targetTs), "extension choice %s violates time constraint. Target ts: %s",
+				ext.IDShort(), b.targetTs.String())
+		}
+
 		//b.setTraceNAhead(1)
 		if len(extensionChoices) > 0 {
 			b.trace("calcExtensionChoices: endorse: %s, extension choices:\n%s", endorse.IDShort(), milestoneSliceString(extensionChoices))

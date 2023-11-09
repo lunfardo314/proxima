@@ -677,8 +677,9 @@ func (vid *WrappedTx) _collectMutationData(md *_mutationData) (conflict WrappedO
 				inp._collectMutationData(md)
 
 				inputID := v.Tx.MustInputAt(i)
-				if o, produced := md.outputMutations[inputID]; produced {
-					util.Assertf(o != nil, "unexpected double DEL mutation at %s", inputID.Short())
+				if _, produced := md.outputMutations[inputID]; produced {
+					// disable assert: it may be deleted repeatedly along endorsement lines
+					// util.Assertf(o != nil, "unexpected double DEL mutation at %s", inputID.Short())
 					delete(md.outputMutations, inputID)
 				} else {
 					if md.baselineStateReader.HasUTXO(&inputID) {
