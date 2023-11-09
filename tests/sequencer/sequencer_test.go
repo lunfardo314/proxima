@@ -1024,11 +1024,6 @@ func TestNSequencers(t *testing.T) {
 			if branchVID != nil {
 				t.Logf("FAIL: origin output %s of %s is still present in branch %s:\n%s",
 					o.ID.Short(), o.ChainID.Short(), branchVID.IDShort(), o.Output.ToString("         "))
-
-				//rdr := r.wrk.UTXOTangle().MustGetIndexedStateReader(branchVID.ID())
-				//o1, err := rdr.GetUTXOForChainID(&o.ChainID)
-				//require.NoError(t, err)
-				//t.Logf("branch: %s, chainID: %s, oid: %s", branchVID.IDShort(), o.ChainID.VeryShort(), o1.ID.Short())
 			}
 			require.True(t, branchVID == nil)
 		}

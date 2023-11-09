@@ -143,7 +143,7 @@ func (c *proposerTaskGeneric) makeMilestone(chainIn, stemIn *utangle.WrappedOutp
 }
 
 // assessAndAcceptProposal returns reject reason of empty string, if accepted
-func (c *proposerTaskGeneric) assessAndAcceptProposal(tx *transaction.Transaction, extend utangle.WrappedOutput, startTime time.Time, taskName string) {
+func (c *proposerTaskGeneric) assessAndAcceptProposal(tx *transaction.Transaction, extend utangle.WrappedOutput, startTime time.Time, taskName string) bool {
 	c.trace("inside assessAndAcceptProposal: %s", tx.IDShort())
 
 	// prevent repeating transactions with same consumedInThePastPath
@@ -151,7 +151,7 @@ func (c *proposerTaskGeneric) assessAndAcceptProposal(tx *transaction.Transactio
 	if c.alreadyProposed.Contains(hashOfProposal) {
 		c.trace("repeating proposal in '%s', wait 10ms %s", c.name(), tx.IDShort())
 		time.Sleep(10 * time.Millisecond)
-		return
+		return false
 	}
 	c.alreadyProposed.Insert(hashOfProposal)
 
@@ -170,17 +170,20 @@ func (c *proposerTaskGeneric) assessAndAcceptProposal(tx *transaction.Transactio
 		elapsed:    time.Since(startTime),
 		proposedBy: taskName,
 	}
-	if rejectReason := c.placeProposalIfRelevant(msData); rejectReason != "" {
+	rejectReason, forceExit := c.placeProposalIfRelevant(msData)
+	if rejectReason != "" {
 		//c.setTraceNAhead(1)
 		c.trace(rejectReason)
+
 	}
+	return forceExit
 }
 
 func (c *proposerTaskGeneric) storeProposalDuration() {
 	c.factory.storeProposalDuration(time.Since(c.startTime))
 }
 
-func (c *proposerTaskGeneric) placeProposalIfRelevant(mdProposed *proposedMilestoneWithData) string {
+func (c *proposerTaskGeneric) placeProposalIfRelevant(mdProposed *proposedMilestoneWithData) (string, bool) {
 	c.factory.proposal.mutex.Lock()
 	defer c.factory.proposal.mutex.Unlock()
 
@@ -190,18 +193,18 @@ func (c *proposerTaskGeneric) placeProposalIfRelevant(mdProposed *proposedMilest
 		mdProposed.tx.NumInputs(), mdProposed.elapsed)
 
 	if c.factory.proposal.targetTs == core.NilLogicalTime {
-		return fmt.Sprintf("%s SKIPPED: target is nil", mdProposed.tx.IDShort())
+		return fmt.Sprintf("%s SKIPPED: target is nil", mdProposed.tx.IDShort()), false
 	}
 
 	// decide if it is not lagging behind the target
 	if mdProposed.tx.Timestamp() != c.factory.proposal.targetTs {
 		c.factory.log.Warnf("%s: proposed milestone timestamp %s is lagging behind target %s. Generation duration: %v",
 			mdProposed.proposedBy, mdProposed.tx.Timestamp().String(), c.factory.proposal.targetTs.String(), mdProposed.elapsed)
-		return fmt.Sprintf("%s SKIPPED: task is behind target", mdProposed.tx.IDShort())
+		return fmt.Sprintf("%s SKIPPED: task is behind target", mdProposed.tx.IDShort()), true
 	}
 
 	if c.factory.proposal.current != nil && *c.factory.proposal.current.ID() == *mdProposed.tx.ID() {
-		return fmt.Sprintf("%s SKIPPED: repeating", mdProposed.tx.IDShort())
+		return fmt.Sprintf("%s SKIPPED: repeating", mdProposed.tx.IDShort()), false
 	}
 
 	baselineCoverage := c.factory.proposal.bestSoFarCoverage
@@ -209,7 +212,7 @@ func (c *proposerTaskGeneric) placeProposalIfRelevant(mdProposed *proposedMilest
 	if !mdProposed.tx.IsBranchTransaction() {
 		if mdProposed.coverage <= baselineCoverage {
 			return fmt.Sprintf("%s SKIPPED: no increase in coverage %s <- %s)",
-				mdProposed.tx.IDShort(), util.GoThousands(mdProposed.coverage), util.GoThousands(c.factory.proposal.bestSoFarCoverage))
+				mdProposed.tx.IDShort(), util.GoThousands(mdProposed.coverage), util.GoThousands(c.factory.proposal.bestSoFarCoverage)), false
 		}
 	}
 
@@ -228,7 +231,7 @@ func (c *proposerTaskGeneric) placeProposalIfRelevant(mdProposed *proposedMilest
 		mdProposed.tx.NumInputs(),
 		c.factory.tipPool.numOutputsInBuffer(),
 	)
-	return ""
+	return "", false
 }
 
 // extensionChoicesInEndorsementTargetPastCone sorted by coverage descending

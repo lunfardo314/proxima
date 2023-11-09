@@ -57,7 +57,9 @@ func (b *backtrackProposer1) run() {
 
 		b.startProposingTime()
 		if tx := b.generateCandidate(extend); tx != nil {
-			b.assessAndAcceptProposal(tx, extend, startTime, b.name())
+			if forceExit := b.assessAndAcceptProposal(tx, extend, startTime, b.name()); forceExit {
+				break
+			}
 		}
 		time.Sleep(10 * time.Millisecond)
 	}

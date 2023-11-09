@@ -59,7 +59,10 @@ func (b *backtrackProposer2) run() {
 				continue
 			}
 			if tx := b.generateCandidate(extend, endorse); tx != nil {
-				b.assessAndAcceptProposal(tx, extend, startTime, b.name())
+				if forceExit := b.assessAndAcceptProposal(tx, extend, startTime, b.name()); forceExit {
+					b.trace("exit proposer")
+					return
+				}
 				b.visited.Insert(pair)
 				//b.setTraceNAhead(1)
 				b.trace("marked visited: extend: %s, endorse: %s", extend.IDShort(), endorse.IDShort())

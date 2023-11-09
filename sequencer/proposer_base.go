@@ -37,7 +37,9 @@ func (b *baseProposer) run() {
 		}
 		if tx != nil {
 			b.trace("generated %s", func() any { return tx.IDShort() })
-			b.assessAndAcceptProposal(tx, latestMs, startTime, b.name())
+			if forceExit = b.assessAndAcceptProposal(tx, latestMs, startTime, b.name()); forceExit {
+				break
+			}
 		}
 		b.storeProposalDuration()
 		time.Sleep(10 * time.Millisecond)

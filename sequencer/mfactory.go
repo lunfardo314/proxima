@@ -205,8 +205,10 @@ func (mf *milestoneFactory) addOwnMilestone(wOut utangle.WrappedOutput) {
 			}
 		}
 	}
-	mf.ownMilestones[wOut.VID] = om
-	mf.ownMilestoneCount++
+	if _, found := mf.ownMilestones[wOut.VID]; !found {
+		mf.ownMilestones[wOut.VID] = om
+		mf.ownMilestoneCount++
+	}
 }
 
 func (mf *milestoneFactory) isConsumedInThePastPath(wOut utangle.WrappedOutput, ms *utangle.WrappedTx) bool {
