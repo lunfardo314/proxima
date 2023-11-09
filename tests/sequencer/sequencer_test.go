@@ -946,8 +946,19 @@ func TestNSequencers(t *testing.T) {
 		summarySupply := r.ut.FetchSummarySupplyAndInflationOnHeaviestBranch(-1)
 		t.Logf("Heaviest branch summary: \n%s", summarySupply.Lines("     ").String())
 
-		//bal := heaviestState.BalanceOnChain(&r.bootstrapChainID)
-		//require.EqualValues(t, int(initOnBootstrapSeqBalance+feeAmount*nSequencers), int(bal))
+		for _, o := range r.chainOrigins {
+			branchVID := r.wrk.UTXOTangle().FindOutputInLatestTimeSlot(&o.ID)
+			if branchVID != nil {
+				t.Logf("FAIL: origin output %s of %s is still present in branch %s:\n%s",
+					o.ID.Short(), o.ChainID.Short(), branchVID.IDShort(), o.Output.ToString("         "))
+
+				//rdr := r.wrk.UTXOTangle().MustGetIndexedStateReader(branchVID.ID())
+				//o1, err := rdr.GetUTXOForChainID(&o.ChainID)
+				//require.NoError(t, err)
+				//t.Logf("branch: %s, chainID: %s, oid: %s", branchVID.IDShort(), o.ChainID.VeryShort(), o1.ID.Short())
+			}
+			require.True(t, branchVID == nil)
+		}
 	})
 	t.Run("5 seq", func(t *testing.T) {
 		const (
@@ -1008,12 +1019,18 @@ func TestNSequencers(t *testing.T) {
 		summarySupply := r.ut.FetchSummarySupplyAndInflationOnHeaviestBranch(-1)
 		t.Logf("Heaviest branch summary: \n%s", summarySupply.Lines("     ").String())
 
-		heaviestState = r.ut.HeaviestStateForLatestTimeSlot()
-		latest := r.ut.LatestTimeSlot()
-		t.Logf("latest slot: %d", latest)
 		for _, o := range r.chainOrigins {
-			found := r.wrk.UTXOTangle().HasOutputInAllBranches(latest, &o.ID)
-			require.False(t, found)
+			branchVID := r.wrk.UTXOTangle().FindOutputInLatestTimeSlot(&o.ID)
+			if branchVID != nil {
+				t.Logf("FAIL: origin output %s of %s is still present in branch %s:\n%s",
+					o.ID.Short(), o.ChainID.Short(), branchVID.IDShort(), o.Output.ToString("         "))
+
+				//rdr := r.wrk.UTXOTangle().MustGetIndexedStateReader(branchVID.ID())
+				//o1, err := rdr.GetUTXOForChainID(&o.ChainID)
+				//require.NoError(t, err)
+				//t.Logf("branch: %s, chainID: %s, oid: %s", branchVID.IDShort(), o.ChainID.VeryShort(), o1.ID.Short())
+			}
+			require.True(t, branchVID == nil)
 		}
 	})
 }
