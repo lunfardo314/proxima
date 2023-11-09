@@ -921,3 +921,16 @@ func (o *WrappedOutput) _isConsumedInThePastConeOf(vid *WrappedTx, visited set.S
 	})
 	return
 }
+
+func (o *WrappedOutput) ValidPace(targetTs core.LogicalTime) bool {
+	return core.ValidTimePace(o.Timestamp(), targetTs)
+}
+
+func CheckPace(targetTs core.LogicalTime, outs ...WrappedOutput) WrappedOutput {
+	for _, wOut := range outs {
+		if !wOut.ValidPace(targetTs) {
+			return wOut
+		}
+	}
+	return WrappedOutput{}
+}

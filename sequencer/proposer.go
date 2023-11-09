@@ -195,7 +195,7 @@ func (c *proposerTaskGeneric) placeProposalIfRelevant(mdProposed *proposedMilest
 
 	// decide if it is not lagging behind the target
 	if mdProposed.tx.Timestamp() != c.factory.proposal.targetTs {
-		c.factory.log.Warnf("%s: proposed milestone (%s) is lagging behind target %s. Generation duration: %v",
+		c.factory.log.Warnf("%s: proposed milestone timestamp %s is lagging behind target %s. Generation duration: %v",
 			mdProposed.proposedBy, mdProposed.tx.Timestamp().String(), c.factory.proposal.targetTs.String(), mdProposed.elapsed)
 		return fmt.Sprintf("%s SKIPPED: task is behind target", mdProposed.tx.IDShort())
 	}
@@ -257,6 +257,7 @@ func (c *proposerTaskGeneric) extensionChoicesInEndorsementTargetPastCone(endors
 	c.factory.addOwnMilestone(rootWrapped) // to ensure it is among own milestones
 
 	cone := c.futureConeMilestonesOrdered(rootWrapped.VID)
+
 	return util.FilterSlice(cone, func(extensionChoice utangle.WrappedOutput) bool {
 		return !c.alreadyVisited(extensionChoice.VID, endorsementTarget)
 	})
@@ -286,7 +287,10 @@ func (c *proposerTaskGeneric) futureConeMilestonesOrdered(rootVID *utangle.Wrapp
 	visited := set.New[*utangle.WrappedTx](rootVID)
 	ret := append(make([]utangle.WrappedOutput, 0, len(ordered)), rootOut)
 	for _, vid := range ordered {
-		if !vid.IsOrphaned() && vid.IsSequencerMilestone() && visited.Contains(vid.SequencerPredecessor()) {
+		if !vid.IsOrphaned() &&
+			vid.IsSequencerMilestone() &&
+			visited.Contains(vid.SequencerPredecessor()) &&
+			core.ValidTimePace(vid.Timestamp(), c.targetTs) {
 			visited.Insert(vid)
 			ret = append(ret, c.factory.ownMilestones[vid].WrappedOutput)
 		}

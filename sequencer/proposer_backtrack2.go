@@ -42,11 +42,6 @@ func (b *backtrackProposer2) run() {
 	for b.factory.proposal.continueCandidateProposing(b.targetTs) {
 		endorse, extensionChoices := b.calcExtensionChoices()
 
-		for _, ext := range extensionChoices {
-			util.Assertf(core.ValidTimePace(ext.Timestamp(), b.targetTs), "extension choice %s violates time constraint. Target ts: %s",
-				ext.IDShort(), b.targetTs.String())
-		}
-
 		//b.setTraceNAhead(1)
 		if len(extensionChoices) > 0 {
 			b.trace("calcExtensionChoices: endorse: %s, extension choices:\n%s", endorse.IDShort(), milestoneSliceString(extensionChoices))
@@ -91,6 +86,22 @@ func (b *backtrackProposer2) generateCandidate(extend utangle.WrappedOutput, end
 
 	return b.makeMilestone(&extend, nil, feeOutputsToConsume, util.List(endorse))
 }
+
+//
+//func (b *backtrackProposer2) calcExtensionChoices() (endorse *utangle.WrappedTx, extensionChoices []utangle.WrappedOutput) {
+//	endorse, extensionChoices = b._calcExtensionChoices()
+//
+//	if endorse == nil {
+//		return
+//	}
+//	util.Assertf(core.ValidTimePace(endorse.Timestamp(), b.targetTs), "[%s] endorsement target %s violates time constraint",
+//		b.name(), endorse.IDShort())
+//
+//	wrong := utangle.CheckPace(b.targetTs, extensionChoices...)
+//	util.Assertf(wrong.VID == nil, "[%s]: extension choice %s violates time constraint\nEndorsement target: %s\nExtension choices:\n%s",
+//		b.name(), wrong.IDShort(), endorse.IDShort(), milestoneSliceString(extensionChoices))
+//	return
+//}
 
 func (b *backtrackProposer2) calcExtensionChoices() (endorse *utangle.WrappedTx, extensionChoices []utangle.WrappedOutput) {
 	for b.factory.proposal.continueCandidateProposing(b.targetTs) {

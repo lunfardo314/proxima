@@ -178,7 +178,14 @@ func addOutputToTrie(trie *immutable.TrieUpdatable, oid *core.OutputID, out *cor
 			if prevBin := trie.TrieReader.Get(chainKey); len(prevBin) > 0 {
 				prevOutputID, err := core.OutputIDFromBytes(prevBin)
 				util.AssertNoError(err)
-				util.Assertf(oid.Timestamp().After(prevOutputID.Timestamp()), "addOutputToTrie: chain output ID violates time constraint")
+				if !oid.Timestamp().After(prevOutputID.Timestamp()) {
+					fmt.Println("breakpoint")
+				}
+				util.Assertf(oid.Timestamp().After(prevOutputID.Timestamp()),
+					"addOutputToTrie: chain output ID violates time constraint:\n   previous: %s\n   next: %s",
+					func() any { return prevOutputID.Short() },
+					func() any { return oid.Short() },
+				)
 			}
 		}
 		trie.Update(chainKey, oid[:])

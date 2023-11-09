@@ -339,7 +339,7 @@ func (seq *Sequencer) mainLoop() {
 		timerStart := time.Now()
 
 		targetTs := seq.chooseNextTargetTime(avgProposalDuration)
-		util.Assertf(!targetTs.Before(seq.prevTimeTarget), "wrong target ts %s:  must be before previous: %s",
+		util.Assertf(!targetTs.Before(seq.prevTimeTarget), "wrong target ts %s: must not be before previous target %s",
 			targetTs.String(), seq.prevTimeTarget.String())
 		seq.prevTimeTarget = targetTs
 

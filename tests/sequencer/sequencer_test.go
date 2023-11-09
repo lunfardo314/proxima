@@ -882,11 +882,11 @@ func TestNSequencers(t *testing.T) {
 	})
 	t.Run("3 seq", func(t *testing.T) {
 		const (
-			maxSlot               = 30
+			maxSlot               = 50
 			numFaucets            = 1
 			numFaucetTransactions = 1
 			maxTxInputs           = sequencer.DefaultMaxFeeInputs
-			stopAfterBranches     = 20
+			stopAfterBranches     = 50
 			nSequencers           = 3
 			tagAlong              = true // <<<<   ????????
 		)
