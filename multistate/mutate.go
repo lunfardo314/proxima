@@ -155,7 +155,6 @@ func addOutputToTrie(trie *immutable.TrieUpdatable, oid *core.OutputID, out *cor
 	chainConstraint, _ := out.ChainConstraint()
 	if chainConstraint == nil {
 		// not a chain output
-		fmt.Printf(">>>>>>> %s has no chain constraint\n", oid.Short())
 		return nil
 	}
 	// update chain output records
@@ -166,23 +165,25 @@ func addOutputToTrie(trie *immutable.TrieUpdatable, oid *core.OutputID, out *cor
 		chainID = chainConstraint.ID
 	}
 	chainKey := makeChainIDKey(&chainID)
-	fmt.Printf(">>>>>>> %s has chain constraint %s, origin: %v\n", oid.Short(), chainID.Short(), chainConstraint.IsOrigin())
 
 	if chainConstraint.IsOrigin() {
 		if existed := trie.Update(chainKey, oid[:]); existed {
 			return fmt.Errorf("addOutputToTrie: unexpected chain origin in the state: %s", chainID.Short())
 		}
-		fmt.Printf(">>>>>>>>>>>>>> chain origin added to trie: %s, %s\n", chainID.Short(), oid.Short())
 	} else {
-		//prevOutputID, err := core.OutputIDFromBytes(trie.TrieReader.Get(chainKey))
-		//util.Assertf(err == nil, "addOutputToTrie: can't find previous chain output for %s: %v", chainID.Short(), err)
-		//util.Assertf(oid.Timestamp().After(prevOutputID.Timestamp()), "addOutputToTrie: chain output ID violates time constraint")
-		if existed := trie.Update(chainKey, oid[:]); !existed {
-			return fmt.Errorf("addOutputToTrie: previous chain output expected in the state for: %s", chainID.Short())
+		const assertChainRecordsConsistency = true
+		if assertChainRecordsConsistency {
+			// previous chain record may or may not exist
+			// enforcing timestamp consistency
+			if prevBin := trie.TrieReader.Get(chainKey); len(prevBin) > 0 {
+				prevOutputID, err := core.OutputIDFromBytes(prevBin)
+				util.AssertNoError(err)
+				util.Assertf(oid.Timestamp().After(prevOutputID.Timestamp()), "addOutputToTrie: chain output ID violates time constraint")
+			}
 		}
+		trie.Update(chainKey, oid[:])
 	}
 
-	//fmt.Printf(">>>>>>>>>>> chainID %s updated with output %s. isOrigin: %v\n", chainID.VeryShort(), oid.Short(), chainConstraint.IsOrigin())
 	// TODO terminating the chain
 	return nil
 }

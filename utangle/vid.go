@@ -673,6 +673,7 @@ func (vid *WrappedTx) _collectMutationData(md *_mutationData) (conflict WrappedO
 	vid.Unwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
 			v.forEachInputDependency(func(i byte, inp *WrappedTx) bool {
+				// recursively collect from inputs
 				inp._collectMutationData(md)
 
 				inputID := v.Tx.MustInputAt(i)
@@ -688,6 +689,11 @@ func (vid *WrappedTx) _collectMutationData(md *_mutationData) (conflict WrappedO
 						return false
 					}
 				}
+				return true
+			})
+			v.forEachEndorsement(func(i byte, vidEndorsed *WrappedTx) bool {
+				// recursively collect from endorsements
+				vidEndorsed._collectMutationData(md)
 				return true
 			})
 			v.Tx.ForEachProducedOutput(func(idx byte, o *core.Output, oid *core.OutputID) bool {

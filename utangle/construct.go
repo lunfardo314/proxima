@@ -231,7 +231,7 @@ func (ut *UTXOTangle) _finalizeBranch(newBranchVID *WrappedTx) error {
 
 		err = upd.Update(muts, &nextStemOutputID, &seqTxData.SequencerID, nextCoverage)
 		if err != nil {
-			return fmt.Errorf("finalizeBranch %s: '%v'=== mutations: %d\n%s",
+			return fmt.Errorf("finalizeBranch %s: '%v'\n=== mutations: %d\n%s",
 				newBranchVID.IDShort(), err, muts.Len(), muts.Lines("          ").String())
 		}
 		newRoot = upd.Root()
