@@ -670,6 +670,8 @@ func (vid *WrappedTx) _collectMutationData(md *_mutationData) (conflict WrappedO
 
 	md.addTxMutations = append(md.addTxMutations, vid.ID())
 
+	// FIXME revisit mutations
+
 	vid.Unwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
 			v.forEachInputDependency(func(i byte, inp *WrappedTx) bool {
@@ -698,6 +700,8 @@ func (vid *WrappedTx) _collectMutationData(md *_mutationData) (conflict WrappedO
 				return true
 			})
 			v.Tx.ForEachProducedOutput(func(idx byte, o *core.Output, oid *core.OutputID) bool {
+				_, already := md.outputMutations[*oid]
+				util.Assertf(!already, "repeating ADD mutation %s", oid.Short())
 				md.outputMutations[*oid] = o
 				return true
 			})

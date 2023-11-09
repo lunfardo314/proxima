@@ -682,17 +682,17 @@ func TestNSequencers(t *testing.T) {
 		r.ut.SaveTree(fnameFromTestName(t) + "_TREE")
 
 		for _, o := range r.chainOrigins {
-			branchVID := r.wrk.UTXOTangle().FindOutputInLatestTimeSlot(&o.ID)
-			if branchVID != nil {
+			chainOriginVID, _ := r.wrk.UTXOTangle().FindOutputInLatestTimeSlot(&o.ID)
+			if chainOriginVID != nil {
 				t.Logf("FAIL: origin output %s of %s is still present in branch %s:\n%s",
-					o.ID.Short(), o.ChainID.Short(), branchVID.IDShort(), o.Output.ToString("         "))
+					o.ID.Short(), o.ChainID.Short(), chainOriginVID.IDShort(), o.Output.ToString("         "))
 
-				//rdr := r.wrk.UTXOTangle().MustGetIndexedStateReader(branchVID.ID())
+				//rdr := r.wrk.UTXOTangle().MustGetIndexedStateReader(chainOriginVID.ID())
 				//o1, err := rdr.GetUTXOForChainID(&o.ChainID)
 				//require.NoError(t, err)
-				//t.Logf("branch: %s, chainID: %s, oid: %s", branchVID.IDShort(), o.ChainID.VeryShort(), o1.ID.Short())
+				//t.Logf("branch: %s, chainID: %s, oid: %s", chainOriginVID.IDShort(), o.ChainID.VeryShort(), o1.ID.Short())
 			}
-			require.True(t, branchVID == nil)
+			require.True(t, chainOriginVID == nil)
 		}
 
 		// also asserts consistency of supply and inflation
@@ -947,17 +947,17 @@ func TestNSequencers(t *testing.T) {
 		t.Logf("Heaviest branch summary: \n%s", summarySupply.Lines("     ").String())
 
 		for _, o := range r.chainOrigins {
-			branchVID := r.wrk.UTXOTangle().FindOutputInLatestTimeSlot(&o.ID)
-			if branchVID != nil {
+			chainOriginVID, _ := r.wrk.UTXOTangle().FindOutputInLatestTimeSlot(&o.ID)
+			if chainOriginVID != nil {
 				t.Logf("FAIL: origin output %s of %s is still present in branch %s:\n%s",
-					o.ID.Short(), o.ChainID.Short(), branchVID.IDShort(), o.Output.ToString("         "))
+					o.ID.Short(), o.ChainID.Short(), chainOriginVID.IDShort(), o.Output.ToString("         "))
 
 				//rdr := r.wrk.UTXOTangle().MustGetIndexedStateReader(branchVID.ID())
 				//o1, err := rdr.GetUTXOForChainID(&o.ChainID)
 				//require.NoError(t, err)
 				//t.Logf("branch: %s, chainID: %s, oid: %s", branchVID.IDShort(), o.ChainID.VeryShort(), o1.ID.Short())
 			}
-			require.True(t, branchVID == nil)
+			require.True(t, chainOriginVID == nil)
 		}
 	})
 	t.Run("5 seq", func(t *testing.T) {
@@ -1019,13 +1019,16 @@ func TestNSequencers(t *testing.T) {
 		summarySupply := r.ut.FetchSummarySupplyAndInflationOnHeaviestBranch(-1)
 		t.Logf("Heaviest branch summary: \n%s", summarySupply.Lines("     ").String())
 
-		for _, o := range r.chainOrigins {
-			branchVID := r.wrk.UTXOTangle().FindOutputInLatestTimeSlot(&o.ID)
-			if branchVID != nil {
+		for i, o := range r.chainOrigins {
+			chainOriginVID, rdr := r.wrk.UTXOTangle().FindOutputInLatestTimeSlot(&o.ID)
+			if chainOriginVID != nil {
 				t.Logf("FAIL: origin output %s of %s is still present in branch %s:\n%s",
-					o.ID.Short(), o.ChainID.Short(), branchVID.IDShort(), o.Output.ToString("         "))
+					o.ID.Short(), o.ChainID.Short(), chainOriginVID.IDShort(), o.Output.ToString("         "))
+				chainOut, err := rdr.GetChainOutput(&r.chainOrigins[i].ChainID)
+				require.NoError(t, err)
+				t.Logf("chain output ID is %s <- chain ID %s", chainOut.ID.Short(), r.chainOrigins[i].ChainID.Short())
 			}
-			require.True(t, branchVID == nil)
+			require.True(t, chainOriginVID == nil)
 		}
 	})
 }

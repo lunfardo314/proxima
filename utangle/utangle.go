@@ -321,11 +321,12 @@ func (ut *UTXOTangle) GetSequencerBootstrapOutputs(seqID core.ChainID) (chainOut
 	return WrappedOutput{}, WrappedOutput{}, false
 }
 
-func (ut *UTXOTangle) FindOutputInLatestTimeSlot(oid *core.OutputID) (ret *WrappedTx) {
+func (ut *UTXOTangle) FindOutputInLatestTimeSlot(oid *core.OutputID) (ret *WrappedTx, rdr multistate.SugaredStateReader) {
 	ut.LatestTimeSlot()
-	err := ut.ForEachBranchStateDesc(ut.LatestTimeSlot(), func(branch *WrappedTx, rdr multistate.SugaredStateReader) bool {
-		if rdr.HasUTXO(oid) {
+	err := ut.ForEachBranchStateDesc(ut.LatestTimeSlot(), func(branch *WrappedTx, stateReader multistate.SugaredStateReader) bool {
+		if stateReader.HasUTXO(oid) {
 			ret = branch
+			rdr = stateReader
 		}
 		return ret == nil
 	})
