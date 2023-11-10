@@ -470,6 +470,46 @@ func (ut *UTXOTangle) LedgerCoverageFromTransaction(tx *transaction.Transaction)
 	return ut.LedgerCoverage(tmpVertex.Wrap()), nil
 }
 
-func (ut *UTXOTangle) FetchSummarySupplyAndInflationOnHeaviestBranch(nBack int) multistate.SummarySupplyAndInflation {
-	return multistate.FetchSummarySupplyAndInflation(ut.stateStore, nBack)
+type SummarySupplyAndInflationExtended struct {
+	multistate.SummarySupplyAndInflation
+	RelativeInflation map[core.ChainID]float32
+}
+
+func (ut *UTXOTangle) FetchSummarySupplyAndInflationOnHeaviestBranch(nBack int) SummarySupplyAndInflationExtended {
+	ret := multistate.FetchSummarySupplyAndInflation(ut.stateStore, nBack)
+	rInfl := make(map[core.ChainID]float32)
+
+	rdr := ut.HeaviestStateForLatestTimeSlot()
+	for seqID, infl := range ret.InfoPerSeqID {
+		o, err := rdr.GetChainOutput(&seqID)
+		if err != nil {
+			rInfl[seqID] = -1
+			continue
+		}
+		rInfl[seqID] = float32(infl.TotalInflation*100) / float32(o.Output.Amount())
+	}
+	return SummarySupplyAndInflationExtended{
+		SummarySupplyAndInflation: ret,
+		RelativeInflation:         rInfl,
+	}
+}
+
+func (s *SummarySupplyAndInflationExtended) Lines(prefix ...string) *lines.Lines {
+	ret := lines.New(prefix...).
+		Add("Slots from %d to %d inclusive. Total %d slots", s.OldestSlot, s.LatestSlot, s.LatestSlot-s.OldestSlot+1).
+		Add("Number of branches: %d", s.NumberOfBranches).
+		Add("Supply begin: %s", util.GoThousands(s.BeginSupply)).
+		Add("Supply end: %s", util.GoThousands(s.EndSupply)).
+		Add("Total inflation: %s", util.GoThousands(s.TotalInflation)).
+		Add("Inflation per sequencer:")
+
+	sortedSeqIDs := util.KeysSorted(s.InfoPerSeqID, func(k1, k2 core.ChainID) bool {
+		return bytes.Compare(k1[:], k2[:]) < 0
+	})
+	for _, seqId := range sortedSeqIDs {
+		info := s.InfoPerSeqID[seqId]
+		ret.Add("    %s -- inflation: %s, number of branches: %d, %% of capital: %.6f%%",
+			seqId.Short(), util.GoThousands(info.TotalInflation), info.NumBranches, s.RelativeInflation[seqId])
+	}
+	return ret
 }
