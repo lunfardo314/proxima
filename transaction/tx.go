@@ -47,7 +47,7 @@ type (
 
 // MainTxValidationOptions is all except Base, time bounds and input context validation
 var MainTxValidationOptions = []TxValidationOption{
-	CheckSequencerData(),
+	ScanSequencerData(),
 	CheckSender(),
 	CheckNumElements(),
 	CheckTimePace(),
@@ -165,7 +165,7 @@ func CheckTimestampUpperBound(upperBound time.Time) TxValidationOption {
 	}
 }
 
-func CheckSequencerData() TxValidationOption {
+func ScanSequencerData() TxValidationOption {
 	return func(tx *Transaction) error {
 		util.Assertf(tx.sequencerMilestoneFlag || !tx.branchTransactionFlag, "tx.sequencerMilestoneFlag || !tx.branchTransactionFlag")
 		if !tx.sequencerMilestoneFlag {
@@ -182,12 +182,12 @@ func CheckSequencerData() TxValidationOption {
 
 		out, err := tx.ProducedOutputWithIDAt(sequencerOutputIndex)
 		if err != nil {
-			return fmt.Errorf("CheckSequencerData: '%v' at produced output %d", err, sequencerOutputIndex)
+			return fmt.Errorf("ScanSequencerData: '%v' at produced output %d", err, sequencerOutputIndex)
 		}
 
 		seqOutputData, valid := out.Output.SequencerOutputData()
 		if !valid {
-			return fmt.Errorf("CheckSequencerData: invalid sequencer output data")
+			return fmt.Errorf("ScanSequencerData: invalid sequencer output data")
 		}
 
 		var sequencerID core.ChainID
@@ -212,15 +212,15 @@ func CheckSequencerData() TxValidationOption {
 			return nil
 		}
 		if stemOutputIndex == sequencerOutputIndex || int(stemOutputIndex) >= tx.NumProducedOutputs() {
-			return fmt.Errorf("CheckSequencerData: wrong stem output index")
+			return fmt.Errorf("ScanSequencerData: wrong stem output index")
 		}
 		outStem, err := tx.ProducedOutputWithIDAt(stemOutputIndex)
 		if err != nil {
-			return fmt.Errorf("CheckSequencerData stem: %v", err)
+			return fmt.Errorf("ScanSequencerData stem: %v", err)
 		}
 		lock := outStem.Output.Lock()
 		if lock.Name() != core.StemLockName {
-			return fmt.Errorf("CheckSequencerData: not a stem lock")
+			return fmt.Errorf("ScanSequencerData: not a stem lock")
 		}
 		tx.sequencerTransactionData.StemOutputData = lock.(*core.StemLock)
 		return nil

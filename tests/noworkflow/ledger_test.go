@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/ed25519"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"math/rand"
 	"testing"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/txbuilder"
 	"github.com/lunfardo314/proxima/util"
@@ -471,7 +473,7 @@ func TestChain1(t *testing.T) {
 		require.NoError(t, err)
 
 		_, err = u.StateReader().GetUTXOForChainID(&chainID)
-		easyfl.RequireErrorWith(t, err, "has not been found")
+		require.True(t, errors.Is(err, multistate.ErrNotFound))
 
 		require.EqualValues(t, 1, u.NumUTXOs(u.GenesisControllerAddress()))
 		require.EqualValues(t, u.Supply()-u.FaucetBalance()-10000, u.Balance(u.GenesisControllerAddress()))

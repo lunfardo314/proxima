@@ -91,10 +91,6 @@ func MustNewUpdatable(store general.StateStore, root common.VCommitment) *Updata
 	return ret
 }
 
-func (u *Updatable) Readable() *Readable {
-	return &Readable{u.trie.TrieReader}
-}
-
 func (r *Readable) GetUTXO(oid *core.OutputID) ([]byte, bool) {
 	ret := common.MakeReaderPartition(r.trie, PartitionLedgerState).Get(oid[:])
 	if len(ret) == 0 {
@@ -179,7 +175,7 @@ func (r *Readable) GetUTXOForChainID(id *core.ChainID) (*core.OutputDataWithID, 
 	}
 	outData, found := r.GetUTXO(&oid)
 	if !found {
-		return nil, fmt.Errorf("GetUTXOForChainID: chain id: %s, outputID: %s. Output has not been found", id.Short(), oid.Short())
+		return nil, ErrNotFound
 	}
 	return &core.OutputDataWithID{
 		ID:         oid,
@@ -254,6 +250,10 @@ func (r *Readable) IterateKnownCommittedTransactions(fun func(txid *core.Transac
 
 func (r *Readable) Root() common.VCommitment {
 	return r.trie.Root()
+}
+
+func (u *Updatable) Readable() *Readable {
+	return &Readable{u.trie.TrieReader}
 }
 
 func (u *Updatable) Root() common.VCommitment {
