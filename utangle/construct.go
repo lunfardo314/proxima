@@ -218,7 +218,14 @@ func (ut *UTXOTangle) _finalizeBranch(newBranchVID *WrappedTx) error {
 		if err != nil {
 			return err
 		}
+
 		coverageDelta := ut.LedgerCoverageDelta(newBranchVID)
+		util.Assertf(coverageDelta <= seqTxData.StemOutputData.Supply-seqTxData.StemOutputData.InflationAmount,
+			"coverageDelta (%s) <= seqTxData.StemOutputData.Supply (%s) - seqTxData.StemOutputData.InflationAmount (%s)",
+			func() any { return util.GoThousands(coverageDelta) },
+			func() any { return util.GoThousands(seqTxData.StemOutputData.Supply) },
+			func() any { return util.GoThousands(seqTxData.StemOutputData.InflationAmount) },
+		)
 
 		var prevCoverage multistate.LedgerCoverage
 		if multistate.HistoryCoverageDeltas > 1 {
@@ -228,6 +235,7 @@ func (ut *UTXOTangle) _finalizeBranch(newBranchVID *WrappedTx) error {
 			prevCoverage = rr.LedgerCoverage
 		}
 		nextCoverage := prevCoverage.MakeNext(int(newBranchVID.TimeSlot())-int(baselineVID.TimeSlot()), coverageDelta)
+		fmt.Printf(">>>>>>>>>>>  _finalizeBranch. next coverage: %s\n", nextCoverage.String())
 
 		err = upd.Update(muts, &nextStemOutputID, &seqTxData.SequencerID, nextCoverage)
 		if err != nil {

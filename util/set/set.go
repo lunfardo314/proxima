@@ -1,6 +1,10 @@
 package set
 
-import "sort"
+import (
+	"sort"
+
+	"github.com/lunfardo314/proxima/util/lines"
+)
 
 type Set[K comparable] map[K]struct{}
 
@@ -135,6 +139,15 @@ func Intersect[K comparable](sets ...Set[K]) Set[K] {
 		if allContains {
 			ret.Insert(el)
 		}
+		return true
+	})
+	return ret
+}
+
+func (s Set[K]) Lines(toStr func(key K) string, prefix ...string) *lines.Lines {
+	ret := lines.New(prefix...)
+	s.ForEach(func(el K) bool {
+		ret.Add(toStr(el))
 		return true
 	})
 	return ret

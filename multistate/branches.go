@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"strings"
 
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/general"
@@ -61,6 +62,14 @@ func (lc *LedgerCoverage) Bytes() []byte {
 		binary.BigEndian.PutUint64(ret[i*8:(i+1)*8], d)
 	}
 	return ret
+}
+
+func (lc *LedgerCoverage) String() string {
+	all := make([]string, len(lc))
+	for i, c := range lc {
+		all[i] = util.GoThousands(c)
+	}
+	return fmt.Sprintf("sum(%s) -> %s", strings.Join(all, ", "), util.GoThousands(lc.Sum()))
 }
 
 func LedgerCoverageFromBytes(data []byte) (ret LedgerCoverage, err error) {

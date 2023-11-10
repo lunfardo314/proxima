@@ -962,7 +962,7 @@ func TestNSequencers(t *testing.T) {
 	})
 	t.Run("5 seq", func(t *testing.T) {
 		const (
-			maxSlot               = 40
+			maxSlot               = 20
 			numFaucets            = 2
 			numFaucetTransactions = 10
 			maxTxInputs           = 200

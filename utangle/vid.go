@@ -783,11 +783,23 @@ func (vid *WrappedTx) CoverageDelta(ut *UTXOTangle) (*core.TransactionID, uint64
 	vid._collectBaselineOutputs(ut.MustGetStateReader(baselineTxID), set.New[*WrappedTx](), baselineOutputs)
 
 	ret := uint64(0)
+	bd, found := multistate.FetchBranchData(ut.stateStore, *baselineTxID)
+	util.Assertf(found, "can't found root record for %s", baselineTxID.Short())
+	coverageCap := bd.Stem.Output.MustStemLock().Supply
 
 	baselineOutputs.ForEach(func(o WrappedOutput) bool {
 		ret += o.Amount()
 		return true
 	})
+	if ret > coverageCap {
+		baselineOutputsLines := baselineOutputs.Lines(func(key WrappedOutput) string {
+			return key.IDShort()
+		})
+		SaveGraphPastCone(vid, "failed_coverage")
+		util.Panicf("CoverageDelta inconsistency: result for vertex %s = %s -> exceeds current total supply %s. Outputs summed up:\n%s",
+			vid.IDShort(), util.GoThousands(ret), util.GoThousands(coverageCap), baselineOutputsLines.String(),
+		)
+	}
 	return baselineTxID, ret
 }
 
