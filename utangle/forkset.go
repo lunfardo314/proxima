@@ -7,6 +7,10 @@ import (
 	"github.com/lunfardo314/proxima/util/lines"
 )
 
+// ForkSNReserved is fork serial number for temporary attachment
+// Attached vertices will have serial numbers less than the reserved one
+const ForkSNReserved = byte(0xff)
+
 func newFork(wOut WrappedOutput, forkSN byte) Fork {
 	return Fork{
 		ConflictSetID: wOut,

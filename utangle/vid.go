@@ -591,8 +591,8 @@ func (vid *WrappedTx) attachAsConsumer(outputIndex byte, consumer *WrappedTx) *W
 		vid.consumers = make(map[byte][]*WrappedTx)
 	}
 	descendants := vid.consumers[outputIndex]
-	if len(descendants) >= 256 {
-		// maximum 256 conflicts per output. Sorry
+	if len(descendants) >= int(ForkSNReserved) {
+		// maximum 255 conflicts per output. Sorry
 		return &WrappedOutput{
 			VID:   vid,
 			Index: outputIndex,
