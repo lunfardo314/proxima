@@ -17,9 +17,9 @@ func (p *PastTrack) absorbPastTrack(vid *WrappedTx) (conflict *WrappedOutput) {
 	return p._absorbPastTrack(vid, false)
 }
 
-// absorbPastTrackSafe same as absorbPastTrack but leaves target untouched in case conflict is detected.
+// AbsorbPastTrackSafe same as absorbPastTrack but leaves target untouched in case conflict is detected.
 // It copies the target, so it somehow slower
-func (p *PastTrack) absorbPastTrackSafe(vid *WrappedTx) (conflict *WrappedOutput) {
+func (p *PastTrack) AbsorbPastTrackSafe(vid *WrappedTx) (conflict *WrappedOutput) {
 	return p._absorbPastTrack(vid, true)
 }
 
