@@ -193,25 +193,21 @@ func (v *Vertex) PendingDependenciesLines(prefix ...string) *lines.Lines {
 	return ret
 }
 
-func (v *Vertex) reMergeParentPastTracks() (conflict *WrappedOutput) {
+// inheritPastTracks merges past tracks of inputs and endorsements
+func (v *Vertex) inheritPastTracks() (conflict *WrappedOutput) {
+	v.pastTrack = newPastTrack()
+
 	v.forEachInputDependency(func(i byte, vidInput *WrappedTx) bool {
 		util.Assertf(vidInput != nil, "vidInput != nil")
-		conflict = v.pastTrack.AbsorbPastTrack(vidInput)
-		//if conflict != nil {
-		//	fmt.Printf(">>>>>>>>>>>>>> conflict %s\n >>>>>>> while merging input %s:\n%s\n>>>>>>>>> into\n%s\n",
-		//		conflict.IDShort(), vidInput.IDShort(), vidInput.PastTrackLines().String(), v.pastTrack.Lines().String())
-		//}
+		conflict = v.pastTrack.absorbPastTrack(vidInput)
 		return conflict == nil
 	})
-
 	if conflict != nil {
 		return
 	}
 	v.forEachEndorsement(func(_ byte, vidEndorsed *WrappedTx) bool {
 		util.Assertf(vidEndorsed != nil, "vidEndorsed != nil")
-		conflict = v.pastTrack.AbsorbPastTrack(vidEndorsed)
-		//fmt.Printf(">>>>>>>>>>>>>> conflict %s\n >>>>>>> while merging endorsement %s:\n%s\n>>>>>>>>> into\n%s\n",
-		//	conflict.IDShort(), vidEndorsed.IDShort(), vidEndorsed.PastTrackLines().String(), v.pastTrack.Lines().String())
+		conflict = v.pastTrack.absorbPastTrack(vidEndorsed)
 		return conflict == nil
 	})
 	return

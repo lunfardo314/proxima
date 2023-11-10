@@ -54,18 +54,19 @@ func newVirtualBranchTx(br *multistate.BranchData) *VirtualTransaction {
 // The transaction is marked orphaned, so it will be ignored in the future cones
 func (ut *UTXOTangle) attach(vid *WrappedTx) (conflict *WrappedOutput) {
 	vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
-		// book consumer into the inputs. Store forks (double spends), detect new ones and propagate to the future cone
-		v.forEachInputDependency(func(i byte, inp *WrappedTx) bool {
-			inp.addConsumerOfOutput(v.Tx.MustOutputIndexOfTheInput(i), vid) // FIXME conflict propagation
-			return true
+		if conflict = v.inheritPastTracks(); conflict != nil {
+			return
+		}
+		// book consumer into the inputs. Detect new double-spends, double-links and propagates
+		v.forEachInputDependency(func(i byte, vidInput *WrappedTx) bool {
+			conflict = vidInput.attachAsConsumer(v.Tx.MustOutputIndexOfTheInput(i), vid)
+			return conflict == nil
 		})
 		// maintain endorser list in predecessors
 		v.forEachEndorsement(func(_ byte, vEnd *WrappedTx) bool {
-			vEnd.addEndorser(vid)
+			vEnd.attachAsEndorser(vid)
 			return true
 		})
-		// forks must be recalculated after all new double spends are detected and propagated
-		conflict = v.reMergeParentPastTracks()
 	}})
 	if conflict != nil {
 		// mark orphaned and do not add to the utangle. If it was added to the descendants lists, it will be ignored
@@ -120,7 +121,7 @@ func (ut *UTXOTangle) addBranch(branchVID *WrappedTx, root common.VCommitment) {
 	ut.branches[branchVID.TimeSlot()] = m
 }
 
-func (ut *UTXOTangle) _appendVertex(vid *WrappedTx) error {
+func (ut *UTXOTangle) appendVertex(vid *WrappedTx) error {
 	ut.mutex.Lock()
 	defer ut.mutex.Unlock()
 
@@ -170,7 +171,7 @@ func (ut *UTXOTangle) AppendVertex(v *Vertex, opts ...ValidationOption) (*Wrappe
 		}
 	}
 	vid := v.Wrap()
-	return vid, ut._appendVertex(vid)
+	return vid, ut.appendVertex(vid)
 }
 
 // AppendVertexFromTransactionBytesDebug for testing mainly
@@ -235,7 +236,7 @@ func (ut *UTXOTangle) _finalizeBranch(newBranchVID *WrappedTx) error {
 			prevCoverage = rr.LedgerCoverage
 		}
 		nextCoverage := prevCoverage.MakeNext(int(newBranchVID.TimeSlot())-int(baselineVID.TimeSlot()), coverageDelta)
-		fmt.Printf(">>>>>>>>>>>  _finalizeBranch. next coverage: %s\n", nextCoverage.String())
+		//fmt.Printf(">>>>>>>>>>>  _finalizeBranch. next coverage: %s\n", nextCoverage.String())
 
 		err = upd.Update(muts, &nextStemOutputID, &seqTxData.SequencerID, nextCoverage)
 		if err != nil {

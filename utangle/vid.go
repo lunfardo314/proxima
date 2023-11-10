@@ -584,27 +584,36 @@ func PanicOrphaned() {
 	util.Panicf("orphaned transaction should not be accessed")
 }
 
-// addConsumerOfOutput must be called from globally locked utangle environment
-func (vid *WrappedTx) addConsumerOfOutput(outputIndex byte, consumer *WrappedTx) {
+// attachAsConsumer must be called from globally locked utangle environment.
+// Double-links conflict. Propagates new conflict
+func (vid *WrappedTx) attachAsConsumer(outputIndex byte, consumer *WrappedTx) *WrappedOutput {
 	if vid.consumers == nil {
 		vid.consumers = make(map[byte][]*WrappedTx)
 	}
 	descendants := vid.consumers[outputIndex]
-	sn := uint16(len(descendants))
-	switch sn {
+	if len(descendants) >= 256 {
+		// maximum 256 conflicts per output. Sorry
+		return &WrappedOutput{
+			VID:   vid,
+			Index: outputIndex,
+		}
+	}
+	switch sn := byte(len(descendants)); sn {
 	case 0:
 		descendants = make([]*WrappedTx, 0, 2)
+		// only double-spends need marking the consumer with fork
 	case 1:
-		// double-spend require propagation of the new fork
+		// double-spend requires propagation of the new fork
 		f := newFork(WrappedOutput{VID: vid, Index: outputIndex}, 0)
 		descendants[0].propagateNewForkToFutureCone(f, set.New[*WrappedTx]())
-
-		//for _, vidEndorser := range vid.endorsers {
-		//	vidEndorser.propagateNewForkToFutureCone(f, set.New[*WrappedTx]())
-		//}
+		// mark the consumer with fork
 		consumer.addFork(newFork(WrappedOutput{VID: vid, Index: outputIndex}, 1))
+	default:
+		// mark the consumer with fork
+		consumer.addFork(newFork(WrappedOutput{VID: vid, Index: outputIndex}, sn))
 	}
 	vid.consumers[outputIndex] = util.AppendUnique(descendants, consumer)
+	return nil
 }
 
 func (vid *WrappedTx) propagateNewForkToFutureCone(f Fork, visited set.Set[*WrappedTx]) {
@@ -638,7 +647,7 @@ func (vid *WrappedTx) addFork(f Fork) bool {
 	return ret
 }
 
-func (vid *WrappedTx) addEndorser(endorser *WrappedTx) {
+func (vid *WrappedTx) attachAsEndorser(endorser *WrappedTx) {
 	if len(vid.endorsers) == 0 {
 		vid.endorsers = make([]*WrappedTx, 0)
 	}
@@ -887,7 +896,7 @@ func MergePastTracks(vids ...*WrappedTx) (ret PastTrack, conflict *WrappedOutput
 
 	retTmp := newPastTrack()
 	for _, vid := range vids {
-		conflict = retTmp.AbsorbPastTrack(vid)
+		conflict = retTmp.absorbPastTrack(vid)
 		if conflict != nil {
 			return
 		}

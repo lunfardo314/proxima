@@ -11,15 +11,15 @@ func newPastTrack() PastTrack {
 	}
 }
 
-// AbsorbPastTrack merges branches and forks of vid into the pas track. In case a conflict is detected,
+// absorbPastTrack merges branches and forks of vid into the pas track. In case a conflict is detected,
 // the target PastTrack is left inconsistent and must be abandoned
-func (p *PastTrack) AbsorbPastTrack(vid *WrappedTx) (conflict *WrappedOutput) {
+func (p *PastTrack) absorbPastTrack(vid *WrappedTx) (conflict *WrappedOutput) {
 	return p._absorbPastTrack(vid, false)
 }
 
-// AbsorbPastTrackSafe same as AbsorbPastTrack but leaves target untouched in case conflict is detected.
+// absorbPastTrackSafe same as absorbPastTrack but leaves target untouched in case conflict is detected.
 // It copies the target, so it somehow slower
-func (p *PastTrack) AbsorbPastTrackSafe(vid *WrappedTx) (conflict *WrappedOutput) {
+func (p *PastTrack) absorbPastTrackSafe(vid *WrappedTx) (conflict *WrappedOutput) {
 	return p._absorbPastTrack(vid, true)
 }
 

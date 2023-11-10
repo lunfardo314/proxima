@@ -214,7 +214,7 @@ func (v *Vertex) fetchMissingInputs(ut *UTXOTangle) (conflict *core.OutputID) {
 			return false
 		}
 		if ok {
-			if conflictWrapped = v.pastTrack.AbsorbPastTrack(inputWrapped.VID); conflictWrapped != nil {
+			if conflictWrapped = v.pastTrack.absorbPastTrack(inputWrapped.VID); conflictWrapped != nil {
 				conflict = conflictWrapped.DecodeID()
 				return false
 			}
@@ -235,7 +235,7 @@ func (v *Vertex) fetchMissingEndorsements(ut *UTXOTangle) (conflict *core.Output
 		}
 		util.Assertf(v.Tx.TimeSlot() == txid.TimeSlot(), "tx.TimeTick() == txid.TimeTick()")
 		if vEndorsement, found := ut.GetVertex(txid); found {
-			if conflictWrapped = v.pastTrack.AbsorbPastTrack(vEndorsement); conflictWrapped != nil {
+			if conflictWrapped = v.pastTrack.absorbPastTrack(vEndorsement); conflictWrapped != nil {
 				conflict = conflictWrapped.DecodeID()
 				return false
 			}
