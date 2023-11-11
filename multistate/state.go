@@ -36,6 +36,22 @@ type (
 		Stem            *core.OutputWithID
 		SequencerOutput *core.OutputWithID
 	}
+
+	LockedAccountInfo struct {
+		Balance    uint64
+		NumOutputs int
+	}
+
+	ChainRecordInfo struct {
+		Balance     uint64
+		IsSequencer bool
+		IsBranch    bool
+	}
+
+	AccountInfo struct {
+		LockedAccounts map[string]LockedAccountInfo
+		ChainRecords   map[core.ChainID]ChainRecordInfo
+	}
 )
 
 // partitions of the state store on the trie
@@ -141,7 +157,7 @@ func (r *Readable) GetUTXOsLockedInAccount(addr core.AccountID) ([]*core.OutputD
 	ret := make([]*core.OutputDataWithID, 0)
 	var err error
 	var found bool
-	r.trie.Iterator(accountPrefix).Iterate(func(k, _ []byte) bool {
+	r.trie.Iterator(accountPrefix).IterateKeys(func(k []byte) bool {
 		o := &core.OutputDataWithID{}
 		o.ID, err = core.OutputIDFromBytes(k[len(accountPrefix):])
 		if err != nil {
@@ -246,6 +262,61 @@ func (r *Readable) IterateKnownCommittedTransactions(fun func(txid *core.Transac
 
 		return fun(&txid, slot)
 	})
+}
+
+func (r *Readable) AccountsByLocks() map[string]LockedAccountInfo {
+	var oid core.OutputID
+	var err error
+
+	ret := make(map[string]LockedAccountInfo)
+
+	r.trie.Iterator([]byte{PartitionAccounts}).IterateKeys(func(k []byte) bool {
+		oid, err = core.OutputIDFromBytes(k[2+k[1]:])
+		util.AssertNoError(err)
+
+		oData, found := r.GetUTXO(&oid)
+		util.Assertf(found, "can't get output")
+
+		_, amount, lock, err := core.OutputFromBytesMain(oData)
+		util.AssertNoError(err)
+
+		lockStr := lock.String()
+		lockInfo := ret[lockStr]
+		lockInfo.Balance += uint64(amount)
+		lockInfo.NumOutputs++
+		ret[lockStr] = lockInfo
+
+		return true
+	})
+	return ret
+}
+
+func (r *Readable) ChainInfo() map[core.ChainID]ChainRecordInfo {
+	ret := make(map[core.ChainID]ChainRecordInfo)
+	var chainID core.ChainID
+	var err error
+	var oData *core.OutputDataWithID
+	var amount core.Amount
+
+	r.trie.Iterator([]byte{PartitionChainID}).Iterate(func(k, v []byte) bool {
+		chainID, err = core.ChainIDFromBytes(k[1:])
+		util.AssertNoError(err)
+		oData, err = r.GetUTXOForChainID(&chainID)
+		util.AssertNoError(err)
+
+		_, already := ret[chainID]
+		util.Assertf(!already, "repeating chain record")
+		_, amount, _, err = core.OutputFromBytesMain(oData.OutputData)
+		util.AssertNoError(err)
+
+		ret[chainID] = ChainRecordInfo{
+			Balance:     uint64(amount),
+			IsSequencer: oData.ID.IsSequencerTransaction(),
+			IsBranch:    oData.ID.IsBranchTransaction(),
+		}
+		return true
+	})
+	return ret
 }
 
 func (r *Readable) Root() common.VCommitment {

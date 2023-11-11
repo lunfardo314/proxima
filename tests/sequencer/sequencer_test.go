@@ -455,6 +455,8 @@ func Test1Sequencer(t *testing.T) {
 		bal = heaviestState.BalanceOnChain(&r.bootstrapChainID)
 		require.EqualValues(t, int(initOnSeqBalance+totalInflation+(1+numFaucetTransactions)*feeAmount), int(bal))
 		r.ut.SaveGraph(fnameFromTestName(t))
+
+		t.Logf("----------- Account info ----------------\n%s", r.ut.MustAccountInfoOfHeaviestBranch().Lines("   ").String())
 	})
 	t.Run("N faucets async", func(t *testing.T) {
 		const (
@@ -717,6 +719,7 @@ func TestNSequencers(t *testing.T) {
 		_, err := r.wrk.TransactionInWaitAppend(r.txChainOrigins.Bytes(), 5*time.Second)
 		require.NoError(t, err)
 		t.Logf("chain origins transaction has been added to the tangle: %s", r.txChainOrigins.IDShort())
+		t.Logf("----------- Account info ----------------\n%s", r.ut.MustAccountInfoOfHeaviestBranch().Lines("   ").String())
 
 		sequencer.SetTraceProposer(sequencer.BacktrackProposer1Name, false)
 
@@ -780,6 +783,7 @@ func TestNSequencers(t *testing.T) {
 		// also asserts consistency of supply and inflation
 		summarySupply := r.ut.FetchSummarySupplyAndInflation(-1)
 		t.Logf("Heaviest branch summary: \n%s", summarySupply.Lines("     ").String())
+		t.Logf("----------- Account info ----------------\n%s", r.ut.MustAccountInfoOfHeaviestBranch().Lines("   ").String())
 	})
 	t.Run("2 seq, transfers 2", func(t *testing.T) {
 		const (
@@ -1304,5 +1308,7 @@ func TestPruning(t *testing.T) {
 		require.EqualValues(t, r.ut.NumVertices(), len(reachable5)+len(orphaned5))
 
 		t.Logf("PRUNED: %s", r.ut.Info())
+
+		t.Logf("----------- Account info ----------------\n%s", r.ut.MustAccountInfoOfHeaviestBranch().Lines("   ").String())
 	})
 }

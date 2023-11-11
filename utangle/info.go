@@ -147,3 +147,7 @@ func (s *SummarySupplyAndInflation) Lines(prefix ...string) *lines.Lines {
 	}
 	return ret
 }
+
+func (ut *UTXOTangle) MustAccountInfoOfHeaviestBranch() *multistate.AccountInfo {
+	return multistate.MustCollectAccountInfo(ut.stateStore, ut.HeaviestStateRootForLatestTimeSlot())
+}
