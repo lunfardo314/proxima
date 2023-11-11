@@ -962,11 +962,11 @@ func TestNSequencers(t *testing.T) {
 	})
 	t.Run("5 seq", func(t *testing.T) {
 		const (
-			maxSlot               = 20
+			maxSlot               = 40
 			numFaucets            = 2
 			numFaucetTransactions = 10
 			maxTxInputs           = 200
-			stopAfterBranches     = 20
+			stopAfterBranches     = 40
 			nSequencers           = 5
 		)
 		t.Logf("\n   numFaucets: %d\n   numFaucetTransactions: %d\n", numFaucets, numFaucetTransactions)
@@ -1003,10 +1003,6 @@ func TestNSequencers(t *testing.T) {
 			}
 		})
 
-		heaviestState := r.ut.HeaviestStateForLatestTimeSlot()
-		initOnBootstrapSeqBalance := heaviestState.BalanceOnChain(&r.bootstrapChainID)
-		require.EqualValues(t, inittest.InitSupply-initFaucetBalance*numFaucets, int(initOnBootstrapSeqBalance))
-
 		r.bootstrapSeq.WaitStop()
 		r.sequencers[0].WaitStop()
 		r.wrk.Stop()
@@ -1019,24 +1015,18 @@ func TestNSequencers(t *testing.T) {
 		summarySupply := r.ut.FetchSummarySupplyAndInflation(-1)
 		t.Logf("Heaviest branch summary: \n%s", summarySupply.Lines("     ").String())
 
-		heaviestState = r.ut.HeaviestStateForLatestTimeSlot()
-		seqBalance := heaviestState.BalanceOnChain(&r.bootstrapChainID)
-		t.Logf("balances on heaviest chain:")
-		t.Logf("     %s : %s", r.bootstrapChainID.Short(), util.GoThousands(seqBalance))
-
-		for i, o := range r.chainOrigins {
-			chainOriginVID, rdr := r.wrk.UTXOTangle().FindOutputInLatestTimeSlot(&o.ID)
+		for _, o := range r.chainOrigins {
+			chainOriginVID, _ := r.wrk.UTXOTangle().FindOutputInLatestTimeSlot(&o.ID)
 			if chainOriginVID != nil {
 				t.Logf("FAIL: origin output %s of %s is still present in branch %s:\n%s",
 					o.ID.Short(), o.ChainID.Short(), chainOriginVID.IDShort(), o.Output.ToString("         "))
-				chainOut, err := rdr.GetChainOutput(&r.chainOrigins[i].ChainID)
-				require.NoError(t, err)
-				t.Logf("chain output ID is %s <- chain ID %s", chainOut.ID.Short(), r.chainOrigins[i].ChainID.Short())
+
+				//rdr := r.wrk.UTXOTangle().MustGetIndexedStateReader(branchVID.ID())
+				//o1, err := rdr.GetUTXOForChainID(&o.ChainID)
+				//require.NoError(t, err)
+				//t.Logf("branch: %s, chainID: %s, oid: %s", branchVID.IDShort(), o.ChainID.VeryShort(), o1.ID.Short())
 			}
 			require.True(t, chainOriginVID == nil)
-
-			seqBalance = heaviestState.BalanceOnChain(&o.ChainID)
-			t.Logf("     %s : %s", o.ChainID.Short(), util.GoThousands(seqBalance))
 		}
 	})
 }

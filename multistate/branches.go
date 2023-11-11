@@ -255,6 +255,7 @@ func FetchLatestBranches(store general.StateStore) []*BranchData {
 	})
 }
 
+// FetchHeaviestBranchChainNSlotsBack descending by epoch
 func FetchHeaviestBranchChainNSlotsBack(store general.StateStore, nBack int) []*BranchData {
 	rootData := make(map[core.TransactionID]RootRecord)
 	latestSlot := FetchLatestSlot(store)
