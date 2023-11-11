@@ -1,7 +1,6 @@
 package multistate
 
 import (
-	"bytes"
 	"encoding/binary"
 	"fmt"
 	"strings"
@@ -10,7 +9,6 @@ import (
 	"github.com/lunfardo314/proxima/general"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lazybytes"
-	"github.com/lunfardo314/proxima/util/lines"
 	"github.com/lunfardo314/unitrie/common"
 	"github.com/lunfardo314/unitrie/immutable"
 )
@@ -307,68 +305,5 @@ func FetchHeaviestBranchChainNSlotsBack(store general.StateStore, nBack int) []*
 		lastInTheChain = &bd
 		ret = append(ret, lastInTheChain)
 	}
-	return ret
-}
-
-type (
-	SummarySupplyAndInflation struct {
-		NumberOfBranches int
-		OldestSlot       core.TimeSlot
-		LatestSlot       core.TimeSlot
-		BeginSupply      uint64
-		EndSupply        uint64
-		TotalInflation   uint64
-		InfoPerSeqID     map[core.ChainID]struct {
-			NumBranches    int
-			TotalInflation uint64
-		}
-	}
-)
-
-func (s *SummarySupplyAndInflation) Lines(prefix ...string) *lines.Lines {
-	ret := lines.New(prefix...).
-		Add("Slots from %d to %d inclusive. Total %d slots", s.OldestSlot, s.LatestSlot, s.LatestSlot-s.OldestSlot+1).
-		Add("Number of branches: %d", s.NumberOfBranches).
-		Add("Supply begin: %s", util.GoThousands(s.BeginSupply)).
-		Add("Supply end: %s", util.GoThousands(s.EndSupply)).
-		Add("Total inflation: %s", util.GoThousands(s.TotalInflation)).
-		Add("Inflation per sequencer:")
-
-	sortedSeqIDs := util.KeysSorted(s.InfoPerSeqID, func(k1, k2 core.ChainID) bool {
-		return bytes.Compare(k1[:], k2[:]) < 0
-	})
-	for _, seqId := range sortedSeqIDs {
-		info := s.InfoPerSeqID[seqId]
-		ret.Add("    %s -- inflation: %s, number of branches: %d",
-			seqId.Short(), util.GoThousands(info.TotalInflation), info.NumBranches)
-	}
-	return ret
-}
-
-func FetchSummarySupplyAndInflation(store general.StateStore, nBack int) SummarySupplyAndInflation {
-	branchData := FetchHeaviestBranchChainNSlotsBack(store, nBack) // descending
-	util.Assertf(len(branchData) > 0, "len(branchData) > 0")
-
-	ret := SummarySupplyAndInflation{
-		BeginSupply:      branchData[len(branchData)-1].Stem.Output.MustStemLock().Supply,
-		EndSupply:        branchData[0].Stem.Output.MustStemLock().Supply,
-		TotalInflation:   0,
-		NumberOfBranches: len(branchData),
-		OldestSlot:       branchData[len(branchData)-1].Stem.Timestamp().TimeSlot(),
-		LatestSlot:       branchData[0].Stem.Timestamp().TimeSlot(),
-		InfoPerSeqID: make(map[core.ChainID]struct {
-			NumBranches    int
-			TotalInflation uint64
-		}),
-	}
-	for i := 0; i < len(branchData)-1; i++ {
-		inflation := branchData[i].Stem.Output.MustStemLock().InflationAmount
-		ret.TotalInflation += inflation
-		seqInfo := ret.InfoPerSeqID[branchData[i].SequencerID]
-		seqInfo.NumBranches++
-		seqInfo.TotalInflation += inflation
-		ret.InfoPerSeqID[branchData[i].SequencerID] = seqInfo
-	}
-	util.Assertf(ret.EndSupply-ret.BeginSupply == ret.TotalInflation, "FetchSummarySupplyAndInflation: ret.EndSupply - ret.BeginSupply == ret.TotalInflation")
 	return ret
 }

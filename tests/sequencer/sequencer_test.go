@@ -696,7 +696,7 @@ func TestNSequencers(t *testing.T) {
 		}
 
 		// also asserts consistency of supply and inflation
-		summarySupply := r.ut.FetchSummarySupplyAndInflationOnHeaviestBranch(-1)
+		summarySupply := r.ut.FetchSummarySupplyAndInflation(-1)
 		t.Logf("Heaviest branch summary: \n%s", summarySupply.Lines("     ").String())
 	})
 	t.Run("2 seq, transfers 1", func(t *testing.T) {
@@ -780,7 +780,7 @@ func TestNSequencers(t *testing.T) {
 		require.EqualValues(t, int(totalAmountToTargetAddress), int(bal))
 
 		// also asserts consistency of supply and inflation
-		summarySupply := r.ut.FetchSummarySupplyAndInflationOnHeaviestBranch(-1)
+		summarySupply := r.ut.FetchSummarySupplyAndInflation(-1)
 		t.Logf("Heaviest branch summary: \n%s", summarySupply.Lines("     ").String())
 	})
 	t.Run("2 seq, transfers 2", func(t *testing.T) {
@@ -876,7 +876,7 @@ func TestNSequencers(t *testing.T) {
 		require.EqualValues(t, int(totalAmountToTargetAddress), int(bal))
 
 		// also asserts consistency of supply and inflation
-		summarySupply := r.ut.FetchSummarySupplyAndInflationOnHeaviestBranch(-1)
+		summarySupply := r.ut.FetchSummarySupplyAndInflation(-1)
 		t.Logf("Heaviest branch summary: \n%s", summarySupply.Lines("     ").String())
 
 	})
@@ -943,7 +943,7 @@ func TestNSequencers(t *testing.T) {
 		}
 
 		// also asserts consistency of supply and inflation
-		summarySupply := r.ut.FetchSummarySupplyAndInflationOnHeaviestBranch(-1)
+		summarySupply := r.ut.FetchSummarySupplyAndInflation(-1)
 		t.Logf("Heaviest branch summary: \n%s", summarySupply.Lines("     ").String())
 
 		for _, o := range r.chainOrigins {
@@ -1016,8 +1016,13 @@ func TestNSequencers(t *testing.T) {
 		r.ut.SaveTree(fnameFromTestName(t) + "_TREE")
 
 		// also asserts consistency of supply and inflation
-		summarySupply := r.ut.FetchSummarySupplyAndInflationOnHeaviestBranch(-1)
+		summarySupply := r.ut.FetchSummarySupplyAndInflation(-1)
 		t.Logf("Heaviest branch summary: \n%s", summarySupply.Lines("     ").String())
+
+		heaviestState = r.ut.HeaviestStateForLatestTimeSlot()
+		seqBalance := heaviestState.BalanceOnChain(&r.bootstrapChainID)
+		t.Logf("balances on heaviest chain:")
+		t.Logf("     %s : %s", r.bootstrapChainID.Short(), util.GoThousands(seqBalance))
 
 		for i, o := range r.chainOrigins {
 			chainOriginVID, rdr := r.wrk.UTXOTangle().FindOutputInLatestTimeSlot(&o.ID)
@@ -1029,6 +1034,9 @@ func TestNSequencers(t *testing.T) {
 				t.Logf("chain output ID is %s <- chain ID %s", chainOut.ID.Short(), r.chainOrigins[i].ChainID.Short())
 			}
 			require.True(t, chainOriginVID == nil)
+
+			seqBalance = heaviestState.BalanceOnChain(&o.ChainID)
+			t.Logf("     %s : %s", o.ChainID.Short(), util.GoThousands(seqBalance))
 		}
 	})
 }
@@ -1100,9 +1108,14 @@ func TestPruning(t *testing.T) {
 
 		bal := heaviestState.BalanceOnChain(&r.bootstrapChainID)
 
-		require.EqualValues(t, int(initOnBootstrapSeqBalance+feeAmount+feeAmount*(nSequencers-1)), int(bal))
+		// also asserts consistency of supply and inflation
+		summarySupply := r.ut.FetchSummarySupplyAndInflation(-1)
+		t.Logf("Heaviest branch summary: \n%s", summarySupply.Lines("     ").String())
+
 		r.ut.SaveGraph(fnameFromTestName(t))
 		r.ut.SaveTree(fnameFromTestName(t) + "_TREE")
+
+		require.EqualValues(t, int(initOnBootstrapSeqBalance+feeAmount+feeAmount*(nSequencers-1)), int(bal))
 
 		reachable2, orphaned2, baseline2 := r.ut.ReachableAndOrphaned(2)
 		t.Logf("====== top slots: %d, reachable %d, orphaned %d, since baseline: %v, total vertices: %d",
