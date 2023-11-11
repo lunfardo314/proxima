@@ -540,7 +540,7 @@ func Test1Sequencer(t *testing.T) {
 	})
 }
 
-func (r *sequencerTestData) createSequencers(maxInputsInTx, maxSlots, pace int, loglevel zapcore.Level, dontTagAlong ...bool) {
+func (r *sequencerTestData) createSequencers(maxInputsInTx, maxSlots, pace int, loglevel zapcore.Level) {
 	var err error
 	endorse := r.ut.HeaviestStemOutput().ID.TransactionID()
 	r.t.Logf("endorse: %v", endorse.String())
@@ -633,7 +633,6 @@ func TestNSequencers(t *testing.T) {
 			numFaucetTransactions = 1
 			maxTxInputs           = sequencer.DefaultMaxFeeInputs
 			stopAfterBranches     = 40
-			tagAlong              = false
 		)
 		t.Logf("\n   numFaucets: %d\n   numFaucetTransactions: %d\n", numFaucets, numFaucetTransactions)
 		r := initSequencerTestData(t, numFaucets, 1, core.LogicalTimeNow())
@@ -650,7 +649,7 @@ func TestNSequencers(t *testing.T) {
 		sequencer.SetTraceProposer(sequencer.BacktrackProposer1Name, false)
 		sequencer.SetTraceProposer(sequencer.BacktrackProposer2Name, false)
 
-		r.createSequencers(maxTxInputs, maxSlots, 5, zapcore.InfoLevel, !tagAlong)
+		r.createSequencers(maxTxInputs, maxSlots, 5, zapcore.InfoLevel)
 
 		var allFeeInputsConsumed atomic.Bool
 		branchesAfterAllConsumed := 0
@@ -707,7 +706,6 @@ func TestNSequencers(t *testing.T) {
 			numTxPerFaucet    = 10
 			maxTxInputs       = 0
 			stopAfterBranches = 20
-			tagAlong          = false
 		)
 		t.Logf("\n   numFaucets: %d\n   numTxPerFaucet: %d\n   transferAmount: %d",
 			numFaucets, numTxPerFaucet, transferAmount)
@@ -722,7 +720,7 @@ func TestNSequencers(t *testing.T) {
 
 		sequencer.SetTraceProposer(sequencer.BacktrackProposer1Name, false)
 
-		r.createSequencers(maxTxInputs, maxSlots, 5, zapcore.InfoLevel, !tagAlong)
+		r.createSequencers(maxTxInputs, maxSlots, 5, zapcore.InfoLevel)
 
 		var allFeeInputsConsumed atomic.Bool
 		branchesAfterAllConsumed := 0
@@ -888,7 +886,6 @@ func TestNSequencers(t *testing.T) {
 			maxTxInputs           = sequencer.DefaultMaxFeeInputs
 			stopAfterBranches     = 50
 			nSequencers           = 3
-			tagAlong              = true // <<<<   ????????
 		)
 		t.Logf("\n   numFaucets: %d\n   numFaucetTransactions: %d\n", numFaucets, numFaucetTransactions)
 		r := initSequencerTestData(t, numFaucets, nSequencers-1, core.LogicalTimeNow())
@@ -901,7 +898,7 @@ func TestNSequencers(t *testing.T) {
 
 		sequencer.SetTraceProposer(sequencer.BacktrackProposer1Name, false)
 
-		r.createSequencers(maxTxInputs, maxSlot, 5, zapcore.InfoLevel, !tagAlong)
+		r.createSequencers(maxTxInputs, maxSlot, 5, zapcore.InfoLevel)
 
 		var allFeeInputsConsumed atomic.Bool
 		branchesAfterAllConsumed := 0
@@ -1077,10 +1074,6 @@ func TestPruning(t *testing.T) {
 			}
 		})
 
-		heaviestState := r.ut.HeaviestStateForLatestTimeSlot()
-		initOnBootstrapSeqBalance := heaviestState.BalanceOnChain(&r.bootstrapChainID)
-		require.EqualValues(t, inittest.InitSupply-initFaucetBalance*numFaucets, int(initOnBootstrapSeqBalance))
-
 		r.bootstrapSeq.WaitStop()
 		r.sequencers[0].WaitStop()
 		r.wrk.Stop()
@@ -1088,7 +1081,6 @@ func TestPruning(t *testing.T) {
 
 		r.ut.SaveGraph(fnameFromTestName(r.t))
 
-		heaviestState = r.ut.HeaviestStateForLatestTimeSlot()
 		latest := r.ut.LatestTimeSlot()
 		t.Logf("latest slot: %d", latest)
 		for _, o := range r.chainOrigins {
@@ -1096,16 +1088,12 @@ func TestPruning(t *testing.T) {
 			require.False(t, found)
 		}
 
-		bal := heaviestState.BalanceOnChain(&r.bootstrapChainID)
-
 		// also asserts consistency of supply and inflation
 		summarySupply := r.ut.FetchSummarySupplyAndInflation(-1)
 		t.Logf("Heaviest branch summary: \n%s", summarySupply.Lines("     ").String())
 
 		r.ut.SaveGraph(fnameFromTestName(t))
 		r.ut.SaveTree(fnameFromTestName(t) + "_TREE")
-
-		require.EqualValues(t, int(initOnBootstrapSeqBalance+feeAmount+feeAmount*(nSequencers-1)), int(bal))
 
 		reachable2, orphaned2, baseline2 := r.ut.ReachableAndOrphaned(2)
 		t.Logf("====== top slots: %d, reachable %d, orphaned %d, since baseline: %v, total vertices: %d",
@@ -1199,6 +1187,7 @@ func TestPruning(t *testing.T) {
 		t.Logf("%s", r.ut.Info())
 
 		r.ut.SaveGraph(fnameFromTestName(r.t))
+		r.ut.SaveTree(fnameFromTestName(t) + "_TREE")
 
 		heaviestState = r.ut.HeaviestStateForLatestTimeSlot()
 		latest := r.ut.LatestTimeSlot()
@@ -1208,11 +1197,96 @@ func TestPruning(t *testing.T) {
 			require.False(t, found)
 		}
 
-		bal := heaviestState.BalanceOnChain(&r.bootstrapChainID)
+		// also asserts consistency of supply and inflation
+		summarySupply := r.ut.FetchSummarySupplyAndInflation(-1)
+		t.Logf("Heaviest branch summary: \n%s", summarySupply.Lines("     ").String())
 
-		require.EqualValues(t, int(initOnBootstrapSeqBalance+feeAmount+feeAmount*(nSequencers-1)), int(bal))
-		r.ut.SaveGraph(fnameFromTestName(t))
+		reachable2, orphaned2, baseline2 := r.ut.ReachableAndOrphaned(2)
+		t.Logf("====== top slots: %d, reachable %d, orphaned %d, since baseline: %v, total vertices: %d",
+			2, len(reachable2), len(orphaned2), time.Since(baseline2), r.ut.NumVertices())
+		require.EqualValues(t, r.ut.NumVertices(), len(reachable2)+len(orphaned2))
+
+		reachable3, orphaned3, baseline3 := r.ut.ReachableAndOrphaned(3)
+		t.Logf("====== top slots: %d, reachable %d, orphaned %d, since baseline: %v, total vertices: %d",
+			3, len(reachable3), len(orphaned3), time.Since(baseline3), r.ut.NumVertices())
+		require.EqualValues(t, r.ut.NumVertices(), len(reachable3)+len(orphaned3))
+
+		reachable5, orphaned5, baseline5 := r.ut.ReachableAndOrphaned(5)
+		t.Logf("====== top slots: %d, reachable %d, orphaned %d, since baseline: %v, total vertices: %d",
+			5, len(reachable5), len(orphaned5), time.Since(baseline5), r.ut.NumVertices())
+		require.EqualValues(t, r.ut.NumVertices(), len(reachable5)+len(orphaned5))
+
+		t.Logf("PRUNED: %s", r.ut.Info())
+	})
+	t.Run("5 seq pruner", func(t *testing.T) {
+		const (
+			maxSlots              = 40
+			numFaucets            = 1
+			numFaucetTransactions = 1
+			maxTxInputs           = sequencer.DefaultMaxFeeInputs
+			stopAfterBranches     = 40
+			nSequencers           = 5
+		)
+		t.Logf("\n   numFaucets: %d\n   numFaucetTransactions: %d\n", numFaucets, numFaucetTransactions)
+		r := initSequencerTestData(t, numFaucets, nSequencers-1, core.LogicalTimeNow())
+		transaction.SetPrintEasyFLTraceOnFail(false)
+
+		r.wrk.Start()
+		r.wrk.StartPruner()
+
+		//r.createTransactionLogger()
+		// add transaction with chain origins
+		_, err := r.wrk.TransactionInWaitAppend(r.txChainOrigins.Bytes(), 5*time.Second)
+		require.NoError(t, err)
+		t.Logf("chain origins transaction has been added to the tangle: %s", r.txChainOrigins.IDShort())
+
+		sequencer.SetTraceProposer(sequencer.BacktrackProposer1Name, false)
+
+		r.createSequencers(maxTxInputs, maxSlots, 5, zapcore.InfoLevel)
+
+		var allFeeInputsConsumed atomic.Bool
+		branchesAfterAllConsumed := 0
+		cnt := 0
+		r.bootstrapSeq.OnMilestoneSubmitted(func(seq *sequencer.Sequencer, wOut *utangle.WrappedOutput) {
+			seq.LogMilestoneSubmitDefault(wOut)
+			cnt++
+			if seq.Info().NumConsumedFeeOutputs >= numFaucetTransactions*numFaucets {
+				allFeeInputsConsumed.Store(true)
+			}
+			if allFeeInputsConsumed.Load() && wOut.VID.IsBranchTransaction() {
+				branchesAfterAllConsumed++
+			}
+			if branchesAfterAllConsumed >= stopAfterBranches {
+				go seq.Stop()
+				for _, s := range r.sequencers {
+					go s.Stop()
+				}
+			}
+		})
+
+		heaviestState := r.ut.HeaviestStateForLatestTimeSlot()
+		initOnBootstrapSeqBalance := heaviestState.BalanceOnChain(&r.bootstrapChainID)
+		require.EqualValues(t, inittest.InitSupply-initFaucetBalance*numFaucets, int(initOnBootstrapSeqBalance))
+
+		r.bootstrapSeq.WaitStop()
+		r.sequencers[0].WaitStop()
+		r.wrk.Stop()
+		t.Logf("%s", r.ut.Info())
+
+		r.ut.SaveGraph(fnameFromTestName(r.t))
 		r.ut.SaveTree(fnameFromTestName(t) + "_TREE")
+
+		heaviestState = r.ut.HeaviestStateForLatestTimeSlot()
+		latest := r.ut.LatestTimeSlot()
+		t.Logf("latest slot: %d", latest)
+		for _, o := range r.chainOrigins {
+			found := r.wrk.UTXOTangle().HasOutputInAllBranches(latest, &o.ID)
+			require.False(t, found)
+		}
+
+		// also asserts consistency of supply and inflation
+		summarySupply := r.ut.FetchSummarySupplyAndInflation(-1)
+		t.Logf("Heaviest branch summary: \n%s", summarySupply.Lines("     ").String())
 
 		reachable2, orphaned2, baseline2 := r.ut.ReachableAndOrphaned(2)
 		t.Logf("====== top slots: %d, reachable %d, orphaned %d, since baseline: %v, total vertices: %d",
