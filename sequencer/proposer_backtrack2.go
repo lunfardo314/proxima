@@ -90,22 +90,6 @@ func (b *backtrackProposer2) generateCandidate(extend utangle.WrappedOutput, end
 	return b.makeMilestone(&extend, nil, feeOutputsToConsume, util.List(endorse))
 }
 
-//
-//func (b *backtrackProposer2) calcExtensionChoices() (endorse *utangle.WrappedTx, extensionChoices []utangle.WrappedOutput) {
-//	endorse, extensionChoices = b._calcExtensionChoices()
-//
-//	if endorse == nil {
-//		return
-//	}
-//	util.Assertf(core.ValidTimePace(endorse.Timestamp(), b.targetTs), "[%s] endorsement target %s violates time constraint",
-//		b.name(), endorse.IDShort())
-//
-//	wrong := utangle.CheckPace(b.targetTs, extensionChoices...)
-//	util.Assertf(wrong.VID == nil, "[%s]: extension choice %s violates time constraint\nEndorsement target: %s\nExtension choices:\n%s",
-//		b.name(), wrong.IDShort(), endorse.IDShort(), milestoneSliceString(extensionChoices))
-//	return
-//}
-
 func (b *backtrackProposer2) calcExtensionChoices() (endorse *utangle.WrappedTx, extensionChoices []utangle.WrappedOutput) {
 	for b.factory.proposal.continueCandidateProposing(b.targetTs) {
 		endorsable := b.factory.tipPool.preSelectAndSortEndorsableMilestones(b.targetTs)

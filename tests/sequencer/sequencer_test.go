@@ -648,7 +648,6 @@ func TestNSequencers(t *testing.T) {
 		//t.Logf(">>>>>>>>> chain origins tx:\n%s", r.txChainOrigins.Lines(r.txChainOrigins.InputLoaderByIndex(r.ut.GetUTXO)))
 
 		sequencer.SetTraceProposer(sequencer.BaseProposerName, false)
-		sequencer.SetTraceProposer(sequencer.BacktrackProposer1Name, false)
 		sequencer.SetTraceProposer(sequencer.BacktrackProposer2Name, false)
 
 		r.createSequencers(maxTxInputs, maxSlots, 5, zapcore.InfoLevel)
@@ -721,7 +720,7 @@ func TestNSequencers(t *testing.T) {
 		t.Logf("chain origins transaction has been added to the tangle: %s", r.txChainOrigins.IDShort())
 		t.Logf("----------- Account info ----------------\n%s", r.ut.MustAccountInfoOfHeaviestBranch().Lines("   ").String())
 
-		sequencer.SetTraceProposer(sequencer.BacktrackProposer1Name, false)
+		sequencer.SetTraceProposer(sequencer.BacktrackProposer2Name, false)
 
 		r.createSequencers(maxTxInputs, maxSlots, 5, zapcore.InfoLevel)
 
@@ -805,7 +804,7 @@ func TestNSequencers(t *testing.T) {
 		require.NoError(t, err)
 		t.Logf("chain origins transaction has been added to the tangle: %s", r.txChainOrigins.IDShort())
 
-		sequencer.SetTraceProposer(sequencer.BacktrackProposer1Name, false)
+		sequencer.SetTraceProposer(sequencer.BacktrackProposer2Name, false)
 
 		r.createSequencers(maxTxInputs, maxSlots, 5, zapcore.InfoLevel)
 
@@ -900,7 +899,7 @@ func TestNSequencers(t *testing.T) {
 		require.NoError(t, err)
 		t.Logf("chain origins transaction has been added to the tangle: %s", r.txChainOrigins.IDShort())
 
-		sequencer.SetTraceProposer(sequencer.BacktrackProposer1Name, false)
+		sequencer.SetTraceProposer(sequencer.BacktrackProposer2Name, false)
 
 		r.createSequencers(maxTxInputs, maxSlot, 5, zapcore.InfoLevel)
 
@@ -980,7 +979,7 @@ func TestNSequencers(t *testing.T) {
 		require.NoError(t, err)
 		t.Logf("chain origins transaction has been added to the tangle: %s", r.txChainOrigins.IDShort())
 
-		sequencer.SetTraceProposer(sequencer.BacktrackProposer1Name, false)
+		sequencer.SetTraceProposer(sequencer.BacktrackProposer2Name, false)
 
 		r.createSequencers(maxTxInputs, maxSlot, 5, zapcore.InfoLevel)
 
@@ -1054,7 +1053,7 @@ func TestPruning(t *testing.T) {
 		require.NoError(t, err)
 		t.Logf("chain origins transaction has been added to the tangle: %s", r.txChainOrigins.IDShort())
 
-		sequencer.SetTraceProposer(sequencer.BacktrackProposer1Name, false)
+		sequencer.SetTraceProposer(sequencer.BacktrackProposer2Name, false)
 
 		r.createSequencers(maxTxInputs, maxSlots, 5, zapcore.InfoLevel)
 
@@ -1157,7 +1156,7 @@ func TestPruning(t *testing.T) {
 		require.NoError(t, err)
 		t.Logf("chain origins transaction has been added to the tangle: %s", r.txChainOrigins.IDShort())
 
-		sequencer.SetTraceProposer(sequencer.BacktrackProposer1Name, false)
+		sequencer.SetTraceProposer(sequencer.BacktrackProposer2Name, false)
 
 		r.createSequencers(maxTxInputs, maxSlots, 5, zapcore.InfoLevel)
 
@@ -1244,7 +1243,7 @@ func TestPruning(t *testing.T) {
 		require.NoError(t, err)
 		t.Logf("chain origins transaction has been added to the tangle: %s", r.txChainOrigins.IDShort())
 
-		sequencer.SetTraceProposer(sequencer.BacktrackProposer1Name, false)
+		sequencer.SetTraceProposer(sequencer.BacktrackProposer2Name, false)
 
 		r.createSequencers(maxTxInputs, maxSlots, 5, zapcore.InfoLevel)
 

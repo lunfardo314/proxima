@@ -238,9 +238,9 @@ func (c *proposerTaskGeneric) placeProposalIfRelevant(mdProposed *proposedMilest
 // excludes those pairs which are marked already visited
 func (c *proposerTaskGeneric) extensionChoicesInEndorsementTargetPastCone(endorsementTarget *utangle.WrappedTx) []utangle.WrappedOutput {
 	stateRdr := c.factory.utangle.MustGetBaselineState(endorsementTarget)
+	rdr := multistate.MakeSugared(stateRdr)
 
 	anotherSeqID := endorsementTarget.MustSequencerID()
-	rdr := multistate.MakeSugared(stateRdr)
 	rootOutput, err := rdr.GetChainOutput(&c.factory.tipPool.chainID)
 	if errors.Is(err, multistate.ErrNotFound) {
 		// cannot find own seqID in the state of anotherSeqID. The tree is empty

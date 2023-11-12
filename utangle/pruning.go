@@ -94,7 +94,8 @@ func (ut *UTXOTangle) PruneOrphaned(nLatestSlots int) (int, int, int) {
 	if nSlots != nLatestSlots {
 		return 0, 0, 0
 	}
-	orphaned := ut._orphanedFromReachableSet(_reachableFromTipList(tipList), baselineTime)
+	reachable := _reachableFromTipList(tipList)
+	orphaned := ut._orphanedFromReachableSet(reachable, baselineTime)
 	// delete from transaction dictionary
 	orphaned.ForEach(func(vid *WrappedTx) bool {
 		vid.MarkOrphaned()
@@ -125,7 +126,18 @@ func (ut *UTXOTangle) PruneOrphaned(nLatestSlots int) (int, int, int) {
 	for _, slot := range toDeleteSlots {
 		delete(ut.branches, slot)
 	}
+	// in reachable set delete all forks which points to deleted vertices
+	reachable.ForEach(func(vidReachable *WrappedTx) bool {
+		vidReachable.cleanForkSet()
+		return true
+	})
 	return len(orphaned), nPrunedBranches, len(toDeleteSlots)
+}
+
+func (vid *WrappedTx) cleanForkSet() {
+	vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
+		v.pastTrack.forks.cleanOrphaned()
+	}})
 }
 
 func (ut *UTXOTangle) _oldestNonEmptySlot() (core.TimeSlot, int) {

@@ -34,18 +34,26 @@ func (a *AccountInfo) Lines(prefix ...string) *lines.Lines {
 		}
 		return k1 < k2
 	})
+	sum := uint64(0)
 	for _, k := range lockedAccountsSorted {
 		ai := a.LockedAccounts[k]
 		ret.Add("   %s :: balance: %s, outputs: %d", k, util.GoThousands(ai.Balance), ai.NumOutputs)
+		sum += ai.Balance
 	}
+	ret.Add("--------------------------------")
+	ret.Add("   Total in locked accounts: %s", util.GoThousands(sum))
+
 	ret.Add("Chains: %d", len(a.ChainRecords))
 	chainIDSSorted := util.KeysSorted(a.ChainRecords, func(k1, k2 core.ChainID) bool {
 		return bytes.Compare(k1[:], k2[:]) < 0
 	})
-
+	sum = 0
 	for _, chainID := range chainIDSSorted {
 		ci := a.ChainRecords[chainID]
 		ret.Add("   %s :: %s   seq=%v branch=%v", chainID.Short(), util.GoThousands(ci.Balance), ci.IsSequencer, ci.IsBranch)
+		sum += ci.Balance
 	}
+	ret.Add("--------------------------------")
+	ret.Add("   Total on chains: %s", util.GoThousands(sum))
 	return ret
 }
