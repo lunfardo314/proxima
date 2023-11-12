@@ -20,19 +20,19 @@ pprof:
 
 workflow:
   addtx:
-    loglevel: debug
+    loglevel: info
   events:
     loglevel: info
   input:
-    loglevel: debug
+    loglevel: info
   reject:
     loglevel: info
   prevalid:
-    loglevel: debug
+    loglevel: info
   solidify:
-    loglevel: debug
+    loglevel: info
   validate:
-    loglevel: debug
+    loglevel: info
 
 # map of maps of sequencers <seq name>: <seq config>
 sequencers:

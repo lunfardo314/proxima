@@ -106,6 +106,10 @@ func (ut *UTXOTangle) AddVertexAndBranch(branchVID *WrappedTx, root common.VComm
 	ut.mutex.Lock()
 	defer ut.mutex.Unlock()
 
+	ut.addVertexAndBranch(branchVID, root)
+}
+
+func (ut *UTXOTangle) addVertexAndBranch(branchVID *WrappedTx, root common.VCommitment) {
 	conflict := ut.attach(branchVID)
 	util.Assertf(conflict == nil, "AddVertexAndBranch: conflict %s", conflict.IDShort())
 

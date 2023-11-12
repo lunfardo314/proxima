@@ -49,12 +49,12 @@ type (
 
 	Consumer[T any] struct {
 		*consumer.Consumer[T]
-		glb *Workflow
+		glb       *Workflow
+		traceFlag bool
 	}
 )
 
 const workflowLogName = "[workflow]"
-const TxStatusDefaultWaitingTimeout = 2 * time.Second
 
 func New(ut *utangle.UTXOTangle, configOptions ...ConfigOption) *Workflow {
 	cfg := defaultConfigParams()

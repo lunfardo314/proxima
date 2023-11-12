@@ -5,6 +5,7 @@ import (
 
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/transaction"
+	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/consumer"
 )
 
@@ -59,6 +60,16 @@ func (c *Consumer[T]) TraceMilestones(tx *transaction.Transaction, txid *core.Tr
 	}
 	if tx.IsSequencerMilestone() {
 		c.Log().Infof("%s  %s -- %s", msg, tx.SequencerInfoString(), txid.Short())
+	}
+}
+
+func (c *Consumer[T]) setTrace(t bool) {
+	c.traceFlag = t
+}
+
+func (c *Consumer[T]) trace(f string, a ...any) {
+	if c.traceFlag {
+		c.Log().Infof("TRACE: "+f, util.EvalLazyArgs(a...)...)
 	}
 }
 

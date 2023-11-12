@@ -49,6 +49,8 @@ func (w *Workflow) initAppendTxConsumer() {
 }
 
 func (c *AppendTxConsumer) consume(inp *AppendTxConsumerInputData) {
+	c.setTrace(inp.Source == TransactionSourceAPI)
+
 	inp.eventCallback(AppendTxConsumerName+".in", inp.Tx)
 	// append to the UTXO tangle
 	vid, err := c.glb.utxoTangle.AppendVertex(inp.Vertex, utangle.BypassValidation)
@@ -73,7 +75,7 @@ func (c *AppendTxConsumer) consume(inp *AppendTxConsumerInputData) {
 	})
 
 	c.glb.IncCounter(c.Name() + ".ok")
-	c.Log().Debugf("added to the UTXO tangle: %s", vid.IDShort())
+	c.trace("added to the UTXO tangle: %s", vid.IDShort())
 	c.TraceMilestones(inp.Tx, inp.Tx.ID(), "milestone has been added to the tangle")
 
 	// notify solidifier upon new transaction added to the tangle

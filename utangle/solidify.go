@@ -177,7 +177,7 @@ func (ut *UTXOTangle) fetchAndWrapBranch(oid *core.OutputID) (WrappedOutput, boo
 		vt.addOutput(oid.Index(), o)
 	}
 	vid := vt.Wrap()
-	ut.AddVertexAndBranch(vid, bd.Root)
+	ut.addVertexAndBranch(vid, bd.Root)
 	return WrappedOutput{VID: vid, Index: oid.Index()}, true, false
 }
 
@@ -202,7 +202,6 @@ func (v *Vertex) fetchMissingInputs(ut *UTXOTangle) (conflict *core.OutputID) {
 	}
 
 	var conflictWrapped *WrappedOutput
-
 	v.Tx.ForEachInput(func(i byte, oid *core.OutputID) bool {
 		if v.Inputs[i] != nil {
 			// it is already solid

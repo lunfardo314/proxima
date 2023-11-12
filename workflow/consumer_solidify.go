@@ -97,6 +97,8 @@ func (c *SolidifyConsumer) consume(inp *SolidifyInputData) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
+	c.setTrace(inp.PrimaryInputConsumerData.Source == TransactionSourceAPI)
+
 	if inp.Remove {
 		// command to remove the transaction and other depending on it from the solidification pool
 		inp.eventCallback(SolidifyConsumerName+".in.remove", inp.Tx)
@@ -117,6 +119,7 @@ func (c *SolidifyConsumer) consume(inp *SolidifyInputData) {
 }
 
 func (c *SolidifyConsumer) newVertexToSolidify(inp *SolidifyInputData) {
+
 	_, already := c.txPending[*inp.Tx.ID()]
 	util.Assertf(!already, "transaction is in the solidifier already: %s", inp.Tx.IDString())
 
@@ -197,6 +200,7 @@ func (c *SolidifyConsumer) collectDependingFutureCone(txid *core.TransactionID, 
 // removeNonSolidifiableFutureCone removes from solidifier all txids which directly or indirectly depend on txid
 func (c *SolidifyConsumer) removeNonSolidifiableFutureCone(txid *core.TransactionID) {
 	c.Log().Debugf("remove non-solidifiable future cone of %s", txid.Short())
+
 	ns := make(map[core.TransactionID]struct{})
 	c.collectDependingFutureCone(txid, ns)
 	for txid1 := range ns {
