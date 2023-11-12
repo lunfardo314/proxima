@@ -36,22 +36,6 @@ type (
 		Stem            *core.OutputWithID
 		SequencerOutput *core.OutputWithID
 	}
-
-	LockedAccountInfo struct {
-		Balance    uint64
-		NumOutputs int
-	}
-
-	ChainRecordInfo struct {
-		Balance     uint64
-		IsSequencer bool
-		IsBranch    bool
-	}
-
-	AccountInfo struct {
-		LockedAccounts map[string]LockedAccountInfo
-		ChainRecords   map[core.ChainID]ChainRecordInfo
-	}
 )
 
 // partitions of the state store on the trie
