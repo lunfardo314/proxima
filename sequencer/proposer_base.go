@@ -68,6 +68,9 @@ func (b *baseProposer) proposeBase(extend utangle.WrappedOutput) (*transaction.T
 	}
 	// non-branch
 
+	b.setTraceNAhead(1)
+	b.trace("non-branch")
+
 	feeOutputsToConsume, conflict := b.selectInputs(extend)
 	util.Assertf(conflict == nil, "unexpected conflict")
 

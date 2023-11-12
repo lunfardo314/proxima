@@ -177,3 +177,10 @@ func (tp *sequencerTipPool) getStatsAndReset() (ret tipPoolStats) {
 	tp.removedOutputsSinceReset = 0
 	return
 }
+
+func (tp *sequencerTipPool) numOutputs() int {
+	tp.mutex.RLock()
+	defer tp.mutex.RUnlock()
+
+	return len(tp.outputs)
+}

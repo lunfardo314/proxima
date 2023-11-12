@@ -131,6 +131,9 @@ func newOwnMilestone(wOut utangle.WrappedOutput, inputs ...utangle.WrappedOutput
 }
 
 func (mf *milestoneFactory) makeMilestone(chainIn, stemIn *utangle.WrappedOutput, preSelectedFeeInputs []utangle.WrappedOutput, endorse []*utangle.WrappedTx, targetTs core.LogicalTime) (*transaction.Transaction, error) {
+	if len(preSelectedFeeInputs) > 0 {
+		fmt.Printf(">>>>>>>> len(preSelectedFeeInputs) == %d\n", len(preSelectedFeeInputs))
+	}
 	chainInReal, err := chainIn.Unwrap()
 	if err != nil || chainInReal == nil {
 		return nil, err
@@ -166,6 +169,7 @@ func (mf *milestoneFactory) makeMilestone(chainIn, stemIn *utangle.WrappedOutput
 		inflationAmount = core.MaxInflationFromPredecessorAmount(chainInReal.Output.Amount())
 	}
 
+	// interpret possible sequencer commands in inputs
 	feeInputsReal, additionalOutputs = mf.makeAdditionalInputsOutputs(feeInputsReal, capWithdrawals)
 	endorseReal := utangle.DecodeIDs(endorse...)
 
@@ -242,14 +246,18 @@ func (mf *milestoneFactory) selectInputs(targetTs core.LogicalTime, ownMs utangl
 		return true
 	})
 
+	fmt.Printf(">>>>>>>>>>>> pre-selected %d outputs out of %d\n", len(selected), mf.tipPool.numOutputs())
+
 	// filters outputs which can be merged into the target delta but no more than maxFeeInputs limit
 	selected = util.FilterSlice(selected, func(wOut utangle.WrappedOutput) bool {
-		if conflict = consolidatedPastTrack.AbsorbPastTrackSafe(wOut.VID); conflict != nil {
-			return false
+		conflict = consolidatedPastTrack.AbsorbPastTrackSafe(wOut.VID)
+		if conflict != nil {
+			fmt.Printf("filter %s: conflicts with %s\n", wOut.IDShort(), conflict.IDShort())
 		}
-		return !wOut.IsConsumed(otherSeqVIDs...)
+		return conflict == nil && !wOut.IsConsumed(otherSeqVIDs...)
 	}, mf.maxFeeInputs)
 
+	fmt.Printf(">>>>>>>>>>>> selected %d outputs out of %d\n", len(selected), mf.tipPool.numOutputs())
 	return selected, nil
 }
 
