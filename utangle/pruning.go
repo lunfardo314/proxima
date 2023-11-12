@@ -40,7 +40,7 @@ func _collectReachableSet(rootVID *WrappedTx, ret set.Set[*WrappedTx]) {
 				return true
 			})
 		},
-		Orphaned: func() {
+		Deleted: func() {
 			util.Panicf("_collectReachableSet: orphaned vertex reached %s", rootVID.IDShort())
 		},
 	})
@@ -98,7 +98,7 @@ func (ut *UTXOTangle) PruneOrphaned(nLatestSlots int) (int, int, int) {
 	orphaned := ut._orphanedFromReachableSet(reachable, baselineTime)
 	// delete from transaction dictionary
 	orphaned.ForEach(func(vid *WrappedTx) bool {
-		vid.MarkOrphaned()
+		vid.MarkDeleted()
 		ut.deleteVertex(vid.ID())
 		return true
 	})
@@ -136,7 +136,7 @@ func (ut *UTXOTangle) PruneOrphaned(nLatestSlots int) (int, int, int) {
 
 func (vid *WrappedTx) cleanForkSet() {
 	vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
-		v.pastTrack.forks.cleanOrphaned()
+		v.pastTrack.forks.cleanDeleted()
 	}})
 }
 

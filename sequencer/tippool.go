@@ -102,7 +102,7 @@ func (tp *sequencerTipPool) _clearOrphanedOutputsIfNeeded() {
 	}
 	toDelete := make([]utangle.WrappedOutput, 0)
 	for wOut := range tp.outputs {
-		wOut.VID.Unwrap(utangle.UnwrapOptions{Orphaned: func() {
+		wOut.VID.Unwrap(utangle.UnwrapOptions{Deleted: func() {
 			toDelete = append(toDelete, wOut)
 		}})
 	}
@@ -120,7 +120,7 @@ func (tp *sequencerTipPool) filterAndSortOutputs(filter func(o utangle.WrappedOu
 	tp._clearOrphanedOutputsIfNeeded()
 
 	ret := util.Keys(tp.outputs, func(o utangle.WrappedOutput) bool {
-		return !o.VID.IsOrphaned() && filter(o)
+		return !o.VID.IsDeleted() && filter(o)
 	})
 	sort.Slice(ret, func(i, j int) bool {
 		return ret[i].Timestamp().Before(ret[j].Timestamp())

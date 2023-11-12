@@ -82,7 +82,7 @@ func makeGraphNode(vid *WrappedTx, gr graph.Graph[string, string], seqDict map[c
 		VirtualTx: func(v *VirtualTransaction) {
 			err = gr.AddVertex(id, finalTxAttributes...)
 		},
-		Orphaned: func() {
+		Deleted: func() {
 			err = gr.AddVertex(id, orphanedTxAttributes...)
 		},
 	})

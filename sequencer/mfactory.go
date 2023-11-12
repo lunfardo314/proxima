@@ -367,7 +367,7 @@ func (mf *milestoneFactory) cleanOwnMilestonesIfNecessary() {
 
 	toDelete := make([]*utangle.WrappedTx, 0)
 	for vid := range mf.ownMilestones {
-		vid.Unwrap(utangle.UnwrapOptions{Orphaned: func() {
+		vid.Unwrap(utangle.UnwrapOptions{Deleted: func() {
 			toDelete = append(toDelete, vid)
 		}})
 	}

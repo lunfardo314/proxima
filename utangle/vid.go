@@ -12,7 +12,6 @@ import (
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
 	"github.com/lunfardo314/proxima/util/set"
-	"go.uber.org/atomic"
 )
 
 type (
@@ -39,30 +38,25 @@ type (
 		_time() time.Time
 		_outputAt(idx byte) (*core.Output, error)
 		_hasOutputAt(idx byte) (bool, bool)
-		_mustNotUnwrapped() // helper for debugging
-		_toggleUnwrapped()  // helper for debugging
 	}
 
 	_vertex struct {
 		*Vertex
 		whenWrapped time.Time
-		unwrapped   atomic.Bool
 	}
 
 	_virtualTx struct {
 		*VirtualTransaction
-		unwrapped atomic.Bool
 	}
 
-	_orphanedTx struct {
+	_deletedTx struct {
 		core.TransactionID
-		unwrapped atomic.Bool
 	}
 
 	UnwrapOptions struct {
 		Vertex    func(v *Vertex)
 		VirtualTx func(v *VirtualTransaction)
-		Orphaned  func()
+		Deleted   func()
 	}
 
 	UnwrapOptionsForTraverse struct {
@@ -91,14 +85,6 @@ func (v _vertex) _hasOutputAt(idx byte) (bool, bool) {
 	return true, false
 }
 
-func (v _vertex) _mustNotUnwrapped() {
-	util.Assertf(!v.unwrapped.Load(), "nested unwrapping not allowed")
-}
-
-func (v _vertex) _toggleUnwrapped() {
-	v.unwrapped.Toggle()
-}
-
 func (v _virtualTx) _id() *core.TransactionID {
 	return &v.txid
 }
@@ -119,36 +105,20 @@ func (v _virtualTx) _hasOutputAt(idx byte) (bool, bool) {
 	return hasIt, false
 }
 
-func (v _virtualTx) _mustNotUnwrapped() {
-	util.Assertf(!v.unwrapped.Load(), "nested unwrapping not allowed")
-}
-
-func (v _virtualTx) _toggleUnwrapped() {
-	v.unwrapped.Toggle()
-}
-
-func (v _orphanedTx) _id() *core.TransactionID {
+func (v _deletedTx) _id() *core.TransactionID {
 	return &v.TransactionID
 }
 
-func (v _orphanedTx) _time() time.Time {
+func (v _deletedTx) _time() time.Time {
 	return time.Time{}
 }
 
-func (v _orphanedTx) _outputAt(_ byte) (*core.Output, error) {
+func (v _deletedTx) _outputAt(_ byte) (*core.Output, error) {
 	panic("orphaned vertex should not be accessed")
 }
 
-func (v _orphanedTx) _hasOutputAt(idx byte) (bool, bool) {
+func (v _deletedTx) _hasOutputAt(idx byte) (bool, bool) {
 	panic("orphaned vertex should not be accessed")
-}
-
-func (v _orphanedTx) _mustNotUnwrapped() {
-	util.Assertf(!v.unwrapped.Load(), "nested unwrapping not allowed")
-}
-
-func (v _orphanedTx) _toggleUnwrapped() {
-	v.unwrapped.Toggle()
 }
 
 func _newVID(g _genericWrapper) *WrappedTx {
@@ -199,24 +169,24 @@ func (vid *WrappedTx) IsSequencerMilestone() bool {
 }
 
 func (vid *WrappedTx) Timestamp() core.LogicalTime {
-	return vid._genericWrapper._id().Timestamp()
+	return vid.ID().Timestamp()
 }
 
 func (vid *WrappedTx) TimeSlot() core.TimeSlot {
 	return vid._genericWrapper._id().TimeSlot()
 }
 
-func (vid *WrappedTx) MarkOrphaned() {
+func (vid *WrappedTx) MarkDeleted() {
 	vid.mutex.Lock()
 	defer vid.mutex.Unlock()
 
 	switch v := vid._genericWrapper.(type) {
 	case _vertex:
-		vid._put(_orphanedTx{TransactionID: *v.Tx.ID()})
+		vid._put(_deletedTx{TransactionID: *v.Tx.ID()})
 	case _virtualTx:
-		vid._put(_orphanedTx{TransactionID: v.txid})
-	case _orphanedTx:
-		PanicOrphaned()
+		vid._put(_deletedTx{TransactionID: v.txid})
+	case _deletedTx:
+		PanicDeleted()
 	}
 }
 
@@ -336,10 +306,10 @@ func (vid *WrappedTx) isVirtualTx() (ret bool) {
 	return
 }
 
-func (vid *WrappedTx) IsOrphaned() bool {
+func (vid *WrappedTx) IsDeleted() bool {
 	ret := false
 	vid.Unwrap(UnwrapOptions{
-		Orphaned: func() {
+		Deleted: func() {
 			ret = true
 		},
 	})
@@ -356,47 +326,22 @@ type _unwrapOptionsTraverse struct {
 	visited set.Set[*WrappedTx]
 }
 
-const trackNestedUnwraps = true
-
 func (vid *WrappedTx) Unwrap(opt UnwrapOptions) {
-	// to trace possible deadlocks in case of nested unwrapping
-	if trackNestedUnwraps {
-		vid._mustNotUnwrapped()
-	}
-
 	vid.mutex.RLock()
 	defer vid.mutex.RUnlock()
 
 	switch v := vid._genericWrapper.(type) {
 	case _vertex:
 		if opt.Vertex != nil {
-			if trackNestedUnwraps {
-				vid._toggleUnwrapped()
-			}
 			opt.Vertex(v.Vertex)
-			if trackNestedUnwraps {
-				vid._toggleUnwrapped()
-			}
 		}
 	case _virtualTx:
 		if opt.VirtualTx != nil {
-			if trackNestedUnwraps {
-				vid._toggleUnwrapped()
-			}
 			opt.VirtualTx(v.VirtualTransaction)
-			if trackNestedUnwraps {
-				vid._toggleUnwrapped()
-			}
 		}
-	case _orphanedTx:
-		if opt.Orphaned != nil {
-			if trackNestedUnwraps {
-				vid._toggleUnwrapped()
-			}
-			opt.Orphaned()
-			if trackNestedUnwraps {
-				vid._toggleUnwrapped()
-			}
+	case _deletedTx:
+		if opt.Deleted != nil {
+			opt.Deleted()
 		}
 	default:
 		util.Assertf(false, "inconsistency: unsupported wrapped type")
@@ -462,7 +407,7 @@ func (vid *WrappedTx) _traversePastCone(opt *_unwrapOptionsTraverse) bool {
 				ret = opt.VirtualTx(vid, v)
 			}
 		},
-		Orphaned: func() {
+		Deleted: func() {
 			if opt.Orphaned != nil {
 				ret = opt.Orphaned(vid)
 			}
@@ -494,7 +439,7 @@ func (vid *WrappedTx) Lines(prefix ...string) *lines.Lines {
 				ret.Append(v.outputs[i].Lines("     "))
 			}
 		},
-		Orphaned: func() {
+		Deleted: func() {
 			ret.Add("== orphaned vertex")
 		},
 	})
@@ -558,8 +503,8 @@ func (vid *WrappedTx) ConvertToVirtualTx() {
 	switch v := vid._genericWrapper.(type) {
 	case _vertex:
 		vid._put(_virtualTx{VirtualTransaction: v.convertToVirtualTx()})
-	case _orphanedTx:
-		PanicOrphaned()
+	case _deletedTx:
+		PanicDeleted()
 	}
 }
 
@@ -580,8 +525,8 @@ func (vid *WrappedTx) WrappedInputs() []WrappedOutput {
 	return ret
 }
 
-func PanicOrphaned() {
-	util.Panicf("orphaned transaction should not be accessed")
+func PanicDeleted() {
+	util.Panicf("deleted transaction should not be accessed")
 }
 
 // attachAsConsumer must be called from globally locked utangle environment.
@@ -617,7 +562,7 @@ func (vid *WrappedTx) attachAsConsumer(outputIndex byte, consumer *WrappedTx) *W
 }
 
 func (vid *WrappedTx) propagateNewForkToFutureCone(f Fork, visited set.Set[*WrappedTx]) {
-	if vid.IsOrphaned() {
+	if vid.IsDeleted() {
 		return
 	}
 	if visited.Contains(vid) {
@@ -715,7 +660,7 @@ func (vid *WrappedTx) _collectMutationData(md *_mutationData) (conflict WrappedO
 				return true
 			})
 		},
-		Orphaned: PanicOrphaned,
+		Deleted: PanicDeleted,
 	})
 	return
 }
@@ -842,7 +787,7 @@ func (vid *WrappedTx) InflationAmount() (ret uint64) {
 			util.Assertf(ok, "can't get stem output")
 			ret = lck.InflationAmount
 		},
-		Orphaned: PanicOrphaned,
+		Deleted: PanicDeleted,
 	})
 	return
 }
@@ -949,13 +894,4 @@ func (o *WrappedOutput) _isConsumedInThePastConeOf(vid *WrappedTx, visited set.S
 
 func (o *WrappedOutput) ValidPace(targetTs core.LogicalTime) bool {
 	return core.ValidTimePace(o.Timestamp(), targetTs)
-}
-
-func CheckPace(targetTs core.LogicalTime, outs ...WrappedOutput) WrappedOutput {
-	for _, wOut := range outs {
-		if !wOut.ValidPace(targetTs) {
-			return wOut
-		}
-	}
-	return WrappedOutput{}
 }

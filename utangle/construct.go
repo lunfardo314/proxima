@@ -71,7 +71,7 @@ func (ut *UTXOTangle) attach(vid *WrappedTx) (conflict *WrappedOutput) {
 	if conflict != nil {
 		// mark orphaned and do not add to the utangle. If it was added to the descendants lists, it will be ignored
 		// upon traversal of the future cone
-		vid.MarkOrphaned()
+		vid.MarkDeleted()
 		return
 	}
 	txid := vid.ID()

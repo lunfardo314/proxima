@@ -119,7 +119,7 @@ func (fs *forkSet) absorbSafe(fs1 *forkSet) (conflict WrappedOutput) {
 	return
 }
 
-func (fs *forkSet) cleanOrphaned() {
+func (fs *forkSet) cleanDeleted() {
 	if fs == nil {
 		return
 	}
@@ -128,7 +128,7 @@ func (fs *forkSet) cleanOrphaned() {
 
 	toDeleteForks := make([]WrappedOutput, 0)
 	for wOut := range fs.m {
-		if wOut.VID.IsOrphaned() {
+		if wOut.VID.IsDeleted() {
 			toDeleteForks = append(toDeleteForks, wOut)
 		}
 	}

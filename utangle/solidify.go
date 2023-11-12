@@ -88,7 +88,7 @@ func (ut *UTXOTangle) wrapNewIntoExistingVirtualBranch(vid *WrappedTx, oid *core
 			available = true
 			return // ret, true, false
 		},
-		Orphaned: PanicOrphaned,
+		Deleted: PanicDeleted,
 	})
 	return ret, available, invalid
 }
@@ -116,7 +116,7 @@ func wrapNewIntoExistingVirtualNonBranch(vid *WrappedTx, oid *core.OutputID, bas
 			available = true
 			return // ret, true, false
 		},
-		Orphaned: PanicOrphaned,
+		Deleted: PanicDeleted,
 	})
 	return ret, available, invalid
 }
@@ -189,7 +189,7 @@ func (v *Vertex) FetchMissingDependencies(ut *UTXOTangle) (conflict *core.Output
 		conflict = v.fetchMissingInputs(ut)
 	}
 	if v._isSolid() {
-		v.pastTrack.forks.cleanOrphaned()
+		v.pastTrack.forks.cleanDeleted()
 		v.isSolid = true
 	}
 	return
