@@ -95,6 +95,10 @@ func FetchSummarySupplyAndInflation(stateStore general.StateStore, nBack int) *S
 	branchData := FetchHeaviestBranchChainNSlotsBack(stateStore, nBack) // descending
 	util.Assertf(len(branchData) > 0, "len(branchData) > 0")
 
+	return CalcSummarySupplyAndInflation(branchData, stateStore)
+}
+
+func CalcSummarySupplyAndInflation(branchData []*BranchData, stateStore general.StateStore) *SummarySupplyAndInflation {
 	ret := &SummarySupplyAndInflation{
 		BeginSupply:      branchData[len(branchData)-1].Stem.Output.MustStemLock().Supply,
 		EndSupply:        branchData[0].Stem.Output.MustStemLock().Supply,
@@ -145,10 +149,9 @@ func (s *SummarySupplyAndInflation) Lines(prefix ...string) *lines.Lines {
 		Add("Number of branches: %d", s.NumberOfBranches).
 		Add("Supply begin: %s", util.GoThousands(s.BeginSupply)).
 		Add("Supply end: %s", util.GoThousands(s.EndSupply)).
-		Add("Total inflation: %s", util.GoThousands(s.TotalInflation)).
-		Add("Total inflation %%: %.6f%%", totalInflationPercentage).
-		Add("Total inflation %% per slot: %.8f%%", totalInflationPercentagePerSlot).
-		Add("Total annual inflation %% extrapolated: %.2f%%", totalInflationPercentageYearlyExtrapolation).
+		Add("Total inflation: %s (%.6f%%)", util.GoThousands(s.TotalInflation), totalInflationPercentage).
+		Add("Average inflation per slot: %.8f%%", totalInflationPercentagePerSlot).
+		Add("Annual inflation extrapolated: %.2f%%", totalInflationPercentageYearlyExtrapolation).
 		Add("Info per sequencer:")
 
 	sortedSeqIDs := util.KeysSorted(s.InfoPerSeqID, func(k1, k2 core.ChainID) bool {

@@ -50,15 +50,18 @@ func runDbInfoCmd(_ *cobra.Command, _ []string) {
 		return bytes.Compare(branchData[i].SequencerID[:], branchData[j].SequencerID[:]) < 0
 	})
 
-	DisplayBranchData(branchData)
-
 	reader, err := multistate.NewSugaredReadableState(stateStore, branchData[0].Root)
 	glb.AssertNoError(err)
 
 	id := genesis.MustStateIdentityDataFromBytes(reader.MustStateIdentityBytes())
 
-	glb.Verbosef("\n----------------- Ledger state identity ----------------")
-	glb.Verbosef("%s", id.String())
+	glb.Infof("\n----------------- Ledger state identity ----------------")
+	glb.Infof("%s", id.String())
+	glb.Infof("\n----------------- Top branch data ----------------------")
+	DisplayBranchData(branchData)
+	glb.Infof("\n------------- Supply and inflation summary -------------")
+	summary := multistate.CalcSummarySupplyAndInflation(branchData, stateStore)
+	glb.Infof("%s", summary.Lines("   ").String())
 }
 
 func DisplayBranchData(branches []*multistate.BranchData) {
