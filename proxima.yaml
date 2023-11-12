@@ -20,19 +20,19 @@ pprof:
 
 workflow:
   addtx:
-    loglevel: info
+    loglevel: debug
   events:
     loglevel: info
   input:
-    loglevel: info
+    loglevel: debug
   reject:
     loglevel: info
   prevalid:
-    loglevel: info
+    loglevel: debug
   solidify:
-    loglevel: info
+    loglevel: debug
   validate:
-    loglevel: info
+    loglevel: debug
 
 # map of maps of sequencers <seq name>: <seq config>
 sequencers:
@@ -40,14 +40,15 @@ sequencers:
     enable: true
     loglevel: info
     trace_tippool: false
-    sequencer_id:
+    sequencer_id: 43e3eecc0c9929e3859420efafd06b437ad8224f43bbd8bc360b909e36b49244
+      # key 0
     controller_key: 136381bd4dea7b2f0fa6c6ca14ee660dc7929975b47e6cdb85adee9e26032a810530b790e0e7de626f36e20ba656f09e324c68203de899d0daf9f98fcb3cf684
     pace: 5
     max_fee_inputs: 50
 
   seq0:
     # on k2
-    enable: true
+    enable: false
     loglevel: info
     trace_tippool: false
     sequencer_id:
@@ -57,7 +58,7 @@ sequencers:
 
   seq1:
     # on k3
-    enable: true
+    enable: false
     loglevel: info
     trace_tippool: false
     sequencer_id:

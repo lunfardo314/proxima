@@ -53,6 +53,7 @@ func readInConfig() {
 	viper.AutomaticEnv() // read in environment variables that match
 
 	_ = viper.ReadInConfig()
+	glb.Infof("using profile: %s", viper.ConfigFileUsed())
 }
 
 func initRootCmd() {

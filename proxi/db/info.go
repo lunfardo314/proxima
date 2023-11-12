@@ -15,6 +15,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var slotsBack int
+
 func initDBInfoCmd(dbCmd *cobra.Command) {
 	dbInfoCmd := &cobra.Command{
 		Use:   "info",
@@ -22,6 +24,8 @@ func initDBInfoCmd(dbCmd *cobra.Command) {
 		Args:  cobra.NoArgs,
 		Run:   runDbInfoCmd,
 	}
+	dbInfoCmd.PersistentFlags().IntVarP(&slotsBack, "slots", "s", -1, "maximum slots back. Default: all")
+
 	dbInfoCmd.InitDefaultHelpCmd()
 	dbCmd.AddCommand(dbInfoCmd)
 }
@@ -60,7 +64,7 @@ func runDbInfoCmd(_ *cobra.Command, _ []string) {
 	glb.Infof("\n----------------- Top branch data ----------------------")
 	DisplayBranchData(branchData)
 	glb.Infof("\n------------- Supply and inflation summary -------------")
-	summary := multistate.CalcSummarySupplyAndInflation(branchData, stateStore)
+	summary := multistate.FetchSummarySupplyAndInflation(stateStore, slotsBack)
 	glb.Infof("%s", summary.Lines("   ").String())
 }
 

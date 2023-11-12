@@ -1,0 +1,30 @@
+api:
+    endpoint: http://localhost:4000
+config: k3
+force: false
+multistate:
+    name: ""
+sequencer:
+    id: ""
+tag-along:
+    fee: 500
+    sequencer:
+txstore:
+    name: ""
+wallet:
+    account: addressED25519(0xaa401c8c6a9deacf479ab2209c07c01a27bd1eeecf0d7eaa4180b8049c6190d0)
+    name: "key 1 wallet"
+    pk: a66f8768224b241fe4dd2e4c00132d029452468846b149f2c2c4d894805964c8e63df08176c9443f0fe015d3582635d3d5a02e33765fbb3a2995db9cf3bbe606
+    sequencer:
+spammer:
+    scenario: standard
+    output_amount: 1000
+    submit_nowait: false
+    pace: 3 # transaction pace in ticks
+    bundle_size: 10
+    max_transactions: 0 # 0 means no limit
+    max_duration_minutes: 0 # 0 means no limit
+    tag_along:
+        sequencer:
+        fee: 500
+    target: addressED25519(0x3faf090d38f18ea211936b8bcf19b7b30cdcb8e224394a5c30f9ba644f8bb2fb)

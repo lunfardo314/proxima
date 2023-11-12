@@ -33,6 +33,7 @@ func initSeqWithdrawCmd(seqCmd *cobra.Command) {
 
 func runSeqWithdrawCmd(_ *cobra.Command, args []string) {
 	seqID := glb.GetOwnSequencerID()
+	glb.Assertf(seqID != nil, "can't get own sequencer ID")
 	glb.Infof("sequencer ID (source): %s", seqID.String())
 
 	md, err := getClient().GetMilestoneDataFromHeaviestState(*seqID)

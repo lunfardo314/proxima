@@ -377,7 +377,7 @@ func (mf *milestoneFactory) cleanOwnMilestonesIfNecessary() {
 	mf.removedMilestonesSinceReset += len(toDelete)
 }
 
-// makeAdditionalInputsOutputs makes additional outputs according to commands in imputs.
+// makeAdditionalInputsOutputs makes additional outputs according to commands in inputs.
 // Filters consumedInThePastPath so that transfer commands would not exceed maximumTotal
 func (mf *milestoneFactory) makeAdditionalInputsOutputs(inputs []*core.OutputWithID, maximumTotal uint64) ([]*core.OutputWithID, []*core.Output) {
 	retImp := make([]*core.OutputWithID, 0)

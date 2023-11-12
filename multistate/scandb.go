@@ -95,10 +95,6 @@ func FetchSummarySupplyAndInflation(stateStore general.StateStore, nBack int) *S
 	branchData := FetchHeaviestBranchChainNSlotsBack(stateStore, nBack) // descending
 	util.Assertf(len(branchData) > 0, "len(branchData) > 0")
 
-	return CalcSummarySupplyAndInflation(branchData, stateStore)
-}
-
-func CalcSummarySupplyAndInflation(branchData []*BranchData, stateStore general.StateStore) *SummarySupplyAndInflation {
 	ret := &SummarySupplyAndInflation{
 		BeginSupply:      branchData[len(branchData)-1].Stem.Output.MustStemLock().Supply,
 		EndSupply:        branchData[0].Stem.Output.MustStemLock().Supply,
