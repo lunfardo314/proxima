@@ -35,7 +35,7 @@ func runDbInfoCmd(_ *cobra.Command, _ []string) {
 		return
 	}
 	stateDb := badger_adaptor.MustCreateOrOpenBadgerDB(dbName)
-	defer stateDb.Close()
+	defer func() { _ = stateDb.Close() }()
 
 	stateStore := badger_adaptor.New(stateDb)
 
@@ -73,6 +73,6 @@ func DisplayBranchData(branches []*multistate.BranchData) {
 		name = fmt.Sprintf("%s (%s)", name, br.SequencerID.VeryShort())
 		onChainAmount := br.SequencerOutput.Output.Amount()
 		glb.Infof(" %2d: %20s %10s %20s %20s    %-70s",
-			i, br.Stem.IDShort(), name, util.GoThousands(onChainAmount), util.GoThousands(br.LedgerCoverage), br.Root.String())
+			i, br.Stem.IDShort(), name, util.GoThousands(onChainAmount), br.LedgerCoverage.String(), br.Root.String())
 	}
 }

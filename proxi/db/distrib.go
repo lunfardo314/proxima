@@ -37,9 +37,9 @@ func runDBDistributeCmd(_ *cobra.Command, args []string) {
 	glb.Infof("Transaction store database: %s", txDBName)
 
 	stateDb := badger_adaptor.MustCreateOrOpenBadgerDB(dbName)
-	defer stateDb.Close()
+	defer func() { _ = stateDb.Close() }()
 
-	distribution := make([]genesis.LockBalance, len(args)/2)
+	distribution := make([]core.LockBalance, len(args)/2)
 	var err error
 	for i := 0; i < len(args); i += 2 {
 		distribution[i/2].Lock, err = core.AddressED25519FromSource(args[i])
@@ -99,7 +99,7 @@ func runDBDistributeCmd(_ *cobra.Command, args []string) {
 		glb.Infof("Warning: can't open tx store DB due to error '%v'", err)
 		return
 	}
-	defer txDB.Close()
+	defer func() { _ = txDB.Close() }()
 
 	err = txstore.NewSimpleTxBytesStore(badger_adaptor.New(txDB)).SaveTxBytes(txBytes)
 	glb.AssertNoError(err)
