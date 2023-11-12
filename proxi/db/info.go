@@ -62,8 +62,8 @@ func runDbInfoCmd(_ *cobra.Command, _ []string) {
 }
 
 func DisplayBranchData(branches []*multistate.BranchData) {
-	glb.Infof("     %-23s %-20s %-20s %-20s %-70s",
-		"stemID", "name (seqID)", "on-chain", "coverage", "root")
+	glb.Infof("     %-23s %-22s %-20s %-20s %-20s %-70s",
+		"stemID", "name (seqID)", "supply (diluted)", "on-chain", "coverage", "root")
 	glb.Infof(strings.Repeat("-", 150))
 	for i, br := range branches {
 		name := "(no name)"
@@ -72,7 +72,9 @@ func DisplayBranchData(branches []*multistate.BranchData) {
 		}
 		name = fmt.Sprintf("%s (%s)", name, br.SequencerID.VeryShort())
 		onChainAmount := br.SequencerOutput.Output.Amount()
-		glb.Infof(" %2d: %20s %10s %20s %20s    %-70s",
-			i, br.Stem.IDShort(), name, util.GoThousands(onChainAmount), br.LedgerCoverage.String(), br.Root.String())
+		supply := br.Stem.Output.MustStemLock().Supply
+		glb.Infof(" %2d: %20s %10s %10s %20s %20s    %-70s",
+			i, br.Stem.IDShort(), name, util.GoThousands(supply), util.GoThousands(onChainAmount),
+			util.GoThousands(br.LedgerCoverage.Sum()), br.Root.String())
 	}
 }

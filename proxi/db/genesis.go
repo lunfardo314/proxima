@@ -20,7 +20,7 @@ import (
 )
 
 var (
-	supply      uint64
+	initSupply  uint64
 	description string
 	nowis       time.Time
 )
@@ -33,7 +33,7 @@ func initDbGenesis(dbCmd *cobra.Command) {
 		Run:   runGenesis,
 	}
 	nowis = time.Now()
-	genesisCmd.Flags().Uint64Var(&supply, "supply", genesis.DefaultSupply, fmt.Sprintf("initial supply (default is %s", util.GoThousands(genesis.DefaultSupply)))
+	genesisCmd.Flags().Uint64Var(&initSupply, "supply", genesis.DefaultSupply, fmt.Sprintf("initial supply (default is %s", util.GoThousands(genesis.DefaultSupply)))
 	defaultDesc := fmt.Sprintf("genesis has been created at Unix time (nanoseconds) %d", nowis.UnixNano())
 	genesisCmd.Flags().StringVar(&description, "desc", defaultDesc, fmt.Sprintf("default is '%s'", defaultDesc))
 
@@ -59,7 +59,7 @@ func runGenesis(_ *cobra.Command, _ []string) {
 	glb.Infof("Creating genesis ledger state...")
 	glb.Infof("Multi-state database : %s", dbName)
 	glb.Infof("Transaction store database : %s", txStoreName)
-	glb.Infof("Initial supply: %s", util.GoThousands(supply))
+	glb.Infof("Initial supply: %s", util.GoThousands(initSupply))
 	glb.Infof("Description: '%s'", description)
 	nowisTs := core.LogicalTimeFromTime(nowis)
 	glb.Infof("Genesis time slot: %d", nowisTs.TimeSlot())
@@ -74,7 +74,7 @@ func runGenesis(_ *cobra.Command, _ []string) {
 
 	bootstrapChainID, _ := genesis.InitLedgerState(genesis.StateIdentityData{
 		Description:                description,
-		InitialSupply:              supply,
+		InitialSupply:              initSupply,
 		GenesisControllerPublicKey: walletData.PrivateKey.Public().(ed25519.PublicKey),
 		BaselineTime:               core.BaselineTime,
 		TimeTickDuration:           core.TimeTickDuration(),

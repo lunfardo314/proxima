@@ -36,6 +36,7 @@ func Init(rootCmd *cobra.Command) {
 	initDBDistributeCmd(dbCmd)
 	initDbGenesis(dbCmd)
 	initMainChainCmd(dbCmd)
+	initAccountsCmd(dbCmd)
 
 	rootCmd.AddCommand(dbCmd)
 }
