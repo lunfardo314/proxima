@@ -202,6 +202,13 @@ func (v *Vertex) fetchMissingInputs(ut *UTXOTangle) (conflict *core.OutputID) {
 		baselineStateArgs = []multistate.SugaredStateReader{ut.MustGetSugaredStateReader(baselineBranch.ID())}
 	}
 
+	oneInput := v.Tx.NumInputs() == 1
+	if oneInput {
+		fmt.Printf(">>>>>>>>>>>>>>>> one input in %s\n", v.Tx.IDShort())
+		defer func() {
+			fmt.Printf(">>>>>>>>>>>>>>>> one input %s, missing:\n    %s\n", v.Tx.IDShort(), v.MissingInputTxIDString())
+		}()
+	}
 	var conflictWrapped *WrappedOutput
 	v.Tx.ForEachInput(func(i byte, oid *core.OutputID) bool {
 		if v.Inputs[i] != nil {
@@ -211,11 +218,17 @@ func (v *Vertex) fetchMissingInputs(ut *UTXOTangle) (conflict *core.OutputID) {
 		inputWrapped, ok, invalid := ut.GetWrappedOutput(oid, baselineStateArgs...)
 		if invalid {
 			conflict = oid
+			if oneInput {
+				fmt.Printf(">>>>>>>>>>>>>> conflict: %s\n", oid.Short())
+			}
 			return false
 		}
 		if ok {
 			if conflictWrapped = v.pastTrack.absorbPastTrack(inputWrapped.VID, ut.StateStore); conflictWrapped != nil {
 				conflict = conflictWrapped.DecodeID()
+				if oneInput {
+					fmt.Printf(">>>>>>>>>>>>>> conflict: %s\n", oid.Short())
+				}
 				return false
 			}
 			v.Inputs[i] = inputWrapped.VID
