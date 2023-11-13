@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/general"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
@@ -194,12 +195,12 @@ func (v *Vertex) PendingDependenciesLines(prefix ...string) *lines.Lines {
 }
 
 // inheritPastTracks merges past tracks of inputs and endorsements
-func (v *Vertex) inheritPastTracks() (conflict *WrappedOutput) {
+func (v *Vertex) inheritPastTracks(getStore func() general.StateStore) (conflict *WrappedOutput) {
 	v.pastTrack = newPastTrack()
 
 	v.forEachInputDependency(func(i byte, vidInput *WrappedTx) bool {
 		util.Assertf(vidInput != nil, "vidInput != nil")
-		conflict = v.pastTrack.absorbPastTrack(vidInput)
+		conflict = v.pastTrack.absorbPastTrack(vidInput, getStore)
 		return conflict == nil
 	})
 	if conflict != nil {
@@ -207,7 +208,7 @@ func (v *Vertex) inheritPastTracks() (conflict *WrappedOutput) {
 	}
 	v.forEachEndorsement(func(_ byte, vidEndorsed *WrappedTx) bool {
 		util.Assertf(vidEndorsed != nil, "vidEndorsed != nil")
-		conflict = v.pastTrack.absorbPastTrack(vidEndorsed)
+		conflict = v.pastTrack.absorbPastTrack(vidEndorsed, getStore)
 		return conflict == nil
 	})
 	return

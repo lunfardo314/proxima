@@ -131,9 +131,6 @@ func newOwnMilestone(wOut utangle.WrappedOutput, inputs ...utangle.WrappedOutput
 }
 
 func (mf *milestoneFactory) makeMilestone(chainIn, stemIn *utangle.WrappedOutput, preSelectedFeeInputs []utangle.WrappedOutput, endorse []*utangle.WrappedTx, targetTs core.LogicalTime) (*transaction.Transaction, error) {
-	if len(preSelectedFeeInputs) > 0 {
-		fmt.Printf(">>>>>>>> len(preSelectedFeeInputs) == %d\n", len(preSelectedFeeInputs))
-	}
 	chainInReal, err := chainIn.Unwrap()
 	if err != nil || chainInReal == nil {
 		return nil, err
@@ -229,7 +226,7 @@ func (mf *milestoneFactory) selectInputs(targetTs core.LogicalTime, ownMs utangl
 
 	allSeqVIDs := append(slices.Clone(otherSeqVIDs), ownMs.VID)
 
-	consolidatedPastTrack, conflict := utangle.MergePastTracks(allSeqVIDs...)
+	consolidatedPastTrack, conflict := utangle.MergePastTracks(mf.utangle.StateStore, allSeqVIDs...)
 	if conflict != nil {
 		return nil, conflict
 	}
@@ -248,7 +245,7 @@ func (mf *milestoneFactory) selectInputs(targetTs core.LogicalTime, ownMs utangl
 
 	// filters outputs which can be merged into the target delta but no more than maxFeeInputs limit
 	selected = util.FilterSlice(selected, func(wOut utangle.WrappedOutput) bool {
-		conflict = consolidatedPastTrack.AbsorbPastTrackSafe(wOut.VID)
+		conflict = consolidatedPastTrack.AbsorbPastTrackSafe(wOut.VID, mf.utangle.StateStore)
 		return conflict == nil && !wOut.IsConsumed(otherSeqVIDs...)
 	}, mf.maxFeeInputs)
 

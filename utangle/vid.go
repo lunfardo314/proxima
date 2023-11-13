@@ -834,14 +834,14 @@ func (vid *WrappedTx) PastTrackLines(prefix ...string) *lines.Lines {
 	return ret
 }
 
-func MergePastTracks(vids ...*WrappedTx) (ret PastTrack, conflict *WrappedOutput) {
+func MergePastTracks(getStore func() general.StateStore, vids ...*WrappedTx) (ret PastTrack, conflict *WrappedOutput) {
 	if len(vids) == 0 {
 		return
 	}
 
 	retTmp := newPastTrack()
 	for _, vid := range vids {
-		conflict = retTmp.absorbPastTrack(vid)
+		conflict = retTmp.absorbPastTrack(vid, getStore)
 		if conflict != nil {
 			return
 		}

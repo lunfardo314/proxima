@@ -18,6 +18,8 @@ const (
 	latestSlotDBPartition = rootRecordDBPartition + 1
 )
 
+// TODO replace general.StateStore with common.KVReader wherever relevant
+
 func writeRootRecord(w common.KVWriter, branchTxID core.TransactionID, rootData RootRecord) {
 	key := common.ConcatBytes([]byte{rootRecordDBPartition}, branchTxID[:])
 	w.Set(key, rootData.Bytes())

@@ -54,7 +54,7 @@ func newVirtualBranchTx(br *multistate.BranchData) *VirtualTransaction {
 // The transaction is marked orphaned, so it will be ignored in the future cones
 func (ut *UTXOTangle) attach(vid *WrappedTx) (conflict *WrappedOutput) {
 	vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
-		if conflict = v.inheritPastTracks(); conflict != nil {
+		if conflict = v.inheritPastTracks(ut.StateStore); conflict != nil {
 			return
 		}
 		// book consumer into the inputs. Detect new double-spends, double-links and propagates

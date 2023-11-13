@@ -49,7 +49,7 @@ func (w *Workflow) initAppendTxConsumer() {
 }
 
 func (c *AppendTxConsumer) consume(inp *AppendTxConsumerInputData) {
-	c.setTrace(inp.Source == TransactionSourceAPI)
+	//c.setTrace(inp.Source == TransactionSourceAPI)
 
 	inp.eventCallback(AppendTxConsumerName+".in", inp.Tx)
 	// append to the UTXO tangle

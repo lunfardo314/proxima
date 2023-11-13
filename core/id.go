@@ -294,3 +294,13 @@ func (oid *OutputID) Index() byte {
 func (oid *OutputID) Bytes() []byte {
 	return oid[:]
 }
+
+func EqualTransactionIDs(txid1, txid2 *TransactionID) bool {
+	if txid1 == txid2 {
+		return true
+	}
+	if txid1 == nil || txid2 == nil {
+		return false
+	}
+	return *txid1 == *txid2
+}

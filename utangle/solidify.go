@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/general"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/util"
@@ -213,7 +214,7 @@ func (v *Vertex) fetchMissingInputs(ut *UTXOTangle) (conflict *core.OutputID) {
 			return false
 		}
 		if ok {
-			if conflictWrapped = v.pastTrack.absorbPastTrack(inputWrapped.VID); conflictWrapped != nil {
+			if conflictWrapped = v.pastTrack.absorbPastTrack(inputWrapped.VID, ut.StateStore); conflictWrapped != nil {
 				conflict = conflictWrapped.DecodeID()
 				return false
 			}
@@ -234,7 +235,7 @@ func (v *Vertex) fetchMissingEndorsements(ut *UTXOTangle) (conflict *core.Output
 		}
 		util.Assertf(v.Tx.TimeSlot() == txid.TimeSlot(), "tx.TimeTick() == txid.TimeTick()")
 		if vEndorsement, found := ut.GetVertex(txid); found {
-			if conflictWrapped = v.pastTrack.absorbPastTrack(vEndorsement); conflictWrapped != nil {
+			if conflictWrapped = v.pastTrack.absorbPastTrack(vEndorsement, ut.StateStore); conflictWrapped != nil {
 				conflict = conflictWrapped.DecodeID()
 				return false
 			}
@@ -246,7 +247,7 @@ func (v *Vertex) fetchMissingEndorsements(ut *UTXOTangle) (conflict *core.Output
 }
 
 // mergeBranches return <branch>, <success>
-func mergeBranches(b1, b2 *WrappedTx) (*WrappedTx, bool) {
+func mergeBranches(b1, b2 *WrappedTx, getStore func() general.StateStore) (*WrappedTx, bool) {
 	switch {
 	case b1 == b2:
 		return b1, true
@@ -258,34 +259,13 @@ func mergeBranches(b1, b2 *WrappedTx) (*WrappedTx, bool) {
 		// two different branches on the same slot conflicts
 		return nil, false
 	case b1.TimeSlot() > b2.TimeSlot():
-		if isDesc := b1.isDescendantBranchOf(b2); isDesc {
+		if isDesc := multistate.BranchIsDescendantOf(b1.ID(), b2.ID(), getStore); isDesc {
 			return b1, true
 		}
 	default:
-		if isDesc := b2.isDescendantBranchOf(b1); isDesc {
+		if isDesc := multistate.BranchIsDescendantOf(b2.ID(), b1.ID(), getStore); isDesc {
 			return b2, true
 		}
 	}
 	return nil, false
-}
-
-// isDescendantBranchOf determines is vid is descendant of the branch vidPred
-// FIXME does not work when vidPred is not in the utangle but in the state of vid
-func (vid *WrappedTx) isDescendantBranchOf(vidPred *WrappedTx) bool {
-	util.Assertf(vid != nil && vidPred != nil && vid.IsBranchTransaction() && vidPred.IsBranchTransaction(), "isDescendantBranchOf: must be a branch tx")
-	return vid._isDescendantBranchOf(vidPred)
-}
-
-func (vid *WrappedTx) _isDescendantBranchOf(vidPred *WrappedTx) (isDesc bool) {
-	if vid.TimeSlot() <= vidPred.TimeSlot() {
-		return
-	}
-	vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
-		_, stemOutputIdx := v.Tx.SequencerAndStemOutputIndices()
-		next := v.Inputs[stemOutputIdx]
-		if isDesc = next == vidPred; !isDesc {
-			isDesc = next._isDescendantBranchOf(vidPred)
-		}
-	}})
-	return
 }
