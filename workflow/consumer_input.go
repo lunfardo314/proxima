@@ -1,6 +1,8 @@
 package workflow
 
 import (
+	"fmt"
+
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/util/eventtype"
@@ -74,7 +76,7 @@ func (c *PrimaryConsumer) consume(inp *PrimaryInputConsumerData) {
 	// the input is preparse transaction with base validation ok. It means it is identifiable as a transaction
 	if c.isDuplicate(inp.Tx.ID()) {
 		// if duplicate, rise the event
-		inp.eventCallback("finish."+PrimaryInputConsumerName, "duplicate "+inp.Tx.IDShort())
+		inp.eventCallback("finish."+PrimaryInputConsumerName, fmt.Errorf("duplicate %s", inp.Tx.IDShort()))
 		c.glb.PostEvent(EventCodeDuplicateTx, inp.Tx.ID())
 		return
 	}

@@ -398,7 +398,6 @@ func (seq *Sequencer) submitMilestone(tx *transaction.Transaction) *utangle.Wrap
 		seq.log.Warnf("submitMilestone: %v", err)
 		seq.log.Errorf("====================== failed milestone ==================\n%s", tx.ToString(seq.factory.utangle.GetUTXO))
 		seq.factory.utangle.SaveGraph("submit_milestone_fail")
-		util.Panicf("submitMilestone: %v", err)
 		return nil
 	}
 	seq.log.Debugf("submited milestone:: %s", tx.IDShort())

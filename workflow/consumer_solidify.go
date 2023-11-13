@@ -53,7 +53,7 @@ type (
 )
 
 const (
-	keepNotSolid    = 1 * time.Minute
+	keepNotSolid    = 3 * time.Second // only for testing. Must be longer in reality
 	repeatPullAfter = 2 * time.Second
 )
 
@@ -205,7 +205,9 @@ func (c *SolidifyConsumer) removeNonSolidifiableFutureCone(txid *core.Transactio
 	c.collectDependingFutureCone(txid, ns)
 	for txid1 := range ns {
 		if v, ok := c.txPending[txid1]; ok {
-			v.PrimaryInputConsumerData.eventCallback("finish.remove."+SolidifyConsumerName, txid1)
+			pendingDept := v.draftVertex.PendingDependenciesLines("   ").String()
+			v.PrimaryInputConsumerData.eventCallback("finish.remove."+SolidifyConsumerName,
+				fmt.Errorf("%s solidication problem. Pending dependencies:\n%s", txid1.Short(), pendingDept))
 		}
 
 		delete(c.txPending, txid1)
@@ -240,9 +242,9 @@ func (c *SolidifyConsumer) checkNewDependency(inp *SolidifyInputData) {
 		if conflict := pending.draftVertex.FetchMissingDependencies(c.glb.utxoTangle); conflict != nil {
 			// tx cannot be solidified, remove
 			c.removeNonSolidifiableFutureCone(txid)
-			errStr := fmt.Errorf("conflict at %s", conflict.Short())
-			inp.eventCallback("finish.fail."+SolidifyConsumerName, errStr)
-			c.glb.RejectTransaction(*txid, "%v", errStr)
+			err := fmt.Errorf("conflict at %s", conflict.Short())
+			inp.eventCallback("finish.fail."+SolidifyConsumerName, err)
+			c.glb.RejectTransaction(*txid, "%v", err)
 			continue
 		}
 		if pending.draftVertex.IsSolid() {

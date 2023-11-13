@@ -55,7 +55,7 @@ func (c *AppendTxConsumer) consume(inp *AppendTxConsumerInputData) {
 	// append to the UTXO tangle
 	vid, err := c.glb.utxoTangle.AppendVertex(inp.Vertex, utangle.BypassValidation)
 	if err != nil {
-		inp.eventCallback("finish."+AppendTxConsumerName, err.Error())
+		inp.eventCallback("finish."+AppendTxConsumerName, err)
 		c.Debugf(inp.PrimaryInputConsumerData, "can't append vertex to the tangle: '%v'", err)
 		c.IncCounter("fail")
 		c.glb.RejectTransaction(*inp.Tx.ID(), "%v", err)
@@ -66,7 +66,7 @@ func (c *AppendTxConsumer) consume(inp *AppendTxConsumerInputData) {
 		})
 		return
 	}
-	inp.eventCallback("finish."+AppendTxConsumerName, "")
+	inp.eventCallback("finish."+AppendTxConsumerName, nil)
 
 	// rise new vertex event
 	c.glb.PostEvent(EventNewVertex, &NewVertexEventData{

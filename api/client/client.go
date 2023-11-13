@@ -21,7 +21,7 @@ import (
 	"golang.org/x/crypto/blake2b"
 )
 
-const apiDefaultClientTimeout = 3 * time.Second
+const apiDefaultClientTimeout = 7 * time.Second
 
 type APIClient struct {
 	c      http.Client

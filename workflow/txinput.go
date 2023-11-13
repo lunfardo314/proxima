@@ -70,18 +70,33 @@ func WithOnWorkflowEventPrefix(eventPrefix string, fun func(event string, data a
 	})
 }
 
+func decodeError(errData any) error {
+	if util.IsNil(errData) {
+		return nil
+	}
+	switch dataStr := errData.(type) {
+	case interface{ Error() string }:
+		return dataStr
+	case string:
+		return errors.New(dataStr)
+	case interface{ Short() string }:
+		return errors.New(dataStr.Short())
+	case interface{ IDShort() string }:
+		return errors.New(dataStr.IDShort())
+	case interface{ String() string }:
+		return errors.New(dataStr.String())
+	default:
+		return fmt.Errorf("decodeError: unsupported data type: %T", errData)
+	}
+}
+
 func (w *Workflow) TransactionInWaitAppend(txBytes []byte, timeout time.Duration, opts ...TransactionInOption) (*transaction.Transaction, error) {
 	errCh := make(chan error)
 	var closed bool
 	var closeMutex sync.Mutex
-
+	var err error
 	waitFailOpt := WithOnWorkflowEventPrefix("finish", func(event string, data any) {
-		errStr, ok := data.(string)
-		util.Assertf(ok, "wrong data type, string expected")
-		var err error
-		if errStr != "" {
-			err = errors.New(errStr)
-		}
+		err = decodeError(data)
 
 		closeMutex.Lock()
 		defer closeMutex.Unlock()

@@ -46,7 +46,7 @@ func (c *ValidateConsumer) consume(inp *ValidateConsumerInputData) {
 	// will start a worker goroutine or block util worker is available
 	c.workerPool.Work(func() {
 		if err := inp.draftVertex.Validate(); err != nil {
-			inp.eventCallback("finish."+ValidateConsumerName, err.Error())
+			inp.eventCallback("finish."+ValidateConsumerName, err)
 			c.IncCounter("err")
 			c.glb.RejectTransaction(*inp.Tx.ID(), "%v", err)
 			// inform solidifier
