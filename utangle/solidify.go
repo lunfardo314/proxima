@@ -269,6 +269,8 @@ func mergeBranches(b1, b2 *WrappedTx) (*WrappedTx, bool) {
 	return nil, false
 }
 
+// isDescendantBranchOf determines is vid is descendant of the branch vidPred
+// FIXME does not work when vidPred is not in the utangle but in the state of vid
 func (vid *WrappedTx) isDescendantBranchOf(vidPred *WrappedTx) bool {
 	util.Assertf(vid != nil && vidPred != nil && vid.IsBranchTransaction() && vidPred.IsBranchTransaction(), "isDescendantBranchOf: must be a branch tx")
 	return vid._isDescendantBranchOf(vidPred)

@@ -246,18 +246,12 @@ func (mf *milestoneFactory) selectInputs(targetTs core.LogicalTime, ownMs utangl
 		return true
 	})
 
-	fmt.Printf(">>>>>>>>>>>> pre-selected %d outputs out of %d\n", len(selected), mf.tipPool.numOutputs())
-
 	// filters outputs which can be merged into the target delta but no more than maxFeeInputs limit
 	selected = util.FilterSlice(selected, func(wOut utangle.WrappedOutput) bool {
 		conflict = consolidatedPastTrack.AbsorbPastTrackSafe(wOut.VID)
-		if conflict != nil {
-			fmt.Printf("filter %s: conflicts with %s\n", wOut.IDShort(), conflict.IDShort())
-		}
 		return conflict == nil && !wOut.IsConsumed(otherSeqVIDs...)
 	}, mf.maxFeeInputs)
 
-	fmt.Printf(">>>>>>>>>>>> selected %d outputs out of %d\n", len(selected), mf.tipPool.numOutputs())
 	return selected, nil
 }
 
