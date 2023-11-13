@@ -149,7 +149,7 @@ func getOutputInclusionHandle(ut *utangle.UTXOTangle) func(w http.ResponseWriter
 			rdr multistate.SugaredStateReader
 		}
 		allBranches := make([]branchState, 0)
-		err = ut.ForEachBranchStateDesc(ut.LatestTimeSlot(), func(vid *utangle.WrappedTx, rdr multistate.SugaredStateReader) bool {
+		err = ut.ForEachBranchStateDescending(ut.LatestTimeSlot(), func(vid *utangle.WrappedTx, rdr multistate.SugaredStateReader) bool {
 			allBranches = append(allBranches, branchState{
 				vid: vid,
 				rdr: rdr,

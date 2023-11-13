@@ -38,6 +38,9 @@ type (
 		Endorsements []*WrappedTx
 		pastTrack    PastTrack
 		isSolid      bool
+		// during solidification, sometimes there's a need to look for output into all branches.
+		// This flag prevent scanning all branches twice
+		branchesAlreadyScanned bool
 	}
 
 	VirtualTransaction struct {

@@ -1,7 +1,6 @@
 package utangle
 
 import (
-	"errors"
 	"fmt"
 
 	"github.com/lunfardo314/proxima/core"
@@ -31,204 +30,61 @@ func (ut *UTXOTangle) MakeDraftVertex(tx *transaction.Transaction) (*Vertex, *co
 	return ret, nil
 }
 
-// getExistingWrappedOutput returns wrapped output if vertex already in on the tangle
-// If output belongs to the virtual tx but is not cached there, loads it (if state is provided)
-func (ut *UTXOTangle) getExistingWrappedOutput(oid *core.OutputID, baselineState ...multistate.SugaredStateReader) (WrappedOutput, bool, bool) {
-	ut.mutex.RLock()
-	defer ut.mutex.RUnlock()
-
-	txid := oid.TransactionID()
-	if vid, found := ut.getVertex(&txid); found {
-		hasIt, invalid := vid.HasOutputAt(oid.Index())
-		if invalid {
-			return WrappedOutput{}, false, true
-		}
-		if hasIt {
-			return WrappedOutput{VID: vid, Index: oid.Index()}, true, false
-		}
-		// here it can only be a virtual tx
-		util.Assertf(vid.isVirtualTx(), "virtual tx expected")
-
-		if oid.IsBranchTransaction() {
-			// it means a virtual branch vertex exist but the output is not cached on it.
-			// It won't be a seq or stem output, because those are cached always in the branch virtual tx
-			return ut.wrapNewIntoExistingVirtualBranch(vid, oid)
-		}
-		// it is a virtual tx, output not cached
-		return wrapNewIntoExistingVirtualNonBranch(vid, oid, baselineState...)
-	}
-	return WrappedOutput{}, false, false
-}
-
-func (ut *UTXOTangle) wrapNewIntoExistingVirtualBranch(vid *WrappedTx, oid *core.OutputID) (WrappedOutput, bool, bool) {
-	util.Assertf(oid.BranchFlagON(), "%s should be a branch", oid.Short())
-
-	var ret WrappedOutput
-	var available, invalid bool
-
-	vid.Unwrap(UnwrapOptions{
-		VirtualTx: func(v *VirtualTransaction) {
-			_, already := v.OutputAt(oid.Index())
-			util.Assertf(!already, "inconsistency: output %s should not exist in the virtualTx", func() any { return oid.Short() })
-
-			bd, branchFound := multistate.FetchBranchData(ut.stateStore, oid.TransactionID())
-			util.Assertf(branchFound, "inconsistency: branch %s must exist", oid.Short())
-
-			rdr := multistate.MustNewSugaredStateReader(ut.stateStore, bd.Root)
-
-			o, err := rdr.GetOutput(oid)
-			if errors.Is(err, multistate.ErrNotFound) {
-				return // null, false, false
-			}
-			if err != nil {
-				invalid = true
-				return // null, false, true
-			}
-			v.addOutput(oid.Index(), o)
-			ret = WrappedOutput{VID: vid, Index: oid.Index()}
-			available = true
-			return // ret, true, false
-		},
-		Deleted: PanicDeleted,
-	})
-	return ret, available, invalid
-}
-
-func wrapNewIntoExistingVirtualNonBranch(vid *WrappedTx, oid *core.OutputID, baselineState ...multistate.SugaredStateReader) (WrappedOutput, bool, bool) {
-	util.Assertf(!oid.BranchFlagON(), "%s should not be branch", oid.Short())
-	// Don't have output in existing vertex, but it may be a virtualTx
-	if len(baselineState) == 0 {
-		return WrappedOutput{}, false, false
-	}
-	var ret WrappedOutput
-	var available, invalid bool
-	vid.Unwrap(UnwrapOptions{
-		VirtualTx: func(v *VirtualTransaction) {
-			o, err := baselineState[0].GetOutput(oid)
-			if errors.Is(err, multistate.ErrNotFound) {
-				return // null, false, false
-			}
-			if err != nil {
-				invalid = true
-				return // null, false, true
-			}
-			v.addOutput(oid.Index(), o)
-			ret = WrappedOutput{VID: vid, Index: oid.Index()}
-			available = true
-			return // ret, true, false
-		},
-		Deleted: PanicDeleted,
-	})
-	return ret, available, invalid
-}
-
-// GetWrappedOutput return a wrapped output either the one existing in the utangle,
-// or after finding it in the provided state
-func (ut *UTXOTangle) GetWrappedOutput(oid *core.OutputID, baselineState ...multistate.SugaredStateReader) (WrappedOutput, bool, bool) {
-	ret, found, invalid := ut.getExistingWrappedOutput(oid, baselineState...)
-	if found || invalid {
-		return ret, found, invalid
-	}
-
-	ut.mutex.Lock()
-	defer ut.mutex.Unlock()
-
-	// transaction not on UTXO tangle
-	if oid.BranchFlagON() {
-		return ut.fetchAndWrapBranch(oid)
-	}
-	// non-branch not on the utxo tangle
-	if len(baselineState) == 0 {
-		// no info on input, maybe later
-		return WrappedOutput{}, false, false
-	}
-	// looking for output in the provided state
-	o, err := baselineState[0].GetOutput(oid)
-	if err != nil {
-		return WrappedOutput{}, false, !errors.Is(err, multistate.ErrNotFound)
-	}
-	// found. Creating and wrapping new virtual tx
-	txid := oid.TransactionID()
-	vt := newVirtualTx(&txid)
-	vt.addOutput(oid.Index(), o)
-	vid := vt.Wrap()
-	conflict := ut.attach(vid)
-	util.Assertf(conflict == nil, "inconsistency: unexpected conflict %s", conflict.IDShort())
-
-	return WrappedOutput{VID: vid, Index: oid.Index()}, true, false
-}
-
-func (ut *UTXOTangle) fetchAndWrapBranch(oid *core.OutputID) (WrappedOutput, bool, bool) {
-	// it is a branch tx output, fetch the whole branch
-	bd, branchFound := multistate.FetchBranchData(ut.stateStore, oid.TransactionID())
-	if !branchFound {
-		// maybe later
-		return WrappedOutput{}, false, false
-	}
-	// branch found. Create virtualTx with seq and stem outputs
-	vt := newVirtualBranchTx(&bd)
-	if oid.Index() != bd.SequencerOutput.ID.Index() && oid.Index() != bd.Stem.ID.Index() {
-		// not seq or stem
-		rdr := multistate.MustNewSugaredStateReader(ut.stateStore, bd.Root)
-		o, err := rdr.GetOutput(oid)
-		if err != nil {
-			// if the output cannot be fetched from the branch state, it does not exist
-			return WrappedOutput{}, false, true
-		}
-		vt.addOutput(oid.Index(), o)
-	}
-	vid := vt.Wrap()
-	ut.addVertexAndBranch(vid, bd.Root)
-	return WrappedOutput{VID: vid, Index: oid.Index()}, true, false
-}
-
 // FetchMissingDependencies check solidity of inputs and fetches what is available
 // In general, the result is non-deterministic because some dependencies may be unavailable. This is ok for solidifier
 // Once transaction has all dependencies solid, further on the result is deterministic
 func (v *Vertex) FetchMissingDependencies(ut *UTXOTangle) (conflict *core.OutputID) {
 	if conflict = v.fetchMissingEndorsements(ut); conflict == nil {
-		conflict = v.fetchMissingInputs(ut)
+		if baselineBranch := v.BaselineBranch(); baselineBranch != nil {
+			conflict = v.fetchMissingInputs(ut, ut.MustGetSugaredStateReader(baselineBranch.ID()))
+		} else {
+			conflict = v.fetchMissingInputs(ut)
+		}
 	}
-	if v._isSolid() {
-		v.pastTrack.forks.cleanDeleted()
-		v.isSolid = true
+	if v._allEndorsementsSolid() {
+		if v._allInputsSolid() {
+			v.pastTrack.forks.cleanDeleted()
+			v.isSolid = true // fully solidified
+			return
+		}
+		// not all inputs solid
+		if v.branchesAlreadyScanned {
+			// latest branches have already been scanned, repeating it won't bring anything new
+			return
+		}
+		// Scan all latest states trying to solidify from them
+		latestBranches := ut.LatestBranchesDescending()
+		for _, branchVID := range latestBranches {
+			rdr := ut.MustGetSugaredStateReader(branchVID.ID())
+			if conflict = v.fetchMissingInputs(ut, rdr); conflict != nil {
+				return
+			}
+		}
+		v.branchesAlreadyScanned = true
+		// check again, it may be already solid
+		if v._allInputsSolid() {
+			v.pastTrack.forks.cleanDeleted()
+			v.isSolid = true // fully solidified
+		}
 	}
 	return
 }
 
-func (v *Vertex) fetchMissingInputs(ut *UTXOTangle) (conflict *core.OutputID) {
-	var baselineStateArgs []multistate.SugaredStateReader
-	if baselineBranch := v.BaselineBranch(); baselineBranch != nil {
-		baselineStateArgs = []multistate.SugaredStateReader{ut.MustGetSugaredStateReader(baselineBranch.ID())}
-	}
-
-	oneInput := v.Tx.NumInputs() == 1
-	if oneInput {
-		fmt.Printf(">>>>>>>>>>>>>>>> one input in %s\n", v.Tx.IDShort())
-		defer func() {
-			fmt.Printf(">>>>>>>>>>>>>>>> one input %s, missing:\n    %s\n", v.Tx.IDShort(), v.MissingInputTxIDString())
-		}()
-	}
+func (v *Vertex) fetchMissingInputs(ut *UTXOTangle, baselineState ...multistate.SugaredStateReader) (conflict *core.OutputID) {
 	var conflictWrapped *WrappedOutput
 	v.Tx.ForEachInput(func(i byte, oid *core.OutputID) bool {
 		if v.Inputs[i] != nil {
 			// it is already solid
 			return true
 		}
-		inputWrapped, ok, invalid := ut.GetWrappedOutput(oid, baselineStateArgs...)
+		inputWrapped, ok, invalid := ut.GetWrappedOutput(oid, baselineState...)
 		if invalid {
 			conflict = oid
-			if oneInput {
-				fmt.Printf(">>>>>>>>>>>>>> conflict: %s\n", oid.Short())
-			}
 			return false
 		}
 		if ok {
 			if conflictWrapped = v.pastTrack.absorbPastTrack(inputWrapped.VID, ut.StateStore); conflictWrapped != nil {
 				conflict = conflictWrapped.DecodeID()
-				if oneInput {
-					fmt.Printf(">>>>>>>>>>>>>> conflict: %s\n", oid.Short())
-				}
 				return false
 			}
 			v.Inputs[i] = inputWrapped.VID

@@ -223,7 +223,7 @@ func (ut *UTXOTangle) HeaviestStemOutput() *core.OutputWithID {
 	return ut.HeaviestStateForLatestTimeSlot().GetStemOutput()
 }
 
-func (ut *UTXOTangle) ForEachBranchStateDesc(e core.TimeSlot, fun func(vid *WrappedTx, rdr multistate.SugaredStateReader) bool) error {
+func (ut *UTXOTangle) ForEachBranchStateDescending(e core.TimeSlot, fun func(vid *WrappedTx, rdr multistate.SugaredStateReader) bool) error {
 	ut.mutex.RLock()
 	defer ut.mutex.RUnlock()
 
@@ -254,6 +254,19 @@ func (ut *UTXOTangle) forEachBranchSorted(e core.TimeSlot, fun func(vid *Wrapped
 	}
 }
 
+func (ut *UTXOTangle) LatestBranchesDescending() []*WrappedTx {
+	latestSlot := ut.LatestTimeSlot()
+	ut.mutex.RLock()
+	defer ut.mutex.RUnlock()
+
+	ret := make([]*WrappedTx, 0)
+	ut.forEachBranchSorted(latestSlot, func(vid *WrappedTx, root common.VCommitment) bool {
+		ret = append(ret, vid)
+		return true
+	}, true)
+	return ret
+}
+
 func (ut *UTXOTangle) GetSequencerBootstrapOutputs(seqID core.ChainID) (chainOut WrappedOutput, stemOut WrappedOutput, found bool) {
 	branches := multistate.FetchLatestBranches(ut.stateStore)
 	for _, bd := range branches {
@@ -273,7 +286,7 @@ func (ut *UTXOTangle) GetSequencerBootstrapOutputs(seqID core.ChainID) (chainOut
 
 func (ut *UTXOTangle) FindOutputInLatestTimeSlot(oid *core.OutputID) (ret *WrappedTx, rdr multistate.SugaredStateReader) {
 	ut.LatestTimeSlot()
-	err := ut.ForEachBranchStateDesc(ut.LatestTimeSlot(), func(branch *WrappedTx, stateReader multistate.SugaredStateReader) bool {
+	err := ut.ForEachBranchStateDescending(ut.LatestTimeSlot(), func(branch *WrappedTx, stateReader multistate.SugaredStateReader) bool {
 		if stateReader.HasUTXO(oid) {
 			ret = branch
 			rdr = stateReader
@@ -286,7 +299,7 @@ func (ut *UTXOTangle) FindOutputInLatestTimeSlot(oid *core.OutputID) (ret *Wrapp
 
 func (ut *UTXOTangle) HasOutputInAllBranches(e core.TimeSlot, oid *core.OutputID) bool {
 	found := false
-	err := ut.ForEachBranchStateDesc(e, func(_ *WrappedTx, rdr multistate.SugaredStateReader) bool {
+	err := ut.ForEachBranchStateDescending(e, func(_ *WrappedTx, rdr multistate.SugaredStateReader) bool {
 		found = rdr.HasUTXO(oid)
 		return found
 	})
@@ -296,7 +309,7 @@ func (ut *UTXOTangle) HasOutputInAllBranches(e core.TimeSlot, oid *core.OutputID
 
 func (ut *UTXOTangle) DoesNotHaveOutputInAnyBranch(e core.TimeSlot, oid *core.OutputID) bool {
 	found := false
-	err := ut.ForEachBranchStateDesc(e, func(_ *WrappedTx, rdr multistate.SugaredStateReader) bool {
+	err := ut.ForEachBranchStateDescending(e, func(_ *WrappedTx, rdr multistate.SugaredStateReader) bool {
 		found = rdr.HasUTXO(oid)
 		return !found
 	})

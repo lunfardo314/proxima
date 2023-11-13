@@ -87,18 +87,21 @@ func (v *Vertex) IsSolid() bool {
 	return v.isSolid
 }
 
-func (v *Vertex) _isSolid() bool {
+func (v *Vertex) _allInputsSolid() bool {
 	for _, d := range v.Inputs {
 		if d == nil {
 			return false
 		}
 	}
+	return true
+}
+
+func (v *Vertex) _allEndorsementsSolid() bool {
 	for _, d := range v.Endorsements {
 		if d == nil {
 			return false
 		}
 	}
-	util.Assertf(!v.Tx.IsSequencerMilestone() || v.pastTrack.baselineBranch != nil, "inconsistency: baseline branch is unknown in a sequencer transaction")
 	return true
 }
 
