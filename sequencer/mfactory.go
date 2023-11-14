@@ -317,10 +317,12 @@ func (mc *latestMilestoneProposal) getLatestProposal() *transaction.Transaction 
 }
 
 func (mf *milestoneFactory) startProposingForTargetLogicalTime(targetTs core.LogicalTime) (*transaction.Transaction, time.Duration, int) {
+	//mf.log.Infof("startProposingForTargetLogicalTime: %s", targetTs.String())
 	deadline := targetTs.Time()
 	nowis := time.Now()
 
 	if deadline.Before(nowis) {
+		//mf.log.Warnf("startProposingForTargetLogicalTime: nowis: %v, deadline: %v", nowis, deadline)
 		return nil, 0, 0
 	}
 	// start worker(s)
@@ -340,7 +342,7 @@ func (mf *milestoneFactory) startProposerWorkers(targetTime core.LogicalTime) {
 	for strategyName, rec := range allProposingStrategies {
 		task := rec.constructor(mf, targetTime)
 		if task != nil {
-			mf.log.Infof("RUN '%s' proposer for the target %s", strategyName, targetTime.String())
+			task.trace("RUN '%s' proposer for the target %s", strategyName, targetTime.String())
 			go mf.runProposerTask(task)
 		} else {
 			mf.log.Infof("SKIP '%s' proposer for the target %s", strategyName, targetTime.String())
@@ -349,10 +351,10 @@ func (mf *milestoneFactory) startProposerWorkers(targetTime core.LogicalTime) {
 }
 
 func (mf *milestoneFactory) runProposerTask(task proposerTask) {
-	task.setTraceNAhead(1)
+	//task.setTraceNAhead(1)
 	task.trace(" START proposer %s", task.name())
 	task.run()
-	task.setTraceNAhead(1)
+	//task.setTraceNAhead(1)
 	task.trace(" END proposer %s", task.name())
 }
 

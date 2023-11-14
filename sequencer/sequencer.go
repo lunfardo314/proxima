@@ -232,7 +232,6 @@ func (seq *Sequencer) WaitStop() {
 const sleepWaitingCurrentMilestoneTime = 10 * time.Millisecond
 
 func (seq *Sequencer) chooseNextTargetTime(avgProposalDuration time.Duration) core.LogicalTime {
-	var target core.LogicalTime
 	var prevMilestoneTs core.LogicalTime
 
 	if currentMs := seq.factory.getLatestMilestone(); currentMs.VID != nil {
@@ -244,8 +243,8 @@ func (seq *Sequencer) chooseNextTargetTime(avgProposalDuration time.Duration) co
 		prevMilestoneTs = core.MaxLogicalTime(seqOut.Timestamp(), stemOut.Timestamp())
 	}
 
-	nowis := core.LogicalTimeNow()
 	// synchronize clock
+	nowis := core.LogicalTimeNow()
 	if nowis.Before(prevMilestoneTs) {
 		waitDuration := time.Duration(core.DiffTimeTicks(prevMilestoneTs, nowis)) * core.TimeTickDuration()
 		seq.log.Warnf("nowis (%s) is before last milestone ts (%s). Sleep %v",
@@ -258,32 +257,30 @@ func (seq *Sequencer) chooseNextTargetTime(avgProposalDuration time.Duration) co
 			nowis.String(), prevMilestoneTs.String(), sleepWaitingCurrentMilestoneTime)
 		time.Sleep(sleepWaitingCurrentMilestoneTime)
 	}
+	// TODO taking into account average speed of proposal generation
 
-	const howManyAvgProposals = 10
-	timeTicksForSomeProposals := int((howManyAvgProposals * avgProposalDuration) / core.TimeTickDuration())
 	nowis = core.LogicalTimeNow()
-	// earliest reasonable. In next steps will move target further, if necessary
-	target = core.MaxLogicalTime(prevMilestoneTs.AddTimeTicks(seq.config.Pace), nowis.AddTimeTicks(timeTicksForSomeProposals))
+	util.Assertf(!nowis.Before(prevMilestoneTs), "!core.LogicalTimeNow().Before(prevMilestoneTs)")
 
-	seq.trace("chooseNextTargetTime: nowis: %s, preliminary target: %s", nowis.String(), target.String())
+	targetAbsoluteMinimum := prevMilestoneTs.AddTimeTicks(seq.config.Pace)
+	nextSlotBoundary := nowis.NextTimeSlotBoundary()
 
-	if seq.prevTimeTarget == core.NilLogicalTime {
-		// it is first milestone, go right to branch generation
-		target = target.NextTimeSlotBoundary()
-		return target
+	if !targetAbsoluteMinimum.Before(nextSlotBoundary) {
+		return targetAbsoluteMinimum
+	}
+	// absolute minimum is before the next slot boundary
+	// set absolute minimum starting from now
+	minimumTicksAheadFromNow := (seq.config.Pace * 2) / 3 // seq.config.Pace
+	targetAbsoluteMinimum = nowis.AddTimeTicks(minimumTicksAheadFromNow)
+	if !targetAbsoluteMinimum.Before(nextSlotBoundary) {
+		return targetAbsoluteMinimum
 	}
 
-	if target.TimesTicksToNextSlotBoundary() <= seq.config.Pace {
-		// it is too close to the boundary
-		target = target.NextTimeSlotBoundary()
-		return target
+	if targetAbsoluteMinimum.TimesTicksToNextSlotBoundary() <= seq.config.Pace {
+		return nextSlotBoundary
 	}
 
-	if target.TimeTick() == 0 {
-		// right on the slot boundary
-		return target
-	}
-	return target
+	return targetAbsoluteMinimum
 }
 
 // Returns nil if fails to generate acceptable bestSoFarTx until the deadline
@@ -293,28 +290,21 @@ func (seq *Sequencer) generateNextMilestoneForTargetTime(targetTs core.LogicalTi
 	timeout := time.Duration(seq.config.Pace) * core.TimeTickDuration()
 	absoluteDeadline := targetTs.Time().Add(timeout)
 
-	for {
-		if time.Now().After(absoluteDeadline) {
-			// too late, was too slow, failed to meet the target deadline
-			return nil, 0, 0
-		}
-
-		ms, avgProposalDuration, numProposals := seq.factory.startProposingForTargetLogicalTime(targetTs)
-
-		if ms != nil {
-			util.Assertf(ms.Timestamp() == targetTs, "msOutput.output.Timestamp() (%v) == targetTs (%v)",
-				ms.Timestamp(), targetTs)
-			return ms, avgProposalDuration, numProposals
-		}
-
-		if time.Now().After(absoluteDeadline) {
-			// too late, was too slow, failed to meet the target deadline
-			seq.log.Warnf("proposal is late for the time target %s. Avg proposal duration %v, num proposals: %d",
-				targetTs.String(), avgProposalDuration, numProposals)
-			return nil, avgProposalDuration, numProposals
-		}
-		time.Sleep(10 * time.Millisecond)
+	if absoluteDeadline.Before(time.Now()) {
+		// too late, was too slow, failed to meet the target deadline
+		seq.log.Warnf("didn't start proposers for target %s: nowis %v, too late for absolute deadline %v",
+			targetTs.String(), time.Now(), absoluteDeadline)
+		return nil, 0, 0
 	}
+
+	ms, avgProposalDuration, numProposals := seq.factory.startProposingForTargetLogicalTime(targetTs)
+
+	if ms != nil {
+		util.Assertf(ms.Timestamp() == targetTs, "msOutput.output.Timestamp() (%v) == targetTs (%v)",
+			ms.Timestamp(), targetTs)
+		return ms, avgProposalDuration, numProposals
+	}
+	return ms, avgProposalDuration, numProposals
 }
 
 func (seq *Sequencer) mainLoop() {
@@ -353,7 +343,7 @@ func (seq *Sequencer) mainLoop() {
 			currentTimeSlot = targetTs.TimeSlot()
 		}
 
-		seq.setTraceAhead(1)
+		//seq.setTraceAhead(1)
 		seq.trace("target ts: %s. Now is: %s", targetTs, core.LogicalTimeNow())
 
 		ms, avgProposalDuration, numProposals := seq.generateNextMilestoneForTargetTime(targetTs)

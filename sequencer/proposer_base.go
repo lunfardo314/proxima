@@ -48,6 +48,21 @@ func (b *baseProposer) run() {
 
 func (b *baseProposer) proposeBase(extend utangle.WrappedOutput) (*transaction.Transaction, bool) {
 	// own latest milestone exists
+	if !b.targetTs.IsSlotBoundary() {
+		if extend.TimeSlot() != b.targetTs.TimeSlot() {
+			// on startup or cross-slot will only produce branches
+			b.setTraceNAhead(1)
+			b.trace("proposeBase.force exit: cross-slot %s", extend.IDShort())
+			return nil, true
+		}
+		if !extend.VID.IsSequencerMilestone() {
+			// not cross-slot, but predecessor must be sequencer tx
+			b.setTraceNAhead(1)
+			b.trace("proposeBase.force exit: not-sequencer %s", extend.IDShort())
+			return nil, true
+		}
+	}
+
 	if !b.targetTs.IsSlotBoundary() && extend.TimeSlot() != b.targetTs.TimeSlot() {
 		// on startup or cross-slot will only produce branches
 		b.trace("proposeBase.force exit: cross-slot %s", extend.IDShort())
