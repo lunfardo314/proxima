@@ -353,7 +353,7 @@ func (seq *Sequencer) mainLoop() {
 			currentTimeSlot = targetTs.TimeSlot()
 		}
 
-		//seq.setTraceAhead(1)
+		seq.setTraceAhead(1)
 		seq.trace("target ts: %s. Now is: %s", targetTs, core.LogicalTimeNow())
 
 		ms, avgProposalDuration, numProposals := seq.generateNextMilestoneForTargetTime(targetTs)

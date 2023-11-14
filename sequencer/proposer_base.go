@@ -60,7 +60,7 @@ func (b *baseProposer) proposeBase(extend utangle.WrappedOutput) (*transaction.T
 		baseStem := extend.VID.BaseStemOutput(b.factory.utangle)
 		if baseStem == nil {
 			// base stem is not available for a milestone which is virtual and non-branch
-			b.factory.log.Errorf("proposeBase.force exit: stem not available, %s cannot be extended to a branch", extend.IDShort())
+			b.factory.log.Warnf("proposeBase.force exit: stem not available, %s cannot be extended to a branch", extend.IDShort())
 			return nil, true
 		}
 		// create branch

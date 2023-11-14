@@ -5,10 +5,10 @@ force: false
 multistate:
     name: ""
 sequencer:
-    id: ""
+    id: 43e3eecc0c9929e3859420efafd06b437ad8224f43bbd8bc360b909e36b49244
 tag-along:
     fee: 500
-    sequencer:
+    sequencer: 43e3eecc0c9929e3859420efafd06b437ad8224f43bbd8bc360b909e36b49244
 txstore:
     name: ""
 wallet:
@@ -25,6 +25,6 @@ spammer:
     max_transactions: 0 # 0 means no limit
     max_duration_minutes: 0 # 0 means no limit
     tag_along:
-        sequencer:
+        sequencer: 43e3eecc0c9929e3859420efafd06b437ad8224f43bbd8bc360b909e36b49244
         fee: 500
     target: addressED25519(0x3faf090d38f18ea211936b8bcf19b7b30cdcb8e224394a5c30f9ba644f8bb2fb)

@@ -337,20 +337,22 @@ func (mf *milestoneFactory) startProposingForTargetLogicalTime(targetTs core.Log
 }
 
 func (mf *milestoneFactory) startProposerWorkers(targetTime core.LogicalTime) {
-
 	for strategyName, rec := range allProposingStrategies {
 		task := rec.constructor(mf, targetTime)
 		if task != nil {
+			mf.log.Infof("RUN '%s' proposer for the target %s", strategyName, targetTime.String())
 			go mf.runProposerTask(task)
 		} else {
-			mf.trace("SKIP '%s' proposer for the target time %s", strategyName, targetTime.String())
+			mf.log.Infof("SKIP '%s' proposer for the target %s", strategyName, targetTime.String())
 		}
 	}
 }
 
 func (mf *milestoneFactory) runProposerTask(task proposerTask) {
+	task.setTraceNAhead(1)
 	task.trace(" START proposer %s", task.name())
 	task.run()
+	task.setTraceNAhead(1)
 	task.trace(" END proposer %s", task.name())
 }
 

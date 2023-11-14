@@ -32,6 +32,7 @@ func init() {
 		ret := &backtrackProposer2{
 			proposerTaskGeneric: newProposerGeneric(mf, targetTs, BacktrackProposer2Name),
 		}
+		ret.setTraceNAhead(1)
 		ret.trace("STARTING")
 		return ret
 	})
@@ -42,7 +43,7 @@ func (b *backtrackProposer2) run() {
 	for b.factory.proposal.continueCandidateProposing(b.targetTs) {
 		endorse, extensionChoices := b.calcExtensionChoices()
 
-		//b.setTraceNAhead(1)
+		b.setTraceNAhead(1)
 		if len(extensionChoices) > 0 {
 			b.trace("calcExtensionChoices: endorse: %s, extension choices:\n%s", endorse.IDShort(), milestoneSliceString(extensionChoices))
 			b.startProposingTime()
