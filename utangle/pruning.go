@@ -126,11 +126,6 @@ func (ut *UTXOTangle) PruneOrphaned(nLatestSlots int) (int, int, int) {
 	for _, slot := range toDeleteSlots {
 		delete(ut.branches, slot)
 	}
-	// in reachable set delete all forks which points to deleted vertices
-	//reachable.ForEach(func(vidReachable *WrappedTx) bool {
-	//	vidReachable.cleanForkSet()
-	//	return true
-	//})
 	return len(orphaned), nPrunedBranches, len(toDeleteSlots)
 }
 
