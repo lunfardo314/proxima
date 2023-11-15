@@ -14,6 +14,7 @@ import (
 	"github.com/lunfardo314/proxima/utangle"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/set"
+	"github.com/lunfardo314/unitrie/common"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
@@ -343,7 +344,9 @@ func (mf *milestoneFactory) startProposerWorkers(targetTime core.LogicalTime) {
 		task := rec.constructor(mf, targetTime)
 		if task != nil {
 			task.trace("RUN '%s' proposer for the target %s", strategyName, targetTime.String())
-			go mf.runProposerTask(task)
+			util.RunWrappedRoutine(mf.seqName, func() {
+				mf.runProposerTask(task)
+			}, common.ErrDBUnavailable)
 		} else {
 			mf.trace("SKIP '%s' proposer for the target %s", strategyName, targetTime.String())
 		}

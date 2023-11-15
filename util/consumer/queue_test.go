@@ -126,7 +126,7 @@ func TestStartStop(t *testing.T) {
 			que[i].Push(i)
 			cdTotal.Tick()
 		}
-		que[i].Start()
+		go que[i].Run()
 		que[i].Stop()
 	}
 	err := countdown.Wait(cdTotal, cdClosed)
@@ -272,7 +272,7 @@ func TestMany(t *testing.T) {
 		}
 	}
 	for i := range cons {
-		cons[i].Start()
+		go cons[i].Run()
 	}
 	toggle := false
 	startTime := time.Now()

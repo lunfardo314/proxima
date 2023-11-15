@@ -44,24 +44,6 @@ func IsNil(p interface{}) bool {
 	return p == nil || (reflect.ValueOf(p).Kind() == reflect.Ptr && reflect.ValueOf(p).IsNil())
 }
 
-func CatchPanicOrError(f func() error) error {
-	var err error
-	func() {
-		defer func() {
-			r := recover()
-			if r == nil {
-				return
-			}
-			var ok bool
-			if err, ok = r.(error); !ok {
-				err = fmt.Errorf("%v", r)
-			}
-		}()
-		err = f()
-	}()
-	return err
-}
-
 func RequireErrorWith(t *testing.T, err error, fragments ...string) {
 	require.Error(t, err)
 	for _, f := range fragments {

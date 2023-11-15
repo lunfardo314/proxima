@@ -74,15 +74,8 @@ func (c *Consumer[T]) PushAny(inp any) {
 }
 
 func (c *Consumer[T]) Run() {
+	c.log.Debugf("STARTING [%s]..", c.Log().Level())
 	c.que.Consume(c.onConsume...)
-}
-
-func (c *Consumer[T]) Start(wg ...*sync.WaitGroup) {
-	if len(wg) > 0 {
-		wg[0].Add(1)
-	}
-	c.log.Debugf("STARTING [%s]..", c.log.Level())
-	go c.Run()
 }
 
 func (c *Consumer[T]) Stop() {

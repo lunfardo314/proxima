@@ -7,6 +7,7 @@ import (
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/consumer"
+	"github.com/lunfardo314/unitrie/common"
 )
 
 var AllConsumerNames = []string{
@@ -35,7 +36,10 @@ func NewConsumer[T any](name string, wrk *Workflow) *Consumer[T] {
 }
 
 func (c *Consumer[T]) Start() {
-	c.Consumer.Start(&c.glb.terminateWG)
+	c.glb.terminateWG.Add(1)
+	util.RunWrappedRoutine(c.Name(), func() {
+		c.Consumer.Run()
+	}, common.ErrDBUnavailable)
 }
 
 func (c *Consumer[T]) TxLogPrefix() string {

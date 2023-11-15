@@ -9,10 +9,12 @@ import (
 
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/general"
+	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/utangle"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/workflow"
+	"github.com/lunfardo314/unitrie/common"
 	"github.com/spf13/viper"
 	"go.uber.org/atomic"
 	"go.uber.org/zap"
@@ -110,7 +112,9 @@ func StartNew(glb *workflow.Workflow, seqID core.ChainID, controllerKey ed25519.
 	}
 	ret.stopWG.Add(1)
 
-	go ret.mainLoop()
+	util.RunWrappedRoutine(cfg.SequencerName+"[mainLoop]", func() {
+		ret.mainLoop()
+	}, common.ErrDBUnavailable)
 
 	ret.log.Infof("sequencer has been started (loglevel=%s)", ret.log.Level().String())
 	return ret, nil
@@ -359,9 +363,13 @@ func (seq *Sequencer) mainLoop() {
 			ms.IDShort(), targetTs, time.Since(timerStart), avgProposalDuration)
 
 		msOutput := seq.submitMilestone(ms)
+
+		if global.IsShuttingDown() {
+			// maybe todo something better
+			go seq.Stop()
+		}
+
 		if msOutput == nil {
-			//seq.log.Warnf("failed to submit milestone %d", milestoneCount+1, msOutput.IDShort())
-			//util.Panicf("debug exit")
 			continue
 		}
 		seq.factory.addOwnMilestone(*msOutput)
@@ -384,6 +392,9 @@ func (seq *Sequencer) submitMilestone(tx *transaction.Transaction) *utangle.Wrap
 	util.Assertf(tx != nil, "tx != nil")
 
 	retVID, err := seq.glb.TransactionInWaitAppendWrap(tx.Bytes(), submitTransactionTimeout, workflow.OptionWithSourceSequencer)
+	if global.IsShuttingDown() {
+		return nil
+	}
 	if err != nil {
 		seq.log.Warnf("submitMilestone: %v", err)
 		seq.log.Errorf("====================== failed milestone ==================\n%s", tx.ToString(seq.factory.utangle.GetUTXO))
