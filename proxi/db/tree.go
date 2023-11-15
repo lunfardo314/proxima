@@ -1,6 +1,7 @@
 package db
 
 import (
+	"fmt"
 	"strconv"
 
 	"github.com/lunfardo314/proxima/proxi/glb"
@@ -11,9 +12,11 @@ import (
 
 var outputFile string
 
+const defaultMaxSlotsBack = 100
+
 func initDBTreeCmd(dbCmd *cobra.Command) {
 	dbTreeCmd := &cobra.Command{
-		Use:   "tree",
+		Use:   fmt.Sprintf("tree [max slots back, default %d]", defaultMaxSlotsBack),
 		Short: "create .DOT file for the tree of all branches",
 		Args:  cobra.MaximumNArgs(1),
 		Run:   runDbTreeCmd,
@@ -39,7 +42,7 @@ func runDbTreeCmd(_ *cobra.Command, args []string) {
 	stateStore := badger_adaptor.New(stateDb)
 
 	if len(args) == 0 {
-		utangle.SaveTree(stateStore, outFile)
+		utangle.SaveTree(stateStore, outFile, defaultMaxSlotsBack)
 	} else {
 		slots, err := strconv.Atoi(args[0])
 		glb.AssertNoError(err)

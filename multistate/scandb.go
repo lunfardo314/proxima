@@ -83,7 +83,7 @@ func (a *AccountInfo) Lines(prefix ...string) *lines.Lines {
 	sum = 0
 	for _, chainID := range chainIDSSorted {
 		ci := a.ChainRecords[chainID]
-		ret.Add("   %s :: %s   seq=%v branch=%v", chainID.Short(), util.GoThousands(ci.Balance), ci.IsSequencer, ci.IsBranch)
+		ret.Add("   %s :: %s   seq=%v branch=%v", chainID.String(), util.GoThousands(ci.Balance), ci.IsSequencer, ci.IsBranch)
 		sum += ci.Balance
 	}
 	ret.Add("--------------------------------")

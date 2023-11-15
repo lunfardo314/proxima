@@ -58,10 +58,10 @@ sequencers:
 
   seq2:
     # on k2
-    enable: false
+    enable: true
     loglevel: info
     trace_tippool: false
-    sequencer_id:
+    sequencer_id: 86ec4e44704351b0060836de98cc07837f2c0775d45f64801dd528b8f28dd7f7
     controller_key: 3a2ed3c4f738a06e9543f80e032fd870be5e524585e0144f2499d1a28bc4797902e2a7a85bd158469adae3294a615e17ef49e72642c4eb58ff00d92301b9bb88
     pace: 5
     max_fee_inputs: 50

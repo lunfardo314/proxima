@@ -201,7 +201,6 @@ func submitTxHandle(wFlow *workflow.Workflow, wait bool) func(w http.ResponseWri
 		if wait {
 			const txAppendWaitTimeout = 7 * time.Second
 			_, err = wFlow.TransactionInWaitAppend(txBytes, txAppendWaitTimeout)
-			fmt.Printf(">>>>>>>>>>>>>>>>> in API handler TransactionInWaitAppend returned: '%v'\n", err)
 		} else {
 			err = wFlow.TransactionIn(txBytes)
 		}

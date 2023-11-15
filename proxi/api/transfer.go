@@ -17,7 +17,7 @@ import (
 
 func initTransferCmd(apiCmd *cobra.Command) {
 	transferCmd := &cobra.Command{
-		Use:   "transfer",
+		Use:   "transfer <amount>",
 		Short: `sends tokens from the wallet's account to the target`,
 		Args:  cobra.ExactArgs(1),
 		Run:   runTransferCmd,

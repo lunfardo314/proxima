@@ -345,7 +345,7 @@ func (mf *milestoneFactory) startProposerWorkers(targetTime core.LogicalTime) {
 			task.trace("RUN '%s' proposer for the target %s", strategyName, targetTime.String())
 			go mf.runProposerTask(task)
 		} else {
-			mf.log.Infof("SKIP '%s' proposer for the target %s", strategyName, targetTime.String())
+			mf.trace("SKIP '%s' proposer for the target %s", strategyName, targetTime.String())
 		}
 	}
 }
