@@ -7,7 +7,7 @@ require (
 	github.com/dominikbraun/graph v0.23.0
 	github.com/gammazero/deque v0.2.1
 	github.com/lunfardo314/easyfl v0.0.0-20231103170835-b03544245694
-	github.com/lunfardo314/unitrie v0.0.0-20231115111000-68bc80230a54
+	github.com/lunfardo314/unitrie v0.0.0-20231116165445-da7badca1868
 	github.com/spf13/cobra v1.8.0
 	github.com/spf13/pflag v1.0.5
 	github.com/spf13/viper v1.17.0

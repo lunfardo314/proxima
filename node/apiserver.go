@@ -13,6 +13,10 @@ func (p *ProximaNode) startApiServer() {
 	p.log.Infof("starting API server on %s", addr)
 
 	go server.RunOn(addr, p.workflow)
+
+	<-p.ctx.Done()
+	p.stopApiServer()
+
 }
 
 func (p *ProximaNode) stopApiServer() {

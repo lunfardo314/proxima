@@ -23,7 +23,6 @@ func main() {
 	}()
 
 	n := node.New(ctx)
-
 	n.Run()
 	<-ctx.Done()
 

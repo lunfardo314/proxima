@@ -65,36 +65,34 @@ func (p *ProximaNode) Run() {
 	p.log = newNodeLoggerFromConfig()
 	p.log.Info("---------------- starting up Proxima node --------------")
 
-	p.startPProfIfEnabled()
-	p.startMultiStateDB()
-	p.startTxStore()
-	p.loadUTXOTangle()
-	p.startWorkflow()
-	p.startSequencers()
-	p.startApiServer()
-
+	err := util.CatchPanicOrError(func() error {
+		p.startPProfIfEnabled()
+		p.startMultiStateDB()
+		p.startTxStore()
+		p.loadUTXOTangle()
+		p.startWorkflow()
+		p.startSequencers()
+		p.startApiServer()
+		return nil
+	})
+	if err != nil {
+		p.log.Errorf("error on startup: %v", err)
+		os.Exit(1)
+	}
 	p.log.Infof("Proxima node has been started successfully")
 	p.log.Debug("running in debug mode")
 }
 
 func (p *ProximaNode) Stop() {
 	p.stopOnce.Do(func() {
+		p.log.Info("stopping the node..")
 		p.stop()
 	})
 }
 
 func (p *ProximaNode) stop() {
-	p.log.Info("stopping the node..")
-	if p.multiStateStore != nil {
-		_ = p.multiStateStore.Close()
-		p.log.Infof("multi-state database has been closed")
-	}
-	if p.txStoreDB != nil {
-		_ = p.txStoreDB.Close()
-		p.log.Infof("transaction store database has been closed")
-	}
-
-	p.stopApiServer()
+	//p.stopMultiStateDB()
+	//p.stopApiServer()
 
 	if len(p.sequencers) > 0 {
 		// stop sequencers
@@ -131,6 +129,22 @@ func (p *ProximaNode) startMultiStateDB() {
 	}
 	p.multiStateStore = badger_adaptor.New(bdb)
 	p.log.Infof("opened multi-state DB '%s", dbname)
+
+	go func() {
+		<-p.ctx.Done()
+		p.stopMultiStateDB()
+	}()
+}
+
+func (p *ProximaNode) stopMultiStateDB() {
+	if p.multiStateStore != nil {
+		_ = p.multiStateStore.Close()
+		p.log.Infof("multi-state database has been closed")
+	}
+	if p.txStoreDB != nil {
+		_ = p.txStoreDB.Close()
+		p.log.Infof("transaction store database has been closed")
+	}
 }
 
 func (p *ProximaNode) startTxStore() {
@@ -173,15 +187,8 @@ func mustReadStateIdentity(store general.StateStore) {
 }
 
 func (p *ProximaNode) loadUTXOTangle() {
-	err := util.CatchPanicOrError(func() error {
-		mustReadStateIdentity(p.multiStateStore)
-		return nil
-	})
-	if err != nil {
-		p.log.Errorf("can't read state indentity: '%v'", err)
-		p.Stop()
-		os.Exit(1)
-	}
+	mustReadStateIdentity(p.multiStateStore)
+
 	p.uTangle = utangle.Load(p.multiStateStore, p.txStore)
 	latestSlot := p.uTangle.LatestTimeSlot()
 	currentSlot := core.LogicalTimeNow().TimeSlot()
