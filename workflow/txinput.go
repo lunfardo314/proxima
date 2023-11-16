@@ -18,7 +18,9 @@ func (w *Workflow) TransactionIn(txBytes []byte, opts ...TransactionInOption) er
 }
 
 func (w *Workflow) TransactionInReturnTx(txBytes []byte, opts ...TransactionInOption) (*transaction.Transaction, error) {
-	util.Assertf(w.IsRunning(), "workflow has not been started yet")
+	if !w.IsRunning() {
+		return nil, fmt.Errorf("TransactionInReturnTx: workflow is inactive")
+	}
 	// base validation
 	tx, err := transaction.FromBytes(txBytes)
 	if err != nil {
