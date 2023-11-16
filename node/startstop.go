@@ -1,6 +1,7 @@
 package node
 
 import (
+	"context"
 	"os"
 	"sync"
 	"time"
@@ -15,6 +16,7 @@ import (
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/workflow"
 	"github.com/lunfardo314/unitrie/adaptors/badger_adaptor"
+	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
 )
@@ -28,28 +30,39 @@ type ProximaNode struct {
 	workflow        *workflow.Workflow
 	sequencers      []*sequencer.Sequencer
 	stopOnce        sync.Once
+	ctx             context.Context
 }
 
-func Start() *ProximaNode {
-	log := newBootstrapLogger()
-	log.Info(general.BannerString())
-
-	initConfig(log)
-
-	ret := &ProximaNode{
-		log:        newNodeLogger(),
+func New(ctx context.Context) *ProximaNode {
+	return &ProximaNode{
+		log:        newBootstrapLogger(),
 		sequencers: make([]*sequencer.Sequencer, 0),
+		ctx:        ctx,
 	}
-
-	ret.startup()
-
-	ret.log.Infof("Proxima node has been started successfully")
-	ret.log.Debug("running in debug mode")
-
-	return ret
 }
 
-func (p *ProximaNode) startup() {
+func (p *ProximaNode) initConfig() {
+	pflag.Parse()
+	err := viper.BindPFlags(pflag.CommandLine)
+	util.AssertNoError(err)
+
+	viper.SetConfigName("proxima")
+	viper.SetConfigType("yaml")
+	viper.AddConfigPath(".")
+	err = viper.ReadInConfig()
+	util.AssertNoError(err)
+
+	if viper.GetString(general.ConfigKeyMultiStateDbName) == "" {
+		p.log.Errorf("multistate database not specified, cannot start the node")
+		os.Exit(1)
+	}
+}
+
+func (p *ProximaNode) Run() {
+	p.log.Info(general.BannerString())
+	p.initConfig()
+
+	p.log = newNodeLoggerFromConfig()
 	p.log.Info("---------------- starting up Proxima node --------------")
 
 	p.startPProfIfEnabled()
@@ -59,6 +72,9 @@ func (p *ProximaNode) startup() {
 	p.startWorkflow()
 	p.startSequencers()
 	p.startApiServer()
+
+	p.log.Infof("Proxima node has been started successfully")
+	p.log.Debug("running in debug mode")
 }
 
 func (p *ProximaNode) Stop() {
@@ -208,7 +224,7 @@ func (p *ProximaNode) startSequencers() {
 		return k1 < k2
 	})
 	for _, name := range seqNames {
-		seq, err := sequencer.StartFromConfig(p.workflow, name)
+		seq, err := sequencer.NewFromConfig(p.workflow, name)
 		if err != nil {
 			p.log.Errorf("can't start sequencer '%s': '%v'", name, err)
 			continue
@@ -217,6 +233,8 @@ func (p *ProximaNode) startSequencers() {
 			p.log.Infof("skipping sequencer '%s'", name)
 			continue
 		}
+		seq.Run(p.ctx)
+
 		p.log.Infof("started sequencer '%s', seqID: %s", name, seq.ID().String())
 		p.sequencers = append(p.sequencers, seq)
 		time.Sleep(500 * time.Millisecond)

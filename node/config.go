@@ -1,7 +1,6 @@
 package node
 
 import (
-	"os"
 	"strings"
 
 	"github.com/lunfardo314/proxima/general"
@@ -25,23 +24,6 @@ func init() {
 	pflag.Int("pprof.port", 8080, "default pprof port")
 }
 
-func initConfig(log *zap.SugaredLogger) {
-	pflag.Parse()
-	err := viper.BindPFlags(pflag.CommandLine)
-	util.AssertNoError(err)
-
-	viper.SetConfigName("proxima")
-	viper.SetConfigType("yaml")
-	viper.AddConfigPath(".")
-	err = viper.ReadInConfig()
-	util.AssertNoError(err)
-
-	if viper.GetString(general.ConfigKeyMultiStateDbName) == "" {
-		log.Errorf("multistate database not specified, cannot start the node")
-		os.Exit(1)
-	}
-}
-
 const (
 	bootstrapLoggerName = "[boot]"
 	nodeLoggerName      = "[node]"
@@ -51,7 +33,7 @@ func newBootstrapLogger() *zap.SugaredLogger {
 	return general.NewLogger(bootstrapLoggerName, zap.InfoLevel, []string{"stderr"}, "")
 }
 
-func newNodeLogger() *zap.SugaredLogger {
+func newNodeLoggerFromConfig() *zap.SugaredLogger {
 	logLevel := zapcore.InfoLevel
 	if viper.GetString("logger.level") == "debug" {
 		logLevel = zapcore.DebugLevel

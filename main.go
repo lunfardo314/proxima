@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"os"
 	"os/signal"
 	"syscall"
@@ -10,12 +11,21 @@ import (
 )
 
 func main() {
-	n := node.Start()
-
 	killChan := make(chan os.Signal, 1)
-	signal.Notify(killChan, os.Interrupt, syscall.SIGTERM)
-	<-killChan
+	signal.Notify(killChan, syscall.SIGINT, syscall.SIGTERM)
 
-	global.SetShutDown()
+	ctx, globalStopFun := context.WithCancel(context.Background())
+
+	go func() {
+		<-killChan
+		global.SetShutDown()
+		globalStopFun()
+	}()
+
+	n := node.New(ctx)
+
+	n.Run()
+	<-ctx.Done()
+
 	n.Stop()
 }

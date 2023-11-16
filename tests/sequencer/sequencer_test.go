@@ -241,7 +241,7 @@ func Test1Sequencer(t *testing.T) {
 
 		sequencer.SetTraceProposer(sequencer.BaseProposerName, false)
 
-		seq, err := sequencer.StartNew(r.wrk, r.bootstrapChainID, r.originControllerPrivateKey,
+		seq, err := sequencer.New(r.wrk, r.bootstrapChainID, r.originControllerPrivateKey,
 			sequencer.WithName("boot"),
 			sequencer.WithPace(5),
 			sequencer.WithMaxBranches(maxSlots),
@@ -276,7 +276,7 @@ func Test1Sequencer(t *testing.T) {
 
 		t.Logf("chain origins tx:\n%s", r.txChainOrigins.ToString(r.ut.HeaviestStateForLatestTimeSlot().GetUTXO))
 
-		seq, err := sequencer.StartNew(r.wrk, r.bootstrapChainID, r.originControllerPrivateKey,
+		seq, err := sequencer.New(r.wrk, r.bootstrapChainID, r.originControllerPrivateKey,
 			sequencer.WithName("boot"),
 			sequencer.WithPace(5),
 			sequencer.WithMaxBranches(maxTimeSlots),
@@ -322,7 +322,7 @@ func Test1Sequencer(t *testing.T) {
 		sequencer.SetTraceAll(false)
 		sequencer.SetTraceProposer(sequencer.BaseProposerName, false)
 
-		seq, err := sequencer.StartNew(r.wrk, r.bootstrapChainID, r.originControllerPrivateKey,
+		seq, err := sequencer.New(r.wrk, r.bootstrapChainID, r.originControllerPrivateKey,
 			sequencer.WithName("boot"),
 			sequencer.WithPace(5),
 			sequencer.WithMaxBranches(maxSlots),
@@ -390,7 +390,7 @@ func Test1Sequencer(t *testing.T) {
 
 		sequencer.SetTraceAll(false)
 
-		seq, err := sequencer.StartNew(r.wrk, r.bootstrapChainID, r.originControllerPrivateKey,
+		seq, err := sequencer.New(r.wrk, r.bootstrapChainID, r.originControllerPrivateKey,
 			sequencer.WithName("boot"),
 			sequencer.WithPace(5),
 			sequencer.WithMaxBranches(maxSlots+2),
@@ -473,7 +473,7 @@ func Test1Sequencer(t *testing.T) {
 
 		sequencer.SetTraceAll(false)
 
-		seq, err := sequencer.StartNew(r.wrk, r.bootstrapChainID, r.originControllerPrivateKey,
+		seq, err := sequencer.New(r.wrk, r.bootstrapChainID, r.originControllerPrivateKey,
 			sequencer.WithName("boot"),
 			sequencer.WithPace(5),
 			sequencer.WithMaxBranches(maxSlots),
@@ -546,7 +546,7 @@ func (r *sequencerTestData) createSequencers(maxInputsInTx, maxSlots, pace int, 
 	var err error
 	endorse := r.ut.HeaviestStemOutput().ID.TransactionID()
 	r.t.Logf("endorse: %v", endorse.String())
-	r.bootstrapSeq, err = sequencer.StartNew(r.wrk, r.bootstrapChainID, r.originControllerPrivateKey,
+	r.bootstrapSeq, err = sequencer.New(r.wrk, r.bootstrapChainID, r.originControllerPrivateKey,
 		sequencer.WithName("boot"),
 		sequencer.WithLogLevel(loglevel),
 		sequencer.WithPace(pace),
@@ -562,7 +562,7 @@ func (r *sequencerTestData) createSequencers(maxInputsInTx, maxSlots, pace int, 
 		chainOut, ok, wrong := r.ut.GetWrappedOutput(&r.chainOrigins[i].OutputWithID.ID)
 		require.False(r.t, wrong)
 		require.True(r.t, ok)
-		r.sequencers[i], err = sequencer.StartNew(r.wrk, r.chainOrigins[i].ChainID, r.chainControllersPrivateKeys[i],
+		r.sequencers[i], err = sequencer.New(r.wrk, r.chainOrigins[i].ChainID, r.chainControllersPrivateKeys[i],
 			sequencer.WithName(fmt.Sprintf("seq%d", i)),
 			sequencer.WithLogLevel(loglevel),
 			sequencer.WithPace(pace),

@@ -1,6 +1,7 @@
 package sequencer
 
 import (
+	"context"
 	"crypto/ed25519"
 	"fmt"
 	"math"
@@ -82,7 +83,7 @@ func defaultConfigOptions() ConfigOptions {
 	}
 }
 
-func StartNew(glb *workflow.Workflow, seqID core.ChainID, controllerKey ed25519.PrivateKey, opts ...ConfigOpt) (*Sequencer, error) {
+func New(glb *workflow.Workflow, seqID core.ChainID, controllerKey ed25519.PrivateKey, opts ...ConfigOpt) (*Sequencer, error) {
 	var err error
 
 	cfg := defaultConfigOptions()
@@ -110,17 +111,12 @@ func StartNew(glb *workflow.Workflow, seqID core.ChainID, controllerKey ed25519.
 	if err = ret.createMilestoneFactory(); err != nil {
 		return nil, err
 	}
-	ret.stopWG.Add(1)
-
-	util.RunWrappedRoutine(cfg.SequencerName+"[mainLoop]", func() {
-		ret.mainLoop()
-	}, common.ErrDBUnavailable)
 
 	ret.log.Infof("sequencer has been started (loglevel=%s)", ret.log.Level().String())
 	return ret, nil
 }
 
-func StartFromConfig(glb *workflow.Workflow, name string) (*Sequencer, error) {
+func NewFromConfig(glb *workflow.Workflow, name string) (*Sequencer, error) {
 	subViper := viper.Sub("sequencers." + name)
 	if subViper == nil {
 		return nil, fmt.Errorf("can't read config")
@@ -164,7 +160,7 @@ func StartFromConfig(glb *workflow.Workflow, name string) (*Sequencer, error) {
 		WithTraceTippool(subViper.GetBool("trace_tippool")),
 	}
 
-	return StartNew(glb, seqID, controllerKey, opts...)
+	return New(glb, seqID, controllerKey, opts...)
 }
 
 func parseLogLevel(glb *workflow.Workflow, subViper *viper.Viper) zapcore.Level {
@@ -173,6 +169,13 @@ func parseLogLevel(glb *workflow.Workflow, subViper *viper.Viper) zapcore.Level 
 		return lvl
 	}
 	return glb.LogLevel()
+}
+
+func (seq *Sequencer) Run(ctx context.Context) {
+	seq.stopWG.Add(1)
+	util.RunWrappedRoutine(seq.config.SequencerName+"[mainLoop]", func() {
+		seq.mainLoop()
+	}, common.ErrDBUnavailable)
 }
 
 func (seq *Sequencer) ID() *core.ChainID {
