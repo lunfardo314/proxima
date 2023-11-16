@@ -14,7 +14,7 @@ func main() {
 	}
 	defer host.Close()
 
-	fmt.Printf("Hello World, my hosts ID is %s\n", host.ID())
+	fmt.Printf("Hello World, my host ID is %s\n", host.ID())
 	ln := lines.New("    ")
 	for _, a := range host.Addrs() {
 		ln.Add(a.String())
