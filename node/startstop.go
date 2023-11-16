@@ -83,37 +83,9 @@ func (p *ProximaNode) Run() {
 	p.log.Debug("running in debug mode")
 }
 
-func (p *ProximaNode) Stop() {
-	p.stopOnce.Do(func() {
-		p.log.Info("stopping the node..")
-		p.stop()
-	})
-}
-
-func (p *ProximaNode) stop() {
-	//p.stopMultiStateDB()
-	//p.stopApiServer()
-
-	if len(p.sequencers) > 0 {
-		// stop sequencers
-		var wg sync.WaitGroup
-		for _, seq := range p.sequencers {
-			seqCopy := seq
-			wg.Add(1)
-			go func() {
-				seqCopy.Stop()
-				wg.Done()
-			}()
-		}
-		wg.Wait()
-		p.log.Infof("all sequencers stopped")
-	}
-
-	if p.workflow != nil {
-		p.workflow.Stop()
-	}
-	p.log.Info("node stopped")
-
+func (p *ProximaNode) WaitStop() {
+	p.workflow.WaitStop() // TODO not correct. Must be global stop wait group for all components
+	p.log.Info("workflow stopped")
 }
 
 func (p *ProximaNode) GetMultiStateDBName() string {
@@ -157,9 +129,7 @@ func (p *ProximaNode) startTxStore() {
 		name := viper.GetString(general.ConfigKeyTxStoreName)
 		p.log.Infof("transaction store database name is '%s'", name)
 		if name == "" {
-			p.log.Errorf("transaction store database name not specified. Cannot start the node")
-			p.Stop()
-			os.Exit(1)
+			panic("transaction store database name not specified. Cannot start the node")
 		}
 		p.txStoreDB = badger_adaptor.New(badger_adaptor.MustCreateOrOpenBadgerDB(name))
 		p.txStore = txstore.NewSimpleTxBytesStore(p.txStoreDB)
@@ -170,7 +140,7 @@ func (p *ProximaNode) startTxStore() {
 
 	default:
 		p.log.Errorf("transaction store type '%s' is wrong", viper.GetString(general.ConfigKeyTxStoreType))
-		p.Stop()
+		p.WaitStop()
 		os.Exit(1)
 	}
 }
@@ -206,7 +176,7 @@ func (p *ProximaNode) loadUTXOTangle() {
 
 func (p *ProximaNode) startWorkflow() {
 	p.workflow = workflow.New(p.uTangle, workflow.WithGlobalConfigOptions)
-	p.workflow.Start()
+	p.workflow.Start(p.ctx)
 	p.workflow.StartPruner()
 }
 

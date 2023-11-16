@@ -26,5 +26,5 @@ func main() {
 	n.Run()
 	<-ctx.Done()
 
-	n.Stop()
+	n.WaitStop()
 }

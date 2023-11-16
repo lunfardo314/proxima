@@ -1,6 +1,7 @@
 package workflow
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"sync"
@@ -21,6 +22,7 @@ import (
 
 type (
 	Workflow struct {
+		stopFun         context.CancelFunc
 		startOnce       sync.Once
 		stopOnce        sync.Once
 		working         atomic.Bool
@@ -88,10 +90,16 @@ func (w *Workflow) SetTraceMilestones(f bool) {
 	w.traceMilestones.Store(f)
 }
 
-func (w *Workflow) Start() {
+func (w *Workflow) Start(parentCtx ...context.Context) {
 	w.startOnce.Do(func() {
 		w.log.Infof("STARTING [loglevel=%s]..", w.log.Level())
 
+		var ctx context.Context
+		if len(parentCtx) > 0 {
+			ctx, w.stopFun = context.WithCancel(parentCtx[0])
+		} else {
+			ctx, w.stopFun = context.WithCancel(context.Background())
+		}
 		w.startWG.Add(1)
 		w.primaryInputConsumer.Start()
 		w.preValidateConsumer.Start()
@@ -102,6 +110,17 @@ func (w *Workflow) Start() {
 		w.eventsConsumer.Start()
 		w.startWG.Done()
 		w.working.Store(true)
+
+		go func() {
+			<-ctx.Done()
+
+			util.Assertf(w.working.Swap(false), "wasn't started yet")
+			w.startWG.Wait()
+			w.primaryInputConsumer.Stop()
+			w.terminateWG.Wait()
+			w.log.Info("all consumers STOPPED")
+			_ = w.log.Sync()
+		}()
 	})
 }
 
@@ -113,13 +132,12 @@ func (w *Workflow) StartPruner() {
 
 func (w *Workflow) Stop() {
 	w.stopOnce.Do(func() {
-		util.Assertf(w.working.Swap(false), "wasn't started yet")
-		w.startWG.Wait()
-		w.primaryInputConsumer.Stop()
-		w.terminateWG.Wait()
-		w.log.Info("all consumers STOPPED")
-		_ = w.log.Sync()
+		w.stopFun()
 	})
+}
+
+func (w *Workflow) WaitStop() {
+	w.terminateWG.Wait()
 }
 
 func (w *Workflow) IsRunning() bool {
