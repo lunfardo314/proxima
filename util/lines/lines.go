@@ -34,3 +34,11 @@ func (l *Lines) Append(ln *Lines) *Lines {
 func (l *Lines) String() string {
 	return strings.Join(l.l, "\n")
 }
+
+func SliceToLines[T fmt.Stringer](slice []T, prefix ...string) *Lines {
+	ret := New(prefix...)
+	for i := range slice {
+		ret.Add(slice[i].String())
+	}
+	return ret
+}
