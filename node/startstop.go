@@ -104,19 +104,10 @@ func (p *ProximaNode) startMultiStateDB() {
 
 	go func() {
 		<-p.ctx.Done()
-		p.stopMultiStateDB()
-	}()
-}
 
-func (p *ProximaNode) stopMultiStateDB() {
-	if p.multiStateStore != nil {
 		_ = p.multiStateStore.Close()
 		p.log.Infof("multi-state database has been closed")
-	}
-	if p.txStoreDB != nil {
-		_ = p.txStoreDB.Close()
-		p.log.Infof("transaction store database has been closed")
-	}
+	}()
 }
 
 func (p *ProximaNode) startTxStore() {
@@ -134,6 +125,13 @@ func (p *ProximaNode) startTxStore() {
 		p.txStoreDB = badger_adaptor.New(badger_adaptor.MustCreateOrOpenBadgerDB(name))
 		p.txStore = txstore.NewSimpleTxBytesStore(p.txStoreDB)
 		p.log.Infof("opened DB '%s' as transaction store", name)
+
+		go func() {
+			<-p.ctx.Done()
+
+			_ = p.txStoreDB.Close()
+			p.log.Infof("transaction store database has been closed")
+		}()
 
 	case "url":
 		panic("'url' type of transaction store is not supported yet")

@@ -15,7 +15,7 @@ func CatchPanicOrError(f func() error) error {
 			}
 			var ok bool
 			if err, ok = r.(error); !ok {
-				err = fmt.Errorf("%v", r)
+				err = fmt.Errorf("%v (err type=%T)", r, r)
 			}
 		}()
 		err = f()
