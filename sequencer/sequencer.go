@@ -1,6 +1,7 @@
 package sequencer
 
 import (
+	"context"
 	"crypto/ed25519"
 	"fmt"
 	"math"
@@ -23,6 +24,7 @@ import (
 
 type (
 	Sequencer struct {
+		stopFun       context.CancelFunc
 		glb           *workflow.Workflow
 		chainID       core.ChainID
 		controllerKey ed25519.PrivateKey
@@ -82,7 +84,7 @@ func defaultConfigOptions() ConfigOptions {
 	}
 }
 
-func StartNew(glb *workflow.Workflow, seqID core.ChainID, controllerKey ed25519.PrivateKey, opts ...ConfigOpt) (*Sequencer, error) {
+func New(glb *workflow.Workflow, seqID core.ChainID, controllerKey ed25519.PrivateKey, opts ...ConfigOpt) (*Sequencer, error) {
 	var err error
 
 	cfg := defaultConfigOptions()
@@ -110,17 +112,19 @@ func StartNew(glb *workflow.Workflow, seqID core.ChainID, controllerKey ed25519.
 	if err = ret.createMilestoneFactory(); err != nil {
 		return nil, err
 	}
-	ret.stopWG.Add(1)
-
-	util.RunWrappedRoutine(cfg.SequencerName+"[mainLoop]", func() {
-		ret.mainLoop()
-	}, common.ErrDBUnavailable)
 
 	ret.log.Infof("sequencer has been started (loglevel=%s)", ret.log.Level().String())
 	return ret, nil
 }
 
-func StartFromConfig(glb *workflow.Workflow, name string) (*Sequencer, error) {
+func MustRunNew(glb *workflow.Workflow, seqID core.ChainID, controllerKey ed25519.PrivateKey, opts ...ConfigOpt) *Sequencer {
+	ret, err := New(glb, seqID, controllerKey, opts...)
+	common.AssertNoError(err)
+	ret.Run()
+	return ret
+}
+
+func NewFromConfig(glb *workflow.Workflow, name string) (*Sequencer, error) {
 	subViper := viper.Sub("sequencers." + name)
 	if subViper == nil {
 		return nil, fmt.Errorf("can't read config")
@@ -164,7 +168,7 @@ func StartFromConfig(glb *workflow.Workflow, name string) (*Sequencer, error) {
 		WithTraceTippool(subViper.GetBool("trace_tippool")),
 	}
 
-	return StartNew(glb, seqID, controllerKey, opts...)
+	return New(glb, seqID, controllerKey, opts...)
 }
 
 func parseLogLevel(glb *workflow.Workflow, subViper *viper.Viper) zapcore.Level {
@@ -173,6 +177,34 @@ func parseLogLevel(glb *workflow.Workflow, subViper *viper.Viper) zapcore.Level 
 		return lvl
 	}
 	return glb.LogLevel()
+}
+
+func (seq *Sequencer) Run(parentCtx ...context.Context) {
+	var ctx context.Context
+
+	if len(parentCtx) > 0 {
+		ctx, seq.stopFun = context.WithCancel(parentCtx[0])
+	} else {
+		ctx, seq.stopFun = context.WithCancel(context.Background())
+	}
+	seq.stopWG.Add(1)
+
+	util.RunWrappedRoutine(seq.config.SequencerName+"[mainLoop]", func() {
+		go func() {
+			<-ctx.Done()
+
+			seq.log.Debug("sequencer stopping..")
+			seq.exit.Store(true)
+			seq.WaitStop()
+			seq.log.Info("sequencer stopped")
+		}()
+
+		seq.mainLoop()
+	}, common.ErrDBUnavailable)
+}
+
+func (seq *Sequencer) Stop() {
+	seq.stopFun()
 }
 
 func (seq *Sequencer) ID() *core.ChainID {
@@ -218,15 +250,6 @@ func (seq *Sequencer) trace(format string, args ...any) {
 func (seq *Sequencer) forceTrace(format string, args ...any) {
 	seq.setTraceAhead(1)
 	seq.trace(format, args...)
-}
-
-func (seq *Sequencer) Stop() {
-	seq.stopOnce.Do(func() {
-		seq.log.Debug("sequencer stopping..")
-		seq.exit.Store(true)
-		seq.WaitStop()
-		seq.log.Info("sequencer stopped")
-	})
 }
 
 func (seq *Sequencer) WaitStop() {

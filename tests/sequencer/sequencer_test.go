@@ -241,14 +241,13 @@ func Test1Sequencer(t *testing.T) {
 
 		sequencer.SetTraceProposer(sequencer.BaseProposerName, false)
 
-		seq, err := sequencer.StartNew(r.wrk, r.bootstrapChainID, r.originControllerPrivateKey,
+		seq := sequencer.MustRunNew(r.wrk, r.bootstrapChainID, r.originControllerPrivateKey,
 			sequencer.WithName("boot"),
 			sequencer.WithPace(5),
 			sequencer.WithMaxBranches(maxSlots),
 			sequencer.WithMaxTargetTs(core.LogicalTimeNow().AddTimeSlots(maxSlots+2)),
 			sequencer.WithLogLevel(zapcore.InfoLevel),
 		)
-		require.NoError(t, err)
 
 		msCounter := 0
 		seq.OnMilestoneSubmitted(func(seq *sequencer.Sequencer, vid *utangle.WrappedOutput) {
@@ -276,16 +275,15 @@ func Test1Sequencer(t *testing.T) {
 
 		t.Logf("chain origins tx:\n%s", r.txChainOrigins.ToString(r.ut.HeaviestStateForLatestTimeSlot().GetUTXO))
 
-		seq, err := sequencer.StartNew(r.wrk, r.bootstrapChainID, r.originControllerPrivateKey,
+		seq := sequencer.MustRunNew(r.wrk, r.bootstrapChainID, r.originControllerPrivateKey,
 			sequencer.WithName("boot"),
 			sequencer.WithPace(5),
 			sequencer.WithMaxBranches(maxTimeSlots),
 			sequencer.WithMaxTargetTs(core.LogicalTimeNow().AddTimeSlots(maxTimeSlots+2)),
 		)
-		require.NoError(t, err)
 
 		// add transaction with chain origins
-		_, err = r.wrk.TransactionInWaitAppend(r.txChainOrigins.Bytes(), 5*time.Second)
+		_, err := r.wrk.TransactionInWaitAppend(r.txChainOrigins.Bytes(), 5*time.Second)
 		require.NoError(t, err)
 		t.Logf("chain origins transaction has been added to the tangle: %s", r.txChainOrigins.IDShort())
 
@@ -322,14 +320,13 @@ func Test1Sequencer(t *testing.T) {
 		sequencer.SetTraceAll(false)
 		sequencer.SetTraceProposer(sequencer.BaseProposerName, false)
 
-		seq, err := sequencer.StartNew(r.wrk, r.bootstrapChainID, r.originControllerPrivateKey,
+		seq := sequencer.MustRunNew(r.wrk, r.bootstrapChainID, r.originControllerPrivateKey,
 			sequencer.WithName("boot"),
 			sequencer.WithPace(5),
 			sequencer.WithMaxBranches(maxSlots),
 			sequencer.WithMaxTargetTs(core.LogicalTimeNow().AddTimeSlots(maxSlots+2)),
 			sequencer.WithMaxFeeInputs(maxFeeInputs),
 		)
-		require.NoError(t, err)
 
 		totalInflation := uint64(0)
 		seq.OnMilestoneSubmitted(func(seq *sequencer.Sequencer, msOutput *utangle.WrappedOutput) {
@@ -341,7 +338,7 @@ func Test1Sequencer(t *testing.T) {
 		require.EqualValues(t, inittest.InitSupply-initFaucetBalance, int(initOnSeqBalance))
 
 		// add transaction with chain origins
-		_, err = r.wrk.TransactionInWaitAppend(r.txChainOrigins.Bytes(), 5*time.Second)
+		_, err := r.wrk.TransactionInWaitAppend(r.txChainOrigins.Bytes(), 5*time.Second)
 		require.NoError(t, err)
 		t.Logf("chain origins transaction has been added to the tangle: %s", r.txChainOrigins.IDShort())
 
@@ -390,14 +387,13 @@ func Test1Sequencer(t *testing.T) {
 
 		sequencer.SetTraceAll(false)
 
-		seq, err := sequencer.StartNew(r.wrk, r.bootstrapChainID, r.originControllerPrivateKey,
+		seq := sequencer.MustRunNew(r.wrk, r.bootstrapChainID, r.originControllerPrivateKey,
 			sequencer.WithName("boot"),
 			sequencer.WithPace(5),
 			sequencer.WithMaxBranches(maxSlots+2),
 			sequencer.WithMaxTargetTs(core.LogicalTimeNow().AddTimeSlots(maxSlots+2)),
 			sequencer.WithMaxFeeInputs(maxInputs),
 		)
-		require.NoError(t, err)
 
 		totalInflation := uint64(0)
 		seq.OnMilestoneSubmitted(func(seq *sequencer.Sequencer, msOutput *utangle.WrappedOutput) {
@@ -405,6 +401,7 @@ func Test1Sequencer(t *testing.T) {
 		})
 
 		var allFeeInputsConsumed atomic.Bool
+		var err error
 		seq.OnMilestoneSubmitted(func(seq *sequencer.Sequencer, wOut *utangle.WrappedOutput) {
 			if seq.Info().NumConsumedFeeOutputs >= numFaucetTransactions {
 				allFeeInputsConsumed.Store(true)
@@ -473,14 +470,13 @@ func Test1Sequencer(t *testing.T) {
 
 		sequencer.SetTraceAll(false)
 
-		seq, err := sequencer.StartNew(r.wrk, r.bootstrapChainID, r.originControllerPrivateKey,
+		seq := sequencer.MustRunNew(r.wrk, r.bootstrapChainID, r.originControllerPrivateKey,
 			sequencer.WithName("boot"),
 			sequencer.WithPace(5),
 			sequencer.WithMaxBranches(maxSlots),
 			sequencer.WithMaxTargetTs(core.LogicalTimeNow().AddTimeSlots(maxSlots+2)),
 			sequencer.WithMaxFeeInputs(maxInputs),
 		)
-		require.NoError(t, err)
 
 		totalInflation := uint64(0)
 		seq.OnMilestoneSubmitted(func(seq *sequencer.Sequencer, msOutput *utangle.WrappedOutput) {
@@ -488,6 +484,7 @@ func Test1Sequencer(t *testing.T) {
 		})
 
 		var allFeeInputsConsumed atomic.Bool
+		var err error
 		seq.OnMilestoneSubmitted(func(seq *sequencer.Sequencer, wOut *utangle.WrappedOutput) {
 			seq.LogMilestoneSubmitDefault(wOut)
 			if seq.Info().NumConsumedFeeOutputs >= numFaucetTransactions*numFaucets {
@@ -497,7 +494,6 @@ func Test1Sequencer(t *testing.T) {
 				go seq.Stop()
 			}
 		})
-		require.NoError(t, err)
 
 		heaviestState := r.ut.HeaviestStateForLatestTimeSlot()
 		initOnSeqBalance := heaviestState.BalanceOnChain(&r.bootstrapChainID)
@@ -543,10 +539,9 @@ func Test1Sequencer(t *testing.T) {
 }
 
 func (r *sequencerTestData) createSequencers(maxInputsInTx, maxSlots, pace int, loglevel zapcore.Level) {
-	var err error
 	endorse := r.ut.HeaviestStemOutput().ID.TransactionID()
 	r.t.Logf("endorse: %v", endorse.String())
-	r.bootstrapSeq, err = sequencer.StartNew(r.wrk, r.bootstrapChainID, r.originControllerPrivateKey,
+	r.bootstrapSeq = sequencer.MustRunNew(r.wrk, r.bootstrapChainID, r.originControllerPrivateKey,
 		sequencer.WithName("boot"),
 		sequencer.WithLogLevel(loglevel),
 		sequencer.WithPace(pace),
@@ -554,7 +549,6 @@ func (r *sequencerTestData) createSequencers(maxInputsInTx, maxSlots, pace int, 
 		sequencer.WithMaxTargetTs(core.LogicalTimeNow().AddTimeSlots(maxSlots)),
 		sequencer.WithMaxFeeInputs(maxInputsInTx),
 	)
-	require.NoError(r.t, err)
 
 	maxTargetTs := core.LogicalTimeNow().AddTimeSlots(maxSlots)
 	r.sequencers = make([]*sequencer.Sequencer, len(r.chainOrigins))
@@ -562,7 +556,7 @@ func (r *sequencerTestData) createSequencers(maxInputsInTx, maxSlots, pace int, 
 		chainOut, ok, wrong := r.ut.GetWrappedOutput(&r.chainOrigins[i].OutputWithID.ID)
 		require.False(r.t, wrong)
 		require.True(r.t, ok)
-		r.sequencers[i], err = sequencer.StartNew(r.wrk, r.chainOrigins[i].ChainID, r.chainControllersPrivateKeys[i],
+		r.sequencers[i] = sequencer.MustRunNew(r.wrk, r.chainOrigins[i].ChainID, r.chainControllersPrivateKeys[i],
 			sequencer.WithName(fmt.Sprintf("seq%d", i)),
 			sequencer.WithLogLevel(loglevel),
 			sequencer.WithPace(pace),
@@ -570,8 +564,6 @@ func (r *sequencerTestData) createSequencers(maxInputsInTx, maxSlots, pace int, 
 			sequencer.WithMaxFeeInputs(maxInputsInTx),
 			sequencer.WithStartOutput(chainOut),
 		)
-		r.t.Logf("new seq #%d: %v", i, err)
-		require.NoError(r.t, err)
 	}
 }
 
