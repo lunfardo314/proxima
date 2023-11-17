@@ -5,13 +5,22 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/peering"
+	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/proxima/util/set"
 	"go.uber.org/atomic"
 )
 
 const PullConsumerName = "pull"
 
+const (
+	PullCmdQuery = byte(iota)
+	PullCmdRemove
+)
+
 type (
 	PullData struct {
+		Cmd  byte
 		TxID core.TransactionID
 	}
 
@@ -20,19 +29,16 @@ type (
 		mutex sync.RWMutex
 
 		stopBackgroundLoop atomic.Bool
-		wanted             map[core.TransactionID]*wantedTxData
-	}
-
-	wantedTxData struct {
-		whenLastPulled time.Time
-		queriedPeers   []int // TODO, placeholder
+		wanted             map[core.TransactionID]time.Time
+		peers              peering.Peers
 	}
 )
 
 func (w *Workflow) initPullConsumer() {
 	c := &PullConsumer{
 		Consumer: NewConsumer[*PullData](PullConsumerName, w),
-		wanted:   make(map[core.TransactionID]*wantedTxData),
+		wanted:   make(map[core.TransactionID]time.Time),
+		peers:    peering.NewDummyPeering(),
 	}
 	c.AddOnConsume(c.consume)
 	c.AddOnClosed(func() {
@@ -43,63 +49,88 @@ func (w *Workflow) initPullConsumer() {
 
 }
 
-func (c *PullConsumer) already(txid *core.TransactionID) bool {
-	c.mutex.RLock()
-	defer c.mutex.RUnlock()
+func (p *PullConsumer) already(txid *core.TransactionID) bool {
+	p.mutex.RLock()
+	defer p.mutex.RUnlock()
 
-	_, already := c.wanted[*txid]
+	_, already := p.wanted[*txid]
 	return already
 }
 
-func (c *PullConsumer) consume(inp *PullData) {
-	if c.already(&inp.TxID) {
-		return
+func (p *PullConsumer) consume(inp *PullData) {
+	switch inp.Cmd {
+	case PullCmdQuery:
+		p.queryTransactionCmd(inp)
+	case PullCmdRemove:
+		p.removeTransactionCmd(inp)
+	default:
+		p.Log().Panicf("wrong command")
 	}
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-
-	c.wanted[inp.TxID] = &wantedTxData{}
-	c.Log().Infof("<-- %s", inp.TxID.Short())
 }
 
-func (c *PullConsumer) stop() {
-	c.stopBackgroundLoop.Store(true)
+func (p *PullConsumer) queryTransactionCmd(inp *PullData) {
+	if p.already(&inp.TxID) {
+		return
+	}
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
+
+	// look up for the transaction in the store
+	txBytes := p.glb.utxoTangle.TxBytesStore().GetTxBytes(&inp.TxID)
+	if len(txBytes) != 0 {
+		if err := p.glb.TransactionIn(txBytes); err != nil {
+			p.Log().Errorf("invalid transaction from txStore %s: '%v'", inp.TxID.Short(), err)
+		}
+		return
+	}
+	// transaction is not in the store. Add it to the 'wanted' set
+	p.wanted[inp.TxID] = time.Time{}
+	p.Log().Debugf("<-- added %s", inp.TxID.Short())
+}
+
+func (p *PullConsumer) removeTransactionCmd(inp *PullData) {
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
+
+	delete(p.wanted, inp.TxID)
+
+	p.Log().Debugf("removed %s", inp.TxID.Short())
+}
+
+func (p *PullConsumer) stop() {
+	p.stopBackgroundLoop.Store(true)
 }
 
 const pullPeriod = 10 * time.Millisecond
 
-func (c *PullConsumer) selectTransactionsToPull() map[core.TransactionID]*wantedTxData {
-	ret := make(map[core.TransactionID]*wantedTxData)
+func (p *PullConsumer) selectTransactionsToPull() set.Set[core.TransactionID] {
+	ret := set.New[core.TransactionID]()
 	nowis := time.Now()
 
-	c.mutex.RLock()
-	defer c.mutex.RUnlock()
+	p.mutex.RLock()
+	defer p.mutex.RUnlock()
 
-	for txid, d := range c.wanted {
-		if d.whenLastPulled.Add(pullPeriod).Before(nowis) {
-			ret[txid] = d
+	for txid, whenLast := range p.wanted {
+		if whenLast.Add(pullPeriod).Before(nowis) {
+			ret.Insert(txid)
 		}
 	}
 	return ret
 }
 
-func (c *PullConsumer) backgroundLoop() {
-	for !c.stopBackgroundLoop.Load() {
+func (p *PullConsumer) backgroundPullLoop() {
+	for !p.stopBackgroundLoop.Load() {
 		time.Sleep(100 * time.Millisecond) // TODO temporary
 
-		toPull := c.selectTransactionsToPull()
+		toPull := p.selectTransactionsToPull()
 		if len(toPull) == 0 {
 			continue
 		}
-
+		p.pullTransactions(toPull)
 	}
 }
 
-func (c *PullConsumer) removeFromPullList(txids ...*core.TransactionID) {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-
-	for _, txid := range txids {
-		delete(c.wanted, *txid)
-	}
+func (p *PullConsumer) pullTransactions(m set.Set[core.TransactionID]) {
+	peer := p.peers.SelectRandomPeer()
+	peer.SendMsgBytes(peering.EncodePeerMessageTypeQueryTransactions(util.Keys(m)...))
 }

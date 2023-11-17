@@ -412,6 +412,10 @@ func (ut *UTXOTangle) StateStore() general.StateStore {
 	return ut.stateStore
 }
 
+func (ut *UTXOTangle) TxBytesStore() general.TxBytesStore {
+	return ut.txBytesStore
+}
+
 func (ut *UTXOTangle) LedgerCoverageDelta(vid *WrappedTx) uint64 {
 	_, ret := vid.CoverageDelta(ut)
 
