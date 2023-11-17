@@ -35,6 +35,7 @@ type (
 		primaryInputConsumer *PrimaryConsumer
 		preValidateConsumer  *PreValidateConsumer
 		solidifyConsumer     *SolidifyConsumer
+		pullConsumer         *PullConsumer
 		validateConsumer     *ValidateConsumer
 		appendTxConsumer     *AppendTxConsumer
 		rejectConsumer       *RejectConsumer
@@ -74,6 +75,7 @@ func New(ut *utangle.UTXOTangle, configOptions ...ConfigOption) *Workflow {
 	ret.initPrimaryInputConsumer()
 	ret.initPreValidateConsumer()
 	ret.initSolidifyConsumer()
+	ret.initPullConsumer()
 	ret.initValidateConsumer()
 	ret.initAppendTxConsumer()
 	ret.initRejectConsumer()
@@ -104,6 +106,7 @@ func (w *Workflow) Start(parentCtx ...context.Context) {
 		w.primaryInputConsumer.Start()
 		w.preValidateConsumer.Start()
 		w.solidifyConsumer.Start()
+		w.pullConsumer.Start()
 		w.validateConsumer.Start()
 		w.appendTxConsumer.Start()
 		w.rejectConsumer.Start()

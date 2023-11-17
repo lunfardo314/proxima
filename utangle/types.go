@@ -39,7 +39,7 @@ type (
 		pastTrack    PastTrack
 		isSolid      bool
 		// during solidification, sometimes there's a need to look for output into all branches.
-		// This flag prevent scanning all branches twice
+		// This flag prevent scanning all branches more than once
 		branchesAlreadyScanned bool
 	}
 

@@ -39,6 +39,10 @@ type (
 	draftVertexData struct {
 		*PrimaryInputConsumerData
 		draftVertex *utangle.Vertex
+		// stemInputAlreadyPulled for pull sequence and priorities
+		stemInputAlreadyPulled            bool
+		sequencerPredecessorAlreadyPulled bool
+		allInputsAlreadyPulled            bool
 	}
 
 	txDependency struct {
@@ -176,10 +180,12 @@ func (c *SolidifyConsumer) putIntoSolidifierIfNeeded(inp *SolidifyInputData, dra
 		}
 	}
 	// add to the list of vertices waiting for solidification
-	c.txPending[*draftVertex.Tx.ID()] = draftVertexData{
+	vd := draftVertexData{
 		PrimaryInputConsumerData: inp.PrimaryInputConsumerData,
 		draftVertex:              draftVertex,
 	}
+	c.txPending[*draftVertex.Tx.ID()] = vd
+	c.pullIfNeeded(&vd)
 	return true
 }
 
@@ -259,11 +265,52 @@ func (c *SolidifyConsumer) checkNewDependency(inp *SolidifyInputData) {
 		}
 		c.Log().Debugf("%s not solid yet. Missing: %s\nTransaction: %s",
 			pending.Tx.IDShort(), pending.draftVertex.MissingInputTxIDString(), pending.draftVertex.Lines().String())
+
+		// ask for missing inputs from peers
+		c.pullIfNeeded(&pending)
 	}
 	for i := range solidified {
 		delete(c.txPending, solidified[i])
 		c.Log().Debugf("removed from solidifier %s", solidified[i].Short())
 	}
+}
+
+func (c *SolidifyConsumer) pullIfNeeded(vd *draftVertexData) {
+	if vd.draftVertex.IsSolid() {
+		return
+	}
+	if vd.allInputsAlreadyPulled {
+		return
+	}
+	if vd.Tx.IsBranchTransaction() && !vd.draftVertex.IsStemInputSolid() {
+		// first need to solidify stem input. Only when stem input is solid, we pull the rest
+		// this makes node synchronization more sequential, from past to present slot by slot
+		if !vd.stemInputAlreadyPulled {
+			c.pull(vd.Tx.SequencerTransactionData().StemOutputData.PredecessorOutputID.TransactionID())
+			vd.stemInputAlreadyPulled = true
+		}
+		return
+	}
+
+	if vd.Tx.IsSequencerMilestone() {
+		//stem is already solid, we can pull sequencer input
+		if isSolid, seqInputIdx := vd.draftVertex.IsSequencerInputSolid(); !isSolid {
+			seqInputOID := vd.Tx.MustInputAt(seqInputIdx)
+			c.pull(seqInputOID.TransactionID())
+			vd.sequencerPredecessorAlreadyPulled = true
+			return
+		}
+	}
+
+	// now we can pull the rest
+	vd.draftVertex.MissingInputTxIDSet().ForEach(func(txid core.TransactionID) bool {
+		c.pull(txid)
+		return true
+	})
+}
+
+func (c *SolidifyConsumer) pull(txid core.TransactionID) {
+	c.glb.pullConsumer.Push(&PullData{TxID: txid})
 }
 
 func (c *SolidifyConsumer) backgroundLoop() {
@@ -314,7 +361,7 @@ func (c *SolidifyConsumer) doBackgroundCheck() {
 	}
 }
 
-func (d *txDependency) text(dep *core.TransactionID) string {
+func (d *txDependency) __text(dep *core.TransactionID) string {
 	txids := make([]string, 0)
 	for _, id := range d.consumingTxIDs {
 		txids = append(txids, id.Short())
@@ -329,7 +376,7 @@ func (c *SolidifyConsumer) DumpUnresolvedDependencies() *lines.Lines {
 	ret := lines.New()
 	ret.Add("======= unresolved dependencies in solidifier")
 	for txid, v := range c.txDependencies {
-		ret.Add(v.text(&txid))
+		ret.Add(v.__text(&txid))
 	}
 	return ret
 }
