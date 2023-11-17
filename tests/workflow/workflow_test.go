@@ -360,7 +360,7 @@ func TestWorkflowAsync(t *testing.T) {
 		}
 		err = waitCounter.Wait()
 		require.NoError(t, err)
-		require.EqualValues(t, 2*numRuns, listenerCounter.Load())
+		require.EqualValues(t, 2*numRuns, int(listenerCounter.Load()))
 
 		wd.w.Stop()
 		t.Logf("UTXO tangle:\n%s", wd.ut.Info())

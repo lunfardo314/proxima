@@ -75,6 +75,7 @@ func (c *Consumer[T]) PushAny(inp any) {
 
 func (c *Consumer[T]) Run() {
 	c.log.Debugf("STARTING [%s]..", c.Log().Level())
+	_ = c.log.Sync()
 	c.que.Consume(c.onConsume...)
 }
 
