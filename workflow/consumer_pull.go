@@ -6,22 +6,26 @@ import (
 
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/peering"
-	"github.com/lunfardo314/proxima/util"
-	"github.com/lunfardo314/proxima/util/set"
 	"go.uber.org/atomic"
 )
 
-const PullConsumerName = "pull"
+const PullTxConsumerName = "pull"
+
+const pullPeriod = 500 * time.Millisecond
 
 const (
-	PullCmdQuery = byte(iota)
-	PullCmdRemove
+	PullTxCmdQuery = byte(iota)
+	PullTxCmdRemove
 )
 
 type (
 	PullData struct {
 		Cmd  byte
 		TxID core.TransactionID
+		// GracePeriod for PullTxCmdQuery, how long delay first pull.
+		// It may not be needed at all if transaction comes through gossip
+		// 0 means first pull immediately
+		GracePeriod time.Duration
 	}
 
 	PullConsumer struct {
@@ -29,14 +33,15 @@ type (
 		mutex sync.RWMutex
 
 		stopBackgroundLoop atomic.Bool
-		wanted             map[core.TransactionID]time.Time
-		peers              peering.Peers
+		// txid -> next pull deadline
+		wanted map[core.TransactionID]time.Time
+		peers  peering.Peers
 	}
 )
 
 func (w *Workflow) initPullConsumer() {
 	c := &PullConsumer{
-		Consumer: NewConsumer[*PullData](PullConsumerName, w),
+		Consumer: NewConsumer[*PullData](PullTxConsumerName, w),
 		wanted:   make(map[core.TransactionID]time.Time),
 		peers:    peering.NewDummyPeering(),
 	}
@@ -46,7 +51,7 @@ func (w *Workflow) initPullConsumer() {
 		w.terminateWG.Done()
 	})
 	w.pullConsumer = c
-
+	go c.backgroundLoop()
 }
 
 func (p *PullConsumer) already(txid *core.TransactionID) bool {
@@ -59,9 +64,9 @@ func (p *PullConsumer) already(txid *core.TransactionID) bool {
 
 func (p *PullConsumer) consume(inp *PullData) {
 	switch inp.Cmd {
-	case PullCmdQuery:
+	case PullTxCmdQuery:
 		p.queryTransactionCmd(inp)
-	case PullCmdRemove:
+	case PullTxCmdRemove:
 		p.removeTransactionCmd(inp)
 	default:
 		p.Log().Panicf("wrong command")
@@ -78,13 +83,24 @@ func (p *PullConsumer) queryTransactionCmd(inp *PullData) {
 	// look up for the transaction in the store
 	txBytes := p.glb.utxoTangle.TxBytesStore().GetTxBytes(&inp.TxID)
 	if len(txBytes) != 0 {
-		if err := p.glb.TransactionIn(txBytes); err != nil {
+		// transaction bytes are in the transaction store. No need to query it from another peer
+		if err := p.glb.TransactionIn(txBytes, WithTransactionSource(TransactionSourceStore)); err != nil {
 			p.Log().Errorf("invalid transaction from txStore %s: '%v'", inp.TxID.Short(), err)
 		}
 		return
 	}
 	// transaction is not in the store. Add it to the 'wanted' set
-	p.wanted[inp.TxID] = time.Time{}
+	nowis := time.Now()
+	firstPullDeadline := nowis.Add(inp.GracePeriod)
+	if inp.GracePeriod == 0 {
+		firstPullDeadline = nowis.Add(pullPeriod)
+	}
+	p.wanted[inp.TxID] = firstPullDeadline
+	if inp.GracePeriod == 0 {
+		// query immediately
+		go p.pullTransactions(inp.TxID)
+	}
+
 	p.Log().Debugf("<-- added %s", inp.TxID.Short())
 }
 
@@ -101,36 +117,32 @@ func (p *PullConsumer) stop() {
 	p.stopBackgroundLoop.Store(true)
 }
 
-const pullPeriod = 10 * time.Millisecond
+func (p *PullConsumer) backgroundLoop() {
+	for !p.stopBackgroundLoop.Load() {
+		time.Sleep(10 * time.Millisecond)
 
-func (p *PullConsumer) selectTransactionsToPull() set.Set[core.TransactionID] {
-	ret := set.New[core.TransactionID]()
+		p.pullAllMatured()
+	}
+	p.Log().Infof("background loop stopped")
+}
+
+func (p *PullConsumer) pullAllMatured() {
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
+
 	nowis := time.Now()
 
-	p.mutex.RLock()
-	defer p.mutex.RUnlock()
-
-	for txid, whenLast := range p.wanted {
-		if whenLast.Add(pullPeriod).Before(nowis) {
-			ret.Insert(txid)
+	txids := make([]core.TransactionID, 0)
+	for txid, whenNext := range p.wanted {
+		if whenNext.Before(nowis) {
+			txids = append(txids, txid)
 		}
+		p.wanted[txid] = nowis.Add(pullPeriod)
 	}
-	return ret
+	p.pullTransactions(txids...)
 }
 
-func (p *PullConsumer) backgroundPullLoop() {
-	for !p.stopBackgroundLoop.Load() {
-		time.Sleep(100 * time.Millisecond) // TODO temporary
-
-		toPull := p.selectTransactionsToPull()
-		if len(toPull) == 0 {
-			continue
-		}
-		p.pullTransactions(toPull)
-	}
-}
-
-func (p *PullConsumer) pullTransactions(m set.Set[core.TransactionID]) {
+func (p *PullConsumer) pullTransactions(txids ...core.TransactionID) {
 	peer := p.peers.SelectRandomPeer()
-	peer.SendMsgBytes(peering.EncodePeerMessageTypeQueryTransactions(util.Keys(m)...))
+	peer.SendMsgBytes(peering.EncodePeerMessageTypeQueryTransactions(txids...))
 }

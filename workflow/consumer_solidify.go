@@ -275,6 +275,12 @@ func (c *SolidifyConsumer) checkNewDependency(inp *SolidifyInputData) {
 	}
 }
 
+const (
+	pullGracePeriodBranch            = time.Duration(0)
+	pullGracePeriodSequencer         = 1 * time.Second
+	pullGracePeriodOtherTransactions = 1 * time.Second
+)
+
 func (c *SolidifyConsumer) pullIfNeeded(vd *draftVertexData) {
 	if vd.draftVertex.IsSolid() {
 		return
@@ -286,7 +292,8 @@ func (c *SolidifyConsumer) pullIfNeeded(vd *draftVertexData) {
 		// first need to solidify stem input. Only when stem input is solid, we pull the rest
 		// this makes node synchronization more sequential, from past to present slot by slot
 		if !vd.stemInputAlreadyPulled {
-			c.pull(vd.Tx.SequencerTransactionData().StemOutputData.PredecessorOutputID.TransactionID())
+			// pull immediately
+			c.pull(vd.Tx.SequencerTransactionData().StemOutputData.PredecessorOutputID.TransactionID(), pullGracePeriodBranch)
 			vd.stemInputAlreadyPulled = true
 		}
 		return
@@ -296,7 +303,7 @@ func (c *SolidifyConsumer) pullIfNeeded(vd *draftVertexData) {
 		//stem is already solid, we can pull sequencer input
 		if isSolid, seqInputIdx := vd.draftVertex.IsSequencerInputSolid(); !isSolid {
 			seqInputOID := vd.Tx.MustInputAt(seqInputIdx)
-			c.pull(seqInputOID.TransactionID())
+			c.pull(seqInputOID.TransactionID(), pullGracePeriodSequencer)
 			vd.sequencerPredecessorAlreadyPulled = true
 			return
 		}
@@ -304,13 +311,17 @@ func (c *SolidifyConsumer) pullIfNeeded(vd *draftVertexData) {
 
 	// now we can pull the rest
 	vd.draftVertex.MissingInputTxIDSet().ForEach(func(txid core.TransactionID) bool {
-		c.pull(txid)
+		c.pull(txid, pullGracePeriodOtherTransactions)
 		return true
 	})
 }
 
-func (c *SolidifyConsumer) pull(txid core.TransactionID) {
-	c.glb.pullConsumer.Push(&PullData{TxID: txid})
+func (c *SolidifyConsumer) pull(txid core.TransactionID, gracePeriod time.Duration) {
+	c.glb.pullConsumer.Push(&PullData{
+		Cmd:         PullTxCmdQuery,
+		TxID:        txid,
+		GracePeriod: gracePeriod,
+	})
 }
 
 func (c *SolidifyConsumer) backgroundLoop() {

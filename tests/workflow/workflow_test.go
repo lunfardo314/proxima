@@ -126,7 +126,7 @@ func TestWorkflowBasic(t *testing.T) {
 		}, "basic parse failed")
 		time.Sleep(1000 * time.Millisecond)
 		wd.w.Stop()
-		time.Sleep(10 * time.Millisecond)
+		time.Sleep(1000 * time.Millisecond)
 	})
 }
 
