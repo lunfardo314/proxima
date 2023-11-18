@@ -147,7 +147,7 @@ func DecodeIDs(vids ...*WrappedTx) []*core.TransactionID {
 }
 
 func (vid *WrappedTx) IDShort() string {
-	return vid.ID().Short()
+	return vid.ID().StringShort()
 }
 
 func (vid *WrappedTx) LazyIDShort() func() any {
@@ -157,7 +157,7 @@ func (vid *WrappedTx) LazyIDShort() func() any {
 }
 
 func (vid *WrappedTx) IDVeryShort() string {
-	return vid.ID().VeryShort()
+	return vid.ID().StringVeryShort()
 }
 
 func (vid *WrappedTx) IsBranchTransaction() bool {
@@ -635,7 +635,7 @@ func (vid *WrappedTx) _collectMutationData(md *_mutationData) (conflict WrappedO
 				inputID := v.Tx.MustInputAt(i)
 				if _, produced := md.outputMutations[inputID]; produced {
 					// disable assert: it may be deleted repeatedly along endorsement lines
-					// util.Assertf(o != nil, "unexpected double DEL mutation at %s", inputID.Short())
+					// util.Assertf(o != nil, "unexpected double DEL mutation at %s", inputID.StringShort())
 					delete(md.outputMutations, inputID)
 				} else {
 					if md.baselineStateReader.HasUTXO(&inputID) {
@@ -738,7 +738,7 @@ func (vid *WrappedTx) CoverageDelta(ut *UTXOTangle) (*core.TransactionID, uint64
 
 	ret := uint64(0)
 	bd, found := multistate.FetchBranchData(ut.stateStore, *baselineTxID)
-	util.Assertf(found, "can't found root record for %s", baselineTxID.Short())
+	util.Assertf(found, "can't found root record for %s", baselineTxID.StringShort())
 	coverageCap := bd.Stem.Output.MustStemLock().Supply
 
 	baselineOutputs.ForEach(func(o WrappedOutput) bool {
@@ -767,7 +767,7 @@ func (vid *WrappedTx) LedgerCoverage(ut *UTXOTangle) uint64 {
 	}
 
 	bd, ok := ut.FetchBranchData(branchTxID)
-	util.Assertf(ok, "can't fetch branch data for %s", func() any { return branchTxID.Short() })
+	util.Assertf(ok, "can't fetch branch data for %s", func() any { return branchTxID.StringShort() })
 
 	return deltaCoverage + bd.LedgerCoverage.Sum()
 }

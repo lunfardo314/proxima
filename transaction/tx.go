@@ -23,7 +23,7 @@ import (
 type (
 	Transaction struct {
 		tree                     *lazybytes.Tree
-		txHash                   core.TransactionHash
+		txHash                   core.TransactionIDShort
 		sequencerMilestoneFlag   bool
 		branchTransactionFlag    bool
 		sender                   core.AddressED25519
@@ -327,11 +327,11 @@ func CheckEndorsements() TxValidationOption {
 		txSlot := tx.Timestamp().TimeSlot()
 		tx.ForEachEndorsement(func(_ byte, endorsedTxID *core.TransactionID) bool {
 			if !endorsedTxID.SequencerFlagON() {
-				err = fmt.Errorf("tx %s contains endorsement of non-sequencer transaction: %s", tx.IDShort(), endorsedTxID.Short())
+				err = fmt.Errorf("tx %s contains endorsement of non-sequencer transaction: %s", tx.IDShort(), endorsedTxID.StringShort())
 				return false
 			}
 			if endorsedTxID.TimeSlot() != txSlot {
-				err = fmt.Errorf("tx %s can't endorse tx from another slot: %s", tx.IDShort(), endorsedTxID.Short())
+				err = fmt.Errorf("tx %s can't endorse tx from another slot: %s", tx.IDShort(), endorsedTxID.StringShort())
 				return false
 			}
 			return true
@@ -403,18 +403,18 @@ func (tx *Transaction) IDString() string {
 }
 
 func (tx *Transaction) IDShort() string {
-	return core.TransactionIDShort(tx.timestamp, tx.txHash, tx.sequencerMilestoneFlag, tx.branchTransactionFlag)
+	return core.TransactionIDStringShort(tx.timestamp, tx.txHash, tx.sequencerMilestoneFlag, tx.branchTransactionFlag)
 }
 
 func (tx *Transaction) IDVeryShort() string {
-	return core.TransactionIDVeryShort(tx.timestamp, tx.txHash, tx.sequencerMilestoneFlag, tx.branchTransactionFlag)
+	return core.TransactionIDStringVeryShort(tx.timestamp, tx.txHash, tx.sequencerMilestoneFlag, tx.branchTransactionFlag)
 }
 
 func (tx *Transaction) TimeSlot() core.TimeSlot {
 	return tx.timestamp.TimeSlot()
 }
 
-func (tx *Transaction) Hash() core.TransactionHash {
+func (tx *Transaction) Hash() core.TransactionIDShort {
 	return tx.txHash
 }
 
@@ -824,7 +824,7 @@ func (tx *Transaction) FindStemProducedOutput() *core.OutputWithID {
 func (tx *Transaction) EndorsementsVeryShort() string {
 	ret := make([]string, tx.NumEndorsements())
 	tx.ForEachEndorsement(func(idx byte, txid *core.TransactionID) bool {
-		ret[idx] = txid.VeryShort()
+		ret[idx] = txid.StringVeryShort()
 		return true
 	})
 	return strings.Join(ret, ", ")

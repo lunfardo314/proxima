@@ -250,20 +250,20 @@ func MakeTree(stateStore general.StateStore, slots ...int) graph.Graph[string, s
 	for _, b := range branches {
 		byOid[b.Stem.ID] = b
 		txid := b.Stem.ID.TransactionID()
-		id := txid.Short()
+		id := txid.StringShort()
 		err := ret.AddVertex(id, branchNodeAttributes(&b.SequencerID, b.LedgerCoverage.Sum(), idDict)...)
 		util.AssertNoError(err)
 	}
 
 	for _, b := range branches {
 		txid := b.Stem.ID.TransactionID()
-		id := txid.Short()
+		id := txid.StringShort()
 		stemLock, stemLockFound := b.Stem.Output.StemLock()
 		util.Assertf(stemLockFound, "stem lock not found")
 
 		if pred, ok := byOid[stemLock.PredecessorOutputID]; ok {
 			txid := pred.Stem.ID.TransactionID()
-			predID := txid.Short()
+			predID := txid.StringShort()
 			err := ret.AddEdge(id, predID)
 			util.AssertNoError(err)
 		}

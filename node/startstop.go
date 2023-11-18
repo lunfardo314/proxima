@@ -167,7 +167,7 @@ func (p *ProximaNode) loadUTXOTangle() {
 	p.log.Infof("latest time slot %d contains %d branches", latestSlot, len(branches))
 	for _, br := range branches {
 		txid := br.Stem.ID.TransactionID()
-		p.log.Infof("    branch %s : sequencer: %s, coverage: %s", txid.Short(), br.SequencerID.Short(), br.LedgerCoverage.String())
+		p.log.Infof("    branch %s : sequencer: %s, coverage: %s", txid.StringShort(), br.SequencerID.Short(), br.LedgerCoverage.String())
 	}
 	p.log.Infof("UTXO tangle has been created successfully")
 }

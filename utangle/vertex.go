@@ -78,7 +78,7 @@ func (v *Vertex) MissingInputTxIDString() string {
 	}
 	ret := make([]string, 0)
 	for txid := range s {
-		ret = append(ret, txid.Short())
+		ret = append(ret, txid.StringShort())
 	}
 	return strings.Join(ret, ", ")
 }
@@ -218,7 +218,7 @@ func (v *Vertex) PendingDependenciesLines(prefix ...string) *lines.Lines {
 	v.forEachEndorsement(func(i byte, vEnd *WrappedTx) bool {
 		if vEnd == nil {
 			txid := v.Tx.EndorsementAt(i)
-			ret.Add("   %d : %s", i, txid.Short())
+			ret.Add("   %d : %s", i, txid.StringShort())
 		}
 		return true
 	})

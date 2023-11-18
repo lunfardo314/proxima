@@ -380,7 +380,7 @@ func Test1Sequencer(t *testing.T) {
 		//workflow.WithConsumerLogLevel(workflow.SolidifyConsumerName, zapcore.DebugLevel),
 
 		r.wrk.MustOnEvent(workflow.EventRejectedTx, func(inp *workflow.RejectInputData) {
-			r.t.Logf("rejected %s : '%s'", inp.TxID.Short(), inp.Msg)
+			r.t.Logf("rejected %s : '%s'", inp.TxID.StringShort(), inp.Msg)
 		})
 		transaction.SetPrintEasyFLTraceOnFail(false)
 		r.wrk.Start()
@@ -682,7 +682,7 @@ func TestNSequencers(t *testing.T) {
 				//rdr := r.wrk.UTXOTangle().MustGetIndexedStateReader(chainOriginVID.ID())
 				//o1, err := rdr.GetUTXOForChainID(&o.ChainID)
 				//require.NoError(t, err)
-				//t.Logf("branch: %s, chainID: %s, oid: %s", chainOriginVID.IDShort(), o.ChainID.VeryShort(), o1.ID.Short())
+				//t.Logf("branch: %s, chainID: %s, oid: %s", chainOriginVID.IDShort(), o.ChainID.StringVeryShort(), o1.ID.StringShort())
 			}
 			require.True(t, chainOriginVID == nil)
 		}
@@ -947,7 +947,7 @@ func TestNSequencers(t *testing.T) {
 				//rdr := r.wrk.UTXOTangle().MustGetIndexedStateReader(branchVID.ID())
 				//o1, err := rdr.GetUTXOForChainID(&o.ChainID)
 				//require.NoError(t, err)
-				//t.Logf("branch: %s, chainID: %s, oid: %s", branchVID.IDShort(), o.ChainID.VeryShort(), o1.ID.Short())
+				//t.Logf("branch: %s, chainID: %s, oid: %s", branchVID.IDShort(), o.ChainID.StringVeryShort(), o1.ID.StringShort())
 			}
 			require.True(t, chainOriginVID == nil)
 		}
@@ -1016,7 +1016,7 @@ func TestNSequencers(t *testing.T) {
 				//rdr := r.wrk.UTXOTangle().MustGetIndexedStateReader(branchVID.ID())
 				//o1, err := rdr.GetUTXOForChainID(&o.ChainID)
 				//require.NoError(t, err)
-				//t.Logf("branch: %s, chainID: %s, oid: %s", branchVID.IDShort(), o.ChainID.VeryShort(), o1.ID.Short())
+				//t.Logf("branch: %s, chainID: %s, oid: %s", branchVID.IDShort(), o.ChainID.StringVeryShort(), o1.ID.StringShort())
 			}
 			require.True(t, chainOriginVID == nil)
 		}
@@ -1112,7 +1112,7 @@ func TestPruning(t *testing.T) {
 		r.ut.SaveGraph(fnameFromTestName(t) + "_PRUNE5_before_cut")
 
 		for cutBranchTxID, numTx := r.ut.CutFinalBranchIfExists(5); cutBranchTxID != nil; {
-			t.Logf("cut finalized branch %s, cut %d transactions", cutBranchTxID.Short(), numTx)
+			t.Logf("cut finalized branch %s, cut %d transactions", cutBranchTxID.StringShort(), numTx)
 			cutBranchTxID, numTx = r.ut.CutFinalBranchIfExists(5)
 		}
 

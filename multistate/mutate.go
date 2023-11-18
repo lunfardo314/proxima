@@ -66,7 +66,7 @@ func (m *mutationAddTx) mutate(trie *immutable.TrieUpdatable) error {
 }
 
 func (m *mutationAddTx) text() string {
-	return fmt.Sprintf("ADDTX %s : slot %d", m.ID.Short(), m.TimeSlot)
+	return fmt.Sprintf("ADDTX %s : slot %d", m.ID.StringShort(), m.TimeSlot)
 }
 
 func (m *mutationAddTx) sortOrder() byte {
@@ -202,7 +202,7 @@ func addTxToTrie(trie *immutable.TrieUpdatable, txid *core.TransactionID, slot c
 
 	if trie.Update(stateKey[:], slot.Bytes()) {
 		// key should not exist
-		return fmt.Errorf("addTxToTrie: transaction key should not exist: %s", txid.Short())
+		return fmt.Errorf("addTxToTrie: transaction key should not exist: %s", txid.StringShort())
 	}
 	return nil
 }

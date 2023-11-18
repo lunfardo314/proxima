@@ -162,7 +162,7 @@ func (c *SolidifyConsumer) putIntoSolidifierIfNeeded(inp *SolidifyInputData, dra
 	util.Assertf(!draftVertex.IsSolid(), "inconsistency 1")
 	c.IncCounter("new.notsolid")
 	for unknownTxID := range unknownInputTxIDs {
-		c.Debugf(inp.PrimaryInputConsumerData, "unknown input tx %s", unknownTxID.Short())
+		c.Debugf(inp.PrimaryInputConsumerData, "unknown input tx %s", unknownTxID.StringShort())
 	}
 
 	// for each unknown input, add the new draftVertex to the list of txids
@@ -205,7 +205,7 @@ func (c *SolidifyConsumer) collectDependingFutureCone(txid *core.TransactionID, 
 
 // removeNonSolidifiableFutureCone removes from solidifier all txids which directly or indirectly depend on txid
 func (c *SolidifyConsumer) removeNonSolidifiableFutureCone(txid *core.TransactionID) {
-	c.Log().Debugf("remove non-solidifiable future cone of %s", txid.Short())
+	c.Log().Debugf("remove non-solidifiable future cone of %s", txid.StringShort())
 
 	ns := make(map[core.TransactionID]struct{})
 	c.collectDependingFutureCone(txid, ns)
@@ -213,13 +213,13 @@ func (c *SolidifyConsumer) removeNonSolidifiableFutureCone(txid *core.Transactio
 		if v, ok := c.txPending[txid1]; ok {
 			pendingDept := v.draftVertex.PendingDependenciesLines("   ").String()
 			v.PrimaryInputConsumerData.eventCallback("finish.remove."+SolidifyConsumerName,
-				fmt.Errorf("%s solidication problem. Pending dependencies:\n%s", txid1.Short(), pendingDept))
+				fmt.Errorf("%s solidication problem. Pending dependencies:\n%s", txid1.StringShort(), pendingDept))
 		}
 
 		delete(c.txPending, txid1)
 		delete(c.txDependencies, txid1)
 
-		c.Log().Debugf("remove %s", txid1.Short())
+		c.Log().Debugf("remove %s", txid1.StringShort())
 	}
 }
 
@@ -241,7 +241,7 @@ func (c *SolidifyConsumer) checkNewDependency(inp *SolidifyInputData) {
 	for _, txid := range whoIsWaiting {
 		pending, found := c.txPending[*txid]
 		if !found {
-			c.Log().Debugf("%s was waiting for %s, not pending anymore", txid.Short(), inp.Tx.IDShort())
+			c.Log().Debugf("%s was waiting for %s, not pending anymore", txid.StringShort(), inp.Tx.IDShort())
 			// not pending anymore
 			return
 		}
@@ -254,7 +254,7 @@ func (c *SolidifyConsumer) checkNewDependency(inp *SolidifyInputData) {
 			continue
 		}
 		if pending.draftVertex.IsSolid() {
-			c.Log().Debugf("solidified -> validator: %s", txid.Short())
+			c.Log().Debugf("solidified -> validator: %s", txid.StringShort())
 			// all inputs are solid, send it to the validation
 			c.glb.validateConsumer.Push(&ValidateConsumerInputData{
 				PrimaryInputConsumerData: pending.PrimaryInputConsumerData,
@@ -271,7 +271,7 @@ func (c *SolidifyConsumer) checkNewDependency(inp *SolidifyInputData) {
 	}
 	for i := range solidified {
 		delete(c.txPending, solidified[i])
-		c.Log().Debugf("removed from solidifier %s", solidified[i].Short())
+		c.Log().Debugf("removed from solidifier %s", solidified[i].StringShort())
 	}
 }
 
@@ -375,9 +375,9 @@ func (c *SolidifyConsumer) doBackgroundCheck() {
 func (d *txDependency) __text(dep *core.TransactionID) string {
 	txids := make([]string, 0)
 	for _, id := range d.consumingTxIDs {
-		txids = append(txids, id.Short())
+		txids = append(txids, id.StringShort())
 	}
-	return fmt.Sprintf("%s <- [%s]", dep.Short(), strings.Join(txids, ","))
+	return fmt.Sprintf("%s <- [%s]", dep.StringShort(), strings.Join(txids, ","))
 }
 
 func (c *SolidifyConsumer) DumpUnresolvedDependencies() *lines.Lines {
@@ -399,7 +399,7 @@ func (c *SolidifyConsumer) DumpPending() *lines.Lines {
 	ret := lines.New()
 	ret.Add("======= transactions pending in solidifier")
 	for txid, v := range c.txPending {
-		ret.Add("pending %s", txid.Short())
+		ret.Add("pending %s", txid.StringShort())
 		ret.Append(v.draftVertex.PendingDependenciesLines("  "))
 	}
 	return ret

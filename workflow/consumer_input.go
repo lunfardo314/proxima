@@ -64,7 +64,7 @@ func (w *Workflow) initPrimaryInputConsumer() {
 	w.MustOnEvent(EventCodeDuplicateTx, func(txid *core.TransactionID) {
 		// log duplicate transaction upon event
 		c.glb.IncCounter(c.Name() + "." + nmDuplicate)
-		c.Log().Debugf("%s: %s", nmDuplicate, txid.Short())
+		c.Log().Debugf("%s: %s", nmDuplicate, txid.StringShort())
 	})
 	// the consumer is globally known in the workflow
 	w.primaryInputConsumer = c
@@ -91,7 +91,7 @@ func (c *PrimaryConsumer) consume(inp *PrimaryInputConsumerData) {
 func (c *PrimaryConsumer) isDuplicate(txid *core.TransactionID) bool {
 	if c.glb.utxoTangle.HasTransactionOnTangle(txid) {
 		c.glb.IncCounter(c.Name() + ".duplicate.tangle")
-		c.Log().Debugf("already on tangle -- " + txid.Short())
+		c.Log().Debugf("already on tangle -- " + txid.StringShort())
 		return true
 	}
 	if c.seen.Seen(*txid) {

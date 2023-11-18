@@ -39,7 +39,7 @@ func (w *Workflow) initRejectConsumer() {
 	nmReject := EventRejectedTx.String()
 	w.MustOnEvent(EventRejectedTx, func(inp *RejectInputData) {
 		c.glb.IncCounter(c.Name() + "." + nmReject)
-		c.Log().Debugf("%s: %s", nmReject, inp.TxID.Short())
+		c.Log().Debugf("%s: %s", nmReject, inp.TxID.StringShort())
 	})
 	w.rejectConsumer = c
 }

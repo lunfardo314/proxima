@@ -29,7 +29,7 @@ func (ut *UTXOTangle) GetVertex(txid *core.TransactionID) (*WrappedTx, bool) {
 
 func (ut *UTXOTangle) MustGetVertex(txid *core.TransactionID) *WrappedTx {
 	ret, ok := ut.GetVertex(txid)
-	util.Assertf(ok, "MustGetVertex: can't find %s", txid.Short())
+	util.Assertf(ok, "MustGetVertex: can't find %s", txid.StringShort())
 	return ret
 }
 
@@ -131,7 +131,7 @@ func (ut *UTXOTangle) isValidBranch(br *WrappedTx) bool {
 func (ut *UTXOTangle) GetIndexedStateReader(branchTxID *core.TransactionID, clearCacheAtSize ...int) (general.IndexedStateReader, error) {
 	rr, found := multistate.FetchRootRecord(ut.stateStore, *branchTxID)
 	if !found {
-		return nil, fmt.Errorf("root record for %s has not been found", branchTxID.Short())
+		return nil, fmt.Errorf("root record for %s has not been found", branchTxID.StringShort())
 	}
 	return multistate.NewReadable(ut.stateStore, rr.Root, clearCacheAtSize...)
 }
@@ -153,7 +153,7 @@ func (ut *UTXOTangle) MustGetSugaredStateReader(branchTxID *core.TransactionID) 
 func (ut *UTXOTangle) GetStateUpdatable(branchTxID *core.TransactionID) (*multistate.Updatable, error) {
 	rr, found := multistate.FetchRootRecord(ut.stateStore, *branchTxID)
 	if !found {
-		return nil, fmt.Errorf("root record for %s has not been found", branchTxID.Short())
+		return nil, fmt.Errorf("root record for %s has not been found", branchTxID.StringShort())
 	}
 	return multistate.NewUpdatable(ut.stateStore, rr.Root)
 }

@@ -10,9 +10,10 @@ import (
 )
 
 const (
-	TransactionHashLength = 27
-	TransactionIDLength   = LogicalTimeByteLength + TransactionHashLength
-	OutputIDLength        = TransactionIDLength + 1
+	TransactionIDShortLength     = 27
+	TransactionIDLength          = LogicalTimeByteLength + TransactionIDShortLength
+	TransactionIDLengthVeryShort = 8
+	OutputIDLength               = TransactionIDLength + 1
 
 	SequencerTxFlagInTimeSlot = ^(TimeSlot(0xffffffff) >> 1)
 	BranchTxFlagInTimeSlot    = SequencerTxFlagInTimeSlot >> 1
@@ -22,24 +23,27 @@ const (
 )
 
 type (
-	// TransactionHash is [0:28] of the blake2b 32-byte hash of transaction bytes
-	TransactionHash [TransactionHashLength]byte
+	// TransactionIDShort is [0:28] of the blake2b 32-byte hash of transaction bytes
+	TransactionIDShort [TransactionIDShortLength]byte
+	// TransactionIDVeryShort is first 8 bytes of TransactionIDShort.
+	// Warning. Collusion cannot be ruled out
+	TransactionIDVeryShort [TransactionIDLengthVeryShort]byte
 	// TransactionID :
 	// [0:5] - timestamp bytes (4 bytes time slot big endian, 1 byte time tick)
-	// [5:32] TransactionHash
+	// [5:32] TransactionIDShort
 	TransactionID [TransactionIDLength]byte
 	OutputID      [OutputIDLength]byte
 )
 
-var All0TransactionHash = TransactionHash{}
+var All0TransactionHash = TransactionIDShort{}
 
-func HashTransactionBytes(txBytes []byte) (ret TransactionHash) {
+func HashTransactionBytes(txBytes []byte) (ret TransactionIDShort) {
 	h := blake2b.Sum256(txBytes)
-	copy(ret[:], h[:TransactionHashLength])
+	copy(ret[:], h[:TransactionIDShortLength])
 	return
 }
 
-func NewTransactionID(ts LogicalTime, h TransactionHash, sequencerTxFlag, branchTxFlag bool) (ret TransactionID) {
+func NewTransactionID(ts LogicalTime, h TransactionIDShort, sequencerTxFlag, branchTxFlag bool) (ret TransactionID) {
 	if sequencerTxFlag {
 		ts[0] = ts[0] | SequencerTxFlagHigherByte
 	}
@@ -85,8 +89,16 @@ func TransactionIDFromHexString(str string) (ret TransactionID, err error) {
 	return
 }
 
-func (txid *TransactionID) TransactionHash() (ret TransactionHash) {
+// ShortID return hash part of ID
+func (txid *TransactionID) ShortID() (ret TransactionIDShort) {
 	copy(ret[:], txid[LogicalTimeByteLength:])
+	return
+}
+
+// VeryShortID returns first 8 bytes of the ShortID, i.e. of the hash
+// Collisions cannot be ruled out! Intended use is in Bloom filtering, when false positives are acceptable
+func (txid *TransactionID) VeryShortID() (ret TransactionIDVeryShort) {
+	copy(ret[:], txid[LogicalTimeByteLength:LogicalTimeByteLength+TransactionIDLengthVeryShort])
 	return
 }
 
@@ -152,40 +164,40 @@ func timestampPrefixStringAsFileName(ts LogicalTime, seqMilestoneFlag, branchFla
 	return fmt.Sprintf("%s%s", ts.AsFileName(), s)
 }
 
-func TransactionIDString(ts LogicalTime, txHash TransactionHash, sequencerFlag, branchFlag bool) string {
+func TransactionIDString(ts LogicalTime, txHash TransactionIDShort, sequencerFlag, branchFlag bool) string {
 	return fmt.Sprintf("[%s]%s", timestampPrefixString(ts, sequencerFlag, branchFlag), hex.EncodeToString(txHash[:]))
 }
 
-func TransactionIDShort(ts LogicalTime, txHash TransactionHash, sequencerFlag, branchFlag bool) string {
+func TransactionIDStringShort(ts LogicalTime, txHash TransactionIDShort, sequencerFlag, branchFlag bool) string {
 	return fmt.Sprintf("[%s]%s..", timestampPrefixString(ts, sequencerFlag, branchFlag), hex.EncodeToString(txHash[:3]))
 }
 
-func TransactionIDVeryShort(ts LogicalTime, txHash TransactionHash, sequencerFlag, branchFlag bool) string {
+func TransactionIDStringVeryShort(ts LogicalTime, txHash TransactionIDShort, sequencerFlag, branchFlag bool) string {
 	return fmt.Sprintf("[%s]%s..", timestampPrefixString(ts, sequencerFlag, branchFlag, true), hex.EncodeToString(txHash[:3]))
 }
 
-func TransactionIDAsFileName(ts LogicalTime, txHash TransactionHash, sequencerFlag, branchFlag bool) string {
+func TransactionIDAsFileName(ts LogicalTime, txHash TransactionIDShort, sequencerFlag, branchFlag bool) string {
 	return fmt.Sprintf("%s_%s.tx", timestampPrefixStringAsFileName(ts, sequencerFlag, branchFlag), hex.EncodeToString(txHash[:]))
 }
 
 func (txid *TransactionID) String() string {
-	return TransactionIDString(txid.Timestamp(), txid.TransactionHash(), txid.SequencerFlagON(), txid.BranchFlagON())
+	return TransactionIDString(txid.Timestamp(), txid.ShortID(), txid.SequencerFlagON(), txid.BranchFlagON())
 }
 
 func (txid *TransactionID) StringHex() string {
 	return hex.EncodeToString(txid[:])
 }
 
-func (txid *TransactionID) Short() string {
-	return TransactionIDShort(txid.Timestamp(), txid.TransactionHash(), txid.SequencerFlagON(), txid.BranchFlagON())
+func (txid *TransactionID) StringShort() string {
+	return TransactionIDStringShort(txid.Timestamp(), txid.ShortID(), txid.SequencerFlagON(), txid.BranchFlagON())
 }
 
-func (txid *TransactionID) VeryShort() string {
-	return TransactionIDVeryShort(txid.Timestamp(), txid.TransactionHash(), txid.SequencerFlagON(), txid.BranchFlagON())
+func (txid *TransactionID) StringVeryShort() string {
+	return TransactionIDStringVeryShort(txid.Timestamp(), txid.ShortID(), txid.SequencerFlagON(), txid.BranchFlagON())
 }
 
 func (txid *TransactionID) AsFileName() string {
-	return TransactionIDAsFileName(txid.Timestamp(), txid.TransactionHash(), txid.SequencerFlagON(), txid.BranchFlagON())
+	return TransactionIDAsFileName(txid.Timestamp(), txid.ShortID(), txid.SequencerFlagON(), txid.BranchFlagON())
 }
 
 func NewOutputID(id *TransactionID, idx byte) (ret OutputID) {
@@ -259,7 +271,7 @@ func (oid *OutputID) StringHex() string {
 
 func (oid *OutputID) Short() string {
 	txid := oid.TransactionID()
-	return fmt.Sprintf("%s[%d]", txid.Short(), oid.Index())
+	return fmt.Sprintf("%s[%d]", txid.StringShort(), oid.Index())
 }
 
 func (oid *OutputID) TransactionID() (ret TransactionID) {
@@ -282,7 +294,7 @@ func (oid *OutputID) TimeTick() TimeTick {
 	return ret.TimeTick()
 }
 
-func (oid *OutputID) TransactionHash() (ret TransactionHash) {
+func (oid *OutputID) TransactionHash() (ret TransactionIDShort) {
 	copy(ret[:], oid[LogicalTimeByteLength:TransactionIDLength])
 	return
 }

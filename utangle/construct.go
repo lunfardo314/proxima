@@ -76,7 +76,7 @@ func (ut *UTXOTangle) attach(vid *WrappedTx) (conflict *WrappedOutput) {
 	}
 	txid := vid.ID()
 	_, already := ut.vertices[*txid]
-	util.Assertf(!already, "attach: repeating transaction %s", txid.Short())
+	util.Assertf(!already, "attach: repeating transaction %s", txid.StringShort())
 	ut.vertices[*txid] = vid
 	return
 }

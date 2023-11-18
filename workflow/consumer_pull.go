@@ -85,7 +85,7 @@ func (p *PullConsumer) queryTransactionCmd(inp *PullData) {
 	if len(txBytes) != 0 {
 		// transaction bytes are in the transaction store. No need to query it from another peer
 		if err := p.glb.TransactionIn(txBytes, WithTransactionSource(TransactionSourceStore)); err != nil {
-			p.Log().Errorf("invalid transaction from txStore %s: '%v'", inp.TxID.Short(), err)
+			p.Log().Errorf("invalid transaction from txStore %s: '%v'", inp.TxID.StringShort(), err)
 		}
 		return
 	}
@@ -101,7 +101,7 @@ func (p *PullConsumer) queryTransactionCmd(inp *PullData) {
 		go p.pullTransactions(inp.TxID)
 	}
 
-	p.Log().Debugf("<-- added %s", inp.TxID.Short())
+	p.Log().Debugf("<-- added %s", inp.TxID.StringShort())
 }
 
 func (p *PullConsumer) removeTransactionCmd(inp *PullData) {
@@ -110,7 +110,7 @@ func (p *PullConsumer) removeTransactionCmd(inp *PullData) {
 
 	delete(p.wanted, inp.TxID)
 
-	p.Log().Debugf("removed %s", inp.TxID.Short())
+	p.Log().Debugf("removed %s", inp.TxID.StringShort())
 }
 
 func (p *PullConsumer) stop() {

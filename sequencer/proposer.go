@@ -137,7 +137,7 @@ func (c *proposerTaskGeneric) makeMilestone(chainIn, stemIn *utangle.WrappedOutp
 	if ret == nil {
 		c.trace("makeMilestone: nil")
 	} else {
-		c.trace("makeMilestone: %s", ret.ID().Short())
+		c.trace("makeMilestone: %s", ret.ID().StringShort())
 	}
 	return ret
 }

@@ -574,7 +574,7 @@ func initMultiChainTest(t *testing.T, nChains int, verbose bool, secondsInThePas
 	stateReader := ret.ut.HeaviestStateForLatestTimeSlot()
 
 	t.Logf("state identity:\n%s", genesis.MustStateIdentityDataFromBytes(stateReader.MustStateIdentityBytes()).String())
-	t.Logf("origin branch txid: %s", ret.originBranchTxid.Short())
+	t.Logf("origin branch txid: %s", ret.originBranchTxid.StringShort())
 	t.Logf("%s", ret.ut.Info())
 
 	ret.faucetOrigin = &core.OutputWithID{
@@ -685,7 +685,7 @@ func (r *multiChainTestData) createSequencerChain1(chainIdx int, pace int, print
 	}
 
 	lastStem := r.ut.HeaviestStemOutput()
-	//r.t.Logf("lastStem #0 = %s, ts: %s", lastStem.ID.Short(), par.LogicalTime.String())
+	//r.t.Logf("lastStem #0 = %s, ts: %s", lastStem.ID.StringShort(), par.LogicalTime.String())
 	lastBranchID := r.originBranchTxid
 
 	var tx *transaction.Transaction
@@ -738,7 +738,7 @@ func (r *multiChainTestData) createSequencerChain1(chainIdx int, pace int, print
 		if par.StemInput != nil {
 			lastStem = tx.FindStemProducedOutput()
 			require.True(r.t, lastStem != nil)
-			//r.t.Logf("lastStem #%d = %s", i, lastStem.ID.Short())
+			//r.t.Logf("lastStem #%d = %s", i, lastStem.ID.StringShort())
 		}
 	}
 	return ret
@@ -822,7 +822,7 @@ func (r *multiChainTestData) createSequencerChains1(pace int, howLong int) [][]b
 
 		if stemOut == nil {
 			r.t.Logf("%d : chain #%d, txid: %s, endorse(%d): %s, timestamp: %s",
-				i, nextChainIdx, tx.IDShort(), curChainIdx, endorse[0].Short(), tx.Timestamp().String())
+				i, nextChainIdx, tx.IDShort(), curChainIdx, endorse[0].StringShort(), tx.Timestamp().String())
 		} else {
 			r.t.Logf("%d : chain #%d, txid: %s, timestamp: %s <- branch tx",
 				i, nextChainIdx, tx.IDShort(), tx.Timestamp().String())
@@ -928,7 +928,7 @@ func (r *multiChainTestData) createSequencerChains2(pace int, howLong int) [][]b
 		if stemOut == nil {
 			lst := make([]string, 0)
 			for _, txid := range endorse {
-				lst = append(lst, txid.Short())
+				lst = append(lst, txid.StringShort())
 			}
 			r.t.Logf("%d : chain #%d, txid: %s, ts: %s, endorse: (%s)",
 				i, nextChainIdx, tx.IDShort(), tx.Timestamp().String(), strings.Join(lst, ","))
@@ -1063,7 +1063,7 @@ func (r *multiChainTestData) createSequencerChains3(pace int, howLong int, print
 			if stemOut == nil {
 				lst := make([]string, 0)
 				for _, txid := range endorse {
-					lst = append(lst, txid.Short())
+					lst = append(lst, txid.StringShort())
 				}
 				r.t.Logf("%d : chain #%d, txid: %s, ts: %s, total: %d, endorse: (%s)",
 					i, nextChainIdx, tx.IDShort(), tx.Timestamp().String(), total, strings.Join(lst, ","))
@@ -1100,7 +1100,7 @@ func TestMultiChainWorkflow(t *testing.T) {
 		})
 		var listenCounter atomic.Uint32
 		err := wrk.Events().ListenSequencer(r.chainOrigins[0].ChainID, func(vid *utangle.WrappedTx) {
-			//t.Logf("listen seq %s: %s", r.chainOrigins[0].ChainID.Short(), vertex.Tx.IDShort())
+			//t.Logf("listen seq %s: %s", r.chainOrigins[0].ChainID.StringShort(), vertex.Tx.IDShort())
 			listenCounter.Inc()
 		})
 
@@ -1342,7 +1342,7 @@ func TestMultiChainWorkflow(t *testing.T) {
 		ts = ts.AddTimeTicks(core.TransactionTimePaceInTicks)
 		t.Logf("timestamp to be endorsed: %s, endorser's timestamp: %s", tsToBeEndorsed.String(), ts.String())
 		require.True(t, ts.TimeSlot() != 0 && ts.TimeSlot() == txEndorser.Timestamp().TimeSlot())
-		t.Logf("ID to be endorsed: %s", idToBeEndorsed.Short())
+		t.Logf("ID to be endorsed: %s", idToBeEndorsed.StringShort())
 
 		txBytesConflict, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
 			ChainInput: &core.OutputWithChainID{

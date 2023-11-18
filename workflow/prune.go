@@ -52,7 +52,7 @@ func (w *Workflow) cutFinalLoop() {
 		}
 
 		if txID, numTx := w.utxoTangle.CutFinalBranchIfExists(utangle.TipSlots); txID != nil {
-			w.log.Infof("CUT FINAL BRANCH %s, num tx: %d", txID.Short(), numTx)
+			w.log.Infof("CUT FINAL BRANCH %s, num tx: %d", txID.StringShort(), numTx)
 			w.utxoTangle.SetLastCutFinal(time.Now())
 		}
 	}

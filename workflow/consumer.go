@@ -63,7 +63,7 @@ func (c *Consumer[T]) TraceMilestones(tx *transaction.Transaction, txid *core.Tr
 		return
 	}
 	if tx.IsSequencerMilestone() {
-		c.Log().Infof("%s  %s -- %s", msg, tx.SequencerInfoString(), txid.Short())
+		c.Log().Infof("%s  %s -- %s", msg, tx.SequencerInfoString(), txid.StringShort())
 	}
 }
 

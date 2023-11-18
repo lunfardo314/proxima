@@ -680,7 +680,7 @@ func (txb *TransactionBuilder) String() string {
 	}
 	ret = append(ret, fmt.Sprintf("Endorsements (%d):", len(txb.TransactionData.Endorsements)))
 	for i, txid := range txb.TransactionData.Endorsements {
-		ret = append(ret, fmt.Sprintf("%d : %s", i, txid.Short()))
+		ret = append(ret, fmt.Sprintf("%d : %s", i, txid.StringShort()))
 	}
 	return strings.Join(ret, "\n")
 }

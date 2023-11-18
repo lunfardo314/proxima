@@ -17,7 +17,7 @@ func (v *VirtualTransaction) addOutput(idx byte, o *core.Output) {
 	defer v.mutex.Unlock()
 
 	_, already := v.outputs[idx]
-	util.Assertf(!already, "output %d already present in virtual tx %s", idx, v.txid.Short())
+	util.Assertf(!already, "output %d already present in virtual tx %s", idx, v.txid.StringShort())
 	v.outputs[idx] = o
 }
 
@@ -65,11 +65,11 @@ func (v *VirtualTransaction) SequencerOutputs() (*core.Output, *core.Output) {
 	var ok bool
 
 	seqOut, ok = v.outputs[v.sequencerOutputs[0]]
-	util.Assertf(ok, "inconsistency 1 in virtual tx %s", v.txid.Short())
+	util.Assertf(ok, "inconsistency 1 in virtual tx %s", v.txid.StringShort())
 
 	if v.sequencerOutputs[1] != 0xff {
 		stemOut, ok = v.outputs[v.sequencerOutputs[1]]
-		util.Assertf(ok, "inconsistency 2 in virtual tx %s", v.txid.Short())
+		util.Assertf(ok, "inconsistency 2 in virtual tx %s", v.txid.StringShort())
 	}
 	return seqOut, stemOut
 }
