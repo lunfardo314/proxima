@@ -17,8 +17,8 @@ const RespondTxQueryConsumerName = "txrespond"
 
 type (
 	RespondTxQueryData struct {
-		TxID core.TransactionID
-		Peer peers.Peer
+		TxID   core.TransactionID
+		PeerID peers.PeerID
 	}
 
 	RespondTxQueryConsumer struct {
@@ -39,6 +39,6 @@ func (w *Workflow) initRespondTxQueryConsumer() {
 
 func (c *RespondTxQueryConsumer) consume(inp RespondTxQueryData) {
 	if txBytes := c.glb.UTXOTangle().TxBytesStore().GetTxBytes(&inp.TxID); len(txBytes) > 0 {
-		inp.Peer.SendMsgBytes(peers.EncodePeerMessageTypeTxBytes(txBytes))
+		c.glb.peers.SendMsgBytesToPeer(inp.PeerID, peers.EncodePeerMessageTypeTxBytes(txBytes))
 	}
 }

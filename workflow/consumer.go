@@ -79,7 +79,7 @@ func (c *Consumer[T]) trace(f string, a ...any) {
 
 func (c *Consumer[T]) RejectTransaction(inp *PrimaryInputConsumerData, format string, args ...any) {
 	c.Debugf(inp, format, args...)
-	c.glb.RejectTransaction(*inp.Tx.ID(), format, args...)
+	c.glb.DropTransaction(*inp.Tx.ID(), format, args...)
 }
 
 func (c *Consumer[T]) IncCounter(name string) {

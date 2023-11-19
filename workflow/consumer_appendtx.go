@@ -36,7 +36,7 @@ func (w *Workflow) initAppendTxConsumer() {
 	})
 	c.AddOnConsume(c.consume)
 	c.AddOnClosed(func() {
-		w.rejectConsumer.Stop()
+		w.dropTxConsumer.Stop()
 		w.terminateWG.Done()
 	})
 	nmAdd := EventNewVertex.String()
@@ -58,7 +58,7 @@ func (c *AppendTxConsumer) consume(inp *AppendTxConsumerInputData) {
 		inp.eventCallback("finish."+AppendTxConsumerName, err)
 		c.Debugf(inp.PrimaryInputConsumerData, "can't append vertex to the tangle: '%v'", err)
 		c.IncCounter("fail")
-		c.glb.RejectTransaction(*inp.Tx.ID(), "%v", err)
+		c.glb.DropTransaction(*inp.Tx.ID(), "%v", err)
 		// inform solidifier
 		c.glb.solidifyConsumer.Push(&SolidifyInputData{
 			PrimaryInputConsumerData: inp.PrimaryInputConsumerData,

@@ -93,11 +93,6 @@ func (c *PrimaryConsumer) consume(inp *PrimaryInputConsumerData) {
 }
 
 func (c *PrimaryConsumer) isDuplicate(txid *core.TransactionID) bool {
-	if c.glb.utxoTangle.HasTransactionOnTangle(txid) {
-		c.glb.IncCounter(c.Name() + ".duplicate.tangle")
-		c.Log().Debugf("already on tangle -- " + txid.StringShort())
-		return true
-	}
 	if c.seen.Seen(txid.VeryShortID8()) {
 		c.glb.IncCounter(c.Name() + ".duplicate.seen")
 		c.Log().Debugf("already seen -- " + txid.String())

@@ -141,6 +141,5 @@ func (p *PullTxConsumer) pullAllMatured() {
 }
 
 func (p *PullTxConsumer) pullTransactions(txids ...core.TransactionID) {
-	peer := p.glb.peers.SelectRandomPeer()
-	peer.SendMsgBytes(peers.EncodePeerMessageTypeQueryTransactions(txids...))
+	p.glb.peers.SendMsgBytesToRandomPeer(peers.EncodePeerMessageTypeQueryTransactions(txids...))
 }

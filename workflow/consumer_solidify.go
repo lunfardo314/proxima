@@ -250,7 +250,7 @@ func (c *SolidifyConsumer) checkNewDependency(inp *SolidifyInputData) {
 			c.removeNonSolidifiableFutureCone(txid)
 			err := fmt.Errorf("conflict at %s", conflict.Short())
 			inp.eventCallback("finish.fail."+SolidifyConsumerName, err)
-			c.glb.RejectTransaction(*txid, "%v", err)
+			c.glb.DropTransaction(*txid, "%v", err)
 			continue
 		}
 		if pending.draftVertex.IsSolid() {
@@ -357,7 +357,7 @@ func (c *SolidifyConsumer) removeDueToDeadline(toRemove []core.TransactionID) {
 
 	for _, txid := range toRemove {
 		c.removeNonSolidifiableFutureCone(&txid)
-		c.glb.RejectTransaction(txid, "solidification timeout")
+		c.glb.DropTransaction(txid, "solidification timeout")
 	}
 }
 
@@ -367,7 +367,7 @@ func (c *SolidifyConsumer) doBackgroundCheck() {
 		c.removeDueToDeadline(toRemove)
 
 		for i := range toRemove {
-			c.glb.RejectTransaction(toRemove[i], "solidification timeout")
+			c.glb.DropTransaction(toRemove[i], "solidification timeout")
 		}
 	}
 }

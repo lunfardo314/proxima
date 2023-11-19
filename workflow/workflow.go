@@ -40,7 +40,7 @@ type (
 		pullConsumer           *PullTxConsumer
 		validateConsumer       *ValidateConsumer
 		appendTxConsumer       *AppendTxConsumer
-		rejectConsumer         *RejectConsumer
+		dropTxConsumer         *DropTxConsumer
 		eventsConsumer         *EventsConsumer
 		respondTxQueryConsumer *RespondTxQueryConsumer
 		txOutboundConsumer     *TxOutboundConsumer
@@ -117,7 +117,7 @@ func (w *Workflow) Start(parentCtx ...context.Context) {
 		w.pullConsumer.Start()
 		w.validateConsumer.Start()
 		w.appendTxConsumer.Start()
-		w.rejectConsumer.Start()
+		w.dropTxConsumer.Start()
 		w.eventsConsumer.Start()
 		w.respondTxQueryConsumer.Start()
 		w.txOutboundConsumer.Start()
@@ -179,7 +179,7 @@ func (w *Workflow) QueueInfo() string {
 		w.solidifyConsumer.Name():     w.solidifyConsumer.InfoStr(),
 		w.validateConsumer.Name():     w.validateConsumer.InfoStr(),
 		w.appendTxConsumer.Name():     w.appendTxConsumer.InfoStr(),
-		w.rejectConsumer.Name():       w.rejectConsumer.InfoStr(),
+		w.dropTxConsumer.Name():       w.dropTxConsumer.InfoStr(),
 		w.eventsConsumer.Name():       w.eventsConsumer.InfoStr(),
 	}
 	var ret strings.Builder

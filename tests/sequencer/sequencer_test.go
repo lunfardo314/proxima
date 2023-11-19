@@ -380,7 +380,7 @@ func Test1Sequencer(t *testing.T) {
 		//workflow.WithConsumerLogLevel(workflow.PreValidateConsumerName, zapcore.DebugLevel),
 		//workflow.WithConsumerLogLevel(workflow.SolidifyConsumerName, zapcore.DebugLevel),
 
-		r.wrk.MustOnEvent(workflow.EventRejectedTx, func(inp *workflow.RejectInputData) {
+		r.wrk.MustOnEvent(workflow.EventDroppedTx, func(inp *workflow.DropConsumerInputData) {
 			r.t.Logf("rejected %s : '%s'", inp.TxID.StringShort(), inp.Msg)
 		})
 		transaction.SetPrintEasyFLTraceOnFail(false)

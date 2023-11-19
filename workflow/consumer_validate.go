@@ -48,7 +48,7 @@ func (c *ValidateConsumer) consume(inp *ValidateConsumerInputData) {
 		if err := inp.draftVertex.Validate(); err != nil {
 			inp.eventCallback("finish."+ValidateConsumerName, err)
 			c.IncCounter("err")
-			c.glb.RejectTransaction(*inp.Tx.ID(), "%v", err)
+			c.glb.DropTransaction(*inp.Tx.ID(), "%v", err)
 			// inform solidifier
 			c.glb.solidifyConsumer.Push(&SolidifyInputData{
 				PrimaryInputConsumerData: inp.PrimaryInputConsumerData,

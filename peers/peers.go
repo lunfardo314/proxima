@@ -5,8 +5,8 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math"
+	"math/rand"
 	"sync"
-	"time"
 
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/util"
@@ -16,13 +16,9 @@ import (
 type (
 	Peers interface {
 		SelfID() PeerID
-		SelectRandomPeer() Peer
+		SendMsgBytesToPeer(id PeerID, msgBytes []byte) bool
+		SendMsgBytesToRandomPeer(msgBytes []byte) bool
 		BroadcastToPeers(msgBytes []byte, except ...PeerID)
-	}
-
-	Peer interface {
-		ID() PeerID
-		SendMsgBytes(msgBytes []byte) bool
 	}
 
 	PeerID string
@@ -93,29 +89,20 @@ func DecodePeerMessageTypeTxBytes(data []byte) ([]byte, error) {
 
 type peerImpl struct {
 	mutex sync.RWMutex
-}
-
-var _ Peer = &peerImpl{}
-
-//
-
-func NewPeer() *peerImpl {
-	return &peerImpl{}
+	id    PeerID
 }
 
 func (p *peerImpl) ID() PeerID {
 	return ""
 }
 
-func (p *peerImpl) SendMsgBytes(msgBytes []byte) bool {
+func (p *peerImpl) sendMsgBytes(msgBytes []byte) bool {
 	return true
 }
 
-const ttlBloomFilterEntry = 10 * time.Second
-
 type peeringImpl struct {
 	mutex sync.RWMutex
-	peers []*peerImpl // except self
+	peers map[PeerID]*peerImpl // except self
 }
 
 var _ Peers = &peeringImpl{}
@@ -124,23 +111,35 @@ func NewDummyPeering() *peeringImpl {
 	return &peeringImpl{}
 }
 
-func (p *peeringImpl) SelectRandomPeer() Peer {
-	return &peerImpl{}
+func (ps *peeringImpl) SendMsgBytesToPeer(id PeerID, msgBytes []byte) bool {
+	if p, ok := ps.peers[id]; ok {
+		return p.sendMsgBytes(msgBytes)
+	}
+	return false
 }
 
-func (p *peeringImpl) BroadcastToPeers(msgBytes []byte, except ...PeerID) {
-	p.mutex.RLock()
-	defer p.mutex.RUnlock()
+func (ps *peeringImpl) SendMsgBytesToRandomPeer(msgBytes []byte) bool {
+	peers := util.Values(ps.peers)
+	if len(peers) > 0 {
+		p := peers[rand.Intn(len(peers))]
+		return p.sendMsgBytes(msgBytes)
+	}
+	return false
+}
 
-	for _, peer := range p.peers {
+func (ps *peeringImpl) BroadcastToPeers(msgBytes []byte, except ...PeerID) {
+	ps.mutex.RLock()
+	defer ps.mutex.RUnlock()
+
+	for _, peer := range ps.peers {
 		if len(except) > 0 && peer.ID() == except[0] {
 			continue
 		}
 		peerCopy := peer
-		go peerCopy.SendMsgBytes(msgBytes)
+		go peerCopy.sendMsgBytes(msgBytes)
 	}
 }
 
-func (p *peeringImpl) SelfID() PeerID {
+func (ps *peeringImpl) SelfID() PeerID {
 	return ""
 }

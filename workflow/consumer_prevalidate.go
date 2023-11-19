@@ -74,14 +74,6 @@ func (c *PreValidateConsumer) consume(inp *PreValidateConsumerInputData) {
 		c.RejectTransaction(inp.PrimaryInputConsumerData, "%v", err)
 		return
 	}
-	// early check for rejected inputs
-	for txid := range inp.Tx.InputTransactionIDs() {
-		if c.glb.IsRejected(&txid) {
-			c.IncCounter("invalidInput")
-			c.RejectTransaction(inp.PrimaryInputConsumerData, "contains rejected input txID %s", txid.String())
-			return
-		}
-	}
 	c.IncCounter("ok")
 
 	if inp.SourceType == TransactionSourceTypePeer {
