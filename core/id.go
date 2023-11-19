@@ -12,7 +12,7 @@ import (
 const (
 	TransactionIDShortLength     = 27
 	TransactionIDLength          = LogicalTimeByteLength + TransactionIDShortLength
-	TransactionIDLengthVeryShort = 8
+	TransactionIDLengthVeryShort = 4
 	OutputIDLength               = TransactionIDLength + 1
 
 	SequencerTxFlagInTimeSlot = ^(TimeSlot(0xffffffff) >> 1)
@@ -25,8 +25,8 @@ const (
 type (
 	// TransactionIDShort is [0:28] of the blake2b 32-byte hash of transaction bytes
 	TransactionIDShort [TransactionIDShortLength]byte
-	// TransactionIDVeryShort is first 8 bytes of TransactionIDShort.
-	// Warning. Collusion cannot be ruled out
+	// TransactionIDVeryShort is first 4 bytes of TransactionIDShort.
+	// Warning. Collisions cannot be ruled out
 	TransactionIDVeryShort [TransactionIDLengthVeryShort]byte
 	// TransactionID :
 	// [0:5] - timestamp bytes (4 bytes time slot big endian, 1 byte time tick)

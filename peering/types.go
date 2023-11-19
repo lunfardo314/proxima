@@ -5,6 +5,8 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math"
+	"sync"
+	"time"
 
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/util"
@@ -13,12 +15,14 @@ import (
 
 type (
 	Peers interface {
+		SelfID() PeerID
 		SelectRandomPeer() Peer
+		OutboundGossipPeers(exclude PeerID) []Peer
 	}
 
 	Peer interface {
 		ID() PeerID
-		SendMsgBytes(msgBytes []byte)
+		SendMsgBytes(msgBytes []byte) bool
 	}
 
 	PeerID string // tmp
@@ -87,24 +91,56 @@ func DecodePeerMessageTypeTxBytes(data []byte) ([]byte, error) {
 
 // for testing
 
-type (
-	dummyPeer struct{}
-
-	dummyPeering struct{}
-)
-
-func NewDummyPeering() *dummyPeering {
-	return &dummyPeering{}
+type peerImpl struct {
+	mutex sync.RWMutex
 }
 
-func (p *dummyPeering) SelectRandomPeer() Peer {
-	return &dummyPeer{}
+var _ Peer = &peerImpl{}
+
+//
+
+func NewPeer() *peerImpl {
+	return &peerImpl{}
 }
 
-func (p *dummyPeer) ID() PeerID {
+func (p *peerImpl) ID() PeerID {
 	return ""
 }
 
-func (dp *dummyPeer) SendMsgBytes(msgBytes []byte) {
+func (p *peerImpl) SendMsgBytes(msgBytes []byte) bool {
+	return true
+}
 
+const ttlBloomFilterEntry = 10 * time.Second
+
+type peeringImpl struct {
+	mutex sync.RWMutex
+	peers []*peerImpl // except self
+}
+
+var _ Peers = &peeringImpl{}
+
+func NewDummyPeering() *peeringImpl {
+	return &peeringImpl{}
+}
+
+func (p *peeringImpl) SelectRandomPeer() Peer {
+	return &peerImpl{}
+}
+
+func (p *peeringImpl) OutboundGossipPeers(exclude PeerID) []Peer {
+	p.mutex.RLock()
+	defer p.mutex.RUnlock()
+
+	ret := make([]Peer, 0)
+	for _, peer := range p.peers {
+		if peer.ID() != exclude {
+			ret = append(ret, peer)
+		}
+	}
+	return ret
+}
+
+func (p *peeringImpl) SelfID() PeerID {
+	return ""
 }

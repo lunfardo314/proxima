@@ -41,8 +41,10 @@ type (
 		rejectConsumer         *RejectConsumer
 		eventsConsumer         *EventsConsumer
 		respondTxQueryConsumer *RespondTxQueryConsumer
-		handlersMutex          sync.RWMutex
-		eventHandlers          map[eventtype.EventCode][]func(any)
+		txOutboundConsumer     *TxOutboundConsumer
+
+		handlersMutex sync.RWMutex
+		eventHandlers map[eventtype.EventCode][]func(any)
 
 		terminateWG sync.WaitGroup
 		startWG     sync.WaitGroup
@@ -81,6 +83,7 @@ func New(ut *utangle.UTXOTangle, configOptions ...ConfigOption) *Workflow {
 	ret.initRejectConsumer()
 	ret.initEventsConsumer()
 	ret.initRespondTxQueryConsumer()
+	ret.initTxOutboundConsumer()
 
 	return ret
 }
@@ -114,6 +117,7 @@ func (w *Workflow) Start(parentCtx ...context.Context) {
 		w.rejectConsumer.Start()
 		w.eventsConsumer.Start()
 		w.respondTxQueryConsumer.Start()
+		w.txOutboundConsumer.Start()
 
 		w.startWG.Done()
 		w.working.Store(true)

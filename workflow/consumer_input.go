@@ -58,6 +58,7 @@ func (w *Workflow) initPrimaryInputConsumer() {
 		w.pullConsumer.Stop()
 		w.preValidateConsumer.Stop()
 		w.respondTxQueryConsumer.Stop()
+		w.txOutboundConsumer.Stop()
 
 		w.terminateWG.Done()
 	})
