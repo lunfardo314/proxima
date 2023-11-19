@@ -8,59 +8,35 @@ import (
 )
 
 type (
-	Peers interface {
-		OnReceiveMessage(fun func(msgBytes []byte, from PeerID))
-		SelfID() PeerID
-		SendMsgBytesToPeer(id PeerID, msgBytes []byte) bool
-		SendMsgBytesToRandomPeer(msgBytes []byte) bool
-		BroadcastToPeers(msgBytes []byte, except ...PeerID)
+	Peers struct {
+		mutex     sync.RWMutex
+		peers     map[PeerID]*peerImpl // except self
+		onReceive func(msgBytes []byte, from PeerID)
 	}
 
 	PeerID string
 )
 
 const (
-	PeerMessageTypeUndef = byte(iota)
-	PeerMessageTypeQueryTransactions
+	PeerMessageTypeQueryTransactions = byte(iota)
 	PeerMessageTypeTxBytes
 )
 
-type peerImpl struct {
-	mutex sync.RWMutex
-	id    PeerID
-}
-
-func (p *peerImpl) ID() PeerID {
-	return ""
-}
-
-func (p *peerImpl) sendMsgBytes(msgBytes []byte) bool {
-	return true
-}
-
-type peers struct {
-	mutex     sync.RWMutex
-	peers     map[PeerID]*peerImpl // except self
-	onReceive func(msgBytes []byte, from PeerID)
-}
-
-var _ Peers = &peers{}
-
-func NewPeers() *peers {
-	return &peers{
+func NewPeers() *Peers {
+	return &Peers{
 		peers:     make(map[PeerID]*peerImpl),
 		onReceive: func(_ []byte, _ PeerID) {},
 	}
 }
 
-func (ps *peers) SendMsgBytesToPeer(id PeerID, msgBytes []byte) bool {
+func (ps *Peers) SendMsgBytesToPeer(id PeerID, msgBytes []byte) bool {
 	if p, ok := ps.peers[id]; ok {
 		return p.sendMsgBytes(msgBytes)
 	}
 	return false
 }
 
-func (ps *peers) SendMsgBytesToRandomPeer(msgBytes []byte) bool {
+func (ps *Peers) SendMsgBytesToRandomPeer(msgBytes []byte) bool {
 	peers := util.Values(ps.peers)
 	if len(peers) > 0 {
 		p := peers[rand.Intn(len(peers))]
@@ -69,7 +45,7 @@ func (ps *peers) SendMsgBytesToRandomPeer(msgBytes []byte) bool {
 	return false
 }
 
-func (ps *peers) BroadcastToPeers(msgBytes []byte, except ...PeerID) {
+func (ps *Peers) BroadcastToPeers(msgBytes []byte, except ...PeerID) {
 	ps.mutex.RLock()
 	defer ps.mutex.RUnlock()
 
@@ -82,10 +58,23 @@ func (ps *peers) BroadcastToPeers(msgBytes []byte, except ...PeerID) {
 	}
 }
 
-func (ps *peers) SelfID() PeerID {
+func (ps *Peers) SelfID() PeerID {
 	return ""
 }
 
-func (ps *peers) OnReceiveMessage(fun func(msgBytes []byte, from PeerID)) {
+func (ps *Peers) OnReceiveMessage(fun func(msgBytes []byte, from PeerID)) {
 	ps.onReceive = fun
+}
+
+type peerImpl struct {
+	mutex sync.RWMutex
+	id    PeerID
+}
+
+func (p *peerImpl) ID() PeerID {
+	return ""
+}
+
+func (p *peerImpl) sendMsgBytes(msgBytes []byte) bool {
+	return true
 }
