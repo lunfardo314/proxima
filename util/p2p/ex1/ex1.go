@@ -35,9 +35,11 @@ func main() {
 	}
 	defer host.Close()
 
+	const protocolID = "/ex1/1.0.0"
 	// This gets called every time a peer connects
 	// and opens a stream to this node.
-	host.SetStreamHandler("/p2p/kuku", func(s network.Stream) {
+	host.SetStreamHandler(protocolID, func(s network.Stream) {
+		fmt.Printf("streamline handler called\n")
 		go writeCounter(s)
 		go readCounter(s)
 	})
@@ -45,8 +47,10 @@ func main() {
 	// Print this node's addresses and ID
 	fmt.Println("ID:", host.ID())
 	fmt.Printf("Addresses:\n%s\n", lines.SliceToLines(host.Addrs(), "      "))
+	fmt.Printf("connect to: %s/p2p/%s\n", host.Addrs()[0].String(), host.ID())
 
 	// If we received a peer address, we should connect to it.
+
 	if *peerAddr != "" {
 		// Parse the multiaddr string.
 		peerMA, err := multiaddr.NewMultiaddr(*peerAddr)
@@ -59,10 +63,22 @@ func main() {
 		}
 
 		// Connect to the node at the given address.
+		fmt.Printf("connecting to %s...\n", *peerAddr)
+
 		if err := host.Connect(context.Background(), *peerAddrInfo); err != nil {
 			panic(err)
 		}
 		fmt.Println("Connected to", peerAddrInfo.String())
+
+		// Open a stream with the given peer.
+		s, err := host.NewStream(context.Background(), peerAddrInfo.ID, protocolID)
+		if err != nil {
+			panic(err)
+		}
+
+		// Start the write and read threads.
+		go writeCounter(s)
+		go readCounter(s)
 	}
 
 	sigCh := make(chan os.Signal)

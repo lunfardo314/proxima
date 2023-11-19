@@ -2,6 +2,7 @@ package peering
 
 import (
 	"crypto/ed25519"
+	"encoding/hex"
 	"fmt"
 	"math/rand"
 	"sync"
@@ -11,6 +12,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
 	"github.com/lunfardo314/proxima/util"
+	"github.com/spf13/viper"
 )
 
 type (
@@ -58,8 +60,17 @@ func NewPeers(idPrivateKey ed25519.PrivateKey, port int) (*Peers, error) {
 }
 
 func NewPeersFromConfig() (*Peers, error) {
-	// TODO
-	return NewPeersDummy(), nil
+	port := viper.GetInt("host.port")
+	if port == 0 {
+		return nil, fmt.Errorf("host.port: wrong port")
+	}
+	pkStr := viper.GetString("host.private_key")
+	pkBin, err := hex.DecodeString(pkStr)
+	if err != nil {
+		return nil, fmt.Errorf("host.private_key: wrong id private key: %v", err)
+	}
+	pk := ed25519.PrivateKey(pkBin)
+	return NewPeers(pk, port)
 }
 
 func (ps *Peers) SendMsgBytesToPeer(id PeerID, msgBytes []byte) bool {
