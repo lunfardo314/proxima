@@ -99,7 +99,7 @@ func initSequencerTestData(t *testing.T, nFaucets, nAdditionalChains int, logica
 	ret.makeAdditionalChainOrigins(0, nAdditionalChains)
 
 	t.Logf("state identity:\n%s", genesis.MustStateIdentityDataFromBytes(ret.ut.HeaviestStateForLatestTimeSlot().MustStateIdentityBytes()).String())
-	ret.wrk = workflow.New(ret.ut, peering.NewPeers(), workflowOpt...)
+	ret.wrk = workflow.New(ret.ut, peering.NewPeersDummy(), workflowOpt...)
 	return ret
 }
 

@@ -1,15 +1,22 @@
 package peering
 
 import (
+	"crypto/ed25519"
+	"fmt"
 	"math/rand"
 	"sync"
 
+	"github.com/libp2p/go-libp2p"
+	"github.com/libp2p/go-libp2p/core/crypto"
+	"github.com/libp2p/go-libp2p/core/host"
+	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
 	"github.com/lunfardo314/proxima/util"
 )
 
 type (
 	Peers struct {
 		mutex     sync.RWMutex
+		host      host.Host
 		peers     map[PeerID]*peerImpl // except self
 		onReceive func(msgBytes []byte, from PeerID)
 	}
@@ -22,11 +29,37 @@ const (
 	PeerMessageTypeTxBytes
 )
 
-func NewPeers() *Peers {
+func NewPeersDummy() *Peers {
 	return &Peers{
 		peers:     make(map[PeerID]*peerImpl),
 		onReceive: func(_ []byte, _ PeerID) {},
 	}
+}
+
+func NewPeers(idPrivateKey ed25519.PrivateKey, port int) (*Peers, error) {
+	privKey, err := crypto.UnmarshalEd25519PrivateKey(idPrivateKey)
+	if err != nil {
+		return nil, fmt.Errorf("wrong private key: %w", err)
+	}
+	lppHost, err := libp2p.New(
+		libp2p.Identity(privKey),
+		libp2p.ListenAddrStrings(fmt.Sprintf("/ip4/0.0.0.0/tcp/%d", port)),
+		libp2p.Transport(tcp.NewTCPTransport),
+		libp2p.NoSecurity,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("unable create libp2p host: %w", err)
+	}
+	return &Peers{
+		host:      lppHost,
+		peers:     make(map[PeerID]*peerImpl),
+		onReceive: func(_ []byte, _ PeerID) {},
+	}, nil
+}
+
+func NewPeersFromConfig() (*Peers, error) {
+	// TODO
+	return NewPeersDummy(), nil
 }
 
 func (ps *Peers) SendMsgBytesToPeer(id PeerID, msgBytes []byte) bool {

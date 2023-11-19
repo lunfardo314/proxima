@@ -1,4 +1,12 @@
 # Configuration of the Proxima node
+host:
+  port: 4000
+  private_key:
+
+peers:
+  peer0:
+    host:
+    port:
 
 api:
   server:
