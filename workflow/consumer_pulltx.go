@@ -35,7 +35,6 @@ type (
 		stopBackgroundLoop atomic.Bool
 		// txid -> next pull deadline
 		wanted map[core.TransactionID]time.Time
-		peers  peering.Peers
 	}
 )
 
@@ -43,7 +42,6 @@ func (w *Workflow) initPullConsumer() {
 	c := &PullTxConsumer{
 		Consumer: NewConsumer[*PullTxData](PullTxConsumerName, w),
 		wanted:   make(map[core.TransactionID]time.Time),
-		peers:    peering.NewDummyPeering(),
 	}
 	c.AddOnConsume(c.consume)
 	c.AddOnClosed(func() {
@@ -143,6 +141,6 @@ func (p *PullTxConsumer) pullAllMatured() {
 }
 
 func (p *PullTxConsumer) pullTransactions(txids ...core.TransactionID) {
-	peer := p.peers.SelectRandomPeer()
+	peer := p.glb.peers.SelectRandomPeer()
 	peer.SendMsgBytes(peering.EncodePeerMessageTypeQueryTransactions(txids...))
 }

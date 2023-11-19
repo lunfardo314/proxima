@@ -10,6 +10,7 @@ import (
 	"github.com/lunfardo314/proxima/general"
 	"github.com/lunfardo314/proxima/genesis"
 	"github.com/lunfardo314/proxima/multistate"
+	"github.com/lunfardo314/proxima/peering"
 	"github.com/lunfardo314/proxima/sequencer"
 	"github.com/lunfardo314/proxima/txstore"
 	"github.com/lunfardo314/proxima/utangle"
@@ -173,7 +174,8 @@ func (p *ProximaNode) loadUTXOTangle() {
 }
 
 func (p *ProximaNode) startWorkflow() {
-	p.workflow = workflow.New(p.uTangle, workflow.WithGlobalConfigOptions)
+	peers := peering.NewDummyPeering()
+	p.workflow = workflow.New(p.uTangle, peers, workflow.WithGlobalConfigOptions)
 	p.workflow.Start(p.ctx)
 	p.workflow.StartPruner()
 }

@@ -30,7 +30,7 @@ type (
 
 	PrimaryConsumer struct {
 		*Consumer[*PrimaryInputConsumerData]
-		seen *seenset.SeenSet[core.TransactionID]
+		seen *seenset.SeenSet[core.TransactionIDVeryShort8]
 	}
 )
 
@@ -48,7 +48,7 @@ var EventCodeDuplicateTx = eventtype.RegisterNew[*core.TransactionID]("duplicate
 func (w *Workflow) initPrimaryInputConsumer() {
 	c := &PrimaryConsumer{
 		Consumer: NewConsumer[*PrimaryInputConsumerData](PrimaryInputConsumerName, w),
-		seen:     seenset.New[core.TransactionID](),
+		seen:     seenset.New[core.TransactionIDVeryShort8](),
 	}
 	c.AddOnConsume(func(inp *PrimaryInputConsumerData) {
 		// tracing every input message
@@ -60,7 +60,6 @@ func (w *Workflow) initPrimaryInputConsumer() {
 		w.pullConsumer.Stop()
 		w.preValidateConsumer.Stop()
 		w.respondTxQueryConsumer.Stop()
-		w.txOutboundConsumer.Stop()
 
 		w.terminateWG.Done()
 	})
@@ -99,7 +98,7 @@ func (c *PrimaryConsumer) isDuplicate(txid *core.TransactionID) bool {
 		c.Log().Debugf("already on tangle -- " + txid.StringShort())
 		return true
 	}
-	if c.seen.Seen(*txid) {
+	if c.seen.Seen(txid.VeryShortID8()) {
 		c.glb.IncCounter(c.Name() + ".duplicate.seen")
 		c.Log().Debugf("already seen -- " + txid.String())
 		return true

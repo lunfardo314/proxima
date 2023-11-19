@@ -12,6 +12,7 @@ import (
 
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/genesis"
+	"github.com/lunfardo314/proxima/peering"
 	"github.com/lunfardo314/proxima/sequencer"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/txbuilder"
@@ -98,7 +99,7 @@ func initSequencerTestData(t *testing.T, nFaucets, nAdditionalChains int, logica
 	ret.makeAdditionalChainOrigins(0, nAdditionalChains)
 
 	t.Logf("state identity:\n%s", genesis.MustStateIdentityDataFromBytes(ret.ut.HeaviestStateForLatestTimeSlot().MustStateIdentityBytes()).String())
-	ret.wrk = workflow.New(ret.ut, workflowOpt...)
+	ret.wrk = workflow.New(ret.ut, peering.NewDummyPeering(), workflowOpt...)
 	return ret
 }
 

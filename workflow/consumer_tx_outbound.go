@@ -16,14 +16,12 @@ type (
 
 	TxOutboundConsumer struct {
 		*Consumer[TxOutboundConsumerData]
-		peers peering.Peers
 	}
 )
 
 func (w *Workflow) initTxOutboundConsumer() {
 	c := &TxOutboundConsumer{
 		Consumer: NewConsumer[TxOutboundConsumerData](TxOutboundConsumerName, w),
-		peers:    peering.NewDummyPeering(),
 	}
 	c.AddOnConsume(c.consume)
 	c.AddOnClosed(func() {
@@ -35,9 +33,9 @@ func (w *Workflow) initTxOutboundConsumer() {
 func (c *TxOutboundConsumer) consume(inp TxOutboundConsumerData) {
 	var targetPeers []peering.Peer
 	if inp.SourceType == TransactionSourceTypePeer {
-		targetPeers = c.peers.OutboundGossipPeers(inp.ReceivedFrom)
+		targetPeers = c.glb.peers.OutboundGossipPeers(inp.ReceivedFrom)
 	} else {
-		targetPeers = c.peers.OutboundGossipPeers()
+		targetPeers = c.glb.peers.OutboundGossipPeers()
 	}
 	txBytesMsg := peering.EncodePeerMessageTypeTxBytes(inp.Tx.Bytes())
 	for _, p := range targetPeers {

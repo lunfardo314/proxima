@@ -38,6 +38,7 @@ func (w *Workflow) initPreValidateConsumer() {
 	c.AddOnClosed(func() {
 		// cleanup on close
 		c.waitingRoom.Stop()
+		w.txOutboundConsumer.Stop()
 		w.solidifyConsumer.Stop()
 		w.terminateWG.Done()
 	})

@@ -10,10 +10,9 @@ import (
 )
 
 const (
-	TransactionIDShortLength     = 27
-	TransactionIDLength          = LogicalTimeByteLength + TransactionIDShortLength
-	TransactionIDLengthVeryShort = 4
-	OutputIDLength               = TransactionIDLength + 1
+	TransactionIDShortLength = 27
+	TransactionIDLength      = LogicalTimeByteLength + TransactionIDShortLength
+	OutputIDLength           = TransactionIDLength + 1
 
 	SequencerTxFlagInTimeSlot = ^(TimeSlot(0xffffffff) >> 1)
 	BranchTxFlagInTimeSlot    = SequencerTxFlagInTimeSlot >> 1
@@ -25,9 +24,12 @@ const (
 type (
 	// TransactionIDShort is [0:28] of the blake2b 32-byte hash of transaction bytes
 	TransactionIDShort [TransactionIDShortLength]byte
-	// TransactionIDVeryShort is first 4 bytes of TransactionIDShort.
+	// TransactionIDVeryShort4 is first 4 bytes of TransactionIDShort.
 	// Warning. Collisions cannot be ruled out
-	TransactionIDVeryShort [TransactionIDLengthVeryShort]byte
+	TransactionIDVeryShort4 [4]byte
+	// TransactionIDVeryShort8 is first 8 bytes of TransactionIDShort.
+	// Warning. Collisions cannot be ruled out
+	TransactionIDVeryShort8 [8]byte
 	// TransactionID :
 	// [0:5] - timestamp bytes (4 bytes time slot big endian, 1 byte time tick)
 	// [5:32] TransactionIDShort
@@ -95,10 +97,17 @@ func (txid *TransactionID) ShortID() (ret TransactionIDShort) {
 	return
 }
 
-// VeryShortID returns first 8 bytes of the ShortID, i.e. of the hash
+// VeryShortID4 returns first 8 bytes of the ShortID, i.e. of the hash
 // Collisions cannot be ruled out! Intended use is in Bloom filtering, when false positives are acceptable
-func (txid *TransactionID) VeryShortID() (ret TransactionIDVeryShort) {
-	copy(ret[:], txid[LogicalTimeByteLength:LogicalTimeByteLength+TransactionIDLengthVeryShort])
+func (txid *TransactionID) VeryShortID4() (ret TransactionIDVeryShort4) {
+	copy(ret[:], txid[LogicalTimeByteLength:LogicalTimeByteLength+4])
+	return
+}
+
+// VeryShortID8 returns first 8 bytes of the ShortID, i.e. of the hash
+// Collisions cannot be ruled out! Intended use is in Bloom filtering, when false positives are acceptable
+func (txid *TransactionID) VeryShortID8() (ret TransactionIDVeryShort8) {
+	copy(ret[:], txid[LogicalTimeByteLength:LogicalTimeByteLength+8])
 	return
 }
 
