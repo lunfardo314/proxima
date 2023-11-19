@@ -49,7 +49,7 @@ func (w *Workflow) initAppendTxConsumer() {
 }
 
 func (c *AppendTxConsumer) consume(inp *AppendTxConsumerInputData) {
-	//c.setTrace(inp.Source == TransactionSourceAPI)
+	//c.setTrace(inp.Source == TransactionSourceTypeAPI)
 
 	inp.eventCallback(AppendTxConsumerName+".in", inp.Tx)
 	// append to the UTXO tangle
@@ -67,6 +67,14 @@ func (c *AppendTxConsumer) consume(inp *AppendTxConsumerInputData) {
 		return
 	}
 	inp.eventCallback("finish."+AppendTxConsumerName, nil)
+
+	if inp.SourceType != TransactionSourceTypePeer {
+		// transaction from peer was already gossiped after pre-validation
+		// Other transaction gossip to other peers
+		c.glb.txOutboundConsumer.Push(TxOutboundConsumerData{
+			PrimaryInputConsumerData: inp.PrimaryInputConsumerData,
+		})
+	}
 
 	// rise new vertex event
 	c.glb.PostEvent(EventNewVertex, &NewVertexEventData{

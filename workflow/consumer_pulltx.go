@@ -84,7 +84,7 @@ func (p *PullTxConsumer) queryTransactionCmd(inp *PullTxData) {
 	txBytes := p.glb.utxoTangle.TxBytesStore().GetTxBytes(&inp.TxID)
 	if len(txBytes) != 0 {
 		// transaction bytes are in the transaction store. No need to query it from another peer
-		if err := p.glb.TransactionIn(txBytes, WithTransactionSource(TransactionSourceStore)); err != nil {
+		if err := p.glb.TransactionIn(txBytes, WithTransactionSourceType(TransactionSourceTypeStore)); err != nil {
 			p.Log().Errorf("invalid transaction from txStore %s: '%v'", inp.TxID.StringShort(), err)
 		}
 		return

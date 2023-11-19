@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/lunfardo314/proxima/peering"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/utangle"
 	"github.com/lunfardo314/proxima/util"
@@ -41,18 +42,25 @@ func (w *Workflow) TransactionInReturnTx(txBytes []byte, opts ...TransactionInOp
 func newPrimaryInputConsumerData(tx *transaction.Transaction) *PrimaryInputConsumerData {
 	return &PrimaryInputConsumerData{
 		Tx:            tx,
-		Source:        TransactionSourceAPI,
+		SourceType:    TransactionSourceTypeAPI,
 		eventCallback: func(_ string, _ any) {},
 	}
 }
 
-func WithTransactionSource(src TransactionSource) TransactionInOption {
+func WithTransactionSourceType(src TransactionSourceType) TransactionInOption {
 	return func(data *PrimaryInputConsumerData) {
-		data.Source = src
+		data.SourceType = src
 	}
 }
 
-var OptionWithSourceSequencer = WithTransactionSource(TransactionSourceSequencer)
+func WithTransactionSourcePeer(from peering.PeerID) TransactionInOption {
+	return func(data *PrimaryInputConsumerData) {
+		data.SourceType = TransactionSourceTypePeer
+		data.ReceivedFrom = from
+	}
+}
+
+var OptionWithSourceSequencer = WithTransactionSourceType(TransactionSourceTypeSequencer)
 
 func WithWorkflowEventCallback(fun func(event string, data any)) TransactionInOption {
 	return func(data *PrimaryInputConsumerData) {

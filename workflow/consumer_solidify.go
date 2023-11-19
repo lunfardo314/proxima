@@ -101,7 +101,7 @@ func (c *SolidifyConsumer) consume(inp *SolidifyInputData) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
-	c.setTrace(inp.PrimaryInputConsumerData.Source == TransactionSourceAPI)
+	c.setTrace(inp.PrimaryInputConsumerData.SourceType == TransactionSourceTypeAPI)
 
 	if inp.Remove {
 		// command to remove the transaction and other depending on it from the solidification pool

@@ -50,8 +50,8 @@ func (c *PreValidateConsumer) consume(inp *PreValidateConsumerInputData) {
 
 	var err error
 	// time bounds are checked if it is not an insider transaction, and it is not in the solidifier pipeline
-	enforceTimeBounds := inp.Source == TransactionSourceAPI ||
-		inp.Source == TransactionSourcePeer ||
+	enforceTimeBounds := inp.SourceType == TransactionSourceTypeAPI ||
+		inp.SourceType == TransactionSourceTypePeer ||
 		c.glb.solidifyConsumer.IsWaitedTransaction(inp.Tx.ID())
 
 	// transaction is rejected if it is too far in the future wrt the local clock
@@ -82,6 +82,14 @@ func (c *PreValidateConsumer) consume(inp *PreValidateConsumerInputData) {
 		}
 	}
 	c.IncCounter("ok")
+
+	if inp.SourceType == TransactionSourceTypePeer {
+		// if received from another peer, gossip transaction right after pre-validation
+		c.glb.txOutboundConsumer.Push(TxOutboundConsumerData{
+			PrimaryInputConsumerData: inp.PrimaryInputConsumerData,
+			ReceivedFrom:             inp.ReceivedFrom,
+		})
+	}
 
 	out := &SolidifyInputData{
 		PrimaryInputConsumerData: inp.PrimaryInputConsumerData,

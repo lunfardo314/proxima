@@ -17,7 +17,7 @@ type (
 	Peers interface {
 		SelfID() PeerID
 		SelectRandomPeer() Peer
-		OutboundGossipPeers(exclude PeerID) []Peer
+		OutboundGossipPeers(exclude ...PeerID) []Peer
 	}
 
 	Peer interface {
@@ -128,15 +128,16 @@ func (p *peeringImpl) SelectRandomPeer() Peer {
 	return &peerImpl{}
 }
 
-func (p *peeringImpl) OutboundGossipPeers(exclude PeerID) []Peer {
+func (p *peeringImpl) OutboundGossipPeers(exclude ...PeerID) []Peer {
 	p.mutex.RLock()
 	defer p.mutex.RUnlock()
 
 	ret := make([]Peer, 0)
 	for _, peer := range p.peers {
-		if peer.ID() != exclude {
-			ret = append(ret, peer)
+		if len(exclude) > 0 && peer.ID() == exclude[0] {
+			continue
 		}
+		ret = append(ret, peer)
 	}
 	return ret
 }

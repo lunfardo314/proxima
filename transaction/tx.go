@@ -227,7 +227,7 @@ func ScanSequencerData() TxValidationOption {
 	}
 }
 
-// CheckSender returns a signature validator. It also set the sender field
+// CheckSender returns a signature validator. It also sets the sender field
 func CheckSender() TxValidationOption {
 	return func(tx *Transaction) error {
 		// mandatory sender signature

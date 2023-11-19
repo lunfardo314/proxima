@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/peering"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/util/eventtype"
 	"github.com/lunfardo314/proxima/util/seenset"
@@ -15,12 +16,13 @@ const PrimaryInputConsumerName = "input"
 
 // PrimaryInputConsumerData is a basic data of the raw transaction
 type (
-	TransactionSource byte
+	TransactionSourceType byte
 
 	// PrimaryInputConsumerData is an input message type for this consumer
 	PrimaryInputConsumerData struct {
 		Tx            *transaction.Transaction
-		Source        TransactionSource
+		SourceType    TransactionSourceType
+		ReceivedFrom  peering.PeerID
 		eventCallback func(event string, data any)
 	}
 
@@ -33,10 +35,10 @@ type (
 )
 
 const (
-	TransactionSourceAPI = TransactionSource(iota)
-	TransactionSourceSequencer
-	TransactionSourcePeer
-	TransactionSourceStore
+	TransactionSourceTypeAPI = TransactionSourceType(iota)
+	TransactionSourceTypeSequencer
+	TransactionSourceTypePeer
+	TransactionSourceTypeStore
 )
 
 // EventCodeDuplicateTx this consumer rises the event with transaction ID as a parameter whenever duplicate is detected
