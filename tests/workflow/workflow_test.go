@@ -162,6 +162,7 @@ func TestWorkflowSync(t *testing.T) {
 		require.NoError(t, err)
 
 		wd.w.Stop()
+		wd.w.WaitStop()
 		t.Logf("UTXO tangle:\n%s", wd.ut.Info())
 		require.EqualValues(t, numRuns, cnt.Load())
 	})

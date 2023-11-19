@@ -9,7 +9,7 @@ import (
 	"go.uber.org/atomic"
 )
 
-const PullTxConsumerName = "pull"
+const PullTxConsumerName = "pulltx"
 
 const pullPeriod = 500 * time.Millisecond
 
@@ -19,7 +19,7 @@ const (
 )
 
 type (
-	PullData struct {
+	PullTxData struct {
 		Cmd  byte
 		TxID core.TransactionID
 		// GracePeriod for PullTxCmdQuery, how long delay first pull.
@@ -28,8 +28,8 @@ type (
 		GracePeriod time.Duration
 	}
 
-	PullConsumer struct {
-		*Consumer[*PullData]
+	PullTxConsumer struct {
+		*Consumer[*PullTxData]
 		mutex sync.RWMutex
 
 		stopBackgroundLoop atomic.Bool
@@ -40,8 +40,8 @@ type (
 )
 
 func (w *Workflow) initPullConsumer() {
-	c := &PullConsumer{
-		Consumer: NewConsumer[*PullData](PullTxConsumerName, w),
+	c := &PullTxConsumer{
+		Consumer: NewConsumer[*PullTxData](PullTxConsumerName, w),
 		wanted:   make(map[core.TransactionID]time.Time),
 		peers:    peering.NewDummyPeering(),
 	}
@@ -54,7 +54,7 @@ func (w *Workflow) initPullConsumer() {
 	go c.backgroundLoop()
 }
 
-func (p *PullConsumer) already(txid *core.TransactionID) bool {
+func (p *PullTxConsumer) already(txid *core.TransactionID) bool {
 	p.mutex.RLock()
 	defer p.mutex.RUnlock()
 
@@ -62,7 +62,7 @@ func (p *PullConsumer) already(txid *core.TransactionID) bool {
 	return already
 }
 
-func (p *PullConsumer) consume(inp *PullData) {
+func (p *PullTxConsumer) consume(inp *PullTxData) {
 	switch inp.Cmd {
 	case PullTxCmdQuery:
 		p.queryTransactionCmd(inp)
@@ -73,7 +73,7 @@ func (p *PullConsumer) consume(inp *PullData) {
 	}
 }
 
-func (p *PullConsumer) queryTransactionCmd(inp *PullData) {
+func (p *PullTxConsumer) queryTransactionCmd(inp *PullTxData) {
 	if p.already(&inp.TxID) {
 		return
 	}
@@ -104,7 +104,7 @@ func (p *PullConsumer) queryTransactionCmd(inp *PullData) {
 	p.Log().Debugf("<-- added %s", inp.TxID.StringShort())
 }
 
-func (p *PullConsumer) removeTransactionCmd(inp *PullData) {
+func (p *PullTxConsumer) removeTransactionCmd(inp *PullTxData) {
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
 
@@ -113,11 +113,11 @@ func (p *PullConsumer) removeTransactionCmd(inp *PullData) {
 	p.Log().Debugf("removed %s", inp.TxID.StringShort())
 }
 
-func (p *PullConsumer) stop() {
+func (p *PullTxConsumer) stop() {
 	p.stopBackgroundLoop.Store(true)
 }
 
-func (p *PullConsumer) backgroundLoop() {
+func (p *PullTxConsumer) backgroundLoop() {
 	for !p.stopBackgroundLoop.Load() {
 		time.Sleep(10 * time.Millisecond)
 
@@ -126,7 +126,7 @@ func (p *PullConsumer) backgroundLoop() {
 	p.Log().Infof("background loop stopped")
 }
 
-func (p *PullConsumer) pullAllMatured() {
+func (p *PullTxConsumer) pullAllMatured() {
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
 
@@ -142,7 +142,7 @@ func (p *PullConsumer) pullAllMatured() {
 	p.pullTransactions(txids...)
 }
 
-func (p *PullConsumer) pullTransactions(txids ...core.TransactionID) {
+func (p *PullTxConsumer) pullTransactions(txids ...core.TransactionID) {
 	peer := p.peers.SelectRandomPeer()
 	peer.SendMsgBytes(peering.EncodePeerMessageTypeQueryTransactions(txids...))
 }

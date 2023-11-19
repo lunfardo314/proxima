@@ -317,7 +317,7 @@ func (c *SolidifyConsumer) pullIfNeeded(vd *draftVertexData) {
 }
 
 func (c *SolidifyConsumer) pull(txid core.TransactionID, gracePeriod time.Duration) {
-	c.glb.pullConsumer.Push(&PullData{
+	c.glb.pullConsumer.Push(&PullTxData{
 		Cmd:         PullTxCmdQuery,
 		TxID:        txid,
 		GracePeriod: gracePeriod,

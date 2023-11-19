@@ -32,17 +32,17 @@ type (
 		utxoTangle      *utangle.UTXOTangle
 		debugCounters   *testutil.SyncCounters
 
-		primaryInputConsumer *PrimaryConsumer
-		preValidateConsumer  *PreValidateConsumer
-		solidifyConsumer     *SolidifyConsumer
-		pullConsumer         *PullConsumer
-		validateConsumer     *ValidateConsumer
-		appendTxConsumer     *AppendTxConsumer
-		rejectConsumer       *RejectConsumer
-		eventsConsumer       *EventsConsumer
-
-		handlersMutex sync.RWMutex
-		eventHandlers map[eventtype.EventCode][]func(any)
+		primaryInputConsumer   *PrimaryConsumer
+		preValidateConsumer    *PreValidateConsumer
+		solidifyConsumer       *SolidifyConsumer
+		pullConsumer           *PullTxConsumer
+		validateConsumer       *ValidateConsumer
+		appendTxConsumer       *AppendTxConsumer
+		rejectConsumer         *RejectConsumer
+		eventsConsumer         *EventsConsumer
+		respondTxQueryConsumer *RespondTxQueryConsumer
+		handlersMutex          sync.RWMutex
+		eventHandlers          map[eventtype.EventCode][]func(any)
 
 		terminateWG sync.WaitGroup
 		startWG     sync.WaitGroup
@@ -80,6 +80,7 @@ func New(ut *utangle.UTXOTangle, configOptions ...ConfigOption) *Workflow {
 	ret.initAppendTxConsumer()
 	ret.initRejectConsumer()
 	ret.initEventsConsumer()
+	ret.initRespondTxQueryConsumer()
 
 	return ret
 }
@@ -103,6 +104,7 @@ func (w *Workflow) Start(parentCtx ...context.Context) {
 			ctx, w.stopFun = context.WithCancel(context.Background())
 		}
 		w.startWG.Add(1)
+
 		w.primaryInputConsumer.Start()
 		w.preValidateConsumer.Start()
 		w.solidifyConsumer.Start()
@@ -111,6 +113,8 @@ func (w *Workflow) Start(parentCtx ...context.Context) {
 		w.appendTxConsumer.Start()
 		w.rejectConsumer.Start()
 		w.eventsConsumer.Start()
+		w.respondTxQueryConsumer.Start()
+
 		w.startWG.Done()
 		w.working.Store(true)
 

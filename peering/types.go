@@ -17,8 +17,11 @@ type (
 	}
 
 	Peer interface {
+		ID() PeerID
 		SendMsgBytes(msgBytes []byte)
 	}
+
+	PeerID string // tmp
 )
 
 const (
@@ -96,6 +99,10 @@ func NewDummyPeering() *dummyPeering {
 
 func (p *dummyPeering) SelectRandomPeer() Peer {
 	return &dummyPeer{}
+}
+
+func (p *dummyPeer) ID() PeerID {
+	return ""
 }
 
 func (dp *dummyPeer) SendMsgBytes(msgBytes []byte) {
