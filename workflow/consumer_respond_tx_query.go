@@ -2,7 +2,7 @@ package workflow
 
 import (
 	"github.com/lunfardo314/proxima/core"
-	"github.com/lunfardo314/proxima/peering"
+	"github.com/lunfardo314/proxima/peers"
 )
 
 // RespondTxQueryConsumer:
@@ -18,7 +18,7 @@ const RespondTxQueryConsumerName = "txrespond"
 type (
 	RespondTxQueryData struct {
 		TxID core.TransactionID
-		Peer peering.Peer
+		Peer peers.Peer
 	}
 
 	RespondTxQueryConsumer struct {
@@ -39,6 +39,6 @@ func (w *Workflow) initRespondTxQueryConsumer() {
 
 func (c *RespondTxQueryConsumer) consume(inp RespondTxQueryData) {
 	if txBytes := c.glb.UTXOTangle().TxBytesStore().GetTxBytes(&inp.TxID); len(txBytes) > 0 {
-		inp.Peer.SendMsgBytes(peering.EncodePeerMessageTypeTxBytes(txBytes))
+		inp.Peer.SendMsgBytes(peers.EncodePeerMessageTypeTxBytes(txBytes))
 	}
 }

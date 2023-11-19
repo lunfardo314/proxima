@@ -9,7 +9,7 @@ import (
 
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/general"
-	"github.com/lunfardo314/proxima/peering"
+	"github.com/lunfardo314/proxima/peers"
 	"github.com/lunfardo314/proxima/utangle"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/consumer"
@@ -31,7 +31,7 @@ type (
 		log             *zap.SugaredLogger
 		configParams    ConfigParams
 		utxoTangle      *utangle.UTXOTangle
-		peers           peering.Peers
+		peers           peers.Peers
 		debugCounters   *testutil.SyncCounters
 
 		primaryInputConsumer   *PrimaryConsumer
@@ -63,7 +63,7 @@ type (
 
 const workflowLogName = "[workflow]"
 
-func New(ut *utangle.UTXOTangle, peers peering.Peers, configOptions ...ConfigOption) *Workflow {
+func New(ut *utangle.UTXOTangle, peers peers.Peers, configOptions ...ConfigOption) *Workflow {
 	cfg := defaultConfigParams()
 	for _, opt := range configOptions {
 		opt(&cfg)

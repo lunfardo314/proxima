@@ -1,7 +1,7 @@
 package workflow
 
 import (
-	"github.com/lunfardo314/proxima/peering"
+	"github.com/lunfardo314/proxima/peers"
 )
 
 // TxOutboundConsumer is forwarding the transaction to peers which didn't see it yet
@@ -11,7 +11,7 @@ const TxOutboundConsumerName = "outbound"
 type (
 	TxOutboundConsumerData struct {
 		*PrimaryInputConsumerData
-		ReceivedFrom peering.PeerID
+		ReceivedFrom peers.PeerID
 	}
 
 	TxOutboundConsumer struct {
@@ -31,14 +31,10 @@ func (w *Workflow) initTxOutboundConsumer() {
 }
 
 func (c *TxOutboundConsumer) consume(inp TxOutboundConsumerData) {
-	var targetPeers []peering.Peer
+	txBytesMsg := peers.EncodePeerMessageTypeTxBytes(inp.Tx.Bytes())
 	if inp.SourceType == TransactionSourceTypePeer {
-		targetPeers = c.glb.peers.OutboundGossipPeers(inp.ReceivedFrom)
+		c.glb.peers.BroadcastToPeers(txBytesMsg, inp.ReceivedFrom)
 	} else {
-		targetPeers = c.glb.peers.OutboundGossipPeers()
-	}
-	txBytesMsg := peering.EncodePeerMessageTypeTxBytes(inp.Tx.Bytes())
-	for _, p := range targetPeers {
-		p.SendMsgBytes(txBytesMsg)
+		c.glb.peers.BroadcastToPeers(txBytesMsg)
 	}
 }

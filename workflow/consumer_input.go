@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/lunfardo314/proxima/core"
-	"github.com/lunfardo314/proxima/peering"
+	"github.com/lunfardo314/proxima/peers"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/util/eventtype"
 	"github.com/lunfardo314/proxima/util/seenset"
@@ -22,7 +22,7 @@ type (
 	PrimaryInputConsumerData struct {
 		Tx            *transaction.Transaction
 		SourceType    TransactionSourceType
-		ReceivedFrom  peering.PeerID
+		ReceivedFrom  peers.PeerID
 		eventCallback func(event string, data any)
 	}
 

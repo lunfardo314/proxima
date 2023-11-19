@@ -1,4 +1,4 @@
-package peering
+package peers
 
 import (
 	"bytes"
@@ -17,7 +17,7 @@ type (
 	Peers interface {
 		SelfID() PeerID
 		SelectRandomPeer() Peer
-		OutboundGossipPeers(exclude ...PeerID) []Peer
+		BroadcastToPeers(msgBytes []byte, except ...PeerID)
 	}
 
 	Peer interface {
@@ -25,7 +25,7 @@ type (
 		SendMsgBytes(msgBytes []byte) bool
 	}
 
-	PeerID string // tmp
+	PeerID string
 )
 
 const (
@@ -128,18 +128,17 @@ func (p *peeringImpl) SelectRandomPeer() Peer {
 	return &peerImpl{}
 }
 
-func (p *peeringImpl) OutboundGossipPeers(exclude ...PeerID) []Peer {
+func (p *peeringImpl) BroadcastToPeers(msgBytes []byte, except ...PeerID) {
 	p.mutex.RLock()
 	defer p.mutex.RUnlock()
 
-	ret := make([]Peer, 0)
 	for _, peer := range p.peers {
-		if len(exclude) > 0 && peer.ID() == exclude[0] {
+		if len(except) > 0 && peer.ID() == except[0] {
 			continue
 		}
-		ret = append(ret, peer)
+		peerCopy := peer
+		go peerCopy.SendMsgBytes(msgBytes)
 	}
-	return ret
 }
 
 func (p *peeringImpl) SelfID() PeerID {

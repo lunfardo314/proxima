@@ -11,7 +11,7 @@ import (
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/genesis"
 	"github.com/lunfardo314/proxima/multistate"
-	"github.com/lunfardo314/proxima/peering"
+	"github.com/lunfardo314/proxima/peers"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/txbuilder"
 	"github.com/lunfardo314/proxima/txstore"
@@ -76,7 +76,7 @@ func initWorkflowTest(t *testing.T, nDistribution int, nowis core.LogicalTime, c
 		ret.faucetOutputs[i] = outs[0]
 
 	}
-	ret.w = workflow.New(ret.ut, peering.NewDummyPeering(), configOptions...)
+	ret.w = workflow.New(ret.ut, peers.NewDummyPeering(), configOptions...)
 	return ret
 }
 
@@ -1095,7 +1095,7 @@ func TestMultiChainWorkflow(t *testing.T) {
 
 		transaction.SetPrintEasyFLTraceOnFail(false)
 
-		wrk := workflow.New(r.ut, peering.NewDummyPeering())
+		wrk := workflow.New(r.ut, peers.NewDummyPeering())
 		cd := countdown.New(howLong*nChains, 10*time.Second)
 		wrk.MustOnEvent(workflow.EventNewVertex, func(_ *workflow.NewVertexEventData) {
 			cd.Tick()
@@ -1147,7 +1147,7 @@ func TestMultiChainWorkflow(t *testing.T) {
 
 		transaction.SetPrintEasyFLTraceOnFail(false)
 
-		wrk := workflow.New(r.ut, peering.NewDummyPeering())
+		wrk := workflow.New(r.ut, peers.NewDummyPeering())
 		cd := countdown.New(howLong*nChains, 10*time.Second)
 		wrk.MustOnEvent(workflow.EventNewVertex, func(_ *workflow.NewVertexEventData) {
 			cd.Tick()
@@ -1195,7 +1195,7 @@ func TestMultiChainWorkflow(t *testing.T) {
 
 		transaction.SetPrintEasyFLTraceOnFail(false)
 
-		wrk := workflow.New(r.ut, peering.NewDummyPeering(), workflow.WithConsumerLogLevel(workflow.PreValidateConsumerName, zapcore.DebugLevel))
+		wrk := workflow.New(r.ut, peers.NewDummyPeering(), workflow.WithConsumerLogLevel(workflow.PreValidateConsumerName, zapcore.DebugLevel))
 		nTransactions := 0
 		for i := range txBytesSeq {
 			nTransactions += len(txBytesSeq[i])
@@ -1252,7 +1252,7 @@ func TestMultiChainWorkflow(t *testing.T) {
 
 		transaction.SetPrintEasyFLTraceOnFail(false)
 
-		wrk := workflow.New(r.ut, peering.NewDummyPeering()) //workflow.WithConsumerLogLevel(workflow.PreValidateConsumerName, zapcore.DebugLevel),
+		wrk := workflow.New(r.ut, peers.NewDummyPeering()) //workflow.WithConsumerLogLevel(workflow.PreValidateConsumerName, zapcore.DebugLevel),
 		//workflow.WithConsumerLogLevel(workflow.SolidifyConsumerName, zapcore.DebugLevel),
 		//workflow.WithConsumerLogLevel(workflow.ValidateConsumerName, zapcore.DebugLevel),
 		//workflow.WithConsumerLogLevel(workflow.AppendTxConsumerName, zapcore.DebugLevel),
@@ -1359,7 +1359,7 @@ func TestMultiChainWorkflow(t *testing.T) {
 
 		transaction.SetPrintEasyFLTraceOnFail(false)
 
-		wrk := workflow.New(r.ut, peering.NewDummyPeering())
+		wrk := workflow.New(r.ut, peers.NewDummyPeering())
 		nTransactions := 0
 		for i := range txBytesSeq {
 			nTransactions += len(txBytesSeq[i])
@@ -1417,7 +1417,7 @@ func TestMultiChainWorkflow(t *testing.T) {
 		require.EqualValues(t, howLong, len(txBytesSeq))
 		transaction.SetPrintEasyFLTraceOnFail(false)
 
-		wrk := workflow.New(r.ut, peering.NewDummyPeering())
+		wrk := workflow.New(r.ut, peers.NewDummyPeering())
 		cd := countdown.New(howLong, 10*time.Second)
 		wrk.MustOnEvent(workflow.EventNewVertex, func(_ *workflow.NewVertexEventData) {
 			cd.Tick()
@@ -1472,7 +1472,7 @@ func TestMultiChainWorkflow(t *testing.T) {
 
 		transaction.SetPrintEasyFLTraceOnFail(false)
 
-		wrk := workflow.New(r.ut, peering.NewDummyPeering())
+		wrk := workflow.New(r.ut, peers.NewDummyPeering())
 		cd := countdown.New(howLong, 10*time.Second)
 		wrk.MustOnEvent(workflow.EventNewVertex, func(_ *workflow.NewVertexEventData) {
 			cd.Tick()
@@ -1520,7 +1520,7 @@ func TestMultiChainWorkflow(t *testing.T) {
 
 		transaction.SetPrintEasyFLTraceOnFail(false)
 
-		wrk := workflow.New(r.ut, peering.NewDummyPeering())
+		wrk := workflow.New(r.ut, peers.NewDummyPeering())
 		cd := countdown.New(len(txBytesSeq), 20*time.Second)
 		wrk.MustOnEvent(workflow.EventNewVertex, func(_ *workflow.NewVertexEventData) {
 			cd.Tick()
