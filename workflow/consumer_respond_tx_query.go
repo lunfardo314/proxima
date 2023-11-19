@@ -2,11 +2,11 @@ package workflow
 
 import (
 	"github.com/lunfardo314/proxima/core"
-	"github.com/lunfardo314/proxima/peers"
+	"github.com/lunfardo314/proxima/peering"
 )
 
 // RespondTxQueryConsumer:
-// - takes pull requests for transaction from peers as inputs
+// - takes pull requests for transaction from peering as inputs
 // - looks up for the transaction into the store
 // - sends it to the peer if found, otherwise ignores
 //
@@ -16,19 +16,19 @@ import (
 const RespondTxQueryConsumerName = "txrespond"
 
 type (
-	RespondTxQueryData struct {
+	RespondTxQueryInputData struct {
 		TxID   core.TransactionID
-		PeerID peers.PeerID
+		PeerID peering.PeerID
 	}
 
 	RespondTxQueryConsumer struct {
-		*Consumer[RespondTxQueryData]
+		*Consumer[RespondTxQueryInputData]
 	}
 )
 
 func (w *Workflow) initRespondTxQueryConsumer() {
 	c := &RespondTxQueryConsumer{
-		Consumer: NewConsumer[RespondTxQueryData](RespondTxQueryConsumerName, w),
+		Consumer: NewConsumer[RespondTxQueryInputData](RespondTxQueryConsumerName, w),
 	}
 	c.AddOnConsume(c.consume)
 	c.AddOnClosed(func() {
@@ -37,8 +37,8 @@ func (w *Workflow) initRespondTxQueryConsumer() {
 	w.respondTxQueryConsumer = c
 }
 
-func (c *RespondTxQueryConsumer) consume(inp RespondTxQueryData) {
+func (c *RespondTxQueryConsumer) consume(inp RespondTxQueryInputData) {
 	if txBytes := c.glb.UTXOTangle().TxBytesStore().GetTxBytes(&inp.TxID); len(txBytes) > 0 {
-		c.glb.peers.SendMsgBytesToPeer(inp.PeerID, peers.EncodePeerMessageTypeTxBytes(txBytes))
+		c.glb.peers.SendMsgBytesToPeer(inp.PeerID, peering.EncodePeerMessageTxBytes(txBytes))
 	}
 }

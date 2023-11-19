@@ -9,7 +9,7 @@ import (
 
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/general"
-	"github.com/lunfardo314/proxima/peers"
+	"github.com/lunfardo314/proxima/peering"
 	"github.com/lunfardo314/proxima/utangle"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/consumer"
@@ -31,7 +31,7 @@ type (
 		log             *zap.SugaredLogger
 		configParams    ConfigParams
 		utxoTangle      *utangle.UTXOTangle
-		peers           peers.Peers
+		peers           peering.Peers
 		debugCounters   *testutil.SyncCounters
 
 		primaryInputConsumer   *PrimaryConsumer
@@ -63,7 +63,7 @@ type (
 
 const workflowLogName = "[workflow]"
 
-func New(ut *utangle.UTXOTangle, peers peers.Peers, configOptions ...ConfigOption) *Workflow {
+func New(ut *utangle.UTXOTangle, peers peering.Peers, configOptions ...ConfigOption) *Workflow {
 	cfg := defaultConfigParams()
 	for _, opt := range configOptions {
 		opt(&cfg)
@@ -88,6 +88,7 @@ func New(ut *utangle.UTXOTangle, peers peers.Peers, configOptions ...ConfigOptio
 	ret.initRespondTxQueryConsumer()
 	ret.initTxOutboundConsumer()
 
+	ret.peers.OnReceiveMessage(ret.forwardPeerMessage)
 	return ret
 }
 
@@ -203,4 +204,40 @@ func (w *Workflow) DumpPending() *lines.Lines {
 
 func (w *Workflow) DumpUnresolvedDependencies() *lines.Lines {
 	return w.solidifyConsumer.DumpUnresolvedDependencies()
+}
+
+func (w *Workflow) forwardPeerMessage(msgBytes []byte, from peering.PeerID) {
+	if !w.working.Load() {
+		return
+	}
+	if len(msgBytes) == 0 {
+		return
+	}
+	switch msgBytes[0] {
+	case peering.PeerMessageTypeQueryTransactions:
+		txids, err := peering.DecodePeerMessageQueryTransactions(msgBytes)
+		if err != nil {
+			w.log.Debugf("wrong tx query message from peer %s", from)
+			return
+		}
+		for _, txid := range txids {
+			w.respondTxQueryConsumer.Push(RespondTxQueryInputData{
+				TxID:   txid,
+				PeerID: from,
+			})
+		}
+	case peering.PeerMessageTypeTxBytes:
+		txBytes, err := peering.DecodePeerMessageTxBytes(msgBytes)
+		if err != nil {
+			w.log.Debugf("wrong txBytes message from peer %s", from)
+			return
+		}
+		if err = w.TransactionIn(txBytes, WithTransactionSourcePeer(from)); err != nil {
+			w.log.Debugf("wrong transaction bytes")
+			return
+		}
+	default:
+		w.log.Debugf("wrong peer message type")
+
+	}
 }

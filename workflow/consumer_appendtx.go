@@ -70,7 +70,7 @@ func (c *AppendTxConsumer) consume(inp *AppendTxConsumerInputData) {
 
 	if inp.SourceType != TransactionSourceTypePeer {
 		// transaction from peer was already gossiped after pre-validation
-		// Other transaction gossip to other peers
+		// Other transaction gossip to other peering
 		c.glb.txOutboundConsumer.Push(TxOutboundConsumerData{
 			PrimaryInputConsumerData: inp.PrimaryInputConsumerData,
 		})

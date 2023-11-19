@@ -266,7 +266,7 @@ func (c *SolidifyConsumer) checkNewDependency(inp *SolidifyInputData) {
 		c.Log().Debugf("%s not solid yet. Missing: %s\nTransaction: %s",
 			pending.Tx.IDShort(), pending.draftVertex.MissingInputTxIDString(), pending.draftVertex.Lines().String())
 
-		// ask for missing inputs from peers
+		// ask for missing inputs from peering
 		c.pullIfNeeded(&pending)
 	}
 	for i := range solidified {

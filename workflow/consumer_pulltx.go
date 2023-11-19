@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/core"
-	"github.com/lunfardo314/proxima/peers"
+	"github.com/lunfardo314/proxima/peering"
 	"go.uber.org/atomic"
 )
 
@@ -141,5 +141,5 @@ func (p *PullTxConsumer) pullAllMatured() {
 }
 
 func (p *PullTxConsumer) pullTransactions(txids ...core.TransactionID) {
-	p.glb.peers.SendMsgBytesToRandomPeer(peers.EncodePeerMessageTypeQueryTransactions(txids...))
+	p.glb.peers.SendMsgBytesToRandomPeer(peering.EncodePeerMessageQueryTransactions(txids...))
 }
