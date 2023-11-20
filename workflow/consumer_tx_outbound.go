@@ -31,10 +31,9 @@ func (w *Workflow) initTxOutboundConsumer() {
 }
 
 func (c *TxOutboundConsumer) consume(inp TxOutboundConsumerData) {
-	txBytesMsg := peering.EncodePeerMessageTxBytes(inp.Tx.Bytes())
 	if inp.SourceType == TransactionSourceTypePeer {
-		c.glb.peers.BroadcastToPeers(txBytesMsg, inp.ReceivedFrom)
+		c.glb.peers.GossipTxBytesToPeers(inp.Tx.Bytes(), inp.ReceivedFrom)
 	} else {
-		c.glb.peers.BroadcastToPeers(txBytesMsg)
+		c.glb.peers.GossipTxBytesToPeers(inp.Tx.Bytes())
 	}
 }

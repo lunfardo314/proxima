@@ -39,6 +39,6 @@ func (w *Workflow) initRespondTxQueryConsumer() {
 
 func (c *RespondTxQueryConsumer) consume(inp RespondTxQueryInputData) {
 	if txBytes := c.glb.UTXOTangle().TxBytesStore().GetTxBytes(&inp.TxID); len(txBytes) > 0 {
-		c.glb.peers.SendMsgBytesToPeer(inp.PeerID, peering.EncodePeerMessageTxBytes(txBytes))
+		c.glb.peers.SendTxBytesToPeer(txBytes, inp.PeerID)
 	}
 }

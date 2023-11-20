@@ -11,6 +11,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
+	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/spf13/viper"
 )
@@ -73,23 +74,34 @@ func NewPeersFromConfig() (*Peers, error) {
 	return NewPeers(pk, port)
 }
 
-func (ps *Peers) SendMsgBytesToPeer(id PeerID, msgBytes []byte) bool {
-	if p, ok := ps.peers[id]; ok {
-		return p.sendMsgBytes(msgBytes)
-	}
-	return false
-}
+func (ps *Peers) PullTransactionsFromRandomPeer(txids ...core.TransactionID) bool {
+	ps.mutex.RLock()
+	defer ps.mutex.RUnlock()
 
-func (ps *Peers) SendMsgBytesToRandomPeer(msgBytes []byte) bool {
+	if len(ps.peers) == 0 {
+		return false
+	}
+	msgBytes := EncodePeerMessageQueryTransactions(txids...)
 	peers := util.Values(ps.peers)
-	if len(peers) > 0 {
-		p := peers[rand.Intn(len(peers))]
-		return p.sendMsgBytes(msgBytes)
-	}
-	return false
+	p := peers[rand.Intn(len(peers))]
+	return p.sendMsgBytes(msgBytes)
+
 }
 
-func (ps *Peers) BroadcastToPeers(msgBytes []byte, except ...PeerID) {
+func (ps *Peers) SendTxBytesToPeer(txBytes []byte, peerID PeerID) bool {
+	ps.mutex.RLock()
+	ps.mutex.RUnlock()
+
+	peer, ok := ps.peers[peerID]
+	if !ok {
+		return false
+	}
+	return peer.sendMsgBytes(EncodePeerMessageTxBytes(txBytes))
+}
+
+func (ps *Peers) GossipTxBytesToPeers(txBytes []byte, except ...PeerID) {
+	msgBytes := EncodePeerMessageTxBytes(txBytes)
+
 	ps.mutex.RLock()
 	defer ps.mutex.RUnlock()
 

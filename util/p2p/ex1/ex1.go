@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/binary"
-	"flag"
 	"fmt"
 	"os"
 	"os/signal"
@@ -18,10 +17,6 @@ import (
 )
 
 func main() {
-	// Add -peer-address flag
-	peerAddr := flag.String("peer-address", "", "peer address")
-	flag.Parse()
-
 	// Create the libp2p host.
 	//
 	// Note that we are explicitly passing the listen address and restricting it to IPv4 over the
@@ -36,6 +31,7 @@ func main() {
 	defer host.Close()
 
 	const protocolID = "/ex1/1.0.0"
+
 	// This gets called every time a peer connects
 	// and opens a stream to this node.
 	host.SetStreamHandler(protocolID, func(s network.Stream) {
@@ -51,9 +47,9 @@ func main() {
 
 	// If we received a peer address, we should connect to it.
 
-	if *peerAddr != "" {
+	if len(os.Args) > 1 {
 		// Parse the multiaddr string.
-		peerMA, err := multiaddr.NewMultiaddr(*peerAddr)
+		peerMA, err := multiaddr.NewMultiaddr(os.Args[1])
 		if err != nil {
 			panic(err)
 		}
@@ -63,7 +59,7 @@ func main() {
 		}
 
 		// Connect to the node at the given address.
-		fmt.Printf("connecting to %s...\n", *peerAddr)
+		fmt.Printf("connecting to %s...\n", os.Args[1])
 
 		if err := host.Connect(context.Background(), *peerAddrInfo); err != nil {
 			panic(err)
@@ -75,6 +71,7 @@ func main() {
 		if err != nil {
 			panic(err)
 		}
+		defer s.Close()
 
 		// Start the write and read threads.
 		go writeCounter(s)
@@ -95,7 +92,8 @@ func writeCounter(s network.Stream) {
 
 		err := binary.Write(s, binary.BigEndian, counter)
 		if err != nil {
-			panic(err)
+			fmt.Printf("writeCounter error: %v\n", err)
+			return
 		}
 	}
 }
@@ -106,7 +104,8 @@ func readCounter(s network.Stream) {
 
 		err := binary.Read(s, binary.BigEndian, &counter)
 		if err != nil {
-			panic(err)
+			fmt.Printf("readCounter error: %v\n", err)
+			return
 		}
 
 		fmt.Printf("Received %d from %s\n", counter, s.ID())
