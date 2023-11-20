@@ -10,15 +10,31 @@ import (
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/host"
+	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/peerstore"
 	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/util"
+	"github.com/multiformats/go-multiaddr"
 	"github.com/spf13/viper"
 )
 
 type (
+	Config struct {
+		HostIDPrivateKey ed25519.PrivateKey
+		HostIDPublicKey  ed25519.PrivateKey
+		HostPort         int
+		KnownPeers       map[string]*PeerAddr // name -> PeerAddr
+	}
+
+	PeerAddr struct {
+		AddrString string
+		MultiAddr  multiaddr.Multiaddr
+	}
+
 	Peers struct {
 		mutex                sync.RWMutex
+		cfg                  *Config
 		host                 host.Host
 		peers                map[PeerID]*peerImpl // except self
 		onReceiveTxBytes     func(from PeerID, txBytes []byte)
@@ -33,6 +49,8 @@ const (
 	PeerMessageTypeTxBytes
 )
 
+const lppProtocolGossip = "/proxima/gossip/1.0.0"
+
 func NewPeersDummy() *Peers {
 	return &Peers{
 		peers:                make(map[PeerID]*peerImpl),
@@ -41,21 +59,30 @@ func NewPeersDummy() *Peers {
 	}
 }
 
-func NewPeers(idPrivateKey ed25519.PrivateKey, port int) (*Peers, error) {
-	privKey, err := crypto.UnmarshalEd25519PrivateKey(idPrivateKey)
+func NewPeers(cfg *Config) (*Peers, error) {
+	hostIDPrivateKey, err := crypto.UnmarshalEd25519PrivateKey(cfg.HostIDPrivateKey)
 	if err != nil {
 		return nil, fmt.Errorf("wrong private key: %w", err)
 	}
 	lppHost, err := libp2p.New(
-		libp2p.Identity(privKey),
-		libp2p.ListenAddrStrings(fmt.Sprintf("/ip4/0.0.0.0/tcp/%d", port)),
+		libp2p.Identity(hostIDPrivateKey),
+		libp2p.ListenAddrStrings(fmt.Sprintf("/ip4/0.0.0.0/tcp/%d", cfg.HostPort)),
 		libp2p.Transport(tcp.NewTCPTransport),
 		libp2p.NoSecurity,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("unable create libp2p host: %w", err)
 	}
+
+	for _, addr := range cfg.KnownPeers {
+		info, err := peer.AddrInfoFromP2pAddr(addr.MultiAddr)
+		if err != nil {
+			return nil, fmt.Errorf("can't get multiaddress info: %v", err)
+		}
+		lppHost.Peerstore().AddAddr(info.ID, addr.MultiAddr, peerstore.PermanentAddrTTL)
+	}
 	return &Peers{
+		cfg:                  cfg,
 		host:                 lppHost,
 		peers:                make(map[PeerID]*peerImpl),
 		onReceiveTxBytes:     func(_ PeerID, _ []byte) {},
@@ -63,18 +90,55 @@ func NewPeers(idPrivateKey ed25519.PrivateKey, port int) (*Peers, error) {
 	}, nil
 }
 
-func NewPeersFromConfig() (*Peers, error) {
-	port := viper.GetInt("host.port")
-	if port == 0 {
-		return nil, fmt.Errorf("host.port: wrong port")
+func readPeeringConfig() (*Config, error) {
+	cfg := &Config{
+		KnownPeers: make(map[string]*PeerAddr),
 	}
-	pkStr := viper.GetString("host.private_key")
+	cfg.HostPort = viper.GetInt("peering.host.port")
+	if cfg.HostPort == 0 {
+		return nil, fmt.Errorf("peering.host.port: wrong port")
+	}
+	pkStr := viper.GetString("peering.host.private_key")
 	pkBin, err := hex.DecodeString(pkStr)
 	if err != nil {
 		return nil, fmt.Errorf("host.private_key: wrong id private key: %v", err)
 	}
-	pk := ed25519.PrivateKey(pkBin)
-	return NewPeers(pk, port)
+	cfg.HostIDPrivateKey = pkBin
+
+	pkStr = viper.GetString("peering.host.public_key")
+	pkBin, err = hex.DecodeString(pkStr)
+	if err != nil {
+		return nil, fmt.Errorf("host.public_key: wrong id public key: %v", err)
+	}
+	cfg.HostIDPublicKey = pkBin
+	if !cfg.HostIDPublicKey.Equal(cfg.HostIDPrivateKey.Public().(ed25519.PublicKey)) {
+		return nil, fmt.Errorf("inconsistent host ID pivate and public keys")
+	}
+
+	peerNames := util.KeysSorted(viper.GetStringMap("peering.peers"), func(k1, k2 string) bool {
+		return k1 < k2
+	})
+
+	for _, peerName := range peerNames {
+		p := &PeerAddr{
+			AddrString: "",
+			MultiAddr:  nil,
+		}
+		p.AddrString = viper.GetString("peering.peers." + peerName)
+		if p.MultiAddr, err = multiaddr.NewMultiaddr(p.AddrString); err != nil {
+			return nil, fmt.Errorf("can't parse multiaddress: %w", err)
+		}
+		cfg.KnownPeers[peerName] = p
+	}
+	return cfg, nil
+}
+
+func NewPeersFromConfig() (*Peers, error) {
+	cfg, err := readPeeringConfig()
+	if err != nil {
+		return nil, err
+	}
+	return NewPeers(cfg)
 }
 
 func (ps *Peers) PullTransactionsFromRandomPeer(txids ...core.TransactionID) bool {
