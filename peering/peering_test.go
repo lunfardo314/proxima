@@ -98,4 +98,12 @@ func TestBasic(t *testing.T) {
 		_, err := New(cfg)
 		require.NoError(t, err)
 	})
+	t.Run("2", func(t *testing.T) {
+		const hostIndex = 2
+		cfg := makeConfigFor(t, hostIndex)
+		peers, err := New(cfg)
+		require.NoError(t, err)
+		peers.Run()
+		peers.Stop()
+	})
 }

@@ -1,6 +1,7 @@
 package peering
 
 import (
+	"context"
 	"crypto/ed25519"
 	"encoding/hex"
 	"fmt"
@@ -10,13 +11,16 @@ import (
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/host"
+	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/peerstore"
 	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
 	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/general"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/multiformats/go-multiaddr"
 	"github.com/spf13/viper"
+	"go.uber.org/zap"
 )
 
 type (
@@ -30,6 +34,9 @@ type (
 	Peers struct {
 		mutex                sync.RWMutex
 		cfg                  *Config
+		log                  *zap.SugaredLogger
+		ctx                  context.Context
+		stopFun              context.CancelFunc
 		host                 host.Host
 		peers                map[PeerID]*peerImpl // except self
 		onReceiveTxBytes     func(from PeerID, txBytes []byte)
@@ -54,7 +61,7 @@ func NewPeersDummy() *Peers {
 	}
 }
 
-func New(cfg *Config) (*Peers, error) {
+func New(cfg *Config, ctx ...context.Context) (*Peers, error) {
 	hostIDPrivateKey, err := crypto.UnmarshalEd25519PrivateKey(cfg.HostIDPrivateKey)
 	if err != nil {
 		return nil, fmt.Errorf("wrong private key: %w", err)
@@ -76,8 +83,21 @@ func New(cfg *Config) (*Peers, error) {
 		}
 		lppHost.Peerstore().AddAddr(info.ID, maddr, peerstore.PermanentAddrTTL)
 	}
+
+	var ctx1 context.Context
+	var stopFun context.CancelFunc
+
+	if len(ctx) > 0 {
+		ctx1, stopFun = context.WithCancel(ctx[0])
+	} else {
+		ctx1, stopFun = context.WithCancel(context.Background())
+	}
+
 	return &Peers{
 		cfg:                  cfg,
+		log:                  general.NewLogger("[peering]", zap.DebugLevel, nil, ""),
+		ctx:                  ctx1,
+		stopFun:              stopFun,
 		host:                 lppHost,
 		peers:                make(map[PeerID]*peerImpl),
 		onReceiveTxBytes:     func(_ PeerID, _ []byte) {},
@@ -123,12 +143,35 @@ func readPeeringConfig() (*Config, error) {
 	return cfg, nil
 }
 
-func NewPeersFromConfig() (*Peers, error) {
+func NewPeersFromConfig(ctx context.Context) (*Peers, error) {
 	cfg, err := readPeeringConfig()
 	if err != nil {
 		return nil, err
 	}
-	return New(cfg)
+	return New(cfg, ctx)
+}
+
+func (ps *Peers) Run() {
+	ps.host.SetStreamHandler(lppProtocolGossip, ps.streamHandler)
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+
+	go func() {
+		ps.log.Infof("started on %v with %d configured peers", ps.host.Addrs(), len(ps.cfg.KnownPeers))
+		_ = ps.log.Sync()
+		wg.Done()
+
+		<-ps.ctx.Done()
+		_ = ps.host.Close()
+	}()
+	wg.Wait()
+}
+
+func (ps *Peers) Stop() {
+	ps.log.Infof("stopping..")
+	_ = ps.log.Sync()
+	ps.stopFun()
 }
 
 func (ps *Peers) PullTransactionsFromRandomPeer(txids ...core.TransactionID) bool {
@@ -171,10 +214,6 @@ func (ps *Peers) GossipTxBytesToPeers(txBytes []byte, except ...PeerID) {
 	}
 }
 
-func (ps *Peers) SelfID() PeerID {
-	return ""
-}
-
 func (ps *Peers) OnReceiveTxBytes(fun func(from PeerID, txBytes []byte)) {
 	ps.mutex.Lock()
 	defer ps.mutex.Unlock()
@@ -187,6 +226,10 @@ func (ps *Peers) OnReceivePullRequest(fun func(from PeerID, txids []core.Transac
 	defer ps.mutex.Unlock()
 
 	ps.onReceivePullRequest = fun
+}
+
+func (ps *Peers) streamHandler(stream network.Stream) {
+	ps.log.Debugf("stream handler invoked. ID = %s", stream.ID())
 }
 
 type peerImpl struct {
