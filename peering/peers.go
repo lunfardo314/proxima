@@ -22,14 +22,9 @@ import (
 type (
 	Config struct {
 		HostIDPrivateKey ed25519.PrivateKey
-		HostIDPublicKey  ed25519.PrivateKey
+		HostIDPublicKey  ed25519.PublicKey
 		HostPort         int
-		KnownPeers       map[string]*PeerAddr // name -> PeerAddr
-	}
-
-	PeerAddr struct {
-		AddrString string
-		MultiAddr  multiaddr.Multiaddr
+		KnownPeers       map[string]multiaddr.Multiaddr // name -> PeerAddr
 	}
 
 	Peers struct {
@@ -59,7 +54,7 @@ func NewPeersDummy() *Peers {
 	}
 }
 
-func NewPeers(cfg *Config) (*Peers, error) {
+func New(cfg *Config) (*Peers, error) {
 	hostIDPrivateKey, err := crypto.UnmarshalEd25519PrivateKey(cfg.HostIDPrivateKey)
 	if err != nil {
 		return nil, fmt.Errorf("wrong private key: %w", err)
@@ -74,12 +69,12 @@ func NewPeers(cfg *Config) (*Peers, error) {
 		return nil, fmt.Errorf("unable create libp2p host: %w", err)
 	}
 
-	for _, addr := range cfg.KnownPeers {
-		info, err := peer.AddrInfoFromP2pAddr(addr.MultiAddr)
+	for _, maddr := range cfg.KnownPeers {
+		info, err := peer.AddrInfoFromP2pAddr(maddr)
 		if err != nil {
 			return nil, fmt.Errorf("can't get multiaddress info: %v", err)
 		}
-		lppHost.Peerstore().AddAddr(info.ID, addr.MultiAddr, peerstore.PermanentAddrTTL)
+		lppHost.Peerstore().AddAddr(info.ID, maddr, peerstore.PermanentAddrTTL)
 	}
 	return &Peers{
 		cfg:                  cfg,
@@ -92,7 +87,7 @@ func NewPeers(cfg *Config) (*Peers, error) {
 
 func readPeeringConfig() (*Config, error) {
 	cfg := &Config{
-		KnownPeers: make(map[string]*PeerAddr),
+		KnownPeers: make(map[string]multiaddr.Multiaddr),
 	}
 	cfg.HostPort = viper.GetInt("peering.host.port")
 	if cfg.HostPort == 0 {
@@ -120,15 +115,10 @@ func readPeeringConfig() (*Config, error) {
 	})
 
 	for _, peerName := range peerNames {
-		p := &PeerAddr{
-			AddrString: "",
-			MultiAddr:  nil,
-		}
-		p.AddrString = viper.GetString("peering.peers." + peerName)
-		if p.MultiAddr, err = multiaddr.NewMultiaddr(p.AddrString); err != nil {
+		addrString := viper.GetString("peering.peers." + peerName)
+		if cfg.KnownPeers[peerName], err = multiaddr.NewMultiaddr(addrString); err != nil {
 			return nil, fmt.Errorf("can't parse multiaddress: %w", err)
 		}
-		cfg.KnownPeers[peerName] = p
 	}
 	return cfg, nil
 }
@@ -138,7 +128,7 @@ func NewPeersFromConfig() (*Peers, error) {
 	if err != nil {
 		return nil, err
 	}
-	return NewPeers(cfg)
+	return New(cfg)
 }
 
 func (ps *Peers) PullTransactionsFromRandomPeer(txids ...core.TransactionID) bool {
