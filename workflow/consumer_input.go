@@ -59,7 +59,7 @@ func (w *Workflow) initPrimaryInputConsumer() {
 		// cleanup downstream on close
 		w.pullConsumer.Stop()
 		w.preValidateConsumer.Stop()
-		w.respondTxQueryConsumer.Stop()
+		w.pullRequestConsumer.Stop()
 
 		w.terminateWG.Done()
 	})

@@ -18,10 +18,11 @@ import (
 
 type (
 	Peers struct {
-		mutex     sync.RWMutex
-		host      host.Host
-		peers     map[PeerID]*peerImpl // except self
-		onReceive func(msgBytes []byte, from PeerID)
+		mutex                sync.RWMutex
+		host                 host.Host
+		peers                map[PeerID]*peerImpl // except self
+		onReceiveTxBytes     func(from PeerID, txBytes []byte)
+		onReceivePullRequest func(from PeerID, txids []core.TransactionID)
 	}
 
 	PeerID string
@@ -34,8 +35,9 @@ const (
 
 func NewPeersDummy() *Peers {
 	return &Peers{
-		peers:     make(map[PeerID]*peerImpl),
-		onReceive: func(_ []byte, _ PeerID) {},
+		peers:                make(map[PeerID]*peerImpl),
+		onReceiveTxBytes:     func(_ PeerID, _ []byte) {},
+		onReceivePullRequest: func(_ PeerID, _ []core.TransactionID) {},
 	}
 }
 
@@ -54,9 +56,10 @@ func NewPeers(idPrivateKey ed25519.PrivateKey, port int) (*Peers, error) {
 		return nil, fmt.Errorf("unable create libp2p host: %w", err)
 	}
 	return &Peers{
-		host:      lppHost,
-		peers:     make(map[PeerID]*peerImpl),
-		onReceive: func(_ []byte, _ PeerID) {},
+		host:                 lppHost,
+		peers:                make(map[PeerID]*peerImpl),
+		onReceiveTxBytes:     func(_ PeerID, _ []byte) {},
+		onReceivePullRequest: func(_ PeerID, _ []core.TransactionID) {},
 	}, nil
 }
 
@@ -81,7 +84,7 @@ func (ps *Peers) PullTransactionsFromRandomPeer(txids ...core.TransactionID) boo
 	if len(ps.peers) == 0 {
 		return false
 	}
-	msgBytes := EncodePeerMessageQueryTransactions(txids...)
+	msgBytes := encodePeerMessageQueryTransactions(txids...)
 	peers := util.Values(ps.peers)
 	p := peers[rand.Intn(len(peers))]
 	return p.sendMsgBytes(msgBytes)
@@ -96,11 +99,11 @@ func (ps *Peers) SendTxBytesToPeer(txBytes []byte, peerID PeerID) bool {
 	if !ok {
 		return false
 	}
-	return peer.sendMsgBytes(EncodePeerMessageTxBytes(txBytes))
+	return peer.sendMsgBytes(encodePeerMessageTxBytes(txBytes))
 }
 
 func (ps *Peers) GossipTxBytesToPeers(txBytes []byte, except ...PeerID) {
-	msgBytes := EncodePeerMessageTxBytes(txBytes)
+	msgBytes := encodePeerMessageTxBytes(txBytes)
 
 	ps.mutex.RLock()
 	defer ps.mutex.RUnlock()
@@ -118,8 +121,18 @@ func (ps *Peers) SelfID() PeerID {
 	return ""
 }
 
-func (ps *Peers) OnReceiveMessage(fun func(msgBytes []byte, from PeerID)) {
-	ps.onReceive = fun
+func (ps *Peers) OnReceiveTxBytes(fun func(from PeerID, txBytes []byte)) {
+	ps.mutex.Lock()
+	defer ps.mutex.Unlock()
+
+	ps.onReceiveTxBytes = fun
+}
+
+func (ps *Peers) OnReceivePullRequest(fun func(from PeerID, txids []core.TransactionID)) {
+	ps.mutex.Lock()
+	defer ps.mutex.Unlock()
+
+	ps.onReceivePullRequest = fun
 }
 
 type peerImpl struct {

@@ -5,7 +5,7 @@ import (
 	"github.com/lunfardo314/proxima/peering"
 )
 
-// RespondTxQueryConsumer:
+// PullRequestConsumer:
 // - takes pull requests for transaction from peering as inputs
 // - looks up for the transaction into the store
 // - sends it to the peer if found, otherwise ignores
@@ -13,31 +13,31 @@ import (
 // The reason to have it as a separate consumer is unbounded input queue and intensive DB lookups
 // which may become a bottleneck in high TPS, e.g. during node syncing
 
-const RespondTxQueryConsumerName = "txrespond"
+const PullRequestConsumerName = "pullRequest"
 
 type (
-	RespondTxQueryInputData struct {
+	PullRequestData struct {
 		TxID   core.TransactionID
 		PeerID peering.PeerID
 	}
 
-	RespondTxQueryConsumer struct {
-		*Consumer[RespondTxQueryInputData]
+	PullRequestConsumer struct {
+		*Consumer[PullRequestData]
 	}
 )
 
 func (w *Workflow) initRespondTxQueryConsumer() {
-	c := &RespondTxQueryConsumer{
-		Consumer: NewConsumer[RespondTxQueryInputData](RespondTxQueryConsumerName, w),
+	c := &PullRequestConsumer{
+		Consumer: NewConsumer[PullRequestData](PullRequestConsumerName, w),
 	}
 	c.AddOnConsume(c.consume)
 	c.AddOnClosed(func() {
 		w.terminateWG.Done()
 	})
-	w.respondTxQueryConsumer = c
+	w.pullRequestConsumer = c
 }
 
-func (c *RespondTxQueryConsumer) consume(inp RespondTxQueryInputData) {
+func (c *PullRequestConsumer) consume(inp PullRequestData) {
 	if txBytes := c.glb.UTXOTangle().TxBytesStore().GetTxBytes(&inp.TxID); len(txBytes) > 0 {
 		c.glb.peers.SendTxBytesToPeer(txBytes, inp.PeerID)
 	}

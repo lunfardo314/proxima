@@ -11,7 +11,7 @@ import (
 	"github.com/lunfardo314/unitrie/common"
 )
 
-func EncodePeerMessageQueryTransactions(txids ...core.TransactionID) []byte {
+func encodePeerMessageQueryTransactions(txids ...core.TransactionID) []byte {
 	util.Assertf(len(txids) < math.MaxUint16, "too many transaction IDs")
 
 	var buf bytes.Buffer
@@ -25,7 +25,7 @@ func EncodePeerMessageQueryTransactions(txids ...core.TransactionID) []byte {
 	return buf.Bytes()
 }
 
-func DecodePeerMessageQueryTransactions(data []byte) ([]core.TransactionID, error) {
+func decodePeerMessageQueryTransactions(data []byte) ([]core.TransactionID, error) {
 	if len(data) < 3 || data[0] != PeerMessageTypeQueryTransactions {
 		return nil, fmt.Errorf("not a QueryTransactions message")
 	}
@@ -43,7 +43,7 @@ func DecodePeerMessageQueryTransactions(data []byte) ([]core.TransactionID, erro
 	return ret, nil
 }
 
-func EncodePeerMessageTxBytes(txBytes []byte) []byte {
+func encodePeerMessageTxBytes(txBytes []byte) []byte {
 	util.Assertf(len(txBytes) < math.MaxUint16, "too long transaction bytes")
 
 	var buf bytes.Buffer
@@ -55,7 +55,7 @@ func EncodePeerMessageTxBytes(txBytes []byte) []byte {
 	return buf.Bytes()
 }
 
-func DecodePeerMessageTxBytes(data []byte) ([]byte, error) {
+func decodePeerMessageTxBytes(data []byte) ([]byte, error) {
 	if len(data) < 3 || data[0] != PeerMessageTypeTxBytes {
 		return nil, fmt.Errorf("not a TxBytes message")
 	}

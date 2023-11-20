@@ -34,16 +34,16 @@ type (
 		peers           *peering.Peers
 		debugCounters   *testutil.SyncCounters
 
-		primaryInputConsumer   *PrimaryConsumer
-		preValidateConsumer    *PreValidateConsumer
-		solidifyConsumer       *SolidifyConsumer
-		pullConsumer           *PullTxConsumer
-		validateConsumer       *ValidateConsumer
-		appendTxConsumer       *AppendTxConsumer
-		dropTxConsumer         *DropTxConsumer
-		eventsConsumer         *EventsConsumer
-		respondTxQueryConsumer *RespondTxQueryConsumer
-		txOutboundConsumer     *TxOutboundConsumer
+		primaryInputConsumer *PrimaryConsumer
+		preValidateConsumer  *PreValidateConsumer
+		solidifyConsumer     *SolidifyConsumer
+		pullConsumer         *PullTxConsumer
+		validateConsumer     *ValidateConsumer
+		appendTxConsumer     *AppendTxConsumer
+		dropTxConsumer       *DropTxConsumer
+		eventsConsumer       *EventsConsumer
+		pullRequestConsumer  *PullRequestConsumer
+		txOutboundConsumer   *TxOutboundConsumer
 
 		handlersMutex sync.RWMutex
 		eventHandlers map[eventtype.EventCode][]func(any)
@@ -88,7 +88,28 @@ func New(ut *utangle.UTXOTangle, peers *peering.Peers, configOptions ...ConfigOp
 	ret.initRespondTxQueryConsumer()
 	ret.initTxOutboundConsumer()
 
-	ret.peers.OnReceiveMessage(ret.forwardPeerMessage)
+	ret.peers.OnReceiveTxBytes(func(from peering.PeerID, txBytes []byte) {
+		if !ret.working.Load() {
+			return
+		}
+		if err := ret.TransactionIn(txBytes, WithTransactionSourcePeer(from)); err != nil {
+			ret.log.Debugf("wrong transaction bytes")
+			return
+		}
+	})
+
+	ret.peers.OnReceivePullRequest(func(from peering.PeerID, txids []core.TransactionID) {
+		if !ret.working.Load() {
+			return
+		}
+		for _, txid := range txids {
+			ret.pullRequestConsumer.Push(PullRequestData{
+				TxID:   txid,
+				PeerID: from,
+			})
+		}
+	})
+
 	return ret
 }
 
@@ -120,7 +141,7 @@ func (w *Workflow) Start(parentCtx ...context.Context) {
 		w.appendTxConsumer.Start()
 		w.dropTxConsumer.Start()
 		w.eventsConsumer.Start()
-		w.respondTxQueryConsumer.Start()
+		w.pullRequestConsumer.Start()
 		w.txOutboundConsumer.Start()
 
 		w.startWG.Done()
@@ -204,40 +225,4 @@ func (w *Workflow) DumpPending() *lines.Lines {
 
 func (w *Workflow) DumpUnresolvedDependencies() *lines.Lines {
 	return w.solidifyConsumer.DumpUnresolvedDependencies()
-}
-
-func (w *Workflow) forwardPeerMessage(msgBytes []byte, from peering.PeerID) {
-	if !w.working.Load() {
-		return
-	}
-	if len(msgBytes) == 0 {
-		return
-	}
-	switch msgBytes[0] {
-	case peering.PeerMessageTypeQueryTransactions:
-		txids, err := peering.DecodePeerMessageQueryTransactions(msgBytes)
-		if err != nil {
-			w.log.Debugf("wrong tx query message from peer %s", from)
-			return
-		}
-		for _, txid := range txids {
-			w.respondTxQueryConsumer.Push(RespondTxQueryInputData{
-				TxID:   txid,
-				PeerID: from,
-			})
-		}
-	case peering.PeerMessageTypeTxBytes:
-		txBytes, err := peering.DecodePeerMessageTxBytes(msgBytes)
-		if err != nil {
-			w.log.Debugf("wrong txBytes message from peer %s", from)
-			return
-		}
-		if err = w.TransactionIn(txBytes, WithTransactionSourcePeer(from)); err != nil {
-			w.log.Debugf("wrong transaction bytes")
-			return
-		}
-	default:
-		w.log.Debugf("wrong peer message type")
-
-	}
 }
