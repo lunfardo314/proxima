@@ -12,6 +12,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/proxima/util/countdown"
 	"github.com/multiformats/go-multiaddr"
 	"github.com/stretchr/testify/require"
 )
@@ -140,28 +141,75 @@ func TestHeartbeat(t *testing.T) {
 }
 
 func TestSendMsg(t *testing.T) {
-	const (
-		numHosts = 5
-		trace    = false
-	)
-	hosts := makeHosts(t, numHosts, trace)
+	t.Run("1", func(t *testing.T) {
+		const (
+			numHosts = 5
+			trace    = false
+		)
+		hosts := makeHosts(t, numHosts, trace)
 
-	for _, h := range hosts {
-		h1 := h
-		h.OnReceiveTxBytes(func(from peer.ID, txBytes []byte) {
-			t.Logf("host %s received %d bytes from %s", h1.host.ID().String(), len(txBytes), from.String())
-		})
-	}
-	for _, h := range hosts {
-		h.Run()
-	}
-	time.Sleep(1 * time.Second)
-	for i, id := range hosts[0].getPeerIDs() {
-		ok := hosts[0].SendTxBytesToPeer(id, bytes.Repeat([]byte{0xff}, i+5))
-		require.True(t, ok)
-	}
-	time.Sleep(1 * time.Second)
-	for _, h := range hosts {
-		h.Stop()
-	}
+		for _, h := range hosts {
+			h1 := h
+			h.OnReceiveTxBytes(func(from peer.ID, txBytes []byte) {
+				t.Logf("host %s received %d bytes from %s", h1.host.ID().String(), len(txBytes), from.String())
+			})
+		}
+		for _, h := range hosts {
+			h.Run()
+		}
+		time.Sleep(1 * time.Second)
+		for i, id := range hosts[0].getPeerIDs() {
+			ok := hosts[0].SendTxBytesToPeer(id, bytes.Repeat([]byte{0xff}, i+5))
+			require.True(t, ok)
+		}
+		time.Sleep(1 * time.Second)
+		for _, h := range hosts {
+			h.Stop()
+		}
+	})
+	t.Run("2", func(t *testing.T) {
+		const (
+			numHosts = 2
+			trace    = false
+			numMsg   = 72 // 71 works, 72 does not work
+		)
+		hosts := makeHosts(t, numHosts, trace)
+		counter := countdown.New(numHosts*numMsg*(numHosts-1), 5*time.Second)
+		counter1 := 0
+		m := make(map[peer.ID]int)
+		for _, h := range hosts {
+			h1 := h
+			h1.OnReceiveTxBytes(func(from peer.ID, txBytes []byte) {
+				counter1++
+				counter.Tick()
+				m[from] = m[from] + 1
+			})
+		}
+		for _, h := range hosts {
+			h.Run()
+		}
+		time.Sleep(1 * time.Second)
+
+		count := 0
+		for _, h := range hosts {
+			ids := h.getPeerIDs()
+			t.Logf("num peers: %d", len(ids))
+			for _, id := range ids {
+				for i := 0; i < numMsg; i++ {
+					ok := h.SendTxBytesToPeer(id, []byte{0xff, 0xff})
+					require.True(t, ok)
+					count++
+				}
+			}
+			t.Logf("count = %d", count)
+		}
+		err := counter.Wait()
+		t.Logf("counter1 = %d", counter1)
+		for _, h := range hosts {
+			h.Stop()
+		}
+		t.Logf("%+v", m)
+		require.NoError(t, err)
+	})
+
 }

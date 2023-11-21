@@ -191,11 +191,16 @@ func (ps *Peers) Run() {
 func (ps *Peers) Stop() {
 	ps.log.Infof("stopping..")
 	_ = ps.log.Sync()
+	_ = ps.host.Close()
 	ps.stopFun()
 }
 
 func (ps *Peers) SetTrace(b bool) {
 	ps.traceFlag.Store(b)
+}
+
+func (ps *Peers) ToggleTrace() {
+	ps.traceFlag.Store(!ps.traceFlag.Load())
 }
 
 func (ps *Peers) trace(format string, args ...any) {
