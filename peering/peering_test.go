@@ -142,7 +142,7 @@ func TestHeartbeat(t *testing.T) {
 func TestSendMsg(t *testing.T) {
 	const (
 		numHosts = 5
-		trace    = true
+		trace    = false
 	)
 	hosts := makeHosts(t, numHosts, trace)
 
@@ -155,11 +155,12 @@ func TestSendMsg(t *testing.T) {
 	for _, h := range hosts {
 		h.Run()
 	}
+	time.Sleep(1 * time.Second)
 	for i, id := range hosts[0].getPeerIDs() {
 		ok := hosts[0].SendTxBytesToPeer(id, bytes.Repeat([]byte{0xff}, i+5))
 		require.True(t, ok)
 	}
-	time.Sleep(10 * time.Second)
+	time.Sleep(1 * time.Second)
 	for _, h := range hosts {
 		h.Stop()
 	}

@@ -50,7 +50,7 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 	msgData, err := readFrame(stream)
 	if err != nil || len(msgData) != 8 {
 		if err == nil {
-			err = errors.New("exactly 8 bytes expected")
+			err = errors.New("exactly 8 bytes of clock value expected")
 		}
 		ps.log.Errorf("error while reading message from peer %s: %v", id.String(), err)
 		return
@@ -68,9 +68,23 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 		return
 	}
 
+	aliveBefore := p.isAlive()
+
 	p.mutex.Lock()
 	p.lastActivity = time.Now()
 	p.mutex.Unlock()
+
+	aliveAfter := p.isAlive()
+
+	if aliveBefore == aliveAfter {
+		// status didn't change
+		return
+	}
+	if !aliveBefore {
+		ps.log.Infof("host %s connected to peer %s (%s)", ps.host.ID(), id, ps.PeerName(id))
+		return
+	}
+	ps.log.Infof("host %s lost connection with peer %s (%s)", ps.host.ID(), id, ps.PeerName(id))
 }
 
 func (ps *Peers) sendHeartbeatToPeer(id peer.ID) {

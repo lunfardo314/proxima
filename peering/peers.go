@@ -178,7 +178,7 @@ func (ps *Peers) Run() {
 	wg.Add(1)
 
 	go func() {
-		ps.log.Infof("started on %v with %d configured peers", ps.host.Addrs(), len(ps.cfg.KnownPeers))
+		ps.log.Infof("host %s started on %v with %d configured peers", ps.host.ID(), ps.host.Addrs(), len(ps.cfg.KnownPeers))
 		_ = ps.log.Sync()
 		wg.Done()
 
@@ -201,36 +201,7 @@ func (ps *Peers) SetTrace(b bool) {
 func (ps *Peers) trace(format string, args ...any) {
 	if ps.traceFlag.Load() {
 		ps.log.Infof("TRACE "+format, util.EvalLazyArgs(args...)...)
-	}
-}
-
-func (ps *Peers) PullTransactionsFromRandomPeer(txids ...core.TransactionID) bool {
-	ps.mutex.RLock()
-	defer ps.mutex.RUnlock()
-
-	all := util.Keys(ps.peers)
-	for i := 0; i < len(all); i++ {
-		rndID := all[rand.Intn(len(all))]
-		if ps.peers[rndID].isAlive() {
-			ps.sendPullToPeer(rndID, txids...)
-			return true
-		}
-	}
-	return false
-}
-
-func (ps *Peers) GossipTxBytesToPeers(txBytes []byte, except ...peer.ID) {
-	ps.mutex.RLock()
-	defer ps.mutex.RUnlock()
-
-	for id, p := range ps.peers {
-		if len(except) > 0 && id == except[0] {
-			continue
-		}
-		if !p.isAlive() {
-			continue
-		}
-		ps.SendTxBytesToPeer(id, txBytes)
+		_ = ps.log.Sync()
 	}
 }
 
@@ -287,19 +258,6 @@ func (ps *Peers) gossipStreamHandler(stream network.Stream) {
 	ps.onReceiveGossip(id, txBytes)
 }
 
-// SendTxBytesToPeer TODO better keep stream open
-func (ps *Peers) SendTxBytesToPeer(id peer.ID, txBytes []byte) bool {
-	ps.trace("SendTxBytesToPeer to %s, length: %d", ps.PeerName(id), len(txBytes))
-	stream, err := ps.host.NewStream(ps.ctx, id, lppProtocolGossip)
-	if err != nil {
-		ps.trace("SendTxBytesToPeer to %s: %v", ps.PeerName(id), err)
-		return false
-	}
-	defer stream.Close()
-
-	return writeFrame(stream, txBytes) == nil
-}
-
 func (ps *Peers) pullStreamHandler(stream network.Stream) {
 	id := stream.Conn().RemotePeer()
 	p := ps.getPeer(id)
@@ -325,7 +283,6 @@ func (ps *Peers) pullStreamHandler(stream network.Stream) {
 	ps.onReceivePull(id, txLst)
 }
 
-// sendPullToPeer TODO better keep stream open
 func (ps *Peers) sendPullToPeer(id peer.ID, txLst ...core.TransactionID) {
 	stream, err := ps.host.NewStream(ps.ctx, id, lppProtocolPull)
 	if err != nil {
@@ -358,4 +315,46 @@ func (ps *Peers) PeerName(id peer.ID) string {
 		return "(unknown peer)"
 	}
 	return p.name
+}
+
+func (ps *Peers) PullTransactionsFromRandomPeer(txids ...core.TransactionID) bool {
+	ps.mutex.RLock()
+	defer ps.mutex.RUnlock()
+
+	all := util.Keys(ps.peers)
+	for i := 0; i < len(all); i++ {
+		rndID := all[rand.Intn(len(all))]
+		if ps.peers[rndID].isAlive() {
+			ps.sendPullToPeer(rndID, txids...)
+			return true
+		}
+	}
+	return false
+}
+
+func (ps *Peers) GossipTxBytesToPeers(txBytes []byte, except ...peer.ID) {
+	ps.mutex.RLock()
+	defer ps.mutex.RUnlock()
+
+	for id, p := range ps.peers {
+		if len(except) > 0 && id == except[0] {
+			continue
+		}
+		if !p.isAlive() {
+			continue
+		}
+		ps.SendTxBytesToPeer(id, txBytes)
+	}
+}
+
+func (ps *Peers) SendTxBytesToPeer(id peer.ID, txBytes []byte) bool {
+	ps.trace("SendTxBytesToPeer to %s, length: %d (host %s)", id, len(txBytes), ps.host.ID())
+	stream, err := ps.host.NewStream(ps.ctx, id, lppProtocolGossip)
+	if err != nil {
+		ps.trace("SendTxBytesToPeer to %s: %v (host %s)", id, err, ps.host.ID())
+		return false
+	}
+	defer stream.Close()
+
+	return writeFrame(stream, txBytes) == nil
 }

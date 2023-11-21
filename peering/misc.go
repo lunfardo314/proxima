@@ -14,8 +14,14 @@ import (
 	"github.com/lunfardo314/unitrie/common"
 )
 
+// MaxPayloadSize caps the message size. It includes 4 bytes of the size
+const (
+	MaxPayloadSize      = math.MaxUint16 - 4
+	MaxNumTransactionID = (MaxPayloadSize - 2) / core.TransactionIDLength
+)
+
 func encodePeerMsgPull(txids ...core.TransactionID) []byte {
-	util.Assertf(len(txids) < math.MaxUint16, "too many transaction IDs")
+	util.Assertf(len(txids) <= MaxNumTransactionID, "number of transactions IDS %d exceed maximum %d", len(txids), MaxNumTransactionID)
 
 	var buf bytes.Buffer
 	var size [2]byte
@@ -29,7 +35,7 @@ func encodePeerMsgPull(txids ...core.TransactionID) []byte {
 
 func decodePeerMsgPull(data []byte) ([]core.TransactionID, error) {
 	if len(data) < 2 {
-		return nil, fmt.Errorf("not a QueryTransactions message")
+		return nil, fmt.Errorf("not a pull message")
 	}
 	ret := make([]core.TransactionID, binary.BigEndian.Uint16(data[:2]))
 	rdr := bytes.NewReader(data[2:])
@@ -55,6 +61,9 @@ func readFrame(stream network.Stream) ([]byte, error) {
 		return nil, fmt.Errorf("failed to read frame size prefix: %v", err)
 	}
 	size := binary.BigEndian.Uint32(sizeBuf[:])
+	if size > MaxPayloadSize {
+		return nil, fmt.Errorf("payload size %d exceeds maximum %d bytes", size, MaxPayloadSize)
+	}
 	if size == 0 {
 		return nil, nil
 	}
@@ -70,7 +79,9 @@ func readFrame(stream network.Stream) ([]byte, error) {
 }
 
 func writeFrame(stream network.Stream, payload []byte) error {
-	util.Assertf(len(payload) < math.MaxUint32, "len(payload) < math.MaxUint32")
+	if len(payload) > MaxPayloadSize {
+		return fmt.Errorf("payload size %d exceeds maximum %d bytes", len(payload), MaxPayloadSize)
+	}
 	var sizeBuf [4]byte
 
 	binary.BigEndian.PutUint32(sizeBuf[:], uint32(len(payload)))
