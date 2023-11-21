@@ -10,6 +10,8 @@ import (
 	"go.uber.org/atomic"
 )
 
+const traceHeartbeat = false
+
 // clockTolerance is how big the difference between local and remote clocks is tolerated
 const clockTolerance = 5 * time.Second // for testing only
 
@@ -34,7 +36,9 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 	defer stream.Close()
 
 	id := stream.Conn().RemotePeer()
-	ps.trace("heartbeatStreamHandler invoked in %s from %s", ps.host.ID().String(), id.String())
+	if traceHeartbeat {
+		ps.trace("heartbeatStreamHandler invoked in %s from %s", ps.host.ID().String(), id.String())
+	}
 
 	p := ps.getPeer(id)
 	if p == nil {
@@ -70,7 +74,9 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 }
 
 func (ps *Peers) sendHeartbeatToPeer(id peer.ID) {
-	ps.trace("sendHeartbeatToPeer from %s to %s", ps.host.ID().String(), id.String())
+	if traceHeartbeat {
+		ps.trace("sendHeartbeatToPeer from %s to %s", ps.host.ID().String(), id.String())
+	}
 
 	stream, err := ps.host.NewStream(ps.ctx, id, lppProtocolHeartbeat)
 	if err != nil {

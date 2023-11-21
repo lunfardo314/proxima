@@ -289,8 +289,10 @@ func (ps *Peers) gossipStreamHandler(stream network.Stream) {
 
 // SendTxBytesToPeer TODO better keep stream open
 func (ps *Peers) SendTxBytesToPeer(id peer.ID, txBytes []byte) bool {
+	ps.trace("SendTxBytesToPeer to %s, length: %d", ps.PeerName(id), len(txBytes))
 	stream, err := ps.host.NewStream(ps.ctx, id, lppProtocolGossip)
 	if err != nil {
+		ps.trace("SendTxBytesToPeer to %s: %v", ps.PeerName(id), err)
 		return false
 	}
 	defer stream.Close()
@@ -348,4 +350,12 @@ func (ps *Peers) PeerIsAlive(id peer.ID) bool {
 		return false
 	}
 	return p.isAlive()
+}
+
+func (ps *Peers) PeerName(id peer.ID) string {
+	p := ps.getPeer(id)
+	if p == nil {
+		return "(unknown peer)"
+	}
+	return p.name
 }

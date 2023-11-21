@@ -1,6 +1,7 @@
 package peering
 
 import (
+	"bytes"
 	"crypto/ed25519"
 	"encoding/hex"
 	"fmt"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/core/crypto"
+	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/multiformats/go-multiaddr"
 	"github.com/stretchr/testify/require"
@@ -105,27 +107,60 @@ func TestBasic(t *testing.T) {
 	})
 }
 
+func makeHosts(t *testing.T, nHosts int, trace bool) []*Peers {
+	hosts := make([]*Peers, nHosts)
+	var err error
+	for i := 0; i < nHosts; i++ {
+		cfg := makeConfigFor(t, nHosts, i)
+		hosts[i], err = New(cfg)
+		require.NoError(t, err)
+		hosts[i].SetTrace(trace)
+	}
+	return hosts
+}
+
 func TestHeartbeat(t *testing.T) {
 	const (
 		numHosts = 5
 		trace    = false
 	)
-	peers := make([]*Peers, numHosts)
-	var err error
-	for i := 0; i < numHosts; i++ {
-		cfg := makeConfigFor(t, numHosts, i)
-		peers[i], err = New(cfg)
-		require.NoError(t, err)
-		peers[i].SetTrace(trace)
-		peers[i].Run()
+	hosts := makeHosts(t, numHosts, trace)
+	for _, h := range hosts {
+		h.Run()
 	}
 	time.Sleep(2 * time.Second)
-	for _, ps := range peers {
+	for _, ps := range hosts {
 		for _, id := range ps.getPeerIDs() {
 			require.True(t, ps.PeerIsAlive(id))
 		}
 	}
-	for _, ps := range peers {
+	for _, ps := range hosts {
 		ps.Stop()
+	}
+}
+
+func TestSendMsg(t *testing.T) {
+	const (
+		numHosts = 5
+		trace    = true
+	)
+	hosts := makeHosts(t, numHosts, trace)
+
+	for _, h := range hosts {
+		h1 := h
+		h.OnReceiveTxBytes(func(from peer.ID, txBytes []byte) {
+			t.Logf("host %s received %d bytes from %s", h1.host.ID().String(), len(txBytes), from.String())
+		})
+	}
+	for _, h := range hosts {
+		h.Run()
+	}
+	for i, id := range hosts[0].getPeerIDs() {
+		ok := hosts[0].SendTxBytesToPeer(id, bytes.Repeat([]byte{0xff}, i+5))
+		require.True(t, ok)
+	}
+	time.Sleep(10 * time.Second)
+	for _, h := range hosts {
+		h.Stop()
 	}
 }
