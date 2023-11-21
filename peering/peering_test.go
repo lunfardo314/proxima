@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/core/crypto"
@@ -14,7 +15,7 @@ import (
 )
 
 var (
-	privateKey = []string{
+	allPrivateKeys = []string{
 		"136381bd4dea7b2f0fa6c6ca14ee660dc7929975b47e6cdb85adee9e26032a810530b790e0e7de626f36e20ba656f09e324c68203de899d0daf9f98fcb3cf684",
 		"a66f8768224b241fe4dd2e4c00132d029452468846b149f2c2c4d894805964c8e63df08176c9443f0fe015d3582635d3d5a02e33765fbb3a2995db9cf3bbe606",
 		"3a2ed3c4f738a06e9543f80e032fd870be5e524585e0144f2499d1a28bc4797902e2a7a85bd158469adae3294a615e17ef49e72642c4eb58ff00d92301b9bb88",
@@ -36,27 +37,23 @@ func privateKeyFromString(k string) ed25519.PrivateKey {
 	return bin
 }
 
-func publicKeyFromString(k string) ed25519.PublicKey {
-	bin, err := hex.DecodeString(k)
-	util.AssertNoError(err)
-	return bin
-}
-
 func multiAddrString(i int, port int) string {
 	return fmt.Sprintf("/ip4/127.0.0.1/tcp/%d/p2p/%s", port, hostID[i])
 }
 
-func makeConfigFor(t *testing.T, hostIdx int) *Config {
-	require.True(t, hostIdx >= 0 && hostIdx < len(hostID))
+func makeConfigFor(t *testing.T, n, hostIdx int) *Config {
+	require.True(t, n > 0 && n <= len(allPrivateKeys))
+	require.True(t, hostIdx >= 0 && hostIdx < n)
 
-	pk := privateKeyFromString(privateKey[hostIdx])
+	pk := privateKeyFromString(allPrivateKeys[hostIdx])
 	cfg := &Config{
 		HostIDPrivateKey: pk,
 		HostIDPublicKey:  pk.Public().(ed25519.PublicKey),
 		HostPort:         beginPort + hostIdx,
 		KnownPeers:       make(map[string]multiaddr.Multiaddr),
 	}
-	for i := range hostID {
+	ids := hostID[:n]
+	for i := range ids {
 		if i == hostIdx {
 			continue
 		}
@@ -69,7 +66,7 @@ func makeConfigFor(t *testing.T, hostIdx int) *Config {
 
 func TestGenData(t *testing.T) {
 	t.Run("gen ma", func(t *testing.T) {
-		for i, s := range privateKey {
+		for i, s := range allPrivateKeys {
 			privKey, err := crypto.UnmarshalEd25519PrivateKey(privateKeyFromString(s))
 			util.AssertNoError(err)
 			host, err := libp2p.New(libp2p.Identity(privKey))
@@ -90,7 +87,7 @@ const beginPort = 4000
 func TestBasic(t *testing.T) {
 	t.Run("1", func(t *testing.T) {
 		const hostIndex = 2
-		cfg := makeConfigFor(t, hostIndex)
+		cfg := makeConfigFor(t, 5, hostIndex)
 		t.Logf("host index: %d, host port: %d", hostIndex, beginPort+hostIndex)
 		for name, ma := range cfg.KnownPeers {
 			t.Logf("%s : %s", name, ma.String())
@@ -100,10 +97,35 @@ func TestBasic(t *testing.T) {
 	})
 	t.Run("2", func(t *testing.T) {
 		const hostIndex = 2
-		cfg := makeConfigFor(t, hostIndex)
+		cfg := makeConfigFor(t, 5, hostIndex)
 		peers, err := New(cfg)
 		require.NoError(t, err)
 		peers.Run()
 		peers.Stop()
 	})
+}
+
+func TestHeartbeat(t *testing.T) {
+	const (
+		numHosts = 5
+		trace    = false
+	)
+	peers := make([]*Peers, numHosts)
+	var err error
+	for i := 0; i < numHosts; i++ {
+		cfg := makeConfigFor(t, numHosts, i)
+		peers[i], err = New(cfg)
+		require.NoError(t, err)
+		peers[i].SetTrace(trace)
+		peers[i].Run()
+	}
+	time.Sleep(2 * time.Second)
+	for _, ps := range peers {
+		for _, id := range ps.getPeerIDs() {
+			require.True(t, ps.PeerIsAlive(id))
+		}
+	}
+	for _, ps := range peers {
+		ps.Stop()
+	}
 }
