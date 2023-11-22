@@ -73,7 +73,7 @@ func TestHeartbeat(t *testing.T) {
 	for _, h := range hosts {
 		h.Run()
 	}
-	time.Sleep(2 * time.Second)
+	time.Sleep(3 * time.Second)
 	for _, ps := range hosts {
 		for _, id := range ps.getPeerIDs() {
 			require.True(t, ps.PeerIsAlive(id))
@@ -120,19 +120,17 @@ func TestSendMsg(t *testing.T) {
 	t.Run("2-from one host", func(t *testing.T) {
 		const (
 			numHosts = 2
-			trace    = true
-			numMsg   = 72 // 71 works, 72 does not work
+			trace    = false
+			numMsg   = 1000
 		)
 		hosts := makeHosts(t, numHosts, trace)
 		counter := countdown.New(numMsg*(numHosts-1), 2*time.Second)
 		counter1 := 0
-		m := make(map[peer.ID]int)
 		for _, h := range hosts {
 			h1 := h
 			h1.OnReceiveTxBytes(func(from peer.ID, txBytes []byte) {
 				counter1++
 				counter.Tick()
-				m[from] = m[from] + 1
 			})
 		}
 		for _, h := range hosts {
@@ -156,25 +154,22 @@ func TestSendMsg(t *testing.T) {
 		for _, h := range hosts {
 			h.Stop()
 		}
-		t.Logf("%+v", m)
 		require.NoError(t, err)
 	})
 	t.Run("3-all hosts", func(t *testing.T) {
 		const (
-			numHosts = 2
+			numHosts = 5
 			trace    = false
-			numMsg   = 72 // 71 works, 72 does not work
+			numMsg   = 721 // 720 pass, 721 does not
 		)
 		hosts := makeHosts(t, numHosts, trace)
-		counter := countdown.New(numHosts*numMsg*(numHosts-1), 5*time.Second)
+		counter := countdown.New(numHosts*numMsg*(numHosts-1), 7*time.Second)
 		counter1 := 0
-		m := make(map[peer.ID]int)
 		for _, h := range hosts {
 			h1 := h
 			h1.OnReceiveTxBytes(func(from peer.ID, txBytes []byte) {
 				counter1++
 				counter.Tick()
-				m[from] = m[from] + 1
 			})
 		}
 		for _, h := range hosts {
@@ -200,8 +195,39 @@ func TestSendMsg(t *testing.T) {
 		for _, h := range hosts {
 			h.Stop()
 		}
-		t.Logf("%+v", m)
 		require.NoError(t, err)
 	})
+	t.Run("4-all hosts gossip", func(t *testing.T) {
+		const (
+			numHosts = 5
+			trace    = false
+			numMsg   = 900
+		)
+		hosts := makeHosts(t, numHosts, trace)
+		counter := countdown.New(numHosts*(numHosts-1)*numMsg, 7*time.Second)
+		counter1 := 0
+		for _, h := range hosts {
+			h1 := h
+			h1.OnReceiveTxBytes(func(from peer.ID, txBytes []byte) {
+				counter1++
+				counter.Tick()
+			})
+		}
+		for _, h := range hosts {
+			h.Run()
+		}
+		time.Sleep(1 * time.Second)
 
+		for _, h := range hosts {
+			for i := 0; i < numMsg; i++ {
+				h.GossipTxBytesToPeers([]byte{0xff, 0xff})
+			}
+		}
+		err := counter.Wait()
+		t.Logf("counter1 = %d", counter1)
+		for _, h := range hosts {
+			h.Stop()
+		}
+		require.NoError(t, err)
+	})
 }

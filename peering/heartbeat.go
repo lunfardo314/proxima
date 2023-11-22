@@ -60,8 +60,6 @@ func checkRemoteClockTolerance(remoteTime time.Time) (bool, bool) {
 // heartbeat protocol is used to monitor if peer is alive and to ensure clocks are synced within tolerance interval
 
 func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
-	defer stream.Close()
-
 	id := stream.Conn().RemotePeer()
 	if traceHeartbeat {
 		ps.trace("heartbeatStreamHandler invoked in %s from %s", ps.host.ID().String(), id.String())
@@ -71,6 +69,7 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 	if p == nil {
 		// peer not found
 		ps.log.Warnf("unknown peer %s", id.String())
+		_ = stream.Reset()
 		return
 	}
 
@@ -80,8 +79,10 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 			err = errors.New("exactly 8 bytes of clock value expected")
 		}
 		ps.log.Errorf("error while reading message from peer %s: %v", id.String(), err)
+		_ = stream.Reset()
 		return
 	}
+	defer stream.Close()
 
 	remoteClock := time.Unix(0, int64(binary.BigEndian.Uint64(msgData)))
 	if clockOk, behind := checkRemoteClockTolerance(remoteClock); !clockOk {
