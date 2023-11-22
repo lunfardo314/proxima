@@ -38,7 +38,8 @@ type (
 		cfg             *Config
 		log             *zap.SugaredLogger
 		ctx             context.Context
-		stopFun         context.CancelFunc
+		stopHeartbeat   atomic.Bool
+		stopOnce        sync.Once
 		host            host.Host
 		peers           map[peer.ID]*Peer // except self
 		onReceiveGossip func(from peer.ID, txBytes []byte)
@@ -68,7 +69,7 @@ func NewPeersDummy() *Peers {
 	}
 }
 
-func New(cfg *Config, ctx ...context.Context) (*Peers, error) {
+func New(cfg *Config, ctx context.Context) (*Peers, error) {
 	hostIDPrivateKey, err := crypto.UnmarshalEd25519PrivateKey(cfg.HostIDPrivateKey)
 	if err != nil {
 		return nil, fmt.Errorf("wrong private key: %w", err)
@@ -83,20 +84,10 @@ func New(cfg *Config, ctx ...context.Context) (*Peers, error) {
 		return nil, fmt.Errorf("unable create libp2p host: %w", err)
 	}
 
-	var ctx1 context.Context
-	var stopFun context.CancelFunc
-
-	if len(ctx) > 0 {
-		ctx1, stopFun = context.WithCancel(ctx[0])
-	} else {
-		ctx1, stopFun = context.WithCancel(context.Background())
-	}
-
 	ret := &Peers{
 		cfg:             cfg,
 		log:             general.NewLogger("[peering]", zap.DebugLevel, nil, ""),
-		ctx:             ctx1,
-		stopFun:         stopFun,
+		ctx:             ctx,
 		host:            lppHost,
 		peers:           make(map[peer.ID]*Peer),
 		onReceiveGossip: func(_ peer.ID, _ []byte) {},
@@ -114,13 +105,6 @@ func New(cfg *Config, ctx ...context.Context) (*Peers, error) {
 			name: name,
 		}
 	}
-	go func() {
-		var stopHeartbeat atomic.Bool
-		go ret.heartbeatLoop(&stopHeartbeat)
-
-		<-ret.ctx.Done()
-		stopHeartbeat.Store(true)
-	}()
 	return ret, nil
 }
 
@@ -175,25 +159,23 @@ func (ps *Peers) Run() {
 	ps.host.SetStreamHandler(lppProtocolPull, ps.pullStreamHandler)
 	ps.host.SetStreamHandler(lppProtocolHeartbeat, ps.heartbeatStreamHandler)
 
-	var wg sync.WaitGroup
-	wg.Add(1)
-
+	go ps.heartbeatLoop()
 	go func() {
-		ps.log.Infof("host %s (self) started on %v with %d configured peers", shortPeerIDString(ps.host.ID()), ps.host.Addrs(), len(ps.cfg.KnownPeers))
-		_ = ps.log.Sync()
-		wg.Done()
-
 		<-ps.ctx.Done()
-		_ = ps.host.Close()
+		ps.Stop()
 	}()
-	wg.Wait()
+
+	ps.log.Infof("libp2p host %s (self) started on %v with %d configured peers", shortPeerIDString(ps.host.ID()), ps.host.Addrs(), len(ps.cfg.KnownPeers))
+	_ = ps.log.Sync()
 }
 
 func (ps *Peers) Stop() {
-	ps.log.Infof("stopping libp2p host %s (self)..", shortPeerIDString(ps.host.ID()))
-	_ = ps.log.Sync()
-	_ = ps.host.Close()
-	ps.stopFun()
+	ps.stopOnce.Do(func() {
+		ps.log.Infof("stopping libp2p host %s (self)..", shortPeerIDString(ps.host.ID()))
+		_ = ps.log.Sync()
+		ps.stopHeartbeat.Store(true)
+		_ = ps.host.Close()
+	})
 }
 
 func (ps *Peers) SetTrace(b bool) {
@@ -346,10 +328,10 @@ func (ps *Peers) GossipTxBytesToPeers(txBytes []byte, except ...peer.ID) {
 }
 
 func (ps *Peers) SendTxBytesToPeer(id peer.ID, txBytes []byte) bool {
-	ps.trace("SendTxBytesToPeer to %s, length: %d (host %s)", id, len(txBytes), ps.host.ID())
+	ps.trace("SendTxBytesToPeer to %s, length: %d (host %s)", shortPeerIDString(id), len(txBytes), shortPeerIDString(ps.host.ID()))
 	stream, err := ps.host.NewStream(ps.ctx, id, lppProtocolGossip)
 	if err != nil {
-		ps.trace("SendTxBytesToPeer to %s: %v (host %s)", id, err, ps.host.ID())
+		ps.trace("SendTxBytesToPeer to %s: %v (host %s)", shortPeerIDString(id), err, shortPeerIDString(ps.host.ID()))
 		return false
 	}
 	defer stream.Close()

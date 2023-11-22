@@ -8,7 +8,6 @@ import (
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/lunfardo314/proxima/util"
-	"go.uber.org/atomic"
 )
 
 const traceHeartbeat = false
@@ -97,7 +96,7 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 	}
 
 	if !p.isAlive() {
-		ps.log.Infof("host %s (self) connected to peer %s (%s)", shortPeerIDString(ps.host.ID()), shortPeerIDString(id), ps.PeerName(id))
+		ps.log.Infof("libp2p host %s (self) connected to peer %s (%s)", shortPeerIDString(ps.host.ID()), shortPeerIDString(id), ps.PeerName(id))
 	}
 
 	p.mutex.Lock()
@@ -131,8 +130,8 @@ const (
 	aliveDuration      = time.Duration(aliveNumHeartbeats) * heartbeatRate
 )
 
-func (ps *Peers) heartbeatLoop(exit *atomic.Bool) {
-	for !exit.Load() {
+func (ps *Peers) heartbeatLoop() {
+	for !ps.stopHeartbeat.Load() {
 		for _, id := range ps.getPeerIDs() {
 			ps.logLostConnectionWithPeer(id)
 			ps.sendHeartbeatToPeer(id)
