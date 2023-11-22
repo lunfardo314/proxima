@@ -2,14 +2,18 @@ package peering
 
 import (
 	"bytes"
+	"math/rand"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/countdown"
+	"github.com/lunfardo314/proxima/util/set"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/net/context"
 )
@@ -232,4 +236,76 @@ func TestSendMsg(t *testing.T) {
 		}
 		require.NoError(t, err)
 	})
+	t.Run("pull", func(t *testing.T) {
+		const (
+			numHosts = 2
+			trace    = false
+			numMsg   = 200
+		)
+		hosts := makeHosts(t, numHosts, trace)
+		counter := countdown.New(numMsg, 7*time.Second)
+
+		txSet := set.New[core.TransactionID]()
+		txSetMutex := &sync.Mutex{}
+
+		for _, h := range hosts {
+			h1 := h
+			h1.OnReceivePullRequest(func(from peer.ID, txids []core.TransactionID) {
+				//t.Logf("pull %d", len(txids))
+				txSetMutex.Lock()
+				defer txSetMutex.Unlock()
+
+				counter.Tick()
+
+				for i := range txids {
+					require.True(t, txSet.Contains(txids[i]))
+					go h1.SendTxBytesToPeer(from, txids[i][:])
+				}
+			})
+
+			h1.OnReceiveTxBytes(func(from peer.ID, txBytes []byte) {
+				require.True(t, len(txBytes) == 32)
+				var txid core.TransactionID
+				copy(txid[:], txBytes)
+				//t.Logf("response %s", txid.StringShort())
+
+				txSetMutex.Lock()
+				defer txSetMutex.Unlock()
+
+				txSet.Remove(txid)
+			})
+		}
+		for _, h := range hosts {
+			h.Run()
+		}
+		time.Sleep(4 * time.Second)
+
+		for i := 0; i < numMsg; i++ {
+			txids := rndTxIDs()
+			txSetMutex.Lock()
+			txSet.Insert(txids...)
+			txSetMutex.Unlock()
+
+			succ := hosts[i%numHosts].PullTransactionsFromRandomPeer(txids...)
+			require.True(t, succ)
+		}
+		err := counter.Wait()
+		require.NoError(t, err)
+
+		time.Sleep(3 * time.Second)
+		for _, h := range hosts {
+			h.Stop()
+		}
+		require.EqualValues(t, 0, len(txSet))
+	})
+}
+
+func rndTxIDs() []core.TransactionID {
+	rnd := rand.Intn(5) + 1
+	ret := make([]core.TransactionID, rnd)
+
+	for i := range ret {
+		ret[i] = core.RandomTransactionID()
+	}
+	return ret
 }

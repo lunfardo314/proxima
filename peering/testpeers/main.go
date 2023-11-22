@@ -58,6 +58,7 @@ func main() {
 		}
 		wg.Done()
 	}()
+
 	killChan := make(chan os.Signal, 1)
 	signal.Notify(killChan, syscall.SIGINT, syscall.SIGTERM)
 

@@ -1,6 +1,7 @@
 package core
 
 import (
+	"crypto/rand"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -89,6 +90,13 @@ func TransactionIDFromHexString(str string) (ret TransactionID, err error) {
 	}
 	ret, err = TransactionIDFromBytes(data)
 	return
+}
+
+// RandomTransactionID not completely random. For testing
+func RandomTransactionID() TransactionID {
+	var hash TransactionIDShort
+	_, _ = rand.Read(hash[:])
+	return NewTransactionID(LogicalTimeNow(), hash, false, false)
 }
 
 // ShortID return hash part of ID
