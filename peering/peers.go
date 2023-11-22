@@ -47,9 +47,10 @@ type (
 	}
 
 	Peer struct {
-		mutex        sync.RWMutex
-		name         string
-		lastActivity time.Time
+		mutex                  sync.RWMutex
+		name                   string
+		lastActivity           time.Time
+		needsLogLostConnection bool
 	}
 )
 
@@ -178,7 +179,7 @@ func (ps *Peers) Run() {
 	wg.Add(1)
 
 	go func() {
-		ps.log.Infof("host %s started on %v with %d configured peers", ps.host.ID(), ps.host.Addrs(), len(ps.cfg.KnownPeers))
+		ps.log.Infof("host %s (self) started on %v with %d configured peers", shortPeerIDString(ps.host.ID()), ps.host.Addrs(), len(ps.cfg.KnownPeers))
 		_ = ps.log.Sync()
 		wg.Done()
 
@@ -189,7 +190,7 @@ func (ps *Peers) Run() {
 }
 
 func (ps *Peers) Stop() {
-	ps.log.Infof("stopping..")
+	ps.log.Infof("stopping libp2p host %s (self)..", shortPeerIDString(ps.host.ID()))
 	_ = ps.log.Sync()
 	_ = ps.host.Close()
 	ps.stopFun()
@@ -296,14 +297,6 @@ func (ps *Peers) sendPullToPeer(id peer.ID, txLst ...core.TransactionID) {
 	defer stream.Close()
 
 	_ = writeFrame(stream, encodePeerMsgPull(txLst...))
-}
-
-func (p *Peer) isAlive() bool {
-	p.mutex.RLock()
-	defer p.mutex.RUnlock()
-
-	// peer is alive if its last activity is at least 3 heartbeats old
-	return time.Now().Sub(p.lastActivity) < time.Duration(3)*heartbeatRate
 }
 
 func (ps *Peers) PeerIsAlive(id peer.ID) bool {

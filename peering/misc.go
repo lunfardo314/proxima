@@ -9,6 +9,7 @@ import (
 	"math"
 
 	"github.com/libp2p/go-libp2p/core/network"
+	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/unitrie/common"
@@ -101,4 +102,10 @@ func writeFrame(stream network.Stream, payload []byte) error {
 		return fmt.Errorf("failed to write size prefix: %v", err)
 	}
 	return nil
+}
+
+func shortPeerIDString(id peer.ID) string {
+	s := id.String()
+
+	return ".." + s[len(s)-8:]
 }

@@ -7,6 +7,7 @@ import (
 
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/lunfardo314/proxima/util"
 	"go.uber.org/atomic"
 )
 
@@ -14,6 +15,33 @@ const traceHeartbeat = false
 
 // clockTolerance is how big the difference between local and remote clocks is tolerated
 const clockTolerance = 5 * time.Second // for testing only
+
+func (p *Peer) isAlive() bool {
+	p.mutex.RLock()
+	defer p.mutex.RUnlock()
+
+	return p._isAlive()
+}
+
+func (p *Peer) _isAlive() bool {
+	// peer is alive if its last activity is at least 3 heartbeats old
+	return time.Now().Sub(p.lastActivity) < aliveDuration
+}
+
+func (ps *Peers) logLostConnectionWithPeer(id peer.ID) {
+	p := ps.getPeer(id)
+	if p == nil {
+		return
+	}
+
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
+
+	if !p._isAlive() && p.needsLogLostConnection {
+		ps.log.Infof("host %s (self) lost connection with peer %s (%s)", shortPeerIDString(ps.host.ID()), shortPeerIDString(id), ps.PeerName(id))
+		p.needsLogLostConnection = false
+	}
+}
 
 func checkRemoteClockTolerance(remoteTime time.Time) (bool, bool) {
 	nowis := time.Now() // local clock
@@ -68,23 +96,16 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 		return
 	}
 
-	aliveBefore := p.isAlive()
+	if !p.isAlive() {
+		ps.log.Infof("host %s (self) connected to peer %s (%s)", shortPeerIDString(ps.host.ID()), shortPeerIDString(id), ps.PeerName(id))
+	}
 
 	p.mutex.Lock()
 	p.lastActivity = time.Now()
+	p.needsLogLostConnection = true
 	p.mutex.Unlock()
 
-	aliveAfter := p.isAlive()
-
-	if aliveBefore == aliveAfter {
-		// status didn't change
-		return
-	}
-	if !aliveBefore {
-		ps.log.Infof("host %s connected to peer %s (%s)", ps.host.ID(), id, ps.PeerName(id))
-		return
-	}
-	ps.log.Infof("host %s lost connection with peer %s (%s)", ps.host.ID(), id, ps.PeerName(id))
+	util.Assertf(p.isAlive(), "isAlive")
 }
 
 func (ps *Peers) sendHeartbeatToPeer(id peer.ID) {
@@ -104,11 +125,16 @@ func (ps *Peers) sendHeartbeatToPeer(id peer.ID) {
 	_ = writeFrame(stream, timeBuf[:])
 }
 
-const heartbeatRate = time.Second
+const (
+	heartbeatRate      = time.Second
+	aliveNumHeartbeats = 2
+	aliveDuration      = time.Duration(aliveNumHeartbeats) * heartbeatRate
+)
 
 func (ps *Peers) heartbeatLoop(exit *atomic.Bool) {
 	for !exit.Load() {
 		for _, id := range ps.getPeerIDs() {
+			ps.logLostConnectionWithPeer(id)
 			ps.sendHeartbeatToPeer(id)
 		}
 		time.Sleep(heartbeatRate)
