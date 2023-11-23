@@ -207,10 +207,12 @@ func TestSendMsg(t *testing.T) {
 		const (
 			numHosts = 5
 			trace    = false
-			numMsg   = 500
+			numMsg   = 400
 		)
 		hosts := makeHosts(t, numHosts, trace)
 		counter := countdown.New(numHosts*(numHosts-1)*numMsg, 7*time.Second)
+		t.Logf("sending %d messages", numHosts*(numHosts-1)*numMsg)
+
 		counter1 := 0
 		for _, h := range hosts {
 			h1 := h

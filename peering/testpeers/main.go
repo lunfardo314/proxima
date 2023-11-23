@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 
@@ -15,8 +16,11 @@ import (
 	"go.uber.org/atomic"
 )
 
+// A small program which allows to start a network of up to 5 peers and test messaging with the peering package
+// Usage: testpeers <peer index 0-4>
+
 func main() {
-	if len(os.Args) < 2 {
+	if len(os.Args) < 2 || len(os.Args[1]) != 1 || !strings.Contains("01234", os.Args[1]) {
 		fmt.Println("Usage: testpeers <peer index 0-4>")
 		os.Exit(0)
 	}

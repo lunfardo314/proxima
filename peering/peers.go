@@ -343,11 +343,18 @@ func (ps *Peers) GossipTxBytesToPeers(txBytes []byte, except ...peer.ID) int {
 }
 
 func (ps *Peers) SendTxBytesToPeer(id peer.ID, txBytes []byte) bool {
-	ps.trace("SendTxBytesToPeer to %s, length: %d (host %s)", shortPeerIDString(id), len(txBytes), shortPeerIDString(ps.host.ID()))
+	ps.trace("SendTxBytesToPeer to %s, length: %d (host %s)",
+		func() any { return shortPeerIDString(id) },
+		len(txBytes),
+		func() any { return shortPeerIDString(ps.host.ID()) },
+	)
 
 	stream, err := ps.host.NewStream(ps.ctx, id, lppProtocolGossip)
 	if err != nil {
-		ps.trace("SendTxBytesToPeer to %s: %v (host %s)", shortPeerIDString(id), err, shortPeerIDString(ps.host.ID()))
+		ps.trace("SendTxBytesToPeer to %s: %v (host %s)",
+			func() any { return shortPeerIDString(id) }, err,
+			func() any { return shortPeerIDString(ps.host.ID()) },
+		)
 		return false
 	}
 	defer stream.Close()
