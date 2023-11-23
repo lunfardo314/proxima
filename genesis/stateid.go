@@ -14,28 +14,43 @@ import (
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lazybytes"
 	"github.com/lunfardo314/proxima/util/lines"
+	"gopkg.in/yaml.v2"
 )
 
 // StateIdentityData is provided at genesis and will remain immutable during lifetime
 // All integers are serialized as big-endian
-type StateIdentityData struct {
-	// arbitrary string up 255 bytes
-	Description string
-	// initial supply of tokens
-	InitialSupply uint64
-	// blake2b hash of the ED25519 public key, interpreted as address
-	GenesisControllerPublicKey ed25519.PublicKey
-	// baseline time unix nanoseconds, big-endian
-	BaselineTime time.Time
-	// time tick duration in nanoseconds
-	TimeTickDuration time.Duration
-	// max time tick value in the slot. Up to 256 time ticks per time slot
-	MaxTimeTickValueInTimeSlot uint8
-	// time slot of the genesis
-	GenesisTimeSlot core.TimeSlot
-	// core constraint library hash. For checking of ledger version compatibility with the node
-	CoreLibraryHash [32]byte
-}
+type (
+	StateIdentityData struct {
+		// arbitrary string up 255 bytes
+		Description string
+		// initial supply of tokens
+		InitialSupply uint64
+		// ED25519 public key of the controller
+		GenesisControllerPublicKey ed25519.PublicKey
+		// baseline time unix nanoseconds
+		BaselineTime time.Time
+		// time tick duration in nanoseconds
+		TimeTickDuration time.Duration
+		// max time tick value in the slot. Up to 256 time ticks per time slot
+		MaxTimeTickValueInTimeSlot uint8
+		// time slot of the genesis
+		GenesisTimeSlot core.TimeSlot
+		// core constraint library hash. For checking of ledger version compatibility with the node
+		CoreLibraryHash [32]byte
+	}
+
+	// stateIdentityDataYAMLable structure for canonic yamlAble marshaling
+	stateIdentityDataYAMLable struct {
+		Description                string `yaml:"description"`
+		InitialSupply              uint64 `yaml:"initialSupply"`
+		GenesisControllerPublicKey string `yaml:"genesisControllerPublicKey"`
+		BaselineTime               int64  `yaml:"baselineTime"`
+		TimeTickDuration           int64  `yaml:"timeTickDuration"`
+		MaxTimeTickValueInTimeSlot uint8  `yaml:"maxTimeTickValueInTimeSlot"`
+		GenesisTimeSlot            uint32 `yaml:"genesisTimeSlot"`
+		CoreLibraryHash            string `yaml:"coreLibraryHash"`
+	}
+)
 
 const (
 	InitialSupplyOutputIndex = byte(0)
@@ -135,6 +150,72 @@ func (id *StateIdentityData) String() string {
 		Add("Initial supply output ID: %s", initialSupplyOutputID.String()).
 		Add("Genesis stem output ID: %s", genesisStemOutputID.String()).
 		String()
+}
+
+func (id *StateIdentityData) yamlAble() *stateIdentityDataYAMLable {
+	return &stateIdentityDataYAMLable{
+		Description:                id.Description,
+		InitialSupply:              id.InitialSupply,
+		GenesisControllerPublicKey: hex.EncodeToString(id.GenesisControllerPublicKey),
+		BaselineTime:               id.BaselineTime.UnixNano(),
+		TimeTickDuration:           id.TimeTickDuration.Nanoseconds(),
+		MaxTimeTickValueInTimeSlot: id.MaxTimeTickValueInTimeSlot,
+		GenesisTimeSlot:            uint32(id.GenesisTimeSlot),
+		CoreLibraryHash:            hex.EncodeToString(id.CoreLibraryHash[:]),
+	}
+}
+
+func (id *StateIdentityData) YAML() []byte {
+	return id.yamlAble().YAML()
+}
+
+func (id *stateIdentityDataYAMLable) YAML() []byte {
+	var buf bytes.Buffer
+	buf.WriteString("# This file contains Proxima ledger identity data.\n")
+	buf.WriteString("# It will be used to create genesis ledger state for the Proxima network. \n")
+	buf.WriteString("# The ledger identity file does not contain secrets, it is public.\n")
+	buf.WriteString("# The data in the file must match genesis controller private key and hardcoded protocol constants\n")
+	buf.WriteString("# Except 'description' field, file should not be modified\n")
+	buf.WriteString("# Once used to create genesis, identity data should never be modified\n")
+	data, err := yaml.Marshal(id)
+	buf.Write(data)
+	util.AssertNoError(err)
+	return buf.Bytes()
+}
+
+func (id *stateIdentityDataYAMLable) stateIdentityData() (*StateIdentityData, error) {
+	var err error
+	ret := &StateIdentityData{}
+	ret.Description = id.Description
+	ret.InitialSupply = id.InitialSupply
+	ret.GenesisControllerPublicKey, err = hex.DecodeString(id.GenesisControllerPublicKey)
+	if err != nil {
+		return nil, err
+	}
+	if len(ret.GenesisControllerPublicKey) != ed25519.PublicKeySize {
+		return nil, fmt.Errorf("wrong public key")
+	}
+	ret.BaselineTime = time.Unix(0, id.BaselineTime)
+	ret.TimeTickDuration = time.Duration(id.TimeTickDuration)
+	ret.MaxTimeTickValueInTimeSlot = id.MaxTimeTickValueInTimeSlot
+	ret.GenesisTimeSlot = core.TimeSlot(id.GenesisTimeSlot)
+	hBin, err := hex.DecodeString(id.CoreLibraryHash)
+	if err != nil {
+		return nil, err
+	}
+	if len(hBin) != 32 {
+		return nil, fmt.Errorf("wrong core library hash")
+	}
+	copy(ret.CoreLibraryHash[:], hBin)
+	return ret, nil
+}
+
+func StateIdentityDataFromYAML(yamlData []byte) (*StateIdentityData, error) {
+	yamlAble := &stateIdentityDataYAMLable{}
+	if err := yaml.Unmarshal(yamlData, &yamlAble); err != nil {
+		return nil, err
+	}
+	return yamlAble.stateIdentityData()
 }
 
 const DefaultSupply = 1_000_000_000_000

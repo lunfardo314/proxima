@@ -5,35 +5,8 @@ import (
 
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/util"
-	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
-
-func initProfileCmd(initCmd *cobra.Command) *cobra.Command {
-	initProfCmd := &cobra.Command{
-		Use:   "profile [<profile name>]",
-		Args:  cobra.MaximumNArgs(1),
-		Short: "initializes empty config profile",
-		Run:   runInitProfileCommand,
-	}
-	initCmd.AddCommand(initProfCmd)
-	return initProfCmd
-}
-
-const minimumSeedLength = 8
-
-func runInitProfileCommand(_ *cobra.Command, args []string) {
-	profileName := "proxi_old"
-	if len(args) > 0 {
-		profileName = args[0]
-	}
-	profileFname := profileName + ".yaml"
-	privKey := mustGetPrivateKey()
-	addr := core.AddressED25519FromPrivateKey(privKey)
-	viper.SetConfigFile(profileFname)
-	viper.Set("wallet.account", addr.String())
-	AssertNoError(viper.SafeWriteConfigAs(profileFname))
-}
 
 type WalletData struct {
 	Name       string
@@ -44,19 +17,19 @@ type WalletData struct {
 
 func GetWalletData() (ret WalletData) {
 	ret.Name = viper.GetString("wallet.name")
-	ret.PrivateKey = mustGetPrivateKey()
+	ret.PrivateKey = MustGetPrivateKey()
 	ret.Account = core.AddressED25519FromPrivateKey(ret.PrivateKey)
 	ret.Sequencer = GetOwnSequencerID()
 	return
 }
 
-func mustGetPrivateKey() ed25519.PrivateKey {
-	ret, ok := getPrivateKey()
+func MustGetPrivateKey() ed25519.PrivateKey {
+	ret, ok := GetPrivateKey()
 	Assertf(ok, "private key not specified")
 	return ret
 }
 
-func getPrivateKey() (ed25519.PrivateKey, bool) {
+func GetPrivateKey() (ed25519.PrivateKey, bool) {
 	privateKeyStr := viper.GetString("wallet.private_key")
 	if privateKeyStr == "" {
 		return nil, false

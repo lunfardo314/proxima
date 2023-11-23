@@ -56,3 +56,14 @@ func TestInitOrigin(t *testing.T) {
 
 	require.EqualValues(t, id.Bytes(), rdr.MustStateIdentityBytes())
 }
+
+func TestYAML(t *testing.T) {
+	privateKey := testutil.GetTestingPrivateKey()
+	id := DefaultIdentityData(privateKey)
+	yamlableStr := id.yamlAble().YAML()
+	t.Logf("\n" + string(yamlableStr))
+
+	idBack, err := StateIdentityDataFromYAML(yamlableStr)
+	require.NoError(t, err)
+	require.EqualValues(t, id.Bytes(), idBack.Bytes())
+}
