@@ -43,7 +43,7 @@ func main() {
 	// Print this node's addresses and ID
 	fmt.Println("ID:", host.ID())
 	fmt.Printf("Addresses:\n%s\n", lines.SliceToLines(host.Addrs(), "      "))
-	fmt.Printf("connect to: %s/p2p/%s\n", host.Addrs()[0].String(), host.ID())
+	fmt.Printf("connect to: %s/experiments/%s\n", host.Addrs()[0].String(), host.ID())
 
 	// If we received a peer address, we should connect to it.
 

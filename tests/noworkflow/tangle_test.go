@@ -110,7 +110,7 @@ func initConflictTest(t *testing.T, nConflicts int, verbose bool) *conflictTestR
 		privKey:       privKeys[0],
 		addr:          addrs[0],
 	}
-	require.True(t, core.AddressED25519CorrespondsToPrivateKey(ret.addr, ret.privKey))
+	require.True(t, core.AddressED25519MatchesPrivateKey(ret.addr, ret.privKey))
 
 	ret.pkController = make([]ed25519.PrivateKey, nConflicts)
 	for i := range ret.pkController {

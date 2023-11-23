@@ -21,7 +21,7 @@ import (
 func TestGenData(t *testing.T) {
 	t.Run("gen ma", func(t *testing.T) {
 		for i, s := range allPrivateKeys {
-			privKey, err := crypto.UnmarshalEd25519PrivateKey(PrivateKeyFromString(s))
+			privKey, err := crypto.UnmarshalEd25519PrivateKey(PrivateKeyFromHexString(s))
 			util.AssertNoError(err)
 			host, err := libp2p.New(libp2p.Identity(privKey))
 			util.AssertNoError(err)

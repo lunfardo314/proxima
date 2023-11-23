@@ -1,8 +1,6 @@
 package peering
 
 import (
-	"crypto/ed25519"
-	"encoding/hex"
 	"fmt"
 
 	"github.com/libp2p/go-libp2p/core/crypto"
@@ -30,21 +28,15 @@ var (
 	}
 )
 
-func PrivateKeyFromString(k string) ed25519.PrivateKey {
-	bin, err := hex.DecodeString(k)
-	util.AssertNoError(err)
-	return bin
-}
-
 func MultiAddrString(i int, port int) string {
-	return fmt.Sprintf("/ip4/127.0.0.1/tcp/%d/p2p/%s", port, hostID[i])
+	return fmt.Sprintf("/ip4/127.0.0.1/tcp/%d/experiments/%s", port, hostID[i])
 }
 
 func MakeConfigFor(n, hostIdx int) *Config {
 	util.Assertf(n > 0 && n <= len(allPrivateKeys), "n > 0 && n <= len(allPrivateKeys)")
 	util.Assertf(hostIdx >= 0 && hostIdx < n, "hostIdx >= 0 && hostIdx < n")
 
-	pk := PrivateKeyFromString(allPrivateKeys[hostIdx])
+	pk := util.MustPrivateKeyFromHexString(allPrivateKeys[hostIdx])
 	pklpp, err := crypto.UnmarshalEd25519PrivateKey(pk)
 	util.AssertNoError(err)
 

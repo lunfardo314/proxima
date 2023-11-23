@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/ed25519"
 	"encoding/hex"
 	"fmt"
 	"math/rand"
@@ -8,10 +9,13 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/libp2p/go-libp2p/core/crypto"
+	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
 	"github.com/lunfardo314/proxima/util/testutil"
+	"gopkg.in/yaml.v2"
 )
 
 const usage = "Usage: genpk <output file name> <number of private keys/addresses to generate>"
@@ -45,6 +49,65 @@ func main() {
 		ln.Add("   addr: %s", addresses[i].String())
 	}
 
-	err = os.WriteFile(os.Args[1]+".yaml", []byte(ln.String()), 0644)
+	fname := os.Args[1] + ".yaml"
+	err = os.WriteFile(fname, []byte(ln.String()), 0644)
 	util.AssertNoError(err)
+
+	keysBack, err := ReadTestKeys(fname)
+	util.AssertNoError(err)
+
+	util.Assertf(len(keysBack) == len(privateKeys), "len(keysBack)==len(privateKeys)")
+}
+
+type (
+	TestKey struct {
+		PrivateKey ed25519.PrivateKey
+		PublicKey  ed25519.PublicKey
+		HostID     peer.ID
+		Address    core.AddressED25519
+	}
+
+	testKeyYaml struct {
+		PrivateKey string `yaml:"pk"`
+		Addr       string `yaml:"addr"`
+	}
+)
+
+func ReadTestKeys(fname string) ([]TestKey, error) {
+	yamlData, err := os.ReadFile(fname)
+	if err != nil {
+		return nil, err
+	}
+
+	tmpYaml := make([]testKeyYaml, 0)
+	if err = yaml.Unmarshal(yamlData, &tmpYaml); err != nil {
+		return nil, err
+	}
+
+	ret := make([]TestKey, len(tmpYaml))
+	for i, keyData := range tmpYaml {
+		pk, err := util.PrivateKeyFromHexString(keyData.PrivateKey)
+		if err != nil {
+			return nil, fmt.Errorf("wrong private key at pos %d: %v", i, err)
+		}
+		addr := core.AddressED25519FromPrivateKey(pk)
+		if addr.String() != keyData.Addr {
+			return nil, fmt.Errorf("private key and address does not match at pos %d", i)
+		}
+		pklpp, err := crypto.UnmarshalEd25519PrivateKey(pk)
+		if err != nil {
+			return nil, fmt.Errorf("wrong private key according to libp2p at pos %d", i)
+		}
+		hostID, err := peer.IDFromPrivateKey(pklpp)
+		if err != nil {
+			return nil, fmt.Errorf("IDFromPrivateKey: according to libp2p at pos %d: %v", i, err)
+		}
+		ret[i] = TestKey{
+			PrivateKey: pk,
+			PublicKey:  pk.Public().(ed25519.PublicKey),
+			HostID:     hostID,
+			Address:    addr,
+		}
+	}
+	return ret, err
 }

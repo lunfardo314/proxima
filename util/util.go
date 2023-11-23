@@ -329,3 +329,20 @@ func DoUntil(bodyFun func(), cond func() bool) {
 		}
 	}
 }
+
+func PrivateKeyFromHexString(k string) (ed25519.PrivateKey, error) {
+	bin, err := hex.DecodeString(k)
+	if err != nil {
+		return nil, err
+	}
+	if len(bin) != ed25519.PrivateKeySize {
+		return nil, fmt.Errorf("PrivateKeyFromHexString: wrong data length")
+	}
+	return bin, nil
+}
+
+func MustPrivateKeyFromHexString(k string) ed25519.PrivateKey {
+	ret, err := PrivateKeyFromHexString(k)
+	AssertNoError(err)
+	return ret
+}

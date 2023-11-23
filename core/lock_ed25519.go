@@ -59,7 +59,7 @@ func AddressesED25519FromPrivateKeys(privateKeys []ed25519.PrivateKey) []Address
 	return ret
 }
 
-func AddressED25519CorrespondsToPrivateKey(addr AddressED25519, privateKey ed25519.PrivateKey) bool {
+func AddressED25519MatchesPrivateKey(addr AddressED25519, privateKey ed25519.PrivateKey) bool {
 	return EqualConstraints(AddressED25519FromPrivateKey(privateKey), addr)
 }
 
