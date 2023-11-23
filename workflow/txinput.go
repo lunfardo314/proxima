@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lunfardo314/proxima/peering"
+	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/utangle"
 	"github.com/lunfardo314/proxima/util"
@@ -53,7 +53,7 @@ func WithTransactionSourceType(src TransactionSourceType) TransactionInOption {
 	}
 }
 
-func WithTransactionSourcePeer(from peering.PeerID) TransactionInOption {
+func WithTransactionSourcePeer(from peer.ID) TransactionInOption {
 	return func(data *PrimaryInputConsumerData) {
 		data.SourceType = TransactionSourceTypePeer
 		data.ReceivedFrom = from

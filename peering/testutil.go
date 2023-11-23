@@ -5,6 +5,8 @@ import (
 	"encoding/hex"
 	"fmt"
 
+	"github.com/libp2p/go-libp2p/core/crypto"
+	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/multiformats/go-multiaddr"
 )
@@ -43,9 +45,15 @@ func MakeConfigFor(n, hostIdx int) *Config {
 	util.Assertf(hostIdx >= 0 && hostIdx < n, "hostIdx >= 0 && hostIdx < n")
 
 	pk := PrivateKeyFromString(allPrivateKeys[hostIdx])
+	pklpp, err := crypto.UnmarshalEd25519PrivateKey(pk)
+	util.AssertNoError(err)
+
+	hid, err := peer.IDFromPrivateKey(pklpp)
+	util.AssertNoError(err)
+
 	cfg := &Config{
 		HostIDPrivateKey: pk,
-		HostIDPublicKey:  pk.Public().(ed25519.PublicKey),
+		HostID:           hid,
 		HostPort:         BeginPort + hostIdx,
 		KnownPeers:       make(map[string]multiaddr.Multiaddr),
 	}

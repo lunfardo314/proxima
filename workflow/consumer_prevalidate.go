@@ -38,7 +38,7 @@ func (w *Workflow) initPreValidateConsumer() {
 	c.AddOnClosed(func() {
 		// cleanup on close
 		c.waitingRoom.Stop()
-		w.txOutboundConsumer.Stop()
+		w.txGossipOutConsumer.Stop()
 		w.solidifyConsumer.Stop()
 		w.terminateWG.Done()
 	})
@@ -78,7 +78,7 @@ func (c *PreValidateConsumer) consume(inp *PreValidateConsumerInputData) {
 
 	if inp.SourceType == TransactionSourceTypePeer {
 		// if received from another peer, gossip transaction right after pre-validation
-		c.glb.txOutboundConsumer.Push(TxOutboundConsumerData{
+		c.glb.txGossipOutConsumer.Push(TxGossipOutInputData{
 			PrimaryInputConsumerData: inp.PrimaryInputConsumerData,
 			ReceivedFrom:             inp.ReceivedFrom,
 		})

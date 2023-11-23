@@ -1,36 +1,36 @@
 package workflow
 
 import (
-	"github.com/lunfardo314/proxima/peering"
+	"github.com/libp2p/go-libp2p/core/peer"
 )
 
-// TxOutboundConsumer is forwarding the transaction to peering which didn't see it yet
+// TxGossipOutConsumer is forwarding the transaction to peering which didn't see it yet
 
-const TxOutboundConsumerName = "outbound"
+const TxOutboundConsumerName = "gossip"
 
 type (
-	TxOutboundConsumerData struct {
+	TxGossipOutInputData struct {
 		*PrimaryInputConsumerData
-		ReceivedFrom peering.PeerID
+		ReceivedFrom peer.ID
 	}
 
-	TxOutboundConsumer struct {
-		*Consumer[TxOutboundConsumerData]
+	TxGossipOutConsumer struct {
+		*Consumer[TxGossipOutInputData]
 	}
 )
 
-func (w *Workflow) initTxOutboundConsumer() {
-	c := &TxOutboundConsumer{
-		Consumer: NewConsumer[TxOutboundConsumerData](TxOutboundConsumerName, w),
+func (w *Workflow) initGossipOutConsumer() {
+	c := &TxGossipOutConsumer{
+		Consumer: NewConsumer[TxGossipOutInputData](TxOutboundConsumerName, w),
 	}
 	c.AddOnConsume(c.consume)
 	c.AddOnClosed(func() {
 		w.terminateWG.Done()
 	})
-	w.txOutboundConsumer = c
+	w.txGossipOutConsumer = c
 }
 
-func (c *TxOutboundConsumer) consume(inp TxOutboundConsumerData) {
+func (c *TxGossipOutConsumer) consume(inp TxGossipOutInputData) {
 	if inp.SourceType == TransactionSourceTypePeer {
 		c.glb.peers.GossipTxBytesToPeers(inp.Tx.Bytes(), inp.ReceivedFrom)
 	} else {

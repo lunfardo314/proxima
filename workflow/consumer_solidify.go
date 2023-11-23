@@ -185,6 +185,8 @@ func (c *SolidifyConsumer) putIntoSolidifierIfNeeded(inp *SolidifyInputData, dra
 		draftVertex:              draftVertex,
 	}
 	c.txPending[*draftVertex.Tx.ID()] = vd
+
+	// optionally initialize pull request to other peers if needed
 	c.pullIfNeeded(&vd)
 	return true
 }

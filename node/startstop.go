@@ -174,7 +174,7 @@ func (p *ProximaNode) loadUTXOTangle() {
 }
 
 func (p *ProximaNode) startWorkflow() {
-	peers, err := peering.NewPeersFromConfig()
+	peers, err := peering.NewPeersFromConfig(p.ctx)
 	util.AssertNoError(err)
 
 	p.workflow = workflow.New(p.uTangle, peers, workflow.WithGlobalConfigOptions)

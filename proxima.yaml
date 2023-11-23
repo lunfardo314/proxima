@@ -1,9 +1,10 @@
 # Configuration of the Proxima node
 peering:
   host:
+    # libp2p host ID
+    id:
     port: 4000
     private_key:
-    public_key:
 
   peers:
     peer0: "<multiaddr>"

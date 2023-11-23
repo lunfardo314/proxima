@@ -28,7 +28,7 @@ import (
 type (
 	Config struct {
 		HostIDPrivateKey ed25519.PrivateKey
-		HostIDPublicKey  ed25519.PublicKey
+		HostID           peer.ID
 		HostPort         int
 		KnownPeers       map[string]multiaddr.Multiaddr // name -> PeerAddr
 	}
@@ -121,16 +121,23 @@ func readPeeringConfig() (*Config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("host.private_key: wrong id private key: %v", err)
 	}
+	if len(pkBin) != ed25519.PrivateKeySize {
+		return nil, fmt.Errorf("host.private_key: wrong host id private key size")
+	}
+
+	encodedHostID := viper.GetString("peering.host.id")
+	cfg.HostID, err = peer.Decode(encodedHostID)
+	if err != nil {
+		return nil, fmt.Errorf("can't decode host ID: %v", err)
+	}
+	privKey, err := crypto.UnmarshalEd25519PrivateKey(cfg.HostIDPrivateKey)
+	if err != nil {
+		return nil, fmt.Errorf("UnmarshalEd25519PrivateKey: %v", err)
+	}
 	cfg.HostIDPrivateKey = pkBin
 
-	pkStr = viper.GetString("peering.host.public_key")
-	pkBin, err = hex.DecodeString(pkStr)
-	if err != nil {
-		return nil, fmt.Errorf("host.public_key: wrong id public key: %v", err)
-	}
-	cfg.HostIDPublicKey = pkBin
-	if !cfg.HostIDPublicKey.Equal(cfg.HostIDPrivateKey.Public().(ed25519.PublicKey)) {
-		return nil, fmt.Errorf("inconsistent host ID pivate and public keys")
+	if !cfg.HostID.MatchesPrivateKey(privKey) {
+		return nil, fmt.Errorf("config: host private key does not match hostID")
 	}
 
 	peerNames := util.KeysSorted(viper.GetStringMap("peering.peers"), func(k1, k2 string) bool {

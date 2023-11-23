@@ -1,8 +1,8 @@
 package workflow
 
 import (
+	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/lunfardo314/proxima/core"
-	"github.com/lunfardo314/proxima/peering"
 )
 
 // PullRequestConsumer:
@@ -18,7 +18,7 @@ const PullRequestConsumerName = "pullRequest"
 type (
 	PullRequestData struct {
 		TxID   core.TransactionID
-		PeerID peering.PeerID
+		PeerID peer.ID
 	}
 
 	PullRequestConsumer struct {
@@ -39,6 +39,6 @@ func (w *Workflow) initRespondTxQueryConsumer() {
 
 func (c *PullRequestConsumer) consume(inp PullRequestData) {
 	if txBytes := c.glb.UTXOTangle().TxBytesStore().GetTxBytes(&inp.TxID); len(txBytes) > 0 {
-		c.glb.peers.SendTxBytesToPeer(txBytes, inp.PeerID)
+		c.glb.peers.SendTxBytesToPeer(inp.PeerID, txBytes)
 	}
 }

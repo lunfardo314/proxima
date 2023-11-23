@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/general"
 	"github.com/lunfardo314/proxima/peering"
@@ -43,7 +44,7 @@ type (
 		dropTxConsumer       *DropTxConsumer
 		eventsConsumer       *EventsConsumer
 		pullRequestConsumer  *PullRequestConsumer
-		txOutboundConsumer   *TxOutboundConsumer
+		txGossipOutConsumer  *TxGossipOutConsumer
 
 		handlersMutex sync.RWMutex
 		eventHandlers map[eventtype.EventCode][]func(any)
@@ -86,9 +87,9 @@ func New(ut *utangle.UTXOTangle, peers *peering.Peers, configOptions ...ConfigOp
 	ret.initRejectConsumer()
 	ret.initEventsConsumer()
 	ret.initRespondTxQueryConsumer()
-	ret.initTxOutboundConsumer()
+	ret.initGossipOutConsumer()
 
-	ret.peers.OnReceiveTxBytes(func(from peering.PeerID, txBytes []byte) {
+	ret.peers.OnReceiveTxBytes(func(from peer.ID, txBytes []byte) {
 		if !ret.working.Load() {
 			return
 		}
@@ -98,7 +99,7 @@ func New(ut *utangle.UTXOTangle, peers *peering.Peers, configOptions ...ConfigOp
 		}
 	})
 
-	ret.peers.OnReceivePullRequest(func(from peering.PeerID, txids []core.TransactionID) {
+	ret.peers.OnReceivePullRequest(func(from peer.ID, txids []core.TransactionID) {
 		if !ret.working.Load() {
 			return
 		}
@@ -142,7 +143,7 @@ func (w *Workflow) Start(parentCtx ...context.Context) {
 		w.dropTxConsumer.Start()
 		w.eventsConsumer.Start()
 		w.pullRequestConsumer.Start()
-		w.txOutboundConsumer.Start()
+		w.txGossipOutConsumer.Start()
 
 		w.startWG.Done()
 		w.working.Store(true)
