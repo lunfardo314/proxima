@@ -5,7 +5,7 @@ import (
 	"os"
 
 	"github.com/lunfardo314/proxima/core"
-	"github.com/lunfardo314/proxima/proxi/glb"
+	"github.com/lunfardo314/proxima/proxi_old/glb"
 	"github.com/spf13/cobra"
 )
 

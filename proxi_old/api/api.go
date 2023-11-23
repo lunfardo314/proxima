@@ -3,8 +3,8 @@ package api
 import (
 	"github.com/lunfardo314/proxima/api/client"
 	"github.com/lunfardo314/proxima/core"
-	api "github.com/lunfardo314/proxima/proxi/api/seq"
-	"github.com/lunfardo314/proxima/proxi/glb"
+	api "github.com/lunfardo314/proxima/proxi_old/api/seq"
+	"github.com/lunfardo314/proxima/proxi_old/glb"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"

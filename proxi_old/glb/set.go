@@ -18,7 +18,7 @@ func initConfigSetCmd() *cobra.Command {
 func runConfigSetCmd(_ *cobra.Command, args []string) {
 	v := args[1]
 	if args[0] == "wallet.pk" {
-		Fatalf("use 'proxi set_private_key [<key>]' command to set a private key")
+		Fatalf("use 'proxi_old set_private_key [<key>]' command to set a private key")
 	}
 	switch v {
 	case "true":

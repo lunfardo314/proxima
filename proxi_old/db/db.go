@@ -2,7 +2,7 @@ package db
 
 import (
 	"github.com/lunfardo314/proxima/general"
-	"github.com/lunfardo314/proxima/proxi/glb"
+	"github.com/lunfardo314/proxima/proxi_old/glb"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )

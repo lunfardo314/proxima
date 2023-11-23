@@ -1,0 +1,32 @@
+api:
+    endpoint: ""
+config: ""
+force: false
+multistate:
+    name: ""
+nowait: false
+sequencer:
+    id: ""
+spammer:
+    bundle_size: "30"
+    max_duration_minutes: 0
+    max_transactions: 0
+    output_amount: "500"
+    pace: "3"
+    scenario: default
+    submit_nowait: false
+    tag_along:
+        fee: "500"
+        sequencer: ""
+tag-along:
+    fee: "500"
+    sequencer: ""
+target: ""
+txstore:
+    name: ""
+verbose: false
+wallet:
+    account: addressED25519(0x3faf090d38f18ea211936b8bcf19b7b30cdcb8e224394a5c30f9ba644f8bb2fb)
+    name: ""
+    private_key: 136381bd4dea7b2f0fa6c6ca14ee660dc7929975b47e6cdb85adee9e26032a810530b790e0e7de626f36e20ba656f09e324c68203de899d0daf9f98fcb3cf684
+    sequencer: ""

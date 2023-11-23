@@ -4,13 +4,20 @@ import (
 	"os"
 	"strings"
 
-	"github.com/lunfardo314/proxima/proxi/glb"
+	"github.com/lunfardo314/proxima/proxi_old/api"
+	"github.com/lunfardo314/proxima/proxi_old/db"
+	"github.com/lunfardo314/proxima/proxi_old/glb"
+	"github.com/lunfardo314/proxima/proxi_old/info_cmd"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
 
 func init() {
 	initRootCmd()
+	glb.Init(rootCmd)
+	info_cmd.Init(rootCmd)
+	db.Init(rootCmd)
+	api.Init(rootCmd)
 }
 
 const DefaultTagAlongFee = 500

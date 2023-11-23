@@ -7,6 +7,8 @@ import (
 // Init adds all commands in the package to the root command
 func Init(rootCmd *cobra.Command) {
 	rootCmd.AddCommand(initInitCmd())
+	rootCmd.AddCommand(initConfigSetCmd())
+	rootCmd.AddCommand(initSetKeyCmd())
 }
 
 func initInitCmd() *cobra.Command {
