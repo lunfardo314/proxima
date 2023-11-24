@@ -95,14 +95,8 @@ func New(cfg *Config, ctx context.Context) (*Peers, error) {
 	}
 
 	for name, maddr := range cfg.KnownPeers {
-		info, err := peer.AddrInfoFromP2pAddr(maddr)
-		if err != nil {
-			return nil, fmt.Errorf("can't get multiaddress info: %v", err)
-		}
-		lppHost.Peerstore().AddAddr(info.ID, maddr, peerstore.PermanentAddrTTL)
-
-		ret.peers[info.ID] = &Peer{
-			name: name,
+		if err = ret.AddPeer(maddr, name); err != nil {
+			return nil, err
 		}
 	}
 	return ret, nil
@@ -183,6 +177,21 @@ func (ps *Peers) Stop() {
 		ps.stopHeartbeat.Store(true)
 		_ = ps.host.Close()
 	})
+}
+
+func (ps *Peers) AddPeer(maddr multiaddr.Multiaddr, name string) error {
+	ps.mutex.Lock()
+	defer ps.mutex.Unlock()
+
+	info, err := peer.AddrInfoFromP2pAddr(maddr)
+	if err != nil {
+		return fmt.Errorf("can't get multiaddress info: %v", err)
+	}
+	ps.host.Peerstore().AddAddr(info.ID, maddr, peerstore.PermanentAddrTTL)
+	if _, already := ps.peers[info.ID]; !already {
+		ps.peers[info.ID] = &Peer{name: name}
+	}
+	return nil
 }
 
 func (ps *Peers) SetTrace(b bool) {

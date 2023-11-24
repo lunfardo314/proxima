@@ -29,7 +29,7 @@ var (
 )
 
 func MultiAddrString(i int, port int) string {
-	return fmt.Sprintf("/ip4/127.0.0.1/tcp/%d/experiments/%s", port, hostID[i])
+	return fmt.Sprintf("/ip4/127.0.0.1/tcp/%d/p2p/%s", port, hostID[i])
 }
 
 func TestMultiAddrString(peerID peer.ID, port int) string {
