@@ -39,7 +39,7 @@ func runInitProfileCommand(_ *cobra.Command, args []string) {
 		profileName = args[0]
 	}
 	profileFname := profileName + ".yaml"
-	glb.Assertf(!fileExist(profileFname), "file %s already exists", profileFname)
+	glb.Assertf(!fileExists(profileFname), "file %s already exists", profileFname)
 
 	privKey := glb.MustGetPrivateKey()
 	addr := core.AddressED25519FromPrivateKey(privKey)
@@ -51,9 +51,4 @@ func runInitProfileCommand(_ *cobra.Command, args []string) {
 	viper.SetConfigFile(profileFname)
 	wd := glb.GetWalletData()
 	glb.Assertf(wd.PrivateKey.Equal(privKey), "inconsistency")
-}
-
-func fileExist(name string) bool {
-	_, err := os.Stat(name)
-	return !os.IsNotExist(err)
 }

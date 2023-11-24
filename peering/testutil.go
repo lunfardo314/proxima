@@ -32,6 +32,10 @@ func MultiAddrString(i int, port int) string {
 	return fmt.Sprintf("/ip4/127.0.0.1/tcp/%d/experiments/%s", port, hostID[i])
 }
 
+func TestMultiAddrString(peerID peer.ID, port int) string {
+	return fmt.Sprintf("/ip4/127.0.0.1/tcp/%d/p2p/%s", port, peerID.String())
+}
+
 func MakeConfigFor(n, hostIdx int) *Config {
 	util.Assertf(n > 0 && n <= len(allPrivateKeys), "n > 0 && n <= len(allPrivateKeys)")
 	util.Assertf(hostIdx >= 0 && hostIdx < n, "hostIdx >= 0 && hostIdx < n")

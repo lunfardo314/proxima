@@ -33,7 +33,7 @@ func initIDCmd() *cobra.Command {
 }
 
 func runInitLedgerIDCommand(_ *cobra.Command, _ []string) {
-	if fileExist(ledgerIDFileName) {
+	if fileExists(ledgerIDFileName) {
 		if !glb.YesNoPrompt(fmt.Sprintf("file '%s' already exists. Overwrite?", ledgerIDFileName), false) {
 			os.Exit(0)
 		}

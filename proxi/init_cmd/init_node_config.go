@@ -6,35 +6,92 @@ import (
 	"encoding/hex"
 	"fmt"
 	"os"
+	"strconv"
 
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/lunfardo314/proxima/peering"
 	"github.com/lunfardo314/proxima/proxi/glb"
+	"github.com/lunfardo314/proxima/util/lines"
+	"github.com/lunfardo314/proxima/util/testutil"
 	"github.com/spf13/cobra"
 )
 
 func initNodeConfigCmd() *cobra.Command {
 	initLedgerIDCmd := &cobra.Command{
-		Use:   "node_config",
-		Args:  cobra.NoArgs,
+		Use:   "node_config [<test nodes index 0-4>]",
+		Args:  cobra.MaximumNArgs(1),
 		Short: "creates initial config file for the Proxima node",
+		Long:  `if parameter <test nodes index> is provided, generates 4 deterministic peers and peers with it`,
 		Run:   runNodeConfigCommand,
 	}
 	return initLedgerIDCmd
 }
 
-const proximaNodeProfile = "proxima.yaml"
+const (
+	proximaNodeProfile               = "proxima.yaml"
+	deterministicSeedForTestingNodes = 31415926535 + 2718281828
+	peeringPort                      = 4000
+)
 
-func runNodeConfigCommand(_ *cobra.Command, _ []string) {
-	mustNotExist(proximaNodeProfile)
-	_, hostPrivateKey, err := ed25519.GenerateKey(rand.Reader)
-	glb.AssertNoError(err)
-	lppHostPrivateKey, err := crypto.UnmarshalEd25519PrivateKey(hostPrivateKey)
-	glb.AssertNoError(err)
-	hostID, err := peer.IDFromPrivateKey(lppHostPrivateKey)
-	glb.AssertNoError(err)
+func runNodeConfigCommand(_ *cobra.Command, args []string) {
+	if fileExists(proximaNodeProfile) {
+		prompt := fmt.Sprintf("file %s already exists. Overwrite?", proximaNodeProfile)
+		if !glb.YesNoPrompt(prompt, false) {
+			glb.Fatalf("exit")
+		}
+	}
 
-	yamlStr := fmt.Sprintf(configFileTemplate, hex.EncodeToString(hostPrivateKey), hostID.String())
+	generatePeering := len(args) > 0
+	var err error
+	var peerConfig string
+	var hostPrivateKey ed25519.PrivateKey
+	var hostID peer.ID
+
+	hostPort := peeringPort
+
+	if generatePeering {
+		var hostPeerIndex int
+		var idPrivateKeys []ed25519.PrivateKey
+		hostPeerIndex, err = strconv.Atoi(args[0])
+		glb.AssertNoError(err)
+		glb.Assertf(0 <= hostPeerIndex && hostPeerIndex <= 4, "argument must be one of: 0,1,2,3 or 4")
+		idPrivateKeys = testutil.GetTestingPrivateKeys(5, deterministicSeedForTestingNodes)
+
+		peeringCfgLines := lines.New("    ")
+		for i := 0; i < 5; i++ {
+			lppPK, err := crypto.UnmarshalEd25519PrivateKey(idPrivateKeys[i])
+			glb.AssertNoError(err)
+			peerID, err := peer.IDFromPrivateKey(lppPK)
+			glb.AssertNoError(err)
+			if i != hostPeerIndex {
+				peeringCfgLines.Add("peer%d: %s", i, peering.TestMultiAddrString(peerID, peeringPort+i))
+			} else {
+				hostID = peerID
+				hostPrivateKey = idPrivateKeys[i]
+				hostPort = peeringPort + i
+			}
+		}
+		peerConfig = peeringCfgLines.String()
+	} else {
+		_, hostPrivateKey, err = ed25519.GenerateKey(rand.Reader)
+		glb.AssertNoError(err)
+		lppHostPrivateKey, err := crypto.UnmarshalEd25519PrivateKey(hostPrivateKey)
+		glb.AssertNoError(err)
+		hostID, err = peer.IDFromPrivateKey(lppHostPrivateKey)
+		glb.AssertNoError(err)
+		peerConfig =
+			`    # peer0: "<multiaddr0>"
+    # peer1: "<multiaddr1>"
+`
+	}
+
+	yamlStr := fmt.Sprintf(configFileTemplate,
+		hex.EncodeToString(hostPrivateKey),
+		hostID.String(),
+		hostPort,
+		peerConfig,
+	)
 	err = os.WriteFile(proximaNodeProfile, []byte(yamlStr), 0666)
 	glb.AssertNoError(err)
 
@@ -52,14 +109,13 @@ peering:
     # host ID is derived from the host ID public key. 
     id: %s
     # port to connect to other peers
-    port: 4000
+    port: %d
 
   # configuration of known peers. Each known peer is specified as a pair <name>: <multiaddr>, where:
   # - <name> is unique mnemonic name used for convenience locally
   # - <multiaddr> is the libp2p multi-address in the form '/ip4/<IPaddr ir URL>/<port>/tcp/p2p/<hostID>'
   peers:
-    # peer0: "<multiaddr0>"
-    # peer1: "<multiaddr1>"
+%s	
 
 # Node's API config
 api:
