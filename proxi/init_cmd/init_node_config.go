@@ -49,8 +49,10 @@ func runNodeConfigCommand(_ *cobra.Command, args []string) {
 	var hostID peer.ID
 
 	hostPort := peeringPort
-
+	var intro string
 	if generatePeering {
+		intro = "# Testing configuration of the Proxima node with 4 other peers on the same machine\n" +
+			"# All private keys are auto-generated deterministically"
 		var hostPeerIndex int
 		var idPrivateKeys []ed25519.PrivateKey
 		hostPeerIndex, err = strconv.Atoi(args[0])
@@ -74,6 +76,7 @@ func runNodeConfigCommand(_ *cobra.Command, args []string) {
 		}
 		peerConfig = peeringCfgLines.String()
 	} else {
+		intro = "# Configuration of the Proxima node"
 		_, hostPrivateKey, err = ed25519.GenerateKey(rand.Reader)
 		glb.AssertNoError(err)
 		lppHostPrivateKey, err := crypto.UnmarshalEd25519PrivateKey(hostPrivateKey)
@@ -87,6 +90,7 @@ func runNodeConfigCommand(_ *cobra.Command, args []string) {
 	}
 
 	yamlStr := fmt.Sprintf(configFileTemplate,
+		intro,
 		hex.EncodeToString(hostPrivateKey),
 		hostID.String(),
 		hostPort,
@@ -98,7 +102,8 @@ func runNodeConfigCommand(_ *cobra.Command, args []string) {
 	glb.Infof("initial Proxima node configuration file has been saved as 'proxima.yaml'")
 }
 
-const configFileTemplate = `# Configuration of the Proxima node
+const configFileTemplate = `# FOR TESTING ONLY!!! PRIVATE KEYS AND DERIVED DATA SHOULD NOT BE USED IN PRODUCTION
+%s
 #
 # Peering configuration
 peering:
@@ -108,7 +113,7 @@ peering:
     id_private_key: %s
     # host ID is derived from the host ID public key. 
     id: %s
-    # port to connect to other peers
+    # port to connect from other peers
     port: %d
 
   # configuration of known peers. Each known peer is specified as a pair <name>: <multiaddr>, where:
