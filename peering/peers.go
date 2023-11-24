@@ -116,10 +116,10 @@ func readPeeringConfig() (*Config, error) {
 	if cfg.HostPort == 0 {
 		return nil, fmt.Errorf("peering.host.port: wrong port")
 	}
-	pkStr := viper.GetString("peering.host.private_key")
+	pkStr := viper.GetString("peering.host.id_private_key")
 	pkBin, err := hex.DecodeString(pkStr)
 	if err != nil {
-		return nil, fmt.Errorf("host.private_key: wrong id private key: %v", err)
+		return nil, fmt.Errorf("host.id_private_key: wrong id private key: %v", err)
 	}
 	if len(pkBin) != ed25519.PrivateKeySize {
 		return nil, fmt.Errorf("host.private_key: wrong host id private key size")

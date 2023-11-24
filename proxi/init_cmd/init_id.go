@@ -25,7 +25,7 @@ func initIDCmd() *cobra.Command {
 		},
 		Run: runInitLedgerIDCommand,
 	}
-	initLedgerIDCmd.PersistentFlags().StringP("config", "c", "", "profle name")
+	initLedgerIDCmd.PersistentFlags().StringP("config", "c", "", "profile name")
 	err := viper.BindPFlag("config", initLedgerIDCmd.PersistentFlags().Lookup("config"))
 	glb.AssertNoError(err)
 
