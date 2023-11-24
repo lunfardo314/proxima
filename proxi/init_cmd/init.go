@@ -14,10 +14,12 @@ func CmdInit() *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 		},
 	}
-	initCmd.AddCommand(initProfileCmd())
-	initCmd.AddCommand(initIDCmd())
-	initCmd.AddCommand(initGenesisDBCmd())
-	initCmd.AddCommand(initNodeConfigCmd())
+	initCmd.AddCommand(
+		initProfileCmd(),
+		initIDCmd(),
+		initGenesisDBCmd(),
+		initNodeConfigCmd(),
+	)
 	initCmd.InitDefaultHelpCmd()
 	return initCmd
 }

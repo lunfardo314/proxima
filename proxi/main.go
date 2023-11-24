@@ -4,6 +4,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/lunfardo314/proxima/proxi/db_cmd"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/proxi/init_cmd"
 	"github.com/spf13/cobra"
@@ -30,7 +31,10 @@ func main() {
 	err := viper.BindPFlag("verbose", rootCmd.PersistentFlags().Lookup("verbose"))
 	glb.AssertNoError(err)
 
-	rootCmd.AddCommand(init_cmd.CmdInit())
+	rootCmd.AddCommand(
+		init_cmd.CmdInit(),
+		db_cmd.Init(),
+	)
 	rootCmd.InitDefaultHelpCmd()
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
