@@ -1,4 +1,4 @@
-package api
+package seq_cmd
 
 import (
 	"encoding/binary"
@@ -7,7 +7,7 @@ import (
 	"strconv"
 
 	"github.com/lunfardo314/proxima/core"
-	"github.com/lunfardo314/proxima/proxi_old/glb"
+	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/sequencer"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/txbuilder"
@@ -18,7 +18,7 @@ import (
 	"github.com/spf13/viper"
 )
 
-func initSeqWithdrawCmd(seqCmd *cobra.Command) {
+func initSeqWithdrawCmd() *cobra.Command {
 	seqSendCmd := &cobra.Command{
 		Use:     "withdraw <amount>",
 		Aliases: util.List("send"),
@@ -26,9 +26,8 @@ func initSeqWithdrawCmd(seqCmd *cobra.Command) {
 		Args:    cobra.ExactArgs(1),
 		Run:     runSeqWithdrawCmd,
 	}
-
 	seqSendCmd.InitDefaultHelpCmd()
-	seqCmd.AddCommand(seqSendCmd)
+	return seqSendCmd
 }
 
 func runSeqWithdrawCmd(_ *cobra.Command, args []string) {

@@ -1,24 +1,23 @@
-package api
+package node_cmd
 
 import (
 	"os"
 
 	"github.com/lunfardo314/proxima/core"
-	"github.com/lunfardo314/proxima/proxi_old/glb"
+	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/spf13/cobra"
 )
 
-func initChainsCmd(apiCmd *cobra.Command) {
+func initChainsCmd() *cobra.Command {
 	chainsCmd := &cobra.Command{
 		Use:   "chains",
 		Short: `lists chains controlled by the account`,
 		Args:  cobra.NoArgs,
 		Run:   runChainsCmd,
 	}
-
 	chainsCmd.InitDefaultHelpCmd()
-	apiCmd.AddCommand(chainsCmd)
+	return chainsCmd
 }
 
 func runChainsCmd(_ *cobra.Command, args []string) {

@@ -1,4 +1,4 @@
-package api
+package node_cmd
 
 import (
 	"fmt"
@@ -6,12 +6,12 @@ import (
 	"github.com/lunfardo314/proxima/api"
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/genesis"
-	"github.com/lunfardo314/proxima/proxi_old/glb"
+	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/spf13/cobra"
 )
 
-func initGetUTXOCmd(apiCmd *cobra.Command) {
+func initGetUTXOCmd() *cobra.Command {
 	getUTXOCmd := &cobra.Command{
 		Use:   "get_utxo <output ID hex-encoded>",
 		Short: `returns output by output ID`,
@@ -19,8 +19,7 @@ func initGetUTXOCmd(apiCmd *cobra.Command) {
 		Run:   runGetUTXOCmd,
 	}
 	getUTXOCmd.InitDefaultHelpCmd()
-	apiCmd.AddCommand(getUTXOCmd)
-
+	return getUTXOCmd
 }
 
 func runGetUTXOCmd(_ *cobra.Command, args []string) {

@@ -1,48 +1,64 @@
-package api
+package node_cmd
 
 import (
 	"github.com/lunfardo314/proxima/api/client"
 	"github.com/lunfardo314/proxima/core"
-	api "github.com/lunfardo314/proxima/proxi_old/api/seq"
-	"github.com/lunfardo314/proxima/proxi_old/glb"
+	"github.com/lunfardo314/proxima/proxi/glb"
+	"github.com/lunfardo314/proxima/proxi/node_cmd/seq_cmd"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
 
-func Init(rootCmd *cobra.Command) {
-	apiCmd := &cobra.Command{
-		Use:   "api [<subcommand>]",
-		Short: "specifies node api subcommand",
-		Args:  cobra.MaximumNArgs(1),
+func Init() *cobra.Command {
+	nodeCmd := &cobra.Command{
+		Use:   "node [<subcommand>]",
+		Short: "specifies node API subcommand",
+		Args:  cobra.NoArgs,
+		PersistentPreRun: func(_ *cobra.Command, _ []string) {
+			glb.ReadInConfig()
+		},
 	}
 
-	apiCmd.PersistentFlags().String("api.endpoint", "", "<DNS name>:port")
-	err := viper.BindPFlag("api.endpoint", apiCmd.PersistentFlags().Lookup("api.endpoint"))
+	nodeCmd.PersistentFlags().StringP("config", "c", "", "proxi config profile name")
+	err := viper.BindPFlag("config", nodeCmd.PersistentFlags().Lookup("config"))
 	glb.AssertNoError(err)
 
-	apiCmd.PersistentFlags().BoolP("nowait", "n", false, "do not wait for inclusion")
-	err = viper.BindPFlag("nowait", apiCmd.PersistentFlags().Lookup("nowait"))
+	nodeCmd.PersistentFlags().String("private_key", "", "ED25519 private key (hex encoded)")
+	err = viper.BindPFlag("private_key", nodeCmd.PersistentFlags().Lookup("private_key"))
 	glb.AssertNoError(err)
 
-	apiCmd.InitDefaultHelpCmd()
-	initGetOutputsCmd(apiCmd)
-	initGetUTXOCmd(apiCmd)
-	initGetChainOutputCmd(apiCmd)
-	initCompactOutputsCmd(apiCmd)
-	initBalanceCmd(apiCmd)
-	initTransferCmd(apiCmd)
-	initSpamCmd(apiCmd)
-	initMakeChainCmd(apiCmd)
-	initChainsCmd(apiCmd)
+	nodeCmd.PersistentFlags().String("api.endpoint", "", "<DNS name>:port")
+	err = viper.BindPFlag("api.endpoint", nodeCmd.PersistentFlags().Lookup("api.endpoint"))
+	glb.AssertNoError(err)
 
-	api.Init(apiCmd)
+	nodeCmd.PersistentFlags().BoolP("nowait", "n", false, "do not wait for inclusion")
+	err = viper.BindPFlag("nowait", nodeCmd.PersistentFlags().Lookup("nowait"))
+	glb.AssertNoError(err)
 
-	rootCmd.AddCommand(apiCmd)
+	nodeCmd.InitDefaultHelpCmd()
+	nodeCmd.AddCommand(
+		initGetOutputsCmd(),
+		initGetUTXOCmd(),
+		initGetChainOutputCmd(),
+		initCompactOutputsCmd(),
+		initBalanceCmd(),
+		initTransferCmd(),
+		initSpamCmd(),
+		initMakeChainCmd(),
+		initChainsCmd(),
+		seq_cmd.Init(),
+	)
+
+	//node_cmd.Init(nodeCmd) ????
+
+	return nodeCmd
 }
 
 func getClient() *client.APIClient {
-	return client.New(viper.GetString("api.endpoint"))
+	endpoint := viper.GetString("api.endpoint")
+	glb.Assertf(endpoint != "", "node API endpoint not specified")
+	return client.New(endpoint)
 }
 
 func displayTotals(outs []*core.OutputWithID) {

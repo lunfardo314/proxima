@@ -1,13 +1,13 @@
-package api
+package node_cmd
 
 import (
 	"encoding/hex"
 
-	"github.com/lunfardo314/proxima/proxi_old/glb"
+	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/spf13/cobra"
 )
 
-func initGetOutputsCmd(apiCmd *cobra.Command) {
+func initGetOutputsCmd() *cobra.Command {
 	getOutputsCmd := &cobra.Command{
 		Use:   "outputs",
 		Short: `returns all outputs locked in the accountable from the heaviest state of the latest epoch`,
@@ -16,7 +16,7 @@ func initGetOutputsCmd(apiCmd *cobra.Command) {
 	}
 
 	getOutputsCmd.InitDefaultHelpCmd()
-	apiCmd.AddCommand(getOutputsCmd)
+	return getOutputsCmd
 }
 
 func runGetOutputsCmd(_ *cobra.Command, _ []string) {

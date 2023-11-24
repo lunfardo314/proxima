@@ -9,14 +9,12 @@ import (
 )
 
 type WalletData struct {
-	Name       string
 	PrivateKey ed25519.PrivateKey
 	Account    core.AddressED25519
 	Sequencer  *core.ChainID
 }
 
 func GetWalletData() (ret WalletData) {
-	ret.Name = viper.GetString("wallet.name")
 	ret.PrivateKey = MustGetPrivateKey()
 	ret.Account = core.AddressED25519FromPrivateKey(ret.PrivateKey)
 	ret.Sequencer = GetOwnSequencerID()
@@ -65,4 +63,20 @@ func GetOwnSequencerID() *core.ChainID {
 
 func BypassYesNoPrompt() bool {
 	return viper.GetBool("force")
+}
+
+func ReadInConfig() {
+	configName := viper.GetString("config")
+	if configName == "" {
+		configName = "proxi"
+	}
+	viper.AddConfigPath(".")
+	viper.SetConfigType("yaml")
+	viper.SetConfigName(configName)
+	viper.SetConfigFile("./" + configName + ".yaml")
+
+	viper.AutomaticEnv() // read-in environment variables that match
+
+	_ = viper.ReadInConfig()
+	Infof("using profile: %s", viper.ConfigFileUsed())
 }

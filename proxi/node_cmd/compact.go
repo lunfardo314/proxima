@@ -1,17 +1,17 @@
-package api
+package node_cmd
 
 import (
 	"fmt"
 	"os"
 
 	"github.com/lunfardo314/proxima/core"
-	"github.com/lunfardo314/proxima/proxi_old/glb"
+	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/spf13/cobra"
 )
 
 const defaultFeeAmount = 500
 
-func initCompactOutputsCmd(apiCmd *cobra.Command) {
+func initCompactOutputsCmd() *cobra.Command {
 	getOutputsCmd := &cobra.Command{
 		Use:   "compact",
 		Short: `compacts all non-chain outputs unlockable now into one ED25519 output`,
@@ -20,7 +20,7 @@ func initCompactOutputsCmd(apiCmd *cobra.Command) {
 	}
 
 	getOutputsCmd.InitDefaultHelpCmd()
-	apiCmd.AddCommand(getOutputsCmd)
+	return getOutputsCmd
 }
 
 func runCompactCmd(_ *cobra.Command, _ []string) {

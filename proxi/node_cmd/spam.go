@@ -1,4 +1,4 @@
-package api
+package node_cmd
 
 import (
 	"math"
@@ -6,7 +6,7 @@ import (
 
 	"github.com/lunfardo314/proxima/api/client"
 	"github.com/lunfardo314/proxima/core"
-	"github.com/lunfardo314/proxima/proxi_old/glb"
+	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/spf13/cobra"
@@ -26,7 +26,7 @@ type spammerConfig struct {
 	target            core.Accountable
 }
 
-func initSpamCmd(apiCmd *cobra.Command) {
+func initSpamCmd() *cobra.Command {
 	spamCmd := &cobra.Command{
 		Use:   "spam",
 		Short: `spams the ledger according to spammer.scenario`,
@@ -70,7 +70,7 @@ func initSpamCmd(apiCmd *cobra.Command) {
 	err = viper.BindPFlag("spammer.tag_along.fee", spamCmd.PersistentFlags().Lookup("spammer.tag_along.fee"))
 	glb.AssertNoError(err)
 
-	apiCmd.AddCommand(spamCmd)
+	return spamCmd
 }
 
 func readSpammerConfigIn(sub *viper.Viper) (ret spammerConfig) {

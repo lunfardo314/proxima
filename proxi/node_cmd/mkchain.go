@@ -1,4 +1,4 @@
-package api
+package node_cmd
 
 import (
 	"os"
@@ -6,22 +6,21 @@ import (
 
 	"github.com/lunfardo314/proxima/api/client"
 	"github.com/lunfardo314/proxima/core"
-	"github.com/lunfardo314/proxima/proxi_old/glb"
+	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
 
-func initMakeChainCmd(apiCmd *cobra.Command) {
+func initMakeChainCmd() *cobra.Command {
 	getMakeChainCmd := &cobra.Command{
 		Use:   "mkchain [<initial on-chain balance>]",
 		Short: `creates new chain origin (not a sequencer)`,
 		Args:  cobra.MaximumNArgs(1),
 		Run:   runMakeChainCmd,
 	}
-
 	getMakeChainCmd.InitDefaultHelpCmd()
-	apiCmd.AddCommand(getMakeChainCmd)
+	return getMakeChainCmd
 }
 
 const (

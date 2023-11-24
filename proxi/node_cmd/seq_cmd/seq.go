@@ -1,15 +1,15 @@
-package api
+package seq_cmd
 
 import (
 	"github.com/lunfardo314/proxima/api/client"
-	"github.com/lunfardo314/proxima/proxi_old/glb"
+	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
 
 var seqIDstr string
 
-func Init(apiCmd *cobra.Command) {
+func Init() *cobra.Command {
 	seqCmd := &cobra.Command{
 		Use:     "sequencer",
 		Aliases: []string{"seq"},
@@ -24,9 +24,12 @@ func Init(apiCmd *cobra.Command) {
 	err := viper.BindPFlag("sequencer.id", seqCmd.PersistentFlags().Lookup("sequencer.id"))
 	glb.AssertNoError(err)
 
-	initSeqWithdrawCmd(seqCmd)
+	seqCmd.AddCommand(
+		initSeqWithdrawCmd(),
+	)
+
 	seqCmd.InitDefaultHelpCmd()
-	apiCmd.AddCommand(seqCmd)
+	return seqCmd
 }
 
 func getClient() *client.APIClient {

@@ -1,4 +1,4 @@
-package api
+package node_cmd
 
 import (
 	"fmt"
@@ -10,12 +10,12 @@ import (
 	"github.com/lunfardo314/proxima/api/client"
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/genesis"
-	"github.com/lunfardo314/proxima/proxi_old/glb"
+	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/spf13/cobra"
 )
 
-func initTransferCmd(apiCmd *cobra.Command) {
+func initTransferCmd() *cobra.Command {
 	transferCmd := &cobra.Command{
 		Use:   "transfer <amount>",
 		Short: `sends tokens from the wallet's account to the target`,
@@ -24,7 +24,7 @@ func initTransferCmd(apiCmd *cobra.Command) {
 	}
 
 	transferCmd.InitDefaultHelpCmd()
-	apiCmd.AddCommand(transferCmd)
+	return transferCmd
 }
 
 func runTransferCmd(_ *cobra.Command, args []string) {

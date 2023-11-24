@@ -1,12 +1,12 @@
-package api
+package node_cmd
 
 import (
 	"github.com/lunfardo314/proxima/core"
-	"github.com/lunfardo314/proxima/proxi_old/glb"
+	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/spf13/cobra"
 )
 
-func initGetChainOutputCmd(apiCmd *cobra.Command) {
+func initGetChainOutputCmd() *cobra.Command {
 	getUTXOCmd := &cobra.Command{
 		Use:   "get_chain_output <chain ID hex-encoded>",
 		Short: `returns chain output by chain ID`,
@@ -14,7 +14,7 @@ func initGetChainOutputCmd(apiCmd *cobra.Command) {
 		Run:   runGetChainOutputCmd,
 	}
 	getUTXOCmd.InitDefaultHelpCmd()
-	apiCmd.AddCommand(getUTXOCmd)
+	return getUTXOCmd
 }
 
 func runGetChainOutputCmd(_ *cobra.Command, args []string) {

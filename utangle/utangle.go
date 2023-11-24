@@ -7,7 +7,6 @@ import (
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/general"
 	"github.com/lunfardo314/proxima/multistate"
-	"github.com/lunfardo314/proxima/proxi_old/glb"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/set"
@@ -202,7 +201,7 @@ func (ut *UTXOTangle) GetBaselineState(vid *WrappedTx) (general.IndexedStateRead
 
 func (ut *UTXOTangle) MustGetBaselineState(vid *WrappedTx) general.IndexedStateReader {
 	ret, err := ut.GetBaselineState(vid)
-	glb.AssertNoError(err)
+	util.AssertNoError(err)
 	return ret
 }
 

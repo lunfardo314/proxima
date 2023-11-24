@@ -1,11 +1,11 @@
-package api
+package node_cmd
 
 import (
-	"github.com/lunfardo314/proxima/proxi_old/glb"
+	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/spf13/cobra"
 )
 
-func initBalanceCmd(apiCmd *cobra.Command) {
+func initBalanceCmd() *cobra.Command {
 	getBalanceCmd := &cobra.Command{
 		Use:     "balance",
 		Aliases: []string{"bal"},
@@ -15,7 +15,7 @@ func initBalanceCmd(apiCmd *cobra.Command) {
 	}
 
 	getBalanceCmd.InitDefaultHelpCmd()
-	apiCmd.AddCommand(getBalanceCmd)
+	return getBalanceCmd
 }
 
 func runBalanceCmd(_ *cobra.Command, _ []string) {

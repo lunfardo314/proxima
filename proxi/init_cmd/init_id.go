@@ -21,7 +21,7 @@ func initIDCmd() *cobra.Command {
 		Args:  cobra.NoArgs,
 		Short: "creates identity data of the ledger",
 		PersistentPreRun: func(_ *cobra.Command, _ []string) {
-			readInConfig()
+			glb.ReadInConfig()
 		},
 		Run: runInitLedgerIDCommand,
 	}

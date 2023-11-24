@@ -13,7 +13,6 @@ import (
 
 	"github.com/lunfardo314/proxima/api"
 	"github.com/lunfardo314/proxima/core"
-	"github.com/lunfardo314/proxima/proxi_old/glb"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/txbuilder"
 	"github.com/lunfardo314/proxima/util"
@@ -421,7 +420,7 @@ func (c *APIClient) MakeChainOrigin(par TransferFromED25519WalletParams) (*trans
 	ts = core.MaxLogicalTime(ts1.AddTimeTicks(core.TransactionTimePaceInTicks), ts)
 
 	err = txb.PutStandardInputUnlocks(len(inps))
-	glb.AssertNoError(err)
+	util.AssertNoError(err)
 
 	chainOut := core.NewOutput(func(o *core.Output) {
 		_, _ = o.WithAmount(par.Amount).
@@ -429,7 +428,7 @@ func (c *APIClient) MakeChainOrigin(par TransferFromED25519WalletParams) (*trans
 			PushConstraint(core.NewChainOrigin().Bytes())
 	})
 	_, err = txb.ProduceOutput(chainOut)
-	glb.AssertNoError(err)
+	util.AssertNoError(err)
 
 	if par.TagAlongFee > 0 {
 		tagAlongFeeOut := core.NewOutput(func(o *core.Output) {

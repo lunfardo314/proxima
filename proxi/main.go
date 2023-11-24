@@ -7,6 +7,7 @@ import (
 	"github.com/lunfardo314/proxima/proxi/db_cmd"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/proxi/init_cmd"
+	"github.com/lunfardo314/proxima/proxi/node_cmd"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -34,6 +35,7 @@ func main() {
 	rootCmd.AddCommand(
 		init_cmd.CmdInit(),
 		db_cmd.Init(),
+		node_cmd.Init(),
 	)
 	rootCmd.InitDefaultHelpCmd()
 	if err := rootCmd.Execute(); err != nil {
