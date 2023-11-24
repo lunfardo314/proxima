@@ -21,7 +21,7 @@ func main() {
       - database level access to the Proxima ledger for admin purposes, including genesis creation
       - access to ledger via the Proxima node API. This includes simple wallet functions
 `,
-		PersistentPreRun: func(cmd *cobra.Command, _ []string) {
+		Run: func(cmd *cobra.Command, _ []string) {
 			_ = cmd.Help()
 		},
 	}

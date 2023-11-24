@@ -52,11 +52,6 @@ func (p *ProximaNode) initConfig() {
 	viper.AddConfigPath(".")
 	err = viper.ReadInConfig()
 	util.AssertNoError(err)
-
-	if viper.GetString(general.ConfigKeyMultiStateDbName) == "" {
-		p.log.Errorf("multistate database not specified, cannot start the node")
-		os.Exit(1)
-	}
 }
 
 func (p *ProximaNode) Run() {
@@ -89,13 +84,9 @@ func (p *ProximaNode) WaitStop() {
 	p.log.Info("workflow stopped")
 }
 
-func (p *ProximaNode) GetMultiStateDBName() string {
-	return viper.GetString("multistate.name")
-}
-
 func (p *ProximaNode) startMultiStateDB() {
-	dbname := p.GetMultiStateDBName()
 	var err error
+	dbname := general.MultiStateDBName
 	bdb, err := badger_adaptor.OpenBadgerDB(dbname)
 	if err != nil {
 		p.log.Fatalf("can't open '%s'", dbname)
@@ -117,15 +108,16 @@ func (p *ProximaNode) startTxStore() {
 		p.log.Infof("transaction store is 'dummy'")
 		p.txStore = txstore.NewDummyTxBytesStore()
 
-	case "db":
-		name := viper.GetString(general.ConfigKeyTxStoreName)
-		p.log.Infof("transaction store database name is '%s'", name)
-		if name == "" {
-			panic("transaction store database name not specified. Cannot start the node")
-		}
-		p.txStoreDB = badger_adaptor.New(badger_adaptor.MustCreateOrOpenBadgerDB(name))
+	case "url":
+		panic("'url' type of transaction store is not supported yet")
+
+	default:
+		// default option is predefined database name
+		dbname := general.TxStoreDBName
+		p.log.Infof("transaction store database dbname is '%s'", dbname)
+		p.txStoreDB = badger_adaptor.New(badger_adaptor.MustCreateOrOpenBadgerDB(dbname))
 		p.txStore = txstore.NewSimpleTxBytesStore(p.txStoreDB)
-		p.log.Infof("opened DB '%s' as transaction store", name)
+		p.log.Infof("opened DB '%s' as transaction store", dbname)
 
 		go func() {
 			<-p.ctx.Done()
@@ -133,14 +125,6 @@ func (p *ProximaNode) startTxStore() {
 			_ = p.txStoreDB.Close()
 			p.log.Infof("transaction store database has been closed")
 		}()
-
-	case "url":
-		panic("'url' type of transaction store is not supported yet")
-
-	default:
-		p.log.Errorf("transaction store type '%s' is wrong", viper.GetString(general.ConfigKeyTxStoreType))
-		p.WaitStop()
-		os.Exit(1)
 	}
 }
 

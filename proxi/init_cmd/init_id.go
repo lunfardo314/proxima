@@ -13,6 +13,8 @@ import (
 	"github.com/spf13/viper"
 )
 
+const ledgerIDFileName = "proxima.id.yaml"
+
 func initIDCmd() *cobra.Command {
 	initLedgerIDCmd := &cobra.Command{
 		Use:   "ledger_id",
@@ -30,20 +32,18 @@ func initIDCmd() *cobra.Command {
 	return initLedgerIDCmd
 }
 
-const idFileName = "proxima.id.yaml"
-
 func runInitLedgerIDCommand(_ *cobra.Command, _ []string) {
-	if fileExist(idFileName) {
-		if !glb.YesNoPrompt(fmt.Sprintf("file '%s' already exists. Overwrite?", idFileName), false) {
+	if fileExist(ledgerIDFileName) {
+		if !glb.YesNoPrompt(fmt.Sprintf("file '%s' already exists. Overwrite?", ledgerIDFileName), false) {
 			os.Exit(0)
 		}
 	}
 	privKey := glb.MustGetPrivateKey()
 	id := genesis.DefaultIdentityData(privKey)
 	yamlData := id.YAML()
-	err := os.WriteFile(idFileName, yamlData, 0666)
+	err := os.WriteFile(ledgerIDFileName, yamlData, 0666)
 	glb.AssertNoError(err)
-	glb.Infof("new ledger identity data has been stored in file '%s':", idFileName)
+	glb.Infof("new ledger identity data has been stored in file '%s':", ledgerIDFileName)
 	glb.Infof("--------------\n%s--------------", string(yamlData))
 	glb.Infof("Genesis controller address: %s", core.AddressED25519FromPrivateKey(privKey).String())
 	pubKeyStr := hex.EncodeToString(privKey.Public().(ed25519.PublicKey))

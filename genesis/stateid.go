@@ -134,10 +134,14 @@ func (id *StateIdentityData) OriginChainID() core.ChainID {
 }
 
 func (id *StateIdentityData) String() string {
+	return id.Lines().String()
+}
+
+func (id *StateIdentityData) Lines(prefix ...string) *lines.Lines {
 	originChainID := id.OriginChainID()
 	initialSupplyOutputID := InitialSupplyOutputID(id.GenesisTimeSlot)
 	genesisStemOutputID := StemOutputID(id.GenesisTimeSlot)
-	return lines.New().
+	return lines.New(prefix...).
 		Add("Description: '%s'", id.Description).
 		Add("Constraint library hash: %s", hex.EncodeToString(id.CoreLibraryHash[:])).
 		Add("Initial supply: %s", util.GoThousands(id.InitialSupply)).
@@ -148,8 +152,7 @@ func (id *StateIdentityData) String() string {
 		Add("Genesis time slot: %d", id.GenesisTimeSlot).
 		Add("Origin chain ID: %s", originChainID.String()).
 		Add("Initial supply output ID: %s", initialSupplyOutputID.String()).
-		Add("Genesis stem output ID: %s", genesisStemOutputID.String()).
-		String()
+		Add("Genesis stem output ID: %s", genesisStemOutputID.String())
 }
 
 func (id *StateIdentityData) yamlAble() *stateIdentityDataYAMLable {
@@ -169,15 +172,18 @@ func (id *StateIdentityData) YAML() []byte {
 	return id.yamlAble().YAML()
 }
 
+const stateIDComment = `# This file contains Proxima ledger identity data.
+# It will be used to create genesis ledger state for the Proxima network.
+# The ledger identity file does not contain secrets, it is public.
+# The data in the file must match genesis controller private key and hardcoded protocol constants.
+# Except 'description' field, file should not be modified.
+# Once used to create genesis, identity data should never be modified.
+`
+
 func (id *stateIdentityDataYAMLable) YAML() []byte {
 	var buf bytes.Buffer
-	buf.WriteString("# This file contains Proxima ledger identity data.\n")
-	buf.WriteString("# It will be used to create genesis ledger state for the Proxima network. \n")
-	buf.WriteString("# The ledger identity file does not contain secrets, it is public.\n")
-	buf.WriteString("# The data in the file must match genesis controller private key and hardcoded protocol constants\n")
-	buf.WriteString("# Except 'description' field, file should not be modified\n")
-	buf.WriteString("# Once used to create genesis, identity data should never be modified\n")
 	data, err := yaml.Marshal(id)
+	buf.WriteString(stateIDComment)
 	buf.Write(data)
 	util.AssertNoError(err)
 	return buf.Bytes()

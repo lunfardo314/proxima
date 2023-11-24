@@ -16,6 +16,7 @@ func CmdInit() *cobra.Command {
 	}
 	initCmd.AddCommand(initProfileCmd())
 	initCmd.AddCommand(initIDCmd())
+	initCmd.AddCommand(initGenesisDBCmd())
 	initCmd.InitDefaultHelpCmd()
 	return initCmd
 }
