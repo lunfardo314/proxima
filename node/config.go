@@ -16,10 +16,6 @@ func init() {
 	pflag.String("logger.timelayout", general.TimeLayoutDefault, "time format")
 	pflag.String("logger.output", "stdout", "a list where to write log")
 
-	pflag.String(general.ConfigKeyMultiStateDbName, "proximadb", "name of the multi-state database")
-	pflag.String(general.ConfigKeyTxStoreType, "dummy", "one of: db | dummy | url")
-	pflag.String(general.ConfigKeyTxStoreName, "", "depending on type: name of the db or url")
-
 	pflag.Bool("pprof.enable", false, "enable pprof")
 	pflag.Int("pprof.port", 8080, "default pprof port")
 }

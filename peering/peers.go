@@ -118,6 +118,7 @@ func readPeeringConfig() (*Config, error) {
 	if len(pkBin) != ed25519.PrivateKeySize {
 		return nil, fmt.Errorf("host.private_key: wrong host id private key size")
 	}
+	cfg.HostIDPrivateKey = pkBin
 
 	encodedHostID := viper.GetString("peering.host.id")
 	cfg.HostID, err = peer.Decode(encodedHostID)
@@ -128,7 +129,6 @@ func readPeeringConfig() (*Config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("UnmarshalEd25519PrivateKey: %v", err)
 	}
-	cfg.HostIDPrivateKey = pkBin
 
 	if !cfg.HostID.MatchesPrivateKey(privKey) {
 		return nil, fmt.Errorf("config: host private key does not match hostID")
@@ -166,7 +166,7 @@ func (ps *Peers) Run() {
 		ps.Stop()
 	}()
 
-	ps.log.Infof("libp2p host %s (self) started on %v with %d configured peers", shortPeerIDString(ps.host.ID()), ps.host.Addrs(), len(ps.cfg.KnownPeers))
+	ps.log.Infof("libp2p host %s (self) started on %v with %d configured known peers", shortPeerIDString(ps.host.ID()), ps.host.Addrs(), len(ps.cfg.KnownPeers))
 	_ = ps.log.Sync()
 }
 

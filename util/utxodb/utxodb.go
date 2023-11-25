@@ -64,7 +64,7 @@ func NewUTXODB(trace ...bool) *UTXODB {
 		TimeTickDuration:           core.TimeTickDuration(),
 		MaxTimeTickValueInTimeSlot: core.TimeTicksPerSlot - 1,
 		GenesisTimeSlot:            genesisSlot,
-		CoreLibraryHash:            easyfl.LibraryHash(),
+		CoreLedgerConstraintsHash:  easyfl.LibraryHash(),
 	}
 
 	faucetPrivateKey := testutil.GetTestingPrivateKey(31415926535)

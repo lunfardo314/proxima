@@ -135,7 +135,7 @@ sequencers:
   boot:
     enable: false
     loglevel: info
-	# chain ID of the sequencer
+    # chain ID of the sequencer
     sequencer_id: 
     # chain controller's private key (hex-encoded)
     controller_key: 

@@ -36,19 +36,22 @@ type (
 		// time slot of the genesis
 		GenesisTimeSlot core.TimeSlot
 		// core constraint library hash. For checking of ledger version compatibility with the node
-		CoreLibraryHash [32]byte
+		CoreLedgerConstraintsHash [32]byte
 	}
 
 	// stateIdentityDataYAMLable structure for canonic yamlAble marshaling
 	stateIdentityDataYAMLable struct {
 		Description                string `yaml:"description"`
-		InitialSupply              uint64 `yaml:"initialSupply"`
-		GenesisControllerPublicKey string `yaml:"genesisControllerPublicKey"`
-		BaselineTime               int64  `yaml:"baselineTime"`
-		TimeTickDuration           int64  `yaml:"timeTickDuration"`
-		MaxTimeTickValueInTimeSlot uint8  `yaml:"maxTimeTickValueInTimeSlot"`
-		GenesisTimeSlot            uint32 `yaml:"genesisTimeSlot"`
-		CoreLibraryHash            string `yaml:"coreLibraryHash"`
+		InitialSupply              uint64 `yaml:"initial_supply"`
+		GenesisControllerPublicKey string `yaml:"genesis_controller_public_key"`
+		BaselineTime               int64  `yaml:"baseline_time"`
+		TimeTickDuration           int64  `yaml:"time_tick_duration"`
+		MaxTimeTickValueInTimeSlot uint8  `yaml:"max_time_tick_value_in_time_slot"`
+		GenesisTimeSlot            uint32 `yaml:"genesis_time_slot"`
+		CoreLedgerConstraintsHash  string `yaml:"core_ledger_constraints_hash"`
+		// for control
+		GenesisControllerAddress string `yaml:"genesis_controller_address"`
+		BootstrapChainID         string `yaml:"bootstrap_chain_id"`
 	}
 )
 
@@ -69,14 +72,14 @@ func (id *StateIdentityData) Bytes() []byte {
 	binary.BigEndian.PutUint32(genesisTimesSlotBin[:], uint32(id.GenesisTimeSlot))
 
 	return lazybytes.MakeArrayFromDataReadOnly(
-		[]byte(id.Description),        // 0
-		supplyBin[:],                  // 1
-		id.GenesisControllerPublicKey, // 2
-		baselineTimeBin[:],            // 3
-		timeTickDurationBin[:],        // 4
-		maxTickBin[:],                 // 5
-		genesisTimesSlotBin[:],        // 6
-		id.CoreLibraryHash[:],         // 7
+		[]byte(id.Description),          // 0
+		supplyBin[:],                    // 1
+		id.GenesisControllerPublicKey,   // 2
+		baselineTimeBin[:],              // 3
+		timeTickDurationBin[:],          // 4
+		maxTickBin[:],                   // 5
+		genesisTimesSlotBin[:],          // 6
+		id.CoreLedgerConstraintsHash[:], // 7
 	).Bytes()
 }
 
@@ -116,7 +119,7 @@ func MustStateIdentityDataFromBytes(data []byte) *StateIdentityData {
 		MaxTimeTickValueInTimeSlot: maxTick[0],
 		GenesisTimeSlot:            core.MustTimeSlotFromBytes(arr.At(6)),
 	}
-	copy(ret.CoreLibraryHash[:], arr.At(7))
+	copy(ret.CoreLedgerConstraintsHash[:], arr.At(7))
 	return ret
 }
 
@@ -143,7 +146,7 @@ func (id *StateIdentityData) Lines(prefix ...string) *lines.Lines {
 	genesisStemOutputID := StemOutputID(id.GenesisTimeSlot)
 	return lines.New(prefix...).
 		Add("Description: '%s'", id.Description).
-		Add("Constraint library hash: %s", hex.EncodeToString(id.CoreLibraryHash[:])).
+		Add("Core ledger constraints hash: %s", hex.EncodeToString(id.CoreLedgerConstraintsHash[:])).
 		Add("Initial supply: %s", util.GoThousands(id.InitialSupply)).
 		Add("Genesis controller address: %s", id.GenesisControlledAddress().String()).
 		Add("Baseline time: %s", id.BaselineTime.Format(time.RFC3339)).
@@ -156,6 +159,7 @@ func (id *StateIdentityData) Lines(prefix ...string) *lines.Lines {
 }
 
 func (id *StateIdentityData) yamlAble() *stateIdentityDataYAMLable {
+	chainID := id.OriginChainID()
 	return &stateIdentityDataYAMLable{
 		Description:                id.Description,
 		InitialSupply:              id.InitialSupply,
@@ -164,7 +168,9 @@ func (id *StateIdentityData) yamlAble() *stateIdentityDataYAMLable {
 		TimeTickDuration:           id.TimeTickDuration.Nanoseconds(),
 		MaxTimeTickValueInTimeSlot: id.MaxTimeTickValueInTimeSlot,
 		GenesisTimeSlot:            uint32(id.GenesisTimeSlot),
-		CoreLibraryHash:            hex.EncodeToString(id.CoreLibraryHash[:]),
+		CoreLedgerConstraintsHash:  hex.EncodeToString(id.CoreLedgerConstraintsHash[:]),
+		GenesisControllerAddress:   id.GenesisControlledAddress().String(),
+		BootstrapChainID:           chainID.StringHex(),
 	}
 }
 
@@ -178,14 +184,15 @@ const stateIDComment = `# This file contains Proxima ledger identity data.
 # The data in the file must match genesis controller private key and hardcoded protocol constants.
 # Except 'description' field, file should not be modified.
 # Once used to create genesis, identity data should never be modified.
+# Values 'genesis_controller_address' and 'bootstrap_chain_id' are computed values used for control
 `
 
 func (id *stateIdentityDataYAMLable) YAML() []byte {
 	var buf bytes.Buffer
 	data, err := yaml.Marshal(id)
+	util.AssertNoError(err)
 	buf.WriteString(stateIDComment)
 	buf.Write(data)
-	util.AssertNoError(err)
 	return buf.Bytes()
 }
 
@@ -205,14 +212,23 @@ func (id *stateIdentityDataYAMLable) stateIdentityData() (*StateIdentityData, er
 	ret.TimeTickDuration = time.Duration(id.TimeTickDuration)
 	ret.MaxTimeTickValueInTimeSlot = id.MaxTimeTickValueInTimeSlot
 	ret.GenesisTimeSlot = core.TimeSlot(id.GenesisTimeSlot)
-	hBin, err := hex.DecodeString(id.CoreLibraryHash)
+	hBin, err := hex.DecodeString(id.CoreLedgerConstraintsHash)
 	if err != nil {
 		return nil, err
 	}
 	if len(hBin) != 32 {
 		return nil, fmt.Errorf("wrong core library hash")
 	}
-	copy(ret.CoreLibraryHash[:], hBin)
+	copy(ret.CoreLedgerConstraintsHash[:], hBin)
+
+	// control
+	if core.AddressED25519FromPublicKey(ret.GenesisControllerPublicKey).String() != id.GenesisControllerAddress {
+		return nil, fmt.Errorf("YAML data inconsistency: address and public key does not match")
+	}
+	chainID := ret.OriginChainID()
+	if id.BootstrapChainID != chainID.StringHex() {
+		return nil, fmt.Errorf("YAML data inconsistency: bootstrap chain ID does not match")
+	}
 	return ret, nil
 }
 
@@ -235,7 +251,7 @@ func DefaultIdentityData(privateKey ed25519.PrivateKey, slot ...core.TimeSlot) *
 		sl = core.LogicalTimeNow().TimeSlot()
 	}
 	return &StateIdentityData{
-		CoreLibraryHash:            easyfl.LibraryHash(),
+		CoreLedgerConstraintsHash:  easyfl.LibraryHash(),
 		Description:                fmt.Sprintf("Proxima prototype version %s", general.Version),
 		InitialSupply:              DefaultSupply,
 		GenesisControllerPublicKey: privateKey.Public().(ed25519.PublicKey),

@@ -1,12 +1,9 @@
 package init_cmd
 
 import (
-	"crypto/ed25519"
-	"encoding/hex"
 	"fmt"
 	"os"
 
-	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/genesis"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/spf13/cobra"
@@ -45,7 +42,4 @@ func runInitLedgerIDCommand(_ *cobra.Command, _ []string) {
 	glb.AssertNoError(err)
 	glb.Infof("new ledger identity data has been stored in file '%s':", ledgerIDFileName)
 	glb.Infof("--------------\n%s--------------", string(yamlData))
-	glb.Infof("Genesis controller address: %s", core.AddressED25519FromPrivateKey(privKey).String())
-	pubKeyStr := hex.EncodeToString(privKey.Public().(ed25519.PublicKey))
-	glb.Infof("Genesis controller public key: %s (for control)", pubKeyStr)
 }

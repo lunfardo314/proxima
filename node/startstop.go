@@ -161,6 +161,8 @@ func (p *ProximaNode) startWorkflow() {
 	peers, err := peering.NewPeersFromConfig(p.ctx)
 	util.AssertNoError(err)
 
+	peers.Run()
+
 	p.workflow = workflow.New(p.uTangle, peers, workflow.WithGlobalConfigOptions)
 	p.workflow.Start(p.ctx)
 	p.workflow.StartPruner()

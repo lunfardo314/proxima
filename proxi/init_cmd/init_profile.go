@@ -31,6 +31,8 @@ const profileTemplate = `# proxi profile
 wallet:
     private_key: %s
     account: %s
+api:
+    endpoint:
 `
 
 func runInitProfileCommand(_ *cobra.Command, args []string) {
