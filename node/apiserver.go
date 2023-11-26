@@ -13,13 +13,13 @@ func (p *ProximaNode) startApiServer() {
 	p.log.Infof("starting API server on %s", addr)
 
 	go server.RunOn(addr, p.workflow)
-
-	<-p.ctx.Done()
-	p.stopApiServer()
-
+	go func() {
+		<-p.ctx.Done()
+		p.stopAPIServer()
+	}()
 }
 
-func (p *ProximaNode) stopApiServer() {
+func (p *ProximaNode) stopAPIServer() {
 	// do we need to do something here?
 	p.log.Infof("API server has been stopped")
 }

@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/core"
-	"go.uber.org/atomic"
 )
 
 const PullTxConsumerName = "pulltx"
@@ -31,7 +30,7 @@ type (
 		*Consumer[*PullTxData]
 		mutex sync.RWMutex
 
-		stopBackgroundLoop atomic.Bool
+		stopBackgroundLoopChan chan struct{}
 		// txid -> next pull deadline
 		wanted map[core.TransactionID]time.Time
 	}
@@ -39,8 +38,9 @@ type (
 
 func (w *Workflow) initPullConsumer() {
 	c := &PullTxConsumer{
-		Consumer: NewConsumer[*PullTxData](PullTxConsumerName, w),
-		wanted:   make(map[core.TransactionID]time.Time),
+		Consumer:               NewConsumer[*PullTxData](PullTxConsumerName, w),
+		wanted:                 make(map[core.TransactionID]time.Time),
+		stopBackgroundLoopChan: make(chan struct{}),
 	}
 	c.AddOnConsume(c.consume)
 	c.AddOnClosed(func() {
@@ -111,13 +111,18 @@ func (p *PullTxConsumer) removeTransactionCmd(inp *PullTxData) {
 }
 
 func (p *PullTxConsumer) stop() {
-	p.stopBackgroundLoop.Store(true)
+	close(p.stopBackgroundLoopChan)
 }
 
-func (p *PullTxConsumer) backgroundLoop() {
-	for !p.stopBackgroundLoop.Load() {
-		time.Sleep(10 * time.Millisecond)
+const pullLoopPeriod = 10 * time.Millisecond
 
+func (p *PullTxConsumer) backgroundLoop() {
+	for {
+		select {
+		case <-p.stopBackgroundLoopChan:
+			break
+		case <-time.After(pullLoopPeriod):
+		}
 		p.pullAllMatured()
 	}
 	p.Log().Infof("background loop stopped")

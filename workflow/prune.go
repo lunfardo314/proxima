@@ -1,7 +1,6 @@
 package workflow
 
 import (
-	"runtime"
 	"time"
 
 	"github.com/lunfardo314/proxima/core"
@@ -33,13 +32,8 @@ func (w *Workflow) pruneOrphanedLoop(log *zap.SugaredLogger) {
 
 		w.utxoTangle.SetLastPrunedOrphaned(time.Now())
 
-		var mstats runtime.MemStats
-		runtime.ReadMemStats(&mstats)
-
-		log.Infof("SLOT %d. Pruned %d orphaned transactions and %d branches out of total %d vertices in %v, deleted slots: %d. Alloc (gortn): %.1f MB (%d)",
-			core.LogicalTimeNow().TimeSlot(), nOrphaned, nOrphanedBranches, nVertices, time.Since(startTime), nDeletedSlots,
-			float32(mstats.Alloc*10/(1024*1024))/10,
-			runtime.NumGoroutine())
+		log.Infof("SLOT %d. Pruned %d orphaned transactions and %d branches out of total %d vertices in %v, deleted slots: %d",
+			core.LogicalTimeNow().TimeSlot(), nOrphaned, nOrphanedBranches, nVertices, time.Since(startTime), nDeletedSlots)
 	}
 	log.Infof("Prune loop stopped")
 }

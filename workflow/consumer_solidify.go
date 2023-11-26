@@ -10,7 +10,6 @@ import (
 	utangle "github.com/lunfardo314/proxima/utangle"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
-	"go.uber.org/atomic"
 )
 
 const SolidifyConsumerName = "solidify"
@@ -27,7 +26,7 @@ type (
 
 	SolidifyConsumer struct {
 		*Consumer[*SolidifyInputData]
-		stopBackgroundLoop atomic.Bool
+		stopBackgroundChan chan struct{}
 		// mutex for main data structures
 		mutex sync.RWMutex
 		// txPending is list of draft vertices waiting for solidification to be sent for validation
@@ -63,9 +62,10 @@ const (
 
 func (w *Workflow) initSolidifyConsumer() {
 	c := &SolidifyConsumer{
-		Consumer:       NewConsumer[*SolidifyInputData](SolidifyConsumerName, w),
-		txPending:      make(map[core.TransactionID]draftVertexData),
-		txDependencies: make(map[core.TransactionID]*txDependency),
+		Consumer:           NewConsumer[*SolidifyInputData](SolidifyConsumerName, w),
+		txPending:          make(map[core.TransactionID]draftVertexData),
+		txDependencies:     make(map[core.TransactionID]*txDependency),
+		stopBackgroundChan: make(chan struct{}),
 	}
 	c.AddOnConsume(func(inp *SolidifyInputData) {
 		if inp.Remove {
@@ -81,7 +81,7 @@ func (w *Workflow) initSolidifyConsumer() {
 	})
 	c.AddOnConsume(c.consume)
 	c.AddOnClosed(func() {
-		c.stopBackgroundLoop.Store(true)
+		close(c.stopBackgroundChan)
 		w.validateConsumer.Stop()
 		w.terminateWG.Done()
 	})
@@ -326,9 +326,15 @@ func (c *SolidifyConsumer) pull(txid core.TransactionID, gracePeriod time.Durati
 	})
 }
 
+const solidifyBackgroundLoopPeriod = 100 * time.Millisecond
+
 func (c *SolidifyConsumer) backgroundLoop() {
-	for !c.stopBackgroundLoop.Load() {
-		time.Sleep(100 * time.Millisecond)
+	for {
+		select {
+		case <-c.stopBackgroundChan:
+			break
+		case <-time.After(solidifyBackgroundLoopPeriod):
+		}
 		c.doBackgroundCheck()
 	}
 	c.Log().Debugf("background loop stopped")
