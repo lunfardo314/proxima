@@ -34,22 +34,23 @@ type (
 	}
 
 	Peers struct {
-		mutex           sync.RWMutex
-		cfg             *Config
-		log             *zap.SugaredLogger
-		ctx             context.Context
-		stopHeartbeat   atomic.Bool
-		stopOnce        sync.Once
-		host            host.Host
-		peers           map[peer.ID]*Peer // except self
-		onReceiveGossip func(from peer.ID, txBytes []byte)
-		onReceivePull   func(from peer.ID, txids []core.TransactionID)
-		traceFlag       atomic.Bool
+		mutex             sync.RWMutex
+		cfg               *Config
+		log               *zap.SugaredLogger
+		ctx               context.Context
+		stopHeartbeatChan chan struct{}
+		stopOnce          sync.Once
+		host              host.Host
+		peers             map[peer.ID]*Peer // except self
+		onReceiveGossip   func(from peer.ID, txBytes []byte)
+		onReceivePull     func(from peer.ID, txids []core.TransactionID)
+		traceFlag         atomic.Bool
 	}
 
 	Peer struct {
 		mutex                  sync.RWMutex
 		name                   string
+		id                     peer.ID
 		lastActivity           time.Time
 		needsLogLostConnection bool
 	}
@@ -85,13 +86,14 @@ func New(cfg *Config, ctx context.Context) (*Peers, error) {
 	}
 
 	ret := &Peers{
-		cfg:             cfg,
-		log:             general.NewLogger("[peering]", zap.DebugLevel, nil, ""),
-		ctx:             ctx,
-		host:            lppHost,
-		peers:           make(map[peer.ID]*Peer),
-		onReceiveGossip: func(_ peer.ID, _ []byte) {},
-		onReceivePull:   func(_ peer.ID, _ []core.TransactionID) {},
+		cfg:               cfg,
+		log:               general.NewLogger("[peering]", zap.DebugLevel, nil, ""),
+		ctx:               ctx,
+		stopHeartbeatChan: make(chan struct{}),
+		host:              lppHost,
+		peers:             make(map[peer.ID]*Peer),
+		onReceiveGossip:   func(_ peer.ID, _ []byte) {},
+		onReceivePull:     func(_ peer.ID, _ []core.TransactionID) {},
 	}
 
 	for name, maddr := range cfg.KnownPeers {
@@ -174,7 +176,7 @@ func (ps *Peers) Stop() {
 	ps.stopOnce.Do(func() {
 		ps.log.Infof("stopping libp2p host %s (self)..", shortPeerIDString(ps.host.ID()))
 		_ = ps.log.Sync()
-		ps.stopHeartbeat.Store(true)
+		close(ps.stopHeartbeatChan)
 		_ = ps.host.Close()
 	})
 }
@@ -189,17 +191,16 @@ func (ps *Peers) AddPeer(maddr multiaddr.Multiaddr, name string) error {
 	}
 	ps.host.Peerstore().AddAddr(info.ID, maddr, peerstore.PermanentAddrTTL)
 	if _, already := ps.peers[info.ID]; !already {
-		ps.peers[info.ID] = &Peer{name: name}
+		ps.peers[info.ID] = &Peer{
+			name: name,
+			id:   info.ID,
+		}
 	}
 	return nil
 }
 
 func (ps *Peers) SetTrace(b bool) {
 	ps.traceFlag.Store(b)
-}
-
-func (ps *Peers) ToggleTrace() {
-	ps.traceFlag.Store(!ps.traceFlag.Load())
 }
 
 func (ps *Peers) trace(format string, args ...any) {
@@ -258,11 +259,7 @@ func (ps *Peers) gossipStreamHandler(stream network.Stream) {
 	}
 	defer stream.Close()
 
-	p.mutex.RLock()
-	p.lastActivity = time.Now()
-	p.needsLogLostConnection = true
-	p.mutex.RUnlock()
-
+	p.evidenceActivity(ps, "gossip")
 	ps.onReceiveGossip(id, txBytes)
 }
 
@@ -290,11 +287,7 @@ func (ps *Peers) pullStreamHandler(stream network.Stream) {
 		return
 	}
 
-	p.mutex.RLock()
-	p.lastActivity = time.Now()
-	p.needsLogLostConnection = true
-	p.mutex.RUnlock()
-
+	p.evidenceActivity(ps, "pull")
 	ps.onReceivePull(id, txLst)
 }
 

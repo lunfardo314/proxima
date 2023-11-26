@@ -32,6 +32,7 @@ const (
 	proximaNodeProfile               = "proxima.yaml"
 	deterministicSeedForTestingNodes = 31415926535 + 2718281828
 	peeringPort                      = 4000
+	apiPortStart                     = 8000
 )
 
 func runNodeConfigCommand(_ *cobra.Command, args []string) {
@@ -49,6 +50,7 @@ func runNodeConfigCommand(_ *cobra.Command, args []string) {
 	var hostID peer.ID
 
 	hostPort := peeringPort
+	apiPort := apiPortStart
 	var intro string
 	if generatePeering {
 		intro = "# Testing configuration of the Proxima node with 4 other peers on the same machine\n" +
@@ -72,6 +74,7 @@ func runNodeConfigCommand(_ *cobra.Command, args []string) {
 				hostID = peerID
 				hostPrivateKey = idPrivateKeys[i]
 				hostPort = peeringPort + i
+				apiPort = apiPortStart + i
 			}
 		}
 		peerConfig = peeringCfgLines.String()
@@ -95,6 +98,7 @@ func runNodeConfigCommand(_ *cobra.Command, args []string) {
 		hostID.String(),
 		hostPort,
 		peerConfig,
+		apiPort,
 	)
 	err = os.WriteFile(proximaNodeProfile, []byte(yamlStr), 0666)
 	glb.AssertNoError(err)
@@ -126,7 +130,7 @@ peering:
 api:
   server:
     # server port
-    port: 8000
+    port: %d
 
 
 # map of maps of sequencers <seq name>: <seq config>

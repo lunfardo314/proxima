@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	memLogFrequency = 5 * time.Second
+	memLogFrequency = 10 * time.Second
 	memoryLogName   = "[mem]"
 )
 

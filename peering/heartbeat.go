@@ -23,11 +23,23 @@ func (p *Peer) isAlive() bool {
 }
 
 func (p *Peer) _isAlive() bool {
-	// peer is alive if its last activity is at least 3 heartbeats old
+	// peer is alive if its last activity is at least some heartbeats old
 	return time.Now().Sub(p.lastActivity) < aliveDuration
 }
 
-func (ps *Peers) logLostConnectionWithPeer(id peer.ID) {
+func (p *Peer) evidenceActivity(ps *Peers, srcMsg string) {
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
+
+	if !p._isAlive() {
+		ps.log.Infof("libp2p host %s (self) connected to peer %s (%s) (%s)",
+			shortPeerIDString(ps.host.ID()), shortPeerIDString(p.id), p.name, srcMsg)
+	}
+	p.lastActivity = time.Now()
+	p.needsLogLostConnection = true
+}
+
+func (ps *Peers) logInactivityIfNeeded(id peer.ID) {
 	p := ps.getPeer(id)
 	if p == nil {
 		return
@@ -96,15 +108,9 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 		return
 	}
 
-	if !p.isAlive() {
-		ps.log.Infof("libp2p host %s (self) connected to peer %s (%s)", shortPeerIDString(ps.host.ID()), shortPeerIDString(id), ps.PeerName(id))
-	}
+	ps.trace("peer %s is alive = %v", shortPeerIDString(id), p.isAlive())
 
-	p.mutex.Lock()
-	p.lastActivity = time.Now()
-	p.needsLogLostConnection = true
-	p.mutex.Unlock()
-
+	p.evidenceActivity(ps, "heartbeat")
 	util.Assertf(p.isAlive(), "isAlive")
 }
 
@@ -132,11 +138,15 @@ const (
 )
 
 func (ps *Peers) heartbeatLoop() {
-	for !ps.stopHeartbeat.Load() {
+	for {
 		for _, id := range ps.getPeerIDs() {
-			ps.logLostConnectionWithPeer(id)
+			ps.logInactivityIfNeeded(id)
 			ps.sendHeartbeatToPeer(id)
 		}
-		time.Sleep(heartbeatRate)
+		select {
+		case <-ps.stopHeartbeatChan:
+			return
+		case <-time.After(heartbeatRate):
+		}
 	}
 }

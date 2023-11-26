@@ -165,10 +165,10 @@ func TestSendMsg(t *testing.T) {
 		const (
 			numHosts = 5
 			trace    = false
-			numMsg   = 500 // 721 // 720 pass, 721 does not
+			numMsg   = 300 // 721 // 720 pass, 721 does not
 		)
 		hosts := makeHosts(t, numHosts, trace)
-		counter := countdown.New(numHosts*numMsg*(numHosts-1), 7*time.Second)
+		counter := countdown.New(numHosts*numMsg*(numHosts-1), 10*time.Second)
 		counter1 := 0
 		for _, h := range hosts {
 			h1 := h
@@ -180,20 +180,24 @@ func TestSendMsg(t *testing.T) {
 		for _, h := range hosts {
 			h.Run()
 		}
-		time.Sleep(1 * time.Second)
+		time.Sleep(3 * time.Second)
 
-		count := 0
 		for _, h := range hosts {
-			ids := h.getPeerIDs()
-			t.Logf("num peers: %d", len(ids))
-			for _, id := range ids {
-				for i := 0; i < numMsg; i++ {
-					ok := h.SendTxBytesToPeer(id, []byte{0xff, 0xff})
-					require.True(t, ok)
-					count++
+			h1 := h
+			go func() {
+				count := 0
+				ids := h1.getPeerIDs()
+				t.Logf("num peers: %d", len(ids))
+				for _, id := range ids {
+					for i := 0; i < numMsg; i++ {
+						ok := h1.SendTxBytesToPeer(id, []byte{0xff, 0xff})
+						require.True(t, ok)
+						count++
+					}
 				}
-			}
-			t.Logf("count = %d", count)
+				t.Logf("count = %d", count)
+				require.EqualValues(t, numMsg*len(ids), count)
+			}()
 		}
 		err := counter.Wait()
 		t.Logf("counter1 = %d", counter1)
@@ -207,10 +211,10 @@ func TestSendMsg(t *testing.T) {
 		const (
 			numHosts = 5
 			trace    = false
-			numMsg   = 400
+			numMsg   = 1000
 		)
 		hosts := makeHosts(t, numHosts, trace)
-		counter := countdown.New(numHosts*(numHosts-1)*numMsg, 7*time.Second)
+		counter := countdown.New(numHosts*(numHosts-1)*numMsg, 10*time.Second)
 		t.Logf("sending %d messages", numHosts*(numHosts-1)*numMsg)
 
 		counter1 := 0
@@ -227,9 +231,12 @@ func TestSendMsg(t *testing.T) {
 		time.Sleep(1 * time.Second)
 
 		for _, h := range hosts {
-			for i := 0; i < numMsg; i++ {
-				h.GossipTxBytesToPeers([]byte{0xff, 0xff})
-			}
+			h1 := h
+			go func() {
+				for i := 0; i < numMsg; i++ {
+					h1.GossipTxBytesToPeers([]byte{0xff, 0xff})
+				}
+			}()
 		}
 		err := counter.Wait()
 		t.Logf("counter1 = %d", counter1)

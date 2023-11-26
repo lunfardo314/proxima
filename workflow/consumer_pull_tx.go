@@ -117,15 +117,16 @@ func (p *PullTxConsumer) stop() {
 const pullLoopPeriod = 10 * time.Millisecond
 
 func (p *PullTxConsumer) backgroundLoop() {
+	defer p.Log().Infof("background loop stopped")
+
 	for {
 		select {
 		case <-p.stopBackgroundLoopChan:
-			break
+			return
 		case <-time.After(pullLoopPeriod):
 		}
 		p.pullAllMatured()
 	}
-	p.Log().Infof("background loop stopped")
 }
 
 func (p *PullTxConsumer) pullAllMatured() {
