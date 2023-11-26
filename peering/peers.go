@@ -318,6 +318,9 @@ func (ps *Peers) sendPullToPeer(id peer.ID, txLst ...core.TransactionID) {
 }
 
 func (ps *Peers) PullTransactionsFromRandomPeer(txids ...core.TransactionID) bool {
+	if len(txids) == 0 {
+		return false
+	}
 	ps.mutex.RLock()
 	defer ps.mutex.RUnlock()
 

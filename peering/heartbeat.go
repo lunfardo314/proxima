@@ -39,6 +39,18 @@ func (p *Peer) evidenceActivity(ps *Peers, srcMsg string) {
 	p.needsLogLostConnection = true
 }
 
+func (ps *Peers) numAlivePeers() (ret int) {
+	ps.mutex.RLock()
+	defer ps.mutex.RUnlock()
+
+	for _, p := range ps.peers {
+		if p.isAlive() {
+			ret++
+		}
+	}
+	return
+}
+
 func (ps *Peers) logInactivityIfNeeded(id peer.ID) {
 	p := ps.getPeer(id)
 	if p == nil {
@@ -135,11 +147,20 @@ const (
 	heartbeatRate      = time.Second
 	aliveNumHeartbeats = 2
 	aliveDuration      = time.Duration(aliveNumHeartbeats) * heartbeatRate
+	logNumPeersPeriod  = 10 * time.Second
 )
 
 func (ps *Peers) heartbeatLoop() {
+	var logNumPeersDeadline time.Time
+
 	for {
+		nowis := time.Now()
+		if nowis.After(logNumPeersDeadline) {
+			ps.log.Infof("node is connected to %d peer(s)", ps.numAlivePeers())
+			logNumPeersDeadline = nowis.Add(logNumPeersPeriod)
+		}
 		for _, id := range ps.getPeerIDs() {
+
 			ps.logInactivityIfNeeded(id)
 			ps.sendHeartbeatToPeer(id)
 		}
