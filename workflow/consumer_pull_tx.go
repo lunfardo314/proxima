@@ -59,7 +59,7 @@ func (w *Workflow) initPullConsumer() {
 	go c.backgroundLoop()
 }
 
-func (p *PullTxConsumer) already(txid *core.TransactionID) bool {
+func (p *PullTxConsumer) isRequested(txid *core.TransactionID) bool {
 	p.mutex.RLock()
 	defer p.mutex.RUnlock()
 
@@ -79,7 +79,7 @@ func (p *PullTxConsumer) consume(inp *PullTxData) {
 }
 
 func (p *PullTxConsumer) queryTransactionCmd(inp *PullTxData) {
-	if p.already(&inp.TxID) {
+	if p.isRequested(&inp.TxID) {
 		return
 	}
 	p.mutex.Lock()

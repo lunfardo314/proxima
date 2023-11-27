@@ -78,6 +78,9 @@ func (c *PreValidateConsumer) consume(inp *PreValidateConsumerInputData) {
 
 	if inp.SourceType == TransactionSourceTypePeer {
 		// if received from another peer, gossip transaction right after pre-validation
+		// mark already gossiped to prevent gossip after full validation
+		// after that the mark does not change, no race condition
+		inp.PrimaryTransactionData.Gossiped = true
 		c.glb.txGossipOutConsumer.Push(TxGossipOutInputData{
 			PrimaryTransactionData: inp.PrimaryTransactionData,
 			ReceivedFrom:           inp.ReceivedFrom,

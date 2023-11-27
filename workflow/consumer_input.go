@@ -23,6 +23,8 @@ type (
 		Tx            *transaction.Transaction
 		SourceType    TransactionSourceType
 		ReceivedFrom  peer.ID
+		Gossiped      bool
+		Pulled        bool
 		eventCallback func(event string, data any)
 		traceFlag     bool
 	}
@@ -96,13 +98,15 @@ func (c *PrimaryConsumer) consume(inp *PrimaryTransactionData) {
 
 	c.traceTx(inp, "IN")
 
-	// the input is preparse transaction with base validation ok. It means it is identifiable as a transaction
+	// the input is pre-parsed transaction with base validation ok.
+	//It means it has full ID, so it is identifiable as a transaction
 	if c.isDuplicate(inp.Tx.ID()) {
 		// if duplicate, rise the event
 		inp.eventCallback("finish."+PrimaryInputConsumerName, fmt.Errorf("duplicate %s", inp.Tx.IDShort()))
 		c.glb.PostEvent(EventCodeDuplicateTx, inp.Tx.ID())
 		return
 	}
+
 	c.glb.IncCounter(c.Name() + ".out")
 	// passes identifiable transaction which is not a duplicate to the pre-validation consumer
 	c.glb.preValidateConsumer.Push(&PreValidateConsumerInputData{
@@ -113,7 +117,7 @@ func (c *PrimaryConsumer) consume(inp *PrimaryTransactionData) {
 func (c *PrimaryConsumer) isDuplicate(txid *core.TransactionID) bool {
 	if c.seen.Seen(txid.VeryShortID8()) {
 		c.glb.IncCounter(c.Name() + ".duplicate.seen")
-		c.Log().Debugf("already seen -- " + txid.String())
+		c.Log().Debugf("isRequested seen -- " + txid.String())
 		return true
 	}
 	return false

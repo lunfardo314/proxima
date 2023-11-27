@@ -44,7 +44,6 @@ func (w *Workflow) initRejectConsumer() {
 
 func (c *DropTxConsumer) consume(inp *DropConsumerInputData) {
 	c.glb.PostEvent(EventDroppedTx, inp)
-
 	// TODO remove from the solidifier all dependent
 }
 
@@ -52,5 +51,9 @@ func (w *Workflow) DropTransaction(txid core.TransactionID, reasonFormat string,
 	w.dropTxConsumer.Push(&DropConsumerInputData{
 		TxID: txid,
 		Msg:  fmt.Sprintf(reasonFormat, args...),
+	})
+	w.pullConsumer.Push(&PullTxData{
+		Cmd:  PullTxCmdRemove,
+		TxID: txid,
 	})
 }

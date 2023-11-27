@@ -34,6 +34,9 @@ func (w *Workflow) TransactionInReturnTx(txBytes []byte, opts ...TransactionInOp
 	for _, opt := range opts {
 		opt(inData)
 	}
+	// prevent unnecessary dissemination via gossip
+	inData.Pulled = w.pullConsumer.isRequested(tx.ID())
+	inData.Gossiped = inData.Pulled
 
 	w.primaryInputConsumer.Push(inData)
 	return tx, nil
