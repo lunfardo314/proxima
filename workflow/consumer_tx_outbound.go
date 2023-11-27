@@ -10,7 +10,7 @@ const TxOutboundConsumerName = "gossip"
 
 type (
 	TxGossipOutInputData struct {
-		*PrimaryInputConsumerData
+		*PrimaryTransactionData
 		ReceivedFrom peer.ID
 	}
 

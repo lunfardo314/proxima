@@ -39,8 +39,8 @@ func (w *Workflow) TransactionInReturnTx(txBytes []byte, opts ...TransactionInOp
 	return tx, nil
 }
 
-func newPrimaryInputConsumerData(tx *transaction.Transaction) *PrimaryInputConsumerData {
-	return &PrimaryInputConsumerData{
+func newPrimaryInputConsumerData(tx *transaction.Transaction) *PrimaryTransactionData {
+	return &PrimaryTransactionData{
 		Tx:            tx,
 		SourceType:    TransactionSourceTypeAPI,
 		eventCallback: func(_ string, _ any) {},
@@ -48,22 +48,28 @@ func newPrimaryInputConsumerData(tx *transaction.Transaction) *PrimaryInputConsu
 }
 
 func WithTransactionSourceType(src TransactionSourceType) TransactionInOption {
-	return func(data *PrimaryInputConsumerData) {
+	return func(data *PrimaryTransactionData) {
 		data.SourceType = src
 	}
 }
 
 func WithTransactionSourcePeer(from peer.ID) TransactionInOption {
-	return func(data *PrimaryInputConsumerData) {
+	return func(data *PrimaryTransactionData) {
 		data.SourceType = TransactionSourceTypePeer
 		data.ReceivedFrom = from
+	}
+}
+
+func WithTraceCondition(cond func(tx *transaction.Transaction, src TransactionSourceType, rcv peer.ID) bool) TransactionInOption {
+	return func(data *PrimaryTransactionData) {
+		data.traceFlag = cond(data.Tx, data.SourceType, data.ReceivedFrom)
 	}
 }
 
 var OptionWithSourceSequencer = WithTransactionSourceType(TransactionSourceTypeSequencer)
 
 func WithWorkflowEventCallback(fun func(event string, data any)) TransactionInOption {
-	return func(data *PrimaryInputConsumerData) {
+	return func(data *PrimaryTransactionData) {
 		prev := data.eventCallback
 		data.eventCallback = func(event string, data any) {
 			prev(event, data)

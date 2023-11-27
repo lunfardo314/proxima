@@ -11,6 +11,7 @@ import (
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/general"
 	"github.com/lunfardo314/proxima/peering"
+	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/utangle"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/consumer"
@@ -43,7 +44,7 @@ type (
 		appendTxConsumer     *AppendTxConsumer
 		dropTxConsumer       *DropTxConsumer
 		eventsConsumer       *EventsConsumer
-		pullRequestConsumer  *PullRequestConsumer
+		pullRequestConsumer  *PullRespondConsumer
 		txGossipOutConsumer  *TxGossipOutConsumer
 
 		handlersMutex sync.RWMutex
@@ -93,8 +94,14 @@ func New(ut *utangle.UTXOTangle, peers *peering.Peers, configOptions ...ConfigOp
 		if !ret.working.Load() {
 			return
 		}
-		if err := ret.TransactionIn(txBytes, WithTransactionSourcePeer(from)); err != nil {
-			ret.log.Debugf("wrong transaction bytes")
+		err := ret.TransactionIn(txBytes,
+			WithTransactionSourcePeer(from),
+			WithTraceCondition(func(tx *transaction.Transaction, _ TransactionSourceType, _ peer.ID) bool {
+				return tx.IsBranchTransaction()
+			},
+			))
+		if err != nil {
+			ret.log.Debugf("TransactionIn: %v", err)
 			return
 		}
 	})
@@ -103,8 +110,10 @@ func New(ut *utangle.UTXOTangle, peers *peering.Peers, configOptions ...ConfigOp
 		if !ret.working.Load() {
 			return
 		}
+
 		for _, txid := range txids {
-			ret.pullRequestConsumer.Push(PullRequestData{
+			ret.pullRequestConsumer.Log().Infof("pull request received for %s", txid.StringShort())
+			ret.pullRequestConsumer.Push(PullRespondData{
 				TxID:   txid,
 				PeerID: from,
 			})

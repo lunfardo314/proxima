@@ -3,8 +3,6 @@ package workflow
 import (
 	"fmt"
 
-	"github.com/lunfardo314/proxima/core"
-	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/consumer"
 	"github.com/lunfardo314/unitrie/common"
@@ -46,25 +44,23 @@ func (c *Consumer[T]) TxLogPrefix() string {
 	return c.Name() + ": "
 }
 
-func (c *Consumer[T]) Debugf(inp *PrimaryInputConsumerData, format string, args ...any) {
+func (c *Consumer[T]) Debugf(inp *PrimaryTransactionData, format string, args ...any) {
 	c.Log().Debugf(format+"   "+inp.Tx.IDShort(), args...)
 }
 
-func (c *Consumer[T]) Warnf(inp *PrimaryInputConsumerData, format string, args ...any) {
+func (c *Consumer[T]) Warnf(inp *PrimaryTransactionData, format string, args ...any) {
 	c.Log().Warnf(format+"    "+inp.Tx.IDShort(), args...)
 }
 
-func (c *Consumer[T]) Infof(inp *PrimaryInputConsumerData, format string, args ...any) {
+func (c *Consumer[T]) Infof(inp *PrimaryTransactionData, format string, args ...any) {
 	c.Log().Infof(format+"    "+inp.Tx.IDShort(), args...)
 }
 
-func (c *Consumer[T]) TraceMilestones(tx *transaction.Transaction, txid *core.TransactionID, msg string) {
-	if !c.glb.traceMilestones.Load() {
+func (c *Consumer[T]) traceTx(inp *PrimaryTransactionData, format string, args ...any) {
+	if !inp.traceFlag {
 		return
 	}
-	if tx.IsSequencerMilestone() {
-		c.Log().Infof("%s  %s -- %s", msg, tx.SequencerInfoString(), txid.StringShort())
-	}
+	c.Infof(inp, "(traceTx) "+format, util.EvalLazyArgs(args...)...)
 }
 
 func (c *Consumer[T]) setTrace(t bool) {
@@ -77,7 +73,7 @@ func (c *Consumer[T]) trace(f string, a ...any) {
 	}
 }
 
-func (c *Consumer[T]) RejectTransaction(inp *PrimaryInputConsumerData, format string, args ...any) {
+func (c *Consumer[T]) RejectTransaction(inp *PrimaryTransactionData, format string, args ...any) {
 	c.Debugf(inp, format, args...)
 	c.glb.DropTransaction(*inp.Tx.ID(), format, args...)
 }

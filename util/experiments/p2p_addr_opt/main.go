@@ -40,7 +40,7 @@ func main() {
 		//libp2p.ConnectionManager(connmgr.NewConnManager(
 		//	100,         // Lowwater
 		//	400,         // HighWater,
-		//	time.Minute, // GracePeriod
+		//	time.Minute, // InitialDelay
 		//)),
 		// Attempt to open ports using uPNP for NATed hosts.
 		libp2p.NATPortMap(),

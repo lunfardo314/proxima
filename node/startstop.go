@@ -28,6 +28,7 @@ type ProximaNode struct {
 	txStoreDB       *badger_adaptor.DB
 	txStore         general.TxBytesStore
 	uTangle         *utangle.UTXOTangle
+	peers           *peering.Peers
 	workflow        *workflow.Workflow
 	sequencers      []*sequencer.Sequencer
 	stopOnce        sync.Once
@@ -66,6 +67,7 @@ func (p *ProximaNode) Run() {
 		p.startMultiStateDB()
 		p.startTxStore()
 		p.loadUTXOTangle()
+		p.startPeering()
 		p.startWorkflow()
 		p.startSequencers()
 		p.startApiServer()
@@ -158,13 +160,16 @@ func (p *ProximaNode) loadUTXOTangle() {
 	p.log.Infof("UTXO tangle has been created successfully")
 }
 
-func (p *ProximaNode) startWorkflow() {
-	peers, err := peering.NewPeersFromConfig(p.ctx)
+func (p *ProximaNode) startPeering() {
+	var err error
+	p.peers, err = peering.NewPeersFromConfig(p.ctx)
 	util.AssertNoError(err)
 
-	peers.Run()
+	p.peers.Run()
+}
 
-	p.workflow = workflow.New(p.uTangle, peers, workflow.WithGlobalConfigOptions)
+func (p *ProximaNode) startWorkflow() {
+	p.workflow = workflow.New(p.uTangle, p.peers, workflow.WithGlobalConfigOptions)
 	p.workflow.Start(p.ctx)
 	p.workflow.StartPruner()
 }

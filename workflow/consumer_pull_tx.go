@@ -1,6 +1,7 @@
 package workflow
 
 import (
+	"fmt"
 	"sync"
 	"time"
 
@@ -20,10 +21,10 @@ type (
 	PullTxData struct {
 		Cmd  byte
 		TxID core.TransactionID
-		// GracePeriod for PullTxCmdQuery, how long delay first pull.
+		// InitialDelay for PullTxCmdQuery, how long delay first pull.
 		// It may not be needed at all if transaction comes through gossip
 		// 0 means first pull immediately
-		GracePeriod time.Duration
+		InitialDelay time.Duration
 	}
 
 	PullTxConsumer struct {
@@ -42,6 +43,13 @@ func (w *Workflow) initPullConsumer() {
 		wanted:                 make(map[core.TransactionID]time.Time),
 		stopBackgroundLoopChan: make(chan struct{}),
 	}
+	c.AddOnConsume(func(data *PullTxData) {
+		if data.Cmd == PullTxCmdQuery {
+			c.Log().Infof("PULL (query) %s, delay: %v", data.TxID.StringShort(), data.InitialDelay)
+		} else {
+			c.Log().Infof("PULL (remove) %s, delay: %v", data.TxID.StringShort(), data.InitialDelay)
+		}
+	})
 	c.AddOnConsume(c.consume)
 	c.AddOnClosed(func() {
 		c.stop()
@@ -88,12 +96,12 @@ func (p *PullTxConsumer) queryTransactionCmd(inp *PullTxData) {
 	}
 	// transaction is not in the store. Add it to the 'wanted' set
 	nowis := time.Now()
-	firstPullDeadline := nowis.Add(inp.GracePeriod)
-	if inp.GracePeriod == 0 {
+	firstPullDeadline := nowis.Add(inp.InitialDelay)
+	if inp.InitialDelay == 0 {
 		firstPullDeadline = nowis.Add(pullPeriod)
 	}
 	p.wanted[inp.TxID] = firstPullDeadline
-	if inp.GracePeriod == 0 {
+	if inp.InitialDelay == 0 {
 		// query immediately
 		go p.pullTransactions(inp.TxID)
 	}
@@ -142,9 +150,12 @@ func (p *PullTxConsumer) pullAllMatured() {
 		}
 		p.wanted[txid] = nowis.Add(pullPeriod)
 	}
-	p.pullTransactions(txids...)
+	if len(txids) > 0 {
+		p.pullTransactions(txids...)
+	}
 }
 
 func (p *PullTxConsumer) pullTransactions(txids ...core.TransactionID) {
+	fmt.Printf(">>>>>>>>>>>>>>>> pullTransactions %d\n", len(txids))
 	p.glb.peers.PullTransactionsFromRandomPeer(txids...)
 }

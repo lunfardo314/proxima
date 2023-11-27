@@ -2,6 +2,7 @@ package workflow
 
 import (
 	"github.com/lunfardo314/proxima/utangle"
+	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/eventtype"
 )
 
@@ -9,7 +10,7 @@ const AppendTxConsumerName = "addtx"
 
 type (
 	AppendTxConsumerInputData struct {
-		*PrimaryInputConsumerData
+		*PrimaryTransactionData
 		Vertex *utangle.Vertex
 	}
 
@@ -18,7 +19,7 @@ type (
 	}
 
 	NewVertexEventData struct {
-		*PrimaryInputConsumerData
+		*PrimaryTransactionData
 		VID *utangle.WrappedTx
 	}
 )
@@ -32,7 +33,7 @@ func (w *Workflow) initAppendTxConsumer() {
 		Consumer: NewConsumer[*AppendTxConsumerInputData](AppendTxConsumerName, w),
 	}
 	c.AddOnConsume(func(inp *AppendTxConsumerInputData) {
-		c.Debugf(inp.PrimaryInputConsumerData, "IN")
+		c.Debugf(inp.PrimaryTransactionData, "IN")
 	})
 	c.AddOnConsume(c.consume)
 	c.AddOnClosed(func() {
@@ -56,39 +57,41 @@ func (c *AppendTxConsumer) consume(inp *AppendTxConsumerInputData) {
 	vid, err := c.glb.utxoTangle.AppendVertex(inp.Vertex, utangle.BypassValidation)
 	if err != nil {
 		inp.eventCallback("finish."+AppendTxConsumerName, err)
-		c.Debugf(inp.PrimaryInputConsumerData, "can't append vertex to the tangle: '%v'", err)
+		c.Debugf(inp.PrimaryTransactionData, "can't append vertex to the tangle: '%v'", err)
 		c.IncCounter("fail")
 		c.glb.DropTransaction(*inp.Tx.ID(), "%v", err)
 		// inform solidifier
 		c.glb.solidifyConsumer.Push(&SolidifyInputData{
-			PrimaryInputConsumerData: inp.PrimaryInputConsumerData,
-			Remove:                   true,
+			PrimaryTransactionData: inp.PrimaryTransactionData,
+			Remove:                 true,
 		})
 		return
 	}
 	inp.eventCallback("finish."+AppendTxConsumerName, nil)
 
+	c.traceTx(inp.PrimaryTransactionData, "booked. Source: '%s'. Coverage: %s",
+		inp.SourceType.String(), util.GoThousands(vid.LedgerCoverage(c.glb.UTXOTangle())))
+
 	if inp.SourceType != TransactionSourceTypePeer {
 		// transaction from peer was already gossiped after pre-validation
 		// Other transaction gossip to other peering
 		c.glb.txGossipOutConsumer.Push(TxGossipOutInputData{
-			PrimaryInputConsumerData: inp.PrimaryInputConsumerData,
+			PrimaryTransactionData: inp.PrimaryTransactionData,
 		})
 	}
 
 	// rise new vertex event
 	c.glb.PostEvent(EventNewVertex, &NewVertexEventData{
-		PrimaryInputConsumerData: inp.PrimaryInputConsumerData,
-		VID:                      vid,
+		PrimaryTransactionData: inp.PrimaryTransactionData,
+		VID:                    vid,
 	})
 
 	c.glb.IncCounter(c.Name() + ".ok")
 	c.trace("added to the UTXO tangle: %s", vid.IDShort())
-	c.TraceMilestones(inp.Tx, inp.Tx.ID(), "milestone has been added to the tangle")
 
 	// notify solidifier upon new transaction added to the tangle
 	c.glb.solidifyConsumer.Push(&SolidifyInputData{
-		newSolidDependency:       vid,
-		PrimaryInputConsumerData: inp.PrimaryInputConsumerData,
+		newSolidDependency:     vid,
+		PrimaryTransactionData: inp.PrimaryTransactionData,
 	}, true)
 }

@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"math/rand"
+	"strings"
 	"sync"
 	"time"
 
@@ -168,13 +169,13 @@ func (ps *Peers) Run() {
 		ps.Stop()
 	}()
 
-	ps.log.Infof("libp2p host %s (self) started on %v with %d configured known peers", shortPeerIDString(ps.host.ID()), ps.host.Addrs(), len(ps.cfg.KnownPeers))
+	ps.log.Infof("libp2p host %s (self) started on %v with %d configured known peers", ShortPeerIDString(ps.host.ID()), ps.host.Addrs(), len(ps.cfg.KnownPeers))
 	_ = ps.log.Sync()
 }
 
 func (ps *Peers) Stop() {
 	ps.stopOnce.Do(func() {
-		ps.log.Infof("stopping libp2p host %s (self)..", shortPeerIDString(ps.host.ID()))
+		ps.log.Infof("stopping libp2p host %s (self)..", ShortPeerIDString(ps.host.ID()))
 		_ = ps.log.Sync()
 		close(ps.stopHeartbeatChan)
 		_ = ps.host.Close()
@@ -325,14 +326,24 @@ func (ps *Peers) PullTransactionsFromRandomPeer(txids ...core.TransactionID) boo
 	defer ps.mutex.RUnlock()
 
 	all := util.Keys(ps.peers)
-	for i := 0; i < len(all); i++ {
-		rndID := all[rand.Intn(len(all))]
+	for _, idx := range rand.Perm(len(all)) {
+		rndID := all[idx]
 		if ps.peers[rndID].isAlive() {
+			fmt.Printf(">>>>>>>> pull from %s: %s\n", ShortPeerIDString(rndID), _txidLst(txids...))
+
 			ps.sendPullToPeer(rndID, txids...)
 			return true
 		}
 	}
 	return false
+}
+
+func _txidLst(txids ...core.TransactionID) string {
+	ret := make([]string, len(txids))
+	for i := range ret {
+		ret[i] = txids[i].StringShort()
+	}
+	return strings.Join(ret, ",")
 }
 
 func (ps *Peers) GossipTxBytesToPeers(txBytes []byte, except ...peer.ID) int {
@@ -356,23 +367,23 @@ func (ps *Peers) GossipTxBytesToPeers(txBytes []byte, except ...peer.ID) int {
 
 func (ps *Peers) SendTxBytesToPeer(id peer.ID, txBytes []byte) bool {
 	ps.trace("SendTxBytesToPeer to %s, length: %d (host %s)",
-		func() any { return shortPeerIDString(id) },
+		func() any { return ShortPeerIDString(id) },
 		len(txBytes),
-		func() any { return shortPeerIDString(ps.host.ID()) },
+		func() any { return ShortPeerIDString(ps.host.ID()) },
 	)
 
 	stream, err := ps.host.NewStream(ps.ctx, id, lppProtocolGossip)
 	if err != nil {
 		ps.trace("SendTxBytesToPeer to %s: %v (host %s)",
-			func() any { return shortPeerIDString(id) }, err,
-			func() any { return shortPeerIDString(ps.host.ID()) },
+			func() any { return ShortPeerIDString(id) }, err,
+			func() any { return ShortPeerIDString(ps.host.ID()) },
 		)
 		return false
 	}
 	defer stream.Close()
 
 	if err = writeFrame(stream, txBytes); err != nil {
-		ps.trace("SendTxBytesToPeer.writeFrame to %s: %v (host %s)", shortPeerIDString(id), err, shortPeerIDString(ps.host.ID()))
+		ps.trace("SendTxBytesToPeer.writeFrame to %s: %v (host %s)", ShortPeerIDString(id), err, ShortPeerIDString(ps.host.ID()))
 	}
 	return err == nil
 }

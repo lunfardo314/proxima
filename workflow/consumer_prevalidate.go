@@ -15,7 +15,7 @@ const PreValidateConsumerName = "prevalid"
 type (
 	// PreValidateConsumerInputData input data type of the consumer
 	PreValidateConsumerInputData struct {
-		*PrimaryInputConsumerData
+		*PrimaryTransactionData
 	}
 
 	PreValidateConsumer struct {
@@ -32,7 +32,7 @@ func (w *Workflow) initPreValidateConsumer() {
 	}
 	c.AddOnConsume(func(inp *PreValidateConsumerInputData) {
 		// trace each input message
-		c.Debugf(inp.PrimaryInputConsumerData, "IN")
+		c.traceTx(inp.PrimaryTransactionData, "IN")
 	})
 	c.AddOnConsume(c.consume) // process the input message
 	c.AddOnClosed(func() {
@@ -63,15 +63,15 @@ func (c *PreValidateConsumer) consume(inp *PreValidateConsumerInputData) {
 		if enforceTimeBounds {
 			c.IncCounter("invalid")
 			inp.eventCallback("finish."+PreValidateConsumerName, err)
-			c.RejectTransaction(inp.PrimaryInputConsumerData, "%v", err)
+			c.RejectTransaction(inp.PrimaryTransactionData, "%v", err)
 			return
 		}
-		c.Warnf(inp.PrimaryInputConsumerData, "checking time bounds: '%v'", err)
+		c.Warnf(inp.PrimaryTransactionData, "checking time bounds: '%v'", err)
 	}
 	// run remaining validations on the transaction
 	if err = inp.Tx.Validate(transaction.MainTxValidationOptions...); err != nil {
 		c.IncCounter("invalid")
-		c.RejectTransaction(inp.PrimaryInputConsumerData, "%v", err)
+		c.RejectTransaction(inp.PrimaryTransactionData, "%v", err)
 		return
 	}
 	c.IncCounter("ok")
@@ -79,13 +79,13 @@ func (c *PreValidateConsumer) consume(inp *PreValidateConsumerInputData) {
 	if inp.SourceType == TransactionSourceTypePeer {
 		// if received from another peer, gossip transaction right after pre-validation
 		c.glb.txGossipOutConsumer.Push(TxGossipOutInputData{
-			PrimaryInputConsumerData: inp.PrimaryInputConsumerData,
-			ReceivedFrom:             inp.ReceivedFrom,
+			PrimaryTransactionData: inp.PrimaryTransactionData,
+			ReceivedFrom:           inp.ReceivedFrom,
 		})
 	}
 
 	out := &SolidifyInputData{
-		PrimaryInputConsumerData: inp.PrimaryInputConsumerData,
+		PrimaryTransactionData: inp.PrimaryTransactionData,
 	}
 	// passes transaction for solidification
 	// - immediately if timestamp is in the past
@@ -94,18 +94,18 @@ func (c *PreValidateConsumer) consume(inp *PreValidateConsumerInputData) {
 
 	if txTime.Before(nowis) {
 		// timestamp is in the past, pass it to the solidifier
-		c.Debugf(inp.PrimaryInputConsumerData, "->"+c.glb.solidifyConsumer.Name())
+		c.Debugf(inp.PrimaryTransactionData, "->"+c.glb.solidifyConsumer.Name())
 		c.IncCounter("ok.now")
 		c.glb.solidifyConsumer.Push(out)
 		return
 	}
 	// timestamp is in the future. Put it into the waiting room
 	c.IncCounter("ok.delay")
-	c.Debugf(inp.PrimaryInputConsumerData, "-> waitingRoom for %v", txTime.Sub(nowis))
+	c.Debugf(inp.PrimaryTransactionData, "-> waitingRoom for %v", txTime.Sub(nowis))
 
 	c.glb.preValidateConsumer.waitingRoom.RunAfterDeadline(txTime, func() {
 		c.IncCounter("ok.release")
-		c.Debugf(inp.PrimaryInputConsumerData, "release from waiting room")
+		c.Debugf(inp.PrimaryTransactionData, "release from waiting room")
 		c.glb.solidifyConsumer.Push(out)
 	})
 }

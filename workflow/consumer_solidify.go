@@ -19,8 +19,8 @@ type (
 		// if not nil, its is a message to notify Solidify consumer that new transaction (valid and solid) has arrived to the tangle
 		newSolidDependency *utangle.WrappedTx
 		// used if newTx is == nil
-		*PrimaryInputConsumerData
-		// If true, PrimaryInputConsumerData bears txid to be removed
+		*PrimaryTransactionData
+		// If true, PrimaryTransactionData bears txid to be removed
 		Remove bool
 	}
 
@@ -36,7 +36,7 @@ type (
 	}
 
 	draftVertexData struct {
-		*PrimaryInputConsumerData
+		*PrimaryTransactionData
 		draftVertex *utangle.Vertex
 		// stemInputAlreadyPulled for pull sequence and priorities
 		stemInputAlreadyPulled            bool
@@ -69,15 +69,14 @@ func (w *Workflow) initSolidifyConsumer() {
 	}
 	c.AddOnConsume(func(inp *SolidifyInputData) {
 		if inp.Remove {
-			c.Debugf(inp.PrimaryInputConsumerData, "IN (remove)")
+			c.traceTx(inp.PrimaryTransactionData, "IN (remove)")
 			return
 		}
 		if inp.newSolidDependency == nil {
-			c.Debugf(inp.PrimaryInputConsumerData, "IN (solidify)")
-			c.TraceMilestones(inp.Tx, inp.Tx.ID(), "milestone arrived")
+			c.traceTx(inp.PrimaryTransactionData, "IN (solidify)")
 			return
 		}
-		c.Debugf(inp.PrimaryInputConsumerData, "IN (check dependency)")
+		c.traceTx(inp.PrimaryTransactionData, "IN (check dependency)")
 	})
 	c.AddOnConsume(c.consume)
 	c.AddOnClosed(func() {
@@ -101,7 +100,7 @@ func (c *SolidifyConsumer) consume(inp *SolidifyInputData) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
-	c.setTrace(inp.PrimaryInputConsumerData.SourceType == TransactionSourceTypeAPI)
+	c.setTrace(inp.PrimaryTransactionData.SourceType == TransactionSourceTypeAPI)
 
 	if inp.Remove {
 		// command to remove the transaction and other depending on it from the solidification pool
@@ -131,10 +130,10 @@ func (c *SolidifyConsumer) newVertexToSolidify(inp *SolidifyInputData) {
 	draftVertex, err := c.glb.utxoTangle.MakeDraftVertex(inp.Tx)
 	if err != nil {
 		// non solidifiable
-		c.Debugf(inp.PrimaryInputConsumerData, "%v", err)
+		c.Debugf(inp.PrimaryTransactionData, "%v", err)
 		c.IncCounter("err")
 		c.removeNonSolidifiableFutureCone(inp.Tx.ID())
-		c.RejectTransaction(inp.PrimaryInputConsumerData, "%v", err)
+		c.RejectTransaction(inp.PrimaryTransactionData, "%v", err)
 		return
 	}
 
@@ -142,8 +141,8 @@ func (c *SolidifyConsumer) newVertexToSolidify(inp *SolidifyInputData) {
 		// all inputs solid. Send for validation
 		util.Assertf(draftVertex.IsSolid(), "v.IsSolid()")
 		c.glb.validateConsumer.Push(&ValidateConsumerInputData{
-			PrimaryInputConsumerData: inp.PrimaryInputConsumerData,
-			draftVertex:              draftVertex,
+			PrimaryTransactionData: inp.PrimaryTransactionData,
+			draftVertex:            draftVertex,
 		})
 		return
 	}
@@ -162,7 +161,7 @@ func (c *SolidifyConsumer) putIntoSolidifierIfNeeded(inp *SolidifyInputData, dra
 	util.Assertf(!draftVertex.IsSolid(), "inconsistency 1")
 	c.IncCounter("new.notsolid")
 	for unknownTxID := range unknownInputTxIDs {
-		c.Debugf(inp.PrimaryInputConsumerData, "unknown input tx %s", unknownTxID.StringShort())
+		c.Debugf(inp.PrimaryTransactionData, "unknown input tx %s", unknownTxID.StringShort())
 	}
 
 	// for each unknown input, add the new draftVertex to the list of txids
@@ -181,8 +180,8 @@ func (c *SolidifyConsumer) putIntoSolidifierIfNeeded(inp *SolidifyInputData, dra
 	}
 	// add to the list of vertices waiting for solidification
 	vd := draftVertexData{
-		PrimaryInputConsumerData: inp.PrimaryInputConsumerData,
-		draftVertex:              draftVertex,
+		PrimaryTransactionData: inp.PrimaryTransactionData,
+		draftVertex:            draftVertex,
 	}
 	c.txPending[*draftVertex.Tx.ID()] = vd
 
@@ -214,7 +213,7 @@ func (c *SolidifyConsumer) removeNonSolidifiableFutureCone(txid *core.Transactio
 	for txid1 := range ns {
 		if v, ok := c.txPending[txid1]; ok {
 			pendingDept := v.draftVertex.PendingDependenciesLines("   ").String()
-			v.PrimaryInputConsumerData.eventCallback("finish.remove."+SolidifyConsumerName,
+			v.PrimaryTransactionData.eventCallback("finish.remove."+SolidifyConsumerName,
 				fmt.Errorf("%s solidication problem. Pending dependencies:\n%s", txid1.StringShort(), pendingDept))
 		}
 
@@ -259,8 +258,8 @@ func (c *SolidifyConsumer) checkNewDependency(inp *SolidifyInputData) {
 			c.Log().Debugf("solidified -> validator: %s", txid.StringShort())
 			// all inputs are solid, send it to the validation
 			c.glb.validateConsumer.Push(&ValidateConsumerInputData{
-				PrimaryInputConsumerData: pending.PrimaryInputConsumerData,
-				draftVertex:              pending.draftVertex,
+				PrimaryTransactionData: pending.PrimaryTransactionData,
+				draftVertex:            pending.draftVertex,
 			})
 			solidified = append(solidified, *txid)
 			continue
@@ -320,9 +319,9 @@ func (c *SolidifyConsumer) pullIfNeeded(vd *draftVertexData) {
 
 func (c *SolidifyConsumer) pull(txid core.TransactionID, gracePeriod time.Duration) {
 	c.glb.pullConsumer.Push(&PullTxData{
-		Cmd:         PullTxCmdQuery,
-		TxID:        txid,
-		GracePeriod: gracePeriod,
+		Cmd:          PullTxCmdQuery,
+		TxID:         txid,
+		InitialDelay: gracePeriod,
 	})
 }
 

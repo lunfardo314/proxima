@@ -33,7 +33,7 @@ func (p *Peer) evidenceActivity(ps *Peers, srcMsg string) {
 
 	if !p._isAlive() {
 		ps.log.Infof("libp2p host %s (self) connected to peer %s (%s) (%s)",
-			shortPeerIDString(ps.host.ID()), shortPeerIDString(p.id), p.name, srcMsg)
+			ShortPeerIDString(ps.host.ID()), ShortPeerIDString(p.id), p.name, srcMsg)
 	}
 	p.lastActivity = time.Now()
 	p.needsLogLostConnection = true
@@ -61,7 +61,7 @@ func (ps *Peers) logInactivityIfNeeded(id peer.ID) {
 	defer p.mutex.Unlock()
 
 	if !p._isAlive() && p.needsLogLostConnection {
-		ps.log.Infof("host %s (self) lost connection with peer %s (%s)", shortPeerIDString(ps.host.ID()), shortPeerIDString(id), ps.PeerName(id))
+		ps.log.Infof("host %s (self) lost connection with peer %s (%s)", ShortPeerIDString(ps.host.ID()), ShortPeerIDString(id), ps.PeerName(id))
 		p.needsLogLostConnection = false
 	}
 }
@@ -120,7 +120,7 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 		return
 	}
 
-	ps.trace("peer %s is alive = %v", shortPeerIDString(id), p.isAlive())
+	ps.trace("peer %s is alive = %v", ShortPeerIDString(id), p.isAlive())
 
 	p.evidenceActivity(ps, "heartbeat")
 	util.Assertf(p.isAlive(), "isAlive")

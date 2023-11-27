@@ -104,7 +104,7 @@ func writeFrame(stream network.Stream, payload []byte) error {
 	return nil
 }
 
-func shortPeerIDString(id peer.ID) string {
+func ShortPeerIDString(id peer.ID) string {
 	s := id.String()
 
 	return ".." + s[len(s)-8:]

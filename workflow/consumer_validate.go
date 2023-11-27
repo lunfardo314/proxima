@@ -10,7 +10,7 @@ const ValidateConsumerName = "validate"
 
 type (
 	ValidateConsumerInputData struct {
-		*PrimaryInputConsumerData
+		*PrimaryTransactionData
 		draftVertex *utangle.Vertex
 	}
 
@@ -28,8 +28,7 @@ func (w *Workflow) initValidateConsumer() {
 		workerPool: workerpool.NewWorkerPool(maxNumberOfWorkers),
 	}
 	c.AddOnConsume(func(inp *ValidateConsumerInputData) {
-		c.Debugf(inp.PrimaryInputConsumerData, "IN")
-		c.TraceMilestones(inp.draftVertex.Tx, inp.Tx.ID(), "milestone arrived")
+		c.traceTx(inp.PrimaryTransactionData, "IN")
 	})
 	c.AddOnConsume(c.consume)
 	c.AddOnClosed(func() {
@@ -51,17 +50,17 @@ func (c *ValidateConsumer) consume(inp *ValidateConsumerInputData) {
 			c.glb.DropTransaction(*inp.Tx.ID(), "%v", err)
 			// inform solidifier
 			c.glb.solidifyConsumer.Push(&SolidifyInputData{
-				PrimaryInputConsumerData: inp.PrimaryInputConsumerData,
-				Remove:                   true,
+				PrimaryTransactionData: inp.PrimaryTransactionData,
+				Remove:                 true,
 			})
 			return
 		}
 		c.IncCounter("ok")
-		c.Debugf(inp.PrimaryInputConsumerData, "OK")
+		c.Debugf(inp.PrimaryTransactionData, "OK")
 		// send to appender
 		c.glb.appendTxConsumer.Push(&AppendTxConsumerInputData{
-			PrimaryInputConsumerData: inp.PrimaryInputConsumerData,
-			Vertex:                   inp.draftVertex,
+			PrimaryTransactionData: inp.PrimaryTransactionData,
+			Vertex:                 inp.draftVertex,
 		})
 	})
 }

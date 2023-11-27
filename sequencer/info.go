@@ -58,7 +58,7 @@ func (seq *Sequencer) LogMilestoneSubmitDefault(wOut *utangle.WrappedOutput) {
 		msIndex = od.ChainHeight
 	}
 
-	seq.log.Infof("%s %d/%d: %s, bl: %s, cov: %s<-%s (infl: %s), in/out: %d/%d, feeOut: %d, proposal: %v x %d, mem: %d/%d",
+	seq.log.Debugf("%s %d/%d: %s, bl: %s, cov: %s<-%s (infl: %s), in/out: %d/%d, feeOut: %d, proposal: %v x %d, mem: %d/%d",
 		msType,
 		msIndex,
 		branchIndex,
@@ -90,7 +90,7 @@ func (seq *Sequencer) LogMilestoneSubmitDefault(wOut *utangle.WrappedOutput) {
 func (seq *Sequencer) LogStats() {
 	stats := seq.factory.getStatsAndReset()
 
-	seq.log.Infof("milestones (count: %d, cached %d, removed since reset: %d), outputs: (count: %d, pool: %d, removed: %d), sequencers: %d",
+	seq.log.Debugf("milestones (count: %d, cached %d, removed since reset: %d), outputs: (count: %d, pool: %d, removed: %d), sequencers: %d",
 		stats.ownMilestoneCount, stats.numOwnMilestones, stats.removedMilestonesSinceReset,
 		stats.tipPoolStats.outputCount, stats.tipPoolStats.numOutputs, stats.tipPoolStats.removedOutputsSinceReset,
 		stats.numOtherSequencers,

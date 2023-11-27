@@ -14,22 +14,23 @@ import (
 
 const PrimaryInputConsumerName = "input"
 
-// PrimaryInputConsumerData is a basic data of the raw transaction
+// PrimaryTransactionData is a basic data of the raw transaction
 type (
 	TransactionSourceType byte
 
-	// PrimaryInputConsumerData is an input message type for this consumer
-	PrimaryInputConsumerData struct {
+	// PrimaryTransactionData is an input message type for this consumer
+	PrimaryTransactionData struct {
 		Tx            *transaction.Transaction
 		SourceType    TransactionSourceType
 		ReceivedFrom  peer.ID
 		eventCallback func(event string, data any)
+		traceFlag     bool
 	}
 
-	TransactionInOption func(*PrimaryInputConsumerData)
+	TransactionInOption func(*PrimaryTransactionData)
 
 	PrimaryConsumer struct {
-		*Consumer[*PrimaryInputConsumerData]
+		*Consumer[*PrimaryTransactionData]
 		seen *seenset.SeenSet[core.TransactionIDVeryShort8]
 	}
 )
@@ -41,16 +42,31 @@ const (
 	TransactionSourceTypeStore
 )
 
+func (t TransactionSourceType) String() string {
+	switch t {
+	case TransactionSourceTypeAPI:
+		return "API"
+	case TransactionSourceTypeSequencer:
+		return "sequencer"
+	case TransactionSourceTypePeer:
+		return "peer"
+	case TransactionSourceTypeStore:
+		return "txStore"
+	default:
+		return "(unknown tx source)"
+	}
+}
+
 // EventCodeDuplicateTx this consumer rises the event with transaction ID as a parameter whenever duplicate is detected
 var EventCodeDuplicateTx = eventtype.RegisterNew[*core.TransactionID]("duplicateTx")
 
 // initPrimaryInputConsumer initializes the consumer
 func (w *Workflow) initPrimaryInputConsumer() {
 	c := &PrimaryConsumer{
-		Consumer: NewConsumer[*PrimaryInputConsumerData](PrimaryInputConsumerName, w),
+		Consumer: NewConsumer[*PrimaryTransactionData](PrimaryInputConsumerName, w),
 		seen:     seenset.New[core.TransactionIDVeryShort8](),
 	}
-	c.AddOnConsume(func(inp *PrimaryInputConsumerData) {
+	c.AddOnConsume(func(inp *PrimaryTransactionData) {
 		// tracing every input message
 		c.Debugf(inp, "IN")
 	})
@@ -75,8 +91,10 @@ func (w *Workflow) initPrimaryInputConsumer() {
 }
 
 // consume processes the input
-func (c *PrimaryConsumer) consume(inp *PrimaryInputConsumerData) {
+func (c *PrimaryConsumer) consume(inp *PrimaryTransactionData) {
 	inp.eventCallback(PrimaryInputConsumerName+".in", inp.Tx)
+
+	c.traceTx(inp, "IN")
 
 	// the input is preparse transaction with base validation ok. It means it is identifiable as a transaction
 	if c.isDuplicate(inp.Tx.ID()) {
@@ -88,7 +106,7 @@ func (c *PrimaryConsumer) consume(inp *PrimaryInputConsumerData) {
 	c.glb.IncCounter(c.Name() + ".out")
 	// passes identifiable transaction which is not a duplicate to the pre-validation consumer
 	c.glb.preValidateConsumer.Push(&PreValidateConsumerInputData{
-		PrimaryInputConsumerData: inp,
+		PrimaryTransactionData: inp,
 	})
 }
 

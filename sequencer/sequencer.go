@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/general"
 	"github.com/lunfardo314/proxima/global"
@@ -414,7 +415,11 @@ const submitTransactionTimeout = 5 * time.Second
 func (seq *Sequencer) submitMilestone(tx *transaction.Transaction) *utangle.WrappedOutput {
 	util.Assertf(tx != nil, "tx != nil")
 
-	retVID, err := seq.glb.TransactionInWaitAppendWrap(tx.Bytes(), submitTransactionTimeout, workflow.OptionWithSourceSequencer)
+	retVID, err := seq.glb.TransactionInWaitAppendWrap(tx.Bytes(), submitTransactionTimeout,
+		workflow.OptionWithSourceSequencer,
+		workflow.WithTraceCondition(func(tx *transaction.Transaction, src workflow.TransactionSourceType, rcv peer.ID) bool {
+			return tx.IsBranchTransaction()
+		}))
 	if global.IsShuttingDown() {
 		return nil
 	}
