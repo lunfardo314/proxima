@@ -9,7 +9,6 @@ import (
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/general"
 	"github.com/lunfardo314/proxima/genesis"
-	"github.com/lunfardo314/proxima/memlog"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/peering"
 	"github.com/lunfardo314/proxima/sequencer"
@@ -70,7 +69,7 @@ func (p *ProximaNode) Run() {
 		p.startWorkflow()
 		p.startSequencers()
 		p.startApiServer()
-		memlog.StartMemoryLogging(p.ctx)
+		p.startMemoryLogging()
 		return nil
 	})
 	if err != nil {
