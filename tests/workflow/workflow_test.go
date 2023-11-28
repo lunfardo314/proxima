@@ -1402,7 +1402,7 @@ func TestMultiChainWorkflow(t *testing.T) {
 			nChains              = 15
 			chainPaceInTimeSlots = 7
 			printBranchTx        = false
-			howLong              = 700 // 1000
+			howLong              = 1000
 			realTime             = false
 			nowait               = true
 		)

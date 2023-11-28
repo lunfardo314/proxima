@@ -51,14 +51,11 @@ type (
 		consumingTxIDs []*core.TransactionID
 		// since when dependency is known
 		since time.Time
-		// nextPullDeadline when next pull is scheduled
-		nextPullDeadline time.Time
 	}
 )
 
 const (
-	keepNotSolid    = 3 * time.Second // only for testing. Must be longer in reality
-	repeatPullAfter = 2 * time.Second
+	keepNotSolid = 10 * time.Second // only for testing. Must be longer in reality
 )
 
 func (w *Workflow) initSolidifyConsumer() {
@@ -171,9 +168,8 @@ func (c *SolidifyConsumer) putIntoSolidifierIfNeeded(inp *SolidifyInputData, dra
 	for wantedTxID := range unknownInputTxIDs {
 		if dept, ok := c.txDependencies[wantedTxID]; !ok {
 			c.txDependencies[wantedTxID] = &txDependency{
-				since:            nowis,
-				nextPullDeadline: nowis,
-				consumingTxIDs:   []*core.TransactionID{draftVertex.Tx.ID()},
+				since:          nowis,
+				consumingTxIDs: []*core.TransactionID{draftVertex.Tx.ID()},
 			}
 		} else {
 			dept.consumingTxIDs = append(dept.consumingTxIDs, draftVertex.Tx.ID())
@@ -341,15 +337,27 @@ func (c *SolidifyConsumer) pull(txid core.TransactionID, initialDelay time.Durat
 const solidifyBackgroundLoopPeriod = 100 * time.Millisecond
 
 func (c *SolidifyConsumer) backgroundLoop() {
+	defer c.Log().Debugf("background loop stopped")
+
 	for {
 		select {
 		case <-c.stopBackgroundChan:
-			break
+			return
 		case <-time.After(solidifyBackgroundLoopPeriod):
 		}
 		c.doBackgroundCheck()
 	}
-	c.Log().Debugf("background loop stopped")
+}
+
+func (c *SolidifyConsumer) doBackgroundCheck() {
+	toRemove := c.collectToRemove()
+	if len(toRemove) > 0 {
+		c.removeDueToDeadline(toRemove)
+
+		for i := range toRemove {
+			c.glb.DropTransaction(toRemove[i], "solidification timeout %v", keepNotSolid)
+		}
+	}
 }
 
 func (c *SolidifyConsumer) collectToRemove() []core.TransactionID {
@@ -361,11 +369,6 @@ func (c *SolidifyConsumer) collectToRemove() []core.TransactionID {
 	for txid, dep := range c.txDependencies {
 		if nowis.After(dep.since.Add(keepNotSolid)) {
 			ret = append(ret, txid)
-		} else {
-			if dep.nextPullDeadline.After(nowis) {
-				c.Log().Debugf("PULL NOT IMPLEMENTED: %s", txid.String())
-				dep.nextPullDeadline = nowis.Add(repeatPullAfter)
-			}
 		}
 	}
 	return ret
@@ -377,18 +380,6 @@ func (c *SolidifyConsumer) removeDueToDeadline(toRemove []core.TransactionID) {
 
 	for _, txid := range toRemove {
 		c.removeNonSolidifiableFutureCone(&txid)
-		c.glb.DropTransaction(txid, "solidification timeout")
-	}
-}
-
-func (c *SolidifyConsumer) doBackgroundCheck() {
-	toRemove := c.collectToRemove()
-	if len(toRemove) > 0 {
-		c.removeDueToDeadline(toRemove)
-
-		for i := range toRemove {
-			c.glb.DropTransaction(toRemove[i], "solidification timeout")
-		}
 	}
 }
 

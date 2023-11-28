@@ -72,6 +72,8 @@ func (c *AppendTxConsumer) consume(inp *AppendTxConsumerInputData) {
 	c.traceTx(inp.PrimaryTransactionData, "booked. Source: '%s'. Coverage: %s",
 		inp.SourceType.String(), util.GoThousands(vid.LedgerCoverage(c.glb.UTXOTangle())))
 
+	c.glb.pullConsumer.removeFromPullList(*inp.Tx.ID())
+
 	if !inp.WasGossiped {
 		// transaction wasn't gossiped yet, it needs to be sent to other peers
 		c.glb.txGossipOutConsumer.Push(TxGossipSendInputData{
