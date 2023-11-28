@@ -97,7 +97,7 @@ func New(ut *utangle.UTXOTangle, peers *peering.Peers, configOptions ...ConfigOp
 		err := ret.TransactionIn(txBytes,
 			WithTransactionSourcePeer(from),
 			WithTraceCondition(func(tx *transaction.Transaction, _ TransactionSourceType, _ peer.ID) bool {
-				return tx.IsBranchTransaction()
+				return tx.IsSequencerMilestone()
 			},
 			))
 		if err != nil {

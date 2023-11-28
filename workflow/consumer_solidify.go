@@ -46,9 +46,9 @@ type (
 	}
 
 	txDependency struct {
-		// consumingTxIDs a list of txID which depends on the txid in the key of txDependency map
+		// whoIsWaiting a list of txID which depends on the txid in the key of txDependency map
 		// The list should not be empty
-		consumingTxIDs []*core.TransactionID
+		whoIsWaiting []*core.TransactionID
 		// since when dependency is known
 		since time.Time
 	}
@@ -135,11 +135,11 @@ func (c *SolidifyConsumer) newVertexToSolidify(inp *SolidifyInputData) {
 
 	if solid := !c.putIntoSolidifierIfNeeded(inp, draftVertex); solid {
 		// all inputs solid. Send for validation
-		c.passToValidator(inp.PrimaryTransactionData, draftVertex)
+		c.passToValidation(inp.PrimaryTransactionData, draftVertex)
 	}
 }
 
-func (c *SolidifyConsumer) passToValidator(primaryTxData *PrimaryTransactionData, draftVertex *utangle.Vertex) {
+func (c *SolidifyConsumer) passToValidation(primaryTxData *PrimaryTransactionData, draftVertex *utangle.Vertex) {
 	util.Assertf(draftVertex.IsSolid(), "v.IsSolid()")
 	c.traceTx(primaryTxData, "solidified in %v", time.Now().Sub(primaryTxData.ReceivedWhen))
 
@@ -171,13 +171,15 @@ func (c *SolidifyConsumer) putIntoSolidifierIfNeeded(inp *SolidifyInputData, dra
 	// dependent on it (past cone tips, known consumers)
 	nowis := time.Now()
 	for wantedTxID := range unknownInputTxIDs {
-		if dept, ok := c.txDependencies[wantedTxID]; !ok {
-			c.txDependencies[wantedTxID] = &txDependency{
-				since:          nowis,
-				consumingTxIDs: util.List(draftVertex.Tx.ID()),
-			}
+		if dept, dependencyExists := c.txDependencies[wantedTxID]; dependencyExists {
+			fmt.Printf(">>>>> add dept: wanted: %s, consumer: %s\n", wantedTxID.StringShort(), draftVertex.Tx.IDShort())
+
+			dept.whoIsWaiting = append(dept.whoIsWaiting, draftVertex.Tx.ID())
 		} else {
-			dept.consumingTxIDs = append(dept.consumingTxIDs, draftVertex.Tx.ID())
+			c.txDependencies[wantedTxID] = &txDependency{
+				since:        nowis,
+				whoIsWaiting: util.List(draftVertex.Tx.ID()),
+			}
 		}
 	}
 	// add to the list of vertices waiting for solidification
@@ -200,7 +202,7 @@ func (c *SolidifyConsumer) collectDependingFutureCone(txid *core.TransactionID, 
 		return
 	}
 	if dep, isKnownDependency := c.txDependencies[*txid]; isKnownDependency {
-		for _, txid1 := range dep.consumingTxIDs {
+		for _, txid1 := range dep.whoIsWaiting {
 			c.collectDependingFutureCone(txid1, ret)
 		}
 	}
@@ -237,8 +239,10 @@ func (c *SolidifyConsumer) checkNewDependency(inp *SolidifyInputData) {
 	// it is not needed in the dependencies list anymore
 	delete(c.txDependencies, *inp.Tx.ID())
 
-	whoIsWaiting := dep.consumingTxIDs
+	whoIsWaiting := dep.whoIsWaiting
 	util.Assertf(len(whoIsWaiting) > 0, "len(whoIsWaiting)>0")
+
+	c.traceTx(inp.PrimaryTransactionData, "whoIsWaiting: %s", __txLstString(whoIsWaiting))
 
 	// looping over pending vertices which are waiting for the dependency newTxID
 	for _, txid := range whoIsWaiting {
@@ -258,15 +262,23 @@ func (c *SolidifyConsumer) checkNewDependency(inp *SolidifyInputData) {
 		}
 		if pending.draftVertex.IsSolid() {
 			// all inputs are solid, send it to the validation
-			c.passToValidator(pending.PrimaryTransactionData, pending.draftVertex)
+			c.passToValidation(pending.PrimaryTransactionData, pending.draftVertex)
 			continue
 		}
-		c.Log().Debugf("%s not solid yet. Missing: %s\nTransaction: %s",
-			pending.Tx.IDShort(), pending.draftVertex.MissingInputTxIDString(), pending.draftVertex.Lines().String())
+		//c.traceTx(pending.PrimaryTransactionData, "not solid yet. Missing: %s\nTransaction: %s",
+		//	pending.draftVertex.MissingInputTxIDString(), pending.draftVertex.Lines().String())
 
 		// ask for missing inputs from peering
 		c.pullIfNeeded(&pending)
 	}
+}
+
+func __txLstString(lst []*core.TransactionID) string {
+	ret := lines.New()
+	for _, txid := range lst {
+		ret.Add(txid.StringShort())
+	}
+	return ret.Join(",")
 }
 
 const (
@@ -315,7 +327,7 @@ func (c *SolidifyConsumer) pullIfNeeded(vd *draftVertexData) {
 		if vd.WasPulled {
 			delayFirst = pullImmediately
 		} else {
-			delayFirst = pullDelayFirstPeriodSequencer
+			delayFirst = pullDelayFirstPeriodOtherTransactions
 		}
 		c.pull(txid, delayFirst)
 		return true
@@ -391,7 +403,7 @@ func (c *SolidifyConsumer) missingInputsString(txid core.TransactionID) string {
 
 func (d *txDependency) __text(dep *core.TransactionID) string {
 	txids := make([]string, 0)
-	for _, id := range d.consumingTxIDs {
+	for _, id := range d.whoIsWaiting {
 		txids = append(txids, id.StringShort())
 	}
 	return fmt.Sprintf("%s <- [%s]", dep.StringShort(), strings.Join(txids, ","))

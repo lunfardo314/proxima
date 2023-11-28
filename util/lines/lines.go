@@ -31,8 +31,12 @@ func (l *Lines) Append(ln *Lines) *Lines {
 	return l
 }
 
+func (l *Lines) Join(sep string) string {
+	return strings.Join(l.l, sep)
+}
+
 func (l *Lines) String() string {
-	return strings.Join(l.l, "\n")
+	return l.Join("\n")
 }
 
 func SliceToLines[T fmt.Stringer](slice []T, prefix ...string) *Lines {

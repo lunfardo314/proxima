@@ -57,17 +57,19 @@ func (v *Vertex) ValidateDebug() (string, error) {
 // MissingInputTxIDSet return set of txids for the missing inputs
 func (v *Vertex) MissingInputTxIDSet() set.Set[core.TransactionID] {
 	ret := set.New[core.TransactionID]()
-	for i, d := range v.Inputs {
-		if d == nil {
-			oid := v.Tx.MustInputAt(byte(i))
+	v.forEachInputDependency(func(i byte, vidInput *WrappedTx) bool {
+		if vidInput == nil {
+			oid := v.Tx.MustInputAt(i)
 			ret.Insert(oid.TransactionID())
 		}
-	}
-	for i, d := range v.Endorsements {
-		if d == nil {
-			ret.Insert(v.Tx.EndorsementAt(byte(i)))
+		return true
+	})
+	v.forEachEndorsement(func(i byte, vidEndorsed *WrappedTx) bool {
+		if vidEndorsed == nil {
+			ret.Insert(v.Tx.EndorsementAt(i))
 		}
-	}
+		return true
+	})
 	return ret
 }
 
