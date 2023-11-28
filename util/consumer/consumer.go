@@ -18,16 +18,12 @@ type Consumer[T any] struct {
 	stopOnce          sync.Once
 }
 
-func NewConsumer[T any](name string, logLevel ...zapcore.Level) *Consumer[T] {
-	return NewConsumerWithBufferSize[T](name, defaultBufferSize, logLevel...)
+func NewConsumer[T any](name string, logLevel zapcore.Level, outputs []string) *Consumer[T] {
+	return NewConsumerWithBufferSize[T](name, defaultBufferSize, logLevel, outputs)
 }
 
-func NewConsumerWithBufferSize[T any](name string, bufSize int, logLevel ...zapcore.Level) *Consumer[T] {
-	lvl := zapcore.InfoLevel
-	if len(logLevel) > 0 {
-		lvl = logLevel[0]
-	}
-	log := general.NewLogger("["+name+"]", lvl, nil, "")
+func NewConsumerWithBufferSize[T any](name string, bufSize int, logLevel zapcore.Level, outputs []string) *Consumer[T] {
+	log := general.NewLogger("["+name+"]", logLevel, outputs, "")
 	ret := &Consumer[T]{
 		name:      name,
 		que:       New[T](bufSize),

@@ -45,6 +45,7 @@ func (w *Workflow) TransactionInReturnTx(txBytes []byte, opts ...TransactionInOp
 func newPrimaryInputConsumerData(tx *transaction.Transaction) *PrimaryTransactionData {
 	return &PrimaryTransactionData{
 		Tx:            tx,
+		ReceivedWhen:  time.Now(),
 		SourceType:    TransactionSourceTypeAPI,
 		eventCallback: func(_ string, _ any) {},
 	}

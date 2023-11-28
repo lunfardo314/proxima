@@ -9,6 +9,7 @@ import (
 
 	"github.com/lunfardo314/proxima/util/countdown"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
 )
 
 func TestBasic(t *testing.T) {
@@ -115,7 +116,7 @@ func TestStartStop(t *testing.T) {
 	cdClosed := countdown.New(howManyQueues, 3*time.Second)
 
 	for i := range que {
-		que[i] = NewConsumer[int](fmt.Sprintf("%d", i))
+		que[i] = NewConsumer[int](fmt.Sprintf("%d", i), zap.InfoLevel, nil)
 		tmp := i
 		que[i].AddOnConsume(func(e int) {
 			require.EqualValues(t, e, tmp)
@@ -256,7 +257,7 @@ func TestMany(t *testing.T) {
 	cons := make([]*Consumer[time.Time], howManyConsumers)
 	w := countdown.New(howManyMessages)
 	for i := range cons {
-		cons[i] = NewConsumerWithBufferSize[time.Time](fmt.Sprintf("%d", i), 100)
+		cons[i] = NewConsumerWithBufferSize[time.Time](fmt.Sprintf("%d", i), 100, zap.InfoLevel, nil)
 		if i+1 < howManyConsumers {
 			next := i + 1
 			cons[i].AddOnConsume(func(ts time.Time) {

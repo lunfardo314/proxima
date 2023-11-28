@@ -69,9 +69,7 @@ func (c *AppendTxConsumer) consume(inp *AppendTxConsumerInputData) {
 	}
 	inp.eventCallback("finish."+AppendTxConsumerName, nil)
 
-	c.traceTx(inp.PrimaryTransactionData, "booked. Source: '%s'. Coverage: %s",
-		inp.SourceType.String(), util.GoThousands(vid.LedgerCoverage(c.glb.UTXOTangle())))
-
+	c.logBranch(inp.PrimaryTransactionData, vid.LedgerCoverage(c.glb.UTXOTangle()))
 	c.glb.pullConsumer.removeFromPullList(*inp.Tx.ID())
 
 	if !inp.WasGossiped {
@@ -95,4 +93,13 @@ func (c *AppendTxConsumer) consume(inp *AppendTxConsumerInputData) {
 		newSolidDependency:     vid,
 		PrimaryTransactionData: inp.PrimaryTransactionData,
 	}, true)
+}
+
+func (c *AppendTxConsumer) logBranch(inp *PrimaryTransactionData, coverage uint64) {
+	if !inp.Tx.IsBranchTransaction() {
+		return
+	}
+
+	c.Log().Infof("BRANCH %s. Source: %s. Coverage: %s",
+		inp.Tx.IDShort(), inp.SourceType.String(), util.GoThousands(coverage))
 }

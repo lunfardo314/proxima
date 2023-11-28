@@ -8,15 +8,8 @@ import (
 	"github.com/lunfardo314/unitrie/common"
 )
 
-var AllConsumerNames = []string{
-	AppendTxConsumerName,
-	EventsName,
-	PrimaryInputConsumerName,
-	PreValidateConsumerName,
-	RejectConsumerName,
-	SolidifyConsumerName,
-	ValidateConsumerName,
-}
+// allConsumerNames non thread-safe
+var allConsumerNames = make([]string, 0)
 
 func NewConsumer[T any](name string, wrk *Workflow) *Consumer[T] {
 	lvl := wrk.configParams.logLevel
@@ -24,12 +17,13 @@ func NewConsumer[T any](name string, wrk *Workflow) *Consumer[T] {
 		lvl = l
 	}
 	ret := &Consumer[T]{
-		Consumer: consumer.NewConsumer[T](name, lvl),
+		Consumer: consumer.NewConsumer[T](name, lvl, wrk.configParams.logOutput),
 		glb:      wrk,
 	}
 	ret.AddOnConsume(func(_ T) {
 		wrk.IncCounter(name + ".in")
 	})
+	allConsumerNames = append(allConsumerNames, name)
 	return ret
 }
 

@@ -2,6 +2,7 @@ package workflow
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/lunfardo314/proxima/core"
@@ -23,6 +24,7 @@ type (
 		Tx            *transaction.Transaction
 		SourceType    TransactionSourceType
 		ReceivedFrom  peer.ID
+		ReceivedWhen  time.Time
 		WasGossiped   bool
 		WasPulled     bool
 		eventCallback func(event string, data any)
