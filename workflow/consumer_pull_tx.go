@@ -1,25 +1,19 @@
 package workflow
 
 import (
-	"fmt"
 	"sync"
 	"time"
 
 	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/util"
 )
 
 const PullTxConsumerName = "pulltx"
 
 const pullPeriod = 500 * time.Millisecond
 
-const (
-	PullTxCmdQuery = byte(iota)
-	PullTxCmdRemove
-)
-
 type (
 	PullTxData struct {
-		Cmd  byte
 		TxID core.TransactionID
 		// InitialDelay for PullTxCmdQuery, how long delay first pull.
 		// It may not be needed at all if transaction comes through gossip
@@ -29,27 +23,22 @@ type (
 
 	PullTxConsumer struct {
 		*Consumer[*PullTxData]
-		mutex sync.RWMutex
-
 		stopBackgroundLoopChan chan struct{}
+		mutex                  sync.RWMutex
 		// txid -> next pull deadline
-		wanted map[core.TransactionID]time.Time
+		pullList map[core.TransactionID]time.Time
 	}
 )
 
 func (w *Workflow) initPullConsumer() {
 	c := &PullTxConsumer{
 		Consumer:               NewConsumer[*PullTxData](PullTxConsumerName, w),
-		wanted:                 make(map[core.TransactionID]time.Time),
+		pullList:               make(map[core.TransactionID]time.Time),
 		stopBackgroundLoopChan: make(chan struct{}),
 	}
-	c.AddOnConsume(func(data *PullTxData) {
-		if data.Cmd == PullTxCmdQuery {
-			c.Log().Infof("PULL (query) %s, delay: %v", data.TxID.StringShort(), data.InitialDelay)
-		} else {
-			c.Log().Infof("PULL (remove) %s, delay: %v", data.TxID.StringShort(), data.InitialDelay)
-		}
-	})
+	//c.AddOnConsume(func(data *PullTxData) {
+	//	c.Log().Infof("PULL IN %s, delay: %v", data.TxID.StringShort(), data.InitialDelay)
+	//})
 	c.AddOnConsume(c.consume)
 	c.AddOnClosed(func() {
 		c.stop()
@@ -59,32 +48,10 @@ func (w *Workflow) initPullConsumer() {
 	go c.backgroundLoop()
 }
 
-func (p *PullTxConsumer) isRequested(txid *core.TransactionID) bool {
-	p.mutex.RLock()
-	defer p.mutex.RUnlock()
-
-	_, already := p.wanted[*txid]
-	return already
-}
-
 func (p *PullTxConsumer) consume(inp *PullTxData) {
-	switch inp.Cmd {
-	case PullTxCmdQuery:
-		p.queryTransactionCmd(inp)
-	case PullTxCmdRemove:
-		p.removeTransactionCmd(inp)
-	default:
-		p.Log().Panicf("wrong command")
-	}
-}
-
-func (p *PullTxConsumer) queryTransactionCmd(inp *PullTxData) {
-	if p.isRequested(&inp.TxID) {
+	if p.isInPullList(&inp.TxID) {
 		return
 	}
-	p.mutex.Lock()
-	defer p.mutex.Unlock()
-
 	// look up for the transaction in the store
 	txBytes := p.glb.utxoTangle.TxBytesStore().GetTxBytes(&inp.TxID)
 	if len(txBytes) != 0 {
@@ -94,28 +61,62 @@ func (p *PullTxConsumer) queryTransactionCmd(inp *PullTxData) {
 		}
 		return
 	}
-	// transaction is not in the store. Add it to the 'wanted' set
+	// transaction is not in the store. Add it to the 'pullList' set
 	nowis := time.Now()
 	firstPullDeadline := nowis.Add(inp.InitialDelay)
 	if inp.InitialDelay == 0 {
 		firstPullDeadline = nowis.Add(pullPeriod)
 	}
-	p.wanted[inp.TxID] = firstPullDeadline
+
+	p.addToPullList(inp.TxID, firstPullDeadline)
+
 	if inp.InitialDelay == 0 {
 		// query immediately
-		go p.pullTransactions(inp.TxID)
+		p.glb.peers.PullTransactionsFromRandomPeer(inp.TxID)
 	}
-
-	p.Log().Debugf("<-- added %s", inp.TxID.StringShort())
 }
 
-func (p *PullTxConsumer) removeTransactionCmd(inp *PullTxData) {
+func (p *PullTxConsumer) isInPullList(txid *core.TransactionID) bool {
+	p.mutex.RLock()
+	defer p.mutex.RUnlock()
+
+	_, already := p.pullList[*txid]
+	return already
+}
+
+func (p *PullTxConsumer) pullListLen() int {
+	p.mutex.RLock()
+	defer p.mutex.RUnlock()
+
+	return len(p.pullList)
+}
+
+func (w *Workflow) PullListLen() int {
+	return w.pullConsumer.pullListLen()
+}
+
+func (p *PullTxConsumer) removeFromPullList(txid core.TransactionID) {
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
 
-	delete(p.wanted, inp.TxID)
+	delete(p.pullList, txid)
+}
 
-	p.Log().Debugf("removed %s", inp.TxID.StringShort())
+func (p *PullTxConsumer) removeFromPullListWithCheck(txid core.TransactionID) bool {
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
+
+	_, inTheList := p.pullList[txid]
+	delete(p.pullList, txid)
+
+	return inTheList
+}
+
+func (p *PullTxConsumer) addToPullList(txid core.TransactionID, deadline time.Time) {
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
+
+	p.pullList[txid] = deadline
 }
 
 func (p *PullTxConsumer) stop() {
@@ -127,35 +128,32 @@ const pullLoopPeriod = 10 * time.Millisecond
 func (p *PullTxConsumer) backgroundLoop() {
 	defer p.Log().Infof("background loop stopped")
 
+	buffer := make([]core.TransactionID, 0) // minimize heap use
 	for {
 		select {
 		case <-p.stopBackgroundLoopChan:
 			return
 		case <-time.After(pullLoopPeriod):
 		}
-		p.pullAllMatured()
+		p.pullAllMatured(buffer)
 	}
 }
 
-func (p *PullTxConsumer) pullAllMatured() {
+func (p *PullTxConsumer) pullAllMatured(buf []core.TransactionID) {
+	buf = util.ClearSlice(buf)
+
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
 
 	nowis := time.Now()
 
-	txids := make([]core.TransactionID, 0)
-	for txid, whenNext := range p.wanted {
-		if whenNext.Before(nowis) {
-			txids = append(txids, txid)
+	for txid, whenNext := range p.pullList {
+		if nowis.After(whenNext) {
+			buf = append(buf, txid)
 		}
-		p.wanted[txid] = nowis.Add(pullPeriod)
+		p.pullList[txid] = nowis.Add(pullPeriod)
 	}
-	if len(txids) > 0 {
-		p.pullTransactions(txids...)
+	if len(buf) > 0 {
+		p.glb.peers.PullTransactionsFromRandomPeer(buf...)
 	}
-}
-
-func (p *PullTxConsumer) pullTransactions(txids ...core.TransactionID) {
-	fmt.Printf(">>>>>>>>>>>>>>>> pullTransactions %d\n", len(txids))
-	p.glb.peers.PullTransactionsFromRandomPeer(txids...)
 }

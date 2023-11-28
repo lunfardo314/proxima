@@ -23,8 +23,8 @@ type (
 		Tx            *transaction.Transaction
 		SourceType    TransactionSourceType
 		ReceivedFrom  peer.ID
-		Gossiped      bool
-		Pulled        bool
+		WasGossiped   bool
+		WasPulled     bool
 		eventCallback func(event string, data any)
 		traceFlag     bool
 	}
@@ -117,7 +117,7 @@ func (c *PrimaryConsumer) consume(inp *PrimaryTransactionData) {
 func (c *PrimaryConsumer) isDuplicate(txid *core.TransactionID) bool {
 	if c.seen.Seen(txid.VeryShortID8()) {
 		c.glb.IncCounter(c.Name() + ".duplicate.seen")
-		c.Log().Debugf("isRequested seen -- " + txid.String())
+		c.Log().Debugf("isInPullList seen -- " + txid.String())
 		return true
 	}
 	return false

@@ -45,7 +45,7 @@ type (
 		dropTxConsumer       *DropTxConsumer
 		eventsConsumer       *EventsConsumer
 		pullRequestConsumer  *PullRespondConsumer
-		txGossipOutConsumer  *TxGossipOutConsumer
+		txGossipOutConsumer  *TxGossipSendConsumer
 
 		handlersMutex sync.RWMutex
 		eventHandlers map[eventtype.EventCode][]func(any)
@@ -88,7 +88,7 @@ func New(ut *utangle.UTXOTangle, peers *peering.Peers, configOptions ...ConfigOp
 	ret.initRejectConsumer()
 	ret.initEventsConsumer()
 	ret.initRespondTxQueryConsumer()
-	ret.initGossipOutConsumer()
+	ret.initGossipSendConsumer()
 
 	ret.peers.OnReceiveTxBytes(func(from peer.ID, txBytes []byte) {
 		if !ret.working.Load() {

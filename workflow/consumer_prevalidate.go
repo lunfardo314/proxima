@@ -46,6 +46,7 @@ func (w *Workflow) initPreValidateConsumer() {
 }
 
 // process the input message
+// TODO check lower time bounds
 func (c *PreValidateConsumer) consume(inp *PreValidateConsumerInputData) {
 	inp.eventCallback(PreValidateConsumerName+".in", inp.Tx)
 
@@ -63,7 +64,7 @@ func (c *PreValidateConsumer) consume(inp *PreValidateConsumerInputData) {
 		if enforceTimeBounds {
 			c.IncCounter("invalid")
 			inp.eventCallback("finish."+PreValidateConsumerName, err)
-			c.RejectTransaction(inp.PrimaryTransactionData, "%v", err)
+			c.glb.DropTransaction(*inp.Tx.ID(), "%v", err)
 			return
 		}
 		c.Warnf(inp.PrimaryTransactionData, "checking time bounds: '%v'", err)
@@ -71,17 +72,16 @@ func (c *PreValidateConsumer) consume(inp *PreValidateConsumerInputData) {
 	// run remaining validations on the transaction
 	if err = inp.Tx.Validate(transaction.MainTxValidationOptions...); err != nil {
 		c.IncCounter("invalid")
-		c.RejectTransaction(inp.PrimaryTransactionData, "%v", err)
+		c.glb.DropTransaction(*inp.Tx.ID(), "%v", err)
 		return
 	}
 	c.IncCounter("ok")
 
-	if inp.SourceType == TransactionSourceTypePeer {
-		// if received from another peer, gossip transaction right after pre-validation
-		// mark already gossiped to prevent gossip after full validation
-		// after that the mark does not change, no race condition
-		inp.PrimaryTransactionData.Gossiped = true
-		c.glb.txGossipOutConsumer.Push(TxGossipOutInputData{
+	if inp.SourceType == TransactionSourceTypePeer && !inp.PrimaryTransactionData.WasGossiped {
+		// if received from another peer not via the pull protocol, gossip the transaction right after pre-validation
+		// mark it already gossiped to prevent repetitive gossip after full validation
+		inp.PrimaryTransactionData.WasGossiped = true
+		c.glb.txGossipOutConsumer.Push(TxGossipSendInputData{
 			PrimaryTransactionData: inp.PrimaryTransactionData,
 			ReceivedFrom:           inp.ReceivedFrom,
 		})

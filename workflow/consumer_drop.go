@@ -52,8 +52,5 @@ func (w *Workflow) DropTransaction(txid core.TransactionID, reasonFormat string,
 		TxID: txid,
 		Msg:  fmt.Sprintf(reasonFormat, args...),
 	})
-	w.pullConsumer.Push(&PullTxData{
-		Cmd:  PullTxCmdRemove,
-		TxID: txid,
-	})
+	w.pullConsumer.removeFromPullList(txid)
 }

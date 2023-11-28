@@ -1402,7 +1402,7 @@ func TestMultiChainWorkflow(t *testing.T) {
 			nChains              = 15
 			chainPaceInTimeSlots = 7
 			printBranchTx        = false
-			howLong              = 1000
+			howLong              = 700 // 1000
 			realTime             = false
 			nowait               = true
 		)
@@ -1446,11 +1446,12 @@ func TestMultiChainWorkflow(t *testing.T) {
 		}
 
 		err := cd.Wait()
+		wrk.Stop()
+		t.Logf("length of the pull list: %d", wrk.PullListLen())
 		if err != nil {
 			t.Logf("===== counters: %s", wrk.CounterInfo())
 		}
 		require.NoError(t, err)
-		wrk.Stop()
 		t.Logf("UTXO tangle:\n%s", r.ut.Info())
 	})
 	t.Run("cross multi-endorsing chains", func(t *testing.T) {

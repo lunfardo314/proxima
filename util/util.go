@@ -229,6 +229,14 @@ func FilterSlice[T any](slice []T, filter func(el T) bool, maxElems ...int) []T 
 	return ret
 }
 
+func ClearSlice[T any](slice []T) []T {
+	var nul T
+	for i := range slice {
+		slice[i] = nul
+	}
+	return slice[:0]
+}
+
 func AppendUnique[T comparable](slice []T, elems ...T) []T {
 	slice = slices.Grow(slice, len(elems))
 	for _, el := range elems {

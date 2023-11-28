@@ -35,8 +35,8 @@ func (w *Workflow) TransactionInReturnTx(txBytes []byte, opts ...TransactionInOp
 		opt(inData)
 	}
 	// prevent unnecessary dissemination via gossip
-	inData.Pulled = w.pullConsumer.isRequested(tx.ID())
-	inData.Gossiped = inData.Pulled
+	inData.WasPulled = w.pullConsumer.removeFromPullListWithCheck(*tx.ID())
+	inData.WasGossiped = inData.WasPulled
 
 	w.primaryInputConsumer.Push(inData)
 	return tx, nil

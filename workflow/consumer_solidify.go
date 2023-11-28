@@ -125,7 +125,7 @@ func (c *SolidifyConsumer) consume(inp *SolidifyInputData) {
 func (c *SolidifyConsumer) newVertexToSolidify(inp *SolidifyInputData) {
 
 	_, already := c.txPending[*inp.Tx.ID()]
-	util.Assertf(!already, "transaction is in the solidifier isRequested: %s", inp.Tx.IDString())
+	util.Assertf(!already, "transaction is in the solidifier isInPullList: %s", inp.Tx.IDString())
 
 	// fetches available inputs, makes draftVertex
 	draftVertex, err := c.glb.utxoTangle.MakeDraftVertex(inp.Tx)
@@ -134,7 +134,7 @@ func (c *SolidifyConsumer) newVertexToSolidify(inp *SolidifyInputData) {
 		c.Debugf(inp.PrimaryTransactionData, "%v", err)
 		c.IncCounter("err")
 		c.removeNonSolidifiableFutureCone(inp.Tx.ID())
-		c.RejectTransaction(inp.PrimaryTransactionData, "%v", err)
+		c.glb.DropTransaction(*inp.Tx.ID(), "%v", err)
 		return
 	}
 
@@ -183,7 +183,7 @@ func (c *SolidifyConsumer) putIntoSolidifierIfNeeded(inp *SolidifyInputData, dra
 	vd := draftVertexData{
 		PrimaryTransactionData: inp.PrimaryTransactionData,
 		draftVertex:            draftVertex,
-		pulled:                 inp.Pulled,
+		pulled:                 inp.WasPulled,
 	}
 	c.txPending[*draftVertex.Tx.ID()] = vd
 
@@ -303,11 +303,11 @@ func (c *SolidifyConsumer) pullIfNeeded(vd *draftVertexData) {
 	}
 
 	if vd.Tx.IsSequencerMilestone() {
-		//stem is isRequested solid, we can pull sequencer input
+		//stem is isInPullList solid, we can pull sequencer input
 		if isSolid, seqInputIdx := vd.draftVertex.IsSequencerInputSolid(); !isSolid {
 			seqInputOID := vd.Tx.MustInputAt(seqInputIdx)
 			var delayFirst time.Duration
-			if vd.Pulled {
+			if vd.WasPulled {
 				delayFirst = pullImmediately
 			} else {
 				delayFirst = pullDelayFirstPeriodSequencer
@@ -321,7 +321,7 @@ func (c *SolidifyConsumer) pullIfNeeded(vd *draftVertexData) {
 	// now we can pull the rest
 	vd.draftVertex.MissingInputTxIDSet().ForEach(func(txid core.TransactionID) bool {
 		var delayFirst time.Duration
-		if vd.Pulled {
+		if vd.WasPulled {
 			delayFirst = pullImmediately
 		} else {
 			delayFirst = pullDelayFirstPeriodSequencer
@@ -331,11 +331,10 @@ func (c *SolidifyConsumer) pullIfNeeded(vd *draftVertexData) {
 	})
 }
 
-func (c *SolidifyConsumer) pull(txid core.TransactionID, gracePeriod time.Duration) {
+func (c *SolidifyConsumer) pull(txid core.TransactionID, initialDelay time.Duration) {
 	c.glb.pullConsumer.Push(&PullTxData{
-		Cmd:          PullTxCmdQuery,
 		TxID:         txid,
-		InitialDelay: gracePeriod,
+		InitialDelay: initialDelay,
 	})
 }
 

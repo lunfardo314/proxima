@@ -73,11 +73,6 @@ func (c *Consumer[T]) trace(f string, a ...any) {
 	}
 }
 
-func (c *Consumer[T]) RejectTransaction(inp *PrimaryTransactionData, format string, args ...any) {
-	c.Debugf(inp, format, args...)
-	c.glb.DropTransaction(*inp.Tx.ID(), format, args...)
-}
-
 func (c *Consumer[T]) IncCounter(name string) {
 	c.glb.IncCounter(c.Name() + "." + name)
 }
