@@ -49,10 +49,7 @@ func (c *ValidateConsumer) consume(inp *ValidateConsumerInputData) {
 			c.IncCounter("err")
 			c.glb.DropTransaction(*inp.Tx.ID(), "%v", err)
 			// inform solidifier
-			c.glb.solidifyConsumer.Push(&SolidifyInputData{
-				PrimaryTransactionData: inp.PrimaryTransactionData,
-				Remove:                 true,
-			})
+			c.glb.solidifyConsumer.postRemoveID(inp.Tx.ID())
 			return
 		}
 		c.IncCounter("ok")
