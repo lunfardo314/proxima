@@ -41,7 +41,7 @@ func (w *Workflow) initValidateConsumer() {
 func (c *ValidateConsumer) consume(inp *ValidateConsumerInputData) {
 	inp.eventCallback(ValidateConsumerName+".in.new", inp.Tx)
 
-	util.Assertf(inp.draftVertex.IsSolid(), "inp.draftVertex.IsSolid()")
+	util.Assertf(inp.draftVertex.IsSolid(), "inp.vertex.IsSolid()")
 	// will start a worker goroutine or block util worker is available
 	c.workerPool.Work(func() {
 		if err := inp.draftVertex.Validate(); err != nil {

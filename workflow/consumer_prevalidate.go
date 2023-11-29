@@ -54,9 +54,7 @@ func (c *PreValidateConsumer) consume(inp *PreValidateConsumerInputData) {
 	// time bounds are checked if it is not an insider transaction, and it is not in the solidifier pipeline
 	// TODO
 	enforceTimeBounds := inp.SourceType == TransactionSourceTypeAPI ||
-		inp.SourceType == TransactionSourceTypePeer ||
-		c.glb.solidifyConsumer.IsWaitedTransaction(inp.Tx.ID())
-
+		inp.SourceType == TransactionSourceTypePeer
 	// transaction is rejected if it is too far in the future wrt the local clock
 	nowis := time.Now()
 	timeUpperBound := nowis.Add(c.glb.maxDurationInTheFuture())
