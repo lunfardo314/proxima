@@ -52,6 +52,7 @@ func (c *PreValidateConsumer) consume(inp *PreValidateConsumerInputData) {
 
 	var err error
 	// time bounds are checked if it is not an insider transaction, and it is not in the solidifier pipeline
+	// TODO
 	enforceTimeBounds := inp.SourceType == TransactionSourceTypeAPI ||
 		inp.SourceType == TransactionSourceTypePeer ||
 		c.glb.solidifyConsumer.IsWaitedTransaction(inp.Tx.ID())

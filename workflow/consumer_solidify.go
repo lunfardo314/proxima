@@ -2,7 +2,6 @@ package workflow
 
 import (
 	"fmt"
-	"strings"
 	"sync"
 	"time"
 
@@ -10,6 +9,7 @@ import (
 	utangle "github.com/lunfardo314/proxima/utangle"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
+	"github.com/lunfardo314/proxima/util/set"
 )
 
 const SolidifyConsumerName = "solidify"
@@ -30,27 +30,25 @@ type (
 		// mutex for main data structures
 		mutex sync.RWMutex
 		// txPending is list of draft vertices waiting for solidification to be sent for validation
-		txPending map[core.TransactionID]draftVertexData
-		// txDependencies is a list of transaction IDs which are needed for solidification of pending tx-es
-		txDependencies map[core.TransactionID]*txDependency
+		txPending map[core.TransactionID]wantedTx
+	}
+
+	wantedTx struct {
+		since time.Time // since when wantedTx
+		// if != nil, it is transaction being solidified
+		// if == nil, transaction is unknown yet
+		draftVertexData *draftVertexData
+		// tx IDs who are waiting for the tx to be solid
+		waitingList []*core.TransactionID
 	}
 
 	draftVertexData struct {
 		*PrimaryTransactionData
-		draftVertex *utangle.Vertex
-		pulled      bool // transaction was received as a result of the pull request
-		// stemInputAlreadyPulled for pull sequence and priorities
+		draftVertex                       *utangle.Vertex
+		pulled                            bool // transaction was received as a result of the pull request
 		stemInputAlreadyPulled            bool
 		sequencerPredecessorAlreadyPulled bool
 		allInputsAlreadyPulled            bool
-	}
-
-	txDependency struct {
-		// whoIsWaiting a list of txID which depends on the txid in the key of txDependency map
-		// The list should not be empty
-		whoIsWaiting []*core.TransactionID
-		// since when dependency is known
-		since time.Time
 	}
 )
 
@@ -61,8 +59,7 @@ const (
 func (w *Workflow) initSolidifyConsumer() {
 	c := &SolidifyConsumer{
 		Consumer:           NewConsumer[*SolidifyInputData](SolidifyConsumerName, w),
-		txPending:          make(map[core.TransactionID]draftVertexData),
-		txDependencies:     make(map[core.TransactionID]*txDependency),
+		txPending:          make(map[core.TransactionID]wantedTx),
 		stopBackgroundChan: make(chan struct{}),
 	}
 	c.AddOnConsume(func(inp *SolidifyInputData) {
@@ -90,7 +87,7 @@ func (c *SolidifyConsumer) IsWaitedTransaction(txid *core.TransactionID) bool {
 	c.mutex.RLock()
 	defer c.mutex.RUnlock()
 
-	_, ret := c.txDependencies[*txid]
+	_, ret := c.txPending[*txid]
 	return ret
 }
 
@@ -153,130 +150,137 @@ func (c *SolidifyConsumer) passToValidation(primaryTxData *PrimaryTransactionDat
 
 // returns if draftVertex was placed into the solidifier for further tracking
 func (c *SolidifyConsumer) putIntoSolidifierIfNeeded(inp *SolidifyInputData, draftVertex *utangle.Vertex) bool {
+	txid := draftVertex.Tx.ID()
+	_, already := c.txPending[*txid]
+	util.Assertf(!already, "double add to solidifier")
+
 	unknownInputTxIDs := draftVertex.MissingInputTxIDSet()
 	if len(unknownInputTxIDs) == 0 {
 		c.IncCounter("new.solid")
 		return false
 	}
+
 	// some inputs unknown
 	inp.eventCallback("notsolid."+SolidifyConsumerName, inp.Tx)
-
 	util.Assertf(!draftVertex.IsSolid(), "inconsistency 1")
 	c.IncCounter("new.notsolid")
 	for unknownTxID := range unknownInputTxIDs {
 		c.traceTx(inp.PrimaryTransactionData, "unknown input tx %s", unknownTxID.StringShort())
 	}
 
-	// for each unknown input, add the new draftVertex to the list of txids
-	// dependent on it (past cone tips, known consumers)
-	nowis := time.Now()
-	for wantedTxID := range unknownInputTxIDs {
-		if dept, dependencyExists := c.txDependencies[wantedTxID]; dependencyExists {
-			fmt.Printf(">>>>> add dept: wanted: %s, consumer: %s\n", wantedTxID.StringShort(), draftVertex.Tx.IDShort())
-
-			dept.whoIsWaiting = append(dept.whoIsWaiting, draftVertex.Tx.ID())
-		} else {
-			c.txDependencies[wantedTxID] = &txDependency{
-				since:        nowis,
-				whoIsWaiting: util.List(draftVertex.Tx.ID()),
-			}
-		}
-	}
-	// add to the list of vertices waiting for solidification
-	vd := draftVertexData{
+	vd := &draftVertexData{
 		PrimaryTransactionData: inp.PrimaryTransactionData,
 		draftVertex:            draftVertex,
 		pulled:                 inp.WasPulled,
 	}
-	c.txPending[*draftVertex.Tx.ID()] = vd
+	c.txPending[*draftVertex.Tx.ID()] = wantedTx{
+		since:           time.Now(),
+		draftVertexData: vd,
+	}
+
+	// for each unknown input, add the new draftVertex to the list of txids
+	// dependent on it (past cone tips, known consumers)
+	unknownInputTxIDs.ForEach(func(wantedTxID core.TransactionID) bool {
+		c.putIntoWaitingList(&wantedTxID, txid)
+		return true
+	})
+
+	// add to the list of vertices waiting for solidification
 
 	// optionally initialize pull request to other peers if needed
-	c.pullIfNeeded(&vd)
+	c.pullIfNeeded(vd)
 	return true
 }
 
-// collectDependingFutureCone collects all known (to solidifier) txids from the future cone which directly or indirectly depend on the txid
-// It is recursive traversing of the DAG in the opposite order in the future cone of dependencies
-func (c *SolidifyConsumer) collectDependingFutureCone(txid *core.TransactionID, ret map[core.TransactionID]struct{}) {
-	if _, already := ret[*txid]; already {
+func (c *SolidifyConsumer) putIntoWaitingList(pendingID, whoIsWaiting *core.TransactionID) {
+	var waitingLst []*core.TransactionID
+	pendingData, exists := c.txPending[*pendingID]
+	if exists {
+		waitingLst = pendingData.waitingList
+	} else {
+		// new wanted transaction, not seen yet
+		pendingData.since = time.Now()
+	}
+	if len(waitingLst) == 0 {
+		waitingLst = make([]*core.TransactionID, 0, 1)
+	}
+	pendingData.waitingList = append(waitingLst, whoIsWaiting)
+	c.txPending[*pendingID] = pendingData
+}
+
+// collectWaitingFutureCone collects all known (to solidifier) txids from the future cone which directly or indirectly depend on the pending tx
+func (c *SolidifyConsumer) collectWaitingFutureCone(txid *core.TransactionID, ret set.Set[core.TransactionID]) {
+	if ret.Contains(*txid) {
 		return
 	}
-	if dep, isKnownDependency := c.txDependencies[*txid]; isKnownDependency {
-		for _, txid1 := range dep.whoIsWaiting {
-			c.collectDependingFutureCone(txid1, ret)
-		}
+	ret.Insert(*txid)
+	pendingData := c.txPending[*txid]
+	for _, txid1 := range pendingData.waitingList {
+		c.collectWaitingFutureCone(txid1, ret)
 	}
-	ret[*txid] = struct{}{}
 }
 
 // removeNonSolidifiableFutureCone removes from solidifier all txids which directly or indirectly depend on txid
 func (c *SolidifyConsumer) removeNonSolidifiableFutureCone(txid *core.TransactionID) {
 	c.Log().Debugf("remove non-solidifiable future cone of %s", txid.StringShort())
 
-	ns := make(map[core.TransactionID]struct{})
-	c.collectDependingFutureCone(txid, ns)
-	for txid1 := range ns {
-		if v, ok := c.txPending[txid1]; ok {
-			pendingDept := v.draftVertex.PendingDependenciesLines("   ").String()
-			v.PrimaryTransactionData.eventCallback("finish.remove."+SolidifyConsumerName,
-				fmt.Errorf("%s solidication problem. Pending dependencies:\n%s", txid1.StringShort(), pendingDept))
-		}
+	ns := set.New[core.TransactionID]()
+	c.collectWaitingFutureCone(txid, ns)
 
-		delete(c.txPending, txid1)
-		delete(c.txDependencies, txid1)
-
-		c.Log().Debugf("remove %s", txid1.StringShort())
-	}
+	ns.ForEach(func(txid core.TransactionID) bool {
+		delete(c.txPending, txid)
+		return true
+	})
 }
 
-// checkNewDependency checks all pending transactions waiting for the new incoming transaction
-// The new vertex has just been added to the tangle
+// checkNewDependency checks all pending transactions waiting for the new solid transaction
 func (c *SolidifyConsumer) checkNewDependency(inp *SolidifyInputData) {
-	dep, isKnownDependency := c.txDependencies[*inp.Tx.ID()]
+	txid := inp.Tx.ID()
+	pendingData, isKnownDependency := c.txPending[*txid]
 	if !isKnownDependency {
+		// nobody is waiting, nothing to remove. Ignore
 		return
 	}
 	// it is not needed in the dependencies list anymore
-	delete(c.txDependencies, *inp.Tx.ID())
+	delete(c.txPending, *txid)
 
-	whoIsWaiting := dep.whoIsWaiting
-	util.Assertf(len(whoIsWaiting) > 0, "len(whoIsWaiting)>0")
-
-	c.traceTx(inp.PrimaryTransactionData, "whoIsWaiting: %s", __txLstString(whoIsWaiting))
+	c.traceTx(inp.PrimaryTransactionData, "waitingList: %s", __txLstString(pendingData.waitingList))
 
 	// looping over pending vertices which are waiting for the dependency newTxID
-	for _, txid := range whoIsWaiting {
-		pending, found := c.txPending[*txid]
+	for _, txidWaiting := range pendingData.waitingList {
+		waitingPendingData, found := c.txPending[*txidWaiting]
 		if !found {
-			c.Log().Debugf("%s was waiting for %s, not pending anymore", txid.StringShort(), inp.Tx.IDShort())
-			// not pending anymore
+			c.Log().Debugf("%s was waiting for %s, not waitingPendingData anymore", txidWaiting.StringShort(), inp.Tx.IDShort())
+			// not waitingPendingData anymore
 			return
 		}
-		if conflict := pending.draftVertex.FetchMissingDependencies(c.glb.utxoTangle); conflict != nil {
+		util.Assertf(waitingPendingData.draftVertexData != nil, "waitingPendingData.draftVertexData != nil")
+
+		if conflict := waitingPendingData.draftVertexData.draftVertex.FetchMissingDependencies(c.glb.utxoTangle); conflict != nil {
 			// tx cannot be solidified, remove
-			c.removeNonSolidifiableFutureCone(txid)
+			c.removeNonSolidifiableFutureCone(txidWaiting)
 			err := fmt.Errorf("conflict at %s", conflict.Short())
 			inp.eventCallback("finish.fail."+SolidifyConsumerName, err)
-			c.glb.DropTransaction(*txid, "%v", err)
+			c.glb.DropTransaction(*txidWaiting, "%v", err)
 			continue
 		}
-		if pending.draftVertex.IsSolid() {
+		if waitingPendingData.draftVertexData.draftVertex.IsSolid() {
 			// all inputs are solid, send it to the validation
-			c.passToValidation(pending.PrimaryTransactionData, pending.draftVertex)
+			c.passToValidation(waitingPendingData.draftVertexData.PrimaryTransactionData, waitingPendingData.draftVertexData.draftVertex)
 			continue
 		}
-		//c.traceTx(pending.PrimaryTransactionData, "not solid yet. Missing: %s\nTransaction: %s",
-		//	pending.draftVertex.MissingInputTxIDString(), pending.draftVertex.Lines().String())
+		//c.traceTx(waitingPendingData.PrimaryTransactionData, "not solid yet. Missing: %s\nTransaction: %s",
+		//	waitingPendingData.draftVertex.MissingInputTxIDString(), waitingPendingData.draftVertex.Lines().String())
 
 		// ask for missing inputs from peering
-		c.pullIfNeeded(&pending)
+		c.pullIfNeeded(waitingPendingData.draftVertexData)
 	}
 }
 
 func __txLstString(lst []*core.TransactionID) string {
 	ret := lines.New()
-	for _, txid := range lst {
-		ret.Add(txid.StringShort())
+	for i := range lst {
+		ret.Add(lst[i].StringShort())
 	}
 	return ret.Join(",")
 }
@@ -374,8 +378,8 @@ func (c *SolidifyConsumer) collectToRemove() []core.TransactionID {
 
 	nowis := time.Now()
 	ret := make([]core.TransactionID, 0)
-	for txid, dep := range c.txDependencies {
-		if nowis.After(dep.since.Add(keepNotSolid)) {
+	for txid, vd := range c.txPending {
+		if nowis.After(vd.since.Add(keepNotSolid)) {
 			ret = append(ret, txid)
 		}
 	}
@@ -386,8 +390,9 @@ func (c *SolidifyConsumer) removeDueToDeadline(toRemove []core.TransactionID) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
-	for _, txid := range toRemove {
-		c.removeNonSolidifiableFutureCone(&txid)
+	for i := range toRemove {
+		delete(c.txPending, toRemove[i])
+		c.removeNonSolidifiableFutureCone(&toRemove[i])
 	}
 }
 
@@ -395,30 +400,10 @@ func (c *SolidifyConsumer) missingInputsString(txid core.TransactionID) string {
 	c.mutex.RLock()
 	defer c.mutex.RUnlock()
 
-	if vertexData, found := c.txPending[txid]; found {
-		return vertexData.draftVertex.MissingInputTxIDString()
+	if pendingData, found := c.txPending[txid]; found && pendingData.draftVertexData != nil {
+		return pendingData.draftVertexData.draftVertex.MissingInputTxIDString()
 	}
-	return "(none)"
-}
-
-func (d *txDependency) __text(dep *core.TransactionID) string {
-	txids := make([]string, 0)
-	for _, id := range d.whoIsWaiting {
-		txids = append(txids, id.StringShort())
-	}
-	return fmt.Sprintf("%s <- [%s]", dep.StringShort(), strings.Join(txids, ","))
-}
-
-func (c *SolidifyConsumer) DumpUnresolvedDependencies() *lines.Lines {
-	c.mutex.RLock()
-	defer c.mutex.RUnlock()
-
-	ret := lines.New()
-	ret.Add("======= unresolved dependencies in solidifier")
-	for txid, v := range c.txDependencies {
-		ret.Add(v.__text(&txid))
-	}
-	return ret
+	return "(unknown tx)"
 }
 
 func (c *SolidifyConsumer) DumpPending() *lines.Lines {
@@ -427,9 +412,13 @@ func (c *SolidifyConsumer) DumpPending() *lines.Lines {
 
 	ret := lines.New()
 	ret.Add("======= transactions pending in solidifier")
-	for txid, v := range c.txPending {
+	for txid, pd := range c.txPending {
 		ret.Add("pending %s", txid.StringShort())
-		ret.Append(v.draftVertex.PendingDependenciesLines("  "))
+		if pd.draftVertexData != nil {
+			ret.Append(pd.draftVertexData.draftVertex.PendingDependenciesLines("  "))
+		} else {
+			ret.Add("unknown tx")
+		}
 	}
 	return ret
 }
