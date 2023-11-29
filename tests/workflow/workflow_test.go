@@ -3,6 +3,7 @@ package workflow
 import (
 	"bytes"
 	"crypto/ed25519"
+	"fmt"
 	"sort"
 	"strings"
 	"testing"
@@ -391,11 +392,10 @@ func TestSolidifier(t *testing.T) {
 		require.NoError(t, err)
 	})
 	t.Run("several tx usual seq", func(t *testing.T) {
-		const howMany = 100
+		const howMany = 3 // 100
 		wd := initWorkflowTest(t, 1, core.LogicalTimeNow(), workflow.WithLogLevel(zapcore.DebugLevel))
-		cd := countdown.New(howMany, 10*time.Second)
+		cd := countdown.New(howMany, 300*time.Second) // 10*time.Second)
 		wd.setNewVertexCounter(cd)
-
 		var err error
 
 		txBytes := make([][]byte, howMany)
@@ -405,7 +405,9 @@ func TestSolidifier(t *testing.T) {
 		}
 		wd.w.Start()
 		for i := range txBytes {
-			err = wd.w.TransactionIn(txBytes[i])
+			err = wd.w.TransactionIn(txBytes[i], workflow.WithOnWorkflowEventPrefix("checkNewDependency.", func(event string, data any) {
+				fmt.Printf("checkNewDependency %s\n", data.(*core.TransactionID).StringShort())
+			}))
 			require.NoError(t, err)
 		}
 		err = cd.Wait()

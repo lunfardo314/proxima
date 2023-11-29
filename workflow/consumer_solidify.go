@@ -14,14 +14,19 @@ import (
 
 const SolidifyConsumerName = "solidify"
 
+const (
+	SolidifyCommandSolidifyNew = byte(iota)
+	SolidifyCommandCheckTxID
+	SolidifyCommandRemove
+)
+
 type (
 	SolidifyInputData struct {
-		// if not nil, its is a message to notify Solidify consumer that new transaction (valid and solid) has arrived to the tangle
-		newSolidDependency *utangle.WrappedTx
-		// used if newTx is == nil
+		Cmd byte
+		// != nil for SolidifyCommandCheckTxID and SolidifyCommandRemove, == nil for SolidifyCommandSolidifyNew
+		checkTxID *core.TransactionID
+		// == nil for SolidifyCommandCheckTxID and SolidifyCommandRemove, != nil for SolidifyCommandSolidifyNew
 		*PrimaryTransactionData
-		// If true, PrimaryTransactionData bears txid to be removed
-		Remove bool
 	}
 
 	SolidifyConsumer struct {
@@ -62,17 +67,6 @@ func (w *Workflow) initSolidifyConsumer() {
 		txPending:          make(map[core.TransactionID]wantedTx),
 		stopBackgroundChan: make(chan struct{}),
 	}
-	c.AddOnConsume(func(inp *SolidifyInputData) {
-		if inp.Remove {
-			c.traceTx(inp.PrimaryTransactionData, "IN (remove)")
-			return
-		}
-		if inp.newSolidDependency == nil {
-			c.traceTx(inp.PrimaryTransactionData, "IN (solidify)")
-			return
-		}
-		c.traceTx(inp.PrimaryTransactionData, "IN (check dependency)")
-	})
 	c.AddOnConsume(c.consume)
 	c.AddOnClosed(func() {
 		close(c.stopBackgroundChan)
@@ -95,24 +89,28 @@ func (c *SolidifyConsumer) consume(inp *SolidifyInputData) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
-	c.setTrace(inp.PrimaryTransactionData.SourceType == TransactionSourceTypeAPI)
+	c.setTrace(inp.PrimaryTransactionData.SourceType == TransactionSourceTypeAPI) /// ?????????? TODO
 
-	if inp.Remove {
-		// command to remove the transaction and other depending on it from the solidification pool
-		inp.eventCallback(SolidifyConsumerName+".in.remove", inp.Tx)
-		c.removeNonSolidifiableFutureCone(inp.Tx.ID())
-		return
-	}
-	if inp.newSolidDependency == nil {
-		// new transaction for solidification arrived
+	switch inp.Cmd {
+	case SolidifyCommandSolidifyNew:
+		util.Assertf(inp.checkTxID == nil && inp.PrimaryTransactionData != nil, "inp.checkTxID == nil && inp.primaryInput != nil")
 		inp.eventCallback(SolidifyConsumerName+".in.new", inp.Tx)
 		c.glb.IncCounter(c.Name() + ".in.new")
 		c.newVertexToSolidify(inp)
-	} else {
-		// new solid transaction has been appended to the tangle, probably some transactions are waiting for it
+
+	case SolidifyCommandCheckTxID:
+		util.Assertf(inp.checkTxID != nil && inp.PrimaryTransactionData == nil, "inp.checkTxID != nil && inp.primaryInput == nil")
 		inp.eventCallback(SolidifyConsumerName+".in.check", inp.Tx)
 		c.glb.IncCounter(c.Name() + ".in.check")
 		c.checkNewDependency(inp)
+
+	case SolidifyCommandRemove:
+		util.Assertf(inp.checkTxID != nil && inp.PrimaryTransactionData == nil, "inp.checkTxID != nil && inp.primaryInput == nil")
+		inp.eventCallback(SolidifyConsumerName+".in.remove", inp.checkTxID)
+		c.removeFutureCone(inp.checkTxID)
+
+	default:
+		panic("wrong solidifier command")
 	}
 }
 
@@ -125,7 +123,7 @@ func (c *SolidifyConsumer) newVertexToSolidify(inp *SolidifyInputData) {
 	if err != nil {
 		// not solidifiable
 		c.IncCounter("err")
-		c.removeNonSolidifiableFutureCone(inp.Tx.ID())
+		c.removeFutureCone(inp.Tx.ID())
 		c.glb.DropTransaction(*inp.Tx.ID(), "%v", err)
 		return
 	}
@@ -220,8 +218,8 @@ func (c *SolidifyConsumer) collectWaitingFutureCone(txid *core.TransactionID, re
 	}
 }
 
-// removeNonSolidifiableFutureCone removes from solidifier all txids which directly or indirectly depend on txid
-func (c *SolidifyConsumer) removeNonSolidifiableFutureCone(txid *core.TransactionID) {
+// removeFutureCone removes from solidifier all txids which directly or indirectly depend on txid
+func (c *SolidifyConsumer) removeFutureCone(txid *core.TransactionID) {
 	c.Log().Debugf("remove non-solidifiable future cone of %s", txid.StringShort())
 
 	ns := set.New[core.TransactionID]()
@@ -235,16 +233,19 @@ func (c *SolidifyConsumer) removeNonSolidifiableFutureCone(txid *core.Transactio
 
 // checkNewDependency checks all pending transactions waiting for the new solid transaction
 func (c *SolidifyConsumer) checkNewDependency(inp *SolidifyInputData) {
+	inp.eventCallback("checkNewDependency."+SolidifyConsumerName, inp.Tx.ID())
+
 	txid := inp.Tx.ID()
-	pendingData, isKnownDependency := c.txPending[*txid]
-	if !isKnownDependency {
+	pendingData, isKnown := c.txPending[*txid]
+	if !isKnown {
+		c.Debugf(inp.PrimaryTransactionData, "not known")
 		// nobody is waiting, nothing to remove. Ignore
 		return
 	}
 	// it is not needed in the dependencies list anymore
 	delete(c.txPending, *txid)
 
-	c.traceTx(inp.PrimaryTransactionData, "waitingList: %s", __txLstString(pendingData.waitingList))
+	c.Debugf(inp.PrimaryTransactionData, "waitingList: %s", __txLstString(pendingData.waitingList))
 
 	// looping over pending vertices which are waiting for the dependency newTxID
 	for _, txidWaiting := range pendingData.waitingList {
@@ -258,7 +259,7 @@ func (c *SolidifyConsumer) checkNewDependency(inp *SolidifyInputData) {
 
 		if conflict := waitingPendingData.draftVertexData.draftVertex.FetchMissingDependencies(c.glb.utxoTangle); conflict != nil {
 			// tx cannot be solidified, remove
-			c.removeNonSolidifiableFutureCone(txidWaiting)
+			c.removeFutureCone(txidWaiting)
 			err := fmt.Errorf("conflict at %s", conflict.Short())
 			inp.eventCallback("finish.fail."+SolidifyConsumerName, err)
 			c.glb.DropTransaction(*txidWaiting, "%v", err)
@@ -356,15 +357,12 @@ func (c *SolidifyConsumer) backgroundLoop() {
 			return
 		case <-time.After(solidifyBackgroundLoopPeriod):
 		}
-		c.doBackgroundCheck()
-	}
-}
+		toRemove := c.collectToRemove()
+		if len(toRemove) == 0 {
+			continue
+		}
 
-func (c *SolidifyConsumer) doBackgroundCheck() {
-	toRemove := c.collectToRemove()
-	if len(toRemove) > 0 {
 		c.removeDueToDeadline(toRemove)
-
 		for i := range toRemove {
 			c.glb.DropTransaction(toRemove[i], "solidification timeout %v. Missing: %s",
 				keepNotSolid, c.missingInputsString(toRemove[i]))
@@ -391,8 +389,7 @@ func (c *SolidifyConsumer) removeDueToDeadline(toRemove []core.TransactionID) {
 	defer c.mutex.Unlock()
 
 	for i := range toRemove {
-		delete(c.txPending, toRemove[i])
-		c.removeNonSolidifiableFutureCone(&toRemove[i])
+		c.removeFutureCone(&toRemove[i])
 	}
 }
 

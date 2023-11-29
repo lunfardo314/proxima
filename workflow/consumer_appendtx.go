@@ -25,7 +25,7 @@ type (
 )
 
 var (
-	EventNewVertex = eventtype.RegisterNew[*NewVertexEventData]("newTx")
+	EventNewVertex = eventtype.RegisterNew[*NewVertexEventData]("newTx event")
 )
 
 func (w *Workflow) initAppendTxConsumer() {
@@ -90,7 +90,7 @@ func (c *AppendTxConsumer) consume(inp *AppendTxConsumerInputData) {
 
 	// notify solidifier upon new transaction added to the tangle
 	c.glb.solidifyConsumer.Push(&SolidifyInputData{
-		newSolidDependency:     vid,
+		checkTxID:              vid.ID(),
 		PrimaryTransactionData: inp.PrimaryTransactionData,
 	}, true)
 }
