@@ -212,7 +212,7 @@ func (v *Vertex) PendingDependenciesLines(prefix ...string) *lines.Lines {
 	v.forEachInputDependency(func(i byte, inp *WrappedTx) bool {
 		if inp == nil {
 			oid := v.Tx.MustInputAt(i)
-			ret.Add("   %d : %s", i, oid.Short())
+			ret.Add("   %d : %s", i, oid.StringShort())
 		}
 		return true
 	})

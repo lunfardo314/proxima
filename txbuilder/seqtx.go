@@ -88,7 +88,7 @@ func MakeSequencerTransaction(par MakeSequencerTransactionParams) ([]byte, error
 	// make chain input/output
 	chainConstraint, chainConstraintIdx := par.ChainInput.Output.ChainConstraint()
 	if chainConstraintIdx == 0xff {
-		return nil, errP("not a chain output: %s", par.ChainInput.ID.Short())
+		return nil, errP("not a chain output: %s", par.ChainInput.ID.StringShort())
 	}
 	chainPredIdx, err := txb.ConsumeOutput(par.ChainInput.Output, par.ChainInput.ID)
 	if err != nil {

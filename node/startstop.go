@@ -24,6 +24,7 @@ import (
 
 type ProximaNode struct {
 	log             *zap.SugaredLogger
+	logOutputs      []string
 	multiStateStore *badger_adaptor.DB
 	txStoreDB       *badger_adaptor.DB
 	txStore         general.TxBytesStore
@@ -59,7 +60,7 @@ func (p *ProximaNode) Run() {
 	p.log.Info(general.BannerString())
 	p.initConfig()
 
-	p.log = newNodeLoggerFromConfig()
+	p.log, p.logOutputs = newNodeLoggerFromConfig()
 	p.log.Info("---------------- starting up Proxima node --------------")
 
 	err := util.CatchPanicOrError(func() error {
@@ -162,7 +163,7 @@ func (p *ProximaNode) loadUTXOTangle() {
 
 func (p *ProximaNode) startPeering() {
 	var err error
-	p.peers, err = peering.NewPeersFromConfig(p.ctx)
+	p.peers, err = peering.NewPeersFromConfig(p.ctx, p.log.Level(), p.logOutputs)
 	util.AssertNoError(err)
 
 	p.peers.Run()

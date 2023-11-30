@@ -56,7 +56,10 @@ func (c *AppendTxConsumer) consume(inp *AppendTxConsumerInputData) {
 		inp.eventCallback("finish."+AppendTxConsumerName, err)
 		c.Debugf(inp.PrimaryTransactionData, "can't append vertex to the tangle: '%v'", err)
 		c.IncCounter("fail")
-		c.glb.DropTransaction(inp.Tx.ID(), AppendTxConsumerName, "%v", err)
+
+		c.glb.solidifyConsumer.postRemoveTxIDs(inp.Tx.ID())
+		c.glb.pullConsumer.removeFromPullList(inp.Tx.ID())
+		c.glb.EventDropTxID(inp.Tx.ID(), AppendTxConsumerName, "%v", err)
 		return
 	}
 	inp.eventCallback("finish."+AppendTxConsumerName, nil)

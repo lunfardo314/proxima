@@ -24,6 +24,7 @@ import (
 	"github.com/spf13/viper"
 	"go.uber.org/atomic"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
 type (
@@ -32,6 +33,8 @@ type (
 		HostID           peer.ID
 		HostPort         int
 		KnownPeers       map[string]multiaddr.Multiaddr // name -> PeerAddr
+		LogLevel         zapcore.Level
+		LogOutputs       []string
 	}
 
 	Peers struct {
@@ -88,7 +91,7 @@ func New(cfg *Config, ctx context.Context) (*Peers, error) {
 
 	ret := &Peers{
 		cfg:               cfg,
-		log:               general.NewLogger("[peering]", zap.DebugLevel, nil, ""),
+		log:               general.NewLogger("[peering]", cfg.LogLevel, cfg.LogOutputs, ""),
 		ctx:               ctx,
 		stopHeartbeatChan: make(chan struct{}),
 		host:              lppHost,
@@ -150,8 +153,10 @@ func readPeeringConfig() (*Config, error) {
 	return cfg, nil
 }
 
-func NewPeersFromConfig(ctx context.Context) (*Peers, error) {
+func NewPeersFromConfig(ctx context.Context, logLevel zapcore.Level, logOutputs []string) (*Peers, error) {
 	cfg, err := readPeeringConfig()
+	cfg.LogLevel = logLevel
+	cfg.LogOutputs = logOutputs
 	if err != nil {
 		return nil, err
 	}

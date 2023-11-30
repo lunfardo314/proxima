@@ -62,7 +62,10 @@ func (c *PreValidateConsumer) consume(inp *PreValidateConsumerInputData) {
 		if enforceTimeBounds {
 			c.IncCounter("invalid")
 			inp.eventCallback("finish."+PreValidateConsumerName, err)
-			c.glb.DropTransaction(inp.Tx.ID(), PreValidateConsumerName, "%v", err)
+
+			c.glb.pullConsumer.removeFromPullList(inp.Tx.ID())
+			c.glb.solidifyConsumer.postRemoveTxIDs(inp.Tx.ID())
+			c.glb.EventDropTxID(inp.Tx.ID(), PreValidateConsumerName, "%v", err)
 			return
 		}
 		c.Warnf(inp.PrimaryTransactionData, "checking time bounds: '%v'", err)
@@ -70,7 +73,10 @@ func (c *PreValidateConsumer) consume(inp *PreValidateConsumerInputData) {
 	// run remaining validations on the transaction
 	if err = inp.Tx.Validate(transaction.MainTxValidationOptions...); err != nil {
 		c.IncCounter("invalid")
-		c.glb.DropTransaction(inp.Tx.ID(), PreValidateConsumerName, "%v", err)
+
+		c.glb.pullConsumer.removeFromPullList(inp.Tx.ID())
+		c.glb.solidifyConsumer.postRemoveTxIDs(inp.Tx.ID())
+		c.glb.EventDropTxID(inp.Tx.ID(), PreValidateConsumerName, "%v", err)
 		return
 	}
 	c.IncCounter("ok")

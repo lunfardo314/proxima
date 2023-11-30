@@ -306,7 +306,7 @@ func CheckTimePace() TxValidationOption {
 		ts := tx.Timestamp()
 		tx.ForEachInput(func(_ byte, oid *core.OutputID) bool {
 			if !core.ValidTimePace(oid.Timestamp(), ts) {
-				err = fmt.Errorf("timestamp of input violates time pace constraint: %s", oid.Short())
+				err = fmt.Errorf("timestamp of input violates time pace constraint: %s", oid.StringShort())
 				return false
 			}
 			return true
@@ -595,7 +595,7 @@ func (tx *Transaction) InputAtShort(idx byte) string {
 	if err != nil {
 		return err.Error()
 	}
-	return ret.Short()
+	return ret.StringShort()
 }
 
 func (tx *Transaction) Inputs() []core.OutputID {
@@ -613,7 +613,7 @@ func (tx *Transaction) ConsumedOutputAt(idx byte, fetchOutput func(id *core.Outp
 	}
 	ret, ok := fetchOutput(&oid)
 	if !ok {
-		return nil, fmt.Errorf("can't fetch output %s", oid.Short())
+		return nil, fmt.Errorf("can't fetch output %s", oid.StringShort())
 	}
 	return &core.OutputDataWithID{
 		ID:         oid,
@@ -736,7 +736,7 @@ func (tx *Transaction) ToString(fetchOutput func(oid *core.OutputID) ([]byte, bo
 		}
 		oData, ok := fetchOutput(&oid)
 		if !ok {
-			return nil, fmt.Errorf("output %s has not been found", oid.Short())
+			return nil, fmt.Errorf("output %s has not been found", oid.StringShort())
 		}
 		o, err1 := core.OutputFromBytesReadOnly(oData)
 		if err1 != nil {

@@ -217,7 +217,7 @@ func (ut *UTXOTangle) _finalizeBranch(newBranchVID *WrappedTx) error {
 		// calculate mutations, update the state and get new root
 		muts, conflict := newBranchVID.getBranchMutations(ut)
 		if conflict.VID != nil {
-			return fmt.Errorf("conflict while calculating mutations: %s", conflict.DecodeID().Short())
+			return fmt.Errorf("conflict while calculating mutations: %s", conflict.DecodeID().StringShort())
 		}
 		upd, err := ut.GetStateUpdatable(baselineVID.ID())
 		if err != nil {
@@ -261,7 +261,7 @@ func (ut *UTXOTangle) _finalizeBranch(newBranchVID *WrappedTx) error {
 		})
 		util.Assertf(err == nil, "double check failed: %v\n%s\n%s", err, muts.Lines().String(), newBranchVID.PastTrackLines("   "))
 		util.Assertf(stemID == nextStemOutputID, "rdr.GetStemOutput().ID == nextStemOutputID\n%s != %s\n%s",
-			stemID.Short(), nextStemOutputID.Short(),
+			stemID.StringShort(), nextStemOutputID.StringShort(),
 			func() any { return newBranchVID.PastTrackLines().String() })
 	}
 	{

@@ -15,7 +15,7 @@ type DropTxData struct {
 
 var EventDroppedTx = eventtype.RegisterNew[DropTxData]("droptx")
 
-func (w *Workflow) DropTransaction(txid *core.TransactionID, whoDropped string, reasonFormat string, args ...any) {
+func (w *Workflow) EventDropTxID(txid *core.TransactionID, whoDropped string, reasonFormat string, args ...any) {
 	w.PostEvent(EventDroppedTx, DropTxData{
 		TxID:       txid,
 		WhoDropped: whoDropped,

@@ -169,7 +169,7 @@ func (r *sequencerTestData) makeAdditionalChainOrigins(faucetIdx int, nChains in
 				OutputWithID: out,
 				ChainID:      chainID,
 			}
-			r.t.Logf(" --- chain ID %s @ origin %s", chainID.Short(), oid.Short())
+			r.t.Logf(" --- chain ID %s @ origin %s", chainID.Short(), oid.StringShort())
 		}
 		return true
 	})
@@ -439,7 +439,7 @@ func Test1Sequencer(t *testing.T) {
 		//r.wrk.UTXOTangle().SaveGraph("utxo_tangle")
 
 		heaviestState = r.ut.HeaviestStateForLatestTimeSlot()
-		t.Logf("stem output of the heaviest state: %s", heaviestState.GetStemOutput().ID.Short())
+		t.Logf("stem output of the heaviest state: %s", heaviestState.GetStemOutput().ID.StringShort())
 		for _, o := range r.chainOrigins {
 			_, found := heaviestState.GetUTXO(&o.ID)
 			require.True(t, found)
@@ -678,7 +678,7 @@ func TestNSequencers(t *testing.T) {
 			chainOriginVID, _ := r.wrk.UTXOTangle().FindOutputInLatestTimeSlot(&o.ID)
 			if chainOriginVID != nil {
 				t.Logf("FAIL: origin output %s of %s is still present in branch %s:\n%s",
-					o.ID.Short(), o.ChainID.Short(), chainOriginVID.IDShort(), o.Output.ToString("         "))
+					o.ID.StringShort(), o.ChainID.Short(), chainOriginVID.IDShort(), o.Output.ToString("         "))
 
 				//rdr := r.wrk.UTXOTangle().MustGetIndexedStateReader(chainOriginVID.ID())
 				//o1, err := rdr.GetUTXOForChainID(&o.ChainID)
@@ -943,7 +943,7 @@ func TestNSequencers(t *testing.T) {
 			chainOriginVID, _ := r.wrk.UTXOTangle().FindOutputInLatestTimeSlot(&o.ID)
 			if chainOriginVID != nil {
 				t.Logf("FAIL: origin output %s of %s is still present in branch %s:\n%s",
-					o.ID.Short(), o.ChainID.Short(), chainOriginVID.IDShort(), o.Output.ToString("         "))
+					o.ID.StringShort(), o.ChainID.Short(), chainOriginVID.IDShort(), o.Output.ToString("         "))
 
 				//rdr := r.wrk.UTXOTangle().MustGetIndexedStateReader(branchVID.ID())
 				//o1, err := rdr.GetUTXOForChainID(&o.ChainID)
@@ -1012,7 +1012,7 @@ func TestNSequencers(t *testing.T) {
 			chainOriginVID, _ := r.wrk.UTXOTangle().FindOutputInLatestTimeSlot(&o.ID)
 			if chainOriginVID != nil {
 				t.Logf("FAIL: origin output %s of %s is still present in branch %s:\n%s",
-					o.ID.Short(), o.ChainID.Short(), chainOriginVID.IDShort(), o.Output.ToString("         "))
+					o.ID.StringShort(), o.ChainID.Short(), chainOriginVID.IDShort(), o.Output.ToString("         "))
 
 				//rdr := r.wrk.UTXOTangle().MustGetIndexedStateReader(branchVID.ID())
 				//o1, err := rdr.GetUTXOForChainID(&o.ChainID)

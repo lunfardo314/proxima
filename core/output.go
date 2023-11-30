@@ -405,17 +405,17 @@ func (o *OutputWithID) String() string {
 }
 
 func (o *OutputWithID) Short() string {
-	return fmt.Sprintf("%s\n%s", o.ID.Short(), o.Output.ToString("   "))
+	return fmt.Sprintf("%s\n%s", o.ID.StringShort(), o.Output.ToString("   "))
 }
 
 func (o *OutputWithID) IDShort() string {
-	return o.ID.Short()
+	return o.ID.StringShort()
 }
 
 func OutputsWithIdToString(outs ...*OutputWithID) string {
 	ret := lines.New()
 	for i, o := range outs {
-		ret.Add("%d : %s", i, o.ID.Short()).
+		ret.Add("%d : %s", i, o.ID.StringShort()).
 			Append(o.Output.Lines("      "))
 	}
 	return ret.String()

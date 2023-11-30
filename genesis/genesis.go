@@ -113,7 +113,7 @@ func ScanGenesisState(stateStore general.StateStore) (*StateIdentityData, common
 	genesisOid := InitialSupplyOutputID(stateID.GenesisTimeSlot)
 	out, err := rdr.GetOutput(&genesisOid)
 	if err != nil {
-		return nil, nil, fmt.Errorf("GetOutput(%s): %w", genesisOid.Short(), err)
+		return nil, nil, fmt.Errorf("GetOutput(%s): %w", genesisOid.StringShort(), err)
 	}
 	if out.Amount() != stateID.InitialSupply {
 		return nil, nil, fmt.Errorf("different amounts in genesis output and state identity")

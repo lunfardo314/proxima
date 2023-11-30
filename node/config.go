@@ -29,7 +29,7 @@ func newBootstrapLogger() *zap.SugaredLogger {
 	return general.NewLogger(bootstrapLoggerName, zap.InfoLevel, []string{"stderr"}, "")
 }
 
-func newNodeLoggerFromConfig() *zap.SugaredLogger {
+func newNodeLoggerFromConfig() (*zap.SugaredLogger, []string) {
 	logLevel := zapcore.InfoLevel
 	if viper.GetString("logger.level") == "debug" {
 		logLevel = zapcore.DebugLevel
@@ -41,5 +41,5 @@ func newNodeLoggerFromConfig() *zap.SugaredLogger {
 		outputs = append(outputs, "stdout")
 	}
 
-	return general.NewLogger(nodeLoggerName, logLevel, outputs, viper.GetString("logger.timelayout"))
+	return general.NewLogger(nodeLoggerName, logLevel, outputs, viper.GetString("logger.timelayout")), outputs
 }

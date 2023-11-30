@@ -286,7 +286,7 @@ func (oid *OutputID) StringHex() string {
 	return hex.EncodeToString(oid[:])
 }
 
-func (oid *OutputID) Short() string {
+func (oid *OutputID) StringShort() string {
 	txid := oid.TransactionID()
 	return fmt.Sprintf("%s[%d]", txid.StringShort(), oid.Index())
 }

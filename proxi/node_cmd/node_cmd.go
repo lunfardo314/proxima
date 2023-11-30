@@ -98,7 +98,7 @@ func GetTagAlongSequencerID() *core.ChainID {
 	o, err := getClient().GetChainOutputData(ret)
 	glb.AssertNoError(err)
 	glb.Assertf(o.ID.IsSequencerTransaction(), "can't get tag-along sequencer %s: chain output %s is not a sequencer output",
-		ret.Short(), o.ID.Short())
+		ret.Short(), o.ID.StringShort())
 
 	return &ret
 }

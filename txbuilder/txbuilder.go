@@ -671,7 +671,7 @@ func (txb *TransactionBuilder) String() string {
 	ret = append(ret, fmt.Sprintf("Consumed outputs (%d):", len(txb.ConsumedOutputs)))
 	util.Assertf(len(txb.ConsumedOutputs) == len(txb.TransactionData.InputIDs), "len(txb.ConsumedOutputs) == len(txb.Transaction.InputIDs)")
 	for i := range txb.ConsumedOutputs {
-		ret = append(ret, fmt.Sprintf("%d : %s\n", i, txb.TransactionData.InputIDs[i].Short()))
+		ret = append(ret, fmt.Sprintf("%d : %s\n", i, txb.TransactionData.InputIDs[i].StringShort()))
 		ret = append(ret, txb.ConsumedOutputs[i].ToString("     "))
 	}
 	ret = append(ret, fmt.Sprintf("Produced outputs (%d):", len(txb.TransactionData.Outputs)))

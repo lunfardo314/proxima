@@ -62,7 +62,7 @@ func ConsistencyCheckBeforeAddTransaction(tx *transaction.Transaction, r *multis
 	}
 	tx.ForEachInput(func(i byte, oid *core.OutputID) bool {
 		if !r.HasUTXO(oid) {
-			err = fmt.Errorf("BeforeAddTransaction: output %s does not exist: cannot be consumed", oid.Short())
+			err = fmt.Errorf("BeforeAddTransaction: output %s does not exist: cannot be consumed", oid.StringShort())
 			return false
 		}
 		return true
@@ -73,7 +73,7 @@ func ConsistencyCheckBeforeAddTransaction(tx *transaction.Transaction, r *multis
 
 	tx.ForEachProducedOutput(func(idx byte, o *core.Output, oid *core.OutputID) bool {
 		if r.HasUTXO(oid) {
-			err = fmt.Errorf("BeforeAddTransaction: output %s already exist: cannot be produced", oid.Short())
+			err = fmt.Errorf("BeforeAddTransaction: output %s already exist: cannot be produced", oid.StringShort())
 			return false
 		}
 		chainConstraint, i := o.ChainConstraint()
@@ -113,7 +113,7 @@ func ConsistencyCheckAfterAddTransaction(tx *transaction.Transaction, r *multist
 	}
 	tx.ForEachInput(func(i byte, oid *core.OutputID) bool {
 		if r.HasUTXO(oid) {
-			err = fmt.Errorf("input %s must not exist", oid.Short())
+			err = fmt.Errorf("input %s must not exist", oid.StringShort())
 			return false
 		}
 		return true
@@ -122,7 +122,7 @@ func ConsistencyCheckAfterAddTransaction(tx *transaction.Transaction, r *multist
 	var oData *core.OutputDataWithID
 	tx.ForEachProducedOutput(func(idx byte, o *core.Output, oid *core.OutputID) bool {
 		if !r.HasUTXO(oid) {
-			err = fmt.Errorf("AfterAddTransaction: output %s must exist", oid.Short())
+			err = fmt.Errorf("AfterAddTransaction: output %s must exist", oid.StringShort())
 			return false
 		}
 		chainConstraint, i := o.ChainConstraint()

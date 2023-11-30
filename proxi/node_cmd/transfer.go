@@ -82,7 +82,7 @@ func runTransferCmd(_ *cobra.Command, args []string) {
 }
 
 func waitForInclusion(oid core.OutputID, timeout ...time.Duration) error {
-	glb.Infof("Tracking inclusion of %s:", oid.Short())
+	glb.Infof("Tracking inclusion of %s:", oid.StringShort())
 	startTime := time.Now()
 	var deadline time.Time
 	if len(timeout) > 0 {

@@ -34,8 +34,9 @@ func (w *Workflow) TransactionInReturnTx(txBytes []byte, opts ...TransactionInOp
 	for _, opt := range opts {
 		opt(inData)
 	}
+	// once tx reached the node, stop pulling
+	inData.WasPulled = w.pullConsumer.stopPulling(tx.ID())
 	// prevent unnecessary dissemination via gossip
-	inData.WasPulled = w.pullConsumer.removeFromPullListWithCheck(*tx.ID())
 	inData.WasGossiped = inData.WasPulled
 
 	w.primaryInputConsumer.Push(inData)

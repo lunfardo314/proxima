@@ -207,7 +207,7 @@ func (c *APIClient) WaitOutputInTheHeaviestState(oid *core.OutputID, timeout tim
 			return nil
 		}
 		if time.Now().After(deadline) {
-			return fmt.Errorf("WaitOutputInTheHeaviestState %s: timeout %v", oid.Short(), timeout)
+			return fmt.Errorf("WaitOutputInTheHeaviestState %s: timeout %v", oid.StringShort(), timeout)
 		}
 		time.Sleep(waitOutputFinalPollPeriod)
 	}

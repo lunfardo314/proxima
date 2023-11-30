@@ -272,10 +272,10 @@ func (ut *UTXOTangle) GetSequencerBootstrapOutputs(seqID core.ChainID) (chainOut
 		rdr := multistate.MustNewSugaredStateReader(ut.stateStore, bd.Root)
 		if seqOut, err := rdr.GetChainOutput(&seqID); err == nil {
 			retStem, ok, _ := ut.GetWrappedOutput(&bd.Stem.ID, rdr)
-			util.Assertf(ok, "can't get wrapped stem output %s", bd.Stem.ID.Short())
+			util.Assertf(ok, "can't get wrapped stem output %s", bd.Stem.ID.StringShort())
 
 			retSeq, ok, _ := ut.GetWrappedOutput(&seqOut.ID, rdr)
-			util.Assertf(ok, "can't get wrapped sequencer output %s", seqOut.ID.Short())
+			util.Assertf(ok, "can't get wrapped sequencer output %s", seqOut.ID.StringShort())
 
 			return retSeq, retStem, true
 		}
@@ -331,7 +331,7 @@ func (ut *UTXOTangle) ScanAccount(addr core.AccountID, lastNTimeSlots int) set.S
 
 			for i := range outs {
 				ow, ok, _ := ut.GetWrappedOutput(&outs[i], rdr)
-				util.Assertf(ok, "ScanAccount: can't fetch output %s", outs[i].Short())
+				util.Assertf(ok, "ScanAccount: can't fetch output %s", outs[i].StringShort())
 				ret.Insert(ow)
 			}
 		}
@@ -428,7 +428,7 @@ func (ut *UTXOTangle) LedgerCoverage(vid *WrappedTx) uint64 {
 func (ut *UTXOTangle) LedgerCoverageFromTransaction(tx *transaction.Transaction) (uint64, error) {
 	tmpVertex, conflict := ut.MakeDraftVertex(tx)
 	if conflict != nil {
-		return 0, fmt.Errorf("conflict in the past cone at %s", conflict.Short())
+		return 0, fmt.Errorf("conflict in the past cone at %s", conflict.StringShort())
 	}
 	if !tmpVertex.IsSolid() {
 		return 0, fmt.Errorf("some inputs are not solid")

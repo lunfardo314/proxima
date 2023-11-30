@@ -1,6 +1,7 @@
 package workflow
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/lunfardo314/proxima/core"
@@ -81,7 +82,7 @@ func (c *SolidifyConsumer) consume(inp *SolidifyInputData) {
 	switch inp.Cmd {
 	case SolidifyCommandNewTx:
 		util.Assertf(inp.TxID == nil && inp.PrimaryTransactionData != nil, "inp.TxID == nil && inp.primaryInput != nil")
-		c.Log().Debugf("cmd newTx %s", inp.PrimaryTransactionData.Tx.IDShort())
+		c.Log().Infof(">>>>>>>>>>>>>>>>>>>>>>>> cmd newTx %s", inp.PrimaryTransactionData.Tx.IDShort())
 		//inp.eventCallback(SolidifyConsumerName+".in.new", inp.Tx)
 		c.glb.IncCounter(c.Name() + ".in.new")
 		c.newTx(inp)
@@ -153,6 +154,7 @@ func (c *SolidifyConsumer) checkTxID(txid *core.TransactionID) {
 	if conflict != nil {
 		// conflict in the past cone. Cannot be solidified. Remove from solidifier
 		c.removeTxID(txid)
+		c.glb.EventDropTxID(txid, c.Name(), "conflict %s", conflict.StringShort())
 		return
 	}
 	// check if solidified already
@@ -207,9 +209,18 @@ func (c *SolidifyConsumer) removeTooOld() {
 		if nowis.After(pendingData.since.Add(keepNotSolid)) {
 			txid1 := txid
 			toRemove = append(toRemove, &txid1)
+			c.glb.EventDropTxID(&txid1, c.Name(), "deadline. Missing: %s", c.missingInputsString(txid1))
 		}
 	}
 	c.postRemoveTxIDs(toRemove...)
+}
+
+func __txLstString(lst []*core.TransactionID) string {
+	ret := lines.New()
+	for i := range lst {
+		ret.Add(lst[i].StringShort())
+	}
+	return ret.Join(",")
 }
 
 func (c *SolidifyConsumer) sendForValidation(primaryTxData *PrimaryTransactionData, draftVertex *utangle.Vertex) {
@@ -234,14 +245,6 @@ func (c *SolidifyConsumer) putIntoWaitingList(wantedID, whoIsWaiting *core.Trans
 	}
 	pendingData.waitingList = append(waitingLst, whoIsWaiting)
 	c.txPending[*wantedID] = pendingData
-}
-
-func __txLstString(lst []*core.TransactionID) string {
-	ret := lines.New()
-	for i := range lst {
-		ret.Add(lst[i].StringShort())
-	}
-	return ret.Join(",")
 }
 
 func (c *SolidifyConsumer) postCheckTxIDs(txids ...*core.TransactionID) {
@@ -292,19 +295,20 @@ func (c *SolidifyConsumer) pullIfNeeded(vd *draftVertexData) {
 		}
 		return
 	}
-
+	// here stem input solid, if any
 	if vd.Tx.IsSequencerMilestone() {
-		//stem is isInPullList solid, we can pull sequencer input
 		if isSolid, seqInputIdx := vd.vertex.IsSequencerInputSolid(); !isSolid {
-			seqInputOID := vd.Tx.MustInputAt(seqInputIdx)
-			var delayFirst time.Duration
-			if vd.WasPulled {
-				delayFirst = pullImmediately
-			} else {
-				delayFirst = pullDelayFirstPeriodSequencer
+			if !vd.sequencerPredecessorAlreadyPulled {
+				seqInputOID := vd.Tx.MustInputAt(seqInputIdx)
+				var delayFirst time.Duration
+				if vd.WasPulled {
+					delayFirst = pullImmediately
+				} else {
+					delayFirst = pullDelayFirstPeriodSequencer
+				}
+				c.pull(seqInputOID.TransactionID(), delayFirst)
+				vd.sequencerPredecessorAlreadyPulled = true
 			}
-			c.pull(seqInputOID.TransactionID(), delayFirst)
-			vd.sequencerPredecessorAlreadyPulled = true
 			return
 		}
 	}
@@ -325,7 +329,7 @@ func (c *SolidifyConsumer) pullIfNeeded(vd *draftVertexData) {
 func (c *SolidifyConsumer) pull(txid core.TransactionID, initialDelay time.Duration) {
 	c.Log().Infof(">>>>>>>>> send pull %s, delay %v", txid.StringShort(), initialDelay)
 	c.glb.pullConsumer.Push(&PullTxData{
-		TxID:         txid,
+		TxID:         &txid,
 		InitialDelay: initialDelay,
 	})
 }
@@ -345,10 +349,14 @@ func (c *SolidifyConsumer) solidificationDeadlineLoop() {
 }
 
 func (c *SolidifyConsumer) missingInputsString(txid core.TransactionID) string {
-	if pendingData, found := c.txPending[txid]; found && pendingData.draftVertexData != nil {
-		return pendingData.draftVertexData.vertex.MissingInputTxIDString()
+	if pendingData, found := c.txPending[txid]; found {
+		if pendingData.draftVertexData != nil {
+			return pendingData.draftVertexData.vertex.MissingInputTxIDString()
+		} else {
+			return fmt.Sprintf("%s is not in solidifier yet", txid.StringShort())
+		}
 	}
-	return "(unknown tx)"
+	return fmt.Sprintf("inconsistency: txid %s is not among pendingtx IDs", txid.StringShort())
 }
 
 //

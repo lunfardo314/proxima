@@ -66,7 +66,7 @@ func runSeqWithdrawCmd(_ *cobra.Command, args []string) {
 
 	glb.Infof("will be using fee amount of %d from the wallet. Outputs in the wallet:", feeAmount)
 	for i, o := range walletOutputs {
-		glb.Infof("%d : %s : %s", i, o.ID.Short(), util.GoThousands(o.Output.Amount()))
+		glb.Infof("%d : %s : %s", i, o.ID.StringShort(), util.GoThousands(o.Output.Amount()))
 	}
 
 	prompt := fmt.Sprintf("withdraw %s from %s to the target %s?",

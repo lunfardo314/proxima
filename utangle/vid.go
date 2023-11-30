@@ -475,7 +475,7 @@ func (o *WrappedOutput) IDShort() string {
 	if o == nil {
 		return "<nil>"
 	}
-	return o.DecodeID().Short()
+	return o.DecodeID().StringShort()
 }
 
 func (o *WrappedOutput) Unwrap() (ret *core.OutputWithID, err error) {
@@ -655,7 +655,7 @@ func (vid *WrappedTx) _collectMutationData(md *_mutationData) (conflict WrappedO
 			})
 			v.Tx.ForEachProducedOutput(func(idx byte, o *core.Output, oid *core.OutputID) bool {
 				_, already := md.outputMutations[*oid]
-				util.Assertf(!already, "repeating ADD mutation %s", oid.Short())
+				util.Assertf(!already, "repeating ADD mutation %s", oid.StringShort())
 				md.outputMutations[*oid] = o
 				return true
 			})
@@ -811,9 +811,9 @@ func (vid *WrappedTx) PastTrackLines(prefix ...string) *lines.Lines {
 		v.forEachInputDependency(func(i byte, inp *WrappedTx) bool {
 			input := v.Tx.MustInputAt(i)
 			if inp == nil {
-				ret.Add("  INPUT %d : %s (not solid)", i, input.Short())
+				ret.Add("  INPUT %d : %s (not solid)", i, input.StringShort())
 			} else {
-				ret.Add("  INPUT %d : %s ", i, input.Short())
+				ret.Add("  INPUT %d : %s ", i, input.StringShort())
 				inp.Unwrap(UnwrapOptions{Vertex: func(vInp *Vertex) {
 					ret.Append(vInp.pastTrack.Lines("      "))
 				}})

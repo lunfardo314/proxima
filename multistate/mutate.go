@@ -42,7 +42,7 @@ func (m *mutationDelOutput) mutate(trie *immutable.TrieUpdatable) error {
 }
 
 func (m *mutationDelOutput) text() string {
-	return fmt.Sprintf("DEL   %s", m.ID.Short())
+	return fmt.Sprintf("DEL   %s", m.ID.StringShort())
 }
 
 func (m *mutationDelOutput) sortOrder() byte {
@@ -54,7 +54,7 @@ func (m *mutationAddOutput) mutate(trie *immutable.TrieUpdatable) error {
 }
 
 func (m *mutationAddOutput) text() string {
-	return fmt.Sprintf("ADD   %s", m.ID.Short())
+	return fmt.Sprintf("ADD   %s", m.ID.StringShort())
 }
 
 func (m *mutationAddOutput) sortOrder() byte {
@@ -120,7 +120,7 @@ func deleteOutputFromTrie(trie *immutable.TrieUpdatable, oid *core.OutputID) err
 
 	oData := trie.Get(stateKey[:])
 	if len(oData) == 0 {
-		return fmt.Errorf("deleteOutputFromTrie: output not found: %s", oid.Short())
+		return fmt.Errorf("deleteOutputFromTrie: output not found: %s", oid.StringShort())
 	}
 
 	o, err := core.OutputFromBytesReadOnly(oData)
@@ -128,12 +128,12 @@ func deleteOutputFromTrie(trie *immutable.TrieUpdatable, oid *core.OutputID) err
 
 	var existed bool
 	existed = trie.Delete(stateKey[:])
-	util.Assertf(existed, "deleteOutputFromTrie: inconsistency while deleting output %s", oid.Short())
+	util.Assertf(existed, "deleteOutputFromTrie: inconsistency while deleting output %s", oid.StringShort())
 
 	for _, accountable := range o.Lock().Accounts() {
 		existed = trie.Delete(makeAccountKey(accountable.AccountID(), oid))
 		// must exist
-		util.Assertf(existed, "deleteOutputFromTrie: account record for %s wasn't found as expected: output %s", accountable.String(), oid.Short())
+		util.Assertf(existed, "deleteOutputFromTrie: account record for %s wasn't found as expected: output %s", accountable.String(), oid.StringShort())
 	}
 	return nil
 }
@@ -144,12 +144,12 @@ func addOutputToTrie(trie *immutable.TrieUpdatable, oid *core.OutputID, out *cor
 	copy(stateKey[1:], oid[:])
 	if trie.Update(stateKey[:], out.Bytes()) {
 		// key should not exist
-		return fmt.Errorf("addOutputToTrie: UTXO key should not exist: %s", oid.Short())
+		return fmt.Errorf("addOutputToTrie: UTXO key should not exist: %s", oid.StringShort())
 	}
 	for _, accountable := range out.Lock().Accounts() {
 		if trie.Update(makeAccountKey(accountable.AccountID(), oid), []byte{0xff}) {
 			// key should not exist
-			return fmt.Errorf("addOutputToTrie: index key should not exist: %s", oid.Short())
+			return fmt.Errorf("addOutputToTrie: index key should not exist: %s", oid.StringShort())
 		}
 	}
 	chainConstraint, _ := out.ChainConstraint()
@@ -183,8 +183,8 @@ func addOutputToTrie(trie *immutable.TrieUpdatable, oid *core.OutputID, out *cor
 				}
 				util.Assertf(oid.Timestamp().After(prevOutputID.Timestamp()),
 					"addOutputToTrie: chain output ID violates time constraint:\n   previous: %s\n   next: %s",
-					func() any { return prevOutputID.Short() },
-					func() any { return oid.Short() },
+					func() any { return prevOutputID.StringShort() },
+					func() any { return oid.StringShort() },
 				)
 			}
 		}

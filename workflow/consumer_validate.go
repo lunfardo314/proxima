@@ -46,7 +46,10 @@ func (c *ValidateConsumer) consume(inp *ValidateConsumerInputData) {
 		if err := inp.draftVertex.Validate(); err != nil {
 			inp.eventCallback("finish."+ValidateConsumerName, err)
 			c.IncCounter("err")
-			c.glb.DropTransaction(inp.Tx.ID(), ValidateConsumerName, "%v", err)
+
+			c.glb.pullConsumer.removeFromPullList(inp.Tx.ID())
+			c.glb.solidifyConsumer.postRemoveTxIDs(inp.Tx.ID())
+			c.glb.EventDropTxID(inp.Tx.ID(), ValidateConsumerName, "%v", err)
 			return
 		}
 		c.IncCounter("ok")

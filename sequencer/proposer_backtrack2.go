@@ -84,7 +84,7 @@ func (b *backtrackProposer2) generateCandidate(extend utangle.WrappedOutput, end
 	feeOutputsToConsume, conflict := b.selectInputs(extend, endorse)
 	if conflict != nil {
 		b.trace("CANNOT extend %s with endorsement target %s due to conflict %s",
-			extend.IDShort(), endorse.IDShort(), conflict.DecodeID().Short())
+			extend.IDShort(), endorse.IDShort(), conflict.DecodeID().StringShort())
 		return nil
 	}
 
