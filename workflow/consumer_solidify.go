@@ -14,6 +14,7 @@ const SolidifyConsumerName = "solidify"
 const (
 	SolidifyCommandNewTx = byte(iota)
 	SolidifyCommandCheckTxID
+	SolidifyCommandRemoveAttachedTxID
 	SolidifyCommandRemoveTxID
 	SolidifyCommandRemoveTooOld
 )
@@ -75,24 +76,35 @@ func (w *Workflow) initSolidifyConsumer() {
 }
 
 func (c *SolidifyConsumer) consume(inp *SolidifyInputData) {
-	c.setTrace(inp.PrimaryTransactionData.SourceType == TransactionSourceTypeAPI) /// ?????????? TODO
+	//c.setTrace(inp.PrimaryTransactionData.SourceType == TransactionSourceTypeAPI) /// ?????????? TODO
 
 	switch inp.Cmd {
 	case SolidifyCommandNewTx:
 		util.Assertf(inp.TxID == nil && inp.PrimaryTransactionData != nil, "inp.TxID == nil && inp.primaryInput != nil")
-		inp.eventCallback(SolidifyConsumerName+".in.new", inp.Tx)
+		c.Log().Debugf("cmd newTx %s", inp.TxID.StringShort())
+		//inp.eventCallback(SolidifyConsumerName+".in.new", inp.Tx)
 		c.glb.IncCounter(c.Name() + ".in.new")
 		c.newTx(inp)
 
 	case SolidifyCommandCheckTxID:
 		util.Assertf(inp.TxID != nil && inp.PrimaryTransactionData == nil, "inp.TxID != nil && inp.primaryInput == nil")
-		inp.eventCallback(SolidifyConsumerName+".in.check", inp.Tx)
+		c.Log().Debugf("cmd checkTxID %s", inp.TxID.StringShort())
+		//inp.eventCallback(SolidifyConsumerName+".in.check", inp.Tx)
 		c.glb.IncCounter(c.Name() + ".in.check")
 		c.checkTxID(inp.TxID)
 
+	case SolidifyCommandRemoveAttachedTxID:
+		util.Assertf(inp.TxID != nil && inp.PrimaryTransactionData == nil, "inp.TxID != nil && inp.primaryInput == nil")
+		c.Log().Debugf("cmd removeAttachedTxID %s", inp.TxID.StringShort())
+		//inp.eventCallback(SolidifyConsumerName+".in.removeAttached", inp.Tx)
+		c.glb.IncCounter(c.Name() + ".in.removeAttached")
+		c.removeAttachedTxID(inp.TxID)
+
 	case SolidifyCommandRemoveTxID:
 		util.Assertf(inp.TxID != nil && inp.PrimaryTransactionData == nil, "inp.TxID != nil && inp.primaryInput == nil")
-		inp.eventCallback(SolidifyConsumerName+".in.remove", inp.TxID)
+		c.Log().Debugf("cmd removeTxID %s", inp.TxID.StringShort())
+		//inp.eventCallback(SolidifyConsumerName+".in.remove", inp.TxID)
+		c.glb.IncCounter(c.Name() + ".in.remove")
 		c.removeTxID(inp.TxID)
 
 	case SolidifyCommandRemoveTooOld:
@@ -120,35 +132,8 @@ func (c *SolidifyConsumer) newTx(inp *SolidifyInputData) {
 	c.checkTxID(txid)
 }
 
-// removeTxID removes from solidifier all txids which directly or indirectly depend on txid
-func (c *SolidifyConsumer) removeTxID(txid *core.TransactionID) {
-	c.Log().Debugf("remove %s", txid.StringShort())
-	pendingData, isKnown := c.txPending[*txid]
-	if !isKnown {
-		c.Log().Debugf("removeTxID: unknown %s", txid.StringShort())
-		return
-	}
-	delete(c.txPending, *txid)
-	c.postRemoveID(pendingData.waitingList...)
-}
-
-func (c *SolidifyConsumer) removeTooOld() {
-	nowis := time.Now()
-	toRemove := make([]*core.TransactionID, 0)
-	for txid, pendingData := range c.txPending {
-		if nowis.After(pendingData.since.Add(keepNotSolid)) {
-			txid1 := txid
-			toRemove = append(toRemove, &txid1)
-		}
-	}
-	for _, txid := range toRemove {
-		c.removeTxID(txid)
-	}
-}
-
-// checkTxID checks all pending transactions waiting for the new solid transaction
+// checkTxID runs solidification on the transaction. If it is solid, passes it to validator
 func (c *SolidifyConsumer) checkTxID(txid *core.TransactionID) {
-	c.Log().Debugf("checkID %s", txid.StringShort())
 	pendingData, isKnown := c.txPending[*txid]
 	if !isKnown {
 		c.Log().Debugf("checkTxID: unknown %s", txid.StringShort())
@@ -159,26 +144,17 @@ func (c *SolidifyConsumer) checkTxID(txid *core.TransactionID) {
 		// should not happen
 		return
 	}
-	if pendingData.draftVertexData.vertex.IsSolid() {
-		// solidified. Remove from solidifier and post checkID for each from waiting list
-		delete(c.txPending, *txid)
-		c.postCheckID(pendingData.waitingList...)
-		return
-	}
-	// not solid yet
-	// try to solidify in this round
+	// run solidification
 	conflict := pendingData.draftVertexData.vertex.FetchMissingDependencies(c.glb.utxoTangle)
 	if conflict != nil {
-		// cannot be solidified. Remove from solidifier
+		// conflict in the past cone. Cannot be solidified. Remove from solidifier
 		c.removeTxID(txid)
 		return
 	}
 	// check if solidified already
 	if pendingData.draftVertexData.vertex.IsSolid() {
-		// was solidified in this round
-		delete(c.txPending, *txid)
+		// solid already, pass to validator
 		c.passToValidation(pendingData.draftVertexData.PrimaryTransactionData, pendingData.draftVertexData.vertex)
-		c.postCheckID(pendingData.waitingList...)
 		return
 	}
 	// not solid yet
@@ -193,6 +169,44 @@ func (c *SolidifyConsumer) checkTxID(txid *core.TransactionID) {
 		pendingData.draftVertexData.addedToWaitingLists = true
 	}
 	c.pullIfNeeded(pendingData.draftVertexData)
+}
+
+func (c *SolidifyConsumer) removeAttachedTxID(txid *core.TransactionID) {
+	c.Log().Debugf("removeAttachedTxID %s", txid.StringShort())
+	pendingData, isKnown := c.txPending[*txid]
+	util.Assertf(isKnown, "removeAttachedTxID: unknown", txid.StringShort())
+	util.Assertf(pendingData.draftVertexData != nil, "pendingData.draftVertexData != nil")
+	util.Assertf(pendingData.draftVertexData.vertex.IsSolid(), "pendingData.draftVertexData.vertex.IsSolid()")
+
+	delete(c.txPending, *txid)
+
+	c.postCheckTxIDs(pendingData.waitingList...)
+}
+
+// removeTxID removes from solidifier all txids which directly or indirectly depend on txid
+func (c *SolidifyConsumer) removeTxID(txid *core.TransactionID) {
+	c.Log().Debugf("remove %s", txid.StringShort())
+	pendingData, isKnown := c.txPending[*txid]
+	if !isKnown {
+		c.Log().Debugf("removeTxID: unknown %s", txid.StringShort())
+		return
+	}
+	delete(c.txPending, *txid)
+	c.postRemoveTxIDs(pendingData.waitingList...)
+}
+
+func (c *SolidifyConsumer) removeTooOld() {
+	nowis := time.Now()
+	toRemove := make([]*core.TransactionID, 0)
+	for txid, pendingData := range c.txPending {
+		if nowis.After(pendingData.since.Add(keepNotSolid)) {
+			txid1 := txid
+			toRemove = append(toRemove, &txid1)
+		}
+	}
+	for _, txid := range toRemove {
+		c.removeTxID(txid)
+	}
 }
 
 func (c *SolidifyConsumer) passToValidation(primaryTxData *PrimaryTransactionData, draftVertex *utangle.Vertex) {
@@ -227,7 +241,7 @@ func __txLstString(lst []*core.TransactionID) string {
 	return ret.Join(",")
 }
 
-func (c *SolidifyConsumer) postCheckID(txids ...*core.TransactionID) {
+func (c *SolidifyConsumer) postCheckTxIDs(txids ...*core.TransactionID) {
 	for _, txid := range txids {
 		c.Push(&SolidifyInputData{
 			Cmd:  SolidifyCommandCheckTxID,
@@ -236,13 +250,20 @@ func (c *SolidifyConsumer) postCheckID(txids ...*core.TransactionID) {
 	}
 }
 
-func (c *SolidifyConsumer) postRemoveID(txids ...*core.TransactionID) {
+func (c *SolidifyConsumer) postRemoveTxIDs(txids ...*core.TransactionID) {
 	for _, txid := range txids {
 		c.Push(&SolidifyInputData{
 			Cmd:  SolidifyCommandRemoveTxID,
 			TxID: txid,
 		}, true)
 	}
+}
+
+func (c *SolidifyConsumer) postRemoveAttachedTxID(txid *core.TransactionID) {
+	c.Push(&SolidifyInputData{
+		Cmd:  SolidifyCommandRemoveAttachedTxID,
+		TxID: txid,
+	}, true)
 }
 
 const (

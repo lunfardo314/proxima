@@ -56,12 +56,13 @@ func (c *AppendTxConsumer) consume(inp *AppendTxConsumerInputData) {
 	// append to the UTXO tangle
 	vid, err := c.glb.utxoTangle.AppendVertex(inp.Vertex, utangle.BypassValidation)
 	if err != nil {
+		// failed
 		inp.eventCallback("finish."+AppendTxConsumerName, err)
 		c.Debugf(inp.PrimaryTransactionData, "can't append vertex to the tangle: '%v'", err)
 		c.IncCounter("fail")
 		c.glb.DropTransaction(*inp.Tx.ID(), "%v", err)
 		// notify solidifier
-		c.glb.solidifyConsumer.postRemoveID(inp.Tx.ID())
+		c.glb.solidifyConsumer.postRemoveTxIDs(inp.Tx.ID())
 		return
 	}
 	inp.eventCallback("finish."+AppendTxConsumerName, nil)
@@ -86,7 +87,7 @@ func (c *AppendTxConsumer) consume(inp *AppendTxConsumerInputData) {
 	c.trace("added to the UTXO tangle: %s", vid.IDShort())
 
 	// notify solidifier upon new transaction added to the tangle
-	c.glb.solidifyConsumer.postCheckID(vid.ID())
+	c.glb.solidifyConsumer.postRemoveAttachedTxID(vid.ID())
 }
 
 func (c *AppendTxConsumer) logBranch(inp *PrimaryTransactionData, coverage uint64) {
