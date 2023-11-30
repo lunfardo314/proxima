@@ -52,6 +52,7 @@ type (
 		stemInputAlreadyPulled            bool
 		sequencerPredecessorAlreadyPulled bool
 		allInputsAlreadyPulled            bool
+		sentForValidation                 bool
 	}
 )
 
@@ -144,6 +145,9 @@ func (c *SolidifyConsumer) checkTxID(txid *core.TransactionID) {
 		// should not happen
 		return
 	}
+	if pendingData.draftVertexData.sentForValidation {
+		return
+	}
 	// run solidification
 	conflict := pendingData.draftVertexData.vertex.FetchMissingDependencies(c.glb.utxoTangle)
 	if conflict != nil {
@@ -154,7 +158,8 @@ func (c *SolidifyConsumer) checkTxID(txid *core.TransactionID) {
 	// check if solidified already
 	if pendingData.draftVertexData.vertex.IsSolid() {
 		// solid already, pass to validator
-		c.passToValidation(pendingData.draftVertexData.PrimaryTransactionData, pendingData.draftVertexData.vertex)
+		pendingData.draftVertexData.sentForValidation = true
+		c.sendForValidation(pendingData.draftVertexData.PrimaryTransactionData, pendingData.draftVertexData.vertex)
 		return
 	}
 	// not solid yet
@@ -209,7 +214,7 @@ func (c *SolidifyConsumer) removeTooOld() {
 	}
 }
 
-func (c *SolidifyConsumer) passToValidation(primaryTxData *PrimaryTransactionData, draftVertex *utangle.Vertex) {
+func (c *SolidifyConsumer) sendForValidation(primaryTxData *PrimaryTransactionData, draftVertex *utangle.Vertex) {
 	util.Assertf(draftVertex.IsSolid(), "v.IsSolid()")
 	c.glb.validateConsumer.Push(&ValidateConsumerInputData{
 		PrimaryTransactionData: primaryTxData,
