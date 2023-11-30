@@ -109,6 +109,7 @@ func (c *SolidifyConsumer) consume(inp *SolidifyInputData) {
 
 	case SolidifyCommandRemoveTooOld:
 		util.Assertf(inp.TxID == nil && inp.PrimaryTransactionData == nil, "inp.TxID != nil && inp.primaryInput == nil")
+		//c.Log().Infof(">>>>>>>>>>> cmd removeTooOld")
 		c.removeTooOld()
 
 	default:
@@ -208,9 +209,7 @@ func (c *SolidifyConsumer) removeTooOld() {
 			toRemove = append(toRemove, &txid1)
 		}
 	}
-	for _, txid := range toRemove {
-		c.removeTxID(txid)
-	}
+	c.postRemoveTxIDs(toRemove...)
 }
 
 func (c *SolidifyConsumer) sendForValidation(primaryTxData *PrimaryTransactionData, draftVertex *utangle.Vertex) {

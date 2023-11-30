@@ -119,7 +119,7 @@ func New(ut *utangle.UTXOTangle, peers *peering.Peers, configOptions ...ConfigOp
 
 	err := ret.OnEvent(EventDroppedTx, func(dropData DropTxData) {
 		ret.IncCounter("drop." + dropData.WhoDropped)
-		ret.log.Debugf("dropped %s by '%s'. Reason: '%s'", dropData.TxID.StringShort(), dropData.WhoDropped, dropData.Msg)
+		ret.log.Infof("DROP %s by '%s'. Reason: '%s'", dropData.TxID.StringShort(), dropData.WhoDropped, dropData.Msg)
 		ret.pullConsumer.removeFromPullList(dropData.TxID)
 		ret.solidifyConsumer.removeTxID(dropData.TxID)
 	})
