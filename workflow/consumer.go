@@ -23,6 +23,9 @@ func NewConsumer[T any](name string, wrk *Workflow) *Consumer[T] {
 	ret.AddOnConsume(func(_ T) {
 		wrk.IncCounter(name + ".in")
 	})
+	ret.AddOnClosed(func() {
+		ret.glb.terminateWG.Done()
+	})
 	allConsumerNames = append(allConsumerNames, name)
 	return ret
 }

@@ -31,21 +31,17 @@ type (
 )
 
 func (w *Workflow) initPullConsumer() {
-	c := &PullTxConsumer{
+	ret := &PullTxConsumer{
 		Consumer:               NewConsumer[*PullTxData](PullTxConsumerName, w),
 		pullList:               make(map[core.TransactionID]time.Time),
 		stopBackgroundLoopChan: make(chan struct{}),
 	}
-	//c.AddOnConsume(func(data *PullTxData) {
-	//	c.Log().Infof("PULL IN %s, delay: %v", data.TxID.StringShort(), data.InitialDelay)
-	//})
-	c.AddOnConsume(c.consume)
-	c.AddOnClosed(func() {
-		c.stop()
-		w.terminateWG.Done()
+	ret.AddOnConsume(ret.consume)
+	ret.AddOnClosed(func() {
+		close(ret.stopBackgroundLoopChan)
 	})
-	w.pullConsumer = c
-	go c.backgroundLoop()
+	w.pullConsumer = ret
+	go ret.backgroundLoop()
 }
 
 func (p *PullTxConsumer) consume(inp *PullTxData) {
@@ -95,11 +91,11 @@ func (w *Workflow) PullListLen() int {
 	return w.pullConsumer.pullListLen()
 }
 
-func (p *PullTxConsumer) removeFromPullList(txid core.TransactionID) {
+func (p *PullTxConsumer) removeFromPullList(txid *core.TransactionID) {
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
 
-	delete(p.pullList, txid)
+	delete(p.pullList, *txid)
 }
 
 func (p *PullTxConsumer) removeFromPullListWithCheck(txid core.TransactionID) bool {
@@ -117,10 +113,6 @@ func (p *PullTxConsumer) addToPullList(txid core.TransactionID, deadline time.Ti
 	defer p.mutex.Unlock()
 
 	p.pullList[txid] = deadline
-}
-
-func (p *PullTxConsumer) stop() {
-	close(p.stopBackgroundLoopChan)
 }
 
 const pullLoopPeriod = 10 * time.Millisecond

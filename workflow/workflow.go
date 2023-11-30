@@ -41,7 +41,6 @@ type (
 		pullConsumer         *PullTxConsumer
 		validateConsumer     *ValidateConsumer
 		appendTxConsumer     *AppendTxConsumer
-		dropTxConsumer       *DropTxConsumer
 		eventsConsumer       *EventsConsumer
 		pullRequestConsumer  *PullRespondConsumer
 		txGossipOutConsumer  *TxGossipSendConsumer
@@ -84,7 +83,6 @@ func New(ut *utangle.UTXOTangle, peers *peering.Peers, configOptions ...ConfigOp
 	ret.initPullConsumer()
 	ret.initValidateConsumer()
 	ret.initAppendTxConsumer()
-	ret.initRejectConsumer()
 	ret.initEventsConsumer()
 	ret.initRespondTxQueryConsumer()
 	ret.initGossipSendConsumer()
@@ -119,6 +117,14 @@ func New(ut *utangle.UTXOTangle, peers *peering.Peers, configOptions ...ConfigOp
 		}
 	})
 
+	err := ret.OnEvent(EventDroppedTx, func(dropData DropTxData) {
+		ret.IncCounter("drop." + dropData.WhoDropped)
+		ret.log.Debugf("dropped %s by '%s'. Reason: '%s'", dropData.TxID.StringShort(), dropData.WhoDropped, dropData.Msg)
+		ret.pullConsumer.removeFromPullList(dropData.TxID)
+		ret.solidifyConsumer.removeTxID(dropData.TxID)
+	})
+	util.AssertNoError(err)
+
 	return ret
 }
 
@@ -148,7 +154,6 @@ func (w *Workflow) Start(parentCtx ...context.Context) {
 		w.pullConsumer.Start()
 		w.validateConsumer.Start()
 		w.appendTxConsumer.Start()
-		w.dropTxConsumer.Start()
 		w.eventsConsumer.Start()
 		w.pullRequestConsumer.Start()
 		w.txGossipOutConsumer.Start()
@@ -210,7 +215,6 @@ func (w *Workflow) QueueInfo() string {
 		w.solidifyConsumer.Name():     w.solidifyConsumer.InfoStr(),
 		w.validateConsumer.Name():     w.validateConsumer.InfoStr(),
 		w.appendTxConsumer.Name():     w.appendTxConsumer.InfoStr(),
-		w.dropTxConsumer.Name():       w.dropTxConsumer.InfoStr(),
 		w.eventsConsumer.Name():       w.eventsConsumer.InfoStr(),
 	}
 	var ret strings.Builder

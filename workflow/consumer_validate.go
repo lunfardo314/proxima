@@ -23,19 +23,18 @@ type (
 const maxNumberOfWorkers = 5
 
 func (w *Workflow) initValidateConsumer() {
-	c := &ValidateConsumer{
+	ret := &ValidateConsumer{
 		Consumer:   NewConsumer[*ValidateConsumerInputData](ValidateConsumerName, w),
 		workerPool: workerpool.NewWorkerPool(maxNumberOfWorkers),
 	}
-	c.AddOnConsume(func(inp *ValidateConsumerInputData) {
-		c.traceTx(inp.PrimaryTransactionData, "IN")
+	ret.AddOnConsume(func(inp *ValidateConsumerInputData) {
+		ret.traceTx(inp.PrimaryTransactionData, "IN")
 	})
-	c.AddOnConsume(c.consume)
-	c.AddOnClosed(func() {
+	ret.AddOnConsume(ret.consume)
+	ret.AddOnClosed(func() {
 		w.appendTxConsumer.Stop()
-		w.terminateWG.Done()
 	})
-	w.validateConsumer = c
+	w.validateConsumer = ret
 }
 
 func (c *ValidateConsumer) consume(inp *ValidateConsumerInputData) {
@@ -47,9 +46,7 @@ func (c *ValidateConsumer) consume(inp *ValidateConsumerInputData) {
 		if err := inp.draftVertex.Validate(); err != nil {
 			inp.eventCallback("finish."+ValidateConsumerName, err)
 			c.IncCounter("err")
-			c.glb.DropTransaction(*inp.Tx.ID(), "%v", err)
-			// inform solidifier
-			c.glb.solidifyConsumer.postRemoveTxIDs(inp.Tx.ID())
+			c.glb.DropTransaction(inp.Tx.ID(), ValidateConsumerName, "%v", err)
 			return
 		}
 		c.IncCounter("ok")

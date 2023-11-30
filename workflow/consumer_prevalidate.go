@@ -26,23 +26,22 @@ type (
 )
 
 func (w *Workflow) initPreValidateConsumer() {
-	c := &PreValidateConsumer{
+	ret := &PreValidateConsumer{
 		Consumer:    NewConsumer[*PreValidateConsumerInputData](PreValidateConsumerName, w),
 		waitingRoom: wait.NewDelay(),
 	}
-	c.AddOnConsume(func(inp *PreValidateConsumerInputData) {
+	ret.AddOnConsume(func(inp *PreValidateConsumerInputData) {
 		// trace each input message
-		c.traceTx(inp.PrimaryTransactionData, "IN")
+		ret.traceTx(inp.PrimaryTransactionData, "IN")
 	})
-	c.AddOnConsume(c.consume) // process the input message
-	c.AddOnClosed(func() {
+	ret.AddOnConsume(ret.consume) // process the input message
+	ret.AddOnClosed(func() {
 		// cleanup on close
-		c.waitingRoom.Stop()
+		ret.waitingRoom.Stop()
 		w.txGossipOutConsumer.Stop()
 		w.solidifyConsumer.Stop()
-		w.terminateWG.Done()
 	})
-	w.preValidateConsumer = c
+	w.preValidateConsumer = ret
 }
 
 // process the input message
@@ -63,7 +62,7 @@ func (c *PreValidateConsumer) consume(inp *PreValidateConsumerInputData) {
 		if enforceTimeBounds {
 			c.IncCounter("invalid")
 			inp.eventCallback("finish."+PreValidateConsumerName, err)
-			c.glb.DropTransaction(*inp.Tx.ID(), "%v", err)
+			c.glb.DropTransaction(inp.Tx.ID(), PreValidateConsumerName, "%v", err)
 			return
 		}
 		c.Warnf(inp.PrimaryTransactionData, "checking time bounds: '%v'", err)
@@ -71,7 +70,7 @@ func (c *PreValidateConsumer) consume(inp *PreValidateConsumerInputData) {
 	// run remaining validations on the transaction
 	if err = inp.Tx.Validate(transaction.MainTxValidationOptions...); err != nil {
 		c.IncCounter("invalid")
-		c.glb.DropTransaction(*inp.Tx.ID(), "%v", err)
+		c.glb.DropTransaction(inp.Tx.ID(), PreValidateConsumerName, "%v", err)
 		return
 	}
 	c.IncCounter("ok")

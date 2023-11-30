@@ -61,19 +61,18 @@ const (
 )
 
 func (w *Workflow) initSolidifyConsumer() {
-	c := &SolidifyConsumer{
+	ret := &SolidifyConsumer{
 		Consumer:                           NewConsumer[*SolidifyInputData](SolidifyConsumerName, w),
 		txPending:                          make(map[core.TransactionID]wantedTx),
 		stopSolidificationDeadlineLoopChan: make(chan struct{}),
 	}
-	c.AddOnConsume(c.consume)
-	c.AddOnClosed(func() {
-		close(c.stopSolidificationDeadlineLoopChan)
+	ret.AddOnConsume(ret.consume)
+	ret.AddOnClosed(func() {
+		close(ret.stopSolidificationDeadlineLoopChan)
 		w.validateConsumer.Stop()
-		w.terminateWG.Done()
 	})
-	w.solidifyConsumer = c
-	go c.solidificationDeadlineLoop()
+	w.solidifyConsumer = ret
+	go ret.solidificationDeadlineLoop()
 }
 
 func (c *SolidifyConsumer) consume(inp *SolidifyInputData) {

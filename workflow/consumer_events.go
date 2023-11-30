@@ -21,15 +21,12 @@ type (
 )
 
 func (w *Workflow) initEventsConsumer() {
-	c := &EventsConsumer{
+	ret := &EventsConsumer{
 		Consumer: NewConsumer[*EventsInputData](EventsName, w),
 	}
-	c.AddOnConsume(c.consume)
-	c.AddOnClosed(func() {
-		w.terminateWG.Done()
-	})
+	ret.AddOnConsume(ret.consume)
 
-	w.eventsConsumer = c
+	w.eventsConsumer = ret
 }
 
 func (c *EventsConsumer) consume(inp *EventsInputData) {

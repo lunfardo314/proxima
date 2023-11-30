@@ -66,32 +66,31 @@ var EventCodeDuplicateTx = eventtype.RegisterNew[*core.TransactionID]("duplicate
 
 // initPrimaryInputConsumer initializes the consumer
 func (w *Workflow) initPrimaryInputConsumer() {
-	c := &PrimaryConsumer{
+	ret := &PrimaryConsumer{
 		Consumer: NewConsumer[*PrimaryTransactionData](PrimaryInputConsumerName, w),
 		seen:     seenset.New[core.TransactionIDVeryShort8](),
 	}
-	c.AddOnConsume(func(inp *PrimaryTransactionData) {
+	ret.AddOnConsume(func(inp *PrimaryTransactionData) {
 		// tracing every input message
-		c.Debugf(inp, "IN")
+		ret.Debugf(inp, "IN")
 	})
-	c.AddOnConsume(c.consume) // process input
-	c.AddOnClosed(func() {
+	ret.AddOnConsume(ret.consume) // process input
+	ret.AddOnClosed(func() {
 		// cleanup downstream on close
 		w.pullConsumer.Stop()
 		w.preValidateConsumer.Stop()
 		w.pullRequestConsumer.Stop()
-
-		w.terminateWG.Done()
+		w.eventsConsumer.Stop()
 	})
 
 	nmDuplicate := EventCodeDuplicateTx.String()
 	w.MustOnEvent(EventCodeDuplicateTx, func(txid *core.TransactionID) {
 		// log duplicate transaction upon event
-		c.glb.IncCounter(c.Name() + "." + nmDuplicate)
-		c.Log().Debugf("%s: %s", nmDuplicate, txid.StringShort())
+		ret.glb.IncCounter(ret.Name() + "." + nmDuplicate)
+		ret.Log().Debugf("%s: %s", nmDuplicate, txid.StringShort())
 	})
 	// the consumer is globally known in the workflow
-	w.primaryInputConsumer = c
+	w.primaryInputConsumer = ret
 }
 
 // consume processes the input

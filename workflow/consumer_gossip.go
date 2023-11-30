@@ -6,7 +6,7 @@ import (
 
 // TxGossipSendConsumer is forwarding the transaction to peering which didn't see it yet
 
-const TxOutboundConsumerName = "gossip"
+const TxGossipConsumerName = "gossip"
 
 type (
 	TxGossipSendInputData struct {
@@ -20,14 +20,12 @@ type (
 )
 
 func (w *Workflow) initGossipSendConsumer() {
-	c := &TxGossipSendConsumer{
-		Consumer: NewConsumer[TxGossipSendInputData](TxOutboundConsumerName, w),
+	ret := &TxGossipSendConsumer{
+		Consumer: NewConsumer[TxGossipSendInputData](TxGossipConsumerName, w),
 	}
-	c.AddOnConsume(c.consume)
-	c.AddOnClosed(func() {
-		w.terminateWG.Done()
-	})
-	w.txGossipOutConsumer = c
+	ret.AddOnConsume(ret.consume)
+
+	w.txGossipOutConsumer = ret
 }
 
 func (c *TxGossipSendConsumer) consume(inp TxGossipSendInputData) {

@@ -29,24 +29,20 @@ var (
 )
 
 func (w *Workflow) initAppendTxConsumer() {
-	c := &AppendTxConsumer{
+	ret := &AppendTxConsumer{
 		Consumer: NewConsumer[*AppendTxConsumerInputData](AppendTxConsumerName, w),
 	}
-	c.AddOnConsume(func(inp *AppendTxConsumerInputData) {
-		c.Debugf(inp.PrimaryTransactionData, "IN")
+	ret.AddOnConsume(func(inp *AppendTxConsumerInputData) {
+		ret.Debugf(inp.PrimaryTransactionData, "IN")
 	})
-	c.AddOnConsume(c.consume)
-	c.AddOnClosed(func() {
-		w.dropTxConsumer.Stop()
-		w.terminateWG.Done()
-	})
+	ret.AddOnConsume(ret.consume)
 	nmAdd := EventNewVertex.String()
 	w.MustOnEvent(EventNewVertex, func(inp *NewVertexEventData) {
-		c.glb.IncCounter(c.Name() + "." + nmAdd)
-		c.Log().Debugf("%s: %s", nmAdd, inp.Tx.IDShort())
+		ret.glb.IncCounter(ret.Name() + "." + nmAdd)
+		ret.Log().Debugf("%s: %s", nmAdd, inp.Tx.IDShort())
 	})
 
-	w.appendTxConsumer = c
+	w.appendTxConsumer = ret
 }
 
 func (c *AppendTxConsumer) consume(inp *AppendTxConsumerInputData) {
@@ -60,15 +56,13 @@ func (c *AppendTxConsumer) consume(inp *AppendTxConsumerInputData) {
 		inp.eventCallback("finish."+AppendTxConsumerName, err)
 		c.Debugf(inp.PrimaryTransactionData, "can't append vertex to the tangle: '%v'", err)
 		c.IncCounter("fail")
-		c.glb.DropTransaction(*inp.Tx.ID(), "%v", err)
-		// notify solidifier
-		c.glb.solidifyConsumer.postRemoveTxIDs(inp.Tx.ID())
+		c.glb.DropTransaction(inp.Tx.ID(), AppendTxConsumerName, "%v", err)
 		return
 	}
 	inp.eventCallback("finish."+AppendTxConsumerName, nil)
 
 	c.logBranch(inp.PrimaryTransactionData, vid.LedgerCoverage(c.glb.UTXOTangle()))
-	c.glb.pullConsumer.removeFromPullList(*inp.Tx.ID())
+	c.glb.pullConsumer.removeFromPullList(inp.Tx.ID())
 
 	if !inp.WasGossiped {
 		// transaction wasn't gossiped yet, it needs to be sent to other peers

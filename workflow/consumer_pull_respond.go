@@ -29,14 +29,11 @@ type (
 )
 
 func (w *Workflow) initRespondTxQueryConsumer() {
-	c := &PullRespondConsumer{
+	ret := &PullRespondConsumer{
 		Consumer: NewConsumer[PullRespondData](PullRespondConsumerName, w),
 	}
-	c.AddOnConsume(c.consume)
-	c.AddOnClosed(func() {
-		w.terminateWG.Done()
-	})
-	w.pullRequestConsumer = c
+	ret.AddOnConsume(ret.consume)
+	w.pullRequestConsumer = ret
 }
 
 func (c *PullRespondConsumer) consume(inp PullRespondData) {
