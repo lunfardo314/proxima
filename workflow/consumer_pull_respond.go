@@ -1,8 +1,6 @@
 package workflow
 
 import (
-	"fmt"
-
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/lunfardo314/proxima/core"
 )
@@ -39,8 +37,8 @@ func (w *Workflow) initRespondTxQueryConsumer() {
 func (c *PullRespondConsumer) consume(inp PullRespondData) {
 	if txBytes := c.glb.UTXOTangle().TxBytesStore().GetTxBytes(&inp.TxID); len(txBytes) > 0 {
 		c.glb.peers.SendTxBytesToPeer(inp.PeerID, txBytes)
-		fmt.Printf(">>>>>>>>>>>>>>> respond FOUND %s\n", inp.TxID.StringShort())
+		c.Log().Infof(">>>>>>>>>>>>>>> respond FOUND %s", inp.TxID.StringShort())
 	} else {
-		fmt.Printf(">>>>>>>>>>>>>>> respond NOT FOUND %s\n", inp.TxID.StringShort())
+		c.Log().Infof(">>>>>>>>>>>>>>> respond NOT FOUND %s", inp.TxID.StringShort())
 	}
 }

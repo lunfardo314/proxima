@@ -109,7 +109,7 @@ func New(ut *utangle.UTXOTangle, peers *peering.Peers, configOptions ...ConfigOp
 		}
 
 		for _, txid := range txids {
-			ret.pullRequestConsumer.Log().Infof("pull request received for %s", txid.StringShort())
+			ret.pullRequestConsumer.Log().Infof(">>>>>>>>>>>>>> pull request received for %s", txid.StringShort())
 			ret.pullRequestConsumer.Push(PullRespondData{
 				TxID:   txid,
 				PeerID: from,

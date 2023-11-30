@@ -324,6 +324,7 @@ func (c *SolidifyConsumer) pullIfNeeded(vd *draftVertexData) {
 }
 
 func (c *SolidifyConsumer) pull(txid core.TransactionID, initialDelay time.Duration) {
+	c.Log().Infof(">>>>>>>>> send pull %s, delay %v", txid.StringShort(), initialDelay)
 	c.glb.pullConsumer.Push(&PullTxData{
 		TxID:         txid,
 		InitialDelay: initialDelay,

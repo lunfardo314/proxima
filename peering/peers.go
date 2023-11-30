@@ -329,7 +329,7 @@ func (ps *Peers) PullTransactionsFromRandomPeer(txids ...core.TransactionID) boo
 	for _, idx := range rand.Perm(len(all)) {
 		rndID := all[idx]
 		if ps.peers[rndID].isAlive() {
-			fmt.Printf(">>>>>>>> pull from %s: %s\n", ShortPeerIDString(rndID), _txidLst(txids...))
+			ps.log.Infof(">>>>>>>> pull from %s: %s", ShortPeerIDString(rndID), _txidLst(txids...))
 
 			ps.sendPullToPeer(rndID, txids...)
 			return true
