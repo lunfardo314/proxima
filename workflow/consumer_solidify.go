@@ -81,7 +81,7 @@ func (c *SolidifyConsumer) consume(inp *SolidifyInputData) {
 	switch inp.Cmd {
 	case SolidifyCommandNewTx:
 		util.Assertf(inp.TxID == nil && inp.PrimaryTransactionData != nil, "inp.TxID == nil && inp.primaryInput != nil")
-		c.Log().Debugf("cmd newTx %s", inp.TxID.StringShort())
+		c.Log().Debugf("cmd newTx %s", inp.PrimaryTransactionData.Tx.IDShort())
 		//inp.eventCallback(SolidifyConsumerName+".in.new", inp.Tx)
 		c.glb.IncCounter(c.Name() + ".in.new")
 		c.newTx(inp)
