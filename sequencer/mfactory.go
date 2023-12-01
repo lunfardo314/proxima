@@ -344,7 +344,7 @@ func (mf *milestoneFactory) startProposerWorkers(targetTime core.LogicalTime) {
 		task := rec.constructor(mf, targetTime)
 		if task != nil {
 			task.trace("RUN '%s' proposer for the target %s", strategyName, targetTime.String())
-			util.RunWrappedRoutine(mf.seqName, func() {
+			util.RunWrappedRoutine(mf.seqName+"::"+task.name(), func() {
 				mf.runProposerTask(task)
 			}, common.ErrDBUnavailable)
 		} else {

@@ -59,7 +59,7 @@ func (c *AppendTxConsumer) consume(inp *AppendTxConsumerInputData) {
 
 		c.glb.solidifyConsumer.postRemoveTxIDs(inp.Tx.ID())
 		c.glb.pullConsumer.removeFromPullList(inp.Tx.ID())
-		c.glb.EventDropTxID(inp.Tx.ID(), AppendTxConsumerName, "%v", err)
+		c.glb.PostEventDropTxID(inp.Tx.ID(), AppendTxConsumerName, "%v", err)
 		return
 	}
 	inp.eventCallback("finish."+AppendTxConsumerName, nil)

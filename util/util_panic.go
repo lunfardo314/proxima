@@ -20,6 +20,7 @@ func CatchPanicOrError(f func() error, includeStack ...bool) error {
 				stack = string(debug.Stack())
 			}
 			var ok bool
+			// TODO not always catches ErrDBUnavailableOrClosed
 			if err, ok = r.(error); !ok {
 				err = fmt.Errorf("%v (err type=%T)", r, r)
 			}
@@ -46,6 +47,6 @@ func RunWrappedRoutine(name string, fun func(), ignore ...error) {
 				return
 			}
 		}
-		panic(fmt.Errorf("uncaught panic in '%s': %v", name, err))
+		panic(fmt.Errorf("uncaught panic in '%s': %v (err type = %T)", name, err, err))
 	}()
 }

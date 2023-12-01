@@ -77,12 +77,10 @@ func (w *Workflow) initSolidifyConsumer() {
 }
 
 func (c *SolidifyConsumer) consume(inp *SolidifyInputData) {
-	//c.setTrace(inp.PrimaryTransactionData.SourceType == TransactionSourceTypeAPI) /// ?????????? TODO
-
 	switch inp.Cmd {
 	case SolidifyCommandNewTx:
 		util.Assertf(inp.TxID == nil && inp.PrimaryTransactionData != nil, "inp.TxID == nil && inp.primaryInput != nil")
-		c.Log().Infof(">>>>>>>>>>>>>>>>>>>>>>>> cmd newTx %s", inp.PrimaryTransactionData.Tx.IDShort())
+		c.tracePull("cmd newTx %s", func() any { return inp.PrimaryTransactionData.Tx.IDShort() })
 		//inp.eventCallback(SolidifyConsumerName+".in.new", inp.Tx)
 		c.glb.IncCounter(c.Name() + ".in.new")
 		c.newTx(inp)
@@ -154,7 +152,7 @@ func (c *SolidifyConsumer) checkTxID(txid *core.TransactionID) {
 	if conflict != nil {
 		// conflict in the past cone. Cannot be solidified. Remove from solidifier
 		c.removeTxID(txid)
-		c.glb.EventDropTxID(txid, c.Name(), "conflict %s", conflict.StringShort())
+		c.glb.PostEventDropTxID(txid, c.Name(), "conflict %s", conflict.StringShort())
 		return
 	}
 	// check if solidified already
@@ -209,7 +207,7 @@ func (c *SolidifyConsumer) removeTooOld() {
 		if nowis.After(pendingData.since.Add(keepNotSolid)) {
 			txid1 := txid
 			toRemove = append(toRemove, &txid1)
-			c.glb.EventDropTxID(&txid1, c.Name(), "deadline. Missing: %s", c.missingInputsString(txid1))
+			c.glb.PostEventDropTxID(&txid1, c.Name(), "deadline. Missing: %s", c.missingInputsString(txid1))
 		}
 	}
 	c.postRemoveTxIDs(toRemove...)
@@ -327,7 +325,8 @@ func (c *SolidifyConsumer) pullIfNeeded(vd *draftVertexData) {
 }
 
 func (c *SolidifyConsumer) pull(txid core.TransactionID, initialDelay time.Duration) {
-	c.Log().Infof(">>>>>>>>> send pull %s, delay %v", txid.StringShort(), initialDelay)
+	c.tracePull("send pull %s, delay %v", func() any { return txid.StringShort() }, initialDelay)
+
 	c.glb.pullConsumer.Push(&PullTxData{
 		TxID:         &txid,
 		InitialDelay: initialDelay,

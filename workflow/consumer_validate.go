@@ -49,7 +49,7 @@ func (c *ValidateConsumer) consume(inp *ValidateConsumerInputData) {
 
 			c.glb.pullConsumer.removeFromPullList(inp.Tx.ID())
 			c.glb.solidifyConsumer.postRemoveTxIDs(inp.Tx.ID())
-			c.glb.EventDropTxID(inp.Tx.ID(), ValidateConsumerName, "%v", err)
+			c.glb.PostEventDropTxID(inp.Tx.ID(), ValidateConsumerName, "%v", err)
 			return
 		}
 		c.IncCounter("ok")

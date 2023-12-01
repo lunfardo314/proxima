@@ -59,7 +59,15 @@ type (
 		glb       *Workflow
 		traceFlag bool
 	}
+
+	DropTxData struct {
+		TxID       *core.TransactionID
+		WhoDropped string
+		Msg        string
+	}
 )
+
+var EventDroppedTx = eventtype.RegisterNew[DropTxData]("droptx")
 
 const workflowLogName = "[workflow]"
 
@@ -109,7 +117,7 @@ func New(ut *utangle.UTXOTangle, peers *peering.Peers, configOptions ...ConfigOp
 		}
 
 		for _, txid := range txids {
-			ret.pullRequestConsumer.Log().Infof(">>>>>>>>>>>>>> pull request received for %s", txid.StringShort())
+			tracePull(ret.pullRequestConsumer.Log(), "pull request received for %s", func() any { return txid.StringShort() })
 			ret.pullRequestConsumer.Push(PullRespondData{
 				TxID:   txid,
 				PeerID: from,
@@ -228,4 +236,12 @@ func (w *Workflow) CounterInfo() string {
 
 func (w *Workflow) CheckDebugCounters(expect map[string]int) error {
 	return w.debugCounters.CheckValues(expect)
+}
+
+func (w *Workflow) PostEventDropTxID(txid *core.TransactionID, whoDropped string, reasonFormat string, args ...any) {
+	w.PostEvent(EventDroppedTx, DropTxData{
+		TxID:       txid,
+		WhoDropped: whoDropped,
+		Msg:        fmt.Sprintf(reasonFormat, args...),
+	})
 }
