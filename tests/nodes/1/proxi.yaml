@@ -1,0 +1,11 @@
+# proxi profile 
+wallet:
+    private_key: a66f8768224b241fe4dd2e4c00132d029452468846b149f2c2c4d894805964c8e63df08176c9443f0fe015d3582635d3d5a02e33765fbb3a2995db9cf3bbe606
+    account: addressED25519(0xaa401c8c6a9deacf479ab2209c07c01a27bd1eeecf0d7eaa4180b8049c6190d0)
+    # own sequencer (controlled by the private key). Defaults to bootstrap sequencer ID
+    sequencer: 
+api:
+    endpoint: http://127.0.0.1:8001
+tag-along:
+    sequencer_id: 1e8e129701aeea94c50e24864a8f950c4efd7a4a1a1cf12ed0a519bfa6fc0e84
+    fee: 500

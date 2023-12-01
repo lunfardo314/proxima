@@ -15,7 +15,6 @@ import (
 	"github.com/lunfardo314/proxima/util/lazybytes"
 	"github.com/lunfardo314/unitrie/common"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 )
 
 func initSeqWithdrawCmd() *cobra.Command {
@@ -30,19 +29,15 @@ func initSeqWithdrawCmd() *cobra.Command {
 	return seqSendCmd
 }
 
+const ownSequencerCmdFee = 500
+
 func runSeqWithdrawCmd(_ *cobra.Command, args []string) {
 	walletData := glb.GetWalletData()
 	glb.Assertf(walletData.Sequencer != nil, "can't get own sequencer ID")
 	glb.Infof("sequencer ID (source): %s", walletData.Sequencer.String())
 
-	md, err := getClient().GetMilestoneDataFromHeaviestState(*walletData.Sequencer)
-	glb.AssertNoError(err)
-
-	// TODO ensure at least storage deficit
-	feeAmount := viper.GetUint64("tag-along.fee")
-	if md != nil && md.MinimumFee > feeAmount {
-		feeAmount = md.MinimumFee
-	}
+	//md, err := getClient().GetMilestoneDataFromHeaviestState(*walletData.Sequencer)
+	//glb.AssertNoError(err)
 
 	glb.Infof("wallet account is: %s", walletData.Account.String())
 	targetLock := glb.MustGetTarget()
@@ -63,7 +58,7 @@ func runSeqWithdrawCmd(_ *cobra.Command, args []string) {
 	})
 	glb.AssertNoError(err)
 
-	glb.Infof("will be using fee amount of %d from the wallet. Outputs in the wallet:", feeAmount)
+	glb.Infof("will be using fee amount of %d from the wallet. Outputs in the wallet:", ownSequencerCmdFee)
 	for i, o := range walletOutputs {
 		glb.Infof("%d : %s : %s", i, o.ID.StringShort(), util.GoThousands(o.Output.Amount()))
 	}
@@ -84,7 +79,7 @@ func runSeqWithdrawCmd(_ *cobra.Command, args []string) {
 	glb.AssertNoError(err)
 
 	transferData := txbuilder.NewTransferData(walletData.PrivateKey, walletData.Account, core.LogicalTimeNow()).
-		WithAmount(feeAmount).
+		WithAmount(ownSequencerCmdFee).
 		WithTargetLock(core.ChainLockFromChainID(*walletData.Sequencer)).
 		MustWithInputs(walletOutputs...).
 		WithSender().
@@ -100,5 +95,6 @@ func runSeqWithdrawCmd(_ *cobra.Command, args []string) {
 	glb.Infof("submitting the transaction...")
 
 	err = getClient().SubmitTransaction(txBytes)
+	// TODO track inclusion
 	glb.AssertNoError(err)
 }

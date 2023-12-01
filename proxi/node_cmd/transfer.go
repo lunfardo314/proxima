@@ -13,6 +13,7 @@ import (
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
 func initTransferCmd() *cobra.Command {
@@ -22,6 +23,10 @@ func initTransferCmd() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		Run:   runTransferCmd,
 	}
+
+	transferCmd.PersistentFlags().StringP("target", "t", "", "target lock in EasyFL source format")
+	err := viper.BindPFlag("target", transferCmd.PersistentFlags().Lookup("target"))
+	glb.AssertNoError(err)
 
 	transferCmd.InitDefaultHelpCmd()
 	return transferCmd

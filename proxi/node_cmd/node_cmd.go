@@ -88,7 +88,7 @@ func getTagAlongFee() uint64 {
 }
 
 func GetTagAlongSequencerID() *core.ChainID {
-	seqIDStr := viper.GetString("tag-along.sequencer")
+	seqIDStr := viper.GetString("tag-along.sequencer_id")
 	if seqIDStr == "" {
 		return nil
 	}
