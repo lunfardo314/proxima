@@ -19,6 +19,7 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/general"
+	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/multiformats/go-multiaddr"
 	"github.com/spf13/viper"
@@ -334,7 +335,10 @@ func (ps *Peers) PullTransactionsFromRandomPeer(txids ...core.TransactionID) boo
 	for _, idx := range rand.Perm(len(all)) {
 		rndID := all[idx]
 		if ps.peers[rndID].isAlive() {
-			ps.log.Infof(">>>>>>>> pull from %s: %s", ShortPeerIDString(rndID), _txidLst(txids...))
+			global.TracePull(ps.log, "pull to random peer %s: %s",
+				func() any { return ShortPeerIDString(rndID) },
+				func() any { return _txidLst(txids...) },
+			)
 
 			ps.sendPullToPeer(rndID, txids...)
 			return true

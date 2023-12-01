@@ -1,22 +1,23 @@
 package workflow
 
 import (
+	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/util"
-	"go.uber.org/zap"
 )
 
-const (
-	tracePullEnabled = false
-)
+// Hardcoded tracing
 
-func tracePull(log *zap.SugaredLogger, format string, lazyArgs ...any) {
-	if tracePullEnabled {
-		log.Infof(">>>>>>>>>>>>>>>> TRACE PULL "+format, util.EvalLazyArgs(lazyArgs...)...)
+func (c *Consumer[T]) tracePull(format string, lazyArgs ...any) {
+	if global.TracePullEnabled {
+		global.TracePull(c.Log(), format, lazyArgs...)
 	}
 }
 
-func (c *Consumer[T]) tracePull(format string, lazyArgs ...any) {
-	if tracePullEnabled {
-		tracePull(c.Log(), format, lazyArgs...)
+func (c *Consumer[T]) traceTx(inp *PrimaryTransactionData, format string, args ...any) {
+	if global.TraceTxEnabled {
+		if !inp.traceFlag {
+			return
+		}
+		c.Infof(inp, ">>>>>> TRACE TX "+format, util.EvalLazyArgs(args...)...)
 	}
 }

@@ -10,6 +10,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/general"
+	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/peering"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/utangle"
@@ -117,7 +118,7 @@ func New(ut *utangle.UTXOTangle, peers *peering.Peers, configOptions ...ConfigOp
 		}
 
 		for _, txid := range txids {
-			tracePull(ret.pullRequestConsumer.Log(), "pull request received for %s", func() any { return txid.StringShort() })
+			global.TracePull(ret.pullRequestConsumer.Log(), "pull request received for %s", func() any { return txid.StringShort() })
 			ret.pullRequestConsumer.Push(PullRespondData{
 				TxID:   txid,
 				PeerID: from,
