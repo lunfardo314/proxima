@@ -13,7 +13,7 @@ import (
 
 func initProfileCmd() *cobra.Command {
 	initProfCmd := &cobra.Command{
-		Use:   "profile [<profile name. Default: 'proxi'>]",
+		Use:   "wallet [<profile name. Default: 'proxi'>]",
 		Args:  cobra.MaximumNArgs(1),
 		Short: "initializes proxi profile with the private key",
 		Run:   runInitProfileCommand,
@@ -31,8 +31,8 @@ const profileTemplate = `# proxi profile
 wallet:
     private_key: %s
     account: %s
-    # own sequencer (controlled by the private key)
-	sequencer: 
+    # own sequencer (controlled by the private key). Defaults to bootstrap sequencer ID
+    sequencer: 
 api:
     endpoint:
 `

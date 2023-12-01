@@ -52,7 +52,7 @@ func MustGetTarget() core.Accountable {
 }
 
 func GetOwnSequencerID() *core.ChainID {
-	seqIDStr := viper.GetString("wallet.sequencer")
+	seqIDStr := viper.GetString("wallet.sequencer_id")
 	if seqIDStr == "" {
 		return nil
 	}

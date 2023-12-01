@@ -32,6 +32,10 @@ func main() {
 	err := viper.BindPFlag("verbose", rootCmd.PersistentFlags().Lookup("verbose"))
 	glb.AssertNoError(err)
 
+	rootCmd.PersistentFlags().BoolP("force", "f", false, "override yes/no prompt")
+	err = viper.BindPFlag("force", rootCmd.PersistentFlags().Lookup("force"))
+	glb.AssertNoError(err)
+
 	rootCmd.AddCommand(
 		init_cmd.CmdInit(),
 		db_cmd.Init(),

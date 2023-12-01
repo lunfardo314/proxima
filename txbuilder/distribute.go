@@ -20,6 +20,11 @@ type LockBalanceYAMLable struct {
 }
 
 func MustDistributeInitialSupply(stateStore global.StateStore, originPrivateKey ed25519.PrivateKey, genesisDistribution []core.LockBalance) []byte {
+	ret, _ := MustDistributeInitialSupplyExt(stateStore, originPrivateKey, genesisDistribution)
+	return ret
+}
+
+func MustDistributeInitialSupplyExt(stateStore global.StateStore, originPrivateKey ed25519.PrivateKey, genesisDistribution []core.LockBalance) ([]byte, core.TransactionID) {
 	stateID, genesisRoot, err := genesis.ScanGenesisState(stateStore)
 	util.AssertNoError(err)
 
@@ -69,7 +74,7 @@ func MustDistributeInitialSupply(stateStore global.StateStore, originPrivateKey 
 	tx, err := transaction.FromBytesMainChecksWithOpt(txBytes)
 	util.AssertNoError(err)
 
-	fmt.Printf("=======================\n%s=======================\n", tx.Lines(tx.InputLoaderFromState(rdr)).String())
+	//fmt.Printf("=======================\n%s=======================\n", tx.Lines(tx.InputLoaderFromState(rdr)).String())
 
 	err = tx.Validate(transaction.ValidateOptionWithFullContext(tx.InputLoaderFromState(rdr)))
 	util.AssertNoError(err)
@@ -82,7 +87,7 @@ func MustDistributeInitialSupply(stateStore global.StateStore, originPrivateKey 
 	var coverage multistate.LedgerCoverage
 	updatableOrigin.MustUpdate(muts, &nextStem.ID, &bootstrapChainID, coverage.MakeNext(1, stateID.InitialSupply))
 
-	return txBytes
+	return txBytes, *tx.ID()
 }
 
 // DistributeInitialSupply updates genesis state and branch records according to initial supply distribution parameters by
@@ -90,24 +95,30 @@ func MustDistributeInitialSupply(stateStore global.StateStore, originPrivateKey 
 // Distribution transaction is a branch transaction in the slot next after the genesis.
 // Distribution parameter is added to the transaction store
 func DistributeInitialSupply(stateStore global.StateStore, originPrivateKey ed25519.PrivateKey, genesisDistribution []core.LockBalance) ([]byte, error) {
+	txBytes, _, err := DistributeInitialSupplyExt(stateStore, originPrivateKey, genesisDistribution)
+	return txBytes, err
+}
+
+func DistributeInitialSupplyExt(stateStore global.StateStore, originPrivateKey ed25519.PrivateKey, genesisDistribution []core.LockBalance) ([]byte, core.TransactionID, error) {
 	var ret []byte
+	var txid core.TransactionID
 	err := util.CatchPanicOrError(func() error {
-		ret = MustDistributeInitialSupply(stateStore, originPrivateKey, genesisDistribution)
+		ret, txid = MustDistributeInitialSupplyExt(stateStore, originPrivateKey, genesisDistribution)
 		return nil
 	})
 	if err != nil {
-		return nil, fmt.Errorf("DistributeInitialSupply: %v", err)
+		return nil, core.TransactionID{}, fmt.Errorf("DistributeInitialSupply: %v", err)
 	}
-	return ret, nil
+	return ret, txid, nil
 }
 
 func InitialDistributionFromYAMLData(yamlData []byte) ([]core.LockBalance, error) {
 	yamlAble := make([]LockBalanceYAMLable, 0)
-	if err := yaml.Unmarshal(yamlData, &yamlData); err != nil {
+	if err := yaml.Unmarshal(yamlData, &yamlAble); err != nil {
 		return nil, err
 	}
-	ret := make([]core.LockBalance, len(yamlAble))
-	for i := range ret {
+	ret := make([]core.LockBalance, 0, len(yamlAble))
+	for i := range yamlAble {
 		lck, err := core.LockFromSource(yamlAble[i].LockString)
 		if err != nil {
 			return nil, err
