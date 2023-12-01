@@ -9,7 +9,6 @@ import (
 
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/lunfardo314/proxima/core"
-	"github.com/lunfardo314/proxima/general"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/peering"
 	"github.com/lunfardo314/proxima/transaction"
@@ -80,7 +79,7 @@ func New(ut *utangle.UTXOTangle, peers *peering.Peers, configOptions ...ConfigOp
 
 	ret := &Workflow{
 		configParams:  cfg,
-		log:           general.NewLogger(workflowLogName, cfg.logLevel, cfg.logOutput, cfg.logTimeLayout),
+		log:           global.NewLogger(workflowLogName, cfg.logLevel, cfg.logOutput, cfg.logTimeLayout),
 		utxoTangle:    ut,
 		peers:         peers,
 		debugCounters: testutil.NewSynCounters(),

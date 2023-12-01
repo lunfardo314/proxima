@@ -1,7 +1,7 @@
 package workflow
 
 import (
-	"github.com/lunfardo314/proxima/general"
+	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
@@ -24,7 +24,7 @@ func defaultConfigParams() ConfigParams {
 		logLevel:         zap.InfoLevel,
 		consumerLogLevel: make(map[string]zapcore.Level),
 		logOutput:        []string{"stdout"},
-		logTimeLayout:    general.TimeLayoutDefault,
+		logTimeLayout:    global.TimeLayoutDefault,
 	}
 }
 

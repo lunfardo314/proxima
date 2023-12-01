@@ -1,4 +1,4 @@
-package general
+package global
 
 const (
 	MultiStateDBName     = "proximadb"

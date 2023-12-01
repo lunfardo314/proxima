@@ -1,4 +1,4 @@
-package general
+package global
 
 import (
 	"github.com/lunfardo314/unitrie/common"

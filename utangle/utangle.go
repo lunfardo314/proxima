@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/core"
-	"github.com/lunfardo314/proxima/general"
+	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/util"
@@ -127,7 +127,7 @@ func (ut *UTXOTangle) isValidBranch(br *WrappedTx) bool {
 	return found
 }
 
-func (ut *UTXOTangle) GetIndexedStateReader(branchTxID *core.TransactionID, clearCacheAtSize ...int) (general.IndexedStateReader, error) {
+func (ut *UTXOTangle) GetIndexedStateReader(branchTxID *core.TransactionID, clearCacheAtSize ...int) (global.IndexedStateReader, error) {
 	rr, found := multistate.FetchRootRecord(ut.stateStore, *branchTxID)
 	if !found {
 		return nil, fmt.Errorf("root record for %s has not been found", branchTxID.StringShort())
@@ -135,13 +135,13 @@ func (ut *UTXOTangle) GetIndexedStateReader(branchTxID *core.TransactionID, clea
 	return multistate.NewReadable(ut.stateStore, rr.Root, clearCacheAtSize...)
 }
 
-func (ut *UTXOTangle) MustGetIndexedStateReader(branchTxID *core.TransactionID, clearCacheAtSize ...int) general.IndexedStateReader {
+func (ut *UTXOTangle) MustGetIndexedStateReader(branchTxID *core.TransactionID, clearCacheAtSize ...int) global.IndexedStateReader {
 	ret, err := ut.GetIndexedStateReader(branchTxID, clearCacheAtSize...)
 	util.AssertNoError(err)
 	return ret
 }
 
-func (ut *UTXOTangle) MustGetStateReader(branchTxID *core.TransactionID, clearCacheAtSize ...int) general.StateReader {
+func (ut *UTXOTangle) MustGetStateReader(branchTxID *core.TransactionID, clearCacheAtSize ...int) global.StateReader {
 	return ut.MustGetIndexedStateReader(branchTxID, clearCacheAtSize...)
 }
 
@@ -188,7 +188,7 @@ func (ut *UTXOTangle) heaviestBranchForLatestTimeSlot() common.VCommitment {
 	return largestBranch
 }
 
-func (ut *UTXOTangle) GetBaselineState(vid *WrappedTx) (general.IndexedStateReader, error) {
+func (ut *UTXOTangle) GetBaselineState(vid *WrappedTx) (global.IndexedStateReader, error) {
 	if vid.IsBranchTransaction() {
 		return ut.GetIndexedStateReader(vid.ID())
 	}
@@ -199,7 +199,7 @@ func (ut *UTXOTangle) GetBaselineState(vid *WrappedTx) (general.IndexedStateRead
 	return ut.GetIndexedStateReader(branchTxID.ID())
 }
 
-func (ut *UTXOTangle) MustGetBaselineState(vid *WrappedTx) general.IndexedStateReader {
+func (ut *UTXOTangle) MustGetBaselineState(vid *WrappedTx) global.IndexedStateReader {
 	ret, err := ut.GetBaselineState(vid)
 	util.AssertNoError(err)
 	return ret
@@ -407,11 +407,11 @@ func (ut *UTXOTangle) FetchBranchData(branchTxID *core.TransactionID) (multistat
 	return multistate.FetchBranchData(ut.stateStore, *branchTxID)
 }
 
-func (ut *UTXOTangle) StateStore() general.StateStore {
+func (ut *UTXOTangle) StateStore() global.StateStore {
 	return ut.stateStore
 }
 
-func (ut *UTXOTangle) TxBytesStore() general.TxBytesStore {
+func (ut *UTXOTangle) TxBytesStore() global.TxBytesStore {
 	return ut.txBytesStore
 }
 

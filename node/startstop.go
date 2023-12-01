@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/core"
-	"github.com/lunfardo314/proxima/general"
 	"github.com/lunfardo314/proxima/genesis"
+	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/peering"
 	"github.com/lunfardo314/proxima/sequencer"
@@ -27,7 +27,7 @@ type ProximaNode struct {
 	logOutputs      []string
 	multiStateStore *badger_adaptor.DB
 	txStoreDB       *badger_adaptor.DB
-	txStore         general.TxBytesStore
+	txStore         global.TxBytesStore
 	uTangle         *utangle.UTXOTangle
 	peers           *peering.Peers
 	workflow        *workflow.Workflow
@@ -57,7 +57,7 @@ func (p *ProximaNode) initConfig() {
 }
 
 func (p *ProximaNode) Run() {
-	p.log.Info(general.BannerString())
+	p.log.Info(global.BannerString())
 	p.initConfig()
 
 	p.log, p.logOutputs = newNodeLoggerFromConfig()
@@ -90,7 +90,7 @@ func (p *ProximaNode) WaitStop() {
 
 func (p *ProximaNode) startMultiStateDB() {
 	var err error
-	dbname := general.MultiStateDBName
+	dbname := global.MultiStateDBName
 	bdb, err := badger_adaptor.OpenBadgerDB(dbname)
 	if err != nil {
 		p.log.Fatalf("can't open '%s'", dbname)
@@ -107,7 +107,7 @@ func (p *ProximaNode) startMultiStateDB() {
 }
 
 func (p *ProximaNode) startTxStore() {
-	switch viper.GetString(general.ConfigKeyTxStoreType) {
+	switch viper.GetString(global.ConfigKeyTxStoreType) {
 	case "dummy":
 		p.log.Infof("transaction store is 'dummy'")
 		p.txStore = txstore.NewDummyTxBytesStore()
@@ -117,7 +117,7 @@ func (p *ProximaNode) startTxStore() {
 
 	default:
 		// default option is predefined database name
-		dbname := general.TxStoreDBName
+		dbname := global.TxStoreDBName
 		p.log.Infof("transaction store database dbname is '%s'", dbname)
 		p.txStoreDB = badger_adaptor.New(badger_adaptor.MustCreateOrOpenBadgerDB(dbname))
 		p.txStore = txstore.NewSimpleTxBytesStore(p.txStoreDB)
@@ -133,7 +133,7 @@ func (p *ProximaNode) startTxStore() {
 }
 
 // MustCompatibleStateBootstrapData branches of the latest slot sorted by coverage descending
-func mustReadStateIdentity(store general.StateStore) {
+func mustReadStateIdentity(store global.StateStore) {
 	rootRecords := multistate.FetchRootRecords(store, multistate.FetchLatestSlot(store))
 	util.Assertf(len(rootRecords) > 0, "at least on root record expected")
 	stateReader, err := multistate.NewSugaredReadableState(store, rootRecords[0].Root)

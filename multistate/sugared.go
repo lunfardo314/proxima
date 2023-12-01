@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"github.com/lunfardo314/proxima/core"
-	"github.com/lunfardo314/proxima/general"
+	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/txutils"
 	"github.com/lunfardo314/unitrie/common"
@@ -14,10 +14,10 @@ import (
 var ErrNotFound = errors.New("object not found")
 
 type SugaredStateReader struct {
-	general.IndexedStateReader
+	global.IndexedStateReader
 }
 
-func MakeSugared(s general.IndexedStateReader) SugaredStateReader {
+func MakeSugared(s global.IndexedStateReader) SugaredStateReader {
 	return SugaredStateReader{s}
 }
 
@@ -35,7 +35,7 @@ func MustNewSugaredReadableState(store common.KVReader, root common.VCommitment)
 	return ret
 }
 
-func (s SugaredStateReader) Desugar() general.IndexedStateReader {
+func (s SugaredStateReader) Desugar() global.IndexedStateReader {
 	return s.IndexedStateReader
 }
 

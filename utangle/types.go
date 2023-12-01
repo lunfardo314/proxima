@@ -4,7 +4,7 @@ import (
 	"sync"
 
 	"github.com/lunfardo314/proxima/core"
-	"github.com/lunfardo314/proxima/general"
+	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/unitrie/common"
 	"go.uber.org/atomic"
@@ -13,8 +13,8 @@ import (
 type (
 	UTXOTangle struct {
 		mutex        sync.RWMutex
-		stateStore   general.StateStore
-		txBytesStore general.TxBytesStore
+		stateStore   global.StateStore
+		txBytesStore global.TxBytesStore
 		vertices     map[core.TransactionID]*WrappedTx
 		branches     map[core.TimeSlot]map[*WrappedTx]common.VCommitment
 

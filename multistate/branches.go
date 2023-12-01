@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/lunfardo314/proxima/core"
-	"github.com/lunfardo314/proxima/general"
+	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lazybytes"
 	"github.com/lunfardo314/unitrie/common"
@@ -29,7 +29,7 @@ func writeLatestSlot(w common.KVWriter, slot core.TimeSlot) {
 	w.Set([]byte{latestSlotDBPartition}, slot.Bytes())
 }
 
-func FetchLatestSlot(store general.StateStore) core.TimeSlot {
+func FetchLatestSlot(store global.StateStore) core.TimeSlot {
 	bin := store.Get([]byte{latestSlotDBPartition})
 	if len(bin) == 0 {
 		return 0
@@ -119,7 +119,7 @@ func RootRecordFromBytes(data []byte) (RootRecord, error) {
 	}, nil
 }
 
-func iterateAllRootRecords(store general.StateStore, fun func(branchTxID core.TransactionID, rootData RootRecord) bool) {
+func iterateAllRootRecords(store global.StateStore, fun func(branchTxID core.TransactionID, rootData RootRecord) bool) {
 	store.Iterator([]byte{rootRecordDBPartition}).Iterate(func(k, data []byte) bool {
 		txid, err := core.TransactionIDFromBytes(k[1:])
 		util.AssertNoError(err)
@@ -131,7 +131,7 @@ func iterateAllRootRecords(store general.StateStore, fun func(branchTxID core.Tr
 	})
 }
 
-func iterateRootRecordsOfParticularSlots(store general.StateStore, fun func(branchTxID core.TransactionID, rootData RootRecord) bool, slots []core.TimeSlot) {
+func iterateRootRecordsOfParticularSlots(store global.StateStore, fun func(branchTxID core.TransactionID, rootData RootRecord) bool, slots []core.TimeSlot) {
 	prefix := [5]byte{rootRecordDBPartition, 0, 0, 0, 0}
 	for _, s := range slots {
 		slotPrefix := core.NewTransactionIDPrefix(s, true, true)
@@ -152,7 +152,7 @@ func iterateRootRecordsOfParticularSlots(store general.StateStore, fun func(bran
 // IterateRootRecords iterates root records in the store:
 // - if len(optSlot) > 0, it iterates specific slots
 // - if len(optSlot) == 0, it iterates all records in the store
-func IterateRootRecords(store general.StateStore, fun func(branchTxID core.TransactionID, rootData RootRecord) bool, optSlot ...core.TimeSlot) {
+func IterateRootRecords(store global.StateStore, fun func(branchTxID core.TransactionID, rootData RootRecord) bool, optSlot ...core.TimeSlot) {
 	if len(optSlot) == 0 {
 		iterateAllRootRecords(store, fun)
 	}
@@ -161,7 +161,7 @@ func IterateRootRecords(store general.StateStore, fun func(branchTxID core.Trans
 
 // FetchRootRecord returns root data, stem output index and existence flag
 // Exactly one root record must exist for the branch transaction
-func FetchRootRecord(store general.StateStore, branchTxID core.TransactionID) (ret RootRecord, found bool) {
+func FetchRootRecord(store global.StateStore, branchTxID core.TransactionID) (ret RootRecord, found bool) {
 	key := common.Concat(rootRecordDBPartition, branchTxID[:])
 	data := store.Get(key)
 	if len(data) == 0 {
@@ -173,7 +173,7 @@ func FetchRootRecord(store general.StateStore, branchTxID core.TransactionID) (r
 	return
 }
 
-func FetchRootRecordsNSlotsBack(store general.StateStore, nBack int) []RootRecord {
+func FetchRootRecordsNSlotsBack(store global.StateStore, nBack int) []RootRecord {
 	latestSlot := FetchLatestSlot(store)
 	if core.TimeSlot(nBack) >= latestSlot {
 		return FetchAllRootRecords(store)
@@ -184,7 +184,7 @@ func FetchRootRecordsNSlotsBack(store general.StateStore, nBack int) []RootRecor
 	return FetchRootRecords(store, util.MakeRange(latestSlot-core.TimeSlot(nBack), latestSlot)...)
 }
 
-func FetchAllRootRecords(store general.StateStore) []RootRecord {
+func FetchAllRootRecords(store global.StateStore) []RootRecord {
 	ret := make([]RootRecord, 0)
 	IterateRootRecords(store, func(_ core.TransactionID, rootData RootRecord) bool {
 		ret = append(ret, rootData)
@@ -193,7 +193,7 @@ func FetchAllRootRecords(store general.StateStore) []RootRecord {
 	return ret
 }
 
-func FetchRootRecords(store general.StateStore, slots ...core.TimeSlot) []RootRecord {
+func FetchRootRecords(store global.StateStore, slots ...core.TimeSlot) []RootRecord {
 	if len(slots) == 0 {
 		return nil
 	}
@@ -206,7 +206,7 @@ func FetchRootRecords(store general.StateStore, slots ...core.TimeSlot) []RootRe
 	return ret
 }
 
-func FetchStemOutputID(store general.StateStore, branchTxID core.TransactionID) (core.OutputID, bool) {
+func FetchStemOutputID(store global.StateStore, branchTxID core.TransactionID) (core.OutputID, bool) {
 	rr, ok := FetchRootRecord(store, branchTxID)
 	if !ok {
 		return core.OutputID{}, false
@@ -218,14 +218,14 @@ func FetchStemOutputID(store general.StateStore, branchTxID core.TransactionID) 
 	return o.ID, true
 }
 
-func FetchBranchData(store general.StateStore, branchTxID core.TransactionID) (BranchData, bool) {
+func FetchBranchData(store global.StateStore, branchTxID core.TransactionID) (BranchData, bool) {
 	if rd, found := FetchRootRecord(store, branchTxID); found {
 		return FetchBranchDataByRoot(store, rd), true
 	}
 	return BranchData{}, false
 }
 
-func FetchBranchDataByRoot(store general.StateStore, rootData RootRecord) BranchData {
+func FetchBranchDataByRoot(store global.StateStore, rootData RootRecord) BranchData {
 	rdr, err := NewSugaredReadableState(store, rootData.Root, 0)
 	util.AssertNoError(err)
 
@@ -239,7 +239,7 @@ func FetchBranchDataByRoot(store general.StateStore, rootData RootRecord) Branch
 	}
 }
 
-func FetchBranchDataMulti(store general.StateStore, rootData ...RootRecord) []*BranchData {
+func FetchBranchDataMulti(store global.StateStore, rootData ...RootRecord) []*BranchData {
 	ret := make([]*BranchData, len(rootData))
 	for i, rd := range rootData {
 		bd := FetchBranchDataByRoot(store, rd)
@@ -249,7 +249,7 @@ func FetchBranchDataMulti(store general.StateStore, rootData ...RootRecord) []*B
 }
 
 // FetchLatestBranches branches of the latest slot sorted by coverage descending
-func FetchLatestBranches(store general.StateStore) []*BranchData {
+func FetchLatestBranches(store global.StateStore) []*BranchData {
 	ret := FetchBranchDataMulti(store, FetchRootRecords(store, FetchLatestSlot(store))...)
 
 	return util.Sort(ret, func(i, j int) bool {
@@ -258,7 +258,7 @@ func FetchLatestBranches(store general.StateStore) []*BranchData {
 }
 
 // FetchHeaviestBranchChainNSlotsBack descending by epoch
-func FetchHeaviestBranchChainNSlotsBack(store general.StateStore, nBack int) []*BranchData {
+func FetchHeaviestBranchChainNSlotsBack(store global.StateStore, nBack int) []*BranchData {
 	rootData := make(map[core.TransactionID]RootRecord)
 	latestSlot := FetchLatestSlot(store)
 

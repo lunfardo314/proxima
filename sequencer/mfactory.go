@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/core"
-	"github.com/lunfardo314/proxima/general"
+	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/txbuilder"
 	"github.com/lunfardo314/proxima/utangle"
@@ -72,7 +72,7 @@ const (
 
 func (seq *Sequencer) createMilestoneFactory() error {
 	logname := fmt.Sprintf("[%sF-%s]", seq.config.SequencerName, seq.chainID.VeryShort())
-	log := general.NewLogger(logname, seq.config.LogLevel, seq.config.LogOutputs, seq.config.LogTimeLayout)
+	log := global.NewLogger(logname, seq.config.LogLevel, seq.config.LogOutputs, seq.config.LogTimeLayout)
 
 	chainOut := seq.config.StartOutput
 	if chainOut.VID == nil {

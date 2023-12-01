@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/core"
-	"github.com/lunfardo314/proxima/general"
+	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
@@ -228,7 +228,7 @@ func (v *Vertex) PendingDependenciesLines(prefix ...string) *lines.Lines {
 }
 
 // inheritPastTracks merges past tracks of inputs and endorsements
-func (v *Vertex) inheritPastTracks(getStore func() general.StateStore) (conflict *WrappedOutput) {
+func (v *Vertex) inheritPastTracks(getStore func() global.StateStore) (conflict *WrappedOutput) {
 	v.pastTrack = newPastTrack()
 
 	v.forEachInputDependency(func(i byte, vidInput *WrappedTx) bool {

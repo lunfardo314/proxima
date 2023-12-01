@@ -1,7 +1,7 @@
 package db_cmd
 
 import (
-	"github.com/lunfardo314/proxima/general"
+	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/util"
@@ -22,7 +22,7 @@ func initAccountsCmd() *cobra.Command {
 
 func runAccountsCmd(_ *cobra.Command, _ []string) {
 	glb.Infof("---------------- account totals at the heaviest branch ------------------")
-	dbName := general.MultiStateDBName
+	dbName := global.MultiStateDBName
 	stateDb := badger_adaptor.MustCreateOrOpenBadgerDB(dbName)
 	defer func() { _ = stateDb.Close() }()
 

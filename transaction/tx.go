@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/core"
-	"github.com/lunfardo314/proxima/general"
+	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lazybytes"
@@ -765,7 +765,7 @@ func (tx *Transaction) InputLoaderByIndex(fetchOutput func(oid *core.OutputID) (
 	}
 }
 
-func (tx *Transaction) InputLoaderFromState(rdr general.StateReader) func(idx byte) (*core.Output, error) {
+func (tx *Transaction) InputLoaderFromState(rdr global.StateReader) func(idx byte) (*core.Output, error) {
 	return tx.InputLoaderByIndex(func(oid *core.OutputID) ([]byte, bool) {
 		return rdr.GetUTXO(oid)
 	})

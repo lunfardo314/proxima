@@ -4,8 +4,8 @@ import (
 	"os"
 
 	"github.com/dgraph-io/badger/v4"
-	"github.com/lunfardo314/proxima/general"
 	"github.com/lunfardo314/proxima/genesis"
+	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/unitrie/adaptors/badger_adaptor"
 	"github.com/spf13/cobra"
@@ -26,8 +26,8 @@ It does not require genesis controller's private key'
 }
 
 func runGenesis(_ *cobra.Command, _ []string) {
-	mustNotExist(general.MultiStateDBName)
-	mustNotExist(general.TxStoreDBName)
+	mustNotExist(global.MultiStateDBName)
+	mustNotExist(global.TxStoreDBName)
 
 	idDataYAML, err := os.ReadFile(ledgerIDFileName)
 	glb.AssertNoError(err)
@@ -37,23 +37,23 @@ func runGenesis(_ *cobra.Command, _ []string) {
 
 	glb.Infof("Will be creating genesis from the ledger identity data:")
 	glb.Infof(idData.Lines("      ").String())
-	glb.Infof("Multi-state database name: '%s'", general.MultiStateDBName)
-	glb.Infof("Transaction store database name: '%s'", general.TxStoreDBName)
+	glb.Infof("Multi-state database name: '%s'", global.MultiStateDBName)
+	glb.Infof("Transaction store database name: '%s'", global.TxStoreDBName)
 	if !glb.YesNoPrompt("Proceed?", true) {
 		glb.Fatalf("exit: genesis database wasn't created")
 	}
-	stateDb := badger_adaptor.MustCreateOrOpenBadgerDB(general.MultiStateDBName, badger.DefaultOptions(general.MultiStateDBName))
+	stateDb := badger_adaptor.MustCreateOrOpenBadgerDB(global.MultiStateDBName, badger.DefaultOptions(global.MultiStateDBName))
 	stateStore := badger_adaptor.New(stateDb)
 
 	bootstrapChainID, _ := genesis.InitLedgerState(*idData, stateStore)
 	glb.AssertNoError(stateDb.Close())
 
-	glb.Infof("Genesis state DB '%s' has been created successfully.\nBootstrap sequencer chainID: %s", general.MultiStateDBName, bootstrapChainID.String())
+	glb.Infof("Genesis state DB '%s' has been created successfully.\nBootstrap sequencer chainID: %s", global.MultiStateDBName, bootstrapChainID.String())
 
-	txStoreDB := badger_adaptor.MustCreateOrOpenBadgerDB(general.TxStoreDBName, badger.DefaultOptions(general.TxStoreDBName))
+	txStoreDB := badger_adaptor.MustCreateOrOpenBadgerDB(global.TxStoreDBName, badger.DefaultOptions(global.TxStoreDBName))
 	glb.AssertNoError(txStoreDB.Close())
 
-	glb.Infof("Transaction store DB '%s' has been created successfully", general.TxStoreDBName)
+	glb.Infof("Transaction store DB '%s' has been created successfully", global.TxStoreDBName)
 }
 
 func mustNotExist(dir string) {

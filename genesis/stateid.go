@@ -10,7 +10,7 @@ import (
 
 	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/proxima/core"
-	"github.com/lunfardo314/proxima/general"
+	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lazybytes"
 	"github.com/lunfardo314/proxima/util/lines"
@@ -252,7 +252,7 @@ func DefaultIdentityData(privateKey ed25519.PrivateKey, slot ...core.TimeSlot) *
 	}
 	return &StateIdentityData{
 		CoreLedgerConstraintsHash:  easyfl.LibraryHash(),
-		Description:                fmt.Sprintf("Proxima prototype version %s", general.Version),
+		Description:                fmt.Sprintf("Proxima prototype version %s", global.Version),
 		InitialSupply:              DefaultSupply,
 		GenesisControllerPublicKey: privateKey.Public().(ed25519.PublicKey),
 		BaselineTime:               core.BaselineTime,

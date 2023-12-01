@@ -5,8 +5,8 @@ import (
 
 	"github.com/dgraph-io/badger/v4"
 	"github.com/lunfardo314/proxima/core"
-	"github.com/lunfardo314/proxima/general"
 	"github.com/lunfardo314/proxima/genesis"
+	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/txbuilder"
@@ -29,10 +29,10 @@ func initDBDistributeCmd() *cobra.Command {
 func runDBDistributeCmd(_ *cobra.Command, args []string) {
 	glb.Assertf(len(args) > 0 && len(args)%2 == 0, "even-sized list of arguments is expected")
 
-	dbName := general.MultiStateDBName
+	dbName := global.MultiStateDBName
 	glb.Infof("Multi-state database: %s", dbName)
 
-	txDBName := general.TxStoreDBName
+	txDBName := global.TxStoreDBName
 	glb.Infof("Transaction store database: %s", txDBName)
 
 	stateDb := badger_adaptor.MustCreateOrOpenBadgerDB(dbName)

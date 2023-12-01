@@ -5,7 +5,7 @@ import (
 	"os"
 
 	"github.com/lunfardo314/proxima/core"
-	"github.com/lunfardo314/proxima/general"
+	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/txbuilder"
@@ -33,7 +33,7 @@ func runMainChainCmd(_ *cobra.Command, args []string) {
 
 	makeFile := fname != ""
 
-	dbName := general.MultiStateDBName
+	dbName := global.MultiStateDBName
 	stateStore := badger_adaptor.New(badger_adaptor.MustCreateOrOpenBadgerDB(dbName))
 	defer stateStore.Close()
 

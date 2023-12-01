@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/lunfardo314/proxima/core"
-	"github.com/lunfardo314/proxima/general"
+	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/unitrie/common"
 	"github.com/lunfardo314/unitrie/immutable"
@@ -15,7 +15,7 @@ type (
 	// Suitable for chained updates
 	Updatable struct {
 		trie  *immutable.TrieUpdatable
-		store general.StateStore
+		store global.StateStore
 	}
 
 	// Readable is a read-only ledger state, with the particular root
@@ -74,7 +74,7 @@ func MustNewSugaredStateReader(store common.KVReader, root common.VCommitment, c
 
 // NewUpdatable creates updatable state with the given root. After updated, the root changes.
 // Suitable for chained updates of the ledger state
-func NewUpdatable(store general.StateStore, root common.VCommitment) (*Updatable, error) {
+func NewUpdatable(store global.StateStore, root common.VCommitment) (*Updatable, error) {
 	trie, err := immutable.NewTrieUpdatable(core.CommitmentModel, store, root)
 	if err != nil {
 		return nil, err
@@ -85,7 +85,7 @@ func NewUpdatable(store general.StateStore, root common.VCommitment) (*Updatable
 	}, nil
 }
 
-func MustNewUpdatable(store general.StateStore, root common.VCommitment) *Updatable {
+func MustNewUpdatable(store global.StateStore, root common.VCommitment) *Updatable {
 	ret, err := NewUpdatable(store, root)
 	util.AssertNoError(err)
 	return ret
@@ -356,7 +356,7 @@ func (u *Updatable) updateUTXOLedgerDB(updateFun func(updatable *immutable.TrieU
 }
 
 // BranchIsDescendantOf returns true if predecessor txid is known in the descendents state
-func BranchIsDescendantOf(descendant, predecessor *core.TransactionID, getStore func() general.StateStore) bool {
+func BranchIsDescendantOf(descendant, predecessor *core.TransactionID, getStore func() global.StateStore) bool {
 	util.Assertf(descendant.BranchFlagON(), "must be a branch ts")
 
 	if core.EqualTransactionIDs(descendant, predecessor) {

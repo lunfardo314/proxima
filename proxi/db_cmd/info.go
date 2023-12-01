@@ -6,8 +6,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/lunfardo314/proxima/general"
 	"github.com/lunfardo314/proxima/genesis"
+	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/txbuilder"
@@ -33,7 +33,7 @@ func initDBInfoCmd() *cobra.Command {
 
 func runDbInfoCmd(_ *cobra.Command, _ []string) {
 	glb.Infof("---------------- multi-state DB info ------------------")
-	dbName := general.MultiStateDBName
+	dbName := global.MultiStateDBName
 	stateDb := badger_adaptor.MustCreateOrOpenBadgerDB(dbName)
 	defer func() { _ = stateDb.Close() }()
 

@@ -18,7 +18,6 @@ import (
 	"github.com/libp2p/go-libp2p/core/peerstore"
 	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
 	"github.com/lunfardo314/proxima/core"
-	"github.com/lunfardo314/proxima/general"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/multiformats/go-multiaddr"
@@ -92,7 +91,7 @@ func New(cfg *Config, ctx context.Context) (*Peers, error) {
 
 	ret := &Peers{
 		cfg:               cfg,
-		log:               general.NewLogger("[peering]", cfg.LogLevel, cfg.LogOutputs, ""),
+		log:               global.NewLogger("[peering]", cfg.LogLevel, cfg.LogOutputs, ""),
 		ctx:               ctx,
 		stopHeartbeatChan: make(chan struct{}),
 		host:              lppHost,

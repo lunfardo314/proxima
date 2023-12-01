@@ -3,7 +3,7 @@ package consumer
 import (
 	"sync"
 
-	"github.com/lunfardo314/proxima/general"
+	"github.com/lunfardo314/proxima/global"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
@@ -23,7 +23,7 @@ func NewConsumer[T any](name string, logLevel zapcore.Level, outputs []string) *
 }
 
 func NewConsumerWithBufferSize[T any](name string, bufSize int, logLevel zapcore.Level, outputs []string) *Consumer[T] {
-	log := general.NewLogger("["+name+"]", logLevel, outputs, "")
+	log := global.NewLogger("["+name+"]", logLevel, outputs, "")
 	ret := &Consumer[T]{
 		name:      name,
 		que:       New[T](bufSize),

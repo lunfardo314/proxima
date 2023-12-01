@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/lunfardo314/proxima/core"
-	"github.com/lunfardo314/proxima/general"
+	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/util"
@@ -116,7 +116,7 @@ func (v *Vertex) fetchMissingEndorsements(ut *UTXOTangle) (conflict *core.Output
 }
 
 // mergeBranches return <branch>, <success>
-func mergeBranches(b1, b2 *WrappedTx, getStore func() general.StateStore) (*WrappedTx, bool) {
+func mergeBranches(b1, b2 *WrappedTx, getStore func() global.StateStore) (*WrappedTx, bool) {
 	switch {
 	case b1 == b2:
 		return b1, true

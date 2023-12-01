@@ -4,14 +4,14 @@ import (
 	"fmt"
 
 	"github.com/lunfardo314/proxima/core"
-	"github.com/lunfardo314/proxima/general"
+	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/unitrie/common"
 )
 
-func newUTXOTangle(stateStore general.StateStore, txBytesStore general.TxBytesStore) *UTXOTangle {
+func newUTXOTangle(stateStore global.StateStore, txBytesStore global.TxBytesStore) *UTXOTangle {
 	return &UTXOTangle{
 		stateStore:   stateStore,
 		txBytesStore: txBytesStore,
@@ -21,7 +21,7 @@ func newUTXOTangle(stateStore general.StateStore, txBytesStore general.TxBytesSt
 }
 
 // Load fetches latest branches from the multi-state and creates an UTXO tangle with those branches as virtual transactions
-func Load(stateStore general.StateStore, txBytesStore general.TxBytesStore) *UTXOTangle {
+func Load(stateStore global.StateStore, txBytesStore global.TxBytesStore) *UTXOTangle {
 	ret := newUTXOTangle(stateStore, txBytesStore)
 	// fetch branches of the latest slot
 	branches := multistate.FetchLatestBranches(stateStore)

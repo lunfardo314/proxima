@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/core"
-	"github.com/lunfardo314/proxima/general"
+	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/utangle"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/set"
@@ -48,7 +48,7 @@ func startTipPool(seqName string, wrk *workflow.Workflow, seqID core.ChainID, lo
 	ret := &sequencerTipPool{
 		glb:              wrk,
 		accountable:      accountAddress,
-		log:              general.NewLogger(name, logLevel, []string{"stdout"}, general.TimeLayoutDefault),
+		log:              global.NewLogger(name, logLevel, []string{"stdout"}, global.TimeLayoutDefault),
 		outputs:          set.New[utangle.WrappedOutput](),
 		chainID:          seqID,
 		latestMilestones: make(map[core.ChainID]*utangle.WrappedTx),

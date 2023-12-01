@@ -1,4 +1,4 @@
-package general
+package global
 
 import (
 	"fmt"

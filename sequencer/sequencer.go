@@ -10,7 +10,6 @@ import (
 
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/lunfardo314/proxima/core"
-	"github.com/lunfardo314/proxima/general"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/utangle"
@@ -77,7 +76,7 @@ func defaultConfigOptions() ConfigOptions {
 		Pace:          PaceMinimumTicks,
 		LogLevel:      zap.InfoLevel,
 		LogOutputs:    []string{"stdout"},
-		LogTimeLayout: general.TimeLayoutDefault,
+		LogTimeLayout: global.TimeLayoutDefault,
 		MaxFeeInputs:  DefaultMaxFeeInputs,
 		MaxTargetTs:   core.NilLogicalTime,
 		MaxMilestones: math.MaxInt,
@@ -99,7 +98,7 @@ func New(glb *workflow.Workflow, seqID core.ChainID, controllerKey ed25519.Priva
 		chainID:       seqID,
 		controllerKey: controllerKey,
 		config:        cfg,
-		log:           general.NewLogger(logName, cfg.LogLevel, cfg.LogOutputs, cfg.LogTimeLayout),
+		log:           global.NewLogger(logName, cfg.LogLevel, cfg.LogOutputs, cfg.LogTimeLayout),
 	}
 
 	ret.onMilestoneSubmitted = func(seq *Sequencer, wOut *utangle.WrappedOutput) {

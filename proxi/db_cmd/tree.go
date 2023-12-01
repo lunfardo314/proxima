@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/lunfardo314/proxima/general"
+	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/utangle"
 	"github.com/lunfardo314/unitrie/adaptors/badger_adaptor"
@@ -29,7 +29,7 @@ func initDBTreeCmd() *cobra.Command {
 }
 
 func runDbTreeCmd(_ *cobra.Command, args []string) {
-	dbName := general.MultiStateDBName
+	dbName := global.MultiStateDBName
 	outFile := outputFile
 	if outFile == "" {
 		outFile = dbName + "_TREE"

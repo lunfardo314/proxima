@@ -4,13 +4,13 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/core"
-	"github.com/lunfardo314/proxima/general"
+	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/utangle"
 	"go.uber.org/zap"
 )
 
 func (w *Workflow) startPruner() {
-	prunnerLog := general.NewLogger("[prune]", w.configParams.logLevel, w.configParams.logOutput, "")
+	prunnerLog := global.NewLogger("[prune]", w.configParams.logLevel, w.configParams.logOutput, "")
 	prunnerLog.Info("STARTING..")
 	go w.pruneOrphanedLoop(prunnerLog)
 	go w.cutFinalLoop(prunnerLog)

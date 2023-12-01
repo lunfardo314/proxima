@@ -3,7 +3,7 @@ package node
 import (
 	"strings"
 
-	"github.com/lunfardo314/proxima/general"
+	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
@@ -13,7 +13,7 @@ import (
 
 func init() {
 	pflag.String("logger.level", "info", "log level")
-	pflag.String("logger.timelayout", general.TimeLayoutDefault, "time format")
+	pflag.String("logger.timelayout", global.TimeLayoutDefault, "time format")
 	pflag.String("logger.output", "stdout", "a list where to write log")
 
 	pflag.Bool("pprof.enable", false, "enable pprof")
@@ -26,7 +26,7 @@ const (
 )
 
 func newBootstrapLogger() *zap.SugaredLogger {
-	return general.NewLogger(bootstrapLoggerName, zap.InfoLevel, []string{"stderr"}, "")
+	return global.NewLogger(bootstrapLoggerName, zap.InfoLevel, []string{"stderr"}, "")
 }
 
 func newNodeLoggerFromConfig() (*zap.SugaredLogger, []string) {
@@ -41,5 +41,5 @@ func newNodeLoggerFromConfig() (*zap.SugaredLogger, []string) {
 		outputs = append(outputs, "stdout")
 	}
 
-	return general.NewLogger(nodeLoggerName, logLevel, outputs, viper.GetString("logger.timelayout")), outputs
+	return global.NewLogger(nodeLoggerName, logLevel, outputs, viper.GetString("logger.timelayout")), outputs
 }

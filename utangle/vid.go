@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/core"
-	"github.com/lunfardo314/proxima/general"
+	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/util"
@@ -610,7 +610,7 @@ type _mutationData struct {
 	outputMutations     map[core.OutputID]*core.Output
 	addTxMutations      []*core.TransactionID
 	visited             set.Set[*WrappedTx]
-	baselineStateReader general.StateReader
+	baselineStateReader global.StateReader
 }
 
 func (vid *WrappedTx) _collectMutationData(md *_mutationData) (conflict WrappedOutput) {
@@ -695,7 +695,7 @@ func (vid *WrappedTx) getBranchMutations(ut *UTXOTangle) (*multistate.Mutations,
 	return ret.Sort(), WrappedOutput{}
 }
 
-func (vid *WrappedTx) _collectBaselineOutputs(baselineStateReader general.StateReader, visited set.Set[*WrappedTx], baselineOutputs set.Set[WrappedOutput]) {
+func (vid *WrappedTx) _collectBaselineOutputs(baselineStateReader global.StateReader, visited set.Set[*WrappedTx], baselineOutputs set.Set[WrappedOutput]) {
 	if visited.Contains(vid) {
 		return
 	}
@@ -834,7 +834,7 @@ func (vid *WrappedTx) PastTrackLines(prefix ...string) *lines.Lines {
 	return ret
 }
 
-func MergePastTracks(getStore func() general.StateStore, vids ...*WrappedTx) (ret PastTrack, conflict *WrappedOutput) {
+func MergePastTracks(getStore func() global.StateStore, vids ...*WrappedTx) (ret PastTrack, conflict *WrappedOutput) {
 	if len(vids) == 0 {
 		return
 	}

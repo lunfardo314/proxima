@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/lunfardo314/proxima/core"
-	"github.com/lunfardo314/proxima/general"
+	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/unitrie/common"
@@ -14,7 +14,7 @@ import (
 // InitLedgerState initializes origin ledger state in the empty store
 // Writes initial supply and origin stem outputs. Plus writes root record into the DB
 // Returns root commitment to the genesis ledger state and genesis chainID
-func InitLedgerState(par StateIdentityData, store general.StateStore) (core.ChainID, common.VCommitment) {
+func InitLedgerState(par StateIdentityData, store global.StateStore) (core.ChainID, common.VCommitment) {
 	batch := store.BatchedWriter()
 	emptyRoot := immutable.MustInitRoot(batch, core.CommitmentModel, par.Bytes())
 	err := batch.Commit()
@@ -88,7 +88,7 @@ func StemOutputID(e core.TimeSlot) (ret core.OutputID) {
 }
 
 // ScanGenesisState TODO more checks
-func ScanGenesisState(stateStore general.StateStore) (*StateIdentityData, common.VCommitment, error) {
+func ScanGenesisState(stateStore global.StateStore) (*StateIdentityData, common.VCommitment, error) {
 	var genesisRootRecord multistate.RootRecord
 
 	// expecting a single branch in the genesis state
