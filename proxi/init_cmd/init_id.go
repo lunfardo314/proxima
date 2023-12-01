@@ -10,7 +10,12 @@ import (
 	"github.com/spf13/viper"
 )
 
-const ledgerIDFileName = "proxima.id.yaml"
+// TODO create default initial distribution
+
+const (
+	ledgerIDFileName            = "proxi.genesis.id.yaml"
+	initialDistributionFileName = "proxi.genesis.distribute.yaml"
+)
 
 func initIDCmd() *cobra.Command {
 	initLedgerIDCmd := &cobra.Command{
@@ -40,6 +45,6 @@ func runInitLedgerIDCommand(_ *cobra.Command, _ []string) {
 	yamlData := id.YAML()
 	err := os.WriteFile(ledgerIDFileName, yamlData, 0666)
 	glb.AssertNoError(err)
-	glb.Infof("new ledger identity data has been stored in file '%s':", ledgerIDFileName)
+	glb.Infof("new ledger identity data has been stored in the file '%s':", ledgerIDFileName)
 	glb.Infof("--------------\n%s--------------", string(yamlData))
 }

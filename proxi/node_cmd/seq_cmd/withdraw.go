@@ -31,11 +31,11 @@ func initSeqWithdrawCmd() *cobra.Command {
 }
 
 func runSeqWithdrawCmd(_ *cobra.Command, args []string) {
-	seqID := glb.GetOwnSequencerID()
-	glb.Assertf(seqID != nil, "can't get own sequencer ID")
-	glb.Infof("sequencer ID (source): %s", seqID.String())
+	walletData := glb.GetWalletData()
+	glb.Assertf(walletData.Sequencer != nil, "can't get own sequencer ID")
+	glb.Infof("sequencer ID (source): %s", walletData.Sequencer.String())
 
-	md, err := getClient().GetMilestoneDataFromHeaviestState(*seqID)
+	md, err := getClient().GetMilestoneDataFromHeaviestState(*walletData.Sequencer)
 	glb.AssertNoError(err)
 
 	// TODO ensure at least storage deficit
@@ -44,7 +44,6 @@ func runSeqWithdrawCmd(_ *cobra.Command, args []string) {
 		feeAmount = md.MinimumFee
 	}
 
-	walletData := glb.GetWalletData()
 	glb.Infof("wallet account is: %s", walletData.Account.String())
 	targetLock := glb.MustGetTarget()
 
@@ -70,7 +69,7 @@ func runSeqWithdrawCmd(_ *cobra.Command, args []string) {
 	}
 
 	prompt := fmt.Sprintf("withdraw %s from %s to the target %s?",
-		util.GoThousands(amount), seqID.Short(), targetLock.String())
+		util.GoThousands(amount), walletData.Sequencer.Short(), targetLock.String())
 	if !glb.YesNoPrompt(prompt, false) {
 		glb.Infof("exit")
 		return
@@ -86,7 +85,7 @@ func runSeqWithdrawCmd(_ *cobra.Command, args []string) {
 
 	transferData := txbuilder.NewTransferData(walletData.PrivateKey, walletData.Account, core.LogicalTimeNow()).
 		WithAmount(feeAmount).
-		WithTargetLock(core.ChainLockFromChainID(*seqID)).
+		WithTargetLock(core.ChainLockFromChainID(*walletData.Sequencer)).
 		MustWithInputs(walletOutputs...).
 		WithSender().
 		WithConstraint(cmdConstr)

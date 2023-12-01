@@ -10,7 +10,14 @@ import (
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/proxima/util/lines"
+	"gopkg.in/yaml.v2"
 )
+
+type LockBalanceYAMLable struct {
+	LockString string `yaml:"lock"`
+	Balance    uint64 `yaml:"balance"`
+}
 
 func MustDistributeInitialSupply(stateStore global.StateStore, originPrivateKey ed25519.PrivateKey, genesisDistribution []core.LockBalance) []byte {
 	stateID, genesisRoot, err := genesis.ScanGenesisState(stateStore)
@@ -92,4 +99,31 @@ func DistributeInitialSupply(stateStore global.StateStore, originPrivateKey ed25
 		return nil, fmt.Errorf("DistributeInitialSupply: %v", err)
 	}
 	return ret, nil
+}
+
+func InitialDistributionFromYAMLData(yamlData []byte) ([]core.LockBalance, error) {
+	yamlAble := make([]LockBalanceYAMLable, 0)
+	if err := yaml.Unmarshal(yamlData, &yamlData); err != nil {
+		return nil, err
+	}
+	ret := make([]core.LockBalance, len(yamlAble))
+	for i := range ret {
+		lck, err := core.LockFromSource(yamlAble[i].LockString)
+		if err != nil {
+			return nil, err
+		}
+		ret = append(ret, core.LockBalance{
+			Lock:    lck,
+			Balance: yamlAble[i].Balance,
+		})
+	}
+	return ret, nil
+}
+
+func DistributionListToLines(lst []core.LockBalance, prefix ...string) *lines.Lines {
+	ret := lines.New(prefix...)
+	for i := range lst {
+		ret.Add("%s : %s", lst[i].Lock.String(), util.GoThousands(lst[i].Balance))
+	}
+	return ret
 }

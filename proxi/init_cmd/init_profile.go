@@ -31,6 +31,8 @@ const profileTemplate = `# proxi profile
 wallet:
     private_key: %s
     account: %s
+    # own sequencer (controlled by the private key)
+	sequencer: 
 api:
     endpoint:
 `

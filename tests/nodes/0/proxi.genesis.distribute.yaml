@@ -1,0 +1,6 @@
+# initial distribution of genesis supply. At least the genesis controller address must
+# receive some tokens ij order to be able to bootstrap the ledger by withdrawing token from the
+# bootstrap chain. The initial distribution transaction will be written to the tx store
+-
+  lock: addressED25519(0x3faf090d38f18ea211936b8bcf19b7b30cdcb8e224394a5c30f9ba644f8bb2fb)
+  balance: 10000
