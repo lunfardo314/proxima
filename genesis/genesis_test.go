@@ -54,7 +54,7 @@ func TestInitOrigin(t *testing.T) {
 	require.NoError(t, err)
 	require.EqualValues(t, InitialSupplyOutputID(id.GenesisTimeSlot), initSupplyOut.ID)
 
-	require.EqualValues(t, id.Bytes(), rdr.MustStateIdentityBytes())
+	require.EqualValues(t, id.Bytes(), rdr.MustLedgerIdentityBytes())
 }
 
 func TestYAML(t *testing.T) {

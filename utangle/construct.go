@@ -49,6 +49,14 @@ func newVirtualBranchTx(br *multistate.BranchData) *VirtualTransaction {
 	return v
 }
 
+func (ut *UTXOTangle) Contains(txid *core.TransactionID) bool {
+	ut.mutex.RLock()
+	defer ut.mutex.RUnlock()
+
+	_, found := ut.vertices[*txid]
+	return found
+}
+
 // attach attaches transaction to the utxo tangle. It must be called from within global utangle lock critical section
 // If conflict occurs, newly propagated forks, if any, will do no harm.
 // The transaction is marked orphaned, so it will be ignored in the future cones

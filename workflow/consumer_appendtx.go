@@ -47,8 +47,15 @@ func (w *Workflow) initAppendTxConsumer() {
 
 func (c *AppendTxConsumer) consume(inp *AppendTxConsumerInputData) {
 	//c.setTrace(inp.Source == TransactionSourceTypeAPI)
+	//inp.eventCallback(AppendTxConsumerName+".in", inp.Tx)
 
-	inp.eventCallback(AppendTxConsumerName+".in", inp.Tx)
+	// TODO due to unclear reasons, sometimes repeating transactions reach this point and attach panics
+	// In order to prevent this (rare) panic we do this check
+	if c.glb.utxoTangle.Contains(inp.Tx.ID()) {
+		c.Log().Warnf("repeating transaction %s", inp.Tx.IDShort())
+		return
+	}
+
 	// append to the UTXO tangle
 	vid, err := c.glb.utxoTangle.AppendVertex(inp.Vertex, utangle.BypassValidation)
 	if err != nil {

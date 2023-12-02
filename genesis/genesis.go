@@ -14,7 +14,7 @@ import (
 // InitLedgerState initializes origin ledger state in the empty store
 // Writes initial supply and origin stem outputs. Plus writes root record into the DB
 // Returns root commitment to the genesis ledger state and genesis chainID
-func InitLedgerState(par StateIdentityData, store global.StateStore) (core.ChainID, common.VCommitment) {
+func InitLedgerState(par LedgerIdentityData, store global.StateStore) (core.ChainID, common.VCommitment) {
 	batch := store.BatchedWriter()
 	emptyRoot := immutable.MustInitRoot(batch, core.CommitmentModel, par.Bytes())
 	err := batch.Commit()
@@ -88,7 +88,7 @@ func StemOutputID(e core.TimeSlot) (ret core.OutputID) {
 }
 
 // ScanGenesisState TODO more checks
-func ScanGenesisState(stateStore global.StateStore) (*StateIdentityData, common.VCommitment, error) {
+func ScanGenesisState(stateStore global.StateStore) (*LedgerIdentityData, common.VCommitment, error) {
 	var genesisRootRecord multistate.RootRecord
 
 	// expecting a single branch in the genesis state
@@ -108,7 +108,7 @@ func ScanGenesisState(stateStore global.StateStore) (*StateIdentityData, common.
 
 	branchData := multistate.FetchBranchDataByRoot(stateStore, genesisRootRecord)
 	rdr := multistate.MustNewSugaredReadableState(stateStore, branchData.Root)
-	stateID := MustStateIdentityDataFromBytes(rdr.MustStateIdentityBytes())
+	stateID := MustLedgerIdentityDataFromBytes(rdr.MustLedgerIdentityBytes())
 
 	genesisOid := InitialSupplyOutputID(stateID.GenesisTimeSlot)
 	out, err := rdr.GetOutput(&genesisOid)

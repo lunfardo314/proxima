@@ -18,6 +18,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/peerstore"
 	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
 	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/genesis"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/multiformats/go-multiaddr"
@@ -29,6 +30,7 @@ import (
 
 type (
 	Config struct {
+		LedgerIDHash     [32]byte
 		HostIDPrivateKey ed25519.PrivateKey
 		HostID           peer.ID
 		HostPort         int
@@ -156,11 +158,14 @@ func readPeeringConfig() (*Config, error) {
 
 func NewPeersFromConfig(ctx context.Context, logLevel zapcore.Level, logOutputs []string) (*Peers, error) {
 	cfg, err := readPeeringConfig()
-	cfg.LogLevel = logLevel
-	cfg.LogOutputs = logOutputs
 	if err != nil {
 		return nil, err
 	}
+
+	cfg.LogLevel = logLevel
+	cfg.LogOutputs = logOutputs
+	cfg.LedgerIDHash = genesis.GetGlobalLedgerIdentity().Hash()
+
 	return New(cfg, ctx)
 }
 

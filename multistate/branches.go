@@ -173,6 +173,12 @@ func FetchRootRecord(store global.StateStore, branchTxID core.TransactionID) (re
 	return
 }
 
+func FetchAnyLatestRootRecord(store global.StateStore) RootRecord {
+	recs := FetchRootRecords(store, FetchLatestSlot(store))
+	util.Assertf(len(recs) > 0, "len(recs)>0")
+	return recs[0]
+}
+
 func FetchRootRecordsNSlotsBack(store global.StateStore, nBack int) []RootRecord {
 	latestSlot := FetchLatestSlot(store)
 	if core.TimeSlot(nBack) >= latestSlot {

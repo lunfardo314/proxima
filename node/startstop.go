@@ -98,6 +98,12 @@ func (p *ProximaNode) startMultiStateDB() {
 	p.multiStateStore = badger_adaptor.New(bdb)
 	p.log.Infof("opened multi-state DB '%s", dbname)
 
+	ledgerID := genesis.MustLedgerIdentityDataFromBytes(multistate.LedgerIdentityBytesFromStore(p.multiStateStore))
+	// saving globally for faster access anywhere in the code
+	genesis.SaveGlobalLedgerIdentityData(ledgerID)
+
+	p.log.Infof("Ledger identity:\n%s", ledgerID.Lines("       ").String())
+
 	go func() {
 		<-p.ctx.Done()
 
@@ -140,7 +146,7 @@ func mustReadStateIdentity(store global.StateStore) {
 	util.AssertNoError(err)
 
 	// it will panic if constraint libraries are incompatible
-	genesis.MustStateIdentityDataFromBytes(stateReader.MustStateIdentityBytes())
+	genesis.MustLedgerIdentityDataFromBytes(stateReader.MustLedgerIdentityBytes())
 }
 
 func (p *ProximaNode) loadUTXOTangle() {

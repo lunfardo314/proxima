@@ -14,12 +14,13 @@ import (
 const traceHeartbeat = false
 
 type heartbeatInfo struct {
-	clock      time.Time
-	hasTxStore bool
+	clock        time.Time
+	ledgerIDHash [32]byte // TODO include ledger identity into the hb message. To reject peers with wrong ledger identity
+	hasTxStore   bool
 }
 
 func heartbeatInfoFromBytes(data []byte) (heartbeatInfo, error) {
-	if len(data) != 9 {
+	if len(data) != 8+1+32 {
 		return heartbeatInfo{}, fmt.Errorf("heartbeatInfoFromBytes: wrong data len")
 	}
 	nano := int64(binary.BigEndian.Uint64(data[:8]))
@@ -31,23 +32,26 @@ func heartbeatInfoFromBytes(data []byte) (heartbeatInfo, error) {
 			return heartbeatInfo{}, fmt.Errorf("heartbeatInfoFromBytes: wrong data")
 		}
 	}
-	return heartbeatInfo{
+	ret := heartbeatInfo{
 		clock:      time.Unix(0, nano),
 		hasTxStore: hasTxStore,
-	}, nil
+	}
+	copy(ret.ledgerIDHash[:], data[9:9+32])
+	return ret, nil
 }
 
-func (h1 *heartbeatInfo) Bytes() []byte {
+func (hi *heartbeatInfo) Bytes() []byte {
 	var buf bytes.Buffer
 	var timeNanoBin [8]byte
 
-	binary.BigEndian.PutUint64(timeNanoBin[:], uint64(h1.clock.UnixNano()))
+	binary.BigEndian.PutUint64(timeNanoBin[:], uint64(hi.clock.UnixNano()))
 	buf.Write(timeNanoBin[:])
 	var boolBin byte
-	if h1.hasTxStore {
+	if hi.hasTxStore {
 		boolBin = 0xff
 	}
 	buf.WriteByte(boolBin)
+	buf.Write(hi.ledgerIDHash[:])
 	return buf.Bytes()
 }
 
@@ -160,20 +164,28 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 	if err != nil {
 		ps.log.Errorf("error while reading message from peer %s: %v", id.String(), err)
 		_ = stream.Reset()
+		// TODO prevent communication with the peer for some time
 		return
 	}
-	defer stream.Close()
 
+	if hbInfo.ledgerIDHash != ps.cfg.LedgerIDHash {
+		ps.log.Warnf("incompatible ledger ID hash from %s", id.String())
+		_ = stream.Reset()
+		// TODO prevent communication with the peer for some time
+		return
+
+	}
 	if clockOk, behind := checkRemoteClockTolerance(hbInfo.clock); !clockOk {
 		b := "ahead"
 		if behind {
 			b = "behind"
 		}
 		ps.log.Warnf("clock of the peer %s is %s of the local clock more than tolerance interval %v", id.String(), b, clockTolerance)
-		// TODO do something with remote peer with unsynced clock
-		// for example mark unworkable and then retry after 1 min or so
+		_ = stream.Reset()
+		// TODO prevent communication with the peer for some time
 		return
 	}
+	defer stream.Close()
 
 	ps.trace("peer %s is alive: %v, has txStore: %v", ShortPeerIDString(id), p.isAlive(), hbInfo.hasTxStore)
 
@@ -195,8 +207,9 @@ func (ps *Peers) sendHeartbeatToPeer(id peer.ID) {
 	defer stream.Close()
 
 	hbInfo := heartbeatInfo{
-		clock:      time.Now(),
-		hasTxStore: true,
+		clock:        time.Now(),
+		ledgerIDHash: ps.cfg.LedgerIDHash,
+		hasTxStore:   true,
 	}
 	_ = writeFrame(stream, hbInfo.Bytes())
 }

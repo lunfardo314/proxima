@@ -39,11 +39,14 @@ func runDbTreeCmd(_ *cobra.Command, args []string) {
 
 	stateStore := badger_adaptor.New(stateDb)
 
+	numSlotsBack := defaultMaxSlotsBack
 	if len(args) == 0 {
-		utangle.SaveTree(stateStore, outFile, defaultMaxSlotsBack)
+		utangle.SaveTree(stateStore, outFile, numSlotsBack)
 	} else {
-		slots, err := strconv.Atoi(args[0])
+		var err error
+		numSlotsBack, err = strconv.Atoi(args[0])
 		glb.AssertNoError(err)
-		utangle.SaveTree(stateStore, outFile, slots)
+		utangle.SaveTree(stateStore, outFile, numSlotsBack)
 	}
+	glb.Infof("branch tree has been store in .DOT format in the file '%s', %d slots back", outFile, numSlotsBack)
 }

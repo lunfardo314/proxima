@@ -14,13 +14,14 @@ import (
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lazybytes"
 	"github.com/lunfardo314/proxima/util/lines"
+	"golang.org/x/crypto/blake2b"
 	"gopkg.in/yaml.v2"
 )
 
-// StateIdentityData is provided at genesis and will remain immutable during lifetime
+// LedgerIdentityData is provided at genesis and will remain immutable during lifetime
 // All integers are serialized as big-endian
 type (
-	StateIdentityData struct {
+	LedgerIdentityData struct {
 		// arbitrary string up 255 bytes
 		Description string
 		// initial supply of tokens
@@ -39,8 +40,8 @@ type (
 		CoreLedgerConstraintsHash [32]byte
 	}
 
-	// stateIdentityDataYAMLable structure for canonic yamlAble marshaling
-	stateIdentityDataYAMLable struct {
+	// ledgerIdentityDataYAMLable structure for canonic yamlAble marshaling
+	ledgerIdentityDataYAMLable struct {
 		Description                string `yaml:"description"`
 		InitialSupply              uint64 `yaml:"initial_supply"`
 		GenesisControllerPublicKey string `yaml:"genesis_controller_public_key"`
@@ -60,7 +61,7 @@ const (
 	StemOutputIndex          = byte(1)
 )
 
-func (id *StateIdentityData) Bytes() []byte {
+func (id *LedgerIdentityData) Bytes() []byte {
 	var supplyBin [8]byte
 	binary.BigEndian.PutUint64(supplyBin[:], id.InitialSupply)
 	var baselineTimeBin [8]byte
@@ -83,7 +84,11 @@ func (id *StateIdentityData) Bytes() []byte {
 	).Bytes()
 }
 
-func MustStateIdentityDataFromBytes(data []byte) *StateIdentityData {
+func (id *LedgerIdentityData) Hash() [32]byte {
+	return blake2b.Sum256(id.Bytes())
+}
+
+func MustLedgerIdentityDataFromBytes(data []byte) *LedgerIdentityData {
 	arr, err := lazybytes.ParseArrayFromBytesReadOnly(data, 8)
 	util.AssertNoError(err)
 	publicKey := ed25519.PublicKey(arr.At(2))
@@ -110,7 +115,7 @@ func MustStateIdentityDataFromBytes(data []byte) *StateIdentityData {
 	msg = "node assumes time ticks per slot different from state assumption: expected %d, got %d"
 	util.Assertf(maxTick[0]+1 == core.TimeTicksPerSlot, msg, core.TimeTicksPerSlot, maxTick[0]+1)
 
-	ret := &StateIdentityData{
+	ret := &LedgerIdentityData{
 		Description:                string(arr.At(0)),
 		InitialSupply:              binary.BigEndian.Uint64(arr.At(1)),
 		GenesisControllerPublicKey: publicKey,
@@ -123,24 +128,24 @@ func MustStateIdentityDataFromBytes(data []byte) *StateIdentityData {
 	return ret
 }
 
-func (id *StateIdentityData) GenesisControlledAddress() core.AddressED25519 {
+func (id *LedgerIdentityData) GenesisControlledAddress() core.AddressED25519 {
 	return core.AddressED25519FromPublicKey(id.GenesisControllerPublicKey)
 }
 
-func (id *StateIdentityData) TimeTicksPerTimeSlot() int {
+func (id *LedgerIdentityData) TimeTicksPerTimeSlot() int {
 	return int(id.MaxTimeTickValueInTimeSlot) + 1
 }
 
-func (id *StateIdentityData) OriginChainID() core.ChainID {
+func (id *LedgerIdentityData) OriginChainID() core.ChainID {
 	oid := InitialSupplyOutputID(id.GenesisTimeSlot)
 	return core.OriginChainID(&oid)
 }
 
-func (id *StateIdentityData) String() string {
+func (id *LedgerIdentityData) String() string {
 	return id.Lines().String()
 }
 
-func (id *StateIdentityData) Lines(prefix ...string) *lines.Lines {
+func (id *LedgerIdentityData) Lines(prefix ...string) *lines.Lines {
 	originChainID := id.OriginChainID()
 	initialSupplyOutputID := InitialSupplyOutputID(id.GenesisTimeSlot)
 	genesisStemOutputID := StemOutputID(id.GenesisTimeSlot)
@@ -158,9 +163,9 @@ func (id *StateIdentityData) Lines(prefix ...string) *lines.Lines {
 		Add("Genesis stem output ID: %s", genesisStemOutputID.String())
 }
 
-func (id *StateIdentityData) yamlAble() *stateIdentityDataYAMLable {
+func (id *LedgerIdentityData) yamlAble() *ledgerIdentityDataYAMLable {
 	chainID := id.OriginChainID()
-	return &stateIdentityDataYAMLable{
+	return &ledgerIdentityDataYAMLable{
 		Description:                id.Description,
 		InitialSupply:              id.InitialSupply,
 		GenesisControllerPublicKey: hex.EncodeToString(id.GenesisControllerPublicKey),
@@ -174,7 +179,7 @@ func (id *StateIdentityData) yamlAble() *stateIdentityDataYAMLable {
 	}
 }
 
-func (id *StateIdentityData) YAML() []byte {
+func (id *LedgerIdentityData) YAML() []byte {
 	return id.yamlAble().YAML()
 }
 
@@ -187,7 +192,7 @@ const stateIDComment = `# This file contains Proxima ledger identity data.
 # Values 'genesis_controller_address' and 'bootstrap_chain_id' are computed values used for control
 `
 
-func (id *stateIdentityDataYAMLable) YAML() []byte {
+func (id *ledgerIdentityDataYAMLable) YAML() []byte {
 	var buf bytes.Buffer
 	data, err := yaml.Marshal(id)
 	util.AssertNoError(err)
@@ -196,9 +201,9 @@ func (id *stateIdentityDataYAMLable) YAML() []byte {
 	return buf.Bytes()
 }
 
-func (id *stateIdentityDataYAMLable) stateIdentityData() (*StateIdentityData, error) {
+func (id *ledgerIdentityDataYAMLable) stateIdentityData() (*LedgerIdentityData, error) {
 	var err error
-	ret := &StateIdentityData{}
+	ret := &LedgerIdentityData{}
 	ret.Description = id.Description
 	ret.InitialSupply = id.InitialSupply
 	ret.GenesisControllerPublicKey, err = hex.DecodeString(id.GenesisControllerPublicKey)
@@ -232,8 +237,8 @@ func (id *stateIdentityDataYAMLable) stateIdentityData() (*StateIdentityData, er
 	return ret, nil
 }
 
-func StateIdentityDataFromYAML(yamlData []byte) (*StateIdentityData, error) {
-	yamlAble := &stateIdentityDataYAMLable{}
+func StateIdentityDataFromYAML(yamlData []byte) (*LedgerIdentityData, error) {
+	yamlAble := &ledgerIdentityDataYAMLable{}
 	if err := yaml.Unmarshal(yamlData, &yamlAble); err != nil {
 		return nil, err
 	}
@@ -242,7 +247,7 @@ func StateIdentityDataFromYAML(yamlData []byte) (*StateIdentityData, error) {
 
 const DefaultSupply = 1_000_000_000_000
 
-func DefaultIdentityData(privateKey ed25519.PrivateKey, slot ...core.TimeSlot) *StateIdentityData {
+func DefaultIdentityData(privateKey ed25519.PrivateKey, slot ...core.TimeSlot) *LedgerIdentityData {
 	// creating origin 1 slot before now. More convenient for the workflow tests
 	var sl core.TimeSlot
 	if len(slot) > 0 {
@@ -250,7 +255,7 @@ func DefaultIdentityData(privateKey ed25519.PrivateKey, slot ...core.TimeSlot) *
 	} else {
 		sl = core.LogicalTimeNow().TimeSlot()
 	}
-	return &StateIdentityData{
+	return &LedgerIdentityData{
 		CoreLedgerConstraintsHash:  easyfl.LibraryHash(),
 		Description:                fmt.Sprintf("Proxima prototype version %s", global.Version),
 		InitialSupply:              DefaultSupply,

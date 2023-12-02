@@ -5,6 +5,7 @@ import (
 
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/global"
+	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/unitrie/common"
 	"github.com/lunfardo314/unitrie/immutable"
@@ -52,6 +53,13 @@ const (
 	PartitionChainID
 	PartitionCommittedTransactionID
 )
+
+func LedgerIdentityBytesFromStore(store global.StateStore) []byte {
+	rr := FetchAnyLatestRootRecord(store)
+	trie, err := immutable.NewTrieReader(core.CommitmentModel, store, rr.Root, 0)
+	glb.AssertNoError(err)
+	return trie.Get(nil)
+}
 
 // NewReadable creates read-only ledger state with the given root
 func NewReadable(store common.KVReader, root common.VCommitment, clearCacheAtSize ...int) (*Readable, error) {
@@ -205,7 +213,7 @@ func (r *Readable) GetStem() (core.TimeSlot, []byte) {
 	return retSlot, retBytes
 }
 
-func (r *Readable) MustStateIdentityBytes() []byte {
+func (r *Readable) MustLedgerIdentityBytes() []byte {
 	return r.trie.Get(nil)
 }
 

@@ -58,7 +58,7 @@ type (
 )
 
 const (
-	keepNotSolid = 10 * time.Second // only for testing. Must be longer in reality
+	keepNotSolid = 30 * time.Second // only for testing. Must be longer in reality
 )
 
 func (w *Workflow) initSolidifyConsumer() {

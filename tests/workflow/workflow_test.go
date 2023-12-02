@@ -30,7 +30,7 @@ import (
 )
 
 type workflowTestData struct {
-	initLedgerStatePar      genesis.StateIdentityData
+	initLedgerStatePar      genesis.LedgerIdentityData
 	distributionPrivateKeys []ed25519.PrivateKey
 	distributionAddrs       []core.AddressED25519
 	faucetOutputs           []*core.OutputWithID
@@ -524,7 +524,7 @@ type multiChainTestData struct {
 	faucetPrivKey      ed25519.PrivateKey
 	faucetAddr         core.AddressED25519
 	faucetOrigin       *core.OutputWithID
-	sPar               genesis.StateIdentityData
+	sPar               genesis.LedgerIdentityData
 	originBranchTxid   core.TransactionID
 	txBytesChainOrigin []byte
 	txBytes            [][]byte // with chain origins
@@ -577,7 +577,7 @@ func initMultiChainTest(t *testing.T, nChains int, verbose bool, secondsInThePas
 
 	stateReader := ret.ut.HeaviestStateForLatestTimeSlot()
 
-	t.Logf("state identity:\n%s", genesis.MustStateIdentityDataFromBytes(stateReader.MustStateIdentityBytes()).String())
+	t.Logf("state identity:\n%s", genesis.MustLedgerIdentityDataFromBytes(stateReader.MustLedgerIdentityBytes()).String())
 	t.Logf("origin branch txid: %s", ret.originBranchTxid.StringShort())
 	t.Logf("%s", ret.ut.Info())
 
