@@ -60,6 +60,7 @@ func (c *PullTxConsumer) consume(inp *PullTxData) {
 		if err := c.glb.TransactionIn(txBytes, WithTransactionSourceType(TransactionSourceTypeStore)); err != nil {
 			c.Log().Errorf("invalid transaction from txStore %s: '%v'", inp.TxID.StringShort(), err)
 		}
+		c.tracePull("transaction %s fetched from txBytesStore", inp.TxID.StringShort())
 		return
 	}
 	// transaction is not in the store. Add it to the 'pullList' set
@@ -108,12 +109,11 @@ func (c *PullTxConsumer) stopPulling(txid *core.TransactionID) bool {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
-	c.tracePull("stopPulling: %s", func() any { return txid.StringShort() })
-
 	_, inTheList := c.pullList[*txid]
 	if inTheList {
 		c.pullList[*txid] = pullInfo{stopped: true}
 	}
+	c.tracePull("stopPulling: %s. Found: %v", func() any { return txid.StringShort() }, inTheList)
 	return inTheList
 }
 

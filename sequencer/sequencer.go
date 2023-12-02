@@ -200,7 +200,10 @@ func (seq *Sequencer) Run(parentCtx ...context.Context) {
 		}()
 
 		seq.mainLoop()
-	}, common.ErrDBUnavailable)
+	}, func(err error) {
+		seq.log.Fatal(err)
+	},
+		common.ErrDBUnavailable)
 }
 
 func (seq *Sequencer) Stop() {

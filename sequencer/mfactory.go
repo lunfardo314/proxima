@@ -346,7 +346,10 @@ func (mf *milestoneFactory) startProposerWorkers(targetTime core.LogicalTime) {
 			task.trace("RUN '%s' proposer for the target %s", strategyName, targetTime.String())
 			util.RunWrappedRoutine(mf.seqName+"::"+task.name(), func() {
 				mf.runProposerTask(task)
-			}, common.ErrDBUnavailable)
+			}, func(err error) {
+				mf.log.Fatal(err)
+			},
+				common.ErrDBUnavailable)
 		} else {
 			mf.trace("SKIP '%s' proposer for the target %s", strategyName, targetTime.String())
 		}
