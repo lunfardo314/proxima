@@ -9,3 +9,16 @@ api:
 tag-along:
     sequencer_id: 1e8e129701aeea94c50e24864a8f950c4efd7a4a1a1cf12ed0a519bfa6fc0e84
     fee: 500
+spammer:
+    bundle_size: 10
+    max_duration_minutes: 0
+    max_transactions: 0
+    output_amount: 1000
+    pace: 3
+    scenario: standard
+    submit_nowait: false
+    tag_along:
+        fee: 500
+        sequencer: 1e8e129701aeea94c50e24864a8f950c4efd7a4a1a1cf12ed0a519bfa6fc0e84
+    # target key 1
+    target: addressED25519(0xaa401c8c6a9deacf479ab2209c07c01a27bd1eeecf0d7eaa4180b8049c6190d0)

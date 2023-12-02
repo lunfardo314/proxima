@@ -43,7 +43,7 @@ const fetchLastNTimeSlotsUponStartup = 5
 
 func startTipPool(seqName string, wrk *workflow.Workflow, seqID core.ChainID, logLevel zapcore.Level) (*sequencerTipPool, error) {
 	// must be finalized somewhere
-	name := fmt.Sprintf("[%sT-%s]", seqName, seqID.VeryShort())
+	name := fmt.Sprintf("[%sT-%s]", seqName, seqID.StringVeryShort())
 	accountAddress := core.CloneAccountable(seqID.AsChainLock())
 	ret := &sequencerTipPool{
 		glb:              wrk,

@@ -437,7 +437,7 @@ func (tx *Transaction) SequencerInfoString() string {
 	}
 	seqMeta := tx.SequencerTransactionData()
 	return fmt.Sprintf("SEQ(%s), in: %d, out:%d, amount on chain: %d, stem output: %v",
-		seqMeta.SequencerID.VeryShort(),
+		seqMeta.SequencerID.StringVeryShort(),
 		tx.NumInputs(),
 		tx.NumProducedOutputs(),
 		seqMeta.SequencerOutputData.AmountOnChain,
@@ -457,7 +457,7 @@ func (tx *Transaction) StemOutputData() *core.StemLock {
 }
 
 func (m *SequencerTransactionData) Short() string {
-	return fmt.Sprintf("SEQ(%s)", m.SequencerID.VeryShort())
+	return fmt.Sprintf("SEQ(%s)", m.SequencerID.StringVeryShort())
 }
 
 func (tx *Transaction) SequencerOutput() *core.OutputWithID {

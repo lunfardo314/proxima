@@ -50,9 +50,9 @@ func displayInclusionState(inclusion []api.InclusionData, inSec ...float64) {
 	scoreAll, scorePercTotal, scorePercDominating := glb.InclusionScore(inclusion, genesis.DefaultSupply)
 	inSecStr := ""
 	if len(inSec) > 0 {
-		inSecStr = fmt.Sprintf(" in %.2f sec", inSec[0])
+		inSecStr = fmt.Sprintf(" in %.1f sec", inSec[0])
 	}
-	glb.Infof("Inclusion score%s: %d, %d, %d", inSecStr, scoreAll, scorePercTotal, scorePercDominating)
+	glb.Infof("Inclusion score%s: num branches: %d, %d%% of all, %d%% of dominating", inSecStr, scoreAll, scorePercTotal, scorePercDominating)
 	yn := ""
 	for i := range inclusion {
 		if inclusion[i].Included {

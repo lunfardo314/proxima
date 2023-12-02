@@ -245,12 +245,12 @@ func (c *proposerTaskGeneric) extensionChoicesInEndorsementTargetPastCone(endors
 	if errors.Is(err, multistate.ErrNotFound) {
 		// cannot find own seqID in the state of anotherSeqID. The tree is empty
 		c.trace("cannot find own seqID %s in the state of another seq %s (%s). The tree is empty",
-			c.factory.tipPool.chainID.VeryShort(), endorsementTarget.IDShort(), anotherSeqID.VeryShort())
+			c.factory.tipPool.chainID.StringVeryShort(), endorsementTarget.IDShort(), anotherSeqID.StringVeryShort())
 		return nil
 	}
 	util.AssertNoError(err)
 	c.trace("found own seqID %s in the state of another seq %s (%s)",
-		c.factory.tipPool.chainID.VeryShort(), endorsementTarget.IDShort(), anotherSeqID.VeryShort())
+		c.factory.tipPool.chainID.StringVeryShort(), endorsementTarget.IDShort(), anotherSeqID.StringVeryShort())
 
 	rootWrapped, ok, _ := c.factory.utangle.GetWrappedOutput(&rootOutput.ID, rdr)
 	if !ok {

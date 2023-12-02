@@ -3,6 +3,9 @@ package glb
 import "github.com/lunfardo314/proxima/api"
 
 // InclusionScore returns
+// - total number of braches available
+// - percentage of branches from total into which it is included
+// - percentage pf branches from dominating into which it is included. Dominating branch is with coverage > totalSupply/2
 func InclusionScore(inclusionData []api.InclusionData, totalSupply uint64) (totalBranches int, percOfTotal int, percOfDominating int) {
 	totalBranches = len(inclusionData)
 	if totalBranches == 0 {

@@ -59,7 +59,7 @@ func (id *ChainID) Short() string {
 	return fmt.Sprintf("$/%s..", hex.EncodeToString(id[:6]))
 }
 
-func (id *ChainID) VeryShort() string {
+func (id *ChainID) StringVeryShort() string {
 	return fmt.Sprintf("$/%s..", hex.EncodeToString(id[:3]))
 }
 

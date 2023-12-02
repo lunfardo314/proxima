@@ -78,7 +78,7 @@ func (b *backtrackProposer2) generateCandidate(extend utangle.WrappedOutput, end
 
 	b.trace("trying to extend %s with endorsement target %s (ms %s)",
 		func() any { return extend.IDShort() },
-		func() any { endorseSeqID := endorse.MustSequencerID(); return endorseSeqID.VeryShort() },
+		func() any { endorseSeqID := endorse.MustSequencerID(); return endorseSeqID.StringVeryShort() },
 		func() any { return endorse.IDShort() })
 
 	feeOutputsToConsume, conflict := b.selectInputs(extend, endorse)

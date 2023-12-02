@@ -91,7 +91,7 @@ func New(glb *workflow.Workflow, seqID core.ChainID, controllerKey ed25519.Priva
 	for _, opt := range opts {
 		opt(&cfg)
 	}
-	logName := fmt.Sprintf("[%s-%s]", cfg.SequencerName, seqID.VeryShort())
+	logName := fmt.Sprintf("[%s-%s]", cfg.SequencerName, seqID.StringVeryShort())
 
 	ret := &Sequencer{
 		glb:           glb,

@@ -71,7 +71,7 @@ const (
 )
 
 func (seq *Sequencer) createMilestoneFactory() error {
-	logname := fmt.Sprintf("[%sF-%s]", seq.config.SequencerName, seq.chainID.VeryShort())
+	logname := fmt.Sprintf("[%sF-%s]", seq.config.SequencerName, seq.chainID.StringVeryShort())
 	log := global.NewLogger(logname, seq.config.LogLevel, seq.config.LogOutputs, seq.config.LogTimeLayout)
 
 	chainOut := seq.config.StartOutput

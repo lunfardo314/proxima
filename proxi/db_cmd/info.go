@@ -73,7 +73,7 @@ func DisplayBranchData(branches []*multistate.BranchData) {
 		if msData := txbuilder.ParseMilestoneData(br.SequencerOutput.Output); msData != nil {
 			name = msData.Name
 		}
-		name = fmt.Sprintf("%s (%s)", name, br.SequencerID.VeryShort())
+		name = fmt.Sprintf("%s (%s)", name, br.SequencerID.StringVeryShort())
 		onChainAmount := br.SequencerOutput.Output.Amount()
 		supply := br.Stem.Output.MustStemLock().Supply
 		glb.Infof(" %2d: %20s %10s %10s %20s %20s    %-70s",

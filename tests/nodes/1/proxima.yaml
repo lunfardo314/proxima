@@ -33,12 +33,12 @@ api:
 # usually none or 1 sequencer is configured for the node
 sequencers:
   seq1:
-    enable: false
+    enable: true
     loglevel: info
     # chain ID of the sequencer
-    sequencer_id: 
+    sequencer_id: f789b6a80f22162b197b70b6bcbdbec2a5202cf0b4c60d73d5c09004e11bf632
     # chain controller's private key (hex-encoded)
-    controller_key: 
+    controller_key: a66f8768224b241fe4dd2e4c00132d029452468846b149f2c2c4d894805964c8e63df08176c9443f0fe015d3582635d3d5a02e33765fbb3a2995db9cf3bbe606
     # sequencer pace
     pace: 5
     # maximum fee inputs allowed in the sequencer milestone transaction

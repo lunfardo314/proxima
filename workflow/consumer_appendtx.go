@@ -92,6 +92,7 @@ func (c *AppendTxConsumer) logBranch(inp *PrimaryTransactionData, coverage uint6
 		return
 	}
 
-	c.Log().Infof("BRANCH %s. Source: %s. Coverage: %s",
-		inp.Tx.IDShort(), inp.SourceType.String(), util.GoThousands(coverage))
+	seqID := inp.Tx.SequencerTransactionData().SequencerID
+	c.Log().Infof("BRANCH %s (%s). Source: %s. Coverage: %s",
+		inp.Tx.IDShort(), seqID.StringVeryShort(), inp.SourceType.String(), util.GoThousands(coverage))
 }
