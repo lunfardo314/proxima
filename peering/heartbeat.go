@@ -1,8 +1,9 @@
 package peering
 
 import (
+	"bytes"
 	"encoding/binary"
-	"errors"
+	"fmt"
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/network"
@@ -11,6 +12,44 @@ import (
 )
 
 const traceHeartbeat = false
+
+type heartbeatInfo struct {
+	clock      time.Time
+	hasTxStore bool
+}
+
+func heartbeatInfoFromBytes(data []byte) (heartbeatInfo, error) {
+	if len(data) != 9 {
+		return heartbeatInfo{}, fmt.Errorf("heartbeatInfoFromBytes: wrong data len")
+	}
+	nano := int64(binary.BigEndian.Uint64(data[:8]))
+	var hasTxStore bool
+	if data[8] != 0 {
+		if data[8] == 0xff {
+			hasTxStore = true
+		} else {
+			return heartbeatInfo{}, fmt.Errorf("heartbeatInfoFromBytes: wrong data")
+		}
+	}
+	return heartbeatInfo{
+		clock:      time.Unix(0, nano),
+		hasTxStore: hasTxStore,
+	}, nil
+}
+
+func (h1 *heartbeatInfo) Bytes() []byte {
+	var buf bytes.Buffer
+	var timeNanoBin [8]byte
+
+	binary.BigEndian.PutUint64(timeNanoBin[:], uint64(h1.clock.UnixNano()))
+	buf.Write(timeNanoBin[:])
+	var boolBin byte
+	if h1.hasTxStore {
+		boolBin = 0xff
+	}
+	buf.WriteByte(boolBin)
+	return buf.Bytes()
+}
 
 // clockTolerance is how big the difference between local and remote clocks is tolerated
 const clockTolerance = 5 * time.Second // for testing only
@@ -27,6 +66,13 @@ func (p *Peer) _isAlive() bool {
 	return time.Now().Sub(p.lastActivity) < aliveDuration
 }
 
+func (p *Peer) HasTxStore() bool {
+	p.mutex.RLock()
+	defer p.mutex.RUnlock()
+
+	return p.hasTxStore
+}
+
 func (p *Peer) evidenceActivity(ps *Peers, srcMsg string) {
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
@@ -37,6 +83,13 @@ func (p *Peer) evidenceActivity(ps *Peers, srcMsg string) {
 	}
 	p.lastActivity = time.Now()
 	p.needsLogLostConnection = true
+}
+
+func (p *Peer) evidenceTxStore(hasTxStore bool) {
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
+
+	p.hasTxStore = hasTxStore
 }
 
 func (ps *Peers) numAlivePeers() (ret int) {
@@ -97,19 +150,21 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 		return
 	}
 
-	msgData, err := readFrame(stream)
-	if err != nil || len(msgData) != 8 {
-		if err == nil {
-			err = errors.New("exactly 8 bytes of clock value expected")
-		}
+	var hbInfo heartbeatInfo
+	var err error
+	var msgData []byte
+
+	if msgData, err = readFrame(stream); err == nil {
+		hbInfo, err = heartbeatInfoFromBytes(msgData)
+	}
+	if err != nil {
 		ps.log.Errorf("error while reading message from peer %s: %v", id.String(), err)
 		_ = stream.Reset()
 		return
 	}
 	defer stream.Close()
 
-	remoteClock := time.Unix(0, int64(binary.BigEndian.Uint64(msgData)))
-	if clockOk, behind := checkRemoteClockTolerance(remoteClock); !clockOk {
+	if clockOk, behind := checkRemoteClockTolerance(hbInfo.clock); !clockOk {
 		b := "ahead"
 		if behind {
 			b = "behind"
@@ -120,9 +175,11 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 		return
 	}
 
-	ps.trace("peer %s is alive = %v", ShortPeerIDString(id), p.isAlive())
+	ps.trace("peer %s is alive: %v, has txStore: %v", ShortPeerIDString(id), p.isAlive(), hbInfo.hasTxStore)
 
 	p.evidenceActivity(ps, "heartbeat")
+	p.evidenceTxStore(hbInfo.hasTxStore)
+
 	util.Assertf(p.isAlive(), "isAlive")
 }
 
@@ -137,10 +194,11 @@ func (ps *Peers) sendHeartbeatToPeer(id peer.ID) {
 	}
 	defer stream.Close()
 
-	var timeBuf [8]byte
-	binary.BigEndian.PutUint64(timeBuf[:], uint64(time.Now().UnixNano()))
-
-	_ = writeFrame(stream, timeBuf[:])
+	hbInfo := heartbeatInfo{
+		clock:      time.Now(),
+		hasTxStore: true,
+	}
+	_ = writeFrame(stream, hbInfo.Bytes())
 }
 
 const (

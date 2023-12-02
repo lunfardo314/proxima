@@ -56,6 +56,7 @@ type (
 		name                   string
 		id                     peer.ID
 		lastActivity           time.Time
+		hasTxStore             bool
 		needsLogLostConnection bool
 	}
 )
@@ -323,6 +324,7 @@ func (ps *Peers) sendPullToPeer(id peer.ID, txLst ...core.TransactionID) {
 	_ = writeFrame(stream, encodePeerMsgPull(txLst...))
 }
 
+// PullTransactionsFromRandomPeer sends pull request to the random peer which has txStore
 func (ps *Peers) PullTransactionsFromRandomPeer(txids ...core.TransactionID) bool {
 	if len(txids) == 0 {
 		return false
@@ -333,7 +335,8 @@ func (ps *Peers) PullTransactionsFromRandomPeer(txids ...core.TransactionID) boo
 	all := util.Keys(ps.peers)
 	for _, idx := range rand.Perm(len(all)) {
 		rndID := all[idx]
-		if ps.peers[rndID].isAlive() {
+		p := ps.peers[rndID]
+		if p.isAlive() && p.HasTxStore() {
 			global.TracePull(ps.log, "pull to random peer %s: %s",
 				func() any { return ShortPeerIDString(rndID) },
 				func() any { return _txidLst(txids...) },
