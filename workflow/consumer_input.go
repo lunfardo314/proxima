@@ -72,7 +72,7 @@ func (w *Workflow) initPrimaryInputConsumer() {
 	}
 	ret.AddOnConsume(func(inp *PrimaryTransactionData) {
 		// tracing every input message
-		ret.Debugf(inp, "IN")
+		ret.traceTx(inp, "IN source: %s", inp.SourceType.String())
 	})
 	ret.AddOnConsume(ret.consume) // process input
 	ret.AddOnClosed(func() {
@@ -96,8 +96,6 @@ func (w *Workflow) initPrimaryInputConsumer() {
 // consume processes the input
 func (c *PrimaryConsumer) consume(inp *PrimaryTransactionData) {
 	inp.eventCallback(PrimaryInputConsumerName+".in", inp.Tx)
-
-	c.traceTx(inp, "IN")
 
 	// the input is pre-parsed transaction with base validation ok.
 	//It means it has full ID, so it is identifiable as a transaction

@@ -33,7 +33,7 @@ func CatchPanicOrError(f func() error, includeStack ...bool) error {
 	return err
 }
 
-func RunWrappedRoutine(name string, fun func(), ignore ...error) {
+func RunWrappedRoutine(name string, fun func(), onUncaughtPanic func(err error), ignore ...error) {
 	go func() {
 		err := CatchPanicOrError(func() error {
 			fun()
@@ -47,6 +47,11 @@ func RunWrappedRoutine(name string, fun func(), ignore ...error) {
 				return
 			}
 		}
-		panic(fmt.Errorf("uncaught panic in '%s': %v (err type = %T)", name, err, err))
+		err = fmt.Errorf("uncaught panic in '%s': %v (err type = %T)", name, err, err)
+		if onUncaughtPanic != nil {
+			onUncaughtPanic(err)
+		} else {
+			panic(err)
+		}
 	}()
 }

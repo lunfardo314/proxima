@@ -34,7 +34,10 @@ func (c *Consumer[T]) Start() {
 	c.glb.terminateWG.Add(1)
 	util.RunWrappedRoutine(c.Name(), func() {
 		c.Consumer.Run()
-	}, common.ErrDBUnavailable)
+	}, func(err error) {
+		c.Log().Fatal(err)
+	},
+		common.ErrDBUnavailable)
 }
 
 func (c *Consumer[T]) TxLogPrefix() string {
