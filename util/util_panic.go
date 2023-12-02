@@ -20,7 +20,6 @@ func CatchPanicOrError(f func() error, includeStack ...bool) error {
 				stack = string(debug.Stack())
 			}
 			var ok bool
-			// TODO not always catches ErrDBUnavailableOrClosed
 			if err, ok = r.(error); !ok {
 				err = fmt.Errorf("%v (err type=%T)", r, r)
 			}
@@ -28,7 +27,7 @@ func CatchPanicOrError(f func() error, includeStack ...bool) error {
 		err = f()
 	}()
 	if err != nil && takeStack {
-		err = fmt.Errorf("%v\n%s", err, stack)
+		err = fmt.Errorf("%w\n%s", err, stack) // %w is essential, otherwise does not catch the error
 	}
 	return err
 }
