@@ -148,7 +148,7 @@ func (s *SummarySupplyAndInflation) Lines(prefix ...string) *lines.Lines {
 		Add("Total inflation: %s (%.6f%%)", util.GoThousands(s.TotalInflation), totalInflationPercentage).
 		Add("Average inflation per slot: %.8f%%", totalInflationPercentagePerSlot).
 		Add("Annual inflation extrapolated: %.2f%%", totalInflationPercentageYearlyExtrapolation).
-		Add("Info per sequencer:")
+		Add("Info per sequencer (along the heaviest chain):")
 
 	sortedSeqIDs := util.KeysSorted(s.InfoPerSeqID, func(k1, k2 core.ChainID) bool {
 		return bytes.Compare(k1[:], k2[:]) < 0

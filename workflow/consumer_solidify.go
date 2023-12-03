@@ -180,8 +180,11 @@ func (c *SolidifyConsumer) removeAttachedTxID(txid *core.TransactionID) {
 	c.Log().Debugf("removeAttachedTxID %s", txid.StringShort())
 	pendingData, isKnown := c.txPending[*txid]
 
-	// FIXME sometimes panics. race cond. relax asserts?
-	util.Assertf(isKnown, "removeAttachedTxID: unknown tx %s", txid.StringShort())
+	if !isKnown {
+		// could happen when transactions are dropped because of solidification deadline during high intensity sync
+		c.Log().Warnf("RARE: transaction %s is not among pending", txid.StringShort())
+		return
+	}
 	util.Assertf(pendingData.draftVertexData != nil, "pendingData.draftVertexData != nil")
 	util.Assertf(pendingData.draftVertexData.vertex.IsSolid(), "pendingData.draftVertexData.vertex.IsSolid()")
 
@@ -290,7 +293,11 @@ func (c *SolidifyConsumer) pullIfNeeded(vd *draftVertexData) {
 		// this makes node synchronization more sequential, from past to present slot by slot
 		if !vd.stemInputAlreadyPulled {
 			// pull immediately
-			c.pull(vd.Tx.SequencerTransactionData().StemOutputData.PredecessorOutputID.TransactionID(), pullImmediately)
+			c.pull(
+				vd.Tx.SequencerTransactionData().StemOutputData.PredecessorOutputID.TransactionID(),
+				pullImmediately,
+				vd.Tx.ID(),
+			)
 			vd.stemInputAlreadyPulled = true
 		}
 		return
@@ -306,7 +313,11 @@ func (c *SolidifyConsumer) pullIfNeeded(vd *draftVertexData) {
 				} else {
 					delayFirst = pullDelayFirstPeriodSequencer
 				}
-				c.pull(seqInputOID.TransactionID(), delayFirst)
+				c.pull(
+					seqInputOID.TransactionID(),
+					delayFirst,
+					vd.Tx.ID(),
+				)
 				vd.sequencerPredecessorAlreadyPulled = true
 			}
 			return
@@ -321,13 +332,17 @@ func (c *SolidifyConsumer) pullIfNeeded(vd *draftVertexData) {
 		} else {
 			delayFirst = pullDelayFirstPeriodOtherTransactions
 		}
-		c.pull(txid, delayFirst)
+		c.pull(txid, delayFirst, &txid)
 		return true
 	})
 }
 
-func (c *SolidifyConsumer) pull(txid core.TransactionID, initialDelay time.Duration) {
-	c.tracePull("send pull %s, delay %v", func() any { return txid.StringShort() }, initialDelay)
+func (c *SolidifyConsumer) pull(txid core.TransactionID, initialDelay time.Duration, neededFor *core.TransactionID) {
+	c.tracePull("send pull %s, delay %v. Needed for %s",
+		func() any { return txid.StringShort() },
+		initialDelay,
+		func() any { return neededFor.StringShort() },
+	)
 
 	c.glb.pullConsumer.Push(&PullTxData{
 		TxID:         &txid,
@@ -344,7 +359,10 @@ func (c *SolidifyConsumer) solidificationDeadlineLoop() {
 		case <-c.stopSolidificationDeadlineLoopChan:
 			return
 		case <-time.After(solidificationDeadlineLoopPeriod):
-			c.Push(&SolidifyInputData{Cmd: SolidifyCommandRemoveTooOld}, true)
+			// invoke purge of too old if inside sync window. If node is not synced, be patient and do not remove old transactions
+			if c.glb.utxoTangle.IsInSyncWindow() {
+				c.Push(&SolidifyInputData{Cmd: SolidifyCommandRemoveTooOld}, true)
+			}
 		}
 	}
 }

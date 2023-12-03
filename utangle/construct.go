@@ -85,7 +85,10 @@ func (ut *UTXOTangle) attach(vid *WrappedTx) (conflict *WrappedOutput) {
 	txid := vid.ID()
 	_, already := ut.vertices[*txid]
 	util.Assertf(!already, "attach: repeating transaction %s", txid.StringShort())
+	// put vertex into the map
 	ut.vertices[*txid] = vid
+	// save latest tx time (from timestamp)
+	ut.storeLatestTxTime(txid)
 	return
 }
 

@@ -8,8 +8,8 @@ import (
 // Hardcoded tracing
 
 const (
-	TracePullEnabled = false
-	TraceTxEnabled   = false
+	TracePullEnabled = true
+	TraceTxEnabled   = true
 )
 
 func TracePull(log *zap.SugaredLogger, format string, lazyArgs ...any) {

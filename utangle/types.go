@@ -18,8 +18,11 @@ type (
 		vertices     map[core.TransactionID]*WrappedTx
 		branches     map[core.TimeSlot]map[*WrappedTx]common.VCommitment
 
-		lastPrunedOrphaned atomic.Time
-		lastCutFinal       atomic.Time
+		// latestTransactionTSTime time converted from latest attached transaction timestamp.
+		// Is used  to determine synced of not
+		latestTransactionTSTime atomic.Time
+		lastPrunedOrphaned      atomic.Time
+		lastCutFinal            atomic.Time
 
 		numAddedVertices   int
 		numDeletedVertices int
