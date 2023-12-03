@@ -63,7 +63,7 @@ func startTipPool(seqName string, wrk *workflow.Workflow, seqID core.ChainID, lo
 		ret.mutex.Lock()
 		defer ret.mutex.Unlock()
 
-		ret._clearOrphanedOutputsIfNeeded()
+		ret._clearDeletedIfNeeded()
 		ret.outputs.Insert(wOut)
 		ret.outputCount++
 		ret.log.Debugf("IN %s", wOut.IDShort())
@@ -96,7 +96,7 @@ func startTipPool(seqName string, wrk *workflow.Workflow, seqID core.ChainID, lo
 
 const cleanupPeriod = 5 * time.Second
 
-func (tp *sequencerTipPool) _clearOrphanedOutputsIfNeeded() {
+func (tp *sequencerTipPool) _clearDeletedIfNeeded() {
 	if time.Since(tp.lastPruned.Load()) < cleanupPeriod {
 		return
 	}
@@ -110,6 +110,16 @@ func (tp *sequencerTipPool) _clearOrphanedOutputsIfNeeded() {
 		delete(tp.outputs, wOut)
 	}
 	tp.removedOutputsSinceReset += len(toDelete)
+
+	toDeleteMilestoneChainID := make([]core.ChainID, 0)
+	for chainID, vid := range tp.latestMilestones {
+		if vid.IsDeleted() {
+			toDeleteMilestoneChainID = append(toDeleteMilestoneChainID, chainID)
+		}
+	}
+	for i := range toDeleteMilestoneChainID {
+		delete(tp.latestMilestones, toDeleteMilestoneChainID[i])
+	}
 	tp.lastPruned.Store(time.Now())
 }
 
@@ -117,7 +127,7 @@ func (tp *sequencerTipPool) filterAndSortOutputs(filter func(o utangle.WrappedOu
 	tp.mutex.RLock()
 	defer tp.mutex.RUnlock()
 
-	tp._clearOrphanedOutputsIfNeeded()
+	tp._clearDeletedIfNeeded()
 
 	ret := util.Keys(tp.outputs, func(o utangle.WrappedOutput) bool {
 		return !o.VID.IsDeleted() && filter(o)
@@ -136,6 +146,8 @@ func (tp *sequencerTipPool) ChainID() core.ChainID {
 func (tp *sequencerTipPool) preSelectAndSortEndorsableMilestones(targetTs core.LogicalTime) []*utangle.WrappedTx {
 	tp.mutex.RLock()
 	defer tp.mutex.RUnlock()
+
+	tp._clearDeletedIfNeeded()
 
 	ret := make([]*utangle.WrappedTx, 0)
 	for _, ms := range tp.latestMilestones {

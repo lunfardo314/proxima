@@ -417,11 +417,10 @@ func (ut *UTXOTangle) TxBytesStore() global.TxBytesStore {
 
 func (ut *UTXOTangle) LedgerCoverageDelta(vid *WrappedTx) uint64 {
 	_, ret := vid.CoverageDelta(ut)
-
 	return ret
 }
 
-func (ut *UTXOTangle) LedgerCoverage(vid *WrappedTx) uint64 {
+func (ut *UTXOTangle) LedgerCoverage(vid *WrappedTx) (ret uint64) {
 	return vid.LedgerCoverage(ut)
 }
 
