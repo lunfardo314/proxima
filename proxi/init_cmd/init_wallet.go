@@ -43,7 +43,7 @@ func runInitProfileCommand(_ *cobra.Command, args []string) {
 		profileName = args[0]
 	}
 	profileFname := profileName + ".yaml"
-	glb.Assertf(!fileExists(profileFname), "file %s already exists", profileFname)
+	glb.Assertf(!glb.FileExists(profileFname), "file %s already exists", profileFname)
 
 	privKey := glb.MustGetPrivateKey()
 	addr := core.AddressED25519FromPrivateKey(privKey)

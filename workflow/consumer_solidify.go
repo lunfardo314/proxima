@@ -179,7 +179,9 @@ func (c *SolidifyConsumer) checkTxID(txid *core.TransactionID) {
 func (c *SolidifyConsumer) removeAttachedTxID(txid *core.TransactionID) {
 	c.Log().Debugf("removeAttachedTxID %s", txid.StringShort())
 	pendingData, isKnown := c.txPending[*txid]
-	util.Assertf(isKnown, "removeAttachedTxID: unknown", txid.StringShort())
+
+	// FIXME sometimes panics. race cond. relax asserts?
+	util.Assertf(isKnown, "removeAttachedTxID: unknown tx %s", txid.StringShort())
 	util.Assertf(pendingData.draftVertexData != nil, "pendingData.draftVertexData != nil")
 	util.Assertf(pendingData.draftVertexData.vertex.IsSolid(), "pendingData.draftVertexData.vertex.IsSolid()")
 

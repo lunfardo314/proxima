@@ -36,7 +36,7 @@ const (
 )
 
 func runNodeConfigCommand(_ *cobra.Command, args []string) {
-	if fileExists(proximaNodeProfile) {
+	if glb.FileExists(proximaNodeProfile) {
 		prompt := fmt.Sprintf("file %s already exists. Overwrite?", proximaNodeProfile)
 		if !glb.YesNoPrompt(prompt, false) {
 			glb.Fatalf("exit")

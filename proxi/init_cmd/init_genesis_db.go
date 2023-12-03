@@ -22,8 +22,8 @@ func initGenesisDBCmd() *cobra.Command {
 }
 
 func runGenesis(_ *cobra.Command, _ []string) {
-	mustNotExist(global.MultiStateDBName)
-	mustNotExist(global.TxStoreDBName)
+	glb.FileMustNotExist(global.MultiStateDBName)
+	glb.FileMustNotExist(global.TxStoreDBName)
 
 	idDataYAML, err := os.ReadFile(ledgerIDFileName)
 	glb.AssertNoError(err)
@@ -51,20 +51,4 @@ func runGenesis(_ *cobra.Command, _ []string) {
 	txStore := badger_adaptor.New(badger_adaptor.MustCreateOrOpenBadgerDB(global.TxStoreDBName, badger.DefaultOptions(global.TxStoreDBName)))
 	glb.Infof("Transaction store DB '%s' has been created successfully", global.TxStoreDBName)
 	defer func() { _ = txStore.Close() }()
-}
-
-func mustNotExist(dir string) {
-	_, err := os.Stat(dir)
-	if err == nil {
-		glb.Fatalf("'%s' already exists", dir)
-	} else {
-		if !os.IsNotExist(err) {
-			glb.AssertNoError(err)
-		}
-	}
-}
-
-func fileExists(name string) bool {
-	_, err := os.Stat(name)
-	return !os.IsNotExist(err)
 }

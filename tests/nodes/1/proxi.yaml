@@ -5,7 +5,7 @@ wallet:
     # own sequencer (controlled by the private key). Defaults to bootstrap sequencer ID
     sequencer: f789b6a80f22162b197b70b6bcbdbec2a5202cf0b4c60d73d5c09004e11bf632
 api:
-    endpoint: http://127.0.0.1:8001
+    endpoint: http://127.0.0.1:8002
 tag-along:
     sequencer_id: f789b6a80f22162b197b70b6bcbdbec2a5202cf0b4c60d73d5c09004e11bf632
     fee: 500

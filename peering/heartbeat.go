@@ -55,9 +55,6 @@ func (hi *heartbeatInfo) Bytes() []byte {
 	return buf.Bytes()
 }
 
-// clockTolerance is how big the difference between local and remote clocks is tolerated
-const clockTolerance = 5 * time.Second // for testing only
-
 func (p *Peer) isAlive() bool {
 	p.mutex.RLock()
 	defer p.mutex.RUnlock()
@@ -94,6 +91,25 @@ func (p *Peer) evidenceTxStore(hasTxStore bool) {
 	defer p.mutex.Unlock()
 
 	p.hasTxStore = hasTxStore
+}
+
+func (p *Peer) isCommunicationOpen() bool {
+	p.mutex.RLock()
+	defer p.mutex.RUnlock()
+
+	return p.postponeActivityUntil.Before(time.Now())
+}
+
+func (p *Peer) blockComms() {
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
+
+	p.postponeActivityUntil = time.Now().Add(commBlockDuration)
+}
+
+func (ps *Peers) blockCommsWithPeer(p *Peer) {
+	p.blockComms()
+	ps.log.Warnf("blocked communications with peer %s (%s) for %v", ShortPeerIDString(p.id), p.name, commBlockDuration)
 }
 
 func (ps *Peers) numAlivePeers() (ret int) {
@@ -138,7 +154,10 @@ func checkRemoteClockTolerance(remoteTime time.Time) (bool, bool) {
 	return diff < clockTolerance, behind
 }
 
-// heartbeat protocol is used to monitor if peer is alive and to ensure clocks are synced within tolerance interval
+// heartbeat protocol is used to monitor
+// - if peer is alive and
+// - to ensure clocks are synced within tolerance interval
+// - to ensure that ledger genesis is the same
 
 func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 	id := stream.Conn().RemotePeer()
@@ -154,6 +173,11 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 		return
 	}
 
+	if !p.isCommunicationOpen() {
+		_ = stream.Reset()
+		return
+	}
+
 	var hbInfo heartbeatInfo
 	var err error
 	var msgData []byte
@@ -163,15 +187,15 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 	}
 	if err != nil {
 		ps.log.Errorf("error while reading message from peer %s: %v", id.String(), err)
+		ps.blockCommsWithPeer(p)
 		_ = stream.Reset()
-		// TODO prevent communication with the peer for some time
 		return
 	}
 
 	if hbInfo.ledgerIDHash != ps.cfg.LedgerIDHash {
-		ps.log.Warnf("incompatible ledger ID hash from %s", id.String())
+		ps.log.Warnf("incompatible ledger ID hash from %s (%s)", id.String(), p.name)
+		ps.blockCommsWithPeer(p)
 		_ = stream.Reset()
-		// TODO prevent communication with the peer for some time
 		return
 
 	}
@@ -181,8 +205,8 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 			b = "behind"
 		}
 		ps.log.Warnf("clock of the peer %s is %s of the local clock more than tolerance interval %v", id.String(), b, clockTolerance)
+		ps.blockCommsWithPeer(p)
 		_ = stream.Reset()
-		// TODO prevent communication with the peer for some time
 		return
 	}
 	defer stream.Close()
@@ -230,8 +254,7 @@ func (ps *Peers) heartbeatLoop() {
 			ps.log.Infof("node is connected to %d peer(s)", ps.numAlivePeers())
 			logNumPeersDeadline = nowis.Add(logNumPeersPeriod)
 		}
-		for _, id := range ps.getPeerIDs() {
-
+		for _, id := range ps.getPeerIDsWithOpenComms() {
 			ps.logInactivityIfNeeded(id)
 			ps.sendHeartbeatToPeer(id)
 		}

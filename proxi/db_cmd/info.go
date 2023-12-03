@@ -32,8 +32,9 @@ func initDBInfoCmd() *cobra.Command {
 }
 
 func runDbInfoCmd(_ *cobra.Command, _ []string) {
-	glb.Infof("---------------- multi-state DB info ------------------")
 	dbName := global.MultiStateDBName
+	glb.FileMustExist(dbName)
+	glb.Infof("---------------- multi-state DB info ------------------")
 	stateDb := badger_adaptor.MustCreateOrOpenBadgerDB(dbName)
 	defer func() { _ = stateDb.Close() }()
 

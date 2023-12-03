@@ -58,6 +58,7 @@ type (
 		name                   string
 		id                     peer.ID
 		lastActivity           time.Time
+		postponeActivityUntil  time.Time
 		hasTxStore             bool
 		needsLogLostConnection bool
 	}
@@ -67,6 +68,12 @@ const (
 	lppProtocolGossip    = "/proxima/gossip/1.0.0"
 	lppProtocolPull      = "/proxima/pull/1.0.0"
 	lppProtocolHeartbeat = "/proxima/heartbeat/1.0.0"
+
+	// blocking comms with the peer which violates the protocol
+	commBlockDuration = time.Minute
+
+	// clockTolerance is how big the difference between local and remote clocks is tolerated
+	clockTolerance = 5 * time.Second // for testing only
 )
 
 func NewPeersDummy() *Peers {
@@ -253,12 +260,30 @@ func (ps *Peers) getPeerIDs() []peer.ID {
 	return util.Keys(ps.peers)
 }
 
+func (ps *Peers) getPeerIDsWithOpenComms() []peer.ID {
+	ps.mutex.RLock()
+	defer ps.mutex.RUnlock()
+
+	ret := make([]peer.ID, 0)
+	for id, p := range ps.peers {
+		if p.isCommunicationOpen() {
+			ret = append(ret, id)
+		}
+	}
+	return ret
+}
+
 func (ps *Peers) gossipStreamHandler(stream network.Stream) {
 	id := stream.Conn().RemotePeer()
 	p := ps.getPeer(id)
 	if p == nil {
 		// peer not found
 		ps.log.Warnf("unknown peer %s", id.String())
+		_ = stream.Reset()
+		return
+	}
+
+	if !p.isCommunicationOpen() {
 		_ = stream.Reset()
 		return
 	}
@@ -281,6 +306,11 @@ func (ps *Peers) pullStreamHandler(stream network.Stream) {
 	if p == nil {
 		// peer not found
 		ps.log.Warnf("unknown peer %s", id.String())
+		_ = stream.Reset()
+		return
+	}
+
+	if !p.isCommunicationOpen() {
 		_ = stream.Reset()
 		return
 	}
@@ -341,7 +371,7 @@ func (ps *Peers) PullTransactionsFromRandomPeer(txids ...core.TransactionID) boo
 	for _, idx := range rand.Perm(len(all)) {
 		rndID := all[idx]
 		p := ps.peers[rndID]
-		if p.isAlive() && p.HasTxStore() {
+		if p.isCommunicationOpen() && p.isAlive() && p.HasTxStore() {
 			global.TracePull(ps.log, "pull to random peer %s: %s",
 				func() any { return ShortPeerIDString(rndID) },
 				func() any { return _txidLst(txids...) },
@@ -368,6 +398,9 @@ func (ps *Peers) GossipTxBytesToPeers(txBytes []byte, except ...peer.ID) int {
 
 	countSent := 0
 	for id, p := range ps.peers {
+		if !p.isCommunicationOpen() {
+			continue
+		}
 		if len(except) > 0 && id == except[0] {
 			continue
 		}
@@ -387,6 +420,10 @@ func (ps *Peers) SendTxBytesToPeer(id peer.ID, txBytes []byte) bool {
 		len(txBytes),
 		func() any { return ShortPeerIDString(ps.host.ID()) },
 	)
+
+	if p := ps.getPeer(id); p == nil || !p.isCommunicationOpen() {
+		return false
+	}
 
 	stream, err := ps.host.NewStream(ps.ctx, id, lppProtocolGossip)
 	if err != nil {

@@ -38,12 +38,12 @@ func initIDCmd() *cobra.Command {
 }
 
 func runInitLedgerIDCommand(_ *cobra.Command, _ []string) {
-	if fileExists(ledgerIDFileName) {
+	if glb.FileExists(ledgerIDFileName) {
 		if !glb.YesNoPrompt(fmt.Sprintf("file '%s' already exists. Overwrite?", ledgerIDFileName), false) {
 			os.Exit(0)
 		}
 	}
-	if fileExists(genesisDistributionFileName) {
+	if glb.FileExists(genesisDistributionFileName) {
 		if !glb.YesNoPrompt(fmt.Sprintf("file '%s' already exists. Overwrite?", genesisDistributionFileName), false) {
 			os.Exit(0)
 		}

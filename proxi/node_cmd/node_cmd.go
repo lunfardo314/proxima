@@ -1,6 +1,8 @@
 package node_cmd
 
 import (
+	"sync"
+
 	"github.com/lunfardo314/proxima/api/client"
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/proxi/glb"
@@ -55,9 +57,14 @@ func Init() *cobra.Command {
 	return nodeCmd
 }
 
+var displayEndpointOnce sync.Once
+
 func getClient() *client.APIClient {
 	endpoint := viper.GetString("api.endpoint")
 	glb.Assertf(endpoint != "", "node API endpoint not specified")
+	displayEndpointOnce.Do(func() {
+		glb.Infof("using API endpoint: %s", endpoint)
+	})
 	return client.New(endpoint)
 }
 
