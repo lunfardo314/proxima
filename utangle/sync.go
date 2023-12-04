@@ -1,7 +1,6 @@
 package utangle
 
 import (
-	"fmt"
 	"sync"
 	"time"
 
@@ -73,6 +72,13 @@ func (s *SyncStatus) SetLastCutFinal(t time.Time) {
 	s.lastCutFinal = t
 }
 
+// Evidence methods keeps track of incoming branches and booked branches with the purpose to determine if sequencer is syncing or not.
+// If sequencer is syncing, the prune activity is stopped on the tangle and deleting too old in solidifier
+// For each sequencer we keep latest booked tx and some amount of latest incoming (maybe not solidified yet).
+// This trickery is needed to prevent attack when some node sends invalid yet solidifiable branch to the peer and
+// then peer forever thinks it is not-synced. In case branch is dropped and not booked for any reason,
+// it is "unevidenced" back and life continues with latest known branch
+
 // EvidenceIncomingBranch stores branch ID immediately it sees it, before solidification
 func (s *SyncStatus) EvidenceIncomingBranch(txid *core.TransactionID, seqID core.ChainID) {
 	util.Assertf(txid.BranchFlagON(), "must be a branch transaction")
@@ -90,11 +96,12 @@ func (s *SyncStatus) EvidenceIncomingBranch(txid *core.TransactionID, seqID core
 		info.latestBranchesSeen.Insert(*txid)
 	}
 
-	const keepLastEvidencedIncomingBranches = 10
+	const keepLastEvidencedIncomingBranches = 5
 	if len(info.latestBranchesSeen) > keepLastEvidencedIncomingBranches {
 		oldest := info.latestBranchesSeen.Minimum(core.LessTxID)
 		info.latestBranchesSeen.Remove(oldest)
 	}
+	s.perSequencer[seqID] = info
 }
 
 func (s *SyncStatus) UnEvidenceIncomingBranch(txid *core.TransactionID) {
@@ -134,9 +141,7 @@ func (s *SyncStatus) AllSequencersSynced() bool {
 	defer s.mutex.RUnlock()
 
 	for seqID, info := range s.perSequencer {
-		fmt.Printf(">>>>>>>>>>>>>>> seqID: %s\n", seqID.Short())
 		info.latestBranchesSeen.ForEach(func(txid core.TransactionID) bool {
-			fmt.Printf(">>>>>>>>>>>>>>> seqID: %s\n", txid.StringShort())
 			return true
 		})
 		if info.latestBranchBooked.Timestamp() != s.latestSeenBranchTimestamp(seqID) {
