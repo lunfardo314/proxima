@@ -2,6 +2,7 @@ package utangle
 
 import (
 	"bytes"
+	"errors"
 	"sync"
 	"time"
 
@@ -186,7 +187,7 @@ func (vid *WrappedTx) MarkDeleted() {
 	case _virtualTx:
 		vid._put(_deletedTx{TransactionID: v.txid})
 	case _deletedTx:
-		PanicDeleted()
+		vid.PanicDeleted()
 	}
 }
 
@@ -504,7 +505,7 @@ func (vid *WrappedTx) ConvertToVirtualTx() {
 	case _vertex:
 		vid._put(_virtualTx{VirtualTransaction: v.convertToVirtualTx()})
 	case _deletedTx:
-		PanicDeleted()
+		vid.PanicDeleted()
 	}
 }
 
@@ -525,8 +526,12 @@ func (vid *WrappedTx) WrappedInputs() []WrappedOutput {
 	return ret
 }
 
-func PanicDeleted() {
-	util.Panicf("deleted transaction should not be accessed")
+// ErrDeletedVertexAccessed exception is raised by PanicDeleted handler of Unwrap vertex so that could be caught if necessary
+var ErrDeletedVertexAccessed = errors.New("deleted vertex should not be accessed")
+
+func (vid *WrappedTx) PanicDeleted() {
+	txid := vid._genericWrapper.(_deletedTx).TransactionID
+	util.Panicf("%w: %s", ErrDeletedVertexAccessed, txid.StringShort())
 }
 
 // attachAsConsumer must be called from globally locked utangle environment.
@@ -660,7 +665,7 @@ func (vid *WrappedTx) _collectMutationData(md *_mutationData) (conflict WrappedO
 				return true
 			})
 		},
-		Deleted: PanicDeleted,
+		Deleted: vid.PanicDeleted,
 	})
 	return
 }
@@ -787,7 +792,7 @@ func (vid *WrappedTx) InflationAmount() (ret uint64) {
 			util.Assertf(ok, "can't get stem output")
 			ret = lck.InflationAmount
 		},
-		Deleted: PanicDeleted,
+		Deleted: vid.PanicDeleted,
 	})
 	return
 }
