@@ -103,6 +103,7 @@ func (c *PreValidateConsumer) consume(inp *PreValidateConsumerInputData) {
 		// timestamp is in the past, pass it to the solidifier
 		c.Debugf(inp.PrimaryTransactionData, "->"+c.glb.solidifyConsumer.Name())
 		c.IncCounter("ok.now")
+		c.evidenceBranch(inp.Tx)
 		c.glb.solidifyConsumer.Push(out)
 		return
 	}
@@ -113,6 +114,13 @@ func (c *PreValidateConsumer) consume(inp *PreValidateConsumerInputData) {
 	c.glb.preValidateConsumer.waitingRoom.RunAfterDeadline(txTime, func() {
 		c.IncCounter("ok.release")
 		c.Debugf(inp.PrimaryTransactionData, "release from waiting room")
+		c.evidenceBranch(inp.Tx)
 		c.glb.solidifyConsumer.Push(out)
 	})
+}
+
+func (c *PreValidateConsumer) evidenceBranch(tx *transaction.Transaction) {
+	if tx.IsBranchTransaction() {
+		c.glb.utxoTangle.SyncStatus().EvidenceIncomingBranch(tx)
+	}
 }

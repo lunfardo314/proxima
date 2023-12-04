@@ -1,10 +1,21 @@
 package utangle
 
 import (
+	"sync"
 	"time"
 
 	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/transaction"
+	"github.com/lunfardo314/proxima/util"
 )
+
+func newSyncStatus() *SyncStatus {
+	return &SyncStatus{
+		mutex:        sync.RWMutex{},
+		whenStarted:  time.Now(),
+		perSequencer: make(map[core.ChainID]SequencerSyncStatus),
+	}
+}
 
 func (ut *UTXOTangle) SyncStatus() *SyncStatus {
 	return ut.syncStatus
@@ -59,4 +70,45 @@ func (s *SyncStatus) SetLastCutFinal(t time.Time) {
 	defer s.mutex.Unlock()
 
 	s.lastCutFinal = t
+}
+
+// EvidenceIncomingBranch stores branch ID immediately it sees it, before solidification
+func (s *SyncStatus) EvidenceIncomingBranch(tx *transaction.Transaction) {
+	util.Assertf(tx.IsBranchTransaction(), "must be a branch transaction")
+
+	seqID := tx.SequencerTransactionData().SequencerID
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	info := s.perSequencer[seqID]
+	if prev := info.latestBranchSeen.Timestamp(); tx.Timestamp().After(prev) {
+		info.latestBranchSeen = *tx.ID()
+		s.perSequencer[seqID] = info
+	}
+}
+
+func (s *SyncStatus) EvidenceBookedBranch(tx *transaction.Transaction) {
+	util.Assertf(tx.IsBranchTransaction(), "must be a branch transaction")
+
+	seqID := tx.SequencerTransactionData().SequencerID
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	info := s.perSequencer[seqID]
+	if prev := info.latestBranchBooked.Timestamp(); tx.Timestamp().After(prev) {
+		info.latestBranchBooked = *tx.ID()
+		s.perSequencer[seqID] = info
+	}
+}
+
+func (s *SyncStatus) IsSequencerSynced(chainID *core.ChainID) bool {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+
+	info, found := s.perSequencer[*chainID]
+	if !found {
+		return false
+	}
+
+	return info.latestBranchBooked == info.latestBranchSeen
 }

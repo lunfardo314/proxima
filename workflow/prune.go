@@ -10,10 +10,10 @@ import (
 )
 
 func (w *Workflow) startPruner() {
-	prunnerLog := global.NewLogger("[prune]", w.configParams.logLevel, w.configParams.logOutput, "")
-	prunnerLog.Info("STARTING..")
-	go w.pruneOrphanedLoop(prunnerLog)
-	go w.cutFinalLoop(prunnerLog)
+	prunerLog := global.NewLogger("[prune]", w.configParams.logLevel, w.configParams.logOutput, "")
+	prunerLog.Info("STARTING..")
+	go w.pruneOrphanedLoop(prunerLog)
+	go w.cutFinalLoop(prunerLog)
 }
 
 func (w *Workflow) pruneOrphanedLoop(log *zap.SugaredLogger) {

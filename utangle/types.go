@@ -27,6 +27,7 @@ type (
 		numDeletedBranches int
 	}
 
+	// SyncStatus contains various atomic sync-related values. Thread safe with getters ad setters
 	SyncStatus struct {
 		mutex sync.RWMutex
 		// when node whenStarted
@@ -38,6 +39,13 @@ type (
 		lastPrunedOrphaned time.Time
 		// last time final cuter was run
 		lastCutFinal time.Time
+		// sync data per known sequencer
+		perSequencer map[core.ChainID]SequencerSyncStatus
+	}
+
+	SequencerSyncStatus struct {
+		latestBranchSeen   core.TransactionID
+		latestBranchBooked core.TransactionID
 	}
 
 	PastTrack struct {
