@@ -2,6 +2,7 @@ package utangle
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/global"
@@ -17,6 +18,7 @@ func newUTXOTangle(stateStore global.StateStore, txBytesStore global.TxBytesStor
 		txBytesStore: txBytesStore,
 		vertices:     make(map[core.TransactionID]*WrappedTx),
 		branches:     make(map[core.TimeSlot]map[*WrappedTx]common.VCommitment),
+		syncStatus:   &SyncStatus{whenStarted: time.Now()},
 	}
 }
 
@@ -88,7 +90,7 @@ func (ut *UTXOTangle) attach(vid *WrappedTx) (conflict *WrappedOutput) {
 	// put vertex into the map
 	ut.vertices[*txid] = vid
 	// save latest tx time (from timestamp)
-	ut.storeLatestTxTime(txid)
+	ut.SyncStatus().storeLatestTxTime(txid)
 	return
 }
 

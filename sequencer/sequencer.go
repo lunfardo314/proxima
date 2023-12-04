@@ -344,6 +344,14 @@ func (seq *Sequencer) mainLoop() {
 	var currentTimeSlot core.TimeSlot
 	var avgProposalDuration time.Duration
 
+	// wait for one slot at startup
+	beginAt := seq.glb.UTXOTangle().SyncStatus().WhenStarted().Add(core.TimeSlotDuration())
+	if beginAt.After(time.Now()) {
+		seq.log.Infof("wait for one slot (%v) before starting the main loop", core.TimeSlotDuration())
+	}
+	time.Sleep(time.Until(beginAt))
+	seq.log.Infof("starting main loop")
+
 	for !seq.exit.Load() {
 		if seq.config.MaxMilestones != 0 && milestoneCount >= seq.config.MaxMilestones {
 			seq.log.Infof("reached max limit of milestones %d -> stopping", seq.config.MaxMilestones)

@@ -8,22 +8,6 @@ import (
 	"github.com/lunfardo314/proxima/util/set"
 )
 
-func (ut *UTXOTangle) SetLastPrunedOrphaned(t time.Time) {
-	ut.lastPrunedOrphaned.Store(t)
-}
-
-func (ut *UTXOTangle) SinceLastPrunedOrphaned() time.Duration {
-	return time.Since(ut.lastPrunedOrphaned.Load())
-}
-
-func (ut *UTXOTangle) SetLastCutFinal(t time.Time) {
-	ut.lastCutFinal.Store(t)
-}
-
-func (ut *UTXOTangle) SinceLastCutFinal() time.Duration {
-	return time.Since(ut.lastCutFinal.Load())
-}
-
 func _collectReachableSet(rootVID *WrappedTx, ret set.Set[*WrappedTx]) {
 	if ret.Contains(rootVID) {
 		return

@@ -22,7 +22,7 @@ func (w *Workflow) pruneOrphanedLoop(log *zap.SugaredLogger) {
 	for w.working.Load() {
 		time.Sleep(1 * time.Second)
 
-		if w.utxoTangle.SinceLastPrunedOrphaned() < PruneOrphanedPeriod {
+		if w.utxoTangle.SyncStatus().SinceLastPrunedOrphaned() < PruneOrphanedPeriod {
 			continue
 		}
 
@@ -30,7 +30,7 @@ func (w *Workflow) pruneOrphanedLoop(log *zap.SugaredLogger) {
 		nVertices := w.utxoTangle.NumVertices()
 		nOrphaned, nOrphanedBranches, nDeletedSlots := w.utxoTangle.PruneOrphaned(utangle.TipSlots)
 
-		w.utxoTangle.SetLastPrunedOrphaned(time.Now())
+		w.utxoTangle.SyncStatus().SetLastPrunedOrphaned(time.Now())
 
 		log.Infof("SLOT %d. Pruned %d orphaned transactions and %d branches out of total %d vertices in %v, deleted slots: %d",
 			core.LogicalTimeNow().TimeSlot(), nOrphaned, nOrphanedBranches, nVertices, time.Since(startTime), nDeletedSlots)
@@ -44,13 +44,13 @@ func (w *Workflow) cutFinalLoop(log *zap.SugaredLogger) {
 	for w.working.Load() {
 		time.Sleep(1 * time.Second)
 
-		if w.utxoTangle.SinceLastCutFinal() < CutFinalPeriod {
+		if w.utxoTangle.SyncStatus().SinceLastCutFinal() < CutFinalPeriod {
 			continue
 		}
 
 		if txID, numTx := w.utxoTangle.CutFinalBranchIfExists(utangle.TipSlots); txID != nil {
 			log.Infof("CUT FINAL BRANCH %s, num tx: %d", txID.StringShort(), numTx)
-			w.utxoTangle.SetLastCutFinal(time.Now())
+			w.utxoTangle.SyncStatus().SetLastCutFinal(time.Now())
 		}
 	}
 	log.Infof("Branch cutter loop stopped")

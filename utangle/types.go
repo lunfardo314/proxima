@@ -2,12 +2,12 @@ package utangle
 
 import (
 	"sync"
+	"time"
 
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/unitrie/common"
-	"go.uber.org/atomic"
 )
 
 type (
@@ -18,16 +18,26 @@ type (
 		vertices     map[core.TransactionID]*WrappedTx
 		branches     map[core.TimeSlot]map[*WrappedTx]common.VCommitment
 
-		// latestTransactionTSTime time converted from latest attached transaction timestamp.
-		// Is used  to determine synced of not
-		latestTransactionTSTime atomic.Time
-		lastPrunedOrphaned      atomic.Time
-		lastCutFinal            atomic.Time
+		// all real-time related values in one place
+		syncStatus *SyncStatus
 
 		numAddedVertices   int
 		numDeletedVertices int
 		numAddedBranches   int
 		numDeletedBranches int
+	}
+
+	SyncStatus struct {
+		mutex sync.RWMutex
+		// when node whenStarted
+		whenStarted time.Time
+		// latestTransactionTSTime time converted from latest attached transaction timestamp.
+		// Is used  to determine synced of not
+		latestTransactionTSTime time.Time
+		// last time pruner was run
+		lastPrunedOrphaned time.Time
+		// last time final cuter was run
+		lastCutFinal time.Time
 	}
 
 	PastTrack struct {

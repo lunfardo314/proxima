@@ -360,7 +360,7 @@ func (c *SolidifyConsumer) solidificationDeadlineLoop() {
 			return
 		case <-time.After(solidificationDeadlineLoopPeriod):
 			// invoke purge of too old if inside sync window. If node is not synced, be patient and do not remove old transactions
-			if c.glb.utxoTangle.IsInSyncWindow() {
+			if c.glb.utxoTangle.SyncStatus().IsInSyncWindow() {
 				c.Push(&SolidifyInputData{Cmd: SolidifyCommandRemoveTooOld}, true)
 			}
 		}
