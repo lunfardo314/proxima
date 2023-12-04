@@ -116,7 +116,7 @@ func (ut *UTXOTangle) wrapNewIntoExistingVirtualBranch(vid *WrappedTx, oid *core
 			available = true
 			return // ret, true, false
 		},
-		Deleted: vid.PanicDeleted,
+		Deleted: vid.PanicAccessDeleted,
 	})
 	return ret, available, invalid
 }
@@ -144,7 +144,7 @@ func wrapNewIntoExistingVirtualNonBranch(vid *WrappedTx, oid *core.OutputID, bas
 			available = true
 			return // ret, true, false
 		},
-		Deleted: vid.PanicDeleted,
+		Deleted: vid.PanicAccessDeleted,
 	})
 	return ret, available, invalid
 }

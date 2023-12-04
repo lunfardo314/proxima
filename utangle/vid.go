@@ -118,8 +118,8 @@ func (v _deletedTx) _outputAt(_ byte) (*core.Output, error) {
 	panic("orphaned vertex should not be accessed")
 }
 
-func (v _deletedTx) _hasOutputAt(idx byte) (bool, bool) {
-	panic("orphaned vertex should not be accessed")
+func (v _deletedTx) _hasOutputAt(_ byte) (bool, bool) {
+	panic("deleted vertex should not be accessed")
 }
 
 func _newVID(g _genericWrapper) *WrappedTx {
@@ -187,7 +187,7 @@ func (vid *WrappedTx) MarkDeleted() {
 	case _virtualTx:
 		vid._put(_deletedTx{TransactionID: v.txid})
 	case _deletedTx:
-		vid.PanicDeleted()
+		vid.PanicAccessDeleted()
 	}
 }
 
@@ -505,7 +505,7 @@ func (vid *WrappedTx) ConvertToVirtualTx() {
 	case _vertex:
 		vid._put(_virtualTx{VirtualTransaction: v.convertToVirtualTx()})
 	case _deletedTx:
-		vid.PanicDeleted()
+		vid.PanicAccessDeleted()
 	}
 }
 
@@ -526,10 +526,10 @@ func (vid *WrappedTx) WrappedInputs() []WrappedOutput {
 	return ret
 }
 
-// ErrDeletedVertexAccessed exception is raised by PanicDeleted handler of Unwrap vertex so that could be caught if necessary
+// ErrDeletedVertexAccessed exception is raised by PanicAccessDeleted handler of Unwrap vertex so that could be caught if necessary
 var ErrDeletedVertexAccessed = errors.New("deleted vertex should not be accessed")
 
-func (vid *WrappedTx) PanicDeleted() {
+func (vid *WrappedTx) PanicAccessDeleted() {
 	txid := vid._genericWrapper.(_deletedTx).TransactionID
 	util.Panicf("%w: %s", ErrDeletedVertexAccessed, txid.StringShort())
 }
@@ -665,7 +665,7 @@ func (vid *WrappedTx) _collectMutationData(md *_mutationData) (conflict WrappedO
 				return true
 			})
 		},
-		Deleted: vid.PanicDeleted,
+		Deleted: vid.PanicAccessDeleted,
 	})
 	return
 }
@@ -792,7 +792,7 @@ func (vid *WrappedTx) InflationAmount() (ret uint64) {
 			util.Assertf(ok, "can't get stem output")
 			ret = lck.InflationAmount
 		},
-		Deleted: vid.PanicDeleted,
+		Deleted: vid.PanicAccessDeleted,
 	})
 	return
 }
