@@ -217,6 +217,10 @@ func (txid *TransactionID) AsFileName() string {
 	return TransactionIDAsFileName(txid.Timestamp(), txid.ShortID(), txid.SequencerFlagON(), txid.BranchFlagON())
 }
 
+func LessTxID(txid1, txid2 TransactionID) bool {
+	return txid1.Timestamp().Before(txid2.Timestamp())
+}
+
 func NewOutputID(id *TransactionID, idx byte) (ret OutputID) {
 	copy(ret[:TransactionIDLength], id[:])
 	ret[TransactionIDLength] = idx

@@ -1,12 +1,13 @@
 package utangle
 
 import (
+	"fmt"
 	"sync"
 	"time"
 
 	"github.com/lunfardo314/proxima/core"
-	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/proxima/util/set"
 )
 
 func newSyncStatus() *SyncStatus {
@@ -73,42 +74,74 @@ func (s *SyncStatus) SetLastCutFinal(t time.Time) {
 }
 
 // EvidenceIncomingBranch stores branch ID immediately it sees it, before solidification
-func (s *SyncStatus) EvidenceIncomingBranch(tx *transaction.Transaction) {
-	util.Assertf(tx.IsBranchTransaction(), "must be a branch transaction")
+func (s *SyncStatus) EvidenceIncomingBranch(txid *core.TransactionID, seqID core.ChainID) {
+	util.Assertf(txid.BranchFlagON(), "must be a branch transaction")
 
-	seqID := tx.SequencerTransactionData().SequencerID
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	info, found := s.perSequencer[seqID]
+	if !found {
+		info.latestBranchesSeen = set.New[core.TransactionID]()
+	}
+
+	latest := s.latestSeenBranchTimestamp(seqID)
+	if latest.Before(txid.Timestamp()) {
+		info.latestBranchesSeen.Insert(*txid)
+	}
+
+	const keepLastEvidencedIncomingBranches = 10
+	if len(info.latestBranchesSeen) > keepLastEvidencedIncomingBranches {
+		oldest := info.latestBranchesSeen.Minimum(core.LessTxID)
+		info.latestBranchesSeen.Remove(oldest)
+	}
+}
+
+func (s *SyncStatus) UnEvidenceIncomingBranch(txid *core.TransactionID) {
+	util.Assertf(txid.BranchFlagON(), "must be a branch transaction")
+
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	for _, info := range s.perSequencer {
+		delete(info.latestBranchesSeen, *txid) // a bit suboptimal, but we do not want to search for the whole tx
+	}
+}
+
+func (s *SyncStatus) latestSeenBranchTimestamp(seqID core.ChainID) (ret core.LogicalTime) {
+	if info, found := s.perSequencer[seqID]; found {
+		latest := info.latestBranchesSeen.Maximum(core.LessTxID)
+		ret = latest.Timestamp()
+	}
+	return
+}
+
+func (s *SyncStatus) EvidenceBookedBranch(txid *core.TransactionID, seqID core.ChainID) {
+	util.Assertf(txid.BranchFlagON(), "must be a branch transaction")
+
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
 	info := s.perSequencer[seqID]
-	if prev := info.latestBranchSeen.Timestamp(); tx.Timestamp().After(prev) {
-		info.latestBranchSeen = *tx.ID()
+	if prev := info.latestBranchBooked.Timestamp(); txid.Timestamp().After(prev) {
+		info.latestBranchBooked = *txid
 		s.perSequencer[seqID] = info
 	}
 }
 
-func (s *SyncStatus) EvidenceBookedBranch(tx *transaction.Transaction) {
-	util.Assertf(tx.IsBranchTransaction(), "must be a branch transaction")
-
-	seqID := tx.SequencerTransactionData().SequencerID
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-
-	info := s.perSequencer[seqID]
-	if prev := info.latestBranchBooked.Timestamp(); tx.Timestamp().After(prev) {
-		info.latestBranchBooked = *tx.ID()
-		s.perSequencer[seqID] = info
-	}
-}
-
-func (s *SyncStatus) IsSequencerSynced(chainID *core.ChainID) bool {
+func (s *SyncStatus) AllSequencersSynced() bool {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
 
-	info, found := s.perSequencer[*chainID]
-	if !found {
-		return false
+	for seqID, info := range s.perSequencer {
+		fmt.Printf(">>>>>>>>>>>>>>> seqID: %s\n", seqID.Short())
+		info.latestBranchesSeen.ForEach(func(txid core.TransactionID) bool {
+			fmt.Printf(">>>>>>>>>>>>>>> seqID: %s\n", txid.StringShort())
+			return true
+		})
+		if info.latestBranchBooked.Timestamp() != s.latestSeenBranchTimestamp(seqID) {
+			return false
+		}
 	}
-
-	return info.latestBranchBooked == info.latestBranchSeen
+	return true
 }

@@ -16,16 +16,24 @@ func (w *Workflow) startPruner() {
 	go w.cutFinalLoop(prunerLog)
 }
 
+const (
+	pruneOrphanedLoopPeriod = time.Second
+	cutFinalLoopPeriod      = time.Second
+)
+
 func (w *Workflow) pruneOrphanedLoop(log *zap.SugaredLogger) {
 	PruneOrphanedPeriod := core.TimeSlotDuration()
 
+	syncStatus := w.utxoTangle.SyncStatus()
 	for w.working.Load() {
-		time.Sleep(1 * time.Second)
+		time.Sleep(pruneOrphanedLoopPeriod)
 
 		if w.utxoTangle.SyncStatus().SinceLastPrunedOrphaned() < PruneOrphanedPeriod {
 			continue
 		}
-
+		if !syncStatus.IsInSyncWindow() || !syncStatus.AllSequencersSynced() {
+			continue
+		}
 		startTime := time.Now()
 		nVertices := w.utxoTangle.NumVertices()
 		nOrphaned, nOrphanedBranches, nDeletedSlots := w.utxoTangle.PruneOrphaned(utangle.TipSlots)
@@ -41,10 +49,14 @@ func (w *Workflow) pruneOrphanedLoop(log *zap.SugaredLogger) {
 func (w *Workflow) cutFinalLoop(log *zap.SugaredLogger) {
 	CutFinalPeriod := core.TimeSlotDuration() / 2
 
+	syncStatus := w.utxoTangle.SyncStatus()
 	for w.working.Load() {
-		time.Sleep(1 * time.Second)
+		time.Sleep(cutFinalLoopPeriod)
 
 		if w.utxoTangle.SyncStatus().SinceLastCutFinal() < CutFinalPeriod {
+			continue
+		}
+		if !syncStatus.IsInSyncWindow() || !syncStatus.AllSequencersSynced() {
 			continue
 		}
 

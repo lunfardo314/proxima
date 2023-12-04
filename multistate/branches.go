@@ -91,6 +91,11 @@ func (r *RootRecord) Bytes() []byte {
 	return arr.Bytes()
 }
 
+func (br *BranchData) TxID() *core.TransactionID {
+	ret := br.Stem.ID.TransactionID()
+	return &ret
+}
+
 func RootRecordFromBytes(data []byte) (RootRecord, error) {
 	arr, err := lazybytes.ParseArrayFromBytesReadOnly(data, 3)
 	if err != nil {

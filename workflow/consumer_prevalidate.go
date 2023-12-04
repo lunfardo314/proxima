@@ -121,6 +121,6 @@ func (c *PreValidateConsumer) consume(inp *PreValidateConsumerInputData) {
 
 func (c *PreValidateConsumer) evidenceBranch(tx *transaction.Transaction) {
 	if tx.IsBranchTransaction() {
-		c.glb.utxoTangle.SyncStatus().EvidenceIncomingBranch(tx)
+		c.glb.utxoTangle.SyncStatus().EvidenceIncomingBranch(tx.ID(), tx.SequencerTransactionData().SequencerID)
 	}
 }

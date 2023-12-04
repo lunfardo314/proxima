@@ -7,6 +7,7 @@ import (
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/transaction"
+	"github.com/lunfardo314/proxima/util/set"
 	"github.com/lunfardo314/unitrie/common"
 )
 
@@ -44,7 +45,7 @@ type (
 	}
 
 	SequencerSyncStatus struct {
-		latestBranchSeen   core.TransactionID
+		latestBranchesSeen set.Set[core.TransactionID]
 		latestBranchBooked core.TransactionID
 	}
 

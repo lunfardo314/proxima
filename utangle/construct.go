@@ -28,6 +28,8 @@ func Load(stateStore global.StateStore, txBytesStore global.TxBytesStore) *UTXOT
 	branches := multistate.FetchLatestBranches(stateStore)
 	for _, br := range branches {
 		ret.AddVertexAndBranch(newVirtualBranchTx(br).Wrap(), br.Root)
+		ret.syncStatus.EvidenceIncomingBranch(br.TxID(), br.SequencerID)
+		ret.syncStatus.EvidenceBookedBranch(br.TxID(), br.SequencerID)
 	}
 	return ret
 }
@@ -135,6 +137,7 @@ func (ut *UTXOTangle) addBranch(branchVID *WrappedTx, root common.VCommitment) {
 	}
 	m[branchVID] = root
 	ut.branches[branchVID.TimeSlot()] = m
+	ut.numAddedBranches++
 }
 
 func (ut *UTXOTangle) appendVertex(vid *WrappedTx) error {
@@ -150,7 +153,8 @@ func (ut *UTXOTangle) appendVertex(vid *WrappedTx) error {
 			SaveGraphPastCone(vid, "finalizeBranchError")
 			return err
 		}
-		ut.syncStatus.EvidenceBookedBranch(vid.UnwrapTransaction())
+		tx := vid.UnwrapTransaction()
+		ut.syncStatus.EvidenceBookedBranch(tx.ID(), tx.SequencerTransactionData().SequencerID)
 	}
 	return nil
 }
@@ -253,7 +257,6 @@ func (ut *UTXOTangle) _finalizeBranch(newBranchVID *WrappedTx) error {
 			prevCoverage = rr.LedgerCoverage
 		}
 		nextCoverage := prevCoverage.MakeNext(int(newBranchVID.TimeSlot())-int(baselineVID.TimeSlot()), coverageDelta)
-		//fmt.Printf(">>>>>>>>>>>  _finalizeBranch. next coverage: %s\n", nextCoverage.String())
 
 		err = upd.Update(muts, &nextStemOutputID, &seqTxData.SequencerID, nextCoverage)
 		if err != nil {
@@ -277,16 +280,18 @@ func (ut *UTXOTangle) _finalizeBranch(newBranchVID *WrappedTx) error {
 			stemID.StringShort(), nextStemOutputID.StringShort(),
 			func() any { return newBranchVID.PastTrackLines().String() })
 	}
-	{
-		// store new branch to the tangle data structure
-		branches := ut.branches[newBranchVID.TimeSlot()]
-		if len(branches) == 0 {
-			branches = make(map[*WrappedTx]common.VCommitment)
-			ut.branches[newBranchVID.TimeSlot()] = branches
-		}
-		branches[newBranchVID] = newRoot
-		ut.numAddedBranches++
-	}
+	ut.addBranch(newBranchVID, newRoot)
+
+	//{
+	//	// store new branch to the tangle data structure
+	//	branches := ut.branches[newBranchVID.TimeSlot()]
+	//	if len(branches) == 0 {
+	//		branches = make(map[*WrappedTx]common.VCommitment)
+	//		ut.branches[newBranchVID.TimeSlot()] = branches
+	//	}
+	//	branches[newBranchVID] = newRoot
+	//	ut.numAddedBranches++
+	//}
 	return nil
 }
 

@@ -86,7 +86,7 @@ func (s Set[K]) Ordered(less func(el1, el2 K) bool) []K {
 	return ret
 }
 
-func (s Set[K]) Max(less func(el1, el2 K) bool, suchAs ...func(el K) bool) (ret K) {
+func (s Set[K]) Maximum(less func(el1, el2 K) bool, suchAs ...func(el K) bool) (ret K) {
 	if len(s) == 0 {
 		return
 	}
@@ -111,8 +111,8 @@ func (s Set[K]) Max(less func(el1, el2 K) bool, suchAs ...func(el K) bool) (ret 
 	return
 }
 
-func (s Set[K]) Min(less func(el1, el2 K) bool, suchAs ...func(el K) bool) (ret K) {
-	return s.Max(func(el1, el2 K) bool {
+func (s Set[K]) Minimum(less func(el1, el2 K) bool, suchAs ...func(el K) bool) (ret K) {
+	return s.Maximum(func(el1, el2 K) bool {
 		return !less(el1, el2)
 	}, suchAs...)
 }
