@@ -9,63 +9,63 @@ import (
 	"github.com/lunfardo314/proxima/util/set"
 )
 
-func newSyncStatus() *SyncStatus {
-	return &SyncStatus{
+func newSyncData() *SyncData {
+	return &SyncData{
 		mutex:        sync.RWMutex{},
-		whenStarted:  time.Now(),
-		perSequencer: make(map[core.ChainID]SequencerSyncStatus),
+		StartTime:    time.Now(),
+		PerSequencer: make(map[core.ChainID]SequencerSyncStatus),
 	}
 }
 
-func (ut *UTXOTangle) SyncStatus() *SyncStatus {
-	return ut.syncStatus
+func (ut *UTXOTangle) SyncData() *SyncData {
+	return ut.syncData
 }
 
-func SyncWindowDuration() time.Duration {
-	return core.TimeSlotDuration() / 2
-}
-
-// IsInSyncWindow returns true if latest added transaction (by timestamp) is no more than 1/2 time slot back from now
-func (s *SyncStatus) IsInSyncWindow() bool {
+func (s *SyncData) GetSyncInfo() (ret SyncInfo) {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
 
-	return s.latestTransactionTSTime.Add(SyncWindowDuration()).After(time.Now())
+	ret.InSyncWindow = s.isInSyncWindow()
+	ret.PerSequencer = make(map[core.ChainID]bool)
+	for seqID := range s.PerSequencer {
+		ret.PerSequencer[seqID] = s.sequencerIsSynced(seqID)
+	}
+	return
 }
 
-func (s *SyncStatus) storeLatestTxTime(txid *core.TransactionID) {
+func (s *SyncData) storeLatestTxTime(txid *core.TransactionID) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
 	s.latestTransactionTSTime = txid.Timestamp().Time()
 }
 
-func (s *SyncStatus) WhenStarted() time.Time {
-	return s.whenStarted // read-only
+func (s *SyncData) WhenStarted() time.Time {
+	return s.StartTime // read-only
 }
 
-func (s *SyncStatus) SinceLastPrunedOrphaned() time.Duration {
+func (s *SyncData) SinceLastPrunedOrphaned() time.Duration {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
 
 	return time.Since(s.lastPrunedOrphaned)
 }
 
-func (s *SyncStatus) SetLastPrunedOrphaned(t time.Time) {
+func (s *SyncData) SetLastPrunedOrphaned(t time.Time) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
 	s.lastPrunedOrphaned = t
 }
 
-func (s *SyncStatus) SinceLastCutFinal() time.Duration {
+func (s *SyncData) SinceLastCutFinal() time.Duration {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
 
 	return time.Since(s.lastCutFinal)
 }
 
-func (s *SyncStatus) SetLastCutFinal(t time.Time) {
+func (s *SyncData) SetLastCutFinal(t time.Time) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
@@ -80,19 +80,19 @@ func (s *SyncStatus) SetLastCutFinal(t time.Time) {
 // it is "unevidenced" back and life continues with latest known branch
 
 // EvidenceIncomingBranch stores branch ID immediately it sees it, before solidification
-func (s *SyncStatus) EvidenceIncomingBranch(txid *core.TransactionID, seqID core.ChainID) {
+func (s *SyncData) EvidenceIncomingBranch(txid *core.TransactionID, seqID core.ChainID) {
 	util.Assertf(txid.BranchFlagON(), "must be a branch transaction")
 
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
-	info, found := s.perSequencer[seqID]
+	info, found := s.PerSequencer[seqID]
 	if !found {
 		info.latestBranchesSeen = set.New[core.TransactionID]()
 	}
 
-	latest := s.latestSeenBranchTimestamp(seqID)
-	if latest.Before(txid.Timestamp()) {
+	latest := info.latestBranchesSeen.Maximum(core.LessTxID)
+	if latest.Timestamp().Before(txid.Timestamp()) {
 		info.latestBranchesSeen.Insert(*txid)
 	}
 
@@ -101,52 +101,63 @@ func (s *SyncStatus) EvidenceIncomingBranch(txid *core.TransactionID, seqID core
 		oldest := info.latestBranchesSeen.Minimum(core.LessTxID)
 		info.latestBranchesSeen.Remove(oldest)
 	}
-	s.perSequencer[seqID] = info
+	s.PerSequencer[seqID] = info
 }
 
-func (s *SyncStatus) UnEvidenceIncomingBranch(txid *core.TransactionID) {
+func (s *SyncData) UnEvidenceIncomingBranch(txid *core.TransactionID) {
 	util.Assertf(txid.BranchFlagON(), "must be a branch transaction")
 
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
-	for _, info := range s.perSequencer {
+	for _, info := range s.PerSequencer {
 		delete(info.latestBranchesSeen, *txid) // a bit suboptimal, but we do not want to search for the whole tx
 	}
 }
 
-func (s *SyncStatus) latestSeenBranchTimestamp(seqID core.ChainID) (ret core.LogicalTime) {
-	if info, found := s.perSequencer[seqID]; found {
-		latest := info.latestBranchesSeen.Maximum(core.LessTxID)
-		ret = latest.Timestamp()
-	}
-	return
-}
-
-func (s *SyncStatus) EvidenceBookedBranch(txid *core.TransactionID, seqID core.ChainID) {
+func (s *SyncData) EvidenceBookedBranch(txid *core.TransactionID, seqID core.ChainID) {
 	util.Assertf(txid.BranchFlagON(), "must be a branch transaction")
 
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
-	info := s.perSequencer[seqID]
+	info := s.PerSequencer[seqID]
 	if prev := info.latestBranchBooked.Timestamp(); txid.Timestamp().After(prev) {
 		info.latestBranchBooked = *txid
-		s.perSequencer[seqID] = info
+		s.PerSequencer[seqID] = info
 	}
 }
 
-func (s *SyncStatus) AllSequencersSynced() bool {
-	s.mutex.RLock()
-	defer s.mutex.RUnlock()
+func (s *SyncData) sequencerIsSynced(seqID core.ChainID) bool {
+	info, ok := s.PerSequencer[seqID]
+	if !ok {
+		return false
+	}
+	latest := info.latestBranchesSeen.Maximum(core.LessTxID)
+	return info.latestBranchBooked.Timestamp() == latest.Timestamp()
+}
 
-	for seqID, info := range s.perSequencer {
-		info.latestBranchesSeen.ForEach(func(txid core.TransactionID) bool {
-			return true
-		})
-		if info.latestBranchBooked.Timestamp() != s.latestSeenBranchTimestamp(seqID) {
+func (s *SyncData) allSequencersSynced() bool {
+	for seqID := range s.PerSequencer {
+		if !s.sequencerIsSynced(seqID) {
 			return false
 		}
 	}
 	return true
+}
+
+func syncWindowDuration() time.Duration {
+	return core.TimeSlotDuration() / 2
+}
+
+// IsInSyncWindow returns true if latest added transaction (by timestamp) is no more than 1/2 time slot back from now
+func (s *SyncData) isInSyncWindow() bool {
+	return s.latestTransactionTSTime.Add(syncWindowDuration()).After(time.Now())
+}
+
+func (s *SyncData) IsSynced() bool {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+
+	return s.isInSyncWindow() && s.allSequencersSynced()
 }

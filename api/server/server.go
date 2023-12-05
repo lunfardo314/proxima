@@ -212,6 +212,59 @@ func submitTxHandle(wFlow *workflow.Workflow, wait bool) func(w http.ResponseWri
 	}
 }
 
+func getSyncStatusHandle(ut *utangle.UTXOTangle) func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ut.SyncData().GetSyncInfo()
+
+		lst, ok := r.URL.Query()["id"]
+		if !ok || len(lst) != 1 {
+			writeErr(w, "wrong parameter in request 'get_output'")
+			return
+		}
+		oid, err := core.OutputIDFromHexString(lst[0])
+		if err != nil {
+			writeErr(w, err.Error())
+			return
+		}
+
+		type branchState struct {
+			vid *utangle.WrappedTx
+			rdr multistate.SugaredStateReader
+		}
+		allBranches := make([]branchState, 0)
+		err = ut.ForEachBranchStateDescending(ut.LatestTimeSlot(), func(vid *utangle.WrappedTx, rdr multistate.SugaredStateReader) bool {
+			allBranches = append(allBranches, branchState{
+				vid: vid,
+				rdr: rdr,
+			})
+			return true
+		})
+		if err != nil {
+			writeErr(w, err.Error())
+			return
+		}
+		resp := &api.OutputData{
+			Inclusion: make([]api.InclusionDataEncoded, len(allBranches)),
+		}
+
+		for i, bs := range allBranches {
+			resp.Inclusion[i] = api.InclusionDataEncoded{
+				BranchID: bs.vid.ID().StringHex(),
+				Coverage: bs.vid.LedgerCoverage(ut),
+				Included: bs.rdr.HasUTXO(&oid),
+			}
+		}
+
+		respBin, err := json.MarshalIndent(resp, "", "  ")
+		if err != nil {
+			writeErr(w, err.Error())
+			return
+		}
+		_, err = w.Write(respBin)
+		util.AssertNoError(err)
+	}
+}
+
 func writeErr(w http.ResponseWriter, errStr string) {
 	respBytes, err := json.Marshal(&api.Error{Error: errStr})
 	if err != nil {

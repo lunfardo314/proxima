@@ -68,7 +68,7 @@ func (c *AppendTxConsumer) consume(inp *AppendTxConsumerInputData) {
 		c.glb.pullConsumer.removeFromPullList(inp.Tx.ID())
 		c.glb.PostEventDropTxID(inp.Tx.ID(), AppendTxConsumerName, "%v", err)
 		if inp.Tx.IsBranchTransaction() {
-			c.glb.utxoTangle.SyncStatus().UnEvidenceIncomingBranch(inp.Tx.ID())
+			c.glb.utxoTangle.SyncData().UnEvidenceIncomingBranch(inp.Tx.ID())
 		}
 		return
 	}

@@ -20,7 +20,7 @@ type (
 		branches     map[core.TimeSlot]map[*WrappedTx]common.VCommitment
 
 		// all real-time related values in one place
-		syncStatus *SyncStatus
+		syncData *SyncData
 
 		numAddedVertices   int
 		numDeletedVertices int
@@ -28,11 +28,9 @@ type (
 		numDeletedBranches int
 	}
 
-	// SyncStatus contains various atomic sync-related values. Thread safe with getters ad setters
-	SyncStatus struct {
+	// SyncData contains various sync-related values. Thread safe with getters ad setters
+	SyncData struct {
 		mutex sync.RWMutex
-		// when node whenStarted
-		whenStarted time.Time
 		// latestTransactionTSTime time converted from latest attached transaction timestamp.
 		// Is used  to determine synced of not
 		latestTransactionTSTime time.Time
@@ -40,8 +38,13 @@ type (
 		lastPrunedOrphaned time.Time
 		// last time final cuter was run
 		lastCutFinal time.Time
-		// sync data per known sequencer
-		perSequencer map[core.ChainID]SequencerSyncStatus
+		StartTime    time.Time
+		PerSequencer map[core.ChainID]SequencerSyncStatus
+	}
+
+	SyncInfo struct {
+		InSyncWindow bool
+		PerSequencer map[core.ChainID]bool
 	}
 
 	SequencerSyncStatus struct {

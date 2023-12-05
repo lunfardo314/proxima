@@ -345,7 +345,7 @@ func (seq *Sequencer) mainLoop() {
 	var avgProposalDuration time.Duration
 
 	// wait for one slot at startup
-	beginAt := seq.glb.UTXOTangle().SyncStatus().WhenStarted().Add(core.TimeSlotDuration())
+	beginAt := seq.glb.UTXOTangle().SyncData().WhenStarted().Add(core.TimeSlotDuration())
 	if beginAt.After(time.Now()) {
 		seq.log.Infof("wait for one slot (%v) before starting the main loop", core.TimeSlotDuration())
 	}

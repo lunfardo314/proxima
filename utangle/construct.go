@@ -17,7 +17,7 @@ func newUTXOTangle(stateStore global.StateStore, txBytesStore global.TxBytesStor
 		txBytesStore: txBytesStore,
 		vertices:     make(map[core.TransactionID]*WrappedTx),
 		branches:     make(map[core.TimeSlot]map[*WrappedTx]common.VCommitment),
-		syncStatus:   newSyncStatus(),
+		syncData:     newSyncData(),
 	}
 }
 
@@ -28,8 +28,8 @@ func Load(stateStore global.StateStore, txBytesStore global.TxBytesStore) *UTXOT
 	branches := multistate.FetchLatestBranches(stateStore)
 	for _, br := range branches {
 		ret.AddVertexAndBranch(newVirtualBranchTx(br).Wrap(), br.Root)
-		ret.syncStatus.EvidenceIncomingBranch(br.TxID(), br.SequencerID)
-		ret.syncStatus.EvidenceBookedBranch(br.TxID(), br.SequencerID)
+		ret.syncData.EvidenceIncomingBranch(br.TxID(), br.SequencerID)
+		ret.syncData.EvidenceBookedBranch(br.TxID(), br.SequencerID)
 	}
 	return ret
 }
@@ -91,7 +91,7 @@ func (ut *UTXOTangle) attach(vid *WrappedTx) (conflict *WrappedOutput) {
 	// put vertex into the map
 	ut.vertices[*txid] = vid
 	// save latest tx time (from timestamp)
-	ut.SyncStatus().storeLatestTxTime(txid)
+	ut.SyncData().storeLatestTxTime(txid)
 	return
 }
 
@@ -154,7 +154,7 @@ func (ut *UTXOTangle) appendVertex(vid *WrappedTx) error {
 			return err
 		}
 		tx := vid.UnwrapTransaction()
-		ut.syncStatus.EvidenceBookedBranch(tx.ID(), tx.SequencerTransactionData().SequencerID)
+		ut.syncData.EvidenceBookedBranch(tx.ID(), tx.SequencerTransactionData().SequencerID)
 	}
 	return nil
 }

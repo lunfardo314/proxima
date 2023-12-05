@@ -154,7 +154,7 @@ func (c *SolidifyConsumer) checkTxID(txid *core.TransactionID) {
 		c.removeTxID(txid)
 		c.glb.PostEventDropTxID(txid, c.Name(), "conflict %s", conflict.StringShort())
 		if pendingData.draftVertexData.vertex.Tx.IsBranchTransaction() {
-			c.glb.utxoTangle.SyncStatus().UnEvidenceIncomingBranch(txid)
+			c.glb.utxoTangle.SyncData().UnEvidenceIncomingBranch(txid)
 		}
 		return
 	}
@@ -216,8 +216,8 @@ func (c *SolidifyConsumer) removeTooOld() {
 			txid1 := txid
 			toRemove = append(toRemove, &txid1)
 			c.glb.PostEventDropTxID(&txid1, c.Name(), "deadline. Missing: %s", c.missingInputsString(txid1))
-			if pendingData.draftVertexData.vertex.Tx.IsBranchTransaction() {
-				c.glb.utxoTangle.SyncStatus().UnEvidenceIncomingBranch(&txid1)
+			if pendingData.draftVertexData != nil && pendingData.draftVertexData.vertex.Tx.IsBranchTransaction() {
+				c.glb.utxoTangle.SyncData().UnEvidenceIncomingBranch(&txid1)
 			}
 		}
 	}
@@ -360,14 +360,14 @@ const solidificationDeadlineLoopPeriod = time.Second
 
 func (c *SolidifyConsumer) solidificationDeadlineLoop() {
 	defer c.Log().Debugf("solidification deadline loop stopped")
-	syncStatus := c.glb.utxoTangle.SyncStatus()
+	syncStatus := c.glb.utxoTangle.SyncData()
 	for {
 		select {
 		case <-c.stopSolidificationDeadlineLoopChan:
 			return
 		case <-time.After(solidificationDeadlineLoopPeriod):
 			// invoke purge of too old if inside sync window. If node is not synced, be patient and do not remove old transactions
-			if syncStatus.IsInSyncWindow() && syncStatus.AllSequencersSynced() {
+			if syncStatus.IsSynced() {
 				c.Push(&SolidifyInputData{Cmd: SolidifyCommandRemoveTooOld}, true)
 			}
 		}

@@ -1,6 +1,8 @@
 package api
 
 import (
+	"errors"
+
 	"github.com/lunfardo314/proxima/core"
 )
 
@@ -12,6 +14,8 @@ const (
 	PathSubmitTransactionNowait = "/submit_nowait" // async submitting
 	PathGetOutputInclusion      = "/inclusion"     // async submitting
 )
+
+var ErrNotSynced = errors.New("nodes not synced")
 
 type Error struct {
 	// empty string when no error
