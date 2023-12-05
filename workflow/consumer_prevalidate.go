@@ -81,15 +81,7 @@ func (c *PreValidateConsumer) consume(inp *PreValidateConsumerInputData) {
 	}
 	c.IncCounter("ok")
 
-	if inp.SourceType == TransactionSourceTypePeer && !inp.PrimaryTransactionData.WasGossiped {
-		// if received from another peer not via the pull protocol, gossip the transaction right after pre-validation
-		// mark it already gossiped to prevent repetitive gossip after full validation
-		inp.PrimaryTransactionData.WasGossiped = true
-		c.glb.txGossipOutConsumer.Push(TxGossipSendInputData{
-			PrimaryTransactionData: inp.PrimaryTransactionData,
-			ReceivedFrom:           inp.ReceivedFrom,
-		})
-	}
+	c.GossipTransactionIfNeeded(inp.PrimaryTransactionData)
 
 	out := &SolidifyInputData{
 		PrimaryTransactionData: inp.PrimaryTransactionData,

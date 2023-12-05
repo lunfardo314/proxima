@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-const memLogFrequency = 10 * time.Second
+const memLogFrequency = 5 * time.Second
 
 func (p *ProximaNode) startMemoryLogging() {
 	stopChan := make(chan struct{})
@@ -19,8 +19,13 @@ func (p *ProximaNode) startMemoryLogging() {
 			case <-time.After(memLogFrequency):
 			}
 
+			sync := "NO SYNC"
+			if p.uTangle.SyncData().IsSynced() {
+				sync = "SYNC"
+			}
 			runtime.ReadMemStats(&mstats)
-			p.log.Infof("memory: allocated: %.1f MB, system: %.1f MB, Num GC: %d, Goroutines: %d, ",
+			p.log.Infof("%s, allocated %.1f MB, system %.1f MB, Num GC: %d, Goroutines: %d, ",
+				sync,
 				float32(mstats.Alloc*10/(1024*1024))/10,
 				float32(mstats.Sys*10/(1024*1024))/10,
 				mstats.NumGC,

@@ -77,12 +77,7 @@ func (c *AppendTxConsumer) consume(inp *AppendTxConsumerInputData) {
 	c.logBranch(inp.PrimaryTransactionData, vid.LedgerCoverage(c.glb.UTXOTangle()))
 	c.glb.pullConsumer.removeFromPullList(inp.Tx.ID())
 
-	if !inp.WasGossiped {
-		// transaction wasn't gossiped yet, it needs to be sent to other peers
-		c.glb.txGossipOutConsumer.Push(TxGossipSendInputData{
-			PrimaryTransactionData: inp.PrimaryTransactionData,
-		})
-	}
+	c.GossipTransactionIfNeeded(inp.PrimaryTransactionData)
 
 	// rise new vertex event
 	c.glb.PostEvent(EventNewVertex, &NewVertexEventData{

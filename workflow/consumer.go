@@ -74,3 +74,14 @@ func (c *Consumer[T]) InfoStr() string {
 	p, l := c.Info()
 	return fmt.Sprintf("pushCount: %d, queueLen: %d", p, l)
 }
+
+func (c *Consumer[T]) GossipTransactionIfNeeded(inp *PrimaryTransactionData) {
+	if inp.WasGossiped || !c.glb.utxoTangle.SyncData().IsSynced() {
+		return
+	}
+	inp.WasGossiped = true
+	c.glb.txGossipOutConsumer.Push(TxGossipSendInputData{
+		PrimaryTransactionData: inp,
+		ReceivedFrom:           inp.ReceivedFrom,
+	})
+}
