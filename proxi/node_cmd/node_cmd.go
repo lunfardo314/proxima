@@ -49,6 +49,7 @@ func Init() *cobra.Command {
 		initSpamCmd(),
 		initMakeChainCmd(),
 		initChainsCmd(),
+		initSyncInfoCmd(),
 		seq_cmd.Init(),
 	)
 

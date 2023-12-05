@@ -16,19 +16,21 @@ import (
 	"github.com/lunfardo314/proxima/workflow"
 )
 
-func registerHandlers(wflow *workflow.Workflow) {
+func registerHandlers(wFlow *workflow.Workflow) {
 	// GET request format: 'get_account_outputs?accountable=<EasyFL source form of the accountable lock constraint>'
-	http.HandleFunc(api.PathGetAccountOutputs, getAccountOutputsHandle(wflow.UTXOTangle()))
+	http.HandleFunc(api.PathGetAccountOutputs, getAccountOutputsHandle(wFlow.UTXOTangle()))
 	// GET request format: 'get_chain_output?chainid=<hex-encoded chain ID>'
-	http.HandleFunc(api.PathGetChainOutput, getChainOutputHandle(wflow.UTXOTangle()))
+	http.HandleFunc(api.PathGetChainOutput, getChainOutputHandle(wFlow.UTXOTangle()))
 	// GET request format: 'get_output?id=<hex-encoded output ID>'
-	http.HandleFunc(api.PathGetOutput, getOutputHandle(wflow.UTXOTangle()))
+	http.HandleFunc(api.PathGetOutput, getOutputHandle(wFlow.UTXOTangle()))
 	// GET request format: 'inclusion?id=<hex-encoded output ID>'
-	http.HandleFunc(api.PathGetOutputInclusion, getOutputInclusionHandle(wflow.UTXOTangle()))
+	http.HandleFunc(api.PathGetOutputInclusion, getOutputInclusionHandle(wFlow.UTXOTangle()))
 	// POST request format 'submit_wait'. Waiting until added to utangle or rejected
-	http.HandleFunc(api.PathSubmitTransactionWait, submitTxHandle(wflow, true))
+	http.HandleFunc(api.PathSubmitTransactionWait, submitTxHandle(wFlow, true))
 	// POST request format 'submit_nowait'. Async posting to utangle. No feedback in case of wrong tx
-	http.HandleFunc(api.PathSubmitTransactionNowait, submitTxHandle(wflow, false))
+	http.HandleFunc(api.PathSubmitTransactionNowait, submitTxHandle(wFlow, false))
+	// GET sync info from the node
+	http.HandleFunc(api.PathGetSyncInfo, getSyncInfoHandle(wFlow.UTXOTangle()))
 }
 
 func getAccountOutputsHandle(ut *utangle.UTXOTangle) func(w http.ResponseWriter, r *http.Request) {
@@ -212,49 +214,21 @@ func submitTxHandle(wFlow *workflow.Workflow, wait bool) func(w http.ResponseWri
 	}
 }
 
-func getSyncStatusHandle(ut *utangle.UTXOTangle) func(w http.ResponseWriter, r *http.Request) {
+func getSyncInfoHandle(ut *utangle.UTXOTangle) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		ut.SyncData().GetSyncInfo()
-
-		lst, ok := r.URL.Query()["id"]
-		if !ok || len(lst) != 1 {
-			writeErr(w, "wrong parameter in request 'get_output'")
-			return
+		syncInfo := ut.SyncData().GetSyncInfo()
+		resp := api.SyncInfo{
+			Synced:       syncInfo.Synced,
+			InSyncWindow: syncInfo.InSyncWindow,
+			PerSequencer: make(map[string]api.SequencerSyncInfo),
 		}
-		oid, err := core.OutputIDFromHexString(lst[0])
-		if err != nil {
-			writeErr(w, err.Error())
-			return
-		}
-
-		type branchState struct {
-			vid *utangle.WrappedTx
-			rdr multistate.SugaredStateReader
-		}
-		allBranches := make([]branchState, 0)
-		err = ut.ForEachBranchStateDescending(ut.LatestTimeSlot(), func(vid *utangle.WrappedTx, rdr multistate.SugaredStateReader) bool {
-			allBranches = append(allBranches, branchState{
-				vid: vid,
-				rdr: rdr,
-			})
-			return true
-		})
-		if err != nil {
-			writeErr(w, err.Error())
-			return
-		}
-		resp := &api.OutputData{
-			Inclusion: make([]api.InclusionDataEncoded, len(allBranches)),
-		}
-
-		for i, bs := range allBranches {
-			resp.Inclusion[i] = api.InclusionDataEncoded{
-				BranchID: bs.vid.ID().StringHex(),
-				Coverage: bs.vid.LedgerCoverage(ut),
-				Included: bs.rdr.HasUTXO(&oid),
+		for seqID, si := range syncInfo.PerSequencer {
+			resp.PerSequencer[seqID.StringHex()] = api.SequencerSyncInfo{
+				Synced:           si.Synced,
+				LatestBookedSlot: si.LatestBookedSlot,
+				LatestSeenSlot:   si.LatestSeenSlot,
 			}
 		}
-
 		respBin, err := json.MarshalIndent(resp, "", "  ")
 		if err != nil {
 			writeErr(w, err.Error())

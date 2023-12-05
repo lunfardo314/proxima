@@ -25,10 +25,11 @@ func (s *SyncData) GetSyncInfo() (ret SyncInfo) {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
 
+	ret.Synced = s.IsSynced()
 	ret.InSyncWindow = s.isInSyncWindow()
-	ret.PerSequencer = make(map[core.ChainID]bool)
+	ret.PerSequencer = make(map[core.ChainID]SequencerSyncInfo)
 	for seqID := range s.PerSequencer {
-		ret.PerSequencer[seqID] = s.sequencerIsSynced(seqID)
+		ret.PerSequencer[seqID] = s.sequencerSyncInfo(seqID)
 	}
 	return
 }
@@ -128,18 +129,22 @@ func (s *SyncData) EvidenceBookedBranch(txid *core.TransactionID, seqID core.Cha
 	}
 }
 
-func (s *SyncData) sequencerIsSynced(seqID core.ChainID) bool {
+func (s *SyncData) sequencerSyncInfo(seqID core.ChainID) SequencerSyncInfo {
 	info, ok := s.PerSequencer[seqID]
 	if !ok {
-		return false
+		return SequencerSyncInfo{}
 	}
-	latest := info.latestBranchesSeen.Maximum(core.LessTxID)
-	return info.latestBranchBooked.Timestamp() == latest.Timestamp()
+	latestSeen := info.latestBranchesSeen.Maximum(core.LessTxID)
+	return SequencerSyncInfo{
+		Synced:           info.latestBranchBooked.Timestamp() == latestSeen.Timestamp(),
+		LatestBookedSlot: uint32(info.latestBranchBooked.TimeSlot()),
+		LatestSeenSlot:   uint32(latestSeen.TimeSlot()),
+	}
 }
 
 func (s *SyncData) allSequencersSynced() bool {
 	for seqID := range s.PerSequencer {
-		if !s.sequencerIsSynced(seqID) {
+		if !s.sequencerSyncInfo(seqID).Synced {
 			return false
 		}
 	}
@@ -147,7 +152,7 @@ func (s *SyncData) allSequencersSynced() bool {
 }
 
 func syncWindowDuration() time.Duration {
-	return core.TimeSlotDuration() / 2
+	return core.TimeSlotDuration() * 2
 }
 
 // IsInSyncWindow returns true if latest added transaction (by timestamp) is no more than 1/2 time slot back from now

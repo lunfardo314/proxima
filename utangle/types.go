@@ -43,8 +43,15 @@ type (
 	}
 
 	SyncInfo struct {
+		Synced       bool
 		InSyncWindow bool
-		PerSequencer map[core.ChainID]bool
+		PerSequencer map[core.ChainID]SequencerSyncInfo
+	}
+
+	SequencerSyncInfo struct {
+		Synced           bool
+		LatestBookedSlot uint32
+		LatestSeenSlot   uint32
 	}
 
 	SequencerSyncStatus struct {

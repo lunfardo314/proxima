@@ -15,6 +15,7 @@ import (
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/txbuilder"
+	"github.com/lunfardo314/proxima/utangle"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/txutils"
 	"golang.org/x/crypto/blake2b"
@@ -259,6 +260,36 @@ func (c *APIClient) GetAccountOutputs(account core.Accountable, filter ...func(o
 		return nil, err
 	}
 	return outs, nil
+}
+
+func (c *APIClient) GetSyncInfo() (utangle.SyncInfo, error) {
+	body, err := c.getBody(api.PathGetSyncInfo)
+	if err != nil {
+		return utangle.SyncInfo{}, err
+	}
+
+	res := api.SyncInfo{PerSequencer: make(map[string]api.SequencerSyncInfo)}
+	err = json.Unmarshal(body, &res)
+	if err != nil {
+		return utangle.SyncInfo{}, err
+	}
+	ret := utangle.SyncInfo{
+		Synced:       res.Synced,
+		InSyncWindow: res.InSyncWindow,
+		PerSequencer: make(map[core.ChainID]utangle.SequencerSyncInfo),
+	}
+	for seqIDStr, si := range res.PerSequencer {
+		seqID, err := core.ChainIDFromHexString(seqIDStr)
+		if err != nil {
+			return utangle.SyncInfo{}, err
+		}
+		ret.PerSequencer[seqID] = utangle.SequencerSyncInfo{
+			Synced:           si.Synced,
+			LatestBookedSlot: si.LatestBookedSlot,
+			LatestSeenSlot:   si.LatestSeenSlot,
+		}
+	}
+	return ret, nil
 }
 
 func (c *APIClient) GetTransferableOutputs(account core.Accountable, ts core.LogicalTime, maxOutputs ...int) ([]*core.OutputWithID, uint64, error) {

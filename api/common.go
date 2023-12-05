@@ -1,8 +1,6 @@
 package api
 
 import (
-	"errors"
-
 	"github.com/lunfardo314/proxima/core"
 )
 
@@ -12,10 +10,9 @@ const (
 	PathGetOutput               = "/get_output"
 	PathSubmitTransactionWait   = "/submit_wait"   // wait appending to the utangle
 	PathSubmitTransactionNowait = "/submit_nowait" // async submitting
-	PathGetOutputInclusion      = "/inclusion"     // async submitting
+	PathGetOutputInclusion      = "/inclusion"
+	PathGetSyncInfo             = "/sync_info"
 )
-
-var ErrNotSynced = errors.New("nodes not synced")
 
 type Error struct {
 	// empty string when no error
@@ -58,6 +55,20 @@ type InclusionData struct {
 	Coverage uint64
 	Included bool
 }
+
+type (
+	SyncInfo struct {
+		Error
+		Synced       bool                         `json:"synced"`
+		InSyncWindow bool                         `json:"in_sync_window,omitempty"`
+		PerSequencer map[string]SequencerSyncInfo `json:"per_sequencer,omitempty"`
+	}
+	SequencerSyncInfo struct {
+		Synced           bool   `json:"synced"`
+		LatestBookedSlot uint32 `json:"latest_booked_slot"`
+		LatestSeenSlot   uint32 `json:"latest_seen_slot"`
+	}
+)
 
 const ErrGetOutputNotFound = "output not found"
 
