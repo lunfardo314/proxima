@@ -72,7 +72,12 @@ workflow:
   validate:
     loglevel: info
 
-# specify milestone proposer strategies to trace
-trace_proposers:
-  base: false
-  btrack2: false
+debug:
+  trace_workflow:
+    pull: true
+    tx: true
+
+  # specify milestone proposer strategies to trace
+  trace_proposers:
+    base: false
+    btrack2: false

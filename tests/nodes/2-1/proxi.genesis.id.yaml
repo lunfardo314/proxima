@@ -1,0 +1,17 @@
+# This file contains Proxima ledger identity data.
+# It will be used to create genesis ledger state for the Proxima network.
+# The ledger identity file does not contain secrets, it is public.
+# The data in the file must match genesis controller private key and hardcoded protocol constants.
+# Except 'description' field, file should not be modified.
+# Once used to create genesis, identity data should never be modified.
+# Values 'genesis_controller_address' and 'bootstrap_chain_id' are computed values used for control
+description: Proxima prototype version 0.0
+initial_supply: 1000000000000
+genesis_controller_public_key: 0530b790e0e7de626f36e20ba656f09e324c68203de899d0daf9f98fcb3cf684
+baseline_time: 1696982400000000000
+time_tick_duration: 100000000
+max_time_tick_value_in_time_slot: 99
+genesis_time_slot: 446638
+core_ledger_constraints_hash: 119a3448744e80c5ed0d9a19c5de87ff4afdb6724784a4ad70c163204ea7cc73
+genesis_controller_address: addressED25519(0x3faf090d38f18ea211936b8bcf19b7b30cdcb8e224394a5c30f9ba644f8bb2fb)
+bootstrap_chain_id: 1e8e129701aeea94c50e24864a8f950c4efd7a4a1a1cf12ed0a519bfa6fc0e84

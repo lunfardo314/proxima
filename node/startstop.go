@@ -62,6 +62,7 @@ func (p *ProximaNode) Run() {
 
 	p.log, p.logOutputs = newNodeLoggerFromConfig()
 	p.log.Info("---------------- starting up Proxima node --------------")
+	global.ReadInTraceFlags(p.log)
 
 	err := util.CatchPanicOrError(func() error {
 		p.startPProfIfEnabled()
@@ -182,10 +183,10 @@ func (p *ProximaNode) startWorkflow() {
 }
 
 func (p *ProximaNode) startSequencers() {
-	traceProposers := viper.GetStringMap("trace_proposers")
+	traceProposers := viper.GetStringMap("debug.trace_proposers")
 
 	for pname := range traceProposers {
-		if viper.GetBool("trace_proposers." + pname) {
+		if viper.GetBool("debug.trace_proposers." + pname) {
 			sequencer.SetTraceProposer(pname, true)
 			p.log.Infof("will be tracing proposer '%s'", pname)
 		}

@@ -5,8 +5,6 @@ import (
 	"github.com/lunfardo314/proxima/util"
 )
 
-// Hardcoded tracing
-
 func (c *Consumer[T]) tracePull(format string, lazyArgs ...any) {
 	if global.TracePullEnabled {
 		global.TracePull(c.Log(), format, lazyArgs...)

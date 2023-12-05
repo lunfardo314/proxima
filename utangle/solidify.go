@@ -41,6 +41,9 @@ func (v *Vertex) FetchMissingDependencies(ut *UTXOTangle) (conflict *core.Output
 			conflict = v.fetchMissingInputs(ut)
 		}
 	}
+	if conflict != nil {
+		return
+	}
 	if v._allEndorsementsSolid() {
 		if v._allInputsSolid() {
 			v.pastTrack.forks.cleanDeleted()
@@ -56,10 +59,17 @@ func (v *Vertex) FetchMissingDependencies(ut *UTXOTangle) (conflict *core.Output
 		latestBranches := ut.LatestBranchesDescending()
 		for _, branchVID := range latestBranches {
 			rdr := ut.MustGetSugaredStateReader(branchVID.ID())
-			if conflict = v.fetchMissingInputs(ut, rdr); conflict != nil {
-				return
+			if conflict = v.fetchMissingInputs(ut, rdr); conflict == nil {
+				// iterate states until first non conflicting
+				break
 			}
 		}
+		// TODO something fishy is with scanning states
+		conflict = nil
+		//if conflict != nil {
+		//	// it means all branches brings conflict -> cannot be solidified
+		//	return
+		//}
 		v.branchesAlreadyScanned = true
 		// check again, it may be already solid
 		if v._allInputsSolid() {
