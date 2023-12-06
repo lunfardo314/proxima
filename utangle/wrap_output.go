@@ -2,6 +2,7 @@ package utangle
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/multistate"
@@ -16,6 +17,9 @@ func (ut *UTXOTangle) GetWrappedOutput(oid *core.OutputID, baselineState ...mult
 	// first search vertex on the tangle and pick output from it. Fetch output from state if necessary
 	ret, found, invalid := ut.pickFromExistingVertex(oid, baselineState...)
 	if found || invalid {
+		if invalid {
+			fmt.Printf(">>>>>>>>>>>>>>> GetWrappedOutput 0: %s\n", oid.StringShort())
+		}
 		return ret, found, invalid
 	}
 
@@ -42,9 +46,14 @@ func (ut *UTXOTangle) GetWrappedOutput(oid *core.OutputID, baselineState ...mult
 		if errors.Is(err, multistate.ErrNotFound) {
 			// output is not on the state
 			// if transaction is known -> output is consumed and cannot be solidified
-			return WrappedOutput{}, false, baselineState[0].KnowsCommittedTransaction(&txid)
+			invalid = baselineState[0].KnowsCommittedTransaction(&txid)
+			if invalid {
+				fmt.Printf(">>>>>>>>>>>>>>> GetWrappedOutput 1: %s\n", oid.StringShort())
+			}
+			return WrappedOutput{}, false, invalid
 		}
 		// some other error than ErrNotFound -> it is invalid
+		fmt.Printf(">>>>>>>>>>>>>>> GetWrappedOutput 2: %s\n", oid.StringShort())
 		return WrappedOutput{}, false, true
 	}
 
