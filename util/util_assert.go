@@ -24,7 +24,7 @@ func EvalLazyArgs(args ...any) []any {
 // Assertf with optionally deferred evaluation of arguments
 func Assertf(cond bool, format string, args ...any) {
 	if !cond {
-		panic(fmt.Sprintf("assertion failed:: "+format, EvalLazyArgs(args...)...))
+		panic(fmt.Errorf("assertion failed:: "+format, EvalLazyArgs(args...)...))
 	}
 }
 
@@ -37,7 +37,7 @@ func AssertNoError(err error, prefix ...string) {
 	if len(prefix) > 0 {
 		pref = strings.Join(prefix, " ") + ": "
 	}
-	Assertf(err == nil, pref+"%v", err)
+	Assertf(err == nil, pref+"%w", err)
 }
 
 func IsNil(p interface{}) bool {

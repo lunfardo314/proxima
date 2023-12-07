@@ -8,7 +8,7 @@ require (
 	github.com/gammazero/deque v0.2.1
 	github.com/libp2p/go-libp2p v0.32.1
 	github.com/lunfardo314/easyfl v0.0.0-20231103170835-b03544245694
-	github.com/lunfardo314/unitrie v0.0.0-20231116165445-da7badca1868
+	github.com/lunfardo314/unitrie v0.0.0-20231207174746-c5161b37b3d0
 	github.com/multiformats/go-multiaddr v0.12.0
 	github.com/spf13/cobra v1.8.0
 	github.com/spf13/pflag v1.0.5

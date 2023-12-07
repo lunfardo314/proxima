@@ -319,6 +319,8 @@ github.com/lunfardo314/easyfl v0.0.0-20231103170835-b03544245694 h1:7MrPtF3y0KKy
 github.com/lunfardo314/easyfl v0.0.0-20231103170835-b03544245694/go.mod h1:sbC4lEPEdSVEi0VyMUQa6jz987/MDB+2EM2co4MfMbk=
 github.com/lunfardo314/unitrie v0.0.0-20231116165445-da7badca1868 h1:Pjwq/PS7ZrLfgWxoz6YOuuNJ87hkKSHCBQiOOMRYaxc=
 github.com/lunfardo314/unitrie v0.0.0-20231116165445-da7badca1868/go.mod h1:Y/lrU1Lq5IiV7jOeKLSeQ9zTAaDVSizYgr0EdPn3Nx8=
+github.com/lunfardo314/unitrie v0.0.0-20231207174746-c5161b37b3d0 h1:cNQF9CqCqTLdn3QnWfsxZmTwYQ3/h+p6+Xiku/klVrs=
+github.com/lunfardo314/unitrie v0.0.0-20231207174746-c5161b37b3d0/go.mod h1:Y/lrU1Lq5IiV7jOeKLSeQ9zTAaDVSizYgr0EdPn3Nx8=
 github.com/lunixbochs/vtclean v1.0.0/go.mod h1:pHhQNgMf3btfWnGBVipUOjRYhoOsdGqdm/+2c2E2WMI=
 github.com/magiconair/properties v1.8.7 h1:IeQXZAiQcpL9mgcAe1Nu6cX9LLw6ExEHKjN0VQdvPDY=
 github.com/magiconair/properties v1.8.7/go.mod h1:Dhd985XPs7jluiymwWYZ0G4Z61jb3vdS329zhj2hYo0=
