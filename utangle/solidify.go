@@ -51,31 +51,6 @@ func (v *Vertex) FetchMissingDependencies(ut *UTXOTangle) (conflict *core.Output
 	return
 }
 
-//
-//func (v *Vertex) scanLatestBranches(ut *UTXOTangle) (conflict *core.OutputID) {
-//	if v.branchesAlreadyScanned {
-//		// latest branches have already been scanned, repeating it won't bring anything new
-//		return
-//	}
-//	// Scan all latest branches trying to solidify from them
-//	latestBranches := ut.LatestBranchesDescending()
-//	for _, branchVID := range latestBranches {
-//		rdr := ut.MustGetSugaredStateReader(branchVID.ID())
-//		if conflict = v.fetchMissingInputs(ut, rdr); conflict == nil {
-//			// iterate states until first non conflicting
-//			break
-//		}
-//	}
-//	if conflict != nil {
-//		return
-//	}
-//	// if conflict != nil, it means output is invalid on all known branches, but some good branch could come later
-//	// so, we ignore conflict
-//	conflict = nil
-//	v.branchesAlreadyScanned = true
-//	return
-//}
-
 func (v *Vertex) fetchMissingInputs(ut *UTXOTangle, baselineState ...multistate.SugaredStateReader) (conflict *core.OutputID) {
 	var conflictWrapped *WrappedOutput
 	v.Tx.ForEachInput(func(i byte, oid *core.OutputID) bool {
@@ -86,13 +61,11 @@ func (v *Vertex) fetchMissingInputs(ut *UTXOTangle, baselineState ...multistate.
 		inputWrapped, ok, invalid := ut.GetWrappedOutput(oid, baselineState...)
 		if invalid {
 			conflict = oid
-			fmt.Printf(">>>>>>>>>>>>>> fetchMissingInputs: 1 %s\n", conflict.StringShort())
 			return false
 		}
 		if ok {
 			if conflictWrapped = v.pastTrack.absorbPastTrack(inputWrapped.VID, ut.StateStore); conflictWrapped != nil {
 				conflict = conflictWrapped.DecodeID()
-				fmt.Printf(">>>>>>>>>>>>>> fetchMissingInputs: 2 %s\n", conflict.StringShort())
 				return false
 			}
 			v.Inputs[i] = inputWrapped.VID
