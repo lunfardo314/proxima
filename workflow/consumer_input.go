@@ -17,12 +17,12 @@ const PrimaryInputConsumerName = "input"
 
 // PrimaryTransactionData is a basic data of the raw transaction
 type (
-	TransactionSourceType byte
+	TransactionSource byte
 
 	// PrimaryTransactionData is an input message type for this consumer
 	PrimaryTransactionData struct {
 		Tx               *transaction.Transaction
-		SourceType       TransactionSourceType
+		Source           TransactionSource
 		ReceivedFromPeer peer.ID
 		ReceivedWhen     time.Time
 		DoNotGossip      bool
@@ -40,21 +40,21 @@ type (
 )
 
 const (
-	TransactionSourceTypeAPI = TransactionSourceType(iota)
-	TransactionSourceTypeSequencer
-	TransactionSourceTypePeer
-	TransactionSourceTypeStore
+	TransactionSourceAPI = TransactionSource(iota)
+	TransactionSourceSequencer
+	TransactionSourcePeer
+	TransactionSourceStore
 )
 
-func (t TransactionSourceType) String() string {
+func (t TransactionSource) String() string {
 	switch t {
-	case TransactionSourceTypeAPI:
+	case TransactionSourceAPI:
 		return "API"
-	case TransactionSourceTypeSequencer:
+	case TransactionSourceSequencer:
 		return "sequencer"
-	case TransactionSourceTypePeer:
+	case TransactionSourcePeer:
 		return "peer"
-	case TransactionSourceTypeStore:
+	case TransactionSourceStore:
 		return "txStore"
 	default:
 		return "(unknown tx source)"
@@ -72,7 +72,7 @@ func (w *Workflow) initPrimaryInputConsumer() {
 	}
 	ret.AddOnConsume(func(inp *PrimaryTransactionData) {
 		// tracing every input message
-		ret.traceTx(inp, "IN source: %s", inp.SourceType.String())
+		ret.traceTx(inp, "IN source: %s", inp.Source.String())
 	})
 	ret.AddOnConsume(ret.consume) // process input
 	ret.AddOnClosed(func() {
@@ -107,8 +107,9 @@ func (c *PrimaryConsumer) consume(inp *PrimaryTransactionData) {
 	}
 
 	c.glb.IncCounter(c.Name() + ".out")
-	if inp.SourceType == TransactionSourceTypeStore {
-		// it was from the trusted store. Pass it directly to appender
+	if inp.Source == TransactionSourceStore {
+		// it is coming from the trusted store. Pass it directly to appender
+		// The transaction from the store is assumed to be valid and solidifiable
 		c.glb.appendTxConsumer.Push(&AppendTxConsumerInputData{
 			PrimaryTransactionData: inp,
 		})

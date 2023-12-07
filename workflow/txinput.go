@@ -37,7 +37,7 @@ func (w *Workflow) TransactionInReturnTx(txBytes []byte, opts ...TransactionInOp
 	// once tx reached the node, stop pulling
 	inData.WasPulled = w.pullConsumer.stopPulling(tx.ID())
 	// prevent unnecessary dissemination via gossip
-	inData.DoNotGossip = inData.WasPulled || inData.SourceType == TransactionSourceTypeStore
+	inData.DoNotGossip = inData.WasPulled || inData.Source == TransactionSourceStore
 
 	w.primaryInputConsumer.Push(inData)
 	return tx, nil
@@ -47,31 +47,31 @@ func newPrimaryInputConsumerData(tx *transaction.Transaction) *PrimaryTransactio
 	return &PrimaryTransactionData{
 		Tx:            tx,
 		ReceivedWhen:  time.Now(),
-		SourceType:    TransactionSourceTypeAPI,
+		Source:        TransactionSourceAPI,
 		eventCallback: func(_ string, _ any) {},
 	}
 }
 
-func WithTransactionSourceType(src TransactionSourceType) TransactionInOption {
+func WithTransactionSource(src TransactionSource) TransactionInOption {
 	return func(data *PrimaryTransactionData) {
-		data.SourceType = src
+		data.Source = src
 	}
 }
 
 func WithTransactionSourcePeer(from peer.ID) TransactionInOption {
 	return func(data *PrimaryTransactionData) {
-		data.SourceType = TransactionSourceTypePeer
+		data.Source = TransactionSourcePeer
 		data.ReceivedFromPeer = from
 	}
 }
 
-func WithTraceCondition(cond func(tx *transaction.Transaction, src TransactionSourceType, rcv peer.ID) bool) TransactionInOption {
+func WithTraceCondition(cond func(tx *transaction.Transaction, src TransactionSource, rcv peer.ID) bool) TransactionInOption {
 	return func(data *PrimaryTransactionData) {
-		data.traceFlag = cond(data.Tx, data.SourceType, data.ReceivedFromPeer)
+		data.traceFlag = cond(data.Tx, data.Source, data.ReceivedFromPeer)
 	}
 }
 
-var OptionWithSourceSequencer = WithTransactionSourceType(TransactionSourceTypeSequencer)
+var OptionWithSourceSequencer = WithTransactionSource(TransactionSourceSequencer)
 
 func WithWorkflowEventCallback(fun func(event string, data any)) TransactionInOption {
 	return func(data *PrimaryTransactionData) {

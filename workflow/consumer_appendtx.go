@@ -46,7 +46,7 @@ func (w *Workflow) initAppendTxConsumer() {
 }
 
 func (c *AppendTxConsumer) consume(inp *AppendTxConsumerInputData) {
-	//c.setTrace(inp.Source == TransactionSourceTypeAPI)
+	//c.setTrace(inp.Source == TransactionSourceAPI)
 	//inp.eventCallback(AppendTxConsumerName+".in", inp.Tx)
 
 	// TODO due to unclear reasons, sometimes repeating transactions reach this point and attach panics
@@ -59,11 +59,11 @@ func (c *AppendTxConsumer) consume(inp *AppendTxConsumerInputData) {
 	// append to the UTXO tangle
 	var vid *utangle.WrappedTx
 	var err error
-	if inp.SourceType == TransactionSourceTypeStore {
+	if inp.Source == TransactionSourceStore {
 		// append virtualTx
-		vid, err = c.glb.utxoTangle.AppendVirtualTx(inp.Tx)
+		vid = c.glb.utxoTangle.AppendVirtualTx(inp.Tx)
 	} else {
-		vid, err = c.glb.utxoTangle.AppendVertex(inp.Vertex, utangle.BypassValidation)
+		vid, err = c.glb.utxoTangle.AppendVertex(inp.Vertex, c.glb.StoreTxBytes(inp.Tx.Bytes()), utangle.BypassValidation)
 	}
 	if err != nil {
 		// failed
@@ -106,5 +106,5 @@ func (c *AppendTxConsumer) logBranch(inp *PrimaryTransactionData, coverage uint6
 
 	seqID := inp.Tx.SequencerTransactionData().SequencerID
 	c.Log().Infof("BRANCH %s (%s). Source: %s. Coverage: %s",
-		inp.Tx.IDShort(), seqID.StringVeryShort(), inp.SourceType.String(), util.GoThousands(coverage))
+		inp.Tx.IDShort(), seqID.StringVeryShort(), inp.Source.String(), util.GoThousands(coverage))
 }

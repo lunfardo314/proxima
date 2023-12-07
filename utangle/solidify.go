@@ -30,7 +30,7 @@ func (ut *UTXOTangle) MakeDraftVertex(tx *transaction.Transaction) (*Vertex, *co
 	return ret, nil
 }
 
-// FetchMissingDependencies check solidity of inputs and fetches what is available
+// FetchMissingDependencies checks solidity of inputs and fetches what is available
 // In general, the result is non-deterministic because some dependencies may be unavailable. This is ok for solidifier
 // Once transaction has all dependencies solid, further on the result is deterministic
 func (v *Vertex) FetchMissingDependencies(ut *UTXOTangle) (conflict *core.OutputID) {
@@ -42,15 +42,7 @@ func (v *Vertex) FetchMissingDependencies(ut *UTXOTangle) (conflict *core.Output
 		}
 	}
 	if conflict != nil {
-		fmt.Printf(">>>>>>>>>>>> FetchMissingDependencies 1: %s -> conflict %s\n", v.Tx.IDShort(), conflict.StringShort())
 		return
-	}
-	if !v.Tx.IsSequencerMilestone() {
-		// if it is a sequencer transaction, we will wait for baseline branch to become available
-		if conflict = v.scanLatestBranches(ut); conflict != nil {
-			fmt.Printf(">>>>>>>>>>>> FetchMissingDependencies 2: %s -> conflict %s\n", v.Tx.IDShort(), conflict.StringShort())
-			return
-		}
 	}
 	if v._allEndorsementsSolid() && v._allInputsSolid() {
 		v.pastTrack.forks.cleanDeleted()
@@ -59,29 +51,30 @@ func (v *Vertex) FetchMissingDependencies(ut *UTXOTangle) (conflict *core.Output
 	return
 }
 
-func (v *Vertex) scanLatestBranches(ut *UTXOTangle) (conflict *core.OutputID) {
-	if v.branchesAlreadyScanned {
-		// latest branches have already been scanned, repeating it won't bring anything new
-		return
-	}
-	// Scan all latest branches trying to solidify from them
-	latestBranches := ut.LatestBranchesDescending()
-	for _, branchVID := range latestBranches {
-		rdr := ut.MustGetSugaredStateReader(branchVID.ID())
-		if conflict = v.fetchMissingInputs(ut, rdr); conflict == nil {
-			// iterate states until first non conflicting
-			break
-		}
-	}
-	if conflict != nil {
-		return
-	}
-	// if conflict != nil, it means output is invalid on all known branches, but some good branch could come later
-	// so, we ignore conflict
-	conflict = nil
-	v.branchesAlreadyScanned = true
-	return
-}
+//
+//func (v *Vertex) scanLatestBranches(ut *UTXOTangle) (conflict *core.OutputID) {
+//	if v.branchesAlreadyScanned {
+//		// latest branches have already been scanned, repeating it won't bring anything new
+//		return
+//	}
+//	// Scan all latest branches trying to solidify from them
+//	latestBranches := ut.LatestBranchesDescending()
+//	for _, branchVID := range latestBranches {
+//		rdr := ut.MustGetSugaredStateReader(branchVID.ID())
+//		if conflict = v.fetchMissingInputs(ut, rdr); conflict == nil {
+//			// iterate states until first non conflicting
+//			break
+//		}
+//	}
+//	if conflict != nil {
+//		return
+//	}
+//	// if conflict != nil, it means output is invalid on all known branches, but some good branch could come later
+//	// so, we ignore conflict
+//	conflict = nil
+//	v.branchesAlreadyScanned = true
+//	return
+//}
 
 func (v *Vertex) fetchMissingInputs(ut *UTXOTangle, baselineState ...multistate.SugaredStateReader) (conflict *core.OutputID) {
 	var conflictWrapped *WrappedOutput

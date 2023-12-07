@@ -103,7 +103,7 @@ func New(ut *utangle.UTXOTangle, peers *peering.Peers, txBytesStore global.TxByt
 		}
 		err := ret.TransactionIn(txBytes,
 			WithTransactionSourcePeer(from),
-			WithTraceCondition(func(tx *transaction.Transaction, _ TransactionSourceType, _ peer.ID) bool {
+			WithTraceCondition(func(tx *transaction.Transaction, _ TransactionSource, _ peer.ID) bool {
 				return tx.IsSequencerMilestone()
 			},
 			))
@@ -246,4 +246,10 @@ func (w *Workflow) PostEventDropTxID(txid *core.TransactionID, whoDropped string
 		WhoDropped: whoDropped,
 		Msg:        fmt.Sprintf(reasonFormat, args...),
 	})
+}
+
+func (w *Workflow) StoreTxBytes(txBytes []byte) func() error {
+	return func() error {
+		return w.txBytesStore.SaveTxBytes(txBytes)
+	}
 }

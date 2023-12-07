@@ -163,7 +163,7 @@ func (ut *UTXOTangle) addBranch(branchVID *WrappedTx, root common.VCommitment) {
 	ut.numAddedBranches++
 }
 
-func (ut *UTXOTangle) appendVertex(vid *WrappedTx) error {
+func (ut *UTXOTangle) appendVertex(vid *WrappedTx, onAttach func() error) error {
 	ut.mutex.Lock()
 	defer ut.mutex.Unlock()
 
@@ -179,6 +179,9 @@ func (ut *UTXOTangle) appendVertex(vid *WrappedTx) error {
 		}
 		tx := vid.UnwrapTransaction()
 		ut.syncData.EvidenceBookedBranch(tx.ID(), tx.SequencerTransactionData().SequencerID)
+	}
+	if onAttach != nil {
+		return onAttach()
 	}
 	return nil
 }
@@ -202,7 +205,7 @@ func WithValidationTraceOption(traceOpt int) func(options *appendVertexOptions) 
 	}
 }
 
-func (ut *UTXOTangle) AppendVertex(v *Vertex, opts ...ValidationOption) (*WrappedTx, error) {
+func (ut *UTXOTangle) AppendVertex(v *Vertex, onAttach func() error, opts ...ValidationOption) (*WrappedTx, error) {
 	validationOpt := appendVertexOptions{traceOption: transaction.TraceOptionFailedConstraints}
 	for _, opt := range opts {
 		opt(&validationOpt)
@@ -216,17 +219,17 @@ func (ut *UTXOTangle) AppendVertex(v *Vertex, opts ...ValidationOption) (*Wrappe
 		}
 	}
 	vid := v.Wrap()
-	return vid, ut.appendVertex(vid)
+	return vid, ut.appendVertex(vid, onAttach)
 }
 
 // AppendVertexFromTransactionBytesDebug for testing mainly
-func (ut *UTXOTangle) AppendVertexFromTransactionBytesDebug(txBytes []byte, opts ...ValidationOption) (*WrappedTx, string, error) {
+func (ut *UTXOTangle) AppendVertexFromTransactionBytesDebug(txBytes []byte, onAttach func() error, opts ...ValidationOption) (*WrappedTx, string, error) {
 	vertexDraft, err := ut.MakeDraftVertexFromTxBytes(txBytes)
 	if err != nil {
 		return nil, "", err
 	}
 
-	ret, err := ut.AppendVertex(vertexDraft, opts...)
+	ret, err := ut.AppendVertex(vertexDraft, onAttach, opts...)
 	return ret, vertexDraft.Lines().String(), err
 }
 
@@ -308,12 +311,11 @@ func (ut *UTXOTangle) _finalizeBranch(newBranchVID *WrappedTx) error {
 	return nil
 }
 
-func (ut *UTXOTangle) AppendVirtualTx(tx *transaction.Transaction) (*WrappedTx, error) {
+func (ut *UTXOTangle) AppendVirtualTx(tx *transaction.Transaction) *WrappedTx {
 	vid := newVirtualTxFromTx(tx).Wrap()
-	if conflict := ut.attach(vid); conflict != nil {
-		return vid, fmt.Errorf("conflict %s", conflict.IDShort())
-	}
-	return vid, nil
+	conflict := ut.attach(vid)
+	util.Assertf(conflict == nil, "conflict %s", conflict.IDShort())
+	return vid
 }
 
 func (ut *UTXOTangle) TransactionStringFromBytes(txBytes []byte) string {

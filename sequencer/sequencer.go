@@ -427,7 +427,7 @@ func (seq *Sequencer) submitMilestone(tx *transaction.Transaction) *utangle.Wrap
 
 	retVID, err := seq.glb.TransactionInWaitAppendWrap(tx.Bytes(), submitTransactionTimeout,
 		workflow.OptionWithSourceSequencer,
-		workflow.WithTraceCondition(func(tx *transaction.Transaction, src workflow.TransactionSourceType, rcv peer.ID) bool {
+		workflow.WithTraceCondition(func(tx *transaction.Transaction, src workflow.TransactionSource, rcv peer.ID) bool {
 			return tx.IsBranchTransaction()
 		}))
 	if global.IsShuttingDown() {

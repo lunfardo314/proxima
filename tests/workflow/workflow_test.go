@@ -665,7 +665,9 @@ func initMultiChainTest(t *testing.T, nChains int, verbose bool, secondsInThePas
 		t.Logf("Chain IDs:\n%s\n", strings.Join(cstr, "\n"))
 	}
 
-	_, _, err = ret.ut.AppendVertexFromTransactionBytesDebug(ret.txBytesChainOrigin)
+	_, _, err = ret.ut.AppendVertexFromTransactionBytesDebug(ret.txBytesChainOrigin, func() error {
+		return ret.txBytesStore.SaveTxBytes(ret.txBytesChainOrigin)
+	})
 	require.NoError(t, err)
 	return ret
 }

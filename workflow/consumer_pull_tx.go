@@ -57,10 +57,10 @@ func (c *PullTxConsumer) consume(inp *PullTxData) {
 	txBytes := c.glb.txBytesStore.GetTxBytes(inp.TxID)
 	if len(txBytes) > 0 {
 		// transaction bytes are in the transaction store. No need to query it from another peer
-		if err := c.glb.TransactionIn(txBytes, WithTransactionSourceType(TransactionSourceTypeStore)); err != nil {
+		if err := c.glb.TransactionIn(txBytes, WithTransactionSource(TransactionSourceStore)); err != nil {
 			c.Log().Errorf("invalid transaction from txStore %s: '%v'", inp.TxID.StringShort(), err)
 		}
-		c.tracePull("transaction %s fetched from txBytesStore", inp.TxID.StringShort())
+		c.tracePull("%s fetched from txBytesStore", inp.TxID.StringShort())
 		return
 	}
 	// transaction is not in the store. Add it to the 'pullList' set

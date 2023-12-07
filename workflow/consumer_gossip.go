@@ -29,7 +29,7 @@ func (w *Workflow) initGossipSendConsumer() {
 }
 
 func (c *TxGossipSendConsumer) consume(inp TxGossipSendInputData) {
-	if inp.SourceType == TransactionSourceTypePeer {
+	if inp.Source == TransactionSourcePeer {
 		c.glb.peers.GossipTxBytesToPeers(inp.Tx.Bytes(), inp.ReceivedFrom)
 	} else {
 		c.glb.peers.GossipTxBytesToPeers(inp.Tx.Bytes())

@@ -82,7 +82,7 @@ func initSequencerTestData(t *testing.T, nFaucets, nAdditionalChains int, logica
 	err = txStore.SaveTxBytes(txBytes)
 	require.NoError(t, err)
 
-	ret.ut = utangle.Load(stateStore, txStore)
+	ret.ut = utangle.Load(stateStore)
 
 	ret.distributionTxID, _, err = transaction.IDAndTimestampFromTransactionBytes(txBytes)
 	require.NoError(t, err)
@@ -99,7 +99,7 @@ func initSequencerTestData(t *testing.T, nFaucets, nAdditionalChains int, logica
 	ret.makeAdditionalChainOrigins(0, nAdditionalChains)
 
 	t.Logf("state identity:\n%s", genesis.MustLedgerIdentityDataFromBytes(ret.ut.HeaviestStateForLatestTimeSlot().MustLedgerIdentityBytes()).String())
-	ret.wrk = workflow.New(ret.ut, peering.NewPeersDummy(), workflowOpt...)
+	ret.wrk = workflow.New(ret.ut, peering.NewPeersDummy(), txStore, workflowOpt...)
 	return ret
 }
 
@@ -380,7 +380,7 @@ func Test1Sequencer(t *testing.T) {
 		//workflow.WithConsumerLogLevel(workflow.PreValidateConsumerName, zapcore.DebugLevel),
 		//workflow.WithConsumerLogLevel(workflow.SolidifyConsumerName, zapcore.DebugLevel),
 
-		r.wrk.MustOnEvent(workflow.EventDroppedTx, func(inp *workflow.DropTxData) {
+		r.wrk.MustOnEvent(workflow.EventDroppedTx, func(inp workflow.DropTxData) {
 			r.t.Logf("rejected %s : '%s'", inp.TxID.StringShort(), inp.Msg)
 		})
 		transaction.SetPrintEasyFLTraceOnFail(false)
