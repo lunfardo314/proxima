@@ -45,15 +45,15 @@ func (c *Consumer[T]) TxLogPrefix() string {
 }
 
 func (c *Consumer[T]) Debugf(inp *PrimaryTransactionData, format string, args ...any) {
-	c.Log().Debugf(format+"   "+inp.Tx.IDShort(), args...)
+	c.Log().Debugf(format+"   "+inp.tx.IDShort(), args...)
 }
 
 func (c *Consumer[T]) Warnf(inp *PrimaryTransactionData, format string, args ...any) {
-	c.Log().Warnf(format+"    "+inp.Tx.IDShort(), args...)
+	c.Log().Warnf(format+"    "+inp.tx.IDShort(), args...)
 }
 
 func (c *Consumer[T]) Infof(inp *PrimaryTransactionData, format string, args ...any) {
-	c.Log().Infof(format+"    "+inp.Tx.IDShort(), args...)
+	c.Log().Infof(format+"    "+inp.tx.IDShort(), args...)
 }
 
 func (c *Consumer[T]) setTrace(t bool) {
@@ -76,12 +76,12 @@ func (c *Consumer[T]) InfoStr() string {
 }
 
 func (c *Consumer[T]) GossipTransactionIfNeeded(inp *PrimaryTransactionData) {
-	if inp.DoNotGossip || !c.glb.utxoTangle.SyncData().IsSynced() {
+	if inp.doNotGossip || !c.glb.utxoTangle.SyncData().IsSynced() {
 		return
 	}
-	inp.DoNotGossip = true
+	inp.doNotGossip = true
 	c.glb.txGossipOutConsumer.Push(TxGossipSendInputData{
 		PrimaryTransactionData: inp,
-		ReceivedFrom:           inp.ReceivedFromPeer,
+		ReceivedFrom:           inp.receivedFromPeer,
 	})
 }

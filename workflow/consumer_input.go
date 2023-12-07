@@ -21,12 +21,13 @@ type (
 
 	// PrimaryTransactionData is an input message type for this consumer
 	PrimaryTransactionData struct {
-		Tx               *transaction.Transaction
-		Source           TransactionSource
-		ReceivedFromPeer peer.ID
-		ReceivedWhen     time.Time
-		DoNotGossip      bool
-		WasPulled        bool
+		tx               *transaction.Transaction
+		source           TransactionSource
+		receivedFromPeer peer.ID
+		receivedWhen     time.Time
+		doNotGossip      bool
+		wasPulled        bool
+		makeVirtualTx    bool
 		eventCallback    func(event string, data any)
 		traceFlag        bool
 	}
@@ -72,7 +73,7 @@ func (w *Workflow) initPrimaryInputConsumer() {
 	}
 	ret.AddOnConsume(func(inp *PrimaryTransactionData) {
 		// tracing every input message
-		ret.traceTx(inp, "IN source: %s", inp.Source.String())
+		ret.traceTx(inp, "IN source: %s", inp.source.String())
 	})
 	ret.AddOnConsume(ret.consume) // process input
 	ret.AddOnClosed(func() {
@@ -95,14 +96,14 @@ func (w *Workflow) initPrimaryInputConsumer() {
 
 // consume processes the input
 func (c *PrimaryConsumer) consume(inp *PrimaryTransactionData) {
-	inp.eventCallback(PrimaryInputConsumerName+".in", inp.Tx)
+	inp.eventCallback(PrimaryInputConsumerName+".in", inp.tx)
 
 	// the input is pre-parsed transaction with base validation ok.
 	//It means it has full ID, so it is identifiable as a transaction
-	if c.isDuplicate(inp.Tx.ID()) {
+	if c.isDuplicate(inp.tx.ID()) {
 		// if duplicate, rise the event
-		inp.eventCallback("finish."+PrimaryInputConsumerName, fmt.Errorf("duplicate %s", inp.Tx.IDShort()))
-		c.glb.PostEvent(EventCodeDuplicateTx, inp.Tx.ID())
+		inp.eventCallback("finish."+PrimaryInputConsumerName, fmt.Errorf("duplicate %s", inp.tx.IDShort()))
+		c.glb.PostEvent(EventCodeDuplicateTx, inp.tx.ID())
 		return
 	}
 

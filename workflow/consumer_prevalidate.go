@@ -47,43 +47,41 @@ func (w *Workflow) initPreValidateConsumer() {
 // process the input message
 // TODO check lower time bounds
 func (c *PreValidateConsumer) consume(inp *PreValidateConsumerInputData) {
-	inp.eventCallback(PreValidateConsumerName+".in", inp.Tx)
+	inp.eventCallback(PreValidateConsumerName+".in", inp.tx)
 
 	var err error
 	// time bounds are checked if it is not an insider transaction, and it is not in the solidifier pipeline
 	// TODO
-	enforceTimeBounds := inp.Source == TransactionSourceAPI || inp.Source == TransactionSourcePeer
+	enforceTimeBounds := inp.source == TransactionSourceAPI || inp.source == TransactionSourcePeer
 	// transaction is rejected if it is too far in the future wrt the local clock
 	nowis := time.Now()
 	timeUpperBound := nowis.Add(c.glb.maxDurationInTheFuture())
-	err = inp.Tx.Validate(transaction.CheckTimestampUpperBound(timeUpperBound))
+	err = inp.tx.Validate(transaction.CheckTimestampUpperBound(timeUpperBound))
 	if err != nil {
 		if enforceTimeBounds {
 			c.IncCounter("invalid")
 			inp.eventCallback("finish."+PreValidateConsumerName, err)
 
-			c.glb.pullConsumer.removeFromPullList(inp.Tx.ID())
-			c.glb.solidifyConsumer.postRemoveTxIDs(inp.Tx.ID())
-			c.glb.PostEventDropTxID(inp.Tx.ID(), PreValidateConsumerName, "%v", err)
+			c.glb.pullConsumer.removeFromPullList(inp.tx.ID())
+			c.glb.solidifyConsumer.postRemoveTxIDs(inp.tx.ID())
+			c.glb.PostEventDropTxID(inp.tx.ID(), PreValidateConsumerName, "%v", err)
 			return
 		}
 		c.Warnf(inp.PrimaryTransactionData, "checking time bounds: '%v'", err)
 	}
 	// run remaining validations on the transaction
-	if err = inp.Tx.Validate(transaction.MainTxValidationOptions...); err != nil {
+	if err = inp.tx.Validate(transaction.MainTxValidationOptions...); err != nil {
 		c.IncCounter("invalid")
 
-		c.glb.pullConsumer.removeFromPullList(inp.Tx.ID())
-		c.glb.solidifyConsumer.postRemoveTxIDs(inp.Tx.ID())
-		c.glb.PostEventDropTxID(inp.Tx.ID(), PreValidateConsumerName, "%v", err)
+		c.glb.pullConsumer.removeFromPullList(inp.tx.ID())
+		c.glb.solidifyConsumer.postRemoveTxIDs(inp.tx.ID())
+		c.glb.PostEventDropTxID(inp.tx.ID(), PreValidateConsumerName, "%v", err)
 		return
 	}
 	c.IncCounter("ok")
 
-	if inp.Source == TransactionSourceStore {
-		// it is coming from the trusted store. Pass it directly to appender
-		// The transaction from the store is assumed to be valid and solidifiable
-		// TODO some validations here are redundant (e.g. ScanOutputs), might be optimized
+	if inp.source == TransactionSourceStore && !inp.tx.IsSequencerMilestone() {
+		inp.PrimaryTransactionData.makeVirtualTx = true
 		c.glb.appendTxConsumer.Push(&AppendTxConsumerInputData{
 			PrimaryTransactionData: inp.PrimaryTransactionData,
 		})
@@ -98,13 +96,13 @@ func (c *PreValidateConsumer) consume(inp *PreValidateConsumerInputData) {
 	// passes transaction for solidification
 	// - immediately if timestamp is in the past
 	// - with delay if timestamp is in the future
-	txTime := inp.Tx.TimestampTime()
+	txTime := inp.tx.TimestampTime()
 
 	if txTime.Before(nowis) {
 		// timestamp is in the past, pass it to the solidifier
 		c.Debugf(inp.PrimaryTransactionData, "->"+c.glb.solidifyConsumer.Name())
 		c.IncCounter("ok.now")
-		c.evidenceBranch(inp.Tx)
+		c.evidenceBranch(inp.tx)
 		c.glb.solidifyConsumer.Push(out)
 		return
 	}
@@ -115,7 +113,7 @@ func (c *PreValidateConsumer) consume(inp *PreValidateConsumerInputData) {
 	c.glb.preValidateConsumer.waitingRoom.RunAfterDeadline(txTime, func() {
 		c.IncCounter("ok.release")
 		c.Debugf(inp.PrimaryTransactionData, "release from waiting room")
-		c.evidenceBranch(inp.Tx)
+		c.evidenceBranch(inp.tx)
 		c.glb.solidifyConsumer.Push(out)
 	})
 }

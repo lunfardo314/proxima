@@ -39,7 +39,7 @@ func (w *Workflow) initAppendTxConsumer() {
 	nmAdd := EventNewVertex.String()
 	w.MustOnEvent(EventNewVertex, func(inp *NewVertexEventData) {
 		ret.glb.IncCounter(ret.Name() + "." + nmAdd)
-		ret.Log().Debugf("%s: %s", nmAdd, inp.Tx.IDShort())
+		ret.Log().Debugf("%s: %s", nmAdd, inp.tx.IDShort())
 	})
 
 	w.appendTxConsumer = ret
@@ -51,19 +51,19 @@ func (c *AppendTxConsumer) consume(inp *AppendTxConsumerInputData) {
 
 	// TODO due to unclear reasons, sometimes repeating transactions reach this point and attach panics
 	// In order to prevent this (rare) panic we do this check
-	if c.glb.utxoTangle.Contains(inp.Tx.ID()) {
-		c.Log().Warnf("repeating transaction %s", inp.Tx.IDShort())
+	if c.glb.utxoTangle.Contains(inp.tx.ID()) {
+		c.Log().Warnf("repeating transaction %s", inp.tx.IDShort())
 		return
 	}
 
 	// append to the UTXO tangle
 	var vid *utangle.WrappedTx
 	var err error
-	if inp.Source == TransactionSourceStore {
-		// append virtualTx
-		vid = c.glb.utxoTangle.AppendVirtualTx(inp.Tx)
+	if inp.makeVirtualTx {
+		// append virtualTx right from transaction (non-sequencer transactions from store comes right from pre-validation)
+		vid = c.glb.utxoTangle.AppendVirtualTx(inp.tx)
 	} else {
-		vid, err = c.glb.utxoTangle.AppendVertex(inp.Vertex, c.glb.StoreTxBytes(inp.Tx.Bytes()), utangle.BypassValidation)
+		vid, err = c.glb.utxoTangle.AppendVertex(inp.Vertex, c.glb.StoreTxBytes(inp.tx.Bytes()), utangle.BypassValidation)
 	}
 	if err != nil {
 		// failed
@@ -71,18 +71,18 @@ func (c *AppendTxConsumer) consume(inp *AppendTxConsumerInputData) {
 		c.Debugf(inp.PrimaryTransactionData, "can't append transaction to the tangle: '%v'", err)
 		c.IncCounter("fail")
 
-		c.glb.solidifyConsumer.postRemoveTxIDs(inp.Tx.ID())
-		c.glb.pullConsumer.removeFromPullList(inp.Tx.ID())
-		c.glb.PostEventDropTxID(inp.Tx.ID(), AppendTxConsumerName, "%v", err)
-		if inp.Tx.IsBranchTransaction() {
-			c.glb.utxoTangle.SyncData().UnEvidenceIncomingBranch(inp.Tx.ID())
+		c.glb.solidifyConsumer.postRemoveTxIDs(inp.tx.ID())
+		c.glb.pullConsumer.removeFromPullList(inp.tx.ID())
+		c.glb.PostEventDropTxID(inp.tx.ID(), AppendTxConsumerName, "%v", err)
+		if inp.tx.IsBranchTransaction() {
+			c.glb.utxoTangle.SyncData().UnEvidenceIncomingBranch(inp.tx.ID())
 		}
 		return
 	}
 	inp.eventCallback("finish."+AppendTxConsumerName, nil)
 
 	c.logBranch(inp.PrimaryTransactionData, vid.LedgerCoverage(c.glb.UTXOTangle()))
-	c.glb.pullConsumer.removeFromPullList(inp.Tx.ID())
+	c.glb.pullConsumer.removeFromPullList(inp.tx.ID())
 
 	c.GossipTransactionIfNeeded(inp.PrimaryTransactionData)
 
@@ -100,11 +100,11 @@ func (c *AppendTxConsumer) consume(inp *AppendTxConsumerInputData) {
 }
 
 func (c *AppendTxConsumer) logBranch(inp *PrimaryTransactionData, coverage uint64) {
-	if !inp.Tx.IsBranchTransaction() {
+	if !inp.tx.IsBranchTransaction() {
 		return
 	}
 
-	seqID := inp.Tx.SequencerTransactionData().SequencerID
+	seqID := inp.tx.SequencerTransactionData().SequencerID
 	c.Log().Infof("BRANCH %s (%s). Source: %s. Coverage: %s",
-		inp.Tx.IDShort(), seqID.StringVeryShort(), inp.Source.String(), util.GoThousands(coverage))
+		inp.tx.IDShort(), seqID.StringVeryShort(), inp.source.String(), util.GoThousands(coverage))
 }

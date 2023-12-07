@@ -74,8 +74,8 @@ workflow:
 
 debug:
   trace_workflow:
-    pull: true
-    tx: true
+    pull: false
+    tx: false
 
   # specify milestone proposer strategies to trace
   trace_proposers:

@@ -80,7 +80,7 @@ func (c *SolidifyConsumer) consume(inp *SolidifyInputData) {
 	switch inp.Cmd {
 	case SolidifyCommandNewTx:
 		util.Assertf(inp.TxID == nil && inp.PrimaryTransactionData != nil, "inp.TxID == nil && inp.primaryInput != nil")
-		c.tracePull("cmd newTx %s", func() any { return inp.PrimaryTransactionData.Tx.IDShort() })
+		c.tracePull("cmd newTx %s", func() any { return inp.PrimaryTransactionData.tx.IDShort() })
 		//inp.eventCallback(SolidifyConsumerName+".in.new", inp.Tx)
 		c.glb.IncCounter(c.Name() + ".in.new")
 		c.newTx(inp)
@@ -116,7 +116,7 @@ func (c *SolidifyConsumer) consume(inp *SolidifyInputData) {
 }
 
 func (c *SolidifyConsumer) newTx(inp *SolidifyInputData) {
-	txid := inp.Tx.ID()
+	txid := inp.tx.ID()
 	pendingData, exists := c.txPending[*txid]
 	util.Assertf(pendingData.draftVertexData == nil, "repeating new tx in solidifier: %s", txid.StringShort())
 	if !exists {
@@ -124,8 +124,8 @@ func (c *SolidifyConsumer) newTx(inp *SolidifyInputData) {
 	}
 	pendingData.draftVertexData = &draftVertexData{
 		PrimaryTransactionData: inp.PrimaryTransactionData,
-		vertex:                 utangle.NewVertex(inp.Tx),
-		pulled:                 inp.WasPulled,
+		vertex:                 utangle.NewVertex(inp.tx),
+		pulled:                 inp.wasPulled,
 	}
 	c.txPending[*txid] = pendingData
 	c.checkTxID(txid)
@@ -294,27 +294,27 @@ func (c *SolidifyConsumer) pullIfNeeded(vd *draftVertexData) {
 	if vd.allInputsAlreadyPulled {
 		return
 	}
-	if vd.Tx.IsBranchTransaction() && !vd.vertex.IsStemInputSolid() {
+	if vd.tx.IsBranchTransaction() && !vd.vertex.IsStemInputSolid() {
 		// first need to solidify stem input. Only when stem input is solid, we pull the rest
 		// this makes node synchronization more sequential, from past to present slot by slot
 		if !vd.stemInputAlreadyPulled {
 			// pull immediately
 			c.pull(
-				vd.Tx.SequencerTransactionData().StemOutputData.PredecessorOutputID.TransactionID(),
+				vd.tx.SequencerTransactionData().StemOutputData.PredecessorOutputID.TransactionID(),
 				pullImmediately,
-				vd.Tx.ID(),
+				vd.tx.ID(),
 			)
 			vd.stemInputAlreadyPulled = true
 		}
 		return
 	}
 	// here stem input solid, if any
-	if vd.Tx.IsSequencerMilestone() {
+	if vd.tx.IsSequencerMilestone() {
 		if isSolid, seqInputIdx := vd.vertex.IsSequencerInputSolid(); !isSolid {
 			if !vd.sequencerPredecessorAlreadyPulled {
-				seqInputOID := vd.Tx.MustInputAt(seqInputIdx)
+				seqInputOID := vd.tx.MustInputAt(seqInputIdx)
 				var delayFirst time.Duration
-				if vd.WasPulled {
+				if vd.wasPulled {
 					delayFirst = pullImmediately
 				} else {
 					delayFirst = pullDelayFirstPeriodSequencer
@@ -322,7 +322,7 @@ func (c *SolidifyConsumer) pullIfNeeded(vd *draftVertexData) {
 				c.pull(
 					seqInputOID.TransactionID(),
 					delayFirst,
-					vd.Tx.ID(),
+					vd.tx.ID(),
 				)
 				vd.sequencerPredecessorAlreadyPulled = true
 			}
@@ -333,7 +333,7 @@ func (c *SolidifyConsumer) pullIfNeeded(vd *draftVertexData) {
 	// now we can pull the rest
 	vd.vertex.MissingInputTxIDSet().ForEach(func(txid core.TransactionID) bool {
 		var delayFirst time.Duration
-		if vd.WasPulled {
+		if vd.wasPulled {
 			delayFirst = pullImmediately
 		} else {
 			delayFirst = pullDelayFirstPeriodOtherTransactions

@@ -175,6 +175,7 @@ func (ut *UTXOTangle) appendVertex(vid *WrappedTx, onAttach func() error) error 
 	if vid.IsBranchTransaction() {
 		if err := ut.finalizeBranch(vid); err != nil {
 			SaveGraphPastCone(vid, "finalizeBranchError")
+			err = fmt.Errorf("%v\n-------------------\n%s", err, vid.PastTrackLines("     ").String())
 			return err
 		}
 		tx := vid.UnwrapTransaction()

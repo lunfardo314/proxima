@@ -38,7 +38,7 @@ func (w *Workflow) initValidateConsumer() {
 }
 
 func (c *ValidateConsumer) consume(inp *ValidateConsumerInputData) {
-	inp.eventCallback(ValidateConsumerName+".in.new", inp.Tx)
+	inp.eventCallback(ValidateConsumerName+".in.new", inp.tx)
 
 	util.Assertf(inp.draftVertex.IsSolid(), "inp.vertex.IsSolid()")
 	// will start a worker goroutine or block util worker is available
@@ -47,11 +47,11 @@ func (c *ValidateConsumer) consume(inp *ValidateConsumerInputData) {
 			inp.eventCallback("finish."+ValidateConsumerName, err)
 			c.IncCounter("err")
 
-			c.glb.pullConsumer.removeFromPullList(inp.Tx.ID())
-			c.glb.solidifyConsumer.postRemoveTxIDs(inp.Tx.ID())
-			c.glb.PostEventDropTxID(inp.Tx.ID(), ValidateConsumerName, "%v", err)
-			if inp.Tx.IsBranchTransaction() {
-				c.glb.utxoTangle.SyncData().UnEvidenceIncomingBranch(inp.Tx.ID())
+			c.glb.pullConsumer.removeFromPullList(inp.tx.ID())
+			c.glb.solidifyConsumer.postRemoveTxIDs(inp.tx.ID())
+			c.glb.PostEventDropTxID(inp.tx.ID(), ValidateConsumerName, "%v", err)
+			if inp.tx.IsBranchTransaction() {
+				c.glb.utxoTangle.SyncData().UnEvidenceIncomingBranch(inp.tx.ID())
 			}
 
 			return

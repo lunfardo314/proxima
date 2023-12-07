@@ -35,9 +35,9 @@ func (w *Workflow) TransactionInReturnTx(txBytes []byte, opts ...TransactionInOp
 		opt(inData)
 	}
 	// once tx reached the node, stop pulling
-	inData.WasPulled = w.pullConsumer.stopPulling(tx.ID())
+	inData.wasPulled = w.pullConsumer.stopPulling(tx.ID())
 	// prevent unnecessary dissemination via gossip
-	inData.DoNotGossip = inData.WasPulled || inData.Source == TransactionSourceStore
+	inData.doNotGossip = inData.wasPulled || inData.source == TransactionSourceStore
 
 	w.primaryInputConsumer.Push(inData)
 	return tx, nil
@@ -45,29 +45,29 @@ func (w *Workflow) TransactionInReturnTx(txBytes []byte, opts ...TransactionInOp
 
 func newPrimaryInputConsumerData(tx *transaction.Transaction) *PrimaryTransactionData {
 	return &PrimaryTransactionData{
-		Tx:            tx,
-		ReceivedWhen:  time.Now(),
-		Source:        TransactionSourceAPI,
+		tx:            tx,
+		receivedWhen:  time.Now(),
+		source:        TransactionSourceAPI,
 		eventCallback: func(_ string, _ any) {},
 	}
 }
 
 func WithTransactionSource(src TransactionSource) TransactionInOption {
 	return func(data *PrimaryTransactionData) {
-		data.Source = src
+		data.source = src
 	}
 }
 
 func WithTransactionSourcePeer(from peer.ID) TransactionInOption {
 	return func(data *PrimaryTransactionData) {
-		data.Source = TransactionSourcePeer
-		data.ReceivedFromPeer = from
+		data.source = TransactionSourcePeer
+		data.receivedFromPeer = from
 	}
 }
 
 func WithTraceCondition(cond func(tx *transaction.Transaction, src TransactionSource, rcv peer.ID) bool) TransactionInOption {
 	return func(data *PrimaryTransactionData) {
-		data.traceFlag = cond(data.Tx, data.Source, data.ReceivedFromPeer)
+		data.traceFlag = cond(data.tx, data.source, data.receivedFromPeer)
 	}
 }
 

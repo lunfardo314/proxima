@@ -147,8 +147,6 @@ func (id *LedgerIdentityData) String() string {
 
 func (id *LedgerIdentityData) Lines(prefix ...string) *lines.Lines {
 	originChainID := id.OriginChainID()
-	initialSupplyOutputID := InitialSupplyOutputID(id.GenesisTimeSlot)
-	genesisStemOutputID := StemOutputID(id.GenesisTimeSlot)
 	return lines.New(prefix...).
 		Add("Description: '%s'", id.Description).
 		Add("Core ledger constraints hash: %s", hex.EncodeToString(id.CoreLedgerConstraintsHash[:])).
@@ -158,9 +156,7 @@ func (id *LedgerIdentityData) Lines(prefix ...string) *lines.Lines {
 		Add("Time tick duration: %v", id.TimeTickDuration).
 		Add("Time ticks per time slot: %d", id.TimeTicksPerTimeSlot()).
 		Add("Genesis time slot: %d", id.GenesisTimeSlot).
-		Add("Origin chain ID: %s", originChainID.String()).
-		Add("Initial supply output ID: %s", initialSupplyOutputID.String()).
-		Add("Genesis stem output ID: %s", genesisStemOutputID.String())
+		Add("Origin chain ID: %s", originChainID.String())
 }
 
 func (id *LedgerIdentityData) yamlAble() *ledgerIdentityDataYAMLable {
