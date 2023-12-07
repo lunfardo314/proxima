@@ -25,7 +25,7 @@ func TestOriginTangle(t *testing.T) {
 		par := genesis.DefaultIdentityData(testutil.GetTestingPrivateKey())
 		stateStore := common.NewInMemoryKVStore()
 		bootstrapChainID, root := genesis.InitLedgerState(*par, stateStore)
-		ut := utangle.Load(stateStore, txstore.NewDummyTxBytesStore())
+		ut := utangle.Load(stateStore)
 		t.Logf("bootstrap chain id: %s", bootstrapChainID.String())
 		t.Logf("genesis root: %s", root.String())
 		t.Logf("%s", ut.Info(true))
@@ -48,7 +48,7 @@ func TestOriginTangle(t *testing.T) {
 		err = txStore.SaveTxBytes(txBytes)
 		require.NoError(t, err)
 
-		ut := utangle.Load(stateStore, txStore)
+		ut := utangle.Load(stateStore)
 		t.Logf("bootstrap chain id: %s", bootstrapChainID.String())
 
 		distribTxID, _, err := transaction.IDAndTimestampFromTransactionBytes(txBytes)
@@ -126,7 +126,7 @@ func initConflictTest(t *testing.T, nConflicts int, verbose bool) *conflictTestR
 	err = txStore.SaveTxBytes(txBytes)
 	require.NoError(t, err)
 
-	ret.ut = utangle.Load(stateStore, txStore)
+	ret.ut = utangle.Load(stateStore)
 
 	t.Logf("bootstrap chain id: %s", ret.bootstrapChainID.String())
 	t.Logf("origing branch txid: %s", ret.originBranchTxid.StringShort())
@@ -410,7 +410,7 @@ func initMultiChainTest(t *testing.T, nChains int, printTx bool) *multiChainTest
 	err = txStore.SaveTxBytes(txBytes)
 	require.NoError(t, err)
 
-	ret.ut = utangle.Load(stateStore, txStore)
+	ret.ut = utangle.Load(stateStore)
 
 	ret.originBranchTxid, _, err = transaction.IDAndTimestampFromTransactionBytes(txBytes)
 	require.NoError(t, err)

@@ -11,19 +11,18 @@ import (
 	"github.com/lunfardo314/unitrie/common"
 )
 
-func newUTXOTangle(stateStore global.StateStore, txBytesStore global.TxBytesStore) *UTXOTangle {
+func newUTXOTangle(stateStore global.StateStore) *UTXOTangle {
 	return &UTXOTangle{
-		stateStore:   stateStore,
-		txBytesStore: txBytesStore,
-		vertices:     make(map[core.TransactionID]*WrappedTx),
-		branches:     make(map[core.TimeSlot]map[*WrappedTx]common.VCommitment),
-		syncData:     newSyncData(),
+		stateStore: stateStore,
+		vertices:   make(map[core.TransactionID]*WrappedTx),
+		branches:   make(map[core.TimeSlot]map[*WrappedTx]common.VCommitment),
+		syncData:   newSyncData(),
 	}
 }
 
 // Load fetches latest branches from the multi-state and creates an UTXO tangle with those branches as virtual transactions
-func Load(stateStore global.StateStore, txBytesStore global.TxBytesStore) *UTXOTangle {
-	ret := newUTXOTangle(stateStore, txBytesStore)
+func Load(stateStore global.StateStore) *UTXOTangle {
+	ret := newUTXOTangle(stateStore)
 	// fetch branches of the latest slot
 	branches := multistate.FetchLatestBranches(stateStore)
 	for _, br := range branches {
@@ -60,25 +59,40 @@ func (ut *UTXOTangle) Contains(txid *core.TransactionID) bool {
 	return found
 }
 
-// attach attaches transaction to the utxo tangle. It must be called from within global utangle lock critical section
+func (ut *UTXOTangle) attach(vid *WrappedTx) (conflict *WrappedOutput) {
+	if vid.isVirtualTx() {
+		ut.mustAttachVirtualTx(vid)
+	} else {
+		conflict = ut.attachVertex(vid)
+	}
+	return
+}
+
+// attachVertex attaches new vertex (not a virtualTx) transaction to the utxo tangle. It must be called from within global utangle lock critical section
 // If conflict occurs, newly propagated forks, if any, will do no harm.
 // The transaction is marked orphaned, so it will be ignored in the future cones
-func (ut *UTXOTangle) attach(vid *WrappedTx) (conflict *WrappedOutput) {
-	vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
-		if conflict = v.inheritPastTracks(ut.StateStore); conflict != nil {
-			return
-		}
-		// book consumer into the inputs. Detect new double-spends, double-links and propagates
-		v.forEachInputDependency(func(i byte, vidInput *WrappedTx) bool {
-			conflict = vidInput.attachAsConsumer(v.Tx.MustOutputIndexOfTheInput(i), vid)
-			return conflict == nil
-		})
-		// maintain endorser list in predecessors
-		v.forEachEndorsement(func(_ byte, vEnd *WrappedTx) bool {
-			vEnd.attachAsEndorser(vid)
-			return true
-		})
-	}})
+func (ut *UTXOTangle) attachVertex(vid *WrappedTx) (conflict *WrappedOutput) {
+	vid.Unwrap(UnwrapOptions{
+		Vertex: func(v *Vertex) {
+			if conflict = v.inheritPastTracks(ut.StateStore); conflict != nil {
+				return
+			}
+			// book consumer into the inputs. Detect new double-spends, double-links and propagates
+			v.forEachInputDependency(func(i byte, vidInput *WrappedTx) bool {
+				conflict = vidInput.attachAsConsumer(v.Tx.MustOutputIndexOfTheInput(i), vid)
+				return conflict == nil
+			})
+			// maintain endorser list in predecessors
+			v.forEachEndorsement(func(_ byte, vEnd *WrappedTx) bool {
+				vEnd.attachAsEndorser(vid)
+				return true
+			})
+		},
+		VirtualTx: func(_ *VirtualTransaction) {
+			util.Panicf("unexpected virtualTx")
+		},
+		Deleted: vid.PanicAccessDeleted,
+	})
 	if conflict != nil {
 		// mark orphaned and do not add to the utangle. If it was added to the descendants lists, it will be ignored
 		// upon traversal of the future cone
@@ -95,17 +109,26 @@ func (ut *UTXOTangle) attach(vid *WrappedTx) (conflict *WrappedOutput) {
 	return
 }
 
-func (ut *UTXOTangle) attachWithSaveTx(vid *WrappedTx) (conflict *WrappedOutput) {
-	if conflict = ut.attach(vid); conflict != nil {
+func (ut *UTXOTangle) mustAttachVirtualTx(vid *WrappedTx) {
+	txid := vid.ID()
+	vidPrev, already := ut.vertices[*txid]
+	if !already {
+		// if the transactions is new, nothing to do, just add it
+		ut.vertices[*txid] = vid
 		return
 	}
-	// saving transaction bytes to the transaction store
-	vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
-		err := ut.txBytesStore.SaveTxBytes(v.Tx.Bytes())
-		util.AssertNoError(err)
+	if !vidPrev.isVirtualTx() {
+		// should not happen. Ignore
+		return
+	}
+	var vNew *VirtualTransaction
+	vid.Unwrap(UnwrapOptions{VirtualTx: func(v *VirtualTransaction) {
+		vNew = v
 	}})
-	ut.numAddedVertices++
-	return
+	// virtual Tx already exists, merge new outputs into it
+	vidPrev.Unwrap(UnwrapOptions{VirtualTx: func(v *VirtualTransaction) {
+		v.mustMergeNewOutputs(vNew)
+	}})
 }
 
 func (ut *UTXOTangle) deleteVertex(txid *core.TransactionID) {
@@ -144,9 +167,10 @@ func (ut *UTXOTangle) appendVertex(vid *WrappedTx) error {
 	ut.mutex.Lock()
 	defer ut.mutex.Unlock()
 
-	if conflict := ut.attachWithSaveTx(vid); conflict != nil {
+	if conflict := ut.attach(vid); conflict != nil {
 		return fmt.Errorf("AppendVertex: conflict at %s", conflict.IDShort())
 	}
+	ut.numAddedVertices++
 
 	if vid.IsBranchTransaction() {
 		if err := ut.finalizeBranch(vid); err != nil {
@@ -281,18 +305,15 @@ func (ut *UTXOTangle) _finalizeBranch(newBranchVID *WrappedTx) error {
 			func() any { return newBranchVID.PastTrackLines().String() })
 	}
 	ut.addBranch(newBranchVID, newRoot)
-
-	//{
-	//	// store new branch to the tangle data structure
-	//	branches := ut.branches[newBranchVID.TimeSlot()]
-	//	if len(branches) == 0 {
-	//		branches = make(map[*WrappedTx]common.VCommitment)
-	//		ut.branches[newBranchVID.TimeSlot()] = branches
-	//	}
-	//	branches[newBranchVID] = newRoot
-	//	ut.numAddedBranches++
-	//}
 	return nil
+}
+
+func (ut *UTXOTangle) AppendVirtualTx(tx *transaction.Transaction) (*WrappedTx, error) {
+	vid := newVirtualTxFromTx(tx).Wrap()
+	if conflict := ut.attach(vid); conflict != nil {
+		return vid, fmt.Errorf("conflict %s", conflict.IDShort())
+	}
+	return vid, nil
 }
 
 func (ut *UTXOTangle) TransactionStringFromBytes(txBytes []byte) string {

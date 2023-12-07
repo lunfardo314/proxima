@@ -21,14 +21,14 @@ type (
 
 	// PrimaryTransactionData is an input message type for this consumer
 	PrimaryTransactionData struct {
-		Tx            *transaction.Transaction
-		SourceType    TransactionSourceType
-		ReceivedFrom  peer.ID
-		ReceivedWhen  time.Time
-		WasGossiped   bool
-		WasPulled     bool
-		eventCallback func(event string, data any)
-		traceFlag     bool
+		Tx               *transaction.Transaction
+		SourceType       TransactionSourceType
+		ReceivedFromPeer peer.ID
+		ReceivedWhen     time.Time
+		DoNotGossip      bool
+		WasPulled        bool
+		eventCallback    func(event string, data any)
+		traceFlag        bool
 	}
 
 	TransactionInOption func(*PrimaryTransactionData)
@@ -107,6 +107,13 @@ func (c *PrimaryConsumer) consume(inp *PrimaryTransactionData) {
 	}
 
 	c.glb.IncCounter(c.Name() + ".out")
+	if inp.SourceType == TransactionSourceTypeStore {
+		// it was from the trusted store. Pass it directly to appender
+		c.glb.appendTxConsumer.Push(&AppendTxConsumerInputData{
+			PrimaryTransactionData: inp,
+		})
+		return
+	}
 	// passes identifiable transaction which is not a duplicate to the pre-validation consumer
 	c.glb.preValidateConsumer.Push(&PreValidateConsumerInputData{
 		PrimaryTransactionData: inp,

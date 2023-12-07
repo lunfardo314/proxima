@@ -33,6 +33,7 @@ type (
 		configParams    ConfigParams
 		utxoTangle      *utangle.UTXOTangle
 		peers           *peering.Peers
+		txBytesStore    global.TxBytesStore
 		debugCounters   *testutil.SyncCounters
 
 		primaryInputConsumer *PrimaryConsumer
@@ -71,7 +72,7 @@ var EventDroppedTx = eventtype.RegisterNew[DropTxData]("droptx")
 
 const workflowLogName = "[workflow]"
 
-func New(ut *utangle.UTXOTangle, peers *peering.Peers, configOptions ...ConfigOption) *Workflow {
+func New(ut *utangle.UTXOTangle, peers *peering.Peers, txBytesStore global.TxBytesStore, configOptions ...ConfigOption) *Workflow {
 	cfg := defaultConfigParams()
 	for _, opt := range configOptions {
 		opt(&cfg)
@@ -82,6 +83,7 @@ func New(ut *utangle.UTXOTangle, peers *peering.Peers, configOptions ...ConfigOp
 		log:           global.NewLogger(workflowLogName, cfg.logLevel, cfg.logOutput, cfg.logTimeLayout),
 		utxoTangle:    ut,
 		peers:         peers,
+		txBytesStore:  txBytesStore,
 		debugCounters: testutil.NewSynCounters(),
 		eventHandlers: make(map[eventtype.EventCode][]func(any)),
 	}

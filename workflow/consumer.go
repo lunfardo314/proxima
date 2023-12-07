@@ -76,12 +76,12 @@ func (c *Consumer[T]) InfoStr() string {
 }
 
 func (c *Consumer[T]) GossipTransactionIfNeeded(inp *PrimaryTransactionData) {
-	if inp.WasGossiped || !c.glb.utxoTangle.SyncData().IsSynced() {
+	if inp.DoNotGossip || !c.glb.utxoTangle.SyncData().IsSynced() {
 		return
 	}
-	inp.WasGossiped = true
+	inp.DoNotGossip = true
 	c.glb.txGossipOutConsumer.Push(TxGossipSendInputData{
 		PrimaryTransactionData: inp,
-		ReceivedFrom:           inp.ReceivedFrom,
+		ReceivedFrom:           inp.ReceivedFromPeer,
 	})
 }

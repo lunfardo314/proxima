@@ -13,11 +13,10 @@ import (
 
 type (
 	UTXOTangle struct {
-		mutex        sync.RWMutex
-		stateStore   global.StateStore
-		txBytesStore global.TxBytesStore
-		vertices     map[core.TransactionID]*WrappedTx
-		branches     map[core.TimeSlot]map[*WrappedTx]common.VCommitment
+		mutex      sync.RWMutex
+		stateStore global.StateStore
+		vertices   map[core.TransactionID]*WrappedTx
+		branches   map[core.TimeSlot]map[*WrappedTx]common.VCommitment
 
 		// all real-time related values in one place
 		syncData *SyncData

@@ -153,7 +153,7 @@ func mustReadStateIdentity(store global.StateStore) {
 func (p *ProximaNode) loadUTXOTangle() {
 	mustReadStateIdentity(p.multiStateStore)
 
-	p.uTangle = utangle.Load(p.multiStateStore, p.txStore)
+	p.uTangle = utangle.Load(p.multiStateStore)
 	latestSlot := p.uTangle.LatestTimeSlot()
 	currentSlot := core.LogicalTimeNow().TimeSlot()
 	p.log.Infof("current time slot: %d, latest time slot in the multi-state: %d, lagging behind: %d slots",
@@ -177,7 +177,7 @@ func (p *ProximaNode) startPeering() {
 }
 
 func (p *ProximaNode) startWorkflow() {
-	p.workflow = workflow.New(p.uTangle, p.peers, workflow.WithGlobalConfigOptions)
+	p.workflow = workflow.New(p.uTangle, p.peers, p.txStore, workflow.WithGlobalConfigOptions)
 	p.workflow.Start(p.ctx)
 	p.workflow.StartPruner()
 }

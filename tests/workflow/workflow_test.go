@@ -11,6 +11,7 @@ import (
 
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/genesis"
+	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/peering"
 	"github.com/lunfardo314/proxima/transaction"
@@ -62,10 +63,7 @@ func initWorkflowTest(t *testing.T, nDistribution int, nowis core.LogicalTime, c
 	txBytes, err := txbuilder.DistributeInitialSupply(stateStore, genesisPrivKey, distrib)
 	require.NoError(t, err)
 
-	err = txStore.SaveTxBytes(txBytes)
-	require.NoError(t, err)
-
-	ret.ut = utangle.Load(stateStore, txStore)
+	ret.ut = utangle.Load(stateStore)
 
 	ret.distributionTxID, _, err = transaction.IDAndTimestampFromTransactionBytes(txBytes)
 	require.NoError(t, err)
@@ -77,7 +75,10 @@ func initWorkflowTest(t *testing.T, nDistribution int, nowis core.LogicalTime, c
 		ret.faucetOutputs[i] = outs[0]
 
 	}
-	ret.w = workflow.New(ret.ut, peering.NewPeersDummy(), configOptions...)
+	err = txStore.SaveTxBytes(txBytes)
+	require.NoError(t, err)
+
+	ret.w = workflow.New(ret.ut, peering.NewPeersDummy(), txStore, configOptions...)
 	return ret
 }
 
@@ -518,6 +519,7 @@ type multiChainTestData struct {
 	t                  *testing.T
 	ts                 core.LogicalTime
 	ut                 *utangle.UTXOTangle
+	txBytesStore       global.TxBytesStore
 	bootstrapChainID   core.ChainID
 	privKey            ed25519.PrivateKey
 	addr               core.AddressED25519
@@ -561,16 +563,16 @@ func initMultiChainTest(t *testing.T, nChains int, verbose bool, secondsInThePas
 	}
 
 	stateStore := common.NewInMemoryKVStore()
-	txStore := txstore.NewDummyTxBytesStore()
+	ret.txBytesStore = txstore.NewDummyTxBytesStore()
 
 	ret.bootstrapChainID, _ = genesis.InitLedgerState(ret.sPar, stateStore)
 	txBytes, err := txbuilder.DistributeInitialSupply(stateStore, genesisPrivKey, distrib)
 	require.NoError(t, err)
 
-	err = txStore.SaveTxBytes(txBytes)
+	err = ret.txBytesStore.SaveTxBytes(txBytes)
 	require.NoError(t, err)
 
-	ret.ut = utangle.Load(stateStore, txStore)
+	ret.ut = utangle.Load(stateStore)
 
 	ret.originBranchTxid, _, err = transaction.IDAndTimestampFromTransactionBytes(txBytes)
 	require.NoError(t, err)
@@ -1097,7 +1099,7 @@ func TestMultiChainWorkflow(t *testing.T) {
 
 		transaction.SetPrintEasyFLTraceOnFail(false)
 
-		wrk := workflow.New(r.ut, peering.NewPeersDummy())
+		wrk := workflow.New(r.ut, peering.NewPeersDummy(), r.txBytesStore)
 		cd := countdown.New(howLong*nChains, 10*time.Second)
 		wrk.MustOnEvent(workflow.EventNewVertex, func(_ *workflow.NewVertexEventData) {
 			cd.Tick()
@@ -1149,7 +1151,7 @@ func TestMultiChainWorkflow(t *testing.T) {
 
 		transaction.SetPrintEasyFLTraceOnFail(false)
 
-		wrk := workflow.New(r.ut, peering.NewPeersDummy())
+		wrk := workflow.New(r.ut, peering.NewPeersDummy(), r.txBytesStore)
 		cd := countdown.New(howLong*nChains, 10*time.Second)
 		wrk.MustOnEvent(workflow.EventNewVertex, func(_ *workflow.NewVertexEventData) {
 			cd.Tick()
@@ -1197,7 +1199,7 @@ func TestMultiChainWorkflow(t *testing.T) {
 
 		transaction.SetPrintEasyFLTraceOnFail(false)
 
-		wrk := workflow.New(r.ut, peering.NewPeersDummy(), workflow.WithConsumerLogLevel(workflow.PreValidateConsumerName, zapcore.DebugLevel))
+		wrk := workflow.New(r.ut, peering.NewPeersDummy(), r.txBytesStore, workflow.WithConsumerLogLevel(workflow.PreValidateConsumerName, zapcore.DebugLevel))
 		nTransactions := 0
 		for i := range txBytesSeq {
 			nTransactions += len(txBytesSeq[i])
@@ -1254,7 +1256,7 @@ func TestMultiChainWorkflow(t *testing.T) {
 
 		transaction.SetPrintEasyFLTraceOnFail(false)
 
-		wrk := workflow.New(r.ut, peering.NewPeersDummy()) //workflow.WithConsumerLogLevel(workflow.PreValidateConsumerName, zapcore.DebugLevel),
+		wrk := workflow.New(r.ut, peering.NewPeersDummy(), r.txBytesStore) //workflow.WithConsumerLogLevel(workflow.PreValidateConsumerName, zapcore.DebugLevel),
 		//workflow.WithConsumerLogLevel(workflow.SolidifyConsumerName, zapcore.DebugLevel),
 		//workflow.WithConsumerLogLevel(workflow.ValidateConsumerName, zapcore.DebugLevel),
 		//workflow.WithConsumerLogLevel(workflow.AppendTxConsumerName, zapcore.DebugLevel),
@@ -1361,7 +1363,7 @@ func TestMultiChainWorkflow(t *testing.T) {
 
 		transaction.SetPrintEasyFLTraceOnFail(false)
 
-		wrk := workflow.New(r.ut, peering.NewPeersDummy())
+		wrk := workflow.New(r.ut, peering.NewPeersDummy(), r.txBytesStore)
 		nTransactions := 0
 		for i := range txBytesSeq {
 			nTransactions += len(txBytesSeq[i])
@@ -1419,7 +1421,7 @@ func TestMultiChainWorkflow(t *testing.T) {
 		require.EqualValues(t, howLong, len(txBytesSeq))
 		transaction.SetPrintEasyFLTraceOnFail(false)
 
-		wrk := workflow.New(r.ut, peering.NewPeersDummy())
+		wrk := workflow.New(r.ut, peering.NewPeersDummy(), r.txBytesStore)
 		cd := countdown.New(howLong, 10*time.Second)
 		wrk.MustOnEvent(workflow.EventNewVertex, func(_ *workflow.NewVertexEventData) {
 			cd.Tick()
@@ -1475,7 +1477,7 @@ func TestMultiChainWorkflow(t *testing.T) {
 
 		transaction.SetPrintEasyFLTraceOnFail(false)
 
-		wrk := workflow.New(r.ut, peering.NewPeersDummy())
+		wrk := workflow.New(r.ut, peering.NewPeersDummy(), r.txBytesStore)
 		cd := countdown.New(howLong, 10*time.Second)
 		wrk.MustOnEvent(workflow.EventNewVertex, func(_ *workflow.NewVertexEventData) {
 			cd.Tick()
@@ -1523,7 +1525,7 @@ func TestMultiChainWorkflow(t *testing.T) {
 
 		transaction.SetPrintEasyFLTraceOnFail(false)
 
-		wrk := workflow.New(r.ut, peering.NewPeersDummy())
+		wrk := workflow.New(r.ut, peering.NewPeersDummy(), r.txBytesStore)
 		cd := countdown.New(len(txBytesSeq), 20*time.Second)
 		wrk.MustOnEvent(workflow.EventNewVertex, func(_ *workflow.NewVertexEventData) {
 			cd.Tick()

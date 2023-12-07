@@ -35,7 +35,7 @@ func (w *Workflow) initRespondTxQueryConsumer() {
 }
 
 func (c *PullRespondConsumer) consume(inp PullRespondData) {
-	if txBytes := c.glb.UTXOTangle().TxBytesStore().GetTxBytes(&inp.TxID); len(txBytes) > 0 {
+	if txBytes := c.glb.txBytesStore.GetTxBytes(&inp.TxID); len(txBytes) > 0 {
 		c.glb.peers.SendTxBytesToPeer(inp.PeerID, txBytes)
 		c.tracePull("respond FOUND %s", func() any { return inp.TxID.StringShort() })
 	} else {

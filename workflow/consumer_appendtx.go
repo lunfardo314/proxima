@@ -57,11 +57,18 @@ func (c *AppendTxConsumer) consume(inp *AppendTxConsumerInputData) {
 	}
 
 	// append to the UTXO tangle
-	vid, err := c.glb.utxoTangle.AppendVertex(inp.Vertex, utangle.BypassValidation)
+	var vid *utangle.WrappedTx
+	var err error
+	if inp.SourceType == TransactionSourceTypeStore {
+		// append virtualTx
+		vid, err = c.glb.utxoTangle.AppendVirtualTx(inp.Tx)
+	} else {
+		vid, err = c.glb.utxoTangle.AppendVertex(inp.Vertex, utangle.BypassValidation)
+	}
 	if err != nil {
 		// failed
 		inp.eventCallback("finish."+AppendTxConsumerName, err)
-		c.Debugf(inp.PrimaryTransactionData, "can't append vertex to the tangle: '%v'", err)
+		c.Debugf(inp.PrimaryTransactionData, "can't append transaction to the tangle: '%v'", err)
 		c.IncCounter("fail")
 
 		c.glb.solidifyConsumer.postRemoveTxIDs(inp.Tx.ID())
