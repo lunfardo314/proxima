@@ -80,6 +80,16 @@ func (c *PreValidateConsumer) consume(inp *PreValidateConsumerInputData) {
 	}
 	c.IncCounter("ok")
 
+	if inp.Source == TransactionSourceStore {
+		// it is coming from the trusted store. Pass it directly to appender
+		// The transaction from the store is assumed to be valid and solidifiable
+		// TODO some validations here are redundant (e.g. ScanOutputs), might be optimized
+		c.glb.appendTxConsumer.Push(&AppendTxConsumerInputData{
+			PrimaryTransactionData: inp.PrimaryTransactionData,
+		})
+		return
+	}
+
 	c.GossipTransactionIfNeeded(inp.PrimaryTransactionData)
 
 	out := &SolidifyInputData{

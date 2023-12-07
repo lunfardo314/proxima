@@ -107,14 +107,6 @@ func (c *PrimaryConsumer) consume(inp *PrimaryTransactionData) {
 	}
 
 	c.glb.IncCounter(c.Name() + ".out")
-	if inp.Source == TransactionSourceStore {
-		// it is coming from the trusted store. Pass it directly to appender
-		// The transaction from the store is assumed to be valid and solidifiable
-		c.glb.appendTxConsumer.Push(&AppendTxConsumerInputData{
-			PrimaryTransactionData: inp,
-		})
-		return
-	}
 	// passes identifiable transaction which is not a duplicate to the pre-validation consumer
 	c.glb.preValidateConsumer.Push(&PreValidateConsumerInputData{
 		PrimaryTransactionData: inp,

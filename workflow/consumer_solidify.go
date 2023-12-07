@@ -108,7 +108,6 @@ func (c *SolidifyConsumer) consume(inp *SolidifyInputData) {
 
 	case SolidifyCommandRemoveTooOld:
 		util.Assertf(inp.TxID == nil && inp.PrimaryTransactionData == nil, "inp.TxID != nil && inp.primaryInput == nil")
-		//c.Log().Infof(">>>>>>>>>>> cmd removeTooOld")
 		c.removeTooOld()
 
 	default:
@@ -188,8 +187,9 @@ func (c *SolidifyConsumer) removeAttachedTxID(txid *core.TransactionID) {
 		c.Log().Warnf("RARE: transaction %s is not among pending", txid.StringShort())
 		return
 	}
-	util.Assertf(pendingData.draftVertexData != nil, "pendingData.draftVertexData != nil")
-	util.Assertf(pendingData.draftVertexData.vertex.IsSolid(), "pendingData.draftVertexData.vertex.IsSolid()")
+	if pendingData.draftVertexData != nil {
+		util.Assertf(pendingData.draftVertexData.vertex.IsSolid(), "pendingData.draftVertexData.vertex.IsSolid()")
+	}
 
 	delete(c.txPending, *txid)
 
