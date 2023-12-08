@@ -60,10 +60,11 @@ func startTipPool(seqName string, wrk *workflow.Workflow, seqID core.ChainID, lo
 
 	// start listening to chain account
 	err := wrk.Events().ListenAccount(accountAddress, func(wOut utangle.WrappedOutput) {
+		ret.purgeDeleted()
+
 		ret.mutex.Lock()
 		defer ret.mutex.Unlock()
 
-		ret._clearDeletedIfNeeded()
 		ret.outputs.Insert(wOut)
 		ret.outputCount++
 		ret.log.Debugf("IN %s", wOut.IDShort())
@@ -94,12 +95,15 @@ func startTipPool(seqName string, wrk *workflow.Workflow, seqID core.ChainID, lo
 	return ret, nil
 }
 
-const cleanupPeriod = 5 * time.Second
-
-func (tp *sequencerTipPool) _clearDeletedIfNeeded() {
+func (tp *sequencerTipPool) purgeDeleted() {
+	cleanupPeriod := core.TimeSlotDuration() / 2
 	if time.Since(tp.lastPruned.Load()) < cleanupPeriod {
 		return
 	}
+
+	tp.mutex.Lock()
+	defer tp.mutex.Unlock()
+
 	toDelete := make([]utangle.WrappedOutput, 0)
 	for wOut := range tp.outputs {
 		wOut.VID.Unwrap(utangle.UnwrapOptions{Deleted: func() {
@@ -124,10 +128,10 @@ func (tp *sequencerTipPool) _clearDeletedIfNeeded() {
 }
 
 func (tp *sequencerTipPool) filterAndSortOutputs(filter func(o utangle.WrappedOutput) bool) []utangle.WrappedOutput {
+	tp.purgeDeleted()
+
 	tp.mutex.RLock()
 	defer tp.mutex.RUnlock()
-
-	tp._clearDeletedIfNeeded()
 
 	ret := util.Keys(tp.outputs, func(o utangle.WrappedOutput) bool {
 		return !o.VID.IsDeleted() && filter(o)
@@ -144,10 +148,10 @@ func (tp *sequencerTipPool) ChainID() core.ChainID {
 }
 
 func (tp *sequencerTipPool) preSelectAndSortEndorsableMilestones(targetTs core.LogicalTime) []*utangle.WrappedTx {
+	tp.purgeDeleted()
+
 	tp.mutex.RLock()
 	defer tp.mutex.RUnlock()
-
-	tp._clearDeletedIfNeeded()
 
 	ret := make([]*utangle.WrappedTx, 0)
 	for _, ms := range tp.latestMilestones {

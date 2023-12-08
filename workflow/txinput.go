@@ -117,13 +117,13 @@ func (w *Workflow) TransactionInWaitAppend(txBytes []byte, timeout time.Duration
 	var closeMutex sync.Mutex
 	var err error
 	waitFailOpt := WithOnWorkflowEventPrefix("finish", func(event string, data any) {
-		err = decodeError(data)
+		err1 := decodeError(data)
 
 		closeMutex.Lock()
 		defer closeMutex.Unlock()
 
 		if !closed {
-			errCh <- err
+			errCh <- err1
 		}
 	})
 
