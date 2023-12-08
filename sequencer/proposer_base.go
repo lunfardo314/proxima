@@ -31,15 +31,20 @@ func (b *baseProposer) run() {
 	for b.factory.proposal.continueCandidateProposing(b.targetTs) {
 		b.startProposingTime()
 		latestMs := b.factory.getLatestMilestone()
-		if tx, forceExit = b.proposeBase(latestMs); forceExit {
-			b.storeProposalDuration()
-			break
-		}
-		if tx != nil {
-			b.trace("generated %s", func() any { return tx.IDShort() })
-			if forceExit = b.assessAndAcceptProposal(tx, latestMs, startTime, b.name()); forceExit {
-				break
+		b.runAndIgnoreDeletedVerticesException(func() {
+			if tx, forceExit = b.proposeBase(latestMs); forceExit {
+				b.storeProposalDuration()
+				return
 			}
+			if tx != nil {
+				b.trace("generated %s", func() any { return tx.IDShort() })
+				if forceExit = b.assessAndAcceptProposal(tx, latestMs, startTime, b.name()); forceExit {
+					return
+				}
+			}
+		})
+		if forceExit {
+			break
 		}
 		b.storeProposalDuration()
 		time.Sleep(10 * time.Millisecond)

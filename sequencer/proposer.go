@@ -123,6 +123,16 @@ func (c *proposerTaskGeneric) startProposingTime() {
 	c.startTime = time.Now()
 }
 
+func (c *proposerTaskGeneric) runAndIgnoreDeletedVerticesException(fun func()) {
+	err := util.CatchPanicOrError(func() error {
+		fun()
+		return nil
+	}, true)
+	if err != nil && !errors.Is(err, utangle.ErrDeletedVertexAccessed) {
+		panic(err)
+	}
+}
+
 func (c *proposerTaskGeneric) selectInputs(ownMs utangle.WrappedOutput, seqVIDs ...*utangle.WrappedTx) ([]utangle.WrappedOutput, *utangle.WrappedOutput) {
 	return c.factory.selectInputs(c.targetTs, ownMs, seqVIDs...)
 }

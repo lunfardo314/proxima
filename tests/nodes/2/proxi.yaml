@@ -11,7 +11,7 @@ tag-along:
     sequencer_id: eccf5694401ecb3b320a3446b07b79009fcbf689a461005df6672e4652150eb3
     fee: 500
 spammer:
-    bundle_size: 30
+    bundle_size: 10
     max_duration_minutes: 0
     max_transactions: 0
     output_amount: 1000

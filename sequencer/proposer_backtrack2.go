@@ -50,7 +50,7 @@ func (b *backtrackProposer2) run() {
 		} else {
 			b.trace("calcExtensionChoices: <empty>")
 		}
-
+		forceExit := false
 		for _, extend := range extensionChoices {
 			pair := extendEndorsePair{
 				extend:  extend.VID,
@@ -59,14 +59,18 @@ func (b *backtrackProposer2) run() {
 			if b.visited.Contains(pair) {
 				continue
 			}
-			if tx := b.generateCandidate(extend, endorse); tx != nil {
-				if forceExit := b.assessAndAcceptProposal(tx, extend, startTime, b.name()); forceExit {
-					b.trace("exit proposer")
-					return
+			b.runAndIgnoreDeletedVerticesException(func() {
+				if tx := b.generateCandidate(extend, endorse); tx != nil {
+					if forceExit = b.assessAndAcceptProposal(tx, extend, startTime, b.name()); forceExit {
+						b.trace("exit proposer")
+						return
+					}
+					b.visited.Insert(pair)
+					b.trace("marked visited: extend: %s, endorse: %s", extend.IDShort(), endorse.IDShort())
 				}
-				b.visited.Insert(pair)
-				//b.setTraceNAhead(1)
-				b.trace("marked visited: extend: %s, endorse: %s", extend.IDShort(), endorse.IDShort())
+			})
+			if forceExit {
+				return
 			}
 		}
 		time.Sleep(10 * time.Millisecond)

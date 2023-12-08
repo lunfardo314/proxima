@@ -91,8 +91,8 @@ func (v *VirtualTransaction) SequencerOutputs() (*core.Output, *core.Output) {
 }
 
 func (v *VirtualTransaction) mustMergeNewOutputs(vNew *VirtualTransaction) {
-	v.mutex.RLock()
-	defer v.mutex.RUnlock()
+	v.mutex.Lock()
+	defer v.mutex.Unlock()
 
 	if v.sequencerOutputs != nil && vNew.sequencerOutputs != nil {
 		util.Assertf(*v.sequencerOutputs == *vNew.sequencerOutputs, "mustMergeNewOutputs: inconsistent sequencer output data")

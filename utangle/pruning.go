@@ -55,8 +55,8 @@ func (ut *UTXOTangle) _orphanedFromReachableSet(reachable set.Set[*WrappedTx], b
 
 // ReachableAndOrphaned used for testing
 func (ut *UTXOTangle) ReachableAndOrphaned(nLatestSlots int) (set.Set[*WrappedTx], set.Set[*WrappedTx], time.Time) {
-	ut.mutex.Lock()
-	defer ut.mutex.Unlock()
+	ut.mutex.RLock()
+	defer ut.mutex.RUnlock()
 
 	tipList, baselineTime, nSlots := ut._tipList(nLatestSlots)
 	if nSlots != nLatestSlots {
@@ -83,7 +83,7 @@ func (ut *UTXOTangle) PruneOrphaned(nLatestSlots int) (int, int, int) {
 	// delete from transaction dictionary
 	orphaned.ForEach(func(vid *WrappedTx) bool {
 		vid.MarkDeleted()
-		ut.deleteVertex(vid.ID())
+		ut._deleteVertex(vid.ID())
 		return true
 	})
 	// delete branches

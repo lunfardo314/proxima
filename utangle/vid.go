@@ -67,6 +67,9 @@ type (
 	}
 )
 
+// ErrDeletedVertexAccessed exception is raised by PanicAccessDeleted handler of Unwrap vertex so that could be caught if necessary
+var ErrDeletedVertexAccessed = errors.New("deleted vertex should not be accessed")
+
 func (v _vertex) _id() *core.TransactionID {
 	return v.Tx.ID()
 }
@@ -115,11 +118,11 @@ func (v _deletedTx) _time() time.Time {
 }
 
 func (v _deletedTx) _outputAt(_ byte) (*core.Output, error) {
-	panic("orphaned vertex should not be accessed")
+	panic(ErrDeletedVertexAccessed)
 }
 
 func (v _deletedTx) _hasOutputAt(_ byte) (bool, bool) {
-	panic("deleted vertex should not be accessed")
+	panic(ErrDeletedVertexAccessed)
 }
 
 func _newVID(g _genericWrapper) *WrappedTx {
@@ -526,9 +529,6 @@ func (vid *WrappedTx) WrappedInputs() []WrappedOutput {
 	return ret
 }
 
-// ErrDeletedVertexAccessed exception is raised by PanicAccessDeleted handler of Unwrap vertex so that could be caught if necessary
-var ErrDeletedVertexAccessed = errors.New("deleted vertex should not be accessed")
-
 func (vid *WrappedTx) PanicAccessDeleted() {
 	txid := vid._genericWrapper.(_deletedTx).TransactionID
 	util.Panicf("%w: %s", ErrDeletedVertexAccessed, txid.StringShort())
@@ -700,7 +700,9 @@ func (vid *WrappedTx) getBranchMutations(ut *UTXOTangle) (*multistate.Mutations,
 	return ret.Sort(), WrappedOutput{}
 }
 
-func (vid *WrappedTx) _collectBaselineOutputs(baselineStateReader global.StateReader, visited set.Set[*WrappedTx], baselineOutputs set.Set[WrappedOutput]) {
+// _collectCoveredOutputs recursively goes back and collect all inputs/leafs which are contained in the baselineStateReader
+// The coveredOutputs set will contain all outputs which were consumed from the baseline state
+func (vid *WrappedTx) _collectCoveredOutputs(baselineStateReader global.StateReader, visited set.Set[*WrappedTx], coveredOutputs set.Set[WrappedOutput]) {
 	if visited.Contains(vid) {
 		return
 	}
@@ -713,14 +715,14 @@ func (vid *WrappedTx) _collectBaselineOutputs(baselineStateReader global.StateRe
 				Index: v.Tx.MustOutputIndexOfTheInput(i),
 			}
 			if baselineStateReader.HasUTXO(wInp.DecodeID()) {
-				baselineOutputs.Insert(wInp)
+				coveredOutputs.Insert(wInp)
 			} else {
-				inp._collectBaselineOutputs(baselineStateReader, visited, baselineOutputs)
+				inp._collectCoveredOutputs(baselineStateReader, visited, coveredOutputs)
 			}
 			return true
 		})
 		v.forEachEndorsement(func(i byte, vEnd *WrappedTx) bool {
-			vEnd._collectBaselineOutputs(baselineStateReader, visited, baselineOutputs)
+			vEnd._collectCoveredOutputs(baselineStateReader, visited, coveredOutputs)
 			return true
 		})
 	}})
@@ -738,20 +740,20 @@ func (vid *WrappedTx) CoverageDelta(ut *UTXOTangle) (*core.TransactionID, uint64
 	}
 
 	baselineTxID := baselineBranchVID.ID()
-	baselineOutputs := set.New[WrappedOutput]()
-	vid._collectBaselineOutputs(ut.MustGetStateReader(baselineTxID), set.New[*WrappedTx](), baselineOutputs)
+	coveredOutputs := set.New[WrappedOutput]()
+	vid._collectCoveredOutputs(ut.MustGetStateReader(baselineTxID), set.New[*WrappedTx](), coveredOutputs)
 
 	ret := uint64(0)
 	bd, found := multistate.FetchBranchData(ut.stateStore, *baselineTxID)
 	util.Assertf(found, "can't found root record for %s", baselineTxID.StringShort())
 	coverageCap := bd.Stem.Output.MustStemLock().Supply
 
-	baselineOutputs.ForEach(func(o WrappedOutput) bool {
+	coveredOutputs.ForEach(func(o WrappedOutput) bool {
 		ret += o.Amount()
 		return true
 	})
 	if ret > coverageCap {
-		baselineOutputsLines := baselineOutputs.Lines(func(key WrappedOutput) string {
+		baselineOutputsLines := coveredOutputs.Lines(func(key WrappedOutput) string {
 			return key.IDShort()
 		})
 		SaveGraphPastCone(vid, "failed_coverage")

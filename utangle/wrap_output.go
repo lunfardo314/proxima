@@ -11,7 +11,7 @@ import (
 // GetWrappedOutput return a wrapped output either the one existing in the utangle,
 // or after finding it in the provided state.
 // It returns flag if output ID cannot be solidified (invalid), for example output index is wrong
-// It returns nil if output cannot be found with the data provided, but it is
+// It returns nil if output cannot be found with the data provided
 func (ut *UTXOTangle) GetWrappedOutput(oid *core.OutputID, baselineState ...multistate.SugaredStateReader) (WrappedOutput, bool, bool) {
 	// first search vertex on the tangle and pick output from it. Fetch output from state if necessary
 	ret, found, invalid := ut.pickFromExistingVertex(oid, baselineState...)
@@ -25,7 +25,7 @@ func (ut *UTXOTangle) GetWrappedOutput(oid *core.OutputID, baselineState ...mult
 
 	if oid.BranchFlagON() {
 		// it is on the branch transaction, so pick it from the database
-		return ut.fetchAndWrapBranch(oid)
+		return ut._fetchAndWrapBranch(oid)
 	}
 
 	// non-branch not on the utxo tangle ->
@@ -55,7 +55,7 @@ func (ut *UTXOTangle) GetWrappedOutput(oid *core.OutputID, baselineState ...mult
 	vt := newVirtualTx(&txid)
 	vt.addOutput(oid.Index(), o)
 	vid := vt.Wrap()
-	conflict := ut.attach(vid)
+	conflict := ut._attach(vid)
 	util.Assertf(conflict == nil, "inconsistency: unexpected conflict %s", conflict.IDShort())
 
 	return WrappedOutput{VID: vid, Index: oid.Index()}, true, false
@@ -68,7 +68,7 @@ func (ut *UTXOTangle) pickFromExistingVertex(oid *core.OutputID, baselineState .
 	defer ut.mutex.RUnlock()
 
 	txid := oid.TransactionID()
-	if vid, found := ut.getVertex(&txid); found {
+	if vid, found := ut._getVertex(&txid); found {
 		hasIt, invalid := vid.HasOutputAt(oid.Index())
 		if invalid {
 			return WrappedOutput{}, false, true
@@ -82,15 +82,15 @@ func (ut *UTXOTangle) pickFromExistingVertex(oid *core.OutputID, baselineState .
 		if oid.IsBranchTransaction() {
 			// it means a virtual branch vertex exist but the output is not cached on it.
 			// It won't be a seq or stem output, because those are cached always in the branch virtual tx
-			return ut.wrapNewIntoExistingVirtualBranch(vid, oid)
+			return ut._wrapNewIntoExistingVirtualBranch(vid, oid)
 		}
 		// it is a virtual tx, output not cached
-		return wrapNewIntoExistingVirtualNonBranch(vid, oid, baselineState...)
+		return _wrapNewIntoExistingVirtualNonBranch(vid, oid, baselineState...)
 	}
 	return WrappedOutput{}, false, false
 }
 
-func (ut *UTXOTangle) wrapNewIntoExistingVirtualBranch(vid *WrappedTx, oid *core.OutputID) (WrappedOutput, bool, bool) {
+func (ut *UTXOTangle) _wrapNewIntoExistingVirtualBranch(vid *WrappedTx, oid *core.OutputID) (WrappedOutput, bool, bool) {
 	util.Assertf(oid.BranchFlagON(), "%s should be a branch", oid.StringShort())
 
 	var ret WrappedOutput
@@ -124,7 +124,7 @@ func (ut *UTXOTangle) wrapNewIntoExistingVirtualBranch(vid *WrappedTx, oid *core
 	return ret, available, invalid
 }
 
-func wrapNewIntoExistingVirtualNonBranch(vid *WrappedTx, oid *core.OutputID, baselineState ...multistate.SugaredStateReader) (WrappedOutput, bool, bool) {
+func _wrapNewIntoExistingVirtualNonBranch(vid *WrappedTx, oid *core.OutputID, baselineState ...multistate.SugaredStateReader) (WrappedOutput, bool, bool) {
 	util.Assertf(!oid.BranchFlagON(), "%s should not be branch", oid.StringShort())
 	// Don't have output in existing vertex, but it may be a virtualTx
 	if len(baselineState) == 0 {
@@ -152,7 +152,7 @@ func wrapNewIntoExistingVirtualNonBranch(vid *WrappedTx, oid *core.OutputID, bas
 	return ret, available, invalid
 }
 
-func (ut *UTXOTangle) fetchAndWrapBranch(oid *core.OutputID) (WrappedOutput, bool, bool) {
+func (ut *UTXOTangle) _fetchAndWrapBranch(oid *core.OutputID) (WrappedOutput, bool, bool) {
 	// it is a branch tx output, fetch the whole branch
 	bd, branchFound := multistate.FetchBranchData(ut.stateStore, oid.TransactionID())
 	if !branchFound {
@@ -172,6 +172,6 @@ func (ut *UTXOTangle) fetchAndWrapBranch(oid *core.OutputID) (WrappedOutput, boo
 		vt.addOutput(oid.Index(), o)
 	}
 	vid := vt.Wrap()
-	ut.addVertexAndBranch(vid, bd.Root)
+	ut._addVertexAndBranch(vid, bd.Root)
 	return WrappedOutput{VID: vid, Index: oid.Index()}, true, false
 }
