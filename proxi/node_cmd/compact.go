@@ -3,19 +3,22 @@ package node_cmd
 import (
 	"fmt"
 	"os"
+	"strconv"
 
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/spf13/cobra"
 )
 
-const defaultFeeAmount = 500
+const (
+	defaultMaxNumberOfInputs = 100
+)
 
 func initCompactOutputsCmd() *cobra.Command {
 	getOutputsCmd := &cobra.Command{
-		Use:   "compact",
+		Use:   "compact [<max number of args. Default 100, maximum allowed 256>]",
 		Short: `compacts all non-chain outputs unlockable now into one ED25519 output`,
-		Args:  cobra.NoArgs,
+		Args:  cobra.MaximumNArgs(1),
 		Run:   runCompactCmd,
 	}
 
@@ -23,7 +26,13 @@ func initCompactOutputsCmd() *cobra.Command {
 	return getOutputsCmd
 }
 
-func runCompactCmd(_ *cobra.Command, _ []string) {
+func runCompactCmd(_ *cobra.Command, args []string) {
+	maxNumberOfInputs := defaultMaxNumberOfInputs
+	var err error
+	if len(args) > 0 {
+		maxNumberOfInputs, err = strconv.Atoi(args[0])
+		glb.AssertNoError(err)
+	}
 	var tagAlongSeqID *core.ChainID
 	feeAmount := getTagAlongFee() // 0 interpreted as no fee output
 	if feeAmount > 0 {
@@ -57,17 +66,14 @@ func runCompactCmd(_ *cobra.Command, _ []string) {
 	}
 
 	var prompt string
-	if feeAmount > 0 {
-		prompt = fmt.Sprintf("compacting will cost %d of fees paid to the tag-along sequencer %s. Proceed?", feeAmount, tagAlongSeqID.Short())
-	} else {
-		prompt = "compacting transaction will not have tag-along fee output (fee-less). Proceed?"
-	}
+	glb.Assertf(feeAmount > 0, "tag-along fee is configured 0. Fee-less option not supported yet")
+	prompt = fmt.Sprintf("compacting will cost %d of fees paid to the tag-along sequencer %s. Proceed?", feeAmount, tagAlongSeqID.Short())
 	if !glb.YesNoPrompt(prompt, true) {
 		glb.Infof("exit")
 		os.Exit(0)
 	}
 
-	txCtx, err := getClient().MakeCompactTransaction(walletData.PrivateKey, tagAlongSeqID, feeAmount)
+	txCtx, err := getClient().MakeCompactTransaction(walletData.PrivateKey, tagAlongSeqID, feeAmount, maxNumberOfInputs)
 	if err != nil {
 		if txCtx != nil {
 			glb.Verbosef("------- failed transaction -------- \n%s\n--------------------------", txCtx.String())

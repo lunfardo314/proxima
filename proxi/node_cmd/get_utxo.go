@@ -52,7 +52,11 @@ func displayInclusionState(inclusion []api.InclusionData, inSec ...float64) {
 	if len(inSec) > 0 {
 		inSecStr = fmt.Sprintf(" in %.1f sec", inSec[0])
 	}
-	glb.Infof("Inclusion score%s: num branches: %d, %d%% of all, %d%% of dominating", inSecStr, scoreAll, scorePercTotal, scorePercDominating)
+	percDominatingStr := "??"
+	if scorePercDominating >= 0 {
+		percDominatingStr = fmt.Sprintf("%d%%", scorePercDominating)
+	}
+	glb.Infof("Inclusion score%s: num branches: %d, %d%% of all, %s of dominating", inSecStr, scoreAll, scorePercTotal, percDominatingStr)
 	yn := ""
 	for i := range inclusion {
 		if inclusion[i].Included {

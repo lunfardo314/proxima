@@ -313,6 +313,9 @@ func (ut *UTXOTangle) _finalizeBranch(newBranchVID *WrappedTx) error {
 }
 
 func (ut *UTXOTangle) AppendVirtualTx(tx *transaction.Transaction) *WrappedTx {
+	ut.mutex.Lock()
+	defer ut.mutex.Unlock()
+
 	vid := newVirtualTxFromTx(tx).Wrap()
 	conflict := ut._attach(vid)
 	util.Assertf(conflict == nil, "conflict %s", conflict.IDShort())

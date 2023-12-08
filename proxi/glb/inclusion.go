@@ -27,6 +27,9 @@ func InclusionScore(inclusionData []api.InclusionData, totalSupply uint64) (tota
 		return
 	}
 	percOfTotal = (100 * numIncluded) / totalBranches
-	percOfDominating = (100 * numIncludedIntoDominating) / numDominating
+	percOfDominating = -1
+	if numDominating > 0 {
+		percOfDominating = (100 * numIncludedIntoDominating) / numDominating
+	}
 	return
 }

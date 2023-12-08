@@ -13,15 +13,15 @@ import (
 // It returns flag if output ID cannot be solidified (invalid), for example output index is wrong
 // It returns nil if output cannot be found with the data provided
 func (ut *UTXOTangle) GetWrappedOutput(oid *core.OutputID, baselineState ...multistate.SugaredStateReader) (WrappedOutput, bool, bool) {
+	ut.mutex.Lock()
+	defer ut.mutex.Unlock()
+
 	// first search vertex on the tangle and pick output from it. Fetch output from state if necessary
-	ret, found, invalid := ut.pickFromExistingVertex(oid, baselineState...)
+	ret, found, invalid := ut._pickFromExistingVertex(oid, baselineState...)
 	if found || invalid {
 		return ret, found, invalid
 	}
-
 	// transaction is unknown as a vertex. Try to fetch it from the state and create a virtual tx
-	ut.mutex.Lock()
-	defer ut.mutex.Unlock()
 
 	if oid.BranchFlagON() {
 		// it is on the branch transaction, so pick it from the database
@@ -61,12 +61,9 @@ func (ut *UTXOTangle) GetWrappedOutput(oid *core.OutputID, baselineState ...mult
 	return WrappedOutput{VID: vid, Index: oid.Index()}, true, false
 }
 
-// pickFromExistingVertex returns wrapped output if vertex already in on the tangle
+// _pickFromExistingVertex returns wrapped output if vertex already in on the tangle
 // If output belongs to the virtual tx but is not cached there, loads it (if state is provided)
-func (ut *UTXOTangle) pickFromExistingVertex(oid *core.OutputID, baselineState ...multistate.SugaredStateReader) (WrappedOutput, bool, bool) {
-	ut.mutex.RLock()
-	defer ut.mutex.RUnlock()
-
+func (ut *UTXOTangle) _pickFromExistingVertex(oid *core.OutputID, baselineState ...multistate.SugaredStateReader) (WrappedOutput, bool, bool) {
 	txid := oid.TransactionID()
 	if vid, found := ut._getVertex(&txid); found {
 		hasIt, invalid := vid.HasOutputAt(oid.Index())
