@@ -3,6 +3,7 @@ package workflow
 import (
 	"time"
 
+	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/util/wait"
 )
@@ -79,6 +80,16 @@ func (c *PreValidateConsumer) consume(inp *PreValidateConsumerInputData) {
 		return
 	}
 	c.IncCounter("ok")
+
+	const traceBigTx = false
+	if traceBigTx {
+		if inp.tx.NumInputs() > 100 {
+			c.Log().Infof(">>>>>>>>> logging big tx %s, num inputs %d, source: '%s'",
+				inp.tx.IDShort(), inp.tx.NumInputs(), inp.source.String())
+			global.SetTracePull(true)
+			global.SetTraceTx(true)
+		}
+	}
 
 	if inp.source == TransactionSourceStore && !inp.tx.IsSequencerMilestone() {
 		inp.PrimaryTransactionData.makeVirtualTx = true
