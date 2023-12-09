@@ -140,7 +140,7 @@ func (c *SolidifyConsumer) checkTxID(txid *core.TransactionID) {
 		return
 	}
 	if pendingData.draftVertexData == nil {
-		// should not happen
+		// should not happen ??
 		return
 	}
 	if pendingData.draftVertexData.sentForValidation {

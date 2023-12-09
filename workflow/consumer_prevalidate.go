@@ -92,6 +92,7 @@ func (c *PreValidateConsumer) consume(inp *PreValidateConsumerInputData) {
 	}
 
 	if inp.source == TransactionSourceStore && !inp.tx.IsSequencerMilestone() {
+		// it is from the tx store, jump right to append it as virtual tx, bypass validation and solidification
 		inp.PrimaryTransactionData.makeVirtualTx = true
 		c.glb.appendTxConsumer.Push(&AppendTxConsumerInputData{
 			PrimaryTransactionData: inp.PrimaryTransactionData,
