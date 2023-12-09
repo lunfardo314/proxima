@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/lunfardo314/proxima/api"
@@ -184,13 +185,36 @@ func getOutputInclusionHandle(ut *utangle.UTXOTangle) func(w http.ResponseWriter
 	}
 }
 
-const maxTxUploadSize = 64 * (1 << 10)
+const (
+	maxTxUploadSize            = 64 * (1 << 10)
+	defaultTxAppendWaitTimeout = 10 * time.Second
+	maxTxAppendWaitTimeout     = 2 * time.Minute
+)
 
 func submitTxHandle(wFlow *workflow.Workflow, wait bool) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "POST" {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
+		}
+		timeout := defaultTxAppendWaitTimeout
+		lst, ok := r.URL.Query()["timeout"]
+		if ok {
+			wrong := len(lst) != 1
+			var timeoutSec int
+			var err error
+			if !wrong {
+				timeoutSec, err = strconv.Atoi(lst[0])
+				wrong = err != nil || timeoutSec < 0
+			}
+			if wrong {
+				writeErr(w, "wrong 'timeout' parameter in request 'submit_wait'")
+				return
+			}
+			timeout = time.Duration(timeoutSec) * time.Second
+			if timeout > maxTxAppendWaitTimeout {
+				timeout = maxTxAppendWaitTimeout
+			}
 		}
 		r.Body = http.MaxBytesReader(w, r.Body, maxTxUploadSize)
 		txBytes, err := io.ReadAll(r.Body)
@@ -201,8 +225,7 @@ func submitTxHandle(wFlow *workflow.Workflow, wait bool) func(w http.ResponseWri
 		txBytes = util.CloneExactCap(txBytes)
 
 		if wait {
-			const txAppendWaitTimeout = 7 * time.Second
-			_, err = wFlow.TransactionInWaitAppend(txBytes, txAppendWaitTimeout)
+			_, err = wFlow.TransactionInWaitAppend(txBytes, timeout)
 		} else {
 			err = wFlow.TransactionIn(txBytes)
 		}

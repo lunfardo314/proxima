@@ -32,6 +32,7 @@ func runCompactCmd(_ *cobra.Command, args []string) {
 	if len(args) > 0 {
 		maxNumberOfInputs, err = strconv.Atoi(args[0])
 		glb.AssertNoError(err)
+		glb.Assertf(0 < maxNumberOfInputs && maxNumberOfInputs <= 256, "parameter must be > 0 and <= 256")
 	}
 	var tagAlongSeqID *core.ChainID
 	feeAmount := getTagAlongFee() // 0 interpreted as no fee output

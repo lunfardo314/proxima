@@ -160,8 +160,12 @@ func standardScenario(cfg spammerConfig) {
 		glb.Infof("submitting bundle of %d transactions, total duration %d ticks, %v", len(bundle), bundlePace, bundleDuration)
 
 		c := getClient()
+		timeout := 0
+		if !cfg.submitNowait {
+			timeout = 100
+		}
 		for _, txBytes := range bundle {
-			err = c.SubmitTransaction(txBytes, cfg.submitNowait)
+			err = c.SubmitTransaction(txBytes, timeout)
 			glb.AssertNoError(err)
 		}
 		glb.Verbosef("%d transactions submitted", len(bundle))

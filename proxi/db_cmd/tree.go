@@ -2,6 +2,8 @@ package db_cmd
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strconv"
 
 	"github.com/lunfardo314/proxima/global"
@@ -30,10 +32,15 @@ func initDBTreeCmd() *cobra.Command {
 
 func runDbTreeCmd(_ *cobra.Command, args []string) {
 	dbName := global.MultiStateDBName
+	pwdPath, err := os.Getwd()
+	glb.AssertNoError(err)
+	currentWorkingDir := filepath.Base(pwdPath)
+
 	outFile := outputFile
 	if outFile == "" {
-		outFile = dbName + "_TREE"
+		outFile = dbName + "_TREE_" + currentWorkingDir
 	}
+
 	stateDb := badger_adaptor.MustCreateOrOpenBadgerDB(dbName)
 	defer stateDb.Close()
 

@@ -3,6 +3,7 @@ package consumer
 import (
 	"fmt"
 	"runtime"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -289,6 +290,68 @@ func TestMany(t *testing.T) {
 	t.Logf("\nchain of %d consumers\n%d messages\navg = %f msec/msg",
 		howManyConsumers, howManyMessages,
 		(float32(endTime.Sub(startTime))/howManyMessages)/float32(time.Millisecond))
+}
+
+func TestPriority(t *testing.T) {
+	const (
+		howManyNormalMessages   = 100_000
+		howManyPriorityMessages = 100_000
+		trace                   = false
+	)
+	countNormal := countdown.New(howManyNormalMessages)
+	countPriority := countdown.New(howManyPriorityMessages)
+	countRepeated := countdown.New(howManyNormalMessages)
+	consumer := NewConsumer[string]("cons", zap.InfoLevel, nil)
+	consumer.AddOnConsume(func(s string) {
+		if trace {
+			t.Logf("%s -> consume", s)
+		}
+		switch {
+		case strings.HasPrefix(s, "prio"):
+			countPriority.Tick()
+		case strings.HasPrefix(s, "repeat"):
+			countRepeated.Tick()
+		default:
+			consumer.Push(fmt.Sprintf("repeat with priority '%s')", s), true)
+			countNormal.Tick()
+		}
+	})
+
+	var wgStart sync.WaitGroup
+
+	wgStart.Add(1)
+	go func() {
+		wgStart.Wait()
+		for i := 0; i < howManyNormalMessages; i++ {
+			msg := fmt.Sprintf("msg %d", i)
+			if trace {
+				t.Logf("%s -> push", msg)
+			}
+			consumer.Push(msg)
+			if i%100 == 0 {
+				time.Sleep(1 * time.Millisecond)
+			}
+		}
+	}()
+	go func() {
+		wgStart.Wait()
+		for i := 0; i < howManyPriorityMessages; i++ {
+			msg := fmt.Sprintf("prio msg %d", i)
+			if trace {
+				t.Logf("%s -> push", msg)
+			}
+			consumer.Push(msg, true)
+			if i%100 == 0 {
+				time.Sleep(1 * time.Millisecond)
+			}
+		}
+	}()
+	go consumer.Run()
+	wgStart.Done()
+
+	err := countdown.Wait(countNormal, countPriority, countRepeated)
+	require.NoError(t, err)
+	consumer.Stop()
 }
 
 func BenchmarkRW(b *testing.B) {

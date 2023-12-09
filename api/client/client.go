@@ -214,9 +214,15 @@ func (c *APIClient) WaitOutputInTheHeaviestState(oid *core.OutputID, timeout tim
 	}
 }
 
-func (c *APIClient) SubmitTransaction(txBytes []byte, nowait ...bool) error {
-	url := c.prefix + api.PathSubmitTransactionWait
-	if len(nowait) > 0 && nowait[0] {
+func (c *APIClient) SubmitTransaction(txBytes []byte, timeoutSec ...int) error {
+	var url string
+	if len(timeoutSec) > 0 {
+		if timeoutSec[0] <= 0 {
+			url = c.prefix + api.PathSubmitTransactionNowait
+		} else {
+			url = fmt.Sprintf(c.prefix+api.PathSubmitTransactionWait+"?timeout=%d", timeoutSec[0])
+		}
+	} else {
 		url = c.prefix + api.PathSubmitTransactionNowait
 	}
 	req, err := http.NewRequest(http.MethodPost, url, bytes.NewBuffer(txBytes))
