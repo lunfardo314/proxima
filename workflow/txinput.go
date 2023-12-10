@@ -39,7 +39,7 @@ func (w *Workflow) TransactionInReturnTx(txBytes []byte, opts ...TransactionInOp
 	// prevent unnecessary dissemination via gossip
 	inData.doNotGossip = inData.wasPulled || inData.source == TransactionSourceStore
 
-	w.primaryInputConsumer.Push(inData)
+	w.primaryInputConsumer.Push(inData, inData.wasPulled) // priority for pulled
 	return tx, nil
 }
 

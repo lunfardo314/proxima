@@ -372,7 +372,7 @@ func (ps *Peers) PullTransactionsFromRandomPeer(txids ...core.TransactionID) boo
 		rndID := all[idx]
 		p := ps.peers[rndID]
 		if p.isCommunicationOpen() && p.isAlive() && p.HasTxStore() {
-			global.TracePull(ps.log, "pull to random peer %s: %s",
+			global.TracePull(ps.log, "pull from random peer %s: %s",
 				func() any { return ShortPeerIDString(rndID) },
 				func() any { return _txidLst(txids...) },
 			)

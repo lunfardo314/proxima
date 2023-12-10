@@ -54,6 +54,22 @@ func (v *Vertex) ValidateDebug() (string, error) {
 	return ctx.String(), ctx.Validate()
 }
 
+func (v *Vertex) NumMissingInputs() (missingInputs int, missingEndorsements int) {
+	v.forEachInputDependency(func(_ byte, vidInput *WrappedTx) bool {
+		if vidInput == nil {
+			missingInputs++
+		}
+		return true
+	})
+	v.forEachEndorsement(func(_ byte, vidEndorsed *WrappedTx) bool {
+		if vidEndorsed == nil {
+			missingEndorsements++
+		}
+		return true
+	})
+	return
+}
+
 // MissingInputTxIDSet return set of txids for the missing inputs
 func (v *Vertex) MissingInputTxIDSet() set.Set[core.TransactionID] {
 	ret := set.New[core.TransactionID]()

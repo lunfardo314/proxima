@@ -1,6 +1,7 @@
 package workflow
 
 import (
+	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/utangle"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/eventtype"
@@ -33,20 +34,18 @@ func (w *Workflow) initAppendTxConsumer() {
 		Consumer: NewConsumer[*AppendTxConsumerInputData](AppendTxConsumerName, w),
 	}
 	ret.AddOnConsume(func(inp *AppendTxConsumerInputData) {
-		ret.Debugf(inp.PrimaryTransactionData, "IN")
+		ret.traceTx(inp.PrimaryTransactionData, "IN")
 	})
 	ret.AddOnConsume(ret.consume)
 	nmAdd := EventNewVertex.String()
 	w.MustOnEvent(EventNewVertex, func(inp *NewVertexEventData) {
 		ret.glb.IncCounter(ret.Name() + "." + nmAdd)
-		ret.Log().Debugf("%s: %s", nmAdd, inp.tx.IDShort())
 	})
 
 	w.appendTxConsumer = ret
 }
 
 func (c *AppendTxConsumer) consume(inp *AppendTxConsumerInputData) {
-	//c.setTrace(inp.Source == TransactionSourceAPI)
 	//inp.eventCallback(AppendTxConsumerName+".in", inp.Tx)
 
 	// TODO due to unclear reasons, sometimes repeating transactions reach this point and attach panics
@@ -68,7 +67,7 @@ func (c *AppendTxConsumer) consume(inp *AppendTxConsumerInputData) {
 	if err != nil {
 		// failed
 		inp.eventCallback("finish."+AppendTxConsumerName, err)
-		c.Debugf(inp.PrimaryTransactionData, "can't append transaction to the tangle: '%v'", err)
+		c.traceTx(inp.PrimaryTransactionData, "can't append transaction to the tangle: '%v'", err)
 		c.IncCounter("fail")
 
 		c.glb.solidifyConsumer.postRemoveTxIDs(inp.tx.ID())
@@ -79,21 +78,31 @@ func (c *AppendTxConsumer) consume(inp *AppendTxConsumerInputData) {
 		}
 		return
 	}
-	inp.eventCallback("finish."+AppendTxConsumerName, nil)
+	{
+		if inp.PrimaryTransactionData.tx.NumInputs() > 100 {
+			global.SetTracePull(false)
+			global.SetTraceTx(false)
+		}
 
-	c.logBranch(inp.PrimaryTransactionData, vid.LedgerCoverage(c.glb.UTXOTangle()))
+		inp.eventCallback("finish."+AppendTxConsumerName, nil)
+		if inp.makeVirtualTx {
+			c.traceTx(inp.PrimaryTransactionData, "added virtualTx")
+			c.trace("added virtualTx to the UTXO tangle: %s", vid.IDShort())
+		} else {
+			c.traceTx(inp.PrimaryTransactionData, "added vertex")
+			c.trace("added vertex to the UTXO tangle: %s", vid.IDShort())
+		}
+		c.logBranch(inp.PrimaryTransactionData, vid.LedgerCoverage(c.glb.UTXOTangle()))
+	}
+
 	c.glb.pullConsumer.removeFromPullList(inp.tx.ID())
-
 	c.GossipTransactionIfNeeded(inp.PrimaryTransactionData)
-
-	// rise new vertex event
 	c.glb.PostEvent(EventNewVertex, &NewVertexEventData{
 		PrimaryTransactionData: inp.PrimaryTransactionData,
 		VID:                    vid,
 	})
 
 	c.glb.IncCounter(c.Name() + ".ok")
-	c.trace("added to the UTXO tangle: %s", vid.IDShort())
 
 	// notify solidifier upon new transaction added to the tangle
 	c.glb.solidifyConsumer.postRemoveAttachedTxID(vid.ID())

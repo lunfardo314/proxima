@@ -170,12 +170,17 @@ func (c *SolidifyConsumer) checkTxID(txid *core.TransactionID) {
 		c.sendForValidation(pendingData.draftVertexData.PrimaryTransactionData, pendingData.draftVertexData.vertex)
 		return
 	}
-	// not solid yet
+
+	{ // not solid yet
+		numMissingInputs, numMissingEndorsements := pendingData.draftVertexData.vertex.NumMissingInputs()
+		c.traceTx(pendingData.draftVertexData.PrimaryTransactionData, "checkTxID: not solid: missing inputs: %d, missing endorsements: %d",
+			numMissingInputs, numMissingEndorsements)
+	}
+
 	if !pendingData.draftVertexData.addedToWaitingLists {
 		// first time add missing inputs into the waiting lists
 		missing := pendingData.draftVertexData.vertex.MissingInputTxIDSet()
 		util.Assertf(len(missing) > 0, "len(missing) > 0")
-		c.traceTx(pendingData.draftVertexData.PrimaryTransactionData, "checkTxID: not solid: %d input tx pending", len(missing))
 
 		missing.ForEach(func(wanted core.TransactionID) bool {
 			c.putIntoWaitingList(&wanted, txid)
@@ -270,7 +275,7 @@ func (c *SolidifyConsumer) postCheckTxIDs(txids ...*core.TransactionID) {
 		c.Push(&SolidifyInputData{
 			Cmd:  SolidifyCommandCheckTxID,
 			TxID: txid,
-		}, true)
+		})
 	}
 }
 
@@ -279,7 +284,7 @@ func (c *SolidifyConsumer) postRemoveTxIDs(txids ...*core.TransactionID) {
 		c.Push(&SolidifyInputData{
 			Cmd:  SolidifyCommandRemoveTxID,
 			TxID: txid,
-		}, true)
+		})
 	}
 }
 
@@ -287,7 +292,7 @@ func (c *SolidifyConsumer) postRemoveAttachedTxID(txid *core.TransactionID) {
 	c.Push(&SolidifyInputData{
 		Cmd:  SolidifyCommandRemoveAttachedTxID,
 		TxID: txid,
-	}, true)
+	})
 }
 
 const (
@@ -309,12 +314,8 @@ func (c *SolidifyConsumer) pullIfNeeded(vd *draftVertexData) {
 		// this makes node synchronization more sequential, from past to present slot by slot
 		if !vd.stemInputAlreadyPulled {
 			// pull immediately
-			c.pull(
-				vd.tx.SequencerTransactionData().StemOutputData.PredecessorOutputID.TransactionID(),
-				pullImmediately,
-				neededFor,
-			)
 			vd.stemInputAlreadyPulled = true
+			c.pull(pullImmediately, neededFor, vd.tx.SequencerTransactionData().StemOutputData.PredecessorOutputID.TransactionID())
 		}
 		return
 	}
@@ -329,39 +330,34 @@ func (c *SolidifyConsumer) pullIfNeeded(vd *draftVertexData) {
 				} else {
 					delayFirst = pullDelayFirstPeriodSequencer
 				}
-				c.pull(
-					seqInputOID.TransactionID(),
-					delayFirst,
-					neededFor,
-				)
 				vd.sequencerPredecessorAlreadyPulled = true
+				c.pull(delayFirst, neededFor, seqInputOID.TransactionID())
 			}
 			return
 		}
 	}
 
 	// now we can pull the rest
-	vd.vertex.MissingInputTxIDSet().ForEach(func(txid core.TransactionID) bool {
-		var delayFirst time.Duration
-		if vd.wasPulled {
-			delayFirst = pullImmediately
-		} else {
-			delayFirst = pullDelayFirstPeriodOtherTransactions
-		}
-		c.pull(txid, delayFirst, neededFor)
-		return true
-	})
+	var delayFirst time.Duration
+	if vd.wasPulled {
+		delayFirst = pullImmediately
+	} else {
+		delayFirst = pullDelayFirstPeriodOtherTransactions
+	}
+	c.pull(delayFirst, neededFor, util.Keys(vd.vertex.MissingInputTxIDSet())...)
 }
 
-func (c *SolidifyConsumer) pull(txid core.TransactionID, initialDelay time.Duration, neededFor *core.TransactionID) {
-	c.tracePull("send pull %s, delay %v. Needed for %s",
-		func() any { return txid.StringShort() },
-		initialDelay,
-		func() any { return neededFor.StringShort() },
-	)
+func (c *SolidifyConsumer) pull(initialDelay time.Duration, neededFor *core.TransactionID, txids ...core.TransactionID) {
+	for i := range txids {
+		c.tracePull("send pull %s, delay %v. Needed for %s",
+			func() any { return txids[i].StringShort() },
+			initialDelay,
+			func() any { return neededFor.StringShort() },
+		)
+	}
 
 	c.glb.pullConsumer.Push(&PullTxData{
-		TxID:         &txid,
+		TxIDs:        txids,
 		InitialDelay: initialDelay,
 	})
 }
@@ -378,7 +374,7 @@ func (c *SolidifyConsumer) solidificationDeadlineLoop() {
 		case <-time.After(solidificationDeadlineLoopPeriod):
 			// invoke purge of too old if inside sync window. If node is not synced, be patient and do not remove old transactions
 			if syncStatus.IsSynced() {
-				c.Push(&SolidifyInputData{Cmd: SolidifyCommandRemoveTooOld}, true)
+				c.Push(&SolidifyInputData{Cmd: SolidifyCommandRemoveTooOld})
 			}
 		}
 	}

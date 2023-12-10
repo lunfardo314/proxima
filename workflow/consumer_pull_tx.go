@@ -17,7 +17,7 @@ const pullPeriod = 500 * time.Millisecond
 
 type (
 	PullTxData struct {
-		TxID *core.TransactionID
+		TxIDs []core.TransactionID
 		// InitialDelay for PullTxCmdQuery, how long delay first pull.
 		// It may not be needed at all if transaction comes through gossip
 		// 0 means first pull immediately
@@ -53,44 +53,57 @@ func (w *Workflow) initPullConsumer() {
 }
 
 func (c *PullTxConsumer) consume(inp *PullTxData) {
-	if c.isInPullList(inp.TxID) {
-		return
-	}
-	// look up for the transaction in the store
-	txBytes := c.glb.txBytesStore.GetTxBytes(inp.TxID)
-	if len(txBytes) > 0 {
-		// transaction bytes are in the transaction store. No need to query it from another peer
-		err := c.glb.TransactionIn(txBytes,
-			WithTransactionSource(TransactionSourceStore),
-			WithTraceCondition(func(_ *transaction.Transaction, _ TransactionSource, _ peer.ID) bool {
-				return global.TraceTxEnabled()
-			}),
-		)
-		if err != nil {
-			c.Log().Errorf("invalid transaction from txStore %s: '%v'", inp.TxID.StringShort(), err)
-		}
-		c.tracePull("%s fetched from txBytesStore", inp.TxID.StringShort())
-		return
-	}
-	// transaction is not in the store. Add it to the 'pullList' set
-	nowis := time.Now()
-	firstPullDeadline := nowis.Add(inp.InitialDelay)
-	if inp.InitialDelay == 0 {
-		firstPullDeadline = nowis.Add(pullPeriod)
-	}
+	toPull := make([]core.TransactionID, 0)
 
-	c.addToPullList(inp.TxID, firstPullDeadline)
-
-	if inp.InitialDelay == 0 {
-		// query immediately
-		c.glb.peers.PullTransactionsFromRandomPeer(*inp.TxID)
-	}
-}
-
-func (c *PullTxConsumer) isInPullList(txid *core.TransactionID) bool {
 	c.mutex.RLock()
 	defer c.mutex.RUnlock()
 
+	for _, txid := range inp.TxIDs {
+		needsPull, txBytes := c.pullOne(txid, inp.InitialDelay)
+		if len(txBytes) > 0 {
+			util.Assertf(!needsPull, "inconsistency: !needsPull")
+
+			err := c.glb.TransactionIn(txBytes,
+				WithTransactionSource(TransactionSourceStore),
+				WithTraceCondition(func(_ *transaction.Transaction, _ TransactionSource, _ peer.ID) bool {
+					return global.TraceTxEnabled()
+				}),
+			)
+			if err != nil {
+				c.Log().Errorf("invalid transaction from txStore: %v", err)
+			}
+			continue
+		}
+		if needsPull {
+			toPull = append(toPull, txid)
+		}
+	}
+	go c.glb.peers.PullTransactionsFromRandomPeer(toPull...)
+}
+
+func (c *PullTxConsumer) pullOne(txid core.TransactionID, initialDelay time.Duration) (bool, []byte) {
+	if _, already := c.pullList[txid]; already {
+		return false, nil
+	}
+	// look up for the transaction in the store
+	if txBytes := c.glb.txBytesStore.GetTxBytes(&txid); len(txBytes) > 0 {
+		// transaction bytes are in the transaction store. No need to query it from another peer
+		c.tracePull("%s fetched from txBytesStore", func() any { return txid.StringShort() })
+		return false, txBytes
+	}
+	// transaction is not in the store. Add it to the 'pullList' set
+	nowis := time.Now()
+	firstPullDeadline := nowis.Add(initialDelay)
+	if initialDelay == 0 {
+		firstPullDeadline = nowis.Add(pullPeriod)
+	}
+
+	c.pullList[txid] = pullInfo{deadline: firstPullDeadline}
+	c.tracePull("%s addedToPullList, pull list size: %d", func() any { return txid.StringShort() }, len(c.pullList))
+	return initialDelay == 0, nil
+}
+
+func (c *PullTxConsumer) isInPullList(txid *core.TransactionID) bool {
 	_, already := c.pullList[*txid]
 	return already
 }
@@ -110,8 +123,9 @@ func (c *PullTxConsumer) removeFromPullList(txid *core.TransactionID) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
-	c.tracePull("removeFromPullList: %s", func() any { return txid.StringShort() })
 	delete(c.pullList, *txid)
+	c.tracePull("removeFromPullList: %s, list size: %d",
+		func() any { return txid.StringShort() }, len(c.pullList))
 }
 
 func (c *PullTxConsumer) stopPulling(txid *core.TransactionID) bool {
@@ -122,15 +136,9 @@ func (c *PullTxConsumer) stopPulling(txid *core.TransactionID) bool {
 	if inTheList {
 		c.pullList[*txid] = pullInfo{stopped: true}
 	}
-	c.tracePull("stopPulling: %s. Found: %v", func() any { return txid.StringShort() }, inTheList)
+	c.tracePull("stopPulling: %s. Found: %v, list size: %d",
+		func() any { return txid.StringShort() }, inTheList, len(c.pullList))
 	return inTheList
-}
-
-func (c *PullTxConsumer) addToPullList(txid *core.TransactionID, deadline time.Time) {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-
-	c.pullList[*txid] = pullInfo{deadline: deadline}
 }
 
 const pullLoopPeriod = 10 * time.Millisecond
