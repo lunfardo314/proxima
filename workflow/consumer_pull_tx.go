@@ -39,24 +39,24 @@ type (
 )
 
 func (w *Workflow) initPullConsumer() {
-	ret := &PullTxConsumer{
+	w.pullConsumer = &PullTxConsumer{
 		Consumer:               NewConsumer[*PullTxData](PullTxConsumerName, w),
 		pullList:               make(map[core.TransactionID]pullInfo),
 		stopBackgroundLoopChan: make(chan struct{}),
 	}
-	ret.AddOnConsume(ret.consume)
-	ret.AddOnClosed(func() {
-		close(ret.stopBackgroundLoopChan)
+	w.pullConsumer.AddOnConsume(w.pullConsumer.consume)
+	w.pullConsumer.AddOnClosed(func() {
+		close(w.pullConsumer.stopBackgroundLoopChan)
 	})
-	w.pullConsumer = ret
-	go ret.backgroundLoop()
+
+	go w.pullConsumer.backgroundLoop()
 }
 
 func (c *PullTxConsumer) consume(inp *PullTxData) {
 	toPull := make([]core.TransactionID, 0)
 
-	c.mutex.RLock()
-	defer c.mutex.RUnlock()
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
 
 	for _, txid := range inp.TxIDs {
 		needsPull, txBytes := c.pullOne(txid, inp.InitialDelay)
@@ -68,10 +68,12 @@ func (c *PullTxConsumer) consume(inp *PullTxData) {
 				WithTraceCondition(func(_ *transaction.Transaction, _ TransactionSource, _ peer.ID) bool {
 					return global.TraceTxEnabled()
 				}),
+				WithTransactionAlreadyRemovedFromPuller,
 			)
 			if err != nil {
-				c.Log().Errorf("invalid transaction from txStore: %v", err)
+				c.Log().Errorf("pull:TransactionIn returned: '%v'", err)
 			}
+			c.tracePull("%s -> TransactionIn", txid.StringShort())
 			continue
 		}
 		if needsPull {
@@ -101,11 +103,6 @@ func (c *PullTxConsumer) pullOne(txid core.TransactionID, initialDelay time.Dura
 	c.pullList[txid] = pullInfo{deadline: firstPullDeadline}
 	c.tracePull("%s addedToPullList, pull list size: %d", func() any { return txid.StringShort() }, len(c.pullList))
 	return initialDelay == 0, nil
-}
-
-func (c *PullTxConsumer) isInPullList(txid *core.TransactionID) bool {
-	_, already := c.pullList[*txid]
-	return already
 }
 
 func (c *PullTxConsumer) pullListLen() int {

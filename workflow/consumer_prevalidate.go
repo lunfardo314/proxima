@@ -81,17 +81,18 @@ func (c *PreValidateConsumer) consume(inp *PreValidateConsumerInputData) {
 	}
 	c.IncCounter("ok")
 
-	const traceBigTx = true
-	if traceBigTx {
-		if inp.tx.NumInputs() > 100 {
-			global.SetTracePull(true)
-			global.SetTraceTx(true)
-			inp.PrimaryTransactionData.traceFlag = true
-			c.traceTx(inp.PrimaryTransactionData, ">>>>>>>>> logging as big one, num inputs %d, source: '%s'",
-				inp.tx.NumInputs(), inp.source.String())
+	{ // tracing
+		const traceBigTx = false
+		if traceBigTx {
+			if inp.tx.NumInputs() >= 100 {
+				global.SetTracePull(true)
+				global.SetTraceTx(true)
+				inp.PrimaryTransactionData.traceFlag = true
+				c.traceTx(inp.PrimaryTransactionData, ">>>>>>>>> logging as big one, num inputs %d, source: '%s'",
+					inp.tx.NumInputs(), inp.source.String())
+			}
 		}
 	}
-
 	if inp.source == TransactionSourceStore && !inp.tx.IsSequencerMilestone() {
 		// it is from the tx store, jump right to append it as virtual tx, bypass validation and solidification
 		inp.PrimaryTransactionData.makeVirtualTx = true
