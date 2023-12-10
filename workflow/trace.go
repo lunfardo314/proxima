@@ -1,6 +1,7 @@
 package workflow
 
 import (
+	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/util"
 )
@@ -17,5 +18,11 @@ func (c *Consumer[T]) traceTx(inp *PrimaryTransactionData, format string, args .
 			return
 		}
 		c.Infof(inp, ">>>>>> TRACE TX "+format, util.EvalLazyArgs(args...)...)
+	}
+}
+
+func (c *Consumer[T]) traceTxID(txid *core.TransactionID, msg string) {
+	if global.TraceTxEnabled() {
+		c.Log().Infof(">>>>>> TRACE TxID %s: %s", txid.StringShort(), msg)
 	}
 }

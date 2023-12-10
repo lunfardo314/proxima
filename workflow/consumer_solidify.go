@@ -58,7 +58,7 @@ type (
 )
 
 const (
-	keepNotSolid = 30 * time.Second // only for testing. Must be longer in reality
+	solidificationTimeout = 3 * time.Minute // only for testing. Must be longer in reality
 )
 
 func (w *Workflow) initSolidifyConsumer() {
@@ -80,28 +80,28 @@ func (c *SolidifyConsumer) consume(inp *SolidifyInputData) {
 	switch inp.Cmd {
 	case SolidifyCommandNewTx:
 		util.Assertf(inp.TxID == nil && inp.PrimaryTransactionData != nil, "inp.TxID == nil && inp.primaryInput != nil")
-		c.tracePull("cmd newTx %s", func() any { return inp.PrimaryTransactionData.tx.IDShort() })
+		c.traceTx(inp.PrimaryTransactionData, "cmd newTx")
 		//inp.eventCallback(SolidifyConsumerName+".in.new", inp.Tx)
 		c.glb.IncCounter(c.Name() + ".in.new")
 		c.newTx(inp)
 
 	case SolidifyCommandCheckTxID:
 		util.Assertf(inp.TxID != nil && inp.PrimaryTransactionData == nil, "inp.TxID != nil && inp.primaryInput == nil")
-		c.Log().Debugf("cmd checkTxID %s", inp.TxID.StringShort())
+		c.traceTxID(inp.TxID, "cmd checkTxID")
 		//inp.eventCallback(SolidifyConsumerName+".in.check", inp.Tx)
 		c.glb.IncCounter(c.Name() + ".in.check")
 		c.checkTxID(inp.TxID)
 
 	case SolidifyCommandRemoveAttachedTxID:
 		util.Assertf(inp.TxID != nil && inp.PrimaryTransactionData == nil, "inp.TxID != nil && inp.primaryInput == nil")
-		c.Log().Debugf("cmd removeAttachedTxID %s", inp.TxID.StringShort())
+		c.traceTxID(inp.TxID, "cmd removeAttachedTxID")
 		//inp.eventCallback(SolidifyConsumerName+".in.removeAttached", inp.Tx)
 		c.glb.IncCounter(c.Name() + ".in.removeAttached")
 		c.removeAttachedTxID(inp.TxID)
 
 	case SolidifyCommandRemoveTxID:
 		util.Assertf(inp.TxID != nil && inp.PrimaryTransactionData == nil, "inp.TxID != nil && inp.primaryInput == nil")
-		c.Log().Debugf("cmd removeTxID %s", inp.TxID.StringShort())
+		c.traceTxID(inp.TxID, "cmd removeTxID")
 		//inp.eventCallback(SolidifyConsumerName+".in.remove", inp.TxID)
 		c.glb.IncCounter(c.Name() + ".in.remove")
 		c.removeTxID(inp.TxID)
@@ -122,6 +122,7 @@ func (c *SolidifyConsumer) newTx(inp *SolidifyInputData) {
 	if !exists {
 		pendingData.since = time.Now()
 	}
+
 	pendingData.draftVertexData = &draftVertexData{
 		PrimaryTransactionData: inp.PrimaryTransactionData,
 		vertex:                 utangle.NewVertex(inp.tx),
@@ -135,7 +136,7 @@ func (c *SolidifyConsumer) newTx(inp *SolidifyInputData) {
 func (c *SolidifyConsumer) checkTxID(txid *core.TransactionID) {
 	pendingData, isKnown := c.txPending[*txid]
 	if !isKnown {
-		c.Log().Debugf("checkTxID: unknown %s", txid.StringShort())
+		c.traceTxID(txid, "checkTxID: unknown tx")
 		// nobody is waiting, nothing to remove. Ignore
 		return
 	}
@@ -147,9 +148,13 @@ func (c *SolidifyConsumer) checkTxID(txid *core.TransactionID) {
 		return
 	}
 	// run solidification
+	c.traceTx(pendingData.draftVertexData.PrimaryTransactionData, "checkTxID: run solidification")
+
 	conflict := pendingData.draftVertexData.vertex.FetchMissingDependencies(c.glb.utxoTangle)
 	if conflict != nil {
 		// conflict in the past cone. Cannot be solidified. Remove from solidifier
+		c.traceTx(pendingData.draftVertexData.PrimaryTransactionData, "checkTxID: conflict", conflict.StringShort())
+
 		c.removeTxID(txid)
 		c.glb.PostEventDropTxID(txid, c.Name(), "conflict %s", conflict.StringShort())
 		if pendingData.draftVertexData.vertex.Tx.IsBranchTransaction() {
@@ -160,6 +165,7 @@ func (c *SolidifyConsumer) checkTxID(txid *core.TransactionID) {
 	// check if solidified already
 	if pendingData.draftVertexData.vertex.IsSolid() {
 		// solid already, pass to validator
+		c.traceTx(pendingData.draftVertexData.PrimaryTransactionData, "checkTxID: send for validation")
 		pendingData.draftVertexData.sentForValidation = true
 		c.sendForValidation(pendingData.draftVertexData.PrimaryTransactionData, pendingData.draftVertexData.vertex)
 		return
@@ -169,6 +175,8 @@ func (c *SolidifyConsumer) checkTxID(txid *core.TransactionID) {
 		// first time add missing inputs into the waiting lists
 		missing := pendingData.draftVertexData.vertex.MissingInputTxIDSet()
 		util.Assertf(len(missing) > 0, "len(missing) > 0")
+		c.traceTx(pendingData.draftVertexData.PrimaryTransactionData, "checkTxID: not solid: %d input tx pending", len(missing))
+
 		missing.ForEach(func(wanted core.TransactionID) bool {
 			c.putIntoWaitingList(&wanted, txid)
 			return true
@@ -179,7 +187,6 @@ func (c *SolidifyConsumer) checkTxID(txid *core.TransactionID) {
 }
 
 func (c *SolidifyConsumer) removeAttachedTxID(txid *core.TransactionID) {
-	c.Log().Debugf("removeAttachedTxID %s", txid.StringShort())
 	pendingData, isKnown := c.txPending[*txid]
 
 	if !isKnown {
@@ -192,6 +199,7 @@ func (c *SolidifyConsumer) removeAttachedTxID(txid *core.TransactionID) {
 	}
 
 	delete(c.txPending, *txid)
+	c.traceTxID(txid, "removeAttachedTxID: deleted")
 
 	c.postCheckTxIDs(pendingData.waitingList...)
 }
@@ -204,6 +212,7 @@ func (c *SolidifyConsumer) removeTxID(txid *core.TransactionID) {
 		c.Log().Debugf("removeTxID: unknown %s", txid.StringShort())
 		return
 	}
+	c.traceTxID(txid, "removeTxID: deleted")
 	delete(c.txPending, *txid)
 	c.postRemoveTxIDs(pendingData.waitingList...)
 }
@@ -212,7 +221,7 @@ func (c *SolidifyConsumer) removeTooOld() {
 	nowis := time.Now()
 	toRemove := make([]*core.TransactionID, 0)
 	for txid, pendingData := range c.txPending {
-		if nowis.After(pendingData.since.Add(keepNotSolid)) {
+		if nowis.After(pendingData.since.Add(solidificationTimeout)) {
 			txid1 := txid
 			toRemove = append(toRemove, &txid1)
 			c.glb.PostEventDropTxID(&txid1, c.Name(), "deadline. Missing: %s", c.missingInputsString(txid1))
@@ -294,6 +303,7 @@ func (c *SolidifyConsumer) pullIfNeeded(vd *draftVertexData) {
 	if vd.allInputsAlreadyPulled {
 		return
 	}
+	neededFor := vd.tx.ID()
 	if vd.tx.IsBranchTransaction() && !vd.vertex.IsStemInputSolid() {
 		// first need to solidify stem input. Only when stem input is solid, we pull the rest
 		// this makes node synchronization more sequential, from past to present slot by slot
@@ -302,7 +312,7 @@ func (c *SolidifyConsumer) pullIfNeeded(vd *draftVertexData) {
 			c.pull(
 				vd.tx.SequencerTransactionData().StemOutputData.PredecessorOutputID.TransactionID(),
 				pullImmediately,
-				vd.tx.ID(),
+				neededFor,
 			)
 			vd.stemInputAlreadyPulled = true
 		}
@@ -322,7 +332,7 @@ func (c *SolidifyConsumer) pullIfNeeded(vd *draftVertexData) {
 				c.pull(
 					seqInputOID.TransactionID(),
 					delayFirst,
-					vd.tx.ID(),
+					neededFor,
 				)
 				vd.sequencerPredecessorAlreadyPulled = true
 			}
@@ -338,7 +348,7 @@ func (c *SolidifyConsumer) pullIfNeeded(vd *draftVertexData) {
 		} else {
 			delayFirst = pullDelayFirstPeriodOtherTransactions
 		}
-		c.pull(txid, delayFirst, &txid)
+		c.pull(txid, delayFirst, neededFor)
 		return true
 	})
 }

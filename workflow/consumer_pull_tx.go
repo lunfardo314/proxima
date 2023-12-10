@@ -4,7 +4,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/global"
+	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/util"
 )
 
@@ -57,7 +60,13 @@ func (c *PullTxConsumer) consume(inp *PullTxData) {
 	txBytes := c.glb.txBytesStore.GetTxBytes(inp.TxID)
 	if len(txBytes) > 0 {
 		// transaction bytes are in the transaction store. No need to query it from another peer
-		if err := c.glb.TransactionIn(txBytes, WithTransactionSource(TransactionSourceStore)); err != nil {
+		err := c.glb.TransactionIn(txBytes,
+			WithTransactionSource(TransactionSourceStore),
+			WithTraceCondition(func(_ *transaction.Transaction, _ TransactionSource, _ peer.ID) bool {
+				return global.TraceTxEnabled()
+			}),
+		)
+		if err != nil {
 			c.Log().Errorf("invalid transaction from txStore %s: '%v'", inp.TxID.StringShort(), err)
 		}
 		c.tracePull("%s fetched from txBytesStore", inp.TxID.StringShort())

@@ -81,13 +81,14 @@ func (c *PreValidateConsumer) consume(inp *PreValidateConsumerInputData) {
 	}
 	c.IncCounter("ok")
 
-	const traceBigTx = false
+	const traceBigTx = true
 	if traceBigTx {
 		if inp.tx.NumInputs() > 100 {
-			c.Log().Infof(">>>>>>>>> logging big tx %s, num inputs %d, source: '%s'",
-				inp.tx.IDShort(), inp.tx.NumInputs(), inp.source.String())
 			global.SetTracePull(true)
 			global.SetTraceTx(true)
+			inp.PrimaryTransactionData.traceFlag = true
+			c.traceTx(inp.PrimaryTransactionData, ">>>>>>>>> logging as big one, num inputs %d, source: '%s'",
+				inp.tx.NumInputs(), inp.source.String())
 		}
 	}
 
