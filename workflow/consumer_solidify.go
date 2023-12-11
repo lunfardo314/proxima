@@ -7,7 +7,6 @@ import (
 	"github.com/lunfardo314/proxima/core"
 	utangle "github.com/lunfardo314/proxima/utangle"
 	"github.com/lunfardo314/proxima/util"
-	"github.com/lunfardo314/proxima/util/lines"
 )
 
 const SolidifyConsumerName = "solidify"
@@ -236,14 +235,6 @@ func (c *SolidifyConsumer) removeTooOld() {
 	c.postRemoveTxIDs(toRemove...)
 }
 
-func __txLstString(lst []*core.TransactionID) string {
-	ret := lines.New()
-	for i := range lst {
-		ret.Add(lst[i].StringShort())
-	}
-	return ret.Join(",")
-}
-
 func (c *SolidifyConsumer) sendForValidation(primaryTxData *PrimaryTransactionData, draftVertex *utangle.Vertex) {
 	util.Assertf(draftVertex.IsSolid(), "v.IsSolid()")
 	c.glb.validateConsumer.Push(&ValidateConsumerInputData{
@@ -293,12 +284,6 @@ func (c *SolidifyConsumer) postRemoveAttachedTxID(txid *core.TransactionID) {
 	})
 }
 
-const (
-	pullImmediately                       = time.Duration(0)
-	pullDelayFirstPeriodSequencer         = 1 * time.Second
-	pullDelayFirstPeriodOtherTransactions = 1 * time.Second
-)
-
 func (c *SolidifyConsumer) pullIfNeeded(vd *draftVertexData) {
 	if vd.vertex.IsSolid() {
 		return
@@ -313,7 +298,7 @@ func (c *SolidifyConsumer) pullIfNeeded(vd *draftVertexData) {
 		if !vd.stemInputAlreadyPulled {
 			// pull immediately
 			vd.stemInputAlreadyPulled = true
-			c.pull(pullImmediately, neededFor, vd.tx.SequencerTransactionData().StemOutputData.PredecessorOutputID.TransactionID())
+			c.pull(neededFor, vd.tx.SequencerTransactionData().StemOutputData.PredecessorOutputID.TransactionID())
 		}
 		return
 	}
@@ -323,28 +308,26 @@ func (c *SolidifyConsumer) pullIfNeeded(vd *draftVertexData) {
 			if !vd.sequencerPredecessorAlreadyPulled {
 				seqInputOID := vd.tx.MustInputAt(seqInputIdx)
 				vd.sequencerPredecessorAlreadyPulled = true
-				c.pull(pullImmediately, neededFor, seqInputOID.TransactionID())
+				c.pull(neededFor, seqInputOID.TransactionID())
 			}
 			return
 		}
 	}
 
 	// now we can pull the rest
-	c.pull(pullImmediately, neededFor, util.Keys(vd.vertex.MissingInputTxIDSet())...)
+	c.pull(neededFor, util.Keys(vd.vertex.MissingInputTxIDSet())...)
 }
 
-func (c *SolidifyConsumer) pull(initialDelay time.Duration, neededFor *core.TransactionID, txids ...core.TransactionID) {
+func (c *SolidifyConsumer) pull(neededFor *core.TransactionID, txids ...core.TransactionID) {
 	for i := range txids {
-		c.tracePull("send pull %s, delay %v. Needed for %s",
+		c.tracePull("submit pull %s. Needed for %s",
 			func() any { return txids[i].StringShort() },
-			initialDelay,
 			func() any { return neededFor.StringShort() },
 		)
 	}
 
 	c.glb.pullConsumer.Push(&PullTxData{
-		TxIDs:        txids,
-		InitialDelay: initialDelay,
+		TxIDs: txids,
 	})
 }
 
@@ -376,18 +359,3 @@ func (c *SolidifyConsumer) missingInputsString(txid core.TransactionID) string {
 	}
 	return fmt.Sprintf("inconsistency: txid %s is not among pendingtx IDs", txid.StringShort())
 }
-
-//
-//func (c *SolidifyConsumer) DumpPending() *lines.Lines {
-//	ret := lines.New()
-//	ret.Add("======= transactions pending in solidifier")
-//	for txid, pd := range c.txPending {
-//		ret.Add("pending %s", txid.StringShort())
-//		if pd.draftVertexData != nil {
-//			ret.Append(pd.draftVertexData.vertex.PendingDependenciesLines("  "))
-//		} else {
-//			ret.Add("unknown tx")
-//		}
-//	}
-//	return ret
-//}

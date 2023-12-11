@@ -19,33 +19,24 @@ const pullPeriod = 500 * time.Millisecond
 type (
 	PullTxData struct {
 		TxIDs []core.TransactionID
-		// InitialDelay for PullTxCmdQuery, how long delay first pull.
-		// It may not be needed at all if transaction comes through gossip
-		// 0 means first pull immediately
-		InitialDelay time.Duration
 	}
 
 	PullTxConsumer struct {
 		*Consumer[*PullTxData]
 		stopBackgroundLoopChan chan struct{}
-		mutex                  sync.RWMutex
-		// txid -> next pull deadline
-		pullList map[core.TransactionID]pullInfo
-
+		// set of transaction being pulled
+		mutex    sync.RWMutex
+		pullList map[core.TransactionID]time.Time
+		// list of removed transactions
 		toRemoveSetMutex sync.RWMutex
 		toRemoveSet      set.Set[core.TransactionID]
-	}
-
-	pullInfo struct {
-		deadline time.Time
-		stopped  bool
 	}
 )
 
 func (w *Workflow) initPullConsumer() {
 	w.pullConsumer = &PullTxConsumer{
 		Consumer:               NewConsumer[*PullTxData](PullTxConsumerName, w),
-		pullList:               make(map[core.TransactionID]pullInfo),
+		pullList:               make(map[core.TransactionID]time.Time),
 		toRemoveSet:            set.New[core.TransactionID](),
 		stopBackgroundLoopChan: make(chan struct{}),
 	}
@@ -64,14 +55,17 @@ func (c *PullTxConsumer) consume(inp *PullTxData) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
+	nextPull := time.Now().Add(pullPeriod)
 	for _, txid := range inp.TxIDs {
-		needsPull, txBytes := c.pullOne(txid, inp.InitialDelay)
-		if len(txBytes) > 0 {
-			util.Assertf(!needsPull, "inconsistency: !needsPull")
-			txBytesList = append(txBytesList, txBytes)
+		if _, already := c.pullList[txid]; already {
 			continue
 		}
-		if needsPull {
+		if txBytes := c.glb.txBytesStore.GetTxBytes(&txid); len(txBytes) > 0 {
+			c.tracePull("%s fetched from txBytesStore", func() any { return txid.StringShort() })
+			txBytesList = append(txBytesList, txBytes)
+		} else {
+			c.tracePull("%s added to pull list, pull list size: %d", func() any { return txid.StringShort() }, len(c.pullList))
+			c.pullList[txid] = nextPull
 			toPull = append(toPull, txid)
 		}
 	}
@@ -94,29 +88,7 @@ func (c *PullTxConsumer) transactionInMany(txBytesList [][]byte) {
 	}
 }
 
-func (c *PullTxConsumer) pullOne(txid core.TransactionID, initialDelay time.Duration) (bool, []byte) {
-	if _, already := c.pullList[txid]; already {
-		return false, nil
-	}
-	// look up for the transaction in the store
-	if txBytes := c.glb.txBytesStore.GetTxBytes(&txid); len(txBytes) > 0 {
-		// transaction bytes are in the transaction store. No need to query it from another peer
-		c.tracePull("%s fetched from txBytesStore", func() any { return txid.StringShort() })
-		return false, txBytes
-	}
-	// transaction is not in the store. Add it to the 'pullList' set
-	nowis := time.Now()
-	firstPullDeadline := nowis.Add(initialDelay)
-	if initialDelay == 0 {
-		firstPullDeadline = nowis.Add(pullPeriod)
-	}
-
-	c.pullList[txid] = pullInfo{deadline: firstPullDeadline}
-	c.tracePull("%s addedToPullList, pull list size: %d", func() any { return txid.StringShort() }, len(c.pullList))
-	return initialDelay == 0, nil
-}
-
-const pullLoopPeriod = 10 * time.Millisecond
+const pullLoopPeriod = 50 * time.Millisecond
 
 func (c *PullTxConsumer) backgroundLoop() {
 	defer c.Log().Infof("background loop stopped")
@@ -145,14 +117,11 @@ func (c *PullTxConsumer) pullAllMatured(buf []core.TransactionID) {
 	})
 
 	nowis := time.Now()
-
-	for txid, info := range c.pullList {
-		if info.stopped {
-			continue
-		}
-		if nowis.After(info.deadline) {
+	nextDeadline := nowis.Add(pullPeriod)
+	for txid, deadline := range c.pullList {
+		if nowis.After(deadline) {
 			buf = append(buf, txid)
-			c.pullList[txid] = pullInfo{deadline: nowis.Add(pullPeriod)}
+			c.pullList[txid] = nextDeadline
 		}
 	}
 	if len(buf) > 0 {
@@ -193,7 +162,7 @@ func (c *PullTxConsumer) isInToRemoveSet(txid *core.TransactionID) (ret bool) {
 }
 
 func (c *PullTxConsumer) isBeingPulled(txid *core.TransactionID) bool {
-	return c.isInPullList(txid) && !c.isInToRemoveSet(txid)
+	return !c.isInToRemoveSet(txid) && c.isInPullList(txid)
 }
 
 func (c *PullTxConsumer) pullListLen() int {

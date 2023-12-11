@@ -37,7 +37,10 @@ func (w *Workflow) TransactionInReturnTx(txBytes []byte, opts ...TransactionInOp
 
 	w.pullConsumer.stopPulling(tx.ID())
 	// prevent unnecessary dissemination via gossip
-	inData.doNotGossip = w.pullConsumer.isBeingPulled(tx.ID())
+	inData.doNotGossip = false
+	if inData.source == TransactionSourcePeer {
+		inData.doNotGossip = w.pullConsumer.isBeingPulled(tx.ID())
+	}
 	priority := inData.doNotGossip || inData.source == TransactionSourceStore
 	w.primaryInputConsumer.Push(inData, priority) // priority for pulled
 	return tx, nil
