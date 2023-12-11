@@ -58,6 +58,8 @@ func (c *AppendTxConsumer) consume(inp *AppendTxConsumerInputData) {
 	// append to the UTXO tangle
 	var vid *utangle.WrappedTx
 	var err error
+	txid := inp.tx.ID()
+
 	if inp.makeVirtualTx {
 		// append virtualTx right from transaction (non-sequencer transactions from store comes right from pre-validation)
 		vid = c.glb.utxoTangle.AppendVirtualTx(inp.tx)
@@ -70,8 +72,8 @@ func (c *AppendTxConsumer) consume(inp *AppendTxConsumerInputData) {
 		c.traceTx(inp.PrimaryTransactionData, "can't append transaction to the tangle: '%v'", err)
 		c.IncCounter("fail")
 
-		c.glb.solidifyConsumer.postRemoveTxIDs(inp.tx.ID())
-		c.glb.pullConsumer.removeFromPullList(inp.tx.ID())
+		c.glb.solidifyConsumer.postRemoveTxIDs(txid)
+		c.glb.pullConsumer.stopPulling(txid)
 		c.glb.PostEventDropTxID(inp.tx.ID(), AppendTxConsumerName, "%v", err)
 		if inp.tx.IsBranchTransaction() {
 			c.glb.utxoTangle.SyncData().UnEvidenceIncomingBranch(inp.tx.ID())
@@ -95,7 +97,7 @@ func (c *AppendTxConsumer) consume(inp *AppendTxConsumerInputData) {
 		c.logBranch(inp.PrimaryTransactionData, vid.LedgerCoverage(c.glb.UTXOTangle()))
 	}
 
-	c.glb.pullConsumer.removeFromPullList(inp.tx.ID())
+	c.glb.pullConsumer.stopPulling(txid)
 	c.GossipTransactionIfNeeded(inp.PrimaryTransactionData)
 	c.glb.PostEvent(EventNewVertex, &NewVertexEventData{
 		PrimaryTransactionData: inp.PrimaryTransactionData,

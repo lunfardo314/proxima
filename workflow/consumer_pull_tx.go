@@ -9,6 +9,7 @@ import (
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/proxima/util/set"
 )
 
 const PullTxConsumerName = "pulltx"
@@ -30,6 +31,9 @@ type (
 		mutex                  sync.RWMutex
 		// txid -> next pull deadline
 		pullList map[core.TransactionID]pullInfo
+
+		toRemoveSetMutex sync.RWMutex
+		toRemoveSet      set.Set[core.TransactionID]
 	}
 
 	pullInfo struct {
@@ -42,6 +46,7 @@ func (w *Workflow) initPullConsumer() {
 	w.pullConsumer = &PullTxConsumer{
 		Consumer:               NewConsumer[*PullTxData](PullTxConsumerName, w),
 		pullList:               make(map[core.TransactionID]pullInfo),
+		toRemoveSet:            set.New[core.TransactionID](),
 		stopBackgroundLoopChan: make(chan struct{}),
 	}
 	w.pullConsumer.AddOnConsume(w.pullConsumer.consume)
@@ -54,6 +59,7 @@ func (w *Workflow) initPullConsumer() {
 
 func (c *PullTxConsumer) consume(inp *PullTxData) {
 	toPull := make([]core.TransactionID, 0)
+	txBytesList := make([][]byte, 0)
 
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
@@ -62,25 +68,30 @@ func (c *PullTxConsumer) consume(inp *PullTxData) {
 		needsPull, txBytes := c.pullOne(txid, inp.InitialDelay)
 		if len(txBytes) > 0 {
 			util.Assertf(!needsPull, "inconsistency: !needsPull")
-
-			err := c.glb.TransactionIn(txBytes,
-				WithTransactionSource(TransactionSourceStore),
-				WithTraceCondition(func(_ *transaction.Transaction, _ TransactionSource, _ peer.ID) bool {
-					return global.TraceTxEnabled()
-				}),
-				WithTransactionAlreadyRemovedFromPuller,
-			)
-			if err != nil {
-				c.Log().Errorf("pull:TransactionIn returned: '%v'", err)
-			}
-			c.tracePull("%s -> TransactionIn", txid.StringShort())
+			txBytesList = append(txBytesList, txBytes)
 			continue
 		}
 		if needsPull {
 			toPull = append(toPull, txid)
 		}
 	}
+	go c.transactionInMany(txBytesList)
 	go c.glb.peers.PullTransactionsFromRandomPeer(toPull...)
+}
+
+func (c *PullTxConsumer) transactionInMany(txBytesList [][]byte) {
+	for _, txBytes := range txBytesList {
+		tx, err := c.glb.TransactionInReturnTx(txBytes,
+			WithTransactionSource(TransactionSourceStore),
+			WithTraceCondition(func(_ *transaction.Transaction, _ TransactionSource, _ peer.ID) bool {
+				return global.TraceTxEnabled()
+			}),
+		)
+		if err != nil {
+			c.Log().Errorf("pull:TransactionIn returned: '%v'", err)
+		}
+		c.tracePull("%s -> TransactionIn", tx.IDShort())
+	}
 }
 
 func (c *PullTxConsumer) pullOne(txid core.TransactionID, initialDelay time.Duration) (bool, []byte) {
@@ -105,39 +116,6 @@ func (c *PullTxConsumer) pullOne(txid core.TransactionID, initialDelay time.Dura
 	return initialDelay == 0, nil
 }
 
-func (c *PullTxConsumer) pullListLen() int {
-	c.mutex.RLock()
-	defer c.mutex.RUnlock()
-
-	return len(c.pullList)
-}
-
-func (w *Workflow) PullListLen() int {
-	return w.pullConsumer.pullListLen()
-}
-
-func (c *PullTxConsumer) removeFromPullList(txid *core.TransactionID) {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-
-	delete(c.pullList, *txid)
-	c.tracePull("removeFromPullList: %s, list size: %d",
-		func() any { return txid.StringShort() }, len(c.pullList))
-}
-
-func (c *PullTxConsumer) stopPulling(txid *core.TransactionID) bool {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-
-	_, inTheList := c.pullList[*txid]
-	if inTheList {
-		c.pullList[*txid] = pullInfo{stopped: true}
-	}
-	c.tracePull("stopPulling: %s. Found: %v, list size: %d",
-		func() any { return txid.StringShort() }, inTheList, len(c.pullList))
-	return inTheList
-}
-
 const pullLoopPeriod = 10 * time.Millisecond
 
 func (c *PullTxConsumer) backgroundLoop() {
@@ -156,9 +134,15 @@ func (c *PullTxConsumer) backgroundLoop() {
 
 func (c *PullTxConsumer) pullAllMatured(buf []core.TransactionID) {
 	buf = util.ClearSlice(buf)
+	toRemove := c.toRemoveSetClone()
 
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
+
+	toRemove.ForEach(func(removeTxID core.TransactionID) bool {
+		delete(c.pullList, removeTxID)
+		return true
+	})
 
 	nowis := time.Now()
 
@@ -174,4 +158,51 @@ func (c *PullTxConsumer) pullAllMatured(buf []core.TransactionID) {
 	if len(buf) > 0 {
 		c.glb.peers.PullTransactionsFromRandomPeer(buf...)
 	}
+}
+
+func (c *PullTxConsumer) stopPulling(txid *core.TransactionID) {
+	c.toRemoveSetMutex.Lock()
+	defer c.toRemoveSetMutex.Unlock()
+
+	c.toRemoveSet.Insert(*txid)
+	c.tracePull("stopPulling: %s. pull list size: %d", func() any { return txid.StringShort() }, len(c.pullList))
+}
+
+func (c *PullTxConsumer) toRemoveSetClone() set.Set[core.TransactionID] {
+	c.toRemoveSetMutex.Lock()
+	defer c.toRemoveSetMutex.Unlock()
+
+	ret := c.toRemoveSet
+	c.toRemoveSet = set.New[core.TransactionID]()
+	return ret
+}
+
+func (c *PullTxConsumer) isInPullList(txid *core.TransactionID) (ret bool) {
+	c.mutex.RLock()
+	defer c.mutex.RUnlock()
+
+	_, ret = c.pullList[*txid]
+	return
+}
+
+func (c *PullTxConsumer) isInToRemoveSet(txid *core.TransactionID) (ret bool) {
+	c.toRemoveSetMutex.RLock()
+	defer c.toRemoveSetMutex.RUnlock()
+
+	return c.toRemoveSet.Contains(*txid)
+}
+
+func (c *PullTxConsumer) isBeingPulled(txid *core.TransactionID) bool {
+	return c.isInPullList(txid) && !c.isInToRemoveSet(txid)
+}
+
+func (c *PullTxConsumer) pullListLen() int {
+	c.mutex.RLock()
+	defer c.mutex.RUnlock()
+
+	return len(c.pullList)
+}
+
+func (w *Workflow) PullListLen() int {
+	return w.pullConsumer.pullListLen()
 }

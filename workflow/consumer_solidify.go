@@ -48,7 +48,6 @@ type (
 	draftVertexData struct {
 		*PrimaryTransactionData
 		vertex                            *utangle.Vertex
-		pulled                            bool // transaction was received as a result of the pull request
 		addedToWaitingLists               bool
 		stemInputAlreadyPulled            bool
 		sequencerPredecessorAlreadyPulled bool
@@ -126,7 +125,6 @@ func (c *SolidifyConsumer) newTx(inp *SolidifyInputData) {
 	pendingData.draftVertexData = &draftVertexData{
 		PrimaryTransactionData: inp.PrimaryTransactionData,
 		vertex:                 utangle.NewVertex(inp.tx),
-		pulled:                 inp.wasPulled,
 	}
 	c.txPending[*txid] = pendingData
 	c.checkTxID(txid)
@@ -324,27 +322,15 @@ func (c *SolidifyConsumer) pullIfNeeded(vd *draftVertexData) {
 		if isSolid, seqInputIdx := vd.vertex.IsSequencerInputSolid(); !isSolid {
 			if !vd.sequencerPredecessorAlreadyPulled {
 				seqInputOID := vd.tx.MustInputAt(seqInputIdx)
-				var delayFirst time.Duration
-				if vd.wasPulled {
-					delayFirst = pullImmediately
-				} else {
-					delayFirst = pullDelayFirstPeriodSequencer
-				}
 				vd.sequencerPredecessorAlreadyPulled = true
-				c.pull(delayFirst, neededFor, seqInputOID.TransactionID())
+				c.pull(pullImmediately, neededFor, seqInputOID.TransactionID())
 			}
 			return
 		}
 	}
 
 	// now we can pull the rest
-	var delayFirst time.Duration
-	if vd.wasPulled {
-		delayFirst = pullImmediately
-	} else {
-		delayFirst = pullDelayFirstPeriodOtherTransactions
-	}
-	c.pull(delayFirst, neededFor, util.Keys(vd.vertex.MissingInputTxIDSet())...)
+	c.pull(pullImmediately, neededFor, util.Keys(vd.vertex.MissingInputTxIDSet())...)
 }
 
 func (c *SolidifyConsumer) pull(initialDelay time.Duration, neededFor *core.TransactionID, txids ...core.TransactionID) {

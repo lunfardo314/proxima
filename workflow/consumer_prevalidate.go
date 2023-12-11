@@ -56,6 +56,7 @@ func (c *PreValidateConsumer) consume(inp *PreValidateConsumerInputData) {
 	enforceTimeBounds := inp.source == TransactionSourceAPI || inp.source == TransactionSourcePeer
 	// transaction is rejected if it is too far in the future wrt the local clock
 	nowis := time.Now()
+	txid := inp.tx.ID()
 	timeUpperBound := nowis.Add(c.glb.maxDurationInTheFuture())
 	err = inp.tx.Validate(transaction.CheckTimestampUpperBound(timeUpperBound))
 	if err != nil {
@@ -63,8 +64,8 @@ func (c *PreValidateConsumer) consume(inp *PreValidateConsumerInputData) {
 			c.IncCounter("invalid")
 			inp.eventCallback("finish."+PreValidateConsumerName, err)
 
-			c.glb.pullConsumer.removeFromPullList(inp.tx.ID())
-			c.glb.solidifyConsumer.postRemoveTxIDs(inp.tx.ID())
+			c.glb.pullConsumer.stopPulling(txid)
+			c.glb.solidifyConsumer.postRemoveTxIDs(txid)
 			c.glb.PostEventDropTxID(inp.tx.ID(), PreValidateConsumerName, "%v", err)
 			return
 		}
@@ -74,15 +75,15 @@ func (c *PreValidateConsumer) consume(inp *PreValidateConsumerInputData) {
 	if err = inp.tx.Validate(transaction.MainTxValidationOptions...); err != nil {
 		c.IncCounter("invalid")
 
-		c.glb.pullConsumer.removeFromPullList(inp.tx.ID())
-		c.glb.solidifyConsumer.postRemoveTxIDs(inp.tx.ID())
+		c.glb.pullConsumer.stopPulling(txid)
+		c.glb.solidifyConsumer.postRemoveTxIDs(txid)
 		c.glb.PostEventDropTxID(inp.tx.ID(), PreValidateConsumerName, "%v", err)
 		return
 	}
 	c.IncCounter("ok")
 
 	{ // tracing
-		const traceBigTx = false
+		const traceBigTx = true
 		if traceBigTx {
 			if inp.tx.NumInputs() >= 100 {
 				global.SetTracePull(true)

@@ -34,15 +34,12 @@ func (w *Workflow) TransactionInReturnTx(txBytes []byte, opts ...TransactionInOp
 	for _, opt := range opts {
 		opt(inData)
 	}
-	if !inData.wasRemovedFromPuller {
-		// once tx reached the node, stop pulling
-		// checking flag to avoid deadlock
-		inData.wasPulled = w.pullConsumer.stopPulling(tx.ID())
-	}
-	// prevent unnecessary dissemination via gossip
-	inData.doNotGossip = inData.wasPulled
 
-	w.primaryInputConsumer.Push(inData, inData.wasPulled) // priority for pulled
+	w.pullConsumer.stopPulling(tx.ID())
+	// prevent unnecessary dissemination via gossip
+	inData.doNotGossip = w.pullConsumer.isBeingPulled(tx.ID())
+	priority := inData.doNotGossip || inData.source == TransactionSourceStore
+	w.primaryInputConsumer.Push(inData, priority) // priority for pulled
 	return tx, nil
 }
 
@@ -59,11 +56,6 @@ func WithTransactionSource(src TransactionSource) TransactionInOption {
 	return func(data *PrimaryTransactionData) {
 		data.source = src
 	}
-}
-
-func WithTransactionAlreadyRemovedFromPuller(data *PrimaryTransactionData) {
-	data.wasRemovedFromPuller = true
-	data.wasPulled = true
 }
 
 func WithTransactionSourcePeer(from peer.ID) TransactionInOption {

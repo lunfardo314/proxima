@@ -46,12 +46,12 @@ func (c *ValidateConsumer) consume(inp *ValidateConsumerInputData) {
 		if err := inp.draftVertex.Validate(); err != nil {
 			inp.eventCallback("finish."+ValidateConsumerName, err)
 			c.IncCounter("err")
-
-			c.glb.pullConsumer.removeFromPullList(inp.tx.ID())
-			c.glb.solidifyConsumer.postRemoveTxIDs(inp.tx.ID())
+			txid := inp.tx.ID()
+			c.glb.pullConsumer.stopPulling(txid)
+			c.glb.solidifyConsumer.postRemoveTxIDs(txid)
 			c.glb.PostEventDropTxID(inp.tx.ID(), ValidateConsumerName, "%v", err)
 			if inp.tx.IsBranchTransaction() {
-				c.glb.utxoTangle.SyncData().UnEvidenceIncomingBranch(inp.tx.ID())
+				c.glb.utxoTangle.SyncData().UnEvidenceIncomingBranch(txid)
 			}
 
 			return

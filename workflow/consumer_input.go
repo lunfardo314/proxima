@@ -21,16 +21,14 @@ type (
 
 	// PrimaryTransactionData is an input message type for this consumer
 	PrimaryTransactionData struct {
-		tx                   *transaction.Transaction
-		source               TransactionSource
-		receivedFromPeer     peer.ID
-		receivedWhen         time.Time
-		doNotGossip          bool
-		wasPulled            bool
-		wasRemovedFromPuller bool
-		makeVirtualTx        bool
-		eventCallback        func(event string, data any)
-		traceFlag            bool
+		tx               *transaction.Transaction
+		source           TransactionSource
+		receivedFromPeer peer.ID
+		receivedWhen     time.Time
+		doNotGossip      bool
+		makeVirtualTx    bool
+		eventCallback    func(event string, data any)
+		traceFlag        bool
 	}
 
 	TransactionInOption func(*PrimaryTransactionData)
