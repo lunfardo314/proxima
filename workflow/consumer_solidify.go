@@ -41,12 +41,13 @@ type (
 		// if == nil, transaction is unknown yet
 		draftVertexData *draftVertexData
 		// tx IDs who are waiting for the tx to be solid
-		waitingList []*core.TransactionID
+		whoIsWaitingList []*core.TransactionID
 	}
 
 	draftVertexData struct {
 		*PrimaryTransactionData
 		vertex                            *utangle.Vertex
+		numMissingInputTxs                uint16
 		addedToWaitingLists               bool
 		stemInputAlreadyPulled            bool
 		sequencerPredecessorAlreadyPulled bool
@@ -178,9 +179,9 @@ func (c *SolidifyConsumer) checkTxID(txid *core.TransactionID) {
 		// first time add missing inputs into the waiting lists
 		missing := pendingData.draftVertexData.vertex.MissingInputTxIDSet()
 		util.Assertf(len(missing) > 0, "len(missing) > 0")
-
+		pendingData.draftVertexData.numMissingInputTxs = uint16(len(missing)) // TODO WIP
 		missing.ForEach(func(wanted core.TransactionID) bool {
-			c.putIntoWaitingList(&wanted, txid)
+			c.putIntoWhoIsWaitingList(&wanted, txid)
 			return true
 		})
 		pendingData.draftVertexData.addedToWaitingLists = true
@@ -203,7 +204,7 @@ func (c *SolidifyConsumer) removeAttachedTxID(txid *core.TransactionID) {
 	delete(c.txPending, *txid)
 	c.traceTxID(txid, "removeAttachedTxID: deleted")
 
-	c.postCheckTxIDs(pendingData.waitingList...)
+	c.postCheckTxIDs(pendingData.whoIsWaitingList...)
 }
 
 // removeTxID removes from solidifier all txids which directly or indirectly depend on txid
@@ -216,7 +217,7 @@ func (c *SolidifyConsumer) removeTxID(txid *core.TransactionID) {
 	}
 	c.traceTxID(txid, "removeTxID: deleted")
 	delete(c.txPending, *txid)
-	c.postRemoveTxIDs(pendingData.waitingList...)
+	c.postRemoveTxIDs(pendingData.whoIsWaitingList...)
 }
 
 func (c *SolidifyConsumer) removeTooOld() {
@@ -243,11 +244,11 @@ func (c *SolidifyConsumer) sendForValidation(primaryTxData *PrimaryTransactionDa
 	})
 }
 
-func (c *SolidifyConsumer) putIntoWaitingList(wantedID, whoIsWaiting *core.TransactionID) {
+func (c *SolidifyConsumer) putIntoWhoIsWaitingList(wantedID, whoIsWaiting *core.TransactionID) {
 	var waitingLst []*core.TransactionID
 	pendingData, exists := c.txPending[*wantedID]
 	if exists {
-		waitingLst = pendingData.waitingList
+		waitingLst = pendingData.whoIsWaitingList
 	} else {
 		// new wanted transaction, not seen yet
 		pendingData.since = time.Now()
@@ -255,7 +256,7 @@ func (c *SolidifyConsumer) putIntoWaitingList(wantedID, whoIsWaiting *core.Trans
 	if len(waitingLst) == 0 {
 		waitingLst = make([]*core.TransactionID, 0, 1)
 	}
-	pendingData.waitingList = append(waitingLst, whoIsWaiting)
+	pendingData.whoIsWaitingList = append(waitingLst, whoIsWaiting)
 	c.txPending[*wantedID] = pendingData
 }
 
@@ -315,6 +316,7 @@ func (c *SolidifyConsumer) pullIfNeeded(vd *draftVertexData) {
 	}
 
 	// now we can pull the rest
+	vd.allInputsAlreadyPulled = true
 	c.pull(neededFor, util.Keys(vd.vertex.MissingInputTxIDSet())...)
 }
 
