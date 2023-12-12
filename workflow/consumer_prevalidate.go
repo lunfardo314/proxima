@@ -82,7 +82,7 @@ func (c *PreValidateConsumer) consume(inp *PreValidateConsumerInputData) {
 	}
 	c.IncCounter("ok")
 
-	{ // tracing
+	{ // tracing big tx
 		const traceBigTx = false
 		if traceBigTx {
 			if inp.tx.NumInputs() >= 100 {
@@ -94,8 +94,11 @@ func (c *PreValidateConsumer) consume(inp *PreValidateConsumerInputData) {
 			}
 		}
 	}
+
 	if inp.source == TransactionSourceStore && !inp.tx.IsSequencerMilestone() {
-		// it is from the tx store, jump right to append it as virtual tx, bypass validation and solidification
+		// it is from the tx store, and it is not a milestone, jump right to append it as virtual tx,
+		// bypass validation and solidification. We cannot pass sequencer transactions directly, they must be solidified
+		// in the utangle down to the baseline branch!!!
 		inp.PrimaryTransactionData.makeVirtualTx = true
 		c.glb.appendTxConsumer.Push(&AppendTxConsumerInputData{
 			PrimaryTransactionData: inp.PrimaryTransactionData,

@@ -17,7 +17,7 @@ func (c *Consumer[T]) traceTx(inp *PrimaryTransactionData, format string, args .
 		if !inp.traceFlag {
 			return
 		}
-		c.Infof(inp, ">>>>>> TRACE TX "+format, util.EvalLazyArgs(args...)...)
+		c.Log().Infof(">>>>>> TRACE TX "+inp.tx.IDShort()+": "+format, util.EvalLazyArgs(args...)...)
 	}
 }
 

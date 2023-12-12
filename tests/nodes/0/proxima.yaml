@@ -48,7 +48,7 @@ sequencers:
 # logger config
 logger:
   level: info
-  output: testlog.log
+  output: testlog_0.log
 
 # Other parameters used for tracing and debugging
 # pprof config

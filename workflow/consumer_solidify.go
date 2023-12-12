@@ -112,7 +112,7 @@ func (c *SolidifyConsumer) newTx(inp *SolidifyInputData) {
 		vertex:                 utangle.NewVertex(inp.tx),
 	}
 
-	// try to solidify. It fetches what's available
+	// try to solidify. It fetches what is available
 	if !c.runSolidification(pendingData.draftVertexData) {
 		return
 	}
@@ -127,6 +127,7 @@ func (c *SolidifyConsumer) newTx(inp *SolidifyInputData) {
 		c.traceTx(pendingData.draftVertexData.PrimaryTransactionData, "newTx: send for validation")
 		return
 	}
+	c.traceTx(pendingData.draftVertexData.PrimaryTransactionData, "input transactions missing: %d", pendingData.draftVertexData.numMissingInputTxs)
 	// pull what is missing. For branches and sequencer milestones it is a staged process
 	c.pullIfNeeded(pendingData.draftVertexData)
 
@@ -142,7 +143,7 @@ func (c *SolidifyConsumer) newTx(inp *SolidifyInputData) {
 func (c *SolidifyConsumer) addedTx(txid *core.TransactionID) {
 	pendingData, isKnown := c.txPending[*txid]
 	if !isKnown {
-		c.traceTxID(txid, "addedTx: unknown tx")
+		c.traceTxID(txid, "addedTx: not in solidifier -> ignore")
 		// nobody is waiting, nothing to remove. Ignore
 		return
 	}
@@ -165,16 +166,14 @@ func (c *SolidifyConsumer) checkTx(txid core.TransactionID) {
 		// nobody is waiting. Ignore
 		return
 	}
-	if pendingData.draftVertexData == nil {
-		// normally should not happen
-		return
-	}
+	util.Assertf(pendingData.draftVertexData != nil, "pendingData.draftVertexData != nil")
 	if pendingData.draftVertexData.numMissingInputTxs == 0 {
 		// already sent for validation
 		return
 	}
 	pendingData.draftVertexData.numMissingInputTxs--
-	c.traceTx(pendingData.draftVertexData.PrimaryTransactionData, "checkTx: number of remaining missing inputs: %s", pendingData.draftVertexData.numMissingInputTxs)
+	c.traceTx(pendingData.draftVertexData.PrimaryTransactionData,
+		"checkTx: number of remaining missing inputs: %d", pendingData.draftVertexData.numMissingInputTxs)
 
 	if pendingData.draftVertexData.numMissingInputTxs > 0 {
 		// there left some missing input txs. Just pull if needed
@@ -270,36 +269,53 @@ func (c *SolidifyConsumer) putIntoWhoIsWaitingList(missingTxID, whoIsWaiting cor
 	c.txPending[missingTxID] = pendingData
 }
 
+// pullIfNeeded pulls missing inputs. For sequencer transactions it goes in steps
 func (c *SolidifyConsumer) pullIfNeeded(vd *draftVertexData) {
 	if vd.allInputsAlreadyPulled {
 		return
 	}
 	neededFor := vd.tx.ID()
-	if vd.tx.IsBranchTransaction() && !vd.vertex.IsStemInputSolid() {
+
+	stemInputTxID := func() core.TransactionID {
+		return vd.tx.SequencerTransactionData().StemOutputData.PredecessorOutputID.TransactionID()
+	}
+	if vd.tx.IsBranchTransaction() && !vd.stemInputAlreadyPulled {
 		// first need to solidify stem input. Only when stem input is solid, we pull the rest
 		// this makes node synchronization more sequential, from past to present slot by slot,
 		// because branch transactions are pulled first and along the chain
-		if !vd.stemInputAlreadyPulled {
-			// pull immediately
-			vd.stemInputAlreadyPulled = true
-			c.pull(neededFor, vd.tx.SequencerTransactionData().StemOutputData.PredecessorOutputID.TransactionID())
-		}
+		vd.stemInputAlreadyPulled = true
+		c.tracePull("pull stem transaction")
+		c.pull(neededFor, stemInputTxID())
 		return
+	}
+	seqPredTxID := func() core.TransactionID {
+		seqInputIdx := vd.tx.SequencerTransactionData().SequencerOutputData.ChainConstraint.PredecessorInputIndex
+		seqInputOID := vd.tx.MustInputAt(seqInputIdx)
+		return seqInputOID.TransactionID()
 	}
 	// here stem input solid, if any
-	if vd.tx.IsSequencerMilestone() {
-		if isSolid, seqInputIdx := vd.vertex.IsSequencerInputSolid(); !isSolid {
-			if !vd.sequencerPredAlreadyPulled {
-				seqInputOID := vd.tx.MustInputAt(seqInputIdx)
-				vd.sequencerPredAlreadyPulled = true
-				c.pull(neededFor, seqInputOID.TransactionID())
-			}
-		}
+	if vd.tx.IsSequencerMilestone() && !vd.sequencerPredAlreadyPulled {
+		vd.sequencerPredAlreadyPulled = true
+		c.tracePull("pull sequencer predecessor transaction")
+		c.pull(neededFor, seqPredTxID())
 		return
 	}
-	// now we can pull the rest
+	// now we can pull the rest (except stem and sequencer predecessor, if any)
+	allTheRest := vd.vertex.MissingInputTxIDSet()
+	if vd.tx.IsBranchTransaction() {
+		allTheRest.Remove(stemInputTxID())
+	}
+	if vd.tx.IsSequencerMilestone() {
+		allTheRest.Remove(seqPredTxID())
+	}
+
+	c.traceTx(vd.PrimaryTransactionData, "pull the rest %d missing input transactions. Total inputs: %d, total endorsements: %d",
+		len(allTheRest),
+		vd.vertex.Tx.NumInputs(),
+		vd.vertex.Tx.NumEndorsements(),
+	)
 	vd.allInputsAlreadyPulled = true
-	c.pull(neededFor, util.Keys(vd.vertex.MissingInputTxIDSet())...)
+	c.pull(neededFor, util.Keys(allTheRest)...)
 }
 
 func (c *SolidifyConsumer) postDropTxID(txid *core.TransactionID) {

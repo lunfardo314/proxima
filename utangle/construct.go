@@ -262,7 +262,10 @@ func (ut *UTXOTangle) _finalizeBranch(newBranchVID *WrappedTx) error {
 		// calculate mutations, update the state and get new root
 		muts, conflict := newBranchVID.getBranchMutations(ut)
 		if conflict.VID != nil {
-			return fmt.Errorf("conflict while calculating mutations: %s", conflict.DecodeID().StringShort())
+			return fmt.Errorf("_finalizeBranch: problem while calculating mutations of %s. Caused by: %s",
+				newBranchVID.IDShort(),
+				conflict.DecodeID().StringShort(),
+			)
 		}
 		upd, err := ut.GetStateUpdatable(baselineVID.ID())
 		if err != nil {

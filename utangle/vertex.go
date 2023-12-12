@@ -106,33 +106,34 @@ func (v *Vertex) IsSolid() bool {
 	return v.isSolid
 }
 
-// IsStemInputSolid returns if the stem output is solid
-// Note: no way to access stem input directly, so we must search among inputs by output ID
-func (v *Vertex) IsStemInputSolid() bool {
-	util.Assertf(v.Tx.IsBranchTransaction(), "branch vertex expected")
-
-	predOID := v.Tx.StemOutputData().PredecessorOutputID
-	var stemInputIdx byte
-	var stemInputFound bool
-
-	v.Tx.ForEachInput(func(i byte, oid *core.OutputID) bool {
-		if *oid == predOID {
-			stemInputIdx = i
-			stemInputFound = true
-		}
-		return !stemInputFound
-	})
-	util.Assertf(stemInputFound, "can't find stem input")
-	return v.Inputs[stemInputIdx] != nil
-}
-
-// IsSequencerInputSolid return if sequencer input is solid and predecessor index
-// for origin that would be true, 0xff
-func (v *Vertex) IsSequencerInputSolid() (bool, byte) {
-	util.Assertf(v.Tx.IsSequencerMilestone(), "sequencer milestone expected")
-	idx := v.Tx.SequencerTransactionData().SequencerOutputData.ChainConstraint.PredecessorInputIndex
-	return idx == 0xff || v.Inputs[idx] != nil, idx
-}
+//
+//// IsStemInputSolid returns if the stem output is solid
+//// Note: no way to access stem input directly, so we must search among inputs by output ID
+//func (v *Vertex) IsStemInputSolid() bool {
+//	util.Assertf(v.Tx.IsBranchTransaction(), "branch vertex expected")
+//
+//	predOID := v.Tx.StemOutputData().PredecessorOutputID
+//	var stemInputIdx byte
+//	var stemInputFound bool
+//
+//	v.Tx.ForEachInput(func(i byte, oid *core.OutputID) bool {
+//		if *oid == predOID {
+//			stemInputIdx = i
+//			stemInputFound = true
+//		}
+//		return !stemInputFound
+//	})
+//	util.Assertf(stemInputFound, "can't find stem input")
+//	return v.Inputs[stemInputIdx] != nil
+//}
+//
+//// IsSequencerInputSolid return if sequencer input is solid and predecessor index
+//// for origin that would be true, 0xff
+//func (v *Vertex) IsSequencerInputSolid() (bool, byte) {
+//	util.Assertf(v.Tx.IsSequencerMilestone(), "sequencer milestone expected")
+//	idx := v.Tx.SequencerTransactionData().SequencerOutputData.ChainConstraint.PredecessorInputIndex
+//	return idx == 0xff || v.Inputs[idx] != nil, idx
+//}
 
 func (v *Vertex) _allInputsSolid() bool {
 	for _, d := range v.Inputs {
