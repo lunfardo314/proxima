@@ -105,14 +105,14 @@ func (s *SyncData) EvidenceIncomingBranch(txid *core.TransactionID, seqID core.C
 	s.PerSequencer[seqID] = info
 }
 
-func (s *SyncData) UnEvidenceIncomingBranch(txid *core.TransactionID) {
+func (s *SyncData) UnEvidenceIncomingBranch(txid core.TransactionID) {
 	util.Assertf(txid.BranchFlagON(), "must be a branch transaction")
 
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
 	for _, info := range s.PerSequencer {
-		delete(info.latestBranchesSeen, *txid) // a bit suboptimal, but we do not want to search for the whole tx
+		delete(info.latestBranchesSeen, txid) // a bit suboptimal, but we do not want to search for the whole tx
 	}
 }
 

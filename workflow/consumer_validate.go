@@ -51,7 +51,7 @@ func (c *ValidateConsumer) consume(inp *ValidateConsumerInputData) {
 			c.glb.solidifyConsumer.postRemoveTxIDs(txid)
 			c.glb.PostEventDropTxID(inp.tx.ID(), ValidateConsumerName, "%v", err)
 			if inp.tx.IsBranchTransaction() {
-				c.glb.utxoTangle.SyncData().UnEvidenceIncomingBranch(txid)
+				c.glb.utxoTangle.SyncData().UnEvidenceIncomingBranch(*txid)
 			}
 
 			return

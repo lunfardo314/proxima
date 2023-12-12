@@ -72,11 +72,11 @@ func (c *AppendTxConsumer) consume(inp *AppendTxConsumerInputData) {
 		c.traceTx(inp.PrimaryTransactionData, "can't append transaction to the tangle: '%v'", err)
 		c.IncCounter("fail")
 
-		c.glb.solidifyConsumer.postRemoveTxIDs(txid)
+		c.glb.solidifyConsumer.postDropTxID(txid)
 		c.glb.pullConsumer.stopPulling(txid)
 		c.glb.PostEventDropTxID(inp.tx.ID(), AppendTxConsumerName, "%v", err)
 		if inp.tx.IsBranchTransaction() {
-			c.glb.utxoTangle.SyncData().UnEvidenceIncomingBranch(inp.tx.ID())
+			c.glb.utxoTangle.SyncData().UnEvidenceIncomingBranch(*inp.tx.ID())
 		}
 		return
 	}
@@ -107,7 +107,7 @@ func (c *AppendTxConsumer) consume(inp *AppendTxConsumerInputData) {
 	c.glb.IncCounter(c.Name() + ".ok")
 
 	// notify solidifier upon new transaction added to the tangle
-	c.glb.solidifyConsumer.postRemoveAttachedTxID(vid.ID())
+	c.glb.solidifyConsumer.postAddedTxID(vid.ID())
 }
 
 func (c *AppendTxConsumer) logBranch(inp *PrimaryTransactionData, coverage uint64) {
