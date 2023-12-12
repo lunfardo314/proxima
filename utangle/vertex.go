@@ -70,12 +70,13 @@ func (v *Vertex) NumMissingInputs() (missingInputs int, missingEndorsements int)
 	return
 }
 
-// MissingInputTxIDSet return set of txids for the missing inputs
+// MissingInputTxIDSet returns set of txids for the missing inputs and endorsements
 func (v *Vertex) MissingInputTxIDSet() set.Set[core.TransactionID] {
 	ret := set.New[core.TransactionID]()
+	var oid core.OutputID
 	v.forEachInputDependency(func(i byte, vidInput *WrappedTx) bool {
 		if vidInput == nil {
-			oid := v.Tx.MustInputAt(i)
+			oid = v.Tx.MustInputAt(i)
 			ret.Insert(oid.TransactionID())
 		}
 		return true

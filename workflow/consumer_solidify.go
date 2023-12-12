@@ -45,18 +45,15 @@ type (
 
 	draftVertexData struct {
 		*PrimaryTransactionData
-		vertex                            *utangle.Vertex
-		numMissingInputTxs                uint16
-		addedToWaitingLists               bool
-		stemInputAlreadyPulled            bool
-		sequencerPredecessorAlreadyPulled bool
-		allInputsAlreadyPulled            bool
+		vertex                     *utangle.Vertex
+		numMissingInputTxs         uint16
+		stemInputAlreadyPulled     bool
+		sequencerPredAlreadyPulled bool
+		allInputsAlreadyPulled     bool
 	}
 )
 
-const (
-	solidificationTimeout = 3 * time.Minute // TODO only for testing. Must be longer in reality
-)
+const solidificationTimeout = 3 * time.Minute // TODO only for testing. Must be longer in reality
 
 func (w *Workflow) initSolidifyConsumer() {
 	ret := &SolidifyConsumer{
@@ -115,16 +112,17 @@ func (c *SolidifyConsumer) newTx(inp *SolidifyInputData) {
 		vertex:                 utangle.NewVertex(inp.tx),
 	}
 
-	// first attempt to solidify. It fetches what's available atm
+	// try to solidify. It fetches what's available
 	if !c.runSolidification(pendingData.draftVertexData) {
 		return
 	}
 
+	// get set of missing transaction IDs
 	missing := pendingData.draftVertexData.vertex.MissingInputTxIDSet()
 
 	pendingData.draftVertexData.numMissingInputTxs = uint16(len(missing))
 	if pendingData.draftVertexData.numMissingInputTxs == 0 {
-		// solid already. No need for solidification, send directly for validations
+		// solid already. No need for solidification, send directly to validation
 		c.sendForValidation(pendingData.draftVertexData.PrimaryTransactionData, pendingData.draftVertexData.vertex)
 		c.traceTx(pendingData.draftVertexData.PrimaryTransactionData, "newTx: send for validation")
 		return
@@ -152,6 +150,7 @@ func (c *SolidifyConsumer) addedTx(txid *core.TransactionID) {
 		"pendingData.draftVertexData == nil || pendingData.draftVertexData.vertex.IsSolid()")
 
 	delete(c.txPending, *txid)
+	// check all transactions in the waiting list
 	for _, waitingTxID := range pendingData.whoIsWaitingList {
 		c.checkTx(waitingTxID)
 	}
@@ -220,7 +219,6 @@ func (c *SolidifyConsumer) dropTxID(txid core.TransactionID) {
 	delete(c.txPending, txid)
 	txid1 := txid
 	c.traceTxID(&txid1, "dropTxID: deleted")
-	c.glb.pullConsumer.stopPulling(&txid1)
 	for _, delTxID := range pendingData.whoIsWaitingList {
 		c.dropTxID(delTxID)
 	}
@@ -240,7 +238,9 @@ func (c *SolidifyConsumer) removeTooOld() {
 		}
 	}
 	for i := range toRemove {
-		c.dropTxID(toRemove[i])
+		txid1 := toRemove[i]
+		c.glb.pullConsumer.stopPulling(&txid1)
+		c.dropTxID(txid1)
 	}
 }
 
@@ -252,9 +252,11 @@ func (c *SolidifyConsumer) sendForValidation(primaryTxData *PrimaryTransactionDa
 	})
 }
 
-func (c *SolidifyConsumer) putIntoWhoIsWaitingList(wantedID, whoIsWaiting core.TransactionID) {
+// putIntoWhoIsWaitingList each missing txid has entry in txPending. Each entry has list of transaction
+// which are waiting for it. The function puts missingTxID into the corresponding list. It creates entry if it is new
+func (c *SolidifyConsumer) putIntoWhoIsWaitingList(missingTxID, whoIsWaiting core.TransactionID) {
 	var waitingLst []core.TransactionID
-	pendingData, exists := c.txPending[wantedID]
+	pendingData, exists := c.txPending[missingTxID]
 	if exists {
 		waitingLst = pendingData.whoIsWaitingList
 	} else {
@@ -265,20 +267,18 @@ func (c *SolidifyConsumer) putIntoWhoIsWaitingList(wantedID, whoIsWaiting core.T
 		waitingLst = make([]core.TransactionID, 0, 2)
 	}
 	pendingData.whoIsWaitingList = append(waitingLst, whoIsWaiting)
-	c.txPending[wantedID] = pendingData
+	c.txPending[missingTxID] = pendingData
 }
 
 func (c *SolidifyConsumer) pullIfNeeded(vd *draftVertexData) {
-	if vd.vertex.IsSolid() {
-		return
-	}
 	if vd.allInputsAlreadyPulled {
 		return
 	}
 	neededFor := vd.tx.ID()
 	if vd.tx.IsBranchTransaction() && !vd.vertex.IsStemInputSolid() {
 		// first need to solidify stem input. Only when stem input is solid, we pull the rest
-		// this makes node synchronization more sequential, from past to present slot by slot
+		// this makes node synchronization more sequential, from past to present slot by slot,
+		// because branch transactions are pulled first and along the chain
 		if !vd.stemInputAlreadyPulled {
 			// pull immediately
 			vd.stemInputAlreadyPulled = true
@@ -289,15 +289,14 @@ func (c *SolidifyConsumer) pullIfNeeded(vd *draftVertexData) {
 	// here stem input solid, if any
 	if vd.tx.IsSequencerMilestone() {
 		if isSolid, seqInputIdx := vd.vertex.IsSequencerInputSolid(); !isSolid {
-			if !vd.sequencerPredecessorAlreadyPulled {
+			if !vd.sequencerPredAlreadyPulled {
 				seqInputOID := vd.tx.MustInputAt(seqInputIdx)
-				vd.sequencerPredecessorAlreadyPulled = true
+				vd.sequencerPredAlreadyPulled = true
 				c.pull(neededFor, seqInputOID.TransactionID())
 			}
-			return
 		}
+		return
 	}
-
 	// now we can pull the rest
 	vd.allInputsAlreadyPulled = true
 	c.pull(neededFor, util.Keys(vd.vertex.MissingInputTxIDSet())...)
@@ -334,6 +333,7 @@ const solidificationDeadlineLoopPeriod = time.Second
 
 func (c *SolidifyConsumer) solidificationDeadlineLoop() {
 	defer c.Log().Debugf("solidification deadline loop stopped")
+
 	syncStatus := c.glb.utxoTangle.SyncData()
 	for {
 		select {
