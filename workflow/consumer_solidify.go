@@ -78,21 +78,18 @@ func (c *SolidifyConsumer) consume(inp *SolidifyInputData) {
 	case SolidifyCommandNewTx:
 		util.Assertf(inp.TxID == nil && inp.PrimaryTransactionData != nil, "inp.TxID == nil && inp.primaryInput != nil")
 		c.traceTx(inp.PrimaryTransactionData, "cmd newTx")
-		//inp.eventCallback(SolidifyConsumerName+".in.new", inp.Tx)
 		c.glb.IncCounter(c.Name() + ".in.new")
 		c.newTx(inp)
 
 	case SolidifyCommandAddedTx:
 		util.Assertf(inp.TxID != nil && inp.PrimaryTransactionData == nil, "inp.TxID != nil && inp.primaryInput == nil")
 		c.traceTxID(inp.TxID, "cmd addedTx")
-		//inp.eventCallback(SolidifyConsumerName+".in.check", inp.Tx)
 		c.glb.IncCounter(c.Name() + ".in.added")
 		c.addedTx(inp.TxID)
 
 	case SolidifyCommandDroppedTx:
 		util.Assertf(inp.TxID != nil && inp.PrimaryTransactionData == nil, "inp.TxID != nil && inp.primaryInput == nil")
 		c.traceTxID(inp.TxID, "cmd dropTxID")
-		//inp.eventCallback(SolidifyConsumerName+".in.remove", inp.TxID)
 		c.glb.IncCounter(c.Name() + ".in.remove")
 		c.dropTxID(*inp.TxID)
 
@@ -210,7 +207,7 @@ func (c *SolidifyConsumer) runSolidification(vd *draftVertexData) bool {
 	if vd.vertex.Tx.IsBranchTransaction() {
 		c.glb.utxoTangle.SyncData().UnEvidenceIncomingBranch(*txid)
 	}
-	vd.PrimaryTransactionData.eventCallback(SolidifyConsumerName+".finish.drop", fmt.Errorf("conflict %s", conflict.StringShort()))
+	vd.PrimaryTransactionData.eventCallback("finish."+SolidifyConsumerName, fmt.Errorf("conflict %s", conflict.StringShort()))
 	return false
 }
 

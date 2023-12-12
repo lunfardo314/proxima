@@ -65,7 +65,7 @@ func (c *PreValidateConsumer) consume(inp *PreValidateConsumerInputData) {
 			inp.eventCallback("finish."+PreValidateConsumerName, err)
 
 			c.glb.pullConsumer.stopPulling(txid)
-			c.glb.solidifyConsumer.postRemoveTxIDs(txid)
+			c.glb.solidifyConsumer.postDropTxID(txid)
 			c.glb.PostEventDropTxID(inp.tx.ID(), PreValidateConsumerName, "%v", err)
 			return
 		}
@@ -76,14 +76,14 @@ func (c *PreValidateConsumer) consume(inp *PreValidateConsumerInputData) {
 		c.IncCounter("invalid")
 
 		c.glb.pullConsumer.stopPulling(txid)
-		c.glb.solidifyConsumer.postRemoveTxIDs(txid)
+		c.glb.solidifyConsumer.postDropTxID(txid)
 		c.glb.PostEventDropTxID(inp.tx.ID(), PreValidateConsumerName, "%v", err)
 		return
 	}
 	c.IncCounter("ok")
 
 	{ // tracing
-		const traceBigTx = true
+		const traceBigTx = false
 		if traceBigTx {
 			if inp.tx.NumInputs() >= 100 {
 				global.SetTracePull(true)

@@ -48,7 +48,7 @@ func (c *ValidateConsumer) consume(inp *ValidateConsumerInputData) {
 			c.IncCounter("err")
 			txid := inp.tx.ID()
 			c.glb.pullConsumer.stopPulling(txid)
-			c.glb.solidifyConsumer.postRemoveTxIDs(txid)
+			c.glb.solidifyConsumer.postDropTxID(txid)
 			c.glb.PostEventDropTxID(inp.tx.ID(), ValidateConsumerName, "%v", err)
 			if inp.tx.IsBranchTransaction() {
 				c.glb.utxoTangle.SyncData().UnEvidenceIncomingBranch(*txid)
