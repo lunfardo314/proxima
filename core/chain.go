@@ -88,6 +88,11 @@ func ChainIDFromHexString(str string) (ret ChainID, err error) {
 	return ChainIDFromBytes(data)
 }
 
+func RandomChainID() (ret ChainID) {
+	_, _ = rand.Read(ret[:])
+	return
+}
+
 func OriginChainID(oid *OutputID) ChainID {
 	return blake2b.Sum256(oid[:])
 }

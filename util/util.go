@@ -237,6 +237,18 @@ func ClearSlice[T any](slice []T) []T {
 	return slice[:0]
 }
 
+func EqualSlices[T comparable](s1, s2 []T) bool {
+	if len(s1) != len(s2) {
+		return false
+	}
+	for i := range s1 {
+		if s1[i] != s2[i] {
+			return false
+		}
+	}
+	return true
+}
+
 func AppendUnique[T comparable](slice []T, elems ...T) []T {
 	slice = slices.Grow(slice, len(elems))
 	for _, el := range elems {

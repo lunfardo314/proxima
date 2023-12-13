@@ -6,6 +6,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/proxima/util/testutil"
 	"github.com/multiformats/go-multiaddr"
 )
 
@@ -63,4 +64,15 @@ func MakeConfigFor(n, hostIdx int) *Config {
 		cfg.KnownPeers[fmt.Sprintf("peer%d", i)] = ma
 	}
 	return cfg
+}
+
+func RandomPeerID() peer.ID {
+	privateKey := testutil.GetTestingPrivateKey(101)
+
+	pklpp, err := crypto.UnmarshalEd25519PrivateKey(privateKey)
+	util.AssertNoError(err)
+
+	ret, err := peer.IDFromPrivateKey(pklpp)
+	util.AssertNoError(err)
+	return ret
 }

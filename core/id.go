@@ -93,10 +93,10 @@ func TransactionIDFromHexString(str string) (ret TransactionID, err error) {
 }
 
 // RandomTransactionID not completely random. For testing
-func RandomTransactionID() TransactionID {
+func RandomTransactionID(sequencerFlag, branchFlag bool) TransactionID {
 	var hash TransactionIDShort
 	_, _ = rand.Read(hash[:])
-	return NewTransactionID(LogicalTimeNow(), hash, false, false)
+	return NewTransactionID(LogicalTimeNow(), hash, sequencerFlag, branchFlag)
 }
 
 // ShortID return hash part of ID
