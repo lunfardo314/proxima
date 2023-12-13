@@ -12,6 +12,7 @@ const (
 	PathSubmitTransactionNowait = "/submit_nowait" // async submitting
 	PathGetOutputInclusion      = "/inclusion"
 	PathGetSyncInfo             = "/sync_info"
+	PathGetNodeInfo             = "/node_info"
 )
 
 type Error struct {

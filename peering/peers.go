@@ -173,6 +173,10 @@ func NewPeersFromConfig(ctx context.Context, logLevel zapcore.Level, logOutputs 
 	return New(cfg, ctx)
 }
 
+func (ps *Peers) SelfID() peer.ID {
+	return ps.host.ID()
+}
+
 func (ps *Peers) Run() {
 	ps.host.SetStreamHandler(lppProtocolGossip, ps.gossipStreamHandler)
 	ps.host.SetStreamHandler(lppProtocolPull, ps.pullStreamHandler)

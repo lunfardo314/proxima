@@ -28,10 +28,10 @@ type ProximaNode struct {
 	multiStateStore *badger_adaptor.DB
 	txStoreDB       *badger_adaptor.DB
 	txStore         global.TxBytesStore
-	uTangle         *utangle.UTXOTangle
-	peers           *peering.Peers
-	workflow        *workflow.Workflow
-	sequencers      []*sequencer.Sequencer
+	UTXOTangle      *utangle.UTXOTangle
+	Peers           *peering.Peers
+	Workflow        *workflow.Workflow
+	Sequencers      []*sequencer.Sequencer
 	stopOnce        sync.Once
 	ctx             context.Context
 }
@@ -39,7 +39,7 @@ type ProximaNode struct {
 func New(ctx context.Context) *ProximaNode {
 	return &ProximaNode{
 		log:        newBootstrapLogger(),
-		sequencers: make([]*sequencer.Sequencer, 0),
+		Sequencers: make([]*sequencer.Sequencer, 0),
 		ctx:        ctx,
 	}
 }
@@ -85,8 +85,8 @@ func (p *ProximaNode) Run() {
 }
 
 func (p *ProximaNode) WaitStop() {
-	p.workflow.WaitStop() // TODO not correct. Must be global stop wait group for all components
-	p.log.Info("workflow stopped")
+	p.Workflow.WaitStop() // TODO not correct. Must be global stop wait group for all components
+	p.log.Info("Workflow stopped")
 }
 
 func (p *ProximaNode) startMultiStateDB() {
@@ -153,8 +153,8 @@ func mustReadStateIdentity(store global.StateStore) {
 func (p *ProximaNode) loadUTXOTangle() {
 	mustReadStateIdentity(p.multiStateStore)
 
-	p.uTangle = utangle.Load(p.multiStateStore)
-	latestSlot := p.uTangle.LatestTimeSlot()
+	p.UTXOTangle = utangle.Load(p.multiStateStore)
+	latestSlot := p.UTXOTangle.LatestTimeSlot()
 	currentSlot := core.LogicalTimeNow().TimeSlot()
 	p.log.Infof("current time slot: %d, latest time slot in the multi-state: %d, lagging behind: %d slots",
 		currentSlot, latestSlot, currentSlot-latestSlot)
@@ -170,16 +170,16 @@ func (p *ProximaNode) loadUTXOTangle() {
 
 func (p *ProximaNode) startPeering() {
 	var err error
-	p.peers, err = peering.NewPeersFromConfig(p.ctx, p.log.Level(), p.logOutputs)
+	p.Peers, err = peering.NewPeersFromConfig(p.ctx, p.log.Level(), p.logOutputs)
 	util.AssertNoError(err)
 
-	p.peers.Run()
+	p.Peers.Run()
 }
 
 func (p *ProximaNode) startWorkflow() {
-	p.workflow = workflow.New(p.uTangle, p.peers, p.txStore, workflow.WithGlobalConfigOptions)
-	p.workflow.Start(p.ctx)
-	p.workflow.StartPruner()
+	p.Workflow = workflow.New(p.UTXOTangle, p.Peers, p.txStore, workflow.WithGlobalConfigOptions)
+	p.Workflow.Start(p.ctx)
+	p.Workflow.StartPruner()
 }
 
 func (p *ProximaNode) startSequencers() {
@@ -192,9 +192,9 @@ func (p *ProximaNode) startSequencers() {
 		}
 	}
 
-	sequencers := viper.GetStringMap("sequencers")
+	sequencers := viper.GetStringMap("Sequencers")
 	if len(sequencers) == 0 {
-		p.log.Infof("No sequencers will be started")
+		p.log.Infof("No Sequencers will be started")
 		return
 	}
 	p.log.Infof("%d sequencer config profiles has been found", len(sequencers))
@@ -203,7 +203,7 @@ func (p *ProximaNode) startSequencers() {
 		return k1 < k2
 	})
 	for _, name := range seqNames {
-		seq, err := sequencer.NewFromConfig(p.workflow, name)
+		seq, err := sequencer.NewFromConfig(p.Workflow, name)
 		if err != nil {
 			p.log.Errorf("can't start sequencer '%s': '%v'", name, err)
 			continue
@@ -215,7 +215,7 @@ func (p *ProximaNode) startSequencers() {
 		seq.Run(p.ctx)
 
 		p.log.Infof("started sequencer '%s', seqID: %s", name, seq.ID().String())
-		p.sequencers = append(p.sequencers, seq)
+		p.Sequencers = append(p.Sequencers, seq)
 		time.Sleep(500 * time.Millisecond)
 	}
 }

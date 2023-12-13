@@ -20,7 +20,7 @@ func (p *ProximaNode) startMemoryLogging() {
 			}
 
 			sync := "NO SYNC"
-			if p.uTangle.SyncData().IsSynced() {
+			if p.UTXOTangle.SyncData().IsSynced() {
 				sync = "SYNC"
 			}
 			runtime.ReadMemStats(&mstats)

@@ -112,15 +112,16 @@ func (ps *Peers) blockCommsWithPeer(p *Peer) {
 	ps.log.Warnf("blocked communications with peer %s (%s) for %v", ShortPeerIDString(p.id), p.name, commBlockDuration)
 }
 
-func (ps *Peers) numAlivePeers() (ret int) {
+func (ps *Peers) NumPeers() (alive, configured int) {
 	ps.mutex.RLock()
 	defer ps.mutex.RUnlock()
 
 	for _, p := range ps.peers {
 		if p.isAlive() {
-			ret++
+			alive++
 		}
 	}
+	configured = len(ps.peers)
 	return
 }
 
@@ -251,7 +252,8 @@ func (ps *Peers) heartbeatLoop() {
 	for {
 		nowis := time.Now()
 		if nowis.After(logNumPeersDeadline) {
-			ps.log.Infof("node is connected to %d peer(s)", ps.numAlivePeers())
+			alive, configured := ps.NumPeers()
+			ps.log.Infof("node is connected to %d peer(s) out of %d configured", alive, configured)
 			logNumPeersDeadline = nowis.Add(logNumPeersPeriod)
 		}
 		for _, id := range ps.getPeerIDsWithOpenComms() {

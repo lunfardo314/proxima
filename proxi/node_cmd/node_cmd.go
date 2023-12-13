@@ -50,6 +50,7 @@ func Init() *cobra.Command {
 		initMakeChainCmd(),
 		initChainsCmd(),
 		initSyncInfoCmd(),
+		initNodeInfoCmd(),
 		seq_cmd.Init(),
 	)
 

@@ -11,13 +11,14 @@ import (
 
 	"github.com/lunfardo314/proxima/api"
 	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/utangle"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/workflow"
 )
 
-func registerHandlers(wFlow *workflow.Workflow) {
+func registerHandlers(wFlow *workflow.Workflow, getNodeInfo func() *global.NodeInfo) {
 	// GET request format: 'get_account_outputs?accountable=<EasyFL source form of the accountable lock constraint>'
 	http.HandleFunc(api.PathGetAccountOutputs, getAccountOutputsHandle(wFlow.UTXOTangle()))
 	// GET request format: 'get_chain_output?chainid=<hex-encoded chain ID>'
@@ -32,6 +33,8 @@ func registerHandlers(wFlow *workflow.Workflow) {
 	http.HandleFunc(api.PathSubmitTransactionNowait, submitTxHandle(wFlow, false))
 	// GET sync info from the node
 	http.HandleFunc(api.PathGetSyncInfo, getSyncInfoHandle(wFlow.UTXOTangle()))
+	// GET sync info from the node
+	http.HandleFunc(api.PathGetNodeInfo, getNodeInfoHandle(getNodeInfo))
 }
 
 func getAccountOutputsHandle(ut *utangle.UTXOTangle) func(w http.ResponseWriter, r *http.Request) {
@@ -262,6 +265,19 @@ func getSyncInfoHandle(ut *utangle.UTXOTangle) func(w http.ResponseWriter, r *ht
 	}
 }
 
+func getNodeInfoHandle(getNodeInfo func() *global.NodeInfo) func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		nodeInfo := getNodeInfo()
+		respBin, err := json.MarshalIndent(nodeInfo, "", "  ")
+		if err != nil {
+			writeErr(w, err.Error())
+			return
+		}
+		_, err = w.Write(respBin)
+		util.AssertNoError(err)
+	}
+}
+
 func writeErr(w http.ResponseWriter, errStr string) {
 	respBytes, err := json.Marshal(&api.Error{Error: errStr})
 	if err != nil {
@@ -282,8 +298,8 @@ func writeOk(w http.ResponseWriter) {
 	util.AssertNoError(err)
 }
 
-func RunOn(addr string, wflow *workflow.Workflow) {
-	registerHandlers(wflow)
+func RunOn(addr string, w *workflow.Workflow, getNodeInfo func() *global.NodeInfo) {
+	registerHandlers(w, getNodeInfo)
 	err := http.ListenAndServe(addr, nil)
 	util.AssertNoError(err)
 }

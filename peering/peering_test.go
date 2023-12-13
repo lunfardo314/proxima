@@ -2,7 +2,6 @@ package peering
 
 import (
 	"bytes"
-	"encoding/json"
 	"math/rand"
 	"sync"
 	"testing"
@@ -318,55 +317,4 @@ func rndTxIDs() []core.TransactionID {
 		ret[i] = core.RandomTransactionID(false, false)
 	}
 	return ret
-}
-
-func TestPeerInfo(t *testing.T) {
-	t.Run("1", func(t *testing.T) {
-		pi := &PeerInfo{
-			Name:           "peerName",
-			ID:             RandomPeerID(),
-			NumStaticPeers: 5,
-			NumActivePeers: 3,
-		}
-		jsonData, err := json.MarshalIndent(pi, "", "  ")
-		require.NoError(t, err)
-		t.Logf("json string:\n%s", string(jsonData))
-
-		var piBack PeerInfo
-		err = json.Unmarshal(jsonData, &piBack)
-		require.NoError(t, err)
-		require.EqualValues(t, pi.Name, piBack.Name)
-		require.EqualValues(t, pi.ID, piBack.ID)
-		require.EqualValues(t, pi.NumStaticPeers, piBack.NumStaticPeers)
-		require.EqualValues(t, pi.NumActivePeers, piBack.NumActivePeers)
-
-		require.True(t, util.EqualSlices(pi.Sequencers, piBack.Sequencers))
-		require.True(t, util.EqualSlices(pi.SyncedBranches, piBack.SyncedBranches))
-	})
-	t.Run("2", func(t *testing.T) {
-		branches := []core.TransactionID{core.RandomTransactionID(true, true), core.RandomTransactionID(true, true), core.RandomTransactionID(true, true)}
-		sequencers := []core.ChainID{core.RandomChainID()}
-		pi := &PeerInfo{
-			Name:           "peerName",
-			ID:             RandomPeerID(),
-			NumStaticPeers: 5,
-			NumActivePeers: 3,
-			Sequencers:     sequencers,
-			SyncedBranches: branches,
-		}
-		jsonData, err := json.MarshalIndent(pi, "", "  ")
-		require.NoError(t, err)
-		t.Logf("json string:\n%s", string(jsonData))
-
-		var piBack PeerInfo
-		err = json.Unmarshal(jsonData, &piBack)
-		require.NoError(t, err)
-		require.EqualValues(t, pi.Name, piBack.Name)
-		require.EqualValues(t, pi.ID, piBack.ID)
-		require.EqualValues(t, pi.NumStaticPeers, piBack.NumStaticPeers)
-		require.EqualValues(t, pi.NumActivePeers, piBack.NumActivePeers)
-
-		require.True(t, util.EqualSlices(pi.Sequencers, piBack.Sequencers))
-		require.True(t, util.EqualSlices(pi.SyncedBranches, piBack.SyncedBranches))
-	})
 }

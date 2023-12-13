@@ -13,6 +13,7 @@ import (
 
 	"github.com/lunfardo314/proxima/api"
 	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/txbuilder"
 	"github.com/lunfardo314/proxima/utangle"
@@ -296,6 +297,14 @@ func (c *APIClient) GetSyncInfo() (utangle.SyncInfo, error) {
 		}
 	}
 	return ret, nil
+}
+
+func (c *APIClient) GetNodeInfo() (*global.NodeInfo, error) {
+	body, err := c.getBody(api.PathGetNodeInfo)
+	if err != nil {
+		return nil, err
+	}
+	return global.NodeInfoFromBytes(body)
 }
 
 func (c *APIClient) GetTransferableOutputs(account core.Accountable, ts core.LogicalTime, maxOutputs ...int) ([]*core.OutputWithID, uint64, error) {
