@@ -327,20 +327,19 @@ func TestPeerInfo(t *testing.T) {
 			ID:             RandomPeerID(),
 			NumStaticPeers: 5,
 			NumActivePeers: 3,
-			Sequencers:     nil,
-			SyncedBranches: nil,
 		}
-		jsonData, err := json.MarshalIndent(pi, "", " ")
+		jsonData, err := json.MarshalIndent(pi, "", "  ")
 		require.NoError(t, err)
 		t.Logf("json string:\n%s", string(jsonData))
 
-		piBack := PeerInfo{}
+		var piBack PeerInfo
 		err = json.Unmarshal(jsonData, &piBack)
 		require.NoError(t, err)
 		require.EqualValues(t, pi.Name, piBack.Name)
 		require.EqualValues(t, pi.ID, piBack.ID)
 		require.EqualValues(t, pi.NumStaticPeers, piBack.NumStaticPeers)
 		require.EqualValues(t, pi.NumActivePeers, piBack.NumActivePeers)
+
 		require.True(t, util.EqualSlices(pi.Sequencers, piBack.Sequencers))
 		require.True(t, util.EqualSlices(pi.SyncedBranches, piBack.SyncedBranches))
 	})
@@ -355,17 +354,18 @@ func TestPeerInfo(t *testing.T) {
 			Sequencers:     sequencers,
 			SyncedBranches: branches,
 		}
-		jsonData, err := json.MarshalIndent(pi, "", " ")
+		jsonData, err := json.MarshalIndent(pi, "", "  ")
 		require.NoError(t, err)
 		t.Logf("json string:\n%s", string(jsonData))
 
-		piBack := PeerInfo{}
+		var piBack PeerInfo
 		err = json.Unmarshal(jsonData, &piBack)
 		require.NoError(t, err)
 		require.EqualValues(t, pi.Name, piBack.Name)
 		require.EqualValues(t, pi.ID, piBack.ID)
 		require.EqualValues(t, pi.NumStaticPeers, piBack.NumStaticPeers)
 		require.EqualValues(t, pi.NumActivePeers, piBack.NumActivePeers)
+
 		require.True(t, util.EqualSlices(pi.Sequencers, piBack.Sequencers))
 		require.True(t, util.EqualSlices(pi.SyncedBranches, piBack.SyncedBranches))
 	})
