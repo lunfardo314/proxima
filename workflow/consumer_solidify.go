@@ -127,7 +127,9 @@ func (c *SolidifyConsumer) newTx(inp *SolidifyInputData) {
 		c.traceTx(pendingData.draftVertexData.PrimaryTransactionData, "newTx: send for validation")
 		return
 	}
-	c.traceTx(pendingData.draftVertexData.PrimaryTransactionData, "input transactions missing: %d", pendingData.draftVertexData.numMissingInputTxs)
+	c.traceTx(pendingData.draftVertexData.PrimaryTransactionData, "input transactions missing: %d (total inputs: %d, endorsements: %d)",
+		pendingData.draftVertexData.numMissingInputTxs, pendingData.draftVertexData.tx.NumInputs(), pendingData.draftVertexData.tx.NumEndorsements())
+
 	// pull what is missing. For branches and sequencer milestones it is a staged process
 	c.pullIfNeeded(pendingData.draftVertexData)
 
@@ -194,19 +196,26 @@ func (c *SolidifyConsumer) checkTx(txid core.TransactionID) {
 
 func (c *SolidifyConsumer) runSolidification(vd *draftVertexData) bool {
 	conflict := vd.vertex.FetchMissingDependencies(c.glb.utxoTangle)
-	if conflict == nil {
-		return true
+	if conflict != nil {
+		// there's conflict in the past cone. Cannot be solidified. Remove from solidifier
+		c.traceTx(vd.PrimaryTransactionData, "conflict", conflict.StringShort())
+		txid := vd.PrimaryTransactionData.tx.ID()
+		c.dropTxID(*txid)
+		c.glb.PostEventDropTxID(txid, c.Name(), "conflict %s", conflict.StringShort())
+		if vd.vertex.Tx.IsBranchTransaction() {
+			c.glb.utxoTangle.SyncData().UnEvidenceIncomingBranch(*txid)
+		}
+		vd.PrimaryTransactionData.eventCallback("finish."+SolidifyConsumerName, fmt.Errorf("conflict %s", conflict.StringShort()))
+		return false
 	}
-	// there's conflict in the past cone. Cannot be solidified. Remove from solidifier
-	c.traceTx(vd.PrimaryTransactionData, "conflict", conflict.StringShort())
-	txid := vd.PrimaryTransactionData.tx.ID()
-	c.dropTxID(*txid)
-	c.glb.PostEventDropTxID(txid, c.Name(), "conflict %s", conflict.StringShort())
-	if vd.vertex.Tx.IsBranchTransaction() {
-		c.glb.utxoTangle.SyncData().UnEvidenceIncomingBranch(*txid)
+
+	if vd.tx.IsSequencerMilestone() {
+		vd.sequencerPredAlreadyPulled = vd.sequencerPredAlreadyPulled || vd.vertex.IsSequencerInputSolid()
 	}
-	vd.PrimaryTransactionData.eventCallback("finish."+SolidifyConsumerName, fmt.Errorf("conflict %s", conflict.StringShort()))
-	return false
+	if vd.tx.IsBranchTransaction() {
+		vd.stemInputAlreadyPulled = vd.stemInputAlreadyPulled || vd.vertex.IsStemInputSolid()
+	}
+	return true
 }
 
 // dropTxID recursively removes txid from solidifier and all txid which directly or indirectly waiting for it
