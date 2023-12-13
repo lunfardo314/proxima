@@ -33,7 +33,7 @@ api:
 # usually none or 1 sequencer is configured for the node
 sequencers:
   seq1:
-    enable: true
+    enable: false
     loglevel: info
     # chain ID of the sequencer
     sequencer_id: f789b6a80f22162b197b70b6bcbdbec2a5202cf0b4c60d73d5c09004e11bf632

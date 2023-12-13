@@ -5,15 +5,12 @@ import (
 	"crypto/ed25519"
 	"encoding/hex"
 	"fmt"
-	"math/rand"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/host"
-	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/peerstore"
 	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
@@ -273,66 +270,6 @@ func (ps *Peers) getPeerIDsWithOpenComms() []peer.ID {
 	return ret
 }
 
-func (ps *Peers) gossipStreamHandler(stream network.Stream) {
-	id := stream.Conn().RemotePeer()
-	p := ps.getPeer(id)
-	if p == nil {
-		// peer not found
-		ps.log.Warnf("unknown peer %s", id.String())
-		_ = stream.Reset()
-		return
-	}
-
-	if !p.isCommunicationOpen() {
-		_ = stream.Reset()
-		return
-	}
-
-	txBytes, err := readFrame(stream)
-	if err != nil {
-		ps.log.Errorf("error while reading message from peer %s: %v", id.String(), err)
-		_ = stream.Reset()
-		return
-	}
-	defer stream.Close()
-
-	p.evidenceActivity(ps, "gossip")
-	ps.onReceiveGossip(id, txBytes)
-}
-
-func (ps *Peers) pullStreamHandler(stream network.Stream) {
-	id := stream.Conn().RemotePeer()
-	p := ps.getPeer(id)
-	if p == nil {
-		// peer not found
-		ps.log.Warnf("unknown peer %s", id.String())
-		_ = stream.Reset()
-		return
-	}
-
-	if !p.isCommunicationOpen() {
-		_ = stream.Reset()
-		return
-	}
-
-	msgData, err := readFrame(stream)
-	if err != nil {
-		ps.log.Errorf("error while reading message from peer %s: %v", id.String(), err)
-		_ = stream.Reset()
-		return
-	}
-	defer stream.Close()
-
-	txLst, err := decodePeerMsgPull(msgData)
-	if err != nil {
-		ps.log.Errorf("error while decoding pull message from peer %s: %v", id.String(), err)
-		return
-	}
-
-	p.evidenceActivity(ps, "pull")
-	ps.onReceivePull(id, txLst)
-}
-
 func (ps *Peers) PeerIsAlive(id peer.ID) bool {
 	p := ps.getPeer(id)
 	if p == nil {
@@ -347,96 +284,4 @@ func (ps *Peers) PeerName(id peer.ID) string {
 		return "(unknown peer)"
 	}
 	return p.name
-}
-
-func (ps *Peers) sendPullToPeer(id peer.ID, txLst ...core.TransactionID) {
-	stream, err := ps.host.NewStream(ps.ctx, id, lppProtocolPull)
-	if err != nil {
-		return
-	}
-	defer stream.Close()
-
-	_ = writeFrame(stream, encodePeerMsgPull(txLst...))
-}
-
-// PullTransactionsFromRandomPeer sends pull request to the random peer which has txStore
-func (ps *Peers) PullTransactionsFromRandomPeer(txids ...core.TransactionID) bool {
-	if len(txids) == 0 {
-		return false
-	}
-	ps.mutex.RLock()
-	defer ps.mutex.RUnlock()
-
-	all := util.Keys(ps.peers)
-	for _, idx := range rand.Perm(len(all)) {
-		rndID := all[idx]
-		p := ps.peers[rndID]
-		if p.isCommunicationOpen() && p.isAlive() && p.HasTxStore() {
-			global.TracePull(ps.log, "pull from random peer %s: %s",
-				func() any { return ShortPeerIDString(rndID) },
-				func() any { return _txidLst(txids...) },
-			)
-
-			ps.sendPullToPeer(rndID, txids...)
-			return true
-		}
-	}
-	return false
-}
-
-func _txidLst(txids ...core.TransactionID) string {
-	ret := make([]string, len(txids))
-	for i := range ret {
-		ret[i] = txids[i].StringShort()
-	}
-	return strings.Join(ret, ",")
-}
-
-func (ps *Peers) GossipTxBytesToPeers(txBytes []byte, except ...peer.ID) int {
-	ps.mutex.RLock()
-	defer ps.mutex.RUnlock()
-
-	countSent := 0
-	for id, p := range ps.peers {
-		if !p.isCommunicationOpen() {
-			continue
-		}
-		if len(except) > 0 && id == except[0] {
-			continue
-		}
-		if !p.isAlive() {
-			continue
-		}
-		if ps.SendTxBytesToPeer(id, txBytes) {
-			countSent++
-		}
-	}
-	return countSent
-}
-
-func (ps *Peers) SendTxBytesToPeer(id peer.ID, txBytes []byte) bool {
-	ps.trace("SendTxBytesToPeer to %s, length: %d (host %s)",
-		func() any { return ShortPeerIDString(id) },
-		len(txBytes),
-		func() any { return ShortPeerIDString(ps.host.ID()) },
-	)
-
-	if p := ps.getPeer(id); p == nil || !p.isCommunicationOpen() {
-		return false
-	}
-
-	stream, err := ps.host.NewStream(ps.ctx, id, lppProtocolGossip)
-	if err != nil {
-		ps.trace("SendTxBytesToPeer to %s: %v (host %s)",
-			func() any { return ShortPeerIDString(id) }, err,
-			func() any { return ShortPeerIDString(ps.host.ID()) },
-		)
-		return false
-	}
-	defer stream.Close()
-
-	if err = writeFrame(stream, txBytes); err != nil {
-		ps.trace("SendTxBytesToPeer.writeFrame to %s: %v (host %s)", ShortPeerIDString(id), err, ShortPeerIDString(ps.host.ID()))
-	}
-	return err == nil
 }
