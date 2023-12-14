@@ -17,6 +17,7 @@ import (
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/genesis"
 	"github.com/lunfardo314/proxima/global"
+	"github.com/lunfardo314/proxima/txmetadata"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/multiformats/go-multiaddr"
 	"github.com/spf13/viper"
@@ -45,7 +46,7 @@ type (
 		stopOnce          sync.Once
 		host              host.Host
 		peers             map[peer.ID]*Peer // except self
-		onReceiveGossip   func(from peer.ID, txBytes []byte)
+		onReceiveTx       func(from peer.ID, txBytes []byte, mdata *txmetadata.TransactionMetadata)
 		onReceivePullTx   func(from peer.ID, txids []core.TransactionID)
 		onReceivePullTips func(from peer.ID)
 		traceFlag         atomic.Bool
@@ -77,7 +78,7 @@ const (
 func NewPeersDummy() *Peers {
 	return &Peers{
 		peers:             make(map[peer.ID]*Peer),
-		onReceiveGossip:   func(_ peer.ID, _ []byte) {},
+		onReceiveTx:       func(_ peer.ID, _ []byte, _ *txmetadata.TransactionMetadata) {},
 		onReceivePullTx:   func(_ peer.ID, _ []core.TransactionID) {},
 		onReceivePullTips: func(_ peer.ID) {},
 	}
@@ -105,7 +106,7 @@ func New(cfg *Config, ctx context.Context) (*Peers, error) {
 		stopHeartbeatChan: make(chan struct{}),
 		host:              lppHost,
 		peers:             make(map[peer.ID]*Peer),
-		onReceiveGossip:   func(_ peer.ID, _ []byte) {},
+		onReceiveTx:       func(_ peer.ID, _ []byte, _ *txmetadata.TransactionMetadata) {},
 		onReceivePullTx:   func(_ peer.ID, _ []core.TransactionID) {},
 		onReceivePullTips: func(_ peer.ID) {},
 	}
@@ -233,11 +234,11 @@ func (ps *Peers) trace(format string, args ...any) {
 	}
 }
 
-func (ps *Peers) OnReceiveTxBytes(fun func(from peer.ID, txBytes []byte)) {
+func (ps *Peers) OnReceiveTxBytes(fun func(from peer.ID, txBytes []byte, metadata *txmetadata.TransactionMetadata)) {
 	ps.mutex.Lock()
 	defer ps.mutex.Unlock()
 
-	ps.onReceiveGossip = fun
+	ps.onReceiveTx = fun
 }
 
 func (ps *Peers) OnReceivePullRequest(fun func(from peer.ID, txids []core.TransactionID)) {

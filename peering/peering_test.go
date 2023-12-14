@@ -11,6 +11,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/txmetadata"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/countdown"
 	"github.com/lunfardo314/proxima/util/set"
@@ -104,7 +105,7 @@ func TestSendMsg(t *testing.T) {
 
 		for _, h := range hosts {
 			h1 := h
-			h.OnReceiveTxBytes(func(from peer.ID, txBytes []byte) {
+			h.OnReceiveTxBytes(func(from peer.ID, txBytes []byte, _ *txmetadata.TransactionMetadata) {
 				t.Logf("host %s received %d bytes from %s", h1.host.ID().String(), len(txBytes), from.String())
 			})
 		}
@@ -113,7 +114,7 @@ func TestSendMsg(t *testing.T) {
 		}
 		time.Sleep(1 * time.Second)
 		for i, id := range hosts[0].getPeerIDs() {
-			ok := hosts[0].SendTxBytesToPeer(id, bytes.Repeat([]byte{0xff}, i+5))
+			ok := hosts[0].SendTxBytesToPeer(id, bytes.Repeat([]byte{0xff}, i+5), nil)
 			require.True(t, ok)
 		}
 		time.Sleep(1 * time.Second)
@@ -132,7 +133,7 @@ func TestSendMsg(t *testing.T) {
 		counter1 := 0
 		for _, h := range hosts {
 			h1 := h
-			h1.OnReceiveTxBytes(func(from peer.ID, txBytes []byte) {
+			h1.OnReceiveTxBytes(func(from peer.ID, txBytes []byte, _ *txmetadata.TransactionMetadata) {
 				counter1++
 				counter.Tick()
 			})
@@ -147,7 +148,7 @@ func TestSendMsg(t *testing.T) {
 		t.Logf("num peers: %d", len(ids))
 		for _, id := range ids {
 			for i := 0; i < numMsg; i++ {
-				ok := hosts[0].SendTxBytesToPeer(id, []byte{0xff, 0xff})
+				ok := hosts[0].SendTxBytesToPeer(id, []byte{0xff, 0xff}, nil)
 				require.True(t, ok)
 				count++
 			}
@@ -172,7 +173,7 @@ func TestSendMsg(t *testing.T) {
 		counter1 := 0
 		for _, h := range hosts {
 			h1 := h
-			h1.OnReceiveTxBytes(func(from peer.ID, txBytes []byte) {
+			h1.OnReceiveTxBytes(func(from peer.ID, txBytes []byte, _ *txmetadata.TransactionMetadata) {
 				counter1++
 				counter.Tick()
 			})
@@ -190,7 +191,7 @@ func TestSendMsg(t *testing.T) {
 				t.Logf("num peers: %d", len(ids))
 				for _, id := range ids {
 					for i := 0; i < numMsg; i++ {
-						ok := h1.SendTxBytesToPeer(id, []byte{0xff, 0xff})
+						ok := h1.SendTxBytesToPeer(id, []byte{0xff, 0xff}, nil)
 						require.True(t, ok)
 						count++
 					}
@@ -220,7 +221,7 @@ func TestSendMsg(t *testing.T) {
 		counter1 := 0
 		for _, h := range hosts {
 			h1 := h
-			h1.OnReceiveTxBytes(func(from peer.ID, txBytes []byte) {
+			h1.OnReceiveTxBytes(func(from peer.ID, txBytes []byte, _ *txmetadata.TransactionMetadata) {
 				counter1++
 				counter.Tick()
 			})
@@ -234,7 +235,7 @@ func TestSendMsg(t *testing.T) {
 			h1 := h
 			go func() {
 				for i := 0; i < numMsg; i++ {
-					h1.GossipTxBytesToPeers([]byte{0xff, 0xff})
+					h1.GossipTxBytesToPeers([]byte{0xff, 0xff}, nil)
 				}
 			}()
 		}
@@ -268,11 +269,11 @@ func TestSendMsg(t *testing.T) {
 
 				for i := range txids {
 					require.True(t, txSet.Contains(txids[i]))
-					go h1.SendTxBytesToPeer(from, txids[i][:])
+					go h1.SendTxBytesToPeer(from, txids[i][:], nil)
 				}
 			})
 
-			h1.OnReceiveTxBytes(func(from peer.ID, txBytes []byte) {
+			h1.OnReceiveTxBytes(func(from peer.ID, txBytes []byte, _ *txmetadata.TransactionMetadata) {
 				require.True(t, len(txBytes) == 32)
 				var txid core.TransactionID
 				copy(txid[:], txBytes)

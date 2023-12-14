@@ -12,6 +12,7 @@ import (
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/peering"
 	"github.com/lunfardo314/proxima/transaction"
+	"github.com/lunfardo314/proxima/txmetadata"
 	"github.com/lunfardo314/proxima/utangle"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/consumer"
@@ -97,7 +98,7 @@ func New(ut *utangle.UTXOTangle, peers *peering.Peers, txBytesStore global.TxByt
 	ret.initRespondTxQueryConsumer()
 	ret.initGossipSendConsumer()
 
-	ret.peers.OnReceiveTxBytes(func(from peer.ID, txBytes []byte) {
+	ret.peers.OnReceiveTxBytes(func(from peer.ID, txBytes []byte, _ *txmetadata.TransactionMetadata) {
 		if !ret.working.Load() {
 			return
 		}
