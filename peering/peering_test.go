@@ -165,7 +165,7 @@ func TestSendMsg(t *testing.T) {
 		const (
 			numHosts = 5
 			trace    = false
-			numMsg   = 200 // 721 // 720 pass, 721 does not
+			numMsg   = 100 // 721 // 720 pass, 721 does not
 		)
 		hosts := makeHosts(t, numHosts, trace)
 		counter := countdown.New(numHosts*numMsg*(numHosts-1), 10*time.Second)

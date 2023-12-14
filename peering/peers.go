@@ -46,7 +46,8 @@ type (
 		host              host.Host
 		peers             map[peer.ID]*Peer // except self
 		onReceiveGossip   func(from peer.ID, txBytes []byte)
-		onReceivePull     func(from peer.ID, txids []core.TransactionID)
+		onReceivePullTx   func(from peer.ID, txids []core.TransactionID)
+		onReceivePullTips func(from peer.ID)
 		traceFlag         atomic.Bool
 	}
 
@@ -75,9 +76,10 @@ const (
 
 func NewPeersDummy() *Peers {
 	return &Peers{
-		peers:           make(map[peer.ID]*Peer),
-		onReceiveGossip: func(_ peer.ID, _ []byte) {},
-		onReceivePull:   func(_ peer.ID, _ []core.TransactionID) {},
+		peers:             make(map[peer.ID]*Peer),
+		onReceiveGossip:   func(_ peer.ID, _ []byte) {},
+		onReceivePullTx:   func(_ peer.ID, _ []core.TransactionID) {},
+		onReceivePullTips: func(_ peer.ID) {},
 	}
 }
 
@@ -104,7 +106,8 @@ func New(cfg *Config, ctx context.Context) (*Peers, error) {
 		host:              lppHost,
 		peers:             make(map[peer.ID]*Peer),
 		onReceiveGossip:   func(_ peer.ID, _ []byte) {},
-		onReceivePull:     func(_ peer.ID, _ []core.TransactionID) {},
+		onReceivePullTx:   func(_ peer.ID, _ []core.TransactionID) {},
+		onReceivePullTips: func(_ peer.ID) {},
 	}
 
 	for name, maddr := range cfg.KnownPeers {
@@ -241,7 +244,7 @@ func (ps *Peers) OnReceivePullRequest(fun func(from peer.ID, txids []core.Transa
 	ps.mutex.Lock()
 	defer ps.mutex.Unlock()
 
-	ps.onReceivePull = fun
+	ps.onReceivePullTx = fun
 }
 
 func (ps *Peers) getPeer(id peer.ID) *Peer {
