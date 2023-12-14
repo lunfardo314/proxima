@@ -98,12 +98,13 @@ func New(ut *utangle.UTXOTangle, peers *peering.Peers, txBytesStore global.TxByt
 	ret.initRespondTxQueryConsumer()
 	ret.initGossipSendConsumer()
 
-	ret.peers.OnReceiveTxBytes(func(from peer.ID, txBytes []byte, _ *txmetadata.TransactionMetadata) {
+	ret.peers.OnReceiveTxBytes(func(from peer.ID, txBytes []byte, txMetadata *txmetadata.TransactionMetadata) {
 		if !ret.working.Load() {
 			return
 		}
 		err := ret.TransactionIn(txBytes,
 			WithTransactionSourcePeer(from),
+			WithTransactionMetadata(txMetadata),
 			WithTraceCondition(func(tx *transaction.Transaction, _ TransactionSource, _ peer.ID) bool {
 				return tx.IsSequencerMilestone()
 			},

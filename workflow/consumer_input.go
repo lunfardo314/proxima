@@ -7,6 +7,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/transaction"
+	"github.com/lunfardo314/proxima/txmetadata"
 	"github.com/lunfardo314/proxima/util/eventtype"
 	"github.com/lunfardo314/proxima/util/seenset"
 )
@@ -22,7 +23,8 @@ type (
 	// PrimaryTransactionData is an input message type for this consumer
 	PrimaryTransactionData struct {
 		tx               *transaction.Transaction
-		source           TransactionSource
+		source           TransactionSource // TODO remove ??
+		txMetadata       *txmetadata.TransactionMetadata
 		receivedFromPeer peer.ID
 		receivedWhen     time.Time
 		doNotGossip      bool

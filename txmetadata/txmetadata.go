@@ -23,6 +23,7 @@ type TransactionMetadata struct {
 const (
 	SendTypeFromSequencer = byte(iota)
 	SendTypeFromAPISource
+	SendTypeFromTxStore
 	SendTypeResponseToPull
 	SendTypeForward
 )

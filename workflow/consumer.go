@@ -83,5 +83,6 @@ func (c *Consumer[T]) GossipTransactionIfNeeded(inp *PrimaryTransactionData) {
 	c.glb.txGossipOutConsumer.Push(TxGossipSendInputData{
 		PrimaryTransactionData: inp,
 		ReceivedFrom:           inp.receivedFromPeer,
+		Metadata:               inp.txMetadata,
 	})
 }

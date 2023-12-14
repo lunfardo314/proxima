@@ -5,6 +5,7 @@ import (
 
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/transaction"
+	"github.com/lunfardo314/proxima/txmetadata"
 	"github.com/lunfardo314/proxima/util/wait"
 )
 
@@ -105,7 +106,8 @@ func (c *PreValidateConsumer) consume(inp *PreValidateConsumerInputData) {
 		})
 		return
 	}
-
+	responseToPull := inp.txMetadata != nil && inp.txMetadata.SendType == txmetadata.SendTypeResponseToPull
+	inp.doNotGossip = responseToPull || inp.source == TransactionSourceStore
 	c.GossipTransactionIfNeeded(inp.PrimaryTransactionData)
 
 	out := &SolidifyInputData{

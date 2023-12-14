@@ -9,6 +9,7 @@ import (
 
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/lunfardo314/proxima/transaction"
+	"github.com/lunfardo314/proxima/txmetadata"
 	"github.com/lunfardo314/proxima/utangle"
 	"github.com/lunfardo314/proxima/util"
 )
@@ -35,13 +36,14 @@ func (w *Workflow) TransactionInReturnTx(txBytes []byte, opts ...TransactionInOp
 		opt(inData)
 	}
 
-	w.pullConsumer.stopPulling(tx.ID())
-	// prevent unnecessary dissemination via gossip
-	inData.doNotGossip = false
-	if inData.source == TransactionSourcePeer {
-		inData.doNotGossip = w.pullConsumer.isBeingPulled(tx.ID())
+	responseToPull := inData.txMetadata != nil && inData.txMetadata.SendType == txmetadata.SendTypeResponseToPull
+	util.Assertf(!responseToPull || inData.source == TransactionSourcePeer, "!responseToPull || inData.source == TransactionSourcePeer")
+
+	if responseToPull {
+		w.pullConsumer.stopPulling(tx.ID())
 	}
-	priority := inData.doNotGossip || inData.source == TransactionSourceStore
+
+	priority := responseToPull || inData.source == TransactionSourceStore
 	w.primaryInputConsumer.Push(inData, priority) // priority for pulled
 	return tx, nil
 }
@@ -58,6 +60,12 @@ func newPrimaryInputConsumerData(tx *transaction.Transaction) *PrimaryTransactio
 func WithTransactionSource(src TransactionSource) TransactionInOption {
 	return func(data *PrimaryTransactionData) {
 		data.source = src
+	}
+}
+
+func WithTransactionMetadata(metadata *txmetadata.TransactionMetadata) TransactionInOption {
+	return func(data *PrimaryTransactionData) {
+		data.txMetadata = metadata
 	}
 }
 
