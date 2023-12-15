@@ -26,6 +26,8 @@ type (
 		consumers map[byte][]*WrappedTx
 		// descendants is a list of consumers and endorsers, repeated once
 		endorsers []*WrappedTx
+		//
+		txStatus TxStatus
 	}
 
 	WrappedOutput struct {
@@ -72,6 +74,14 @@ type (
 		TxID      func(txid *core.TransactionID)
 		Orphaned  func(vidCur *WrappedTx) bool
 	}
+
+	TxStatus byte
+)
+
+const (
+	TxStatusUndefined = TxStatus(iota)
+	TxStatusGood
+	TxStatusBad
 )
 
 // ErrDeletedVertexAccessed exception is raised by PanicAccessDeleted handler of Unwrap vertex so that could be caught if necessary
@@ -163,6 +173,20 @@ func (vid *WrappedTx) ID() *core.TransactionID {
 	defer vid.mutex.RUnlock()
 
 	return vid._genericWrapper._id()
+}
+
+func (vid *WrappedTx) GetTxStatus() TxStatus {
+	vid.mutex.RLock()
+	defer vid.mutex.RUnlock()
+
+	return vid.txStatus
+}
+
+func (vid *WrappedTx) SetTxStatus(s TxStatus) {
+	vid.mutex.Lock()
+	defer vid.mutex.Unlock()
+
+	vid.txStatus = s
 }
 
 func WrapTxID(txid *core.TransactionID) *WrappedTx {
@@ -313,16 +337,6 @@ func (vid *WrappedTx) BaseStemOutput(ut *UTXOTangle) *WrappedOutput {
 	util.Assertf(found && !invalid, "found & !invalid")
 
 	return &ret
-}
-
-func (vid *WrappedTx) UnwrapVertexForReadOnly() (ret *Vertex, retOk bool) {
-	vid.Unwrap(UnwrapOptions{
-		Vertex: func(v *Vertex) {
-			ret = v
-			retOk = true
-		},
-	})
-	return
 }
 
 func (vid *WrappedTx) UnwrapTransaction() *transaction.Transaction {
