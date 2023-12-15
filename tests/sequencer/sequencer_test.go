@@ -218,7 +218,7 @@ func (r *sequencerTestData) makeFaucetTransaction(targetSeqID core.ChainID, fauc
 
 	tx, err := transaction.FromBytesMainChecksWithOpt(txb.TransactionData.Bytes())
 	r.faucetOutputs[faucetIdx] = tx.MustProducedOutputWithIDAt(remainderIdx)
-	//r.t.Logf("++++++ tx %s\n%s", tx.IDShort(), tx.ProducedOutputsToString())
+	//r.t.Logf("++++++ tx %s\n%s", tx.IDShortString(), tx.ProducedOutputsToString())
 	return tx
 }
 
@@ -683,7 +683,7 @@ func TestNSequencers(t *testing.T) {
 				//rdr := r.wrk.UTXOTangle().MustGetIndexedStateReader(chainOriginVID.ID())
 				//o1, err := rdr.GetUTXOForChainID(&o.ChainID)
 				//require.NoError(t, err)
-				//t.Logf("branch: %s, chainID: %s, oid: %s", chainOriginVID.IDShort(), o.ChainID.StringVeryShort(), o1.ID.StringShort())
+				//t.Logf("branch: %s, chainID: %s, oid: %s", chainOriginVID.IDShortString(), o.ChainID.StringVeryShort(), o1.ID.StringShort())
 			}
 			require.True(t, chainOriginVID == nil)
 		}
@@ -948,7 +948,7 @@ func TestNSequencers(t *testing.T) {
 				//rdr := r.wrk.UTXOTangle().MustGetIndexedStateReader(branchVID.ID())
 				//o1, err := rdr.GetUTXOForChainID(&o.ChainID)
 				//require.NoError(t, err)
-				//t.Logf("branch: %s, chainID: %s, oid: %s", branchVID.IDShort(), o.ChainID.StringVeryShort(), o1.ID.StringShort())
+				//t.Logf("branch: %s, chainID: %s, oid: %s", branchVID.IDShortString(), o.ChainID.StringVeryShort(), o1.ID.StringShort())
 			}
 			require.True(t, chainOriginVID == nil)
 		}
@@ -1017,7 +1017,7 @@ func TestNSequencers(t *testing.T) {
 				//rdr := r.wrk.UTXOTangle().MustGetIndexedStateReader(branchVID.ID())
 				//o1, err := rdr.GetUTXOForChainID(&o.ChainID)
 				//require.NoError(t, err)
-				//t.Logf("branch: %s, chainID: %s, oid: %s", branchVID.IDShort(), o.ChainID.StringVeryShort(), o1.ID.StringShort())
+				//t.Logf("branch: %s, chainID: %s, oid: %s", branchVID.IDShortString(), o.ChainID.StringVeryShort(), o1.ID.StringShort())
 			}
 			require.True(t, chainOriginVID == nil)
 		}

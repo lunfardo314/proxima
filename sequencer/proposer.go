@@ -171,7 +171,7 @@ func (c *proposerTaskGeneric) assessAndAcceptProposal(tx *transaction.Transactio
 	}
 
 	//c.setTraceNAhead(1)
-	//c.trace("LedgerCoverageFromTransaction %s = %d", tx.IDShort(), coverage)
+	//c.trace("LedgerCoverageFromTransaction %s = %d", tx.IDShortString(), coverage)
 
 	msData := &proposedMilestoneWithData{
 		tx:         tx,

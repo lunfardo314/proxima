@@ -1108,7 +1108,7 @@ func TestMultiChainWorkflow(t *testing.T) {
 		})
 		var listenCounter atomic.Uint32
 		err := wrk.Events().ListenSequencer(r.chainOrigins[0].ChainID, func(vid *utangle.WrappedTx) {
-			//t.Logf("listen seq %s: %s", r.chainOrigins[0].ChainID.StringShort(), vertex.Tx.IDShort())
+			//t.Logf("listen seq %s: %s", r.chainOrigins[0].ChainID.StringShort(), vertex.Tx.IDShortString())
 			listenCounter.Inc()
 		})
 
@@ -1219,9 +1219,9 @@ func TestMultiChainWorkflow(t *testing.T) {
 				tx, err := transaction.FromBytes(txBytes)
 				require.NoError(r.t, err)
 				//if tx.IsBranchTransaction() {
-				//	t.Logf("append seq = %d, # = %d txid = %s <-- branch transaction", seqIdx, i, tx.IDShort())
+				//	t.Logf("append seq = %d, # = %d txid = %s <-- branch transaction", seqIdx, i, tx.IDShortString())
 				//} else {
-				//	t.Logf("append seq = %d, # = %d txid = %s", seqIdx, i, tx.IDShort())
+				//	t.Logf("append seq = %d, # = %d txid = %s", seqIdx, i, tx.IDShortString())
 				//}
 				if tx.IsBranchTransaction() {
 					if printBranchTx {
@@ -1280,9 +1280,9 @@ func TestMultiChainWorkflow(t *testing.T) {
 				tx, err := transaction.FromBytes(txBytes)
 				require.NoError(r.t, err)
 				//if tx.IsBranchTransaction() {
-				//	t.Logf("append seq = %d, # = %d txid = %s <-- branch transaction", seqIdx, i, tx.IDShort())
+				//	t.Logf("append seq = %d, # = %d txid = %s <-- branch transaction", seqIdx, i, tx.IDShortString())
 				//} else {
-				//	t.Logf("append seq = %d, # = %d txid = %s", seqIdx, i, tx.IDShort())
+				//	t.Logf("append seq = %d, # = %d txid = %s", seqIdx, i, tx.IDShortString())
 				//}
 				if tx.IsBranchTransaction() {
 					if printBranchTx {
@@ -1382,9 +1382,9 @@ func TestMultiChainWorkflow(t *testing.T) {
 				tx, err := transaction.FromBytes(txBytes)
 				require.NoError(r.t, err)
 				//if tx.IsBranchTransaction() {
-				//	t.Logf("append seq = %d, # = %d txid = %s <-- branch transaction", seqIdx, i, tx.IDShort())
+				//	t.Logf("append seq = %d, # = %d txid = %s <-- branch transaction", seqIdx, i, tx.IDShortString())
 				//} else {
-				//	t.Logf("append seq = %d, # = %d txid = %s", seqIdx, i, tx.IDShort())
+				//	t.Logf("append seq = %d, # = %d txid = %s", seqIdx, i, tx.IDShortString())
 				//}
 				if tx.IsBranchTransaction() {
 					if printBranchTx {
@@ -1434,9 +1434,9 @@ func TestMultiChainWorkflow(t *testing.T) {
 			tx, err := transaction.FromBytes(txBytes)
 			require.NoError(r.t, err)
 			//if tx.IsBranchTransaction() {
-			//	t.Logf("append seq = %d, # = %d txid = %s <-- branch transaction", seqIdx, i, tx.IDShort())
+			//	t.Logf("append seq = %d, # = %d txid = %s <-- branch transaction", seqIdx, i, tx.IDShortString())
 			//} else {
-			//	t.Logf("append seq = %d, # = %d txid = %s", seqIdx, i, tx.IDShort())
+			//	t.Logf("append seq = %d, # = %d txid = %s", seqIdx, i, tx.IDShortString())
 			//}
 			if tx.IsBranchTransaction() {
 				if printBranchTx {
@@ -1490,9 +1490,9 @@ func TestMultiChainWorkflow(t *testing.T) {
 			tx, err := transaction.FromBytes(txBytes)
 			require.NoError(r.t, err)
 			//if tx.IsBranchTransaction() {
-			//	t.Logf("append seq = %d, # = %d txid = %s <-- branch transaction", seqIdx, i, tx.IDShort())
+			//	t.Logf("append seq = %d, # = %d txid = %s <-- branch transaction", seqIdx, i, tx.IDShortString())
 			//} else {
-			//	t.Logf("append seq = %d, # = %d txid = %s", seqIdx, i, tx.IDShort())
+			//	t.Logf("append seq = %d, # = %d txid = %s", seqIdx, i, tx.IDShortString())
 			//}
 			if tx.IsBranchTransaction() {
 				if printBranchTx {
@@ -1538,9 +1538,9 @@ func TestMultiChainWorkflow(t *testing.T) {
 			tx, err := transaction.FromBytes(txBytes)
 			require.NoError(r.t, err)
 			//if tx.IsBranchTransaction() {
-			//	t.Logf("append seq = %d, # = %d txid = %s <-- branch transaction", seqIdx, i, tx.IDShort())
+			//	t.Logf("append seq = %d, # = %d txid = %s <-- branch transaction", seqIdx, i, tx.IDShortString())
 			//} else {
-			//	t.Logf("append seq = %d, # = %d txid = %s", seqIdx, i, tx.IDShort())
+			//	t.Logf("append seq = %d, # = %d txid = %s", seqIdx, i, tx.IDShortString())
 			//}
 			if tx.IsBranchTransaction() {
 				if printBranchTx {

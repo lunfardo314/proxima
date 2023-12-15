@@ -661,9 +661,9 @@ func TestMultiChain(t *testing.T) {
 				tx, err := transaction.FromBytes(txBytes)
 				require.NoError(r.t, err)
 				//if tx.IsBranchTransaction() {
-				//	t.Logf("append seq = %d, # = %d txid = %s <-- branch transaction", seqIdx, i, tx.IDShort())
+				//	t.Logf("append seq = %d, # = %d txid = %s <-- branch transaction", seqIdx, i, tx.IDShortString())
 				//} else {
-				//	t.Logf("append seq = %d, # = %d txid = %s", seqIdx, i, tx.IDShort())
+				//	t.Logf("append seq = %d, # = %d txid = %s", seqIdx, i, tx.IDShortString())
 				//}
 				if tx.IsBranchTransaction() {
 					if printBranchTx {
@@ -713,9 +713,9 @@ func TestMultiChain(t *testing.T) {
 				tx, err := transaction.FromBytes(txBytes)
 				require.NoError(r.t, err)
 				//if tx.IsBranchTransaction() {
-				//	t.Logf("append seq = %d, # = %d txid = %s <-- branch transaction", seqIdx, i, tx.IDShort())
+				//	t.Logf("append seq = %d, # = %d txid = %s <-- branch transaction", seqIdx, i, tx.IDShortString())
 				//} else {
-				//	t.Logf("append seq = %d, # = %d txid = %s", seqIdx, i, tx.IDShort())
+				//	t.Logf("append seq = %d, # = %d txid = %s", seqIdx, i, tx.IDShortString())
 				//}
 				if tx.IsBranchTransaction() {
 					if printBranchTx {
@@ -789,9 +789,9 @@ func TestMultiChain(t *testing.T) {
 			tx, err := transaction.FromBytes(txBytes)
 			require.NoError(r.t, err)
 			//if tx.IsBranchTransaction() {
-			//	t.Logf("append seq = %d, # = %d txid = %s <-- branch transaction", seqIdx, i, tx.IDShort())
+			//	t.Logf("append seq = %d, # = %d txid = %s <-- branch transaction", seqIdx, i, tx.IDShortString())
 			//} else {
-			//	t.Logf("append seq = %d, # = %d txid = %s", seqIdx, i, tx.IDShort())
+			//	t.Logf("append seq = %d, # = %d txid = %s", seqIdx, i, tx.IDShortString())
 			//}
 			if tx.IsBranchTransaction() {
 				if printBranchTx {
@@ -828,9 +828,9 @@ func TestMultiChain(t *testing.T) {
 			tx, err := transaction.FromBytes(txBytes)
 			require.NoError(r.t, err)
 			//if tx.IsBranchTransaction() {
-			//	t.Logf("append seq = %d, # = %d txid = %s <-- branch transaction", seqIdx, i, tx.IDShort())
+			//	t.Logf("append seq = %d, # = %d txid = %s <-- branch transaction", seqIdx, i, tx.IDShortString())
 			//} else {
-			//	t.Logf("append seq = %d, # = %d txid = %s", seqIdx, i, tx.IDShort())
+			//	t.Logf("append seq = %d, # = %d txid = %s", seqIdx, i, tx.IDShortString())
 			//}
 			if tx.IsBranchTransaction() {
 				if printBranchTx {
@@ -865,9 +865,9 @@ func TestMultiChain(t *testing.T) {
 			tx, err := transaction.FromBytes(txBytes)
 			require.NoError(r.t, err)
 			//if tx.IsBranchTransaction() {
-			//	t.Logf("append seq = %d, # = %d txid = %s <-- branch transaction", seqIdx, i, tx.IDShort())
+			//	t.Logf("append seq = %d, # = %d txid = %s <-- branch transaction", seqIdx, i, tx.IDShortString())
 			//} else {
-			//	t.Logf("append seq = %d, # = %d txid = %s", seqIdx, i, tx.IDShort())
+			//	t.Logf("append seq = %d, # = %d txid = %s", seqIdx, i, tx.IDShortString())
 			//}
 			if tx.IsBranchTransaction() {
 				if printBranchTx {
