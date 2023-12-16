@@ -204,7 +204,7 @@ func (v *Vertex) Wrap() *WrappedTx {
 func (v *Vertex) WrapIntoTxID(vid *WrappedTx) {
 	vid.Unwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
-			util.Panicf("WrapIntoTxID: 'TxID' expected, got 'Vertex' in %s", v.Tx.IDShort())
+			util.Panicf("WrapIntoTxID: 'TxID' expected, got 'Vertex' in %s", v.Tx.IDShortString())
 		},
 		VirtualTx: func(v *VirtualTransaction) {
 			util.Panicf("WrapIntoTxID: 'TxID' expected, got 'VirtualTx' in %s", v.txid.StringShort())

@@ -731,7 +731,7 @@ func (r *multiChainTestData) createSequencerChain1(chainIdx int, pace int, print
 			if prevTs.TimeSlot() != curTs.TimeSlot() {
 				ce = "(cross-slot)"
 			}
-			r.t.Logf("tx %d : %s    %s", i, tx.IDShort(), ce)
+			r.t.Logf("tx %d : %s    %s", i, tx.IDShortString(), ce)
 		}
 
 		require.True(r.t, tx.IsSequencerMilestone())
@@ -774,7 +774,7 @@ func (r *multiChainTestData) createSequencerChains1(pace int, howLong int) [][]b
 		sequences[counter] = []*transaction.Transaction{tx}
 		ret = append(ret, txBytes)
 		r.t.Logf("chain #%d, ID: %s, origin: %s, seq start: %s",
-			counter, r.chainOrigins[counter].ChainID.Short(), r.chainOrigins[counter].ID.StringShort(), tx.IDShort())
+			counter, r.chainOrigins[counter].ChainID.Short(), r.chainOrigins[counter].ID.StringShort(), tx.IDShortString())
 		counter++
 	}
 
@@ -830,10 +830,10 @@ func (r *multiChainTestData) createSequencerChains1(pace int, howLong int) [][]b
 
 		if stemOut == nil {
 			r.t.Logf("%d : chain #%d, txid: %s, endorse(%d): %s, timestamp: %s",
-				i, nextChainIdx, tx.IDShort(), curChainIdx, endorse[0].StringShort(), tx.Timestamp().String())
+				i, nextChainIdx, tx.IDShortString(), curChainIdx, endorse[0].StringShort(), tx.Timestamp().String())
 		} else {
 			r.t.Logf("%d : chain #%d, txid: %s, timestamp: %s <- branch tx",
-				i, nextChainIdx, tx.IDShort(), tx.Timestamp().String())
+				i, nextChainIdx, tx.IDShortString(), tx.Timestamp().String())
 		}
 		curChainIdx = nextChainIdx
 	}
@@ -862,7 +862,7 @@ func (r *multiChainTestData) createSequencerChains2(pace int, howLong int) [][]b
 		sequences[counter] = []*transaction.Transaction{tx}
 		ret = append(ret, txBytes)
 		r.t.Logf("chain #%d, ID: %s, origin: %s, seq start: %s",
-			counter, r.chainOrigins[counter].ChainID.Short(), r.chainOrigins[counter].ID.StringShort(), tx.IDShort())
+			counter, r.chainOrigins[counter].ChainID.Short(), r.chainOrigins[counter].ID.StringShort(), tx.IDShortString())
 		counter++
 	}
 
@@ -939,10 +939,10 @@ func (r *multiChainTestData) createSequencerChains2(pace int, howLong int) [][]b
 				lst = append(lst, txid.StringShort())
 			}
 			r.t.Logf("%d : chain #%d, txid: %s, ts: %s, endorse: (%s)",
-				i, nextChainIdx, tx.IDShort(), tx.Timestamp().String(), strings.Join(lst, ","))
+				i, nextChainIdx, tx.IDShortString(), tx.Timestamp().String(), strings.Join(lst, ","))
 		} else {
 			r.t.Logf("%d : chain #%d, txid: %s, ts: %s <- branch tx",
-				i, nextChainIdx, tx.IDShort(), tx.Timestamp().String())
+				i, nextChainIdx, tx.IDShortString(), tx.Timestamp().String())
 		}
 		curChainIdx = nextChainIdx
 	}
@@ -973,7 +973,7 @@ func (r *multiChainTestData) createSequencerChains3(pace int, howLong int, print
 		ret = append(ret, txBytes)
 		if printTx {
 			r.t.Logf("chain #%d, ID: %s, origin: %s, seq start: %s",
-				counter, r.chainOrigins[counter].ChainID.Short(), r.chainOrigins[counter].ID.StringShort(), tx.IDShort())
+				counter, r.chainOrigins[counter].ChainID.Short(), r.chainOrigins[counter].ID.StringShort(), tx.IDShortString())
 		}
 		counter++
 	}
@@ -1006,7 +1006,7 @@ func (r *multiChainTestData) createSequencerChains3(pace int, howLong int, print
 		feeOutput := tx.MustProducedOutputWithIDAt(1)
 		ret = append(ret, txBytes)
 		if printTx {
-			r.t.Logf("faucet tx %s: amount left on faucet: %d", tx.IDShort(), faucetOutput.Output.Amount())
+			r.t.Logf("faucet tx %s: amount left on faucet: %d", tx.IDShortString(), faucetOutput.Output.Amount())
 		}
 
 		ts := core.MaxLogicalTime(
@@ -1074,10 +1074,10 @@ func (r *multiChainTestData) createSequencerChains3(pace int, howLong int, print
 					lst = append(lst, txid.StringShort())
 				}
 				r.t.Logf("%d : chain #%d, txid: %s, ts: %s, total: %d, endorse: (%s)",
-					i, nextChainIdx, tx.IDShort(), tx.Timestamp().String(), total, strings.Join(lst, ","))
+					i, nextChainIdx, tx.IDShortString(), tx.Timestamp().String(), total, strings.Join(lst, ","))
 			} else {
 				r.t.Logf("%d : chain #%d, txid: %s, ts: %s, total: %d <- branch tx",
-					i, nextChainIdx, tx.IDShort(), tx.Timestamp().String(), total)
+					i, nextChainIdx, tx.IDShortString(), tx.Timestamp().String(), total)
 			}
 		}
 		curChainIdx = nextChainIdx
@@ -1118,9 +1118,9 @@ func TestMultiChainWorkflow(t *testing.T) {
 			tx, err := transaction.FromBytes(txBytes)
 			require.NoError(r.t, err)
 			if tx.IsBranchTransaction() {
-				t.Logf("append %d txid = %s <-- branch transaction", i, tx.IDShort())
+				t.Logf("append %d txid = %s <-- branch transaction", i, tx.IDShortString())
 			} else {
-				t.Logf("append %d txid = %s", i, tx.IDShort())
+				t.Logf("append %d txid = %s", i, tx.IDShortString())
 			}
 			if tx.IsBranchTransaction() {
 				if printBranchTx {
@@ -1164,9 +1164,9 @@ func TestMultiChainWorkflow(t *testing.T) {
 			tx, err := transaction.FromBytes(txBytes)
 			require.NoError(r.t, err)
 			if tx.IsBranchTransaction() {
-				t.Logf("append %d txid = %s <-- branch transaction", i, tx.IDShort())
+				t.Logf("append %d txid = %s <-- branch transaction", i, tx.IDShortString())
 			} else {
-				t.Logf("append %d txid = %s", i, tx.IDShort())
+				t.Logf("append %d txid = %s", i, tx.IDShortString())
 			}
 			if tx.IsBranchTransaction() {
 				if printBranchTx {

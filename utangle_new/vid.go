@@ -170,6 +170,10 @@ func (vid *WrappedTx) _put(g _genericWrapper) {
 	vid._genericWrapper = g
 }
 
+func (vid *WrappedTx) PutVertex(v *Vertex) {
+	vid._put(_vertex{Vertex: v})
+}
+
 func (vid *WrappedTx) ID() *core.TransactionID {
 	vid.mutex.RLock()
 	defer vid.mutex.RUnlock()
@@ -222,9 +226,9 @@ func (vid *WrappedTx) NotifyFutureCone() {
 	}
 }
 
-func WrapTxID(txid *core.TransactionID) *WrappedTx {
+func WrapTxID(txid core.TransactionID) *WrappedTx {
 	return _newVID(_txID{
-		TransactionID: *txid,
+		TransactionID: txid,
 		whenWrapped:   time.Now(),
 	})
 }
@@ -380,7 +384,7 @@ func (vid *WrappedTx) UnwrapTransaction() *transaction.Transaction {
 	return ret
 }
 
-func (vid *WrappedTx) isVertex() (ret bool) {
+func (vid *WrappedTx) IsVertex() (ret bool) {
 	vid.Unwrap(UnwrapOptions{Vertex: func(_ *Vertex) {
 		ret = true
 	}})
@@ -483,14 +487,14 @@ func (vid *WrappedTx) _traversePastCone(opt *_unwrapOptionsTraverse) bool {
 		Vertex: func(v *Vertex) {
 			v.forEachInputDependency(func(i byte, inp *WrappedTx) bool {
 				util.Assertf(inp != nil, "_traversePastCone: input %d is nil (not solidified) in %s",
-					i, func() any { return v.Tx.IDShort() })
+					i, func() any { return v.Tx.IDShortString() })
 				ret = inp._traversePastCone(opt)
 				return ret
 			})
 			if ret {
 				v.forEachEndorsement(func(i byte, inpEnd *WrappedTx) bool {
 					util.Assertf(inpEnd != nil, "_traversePastCone: endorsement %d is nil (not solidified) in %s",
-						i, func() any { return v.Tx.IDShort() })
+						i, func() any { return v.Tx.IDShortString() })
 					ret = inpEnd._traversePastCone(opt)
 					return ret
 				})
@@ -608,7 +612,7 @@ func (vid *WrappedTx) ConvertToVirtualTx() {
 func (vid *WrappedTx) WrappedInputs() []WrappedOutput {
 	ret := make([]WrappedOutput, vid.NumInputs())
 	vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
-		util.Assertf(v.IsSolid(), "not solid inputs of %s", v.Tx.IDShort())
+		util.Assertf(v.IsSolid(), "not solid inputs of %s", v.Tx.IDShortString())
 
 		v.forEachInputDependency(func(i byte, inp *WrappedTx) bool {
 			inpID := v.Tx.MustInputAt(i)

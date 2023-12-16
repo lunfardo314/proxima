@@ -84,7 +84,7 @@ func (c *PullTxConsumer) transactionInMany(txBytesList [][]byte) {
 		if err != nil {
 			c.Log().Errorf("pull:TransactionIn returned: '%v'", err)
 		}
-		c.tracePull("%s -> TransactionIn", tx.IDShort())
+		c.tracePull("%s -> TransactionIn", tx.IDShortString())
 	}
 }
 

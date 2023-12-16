@@ -390,14 +390,14 @@ func (vid *WrappedTx) _traversePastCone(opt *_unwrapOptionsTraverse) bool {
 		Vertex: func(v *Vertex) {
 			v.forEachInputDependency(func(i byte, inp *WrappedTx) bool {
 				util.Assertf(inp != nil, "_traversePastCone: input %d is nil (not solidified) in %s",
-					i, func() any { return v.Tx.IDShort() })
+					i, func() any { return v.Tx.IDShortString() })
 				ret = inp._traversePastCone(opt)
 				return ret
 			})
 			if ret {
 				v.forEachEndorsement(func(i byte, inpEnd *WrappedTx) bool {
 					util.Assertf(inpEnd != nil, "_traversePastCone: endorsement %d is nil (not solidified) in %s",
-						i, func() any { return v.Tx.IDShort() })
+						i, func() any { return v.Tx.IDShortString() })
 					ret = inpEnd._traversePastCone(opt)
 					return ret
 				})
@@ -515,7 +515,7 @@ func (vid *WrappedTx) ConvertToVirtualTx() {
 func (vid *WrappedTx) WrappedInputs() []WrappedOutput {
 	ret := make([]WrappedOutput, vid.NumInputs())
 	vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
-		util.Assertf(v.IsSolid(), "not solid inputs of %s", v.Tx.IDShort())
+		util.Assertf(v.IsSolid(), "not solid inputs of %s", v.Tx.IDShortString())
 
 		v.forEachInputDependency(func(i byte, inp *WrappedTx) bool {
 			inpID := v.Tx.MustInputAt(i)

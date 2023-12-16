@@ -63,7 +63,7 @@ func FromBytes(txBytes []byte, opt ...TxValidationOption) (*Transaction, error) 
 		return nil, fmt.Errorf("transaction.FromBytes: basic parse failed: '%v'", err)
 	}
 	if err = ret.Validate(opt...); err != nil {
-		return nil, fmt.Errorf("FromBytes: validation failed, txid = %s: '%v'", ret.IDShort(), err)
+		return nil, fmt.Errorf("FromBytes: validation failed, txid = %s: '%v'", ret.IDShortString(), err)
 	}
 	return ret, nil
 }
@@ -321,17 +321,17 @@ func CheckEndorsements() TxValidationOption {
 		var err error
 
 		if !tx.IsSequencerMilestone() && tx.NumEndorsements() > 0 {
-			return fmt.Errorf("non-sequencer tx can't contain endorsements: %s", tx.IDShort())
+			return fmt.Errorf("non-sequencer tx can't contain endorsements: %s", tx.IDShortString())
 		}
 
 		txSlot := tx.Timestamp().TimeSlot()
 		tx.ForEachEndorsement(func(_ byte, endorsedTxID *core.TransactionID) bool {
 			if !endorsedTxID.SequencerFlagON() {
-				err = fmt.Errorf("tx %s contains endorsement of non-sequencer transaction: %s", tx.IDShort(), endorsedTxID.StringShort())
+				err = fmt.Errorf("tx %s contains endorsement of non-sequencer transaction: %s", tx.IDShortString(), endorsedTxID.StringShort())
 				return false
 			}
 			if endorsedTxID.TimeSlot() != txSlot {
-				err = fmt.Errorf("tx %s can't endorse tx from another slot: %s", tx.IDShort(), endorsedTxID.StringShort())
+				err = fmt.Errorf("tx %s can't endorse tx from another slot: %s", tx.IDShortString(), endorsedTxID.StringShort())
 				return false
 			}
 			return true
@@ -402,7 +402,7 @@ func (tx *Transaction) IDString() string {
 	return core.TransactionIDString(tx.timestamp, tx.txHash, tx.sequencerMilestoneFlag, tx.branchTransactionFlag)
 }
 
-func (tx *Transaction) IDShort() string {
+func (tx *Transaction) IDShortString() string {
 	return core.TransactionIDStringShort(tx.timestamp, tx.txHash, tx.sequencerMilestoneFlag, tx.branchTransactionFlag)
 }
 
@@ -858,7 +858,7 @@ func (tx *Transaction) Lines(inputLoaderByIndex func(i byte) (*core.Output, erro
 	ctx, err := ContextFromTransaction(tx, inputLoaderByIndex)
 	if err != nil {
 		ret := lines.New(prefix...)
-		ret.Add("can't create context of transaction %s: '%v'", tx.IDShort(), err)
+		ret.Add("can't create context of transaction %s: '%v'", tx.IDShortString(), err)
 		return ret
 	}
 	return ctx.Lines(prefix...)

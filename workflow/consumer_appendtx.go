@@ -51,7 +51,7 @@ func (c *AppendTxConsumer) consume(inp *AppendTxConsumerInputData) {
 	// TODO due to unclear reasons, sometimes repeating transactions reach this point and attach panics
 	// In order to prevent this (rare) panic we do this check
 	if c.glb.utxoTangle.Contains(inp.tx.ID()) {
-		c.Log().Warnf("repeating transaction %s", inp.tx.IDShort())
+		c.Log().Warnf("repeating transaction %s", inp.tx.IDShortString())
 		return
 	}
 
@@ -117,5 +117,5 @@ func (c *AppendTxConsumer) logBranch(inp *PrimaryTransactionData, coverage uint6
 
 	seqID := inp.tx.SequencerTransactionData().SequencerID
 	c.Log().Infof("BRANCH %s (%s). Source: %s. Coverage: %s",
-		inp.tx.IDShort(), seqID.StringVeryShort(), inp.source.String(), util.GoThousands(coverage))
+		inp.tx.IDShortString(), seqID.StringVeryShort(), inp.source.String(), util.GoThousands(coverage))
 }

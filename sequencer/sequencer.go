@@ -394,7 +394,7 @@ func (seq *Sequencer) mainLoop() {
 
 		//seq.setTraceAhead(1)
 		seq.trace("produced milestone %s for the target logical time %s in %v, avg proposal: %v",
-			ms.IDShort(), targetTs, time.Since(timerStart), avgProposalDuration)
+			ms.IDShortString(), targetTs, time.Since(timerStart), avgProposalDuration)
 
 		msOutput := seq.submitMilestone(ms)
 
@@ -439,7 +439,7 @@ func (seq *Sequencer) submitMilestone(tx *transaction.Transaction) *utangle.Wrap
 		seq.factory.utangle.SaveGraph("submit_milestone_fail")
 		return nil
 	}
-	seq.log.Debugf("submited milestone:: %s", tx.IDShort())
+	seq.log.Debugf("submited milestone:: %s", tx.IDShortString())
 	return &utangle.WrappedOutput{
 		VID:   retVID,
 		Index: tx.SequencerTransactionData().SequencerOutputIndex,

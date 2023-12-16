@@ -17,7 +17,7 @@ func (ut *UTXOTangle) MakeDraftVertexFromTxBytes(txBytes []byte) (*Vertex, error
 	}
 	ret, conflict := ut.MakeDraftVertex(tx)
 	if conflict != nil {
-		return nil, fmt.Errorf("can't solidify %s due to conflict in the past cone %s", tx.IDShort(), conflict.StringShort())
+		return nil, fmt.Errorf("can't solidify %s due to conflict in the past cone %s", tx.IDShortString(), conflict.StringShort())
 	}
 	return ret, nil
 }

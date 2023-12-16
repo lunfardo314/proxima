@@ -103,7 +103,7 @@ func (c *PrimaryConsumer) consume(inp *PrimaryTransactionData) {
 	//It means it has full ID, so it is identifiable as a transaction
 	if c.isDuplicate(inp.tx.ID()) {
 		// if duplicate, rise the event
-		inp.eventCallback("finish."+PrimaryInputConsumerName, fmt.Errorf("duplicate %s", inp.tx.IDShort()))
+		inp.eventCallback("finish."+PrimaryInputConsumerName, fmt.Errorf("duplicate %s", inp.tx.IDShortString()))
 		c.glb.PostEvent(EventCodeDuplicateTx, inp.tx.ID())
 		return
 	}

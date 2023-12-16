@@ -156,7 +156,7 @@ func (r *sequencerTestData) makeAdditionalChainOrigins(faucetIdx int, nChains in
 	r.txChainOrigins, err = transaction.FromBytesMainChecksWithOpt(txBytesChainOrigins)
 	require.NoError(r.t, err)
 
-	r.t.Logf("chain origins transaction: %s", r.txChainOrigins.IDShort())
+	r.t.Logf("chain origins transaction: %s", r.txChainOrigins.IDShortString())
 	r.txChainOrigins.ForEachProducedOutput(func(idx byte, o *core.Output, oid *core.OutputID) bool {
 		out := core.OutputWithID{
 			ID:     *oid,
@@ -286,7 +286,7 @@ func Test1Sequencer(t *testing.T) {
 		// add transaction with chain origins
 		_, err := r.wrk.TransactionInWaitAppend(r.txChainOrigins.Bytes(), 5*time.Second)
 		require.NoError(t, err)
-		t.Logf("chain origins transaction has been added to the tangle: %s", r.txChainOrigins.IDShort())
+		t.Logf("chain origins transaction has been added to the tangle: %s", r.txChainOrigins.IDShortString())
 
 		seq.WaitStop()
 		r.wrk.Stop()
@@ -341,7 +341,7 @@ func Test1Sequencer(t *testing.T) {
 		// add transaction with chain origins
 		_, err := r.wrk.TransactionInWaitAppend(r.txChainOrigins.Bytes(), 5*time.Second)
 		require.NoError(t, err)
-		t.Logf("chain origins transaction has been added to the tangle: %s", r.txChainOrigins.IDShort())
+		t.Logf("chain origins transaction has been added to the tangle: %s", r.txChainOrigins.IDShortString())
 
 		addrs, _ := makeAddresses(1)
 		t.Logf("additional address: %s", addrs[0].String())
@@ -420,7 +420,7 @@ func Test1Sequencer(t *testing.T) {
 		// add transaction with chain origins
 		_, err = r.wrk.TransactionInWaitAppend(r.txChainOrigins.Bytes(), 5*time.Second)
 		require.NoError(t, err)
-		t.Logf("chain origins transaction has been added to the tangle: %s", r.txChainOrigins.IDShort())
+		t.Logf("chain origins transaction has been added to the tangle: %s", r.txChainOrigins.IDShortString())
 
 		addrs, _ := makeAddresses(1)
 		require.NoError(t, err)
@@ -503,7 +503,7 @@ func Test1Sequencer(t *testing.T) {
 		// add transaction with chain origins
 		_, err = r.wrk.TransactionInWaitAppend(r.txChainOrigins.Bytes(), 5*time.Second)
 		require.NoError(t, err)
-		t.Logf("chain origins transaction has been added to the tangle: %s", r.txChainOrigins.IDShort())
+		t.Logf("chain origins transaction has been added to the tangle: %s", r.txChainOrigins.IDShortString())
 
 		addrs, _ := makeAddresses(1)
 		require.NoError(t, err)
@@ -636,7 +636,7 @@ func TestNSequencers(t *testing.T) {
 		// add transaction with chain origins
 		_, err := r.wrk.TransactionInWaitAppend(r.txChainOrigins.Bytes(), 5*time.Second)
 		require.NoError(t, err)
-		t.Logf("chain origins transaction has been added to the tangle: %s", r.txChainOrigins.IDShort())
+		t.Logf("chain origins transaction has been added to the tangle: %s", r.txChainOrigins.IDShortString())
 
 		//t.Logf(">>>>>>>>> chain origins tx:\n%s", r.txChainOrigins.Lines(r.txChainOrigins.InputLoaderByIndex(r.ut.GetUTXO)))
 
@@ -710,7 +710,7 @@ func TestNSequencers(t *testing.T) {
 		// add transaction with chain origins
 		_, err := r.wrk.TransactionInWaitAppend(r.txChainOrigins.Bytes(), 5*time.Second)
 		require.NoError(t, err)
-		t.Logf("chain origins transaction has been added to the tangle: %s", r.txChainOrigins.IDShort())
+		t.Logf("chain origins transaction has been added to the tangle: %s", r.txChainOrigins.IDShortString())
 		t.Logf("----------- Account info ----------------\n%s", r.ut.MustAccountInfoOfHeaviestBranch().Lines("   ").String())
 
 		sequencer.SetTraceProposer(sequencer.BacktrackProposer2Name, false)
@@ -795,7 +795,7 @@ func TestNSequencers(t *testing.T) {
 		// add transaction with chain origins
 		_, err := r.wrk.TransactionInWaitAppend(r.txChainOrigins.Bytes(), 5*time.Second)
 		require.NoError(t, err)
-		t.Logf("chain origins transaction has been added to the tangle: %s", r.txChainOrigins.IDShort())
+		t.Logf("chain origins transaction has been added to the tangle: %s", r.txChainOrigins.IDShortString())
 
 		sequencer.SetTraceProposer(sequencer.BacktrackProposer2Name, false)
 
@@ -890,7 +890,7 @@ func TestNSequencers(t *testing.T) {
 		// add transaction with chain origins
 		_, err := r.wrk.TransactionInWaitAppend(r.txChainOrigins.Bytes(), 5*time.Second)
 		require.NoError(t, err)
-		t.Logf("chain origins transaction has been added to the tangle: %s", r.txChainOrigins.IDShort())
+		t.Logf("chain origins transaction has been added to the tangle: %s", r.txChainOrigins.IDShortString())
 
 		sequencer.SetTraceProposer(sequencer.BacktrackProposer2Name, false)
 
@@ -970,7 +970,7 @@ func TestNSequencers(t *testing.T) {
 		// add transaction with chain origins
 		_, err := r.wrk.TransactionInWaitAppend(r.txChainOrigins.Bytes(), 5*time.Second)
 		require.NoError(t, err)
-		t.Logf("chain origins transaction has been added to the tangle: %s", r.txChainOrigins.IDShort())
+		t.Logf("chain origins transaction has been added to the tangle: %s", r.txChainOrigins.IDShortString())
 
 		sequencer.SetTraceProposer(sequencer.BacktrackProposer2Name, false)
 
@@ -1044,7 +1044,7 @@ func TestPruning(t *testing.T) {
 		// add transaction with chain origins
 		_, err := r.wrk.TransactionInWaitAppend(r.txChainOrigins.Bytes(), 5*time.Second)
 		require.NoError(t, err)
-		t.Logf("chain origins transaction has been added to the tangle: %s", r.txChainOrigins.IDShort())
+		t.Logf("chain origins transaction has been added to the tangle: %s", r.txChainOrigins.IDShortString())
 
 		sequencer.SetTraceProposer(sequencer.BacktrackProposer2Name, false)
 
@@ -1147,7 +1147,7 @@ func TestPruning(t *testing.T) {
 		// add transaction with chain origins
 		_, err := r.wrk.TransactionInWaitAppend(r.txChainOrigins.Bytes(), 5*time.Second)
 		require.NoError(t, err)
-		t.Logf("chain origins transaction has been added to the tangle: %s", r.txChainOrigins.IDShort())
+		t.Logf("chain origins transaction has been added to the tangle: %s", r.txChainOrigins.IDShortString())
 
 		sequencer.SetTraceProposer(sequencer.BacktrackProposer2Name, false)
 
@@ -1234,7 +1234,7 @@ func TestPruning(t *testing.T) {
 		// add transaction with chain origins
 		_, err := r.wrk.TransactionInWaitAppend(r.txChainOrigins.Bytes(), 5*time.Second)
 		require.NoError(t, err)
-		t.Logf("chain origins transaction has been added to the tangle: %s", r.txChainOrigins.IDShort())
+		t.Logf("chain origins transaction has been added to the tangle: %s", r.txChainOrigins.IDShortString())
 
 		sequencer.SetTraceProposer(sequencer.BacktrackProposer2Name, false)
 

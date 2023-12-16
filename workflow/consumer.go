@@ -45,15 +45,15 @@ func (c *Consumer[T]) TxLogPrefix() string {
 }
 
 func (c *Consumer[T]) Debugf(inp *PrimaryTransactionData, format string, args ...any) {
-	c.Log().Debugf(format+"   "+inp.tx.IDShort(), args...)
+	c.Log().Debugf(format+"   "+inp.tx.IDShortString(), args...)
 }
 
 func (c *Consumer[T]) Warnf(inp *PrimaryTransactionData, format string, args ...any) {
-	c.Log().Warnf(format+"    "+inp.tx.IDShort(), args...)
+	c.Log().Warnf(format+"    "+inp.tx.IDShortString(), args...)
 }
 
 func (c *Consumer[T]) Infof(inp *PrimaryTransactionData, format string, args ...any) {
-	c.Log().Infof(format+"    "+inp.tx.IDShort(), args...)
+	c.Log().Infof(format+"    "+inp.tx.IDShortString(), args...)
 }
 
 func (c *Consumer[T]) setTrace(t bool) {

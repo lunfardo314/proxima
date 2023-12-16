@@ -58,7 +58,7 @@ func updateValidateOptions(u *multistate.Updatable, txBytes []byte, traceOption 
 
 func ConsistencyCheckBeforeAddTransaction(tx *transaction.Transaction, r *multistate.Readable) (err error) {
 	if r.KnowsCommittedTransaction(tx.ID()) {
-		return fmt.Errorf("BeforeAddTransaction: transaction %s already in the state: cannot be added", tx.IDShort())
+		return fmt.Errorf("BeforeAddTransaction: transaction %s already in the state: cannot be added", tx.IDShortString())
 	}
 	tx.ForEachInput(func(i byte, oid *core.OutputID) bool {
 		if !r.HasUTXO(oid) {
@@ -109,7 +109,7 @@ func ConsistencyCheckBeforeAddTransaction(tx *transaction.Transaction, r *multis
 
 func ConsistencyCheckAfterAddTransaction(tx *transaction.Transaction, r *multistate.Readable) (err error) {
 	if !r.KnowsCommittedTransaction(tx.ID()) {
-		return fmt.Errorf("AfterAddTransaction: transaction %s is expected to be in the state", tx.IDShort())
+		return fmt.Errorf("AfterAddTransaction: transaction %s is expected to be in the state", tx.IDShortString())
 	}
 	tx.ForEachInput(func(i byte, oid *core.OutputID) bool {
 		if r.HasUTXO(oid) {
