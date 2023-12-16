@@ -12,9 +12,11 @@ import (
 type (
 	AttachEnvironment interface {
 		Log() *zap.SugaredLogger
-		WithGlobalLock(fun func())
+		WithGlobalWriteLock(fun func())
 		GetVertexNoLock(txid *core.TransactionID) *WrappedTx
 		AddVertexNoLock(vid *WrappedTx)
+		GetWrappedOutput(oid *core.OutputID) (WrappedOutput, bool)
+		GetVertex(txid *core.TransactionID) *WrappedTx
 		Pull(txid *core.TransactionID)
 	}
 
@@ -23,15 +25,15 @@ type (
 		vid          *WrappedTx
 		env          AttachEnvironment
 		numMissingTx uint16
-		stemSolid    bool
-		seqPredSolid bool
+		stemInputIdx byte
+		seqInputIdx  byte
 	}
 )
 
 const periodicCheckEach = 500 * time.Millisecond
 
 func AttachAsync(vid *WrappedTx, env AttachEnvironment, ctx context.Context) {
-	env.WithGlobalLock(func() {
+	env.WithGlobalWriteLock(func() {
 		if env.GetVertexNoLock(vid.ID()) != nil {
 			return
 		}
@@ -55,24 +57,18 @@ func AttachAsync(vid *WrappedTx, env AttachEnvironment, ctx context.Context) {
 }
 
 func _attach(vid *WrappedTx, env AttachEnvironment, ctx context.Context) {
-	exit := false
-	vid.Unwrap(UnwrapOptions{
-		Vertex: func(v *Vertex) {
-			initialSolidification(v)
-			exit = v.IsSolid()
-		},
-		VirtualTx: func(_ *VirtualTransaction) {
-			exit = true
-		},
-		Deleted: vid.PanicAccessDeleted,
-	})
+	exit, invalid := prepareSolidification(vid, env)
+	if invalid {
+		vid.SetTxStatus(TxStatusBad)
+		vid.NotifyFutureCone()
+	}
 	if exit {
 		return
 	}
 	a := newAttacher(vid, env)
 	defer a.close()
 
-	for {
+	for !exit {
 		if !vid.isVertex() {
 			// stop once it converted to virtualTx or deleted
 			return
@@ -80,40 +76,85 @@ func _attach(vid *WrappedTx, env AttachEnvironment, ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			return
+
 		case msg := <-a.inChan:
 			if msg == nil {
 				return
 			}
-			if !a.notify(msg) {
-				return
-			}
+			exit = !a.processNotification(msg)
+
 		case <-time.After(periodicCheckEach):
-			if !a.periodicCheck() {
-				return
-			}
+			exit = !a.periodicCheck()
 		}
 	}
 }
 
-func initialSolidification(v *Vertex) {
-	v.forEachInputDependency(func(i byte, vidInput *WrappedTx) bool {
+func prepareSolidification(vid *WrappedTx, env AttachEnvironment) (exit, invalid bool) {
+	var wOut WrappedOutput
+	var stemInputNeedsPull, seqInputNeedsPull bool
 
-	})
-	v.forEachEndorsement(func(i byte, vidEndorsed *WrappedTx) bool {
+	vid.Unwrap(UnwrapOptions{
+		Vertex: func(v *Vertex) {
+			v.Tx.ForEachInput(func(i byte, oid *core.OutputID) bool {
+				if wOut, invalid = env.GetWrappedOutput(oid); invalid {
+					return false
+				}
+				if wOut.VID != nil {
+					v.Inputs[i] = wOut.VID
+				}
+				return true
+			})
+			v.Tx.ForEachEndorsement(func(idx byte, txid *core.TransactionID) bool {
+				v.Endorsements[idx] = env.GetVertex(txid)
+				return true
+			})
 
+			seqInputIdx := v.SequencerInputIndex()
+			if v.Tx.IsBranchTransaction() {
+				stemInputIdx := v.StemInputIndex()
+				stemInputNeedsPull = v.Inputs[stemInputIdx] == nil
+				if stemInputNeedsPull {
+					// not available
+					stemOid := v.Tx.MustInputAt(stemInputIdx)
+					stemTxid := stemOid.TransactionID()
+					env.Pull(&stemTxid)
+					return
+				}
+			}
+
+			seqInputNeedsPull = v.Inputs[seqInputIdx] == nil
+			if !stemInputNeedsPull && seqInputNeedsPull {
+				seqOid := v.Tx.MustInputAt(seqInputIdx)
+				seqInTxid := seqOid.TransactionID()
+				env.Pull(&seqInTxid)
+			}
+		},
+		VirtualTx: func(_ *VirtualTransaction) {
+			exit = true
+		},
+		Deleted: vid.PanicAccessDeleted,
 	})
+	return
 }
 
 func newAttacher(vid *WrappedTx, env AttachEnvironment) *attacher {
+	util.Assertf(vid.IsSequencerMilestone(), "sequencer milestone expected")
+
+	var numMissingTx uint16
+	vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
+		numMissingTx = uint16(len(v.MissingInputTxIDSet()))
+	}})
+
 	inChan := make(chan any, 1)
 	vid.OnNotify(func(msg any) {
 		inChan <- msg
 	})
 
 	return &attacher{
-		vid:    vid,
-		env:    env,
-		inChan: inChan,
+		vid:          vid,
+		env:          env,
+		inChan:       inChan,
+		numMissingTx: numMissingTx,
 	}
 }
 
@@ -122,7 +163,7 @@ func (a *attacher) close() {
 	close(a.inChan)
 }
 
-func (a *attacher) notify(msg any) bool {
+func (a *attacher) processNotification(msg any) bool {
 	if util.IsNil(msg) {
 		return false
 	}

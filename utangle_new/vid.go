@@ -207,6 +207,21 @@ func (vid *WrappedTx) Notify(msg any) {
 	}
 }
 
+func (vid *WrappedTx) NotifyFutureCone() {
+	vid.mutex.RLock()
+	defer vid.mutex.RUnlock()
+
+	for _, lst := range vid.consumers {
+		for _, consumer := range lst {
+			consumer.Notify(vid)
+		}
+	}
+
+	for _, endorser := range vid.endorsers {
+		endorser.Notify(vid)
+	}
+}
+
 func WrapTxID(txid *core.TransactionID) *WrappedTx {
 	return _newVID(_txID{
 		TransactionID: *txid,

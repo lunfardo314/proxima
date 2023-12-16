@@ -684,6 +684,7 @@ func (tx *Transaction) InputTransactionIDs() map[core.TransactionID]struct{} {
 	return ret
 }
 
+// SequencerAndStemOutputIndices return seq output index and stem output index
 func (tx *Transaction) SequencerAndStemOutputIndices() (byte, byte) {
 	ret := tx.tree.BytesAtPath([]byte{core.TxSequencerAndStemOutputIndices})
 	util.Assertf(len(ret) == 2, "len(ret)==2")

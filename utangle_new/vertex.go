@@ -106,9 +106,7 @@ func (v *Vertex) IsSolid() bool {
 	return v.isSolid
 }
 
-// IsStemInputSolid returns if the stem output is solid
-// Note: no way to access stem input directly, so we must search among inputs by output ID
-func (v *Vertex) IsStemInputSolid() bool {
+func (v *Vertex) StemInputIndex() byte {
 	util.Assertf(v.Tx.IsBranchTransaction(), "branch vertex expected")
 
 	predOID := v.Tx.StemOutputData().PredecessorOutputID
@@ -123,15 +121,12 @@ func (v *Vertex) IsStemInputSolid() bool {
 		return !stemInputFound
 	})
 	util.Assertf(stemInputFound, "can't find stem input")
-	return v.Inputs[stemInputIdx] != nil
+	return stemInputIdx
 }
 
-// IsSequencerInputSolid return if sequencer input is solid and predecessor index
-// for origin that would be true, 0xff
-func (v *Vertex) IsSequencerInputSolid() bool {
+func (v *Vertex) SequencerInputIndex() byte {
 	util.Assertf(v.Tx.IsSequencerMilestone(), "sequencer milestone expected")
-	idx := v.Tx.SequencerTransactionData().SequencerOutputData.ChainConstraint.PredecessorInputIndex
-	return idx == 0xff || v.Inputs[idx] != nil
+	return v.Tx.SequencerTransactionData().SequencerOutputData.ChainConstraint.PredecessorInputIndex
 }
 
 func (v *Vertex) _allInputsSolid() bool {
