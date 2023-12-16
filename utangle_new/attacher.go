@@ -55,7 +55,18 @@ func AttachAsync(vid *WrappedTx, env AttachEnvironment, ctx context.Context) {
 }
 
 func _attach(vid *WrappedTx, env AttachEnvironment, ctx context.Context) {
-	if !vid.U {
+	exit := false
+	vid.Unwrap(UnwrapOptions{
+		Vertex: func(v *Vertex) {
+			initialSolidification(v)
+			exit = v.IsSolid()
+		},
+		VirtualTx: func(_ *VirtualTransaction) {
+			exit = true
+		},
+		Deleted: vid.PanicAccessDeleted,
+	})
+	if exit {
 		return
 	}
 	a := newAttacher(vid, env)
