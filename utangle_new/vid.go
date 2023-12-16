@@ -28,6 +28,8 @@ type (
 		endorsers []*WrappedTx
 		//
 		txStatus TxStatus
+		// notification callback
+		onNotify func(vid any)
 	}
 
 	WrappedOutput struct {
@@ -189,6 +191,22 @@ func (vid *WrappedTx) SetTxStatus(s TxStatus) {
 	vid.txStatus = s
 }
 
+func (vid *WrappedTx) OnNotify(fun func(vid any)) {
+	vid.mutex.Lock()
+	defer vid.mutex.Unlock()
+
+	vid.onNotify = fun
+}
+
+func (vid *WrappedTx) Notify(msg any) {
+	vid.mutex.RLock()
+	defer vid.mutex.RUnlock()
+
+	if vid.onNotify != nil {
+		vid.onNotify(msg)
+	}
+}
+
 func WrapTxID(txid *core.TransactionID) *WrappedTx {
 	return _newVID(_txID{
 		TransactionID: *txid,
@@ -345,6 +363,13 @@ func (vid *WrappedTx) UnwrapTransaction() *transaction.Transaction {
 		ret = v.Tx
 	}})
 	return ret
+}
+
+func (vid *WrappedTx) isVertex() (ret bool) {
+	vid.Unwrap(UnwrapOptions{Vertex: func(_ *Vertex) {
+		ret = true
+	}})
+	return
 }
 
 func (vid *WrappedTx) isVirtualTx() (ret bool) {
