@@ -2,6 +2,7 @@ package multistate
 
 import (
 	"fmt"
+	"sync"
 
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/global"
@@ -20,8 +21,10 @@ type (
 	}
 
 	// Readable is a read-only ledger state, with the particular root
+	// It is thread-safe. The state itself is read-only, but trie cache needs write-lock with every call
 	Readable struct {
-		trie *immutable.TrieReader
+		mutex *sync.Mutex
+		trie  *immutable.TrieReader
 	}
 
 	LedgerCoverage [HistoryCoverageDeltas]uint64
@@ -67,7 +70,10 @@ func NewReadable(store common.KVReader, root common.VCommitment, clearCacheAtSiz
 	if err != nil {
 		return nil, err
 	}
-	return &Readable{trie}, nil
+	return &Readable{
+		mutex: &sync.Mutex{},
+		trie:  trie,
+	}, nil
 }
 
 func MustNewReadable(store common.KVReader, root common.VCommitment, clearCacheAtSize ...int) *Readable {
@@ -100,6 +106,13 @@ func MustNewUpdatable(store global.StateStore, root common.VCommitment) *Updatab
 }
 
 func (r *Readable) GetUTXO(oid *core.OutputID) ([]byte, bool) {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	return r._getUTXO(oid)
+}
+
+func (r *Readable) _getUTXO(oid *core.OutputID) ([]byte, bool) {
 	ret := common.MakeReaderPartition(r.trie, PartitionLedgerState).Get(oid[:])
 	if len(ret) == 0 {
 		return nil, false
@@ -108,6 +121,9 @@ func (r *Readable) GetUTXO(oid *core.OutputID) ([]byte, bool) {
 }
 
 func (r *Readable) HasUTXO(oid *core.OutputID) bool {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
 	return common.MakeReaderPartition(r.trie, PartitionLedgerState).Has(oid[:])
 }
 
@@ -117,6 +133,9 @@ func (r *Readable) KnowsCommittedTransaction(txid *core.TransactionID) bool {
 }
 
 func (r *Readable) GetIDSLockedInAccount(addr core.AccountID) ([]core.OutputID, error) {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
 	if len(addr) > 255 {
 		return nil, fmt.Errorf("accountID length should be <= 255")
 	}
@@ -141,6 +160,9 @@ func (r *Readable) GetIDSLockedInAccount(addr core.AccountID) ([]core.OutputID, 
 }
 
 func (r *Readable) GetUTXOsLockedInAccount(addr core.AccountID) ([]*core.OutputDataWithID, error) {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
 	if len(addr) > 255 {
 		return nil, fmt.Errorf("accountID length should be <= 255")
 	}
@@ -155,7 +177,7 @@ func (r *Readable) GetUTXOsLockedInAccount(addr core.AccountID) ([]*core.OutputD
 		if err != nil {
 			return false
 		}
-		o.OutputData, found = r.GetUTXO(&o.ID)
+		o.OutputData, found = r._getUTXO(&o.ID)
 		if !found {
 			// skip this output ID
 			return true
@@ -170,6 +192,9 @@ func (r *Readable) GetUTXOsLockedInAccount(addr core.AccountID) ([]*core.OutputD
 }
 
 func (r *Readable) GetUTXOForChainID(id *core.ChainID) (*core.OutputDataWithID, error) {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
 	if len(id) != core.ChainIDLength {
 		return nil, fmt.Errorf("GetUTXOForChainID: chainID length must be %d-bytes long", core.ChainIDLength)
 	}
@@ -181,7 +206,7 @@ func (r *Readable) GetUTXOForChainID(id *core.ChainID) (*core.OutputDataWithID, 
 	if err != nil {
 		return nil, err
 	}
-	outData, found := r.GetUTXO(&oid)
+	outData, found := r._getUTXO(&oid)
 	if !found {
 		return nil, ErrNotFound
 	}
@@ -192,6 +217,9 @@ func (r *Readable) GetUTXOForChainID(id *core.ChainID) (*core.OutputDataWithID, 
 }
 
 func (r *Readable) GetStem() (core.TimeSlot, []byte) {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
 	accountPrefix := common.Concat(PartitionAccounts, byte(len(core.StemAccountID)), core.StemAccountID)
 
 	var found bool
@@ -206,7 +234,7 @@ func (r *Readable) GetStem() (core.TimeSlot, []byte) {
 		id, err := core.OutputIDFromBytes(k[len(accountPrefix):])
 		util.AssertNoError(err)
 		retSlot = id.TimeSlot()
-		retBytes, found = r.GetUTXO(&id)
+		retBytes, found = r._getUTXO(&id)
 		util.Assertf(found, "can't find stem output")
 		return true
 	})
@@ -214,36 +242,18 @@ func (r *Readable) GetStem() (core.TimeSlot, []byte) {
 }
 
 func (r *Readable) MustLedgerIdentityBytes() []byte {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
 	return r.trie.Get(nil)
-}
-
-func (r *Readable) HasTransactionOutputs(txid *core.TransactionID, indexMap ...map[byte]struct{}) (bool, bool) {
-	hasTransaction := false
-	allOutputsExist := false
-	count := 0
-
-	iter := common.MakeTraversableReaderPartition(r.trie, PartitionLedgerState).Iterator(txid[:])
-	iter.IterateKeys(func(k []byte) bool {
-		hasTransaction = true
-		if len(indexMap) == 0 {
-			allOutputsExist = true
-			return false
-		}
-		if _, ok := indexMap[0][core.MustOutputIDIndexFromBytes(k)]; ok {
-			count++
-		}
-		if count == len(indexMap) {
-			allOutputsExist = true
-			return false
-		}
-		return true
-	})
-	return hasTransaction, allOutputsExist
 }
 
 // IterateKnownCommittedTransactions utility function to collect old transaction IDs which may be purged from the state
 // Those txid serve no purpose after corresponding branches become committed and may appear only as virtual transactions
 func (r *Readable) IterateKnownCommittedTransactions(fun func(txid *core.TransactionID, slot core.TimeSlot) bool) {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
 	iter := common.MakeTraversableReaderPartition(r.trie, PartitionCommittedTransactionID).Iterator(nil)
 	var slot core.TimeSlot
 	iter.Iterate(func(k, v []byte) bool {
@@ -257,6 +267,9 @@ func (r *Readable) IterateKnownCommittedTransactions(fun func(txid *core.Transac
 }
 
 func (r *Readable) AccountsByLocks() map[string]LockedAccountInfo {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
 	var oid core.OutputID
 	var err error
 
@@ -266,7 +279,7 @@ func (r *Readable) AccountsByLocks() map[string]LockedAccountInfo {
 		oid, err = core.OutputIDFromBytes(k[2+k[1]:])
 		util.AssertNoError(err)
 
-		oData, found := r.GetUTXO(&oid)
+		oData, found := r._getUTXO(&oid)
 		util.Assertf(found, "can't get output")
 
 		_, amount, lock, err := core.OutputFromBytesMain(oData)
@@ -284,6 +297,9 @@ func (r *Readable) AccountsByLocks() map[string]LockedAccountInfo {
 }
 
 func (r *Readable) ChainInfo() map[core.ChainID]ChainRecordInfo {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
 	ret := make(map[core.ChainID]ChainRecordInfo)
 	var chainID core.ChainID
 	var err error
@@ -312,11 +328,15 @@ func (r *Readable) ChainInfo() map[core.ChainID]ChainRecordInfo {
 }
 
 func (r *Readable) Root() common.VCommitment {
+	// non need to lock
 	return r.trie.Root()
 }
 
 func (u *Updatable) Readable() *Readable {
-	return &Readable{u.trie.TrieReader}
+	return &Readable{
+		mutex: &sync.Mutex{},
+		trie:  u.trie.TrieReader,
+	}
 }
 
 func (u *Updatable) Root() common.VCommitment {
