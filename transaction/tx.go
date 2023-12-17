@@ -772,24 +772,24 @@ func (tx *Transaction) InputLoaderFromState(rdr global.StateReader) func(idx byt
 	})
 }
 
-// SequencerChainPredecessorOutputID returns chain predecessor output ID
-// If it is chain origin, it returns nil
-// Otherwise, it may or may not be a sequencer ID
-func (tx *Transaction) SequencerChainPredecessorOutputID() *core.OutputID {
+// SequencerChainPredecessor returns chain predecessor output ID
+// If it is chain origin, it returns nil. Otherwise, it may or may not be a sequencer ID
+// It also returns index of the inout
+func (tx *Transaction) SequencerChainPredecessor() (*core.OutputID, byte) {
 	seqMeta := tx.SequencerTransactionData()
-	util.Assertf(seqMeta != nil, "SequencerChainPredecessorOutputID: must be a sequencer transaction")
+	util.Assertf(seqMeta != nil, "SequencerChainPredecessor: must be a sequencer transaction")
 
 	if seqMeta.SequencerOutputData.ChainConstraint.IsOrigin() {
-		return nil
+		return nil, 0xff
 	}
 
 	ret, err := tx.InputAt(seqMeta.SequencerOutputData.ChainConstraint.PredecessorInputIndex)
 	util.AssertNoError(err)
 	// The following is ensured by the 'chain' and 'sequencer' constraints on the transaction
 	// Returned predecessor outputID must be:
-	// - if the transaction is branch tx, then it return tx ID which may or may not be a sequencer transaction ID
+	// - if the transaction is branch tx, then it returns tx ID which may or may not be a sequencer transaction ID
 	// - if the transaction is not a branch tx, it must always return sequencer tx ID (which may or may not be a branch)
-	return &ret
+	return &ret, seqMeta.SequencerOutputData.ChainConstraint.PredecessorInputIndex
 }
 
 func (tx *Transaction) FindChainOutput(chainID core.ChainID) *core.OutputWithID {

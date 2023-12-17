@@ -16,7 +16,7 @@ import (
 )
 
 type (
-	// WrappedTx value of *WrappedTx is used as transaction identity on the UTXO tangle
+	// WrappedTx value of *WrappedTx is used as transaction identity on the UTXO tangle, a vertex
 	// Behind this identity can be wrapped usual vertex, virtual or orphaned transactions
 	WrappedTx struct {
 		mutex sync.RWMutex // protects _genericWrapper
@@ -30,6 +30,9 @@ type (
 		txStatus TxStatus
 		// notification callback
 		onNotify func(vid any)
+		// each solid branch vertex provides state reader for its descendants.
+		// It is inherited by descendants sequencer milestones on the same slot
+		baselineStateReader *multistate.Readable
 	}
 
 	WrappedOutput struct {
@@ -81,7 +84,10 @@ const (
 )
 
 // ErrDeletedVertexAccessed exception is raised by PanicAccessDeleted handler of Unwrap vertex so that could be caught if necessary
-var ErrDeletedVertexAccessed = errors.New("deleted vertex should not be accessed")
+var (
+	ErrDeletedVertexAccessed = errors.New("deleted vertex should not be accessed")
+	ErrShouldNotBeVirtualTx  = errors.New("virtualTx is unexpected")
+)
 
 func (v _vertex) _id() *core.TransactionID {
 	return v.Tx.ID()
@@ -148,7 +154,14 @@ func (vid *WrappedTx) _put(g _genericWrapper) {
 	vid._genericWrapper = g
 }
 
-func (vid *WrappedTx) PutVertex(v *Vertex) {
+func (vid *WrappedTx) MustConvertVirtualTxToVertex(v *Vertex) {
+	vid.mutex.Lock()
+	defer vid.mutex.Unlock()
+
+	vTx, isVirtualTx := vid._genericWrapper.(_virtualTx)
+	lazy := func() any { return vid._id().StringShort() }
+	util.Assertf(isVirtualTx, "MustConvertVirtualTxToVertex: virtual tx expected %s", lazy)
+	util.Assertf(vTx.txid == *v.Tx.ID(), "MustConvertVirtualTxToVertex: txid-s do not match in: %s", lazy)
 	vid._put(_vertex{Vertex: v})
 }
 
@@ -171,6 +184,19 @@ func (vid *WrappedTx) SetTxStatus(s TxStatus) {
 	defer vid.mutex.Unlock()
 
 	vid.txStatus = s
+}
+
+func (vid *WrappedTx) BaselineStateReader() global.IndexedStateReader {
+	vid.mutex.RLock()
+	defer vid.mutex.RUnlock()
+
+	return vid.baselineStateReader
+}
+
+func (vid *WrappedTx) SetBaselineStateReader(rdr *multistate.Readable) {
+	vid.mutex.Lock()
+	vid.baselineStateReader = rdr
+	vid.mutex.Unlock()
 }
 
 func (vid *WrappedTx) OnNotify(fun func(vid any)) {
@@ -593,6 +619,11 @@ func (vid *WrappedTx) WrappedInputs() []WrappedOutput {
 func (vid *WrappedTx) PanicAccessDeleted() {
 	txid := vid._genericWrapper.(_deletedTx).TransactionID
 	util.Panicf("%w: %s", ErrDeletedVertexAccessed, txid.StringShort())
+}
+
+func (vid *WrappedTx) PanicShouldNotBeVirtualTx(_ *VirtualTransaction) {
+	txid := vid._genericWrapper.(_virtualTx).txid
+	util.Panicf("%w: %s", ErrShouldNotBeVirtualTx, txid.StringShort())
 }
 
 // attachAsConsumer must be called from globally locked utangle environment.
