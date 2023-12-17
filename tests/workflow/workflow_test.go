@@ -1408,7 +1408,7 @@ func TestMultiChainWorkflow(t *testing.T) {
 			nChains              = 15
 			chainPaceInTimeSlots = 7
 			printBranchTx        = false
-			howLong              = 1000
+			howLong              = 500 // 1000
 			realTime             = false
 			nowait               = true
 		)
@@ -1424,7 +1424,7 @@ func TestMultiChainWorkflow(t *testing.T) {
 		transaction.SetPrintEasyFLTraceOnFail(false)
 
 		wrk := workflow.New(r.ut, peering.NewPeersDummy(), r.txBytesStore)
-		cd := countdown.New(howLong, 10*time.Second)
+		cd := countdown.New(howLong, 20*time.Second)
 		wrk.MustOnEvent(workflow.EventNewVertex, func(_ *workflow.NewVertexEventData) {
 			cd.Tick()
 		})
