@@ -29,10 +29,10 @@ type (
 		//
 		txStatus TxStatus
 		// notification callback
-		onNotify func(vid any)
+		onNotify func(vid *WrappedTx)
 		// each solid branch vertex provides state reader for its descendants.
 		// It is inherited by descendants sequencer milestones on the same slot
-		baselineStateReader *multistate.Readable
+		baselineStateReader global.IndexedStateReader
 	}
 
 	WrappedOutput struct {
@@ -193,13 +193,13 @@ func (vid *WrappedTx) BaselineStateReader() global.IndexedStateReader {
 	return vid.baselineStateReader
 }
 
-func (vid *WrappedTx) SetBaselineStateReader(rdr *multistate.Readable) {
+func (vid *WrappedTx) SetBaselineStateReader(rdr global.IndexedStateReader) {
 	vid.mutex.Lock()
 	vid.baselineStateReader = rdr
 	vid.mutex.Unlock()
 }
 
-func (vid *WrappedTx) OnNotify(fun func(vid any)) {
+func (vid *WrappedTx) OnNotify(fun func(vid *WrappedTx)) {
 	vid.mutex.Lock()
 	defer vid.mutex.Unlock()
 

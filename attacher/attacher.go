@@ -2,12 +2,11 @@ package attacher
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/global"
-	"github.com/lunfardo314/proxima/multistate"
-	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/utangle_new"
 	"github.com/lunfardo314/proxima/util"
 	"go.uber.org/zap"
@@ -26,7 +25,10 @@ type (
 	}
 
 	attacher struct {
-		inChan              chan any
+		closeMutex          sync.RWMutex
+		closed              bool
+		inChan              chan *utangle_new.WrappedTx
+		ctx                 context.Context
 		vid                 *utangle_new.WrappedTx
 		baselineStateReader global.IndexedStateReader
 		env                 AttachEnvironment
@@ -42,109 +44,101 @@ const (
 	maxStateReaderCacheSize = 1000
 )
 
-// AttachTxID ensures the txid is on the utangle and it is pulled.
-func AttachTxID(txid core.TransactionID, env AttachEnvironment) (vid *utangle_new.WrappedTx) {
-	env.WithGlobalWriteLock(func() {
-		vid = env.GetVertexNoLock(&txid)
-		if vid != nil {
-			// found existing -> return it
-			return
-		}
-		// it is new
-		if !txid.BranchFlagON() {
-			// if not branch -> just place the virtualTx on the utangle, no further action
-			vid = utangle_new.WrapTxID(txid)
-			env.AddVertexNoLock(vid)
-			return
-		}
-		// it is a branch transaction. Look up for the corresponding state
-		bd, branchAvailable := multistate.FetchBranchData(env.StateStore(), txid)
-		if !branchAvailable {
-			// the corresponding state is not in the multistate DB -> put virtualTx to the utangle -> pull it
-			// the puller will trigger further solidification by providing the transaction
-			vid = utangle_new.WrapTxID(txid)
-			env.AddVertexNoLock(vid)
-			env.Pull(txid)
-			return
-		}
-		// corresponding state has been found, it is solid -> put virtual branch tx with the state reader
-		vid = utangle_new.NewVirtualBranchTx(&bd).Wrap()
-		env.AddVertexNoLock(vid)
-		rdr := multistate.MustNewReadable(env.StateStore(), bd.Root, maxStateReaderCacheSize)
-		vid.SetBaselineStateReader(rdr)
-	})
-	return
+func newAttacher(vid *utangle_new.WrappedTx, env AttachEnvironment, ctx context.Context) *attacher {
+	util.Assertf(vid.IsSequencerMilestone(), "sequencer milestone expected")
+
+	var numMissingTx uint16
+	vid.Unwrap(utangle_new.UnwrapOptions{Vertex: func(v *utangle_new.Vertex) {
+		numMissingTx = uint16(len(v.MissingInputTxIDSet()))
+	}})
+
+	ret := &attacher{
+		ctx:          ctx,
+		vid:          vid,
+		env:          env,
+		inChan:       make(chan *utangle_new.WrappedTx, 1),
+		numMissingTx: numMissingTx,
+	}
+
+	return ret
 }
 
-// AttachTransaction attaches new incoming transaction. For sequencer transaction it starts attacher routine
-// which manages solidification pull until transaction becomes solid or stopped by the context prescriptions
-func AttachTransaction(tx *transaction.Transaction, env AttachEnvironment, ctx context.Context) (vid *utangle_new.WrappedTx) {
-	env.WithGlobalWriteLock(func() {
-		// look up for the txid
-		vid = env.GetVertexNoLock(tx.ID())
-		if vid == nil {
-			// it is new. Create a new wrapped tx and put it to the utangle
-			vid = utangle_new.NewVertex(tx).Wrap()
-		} else {
-			// it is existing. Must virtualTx -> replace virtual tx with the full transaction
-			vid.MustConvertVirtualTxToVertex(utangle_new.NewVertex(tx))
-		}
-		env.AddVertexNoLock(vid)
-		if vid.IsSequencerMilestone() {
-			// starts attacher goroutine for sequencer transactions.
-			go _attach(vid, env, ctx)
-		}
-	})
-	return
+func (a *attacher) close() {
+	a.closeMutex.Lock()
+	defer a.closeMutex.Unlock()
+
+	a.closed = true
+	a.vid.OnNotify(nil)
+	close(a.inChan)
 }
 
-func _attach(vid *utangle_new.WrappedTx, env AttachEnvironment, ctx context.Context) {
-	if util.IsNil(vid.BaselineStateReader()) {
-		if solidifyBaseline(vid, env) {
+func (a *attacher) notify(msg *utangle_new.WrappedTx) {
+	a.closeMutex.RLock()
+	defer a.closeMutex.RUnlock()
 
-		}
+	if !a.closed {
+		a.inChan <- msg
 	}
-	if !success {
-		vid.SetTxStatus(utangle_new.TxStatusBad)
-		vid.NotifyFutureCone()
-		return
-	}
-	// TODO warning: good input tx does not mean output indices are valid
+}
 
-	a := newAttacher(vid, env, allInputsAttached)
+func (a *attacher) run() {
 	defer a.close()
 
-	for exit := false; !exit; {
-		if !vid.IsVertex() {
-			// stop once it converted to virtualTx or deleted
-			return
-		}
-		if !solidifyBaseline(vid, env) {
+	a.vid.OnNotify(func(msg *utangle_new.WrappedTx) {
+		a.notify(msg)
+	})
 
-		}
-
+	for a.processStatus() {
 		select {
-		case <-ctx.Done():
+		case <-a.ctx.Done():
 			return
 
-		case msg := <-a.inChan:
-			if msg == nil {
+		case downstreamVID := <-a.inChan:
+			if downstreamVID == nil {
 				return
 			}
-			exit = !a.processNotification(msg)
+			a.processNotification(downstreamVID)
 
 		case <-time.After(periodicCheckEach):
-			exit = !a.periodicCheck()
 		}
+	}
+
+}
+
+func (a *attacher) processNotification(vid *utangle_new.WrappedTx) {
+	switch vid.GetTxStatus() {
+	case utangle_new.TxStatusBad:
+		a.vid.SetTxStatus(utangle_new.TxStatusBad)
+	case utangle_new.TxStatusGood:
+		a.numMissingTx--
 	}
 }
 
-func (a *attacher) solidifyBaseline() (valid bool) {
-	valid = true
+func (a *attacher) processStatus() bool {
+	if !a.vid.IsVertex() {
+		// stop once it converted to virtualTx or deleted
+		return false
+	}
+
+	a.solidifyBaselineIfNeeded()
+
+	if a.vid.GetTxStatus() != utangle_new.TxStatusUndefined {
+		a.vid.NotifyFutureCone()
+		return false
+	}
+	if a.numMissingTx > 0 {
+		return true
+	}
+	panic("not implemented")
+}
+
+// solidifyBaselineIfNeeded directs attachment process down the DAG to reach the deterministically known baseline state
+// for a sequencer milestone. Existence of it is guaranteed by the ledger constraints
+func (a *attacher) solidifyBaselineIfNeeded() {
+	valid := true
 	if a.baselineStateReader != nil {
 		return
 	}
-	var baselineStateReader global.IndexedStateReader
 
 	a.vid.Unwrap(utangle_new.UnwrapOptions{
 		Vertex: func(v *utangle_new.Vertex) {
@@ -173,7 +167,7 @@ func (a *attacher) solidifyBaseline() (valid bool) {
 					v.Inputs[predIdx] = AttachTxID(predOid.TransactionID(), a.env)
 				}
 				if valid = v.Inputs[predIdx].GetTxStatus() != utangle_new.TxStatusBad; valid {
-					baselineStateReader = v.Inputs[predIdx].BaselineStateReader() // may be nil
+					a.baselineStateReader = v.Inputs[predIdx].BaselineStateReader() // may be nil
 				}
 				return
 			}
@@ -183,107 +177,73 @@ func (a *attacher) solidifyBaseline() (valid bool) {
 				v.Endorsements[0] = AttachTxID(v.Tx.EndorsementAt(0), a.env)
 			}
 			if valid = v.Endorsements[0].GetTxStatus() != utangle_new.TxStatusBad; valid {
-				baselineStateReader = v.Endorsements[0].BaselineStateReader() // may be nil
+				a.baselineStateReader = v.Endorsements[0].BaselineStateReader() // may be nil
 			}
 		},
 		VirtualTx: a.vid.PanicShouldNotBeVirtualTx,
 		Deleted:   a.vid.PanicAccessDeleted,
 	})
-	a.vid.SetBaselineStateReader(baselineStateReader)
-	return
-}
-
-// attachInputTransactionsIfNeeded does not check correctness of output indices, only transaction status
-func attachInputTransactionsIfNeeded(v *utangle_new.Vertex, env AttachEnvironment) (bool, bool) {
-	var stemInputTxID, seqInputTxID core.TransactionID
-
-	if v.Tx.IsBranchTransaction() {
-		stemInputIdx := v.StemInputIndex()
-		if v.Inputs[stemInputIdx] == nil {
-			stemInputOid := v.Tx.MustInputAt(stemInputIdx)
-			stemInputTxID = stemInputOid.TransactionID()
-			v.Inputs[stemInputIdx] = AttachTxID(stemInputTxID, env)
-		}
-		switch v.Inputs[stemInputIdx].GetTxStatus() {
-		case utangle_new.TxStatusBad:
-			return false, false
-		case utangle_new.TxStatusUndefined:
-			return true, false
-		}
+	if !valid {
+		a.vid.SetTxStatus(utangle_new.TxStatusBad)
+		return
 	}
-	// stem is good
-	seqInputIdx := v.SequencerInputIndex()
-	seqInputOid := v.Tx.MustInputAt(seqInputIdx)
-	seqInputTxID = seqInputOid.TransactionID()
-	v.Inputs[seqInputIdx] = AttachTxID(seqInputTxID, env)
-	switch v.Inputs[seqInputIdx].GetTxStatus() {
-	case utangle_new.TxStatusBad:
-		return false, false
-	case utangle_new.TxStatusUndefined:
-		return true, false
-	}
-	// stem and seq inputs are ok. We can pull the rest
-	missing := v.MissingInputTxIDSet().Remove(seqInputTxID)
-	if v.Tx.IsBranchTransaction() {
-		missing.Remove(stemInputTxID)
-	}
-	success := true
-	v.Tx.ForEachInput(func(i byte, oid *core.OutputID) bool {
-		if v.Inputs[i] == nil {
-			v.Inputs[i] = AttachTxID(oid.TransactionID(), env)
-		}
-		success = v.Inputs[i].GetTxStatus() != utangle_new.TxStatusBad
-		return success
-	})
-	if !success {
-		return false, false
-	}
-	v.Tx.ForEachEndorsement(func(idx byte, txid *core.TransactionID) bool {
-		if v.Endorsements[idx] == nil {
-			v.Endorsements[idx] = AttachTxID(*txid, env)
-		}
-		success = v.Endorsements[idx].GetTxStatus() != utangle_new.TxStatusBad
-		return success
-	})
-	return success, success
-}
-
-func newAttacher(vid *utangle_new.WrappedTx, env AttachEnvironment, allInputsAttached bool) *attacher {
-	util.Assertf(vid.IsSequencerMilestone(), "sequencer milestone expected")
-
-	var numMissingTx uint16
-	vid.Unwrap(utangle_new.UnwrapOptions{Vertex: func(v *utangle_new.Vertex) {
-		numMissingTx = uint16(len(v.MissingInputTxIDSet()))
-	}})
-
-	inChan := make(chan any, 1)
-	vid.OnNotify(func(msg any) {
-		inChan <- msg
-	})
-
-	return &attacher{
-		vid:               vid,
-		env:               env,
-		inChan:            inChan,
-		numMissingTx:      numMissingTx,
-		allInputsAttached: allInputsAttached,
+	if !a.vid.IsBranchTransaction() {
+		a.vid.SetBaselineStateReader(a.baselineStateReader)
 	}
 }
 
-func (a *attacher) close() {
-	a.vid.OnNotify(nil)
-	close(a.inChan)
-}
-
-func (a *attacher) processNotification(msg any) bool {
-	if util.IsNil(msg) {
-		return false
-	}
-	switch m := msg.(type) {
-	case *utangle_new.WrappedTx:
-	}
-}
-
-func (a *attacher) periodicCheck() bool {
-
-}
+//
+//// attachInputTransactionsIfNeeded does not check correctness of output indices, only transaction status
+//func attachInputTransactionsIfNeeded(v *utangle_new.Vertex, env AttachEnvironment) (bool, bool) {
+//	var stemInputTxID, seqInputTxID core.TransactionID
+//
+//	if v.Tx.IsBranchTransaction() {
+//		stemInputIdx := v.StemInputIndex()
+//		if v.Inputs[stemInputIdx] == nil {
+//			stemInputOid := v.Tx.MustInputAt(stemInputIdx)
+//			stemInputTxID = stemInputOid.TransactionID()
+//			v.Inputs[stemInputIdx] = AttachTxID(stemInputTxID, env)
+//		}
+//		switch v.Inputs[stemInputIdx].GetTxStatus() {
+//		case utangle_new.TxStatusBad:
+//			return false, false
+//		case utangle_new.TxStatusUndefined:
+//			return true, false
+//		}
+//	}
+//	// stem is good
+//	seqInputIdx := v.SequencerInputIndex()
+//	seqInputOid := v.Tx.MustInputAt(seqInputIdx)
+//	seqInputTxID = seqInputOid.TransactionID()
+//	v.Inputs[seqInputIdx] = AttachTxID(seqInputTxID, env)
+//	switch v.Inputs[seqInputIdx].GetTxStatus() {
+//	case utangle_new.TxStatusBad:
+//		return false, false
+//	case utangle_new.TxStatusUndefined:
+//		return true, false
+//	}
+//	// stem and seq inputs are ok. We can pull the rest
+//	missing := v.MissingInputTxIDSet().Remove(seqInputTxID)
+//	if v.Tx.IsBranchTransaction() {
+//		missing.Remove(stemInputTxID)
+//	}
+//	success := true
+//	v.Tx.ForEachInput(func(i byte, oid *core.OutputID) bool {
+//		if v.Inputs[i] == nil {
+//			v.Inputs[i] = AttachTxID(oid.TransactionID(), env)
+//		}
+//		success = v.Inputs[i].GetTxStatus() != utangle_new.TxStatusBad
+//		return success
+//	})
+//	if !success {
+//		return false, false
+//	}
+//	v.Tx.ForEachEndorsement(func(idx byte, txid *core.TransactionID) bool {
+//		if v.Endorsements[idx] == nil {
+//			v.Endorsements[idx] = AttachTxID(*txid, env)
+//		}
+//		success = v.Endorsements[idx].GetTxStatus() != utangle_new.TxStatusBad
+//		return success
+//	})
+//	return success, success
+//}
