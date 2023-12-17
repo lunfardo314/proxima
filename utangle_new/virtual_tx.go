@@ -8,15 +8,15 @@ import (
 	"github.com/lunfardo314/proxima/util"
 )
 
-func newVirtualTx(txid *core.TransactionID) *VirtualTransaction {
+func newVirtualTx(txid core.TransactionID) *VirtualTransaction {
 	return &VirtualTransaction{
-		txid:    *txid,
+		txid:    txid,
 		outputs: make(map[byte]*core.Output),
 	}
 }
 
 func newVirtualTxFromTx(tx *transaction.Transaction) *VirtualTransaction {
-	ret := newVirtualTx(tx.ID())
+	ret := newVirtualTx(*tx.ID())
 	tx.ForEachProducedOutput(func(idx byte, o *core.Output, oid *core.OutputID) bool {
 		ret.outputs[idx] = o.Clone()
 		return true
@@ -46,23 +46,6 @@ func (v *VirtualTransaction) addSequencerIndices(seqIdx, stemIdx byte) {
 
 func (v *VirtualTransaction) Wrap() *WrappedTx {
 	return _newVID(_virtualTx{VirtualTransaction: v})
-}
-
-// WrapIntoTxID converts plain TxD vertex into a virtual tx
-func (v *VirtualTransaction) WrapIntoTxID(vid *WrappedTx) {
-	vid.Unwrap(UnwrapOptions{
-		Vertex: func(v *Vertex) {
-			util.Panicf("WrapIntoTxID: 'TxID' expected, got 'Vertex' in %s", v.Tx.IDShortString())
-		},
-		VirtualTx: func(v *VirtualTransaction) {
-			util.Panicf("WrapIntoTxID: 'TxID' expected, got 'VirtualTx' in %s", v.txid.StringShort())
-		},
-		TxID: func(txid *core.TransactionID) {
-			util.Assertf(*txid == v.txid, "VirtualTransaction.WrapIntoTxID: IDs does not match")
-			vid._put(_virtualTx{VirtualTransaction: v})
-		},
-		Deleted: vid.PanicAccessDeleted,
-	})
 }
 
 func (v *VirtualTransaction) outputWithIDAt(idx byte) (*core.OutputWithID, bool) {

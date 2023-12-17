@@ -5,6 +5,8 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/global"
+	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/utangle_new"
 	"github.com/lunfardo314/proxima/util"
@@ -19,6 +21,7 @@ type (
 		AddVertexNoLock(vid *utangle_new.WrappedTx)
 		GetWrappedOutput(oid *core.OutputID) (utangle_new.WrappedOutput, bool)
 		GetVertex(txid *core.TransactionID) *utangle_new.WrappedTx
+		StateStore() global.StateStore
 		Pull(txid *core.TransactionID)
 	}
 
@@ -36,16 +39,28 @@ type (
 const periodicCheckEach = 500 * time.Millisecond
 
 // AttachTxID ensures the txid is on the utangle and it is pulled.
-// If it is not on the utange, creates TxID vertex and pulls. Otherwise, it does not touch it. It returns VID of the transaction
 func AttachTxID(txid core.TransactionID, env AttachEnvironment) (vid *utangle_new.WrappedTx) {
 	env.WithGlobalWriteLock(func() {
-		txid1 := txid
-		vid = env.GetVertexNoLock(&txid1)
-		if vid == nil {
+		vid = env.GetVertexNoLock(&txid)
+		if vid != nil {
+			return
+		}
+		if !txid.BranchFlagON() {
 			vid = utangle_new.WrapTxID(txid)
 			env.AddVertexNoLock(vid)
-			env.Pull(&txid1)
+			return
 		}
+		// it is a branch transaction
+		bd, branchAvailable := multistate.FetchBranchData(env.StateStore(), txid)
+		if !branchAvailable {
+			vid = utangle_new.WrapTxID(txid)
+			env.AddVertexNoLock(vid)
+			env.Pull(&txid)
+			return
+		}
+		vid = utangle_new.NewVirtualBranchTx(&bd).Wrap()
+		env.AddVertexNoLock(vid)
+
 	})
 	return
 }
@@ -59,16 +74,15 @@ func AttachTransaction(tx *transaction.Transaction, env AttachEnvironment, ctx c
 			vid = utangle_new.NewVertex(tx).Wrap()
 			env.AddVertexNoLock(vid)
 		}
-		panicRepeatedTx := func() { env.Log().Panicf("AttachTransaction: repeated transaction %s", tx.IDShortString()) }
-
 		vid.Unwrap(utangle_new.UnwrapOptions{
-			TxID: func(txid *core.TransactionID) {
-				// replace TxID with regular vertex
+			VirtualTx: func(v *utangle_new.VirtualTransaction) {
+				// replace virtualTx with regular vertex
 				vid.PutVertex(utangle_new.NewVertex(tx))
 			},
-			Vertex:    func(_ *utangle_new.Vertex) { panicRepeatedTx() },
-			VirtualTx: func(_ *utangle_new.VirtualTransaction) { panicRepeatedTx() },
-			Deleted:   vid.PanicAccessDeleted,
+			Vertex: func(_ *utangle_new.Vertex) {
+				env.Log().Panicf("AttachTransaction: repeated transaction %s", tx.IDShortString())
+			},
+			Deleted: vid.PanicAccessDeleted,
 		})
 		if vid.IsSequencerMilestone() {
 			// starts attacher goroutine for sequencer transactions.

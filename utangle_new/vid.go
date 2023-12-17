@@ -45,11 +45,6 @@ type (
 		_hasOutputAt(idx byte) (bool, bool)
 	}
 
-	_txID struct {
-		core.TransactionID
-		whenWrapped time.Time
-	}
-
 	_vertex struct {
 		*Vertex
 		whenWrapped time.Time
@@ -66,7 +61,6 @@ type (
 	UnwrapOptions struct {
 		Vertex    func(v *Vertex)
 		VirtualTx func(v *VirtualTransaction)
-		TxID      func(txid *core.TransactionID)
 		Deleted   func()
 	}
 
@@ -144,22 +138,6 @@ func (v _deletedTx) _hasOutputAt(_ byte) (bool, bool) {
 	panic(ErrDeletedVertexAccessed)
 }
 
-func (v _txID) _id() *core.TransactionID {
-	return &v.TransactionID
-}
-
-func (v _txID) _time() time.Time {
-	return v.whenWrapped
-}
-
-func (v _txID) _outputAt(_ byte) (*core.Output, error) {
-	return nil, nil
-}
-
-func (v _txID) _hasOutputAt(_ byte) (bool, bool) {
-	return false, false
-}
-
 func _newVID(g _genericWrapper) *WrappedTx {
 	return &WrappedTx{
 		_genericWrapper: g,
@@ -227,10 +205,7 @@ func (vid *WrappedTx) NotifyFutureCone() {
 }
 
 func WrapTxID(txid core.TransactionID) *WrappedTx {
-	return _newVID(_txID{
-		TransactionID: txid,
-		whenWrapped:   time.Now(),
-	})
+	return _newVID(_virtualTx{VirtualTransaction: newVirtualTx(txid)})
 }
 
 func DecodeIDs(vids ...*WrappedTx) []*core.TransactionID {
@@ -405,13 +380,6 @@ func (vid *WrappedTx) IsDeleted() (ret bool) {
 	return
 }
 
-func (vid *WrappedTx) IsTxID() (ret bool) {
-	vid.Unwrap(UnwrapOptions{TxID: func(txid *core.TransactionID) {
-		ret = true
-	}})
-	return
-}
-
 func (vid *WrappedTx) OutputID(idx byte) (ret core.OutputID) {
 	ret = core.NewOutputID(vid.ID(), idx)
 	return
@@ -434,10 +402,6 @@ func (vid *WrappedTx) Unwrap(opt UnwrapOptions) {
 	case _virtualTx:
 		if opt.VirtualTx != nil {
 			opt.VirtualTx(v.VirtualTransaction)
-		}
-	case _txID:
-		if opt.TxID != nil {
-			opt.TxID(v._id())
 		}
 
 	case _deletedTx:
