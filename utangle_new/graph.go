@@ -92,7 +92,7 @@ func makeGraphNode(vid *WrappedTx, gr graph.Graph[string, string], seqDict map[c
 func makeGraphEdges(vid *WrappedTx, gr graph.Graph[string, string]) {
 	id := vid.IDVeryShort()
 	vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
-		v.forEachInputDependency(func(i byte, inp *WrappedTx) bool {
+		v.ForEachInputDependency(func(i byte, inp *WrappedTx) bool {
 			o, err := v.getConsumedOutput(i)
 			util.AssertNoError(err)
 			outIndex := v.Tx.MustOutputIndexOfTheInput(i)
@@ -103,7 +103,7 @@ func makeGraphEdges(vid *WrappedTx, gr graph.Graph[string, string]) {
 			_ = gr.AddEdge(id, inp.IDVeryShort(), edgeAttributes...)
 			return true
 		})
-		v.forEachEndorsement(func(i byte, vEnd *WrappedTx) bool {
+		v.ForEachEndorsement(func(i byte, vEnd *WrappedTx) bool {
 			err := gr.AddEdge(id, vEnd.IDVeryShort(), graph.EdgeAttribute("color", "red"))
 			util.Assertf(err == nil || errors.Is(err, graph.ErrEdgeAlreadyExists), "%v", err)
 			return true

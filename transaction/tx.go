@@ -326,7 +326,7 @@ func CheckEndorsements() TxValidationOption {
 
 		txSlot := tx.Timestamp().TimeSlot()
 		tx.ForEachEndorsement(func(_ byte, endorsedTxID *core.TransactionID) bool {
-			if !endorsedTxID.SequencerFlagON() {
+			if !endorsedTxID.IsSequencerMilestone() {
 				err = fmt.Errorf("tx %s contains endorsement of non-sequencer transaction: %s", tx.IDShortString(), endorsedTxID.StringShort())
 				return false
 			}

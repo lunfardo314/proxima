@@ -76,12 +76,12 @@ func (ut *UTXOTangle) _attachVertex(vid *WrappedTx) (conflict *WrappedOutput) {
 				return
 			}
 			// book consumer into the inputs. Detect new double-spends, double-links and propagates
-			v.forEachInputDependency(func(i byte, vidInput *WrappedTx) bool {
-				conflict = vidInput.attachAsConsumer(v.Tx.MustOutputIndexOfTheInput(i), vid)
+			v.ForEachInputDependency(func(i byte, vidInput *WrappedTx) bool {
+				conflict = vidInput.AttachConsumerNoLock(v.Tx.MustOutputIndexOfTheInput(i), vid)
 				return conflict == nil
 			})
 			// maintain endorser list in predecessors
-			v.forEachEndorsement(func(_ byte, vEnd *WrappedTx) bool {
+			v.ForEachEndorsement(func(_ byte, vEnd *WrappedTx) bool {
 				vEnd.attachAsEndorser(vid)
 				return true
 			})

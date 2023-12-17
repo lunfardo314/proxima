@@ -55,13 +55,13 @@ func (v *Vertex) ValidateDebug() (string, error) {
 }
 
 func (v *Vertex) NumMissingInputs() (missingInputs int, missingEndorsements int) {
-	v.forEachInputDependency(func(_ byte, vidInput *WrappedTx) bool {
+	v.ForEachInputDependency(func(_ byte, vidInput *WrappedTx) bool {
 		if vidInput == nil {
 			missingInputs++
 		}
 		return true
 	})
-	v.forEachEndorsement(func(_ byte, vidEndorsed *WrappedTx) bool {
+	v.ForEachEndorsement(func(_ byte, vidEndorsed *WrappedTx) bool {
 		if vidEndorsed == nil {
 			missingEndorsements++
 		}
@@ -74,14 +74,14 @@ func (v *Vertex) NumMissingInputs() (missingInputs int, missingEndorsements int)
 func (v *Vertex) MissingInputTxIDSet() set.Set[core.TransactionID] {
 	ret := set.New[core.TransactionID]()
 	var oid core.OutputID
-	v.forEachInputDependency(func(i byte, vidInput *WrappedTx) bool {
+	v.ForEachInputDependency(func(i byte, vidInput *WrappedTx) bool {
 		if vidInput == nil {
 			oid = v.Tx.MustInputAt(i)
 			ret.Insert(oid.TransactionID())
 		}
 		return true
 	})
-	v.forEachEndorsement(func(i byte, vidEndorsed *WrappedTx) bool {
+	v.ForEachEndorsement(func(i byte, vidEndorsed *WrappedTx) bool {
 		if vidEndorsed == nil {
 			ret.Insert(v.Tx.EndorsementAt(i))
 		}
@@ -164,7 +164,7 @@ func (v *Vertex) producedOutputData(idx byte) ([]byte, bool) {
 	return v.Tx.MustOutputDataAt(idx), true
 }
 
-func (v *Vertex) forEachInputDependency(fun func(i byte, vidInput *WrappedTx) bool) {
+func (v *Vertex) ForEachInputDependency(fun func(i byte, vidInput *WrappedTx) bool) {
 	for i, inp := range v.Inputs {
 		if !fun(byte(i), inp) {
 			return
@@ -172,7 +172,7 @@ func (v *Vertex) forEachInputDependency(fun func(i byte, vidInput *WrappedTx) bo
 	}
 }
 
-func (v *Vertex) forEachEndorsement(fun func(i byte, vidEndorsed *WrappedTx) bool) {
+func (v *Vertex) ForEachEndorsement(fun func(i byte, vidEndorsed *WrappedTx) bool) {
 	for i, vEnd := range v.Endorsements {
 		if !fun(byte(i), vEnd) {
 			return
@@ -200,23 +200,6 @@ func (v *Vertex) Wrap() *WrappedTx {
 	})
 }
 
-// WrapIntoTxID converts plain TxID vertex into a vertex
-func (v *Vertex) WrapIntoTxID(vid *WrappedTx) {
-	vid.Unwrap(UnwrapOptions{
-		Vertex: func(v *Vertex) {
-			util.Panicf("WrapIntoTxID: 'TxID' expected, got 'Vertex' in %s", v.Tx.IDShortString())
-		},
-		VirtualTx: func(v *VirtualTransaction) {
-			util.Panicf("WrapIntoTxID: 'TxID' expected, got 'VirtualTx' in %s", v.txid.StringShort())
-		},
-		TxID: func(txid *core.TransactionID) {
-			util.Assertf(*txid == *v.Tx.ID(), "WrapIntoTxID: IDs does not match")
-			vid._put(_vertex{Vertex: v})
-		},
-		Deleted: vid.PanicAccessDeleted,
-	})
-}
-
 func (v *Vertex) convertToVirtualTx() *VirtualTransaction {
 	ret := &VirtualTransaction{
 		txid:    *v.Tx.ID(),
@@ -238,7 +221,7 @@ func (v *Vertex) PendingDependenciesLines(prefix ...string) *lines.Lines {
 	ret := lines.New(prefix...)
 
 	ret.Add("not solid inputs:")
-	v.forEachInputDependency(func(i byte, inp *WrappedTx) bool {
+	v.ForEachInputDependency(func(i byte, inp *WrappedTx) bool {
 		if inp == nil {
 			oid := v.Tx.MustInputAt(i)
 			ret.Add("   %d : %s", i, oid.StringShort())
@@ -246,7 +229,7 @@ func (v *Vertex) PendingDependenciesLines(prefix ...string) *lines.Lines {
 		return true
 	})
 	ret.Add("not solid endorsements:")
-	v.forEachEndorsement(func(i byte, vEnd *WrappedTx) bool {
+	v.ForEachEndorsement(func(i byte, vEnd *WrappedTx) bool {
 		if vEnd == nil {
 			txid := v.Tx.EndorsementAt(i)
 			ret.Add("   %d : %s", i, txid.StringShort())
@@ -260,7 +243,7 @@ func (v *Vertex) PendingDependenciesLines(prefix ...string) *lines.Lines {
 func (v *Vertex) inheritPastTracks(getStore func() global.StateStore) (conflict *WrappedOutput) {
 	v.pastTrack = newPastTrack()
 
-	v.forEachInputDependency(func(i byte, vidInput *WrappedTx) bool {
+	v.ForEachInputDependency(func(i byte, vidInput *WrappedTx) bool {
 		util.Assertf(vidInput != nil, "vidInput != nil")
 		conflict = v.pastTrack.absorbPastTrack(vidInput, getStore)
 		return conflict == nil
@@ -268,7 +251,7 @@ func (v *Vertex) inheritPastTracks(getStore func() global.StateStore) (conflict 
 	if conflict != nil {
 		return
 	}
-	v.forEachEndorsement(func(_ byte, vidEndorsed *WrappedTx) bool {
+	v.ForEachEndorsement(func(_ byte, vidEndorsed *WrappedTx) bool {
 		util.Assertf(vidEndorsed != nil, "vidEndorsed != nil")
 		conflict = v.pastTrack.absorbPastTrack(vidEndorsed, getStore)
 		return conflict == nil

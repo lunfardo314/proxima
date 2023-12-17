@@ -32,10 +32,6 @@ type (
 		vid                 *utangle_new.WrappedTx
 		baselineStateReader global.IndexedStateReader
 		env                 AttachEnvironment
-		numMissingTx        uint16
-		stemInputIdx        byte
-		seqInputIdx         byte
-		allInputsAttached   bool
 	}
 )
 
@@ -45,22 +41,12 @@ const (
 )
 
 func newAttacher(vid *utangle_new.WrappedTx, env AttachEnvironment, ctx context.Context) *attacher {
-	util.Assertf(vid.IsSequencerMilestone(), "sequencer milestone expected")
-
-	var numMissingTx uint16
-	vid.Unwrap(utangle_new.UnwrapOptions{Vertex: func(v *utangle_new.Vertex) {
-		numMissingTx = uint16(len(v.MissingInputTxIDSet()))
-	}})
-
-	ret := &attacher{
-		ctx:          ctx,
-		vid:          vid,
-		env:          env,
-		inChan:       make(chan *utangle_new.WrappedTx, 1),
-		numMissingTx: numMissingTx,
+	return &attacher{
+		ctx:    ctx,
+		vid:    vid,
+		env:    env,
+		inChan: make(chan *utangle_new.WrappedTx, 1),
 	}
-
-	return ret
 }
 
 func (a *attacher) close() {
@@ -81,13 +67,11 @@ func (a *attacher) notify(msg *utangle_new.WrappedTx) {
 	}
 }
 
-func (a *attacher) run() {
-	defer a.close()
-
+func (a *attacher) run() (self *attacher) {
+	self = a
 	a.vid.OnNotify(func(msg *utangle_new.WrappedTx) {
 		a.notify(msg)
 	})
-
 	for a.processStatus() {
 		select {
 		case <-a.ctx.Done():
@@ -102,7 +86,7 @@ func (a *attacher) run() {
 		case <-time.After(periodicCheckEach):
 		}
 	}
-
+	return
 }
 
 func (a *attacher) processNotification(vid *utangle_new.WrappedTx) {
@@ -110,7 +94,6 @@ func (a *attacher) processNotification(vid *utangle_new.WrappedTx) {
 	case utangle_new.TxStatusBad:
 		a.vid.SetTxStatus(utangle_new.TxStatusBad)
 	case utangle_new.TxStatusGood:
-		a.numMissingTx--
 	}
 }
 
@@ -121,15 +104,61 @@ func (a *attacher) processStatus() bool {
 	}
 
 	a.solidifyBaselineIfNeeded()
-
 	if a.vid.GetTxStatus() != utangle_new.TxStatusUndefined {
 		a.vid.NotifyFutureCone()
 		return false
 	}
-	if a.numMissingTx > 0 {
+	if a.baselineStateReader == nil {
+		// will continue with other outputs only after baseline state is determined
 		return true
 	}
-	panic("not implemented")
+	var exit bool
+	a.vid.Unwrap(utangle_new.UnwrapOptions{
+		Vertex: func(v *utangle_new.Vertex) {
+			a.runInputs(v)
+			exit = a.vid.GetTxStatus() != utangle_new.TxStatusUndefined
+		},
+		VirtualTx: func(_ *utangle_new.VirtualTransaction) {
+			exit = true
+		},
+		Deleted: func() {
+			exit = true
+		},
+	})
+	return !exit
+}
+
+// TODO
+
+func (a *attacher) runInputs(v *utangle_new.Vertex) {
+	bad := false
+	v.ForEachInputDependency(func(i byte, vidInput *utangle_new.WrappedTx) bool {
+		if vidInput == nil {
+			v.Inputs[i] = AttachInput(a.vid, i, a.env)
+		}
+		if v.Inputs[i] == nil || v.Inputs[i].GetTxStatus() == utangle_new.TxStatusBad {
+			bad = true
+			return false
+		}
+		return true
+	})
+	if bad {
+		a.vid.SetTxStatus(utangle_new.TxStatusBad)
+		return
+	}
+	v.ForEachEndorsement(func(i byte, vidEndorsed *utangle_new.WrappedTx) bool {
+		if vidEndorsed == nil {
+			v.Endorsements[i] = AttachTxID(v.Tx.EndorsementAt(i), a.env)
+		}
+		if v.Endorsements[i].GetTxStatus() != utangle_new.TxStatusBad {
+			bad = true
+			return false
+		}
+		return true
+	})
+	if bad {
+		a.vid.SetTxStatus(utangle_new.TxStatusBad)
+	}
 }
 
 // solidifyBaselineIfNeeded directs attachment process down the DAG to reach the deterministically known baseline state
@@ -145,9 +174,12 @@ func (a *attacher) solidifyBaselineIfNeeded() {
 			if v.Tx.IsBranchTransaction() {
 				stemInputIdx := v.StemInputIndex()
 				if v.Inputs[stemInputIdx] == nil {
-					// predecessor stem is absent
-					stemInputOid := v.Tx.MustInputAt(stemInputIdx)
-					v.Inputs[stemInputIdx] = AttachTxID(stemInputOid.TransactionID(), a.env)
+					// predecessor stem is pending
+					v.Inputs[stemInputIdx] = AttachInput(a.vid, stemInputIdx, a.env)
+					if v.Inputs[stemInputIdx] == nil {
+						valid = false
+						return
+					}
 				}
 				switch v.Inputs[stemInputIdx].GetTxStatus() {
 				case utangle_new.TxStatusGood:
@@ -164,7 +196,11 @@ func (a *attacher) solidifyBaselineIfNeeded() {
 			if predOid.TimeSlot() == v.Tx.TimeSlot() {
 				// predecessor is on the same slot -> continue towards it
 				if v.Inputs[predIdx] == nil {
-					v.Inputs[predIdx] = AttachTxID(predOid.TransactionID(), a.env)
+					v.Inputs[predIdx] = AttachInput(a.vid, predIdx, a.env)
+					if v.Inputs[predIdx] == nil {
+						valid = false
+						return
+					}
 				}
 				if valid = v.Inputs[predIdx].GetTxStatus() != utangle_new.TxStatusBad; valid {
 					a.baselineStateReader = v.Inputs[predIdx].BaselineStateReader() // may be nil
@@ -202,7 +238,7 @@ func (a *attacher) solidifyBaselineIfNeeded() {
 //		if v.Inputs[stemInputIdx] == nil {
 //			stemInputOid := v.Tx.MustInputAt(stemInputIdx)
 //			stemInputTxID = stemInputOid.TransactionID()
-//			v.Inputs[stemInputIdx] = AttachTxID(stemInputTxID, env)
+//			v.Inputs[stemInputIdx] = _attachTxID(stemInputTxID, env)
 //		}
 //		switch v.Inputs[stemInputIdx].GetTxStatus() {
 //		case utangle_new.TxStatusBad:
@@ -215,7 +251,7 @@ func (a *attacher) solidifyBaselineIfNeeded() {
 //	seqInputIdx := v.SequencerInputIndex()
 //	seqInputOid := v.Tx.MustInputAt(seqInputIdx)
 //	seqInputTxID = seqInputOid.TransactionID()
-//	v.Inputs[seqInputIdx] = AttachTxID(seqInputTxID, env)
+//	v.Inputs[seqInputIdx] = _attachTxID(seqInputTxID, env)
 //	switch v.Inputs[seqInputIdx].GetTxStatus() {
 //	case utangle_new.TxStatusBad:
 //		return false, false
@@ -230,7 +266,7 @@ func (a *attacher) solidifyBaselineIfNeeded() {
 //	success := true
 //	v.Tx.ForEachInput(func(i byte, oid *core.OutputID) bool {
 //		if v.Inputs[i] == nil {
-//			v.Inputs[i] = AttachTxID(oid.TransactionID(), env)
+//			v.Inputs[i] = _attachTxID(oid.TransactionID(), env)
 //		}
 //		success = v.Inputs[i].GetTxStatus() != utangle_new.TxStatusBad
 //		return success
@@ -240,7 +276,7 @@ func (a *attacher) solidifyBaselineIfNeeded() {
 //	}
 //	v.Tx.ForEachEndorsement(func(idx byte, txid *core.TransactionID) bool {
 //		if v.Endorsements[idx] == nil {
-//			v.Endorsements[idx] = AttachTxID(*txid, env)
+//			v.Endorsements[idx] = _attachTxID(*txid, env)
 //		}
 //		success = v.Endorsements[idx].GetTxStatus() != utangle_new.TxStatusBad
 //		return success

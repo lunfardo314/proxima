@@ -38,9 +38,9 @@ func (v *VirtualTransaction) addOutput(idx byte, o *core.Output) {
 }
 
 func (v *VirtualTransaction) addSequencerIndices(seqIdx, stemIdx byte) {
-	util.Assertf(v.txid.SequencerFlagON(), "addSequencerIndices: must a sequencer transaction")
+	util.Assertf(v.txid.IsSequencerMilestone(), "addSequencerIndices: must a sequencer transaction")
 	util.Assertf(seqIdx != 0xff, "seqIdx != 0xff")
-	util.Assertf(v.txid.BranchFlagON() == (stemIdx != 0xff), "v.txid.BranchFlagON() == (stemIdx != 0xff)")
+	util.Assertf(v.txid.IsBranchTransaction() == (stemIdx != 0xff), "v.txid.IsBranchTransaction() == (stemIdx != 0xff)")
 	v.sequencerOutputs = &[2]byte{seqIdx, stemIdx}
 }
 

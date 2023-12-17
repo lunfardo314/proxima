@@ -82,7 +82,7 @@ func (s *SyncData) SetLastCutFinal(t time.Time) {
 
 // EvidenceIncomingBranch stores branch ID immediately it sees it, before solidification
 func (s *SyncData) EvidenceIncomingBranch(txid *core.TransactionID, seqID core.ChainID) {
-	util.Assertf(txid.BranchFlagON(), "must be a branch transaction")
+	util.Assertf(txid.IsBranchTransaction(), "must be a branch transaction")
 
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
@@ -106,7 +106,7 @@ func (s *SyncData) EvidenceIncomingBranch(txid *core.TransactionID, seqID core.C
 }
 
 func (s *SyncData) UnEvidenceIncomingBranch(txid core.TransactionID) {
-	util.Assertf(txid.BranchFlagON(), "must be a branch transaction")
+	util.Assertf(txid.IsBranchTransaction(), "must be a branch transaction")
 
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
@@ -117,7 +117,7 @@ func (s *SyncData) UnEvidenceIncomingBranch(txid core.TransactionID) {
 }
 
 func (s *SyncData) EvidenceBookedBranch(txid *core.TransactionID, seqID core.ChainID) {
-	util.Assertf(txid.BranchFlagON(), "must be a branch transaction")
+	util.Assertf(txid.IsBranchTransaction(), "must be a branch transaction")
 
 	s.mutex.Lock()
 	defer s.mutex.Unlock()

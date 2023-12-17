@@ -165,11 +165,11 @@ func (vid *WrappedTx) IDVeryShort() string {
 }
 
 func (vid *WrappedTx) IsBranchTransaction() bool {
-	return vid.ID().BranchFlagON()
+	return vid.ID().IsBranchTransaction()
 }
 
 func (vid *WrappedTx) IsSequencerMilestone() bool {
-	return vid.ID().SequencerFlagON()
+	return vid.ID().IsSequencerMilestone()
 }
 
 func (vid *WrappedTx) Timestamp() core.LogicalTime {

@@ -40,7 +40,7 @@ func (w *Workflow) initRespondTxQueryConsumer() {
 func (c *PullRespondConsumer) consume(inp PullRespondData) {
 	if txBytes := c.glb.txBytesStore.GetTxBytes(&inp.TxID); len(txBytes) > 0 {
 		var root common.VCommitment
-		if inp.TxID.BranchFlagON() {
+		if inp.TxID.IsBranchTransaction() {
 			if rr, found := multistate.FetchRootRecord(c.glb.utxoTangle.StateStore(), inp.TxID); found {
 				root = rr.Root
 			}

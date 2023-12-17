@@ -385,7 +385,7 @@ func (u *Updatable) updateUTXOLedgerDB(updateFun func(updatable *immutable.TrieU
 
 // BranchIsDescendantOf returns true if predecessor txid is known in the descendents state
 func BranchIsDescendantOf(descendant, predecessor *core.TransactionID, getStore func() global.StateStore) bool {
-	util.Assertf(descendant.BranchFlagON(), "must be a branch ts")
+	util.Assertf(descendant.IsBranchTransaction(), "must be a branch ts")
 
 	if core.EqualTransactionIDs(descendant, predecessor) {
 		return true

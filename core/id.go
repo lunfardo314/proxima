@@ -133,11 +133,11 @@ func (txid *TransactionID) TimeTick() TimeTick {
 	return txid.Timestamp().TimeTick()
 }
 
-func (txid *TransactionID) SequencerFlagON() bool {
+func (txid *TransactionID) IsSequencerMilestone() bool {
 	return txid[0]&SequencerTxFlagHigherByte != 0
 }
 
-func (txid *TransactionID) BranchFlagON() bool {
+func (txid *TransactionID) IsBranchTransaction() bool {
 	return txid[0]&BranchTxFlagHigherByte != 0
 }
 
@@ -198,7 +198,7 @@ func TransactionIDAsFileName(ts LogicalTime, txHash TransactionIDShort, sequence
 }
 
 func (txid *TransactionID) String() string {
-	return TransactionIDString(txid.Timestamp(), txid.ShortID(), txid.SequencerFlagON(), txid.BranchFlagON())
+	return TransactionIDString(txid.Timestamp(), txid.ShortID(), txid.IsSequencerMilestone(), txid.IsBranchTransaction())
 }
 
 func (txid *TransactionID) StringHex() string {
@@ -206,15 +206,15 @@ func (txid *TransactionID) StringHex() string {
 }
 
 func (txid *TransactionID) StringShort() string {
-	return TransactionIDStringShort(txid.Timestamp(), txid.ShortID(), txid.SequencerFlagON(), txid.BranchFlagON())
+	return TransactionIDStringShort(txid.Timestamp(), txid.ShortID(), txid.IsSequencerMilestone(), txid.IsBranchTransaction())
 }
 
 func (txid *TransactionID) StringVeryShort() string {
-	return TransactionIDStringVeryShort(txid.Timestamp(), txid.ShortID(), txid.SequencerFlagON(), txid.BranchFlagON())
+	return TransactionIDStringVeryShort(txid.Timestamp(), txid.ShortID(), txid.IsSequencerMilestone(), txid.IsBranchTransaction())
 }
 
 func (txid *TransactionID) AsFileName() string {
-	return TransactionIDAsFileName(txid.Timestamp(), txid.ShortID(), txid.SequencerFlagON(), txid.BranchFlagON())
+	return TransactionIDAsFileName(txid.Timestamp(), txid.ShortID(), txid.IsSequencerMilestone(), txid.IsBranchTransaction())
 }
 
 func LessTxID(txid1, txid2 TransactionID) bool {

@@ -206,12 +206,12 @@ func (vid *WrappedTx) OnNotify(fun func(vid *WrappedTx)) {
 	vid.onNotify = fun
 }
 
-func (vid *WrappedTx) Notify(msg any) {
+func (vid *WrappedTx) Notify(downstreamVID *WrappedTx) {
 	vid.mutex.RLock()
 	defer vid.mutex.RUnlock()
 
 	if vid.onNotify != nil {
-		vid.onNotify(msg)
+		vid.onNotify(downstreamVID)
 	}
 }
 
@@ -257,11 +257,11 @@ func (vid *WrappedTx) IDVeryShort() string {
 }
 
 func (vid *WrappedTx) IsBranchTransaction() bool {
-	return vid.ID().BranchFlagON()
+	return vid.ID().IsBranchTransaction()
 }
 
 func (vid *WrappedTx) IsSequencerMilestone() bool {
-	return vid.ID().SequencerFlagON()
+	return vid.ID().IsSequencerMilestone()
 }
 
 func (vid *WrappedTx) Timestamp() core.LogicalTime {
@@ -475,14 +475,14 @@ func (vid *WrappedTx) _traversePastCone(opt *_unwrapOptionsTraverse) bool {
 	ret := true
 	vid.Unwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
-			v.forEachInputDependency(func(i byte, inp *WrappedTx) bool {
+			v.ForEachInputDependency(func(i byte, inp *WrappedTx) bool {
 				util.Assertf(inp != nil, "_traversePastCone: input %d is nil (not solidified) in %s",
 					i, func() any { return v.Tx.IDShortString() })
 				ret = inp._traversePastCone(opt)
 				return ret
 			})
 			if ret {
-				v.forEachEndorsement(func(i byte, inpEnd *WrappedTx) bool {
+				v.ForEachEndorsement(func(i byte, inpEnd *WrappedTx) bool {
 					util.Assertf(inpEnd != nil, "_traversePastCone: endorsement %d is nil (not solidified) in %s",
 						i, func() any { return v.Tx.IDShortString() })
 					ret = inpEnd._traversePastCone(opt)
@@ -604,7 +604,7 @@ func (vid *WrappedTx) WrappedInputs() []WrappedOutput {
 	vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
 		util.Assertf(v.IsSolid(), "not solid inputs of %s", v.Tx.IDShortString())
 
-		v.forEachInputDependency(func(i byte, inp *WrappedTx) bool {
+		v.ForEachInputDependency(func(i byte, inp *WrappedTx) bool {
 			inpID := v.Tx.MustInputAt(i)
 			ret[i] = WrappedOutput{
 				VID:   inp,
@@ -624,59 +624,6 @@ func (vid *WrappedTx) PanicAccessDeleted() {
 func (vid *WrappedTx) PanicShouldNotBeVirtualTx(_ *VirtualTransaction) {
 	txid := vid._genericWrapper.(_virtualTx).txid
 	util.Panicf("%w: %s", ErrShouldNotBeVirtualTx, txid.StringShort())
-}
-
-// attachAsConsumer must be called from globally locked utangle environment.
-// Double-links conflict. Propagates new conflict
-func (vid *WrappedTx) attachAsConsumer(outputIndex byte, consumer *WrappedTx) *WrappedOutput {
-	if vid.consumers == nil {
-		vid.consumers = make(map[byte][]*WrappedTx)
-	}
-	descendants := vid.consumers[outputIndex]
-	if len(descendants) >= int(ForkSNReserved) {
-		// maximum 255 conflicts per output. Sorry
-		return &WrappedOutput{
-			VID:   vid,
-			Index: outputIndex,
-		}
-	}
-	switch sn := byte(len(descendants)); sn {
-	case 0:
-		descendants = make([]*WrappedTx, 0, 2)
-		// only double-spends need marking the consumer with fork
-	case 1:
-		// double-spend requires propagation of the new fork
-		f := newFork(WrappedOutput{VID: vid, Index: outputIndex}, 0)
-		descendants[0].propagateNewForkToFutureCone(f, set.New[*WrappedTx]())
-		// mark the consumer with fork
-		consumer.addFork(newFork(WrappedOutput{VID: vid, Index: outputIndex}, 1))
-	default:
-		// mark the consumer with fork
-		consumer.addFork(newFork(WrappedOutput{VID: vid, Index: outputIndex}, sn))
-	}
-	vid.consumers[outputIndex] = util.AppendUnique(descendants, consumer)
-	return nil
-}
-
-func (vid *WrappedTx) propagateNewForkToFutureCone(f Fork, visited set.Set[*WrappedTx]) {
-	if vid.IsDeleted() {
-		return
-	}
-	if visited.Contains(vid) {
-		return
-	}
-	visited.Insert(vid)
-
-	for _, consumers := range vid.consumers {
-		for _, descendant := range consumers {
-			descendant.propagateNewForkToFutureCone(f, visited)
-		}
-	}
-	for _, vidEndorser := range vid.endorsers {
-		vidEndorser.propagateNewForkToFutureCone(f, visited)
-	}
-	ok := vid.addFork(f)
-	util.Assertf(ok, "unexpected conflict while propagating new fork")
 }
 
 func (vid *WrappedTx) addFork(f Fork) bool {
@@ -725,7 +672,7 @@ func (vid *WrappedTx) _collectMutationData(md *_mutationData) (conflict WrappedO
 
 	vid.Unwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
-			v.forEachInputDependency(func(i byte, inp *WrappedTx) bool {
+			v.ForEachInputDependency(func(i byte, inp *WrappedTx) bool {
 				// recursively collect from inputs
 				inp._collectMutationData(md)
 
@@ -745,7 +692,7 @@ func (vid *WrappedTx) _collectMutationData(md *_mutationData) (conflict WrappedO
 				}
 				return true
 			})
-			v.forEachEndorsement(func(i byte, vidEndorsed *WrappedTx) bool {
+			v.ForEachEndorsement(func(i byte, vidEndorsed *WrappedTx) bool {
 				// recursively collect from endorsements
 				vidEndorsed._collectMutationData(md)
 				return true
@@ -801,7 +748,7 @@ func (vid *WrappedTx) _collectCoveredOutputs(baselineStateReader global.StateRea
 	visited.Insert(vid)
 
 	vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
-		v.forEachInputDependency(func(i byte, inp *WrappedTx) bool {
+		v.ForEachInputDependency(func(i byte, inp *WrappedTx) bool {
 			wInp := WrappedOutput{
 				VID:   inp,
 				Index: v.Tx.MustOutputIndexOfTheInput(i),
@@ -813,7 +760,7 @@ func (vid *WrappedTx) _collectCoveredOutputs(baselineStateReader global.StateRea
 			}
 			return true
 		})
-		v.forEachEndorsement(func(i byte, vEnd *WrappedTx) bool {
+		v.ForEachEndorsement(func(i byte, vEnd *WrappedTx) bool {
 			vEnd._collectCoveredOutputs(baselineStateReader, visited, coveredOutputs)
 			return true
 		})
@@ -907,7 +854,7 @@ func (vid *WrappedTx) PastTrackLines(prefix ...string) *lines.Lines {
 
 	ret.Add("==== BEGIN forks of %s", vid.IDShortString())
 	vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
-		v.forEachInputDependency(func(i byte, inp *WrappedTx) bool {
+		v.ForEachInputDependency(func(i byte, inp *WrappedTx) bool {
 			input := v.Tx.MustInputAt(i)
 			if inp == nil {
 				ret.Add("  INPUT %d : %s (not solid)", i, input.StringShort())
@@ -919,7 +866,7 @@ func (vid *WrappedTx) PastTrackLines(prefix ...string) *lines.Lines {
 			}
 			return true
 		})
-		v.forEachEndorsement(func(i byte, vEnd *WrappedTx) bool {
+		v.ForEachEndorsement(func(i byte, vEnd *WrappedTx) bool {
 			ret.Add("  ENDORSEMENT %d : %s ", i, vEnd.IDShortString())
 			vEnd.Unwrap(UnwrapOptions{Vertex: func(vEnd *Vertex) {
 				ret.Append(vEnd.pastTrack.Lines("     "))
@@ -972,7 +919,7 @@ func (o *WrappedOutput) _isConsumedInThePastConeOf(vid *WrappedTx, visited set.S
 
 	vid.Unwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
-			v.forEachInputDependency(func(i byte, vidInput *WrappedTx) bool {
+			v.ForEachInputDependency(func(i byte, vidInput *WrappedTx) bool {
 				if o.VID == vidInput {
 					consumed = o.Index == v.Tx.MustOutputIndexOfTheInput(i)
 				} else {
@@ -981,7 +928,7 @@ func (o *WrappedOutput) _isConsumedInThePastConeOf(vid *WrappedTx, visited set.S
 				return !consumed
 			})
 			if !consumed {
-				v.forEachEndorsement(func(_ byte, vidEndorsed *WrappedTx) bool {
+				v.ForEachEndorsement(func(_ byte, vidEndorsed *WrappedTx) bool {
 					consumed = o._isConsumedInThePastConeOf(vidEndorsed, visited)
 					return !consumed
 				})
@@ -993,4 +940,64 @@ func (o *WrappedOutput) _isConsumedInThePastConeOf(vid *WrappedTx, visited set.S
 
 func (o *WrappedOutput) ValidPace(targetTs core.LogicalTime) bool {
 	return core.ValidTimePace(o.Timestamp(), targetTs)
+}
+
+// AttachConsumerNoLock must be called from globally locked utangle environment.
+// Double-links conflict. Propagates new conflict
+func (vid *WrappedTx) AttachConsumerNoLock(outputIndex byte, consumer *WrappedTx) bool {
+	if _, invalid := vid.HasOutputAt(outputIndex); invalid {
+		return false
+	}
+
+	vid.mutex.Lock()
+	defer vid.mutex.Unlock()
+
+	if vid.consumers == nil {
+		vid.consumers = make(map[byte][]*WrappedTx)
+	}
+	descendants := vid.consumers[outputIndex]
+	if len(descendants) >= int(ForkSNReserved) {
+		// maximum 255 conflicts per output. Sorry
+		return false
+	}
+	conflictSet := WrappedOutput{
+		VID:   vid,
+		Index: outputIndex,
+	}
+	switch sn := byte(len(descendants)); sn {
+	case 0:
+		descendants = make([]*WrappedTx, 0, 2)
+		// only double-spends need marking the consumer with fork
+	case 1:
+		// double-spend requires propagation of the new fork
+		descendants[0].propagateNewConflictSet(&conflictSet, set.New[*WrappedTx]())
+		// mark the consumer with fork
+		consumer.addFork(newFork(conflictSet, 1))
+	default:
+		// mark the consumer with fork
+		consumer.addFork(newFork(conflictSet, sn))
+	}
+	vid.consumers[outputIndex] = util.AppendUnique(descendants, consumer)
+	return true
+}
+
+func (vid *WrappedTx) propagateNewConflictSet(wOut *WrappedOutput, visited set.Set[*WrappedTx]) {
+	if vid.IsDeleted() {
+		return
+	}
+	if visited.Contains(vid) {
+		return
+	}
+	visited.Insert(vid)
+
+	for _, consumers := range vid.consumers {
+		for _, descendant := range consumers {
+			descendant.propagateNewConflictSet(wOut, visited)
+		}
+	}
+	for _, vidEndorser := range vid.endorsers {
+		vidEndorser.propagateNewConflictSet(wOut, visited)
+	}
+	ok := vid.addFork(newFork(*wOut, 0))
+	util.Assertf(ok, "unexpected conflict while propagating new fork")
 }

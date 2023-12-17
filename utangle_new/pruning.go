@@ -15,11 +15,11 @@ func _collectReachableSet(rootVID *WrappedTx, ret set.Set[*WrappedTx]) {
 	ret.Insert(rootVID)
 	rootVID.Unwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
-			v.forEachInputDependency(func(_ byte, inp *WrappedTx) bool {
+			v.ForEachInputDependency(func(_ byte, inp *WrappedTx) bool {
 				_collectReachableSet(inp, ret)
 				return true
 			})
-			v.forEachEndorsement(func(_ byte, vEnd *WrappedTx) bool {
+			v.ForEachEndorsement(func(_ byte, vEnd *WrappedTx) bool {
 				_collectReachableSet(vEnd, ret)
 				return true
 			})
