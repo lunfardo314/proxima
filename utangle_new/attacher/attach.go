@@ -7,10 +7,11 @@ import (
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/utangle_new"
+	"github.com/lunfardo314/proxima/utangle_new/vertex"
 )
 
 // _attachTxID ensures the txid is on the utangle. Must be called from globally locked environment
-func _attachTxID(txid core.TransactionID, env AttachEnvironment) (vid *utangle_new.WrappedTx) {
+func _attachTxID(txid core.TransactionID, env AttachEnvironment) (vid *vertex.WrappedTx) {
 	vid = env.GetVertexNoLock(&txid)
 	if vid != nil {
 		// found existing -> return it
@@ -19,7 +20,7 @@ func _attachTxID(txid core.TransactionID, env AttachEnvironment) (vid *utangle_n
 	// it is new
 	if !txid.IsBranchTransaction() {
 		// if not branch -> just place the empty virtualTx on the utangle, no further action
-		vid = utangle_new.WrapTxID(txid)
+		vid = vertex.WrapTxID(txid)
 		env.AddVertexNoLock(vid)
 		return
 	}
@@ -29,20 +30,18 @@ func _attachTxID(txid core.TransactionID, env AttachEnvironment) (vid *utangle_n
 		vid = utangle_new.NewVirtualBranchTx(&bd).Wrap()
 		env.AddVertexNoLock(vid)
 		env.AddBranchNoLock(vid, &bd)
-		// final branches reference itself, otherwise baseline branch == nil
-		vid.SetBaselineBranch(vid)
-		vid.SetTxStatus(utangle_new.TxStatusGood)
+		vid.SetTxStatus(vertex.TxStatusGood)
 	} else {
 		// the corresponding state is not in the multistate DB -> put virtualTx to the utangle -> pull it
 		// the puller will trigger further solidification
-		vid = utangle_new.WrapTxID(txid)
+		vid = vertex.WrapTxID(txid)
 		env.AddVertexNoLock(vid)
 		env.Pull(txid)
 	}
 	return
 }
 
-func AttachTxID(txid core.TransactionID, env AttachEnvironment) (vid *utangle_new.WrappedTx) {
+func AttachTxID(txid core.TransactionID, env AttachEnvironment) (vid *vertex.WrappedTx) {
 	env.WithGlobalWriteLock(func() {
 		vid = _attachTxID(txid, env)
 	})
@@ -51,12 +50,12 @@ func AttachTxID(txid core.TransactionID, env AttachEnvironment) (vid *utangle_ne
 
 // AttachInput attaches transaction and links consumer with the transaction.
 // Returns vid of the consumed transaction, or nil if input index is wrong
-func AttachInput(consumer *utangle_new.WrappedTx, inputIdx byte, env AttachEnvironment, baselineStateReader *multistate.SugaredStateReader) (vid *utangle_new.WrappedTx) {
+func AttachInput(consumer *vertex.WrappedTx, inputIdx byte, env AttachEnvironment, baselineStateReader *multistate.SugaredStateReader) (vid *vertex.WrappedTx) {
 	var inOid core.OutputID
 	var out *core.Output
 	var err error
-	consumer.Unwrap(utangle_new.UnwrapOptions{
-		Vertex: func(v *utangle_new.Vertex) {
+	consumer.Unwrap(vertex.UnwrapOptions{
+		Vertex: func(v *vertex.Vertex) {
 			inOid, err = v.Tx.InputAt(inputIdx)
 		},
 		VirtualTx: vid.PanicShouldNotBeVirtualTx,
@@ -95,7 +94,7 @@ func AttachInput(consumer *utangle_new.WrappedTx, inputIdx byte, env AttachEnvir
 
 // AttachTransaction attaches new incoming transaction. For sequencer transaction it starts attacher routine
 // which manages solidification pull until transaction becomes solid or stopped by the context
-func AttachTransaction(tx *transaction.Transaction, env AttachEnvironment, ctx context.Context) (vid *utangle_new.WrappedTx) {
+func AttachTransaction(tx *transaction.Transaction, env AttachEnvironment, ctx context.Context) (vid *vertex.WrappedTx) {
 	env.WithGlobalWriteLock(func() {
 		// look up for the txid
 		vid = env.GetVertexNoLock(tx.ID())

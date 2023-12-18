@@ -4,6 +4,7 @@ import (
 	"bytes"
 
 	"github.com/lunfardo314/proxima/multistate"
+	"github.com/lunfardo314/proxima/utangle_new/vertex"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
 )
@@ -35,7 +36,7 @@ func (ut *UTXOTangle) InfoLines(verbose ...bool) *lines.Lines {
 	ln.Add("UTXOTangle (verbose = %v), numVertices: %d, num slots: %d, addTx: %d, delTx: %d, addBranch: %d, delBranch: %d",
 		verb, ut.NumVertices(), len(slots), ut.numAddedVertices, ut.numDeletedVertices, ut.numAddedBranches, ut.numDeletedBranches)
 	for _, e := range slots {
-		branches := util.SortKeys(ut.branches[e], func(vid1, vid2 *WrappedTx) bool {
+		branches := util.SortKeys(ut.branches[e], func(vid1, vid2 *vertex.WrappedTx) bool {
 			chainID1, ok := vid1.SequencerIDIfAvailable()
 			util.Assertf(ok, "can't gets sequencer ID")
 			chainID2, ok := vid2.SequencerIDIfAvailable()

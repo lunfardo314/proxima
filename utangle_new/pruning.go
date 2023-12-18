@@ -4,22 +4,23 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/utangle_new/vertex"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/set"
 )
 
-func _collectReachableSet(rootVID *WrappedTx, ret set.Set[*WrappedTx]) {
+func _collectReachableSet(rootVID *vertex.WrappedTx, ret set.Set[*vertex.WrappedTx]) {
 	if ret.Contains(rootVID) {
 		return
 	}
 	ret.Insert(rootVID)
-	rootVID.Unwrap(UnwrapOptions{
-		Vertex: func(v *Vertex) {
-			v.ForEachInputDependency(func(_ byte, inp *WrappedTx) bool {
+	rootVID.Unwrap(vertex.UnwrapOptions{
+		Vertex: func(v *vertex.Vertex) {
+			v.ForEachInputDependency(func(_ byte, inp *vertex.WrappedTx) bool {
 				_collectReachableSet(inp, ret)
 				return true
 			})
-			v.ForEachEndorsement(func(_ byte, vEnd *WrappedTx) bool {
+			v.ForEachEndorsement(func(_ byte, vEnd *vertex.WrappedTx) bool {
 				_collectReachableSet(vEnd, ret)
 				return true
 			})
@@ -31,8 +32,8 @@ func _collectReachableSet(rootVID *WrappedTx, ret set.Set[*WrappedTx]) {
 }
 
 // _reachableFromTipSet a set of vertices reachable from any of the vertex in the tip set
-func _reachableFromTipList(tips []*WrappedTx) set.Set[*WrappedTx] {
-	ret := set.New[*WrappedTx]()
+func _reachableFromTipList(tips []*vertex.WrappedTx) set.Set[*vertex.WrappedTx] {
+	ret := set.New[*vertex.WrappedTx]()
 	for _, vid := range tips {
 		_collectReachableSet(vid, ret)
 	}
@@ -40,8 +41,8 @@ func _reachableFromTipList(tips []*WrappedTx) set.Set[*WrappedTx] {
 }
 
 // _orphanedFromReachableSet no global lock
-func (ut *UTXOTangle) _orphanedFromReachableSet(reachable set.Set[*WrappedTx], baselineTime time.Time) set.Set[*WrappedTx] {
-	ret := set.New[*WrappedTx]()
+func (ut *UTXOTangle) _orphanedFromReachableSet(reachable set.Set[*vertex.WrappedTx], baselineTime time.Time) set.Set[*vertex.WrappedTx] {
+	ret := set.New[*vertex.WrappedTx]()
 	for _, vid := range ut.vertices {
 		if !vid.Time().Before(baselineTime) {
 			continue
@@ -54,7 +55,7 @@ func (ut *UTXOTangle) _orphanedFromReachableSet(reachable set.Set[*WrappedTx], b
 }
 
 // ReachableAndOrphaned used for testing
-func (ut *UTXOTangle) ReachableAndOrphaned(nLatestSlots int) (set.Set[*WrappedTx], set.Set[*WrappedTx], time.Time) {
+func (ut *UTXOTangle) ReachableAndOrphaned(nLatestSlots int) (set.Set[*vertex.WrappedTx], set.Set[*vertex.WrappedTx], time.Time) {
 	ut.mutex.RLock()
 	defer ut.mutex.RUnlock()
 
@@ -81,13 +82,13 @@ func (ut *UTXOTangle) PruneOrphaned(nLatestSlots int) (int, int, int) {
 	reachable := _reachableFromTipList(tipList)
 	orphaned := ut._orphanedFromReachableSet(reachable, baselineTime)
 	// delete from transaction dictionary
-	orphaned.ForEach(func(vid *WrappedTx) bool {
+	orphaned.ForEach(func(vid *vertex.WrappedTx) bool {
 		vid.MarkDeleted()
 		ut._deleteVertex(vid.ID())
 		return true
 	})
 	// delete branches
-	orphanedBranches := make([]*WrappedTx, 0)
+	orphanedBranches := make([]*vertex.WrappedTx, 0)
 	nPrunedBranches := 0
 	toDeleteSlots := make([]core.TimeSlot, 0)
 	for slot, branches := range ut.branches {
@@ -113,8 +114,8 @@ func (ut *UTXOTangle) PruneOrphaned(nLatestSlots int) (int, int, int) {
 	return len(orphaned), nPrunedBranches, len(toDeleteSlots)
 }
 
-func (vid *WrappedTx) cleanForkSet() {
-	vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
+func (vid *vertex.WrappedTx) cleanForkSet() {
+	vid.Unwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
 		v.pastTrack.forks.cleanDeleted()
 	}})
 }
@@ -149,7 +150,7 @@ func (ut *UTXOTangle) CutFinalBranchIfExists(nLatestSlots int) (*core.Transactio
 
 	br := util.MustTakeFirstKeyInMap(ut.branches[slots[0]])
 
-	orderedPastCone := br.PastConeSet().Ordered(func(vid1, vid2 *WrappedTx) bool {
+	orderedPastCone := br.PastConeSet().Ordered(func(vid1, vid2 *vertex.WrappedTx) bool {
 		return vid1.Timestamp().Before(vid2.Timestamp())
 	})
 

@@ -8,7 +8,7 @@ import (
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/multistate"
-	"github.com/lunfardo314/proxima/utangle_new"
+	"github.com/lunfardo314/proxima/utangle_new/vertex"
 	"github.com/lunfardo314/proxima/util"
 	"go.uber.org/zap"
 )
@@ -17,23 +17,23 @@ type (
 	AttachEnvironment interface {
 		Log() *zap.SugaredLogger
 		WithGlobalWriteLock(fun func())
-		GetVertexNoLock(txid *core.TransactionID) *utangle_new.WrappedTx
-		AddVertexNoLock(vid *utangle_new.WrappedTx)
-		GetWrappedOutput(oid *core.OutputID) (utangle_new.WrappedOutput, bool)
-		GetVertex(txid *core.TransactionID) *utangle_new.WrappedTx
+		GetVertexNoLock(txid *core.TransactionID) *vertex.WrappedTx
+		AddVertexNoLock(vid *vertex.WrappedTx)
+		GetWrappedOutput(oid *core.OutputID) (vertex.WrappedOutput, bool)
+		GetVertex(txid *core.TransactionID) *vertex.WrappedTx
 		StateStore() global.StateStore
-		GetBaselineStateReader(branch *utangle_new.WrappedTx) global.IndexedStateReader
-		AddBranchNoLock(branch *utangle_new.WrappedTx, branchData *multistate.BranchData)
+		GetBaselineStateReader(branch *vertex.WrappedTx) global.IndexedStateReader
+		AddBranchNoLock(branch *vertex.WrappedTx, branchData *multistate.BranchData)
 		Pull(txid core.TransactionID)
 	}
 
 	attacher struct {
 		closeMutex          sync.RWMutex
 		closed              bool
-		inChan              chan *utangle_new.WrappedTx
+		inChan              chan *vertex.WrappedTx
 		ctx                 context.Context
-		vid                 *utangle_new.WrappedTx
-		baselineBranch      *utangle_new.WrappedTx
+		vid                 *vertex.WrappedTx
+		baselineBranch      *vertex.WrappedTx
 		baselineStateReader multistate.SugaredStateReader
 		env                 AttachEnvironment
 	}
@@ -43,23 +43,23 @@ const (
 	periodicCheckEach = 500 * time.Millisecond
 )
 
-func newAttacher(vid *utangle_new.WrappedTx, env AttachEnvironment, ctx context.Context) *attacher {
+func newAttacher(vid *vertex.WrappedTx, env AttachEnvironment, ctx context.Context) *attacher {
 	ret := &attacher{
 		ctx:    ctx,
 		vid:    vid,
 		env:    env,
-		inChan: make(chan *utangle_new.WrappedTx, 1),
+		inChan: make(chan *vertex.WrappedTx, 1),
 	}
-	ret.vid.OnNotify(func(msg *utangle_new.WrappedTx) {
+	ret.vid.OnNotify(func(msg *vertex.WrappedTx) {
 		ret.notify(msg)
 	})
 	return ret
 }
 
-func runAttacher(vid *utangle_new.WrappedTx, env AttachEnvironment, ctx context.Context) {
+func runAttacher(vid *vertex.WrappedTx, env AttachEnvironment, ctx context.Context) {
 	a := newAttacher(vid, env, ctx)
 	// first solidify baseline state
-	a.runWhileNotFinalAnd(func(v *utangle_new.Vertex) bool {
+	a.runWhileNotFinalAnd(func(v *vertex.Vertex) bool {
 		if a.baselineBranch == nil {
 			a._solidifyBaseline(v)
 		}
@@ -69,7 +69,7 @@ func runAttacher(vid *utangle_new.WrappedTx, env AttachEnvironment, ctx context.
 		return
 	}
 	// then continue with the rest
-	a.runWhileNotFinalAnd(func(v *utangle_new.Vertex) bool {
+	a.runWhileNotFinalAnd(func(v *vertex.Vertex) bool {
 		return a.runInputs(v)
 	})
 }
@@ -83,7 +83,7 @@ func (a *attacher) close() {
 	close(a.inChan)
 }
 
-func (a *attacher) notify(msg *utangle_new.WrappedTx) {
+func (a *attacher) notify(msg *vertex.WrappedTx) {
 	a.closeMutex.RLock()
 	defer a.closeMutex.RUnlock()
 
@@ -92,11 +92,11 @@ func (a *attacher) notify(msg *utangle_new.WrappedTx) {
 	}
 }
 
-func (a *attacher) runWhileNotFinalAnd(processVertex func(v *utangle_new.Vertex) bool) {
+func (a *attacher) runWhileNotFinalAnd(processVertex func(v *vertex.Vertex) bool) {
 	for !a.isFinalStatus() {
 		exit := true
-		a.vid.Unwrap(utangle_new.UnwrapOptions{
-			Vertex: func(v *utangle_new.Vertex) {
+		a.vid.Unwrap(vertex.UnwrapOptions{
+			Vertex: func(v *vertex.Vertex) {
 				exit = !processVertex(v)
 			},
 		})
@@ -121,12 +121,12 @@ func (a *attacher) runWhileNotFinalAnd(processVertex func(v *utangle_new.Vertex)
 }
 
 func (a *attacher) isFinalStatus() bool {
-	return !a.vid.IsVertex() || a.vid.GetTxStatus() != utangle_new.TxStatusUndefined
+	return !a.vid.IsVertex() || a.vid.GetTxStatus() != vertex.TxStatusUndefined
 }
 
 // _solidifyBaseline directs attachment process down the DAG to reach the deterministically known baseline state
 // for a sequencer milestone. Existence of it is guaranteed by the ledger constraints
-func (a *attacher) _solidifyBaseline(v *utangle_new.Vertex) {
+func (a *attacher) _solidifyBaseline(v *vertex.Vertex) {
 	if v.Tx.IsBranchTransaction() {
 		a._solidifyStem(v)
 	} else {
@@ -137,7 +137,7 @@ func (a *attacher) _solidifyBaseline(v *utangle_new.Vertex) {
 	}
 }
 
-func (a *attacher) _solidifyStem(v *utangle_new.Vertex) {
+func (a *attacher) _solidifyStem(v *vertex.Vertex) {
 	stemInputIdx := v.StemInputIndex()
 	if v.Inputs[stemInputIdx] == nil {
 		// predecessor stem is pending
@@ -146,19 +146,19 @@ func (a *attacher) _solidifyStem(v *utangle_new.Vertex) {
 		util.Assertf(v.Inputs[stemInputIdx] != nil, "v.Inputs[stemInputIdx] != nil")
 	}
 	switch v.Inputs[stemInputIdx].GetTxStatus() {
-	case utangle_new.TxStatusGood:
+	case vertex.TxStatusGood:
 		a.baselineBranch = v.Inputs[stemInputIdx].BaselineBranch()
 		util.Assertf(a.baselineBranch != nil, "a.baselineBranch != nil")
-	case utangle_new.TxStatusBad:
-		a.vid.SetTxStatus(utangle_new.TxStatusBad)
+	case vertex.TxStatusBad:
+		a.vid.SetTxStatus(vertex.TxStatusBad)
 	}
 }
 
-func (a *attacher) _solidifySequencerBaseline(v *utangle_new.Vertex) {
+func (a *attacher) _solidifySequencerBaseline(v *vertex.Vertex) {
 	// regular sequencer tx. Go to the direction of the baseline branch
 	predOid, predIdx := v.Tx.SequencerChainPredecessor()
 	util.Assertf(predOid != nil, "inconsistency: sequencer cannot be at the chain origin")
-	var inputTx *utangle_new.WrappedTx
+	var inputTx *vertex.WrappedTx
 
 	if predOid.TimeSlot() == v.Tx.TimeSlot() {
 		// predecessor is on the same slot -> continue towards it
@@ -175,52 +175,63 @@ func (a *attacher) _solidifySequencerBaseline(v *utangle_new.Vertex) {
 		}
 		inputTx = v.Endorsements[0]
 	}
-	if inputTx.GetTxStatus() == utangle_new.TxStatusBad {
-		a.vid.SetTxStatus(utangle_new.TxStatusBad)
+	if inputTx.GetTxStatus() == vertex.TxStatusBad {
+		a.vid.SetTxStatus(vertex.TxStatusBad)
 	} else {
 		a.baselineBranch = inputTx.BaselineBranch() // may be nil
 	}
 }
 
-func (a *attacher) processNotification(vid *utangle_new.WrappedTx) {
-	switch vid.GetTxStatus() {
-	case utangle_new.TxStatusBad:
-		a.vid.SetTxStatus(utangle_new.TxStatusBad)
-	case utangle_new.TxStatusGood:
+func (a *attacher) processNotification(vid *vertex.WrappedTx) {
+	vid.Unwrap(vertex.UnwrapOptions{
+		Vertex: func(v *vertex.Vertex) {
+			if vid.GetTxStatusNoLock() == vertex.TxStatusBad {
+				a.vid.SetTxStatus(vertex.TxStatusBad)
+				return
+			}
+
+		},
+		VirtualTx: nil,
+		Deleted:   vid.PanicAccessDeleted,
+	})
+	if vid.GetTxStatus() == vertex.TxStatusBad {
+		a.vid.SetTxStatus(vertex.TxStatusBad)
+		return
 	}
+
 }
 
 // TODO
 
-func (a *attacher) runInputs(v *utangle_new.Vertex) bool {
+func (a *attacher) runInputs(v *vertex.Vertex) bool {
 	util.Assertf(!util.IsNil(a.baselineStateReader), "!util.IsNil(a.baselineStateReader)")
 	bad := false
-	v.ForEachInputDependency(func(i byte, vidInput *utangle_new.WrappedTx) bool {
+	v.ForEachInputDependency(func(i byte, vidInput *vertex.WrappedTx) bool {
 		if vidInput == nil {
 			v.Inputs[i] = AttachInput(a.vid, i, a.env)
 		}
-		if v.Inputs[i] == nil || v.Inputs[i].GetTxStatus() == utangle_new.TxStatusBad {
+		if v.Inputs[i] == nil || v.Inputs[i].GetTxStatus() == vertex.TxStatusBad {
 			bad = true
 			return false
 		}
 		return true
 	})
 	if bad {
-		a.vid.SetTxStatus(utangle_new.TxStatusBad)
+		a.vid.SetTxStatus(vertex.TxStatusBad)
 		return false
 	}
-	v.ForEachEndorsement(func(i byte, vidEndorsed *utangle_new.WrappedTx) bool {
+	v.ForEachEndorsement(func(i byte, vidEndorsed *vertex.WrappedTx) bool {
 		if vidEndorsed == nil {
 			v.Endorsements[i] = AttachTxID(v.Tx.EndorsementAt(i), a.env)
 		}
-		if v.Endorsements[i].GetTxStatus() != utangle_new.TxStatusBad {
+		if v.Endorsements[i].GetTxStatus() != vertex.TxStatusBad {
 			bad = true
 			return false
 		}
 		return true
 	})
 	if bad {
-		a.vid.SetTxStatus(utangle_new.TxStatusBad)
+		a.vid.SetTxStatus(vertex.TxStatusBad)
 	}
 }
 

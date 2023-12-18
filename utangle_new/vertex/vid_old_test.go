@@ -1,10 +1,11 @@
-package utangle_new
+package vertex
 
 import (
 	"testing"
 
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/transaction"
+	"github.com/lunfardo314/proxima/utangle_new"
 	"github.com/lunfardo314/proxima/util/utxodb"
 	"github.com/stretchr/testify/require"
 )
@@ -19,7 +20,7 @@ func TestVID(t *testing.T) {
 		require.NoError(t, err)
 		txid := tx.ID()
 
-		v := NewVertex(tx)
+		v := utangle_new.NewVertex(tx)
 		vid := v.Wrap()
 		txidBack := vid.ID()
 		require.EqualValues(t, *txid, *txidBack)

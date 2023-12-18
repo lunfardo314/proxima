@@ -1,4 +1,4 @@
-package utangle_new
+package vertex
 
 import (
 	"fmt"
@@ -22,13 +22,13 @@ func (f Fork) String() string {
 	return fmt.Sprintf("%s:%d", f.ConflictSetID.IDShort(), f.SN)
 }
 
-func newForkSet() *forkSet {
-	return &forkSet{
+func newForkSet() *ForkSet {
+	return &ForkSet{
 		m: make(map[WrappedOutput]byte),
 	}
 }
 
-func (fs *forkSet) lines(prefix ...string) *lines.Lines {
+func (fs *ForkSet) lines(prefix ...string) *lines.Lines {
 	ret := lines.New(prefix...)
 
 	fs.mutex.RLock()
@@ -43,7 +43,7 @@ func (fs *forkSet) lines(prefix ...string) *lines.Lines {
 	return ret
 }
 
-func (fs *forkSet) conflictsWith(f Fork) bool {
+func (fs *ForkSet) conflictsWith(f Fork) bool {
 	fs.mutex.RLock()
 	defer fs.mutex.RUnlock()
 
@@ -51,7 +51,7 @@ func (fs *forkSet) conflictsWith(f Fork) bool {
 	return found && sn != f.SN
 }
 
-func (fs *forkSet) insert(f Fork) bool {
+func (fs *ForkSet) insert(f Fork) bool {
 	fs.mutex.Lock()
 	defer fs.mutex.Unlock()
 
@@ -63,7 +63,7 @@ func (fs *forkSet) insert(f Fork) bool {
 	return true
 }
 
-func hasConflict(fs1, fs2 *forkSet) (conflict WrappedOutput) {
+func hasConflict(fs1, fs2 *ForkSet) (conflict WrappedOutput) {
 	if fs1 == fs2 {
 		return
 	}
@@ -81,7 +81,7 @@ func hasConflict(fs1, fs2 *forkSet) (conflict WrappedOutput) {
 }
 
 // absorb in case of conflict receiver is not consistent
-func (fs *forkSet) absorb(fs1 *forkSet) (ret WrappedOutput) {
+func (fs *ForkSet) absorb(fs1 *ForkSet) (ret WrappedOutput) {
 	if fs == fs1 || fs1 == nil {
 		return
 	}
@@ -98,7 +98,7 @@ func (fs *forkSet) absorb(fs1 *forkSet) (ret WrappedOutput) {
 }
 
 // absorbSafe same as absorb but leaves receiver untouched in case of conflict
-func (fs *forkSet) absorbSafe(fs1 *forkSet) (conflict WrappedOutput) {
+func (fs *ForkSet) absorbSafe(fs1 *ForkSet) (conflict WrappedOutput) {
 	if fs == fs1 || fs1 == nil {
 		return
 	}
@@ -119,7 +119,7 @@ func (fs *forkSet) absorbSafe(fs1 *forkSet) (conflict WrappedOutput) {
 	return
 }
 
-func (fs *forkSet) cleanDeleted() {
+func (fs *ForkSet) cleanDeleted() {
 	if fs == nil {
 		return
 	}

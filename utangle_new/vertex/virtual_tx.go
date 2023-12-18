@@ -1,4 +1,4 @@
-package utangle_new
+package vertex
 
 import (
 	"bytes"

@@ -12,6 +12,7 @@ import (
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/multistate"
+	"github.com/lunfardo314/proxima/utangle_new/vertex"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/set"
 )
@@ -47,7 +48,7 @@ var (
 	}
 )
 
-func sequencerNodeAttributes(v *Vertex, coverage uint64, dict map[core.ChainID]int) []func(*graph.VertexProperties) {
+func sequencerNodeAttributes(v *vertex.Vertex, coverage uint64, dict map[core.ChainID]int) []func(*graph.VertexProperties) {
 	seqID := v.Tx.SequencerTransactionData().SequencerID
 	if _, found := dict[seqID]; !found {
 		dict[seqID] = (len(dict) % 9) + 1
@@ -61,13 +62,13 @@ func sequencerNodeAttributes(v *Vertex, coverage uint64, dict map[core.ChainID]i
 	return ret
 }
 
-func makeGraphNode(vid *WrappedTx, gr graph.Graph[string, string], seqDict map[core.ChainID]int, highlighted bool) {
+func makeGraphNode(vid *vertex.WrappedTx, gr graph.Graph[string, string], seqDict map[core.ChainID]int, highlighted bool) {
 	id := vid.IDVeryShort()
 	attr := simpleNodeAttributes
 	var err error
 
-	vid.Unwrap(UnwrapOptions{
-		Vertex: func(v *Vertex) {
+	vid.Unwrap(vertex.UnwrapOptions{
+		Vertex: func(v *vertex.Vertex) {
 			if v.Tx.IsSequencerMilestone() {
 				attr = sequencerNodeAttributes(v, vid.LedgerCoverage(nil), seqDict)
 			}
@@ -79,7 +80,7 @@ func makeGraphNode(vid *WrappedTx, gr graph.Graph[string, string], seqDict map[c
 			}
 			err = gr.AddVertex(id, attr...)
 		},
-		VirtualTx: func(v *VirtualTransaction) {
+		VirtualTx: func(v *vertex.VirtualTransaction) {
 			err = gr.AddVertex(id, finalTxAttributes...)
 		},
 		Deleted: func() {
@@ -89,10 +90,10 @@ func makeGraphNode(vid *WrappedTx, gr graph.Graph[string, string], seqDict map[c
 	util.AssertNoError(err)
 }
 
-func makeGraphEdges(vid *WrappedTx, gr graph.Graph[string, string]) {
+func makeGraphEdges(vid *vertex.WrappedTx, gr graph.Graph[string, string]) {
 	id := vid.IDVeryShort()
-	vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
-		v.ForEachInputDependency(func(i byte, inp *WrappedTx) bool {
+	vid.Unwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
+		v.ForEachInputDependency(func(i byte, inp *vertex.WrappedTx) bool {
 			o, err := v.getConsumedOutput(i)
 			util.AssertNoError(err)
 			outIndex := v.Tx.MustOutputIndexOfTheInput(i)
@@ -103,7 +104,7 @@ func makeGraphEdges(vid *WrappedTx, gr graph.Graph[string, string]) {
 			_ = gr.AddEdge(id, inp.IDVeryShort(), edgeAttributes...)
 			return true
 		})
-		v.ForEachEndorsement(func(i byte, vEnd *WrappedTx) bool {
+		v.ForEachEndorsement(func(i byte, vEnd *vertex.WrappedTx) bool {
 			err := gr.AddEdge(id, vEnd.IDVeryShort(), graph.EdgeAttribute("color", "red"))
 			util.Assertf(err == nil || errors.Is(err, graph.ErrEdgeAlreadyExists), "%v", err)
 			return true
@@ -111,7 +112,7 @@ func makeGraphEdges(vid *WrappedTx, gr graph.Graph[string, string]) {
 	}})
 }
 
-func (ut *UTXOTangle) MakeGraph(additionalVertices ...*WrappedTx) graph.Graph[string, string] {
+func (ut *UTXOTangle) MakeGraph(additionalVertices ...*vertex.WrappedTx) graph.Graph[string, string] {
 	ret := graph.New(graph.StringHash, graph.Directed(), graph.Acyclic())
 
 	ut.mutex.RLock()
@@ -141,7 +142,7 @@ func (ut *UTXOTangle) SaveGraph(fname string) {
 	_ = dotFile.Close()
 }
 
-func MakeGraphPastCone(vid *WrappedTx, maxVertices ...int) graph.Graph[string, string] {
+func MakeGraphPastCone(vid *vertex.WrappedTx, maxVertices ...int) graph.Graph[string, string] {
 	ret := graph.New(graph.StringHash, graph.Directed(), graph.Acyclic())
 
 	max := math.MaxUint16
@@ -152,7 +153,7 @@ func MakeGraphPastCone(vid *WrappedTx, maxVertices ...int) graph.Graph[string, s
 	seqDict := make(map[core.ChainID]int)
 	count := 0
 
-	mkNode := func(vidCur *WrappedTx) bool {
+	mkNode := func(vidCur *vertex.WrappedTx) bool {
 		if count > max {
 			return false
 		}
@@ -160,20 +161,20 @@ func MakeGraphPastCone(vid *WrappedTx, maxVertices ...int) graph.Graph[string, s
 		makeGraphNode(vidCur, ret, seqDict, false)
 		return true
 	}
-	vid.TraversePastConeDepthFirst(UnwrapOptionsForTraverse{
-		Vertex: func(vidCur *WrappedTx, _ *Vertex) bool {
+	vid.TraversePastConeDepthFirst(vertex.UnwrapOptionsForTraverse{
+		Vertex: func(vidCur *vertex.WrappedTx, _ *vertex.Vertex) bool {
 			return mkNode(vidCur)
 		},
-		VirtualTx: func(vidCur *WrappedTx, vCur *VirtualTransaction) bool {
+		VirtualTx: func(vidCur *vertex.WrappedTx, vCur *vertex.VirtualTransaction) bool {
 			return mkNode(vidCur)
 		},
-		Orphaned: func(vidCur *WrappedTx) bool {
+		Orphaned: func(vidCur *vertex.WrappedTx) bool {
 			return mkNode(vidCur)
 		},
 	})
 	count = 0
-	vid.TraversePastConeDepthFirst(UnwrapOptionsForTraverse{
-		Vertex: func(vidCur *WrappedTx, _ *Vertex) bool {
+	vid.TraversePastConeDepthFirst(vertex.UnwrapOptionsForTraverse{
+		Vertex: func(vidCur *vertex.WrappedTx, _ *vertex.Vertex) bool {
 			makeGraphEdges(vidCur, ret)
 			return true
 		},
@@ -181,7 +182,7 @@ func MakeGraphPastCone(vid *WrappedTx, maxVertices ...int) graph.Graph[string, s
 	return ret
 }
 
-func SaveGraphPastCone(vid *WrappedTx, fname string) {
+func SaveGraphPastCone(vid *vertex.WrappedTx, fname string) {
 	gr := MakeGraphPastCone(vid, 500)
 	dotFile, _ := os.Create(fname + ".gv")
 	err := draw.DOT(gr, dotFile)
@@ -189,22 +190,22 @@ func SaveGraphPastCone(vid *WrappedTx, fname string) {
 	_ = dotFile.Close()
 }
 
-func MakeGraphFromVertexSet(vertices set.Set[*WrappedTx]) graph.Graph[string, string] {
+func MakeGraphFromVertexSet(vertices set.Set[*vertex.WrappedTx]) graph.Graph[string, string] {
 	ret := graph.New(graph.StringHash, graph.Directed(), graph.Acyclic())
 	seqDict := make(map[core.ChainID]int)
 
-	vertices.ForEach(func(vid *WrappedTx) bool {
+	vertices.ForEach(func(vid *vertex.WrappedTx) bool {
 		makeGraphNode(vid, ret, seqDict, false)
 		return true
 	})
-	vertices.ForEach(func(vid *WrappedTx) bool {
+	vertices.ForEach(func(vid *vertex.WrappedTx) bool {
 		makeGraphEdges(vid, ret)
 		return true
 	})
 	return ret
 }
 
-func SaveGraphFromVertexSet(vertices set.Set[*WrappedTx], fname string) {
+func SaveGraphFromVertexSet(vertices set.Set[*vertex.WrappedTx], fname string) {
 	gr := MakeGraphFromVertexSet(vertices)
 	dotFile, _ := os.Create(fname + ".gv")
 	err := draw.DOT(gr, dotFile)

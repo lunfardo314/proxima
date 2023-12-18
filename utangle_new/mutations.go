@@ -4,6 +4,7 @@ import (
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/multistate"
+	"github.com/lunfardo314/proxima/utangle_new/vertex"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/set"
 )
@@ -11,11 +12,11 @@ import (
 type _mutationData struct {
 	outputMutations     map[core.OutputID]*core.Output
 	addTxMutations      []*core.TransactionID
-	visited             set.Set[*WrappedTx]
+	visited             set.Set[*vertex.WrappedTx]
 	baselineStateReader global.StateReader
 }
 
-func (vid *WrappedTx) _collectMutationData(md *_mutationData) (conflict WrappedOutput) {
+func (vid *vertex.WrappedTx) _collectMutationData(md *_mutationData) (conflict vertex.WrappedOutput) {
 	if md.visited.Contains(vid) {
 		return
 	}
@@ -28,9 +29,9 @@ func (vid *WrappedTx) _collectMutationData(md *_mutationData) (conflict WrappedO
 
 	// FIXME revisit mutations
 
-	vid.Unwrap(UnwrapOptions{
-		Vertex: func(v *Vertex) {
-			v.ForEachInputDependency(func(i byte, inp *WrappedTx) bool {
+	vid.Unwrap(vertex.UnwrapOptions{
+		Vertex: func(v *vertex.Vertex) {
+			v.ForEachInputDependency(func(i byte, inp *vertex.WrappedTx) bool {
 				// recursively collect from inputs
 				inp._collectMutationData(md)
 
@@ -44,13 +45,13 @@ func (vid *WrappedTx) _collectMutationData(md *_mutationData) (conflict WrappedO
 						md.outputMutations[inputID] = nil
 					} else {
 						// output does not exist in the state
-						conflict = WrappedOutput{VID: inp, Index: v.Tx.MustOutputIndexOfTheInput(i)}
+						conflict = vertex.WrappedOutput{VID: inp, Index: v.Tx.MustOutputIndexOfTheInput(i)}
 						return false
 					}
 				}
 				return true
 			})
-			v.ForEachEndorsement(func(i byte, vidEndorsed *WrappedTx) bool {
+			v.ForEachEndorsement(func(i byte, vidEndorsed *vertex.WrappedTx) bool {
 				// recursively collect from endorsements
 				vidEndorsed._collectMutationData(md)
 				return true
@@ -67,7 +68,7 @@ func (vid *WrappedTx) _collectMutationData(md *_mutationData) (conflict WrappedO
 	return
 }
 
-func (vid *WrappedTx) getBranchMutations(ut *UTXOTangle) (*multistate.Mutations, WrappedOutput) {
+func (vid *vertex.WrappedTx) getBranchMutations(ut *UTXOTangle) (*multistate.Mutations, vertex.WrappedOutput) {
 	util.Assertf(vid.IsBranchTransaction(), "%s not a branch transaction", vid.IDShortString())
 
 	baselineBranchVID := vid.BaselineBranch()
@@ -76,7 +77,7 @@ func (vid *WrappedTx) getBranchMutations(ut *UTXOTangle) (*multistate.Mutations,
 	md := &_mutationData{
 		outputMutations:     make(map[core.OutputID]*core.Output),
 		addTxMutations:      make([]*core.TransactionID, 0),
-		visited:             set.New[*WrappedTx](),
+		visited:             set.New[*vertex.WrappedTx](),
 		baselineStateReader: ut.MustGetStateReader(baselineBranchVID.ID(), 1000),
 	}
 	if conflict := vid._collectMutationData(md); conflict.VID != nil {
@@ -94,5 +95,5 @@ func (vid *WrappedTx) getBranchMutations(ut *UTXOTangle) (*multistate.Mutations,
 	for _, txid := range md.addTxMutations {
 		ret.InsertAddTxMutation(*txid, slot)
 	}
-	return ret.Sort(), WrappedOutput{}
+	return ret.Sort(), vertex.WrappedOutput{}
 }

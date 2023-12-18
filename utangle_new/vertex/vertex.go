@@ -1,4 +1,4 @@
-package utangle_new
+package vertex
 
 import (
 	"fmt"
@@ -257,8 +257,4 @@ func (v *Vertex) inheritPastTracks(getStore func() global.StateStore) (conflict 
 		return conflict == nil
 	})
 	return
-}
-
-func (v *Vertex) BaselineBranch() *WrappedTx {
-	return v.pastTrack.BaselineBranch()
 }

@@ -6,7 +6,7 @@ import (
 
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/global"
-	"github.com/lunfardo314/proxima/transaction"
+	"github.com/lunfardo314/proxima/utangle_new/vertex"
 	"github.com/lunfardo314/proxima/util/set"
 	"github.com/lunfardo314/unitrie/common"
 )
@@ -15,8 +15,8 @@ type (
 	UTXOTangle struct {
 		mutex      sync.RWMutex
 		stateStore global.StateStore
-		vertices   map[core.TransactionID]*WrappedTx
-		branches   map[core.TimeSlot]map[*WrappedTx]common.VCommitment
+		vertices   map[core.TransactionID]*vertex.WrappedTx
+		branches   map[core.TimeSlot]map[*vertex.WrappedTx]common.VCommitment
 
 		// all real-time related values in one place
 		syncData *SyncData
@@ -56,39 +56,6 @@ type (
 	SequencerSyncStatus struct {
 		latestBranchesSeen set.Set[core.TransactionID]
 		latestBranchBooked core.TransactionID
-	}
-
-	PastTrack struct {
-		forks          *forkSet
-		baselineBranch *WrappedTx
-	}
-
-	Vertex struct {
-		Tx           *transaction.Transaction
-		Inputs       []*WrappedTx
-		Endorsements []*WrappedTx
-		pastTrack    PastTrack
-		isSolid      bool
-		// during solidification, sometimes there's a need to look for output into all branches.
-		// This flag prevent scanning all branches more than once
-		branchesAlreadyScanned bool
-	}
-
-	VirtualTransaction struct {
-		txid             core.TransactionID
-		mutex            sync.RWMutex
-		outputs          map[byte]*core.Output
-		sequencerOutputs *[2]byte // if nil, it is unknown
-	}
-
-	Fork struct {
-		ConflictSetID WrappedOutput
-		SN            byte // max 256 double spends per output. Tx will be dropped if exceeded
-	}
-
-	forkSet struct {
-		m     map[WrappedOutput]byte
-		mutex sync.RWMutex
 	}
 )
 

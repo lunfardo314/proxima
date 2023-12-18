@@ -7,6 +7,7 @@ import (
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/transaction"
+	"github.com/lunfardo314/proxima/utangle_new/vertex"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/unitrie/common"
 )
@@ -14,8 +15,8 @@ import (
 func newUTXOTangle(stateStore global.StateStore) *UTXOTangle {
 	return &UTXOTangle{
 		stateStore: stateStore,
-		vertices:   make(map[core.TransactionID]*WrappedTx),
-		branches:   make(map[core.TimeSlot]map[*WrappedTx]common.VCommitment),
+		vertices:   make(map[core.TransactionID]*vertex.WrappedTx),
+		branches:   make(map[core.TimeSlot]map[*vertex.WrappedTx]common.VCommitment),
 		syncData:   newSyncData(),
 	}
 }
@@ -33,18 +34,18 @@ func Load(stateStore global.StateStore) *UTXOTangle {
 	return ret
 }
 
-func NewVertex(tx *transaction.Transaction) *Vertex {
-	return &Vertex{
+func NewVertex(tx *transaction.Transaction) *vertex.Vertex {
+	return &vertex.Vertex{
 		Tx:           tx,
-		Inputs:       make([]*WrappedTx, tx.NumInputs()),
-		Endorsements: make([]*WrappedTx, tx.NumEndorsements()),
-		pastTrack:    newPastTrack(),
+		Inputs:       make([]*vertex.WrappedTx, tx.NumInputs()),
+		Endorsements: make([]*vertex.WrappedTx, tx.NumEndorsements()),
+		pastTrack:    vertex.newPastTrack(),
 	}
 }
 
-func NewVirtualBranchTx(br *multistate.BranchData) *VirtualTransaction {
+func NewVirtualBranchTx(br *multistate.BranchData) *vertex.VirtualTransaction {
 	txid := br.Stem.ID.TransactionID()
-	v := newVirtualTx(txid)
+	v := vertex.newVirtualTx(txid)
 	v.addSequencerIndices(br.SequencerOutput.ID.Index(), br.Stem.ID.Index())
 	v.addOutput(br.SequencerOutput.ID.Index(), br.SequencerOutput.Output)
 	v.addOutput(br.Stem.ID.Index(), br.Stem.Output)
@@ -59,7 +60,7 @@ func (ut *UTXOTangle) Contains(txid *core.TransactionID) bool {
 	return found
 }
 
-func (ut *UTXOTangle) _attach(vid *WrappedTx) {
+func (ut *UTXOTangle) _attach(vid *vertex.WrappedTx) {
 	txid := *vid.ID()
 	_, already := ut.vertices[txid]
 	util.Assertf(!already, "_attachTxID: repeating txID %s", vid.IDShortString())
@@ -69,24 +70,24 @@ func (ut *UTXOTangle) _attach(vid *WrappedTx) {
 // _attachVertex attaches new vertex (not a virtualTx) transaction to the utxo tangle. It must be called from within global utangle lock critical section
 // If conflict occurs, newly propagated forks, if any, will do no harm.
 // The transaction is marked orphaned, so it will be ignored in the future cones
-func (ut *UTXOTangle) _attachVertex(vid *WrappedTx) (conflict *WrappedOutput) {
-	vid.Unwrap(UnwrapOptions{
-		Vertex: func(v *Vertex) {
+func (ut *UTXOTangle) _attachVertex(vid *vertex.WrappedTx) (conflict *vertex.WrappedOutput) {
+	vid.Unwrap(vertex.UnwrapOptions{
+		Vertex: func(v *vertex.Vertex) {
 			if conflict = v.inheritPastTracks(ut.StateStore); conflict != nil {
 				return
 			}
 			// book consumer into the inputs. Detect new double-spends, double-links and propagates
-			v.ForEachInputDependency(func(i byte, vidInput *WrappedTx) bool {
+			v.ForEachInputDependency(func(i byte, vidInput *vertex.WrappedTx) bool {
 				conflict = vidInput.AttachConsumerNoLock(v.Tx.MustOutputIndexOfTheInput(i), vid)
 				return conflict == nil
 			})
 			// maintain endorser list in predecessors
-			v.ForEachEndorsement(func(_ byte, vEnd *WrappedTx) bool {
+			v.ForEachEndorsement(func(_ byte, vEnd *vertex.WrappedTx) bool {
 				vEnd.attachAsEndorser(vid)
 				return true
 			})
 		},
-		VirtualTx: func(_ *VirtualTransaction) {
+		VirtualTx: func(_ *vertex.VirtualTransaction) {
 			util.Panicf("unexpected virtualTx")
 		},
 		Deleted: vid.PanicAccessDeleted,
@@ -107,7 +108,7 @@ func (ut *UTXOTangle) _attachVertex(vid *WrappedTx) (conflict *WrappedOutput) {
 	return
 }
 
-func (ut *UTXOTangle) _mustAttachVirtualTx(vid *WrappedTx) {
+func (ut *UTXOTangle) _mustAttachVirtualTx(vid *vertex.WrappedTx) {
 	txid := vid.ID()
 	vidPrev, already := ut.vertices[*txid]
 	if !already {
@@ -119,12 +120,12 @@ func (ut *UTXOTangle) _mustAttachVirtualTx(vid *WrappedTx) {
 		// should not happen. Ignore
 		return
 	}
-	var vNew *VirtualTransaction
-	vid.Unwrap(UnwrapOptions{VirtualTx: func(v *VirtualTransaction) {
+	var vNew *vertex.VirtualTransaction
+	vid.Unwrap(vertex.UnwrapOptions{VirtualTx: func(v *vertex.VirtualTransaction) {
 		vNew = v
 	}})
 	// virtual Tx already exists, merge new outputs into it
-	vidPrev.Unwrap(UnwrapOptions{VirtualTx: func(v *VirtualTransaction) {
+	vidPrev.Unwrap(vertex.UnwrapOptions{VirtualTx: func(v *vertex.VirtualTransaction) {
 		v.mustMergeNewOutputs(vNew)
 	}})
 }
@@ -137,31 +138,31 @@ func (ut *UTXOTangle) _deleteVertex(txid *core.TransactionID) {
 	delete(ut.vertices, *txid)
 }
 
-func (ut *UTXOTangle) AddVertexAndBranch(branchVID *WrappedTx, root common.VCommitment) {
+func (ut *UTXOTangle) AddVertexAndBranch(branchVID *vertex.WrappedTx, root common.VCommitment) {
 	ut.mutex.Lock()
 	defer ut.mutex.Unlock()
 
 	ut._addVertexAndBranch(branchVID, root)
 }
 
-func (ut *UTXOTangle) _addVertexAndBranch(branchVID *WrappedTx, root common.VCommitment) {
+func (ut *UTXOTangle) _addVertexAndBranch(branchVID *vertex.WrappedTx, root common.VCommitment) {
 	conflict := ut._attach(branchVID)
 	util.Assertf(conflict == nil, "AddVertexAndBranch: conflict %s", conflict.IDShort())
 
 	ut.addBranch(branchVID, root)
 }
 
-func (ut *UTXOTangle) addBranch(branchVID *WrappedTx, root common.VCommitment) {
+func (ut *UTXOTangle) addBranch(branchVID *vertex.WrappedTx, root common.VCommitment) {
 	m, exist := ut.branches[branchVID.TimeSlot()]
 	if !exist {
-		m = make(map[*WrappedTx]common.VCommitment)
+		m = make(map[*vertex.WrappedTx]common.VCommitment)
 	}
 	m[branchVID] = root
 	ut.branches[branchVID.TimeSlot()] = m
 	ut.numAddedBranches++
 }
 
-func (ut *UTXOTangle) appendVertex(vid *WrappedTx, onAttach func() error) error {
+func (ut *UTXOTangle) appendVertex(vid *vertex.WrappedTx, onAttach func() error) error {
 	ut.mutex.Lock()
 	defer ut.mutex.Unlock()
 
@@ -204,7 +205,7 @@ func WithValidationTraceOption(traceOpt int) func(options *appendVertexOptions) 
 	}
 }
 
-func (ut *UTXOTangle) AppendVertex(v *Vertex, onAttach func() error, opts ...ValidationOption) (*WrappedTx, error) {
+func (ut *UTXOTangle) AppendVertex(v *vertex.Vertex, onAttach func() error, opts ...ValidationOption) (*vertex.WrappedTx, error) {
 	validationOpt := appendVertexOptions{traceOption: transaction.TraceOptionFailedConstraints}
 	for _, opt := range opts {
 		opt(&validationOpt)
@@ -222,7 +223,7 @@ func (ut *UTXOTangle) AppendVertex(v *Vertex, onAttach func() error, opts ...Val
 }
 
 // AppendVertexFromTransactionBytesDebug for testing mainly
-func (ut *UTXOTangle) AppendVertexFromTransactionBytesDebug(txBytes []byte, onAttach func() error, opts ...ValidationOption) (*WrappedTx, string, error) {
+func (ut *UTXOTangle) AppendVertexFromTransactionBytesDebug(txBytes []byte, onAttach func() error, opts ...ValidationOption) (*vertex.WrappedTx, string, error) {
 	vertexDraft, err := ut.MakeDraftVertexFromTxBytes(txBytes)
 	if err != nil {
 		return nil, "", err
@@ -232,7 +233,7 @@ func (ut *UTXOTangle) AppendVertexFromTransactionBytesDebug(txBytes []byte, onAt
 	return ret, vertexDraft.Lines().String(), err
 }
 
-func (ut *UTXOTangle) finalizeBranch(newBranchVertex *WrappedTx) error {
+func (ut *UTXOTangle) finalizeBranch(newBranchVertex *vertex.WrappedTx) error {
 	err := util.CatchPanicOrError(func() error {
 		return ut._finalizeBranch(newBranchVertex)
 	})
@@ -243,7 +244,7 @@ func (ut *UTXOTangle) finalizeBranch(newBranchVertex *WrappedTx) error {
 }
 
 // _finalizeBranch commits state delta the database and writes branch record
-func (ut *UTXOTangle) _finalizeBranch(newBranchVID *WrappedTx) error {
+func (ut *UTXOTangle) _finalizeBranch(newBranchVID *vertex.WrappedTx) error {
 	util.Assertf(newBranchVID.IsBranchTransaction(), "v.IsBranchTransaction()")
 
 	var newRoot common.VCommitment
@@ -313,11 +314,11 @@ func (ut *UTXOTangle) _finalizeBranch(newBranchVID *WrappedTx) error {
 	return nil
 }
 
-func (ut *UTXOTangle) AppendVirtualTx(tx *transaction.Transaction) *WrappedTx {
+func (ut *UTXOTangle) AppendVirtualTx(tx *transaction.Transaction) *vertex.WrappedTx {
 	ut.mutex.Lock()
 	defer ut.mutex.Unlock()
 
-	vid := newVirtualTxFromTx(tx).Wrap()
+	vid := vertex.newVirtualTxFromTx(tx).Wrap()
 	conflict := ut._attach(vid)
 	util.Assertf(conflict == nil, "conflict %s", conflict.IDShort())
 	return vid
