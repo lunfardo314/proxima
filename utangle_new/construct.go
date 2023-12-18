@@ -115,7 +115,7 @@ func (ut *UTXOTangle) _mustAttachVirtualTx(vid *WrappedTx) {
 		ut.vertices[*txid] = vid
 		return
 	}
-	if !vidPrev.isVirtualTx() {
+	if !vidPrev.IsVirtualTx() {
 		// should not happen. Ignore
 		return
 	}

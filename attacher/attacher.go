@@ -7,6 +7,7 @@ import (
 
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/global"
+	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/utangle_new"
 	"github.com/lunfardo314/proxima/util"
 	"go.uber.org/zap"
@@ -21,6 +22,8 @@ type (
 		GetWrappedOutput(oid *core.OutputID) (utangle_new.WrappedOutput, bool)
 		GetVertex(txid *core.TransactionID) *utangle_new.WrappedTx
 		StateStore() global.StateStore
+		GetBaselineStateReader(branch *utangle_new.WrappedTx) global.IndexedStateReader
+		AddBranchNoLock(branch *utangle_new.WrappedTx, branchData *multistate.BranchData)
 		Pull(txid core.TransactionID)
 	}
 
@@ -30,6 +33,7 @@ type (
 		inChan              chan *utangle_new.WrappedTx
 		ctx                 context.Context
 		vid                 *utangle_new.WrappedTx
+		baselineBranch      *utangle_new.WrappedTx
 		baselineStateReader global.IndexedStateReader
 		env                 AttachEnvironment
 	}
@@ -41,12 +45,33 @@ const (
 )
 
 func newAttacher(vid *utangle_new.WrappedTx, env AttachEnvironment, ctx context.Context) *attacher {
-	return &attacher{
+	ret := &attacher{
 		ctx:    ctx,
 		vid:    vid,
 		env:    env,
 		inChan: make(chan *utangle_new.WrappedTx, 1),
 	}
+	ret.vid.OnNotify(func(msg *utangle_new.WrappedTx) {
+		ret.notify(msg)
+	})
+	return ret
+}
+
+func runAttacher(vid *utangle_new.WrappedTx, env AttachEnvironment, ctx context.Context) {
+	a := newAttacher(vid, env, ctx)
+	// first solidify baseline state
+	a.runWhileNotFinal(func(v *utangle_new.Vertex) bool {
+		a.solidifyBaselineIfNeeded(v)
+		return a.baselineBranch == nil
+	})
+	if a.isFinalStatus() {
+		return
+	}
+	a.baselineStateReader = env.GetBaselineStateReader(a.baselineBranch)
+	// then continue with the rest
+	a.runWhileNotFinal(func(v *utangle_new.Vertex) bool {
+		return a.runInputs(v)
+	})
 }
 
 func (a *attacher) close() {
@@ -67,12 +92,20 @@ func (a *attacher) notify(msg *utangle_new.WrappedTx) {
 	}
 }
 
-func (a *attacher) run() (self *attacher) {
-	self = a
-	a.vid.OnNotify(func(msg *utangle_new.WrappedTx) {
-		a.notify(msg)
-	})
-	for a.processStatus() {
+func (a *attacher) runWhileNotFinal(processVertex func(v *utangle_new.Vertex) bool) {
+	var exit bool
+	for !a.isFinalStatus() {
+		a.vid.Unwrap(utangle_new.UnwrapOptions{
+			Vertex: func(v *utangle_new.Vertex) {
+				exit = !processVertex(v)
+			},
+			VirtualTx: a.vid.PanicShouldNotBeVirtualTx,
+			Deleted:   a.vid.PanicAccessDeleted,
+		})
+		if exit || a.isFinalStatus() {
+			return
+		}
+
 		select {
 		case <-a.ctx.Done():
 			return
@@ -89,6 +122,73 @@ func (a *attacher) run() (self *attacher) {
 	return
 }
 
+func (a *attacher) isFinalStatus() bool {
+	return !a.vid.IsVertex() || a.vid.GetTxStatus() != utangle_new.TxStatusUndefined
+}
+
+// solidifyBaselineIfNeeded directs attachment process down the DAG to reach the deterministically known baseline state
+// for a sequencer milestone. Existence of it is guaranteed by the ledger constraints
+func (a *attacher) solidifyBaselineIfNeeded(v *utangle_new.Vertex) {
+	if a.baselineBranch != nil {
+		return
+	}
+	if v.Tx.IsBranchTransaction() {
+		a._solidifyStem(v)
+	} else {
+		a._solidifySequencerBaseline(v)
+	}
+}
+
+func (a *attacher) _solidifyStem(v *utangle_new.Vertex) {
+	stemInputIdx := v.StemInputIndex()
+	if v.Inputs[stemInputIdx] == nil {
+		// predecessor stem is pending
+		v.Inputs[stemInputIdx] = AttachInput(a.vid, stemInputIdx, a.env)
+		if v.Inputs[stemInputIdx] == nil {
+			a.vid.SetTxStatus(utangle_new.TxStatusBad)
+			return
+		}
+	}
+	switch v.Inputs[stemInputIdx].GetTxStatus() {
+	case utangle_new.TxStatusGood:
+		a.baselineBranch = v.Inputs[stemInputIdx].BaselineBranch()
+		util.Assertf(a.baselineBranch != nil, "a.baselineBranch != nil")
+	case utangle_new.TxStatusBad:
+		a.vid.SetTxStatus(utangle_new.TxStatusBad)
+	}
+}
+
+func (a *attacher) _solidifySequencerBaseline(v *utangle_new.Vertex) {
+	// regular sequencer tx. Go to the direction of the baseline branch
+	predOid, predIdx := v.Tx.SequencerChainPredecessor()
+	util.Assertf(predOid != nil, "inconsistency: sequencer cannot be at the chain origin")
+	if predOid.TimeSlot() == v.Tx.TimeSlot() {
+		// predecessor is on the same slot -> continue towards it
+		if v.Inputs[predIdx] == nil {
+			v.Inputs[predIdx] = AttachInput(a.vid, predIdx, a.env)
+			if v.Inputs[predIdx] == nil {
+				a.vid.SetTxStatus(utangle_new.TxStatusBad)
+				return
+			}
+		}
+		if v.Inputs[predIdx].GetTxStatus() != utangle_new.TxStatusBad {
+			a.baselineBranch = v.Inputs[predIdx].BaselineBranch() // may be nil
+		}
+		return
+	}
+	// predecessor is on the earlier slot -> follow the first endorsement (guaranteed by the ledger constraint layer)
+	util.Assertf(v.Tx.NumEndorsements() > 0, "v.Tx.NumEndorsements()>0")
+	if v.Endorsements[0] == nil {
+		v.Endorsements[0] = AttachTxID(v.Tx.EndorsementAt(0), a.env)
+	}
+	if v.Endorsements[0].GetTxStatus() != utangle_new.TxStatusBad {
+		a.baselineBranch = v.Endorsements[0].BaselineBranch() // may be nil
+		a.vid.SetBaselineBranch(a.baselineBranch)
+	} else {
+		a.vid.SetTxStatus(utangle_new.TxStatusBad)
+	}
+}
+
 func (a *attacher) processNotification(vid *utangle_new.WrappedTx) {
 	switch vid.GetTxStatus() {
 	case utangle_new.TxStatusBad:
@@ -97,40 +197,10 @@ func (a *attacher) processNotification(vid *utangle_new.WrappedTx) {
 	}
 }
 
-func (a *attacher) processStatus() bool {
-	if !a.vid.IsVertex() {
-		// stop once it converted to virtualTx or deleted
-		return false
-	}
-
-	a.solidifyBaselineIfNeeded()
-	if a.vid.GetTxStatus() != utangle_new.TxStatusUndefined {
-		a.vid.NotifyFutureCone()
-		return false
-	}
-	if a.baselineStateReader == nil {
-		// will continue with other outputs only after baseline state is determined
-		return true
-	}
-	var exit bool
-	a.vid.Unwrap(utangle_new.UnwrapOptions{
-		Vertex: func(v *utangle_new.Vertex) {
-			a.runInputs(v)
-			exit = a.vid.GetTxStatus() != utangle_new.TxStatusUndefined
-		},
-		VirtualTx: func(_ *utangle_new.VirtualTransaction) {
-			exit = true
-		},
-		Deleted: func() {
-			exit = true
-		},
-	})
-	return !exit
-}
-
 // TODO
 
-func (a *attacher) runInputs(v *utangle_new.Vertex) {
+func (a *attacher) runInputs(v *utangle_new.Vertex) bool {
+
 	bad := false
 	v.ForEachInputDependency(func(i byte, vidInput *utangle_new.WrappedTx) bool {
 		if vidInput == nil {
@@ -144,7 +214,7 @@ func (a *attacher) runInputs(v *utangle_new.Vertex) {
 	})
 	if bad {
 		a.vid.SetTxStatus(utangle_new.TxStatusBad)
-		return
+		return false
 	}
 	v.ForEachEndorsement(func(i byte, vidEndorsed *utangle_new.WrappedTx) bool {
 		if vidEndorsed == nil {
@@ -158,73 +228,6 @@ func (a *attacher) runInputs(v *utangle_new.Vertex) {
 	})
 	if bad {
 		a.vid.SetTxStatus(utangle_new.TxStatusBad)
-	}
-}
-
-// solidifyBaselineIfNeeded directs attachment process down the DAG to reach the deterministically known baseline state
-// for a sequencer milestone. Existence of it is guaranteed by the ledger constraints
-func (a *attacher) solidifyBaselineIfNeeded() {
-	valid := true
-	if a.baselineStateReader != nil {
-		return
-	}
-
-	a.vid.Unwrap(utangle_new.UnwrapOptions{
-		Vertex: func(v *utangle_new.Vertex) {
-			if v.Tx.IsBranchTransaction() {
-				stemInputIdx := v.StemInputIndex()
-				if v.Inputs[stemInputIdx] == nil {
-					// predecessor stem is pending
-					v.Inputs[stemInputIdx] = AttachInput(a.vid, stemInputIdx, a.env)
-					if v.Inputs[stemInputIdx] == nil {
-						valid = false
-						return
-					}
-				}
-				switch v.Inputs[stemInputIdx].GetTxStatus() {
-				case utangle_new.TxStatusGood:
-					a.baselineStateReader = v.Inputs[stemInputIdx].BaselineStateReader()
-					util.Assertf(a.baselineStateReader != nil, "a.baselineStateReader != nil")
-				case utangle_new.TxStatusBad:
-					valid = false
-				}
-				return
-			}
-			// regular sequencer tx. Go to the direction of the baseline branch
-			predOid, predIdx := v.Tx.SequencerChainPredecessor()
-			util.Assertf(predOid != nil, "inconsistency: sequencer cannot be at the chain origin")
-			if predOid.TimeSlot() == v.Tx.TimeSlot() {
-				// predecessor is on the same slot -> continue towards it
-				if v.Inputs[predIdx] == nil {
-					v.Inputs[predIdx] = AttachInput(a.vid, predIdx, a.env)
-					if v.Inputs[predIdx] == nil {
-						valid = false
-						return
-					}
-				}
-				if valid = v.Inputs[predIdx].GetTxStatus() != utangle_new.TxStatusBad; valid {
-					a.baselineStateReader = v.Inputs[predIdx].BaselineStateReader() // may be nil
-				}
-				return
-			}
-			// predecessor is on the earlier slot -> follow the first endorsement (guaranteed by the ledger constraint layer)
-			util.Assertf(v.Tx.NumEndorsements() > 0, "v.Tx.NumEndorsements()>0")
-			if v.Endorsements[0] == nil {
-				v.Endorsements[0] = AttachTxID(v.Tx.EndorsementAt(0), a.env)
-			}
-			if valid = v.Endorsements[0].GetTxStatus() != utangle_new.TxStatusBad; valid {
-				a.baselineStateReader = v.Endorsements[0].BaselineStateReader() // may be nil
-			}
-		},
-		VirtualTx: a.vid.PanicShouldNotBeVirtualTx,
-		Deleted:   a.vid.PanicAccessDeleted,
-	})
-	if !valid {
-		a.vid.SetTxStatus(utangle_new.TxStatusBad)
-		return
-	}
-	if !a.vid.IsBranchTransaction() {
-		a.vid.SetBaselineStateReader(a.baselineStateReader)
 	}
 }
 

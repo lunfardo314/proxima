@@ -74,7 +74,7 @@ func (ut *UTXOTangle) _pickFromExistingVertex(oid *core.OutputID, baselineState 
 			return WrappedOutput{VID: vid, Index: oid.Index()}, true, false
 		}
 		// here it can only be a virtual tx
-		util.Assertf(vid.isVirtualTx(), "virtual tx expected")
+		util.Assertf(vid.IsVirtualTx(), "virtual tx expected")
 
 		if oid.IsBranchTransaction() {
 			// it means a virtual branch vertex exist but the output is not cached on it.

@@ -30,9 +30,8 @@ type (
 		txStatus TxStatus
 		// notification callback
 		onNotify func(vid *WrappedTx)
-		// each solid branch vertex provides state reader for its descendants.
-		// It is inherited by descendants sequencer milestones on the same slot
-		baselineStateReader global.IndexedStateReader
+		// Baseline branch is inherited by descendants sequencer milestones on the same slot
+		baselineBranch *WrappedTx
 	}
 
 	WrappedOutput struct {
@@ -154,14 +153,14 @@ func (vid *WrappedTx) _put(g _genericWrapper) {
 	vid._genericWrapper = g
 }
 
-func (vid *WrappedTx) MustConvertVirtualTxToVertex(v *Vertex) {
+func (vid *WrappedTx) ConvertVirtualTxToVertex(v *Vertex) {
 	vid.mutex.Lock()
 	defer vid.mutex.Unlock()
 
 	vTx, isVirtualTx := vid._genericWrapper.(_virtualTx)
 	lazy := func() any { return vid._id().StringShort() }
-	util.Assertf(isVirtualTx, "MustConvertVirtualTxToVertex: virtual tx expected %s", lazy)
-	util.Assertf(vTx.txid == *v.Tx.ID(), "MustConvertVirtualTxToVertex: txid-s do not match in: %s", lazy)
+	util.Assertf(isVirtualTx, "ConvertVirtualTxToVertex: virtual tx expected %s", lazy)
+	util.Assertf(vTx.txid == *v.Tx.ID(), "ConvertVirtualTxToVertex: txid-s do not match in: %s", lazy)
 	vid._put(_vertex{Vertex: v})
 }
 
@@ -184,19 +183,6 @@ func (vid *WrappedTx) SetTxStatus(s TxStatus) {
 	defer vid.mutex.Unlock()
 
 	vid.txStatus = s
-}
-
-func (vid *WrappedTx) BaselineStateReader() global.IndexedStateReader {
-	vid.mutex.RLock()
-	defer vid.mutex.RUnlock()
-
-	return vid.baselineStateReader
-}
-
-func (vid *WrappedTx) SetBaselineStateReader(rdr global.IndexedStateReader) {
-	vid.mutex.Lock()
-	vid.baselineStateReader = rdr
-	vid.mutex.Unlock()
 }
 
 func (vid *WrappedTx) OnNotify(fun func(vid *WrappedTx)) {
@@ -392,7 +378,7 @@ func (vid *WrappedTx) IsVertex() (ret bool) {
 	return
 }
 
-func (vid *WrappedTx) isVirtualTx() (ret bool) {
+func (vid *WrappedTx) IsVirtualTx() (ret bool) {
 	vid.Unwrap(UnwrapOptions{VirtualTx: func(_ *VirtualTransaction) {
 		ret = true
 	}})
@@ -643,11 +629,18 @@ func (vid *WrappedTx) attachAsEndorser(endorser *WrappedTx) {
 	vid.endorsers = util.AppendUnique(vid.endorsers, endorser)
 }
 
-func (vid *WrappedTx) BaselineBranch() (ret *WrappedTx) {
-	vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
-		ret = v.BaselineBranch()
-	}})
-	return
+func (vid *WrappedTx) BaselineBranch() *WrappedTx {
+	vid.mutex.RLock()
+	defer vid.mutex.RUnlock()
+
+	return vid.baselineBranch
+}
+
+func (vid *WrappedTx) SetBaselineBranch(baselineBranch *WrappedTx) *WrappedTx {
+	vid.mutex.Lock()
+	defer vid.mutex.Unlock()
+
+	vid.baselineBranch = baselineBranch
 }
 
 type _mutationData struct {

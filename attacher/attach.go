@@ -24,19 +24,28 @@ func _attachTxID(txid core.TransactionID, env AttachEnvironment) (vid *utangle_n
 		return
 	}
 	// it is a branch transaction. Look up for the corresponding state
-	if bd, branchAvailable := multistate.FetchBranchData(env.StateStore(), txid); !branchAvailable {
+	if bd, branchAvailable := multistate.FetchBranchData(env.StateStore(), txid); branchAvailable {
+		// corresponding state has been found, it is solid -> put virtual branch tx with the state reader
+		vid = utangle_new.NewVirtualBranchTx(&bd).Wrap()
+		env.AddVertexNoLock(vid)
+		env.AddBranchNoLock(vid, &bd)
+		// final branches reference itself, otherwise baseline branch == nil
+		vid.SetBaselineBranch(vid)
+		vid.SetTxStatus(utangle_new.TxStatusGood)
+	} else {
 		// the corresponding state is not in the multistate DB -> put virtualTx to the utangle -> pull it
 		// the puller will trigger further solidification
 		vid = utangle_new.WrapTxID(txid)
 		env.AddVertexNoLock(vid)
 		env.Pull(txid)
-	} else {
-		// corresponding state has been found, it is solid -> put virtual branch tx with the state reader
-		vid = utangle_new.NewVirtualBranchTx(&bd).Wrap()
-		env.AddVertexNoLock(vid)
-		rdr := multistate.MustNewReadable(env.StateStore(), bd.Root, maxStateReaderCacheSize)
-		vid.SetBaselineStateReader(rdr)
 	}
+	return
+}
+
+func AttachTxID(txid core.TransactionID, env AttachEnvironment) (vid *utangle_new.WrappedTx) {
+	env.WithGlobalWriteLock(func() {
+		vid = _attachTxID(txid, env)
+	})
 	return
 }
 
@@ -66,13 +75,6 @@ func AttachInput(consumer *utangle_new.WrappedTx, inputIdx byte, env AttachEnvir
 	return
 }
 
-func AttachTxID(txid core.TransactionID, env AttachEnvironment) (vid *utangle_new.WrappedTx) {
-	env.WithGlobalWriteLock(func() {
-		vid = _attachTxID(txid, env)
-	})
-	return
-}
-
 // AttachTransaction attaches new incoming transaction. For sequencer transaction it starts attacher routine
 // which manages solidification pull until transaction becomes solid or stopped by the context
 func AttachTransaction(tx *transaction.Transaction, env AttachEnvironment, ctx context.Context) (vid *utangle_new.WrappedTx) {
@@ -83,17 +85,16 @@ func AttachTransaction(tx *transaction.Transaction, env AttachEnvironment, ctx c
 			// it is new. Create a new wrapped tx and put it to the utangle
 			vid = utangle_new.NewVertex(tx).Wrap()
 		} else {
+			if !vid.IsVirtualTx() {
+				return
+			}
 			// it is existing. Must virtualTx -> replace virtual tx with the full transaction
-			vid.MustConvertVirtualTxToVertex(utangle_new.NewVertex(tx))
+			vid.ConvertVirtualTxToVertex(utangle_new.NewVertex(tx))
 		}
 		env.AddVertexNoLock(vid)
 		if vid.IsSequencerMilestone() {
 			// starts attacher goroutine for sequencer transactions.
-			go func() {
-				newAttacher(vid, env, ctx).
-					run().
-					close()
-			}()
+			go runAttacher(vid, env, ctx)
 		}
 	})
 	return
