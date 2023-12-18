@@ -55,7 +55,7 @@ func (s SugaredStateReader) GetOutputWithID(oid *core.OutputID) (*core.OutputWit
 	}, nil
 }
 
-func (s SugaredStateReader) GetOutput(oid *core.OutputID) (*core.Output, error) {
+func (s SugaredStateReader) GetOutputErr(oid *core.OutputID) (*core.Output, error) {
 	oData, found := s.IndexedStateReader.GetUTXO(oid)
 	if !found {
 		return nil, ErrNotFound
@@ -67,7 +67,16 @@ func (s SugaredStateReader) GetOutput(oid *core.OutputID) (*core.Output, error) 
 	return ret, nil
 }
 
-func (s SugaredStateReader) MustGetOutput(oid *core.OutputID) *core.OutputWithID {
+func (s SugaredStateReader) GetOutput(oid *core.OutputID) *core.Output {
+	ret, err := s.GetOutputErr(oid)
+	if err == nil {
+		return ret
+	}
+	util.Assertf(errors.Is(err, ErrNotFound), "%w", err)
+	return nil
+}
+
+func (s SugaredStateReader) MustGetOutputWithID(oid *core.OutputID) *core.OutputWithID {
 	ret, err := s.GetOutputWithID(oid)
 	util.AssertNoError(err)
 	return ret

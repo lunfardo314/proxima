@@ -111,9 +111,9 @@ func ScanGenesisState(stateStore global.StateStore) (*LedgerIdentityData, common
 	stateID := MustLedgerIdentityDataFromBytes(rdr.MustLedgerIdentityBytes())
 
 	genesisOid := InitialSupplyOutputID(stateID.GenesisTimeSlot)
-	out, err := rdr.GetOutput(&genesisOid)
+	out, err := rdr.GetOutputErr(&genesisOid)
 	if err != nil {
-		return nil, nil, fmt.Errorf("GetOutput(%s): %w", genesisOid.StringShort(), err)
+		return nil, nil, fmt.Errorf("GetOutputErr(%s): %w", genesisOid.StringShort(), err)
 	}
 	if out.Amount() != stateID.InitialSupply {
 		return nil, nil, fmt.Errorf("different amounts in genesis output and state identity")

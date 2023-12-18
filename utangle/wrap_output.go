@@ -36,7 +36,7 @@ func (ut *UTXOTangle) GetWrappedOutput(oid *core.OutputID, baselineState ...mult
 
 	// looking for the output in the provided state
 	txid := oid.TransactionID()
-	o, err := baselineState[0].GetOutput(oid)
+	o, err := baselineState[0].GetOutputErr(oid)
 	if err != nil {
 		// error occurred while loading from the state
 		if errors.Is(err, multistate.ErrNotFound) {
@@ -103,7 +103,7 @@ func (ut *UTXOTangle) _wrapNewIntoExistingVirtualBranch(vid *WrappedTx, oid *cor
 
 			rdr := multistate.MustNewSugaredStateReader(ut.stateStore, bd.Root)
 
-			o, err := rdr.GetOutput(oid)
+			o, err := rdr.GetOutputErr(oid)
 			if errors.Is(err, multistate.ErrNotFound) {
 				return // null, false, false
 			}
@@ -131,7 +131,7 @@ func _wrapNewIntoExistingVirtualNonBranch(vid *WrappedTx, oid *core.OutputID, ba
 	var available, invalid bool
 	vid.Unwrap(UnwrapOptions{
 		VirtualTx: func(v *VirtualTransaction) {
-			o, err := baselineState[0].GetOutput(oid)
+			o, err := baselineState[0].GetOutputErr(oid)
 			if errors.Is(err, multistate.ErrNotFound) {
 				return // null, false, false
 			}
@@ -161,7 +161,7 @@ func (ut *UTXOTangle) _fetchAndWrapBranch(oid *core.OutputID) (WrappedOutput, bo
 	if oid.Index() != bd.SequencerOutput.ID.Index() && oid.Index() != bd.Stem.ID.Index() {
 		// not seq or stem
 		rdr := multistate.MustNewSugaredStateReader(ut.stateStore, bd.Root)
-		o, err := rdr.GetOutput(oid)
+		o, err := rdr.GetOutputErr(oid)
 		if err != nil {
 			// if the output cannot be fetched from the branch state, it does not exist
 			return WrappedOutput{}, false, true

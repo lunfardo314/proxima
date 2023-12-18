@@ -51,8 +51,9 @@ func AttachTxID(txid core.TransactionID, env AttachEnvironment) (vid *utangle_ne
 
 // AttachInput attaches transaction and links consumer with the transaction.
 // Returns vid of the consumed transaction, or nil if input index is wrong
-func AttachInput(consumer *utangle_new.WrappedTx, inputIdx byte, env AttachEnvironment) (vid *utangle_new.WrappedTx) {
+func AttachInput(consumer *utangle_new.WrappedTx, inputIdx byte, env AttachEnvironment, baselineStateReader *multistate.SugaredStateReader) (vid *utangle_new.WrappedTx) {
 	var inOid core.OutputID
+	var out *core.Output
 	var err error
 	consumer.Unwrap(utangle_new.UnwrapOptions{
 		Vertex: func(v *utangle_new.Vertex) {
@@ -64,8 +65,25 @@ func AttachInput(consumer *utangle_new.WrappedTx, inputIdx byte, env AttachEnvir
 	if err != nil {
 		return nil
 	}
+
+	if baselineStateReader != nil {
+		inTxID := inOid.TransactionID()
+		if baselineStateReader.KnowsCommittedTransaction(&inTxID) {
+			if out = baselineStateReader.GetOutput(&inOid); out == nil {
+				// invalid input
+				return nil
+			}
+		}
+		// input tx not known to the state
+	}
+
 	env.WithGlobalWriteLock(func() {
 		vid = _attachTxID(inOid.TransactionID(), env)
+		if out != nil && !vid.EnsureOutput(inOid.Index(), out) {
+			// wrong output index
+			vid = nil
+			return
+		}
 		// attach and propagate new conflict set, if any
 		if !vid.AttachConsumerNoLock(inOid.Index(), consumer) {
 			// failed to attach consumer
