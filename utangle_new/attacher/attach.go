@@ -44,42 +44,24 @@ func _attachTxID(txid core.TransactionID, env AttachEnvironment, pullNonBranchIf
 	return
 }
 
-func AttachTxID(txid core.TransactionID, env AttachEnvironment, pullNonBranchIfNeeded bool) (vid *vertex.WrappedTx) {
+func attachTxID(txid core.TransactionID, env AttachEnvironment, pullNonBranchIfNeeded bool) (vid *vertex.WrappedTx) {
 	env.WithGlobalWriteLock(func() {
 		vid = _attachTxID(txid, env, pullNonBranchIfNeeded)
 	})
 	return
 }
 
-// AttachInput attaches transaction and links consumer with the transaction.
+// attachInput attaches transaction and links consumer with the transaction.
 // Returns vid of the consumed transaction, or nil if input index is wrong
-func AttachInput(consumer *vertex.WrappedTx, inputIdx byte, env AttachEnvironment, baselineStateReader *multistate.SugaredStateReader, pullIfNeeded bool) (vid *vertex.WrappedTx) {
-	var inOid core.OutputID
-	var out *core.Output
+func attachInput(consumer *vertex.WrappedTx, inOid *core.OutputID, env AttachEnvironment, out *core.Output) (vid *vertex.WrappedTx) {
 	var err error
-	consumer.Unwrap(vertex.UnwrapOptions{
-		Vertex: func(v *vertex.Vertex) {
-			inOid, err = v.Tx.InputAt(inputIdx)
-		},
-		VirtualTx: vid.PanicShouldNotBeVirtualTx,
-		Deleted:   vid.PanicAccessDeleted,
-	})
 	if err != nil {
 		return nil
 	}
 
-	if baselineStateReader != nil {
-		inTxID := inOid.TransactionID()
-		if baselineStateReader.KnowsCommittedTransaction(&inTxID) {
-			if out = baselineStateReader.GetOutput(&inOid); out == nil {
-				// invalid input
-				return nil
-			}
-		}
-		// input tx not known to the state
-	}
+	// out == nil -> not in the state nor on the utangle -> pull
 	env.WithGlobalWriteLock(func() {
-		vid = _attachTxID(inOid.TransactionID(), env, pullIfNeeded && out == nil)
+		vid = _attachTxID(inOid.TransactionID(), env, out == nil)
 		if out != nil && !vid.EnsureOutput(inOid.Index(), out) {
 			// wrong output index
 			vid = nil
