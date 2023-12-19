@@ -63,15 +63,24 @@ func newAttacher(vid *vertex.WrappedTx, env AttachEnvironment, ctx context.Conte
 
 func runAttacher(vid *vertex.WrappedTx, env AttachEnvironment, ctx context.Context) {
 	a := newAttacher(vid, env, ctx)
+	defer a.close()
+
 	// first solidify baseline state
-	a.runWhileNotFinalAnd(func(v *vertex.Vertex) bool {
-		if a.baselineBranch == nil {
-			a._solidifyBaseline(v)
-		}
-		return a.baselineBranch == nil
+	var valid bool
+	a.runUntilBreak(func(v *vertex.Vertex) (exit bool, invalid bool) {
+		valid = a._solidifyBaseline(v)
+		return a.baselineBranch != nil, !valid
 	})
+	if !valid {
+		a.vid.SetTxStatus(vertex.TxStatusBad)
+		return
+	}
+	util.Assertf(a.baselineBranch != nil, "a.baselineBranch != nil")
+	// baseline is solid
+	a.baselineStateReader = multistate.MakeSugared(a.env.GetBaselineStateReader(a.baselineBranch))
+
 	// then continue with the rest
-	a.runWhileNotFinalAnd(func(v *vertex.Vertex) bool {
+	a.runUntilBreak(func(v *vertex.Vertex) (bool, bool) {
 		return a.runPastCone(v)
 	})
 }
@@ -94,19 +103,16 @@ func (a *attacher) notify(msg *vertex.WrappedTx) {
 	}
 }
 
-func (a *attacher) runWhileNotFinalAnd(processVertex func(v *vertex.Vertex) bool) {
-	for !a.isFinalStatus() {
-		invalid := true
+func (a *attacher) runUntilBreak(processVertex func(v *vertex.Vertex) (exit bool, invalid bool)) {
+	var exit, invalid bool
+	for {
+		exit = true
 		a.vid.Unwrap(vertex.UnwrapOptions{
 			Vertex: func(v *vertex.Vertex) {
-				invalid = !processVertex(v)
+				exit, invalid = processVertex(v)
 			},
 		})
-		if invalid {
-			a.vid.SetTxStatus(vertex.TxStatusBad)
-			return
-		}
-		if a.isFinalStatus() {
+		if exit || invalid {
 			return
 		}
 
@@ -118,12 +124,16 @@ func (a *attacher) runWhileNotFinalAnd(processVertex func(v *vertex.Vertex) bool
 			if downstreamVID == nil {
 				return
 			}
-			a.processNotification(downstreamVID)
+			a.vid.Unwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
+				exit, invalid = a.processNotification(v, downstreamVID)
+			}})
+			if exit || invalid {
+				return
+			}
 
 		case <-time.After(periodicCheckEach):
 		}
 	}
-	return
 }
 
 func (a *attacher) isFinalStatus() bool {
@@ -132,35 +142,39 @@ func (a *attacher) isFinalStatus() bool {
 
 // _solidifyBaseline directs attachment process down the DAG to reach the deterministically known baseline state
 // for a sequencer milestone. Existence of it is guaranteed by the ledger constraints
-func (a *attacher) _solidifyBaseline(v *vertex.Vertex) {
-	if v.Tx.IsBranchTransaction() {
-		a._solidifyStem(v)
-	} else {
-		a._solidifySequencerBaseline(v)
-	}
+func (a *attacher) _solidifyBaseline(v *vertex.Vertex) (ok bool) {
 	if a.baselineBranch != nil {
-		a.baselineStateReader = multistate.MakeSugared(a.env.GetBaselineStateReader(a.baselineBranch))
+		ok = true
+		return
 	}
+	if v.Tx.IsBranchTransaction() {
+		ok = _solidifyStem(v, a.env)
+	} else {
+		ok = _solidifySequencerBaseline(v, a.env)
+	}
+	a.baselineBranch = v.BaselineBranch
+	return
 }
 
-func (a *attacher) _solidifyStem(v *vertex.Vertex) {
+func _solidifyStem(v *vertex.Vertex, env AttachEnvironment) bool {
 	stemInputIdx := v.StemInputIndex()
 	if v.Inputs[stemInputIdx] == nil {
 		// predecessor stem is pending
 		stemInputOid := v.Tx.MustInputAt(stemInputIdx)
-		v.Inputs[stemInputIdx] = AttachTxID(stemInputOid.TransactionID(), a.env, false)
+		v.Inputs[stemInputIdx] = AttachTxID(stemInputOid.TransactionID(), env, false)
 		util.Assertf(v.Inputs[stemInputIdx] != nil, "v.Inputs[stemInputIdx] != nil")
 	}
 	switch v.Inputs[stemInputIdx].GetTxStatus() {
 	case vertex.TxStatusGood:
-		a.baselineBranch = v.Inputs[stemInputIdx].BaselineBranch()
-		util.Assertf(a.baselineBranch != nil, "a.baselineBranch != nil")
+		v.BaselineBranch = v.Inputs[stemInputIdx].BaselineBranch()
+		util.Assertf(v.BaselineBranch != nil, "a.baselineBranch != nil")
 	case vertex.TxStatusBad:
-		a.vid.SetTxStatus(vertex.TxStatusBad)
+		return false
 	}
+	return true
 }
 
-func (a *attacher) _solidifySequencerBaseline(v *vertex.Vertex) {
+func _solidifySequencerBaseline(v *vertex.Vertex, env AttachEnvironment) bool {
 	// regular sequencer tx. Go to the direction of the baseline branch
 	predOid, predIdx := v.Tx.SequencerChainPredecessor()
 	util.Assertf(predOid != nil, "inconsistency: sequencer milestone cannot be a chain origin")
@@ -169,7 +183,7 @@ func (a *attacher) _solidifySequencerBaseline(v *vertex.Vertex) {
 	if predOid.TimeSlot() == v.Tx.TimeSlot() {
 		// predecessor is on the same slot -> continue towards it
 		if v.Inputs[predIdx] == nil {
-			v.Inputs[predIdx] = AttachTxID(predOid.TransactionID(), a.env, true)
+			v.Inputs[predIdx] = AttachTxID(predOid.TransactionID(), env, true)
 			util.Assertf(v.Inputs[predIdx] != nil, "v.Inputs[predIdx] != nil")
 		}
 		inputTx = v.Inputs[predIdx]
@@ -177,47 +191,32 @@ func (a *attacher) _solidifySequencerBaseline(v *vertex.Vertex) {
 		// predecessor is on the earlier slot -> follow the first endorsement (guaranteed by the ledger constraint layer)
 		util.Assertf(v.Tx.NumEndorsements() > 0, "v.Tx.NumEndorsements()>0")
 		if v.Endorsements[0] == nil {
-			v.Endorsements[0] = AttachTxID(v.Tx.EndorsementAt(0), a.env, true)
+			v.Endorsements[0] = AttachTxID(v.Tx.EndorsementAt(0), env, true)
 		}
 		inputTx = v.Endorsements[0]
 	}
 	if inputTx.GetTxStatus() == vertex.TxStatusBad {
-		a.vid.SetTxStatus(vertex.TxStatusBad)
-	} else {
-		a.baselineBranch = inputTx.BaselineBranch() // may be nil
+		return false
 	}
+	v.BaselineBranch = inputTx.BaselineBranch() // may be nil
+	return true
 }
 
-func (a *attacher) processNotification(vid *vertex.WrappedTx) {
-	vid.Unwrap(vertex.UnwrapOptions{
-		Vertex: func(v *vertex.Vertex) {
-			if vid.GetTxStatusNoLock() == vertex.TxStatusBad {
-				a.vid.SetTxStatus(vertex.TxStatusBad)
-				return
-			}
-
-		},
-		VirtualTx: nil,
-		Deleted:   vid.PanicAccessDeleted,
-	})
-	if vid.GetTxStatus() == vertex.TxStatusBad {
-		a.vid.SetTxStatus(vertex.TxStatusBad)
-		return
-	}
-
+func (a *attacher) processNotification(v *vertex.Vertex, vid *vertex.WrappedTx) (exit bool, invalid bool) {
+	panic("not implemented")
 }
 
 // TODO
 
-func (a *attacher) runPastCone(v *vertex.Vertex) bool {
-	if !a._solidifyInputs(v) {
-		return false
+func (a *attacher) runPastCone(v *vertex.Vertex) (exit bool, invalid bool) {
+	if !a._attachInputs(v) {
+		return true, true
 	}
 	a.runAllPending()
 	panic("not implemented")
 }
 
-func (a *attacher) _solidifyInputs(v *vertex.Vertex) bool {
+func (a *attacher) _attachInputs(v *vertex.Vertex) bool {
 	util.Assertf(!util.IsNil(a.baselineStateReader), "!util.IsNil(a.baselineStateReader)")
 
 	invalid := false
