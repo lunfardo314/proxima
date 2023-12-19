@@ -10,6 +10,7 @@ import (
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/utangle_new/vertex"
 	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/proxima/util/set"
 	"go.uber.org/zap"
 )
 
@@ -36,6 +37,8 @@ type (
 		baselineBranch      *vertex.WrappedTx
 		baselineStateReader multistate.SugaredStateReader
 		env                 AttachEnvironment
+		solidPastCone       set.Set[*vertex.WrappedTx]
+		pendingPastCone     set.Set[*vertex.WrappedTx]
 	}
 )
 
@@ -45,10 +48,12 @@ const (
 
 func newAttacher(vid *vertex.WrappedTx, env AttachEnvironment, ctx context.Context) *attacher {
 	ret := &attacher{
-		ctx:    ctx,
-		vid:    vid,
-		env:    env,
-		inChan: make(chan *vertex.WrappedTx, 1),
+		ctx:             ctx,
+		vid:             vid,
+		env:             env,
+		inChan:          make(chan *vertex.WrappedTx, 1),
+		solidPastCone:   set.New[*vertex.WrappedTx](),
+		pendingPastCone: set.New[*vertex.WrappedTx](),
 	}
 	ret.vid.OnNotify(func(msg *vertex.WrappedTx) {
 		ret.notify(msg)
@@ -65,12 +70,9 @@ func runAttacher(vid *vertex.WrappedTx, env AttachEnvironment, ctx context.Conte
 		}
 		return a.baselineBranch == nil
 	})
-	if a.isFinalStatus() {
-		return
-	}
 	// then continue with the rest
 	a.runWhileNotFinalAnd(func(v *vertex.Vertex) bool {
-		return a.runInputs(v)
+		return a.runPastCone(v)
 	})
 }
 
@@ -94,13 +96,17 @@ func (a *attacher) notify(msg *vertex.WrappedTx) {
 
 func (a *attacher) runWhileNotFinalAnd(processVertex func(v *vertex.Vertex) bool) {
 	for !a.isFinalStatus() {
-		exit := true
+		invalid := true
 		a.vid.Unwrap(vertex.UnwrapOptions{
 			Vertex: func(v *vertex.Vertex) {
-				exit = !processVertex(v)
+				invalid = !processVertex(v)
 			},
 		})
-		if exit || a.isFinalStatus() {
+		if invalid {
+			a.vid.SetTxStatus(vertex.TxStatusBad)
+			return
+		}
+		if a.isFinalStatus() {
 			return
 		}
 
@@ -142,7 +148,7 @@ func (a *attacher) _solidifyStem(v *vertex.Vertex) {
 	if v.Inputs[stemInputIdx] == nil {
 		// predecessor stem is pending
 		stemInputOid := v.Tx.MustInputAt(stemInputIdx)
-		v.Inputs[stemInputIdx] = AttachTxID(stemInputOid.TransactionID(), a.env)
+		v.Inputs[stemInputIdx] = AttachTxID(stemInputOid.TransactionID(), a.env, false)
 		util.Assertf(v.Inputs[stemInputIdx] != nil, "v.Inputs[stemInputIdx] != nil")
 	}
 	switch v.Inputs[stemInputIdx].GetTxStatus() {
@@ -157,13 +163,13 @@ func (a *attacher) _solidifyStem(v *vertex.Vertex) {
 func (a *attacher) _solidifySequencerBaseline(v *vertex.Vertex) {
 	// regular sequencer tx. Go to the direction of the baseline branch
 	predOid, predIdx := v.Tx.SequencerChainPredecessor()
-	util.Assertf(predOid != nil, "inconsistency: sequencer cannot be at the chain origin")
+	util.Assertf(predOid != nil, "inconsistency: sequencer milestone cannot be a chain origin")
 	var inputTx *vertex.WrappedTx
 
 	if predOid.TimeSlot() == v.Tx.TimeSlot() {
 		// predecessor is on the same slot -> continue towards it
 		if v.Inputs[predIdx] == nil {
-			v.Inputs[predIdx] = AttachTxID(predOid.TransactionID(), a.env)
+			v.Inputs[predIdx] = AttachTxID(predOid.TransactionID(), a.env, true)
 			util.Assertf(v.Inputs[predIdx] != nil, "v.Inputs[predIdx] != nil")
 		}
 		inputTx = v.Inputs[predIdx]
@@ -171,7 +177,7 @@ func (a *attacher) _solidifySequencerBaseline(v *vertex.Vertex) {
 		// predecessor is on the earlier slot -> follow the first endorsement (guaranteed by the ledger constraint layer)
 		util.Assertf(v.Tx.NumEndorsements() > 0, "v.Tx.NumEndorsements()>0")
 		if v.Endorsements[0] == nil {
-			v.Endorsements[0] = AttachTxID(v.Tx.EndorsementAt(0), a.env)
+			v.Endorsements[0] = AttachTxID(v.Tx.EndorsementAt(0), a.env, true)
 		}
 		inputTx = v.Endorsements[0]
 	}
@@ -203,90 +209,67 @@ func (a *attacher) processNotification(vid *vertex.WrappedTx) {
 
 // TODO
 
-func (a *attacher) runInputs(v *vertex.Vertex) bool {
+func (a *attacher) runPastCone(v *vertex.Vertex) bool {
+	if !a._solidifyInputs(v) {
+		return false
+	}
+	a.runAllPending()
+	panic("not implemented")
+}
+
+func (a *attacher) _solidifyInputs(v *vertex.Vertex) bool {
 	util.Assertf(!util.IsNil(a.baselineStateReader), "!util.IsNil(a.baselineStateReader)")
-	bad := false
+
+	invalid := false
 	v.ForEachInputDependency(func(i byte, vidInput *vertex.WrappedTx) bool {
 		if vidInput == nil {
-			v.Inputs[i] = AttachInput(a.vid, i, a.env)
+			vidInput = AttachInput(a.vid, i, a.env, &a.baselineStateReader, true)
+			if vidInput == nil {
+				invalid = true
+				return false
+			}
+			v.Inputs[i] = vidInput
+			a.pendingPastCone.Insert(vidInput)
 		}
-		if v.Inputs[i] == nil || v.Inputs[i].GetTxStatus() == vertex.TxStatusBad {
-			bad = true
+		if vidInput.GetTxStatus() == vertex.TxStatusBad {
+			invalid = true
 			return false
 		}
 		return true
 	})
-	if bad {
-		a.vid.SetTxStatus(vertex.TxStatusBad)
+	if invalid {
 		return false
 	}
 	v.ForEachEndorsement(func(i byte, vidEndorsed *vertex.WrappedTx) bool {
 		if vidEndorsed == nil {
-			v.Endorsements[i] = AttachTxID(v.Tx.EndorsementAt(i), a.env)
+			vidEndorsed = AttachTxID(v.Tx.EndorsementAt(i), a.env, true)
+			util.Assertf(vidEndorsed != nil, "v.Endorsements[i] != nil")
+			a.pendingPastCone.Insert(vidEndorsed)
+			v.Endorsements[i] = vidEndorsed
 		}
-		if v.Endorsements[i].GetTxStatus() != vertex.TxStatusBad {
-			bad = true
+		if vidEndorsed.GetTxStatus() == vertex.TxStatusBad {
+			invalid = true
 			return false
 		}
 		return true
 	})
-	if bad {
-		a.vid.SetTxStatus(vertex.TxStatusBad)
-	}
+	return !invalid
 }
 
-//
-//// attachInputTransactionsIfNeeded does not check correctness of output indices, only transaction status
-//func attachInputTransactionsIfNeeded(v *utangle_new.Vertex, env AttachEnvironment) (bool, bool) {
-//	var stemInputTxID, seqInputTxID core.TransactionID
-//
-//	if v.Tx.IsBranchTransaction() {
-//		stemInputIdx := v.StemInputIndex()
-//		if v.Inputs[stemInputIdx] == nil {
-//			stemInputOid := v.Tx.MustInputAt(stemInputIdx)
-//			stemInputTxID = stemInputOid.TransactionID()
-//			v.Inputs[stemInputIdx] = _attachTxID(stemInputTxID, env)
-//		}
-//		switch v.Inputs[stemInputIdx].GetTxStatus() {
-//		case utangle_new.TxStatusBad:
-//			return false, false
-//		case utangle_new.TxStatusUndefined:
-//			return true, false
-//		}
-//	}
-//	// stem is good
-//	seqInputIdx := v.SequencerInputIndex()
-//	seqInputOid := v.Tx.MustInputAt(seqInputIdx)
-//	seqInputTxID = seqInputOid.TransactionID()
-//	v.Inputs[seqInputIdx] = _attachTxID(seqInputTxID, env)
-//	switch v.Inputs[seqInputIdx].GetTxStatus() {
-//	case utangle_new.TxStatusBad:
-//		return false, false
-//	case utangle_new.TxStatusUndefined:
-//		return true, false
-//	}
-//	// stem and seq inputs are ok. We can pull the rest
-//	missing := v.MissingInputTxIDSet().Remove(seqInputTxID)
-//	if v.Tx.IsBranchTransaction() {
-//		missing.Remove(stemInputTxID)
-//	}
-//	success := true
-//	v.Tx.ForEachInput(func(i byte, oid *core.OutputID) bool {
-//		if v.Inputs[i] == nil {
-//			v.Inputs[i] = _attachTxID(oid.TransactionID(), env)
-//		}
-//		success = v.Inputs[i].GetTxStatus() != utangle_new.TxStatusBad
-//		return success
-//	})
-//	if !success {
-//		return false, false
-//	}
-//	v.Tx.ForEachEndorsement(func(idx byte, txid *core.TransactionID) bool {
-//		if v.Endorsements[idx] == nil {
-//			v.Endorsements[idx] = _attachTxID(*txid, env)
-//		}
-//		success = v.Endorsements[idx].GetTxStatus() != utangle_new.TxStatusBad
-//		return success
-//	})
-//	return success, success
-//}
+func (a *attacher) runAllPending() bool {
+	descPending := util.KeysSorted(a.pendingPastCone, func(k1, k2 *vertex.WrappedTx) bool {
+		return !core.LessTxID(*k1.ID(), *k2.ID())
+	})
+	for _, pendingVID := range descPending {
+		util.Assertf(!a.solidPastCone.Contains(pendingVID), "!a.solidPastCone.Contains(pendingVID)")
+		if a.visitPending(pendingVID) {
+			delete(a.pendingPastCone, pendingVID)
+			a.solidPastCone.Insert(pendingVID)
+		}
+	}
+	panic("not implemented")
+}
+
+func (a *attacher) visitPending(vid *vertex.WrappedTx) bool {
+	panic("not implemented")
+}
