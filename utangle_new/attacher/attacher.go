@@ -210,99 +210,123 @@ func (a *attacher) processNotification(v *vertex.Vertex, vid *vertex.WrappedTx) 
 // TODO
 
 func (a *attacher) runPastCone(v *vertex.Vertex) (exit bool, status vertex.TxStatus) {
-	//if !a._attachInputs(v) {
-	//	return true, true
-	//}
-	a.runAllPendingNoSequencer()
-	panic("not implemented")
+	status = a._attachVertex(v, a.vid)
+	return
 }
 
-func (a *attacher) attachInput(wOut vertex.WrappedOutput, consumer *vertex.WrappedTx) (status vertex.TxStatus) {
-	rooted := false
-	if !a.rooted.Contains(wOut.VID) {
-		if a.baselineStateReader.KnowsCommittedTransaction(wOut.VID.ID()) {
-			a.rooted.Insert(wOut.VID)
-			rooted = true
+func (a *attacher) attachWrappedInput(vid *vertex.WrappedTx, index byte) (status vertex.TxStatus) {
+	status = vid.GetTxStatus()
+	if status == vertex.TxStatusBad {
+		return vertex.TxStatusBad
+	}
+	// tx status undefined or good
+	rootedTx := false
+	if !a.rooted.Contains(vid) {
+		if a.baselineStateReader.KnowsCommittedTransaction(vid.ID()) {
+			a.rooted.Insert(vid)
+			rootedTx = true
 		}
 	} else {
-		rooted = true
+		rootedTx = true
 	}
-	if rooted {
-		oid := wOut.DecodeID()
-		out := a.baselineStateReader.GetOutput(oid)
-		vidRet := attachInput(consumer, oid, a.env, out)
-		util.Assertf(vidRet == wOut.VID, "vidRet==wOut.VID")
-		status = wOut.VID.GetTxStatus()
-		if status != vertex.TxStatusUndefined {
-			return
+	if rootedTx {
+		oid := vid.OutputID(index)
+		if out := a.baselineStateReader.GetOutput(&oid); out != nil {
+			ensured := vid.EnsureOutput(index, out)
+			util.Assertf(ensured, "attachInputID: inconsistency")
+			status = vertex.TxStatusGood
+		} else {
+			status = vertex.TxStatusBad
 		}
-		wOut.VID.Unwrap(vertex.UnwrapOptions{
-			Vertex: func(v *vertex.Vertex) {
-
-			},
-			VirtualTx: func(v *vertex.VirtualTransaction) {
-
-			},
-			Deleted: wOut.VID.PanicAccessDeleted,
-		})
+		return
+	}
+	// input tx is not rooted and not bad
+	if vid.IsBranchTransaction() {
+		// do not need to recursively pull branches because they are pulled by baseline solidification
 		return
 	}
 
+	txid := vid.ID()
+	vid.Unwrap(vertex.UnwrapOptions{
+		Vertex: func(v *vertex.Vertex) {
+			status = a._attachVertex(v, vid) // recursive
+		},
+		VirtualTx: func(v *vertex.VirtualTransaction) {
+			a.env.Pull(*txid)
+		},
+	})
+	return
 }
 
-func (a *attacher) _attachInputs(v *vertex.Vertex) (status vertex.TxStatus) {
+func (a *attacher) _attachVertex(v *vertex.Vertex, vid *vertex.WrappedTx) (status vertex.TxStatus) {
 	util.Assertf(!util.IsNil(a.baselineStateReader), "!util.IsNil(a.baselineStateReader)")
 
 	status = vertex.TxStatusUndefined
+	allGood := true
 	v.ForEachInputDependency(func(i byte, vidInput *vertex.WrappedTx) bool {
-		if vidInput != nil {
-			if v.GoodInputs[i] {
-				return true
-			}
-			switch vidInput.GetTxStatus() {
-			case vertex.TxStatusGood:
-				v.GoodInputs[i] = true
-			case vertex.TxStatusBad:
-				status = vertex.TxStatusBad
-				return false // >>>>>>> invalidate the whole tx
-			case vertex.TxStatusUndefined:
-				if !vidInput.IsSequencerMilestone() {
-					if len(a.visited) == 0 {
-						// pending list cleared -> all good
-						v.GoodInputs[i] = true
-					}
-				}
-			}
-			return true
-		}
-		//
-		inOid := v.Tx.MustInputAt(i)
-		inTxID := inOid.TransactionID()
-		var out *core.Output
-		if a.baselineStateReader.KnowsCommittedTransaction(&inTxID) {
-			if out = a.baselineStateReader.GetOutput(&inOid); out == nil {
-				// if transaction is known but output is not there -> already spent (double spend) -> retStatus input
-				status = vertex.TxStatusBad
-				return false
-			}
-		}
-		vidInput = attachInput(a.vid, &inOid, a.env, out)
+		inputOid := v.Tx.MustInputAt(i)
 		if vidInput == nil {
+			vidInput = attachInputID(&inputOid, vid, a.env)
+			v.Inputs[i] = vidInput
+		}
+		util.Assertf(vidInput != nil, "vidInput != nil")
+
+		switch vidInput.GetTxStatus() {
+		case vertex.TxStatusBad:
 			status = vertex.TxStatusBad
 			return false
-		}
-		v.Inputs[i] = vidInput
-		if !inTxID.IsSequencerMilestone() && out == nil {
-			a.visited.Insert(vidInput)
+		case vertex.TxStatusUndefined:
+			allGood = false
+		case vertex.TxStatusGood:
+			if !v.InputForkSetAbsorbed[i] {
+				if conflict := v.Forks.Absorb(vidInput.Forks()); conflict.VID != nil {
+					status = vertex.TxStatusBad
+					return false
+				}
+				v.InputForkSetAbsorbed[i] = true
+			}
 		}
 
-		if vidInput.GetTxStatus() == vertex.TxStatusBad {
+		status = a.attachWrappedInput(vidInput, v.Tx.MustOutputIndexOfTheInput(i)) // << recursion
+
+		switch vidInput.GetTxStatus() {
+		case vertex.TxStatusBad:
 			status = vertex.TxStatusBad
 			return false
+		case vertex.TxStatusUndefined:
+			allGood = false
 		}
 		return true
 	})
-	return retStatus
+	if status == vertex.TxStatusBad {
+		return
+	}
+	v.ForEachEndorsement(func(i byte, vidEndorsed *vertex.WrappedTx) bool {
+		if vidEndorsed == nil {
+			vidEndorsed = attachTxID(v.Tx.EndorsementAt(i), a.env, true)
+			v.Endorsements[i] = vidEndorsed
+		}
+		switch vidEndorsed.GetTxStatus() {
+		case vertex.TxStatusBad:
+			status = vertex.TxStatusBad
+			return false
+		case vertex.TxStatusUndefined:
+			allGood = false
+		case vertex.TxStatusGood:
+			if !v.EndorsementForkSetAbsorbed[i] {
+				if conflict := v.Forks.Absorb(vidEndorsed.Forks()); conflict.VID != nil {
+					status = vertex.TxStatusBad
+					return false
+				}
+				v.EndorsementForkSetAbsorbed[i] = true
+			}
+		}
+		return true
+	})
+	if allGood {
+		status = vertex.TxStatusGood
+	}
+	return status
 }
 
 func (a *attacher) _attachEndorsements(v *vertex.Vertex) (invalid bool) {
@@ -321,20 +345,4 @@ func (a *attacher) _attachEndorsements(v *vertex.Vertex) (invalid bool) {
 	})
 	return !invalid
 
-}
-
-func (a *attacher) runAllPendingNoSequencer() bool {
-	descPending := util.KeysSorted(a.visited, func(k1, k2 *vertex.WrappedTx) bool {
-		return !core.LessTxID(*k1.ID(), *k2.ID())
-	})
-	for _, pendingVID := range descPending {
-	}
-}
-
-func (a *attacher) attachPendingNonSequencerOutput() (invalid bool) {
-
-}
-
-func (a *attacher) visitPending(vid *vertex.WrappedTx) bool {
-	panic("not implemented")
 }

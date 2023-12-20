@@ -51,22 +51,11 @@ func attachTxID(txid core.TransactionID, env AttachEnvironment, pullNonBranchIfN
 	return
 }
 
-// attachInput attaches transaction and links consumer with the transaction.
+// attachInputID attaches transaction and links consumer with the transaction.
 // Returns vid of the consumed transaction, or nil if input index is wrong
-func attachInput(consumer *vertex.WrappedTx, inOid *core.OutputID, env AttachEnvironment, out *core.Output) (vid *vertex.WrappedTx) {
-	var err error
-	if err != nil {
-		return nil
-	}
-
-	// out == nil -> not in the state nor on the utangle -> pull
+func attachInputID(inOid *core.OutputID, consumer *vertex.WrappedTx, env AttachEnvironment) (vid *vertex.WrappedTx) {
 	env.WithGlobalWriteLock(func() {
-		vid = _attachTxID(inOid.TransactionID(), env, out == nil)
-		if out != nil && !vid.EnsureOutput(inOid.Index(), out) {
-			// wrong output index
-			vid = nil
-			return
-		}
+		vid = _attachTxID(inOid.TransactionID(), env, false)
 		// attach and propagate new conflict set, if any
 		if !vid.AttachConsumerNoLock(inOid.Index(), consumer) {
 			// failed to attach consumer

@@ -80,8 +80,8 @@ func hasConflict(fs1, fs2 *ForkSet) (conflict WrappedOutput) {
 	return
 }
 
-// absorb in case of conflict receiver is not consistent
-func (fs *ForkSet) absorb(fs1 *ForkSet) (ret WrappedOutput) {
+// Absorb argument forks into receiver
+func (fs *ForkSet) Absorb(fs1 *ForkSet) (ret WrappedOutput) {
 	if fs == fs1 || fs1 == nil {
 		return
 	}
@@ -97,7 +97,7 @@ func (fs *ForkSet) absorb(fs1 *ForkSet) (ret WrappedOutput) {
 	return
 }
 
-// absorbSafe same as absorb but leaves receiver untouched in case of conflict
+// absorbSafe same as Absorb but leaves receiver untouched in case of conflict
 func (fs *ForkSet) absorbSafe(fs1 *ForkSet) (conflict WrappedOutput) {
 	if fs == fs1 || fs1 == nil {
 		return

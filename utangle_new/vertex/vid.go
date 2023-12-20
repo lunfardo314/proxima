@@ -442,3 +442,12 @@ func (vid *WrappedTx) EnsureOutput(idx byte, o *core.Output) bool {
 	})
 	return ok
 }
+
+func (vid *WrappedTx) Forks() (ret *ForkSet) {
+	vid.Unwrap(UnwrapOptions{
+		Vertex: func(v *Vertex) {
+			ret = v.Forks
+		},
+	})
+	return
+}

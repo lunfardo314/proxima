@@ -15,9 +15,12 @@ import (
 
 func New(tx *transaction.Transaction) *Vertex {
 	ret := &Vertex{
-		Tx:           tx,
-		Inputs:       make([]*WrappedTx, tx.NumInputs()),
-		Endorsements: make([]*WrappedTx, tx.NumEndorsements()),
+		Tx:                         tx,
+		Inputs:                     make([]*WrappedTx, tx.NumInputs()),
+		Endorsements:               make([]*WrappedTx, tx.NumEndorsements()),
+		Forks:                      newForkSet(),
+		InputForkSetAbsorbed:       make([]bool, tx.NumInputs()),
+		EndorsementForkSetAbsorbed: make([]bool, tx.NumEndorsements()),
 	}
 	return ret
 }

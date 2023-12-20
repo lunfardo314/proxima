@@ -38,7 +38,7 @@ package vertex
 //		if safe {
 //			wrappedConflict = p.forks.absorbSafe(v.pastTrack.forks)
 //		} else {
-//			wrappedConflict = p.forks.absorb(v.pastTrack.forks)
+//			wrappedConflict = p.forks.Absorb(v.pastTrack.forks)
 //		}
 //		if wrappedConflict.VID != nil {
 //			conflict = &wrappedConflict
