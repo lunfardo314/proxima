@@ -83,7 +83,7 @@ func AttachTransaction(tx *transaction.Transaction, env AttachEnvironment, ctx c
 		}
 		env.AddVertexNoLock(vid)
 		if vid.IsSequencerMilestone() {
-			// starts attacher goroutine for sequencer transactions.
+			// starts attacher goroutine for each sequencer transaction
 			go runAttacher(vid, env, ctx)
 		}
 	})
