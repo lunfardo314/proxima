@@ -1,6 +1,7 @@
 package vertex
 
 import (
+	"bytes"
 	"errors"
 	"time"
 
@@ -422,4 +423,22 @@ func (vid *WrappedTx) BaselineBranch() (baselineBranch *WrappedTx) {
 		Deleted: vid.PanicAccessDeleted,
 	})
 	return
+}
+
+func (vid *WrappedTx) EnsureOutput(idx byte, o *core.Output) bool {
+	ok := true
+	vid.Unwrap(UnwrapOptions{
+		Vertex: func(v *Vertex) {
+			if idx >= byte(v.Tx.NumProducedOutputs()) {
+				ok = false
+				return
+			}
+			util.Assertf(bytes.Equal(o.Bytes(), v.Tx.MustProducedOutputAt(idx).Bytes()), "EnsureOutput: inconsistent output data")
+		},
+		VirtualTx: func(v *VirtualTransaction) {
+			v.addOutput(idx, o)
+		},
+		Deleted: vid.PanicAccessDeleted,
+	})
+	return ok
 }

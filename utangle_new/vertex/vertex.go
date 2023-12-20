@@ -13,6 +13,15 @@ import (
 	"github.com/lunfardo314/proxima/util/set"
 )
 
+func New(tx *transaction.Transaction) *Vertex {
+	ret := &Vertex{
+		Tx:           tx,
+		Inputs:       make([]*WrappedTx, tx.NumInputs()),
+		Endorsements: make([]*WrappedTx, tx.NumEndorsements()),
+	}
+	return ret
+}
+
 func (v *Vertex) TimeSlot() core.TimeSlot {
 	return v.Tx.ID().TimeSlot()
 }

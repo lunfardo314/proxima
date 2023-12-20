@@ -4,6 +4,7 @@ import (
 	"bytes"
 
 	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/util"
 )
@@ -13,6 +14,15 @@ func newVirtualTx(txid core.TransactionID) *VirtualTransaction {
 		txid:    txid,
 		outputs: make(map[byte]*core.Output),
 	}
+}
+
+func NewVirtualBranchTx(br *multistate.BranchData) *VirtualTransaction {
+	txid := br.Stem.ID.TransactionID()
+	v := newVirtualTx(txid)
+	v.addSequencerIndices(br.SequencerOutput.ID.Index(), br.Stem.ID.Index())
+	v.addOutput(br.SequencerOutput.ID.Index(), br.SequencerOutput.Output)
+	v.addOutput(br.Stem.ID.Index(), br.Stem.Output)
+	return v
 }
 
 func newVirtualTxFromTx(tx *transaction.Transaction) *VirtualTransaction {

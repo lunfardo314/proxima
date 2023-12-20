@@ -84,13 +84,13 @@ func AttachTransaction(tx *transaction.Transaction, env AttachEnvironment, ctx c
 		vid = env.GetVertexNoLock(tx.ID())
 		if vid == nil {
 			// it is new. Create a new wrapped tx and put it to the utangle
-			vid = utangle_new.NewVertex(tx).Wrap()
+			vid = vertex.New(tx).Wrap()
 		} else {
 			if !vid.IsVirtualTx() {
 				return
 			}
 			// it is existing. Must virtualTx -> replace virtual tx with the full transaction
-			vid.ConvertVirtualTxToVertex(utangle_new.NewVertex(tx))
+			vid.ConvertVirtualTxToVertex(vertex.New(tx))
 		}
 		env.AddVertexNoLock(vid)
 		if vid.IsSequencerMilestone() {
