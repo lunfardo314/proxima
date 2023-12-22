@@ -65,6 +65,15 @@ func (s Set[K]) Contains(el K) bool {
 	return contains
 }
 
+func (s Set[K]) ContainsAnyOf(elems ...K) bool {
+	for i := range elems {
+		if s.Contains(elems[i]) {
+			return true
+		}
+	}
+	return false
+}
+
 // AsList is non-deterministic
 func (s Set[K]) AsList() []K {
 	if len(s) == 0 {

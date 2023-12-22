@@ -37,8 +37,9 @@ type (
 		baselineBranch      *vertex.WrappedTx
 		baselineStateReader multistate.SugaredStateReader
 		env                 AttachEnvironment
-		consumed            map[*vertex.WrappedTx]set.Set[byte]
-		rooted              set.Set[*vertex.WrappedTx] // those in the past cone known in the baseline
+		pastCone            set.Set[*vertex.WrappedTx] // all in the past cone
+		rooted              set.Set[*vertex.WrappedTx] // those in the past cone known in the baseline state
+		pending             set.Set[vertex.WrappedOutput]
 	}
 )
 
@@ -52,8 +53,9 @@ func newAttacher(vid *vertex.WrappedTx, env AttachEnvironment, ctx context.Conte
 		vid:      vid,
 		env:      env,
 		inChan:   make(chan *vertex.WrappedTx, 1),
-		consumed: make(map[*vertex.WrappedTx]set.Set[byte]),
 		rooted:   set.New[*vertex.WrappedTx](),
+		pastCone: set.New[*vertex.WrappedTx](),
+		pending:  set.New[vertex.WrappedOutput](),
 	}
 	ret.vid.OnNotify(func(msg *vertex.WrappedTx) {
 		ret.notify(msg)
@@ -142,83 +144,15 @@ func (a *attacher) isFinalStatus() bool {
 	return !a.vid.IsVertex() || a.vid.GetTxStatus() != vertex.TxStatusUndefined
 }
 
-func (a *attacher) markSuccessfullyConsumed(vid *vertex.WrappedTx, index byte) {
-	s := a.consumed[vid]
-	if s == nil {
-		s = set.New[byte]()
-	}
-	s.Insert(index)
-	a.consumed[vid] = s
-}
-
-func (a *attacher) isSuccessfullyConsumed(vid *vertex.WrappedTx, index byte) bool {
-	s, found := a.consumed[vid]
-	if !found {
-		return false
-	}
-	return s.Contains(index)
-}
-
-func (a *attacher) attachOutput(vid *vertex.WrappedTx, index byte) (status vertex.TxStatus) {
-	rootedTx := false
-	if !a.rooted.Contains(vid) {
-		if a.baselineStateReader.KnowsCommittedTransaction(vid.ID()) {
-			a.rooted.Insert(vid)
-			rootedTx = true
-		}
-	} else {
-		rootedTx = true
-	}
-	if rootedTx {
-		oid := vid.OutputID(index)
-		if out := a.baselineStateReader.GetOutput(&oid); out != nil {
-			ensured := vid.EnsureOutput(index, out)
-			util.Assertf(ensured, "attachInput: inconsistency")
-			status = vertex.TxStatusGood
-		} else {
-			status = vertex.TxStatusBad
-		}
-		return
-	}
-	// input tx is not rooted and not bad
-	if vid.IsSequencerMilestone() {
-		// do not need to recursively pull sequencer transactions because they are pulled by their attachers
-		return
-	}
-
-	txid := vid.ID()
-	vid.Unwrap(vertex.UnwrapOptions{
-		Vertex: func(v *vertex.Vertex) {
-			status = a.attachVertex(v, vid) // recursive
-		},
-		VirtualTx: func(v *vertex.VirtualTransaction) {
-			a.env.Pull(*txid)
-		},
-	})
-	return
-}
-
-func (a *attacher) attachInput(v *vertex.Vertex, consumerTx *vertex.WrappedTx, inputIdx byte) vertex.TxStatus {
-	vidInputTx := v.Inputs[inputIdx]
-	if vidInputTx == nil {
-		inputOid := v.Tx.MustInputAt(inputIdx)
-		// state independent attachment, future cone links, new conflict set propagation
-		vidInputTx = attachInputID(&inputOid, consumerTx, a.env)
-		v.Inputs[inputIdx] = vidInputTx
-	}
-	util.Assertf(vidInputTx != nil, "vidInputTx != nil")
-	return vidInputTx.GetTxStatus()
-}
-
+// attachVertex: vid corresponds to the vertex v
 func (a *attacher) attachVertex(v *vertex.Vertex, vid *vertex.WrappedTx) (status vertex.TxStatus) {
 	util.Assertf(!util.IsNil(a.baselineStateReader), "!util.IsNil(a.baselineStateReader)")
+	a.pastCone.Insert(vid)
 
 	status = vertex.TxStatusUndefined
 	allGood := true
 	for i := range v.Inputs {
-		status = a.attachInput(v, vid, byte(i))
-
-		switch status {
+		switch status = a.attachInputID(v, vid, byte(i)); status {
 		case vertex.TxStatusBad:
 			return // invalidate
 		case vertex.TxStatusUndefined:
@@ -226,8 +160,10 @@ func (a *attacher) attachVertex(v *vertex.Vertex, vid *vertex.WrappedTx) (status
 		}
 		util.Assertf(v.Inputs[i] != nil, "v.Inputs[i] != nil")
 
-		inputOidIndex := v.Tx.MustOutputIndexOfTheInput(byte(i))
-		status = a.attachOutput(v.Inputs[i], inputOidIndex) // << recursion
+		status = a.attachOutput(vertex.WrappedOutput{
+			VID:   v.Inputs[i],
+			Index: v.Tx.MustOutputIndexOfTheInput(byte(i)),
+		}) // << recursion
 
 		switch status {
 		case vertex.TxStatusBad:
@@ -235,10 +171,7 @@ func (a *attacher) attachVertex(v *vertex.Vertex, vid *vertex.WrappedTx) (status
 		case vertex.TxStatusUndefined:
 			allGood = false
 		case vertex.TxStatusGood:
-			a.markSuccessfullyConsumed(v.Inputs[i], inputOidIndex)
 		}
-
-		// TODO absorb forks
 	}
 	v.ForEachEndorsement(func(i byte, vidEndorsed *vertex.WrappedTx) bool {
 		if vidEndorsed == nil {
@@ -266,6 +199,73 @@ func (a *attacher) attachVertex(v *vertex.Vertex, vid *vertex.WrappedTx) (status
 		status = vertex.TxStatusGood
 	}
 	return status
+}
+
+func (a *attacher) checkIsRooted(vid *vertex.WrappedTx) bool {
+	if a.rooted.Contains(vid) {
+		return true
+	}
+	if a.baselineStateReader.KnowsCommittedTransaction(vid.ID()) {
+		a.rooted.Insert(vid)
+		return true
+	}
+	return false
+}
+
+func (a *attacher) attachOutput(wOut vertex.WrappedOutput) vertex.TxStatus {
+	status := wOut.VID.GetTxStatus()
+	if status != vertex.TxStatusUndefined {
+		return status
+	}
+	if a.checkIsRooted(wOut.VID) {
+		oid := wOut.DecodeID()
+		if out := a.baselineStateReader.GetOutput(oid); out != nil {
+			ensured := wOut.VID.EnsureOutput(wOut.Index, out)
+			util.Assertf(ensured, "attachInputID: inconsistency")
+			a.pending.Remove(wOut)
+			return vertex.TxStatusGood
+		}
+		return vertex.TxStatusBad
+	}
+	// input is not rooted and status is undefined
+	a.pending.Insert(wOut)
+	txid := wOut.VID.ID()
+	wOut.VID.Unwrap(vertex.UnwrapOptions{
+		Vertex: func(v *vertex.Vertex) {
+			status = a.attachVertex(v, wOut.VID) // >>>>>>> recursion
+		},
+		VirtualTx: func(v *vertex.VirtualTransaction) {
+			if !txid.IsSequencerMilestone() {
+				a.env.Pull(*txid)
+			}
+		},
+	})
+	return status
+}
+
+func (a *attacher) attachInputID(consumerVertex *vertex.Vertex, consumerTx *vertex.WrappedTx, inputIdx byte) (status vertex.TxStatus) {
+	vidInputTx := consumerVertex.Inputs[inputIdx]
+	if vidInputTx != nil {
+		status = vidInputTx.GetTxStatus()
+		return
+	}
+	inputOid := consumerVertex.Tx.MustInputAt(inputIdx)
+	a.env.WithGlobalWriteLock(func() {
+		vidInputTx = _attachTxID(inputOid.TransactionID(), a.env, false)
+		if status = vidInputTx.GetTxStatus(); status == vertex.TxStatusBad {
+			return
+		}
+		if a.pastCone.ContainsAnyOf(vidInputTx.ConsumersNoLock(inputOid.Index())...) {
+			// double spend
+			status = vertex.TxStatusBad
+			return
+		}
+		vidInputTx.AttachConsumerNoLock(inputOid.Index(), consumerTx)
+	})
+	if status != vertex.TxStatusBad {
+		consumerVertex.Inputs[inputIdx] = vidInputTx
+	}
+	return
 }
 
 // _solidifyBaseline directs attachment process down the DAG to reach the deterministically known baseline state

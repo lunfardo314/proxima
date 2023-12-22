@@ -51,20 +51,6 @@ func attachTxID(txid core.TransactionID, env AttachEnvironment, pullNonBranchIfN
 	return
 }
 
-// attachInputID attaches transaction and links consumer with the transaction.
-// Returns vid of the consumed transaction, or nil if input index is wrong
-func attachInputID(inOid *core.OutputID, consumer *vertex.WrappedTx, env AttachEnvironment) (vid *vertex.WrappedTx) {
-	env.WithGlobalWriteLock(func() {
-		vid = _attachTxID(inOid.TransactionID(), env, false)
-		// attach and propagate new conflict set, if any
-		if !vid.AttachConsumerNoLock(inOid.Index(), consumer) {
-			// failed to attach consumer
-			vid = nil
-		}
-	})
-	return
-}
-
 // AttachTransaction attaches new incoming transaction. For sequencer transaction it starts attacher routine
 // which manages solidification pull until transaction becomes solid or stopped by the context
 func AttachTransaction(tx *transaction.Transaction, env AttachEnvironment, ctx context.Context) (vid *vertex.WrappedTx) {
