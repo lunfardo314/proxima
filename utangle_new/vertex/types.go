@@ -6,6 +6,7 @@ import (
 
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/transaction"
+	"github.com/lunfardo314/proxima/util/set"
 )
 
 type (
@@ -40,7 +41,8 @@ type (
 		_genericWrapper
 		// future cone references. Protected by global utangle lock
 		// numConsumers contains number of consumers for outputs
-		consumers map[byte][]*WrappedTx
+		mutexConsumers sync.Mutex
+		consumers      map[byte]set.Set[*WrappedTx]
 		// descendants is a list of consumers and endorsers, repeated once
 		//endorsers []*WrappedTx
 		//

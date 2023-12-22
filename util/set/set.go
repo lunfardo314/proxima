@@ -9,7 +9,7 @@ import (
 type Set[K comparable] map[K]struct{}
 
 func New[K comparable](elems ...K) Set[K] {
-	ret := make(Set[K])
+	ret := make(Set[K], len(elems)+1)
 	ret.Insert(elems...)
 	return ret
 }

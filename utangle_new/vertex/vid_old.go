@@ -336,43 +336,6 @@ func (vid *WrappedTx) ConsumersNoLock(outputIndex byte) []*WrappedTx {
 	return vid.consumers[outputIndex]
 }
 
-// AttachConsumerNoLock must be called from globally locked utangle environment.
-func (vid *WrappedTx) AttachConsumerNoLock(outputIndex byte, consumer *WrappedTx) {
-	//if _, invalid := vid.HasOutputAt(outputIndex); invalid {
-	//	return nil, false
-	//}
-
-	if vid.consumers == nil {
-		vid.consumers = make(map[byte][]*WrappedTx)
-	}
-	prevDescendants := vid.consumers[outputIndex]
-	vid.consumers[outputIndex] = util.AppendUnique(prevDescendants, consumer)
-
-	//if len(prevDescendants) >= int(ForkSNReserved) {
-	//	// maximum 255 conflicts per output. Sorry
-	//	return false
-	//}
-	//conflictSet := WrappedOutput{
-	//	VID:   vid,
-	//	Index: outputIndex,
-	//}
-	//switch sn := byte(len(prevDescendants)); sn {
-	//case 0:
-	//	prevDescendants = make([]*WrappedTx, 0, 2)
-	//	// only double-spends need marking the consumer with fork
-	//case 1:
-	//	// double-spend requires propagation of the new fork
-	//	prevDescendants[0].propagateNewConflictSet(&conflictSet, set.New[*WrappedTx]())
-	//	// mark the consumer with fork
-	//	consumer.addFork(newFork(conflictSet, 1))
-	//default:
-	//	// mark the consumer with fork
-	//	consumer.addFork(newFork(conflictSet, sn))
-	//}
-	//vid.consumers[outputIndex] = util.AppendUnique(prevDescendants, consumer)
-	return true
-}
-
 func (vid *WrappedTx) propagateNewConflictSet(wOut *WrappedOutput, visited set.Set[*WrappedTx]) {
 	if vid.IsDeleted() {
 		return

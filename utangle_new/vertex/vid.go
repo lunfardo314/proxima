@@ -8,6 +8,7 @@ import (
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
+	"github.com/lunfardo314/proxima/util/set"
 )
 
 const (
@@ -450,4 +451,24 @@ func (vid *WrappedTx) Forks() (ret *ForkSet) {
 		},
 	})
 	return
+}
+
+func (vid *WrappedTx) AttachConsumer(outputIndex byte, consumer *WrappedTx, checkConflicts func(existingConsumers set.Set[*WrappedTx]) (conflict bool)) bool {
+	vid.mutexConsumers.Lock()
+	defer vid.mutexConsumers.Unlock()
+
+	if vid.consumers == nil {
+		vid.consumers = make(map[byte]set.Set[*WrappedTx])
+	}
+	outputConsumers := vid.consumers[outputIndex]
+	if outputConsumers == nil {
+		outputConsumers = set.New(consumer)
+		return false
+	}
+	if checkConflicts(outputConsumers) {
+		return true
+	}
+	outputConsumers.Insert(consumer)
+	vid.consumers[outputIndex] = outputConsumers
+	return false
 }
