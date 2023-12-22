@@ -10,13 +10,10 @@ import (
 
 type (
 	Vertex struct {
-		Tx                         *transaction.Transaction
-		Inputs                     []*WrappedTx
-		Endorsements               []*WrappedTx
-		BaselineBranch             *WrappedTx
-		Forks                      *ForkSet
-		InputForkSetAbsorbed       []bool
-		EndorsementForkSetAbsorbed []bool
+		Tx             *transaction.Transaction
+		Inputs         []*WrappedTx
+		Endorsements   []*WrappedTx
+		BaselineBranch *WrappedTx
 	}
 
 	VirtualTransaction struct {
@@ -45,9 +42,9 @@ type (
 		// numConsumers contains number of consumers for outputs
 		consumers map[byte][]*WrappedTx
 		// descendants is a list of consumers and endorsers, repeated once
-		endorsers []*WrappedTx
+		//endorsers []*WrappedTx
 		//
-		txStatus TxStatus
+		txStatus Status
 		// notification callback
 		onNotify func(vid *WrappedTx)
 	}
@@ -91,5 +88,5 @@ type (
 		Orphaned  func(vidCur *WrappedTx) bool
 	}
 
-	TxStatus byte
+	Status byte
 )

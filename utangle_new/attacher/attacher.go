@@ -29,17 +29,19 @@ type (
 	}
 
 	attacher struct {
-		closeMutex          sync.RWMutex
-		closed              bool
-		inChan              chan *vertex.WrappedTx
-		ctx                 context.Context
-		vid                 *vertex.WrappedTx
-		baselineBranch      *vertex.WrappedTx
-		baselineStateReader multistate.SugaredStateReader
-		env                 AttachEnvironment
-		pastCone            set.Set[*vertex.WrappedTx] // all in the past cone
-		rooted              set.Set[*vertex.WrappedTx] // those in the past cone known in the baseline state
-		pending             set.Set[vertex.WrappedOutput]
+		closeMutex            sync.RWMutex
+		closed                bool
+		inChan                chan *vertex.WrappedTx
+		ctx                   context.Context
+		vid                   *vertex.WrappedTx
+		baselineBranch        *vertex.WrappedTx
+		baselineStateReader   multistate.SugaredStateReader
+		env                   AttachEnvironment
+		goodPastVertices      set.Set[*vertex.WrappedTx]
+		undefinedPastVertices set.Set[*vertex.WrappedTx]
+		rootedVertices        set.Set[*vertex.WrappedTx]
+		pendingOutputs        set.Set[vertex.WrappedOutput]
+		endorsementsOk        bool
 	}
 )
 
@@ -49,13 +51,13 @@ const (
 
 func newAttacher(vid *vertex.WrappedTx, env AttachEnvironment, ctx context.Context) *attacher {
 	ret := &attacher{
-		ctx:      ctx,
-		vid:      vid,
-		env:      env,
-		inChan:   make(chan *vertex.WrappedTx, 1),
-		rooted:   set.New[*vertex.WrappedTx](),
-		pastCone: set.New[*vertex.WrappedTx](),
-		pending:  set.New[vertex.WrappedOutput](),
+		ctx:              ctx,
+		vid:              vid,
+		env:              env,
+		inChan:           make(chan *vertex.WrappedTx, 1),
+		rootedVertices:   set.New[*vertex.WrappedTx](),
+		goodPastVertices: set.New[*vertex.WrappedTx](),
+		pendingOutputs:   set.New[vertex.WrappedOutput](),
 	}
 	ret.vid.OnNotify(func(msg *vertex.WrappedTx) {
 		ret.notify(msg)
@@ -68,7 +70,7 @@ func runAttacher(vid *vertex.WrappedTx, env AttachEnvironment, ctx context.Conte
 	defer a.close()
 
 	// first solidify baseline state
-	status := a.lazyRepeatUntil(func(v *vertex.Vertex) (exit bool, status vertex.TxStatus) {
+	status := a.lazyRepeatUntil(func(v *vertex.Vertex) (exit bool, status vertex.Status) {
 		if a.baselineBranch == nil {
 			status = a._solidifyBaseline(v)
 		}
@@ -83,7 +85,7 @@ func runAttacher(vid *vertex.WrappedTx, env AttachEnvironment, ctx context.Conte
 	a.baselineStateReader = multistate.MakeSugared(a.env.GetBaselineStateReader(a.baselineBranch))
 
 	// then continue with the rest
-	a.lazyRepeatUntil(func(v *vertex.Vertex) (exit bool, status vertex.TxStatus) {
+	a.lazyRepeatUntil(func(v *vertex.Vertex) (exit bool, status vertex.Status) {
 		return false, a.attachVertex(v, a.vid)
 	})
 }
@@ -106,7 +108,7 @@ func (a *attacher) notify(msg *vertex.WrappedTx) {
 	}
 }
 
-func (a *attacher) lazyRepeatUntil(processVertex func(v *vertex.Vertex) (exit bool, status vertex.TxStatus)) (status vertex.TxStatus) {
+func (a *attacher) lazyRepeatUntil(processVertex func(v *vertex.Vertex) (exit bool, status vertex.Status)) (status vertex.Status) {
 	var exit bool
 
 	for {
@@ -141,21 +143,76 @@ func (a *attacher) lazyRepeatUntil(processVertex func(v *vertex.Vertex) (exit bo
 }
 
 func (a *attacher) isFinalStatus() bool {
-	return !a.vid.IsVertex() || a.vid.GetTxStatus() != vertex.TxStatusUndefined
+	return !a.vid.IsVertex() || a.vid.GetTxStatus() != vertex.Undefined
 }
 
 // attachVertex: vid corresponds to the vertex v
-func (a *attacher) attachVertex(v *vertex.Vertex, vid *vertex.WrappedTx) (status vertex.TxStatus) {
+func (a *attacher) attachVertex(v *vertex.Vertex, vid *vertex.WrappedTx) vertex.Status {
 	util.Assertf(!util.IsNil(a.baselineStateReader), "!util.IsNil(a.baselineStateReader)")
-	a.pastCone.Insert(vid)
+	if a.goodPastVertices.Contains(vid) {
+		return vertex.Good
+	}
+	a.undefinedPastVertices.Insert(vid)
 
-	status = vertex.TxStatusUndefined
+	if !a.endorsementsOk {
+		// depth-first along endorsements
+		if status := a.attachEndorsements(v); status != vertex.Good { // <<< recursive
+			return status
+		}
+		a.endorsementsOk = true
+	}
+	// only starting with inputs after endorsements are ok
+	return a.attachInputs(v, vid) // recursive
+}
+
+func (a *attacher) attachEndorsements(v *vertex.Vertex) vertex.Status {
+	allGood := true
+	var status vertex.Status
+
+	for i, vidEndorsed := range v.Endorsements {
+		if vidEndorsed == nil {
+			vidEndorsed = attachTxID(v.Tx.EndorsementAt(byte(i)), a.env, true)
+			v.Endorsements[i] = vidEndorsed
+		}
+		switch vidEndorsed.GetTxStatus() {
+		case vertex.Bad:
+			return vertex.Bad
+		case vertex.Good:
+			a.goodPastVertices.Insert(vidEndorsed)
+			a.undefinedPastVertices.Remove(vidEndorsed)
+		case vertex.Undefined:
+			a.undefinedPastVertices.Insert(vidEndorsed)
+			allGood = false
+		}
+
+		status = vertex.Undefined
+		vidEndorsed.Unwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
+			status = a.attachVertex(v, vidEndorsed) // <<<<<<<<<<< recursion
+		}})
+		switch status {
+		case vertex.Bad:
+			return vertex.Bad
+		case vertex.Good:
+			a.goodPastVertices.Insert(vidEndorsed)
+			a.undefinedPastVertices.Remove(vidEndorsed)
+		case vertex.Undefined:
+			a.undefinedPastVertices.Insert(vidEndorsed)
+			allGood = false
+		}
+	}
+	if allGood {
+		status = vertex.Good
+	}
+	return status
+}
+
+func (a *attacher) attachInputs(v *vertex.Vertex, vid *vertex.WrappedTx) (status vertex.Status) {
 	allGood := true
 	for i := range v.Inputs {
 		switch status = a.attachInputID(v, vid, byte(i)); status {
-		case vertex.TxStatusBad:
+		case vertex.Bad:
 			return // invalidate
-		case vertex.TxStatusUndefined:
+		case vertex.Undefined:
 			allGood = false
 		}
 		util.Assertf(v.Inputs[i] != nil, "v.Inputs[i] != nil")
@@ -166,69 +223,46 @@ func (a *attacher) attachVertex(v *vertex.Vertex, vid *vertex.WrappedTx) (status
 		}) // << recursion
 
 		switch status {
-		case vertex.TxStatusBad:
+		case vertex.Bad:
 			return // Invalidate
-		case vertex.TxStatusUndefined:
+		case vertex.Undefined:
 			allGood = false
-		case vertex.TxStatusGood:
 		}
 	}
-	v.ForEachEndorsement(func(i byte, vidEndorsed *vertex.WrappedTx) bool {
-		if vidEndorsed == nil {
-			vidEndorsed = attachTxID(v.Tx.EndorsementAt(i), a.env, true)
-			v.Endorsements[i] = vidEndorsed
-		}
-		switch vidEndorsed.GetTxStatus() {
-		case vertex.TxStatusBad:
-			status = vertex.TxStatusBad
-			return false
-		case vertex.TxStatusUndefined:
-			allGood = false
-		case vertex.TxStatusGood:
-			if !v.EndorsementForkSetAbsorbed[i] {
-				if conflict := v.Forks.Absorb(vidEndorsed.Forks()); conflict.VID != nil {
-					status = vertex.TxStatusBad
-					return false
-				}
-				v.EndorsementForkSetAbsorbed[i] = true
-			}
-		}
-		return true
-	})
 	if allGood {
-		status = vertex.TxStatusGood
+		status = vertex.Good
 	}
 	return status
 }
 
-func (a *attacher) checkIsRooted(vid *vertex.WrappedTx) bool {
-	if a.rooted.Contains(vid) {
+func (a *attacher) checkIfRooted(vid *vertex.WrappedTx) bool {
+	if a.rootedVertices.Contains(vid) {
 		return true
 	}
 	if a.baselineStateReader.KnowsCommittedTransaction(vid.ID()) {
-		a.rooted.Insert(vid)
+		a.rootedVertices.Insert(vid)
 		return true
 	}
 	return false
 }
 
-func (a *attacher) attachOutput(wOut vertex.WrappedOutput) vertex.TxStatus {
+func (a *attacher) attachOutput(wOut vertex.WrappedOutput) vertex.Status {
 	status := wOut.VID.GetTxStatus()
-	if status != vertex.TxStatusUndefined {
+	if status != vertex.Undefined {
 		return status
 	}
-	if a.checkIsRooted(wOut.VID) {
+	if a.checkIfRooted(wOut.VID) {
 		oid := wOut.DecodeID()
 		if out := a.baselineStateReader.GetOutput(oid); out != nil {
 			ensured := wOut.VID.EnsureOutput(wOut.Index, out)
 			util.Assertf(ensured, "attachInputID: inconsistency")
-			a.pending.Remove(wOut)
-			return vertex.TxStatusGood
+			a.pendingOutputs.Remove(wOut)
+			return vertex.Good
 		}
-		return vertex.TxStatusBad
+		return vertex.Bad
 	}
-	// input is not rooted and status is undefined
-	a.pending.Insert(wOut)
+	// input is not rootedVertices and status is undefined
+	a.pendingOutputs.Insert(wOut)
 	txid := wOut.VID.ID()
 	wOut.VID.Unwrap(vertex.UnwrapOptions{
 		Vertex: func(v *vertex.Vertex) {
@@ -243,7 +277,7 @@ func (a *attacher) attachOutput(wOut vertex.WrappedOutput) vertex.TxStatus {
 	return status
 }
 
-func (a *attacher) attachInputID(consumerVertex *vertex.Vertex, consumerTx *vertex.WrappedTx, inputIdx byte) (status vertex.TxStatus) {
+func (a *attacher) attachInputID(consumerVertex *vertex.Vertex, consumerTx *vertex.WrappedTx, inputIdx byte) (status vertex.Status) {
 	vidInputTx := consumerVertex.Inputs[inputIdx]
 	if vidInputTx != nil {
 		status = vidInputTx.GetTxStatus()
@@ -252,17 +286,23 @@ func (a *attacher) attachInputID(consumerVertex *vertex.Vertex, consumerTx *vert
 	inputOid := consumerVertex.Tx.MustInputAt(inputIdx)
 	a.env.WithGlobalWriteLock(func() {
 		vidInputTx = _attachTxID(inputOid.TransactionID(), a.env, false)
-		if status = vidInputTx.GetTxStatus(); status == vertex.TxStatusBad {
+		if status = vidInputTx.GetTxStatus(); status == vertex.Bad {
 			return
 		}
-		if a.pastCone.ContainsAnyOf(vidInputTx.ConsumersNoLock(inputOid.Index())...) {
+		consumers := vidInputTx.ConsumersNoLock(inputOid.Index())
+		if a.goodPastVertices.ContainsAnyOf(consumers...) {
 			// double spend
-			status = vertex.TxStatusBad
+			status = vertex.Bad
+			return
+		}
+		if a.undefinedPastVertices.ContainsAnyOf(consumers...) {
+			// double spend
+			status = vertex.Bad
 			return
 		}
 		vidInputTx.AttachConsumerNoLock(inputOid.Index(), consumerTx)
 	})
-	if status != vertex.TxStatusBad {
+	if status != vertex.Bad {
 		consumerVertex.Inputs[inputIdx] = vidInputTx
 	}
 	return
@@ -270,7 +310,7 @@ func (a *attacher) attachInputID(consumerVertex *vertex.Vertex, consumerTx *vert
 
 // _solidifyBaseline directs attachment process down the DAG to reach the deterministically known baseline state
 // for a sequencer milestone. Existence of it is guaranteed by the ledger constraints
-func (a *attacher) _solidifyBaseline(v *vertex.Vertex) (status vertex.TxStatus) {
+func (a *attacher) _solidifyBaseline(v *vertex.Vertex) (status vertex.Status) {
 	if v.Tx.IsBranchTransaction() {
 		status = _solidifyStem(v, a.env)
 	} else {
@@ -280,27 +320,27 @@ func (a *attacher) _solidifyBaseline(v *vertex.Vertex) (status vertex.TxStatus) 
 	return
 }
 
-func _solidifyStem(v *vertex.Vertex, env AttachEnvironment) (status vertex.TxStatus) {
-	status = vertex.TxStatusUndefined
+func _solidifyStem(v *vertex.Vertex, env AttachEnvironment) (status vertex.Status) {
+	status = vertex.Undefined
 	stemInputIdx := v.StemInputIndex()
 	if v.Inputs[stemInputIdx] == nil {
-		// predecessor stem is pending
+		// predecessor stem is pendingOutputs
 		stemInputOid := v.Tx.MustInputAt(stemInputIdx)
 		v.Inputs[stemInputIdx] = attachTxID(stemInputOid.TransactionID(), env, false)
 		util.Assertf(v.Inputs[stemInputIdx] != nil, "v.Inputs[stemInputIdx] != nil")
 	}
 	switch v.Inputs[stemInputIdx].GetTxStatus() {
-	case vertex.TxStatusGood:
+	case vertex.Good:
 		v.BaselineBranch = v.Inputs[stemInputIdx].BaselineBranch()
 		util.Assertf(v.BaselineBranch != nil, "a.baselineBranch != nil")
-	case vertex.TxStatusBad:
-		status = vertex.TxStatusBad
+	case vertex.Bad:
+		status = vertex.Bad
 	}
 	return
 }
 
-func _solidifySequencerBaseline(v *vertex.Vertex, env AttachEnvironment) (status vertex.TxStatus) {
-	status = vertex.TxStatusUndefined
+func _solidifySequencerBaseline(v *vertex.Vertex, env AttachEnvironment) (status vertex.Status) {
+	status = vertex.Undefined
 	// regular sequencer tx. Go to the direction of the baseline branch
 	predOid, predIdx := v.Tx.SequencerChainPredecessor()
 	util.Assertf(predOid != nil, "inconsistency: sequencer milestone cannot be a chain origin")
@@ -321,14 +361,14 @@ func _solidifySequencerBaseline(v *vertex.Vertex, env AttachEnvironment) (status
 		}
 		inputTx = v.Endorsements[0]
 	}
-	if inputTx.GetTxStatus() == vertex.TxStatusBad {
-		status = vertex.TxStatusBad
+	if inputTx.GetTxStatus() == vertex.Bad {
+		status = vertex.Bad
 	} else {
 		v.BaselineBranch = inputTx.BaselineBranch() // may be nil
 	}
 	return
 }
 
-func (a *attacher) processNotification(v *vertex.Vertex, vid *vertex.WrappedTx) (exit bool, status vertex.TxStatus) {
+func (a *attacher) processNotification(v *vertex.Vertex, vid *vertex.WrappedTx) (exit bool, status vertex.Status) {
 	panic("not implemented")
 }

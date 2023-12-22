@@ -11,9 +11,9 @@ import (
 )
 
 const (
-	TxStatusUndefined = TxStatus(iota)
-	TxStatusGood
-	TxStatusBad
+	Undefined = Status(iota)
+	Good
+	Bad
 )
 
 // ErrDeletedVertexAccessed exception is raised by PanicAccessDeleted handler of Unwrap vertex so that could be caught if necessary
@@ -105,18 +105,18 @@ func (vid *WrappedTx) ID() *core.TransactionID {
 	return vid._genericWrapper._id()
 }
 
-func (vid *WrappedTx) GetTxStatusNoLock() TxStatus {
+func (vid *WrappedTx) GetTxStatusNoLock() Status {
 	return vid.txStatus
 }
 
-func (vid *WrappedTx) GetTxStatus() TxStatus {
+func (vid *WrappedTx) GetTxStatus() Status {
 	vid.mutex.RLock()
 	defer vid.mutex.RUnlock()
 
 	return vid.txStatus
 }
 
-func (vid *WrappedTx) SetTxStatus(s TxStatus) {
+func (vid *WrappedTx) SetTxStatus(s Status) {
 	vid.mutex.Lock()
 	defer vid.mutex.Unlock()
 
@@ -416,7 +416,7 @@ func (vid *WrappedTx) BaselineBranch() (baselineBranch *WrappedTx) {
 			baselineBranch = v.BaselineBranch
 		},
 		VirtualTx: func(v *VirtualTransaction) {
-			if vid._genericWrapper._id().IsBranchTransaction() && vid.txStatus == TxStatusGood {
+			if vid._genericWrapper._id().IsBranchTransaction() && vid.txStatus == Good {
 				baselineBranch = vid
 			}
 		},

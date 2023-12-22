@@ -33,7 +33,7 @@ func _attachTxID(txid core.TransactionID, env AttachEnvironment, pullNonBranchIf
 		vid = utangle_new.NewVirtualBranchTx(&bd).Wrap()
 		env.AddVertexNoLock(vid)
 		env.AddBranchNoLock(vid, &bd)
-		vid.SetTxStatus(vertex.TxStatusGood)
+		vid.SetTxStatus(vertex.Good)
 	} else {
 		// the corresponding state is not in the multistate DB -> put virtualTx to the utangle -> pull it
 		// the puller will trigger further solidification

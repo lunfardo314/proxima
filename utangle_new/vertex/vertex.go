@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/core"
-	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
@@ -15,12 +14,9 @@ import (
 
 func New(tx *transaction.Transaction) *Vertex {
 	ret := &Vertex{
-		Tx:                         tx,
-		Inputs:                     make([]*WrappedTx, tx.NumInputs()),
-		Endorsements:               make([]*WrappedTx, tx.NumEndorsements()),
-		Forks:                      newForkSet(),
-		InputForkSetAbsorbed:       make([]bool, tx.NumInputs()),
-		EndorsementForkSetAbsorbed: make([]bool, tx.NumEndorsements()),
+		Tx:           tx,
+		Inputs:       make([]*WrappedTx, tx.NumInputs()),
+		Endorsements: make([]*WrappedTx, tx.NumEndorsements()),
 	}
 	return ret
 }
@@ -249,24 +245,4 @@ func (v *Vertex) PendingDependenciesLines(prefix ...string) *lines.Lines {
 		return true
 	})
 	return ret
-}
-
-// inheritPastTracks merges past tracks of inputs and endorsements
-func (v *Vertex) inheritPastTracks(getStore func() global.StateStore) (conflict *WrappedOutput) {
-	v.pastTrack = newPastTrack()
-
-	v.ForEachInputDependency(func(i byte, vidInput *WrappedTx) bool {
-		util.Assertf(vidInput != nil, "vidInput != nil")
-		conflict = v.pastTrack.absorbPastTrack(vidInput, getStore)
-		return conflict == nil
-	})
-	if conflict != nil {
-		return
-	}
-	v.ForEachEndorsement(func(_ byte, vidEndorsed *WrappedTx) bool {
-		util.Assertf(vidEndorsed != nil, "vidEndorsed != nil")
-		conflict = v.pastTrack.absorbPastTrack(vidEndorsed, getStore)
-		return conflict == nil
-	})
-	return
 }
