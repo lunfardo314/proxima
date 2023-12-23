@@ -24,6 +24,8 @@ type (
 		GetBaselineStateReader(branch *vertex.WrappedTx) global.IndexedStateReader
 		AddBranchNoLock(branch *vertex.WrappedTx, branchData *multistate.BranchData)
 		Pull(txid core.TransactionID)
+		OnChangeNotify(onChange, notify *vertex.WrappedTx)
+		Notify(changed *vertex.WrappedTx)
 	}
 
 	attacher struct {
@@ -90,11 +92,17 @@ func runAttacher(vid *vertex.WrappedTx, env AttachEnvironment, ctx context.Conte
 }
 
 func (a *attacher) solidifyBaselineState() vertex.Status {
-	return a.lazyRepeatUntil(func(v *vertex.Vertex) (exit bool, status vertex.Status) {
-		if a.baselineBranch == nil {
-			status = a._solidifyBaseline(v)
+	return a.lazyRepeat(func() (status vertex.Status) {
+		status = vertex.Bad
+		a.vid.Unwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
+			if a.baselineBranch == nil {
+				status = a._solidifyBaseline(v)
+			}
+		}})
+		if a.baselineBranch != nil {
+			return vertex.Good
 		}
-		return a.baselineBranch != nil, status
+		return status
 	})
 }
 
@@ -110,14 +118,23 @@ func (a *attacher) solidifyPastCone() vertex.Status {
 		return status
 	}
 	// run attaching pending outputs until no one left
-	return a.lazyRepeatUntil(func(v *vertex.Vertex) (exit bool, status vertex.Status) {
-		wOut, found := util.FindFirstKeyInMap(a.pendingOutputs)
-		if !found {
-			return true, vertex.Good
+	return a.lazyRepeat(func() (status vertex.Status) {
+		pending := util.Keys(a.pendingOutputs)
+		for _, wOut := range pending {
+			status = a.attachOutput(wOut, a.pendingOutputs[wOut])
+			if status == vertex.Bad {
+				return vertex.Bad
+			}
 		}
-		status = a.attachOutput(wOut, a.pendingOutputs[wOut])
-		return status != vertex.Undefined, status
+		if len(a.pendingOutputs) == 0 {
+			return vertex.Good
+		}
+		return vertex.Undefined
 	})
+}
+
+func (a *attacher) finalize() vertex.Status {
+
 }
 
 func (a *attacher) close() {
@@ -138,35 +155,15 @@ func (a *attacher) notify(msg *vertex.WrappedTx) {
 	}
 }
 
-func (a *attacher) lazyRepeatUntil(processVertex func(v *vertex.Vertex) (exit bool, status vertex.Status)) (status vertex.Status) {
-	var exit bool
-
+func (a *attacher) lazyRepeat(fun func() vertex.Status) (status vertex.Status) {
 	for {
-		exit = true
-		a.vid.Unwrap(vertex.UnwrapOptions{
-			Vertex: func(v *vertex.Vertex) {
-				exit, status = processVertex(v)
-			},
-		})
-		if exit || status != vertex.Undefined {
+		if fun() != vertex.Undefined {
 			return
 		}
-
 		select {
 		case <-a.ctx.Done():
 			return
-
-		case downstreamVID := <-a.inChan:
-			if downstreamVID == nil {
-				return
-			}
-			a.vid.Unwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
-				exit, status = a.processNotification(v, downstreamVID)
-			}})
-			if exit || status != vertex.Undefined {
-				return
-			}
-
+		case <-a.inChan:
 		case <-time.After(periodicCheckEach):
 		}
 	}
@@ -306,7 +303,7 @@ func (a *attacher) attachOutput(wOut vertex.WrappedOutput, parasiticChainHorizon
 			status = a.attachVertex(v, wOut.VID, parasiticChainHorizon) // >>>>>>> recursion
 		},
 		VirtualTx: func(v *vertex.VirtualTransaction) {
-			// add to the the pending list
+			// add to the pending list
 			a.pendingOutputs[wOut] = parasiticChainHorizon
 			if !txid.IsSequencerMilestone() {
 				a.env.Pull(*txid)
@@ -356,35 +353,39 @@ func (a *attacher) attachInputID(consumerVertex *vertex.Vertex, consumerTx *vert
 // for a sequencer milestone. Existence of it is guaranteed by the ledger constraints
 func (a *attacher) _solidifyBaseline(v *vertex.Vertex) (status vertex.Status) {
 	if v.Tx.IsBranchTransaction() {
-		status = _solidifyStem(v, a.env)
+		status = a._solidifyStem(v)
 	} else {
-		status = _solidifySequencerBaseline(v, a.env)
+		status = a._solidifySequencerBaseline(v)
 	}
 	a.baselineBranch = v.BaselineBranch
 	return
 }
 
-func _solidifyStem(v *vertex.Vertex, env AttachEnvironment) (status vertex.Status) {
-	status = vertex.Undefined
+func (a *attacher) _solidifyStem(v *vertex.Vertex) vertex.Status {
 	stemInputIdx := v.StemInputIndex()
 	if v.Inputs[stemInputIdx] == nil {
-		// predecessor stem is pendingOutputs
+		// predecessor stem is pending
 		stemInputOid := v.Tx.MustInputAt(stemInputIdx)
-		v.Inputs[stemInputIdx] = attachTxID(stemInputOid.TransactionID(), env, false)
-		util.Assertf(v.Inputs[stemInputIdx] != nil, "v.Inputs[stemInputIdx] != nil")
+		v.Inputs[stemInputIdx] = attachTxID(stemInputOid.TransactionID(), a.env, false)
 	}
-	switch v.Inputs[stemInputIdx].GetTxStatus() {
+	util.Assertf(v.Inputs[stemInputIdx] != nil, "v.Inputs[stemInputIdx] != nil")
+
+	status := v.Inputs[stemInputIdx].GetTxStatus()
+	switch status {
 	case vertex.Good:
 		v.BaselineBranch = v.Inputs[stemInputIdx].BaselineBranch()
 		util.Assertf(v.BaselineBranch != nil, "a.baselineBranch != nil")
+		return vertex.Good
 	case vertex.Bad:
-		status = vertex.Bad
+	case vertex.Undefined:
+		a.env.OnChangeNotify(v.Inputs[stemInputIdx], a.vid)
+	default:
+		panic("wrong state")
 	}
-	return
+	return status
 }
 
-func _solidifySequencerBaseline(v *vertex.Vertex, env AttachEnvironment) (status vertex.Status) {
-	status = vertex.Undefined
+func (a *attacher) _solidifySequencerBaseline(v *vertex.Vertex) vertex.Status {
 	// regular sequencer tx. Go to the direction of the baseline branch
 	predOid, predIdx := v.Tx.SequencerChainPredecessor()
 	util.Assertf(predOid != nil, "inconsistency: sequencer milestone cannot be a chain origin")
@@ -393,7 +394,7 @@ func _solidifySequencerBaseline(v *vertex.Vertex, env AttachEnvironment) (status
 	if predOid.TimeSlot() == v.Tx.TimeSlot() {
 		// predecessor is on the same slot -> continue towards it
 		if v.Inputs[predIdx] == nil {
-			v.Inputs[predIdx] = attachTxID(predOid.TransactionID(), env, true)
+			v.Inputs[predIdx] = attachTxID(predOid.TransactionID(), a.env, true)
 			util.Assertf(v.Inputs[predIdx] != nil, "v.Inputs[predIdx] != nil")
 		}
 		inputTx = v.Inputs[predIdx]
@@ -401,18 +402,17 @@ func _solidifySequencerBaseline(v *vertex.Vertex, env AttachEnvironment) (status
 		// predecessor is on the earlier slot -> follow the first endorsement (guaranteed by the ledger constraint layer)
 		util.Assertf(v.Tx.NumEndorsements() > 0, "v.Tx.NumEndorsements()>0")
 		if v.Endorsements[0] == nil {
-			v.Endorsements[0] = attachTxID(v.Tx.EndorsementAt(0), env, true)
+			v.Endorsements[0] = attachTxID(v.Tx.EndorsementAt(0), a.env, true)
 		}
 		inputTx = v.Endorsements[0]
 	}
-	if inputTx.GetTxStatus() == vertex.Bad {
-		status = vertex.Bad
-	} else {
+	status := inputTx.GetTxStatus()
+	switch status {
+	case vertex.Good:
 		v.BaselineBranch = inputTx.BaselineBranch() // may be nil
+	case vertex.Bad:
+	case vertex.Undefined:
+		a.env.OnChangeNotify(inputTx, a.vid)
 	}
-	return
-}
-
-func (a *attacher) processNotification(v *vertex.Vertex, vid *vertex.WrappedTx) (exit bool, status vertex.Status) {
-	panic("not implemented")
+	return status
 }
