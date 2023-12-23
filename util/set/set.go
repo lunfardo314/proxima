@@ -153,6 +153,20 @@ func Intersect[K comparable](sets ...Set[K]) Set[K] {
 	return ret
 }
 
+func DoNotIntersect[K comparable](s1, s2 Set[K]) (ret bool) {
+	if s1.IsEmpty() || s2.IsEmpty() {
+		return true
+	}
+	if len(s1) > len(s2) {
+		s1, s2 = s2, s1 // iterate over the smaller one
+	}
+	s1.ForEach(func(el1 K) bool {
+		ret = !s2.Contains(el1)
+		return ret
+	})
+	return
+}
+
 func (s Set[K]) Lines(toStr func(key K) string, prefix ...string) *lines.Lines {
 	ret := lines.New(prefix...)
 	s.ForEach(func(el K) bool {

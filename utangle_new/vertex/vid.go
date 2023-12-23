@@ -11,12 +11,6 @@ import (
 	"github.com/lunfardo314/proxima/util/set"
 )
 
-const (
-	Undefined = Status(iota)
-	Good
-	Bad
-)
-
 // ErrDeletedVertexAccessed exception is raised by PanicAccessDeleted handler of Unwrap vertex so that could be caught if necessary
 var (
 	ErrDeletedVertexAccessed = errors.New("deleted vertex should not be accessed")
@@ -232,6 +226,12 @@ func (vid *WrappedTx) OutputAt(idx byte) (*core.Output, error) {
 	return vid._outputAt(idx)
 }
 
+func (vid *WrappedTx) MustOutputAt(idx byte) *core.Output {
+	ret, err := vid.OutputAt(idx)
+	util.AssertNoError(err)
+	return ret
+}
+
 func (vid *WrappedTx) HasOutputAt(idx byte) (bool, bool) {
 	vid.mutex.RLock()
 	defer vid.mutex.RUnlock()
@@ -263,6 +263,28 @@ func (vid *WrappedTx) SequencerIDIfAvailable() (core.ChainID, bool) {
 		},
 	})
 	return ret, isAvailable
+}
+
+func (vid *WrappedTx) MustSequencerIDAndStemID() (seqID core.ChainID, stemID core.OutputID) {
+	util.Assertf(vid.IsBranchTransaction(), "vid.IsBranchTransaction()")
+	vid.Unwrap(UnwrapOptions{
+		Vertex: func(v *Vertex) {
+			seqID = v.Tx.SequencerTransactionData().SequencerID
+			stemID = vid.OutputID(v.Tx.SequencerTransactionData().StemOutputIndex)
+		},
+		VirtualTx: func(v *VirtualTransaction) {
+			util.Assertf(v.sequencerOutputs != nil, "v.sequencerOutputs != nil")
+			seqOData, ok := v.outputs[v.sequencerOutputs[0]].SequencerOutputData()
+			util.Assertf(ok, "sequencer output data unavailable for the output #%d", v.sequencerOutputs[0])
+			seqID = seqOData.ChainConstraint.ID
+			if seqID == core.NilChainID {
+				oid := vid.OutputID(v.sequencerOutputs[0])
+				seqID = core.OriginChainID(&oid)
+			}
+			stemID = vid.OutputID(v.sequencerOutputs[1])
+		},
+	})
+	return
 }
 
 func (vid *WrappedTx) MustSequencerID() core.ChainID {
@@ -471,4 +493,18 @@ func (vid *WrappedTx) AttachConsumer(outputIndex byte, consumer *WrappedTx, chec
 	outputConsumers.Insert(consumer)
 	vid.consumers[outputIndex] = outputConsumers
 	return false
+}
+
+func (vid *WrappedTx) NotConsumedOutputIndices(allConsumers set.Set[*WrappedTx]) []byte {
+	vid.mutexConsumers.Lock()
+	defer vid.mutexConsumers.Unlock()
+
+	ret := make([]byte, 0, len(vid.consumers))
+
+	for idx, consumers := range vid.consumers {
+		if set.DoNotIntersect(consumers, allConsumers) {
+			ret = append(ret, idx)
+		}
+	}
+	return ret
 }
