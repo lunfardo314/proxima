@@ -34,7 +34,7 @@ type (
 		goodPastVertices      set.Set[*vertex.WrappedTx]
 		undefinedPastVertices set.Set[*vertex.WrappedTx]
 		rootedVertices        set.Set[*vertex.WrappedTx]
-		pendingOutputs        set.Set[vertex.WrappedOutput]
+		pendingOutputs        map[vertex.WrappedOutput]core.LogicalTime
 		closeMutex            sync.RWMutex
 		inChan                chan *vertex.WrappedTx
 		ctx                   context.Context
@@ -56,7 +56,7 @@ func newAttacher(vid *vertex.WrappedTx, env AttachEnvironment, ctx context.Conte
 		inChan:           make(chan *vertex.WrappedTx, 1),
 		rootedVertices:   set.New[*vertex.WrappedTx](),
 		goodPastVertices: set.New[*vertex.WrappedTx](),
-		pendingOutputs:   set.New[vertex.WrappedOutput](),
+		pendingOutputs:   make(map[vertex.WrappedOutput]core.LogicalTime),
 	}
 	ret.vid.OnNotify(func(msg *vertex.WrappedTx) {
 		ret.notify(msg)
@@ -69,23 +69,54 @@ func runAttacher(vid *vertex.WrappedTx, env AttachEnvironment, ctx context.Conte
 	defer a.close()
 
 	// first solidify baseline state
-	status := a.lazyRepeatUntil(func(v *vertex.Vertex) (exit bool, status vertex.Status) {
-		if a.baselineBranch == nil {
-			status = a._solidifyBaseline(v)
-		}
-		return a.baselineBranch != nil, status
-	})
-	a.vid.SetTxStatus(status)
-	if a.isFinalStatus() {
+	status := a.solidifyBaselineState()
+	if status != vertex.Good {
+		a.vid.SetTxStatus(vertex.Bad)
 		return
 	}
+
 	util.Assertf(a.baselineBranch != nil, "a.baselineBranch != nil")
 	// baseline is solid, i.e. we know the baseline state the transactions must be solidified upon
 	a.baselineStateReader = multistate.MakeSugared(a.env.GetBaselineStateReader(a.baselineBranch))
 
 	// then continue with the rest
-	a.lazyRepeatUntil(func(v *vertex.Vertex) (exit bool, status vertex.Status) {
-		return false, a.attachVertex(v, a.vid, core.NilLogicalTime)
+	status = a.solidifyPastCone()
+	if status != vertex.Good {
+		a.vid.SetTxStatus(vertex.Bad)
+		return
+	}
+	// finalize
+	// TODO
+}
+
+func (a *attacher) solidifyBaselineState() vertex.Status {
+	return a.lazyRepeatUntil(func(v *vertex.Vertex) (exit bool, status vertex.Status) {
+		if a.baselineBranch == nil {
+			status = a._solidifyBaseline(v)
+		}
+		return a.baselineBranch != nil, status
+	})
+}
+
+func (a *attacher) solidifyPastCone() vertex.Status {
+	// run attach vertex once. It will generate pending outputs
+	status := vertex.Bad
+	a.vid.Unwrap(vertex.UnwrapOptions{
+		Vertex: func(v *vertex.Vertex) {
+			status = a.attachVertex(v, a.vid, core.NilLogicalTime)
+		},
+	})
+	if status != vertex.Undefined {
+		return status
+	}
+	// run attaching pending outputs until no one left
+	return a.lazyRepeatUntil(func(v *vertex.Vertex) (exit bool, status vertex.Status) {
+		wOut, found := util.FindFirstKeyInMap(a.pendingOutputs)
+		if !found {
+			return true, vertex.Good
+		}
+		status = a.attachOutput(wOut, a.pendingOutputs[wOut])
+		return status != vertex.Undefined, status
 	})
 }
 
@@ -117,7 +148,7 @@ func (a *attacher) lazyRepeatUntil(processVertex func(v *vertex.Vertex) (exit bo
 				exit, status = processVertex(v)
 			},
 		})
-		if exit || a.isFinalStatus() {
+		if exit || status != vertex.Undefined {
 			return
 		}
 
@@ -132,17 +163,13 @@ func (a *attacher) lazyRepeatUntil(processVertex func(v *vertex.Vertex) (exit bo
 			a.vid.Unwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
 				exit, status = a.processNotification(v, downstreamVID)
 			}})
-			if exit || a.isFinalStatus() {
+			if exit || status != vertex.Undefined {
 				return
 			}
 
 		case <-time.After(periodicCheckEach):
 		}
 	}
-}
-
-func (a *attacher) isFinalStatus() bool {
-	return !a.vid.IsVertex() || a.vid.GetTxStatus() != vertex.Undefined
 }
 
 // attachVertex: vid corresponds to the vertex v
@@ -249,6 +276,9 @@ func (a *attacher) checkIfRooted(vid *vertex.WrappedTx) bool {
 }
 
 func (a *attacher) attachOutput(wOut vertex.WrappedOutput, parasiticChainHorizon core.LogicalTime) vertex.Status {
+	_, alreadyPending := a.pendingOutputs[wOut]
+	util.Assertf(!alreadyPending, "inconsistency: unexpected wrapped output in the pending list")
+
 	status := wOut.VID.GetTxStatus()
 	if status != vertex.Undefined {
 		return status
@@ -258,7 +288,6 @@ func (a *attacher) attachOutput(wOut vertex.WrappedOutput, parasiticChainHorizon
 		if out := a.baselineStateReader.GetOutput(oid); out != nil {
 			ensured := wOut.VID.EnsureOutput(wOut.Index, out)
 			util.Assertf(ensured, "attachInputID: inconsistency")
-			a.pendingOutputs.Remove(wOut)
 			return vertex.Good
 		}
 		return vertex.Bad
@@ -267,14 +296,18 @@ func (a *attacher) attachOutput(wOut vertex.WrappedOutput, parasiticChainHorizon
 		// parasitic chain rule
 		return vertex.Bad
 	}
-	// input is not rootedVertices and status is undefined
-	a.pendingOutputs.Insert(wOut)
+
+	// input is not rooted and status is undefined
 	txid := wOut.VID.ID()
 	wOut.VID.Unwrap(vertex.UnwrapOptions{
 		Vertex: func(v *vertex.Vertex) {
+			// remove from the pending list
+			delete(a.pendingOutputs, wOut)
 			status = a.attachVertex(v, wOut.VID, parasiticChainHorizon) // >>>>>>> recursion
 		},
 		VirtualTx: func(v *vertex.VirtualTransaction) {
+			// add to the the pending list
+			a.pendingOutputs[wOut] = parasiticChainHorizon
 			if !txid.IsSequencerMilestone() {
 				a.env.Pull(*txid)
 			}
