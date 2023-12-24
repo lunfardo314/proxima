@@ -110,10 +110,6 @@ func (v *Vertex) MissingInputTxIDString() string {
 	return strings.Join(ret, ", ")
 }
 
-func (v *Vertex) IsSolid() bool {
-	return v.isSolid
-}
-
 func (v *Vertex) StemInputIndex() byte {
 	util.Assertf(v.Tx.IsBranchTransaction(), "branch vertex expected")
 

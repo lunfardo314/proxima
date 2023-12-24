@@ -267,22 +267,23 @@ func (ut *UTXOTangle) LatestBranchesDescending() []*vertex.WrappedTx {
 	return ret
 }
 
-func (ut *UTXOTangle) GetSequencerBootstrapOutputs(seqID core.ChainID) (chainOut vertex.WrappedOutput, stemOut vertex.WrappedOutput, found bool) {
-	branches := multistate.FetchLatestBranches(ut.stateStore)
-	for _, bd := range branches {
-		rdr := multistate.MustNewSugaredStateReader(ut.stateStore, bd.Root)
-		if seqOut, err := rdr.GetChainOutput(&seqID); err == nil {
-			retStem, ok, _ := ut.GetWrappedOutput(&bd.Stem.ID, rdr)
-			util.Assertf(ok, "can't get wrapped stem output %s", bd.Stem.ID.StringShort())
-
-			retSeq, ok, _ := ut.GetWrappedOutput(&seqOut.ID, rdr)
-			util.Assertf(ok, "can't get wrapped sequencer output %s", seqOut.ID.StringShort())
-
-			return retSeq, retStem, true
-		}
-	}
-	return vertex.WrappedOutput{}, vertex.WrappedOutput{}, false
-}
+//func (ut *UTXOTangle) GetSequencerBootstrapOutputs(seqID core.ChainID) (chainOut vertex.WrappedOutput, stemOut vertex.WrappedOutput, found bool) {
+//	branches := multistate.FetchLatestBranches(ut.stateStore)
+//	for _, bd := range branches {
+//		rdr := multistate.MustNewSugaredStateReader(ut.stateStore, bd.Root)
+//		if seqOut, err := rdr.GetChainOutput(&seqID); err == nil {
+//			retStem, ok, _ := ut.GetWrappedOutput(&bd.Stem.ID, rdr)
+//			util.Assertf(ok, "can't get wrapped stem output %s", bd.Stem.ID.StringShort())
+//
+//			retSeq, ok, _ := ut.GetWrappedOutput(&seqOut.ID, rdr)
+//			util.Assertf(ok, "can't get wrapped sequencer output %s", seqOut.ID.StringShort())
+//
+//			return retSeq, retStem, true
+//		}
+//	}
+//	return vertex.WrappedOutput{}, vertex.WrappedOutput{}, false
+//}
+//
 
 func (ut *UTXOTangle) FindOutputInLatestTimeSlot(oid *core.OutputID) (ret *vertex.WrappedTx, rdr multistate.SugaredStateReader) {
 	ut.LatestTimeSlot()

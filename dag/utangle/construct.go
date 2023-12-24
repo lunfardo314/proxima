@@ -27,29 +27,11 @@ func Load(stateStore global.StateStore) *UTXOTangle {
 	// fetch branches of the latest slot
 	branches := multistate.FetchLatestBranches(stateStore)
 	for _, br := range branches {
-		ret.AddVertexAndBranch(NewVirtualBranchTx(br).Wrap(), br.Root)
+		ret.AddVertexAndBranch(vertex.NewVirtualBranchTx(br).Wrap(), br.Root)
 		ret.syncData.EvidenceIncomingBranch(br.TxID(), br.SequencerID)
 		ret.syncData.EvidenceBookedBranch(br.TxID(), br.SequencerID)
 	}
 	return ret
-}
-
-func NewVertex(tx *transaction.Transaction) *vertex.Vertex {
-	return &vertex.Vertex{
-		Tx:           tx,
-		Inputs:       make([]*vertex.WrappedTx, tx.NumInputs()),
-		Endorsements: make([]*vertex.WrappedTx, tx.NumEndorsements()),
-		pastTrack:    vertex.newPastTrack(),
-	}
-}
-
-func NewVirtualBranchTx(br *multistate.BranchData) *vertex.VirtualTransaction {
-	txid := br.Stem.ID.TransactionID()
-	v := vertex.newVirtualTx(txid)
-	v.addSequencerIndices(br.SequencerOutput.ID.Index(), br.Stem.ID.Index())
-	v.addOutput(br.SequencerOutput.ID.Index(), br.SequencerOutput.Output)
-	v.addOutput(br.Stem.ID.Index(), br.Stem.Output)
-	return v
 }
 
 func (ut *UTXOTangle) Contains(txid *core.TransactionID) bool {

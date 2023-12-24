@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/core"
-	"github.com/lunfardo314/proxima/dag/utangle"
 	"github.com/lunfardo314/proxima/dag/vertex"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/multistate"
@@ -98,7 +97,7 @@ func attachTxID(txid core.TransactionID, env AttachEnvironment, pullNonBranchIfN
 		// it is a branch transaction. Look up for the corresponding state
 		if bd, branchAvailable := multistate.FetchBranchData(env.StateStore(), txid); branchAvailable {
 			// corresponding state has been found, it is solid -> put virtual branch tx with the state reader
-			vid = utangle.NewVirtualBranchTx(&bd).Wrap()
+			vid = vertex.NewVirtualBranchTx(&bd).Wrap()
 			env.AddVertexNoLock(vid)
 			env.AddBranchNoLock(vid, &bd)
 			vid.SetTxStatus(vertex.Good)
