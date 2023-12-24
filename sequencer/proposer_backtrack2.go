@@ -5,7 +5,7 @@ import (
 
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/transaction"
-	"github.com/lunfardo314/proxima/utangle"
+	"github.com/lunfardo314/proxima/utangle_old"
 	"github.com/lunfardo314/proxima/util"
 )
 
@@ -77,7 +77,7 @@ func (b *backtrackProposer2) run() {
 	}
 }
 
-func (b *backtrackProposer2) generateCandidate(extend utangle.WrappedOutput, endorse *utangle.WrappedTx) *transaction.Transaction {
+func (b *backtrackProposer2) generateCandidate(extend utangle_old.WrappedOutput, endorse *utangle_old.WrappedTx) *transaction.Transaction {
 	util.Assertf(extend.VID != endorse, "extend.VID != b.endorse")
 
 	b.trace("trying to extend %s with endorsement target %s (ms %s)",
@@ -95,7 +95,7 @@ func (b *backtrackProposer2) generateCandidate(extend utangle.WrappedOutput, end
 	return b.makeMilestone(&extend, nil, feeOutputsToConsume, util.List(endorse))
 }
 
-func (b *backtrackProposer2) calcExtensionChoices() (endorse *utangle.WrappedTx, extensionChoices []utangle.WrappedOutput) {
+func (b *backtrackProposer2) calcExtensionChoices() (endorse *utangle_old.WrappedTx, extensionChoices []utangle_old.WrappedOutput) {
 	for b.factory.proposal.continueCandidateProposing(b.targetTs) {
 		endorsable := b.factory.tipPool.preSelectAndSortEndorsableMilestones(b.targetTs)
 		//b.setTraceNAhead(1)

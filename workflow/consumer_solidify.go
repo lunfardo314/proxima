@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/core"
-	utangle "github.com/lunfardo314/proxima/utangle"
+	utangle "github.com/lunfardo314/proxima/utangle_old"
 	"github.com/lunfardo314/proxima/util"
 )
 

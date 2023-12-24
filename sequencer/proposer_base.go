@@ -5,7 +5,7 @@ import (
 
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/transaction"
-	"github.com/lunfardo314/proxima/utangle"
+	"github.com/lunfardo314/proxima/utangle_old"
 	"github.com/lunfardo314/proxima/util"
 )
 
@@ -51,7 +51,7 @@ func (b *baseProposer) run() {
 	}
 }
 
-func (b *baseProposer) proposeBase(extend utangle.WrappedOutput) (*transaction.Transaction, bool) {
+func (b *baseProposer) proposeBase(extend utangle_old.WrappedOutput) (*transaction.Transaction, bool) {
 	// own latest milestone exists
 	if !b.targetTs.IsSlotBoundary() {
 		if extend.TimeSlot() != b.targetTs.TimeSlot() {

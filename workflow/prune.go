@@ -5,7 +5,7 @@ import (
 
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/global"
-	"github.com/lunfardo314/proxima/utangle"
+	"github.com/lunfardo314/proxima/utangle_old"
 	"go.uber.org/zap"
 )
 
@@ -36,7 +36,7 @@ func (w *Workflow) pruneOrphanedLoop(log *zap.SugaredLogger) {
 		}
 		startTime := time.Now()
 		nVertices := w.utxoTangle.NumVertices()
-		nOrphaned, nOrphanedBranches, nDeletedSlots := w.utxoTangle.PruneOrphaned(utangle.TipSlots)
+		nOrphaned, nOrphanedBranches, nDeletedSlots := w.utxoTangle.PruneOrphaned(utangle_old.TipSlots)
 
 		w.utxoTangle.SyncData().SetLastPrunedOrphaned(time.Now())
 
@@ -60,7 +60,7 @@ func (w *Workflow) cutFinalLoop(log *zap.SugaredLogger) {
 			continue
 		}
 
-		if txID, numTx := w.utxoTangle.CutFinalBranchIfExists(utangle.TipSlots); txID != nil {
+		if txID, numTx := w.utxoTangle.CutFinalBranchIfExists(utangle_old.TipSlots); txID != nil {
 			log.Infof("CUT FINAL BRANCH %s, num tx: %d", txID.StringShort(), numTx)
 			w.utxoTangle.SyncData().SetLastCutFinal(time.Now())
 		}

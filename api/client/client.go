@@ -16,7 +16,7 @@ import (
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/txbuilder"
-	"github.com/lunfardo314/proxima/utangle"
+	"github.com/lunfardo314/proxima/utangle_old"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/txutils"
 	"golang.org/x/crypto/blake2b"
@@ -269,28 +269,28 @@ func (c *APIClient) GetAccountOutputs(account core.Accountable, filter ...func(o
 	return outs, nil
 }
 
-func (c *APIClient) GetSyncInfo() (utangle.SyncInfo, error) {
+func (c *APIClient) GetSyncInfo() (utangle_old.SyncInfo, error) {
 	body, err := c.getBody(api.PathGetSyncInfo)
 	if err != nil {
-		return utangle.SyncInfo{}, err
+		return utangle_old.SyncInfo{}, err
 	}
 
 	res := api.SyncInfo{PerSequencer: make(map[string]api.SequencerSyncInfo)}
 	err = json.Unmarshal(body, &res)
 	if err != nil {
-		return utangle.SyncInfo{}, err
+		return utangle_old.SyncInfo{}, err
 	}
-	ret := utangle.SyncInfo{
+	ret := utangle_old.SyncInfo{
 		Synced:       res.Synced,
 		InSyncWindow: res.InSyncWindow,
-		PerSequencer: make(map[core.ChainID]utangle.SequencerSyncInfo),
+		PerSequencer: make(map[core.ChainID]utangle_old.SequencerSyncInfo),
 	}
 	for seqIDStr, si := range res.PerSequencer {
 		seqID, err := core.ChainIDFromHexString(seqIDStr)
 		if err != nil {
-			return utangle.SyncInfo{}, err
+			return utangle_old.SyncInfo{}, err
 		}
-		ret.PerSequencer[seqID] = utangle.SequencerSyncInfo{
+		ret.PerSequencer[seqID] = utangle_old.SequencerSyncInfo{
 			Synced:           si.Synced,
 			LatestBookedSlot: si.LatestBookedSlot,
 			LatestSeenSlot:   si.LatestSeenSlot,

@@ -1,7 +1,7 @@
 package workflow
 
 import (
-	"github.com/lunfardo314/proxima/utangle"
+	"github.com/lunfardo314/proxima/utangle_old"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/workerpool"
 )
@@ -11,7 +11,7 @@ const ValidateConsumerName = "validate"
 type (
 	ValidateConsumerInputData struct {
 		*PrimaryTransactionData
-		draftVertex *utangle.Vertex
+		draftVertex *utangle_old.Vertex
 	}
 
 	ValidateConsumer struct {

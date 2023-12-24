@@ -10,7 +10,7 @@ import (
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/transaction"
-	utangle "github.com/lunfardo314/proxima/utangle"
+	utangle "github.com/lunfardo314/proxima/utangle_old"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/set"
 	"go.uber.org/atomic"

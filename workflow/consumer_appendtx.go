@@ -2,7 +2,7 @@ package workflow
 
 import (
 	"github.com/lunfardo314/proxima/global"
-	"github.com/lunfardo314/proxima/utangle"
+	"github.com/lunfardo314/proxima/utangle_old"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/eventtype"
 )
@@ -12,7 +12,7 @@ const AppendTxConsumerName = "addtx"
 type (
 	AppendTxConsumerInputData struct {
 		*PrimaryTransactionData
-		Vertex *utangle.Vertex
+		Vertex *utangle_old.Vertex
 	}
 
 	AppendTxConsumer struct {
@@ -21,7 +21,7 @@ type (
 
 	NewVertexEventData struct {
 		*PrimaryTransactionData
-		VID *utangle.WrappedTx
+		VID *utangle_old.WrappedTx
 	}
 )
 
@@ -56,7 +56,7 @@ func (c *AppendTxConsumer) consume(inp *AppendTxConsumerInputData) {
 	}
 
 	// append to the UTXO tangle
-	var vid *utangle.WrappedTx
+	var vid *utangle_old.WrappedTx
 	var err error
 	txid := inp.tx.ID()
 
@@ -64,7 +64,7 @@ func (c *AppendTxConsumer) consume(inp *AppendTxConsumerInputData) {
 		// append virtualTx right from transaction (non-sequencer transactions from store comes right from pre-validation)
 		vid = c.glb.utxoTangle.AppendVirtualTx(inp.tx)
 	} else {
-		vid, err = c.glb.utxoTangle.AppendVertex(inp.Vertex, c.glb.StoreTxBytes(inp.tx.Bytes()), utangle.BypassValidation)
+		vid, err = c.glb.utxoTangle.AppendVertex(inp.Vertex, c.glb.StoreTxBytes(inp.tx.Bytes()), utangle_old.BypassValidation)
 	}
 	if err != nil {
 		// failed

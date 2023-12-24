@@ -13,7 +13,7 @@ import (
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/txbuilder"
 	"github.com/lunfardo314/proxima/txstore"
-	"github.com/lunfardo314/proxima/utangle"
+	"github.com/lunfardo314/proxima/utangle_old"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/testutil"
 	"github.com/lunfardo314/proxima/util/testutil/inittest"
@@ -26,7 +26,7 @@ func TestOriginTangle(t *testing.T) {
 		par := genesis.DefaultIdentityData(testutil.GetTestingPrivateKey())
 		stateStore := common.NewInMemoryKVStore()
 		bootstrapChainID, root := genesis.InitLedgerState(*par, stateStore)
-		ut := utangle.Load(stateStore)
+		ut := utangle_old.Load(stateStore)
 		t.Logf("bootstrap chain id: %s", bootstrapChainID.String())
 		t.Logf("genesis root: %s", root.String())
 		t.Logf("%s", ut.Info(true))
@@ -49,7 +49,7 @@ func TestOriginTangle(t *testing.T) {
 		err = txStore.SaveTxBytes(txBytes)
 		require.NoError(t, err)
 
-		ut := utangle.Load(stateStore)
+		ut := utangle_old.Load(stateStore)
 		t.Logf("bootstrap chain id: %s", bootstrapChainID.String())
 
 		distribTxID, _, err := transaction.IDAndTimestampFromTransactionBytes(txBytes)
@@ -88,7 +88,7 @@ func TestOriginTangle(t *testing.T) {
 }
 
 type conflictTestRunData struct {
-	ut               *utangle.UTXOTangle
+	ut               *utangle_old.UTXOTangle
 	bootstrapChainID core.ChainID
 	privKey          ed25519.PrivateKey
 	addr             core.AddressED25519
@@ -127,7 +127,7 @@ func initConflictTest(t *testing.T, nConflicts int, verbose bool) *conflictTestR
 	err = txStore.SaveTxBytes(txBytes)
 	require.NoError(t, err)
 
-	ret.ut = utangle.Load(stateStore)
+	ret.ut = utangle_old.Load(stateStore)
 
 	t.Logf("bootstrap chain id: %s", ret.bootstrapChainID.String())
 	t.Logf("origing branch txid: %s", ret.originBranchTxid.StringShort())
@@ -155,7 +155,7 @@ func initConflictTest(t *testing.T, nConflicts int, verbose bool) *conflictTestR
 	td := txbuilder.NewTransferData(ret.privKey, ret.addr, core.LogicalTimeNow()).
 		MustWithInputs(ret.forkOutput)
 
-	vids := make([]*utangle.WrappedTx, 0)
+	vids := make([]*utangle_old.WrappedTx, 0)
 	for i := 0; i < nConflicts; i++ {
 		td.WithAmount(uint64(100 + i)).
 			WithTargetLock(ret.addr)
@@ -172,7 +172,7 @@ func initConflictTest(t *testing.T, nConflicts int, verbose bool) *conflictTestR
 		})
 		if err != nil {
 			if vid != nil {
-				utangle.SaveGraphPastCone(vid, "make_vertex")
+				utangle_old.SaveGraphPastCone(vid, "make_vertex")
 				t.Logf("***** failed transaction %d:\n%s\n*****", i, vid.Lines().String())
 			}
 		}
@@ -368,7 +368,7 @@ func TestEndorsements1(t *testing.T) {
 type multiChainTestData struct {
 	t                  *testing.T
 	ts                 core.LogicalTime
-	ut                 *utangle.UTXOTangle
+	ut                 *utangle_old.UTXOTangle
 	txBytesStore       global.TxBytesStore
 	bootstrapChainID   core.ChainID
 	privKey            ed25519.PrivateKey
@@ -416,7 +416,7 @@ func initMultiChainTest(t *testing.T, nChains int, printTx bool) *multiChainTest
 	err = ret.txBytesStore.SaveTxBytes(txBytes)
 	require.NoError(t, err)
 
-	ret.ut = utangle.Load(stateStore)
+	ret.ut = utangle_old.Load(stateStore)
 
 	ret.originBranchTxid, _, err = transaction.IDAndTimestampFromTransactionBytes(txBytes)
 	require.NoError(t, err)
@@ -630,7 +630,7 @@ func TestMultiChain(t *testing.T) {
 				return r.txBytesStore.SaveTxBytes(txBytes)
 			})
 			if err != nil {
-				utangle.SaveGraphPastCone(vid, "failed")
+				utangle_old.SaveGraphPastCone(vid, "failed")
 			}
 			require.NoError(t, err)
 		}
@@ -766,7 +766,7 @@ func TestMultiChain(t *testing.T) {
 			})
 			if err == nil && vid != nil {
 				t.Logf("\n%s", vid.PastTrackLines().String())
-				utangle.SaveGraphPastCone(vid, "err_expected")
+				utangle_old.SaveGraphPastCone(vid, "err_expected")
 			}
 			// t.Logf("==============================\n%s", txStr)
 			return err
@@ -804,7 +804,7 @@ func TestMultiChain(t *testing.T) {
 			if err != nil {
 				t.Logf("================= failed tx ======================= %s", txStr)
 				if vid != nil {
-					utangle.SaveGraphPastCone(vid, "failedPastCone")
+					utangle_old.SaveGraphPastCone(vid, "failedPastCone")
 				}
 			}
 			require.NoError(r.t, err)
@@ -1248,12 +1248,12 @@ func (r *multiChainTestData) createSequencerChains3(pace int, howLong int, print
 //					t.Logf("branch tx %d : %s", i, transaction.ParseBytesToString(txBytes, r.ut.GetUTXO))
 //				}
 //			}
-//			opts := make([]utangle.ValidationOption, 0)
+//			opts := make([]utangle_old.ValidationOption, 0)
 //			vid, txStr, err := r.ut.AppendVertexFromTransactionBytesDebug(txBytes, opts...)
 //			if err != nil {
 //				t.Logf("================= failed tx ======================= %s", txStr)
 //				if vid != nil {
-//					utangle.SaveGraphPastCone(vid, "failedPastCone")
+//					utangle_old.SaveGraphPastCone(vid, "failedPastCone")
 //				}
 //			}
 //			require.NoError(r.t, err)
@@ -1297,7 +1297,7 @@ func (r *multiChainTestData) createSequencerChains3(pace int, howLong int, print
 //			if err != nil {
 //				t.Logf("================= failed tx ======================= %s", txStr)
 //				if vid != nil {
-//					utangle.SaveGraphPastCone(vid, "failedPastCone")
+//					utangle_old.SaveGraphPastCone(vid, "failedPastCone")
 //				}
 //			}
 //			require.NoError(t, err)

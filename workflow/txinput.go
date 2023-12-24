@@ -10,7 +10,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/txmetadata"
-	"github.com/lunfardo314/proxima/utangle"
+	"github.com/lunfardo314/proxima/utangle_old"
 	"github.com/lunfardo314/proxima/util"
 )
 
@@ -159,7 +159,7 @@ func (w *Workflow) TransactionInWaitAppend(txBytes []byte, timeout time.Duration
 	}
 }
 
-func (w *Workflow) TransactionInWaitAppendWrap(txBytes []byte, timeout time.Duration, opts ...TransactionInOption) (*utangle.WrappedTx, error) {
+func (w *Workflow) TransactionInWaitAppendWrap(txBytes []byte, timeout time.Duration, opts ...TransactionInOption) (*utangle_old.WrappedTx, error) {
 	tx, err := w.TransactionInWaitAppend(txBytes, timeout, opts...)
 	if err != nil {
 		return nil, err

@@ -13,7 +13,7 @@ import (
 	"github.com/lunfardo314/proxima/peering"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/txmetadata"
-	"github.com/lunfardo314/proxima/utangle"
+	"github.com/lunfardo314/proxima/utangle_old"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/consumer"
 	"github.com/lunfardo314/proxima/util/eventtype"
@@ -32,7 +32,7 @@ type (
 		startPrunerOnce sync.Once
 		log             *zap.SugaredLogger
 		configParams    ConfigParams
-		utxoTangle      *utangle.UTXOTangle
+		utxoTangle      *utangle_old.UTXOTangle
 		peers           *peering.Peers
 		txBytesStore    global.TxBytesStore
 		debugCounters   *testutil.SyncCounters
@@ -73,7 +73,7 @@ var EventDroppedTx = eventtype.RegisterNew[DropTxData]("droptx")
 
 const workflowLogName = "[workflow]"
 
-func New(ut *utangle.UTXOTangle, peers *peering.Peers, txBytesStore global.TxBytesStore, configOptions ...ConfigOption) *Workflow {
+func New(ut *utangle_old.UTXOTangle, peers *peering.Peers, txBytesStore global.TxBytesStore, configOptions ...ConfigOption) *Workflow {
 	cfg := defaultConfigParams()
 	for _, opt := range configOptions {
 		opt(&cfg)

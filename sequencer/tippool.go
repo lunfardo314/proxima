@@ -8,7 +8,7 @@ import (
 
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/global"
-	"github.com/lunfardo314/proxima/utangle"
+	"github.com/lunfardo314/proxima/utangle_old"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/set"
 	"github.com/lunfardo314/proxima/workflow"
@@ -22,10 +22,10 @@ type (
 		mutex                    sync.RWMutex
 		glb                      *workflow.Workflow
 		accountable              core.Accountable
-		outputs                  set.Set[utangle.WrappedOutput]
+		outputs                  set.Set[utangle_old.WrappedOutput]
 		log                      *zap.SugaredLogger
 		chainID                  core.ChainID
-		latestMilestones         map[core.ChainID]*utangle.WrappedTx
+		latestMilestones         map[core.ChainID]*utangle_old.WrappedTx
 		lastPruned               atomic.Time
 		outputCount              int
 		removedOutputsSinceReset int
@@ -49,9 +49,9 @@ func startTipPool(seqName string, wrk *workflow.Workflow, seqID core.ChainID, lo
 		glb:              wrk,
 		accountable:      accountAddress,
 		log:              global.NewLogger(name, logLevel, []string{"stdout"}, global.TimeLayoutDefault),
-		outputs:          set.New[utangle.WrappedOutput](),
+		outputs:          set.New[utangle_old.WrappedOutput](),
 		chainID:          seqID,
-		latestMilestones: make(map[core.ChainID]*utangle.WrappedTx),
+		latestMilestones: make(map[core.ChainID]*utangle_old.WrappedTx),
 	}
 	ret.log.Debugf("starting tipPool..")
 
@@ -59,7 +59,7 @@ func startTipPool(seqName string, wrk *workflow.Workflow, seqID core.ChainID, lo
 	defer ret.mutex.RUnlock()
 
 	// start listening to chain account
-	err := wrk.Events().ListenAccount(accountAddress, func(wOut utangle.WrappedOutput) {
+	err := wrk.Events().ListenAccount(accountAddress, func(wOut utangle_old.WrappedOutput) {
 		ret.purgeDeleted()
 
 		ret.mutex.Lock()
@@ -72,7 +72,7 @@ func startTipPool(seqName string, wrk *workflow.Workflow, seqID core.ChainID, lo
 	util.AssertNoError(err)
 
 	// start listening to other sequencers
-	err = wrk.Events().ListenSequencers(func(vid *utangle.WrappedTx) {
+	err = wrk.Events().ListenSequencers(func(vid *utangle_old.WrappedTx) {
 		seqIDIncoming, ok := vid.SequencerIDIfAvailable()
 		util.Assertf(ok, "sequencer milestone expected")
 
@@ -104,9 +104,9 @@ func (tp *sequencerTipPool) purgeDeleted() {
 	tp.mutex.Lock()
 	defer tp.mutex.Unlock()
 
-	toDelete := make([]utangle.WrappedOutput, 0)
+	toDelete := make([]utangle_old.WrappedOutput, 0)
 	for wOut := range tp.outputs {
-		wOut.VID.Unwrap(utangle.UnwrapOptions{Deleted: func() {
+		wOut.VID.Unwrap(utangle_old.UnwrapOptions{Deleted: func() {
 			toDelete = append(toDelete, wOut)
 		}})
 	}
@@ -127,13 +127,13 @@ func (tp *sequencerTipPool) purgeDeleted() {
 	tp.lastPruned.Store(time.Now())
 }
 
-func (tp *sequencerTipPool) filterAndSortOutputs(filter func(o utangle.WrappedOutput) bool) []utangle.WrappedOutput {
+func (tp *sequencerTipPool) filterAndSortOutputs(filter func(o utangle_old.WrappedOutput) bool) []utangle_old.WrappedOutput {
 	tp.purgeDeleted()
 
 	tp.mutex.RLock()
 	defer tp.mutex.RUnlock()
 
-	ret := util.Keys(tp.outputs, func(o utangle.WrappedOutput) bool {
+	ret := util.Keys(tp.outputs, func(o utangle_old.WrappedOutput) bool {
 		return !o.VID.IsDeleted() && filter(o)
 	})
 	sort.Slice(ret, func(i, j int) bool {
@@ -147,13 +147,13 @@ func (tp *sequencerTipPool) ChainID() core.ChainID {
 	return tp.chainID
 }
 
-func (tp *sequencerTipPool) preSelectAndSortEndorsableMilestones(targetTs core.LogicalTime) []*utangle.WrappedTx {
+func (tp *sequencerTipPool) preSelectAndSortEndorsableMilestones(targetTs core.LogicalTime) []*utangle_old.WrappedTx {
 	tp.purgeDeleted()
 
 	tp.mutex.RLock()
 	defer tp.mutex.RUnlock()
 
-	ret := make([]*utangle.WrappedTx, 0)
+	ret := make([]*utangle_old.WrappedTx, 0)
 	for _, ms := range tp.latestMilestones {
 		if ms.TimeSlot() != targetTs.TimeSlot() || !core.ValidTimePace(ms.Timestamp(), targetTs) {
 			continue

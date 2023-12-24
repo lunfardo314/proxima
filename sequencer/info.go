@@ -4,11 +4,11 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/txbuilder"
-	"github.com/lunfardo314/proxima/utangle"
+	"github.com/lunfardo314/proxima/utangle_old"
 	"github.com/lunfardo314/proxima/util"
 )
 
-func (seq *Sequencer) updateInfo(msOutput utangle.WrappedOutput, avgProposalDuration time.Duration, numProposals int) {
+func (seq *Sequencer) updateInfo(msOutput utangle_old.WrappedOutput, avgProposalDuration time.Duration, numProposals int) {
 	seq.infoMutex.Lock()
 	defer seq.infoMutex.Unlock()
 
@@ -39,7 +39,7 @@ func (seq *Sequencer) Info() Info {
 	return seq.info
 }
 
-func (seq *Sequencer) LogMilestoneSubmitDefault(wOut *utangle.WrappedOutput) {
+func (seq *Sequencer) LogMilestoneSubmitDefault(wOut *utangle_old.WrappedOutput) {
 	info := seq.Info()
 	msType := "MS"
 	if wOut.VID.IsBranchTransaction() {

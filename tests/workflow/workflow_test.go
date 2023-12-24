@@ -17,7 +17,7 @@ import (
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/txbuilder"
 	"github.com/lunfardo314/proxima/txstore"
-	"github.com/lunfardo314/proxima/utangle"
+	"github.com/lunfardo314/proxima/utangle_old"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/countdown"
 	"github.com/lunfardo314/proxima/util/testutil"
@@ -35,7 +35,7 @@ type workflowTestData struct {
 	distributionPrivateKeys []ed25519.PrivateKey
 	distributionAddrs       []core.AddressED25519
 	faucetOutputs           []*core.OutputWithID
-	ut                      *utangle.UTXOTangle
+	ut                      *utangle_old.UTXOTangle
 	bootstrapChainID        core.ChainID
 	distributionTxID        core.TransactionID
 	w                       *workflow.Workflow
@@ -63,7 +63,7 @@ func initWorkflowTest(t *testing.T, nDistribution int, nowis core.LogicalTime, c
 	txBytes, err := txbuilder.DistributeInitialSupply(stateStore, genesisPrivKey, distrib)
 	require.NoError(t, err)
 
-	ret.ut = utangle.Load(stateStore)
+	ret.ut = utangle_old.Load(stateStore)
 
 	ret.distributionTxID, _, err = transaction.IDAndTimestampFromTransactionBytes(txBytes)
 	require.NoError(t, err)
@@ -228,7 +228,7 @@ func TestWorkflowSync(t *testing.T) {
 		require.NoError(t, err)
 
 		var listenerCounter atomic.Uint32
-		err = wd.w.Events().ListenAccount(wd.distributionAddrs[0], func(_ utangle.WrappedOutput) {
+		err = wd.w.Events().ListenAccount(wd.distributionAddrs[0], func(_ utangle_old.WrappedOutput) {
 			listenerCounter.Inc()
 		})
 		require.NoError(t, err)
@@ -348,7 +348,7 @@ func TestWorkflowAsync(t *testing.T) {
 		require.NoError(t, err)
 
 		var listenerCounter atomic.Uint32
-		err = wd.w.Events().ListenAccount(wd.distributionAddrs[0], func(_ utangle.WrappedOutput) {
+		err = wd.w.Events().ListenAccount(wd.distributionAddrs[0], func(_ utangle_old.WrappedOutput) {
 			listenerCounter.Inc()
 		})
 		require.NoError(t, err)
@@ -518,7 +518,7 @@ func TestSolidifier(t *testing.T) {
 type multiChainTestData struct {
 	t                  *testing.T
 	ts                 core.LogicalTime
-	ut                 *utangle.UTXOTangle
+	ut                 *utangle_old.UTXOTangle
 	txBytesStore       global.TxBytesStore
 	bootstrapChainID   core.ChainID
 	privKey            ed25519.PrivateKey
@@ -572,7 +572,7 @@ func initMultiChainTest(t *testing.T, nChains int, verbose bool, secondsInThePas
 	err = ret.txBytesStore.SaveTxBytes(txBytes)
 	require.NoError(t, err)
 
-	ret.ut = utangle.Load(stateStore)
+	ret.ut = utangle_old.Load(stateStore)
 
 	ret.originBranchTxid, _, err = transaction.IDAndTimestampFromTransactionBytes(txBytes)
 	require.NoError(t, err)
@@ -1107,7 +1107,7 @@ func TestMultiChainWorkflow(t *testing.T) {
 			cd.Tick()
 		})
 		var listenCounter atomic.Uint32
-		err := wrk.Events().ListenSequencer(r.chainOrigins[0].ChainID, func(vid *utangle.WrappedTx) {
+		err := wrk.Events().ListenSequencer(r.chainOrigins[0].ChainID, func(vid *utangle_old.WrappedTx) {
 			//t.Logf("listen seq %s: %s", r.chainOrigins[0].ChainID.StringShort(), vertex.Tx.IDShortString())
 			listenCounter.Inc()
 		})

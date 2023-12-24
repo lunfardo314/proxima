@@ -8,7 +8,7 @@ const (
 	PathGetAccountOutputs       = "/get_account_outputs"
 	PathGetChainOutput          = "/get_chain_output"
 	PathGetOutput               = "/get_output"
-	PathSubmitTransactionWait   = "/submit_wait"   // wait appending to the utangle
+	PathSubmitTransactionWait   = "/submit_wait"   // wait appending to the utangle_old
 	PathSubmitTransactionNowait = "/submit_nowait" // async submitting
 	PathGetOutputInclusion      = "/inclusion"
 	PathGetSyncInfo             = "/sync_info"

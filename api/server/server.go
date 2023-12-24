@@ -13,7 +13,7 @@ import (
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/multistate"
-	"github.com/lunfardo314/proxima/utangle"
+	"github.com/lunfardo314/proxima/utangle_old"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/workflow"
 )
@@ -27,9 +27,9 @@ func registerHandlers(wFlow *workflow.Workflow, getNodeInfo func() *global.NodeI
 	http.HandleFunc(api.PathGetOutput, getOutputHandle(wFlow.UTXOTangle()))
 	// GET request format: 'inclusion?id=<hex-encoded output ID>'
 	http.HandleFunc(api.PathGetOutputInclusion, getOutputInclusionHandle(wFlow.UTXOTangle()))
-	// POST request format 'submit_wait'. Waiting until added to utangle or rejected
+	// POST request format 'submit_wait'. Waiting until added to utangle_old or rejected
 	http.HandleFunc(api.PathSubmitTransactionWait, submitTxHandle(wFlow, true))
-	// POST request format 'submit_nowait'. Async posting to utangle. No feedback in case of wrong tx
+	// POST request format 'submit_nowait'. Async posting to utangle_old. No feedback in case of wrong tx
 	http.HandleFunc(api.PathSubmitTransactionNowait, submitTxHandle(wFlow, false))
 	// GET sync info from the node
 	http.HandleFunc(api.PathGetSyncInfo, getSyncInfoHandle(wFlow.UTXOTangle()))
@@ -37,7 +37,7 @@ func registerHandlers(wFlow *workflow.Workflow, getNodeInfo func() *global.NodeI
 	http.HandleFunc(api.PathGetNodeInfo, getNodeInfoHandle(getNodeInfo))
 }
 
-func getAccountOutputsHandle(ut *utangle.UTXOTangle) func(w http.ResponseWriter, r *http.Request) {
+func getAccountOutputsHandle(ut *utangle_old.UTXOTangle) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		lst, ok := r.URL.Query()["accountable"]
 		if !ok || len(lst) != 1 {
@@ -73,7 +73,7 @@ func getAccountOutputsHandle(ut *utangle.UTXOTangle) func(w http.ResponseWriter,
 	}
 }
 
-func getChainOutputHandle(ut *utangle.UTXOTangle) func(w http.ResponseWriter, r *http.Request) {
+func getChainOutputHandle(ut *utangle_old.UTXOTangle) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		lst, ok := r.URL.Query()["chainid"]
 		if !ok || len(lst) != 1 {
@@ -106,7 +106,7 @@ func getChainOutputHandle(ut *utangle.UTXOTangle) func(w http.ResponseWriter, r 
 	}
 }
 
-func getOutputHandle(ut *utangle.UTXOTangle) func(w http.ResponseWriter, r *http.Request) {
+func getOutputHandle(ut *utangle_old.UTXOTangle) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		lst, ok := r.URL.Query()["id"]
 		if !ok || len(lst) != 1 {
@@ -137,7 +137,7 @@ func getOutputHandle(ut *utangle.UTXOTangle) func(w http.ResponseWriter, r *http
 	}
 }
 
-func getOutputInclusionHandle(ut *utangle.UTXOTangle) func(w http.ResponseWriter, r *http.Request) {
+func getOutputInclusionHandle(ut *utangle_old.UTXOTangle) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		lst, ok := r.URL.Query()["id"]
 		if !ok || len(lst) != 1 {
@@ -151,11 +151,11 @@ func getOutputInclusionHandle(ut *utangle.UTXOTangle) func(w http.ResponseWriter
 		}
 
 		type branchState struct {
-			vid *utangle.WrappedTx
+			vid *utangle_old.WrappedTx
 			rdr multistate.SugaredStateReader
 		}
 		allBranches := make([]branchState, 0)
-		err = ut.ForEachBranchStateDescending(ut.LatestTimeSlot(), func(vid *utangle.WrappedTx, rdr multistate.SugaredStateReader) bool {
+		err = ut.ForEachBranchStateDescending(ut.LatestTimeSlot(), func(vid *utangle_old.WrappedTx, rdr multistate.SugaredStateReader) bool {
 			allBranches = append(allBranches, branchState{
 				vid: vid,
 				rdr: rdr,
@@ -240,7 +240,7 @@ func submitTxHandle(wFlow *workflow.Workflow, wait bool) func(w http.ResponseWri
 	}
 }
 
-func getSyncInfoHandle(ut *utangle.UTXOTangle) func(w http.ResponseWriter, r *http.Request) {
+func getSyncInfoHandle(ut *utangle_old.UTXOTangle) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		syncInfo := ut.SyncData().GetSyncInfo()
 		resp := api.SyncInfo{

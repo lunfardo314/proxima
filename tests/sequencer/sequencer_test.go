@@ -17,7 +17,7 @@ import (
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/txbuilder"
 	"github.com/lunfardo314/proxima/txstore"
-	"github.com/lunfardo314/proxima/utangle"
+	"github.com/lunfardo314/proxima/utangle_old"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/testutil"
 	"github.com/lunfardo314/proxima/util/testutil/inittest"
@@ -48,7 +48,7 @@ type sequencerTestData struct {
 	distributionTxID            core.TransactionID
 	chainOrigins                []*core.OutputWithChainID
 	txChainOrigins              *transaction.Transaction
-	ut                          *utangle.UTXOTangle
+	ut                          *utangle_old.UTXOTangle
 	wrk                         *workflow.Workflow
 	bootstrapSeq                *sequencer.Sequencer
 	sequencers                  []*sequencer.Sequencer
@@ -82,7 +82,7 @@ func initSequencerTestData(t *testing.T, nFaucets, nAdditionalChains int, logica
 	err = txStore.SaveTxBytes(txBytes)
 	require.NoError(t, err)
 
-	ret.ut = utangle.Load(stateStore)
+	ret.ut = utangle_old.Load(stateStore)
 
 	ret.distributionTxID, _, err = transaction.IDAndTimestampFromTransactionBytes(txBytes)
 	require.NoError(t, err)
@@ -251,7 +251,7 @@ func Test1Sequencer(t *testing.T) {
 		)
 
 		msCounter := 0
-		seq.OnMilestoneSubmitted(func(seq *sequencer.Sequencer, vid *utangle.WrappedOutput) {
+		seq.OnMilestoneSubmitted(func(seq *sequencer.Sequencer, vid *utangle_old.WrappedOutput) {
 			msCounter++
 		})
 
@@ -330,7 +330,7 @@ func Test1Sequencer(t *testing.T) {
 		)
 
 		totalInflation := uint64(0)
-		seq.OnMilestoneSubmitted(func(seq *sequencer.Sequencer, msOutput *utangle.WrappedOutput) {
+		seq.OnMilestoneSubmitted(func(seq *sequencer.Sequencer, msOutput *utangle_old.WrappedOutput) {
 			totalInflation += msOutput.VID.InflationAmount()
 		})
 
@@ -397,13 +397,13 @@ func Test1Sequencer(t *testing.T) {
 		)
 
 		totalInflation := uint64(0)
-		seq.OnMilestoneSubmitted(func(seq *sequencer.Sequencer, msOutput *utangle.WrappedOutput) {
+		seq.OnMilestoneSubmitted(func(seq *sequencer.Sequencer, msOutput *utangle_old.WrappedOutput) {
 			totalInflation += msOutput.VID.InflationAmount()
 		})
 
 		var allFeeInputsConsumed atomic.Bool
 		var err error
-		seq.OnMilestoneSubmitted(func(seq *sequencer.Sequencer, wOut *utangle.WrappedOutput) {
+		seq.OnMilestoneSubmitted(func(seq *sequencer.Sequencer, wOut *utangle_old.WrappedOutput) {
 			if seq.Info().NumConsumedFeeOutputs >= numFaucetTransactions {
 				allFeeInputsConsumed.Store(true)
 			}
@@ -480,13 +480,13 @@ func Test1Sequencer(t *testing.T) {
 		)
 
 		totalInflation := uint64(0)
-		seq.OnMilestoneSubmitted(func(seq *sequencer.Sequencer, msOutput *utangle.WrappedOutput) {
+		seq.OnMilestoneSubmitted(func(seq *sequencer.Sequencer, msOutput *utangle_old.WrappedOutput) {
 			totalInflation += msOutput.VID.InflationAmount()
 		})
 
 		var allFeeInputsConsumed atomic.Bool
 		var err error
-		seq.OnMilestoneSubmitted(func(seq *sequencer.Sequencer, wOut *utangle.WrappedOutput) {
+		seq.OnMilestoneSubmitted(func(seq *sequencer.Sequencer, wOut *utangle_old.WrappedOutput) {
 			seq.LogMilestoneSubmitDefault(wOut)
 			if seq.Info().NumConsumedFeeOutputs >= numFaucetTransactions*numFaucets {
 				allFeeInputsConsumed.Store(true)
@@ -574,7 +574,7 @@ func (r *sequencerTestData) createTransactionLogger() {
 	require.NoError(r.t, err)
 
 	txCounter := 0
-	err = r.wrk.Events().ListenTransactions(func(vid *utangle.WrappedTx) {
+	err = r.wrk.Events().ListenTransactions(func(vid *utangle_old.WrappedTx) {
 		_, _ = fmt.Fprintf(f, "------------ %d %s\n", txCounter, vid.Lines().String())
 		txCounter++
 		_ = f.Sync()
@@ -648,7 +648,7 @@ func TestNSequencers(t *testing.T) {
 		var allFeeInputsConsumed atomic.Bool
 		branchesAfterAllConsumed := 0
 		cnt := 0
-		r.bootstrapSeq.OnMilestoneSubmitted(func(seq *sequencer.Sequencer, wOut *utangle.WrappedOutput) {
+		r.bootstrapSeq.OnMilestoneSubmitted(func(seq *sequencer.Sequencer, wOut *utangle_old.WrappedOutput) {
 			cnt++
 			if seq.Info().NumConsumedFeeOutputs >= numFaucetTransactions*numFaucets {
 				allFeeInputsConsumed.Store(true)
@@ -720,7 +720,7 @@ func TestNSequencers(t *testing.T) {
 		var allFeeInputsConsumed atomic.Bool
 		branchesAfterAllConsumed := 0
 		cnt := 0
-		r.bootstrapSeq.OnMilestoneSubmitted(func(seq *sequencer.Sequencer, wOut *utangle.WrappedOutput) {
+		r.bootstrapSeq.OnMilestoneSubmitted(func(seq *sequencer.Sequencer, wOut *utangle_old.WrappedOutput) {
 			cnt++
 			if seq.Info().NumConsumedFeeOutputs >= numTxPerFaucet*numFaucets {
 				allFeeInputsConsumed.Store(true)
@@ -823,7 +823,7 @@ func TestNSequencers(t *testing.T) {
 		var glbMutex sync.Mutex
 		totalAmountToTargetAddress := uint64(0)
 		branchCount := 0
-		r.bootstrapSeq.OnMilestoneSubmitted(func(seq *sequencer.Sequencer, wOut *utangle.WrappedOutput) {
+		r.bootstrapSeq.OnMilestoneSubmitted(func(seq *sequencer.Sequencer, wOut *utangle_old.WrappedOutput) {
 			cnt++
 			if seq.Info().NumConsumedFeeOutputs >= numTxPerFaucet*numFaucets {
 				allFeeInputsConsumed.Store(true)
@@ -899,7 +899,7 @@ func TestNSequencers(t *testing.T) {
 		var allFeeInputsConsumed atomic.Bool
 		branchesAfterAllConsumed := 0
 		cnt := 0
-		r.bootstrapSeq.OnMilestoneSubmitted(func(seq *sequencer.Sequencer, wOut *utangle.WrappedOutput) {
+		r.bootstrapSeq.OnMilestoneSubmitted(func(seq *sequencer.Sequencer, wOut *utangle_old.WrappedOutput) {
 			cnt++
 			if seq.Info().NumConsumedFeeOutputs >= numFaucetTransactions*numFaucets {
 				allFeeInputsConsumed.Store(true)
@@ -979,7 +979,7 @@ func TestNSequencers(t *testing.T) {
 		var allFeeInputsConsumed atomic.Bool
 		branchesAfterAllConsumed := 0
 		cnt := 0
-		r.bootstrapSeq.OnMilestoneSubmitted(func(seq *sequencer.Sequencer, wOut *utangle.WrappedOutput) {
+		r.bootstrapSeq.OnMilestoneSubmitted(func(seq *sequencer.Sequencer, wOut *utangle_old.WrappedOutput) {
 			seq.LogMilestoneSubmitDefault(wOut)
 			cnt++
 			if seq.Info().NumConsumedFeeOutputs >= numFaucetTransactions*numFaucets {
@@ -1053,7 +1053,7 @@ func TestPruning(t *testing.T) {
 		var allFeeInputsConsumed atomic.Bool
 		branchesAfterAllConsumed := 0
 		cnt := 0
-		r.bootstrapSeq.OnMilestoneSubmitted(func(seq *sequencer.Sequencer, wOut *utangle.WrappedOutput) {
+		r.bootstrapSeq.OnMilestoneSubmitted(func(seq *sequencer.Sequencer, wOut *utangle_old.WrappedOutput) {
 			seq.LogMilestoneSubmitDefault(wOut)
 			cnt++
 			if seq.Info().NumConsumedFeeOutputs >= numFaucetTransactions*numFaucets {
@@ -1156,7 +1156,7 @@ func TestPruning(t *testing.T) {
 		var allFeeInputsConsumed atomic.Bool
 		branchesAfterAllConsumed := 0
 		cnt := 0
-		r.bootstrapSeq.OnMilestoneSubmitted(func(seq *sequencer.Sequencer, wOut *utangle.WrappedOutput) {
+		r.bootstrapSeq.OnMilestoneSubmitted(func(seq *sequencer.Sequencer, wOut *utangle_old.WrappedOutput) {
 			seq.LogMilestoneSubmitDefault(wOut)
 			cnt++
 			if seq.Info().NumConsumedFeeOutputs >= numFaucetTransactions*numFaucets {
@@ -1243,7 +1243,7 @@ func TestPruning(t *testing.T) {
 		var allFeeInputsConsumed atomic.Bool
 		branchesAfterAllConsumed := 0
 		cnt := 0
-		r.bootstrapSeq.OnMilestoneSubmitted(func(seq *sequencer.Sequencer, wOut *utangle.WrappedOutput) {
+		r.bootstrapSeq.OnMilestoneSubmitted(func(seq *sequencer.Sequencer, wOut *utangle_old.WrappedOutput) {
 			seq.LogMilestoneSubmitDefault(wOut)
 			cnt++
 			if seq.Info().NumConsumedFeeOutputs >= numFaucetTransactions*numFaucets {

@@ -13,7 +13,7 @@ import (
 	"github.com/lunfardo314/proxima/peering"
 	"github.com/lunfardo314/proxima/sequencer"
 	"github.com/lunfardo314/proxima/txstore"
-	"github.com/lunfardo314/proxima/utangle"
+	"github.com/lunfardo314/proxima/utangle_old"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/workflow"
 	"github.com/lunfardo314/unitrie/adaptors/badger_adaptor"
@@ -28,7 +28,7 @@ type ProximaNode struct {
 	multiStateStore *badger_adaptor.DB
 	txStoreDB       *badger_adaptor.DB
 	txStore         global.TxBytesStore
-	UTXOTangle      *utangle.UTXOTangle
+	UTXOTangle      *utangle_old.UTXOTangle
 	Peers           *peering.Peers
 	Workflow        *workflow.Workflow
 	Sequencers      []*sequencer.Sequencer
@@ -153,7 +153,7 @@ func mustReadStateIdentity(store global.StateStore) {
 func (p *ProximaNode) loadUTXOTangle() {
 	mustReadStateIdentity(p.multiStateStore)
 
-	p.UTXOTangle = utangle.Load(p.multiStateStore)
+	p.UTXOTangle = utangle_old.Load(p.multiStateStore)
 	latestSlot := p.UTXOTangle.LatestTimeSlot()
 	currentSlot := core.LogicalTimeNow().TimeSlot()
 	p.log.Infof("current time slot: %d, latest time slot in the multi-state: %d, lagging behind: %d slots",

@@ -11,7 +11,7 @@ import (
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/txbuilder"
-	"github.com/lunfardo314/proxima/utangle"
+	"github.com/lunfardo314/proxima/utangle_old"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/set"
 	"github.com/lunfardo314/unitrie/common"
@@ -24,11 +24,11 @@ type (
 		mutex                       sync.RWMutex
 		seqName                     string
 		log                         *zap.SugaredLogger
-		utangle                     *utangle.UTXOTangle
+		utangle                     *utangle_old.UTXOTangle
 		tipPool                     *sequencerTipPool
 		controllerKey               ed25519.PrivateKey
 		proposal                    latestMilestoneProposal
-		ownMilestones               map[*utangle.WrappedTx]ownMilestone
+		ownMilestones               map[*utangle_old.WrappedTx]ownMilestone
 		maxFeeInputs                int
 		lastPruned                  time.Time
 		ownMilestoneCount           int
@@ -36,13 +36,13 @@ type (
 	}
 
 	ownMilestone struct {
-		utangle.WrappedOutput
-		consumedInThePastPath set.Set[utangle.WrappedOutput]
+		utangle_old.WrappedOutput
+		consumedInThePastPath set.Set[utangle_old.WrappedOutput]
 	}
 
 	proposedMilestoneWithData struct {
 		tx         *transaction.Transaction
-		extended   utangle.WrappedOutput
+		extended   utangle_old.WrappedOutput
 		coverage   uint64
 		elapsed    time.Duration
 		proposedBy string
@@ -53,7 +53,7 @@ type (
 		targetTs          core.LogicalTime
 		bestSoFarCoverage uint64
 		current           *transaction.Transaction
-		currentExtended   utangle.WrappedOutput
+		currentExtended   utangle_old.WrappedOutput
 		durations         []time.Duration
 	}
 
@@ -87,7 +87,7 @@ func (seq *Sequencer) createMilestoneFactory() error {
 	}
 	var err error
 
-	ownMilestones := map[*utangle.WrappedTx]ownMilestone{
+	ownMilestones := map[*utangle_old.WrappedTx]ownMilestone{
 		chainOut.VID: newOwnMilestone(chainOut),
 	}
 
@@ -124,14 +124,14 @@ func (mf *milestoneFactory) trace(format string, args ...any) {
 	}
 }
 
-func newOwnMilestone(wOut utangle.WrappedOutput, inputs ...utangle.WrappedOutput) ownMilestone {
+func newOwnMilestone(wOut utangle_old.WrappedOutput, inputs ...utangle_old.WrappedOutput) ownMilestone {
 	return ownMilestone{
 		WrappedOutput:         wOut,
-		consumedInThePastPath: set.New[utangle.WrappedOutput](inputs...),
+		consumedInThePastPath: set.New[utangle_old.WrappedOutput](inputs...),
 	}
 }
 
-func (mf *milestoneFactory) makeMilestone(chainIn, stemIn *utangle.WrappedOutput, preSelectedFeeInputs []utangle.WrappedOutput, endorse []*utangle.WrappedTx, targetTs core.LogicalTime) (*transaction.Transaction, error) {
+func (mf *milestoneFactory) makeMilestone(chainIn, stemIn *utangle_old.WrappedOutput, preSelectedFeeInputs []utangle_old.WrappedOutput, endorse []*utangle_old.WrappedTx, targetTs core.LogicalTime) (*transaction.Transaction, error) {
 	chainInReal, err := chainIn.Unwrap()
 	if err != nil || chainInReal == nil {
 		return nil, err
@@ -169,7 +169,7 @@ func (mf *milestoneFactory) makeMilestone(chainIn, stemIn *utangle.WrappedOutput
 
 	// interpret possible sequencer commands in inputs
 	feeInputsReal, additionalOutputs = mf.makeAdditionalInputsOutputs(feeInputsReal, capWithdrawals)
-	endorseReal := utangle.DecodeIDs(endorse...)
+	endorseReal := utangle_old.DecodeIDs(endorse...)
 
 	if err != nil {
 		return nil, err
@@ -194,7 +194,7 @@ func (mf *milestoneFactory) makeMilestone(chainIn, stemIn *utangle.WrappedOutput
 	return transaction.FromBytesMainChecksWithOpt(txBytes)
 }
 
-func (mf *milestoneFactory) addOwnMilestone(wOut utangle.WrappedOutput) {
+func (mf *milestoneFactory) addOwnMilestone(wOut utangle_old.WrappedOutput) {
 	inputs := wOut.VID.WrappedInputs()
 	mf.mutex.Lock()
 	defer mf.mutex.Unlock()
@@ -213,27 +213,27 @@ func (mf *milestoneFactory) addOwnMilestone(wOut utangle.WrappedOutput) {
 	}
 }
 
-func (mf *milestoneFactory) isConsumedInThePastPath(wOut utangle.WrappedOutput, ms *utangle.WrappedTx) bool {
+func (mf *milestoneFactory) isConsumedInThePastPath(wOut utangle_old.WrappedOutput, ms *utangle_old.WrappedTx) bool {
 	mf.mutex.RLock()
 	defer mf.mutex.RUnlock()
 
 	return mf.ownMilestones[ms].consumedInThePastPath.Contains(wOut)
 }
 
-func (mf *milestoneFactory) selectInputs(targetTs core.LogicalTime, ownMs utangle.WrappedOutput, otherSeqVIDs ...*utangle.WrappedTx) ([]utangle.WrappedOutput, *utangle.WrappedOutput) {
+func (mf *milestoneFactory) selectInputs(targetTs core.LogicalTime, ownMs utangle_old.WrappedOutput, otherSeqVIDs ...*utangle_old.WrappedTx) ([]utangle_old.WrappedOutput, *utangle_old.WrappedOutput) {
 	if ownMs.IsConsumed(otherSeqVIDs...) {
 		return nil, &ownMs
 	}
 
 	allSeqVIDs := append(slices.Clone(otherSeqVIDs), ownMs.VID)
 
-	consolidatedPastTrack, conflict := utangle.MergePastTracks(mf.utangle.StateStore, allSeqVIDs...)
+	consolidatedPastTrack, conflict := utangle_old.MergePastTracks(mf.utangle.StateStore, allSeqVIDs...)
 	if conflict != nil {
 		return nil, conflict
 	}
 
 	// pre-selects not orphaned and with suitable timestamp outputs, sorts by timestamp ascending
-	selected := mf.tipPool.filterAndSortOutputs(func(wOut utangle.WrappedOutput) bool {
+	selected := mf.tipPool.filterAndSortOutputs(func(wOut utangle_old.WrappedOutput) bool {
 		if !core.ValidTimePace(wOut.Timestamp(), targetTs) {
 			return false
 		}
@@ -245,7 +245,7 @@ func (mf *milestoneFactory) selectInputs(targetTs core.LogicalTime, ownMs utangl
 	})
 
 	// filters outputs which can be merged into the target delta but no more than maxFeeInputs limit
-	selected = util.FilterSlice(selected, func(wOut utangle.WrappedOutput) bool {
+	selected = util.FilterSlice(selected, func(wOut utangle_old.WrappedOutput) bool {
 		conflict = consolidatedPastTrack.AbsorbPastTrackSafe(wOut.VID, mf.utangle.StateStore)
 		return conflict == nil && !wOut.IsConsumed(otherSeqVIDs...)
 	}, mf.maxFeeInputs)
@@ -253,7 +253,7 @@ func (mf *milestoneFactory) selectInputs(targetTs core.LogicalTime, ownMs utangl
 	return selected, nil
 }
 
-func (mf *milestoneFactory) getLatestMilestone() (ret utangle.WrappedOutput) {
+func (mf *milestoneFactory) getLatestMilestone() (ret utangle_old.WrappedOutput) {
 	mf.mutex.RLock()
 	defer mf.mutex.RUnlock()
 
@@ -374,9 +374,9 @@ func (mf *milestoneFactory) cleanOwnMilestonesIfNecessary() {
 		return
 	}
 
-	toDelete := make([]*utangle.WrappedTx, 0)
+	toDelete := make([]*utangle_old.WrappedTx, 0)
 	for vid := range mf.ownMilestones {
-		vid.Unwrap(utangle.UnwrapOptions{Deleted: func() {
+		vid.Unwrap(utangle_old.UnwrapOptions{Deleted: func() {
 			toDelete = append(toDelete, vid)
 		}})
 	}

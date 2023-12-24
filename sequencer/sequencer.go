@@ -12,7 +12,7 @@ import (
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/transaction"
-	"github.com/lunfardo314/proxima/utangle"
+	"github.com/lunfardo314/proxima/utangle_old"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/workflow"
 	"github.com/lunfardo314/unitrie/common"
@@ -37,7 +37,7 @@ type (
 		stopOnce sync.Once
 
 		onMilestoneSubmittedMutex sync.RWMutex
-		onMilestoneSubmitted      func(seq *Sequencer, vid *utangle.WrappedOutput)
+		onMilestoneSubmitted      func(seq *Sequencer, vid *utangle_old.WrappedOutput)
 
 		infoMutex      sync.RWMutex
 		info           Info
@@ -101,7 +101,7 @@ func New(glb *workflow.Workflow, seqID core.ChainID, controllerKey ed25519.Priva
 		log:           global.NewLogger(logName, cfg.LogLevel, cfg.LogOutputs, cfg.LogTimeLayout),
 	}
 
-	ret.onMilestoneSubmitted = func(seq *Sequencer, wOut *utangle.WrappedOutput) {
+	ret.onMilestoneSubmitted = func(seq *Sequencer, wOut *utangle_old.WrappedOutput) {
 		seq.LogMilestoneSubmitDefault(wOut)
 		seq.LogStats()
 	}
@@ -219,7 +219,7 @@ func (seq *Sequencer) setTraceAhead(n int64) {
 	seq.traceNAhead.Store(n)
 }
 
-func (seq *Sequencer) OnMilestoneSubmitted(fun func(seq *Sequencer, msOutput *utangle.WrappedOutput)) {
+func (seq *Sequencer) OnMilestoneSubmitted(fun func(seq *Sequencer, msOutput *utangle_old.WrappedOutput)) {
 	seq.onMilestoneSubmittedMutex.Lock()
 	defer seq.onMilestoneSubmittedMutex.Unlock()
 
@@ -227,14 +227,14 @@ func (seq *Sequencer) OnMilestoneSubmitted(fun func(seq *Sequencer, msOutput *ut
 		seq.onMilestoneSubmitted = fun
 	} else {
 		prevFun := seq.onMilestoneSubmitted
-		seq.onMilestoneSubmitted = func(seq *Sequencer, msOutput *utangle.WrappedOutput) {
+		seq.onMilestoneSubmitted = func(seq *Sequencer, msOutput *utangle_old.WrappedOutput) {
 			prevFun(seq, msOutput)
 			fun(seq, msOutput)
 		}
 	}
 }
 
-func (seq *Sequencer) RunOnMilestoneSubmitted(wOut *utangle.WrappedOutput) {
+func (seq *Sequencer) RunOnMilestoneSubmitted(wOut *utangle_old.WrappedOutput) {
 	seq.onMilestoneSubmittedMutex.RLock()
 	defer seq.onMilestoneSubmittedMutex.RUnlock()
 
@@ -422,7 +422,7 @@ const submitTransactionTimeout = 5 * time.Second
 
 // submitMilestone submits transaction to the workflow and waits for deterministic status: either added to the tangle or rejected
 // The temporary VID of the transaction is replaced with the real one upon submission
-func (seq *Sequencer) submitMilestone(tx *transaction.Transaction) *utangle.WrappedOutput {
+func (seq *Sequencer) submitMilestone(tx *transaction.Transaction) *utangle_old.WrappedOutput {
 	util.Assertf(tx != nil, "tx != nil")
 
 	retVID, err := seq.glb.TransactionInWaitAppendWrap(tx.Bytes(), submitTransactionTimeout,
@@ -440,7 +440,7 @@ func (seq *Sequencer) submitMilestone(tx *transaction.Transaction) *utangle.Wrap
 		return nil
 	}
 	seq.log.Debugf("submited milestone:: %s", tx.IDShortString())
-	return &utangle.WrappedOutput{
+	return &utangle_old.WrappedOutput{
 		VID:   retVID,
 		Index: tx.SequencerTransactionData().SequencerOutputIndex,
 	}

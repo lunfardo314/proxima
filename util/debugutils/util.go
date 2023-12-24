@@ -5,14 +5,14 @@ import (
 
 	"github.com/dominikbraun/graph"
 	"github.com/dominikbraun/graph/draw"
-	"github.com/lunfardo314/proxima/utangle"
+	"github.com/lunfardo314/proxima/utangle_old"
 	"github.com/lunfardo314/proxima/util"
 	"go.uber.org/zap"
 )
 
 type UTXOTangleWithDraftVertices struct {
-	UTXOTangle    *utangle.UTXOTangle
-	DraftVertices []*utangle.WrappedTx
+	UTXOTangle    *utangle_old.UTXOTangle
+	DraftVertices []*utangle_old.WrappedTx
 }
 
 func PanicWithLogFile(log *zap.SugaredLogger, fname string, graphSource any, format string, args ...any) {
@@ -44,9 +44,9 @@ func SaveGraph(fname string, src any) {
 	}
 	var gr graph.Graph[string, string]
 	switch graphSource := src.(type) {
-	case *utangle.WrappedTx:
-		gr = utangle.MakeGraphPastCone(graphSource, 500)
-	case *utangle.UTXOTangle:
+	case *utangle_old.WrappedTx:
+		gr = utangle_old.MakeGraphPastCone(graphSource, 500)
+	case *utangle_old.UTXOTangle:
 		gr = graphSource.MakeGraph()
 	case *UTXOTangleWithDraftVertices:
 		gr = graphSource.UTXOTangle.MakeGraph(graphSource.DraftVertices...)

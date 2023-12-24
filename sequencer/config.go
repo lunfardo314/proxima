@@ -4,7 +4,7 @@ import (
 	"slices"
 
 	"github.com/lunfardo314/proxima/core"
-	"github.com/lunfardo314/proxima/utangle"
+	"github.com/lunfardo314/proxima/utangle_old"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/spf13/viper"
 	"go.uber.org/zap/zapcore"
@@ -22,7 +22,7 @@ type (
 		MaxTargetTs   core.LogicalTime
 		MaxMilestones int
 		MaxBranches   int
-		StartOutput   utangle.WrappedOutput
+		StartOutput   utangle_old.WrappedOutput
 	}
 
 	ConfigOpt func(options *ConfigOptions)
@@ -94,7 +94,7 @@ func WithMaxBranches(maxBranches int) ConfigOpt {
 	}
 }
 
-func WithStartOutput(wOut utangle.WrappedOutput) ConfigOpt {
+func WithStartOutput(wOut utangle_old.WrappedOutput) ConfigOpt {
 	return func(o *ConfigOptions) {
 		o.StartOutput = wOut
 	}
