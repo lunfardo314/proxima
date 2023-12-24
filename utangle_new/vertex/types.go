@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/util/set"
 )
@@ -23,16 +24,6 @@ type (
 		outputs          map[byte]*core.Output
 		sequencerOutputs *[2]byte // if nil, it is unknown
 	}
-	//
-	//Fork struct {
-	//	ConflictSetID WrappedOutput
-	//	SN            byte // max 256 double spends per output. Tx will be dropped if exceeded
-	//}
-	//
-	//ForkSet struct {
-	//	m     map[WrappedOutput]byte
-	//	mutex sync.RWMutex
-	//}
 
 	// WrappedTx value of *WrappedTx is used as transaction identity on the UTXO tangle, a vertex
 	// Behind this identity can be wrapped usual vertex, virtual or orphaned transactions
@@ -43,10 +34,8 @@ type (
 		// numConsumers contains number of consumers for outputs
 		mutexConsumers sync.Mutex
 		consumers      map[byte]set.Set[*WrappedTx]
-		// descendants is a list of consumers and endorsers, repeated once
-		//endorsers []*WrappedTx
-		//
-		txStatus Status
+		txStatus       Status
+		coverage       *multistate.LedgerCoverage // nil for non-sequencer
 		// notification callback
 		onNotify func(vid *WrappedTx)
 	}

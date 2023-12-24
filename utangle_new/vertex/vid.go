@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
 	"github.com/lunfardo314/proxima/util/set"
@@ -205,15 +206,22 @@ func (vid *WrappedTx) MarkDeleted() {
 	}
 }
 
-func (vid *WrappedTx) OutputWithIDAt(idx byte) (*core.OutputWithID, error) {
+func (vid *WrappedTx) OutputWithIDAt(idx byte) (core.OutputWithID, error) {
 	ret, err := vid.OutputAt(idx)
 	if err != nil || ret == nil {
-		return nil, err
+		return core.OutputWithID{}, err
 	}
-	return &core.OutputWithID{
+	return core.OutputWithID{
 		ID:     core.NewOutputID(vid.ID(), idx),
 		Output: ret,
 	}, nil
+}
+
+func (vid *WrappedTx) MustOutputWithIDAt(idx byte) (ret core.OutputWithID) {
+	var err error
+	ret, err = vid.OutputWithIDAt(idx)
+	util.AssertNoError(err)
+	return
 }
 
 // OutputAt return output at index, if available.
@@ -466,15 +474,6 @@ func (vid *WrappedTx) EnsureOutput(idx byte, o *core.Output) bool {
 	return ok
 }
 
-func (vid *WrappedTx) Forks() (ret *ForkSet) {
-	vid.Unwrap(UnwrapOptions{
-		Vertex: func(v *Vertex) {
-			ret = v.Forks
-		},
-	})
-	return
-}
-
 func (vid *WrappedTx) AttachConsumer(outputIndex byte, consumer *WrappedTx, checkConflicts func(existingConsumers set.Set[*WrappedTx]) (conflict bool)) bool {
 	vid.mutexConsumers.Lock()
 	defer vid.mutexConsumers.Unlock()
@@ -507,4 +506,18 @@ func (vid *WrappedTx) NotConsumedOutputIndices(allConsumers set.Set[*WrappedTx])
 		}
 	}
 	return ret
+}
+
+func (vid *WrappedTx) GetLedgerCoverage() *multistate.LedgerCoverage {
+	vid.mutex.RLock()
+	defer vid.mutex.RUnlock()
+
+	return vid.coverage
+}
+
+func (vid *WrappedTx) SetLedgerCoverage(coverage multistate.LedgerCoverage) {
+	vid.mutex.Lock()
+	defer vid.mutex.Unlock()
+
+	vid.coverage = &coverage
 }

@@ -193,21 +193,6 @@ func (vid *WrappedTx) CoverageDelta(ut *utangle_new.UTXOTangle) (*core.Transacti
 	return baselineTxID, ret
 }
 
-func (vid *WrappedTx) LedgerCoverage(ut *utangle_new.UTXOTangle) uint64 {
-	var deltaCoverage uint64
-	var branchTxID *core.TransactionID
-
-	branchTxID, deltaCoverage = vid.CoverageDelta(ut)
-	if vid.IsBranchTransaction() || branchTxID == nil {
-		return deltaCoverage
-	}
-
-	bd, ok := ut.FetchBranchData(branchTxID)
-	util.Assertf(ok, "can't fetch branch data for %s", func() any { return branchTxID.StringShort() })
-
-	return deltaCoverage + bd.LedgerCoverage.Sum()
-}
-
 func (vid *WrappedTx) InflationAmount() (ret uint64) {
 	if !vid.IsBranchTransaction() {
 		return

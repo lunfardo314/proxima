@@ -21,10 +21,6 @@ func (o *WrappedOutput) IDShort() string {
 	return o.DecodeID().StringShort()
 }
 
-func (o *WrappedOutput) Unwrap() (ret *core.OutputWithID, err error) {
-	return o.VID.OutputWithIDAt(o.Index)
-}
-
 func (o *WrappedOutput) Amount() uint64 {
 	out, err := o.VID.OutputAt(o.Index)
 	util.AssertNoError(err)
