@@ -1,5 +1,10 @@
 package vertex
 
+import (
+	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/util/set"
+)
+
 //
 //// GetWrappedOutput return a wrapped output either the one existing in the utangle_old,
 //// or after finding it in the provided state.
@@ -165,3 +170,56 @@ package vertex
 //	ut._addVertexAndBranch(vid, bd.Root)
 //	return WrappedOutput{VID: vid, Index: oid.Index()}, true, false
 //}
+
+func (o *WrappedOutput) Less(o1 *WrappedOutput) bool {
+	if o.VID == o1.VID {
+		return o.Index < o1.Index
+	}
+	return o.VID.Less(o1.VID)
+}
+
+func (o *WrappedOutput) IsConsumed(tips ...*WrappedTx) bool {
+	if len(tips) == 0 {
+		return false
+	}
+	visited := set.New[*WrappedTx]()
+
+	consumed := false
+	for _, tip := range tips {
+		if consumed = o._isConsumedInThePastConeOf(tip, visited); consumed {
+			break
+		}
+	}
+	return consumed
+}
+
+func (o *WrappedOutput) _isConsumedInThePastConeOf(vid *WrappedTx, visited set.Set[*WrappedTx]) (consumed bool) {
+	if visited.Contains(vid) {
+		return
+	}
+	visited.Insert(vid)
+
+	vid.Unwrap(UnwrapOptions{
+		Vertex: func(v *Vertex) {
+			v.ForEachInputDependency(func(i byte, vidInput *WrappedTx) bool {
+				if o.VID == vidInput {
+					consumed = o.Index == v.Tx.MustOutputIndexOfTheInput(i)
+				} else {
+					consumed = o._isConsumedInThePastConeOf(vidInput, visited)
+				}
+				return !consumed
+			})
+			if !consumed {
+				v.ForEachEndorsement(func(_ byte, vidEndorsed *WrappedTx) bool {
+					consumed = o._isConsumedInThePastConeOf(vidEndorsed, visited)
+					return !consumed
+				})
+			}
+		},
+	})
+	return
+}
+
+func (o *WrappedOutput) ValidPace(targetTs core.LogicalTime) bool {
+	return core.ValidTimePace(o.Timestamp(), targetTs)
+}

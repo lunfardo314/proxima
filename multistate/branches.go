@@ -268,6 +268,16 @@ func FetchLatestBranches(store global.StateStore) []*BranchData {
 	})
 }
 
+func FetchLatestBranchTransactionIDs(store global.StateStore) []core.TransactionID {
+	bd := FetchLatestBranches(store)
+	ret := make([]core.TransactionID, len(bd))
+
+	for i := range ret {
+		ret[i] = bd[i].Stem.ID.TransactionID()
+	}
+	return ret
+}
+
 // FetchHeaviestBranchChainNSlotsBack descending by epoch
 func FetchHeaviestBranchChainNSlotsBack(store global.StateStore, nBack int) []*BranchData {
 	rootData := make(map[core.TransactionID]RootRecord)

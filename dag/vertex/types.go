@@ -12,10 +12,11 @@ import (
 
 type (
 	Vertex struct {
-		Tx             *transaction.Transaction
-		Inputs         []*WrappedTx
-		Endorsements   []*WrappedTx
-		BaselineBranch *WrappedTx
+		Tx               *transaction.Transaction
+		Inputs           []*WrappedTx
+		Endorsements     []*WrappedTx
+		BaselineBranch   *WrappedTx
+		constraintsValid bool
 	}
 
 	VirtualTransaction struct {

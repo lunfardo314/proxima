@@ -60,7 +60,7 @@ func (a *attacher) attachEndorsements(v *vertex.Vertex, parasiticChainHorizon co
 
 	for i, vidEndorsed := range v.Endorsements {
 		if vidEndorsed == nil {
-			vidEndorsed = attachTxID(v.Tx.EndorsementAt(byte(i)), a.env, true)
+			vidEndorsed = AttachTxID(v.Tx.EndorsementAt(byte(i)), a.env, true)
 			v.Endorsements[i] = vidEndorsed
 		}
 		switch vidEndorsed.GetTxStatus() {
@@ -122,7 +122,13 @@ func (a *attacher) attachInputs(v *vertex.Vertex, vid *vertex.WrappedTx, parasit
 		}
 	}
 	if allGood {
-		status = vertex.Good
+		// TODO optimization: constraints can be validated even before the vertex becomes good (solidified).
+		//  It is enough to have all inputs available, i.e. before solidification
+		if err := v.ValidateConstraints(); err == nil {
+			status = vertex.Good
+		} else {
+			status = vertex.Bad
+		}
 	}
 	return status
 }
@@ -223,7 +229,7 @@ func (a *attacher) attachInputID(consumerVertex *vertex.Vertex, consumerTx *vert
 	}
 
 	inputOid := consumerVertex.Tx.MustInputAt(inputIdx)
-	vidInputTx = attachTxID(inputOid.TransactionID(), a.env, false)
+	vidInputTx = AttachTxID(inputOid.TransactionID(), a.env, false)
 	status := vidInputTx.GetTxStatus()
 	if status == vertex.Bad {
 		return vertex.Bad

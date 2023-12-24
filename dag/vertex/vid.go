@@ -396,23 +396,6 @@ func (vid *WrappedTx) ConvertToVirtualTx() {
 	}
 }
 
-func (vid *WrappedTx) WrappedInputs() []WrappedOutput {
-	ret := make([]WrappedOutput, vid.NumInputs())
-	vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
-		util.Assertf(v.IsSolid(), "not solid inputs of %s", v.Tx.IDShortString())
-
-		v.ForEachInputDependency(func(i byte, inp *WrappedTx) bool {
-			inpID := v.Tx.MustInputAt(i)
-			ret[i] = WrappedOutput{
-				VID:   inp,
-				Index: inpID.Index(),
-			}
-			return true
-		})
-	}})
-	return ret
-}
-
 func (vid *WrappedTx) PanicAccessDeleted() {
 	txid := vid._genericWrapper.(_deletedTx).TransactionID
 	util.Panicf("%w: %s", ErrDeletedVertexAccessed, txid.StringShort())

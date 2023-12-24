@@ -7,8 +7,8 @@ import (
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/dag/vertex"
 	"github.com/lunfardo314/proxima/global"
+	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/util/set"
-	"github.com/lunfardo314/unitrie/common"
 )
 
 type (
@@ -16,7 +16,7 @@ type (
 		mutex      sync.RWMutex
 		stateStore global.StateStore
 		vertices   map[core.TransactionID]*vertex.WrappedTx
-		branches   map[core.TimeSlot]map[*vertex.WrappedTx]common.VCommitment
+		//branches   map[core.TimeSlot]map[*vertex.WrappedTx]common.VCommitment
 
 		// all real-time related values in one place
 		syncData *SyncData
@@ -60,3 +60,15 @@ type (
 )
 
 const TipSlots = 5
+
+func NewUTXOTangle(stateStore global.StateStore) *UTXOTangle {
+	return &UTXOTangle{
+		stateStore: stateStore,
+		vertices:   make(map[core.TransactionID]*vertex.WrappedTx),
+		syncData:   newSyncData(),
+	}
+}
+
+func (ut *UTXOTangle) TransactionStringFromBytes(txBytes []byte) string {
+	return transaction.ParseBytesToString(txBytes, ut.GetUTXO)
+}

@@ -22,11 +22,16 @@ type (
 		GetVertexNoLock(txid *core.TransactionID) *vertex.WrappedTx
 		AddVertexNoLock(vid *vertex.WrappedTx)
 		StateStore() global.StateStore
-		GetBaselineStateReader(branch *vertex.WrappedTx) global.IndexedStateReader
-		AddBranchNoLock(branch *vertex.WrappedTx, branchData *multistate.BranchData)
+		GetStateReaderForTheBranch(branch *vertex.WrappedTx) global.IndexedStateReader
+
+		//AddBranchNoLock(branch *vertex.WrappedTx, branchData *multistate.BranchData)
+
 		Pull(txid core.TransactionID)
 		OnChangeNotify(onChange, notify *vertex.WrappedTx)
 		Notify(changed *vertex.WrappedTx)
+
+		EvidenceIncomingBranch(txid *core.TransactionID, seqID core.ChainID)
+		EvidenceBookedBranch(txid *core.TransactionID, seqID core.ChainID)
 	}
 
 	attacher struct {
@@ -54,6 +59,9 @@ const (
 // AttachTransaction attaches new incoming transaction. For sequencer transaction it starts attacher routine
 // which manages solidification pull until transaction becomes solid or stopped by the context
 func AttachTransaction(tx *transaction.Transaction, env AttachEnvironment, ctx context.Context) (vid *vertex.WrappedTx) {
+	if tx.IsBranchTransaction() {
+		env.EvidenceIncomingBranch(tx.ID(), tx.SequencerTransactionData().SequencerID)
+	}
 	env.WithGlobalWriteLock(func() {
 		// look up for the txid
 		vid = env.GetVertexNoLock(tx.ID())
@@ -76,8 +84,8 @@ func AttachTransaction(tx *transaction.Transaction, env AttachEnvironment, ctx c
 	return
 }
 
-// attachTxID ensures the txid is on the utangle_old. Must be called from globally locked environment
-func attachTxID(txid core.TransactionID, env AttachEnvironment, pullNonBranchIfNeeded bool) (vid *vertex.WrappedTx) {
+// AttachTxID ensures the txid is on the utangle_old. Must be called from globally locked environment
+func AttachTxID(txid core.TransactionID, env AttachEnvironment, pullNonBranchIfNeeded bool) (vid *vertex.WrappedTx) {
 	env.WithGlobalWriteLock(func() {
 		vid = env.GetVertexNoLock(&txid)
 		if vid != nil {
@@ -99,7 +107,7 @@ func attachTxID(txid core.TransactionID, env AttachEnvironment, pullNonBranchIfN
 			// corresponding state has been found, it is solid -> put virtual branch tx with the state reader
 			vid = vertex.NewVirtualBranchTx(&bd).Wrap()
 			env.AddVertexNoLock(vid)
-			env.AddBranchNoLock(vid, &bd)
+			//env.AddBranchNoLock(vid, &bd)
 			vid.SetTxStatus(vertex.Good)
 		} else {
 			// the corresponding state is not in the multistate DB -> put virtualTx to the utangle_old -> pull it
@@ -140,7 +148,7 @@ func runAttacher(vid *vertex.WrappedTx, env AttachEnvironment, ctx context.Conte
 
 	util.Assertf(a.baselineBranch != nil, "a.baselineBranch != nil")
 	// baseline is solid, i.e. we know the baseline state the transactions must be solidified upon
-	a.baselineStateReader = multistate.MakeSugared(a.env.GetBaselineStateReader(a.baselineBranch))
+	a.baselineStateReader = multistate.MakeSugared(a.env.GetStateReaderForTheBranch(a.baselineBranch))
 
 	// then continue with the rest
 	status = a.solidifyPastCone()

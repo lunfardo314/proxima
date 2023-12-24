@@ -8,30 +8,10 @@ import (
 	"github.com/lunfardo314/proxima/dag/vertex"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/multistate"
-	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/set"
 	"github.com/lunfardo314/unitrie/common"
 )
-
-func (ut *UTXOTangle) _getVertex(txid *core.TransactionID) (*vertex.WrappedTx, bool) {
-	ret, found := ut.vertices[*txid]
-
-	return ret, found
-}
-
-func (ut *UTXOTangle) GetVertex(txid *core.TransactionID) (*vertex.WrappedTx, bool) {
-	ut.mutex.RLock()
-	defer ut.mutex.RUnlock()
-
-	return ut._getVertex(txid)
-}
-
-func (ut *UTXOTangle) MustGetVertex(txid *core.TransactionID) *vertex.WrappedTx {
-	ret, ok := ut.GetVertex(txid)
-	util.Assertf(ok, "MustGetVertex: can't find %s", txid.StringShort())
-	return ret
-}
 
 // HasTransactionOnTangle checks the tangle, does not check the finalized state
 func (ut *UTXOTangle) HasTransactionOnTangle(txid *core.TransactionID) bool {
@@ -40,6 +20,28 @@ func (ut *UTXOTangle) HasTransactionOnTangle(txid *core.TransactionID) bool {
 
 	_, ret := ut.vertices[*txid]
 	return ret
+}
+
+func (ut *UTXOTangle) GetUTXO(oid *core.OutputID) ([]byte, bool) {
+	txid := oid.TransactionID()
+	vid := ut.GetVertexNoLock(&txid)
+	if vid != nil {
+		if o, err := vid.OutputAt(oid.Index()); err == nil && o != nil {
+			return o.Bytes(), true
+		}
+	}
+	return ut.HeaviestStateForLatestTimeSlot().GetUTXO(oid)
+}
+
+func (ut *UTXOTangle) HasUTXO(oid *core.OutputID) bool {
+	txid := oid.TransactionID()
+	vid := ut.GetVertexNoLock(&txid)
+	if vid != nil {
+		if o, err := vid.OutputAt(oid.Index()); err == nil && o != nil {
+			return true
+		}
+	}
+	return ut.HeaviestStateForLatestTimeSlot().HasUTXO(oid)
 }
 
 func (ut *UTXOTangle) _timeSlotsOrdered(descOrder ...bool) []core.TimeSlot {
@@ -57,75 +59,8 @@ func (ut *UTXOTangle) _timeSlotsOrdered(descOrder ...bool) []core.TimeSlot {
 
 // Access to the tangle state is NON-DETERMINISTIC
 
-func (ut *UTXOTangle) GetUTXO(oid *core.OutputID) ([]byte, bool) {
-	txid := oid.TransactionID()
-	if vid, found := ut.GetVertex(&txid); found {
-		if o, err := vid.OutputAt(oid.Index()); err == nil && o != nil {
-			return o.Bytes(), true
-		}
-	}
-	return ut.HeaviestStateForLatestTimeSlot().GetUTXO(oid)
-}
-
-func (ut *UTXOTangle) HasUTXO(oid *core.OutputID) bool {
-	txid := oid.TransactionID()
-	if vid, found := ut.GetVertex(&txid); found {
-		if o, err := vid.OutputAt(oid.Index()); err == nil && o != nil {
-			return true
-		}
-	}
-	return ut.HeaviestStateForLatestTimeSlot().HasUTXO(oid)
-}
-
 func (ut *UTXOTangle) KnowsCommittedTransaction(txid *core.TransactionID) bool {
 	return ut.HasTransactionOnTangle(txid)
-}
-
-func (ut *UTXOTangle) GetBranch(vid *vertex.WrappedTx) (common.VCommitment, bool) {
-	ut.mutex.RLock()
-	defer ut.mutex.RUnlock()
-
-	return ut.getBranch(vid)
-}
-
-// MustGetBranchState returns state reader corresponding to the branch transaction
-func (ut *UTXOTangle) MustGetBranchState(vid *vertex.WrappedTx) multistate.SugaredStateReader {
-	util.Assertf(vid.IsBranchTransaction(), "vid.IsBranchTransaction()")
-	rootData, ok := multistate.FetchRootRecord(ut.stateStore, *vid.ID())
-	util.Assertf(ok, "can't get root data for branch transaction")
-
-	ret, err := multistate.NewSugaredReadableState(ut.stateStore, rootData.Root, 0)
-	util.AssertNoError(err)
-
-	return ret
-}
-
-func (ut *UTXOTangle) getBranch(vid *vertex.WrappedTx) (common.VCommitment, bool) {
-	eb, found := ut.branches[vid.TimeSlot()]
-	if !found {
-		return nil, false
-	}
-	if ret, found := eb[vid]; found {
-		return ret, true
-	}
-	return nil, false
-}
-
-func (ut *UTXOTangle) mustGetBranch(vid *vertex.WrappedTx) common.VCommitment {
-	ret, ok := ut.getBranch(vid)
-	util.Assertf(ok, "can't get branch %s", vid.IDShortString())
-	return ret
-}
-
-func (ut *UTXOTangle) isValidBranch(br *vertex.WrappedTx) bool {
-	ut.mutex.RLock()
-	defer ut.mutex.RUnlock()
-
-	if !br.IsBranchTransaction() {
-		return false
-	}
-	_, found := ut.getBranch(br)
-	return found
 }
 
 func (ut *UTXOTangle) GetIndexedStateReader(branchTxID *core.TransactionID, clearCacheAtSize ...int) (global.IndexedStateReader, error) {
@@ -140,22 +75,6 @@ func (ut *UTXOTangle) MustGetIndexedStateReader(branchTxID *core.TransactionID, 
 	ret, err := ut.GetIndexedStateReader(branchTxID, clearCacheAtSize...)
 	util.AssertNoError(err)
 	return ret
-}
-
-func (ut *UTXOTangle) MustGetStateReader(branchTxID *core.TransactionID, clearCacheAtSize ...int) global.StateReader {
-	return ut.MustGetIndexedStateReader(branchTxID, clearCacheAtSize...)
-}
-
-func (ut *UTXOTangle) MustGetSugaredStateReader(branchTxID *core.TransactionID) multistate.SugaredStateReader {
-	return multistate.MakeSugared(ut.MustGetIndexedStateReader(branchTxID))
-}
-
-func (ut *UTXOTangle) GetStateUpdatable(branchTxID *core.TransactionID) (*multistate.Updatable, error) {
-	rr, found := multistate.FetchRootRecord(ut.stateStore, *branchTxID)
-	if !found {
-		return nil, fmt.Errorf("root record for %s has not been found", branchTxID.StringShort())
-	}
-	return multistate.NewUpdatable(ut.stateStore, rr.Root)
 }
 
 func (ut *UTXOTangle) HeaviestStateRootForLatestTimeSlot() common.VCommitment {
@@ -189,23 +108,6 @@ func (ut *UTXOTangle) heaviestBranchForLatestTimeSlot() common.VCommitment {
 	return largestBranch
 }
 
-func (ut *UTXOTangle) GetBaselineState(vid *vertex.WrappedTx) (global.IndexedStateReader, error) {
-	if vid.IsBranchTransaction() {
-		return ut.GetIndexedStateReader(vid.ID())
-	}
-	branchTxID := vid.BaselineBranch()
-	if branchTxID == nil {
-		return nil, fmt.Errorf("branch transaction not available")
-	}
-	return ut.GetIndexedStateReader(branchTxID.ID())
-}
-
-func (ut *UTXOTangle) MustGetBaselineState(vid *vertex.WrappedTx) global.IndexedStateReader {
-	ret, err := ut.GetBaselineState(vid)
-	util.AssertNoError(err)
-	return ret
-}
-
 // LatestTimeSlot latest time slot with some branches
 func (ut *UTXOTangle) LatestTimeSlot() core.TimeSlot {
 	ut.mutex.RLock()
@@ -217,10 +119,6 @@ func (ut *UTXOTangle) LatestTimeSlot() core.TimeSlot {
 		}
 	}
 	return 0
-}
-
-func (ut *UTXOTangle) HeaviestStemOutput() *core.OutputWithID {
-	return ut.HeaviestStateForLatestTimeSlot().GetStemOutput()
 }
 
 func (ut *UTXOTangle) ForEachBranchStateDescending(e core.TimeSlot, fun func(vid *vertex.WrappedTx, rdr multistate.SugaredStateReader) bool) error {
@@ -252,19 +150,6 @@ func (ut *UTXOTangle) forEachBranchSorted(e core.TimeSlot, fun func(vid *vertex.
 			return
 		}
 	}
-}
-
-func (ut *UTXOTangle) LatestBranchesDescending() []*vertex.WrappedTx {
-	latestSlot := ut.LatestTimeSlot()
-	ut.mutex.RLock()
-	defer ut.mutex.RUnlock()
-
-	ret := make([]*vertex.WrappedTx, 0)
-	ut.forEachBranchSorted(latestSlot, func(vid *vertex.WrappedTx, root common.VCommitment) bool {
-		ret = append(ret, vid)
-		return true
-	}, true)
-	return ret
 }
 
 //func (ut *UTXOTangle) GetSequencerBootstrapOutputs(seqID core.ChainID) (chainOut vertex.WrappedOutput, stemOut vertex.WrappedOutput, found bool) {
@@ -306,16 +191,6 @@ func (ut *UTXOTangle) HasOutputInAllBranches(e core.TimeSlot, oid *core.OutputID
 	})
 	util.AssertNoError(err)
 	return found
-}
-
-func (ut *UTXOTangle) DoesNotHaveOutputInAnyBranch(e core.TimeSlot, oid *core.OutputID) bool {
-	found := false
-	err := ut.ForEachBranchStateDescending(e, func(_ *vertex.WrappedTx, rdr multistate.SugaredStateReader) bool {
-		found = rdr.HasUTXO(oid)
-		return !found
-	})
-	util.AssertNoError(err)
-	return !found
 }
 
 // ScanAccount collects all outputIDs, unlockable by the address
@@ -413,22 +288,6 @@ func (ut *UTXOTangle) StateStore() global.StateStore {
 	return ut.stateStore
 }
 
-func (ut *UTXOTangle) LedgerCoverageDelta(vid *vertex.WrappedTx) uint64 {
-	_, ret := vid.CoverageDelta(ut)
-	return ret
-}
-
 func (ut *UTXOTangle) LedgerCoverage(vid *vertex.WrappedTx) (ret uint64) {
 	return vid.LedgerCoverage(ut)
-}
-
-func (ut *UTXOTangle) LedgerCoverageFromTransaction(tx *transaction.Transaction) (uint64, error) {
-	tmpVertex, conflict := ut.MakeDraftVertex(tx)
-	if conflict != nil {
-		return 0, fmt.Errorf("conflict in the past cone at %s", conflict.StringShort())
-	}
-	if !tmpVertex.IsSolid() {
-		return 0, fmt.Errorf("some inputs are not solid")
-	}
-	return ut.LedgerCoverage(tmpVertex.Wrap()), nil
 }

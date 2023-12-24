@@ -16,6 +16,7 @@ func (a *attacher) finalize() {
 	var coverage multistate.LedgerCoverage
 	if a.vid.IsBranchTransaction() {
 		coverage = a.commitBranch()
+		a.env.EvidenceBookedBranch(a.vid.ID(), a.vid.MustSequencerID())
 	} else {
 		coverage = a.calculateCoverage()
 	}

@@ -42,7 +42,10 @@ func (v *Vertex) getConsumedOutput(i byte) (*core.Output, error) {
 	return v.Inputs[i].OutputAt(v.Tx.MustOutputIndexOfTheInput(i))
 }
 
-func (v *Vertex) Validate(traceOption ...int) error {
+func (v *Vertex) ValidateConstraints(traceOption ...int) error {
+	if v.constraintsValid {
+		return nil
+	}
 	traceOpt := transaction.TraceOptionFailedConstraints
 	if len(traceOption) > 0 {
 		traceOpt = traceOption[0]
@@ -51,7 +54,11 @@ func (v *Vertex) Validate(traceOption ...int) error {
 	if err != nil {
 		return err
 	}
-	return ctx.Validate()
+	err = ctx.Validate()
+	if err == nil {
+		v.constraintsValid = true
+	}
+	return err
 }
 
 func (v *Vertex) ValidateDebug() (string, error) {
