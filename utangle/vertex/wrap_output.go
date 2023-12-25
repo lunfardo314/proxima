@@ -54,7 +54,7 @@ import (
 //	vt.addOutput(oid.Index(), o)
 //	vid := vt.Wrap()
 //	conflict := ut._attach(vid)
-//	util.Assertf(conflict == nil, "inconsistency: unexpected conflict %s", conflict.IDShort())
+//	util.Assertf(conflict == nil, "inconsistency: unexpected conflict %s", conflict.IDShortString())
 //
 //	return WrappedOutput{VID: vid, Index: oid.Index()}, true, false
 //}

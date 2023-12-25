@@ -23,7 +23,7 @@ type (
 		AddVertexNoLock(vid *vertex.WrappedTx)
 		StateStore() global.StateStore
 		GetStateReaderForTheBranch(branch *vertex.WrappedTx) global.IndexedStateReader
-		AddBranch(branch *vertex.WrappedTx)
+		AddBranchNoLock(branch *vertex.WrappedTx)
 		EvidenceIncomingBranch(txid *core.TransactionID, seqID core.ChainID)
 		EvidenceBookedBranch(txid *core.TransactionID, seqID core.ChainID)
 	}
@@ -160,8 +160,9 @@ func AttachTxID(txid core.TransactionID, env AttachEnvironment, pullNonBranchIfN
 			// corresponding state has been found, it is solid -> put virtual branch tx with the state reader
 			vid = vertex.NewVirtualBranchTx(&bd).Wrap()
 			env.AddVertexNoLock(vid)
-			//env.AddBranchNoLock(vid, &bd)
 			vid.SetTxStatus(vertex.Good)
+			vid.SetLedgerCoverage(bd.LedgerCoverage)
+			env.AddBranchNoLock(vid) // <<<< will be reading branch data twice. Not big problem
 		} else {
 			// the corresponding state is not in the multistate DB -> put virtualTx to the utangle_old -> pull it
 			// the puller will trigger further solidification
@@ -175,13 +176,14 @@ func AttachTxID(txid core.TransactionID, env AttachEnvironment, pullNonBranchIfN
 
 func newAttacher(vid *vertex.WrappedTx, env AttachEnvironment, ctx context.Context) *attacher {
 	ret := &attacher{
-		ctx:              ctx,
-		vid:              vid,
-		env:              env,
-		inChan:           make(chan *vertex.WrappedTx, 1),
-		rooted:           make(map[*vertex.WrappedTx]set.Set[byte]),
-		goodPastVertices: set.New[*vertex.WrappedTx](),
-		pendingOutputs:   make(map[vertex.WrappedOutput]core.LogicalTime),
+		ctx:                   ctx,
+		vid:                   vid,
+		env:                   env,
+		inChan:                make(chan *vertex.WrappedTx, 1),
+		rooted:                make(map[*vertex.WrappedTx]set.Set[byte]),
+		goodPastVertices:      set.New[*vertex.WrappedTx](),
+		undefinedPastVertices: set.New[*vertex.WrappedTx](),
+		pendingOutputs:        make(map[vertex.WrappedOutput]core.LogicalTime),
 	}
 	ret.vid.OnNotify(func(msg *vertex.WrappedTx) {
 		ret.notify(msg)
@@ -193,6 +195,9 @@ func runAttacher(vid *vertex.WrappedTx, env AttachEnvironment, ctx context.Conte
 	a := newAttacher(vid, env, ctx)
 	defer a.close()
 
+	a.tracef(">>>>>>>>>>>>> START")
+	defer a.tracef("<<<<<<<<<<<<< EXIT")
+
 	// first solidify baseline state
 	status := a.solidifyBaselineState()
 	if status != vertex.Good {
@@ -202,23 +207,26 @@ func runAttacher(vid *vertex.WrappedTx, env AttachEnvironment, ctx context.Conte
 	util.Assertf(a.baselineBranch != nil, "a.baselineBranch != nil")
 
 	// then continue with the rest
+	a.tracef("baseline %s OK", a.baselineBranch.IDShortString())
+
 	status = a.solidifyPastCone()
 	if status != vertex.Good {
 		return vertex.Bad, fmt.Errorf("past cone solidification failed")
 	}
 
+	a.tracef("past cone OK")
 	a.finalize()
 	return vertex.Good, nil
 }
 
-func (a *attacher) lazyRepeat(fun func() vertex.Status) (status vertex.Status) {
+func (a *attacher) lazyRepeat(fun func() vertex.Status) vertex.Status {
 	for {
-		if fun() != vertex.Undefined {
-			return
+		if status := fun(); status != vertex.Undefined {
+			return status
 		}
 		select {
 		case <-a.ctx.Done():
-			return
+			return vertex.Undefined
 		case <-a.inChan:
 		case <-time.After(periodicCheckEach):
 		}
@@ -227,4 +235,13 @@ func (a *attacher) lazyRepeat(fun func() vertex.Status) (status vertex.Status) {
 
 func (a *attacher) baselineStateReader() multistate.SugaredStateReader {
 	return multistate.MakeSugared(a.env.GetStateReaderForTheBranch(a.baselineBranch))
+}
+
+const trace = true
+
+func (a *attacher) tracef(format string, lazyArgs ...any) {
+	if trace {
+		format1 := "TRACE attacher " + a.vid.IDShortString() + ": " + format
+		a.env.Log().Infof(format1, util.EvalLazyArgs(lazyArgs...)...)
+	}
 }

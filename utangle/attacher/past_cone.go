@@ -37,6 +37,8 @@ func (a *attacher) solidifyPastCone() vertex.Status {
 
 // attachVertex: vid corresponds to the vertex v
 func (a *attacher) attachVertex(v *vertex.Vertex, vid *vertex.WrappedTx, parasiticChainHorizon core.LogicalTime) vertex.Status {
+	a.tracef("attachVertex %s", vid.IDShortString)
+
 	util.Assertf(!util.IsNil(a.baselineStateReader), "!util.IsNil(a.baselineStateReader)")
 	if a.goodPastVertices.Contains(vid) {
 		return vertex.Good
@@ -51,10 +53,17 @@ func (a *attacher) attachVertex(v *vertex.Vertex, vid *vertex.WrappedTx, parasit
 		a.endorsementsOk = true
 	}
 	// only starting with inputs after endorsements are ok
-	return a.attachInputs(v, vid, parasiticChainHorizon) // recursive
+	status := a.attachInputs(v, vid, parasiticChainHorizon) // recursive
+	if status == vertex.Good {
+		a.undefinedPastVertices.Remove(vid)
+		a.goodPastVertices.Insert(vid)
+	}
+	return status
 }
 
 func (a *attacher) attachEndorsements(v *vertex.Vertex, parasiticChainHorizon core.LogicalTime) vertex.Status {
+	a.tracef("attachVertex %s", v.Tx.IDShortString)
+
 	allGood := true
 	var status vertex.Status
 
@@ -96,6 +105,8 @@ func (a *attacher) attachEndorsements(v *vertex.Vertex, parasiticChainHorizon co
 }
 
 func (a *attacher) attachInputs(v *vertex.Vertex, vid *vertex.WrappedTx, parasiticChainHorizon core.LogicalTime) (status vertex.Status) {
+	a.tracef("attachInputs %s", vid.IDShortString)
+
 	allGood := true
 	for i := range v.Inputs {
 		switch status = a.attachInputID(v, vid, byte(i)); status {
@@ -134,6 +145,8 @@ func (a *attacher) attachInputs(v *vertex.Vertex, vid *vertex.WrappedTx, parasit
 }
 
 func (a *attacher) attachRooted(wOut vertex.WrappedOutput) vertex.Status {
+	a.tracef("attachRooted %s", wOut.IDShortString)
+
 	status := vertex.Undefined
 	consumed := a.rooted[wOut.VID]
 	stateReader := a.baselineStateReader()
@@ -168,6 +181,8 @@ func (a *attacher) attachRooted(wOut vertex.WrappedOutput) vertex.Status {
 }
 
 func (a *attacher) attachOutput(wOut vertex.WrappedOutput, parasiticChainHorizon core.LogicalTime) vertex.Status {
+	a.tracef("attachOutput %s", wOut.IDShortString)
+
 	_, alreadyPending := a.pendingOutputs[wOut]
 	util.Assertf(!alreadyPending, "inconsistency: unexpected wrapped output in the pending list")
 
@@ -215,6 +230,8 @@ func (a *attacher) branchesCompatible(vid1, vid2 *vertex.WrappedTx) bool {
 }
 
 func (a *attacher) attachInputID(consumerVertex *vertex.Vertex, consumerTx *vertex.WrappedTx, inputIdx byte) vertex.Status {
+	a.tracef("attachInputID: tx: %s, inputIdx: %d", consumerTx.IDShortString, inputIdx)
+
 	vidInputTx := consumerVertex.Inputs[inputIdx]
 	if vidInputTx != nil {
 		if vidInputTx.GetTxStatus() == vertex.Bad {
@@ -242,6 +259,7 @@ func (a *attacher) attachInputID(consumerVertex *vertex.Vertex, consumerTx *vert
 				return vertex.Bad
 			}
 		}
+		consumerVertex.Inputs[inputIdx] = vidInputTx
 		return vidInputTx.GetTxStatus()
 	}
 

@@ -14,7 +14,7 @@ func (o *WrappedOutput) DecodeID() *core.OutputID {
 	return &ret
 }
 
-func (o *WrappedOutput) IDShort() string {
+func (o *WrappedOutput) IDShortString() string {
 	if o == nil {
 		return "<nil>"
 	}

@@ -28,12 +28,9 @@ func (ut *DAG) AddVertexNoLock(vid *vertex.WrappedTx) {
 
 const sharedStateReaderCacheSize = 3000
 
-func (ut *DAG) AddBranch(branchVID *vertex.WrappedTx) {
+func (ut *DAG) AddBranchNoLock(branchVID *vertex.WrappedTx) {
 	util.Assertf(branchVID.IsBranchTransaction(), "branchVID.IsBranchTransaction()")
-	util.Assertf(branchVID.GetTxStatus() == vertex.Good, "branchVID.GetTxStatus()==vertex.Good")
-
-	ut.mutex.Lock()
-	defer ut.mutex.Unlock()
+	util.Assertf(branchVID.GetTxStatus() != vertex.Bad, "branchVID.GetTxStatus() != vertex.Bad")
 
 	_, already := ut.branches[branchVID]
 	util.Assertf(!already, "repeating branch %s", branchVID.IDShortString())

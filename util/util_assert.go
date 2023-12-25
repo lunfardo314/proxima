@@ -12,9 +12,12 @@ import (
 func EvalLazyArgs(args ...any) []any {
 	ret := make([]any, len(args))
 	for i, arg := range args {
-		if arg1, isClosure := arg.(func() any); isClosure {
-			ret[i] = arg1()
-		} else {
+		switch funArg := arg.(type) {
+		case func() any:
+			ret[i] = funArg()
+		case func() string:
+			ret[i] = funArg()
+		default:
 			ret[i] = arg
 		}
 	}

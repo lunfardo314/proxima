@@ -21,7 +21,7 @@ func newTestingWorkflow(txBytesStore global.TxBytesStore, dag *dag.DAG) *testing
 	return &testingWorkflow{
 		txBytesStore: txBytesStore,
 		DAG:          dag,
-		log:          global.NewLogger("test", zap.InfoLevel, nil, ""),
+		log:          global.NewLogger("", zap.InfoLevel, nil, ""),
 	}
 }
 

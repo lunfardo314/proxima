@@ -2,12 +2,11 @@ package attacher
 
 import (
 	"github.com/lunfardo314/proxima/multistate"
-	"github.com/lunfardo314/proxima/utangle/vertex"
 	"github.com/lunfardo314/proxima/util"
 )
 
 func (a *attacher) finalize() {
-	util.Assertf(a.vid.GetTxStatus() == vertex.Good, "a.vid.GetTxStatus() == vertex.Good")
+	a.tracef("finalize")
 	util.Assertf(len(a.undefinedPastVertices) == 0, "len(a.undefinedPastVertices)==0")
 	util.Assertf(len(a.pendingOutputs) == 0, "len(a.pendingOutputs)==0")
 	util.Assertf(len(a.rooted) > 0, "len(a.rooted) > 0")
@@ -16,7 +15,9 @@ func (a *attacher) finalize() {
 	if a.vid.IsBranchTransaction() {
 		coverage := a.commitBranch()
 		a.vid.SetLedgerCoverage(coverage)
-		a.env.AddBranch(a.vid)
+		a.env.WithGlobalWriteLock(func() {
+			a.env.AddBranchNoLock(a.vid)
+		})
 		a.env.EvidenceBookedBranch(a.vid.ID(), a.vid.MustSequencerID())
 	} else {
 		coverage := a.calculateCoverage()

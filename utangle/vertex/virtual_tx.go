@@ -42,8 +42,11 @@ func (v *VirtualTransaction) addOutput(idx byte, o *core.Output) {
 	v.mutex.Lock()
 	defer v.mutex.Unlock()
 
-	_, already := v.outputs[idx]
-	util.Assertf(!already, "output %d already present in virtual tx %s", idx, v.txid.StringShort())
+	oOld, already := v.outputs[idx]
+	if already {
+		util.Assertf(bytes.Equal(oOld.Bytes(), o.Bytes()), "addOutput: inconsistent output %d data in virtual tx %s", idx, v.txid.StringShort())
+		return
+	}
 	v.outputs[idx] = o
 }
 

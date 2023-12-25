@@ -7,7 +7,7 @@ import (
 
 func (a *attacher) solidifyBaselineState() vertex.Status {
 	return a.lazyRepeat(func() (status vertex.Status) {
-		status = vertex.Bad
+		status = vertex.Undefined
 		a.vid.Unwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
 			if a.baselineBranch == nil {
 				status = a.solidifyBaseline(v)
@@ -46,7 +46,6 @@ func (a *attacher) solidifyStem(v *vertex.Vertex) vertex.Status {
 	case vertex.Good:
 		v.BaselineBranch = v.Inputs[stemInputIdx].BaselineBranch()
 		util.Assertf(v.BaselineBranch != nil, "a.baselineBranch != nil")
-		return vertex.Good
 	case vertex.Bad:
 	case vertex.Undefined:
 		a.env.OnChangeNotify(v.Inputs[stemInputIdx], a.vid)
