@@ -7,7 +7,6 @@ import (
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/dag/vertex"
 	"github.com/lunfardo314/proxima/global"
-	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/util/set"
 )
 
@@ -61,15 +60,11 @@ type (
 
 const TipSlots = 5
 
-func NewUTXOTangle(stateStore global.StateStore) *UTXOTangle {
+func New(stateStore global.StateStore) *UTXOTangle {
 	return &UTXOTangle{
 		stateStore: stateStore,
 		vertices:   make(map[core.TransactionID]*vertex.WrappedTx),
 		branches:   make(map[*vertex.WrappedTx]global.IndexedStateReader),
 		syncData:   newSyncData(),
 	}
-}
-
-func (ut *UTXOTangle) TransactionStringFromBytes(txBytes []byte) string {
-	return transaction.ParseBytesToString(txBytes, ut.GetUTXO)
 }

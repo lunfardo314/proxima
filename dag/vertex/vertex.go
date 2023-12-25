@@ -31,8 +31,8 @@ func (v *Vertex) getSequencerPredecessor() *WrappedTx {
 	return v.Inputs[predIdx]
 }
 
-// getConsumedOutput return consumed output at index i or nil, nil if input is orphaned
-func (v *Vertex) getConsumedOutput(i byte) (*core.Output, error) {
+// GetConsumedOutput return consumed output at index i or nil, nil if input is orphaned
+func (v *Vertex) GetConsumedOutput(i byte) (*core.Output, error) {
 	if int(i) >= len(v.Inputs) {
 		return nil, fmt.Errorf("wrong input index %d", i)
 	}
@@ -50,7 +50,7 @@ func (v *Vertex) ValidateConstraints(traceOption ...int) error {
 	if len(traceOption) > 0 {
 		traceOpt = traceOption[0]
 	}
-	ctx, err := transaction.ContextFromTransaction(v.Tx, v.getConsumedOutput, traceOpt)
+	ctx, err := transaction.ContextFromTransaction(v.Tx, v.GetConsumedOutput, traceOpt)
 	if err != nil {
 		return err
 	}
@@ -62,7 +62,7 @@ func (v *Vertex) ValidateConstraints(traceOption ...int) error {
 }
 
 func (v *Vertex) ValidateDebug() (string, error) {
-	ctx, err := transaction.ContextFromTransaction(v.Tx, v.getConsumedOutput)
+	ctx, err := transaction.ContextFromTransaction(v.Tx, v.GetConsumedOutput)
 	if err != nil {
 		return "", err
 	}

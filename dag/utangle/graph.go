@@ -70,7 +70,7 @@ func makeGraphNode(vid *vertex.WrappedTx, gr graph.Graph[string, string], seqDic
 	vid.Unwrap(vertex.UnwrapOptions{
 		Vertex: func(v *vertex.Vertex) {
 			if v.Tx.IsSequencerMilestone() {
-				attr = sequencerNodeAttributes(v, vid.LedgerCoverage(nil), seqDict)
+				attr = sequencerNodeAttributes(v, vid.GetLedgerCoverage().Sum(), seqDict)
 			}
 			if v.Tx.IsBranchTransaction() {
 				attr = append(attr, graph.VertexAttribute("shape", "box"))
@@ -94,7 +94,7 @@ func makeGraphEdges(vid *vertex.WrappedTx, gr graph.Graph[string, string]) {
 	id := vid.IDVeryShort()
 	vid.Unwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
 		v.ForEachInputDependency(func(i byte, inp *vertex.WrappedTx) bool {
-			o, err := v.getConsumedOutput(i)
+			o, err := v.GetConsumedOutput(i)
 			util.AssertNoError(err)
 			outIndex := v.Tx.MustOutputIndexOfTheInput(i)
 			edgeAttributes := []func(_ *graph.EdgeProperties){

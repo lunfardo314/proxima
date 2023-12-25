@@ -13,6 +13,10 @@ func (ut *UTXOTangle) Log() *zap.SugaredLogger {
 	panic("implement me")
 }
 
+func (ut *UTXOTangle) StateStore() global.StateStore {
+	return ut.stateStore
+}
+
 func (ut *UTXOTangle) WithGlobalWriteLock(fun func()) {
 	ut.mutex.Lock()
 	fun()
