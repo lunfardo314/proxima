@@ -1,17 +1,17 @@
-package utangle
+package dag
 
 import (
 	"sync"
 	"time"
 
 	"github.com/lunfardo314/proxima/core"
-	"github.com/lunfardo314/proxima/dag/vertex"
 	"github.com/lunfardo314/proxima/global"
+	"github.com/lunfardo314/proxima/utangle/vertex"
 	"github.com/lunfardo314/proxima/util/set"
 )
 
 type (
-	UTXOTangle struct {
+	DAG struct {
 		mutex      sync.RWMutex
 		stateStore global.StateStore
 		vertices   map[core.TransactionID]*vertex.WrappedTx
@@ -60,8 +60,8 @@ type (
 
 const TipSlots = 5
 
-func New(stateStore global.StateStore) *UTXOTangle {
-	return &UTXOTangle{
+func New(stateStore global.StateStore) *DAG {
+	return &DAG{
 		stateStore: stateStore,
 		vertices:   make(map[core.TransactionID]*vertex.WrappedTx),
 		branches:   make(map[*vertex.WrappedTx]global.IndexedStateReader),

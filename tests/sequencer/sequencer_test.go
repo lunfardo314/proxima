@@ -1092,23 +1092,23 @@ func TestPruning(t *testing.T) {
 		r.ut.SaveTree(fnameFromTestName(t) + "_TREE")
 
 		reachable2, orphaned2, baseline2 := r.ut.ReachableAndOrphaned(2)
-		t.Logf("====== top slots: %d, reachable %d, orphaned %d, since baseline: %v, total vertices: %d",
+		t.Logf("====== top slots: %d, reachable %d, orphaned %d, since baseline: %v, total dag: %d",
 			2, len(reachable2), len(orphaned2), time.Since(baseline2), r.ut.NumVertices())
 		require.EqualValues(t, r.ut.NumVertices(), len(reachable2)+len(orphaned2))
 
 		reachable3, orphaned3, baseline3 := r.ut.ReachableAndOrphaned(3)
-		t.Logf("====== top slots: %d, reachable %d, orphaned %d, since baseline: %v, total vertices: %d",
+		t.Logf("====== top slots: %d, reachable %d, orphaned %d, since baseline: %v, total dag: %d",
 			3, len(reachable3), len(orphaned3), time.Since(baseline3), r.ut.NumVertices())
 		require.EqualValues(t, r.ut.NumVertices(), len(reachable3)+len(orphaned3))
 
 		reachable5, orphaned5, baseline5 := r.ut.ReachableAndOrphaned(5)
-		t.Logf("====== top slots: %d, reachable %d, orphaned %d, since baseline: %v, total vertices: %d",
+		t.Logf("====== top slots: %d, reachable %d, orphaned %d, since baseline: %v, total dag: %d",
 			5, len(reachable5), len(orphaned5), time.Since(baseline5), r.ut.NumVertices())
 		require.EqualValues(t, r.ut.NumVertices(), len(reachable5)+len(orphaned5))
 
 		startT := time.Now()
 		nPrunedTx, nPrunedBranches, deletedSlots := r.ut.PruneOrphaned(5)
-		t.Logf("pruned %d vertices and %d branches in %v. Deleted slots: %d",
+		t.Logf("pruned %d dag and %d branches in %v. Deleted slots: %d",
 			nPrunedTx, nPrunedBranches, time.Since(startT), deletedSlots)
 		r.ut.SaveGraph(fnameFromTestName(t) + "_PRUNE5_before_cut")
 
@@ -1121,7 +1121,7 @@ func TestPruning(t *testing.T) {
 
 		startT = time.Now()
 		nPrunedTx, nPrunedBranches, deletedSlots = r.ut.PruneOrphaned(5)
-		t.Logf("pruned %d vertices and %d branches in %v. Deleted slots: %d",
+		t.Logf("pruned %d dag and %d branches in %v. Deleted slots: %d",
 			nPrunedTx, nPrunedBranches, time.Since(startT), deletedSlots)
 		r.ut.SaveGraph(fnameFromTestName(t) + "_PRUNE5_after_cut_final")
 
@@ -1198,17 +1198,17 @@ func TestPruning(t *testing.T) {
 		t.Logf("Heaviest branch summary: \n%s", summarySupply.Lines("     ").String())
 
 		reachable2, orphaned2, baseline2 := r.ut.ReachableAndOrphaned(2)
-		t.Logf("====== top slots: %d, reachable %d, orphaned %d, since baseline: %v, total vertices: %d",
+		t.Logf("====== top slots: %d, reachable %d, orphaned %d, since baseline: %v, total dag: %d",
 			2, len(reachable2), len(orphaned2), time.Since(baseline2), r.ut.NumVertices())
 		require.EqualValues(t, r.ut.NumVertices(), len(reachable2)+len(orphaned2))
 
 		reachable3, orphaned3, baseline3 := r.ut.ReachableAndOrphaned(3)
-		t.Logf("====== top slots: %d, reachable %d, orphaned %d, since baseline: %v, total vertices: %d",
+		t.Logf("====== top slots: %d, reachable %d, orphaned %d, since baseline: %v, total dag: %d",
 			3, len(reachable3), len(orphaned3), time.Since(baseline3), r.ut.NumVertices())
 		require.EqualValues(t, r.ut.NumVertices(), len(reachable3)+len(orphaned3))
 
 		reachable5, orphaned5, baseline5 := r.ut.ReachableAndOrphaned(5)
-		t.Logf("====== top slots: %d, reachable %d, orphaned %d, since baseline: %v, total vertices: %d",
+		t.Logf("====== top slots: %d, reachable %d, orphaned %d, since baseline: %v, total dag: %d",
 			5, len(reachable5), len(orphaned5), time.Since(baseline5), r.ut.NumVertices())
 		require.EqualValues(t, r.ut.NumVertices(), len(reachable5)+len(orphaned5))
 
@@ -1285,17 +1285,17 @@ func TestPruning(t *testing.T) {
 		t.Logf("Heaviest branch summary: \n%s", summarySupply.Lines("     ").String())
 
 		reachable2, orphaned2, baseline2 := r.ut.ReachableAndOrphaned(2)
-		t.Logf("====== top slots: %d, reachable %d, orphaned %d, since baseline: %v, total vertices: %d",
+		t.Logf("====== top slots: %d, reachable %d, orphaned %d, since baseline: %v, total dag: %d",
 			2, len(reachable2), len(orphaned2), time.Since(baseline2), r.ut.NumVertices())
 		require.EqualValues(t, r.ut.NumVertices(), len(reachable2)+len(orphaned2))
 
 		reachable3, orphaned3, baseline3 := r.ut.ReachableAndOrphaned(3)
-		t.Logf("====== top slots: %d, reachable %d, orphaned %d, since baseline: %v, total vertices: %d",
+		t.Logf("====== top slots: %d, reachable %d, orphaned %d, since baseline: %v, total dag: %d",
 			3, len(reachable3), len(orphaned3), time.Since(baseline3), r.ut.NumVertices())
 		require.EqualValues(t, r.ut.NumVertices(), len(reachable3)+len(orphaned3))
 
 		reachable5, orphaned5, baseline5 := r.ut.ReachableAndOrphaned(5)
-		t.Logf("====== top slots: %d, reachable %d, orphaned %d, since baseline: %v, total vertices: %d",
+		t.Logf("====== top slots: %d, reachable %d, orphaned %d, since baseline: %v, total dag: %d",
 			5, len(reachable5), len(orphaned5), time.Since(baseline5), r.ut.NumVertices())
 		require.EqualValues(t, r.ut.NumVertices(), len(reachable5)+len(orphaned5))
 

@@ -40,7 +40,7 @@ func (w *Workflow) pruneOrphanedLoop(log *zap.SugaredLogger) {
 
 		w.utxoTangle.SyncData().SetLastPrunedOrphaned(time.Now())
 
-		log.Infof("SLOT %d. Pruned %d orphaned transactions and %d branches out of total %d vertices in %v, deleted slots: %d",
+		log.Infof("SLOT %d. Pruned %d orphaned transactions and %d branches out of total %d dag in %v, deleted slots: %d",
 			core.LogicalTimeNow().TimeSlot(), nOrphaned, nOrphanedBranches, nVertices, time.Since(startTime), nDeletedSlots)
 	}
 	log.Infof("Prune loop stopped")

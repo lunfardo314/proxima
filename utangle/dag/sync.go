@@ -1,4 +1,4 @@
-package utangle
+package dag
 
 import (
 	"sync"
@@ -17,7 +17,7 @@ func newSyncData() *SyncData {
 	}
 }
 
-func (ut *UTXOTangle) SyncData() *SyncData {
+func (ut *DAG) SyncData() *SyncData {
 	return ut.syncData
 }
 

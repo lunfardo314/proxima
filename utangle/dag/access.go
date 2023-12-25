@@ -1,40 +1,34 @@
-package utangle
+package dag
 
 import (
 	"github.com/lunfardo314/proxima/core"
-	"github.com/lunfardo314/proxima/dag/vertex"
 	"github.com/lunfardo314/proxima/global"
+	"github.com/lunfardo314/proxima/utangle/vertex"
 	"github.com/lunfardo314/proxima/util"
-	"go.uber.org/zap"
 )
 
-func (ut *UTXOTangle) Log() *zap.SugaredLogger {
-	//TODO implement me
-	panic("implement me")
-}
-
-func (ut *UTXOTangle) StateStore() global.StateStore {
+func (ut *DAG) StateStore() global.StateStore {
 	return ut.stateStore
 }
 
-func (ut *UTXOTangle) WithGlobalWriteLock(fun func()) {
+func (ut *DAG) WithGlobalWriteLock(fun func()) {
 	ut.mutex.Lock()
 	fun()
 	ut.mutex.Unlock()
 }
 
-func (ut *UTXOTangle) GetVertexNoLock(txid *core.TransactionID) *vertex.WrappedTx {
+func (ut *DAG) GetVertexNoLock(txid *core.TransactionID) *vertex.WrappedTx {
 	return ut.vertices[*txid]
 }
 
-func (ut *UTXOTangle) AddVertexNoLock(vid *vertex.WrappedTx) {
+func (ut *DAG) AddVertexNoLock(vid *vertex.WrappedTx) {
 	util.Assertf(ut.GetVertexNoLock(vid.ID()) == nil, "ut.GetVertexNoLock(vid.ID())==nil")
 	ut.vertices[*vid.ID()] = vid
 }
 
 const sharedStateReaderCacheSize = 3000
 
-func (ut *UTXOTangle) AddBranch(branchVID *vertex.WrappedTx) {
+func (ut *DAG) AddBranch(branchVID *vertex.WrappedTx) {
 	util.Assertf(branchVID.IsBranchTransaction(), "branchVID.IsBranchTransaction()")
 	util.Assertf(branchVID.GetTxStatus() == vertex.Good, "branchVID.GetTxStatus()==vertex.Good")
 
@@ -47,7 +41,7 @@ func (ut *UTXOTangle) AddBranch(branchVID *vertex.WrappedTx) {
 	ut.branches[branchVID] = ut.MustGetIndexedStateReader(branchVID.ID(), sharedStateReaderCacheSize)
 }
 
-func (ut *UTXOTangle) GetStateReaderForTheBranch(branchVID *vertex.WrappedTx) global.IndexedStateReader {
+func (ut *DAG) GetStateReaderForTheBranch(branchVID *vertex.WrappedTx) global.IndexedStateReader {
 	util.Assertf(branchVID.IsBranchTransaction(), "branchVID.IsBranchTransaction()")
 	util.Assertf(branchVID.GetTxStatus() == vertex.Good, "branchVID.GetTxStatus()==vertex.Good")
 
@@ -57,25 +51,10 @@ func (ut *UTXOTangle) GetStateReaderForTheBranch(branchVID *vertex.WrappedTx) gl
 	return ut.branches[branchVID]
 }
 
-func (ut *UTXOTangle) Pull(txid core.TransactionID) {
-	//TODO implement me
-	panic("implement me")
-}
-
-func (ut *UTXOTangle) OnChangeNotify(onChange, notify *vertex.WrappedTx) {
-	//TODO implement me
-	panic("implement me")
-}
-
-func (ut *UTXOTangle) Notify(changed *vertex.WrappedTx) {
-	//TODO implement me
-	panic("implement me")
-}
-
-func (ut *UTXOTangle) EvidenceIncomingBranch(txid *core.TransactionID, seqID core.ChainID) {
+func (ut *DAG) EvidenceIncomingBranch(txid *core.TransactionID, seqID core.ChainID) {
 	ut.syncData.EvidenceIncomingBranch(txid, seqID)
 }
 
-func (ut *UTXOTangle) EvidenceBookedBranch(txid *core.TransactionID, seqID core.ChainID) {
+func (ut *DAG) EvidenceBookedBranch(txid *core.TransactionID, seqID core.ChainID) {
 	ut.syncData.EvidenceBookedBranch(txid, seqID)
 }

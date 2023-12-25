@@ -1,18 +1,18 @@
-package utangle
+package dag
 
 import (
 	"fmt"
 	"sort"
 
 	"github.com/lunfardo314/proxima/core"
-	"github.com/lunfardo314/proxima/dag/vertex"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/multistate"
+	"github.com/lunfardo314/proxima/utangle/vertex"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/set"
 )
 
-func (ut *UTXOTangle) GetIndexedStateReader(branchTxID *core.TransactionID, clearCacheAtSize ...int) (global.IndexedStateReader, error) {
+func (ut *DAG) GetIndexedStateReader(branchTxID *core.TransactionID, clearCacheAtSize ...int) (global.IndexedStateReader, error) {
 	rr, found := multistate.FetchRootRecord(ut.stateStore, *branchTxID)
 	if !found {
 		return nil, fmt.Errorf("root record for %s has not been found", branchTxID.StringShort())
@@ -20,13 +20,13 @@ func (ut *UTXOTangle) GetIndexedStateReader(branchTxID *core.TransactionID, clea
 	return multistate.NewReadable(ut.stateStore, rr.Root, clearCacheAtSize...)
 }
 
-func (ut *UTXOTangle) MustGetIndexedStateReader(branchTxID *core.TransactionID, clearCacheAtSize ...int) global.IndexedStateReader {
+func (ut *DAG) MustGetIndexedStateReader(branchTxID *core.TransactionID, clearCacheAtSize ...int) global.IndexedStateReader {
 	ret, err := ut.GetIndexedStateReader(branchTxID, clearCacheAtSize...)
 	util.AssertNoError(err)
 	return ret
 }
 
-func (ut *UTXOTangle) _timeSlotsOrdered(descOrder ...bool) []core.TimeSlot {
+func (ut *DAG) _timeSlotsOrdered(descOrder ...bool) []core.TimeSlot {
 	desc := false
 	if len(descOrder) > 0 {
 		desc = descOrder[0]
@@ -47,11 +47,11 @@ func (ut *UTXOTangle) _timeSlotsOrdered(descOrder ...bool) []core.TimeSlot {
 
 // Access to the tangle state is NON-DETERMINISTIC
 //
-//func (ut *UTXOTangle) KnowsCommittedTransaction(txid *core.TransactionID) bool {
+//func (ut *DAG) KnowsCommittedTransaction(txid *core.TransactionID) bool {
 //	return ut.HasTransactionOnTangle(txid)
 //}
 
-func (ut *UTXOTangle) _branchesDescending(slot core.TimeSlot) []*vertex.WrappedTx {
+func (ut *DAG) _branchesDescending(slot core.TimeSlot) []*vertex.WrappedTx {
 	ret := make([]*vertex.WrappedTx, 0)
 	for br := range ut.branches {
 		if br.TimeSlot() == slot {
@@ -65,14 +65,14 @@ func (ut *UTXOTangle) _branchesDescending(slot core.TimeSlot) []*vertex.WrappedT
 }
 
 // LatestTimeSlot latest time slot with some branches
-func (ut *UTXOTangle) LatestTimeSlot() (ret core.TimeSlot) {
+func (ut *DAG) LatestTimeSlot() (ret core.TimeSlot) {
 	ut.mutex.RLock()
 	defer ut.mutex.RUnlock()
 
 	return ut._latestTimeSlot()
 }
 
-func (ut *UTXOTangle) _latestTimeSlot() (ret core.TimeSlot) {
+func (ut *DAG) _latestTimeSlot() (ret core.TimeSlot) {
 	for br := range ut.branches {
 		if br.TimeSlot() > ret {
 			ret = br.TimeSlot()
@@ -81,7 +81,7 @@ func (ut *UTXOTangle) _latestTimeSlot() (ret core.TimeSlot) {
 	return
 }
 
-func (ut *UTXOTangle) FindOutputInLatestTimeSlot(oid *core.OutputID) (ret *vertex.WrappedTx, rdr multistate.SugaredStateReader) {
+func (ut *DAG) FindOutputInLatestTimeSlot(oid *core.OutputID) (ret *vertex.WrappedTx, rdr multistate.SugaredStateReader) {
 	ut.mutex.RLock()
 	defer ut.mutex.RUnlock()
 
@@ -93,7 +93,7 @@ func (ut *UTXOTangle) FindOutputInLatestTimeSlot(oid *core.OutputID) (ret *verte
 	return
 }
 
-func (ut *UTXOTangle) HasOutputInAllBranches(e core.TimeSlot, oid *core.OutputID) bool {
+func (ut *DAG) HasOutputInAllBranches(e core.TimeSlot, oid *core.OutputID) bool {
 	ut.mutex.RLock()
 	defer ut.mutex.RUnlock()
 
@@ -105,7 +105,7 @@ func (ut *UTXOTangle) HasOutputInAllBranches(e core.TimeSlot, oid *core.OutputID
 	return true
 }
 
-//func (ut *UTXOTangle) GetSequencerBootstrapOutputs(seqID core.ChainID) (chainOut vertex.WrappedOutput, stemOut vertex.WrappedOutput, found bool) {
+//func (ut *DAG) GetSequencerBootstrapOutputs(seqID core.ChainID) (chainOut vertex.WrappedOutput, stemOut vertex.WrappedOutput, found bool) {
 //	branches := multistate.FetchLatestBranches(ut.stateStore)
 //	for _, bd := range branches {
 //		rdr := multistate.MustNewSugaredStateReader(ut.stateStore, bd.Root)
@@ -126,7 +126,7 @@ func (ut *UTXOTangle) HasOutputInAllBranches(e core.TimeSlot, oid *core.OutputID
 // ScanAccount collects all outputIDs, unlockable by the address
 // It is a global scan of the tangle and of the state. Should be only done once upon sequencer start.
 // Further on the account should be maintained by the listener
-//func (ut *UTXOTangle) ScanAccount(addr core.AccountID, lastNTimeSlots int) set.Set[vertex.WrappedOutput] {
+//func (ut *DAG) ScanAccount(addr core.AccountID, lastNTimeSlots int) set.Set[vertex.WrappedOutput] {
 //	toScan, _, _ := ut.TipList(lastNTimeSlots)
 //	ret := set.New[vertex.WrappedOutput]()
 //
@@ -160,7 +160,7 @@ func (ut *UTXOTangle) HasOutputInAllBranches(e core.TimeSlot, oid *core.OutputID
 //	return ret
 //}
 
-//func (ut *UTXOTangle) _baselineTime(nLatestSlots int) (time.Time, int) {
+//func (ut *DAG) _baselineTime(nLatestSlots int) (time.Time, int) {
 //	util.Assertf(nLatestSlots > 0, "nLatestSlots > 0")
 //
 //	var earliestSlot core.TimeSlot
@@ -191,11 +191,11 @@ func (ut *UTXOTangle) HasOutputInAllBranches(e core.TimeSlot, oid *core.OutputID
 // - true if there are less or equal than 'nLatestSlots' non-empty time slots
 // returns nil, time.Time{}, false if not enough timeslots
 // list is randomly ordered
-//func (ut *UTXOTangle) _tipList(nLatestSlots int) ([]*vertex.WrappedTx, time.Time, int) {
+//func (ut *DAG) _tipList(nLatestSlots int) ([]*vertex.WrappedTx, time.Time, int) {
 //	baseline, nSlots := ut._baselineTime(nLatestSlots)
 //
 //	ret := make([]*vertex.WrappedTx, 0)
-//	for _, vid := range ut.vertices {
+//	for _, vid := range ut.dag {
 //		if !vid.Time().Before(baseline) {
 //			ret = append(ret, vid)
 //		}
@@ -203,7 +203,7 @@ func (ut *UTXOTangle) HasOutputInAllBranches(e core.TimeSlot, oid *core.OutputID
 //	return ret, baseline, nSlots
 //}
 //
-//func (ut *UTXOTangle) TipList(nLatestSlots int) ([]*vertex.WrappedTx, time.Time, int) {
+//func (ut *DAG) TipList(nLatestSlots int) ([]*vertex.WrappedTx, time.Time, int) {
 //	ut.mutex.RLock()
 //	defer ut.mutex.RUnlock()
 //

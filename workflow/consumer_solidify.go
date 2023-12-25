@@ -30,7 +30,7 @@ type (
 	SolidifyConsumer struct {
 		*Consumer[*SolidifyInputData]
 		stopSolidificationDeadlineLoopChan chan struct{}
-		// txPending is list of draft vertices waiting for solidification to be sent for validation
+		// txPending is list of draft dag waiting for solidification to be sent for validation
 		txPending map[core.TransactionID]wantedTx
 	}
 

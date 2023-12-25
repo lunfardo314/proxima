@@ -22,10 +22,10 @@ type _unwrapOptionsTraverse struct {
 // TraversePastConeDepthFirst performs depth-first traverse of the DAG. Visiting once each node
 // and calling vertex-type specific function if provided on each.
 // If function returns false, the traverse is cancelled globally.
-// The traverse stops at terminal vertices. The vertex is terminal if it either is not-full vertex
+// The traverse stops at terminal dag. The vertex is terminal if it either is not-full vertex
 // i.e. (booked, orphaned, deleted) or it belongs to 'visited' set
-// If 'visited' set is provided at call, it is mutable. In the end it contains all initial vertices plus
-// all vertices visited during the traverse
+// If 'visited' set is provided at call, it is mutable. In the end it contains all initial dag plus
+// all dag visited during the traverse
 func (vid *WrappedTx) TraversePastConeDepthFirst(opt UnwrapOptionsForTraverse, visited ...set.Set[*WrappedTx]) {
 	var visitedSet set.Set[*WrappedTx]
 	if len(visited) > 0 {

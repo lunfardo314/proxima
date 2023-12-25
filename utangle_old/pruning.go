@@ -30,7 +30,7 @@ func _collectReachableSet(rootVID *WrappedTx, ret set.Set[*WrappedTx]) {
 	})
 }
 
-// _reachableFromTipSet a set of vertices reachable from any of the vertex in the tip set
+// _reachableFromTipSet a set of dag reachable from any of the vertex in the tip set
 func _reachableFromTipList(tips []*WrappedTx) set.Set[*WrappedTx] {
 	ret := set.New[*WrappedTx]()
 	for _, vid := range tips {
@@ -69,7 +69,7 @@ func (ut *UTXOTangle) ReachableAndOrphaned(nLatestSlots int) (set.Set[*WrappedTx
 	return reachable, orphaned, baselineTime
 }
 
-// PruneOrphaned acquires global lock and orphans all vertices not reachable from the top N branches
+// PruneOrphaned acquires global lock and orphans all dag not reachable from the top N branches
 func (ut *UTXOTangle) PruneOrphaned(nLatestSlots int) (int, int, int) {
 	ut.mutex.Lock()
 	defer ut.mutex.Unlock()

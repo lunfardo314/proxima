@@ -10,7 +10,7 @@ import (
 //// or after finding it in the provided state.
 //// It returns flag if output ID cannot be solidified (invalid), for example output index is wrong
 //// It returns nil if output cannot be found with the data provided
-//func (ut *dag.UTXOTangle) GetWrappedOutput(oid *core.OutputID, baselineState ...multistate.SugaredStateReader) (WrappedOutput, bool, bool) {
+//func (ut *utangle.UTXOTangle) GetWrappedOutput(oid *core.OutputID, baselineState ...multistate.SugaredStateReader) (WrappedOutput, bool, bool) {
 //	ut.mutex.Lock()
 //	defer ut.mutex.Unlock()
 //
@@ -61,7 +61,7 @@ import (
 //
 //// _pickFromExistingVertex returns wrapped output if vertex already in on the tangle
 //// If output belongs to the virtual tx but is not cached there, loads it (if state is provided)
-//func (ut *dag.UTXOTangle) _pickFromExistingVertex(oid *core.OutputID, baselineState ...multistate.SugaredStateReader) (WrappedOutput, bool, bool) {
+//func (ut *utangle.UTXOTangle) _pickFromExistingVertex(oid *core.OutputID, baselineState ...multistate.SugaredStateReader) (WrappedOutput, bool, bool) {
 //	txid := oid.TransactionID()
 //	if vid, found := ut._getVertex(&txid); found {
 //		hasIt, invalid := vid.HasOutputAt(oid.Index())
@@ -85,7 +85,7 @@ import (
 //	return WrappedOutput{}, false, false
 //}
 //
-//func (ut *dag.UTXOTangle) _wrapNewIntoExistingVirtualBranch(vid *WrappedTx, oid *core.OutputID) (WrappedOutput, bool, bool) {
+//func (ut *utangle.UTXOTangle) _wrapNewIntoExistingVirtualBranch(vid *WrappedTx, oid *core.OutputID) (WrappedOutput, bool, bool) {
 //	util.Assertf(oid.BranchFlagON(), "%s should be a branch", oid.StringShort())
 //
 //	var ret WrappedOutput
@@ -147,7 +147,7 @@ import (
 //	return ret, available, invalid
 //}
 //
-//func (ut *dag.UTXOTangle) _fetchAndWrapBranch(oid *core.OutputID) (WrappedOutput, bool, bool) {
+//func (ut *utangle.UTXOTangle) _fetchAndWrapBranch(oid *core.OutputID) (WrappedOutput, bool, bool) {
 //	// it is a branch tx output, fetch the whole branch
 //	bd, branchFound := multistate.FetchBranchData(ut.stateStore, oid.TransactionID())
 //	if !branchFound {
@@ -155,7 +155,7 @@ import (
 //		return WrappedOutput{}, false, false
 //	}
 //	// branch found. Create virtualTx with seq and stem outputs
-//	vt := dag.NewVirtualBranchTx(&bd)
+//	vt := utangle.NewVirtualBranchTx(&bd)
 //	if oid.Index() != bd.SequencerOutput.ID.Index() && oid.Index() != bd.Stem.ID.Index() {
 //		// not seq or stem
 //		rdr := multistate.MustNewSugaredStateReader(ut.stateStore, bd.Root)

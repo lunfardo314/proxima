@@ -1,4 +1,4 @@
-package utangle
+package dag
 
 import (
 	"errors"
@@ -10,9 +10,9 @@ import (
 	"github.com/dominikbraun/graph"
 	"github.com/dominikbraun/graph/draw"
 	"github.com/lunfardo314/proxima/core"
-	"github.com/lunfardo314/proxima/dag/vertex"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/multistate"
+	"github.com/lunfardo314/proxima/utangle/vertex"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/set"
 )
@@ -112,7 +112,7 @@ func makeGraphEdges(vid *vertex.WrappedTx, gr graph.Graph[string, string]) {
 	}})
 }
 
-func (ut *UTXOTangle) MakeGraph(additionalVertices ...*vertex.WrappedTx) graph.Graph[string, string] {
+func (ut *DAG) MakeGraph(additionalVertices ...*vertex.WrappedTx) graph.Graph[string, string] {
 	ret := graph.New(graph.StringHash, graph.Directed(), graph.Acyclic())
 
 	ut.mutex.RLock()
@@ -134,7 +134,7 @@ func (ut *UTXOTangle) MakeGraph(additionalVertices ...*vertex.WrappedTx) graph.G
 	return ret
 }
 
-func (ut *UTXOTangle) SaveGraph(fname string) {
+func (ut *DAG) SaveGraph(fname string) {
 	gr := ut.MakeGraph()
 	dotFile, _ := os.Create(fname + ".gv")
 	err := draw.DOT(gr, dotFile)
@@ -272,7 +272,7 @@ func MakeTree(stateStore global.StateStore, slots ...int) graph.Graph[string, st
 	return ret
 }
 
-func (ut *UTXOTangle) SaveTree(fname string) {
+func (ut *DAG) SaveTree(fname string) {
 	SaveTree(ut.stateStore, fname)
 }
 

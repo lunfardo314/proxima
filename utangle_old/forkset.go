@@ -8,7 +8,7 @@ import (
 )
 
 // ForkSNReserved is fork serial number for temporary attachment
-// Attached vertices will have serial numbers less than the reserved one
+// Attached dag will have serial numbers less than the reserved one
 const ForkSNReserved = byte(0xff)
 
 func newFork(wOut WrappedOutput, forkSN byte) Fork {

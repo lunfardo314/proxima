@@ -6,17 +6,41 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/core"
-	"github.com/lunfardo314/proxima/dag"
-	"github.com/lunfardo314/proxima/dag/vertex"
+	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/transaction"
+	"github.com/lunfardo314/proxima/utangle/vertex"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/set"
+	"go.uber.org/zap"
 )
 
 type (
+	DAGAccess interface {
+		WithGlobalWriteLock(fun func())
+		GetVertexNoLock(txid *core.TransactionID) *vertex.WrappedTx
+		AddVertexNoLock(vid *vertex.WrappedTx)
+		StateStore() global.StateStore
+		GetStateReaderForTheBranch(branch *vertex.WrappedTx) global.IndexedStateReader
+		AddBranch(branch *vertex.WrappedTx)
+		EvidenceIncomingBranch(txid *core.TransactionID, seqID core.ChainID)
+		EvidenceBookedBranch(txid *core.TransactionID, seqID core.ChainID)
+	}
+
+	PullEnvironment interface {
+		Pull(txid core.TransactionID)
+		OnChangeNotify(onChange, notify *vertex.WrappedTx)
+		Notify(changed *vertex.WrappedTx)
+	}
+
+	AttachEnvironment interface {
+		DAGAccess
+		PullEnvironment
+		Log() *zap.SugaredLogger
+	}
+
 	attacher struct {
-		env                   dag.AttachEnvironment
+		env                   AttachEnvironment
 		vid                   *vertex.WrappedTx
 		baselineBranch        *vertex.WrappedTx
 		goodPastVertices      set.Set[*vertex.WrappedTx]
@@ -38,7 +62,7 @@ const (
 
 // AttachTransaction attaches new incoming transaction. For sequencer transaction it starts attacher routine
 // which manages solidification pull until transaction becomes solid or stopped by the context
-func AttachTransaction(tx *transaction.Transaction, env dag.AttachEnvironment, ctx context.Context) (vid *vertex.WrappedTx) {
+func AttachTransaction(tx *transaction.Transaction, env AttachEnvironment, ctx context.Context) (vid *vertex.WrappedTx) {
 	if tx.IsBranchTransaction() {
 		env.EvidenceIncomingBranch(tx.ID(), tx.SequencerTransactionData().SequencerID)
 	}
@@ -65,7 +89,7 @@ func AttachTransaction(tx *transaction.Transaction, env dag.AttachEnvironment, c
 }
 
 // AttachTxID ensures the txid is on the utangle_old. Must be called from globally locked environment
-func AttachTxID(txid core.TransactionID, env dag.AttachEnvironment, pullNonBranchIfNeeded bool) (vid *vertex.WrappedTx) {
+func AttachTxID(txid core.TransactionID, env AttachEnvironment, pullNonBranchIfNeeded bool) (vid *vertex.WrappedTx) {
 	env.WithGlobalWriteLock(func() {
 		vid = env.GetVertexNoLock(&txid)
 		if vid != nil {
@@ -100,7 +124,7 @@ func AttachTxID(txid core.TransactionID, env dag.AttachEnvironment, pullNonBranc
 	return
 }
 
-func newAttacher(vid *vertex.WrappedTx, env dag.AttachEnvironment, ctx context.Context) *attacher {
+func newAttacher(vid *vertex.WrappedTx, env AttachEnvironment, ctx context.Context) *attacher {
 	ret := &attacher{
 		ctx:              ctx,
 		vid:              vid,
@@ -116,7 +140,7 @@ func newAttacher(vid *vertex.WrappedTx, env dag.AttachEnvironment, ctx context.C
 	return ret
 }
 
-func runAttacher(vid *vertex.WrappedTx, env dag.AttachEnvironment, ctx context.Context) vertex.Status {
+func runAttacher(vid *vertex.WrappedTx, env AttachEnvironment, ctx context.Context) vertex.Status {
 	a := newAttacher(vid, env, ctx)
 	defer a.close()
 

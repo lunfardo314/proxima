@@ -1,8 +1,8 @@
 package attacher
 
 import (
-	"github.com/lunfardo314/proxima/dag/vertex"
 	"github.com/lunfardo314/proxima/multistate"
+	"github.com/lunfardo314/proxima/utangle/vertex"
 	"github.com/lunfardo314/proxima/util"
 )
 
