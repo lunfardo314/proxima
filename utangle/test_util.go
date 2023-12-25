@@ -44,3 +44,7 @@ func (w *testingWorkflow) Notify(changed *vertex.WrappedTx) {
 func (w *testingWorkflow) Log() *zap.SugaredLogger {
 	return w.log
 }
+
+func (w *testingWorkflow) syncLog() {
+	_ = w.log.Sync()
+}

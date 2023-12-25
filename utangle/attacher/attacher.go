@@ -81,6 +81,8 @@ func WithFinalizationCallback(fun func(vid *vertex.WrappedTx)) Option {
 // AttachTransaction attaches new incoming transaction. For sequencer transaction it starts attacher routine
 // which manages solidification pull until transaction becomes solid or stopped by the context
 func AttachTransaction(tx *transaction.Transaction, env AttachEnvironment, opts ...Option) (vid *vertex.WrappedTx) {
+	tracef(env, "AttachTransaction: %s", tx.IDShortString)
+
 	options := &_attacherOptions{}
 	for _, opt := range opts {
 		opt(options)
@@ -139,6 +141,7 @@ func AttachTransactionFromBytes(txBytes []byte, env AttachEnvironment, onFinaliz
 
 // AttachTxID ensures the txid is on the utangle_old. Must be called from globally locked environment
 func AttachTxID(txid core.TransactionID, env AttachEnvironment, pullNonBranchIfNeeded bool) (vid *vertex.WrappedTx) {
+	tracef(env, "AttachTxID: %s", txid.StringShort)
 	env.WithGlobalWriteLock(func() {
 		vid = env.GetVertexNoLock(&txid)
 		if vid != nil {
@@ -163,6 +166,7 @@ func AttachTxID(txid core.TransactionID, env AttachEnvironment, pullNonBranchIfN
 			vid.SetTxStatus(vertex.Good)
 			vid.SetLedgerCoverage(bd.LedgerCoverage)
 			env.AddBranchNoLock(vid) // <<<< will be reading branch data twice. Not big problem
+			tracef(env, "branch fetched from the state: %s", txid.StringShort)
 		} else {
 			// the corresponding state is not in the multistate DB -> put virtualTx to the utangle_old -> pull it
 			// the puller will trigger further solidification
@@ -241,7 +245,13 @@ const trace = true
 
 func (a *attacher) tracef(format string, lazyArgs ...any) {
 	if trace {
-		format1 := "TRACE attacher " + a.vid.IDShortString() + ": " + format
+		format1 := "TRACE [attacher] " + a.vid.IDShortString() + ": " + format
 		a.env.Log().Infof(format1, util.EvalLazyArgs(lazyArgs...)...)
+	}
+}
+
+func tracef(env AttachEnvironment, format string, lazyArgs ...any) {
+	if trace {
+		env.Log().Infof("TRACE "+format, util.EvalLazyArgs(lazyArgs...)...)
 	}
 }
