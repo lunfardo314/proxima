@@ -23,8 +23,7 @@ type (
 		AddVertexNoLock(vid *vertex.WrappedTx)
 		StateStore() global.StateStore
 		GetStateReaderForTheBranch(branch *vertex.WrappedTx) global.IndexedStateReader
-
-		//AddBranchNoLock(branch *vertex.WrappedTx, branchData *multistate.BranchData)
+		AddBranch(branch *vertex.WrappedTx)
 
 		Pull(txid core.TransactionID)
 		OnChangeNotify(onChange, notify *vertex.WrappedTx)
@@ -38,7 +37,6 @@ type (
 		env                   AttachEnvironment
 		vid                   *vertex.WrappedTx
 		baselineBranch        *vertex.WrappedTx
-		baselineStateReader   multistate.SugaredStateReader
 		goodPastVertices      set.Set[*vertex.WrappedTx]
 		undefinedPastVertices set.Set[*vertex.WrappedTx]
 		rooted                map[*vertex.WrappedTx]set.Set[byte]
@@ -147,8 +145,6 @@ func runAttacher(vid *vertex.WrappedTx, env AttachEnvironment, ctx context.Conte
 	}
 
 	util.Assertf(a.baselineBranch != nil, "a.baselineBranch != nil")
-	// baseline is solid, i.e. we know the baseline state the transactions must be solidified upon
-	a.baselineStateReader = multistate.MakeSugared(a.env.GetStateReaderForTheBranch(a.baselineBranch))
 
 	// then continue with the rest
 	status = a.solidifyPastCone()
@@ -172,4 +168,8 @@ func (a *attacher) lazyRepeat(fun func() vertex.Status) (status vertex.Status) {
 		case <-time.After(periodicCheckEach):
 		}
 	}
+}
+
+func (a *attacher) baselineStateReader() multistate.SugaredStateReader {
+	return multistate.MakeSugared(a.env.GetStateReaderForTheBranch(a.baselineBranch))
 }

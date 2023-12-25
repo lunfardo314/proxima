@@ -28,9 +28,29 @@ func (ut *UTXOTangle) AddVertexNoLock(vid *vertex.WrappedTx) {
 	ut.vertices[*vid.ID()] = vid
 }
 
-func (ut *UTXOTangle) GetStateReaderForTheBranch(branch *vertex.WrappedTx) global.IndexedStateReader {
-	util.Assertf(branch.IsBranchTransaction(), "branch.IsBranchTransaction()")
-	return ut.MustGetIndexedStateReader(branch.ID())
+const sharedStateReaderCacheSize = 3000
+
+func (ut *UTXOTangle) AddBranch(branchVID *vertex.WrappedTx) {
+	util.Assertf(branchVID.IsBranchTransaction(), "branchVID.IsBranchTransaction()")
+	util.Assertf(branchVID.GetTxStatus() == vertex.Good, "branchVID.GetTxStatus()==vertex.Good")
+
+	ut.mutex.Lock()
+	defer ut.mutex.Unlock()
+
+	_, already := ut.branches[branchVID]
+	util.Assertf(!already, "repeating branch %s", branchVID.IDShortString())
+
+	ut.branches[branchVID] = ut.MustGetIndexedStateReader(branchVID.ID(), sharedStateReaderCacheSize)
+}
+
+func (ut *UTXOTangle) GetStateReaderForTheBranch(branchVID *vertex.WrappedTx) global.IndexedStateReader {
+	util.Assertf(branchVID.IsBranchTransaction(), "branchVID.IsBranchTransaction()")
+	util.Assertf(branchVID.GetTxStatus() == vertex.Good, "branchVID.GetTxStatus()==vertex.Good")
+
+	ut.mutex.RLock()
+	defer ut.mutex.RUnlock()
+
+	return ut.branches[branchVID]
 }
 
 func (ut *UTXOTangle) Pull(txid core.TransactionID) {

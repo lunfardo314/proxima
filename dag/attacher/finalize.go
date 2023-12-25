@@ -13,14 +13,15 @@ func (a *attacher) finalize() {
 	util.Assertf(len(a.rooted) > 0, "len(a.rooted) > 0")
 	util.Assertf(len(a.goodPastVertices) > 0, "len(a.goodPastVertices) > 0")
 
-	var coverage multistate.LedgerCoverage
 	if a.vid.IsBranchTransaction() {
-		coverage = a.commitBranch()
+		coverage := a.commitBranch()
+		a.vid.SetLedgerCoverage(coverage)
+		a.env.AddBranch(a.vid)
 		a.env.EvidenceBookedBranch(a.vid.ID(), a.vid.MustSequencerID())
 	} else {
-		coverage = a.calculateCoverage()
+		coverage := a.calculateCoverage()
+		a.vid.SetLedgerCoverage(coverage)
 	}
-	a.vid.SetLedgerCoverage(coverage)
 }
 
 func (a *attacher) commitBranch() multistate.LedgerCoverage {
@@ -50,7 +51,7 @@ func (a *attacher) commitBranch() multistate.LedgerCoverage {
 	}
 
 	seqID, stemOID := a.vid.MustSequencerIDAndStemID()
-	upd := multistate.MustNewUpdatable(a.env.StateStore(), a.baselineStateReader.Root())
+	upd := multistate.MustNewUpdatable(a.env.StateStore(), a.baselineStateReader().Root())
 	coverage := a.ledgerCoverage(coverageDelta)
 	upd.MustUpdate(muts, &stemOID, &seqID, coverage)
 	return coverage

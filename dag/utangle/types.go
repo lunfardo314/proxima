@@ -16,7 +16,7 @@ type (
 		mutex      sync.RWMutex
 		stateStore global.StateStore
 		vertices   map[core.TransactionID]*vertex.WrappedTx
-		//branches   map[core.TimeSlot]map[*vertex.WrappedTx]common.VCommitment
+		branches   map[*vertex.WrappedTx]global.IndexedStateReader
 
 		// all real-time related values in one place
 		syncData *SyncData
@@ -65,6 +65,7 @@ func NewUTXOTangle(stateStore global.StateStore) *UTXOTangle {
 	return &UTXOTangle{
 		stateStore: stateStore,
 		vertices:   make(map[core.TransactionID]*vertex.WrappedTx),
+		branches:   make(map[*vertex.WrappedTx]global.IndexedStateReader),
 		syncData:   newSyncData(),
 	}
 }

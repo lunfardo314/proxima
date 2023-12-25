@@ -136,8 +136,10 @@ func (a *attacher) attachInputs(v *vertex.Vertex, vid *vertex.WrappedTx, parasit
 func (a *attacher) attachRooted(wOut vertex.WrappedOutput) vertex.Status {
 	status := vertex.Undefined
 	consumed := a.rooted[wOut.VID]
+	stateReader := a.baselineStateReader()
+
 	if len(consumed) == 0 {
-		if a.baselineStateReader.KnowsCommittedTransaction(wOut.VID.ID()) {
+		if stateReader.KnowsCommittedTransaction(wOut.VID.ID()) {
 			consumed = set.New(wOut.Index)
 			status = vertex.Good
 		}
@@ -148,7 +150,7 @@ func (a *attacher) attachRooted(wOut vertex.WrappedOutput) vertex.Status {
 			status = vertex.Bad
 		} else {
 			oid := wOut.DecodeID()
-			if out := a.baselineStateReader.GetOutput(oid); out != nil {
+			if out := stateReader.GetOutput(oid); out != nil {
 				consumed.Insert(wOut.Index)
 				ensured := wOut.VID.EnsureOutput(wOut.Index, out)
 				util.Assertf(ensured, "attachInputID: inconsistency")
