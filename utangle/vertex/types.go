@@ -36,6 +36,7 @@ type (
 		mutexConsumers sync.Mutex
 		consumers      map[byte]set.Set[*WrappedTx]
 		txStatus       Status
+		reason         error
 		coverage       *multistate.LedgerCoverage // nil for non-sequencer
 		// notification callback
 		onNotify func(vid *WrappedTx)
@@ -87,5 +88,16 @@ const (
 	Undefined = Status(iota)
 	Good
 	Bad
-	Committed
 )
+
+func (s Status) String() string {
+	switch s {
+	case Undefined:
+		return "UNDEF"
+	case Good:
+		return "GOOD"
+	case Bad:
+		return "BAD"
+	}
+	panic("wrong vertex status")
+}

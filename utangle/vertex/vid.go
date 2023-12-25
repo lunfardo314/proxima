@@ -3,6 +3,7 @@ package vertex
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/lunfardo314/proxima/core"
@@ -111,12 +112,35 @@ func (vid *WrappedTx) GetTxStatus() Status {
 
 	return vid.txStatus
 }
-
 func (vid *WrappedTx) SetTxStatus(s Status) {
 	vid.mutex.Lock()
 	defer vid.mutex.Unlock()
 
 	vid.txStatus = s
+}
+
+func (vid *WrappedTx) GetReason() error {
+	vid.mutex.RLock()
+	defer vid.mutex.RUnlock()
+
+	return vid.reason
+}
+func (vid *WrappedTx) SetReason(err error) {
+	vid.mutex.Lock()
+	defer vid.mutex.Unlock()
+
+	vid.reason = err
+}
+
+func (vid *WrappedTx) StatusString() string {
+	r := vid.GetReason()
+
+	switch s := vid.GetTxStatus(); s {
+	case Good, Undefined:
+		return s.String()
+	default:
+		return fmt.Sprintf("%s('%v')", s.String(), r)
+	}
 }
 
 func (vid *WrappedTx) OnNotify(fun func(vid *WrappedTx)) {

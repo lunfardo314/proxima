@@ -27,8 +27,9 @@ func (ut *DAG) InfoLines() *lines.Lines {
 	ln := lines.New()
 	slots := ut._timeSlotsOrdered()
 
-	ln.Add("DAG:: numVertices: %d, num slots: %d, addTx: %d, delTx: %d, addBranch: %d, delBranch: %d",
-		ut.NumVertices(), len(slots), ut.numAddedVertices, ut.numDeletedVertices, ut.numAddedBranches, ut.numDeletedBranches)
+	ln.Add("DAG:: vertices: %d, branches: %d, slots: %d, addTx: %d, delTx: %d, addBranch: %d, delBranch: %d",
+		len(ut.vertices), len(ut.branches), len(slots), ut.numAddedVertices, ut.numDeletedVertices, ut.numAddedBranches, ut.numDeletedBranches)
+
 	branches := util.SortKeys(ut.branches, func(vid1, vid2 *vertex.WrappedTx) bool {
 		return vid1.TimeSlot() > vid2.TimeSlot()
 	})

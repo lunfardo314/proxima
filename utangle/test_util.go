@@ -1,8 +1,6 @@
 package utangle
 
 import (
-	"context"
-
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/transaction"
@@ -34,7 +32,7 @@ func (w *testingWorkflow) Pull(txid core.TransactionID) {
 	}
 	tx, err := transaction.FromBytes(txBytes, transaction.MainTxValidationOptions...)
 	util.AssertNoError(err, "transaction.FromBytes")
-	attacher.AttachTransaction(tx, w, context.Background())
+	attacher.AttachTransaction(tx, w)
 }
 
 func (w *testingWorkflow) OnChangeNotify(onChange, notify *vertex.WrappedTx) {

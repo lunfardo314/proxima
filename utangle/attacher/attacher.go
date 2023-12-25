@@ -2,6 +2,7 @@ package attacher
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -53,6 +54,11 @@ type (
 		closed                bool
 		endorsementsOk        bool
 	}
+	_attacherOptions struct {
+		ctx                  context.Context
+		finalizationCallback func(vid *vertex.WrappedTx)
+	}
+	Option func(*_attacherOptions)
 )
 
 const (
@@ -60,9 +66,26 @@ const (
 	maxToleratedParasiticChainTicks = core.TimeTicksPerSlot
 )
 
+func WithContext(ctx context.Context) Option {
+	return func(options *_attacherOptions) {
+		options.ctx = ctx
+	}
+}
+
+func WithFinalizationCallback(fun func(vid *vertex.WrappedTx)) Option {
+	return func(options *_attacherOptions) {
+		options.finalizationCallback = fun
+	}
+}
+
 // AttachTransaction attaches new incoming transaction. For sequencer transaction it starts attacher routine
 // which manages solidification pull until transaction becomes solid or stopped by the context
-func AttachTransaction(tx *transaction.Transaction, env AttachEnvironment, ctx context.Context) (vid *vertex.WrappedTx) {
+func AttachTransaction(tx *transaction.Transaction, env AttachEnvironment, opts ...Option) (vid *vertex.WrappedTx) {
+	options := &_attacherOptions{}
+	for _, opt := range opts {
+		opt(options)
+	}
+
 	if tx.IsBranchTransaction() {
 		env.EvidenceIncomingBranch(tx.ID(), tx.SequencerTransactionData().SequencerID)
 	}
@@ -82,10 +105,36 @@ func AttachTransaction(tx *transaction.Transaction, env AttachEnvironment, ctx c
 		env.AddVertexNoLock(vid)
 		if vid.IsSequencerMilestone() {
 			// starts attacher goroutine for each sequencer transaction
-			go vid.SetTxStatus(runAttacher(vid, env, ctx))
+			ctx := options.ctx
+			if ctx == nil {
+				ctx = context.Background()
+			}
+			callback := options.finalizationCallback
+			if callback == nil {
+				callback = func(_ *vertex.WrappedTx) {}
+			}
+			go func() {
+				status, err := runAttacher(vid, env, ctx)
+				vid.SetTxStatus(status)
+				vid.SetReason(err)
+				callback(vid)
+			}()
 		}
 	})
 	return
+}
+
+// AttachTransactionFromBytes used for testing
+func AttachTransactionFromBytes(txBytes []byte, env AttachEnvironment, onFinalize ...func(vid *vertex.WrappedTx)) (*vertex.WrappedTx, error) {
+	tx, err := transaction.FromBytes(txBytes, transaction.MainTxValidationOptions...)
+	if err != nil {
+		return nil, err
+	}
+	callback := func(_ *vertex.WrappedTx) {}
+	if len(onFinalize) > 0 {
+		callback = onFinalize[0]
+	}
+	return AttachTransaction(tx, env, WithFinalizationCallback(callback)), nil
 }
 
 // AttachTxID ensures the txid is on the utangle_old. Must be called from globally locked environment
@@ -140,14 +189,14 @@ func newAttacher(vid *vertex.WrappedTx, env AttachEnvironment, ctx context.Conte
 	return ret
 }
 
-func runAttacher(vid *vertex.WrappedTx, env AttachEnvironment, ctx context.Context) vertex.Status {
+func runAttacher(vid *vertex.WrappedTx, env AttachEnvironment, ctx context.Context) (vertex.Status, error) {
 	a := newAttacher(vid, env, ctx)
 	defer a.close()
 
 	// first solidify baseline state
 	status := a.solidifyBaselineState()
 	if status != vertex.Good {
-		return vertex.Bad
+		return vertex.Bad, fmt.Errorf("baseline state solidification failed")
 	}
 
 	util.Assertf(a.baselineBranch != nil, "a.baselineBranch != nil")
@@ -155,11 +204,11 @@ func runAttacher(vid *vertex.WrappedTx, env AttachEnvironment, ctx context.Conte
 	// then continue with the rest
 	status = a.solidifyPastCone()
 	if status != vertex.Good {
-		return vertex.Bad
+		return vertex.Bad, fmt.Errorf("past cone solidification failed")
 	}
 
 	a.finalize()
-	return vertex.Good
+	return vertex.Good, nil
 }
 
 func (a *attacher) lazyRepeat(fun func() vertex.Status) (status vertex.Status) {

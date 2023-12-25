@@ -12,6 +12,13 @@ import (
 	"github.com/lunfardo314/proxima/util/set"
 )
 
+func (ut *DAG) GetVertex(txid *core.TransactionID) *vertex.WrappedTx {
+	ut.mutex.RLock()
+	defer ut.mutex.RUnlock()
+
+	return ut.GetVertexNoLock(txid)
+}
+
 func (ut *DAG) GetIndexedStateReader(branchTxID *core.TransactionID, clearCacheAtSize ...int) (global.IndexedStateReader, error) {
 	rr, found := multistate.FetchRootRecord(ut.stateStore, *branchTxID)
 	if !found {
@@ -44,12 +51,6 @@ func (ut *DAG) _timeSlotsOrdered(descOrder ...bool) []core.TimeSlot {
 		return e1 < e2
 	})
 }
-
-// Access to the tangle state is NON-DETERMINISTIC
-//
-//func (ut *DAG) KnowsCommittedTransaction(txid *core.TransactionID) bool {
-//	return ut.HasTransactionOnTangle(txid)
-//}
 
 func (ut *DAG) _branchesDescending(slot core.TimeSlot) []*vertex.WrappedTx {
 	ret := make([]*vertex.WrappedTx, 0)
