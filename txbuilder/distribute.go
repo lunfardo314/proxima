@@ -24,20 +24,31 @@ func MustDistributeInitialSupply(stateStore global.StateStore, originPrivateKey 
 	return ret
 }
 
-func MustDistributeInitialSupplyExt(stateStore global.StateStore, originPrivateKey ed25519.PrivateKey, genesisDistribution []core.LockBalance) ([]byte, core.TransactionID) {
+func MakeDistributionTransaction(stateStore global.StateStore, originPrivateKey ed25519.PrivateKey, genesisDistribution []core.LockBalance) ([]byte, error) {
 	stateID, genesisRoot, err := genesis.ScanGenesisState(stateStore)
-	util.AssertNoError(err)
+	if err != nil {
+		return nil, err
+	}
 
 	originPublicKey := originPrivateKey.Public().(ed25519.PublicKey)
-	util.Assertf(originPublicKey.Equal(stateID.GenesisControllerPublicKey), "private and public keys do not match")
-	util.Assertf(len(genesisDistribution) < 253, "too many addresses in the genesis distribution. Maximum is 252")
+	err = util.ErrorConditionf(originPublicKey.Equal(stateID.GenesisControllerPublicKey), "private and public keys do not match")
+	if err != nil {
+		return nil, err
+	}
+	err = util.ErrorConditionf(len(genesisDistribution) < 253, "too many addresses in the genesis distribution. Maximum is 252")
+	if err != nil {
+		return nil, err
+	}
 
 	distributeTotal := uint64(0)
 	for i := range genesisDistribution {
 		distributeTotal += genesisDistribution[i].Balance
-		util.Assertf(distributeTotal+core.MinimumAmountOnSequencer <= stateID.InitialSupply,
+		err = util.ErrorConditionf(distributeTotal+core.MinimumAmountOnSequencer <= stateID.InitialSupply,
 			"condition failed: distributeTotal(%d) + MinimumBalanceOnBoostrapSequencer(%d) < InitialSupply(%d)",
 			distributeTotal, core.MinimumAmountOnSequencer, stateID.InitialSupply)
+		if err != nil {
+			return nil, err
+		}
 	}
 	genesisDistributionOutputs := make([]*core.Output, len(genesisDistribution))
 	for i := range genesisDistribution {
@@ -47,12 +58,17 @@ func MustDistributeInitialSupplyExt(stateStore global.StateStore, originPrivateK
 		})
 	}
 
-	rdr := multistate.MustNewSugaredReadableState(stateStore, genesisRoot)
+	rdr, err := multistate.NewSugaredReadableState(stateStore, genesisRoot)
+	if err != nil {
+		return nil, err
+	}
 
 	genesisStem := rdr.GetStemOutput()
 	bootstrapChainID := stateID.OriginChainID()
 	initSupplyOutput, err := rdr.GetChainOutput(&bootstrapChainID)
-	util.AssertNoError(err)
+	if err != nil {
+		return nil, err
+	}
 
 	// create origin branch transaction at the next slot after genesis time slot
 	txBytes, err := MakeSequencerTransaction(MakeSequencerTransactionParams{
@@ -69,12 +85,24 @@ func MustDistributeInitialSupplyExt(stateStore global.StateStore, originPrivateK
 		PrivateKey:        originPrivateKey,
 		TotalSupply:       stateID.InitialSupply,
 	})
+	if err != nil {
+		return nil, err
+	}
+	return txBytes, nil
+}
+
+func MustDistributeInitialSupplyExt(stateStore global.StateStore, originPrivateKey ed25519.PrivateKey, genesisDistribution []core.LockBalance) ([]byte, core.TransactionID) {
+	txBytes, err := MakeDistributionTransaction(stateStore, originPrivateKey, genesisDistribution)
 	util.AssertNoError(err)
+
+	stateID, genesisRoot, err := genesis.ScanGenesisState(stateStore)
+	util.AssertNoError(err)
+
+	rdr := multistate.MustNewSugaredReadableState(stateStore, genesisRoot)
+	bootstrapChainID := stateID.OriginChainID()
 
 	tx, err := transaction.FromBytesMainChecksWithOpt(txBytes)
 	util.AssertNoError(err)
-
-	//fmt.Printf("=======================\n%s=======================\n", tx.Lines(tx.InputLoaderFromState(rdr)).String())
 
 	err = tx.Validate(transaction.ValidateOptionWithFullContext(tx.InputLoaderFromState(rdr)))
 	util.AssertNoError(err)

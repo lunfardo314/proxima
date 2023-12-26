@@ -1,6 +1,8 @@
 package attacher
 
 import (
+	"fmt"
+
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/util"
 )
@@ -19,9 +21,11 @@ func (a *attacher) finalize() {
 			a.env.AddBranchNoLock(a.vid)
 		})
 		a.env.EvidenceBookedBranch(a.vid.ID(), a.vid.MustSequencerID())
+		a.tracef("finalized branch")
 	} else {
 		coverage := a.calculateCoverage()
 		a.vid.SetLedgerCoverage(coverage)
+		a.tracef("finalized sequencer milestone")
 	}
 }
 
@@ -50,6 +54,8 @@ func (a *attacher) commitBranch() multistate.LedgerCoverage {
 			muts.InsertAddOutputMutation(vid.OutputID(idx), vid.MustOutputAt(idx))
 		}
 	}
+
+	fmt.Printf("mutations:\n%s", muts.Lines("    ").String())
 
 	seqID, stemOID := a.vid.MustSequencerIDAndStemID()
 	upd := multistate.MustNewUpdatable(a.env.StateStore(), a.baselineStateReader().Root())

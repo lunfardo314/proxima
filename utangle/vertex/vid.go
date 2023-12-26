@@ -490,11 +490,16 @@ func (vid *WrappedTx) NotConsumedOutputIndices(allConsumers set.Set[*WrappedTx])
 	vid.mutexConsumers.Lock()
 	defer vid.mutexConsumers.Unlock()
 
-	ret := make([]byte, 0, len(vid.consumers))
+	nOutputs := 0
+	vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
+		nOutputs = v.Tx.NumProducedOutputs()
+	}})
 
-	for idx, consumers := range vid.consumers {
-		if set.DoNotIntersect(consumers, allConsumers) {
-			ret = append(ret, idx)
+	ret := make([]byte, 0, nOutputs)
+
+	for i := 0; i < nOutputs; i++ {
+		if set.DoNotIntersect(vid.consumers[byte(i)], allConsumers) {
+			ret = append(ret, byte(i))
 		}
 	}
 	return ret

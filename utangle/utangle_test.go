@@ -3,10 +3,10 @@ package utangle
 import (
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/genesis"
+	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/txbuilder"
 	"github.com/lunfardo314/proxima/txstore"
@@ -20,20 +20,155 @@ import (
 )
 
 func TestOriginTangle(t *testing.T) {
-	t.Run("origin", func(t *testing.T) {
+	t.Run("genesis", func(t *testing.T) {
 		par := genesis.DefaultIdentityData(testutil.GetTestingPrivateKey())
 
 		stateStore := common.NewInMemoryKVStore()
 		bootstrapChainID, root := genesis.InitLedgerState(*par, stateStore)
 		dagAccess := dag.New(stateStore)
 		txBytesStore := txstore.NewSimpleTxBytesStore(common.NewInMemoryKVStore())
-		_ = newTestingWorkflow(txBytesStore, dagAccess)
+		wrk := newTestingWorkflow(txBytesStore, dagAccess)
+
+		id, _, err := genesis.ScanGenesisState(stateStore)
+		require.NoError(t, err)
+		genesisOut := genesis.StemOutput(id.InitialSupply, id.GenesisTimeSlot)
+		vidGenesis, err := attacher.EnsureBranch(genesisOut.ID.TransactionID(), wrk)
+		require.NoError(t, err)
+
+		rdr := multistate.MakeSugared(wrk.GetStateReaderForTheBranch(vidGenesis))
+		genesisOut1 := rdr.GetStemOutput()
+		require.EqualValues(t, genesisOut.ID, genesisOut1.ID)
+		require.EqualValues(t, genesisOut.Output.Bytes(), genesisOut1.Output.Bytes())
+
+		wrk.syncLog()
 
 		t.Logf("bootstrap chain id: %s", bootstrapChainID.String())
 		t.Logf("genesis root: %s", root.String())
 		t.Logf("%s", dagAccess.Info())
 	})
-	t.Run("origin with distribution 1", func(t *testing.T) {
+	t.Run("genesis with distribution", func(t *testing.T) {
+		privKey := testutil.GetTestingPrivateKey()
+		par := genesis.DefaultIdentityData(privKey)
+		addr1 := core.AddressED25519FromPrivateKey(testutil.GetTestingPrivateKey(1))
+		addr2 := core.AddressED25519FromPrivateKey(testutil.GetTestingPrivateKey(2))
+		distrib := []core.LockBalance{
+			{Lock: addr1, Balance: 1_000_000},
+			{Lock: addr2, Balance: 2_000_000},
+		}
+
+		stateStore := common.NewInMemoryKVStore()
+		bootstrapChainID, _ := genesis.InitLedgerState(*par, stateStore)
+		dagAccess := dag.New(stateStore)
+		txBytesStore := txstore.NewSimpleTxBytesStore(common.NewInMemoryKVStore())
+		wrk := newTestingWorkflow(txBytesStore, dagAccess)
+
+		txBytes, err := txbuilder.DistributeInitialSupply(stateStore, privKey, distrib)
+		require.NoError(t, err)
+
+		distribTxID, _, err := transaction.IDAndTimestampFromTransactionBytes(txBytes)
+		require.NoError(t, err)
+
+		vidDistrib, err := attacher.EnsureBranch(distribTxID, wrk)
+		require.NoError(t, err)
+
+		wrk.syncLog()
+
+		t.Logf("bootstrap chain id: %s", bootstrapChainID.String())
+
+		t.Logf("genesis branch txid: %s", vidDistrib.IDShortString())
+		t.Logf("%s", dagAccess.Info())
+
+		distribVID := dagAccess.GetVertex(vidDistrib.ID())
+		require.True(t, distribVID != nil)
+
+		rdr := multistate.MakeSugared(wrk.GetStateReaderForTheBranch(distribVID))
+		stemOut := rdr.GetStemOutput()
+		require.EqualValues(t, distribTxID, stemOut.ID.TransactionID())
+		require.EqualValues(t, 0, stemOut.Output.Amount())
+		stemLock, ok := stemOut.Output.StemLock()
+		require.True(t, ok)
+		require.EqualValues(t, genesis.DefaultSupply, int(stemLock.Supply))
+
+		bal1, n1 := multistate.BalanceOnLock(rdr, addr1)
+		require.EqualValues(t, 1_000_000, int(bal1))
+		require.EqualValues(t, 1, n1)
+
+		bal2, n2 := multistate.BalanceOnLock(rdr, addr2)
+		require.EqualValues(t, 2_000_000, int(bal2))
+		require.EqualValues(t, 1, n2)
+
+		balChain, nChain := multistate.BalanceOnLock(rdr, bootstrapChainID.AsChainLock())
+		require.EqualValues(t, 0, balChain)
+		require.EqualValues(t, 0, nChain)
+
+		balChain = multistate.BalanceOnChainOutput(rdr, &bootstrapChainID)
+		require.EqualValues(t, genesis.DefaultSupply-1_000_000-2_000_000, int(balChain))
+	})
+	t.Run("genesis sync scenario", func(t *testing.T) {
+		privKey := testutil.GetTestingPrivateKey()
+		par := genesis.DefaultIdentityData(privKey)
+		addr1 := core.AddressED25519FromPrivateKey(testutil.GetTestingPrivateKey(1))
+		addr2 := core.AddressED25519FromPrivateKey(testutil.GetTestingPrivateKey(2))
+		distrib := []core.LockBalance{
+			{Lock: addr1, Balance: 1_000_000},
+			{Lock: addr2, Balance: 2_000_000},
+		}
+
+		stateStore := common.NewInMemoryKVStore()
+		bootstrapChainID, _ := genesis.InitLedgerState(*par, stateStore)
+		dagAccess := dag.New(stateStore)
+		txBytesStore := txstore.NewSimpleTxBytesStore(common.NewInMemoryKVStore())
+		wrk := newTestingWorkflow(txBytesStore, dagAccess)
+
+		txBytes, err := txbuilder.MakeDistributionTransaction(stateStore, privKey, distrib)
+		require.NoError(t, err)
+
+		distribTxID, _, err := transaction.IDAndTimestampFromTransactionBytes(txBytes)
+		require.NoError(t, err)
+
+		err = txBytesStore.SaveTxBytes(txBytes)
+		require.NoError(t, err)
+		require.True(t, len(txBytesStore.GetTxBytes(&distribTxID)) > 0)
+
+		vidDistrib, err := attacher.EnsureBranch(distribTxID, wrk)
+		require.NoError(t, err)
+		wrk.syncLog()
+
+		t.Logf("bootstrap chain id: %s", bootstrapChainID.String())
+
+		t.Logf("genesis branch txid: %s", vidDistrib.IDShortString())
+		t.Logf("%s", dagAccess.Info())
+
+		distribVID := dagAccess.GetVertex(vidDistrib.ID())
+		require.True(t, distribVID != nil)
+
+		rdr := multistate.MakeSugared(wrk.GetStateReaderForTheBranch(distribVID))
+		stemOut := rdr.GetStemOutput()
+
+		require.EqualValues(t, distribTxID, stemOut.ID.TransactionID())
+		require.EqualValues(t, 0, stemOut.Output.Amount())
+		stemLock, ok := stemOut.Output.StemLock()
+		require.True(t, ok)
+		require.EqualValues(t, genesis.DefaultSupply, int(stemLock.Supply))
+
+		bal1, n1 := multistate.BalanceOnLock(rdr, addr1)
+		require.EqualValues(t, 1_000_000, int(bal1))
+		require.EqualValues(t, 1, n1)
+
+		bal2, n2 := multistate.BalanceOnLock(rdr, addr2)
+		require.EqualValues(t, 2_000_000, int(bal2))
+		require.EqualValues(t, 1, n2)
+
+		balChain, nChain := multistate.BalanceOnLock(rdr, bootstrapChainID.AsChainLock())
+		require.EqualValues(t, 0, balChain)
+		require.EqualValues(t, 0, nChain)
+
+		balChain = multistate.BalanceOnChainOutput(rdr, &bootstrapChainID)
+		require.EqualValues(t, genesis.DefaultSupply-1_000_000-2_000_000, int(balChain))
+
+	})
+
+	t.Run("genesis with distribution tx", func(t *testing.T) {
 		privKey := testutil.GetTestingPrivateKey()
 		par := genesis.DefaultIdentityData(privKey)
 		addr1 := core.AddressED25519FromPrivateKey(testutil.GetTestingPrivateKey(1))
@@ -73,43 +208,34 @@ func TestOriginTangle(t *testing.T) {
 
 		distribVID := dagAccess.GetVertex(vidDistrib.ID())
 		require.True(t, distribVID != nil)
-	})
-	t.Run("origin with distribution 2", func(t *testing.T) {
-		privKey := testutil.GetTestingPrivateKey()
-		par := genesis.DefaultIdentityData(privKey)
-		addr1 := core.AddressED25519FromPrivateKey(testutil.GetTestingPrivateKey(1))
-		addr2 := core.AddressED25519FromPrivateKey(testutil.GetTestingPrivateKey(2))
-		distrib := []core.LockBalance{
-			{Lock: addr1, Balance: 1_000_000},
-			{Lock: addr2, Balance: 2_000_000},
-		}
-
-		stateStore := common.NewInMemoryKVStore()
-		bootstrapChainID, _ := genesis.InitLedgerState(*par, stateStore)
-		dagAccess := dag.New(stateStore)
-		txBytesStore := txstore.NewSimpleTxBytesStore(common.NewInMemoryKVStore())
-		wrk := newTestingWorkflow(txBytesStore, dagAccess)
-
-		txBytes, err := txbuilder.DistributeInitialSupply(stateStore, privKey, distrib)
-		require.NoError(t, err)
+		rdr := multistate.MakeSugared(wrk.GetStateReaderForTheBranch(distribVID))
+		stemOut := rdr.GetStemOutput()
 
 		distribTxID, _, err := transaction.IDAndTimestampFromTransactionBytes(txBytes)
 		require.NoError(t, err)
 
-		vidDistrib := attacher.AttachTxID(distribTxID, wrk, false)
-		for vidDistrib.GetTxStatus() != vertex.Good {
-			time.Sleep(10 * time.Millisecond)
-		}
-		wrk.syncLog()
+		require.EqualValues(t, int(stemOut.ID.TimeSlot()), int(distribTxID.TimeSlot()))
+		require.EqualValues(t, 0, stemOut.Output.Amount())
+		stemLock, ok := stemOut.Output.StemLock()
+		require.True(t, ok)
+		require.EqualValues(t, genesis.DefaultSupply, int(stemLock.Supply))
 
-		t.Logf("bootstrap chain id: %s", bootstrapChainID.String())
+		bal1, n1 := multistate.BalanceOnLock(rdr, addr1)
+		require.EqualValues(t, 1_000_000, int(bal1))
+		require.EqualValues(t, 1, n1)
 
-		t.Logf("genesis branch txid: %s", vidDistrib.IDShortString())
-		t.Logf("%s", dagAccess.Info())
+		bal2, n2 := multistate.BalanceOnLock(rdr, addr2)
+		require.EqualValues(t, 2_000_000, int(bal2))
+		require.EqualValues(t, 1, n2)
 
-		distribVID := dagAccess.GetVertex(vidDistrib.ID())
-		require.True(t, distribVID != nil)
+		balChain, nChain := multistate.BalanceOnLock(rdr, bootstrapChainID.AsChainLock())
+		require.EqualValues(t, 0, balChain)
+		require.EqualValues(t, 0, nChain)
+
+		balChain = multistate.BalanceOnChainOutput(rdr, &bootstrapChainID)
+		require.EqualValues(t, genesis.DefaultSupply-1_000_000-2_000_000, int(balChain))
 	})
+
 	//t.Run("origin with distribution", func(t *testing.T) {
 	//	privKey := testutil.GetTestingPrivateKey()
 	//	par := genesis.DefaultIdentityData(privKey)

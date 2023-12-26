@@ -96,7 +96,7 @@ func (s SugaredStateReader) GetStemOutput() *core.OutputWithID {
 	if len(oData) != 1 {
 		fmt.Println()
 	}
-	util.Assertf(len(oData) == 1, "inconsistency: stem output must be unique in the state, found %d stem output records", len(oData))
+	util.Assertf(len(oData) == 1, "inconsistency: expected exactly 1 stem output record in the state, found %d", len(oData))
 	ret, err := oData[0].Parse()
 	util.AssertNoError(err)
 	return ret

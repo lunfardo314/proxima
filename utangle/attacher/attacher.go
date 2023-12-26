@@ -97,6 +97,7 @@ func AttachTransaction(tx *transaction.Transaction, env AttachEnvironment, opts 
 		if vid == nil {
 			// it is new. Create a new wrapped tx and put it to the utangle_old
 			vid = vertex.New(tx).Wrap()
+			env.AddVertexNoLock(vid)
 		} else {
 			if !vid.IsVirtualTx() {
 				return
@@ -104,7 +105,6 @@ func AttachTransaction(tx *transaction.Transaction, env AttachEnvironment, opts 
 			// it is existing. Must virtualTx -> replace virtual tx with the full transaction
 			vid.ConvertVirtualTxToVertex(vertex.New(tx))
 		}
-		env.AddVertexNoLock(vid)
 		if vid.IsSequencerMilestone() {
 			// starts attacher goroutine for each sequencer transaction
 			ctx := options.ctx
@@ -176,6 +176,24 @@ func AttachTxID(txid core.TransactionID, env AttachEnvironment, pullNonBranchIfN
 		}
 	})
 	return
+}
+
+const maxTimeout = 10 * time.Minute
+
+func EnsureBranch(txid core.TransactionID, env AttachEnvironment, timeout ...time.Duration) (*vertex.WrappedTx, error) {
+	vid := AttachTxID(txid, env, false)
+	to := maxTimeout
+	if len(timeout) > 0 {
+		to = timeout[0]
+	}
+	deadline := time.Now().Add(to)
+	for vid.GetTxStatus() == vertex.Undefined {
+		if time.Now().After(deadline) {
+			return nil, fmt.Errorf("failed to fetch branch %s in %v", txid.StringShort(), to)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	return vid, nil
 }
 
 func newAttacher(vid *vertex.WrappedTx, env AttachEnvironment, ctx context.Context) *attacher {

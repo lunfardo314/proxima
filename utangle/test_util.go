@@ -26,13 +26,14 @@ func newTestingWorkflow(txBytesStore global.TxBytesStore, dag *dag.DAG) *testing
 }
 
 func (w *testingWorkflow) Pull(txid core.TransactionID) {
+	w.log.Infof("pull %s", txid.StringShort())
 	txBytes := w.txBytesStore.GetTxBytes(&txid)
 	if len(txBytes) == 0 {
 		return
 	}
 	tx, err := transaction.FromBytes(txBytes, transaction.MainTxValidationOptions...)
 	util.AssertNoError(err, "transaction.FromBytes")
-	attacher.AttachTransaction(tx, w)
+	go attacher.AttachTransaction(tx, w)
 }
 
 func (w *testingWorkflow) OnChangeNotify(onChange, notify *vertex.WrappedTx) {

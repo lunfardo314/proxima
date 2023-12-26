@@ -31,6 +31,13 @@ func Assertf(cond bool, format string, args ...any) {
 	}
 }
 
+func ErrorConditionf(cond bool, format string, args ...any) error {
+	if !cond {
+		return fmt.Errorf("assertion failed:: "+format, EvalLazyArgs(args...)...)
+	}
+	return nil
+}
+
 func Panicf(format string, args ...any) {
 	Assertf(false, format, args...)
 }
