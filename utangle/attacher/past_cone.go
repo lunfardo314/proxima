@@ -1,6 +1,8 @@
 package attacher
 
 import (
+	"fmt"
+
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/utangle/vertex"
@@ -111,6 +113,7 @@ func (a *attacher) attachInputs(v *vertex.Vertex, vid *vertex.WrappedTx, parasit
 	for i := range v.Inputs {
 		switch status = a.attachInputID(v, vid, byte(i)); status {
 		case vertex.Bad:
+			a.tracef("bad input %d", i)
 			return // invalidate
 		case vertex.Undefined:
 			allGood = false
@@ -118,7 +121,8 @@ func (a *attacher) attachInputs(v *vertex.Vertex, vid *vertex.WrappedTx, parasit
 		util.Assertf(v.Inputs[i] != nil, "v.Inputs[i] != nil")
 
 		if parasiticChainHorizon == core.NilLogicalTime {
-			parasiticChainHorizon = v.Inputs[i].Timestamp().AddTicks(maxToleratedParasiticChainTicks)
+			// TODO revisit parasitic chain threshold because of syncing
+			parasiticChainHorizon = core.MustNewLogicalTime(v.Inputs[i].Timestamp().TimeSlot()-maxToleratedParasiticChainSlots, 0)
 		}
 		status = a.attachOutput(vertex.WrappedOutput{
 			VID:   v.Inputs[i],
@@ -127,6 +131,7 @@ func (a *attacher) attachInputs(v *vertex.Vertex, vid *vertex.WrappedTx, parasit
 
 		switch status {
 		case vertex.Bad:
+			a.tracef("failed to attach output of the input #%d", i)
 			return // Invalidate
 		case vertex.Undefined:
 			allGood = false
@@ -138,6 +143,7 @@ func (a *attacher) attachInputs(v *vertex.Vertex, vid *vertex.WrappedTx, parasit
 		if err := v.ValidateConstraints(); err == nil {
 			status = vertex.Good
 		} else {
+			a.setReason(err)
 			status = vertex.Bad
 		}
 	}
@@ -145,37 +151,44 @@ func (a *attacher) attachInputs(v *vertex.Vertex, vid *vertex.WrappedTx, parasit
 }
 
 func (a *attacher) attachRooted(wOut vertex.WrappedOutput) vertex.Status {
-	a.tracef("attachRooted %s", wOut.IDShortString)
+	a.tracef("attachRooted IN %s", wOut.IDShortString)
+	defer a.tracef("attachRooted OUT %s", wOut.IDShortString)
 
 	status := vertex.Undefined
-	consumed := a.rooted[wOut.VID]
+	consumedRooted := a.rooted[wOut.VID]
 	stateReader := a.baselineStateReader()
 
-	if len(consumed) == 0 {
+	if len(consumedRooted) == 0 {
 		if stateReader.KnowsCommittedTransaction(wOut.VID.ID()) {
-			consumed = set.New(wOut.Index)
+			consumedRooted = set.New(wOut.Index)
 			status = vertex.Good
 		}
 	} else {
-		// transaction is rooted
-		if consumed.Contains(wOut.Index) {
+		// transaction has consumed outputs -> it is rooted
+		if consumedRooted.Contains(wOut.Index) {
 			// double spend
+			err := fmt.Errorf("rooted output %s is already spent", wOut.IDShortString())
+			a.setReason(err)
+			a.tracef("%v", err)
 			status = vertex.Bad
 		} else {
 			oid := wOut.DecodeID()
 			if out := stateReader.GetOutput(oid); out != nil {
-				consumed.Insert(wOut.Index)
-				ensured := wOut.VID.EnsureOutput(wOut.Index, out)
+				consumedRooted.Insert(wOut.Index)
+				ensured := wOut.VID.EnsureOutput(wOut.Index, out) // FIXME deadlock
 				util.Assertf(ensured, "attachInputID: inconsistency")
 				status = vertex.Good
 			} else {
 				// transaction is known, but output is already spent
+				err := fmt.Errorf("output %s is not in the state", wOut.IDShortString())
+				a.setReason(err)
+				a.tracef("%v", err)
 				status = vertex.Bad
 			}
 		}
 	}
 	if status == vertex.Good {
-		a.rooted[wOut.VID] = consumed
+		a.rooted[wOut.VID] = consumedRooted
 	}
 	return status
 }
@@ -192,6 +205,9 @@ func (a *attacher) attachOutput(wOut vertex.WrappedOutput, parasiticChainHorizon
 	}
 	if wOut.Timestamp().Before(parasiticChainHorizon) {
 		// parasitic chain rule
+		err := fmt.Errorf("parasitic chain threshold %s broken while attaching output %s", parasiticChainHorizon.String(), wOut.IDShortString())
+		a.setReason(err)
+		a.tracef("%v", err)
 		return vertex.Bad
 	}
 
@@ -235,11 +251,15 @@ func (a *attacher) attachInputID(consumerVertex *vertex.Vertex, consumerTx *vert
 	vidInputTx := consumerVertex.Inputs[inputIdx]
 	if vidInputTx != nil {
 		if vidInputTx.GetTxStatus() == vertex.Bad {
+			a.tracef("input tx is bad: %s", vidInputTx.IDShortString)
 			return vertex.Bad
 		}
 		if vidInputTx.IsSequencerMilestone() {
 			if inputBaselineBranch := vidInputTx.BaselineBranch(); inputBaselineBranch != nil {
 				if !a.branchesCompatible(a.baselineBranch, inputBaselineBranch) {
+					err := fmt.Errorf("branches not compatible: %s and %s", a.baselineBranch.IDShortString(), inputBaselineBranch.IDShortString())
+					a.setReason(err)
+					a.tracef("%v", err)
 					return vertex.Bad
 				}
 			}
@@ -256,6 +276,9 @@ func (a *attacher) attachInputID(consumerVertex *vertex.Vertex, consumerTx *vert
 	if vidInputTx.IsSequencerMilestone() {
 		if inputBaselineBranch := vidInputTx.BaselineBranch(); inputBaselineBranch != nil {
 			if !a.branchesCompatible(a.baselineBranch, inputBaselineBranch) {
+				err := fmt.Errorf("branches %s and %s not compatible", a.baselineBranch.IDShortString(), inputBaselineBranch.IDShortString())
+				a.setReason(err)
+				a.tracef("%v", err)
 				return vertex.Bad
 			}
 		}
@@ -282,6 +305,10 @@ func (a *attacher) attachInputID(consumerVertex *vertex.Vertex, consumerTx *vert
 		return conflict1
 	})
 	if conflict {
+		err := fmt.Errorf("input %s of consumer %s conflicts with exiting consumers in the baseline state %s",
+			inputOid.StringShort(), consumerTx.IDShortString(), a.baselineBranch.IDShortString())
+		a.setReason(err)
+		a.tracef("%v", err)
 		return vertex.Bad
 	}
 	consumerVertex.Inputs[inputIdx] = vidInputTx

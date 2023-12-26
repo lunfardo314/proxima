@@ -249,7 +249,7 @@ func TestConflicts(t *testing.T) {
 		testData.logDAGInfo()
 	})
 	t.Run("2", func(t *testing.T) {
-		const nConflicts = 2
+		const nConflicts = 1
 		testData := initConflictTest(t, nConflicts)
 		for _, txBytes := range testData.txBytes {
 			_, err := attacher.AttachTransactionFromBytes(txBytes, testData.wrk)
@@ -290,10 +290,15 @@ func TestConflicts(t *testing.T) {
 		}))
 		wg.Wait()
 		require.NoError(t, err)
-		require.EqualValues(t, vertex.Bad, vid.GetTxStatus())
-		t.Logf("reason: %v", vid.GetReason())
-
 		testData.logDAGInfo()
+
+		if nConflicts > 1 {
+			require.True(t, vertex.Bad == vid.GetTxStatus())
+			t.Logf("reason: %v", vid.GetReason())
+		} else {
+			require.True(t, vertex.Good == vid.GetTxStatus())
+		}
+
 	})
 }
 

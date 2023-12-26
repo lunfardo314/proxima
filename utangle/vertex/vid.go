@@ -547,16 +547,18 @@ func (vid *WrappedTx) NumConsumers() (int, int) {
 
 func (vid *WrappedTx) String() (ret string) {
 	consumed, doubleSpent := vid.NumConsumers()
+	reason := vid.GetReason()
 	vid.Unwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
 			t := "vertex (" + vid.txStatus.String() + ")"
-			ret = fmt.Sprintf("%20s %s:: in: %d, out: %d, consumed: %d, conflicts: %d",
+			ret = fmt.Sprintf("%20s %s:: in: %d, out: %d, consumed: %d, conflicts: %d, reason: '%v'",
 				t,
 				vid._id().StringShort(),
 				v.Tx.NumInputs(),
 				v.Tx.NumProducedOutputs(),
 				consumed,
 				doubleSpent,
+				reason,
 			)
 		},
 		VirtualTx: func(v *VirtualTransaction) {
@@ -565,12 +567,13 @@ func (vid *WrappedTx) String() (ret string) {
 			v.mutex.RLock()
 			defer v.mutex.RLock()
 
-			ret = fmt.Sprintf("%20s %s:: out: %d, consumed: %d, conflicts: %d",
+			ret = fmt.Sprintf("%20s %s:: out: %d, consumed: %d, conflicts: %d, reason: %v",
 				t,
 				vid._id().StringShort(),
 				len(v.outputs),
 				consumed,
 				doubleSpent,
+				reason,
 			)
 		},
 		Deleted: vid.PanicAccessDeleted,

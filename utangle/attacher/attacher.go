@@ -43,6 +43,7 @@ type (
 	attacher struct {
 		env                   AttachEnvironment
 		vid                   *vertex.WrappedTx
+		reason                error
 		baselineBranch        *vertex.WrappedTx
 		goodPastVertices      set.Set[*vertex.WrappedTx]
 		undefinedPastVertices set.Set[*vertex.WrappedTx]
@@ -63,7 +64,7 @@ type (
 
 const (
 	periodicCheckEach               = 500 * time.Millisecond
-	maxToleratedParasiticChainTicks = core.TimeTicksPerSlot
+	maxToleratedParasiticChainSlots = 1
 )
 
 func WithContext(ctx context.Context) Option {
@@ -229,7 +230,7 @@ func runAttacher(vid *vertex.WrappedTx, env AttachEnvironment, ctx context.Conte
 	// first solidify baseline state
 	status := a.solidifyBaselineState()
 	if status != vertex.Good {
-		return vertex.Bad, fmt.Errorf("baseline state solidification failed")
+		return vertex.Bad, a.reason
 	}
 
 	util.Assertf(a.baselineBranch != nil, "a.baselineBranch != nil")
@@ -239,7 +240,7 @@ func runAttacher(vid *vertex.WrappedTx, env AttachEnvironment, ctx context.Conte
 
 	status = a.solidifyPastCone()
 	if status != vertex.Good {
-		return vertex.Bad, fmt.Errorf("past cone solidification failed")
+		return vertex.Bad, a.reason
 	}
 
 	a.tracef("past cone OK")
@@ -263,6 +264,10 @@ func (a *attacher) lazyRepeat(fun func() vertex.Status) vertex.Status {
 
 func (a *attacher) baselineStateReader() multistate.SugaredStateReader {
 	return multistate.MakeSugared(a.env.GetStateReaderForTheBranch(a.baselineBranch))
+}
+
+func (a *attacher) setReason(err error) {
+	a.reason = err
 }
 
 const trace = true
