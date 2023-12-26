@@ -1,8 +1,6 @@
 package attacher
 
 import (
-	"fmt"
-
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/util"
 )
@@ -55,7 +53,7 @@ func (a *attacher) commitBranch() multistate.LedgerCoverage {
 		}
 	}
 
-	fmt.Printf("mutations:\n%s", muts.Lines("    ").String())
+	//fmt.Printf("mutations:\n%s\n", muts.Lines("    ").String())
 
 	seqID, stemOID := a.vid.MustSequencerIDAndStemID()
 	upd := multistate.MustNewUpdatable(a.env.StateStore(), a.baselineStateReader().Root())
