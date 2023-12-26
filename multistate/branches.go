@@ -49,6 +49,9 @@ func (lc *LedgerCoverage) MakeNext(shift int, nextDelta uint64) (ret LedgerCover
 }
 
 func (lc *LedgerCoverage) Sum() (ret uint64) {
+	if lc == nil {
+		return 0
+	}
 	for _, v := range lc {
 		ret += v
 	}
@@ -65,6 +68,9 @@ func (lc *LedgerCoverage) Bytes() []byte {
 }
 
 func (lc *LedgerCoverage) String() string {
+	if lc == nil {
+		return "0"
+	}
 	all := make([]string, len(lc))
 	for i, c := range lc {
 		all[i] = util.GoThousands(c)

@@ -112,20 +112,20 @@ func makeGraphEdges(vid *vertex.WrappedTx, gr graph.Graph[string, string]) {
 	}})
 }
 
-func (ut *DAG) MakeGraph(additionalVertices ...*vertex.WrappedTx) graph.Graph[string, string] {
+func (d *DAG) MakeGraph(additionalVertices ...*vertex.WrappedTx) graph.Graph[string, string] {
 	ret := graph.New(graph.StringHash, graph.Directed(), graph.Acyclic())
 
-	ut.mutex.RLock()
-	defer ut.mutex.RUnlock()
+	d.mutex.RLock()
+	defer d.mutex.RUnlock()
 
 	seqDict := make(map[core.ChainID]int)
-	for _, vid := range ut.vertices {
+	for _, vid := range d.vertices {
 		makeGraphNode(vid, ret, seqDict, false)
 	}
 	for _, vid := range additionalVertices {
 		makeGraphNode(vid, ret, seqDict, true)
 	}
-	for _, vid := range ut.vertices {
+	for _, vid := range d.vertices {
 		makeGraphEdges(vid, ret)
 	}
 	for _, vid := range additionalVertices {
@@ -134,8 +134,8 @@ func (ut *DAG) MakeGraph(additionalVertices ...*vertex.WrappedTx) graph.Graph[st
 	return ret
 }
 
-func (ut *DAG) SaveGraph(fname string) {
-	gr := ut.MakeGraph()
+func (d *DAG) SaveGraph(fname string) {
+	gr := d.MakeGraph()
 	dotFile, _ := os.Create(fname + ".gv")
 	err := draw.DOT(gr, dotFile)
 	util.AssertNoError(err)
@@ -272,8 +272,8 @@ func MakeTree(stateStore global.StateStore, slots ...int) graph.Graph[string, st
 	return ret
 }
 
-func (ut *DAG) SaveTree(fname string) {
-	SaveTree(ut.stateStore, fname)
+func (d *DAG) SaveTree(fname string) {
+	SaveTree(d.stateStore, fname)
 }
 
 func SaveTree(stateStore global.StateStore, fname string, slotsBack ...int) {

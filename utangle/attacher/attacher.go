@@ -196,6 +196,16 @@ func EnsureBranch(txid core.TransactionID, env AttachEnvironment, timeout ...tim
 	return vid, nil
 }
 
+func EnsureLatestBranches(env AttachEnvironment) error {
+	branchTxIDs := multistate.FetchLatestBranchTransactionIDs(env.StateStore())
+	for _, branchID := range branchTxIDs {
+		if _, err := EnsureBranch(branchID, env); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func newAttacher(vid *vertex.WrappedTx, env AttachEnvironment, ctx context.Context) *attacher {
 	ret := &attacher{
 		ctx:                   ctx,

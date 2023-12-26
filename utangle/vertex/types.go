@@ -33,7 +33,7 @@ type (
 		_genericWrapper
 		// future cone references. Protected by global utangle_old lock
 		// numConsumers contains number of consumers for outputs
-		mutexConsumers sync.Mutex
+		mutexConsumers sync.RWMutex
 		consumers      map[byte]set.Set[*WrappedTx]
 		txStatus       Status
 		reason         error

@@ -17,8 +17,8 @@ func newSyncData() *SyncData {
 	}
 }
 
-func (ut *DAG) SyncData() *SyncData {
-	return ut.syncData
+func (d *DAG) SyncData() *SyncData {
+	return d.syncData
 }
 
 func (s *SyncData) GetSyncInfo() (ret SyncInfo) {

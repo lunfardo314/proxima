@@ -518,3 +518,70 @@ func (vid *WrappedTx) SetLedgerCoverage(coverage multistate.LedgerCoverage) {
 
 	vid.coverage = &coverage
 }
+
+func Less(vid1, vid2 *WrappedTx) bool {
+	c1 := vid1.GetLedgerCoverage().Sum()
+	c2 := vid2.GetLedgerCoverage().Sum()
+	if c1 == c2 {
+		return core.LessTxID(*vid1.ID(), *vid2.ID())
+	}
+	return c1 < c2
+}
+
+// NumConsumers returns:
+// - number of consumed outputs
+// - number of conflict sets
+func (vid *WrappedTx) NumConsumers() (int, int) {
+	vid.mutexConsumers.RLock()
+	defer vid.mutexConsumers.RUnlock()
+
+	retConsumed := len(vid.consumers)
+	retCS := 0
+	for _, ds := range vid.consumers {
+		if len(ds) > 1 {
+			retCS++
+		}
+	}
+	return retConsumed, retCS
+}
+
+func (vid *WrappedTx) String() (ret string) {
+	consumed, doubleSpent := vid.NumConsumers()
+	vid.Unwrap(UnwrapOptions{
+		Vertex: func(v *Vertex) {
+			t := "vertex (" + vid.txStatus.String() + ")"
+			ret = fmt.Sprintf("%20s %s:: in: %d, out: %d, consumed: %d, conflicts: %d",
+				t,
+				vid._id().StringShort(),
+				v.Tx.NumInputs(),
+				v.Tx.NumProducedOutputs(),
+				consumed,
+				doubleSpent,
+			)
+		},
+		VirtualTx: func(v *VirtualTransaction) {
+			t := "virtualTx (" + vid.txStatus.String() + ")"
+
+			v.mutex.RLock()
+			defer v.mutex.RLock()
+
+			ret = fmt.Sprintf("%20s %s:: out: %d, consumed: %d, conflicts: %d",
+				t,
+				vid._id().StringShort(),
+				len(v.outputs),
+				consumed,
+				doubleSpent,
+			)
+		},
+		Deleted: vid.PanicAccessDeleted,
+	})
+	return
+}
+
+func VerticesLines(vertices []*WrappedTx, prefix ...string) *lines.Lines {
+	ret := lines.New(prefix...)
+	for _, vid := range vertices {
+		ret.Add(vid.String())
+	}
+	return ret
+}

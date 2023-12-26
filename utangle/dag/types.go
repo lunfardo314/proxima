@@ -19,11 +19,6 @@ type (
 
 		// all real-time related values in one place
 		syncData *SyncData
-
-		numAddedVertices   int
-		numDeletedVertices int
-		numAddedBranches   int
-		numDeletedBranches int
 	}
 
 	// SyncData contains various sync-related values. Thread safe with getters ad setters
