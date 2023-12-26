@@ -207,7 +207,7 @@ func (u *UTXODB) makeTransactionTokensFromFaucetMulti(addrs []core.AddressED2551
 	}
 	util.Assertf(inpAmount >= totalAmount, "inpAmount >= totalAmount")
 	remainderAmount := inpAmount - totalAmount
-	ts = ts.AddTimeTicks(core.TransactionTimePaceInTicks)
+	ts = ts.AddTicks(core.TransactionPaceInTicks)
 	txb := txbuilder.NewTransactionBuilder()
 
 	_, _, err = txb.ConsumeOutputs(faucetInputs...)

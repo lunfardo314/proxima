@@ -291,7 +291,7 @@ func (t *TransferData) WithConstraintAtIndex(constr core.Constraint) *TransferDa
 	return t.WithConstraintBinary(constr.Bytes())
 }
 
-func (t *TransferData) UseOutputsAsInputs(outs []*core.OutputWithID) error {
+func (t *TransferData) UseOutputsAsInputs(outs ...*core.OutputWithID) error {
 	for _, o := range outs {
 		if !core.EqualConstraints(t.SourceAccount, o.Output.Lock()) {
 			return fmt.Errorf("UseOutputsAsInputs: output can't be consumed. Source account: %s, output: %s", t.SourceAccount.String(), o.Output.ToString())
@@ -302,7 +302,7 @@ func (t *TransferData) UseOutputsAsInputs(outs []*core.OutputWithID) error {
 }
 
 func (t *TransferData) MustWithInputs(outs ...*core.OutputWithID) *TransferData {
-	util.AssertNoError(t.UseOutputsAsInputs(outs))
+	util.AssertNoError(t.UseOutputsAsInputs(outs...))
 	return t
 }
 
@@ -406,7 +406,10 @@ func MakeSimpleTransferTransaction(par *TransferData, disableEndorsementChecking
 
 func MakeSimpleTransferTransactionWithRemainder(par *TransferData, disableEndorsementChecking ...bool) ([]byte, *core.OutputWithID, error) {
 	if par.ChainOutput != nil {
-		return nil, nil, fmt.Errorf("ChainInput must be nil. Use MakeSimpleTransferTransaction instead")
+		return nil, nil, fmt.Errorf("MakeSimpleTransferTransactionWithRemainder: ChainInput must be nil. Use MakeSimpleTransferTransaction instead")
+	}
+	if par.Lock == nil {
+		return nil, nil, fmt.Errorf("MakeSimpleTransferTransactionWithRemainder: target lock is not specified")
 	}
 	amount := par.AdjustedAmount()
 	availableTokens, consumedOuts, err := outputsToConsumeSimple(par, amount)
@@ -416,7 +419,7 @@ func MakeSimpleTransferTransactionWithRemainder(par *TransferData, disableEndors
 
 	if availableTokens < amount {
 		if availableTokens < amount {
-			return nil, nil, fmt.Errorf("not enough tokens in account %s: needed %d, got %d",
+			return nil, nil, fmt.Errorf("MakeSimpleTransferTransactionWithRemainder: not enough tokens in account %s: needed %d, got %d",
 				par.SourceAccount.String(), par.Amount, availableTokens)
 		}
 	}
@@ -428,12 +431,12 @@ func MakeSimpleTransferTransactionWithRemainder(par *TransferData, disableEndors
 	}
 	util.Assertf(availableTokens == checkTotal, "availableTokens == checkTotal")
 	adjustedTs := core.MaxLogicalTime(inputTs, par.Timestamp).
-		AddTimeTicks(core.TransactionTimePaceInTicks)
+		AddTicks(core.TransactionPaceInTicks)
 
 	for i := range par.Endorsements {
 		if len(disableEndorsementChecking) == 0 || !disableEndorsementChecking[0] {
 			if par.Endorsements[i].TimeSlot() < adjustedTs.TimeSlot() {
-				return nil, nil, fmt.Errorf("can't endorse transaction from another time slot")
+				return nil, nil, fmt.Errorf("MakeSimpleTransferTransactionWithRemainder: can't endorse transaction from another time slot")
 			}
 		}
 		if par.Endorsements[i].TimeSlot() > adjustedTs.TimeSlot() {
@@ -538,7 +541,7 @@ func MakeChainTransferTransaction(par *TransferData, disableEndorsementChecking 
 	}
 	util.Assertf(availableTokens == checkAmount+par.ChainOutput.Output.Amount(), "availableTokens == checkAmount")
 	adjustedTs := core.MaxLogicalTime(inputTs, par.ChainOutput.Timestamp()).
-		AddTimeTicks(core.TransactionTimePaceInTicks)
+		AddTicks(core.TransactionPaceInTicks)
 
 	for i := range par.Endorsements {
 		if len(disableEndorsementChecking) == 0 || !disableEndorsementChecking[0] {

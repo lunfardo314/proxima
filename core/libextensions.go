@@ -129,8 +129,8 @@ func init() {
 	easyfl.Extend("timeSlotPrefix", "slice($0, 0, sub8(timeSlotSizeBytes,1))") // first 4 bytes of any array. It is not time slot yet
 	easyfl.Extend("timeSlotFromTimeSlotPrefix", "bitwiseAND($0, 0x3fffffff)")
 	easyfl.Extend("timeTickFromTimestamp", "byte($0, timeSlotSizeBytes)")
-	easyfl.Extend("timePace", fmt.Sprintf("%d", TransactionTimePaceInTicks))
-	easyfl.Extend("timePace64", fmt.Sprintf("u64/%d", TransactionTimePaceInTicks))
+	easyfl.Extend("timePace", fmt.Sprintf("%d", TransactionPaceInTicks))
+	easyfl.Extend("timePace64", fmt.Sprintf("u64/%d", TransactionPaceInTicks))
 	easyfl.Extend("timestamp", "concat(mustValidTimeSlot($0),mustValidTimeTick($1))")
 
 	{

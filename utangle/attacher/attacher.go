@@ -127,16 +127,12 @@ func AttachTransaction(tx *transaction.Transaction, env AttachEnvironment, opts 
 }
 
 // AttachTransactionFromBytes used for testing
-func AttachTransactionFromBytes(txBytes []byte, env AttachEnvironment, onFinalize ...func(vid *vertex.WrappedTx)) (*vertex.WrappedTx, error) {
+func AttachTransactionFromBytes(txBytes []byte, env AttachEnvironment, opts ...Option) (*vertex.WrappedTx, error) {
 	tx, err := transaction.FromBytes(txBytes, transaction.MainTxValidationOptions...)
 	if err != nil {
 		return nil, err
 	}
-	callback := func(_ *vertex.WrappedTx) {}
-	if len(onFinalize) > 0 {
-		callback = onFinalize[0]
-	}
-	return AttachTransaction(tx, env, WithFinalizationCallback(callback)), nil
+	return AttachTransaction(tx, env, opts...), nil
 }
 
 // AttachTxID ensures the txid is on the utangle_old. Must be called from globally locked environment

@@ -20,8 +20,8 @@ const (
 	TimeHorizonDuration = TimeHorizonHours * time.Hour
 	MaxTimeSlot         = 0xffffffff >> 2
 
-	// TransactionTimePaceInTicks TODO for testing. Expected value 3 or 5
-	TransactionTimePaceInTicks = 1 // number of ticks between two consecutive transactions
+	// TransactionPaceInTicks TODO for testing. Expected value 3 or 5
+	TransactionPaceInTicks = 1 // number of ticks between two consecutive transactions
 
 	TimeSlotByteLength    = 4
 	TimeTickByteLength    = 1
@@ -64,7 +64,7 @@ func YearsPerMaxTimeSlot() int64 {
 }
 
 func TransactionTimePaceDuration() time.Duration {
-	return TransactionTimePaceInTicks * TimeTickDuration()
+	return TransactionPaceInTicks * TimeTickDuration()
 }
 
 func TimeConstantsToString() string {
@@ -281,11 +281,11 @@ func DiffTimeTicks(t1, t2 LogicalTime) int64 {
 
 // ValidTimePace checks if 2 timestamps have at least time pace slots in between
 func ValidTimePace(t1, t2 LogicalTime) bool {
-	return DiffTimeTicks(t2, t1) >= int64(TransactionTimePaceInTicks)
+	return DiffTimeTicks(t2, t1) >= int64(TransactionPaceInTicks)
 }
 
-func (t LogicalTime) AddTimeTicks(s int) LogicalTime {
-	util.Assertf(s >= 0, "AddTimeTicks: can't be negative argument")
+func (t LogicalTime) AddTicks(s int) LogicalTime {
+	util.Assertf(s >= 0, "AddTicks: can't be negative argument")
 	s1 := int64(t.TimeTick()) + int64(s)
 	eRet := s1 / TimeTicksPerSlot
 	sRet := s1 % TimeTicksPerSlot
@@ -301,11 +301,7 @@ func (t LogicalTime) AddDuration(d time.Duration) LogicalTime {
 }
 
 func MaxLogicalTime(ts ...LogicalTime) LogicalTime {
-	ret := MustNewLogicalTime(0, 0)
-	for _, t := range ts {
-		if t.After(ret) {
-			ret = t
-		}
-	}
-	return ret
+	return util.Maximum(ts, func(ts1, ts2 LogicalTime) bool {
+		return ts1.Before(ts2)
+	})
 }

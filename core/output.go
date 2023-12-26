@@ -366,16 +366,34 @@ func (o *OutputDataWithID) MustParse() *OutputWithID {
 	return ret
 }
 
-func (o *OutputWithID) ExtractChainID() (ChainID, bool) {
+func (o *OutputWithID) ExtractChainID() (ChainID, byte, bool) {
 	cc, blockIdx := o.Output.ChainConstraint()
 	if blockIdx == 0xff {
-		return ChainID{}, false
+		return ChainID{}, 0, false
 	}
 	ret := cc.ID
 	if cc.ID == NilChainID {
 		ret = blake2b.Sum256(o.ID[:])
 	}
-	return ret, true
+	return ret, cc.PredecessorConstraintIndex, true
+}
+
+func (o *OutputWithID) AsChainOutput() (*OutputWithChainID, error) {
+	chainID, predecessorConstraintIdx, ok := o.ExtractChainID()
+	if !ok {
+		return nil, fmt.Errorf("not a chain output")
+	}
+	return &OutputWithChainID{
+		OutputWithID:               *o,
+		ChainID:                    chainID,
+		PredecessorConstraintIndex: predecessorConstraintIdx,
+	}, nil
+}
+
+func (o *OutputWithID) MustAsChainOutput() *OutputWithChainID {
+	ret, err := o.AsChainOutput()
+	util.AssertNoError(err)
+	return ret
 }
 
 func (o *OutputWithID) Timestamp() LogicalTime {

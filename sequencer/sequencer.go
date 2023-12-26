@@ -292,7 +292,7 @@ func (seq *Sequencer) chooseNextTargetTime(avgProposalDuration time.Duration) co
 	nowis = core.LogicalTimeNow()
 	util.Assertf(!nowis.Before(prevMilestoneTs), "!core.LogicalTimeNow().Before(prevMilestoneTs)")
 
-	targetAbsoluteMinimum := prevMilestoneTs.AddTimeTicks(seq.config.Pace)
+	targetAbsoluteMinimum := prevMilestoneTs.AddTicks(seq.config.Pace)
 	nextSlotBoundary := nowis.NextTimeSlotBoundary()
 
 	if !targetAbsoluteMinimum.Before(nextSlotBoundary) {
@@ -301,7 +301,7 @@ func (seq *Sequencer) chooseNextTargetTime(avgProposalDuration time.Duration) co
 	// absolute minimum is before the next slot boundary
 	// set absolute minimum starting from now
 	minimumTicksAheadFromNow := (seq.config.Pace * 2) / 3 // seq.config.Pace
-	targetAbsoluteMinimum = nowis.AddTimeTicks(minimumTicksAheadFromNow)
+	targetAbsoluteMinimum = nowis.AddTicks(minimumTicksAheadFromNow)
 	if !targetAbsoluteMinimum.Before(nextSlotBoundary) {
 		return targetAbsoluteMinimum
 	}

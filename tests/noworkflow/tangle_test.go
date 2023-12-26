@@ -459,7 +459,7 @@ func initMultiChainTest(t *testing.T, nChains int, printTx bool) *multiChainTest
 	require.NoError(t, err)
 	txb.PutSignatureUnlock(0)
 
-	ret.ts = firstOut.Timestamp().AddTimeTicks(core.TransactionTimePaceInTicks)
+	ret.ts = firstOut.Timestamp().AddTicks(core.TransactionPaceInTicks)
 
 	ret.chainOrigins = make([]*core.OutputWithChainID, nChains)
 	for range ret.chainOrigins {
@@ -517,7 +517,7 @@ func initMultiChainTest(t *testing.T, nChains int, printTx bool) *multiChainTest
 }
 
 func (r *multiChainTestData) createSequencerChain1(chainIdx int, pace int, printtx bool, exitFun func(i int, tx *transaction.Transaction) bool) [][]byte {
-	require.True(r.t, pace >= core.TransactionTimePaceInTicks*2)
+	require.True(r.t, pace >= core.TransactionPaceInTicks*2)
 
 	ret := make([][]byte, 0)
 	outConsumeChain := r.chainOrigins[chainIdx]
@@ -545,7 +545,7 @@ func (r *multiChainTestData) createSequencerChain1(chainIdx int, pace int, print
 		prevTs := par.Timestamp
 		toNext := par.Timestamp.TimesTicksToNextSlotBoundary()
 		if toNext == 0 || toNext > pace {
-			par.Timestamp = par.Timestamp.AddTimeTicks(pace)
+			par.Timestamp = par.Timestamp.AddTicks(pace)
 		} else {
 			par.Timestamp = par.Timestamp.NextTimeSlotBoundary()
 		}
@@ -745,7 +745,7 @@ func TestMultiChain(t *testing.T) {
 		idToBeEndorsed, tsToBeEndorsed, err := transaction.IDAndTimestampFromTransactionBytes(txBytesSeq[0][len(txBytesSeq[0])-1])
 		require.NoError(t, err)
 		ts := core.MaxLogicalTime(tsToBeEndorsed, txEndorser.Timestamp())
-		ts = ts.AddTimeTicks(core.TransactionTimePaceInTicks)
+		ts = ts.AddTicks(core.TransactionPaceInTicks)
 		t.Logf("timestamp to be endorsed: %s, endorser's timestamp: %s", tsToBeEndorsed.String(), ts.String())
 		require.True(t, ts.TimeTick() != 0 && ts.TimeSlot() == txEndorser.Timestamp().TimeSlot())
 		t.Logf("ID to be endorsed: %s", idToBeEndorsed.StringShort())
@@ -889,7 +889,7 @@ func TestMultiChain(t *testing.T) {
 
 // n parallel sequencer chains. Each chain endorses one previous, if possible
 func (r *multiChainTestData) createSequencerChains1(pace int, howLong int) [][]byte {
-	require.True(r.t, pace >= core.TransactionTimePaceInTicks*2)
+	require.True(r.t, pace >= core.TransactionPaceInTicks*2)
 	nChains := len(r.chainOrigins)
 	require.True(r.t, nChains >= 2)
 
@@ -900,7 +900,7 @@ func (r *multiChainTestData) createSequencerChains1(pace int, howLong int) [][]b
 		// sequencer tx
 		txBytes, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
 			ChainInput:   r.chainOrigins[counter],
-			Timestamp:    r.chainOrigins[counter].Timestamp().AddTimeTicks(pace),
+			Timestamp:    r.chainOrigins[counter].Timestamp().AddTicks(pace),
 			Endorsements: []*core.TransactionID{&r.originBranchTxid},
 			PrivateKey:   r.privKey,
 		})
@@ -927,8 +927,8 @@ func (r *multiChainTestData) createSequencerChains1(pace int, howLong int) [][]b
 	for i := counter; i < howLong; i++ {
 		nextChainIdx = (curChainIdx + 1) % nChains
 		ts := core.MaxLogicalTime(
-			lastInChain(nextChainIdx).Timestamp().AddTimeTicks(pace),
-			lastInChain(curChainIdx).Timestamp().AddTimeTicks(core.TransactionTimePaceInTicks),
+			lastInChain(nextChainIdx).Timestamp().AddTicks(pace),
+			lastInChain(curChainIdx).Timestamp().AddTicks(core.TransactionPaceInTicks),
 		)
 		chainIn := lastInChain(nextChainIdx).MustProducedOutputWithIDAt(0)
 
@@ -978,7 +978,7 @@ func (r *multiChainTestData) createSequencerChains1(pace int, howLong int) [][]b
 
 // n parallel sequencer chains. Each sequencer transaction endorses 1 or 2 previous if possible
 func (r *multiChainTestData) createSequencerChains2(pace int, howLong int) [][]byte {
-	require.True(r.t, pace >= core.TransactionTimePaceInTicks*2)
+	require.True(r.t, pace >= core.TransactionPaceInTicks*2)
 	nChains := len(r.chainOrigins)
 	require.True(r.t, nChains >= 2)
 
@@ -988,7 +988,7 @@ func (r *multiChainTestData) createSequencerChains2(pace int, howLong int) [][]b
 	for range sequences {
 		txBytes, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
 			ChainInput:   r.chainOrigins[counter],
-			Timestamp:    r.chainOrigins[counter].Timestamp().AddTimeTicks(pace),
+			Timestamp:    r.chainOrigins[counter].Timestamp().AddTicks(pace),
 			Endorsements: []*core.TransactionID{&r.originBranchTxid},
 			PrivateKey:   r.privKey,
 		})
@@ -1015,8 +1015,8 @@ func (r *multiChainTestData) createSequencerChains2(pace int, howLong int) [][]b
 	for i := counter; i < howLong; i++ {
 		nextChainIdx = (curChainIdx + 1) % nChains
 		ts := core.MaxLogicalTime(
-			lastInChain(nextChainIdx).Timestamp().AddTimeTicks(pace),
-			lastInChain(curChainIdx).Timestamp().AddTimeTicks(core.TransactionTimePaceInTicks),
+			lastInChain(nextChainIdx).Timestamp().AddTicks(pace),
+			lastInChain(curChainIdx).Timestamp().AddTicks(core.TransactionPaceInTicks),
 		)
 		chainIn := lastInChain(nextChainIdx).MustProducedOutputWithIDAt(0)
 
@@ -1088,7 +1088,7 @@ func (r *multiChainTestData) createSequencerChains2(pace int, howLong int) [][]b
 // n parallel sequencer chains. Each sequencer transaction endorses 1 or 2 previous if possible
 // adding faucet transactions in between
 func (r *multiChainTestData) createSequencerChains3(pace int, howLong int, printTx bool) [][]byte {
-	require.True(r.t, pace >= core.TransactionTimePaceInTicks*2)
+	require.True(r.t, pace >= core.TransactionPaceInTicks*2)
 	nChains := len(r.chainOrigins)
 	require.True(r.t, nChains >= 2)
 
@@ -1098,7 +1098,7 @@ func (r *multiChainTestData) createSequencerChains3(pace int, howLong int, print
 	for range sequences {
 		txBytes, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
 			ChainInput:   r.chainOrigins[counter],
-			Timestamp:    r.chainOrigins[counter].Timestamp().AddTimeTicks(pace),
+			Timestamp:    r.chainOrigins[counter].Timestamp().AddTicks(pace),
 			Endorsements: []*core.TransactionID{&r.originBranchTxid},
 			PrivateKey:   r.privKey,
 		})
@@ -1130,7 +1130,7 @@ func (r *multiChainTestData) createSequencerChains3(pace int, howLong int, print
 	for i := counter; i < howLong; i++ {
 		nextChainIdx = (curChainIdx + 1) % nChains
 		// create faucet tx
-		td := txbuilder.NewTransferData(r.faucetPrivKey, r.faucetAddr, faucetOutput.Timestamp().AddTimeTicks(core.TransactionTimePaceInTicks))
+		td := txbuilder.NewTransferData(r.faucetPrivKey, r.faucetAddr, faucetOutput.Timestamp().AddTicks(core.TransactionPaceInTicks))
 		td.WithTargetLock(core.ChainLockFromChainID(r.chainOrigins[nextChainIdx].ChainID)).
 			WithAmount(100).
 			MustWithInputs(faucetOutput)
@@ -1146,9 +1146,9 @@ func (r *multiChainTestData) createSequencerChains3(pace int, howLong int, print
 		}
 
 		ts := core.MaxLogicalTime(
-			lastInChain(nextChainIdx).Timestamp().AddTimeTicks(pace),
-			lastInChain(curChainIdx).Timestamp().AddTimeTicks(core.TransactionTimePaceInTicks),
-			tx.Timestamp().AddTimeTicks(core.TransactionTimePaceInTicks),
+			lastInChain(nextChainIdx).Timestamp().AddTicks(pace),
+			lastInChain(curChainIdx).Timestamp().AddTicks(core.TransactionPaceInTicks),
+			tx.Timestamp().AddTicks(core.TransactionPaceInTicks),
 		)
 		chainIn := lastInChain(nextChainIdx).MustProducedOutputWithIDAt(0)
 
@@ -1319,13 +1319,13 @@ func (r *multiChainTestData) createSequencerChains3(pace int, howLong int, print
 // n parallel sequencer chains. Each chain endorses one previous, if possible
 // Branch transactions make inflation
 func (r *multiChainTestData) create1SequencerChain(pace int, howLong int, inflation func() uint64) [][]byte {
-	require.True(r.t, pace >= core.TransactionTimePaceInTicks*2)
+	require.True(r.t, pace >= core.TransactionPaceInTicks*2)
 
 	ret := make([][]byte, 0)
 	// sequencer tx
 	txBytes, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
 		ChainInput:   r.chainOrigins[0],
-		Timestamp:    r.chainOrigins[0].Timestamp().AddTimeTicks(pace),
+		Timestamp:    r.chainOrigins[0].Timestamp().AddTicks(pace),
 		Endorsements: []*core.TransactionID{&r.originBranchTxid},
 		PrivateKey:   r.privKey,
 	})
@@ -1340,8 +1340,8 @@ func (r *multiChainTestData) create1SequencerChain(pace int, howLong int, inflat
 	ret = append(ret, txBytes)
 	for i := 0; i < howLong; i++ {
 		ts := core.MaxLogicalTime(
-			lastInChain.Timestamp().AddTimeTicks(pace),
-			lastInChain.Timestamp().AddTimeTicks(core.TransactionTimePaceInTicks),
+			lastInChain.Timestamp().AddTicks(pace),
+			lastInChain.Timestamp().AddTicks(core.TransactionPaceInTicks),
 		)
 		chainIn := lastInChain.MustProducedOutputWithIDAt(0)
 		if ts.TimesTicksToNextSlotBoundary() < 2*pace {

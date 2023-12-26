@@ -101,7 +101,7 @@ func TestTime(t *testing.T) {
 	t.Run("7", func(t *testing.T) {
 		ts := MustNewLogicalTime(100, 99)
 		t.Logf("ts = %s", ts)
-		ts1 := ts.AddTimeTicks(20)
+		ts1 := ts.AddTicks(20)
 		t.Logf("ts1 = %s", ts1)
 		tsExpect := MustNewLogicalTime(101, 19)
 		t.Logf("tsExpect = %s", tsExpect)

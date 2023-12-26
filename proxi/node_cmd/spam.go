@@ -208,7 +208,7 @@ func prepareBundle(walletData glb.WalletData, cfg spammerConfig) ([][]byte, core
 		if i == numTx-1 {
 			fee = cfg.tagAlongFee
 		}
-		ts := core.MaxLogicalTime(maxTimestamp(lastOuts).AddTimeTicks(cfg.pace), core.LogicalTimeNow())
+		ts := core.MaxLogicalTime(maxTimestamp(lastOuts).AddTicks(cfg.pace), core.LogicalTimeNow())
 		txBytes, err := client.MakeTransferTransaction(client.MakeTransferTransactionParams{
 			Inputs:        lastOuts,
 			Target:        cfg.target.AsLock(),

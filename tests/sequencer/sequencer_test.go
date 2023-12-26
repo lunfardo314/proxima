@@ -119,7 +119,7 @@ func (r *sequencerTestData) makeAdditionalChainOrigins(faucetIdx int, nChains in
 	require.NoError(r.t, err)
 	txb.PutSignatureUnlock(0)
 
-	ts := r.faucetOutputs[faucetIdx].Timestamp().AddTimeTicks(core.TransactionTimePaceInTicks)
+	ts := r.faucetOutputs[faucetIdx].Timestamp().AddTicks(core.TransactionPaceInTicks)
 
 	r.chainOrigins = make([]*core.OutputWithChainID, nChains)
 	for i := range r.chainOrigins {
@@ -212,7 +212,7 @@ func (r *sequencerTestData) makeFaucetTransaction(targetSeqID core.ChainID, fauc
 	remainderIdx, err := txb.ProduceOutput(remainderOut)
 	require.NoError(r.t, err)
 
-	txb.TransactionData.Timestamp = r.faucetOutputs[faucetIdx].Timestamp().AddTimeTicks(core.TransactionTimePaceInTicks)
+	txb.TransactionData.Timestamp = r.faucetOutputs[faucetIdx].Timestamp().AddTicks(core.TransactionPaceInTicks)
 	txb.TransactionData.InputCommitment = txb.InputCommitment()
 	txb.SignED25519(r.faucetPrivateKeys[faucetIdx])
 

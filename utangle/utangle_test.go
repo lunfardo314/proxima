@@ -190,7 +190,7 @@ func TestOrigin(t *testing.T) {
 
 		var wg sync.WaitGroup
 		wg.Add(1)
-		vidDistrib, err := attacher.AttachTransactionFromBytes(txBytes, wrk, func(vid *vertex.WrappedTx) {
+		vidDistrib, err := attacher.AttachTransactionFromBytes(txBytes, wrk, attacher.WithFinalizationCallback(func(vid *vertex.WrappedTx) {
 			status := vid.GetTxStatus()
 			if status == vertex.Good {
 				err := txBytesStore.SaveTxBytes(txBytes)
@@ -198,7 +198,7 @@ func TestOrigin(t *testing.T) {
 			}
 			t.Logf("distribution tx finalized. Status: %s", vid.StatusString())
 			wg.Done()
-		})
+		}))
 		require.NoError(t, err)
 		wg.Wait()
 
@@ -240,30 +240,75 @@ func TestOrigin(t *testing.T) {
 
 func TestConflicts(t *testing.T) {
 	t.Run("1", func(t *testing.T) {
-		const nConflicts = 5
-		td := initConflictTest(t, 5)
-		for _, txBytes := range td.txBytes {
-			_, err := attacher.AttachTransactionFromBytes(txBytes, td.wrk)
+		const nConflicts = 10
+		testData := initConflictTest(t, nConflicts)
+		for _, txBytes := range testData.txBytes {
+			_, err := attacher.AttachTransactionFromBytes(txBytes, testData.wrk)
 			require.NoError(t, err)
 		}
-		t.Logf("DAG INFO:\n%s", td.wrk.Info())
-		slot := td.wrk.LatestBranchSlot()
-		t.Logf("VERTICES in the latest slot %d\n%s", slot, td.wrk.LinesVerticesInSlotAndAfter(slot).String())
+		testData.logDAGInfo()
+	})
+	t.Run("2", func(t *testing.T) {
+		const nConflicts = 2
+		testData := initConflictTest(t, nConflicts)
+		for _, txBytes := range testData.txBytes {
+			_, err := attacher.AttachTransactionFromBytes(txBytes, testData.wrk)
+			require.NoError(t, err)
+		}
+		testData.logDAGInfo()
+
+		amount := uint64(0)
+		for _, o := range testData.conflictingOutputs {
+			amount += o.Output.Amount()
+		}
+
+		branches := multistate.FetchLatestBranches(testData.wrk.StateStore())
+		require.EqualValues(t, 1, len(branches))
+		bd := branches[0]
+
+		chainOut := bd.SequencerOutput.MustAsChainOutput()
+		inTS := []core.LogicalTime{chainOut.Timestamp()}
+		for _, o := range testData.conflictingOutputs {
+			inTS = append(inTS, o.Timestamp())
+		}
+
+		txBytes, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
+			SeqName:          "test",
+			ChainInput:       chainOut,
+			Timestamp:        core.MaxLogicalTime(inTS...).AddTicks(core.TransactionPaceInTicks),
+			AdditionalInputs: testData.conflictingOutputs,
+			PrivateKey:       testData.privKey,
+			TotalSupply:      0,
+		})
+		require.NoError(t, err)
+
+		var wg sync.WaitGroup
+
+		wg.Add(1)
+		vid, err := attacher.AttachTransactionFromBytes(txBytes, testData.wrk, attacher.WithFinalizationCallback(func(vid *vertex.WrappedTx) {
+			wg.Done()
+		}))
+		wg.Wait()
+		require.NoError(t, err)
+		require.EqualValues(t, vertex.Bad, vid.GetTxStatus())
+		t.Logf("reason: %v", vid.GetReason())
+
+		testData.logDAGInfo()
 	})
 }
 
 type conflictTestData struct {
-	wrk              *testingWorkflow
-	bootstrapChainID core.ChainID
-	privKey          ed25519.PrivateKey
-	addr             core.AddressED25519
-	stateIdentity    genesis.LedgerIdentityData
-	originBranchTxid core.TransactionID
-	forkOutput       *core.OutputWithID
-	txBytes          [][]byte
-	outs             []*core.OutputWithID
-	total            uint64
-	pkController     []ed25519.PrivateKey
+	t                  *testing.T
+	wrk                *testingWorkflow
+	bootstrapChainID   core.ChainID
+	privKey            ed25519.PrivateKey
+	addr               core.AddressED25519
+	stateIdentity      genesis.LedgerIdentityData
+	originBranchTxid   core.TransactionID
+	forkOutput         *core.OutputWithID
+	txBytes            [][]byte
+	conflictingOutputs []*core.OutputWithID
+	pkController       []ed25519.PrivateKey
 }
 
 func initConflictTest(t *testing.T, nConflicts int) *conflictTestData {
@@ -272,6 +317,7 @@ func initConflictTest(t *testing.T, nConflicts int) *conflictTestData {
 	par := genesis.DefaultIdentityData(genesisPrivKey)
 	distrib, privKeys, addrs := inittest.GenesisParamsWithPreDistribution(1, initBalance)
 	ret := &conflictTestData{
+		t:             t,
 		stateIdentity: *par,
 		privKey:       privKeys[0],
 		addr:          addrs[0],
@@ -325,20 +371,24 @@ func initConflictTest(t *testing.T, nConflicts int) *conflictTestData {
 
 	for i := 0; i < nConflicts; i++ {
 		td.WithAmount(uint64(100 + i)).
-			WithTargetLock(ret.addr)
+			WithTargetLock(core.ChainLockFromChainID(ret.bootstrapChainID))
 		ret.txBytes[i], err = txbuilder.MakeTransferTransaction(td)
 		require.NoError(t, err)
 	}
 	require.EqualValues(t, nConflicts, len(ret.txBytes))
 
-	ret.outs = make([]*core.OutputWithID, nConflicts)
-	ret.total = 0
-	for i := range ret.outs {
+	ret.conflictingOutputs = make([]*core.OutputWithID, nConflicts)
+	for i := range ret.conflictingOutputs {
 		tx, err := transaction.FromBytesMainChecksWithOpt(ret.txBytes[i])
 		require.NoError(t, err)
-		ret.outs[i] = tx.MustProducedOutputWithIDAt(1)
-		require.EqualValues(t, 100+i, int(ret.outs[i].Output.Amount()))
-		ret.total += ret.outs[i].Output.Amount()
+		ret.conflictingOutputs[i] = tx.MustProducedOutputWithIDAt(1)
+		require.EqualValues(t, 100+i, int(ret.conflictingOutputs[i].Output.Amount()))
 	}
 	return ret
+}
+
+func (td *conflictTestData) logDAGInfo() {
+	td.t.Logf("DAG INFO:\n%s", td.wrk.Info())
+	slot := td.wrk.LatestBranchSlot()
+	td.t.Logf("VERTICES in the latest slot %d\n%s", slot, td.wrk.LinesVerticesInSlotAndAfter(slot).String())
 }

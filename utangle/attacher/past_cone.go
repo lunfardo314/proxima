@@ -118,7 +118,7 @@ func (a *attacher) attachInputs(v *vertex.Vertex, vid *vertex.WrappedTx, parasit
 		util.Assertf(v.Inputs[i] != nil, "v.Inputs[i] != nil")
 
 		if parasiticChainHorizon == core.NilLogicalTime {
-			parasiticChainHorizon = v.Inputs[i].Timestamp().AddTimeTicks(maxToleratedParasiticChainTicks)
+			parasiticChainHorizon = v.Inputs[i].Timestamp().AddTicks(maxToleratedParasiticChainTicks)
 		}
 		status = a.attachOutput(vertex.WrappedOutput{
 			VID:   v.Inputs[i],
