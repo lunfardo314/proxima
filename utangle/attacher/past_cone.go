@@ -161,6 +161,8 @@ func (a *attacher) attachRooted(wOut vertex.WrappedOutput) vertex.Status {
 	consumedRooted := a.rooted[wOut.VID]
 	stateReader := a.baselineStateReader()
 
+	// <<<< TODO attach consumer even if conflict
+
 	if len(consumedRooted) == 0 {
 		if stateReader.KnowsCommittedTransaction(wOut.VID.ID()) {
 			consumedRooted = set.New(wOut.Index)
@@ -168,7 +170,6 @@ func (a *attacher) attachRooted(wOut vertex.WrappedOutput) vertex.Status {
 		}
 	} else {
 		// transaction has consumed outputs -> it is rooted
-		// <<<< TODO attach consumer even if conflict
 		if consumedRooted.Contains(wOut.Index) {
 			// double spend
 			err := fmt.Errorf("fail: rooted output %s is already spent", wOut.IDShortString())
