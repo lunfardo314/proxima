@@ -74,8 +74,10 @@ func (a *attacher) attachEndorsements(v *vertex.Vertex, parasiticChainHorizon co
 			vidEndorsed = AttachTxID(v.Tx.EndorsementAt(byte(i)), a.env, true)
 			v.Endorsements[i] = vidEndorsed
 		}
+
 		switch vidEndorsed.GetTxStatus() {
 		case vertex.Bad:
+			a.setReason(vidEndorsed.GetReason())
 			return vertex.Bad
 		case vertex.Good:
 			a.goodPastVertices.Insert(vidEndorsed)
@@ -114,7 +116,7 @@ func (a *attacher) attachInputs(v *vertex.Vertex, vid *vertex.WrappedTx, parasit
 		switch status = a.attachInputID(v, vid, byte(i)); status {
 		case vertex.Bad:
 			a.tracef("bad input %d", i)
-			return // invalidate
+			return
 		case vertex.Undefined:
 			allGood = false
 		}
@@ -124,14 +126,15 @@ func (a *attacher) attachInputs(v *vertex.Vertex, vid *vertex.WrappedTx, parasit
 			// TODO revisit parasitic chain threshold because of syncing
 			parasiticChainHorizon = core.MustNewLogicalTime(v.Inputs[i].Timestamp().TimeSlot()-maxToleratedParasiticChainSlots, 0)
 		}
-		status = a.attachOutput(vertex.WrappedOutput{
+		wOut := vertex.WrappedOutput{
 			VID:   v.Inputs[i],
 			Index: v.Tx.MustOutputIndexOfTheInput(byte(i)),
-		}, parasiticChainHorizon) // << recursion
+		}
+		status = a.attachOutput(wOut, parasiticChainHorizon) // << recursion
 
 		switch status {
 		case vertex.Bad:
-			a.tracef("failed to attach output of the input #%d", i)
+			a.tracef("failed to attach output %s of the input #%d in tx %s", wOut.IDShortString, i, v.Tx.IDShortString)
 			return // Invalidate
 		case vertex.Undefined:
 			allGood = false
@@ -143,7 +146,7 @@ func (a *attacher) attachInputs(v *vertex.Vertex, vid *vertex.WrappedTx, parasit
 		if err := v.ValidateConstraints(); err == nil {
 			status = vertex.Good
 		} else {
-			a.setReason(err)
+			a.setReason(fmt.Errorf("%s -> '%v'", v.Tx.IDShortString(), err))
 			status = vertex.Bad
 		}
 	}
@@ -167,9 +170,9 @@ func (a *attacher) attachRooted(wOut vertex.WrappedOutput) vertex.Status {
 		// transaction has consumed outputs -> it is rooted
 		if consumedRooted.Contains(wOut.Index) {
 			// double spend
-			err := fmt.Errorf("rooted output %s is already spent", wOut.IDShortString())
-			a.setReason(err)
+			err := fmt.Errorf("fail: rooted output %s is already spent", wOut.IDShortString())
 			a.tracef("%v", err)
+			a.setReason(err)
 			status = vertex.Bad
 		} else {
 			oid := wOut.DecodeID()
@@ -251,6 +254,7 @@ func (a *attacher) attachInputID(consumerVertex *vertex.Vertex, consumerTx *vert
 	vidInputTx := consumerVertex.Inputs[inputIdx]
 	if vidInputTx != nil {
 		if vidInputTx.GetTxStatus() == vertex.Bad {
+			a.setReason(vidInputTx.GetReason())
 			a.tracef("input tx is bad: %s", vidInputTx.IDShortString)
 			return vertex.Bad
 		}
@@ -263,7 +267,11 @@ func (a *attacher) attachInputID(consumerVertex *vertex.Vertex, consumerTx *vert
 					return vertex.Bad
 				}
 			}
-			return vidInputTx.GetTxStatus()
+			status := vidInputTx.GetTxStatus()
+			if status == vertex.Bad {
+				a.setReason(vidInputTx.GetReason())
+			}
+			return status
 		}
 	}
 
@@ -271,6 +279,7 @@ func (a *attacher) attachInputID(consumerVertex *vertex.Vertex, consumerTx *vert
 	vidInputTx = AttachTxID(inputOid.TransactionID(), a.env, false)
 	status := vidInputTx.GetTxStatus()
 	if status == vertex.Bad {
+		a.setReason(vidInputTx.GetReason())
 		return vertex.Bad
 	}
 	if vidInputTx.IsSequencerMilestone() {

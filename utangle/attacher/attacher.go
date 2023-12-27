@@ -267,6 +267,7 @@ func (a *attacher) baselineStateReader() multistate.SugaredStateReader {
 }
 
 func (a *attacher) setReason(err error) {
+	a.tracef("set reason: '%v'", err)
 	a.reason = err
 }
 

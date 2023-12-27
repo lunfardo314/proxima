@@ -70,7 +70,7 @@ func (a *attacher) ledgerCoverage(coverageDelta uint64) multistate.LedgerCoverag
 
 		prevCoverage = rr.LedgerCoverage
 	}
-	return prevCoverage.MakeNext(int(a.vid.TimeSlot())-int(a.baselineBranch.TimeSlot()), coverageDelta)
+	return prevCoverage.MakeNext(int(a.vid.TimeSlot())-int(a.baselineBranch.TimeSlot())+1, coverageDelta)
 }
 
 func (a *attacher) calculateCoverage() multistate.LedgerCoverage {

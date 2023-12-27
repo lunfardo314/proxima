@@ -249,7 +249,7 @@ func TestConflicts(t *testing.T) {
 		testData.logDAGInfo()
 	})
 	t.Run("2", func(t *testing.T) {
-		const nConflicts = 1
+		const nConflicts = 10
 		testData := initConflictTest(t, nConflicts)
 		for _, txBytes := range testData.txBytes {
 			_, err := attacher.AttachTransactionFromBytes(txBytes, testData.wrk)
@@ -295,6 +295,7 @@ func TestConflicts(t *testing.T) {
 		if nConflicts > 1 {
 			require.True(t, vertex.Bad == vid.GetTxStatus())
 			t.Logf("reason: %v", vid.GetReason())
+			util.RequireErrorWith(t, vid.GetReason(), "rooted output", "is already spent", testData.forkOutput.IDShort())
 		} else {
 			require.True(t, vertex.Good == vid.GetTxStatus())
 		}
