@@ -23,6 +23,7 @@ import (
 
 func TestOrigin(t *testing.T) {
 	t.Run("base", func(t *testing.T) {
+		attacher.SetTraceOn()
 		par := genesis.DefaultIdentityData(testutil.GetTestingPrivateKey())
 
 		stateStore := common.NewInMemoryKVStore()
@@ -49,6 +50,7 @@ func TestOrigin(t *testing.T) {
 		t.Logf("%s", dagAccess.Info())
 	})
 	t.Run("with distribution", func(t *testing.T) {
+		attacher.SetTraceOn()
 		privKey := testutil.GetTestingPrivateKey()
 		par := genesis.DefaultIdentityData(privKey)
 		addr1 := core.AddressED25519FromPrivateKey(testutil.GetTestingPrivateKey(1))
@@ -107,6 +109,7 @@ func TestOrigin(t *testing.T) {
 		require.EqualValues(t, genesis.DefaultSupply-1_000_000-2_000_000, int(balChain))
 	})
 	t.Run("sync scenario", func(t *testing.T) {
+		attacher.SetTraceOn()
 		privKey := testutil.GetTestingPrivateKey()
 		par := genesis.DefaultIdentityData(privKey)
 		addr1 := core.AddressED25519FromPrivateKey(testutil.GetTestingPrivateKey(1))
@@ -170,6 +173,7 @@ func TestOrigin(t *testing.T) {
 
 	})
 	t.Run("with distribution tx", func(t *testing.T) {
+		attacher.SetTraceOn()
 		privKey := testutil.GetTestingPrivateKey()
 		par := genesis.DefaultIdentityData(privKey)
 		addr1 := core.AddressED25519FromPrivateKey(testutil.GetTestingPrivateKey(1))
@@ -240,8 +244,9 @@ func TestOrigin(t *testing.T) {
 
 func TestConflicts(t *testing.T) {
 	t.Run("n double spends", func(t *testing.T) {
+		attacher.SetTraceOn()
 		const nConflicts = 10
-		testData := initConflictTest(t, nConflicts, false)
+		testData := initConflictTest(t, nConflicts, 1, false)
 		for _, txBytes := range testData.txBytes {
 			_, err := attacher.AttachTransactionFromBytes(txBytes, testData.wrk)
 			require.NoError(t, err)
@@ -249,8 +254,9 @@ func TestConflicts(t *testing.T) {
 		testData.logDAGInfo()
 	})
 	t.Run("n double spends consumed", func(t *testing.T) {
+		attacher.SetTraceOn()
 		const nConflicts = 5
-		testData := initConflictTest(t, nConflicts, true)
+		testData := initConflictTest(t, nConflicts, 1, true)
 		for _, txBytes := range testData.txBytes {
 			_, err := attacher.AttachTransactionFromBytes(txBytes, testData.wrk)
 			require.NoError(t, err)
@@ -302,8 +308,9 @@ func TestConflicts(t *testing.T) {
 
 	})
 	t.Run("conflicting tx consumed", func(t *testing.T) {
+		//attacher.SetTraceOn()
 		const nConflicts = 2
-		testData := initConflictTest(t, nConflicts, false)
+		testData := initConflictTest(t, nConflicts, 1, false)
 		for _, txBytes := range testData.txBytes {
 			_, err := attacher.AttachTransactionFromBytes(txBytes, testData.wrk)
 			require.NoError(t, err)
@@ -377,7 +384,9 @@ type conflictTestData struct {
 	pkController       []ed25519.PrivateKey
 }
 
-func initConflictTest(t *testing.T, nConflicts int, targetLockChain bool) *conflictTestData {
+func initConflictTest(t *testing.T, nConflicts int, howLong int, targetLockChain bool) *conflictTestData {
+	require.True(t, howLong >= 1)
+
 	const initBalance = 10_000
 	genesisPrivKey := testutil.GetTestingPrivateKey()
 	par := genesis.DefaultIdentityData(genesisPrivKey)

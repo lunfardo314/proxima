@@ -271,7 +271,12 @@ func (a *attacher) setReason(err error) {
 	a.reason = err
 }
 
-const trace = true
+// not thread safe
+var trace = false
+
+func SetTraceOn() {
+	trace = true
+}
 
 func (a *attacher) tracef(format string, lazyArgs ...any) {
 	if trace {
