@@ -199,9 +199,6 @@ func (a *attacher) attachRooted(wOut vertex.WrappedOutput) vertex.Status {
 func (a *attacher) attachOutput(wOut vertex.WrappedOutput, parasiticChainHorizon core.LogicalTime) vertex.Status {
 	a.tracef("attachOutput %s", wOut.IDShortString)
 
-	_, alreadyPending := a.pendingOutputs[wOut]
-	util.Assertf(!alreadyPending, "inconsistency: unexpected wrapped output in the pending list")
-
 	status := a.attachRooted(wOut)
 	if status != vertex.Undefined {
 		return status

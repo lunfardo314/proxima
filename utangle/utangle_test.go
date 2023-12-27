@@ -246,7 +246,7 @@ func TestConflicts(t *testing.T) {
 	t.Run("n double spends", func(t *testing.T) {
 		attacher.SetTraceOn()
 		const nConflicts = 10
-		testData := initConflictTest(t, nConflicts, 1, false)
+		testData := initConflictTest(t, nConflicts, false)
 		for _, txBytes := range testData.txBytes {
 			_, err := attacher.AttachTransactionFromBytes(txBytes, testData.wrk)
 			require.NoError(t, err)
@@ -256,7 +256,7 @@ func TestConflicts(t *testing.T) {
 	t.Run("n double spends consumed", func(t *testing.T) {
 		attacher.SetTraceOn()
 		const nConflicts = 5
-		testData := initConflictTest(t, nConflicts, 1, true)
+		testData := initConflictTest(t, nConflicts, true)
 		for _, txBytes := range testData.txBytes {
 			_, err := attacher.AttachTransactionFromBytes(txBytes, testData.wrk)
 			require.NoError(t, err)
@@ -310,7 +310,7 @@ func TestConflicts(t *testing.T) {
 	t.Run("conflicting tx consumed", func(t *testing.T) {
 		//attacher.SetTraceOn()
 		const nConflicts = 2
-		testData := initConflictTest(t, nConflicts, 1, false)
+		testData := initConflictTest(t, nConflicts, false)
 		for _, txBytes := range testData.txBytes {
 			_, err := attacher.AttachTransactionFromBytes(txBytes, testData.wrk)
 			require.NoError(t, err)
@@ -366,7 +366,60 @@ func TestConflicts(t *testing.T) {
 		require.True(t, vertex.Bad == vid.GetTxStatus())
 		t.Logf("reason: %v", vid.GetReason())
 		util.RequireErrorWith(t, vid.GetReason(), "conflicts with exiting consumers in the baseline state", testData.forkOutput.IDShort())
+	})
+	t.Run("long", func(t *testing.T) {
+		attacher.SetTraceOn()
+		const (
+			nConflicts = 2
+			howLong    = 96 // TODO 97 fails with dead lock
+		)
+		testData := initLongConflictTestData(t, nConflicts, howLong)
+		for _, txBytes := range testData.txBytes {
+			_, err := attacher.AttachTransactionFromBytes(txBytes, testData.wrk)
+			require.NoError(t, err)
+		}
+		for _, txSeq := range testData.txSequences {
+			for _, txBytes := range txSeq {
+				_, err := attacher.AttachTransactionFromBytes(txBytes, testData.wrk)
+				require.NoError(t, err)
+			}
+		}
 
+		branches := multistate.FetchLatestBranches(testData.wrk.StateStore())
+		require.EqualValues(t, 1, len(branches))
+		bd := branches[0]
+
+		chainOut := bd.SequencerOutput.MustAsChainOutput()
+		inTS := []core.LogicalTime{chainOut.Timestamp()}
+		amount := uint64(0)
+		for _, o := range testData.terminalOutputs {
+			inTS = append(inTS, o.Timestamp())
+			amount += o.Output.Amount()
+		}
+
+		txBytes, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
+			SeqName:          "test",
+			ChainInput:       chainOut,
+			Timestamp:        core.MaxLogicalTime(inTS...).AddTicks(core.TransactionPaceInTicks),
+			AdditionalInputs: testData.terminalOutputs,
+			PrivateKey:       testData.privKey,
+			TotalSupply:      0,
+		})
+		require.NoError(t, err)
+
+		var wg sync.WaitGroup
+
+		wg.Add(1)
+		vid, err := attacher.AttachTransactionFromBytes(txBytes, testData.wrk, attacher.WithFinalizationCallback(func(vid *vertex.WrappedTx) {
+			wg.Done()
+		}))
+		wg.Wait()
+		require.NoError(t, err)
+		testData.logDAGInfo()
+
+		require.True(t, vertex.Bad == vid.GetTxStatus())
+		t.Logf("reason: %v", vid.GetReason())
+		util.RequireErrorWith(t, vid.GetReason(), "conflicts with exiting consumers in the baseline state", testData.forkOutput.IDShort())
 	})
 }
 
@@ -384,8 +437,7 @@ type conflictTestData struct {
 	pkController       []ed25519.PrivateKey
 }
 
-func initConflictTest(t *testing.T, nConflicts int, howLong int, targetLockChain bool) *conflictTestData {
-	require.True(t, howLong >= 1)
+func initConflictTest(t *testing.T, nConflicts int, targetLockChain bool) *conflictTestData {
 
 	const initBalance = 10_000
 	genesisPrivKey := testutil.GetTestingPrivateKey()
@@ -470,4 +522,52 @@ func (td *conflictTestData) logDAGInfo() {
 	td.t.Logf("DAG INFO:\n%s", td.wrk.Info())
 	slot := td.wrk.LatestBranchSlot()
 	td.t.Logf("VERTICES in the latest slot %d\n%s", slot, td.wrk.LinesVerticesInSlotAndAfter(slot).String())
+}
+
+type longConflictTestData struct {
+	conflictTestData
+	txSequences     [][][]byte
+	terminalOutputs []*core.OutputWithID
+}
+
+func initLongConflictTestData(t *testing.T, nConflicts int, howLong int) *longConflictTestData {
+	ret := &longConflictTestData{
+		conflictTestData: *initConflictTest(t, nConflicts, false),
+		txSequences:      make([][][]byte, nConflicts),
+		terminalOutputs:  make([]*core.OutputWithID, nConflicts),
+	}
+
+	var prev *core.OutputWithID
+	var err error
+
+	td := &ret.conflictTestData
+
+	for seqNr, originOut := range ret.conflictingOutputs {
+		ret.txSequences[seqNr] = make([][]byte, howLong)
+		for i := 0; i < howLong; i++ {
+			if i == 0 {
+				prev = originOut
+			}
+			prev = originOut
+			trd := txbuilder.NewTransferData(td.privKey, td.addr, originOut.Timestamp().AddTicks(core.TransactionPaceInTicks*(i+1)))
+			trd.WithAmount(originOut.Output.Amount())
+			trd.MustWithInputs(prev)
+			if i < howLong-1 {
+				trd.WithTargetLock(td.addr)
+			} else {
+				trd.WithTargetLock(core.ChainLockFromChainID(td.bootstrapChainID))
+			}
+			ret.txSequences[seqNr][i], err = txbuilder.MakeSimpleTransferTransaction(trd)
+			require.NoError(t, err)
+
+			tx, err := transaction.FromBytesMainChecksWithOpt(ret.txSequences[seqNr][i])
+			require.NoError(t, err)
+
+			prev = tx.MustProducedOutputWithIDAt(0)
+			if i == howLong-1 {
+				ret.terminalOutputs[seqNr] = prev
+			}
+		}
+	}
+	return ret
 }
