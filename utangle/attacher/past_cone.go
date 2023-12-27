@@ -161,8 +161,6 @@ func (a *attacher) attachRooted(wOut vertex.WrappedOutput) vertex.Status {
 	consumedRooted := a.rooted[wOut.VID]
 	stateReader := a.baselineStateReader()
 
-	// <<<< TODO attach consumer even if conflict
-
 	if len(consumedRooted) == 0 {
 		if stateReader.KnowsCommittedTransaction(wOut.VID.ID()) {
 			consumedRooted = set.New(wOut.Index)
@@ -180,7 +178,7 @@ func (a *attacher) attachRooted(wOut vertex.WrappedOutput) vertex.Status {
 			oid := wOut.DecodeID()
 			if out := stateReader.GetOutput(oid); out != nil {
 				consumedRooted.Insert(wOut.Index)
-				ensured := wOut.VID.EnsureOutput(wOut.Index, out) // FIXME deadlock
+				ensured := wOut.VID.EnsureOutput(wOut.Index, out)
 				util.Assertf(ensured, "attachInputID: inconsistency")
 				status = vertex.Good
 			} else {
@@ -253,38 +251,29 @@ func (a *attacher) branchesCompatible(vid1, vid2 *vertex.WrappedTx) bool {
 func (a *attacher) attachInputID(consumerVertex *vertex.Vertex, consumerTx *vertex.WrappedTx, inputIdx byte) vertex.Status {
 	a.tracef("attachInputID: tx: %s, inputIdx: %d", consumerTx.IDShortString, inputIdx)
 
-	vidInputTx := consumerVertex.Inputs[inputIdx]
-	if vidInputTx != nil {
-		if vidInputTx.GetTxStatus() == vertex.Bad {
-			a.setReason(vidInputTx.GetReason())
-			a.tracef("input tx is bad: %s", vidInputTx.IDShortString)
-			return vertex.Bad
-		}
-		if vidInputTx.IsSequencerMilestone() {
-			if inputBaselineBranch := vidInputTx.BaselineBranch(); inputBaselineBranch != nil {
-				if !a.branchesCompatible(a.baselineBranch, inputBaselineBranch) {
-					err := fmt.Errorf("branches not compatible: %s and %s", a.baselineBranch.IDShortString(), inputBaselineBranch.IDShortString())
-					a.setReason(err)
-					a.tracef("%v", err)
-					return vertex.Bad
-				}
-			}
-			status := vidInputTx.GetTxStatus()
-			if status == vertex.Bad {
-				a.setReason(vidInputTx.GetReason())
-			}
-			return status
-		}
-	}
-
 	inputOid := consumerVertex.Tx.MustInputAt(inputIdx)
-	vidInputTx = AttachTxID(inputOid.TransactionID(), a.env, false)
+	vidInputTx := consumerVertex.Inputs[inputIdx]
+	if vidInputTx == nil {
+		vidInputTx = AttachTxID(inputOid.TransactionID(), a.env, false)
+	}
+	util.Assertf(vidInputTx != nil, "vidInputTx != nil")
+
+	// attach consumer and check for conflicts. Does not matter the status
+	if !vidInputTx.AttachConsumer(inputOid.Index(), consumerTx, a.checkConflicts(consumerTx)) {
+		err := fmt.Errorf("input %s of consumer %s conflicts with exiting consumers in the baseline state %s",
+			inputOid.StringShort(), consumerTx.IDShortString(), a.baselineBranch.IDShortString())
+		a.setReason(err)
+		a.tracef("%v", err)
+		return vertex.Bad
+	}
+	// no conflicts, now check the status
 	status := vidInputTx.GetTxStatus()
 	if status == vertex.Bad {
 		a.setReason(vidInputTx.GetReason())
 		return vertex.Bad
 	}
 	if vidInputTx.IsSequencerMilestone() {
+		// for sequencer milestones check if baselines do not conflict
 		if inputBaselineBranch := vidInputTx.BaselineBranch(); inputBaselineBranch != nil {
 			if !a.branchesCompatible(a.baselineBranch, inputBaselineBranch) {
 				err := fmt.Errorf("branches %s and %s not compatible", a.baselineBranch.IDShortString(), inputBaselineBranch.IDShortString())
@@ -297,31 +286,27 @@ func (a *attacher) attachInputID(consumerVertex *vertex.Vertex, consumerTx *vert
 		return vidInputTx.GetTxStatus()
 	}
 
-	conflict := vidInputTx.AttachConsumer(inputOid.Index(), consumerTx, func(existingConsumers set.Set[*vertex.WrappedTx]) bool {
-		conflict1 := false
+	consumerVertex.Inputs[inputIdx] = vidInputTx
+	return status
+}
+
+func (a *attacher) checkConflicts(consumerTx *vertex.WrappedTx) func(existingConsumers set.Set[*vertex.WrappedTx]) bool {
+	return func(existingConsumers set.Set[*vertex.WrappedTx]) bool {
+		conflict := false
 		existingConsumers.ForEach(func(existingConsumer *vertex.WrappedTx) bool {
 			if existingConsumer == consumerTx {
 				return true
 			}
 			if a.goodPastVertices.Contains(existingConsumer) {
-				conflict1 = true
+				conflict = true
 				return false
 			}
 			if a.undefinedPastVertices.Contains(existingConsumer) {
-				conflict1 = true
+				conflict = true
 				return false
 			}
 			return true
 		})
-		return conflict1
-	})
-	if conflict {
-		err := fmt.Errorf("input %s of consumer %s conflicts with exiting consumers in the baseline state %s",
-			inputOid.StringShort(), consumerTx.IDShortString(), a.baselineBranch.IDShortString())
-		a.setReason(err)
-		a.tracef("%v", err)
-		return vertex.Bad
+		return conflict
 	}
-	consumerVertex.Inputs[inputIdx] = vidInputTx
-	return status
 }

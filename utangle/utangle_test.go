@@ -295,7 +295,7 @@ func TestConflicts(t *testing.T) {
 		if nConflicts > 1 {
 			require.True(t, vertex.Bad == vid.GetTxStatus())
 			t.Logf("reason: %v", vid.GetReason())
-			util.RequireErrorWith(t, vid.GetReason(), "rooted output", "is already spent", testData.forkOutput.IDShort())
+			util.RequireErrorWith(t, vid.GetReason(), "conflicts with exiting consumers in the baseline state", testData.forkOutput.IDShort())
 		} else {
 			require.True(t, vertex.Good == vid.GetTxStatus())
 		}
@@ -358,7 +358,7 @@ func TestConflicts(t *testing.T) {
 
 		require.True(t, vertex.Bad == vid.GetTxStatus())
 		t.Logf("reason: %v", vid.GetReason())
-		util.RequireErrorWith(t, vid.GetReason(), "rooted output", "is already spent", testData.forkOutput.IDShort())
+		util.RequireErrorWith(t, vid.GetReason(), "conflicts with exiting consumers in the baseline state", testData.forkOutput.IDShort())
 
 	})
 }
