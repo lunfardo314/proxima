@@ -470,20 +470,17 @@ func (vid *WrappedTx) AttachConsumer(outputIndex byte, consumer *WrappedTx, chec
 	vid.mutexConsumers.Lock()
 	defer vid.mutexConsumers.Unlock()
 
-	if vid.consumers == nil {
-		vid.consumers = make(map[byte]set.Set[*WrappedTx])
+	if vid.consumed == nil {
+		vid.consumed = make(map[byte]set.Set[*WrappedTx])
 	}
-	outputConsumers := vid.consumers[outputIndex]
+	outputConsumers := vid.consumed[outputIndex]
 	if outputConsumers == nil {
 		outputConsumers = set.New(consumer)
-		return false
+	} else {
+		outputConsumers.Insert(consumer)
 	}
-	if checkConflicts(outputConsumers) {
-		return true
-	}
-	outputConsumers.Insert(consumer)
-	vid.consumers[outputIndex] = outputConsumers
-	return false
+	vid.consumed[outputIndex] = outputConsumers
+	return checkConflicts(outputConsumers)
 }
 
 func (vid *WrappedTx) NotConsumedOutputIndices(allConsumers set.Set[*WrappedTx]) []byte {
@@ -498,7 +495,7 @@ func (vid *WrappedTx) NotConsumedOutputIndices(allConsumers set.Set[*WrappedTx])
 	ret := make([]byte, 0, nOutputs)
 
 	for i := 0; i < nOutputs; i++ {
-		if set.DoNotIntersect(vid.consumers[byte(i)], allConsumers) {
+		if set.DoNotIntersect(vid.consumed[byte(i)], allConsumers) {
 			ret = append(ret, byte(i))
 		}
 	}
@@ -535,9 +532,9 @@ func (vid *WrappedTx) NumConsumers() (int, int) {
 	vid.mutexConsumers.RLock()
 	defer vid.mutexConsumers.RUnlock()
 
-	retConsumed := len(vid.consumers)
+	retConsumed := len(vid.consumed)
 	retCS := 0
-	for _, ds := range vid.consumers {
+	for _, ds := range vid.consumed {
 		if len(ds) > 1 {
 			retCS++
 		}

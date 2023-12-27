@@ -239,18 +239,18 @@ func TestOrigin(t *testing.T) {
 }
 
 func TestConflicts(t *testing.T) {
-	t.Run("1", func(t *testing.T) {
+	t.Run("n double spends", func(t *testing.T) {
 		const nConflicts = 10
-		testData := initConflictTest(t, nConflicts)
+		testData := initConflictTest(t, nConflicts, false)
 		for _, txBytes := range testData.txBytes {
 			_, err := attacher.AttachTransactionFromBytes(txBytes, testData.wrk)
 			require.NoError(t, err)
 		}
 		testData.logDAGInfo()
 	})
-	t.Run("2", func(t *testing.T) {
-		const nConflicts = 10
-		testData := initConflictTest(t, nConflicts)
+	t.Run("n double spends consumed", func(t *testing.T) {
+		const nConflicts = 5
+		testData := initConflictTest(t, nConflicts, true)
 		for _, txBytes := range testData.txBytes {
 			_, err := attacher.AttachTransactionFromBytes(txBytes, testData.wrk)
 			require.NoError(t, err)
@@ -301,6 +301,66 @@ func TestConflicts(t *testing.T) {
 		}
 
 	})
+	t.Run("conflicting tx consumed", func(t *testing.T) {
+		const nConflicts = 2
+		testData := initConflictTest(t, nConflicts, false)
+		for _, txBytes := range testData.txBytes {
+			_, err := attacher.AttachTransactionFromBytes(txBytes, testData.wrk)
+			require.NoError(t, err)
+		}
+		testData.logDAGInfo()
+
+		amount := uint64(0)
+		for _, o := range testData.conflictingOutputs {
+			amount += o.Output.Amount()
+		}
+
+		inTS := make([]core.LogicalTime, 0)
+		for _, o := range testData.conflictingOutputs {
+			inTS = append(inTS, o.Timestamp())
+		}
+
+		td := txbuilder.NewTransferData(testData.privKey, testData.addr, core.MaxLogicalTime(inTS...).AddTicks(core.TransactionPaceInTicks))
+		td.WithAmount(amount).
+			WithTargetLock(core.ChainLockFromChainID(testData.bootstrapChainID)).
+			MustWithInputs(testData.conflictingOutputs...)
+		txBytesConflicting, err := txbuilder.MakeSimpleTransferTransaction(td)
+		require.NoError(t, err)
+
+		vidConflicting, err := attacher.AttachTransactionFromBytes(txBytesConflicting, testData.wrk)
+		require.NoError(t, err)
+		testData.logDAGInfo()
+
+		branches := multistate.FetchLatestBranches(testData.wrk.StateStore())
+		require.EqualValues(t, 1, len(branches))
+
+		outToConsume := vidConflicting.MustOutputWithIDAt(0)
+		chainOut := branches[0].SequencerOutput.MustAsChainOutput()
+		txBytes, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
+			SeqName:          "test",
+			ChainInput:       chainOut,
+			Timestamp:        outToConsume.Timestamp().AddTicks(core.TransactionPaceInTicks),
+			AdditionalInputs: []*core.OutputWithID{&outToConsume},
+			PrivateKey:       testData.privKey,
+			TotalSupply:      0,
+		})
+
+		require.NoError(t, err)
+
+		var wg sync.WaitGroup
+		wg.Add(1)
+		vid, err := attacher.AttachTransactionFromBytes(txBytes, testData.wrk, attacher.WithFinalizationCallback(func(vid *vertex.WrappedTx) {
+			wg.Done()
+		}))
+		wg.Wait()
+		require.NoError(t, err)
+		testData.logDAGInfo()
+
+		require.True(t, vertex.Bad == vid.GetTxStatus())
+		t.Logf("reason: %v", vid.GetReason())
+		util.RequireErrorWith(t, vid.GetReason(), "rooted output", "is already spent", testData.forkOutput.IDShort())
+
+	})
 }
 
 type conflictTestData struct {
@@ -317,7 +377,7 @@ type conflictTestData struct {
 	pkController       []ed25519.PrivateKey
 }
 
-func initConflictTest(t *testing.T, nConflicts int) *conflictTestData {
+func initConflictTest(t *testing.T, nConflicts int, targetLockChain bool) *conflictTestData {
 	const initBalance = 10_000
 	genesisPrivKey := testutil.GetTestingPrivateKey()
 	par := genesis.DefaultIdentityData(genesisPrivKey)
@@ -376,8 +436,12 @@ func initConflictTest(t *testing.T, nConflicts int) *conflictTestData {
 		MustWithInputs(ret.forkOutput)
 
 	for i := 0; i < nConflicts; i++ {
-		td.WithAmount(uint64(100 + i)).
-			WithTargetLock(core.ChainLockFromChainID(ret.bootstrapChainID))
+		td.WithAmount(uint64(100 + i))
+		if targetLockChain {
+			td.WithTargetLock(core.ChainLockFromChainID(ret.bootstrapChainID))
+		} else {
+			td.WithTargetLock(ret.addr)
+		}
 		ret.txBytes[i], err = txbuilder.MakeTransferTransaction(td)
 		require.NoError(t, err)
 	}

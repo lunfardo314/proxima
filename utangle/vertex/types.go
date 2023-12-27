@@ -32,9 +32,9 @@ type (
 		mutex sync.RWMutex // protects _genericWrapper
 		_genericWrapper
 		// future cone references. Protected by global utangle_old lock
-		// numConsumers contains number of consumers for outputs
+		// numConsumers contains number of consumed for outputs
 		mutexConsumers sync.RWMutex
-		consumers      map[byte]set.Set[*WrappedTx]
+		consumed       map[byte]set.Set[*WrappedTx]
 		txStatus       Status
 		reason         error
 		coverage       *multistate.LedgerCoverage // nil for non-sequencer
