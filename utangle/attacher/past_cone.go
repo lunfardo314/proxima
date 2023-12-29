@@ -257,7 +257,7 @@ func (a *attacher) attachInputID(consumerVertex *vertex.Vertex, consumerTx *vert
 
 	// attach consumer and check for conflicts. Does not matter the status
 	if !vidInputTx.AttachConsumer(inputOid.Index(), consumerTx, a.checkConflicts(consumerTx)) {
-		err := fmt.Errorf("input %s of consumer %s conflicts with exiting consumers in the baseline state %s",
+		err := fmt.Errorf("input %s of consumer %s conflicts with existing consumers in the baseline state %s",
 			inputOid.StringShort(), consumerTx.IDShortString(), a.baselineBranch.IDShortString())
 		a.setReason(err)
 		a.tracef("%v", err)

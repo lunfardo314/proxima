@@ -7,6 +7,7 @@ import (
 
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/genesis"
+	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/txbuilder"
@@ -242,7 +243,7 @@ func TestOrigin(t *testing.T) {
 	})
 }
 
-func TestConflicts(t *testing.T) {
+func TestConflicts1Seq(t *testing.T) {
 	t.Run("n double spends", func(t *testing.T) {
 		attacher.SetTraceOn()
 		const nConflicts = 10
@@ -301,7 +302,7 @@ func TestConflicts(t *testing.T) {
 		if nConflicts > 1 {
 			require.True(t, vertex.Bad == vid.GetTxStatus())
 			t.Logf("reason: %v", vid.GetReason())
-			util.RequireErrorWith(t, vid.GetReason(), "conflicts with exiting consumers in the baseline state", testData.forkOutput.IDShort())
+			util.RequireErrorWith(t, vid.GetReason(), "conflicts with existing consumers in the baseline state", testData.forkOutput.IDShort())
 		} else {
 			require.True(t, vertex.Good == vid.GetTxStatus())
 		}
@@ -365,13 +366,13 @@ func TestConflicts(t *testing.T) {
 
 		require.True(t, vertex.Bad == vid.GetTxStatus())
 		t.Logf("reason: %v", vid.GetReason())
-		util.RequireErrorWith(t, vid.GetReason(), "conflicts with exiting consumers in the baseline state", testData.forkOutput.IDShort())
+		util.RequireErrorWith(t, vid.GetReason(), "conflicts with existing consumers in the baseline state", testData.forkOutput.IDShort())
 	})
 	t.Run("long", func(t *testing.T) {
-		attacher.SetTraceOn()
+		//attacher.SetTraceOn()
 		const (
-			nConflicts = 2
-			howLong    = 96 // TODO 97 fails with dead lock
+			nConflicts = 5
+			howLong    = 96 // 97 fails when crosses slot boundary
 		)
 		testData := initLongConflictTestData(t, nConflicts, howLong)
 		for _, txBytes := range testData.txBytes {
@@ -413,19 +414,76 @@ func TestConflicts(t *testing.T) {
 		vid, err := attacher.AttachTransactionFromBytes(txBytes, testData.wrk, attacher.WithFinalizationCallback(func(vid *vertex.WrappedTx) {
 			wg.Done()
 		}))
-		wg.Wait()
 		require.NoError(t, err)
-		testData.logDAGInfo()
+		wg.Wait()
+
+		//testData.logDAGInfo()
 
 		require.True(t, vertex.Bad == vid.GetTxStatus())
-		t.Logf("reason: %v", vid.GetReason())
-		util.RequireErrorWith(t, vid.GetReason(), "conflicts with exiting consumers in the baseline state", testData.forkOutput.IDShort())
+		t.Logf("expected reason: %v", vid.GetReason())
+		util.RequireErrorWith(t, vid.GetReason(), "conflicts with existing consumers in the baseline state", testData.forkOutput.IDShort())
+	})
+	t.Run("long with sync", func(t *testing.T) {
+		//attacher.SetTraceOn()
+		const (
+			nConflicts = 5
+			howLong    = 96 // 97 fails when crosses slot boundary
+		)
+		testData := initLongConflictTestData(t, nConflicts, howLong)
+		for _, txBytes := range testData.txBytes {
+			err := testData.txStore.SaveTxBytes(txBytes)
+			require.NoError(t, err)
+		}
+		for _, txSeq := range testData.txSequences {
+			for _, txBytes := range txSeq {
+				err := testData.txStore.SaveTxBytes(txBytes)
+				require.NoError(t, err)
+			}
+		}
+
+		branches := multistate.FetchLatestBranches(testData.wrk.StateStore())
+		require.EqualValues(t, 1, len(branches))
+		bd := branches[0]
+
+		chainOut := bd.SequencerOutput.MustAsChainOutput()
+		inTS := []core.LogicalTime{chainOut.Timestamp()}
+		amount := uint64(0)
+		for _, o := range testData.terminalOutputs {
+			inTS = append(inTS, o.Timestamp())
+			amount += o.Output.Amount()
+		}
+
+		txBytes, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
+			SeqName:          "test",
+			ChainInput:       chainOut,
+			Timestamp:        core.MaxLogicalTime(inTS...).AddTicks(core.TransactionPaceInTicks),
+			AdditionalInputs: testData.terminalOutputs,
+			PrivateKey:       testData.privKey,
+			TotalSupply:      0,
+		})
+		require.NoError(t, err)
+
+		var wg sync.WaitGroup
+
+		wg.Add(1)
+		vid, err := attacher.AttachTransactionFromBytes(txBytes, testData.wrk, attacher.WithFinalizationCallback(func(vid *vertex.WrappedTx) {
+			wg.Done()
+		}))
+		require.NoError(t, err)
+		wg.Wait()
+
+		//testData.logDAGInfo()
+
+		require.True(t, vertex.Bad == vid.GetTxStatus())
+		t.Logf("expected reason: %v", vid.GetReason())
+		util.RequireErrorWith(t, vid.GetReason(), "conflicts with existing consumers in the baseline state", testData.forkOutput.IDShort())
 	})
 }
 
 type conflictTestData struct {
 	t                  *testing.T
 	wrk                *testingWorkflow
+	txStore            global.TxBytesStore
 	bootstrapChainID   core.ChainID
 	privKey            ed25519.PrivateKey
 	addr               core.AddressED25519
@@ -457,15 +515,15 @@ func initConflictTest(t *testing.T, nConflicts int, targetLockChain bool) *confl
 	}
 
 	stateStore := common.NewInMemoryKVStore()
-	txStore := txstore.NewSimpleTxBytesStore(common.NewInMemoryKVStore())
+	ret.txStore = txstore.NewSimpleTxBytesStore(common.NewInMemoryKVStore())
 
 	ret.bootstrapChainID, _ = genesis.InitLedgerState(ret.stateIdentity, stateStore)
 	txBytes, err := txbuilder.DistributeInitialSupply(stateStore, genesisPrivKey, distrib)
 	require.NoError(t, err)
-	err = txStore.SaveTxBytes(txBytes)
+	err = ret.txStore.SaveTxBytes(txBytes)
 	require.NoError(t, err)
 
-	ret.wrk = newTestingWorkflow(txStore, dag.New(stateStore))
+	ret.wrk = newTestingWorkflow(ret.txStore, dag.New(stateStore))
 
 	t.Logf("bootstrap chain id: %s", ret.bootstrapChainID.String())
 	t.Logf("origing branch txid: %s", ret.originBranchTxid.StringShort())
