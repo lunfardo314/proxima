@@ -63,7 +63,7 @@ type (
 )
 
 const (
-	periodicCheckEach               = 500 * time.Millisecond
+	periodicCheckEach               = 1 * time.Second
 	maxToleratedParasiticChainSlots = 1
 )
 
@@ -258,6 +258,7 @@ func (a *attacher) lazyRepeat(fun func() vertex.Status) vertex.Status {
 			return vertex.Undefined
 		case <-a.inChan:
 		case <-time.After(periodicCheckEach):
+			a.tracef("periodic check")
 		}
 	}
 }

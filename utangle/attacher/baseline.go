@@ -61,28 +61,35 @@ func (a *attacher) solidifySequencerBaseline(v *vertex.Vertex) vertex.Status {
 	util.Assertf(predOid != nil, "inconsistency: sequencer milestone cannot be a chain origin")
 	var inputTx *vertex.WrappedTx
 
-	if predOid.TimeSlot() == v.Tx.TimeSlot() {
-		// predecessor is on the same slot -> continue towards it
-		if v.Inputs[predIdx] == nil {
-			v.Inputs[predIdx] = AttachTxID(predOid.TransactionID(), a.env, true)
-			util.Assertf(v.Inputs[predIdx] != nil, "v.Inputs[predIdx] != nil")
-		}
-		inputTx = v.Inputs[predIdx]
-	} else {
+	// follow the endorsement if it is cross-slot or predecessor is not sequencer tx
+	followTheEndorsement := predOid.TimeSlot() != v.Tx.TimeSlot() || !predOid.IsSequencerTransaction()
+	if followTheEndorsement {
 		// predecessor is on the earlier slot -> follow the first endorsement (guaranteed by the ledger constraint layer)
 		util.Assertf(v.Tx.NumEndorsements() > 0, "v.Tx.NumEndorsements()>0")
 		if v.Endorsements[0] == nil {
 			v.Endorsements[0] = AttachTxID(v.Tx.EndorsementAt(0), a.env, true)
 		}
 		inputTx = v.Endorsements[0]
+	} else {
+		if v.Inputs[predIdx] == nil {
+			v.Inputs[predIdx] = AttachTxID(predOid.TransactionID(), a.env, true)
+			util.Assertf(v.Inputs[predIdx] != nil, "v.Inputs[predIdx] != nil")
+		}
+		inputTx = v.Inputs[predIdx]
+
 	}
 	status := inputTx.GetTxStatus()
 	switch status {
 	case vertex.Good:
-		v.BaselineBranch = inputTx.BaselineBranch() // may be nil
-	case vertex.Bad:
+		v.BaselineBranch = inputTx.BaselineBranch()
+		util.Assertf(v.BaselineBranch != nil, "v.BaselineBranch!=nil")
+		a.undefinedPastVertices.Remove(inputTx)
+		a.goodPastVertices.Insert(inputTx)
 	case vertex.Undefined:
+		// TODO OPTIMIZE
+		a.undefinedPastVertices.Insert(inputTx)
 		a.env.OnChangeNotify(inputTx, a.vid)
+	case vertex.Bad:
 	}
 	return status
 }

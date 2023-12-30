@@ -483,34 +483,49 @@ func TestConflicts1Attacher(t *testing.T) {
 
 func TestConflictsNAttachers(t *testing.T) {
 	t.Run("1", func(t *testing.T) {
-		//attacher.SetTraceOn()
+		attacher.SetTraceOn()
 		const (
 			nConflicts = 2
-			howLong    = 10 // 97 fails when crosses slot boundary
 			nChains    = 2
+			howLong    = 10 // 97 fails when crosses slot boundary
 		)
-		initLongConflictTestData(t, nConflicts, nChains, howLong)
+		var wg sync.WaitGroup
+		testData := initLongConflictTestData(t, nConflicts, nChains, howLong)
+
+		err := testData.txStore.SaveTxBytes(testData.chainOriginsTx.Bytes())
+		require.NoError(t, err)
+
+		wg.Add(len(testData.seqStart))
+		for _, txBytes := range testData.seqStart {
+			_, err = attacher.AttachTransactionFromBytes(txBytes, testData.wrk, attacher.WithFinalizationCallback(func(vid *vertex.WrappedTx) {
+				wg.Done()
+			}))
+			require.NoError(t, err)
+		}
+		wg.Wait()
 	})
 }
 
 type conflictTestData struct {
-	t                  *testing.T
-	wrk                *testingWorkflow
-	txStore            global.TxBytesStore
-	bootstrapChainID   core.ChainID
-	privKey            ed25519.PrivateKey
-	addr               core.AddressED25519
-	privKeyAux         ed25519.PrivateKey
-	addrAux            core.AddressED25519
-	stateIdentity      genesis.LedgerIdentityData
-	originBranchTxid   core.TransactionID
-	forkOutput         *core.OutputWithID
-	auxOutput          *core.OutputWithID
-	txBytes            [][]byte
-	conflictingOutputs []*core.OutputWithID
-	chainOrigins       []*core.OutputWithChainID
-	pkController       []ed25519.PrivateKey
-	chainOriginsTx     *transaction.Transaction
+	t                      *testing.T
+	wrk                    *testingWorkflow
+	txStore                global.TxBytesStore
+	bootstrapChainID       core.ChainID
+	distributionBranchTxID core.TransactionID
+	privKey                ed25519.PrivateKey
+	addr                   core.AddressED25519
+	privKeyAux             ed25519.PrivateKey
+	addrAux                core.AddressED25519
+	stateIdentity          genesis.LedgerIdentityData
+	originBranchTxid       core.TransactionID
+	forkOutput             *core.OutputWithID
+	auxOutput              *core.OutputWithID
+	txBytes                [][]byte
+	conflictingOutputs     []*core.OutputWithID
+	chainOrigins           []*core.OutputWithChainID
+	pkController           []ed25519.PrivateKey
+	chainOriginsTx         *transaction.Transaction
+	seqStart               [][]byte
 }
 
 func initConflictTest(t *testing.T, nConflicts int, nChains int, targetLockChain bool) *conflictTestData {
@@ -547,6 +562,9 @@ func initConflictTest(t *testing.T, nConflicts int, nChains int, targetLockChain
 	txBytes, err := txbuilder.DistributeInitialSupply(stateStore, genesisPrivKey, distrib)
 	require.NoError(t, err)
 	err = ret.txStore.SaveTxBytes(txBytes)
+	require.NoError(t, err)
+
+	ret.distributionBranchTxID, _, err = transaction.IDAndTimestampFromTransactionBytes(txBytes)
 	require.NoError(t, err)
 
 	ret.wrk = newTestingWorkflow(ret.txStore, dag.New(stateStore))
@@ -613,7 +631,7 @@ func initConflictTest(t *testing.T, nConflicts int, nChains int, targetLockChain
 	return ret
 }
 
-// makes chain origins transaction from auh output
+// makes chain origins transaction from aux output
 func (td *conflictTestData) makeChainOrigins(n int) {
 	if n == 0 {
 		return
@@ -648,9 +666,22 @@ func (td *conflictTestData) makeChainOrigins(n int) {
 			},
 			ChainID: blake2b.Sum256(oid[:]),
 		}
-		td.t.Logf("chain origin %s : %s", oid.StringShort(), td.chainOrigins[idx].String())
+		td.t.Logf("chain origin %s : %s", oid.StringShort(), td.chainOrigins[idx].ChainID.String())
 		return true
 	})
+
+	td.seqStart = make([][]byte, len(td.chainOrigins))
+	for i, chainOrigin := range td.chainOrigins {
+		td.seqStart[i], err = txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
+			SeqName:      "1",
+			ChainInput:   chainOrigin,
+			Timestamp:    chainOrigin.Timestamp().AddTicks(core.TransactionPaceInTicks),
+			Endorsements: []*core.TransactionID{&td.distributionBranchTxID},
+			PrivateKey:   td.privKeyAux,
+		})
+		require.NoError(td.t, err)
+	}
+
 }
 
 func (td *conflictTestData) logDAGInfo() {
@@ -666,6 +697,7 @@ type longConflictTestData struct {
 }
 
 func initLongConflictTestData(t *testing.T, nConflicts int, nChains int, howLong int) *longConflictTestData {
+	util.Assertf(nChains == 0 || nChains == nConflicts, "nChains == 0 || nChains == nConflicts")
 	ret := &longConflictTestData{
 		conflictTestData: *initConflictTest(t, nConflicts, nChains, false),
 		txSequences:      make([][][]byte, nConflicts),
@@ -690,7 +722,11 @@ func initLongConflictTestData(t *testing.T, nConflicts int, nChains int, howLong
 			if i < howLong-1 {
 				trd.WithTargetLock(td.addr)
 			} else {
-				trd.WithTargetLock(core.ChainLockFromChainID(td.bootstrapChainID))
+				if nChains == 0 {
+					trd.WithTargetLock(core.ChainLockFromChainID(ret.bootstrapChainID))
+				} else {
+					trd.WithTargetLock(core.ChainLockFromChainID(ret.chainOrigins[seqNr%nChains].ChainID))
+				}
 			}
 			ret.txSequences[seqNr][i], err = txbuilder.MakeSimpleTransferTransaction(trd)
 			require.NoError(t, err)
