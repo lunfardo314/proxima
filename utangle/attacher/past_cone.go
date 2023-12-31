@@ -22,19 +22,26 @@ func (a *attacher) solidifyPastCone() vertex.Status {
 		return status
 	}
 	// run attaching pending outputs until no one left
-	return a.lazyRepeat(func() (status vertex.Status) {
+	status = a.lazyRepeat(func() (status vertex.Status) {
+		onePendingWasGood := false
 		pending := util.Keys(a.pendingOutputs)
 		for _, wOut := range pending {
 			status = a.attachOutput(wOut, a.pendingOutputs[wOut])
 			if status == vertex.Bad {
 				return vertex.Bad
 			}
+			onePendingWasGood = onePendingWasGood || status == vertex.Good
 		}
-		if len(a.pendingOutputs) == 0 {
-			return vertex.Good
+		if onePendingWasGood {
+			a.vid.Unwrap(vertex.UnwrapOptions{
+				Vertex: func(v *vertex.Vertex) {
+					status = a.attachVertex(v, a.vid, core.NilLogicalTime)
+				},
+			})
 		}
-		return vertex.Undefined
+		return
 	})
+	return status
 }
 
 // attachVertex: vid corresponds to the vertex v
@@ -57,6 +64,14 @@ func (a *attacher) attachVertex(v *vertex.Vertex, vid *vertex.WrappedTx, parasit
 	// only starting with inputs after endorsements are ok
 	status := a.attachInputs(v, vid, parasiticChainHorizon) // recursive
 	if status == vertex.Good {
+		// TODO optimization: constraints can be validated even before the vertex becomes good (solidified).
+		//  It is enough to have all inputs available, i.e. before solidification
+
+		if err := v.ValidateConstraints(); err != nil {
+			a.setReason(err)
+			a.tracef("%v", err)
+			return vertex.Bad
+		}
 		a.pastConeVertexVisited(vid, true)
 	}
 	return status
@@ -138,14 +153,7 @@ func (a *attacher) attachInputs(v *vertex.Vertex, vid *vertex.WrappedTx, parasit
 		}
 	}
 	if allGood {
-		// TODO optimization: constraints can be validated even before the vertex becomes good (solidified).
-		//  It is enough to have all inputs available, i.e. before solidification
-		if err := v.ValidateConstraints(); err == nil {
-			status = vertex.Good
-		} else {
-			a.setReason(fmt.Errorf("%s -> '%v'", v.Tx.IDShortString(), err))
-			status = vertex.Bad
-		}
+		status = vertex.Good
 	}
 	return status
 }
@@ -154,43 +162,41 @@ func (a *attacher) attachRooted(wOut vertex.WrappedOutput) vertex.Status {
 	a.tracef("attachRooted IN %s", wOut.IDShortString)
 	defer a.tracef("attachRooted OUT %s", wOut.IDShortString)
 
-	status := vertex.Undefined
 	consumedRooted := a.rooted[wOut.VID]
+	if consumedRooted.Contains(wOut.Index) {
+		// double spend
+		err := fmt.Errorf("fail: rooted output %s is already spent", wOut.IDShortString())
+		a.tracef("%v", err)
+		a.setReason(err)
+		return vertex.Bad
+	}
+	// not a double spend
 	stateReader := a.baselineStateReader()
 
-	if len(consumedRooted) == 0 {
-		if stateReader.KnowsCommittedTransaction(wOut.VID.ID()) {
-			consumedRooted = set.New(wOut.Index)
-			status = vertex.Good
-		}
-	} else {
-		// transaction has consumed outputs -> it is rooted
-		if consumedRooted.Contains(wOut.Index) {
-			// double spend
-			err := fmt.Errorf("fail: rooted output %s is already spent", wOut.IDShortString())
-			a.tracef("%v", err)
-			a.setReason(err)
-			status = vertex.Bad
-		} else {
-			oid := wOut.DecodeID()
-			if out := stateReader.GetOutput(oid); out != nil {
-				consumedRooted.Insert(wOut.Index)
-				ensured := wOut.VID.EnsureOutput(wOut.Index, out)
-				util.Assertf(ensured, "attachInputID: inconsistency")
-				status = vertex.Good
-			} else {
-				// transaction is known, but output is already spent
-				err := fmt.Errorf("output %s is not in the state", wOut.IDShortString())
-				a.setReason(err)
-				a.tracef("%v", err)
-				status = vertex.Bad
-			}
-		}
+	oid := wOut.DecodeID()
+	txid := oid.TransactionID()
+	if len(consumedRooted) == 0 && !stateReader.KnowsCommittedTransaction(&txid) {
+		// it is not rooted
+		return vertex.Undefined
 	}
-	if status == vertex.Good {
+	// it is rooted -> must be in the state
+	// check if output is in the state
+	if out := stateReader.GetOutput(oid); out != nil {
+		// output has been found in the state -> Good
+		ensured := wOut.VID.EnsureOutput(wOut.Index, out)
+		util.Assertf(ensured, "ensureOutput: internal inconsistency")
+		if len(consumedRooted) == 0 {
+			consumedRooted = set.New[byte]()
+		}
+		consumedRooted.Insert(wOut.Index)
 		a.rooted[wOut.VID] = consumedRooted
+		return vertex.Good
 	}
-	return status
+	// output has not been found in the state -> Bad
+	err := fmt.Errorf("output %s is not in the state", wOut.IDShortString())
+	a.setReason(err)
+	a.tracef("%v", err)
+	return vertex.Bad
 }
 
 func (a *attacher) attachOutput(wOut vertex.WrappedOutput, parasiticChainHorizon core.LogicalTime) vertex.Status {

@@ -16,7 +16,7 @@ type (
 		Inputs           []*WrappedTx
 		Endorsements     []*WrappedTx
 		BaselineBranch   *WrappedTx
-		constraintsValid bool
+		ConstraintsValid bool
 	}
 
 	VirtualTransaction struct {

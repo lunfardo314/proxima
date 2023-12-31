@@ -1,30 +1,21 @@
 package attacher
 
 import (
+	"fmt"
+
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/utangle/vertex"
 	"github.com/lunfardo314/proxima/util"
 )
 
-func allInputsAndEndorsementsGood(vid *vertex.WrappedTx) (ret bool) {
-	vid.Unwrap(vertex.UnwrapOptions{
-		Vertex: func(v *vertex.Vertex) {
-			ret = v.AllInputsAndEndorsementsGood()
-		},
-		VirtualTx: func(v *vertex.VirtualTransaction) {
-			ret = true
-		},
-	})
-	return
-}
-
 func (a *attacher) finalize() {
 	a.tracef("finalize")
-	util.Assertf(len(a.undefinedPastVertices) == 0, "len(a.undefinedPastVertices)==0")
+	util.Assertf(len(a.undefinedPastVertices) == 0, "empty undefinedPastVertices set expected. Got:\n%s",
+		func() any { return vertex.VerticesLines(util.Keys(a.undefinedPastVertices)).String() })
 	util.Assertf(len(a.pendingOutputs) == 0, "len(a.pendingOutputs)==0")
 	util.Assertf(len(a.rooted) > 0, "len(a.rooted) > 0")
 	util.Assertf(len(a.goodPastVertices) > 0, "len(a.goodPastVertices) > 0")
-	util.Assertf(allInputsAndEndorsementsGood(a.vid), "allInputsAndEndorsementsGood(a.vid)")
+	util.AssertNoError(a.checkPastConeVerticesConsistent())
 
 	if a.vid.IsBranchTransaction() {
 		coverage := a.commitBranch()
@@ -97,4 +88,26 @@ func (a *attacher) calculateCoverage() multistate.LedgerCoverage {
 		}
 	}
 	return a.ledgerCoverage(coverageDelta)
+}
+
+func (a *attacher) checkPastConeVerticesConsistent() (err error) {
+	for vid := range a.goodPastVertices {
+		if vid == a.vid {
+			if vid.GetTxStatus() == vertex.Bad {
+				return fmt.Errorf("vertex %s is bad", vid.IDShortString())
+			}
+			continue
+		}
+		status := vid.GetTxStatus()
+		if status == vertex.Bad || (status != vertex.Good && vid.IsSequencerMilestone()) {
+			return fmt.Errorf("inconsistent vertex (%s) in the past cone: %s",
+				status.String(), vid.IDShortString())
+		}
+		vid.Unwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
+			if !v.ConstraintsValid {
+				err = fmt.Errorf("%s is not validated yet", v.Tx.IDShortString())
+			}
+		}})
+	}
+	return
 }

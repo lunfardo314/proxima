@@ -43,7 +43,7 @@ func (v *Vertex) GetConsumedOutput(i byte) (*core.Output, error) {
 }
 
 func (v *Vertex) ValidateConstraints(traceOption ...int) error {
-	if v.constraintsValid {
+	if v.ConstraintsValid {
 		return nil
 	}
 	traceOpt := transaction.TraceOptionFailedConstraints
@@ -56,7 +56,7 @@ func (v *Vertex) ValidateConstraints(traceOption ...int) error {
 	}
 	err = ctx.Validate()
 	if err == nil {
-		v.constraintsValid = true
+		v.ConstraintsValid = true
 	}
 	return err
 }
@@ -244,25 +244,6 @@ func (v *Vertex) PendingDependenciesLines(prefix ...string) *lines.Lines {
 		if vEnd == nil {
 			txid := v.Tx.EndorsementAt(i)
 			ret.Add("   %d : %s", i, txid.StringShort())
-		}
-		return true
-	})
-	return ret
-}
-
-func (v *Vertex) AllInputsAndEndorsementsGood() bool {
-	ret := true
-	v.ForEachInputDependency(func(i byte, vidInput *WrappedTx) bool {
-		if vidInput == nil || vidInput.GetTxStatus() != Good {
-			ret = false
-			return false
-		}
-		return true
-	})
-	v.ForEachEndorsement(func(i byte, vidEndorsed *WrappedTx) bool {
-		if vidEndorsed == nil || vidEndorsed.GetTxStatus() != Good {
-			ret = false
-			return false
 		}
 		return true
 	})

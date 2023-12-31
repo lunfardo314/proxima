@@ -537,7 +537,7 @@ type conflictTestData struct {
 
 func initConflictTest(t *testing.T, nConflicts int, nChains int, targetLockChain bool) *conflictTestData {
 
-	const initBalance = 100_000
+	const initBalance = 10_000_000
 	genesisPrivKey := testutil.GetTestingPrivateKey()
 	par := genesis.DefaultIdentityData(genesisPrivKey)
 	distrib, privKeys, addrs := inittest.GenesisParamsWithPreDistribution(2, initBalance)
@@ -575,15 +575,14 @@ func initConflictTest(t *testing.T, nConflicts int, nChains int, targetLockChain
 	ret.distributionBranchTxID, _, err = transaction.IDAndTimestampFromTransactionBytes(txBytes)
 	require.NoError(t, err)
 
-	{
-		const printDistributionTx = true
-		if printDistributionTx {
-			tx, err := transaction.FromBytes(txBytes, transaction.MainTxValidationOptions...)
-			require.NoError(t, err)
-			genesisState := multistate.MustNewReadable(stateStore, genesisRoot)
-			t.Logf("--------------- distribution tx:\n%s\n--------------", tx.ToString(genesisState.GetUTXO))
-		}
+	const printDistributionTx = false
+	if printDistributionTx {
+		tx, err := transaction.FromBytes(txBytes, transaction.MainTxValidationOptions...)
+		require.NoError(t, err)
+		genesisState := multistate.MustNewReadable(stateStore, genesisRoot)
+		t.Logf("--------------- distribution tx:\n%s\n--------------", tx.ToString(genesisState.GetUTXO))
 	}
+
 	ret.wrk = newTestingWorkflow(ret.txStore, dag.New(stateStore))
 
 	t.Logf("bootstrap chain id: %s", ret.bootstrapChainID.String())

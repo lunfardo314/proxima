@@ -246,6 +246,7 @@ func runAttacher(vid *vertex.WrappedTx, env AttachEnvironment, ctx context.Conte
 
 	a.tracef("past cone OK")
 	a.finalize()
+	a.vid.SetTxStatus(vertex.Good)
 	return vertex.Good, nil
 }
 

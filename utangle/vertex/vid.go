@@ -555,7 +555,7 @@ func (vid *WrappedTx) String() (ret string) {
 				v.Tx.NumProducedOutputs(),
 				consumed,
 				doubleSpent,
-				v.constraintsValid,
+				v.ConstraintsValid,
 				reason,
 			)
 		},
