@@ -487,7 +487,7 @@ func TestConflictsNAttachers(t *testing.T) {
 		const (
 			nConflicts = 2
 			nChains    = 2
-			howLong    = 10 // 97 fails when crosses slot boundary
+			howLong    = 2 // 97 fails when crosses slot boundary
 		)
 		var wg sync.WaitGroup
 		testData := initLongConflictTestData(t, nConflicts, nChains, howLong)

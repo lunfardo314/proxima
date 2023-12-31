@@ -229,7 +229,8 @@ func runAttacher(vid *vertex.WrappedTx, env AttachEnvironment, ctx context.Conte
 
 	// first solidify baseline state
 	status := a.solidifyBaselineState()
-	if status != vertex.Good {
+	if status == vertex.Bad {
+		a.tracef("baseline solidification failed. Reason: %v", a.vid.GetReason())
 		return vertex.Bad, a.reason
 	}
 
@@ -270,6 +271,17 @@ func (a *attacher) baselineStateReader() multistate.SugaredStateReader {
 func (a *attacher) setReason(err error) {
 	a.tracef("set reason: '%v'", err)
 	a.reason = err
+}
+
+func (a *attacher) pastVertex(vid *vertex.WrappedTx, good bool) {
+	if good {
+		delete(a.undefinedPastVertices, vid)
+		a.goodPastVertices.Insert(vid)
+	} else {
+		util.Assertf(!a.goodPastVertices.Contains(vid), "!a.goodPastVertices.Contains(vid)")
+		a.undefinedPastVertices.Insert(vid)
+	}
+	// TODO
 }
 
 // not thread safe
