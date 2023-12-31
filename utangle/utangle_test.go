@@ -565,7 +565,8 @@ func initConflictTest(t *testing.T, nConflicts int, nChains int, targetLockChain
 	stateStore := common.NewInMemoryKVStore()
 	ret.txStore = txstore.NewSimpleTxBytesStore(common.NewInMemoryKVStore())
 
-	ret.bootstrapChainID, _ = genesis.InitLedgerState(ret.stateIdentity, stateStore)
+	var genesisRoot common.VCommitment
+	ret.bootstrapChainID, genesisRoot = genesis.InitLedgerState(ret.stateIdentity, stateStore)
 	txBytes, err := txbuilder.DistributeInitialSupply(stateStore, genesisPrivKey, distrib)
 	require.NoError(t, err)
 	err = ret.txStore.SaveTxBytes(txBytes)
@@ -574,6 +575,15 @@ func initConflictTest(t *testing.T, nConflicts int, nChains int, targetLockChain
 	ret.distributionBranchTxID, _, err = transaction.IDAndTimestampFromTransactionBytes(txBytes)
 	require.NoError(t, err)
 
+	{
+		const printDistributionTx = true
+		if printDistributionTx {
+			tx, err := transaction.FromBytes(txBytes, transaction.MainTxValidationOptions...)
+			require.NoError(t, err)
+			genesisState := multistate.MustNewReadable(stateStore, genesisRoot)
+			t.Logf("--------------- distribution tx:\n%s\n--------------", tx.ToString(genesisState.GetUTXO))
+		}
+	}
 	ret.wrk = newTestingWorkflow(ret.txStore, dag.New(stateStore))
 
 	t.Logf("bootstrap chain id: %s", ret.bootstrapChainID.String())

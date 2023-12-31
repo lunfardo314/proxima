@@ -49,7 +49,10 @@ func ContextFromTransaction(tx *Transaction, inputLoaderByIndex func(i byte) (*c
 			return nil, fmt.Errorf("ContextFromTransaction: '%v'", err)
 		}
 		if o == nil {
-			return nil, fmt.Errorf("ContextFromTransaction: input not solid at index %d", i)
+			inpOid := tx.MustInputAt(byte(i))
+			err = fmt.Errorf("ContextFromTransaction: cannot get consumed output %s at input index %d of %s",
+				inpOid.StringShort(), i, tx.IDShortString())
+			return nil, err
 		}
 		consumedOutputsArray.Push(o.Bytes())
 	}
