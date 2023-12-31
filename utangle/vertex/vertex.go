@@ -249,3 +249,22 @@ func (v *Vertex) PendingDependenciesLines(prefix ...string) *lines.Lines {
 	})
 	return ret
 }
+
+func (v *Vertex) AllInputsAndEndorsementsGood() bool {
+	ret := true
+	v.ForEachInputDependency(func(i byte, vidInput *WrappedTx) bool {
+		if vidInput == nil || vidInput.GetTxStatus() != Good {
+			ret = false
+			return false
+		}
+		return true
+	})
+	v.ForEachEndorsement(func(i byte, vidEndorsed *WrappedTx) bool {
+		if vidEndorsed == nil || vidEndorsed.GetTxStatus() != Good {
+			ret = false
+			return false
+		}
+		return true
+	})
+	return ret
+}

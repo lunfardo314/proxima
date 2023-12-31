@@ -45,7 +45,7 @@ func (a *attacher) attachVertex(v *vertex.Vertex, vid *vertex.WrappedTx, parasit
 	if a.goodPastVertices.Contains(vid) {
 		return vertex.Good
 	}
-	a.undefinedPastVertices.Insert(vid)
+	a.pastConeVertexVisited(vid, false)
 
 	if !a.endorsementsOk {
 		// depth-first along endorsements
@@ -57,8 +57,7 @@ func (a *attacher) attachVertex(v *vertex.Vertex, vid *vertex.WrappedTx, parasit
 	// only starting with inputs after endorsements are ok
 	status := a.attachInputs(v, vid, parasiticChainHorizon) // recursive
 	if status == vertex.Good {
-		a.undefinedPastVertices.Remove(vid)
-		a.goodPastVertices.Insert(vid)
+		a.pastConeVertexVisited(vid, true)
 	}
 	return status
 }
@@ -80,14 +79,13 @@ func (a *attacher) attachEndorsements(v *vertex.Vertex, parasiticChainHorizon co
 			a.setReason(vidEndorsed.GetReason())
 			return vertex.Bad
 		case vertex.Good:
-			a.goodPastVertices.Insert(vidEndorsed)
-			a.undefinedPastVertices.Remove(vidEndorsed)
+			a.pastConeVertexVisited(vidEndorsed, true)
 		case vertex.Undefined:
-			a.undefinedPastVertices.Insert(vidEndorsed)
+			a.pastConeVertexVisited(vidEndorsed, false)
 			allGood = false
 		}
 
-		status = vertex.Undefined
+		status = vidEndorsed.GetTxStatus()
 		vidEndorsed.Unwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
 			status = a.attachVertex(v, vidEndorsed, parasiticChainHorizon) // <<<<<<<<<<< recursion
 		}})
@@ -95,10 +93,9 @@ func (a *attacher) attachEndorsements(v *vertex.Vertex, parasiticChainHorizon co
 		case vertex.Bad:
 			return vertex.Bad
 		case vertex.Good:
-			a.goodPastVertices.Insert(vidEndorsed)
-			a.undefinedPastVertices.Remove(vidEndorsed)
+			a.pastConeVertexVisited(vidEndorsed, true)
 		case vertex.Undefined:
-			a.undefinedPastVertices.Insert(vidEndorsed)
+			a.pastConeVertexVisited(vidEndorsed, false)
 			allGood = false
 		}
 	}

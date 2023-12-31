@@ -84,12 +84,11 @@ func (a *attacher) solidifySequencerBaseline(v *vertex.Vertex) (baselineBranch *
 	case vertex.Good:
 		ret := inputTx.BaselineBranch()
 		util.Assertf(ret != nil, "v.BaselineBranch!=nil")
-		a.undefinedPastVertices.Remove(inputTx)
-		a.goodPastVertices.Insert(inputTx)
+		a.pastConeVertexVisited(inputTx, true)
 		return ret, false
 	case vertex.Undefined:
 		// vertex can be undefined but with correct baseline branch
-		a.undefinedPastVertices.Insert(inputTx)
+		a.pastConeVertexVisited(inputTx, false)
 		a.env.OnChangeNotify(inputTx, a.vid)
 		return inputTx.BaselineBranch(), false
 	case vertex.Bad:

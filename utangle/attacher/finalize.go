@@ -2,8 +2,21 @@ package attacher
 
 import (
 	"github.com/lunfardo314/proxima/multistate"
+	"github.com/lunfardo314/proxima/utangle/vertex"
 	"github.com/lunfardo314/proxima/util"
 )
+
+func allInputsAndEndorsementsGood(vid *vertex.WrappedTx) (ret bool) {
+	vid.Unwrap(vertex.UnwrapOptions{
+		Vertex: func(v *vertex.Vertex) {
+			ret = v.AllInputsAndEndorsementsGood()
+		},
+		VirtualTx: func(v *vertex.VirtualTransaction) {
+			ret = true
+		},
+	})
+	return
+}
 
 func (a *attacher) finalize() {
 	a.tracef("finalize")
@@ -11,6 +24,7 @@ func (a *attacher) finalize() {
 	util.Assertf(len(a.pendingOutputs) == 0, "len(a.pendingOutputs)==0")
 	util.Assertf(len(a.rooted) > 0, "len(a.rooted) > 0")
 	util.Assertf(len(a.goodPastVertices) > 0, "len(a.goodPastVertices) > 0")
+	util.Assertf(allInputsAndEndorsementsGood(a.vid), "allInputsAndEndorsementsGood(a.vid)")
 
 	if a.vid.IsBranchTransaction() {
 		coverage := a.commitBranch()

@@ -273,7 +273,7 @@ func (a *attacher) setReason(err error) {
 	a.reason = err
 }
 
-func (a *attacher) pastVertex(vid *vertex.WrappedTx, good bool) {
+func (a *attacher) pastConeVertexVisited(vid *vertex.WrappedTx, good bool) {
 	if good {
 		delete(a.undefinedPastVertices, vid)
 		a.goodPastVertices.Insert(vid)
@@ -281,7 +281,6 @@ func (a *attacher) pastVertex(vid *vertex.WrappedTx, good bool) {
 		util.Assertf(!a.goodPastVertices.Contains(vid), "!a.goodPastVertices.Contains(vid)")
 		a.undefinedPastVertices.Insert(vid)
 	}
-	// TODO
 }
 
 // not thread safe

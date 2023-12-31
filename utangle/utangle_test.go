@@ -495,14 +495,21 @@ func TestConflictsNAttachers(t *testing.T) {
 		err := testData.txStore.SaveTxBytes(testData.chainOriginsTx.Bytes())
 		require.NoError(t, err)
 
+		submitted := make([]*vertex.WrappedTx, nChains)
 		wg.Add(len(testData.seqStart))
-		for _, txBytes := range testData.seqStart {
-			_, err = attacher.AttachTransactionFromBytes(txBytes, testData.wrk, attacher.WithFinalizationCallback(func(vid *vertex.WrappedTx) {
+		for i, txBytes := range testData.seqStart {
+			submitted[i], err = attacher.AttachTransactionFromBytes(txBytes, testData.wrk, attacher.WithFinalizationCallback(func(vid *vertex.WrappedTx) {
 				wg.Done()
 			}))
 			require.NoError(t, err)
 		}
 		wg.Wait()
+
+		testData.logDAGInfo()
+
+		for _, vid := range submitted {
+			require.EqualValues(t, vertex.Good, vid.GetTxStatus())
+		}
 	})
 }
 
