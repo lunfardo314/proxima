@@ -23,18 +23,19 @@ func (a *attacher) solidifyPastCone() vertex.Status {
 	}
 	// run attaching pending outputs until no one left
 	status := a.lazyRepeat(func() (status vertex.Status) {
-		onePendingWasGood := false
 		pending := util.Keys(a.pendingOutputs)
 		for _, wOut := range pending {
 			if !a.attachOutput(wOut, a.pendingOutputs[wOut]) {
 				return vertex.Bad
 			}
-			onePendingWasGood = true
 		}
-		if onePendingWasGood {
+		status = vertex.Good
+		if len(a.pendingOutputs) == 0 {
 			a.vid.Unwrap(vertex.UnwrapOptions{
 				Vertex: func(v *vertex.Vertex) {
-					status = a.attachVertex(v, a.vid, core.NilLogicalTime)
+					if !a.attachVertex(v, a.vid, core.NilLogicalTime) {
+						status = vertex.Bad
+					}
 				},
 			})
 		}
@@ -220,7 +221,7 @@ func (a *attacher) attachOutput(wOut vertex.WrappedOutput, parasiticChainHorizon
 		return false
 	}
 
-	// input is not rooted and status is undefined
+	// input is not rooted
 	txid := wOut.VID.ID()
 	wOut.VID.Unwrap(vertex.UnwrapOptions{
 		Vertex: func(v *vertex.Vertex) {
