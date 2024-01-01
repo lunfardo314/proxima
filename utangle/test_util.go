@@ -69,13 +69,13 @@ type conflictTestData struct {
 	wrk                    *testingWorkflow
 	txStore                global.TxBytesStore
 	bootstrapChainID       core.ChainID
+	originBranchTxid       core.TransactionID
 	distributionBranchTxID core.TransactionID
 	privKey                ed25519.PrivateKey
 	addr                   core.AddressED25519
 	privKeyAux             ed25519.PrivateKey
 	addrAux                core.AddressED25519
 	stateIdentity          genesis.LedgerIdentityData
-	originBranchTxid       core.TransactionID
 	forkOutput             *core.OutputWithID
 	auxOutput              *core.OutputWithID
 	txBytes                [][]byte
@@ -350,5 +350,25 @@ func (td *longConflictTestData) txBytesAttach() {
 			_, err = attacher.AttachTransactionFromBytes(txBytes, td.wrk)
 			require.NoError(td.t, err)
 		}
+	}
+}
+
+func (td *longConflictTestData) printTxIDs() {
+	td.t.Logf("Origin branch txid: %s", td.originBranchTxid.StringShort())
+	td.t.Logf("Distribution txid: %s", td.distributionBranchTxID.StringShort())
+	td.t.Logf("Fork output: %s", td.forkOutput.ID.StringShort())
+	td.t.Logf("Aux output: %s", td.auxOutput.ID.StringShort())
+	td.t.Logf("Conflicting outputs (%d):", len(td.conflictingOutputs))
+	for i, o := range td.conflictingOutputs {
+		td.t.Logf("%2d: conflicting chain start: %s", i, o.ID.StringShort())
+		for j, txBytes := range td.txSequences[i] {
+			txid, _, _ := transaction.IDAndTimestampFromTransactionBytes(txBytes)
+			td.t.Logf("      %2d : %s", j, txid.StringShort())
+		}
+	}
+	td.t.Logf("Sequencer start txes:")
+	for i, txBytes := range td.seqStart {
+		txid, _, _ := transaction.IDAndTimestampFromTransactionBytes(txBytes)
+		td.t.Logf("      %2d : %s", i, txid.StringShort())
 	}
 }

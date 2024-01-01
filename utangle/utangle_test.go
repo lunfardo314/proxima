@@ -545,7 +545,7 @@ func TestConflictsNAttachers(t *testing.T) {
 		})
 	})
 	t.Run("seq start tx with fee no pull", func(t *testing.T) {
-		//attacher.SetTraceOn()
+		attacher.SetTraceOn()
 		const (
 			nConflicts = 2
 			nChains    = 2
@@ -556,6 +556,8 @@ func TestConflictsNAttachers(t *testing.T) {
 
 		testData := initLongConflictTestData(t, nConflicts, nChains, howLong)
 		testData.makeSeqStarts(true)
+		testData.printTxIDs()
+
 		testData.txBytesAttach()
 
 		submittedSeq := make([]*vertex.WrappedTx, nChains)
