@@ -148,3 +148,15 @@ func (d *DAG) HasOutputInAllBranches(e core.TimeSlot, oid *core.OutputID) bool {
 	}
 	return true
 }
+
+// ForEachVertex mostly for testing
+func (d *DAG) ForEachVertex(fun func(vid *vertex.WrappedTx) bool) {
+	d.mutex.RLock()
+	defer d.mutex.RUnlock()
+
+	for _, vid := range d.vertices {
+		if !fun(vid) {
+			return
+		}
+	}
+}
