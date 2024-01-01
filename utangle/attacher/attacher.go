@@ -45,7 +45,7 @@ type (
 		vid                   *vertex.WrappedTx
 		reason                error
 		baselineBranch        *vertex.WrappedTx
-		goodPastVertices      set.Set[*vertex.WrappedTx]
+		validPastVertices     set.Set[*vertex.WrappedTx]
 		undefinedPastVertices set.Set[*vertex.WrappedTx]
 		rooted                map[*vertex.WrappedTx]set.Set[byte]
 		pendingOutputs        map[vertex.WrappedOutput]core.LogicalTime
@@ -210,7 +210,7 @@ func newAttacher(vid *vertex.WrappedTx, env AttachEnvironment, ctx context.Conte
 		env:                   env,
 		inChan:                make(chan *vertex.WrappedTx, 1),
 		rooted:                make(map[*vertex.WrappedTx]set.Set[byte]),
-		goodPastVertices:      set.New[*vertex.WrappedTx](),
+		validPastVertices:     set.New[*vertex.WrappedTx](),
 		undefinedPastVertices: set.New[*vertex.WrappedTx](),
 		pendingOutputs:        make(map[vertex.WrappedOutput]core.LogicalTime),
 	}
@@ -277,9 +277,9 @@ func (a *attacher) setReason(err error) {
 func (a *attacher) pastConeVertexVisited(vid *vertex.WrappedTx, good bool) {
 	if good {
 		delete(a.undefinedPastVertices, vid)
-		a.goodPastVertices.Insert(vid)
+		a.validPastVertices.Insert(vid)
 	} else {
-		util.Assertf(!a.goodPastVertices.Contains(vid), "!a.goodPastVertices.Contains(vid)")
+		util.Assertf(!a.validPastVertices.Contains(vid), "!a.validPastVertices.Contains(vid)")
 		a.undefinedPastVertices.Insert(vid)
 	}
 }

@@ -14,7 +14,7 @@ func (a *attacher) finalize() {
 		func() any { return vertex.VerticesLines(util.Keys(a.undefinedPastVertices)).String() })
 	util.Assertf(len(a.pendingOutputs) == 0, "len(a.pendingOutputs)==0")
 	util.Assertf(len(a.rooted) > 0, "len(a.rooted) > 0")
-	util.Assertf(len(a.goodPastVertices) > 0, "len(a.goodPastVertices) > 0")
+	util.Assertf(len(a.validPastVertices) > 0, "len(a.validPastVertices) > 0")
 	util.AssertNoError(a.checkPastConeVerticesConsistent())
 
 	if a.vid.IsBranchTransaction() {
@@ -48,11 +48,11 @@ func (a *attacher) commitBranch() multistate.LedgerCoverage {
 		}
 	}
 	// generate ADD TX and ADD OUTPUT mutations
-	for vid := range a.goodPastVertices {
+	for vid := range a.validPastVertices {
 		muts.InsertAddTxMutation(*vid.ID(), a.vid.TimeSlot())
 
 		// ADD OUTPUT mutations only for not consumed outputs
-		producedOutputIndices := vid.NotConsumedOutputIndices(a.goodPastVertices)
+		producedOutputIndices := vid.NotConsumedOutputIndices(a.validPastVertices)
 		for _, idx := range producedOutputIndices {
 			muts.InsertAddOutputMutation(vid.OutputID(idx), vid.MustOutputAt(idx))
 		}
@@ -91,7 +91,7 @@ func (a *attacher) calculateCoverage() multistate.LedgerCoverage {
 }
 
 func (a *attacher) checkPastConeVerticesConsistent() (err error) {
-	for vid := range a.goodPastVertices {
+	for vid := range a.validPastVertices {
 		if vid == a.vid {
 			if vid.GetTxStatus() == vertex.Bad {
 				return fmt.Errorf("vertex %s is bad", vid.IDShortString())
