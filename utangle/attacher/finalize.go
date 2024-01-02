@@ -10,7 +10,7 @@ import (
 
 func (a *attacher) finalize() {
 	a.tracef("finalize")
-	util.Assertf(len(a.undefinedPastVertices) == 0, "empty undefinedPastVertices set expected. Got:\n%s",
+	util.Assertf(len(a.undefinedPastVertices) == 1 && a.undefinedPastVertices.Contains(a.vid), "undefinedPastVertices set is inconsistent",
 		func() any { return vertex.VerticesLines(util.Keys(a.undefinedPastVertices)).String() })
 	util.Assertf(len(a.pendingOutputs) == 0, "len(a.pendingOutputs)==0")
 	util.Assertf(len(a.rooted) > 0, "len(a.rooted) > 0")

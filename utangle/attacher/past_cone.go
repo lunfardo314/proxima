@@ -82,7 +82,7 @@ func (a *attacher) attachVertex(v *vertex.Vertex, vid *vertex.WrappedTx, parasit
 		a.pastConeVertexVisited(vid, true)
 		ok = true
 	}
-	return
+	return true
 }
 
 // Attaches endorsements of the vertex
@@ -156,6 +156,10 @@ func (a *attacher) isRooted(vid *vertex.WrappedTx) bool {
 	return len(a.rooted[vid]) > 0
 }
 
+func (a *attacher) isValidated(vid *vertex.WrappedTx) bool {
+	return a.validPastVertices.Contains(vid)
+}
+
 func (a *attacher) attachRooted(wOut vertex.WrappedOutput) (ok bool, isRooted bool) {
 	a.tracef("attachRooted IN %s", wOut.IDShortString)
 
@@ -196,14 +200,14 @@ func (a *attacher) attachRooted(wOut vertex.WrappedOutput) (ok bool, isRooted bo
 	return false, false
 }
 
-func (a *attacher) attachOutput(wOut vertex.WrappedOutput, parasiticChainHorizon core.LogicalTime, visited set.Set[*vertex.WrappedTx]) (ok bool) {
+func (a *attacher) attachOutput(wOut vertex.WrappedOutput, parasiticChainHorizon core.LogicalTime, visited set.Set[*vertex.WrappedTx]) bool {
 	a.tracef("attachOutput %s", wOut.IDShortString)
-
 	ok, isRooted := a.attachRooted(wOut)
 	if !ok {
 		return false
 	}
 	if isRooted {
+		delete(a.pendingOutputs, wOut)
 		return true
 	}
 
@@ -217,11 +221,15 @@ func (a *attacher) attachOutput(wOut vertex.WrappedOutput, parasiticChainHorizon
 
 	// input is not rooted
 	txid := wOut.VID.ID()
+	ok = true
 	wOut.VID.Unwrap(vertex.UnwrapOptions{
 		Vertex: func(v *vertex.Vertex) {
 			// remove from the pending list
 			delete(a.pendingOutputs, wOut)
 			ok = a.attachVertex(v, wOut.VID, parasiticChainHorizon, visited) // >>>>>>> recursion
+			if a.isValidated(wOut.VID) {
+				delete(a.pendingOutputs, wOut)
+			}
 		},
 		VirtualTx: func(v *vertex.VirtualTransaction) {
 			// add to the pending list
@@ -231,7 +239,11 @@ func (a *attacher) attachOutput(wOut vertex.WrappedOutput, parasiticChainHorizon
 			}
 		},
 	})
-	return
+	if !ok {
+		return false
+	}
+
+	return true
 }
 
 func (a *attacher) branchesCompatible(vid1, vid2 *vertex.WrappedTx) bool {

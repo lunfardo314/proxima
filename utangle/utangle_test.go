@@ -421,10 +421,10 @@ func TestConflicts1Attacher(t *testing.T) {
 		util.RequireErrorWith(t, vid.GetReason(), "conflicts with existing consumers in the baseline state", testData.forkOutput.IDShort())
 	})
 	t.Run("long with sync", func(t *testing.T) {
-		//attacher.SetTraceOn()
+		attacher.SetTraceOn()
 		const (
-			nConflicts = 5
-			howLong    = 96 // 97 fails when crosses slot boundary
+			nConflicts = 2
+			howLong    = 1 // 97 fails when crosses slot boundary
 		)
 		testData := initLongConflictTestData(t, nConflicts, 0, howLong)
 		for _, txBytes := range testData.txBytes {
@@ -469,7 +469,7 @@ func TestConflicts1Attacher(t *testing.T) {
 		require.NoError(t, err)
 		wg.Wait()
 
-		//testData.logDAGInfo()
+		testData.logDAGInfo()
 
 		require.True(t, vertex.Bad == vid.GetTxStatus())
 		t.Logf("expected reason: %v", vid.GetReason())

@@ -241,12 +241,14 @@ func runAttacher(vid *vertex.WrappedTx, env AttachEnvironment, ctx context.Conte
 
 	status = a.solidifyPastCone()
 	if status != vertex.Good {
+		a.tracef("past cone solidification failed. Reason: %v", a.vid.GetReason())
 		return vertex.Bad, a.reason
 	}
 
 	a.tracef("past cone OK")
 	a.finalize()
 	a.vid.SetTxStatus(vertex.Good)
+	a.pastConeVertexVisited(a.vid, true)
 	return vertex.Good, nil
 }
 
@@ -276,11 +278,13 @@ func (a *attacher) setReason(err error) {
 
 func (a *attacher) pastConeVertexVisited(vid *vertex.WrappedTx, good bool) {
 	if good {
+		a.tracef("%s past cone GOOD", vid.IDShortString)
 		delete(a.undefinedPastVertices, vid)
 		a.validPastVertices.Insert(vid)
 	} else {
 		util.Assertf(!a.validPastVertices.Contains(vid), "!a.validPastVertices.Contains(vid)")
 		a.undefinedPastVertices.Insert(vid)
+		a.tracef("%s past cone UNDEF", vid.IDShortString)
 	}
 }
 
