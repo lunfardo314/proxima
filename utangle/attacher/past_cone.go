@@ -12,10 +12,10 @@ import (
 
 func (a *attacher) solidifyPastCone() vertex.Status {
 	// run attach vertex once. It will generate pending outputs
-	var ok bool
+	ok := true
 	a.vid.Unwrap(vertex.UnwrapOptions{
 		Vertex: func(v *vertex.Vertex) {
-			ok = a.attachVertex(v, a.vid, core.NilLogicalTime)
+			ok = a.attachVertex(v, a.vid, core.NilLogicalTime, set.New[*vertex.WrappedTx]())
 		},
 	})
 	if !ok {
@@ -24,8 +24,9 @@ func (a *attacher) solidifyPastCone() vertex.Status {
 	// run attaching pending outputs until no one left
 	status := a.lazyRepeat(func() (status vertex.Status) {
 		pending := util.Keys(a.pendingOutputs)
+		visited := set.New[*vertex.WrappedTx]()
 		for _, wOut := range pending {
-			if !a.attachOutput(wOut, a.pendingOutputs[wOut]) {
+			if !a.attachOutput(wOut, a.pendingOutputs[wOut], visited) {
 				return vertex.Bad
 			}
 		}
@@ -33,7 +34,7 @@ func (a *attacher) solidifyPastCone() vertex.Status {
 		if len(a.pendingOutputs) == 0 {
 			a.vid.Unwrap(vertex.UnwrapOptions{
 				Vertex: func(v *vertex.Vertex) {
-					if !a.attachVertex(v, a.vid, core.NilLogicalTime) {
+					if !a.attachVertex(v, a.vid, core.NilLogicalTime, set.New[*vertex.WrappedTx]()) {
 						status = vertex.Bad
 					}
 				},
@@ -45,25 +46,26 @@ func (a *attacher) solidifyPastCone() vertex.Status {
 }
 
 // attachVertex: vid corresponds to the vertex v
-func (a *attacher) attachVertex(v *vertex.Vertex, vid *vertex.WrappedTx, parasiticChainHorizon core.LogicalTime) (ok bool) {
-	//defer func() {
-	//	a.tracef("RETURN attachVertex %s: %s", vid.IDShortString, status.String())
-	//}()
+func (a *attacher) attachVertex(v *vertex.Vertex, vid *vertex.WrappedTx, parasiticChainHorizon core.LogicalTime, visited set.Set[*vertex.WrappedTx]) (ok bool) {
+	if visited.Contains(vid) {
+		return true
+	}
+	visited.Insert(vid)
 
 	a.tracef("attachVertex %s", vid.IDShortString)
-
 	util.Assertf(!util.IsNil(a.baselineStateReader), "!util.IsNil(a.baselineStateReader)")
-	if a.validPastVertices.Contains(vid) && vid.GetTxStatus() == vertex.Good {
+	if a.validPastVertices.Contains(vid) {
 		return true
 	}
 	a.pastConeVertexVisited(vid, false)
-
 	if !a.endorsementsOk {
 		// depth-first along endorsements
-		return a.attachEndorsements(v, parasiticChainHorizon) // <<< recursive
+		return a.attachEndorsements(v, parasiticChainHorizon, visited) // <<< recursive
 	}
-	// only starting with inputs after endorsements are ok
-	inputsOk, allValidated := a.attachInputs(v, vid, parasiticChainHorizon)
+	// only starting with inputs after endorsements are ok. It ensures all endorsed past cone is known
+	// for the attached before going to other dependencies. Note, that endorsing past cone consists only of
+	// sequencer milestones which are validated/solidified by their attachers
+	inputsOk, allValidated := a.attachInputs(v, vid, parasiticChainHorizon, visited)
 	if !inputsOk { // recursive
 		return false
 	}
@@ -78,15 +80,14 @@ func (a *attacher) attachVertex(v *vertex.Vertex, vid *vertex.WrappedTx, parasit
 		}
 		a.tracef("validated constraints: %s", v.Tx.IDShortString())
 		a.pastConeVertexVisited(vid, true)
+		ok = true
 	}
 	return
 }
 
-func (a *attacher) attachEndorsements(v *vertex.Vertex, parasiticChainHorizon core.LogicalTime) (ok bool) {
-	a.tracef("attachVertex %s", v.Tx.IDShortString)
-	//defer func() {
-	//	a.tracef("RETURN attachEndorsements %s: %s", v.Tx.IDShortString, status.String())
-	//}()
+// Attaches endorsements of the vertex
+func (a *attacher) attachEndorsements(v *vertex.Vertex, parasiticChainHorizon core.LogicalTime, visited set.Set[*vertex.WrappedTx]) bool {
+	a.tracef("attachEndorsements %s", v.Tx.IDShortString)
 
 	allGood := true
 	for i, vidEndorsed := range v.Endorsements {
@@ -94,31 +95,24 @@ func (a *attacher) attachEndorsements(v *vertex.Vertex, parasiticChainHorizon co
 			vidEndorsed = AttachTxID(v.Tx.EndorsementAt(byte(i)), a.env, true)
 			v.Endorsements[i] = vidEndorsed
 		}
-		switch vidEndorsed.GetTxStatus() {
-		case vertex.Bad:
-			a.setReason(vidEndorsed.GetReason())
+		endorsedStatus := vidEndorsed.GetTxStatus()
+		if endorsedStatus == vertex.Bad {
 			return false
-		case vertex.Good:
-			a.pastConeVertexVisited(vidEndorsed, true)
-		case vertex.Undefined:
-			a.pastConeVertexVisited(vidEndorsed, false)
-			allGood = false
 		}
+		if a.validPastVertices.Contains(vidEndorsed) {
+			// it means past cone of vidEndorsed is fully validated already
+			continue
+		}
+		a.pastConeVertexVisited(vidEndorsed, endorsedStatus == vertex.Good)
 
+		ok := true
 		vidEndorsed.Unwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
-			ok = a.attachVertex(v, vidEndorsed, parasiticChainHorizon) // <<<<<<<<<<< recursion
+			ok = a.attachVertex(v, vidEndorsed, parasiticChainHorizon, visited) // <<<<<<<<<<< recursion
 		}})
 		if !ok {
 			return false
 		}
-		status := vidEndorsed.GetTxStatus()
-		switch status {
-		case vertex.Bad:
-			return false
-		case vertex.Good:
-			a.pastConeVertexVisited(vidEndorsed, true)
-		case vertex.Undefined:
-			a.pastConeVertexVisited(vidEndorsed, false)
+		if vidEndorsed.GetTxStatus() != vertex.Good {
 			allGood = false
 		}
 	}
@@ -128,11 +122,8 @@ func (a *attacher) attachEndorsements(v *vertex.Vertex, parasiticChainHorizon co
 	return true
 }
 
-func (a *attacher) attachInputs(v *vertex.Vertex, vid *vertex.WrappedTx, parasiticChainHorizon core.LogicalTime) (ok, allInputsValidated bool) {
+func (a *attacher) attachInputs(v *vertex.Vertex, vid *vertex.WrappedTx, parasiticChainHorizon core.LogicalTime, visited set.Set[*vertex.WrappedTx]) (ok, allInputsValidated bool) {
 	a.tracef("attachInputs %s", vid.IDShortString)
-	//defer func() {
-	//	a.tracef("RETURN attachInputs %s: %s", v.Tx.IDShortString, status.String())
-	//}()
 
 	allInputsValidated = true
 	for i := range v.Inputs {
@@ -143,28 +134,30 @@ func (a *attacher) attachInputs(v *vertex.Vertex, vid *vertex.WrappedTx, parasit
 		util.Assertf(v.Inputs[i] != nil, "v.Inputs[i] != nil")
 
 		if parasiticChainHorizon == core.NilLogicalTime {
-			// TODO revisit parasitic chain threshold because of syncing
+			// TODO revisit parasitic chain threshold because of syncing branches
 			parasiticChainHorizon = core.MustNewLogicalTime(v.Inputs[i].Timestamp().TimeSlot()-maxToleratedParasiticChainSlots, 0)
 		}
 		wOut := vertex.WrappedOutput{
 			VID:   v.Inputs[i],
 			Index: v.Tx.MustOutputIndexOfTheInput(byte(i)),
 		}
-		if !a.attachOutput(wOut, parasiticChainHorizon) { // << recursion
+		if !a.attachOutput(wOut, parasiticChainHorizon, visited) { // << recursion
 			return false, false
 		}
-		if !a.validPastVertices.Contains(v.Inputs[i]) {
+		if !a.validPastVertices.Contains(v.Inputs[i]) && !a.isRooted(v.Inputs[i]) {
+			// all outputs valid == each output is either validated, or rooted
 			allInputsValidated = false
 		}
 	}
 	return true, allInputsValidated
 }
 
-func (a *attacher) attachRooted(wOut vertex.WrappedOutput) (ok bool) {
+func (a *attacher) isRooted(vid *vertex.WrappedTx) bool {
+	return len(a.rooted[vid]) > 0
+}
+
+func (a *attacher) attachRooted(wOut vertex.WrappedOutput) (ok bool, isRooted bool) {
 	a.tracef("attachRooted IN %s", wOut.IDShortString)
-	//defer func() {
-	//	a.tracef("RETURN attachRooted %s: %s", wOut.IDShortString, status.String())
-	//}()
 
 	consumedRooted := a.rooted[wOut.VID]
 	if consumedRooted.Contains(wOut.Index) {
@@ -172,7 +165,7 @@ func (a *attacher) attachRooted(wOut vertex.WrappedOutput) (ok bool) {
 		err := fmt.Errorf("fail: rooted output %s is already spent", wOut.IDShortString())
 		a.tracef("%v", err)
 		a.setReason(err)
-		return false
+		return false, true
 	}
 	// not a double spend
 	stateReader := a.baselineStateReader()
@@ -181,7 +174,7 @@ func (a *attacher) attachRooted(wOut vertex.WrappedOutput) (ok bool) {
 	txid := oid.TransactionID()
 	if len(consumedRooted) == 0 && !stateReader.KnowsCommittedTransaction(&txid) {
 		// it is not rooted, but it is fine
-		return true
+		return true, false
 	}
 	// it is rooted -> must be in the state
 	// check if output is in the state
@@ -194,23 +187,24 @@ func (a *attacher) attachRooted(wOut vertex.WrappedOutput) (ok bool) {
 		}
 		consumedRooted.Insert(wOut.Index)
 		a.rooted[wOut.VID] = consumedRooted
-		return true
+		return true, true
 	}
 	// output has not been found in the state -> Bad
 	err := fmt.Errorf("output %s is not in the state", wOut.IDShortString())
 	a.setReason(err)
 	a.tracef("%v", err)
-	return false
+	return false, false
 }
 
-func (a *attacher) attachOutput(wOut vertex.WrappedOutput, parasiticChainHorizon core.LogicalTime) (ok bool) {
+func (a *attacher) attachOutput(wOut vertex.WrappedOutput, parasiticChainHorizon core.LogicalTime, visited set.Set[*vertex.WrappedTx]) (ok bool) {
 	a.tracef("attachOutput %s", wOut.IDShortString)
-	//defer func() {
-	//	a.tracef("RETURN attachOutput %s: %s", wOut.IDShortString, status.String())
-	//}()
 
-	if !a.attachRooted(wOut) {
+	ok, isRooted := a.attachRooted(wOut)
+	if !ok {
 		return false
+	}
+	if isRooted {
+		return true
 	}
 
 	if wOut.Timestamp().Before(parasiticChainHorizon) {
@@ -227,7 +221,7 @@ func (a *attacher) attachOutput(wOut vertex.WrappedOutput, parasiticChainHorizon
 		Vertex: func(v *vertex.Vertex) {
 			// remove from the pending list
 			delete(a.pendingOutputs, wOut)
-			ok = a.attachVertex(v, wOut.VID, parasiticChainHorizon) // >>>>>>> recursion
+			ok = a.attachVertex(v, wOut.VID, parasiticChainHorizon, visited) // >>>>>>> recursion
 		},
 		VirtualTx: func(v *vertex.VirtualTransaction) {
 			// add to the pending list
@@ -265,7 +259,11 @@ func (a *attacher) attachInputID(consumerVertex *vertex.Vertex, consumerTx *vert
 	}
 	util.Assertf(vidInputTx != nil, "vidInputTx != nil")
 
-	// attach consumer and check for conflicts. Does not matter the status
+	if vidInputTx.GetTxStatus() == vertex.Bad {
+		a.setReason(vidInputTx.GetReason())
+		return false
+	}
+	// attach consumer and check for conflicts
 	if !vidInputTx.AttachConsumer(inputOid.Index(), consumerTx, a.checkConflicts(consumerTx)) {
 		err := fmt.Errorf("input %s of consumer %s conflicts with existing consumers in the baseline state %s",
 			inputOid.StringShort(), consumerTx.IDShortString(), a.baselineBranch.IDShortString())
@@ -273,13 +271,8 @@ func (a *attacher) attachInputID(consumerVertex *vertex.Vertex, consumerTx *vert
 		a.tracef("%v", err)
 		return false
 	}
-	// no conflicts, now check the status
-	if vidInputTx.GetTxStatus() == vertex.Bad {
-		a.setReason(vidInputTx.GetReason())
-		return false
-	}
 	if vidInputTx.IsSequencerMilestone() {
-		// for sequencer milestones check if baselines do not conflict
+		// for sequencer milestones check if baselines are compatible
 		if inputBaselineBranch := vidInputTx.BaselineBranch(); inputBaselineBranch != nil {
 			if !a.branchesCompatible(a.baselineBranch, inputBaselineBranch) {
 				err := fmt.Errorf("branches %s and %s not compatible", a.baselineBranch.IDShortString(), inputBaselineBranch.IDShortString())

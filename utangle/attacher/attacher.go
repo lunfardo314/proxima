@@ -67,6 +67,45 @@ const (
 	maxToleratedParasiticChainSlots = 1
 )
 
+// AttachTxID ensures the txid is on the utangle_old. Must be called from globally locked environment
+func AttachTxID(txid core.TransactionID, env AttachEnvironment, pullNonBranchIfNeeded bool) (vid *vertex.WrappedTx) {
+	tracef(env, "AttachTxID: %s", txid.StringShort)
+	env.WithGlobalWriteLock(func() {
+		vid = env.GetVertexNoLock(&txid)
+		if vid != nil {
+			// found existing -> return it
+			return
+		}
+		// it is new
+		if !txid.IsBranchTransaction() {
+			// if not branch -> just place the empty virtualTx on the utangle_old, no further action
+			vid = vertex.WrapTxID(txid)
+			env.AddVertexNoLock(vid)
+			if pullNonBranchIfNeeded {
+				env.Pull(txid)
+			}
+			return
+		}
+		// it is a branch transaction. Look up for the corresponding state
+		if bd, branchAvailable := multistate.FetchBranchData(env.StateStore(), txid); branchAvailable {
+			// corresponding state has been found, it is solid -> put virtual branch tx with the state reader
+			vid = vertex.NewVirtualBranchTx(&bd).Wrap()
+			env.AddVertexNoLock(vid)
+			vid.SetTxStatus(vertex.Good)
+			vid.SetLedgerCoverage(bd.LedgerCoverage)
+			env.AddBranchNoLock(vid) // <<<< will be reading branch data twice. Not big problem
+			tracef(env, "branch fetched from the state: %s", txid.StringShort)
+		} else {
+			// the corresponding state is not in the multistate DB -> put virtualTx to the utangle_old -> pull it
+			// the puller will trigger further solidification
+			vid = vertex.WrapTxID(txid)
+			env.AddVertexNoLock(vid)
+			env.Pull(txid) // always pull new branch. This will spin off sync process on the node
+		}
+	})
+	return
+}
+
 func WithContext(ctx context.Context) Option {
 	return func(options *_attacherOptions) {
 		options.ctx = ctx
@@ -134,45 +173,6 @@ func AttachTransactionFromBytes(txBytes []byte, env AttachEnvironment, opts ...O
 		return nil, err
 	}
 	return AttachTransaction(tx, env, opts...), nil
-}
-
-// AttachTxID ensures the txid is on the utangle_old. Must be called from globally locked environment
-func AttachTxID(txid core.TransactionID, env AttachEnvironment, pullNonBranchIfNeeded bool) (vid *vertex.WrappedTx) {
-	tracef(env, "AttachTxID: %s", txid.StringShort)
-	env.WithGlobalWriteLock(func() {
-		vid = env.GetVertexNoLock(&txid)
-		if vid != nil {
-			// found existing -> return it
-			return
-		}
-		// it is new
-		if !txid.IsBranchTransaction() {
-			// if not branch -> just place the empty virtualTx on the utangle_old, no further action
-			vid = vertex.WrapTxID(txid)
-			env.AddVertexNoLock(vid)
-			if pullNonBranchIfNeeded {
-				env.Pull(txid)
-			}
-			return
-		}
-		// it is a branch transaction. Look up for the corresponding state
-		if bd, branchAvailable := multistate.FetchBranchData(env.StateStore(), txid); branchAvailable {
-			// corresponding state has been found, it is solid -> put virtual branch tx with the state reader
-			vid = vertex.NewVirtualBranchTx(&bd).Wrap()
-			env.AddVertexNoLock(vid)
-			vid.SetTxStatus(vertex.Good)
-			vid.SetLedgerCoverage(bd.LedgerCoverage)
-			env.AddBranchNoLock(vid) // <<<< will be reading branch data twice. Not big problem
-			tracef(env, "branch fetched from the state: %s", txid.StringShort)
-		} else {
-			// the corresponding state is not in the multistate DB -> put virtualTx to the utangle_old -> pull it
-			// the puller will trigger further solidification
-			vid = vertex.WrapTxID(txid)
-			env.AddVertexNoLock(vid)
-			env.Pull(txid) // always pull new branch. This will spin off sync process on the node
-		}
-	})
-	return
 }
 
 const maxTimeout = 10 * time.Minute
