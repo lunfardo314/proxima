@@ -11,7 +11,23 @@ import (
 )
 
 func (a *attacher) solidifyPastCone() vertex.Status {
-	// run attach vertex once. It will generate pending outputs
+	status := a.lazyRepeat(func() (status vertex.Status) {
+		ok := true
+		a.vid.Unwrap(vertex.UnwrapOptions{
+			Vertex: func(v *vertex.Vertex) {
+				ok = a.attachVertex(v, a.vid, core.NilLogicalTime, set.New[*vertex.WrappedTx]())
+			},
+		})
+		if !ok {
+			return vertex.Bad
+		}
+		if a.endorsementsOk {
+			return vertex.Good
+		}
+		return vertex.Undefined
+	})
+
+	// run attach vertex once. It will generate pending outputs, if any
 	ok := true
 	a.vid.Unwrap(vertex.UnwrapOptions{
 		Vertex: func(v *vertex.Vertex) {
@@ -22,7 +38,7 @@ func (a *attacher) solidifyPastCone() vertex.Status {
 		return vertex.Bad
 	}
 	// run attaching pending outputs until no one left
-	status := a.lazyRepeat(func() (status vertex.Status) {
+	status = a.lazyRepeat(func() (status vertex.Status) {
 		pending := util.Keys(a.pendingOutputs)
 		visited := set.New[*vertex.WrappedTx]()
 		for _, wOut := range pending {
