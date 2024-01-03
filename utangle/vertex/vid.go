@@ -548,14 +548,14 @@ func (vid *WrappedTx) String() (ret string) {
 	vid.Unwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
 			t := "vertex (" + vid.txStatus.String() + ")"
-			ret = fmt.Sprintf("%20s %s :: in: %d, out: %d, consumed: %d, conflicts: %d, constraints validated: %v, reason: '%v'",
+			ret = fmt.Sprintf("%20s %s :: in: %d, out: %d, consumed: %d, conflicts: %d, flags: %08b, reason: '%v'",
 				t,
 				vid._id().StringShort(),
 				v.Tx.NumInputs(),
 				v.Tx.NumProducedOutputs(),
 				consumed,
 				doubleSpent,
-				v.ConstraintsValid,
+				v.flags,
 				reason,
 			)
 		},

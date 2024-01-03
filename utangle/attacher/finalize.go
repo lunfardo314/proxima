@@ -10,12 +10,6 @@ import (
 
 func (a *attacher) finalize() {
 	a.tracef("finalize")
-	util.Assertf(len(a.undefinedPastVertices) == 1 && a.undefinedPastVertices.Contains(a.vid), "undefinedPastVertices set is inconsistent",
-		func() any { return vertex.VerticesLines(util.Keys(a.undefinedPastVertices)).String() })
-	util.Assertf(len(a.pendingOutputs) == 0, "len(a.pendingOutputs)==0")
-	util.Assertf(len(a.rooted) > 0, "len(a.rooted) > 0")
-	util.Assertf(len(a.validPastVertices) > 0, "len(a.validPastVertices) > 0")
-	util.AssertNoError(a.checkPastConeVerticesConsistent())
 
 	if a.vid.IsBranchTransaction() {
 		coverage := a.commitBranch()
@@ -91,6 +85,12 @@ func (a *attacher) calculateCoverage() multistate.LedgerCoverage {
 }
 
 func (a *attacher) checkPastConeVerticesConsistent() (err error) {
+	if len(a.validPastVertices) == 0 {
+		return fmt.Errorf("validPastVertices is empty")
+	}
+	if a.validPastVertices.Contains(a.vid) {
+		return fmt.Errorf("unexpected %s in the validPastVertices", a.vid.IDShortString())
+	}
 	for vid := range a.validPastVertices {
 		if vid == a.vid {
 			if vid.GetTxStatus() == vertex.Bad {
@@ -104,8 +104,8 @@ func (a *attacher) checkPastConeVerticesConsistent() (err error) {
 				status.String(), vid.IDShortString())
 		}
 		vid.Unwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
-			if !v.ConstraintsValid {
-				err = fmt.Errorf("%s is not validated yet", v.Tx.IDShortString())
+			if !v.FlagsUp(vertex.FlagsVertexCompleted) {
+				err = fmt.Errorf("%s is not completed yet", v.Tx.IDShortString())
 			}
 		}})
 	}

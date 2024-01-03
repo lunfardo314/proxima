@@ -7,33 +7,36 @@ import (
 
 func (a *attacher) solidifyBaselineState() vertex.Status {
 	return a.lazyRepeat(func() vertex.Status {
-		var invalid bool
-		var baseline *vertex.WrappedTx
+		var ok bool
+		success := false
 		a.vid.Unwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
-			v.BaselineBranch, invalid = a.solidifyBaseline(v)
-			baseline = v.BaselineBranch
+			ok = a.solidifyBaseline(v)
+			if ok && v.FlagsUp(vertex.FlagBaselineSolid) {
+				a.baselineBranch = v.BaselineBranch
+				success = true
+			}
 		}})
-		if invalid {
+		switch {
+		case !ok:
 			return vertex.Bad
-		}
-		a.baselineBranch = baseline
-		if baseline == nil {
+		case success:
+			return vertex.Good
+		default:
 			return vertex.Undefined
 		}
-		return vertex.Good
 	})
 }
 
 // solidifyBaseline directs attachment process down the DAG to reach the deterministically known baseline state
 // for a sequencer milestone. Existence of it is guaranteed by the ledger constraints
-func (a *attacher) solidifyBaseline(v *vertex.Vertex) (baselineBranch *vertex.WrappedTx, invalid bool) {
+func (a *attacher) solidifyBaseline(v *vertex.Vertex) (ok bool) {
 	if v.Tx.IsBranchTransaction() {
 		return a.solidifyStem(v)
 	}
 	return a.solidifySequencerBaseline(v)
 }
 
-func (a *attacher) solidifyStem(v *vertex.Vertex) (baselineBranch *vertex.WrappedTx, invalid bool) {
+func (a *attacher) solidifyStem(v *vertex.Vertex) (ok bool) {
 	stemInputIdx := v.StemInputIndex()
 	if v.Inputs[stemInputIdx] == nil {
 		// predecessor stem is pending
@@ -45,19 +48,21 @@ func (a *attacher) solidifyStem(v *vertex.Vertex) (baselineBranch *vertex.Wrappe
 	status := v.Inputs[stemInputIdx].GetTxStatus()
 	switch status {
 	case vertex.Good:
-		return v.Inputs[stemInputIdx].BaselineBranch(), false
+		v.BaselineBranch = v.Inputs[stemInputIdx].BaselineBranch()
+		v.SetFlagUp(vertex.FlagBaselineSolid)
+		return true
 	case vertex.Bad:
 		a.setReason(v.Inputs[stemInputIdx].GetReason())
-		return nil, true
+		return false
 	case vertex.Undefined:
 		a.env.OnChangeNotify(v.Inputs[stemInputIdx], a.vid)
-		return nil, false
+		return true
 	default:
 		panic("wrong vertex state")
 	}
 }
 
-func (a *attacher) solidifySequencerBaseline(v *vertex.Vertex) (baselineBranch *vertex.WrappedTx, invalid bool) {
+func (a *attacher) solidifySequencerBaseline(v *vertex.Vertex) (ok bool) {
 	// regular sequencer tx. Go to the direction of the baseline branch
 	predOid, predIdx := v.Tx.SequencerChainPredecessor()
 	util.Assertf(predOid != nil, "inconsistency: sequencer milestone cannot be a chain origin")
@@ -82,18 +87,19 @@ func (a *attacher) solidifySequencerBaseline(v *vertex.Vertex) (baselineBranch *
 	}
 	switch inputTx.GetTxStatus() {
 	case vertex.Good:
-		ret := inputTx.BaselineBranch()
-		util.Assertf(ret != nil, "v.BaselineBranch!=nil")
+		v.BaselineBranch = inputTx.BaselineBranch()
+		v.SetFlagUp(vertex.FlagBaselineSolid)
+		util.Assertf(v.BaselineBranch != nil, "v.BaselineBranch!=nil")
 		a.pastConeVertexVisited(inputTx, true)
-		return ret, false
+		return true
 	case vertex.Undefined:
 		// vertex can be undefined but with correct baseline branch
 		a.pastConeVertexVisited(inputTx, false)
 		a.env.OnChangeNotify(inputTx, a.vid)
-		return inputTx.BaselineBranch(), false
+		return true
 	case vertex.Bad:
 		a.setReason(inputTx.GetReason())
-		return nil, true
+		return false
 	default:
 		panic("wrong vertex state")
 	}

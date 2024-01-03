@@ -48,7 +48,6 @@ type (
 		validPastVertices     set.Set[*vertex.WrappedTx]
 		undefinedPastVertices set.Set[*vertex.WrappedTx]
 		rooted                map[*vertex.WrappedTx]set.Set[byte]
-		pendingOutputs        map[vertex.WrappedOutput]core.LogicalTime
 		closeMutex            sync.RWMutex
 		inChan                chan *vertex.WrappedTx
 		ctx                   context.Context
@@ -212,7 +211,6 @@ func newAttacher(vid *vertex.WrappedTx, env AttachEnvironment, ctx context.Conte
 		rooted:                make(map[*vertex.WrappedTx]set.Set[byte]),
 		validPastVertices:     set.New[*vertex.WrappedTx](),
 		undefinedPastVertices: set.New[*vertex.WrappedTx](),
-		pendingOutputs:        make(map[vertex.WrappedOutput]core.LogicalTime),
 	}
 	ret.vid.OnNotify(func(msg *vertex.WrappedTx) {
 		ret.notify(msg)
@@ -246,6 +244,18 @@ func runAttacher(vid *vertex.WrappedTx, env AttachEnvironment, ctx context.Conte
 	}
 
 	a.tracef("past cone OK")
+
+	{
+		// consistency assertions before finalization
+		// the only left undefined should be the vertex itself
+		util.Assertf(len(a.undefinedPastVertices) == 1 && a.undefinedPastVertices.Contains(a.vid), "undefinedPastVertices set is inconsistent",
+			func() any { return vertex.VerticesLines(util.Keys(a.undefinedPastVertices)).String() })
+		// should be at least one rooted output ( ledger coverage must be > 0)
+		util.Assertf(len(a.rooted) > 0, "len(a.rooted) > 0")
+		// check other past cone vertices
+		util.AssertNoError(a.checkPastConeVerticesConsistent())
+	}
+
 	a.finalize()
 	a.vid.SetTxStatus(vertex.Good)
 	a.pastConeVertexVisited(a.vid, true)
@@ -278,13 +288,13 @@ func (a *attacher) setReason(err error) {
 
 func (a *attacher) pastConeVertexVisited(vid *vertex.WrappedTx, good bool) {
 	if good {
-		a.tracef("%s past cone GOOD", vid.IDShortString)
+		a.tracef("pastConeVertexVisited: %s is GOOD", vid.IDShortString)
 		delete(a.undefinedPastVertices, vid)
 		a.validPastVertices.Insert(vid)
 	} else {
 		util.Assertf(!a.validPastVertices.Contains(vid), "!a.validPastVertices.Contains(vid)")
 		a.undefinedPastVertices.Insert(vid)
-		a.tracef("%s past cone UNDEF", vid.IDShortString)
+		a.tracef("pastConeVertexVisited: %s is UNDEF", vid.IDShortString)
 	}
 }
 
