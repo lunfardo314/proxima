@@ -90,7 +90,7 @@ func (a *attacher) checkPastConeVerticesConsistent() (err error) {
 	}
 	// should be at least one rooted output ( ledger coverage must be > 0)
 	if len(a.rooted) == 0 {
-		return fmt.Errorf("at least oe rooted output is expected")
+		return fmt.Errorf("at least one rooted output is expected")
 	}
 
 	if len(a.validPastVertices) == 0 {

@@ -320,19 +320,27 @@ func initLongConflictTestData(t *testing.T, nConflicts int, nChains int, howLong
 	return ret
 }
 
+func (td *longConflictTestData) storeTransactions(txBytesMulti ...[]byte) {
+	for _, txBytes := range txBytesMulti {
+		err := td.wrk.txBytesStore.SaveTxBytes(txBytes)
+		require.NoError(td.t, err)
+	}
+}
+
+func (td *longConflictTestData) attachTransactions(txBytesMulti ...[]byte) {
+	for _, txBytes := range txBytesMulti {
+		_, err := attacher.AttachTransactionFromBytes(txBytes, td.wrk)
+		require.NoError(td.t, err)
+	}
+}
+
 func (td *longConflictTestData) txBytesToStore() {
 	err := td.txStore.SaveTxBytes(td.chainOriginsTx.Bytes())
 	require.NoError(td.t, err)
 
-	for _, txBytes := range td.txBytes {
-		err = td.txStore.SaveTxBytes(txBytes)
-		require.NoError(td.t, err)
-	}
+	td.storeTransactions(td.txBytes...)
 	for _, txSeq := range td.txSequences {
-		for _, txBytes := range txSeq {
-			err = td.txStore.SaveTxBytes(txBytes)
-			require.NoError(td.t, err)
-		}
+		td.storeTransactions(txSeq...)
 	}
 }
 
@@ -340,15 +348,9 @@ func (td *longConflictTestData) txBytesAttach() {
 	_, err := attacher.AttachTransactionFromBytes(td.chainOriginsTx.Bytes(), td.wrk)
 	require.NoError(td.t, err)
 
-	for _, txBytes := range td.txBytes {
-		_, err = attacher.AttachTransactionFromBytes(txBytes, td.wrk)
-		require.NoError(td.t, err)
-	}
+	td.attachTransactions(td.txBytes...)
 	for _, txSeq := range td.txSequences {
-		for _, txBytes := range txSeq {
-			_, err = attacher.AttachTransactionFromBytes(txBytes, td.wrk)
-			require.NoError(td.t, err)
-		}
+		td.attachTransactions(txSeq...)
 	}
 }
 
