@@ -18,6 +18,10 @@ func New(tx *transaction.Transaction) *Vertex {
 		Inputs:       make([]*WrappedTx, tx.NumInputs()),
 		Endorsements: make([]*WrappedTx, tx.NumEndorsements()),
 	}
+	if !tx.IsSequencerMilestone() {
+		// for non-sequencer transaction baseline, endorsements and sequencer are no concern
+		ret.Flags = FlagBaselineSolid | FlagEndorsementsSolid | FlagSequencerSolid
+	}
 	return ret
 }
 
@@ -251,9 +255,9 @@ func (v *Vertex) PendingDependenciesLines(prefix ...string) *lines.Lines {
 }
 
 func (v *Vertex) FlagsUp(mask uint8) bool {
-	return v.flags&mask == mask
+	return v.Flags&mask == mask
 }
 
 func (v *Vertex) SetFlagUp(mask uint8) {
-	v.flags |= mask
+	v.Flags |= mask
 }

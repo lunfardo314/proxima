@@ -16,7 +16,7 @@ type (
 		Inputs         []*WrappedTx
 		Endorsements   []*WrappedTx
 		BaselineBranch *WrappedTx
-		flags          uint8
+		Flags          uint8
 	}
 
 	VirtualTransaction struct {
@@ -85,12 +85,12 @@ type (
 )
 
 const (
-	FlagBaselineSolid     = 0b00000001
-	FlagEndorsementsSolid = 0b00000010
-	FlagSequencerSolid    = 0b00000100
-	FlagAllInputsSolid    = 0b00001000
-	FlagConstraintsValid  = 0b00010000
-	FlagsVertexCompleted  = FlagBaselineSolid | FlagEndorsementsSolid | FlagSequencerSolid | FlagAllInputsSolid | FlagConstraintsValid
+	FlagBaselineSolid             = 0b00000001
+	FlagEndorsementsSolid         = 0b00000010
+	FlagSequencerSolid            = 0b00000100
+	FlagAllInputsSolid            = 0b00001000
+	FlagConstraintsValid          = 0b00010000
+	FlagsSequencerVertexCompleted = FlagBaselineSolid | FlagEndorsementsSolid | FlagSequencerSolid | FlagAllInputsSolid | FlagConstraintsValid
 )
 
 const (

@@ -18,7 +18,7 @@ func (a *attacher) solidifyPastCone() vertex.Status {
 			Vertex: func(v *vertex.Vertex) {
 				ok = a.attachVertex(v, a.vid, core.NilLogicalTime, set.New[*vertex.WrappedTx]())
 				if ok {
-					success = v.FlagsUp(vertex.FlagsVertexCompleted)
+					success = v.FlagsUp(vertex.FlagsSequencerVertexCompleted)
 				}
 			},
 		})
@@ -35,7 +35,7 @@ func (a *attacher) solidifyPastCone() vertex.Status {
 
 // attachVertex: vid corresponds to the vertex v
 func (a *attacher) attachVertex(v *vertex.Vertex, vid *vertex.WrappedTx, parasiticChainHorizon core.LogicalTime, visited set.Set[*vertex.WrappedTx]) (ok bool) {
-	util.Assertf(v.FlagsUp(vertex.FlagBaselineSolid), "v.FlagsUp(vertex.FlagBaselineSolid)")
+	util.Assertf(!v.Tx.IsSequencerMilestone() || v.FlagsUp(vertex.FlagBaselineSolid), "v.FlagsUp(vertex.FlagBaselineSolid) in %s", v.Tx.IDShortString)
 
 	if visited.Contains(vid) {
 		return true
@@ -117,14 +117,18 @@ func (a *attacher) attachInputs(v *vertex.Vertex, vid *vertex.WrappedTx, parasit
 	a.tracef("attachInputs %s", vid.IDShortString)
 
 	// solidify sequencer input first
-	if !v.FlagsUp(vertex.FlagSequencerSolid) {
-		a.tracef("solidify sequencer input")
-		if !a.attachSequencerInput(v, vid, parasiticChainHorizon, visited) {
-			return false
-		}
+	if v.Tx.IsSequencerMilestone() {
 		if !v.FlagsUp(vertex.FlagSequencerSolid) {
-			return true
+			a.tracef("solidify sequencer input")
+			if !a.attachSequencerInput(v, vid, parasiticChainHorizon, visited) {
+				return false
+			}
+			if !v.FlagsUp(vertex.FlagSequencerSolid) {
+				return true
+			}
 		}
+	} else {
+		v.SetFlagUp(vertex.FlagSequencerSolid)
 	}
 	util.Assertf(v.FlagsUp(vertex.FlagSequencerSolid), "v.FlagsUp(vertex.FlagSequencerSolid)")
 	// solidify the rest

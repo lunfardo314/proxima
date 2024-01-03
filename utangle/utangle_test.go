@@ -539,7 +539,7 @@ func TestConflictsNAttachers(t *testing.T) {
 		}
 		testData.wrk.ForEachVertex(func(vid *vertex.WrappedTx) bool {
 			vid.Unwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
-				require.True(t, v.FlagsUp(vertex.FlagsVertexCompleted))
+				require.True(t, v.FlagsUp(vertex.FlagsSequencerVertexCompleted))
 			}})
 			return true
 		})
@@ -578,7 +578,7 @@ func TestConflictsNAttachers(t *testing.T) {
 
 		testData.wrk.ForEachVertex(func(vid *vertex.WrappedTx) bool {
 			vid.Unwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
-				require.True(t, v.FlagsUp(vertex.FlagsVertexCompleted))
+				require.True(t, !v.Tx.IsSequencerMilestone() || v.FlagsUp(vertex.FlagsSequencerVertexCompleted))
 			}})
 			return true
 		})
