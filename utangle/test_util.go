@@ -293,7 +293,6 @@ func initLongConflictTestData(t *testing.T, nConflicts int, nChains int, howLong
 			if i == 0 {
 				prev = originOut
 			}
-			prev = originOut
 			trd := txbuilder.NewTransferData(td.privKey, td.addr, originOut.Timestamp().AddTicks(core.TransactionPaceInTicks*(i+1)))
 			trd.WithAmount(originOut.Output.Amount())
 			trd.MustWithInputs(prev)

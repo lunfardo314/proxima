@@ -543,13 +543,14 @@ func TestConflictsNAttachers(t *testing.T) {
 			}})
 			return true
 		})
+		testData.wrk.SaveGraph("utangle")
 	})
 	t.Run("seq start tx with fee no pull", func(t *testing.T) {
 		attacher.SetTraceOn()
 		const (
-			nConflicts = 2
-			nChains    = 2
-			howLong    = 2 // 97 fails when crosses slot boundary
+			nConflicts = 5
+			nChains    = 5
+			howLong    = 5 // 97 fails when crosses slot boundary
 		)
 		var wg sync.WaitGroup
 		var err error
