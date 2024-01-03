@@ -52,8 +52,8 @@ type (
 		closeMutex            sync.RWMutex
 		inChan                chan *vertex.WrappedTx
 		ctx                   context.Context
+		flags                 uint8
 		closed                bool
-		endorsementsOk        bool
 	}
 	_attacherOptions struct {
 		ctx                  context.Context

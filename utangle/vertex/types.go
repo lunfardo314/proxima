@@ -12,11 +12,11 @@ import (
 
 type (
 	Vertex struct {
-		Tx               *transaction.Transaction
-		Inputs           []*WrappedTx
-		Endorsements     []*WrappedTx
-		BaselineBranch   *WrappedTx
-		ConstraintsValid bool
+		Tx             *transaction.Transaction
+		Inputs         []*WrappedTx
+		Endorsements   []*WrappedTx
+		BaselineBranch *WrappedTx
+		Flags          uint8
 	}
 
 	VirtualTransaction struct {
@@ -82,6 +82,13 @@ type (
 	}
 
 	Status byte
+)
+
+const (
+	FlagBaselineSolid     = 0b00000001
+	FlagEndorsementsSolid = 0b00000010
+	FlagSequencerSolid    = 0b00000100
+	FlagConstraintsValid  = 0b00001000
 )
 
 const (

@@ -10,6 +10,10 @@ import (
 	"github.com/lunfardo314/proxima/util/set"
 )
 
+func (a *attacher) solidifyEndorsements() vertex.Status {
+
+}
+
 func (a *attacher) solidifyPastCone() vertex.Status {
 	status := a.lazyRepeat(func() (status vertex.Status) {
 		ok := true
@@ -63,6 +67,8 @@ func (a *attacher) solidifyPastCone() vertex.Status {
 
 // attachVertex: vid corresponds to the vertex v
 func (a *attacher) attachVertex(v *vertex.Vertex, vid *vertex.WrappedTx, parasiticChainHorizon core.LogicalTime, visited set.Set[*vertex.WrappedTx]) (ok bool) {
+	util.Assertf(v.FlagIsOn(vertex.FlagBaselineSolid), "v.FlagIsOn(vertex.FlagBaselineSolid)")
+
 	if visited.Contains(vid) {
 		return true
 	}
@@ -74,7 +80,7 @@ func (a *attacher) attachVertex(v *vertex.Vertex, vid *vertex.WrappedTx, parasit
 		return true
 	}
 	a.pastConeVertexVisited(vid, false)
-	if !a.endorsementsOk {
+	if !v.FlagIsOn(vertex.FlagEndorsementsSolid) {
 		// depth-first along endorsements
 		return a.attachEndorsements(v, parasiticChainHorizon, visited) // <<< recursive
 	}
@@ -133,14 +139,23 @@ func (a *attacher) attachEndorsements(v *vertex.Vertex, parasiticChainHorizon co
 		}
 	}
 	if allGood {
-		a.endorsementsOk = true
+		v.SetFlagOn(vertex.FlagEndorsementsSolid)
 	}
 	return true
 }
 
 func (a *attacher) attachInputs(v *vertex.Vertex, vid *vertex.WrappedTx, parasiticChainHorizon core.LogicalTime, visited set.Set[*vertex.WrappedTx]) (ok, allInputsValidated bool) {
+	util.Assertf(v.FlagIsOn(vertex.FlagEndorsementsSolid), "vertex.FlagEndorsementsSolid)")
 	a.tracef("attachInputs %s", vid.IDShortString)
 
+	if !v.FlagIsOn(vertex.FlagSequencerSolid) {
+		if !a.attachSequencerInput(v, vid, parasiticChainHorizon, visited) {
+			return false, false
+		}
+		if v.FlagIsOn(vertex.FlagSequencerSolid) {
+			return true, false
+		}
+	}
 	allInputsValidated = true
 	for i := range v.Inputs {
 		if !a.attachInputID(v, vid, byte(i)) {
@@ -166,6 +181,31 @@ func (a *attacher) attachInputs(v *vertex.Vertex, vid *vertex.WrappedTx, parasit
 		}
 	}
 	return true, allInputsValidated
+}
+
+func (a *attacher) attachSequencerInput(v *vertex.Vertex, vid *vertex.WrappedTx, parasiticChainHorizon core.LogicalTime, visited set.Set[*vertex.WrappedTx]) (ok bool) {
+	predInputIdx := v.Tx.SequencerTransactionData().SequencerOutputData.ChainConstraint.PredecessorInputIndex
+	if !a.attachInputID(v, vid, predInputIdx) {
+		a.tracef("bad sequencer input %d", predInputIdx)
+		return false
+	}
+	util.Assertf(v.Inputs[predInputIdx] != nil, "v.Inputs[i] != nil")
+
+	if parasiticChainHorizon == core.NilLogicalTime {
+		// TODO revisit parasitic chain threshold because of syncing branches
+		parasiticChainHorizon = core.MustNewLogicalTime(v.Inputs[predInputIdx].Timestamp().TimeSlot()-maxToleratedParasiticChainSlots, 0)
+	}
+	wOut := vertex.WrappedOutput{
+		VID:   v.Inputs[predInputIdx],
+		Index: v.Tx.MustOutputIndexOfTheInput(byte(predInputIdx)),
+	}
+	if !a.attachOutput(wOut, parasiticChainHorizon, visited) { // << recursion
+		return false
+	}
+	if a.validPastVertices.Contains(v.Inputs[predInputIdx]) || a.isRooted(v.Inputs[predInputIdx]) {
+		v.SetFlagOn(vertex.FlagSequencerSolid)
+	}
+	return true
 }
 
 func (a *attacher) isRooted(vid *vertex.WrappedTx) bool {

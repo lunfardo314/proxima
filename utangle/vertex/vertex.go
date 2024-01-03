@@ -43,7 +43,7 @@ func (v *Vertex) GetConsumedOutput(i byte) (*core.Output, error) {
 }
 
 func (v *Vertex) ValidateConstraints(traceOption ...int) error {
-	if v.ConstraintsValid {
+	if v.FlagIsOn(FlagConstraintsValid) {
 		return nil
 	}
 	traceOpt := transaction.TraceOptionFailedConstraints
@@ -56,7 +56,7 @@ func (v *Vertex) ValidateConstraints(traceOption ...int) error {
 	}
 	err = ctx.Validate()
 	if err == nil {
-		v.ConstraintsValid = true
+		v.SetFlagOn(FlagConstraintsValid)
 	}
 	return err
 }
@@ -248,4 +248,12 @@ func (v *Vertex) PendingDependenciesLines(prefix ...string) *lines.Lines {
 		return true
 	})
 	return ret
+}
+
+func (v *Vertex) FlagIsOn(mask uint8) bool {
+	return v.Flags&mask != 0
+}
+
+func (v *Vertex) SetFlagOn(mask uint8) {
+	v.Flags |= mask
 }
