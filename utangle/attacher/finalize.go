@@ -85,11 +85,16 @@ func (a *attacher) calculateCoverage() multistate.LedgerCoverage {
 }
 
 func (a *attacher) checkPastConeVerticesConsistent() (err error) {
+	if len(a.undefinedPastVertices) != 0 {
+		return fmt.Errorf("undefinedPastVertices set is inconsistent: %s", vertex.VerticesLines(util.Keys(a.undefinedPastVertices)).String())
+	}
+	// should be at least one rooted output ( ledger coverage must be > 0)
+	if len(a.rooted) == 0 {
+		return fmt.Errorf("at least oe rooted output is expected")
+	}
+
 	if len(a.validPastVertices) == 0 {
 		return fmt.Errorf("validPastVertices is empty")
-	}
-	if a.validPastVertices.Contains(a.vid) {
-		return fmt.Errorf("unexpected %s in the validPastVertices", a.vid.IDShortString())
 	}
 	for vid := range a.validPastVertices {
 		if vid == a.vid {

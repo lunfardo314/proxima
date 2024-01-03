@@ -245,16 +245,7 @@ func runAttacher(vid *vertex.WrappedTx, env AttachEnvironment, ctx context.Conte
 
 	a.tracef("past cone OK")
 
-	{
-		// consistency assertions before finalization
-		// the only left undefined should be the vertex itself
-		util.Assertf(len(a.undefinedPastVertices) == 1 && a.undefinedPastVertices.Contains(a.vid), "undefinedPastVertices set is inconsistent",
-			func() any { return vertex.VerticesLines(util.Keys(a.undefinedPastVertices)).String() })
-		// should be at least one rooted output ( ledger coverage must be > 0)
-		util.Assertf(len(a.rooted) > 0, "len(a.rooted) > 0")
-		// check other past cone vertices
-		util.AssertNoError(a.checkPastConeVerticesConsistent())
-	}
+	util.AssertNoError(a.checkPastConeVerticesConsistent())
 
 	a.finalize()
 	a.vid.SetTxStatus(vertex.Good)

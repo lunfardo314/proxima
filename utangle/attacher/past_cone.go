@@ -197,11 +197,8 @@ func (a *attacher) attachRooted(wOut vertex.WrappedOutput) (ok bool, isRooted bo
 
 	consumedRooted := a.rooted[wOut.VID]
 	if consumedRooted.Contains(wOut.Index) {
-		// double spend
-		err := fmt.Errorf("fail: rooted output %s is already spent", wOut.IDShortString())
-		a.tracef("%v", err)
-		a.setReason(err)
-		return false, true
+		// it means it is already covered. The double spends are checked by attachInputID
+		return true, true
 	}
 	// not a double spend
 	stateReader := a.baselineStateReader()
@@ -303,7 +300,7 @@ func (a *attacher) attachInputID(consumerVertex *vertex.Vertex, consumerTx *vert
 	}
 	// attach consumer and check for conflicts
 	if !vidInputTx.AttachConsumer(inputOid.Index(), consumerTx, a.checkConflicts(consumerTx)) {
-		err := fmt.Errorf("input %s of consumer %s conflicts with existing consumers in the baseline state %s",
+		err := fmt.Errorf("input %s of consumer %s conflicts with existing consumers in the baseline state %s (double spend)",
 			inputOid.StringShort(), consumerTx.IDShortString(), a.baselineBranch.IDShortString())
 		a.setReason(err)
 		a.tracef("%v", err)
