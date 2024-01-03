@@ -582,6 +582,8 @@ func TestConflictsNAttachers(t *testing.T) {
 			}})
 			return true
 		})
+
+		testData.wrk.SaveGraph("utangle")
 	})
 
 }

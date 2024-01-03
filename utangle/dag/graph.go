@@ -90,10 +90,21 @@ func makeGraphNode(vid *vertex.WrappedTx, gr graph.Graph[string, string], seqDic
 	util.AssertNoError(err)
 }
 
+var nilCount int
+
 func makeGraphEdges(vid *vertex.WrappedTx, gr graph.Graph[string, string]) {
 	id := vid.IDVeryShort()
 	vid.Unwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
 		v.ForEachInputDependency(func(i byte, inp *vertex.WrappedTx) bool {
+			if inp == nil {
+				idNil := fmt.Sprintf("%d", nilCount)
+				err := gr.AddVertex(idNil, graph.VertexAttribute("shape", "point"))
+				util.AssertNoError(err)
+				nilCount++
+				err = gr.AddEdge(id, idNil)
+				util.AssertNoError(err)
+				return true
+			}
 			o, err := v.GetConsumedOutput(i)
 			util.AssertNoError(err)
 			outIndex := v.Tx.MustOutputIndexOfTheInput(i)

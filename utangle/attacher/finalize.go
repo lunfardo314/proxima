@@ -112,6 +112,11 @@ func (a *attacher) checkPastConeVerticesConsistent() (err error) {
 			if !v.FlagsUp(vertex.FlagsSequencerVertexCompleted) {
 				err = fmt.Errorf("%s is not completed yet. Flags: %08b", v.Tx.IDShortString(), v.Flags)
 			}
+			missingInputs, missingEndorsements := v.NumMissingInputs()
+			if missingInputs+missingEndorsements > 0 {
+				err = fmt.Errorf("not all dependencies solid. Missing inputs: %d, missing endorsements: %d, missing input tx:\n%s",
+					missingInputs, missingEndorsements, v.MissingInputTxIDString())
+			}
 		}})
 	}
 	return

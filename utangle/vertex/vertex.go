@@ -41,7 +41,7 @@ func (v *Vertex) GetConsumedOutput(i byte) (*core.Output, error) {
 		return nil, fmt.Errorf("wrong input index %d", i)
 	}
 	if v.Inputs[i] == nil {
-		return nil, fmt.Errorf("input not solid at index %d", i)
+		return nil, fmt.Errorf("input %s not solid at index %d", util.Ref(v.Tx.MustInputAt(i)).StringShort(), i)
 	}
 	return v.Inputs[i].OutputAt(v.Tx.MustOutputIndexOfTheInput(i))
 }
