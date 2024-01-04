@@ -466,7 +466,7 @@ func (vid *WrappedTx) EnsureOutput(idx byte, o *core.Output) bool {
 	return ok
 }
 
-func (vid *WrappedTx) AttachConsumer(outputIndex byte, consumer *WrappedTx, checkConflicts func(existingConsumers set.Set[*WrappedTx]) (ok bool)) bool {
+func (vid *WrappedTx) AttachConsumer(outputIndex byte, consumer *WrappedTx, checkConflicts func(existingConsumers set.Set[*WrappedTx]) (conflict bool)) bool {
 	vid.mutexConsumers.Lock()
 	defer vid.mutexConsumers.Unlock()
 
@@ -480,7 +480,9 @@ func (vid *WrappedTx) AttachConsumer(outputIndex byte, consumer *WrappedTx, chec
 		outputConsumers.Insert(consumer)
 	}
 	vid.consumed[outputIndex] = outputConsumers
-	return !checkConflicts(outputConsumers)
+	conflict := checkConflicts(outputConsumers)
+
+	return !conflict
 }
 
 func (vid *WrappedTx) NotConsumedOutputIndices(allConsumers set.Set[*WrappedTx]) []byte {
@@ -585,4 +587,12 @@ func VerticesLines(vertices []*WrappedTx, prefix ...string) *lines.Lines {
 		ret.Add(vid.String())
 	}
 	return ret
+}
+
+func VIDSetIDString(set set.Set[*WrappedTx], prefix ...string) string {
+	ret := lines.New(prefix...)
+	for _, vid := range util.Keys(set) {
+		ret.Add(vid.IDShortString())
+	}
+	return ret.Join(", ")
 }

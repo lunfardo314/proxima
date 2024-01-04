@@ -289,6 +289,18 @@ func (a *attacher) pastConeVertexVisited(vid *vertex.WrappedTx, good bool) {
 	}
 }
 
+func (a *attacher) isKnownVertex(vid *vertex.WrappedTx) bool {
+	if a.validPastVertices.Contains(vid) {
+		util.Assertf(!a.undefinedPastVertices.Contains(vid), "!a.undefinedPastVertices.Contains(vid)")
+		return true
+	}
+	if a.undefinedPastVertices.Contains(vid) {
+		util.Assertf(!a.validPastVertices.Contains(vid), "!a.validPastVertices.Contains(vid)")
+		return true
+	}
+	return false
+}
+
 // not thread safe
 var trace = false
 

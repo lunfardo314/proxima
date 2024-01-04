@@ -68,7 +68,7 @@ func (a *attacher) attachVertex(v *vertex.Vertex, vid *vertex.WrappedTx, parasit
 			a.tracef("%v", err)
 			return false
 		}
-		a.tracef("validated constraints: %s", v.Tx.IDShortString())
+		a.tracef("constraints has been validated OK: %s", v.Tx.IDShortString())
 		a.pastConeVertexVisited(vid, true)
 		ok = true
 	}
@@ -290,7 +290,7 @@ func (a *attacher) branchesCompatible(vid1, vid2 *vertex.WrappedTx) bool {
 
 func (a *attacher) attachInputID(consumerVertex *vertex.Vertex, consumerTx *vertex.WrappedTx, inputIdx byte) (ok bool) {
 	inputOid := consumerVertex.Tx.MustInputAt(inputIdx)
-	a.tracef("attachInputID: #%d in %s (%s)", inputIdx, consumerTx.IDShortString, inputOid.StringShort)
+	a.tracef("attachInputID: #%d in %s (oid = %s)", inputIdx, consumerTx.IDShortString, inputOid.StringShort)
 
 	vidInputTx := consumerVertex.Inputs[inputIdx]
 	if vidInputTx == nil {
@@ -303,13 +303,21 @@ func (a *attacher) attachInputID(consumerVertex *vertex.Vertex, consumerTx *vert
 		return false
 	}
 	// attach consumer and check for conflicts
-	if !vidInputTx.AttachConsumer(inputOid.Index(), consumerTx, a.checkConflicts(consumerTx)) {
+	// CONFLICT DETECTION
+	util.Assertf(a.isKnownVertex(consumerTx), "a.isKnownVertex(consumerTx)")
+
+	a.tracef("before AttachConsumer of %s:\n       good: %s\n       undef: %s",
+		inputOid.StringShort, vertex.VIDSetIDString(a.validPastVertices), vertex.VIDSetIDString(a.undefinedPastVertices))
+
+	if !vidInputTx.AttachConsumer(inputOid.Index(), consumerTx, a.checkConflictsFunc(consumerTx)) {
 		err := fmt.Errorf("input %s of consumer %s conflicts with existing consumers in the baseline state %s (double spend)",
 			inputOid.StringShort(), consumerTx.IDShortString(), a.baselineBranch.IDShortString())
 		a.setReason(err)
 		a.tracef("%v", err)
 		return false
 	}
+	a.tracef("attached consumer %s of %s", consumerTx.IDShortString, inputOid.StringShort)
+
 	if vidInputTx.IsSequencerMilestone() {
 		// for sequencer milestones check if baselines are compatible
 		if inputBaselineBranch := vidInputTx.BaselineBranch(); inputBaselineBranch != nil {
@@ -325,9 +333,12 @@ func (a *attacher) attachInputID(consumerVertex *vertex.Vertex, consumerTx *vert
 	return true
 }
 
-func (a *attacher) checkConflicts(consumerTx *vertex.WrappedTx) func(existingConsumers set.Set[*vertex.WrappedTx]) bool {
-	return func(existingConsumers set.Set[*vertex.WrappedTx]) bool {
-		conflict := false
+func (a *attacher) checkConflictsFunc(consumerTx *vertex.WrappedTx) func(existingConsumers set.Set[*vertex.WrappedTx]) bool {
+	return func(existingConsumers set.Set[*vertex.WrappedTx]) (conflict bool) {
+		defer func() {
+			exStr := vertex.VIDSetIDString(existingConsumers)
+			a.tracef("checkConflicts: return %v\n    New consumer: %s\n    Existing consumers: %s", conflict, consumerTx.IDShortString, exStr)
+		}()
 		existingConsumers.ForEach(func(existingConsumer *vertex.WrappedTx) bool {
 			if existingConsumer == consumerTx {
 				return true
@@ -342,6 +353,6 @@ func (a *attacher) checkConflicts(consumerTx *vertex.WrappedTx) func(existingCon
 			}
 			return true
 		})
-		return conflict
+		return
 	}
 }
