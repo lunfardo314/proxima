@@ -85,16 +85,16 @@ func (a *attacher) solidifySequencerBaseline(v *vertex.Vertex) (ok bool) {
 		inputTx = v.Inputs[predIdx]
 
 	}
+	a.pastConeVertexVisited(inputTx, false) // leaving it in the undef list
+
 	switch inputTx.GetTxStatus() {
 	case vertex.Good:
 		v.BaselineBranch = inputTx.BaselineBranch()
 		v.SetFlagUp(vertex.FlagBaselineSolid)
 		util.Assertf(v.BaselineBranch != nil, "v.BaselineBranch!=nil")
-		a.pastConeVertexVisited(inputTx, true)
 		return true
 	case vertex.Undefined:
 		// vertex can be undefined but with correct baseline branch
-		a.pastConeVertexVisited(inputTx, false)
 		a.env.OnChangeNotify(inputTx, a.vid)
 		return true
 	case vertex.Bad:

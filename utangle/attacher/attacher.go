@@ -13,6 +13,7 @@ import (
 	"github.com/lunfardo314/proxima/utangle/vertex"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/set"
+	"github.com/lunfardo314/unitrie/common"
 	"go.uber.org/zap"
 )
 
@@ -154,12 +155,12 @@ func AttachTransaction(tx *transaction.Transaction, env AttachEnvironment, opts 
 			if callback == nil {
 				callback = func(_ *vertex.WrappedTx) {}
 			}
-			go func() {
+			util.RunWrappedRoutine(vid.IDShortString(), func() {
 				status, err := runAttacher(vid, env, ctx)
 				vid.SetTxStatus(status)
 				vid.SetReason(err)
 				callback(vid)
-			}()
+			}, nil, common.ErrDBUnavailable)
 		}
 	})
 	return
@@ -235,7 +236,7 @@ func runAttacher(vid *vertex.WrappedTx, env AttachEnvironment, ctx context.Conte
 	util.Assertf(a.baselineBranch != nil, "a.baselineBranch != nil")
 
 	// then continue with the rest
-	a.tracef("baseline %s OK", a.baselineBranch.IDShortString())
+	a.tracef("baseline is OK -> %s", a.baselineBranch.IDShortString())
 
 	status = a.solidifyPastCone()
 	if status != vertex.Good {

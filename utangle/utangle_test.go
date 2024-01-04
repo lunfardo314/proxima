@@ -242,7 +242,7 @@ func TestOrigin(t *testing.T) {
 
 func TestConflicts1Attacher(t *testing.T) {
 	t.Run("n double spends", func(t *testing.T) {
-		attacher.SetTraceOn()
+		//attacher.SetTraceOn()
 		const nConflicts = 10
 		testData := initConflictTest(t, nConflicts, 0, false)
 		for _, txBytes := range testData.txBytes {
@@ -252,7 +252,7 @@ func TestConflicts1Attacher(t *testing.T) {
 		testData.logDAGInfo()
 	})
 	t.Run("n double spends consumed", func(t *testing.T) {
-		attacher.SetTraceOn()
+		//attacher.SetTraceOn()
 		const nConflicts = 5
 		testData := initConflictTest(t, nConflicts, 0, true)
 		for _, txBytes := range testData.txBytes {
@@ -421,7 +421,7 @@ func TestConflicts1Attacher(t *testing.T) {
 		util.RequireErrorWith(t, vid.GetReason(), "conflicts with existing consumers in the baseline state", testData.forkOutput.IDShort())
 	})
 	t.Run("long with sync", func(t *testing.T) {
-		attacher.SetTraceOn()
+		//attacher.SetTraceOn()
 		const (
 			nConflicts = 2
 			howLong    = 1 // 97 fails when crosses slot boundary
@@ -509,7 +509,7 @@ func TestConflictsNAttachers(t *testing.T) {
 		}
 	})
 	t.Run("seq start tx fee with-without pull", func(t *testing.T) {
-		attacher.SetTraceOn()
+		//attacher.SetTraceOn()
 		const (
 			nConflicts = 5
 			nChains    = 5
@@ -555,12 +555,12 @@ func TestConflictsNAttachers(t *testing.T) {
 		//testData.wrk.SaveGraph("utangle")
 	})
 	t.Run("conflict1", func(t *testing.T) {
-		attacher.SetTraceOn()
+		//attacher.SetTraceOn()
 		const (
-			nConflicts = 2
-			nChains    = 2
-			howLong    = 2 // 97 fails when crosses slot boundary
-			pullYN     = false
+			nConflicts = 4
+			nChains    = 4
+			howLong    = 10 // 97 fails when crosses slot boundary
+			pullYN     = true
 		)
 		var wg sync.WaitGroup
 		var err error
@@ -594,6 +594,8 @@ func TestConflictsNAttachers(t *testing.T) {
 			PrivateKey:   testData.privKeyAux,
 		})
 		require.NoError(t, err)
+		txid, _, _ := transaction.IDAndTimestampFromTransactionBytes(txBytesSeq)
+		t.Logf("expected to fail: %s", txid.StringShort())
 
 		wg.Add(1)
 		vidSeq, err := attacher.AttachTransactionFromBytes(txBytesSeq, testData.wrk, attacher.WithFinalizationCallback(func(vid *vertex.WrappedTx) {
@@ -604,9 +606,8 @@ func TestConflictsNAttachers(t *testing.T) {
 
 		testData.logDAGInfo()
 
-		require.EqualValues(t, vertex.Bad, vidSeq.GetTxStatus())
-
+		require.EqualValues(t, vertex.Bad.String(), vidSeq.GetTxStatus().String())
+		util.RequireErrorWith(t, vidSeq.GetReason(), "conflicts with existing consumers in the baseline state", "(double spend)", testData.forkOutput.IDShort())
 		testData.wrk.SaveGraph("utangle")
 	})
-
 }

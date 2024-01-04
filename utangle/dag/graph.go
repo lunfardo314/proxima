@@ -67,13 +67,21 @@ func makeGraphNode(vid *vertex.WrappedTx, gr graph.Graph[string, string], seqDic
 	attr := simpleNodeAttributes
 	var err error
 
+	status := vid.GetTxStatus()
 	vid.Unwrap(vertex.UnwrapOptions{
 		Vertex: func(v *vertex.Vertex) {
 			if v.Tx.IsSequencerMilestone() {
 				attr = sequencerNodeAttributes(v, vid.GetLedgerCoverage().Sum(), seqDict)
 			}
-			if v.Tx.IsBranchTransaction() {
-				attr = append(attr, graph.VertexAttribute("shape", "box"))
+			switch status {
+			case vertex.Bad:
+				attr = append(attr, graph.VertexAttribute("shape", "invtriangle"))
+			case vertex.Undefined:
+				attr = append(attr, graph.VertexAttribute("shape", "diamond"))
+			case vertex.Good:
+				if v.Tx.IsBranchTransaction() {
+					attr = append(attr, graph.VertexAttribute("shape", "box"))
+				}
 			}
 			if highlighted {
 				attr = append(attr, graph.VertexAttribute("penwidth", "3"))
@@ -88,6 +96,9 @@ func makeGraphNode(vid *vertex.WrappedTx, gr graph.Graph[string, string], seqDic
 		},
 	})
 	util.AssertNoError(err)
+	if vid.GetTxStatus() == vertex.Bad {
+		attr = append(attr, graph.VertexAttribute("color", "ret"))
+	}
 }
 
 var nilCount int

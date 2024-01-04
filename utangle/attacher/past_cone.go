@@ -47,11 +47,17 @@ func (a *attacher) attachVertex(v *vertex.Vertex, vid *vertex.WrappedTx, parasit
 	if a.validPastVertices.Contains(vid) {
 		return true
 	}
-	a.pastConeVertexVisited(vid, false)
+	a.pastConeVertexVisited(vid, false) // undefined yet
 	if !v.FlagsUp(vertex.FlagEndorsementsSolid) {
 		// depth-first along endorsements
-		return a.attachEndorsements(v, parasiticChainHorizon, visited) // <<< recursive
+		if !a.attachEndorsements(v, parasiticChainHorizon, visited) { // <<< recursive
+			return false
+		}
+		if !v.FlagsUp(vertex.FlagEndorsementsSolid) {
+			return true
+		}
 	}
+	a.tracef("endorsements solid in %s", v.Tx.IDShortString)
 	// only starting with inputs after endorsements are ok. It ensures all endorsed past cone is known
 	// for the attached before going to other dependencies. Note, that endorsing past cone consists only of
 	// sequencer milestones which are validated/solidified by their attachers
@@ -93,7 +99,7 @@ func (a *attacher) attachEndorsements(v *vertex.Vertex, parasiticChainHorizon co
 			// it means past cone of vidEndorsed is fully validated already
 			continue
 		}
-		a.pastConeVertexVisited(vidEndorsed, endorsedStatus == vertex.Good)
+		a.pastConeVertexVisited(vidEndorsed, false) // valid status only assigned by attachVertex
 
 		ok := true
 		vidEndorsed.Unwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
@@ -104,6 +110,9 @@ func (a *attacher) attachEndorsements(v *vertex.Vertex, parasiticChainHorizon co
 		}
 		if vidEndorsed.GetTxStatus() != vertex.Good {
 			allGood = false
+		} else {
+			a.tracef("endorsement is valid: %s", vidEndorsed.IDShortString)
+			a.pastConeVertexVisited(vidEndorsed, true)
 		}
 	}
 	if allGood {
@@ -290,7 +299,7 @@ func (a *attacher) branchesCompatible(vid1, vid2 *vertex.WrappedTx) bool {
 
 func (a *attacher) attachInputID(consumerVertex *vertex.Vertex, consumerTx *vertex.WrappedTx, inputIdx byte) (ok bool) {
 	inputOid := consumerVertex.Tx.MustInputAt(inputIdx)
-	a.tracef("attachInputID: #%d in %s (oid = %s)", inputIdx, consumerTx.IDShortString, inputOid.StringShort)
+	a.tracef("attachInputID: (oid = %s) #%d in %s", inputOid.StringShort, inputIdx, consumerTx.IDShortString)
 
 	vidInputTx := consumerVertex.Inputs[inputIdx]
 	if vidInputTx == nil {
