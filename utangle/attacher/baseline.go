@@ -85,8 +85,6 @@ func (a *attacher) solidifySequencerBaseline(v *vertex.Vertex) (ok bool) {
 		inputTx = v.Inputs[predIdx]
 
 	}
-	//a.pastConeVertexVisited(inputTx, false) // leaving it in the undef list
-
 	switch inputTx.GetTxStatus() {
 	case vertex.Good:
 		v.BaselineBranch = inputTx.BaselineBranch()

@@ -110,7 +110,7 @@ func (a *attacher) checkPastConeVerticesConsistent() (err error) {
 			return fmt.Errorf("inconsistent vertex (%s) in the past cone: %s",
 				status.String(), vid.IDShortString())
 		}
-		vid.Unwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
+		vid.RUnwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
 			if !v.FlagsUp(vertex.FlagsSequencerVertexCompleted) {
 				err = fmt.Errorf("%s is not completed yet. Flags: %08b", v.Tx.IDShortString(), v.Flags)
 			}

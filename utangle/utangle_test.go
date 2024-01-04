@@ -3,6 +3,7 @@ package utangle
 import (
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/genesis"
@@ -546,7 +547,7 @@ func TestConflictsNAttachers(t *testing.T) {
 		}
 
 		testData.wrk.ForEachVertex(func(vid *vertex.WrappedTx) bool {
-			vid.Unwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
+			vid.RUnwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
 				require.True(t, !v.Tx.IsSequencerMilestone() || v.FlagsUp(vertex.FlagsSequencerVertexCompleted))
 			}})
 			return true
@@ -554,7 +555,7 @@ func TestConflictsNAttachers(t *testing.T) {
 
 		//testData.wrk.SaveGraph("utangle")
 	})
-	t.Run("conflict1", func(t *testing.T) {
+	t.Run("one fork", func(t *testing.T) {
 		//attacher.SetTraceOn()
 		const (
 			nConflicts = 2
@@ -608,6 +609,63 @@ func TestConflictsNAttachers(t *testing.T) {
 
 		require.EqualValues(t, vertex.Bad.String(), vidSeq.GetTxStatus().String())
 		util.RequireErrorWith(t, vidSeq.GetReason(), "conflicts with existing consumers in the baseline state", "(double spend)", testData.forkOutput.IDShort())
+		testData.wrk.SaveGraph("utangle")
+	})
+	t.Run("one fork, branches", func(t *testing.T) {
+		attacher.SetTraceOn()
+		const (
+			nConflicts = 2
+			nChains    = 2
+			howLong    = 2 // 97 fails when crosses slot boundary
+			pullYN     = false
+		)
+
+		testData := initLongConflictTestData(t, nConflicts, nChains, howLong)
+		testData.makeSeqStarts(true)
+		testData.printTxIDs()
+
+		if pullYN {
+			testData.txBytesToStore()
+			testData.storeTransactions(testData.seqStart...)
+		} else {
+			testData.txBytesAttach()
+			testData.attachTransactions(testData.seqStart...)
+		}
+		time.Sleep(5 * time.Second)
+
+		chainIn := make([]*core.OutputWithChainID, len(testData.seqStart))
+		var ts core.LogicalTime
+		for i, txBytes := range testData.seqStart {
+			tx, _ := transaction.FromBytes(txBytes, transaction.MainTxValidationOptions...)
+			o := tx.MustProducedOutputWithIDAt(tx.SequencerTransactionData().SequencerOutputIndex)
+			chainIn[i] = o.MustAsChainOutput()
+			ts = core.MaxLogicalTime(ts, o.Timestamp())
+		}
+		ts = ts.NextTimeSlotBoundary()
+
+		var err error
+		var wg sync.WaitGroup
+		branches := make([]*vertex.WrappedTx, len(chainIn))
+		var txBytes []byte
+		stem := multistate.MakeSugared(testData.wrk.HeaviestStateForLatestTimeSlot()).GetStemOutput()
+		for i := range chainIn {
+			txBytes, err = txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
+				SeqName:    "seq",
+				StemInput:  stem,
+				ChainInput: chainIn[i],
+				Timestamp:  ts,
+				PrivateKey: testData.privKeyAux,
+			})
+			require.NoError(t, err)
+			wg.Add(1)
+			branches[i], err = attacher.AttachTransactionFromBytes(txBytes, testData.wrk, attacher.WithFinalizationCallback(func(vid *vertex.WrappedTx) {
+				wg.Done()
+			}))
+			require.NoError(t, err)
+		}
+		wg.Wait()
+
+		testData.logDAGInfo()
 		testData.wrk.SaveGraph("utangle")
 	})
 }

@@ -112,7 +112,6 @@ func (a *attacher) attachEndorsements(v *vertex.Vertex, parasiticChainHorizon co
 			// it means past cone of vidEndorsed is fully validated already
 			continue
 		}
-		//a.pastConeVertexVisited(vidEndorsed, false) // undef status in te beginning
 
 		ok := true
 		vidEndorsed.Unwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
@@ -125,11 +124,10 @@ func (a *attacher) attachEndorsements(v *vertex.Vertex, parasiticChainHorizon co
 			allGood = false
 		} else {
 			a.tracef("endorsement is valid: %s", vidEndorsed.IDShortString)
-			// endorsement already traverse and is good. Can be moved tp valid set
-			//a.pastConeVertexVisited(vidEndorsed, true)
 		}
 	}
 	if allGood {
+		a.tracef("endorsement are good")
 		v.SetFlagUp(vertex.FlagEndorsementsSolid)
 	}
 	return true

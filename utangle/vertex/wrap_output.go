@@ -91,7 +91,7 @@ import (
 //	var ret WrappedOutput
 //	var available, invalid bool
 //
-//	vid.Unwrap(UnwrapOptions{
+//	vid.RUnwrap(UnwrapOptions{
 //		VirtualTx: func(v *VirtualTransaction) {
 //			_, already := v.OutputAt(oid.Index())
 //			util.Assertf(!already, "inconsistency: output %s should not exist in the virtualTx", func() any { return oid.StringShort() })
@@ -127,7 +127,7 @@ import (
 //	}
 //	var ret WrappedOutput
 //	var available, invalid bool
-//	vid.Unwrap(UnwrapOptions{
+//	vid.RUnwrap(UnwrapOptions{
 //		VirtualTx: func(v *VirtualTransaction) {
 //			o, err := baselineState[0].GetOutputErr(oid)
 //			if errors.Is(err, multistate.ErrNotFound) {
@@ -199,7 +199,7 @@ func (o *WrappedOutput) _isConsumedInThePastConeOf(vid *WrappedTx, visited set.S
 	}
 	visited.Insert(vid)
 
-	vid.Unwrap(UnwrapOptions{
+	vid.RUnwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
 			v.ForEachInputDependency(func(i byte, vidInput *WrappedTx) bool {
 				if o.VID == vidInput {

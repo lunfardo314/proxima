@@ -13,7 +13,7 @@ import (
 	"github.com/lunfardo314/proxima/util/set"
 )
 
-// ErrDeletedVertexAccessed exception is raised by PanicAccessDeleted handler of Unwrap vertex so that could be caught if necessary
+// ErrDeletedVertexAccessed exception is raised by PanicAccessDeleted handler of RUnwrap vertex so that could be caught if necessary
 var (
 	ErrDeletedVertexAccessed = errors.New("deleted vertex should not be accessed")
 	ErrShouldNotBeVirtualTx  = errors.New("virtualTx is unexpected")
@@ -259,7 +259,7 @@ func (vid *WrappedTx) HasOutputAt(idx byte) (bool, bool) {
 func (vid *WrappedTx) SequencerIDIfAvailable() (core.ChainID, bool) {
 	var isAvailable bool
 	var ret core.ChainID
-	vid.Unwrap(UnwrapOptions{
+	vid.RUnwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
 			isAvailable = v.Tx.IsSequencerMilestone()
 			if isAvailable {
@@ -284,7 +284,7 @@ func (vid *WrappedTx) SequencerIDIfAvailable() (core.ChainID, bool) {
 
 func (vid *WrappedTx) MustSequencerIDAndStemID() (seqID core.ChainID, stemID core.OutputID) {
 	util.Assertf(vid.IsBranchTransaction(), "vid.IsBranchTransaction()")
-	vid.Unwrap(UnwrapOptions{
+	vid.RUnwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
 			seqID = v.Tx.SequencerTransactionData().SequencerID
 			stemID = vid.OutputID(v.Tx.SequencerTransactionData().StemOutputIndex)
@@ -311,7 +311,7 @@ func (vid *WrappedTx) MustSequencerID() core.ChainID {
 }
 
 func (vid *WrappedTx) SequencerPredecessor() (ret *WrappedTx) {
-	vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
+	vid.RUnwrap(UnwrapOptions{Vertex: func(v *Vertex) {
 		if seqData := v.Tx.SequencerTransactionData(); seqData != nil {
 			ret = v.Inputs[seqData.SequencerOutputData.ChainConstraint.PredecessorInputIndex]
 		}
@@ -320,14 +320,14 @@ func (vid *WrappedTx) SequencerPredecessor() (ret *WrappedTx) {
 }
 
 func (vid *WrappedTx) IsVertex() (ret bool) {
-	vid.Unwrap(UnwrapOptions{Vertex: func(_ *Vertex) {
+	vid.RUnwrap(UnwrapOptions{Vertex: func(_ *Vertex) {
 		ret = true
 	}})
 	return
 }
 
 func (vid *WrappedTx) IsVirtualTx() (ret bool) {
-	vid.Unwrap(UnwrapOptions{VirtualTx: func(_ *VirtualTransaction) {
+	vid.RUnwrap(UnwrapOptions{VirtualTx: func(_ *VirtualTransaction) {
 		ret = true
 	}})
 	return
@@ -339,9 +339,20 @@ func (vid *WrappedTx) OutputID(idx byte) (ret core.OutputID) {
 }
 
 func (vid *WrappedTx) Unwrap(opt UnwrapOptions) {
+	vid.mutex.Lock()
+	defer vid.mutex.Unlock()
+
+	vid._unwrap(opt)
+}
+
+func (vid *WrappedTx) RUnwrap(opt UnwrapOptions) {
 	vid.mutex.RLock()
 	defer vid.mutex.RUnlock()
 
+	vid._unwrap(opt)
+}
+
+func (vid *WrappedTx) _unwrap(opt UnwrapOptions) {
 	switch v := vid._genericWrapper.(type) {
 	case _vertex:
 		if opt.Vertex != nil {
@@ -370,7 +381,7 @@ func (vid *WrappedTx) Time() time.Time {
 
 func (vid *WrappedTx) Lines(prefix ...string) *lines.Lines {
 	ret := lines.New(prefix...)
-	vid.Unwrap(UnwrapOptions{
+	vid.RUnwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
 			ret.Add("== vertex %s", vid.IDShortString())
 			ret.Append(v.Lines(prefix...))
@@ -394,7 +405,7 @@ func (vid *WrappedTx) Lines(prefix ...string) *lines.Lines {
 
 func (vid *WrappedTx) NumInputs() int {
 	ret := 0
-	vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
+	vid.RUnwrap(UnwrapOptions{Vertex: func(v *Vertex) {
 		ret = v.Tx.NumInputs()
 	}})
 	return ret
@@ -402,7 +413,7 @@ func (vid *WrappedTx) NumInputs() int {
 
 func (vid *WrappedTx) NumProducedOutputs() int {
 	ret := 0
-	vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
+	vid.RUnwrap(UnwrapOptions{Vertex: func(v *Vertex) {
 		ret = v.Tx.NumProducedOutputs()
 	}})
 	return ret
@@ -434,7 +445,7 @@ func (vid *WrappedTx) BaselineBranch() (baselineBranch *WrappedTx) {
 	vid.mutex.RLock()
 	defer vid.mutex.RUnlock()
 
-	vid.Unwrap(UnwrapOptions{
+	vid.RUnwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
 			baselineBranch = v.BaselineBranch
 		},
@@ -450,7 +461,7 @@ func (vid *WrappedTx) BaselineBranch() (baselineBranch *WrappedTx) {
 
 func (vid *WrappedTx) EnsureOutput(idx byte, o *core.Output) bool {
 	ok := true
-	vid.Unwrap(UnwrapOptions{
+	vid.RUnwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
 			if idx >= byte(v.Tx.NumProducedOutputs()) {
 				ok = false
@@ -490,7 +501,7 @@ func (vid *WrappedTx) NotConsumedOutputIndices(allConsumers set.Set[*WrappedTx])
 	defer vid.mutexConsumers.Unlock()
 
 	nOutputs := 0
-	vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
+	vid.RUnwrap(UnwrapOptions{Vertex: func(v *Vertex) {
 		nOutputs = v.Tx.NumProducedOutputs()
 	}})
 
@@ -547,7 +558,7 @@ func (vid *WrappedTx) NumConsumers() (int, int) {
 func (vid *WrappedTx) String() (ret string) {
 	consumed, doubleSpent := vid.NumConsumers()
 	reason := vid.GetReason()
-	vid.Unwrap(UnwrapOptions{
+	vid.RUnwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
 			t := "vertex (" + vid.txStatus.String() + ")"
 			ret = fmt.Sprintf("%20s %s :: in: %d, out: %d, consumed: %d, conflicts: %d, Flags: %08b, reason: '%v'",

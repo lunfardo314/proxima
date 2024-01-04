@@ -68,7 +68,7 @@ func makeGraphNode(vid *vertex.WrappedTx, gr graph.Graph[string, string], seqDic
 	var err error
 
 	status := vid.GetTxStatus()
-	vid.Unwrap(vertex.UnwrapOptions{
+	vid.RUnwrap(vertex.UnwrapOptions{
 		Vertex: func(v *vertex.Vertex) {
 			if v.Tx.IsSequencerMilestone() {
 				attr = sequencerNodeAttributes(v, vid.GetLedgerCoverage().Sum(), seqDict)
@@ -105,7 +105,7 @@ var nilCount int
 
 func makeGraphEdges(vid *vertex.WrappedTx, gr graph.Graph[string, string]) {
 	id := vid.IDVeryShort()
-	vid.Unwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
+	vid.RUnwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
 		v.ForEachInputDependency(func(i byte, inp *vertex.WrappedTx) bool {
 			if inp == nil {
 				idNil := fmt.Sprintf("%d", nilCount)

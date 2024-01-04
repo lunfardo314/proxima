@@ -8,7 +8,7 @@ import (
 )
 
 func (vid *WrappedTx) IsDeleted() (ret bool) {
-	vid.Unwrap(UnwrapOptions{Deleted: func() {
+	vid.RUnwrap(UnwrapOptions{Deleted: func() {
 		ret = true
 	}})
 	return
@@ -46,7 +46,7 @@ func (vid *WrappedTx) _traversePastCone(opt *_unwrapOptionsTraverse) bool {
 	opt.visited.Insert(vid)
 
 	ret := true
-	vid.Unwrap(UnwrapOptions{
+	vid.RUnwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
 			v.ForEachInputDependency(func(i byte, inp *WrappedTx) bool {
 				util.Assertf(inp != nil, "_traversePastCone: input %d is nil (not solidified) in %s",
@@ -84,7 +84,7 @@ func (vid *WrappedTx) InflationAmount() (ret uint64) {
 	if !vid.IsBranchTransaction() {
 		return
 	}
-	vid.Unwrap(UnwrapOptions{
+	vid.RUnwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
 			ret = v.Tx.InflationAmount()
 		},

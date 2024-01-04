@@ -67,7 +67,7 @@ type (
 	}
 )
 
-// ErrDeletedVertexAccessed exception is raised by PanicAccessDeleted handler of Unwrap vertex so that could be caught if necessary
+// ErrDeletedVertexAccessed exception is raised by PanicAccessDeleted handler of RUnwrap vertex so that could be caught if necessary
 var ErrDeletedVertexAccessed = errors.New("deleted vertex should not be accessed")
 
 func (v _vertex) _id() *core.TransactionID {
