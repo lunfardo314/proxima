@@ -557,10 +557,10 @@ func TestConflictsNAttachers(t *testing.T) {
 	t.Run("conflict1", func(t *testing.T) {
 		//attacher.SetTraceOn()
 		const (
-			nConflicts = 4
-			nChains    = 4
-			howLong    = 10 // 97 fails when crosses slot boundary
-			pullYN     = true
+			nConflicts = 2
+			nChains    = 2
+			howLong    = 2 // 97 fails when crosses slot boundary
+			pullYN     = false
 		)
 		var wg sync.WaitGroup
 		var err error

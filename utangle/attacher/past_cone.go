@@ -10,6 +10,7 @@ import (
 	"github.com/lunfardo314/proxima/util/set"
 )
 
+// solidifyPastCone solidifies and validates sequencer transaction in the context of known baseline state
 func (a *attacher) solidifyPastCone() vertex.Status {
 	return a.lazyRepeat(func() (status vertex.Status) {
 		ok := true
@@ -34,6 +35,11 @@ func (a *attacher) solidifyPastCone() vertex.Status {
 }
 
 // attachVertex: vid corresponds to the vertex v
+// it solidifies vertex by traversing the past cone down to rooted inputs or undefined vertices
+// Repetitive calling the function it reaches all past vertices down to the rooted inputs in the validPastVertices set and
+// undefinedPastVertices set is empty
+// This is the exit condition of the loop. It results all validPastVertices are vertex.Good
+// Otherwise, repetition reaches conflict (double spend) or vertex.Bad vertex and exits
 func (a *attacher) attachVertex(v *vertex.Vertex, vid *vertex.WrappedTx, parasiticChainHorizon core.LogicalTime, visited set.Set[*vertex.WrappedTx]) (ok bool) {
 	util.Assertf(!v.Tx.IsSequencerMilestone() || v.FlagsUp(vertex.FlagBaselineSolid), "v.FlagsUp(vertex.FlagBaselineSolid) in %s", v.Tx.IDShortString)
 
@@ -99,7 +105,7 @@ func (a *attacher) attachEndorsements(v *vertex.Vertex, parasiticChainHorizon co
 			// it means past cone of vidEndorsed is fully validated already
 			continue
 		}
-		a.pastConeVertexVisited(vidEndorsed, false) // valid status only assigned by attachVertex
+		a.pastConeVertexVisited(vidEndorsed, false) // undef status in te beginning
 
 		ok := true
 		vidEndorsed.Unwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
@@ -112,6 +118,7 @@ func (a *attacher) attachEndorsements(v *vertex.Vertex, parasiticChainHorizon co
 			allGood = false
 		} else {
 			a.tracef("endorsement is valid: %s", vidEndorsed.IDShortString)
+			// endorsement already traverse ans is good. Can be moved tp valid set
 			a.pastConeVertexVisited(vidEndorsed, true)
 		}
 	}
@@ -344,10 +351,10 @@ func (a *attacher) attachInputID(consumerVertex *vertex.Vertex, consumerTx *vert
 
 func (a *attacher) checkConflictsFunc(consumerTx *vertex.WrappedTx) func(existingConsumers set.Set[*vertex.WrappedTx]) bool {
 	return func(existingConsumers set.Set[*vertex.WrappedTx]) (conflict bool) {
-		defer func() {
-			exStr := vertex.VIDSetIDString(existingConsumers)
-			a.tracef("checkConflicts: return %v\n    New consumer: %s\n    Existing consumers: %s", conflict, consumerTx.IDShortString, exStr)
-		}()
+		//defer func() {
+		//	exStr := vertex.VIDSetIDString(existingConsumers)
+		//	a.tracef("checkConflicts: return %v\n    New consumer: %s\n    Existing consumers: %s", conflict, consumerTx.IDShortString, exStr)
+		//}()
 		existingConsumers.ForEach(func(existingConsumer *vertex.WrappedTx) bool {
 			if existingConsumer == consumerTx {
 				return true
