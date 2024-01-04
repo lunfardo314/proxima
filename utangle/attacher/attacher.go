@@ -155,12 +155,22 @@ func AttachTransaction(tx *transaction.Transaction, env AttachEnvironment, opts 
 			if callback == nil {
 				callback = func(_ *vertex.WrappedTx) {}
 			}
-			util.RunWrappedRoutine(vid.IDShortString(), func() {
-				status, err := runAttacher(vid, env, ctx)
-				vid.SetTxStatus(status)
-				vid.SetReason(err)
-				callback(vid)
-			}, nil, common.ErrDBUnavailable)
+			const forTesting = false
+			if forTesting {
+				go func() {
+					status, err := runAttacher(vid, env, ctx)
+					vid.SetTxStatus(status)
+					vid.SetReason(err)
+					callback(vid)
+				}()
+			} else {
+				util.RunWrappedRoutine(vid.IDShortString(), func() {
+					status, err := runAttacher(vid, env, ctx)
+					vid.SetTxStatus(status)
+					vid.SetReason(err)
+					callback(vid)
+				}, nil, common.ErrDBUnavailable)
+			}
 		}
 	})
 	return

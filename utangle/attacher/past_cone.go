@@ -97,6 +97,13 @@ func (a *attacher) attachEndorsements(v *vertex.Vertex, parasiticChainHorizon co
 			vidEndorsed = AttachTxID(v.Tx.EndorsementAt(byte(i)), a.env, true)
 			v.Endorsements[i] = vidEndorsed
 		}
+		baselineBranch := vidEndorsed.BaselineBranch()
+		if baselineBranch != nil && !a.branchesCompatible(a.baselineBranch, baselineBranch) {
+			a.setReason(fmt.Errorf("baseline %s of endorsement %s is incopatible with baseline state",
+				baselineBranch.IDShortString(), vidEndorsed.IDShortString()))
+			return false
+		}
+
 		endorsedStatus := vidEndorsed.GetTxStatus()
 		if endorsedStatus == vertex.Bad {
 			return false
@@ -105,7 +112,7 @@ func (a *attacher) attachEndorsements(v *vertex.Vertex, parasiticChainHorizon co
 			// it means past cone of vidEndorsed is fully validated already
 			continue
 		}
-		a.pastConeVertexVisited(vidEndorsed, false) // undef status in te beginning
+		//a.pastConeVertexVisited(vidEndorsed, false) // undef status in te beginning
 
 		ok := true
 		vidEndorsed.Unwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
@@ -118,8 +125,8 @@ func (a *attacher) attachEndorsements(v *vertex.Vertex, parasiticChainHorizon co
 			allGood = false
 		} else {
 			a.tracef("endorsement is valid: %s", vidEndorsed.IDShortString)
-			// endorsement already traverse ans is good. Can be moved tp valid set
-			a.pastConeVertexVisited(vidEndorsed, true)
+			// endorsement already traverse and is good. Can be moved tp valid set
+			//a.pastConeVertexVisited(vidEndorsed, true)
 		}
 	}
 	if allGood {
