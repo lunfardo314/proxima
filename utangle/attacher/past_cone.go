@@ -5,8 +5,10 @@ import (
 
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/multistate"
+	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/utangle/vertex"
 	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/proxima/util/lines"
 	"github.com/lunfardo314/proxima/util/set"
 )
 
@@ -148,6 +150,7 @@ func (a *attacher) attachInputs(v *vertex.Vertex, vid *vertex.WrappedTx, parasit
 	//util.Assertf(v.FlagsUp(vertex.FlagEndorsementsSolid), "vertex.FlagEndorsementsSolid)")
 	a.tracef("attachInputs in %s", vid.IDShortString)
 	allInputsValidated := true
+	notSolid := make([]byte, 0, v.Tx.NumInputs())
 	var success bool
 	for i := range v.Inputs {
 		ok, success = a.attachInput(v, byte(i), vid, parasiticChainHorizon, visited)
@@ -156,12 +159,23 @@ func (a *attacher) attachInputs(v *vertex.Vertex, vid *vertex.WrappedTx, parasit
 		}
 		if !success {
 			allInputsValidated = false
+			notSolid = append(notSolid, byte(i))
 		}
 	}
 	if allInputsValidated {
 		v.SetFlagUp(vertex.FlagAllInputsSolid)
+	} else {
+		a.tracef("attachInputs: not solid: in %s:\n%s", v.Tx.IDShortString(), linesSelectedInputs(v.Tx, notSolid).String())
 	}
 	return true
+}
+
+func linesSelectedInputs(tx *transaction.Transaction, indices []byte) *lines.Lines {
+	ret := lines.New("      ")
+	for _, i := range indices {
+		ret.Add("#%d %s", i, util.Ref(tx.MustInputAt(i)).StringShort())
+	}
+	return ret
 }
 
 func (a *attacher) attachInput(v *vertex.Vertex, inputIdx byte, vid *vertex.WrappedTx, parasiticChainHorizon core.LogicalTime, visited set.Set[*vertex.WrappedTx]) (ok, success bool) {
@@ -264,9 +278,7 @@ func (a *attacher) attachOutput(wOut vertex.WrappedOutput, parasiticChainHorizon
 			}
 		},
 		VirtualTx: func(v *vertex.VirtualTransaction) {
-			if !wOut.VID.ID.IsSequencerMilestone() {
-				a.env.Pull(wOut.VID.ID)
-			}
+			a.env.Pull(wOut.VID.ID)
 		},
 	})
 	if !ok {

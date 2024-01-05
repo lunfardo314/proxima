@@ -38,14 +38,15 @@ func newTestingWorkflow(txBytesStore global.TxBytesStore, dag *dag.DAG) *testing
 }
 
 func (w *testingWorkflow) Pull(txid core.TransactionID) {
+	w.log.Infof("pull request %s", txid.StringShort())
 	go func() {
-		w.log.Infof("pull %s", txid.StringShort())
 		txBytes := w.txBytesStore.GetTxBytes(&txid)
 		if len(txBytes) == 0 {
 			return
 		}
 		tx, err := transaction.FromBytes(txBytes, transaction.MainTxValidationOptions...)
 		util.AssertNoError(err, "transaction.FromBytes")
+		w.log.Infof("pull send %s", txid.StringShort())
 		attacher.AttachTransaction(tx, w)
 	}()
 }
