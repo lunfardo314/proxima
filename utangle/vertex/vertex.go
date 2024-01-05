@@ -212,7 +212,7 @@ func (v *Vertex) Wrap() *WrappedTx {
 	return _newVID(_vertex{
 		Vertex:      v,
 		whenWrapped: time.Now(),
-	})
+	}, *v.Tx.ID())
 }
 
 func (v *Vertex) convertToVirtualTx() *VirtualTransaction {

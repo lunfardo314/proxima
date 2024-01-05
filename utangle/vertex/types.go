@@ -29,6 +29,7 @@ type (
 	// WrappedTx value of *WrappedTx is used as transaction identity on the UTXO tangle, a vertex
 	// Behind this identity can be wrapped usual vertex, virtual or orphaned transactions
 	WrappedTx struct {
+		IDx   core.TransactionID
 		mutex sync.RWMutex // protects _genericWrapper
 		_genericWrapper
 		// future cone references. Protected by global utangle_old lock
@@ -49,7 +50,6 @@ type (
 
 	// _genericWrapper generic types of vertex hiding behind WrappedTx identity
 	_genericWrapper interface {
-		_id() *core.TransactionID
 		_time() time.Time
 		_outputAt(idx byte) (*core.Output, error)
 		_hasOutputAt(idx byte) (bool, bool)
@@ -64,9 +64,7 @@ type (
 		*VirtualTransaction
 	}
 
-	_deletedTx struct {
-		core.TransactionID
-	}
+	_deletedTx struct{}
 
 	UnwrapOptions struct {
 		Vertex    func(v *Vertex)

@@ -19,10 +19,6 @@ var (
 	ErrShouldNotBeVirtualTx  = errors.New("virtualTx is unexpected")
 )
 
-func (v _vertex) _id() *core.TransactionID {
-	return v.Tx.ID()
-}
-
 func (v _vertex) _time() time.Time {
 	return v.whenWrapped
 }
@@ -36,10 +32,6 @@ func (v _vertex) _hasOutputAt(idx byte) (bool, bool) {
 		return false, true
 	}
 	return true, false
-}
-
-func (v _virtualTx) _id() *core.TransactionID {
-	return &v.txid
 }
 
 func (v _virtualTx) _time() time.Time {
@@ -58,10 +50,6 @@ func (v _virtualTx) _hasOutputAt(idx byte) (bool, bool) {
 	return hasIt, false
 }
 
-func (v _deletedTx) _id() *core.TransactionID {
-	return &v.TransactionID
-}
-
 func (v _deletedTx) _time() time.Time {
 	return time.Time{}
 }
@@ -74,8 +62,9 @@ func (v _deletedTx) _hasOutputAt(_ byte) (bool, bool) {
 	panic(ErrDeletedVertexAccessed)
 }
 
-func _newVID(g _genericWrapper) *WrappedTx {
+func _newVID(g _genericWrapper, txid core.TransactionID) *WrappedTx {
 	return &WrappedTx{
+		IDx:             txid,
 		_genericWrapper: g,
 	}
 }
@@ -88,18 +77,14 @@ func (vid *WrappedTx) ConvertVirtualTxToVertex(v *Vertex) {
 	vid.mutex.Lock()
 	defer vid.mutex.Unlock()
 
-	vTx, isVirtualTx := vid._genericWrapper.(_virtualTx)
-	lazy := func() any { return vid._id().StringShort() }
-	util.Assertf(isVirtualTx, "ConvertVirtualTxToVertex: virtual tx expected %s", lazy)
-	util.Assertf(vTx.txid == *v.Tx.ID(), "ConvertVirtualTxToVertex: txid-s do not match in: %s", lazy)
+	util.Assertf(vid.IDx == *v.Tx.ID(), "ConvertVirtualTxToVertex: txid-s do not match in: %s", vid.IDx.StringShort)
+	_, isVirtualTx := vid._genericWrapper.(_virtualTx)
+	util.Assertf(isVirtualTx, "ConvertVirtualTxToVertex: virtual tx expected %s", vid.IDx.StringShort)
 	vid._put(_vertex{Vertex: v})
 }
 
 func (vid *WrappedTx) ID() *core.TransactionID {
-	vid.mutex.RLock()
-	defer vid.mutex.RUnlock()
-
-	return vid._genericWrapper._id()
+	return &vid.IDx
 }
 
 func (vid *WrappedTx) GetTxStatusNoLock() Status {
@@ -160,7 +145,9 @@ func (vid *WrappedTx) Notify(downstreamVID *WrappedTx) {
 }
 
 func WrapTxID(txid core.TransactionID) *WrappedTx {
-	return _newVID(_virtualTx{VirtualTransaction: newVirtualTx(txid)})
+	return _newVID(_virtualTx{
+		VirtualTransaction: newVirtualTx(txid),
+	}, txid)
 }
 
 func DecodeIDs(vids ...*WrappedTx) []*core.TransactionID {
@@ -198,18 +185,18 @@ func (vid *WrappedTx) Timestamp() core.LogicalTime {
 }
 
 func (vid *WrappedTx) TimeSlot() core.TimeSlot {
-	return vid._genericWrapper._id().TimeSlot()
+	return vid.IDx.TimeSlot()
 }
 
 func (vid *WrappedTx) MarkDeleted() {
 	vid.mutex.Lock()
 	defer vid.mutex.Unlock()
 
-	switch v := vid._genericWrapper.(type) {
+	switch vid._genericWrapper.(type) {
 	case _vertex:
-		vid._put(_deletedTx{TransactionID: *v.Tx.ID()})
+		vid._put(_deletedTx{})
 	case _virtualTx:
-		vid._put(_deletedTx{TransactionID: v.txid})
+		vid._put(_deletedTx{})
 	case _deletedTx:
 		vid.PanicAccessDeleted()
 	}
@@ -432,8 +419,7 @@ func (vid *WrappedTx) ConvertToVirtualTx() {
 }
 
 func (vid *WrappedTx) PanicAccessDeleted() {
-	txid := vid._genericWrapper.(_deletedTx).TransactionID
-	util.Panicf("%w: %s", ErrDeletedVertexAccessed, txid.StringShort())
+	util.Panicf("%w: %s", ErrDeletedVertexAccessed, vid.IDx.StringShort())
 }
 
 func (vid *WrappedTx) PanicShouldNotBeVirtualTx(_ *VirtualTransaction) {
@@ -450,7 +436,7 @@ func (vid *WrappedTx) BaselineBranch() (baselineBranch *WrappedTx) {
 			baselineBranch = v.BaselineBranch
 		},
 		VirtualTx: func(v *VirtualTransaction) {
-			if vid._genericWrapper._id().IsBranchTransaction() && vid.txStatus == Good {
+			if vid.IDx.IsBranchTransaction() && vid.txStatus == Good {
 				baselineBranch = vid
 			}
 		},
@@ -563,7 +549,7 @@ func (vid *WrappedTx) String() (ret string) {
 			t := "vertex (" + vid.txStatus.String() + ")"
 			ret = fmt.Sprintf("%20s %s :: in: %d, out: %d, consumed: %d, conflicts: %d, Flags: %08b, reason: '%v'",
 				t,
-				vid._id().StringShort(),
+				vid.IDx.StringShort(),
 				v.Tx.NumInputs(),
 				v.Tx.NumProducedOutputs(),
 				consumed,
@@ -580,7 +566,7 @@ func (vid *WrappedTx) String() (ret string) {
 
 			ret = fmt.Sprintf("%20s %s:: out: %d, consumed: %d, conflicts: %d, reason: %v",
 				t,
-				vid._id().StringShort(),
+				vid.IDx.StringShort(),
 				len(v.outputs),
 				consumed,
 				doubleSpent,

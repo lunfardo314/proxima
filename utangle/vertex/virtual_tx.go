@@ -5,7 +5,6 @@ import (
 
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/multistate"
-	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/util"
 )
 
@@ -25,17 +24,11 @@ func NewVirtualBranchTx(br *multistate.BranchData) *VirtualTransaction {
 	return v
 }
 
-func newVirtualTxFromTx(tx *transaction.Transaction) *VirtualTransaction {
-	ret := newVirtualTx(*tx.ID())
-	tx.ForEachProducedOutput(func(idx byte, o *core.Output, oid *core.OutputID) bool {
-		ret.outputs[idx] = o.Clone()
-		return true
-	})
-	if tx.IsSequencerMilestone() {
-		std := tx.SequencerTransactionData()
-		ret.addSequencerIndices(std.SequencerOutputIndex, std.StemOutputIndex)
-	}
-	return ret
+func (v *VirtualTransaction) Wrap() *WrappedTx {
+	return _newVID(_virtualTx{
+		VirtualTransaction: v},
+		v.txid,
+	)
 }
 
 func (v *VirtualTransaction) addOutput(idx byte, o *core.Output) {
@@ -55,10 +48,6 @@ func (v *VirtualTransaction) addSequencerIndices(seqIdx, stemIdx byte) {
 	util.Assertf(seqIdx != 0xff, "seqIdx != 0xff")
 	util.Assertf(v.txid.IsBranchTransaction() == (stemIdx != 0xff), "v.txid.IsBranchTransaction() == (stemIdx != 0xff)")
 	v.sequencerOutputs = &[2]byte{seqIdx, stemIdx}
-}
-
-func (v *VirtualTransaction) Wrap() *WrappedTx {
-	return _newVID(_virtualTx{VirtualTransaction: v})
 }
 
 func (v *VirtualTransaction) outputWithIDAt(idx byte) (*core.OutputWithID, bool) {
