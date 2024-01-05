@@ -410,9 +410,6 @@ func (vid *WrappedTx) PanicAccessDeleted() {
 }
 
 func (vid *WrappedTx) BaselineBranch() (baselineBranch *WrappedTx) {
-	vid.mutex.RLock()
-	defer vid.mutex.RUnlock()
-
 	vid.RUnwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
 			baselineBranch = v.BaselineBranch

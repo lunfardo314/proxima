@@ -555,12 +555,12 @@ func TestConflictsNAttachers(t *testing.T) {
 		//testData.wrk.SaveGraph("utangle")
 	})
 	t.Run("one fork", func(t *testing.T) {
-		attacher.SetTraceOn()
+		//attacher.SetTraceOn()
 		const (
 			nConflicts = 2
 			nChains    = 2
-			howLong    = 2 // 97 fails when crosses slot boundary
-			pullYN     = true
+			howLong    = 20 // 97 fails when crosses slot boundary
+			pullYN     = false
 		)
 		var wg sync.WaitGroup
 		var err error
@@ -618,7 +618,7 @@ func TestConflictsNAttachers(t *testing.T) {
 			nConflicts = 2
 			nChains    = 2
 			howLong    = 2 // 97 fails when crosses slot boundary
-			pullYN     = false
+			pullYN     = true
 		)
 
 		testData := initLongConflictTestData(t, nConflicts, nChains, howLong)
@@ -649,9 +649,9 @@ func TestConflictsNAttachers(t *testing.T) {
 		var txBytes []byte
 		stem := multistate.MakeSugared(testData.wrk.HeaviestStateForLatestTimeSlot()).GetStemOutput()
 		for i := range chainIn {
-			if i > 0 {
-				break
-			}
+			//if i > 0 {
+			//	break
+			//}
 			txBytes, err = txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
 				SeqName:    "seq",
 				StemInput:  stem,

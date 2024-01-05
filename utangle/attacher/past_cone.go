@@ -68,9 +68,9 @@ func (a *attacher) attachVertex(v *vertex.Vertex, vid *vertex.WrappedTx, parasit
 		//}
 	}
 	if v.FlagsUp(vertex.FlagEndorsementsSolid) {
-		a.tracef("endorsements solid in %s", v.Tx.IDShortString)
+		a.tracef("endorsements (%d) solid in %s", v.Tx.NumEndorsements(), v.Tx.IDShortString)
 	} else {
-		a.tracef("endorsements NOT solid in %s", v.Tx.IDShortString)
+		a.tracef("endorsements (%d) NOT solid in %s", v.Tx.NumEndorsements(), v.Tx.IDShortString)
 	}
 	// only starting with inputs after endorsements are ok. It ensures all endorsed past cone is known
 	// for the attached before going to other dependencies. Note, that endorsing past cone consists only of
