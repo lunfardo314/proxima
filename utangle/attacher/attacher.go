@@ -155,21 +155,25 @@ func AttachTransaction(tx *transaction.Transaction, env AttachEnvironment, opts 
 			if callback == nil {
 				callback = func(_ *vertex.WrappedTx) {}
 			}
+
+			runFun := func() {
+				status, err := runAttacher(vid, env, ctx)
+				vid.SetTxStatus(status)
+				vid.SetReason(err)
+				reasonStr := ""
+				if err != nil {
+					reasonStr = fmt.Sprintf(" reason = '%v'", err)
+				}
+				env.Log().Infof("attach sequencer transaction %s -> %s%s",
+					vid.ID.StringShort(), status.String(), reasonStr)
+				callback(vid)
+			}
+
 			const forTesting = false
 			if forTesting {
-				go func() {
-					status, err := runAttacher(vid, env, ctx)
-					vid.SetTxStatus(status)
-					vid.SetReason(err)
-					callback(vid)
-				}()
+				go runFun()
 			} else {
-				util.RunWrappedRoutine(vid.IDShortString(), func() {
-					status, err := runAttacher(vid, env, ctx)
-					vid.SetTxStatus(status)
-					vid.SetReason(err)
-					callback(vid)
-				}, nil, common.ErrDBUnavailable)
+				util.RunWrappedRoutine(vid.IDShortString(), runFun, nil, common.ErrDBUnavailable)
 			}
 		}
 	})
@@ -260,7 +264,6 @@ func runAttacher(vid *vertex.WrappedTx, env AttachEnvironment, ctx context.Conte
 
 	a.finalize()
 	a.vid.SetTxStatus(vertex.Good)
-	a.pastConeVertexVisited(a.vid, true)
 	return vertex.Good, nil
 }
 

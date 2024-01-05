@@ -112,18 +112,18 @@ func (a *attacher) attachEndorsements(v *vertex.Vertex, parasiticChainHorizon co
 			// it means past cone of vidEndorsed is fully validated already
 			continue
 		}
-
-		ok := true
-		vidEndorsed.Unwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
-			ok = a.attachVertex(v, vidEndorsed, parasiticChainHorizon, visited) // <<<<<<<<<<< recursion
-		}})
-		if !ok {
-			return false
-		}
-		if vidEndorsed.GetTxStatus() != vertex.Good {
-			allGood = false
-		} else {
+		if endorsedStatus == vertex.Good {
+			// go deeper only if endorsement is good in order not to interfere with its attacher
+			ok := true
+			vidEndorsed.Unwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
+				ok = a.attachVertex(v, vidEndorsed, parasiticChainHorizon, visited) // <<<<<<<<<<< recursion
+			}})
+			if !ok {
+				return false
+			}
 			a.tracef("endorsement is valid: %s", vidEndorsed.IDShortString)
+		} else {
+			allGood = false
 		}
 	}
 	if allGood {
@@ -274,13 +274,15 @@ func (a *attacher) attachOutput(wOut vertex.WrappedOutput, parasiticChainHorizon
 
 	// input is not rooted
 	ok = true
+	status := wOut.VID.GetTxStatus()
 	wOut.VID.Unwrap(vertex.UnwrapOptions{
 		Vertex: func(v *vertex.Vertex) {
-			// remove from the pending list
-			ok = a.attachVertex(v, wOut.VID, parasiticChainHorizon, visited) // >>>>>>> recursion
+			if !wOut.VID.ID.IsSequencerMilestone() || status == vertex.Good {
+				// on seq inputs only go deeper if tx is good
+				ok = a.attachVertex(v, wOut.VID, parasiticChainHorizon, visited) // >>>>>>> recursion
+			}
 		},
 		VirtualTx: func(v *vertex.VirtualTransaction) {
-			// add to the pending list
 			if !wOut.VID.ID.IsSequencerMilestone() {
 				a.env.Pull(wOut.VID.ID)
 			}
@@ -289,7 +291,6 @@ func (a *attacher) attachOutput(wOut vertex.WrappedOutput, parasiticChainHorizon
 	if !ok {
 		return false
 	}
-
 	return true
 }
 
@@ -355,10 +356,6 @@ func (a *attacher) attachInputID(consumerVertex *vertex.Vertex, consumerTx *vert
 
 func (a *attacher) checkConflictsFunc(consumerTx *vertex.WrappedTx) func(existingConsumers set.Set[*vertex.WrappedTx]) bool {
 	return func(existingConsumers set.Set[*vertex.WrappedTx]) (conflict bool) {
-		//defer func() {
-		//	exStr := vertex.VIDSetIDString(existingConsumers)
-		//	a.tracef("checkConflicts: return %v\n    New consumer: %s\n    Existing consumers: %s", conflict, consumerTx.IDShortString, exStr)
-		//}()
 		existingConsumers.ForEach(func(existingConsumer *vertex.WrappedTx) bool {
 			if existingConsumer == consumerTx {
 				return true

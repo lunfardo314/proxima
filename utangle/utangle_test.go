@@ -612,12 +612,12 @@ func TestConflictsNAttachers(t *testing.T) {
 		testData.wrk.SaveGraph("utangle")
 	})
 	t.Run("one fork, branches", func(t *testing.T) {
-		attacher.SetTraceOn()
+		//attacher.SetTraceOn()
 		const (
 			nConflicts = 2
 			nChains    = 2
 			howLong    = 2 // 97 fails when crosses slot boundary
-			pullYN     = false
+			pullYN     = true
 		)
 
 		testData := initLongConflictTestData(t, nConflicts, nChains, howLong)

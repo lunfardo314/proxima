@@ -149,6 +149,8 @@ func WrapTxID(txid core.TransactionID) *WrappedTx {
 	}, txid)
 }
 
+// TODO do we need those functions just accessing vid.ID?
+
 func (vid *WrappedTx) IDShortString() string {
 	return vid.ID.StringShort()
 }
