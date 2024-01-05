@@ -85,10 +85,9 @@ type (
 const (
 	FlagBaselineSolid             = 0b00000001
 	FlagEndorsementsSolid         = 0b00000010
-	FlagSequencerSolid            = 0b00000100
-	FlagAllInputsSolid            = 0b00001000
-	FlagConstraintsValid          = 0b00010000
-	FlagsSequencerVertexCompleted = FlagBaselineSolid | FlagEndorsementsSolid | FlagSequencerSolid | FlagAllInputsSolid | FlagConstraintsValid
+	FlagAllInputsSolid            = 0b00000100
+	FlagConstraintsValid          = 0b00001000
+	FlagsSequencerVertexCompleted = FlagBaselineSolid | FlagEndorsementsSolid | FlagAllInputsSolid | FlagConstraintsValid
 )
 
 const (

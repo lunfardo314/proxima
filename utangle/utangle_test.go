@@ -3,7 +3,6 @@ package utangle
 import (
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/genesis"
@@ -515,7 +514,7 @@ func TestConflictsNAttachers(t *testing.T) {
 			nConflicts = 5
 			nChains    = 5
 			howLong    = 5 // 97 fails when crosses slot boundary
-			pullYN     = false
+			pullYN     = true
 		)
 		var wg sync.WaitGroup
 		var err error
@@ -556,12 +555,12 @@ func TestConflictsNAttachers(t *testing.T) {
 		//testData.wrk.SaveGraph("utangle")
 	})
 	t.Run("one fork", func(t *testing.T) {
-		//attacher.SetTraceOn()
+		attacher.SetTraceOn()
 		const (
 			nConflicts = 2
 			nChains    = 2
 			howLong    = 2 // 97 fails when crosses slot boundary
-			pullYN     = false
+			pullYN     = true
 		)
 		var wg sync.WaitGroup
 		var err error
@@ -596,7 +595,9 @@ func TestConflictsNAttachers(t *testing.T) {
 		})
 		require.NoError(t, err)
 		txid, _, _ := transaction.IDAndTimestampFromTransactionBytes(txBytesSeq)
-		t.Logf("expected to fail: %s", txid.StringShort())
+		t.Logf("seq tx expected to fail: %s", txid.StringShort())
+		t.Logf("   chain input: %s", chainIn[0].ID.StringShort())
+		t.Logf("   endrosement: %s", chainIn[1].ID.StringShort())
 
 		wg.Add(1)
 		vidSeq, err := attacher.AttachTransactionFromBytes(txBytesSeq, testData.wrk, attacher.WithFinalizationCallback(func(vid *vertex.WrappedTx) {
@@ -612,12 +613,12 @@ func TestConflictsNAttachers(t *testing.T) {
 		testData.wrk.SaveGraph("utangle")
 	})
 	t.Run("one fork, branches", func(t *testing.T) {
-		//attacher.SetTraceOn()
+		attacher.SetTraceOn()
 		const (
 			nConflicts = 2
 			nChains    = 2
 			howLong    = 2 // 97 fails when crosses slot boundary
-			pullYN     = true
+			pullYN     = false
 		)
 
 		testData := initLongConflictTestData(t, nConflicts, nChains, howLong)
@@ -631,7 +632,6 @@ func TestConflictsNAttachers(t *testing.T) {
 			testData.txBytesAttach()
 			testData.attachTransactions(testData.seqStart...)
 		}
-		time.Sleep(5 * time.Second)
 
 		chainIn := make([]*core.OutputWithChainID, len(testData.seqStart))
 		var ts core.LogicalTime
@@ -649,6 +649,9 @@ func TestConflictsNAttachers(t *testing.T) {
 		var txBytes []byte
 		stem := multistate.MakeSugared(testData.wrk.HeaviestStateForLatestTimeSlot()).GetStemOutput()
 		for i := range chainIn {
+			if i > 0 {
+				break
+			}
 			txBytes, err = txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
 				SeqName:    "seq",
 				StemInput:  stem,
@@ -662,6 +665,7 @@ func TestConflictsNAttachers(t *testing.T) {
 				wg.Done()
 			}))
 			require.NoError(t, err)
+			t.Logf("attaching branch %s", branches[i].IDShortString())
 		}
 		wg.Wait()
 

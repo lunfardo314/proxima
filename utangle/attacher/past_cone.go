@@ -20,6 +20,9 @@ func (a *attacher) solidifyPastCone() vertex.Status {
 				ok = a.attachVertex(v, a.vid, core.NilLogicalTime, set.New[*vertex.WrappedTx]())
 				if ok {
 					success = v.FlagsUp(vertex.FlagsSequencerVertexCompleted)
+					if !success {
+						fmt.Printf(">>>>>>>>>>>>>>> %s: flags: %8b\n", v.Tx.IDShortString(), v.Flags)
+					}
 				}
 			},
 		})
@@ -55,15 +58,20 @@ func (a *attacher) attachVertex(v *vertex.Vertex, vid *vertex.WrappedTx, parasit
 	}
 	a.pastConeVertexVisited(vid, false) // undefined yet
 	if !v.FlagsUp(vertex.FlagEndorsementsSolid) {
+		a.tracef(">>>>>>>>>>>>>> endorsements not solid in %s\n", v.Tx.IDShortString())
 		// depth-first along endorsements
 		if !a.attachEndorsements(v, parasiticChainHorizon, visited) { // <<< recursive
 			return false
 		}
-		if !v.FlagsUp(vertex.FlagEndorsementsSolid) {
-			return true
-		}
+		//if !v.FlagsUp(vertex.FlagEndorsementsSolid) {
+		//	return true
+		//}
 	}
-	a.tracef("endorsements solid in %s", v.Tx.IDShortString)
+	if v.FlagsUp(vertex.FlagEndorsementsSolid) {
+		a.tracef("endorsements solid in %s", v.Tx.IDShortString)
+	} else {
+		a.tracef("endorsements NOT solid in %s", v.Tx.IDShortString)
+	}
 	// only starting with inputs after endorsements are ok. It ensures all endorsed past cone is known
 	// for the attached before going to other dependencies. Note, that endorsing past cone consists only of
 	// sequencer milestones which are validated/solidified by their attachers
@@ -81,8 +89,10 @@ func (a *attacher) attachVertex(v *vertex.Vertex, vid *vertex.WrappedTx, parasit
 			return false
 		}
 		a.tracef("constraints has been validated OK: %s", v.Tx.IDShortString())
-		a.pastConeVertexVisited(vid, true)
 		ok = true
+	}
+	if v.FlagsUp(vertex.FlagsSequencerVertexCompleted) {
+		a.pastConeVertexVisited(vid, true)
 	}
 	return true
 }
@@ -123,37 +133,20 @@ func (a *attacher) attachEndorsements(v *vertex.Vertex, parasiticChainHorizon co
 			}
 			a.tracef("endorsement is valid: %s", vidEndorsed.IDShortString)
 		} else {
+			a.tracef("endorsements are NOT all good in %s because of endorsed %s", v.Tx.IDShortString(), vidEndorsed.IDShortString())
 			allGood = false
 		}
 	}
 	if allGood {
-		a.tracef("endorsement are good")
+		a.tracef("endorsements are all good in %s", v.Tx.IDShortString())
 		v.SetFlagUp(vertex.FlagEndorsementsSolid)
 	}
 	return true
 }
 
 func (a *attacher) attachInputs(v *vertex.Vertex, vid *vertex.WrappedTx, parasiticChainHorizon core.LogicalTime, visited set.Set[*vertex.WrappedTx]) (ok bool) {
-	util.Assertf(v.FlagsUp(vertex.FlagEndorsementsSolid), "vertex.FlagEndorsementsSolid)")
-	a.tracef("attachInputs %s", vid.IDShortString)
-
-	// solidify sequencer input first
-	if v.Tx.IsSequencerMilestone() {
-		if !v.FlagsUp(vertex.FlagSequencerSolid) {
-			a.tracef("solidify sequencer input")
-			if !a.attachSequencerInput(v, vid, parasiticChainHorizon, visited) {
-				return false
-			}
-			if !v.FlagsUp(vertex.FlagSequencerSolid) {
-				return true
-			}
-		}
-	} else {
-		v.SetFlagUp(vertex.FlagSequencerSolid)
-	}
-	util.Assertf(v.FlagsUp(vertex.FlagSequencerSolid), "v.FlagsUp(vertex.FlagSequencerSolid)")
-	// solidify the rest
-	a.tracef("solidify other inputs")
+	//util.Assertf(v.FlagsUp(vertex.FlagEndorsementsSolid), "vertex.FlagEndorsementsSolid)")
+	a.tracef("attachInputs in %s", vid.IDShortString)
 	allInputsValidated := true
 	var success bool
 	for i := range v.Inputs {
@@ -169,18 +162,6 @@ func (a *attacher) attachInputs(v *vertex.Vertex, vid *vertex.WrappedTx, parasit
 		v.SetFlagUp(vertex.FlagAllInputsSolid)
 	}
 	return true
-}
-
-func (a *attacher) attachSequencerInput(v *vertex.Vertex, vid *vertex.WrappedTx, parasiticChainHorizon core.LogicalTime, visited set.Set[*vertex.WrappedTx]) (ok bool) {
-	a.tracef("attachSequencerInput %s", vid.IDShortString)
-	predInputIdx := v.Tx.SequencerTransactionData().SequencerOutputData.ChainConstraint.PredecessorInputIndex
-	var success bool
-	ok, success = a.attachInput(v, predInputIdx, vid, parasiticChainHorizon, visited)
-	if ok && success {
-		v.SetFlagUp(vertex.FlagSequencerSolid)
-		a.tracef("sequencer input %s solidified", util.Ref(v.Tx.MustInputAt(predInputIdx)).StringShort)
-	}
-	return
 }
 
 func (a *attacher) attachInput(v *vertex.Vertex, inputIdx byte, vid *vertex.WrappedTx, parasiticChainHorizon core.LogicalTime, visited set.Set[*vertex.WrappedTx]) (ok, success bool) {

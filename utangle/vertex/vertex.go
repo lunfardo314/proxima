@@ -19,8 +19,8 @@ func New(tx *transaction.Transaction) *Vertex {
 		Endorsements: make([]*WrappedTx, tx.NumEndorsements()),
 	}
 	if !tx.IsSequencerMilestone() {
-		// for non-sequencer transaction baseline, endorsements and sequencer are no concern
-		ret.Flags = FlagBaselineSolid | FlagEndorsementsSolid | FlagSequencerSolid
+		// for non-sequencer transaction baseline, endorsements are no concern
+		ret.Flags = FlagBaselineSolid | FlagEndorsementsSolid
 	}
 	return ret
 }

@@ -169,8 +169,8 @@ func AttachTransaction(tx *transaction.Transaction, env AttachEnvironment, opts 
 				callback(vid)
 			}
 
-			const forTesting = false
-			if forTesting {
+			const forDebugging = true
+			if forDebugging {
 				go runFun()
 			} else {
 				util.RunWrappedRoutine(vid.IDShortString(), runFun, nil, common.ErrDBUnavailable)
