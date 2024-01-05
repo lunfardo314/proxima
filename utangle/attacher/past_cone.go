@@ -38,9 +38,9 @@ func (a *attacher) solidifyPastCone() vertex.Status {
 
 // attachVertex: vid corresponds to the vertex v
 // it solidifies vertex by traversing the past cone down to rooted inputs or undefined vertices
-// Repetitive calling the function it reaches all past vertices down to the rooted inputs in the validPastVertices set and
-// undefinedPastVertices set is empty
-// This is the exit condition of the loop. It results all validPastVertices are vertex.Good
+// Repetitive calling of the function reaches all past vertices down to the rooted inputs in the validPastVertices set, while
+// the undefinedPastVertices set becomes empty This is the exit condition of the loop.
+// It results in all validPastVertices are vertex.Good
 // Otherwise, repetition reaches conflict (double spend) or vertex.Bad vertex and exits
 func (a *attacher) attachVertex(v *vertex.Vertex, vid *vertex.WrappedTx, parasiticChainHorizon core.LogicalTime, visited set.Set[*vertex.WrappedTx]) (ok bool) {
 	util.Assertf(!v.Tx.IsSequencerMilestone() || v.FlagsUp(vertex.FlagBaselineSolid), "v.FlagsUp(vertex.FlagBaselineSolid) in %s", v.Tx.IDShortString)
@@ -56,30 +56,25 @@ func (a *attacher) attachVertex(v *vertex.Vertex, vid *vertex.WrappedTx, parasit
 		return true
 	}
 	a.pastConeVertexVisited(vid, false) // undefined yet
+
 	if !v.FlagsUp(vertex.FlagEndorsementsSolid) {
 		a.tracef("endorsements not solid in %s\n", v.Tx.IDShortString())
 		// depth-first along endorsements
 		if !a.attachEndorsements(v, parasiticChainHorizon, visited) { // <<< recursive
 			return false
 		}
-		//if !v.FlagsUp(vertex.FlagEndorsementsSolid) {
-		//	return true
-		//}
 	}
 	if v.FlagsUp(vertex.FlagEndorsementsSolid) {
 		a.tracef("endorsements (%d) solid in %s", v.Tx.NumEndorsements(), v.Tx.IDShortString)
 	} else {
 		a.tracef("endorsements (%d) NOT solid in %s", v.Tx.NumEndorsements(), v.Tx.IDShortString)
 	}
-	// only starting with inputs after endorsements are ok. It ensures all endorsed past cone is known
-	// for the attached before going to other dependencies. Note, that endorsing past cone consists only of
-	// sequencer milestones which are validated/solidified by their attachers
 	inputsOk := a.attachInputs(v, vid, parasiticChainHorizon, visited) // deep recursion
 	if !inputsOk {
 		return false
 	}
 	if v.FlagsUp(vertex.FlagAllInputsSolid) {
-		// TODO optimization: constraints can be validated even before the vertex becomes good (solidified).
+		// TODO nice-to-have optimization: constraints can be validated even before the vertex becomes good (solidified).
 		//  It is enough to have all inputs available, i.e. before full solidification
 
 		if err := v.ValidateConstraints(); err != nil {
@@ -144,7 +139,6 @@ func (a *attacher) attachEndorsements(v *vertex.Vertex, parasiticChainHorizon co
 }
 
 func (a *attacher) attachInputs(v *vertex.Vertex, vid *vertex.WrappedTx, parasiticChainHorizon core.LogicalTime, visited set.Set[*vertex.WrappedTx]) (ok bool) {
-	//util.Assertf(v.FlagsUp(vertex.FlagEndorsementsSolid), "vertex.FlagEndorsementsSolid)")
 	a.tracef("attachInputs in %s", vid.IDShortString)
 	allInputsValidated := true
 	notSolid := make([]byte, 0, v.Tx.NumInputs())
@@ -291,6 +285,7 @@ func (a *attacher) branchesCompatible(vid1, vid2 *vertex.WrappedTx) bool {
 	case vid1 == vid2:
 		return true
 	case vid1.TimeSlot() == vid2.TimeSlot():
+		// two different branches on the same slot conflicts
 		return false
 	case vid1.TimeSlot() < vid2.TimeSlot():
 		return multistate.BranchIsDescendantOf(&vid2.ID, &vid1.ID, a.env.StateStore)

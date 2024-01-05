@@ -250,7 +250,7 @@ func runAttacher(vid *vertex.WrappedTx, env AttachEnvironment, ctx context.Conte
 	util.Assertf(a.baselineBranch != nil, "a.baselineBranch != nil")
 
 	// then continue with the rest
-	a.tracef("baseline is OK -> %s", a.baselineBranch.IDShortString())
+	a.tracef("baseline is OK <- %s", a.baselineBranch.IDShortString())
 
 	status = a.solidifyPastCone()
 	if status != vertex.Good {
