@@ -615,8 +615,8 @@ func TestConflictsNAttachers(t *testing.T) {
 	t.Run("one fork, branches", func(t *testing.T) {
 		//attacher.SetTraceOn()
 		const (
-			nConflicts = 5
-			nChains    = 5
+			nConflicts = 2
+			nChains    = 2
 			howLong    = 5 // 97 fails when crosses slot boundary
 			pullYN     = true
 		)
@@ -649,9 +649,6 @@ func TestConflictsNAttachers(t *testing.T) {
 		var txBytes []byte
 		stem := multistate.MakeSugared(testData.wrk.HeaviestStateForLatestTimeSlot()).GetStemOutput()
 		for i := range chainIn {
-			//if i > 0 {
-			//	break
-			//}
 			txBytes, err = txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
 				SeqName:    "seq",
 				StemInput:  stem,

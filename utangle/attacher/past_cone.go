@@ -22,9 +22,6 @@ func (a *attacher) solidifyPastCone() vertex.Status {
 				ok = a.attachVertex(v, a.vid, core.NilLogicalTime, set.New[*vertex.WrappedTx]())
 				if ok {
 					success = v.FlagsUp(vertex.FlagsSequencerVertexCompleted)
-					if !success {
-						fmt.Printf(">>>>>>>>>>>>>>> %s: flags: %8b\n", v.Tx.IDShortString(), v.Flags)
-					}
 				}
 			},
 		})
@@ -60,7 +57,7 @@ func (a *attacher) attachVertex(v *vertex.Vertex, vid *vertex.WrappedTx, parasit
 	}
 	a.pastConeVertexVisited(vid, false) // undefined yet
 	if !v.FlagsUp(vertex.FlagEndorsementsSolid) {
-		a.tracef(">>>>>>>>>>>>>> endorsements not solid in %s\n", v.Tx.IDShortString())
+		a.tracef("endorsements not solid in %s\n", v.Tx.IDShortString())
 		// depth-first along endorsements
 		if !a.attachEndorsements(v, parasiticChainHorizon, visited) { // <<< recursive
 			return false
@@ -83,7 +80,7 @@ func (a *attacher) attachVertex(v *vertex.Vertex, vid *vertex.WrappedTx, parasit
 	}
 	if v.FlagsUp(vertex.FlagAllInputsSolid) {
 		// TODO optimization: constraints can be validated even before the vertex becomes good (solidified).
-		//  It is enough to have all inputs available, i.e. before solidification
+		//  It is enough to have all inputs available, i.e. before full solidification
 
 		if err := v.ValidateConstraints(); err != nil {
 			a.setReason(err)
