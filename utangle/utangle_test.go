@@ -669,4 +669,84 @@ func TestConflictsNAttachers(t *testing.T) {
 		testData.logDAGInfo()
 		testData.wrk.SaveGraph("utangle")
 	})
+	t.Run("one fork branches conflict", func(t *testing.T) {
+		//attacher.SetTraceOn()
+		const (
+			nConflicts = 2
+			nChains    = 2
+			howLong    = 2 // 97 fails when crosses slot boundary
+			pullYN     = false
+		)
+
+		testData := initLongConflictTestData(t, nConflicts, nChains, howLong)
+		testData.makeSeqStarts(true)
+		testData.printTxIDs()
+
+		if pullYN {
+			testData.txBytesToStore()
+			testData.storeTransactions(testData.seqStart...)
+		} else {
+			testData.txBytesAttach()
+			testData.attachTransactions(testData.seqStart...)
+		}
+
+		chainIn := make([]*core.OutputWithChainID, len(testData.seqStart))
+		var ts core.LogicalTime
+		for i, txBytes := range testData.seqStart {
+			tx, _ := transaction.FromBytes(txBytes, transaction.MainTxValidationOptions...)
+			o := tx.MustProducedOutputWithIDAt(tx.SequencerTransactionData().SequencerOutputIndex)
+			chainIn[i] = o.MustAsChainOutput()
+			ts = core.MaxLogicalTime(ts, o.Timestamp())
+		}
+		ts = ts.NextTimeSlotBoundary()
+
+		var err error
+		txBytesBranch := make([][]byte, nChains)
+		require.True(t, len(txBytesBranch) >= 2)
+
+		stem := multistate.MakeSugared(testData.wrk.HeaviestStateForLatestTimeSlot()).GetStemOutput()
+		for i := range chainIn {
+			txBytesBranch[i], err = txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
+				SeqName:    "seq",
+				StemInput:  stem,
+				ChainInput: chainIn[i],
+				Timestamp:  ts,
+				PrivateKey: testData.privKeyAux,
+			})
+			require.NoError(t, err)
+
+			err = testData.txStore.SaveTxBytes(txBytesBranch[i])
+			require.NoError(t, err)
+		}
+
+		tx0, err := transaction.FromBytes(txBytesBranch[0], transaction.MainTxValidationOptions...)
+		require.NoError(t, err)
+		t.Logf("will be extending %s", tx0.IDShortString())
+
+		tx1, err := transaction.FromBytes(txBytesBranch[1], transaction.MainTxValidationOptions...)
+		require.NoError(t, err)
+		t.Logf("will be endorsing %s", tx1.IDShortString())
+
+		txBytesConflicting, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
+			SeqName:      "dummy",
+			ChainInput:   tx0.SequencerOutput().MustAsChainOutput(),
+			Timestamp:    ts.AddTicks(core.TransactionPaceInTicks),
+			Endorsements: util.List(tx1.ID()),
+			PrivateKey:   testData.privKeyAux,
+		})
+		require.NoError(t, err)
+
+		var wg sync.WaitGroup
+		wg.Add(1)
+		vid, err := attacher.AttachTransactionFromBytes(txBytesConflicting, testData.wrk, attacher.WithFinalizationCallback(func(vid *vertex.WrappedTx) {
+			wg.Done()
+		}))
+		wg.Wait()
+
+		testData.logDAGInfo()
+		testData.wrk.SaveGraph("utangle")
+
+		require.EqualValues(t, vid.GetTxStatus(), vertex.Bad)
+		util.RequireErrorWith(t, vid.GetReason(), "conflicts with existing consumers in the baseline state", "(double spend)", testData.forkOutput.IDShort())
+	})
 }
