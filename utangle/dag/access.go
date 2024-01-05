@@ -26,8 +26,8 @@ func (d *DAG) GetVertexNoLock(txid *core.TransactionID) *vertex.WrappedTx {
 }
 
 func (d *DAG) AddVertexNoLock(vid *vertex.WrappedTx) {
-	util.Assertf(d.GetVertexNoLock(vid.ID()) == nil, "d.GetVertexNoLock(vid.ID())==nil")
-	d.vertices[*vid.ID()] = vid
+	util.Assertf(d.GetVertexNoLock(&vid.ID) == nil, "d.GetVertexNoLock(vid.ID())==nil")
+	d.vertices[vid.ID] = vid
 }
 
 const sharedStateReaderCacheSize = 3000
@@ -39,7 +39,7 @@ func (d *DAG) AddBranchNoLock(branchVID *vertex.WrappedTx) {
 	_, already := d.branches[branchVID]
 	util.Assertf(!already, "repeating branch %s", branchVID.IDShortString())
 
-	d.branches[branchVID] = d.MustGetIndexedStateReader(branchVID.ID(), sharedStateReaderCacheSize)
+	d.branches[branchVID] = d.MustGetIndexedStateReader(&branchVID.ID, sharedStateReaderCacheSize)
 }
 
 func (d *DAG) GetStateReaderForTheBranch(branchVID *vertex.WrappedTx) global.IndexedStateReader {

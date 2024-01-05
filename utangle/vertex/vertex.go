@@ -217,7 +217,6 @@ func (v *Vertex) Wrap() *WrappedTx {
 
 func (v *Vertex) convertToVirtualTx() *VirtualTransaction {
 	ret := &VirtualTransaction{
-		txid:    *v.Tx.ID(),
 		outputs: make(map[byte]*core.Output, v.Tx.NumProducedOutputs()),
 	}
 	if v.Tx.IsSequencerMilestone() {

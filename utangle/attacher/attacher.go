@@ -89,7 +89,7 @@ func AttachTxID(txid core.TransactionID, env AttachEnvironment, pullNonBranchIfN
 		// it is a branch transaction. Look up for the corresponding state
 		if bd, branchAvailable := multistate.FetchBranchData(env.StateStore(), txid); branchAvailable {
 			// corresponding state has been found, it is solid -> put virtual branch tx with the state reader
-			vid = vertex.NewVirtualBranchTx(&bd).Wrap()
+			vid = vertex.NewVirtualBranchTx(&bd).WrapWithID(txid)
 			env.AddVertexNoLock(vid)
 			vid.SetTxStatus(vertex.Good)
 			vid.SetLedgerCoverage(bd.LedgerCoverage)

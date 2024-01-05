@@ -81,7 +81,7 @@ func TestOrigin(t *testing.T) {
 		t.Logf("genesis branch txid: %s", vidDistrib.IDShortString())
 		t.Logf("%s", dagAccess.Info())
 
-		distribVID := dagAccess.GetVertex(vidDistrib.ID())
+		distribVID := dagAccess.GetVertex(&vidDistrib.ID)
 		require.True(t, distribVID != nil)
 
 		rdr := multistate.MakeSugared(wrk.GetStateReaderForTheBranch(distribVID))
@@ -143,7 +143,7 @@ func TestOrigin(t *testing.T) {
 		t.Logf("genesis branch txid: %s", vidDistrib.IDShortString())
 		t.Logf("%s", dagAccess.Info())
 
-		distribVID := dagAccess.GetVertex(vidDistrib.ID())
+		distribVID := dagAccess.GetVertex(&vidDistrib.ID)
 		require.True(t, distribVID != nil)
 
 		rdr := multistate.MakeSugared(wrk.GetStateReaderForTheBranch(distribVID))
@@ -210,7 +210,7 @@ func TestOrigin(t *testing.T) {
 		t.Logf("genesis branch txid: %s", vidDistrib.IDShortString())
 		t.Logf("%s", dagAccess.Info())
 
-		distribVID := dagAccess.GetVertex(vidDistrib.ID())
+		distribVID := dagAccess.GetVertex(&vidDistrib.ID)
 		require.True(t, distribVID != nil)
 		rdr := multistate.MakeSugared(wrk.GetStateReaderForTheBranch(distribVID))
 		stemOut := rdr.GetStemOutput()

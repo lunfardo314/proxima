@@ -64,7 +64,7 @@ func (v _deletedTx) _hasOutputAt(_ byte) (bool, bool) {
 
 func _newVID(g _genericWrapper, txid core.TransactionID) *WrappedTx {
 	return &WrappedTx{
-		IDx:             txid,
+		ID:              txid,
 		_genericWrapper: g,
 	}
 }
@@ -77,16 +77,15 @@ func (vid *WrappedTx) ConvertVirtualTxToVertex(v *Vertex) {
 	vid.mutex.Lock()
 	defer vid.mutex.Unlock()
 
-	util.Assertf(vid.IDx == *v.Tx.ID(), "ConvertVirtualTxToVertex: txid-s do not match in: %s", vid.IDx.StringShort)
+	util.Assertf(vid.ID == *v.Tx.ID(), "ConvertVirtualTxToVertex: txid-s do not match in: %s", vid.ID.StringShort)
 	_, isVirtualTx := vid._genericWrapper.(_virtualTx)
-	util.Assertf(isVirtualTx, "ConvertVirtualTxToVertex: virtual tx expected %s", vid.IDx.StringShort)
+	util.Assertf(isVirtualTx, "ConvertVirtualTxToVertex: virtual tx expected %s", vid.ID.StringShort)
 	vid._put(_vertex{Vertex: v})
 }
 
-func (vid *WrappedTx) ID() *core.TransactionID {
-	return &vid.IDx
-}
-
+//	func (vid *WrappedTx) ID() *core.TransactionID {
+//		return &vid.ID
+//	}
 func (vid *WrappedTx) GetTxStatusNoLock() Status {
 	return vid.txStatus
 }
@@ -146,46 +145,32 @@ func (vid *WrappedTx) Notify(downstreamVID *WrappedTx) {
 
 func WrapTxID(txid core.TransactionID) *WrappedTx {
 	return _newVID(_virtualTx{
-		VirtualTransaction: newVirtualTx(txid),
+		VirtualTransaction: newVirtualTx(),
 	}, txid)
 }
 
-func DecodeIDs(vids ...*WrappedTx) []*core.TransactionID {
-	ret := make([]*core.TransactionID, len(vids))
-	for i, vid := range vids {
-		ret[i] = vid.ID()
-	}
-	return ret
-}
-
 func (vid *WrappedTx) IDShortString() string {
-	return vid.ID().StringShort()
-}
-
-func (vid *WrappedTx) LazyIDShort() func() any {
-	return func() any {
-		return vid.IDShortString()
-	}
+	return vid.ID.StringShort()
 }
 
 func (vid *WrappedTx) IDVeryShort() string {
-	return vid.ID().StringVeryShort()
+	return vid.ID.StringVeryShort()
 }
 
 func (vid *WrappedTx) IsBranchTransaction() bool {
-	return vid.ID().IsBranchTransaction()
+	return vid.ID.IsBranchTransaction()
 }
 
 func (vid *WrappedTx) IsSequencerMilestone() bool {
-	return vid.ID().IsSequencerMilestone()
+	return vid.ID.IsSequencerMilestone()
 }
 
 func (vid *WrappedTx) Timestamp() core.LogicalTime {
-	return vid.ID().Timestamp()
+	return vid.ID.Timestamp()
 }
 
 func (vid *WrappedTx) TimeSlot() core.TimeSlot {
-	return vid.IDx.TimeSlot()
+	return vid.ID.TimeSlot()
 }
 
 func (vid *WrappedTx) MarkDeleted() {
@@ -208,7 +193,7 @@ func (vid *WrappedTx) OutputWithIDAt(idx byte) (core.OutputWithID, error) {
 		return core.OutputWithID{}, err
 	}
 	return core.OutputWithID{
-		ID:     core.NewOutputID(vid.ID(), idx),
+		ID:     core.NewOutputID(&vid.ID, idx),
 		Output: ret,
 	}, nil
 }
@@ -321,7 +306,7 @@ func (vid *WrappedTx) IsVirtualTx() (ret bool) {
 }
 
 func (vid *WrappedTx) OutputID(idx byte) (ret core.OutputID) {
-	ret = core.NewOutputID(vid.ID(), idx)
+	ret = core.NewOutputID(&vid.ID, idx)
 	return
 }
 
@@ -419,12 +404,7 @@ func (vid *WrappedTx) ConvertToVirtualTx() {
 }
 
 func (vid *WrappedTx) PanicAccessDeleted() {
-	util.Panicf("%w: %s", ErrDeletedVertexAccessed, vid.IDx.StringShort())
-}
-
-func (vid *WrappedTx) PanicShouldNotBeVirtualTx(_ *VirtualTransaction) {
-	txid := vid._genericWrapper.(_virtualTx).txid
-	util.Panicf("%w: %s", ErrShouldNotBeVirtualTx, txid.StringShort())
+	util.Panicf("%w: %s", ErrDeletedVertexAccessed, vid.ID.StringShort())
 }
 
 func (vid *WrappedTx) BaselineBranch() (baselineBranch *WrappedTx) {
@@ -436,7 +416,7 @@ func (vid *WrappedTx) BaselineBranch() (baselineBranch *WrappedTx) {
 			baselineBranch = v.BaselineBranch
 		},
 		VirtualTx: func(v *VirtualTransaction) {
-			if vid.IDx.IsBranchTransaction() && vid.txStatus == Good {
+			if vid.ID.IsBranchTransaction() && vid.txStatus == Good {
 				baselineBranch = vid
 			}
 		},
@@ -519,7 +499,7 @@ func Less(vid1, vid2 *WrappedTx) bool {
 	c1 := vid1.GetLedgerCoverage().Sum()
 	c2 := vid2.GetLedgerCoverage().Sum()
 	if c1 == c2 {
-		return core.LessTxID(*vid1.ID(), *vid2.ID())
+		return core.LessTxID(vid1.ID, vid2.ID)
 	}
 	return c1 < c2
 }
@@ -549,7 +529,7 @@ func (vid *WrappedTx) String() (ret string) {
 			t := "vertex (" + vid.txStatus.String() + ")"
 			ret = fmt.Sprintf("%20s %s :: in: %d, out: %d, consumed: %d, conflicts: %d, Flags: %08b, reason: '%v'",
 				t,
-				vid.IDx.StringShort(),
+				vid.ID.StringShort(),
 				v.Tx.NumInputs(),
 				v.Tx.NumProducedOutputs(),
 				consumed,
@@ -566,7 +546,7 @@ func (vid *WrappedTx) String() (ret string) {
 
 			ret = fmt.Sprintf("%20s %s:: out: %d, consumed: %d, conflicts: %d, reason: %v",
 				t,
-				vid.IDx.StringShort(),
+				vid.ID.StringShort(),
 				len(v.outputs),
 				consumed,
 				doubleSpent,

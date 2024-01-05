@@ -101,5 +101,5 @@ func (vid *WrappedTx) InflationAmount() (ret uint64) {
 }
 
 func (vid *WrappedTx) Less(vid1 *WrappedTx) bool {
-	return bytes.Compare(vid.ID()[:], vid1.ID()[:]) < 0
+	return bytes.Compare(vid.ID[:], vid1.ID[:]) < 0
 }

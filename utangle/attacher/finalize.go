@@ -17,7 +17,7 @@ func (a *attacher) finalize() {
 		a.env.WithGlobalWriteLock(func() {
 			a.env.AddBranchNoLock(a.vid)
 		})
-		a.env.EvidenceBookedBranch(a.vid.ID(), a.vid.MustSequencerID())
+		a.env.EvidenceBookedBranch(&a.vid.ID, a.vid.MustSequencerID())
 		a.tracef("finalized branch")
 	} else {
 		coverage := a.calculateCoverage()
@@ -43,7 +43,7 @@ func (a *attacher) commitBranch() multistate.LedgerCoverage {
 	}
 	// generate ADD TX and ADD OUTPUT mutations
 	for vid := range a.validPastVertices {
-		muts.InsertAddTxMutation(*vid.ID(), a.vid.TimeSlot())
+		muts.InsertAddTxMutation(vid.ID, a.vid.TimeSlot())
 
 		// ADD OUTPUT mutations only for not consumed outputs
 		producedOutputIndices := vid.NotConsumedOutputIndices(a.validPastVertices)
@@ -64,7 +64,7 @@ func (a *attacher) commitBranch() multistate.LedgerCoverage {
 func (a *attacher) ledgerCoverage(coverageDelta uint64) multistate.LedgerCoverage {
 	var prevCoverage multistate.LedgerCoverage
 	if multistate.HistoryCoverageDeltas > 1 {
-		rr, found := multistate.FetchRootRecord(a.env.StateStore(), *a.baselineBranch.ID())
+		rr, found := multistate.FetchRootRecord(a.env.StateStore(), a.baselineBranch.ID)
 		util.Assertf(found, "can't fetch root record for %s", a.baselineBranch.IDShortString())
 
 		prevCoverage = rr.LedgerCoverage

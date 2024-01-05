@@ -20,7 +20,6 @@ type (
 	}
 
 	VirtualTransaction struct {
-		txid             core.TransactionID
 		mutex            sync.RWMutex
 		outputs          map[byte]*core.Output
 		sequencerOutputs *[2]byte // if nil, it is unknown
@@ -29,7 +28,8 @@ type (
 	// WrappedTx value of *WrappedTx is used as transaction identity on the UTXO tangle, a vertex
 	// Behind this identity can be wrapped usual vertex, virtual or orphaned transactions
 	WrappedTx struct {
-		IDx   core.TransactionID
+		// immutable ID. It does not change with the change of the underlying wrapped vertex type
+		ID    core.TransactionID
 		mutex sync.RWMutex // protects _genericWrapper
 		_genericWrapper
 		// future cone references. Protected by global utangle_old lock

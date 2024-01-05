@@ -273,7 +273,6 @@ func (a *attacher) attachOutput(wOut vertex.WrappedOutput, parasiticChainHorizon
 	}
 
 	// input is not rooted
-	txid := wOut.VID.ID()
 	ok = true
 	wOut.VID.Unwrap(vertex.UnwrapOptions{
 		Vertex: func(v *vertex.Vertex) {
@@ -282,8 +281,8 @@ func (a *attacher) attachOutput(wOut vertex.WrappedOutput, parasiticChainHorizon
 		},
 		VirtualTx: func(v *vertex.VirtualTransaction) {
 			// add to the pending list
-			if !txid.IsSequencerMilestone() {
-				a.env.Pull(*txid)
+			if !wOut.VID.ID.IsSequencerMilestone() {
+				a.env.Pull(wOut.VID.ID)
 			}
 		},
 	})
@@ -303,9 +302,9 @@ func (a *attacher) branchesCompatible(vid1, vid2 *vertex.WrappedTx) bool {
 	case vid1.TimeSlot() == vid2.TimeSlot():
 		return false
 	case vid1.TimeSlot() < vid2.TimeSlot():
-		return multistate.BranchIsDescendantOf(vid2.ID(), vid1.ID(), a.env.StateStore)
+		return multistate.BranchIsDescendantOf(&vid2.ID, &vid1.ID, a.env.StateStore)
 	default:
-		return multistate.BranchIsDescendantOf(vid1.ID(), vid2.ID(), a.env.StateStore)
+		return multistate.BranchIsDescendantOf(&vid1.ID, &vid2.ID, a.env.StateStore)
 	}
 }
 
