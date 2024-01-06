@@ -84,7 +84,7 @@ type conflictTestData struct {
 	chainOrigins           []*core.OutputWithChainID
 	pkController           []ed25519.PrivateKey
 	chainOriginsTx         *transaction.Transaction
-	seqStart               [][]byte
+	seqChain               [][][]byte
 }
 
 func initConflictTest(t *testing.T, nConflicts int, nChains int, targetLockChain bool) *conflictTestData {
@@ -236,10 +236,9 @@ func (td *conflictTestData) makeChainOrigins(n int) {
 	})
 }
 
-func (td *longConflictTestData) makeSeqStarts(withConflictingFees bool) {
+func (td *longConflictTestData) makeSeqBeginnings(withConflictingFees bool) {
 	util.Assertf(len(td.chainOrigins) == len(td.conflictingOutputs), "td.chainOrigins)==len(td.conflictingOutputs)")
-	var err error
-	td.seqStart = make([][]byte, len(td.chainOrigins))
+	td.seqChain = make([][][]byte, len(td.chainOrigins))
 	var additionalIn []*core.OutputWithID
 	for i, chainOrigin := range td.chainOrigins {
 		var ts core.LogicalTime
@@ -251,7 +250,8 @@ func (td *longConflictTestData) makeSeqStarts(withConflictingFees bool) {
 			ts = chainOrigin.Timestamp()
 		}
 		ts = ts.AddTicks(core.TransactionPaceInTicks)
-		td.seqStart[i], err = txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
+		td.seqChain[i] = make([][]byte, 0)
+		txBytes, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
 			SeqName:          "1",
 			ChainInput:       chainOrigin,
 			Timestamp:        ts,
@@ -260,6 +260,7 @@ func (td *longConflictTestData) makeSeqStarts(withConflictingFees bool) {
 			AdditionalInputs: additionalIn,
 		})
 		require.NoError(td.t, err)
+		td.seqChain[i] = append(td.seqChain[i], txBytes)
 	}
 }
 
@@ -369,8 +370,8 @@ func (td *longConflictTestData) printTxIDs() {
 		}
 	}
 	td.t.Logf("Sequencer start txes:")
-	for i, txBytes := range td.seqStart {
-		txid, _, _ := transaction.IDAndTimestampFromTransactionBytes(txBytes)
+	for i, seqChain := range td.seqChain {
+		txid, _, _ := transaction.IDAndTimestampFromTransactionBytes(seqChain[0])
 		td.t.Logf("      %2d : %s", i, txid.StringShort())
 	}
 }
