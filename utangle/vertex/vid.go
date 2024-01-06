@@ -144,20 +144,6 @@ func (vid *WrappedTx) PokeWith(withVID *WrappedTx) {
 	}
 }
 
-func (vid *WrappedTx) PokeDescendants() {
-	vid.mutexDescendants.RLock()
-	defer vid.mutexDescendants.RUnlock()
-
-	for _, consumers := range vid.consumed {
-		for c := range consumers {
-			c.PokeWith(vid)
-		}
-	}
-	for _, e := range vid.endorsers {
-		e.PokeWith(vid)
-	}
-}
-
 func WrapTxID(txid core.TransactionID) *WrappedTx {
 	return _newVID(_virtualTx{
 		VirtualTransaction: newVirtualTx(),
@@ -474,17 +460,6 @@ func (vid *WrappedTx) AttachConsumer(outputIndex byte, consumer *WrappedTx, chec
 	conflict := checkConflicts(outputConsumers)
 
 	return !conflict
-}
-
-func (vid *WrappedTx) AddEndorser(endorser *WrappedTx) {
-	vid.mutexDescendants.Lock()
-	defer vid.mutexDescendants.Unlock()
-
-	if len(vid.endorsers) == 0 {
-		vid.endorsers = []*WrappedTx{endorser}
-	} else {
-		vid.endorsers = util.AppendUnique(vid.endorsers, endorser)
-	}
 }
 
 func (vid *WrappedTx) NotConsumedOutputIndices(allConsumers set.Set[*WrappedTx]) []byte {

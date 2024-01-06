@@ -170,40 +170,75 @@ func AttachTransaction(tx *transaction.Transaction, env AttachEnvironment, opts 
 		// full vertex will be ignored, virtual tx will be converted into full vertex and attacher started, if necessary
 		VirtualTx: func(v *vertex.VirtualTransaction) {
 			vid.ConvertVirtualTxToVertexNoLock(vertex.New(tx))
-			if vid.IsSequencerMilestone() {
-				// starts attacher goroutine for each sequencer transaction
-				ctx := options.ctx
-				if ctx == nil {
-					ctx = context.Background()
-				}
-				callback := options.finalizationCallback
-				if callback == nil {
-					callback = func(_ *vertex.WrappedTx) {}
-				}
+			if !vid.IsSequencerMilestone() {
+				return
+			}
+			// starts attacher goroutine for each sequencer transaction
+			ctx := options.ctx
+			if ctx == nil {
+				ctx = context.Background()
+			}
+			callback := options.finalizationCallback
+			if callback == nil {
+				callback = func(_ *vertex.WrappedTx) {}
+			}
 
-				runFun := func() {
-					status, err := runAttacher(vid, env, ctx)
-					vid.SetTxStatus(status)
-					vid.SetReason(err)
-					reasonStr := ""
-					if err != nil {
-						reasonStr = fmt.Sprintf(" reason = '%v'", err)
-					}
-					env.Log().Infof("attach sequencer transaction %s -> %s%s",
-						vid.ID.StringShort(), status.String(), reasonStr)
-					callback(vid)
+			runFun := func() {
+				status, err := runAttacher(vid, env, ctx)
+				vid.SetTxStatus(status)
+				vid.SetReason(err)
+				reasonStr := ""
+				if err != nil {
+					reasonStr = fmt.Sprintf(" reason = '%v'", err)
 				}
+				env.Log().Infof("attach sequencer transaction %s -> %s%s",
+					vid.ID.StringShort(), status.String(), reasonStr)
+				callback(vid)
+			}
 
-				const forDebugging = true
-				if forDebugging {
-					go runFun()
-				} else {
-					util.RunWrappedRoutine(vid.IDShortString(), runFun, nil, common.ErrDBUnavailable)
-				}
+			const forDebugging = true
+			if forDebugging {
+				go runFun()
+			} else {
+				util.RunWrappedRoutine(vid.IDShortString(), runFun, nil, common.ErrDBUnavailable)
 			}
 		},
 	})
 	return
+}
+
+func runAttacher(vid *vertex.WrappedTx, env AttachEnvironment, ctx context.Context) (vertex.Status, error) {
+	a := newAttacher(vid, env, ctx)
+	defer a.close()
+
+	a.tracef(">>>>>>>>>>>>> START")
+	defer a.tracef("<<<<<<<<<<<<< EXIT")
+
+	// first solidify baseline state
+	status := a.solidifyBaselineState()
+	if status == vertex.Bad {
+		a.tracef("baseline solidification failed. Reason: %v", a.vid.GetReason())
+		return vertex.Bad, a.reason
+	}
+
+	util.Assertf(a.baselineBranch != nil, "a.baselineBranch != nil")
+
+	// then continue with the rest
+	a.tracef("baseline is OK <- %s", a.baselineBranch.IDShortString())
+
+	status = a.solidifyPastCone()
+	if status != vertex.Good {
+		a.tracef("past cone solidification failed. Reason: %v", a.vid.GetReason())
+		return vertex.Bad, a.reason
+	}
+
+	a.tracef("past cone OK")
+
+	util.AssertNoError(a.checkPastConeVerticesConsistent())
+
+	a.finalize()
+	a.vid.SetTxStatus(vertex.Good)
+	return vertex.Good, nil
 }
 
 // AttachTransactionFromBytes used for testing
@@ -257,40 +292,6 @@ func newAttacher(vid *vertex.WrappedTx, env AttachEnvironment, ctx context.Conte
 		ret.poke(withVID)
 	})
 	return ret
-}
-
-func runAttacher(vid *vertex.WrappedTx, env AttachEnvironment, ctx context.Context) (vertex.Status, error) {
-	a := newAttacher(vid, env, ctx)
-	defer a.close()
-
-	a.tracef(">>>>>>>>>>>>> START")
-	defer a.tracef("<<<<<<<<<<<<< EXIT")
-
-	// first solidify baseline state
-	status := a.solidifyBaselineState()
-	if status == vertex.Bad {
-		a.tracef("baseline solidification failed. Reason: %v", a.vid.GetReason())
-		return vertex.Bad, a.reason
-	}
-
-	util.Assertf(a.baselineBranch != nil, "a.baselineBranch != nil")
-
-	// then continue with the rest
-	a.tracef("baseline is OK <- %s", a.baselineBranch.IDShortString())
-
-	status = a.solidifyPastCone()
-	if status != vertex.Good {
-		a.tracef("past cone solidification failed. Reason: %v", a.vid.GetReason())
-		return vertex.Bad, a.reason
-	}
-
-	a.tracef("past cone OK")
-
-	util.AssertNoError(a.checkPastConeVerticesConsistent())
-
-	a.finalize()
-	a.vid.SetTxStatus(vertex.Good)
-	return vertex.Good, nil
 }
 
 func (a *attacher) lazyRepeat(fun func() vertex.Status) vertex.Status {

@@ -100,7 +100,6 @@ func (a *attacher) attachEndorsements(v *vertex.Vertex, vid *vertex.WrappedTx, p
 		if vidEndorsed == nil {
 			vidEndorsed = AttachTxID(v.Tx.EndorsementAt(byte(i)), a.env, OptionPullNonBranch, OptionInvokedBy(a.vid.IDShortString()))
 			v.Endorsements[i] = vidEndorsed
-			vidEndorsed.AddEndorser(vid)
 		}
 		baselineBranch := vidEndorsed.BaselineBranch()
 		if baselineBranch != nil && !a.branchesCompatible(a.baselineBranch, baselineBranch) {
@@ -300,25 +299,19 @@ func (a *attacher) attachInputID(consumerVertex *vertex.Vertex, consumerTx *vert
 	inputOid := consumerVertex.Tx.MustInputAt(inputIdx)
 	a.tracef("attachInputID: (oid = %s) #%d in %s", inputOid.StringShort, inputIdx, consumerTx.IDShortString)
 
-	a.tracef(">>>>>>>>>>>>>>>>> 1 consumer %s", consumerTx.IDShortString)
-
 	vidInputTx := consumerVertex.Inputs[inputIdx]
 	if vidInputTx == nil {
 		vidInputTx = AttachTxID(inputOid.TransactionID(), a.env, OptionInvokedBy(a.vid.IDShortString()))
 	}
 	util.Assertf(vidInputTx != nil, "vidInputTx != nil")
-	a.tracef(">>>>>>>>>>>>>>>>> 2 consumer %s", consumerTx.IDShortString())
 
 	if vidInputTx.MutexWriteLocked_() {
 		vidInputTx.GetTxStatus()
 	}
 	if vidInputTx.GetTxStatus() == vertex.Bad {
-		a.tracef(">>>>>>>>>>>>>>>>> 2.1 consumer %s", consumerTx.IDShortString())
 		a.setReason(vidInputTx.GetReason())
-		a.tracef(">>>>>>>>>>>>>>>>> 2.2 consumer %s", consumerTx.IDShortString())
 		return false
 	}
-	a.tracef(">>>>>>>>>>>>>>>>> 3 consumer %s", consumerTx.IDShortString())
 	// attach consumer and check for conflicts
 	// CONFLICT DETECTION
 	util.Assertf(a.isKnownVertex(consumerTx), "a.isKnownVertex(consumerTx)")

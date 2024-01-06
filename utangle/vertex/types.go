@@ -36,7 +36,6 @@ type (
 		// numConsumers contains number of consumed for outputs
 		mutexDescendants sync.RWMutex
 		consumed         map[byte]set.Set[*WrappedTx]
-		endorsers        []*WrappedTx
 
 		txStatus Status
 		reason   error
