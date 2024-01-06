@@ -59,7 +59,7 @@ type (
 		ctx                  context.Context
 		finalizationCallback func(vid *vertex.WrappedTx)
 		pullNonBranch        bool
-		doNotPullBranch      bool
+		doNotLoadBranch      bool
 		calledBy             string
 	}
 	Option func(*_attacherOptions)
@@ -86,8 +86,8 @@ func OptionPullNonBranch(options *_attacherOptions) {
 	options.pullNonBranch = true
 }
 
-func OptionDoNotPullBranch(options *_attacherOptions) {
-	options.doNotPullBranch = true
+func OptionDoNotLoadBranch(options *_attacherOptions) {
+	options.doNotLoadBranch = true
 }
 
 func OptionInvokedBy(name string) Option {
@@ -125,7 +125,14 @@ func AttachTxID(txid core.TransactionID, env AttachEnvironment, opts ...Option) 
 			}
 			return
 		}
-		// it is a branch transaction. Look up for the corresponding state
+		// it is a branch transaction
+		if options.doNotLoadBranch {
+			// only needed ID (for call from the AttachTransaction)
+			vid = vertex.WrapTxID(txid)
+			env.AddVertexNoLock(vid)
+			return
+		}
+		// look up for the corresponding state
 		if bd, branchAvailable := multistate.FetchBranchData(env.StateStore(), txid); branchAvailable {
 			// corresponding state has been found, it is solid -> put virtual branch tx with the state reader
 			vid = vertex.NewVirtualBranchTx(&bd).WrapWithID(txid)
@@ -158,8 +165,7 @@ func AttachTransaction(tx *transaction.Transaction, env AttachEnvironment, opts 
 	if tx.IsBranchTransaction() {
 		env.EvidenceIncomingBranch(tx.ID(), tx.SequencerTransactionData().SequencerID)
 	}
-	// TODO will result redundant pull for branches
-	vid = AttachTxID(*tx.ID(), env, OptionInvokedBy("addTx"))
+	vid = AttachTxID(*tx.ID(), env, OptionDoNotLoadBranch, OptionInvokedBy("addTx"))
 	vid.Unwrap(vertex.UnwrapOptions{
 		// full vertex will be ignored, virtual tx will be converted into full vertex and attacher started, if necessary
 		VirtualTx: func(v *vertex.VirtualTransaction) {
