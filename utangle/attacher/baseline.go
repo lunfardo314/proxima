@@ -41,7 +41,7 @@ func (a *attacher) solidifyStem(v *vertex.Vertex) (ok bool) {
 	if v.Inputs[stemInputIdx] == nil {
 		// predecessor stem is pending
 		stemInputOid := v.Tx.MustInputAt(stemInputIdx)
-		v.Inputs[stemInputIdx] = AttachTxID(stemInputOid.TransactionID(), a.env, false)
+		v.Inputs[stemInputIdx] = AttachTxID(stemInputOid.TransactionID(), a.env, false, a.vid.IDShortString())
 	}
 	util.Assertf(v.Inputs[stemInputIdx] != nil, "v.Inputs[stemInputIdx] != nil")
 
@@ -74,12 +74,12 @@ func (a *attacher) solidifySequencerBaseline(v *vertex.Vertex) (ok bool) {
 		// predecessor is on the earlier slot -> follow the first endorsement (guaranteed by the ledger constraint layer)
 		util.Assertf(v.Tx.NumEndorsements() > 0, "v.Tx.NumEndorsements()>0")
 		if v.Endorsements[0] == nil {
-			v.Endorsements[0] = AttachTxID(v.Tx.EndorsementAt(0), a.env, true)
+			v.Endorsements[0] = AttachTxID(v.Tx.EndorsementAt(0), a.env, true, a.vid.IDShortString())
 		}
 		inputTx = v.Endorsements[0]
 	} else {
 		if v.Inputs[predIdx] == nil {
-			v.Inputs[predIdx] = AttachTxID(predOid.TransactionID(), a.env, true)
+			v.Inputs[predIdx] = AttachTxID(predOid.TransactionID(), a.env, true, a.vid.IDShortString())
 			util.Assertf(v.Inputs[predIdx] != nil, "v.Inputs[predIdx] != nil")
 		}
 		inputTx = v.Inputs[predIdx]

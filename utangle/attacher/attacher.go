@@ -21,6 +21,7 @@ type (
 	DAGAccess interface {
 		WithGlobalWriteLock(fun func())
 		GetVertexNoLock(txid *core.TransactionID) *vertex.WrappedTx
+		GetVertex(txid *core.TransactionID) *vertex.WrappedTx
 		AddVertexNoLock(vid *vertex.WrappedTx)
 		StateStore() global.StateStore
 		GetStateReaderForTheBranch(branch *vertex.WrappedTx) global.IndexedStateReader
@@ -68,12 +69,19 @@ const (
 )
 
 // AttachTxID ensures the txid is on the utangle_old. Must be called from globally locked environment
-func AttachTxID(txid core.TransactionID, env AttachEnvironment, pullNonBranchIfNeeded bool) (vid *vertex.WrappedTx) {
-	tracef(env, "AttachTxID: %s", txid.StringShort)
+func AttachTxID(txid core.TransactionID, env AttachEnvironment, pullNonBranchIfNeeded bool, byArg ...string) (vid *vertex.WrappedTx) {
+	by := ""
+	if len(byArg) > 0 {
+		by = " by " + byArg[0]
+	}
+	tracef(env, "AttachTxID: %s%s", txid.StringShort(), by)
 	env.WithGlobalWriteLock(func() {
+		//tracef(env, "AttachTxID: %s%s -- inside global lock", txid.StringShort(), by)
+		//defer tracef(env, "AttachTxID: %s%s -- leaving global lock", txid.StringShort(), by)
 		vid = env.GetVertexNoLock(&txid)
 		if vid != nil {
 			// found existing -> return it
+			tracef(env, "AttachTxID: found existing %s%s", txid.StringShort(), by)
 			return
 		}
 		// it is new
@@ -90,17 +98,18 @@ func AttachTxID(txid core.TransactionID, env AttachEnvironment, pullNonBranchIfN
 		if bd, branchAvailable := multistate.FetchBranchData(env.StateStore(), txid); branchAvailable {
 			// corresponding state has been found, it is solid -> put virtual branch tx with the state reader
 			vid = vertex.NewVirtualBranchTx(&bd).WrapWithID(txid)
-			env.AddVertexNoLock(vid)
 			vid.SetTxStatus(vertex.Good)
 			vid.SetLedgerCoverage(bd.LedgerCoverage)
+			env.AddVertexNoLock(vid)
 			env.AddBranchNoLock(vid) // <<<< will be reading branch data twice. Not big problem
-			tracef(env, "branch fetched from the state: %s", txid.StringShort)
+			tracef(env, "AttachTxID: branch fetched from the state: %s%s", txid.StringShort(), by)
 		} else {
 			// the corresponding state is not in the multistate DB -> put virtualTx to the utangle_old -> pull it
 			// the puller will trigger further solidification
 			vid = vertex.WrapTxID(txid)
 			env.AddVertexNoLock(vid)
 			env.Pull(txid) // always pull new branch. This will spin off sync process on the node
+			tracef(env, "AttachTxID: added new branch vertex and pulled %s%s", txid.StringShort(), by)
 		}
 	})
 	return
@@ -131,51 +140,44 @@ func AttachTransaction(tx *transaction.Transaction, env AttachEnvironment, opts 
 	if tx.IsBranchTransaction() {
 		env.EvidenceIncomingBranch(tx.ID(), tx.SequencerTransactionData().SequencerID)
 	}
-	env.WithGlobalWriteLock(func() {
-		// look up for the txid
-		vid = env.GetVertexNoLock(tx.ID())
-		if vid == nil {
-			// it is new. Create a new wrapped tx and put it to the utangle_old
-			vid = vertex.New(tx).Wrap()
-			env.AddVertexNoLock(vid)
-		} else {
-			if !vid.IsVirtualTx() {
-				return
-			}
-			// it is existing. Must virtualTx -> replace virtual tx with the full transaction
-			vid.ConvertVirtualTxToVertex(vertex.New(tx))
-		}
-		if vid.IsSequencerMilestone() {
-			// starts attacher goroutine for each sequencer transaction
-			ctx := options.ctx
-			if ctx == nil {
-				ctx = context.Background()
-			}
-			callback := options.finalizationCallback
-			if callback == nil {
-				callback = func(_ *vertex.WrappedTx) {}
-			}
-
-			runFun := func() {
-				status, err := runAttacher(vid, env, ctx)
-				vid.SetTxStatus(status)
-				vid.SetReason(err)
-				reasonStr := ""
-				if err != nil {
-					reasonStr = fmt.Sprintf(" reason = '%v'", err)
+	// TODO will result redundant pull for branches
+	vid = AttachTxID(*tx.ID(), env, false, "addTx")
+	vid.Unwrap(vertex.UnwrapOptions{
+		// full vertex will be ignored, virtual tx will be converted into full vertex and attacher started, if necessary
+		VirtualTx: func(v *vertex.VirtualTransaction) {
+			vid.ConvertVirtualTxToVertexNoLock(vertex.New(tx))
+			if vid.IsSequencerMilestone() {
+				// starts attacher goroutine for each sequencer transaction
+				ctx := options.ctx
+				if ctx == nil {
+					ctx = context.Background()
 				}
-				env.Log().Infof("attach sequencer transaction %s -> %s%s",
-					vid.ID.StringShort(), status.String(), reasonStr)
-				callback(vid)
-			}
+				callback := options.finalizationCallback
+				if callback == nil {
+					callback = func(_ *vertex.WrappedTx) {}
+				}
 
-			const forDebugging = true
-			if forDebugging {
-				go runFun()
-			} else {
-				util.RunWrappedRoutine(vid.IDShortString(), runFun, nil, common.ErrDBUnavailable)
+				runFun := func() {
+					status, err := runAttacher(vid, env, ctx)
+					vid.SetTxStatus(status)
+					vid.SetReason(err)
+					reasonStr := ""
+					if err != nil {
+						reasonStr = fmt.Sprintf(" reason = '%v'", err)
+					}
+					env.Log().Infof("attach sequencer transaction %s -> %s%s",
+						vid.ID.StringShort(), status.String(), reasonStr)
+					callback(vid)
+				}
+
+				const forDebugging = true
+				if forDebugging {
+					go runFun()
+				} else {
+					util.RunWrappedRoutine(vid.IDShortString(), runFun, nil, common.ErrDBUnavailable)
+				}
 			}
-		}
+		},
 	})
 	return
 }

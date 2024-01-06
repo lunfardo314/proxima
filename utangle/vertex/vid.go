@@ -11,6 +11,7 @@ import (
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
 	"github.com/lunfardo314/proxima/util/set"
+	"github.com/lunfardo314/proxima/util/testutil"
 )
 
 // ErrDeletedVertexAccessed exception is raised by PanicAccessDeleted handler of RUnwrap vertex so that could be caught if necessary
@@ -73,24 +74,24 @@ func (vid *WrappedTx) _put(g _genericWrapper) {
 	vid._genericWrapper = g
 }
 
-func (vid *WrappedTx) ConvertVirtualTxToVertex(v *Vertex) {
-	vid.mutex.Lock()
-	defer vid.mutex.Unlock()
-
-	util.Assertf(vid.ID == *v.Tx.ID(), "ConvertVirtualTxToVertex: txid-s do not match in: %s", vid.ID.StringShort)
+func (vid *WrappedTx) ConvertVirtualTxToVertexNoLock(v *Vertex) {
+	util.Assertf(vid.ID == *v.Tx.ID(), "ConvertVirtualTxToVertexNoLock: txid-s do not match in: %s", vid.ID.StringShort)
 	_, isVirtualTx := vid._genericWrapper.(_virtualTx)
-	util.Assertf(isVirtualTx, "ConvertVirtualTxToVertex: virtual tx expected %s", vid.ID.StringShort)
+	util.Assertf(isVirtualTx, "ConvertVirtualTxToVertexNoLock: virtual tx target expected %s", vid.ID.StringShort)
 	vid._put(_vertex{Vertex: v})
 }
 
-//	func (vid *WrappedTx) ID() *core.TransactionID {
-//		return &vid.ID
-//	}
 func (vid *WrappedTx) GetTxStatusNoLock() Status {
 	return vid.txStatus
 }
 
+// MutexWriteLocked_ for deadlock debugging
+func (vid *WrappedTx) MutexWriteLocked_() bool {
+	return testutil.RWMutexWriteLocked(&vid.mutex)
+}
+
 func (vid *WrappedTx) GetTxStatus() Status {
+
 	vid.mutex.RLock()
 	defer vid.mutex.RUnlock()
 

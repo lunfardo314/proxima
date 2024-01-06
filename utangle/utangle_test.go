@@ -683,7 +683,7 @@ func TestConflictsNAttachers(t *testing.T) {
 			nConflicts = 2
 			nChains    = 2
 			howLong    = 2 // 97 fails when crosses slot boundary
-			pullYN     = false
+			pullYN     = true
 		)
 
 		testData := initLongConflictTestData(t, nConflicts, nChains, howLong)

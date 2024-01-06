@@ -4,6 +4,8 @@ import (
 	"crypto/ed25519"
 	"encoding/binary"
 	"encoding/hex"
+	"reflect"
+	"sync"
 
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/unitrie/common"
@@ -38,4 +40,12 @@ func GetTestingPrivateKeys(n int, offsIndex ...int) []ed25519.PrivateKey {
 		ret[i] = GetTestingPrivateKey(offs + i + 1)
 	}
 	return ret
+}
+
+const mutexLocked = 1
+
+func RWMutexWriteLocked(rw *sync.RWMutex) bool {
+	// RWMutex has a "w" sync.Mutex field for write lock
+	state := reflect.ValueOf(rw).Elem().FieldByName("w").FieldByName("state")
+	return state.Int()&mutexLocked == mutexLocked
 }
