@@ -21,7 +21,6 @@ type (
 	DAGAccess interface {
 		WithGlobalWriteLock(fun func())
 		GetVertexNoLock(txid *core.TransactionID) *vertex.WrappedTx
-		GetVertex(txid *core.TransactionID) *vertex.WrappedTx
 		AddVertexNoLock(vid *vertex.WrappedTx)
 		StateStore() global.StateStore
 		GetStateReaderForTheBranch(branch *vertex.WrappedTx) global.IndexedStateReader
@@ -59,6 +58,9 @@ type (
 	_attacherOptions struct {
 		ctx                  context.Context
 		finalizationCallback func(vid *vertex.WrappedTx)
+		pullNonBranch        bool
+		doNotPullBranch      bool
+		calledBy             string
 	}
 	Option func(*_attacherOptions)
 )
@@ -68,16 +70,45 @@ const (
 	maxToleratedParasiticChainSlots = 1
 )
 
+func OptionWithContext(ctx context.Context) Option {
+	return func(options *_attacherOptions) {
+		options.ctx = ctx
+	}
+}
+
+func OptionWithFinalizationCallback(fun func(vid *vertex.WrappedTx)) Option {
+	return func(options *_attacherOptions) {
+		options.finalizationCallback = fun
+	}
+}
+
+func OptionPullNonBranch(options *_attacherOptions) {
+	options.pullNonBranch = true
+}
+
+func OptionDoNotPullBranch(options *_attacherOptions) {
+	options.doNotPullBranch = true
+}
+
+func OptionInvokedBy(name string) Option {
+	return func(options *_attacherOptions) {
+		options.calledBy = name
+	}
+}
+
 // AttachTxID ensures the txid is on the utangle_old. Must be called from globally locked environment
-func AttachTxID(txid core.TransactionID, env AttachEnvironment, pullNonBranchIfNeeded bool, byArg ...string) (vid *vertex.WrappedTx) {
+func AttachTxID(txid core.TransactionID, env AttachEnvironment, opts ...Option) (vid *vertex.WrappedTx) {
+	options := &_attacherOptions{}
+	for _, opt := range opts {
+		opt(options)
+	}
+
 	by := ""
-	if len(byArg) > 0 {
-		by = " by " + byArg[0]
+	if options.calledBy != "" {
+		by = " by " + options.calledBy
 	}
 	tracef(env, "AttachTxID: %s%s", txid.StringShort(), by)
 	env.WithGlobalWriteLock(func() {
-		//tracef(env, "AttachTxID: %s%s -- inside global lock", txid.StringShort(), by)
-		//defer tracef(env, "AttachTxID: %s%s -- leaving global lock", txid.StringShort(), by)
 		vid = env.GetVertexNoLock(&txid)
 		if vid != nil {
 			// found existing -> return it
@@ -89,7 +120,7 @@ func AttachTxID(txid core.TransactionID, env AttachEnvironment, pullNonBranchIfN
 			// if not branch -> just place the empty virtualTx on the utangle_old, no further action
 			vid = vertex.WrapTxID(txid)
 			env.AddVertexNoLock(vid)
-			if pullNonBranchIfNeeded {
+			if options.pullNonBranch {
 				env.Pull(txid)
 			}
 			return
@@ -115,33 +146,20 @@ func AttachTxID(txid core.TransactionID, env AttachEnvironment, pullNonBranchIfN
 	return
 }
 
-func WithContext(ctx context.Context) Option {
-	return func(options *_attacherOptions) {
-		options.ctx = ctx
-	}
-}
-
-func WithFinalizationCallback(fun func(vid *vertex.WrappedTx)) Option {
-	return func(options *_attacherOptions) {
-		options.finalizationCallback = fun
-	}
-}
-
 // AttachTransaction attaches new incoming transaction. For sequencer transaction it starts attacher routine
 // which manages solidification pull until transaction becomes solid or stopped by the context
 func AttachTransaction(tx *transaction.Transaction, env AttachEnvironment, opts ...Option) (vid *vertex.WrappedTx) {
-	tracef(env, "AttachTransaction: %s", tx.IDShortString)
-
 	options := &_attacherOptions{}
 	for _, opt := range opts {
 		opt(options)
 	}
+	tracef(env, "AttachTransaction: %s", tx.IDShortString)
 
 	if tx.IsBranchTransaction() {
 		env.EvidenceIncomingBranch(tx.ID(), tx.SequencerTransactionData().SequencerID)
 	}
 	// TODO will result redundant pull for branches
-	vid = AttachTxID(*tx.ID(), env, false, "addTx")
+	vid = AttachTxID(*tx.ID(), env, OptionInvokedBy("addTx"))
 	vid.Unwrap(vertex.UnwrapOptions{
 		// full vertex will be ignored, virtual tx will be converted into full vertex and attacher started, if necessary
 		VirtualTx: func(v *vertex.VirtualTransaction) {
@@ -194,7 +212,7 @@ func AttachTransactionFromBytes(txBytes []byte, env AttachEnvironment, opts ...O
 const maxTimeout = 10 * time.Minute
 
 func EnsureBranch(txid core.TransactionID, env AttachEnvironment, timeout ...time.Duration) (*vertex.WrappedTx, error) {
-	vid := AttachTxID(txid, env, false)
+	vid := AttachTxID(txid, env)
 	to := maxTimeout
 	if len(timeout) > 0 {
 		to = timeout[0]

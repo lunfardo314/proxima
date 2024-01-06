@@ -98,9 +98,9 @@ func (a *attacher) attachEndorsements(v *vertex.Vertex, vid *vertex.WrappedTx, p
 	allGood := true
 	for i, vidEndorsed := range v.Endorsements {
 		if vidEndorsed == nil {
-			vidEndorsed = AttachTxID(v.Tx.EndorsementAt(byte(i)), a.env, true, a.vid.IDShortString())
+			vidEndorsed = AttachTxID(v.Tx.EndorsementAt(byte(i)), a.env, OptionPullNonBranch, OptionInvokedBy(a.vid.IDShortString()))
 			v.Endorsements[i] = vidEndorsed
-			//vidEndorsed.AddEndorser(vid)
+			vidEndorsed.AddEndorser(vid)
 		}
 		baselineBranch := vidEndorsed.BaselineBranch()
 		if baselineBranch != nil && !a.branchesCompatible(a.baselineBranch, baselineBranch) {
@@ -304,7 +304,7 @@ func (a *attacher) attachInputID(consumerVertex *vertex.Vertex, consumerTx *vert
 
 	vidInputTx := consumerVertex.Inputs[inputIdx]
 	if vidInputTx == nil {
-		vidInputTx = AttachTxID(inputOid.TransactionID(), a.env, false, a.vid.IDShortString())
+		vidInputTx = AttachTxID(inputOid.TransactionID(), a.env, OptionInvokedBy(a.vid.IDShortString()))
 	}
 	util.Assertf(vidInputTx != nil, "vidInputTx != nil")
 	a.tracef(">>>>>>>>>>>>>>>>> 2 consumer %s", consumerTx.IDShortString())
