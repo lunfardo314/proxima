@@ -479,7 +479,7 @@ func TestConflicts1Attacher(t *testing.T) {
 
 func TestConflictsNAttachers(t *testing.T) {
 	t.Run("seq start tx", func(t *testing.T) {
-		//attacher.SetTraceOn()
+		attacher.SetTraceOn()
 		const (
 			nConflicts = 10
 			nChains    = 10

@@ -127,19 +127,33 @@ func (vid *WrappedTx) StatusString() string {
 	}
 }
 
-func (vid *WrappedTx) OnNotify(fun func(vid *WrappedTx)) {
+func (vid *WrappedTx) OnPoke(fun func(vid *WrappedTx)) {
 	vid.mutex.Lock()
 	defer vid.mutex.Unlock()
 
-	vid.onNotify = fun
+	vid.onPoke = fun
 }
 
-func (vid *WrappedTx) Notify(downstreamVID *WrappedTx) {
+func (vid *WrappedTx) PokeWith(withVID *WrappedTx) {
 	vid.mutex.RLock()
 	defer vid.mutex.RUnlock()
 
-	if vid.onNotify != nil {
-		vid.onNotify(downstreamVID)
+	if vid.onPoke != nil {
+		vid.onPoke(withVID)
+	}
+}
+
+func (vid *WrappedTx) PokeDescendants() {
+	vid.mutexDescendants.RLock()
+	defer vid.mutexDescendants.RUnlock()
+
+	for _, consumers := range vid.consumed {
+		for c := range consumers {
+			c.PokeWith(vid)
+		}
+	}
+	for _, e := range vid.endorsers {
+		e.PokeWith(vid)
 	}
 }
 
@@ -443,8 +457,8 @@ func (vid *WrappedTx) EnsureOutput(idx byte, o *core.Output) bool {
 }
 
 func (vid *WrappedTx) AttachConsumer(outputIndex byte, consumer *WrappedTx, checkConflicts func(existingConsumers set.Set[*WrappedTx]) (conflict bool)) bool {
-	vid.mutexConsumers.Lock()
-	defer vid.mutexConsumers.Unlock()
+	vid.mutexDescendants.Lock()
+	defer vid.mutexDescendants.Unlock()
 
 	if vid.consumed == nil {
 		vid.consumed = make(map[byte]set.Set[*WrappedTx])
@@ -461,9 +475,20 @@ func (vid *WrappedTx) AttachConsumer(outputIndex byte, consumer *WrappedTx, chec
 	return !conflict
 }
 
+func (vid *WrappedTx) AddEndorser(endorser *WrappedTx) {
+	vid.mutexDescendants.Lock()
+	defer vid.mutexDescendants.Unlock()
+
+	if len(vid.endorsers) == 0 {
+		vid.endorsers = []*WrappedTx{endorser}
+	} else {
+		vid.endorsers = util.AppendUnique(vid.endorsers, endorser)
+	}
+}
+
 func (vid *WrappedTx) NotConsumedOutputIndices(allConsumers set.Set[*WrappedTx]) []byte {
-	vid.mutexConsumers.Lock()
-	defer vid.mutexConsumers.Unlock()
+	vid.mutexDescendants.Lock()
+	defer vid.mutexDescendants.Unlock()
 
 	nOutputs := 0
 	vid.RUnwrap(UnwrapOptions{Vertex: func(v *Vertex) {
@@ -511,8 +536,8 @@ func (vid *WrappedTx) Less(vid1 *WrappedTx) bool {
 // - number of consumed outputs
 // - number of conflict sets
 func (vid *WrappedTx) NumConsumers() (int, int) {
-	vid.mutexConsumers.RLock()
-	defer vid.mutexConsumers.RUnlock()
+	vid.mutexDescendants.RLock()
+	defer vid.mutexDescendants.RUnlock()
 
 	retConsumed := len(vid.consumed)
 	retCS := 0

@@ -34,13 +34,15 @@ type (
 		_genericWrapper
 		// future cone references. Protected by global utangle_old lock
 		// numConsumers contains number of consumed for outputs
-		mutexConsumers sync.RWMutex
-		consumed       map[byte]set.Set[*WrappedTx]
-		txStatus       Status
-		reason         error
-		coverage       *multistate.LedgerCoverage // nil for non-sequencer
+		mutexDescendants sync.RWMutex
+		consumed         map[byte]set.Set[*WrappedTx]
+		endorsers        []*WrappedTx
+
+		txStatus Status
+		reason   error
+		coverage *multistate.LedgerCoverage // nil for non-sequencer
 		// notification callback
-		onNotify func(vid *WrappedTx)
+		onPoke func(vid *WrappedTx)
 	}
 
 	WrappedOutput struct {

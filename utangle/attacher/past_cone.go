@@ -60,7 +60,7 @@ func (a *attacher) attachVertex(v *vertex.Vertex, vid *vertex.WrappedTx, parasit
 	if !v.FlagsUp(vertex.FlagEndorsementsSolid) {
 		a.tracef("endorsements not solid in %s\n", v.Tx.IDShortString())
 		// depth-first along endorsements
-		if !a.attachEndorsements(v, parasiticChainHorizon, visited) { // <<< recursive
+		if !a.attachEndorsements(v, vid, parasiticChainHorizon, visited) { // <<< recursive
 			return false
 		}
 	}
@@ -92,7 +92,7 @@ func (a *attacher) attachVertex(v *vertex.Vertex, vid *vertex.WrappedTx, parasit
 }
 
 // Attaches endorsements of the vertex
-func (a *attacher) attachEndorsements(v *vertex.Vertex, parasiticChainHorizon core.LogicalTime, visited set.Set[*vertex.WrappedTx]) bool {
+func (a *attacher) attachEndorsements(v *vertex.Vertex, vid *vertex.WrappedTx, parasiticChainHorizon core.LogicalTime, visited set.Set[*vertex.WrappedTx]) bool {
 	a.tracef("attachEndorsements %s", v.Tx.IDShortString)
 
 	allGood := true
@@ -100,6 +100,7 @@ func (a *attacher) attachEndorsements(v *vertex.Vertex, parasiticChainHorizon co
 		if vidEndorsed == nil {
 			vidEndorsed = AttachTxID(v.Tx.EndorsementAt(byte(i)), a.env, true)
 			v.Endorsements[i] = vidEndorsed
+			//vidEndorsed.AddEndorser(vid)
 		}
 		baselineBranch := vidEndorsed.BaselineBranch()
 		if baselineBranch != nil && !a.branchesCompatible(a.baselineBranch, baselineBranch) {
@@ -185,6 +186,8 @@ func (a *attacher) attachInput(v *vertex.Vertex, inputIdx byte, vid *vertex.Wrap
 		VID:   v.Inputs[inputIdx],
 		Index: v.Tx.MustOutputIndexOfTheInput(inputIdx),
 	}
+	fmt.Printf(">>>>>>>>>>>>>>>>> before attachOutput %s\n", wOut.IDShortString())
+
 	if !a.attachOutput(wOut, parasiticChainHorizon, visited) {
 		return false, false
 	}
@@ -298,16 +301,20 @@ func (a *attacher) attachInputID(consumerVertex *vertex.Vertex, consumerTx *vert
 	inputOid := consumerVertex.Tx.MustInputAt(inputIdx)
 	a.tracef("attachInputID: (oid = %s) #%d in %s", inputOid.StringShort, inputIdx, consumerTx.IDShortString)
 
+	fmt.Printf(">>>>>>>>>>>>>>>>> 1 consumer %s\n", consumerTx.IDShortString())
+
 	vidInputTx := consumerVertex.Inputs[inputIdx]
 	if vidInputTx == nil {
 		vidInputTx = AttachTxID(inputOid.TransactionID(), a.env, false)
 	}
 	util.Assertf(vidInputTx != nil, "vidInputTx != nil")
+	fmt.Printf(">>>>>>>>>>>>>>>>> 2 consumer %s\n", consumerTx.IDShortString())
 
 	if vidInputTx.GetTxStatus() == vertex.Bad {
 		a.setReason(vidInputTx.GetReason())
 		return false
 	}
+	fmt.Printf(">>>>>>>>>>>>>>>>> 3 consumer %s\n", consumerTx.IDShortString())
 	// attach consumer and check for conflicts
 	// CONFLICT DETECTION
 	util.Assertf(a.isKnownVertex(consumerTx), "a.isKnownVertex(consumerTx)")
@@ -315,6 +322,7 @@ func (a *attacher) attachInputID(consumerVertex *vertex.Vertex, consumerTx *vert
 	a.tracef("before AttachConsumer of %s:\n       good: %s\n       undef: %s",
 		inputOid.StringShort, vertex.VIDSetIDString(a.validPastVertices), vertex.VIDSetIDString(a.undefinedPastVertices))
 
+	fmt.Printf(">>>>>>>>>>>>>>>>> 4 consumer %s\n", consumerTx.IDShortString())
 	if !vidInputTx.AttachConsumer(inputOid.Index(), consumerTx, a.checkConflictsFunc(consumerTx)) {
 		err := fmt.Errorf("input %s of consumer %s conflicts with existing consumers in the baseline state %s (double spend)",
 			inputOid.StringShort(), consumerTx.IDShortString(), a.baselineBranch.IDShortString())
@@ -323,6 +331,8 @@ func (a *attacher) attachInputID(consumerVertex *vertex.Vertex, consumerTx *vert
 		return false
 	}
 	a.tracef("attached consumer %s of %s", consumerTx.IDShortString, inputOid.StringShort)
+
+	fmt.Printf(">>>>>>>>>>>>>>>>> 5 consumer %s\n", consumerTx.IDShortString())
 
 	if vidInputTx.IsSequencerMilestone() {
 		// for sequencer milestones check if baselines are compatible
@@ -335,6 +345,7 @@ func (a *attacher) attachInputID(consumerVertex *vertex.Vertex, consumerTx *vert
 			}
 		}
 	}
+	fmt.Printf(">>>>>>>>>>>>>>>>> 6 consumer %s\n", consumerTx.IDShortString())
 	consumerVertex.Inputs[inputIdx] = vidInputTx
 	return true
 }

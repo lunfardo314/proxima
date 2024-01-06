@@ -108,15 +108,15 @@ func (a *attacher) close() {
 	defer a.closeMutex.Unlock()
 
 	a.closed = true
-	a.vid.OnNotify(nil)
-	close(a.inChan)
+	a.vid.OnPoke(nil)
+	close(a.pokeChan)
 }
 
-func (a *attacher) notify(msg *vertex.WrappedTx) {
+func (a *attacher) poke(msg *vertex.WrappedTx) {
 	a.closeMutex.RLock()
 	defer a.closeMutex.RUnlock()
 
 	if !a.closed {
-		a.inChan <- msg
+		a.pokeChan <- msg
 	}
 }

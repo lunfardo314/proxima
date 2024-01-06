@@ -50,7 +50,7 @@ type (
 		undefinedPastVertices set.Set[*vertex.WrappedTx]
 		rooted                map[*vertex.WrappedTx]set.Set[byte]
 		closeMutex            sync.RWMutex
-		inChan                chan *vertex.WrappedTx
+		pokeChan              chan *vertex.WrappedTx
 		ctx                   context.Context
 		flags                 uint8
 		closed                bool
@@ -222,13 +222,13 @@ func newAttacher(vid *vertex.WrappedTx, env AttachEnvironment, ctx context.Conte
 		ctx:                   ctx,
 		vid:                   vid,
 		env:                   env,
-		inChan:                make(chan *vertex.WrappedTx, 1),
+		pokeChan:              make(chan *vertex.WrappedTx, 1),
 		rooted:                make(map[*vertex.WrappedTx]set.Set[byte]),
 		validPastVertices:     set.New[*vertex.WrappedTx](),
 		undefinedPastVertices: set.New[*vertex.WrappedTx](),
 	}
-	ret.vid.OnNotify(func(msg *vertex.WrappedTx) {
-		ret.notify(msg)
+	ret.vid.OnPoke(func(withVID *vertex.WrappedTx) {
+		ret.poke(withVID)
 	})
 	return ret
 }
@@ -275,7 +275,10 @@ func (a *attacher) lazyRepeat(fun func() vertex.Status) vertex.Status {
 		select {
 		case <-a.ctx.Done():
 			return vertex.Undefined
-		case <-a.inChan:
+		case withVID := <-a.pokeChan:
+			if withVID != nil {
+				a.tracef("poked with %s", withVID.IDShortString)
+			}
 		case <-time.After(periodicCheckEach):
 			a.tracef("periodic check")
 		}
