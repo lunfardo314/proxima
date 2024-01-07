@@ -49,11 +49,12 @@ type (
 		validPastVertices     set.Set[*vertex.WrappedTx]
 		undefinedPastVertices set.Set[*vertex.WrappedTx]
 		rooted                map[*vertex.WrappedTx]set.Set[byte]
-		closeMutex            sync.RWMutex
-		pokeChan              chan *vertex.WrappedTx
 		ctx                   context.Context
-		flags                 uint8
+		closeOnce             sync.Once
 		closed                bool
+		pokeChan              chan *vertex.WrappedTx
+		pokeMutex             sync.Mutex
+		flags                 uint8
 	}
 	_attacherOptions struct {
 		ctx                  context.Context
@@ -211,7 +212,9 @@ func AttachTransaction(tx *transaction.Transaction, env AttachEnvironment, opts 
 
 func runAttacher(vid *vertex.WrappedTx, env AttachEnvironment, ctx context.Context) (vertex.Status, error) {
 	a := newAttacher(vid, env, ctx)
-	defer a.close()
+	defer func() {
+		go a.close()
+	}()
 
 	a.tracef(">>>>>>>>>>>>> START")
 	defer a.tracef("<<<<<<<<<<<<< EXIT")
@@ -348,17 +351,18 @@ func (a *attacher) isKnownVertex(vid *vertex.WrappedTx) bool {
 }
 
 func (a *attacher) close() {
-	a.closeMutex.Lock()
-	defer a.closeMutex.Unlock()
-
-	a.closed = true
-	a.vid.OnPoke(nil)
-	close(a.pokeChan)
+	a.closeOnce.Do(func() {
+		a.pokeMutex.Lock()
+		a.closed = true
+		close(a.pokeChan)
+		a.vid.OnPoke(nil)
+		a.pokeMutex.Unlock()
+	})
 }
 
 func (a *attacher) _doPoke(msg *vertex.WrappedTx) {
-	a.closeMutex.RLock()
-	defer a.closeMutex.RUnlock()
+	a.pokeMutex.Lock()
+	defer a.pokeMutex.Unlock()
 
 	if !a.closed {
 		a.pokeChan <- msg

@@ -422,10 +422,10 @@ func TestConflicts1Attacher(t *testing.T) {
 		util.RequireErrorWith(t, vid.GetReason(), "conflicts with existing consumers in the baseline state", testData.forkOutput.IDShort())
 	})
 	t.Run("long with sync", func(t *testing.T) {
-		attacher.SetTraceOn()
+		//attacher.SetTraceOn()
 		const (
 			nConflicts = 2
-			howLong    = 3 // 97 fails when crosses slot boundary
+			howLong    = 90 // 97 fails when crosses slot boundary
 		)
 		testData := initLongConflictTestData(t, nConflicts, 0, howLong)
 		for _, txBytes := range testData.txBytes {
@@ -681,8 +681,8 @@ func TestConflictsNAttachers(t *testing.T) {
 	t.Run("one fork branches conflict", func(t *testing.T) {
 		//attacher.SetTraceOn()
 		const (
-			nConflicts = 5
-			nChains    = 5
+			nConflicts = 50
+			nChains    = 50
 			howLong    = 5 // 97 fails when crosses slot boundary
 			pullYN     = true
 		)

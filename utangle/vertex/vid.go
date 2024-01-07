@@ -63,11 +63,15 @@ func (v _deletedTx) _hasOutputAt(_ byte) (bool, bool) {
 	panic(ErrDeletedVertexAccessed)
 }
 
+var nopFun = func(_ *WrappedTx) {}
+
 func _newVID(g _genericWrapper, txid core.TransactionID) *WrappedTx {
-	return &WrappedTx{
+	ret := &WrappedTx{
 		ID:              txid,
 		_genericWrapper: g,
 	}
+	ret.onPoke.Store(nopFun)
+	return ret
 }
 
 func (vid *WrappedTx) _put(g _genericWrapper) {
@@ -129,19 +133,15 @@ func (vid *WrappedTx) StatusString() string {
 }
 
 func (vid *WrappedTx) OnPoke(fun func(vid *WrappedTx)) {
-	vid.mutex.Lock()
-	defer vid.mutex.Unlock()
-
-	vid.onPoke = fun
+	if vid == nil {
+		vid.onPoke.Store(nopFun)
+	} else {
+		vid.onPoke.Store(fun)
+	}
 }
 
 func (vid *WrappedTx) PokeWith(withVID *WrappedTx) {
-	vid.mutex.RLock()
-	defer vid.mutex.RUnlock()
-
-	if vid.onPoke != nil {
-		vid.onPoke(withVID)
-	}
+	vid.onPoke.Load().(func(_ *WrappedTx))(withVID)
 }
 
 func WrapTxID(txid core.TransactionID) *WrappedTx {

@@ -2,6 +2,7 @@ package vertex
 
 import (
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/lunfardo314/proxima/core"
@@ -40,8 +41,8 @@ type (
 		txStatus Status
 		reason   error
 		coverage *multistate.LedgerCoverage // nil for non-sequencer
-		// notification callback
-		onPoke func(vid *WrappedTx)
+		// notification callback. Must be func(vid *WrappedTx)
+		onPoke atomic.Value
 	}
 
 	WrappedOutput struct {
