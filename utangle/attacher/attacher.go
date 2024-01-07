@@ -51,9 +51,9 @@ type (
 		rooted                map[*vertex.WrappedTx]set.Set[byte]
 		ctx                   context.Context
 		closeOnce             sync.Once
-		closed                bool
 		pokeChan              chan *vertex.WrappedTx
 		pokeMutex             sync.Mutex
+		closed                bool
 		flags                 uint8
 	}
 	_attacherOptions struct {
