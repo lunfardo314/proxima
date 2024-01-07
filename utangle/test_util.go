@@ -1,6 +1,7 @@
 package utangle
 
 import (
+	"context"
 	"crypto/ed25519"
 	"testing"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/lunfardo314/proxima/txstore"
 	"github.com/lunfardo314/proxima/utangle/attacher"
 	"github.com/lunfardo314/proxima/utangle/dag"
+	"github.com/lunfardo314/proxima/utangle/poker"
 	"github.com/lunfardo314/proxima/utangle/vertex"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/testutil"
@@ -27,12 +29,14 @@ type testingWorkflow struct {
 	*dag.DAG
 	txBytesStore global.TxBytesStore
 	log          *zap.SugaredLogger
+	poker        *poker.Poker
 }
 
-func newTestingWorkflow(txBytesStore global.TxBytesStore, dag *dag.DAG) *testingWorkflow {
+func newTestingWorkflow(txBytesStore global.TxBytesStore, dag *dag.DAG, ctx context.Context) *testingWorkflow {
 	return &testingWorkflow{
 		txBytesStore: txBytesStore,
 		DAG:          dag,
+		poker:        poker.New(ctx),
 		log:          global.NewLogger("", zap.InfoLevel, nil, ""),
 	}
 }
@@ -51,10 +55,14 @@ func (w *testingWorkflow) Pull(txid core.TransactionID) {
 	}()
 }
 
-func (w *testingWorkflow) OnChangeNotify(onChange, notify *vertex.WrappedTx) {
+func (w *testingWorkflow) PokeMe(me, with *vertex.WrappedTx) {
+	w.log.Infof("poke me %s with %s", me.IDShortString(), with.IDShortString())
+	w.poker.PokeMe(me, with)
 }
 
-func (w *testingWorkflow) Notify(changed *vertex.WrappedTx) {
+func (w *testingWorkflow) PokeAllWith(wanted *vertex.WrappedTx) {
+	w.log.Infof("poke all with %s", wanted.IDShortString())
+	w.poker.PokeAllWith(wanted)
 }
 
 func (w *testingWorkflow) Log() *zap.SugaredLogger {
@@ -134,7 +142,7 @@ func initConflictTest(t *testing.T, nConflicts int, nChains int, targetLockChain
 		t.Logf("--------------- distribution tx:\n%s\n--------------", tx.ToString(genesisState.GetUTXO))
 	}
 
-	ret.wrk = newTestingWorkflow(ret.txStore, dag.New(stateStore))
+	ret.wrk = newTestingWorkflow(ret.txStore, dag.New(stateStore), context.Background())
 
 	t.Logf("bootstrap chain id: %s", ret.bootstrapChainID.String())
 	t.Logf("origing branch txid: %s", ret.originBranchTxid.StringShort())

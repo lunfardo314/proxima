@@ -38,9 +38,11 @@ const (
 	CommandPeriodicCleanup
 )
 
-func NewPoker(ctx context.Context) *Poker {
+const chanBufferSize = 10
+
+func New(ctx context.Context) *Poker {
 	ret := &Poker{
-		Consumer: consumer.NewConsumer[Cmd]("poke", zap.InfoLevel, nil),
+		Consumer: consumer.NewConsumerWithBufferSize[Cmd]("poke", chanBufferSize, zap.InfoLevel, nil),
 		m:        make(map[*vertex.WrappedTx]waitingList),
 	}
 	ret.AddOnConsume(ret.consume)
@@ -90,8 +92,10 @@ func (c *Poker) addCmd(wanted, whoIsWaiting *vertex.WrappedTx) {
 
 func (c *Poker) pokeAllCmd(wanted *vertex.WrappedTx) {
 	lst := c.m[wanted]
+	c.Log().Infof("TRACE pokeAllCmd with %s (%d waiting)", wanted.IDShortString(), len(lst.waiting))
 	if len(lst.waiting) > 0 {
 		for _, vid := range lst.waiting {
+			c.Log().Infof("TRACE poke %s with %s", vid.IDShortString(), wanted.IDShortString())
 			vid.PokeWith(wanted)
 		}
 		delete(c.m, wanted)

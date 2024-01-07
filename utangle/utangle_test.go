@@ -1,6 +1,7 @@
 package utangle
 
 import (
+	"context"
 	"sync"
 	"testing"
 
@@ -21,14 +22,14 @@ import (
 
 func TestOrigin(t *testing.T) {
 	t.Run("base", func(t *testing.T) {
-		attacher.SetTraceOn()
+		//attacher.SetTraceOn()
 		par := genesis.DefaultIdentityData(testutil.GetTestingPrivateKey())
 
 		stateStore := common.NewInMemoryKVStore()
 		bootstrapChainID, root := genesis.InitLedgerState(*par, stateStore)
 		dagAccess := dag.New(stateStore)
 		txBytesStore := txstore.NewSimpleTxBytesStore(common.NewInMemoryKVStore())
-		wrk := newTestingWorkflow(txBytesStore, dagAccess)
+		wrk := newTestingWorkflow(txBytesStore, dagAccess, context.Background())
 
 		id, _, err := genesis.ScanGenesisState(stateStore)
 		require.NoError(t, err)
@@ -48,7 +49,7 @@ func TestOrigin(t *testing.T) {
 		t.Logf("%s", dagAccess.Info())
 	})
 	t.Run("with distribution", func(t *testing.T) {
-		attacher.SetTraceOn()
+		//attacher.SetTraceOn()
 		privKey := testutil.GetTestingPrivateKey()
 		par := genesis.DefaultIdentityData(privKey)
 		addr1 := core.AddressED25519FromPrivateKey(testutil.GetTestingPrivateKey(1))
@@ -62,7 +63,7 @@ func TestOrigin(t *testing.T) {
 		bootstrapChainID, _ := genesis.InitLedgerState(*par, stateStore)
 		dagAccess := dag.New(stateStore)
 		txBytesStore := txstore.NewSimpleTxBytesStore(common.NewInMemoryKVStore())
-		wrk := newTestingWorkflow(txBytesStore, dagAccess)
+		wrk := newTestingWorkflow(txBytesStore, dagAccess, context.Background())
 
 		txBytes, err := txbuilder.DistributeInitialSupply(stateStore, privKey, distrib)
 		require.NoError(t, err)
@@ -107,7 +108,7 @@ func TestOrigin(t *testing.T) {
 		require.EqualValues(t, genesis.DefaultSupply-1_000_000-2_000_000, int(balChain))
 	})
 	t.Run("sync scenario", func(t *testing.T) {
-		attacher.SetTraceOn()
+		//attacher.SetTraceOn()
 		privKey := testutil.GetTestingPrivateKey()
 		par := genesis.DefaultIdentityData(privKey)
 		addr1 := core.AddressED25519FromPrivateKey(testutil.GetTestingPrivateKey(1))
@@ -121,7 +122,7 @@ func TestOrigin(t *testing.T) {
 		bootstrapChainID, _ := genesis.InitLedgerState(*par, stateStore)
 		dagAccess := dag.New(stateStore)
 		txBytesStore := txstore.NewSimpleTxBytesStore(common.NewInMemoryKVStore())
-		wrk := newTestingWorkflow(txBytesStore, dagAccess)
+		wrk := newTestingWorkflow(txBytesStore, dagAccess, context.Background())
 
 		txBytes, err := txbuilder.MakeDistributionTransaction(stateStore, privKey, distrib)
 		require.NoError(t, err)
@@ -171,7 +172,7 @@ func TestOrigin(t *testing.T) {
 
 	})
 	t.Run("with distribution tx", func(t *testing.T) {
-		attacher.SetTraceOn()
+		//attacher.SetTraceOn()
 		privKey := testutil.GetTestingPrivateKey()
 		par := genesis.DefaultIdentityData(privKey)
 		addr1 := core.AddressED25519FromPrivateKey(testutil.GetTestingPrivateKey(1))
@@ -185,7 +186,7 @@ func TestOrigin(t *testing.T) {
 		bootstrapChainID, _ := genesis.InitLedgerState(*par, stateStore)
 		dagAccess := dag.New(stateStore)
 		txBytesStore := txstore.NewSimpleTxBytesStore(common.NewInMemoryKVStore())
-		wrk := newTestingWorkflow(txBytesStore, dagAccess)
+		wrk := newTestingWorkflow(txBytesStore, dagAccess, context.Background())
 
 		txBytes, err := txbuilder.DistributeInitialSupply(stateStore, privKey, distrib)
 		require.NoError(t, err)
@@ -421,10 +422,10 @@ func TestConflicts1Attacher(t *testing.T) {
 		util.RequireErrorWith(t, vid.GetReason(), "conflicts with existing consumers in the baseline state", testData.forkOutput.IDShort())
 	})
 	t.Run("long with sync", func(t *testing.T) {
-		//attacher.SetTraceOn()
+		attacher.SetTraceOn()
 		const (
 			nConflicts = 2
-			howLong    = 1 // 97 fails when crosses slot boundary
+			howLong    = 3 // 97 fails when crosses slot boundary
 		)
 		testData := initLongConflictTestData(t, nConflicts, 0, howLong)
 		for _, txBytes := range testData.txBytes {
@@ -479,7 +480,7 @@ func TestConflicts1Attacher(t *testing.T) {
 
 func TestConflictsNAttachers(t *testing.T) {
 	t.Run("seq start tx", func(t *testing.T) {
-		attacher.SetTraceOn()
+		//attacher.SetTraceOn()
 		const (
 			nConflicts = 10
 			nChains    = 10
@@ -560,7 +561,7 @@ func TestConflictsNAttachers(t *testing.T) {
 			nConflicts = 2
 			nChains    = 2
 			howLong    = 20 // 97 fails when crosses slot boundary
-			pullYN     = false
+			pullYN     = true
 		)
 		var wg sync.WaitGroup
 		var err error

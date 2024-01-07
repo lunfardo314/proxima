@@ -55,7 +55,7 @@ func (a *attacher) solidifyStem(v *vertex.Vertex) (ok bool) {
 		a.setReason(v.Inputs[stemInputIdx].GetReason())
 		return false
 	case vertex.Undefined:
-		a.env.OnChangeNotify(v.Inputs[stemInputIdx], a.vid)
+		a.pokeMe(v.Inputs[stemInputIdx])
 		return true
 	default:
 		panic("wrong vertex state")
@@ -93,30 +93,12 @@ func (a *attacher) solidifySequencerBaseline(v *vertex.Vertex) (ok bool) {
 		return true
 	case vertex.Undefined:
 		// vertex can be undefined but with correct baseline branch
-		a.env.OnChangeNotify(inputTx, a.vid)
+		a.pokeMe(inputTx)
 		return true
 	case vertex.Bad:
 		a.setReason(inputTx.GetReason())
 		return false
 	default:
 		panic("wrong vertex state")
-	}
-}
-
-func (a *attacher) close() {
-	a.closeMutex.Lock()
-	defer a.closeMutex.Unlock()
-
-	a.closed = true
-	a.vid.OnPoke(nil)
-	close(a.pokeChan)
-}
-
-func (a *attacher) poke(msg *vertex.WrappedTx) {
-	a.closeMutex.RLock()
-	defer a.closeMutex.RUnlock()
-
-	if !a.closed {
-		a.pokeChan <- msg
 	}
 }

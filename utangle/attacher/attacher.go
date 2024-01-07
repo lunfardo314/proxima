@@ -31,8 +31,8 @@ type (
 
 	PullEnvironment interface {
 		Pull(txid core.TransactionID)
-		OnChangeNotify(onChange, notify *vertex.WrappedTx)
-		Notify(changed *vertex.WrappedTx)
+		PokeMe(me, with *vertex.WrappedTx)
+		PokeAllWith(wanted *vertex.WrappedTx)
 	}
 
 	AttachEnvironment interface {
@@ -171,6 +171,7 @@ func AttachTransaction(tx *transaction.Transaction, env AttachEnvironment, opts 
 		VirtualTx: func(v *vertex.VirtualTransaction) {
 			vid.ConvertVirtualTxToVertexNoLock(vertex.New(tx))
 			if !vid.IsSequencerMilestone() {
+				env.PokeAllWith(vid)
 				return
 			}
 			// starts attacher goroutine for each sequencer transaction
@@ -193,6 +194,7 @@ func AttachTransaction(tx *transaction.Transaction, env AttachEnvironment, opts 
 				}
 				env.Log().Infof("attach sequencer transaction %s -> %s%s",
 					vid.ID.StringShort(), status.String(), reasonStr)
+				env.PokeAllWith(vid)
 				callback(vid)
 			}
 
@@ -289,7 +291,7 @@ func newAttacher(vid *vertex.WrappedTx, env AttachEnvironment, ctx context.Conte
 		undefinedPastVertices: set.New[*vertex.WrappedTx](),
 	}
 	ret.vid.OnPoke(func(withVID *vertex.WrappedTx) {
-		ret.poke(withVID)
+		ret._doPoke(withVID)
 	})
 	return ret
 }
@@ -343,6 +345,28 @@ func (a *attacher) isKnownVertex(vid *vertex.WrappedTx) bool {
 		return true
 	}
 	return false
+}
+
+func (a *attacher) close() {
+	a.closeMutex.Lock()
+	defer a.closeMutex.Unlock()
+
+	a.closed = true
+	a.vid.OnPoke(nil)
+	close(a.pokeChan)
+}
+
+func (a *attacher) _doPoke(msg *vertex.WrappedTx) {
+	a.closeMutex.RLock()
+	defer a.closeMutex.RUnlock()
+
+	if !a.closed {
+		a.pokeChan <- msg
+	}
+}
+
+func (a *attacher) pokeMe(with *vertex.WrappedTx) {
+	a.env.PokeMe(a.vid, with)
 }
 
 // not thread safe

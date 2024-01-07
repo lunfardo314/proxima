@@ -17,7 +17,7 @@ func TestBasic(t *testing.T) {
 		howManyPokes = 10
 	)
 	ctx, cancel := context.WithCancel(context.Background())
-	p := NewPoker(ctx)
+	p := New(ctx)
 
 	vids := make([]*vertex.WrappedTx, howManyTx)
 	var wg sync.WaitGroup

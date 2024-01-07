@@ -129,6 +129,12 @@ func (a *attacher) attachEndorsements(v *vertex.Vertex, vid *vertex.WrappedTx, p
 		} else {
 			a.tracef("endorsements are NOT all good in %s because of endorsed %s", v.Tx.IDShortString(), vidEndorsed.IDShortString())
 			allGood = false
+
+			// ask environment to poke this attacher whenever something change with vidEndorsed
+			vidEndorsed.Unwrap(vertex.UnwrapOptions{VirtualTx: func(_ *vertex.VirtualTransaction) {
+				a.pokeMe(vidEndorsed)
+			}})
+
 		}
 	}
 	if allGood {
@@ -155,6 +161,10 @@ func (a *attacher) attachInputs(v *vertex.Vertex, vid *vertex.WrappedTx, parasit
 	}
 	if allInputsValidated {
 		v.SetFlagUp(vertex.FlagAllInputsSolid)
+		if !v.Tx.IsSequencerMilestone() {
+			// poke all other which are waiting for this non-sequencer tx. If sequencer tx, it will poke other upon finalization
+			a.env.PokeAllWith(vid)
+		}
 	} else {
 		a.tracef("attachInputs: not solid: in %s:\n%s", v.Tx.IDShortString(), linesSelectedInputs(v.Tx, notSolid).String())
 	}
@@ -271,6 +281,8 @@ func (a *attacher) attachOutput(wOut vertex.WrappedOutput, parasiticChainHorizon
 		},
 		VirtualTx: func(v *vertex.VirtualTransaction) {
 			a.env.Pull(wOut.VID.ID)
+			// ask environment to poke when transaction arrive
+			a.pokeMe(wOut.VID)
 		},
 	})
 	if !ok {
