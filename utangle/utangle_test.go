@@ -496,7 +496,7 @@ func TestConflictsNAttachers(t *testing.T) {
 		submitted := make([]*vertex.WrappedTx, nChains)
 		wg.Add(len(testData.seqChain))
 		for i, seqChain := range testData.seqChain {
-			submitted[i], err = attacher.AttachTransactionFromBytes(seqChain[0], testData.wrk, attacher.OptionWithFinalizationCallback(func(vid *vertex.WrappedTx) {
+			submitted[i], err = attacher.AttachTransactionFromBytes(seqChain[0].Bytes(), testData.wrk, attacher.OptionWithFinalizationCallback(func(vid *vertex.WrappedTx) {
 				wg.Done()
 			}))
 			require.NoError(t, err)
@@ -533,7 +533,7 @@ func TestConflictsNAttachers(t *testing.T) {
 		submittedSeq := make([]*vertex.WrappedTx, nChains)
 		wg.Add(len(testData.seqChain))
 		for i, seqChain := range testData.seqChain {
-			submittedSeq[i], err = attacher.AttachTransactionFromBytes(seqChain[0], testData.wrk, attacher.OptionWithFinalizationCallback(func(vid *vertex.WrappedTx) {
+			submittedSeq[i], err = attacher.AttachTransactionFromBytes(seqChain[0].Bytes(), testData.wrk, attacher.OptionWithFinalizationCallback(func(vid *vertex.WrappedTx) {
 				wg.Done()
 			}))
 			require.NoError(t, err)
@@ -585,7 +585,7 @@ func TestConflictsNAttachers(t *testing.T) {
 		chainIn := make([]*core.OutputWithChainID, len(testData.seqChain))
 		var ts core.LogicalTime
 		for seqNr := range testData.seqChain {
-			tx, _ := transaction.FromBytes(testData.seqChain[seqNr][0], transaction.MainTxValidationOptions...)
+			tx := testData.seqChain[seqNr][0]
 			o := tx.MustProducedOutputWithIDAt(tx.SequencerTransactionData().SequencerOutputIndex)
 			chainIn[seqNr] = o.MustAsChainOutput()
 			ts = core.MaxLogicalTime(ts, o.Timestamp())
@@ -645,7 +645,7 @@ func TestConflictsNAttachers(t *testing.T) {
 		chainIn := make([]*core.OutputWithChainID, len(testData.seqChain))
 		var ts core.LogicalTime
 		for seqNr := range testData.seqChain {
-			tx, _ := transaction.FromBytes(testData.seqChain[seqNr][0], transaction.MainTxValidationOptions...)
+			tx := testData.seqChain[seqNr][0]
 			o := tx.MustProducedOutputWithIDAt(tx.SequencerTransactionData().SequencerOutputIndex)
 			chainIn[seqNr] = o.MustAsChainOutput()
 			ts = core.MaxLogicalTime(ts, o.Timestamp())
@@ -706,7 +706,7 @@ func TestConflictsNAttachers(t *testing.T) {
 		chainIn := make([]*core.OutputWithChainID, len(testData.seqChain))
 		var ts core.LogicalTime
 		for seqNr := range testData.seqChain {
-			tx, _ := transaction.FromBytes(testData.seqChain[seqNr][0], transaction.MainTxValidationOptions...)
+			tx := testData.seqChain[seqNr][0]
 			o := tx.MustProducedOutputWithIDAt(tx.SequencerTransactionData().SequencerOutputIndex)
 			chainIn[seqNr] = o.MustAsChainOutput()
 			ts = core.MaxLogicalTime(ts, o.Timestamp())
@@ -770,12 +770,14 @@ func TestSeqChains(t *testing.T) {
 		const (
 			nConflicts            = 2
 			nChains               = 2
-			howLongConflictChains = 2 // 97 fails when crosses slot boundary
+			howLongConflictChains = 2  // 97 fails when crosses slot boundary
+			howLongSeqChains      = 93 // 94 TODO
 			pullYN                = true
 		)
 
 		testData := initLongConflictTestData(t, nConflicts, nChains, howLongConflictChains)
 		testData.makeSeqBeginnings(true)
+		testData.makeSeqChains(howLongSeqChains)
 		testData.printTxIDs()
 
 		if pullYN {

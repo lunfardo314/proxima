@@ -3,6 +3,7 @@ package utangle
 import (
 	"context"
 	"crypto/ed25519"
+	"fmt"
 	"testing"
 
 	"github.com/lunfardo314/proxima/core"
@@ -92,7 +93,7 @@ type conflictTestData struct {
 	chainOrigins           []*core.OutputWithChainID
 	pkController           []ed25519.PrivateKey
 	chainOriginsTx         *transaction.Transaction
-	seqChain               [][][]byte
+	seqChain               [][]*transaction.Transaction
 }
 
 func initConflictTest(t *testing.T, nConflicts int, nChains int, targetLockChain bool) *conflictTestData {
@@ -246,7 +247,7 @@ func (td *conflictTestData) makeChainOrigins(n int) {
 
 func (td *longConflictTestData) makeSeqBeginnings(withConflictingFees bool) {
 	util.Assertf(len(td.chainOrigins) == len(td.conflictingOutputs), "td.chainOrigins)==len(td.conflictingOutputs)")
-	td.seqChain = make([][][]byte, len(td.chainOrigins))
+	td.seqChain = make([][]*transaction.Transaction, len(td.chainOrigins))
 	var additionalIn []*core.OutputWithID
 	for i, chainOrigin := range td.chainOrigins {
 		var ts core.LogicalTime
@@ -258,7 +259,7 @@ func (td *longConflictTestData) makeSeqBeginnings(withConflictingFees bool) {
 			ts = chainOrigin.Timestamp()
 		}
 		ts = ts.AddTicks(core.TransactionPaceInTicks)
-		td.seqChain[i] = make([][]byte, 0)
+		td.seqChain[i] = make([]*transaction.Transaction, 0)
 		txBytes, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
 			SeqName:          "1",
 			ChainInput:       chainOrigin,
@@ -268,7 +269,29 @@ func (td *longConflictTestData) makeSeqBeginnings(withConflictingFees bool) {
 			AdditionalInputs: additionalIn,
 		})
 		require.NoError(td.t, err)
-		td.seqChain[i] = append(td.seqChain[i], txBytes)
+		tx, err := transaction.FromBytes(txBytes, transaction.MainTxValidationOptions...)
+		require.NoError(td.t, err)
+		td.seqChain[i] = append(td.seqChain[i], tx)
+	}
+}
+
+func (td *longConflictTestData) makeSeqChains(howLong int) {
+	for i := 0; i < howLong; i++ {
+		for seqNr := range td.seqChain {
+			endorsedSeqNr := (seqNr + 1) % len(td.seqChain)
+			endorse := td.seqChain[endorsedSeqNr][i].ID()
+			txBytes, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
+				SeqName:      fmt.Sprintf("seq%d", i),
+				ChainInput:   td.seqChain[seqNr][i].SequencerOutput().MustAsChainOutput(),
+				StemInput:    nil,
+				Timestamp:    td.seqChain[seqNr][i].Timestamp().AddTicks(core.TransactionPaceInTicks),
+				Endorsements: util.List(endorse),
+				PrivateKey:   td.privKeyAux,
+			})
+			require.NoError(td.t, err)
+			tx, err := transaction.FromBytes(txBytes, transaction.MainTxValidationOptions...)
+			td.seqChain[seqNr] = append(td.seqChain[seqNr], tx)
+		}
 	}
 }
 
@@ -330,17 +353,31 @@ func initLongConflictTestData(t *testing.T, nConflicts int, nChains int, howLong
 	return ret
 }
 
-func (td *longConflictTestData) storeTransactions(txBytesMulti ...[]byte) {
+func (td *longConflictTestData) storeTxBytes(txBytesMulti ...[]byte) {
 	for _, txBytes := range txBytesMulti {
 		err := td.wrk.txBytesStore.SaveTxBytes(txBytes)
 		require.NoError(td.t, err)
 	}
 }
 
-func (td *longConflictTestData) attachTransactions(txBytesMulti ...[]byte) {
+func (td *longConflictTestData) storeTransactions(txs ...*transaction.Transaction) {
+	txBytes := make([][]byte, len(txs))
+	for i, tx := range txs {
+		txBytes[i] = tx.Bytes()
+	}
+	td.storeTxBytes(txBytes...)
+}
+
+func (td *longConflictTestData) attachTxBytes(txBytesMulti ...[]byte) {
 	for _, txBytes := range txBytesMulti {
 		_, err := attacher.AttachTransactionFromBytes(txBytes, td.wrk)
 		require.NoError(td.t, err)
+	}
+}
+
+func (td *longConflictTestData) attachTransactions(txs ...*transaction.Transaction) {
+	for _, tx := range txs {
+		attacher.AttachTransaction(tx, td.wrk)
 	}
 }
 
@@ -348,9 +385,9 @@ func (td *longConflictTestData) txBytesToStore() {
 	err := td.txStore.SaveTxBytes(td.chainOriginsTx.Bytes())
 	require.NoError(td.t, err)
 
-	td.storeTransactions(td.txBytes...)
+	td.storeTxBytes(td.txBytes...)
 	for _, txSeq := range td.txSequences {
-		td.storeTransactions(txSeq...)
+		td.storeTxBytes(txSeq...)
 	}
 }
 
@@ -358,9 +395,9 @@ func (td *longConflictTestData) txBytesAttach() {
 	_, err := attacher.AttachTransactionFromBytes(td.chainOriginsTx.Bytes(), td.wrk)
 	require.NoError(td.t, err)
 
-	td.attachTransactions(td.txBytes...)
+	td.attachTxBytes(td.txBytes...)
 	for _, txSeq := range td.txSequences {
-		td.attachTransactions(txSeq...)
+		td.attachTxBytes(txSeq...)
 	}
 }
 
@@ -379,7 +416,6 @@ func (td *longConflictTestData) printTxIDs() {
 	}
 	td.t.Logf("Sequencer start txes:")
 	for i, seqChain := range td.seqChain {
-		txid, _, _ := transaction.IDAndTimestampFromTransactionBytes(seqChain[0])
-		td.t.Logf("      %2d : %s", i, txid.StringShort())
+		td.t.Logf("      %2d : %s", i, seqChain[0].IDShortString())
 	}
 }
