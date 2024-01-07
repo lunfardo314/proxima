@@ -56,13 +56,19 @@ func (w *testingWorkflow) Pull(txid core.TransactionID) {
 	}()
 }
 
+const tracePoking = false
+
 func (w *testingWorkflow) PokeMe(me, with *vertex.WrappedTx) {
-	w.log.Infof("poke me %s with %s", me.IDShortString(), with.IDShortString())
+	if tracePoking {
+		w.log.Infof("poke me %s with %s", me.IDShortString(), with.IDShortString())
+	}
 	w.poker.PokeMe(me, with)
 }
 
 func (w *testingWorkflow) PokeAllWith(wanted *vertex.WrappedTx) {
-	w.log.Infof("poke all with %s", wanted.IDShortString())
+	if tracePoking {
+		w.log.Infof("poke all with %s", wanted.IDShortString())
+	}
 	w.poker.PokeAllWith(wanted)
 }
 
@@ -290,6 +296,7 @@ func (td *longConflictTestData) makeSeqChains(howLong int) {
 			})
 			require.NoError(td.t, err)
 			tx, err := transaction.FromBytes(txBytes, transaction.MainTxValidationOptions...)
+			require.NoError(td.t, err)
 			td.seqChain[seqNr] = append(td.seqChain[seqNr], tx)
 		}
 	}
@@ -414,8 +421,11 @@ func (td *longConflictTestData) printTxIDs() {
 			td.t.Logf("      %2d : %s", j, txid.StringShort())
 		}
 	}
-	td.t.Logf("Sequencer start txes:")
+	td.t.Logf("-------------- Sequencer chains-----------")
 	for i, seqChain := range td.seqChain {
-		td.t.Logf("      %2d : %s", i, seqChain[0].IDShortString())
+		td.t.Logf("seq chain #%d, len = %d", i, len(seqChain))
+		for j, tx := range seqChain {
+			td.t.Logf("       %2d : %s", j, tx.IDShortString())
+		}
 	}
 }

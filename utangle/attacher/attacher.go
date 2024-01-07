@@ -53,6 +53,7 @@ type (
 		closeOnce             sync.Once
 		pokeChan              chan *vertex.WrappedTx
 		pokeMutex             sync.Mutex
+		stats                 *attachStats
 		closed                bool
 		flags                 uint8
 	}
@@ -64,6 +65,13 @@ type (
 		calledBy             string
 	}
 	Option func(*_attacherOptions)
+
+	attachStats struct {
+		coverage          multistate.LedgerCoverage
+		numTransactions   int
+		numCreatedOutputs int
+		numDeletedOutputs int
+	}
 )
 
 const (
@@ -171,8 +179,9 @@ func AttachTransaction(tx *transaction.Transaction, env AttachEnvironment, opts 
 		// full vertex will be ignored, virtual tx will be converted into full vertex and attacher started, if necessary
 		VirtualTx: func(v *vertex.VirtualTransaction) {
 			vid.ConvertVirtualTxToVertexNoLock(vertex.New(tx))
+			env.PokeAllWith(vid)
 			if !vid.IsSequencerMilestone() {
-				env.PokeAllWith(vid)
+				//env.PokeAllWith(vid)
 				return
 			}
 			// starts attacher goroutine for each sequencer transaction
@@ -186,15 +195,10 @@ func AttachTransaction(tx *transaction.Transaction, env AttachEnvironment, opts 
 			}
 
 			runFun := func() {
-				status, err := runAttacher(vid, env, ctx)
+				status, stats, err := runAttacher(vid, env, ctx)
 				vid.SetTxStatus(status)
 				vid.SetReason(err)
-				reasonStr := ""
-				if err != nil {
-					reasonStr = fmt.Sprintf(" reason = '%v'", err)
-				}
-				env.Log().Infof("attach sequencer transaction %s -> %s%s",
-					vid.ID.StringShort(), status.String(), reasonStr)
+				env.Log().Info(logFinalStatusString(vid, stats))
 				env.PokeAllWith(vid)
 				callback(vid)
 			}
@@ -210,7 +214,7 @@ func AttachTransaction(tx *transaction.Transaction, env AttachEnvironment, opts 
 	return
 }
 
-func runAttacher(vid *vertex.WrappedTx, env AttachEnvironment, ctx context.Context) (vertex.Status, error) {
+func runAttacher(vid *vertex.WrappedTx, env AttachEnvironment, ctx context.Context) (vertex.Status, *attachStats, error) {
 	a := newAttacher(vid, env, ctx)
 	defer func() {
 		go a.close()
@@ -223,7 +227,7 @@ func runAttacher(vid *vertex.WrappedTx, env AttachEnvironment, ctx context.Conte
 	status := a.solidifyBaselineState()
 	if status == vertex.Bad {
 		a.tracef("baseline solidification failed. Reason: %v", a.vid.GetReason())
-		return vertex.Bad, a.reason
+		return vertex.Bad, nil, a.reason
 	}
 
 	util.Assertf(a.baselineBranch != nil, "a.baselineBranch != nil")
@@ -234,7 +238,7 @@ func runAttacher(vid *vertex.WrappedTx, env AttachEnvironment, ctx context.Conte
 	status = a.solidifyPastCone()
 	if status != vertex.Good {
 		a.tracef("past cone solidification failed. Reason: %v", a.vid.GetReason())
-		return vertex.Bad, a.reason
+		return vertex.Bad, nil, a.reason
 	}
 
 	a.tracef("past cone OK")
@@ -243,7 +247,7 @@ func runAttacher(vid *vertex.WrappedTx, env AttachEnvironment, ctx context.Conte
 
 	a.finalize()
 	a.vid.SetTxStatus(vertex.Good)
-	return vertex.Good, nil
+	return vertex.Good, a.stats, nil
 }
 
 // AttachTransactionFromBytes used for testing
@@ -292,6 +296,7 @@ func newAttacher(vid *vertex.WrappedTx, env AttachEnvironment, ctx context.Conte
 		rooted:                make(map[*vertex.WrappedTx]set.Set[byte]),
 		validPastVertices:     set.New[*vertex.WrappedTx](),
 		undefinedPastVertices: set.New[*vertex.WrappedTx](),
+		stats:                 &attachStats{},
 	}
 	ret.vid.OnPoke(func(withVID *vertex.WrappedTx) {
 		ret._doPoke(withVID)
@@ -315,6 +320,27 @@ func (a *attacher) lazyRepeat(fun func() vertex.Status) vertex.Status {
 			a.tracef("periodic check")
 		}
 	}
+}
+
+func logFinalStatusString(vid *vertex.WrappedTx, stats *attachStats) string {
+	var msg string
+
+	status := vid.GetTxStatus()
+	if vid.IsBranchTransaction() {
+		msg = fmt.Sprintf("ATTACH BRANCH (%s) %s", status.String(), vid.IDShortString())
+	} else {
+		msg = fmt.Sprintf("ATTACH SEQ TX (%s) %s", status.String(), vid.IDShortString())
+	}
+	if status == vertex.Bad {
+		msg += fmt.Sprintf(" reason = '%v'", vid.GetReason())
+	} else {
+		if vid.IsBranchTransaction() {
+			msg += fmt.Sprintf(" transactions: %d, outputs +%d/-%d, coverage: %s", stats.numTransactions, stats.numCreatedOutputs, stats.numDeletedOutputs, stats.coverage.String())
+		} else {
+			msg += fmt.Sprintf(" transactions: %d, coverage: %s", stats.numTransactions, stats.coverage.String())
+		}
+	}
+	return msg
 }
 
 func (a *attacher) baselineStateReader() multistate.SugaredStateReader {

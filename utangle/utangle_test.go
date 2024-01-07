@@ -765,32 +765,39 @@ func TestConflictsNAttachers(t *testing.T) {
 }
 
 func TestSeqChains(t *testing.T) {
-	t.Run("1", func(t *testing.T) {
+	t.Run("no pull", func(t *testing.T) {
 		//attacher.SetTraceOn()
 		const (
-			nConflicts            = 2
-			nChains               = 2
+			nConflicts            = 5
+			nChains               = 5
 			howLongConflictChains = 2  // 97 fails when crosses slot boundary
-			howLongSeqChains      = 93 // 94 TODO
-			pullYN                = true
+			howLongSeqChains      = 10 // 95 fails
 		)
 
 		testData := initLongConflictTestData(t, nConflicts, nChains, howLongConflictChains)
-		testData.makeSeqBeginnings(true)
+		testData.makeSeqBeginnings(false)
 		testData.makeSeqChains(howLongSeqChains)
 		testData.printTxIDs()
 
-		if pullYN {
-			testData.txBytesToStore()
-			for seqNr := range testData.seqChain {
-				testData.storeTransactions(testData.seqChain[seqNr]...)
-			}
-		} else {
-			testData.txBytesAttach()
-			for seqNr := range testData.seqChain {
-				testData.attachTransactions(testData.seqChain[seqNr]...)
+		var wg sync.WaitGroup
+
+		testData.txBytesAttach()
+		vids := make([][]*vertex.WrappedTx, len(testData.seqChain))
+		for seqNr, txSequence := range testData.seqChain {
+			vids[seqNr] = make([]*vertex.WrappedTx, len(txSequence))
+			for i, tx := range txSequence {
+				wg.Add(1)
+				vids[seqNr][i] = attacher.AttachTransaction(tx, testData.wrk, attacher.OptionWithFinalizationCallback(func(vid *vertex.WrappedTx) {
+					wg.Done()
+				}))
 			}
 		}
-
+		wg.Wait()
+		testData.logDAGInfo()
+		for _, txSequence := range vids {
+			for _, vid := range txSequence {
+				require.EqualValues(t, vertex.Good.String(), vid.GetTxStatus().String())
+			}
+		}
 	})
 }

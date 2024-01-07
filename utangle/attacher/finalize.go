@@ -12,21 +12,21 @@ func (a *attacher) finalize() {
 	a.tracef("finalize")
 
 	if a.vid.IsBranchTransaction() {
-		coverage := a.commitBranch()
-		a.vid.SetLedgerCoverage(coverage)
+		a.commitBranch()
+		a.vid.SetLedgerCoverage(a.stats.coverage)
 		a.env.WithGlobalWriteLock(func() {
 			a.env.AddBranchNoLock(a.vid)
 		})
 		a.env.EvidenceBookedBranch(&a.vid.ID, a.vid.MustSequencerID())
 		a.tracef("finalized branch")
 	} else {
-		coverage := a.calculateCoverage()
-		a.vid.SetLedgerCoverage(coverage)
+		a.calculateSequencerTxStats()
+		a.vid.SetLedgerCoverage(a.stats.coverage)
 		a.tracef("finalized sequencer milestone")
 	}
 }
 
-func (a *attacher) commitBranch() multistate.LedgerCoverage {
+func (a *attacher) commitBranch() {
 	util.Assertf(a.vid.IsBranchTransaction(), "a.vid.IsBranchTransaction()")
 
 	muts := multistate.NewMutations()
@@ -39,16 +39,19 @@ func (a *attacher) commitBranch() multistate.LedgerCoverage {
 			out := vid.MustOutputWithIDAt(idx)
 			coverageDelta += out.Output.Amount()
 			muts.InsertDelOutputMutation(out.ID)
+			a.stats.numDeletedOutputs++
 		}
 	}
 	// generate ADD TX and ADD OUTPUT mutations
 	for vid := range a.validPastVertices {
 		muts.InsertAddTxMutation(vid.ID, a.vid.TimeSlot())
+		a.stats.numTransactions++
 
 		// ADD OUTPUT mutations only for not consumed outputs
 		producedOutputIndices := vid.NotConsumedOutputIndices(a.validPastVertices)
 		for _, idx := range producedOutputIndices {
 			muts.InsertAddOutputMutation(vid.OutputID(idx), vid.MustOutputAt(idx))
+			a.stats.numCreatedOutputs++
 		}
 	}
 
@@ -56,9 +59,8 @@ func (a *attacher) commitBranch() multistate.LedgerCoverage {
 
 	seqID, stemOID := a.vid.MustSequencerIDAndStemID()
 	upd := multistate.MustNewUpdatable(a.env.StateStore(), a.baselineStateReader().Root())
-	coverage := a.ledgerCoverage(coverageDelta)
-	upd.MustUpdate(muts, &stemOID, &seqID, coverage)
-	return coverage
+	a.stats.coverage = a.ledgerCoverage(coverageDelta)
+	upd.MustUpdate(muts, &stemOID, &seqID, a.stats.coverage)
 }
 
 func (a *attacher) ledgerCoverage(coverageDelta uint64) multistate.LedgerCoverage {
@@ -72,7 +74,7 @@ func (a *attacher) ledgerCoverage(coverageDelta uint64) multistate.LedgerCoverag
 	return prevCoverage.MakeNext(int(a.vid.TimeSlot())-int(a.baselineBranch.TimeSlot())+1, coverageDelta)
 }
 
-func (a *attacher) calculateCoverage() multistate.LedgerCoverage {
+func (a *attacher) calculateSequencerTxStats() {
 	coverageDelta := uint64(0)
 
 	for vid, consumed := range a.rooted {
@@ -81,7 +83,9 @@ func (a *attacher) calculateCoverage() multistate.LedgerCoverage {
 			coverageDelta += vid.MustOutputAt(idx).Amount()
 		}
 	}
-	return a.ledgerCoverage(coverageDelta)
+	a.stats.numTransactions = len(a.validPastVertices)
+	a.stats.numCreatedOutputs = len(a.rooted)
+	a.stats.coverage = a.ledgerCoverage(coverageDelta)
 }
 
 func (a *attacher) checkPastConeVerticesConsistent() (err error) {
