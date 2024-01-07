@@ -2,17 +2,20 @@ package poker
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	"github.com/lunfardo314/proxima/utangle/vertex"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/consumer"
+	"go.uber.org/zap"
 )
 
 type (
 	Poker struct {
-		consumer.Consumer[Cmd]
-		m map[*vertex.WrappedTx]waitingList
+		*consumer.Consumer[Cmd]
+		m      map[*vertex.WrappedTx]waitingList
+		stopWG sync.WaitGroup
 	}
 
 	waitingList struct {
@@ -36,8 +39,16 @@ const (
 )
 
 func NewPoker(ctx context.Context) *Poker {
-	ret := &Poker{m: make(map[*vertex.WrappedTx]waitingList)}
+	ret := &Poker{
+		Consumer: consumer.NewConsumer[Cmd]("poke", zap.InfoLevel, nil),
+		m:        make(map[*vertex.WrappedTx]waitingList),
+	}
 	ret.AddOnConsume(ret.consume)
+	go func() {
+		ret.Log().Infof("starting..")
+		ret.stopWG.Add(1)
+		ret.Run()
+	}()
 	go ret.periodicLoop(ctx)
 	return ret
 }
@@ -106,6 +117,10 @@ func (c *Poker) periodicLoop(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
+			c.Log().Infof("stopping..")
+			_ = c.Log().Sync()
+			c.Stop()
+			c.stopWG.Done()
 			return
 		case <-time.After(loopPeriod):
 		}
@@ -126,4 +141,8 @@ func (c *Poker) PokeAllWith(vid *vertex.WrappedTx) {
 		Wanted: vid,
 		Cmd:    CommandPokeAll,
 	})
+}
+
+func (c *Poker) WaitStop() {
+	c.stopWG.Wait()
 }
