@@ -145,7 +145,7 @@ func initConflictTest(t *testing.T, nConflicts int, nChains int, targetLockChain
 	err = ret.txStore.SaveTxBytes(txBytes)
 	require.NoError(t, err)
 
-	ret.distributionBranchTx, err = transaction.FromBytes(txBytes)
+	ret.distributionBranchTx, err = transaction.FromBytes(txBytes, transaction.MainTxValidationOptions...)
 	require.NoError(t, err)
 	ret.distributionBranchTxID = *ret.distributionBranchTx.ID()
 
@@ -309,25 +309,25 @@ func (td *longConflictTestData) makeSeqChains(howLong int) {
 	}
 }
 
-func (td *longConflictTestData) makeSlotTransactions(howLongChain int, extendBegin []*transaction.Transaction, prevBranch *transaction.Transaction) ([][]*transaction.Transaction, *transaction.Transaction) {
+func (td *longConflictTestData) makeSlotTransactions(howLongChain int, extendBegin []*transaction.Transaction) [][]*transaction.Transaction {
 	ret := make([][]*transaction.Transaction, len(extendBegin))
 	var extend *core.OutputWithChainID
 	var endorse *core.TransactionID
 	var ts core.LogicalTime
-	// FIXME transpose otherwise not possible to endorse
-	for seqNr := range ret {
-		ret[seqNr] = make([]*transaction.Transaction, howLongChain)
-		for i := 0; i < howLongChain; i++ {
+
+	for i := 0; i < howLongChain; i++ {
+		for seqNr := range ret {
 			if i == 0 {
+				ret[seqNr] = make([]*transaction.Transaction, 0)
 				extend = extendBegin[seqNr].SequencerOutput().MustAsChainOutput()
-				endorse = prevBranch.ID()
+				endorseIdx := (seqNr + 1) % len(extendBegin)
+				endorse = extendBegin[endorseIdx].ID()
 			} else {
 				extend = ret[seqNr][i-1].SequencerOutput().MustAsChainOutput()
 				endorseIdx := (seqNr + 1) % len(extendBegin)
 				endorse = ret[endorseIdx][i-1].ID()
 			}
 			ts = core.MaxLogicalTime(endorse.Timestamp(), extend.Timestamp()).AddTicks(core.TransactionPaceInTicks)
-			require.True(td.t, ts.TimeSlot() == extendBegin[seqNr].TimeSlot())
 
 			txBytes, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
 				SeqName:      fmt.Sprintf("seq%d", i),
@@ -337,25 +337,30 @@ func (td *longConflictTestData) makeSlotTransactions(howLongChain int, extendBeg
 				PrivateKey:   td.privKeyAux,
 			})
 			require.NoError(td.t, err)
-			ret[seqNr][i], err = transaction.FromBytes(txBytes, transaction.MainTxValidationOptions...)
+			tx, err := transaction.FromBytes(txBytes, transaction.MainTxValidationOptions...)
 			require.NoError(td.t, err)
+			ret[seqNr] = append(ret[seqNr], tx)
 		}
 	}
 
-	extend = ret[0][howLongChain-1].SequencerOutput().MustAsChainOutput()
-	ts = extend.Timestamp().NextTimeSlotBoundary()
+	return ret
+}
+
+func (td *longConflictTestData) makeBranch(extend *core.OutputWithChainID, prevBranch *transaction.Transaction) *transaction.Transaction {
+	td.t.Logf("extendTS: %s, prevBranchTS: %s", extend.Timestamp().String(), prevBranch.Timestamp().String())
+	require.True(td.t, extend.Timestamp().After(prevBranch.Timestamp()))
+
 	txBytesBranch, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
 		SeqName:    "seq0",
 		ChainInput: extend,
 		StemInput:  prevBranch.StemOutput(),
-		Timestamp:  ts,
+		Timestamp:  extend.Timestamp().NextTimeSlotBoundary(),
 		PrivateKey: td.privKeyAux,
 	})
 	require.NoError(td.t, err)
-	retBranch, err := transaction.FromBytes(txBytesBranch)
+	tx, err := transaction.FromBytes(txBytesBranch)
 	require.NoError(td.t, err)
-
-	return ret, retBranch
+	return tx
 }
 
 func (td *conflictTestData) logDAGInfo() {

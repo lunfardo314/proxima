@@ -980,21 +980,24 @@ func TestSeqChains(t *testing.T) {
 
 		var prevBranch *transaction.Transaction
 		for branchNr := range branches {
+			extend = make([]*transaction.Transaction, nChains)
 			if branchNr == 0 {
 				prevBranch = testData.distributionBranchTx
-				extend = make([]*transaction.Transaction, nChains)
 				for i := range extend {
 					extend[i] = testData.seqChain[i][0]
 				}
 			} else {
 				prevBranch = branches[branchNr-1]
-				extend = make([]*transaction.Transaction, nChains)
-				for i := range slotTransactions[branchNr-1] {
-					extend[i] = slotTransactions[branchNr-1][i][len(slotTransactions[branchNr-1][i])-1]
+				for i := range extend {
+					lastIdx := len(slotTransactions[branchNr-1][i]) - 1
+					extend[i] = slotTransactions[branchNr-1][i][lastIdx]
 				}
-
 			}
-			slotTransactions[branchNr], branches[branchNr] = testData.makeSlotTransactions(howLongSeqChains, extend, prevBranch)
+			slotTransactions[branchNr] = testData.makeSlotTransactions(howLongSeqChains, extend)
+			extendSeqIdx := branchNr % nChains
+			lastInChain := len(slotTransactions[branchNr][extendSeqIdx]) - 1
+			extendOut := slotTransactions[branchNr][extendSeqIdx][lastInChain].SequencerOutput().MustAsChainOutput()
+			branches[branchNr] = testData.makeBranch(extendOut, prevBranch)
 		}
 
 		//testData.logDAGInfo()
