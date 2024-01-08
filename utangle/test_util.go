@@ -42,8 +42,12 @@ func newTestingWorkflow(txBytesStore global.TxBytesStore, dag *dag.DAG, ctx cont
 	}
 }
 
+const tracePull = false
+
 func (w *testingWorkflow) Pull(txid core.TransactionID) {
-	w.log.Infof("pull request %s", txid.StringShort())
+	if tracePull {
+		w.log.Infof("pull request %s", txid.StringShort())
+	}
 	go func() {
 		txBytes := w.txBytesStore.GetTxBytes(&txid)
 		if len(txBytes) == 0 {
@@ -51,7 +55,9 @@ func (w *testingWorkflow) Pull(txid core.TransactionID) {
 		}
 		tx, err := transaction.FromBytes(txBytes, transaction.MainTxValidationOptions...)
 		util.AssertNoError(err, "transaction.FromBytes")
-		w.log.Infof("pull send %s", txid.StringShort())
+		if tracePull {
+			w.log.Infof("pull send %s", txid.StringShort())
+		}
 		attacher.AttachTransaction(tx, w)
 	}()
 }

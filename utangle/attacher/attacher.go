@@ -56,6 +56,7 @@ type (
 		stats                 *attachStats
 		closed                bool
 		flags                 uint8
+		forceTrace1Ahead      bool
 	}
 	_attacherOptions struct {
 		ctx                  context.Context
@@ -314,9 +315,11 @@ func (a *attacher) lazyRepeat(fun func() vertex.Status) vertex.Status {
 			return vertex.Undefined
 		case withVID := <-a.pokeChan:
 			if withVID != nil {
+				//a.trace1Ahead()
 				a.tracef("poked with %s", withVID.IDShortString)
 			}
 		case <-time.After(periodicCheckEach):
+			//a.trace1Ahead()
 			a.tracef("periodic check")
 		}
 	}
@@ -406,10 +409,15 @@ func SetTraceOn() {
 	trace = true
 }
 
+func (a *attacher) trace1Ahead() {
+	a.forceTrace1Ahead = true
+}
+
 func (a *attacher) tracef(format string, lazyArgs ...any) {
-	if trace {
+	if trace || a.forceTrace1Ahead {
 		format1 := "TRACE [attacher] " + a.vid.IDShortString() + ": " + format
 		a.env.Log().Infof(format1, util.EvalLazyArgs(lazyArgs...)...)
+		a.forceTrace1Ahead = false
 	}
 }
 

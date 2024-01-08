@@ -131,10 +131,7 @@ func (a *attacher) attachEndorsements(v *vertex.Vertex, vid *vertex.WrappedTx, p
 			allGood = false
 
 			// ask environment to poke this attacher whenever something change with vidEndorsed
-			vidEndorsed.Unwrap(vertex.UnwrapOptions{VirtualTx: func(_ *vertex.VirtualTransaction) {
-				a.pokeMe(vidEndorsed)
-			}})
-
+			a.pokeMe(vidEndorsed)
 		}
 	}
 	if allGood {
@@ -277,6 +274,8 @@ func (a *attacher) attachOutput(wOut vertex.WrappedOutput, parasiticChainHorizon
 			if !wOut.VID.ID.IsSequencerMilestone() || status == vertex.Good {
 				// on seq inputs only go deeper if tx is good
 				ok = a.attachVertex(v, wOut.VID, parasiticChainHorizon, visited) // >>>>>>> recursion
+			} else {
+				a.pokeMe(wOut.VID)
 			}
 		},
 		VirtualTx: func(v *vertex.VirtualTransaction) {

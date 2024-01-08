@@ -765,7 +765,7 @@ func TestConflictsNAttachers(t *testing.T) {
 }
 
 func TestSeqChains(t *testing.T) {
-	t.Run("no pull", func(t *testing.T) {
+	t.Run("no pull order normal", func(t *testing.T) {
 		//attacher.SetTraceOn()
 		const (
 			nConflicts            = 5
@@ -799,5 +799,118 @@ func TestSeqChains(t *testing.T) {
 				require.EqualValues(t, vertex.Good.String(), vid.GetTxStatus().String())
 			}
 		}
+	})
+	t.Run("no pull transposed", func(t *testing.T) {
+		//attacher.SetTraceOn()
+		const (
+			nConflicts            = 5
+			nChains               = 5
+			howLongConflictChains = 2  // 97 fails when crosses slot boundary
+			howLongSeqChains      = 10 // 95 fails
+		)
+
+		testData := initLongConflictTestData(t, nConflicts, nChains, howLongConflictChains)
+		testData.makeSeqBeginnings(false)
+		testData.makeSeqChains(howLongSeqChains)
+		testData.printTxIDs()
+
+		var wg sync.WaitGroup
+
+		testData.txBytesAttach()
+		vids := make([][]*vertex.WrappedTx, len(testData.seqChain))
+
+		seqlen := len(testData.seqChain[0])
+		for seqNr := range testData.seqChain {
+			vids[seqNr] = make([]*vertex.WrappedTx, seqlen)
+		}
+		for i := 0; i < seqlen; i++ {
+			for seqNr, txSequence := range testData.seqChain {
+				wg.Add(1)
+				vids[seqNr][i] = attacher.AttachTransaction(txSequence[i], testData.wrk, attacher.OptionWithFinalizationCallback(func(vid *vertex.WrappedTx) {
+					wg.Done()
+				}))
+			}
+		}
+		wg.Wait()
+		testData.logDAGInfo()
+		for _, txSequence := range vids {
+			for _, vid := range txSequence {
+				require.EqualValues(t, vertex.Good.String(), vid.GetTxStatus().String())
+			}
+		}
+	})
+	t.Run("no pull reverse", func(t *testing.T) {
+		//attacher.SetTraceOn()
+		const (
+			nConflicts            = 5
+			nChains               = 5
+			howLongConflictChains = 2  // 97 fails when crosses slot boundary
+			howLongSeqChains      = 10 // 95 fails
+		)
+
+		testData := initLongConflictTestData(t, nConflicts, nChains, howLongConflictChains)
+		testData.makeSeqBeginnings(false)
+		testData.makeSeqChains(howLongSeqChains)
+		testData.printTxIDs()
+
+		var wg sync.WaitGroup
+
+		testData.txBytesAttach()
+		vids := make([][]*vertex.WrappedTx, len(testData.seqChain))
+		for seqNr, txSequence := range testData.seqChain {
+			vids[seqNr] = make([]*vertex.WrappedTx, len(txSequence))
+			for i := len(txSequence) - 1; i >= 0; i-- {
+				wg.Add(1)
+				vids[seqNr][i] = attacher.AttachTransaction(txSequence[i], testData.wrk, attacher.OptionWithFinalizationCallback(func(vid *vertex.WrappedTx) {
+					wg.Done()
+				}))
+			}
+		}
+		wg.Wait()
+		testData.logDAGInfo()
+		for _, txSequence := range vids {
+			for _, vid := range txSequence {
+				require.EqualValues(t, vertex.Good.String(), vid.GetTxStatus().String())
+			}
+		}
+	})
+	t.Run("with pull", func(t *testing.T) {
+		//attacher.SetTraceOn()
+		const (
+			nConflicts            = 10
+			nChains               = 10
+			howLongConflictChains = 2  // 97 fails when crosses slot boundary
+			howLongSeqChains      = 90 // 95 fails
+		)
+
+		testData := initLongConflictTestData(t, nConflicts, nChains, howLongConflictChains)
+		testData.makeSeqBeginnings(false)
+		testData.makeSeqChains(howLongSeqChains)
+		//testData.printTxIDs()
+
+		var wg sync.WaitGroup
+
+		testData.txBytesAttach()
+		vids := make([]*vertex.WrappedTx, len(testData.seqChain))
+		for seqNr, txSequence := range testData.seqChain {
+			for i, tx := range txSequence {
+				if i < len(txSequence)-1 {
+					err := testData.wrk.txBytesStore.SaveTxBytes(tx.Bytes())
+					require.NoError(t, err)
+				} else {
+					wg.Add(1)
+					vids[seqNr] = attacher.AttachTransaction(tx, testData.wrk, attacher.OptionWithFinalizationCallback(func(vid *vertex.WrappedTx) {
+						wg.Done()
+					}))
+				}
+			}
+		}
+		wg.Wait()
+
+		testData.logDAGInfo()
+		for _, vid := range vids {
+			require.EqualValues(t, vertex.Good.String(), vid.GetTxStatus().String())
+		}
+		testData.wrk.SaveGraph("utangle")
 	})
 }
