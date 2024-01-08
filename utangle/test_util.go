@@ -93,6 +93,7 @@ type conflictTestData struct {
 	bootstrapChainID       core.ChainID
 	originBranchTxid       core.TransactionID
 	distributionBranchTxID core.TransactionID
+	distributionBranchTx   *transaction.Transaction
 	privKey                ed25519.PrivateKey
 	addr                   core.AddressED25519
 	privKeyAux             ed25519.PrivateKey
@@ -144,8 +145,9 @@ func initConflictTest(t *testing.T, nConflicts int, nChains int, targetLockChain
 	err = ret.txStore.SaveTxBytes(txBytes)
 	require.NoError(t, err)
 
-	ret.distributionBranchTxID, _, err = transaction.IDAndTimestampFromTransactionBytes(txBytes)
+	ret.distributionBranchTx, err = transaction.FromBytes(txBytes)
 	require.NoError(t, err)
+	ret.distributionBranchTxID = *ret.distributionBranchTx.ID()
 
 	const printDistributionTx = false
 	if printDistributionTx {
@@ -295,7 +297,6 @@ func (td *longConflictTestData) makeSeqChains(howLong int) {
 			txBytes, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
 				SeqName:      fmt.Sprintf("seq%d", i),
 				ChainInput:   td.seqChain[seqNr][i].SequencerOutput().MustAsChainOutput(),
-				StemInput:    nil,
 				Timestamp:    td.seqChain[seqNr][i].Timestamp().AddTicks(core.TransactionPaceInTicks),
 				Endorsements: util.List(endorse),
 				PrivateKey:   td.privKeyAux,
@@ -306,6 +307,52 @@ func (td *longConflictTestData) makeSeqChains(howLong int) {
 			td.seqChain[seqNr] = append(td.seqChain[seqNr], tx)
 		}
 	}
+}
+
+func (td *longConflictTestData) makeSlotTransactions(howLongChain int, extendBegin []*transaction.Transaction, prevBranch *transaction.Transaction) ([][]*transaction.Transaction, *transaction.Transaction) {
+	ret := make([][]*transaction.Transaction, len(extendBegin))
+	var extend *core.OutputWithChainID
+	var endorse *core.TransactionID
+	for seqNr := range ret {
+		ret[seqNr] = make([]*transaction.Transaction, howLongChain)
+		for i := 0; i < howLongChain; i++ {
+			if i == 0 {
+				extend = extendBegin[seqNr].SequencerOutput().MustAsChainOutput()
+				endorse = prevBranch.ID()
+			} else {
+				extend = ret[seqNr][i-1].SequencerOutput().MustAsChainOutput()
+				endorseIdx := (seqNr + 1) % len(extendBegin)
+				endorse = ret[endorseIdx][i-1].ID()
+			}
+			ts := extend.Timestamp().AddTicks(core.TransactionPaceInTicks)
+			require.True(td.t, ts.TimeSlot() == extendBegin[seqNr].TimeSlot())
+
+			txBytes, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
+				SeqName:      fmt.Sprintf("seq%d", i),
+				ChainInput:   extend,
+				Timestamp:    ts,
+				Endorsements: util.List(endorse),
+				PrivateKey:   td.privKeyAux,
+			})
+			require.NoError(td.t, err)
+			ret[seqNr][i], err = transaction.FromBytes(txBytes, transaction.MainTxValidationOptions...)
+		}
+	}
+
+	extend = ret[0][howLongChain-1].SequencerOutput().MustAsChainOutput()
+	ts := extend.Timestamp().NextTimeSlotBoundary()
+	txBytesBranch, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
+		SeqName:    "seq0",
+		ChainInput: extend,
+		StemInput:  prevBranch.StemOutput(),
+		Timestamp:  ts,
+		PrivateKey: td.privKeyAux,
+	})
+	require.NoError(td.t, err)
+	retBranch, err := transaction.FromBytes(txBytesBranch)
+	require.NoError(td.t, err)
+
+	return ret, retBranch
 }
 
 func (td *conflictTestData) logDAGInfo() {

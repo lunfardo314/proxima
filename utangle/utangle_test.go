@@ -913,4 +913,93 @@ func TestSeqChains(t *testing.T) {
 		}
 		testData.wrk.SaveGraph("utangle")
 	})
+	t.Run("with 1 branch pull", func(t *testing.T) {
+		//attacher.SetTraceOn()
+		const (
+			nConflicts            = 10
+			nChains               = 10
+			howLongConflictChains = 2  // 97 fails when crosses slot boundary
+			howLongSeqChains      = 50 // 95 fails
+		)
+
+		testData := initLongConflictTestData(t, nConflicts, nChains, howLongConflictChains)
+		testData.makeSeqBeginnings(false)
+		testData.makeSeqChains(howLongSeqChains)
+		//testData.printTxIDs()
+
+		var wg sync.WaitGroup
+
+		testData.txBytesAttach()
+		for _, txSequence := range testData.seqChain {
+			for _, tx := range txSequence {
+				err := testData.wrk.txBytesStore.SaveTxBytes(tx.Bytes())
+				require.NoError(t, err)
+			}
+		}
+
+		distribBD, ok := multistate.FetchBranchData(testData.wrk.StateStore(), testData.distributionBranchTxID)
+		require.True(t, ok)
+
+		chainIn := testData.seqChain[0][len(testData.seqChain[0])-1].SequencerOutput().MustAsChainOutput()
+		txBytesBranch, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
+			SeqName:    "seq0",
+			ChainInput: chainIn,
+			StemInput:  distribBD.Stem,
+			Timestamp:  chainIn.Timestamp().NextTimeSlotBoundary(),
+			PrivateKey: testData.privKeyAux,
+		})
+		require.NoError(t, err)
+
+		wg.Add(1)
+		vidBranch, err := attacher.AttachTransactionFromBytes(txBytesBranch, testData.wrk, attacher.OptionWithFinalizationCallback(func(vid *vertex.WrappedTx) {
+			wg.Done()
+		}))
+		wg.Wait()
+
+		testData.logDAGInfo()
+		require.EqualValues(t, vertex.Good.String(), vidBranch.GetTxStatus().String())
+		//testData.wrk.SaveGraph("utangle")
+		dag.SaveGraphPastCone(vidBranch, "utangle")
+	})
+	t.Run("with N branches pull", func(t *testing.T) {
+		//attacher.SetTraceOn()
+		const (
+			nConflicts            = 2
+			nChains               = 2
+			howLongConflictChains = 2 // 97 fails when crosses slot boundary
+			howLongSeqChains      = 2 // 95 fails
+			nSlots                = 2
+		)
+
+		testData := initLongConflictTestData(t, nConflicts, nChains, howLongConflictChains)
+		testData.makeSeqBeginnings(false)
+
+		slotTransactions := make([][][]*transaction.Transaction, nSlots)
+		branches := make([]*transaction.Transaction, nSlots)
+		var extend []*transaction.Transaction
+
+		var prevBranch *transaction.Transaction
+		for branchNr := range branches {
+			if branchNr == 0 {
+				prevBranch = testData.distributionBranchTx
+				extend = make([]*transaction.Transaction, nChains)
+				for i := range extend {
+					extend[i] = testData.seqChain[i][0]
+				}
+			} else {
+				prevBranch = branches[branchNr-1]
+				extend = make([]*transaction.Transaction, nChains)
+				for i := range slotTransactions[branchNr-1] {
+					extend[i] = slotTransactions[branchNr-1][i][len(slotTransactions[branchNr-1][i])-1]
+				}
+
+			}
+			slotTransactions[branchNr], branches[branchNr] = testData.makeSlotTransactions(howLongSeqChains, extend, prevBranch)
+		}
+
+		//testData.logDAGInfo()
+		//require.EqualValues(t, vertex.Good.String(), vidBranch.GetTxStatus().String())
+		////testData.wrk.SaveGraph("utangle")
+		//dag.SaveGraphPastCone(vidBranch, "utangle")
+	})
 }
