@@ -127,6 +127,15 @@ func makeGraphEdges(vid *vertex.WrappedTx, gr graph.Graph[string, string]) {
 			return true
 		})
 		v.ForEachEndorsement(func(i byte, vEnd *vertex.WrappedTx) bool {
+			if vEnd == nil {
+				idNil := fmt.Sprintf("%d", nilCount)
+				err := gr.AddVertex(idNil, graph.VertexAttribute("shape", "point"))
+				util.AssertNoError(err)
+				nilCount++
+				err = gr.AddEdge(id, idNil)
+				util.AssertNoError(err)
+				return true
+			}
 			err := gr.AddEdge(id, vEnd.IDVeryShort(), graph.EdgeAttribute("color", "red"))
 			util.Assertf(err == nil || errors.Is(err, graph.ErrEdgeAlreadyExists), "%v", err)
 			return true

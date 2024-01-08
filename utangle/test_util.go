@@ -365,10 +365,16 @@ func (td *longConflictTestData) makeBranch(extend *core.OutputWithChainID, prevB
 
 func (td *longConflictTestData) extendToNextSlot(prevSlot [][]*transaction.Transaction, branch *transaction.Transaction) []*transaction.Transaction {
 	ret := make([]*transaction.Transaction, len(prevSlot))
-	endorse := []*core.TransactionID{branch.ID()}
-
+	var extendOut *core.OutputWithChainID
+	var endorse []*core.TransactionID
 	for i := range prevSlot {
-		extendOut := prevSlot[i][len(prevSlot[i])-1].SequencerOutput().MustAsChainOutput()
+		// FIXME
+		extendOut = prevSlot[i][len(prevSlot[i])-1].SequencerOutput().MustAsChainOutput()
+		endorse = []*core.TransactionID{branch.ID()}
+		if extendOut.ID.TransactionID() == *branch.ID() {
+			extendOut = branch.SequencerOutput().MustAsChainOutput()
+			endorse = nil
+		}
 		txBytes, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
 			SeqName:      "seq0",
 			ChainInput:   extendOut,

@@ -458,7 +458,9 @@ func (vid *WrappedTx) AttachConsumer(outputIndex byte, consumer *WrappedTx, chec
 	}
 	vid.consumed[outputIndex] = outputConsumers
 	conflict := checkConflicts(outputConsumers)
-
+	//if conflict {
+	//	fmt.Printf("output: %s, consumer: %s, other consumers:\n%s\n", util.Ref(vid.OutputID(outputIndex)).StringShort(), consumer.IDShortString(), VIDSetIDString(outputConsumers))
+	//}
 	return !conflict
 }
 
@@ -613,15 +615,21 @@ func (vid *WrappedTx) _traversePastCone(opt *_unwrapOptionsTraverse) bool {
 	vid.RUnwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
 			v.ForEachInputDependency(func(i byte, inp *WrappedTx) bool {
-				util.Assertf(inp != nil, "_traversePastCone: input %d is nil (not solidified) in %s",
-					i, func() any { return v.Tx.IDShortString() })
+				if inp == nil {
+					return true
+				}
+				//util.Assertf(inp != nil, "_traversePastCone: input %d is nil (not solidified) in %s",
+				//	i, func() any { return v.Tx.IDShortString() })
 				ret = inp._traversePastCone(opt)
 				return ret
 			})
 			if ret {
 				v.ForEachEndorsement(func(i byte, inpEnd *WrappedTx) bool {
-					util.Assertf(inpEnd != nil, "_traversePastCone: endorsement %d is nil (not solidified) in %s",
-						i, func() any { return v.Tx.IDShortString() })
+					if inpEnd == nil {
+						return true
+					}
+					//util.Assertf(inpEnd != nil, "_traversePastCone: endorsement %d is nil (not solidified) in %s",
+					//	i, func() any { return v.Tx.IDShortString() })
 					ret = inpEnd._traversePastCone(opt)
 					return ret
 				})

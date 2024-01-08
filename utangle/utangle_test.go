@@ -1009,7 +1009,8 @@ func TestSeqChains(t *testing.T) {
 		wg.Wait()
 
 		testData.logDAGInfo()
-		//dag.SaveGraphPastCone(vidBranch, "utangle")
+		//testData.wrk.SaveGraph("utangle")
+		dag.SaveGraphPastCone(vidBranch, "utangle")
 		require.EqualValues(t, vertex.Good.String(), vidBranch.GetTxStatus().String())
 	})
 }
