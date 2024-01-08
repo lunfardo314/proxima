@@ -976,33 +976,40 @@ func TestSeqChains(t *testing.T) {
 
 		slotTransactions := make([][][]*transaction.Transaction, nSlots)
 		branches := make([]*transaction.Transaction, nSlots)
-		var extend []*transaction.Transaction
 
-		var prevBranch *transaction.Transaction
+		testData.txBytesAttach()
+		extend := make([]*transaction.Transaction, nChains)
+		for i := range extend {
+			extend[i] = testData.seqChain[i][0]
+		}
+		testData.storeTransactions(extend...)
+		prevBranch := testData.distributionBranchTx
+
 		for branchNr := range branches {
-			extend = make([]*transaction.Transaction, nChains)
-			if branchNr == 0 {
-				prevBranch = testData.distributionBranchTx
-				for i := range extend {
-					extend[i] = testData.seqChain[i][0]
-				}
-			} else {
-				prevBranch = branches[branchNr-1]
-				for i := range extend {
-					lastIdx := len(slotTransactions[branchNr-1][i]) - 1
-					extend[i] = slotTransactions[branchNr-1][i][lastIdx]
-				}
-			}
 			slotTransactions[branchNr] = testData.makeSlotTransactions(howLongSeqChains, extend)
+			for _, txSeq := range slotTransactions[branchNr] {
+				testData.storeTransactions(txSeq...)
+			}
+
 			extendSeqIdx := branchNr % nChains
 			lastInChain := len(slotTransactions[branchNr][extendSeqIdx]) - 1
 			extendOut := slotTransactions[branchNr][extendSeqIdx][lastInChain].SequencerOutput().MustAsChainOutput()
 			branches[branchNr] = testData.makeBranch(extendOut, prevBranch)
+			prevBranch = branches[branchNr]
+			extend = testData.extendToNextSlot(slotTransactions[branchNr], prevBranch)
+			testData.storeTransactions(extend...)
 		}
 
-		//testData.logDAGInfo()
-		//require.EqualValues(t, vertex.Good.String(), vidBranch.GetTxStatus().String())
-		////testData.wrk.SaveGraph("utangle")
+		testData.storeTransactions(branches...)
+		var wg sync.WaitGroup
+		wg.Add(1)
+		vidBranch := attacher.AttachTransaction(branches[len(branches)-1], testData.wrk, attacher.OptionWithFinalizationCallback(func(vid *vertex.WrappedTx) {
+			wg.Done()
+		}))
+		wg.Wait()
+
+		testData.logDAGInfo()
 		//dag.SaveGraphPastCone(vidBranch, "utangle")
+		require.EqualValues(t, vertex.Good.String(), vidBranch.GetTxStatus().String())
 	})
 }

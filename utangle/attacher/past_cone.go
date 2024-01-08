@@ -60,7 +60,7 @@ func (a *attacher) attachVertex(v *vertex.Vertex, vid *vertex.WrappedTx, parasit
 	if !v.FlagsUp(vertex.FlagEndorsementsSolid) {
 		a.tracef("endorsements not solid in %s\n", v.Tx.IDShortString())
 		// depth-first along endorsements
-		if !a.attachEndorsements(v, vid, parasiticChainHorizon, visited) { // <<< recursive
+		if !a.attachEndorsements(v, parasiticChainHorizon, visited) { // <<< recursive
 			return false
 		}
 	}
@@ -92,7 +92,7 @@ func (a *attacher) attachVertex(v *vertex.Vertex, vid *vertex.WrappedTx, parasit
 }
 
 // Attaches endorsements of the vertex
-func (a *attacher) attachEndorsements(v *vertex.Vertex, vid *vertex.WrappedTx, parasiticChainHorizon core.LogicalTime, visited set.Set[*vertex.WrappedTx]) bool {
+func (a *attacher) attachEndorsements(v *vertex.Vertex, parasiticChainHorizon core.LogicalTime, visited set.Set[*vertex.WrappedTx]) bool {
 	a.tracef("attachEndorsements %s", v.Tx.IDShortString)
 
 	allGood := true
@@ -110,6 +110,7 @@ func (a *attacher) attachEndorsements(v *vertex.Vertex, vid *vertex.WrappedTx, p
 
 		endorsedStatus := vidEndorsed.GetTxStatus()
 		if endorsedStatus == vertex.Bad {
+			a.setReason(vidEndorsed.GetReason())
 			return false
 		}
 		if a.validPastVertices.Contains(vidEndorsed) {

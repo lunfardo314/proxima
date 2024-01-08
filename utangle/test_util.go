@@ -358,9 +358,29 @@ func (td *longConflictTestData) makeBranch(extend *core.OutputWithChainID, prevB
 		PrivateKey: td.privKeyAux,
 	})
 	require.NoError(td.t, err)
-	tx, err := transaction.FromBytes(txBytesBranch)
+	tx, err := transaction.FromBytes(txBytesBranch, transaction.MainTxValidationOptions...)
 	require.NoError(td.t, err)
 	return tx
+}
+
+func (td *longConflictTestData) extendToNextSlot(prevSlot [][]*transaction.Transaction, branch *transaction.Transaction) []*transaction.Transaction {
+	ret := make([]*transaction.Transaction, len(prevSlot))
+	endorse := []*core.TransactionID{branch.ID()}
+
+	for i := range prevSlot {
+		extendOut := prevSlot[i][len(prevSlot[i])-1].SequencerOutput().MustAsChainOutput()
+		txBytes, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
+			SeqName:      "seq0",
+			ChainInput:   extendOut,
+			Timestamp:    branch.Timestamp().AddTicks(core.TransactionPaceInTicks),
+			Endorsements: endorse,
+			PrivateKey:   td.privKeyAux,
+		})
+		require.NoError(td.t, err)
+		ret[i], err = transaction.FromBytes(txBytes, transaction.MainTxValidationOptions...)
+		require.NoError(td.t, err)
+	}
+	return ret
 }
 
 func (td *conflictTestData) logDAGInfo() {
