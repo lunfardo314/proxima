@@ -42,7 +42,7 @@ func newTestingWorkflow(txBytesStore global.TxBytesStore, dag *dag.DAG, ctx cont
 	}
 }
 
-const tracePull = false
+const tracePull = true
 
 func (w *testingWorkflow) Pull(txid core.TransactionID) {
 	if tracePull {

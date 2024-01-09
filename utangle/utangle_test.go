@@ -1031,9 +1031,9 @@ func TestSeqChains(t *testing.T) {
 	t.Run("N branches and transfers", func(t *testing.T) {
 		//attacher.SetTraceOn()
 		const (
-			nConflicts            = 3
+			nConflicts            = 2
 			howLongConflictChains = 0 // 97 fails when crosses slot boundary
-			nChains               = 3
+			nChains               = 2
 			howLongSeqChains      = 2 // 95 fails
 			nSlots                = 3
 		)

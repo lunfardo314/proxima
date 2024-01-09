@@ -133,7 +133,7 @@ func (vid *WrappedTx) StatusString() string {
 }
 
 func (vid *WrappedTx) OnPoke(fun func(vid *WrappedTx)) {
-	if vid == nil {
+	if fun == nil {
 		vid.onPoke.Store(nopFun)
 	} else {
 		vid.onPoke.Store(fun)

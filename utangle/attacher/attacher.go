@@ -318,11 +318,11 @@ func (a *attacher) lazyRepeat(fun func() vertex.Status) vertex.Status {
 			return vertex.Undefined
 		case withVID := <-a.pokeChan:
 			if withVID != nil {
-				//a.trace1Ahead()
+				a.trace1Ahead()
 				a.tracef("poked with %s", withVID.IDShortString)
 			}
 		case <-time.After(periodicCheckEach):
-			//a.trace1Ahead()
+			a.trace1Ahead()
 			a.tracef("periodic check")
 		}
 	}
@@ -415,6 +415,8 @@ func (a *attacher) _doPoke(msg *vertex.WrappedTx) {
 }
 
 func (a *attacher) pokeMe(with *vertex.WrappedTx) {
+	a.trace1Ahead()
+	a.tracef("pokeMe with %s", with.IDShortString())
 	a.env.PokeMe(a.vid, with)
 }
 
