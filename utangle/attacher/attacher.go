@@ -73,6 +73,7 @@ type (
 		numTransactions   int
 		numCreatedOutputs int
 		numDeletedOutputs int
+		baseline          *vertex.WrappedTx
 	}
 )
 
@@ -249,6 +250,7 @@ func runAttacher(vid *vertex.WrappedTx, env AttachEnvironment, ctx context.Conte
 
 	a.finalize()
 	a.vid.SetTxStatus(vertex.Good)
+	a.stats.baseline = a.baselineBranch
 	return vertex.Good, a.stats, nil
 }
 
@@ -338,10 +340,15 @@ func logFinalStatusString(vid *vertex.WrappedTx, stats *attachStats) string {
 	if status == vertex.Bad {
 		msg += fmt.Sprintf(" reason = '%v'", vid.GetReason())
 	} else {
+		bl := "<nil>"
+		if stats.baseline != nil {
+			bl = stats.baseline.IDShortString()
+		}
 		if vid.IsBranchTransaction() {
-			msg += fmt.Sprintf(" transactions: %d, outputs +%d/-%d, coverage: %s", stats.numTransactions, stats.numCreatedOutputs, stats.numDeletedOutputs, stats.coverage.String())
+			msg += fmt.Sprintf("baseline: %s, tx: %d, UTXO +%d/-%d, cov: %s",
+				bl, stats.numTransactions, stats.numCreatedOutputs, stats.numDeletedOutputs, stats.coverage.String())
 		} else {
-			msg += fmt.Sprintf(" transactions: %d, coverage: %s", stats.numTransactions, stats.coverage.String())
+			msg += fmt.Sprintf("baseline: %s, tx: %d, cov: %s", bl, stats.numTransactions, stats.coverage.String())
 		}
 	}
 	var memStats runtime.MemStats
