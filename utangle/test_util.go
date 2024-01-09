@@ -101,12 +101,14 @@ type conflictTestData struct {
 	stateIdentity          genesis.LedgerIdentityData
 	forkOutput             *core.OutputWithID
 	auxOutput              *core.OutputWithID
-	txBytes                [][]byte
+	txBytesConflicting     [][]byte
 	conflictingOutputs     []*core.OutputWithID
 	chainOrigins           []*core.OutputWithChainID
 	pkController           []ed25519.PrivateKey
 	chainOriginsTx         *transaction.Transaction
 	seqChain               [][]*transaction.Transaction
+	transferChain          []*transaction.Transaction
+	remainderOutput        *core.OutputWithID
 }
 
 func initConflictTest(t *testing.T, nConflicts int, nChains int, targetLockChain bool) *conflictTestData {
@@ -192,29 +194,29 @@ func initConflictTest(t *testing.T, nConflicts int, nChains int, targetLockChain
 	require.EqualValues(t, initBalance, int(ret.forkOutput.Output.Amount()))
 	t.Logf("auxiliary output ID: %s", ret.forkOutput.IDShort())
 
-	ret.txBytes = make([][]byte, nConflicts)
+	ret.txBytesConflicting = make([][]byte, nConflicts)
 
 	td := txbuilder.NewTransferData(ret.privKey, ret.addr, core.LogicalTimeNow()).
 		MustWithInputs(ret.forkOutput)
 
 	for i := 0; i < nConflicts; i++ {
-		td.WithAmount(uint64(100 + i))
+		td.WithAmount(uint64(100_000 + i))
 		if targetLockChain {
 			td.WithTargetLock(core.ChainLockFromChainID(ret.bootstrapChainID))
 		} else {
 			td.WithTargetLock(ret.addr)
 		}
-		ret.txBytes[i], err = txbuilder.MakeTransferTransaction(td)
+		ret.txBytesConflicting[i], err = txbuilder.MakeTransferTransaction(td)
 		require.NoError(t, err)
 	}
-	require.EqualValues(t, nConflicts, len(ret.txBytes))
+	require.EqualValues(t, nConflicts, len(ret.txBytesConflicting))
 
 	ret.conflictingOutputs = make([]*core.OutputWithID, nConflicts)
 	for i := range ret.conflictingOutputs {
-		tx, err := transaction.FromBytesMainChecksWithOpt(ret.txBytes[i])
+		tx, err := transaction.FromBytesMainChecksWithOpt(ret.txBytesConflicting[i])
 		require.NoError(t, err)
 		ret.conflictingOutputs[i] = tx.MustProducedOutputWithIDAt(1)
-		require.EqualValues(t, 100+i, int(ret.conflictingOutputs[i].Output.Amount()))
+		require.EqualValues(t, 100_000+i, int(ret.conflictingOutputs[i].Output.Amount()))
 	}
 	return ret
 }
@@ -294,7 +296,7 @@ func (td *longConflictTestData) makeSeqChains(howLong int) {
 		for seqNr := range td.seqChain {
 			endorsedSeqNr := (seqNr + 1) % len(td.seqChain)
 			endorse := td.seqChain[endorsedSeqNr][i].ID()
-			txBytes, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
+			txBytesSeq, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
 				SeqName:      fmt.Sprintf("seq%d", i),
 				ChainInput:   td.seqChain[seqNr][i].SequencerOutput().MustAsChainOutput(),
 				Timestamp:    td.seqChain[seqNr][i].Timestamp().AddTicks(core.TransactionPaceInTicks),
@@ -302,7 +304,7 @@ func (td *longConflictTestData) makeSeqChains(howLong int) {
 				PrivateKey:   td.privKeyAux,
 			})
 			require.NoError(td.t, err)
-			tx, err := transaction.FromBytes(txBytes, transaction.MainTxValidationOptions...)
+			tx, err := transaction.FromBytes(txBytesSeq, transaction.MainTxValidationOptions...)
 			require.NoError(td.t, err)
 			td.seqChain[seqNr] = append(td.seqChain[seqNr], tx)
 		}
@@ -335,6 +337,57 @@ func (td *longConflictTestData) makeSlotTransactions(howLongChain int, extendBeg
 				Timestamp:    ts,
 				Endorsements: util.List(endorse),
 				PrivateKey:   td.privKeyAux,
+			})
+			require.NoError(td.t, err)
+			tx, err := transaction.FromBytes(txBytes, transaction.MainTxValidationOptions...)
+			require.NoError(td.t, err)
+			ret[seqNr] = append(ret[seqNr], tx)
+		}
+	}
+
+	return ret
+}
+
+func (td *longConflictTestData) makeSlotTransactionsWithTagAlong(howLongChain int, extendBegin []*transaction.Transaction) [][]*transaction.Transaction {
+	ret := make([][]*transaction.Transaction, len(extendBegin))
+	var extend *core.OutputWithChainID
+	var endorse *core.TransactionID
+	var ts core.LogicalTime
+
+	if td.remainderOutput == nil {
+		td.transferChain = make([]*transaction.Transaction, 0)
+		td.remainderOutput = td.conflictingOutputs[0]
+	}
+	var txSpend *transaction.Transaction
+
+	for i := 0; i < howLongChain; i++ {
+		for seqNr := range ret {
+			txSpend = td.spendToChain(td.remainderOutput, td.chainOrigins[seqNr].ChainID)
+			td.transferChain = append(td.transferChain, txSpend)
+			util.Assertf(txSpend.NumProducedOutputs() == 2, "txSpend.NumProducedOutputs() == 2")
+
+			td.remainderOutput = txSpend.MustProducedOutputWithIDAt(0)
+			transferOut := txSpend.MustProducedOutputWithIDAt(1)
+
+			if i == 0 {
+				ret[seqNr] = make([]*transaction.Transaction, 0)
+				extend = extendBegin[seqNr].SequencerOutput().MustAsChainOutput()
+				endorseIdx := (seqNr + 1) % len(extendBegin)
+				endorse = extendBegin[endorseIdx].ID()
+			} else {
+				extend = ret[seqNr][i-1].SequencerOutput().MustAsChainOutput()
+				endorseIdx := (seqNr + 1) % len(extendBegin)
+				endorse = ret[endorseIdx][i-1].ID()
+			}
+			ts = core.MaxLogicalTime(endorse.Timestamp(), extend.Timestamp(), transferOut.Timestamp()).AddTicks(core.TransactionPaceInTicks)
+
+			txBytes, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
+				SeqName:          fmt.Sprintf("seq%d", i),
+				ChainInput:       extend,
+				AdditionalInputs: []*core.OutputWithID{transferOut},
+				Timestamp:        ts,
+				Endorsements:     util.List(endorse),
+				PrivateKey:       td.privKeyAux,
 			})
 			require.NoError(td.t, err)
 			tx, err := transaction.FromBytes(txBytes, transaction.MainTxValidationOptions...)
@@ -391,6 +444,20 @@ func (td *longConflictTestData) extendToNextSlot(prevSlot [][]*transaction.Trans
 		require.NoError(td.t, err)
 	}
 	return ret
+}
+
+const transferAmount = 100
+
+func (td *longConflictTestData) spendToChain(o *core.OutputWithID, chainID core.ChainID) *transaction.Transaction {
+	txBytes, err := txbuilder.MakeSimpleTransferTransaction(txbuilder.NewTransferData(td.privKey, td.addr, o.Timestamp().AddTicks(core.TransactionPaceInTicks)).
+		WithAmount(transferAmount).
+		MustWithInputs(o).
+		WithTargetLock(core.ChainLockFromChainID(chainID)))
+	util.AssertNoError(err)
+	tx, err := transaction.FromBytes(txBytes, transaction.MainTxValidationOptions...)
+	util.AssertNoError(err)
+
+	return tx
 }
 
 func (td *conflictTestData) logDAGInfo() {
@@ -483,7 +550,7 @@ func (td *longConflictTestData) txBytesToStore() {
 	err := td.txStore.SaveTxBytes(td.chainOriginsTx.Bytes())
 	require.NoError(td.t, err)
 
-	td.storeTxBytes(td.txBytes...)
+	td.storeTxBytes(td.txBytesConflicting...)
 	for _, txSeq := range td.txSequences {
 		td.storeTxBytes(txSeq...)
 	}
@@ -493,7 +560,7 @@ func (td *longConflictTestData) txBytesAttach() {
 	_, err := attacher.AttachTransactionFromBytes(td.chainOriginsTx.Bytes(), td.wrk)
 	require.NoError(td.t, err)
 
-	td.attachTxBytes(td.txBytes...)
+	td.attachTxBytes(td.txBytesConflicting...)
 	for _, txSeq := range td.txSequences {
 		td.attachTxBytes(txSeq...)
 	}
