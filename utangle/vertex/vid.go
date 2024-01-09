@@ -411,16 +411,13 @@ func (vid *WrappedTx) PanicAccessDeleted() {
 }
 
 func (vid *WrappedTx) BaselineBranch() (baselineBranch *WrappedTx) {
+	if vid.ID.IsBranchTransaction() {
+		return vid
+	}
 	vid.RUnwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
 			baselineBranch = v.BaselineBranch
 		},
-		VirtualTx: func(v *VirtualTransaction) {
-			if vid.ID.IsBranchTransaction() && vid.txStatus == Good {
-				baselineBranch = vid
-			}
-		},
-		Deleted: vid.PanicAccessDeleted,
 	})
 	return
 }

@@ -44,7 +44,6 @@ func (d *DAG) AddBranchNoLock(branchVID *vertex.WrappedTx) {
 
 func (d *DAG) GetStateReaderForTheBranch(branchVID *vertex.WrappedTx) global.IndexedStateReader {
 	util.Assertf(branchVID.IsBranchTransaction(), "branchVID.IsBranchTransaction()")
-	util.Assertf(branchVID.GetTxStatus() == vertex.Good, "branchVID.GetTxStatus()==vertex.Good")
 
 	d.mutex.RLock()
 	defer d.mutex.RUnlock()

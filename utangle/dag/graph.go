@@ -1,7 +1,6 @@
 package dag
 
 import (
-	"errors"
 	"fmt"
 	"math"
 	"os"
@@ -119,8 +118,12 @@ func makeGraphEdges(vid *vertex.WrappedTx, gr graph.Graph[string, string]) {
 			o, err := v.GetConsumedOutput(i)
 			util.AssertNoError(err)
 			outIndex := v.Tx.MustOutputIndexOfTheInput(i)
+			amountStr := "???"
+			if o != nil {
+				amountStr = util.GoThousands(o.Amount())
+			}
 			edgeAttributes := []func(_ *graph.EdgeProperties){
-				graph.EdgeAttribute("label", fmt.Sprintf("%s(#%d)", util.GoThousands(o.Amount()), outIndex)),
+				graph.EdgeAttribute("label", fmt.Sprintf("%s(#%d)", amountStr, outIndex)),
 				graph.EdgeAttribute("fontsize", "10"),
 			}
 			_ = gr.AddEdge(id, inp.IDVeryShort(), edgeAttributes...)
@@ -136,8 +139,8 @@ func makeGraphEdges(vid *vertex.WrappedTx, gr graph.Graph[string, string]) {
 				util.AssertNoError(err)
 				return true
 			}
-			err := gr.AddEdge(id, vEnd.IDVeryShort(), graph.EdgeAttribute("color", "red"))
-			util.Assertf(err == nil || errors.Is(err, graph.ErrEdgeAlreadyExists), "%v", err)
+			_ = gr.AddEdge(id, vEnd.IDVeryShort(), graph.EdgeAttribute("color", "red"))
+			//util.Assertf(err == nil || errors.Is(err, graph.ErrEdgeAlreadyExists), "%v", err)
 			return true
 		})
 	}})

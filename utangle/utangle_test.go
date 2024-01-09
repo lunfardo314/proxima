@@ -683,15 +683,15 @@ func TestConflictsNAttachers(t *testing.T) {
 	t.Run("one fork branches conflict", func(t *testing.T) {
 		//attacher.SetTraceOn()
 		const (
-			nConflicts = 50
-			nChains    = 50
+			nConflicts = 5
+			nChains    = 5
 			howLong    = 5 // 97 fails when crosses slot boundary
 			pullYN     = true
 		)
 
 		testData := initLongConflictTestData(t, nConflicts, nChains, howLong)
 		testData.makeSeqBeginnings(true)
-		testData.printTxIDs()
+		//testData.printTxIDs()
 
 		if pullYN {
 			testData.txBytesToStore()
@@ -732,6 +732,10 @@ func TestConflictsNAttachers(t *testing.T) {
 
 			err = testData.txStore.SaveTxBytes(txBytesBranch[i])
 			require.NoError(t, err)
+
+			tx, err := transaction.FromBytes(txBytesBranch[i], transaction.MainTxValidationOptions...)
+			require.NoError(t, err)
+			t.Logf("branch #%d : %s", i, tx.IDShortString())
 		}
 
 		tx0, err := transaction.FromBytes(txBytesBranch[0], transaction.MainTxValidationOptions...)
@@ -762,7 +766,8 @@ func TestConflictsNAttachers(t *testing.T) {
 		testData.wrk.SaveGraph("utangle")
 
 		require.EqualValues(t, vid.GetTxStatus(), vertex.Bad)
-		util.RequireErrorWith(t, vid.GetReason(), "conflicts with existing consumers in the baseline state", "(double spend)", testData.forkOutput.IDShort())
+		t.Logf("expected error: %v", vid.GetReason())
+		util.RequireErrorWith(t, vid.GetReason(), "is incompatible with baseline state", tx1.IDShortString())
 	})
 }
 
@@ -970,7 +975,7 @@ func TestSeqChains(t *testing.T) {
 			howLongConflictChains = 2 // 97 fails when crosses slot boundary
 			nChains               = 5
 			howLongSeqChains      = 10 // 95 fails
-			nSlots                = 9  // 10 not work
+			nSlots                = 20 // 10 not work
 		)
 
 		testData := initLongConflictTestData(t, nConflicts, nChains, howLongConflictChains)

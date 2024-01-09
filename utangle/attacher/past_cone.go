@@ -65,7 +65,7 @@ func (a *attacher) attachVertex(v *vertex.Vertex, vid *vertex.WrappedTx, parasit
 		}
 	}
 	if v.FlagsUp(vertex.FlagEndorsementsSolid) {
-		a.tracef("endorsements (%d) solid in %s", v.Tx.NumEndorsements(), v.Tx.IDShortString)
+		a.tracef("endorsements (%d) are all solid in %s", v.Tx.NumEndorsements(), v.Tx.IDShortString)
 	} else {
 		a.tracef("endorsements (%d) NOT solid in %s", v.Tx.NumEndorsements(), v.Tx.IDShortString)
 	}
@@ -103,8 +103,8 @@ func (a *attacher) attachEndorsements(v *vertex.Vertex, parasiticChainHorizon co
 		}
 		baselineBranch := vidEndorsed.BaselineBranch()
 		if baselineBranch != nil && !a.branchesCompatible(a.baselineBranch, baselineBranch) {
-			a.setReason(fmt.Errorf("baseline %s of endorsement %s is incopatible with baseline state",
-				baselineBranch.IDShortString(), vidEndorsed.IDShortString()))
+			a.setReason(fmt.Errorf("baseline %s of endorsement %s is incompatible with baseline state %s",
+				baselineBranch.IDShortString(), vidEndorsed.IDShortString(), a.baselineBranch.IDShortString()))
 			return false
 		}
 
@@ -118,13 +118,16 @@ func (a *attacher) attachEndorsements(v *vertex.Vertex, parasiticChainHorizon co
 			continue
 		}
 		if endorsedStatus == vertex.Good {
-			// go deeper only if endorsement is good in order not to interfere with its attacher
-			ok := true
-			vidEndorsed.Unwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
-				ok = a.attachVertex(v, vidEndorsed, parasiticChainHorizon, visited) // <<<<<<<<<<< recursion
-			}})
-			if !ok {
-				return false
+			if !vidEndorsed.IsBranchTransaction() {
+				// do not go behind branch
+				// go deeper only if endorsement is good in order not to interfere with its attacher
+				ok := true
+				vidEndorsed.Unwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
+					ok = a.attachVertex(v, vidEndorsed, parasiticChainHorizon, visited) // <<<<<<<<<<< recursion
+				}})
+				if !ok {
+					return false
+				}
 			}
 			a.tracef("endorsement is valid: %s", vidEndorsed.IDShortString)
 		} else {
@@ -194,7 +197,7 @@ func (a *attacher) attachInput(v *vertex.Vertex, inputIdx byte, vid *vertex.Wrap
 		Index: v.Tx.MustOutputIndexOfTheInput(inputIdx),
 	}
 
-	if !a.attachOutput(wOut, parasiticChainHorizon, visited) {
+	if !a.attachOutput(wOut, v.Tx.ID(), parasiticChainHorizon, visited) {
 		return false, false
 	}
 	success = a.validPastVertices.Contains(v.Inputs[inputIdx]) || a.isRooted(v.Inputs[inputIdx])
@@ -212,7 +215,7 @@ func (a *attacher) isValidated(vid *vertex.WrappedTx) bool {
 	return a.validPastVertices.Contains(vid)
 }
 
-func (a *attacher) attachRooted(wOut vertex.WrappedOutput) (ok bool, isRooted bool) {
+func (a *attacher) attachRooted(wOut vertex.WrappedOutput, consumerTxID *core.TransactionID) (ok bool, isRooted bool) {
 	a.tracef("attachRooted %s", wOut.IDShortString)
 
 	consumedRooted := a.rooted[wOut.VID]
@@ -221,10 +224,12 @@ func (a *attacher) attachRooted(wOut vertex.WrappedOutput) (ok bool, isRooted bo
 		return true, true
 	}
 	// not a double spend
+	a.tracef(">>>>>>>>>>>>>>>>>>> attachRooted 1")
 	stateReader := a.baselineStateReader()
 
 	oid := wOut.DecodeID()
 	txid := oid.TransactionID()
+	a.tracef(">>>>>>>>>>>>>>>>>>> attachRooted 2")
 	if len(consumedRooted) == 0 && !stateReader.KnowsCommittedTransaction(&txid) {
 		// it is not rooted, but it is fine
 		return true, false
@@ -243,15 +248,15 @@ func (a *attacher) attachRooted(wOut vertex.WrappedOutput) (ok bool, isRooted bo
 		return true, true
 	}
 	// output has not been found in the state -> Bad
-	err := fmt.Errorf("output %s is not in the state", wOut.IDShortString())
+	err := fmt.Errorf("ouput %s (consumed by %s) is not in the state %s", wOut.IDShortString(), consumerTxID.StringShort(), a.baselineBranch.IDShortString())
 	a.setReason(err)
 	a.tracef("%v", err)
 	return false, false
 }
 
-func (a *attacher) attachOutput(wOut vertex.WrappedOutput, parasiticChainHorizon core.LogicalTime, visited set.Set[*vertex.WrappedTx]) bool {
+func (a *attacher) attachOutput(wOut vertex.WrappedOutput, consumerTxID *core.TransactionID, parasiticChainHorizon core.LogicalTime, visited set.Set[*vertex.WrappedTx]) bool {
 	a.tracef("attachOutput %s", wOut.IDShortString)
-	ok, isRooted := a.attachRooted(wOut)
+	ok, isRooted := a.attachRooted(wOut, consumerTxID)
 	if !ok {
 		return false
 	}
@@ -323,9 +328,9 @@ func (a *attacher) attachInputID(consumerVertex *vertex.Vertex, consumerTx *vert
 	}
 	util.Assertf(vidInputTx != nil, "vidInputTx != nil")
 
-	if vidInputTx.MutexWriteLocked_() {
-		vidInputTx.GetTxStatus()
-	}
+	//if vidInputTx.MutexWriteLocked_() {
+	//	vidInputTx.GetTxStatus()
+	//}
 	if vidInputTx.GetTxStatus() == vertex.Bad {
 		a.setReason(vidInputTx.GetReason())
 		return false

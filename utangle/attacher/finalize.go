@@ -55,7 +55,8 @@ func (a *attacher) commitBranch() {
 		}
 	}
 
-	//fmt.Printf("mutations:\n%s\n", muts.Lines("    ").String())
+	//a.trace1Ahead()
+	//a.tracef("mutations:\n%s", muts.Lines("    ").String())
 
 	seqID, stemOID := a.vid.MustSequencerIDAndStemID()
 	upd := multistate.MustNewUpdatable(a.env.StateStore(), a.baselineStateReader().Root())
