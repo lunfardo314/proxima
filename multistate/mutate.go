@@ -28,8 +28,9 @@ type (
 	}
 
 	mutationAddTx struct {
-		ID       core.TransactionID
-		TimeSlot core.TimeSlot
+		ID              core.TransactionID
+		TimeSlot        core.TimeSlot
+		LastOutputIndex byte
 	}
 
 	Mutations struct {
@@ -62,7 +63,7 @@ func (m *mutationAddOutput) sortOrder() byte {
 }
 
 func (m *mutationAddTx) mutate(trie *immutable.TrieUpdatable) error {
-	return addTxToTrie(trie, &m.ID, m.TimeSlot)
+	return addTxToTrie(trie, &m.ID, m.TimeSlot, m.LastOutputIndex)
 }
 
 func (m *mutationAddTx) text() string {
@@ -71,6 +72,21 @@ func (m *mutationAddTx) text() string {
 
 func (m *mutationAddTx) sortOrder() byte {
 	return 2
+}
+
+func (m *mutationAddTx) valueBytes() []byte {
+	return common.ConcatBytes(m.TimeSlot.Bytes(), []byte{m.LastOutputIndex})
+}
+
+func addTxValueFromBytes(data []byte) (core.TimeSlot, byte, error) {
+	if len(data) != 5 {
+		return 0, 0, fmt.Errorf("wrong data length")
+	}
+	retSlot, err := core.TimeSlotFromBytes(data[:4])
+	if err != nil {
+		return 0, 0, err
+	}
+	return retSlot, data[4], nil
 }
 
 func NewMutations() *Mutations {
@@ -101,8 +117,12 @@ func (mut *Mutations) InsertDelOutputMutation(id core.OutputID) {
 	mut.mut = append(mut.mut, &mutationDelOutput{ID: id})
 }
 
-func (mut *Mutations) InsertAddTxMutation(id core.TransactionID, slot core.TimeSlot) {
-	mut.mut = append(mut.mut, &mutationAddTx{ID: id, TimeSlot: slot})
+func (mut *Mutations) InsertAddTxMutation(id core.TransactionID, slot core.TimeSlot, lastOutputIndex byte) {
+	mut.mut = append(mut.mut, &mutationAddTx{
+		ID:              id,
+		TimeSlot:        slot,
+		LastOutputIndex: lastOutputIndex,
+	})
 }
 
 func (mut *Mutations) Lines(prefix ...string) *lines.Lines {
@@ -195,7 +215,7 @@ func addOutputToTrie(trie *immutable.TrieUpdatable, oid *core.OutputID, out *cor
 	return nil
 }
 
-func addTxToTrie(trie *immutable.TrieUpdatable, txid *core.TransactionID, slot core.TimeSlot) error {
+func addTxToTrie(trie *immutable.TrieUpdatable, txid *core.TransactionID, slot core.TimeSlot, lastOutputIndex byte) error {
 	var stateKey [1 + core.TransactionIDLength]byte
 	stateKey[0] = PartitionCommittedTransactionID
 	copy(stateKey[1:], txid[:])

@@ -224,12 +224,10 @@ func (a *attacher) attachRooted(wOut vertex.WrappedOutput, consumerTxID *core.Tr
 		return true, true
 	}
 	// not a double spend
-	a.tracef(">>>>>>>>>>>>>>>>>>> attachRooted 1")
 	stateReader := a.baselineStateReader()
 
 	oid := wOut.DecodeID()
 	txid := oid.TransactionID()
-	a.tracef(">>>>>>>>>>>>>>>>>>> attachRooted 2")
 	if len(consumedRooted) == 0 && !stateReader.KnowsCommittedTransaction(&txid) {
 		// it is not rooted, but it is fine
 		return true, false

@@ -66,7 +66,7 @@ func genesisUpdateMutations(genesisOut, genesisStemOut *core.OutputWithID) *mult
 	ret := multistate.NewMutations()
 	ret.InsertAddOutputMutation(genesisOut.ID, genesisOut.Output)
 	ret.InsertAddOutputMutation(genesisStemOut.ID, genesisStemOut.Output)
-	ret.InsertAddTxMutation(*InitialSupplyTransactionID(genesisOut.ID.TimeSlot()), genesisOut.ID.TimeSlot())
+	ret.InsertAddTxMutation(*InitialSupplyTransactionID(genesisOut.ID.TimeSlot()), genesisOut.ID.TimeSlot(), 1)
 	return ret
 }
 
