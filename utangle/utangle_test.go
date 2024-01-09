@@ -2,8 +2,10 @@ package utangle
 
 import (
 	"context"
+	"runtime"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/genesis"
@@ -964,11 +966,11 @@ func TestSeqChains(t *testing.T) {
 	t.Run("with N branches pull", func(t *testing.T) {
 		//attacher.SetTraceOn()
 		const (
-			nConflicts            = 2
-			nChains               = 2
+			nConflicts            = 5
 			howLongConflictChains = 2 // 97 fails when crosses slot boundary
-			howLongSeqChains      = 2 // 95 fails
-			nSlots                = 2
+			nChains               = 5
+			howLongSeqChains      = 10 // 95 fails
+			nSlots                = 9  // 10 not work
 		)
 
 		testData := initLongConflictTestData(t, nConflicts, nChains, howLongConflictChains)
@@ -1009,8 +1011,16 @@ func TestSeqChains(t *testing.T) {
 		wg.Wait()
 
 		testData.logDAGInfo()
-		//testData.wrk.SaveGraph("utangle")
 		dag.SaveGraphPastCone(vidBranch, "utangle")
 		require.EqualValues(t, vertex.Good.String(), vidBranch.GetTxStatus().String())
+
+		time.Sleep(500 * time.Millisecond)
+		var memStats runtime.MemStats
+		runtime.ReadMemStats(&memStats)
+		t.Logf("Memory stats: allocated %.1f MB, Num GC: %d, Goroutines: %d, ",
+			float32(memStats.Alloc*10/(1024*1024))/10,
+			memStats.NumGC,
+			runtime.NumGoroutine(),
+		)
 	})
 }

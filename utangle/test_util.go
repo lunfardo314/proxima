@@ -367,11 +367,15 @@ func (td *longConflictTestData) extendToNextSlot(prevSlot [][]*transaction.Trans
 	ret := make([]*transaction.Transaction, len(prevSlot))
 	var extendOut *core.OutputWithChainID
 	var endorse []*core.TransactionID
+
+	branchChainID, _, ok := branch.SequencerOutput().ExtractChainID()
+	require.True(td.t, ok)
+
 	for i := range prevSlot {
 		// FIXME
 		extendOut = prevSlot[i][len(prevSlot[i])-1].SequencerOutput().MustAsChainOutput()
 		endorse = []*core.TransactionID{branch.ID()}
-		if extendOut.ID.TransactionID() == *branch.ID() {
+		if extendOut.ChainID == branchChainID {
 			extendOut = branch.SequencerOutput().MustAsChainOutput()
 			endorse = nil
 		}

@@ -3,6 +3,7 @@ package attacher
 import (
 	"context"
 	"fmt"
+	"runtime"
 	"sync"
 	"time"
 
@@ -343,7 +344,15 @@ func logFinalStatusString(vid *vertex.WrappedTx, stats *attachStats) string {
 			msg += fmt.Sprintf(" transactions: %d, coverage: %s", stats.numTransactions, stats.coverage.String())
 		}
 	}
-	return msg
+	var memStats runtime.MemStats
+	runtime.ReadMemStats(&memStats)
+	memStr := fmt.Sprintf(", alloc: %.1f MB, GC: %d, Gort: %d, ",
+		float32(memStats.Alloc*10/(1024*1024))/10,
+		memStats.NumGC,
+		runtime.NumGoroutine(),
+	)
+
+	return msg + memStr
 }
 
 func (a *attacher) baselineStateReader() multistate.SugaredStateReader {

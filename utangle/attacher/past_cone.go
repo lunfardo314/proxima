@@ -272,10 +272,16 @@ func (a *attacher) attachOutput(wOut vertex.WrappedOutput, parasiticChainHorizon
 	status := wOut.VID.GetTxStatus()
 	wOut.VID.Unwrap(vertex.UnwrapOptions{
 		Vertex: func(v *vertex.Vertex) {
-			if !wOut.VID.ID.IsSequencerMilestone() || status == vertex.Good {
-				// on seq inputs only go deeper if tx is good
+			isSeq := wOut.VID.ID.IsSequencerMilestone()
+			if !isSeq || status == vertex.Good {
+				// go deeper if it is not seq milestone or its is good
+				if isSeq {
+					// good seq milestone, reset parasitic chain horizon
+					parasiticChainHorizon = core.NilLogicalTime
+				}
 				ok = a.attachVertex(v, wOut.VID, parasiticChainHorizon, visited) // >>>>>>> recursion
 			} else {
+				// not a seq milestone OR is not good yet -> don't go deeper
 				a.pokeMe(wOut.VID)
 			}
 		},
