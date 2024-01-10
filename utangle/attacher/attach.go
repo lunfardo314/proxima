@@ -85,7 +85,6 @@ func AttachTransaction(tx *transaction.Transaction, env AttachEnvironment, opts 
 		// full vertex will be ignored, virtual tx will be converted into full vertex and attacher started, if necessary
 		VirtualTx: func(v *vertex.VirtualTransaction) {
 			vid.ConvertVirtualTxToVertexNoLock(vertex.New(tx))
-			env.PokeAllWith(vid)
 
 			if !vid.IsSequencerMilestone() {
 				// pull non-attached non non-branch input transactions for non-sequencer transactions
@@ -97,9 +96,10 @@ func AttachTransaction(tx *transaction.Transaction, env AttachEnvironment, opts 
 					}})
 					return true
 				})
+				env.PokeAllWith(vid)
 				return
 			}
-			// starts attacher goroutine for each sequencer transaction
+			// starts attacher goroutine for sequencer transaction
 			ctx := options.ctx
 			if ctx == nil {
 				ctx = context.Background()
