@@ -326,7 +326,7 @@ func (ut *UTXOTangle) ScanAccount(addr core.AccountID, lastNTimeSlots int) set.S
 	for _, vid := range toScan {
 		if vid.IsBranchTransaction() {
 			rdr := multistate.MustNewSugaredStateReader(ut.stateStore, ut.mustGetBranch(vid))
-			outs, err := rdr.GetIDSLockedInAccount(addr)
+			outs, err := rdr.GetIDsLockedInAccount(addr)
 			util.AssertNoError(err)
 
 			for i := range outs {

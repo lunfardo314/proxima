@@ -68,6 +68,13 @@ func AttachTxID(txid core.TransactionID, env AttachEnvironment, opts ...Option) 
 	return
 }
 
+func AttachOutputID(oid core.OutputID, env AttachEnvironment, opts ...Option) vertex.WrappedOutput {
+	return vertex.WrappedOutput{
+		VID:   AttachTxID(oid.TransactionID(), env, opts...),
+		Index: oid.Index(),
+	}
+}
+
 // AttachTransaction attaches new incoming transaction. For sequencer transaction it starts attacher routine
 // which manages solidification pull until transaction becomes solid or stopped by the context
 func AttachTransaction(tx *transaction.Transaction, env AttachEnvironment, opts ...Option) (vid *vertex.WrappedTx) {

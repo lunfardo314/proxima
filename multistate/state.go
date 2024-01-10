@@ -132,7 +132,7 @@ func (r *Readable) KnowsCommittedTransaction(txid *core.TransactionID) bool {
 	return common.MakeReaderPartition(r.trie, PartitionCommittedTransactionID).Has(txid[:])
 }
 
-func (r *Readable) GetIDSLockedInAccount(addr core.AccountID) ([]core.OutputID, error) {
+func (r *Readable) GetIDsLockedInAccount(addr core.AccountID) ([]core.OutputID, error) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 

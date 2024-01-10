@@ -77,12 +77,15 @@ func (a *attacher) attachVertex(v *vertex.Vertex, vid *vertex.WrappedTx, parasit
 		// TODO nice-to-have optimization: constraints can be validated even before the vertex becomes good (solidified).
 		//  It is enough to have all inputs available, i.e. before full solidification
 
+		alreadyValidated := v.FlagsUp(vertex.FlagConstraintsValid)
 		if err := v.ValidateConstraints(); err != nil {
 			a.setReason(err)
 			a.tracef("%v", err)
 			return false
 		}
-		a.env.PostEventNewValidated(vid)
+		if !alreadyValidated {
+			a.env.PostEventNewValidated(vid)
+		}
 		a.tracef("constraints has been validated OK: %s", v.Tx.IDShortString())
 		ok = true
 	}

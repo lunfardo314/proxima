@@ -14,7 +14,7 @@ import (
 
 type (
 	Workflow struct {
-		dag          *dag.DAG
+		*dag.DAG
 		txBytesStore global.TxBytesStore
 		log          *zap.SugaredLogger
 		poker        *poker.Poker
@@ -30,7 +30,7 @@ var (
 func New(stateStore global.StateStore, txBytesStore global.TxBytesStore, ctx context.Context) *Workflow {
 	return &Workflow{
 		txBytesStore: txBytesStore,
-		dag:          dag.New(stateStore),
+		DAG:          dag.New(stateStore),
 		poker:        poker.Start(ctx),
 		events:       events.Start(ctx),
 		log:          global.NewLogger("glb", zap.InfoLevel, nil, ""),
