@@ -1,4 +1,4 @@
-package workflow
+package workflow_old
 
 import (
 	"fmt"
@@ -12,7 +12,7 @@ import (
 	"github.com/lunfardo314/proxima/util/seenset"
 )
 
-// PrimaryInputConsumer is where transaction enters the workflow pipeline
+// PrimaryInputConsumer is where transaction enters the workflow_old pipeline
 
 const PrimaryInputConsumerName = "input"
 
@@ -91,7 +91,7 @@ func (w *Workflow) initPrimaryInputConsumer() {
 		ret.glb.IncCounter(ret.Name() + "." + nmDuplicate)
 		ret.Log().Debugf("%s: %s", nmDuplicate, txid.StringShort())
 	})
-	// the consumer is globally known in the workflow
+	// the consumer is globally known in the workflow_old
 	w.primaryInputConsumer = ret
 }
 

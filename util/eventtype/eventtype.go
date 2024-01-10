@@ -3,6 +3,8 @@ package eventtype
 import (
 	"fmt"
 	"sync"
+
+	"github.com/lunfardo314/proxima/util"
 )
 
 type (
@@ -44,7 +46,9 @@ func RegisterNew[T any](name string) EventCode {
 					name, ret, fmt.Sprintf("%T", nullHandler), fun)
 			}
 			return func(arg any) {
-				handler(arg.(T))
+				argConv, ok := arg.(T)
+				util.Assertf(ok, "wrong argument type of the event: expected '%T', got: '%T'", nullT, arg)
+				handler(argConv)
 			}, nil
 		},
 	})

@@ -420,7 +420,7 @@ func (seq *Sequencer) mainLoop() {
 
 const submitTransactionTimeout = 5 * time.Second
 
-// submitMilestone submits transaction to the workflow and waits for deterministic status: either added to the tangle or rejected
+// submitMilestone submits transaction to the workflow_old and waits for deterministic status: either added to the tangle or rejected
 // The temporary VID of the transaction is replaced with the real one upon submission
 func (seq *Sequencer) submitMilestone(tx *transaction.Transaction) *utangle_old.WrappedOutput {
 	util.Assertf(tx != nil, "tx != nil")

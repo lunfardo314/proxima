@@ -1258,10 +1258,10 @@ func TestMultiChainWorkflow(t *testing.T) {
 
 		transaction.SetPrintEasyFLTraceOnFail(false)
 
-		wrk := workflow.New(r.ut, peering.NewPeersDummy(), r.txBytesStore) //workflow.WithConsumerLogLevel(workflow.PreValidateConsumerName, zapcore.DebugLevel),
-		//workflow.WithConsumerLogLevel(workflow.SolidifyConsumerName, zapcore.DebugLevel),
-		//workflow.WithConsumerLogLevel(workflow.ValidateConsumerName, zapcore.DebugLevel),
-		//workflow.WithConsumerLogLevel(workflow.AppendTxConsumerName, zapcore.DebugLevel),
+		wrk := workflow.New(r.ut, peering.NewPeersDummy(), r.txBytesStore) //workflow_old.WithConsumerLogLevel(workflow_old.PreValidateConsumerName, zapcore.DebugLevel),
+		//workflow_old.WithConsumerLogLevel(workflow_old.SolidifyConsumerName, zapcore.DebugLevel),
+		//workflow_old.WithConsumerLogLevel(workflow_old.ValidateConsumerName, zapcore.DebugLevel),
+		//workflow_old.WithConsumerLogLevel(workflow_old.AppendTxConsumerName, zapcore.DebugLevel),
 
 		nTransactions := 0
 		for i := range txBytesSeq {

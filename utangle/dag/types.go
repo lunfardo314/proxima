@@ -16,7 +16,6 @@ type (
 		stateStore global.StateStore
 		vertices   map[core.TransactionID]*vertex.WrappedTx
 		branches   map[*vertex.WrappedTx]global.IndexedStateReader
-
 		// all real-time related values in one place
 		syncData *SyncData
 	}
@@ -63,3 +62,5 @@ func New(stateStore global.StateStore) *DAG {
 		syncData:   newSyncData(),
 	}
 }
+
+type testingPostEventsEnvironment struct{}

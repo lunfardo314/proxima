@@ -34,10 +34,15 @@ type (
 		PokeMe(me, with *vertex.WrappedTx)
 		PokeAllWith(wanted *vertex.WrappedTx)
 	}
+	PostEventEnvironment interface {
+		PostEventNewGood(vid *vertex.WrappedTx)
+		PostEventNewValidated(vid *vertex.WrappedTx)
+	}
 
 	AttachEnvironment interface {
 		DAGAccess
 		PullEnvironment
+		PostEventEnvironment
 		Log() *zap.SugaredLogger
 	}
 
@@ -140,6 +145,7 @@ func runAttacher(vid *vertex.WrappedTx, env AttachEnvironment, ctx context.Conte
 
 	a.finalize()
 	a.vid.SetTxStatus(vertex.Good)
+	a.env.PostEventNewGood(vid)
 	a.stats.baseline = a.baselineBranch
 	return vertex.Good, a.stats, nil
 }

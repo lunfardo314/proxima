@@ -82,6 +82,7 @@ func (a *attacher) attachVertex(v *vertex.Vertex, vid *vertex.WrappedTx, parasit
 			a.tracef("%v", err)
 			return false
 		}
+		a.env.PostEventNewValidated(vid)
 		a.tracef("constraints has been validated OK: %s", v.Tx.IDShortString())
 		ok = true
 	}

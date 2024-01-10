@@ -244,7 +244,7 @@ func StateIdentityDataFromYAML(yamlData []byte) (*LedgerIdentityData, error) {
 const DefaultSupply = 1_000_000_000_000
 
 func DefaultIdentityData(privateKey ed25519.PrivateKey, slot ...core.TimeSlot) *LedgerIdentityData {
-	// creating origin 1 slot before now. More convenient for the workflow tests
+	// creating origin 1 slot before now. More convenient for the workflow_old tests
 	var sl core.TimeSlot
 	if len(slot) > 0 {
 		sl = slot[0]

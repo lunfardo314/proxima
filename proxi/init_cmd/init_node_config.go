@@ -160,8 +160,8 @@ pprof:
   enable: false
   port: 8080
 
-# workflow debug config
-workflow:
+# workflow_old debug config
+workflow_old:
   addtx:
     loglevel: info
   events:

@@ -28,6 +28,7 @@ type (
 		account                  core.Accountable
 		outputs                  set.Set[vertex.WrappedOutput]
 		seqID                    core.ChainID
+		seqName                  string
 		latestMilestones         map[core.ChainID]*vertex.WrappedTx
 		lastPruned               atomic.Time
 		outputCount              int
@@ -44,7 +45,7 @@ type (
 
 const fetchLastNTimeSlotsUponStartup = 5
 
-func Start(seqName string, env ListenEnvironment, seqID core.ChainID) (*SequencerTipPool, error) {
+func Start(seqName string, env ListenEnvironment, seqID core.ChainID) *SequencerTipPool {
 	// must be finalized somewhere
 	accountAddress := core.CloneAccountable(seqID.AsChainLock())
 	ret := &SequencerTipPool{
@@ -52,6 +53,7 @@ func Start(seqName string, env ListenEnvironment, seqID core.ChainID) (*Sequence
 		account:          accountAddress,
 		outputs:          set.New[vertex.WrappedOutput](),
 		seqID:            seqID,
+		seqName:          seqName,
 		latestMilestones: make(map[core.ChainID]*vertex.WrappedTx),
 	}
 	env.Log().Debugf("starting tipPool..")
@@ -93,7 +95,7 @@ func Start(seqName string, env ListenEnvironment, seqID core.ChainID) (*Sequence
 
 	// fetch all account into tipPool once
 	ret.outputs = env.ScanAccount(accountAddress.AccountID())
-	return ret, nil
+	return ret
 }
 
 func (tp *SequencerTipPool) purgeDeleted() {

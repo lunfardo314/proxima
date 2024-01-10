@@ -587,3 +587,11 @@ func (td *longConflictTestData) printTxIDs() {
 		}
 	}
 }
+
+func (w *testingWorkflow) PostEventNewGood(vid *vertex.WrappedTx) {
+	//fmt.Printf("TEST PostEventNewGood: %s\n", vid.IDShortString())
+}
+
+func (w *testingWorkflow) PostEventNewValidated(vid *vertex.WrappedTx) {
+	//fmt.Printf("TEST PostEventNewValidated: %s\n", vid.IDShortString())
+}

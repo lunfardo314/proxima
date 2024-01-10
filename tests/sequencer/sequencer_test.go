@@ -376,9 +376,9 @@ func Test1Sequencer(t *testing.T) {
 		)
 
 		r := initSequencerTestData(t, 1, 1, core.LogicalTimeNow())
-		//workflow.WithConsumerLogLevel(workflow.RejectConsumerName, zapcore.DebugLevel),
-		//workflow.WithConsumerLogLevel(workflow.PreValidateConsumerName, zapcore.DebugLevel),
-		//workflow.WithConsumerLogLevel(workflow.SolidifyConsumerName, zapcore.DebugLevel),
+		//workflow_old.WithConsumerLogLevel(workflow_old.RejectConsumerName, zapcore.DebugLevel),
+		//workflow_old.WithConsumerLogLevel(workflow_old.PreValidateConsumerName, zapcore.DebugLevel),
+		//workflow_old.WithConsumerLogLevel(workflow_old.SolidifyConsumerName, zapcore.DebugLevel),
 
 		r.wrk.MustOnEvent(workflow.EventDroppedTx, func(inp workflow.DropTxData) {
 			r.t.Logf("rejected %s : '%s'", inp.TxID.StringShort(), inp.Msg)
