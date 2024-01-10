@@ -975,7 +975,7 @@ func TestSeqChains(t *testing.T) {
 			howLongConflictChains = 2 // 97 fails when crosses slot boundary
 			nChains               = 5
 			howLongSeqChains      = 10 // 95 fails
-			nSlots                = 20 // 10 not work
+			nSlots                = 20
 		)
 
 		testData := initLongConflictTestData(t, nConflicts, nChains, howLongConflictChains)
@@ -1031,10 +1031,10 @@ func TestSeqChains(t *testing.T) {
 	t.Run("N branches and transfers", func(t *testing.T) {
 		//attacher.SetTraceOn()
 		const (
-			nConflicts            = 2
+			nConflicts            = 3
 			howLongConflictChains = 0 // 97 fails when crosses slot boundary
-			nChains               = 2
-			howLongSeqChains      = 2 // 95 fails
+			nChains               = 3
+			howLongSeqChains      = 3 // 95 fails
 			nSlots                = 3
 		)
 

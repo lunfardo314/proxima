@@ -14,6 +14,7 @@ import (
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lazybytes"
 	"github.com/lunfardo314/proxima/util/lines"
+	"github.com/lunfardo314/proxima/util/set"
 	"github.com/lunfardo314/unitrie/common"
 	"golang.org/x/crypto/blake2b"
 	"golang.org/x/crypto/ed25519"
@@ -675,10 +676,14 @@ func (tx *Transaction) ForEachProducedOutput(fun func(idx byte, o *core.Output, 
 	})
 }
 
-func (tx *Transaction) InputTransactionIDs() map[core.TransactionID]struct{} {
-	ret := make(map[core.TransactionID]struct{})
+func (tx *Transaction) PredecessorTransactionIDs() set.Set[core.TransactionID] {
+	ret := set.New[core.TransactionID]()
 	tx.ForEachInput(func(_ byte, oid *core.OutputID) bool {
-		ret[oid.TransactionID()] = struct{}{}
+		ret.Insert(oid.TransactionID())
+		return true
+	})
+	tx.ForEachEndorsement(func(_ byte, txid *core.TransactionID) bool {
+		ret.Insert(*txid)
 		return true
 	})
 	return ret

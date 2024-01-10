@@ -34,12 +34,10 @@ const sharedStateReaderCacheSize = 3000
 
 func (d *DAG) AddBranchNoLock(branchVID *vertex.WrappedTx) {
 	util.Assertf(branchVID.IsBranchTransaction(), "branchVID.IsBranchTransaction()")
-	util.Assertf(branchVID.GetTxStatus() != vertex.Bad, "branchVID.GetTxStatus() != vertex.Bad")
 
-	_, already := d.branches[branchVID]
-	util.Assertf(!already, "repeating branch %s", branchVID.IDShortString())
-
-	d.branches[branchVID] = d.MustGetIndexedStateReader(&branchVID.ID, sharedStateReaderCacheSize)
+	if _, already := d.branches[branchVID]; !already {
+		d.branches[branchVID] = d.MustGetIndexedStateReader(&branchVID.ID, sharedStateReaderCacheSize)
+	}
 }
 
 func (d *DAG) GetStateReaderForTheBranch(branchVID *vertex.WrappedTx) global.IndexedStateReader {
