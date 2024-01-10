@@ -37,7 +37,7 @@ func newTestingWorkflow(txBytesStore global.TxBytesStore, dag *dag.DAG, ctx cont
 	return &testingWorkflow{
 		txBytesStore: txBytesStore,
 		DAG:          dag,
-		poker:        poker.New(ctx),
+		poker:        poker.Start(ctx),
 		log:          global.NewLogger("", zap.InfoLevel, nil, ""),
 	}
 }

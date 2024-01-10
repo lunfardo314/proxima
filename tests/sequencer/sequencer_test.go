@@ -13,7 +13,7 @@ import (
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/genesis"
 	"github.com/lunfardo314/proxima/peering"
-	"github.com/lunfardo314/proxima/sequencer"
+	"github.com/lunfardo314/proxima/sequencer_old"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/txbuilder"
 	"github.com/lunfardo314/proxima/txstore"
@@ -50,8 +50,8 @@ type sequencerTestData struct {
 	txChainOrigins              *transaction.Transaction
 	ut                          *utangle_old.UTXOTangle
 	wrk                         *workflow.Workflow
-	bootstrapSeq                *sequencer.Sequencer
-	sequencers                  []*sequencer.Sequencer
+	bootstrapSeq                *sequencer_old.Sequencer
+	sequencers                  []*sequencer_old.Sequencer
 }
 
 func TestMax(t *testing.T) {
@@ -240,18 +240,18 @@ func Test1Sequencer(t *testing.T) {
 		transaction.SetPrintEasyFLTraceOnFail(true)
 		r.wrk.Start()
 
-		sequencer.SetTraceProposer(sequencer.BaseProposerName, false)
+		sequencer_old.SetTraceProposer(sequencer_old.BaseProposerName, false)
 
-		seq := sequencer.MustRunNew(r.wrk, r.bootstrapChainID, r.originControllerPrivateKey,
-			sequencer.WithName("boot"),
-			sequencer.WithPace(5),
-			sequencer.WithMaxBranches(maxSlots),
-			sequencer.WithMaxTargetTs(core.LogicalTimeNow().AddTimeSlots(maxSlots+2)),
-			sequencer.WithLogLevel(zapcore.InfoLevel),
+		seq := sequencer_old.MustRunNew(r.wrk, r.bootstrapChainID, r.originControllerPrivateKey,
+			sequencer_old.WithName("boot"),
+			sequencer_old.WithPace(5),
+			sequencer_old.WithMaxBranches(maxSlots),
+			sequencer_old.WithMaxTargetTs(core.LogicalTimeNow().AddTimeSlots(maxSlots+2)),
+			sequencer_old.WithLogLevel(zapcore.InfoLevel),
 		)
 
 		msCounter := 0
-		seq.OnMilestoneSubmitted(func(seq *sequencer.Sequencer, vid *utangle_old.WrappedOutput) {
+		seq.OnMilestoneSubmitted(func(seq *sequencer_old.Sequencer, vid *utangle_old.WrappedOutput) {
 			msCounter++
 		})
 
@@ -272,15 +272,15 @@ func Test1Sequencer(t *testing.T) {
 		transaction.SetPrintEasyFLTraceOnFail(false)
 		r.wrk.Start()
 
-		sequencer.SetTraceAll(false)
+		sequencer_old.SetTraceAll(false)
 
 		t.Logf("chain origins tx:\n%s", r.txChainOrigins.ToString(r.ut.HeaviestStateForLatestTimeSlot().GetUTXO))
 
-		seq := sequencer.MustRunNew(r.wrk, r.bootstrapChainID, r.originControllerPrivateKey,
-			sequencer.WithName("boot"),
-			sequencer.WithPace(5),
-			sequencer.WithMaxBranches(maxTimeSlots),
-			sequencer.WithMaxTargetTs(core.LogicalTimeNow().AddTimeSlots(maxTimeSlots+2)),
+		seq := sequencer_old.MustRunNew(r.wrk, r.bootstrapChainID, r.originControllerPrivateKey,
+			sequencer_old.WithName("boot"),
+			sequencer_old.WithPace(5),
+			sequencer_old.WithMaxBranches(maxTimeSlots),
+			sequencer_old.WithMaxTargetTs(core.LogicalTimeNow().AddTimeSlots(maxTimeSlots+2)),
 		)
 
 		// add transaction with chain origins
@@ -318,19 +318,19 @@ func Test1Sequencer(t *testing.T) {
 		transaction.SetPrintEasyFLTraceOnFail(false)
 		r.wrk.Start()
 
-		sequencer.SetTraceAll(false)
-		sequencer.SetTraceProposer(sequencer.BaseProposerName, false)
+		sequencer_old.SetTraceAll(false)
+		sequencer_old.SetTraceProposer(sequencer_old.BaseProposerName, false)
 
-		seq := sequencer.MustRunNew(r.wrk, r.bootstrapChainID, r.originControllerPrivateKey,
-			sequencer.WithName("boot"),
-			sequencer.WithPace(5),
-			sequencer.WithMaxBranches(maxSlots),
-			sequencer.WithMaxTargetTs(core.LogicalTimeNow().AddTimeSlots(maxSlots+2)),
-			sequencer.WithMaxFeeInputs(maxFeeInputs),
+		seq := sequencer_old.MustRunNew(r.wrk, r.bootstrapChainID, r.originControllerPrivateKey,
+			sequencer_old.WithName("boot"),
+			sequencer_old.WithPace(5),
+			sequencer_old.WithMaxBranches(maxSlots),
+			sequencer_old.WithMaxTargetTs(core.LogicalTimeNow().AddTimeSlots(maxSlots+2)),
+			sequencer_old.WithMaxFeeInputs(maxFeeInputs),
 		)
 
 		totalInflation := uint64(0)
-		seq.OnMilestoneSubmitted(func(seq *sequencer.Sequencer, msOutput *utangle_old.WrappedOutput) {
+		seq.OnMilestoneSubmitted(func(seq *sequencer_old.Sequencer, msOutput *utangle_old.WrappedOutput) {
 			totalInflation += msOutput.VID.InflationAmount()
 		})
 
@@ -371,7 +371,7 @@ func Test1Sequencer(t *testing.T) {
 		const (
 			numFaucetTransactions = 120 // 300 // 402 // limit
 			transferAmount        = 100
-			maxInputs             = sequencer.DefaultMaxFeeInputs
+			maxInputs             = sequencer_old.DefaultMaxFeeInputs
 			maxSlots              = numFaucetTransactions/maxInputs + 3
 		)
 
@@ -386,24 +386,24 @@ func Test1Sequencer(t *testing.T) {
 		transaction.SetPrintEasyFLTraceOnFail(false)
 		r.wrk.Start()
 
-		sequencer.SetTraceAll(false)
+		sequencer_old.SetTraceAll(false)
 
-		seq := sequencer.MustRunNew(r.wrk, r.bootstrapChainID, r.originControllerPrivateKey,
-			sequencer.WithName("boot"),
-			sequencer.WithPace(5),
-			sequencer.WithMaxBranches(maxSlots+2),
-			sequencer.WithMaxTargetTs(core.LogicalTimeNow().AddTimeSlots(maxSlots+2)),
-			sequencer.WithMaxFeeInputs(maxInputs),
+		seq := sequencer_old.MustRunNew(r.wrk, r.bootstrapChainID, r.originControllerPrivateKey,
+			sequencer_old.WithName("boot"),
+			sequencer_old.WithPace(5),
+			sequencer_old.WithMaxBranches(maxSlots+2),
+			sequencer_old.WithMaxTargetTs(core.LogicalTimeNow().AddTimeSlots(maxSlots+2)),
+			sequencer_old.WithMaxFeeInputs(maxInputs),
 		)
 
 		totalInflation := uint64(0)
-		seq.OnMilestoneSubmitted(func(seq *sequencer.Sequencer, msOutput *utangle_old.WrappedOutput) {
+		seq.OnMilestoneSubmitted(func(seq *sequencer_old.Sequencer, msOutput *utangle_old.WrappedOutput) {
 			totalInflation += msOutput.VID.InflationAmount()
 		})
 
 		var allFeeInputsConsumed atomic.Bool
 		var err error
-		seq.OnMilestoneSubmitted(func(seq *sequencer.Sequencer, wOut *utangle_old.WrappedOutput) {
+		seq.OnMilestoneSubmitted(func(seq *sequencer_old.Sequencer, wOut *utangle_old.WrappedOutput) {
 			if seq.Info().NumConsumedFeeOutputs >= numFaucetTransactions {
 				allFeeInputsConsumed.Store(true)
 			}
@@ -469,24 +469,24 @@ func Test1Sequencer(t *testing.T) {
 		transaction.SetPrintEasyFLTraceOnFail(false)
 		r.wrk.Start()
 
-		sequencer.SetTraceAll(false)
+		sequencer_old.SetTraceAll(false)
 
-		seq := sequencer.MustRunNew(r.wrk, r.bootstrapChainID, r.originControllerPrivateKey,
-			sequencer.WithName("boot"),
-			sequencer.WithPace(5),
-			sequencer.WithMaxBranches(maxSlots),
-			sequencer.WithMaxTargetTs(core.LogicalTimeNow().AddTimeSlots(maxSlots+2)),
-			sequencer.WithMaxFeeInputs(maxInputs),
+		seq := sequencer_old.MustRunNew(r.wrk, r.bootstrapChainID, r.originControllerPrivateKey,
+			sequencer_old.WithName("boot"),
+			sequencer_old.WithPace(5),
+			sequencer_old.WithMaxBranches(maxSlots),
+			sequencer_old.WithMaxTargetTs(core.LogicalTimeNow().AddTimeSlots(maxSlots+2)),
+			sequencer_old.WithMaxFeeInputs(maxInputs),
 		)
 
 		totalInflation := uint64(0)
-		seq.OnMilestoneSubmitted(func(seq *sequencer.Sequencer, msOutput *utangle_old.WrappedOutput) {
+		seq.OnMilestoneSubmitted(func(seq *sequencer_old.Sequencer, msOutput *utangle_old.WrappedOutput) {
 			totalInflation += msOutput.VID.InflationAmount()
 		})
 
 		var allFeeInputsConsumed atomic.Bool
 		var err error
-		seq.OnMilestoneSubmitted(func(seq *sequencer.Sequencer, wOut *utangle_old.WrappedOutput) {
+		seq.OnMilestoneSubmitted(func(seq *sequencer_old.Sequencer, wOut *utangle_old.WrappedOutput) {
 			seq.LogMilestoneSubmitDefault(wOut)
 			if seq.Info().NumConsumedFeeOutputs >= numFaucetTransactions*numFaucets {
 				allFeeInputsConsumed.Store(true)
@@ -542,28 +542,28 @@ func Test1Sequencer(t *testing.T) {
 func (r *sequencerTestData) createSequencers(maxInputsInTx, maxSlots, pace int, loglevel zapcore.Level) {
 	endorse := r.ut.HeaviestStemOutput().ID.TransactionID()
 	r.t.Logf("endorse: %v", endorse.String())
-	r.bootstrapSeq = sequencer.MustRunNew(r.wrk, r.bootstrapChainID, r.originControllerPrivateKey,
-		sequencer.WithName("boot"),
-		sequencer.WithLogLevel(loglevel),
-		sequencer.WithPace(pace),
-		sequencer.WithMaxBranches(maxSlots),
-		sequencer.WithMaxTargetTs(core.LogicalTimeNow().AddTimeSlots(maxSlots)),
-		sequencer.WithMaxFeeInputs(maxInputsInTx),
+	r.bootstrapSeq = sequencer_old.MustRunNew(r.wrk, r.bootstrapChainID, r.originControllerPrivateKey,
+		sequencer_old.WithName("boot"),
+		sequencer_old.WithLogLevel(loglevel),
+		sequencer_old.WithPace(pace),
+		sequencer_old.WithMaxBranches(maxSlots),
+		sequencer_old.WithMaxTargetTs(core.LogicalTimeNow().AddTimeSlots(maxSlots)),
+		sequencer_old.WithMaxFeeInputs(maxInputsInTx),
 	)
 
 	maxTargetTs := core.LogicalTimeNow().AddTimeSlots(maxSlots)
-	r.sequencers = make([]*sequencer.Sequencer, len(r.chainOrigins))
+	r.sequencers = make([]*sequencer_old.Sequencer, len(r.chainOrigins))
 	for i := range r.chainOrigins {
 		chainOut, ok, wrong := r.ut.GetWrappedOutput(&r.chainOrigins[i].OutputWithID.ID)
 		require.False(r.t, wrong)
 		require.True(r.t, ok)
-		r.sequencers[i] = sequencer.MustRunNew(r.wrk, r.chainOrigins[i].ChainID, r.chainControllersPrivateKeys[i],
-			sequencer.WithName(fmt.Sprintf("seq%d", i)),
-			sequencer.WithLogLevel(loglevel),
-			sequencer.WithPace(pace),
-			sequencer.WithMaxTargetTs(maxTargetTs),
-			sequencer.WithMaxFeeInputs(maxInputsInTx),
-			sequencer.WithStartOutput(chainOut),
+		r.sequencers[i] = sequencer_old.MustRunNew(r.wrk, r.chainOrigins[i].ChainID, r.chainControllersPrivateKeys[i],
+			sequencer_old.WithName(fmt.Sprintf("seq%d", i)),
+			sequencer_old.WithLogLevel(loglevel),
+			sequencer_old.WithPace(pace),
+			sequencer_old.WithMaxTargetTs(maxTargetTs),
+			sequencer_old.WithMaxFeeInputs(maxInputsInTx),
+			sequencer_old.WithStartOutput(chainOut),
 		)
 	}
 }
@@ -626,7 +626,7 @@ func TestNSequencers(t *testing.T) {
 			maxSlots              = 40
 			numFaucets            = 1
 			numFaucetTransactions = 1
-			maxTxInputs           = sequencer.DefaultMaxFeeInputs
+			maxTxInputs           = sequencer_old.DefaultMaxFeeInputs
 			stopAfterBranches     = 40
 		)
 		t.Logf("\n   numFaucets: %d\n   numFaucetTransactions: %d\n", numFaucets, numFaucetTransactions)
@@ -640,15 +640,15 @@ func TestNSequencers(t *testing.T) {
 
 		//t.Logf(">>>>>>>>> chain origins tx:\n%s", r.txChainOrigins.Lines(r.txChainOrigins.InputLoaderByIndex(r.ut.GetUTXO)))
 
-		sequencer.SetTraceProposer(sequencer.BaseProposerName, false)
-		sequencer.SetTraceProposer(sequencer.BacktrackProposer2Name, false)
+		sequencer_old.SetTraceProposer(sequencer_old.BaseProposerName, false)
+		sequencer_old.SetTraceProposer(sequencer_old.BacktrackProposer2Name, false)
 
 		r.createSequencers(maxTxInputs, maxSlots, 5, zapcore.InfoLevel)
 
 		var allFeeInputsConsumed atomic.Bool
 		branchesAfterAllConsumed := 0
 		cnt := 0
-		r.bootstrapSeq.OnMilestoneSubmitted(func(seq *sequencer.Sequencer, wOut *utangle_old.WrappedOutput) {
+		r.bootstrapSeq.OnMilestoneSubmitted(func(seq *sequencer_old.Sequencer, wOut *utangle_old.WrappedOutput) {
 			cnt++
 			if seq.Info().NumConsumedFeeOutputs >= numFaucetTransactions*numFaucets {
 				allFeeInputsConsumed.Store(true)
@@ -713,14 +713,14 @@ func TestNSequencers(t *testing.T) {
 		t.Logf("chain origins transaction has been added to the tangle: %s", r.txChainOrigins.IDShortString())
 		t.Logf("----------- Account info ----------------\n%s", r.ut.MustAccountInfoOfHeaviestBranch().Lines("   ").String())
 
-		sequencer.SetTraceProposer(sequencer.BacktrackProposer2Name, false)
+		sequencer_old.SetTraceProposer(sequencer_old.BacktrackProposer2Name, false)
 
 		r.createSequencers(maxTxInputs, maxSlots, 5, zapcore.InfoLevel)
 
 		var allFeeInputsConsumed atomic.Bool
 		branchesAfterAllConsumed := 0
 		cnt := 0
-		r.bootstrapSeq.OnMilestoneSubmitted(func(seq *sequencer.Sequencer, wOut *utangle_old.WrappedOutput) {
+		r.bootstrapSeq.OnMilestoneSubmitted(func(seq *sequencer_old.Sequencer, wOut *utangle_old.WrappedOutput) {
 			cnt++
 			if seq.Info().NumConsumedFeeOutputs >= numTxPerFaucet*numFaucets {
 				allFeeInputsConsumed.Store(true)
@@ -797,7 +797,7 @@ func TestNSequencers(t *testing.T) {
 		require.NoError(t, err)
 		t.Logf("chain origins transaction has been added to the tangle: %s", r.txChainOrigins.IDShortString())
 
-		sequencer.SetTraceProposer(sequencer.BacktrackProposer2Name, false)
+		sequencer_old.SetTraceProposer(sequencer_old.BacktrackProposer2Name, false)
 
 		r.createSequencers(maxTxInputs, maxSlots, 5, zapcore.InfoLevel)
 
@@ -823,7 +823,7 @@ func TestNSequencers(t *testing.T) {
 		var glbMutex sync.Mutex
 		totalAmountToTargetAddress := uint64(0)
 		branchCount := 0
-		r.bootstrapSeq.OnMilestoneSubmitted(func(seq *sequencer.Sequencer, wOut *utangle_old.WrappedOutput) {
+		r.bootstrapSeq.OnMilestoneSubmitted(func(seq *sequencer_old.Sequencer, wOut *utangle_old.WrappedOutput) {
 			cnt++
 			if seq.Info().NumConsumedFeeOutputs >= numTxPerFaucet*numFaucets {
 				allFeeInputsConsumed.Store(true)
@@ -879,7 +879,7 @@ func TestNSequencers(t *testing.T) {
 			maxSlot               = 50
 			numFaucets            = 1
 			numFaucetTransactions = 1
-			maxTxInputs           = sequencer.DefaultMaxFeeInputs
+			maxTxInputs           = sequencer_old.DefaultMaxFeeInputs
 			stopAfterBranches     = 50
 			nSequencers           = 3
 		)
@@ -892,14 +892,14 @@ func TestNSequencers(t *testing.T) {
 		require.NoError(t, err)
 		t.Logf("chain origins transaction has been added to the tangle: %s", r.txChainOrigins.IDShortString())
 
-		sequencer.SetTraceProposer(sequencer.BacktrackProposer2Name, false)
+		sequencer_old.SetTraceProposer(sequencer_old.BacktrackProposer2Name, false)
 
 		r.createSequencers(maxTxInputs, maxSlot, 5, zapcore.InfoLevel)
 
 		var allFeeInputsConsumed atomic.Bool
 		branchesAfterAllConsumed := 0
 		cnt := 0
-		r.bootstrapSeq.OnMilestoneSubmitted(func(seq *sequencer.Sequencer, wOut *utangle_old.WrappedOutput) {
+		r.bootstrapSeq.OnMilestoneSubmitted(func(seq *sequencer_old.Sequencer, wOut *utangle_old.WrappedOutput) {
 			cnt++
 			if seq.Info().NumConsumedFeeOutputs >= numFaucetTransactions*numFaucets {
 				allFeeInputsConsumed.Store(true)
@@ -972,14 +972,14 @@ func TestNSequencers(t *testing.T) {
 		require.NoError(t, err)
 		t.Logf("chain origins transaction has been added to the tangle: %s", r.txChainOrigins.IDShortString())
 
-		sequencer.SetTraceProposer(sequencer.BacktrackProposer2Name, false)
+		sequencer_old.SetTraceProposer(sequencer_old.BacktrackProposer2Name, false)
 
 		r.createSequencers(maxTxInputs, maxSlot, 5, zapcore.InfoLevel)
 
 		var allFeeInputsConsumed atomic.Bool
 		branchesAfterAllConsumed := 0
 		cnt := 0
-		r.bootstrapSeq.OnMilestoneSubmitted(func(seq *sequencer.Sequencer, wOut *utangle_old.WrappedOutput) {
+		r.bootstrapSeq.OnMilestoneSubmitted(func(seq *sequencer_old.Sequencer, wOut *utangle_old.WrappedOutput) {
 			seq.LogMilestoneSubmitDefault(wOut)
 			cnt++
 			if seq.Info().NumConsumedFeeOutputs >= numFaucetTransactions*numFaucets {
@@ -1046,14 +1046,14 @@ func TestPruning(t *testing.T) {
 		require.NoError(t, err)
 		t.Logf("chain origins transaction has been added to the tangle: %s", r.txChainOrigins.IDShortString())
 
-		sequencer.SetTraceProposer(sequencer.BacktrackProposer2Name, false)
+		sequencer_old.SetTraceProposer(sequencer_old.BacktrackProposer2Name, false)
 
 		r.createSequencers(maxTxInputs, maxSlots, 5, zapcore.InfoLevel)
 
 		var allFeeInputsConsumed atomic.Bool
 		branchesAfterAllConsumed := 0
 		cnt := 0
-		r.bootstrapSeq.OnMilestoneSubmitted(func(seq *sequencer.Sequencer, wOut *utangle_old.WrappedOutput) {
+		r.bootstrapSeq.OnMilestoneSubmitted(func(seq *sequencer_old.Sequencer, wOut *utangle_old.WrappedOutput) {
 			seq.LogMilestoneSubmitDefault(wOut)
 			cnt++
 			if seq.Info().NumConsumedFeeOutputs >= numFaucetTransactions*numFaucets {
@@ -1132,7 +1132,7 @@ func TestPruning(t *testing.T) {
 			maxSlots              = 40
 			numFaucets            = 1
 			numFaucetTransactions = 1
-			maxTxInputs           = sequencer.DefaultMaxFeeInputs
+			maxTxInputs           = sequencer_old.DefaultMaxFeeInputs
 			stopAfterBranches     = 40
 			nSequencers           = 3
 		)
@@ -1149,14 +1149,14 @@ func TestPruning(t *testing.T) {
 		require.NoError(t, err)
 		t.Logf("chain origins transaction has been added to the tangle: %s", r.txChainOrigins.IDShortString())
 
-		sequencer.SetTraceProposer(sequencer.BacktrackProposer2Name, false)
+		sequencer_old.SetTraceProposer(sequencer_old.BacktrackProposer2Name, false)
 
 		r.createSequencers(maxTxInputs, maxSlots, 5, zapcore.InfoLevel)
 
 		var allFeeInputsConsumed atomic.Bool
 		branchesAfterAllConsumed := 0
 		cnt := 0
-		r.bootstrapSeq.OnMilestoneSubmitted(func(seq *sequencer.Sequencer, wOut *utangle_old.WrappedOutput) {
+		r.bootstrapSeq.OnMilestoneSubmitted(func(seq *sequencer_old.Sequencer, wOut *utangle_old.WrappedOutput) {
 			seq.LogMilestoneSubmitDefault(wOut)
 			cnt++
 			if seq.Info().NumConsumedFeeOutputs >= numFaucetTransactions*numFaucets {
@@ -1219,7 +1219,7 @@ func TestPruning(t *testing.T) {
 			maxSlots              = 40
 			numFaucets            = 1
 			numFaucetTransactions = 1
-			maxTxInputs           = sequencer.DefaultMaxFeeInputs
+			maxTxInputs           = sequencer_old.DefaultMaxFeeInputs
 			stopAfterBranches     = 40
 			nSequencers           = 5
 		)
@@ -1236,14 +1236,14 @@ func TestPruning(t *testing.T) {
 		require.NoError(t, err)
 		t.Logf("chain origins transaction has been added to the tangle: %s", r.txChainOrigins.IDShortString())
 
-		sequencer.SetTraceProposer(sequencer.BacktrackProposer2Name, false)
+		sequencer_old.SetTraceProposer(sequencer_old.BacktrackProposer2Name, false)
 
 		r.createSequencers(maxTxInputs, maxSlots, 5, zapcore.InfoLevel)
 
 		var allFeeInputsConsumed atomic.Bool
 		branchesAfterAllConsumed := 0
 		cnt := 0
-		r.bootstrapSeq.OnMilestoneSubmitted(func(seq *sequencer.Sequencer, wOut *utangle_old.WrappedOutput) {
+		r.bootstrapSeq.OnMilestoneSubmitted(func(seq *sequencer_old.Sequencer, wOut *utangle_old.WrappedOutput) {
 			seq.LogMilestoneSubmitDefault(wOut)
 			cnt++
 			if seq.Info().NumConsumedFeeOutputs >= numFaucetTransactions*numFaucets {

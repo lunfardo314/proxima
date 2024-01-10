@@ -101,6 +101,7 @@ func (vid *WrappedTx) GetTxStatus() Status {
 
 	return vid.txStatus
 }
+
 func (vid *WrappedTx) SetTxStatus(s Status) {
 	vid.mutex.Lock()
 	defer vid.mutex.Unlock()
@@ -114,11 +115,24 @@ func (vid *WrappedTx) GetReason() error {
 
 	return vid.reason
 }
+
 func (vid *WrappedTx) SetReason(err error) {
 	vid.mutex.Lock()
 	defer vid.mutex.Unlock()
 
 	vid.reason = err
+}
+
+// IsBadOrDeleted non-deterministic
+func (vid *WrappedTx) IsBadOrDeleted() bool {
+	vid.mutex.RLock()
+	defer vid.mutex.RUnlock()
+
+	if vid.txStatus == Bad {
+		return true
+	}
+	_, isDeleted := vid._genericWrapper.(_deletedTx)
+	return isDeleted
 }
 
 func (vid *WrappedTx) StatusString() string {
@@ -337,7 +351,6 @@ func (vid *WrappedTx) _unwrap(opt UnwrapOptions) {
 		if opt.VirtualTx != nil {
 			opt.VirtualTx(v.VirtualTransaction)
 		}
-
 	case _deletedTx:
 		if opt.Deleted != nil {
 			opt.Deleted()

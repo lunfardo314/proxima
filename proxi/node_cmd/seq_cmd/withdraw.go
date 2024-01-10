@@ -8,7 +8,7 @@ import (
 
 	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/proxi/glb"
-	"github.com/lunfardo314/proxima/sequencer"
+	"github.com/lunfardo314/proxima/sequencer_old"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/txbuilder"
 	"github.com/lunfardo314/proxima/util"
@@ -45,8 +45,8 @@ func runSeqWithdrawCmd(_ *cobra.Command, args []string) {
 	amount, err := strconv.ParseUint(args[0], 10, 64)
 	glb.AssertNoError(err)
 
-	glb.Assertf(amount >= sequencer.MinimumAmountToRequestFromSequencer, "amount must be at least %s",
-		util.GoThousands(sequencer.MinimumAmountToRequestFromSequencer))
+	glb.Assertf(amount >= sequencer_old.MinimumAmountToRequestFromSequencer, "amount must be at least %s",
+		util.GoThousands(sequencer_old.MinimumAmountToRequestFromSequencer))
 
 	glb.Infof("amount: %s", util.GoThousands(amount))
 
@@ -73,7 +73,7 @@ func runSeqWithdrawCmd(_ *cobra.Command, args []string) {
 	var amountBin [8]byte
 	binary.BigEndian.PutUint64(amountBin[:], amount)
 	cmdParArr := lazybytes.MakeArrayFromDataReadOnly(targetLock.Bytes(), amountBin[:])
-	cmdData := common.Concat(sequencer.CommandCodeWithdrawAmount, cmdParArr)
+	cmdData := common.Concat(sequencer_old.CommandCodeWithdrawAmount, cmdParArr)
 	constrSource := fmt.Sprintf("concat(0x%s)", hex.EncodeToString(cmdData))
 	cmdConstr, err := core.NewGeneralScriptFromSource(constrSource)
 	glb.AssertNoError(err)

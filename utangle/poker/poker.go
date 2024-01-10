@@ -40,7 +40,7 @@ const (
 
 const chanBufferSize = 10
 
-func New(ctx context.Context) *Poker {
+func Start(ctx context.Context) *Poker {
 	ret := &Poker{
 		Consumer: consumer.NewConsumerWithBufferSize[Cmd]("poke", chanBufferSize, zap.InfoLevel, nil),
 		m:        make(map[*vertex.WrappedTx]waitingList),

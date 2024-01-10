@@ -11,7 +11,7 @@ import (
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/peering"
-	"github.com/lunfardo314/proxima/sequencer"
+	"github.com/lunfardo314/proxima/sequencer_old"
 	"github.com/lunfardo314/proxima/txstore"
 	"github.com/lunfardo314/proxima/utangle_old"
 	"github.com/lunfardo314/proxima/util"
@@ -31,7 +31,7 @@ type ProximaNode struct {
 	UTXOTangle      *utangle_old.UTXOTangle
 	Peers           *peering.Peers
 	Workflow        *workflow.Workflow
-	Sequencers      []*sequencer.Sequencer
+	Sequencers      []*sequencer_old.Sequencer
 	stopOnce        sync.Once
 	ctx             context.Context
 }
@@ -39,7 +39,7 @@ type ProximaNode struct {
 func New(ctx context.Context) *ProximaNode {
 	return &ProximaNode{
 		log:        newBootstrapLogger(),
-		Sequencers: make([]*sequencer.Sequencer, 0),
+		Sequencers: make([]*sequencer_old.Sequencer, 0),
 		ctx:        ctx,
 	}
 }
@@ -187,7 +187,7 @@ func (p *ProximaNode) startSequencers() {
 
 	for pname := range traceProposers {
 		if viper.GetBool("debug.trace_proposers." + pname) {
-			sequencer.SetTraceProposer(pname, true)
+			sequencer_old.SetTraceProposer(pname, true)
 			p.log.Infof("will be tracing proposer '%s'", pname)
 		}
 	}
@@ -203,7 +203,7 @@ func (p *ProximaNode) startSequencers() {
 		return k1 < k2
 	})
 	for _, name := range seqNames {
-		seq, err := sequencer.NewFromConfig(p.Workflow, name)
+		seq, err := sequencer_old.NewFromConfig(p.Workflow, name)
 		if err != nil {
 			p.log.Errorf("can't start sequencer '%s': '%v'", name, err)
 			continue

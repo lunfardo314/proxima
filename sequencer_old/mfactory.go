@@ -1,4 +1,4 @@
-package sequencer
+package sequencer_old
 
 import (
 	"crypto/ed25519"
