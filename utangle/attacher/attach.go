@@ -94,13 +94,16 @@ func AttachTransaction(tx *transaction.Transaction, env AttachEnvironment, opts 
 			vid.ConvertVirtualTxToVertexNoLock(vertex.New(tx))
 
 			if !vid.IsSequencerMilestone() {
-				// pull non-attached non non-branch input transactions for non-sequencer transactions
+				// pull non-attached non non-branch input transactions for non-sequencer transactions, which are on the same slot
+				// We limit pull to one slot not to fall into endless pull cycle
 				tx.PredecessorTransactionIDs().ForEach(func(txid core.TransactionID) bool {
-					AttachTxID(txid, env).Unwrap(vertex.UnwrapOptions{VirtualTx: func(vInput *vertex.VirtualTransaction) {
-						if !txid.IsBranchTransaction() {
-							env.Pull(txid)
-						}
-					}})
+					if txid.TimeSlot() == vid.TimeSlot() {
+						AttachTxID(txid, env).Unwrap(vertex.UnwrapOptions{VirtualTx: func(vInput *vertex.VirtualTransaction) {
+							if !txid.IsBranchTransaction() {
+								env.Pull(txid)
+							}
+						}})
+					}
 					return true
 				})
 				env.PokeAllWith(vid)
