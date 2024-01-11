@@ -12,10 +12,10 @@ import (
 	"github.com/lunfardo314/proxima/genesis"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
+	transaction2 "github.com/lunfardo314/proxima/ledger/transaction"
+	txbuilder2 "github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/peering"
-	"github.com/lunfardo314/proxima/transaction"
-	"github.com/lunfardo314/proxima/txbuilder"
 	"github.com/lunfardo314/proxima/txstore"
 	"github.com/lunfardo314/proxima/utangle_old"
 	"github.com/lunfardo314/proxima/util"
@@ -60,12 +60,12 @@ func initWorkflowTest(t *testing.T, nDistribution int, nowis ledger.LogicalTime,
 	txStore := txstore.NewDummyTxBytesStore()
 
 	ret.bootstrapChainID, _ = genesis.InitLedgerState(par, stateStore)
-	txBytes, err := txbuilder.DistributeInitialSupply(stateStore, genesisPrivKey, distrib)
+	txBytes, err := txbuilder2.DistributeInitialSupply(stateStore, genesisPrivKey, distrib)
 	require.NoError(t, err)
 
 	ret.ut = utangle_old.Load(stateStore)
 
-	ret.distributionTxID, _, err = transaction.IDAndTimestampFromTransactionBytes(txBytes)
+	ret.distributionTxID, _, err = transaction2.IDAndTimestampFromTransactionBytes(txBytes)
 	require.NoError(t, err)
 
 	for i := range ret.faucetOutputs {
@@ -87,7 +87,7 @@ func (wd *workflowTestData) makeTxFromFaucet(amount uint64, target ledger.Addres
 	if len(idx) > 0 {
 		idxFaucet = idx[0]
 	}
-	td := txbuilder.NewTransferData(wd.distributionPrivateKeys[idxFaucet], wd.distributionAddrs[idxFaucet], wd.faucetOutputs[idxFaucet].Timestamp()).
+	td := txbuilder2.NewTransferData(wd.distributionPrivateKeys[idxFaucet], wd.distributionAddrs[idxFaucet], wd.faucetOutputs[idxFaucet].Timestamp()).
 		WithAmount(amount).
 		WithTargetLock(target).
 		MustWithInputs(wd.faucetOutputs[idxFaucet])
@@ -95,7 +95,7 @@ func (wd *workflowTestData) makeTxFromFaucet(amount uint64, target ledger.Addres
 	_, err := ledger.LogicalTimeFromBytes(td.Timestamp[:])
 	util.AssertNoError(err)
 
-	txBytes, remainder, err := txbuilder.MakeSimpleTransferTransactionWithRemainder(td)
+	txBytes, remainder, err := txbuilder2.MakeSimpleTransferTransactionWithRemainder(td)
 	if err != nil {
 		return nil, err
 	}
@@ -566,7 +566,7 @@ func initMultiChainTest(t *testing.T, nChains int, verbose bool, secondsInThePas
 	ret.txBytesStore = txstore.NewDummyTxBytesStore()
 
 	ret.bootstrapChainID, _ = genesis.InitLedgerState(ret.sPar, stateStore)
-	txBytes, err := txbuilder.DistributeInitialSupply(stateStore, genesisPrivKey, distrib)
+	txBytes, err := txbuilder2.DistributeInitialSupply(stateStore, genesisPrivKey, distrib)
 	require.NoError(t, err)
 
 	err = ret.txBytesStore.SaveTxBytes(txBytes)
@@ -574,7 +574,7 @@ func initMultiChainTest(t *testing.T, nChains int, verbose bool, secondsInThePas
 
 	ret.ut = utangle_old.Load(stateStore)
 
-	ret.originBranchTxid, _, err = transaction.IDAndTimestampFromTransactionBytes(txBytes)
+	ret.originBranchTxid, _, err = transaction2.IDAndTimestampFromTransactionBytes(txBytes)
 	require.NoError(t, err)
 
 	stateReader := ret.ut.HeaviestStateForLatestTimeSlot()
@@ -610,7 +610,7 @@ func initMultiChainTest(t *testing.T, nChains int, verbose bool, secondsInThePas
 
 	// Create transaction with nChains new chain origins.
 	// It is not a sequencer tx with many chain origins
-	txb := txbuilder.NewTransactionBuilder()
+	txb := txbuilder2.NewTransactionBuilder()
 	_, err = txb.ConsumeOutput(firstOut.Output, firstOut.ID)
 	require.NoError(t, err)
 	txb.PutSignatureUnlock(0)
@@ -634,7 +634,7 @@ func initMultiChainTest(t *testing.T, nChains int, verbose bool, secondsInThePas
 
 	ret.txBytesChainOrigin = txb.TransactionData.Bytes()
 
-	tx, err := transaction.FromBytesMainChecksWithOpt(ret.txBytesChainOrigin)
+	tx, err := transaction2.FromBytesMainChecksWithOpt(ret.txBytesChainOrigin)
 	require.NoError(t, err)
 
 	if verbose {
@@ -672,7 +672,7 @@ func initMultiChainTest(t *testing.T, nChains int, verbose bool, secondsInThePas
 	return ret
 }
 
-func (r *multiChainTestData) createSequencerChain1(chainIdx int, pace int, printtx bool, exitFun func(i int, tx *transaction.Transaction) bool) [][]byte {
+func (r *multiChainTestData) createSequencerChain1(chainIdx int, pace int, printtx bool, exitFun func(i int, tx *transaction2.Transaction) bool) [][]byte {
 	require.True(r.t, pace >= ledger.TransactionPaceInTicks*2)
 
 	ret := make([][]byte, 0)
@@ -680,7 +680,7 @@ func (r *multiChainTestData) createSequencerChain1(chainIdx int, pace int, print
 	r.t.Logf("chain #%d, ID: %s, origin: %s", chainIdx, outConsumeChain.ChainID.Short(), outConsumeChain.ID.StringShort())
 	chainID := outConsumeChain.ChainID
 
-	par := txbuilder.MakeSequencerTransactionParams{
+	par := txbuilder2.MakeSequencerTransactionParams{
 		ChainInput:        outConsumeChain,
 		StemInput:         nil,
 		Timestamp:         outConsumeChain.Timestamp(),
@@ -696,7 +696,7 @@ func (r *multiChainTestData) createSequencerChain1(chainIdx int, pace int, print
 	//r.t.Logf("lastStem #0 = %s, ts: %s", lastStem.ID.StringShort(), par.LogicalTime.String())
 	lastBranchID := r.originBranchTxid
 
-	var tx *transaction.Transaction
+	var tx *transaction2.Transaction
 	for i := 0; !exitFun(i, tx); i++ {
 		prevTs := par.Timestamp
 		toNext := par.Timestamp.TimesTicksToNextSlotBoundary()
@@ -718,12 +718,12 @@ func (r *multiChainTestData) createSequencerChain1(chainIdx int, pace int, print
 			par.Endorsements = []*ledger.TransactionID{&lastBranchID}
 		}
 
-		txBytes, err := txbuilder.MakeSequencerTransaction(par)
+		txBytes, err := txbuilder2.MakeSequencerTransaction(par)
 		require.NoError(r.t, err)
 		ret = append(ret, txBytes)
 		require.NoError(r.t, err)
 
-		tx, err = transaction.FromBytesMainChecksWithOpt(txBytes)
+		tx, err = transaction2.FromBytesMainChecksWithOpt(txBytes)
 		require.NoError(r.t, err)
 
 		if printtx {
@@ -758,27 +758,27 @@ func (r *multiChainTestData) createSequencerChains1(pace int, howLong int) [][]b
 	require.True(r.t, nChains >= 2)
 
 	ret := make([][]byte, 0)
-	sequences := make([][]*transaction.Transaction, nChains)
+	sequences := make([][]*transaction2.Transaction, nChains)
 	counter := 0
 	for range sequences {
 		// sequencer tx
-		txBytes, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
+		txBytes, err := txbuilder2.MakeSequencerTransaction(txbuilder2.MakeSequencerTransactionParams{
 			ChainInput:   r.chainOrigins[counter],
 			Timestamp:    r.chainOrigins[counter].Timestamp().AddTicks(pace),
 			Endorsements: []*ledger.TransactionID{&r.originBranchTxid},
 			PrivateKey:   r.privKey,
 		})
 		require.NoError(r.t, err)
-		tx, err := transaction.FromBytesMainChecksWithOpt(txBytes)
+		tx, err := transaction2.FromBytesMainChecksWithOpt(txBytes)
 		require.NoError(r.t, err)
-		sequences[counter] = []*transaction.Transaction{tx}
+		sequences[counter] = []*transaction2.Transaction{tx}
 		ret = append(ret, txBytes)
 		r.t.Logf("chain #%d, ID: %s, origin: %s, seq start: %s",
 			counter, r.chainOrigins[counter].ChainID.Short(), r.chainOrigins[counter].ID.StringShort(), tx.IDShortString())
 		counter++
 	}
 
-	lastInChain := func(chainIdx int) *transaction.Transaction {
+	lastInChain := func(chainIdx int) *transaction2.Transaction {
 		return sequences[chainIdx][len(sequences[chainIdx])-1]
 	}
 
@@ -809,7 +809,7 @@ func (r *multiChainTestData) createSequencerChains1(pace int, howLong int) [][]b
 			// endorse previous sequencer tx
 			endorse = []*ledger.TransactionID{lastInChain(curChainIdx).ID()}
 		}
-		txBytes, err = txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
+		txBytes, err = txbuilder2.MakeSequencerTransaction(txbuilder2.MakeSequencerTransactionParams{
 			ChainInput: &ledger.OutputWithChainID{
 				OutputWithID: *chainIn,
 				ChainID:      r.chainOrigins[nextChainIdx].ChainID,
@@ -820,7 +820,7 @@ func (r *multiChainTestData) createSequencerChains1(pace int, howLong int) [][]b
 			PrivateKey:   r.privKey,
 		})
 		require.NoError(r.t, err)
-		tx, err := transaction.FromBytesMainChecksWithOpt(txBytes)
+		tx, err := transaction2.FromBytesMainChecksWithOpt(txBytes)
 		require.NoError(r.t, err)
 		sequences[nextChainIdx] = append(sequences[nextChainIdx], tx)
 		ret = append(ret, txBytes)
@@ -847,26 +847,26 @@ func (r *multiChainTestData) createSequencerChains2(pace int, howLong int) [][]b
 	require.True(r.t, nChains >= 2)
 
 	ret := make([][]byte, 0)
-	sequences := make([][]*transaction.Transaction, nChains)
+	sequences := make([][]*transaction2.Transaction, nChains)
 	counter := 0
 	for range sequences {
-		txBytes, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
+		txBytes, err := txbuilder2.MakeSequencerTransaction(txbuilder2.MakeSequencerTransactionParams{
 			ChainInput:   r.chainOrigins[counter],
 			Timestamp:    r.chainOrigins[counter].Timestamp().AddTicks(pace),
 			Endorsements: []*ledger.TransactionID{&r.originBranchTxid},
 			PrivateKey:   r.privKey,
 		})
 		require.NoError(r.t, err)
-		tx, err := transaction.FromBytesMainChecksWithOpt(txBytes)
+		tx, err := transaction2.FromBytesMainChecksWithOpt(txBytes)
 		require.NoError(r.t, err)
-		sequences[counter] = []*transaction.Transaction{tx}
+		sequences[counter] = []*transaction2.Transaction{tx}
 		ret = append(ret, txBytes)
 		r.t.Logf("chain #%d, ID: %s, origin: %s, seq start: %s",
 			counter, r.chainOrigins[counter].ChainID.Short(), r.chainOrigins[counter].ID.StringShort(), tx.IDShortString())
 		counter++
 	}
 
-	lastInChain := func(chainIdx int) *transaction.Transaction {
+	lastInChain := func(chainIdx int) *transaction2.Transaction {
 		return sequences[chainIdx][len(sequences[chainIdx])-1]
 	}
 
@@ -914,7 +914,7 @@ func (r *multiChainTestData) createSequencerChains2(pace int, howLong int) [][]b
 				}
 			}
 		}
-		txBytes, err = txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
+		txBytes, err = txbuilder2.MakeSequencerTransaction(txbuilder2.MakeSequencerTransactionParams{
 			ChainInput: &ledger.OutputWithChainID{
 				OutputWithID: *chainIn,
 				ChainID:      r.chainOrigins[nextChainIdx].ChainID,
@@ -925,7 +925,7 @@ func (r *multiChainTestData) createSequencerChains2(pace int, howLong int) [][]b
 			PrivateKey:   r.privKey,
 		})
 		require.NoError(r.t, err)
-		tx, err := transaction.FromBytesMainChecksWithOpt(txBytes)
+		tx, err := transaction2.FromBytesMainChecksWithOpt(txBytes)
 		require.NoError(r.t, err)
 		sequences[nextChainIdx] = append(sequences[nextChainIdx], tx)
 		ret = append(ret, txBytes)
@@ -957,19 +957,19 @@ func (r *multiChainTestData) createSequencerChains3(pace int, howLong int, print
 	require.True(r.t, nChains >= 2)
 
 	ret := make([][]byte, 0)
-	sequences := make([][]*transaction.Transaction, nChains)
+	sequences := make([][]*transaction2.Transaction, nChains)
 	counter := 0
 	for range sequences {
-		txBytes, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
+		txBytes, err := txbuilder2.MakeSequencerTransaction(txbuilder2.MakeSequencerTransactionParams{
 			ChainInput:   r.chainOrigins[counter],
 			Timestamp:    r.chainOrigins[counter].Timestamp().AddTicks(pace),
 			Endorsements: []*ledger.TransactionID{&r.originBranchTxid},
 			PrivateKey:   r.privKey,
 		})
 		require.NoError(r.t, err)
-		tx, err := transaction.FromBytesMainChecksWithOpt(txBytes)
+		tx, err := transaction2.FromBytesMainChecksWithOpt(txBytes)
 		require.NoError(r.t, err)
-		sequences[counter] = []*transaction.Transaction{tx}
+		sequences[counter] = []*transaction2.Transaction{tx}
 		ret = append(ret, txBytes)
 		if printTx {
 			r.t.Logf("chain #%d, ID: %s, origin: %s, seq start: %s",
@@ -980,7 +980,7 @@ func (r *multiChainTestData) createSequencerChains3(pace int, howLong int, print
 
 	faucetOutput := r.faucetOrigin
 
-	lastInChain := func(chainIdx int) *transaction.Transaction {
+	lastInChain := func(chainIdx int) *transaction2.Transaction {
 		return sequences[chainIdx][len(sequences[chainIdx])-1]
 	}
 
@@ -988,19 +988,19 @@ func (r *multiChainTestData) createSequencerChains3(pace int, howLong int, print
 
 	var curChainIdx, nextChainIdx int
 	var txBytes []byte
-	var tx *transaction.Transaction
+	var tx *transaction2.Transaction
 	var err error
 
 	for i := counter; i < howLong; i++ {
 		nextChainIdx = (curChainIdx + 1) % nChains
 		// create faucet tx
-		td := txbuilder.NewTransferData(r.faucetPrivKey, r.faucetAddr, faucetOutput.Timestamp().AddTicks(ledger.TransactionPaceInTicks))
+		td := txbuilder2.NewTransferData(r.faucetPrivKey, r.faucetAddr, faucetOutput.Timestamp().AddTicks(ledger.TransactionPaceInTicks))
 		td.WithTargetLock(ledger.ChainLockFromChainID(r.chainOrigins[nextChainIdx].ChainID)).
 			WithAmount(100).
 			MustWithInputs(faucetOutput)
-		txBytes, err = txbuilder.MakeTransferTransaction(td)
+		txBytes, err = txbuilder2.MakeTransferTransaction(td)
 		require.NoError(r.t, err)
-		tx, err = transaction.FromBytesMainChecksWithOpt(txBytes)
+		tx, err = transaction2.FromBytesMainChecksWithOpt(txBytes)
 		require.NoError(r.t, err)
 		faucetOutput = tx.MustProducedOutputWithIDAt(0)
 		feeOutput := tx.MustProducedOutputWithIDAt(1)
@@ -1046,7 +1046,7 @@ func (r *multiChainTestData) createSequencerChains3(pace int, howLong int, print
 				}
 			}
 		}
-		txBytes, err = txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
+		txBytes, err = txbuilder2.MakeSequencerTransaction(txbuilder2.MakeSequencerTransactionParams{
 			ChainInput: &ledger.OutputWithChainID{
 				OutputWithID: *chainIn,
 				ChainID:      r.chainOrigins[nextChainIdx].ChainID,
@@ -1058,7 +1058,7 @@ func (r *multiChainTestData) createSequencerChains3(pace int, howLong int, print
 			PrivateKey:       r.privKey,
 		})
 		require.NoError(r.t, err)
-		tx, err := transaction.FromBytesMainChecksWithOpt(txBytes)
+		tx, err := transaction2.FromBytesMainChecksWithOpt(txBytes)
 		require.NoError(r.t, err)
 		sequences[nextChainIdx] = append(sequences[nextChainIdx], tx)
 		ret = append(ret, txBytes)
@@ -1094,12 +1094,12 @@ func TestMultiChainWorkflow(t *testing.T) {
 			printBranchTx        = false
 		)
 		r := initMultiChainTest(t, nChains, false, 60)
-		txBytesSeq := r.createSequencerChain1(0, chainPaceInTimeTicks, true, func(i int, tx *transaction.Transaction) bool {
+		txBytesSeq := r.createSequencerChain1(0, chainPaceInTimeTicks, true, func(i int, tx *transaction2.Transaction) bool {
 			return i == howLong
 		})
 		require.EqualValues(t, howLong, len(txBytesSeq))
 
-		transaction.SetPrintEasyFLTraceOnFail(false)
+		transaction2.SetPrintEasyFLTraceOnFail(false)
 
 		wrk := workflow.New(r.ut, peering.NewPeersDummy(), r.txBytesStore)
 		cd := countdown.New(howLong*nChains, 10*time.Second)
@@ -1115,7 +1115,7 @@ func TestMultiChainWorkflow(t *testing.T) {
 		wrk.Start()
 
 		for i, txBytes := range txBytesSeq {
-			tx, err := transaction.FromBytes(txBytes)
+			tx, err := transaction2.FromBytes(txBytes)
 			require.NoError(r.t, err)
 			if tx.IsBranchTransaction() {
 				t.Logf("append %d txid = %s <-- branch transaction", i, tx.IDShortString())
@@ -1124,7 +1124,7 @@ func TestMultiChainWorkflow(t *testing.T) {
 			}
 			if tx.IsBranchTransaction() {
 				if printBranchTx {
-					t.Logf("branch tx %d : %s", i, transaction.ParseBytesToString(txBytes, r.ut.GetUTXO))
+					t.Logf("branch tx %d : %s", i, transaction2.ParseBytesToString(txBytes, r.ut.GetUTXO))
 				}
 			}
 			err = wrk.TransactionIn(txBytes)
@@ -1146,12 +1146,12 @@ func TestMultiChainWorkflow(t *testing.T) {
 			printBranchTx        = false
 		)
 		r := initMultiChainTest(t, nChains, false, 0)
-		txBytesSeq := r.createSequencerChain1(0, chainPaceInTimeSlots, true, func(i int, tx *transaction.Transaction) bool {
+		txBytesSeq := r.createSequencerChain1(0, chainPaceInTimeSlots, true, func(i int, tx *transaction2.Transaction) bool {
 			return i == howLong
 		})
 		require.EqualValues(t, howLong, len(txBytesSeq))
 
-		transaction.SetPrintEasyFLTraceOnFail(false)
+		transaction2.SetPrintEasyFLTraceOnFail(false)
 
 		wrk := workflow.New(r.ut, peering.NewPeersDummy(), r.txBytesStore)
 		cd := countdown.New(howLong*nChains, 10*time.Second)
@@ -1161,7 +1161,7 @@ func TestMultiChainWorkflow(t *testing.T) {
 		wrk.Start()
 
 		for i, txBytes := range txBytesSeq {
-			tx, err := transaction.FromBytes(txBytes)
+			tx, err := transaction2.FromBytes(txBytes)
 			require.NoError(r.t, err)
 			if tx.IsBranchTransaction() {
 				t.Logf("append %d txid = %s <-- branch transaction", i, tx.IDShortString())
@@ -1170,7 +1170,7 @@ func TestMultiChainWorkflow(t *testing.T) {
 			}
 			if tx.IsBranchTransaction() {
 				if printBranchTx {
-					t.Logf("branch tx %d : %s", i, transaction.ParseBytesToString(txBytes, r.ut.GetUTXO))
+					t.Logf("branch tx %d : %s", i, transaction2.ParseBytesToString(txBytes, r.ut.GetUTXO))
 				}
 			}
 			err = wrk.TransactionIn(txBytes)
@@ -1192,14 +1192,14 @@ func TestMultiChainWorkflow(t *testing.T) {
 
 		txBytesSeq := make([][][]byte, nChains)
 		for i := range txBytesSeq {
-			txBytesSeq[i] = r.createSequencerChain1(i, chainPaceInTimeSlots+i, false, func(i int, tx *transaction.Transaction) bool {
+			txBytesSeq[i] = r.createSequencerChain1(i, chainPaceInTimeSlots+i, false, func(i int, tx *transaction2.Transaction) bool {
 				// until first branch
 				return i > 0 && tx.IsBranchTransaction()
 			})
 			t.Logf("seq %d, length: %d", i, len(txBytesSeq[i]))
 		}
 
-		transaction.SetPrintEasyFLTraceOnFail(false)
+		transaction2.SetPrintEasyFLTraceOnFail(false)
 
 		wrk := workflow.New(r.ut, peering.NewPeersDummy(), r.txBytesStore, workflow.WithConsumerLogLevel(workflow.PreValidateConsumerName, zapcore.DebugLevel))
 		nTransactions := 0
@@ -1216,7 +1216,7 @@ func TestMultiChainWorkflow(t *testing.T) {
 		for seqIdx := range txBytesSeq {
 			for i, txBytes := range txBytesSeq[seqIdx] {
 				//r.t.Logf("tangle info: %s", r.ut.Info())
-				tx, err := transaction.FromBytes(txBytes)
+				tx, err := transaction2.FromBytes(txBytes)
 				require.NoError(r.t, err)
 				//if tx.IsBranchTransaction() {
 				//	t.Logf("append seq = %d, # = %d txid = %s <-- branch transaction", seqIdx, i, tx.IDShortString())
@@ -1225,7 +1225,7 @@ func TestMultiChainWorkflow(t *testing.T) {
 				//}
 				if tx.IsBranchTransaction() {
 					if printBranchTx {
-						t.Logf("branch tx %d : %s", i, transaction.ParseBytesToString(txBytes, r.ut.GetUTXO))
+						t.Logf("branch tx %d : %s", i, transaction2.ParseBytesToString(txBytes, r.ut.GetUTXO))
 					}
 				}
 				err = wrk.TransactionIn(txBytes)
@@ -1249,14 +1249,14 @@ func TestMultiChainWorkflow(t *testing.T) {
 
 		txBytesSeq := make([][][]byte, nChains)
 		for i := range txBytesSeq {
-			txBytesSeq[i] = r.createSequencerChain1(i, chainPaceInTimeSlots+i, false, func(i int, tx *transaction.Transaction) bool {
+			txBytesSeq[i] = r.createSequencerChain1(i, chainPaceInTimeSlots+i, false, func(i int, tx *transaction2.Transaction) bool {
 				// until first branch
 				return i > 0 && tx.IsBranchTransaction()
 			})
 			t.Logf("seq %d, length: %d", i, len(txBytesSeq[i]))
 		}
 
-		transaction.SetPrintEasyFLTraceOnFail(false)
+		transaction2.SetPrintEasyFLTraceOnFail(false)
 
 		wrk := workflow.New(r.ut, peering.NewPeersDummy(), r.txBytesStore) //workflow_old.WithConsumerLogLevel(workflow_old.PreValidateConsumerName, zapcore.DebugLevel),
 		//workflow_old.WithConsumerLogLevel(workflow_old.SolidifyConsumerName, zapcore.DebugLevel),
@@ -1277,7 +1277,7 @@ func TestMultiChainWorkflow(t *testing.T) {
 		for seqIdx := range txBytesSeq {
 			for i, txBytes := range txBytesSeq[seqIdx] {
 				//r.t.Logf("tangle info: %s", r.ut.Info())
-				tx, err := transaction.FromBytes(txBytes)
+				tx, err := transaction2.FromBytes(txBytes)
 				require.NoError(r.t, err)
 				//if tx.IsBranchTransaction() {
 				//	t.Logf("append seq = %d, # = %d txid = %s <-- branch transaction", seqIdx, i, tx.IDShortString())
@@ -1325,7 +1325,7 @@ func TestMultiChainWorkflow(t *testing.T) {
 		txBytesSeq := make([][][]byte, nChains)
 		for i := range txBytesSeq {
 			numBranches := 0
-			txBytesSeq[i] = r.createSequencerChain1(i, chainPaceInTimeSlots, false, func(i int, tx *transaction.Transaction) bool {
+			txBytesSeq[i] = r.createSequencerChain1(i, chainPaceInTimeSlots, false, func(i int, tx *transaction2.Transaction) bool {
 				// up to given length and first non branch tx
 				if tx != nil && tx.IsBranchTransaction() {
 					numBranches++
@@ -1336,7 +1336,7 @@ func TestMultiChainWorkflow(t *testing.T) {
 		}
 		// take the last transaction of the second sequence
 		txBytes := txBytesSeq[1][len(txBytesSeq[1])-1]
-		txEndorser, err := transaction.FromBytesMainChecksWithOpt(txBytes)
+		txEndorser, err := transaction2.FromBytesMainChecksWithOpt(txBytes)
 		require.NoError(t, err)
 		require.True(t, txEndorser.IsSequencerMilestone())
 		require.False(t, txEndorser.IsBranchTransaction())
@@ -1344,7 +1344,7 @@ func TestMultiChainWorkflow(t *testing.T) {
 		out := txEndorser.MustProducedOutputWithIDAt(0)
 		t.Logf("output to consume:\n%s", out.Short())
 
-		idToBeEndorsed, tsToBeEndorsed, err := transaction.IDAndTimestampFromTransactionBytes(txBytesSeq[0][len(txBytesSeq[0])-1])
+		idToBeEndorsed, tsToBeEndorsed, err := transaction2.IDAndTimestampFromTransactionBytes(txBytesSeq[0][len(txBytesSeq[0])-1])
 		require.NoError(t, err)
 		ts := ledger.MaxLogicalTime(tsToBeEndorsed, txEndorser.Timestamp())
 		ts = ts.AddTicks(ledger.TransactionPaceInTicks)
@@ -1352,7 +1352,7 @@ func TestMultiChainWorkflow(t *testing.T) {
 		require.True(t, ts.TimeSlot() != 0 && ts.TimeSlot() == txEndorser.Timestamp().TimeSlot())
 		t.Logf("ID to be endorsed: %s", idToBeEndorsed.StringShort())
 
-		txBytesConflict, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
+		txBytesConflict, err := txbuilder2.MakeSequencerTransaction(txbuilder2.MakeSequencerTransactionParams{
 			ChainInput: &ledger.OutputWithChainID{
 				OutputWithID: *out,
 				ChainID:      r.chainOrigins[1].ChainID,
@@ -1363,7 +1363,7 @@ func TestMultiChainWorkflow(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		transaction.SetPrintEasyFLTraceOnFail(false)
+		transaction2.SetPrintEasyFLTraceOnFail(false)
 
 		wrk := workflow.New(r.ut, peering.NewPeersDummy(), r.txBytesStore)
 		nTransactions := 0
@@ -1379,7 +1379,7 @@ func TestMultiChainWorkflow(t *testing.T) {
 
 		for seqIdx := range txBytesSeq {
 			for i, txBytes := range txBytesSeq[seqIdx] {
-				tx, err := transaction.FromBytes(txBytes)
+				tx, err := transaction2.FromBytes(txBytes)
 				require.NoError(r.t, err)
 				//if tx.IsBranchTransaction() {
 				//	t.Logf("append seq = %d, # = %d txid = %s <-- branch transaction", seqIdx, i, tx.IDShortString())
@@ -1388,7 +1388,7 @@ func TestMultiChainWorkflow(t *testing.T) {
 				//}
 				if tx.IsBranchTransaction() {
 					if printBranchTx {
-						t.Logf("branch tx %d : %s", i, transaction.ParseBytesToString(txBytes, r.ut.GetUTXO))
+						t.Logf("branch tx %d : %s", i, transaction2.ParseBytesToString(txBytes, r.ut.GetUTXO))
 					}
 				}
 				err = wrk.TransactionIn(txBytes)
@@ -1421,7 +1421,7 @@ func TestMultiChainWorkflow(t *testing.T) {
 
 		txBytesSeq := r.createSequencerChains1(chainPaceInTimeSlots, howLong)
 		require.EqualValues(t, howLong, len(txBytesSeq))
-		transaction.SetPrintEasyFLTraceOnFail(false)
+		transaction2.SetPrintEasyFLTraceOnFail(false)
 
 		wrk := workflow.New(r.ut, peering.NewPeersDummy(), r.txBytesStore)
 		cd := countdown.New(howLong, 20*time.Second)
@@ -1431,7 +1431,7 @@ func TestMultiChainWorkflow(t *testing.T) {
 		wrk.Start()
 
 		for i, txBytes := range txBytesSeq {
-			tx, err := transaction.FromBytes(txBytes)
+			tx, err := transaction2.FromBytes(txBytes)
 			require.NoError(r.t, err)
 			//if tx.IsBranchTransaction() {
 			//	t.Logf("append seq = %d, # = %d txid = %s <-- branch transaction", seqIdx, i, tx.IDShortString())
@@ -1440,7 +1440,7 @@ func TestMultiChainWorkflow(t *testing.T) {
 			//}
 			if tx.IsBranchTransaction() {
 				if printBranchTx {
-					t.Logf("branch tx %d : %s", i, transaction.ParseBytesToString(txBytes, r.ut.GetUTXO))
+					t.Logf("branch tx %d : %s", i, transaction2.ParseBytesToString(txBytes, r.ut.GetUTXO))
 				}
 			}
 			if nowait {
@@ -1477,7 +1477,7 @@ func TestMultiChainWorkflow(t *testing.T) {
 
 		txBytesSeq := r.createSequencerChains2(chainPaceInTimeSlots, howLong)
 
-		transaction.SetPrintEasyFLTraceOnFail(false)
+		transaction2.SetPrintEasyFLTraceOnFail(false)
 
 		wrk := workflow.New(r.ut, peering.NewPeersDummy(), r.txBytesStore)
 		cd := countdown.New(howLong, 10*time.Second)
@@ -1487,7 +1487,7 @@ func TestMultiChainWorkflow(t *testing.T) {
 		wrk.Start()
 
 		for i, txBytes := range txBytesSeq {
-			tx, err := transaction.FromBytes(txBytes)
+			tx, err := transaction2.FromBytes(txBytes)
 			require.NoError(r.t, err)
 			//if tx.IsBranchTransaction() {
 			//	t.Logf("append seq = %d, # = %d txid = %s <-- branch transaction", seqIdx, i, tx.IDShortString())
@@ -1496,7 +1496,7 @@ func TestMultiChainWorkflow(t *testing.T) {
 			//}
 			if tx.IsBranchTransaction() {
 				if printBranchTx {
-					t.Logf("branch tx %d : %s", i, transaction.ParseBytesToString(txBytes, r.ut.GetUTXO))
+					t.Logf("branch tx %d : %s", i, transaction2.ParseBytesToString(txBytes, r.ut.GetUTXO))
 				}
 			}
 			err = wrk.TransactionIn(txBytes)
@@ -1525,7 +1525,7 @@ func TestMultiChainWorkflow(t *testing.T) {
 
 		txBytesSeq := r.createSequencerChains3(chainPaceInTimeSlots, howLong, printTx)
 
-		transaction.SetPrintEasyFLTraceOnFail(false)
+		transaction2.SetPrintEasyFLTraceOnFail(false)
 
 		wrk := workflow.New(r.ut, peering.NewPeersDummy(), r.txBytesStore)
 		cd := countdown.New(len(txBytesSeq), 20*time.Second)
@@ -1535,7 +1535,7 @@ func TestMultiChainWorkflow(t *testing.T) {
 		wrk.Start()
 
 		for i, txBytes := range txBytesSeq {
-			tx, err := transaction.FromBytes(txBytes)
+			tx, err := transaction2.FromBytes(txBytes)
 			require.NoError(r.t, err)
 			//if tx.IsBranchTransaction() {
 			//	t.Logf("append seq = %d, # = %d txid = %s <-- branch transaction", seqIdx, i, tx.IDShortString())
@@ -1544,7 +1544,7 @@ func TestMultiChainWorkflow(t *testing.T) {
 			//}
 			if tx.IsBranchTransaction() {
 				if printBranchTx {
-					t.Logf("branch tx %d : %s", i, transaction.ParseBytesToString(txBytes, r.ut.GetUTXO))
+					t.Logf("branch tx %d : %s", i, transaction2.ParseBytesToString(txBytes, r.ut.GetUTXO))
 				}
 			}
 			err = wrk.TransactionIn(txBytes)

@@ -12,10 +12,10 @@ import (
 
 	"github.com/lunfardo314/proxima/genesis"
 	"github.com/lunfardo314/proxima/ledger"
+	transaction2 "github.com/lunfardo314/proxima/ledger/transaction"
+	txbuilder2 "github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/peering"
 	"github.com/lunfardo314/proxima/sequencer_old"
-	"github.com/lunfardo314/proxima/transaction"
-	"github.com/lunfardo314/proxima/txbuilder"
 	"github.com/lunfardo314/proxima/txstore"
 	"github.com/lunfardo314/proxima/utangle_old"
 	"github.com/lunfardo314/proxima/util"
@@ -47,7 +47,7 @@ type sequencerTestData struct {
 	bootstrapChainID            ledger.ChainID
 	distributionTxID            ledger.TransactionID
 	chainOrigins                []*ledger.OutputWithChainID
-	txChainOrigins              *transaction.Transaction
+	txChainOrigins              *transaction2.Transaction
 	ut                          *utangle_old.UTXOTangle
 	wrk                         *workflow.Workflow
 	bootstrapSeq                *sequencer_old.Sequencer
@@ -76,7 +76,7 @@ func initSequencerTestData(t *testing.T, nFaucets, nAdditionalChains int, logica
 	txStore := txstore.NewDummyTxBytesStore()
 
 	ret.bootstrapChainID, _ = genesis.InitLedgerState(ret.stateIdentity, stateStore)
-	txBytes, err := txbuilder.DistributeInitialSupply(stateStore, ret.originControllerPrivateKey, ret.originDistribution)
+	txBytes, err := txbuilder2.DistributeInitialSupply(stateStore, ret.originControllerPrivateKey, ret.originDistribution)
 	require.NoError(t, err)
 
 	err = txStore.SaveTxBytes(txBytes)
@@ -84,7 +84,7 @@ func initSequencerTestData(t *testing.T, nFaucets, nAdditionalChains int, logica
 
 	ret.ut = utangle_old.Load(stateStore)
 
-	ret.distributionTxID, _, err = transaction.IDAndTimestampFromTransactionBytes(txBytes)
+	ret.distributionTxID, _, err = transaction2.IDAndTimestampFromTransactionBytes(txBytes)
 	require.NoError(t, err)
 
 	stateReader := ret.ut.HeaviestStateForLatestTimeSlot()
@@ -114,7 +114,7 @@ func (r *sequencerTestData) makeAdditionalChainOrigins(faucetIdx int, nChains in
 	}
 	var err error
 
-	txb := txbuilder.NewTransactionBuilder()
+	txb := txbuilder2.NewTransactionBuilder()
 	_, err = txb.ConsumeOutputWithID(r.faucetOutputs[faucetIdx])
 	require.NoError(r.t, err)
 	txb.PutSignatureUnlock(0)
@@ -153,7 +153,7 @@ func (r *sequencerTestData) makeAdditionalChainOrigins(faucetIdx int, nChains in
 
 	txBytesChainOrigins := txb.TransactionData.Bytes()
 
-	r.txChainOrigins, err = transaction.FromBytesMainChecksWithOpt(txBytesChainOrigins)
+	r.txChainOrigins, err = transaction2.FromBytesMainChecksWithOpt(txBytesChainOrigins)
 	require.NoError(r.t, err)
 
 	r.t.Logf("chain origins transaction: %s", r.txChainOrigins.IDShortString())
@@ -185,8 +185,8 @@ func (r *sequencerTestData) allSequencerIDs() []ledger.ChainID {
 	return ret
 }
 
-func (r *sequencerTestData) makeFaucetTransaction(targetSeqID ledger.ChainID, faucetIdx int, targetLock ledger.Lock, amount uint64) *transaction.Transaction {
-	txb := txbuilder.NewTransactionBuilder()
+func (r *sequencerTestData) makeFaucetTransaction(targetSeqID ledger.ChainID, faucetIdx int, targetLock ledger.Lock, amount uint64) *transaction2.Transaction {
+	txb := txbuilder2.NewTransactionBuilder()
 	_, err := txb.ConsumeOutputWithID(r.faucetOutputs[faucetIdx])
 	require.NoError(r.t, err)
 	txb.PutSignatureUnlock(0)
@@ -216,7 +216,7 @@ func (r *sequencerTestData) makeFaucetTransaction(targetSeqID ledger.ChainID, fa
 	txb.TransactionData.InputCommitment = txb.InputCommitment()
 	txb.SignED25519(r.faucetPrivateKeys[faucetIdx])
 
-	tx, err := transaction.FromBytesMainChecksWithOpt(txb.TransactionData.Bytes())
+	tx, err := transaction2.FromBytesMainChecksWithOpt(txb.TransactionData.Bytes())
 	r.faucetOutputs[faucetIdx] = tx.MustProducedOutputWithIDAt(remainderIdx)
 	//r.t.Logf("++++++ tx %s\n%s", tx.IDShortString(), tx.ProducedOutputsToString())
 	return tx
@@ -237,7 +237,7 @@ func Test1Sequencer(t *testing.T) {
 	t.Run("run idle", func(t *testing.T) {
 		const maxSlots = 7
 		r := initSequencerTestData(t, 1, 0, ledger.LogicalTimeNow())
-		transaction.SetPrintEasyFLTraceOnFail(true)
+		transaction2.SetPrintEasyFLTraceOnFail(true)
 		r.wrk.Start()
 
 		sequencer_old.SetTraceProposer(sequencer_old.BaseProposerName, false)
@@ -269,7 +269,7 @@ func Test1Sequencer(t *testing.T) {
 		const maxTimeSlots = 10
 
 		r := initSequencerTestData(t, 1, 1, ledger.LogicalTimeNow())
-		transaction.SetPrintEasyFLTraceOnFail(false)
+		transaction2.SetPrintEasyFLTraceOnFail(false)
 		r.wrk.Start()
 
 		sequencer_old.SetTraceAll(false)
@@ -315,7 +315,7 @@ func Test1Sequencer(t *testing.T) {
 		)
 
 		r := initSequencerTestData(t, 1, 1, ledger.LogicalTimeNow())
-		transaction.SetPrintEasyFLTraceOnFail(false)
+		transaction2.SetPrintEasyFLTraceOnFail(false)
 		r.wrk.Start()
 
 		sequencer_old.SetTraceAll(false)
@@ -383,7 +383,7 @@ func Test1Sequencer(t *testing.T) {
 		r.wrk.MustOnEvent(workflow.EventDroppedTx, func(inp workflow.DropTxData) {
 			r.t.Logf("rejected %s : '%s'", inp.TxID.StringShort(), inp.Msg)
 		})
-		transaction.SetPrintEasyFLTraceOnFail(false)
+		transaction2.SetPrintEasyFLTraceOnFail(false)
 		r.wrk.Start()
 
 		sequencer_old.SetTraceAll(false)
@@ -466,7 +466,7 @@ func Test1Sequencer(t *testing.T) {
 		)
 		t.Logf("numFaucets: %d, numFaucetTransactions: %d", numFaucets, numFaucetTransactions)
 		r := initSequencerTestData(t, numFaucets, 1, ledger.LogicalTimeNow())
-		transaction.SetPrintEasyFLTraceOnFail(false)
+		transaction2.SetPrintEasyFLTraceOnFail(false)
 		r.wrk.Start()
 
 		sequencer_old.SetTraceAll(false)
@@ -631,7 +631,7 @@ func TestNSequencers(t *testing.T) {
 		)
 		t.Logf("\n   numFaucets: %d\n   numFaucetTransactions: %d\n", numFaucets, numFaucetTransactions)
 		r := initSequencerTestData(t, numFaucets, 1, ledger.LogicalTimeNow())
-		transaction.SetPrintEasyFLTraceOnFail(false)
+		transaction2.SetPrintEasyFLTraceOnFail(false)
 		r.wrk.Start()
 		// add transaction with chain origins
 		_, err := r.wrk.TransactionInWaitAppend(r.txChainOrigins.Bytes(), 5*time.Second)
@@ -704,7 +704,7 @@ func TestNSequencers(t *testing.T) {
 		t.Logf("\n   numFaucets: %d\n   numTxPerFaucet: %d\n   transferAmount: %d",
 			numFaucets, numTxPerFaucet, transferAmount)
 		r := initSequencerTestData(t, numFaucets, nSequencers-1, ledger.LogicalTimeNow())
-		transaction.SetPrintEasyFLTraceOnFail(false)
+		transaction2.SetPrintEasyFLTraceOnFail(false)
 		r.wrk.Start()
 		//r.createTransactionLogger()
 		// add transaction with chain origins
@@ -789,7 +789,7 @@ func TestNSequencers(t *testing.T) {
 		t.Logf("\n   numFaucets: %d\n   numTxPerFaucet: %d\n   transferAmount: %d",
 			numFaucets, numTxPerFaucet, transferAmount)
 		r := initSequencerTestData(t, numFaucets, nSequencers-1, ledger.LogicalTimeNow())
-		transaction.SetPrintEasyFLTraceOnFail(false)
+		transaction2.SetPrintEasyFLTraceOnFail(false)
 		r.wrk.Start()
 		//r.createTransactionLogger()
 		// add transaction with chain origins
@@ -885,7 +885,7 @@ func TestNSequencers(t *testing.T) {
 		)
 		t.Logf("\n   numFaucets: %d\n   numFaucetTransactions: %d\n", numFaucets, numFaucetTransactions)
 		r := initSequencerTestData(t, numFaucets, nSequencers-1, ledger.LogicalTimeNow())
-		transaction.SetPrintEasyFLTraceOnFail(false)
+		transaction2.SetPrintEasyFLTraceOnFail(false)
 		r.wrk.Start()
 		// add transaction with chain origins
 		_, err := r.wrk.TransactionInWaitAppend(r.txChainOrigins.Bytes(), 5*time.Second)
@@ -964,7 +964,7 @@ func TestNSequencers(t *testing.T) {
 		)
 		t.Logf("\n   numFaucets: %d\n   numFaucetTransactions: %d\n", numFaucets, numFaucetTransactions)
 		r := initSequencerTestData(t, numFaucets, nSequencers-1, ledger.LogicalTimeNow())
-		transaction.SetPrintEasyFLTraceOnFail(false)
+		transaction2.SetPrintEasyFLTraceOnFail(false)
 		r.wrk.Start()
 		//r.createTransactionLogger()
 		// add transaction with chain origins
@@ -1036,7 +1036,7 @@ func TestPruning(t *testing.T) {
 		)
 		t.Logf("\n   numFaucets: %d\n   numFaucetTransactions: %d\n", numFaucets, numFaucetTransactions)
 		r := initSequencerTestData(t, numFaucets, nSequencers-1, ledger.LogicalTimeNow())
-		transaction.SetPrintEasyFLTraceOnFail(false)
+		transaction2.SetPrintEasyFLTraceOnFail(false)
 
 		r.wrk.Start()
 
@@ -1138,7 +1138,7 @@ func TestPruning(t *testing.T) {
 		)
 		t.Logf("\n   numFaucets: %d\n   numFaucetTransactions: %d\n", numFaucets, numFaucetTransactions)
 		r := initSequencerTestData(t, numFaucets, nSequencers-1, ledger.LogicalTimeNow())
-		transaction.SetPrintEasyFLTraceOnFail(false)
+		transaction2.SetPrintEasyFLTraceOnFail(false)
 
 		r.wrk.Start()
 		r.wrk.StartPruner()
@@ -1225,7 +1225,7 @@ func TestPruning(t *testing.T) {
 		)
 		t.Logf("\n   numFaucets: %d\n   numFaucetTransactions: %d\n", numFaucets, numFaucetTransactions)
 		r := initSequencerTestData(t, numFaucets, nSequencers-1, ledger.LogicalTimeNow())
-		transaction.SetPrintEasyFLTraceOnFail(false)
+		transaction2.SetPrintEasyFLTraceOnFail(false)
 
 		r.wrk.Start()
 		r.wrk.StartPruner()

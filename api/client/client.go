@@ -14,8 +14,8 @@ import (
 	"github.com/lunfardo314/proxima/api"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
-	"github.com/lunfardo314/proxima/transaction"
-	"github.com/lunfardo314/proxima/txbuilder"
+	transaction2 "github.com/lunfardo314/proxima/ledger/transaction"
+	txbuilder2 "github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/utangle_old"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/txutils"
@@ -121,7 +121,7 @@ func (c *APIClient) GetChainOutputFromHeaviestState(chainID ledger.ChainID) (*le
 	return oData.ParseAsChainOutput()
 }
 
-func (c *APIClient) GetMilestoneDataFromHeaviestState(chainID ledger.ChainID) (*txbuilder.MilestoneData, error) {
+func (c *APIClient) GetMilestoneDataFromHeaviestState(chainID ledger.ChainID) (*txbuilder2.MilestoneData, error) {
 	o, _, err := c.GetChainOutputFromHeaviestState(chainID)
 	if err != nil {
 		return nil, err
@@ -129,7 +129,7 @@ func (c *APIClient) GetMilestoneDataFromHeaviestState(chainID ledger.ChainID) (*
 	if !o.ID.IsSequencerTransaction() {
 		return nil, fmt.Errorf("not a sequencer milestone: %s", chainID.Short())
 	}
-	return txbuilder.ParseMilestoneData(o.Output), nil
+	return txbuilder2.ParseMilestoneData(o.Output), nil
 }
 
 // GetOutputDataFromHeaviestState returns output data from the latest heaviest state, if it exists there
@@ -340,7 +340,7 @@ func (c *APIClient) GetTransferableOutputs(account ledger.Accountable, ts ledger
 }
 
 // MakeCompactTransaction requests server and creates a compact transaction for ED25519 outputs in the form of transaction context. Does not submit it
-func (c *APIClient) MakeCompactTransaction(walletPrivateKey ed25519.PrivateKey, tagAlongSeqID *ledger.ChainID, tagAlongFee uint64, maxInputs ...int) (*transaction.TransactionContext, error) {
+func (c *APIClient) MakeCompactTransaction(walletPrivateKey ed25519.PrivateKey, tagAlongSeqID *ledger.ChainID, tagAlongFee uint64, maxInputs ...int) (*transaction2.TransactionContext, error) {
 	walletAccount := ledger.AddressED25519FromPrivateKey(walletPrivateKey)
 
 	nowisTs := ledger.LogicalTimeNow()
@@ -366,7 +366,7 @@ func (c *APIClient) MakeCompactTransaction(walletPrivateKey ed25519.PrivateKey, 
 		return nil, err
 	}
 
-	txCtx, err := transaction.ContextFromTransferableBytes(txBytes, transaction.PickOutputFromListFunc(walletOutputs))
+	txCtx, err := transaction2.ContextFromTransferableBytes(txBytes, transaction2.PickOutputFromListFunc(walletOutputs))
 	if err != nil {
 		return nil, err
 	}
@@ -386,7 +386,7 @@ const (
 	minimumAmount = uint64(500)
 )
 
-func (c *APIClient) TransferFromED25519Wallet(par TransferFromED25519WalletParams) (*transaction.TransactionContext, error) {
+func (c *APIClient) TransferFromED25519Wallet(par TransferFromED25519WalletParams) (*transaction2.TransactionContext, error) {
 	if par.Amount < minimumAmount {
 		return nil, fmt.Errorf("minimum transfer amount is %d", minimumAmount)
 	}
@@ -407,7 +407,7 @@ func (c *APIClient) TransferFromED25519Wallet(par TransferFromED25519WalletParam
 	if err != nil {
 		return nil, err
 	}
-	txCtx, err := transaction.ContextFromTransferableBytes(txBytes, transaction.PickOutputFromListFunc(walletOutputs))
+	txCtx, err := transaction2.ContextFromTransferableBytes(txBytes, transaction2.PickOutputFromListFunc(walletOutputs))
 	if err != nil {
 		return nil, err
 	}
@@ -430,7 +430,7 @@ func (c *APIClient) getBody(path string) ([]byte, error) {
 	return body, nil
 }
 
-func (c *APIClient) MakeChainOrigin(par TransferFromED25519WalletParams) (*transaction.TransactionContext, ledger.ChainID, error) {
+func (c *APIClient) MakeChainOrigin(par TransferFromED25519WalletParams) (*transaction2.TransactionContext, ledger.ChainID, error) {
 	if par.Amount < minimumAmount {
 		return nil, ledger.NilChainID, fmt.Errorf("minimum transfer amount is %d", minimumAmount)
 	}
@@ -458,7 +458,7 @@ func (c *APIClient) MakeChainOrigin(par TransferFromED25519WalletParams) (*trans
 		return false
 	})
 
-	txb := txbuilder.NewTransactionBuilder()
+	txb := txbuilder2.NewTransactionBuilder()
 	_, ts1, err := txb.ConsumeOutputs(inps...)
 	if err != nil {
 		return nil, [32]byte{}, err
@@ -501,7 +501,7 @@ func (c *APIClient) MakeChainOrigin(par TransferFromED25519WalletParams) (*trans
 
 	txBytes := txb.TransactionData.Bytes()
 
-	txCtx, err := transaction.ContextFromTransferableBytes(txBytes, transaction.PickOutputFromListFunc(inps))
+	txCtx, err := transaction2.ContextFromTransferableBytes(txBytes, transaction2.PickOutputFromListFunc(inps))
 	if err != nil {
 		return nil, [32]byte{}, err
 	}
@@ -509,7 +509,7 @@ func (c *APIClient) MakeChainOrigin(par TransferFromED25519WalletParams) (*trans
 		return nil, [32]byte{}, err
 	}
 
-	oChain, err := transaction.OutputWithIDFromTransactionBytes(txBytes, 0)
+	oChain, err := transaction2.OutputWithIDFromTransactionBytes(txBytes, 0)
 	if err != nil {
 		return nil, [32]byte{}, err
 	}
@@ -533,7 +533,7 @@ func MakeTransferTransaction(par MakeTransferTransactionParams) ([]byte, error) 
 	if par.Amount < minimumAmount {
 		return nil, fmt.Errorf("minimum transfer amount is %d", minimumAmount)
 	}
-	txb := txbuilder.NewTransactionBuilder()
+	txb := txbuilder2.NewTransactionBuilder()
 	inTotal, inTs, err := txb.ConsumeOutputs(par.Inputs...)
 	if err != nil {
 		return nil, err

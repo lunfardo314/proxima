@@ -5,7 +5,7 @@ import (
 
 	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/proxima/ledger"
-	"github.com/lunfardo314/proxima/txbuilder"
+	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/utxodb"
 	"github.com/stretchr/testify/require"

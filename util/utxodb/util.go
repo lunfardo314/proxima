@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/lunfardo314/proxima/ledger"
-	"github.com/lunfardo314/proxima/txbuilder"
+	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/util/txutils"
 )
 

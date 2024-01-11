@@ -7,9 +7,9 @@ import (
 	"github.com/lunfardo314/proxima/genesis"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
+	transaction2 "github.com/lunfardo314/proxima/ledger/transaction"
+	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/proxi/glb"
-	"github.com/lunfardo314/proxima/transaction"
-	"github.com/lunfardo314/proxima/txbuilder"
 	"github.com/lunfardo314/proxima/txstore"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/unitrie/adaptors/badger_adaptor"
@@ -71,13 +71,13 @@ func runDBDistributeCmd(_ *cobra.Command, args []string) {
 	txBytes, err := txbuilder.DistributeInitialSupply(stateStore, walletData.PrivateKey, distribution)
 	glb.AssertNoError(err)
 
-	txID, _, err := transaction.IDAndTimestampFromTransactionBytes(txBytes)
+	txID, _, err := transaction2.IDAndTimestampFromTransactionBytes(txBytes)
 	glb.AssertNoError(err)
 
 	glb.Infof("New branch has been created. Distribution transaction ID: %s", txID.String())
 	fname := txID.AsFileName()
 	glb.Infof("Saving distribution transaction to the file '%s'", fname)
-	err = transaction.SaveTransactionAsFile(txBytes, fname)
+	err = transaction2.SaveTransactionAsFile(txBytes, fname)
 	glb.AssertNoError(err)
 	glb.Infof("Success")
 

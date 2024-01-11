@@ -4,7 +4,7 @@ import (
 	"crypto/ed25519"
 
 	"github.com/lunfardo314/proxima/ledger"
-	transaction2 "github.com/lunfardo314/proxima/transaction"
+	transaction2 "github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/util"
 )
 

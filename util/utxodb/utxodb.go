@@ -8,9 +8,9 @@ import (
 	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/proxima/genesis"
 	"github.com/lunfardo314/proxima/ledger"
+	transaction2 "github.com/lunfardo314/proxima/ledger/transaction"
+	txbuilder2 "github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/multistate"
-	"github.com/lunfardo314/proxima/transaction"
-	"github.com/lunfardo314/proxima/txbuilder"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/testutil"
 	"github.com/lunfardo314/proxima/util/txutils"
@@ -78,7 +78,7 @@ func NewUTXODB(trace ...bool) *UTXODB {
 
 	genesisStemOut := rdr.GetStemOutput()
 
-	distributionTxBytes := txbuilder.MustDistributeInitialSupply(stateStore, genesisPrivateKey, []ledger.LockBalance{
+	distributionTxBytes := txbuilder2.MustDistributeInitialSupply(stateStore, genesisPrivateKey, []ledger.LockBalance{
 		{faucetAddress, initFaucetBalance},
 	})
 
@@ -143,8 +143,8 @@ func (u *UTXODB) FaucetAddress() ledger.AddressED25519 {
 // AddTransaction validates transaction and updates ledger state and indexer
 // Ledger state and indexer are on different DB transactions, so ledger state can
 // succeed while indexer fails. In that case indexer can be updated from ledger state
-func (u *UTXODB) AddTransaction(txBytes []byte, onValidationError ...func(ctx *transaction.TransactionContext, err error) error) error {
-	var tx *transaction.Transaction
+func (u *UTXODB) AddTransaction(txBytes []byte, onValidationError ...func(ctx *transaction2.TransactionContext, err error) error) error {
+	var tx *transaction2.Transaction
 	var err error
 	if u.trace {
 		tx, err = updateValidateDebug(u.state, txBytes, onValidationError...)
@@ -175,12 +175,12 @@ func (u *UTXODB) MakeTransactionFromFaucet(addr ledger.AddressED25519, amountPar
 	if err != nil {
 		return nil, err
 	}
-	par := txbuilder.NewTransferData(u.faucetPrivateKey, nil, ledger.LogicalTimeNow()).
+	par := txbuilder2.NewTransferData(u.faucetPrivateKey, nil, ledger.LogicalTimeNow()).
 		WithAmount(amount, true).
 		WithTargetLock(addr).
 		MustWithInputs(faucetInputs...)
 
-	txBytes, err := txbuilder.MakeTransferTransaction(par)
+	txBytes, err := txbuilder2.MakeTransferTransaction(par)
 	if err != nil {
 		return nil, fmt.Errorf("UTXODB faucet: %v", err)
 	}
@@ -208,7 +208,7 @@ func (u *UTXODB) makeTransactionTokensFromFaucetMulti(addrs []ledger.AddressED25
 	util.Assertf(inpAmount >= totalAmount, "inpAmount >= totalAmount")
 	remainderAmount := inpAmount - totalAmount
 	ts = ts.AddTicks(ledger.TransactionPaceInTicks)
-	txb := txbuilder.NewTransactionBuilder()
+	txb := txbuilder2.NewTransactionBuilder()
 
 	_, _, err = txb.ConsumeOutputs(faucetInputs...)
 	if err != nil {
@@ -251,7 +251,7 @@ func (u *UTXODB) TokensFromFaucet(addr ledger.AddressED25519, amount ...uint64) 
 		return err
 	}
 
-	return u.AddTransaction(txBytes, func(ctx *transaction.TransactionContext, err error) error {
+	return u.AddTransaction(txBytes, func(ctx *transaction2.TransactionContext, err error) error {
 		if err != nil {
 			return fmt.Errorf("Error: %v\n%s", err, ctx.String())
 		}
@@ -268,7 +268,7 @@ func (u *UTXODB) TokensFromFaucetMulti(addrs []ledger.AddressED25519, amount ...
 		if err != nil {
 			return err
 		}
-		return u.AddTransaction(txBytes, func(ctx *transaction.TransactionContext, err error) error {
+		return u.AddTransaction(txBytes, func(ctx *transaction2.TransactionContext, err error) error {
 			if err != nil {
 				return fmt.Errorf("Error: %v\n%s", err, ctx.String())
 			}
@@ -309,11 +309,11 @@ func (u *UTXODB) GenerateAddressesWithFaucetAmount(startIndex int, n int, amount
 	return retPriv, retPub, retAddr
 }
 
-func (u *UTXODB) MakeTransferInputData(privKey ed25519.PrivateKey, sourceAccount ledger.Accountable, ts ledger.LogicalTime, desc ...bool) (*txbuilder.TransferData, error) {
+func (u *UTXODB) MakeTransferInputData(privKey ed25519.PrivateKey, sourceAccount ledger.Accountable, ts ledger.LogicalTime, desc ...bool) (*txbuilder2.TransferData, error) {
 	if ts == ledger.NilLogicalTime {
 		ts = ledger.LogicalTimeNow()
 	}
-	ret := txbuilder.NewTransferData(privKey, sourceAccount, ts)
+	ret := txbuilder2.NewTransferData(privKey, sourceAccount, ts)
 
 	switch addr := ret.SourceAccount.(type) {
 	case ledger.AddressED25519:
@@ -331,7 +331,7 @@ func (u *UTXODB) MakeTransferInputData(privKey ed25519.PrivateKey, sourceAccount
 	return ret, nil
 }
 
-func (u *UTXODB) makeTransferInputsED25519(par *txbuilder.TransferData, desc ...bool) error {
+func (u *UTXODB) makeTransferInputsED25519(par *txbuilder2.TransferData, desc ...bool) error {
 	outsData, err := u.StateReader().GetUTXOsLockedInAccount(par.SourceAccount.AccountID())
 	if err != nil {
 		return err
@@ -346,8 +346,8 @@ func (u *UTXODB) makeTransferInputsED25519(par *txbuilder.TransferData, desc ...
 	return nil
 }
 
-func (u *UTXODB) makeTransferDataChainLock(par *txbuilder.TransferData, chainLock ledger.ChainLock, desc ...bool) error {
-	outChain, outs, err := txbuilder.GetChainAccount(chainLock.ChainID(), u.StateReader(), desc...)
+func (u *UTXODB) makeTransferDataChainLock(par *txbuilder2.TransferData, chainLock ledger.ChainLock, desc ...bool) error {
+	outChain, outs, err := txbuilder2.GetChainAccount(chainLock.ChainID(), u.StateReader(), desc...)
 	if err != nil {
 		return err
 	}
@@ -356,12 +356,12 @@ func (u *UTXODB) makeTransferDataChainLock(par *txbuilder.TransferData, chainLoc
 	return nil
 }
 
-func (u *UTXODB) TransferTokensReturnTx(privKey ed25519.PrivateKey, targetLock ledger.Lock, amount uint64) (*transaction.Transaction, error) {
+func (u *UTXODB) TransferTokensReturnTx(privKey ed25519.PrivateKey, targetLock ledger.Lock, amount uint64) (*transaction2.Transaction, error) {
 	txBytes, err := u.transferTokens(privKey, targetLock, amount)
 	if err != nil {
 		return nil, err
 	}
-	return transaction.FromBytesMainChecksWithOpt(txBytes)
+	return transaction2.FromBytesMainChecksWithOpt(txBytes)
 }
 
 func (u *UTXODB) transferTokens(privKey ed25519.PrivateKey, targetLock ledger.Lock, amount uint64) ([]byte, error) {
@@ -371,11 +371,11 @@ func (u *UTXODB) transferTokens(privKey ed25519.PrivateKey, targetLock ledger.Lo
 	}
 	par.WithAmount(amount).
 		WithTargetLock(targetLock)
-	txBytes, err := txbuilder.MakeTransferTransaction(par)
+	txBytes, err := txbuilder2.MakeTransferTransaction(par)
 	if err != nil {
 		return nil, err
 	}
-	return txBytes, u.AddTransaction(txBytes, func(ctx *transaction.TransactionContext, err error) error {
+	return txBytes, u.AddTransaction(txBytes, func(ctx *transaction2.TransactionContext, err error) error {
 		if err != nil {
 			return fmt.Errorf("Error: %v\n%s", err, ctx.String())
 		}
@@ -416,7 +416,7 @@ func (u *UTXODB) Balance(addr ledger.Accountable, ts ...ledger.LogicalTime) uint
 
 // BalanceOnChain returns balance locked in chain and separately balance on chain output
 func (u *UTXODB) BalanceOnChain(chainID ledger.ChainID) (uint64, uint64, error) {
-	outChain, outs, err := txbuilder.GetChainAccount(chainID, u.StateReader())
+	outChain, outs, err := txbuilder2.GetChainAccount(chainID, u.StateReader())
 	if err != nil {
 		return 0, 0, err
 	}
@@ -433,12 +433,12 @@ func (u *UTXODB) NumUTXOs(addr ledger.Accountable, ts ...ledger.LogicalTime) int
 	return ret
 }
 
-func (u *UTXODB) DoTransferTx(par *txbuilder.TransferData) ([]byte, error) {
-	txBytes, err := txbuilder.MakeTransferTransaction(par)
+func (u *UTXODB) DoTransferTx(par *txbuilder2.TransferData) ([]byte, error) {
+	txBytes, err := txbuilder2.MakeTransferTransaction(par)
 	if err != nil {
 		return nil, err
 	}
-	return txBytes, u.AddTransaction(txBytes, func(ctx *transaction.TransactionContext, err error) error {
+	return txBytes, u.AddTransaction(txBytes, func(ctx *transaction2.TransactionContext, err error) error {
 		if err != nil {
 			return fmt.Errorf("Error: %v\n%s", err, ctx.String())
 		}
@@ -446,12 +446,12 @@ func (u *UTXODB) DoTransferTx(par *txbuilder.TransferData) ([]byte, error) {
 	})
 }
 
-func (u *UTXODB) DoTransferOutputs(par *txbuilder.TransferData) ([]*ledger.OutputWithID, error) {
-	txBytes, err := txbuilder.MakeSimpleTransferTransaction(par)
+func (u *UTXODB) DoTransferOutputs(par *txbuilder2.TransferData) ([]*ledger.OutputWithID, error) {
+	txBytes, err := txbuilder2.MakeSimpleTransferTransaction(par)
 	if err != nil {
 		return nil, err
 	}
-	if err = u.AddTransaction(txBytes, func(ctx *transaction.TransactionContext, err error) error {
+	if err = u.AddTransaction(txBytes, func(ctx *transaction2.TransactionContext, err error) error {
 		if err != nil {
 			return fmt.Errorf("Error: %v\n%s", err, ctx.String())
 		}
@@ -459,20 +459,20 @@ func (u *UTXODB) DoTransferOutputs(par *txbuilder.TransferData) ([]*ledger.Outpu
 	}); err != nil {
 		return nil, err
 	}
-	tx, err := transaction.FromBytes(txBytes)
+	tx, err := transaction2.FromBytes(txBytes)
 	if err != nil {
 		return nil, err
 	}
 	return tx.ProducedOutputs(), nil
 }
 
-func (u *UTXODB) DoTransfer(par *txbuilder.TransferData) error {
+func (u *UTXODB) DoTransfer(par *txbuilder2.TransferData) error {
 	_, err := u.DoTransferTx(par)
 	return err
 }
 
-func (u *UTXODB) ValidationContextFromTransaction(txBytes []byte) (*transaction.TransactionContext, error) {
-	return transaction.ContextFromTransferableBytes(txBytes, u.state.Readable().GetUTXO)
+func (u *UTXODB) ValidationContextFromTransaction(txBytes []byte) (*transaction2.TransactionContext, error) {
+	return transaction2.ContextFromTransferableBytes(txBytes, u.state.Readable().GetUTXO)
 }
 
 func (u *UTXODB) TxToString(txbytes []byte) string {
@@ -511,7 +511,7 @@ func (u *UTXODB) OriginDistributionTransactionString() string {
 	genesisStemOutputID := genesis.StemOutputID(u.GenesisTimeSlot())
 	genesisOutputID := genesis.InitialSupplyOutputID(u.GenesisTimeSlot())
 
-	return transaction.ParseBytesToString(u.originDistributionTxBytes, func(oid *ledger.OutputID) ([]byte, bool) {
+	return transaction2.ParseBytesToString(u.originDistributionTxBytes, func(oid *ledger.OutputID) ([]byte, bool) {
 		switch *oid {
 		case genesisOutputID:
 			return u.genesisOutput.Bytes(), true

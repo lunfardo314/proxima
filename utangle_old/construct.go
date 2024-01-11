@@ -5,8 +5,8 @@ import (
 
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
+	transaction2 "github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/multistate"
-	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/unitrie/common"
 )
@@ -33,7 +33,7 @@ func Load(stateStore global.StateStore) *UTXOTangle {
 	return ret
 }
 
-func NewVertex(tx *transaction.Transaction) *Vertex {
+func NewVertex(tx *transaction2.Transaction) *Vertex {
 	return &Vertex{
 		Tx:           tx,
 		Inputs:       make([]*WrappedTx, tx.NumInputs()),
@@ -207,7 +207,7 @@ func WithValidationTraceOption(traceOpt int) func(options *appendVertexOptions) 
 }
 
 func (ut *UTXOTangle) AppendVertex(v *Vertex, onAttach func() error, opts ...ValidationOption) (*WrappedTx, error) {
-	validationOpt := appendVertexOptions{traceOption: transaction.TraceOptionFailedConstraints}
+	validationOpt := appendVertexOptions{traceOption: transaction2.TraceOptionFailedConstraints}
 	for _, opt := range opts {
 		opt(&validationOpt)
 	}
@@ -315,7 +315,7 @@ func (ut *UTXOTangle) _finalizeBranch(newBranchVID *WrappedTx) error {
 	return nil
 }
 
-func (ut *UTXOTangle) AppendVirtualTx(tx *transaction.Transaction) *WrappedTx {
+func (ut *UTXOTangle) AppendVirtualTx(tx *transaction2.Transaction) *WrappedTx {
 	ut.mutex.Lock()
 	defer ut.mutex.Unlock()
 
@@ -326,5 +326,5 @@ func (ut *UTXOTangle) AppendVirtualTx(tx *transaction.Transaction) *WrappedTx {
 }
 
 func (ut *UTXOTangle) TransactionStringFromBytes(txBytes []byte) string {
-	return transaction.ParseBytesToString(txBytes, ut.GetUTXO)
+	return transaction2.ParseBytesToString(txBytes, ut.GetUTXO)
 }

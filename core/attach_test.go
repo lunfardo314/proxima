@@ -12,9 +12,9 @@ import (
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/genesis"
 	"github.com/lunfardo314/proxima/ledger"
+	"github.com/lunfardo314/proxima/ledger/transaction"
+	txbuilder2 "github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/multistate"
-	"github.com/lunfardo314/proxima/transaction"
-	"github.com/lunfardo314/proxima/txbuilder"
 	"github.com/lunfardo314/proxima/txstore"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/testutil"
@@ -67,7 +67,7 @@ func TestOrigin(t *testing.T) {
 		txBytesStore := txstore.NewSimpleTxBytesStore(common.NewInMemoryKVStore())
 		wrk := newTestingWorkflow(txBytesStore, dagAccess, context.Background())
 
-		txBytes, err := txbuilder.DistributeInitialSupply(stateStore, privKey, distrib)
+		txBytes, err := txbuilder2.DistributeInitialSupply(stateStore, privKey, distrib)
 		require.NoError(t, err)
 
 		distribTxID, _, err := transaction.IDAndTimestampFromTransactionBytes(txBytes)
@@ -126,7 +126,7 @@ func TestOrigin(t *testing.T) {
 		txBytesStore := txstore.NewSimpleTxBytesStore(common.NewInMemoryKVStore())
 		wrk := newTestingWorkflow(txBytesStore, dagAccess, context.Background())
 
-		txBytes, err := txbuilder.MakeDistributionTransaction(stateStore, privKey, distrib)
+		txBytes, err := txbuilder2.MakeDistributionTransaction(stateStore, privKey, distrib)
 		require.NoError(t, err)
 
 		distribTxID, _, err := transaction.IDAndTimestampFromTransactionBytes(txBytes)
@@ -190,7 +190,7 @@ func TestOrigin(t *testing.T) {
 		txBytesStore := txstore.NewSimpleTxBytesStore(common.NewInMemoryKVStore())
 		wrk := newTestingWorkflow(txBytesStore, dagAccess, context.Background())
 
-		txBytes, err := txbuilder.DistributeInitialSupply(stateStore, privKey, distrib)
+		txBytes, err := txbuilder2.DistributeInitialSupply(stateStore, privKey, distrib)
 		require.NoError(t, err)
 
 		var wg sync.WaitGroup
@@ -279,7 +279,7 @@ func TestConflicts1Attacher(t *testing.T) {
 			inTS = append(inTS, o.Timestamp())
 		}
 
-		txBytes, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
+		txBytes, err := txbuilder2.MakeSequencerTransaction(txbuilder2.MakeSequencerTransactionParams{
 			SeqName:          "test",
 			ChainInput:       chainOut,
 			Timestamp:        ledger.MaxLogicalTime(inTS...).AddTicks(ledger.TransactionPaceInTicks),
@@ -328,11 +328,11 @@ func TestConflicts1Attacher(t *testing.T) {
 			inTS = append(inTS, o.Timestamp())
 		}
 
-		td := txbuilder.NewTransferData(testData.privKey, testData.addr, ledger.MaxLogicalTime(inTS...).AddTicks(ledger.TransactionPaceInTicks))
+		td := txbuilder2.NewTransferData(testData.privKey, testData.addr, ledger.MaxLogicalTime(inTS...).AddTicks(ledger.TransactionPaceInTicks))
 		td.WithAmount(amount).
 			WithTargetLock(ledger.ChainLockFromChainID(testData.bootstrapChainID)).
 			MustWithInputs(testData.conflictingOutputs...)
-		txBytesConflicting, err := txbuilder.MakeSimpleTransferTransaction(td)
+		txBytesConflicting, err := txbuilder2.MakeSimpleTransferTransaction(td)
 		require.NoError(t, err)
 
 		vidConflicting, err := attacher.AttachTransactionFromBytes(txBytesConflicting, testData.wrk)
@@ -344,7 +344,7 @@ func TestConflicts1Attacher(t *testing.T) {
 
 		outToConsume := vidConflicting.MustOutputWithIDAt(0)
 		chainOut := branches[0].SequencerOutput.MustAsChainOutput()
-		txBytes, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
+		txBytes, err := txbuilder2.MakeSequencerTransaction(txbuilder2.MakeSequencerTransactionParams{
 			SeqName:          "test",
 			ChainInput:       chainOut,
 			Timestamp:        outToConsume.Timestamp().AddTicks(ledger.TransactionPaceInTicks),
@@ -398,7 +398,7 @@ func TestConflicts1Attacher(t *testing.T) {
 			amount += o.Output.Amount()
 		}
 
-		txBytes, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
+		txBytes, err := txbuilder2.MakeSequencerTransaction(txbuilder2.MakeSequencerTransactionParams{
 			SeqName:          "test",
 			ChainInput:       chainOut,
 			Timestamp:        ledger.MaxLogicalTime(inTS...).AddTicks(ledger.TransactionPaceInTicks),
@@ -453,7 +453,7 @@ func TestConflicts1Attacher(t *testing.T) {
 			amount += o.Output.Amount()
 		}
 
-		txBytes, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
+		txBytes, err := txbuilder2.MakeSequencerTransaction(txbuilder2.MakeSequencerTransactionParams{
 			SeqName:          "test",
 			ChainInput:       chainOut,
 			Timestamp:        ledger.MaxLogicalTime(inTS...).AddTicks(ledger.TransactionPaceInTicks),
@@ -593,7 +593,7 @@ func TestConflictsNAttachers(t *testing.T) {
 			ts = ledger.MaxLogicalTime(ts, o.Timestamp())
 		}
 		ts = ts.AddTicks(ledger.TransactionPaceInTicks)
-		txBytesSeq, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
+		txBytesSeq, err := txbuilder2.MakeSequencerTransaction(txbuilder2.MakeSequencerTransactionParams{
 			SeqName:      "seq",
 			ChainInput:   chainIn[0],
 			Timestamp:    ts,
@@ -660,7 +660,7 @@ func TestConflictsNAttachers(t *testing.T) {
 		var txBytes []byte
 		stem := multistate.MakeSugared(testData.wrk.HeaviestStateForLatestTimeSlot()).GetStemOutput()
 		for i := range chainIn {
-			txBytes, err = txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
+			txBytes, err = txbuilder2.MakeSequencerTransaction(txbuilder2.MakeSequencerTransactionParams{
 				SeqName:    "seq",
 				StemInput:  stem,
 				ChainInput: chainIn[i],
@@ -721,7 +721,7 @@ func TestConflictsNAttachers(t *testing.T) {
 
 		stem := multistate.MakeSugared(testData.wrk.HeaviestStateForLatestTimeSlot()).GetStemOutput()
 		for i := range chainIn {
-			txBytesBranch[i], err = txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
+			txBytesBranch[i], err = txbuilder2.MakeSequencerTransaction(txbuilder2.MakeSequencerTransactionParams{
 				SeqName:    "seq",
 				StemInput:  stem,
 				ChainInput: chainIn[i],
@@ -746,7 +746,7 @@ func TestConflictsNAttachers(t *testing.T) {
 		require.NoError(t, err)
 		t.Logf("will be endorsing %s", tx1.IDShortString())
 
-		txBytesConflicting, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
+		txBytesConflicting, err := txbuilder2.MakeSequencerTransaction(txbuilder2.MakeSequencerTransactionParams{
 			SeqName:      "dummy",
 			ChainInput:   tx0.SequencerOutput().MustAsChainOutput(),
 			Timestamp:    ts.AddTicks(ledger.TransactionPaceInTicks),
@@ -948,7 +948,7 @@ func TestSeqChains(t *testing.T) {
 		require.True(t, ok)
 
 		chainIn := testData.seqChain[0][len(testData.seqChain[0])-1].SequencerOutput().MustAsChainOutput()
-		txBytesBranch, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
+		txBytesBranch, err := txbuilder2.MakeSequencerTransaction(txbuilder2.MakeSequencerTransactionParams{
 			SeqName:    "seq0",
 			ChainInput: chainIn,
 			StemInput:  distribBD.Stem,

@@ -12,9 +12,9 @@ import (
 
 	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/proxima/ledger"
+	transaction2 "github.com/lunfardo314/proxima/ledger/transaction"
+	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/multistate"
-	"github.com/lunfardo314/proxima/transaction"
-	"github.com/lunfardo314/proxima/txbuilder"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/txutils"
 	"github.com/lunfardo314/proxima/util/utxodb"
@@ -194,7 +194,7 @@ func TestTimelock(t *testing.T) {
 			WithTargetLock(addr0),
 		)
 		if err != nil {
-			tx, err1 := transaction.FromBytesMainChecksWithOpt(txBytes)
+			tx, err1 := transaction2.FromBytesMainChecksWithOpt(txBytes)
 			require.NoError(t, err1)
 			t.Logf("resulting tx ts: %s", tx.Timestamp())
 			require.True(t, tx.Timestamp().TimeSlot() > timelockSlot)
@@ -882,7 +882,7 @@ func TestHashUnlock(t *testing.T) {
 	txbytes, err := txbuilder.MakeTransferTransaction(par)
 	require.NoError(t, err)
 
-	ctx, err := transaction.ContextFromTransferableBytes(txbytes, u.StateReader().GetUTXO)
+	ctx, err := transaction2.ContextFromTransferableBytes(txbytes, u.StateReader().GetUTXO)
 	require.NoError(t, err)
 
 	t.Logf("%s", ctx.String())
@@ -902,7 +902,7 @@ func TestHashUnlock(t *testing.T) {
 	txbytes, err = txbuilder.MakeTransferTransaction(par)
 	require.NoError(t, err)
 
-	ctx, err = transaction.ContextFromTransferableBytes(txbytes, u.StateReader().GetUTXO)
+	ctx, err = transaction2.ContextFromTransferableBytes(txbytes, u.StateReader().GetUTXO)
 	require.NoError(t, err)
 
 	t.Logf("---- transaction without hash unlock: FAILING\n %s", ctx.String())
@@ -915,7 +915,7 @@ func TestHashUnlock(t *testing.T) {
 	txbytes, err = txbuilder.MakeTransferTransaction(par)
 	require.NoError(t, err)
 
-	ctx, err = transaction.ContextFromTransferableBytes(txbytes, u.StateReader().GetUTXO)
+	ctx, err = transaction2.ContextFromTransferableBytes(txbytes, u.StateReader().GetUTXO)
 	require.NoError(t, err)
 
 	t.Logf("---- transaction with hash unlock, the library/script: SUCCESS\n %s", ctx.String())
