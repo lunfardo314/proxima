@@ -68,6 +68,14 @@ func AttachTxID(txid ledger.TransactionID, env AttachEnvironment, opts ...Option
 	return
 }
 
+func InvalidateTxID(txid ledger.TransactionID, env AttachEnvironment, reason error) {
+	tracef(env, "InvalidateTxID: %s", txid.StringShort())
+
+	if vid := env.GetVertex(&txid); vid != nil && !vid.IsSequencerMilestone() {
+		vid.SetTxStatusBad(reason)
+	}
+}
+
 func AttachOutputID(oid ledger.OutputID, env AttachEnvironment, opts ...Option) vertex.WrappedOutput {
 	return vertex.WrappedOutput{
 		VID:   AttachTxID(oid.TransactionID(), env, opts...),

@@ -15,8 +15,8 @@ import (
 	"github.com/lunfardo314/proxima/txmetadata"
 	"github.com/lunfardo314/proxima/utangle_old"
 	"github.com/lunfardo314/proxima/util"
-	"github.com/lunfardo314/proxima/util/consumer"
 	"github.com/lunfardo314/proxima/util/eventtype"
+	"github.com/lunfardo314/proxima/util/queue"
 	"github.com/lunfardo314/proxima/util/testutil"
 	"go.uber.org/atomic"
 	"go.uber.org/zap"
@@ -57,7 +57,7 @@ type (
 	}
 
 	Consumer[T any] struct {
-		*consumer.Consumer[T]
+		*queue.Queue[T]
 		glb       *Workflow
 		traceFlag bool
 	}

@@ -5,20 +5,20 @@ import (
 	"fmt"
 
 	"github.com/lunfardo314/proxima/util"
-	"github.com/lunfardo314/proxima/util/consumer"
 	"github.com/lunfardo314/proxima/util/eventtype"
+	"github.com/lunfardo314/proxima/util/queue"
 	"go.uber.org/zap"
 )
 
 type (
-	InputData struct {
+	EventData struct {
 		cmdCode   byte
 		eventCode eventtype.EventCode
 		arg       any
 	}
 
-	Events struct {
-		*consumer.Consumer[InputData]
+	EventQueue struct {
+		*queue.Queue[EventData]
 		eventHandlers map[eventtype.EventCode][]func(any)
 	}
 )
@@ -29,9 +29,9 @@ const (
 )
 const chanBufferSize = 10
 
-func Start(ctx context.Context) *Events {
-	ret := &Events{
-		Consumer:      consumer.NewConsumerWithBufferSize[InputData]("events", chanBufferSize, zap.InfoLevel, nil),
+func Start(ctx context.Context) *EventQueue {
+	ret := &EventQueue{
+		Queue:         queue.NewConsumerWithBufferSize[EventData]("events", chanBufferSize, zap.InfoLevel, nil),
 		eventHandlers: make(map[eventtype.EventCode][]func(any)),
 	}
 	ret.AddOnConsume(ret.consume)
@@ -42,12 +42,12 @@ func Start(ctx context.Context) *Events {
 
 	go func() {
 		<-ctx.Done()
-		ret.Consumer.Stop()
+		ret.Queue.Stop()
 	}()
 	return ret
 }
 
-func (c *Events) consume(inp InputData) {
+func (c *EventQueue) consume(inp EventData) {
 	switch inp.cmdCode {
 	case cmdCodeAddHandler:
 		handlers := c.eventHandlers[inp.eventCode]
@@ -66,18 +66,18 @@ func (c *Events) consume(inp InputData) {
 }
 
 // OnEvent is async
-func (c *Events) OnEvent(eventCode eventtype.EventCode, fun any) {
+func (c *EventQueue) OnEvent(eventCode eventtype.EventCode, fun any) {
 	handler, err := eventtype.MakeHandler(eventCode, fun)
 	util.AssertNoError(err)
-	c.Consumer.Push(InputData{
+	c.Queue.Push(EventData{
 		cmdCode:   cmdCodeAddHandler,
 		eventCode: eventCode,
 		arg:       handler,
 	})
 }
 
-func (c *Events) PostEvent(eventCode eventtype.EventCode, arg any) {
-	c.Consumer.Push(InputData{
+func (c *EventQueue) PostEvent(eventCode eventtype.EventCode, arg any) {
+	c.Queue.Push(EventData{
 		cmdCode:   cmdCodePostEvent,
 		eventCode: eventCode,
 		arg:       arg,

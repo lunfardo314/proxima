@@ -21,6 +21,7 @@ type (
 	DAGAccess interface {
 		WithGlobalWriteLock(fun func())
 		GetVertexNoLock(txid *ledger.TransactionID) *vertex.WrappedTx
+		GetVertex(txid *ledger.TransactionID) *vertex.WrappedTx
 		AddVertexNoLock(vid *vertex.WrappedTx)
 		StateStore() global.StateStore
 		GetStateReaderForTheBranch(branch *vertex.WrappedTx) global.IndexedStateReader

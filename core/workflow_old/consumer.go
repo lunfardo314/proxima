@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/lunfardo314/proxima/util"
-	"github.com/lunfardo314/proxima/util/consumer"
+	"github.com/lunfardo314/proxima/util/queue"
 	"github.com/lunfardo314/unitrie/common"
 )
 
@@ -17,7 +17,7 @@ func NewConsumer[T any](name string, wrk *Workflow) *Consumer[T] {
 		lvl = l
 	}
 	ret := &Consumer[T]{
-		Consumer: consumer.NewConsumer[T](name, lvl, wrk.configParams.logOutput),
+		Consumer: queue.NewConsumer[T](name, lvl, wrk.configParams.logOutput),
 		glb:      wrk,
 	}
 	ret.AddOnConsume(func(_ T) {
@@ -33,7 +33,7 @@ func NewConsumer[T any](name string, wrk *Workflow) *Consumer[T] {
 func (c *Consumer[T]) Start() {
 	c.glb.terminateWG.Add(1)
 	util.RunWrappedRoutine(c.Name(), func() {
-		c.Consumer.Run()
+		c.Queue.Run()
 	}, func(err error) {
 		c.Log().Fatal(err)
 	},

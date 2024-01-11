@@ -1,4 +1,4 @@
-package consumer
+package queue
 
 import (
 	"fmt"
@@ -111,7 +111,7 @@ func TestStartStop(t *testing.T) {
 		howManyQueues   = 100
 		howManyMessages = 10_000
 	)
-	que := make([]*Consumer[int], howManyQueues)
+	que := make([]*Queue[int], howManyQueues)
 
 	cdTotal := countdown.New(howManyMessages*howManyQueues, 3*time.Second)
 	cdClosed := countdown.New(howManyQueues, 3*time.Second)
@@ -255,7 +255,7 @@ func TestMultiThread3(t *testing.T) {
 func TestMany(t *testing.T) {
 	const howManyConsumers = 100
 	const howManyMessages = 10_000
-	cons := make([]*Consumer[time.Time], howManyConsumers)
+	cons := make([]*Queue[time.Time], howManyConsumers)
 	w := countdown.New(howManyMessages)
 	for i := range cons {
 		cons[i] = NewConsumerWithBufferSize[time.Time](fmt.Sprintf("%d", i), 100, zap.InfoLevel, nil)

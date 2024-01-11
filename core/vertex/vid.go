@@ -123,6 +123,14 @@ func (vid *WrappedTx) SetReason(err error) {
 	vid.reason = err
 }
 
+func (vid *WrappedTx) SetTxStatusBad(reason error) {
+	vid.mutex.Lock()
+	defer vid.mutex.Unlock()
+
+	vid.txStatus = Bad
+	vid.reason = reason
+}
+
 // IsBadOrDeleted non-deterministic
 func (vid *WrappedTx) IsBadOrDeleted() bool {
 	vid.mutex.RLock()

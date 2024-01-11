@@ -7,13 +7,13 @@ import (
 
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/util"
-	"github.com/lunfardo314/proxima/util/consumer"
+	"github.com/lunfardo314/proxima/util/queue"
 	"go.uber.org/zap"
 )
 
 type (
 	Poker struct {
-		*consumer.Consumer[Cmd]
+		*queue.Queue[Cmd]
 		m      map[*vertex.WrappedTx]waitingList
 		stopWG sync.WaitGroup
 	}
@@ -42,8 +42,8 @@ const chanBufferSize = 10
 
 func Start(ctx context.Context) *Poker {
 	ret := &Poker{
-		Consumer: consumer.NewConsumerWithBufferSize[Cmd]("poke", chanBufferSize, zap.InfoLevel, nil),
-		m:        make(map[*vertex.WrappedTx]waitingList),
+		Queue: queue.NewConsumerWithBufferSize[Cmd]("poke", chanBufferSize, zap.InfoLevel, nil),
+		m:     make(map[*vertex.WrappedTx]waitingList),
 	}
 	ret.AddOnConsume(ret.consume)
 	go func() {
