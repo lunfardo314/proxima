@@ -8,6 +8,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/txmetadata"
+	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/queue"
 	"go.uber.org/zap"
 )
@@ -36,6 +37,8 @@ type (
 		*queue.Queue[*TransactionInputData]
 		env TransactionInputEnvironment
 	}
+
+	TransactionInOption func(*TransactionInputData)
 )
 
 const (
@@ -130,4 +133,64 @@ func (q *TransactionInputQueue) consume(inp *TransactionInputData) {
 		q.env.GossipTransaction(inp)
 		q.env.AttachTransaction(inp)
 	}()
+}
+
+func (q *TransactionInputQueue) TransactionIn(txBytes []byte, opts ...TransactionInOption) error {
+	_, err := q.TransactionInReturnTx(txBytes, opts...)
+	return err
+}
+
+func (q *TransactionInputQueue) TransactionInReturnTx(txBytes []byte, opts ...TransactionInOption) (*transaction.Transaction, error) {
+	//if !w.IsRunning() {
+	//	return nil, fmt.Errorf("TransactionInReturnTx: workflow_old is inactive")
+	//}
+	// base validation
+	tx, err := transaction.FromBytes(txBytes)
+	if err != nil {
+		return nil, err
+	}
+	// if raw transaction data passes the basic check, it means it is identifiable as a transaction and main properties
+	// are correct: ID, timestamp, sequencer and branch transaction flags. The signature and semantic has not been checked at this point
+
+	inData := &TransactionInputData{Tx: tx}
+	for _, opt := range opts {
+		opt(inData)
+	}
+
+	responseToPull := inData.TxMetadata != nil && inData.TxMetadata.SendType == txmetadata.SendTypeResponseToPull
+	util.Assertf(!responseToPull || inData.TxSource == TransactionSourcePeer, "!responseToPull || inData.source == TransactionSourcePeer")
+
+	if responseToPull {
+		q.env.StopPulling(tx.ID())
+	}
+
+	priority := responseToPull || inData.TxSource == TransactionSourceStore
+	q.Queue.Push(inData, priority) // priority for pulled
+	return tx, nil
+}
+
+func WithTransactionSource(src TransactionSource) TransactionInOption {
+	return func(data *TransactionInputData) {
+		data.TxSource = src
+	}
+}
+
+func WithTransactionMetadata(metadata *txmetadata.TransactionMetadata) TransactionInOption {
+	return func(data *TransactionInputData) {
+		data.TxMetadata = metadata
+	}
+}
+
+func WithTransactionSourcePeer(from peer.ID) TransactionInOption {
+	return func(data *TransactionInputData) {
+		data.TxSource = TransactionSourcePeer
+		data.ReceivedFromPeer = from
+	}
+}
+
+func WithTraceCondition(cond func(tx *transaction.Transaction, src TransactionSource, rcv peer.ID) bool) TransactionInOption {
+	panic("not implemented")
+	//return func(data *TransactionInputData) {
+	//	data.traceFlag = cond(data.tx, data.source, data.receivedFromPeer)
+	//}
 }
