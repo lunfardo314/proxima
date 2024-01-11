@@ -5,7 +5,7 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/spf13/cobra"
 )
@@ -34,7 +34,7 @@ func runCompactCmd(_ *cobra.Command, args []string) {
 		glb.AssertNoError(err)
 		glb.Assertf(0 < maxNumberOfInputs && maxNumberOfInputs <= 256, "parameter must be > 0 and <= 256")
 	}
-	var tagAlongSeqID *core.ChainID
+	var tagAlongSeqID *ledger.ChainID
 	feeAmount := getTagAlongFee() // 0 interpreted as no fee output
 	if feeAmount > 0 {
 		tagAlongSeqID = GetTagAlongSequencerID()
@@ -49,8 +49,8 @@ func runCompactCmd(_ *cobra.Command, args []string) {
 	}
 
 	walletData := glb.GetWalletData()
-	nowisTs := core.LogicalTimeNow()
-	walletOutputs, err := getClient().GetAccountOutputs(walletData.Account, func(o *core.Output) bool {
+	nowisTs := ledger.LogicalTimeNow()
+	walletOutputs, err := getClient().GetAccountOutputs(walletData.Account, func(o *ledger.Output) bool {
 		// filter out chain outputs controlled by the wallet
 		_, idx := o.ChainConstraint()
 		if idx != 0xff {

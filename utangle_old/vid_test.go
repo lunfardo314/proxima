@@ -3,7 +3,7 @@ package utangle_old
 import (
 	"testing"
 
-	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/util/utxodb"
 	"github.com/stretchr/testify/require"
@@ -11,9 +11,9 @@ import (
 
 func TestVID(t *testing.T) {
 	t.Run("1", func(t *testing.T) {
-		dict := make(map[core.TransactionID]*WrappedTx)
+		dict := make(map[ledger.TransactionID]*WrappedTx)
 		u := utxodb.NewUTXODB()
-		txBytes, err := u.MakeTransactionFromFaucet(core.AddressED25519Null())
+		txBytes, err := u.MakeTransactionFromFaucet(ledger.AddressED25519Null())
 		require.NoError(t, err)
 		tx, err := transaction.FromBytesMainChecksWithOpt(txBytes)
 		require.NoError(t, err)

@@ -3,7 +3,7 @@ package sequencer_old
 import (
 	"time"
 
-	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/utangle_old"
 	"github.com/lunfardo314/proxima/util"
@@ -24,7 +24,7 @@ func init() {
 	if !EnabledBacktrackProposer2 {
 		return
 	}
-	registerProposingStrategy(BacktrackProposer2Name, func(mf *milestoneFactory, targetTs core.LogicalTime) proposerTask {
+	registerProposingStrategy(BacktrackProposer2Name, func(mf *milestoneFactory, targetTs ledger.LogicalTime) proposerTask {
 		if targetTs.TimeTick() == 0 {
 			// doesn't propose branches
 			return nil

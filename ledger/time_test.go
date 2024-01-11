@@ -1,0 +1,7 @@
+package ledger
+
+import "testing"
+
+func TestPrintTimeConstants(t *testing.T) {
+	t.Log(TimeConstantsToString())
+}

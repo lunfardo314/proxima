@@ -4,9 +4,9 @@ import (
 	"crypto/ed25519"
 	"fmt"
 
-	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/genesis"
 	"github.com/lunfardo314/proxima/global"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/util"
@@ -19,12 +19,12 @@ type LockBalanceYAMLable struct {
 	Balance    uint64 `yaml:"balance"`
 }
 
-func MustDistributeInitialSupply(stateStore global.StateStore, originPrivateKey ed25519.PrivateKey, genesisDistribution []core.LockBalance) []byte {
+func MustDistributeInitialSupply(stateStore global.StateStore, originPrivateKey ed25519.PrivateKey, genesisDistribution []ledger.LockBalance) []byte {
 	ret, _ := MustDistributeInitialSupplyExt(stateStore, originPrivateKey, genesisDistribution)
 	return ret
 }
 
-func MakeDistributionTransaction(stateStore global.StateStore, originPrivateKey ed25519.PrivateKey, genesisDistribution []core.LockBalance) ([]byte, error) {
+func MakeDistributionTransaction(stateStore global.StateStore, originPrivateKey ed25519.PrivateKey, genesisDistribution []ledger.LockBalance) ([]byte, error) {
 	stateID, genesisRoot, err := genesis.ScanGenesisState(stateStore)
 	if err != nil {
 		return nil, err
@@ -43,16 +43,16 @@ func MakeDistributionTransaction(stateStore global.StateStore, originPrivateKey 
 	distributeTotal := uint64(0)
 	for i := range genesisDistribution {
 		distributeTotal += genesisDistribution[i].Balance
-		err = util.ErrorConditionf(distributeTotal+core.MinimumAmountOnSequencer <= stateID.InitialSupply,
+		err = util.ErrorConditionf(distributeTotal+ledger.MinimumAmountOnSequencer <= stateID.InitialSupply,
 			"condition failed: distributeTotal(%d) + MinimumBalanceOnBoostrapSequencer(%d) < InitialSupply(%d)",
-			distributeTotal, core.MinimumAmountOnSequencer, stateID.InitialSupply)
+			distributeTotal, ledger.MinimumAmountOnSequencer, stateID.InitialSupply)
 		if err != nil {
 			return nil, err
 		}
 	}
-	genesisDistributionOutputs := make([]*core.Output, len(genesisDistribution))
+	genesisDistributionOutputs := make([]*ledger.Output, len(genesisDistribution))
 	for i := range genesisDistribution {
-		genesisDistributionOutputs[i] = core.NewOutput(func(o *core.Output) {
+		genesisDistributionOutputs[i] = ledger.NewOutput(func(o *ledger.Output) {
 			o.WithAmount(genesisDistribution[i].Balance).
 				WithLock(genesisDistribution[i].Lock)
 		})
@@ -72,12 +72,12 @@ func MakeDistributionTransaction(stateStore global.StateStore, originPrivateKey 
 
 	// create origin branch transaction at the next slot after genesis time slot
 	txBytes, err := MakeSequencerTransaction(MakeSequencerTransactionParams{
-		ChainInput: &core.OutputWithChainID{
+		ChainInput: &ledger.OutputWithChainID{
 			OutputWithID: *initSupplyOutput,
 			ChainID:      bootstrapChainID,
 		},
 		StemInput:         genesisStem,
-		Timestamp:         core.MustNewLogicalTime(genesisStem.Timestamp().TimeSlot()+1, 0),
+		Timestamp:         ledger.MustNewLogicalTime(genesisStem.Timestamp().TimeSlot()+1, 0),
 		MinimumFee:        0,
 		AdditionalInputs:  nil,
 		AdditionalOutputs: genesisDistributionOutputs,
@@ -91,7 +91,7 @@ func MakeDistributionTransaction(stateStore global.StateStore, originPrivateKey 
 	return txBytes, nil
 }
 
-func MustDistributeInitialSupplyExt(stateStore global.StateStore, originPrivateKey ed25519.PrivateKey, genesisDistribution []core.LockBalance) ([]byte, core.TransactionID) {
+func MustDistributeInitialSupplyExt(stateStore global.StateStore, originPrivateKey ed25519.PrivateKey, genesisDistribution []ledger.LockBalance) ([]byte, ledger.TransactionID) {
 	txBytes, err := MakeDistributionTransaction(stateStore, originPrivateKey, genesisDistribution)
 	util.AssertNoError(err)
 
@@ -122,36 +122,36 @@ func MustDistributeInitialSupplyExt(stateStore global.StateStore, originPrivateK
 // adding initial distribution transaction.
 // Distribution transaction is a branch transaction in the slot next after the genesis.
 // Distribution parameter is added to the transaction store
-func DistributeInitialSupply(stateStore global.StateStore, originPrivateKey ed25519.PrivateKey, genesisDistribution []core.LockBalance) ([]byte, error) {
+func DistributeInitialSupply(stateStore global.StateStore, originPrivateKey ed25519.PrivateKey, genesisDistribution []ledger.LockBalance) ([]byte, error) {
 	txBytes, _, err := DistributeInitialSupplyExt(stateStore, originPrivateKey, genesisDistribution)
 	return txBytes, err
 }
 
-func DistributeInitialSupplyExt(stateStore global.StateStore, originPrivateKey ed25519.PrivateKey, genesisDistribution []core.LockBalance) ([]byte, core.TransactionID, error) {
+func DistributeInitialSupplyExt(stateStore global.StateStore, originPrivateKey ed25519.PrivateKey, genesisDistribution []ledger.LockBalance) ([]byte, ledger.TransactionID, error) {
 	var ret []byte
-	var txid core.TransactionID
+	var txid ledger.TransactionID
 	err := util.CatchPanicOrError(func() error {
 		ret, txid = MustDistributeInitialSupplyExt(stateStore, originPrivateKey, genesisDistribution)
 		return nil
 	})
 	if err != nil {
-		return nil, core.TransactionID{}, fmt.Errorf("DistributeInitialSupply: %v", err)
+		return nil, ledger.TransactionID{}, fmt.Errorf("DistributeInitialSupply: %v", err)
 	}
 	return ret, txid, nil
 }
 
-func InitialDistributionFromYAMLData(yamlData []byte) ([]core.LockBalance, error) {
+func InitialDistributionFromYAMLData(yamlData []byte) ([]ledger.LockBalance, error) {
 	yamlAble := make([]LockBalanceYAMLable, 0)
 	if err := yaml.Unmarshal(yamlData, &yamlAble); err != nil {
 		return nil, err
 	}
-	ret := make([]core.LockBalance, 0, len(yamlAble))
+	ret := make([]ledger.LockBalance, 0, len(yamlAble))
 	for i := range yamlAble {
-		lck, err := core.LockFromSource(yamlAble[i].LockString)
+		lck, err := ledger.LockFromSource(yamlAble[i].LockString)
 		if err != nil {
 			return nil, err
 		}
-		ret = append(ret, core.LockBalance{
+		ret = append(ret, ledger.LockBalance{
 			Lock:    lck,
 			Balance: yamlAble[i].Balance,
 		})
@@ -159,7 +159,7 @@ func InitialDistributionFromYAMLData(yamlData []byte) ([]core.LockBalance, error
 	return ret, nil
 }
 
-func DistributionListToLines(lst []core.LockBalance, prefix ...string) *lines.Lines {
+func DistributionListToLines(lst []ledger.LockBalance, prefix ...string) *lines.Lines {
 	ret := lines.New(prefix...)
 	for i := range lst {
 		ret.Add("%s : %s", lst[i].Lock.String(), util.GoThousands(lst[i].Balance))

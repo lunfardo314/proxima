@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/ledger"
 	utangle "github.com/lunfardo314/proxima/utangle_old"
 	"github.com/lunfardo314/proxima/util"
 )
@@ -22,7 +22,7 @@ type (
 	SolidifyInputData struct {
 		Cmd byte
 		// != nil for SolidifyCommandAddedTx and SolidifyCommandDroppedTx, == nil for SolidifyCommandNewTx
-		TxID *core.TransactionID
+		TxID *ledger.TransactionID
 		// == nil for SolidifyCommandAddedTx and SolidifyCommandDroppedTx, != nil for SolidifyCommandNewTx
 		*PrimaryTransactionData
 	}
@@ -31,7 +31,7 @@ type (
 		*Consumer[*SolidifyInputData]
 		stopSolidificationDeadlineLoopChan chan struct{}
 		// txPending is list of draft dag waiting for solidification to be sent for validation
-		txPending map[core.TransactionID]wantedTx
+		txPending map[ledger.TransactionID]wantedTx
 	}
 
 	wantedTx struct {
@@ -40,7 +40,7 @@ type (
 		// if == nil, transaction is unknown yet
 		draftVertexData *draftVertexData
 		// tx IDs who are waiting for the tx to be solid
-		whoIsWaitingList []core.TransactionID
+		whoIsWaitingList []ledger.TransactionID
 	}
 
 	draftVertexData struct {
@@ -58,7 +58,7 @@ const solidificationTimeout = 3 * time.Minute // TODO only for testing. Must be 
 func (w *Workflow) initSolidifyConsumer() {
 	ret := &SolidifyConsumer{
 		Consumer:                           NewConsumer[*SolidifyInputData](SolidifyConsumerName, w),
-		txPending:                          make(map[core.TransactionID]wantedTx),
+		txPending:                          make(map[ledger.TransactionID]wantedTx),
 		stopSolidificationDeadlineLoopChan: make(chan struct{}),
 	}
 	ret.AddOnConsume(ret.consume)
@@ -134,7 +134,7 @@ func (c *SolidifyConsumer) newTx(inp *SolidifyInputData) {
 	c.pullIfNeeded(pendingData.draftVertexData)
 
 	// make waiting lists
-	missing.ForEach(func(missingTxID core.TransactionID) bool {
+	missing.ForEach(func(missingTxID ledger.TransactionID) bool {
 		c.putIntoWhoIsWaitingList(missingTxID, *txid)
 		return true
 	})
@@ -142,7 +142,7 @@ func (c *SolidifyConsumer) newTx(inp *SolidifyInputData) {
 	c.txPending[*txid] = pendingData
 }
 
-func (c *SolidifyConsumer) addedTx(txid *core.TransactionID) {
+func (c *SolidifyConsumer) addedTx(txid *ledger.TransactionID) {
 	pendingData, isKnown := c.txPending[*txid]
 	if !isKnown {
 		c.traceTxID(txid, "addedTx: not in solidifier -> ignore")
@@ -161,7 +161,7 @@ func (c *SolidifyConsumer) addedTx(txid *core.TransactionID) {
 
 // checkTx check how many missing inputs left.
 // If missing inputs counter == 0, finalizes solidification of the transaction and passes it to validator
-func (c *SolidifyConsumer) checkTx(txid core.TransactionID) {
+func (c *SolidifyConsumer) checkTx(txid ledger.TransactionID) {
 	pendingData, isKnown := c.txPending[txid]
 	if !isKnown {
 		c.traceTxID(&txid, "checkTx: unknown tx")
@@ -219,7 +219,7 @@ func (c *SolidifyConsumer) runSolidification(vd *draftVertexData) bool {
 }
 
 // dropTxID recursively removes txid from solidifier and all txid which directly or indirectly waiting for it
-func (c *SolidifyConsumer) dropTxID(txid core.TransactionID) {
+func (c *SolidifyConsumer) dropTxID(txid ledger.TransactionID) {
 	pendingData, isKnown := c.txPending[txid]
 	if !isKnown {
 		return
@@ -234,7 +234,7 @@ func (c *SolidifyConsumer) dropTxID(txid core.TransactionID) {
 
 func (c *SolidifyConsumer) removeTooOld() {
 	nowis := time.Now()
-	toRemove := make([]core.TransactionID, 0)
+	toRemove := make([]ledger.TransactionID, 0)
 	for txid, pendingData := range c.txPending {
 		if nowis.After(pendingData.since.Add(solidificationTimeout)) {
 			txid1 := txid
@@ -262,8 +262,8 @@ func (c *SolidifyConsumer) sendForValidation(primaryTxData *PrimaryTransactionDa
 
 // putIntoWhoIsWaitingList each missing txid has entry in txPending. Each entry has list of transaction
 // which are waiting for it. The function puts missingTxID into the corresponding list. It creates entry if it is new
-func (c *SolidifyConsumer) putIntoWhoIsWaitingList(missingTxID, whoIsWaiting core.TransactionID) {
-	var waitingLst []core.TransactionID
+func (c *SolidifyConsumer) putIntoWhoIsWaitingList(missingTxID, whoIsWaiting ledger.TransactionID) {
+	var waitingLst []ledger.TransactionID
 	pendingData, exists := c.txPending[missingTxID]
 	if exists {
 		waitingLst = pendingData.whoIsWaitingList
@@ -272,7 +272,7 @@ func (c *SolidifyConsumer) putIntoWhoIsWaitingList(missingTxID, whoIsWaiting cor
 		pendingData.since = time.Now()
 	}
 	if len(waitingLst) == 0 {
-		waitingLst = make([]core.TransactionID, 0, 2)
+		waitingLst = make([]ledger.TransactionID, 0, 2)
 	}
 	pendingData.whoIsWaitingList = append(waitingLst, whoIsWaiting)
 	c.txPending[missingTxID] = pendingData
@@ -285,7 +285,7 @@ func (c *SolidifyConsumer) pullIfNeeded(vd *draftVertexData) {
 	}
 	neededFor := vd.tx.ID()
 
-	stemInputTxID := func() core.TransactionID {
+	stemInputTxID := func() ledger.TransactionID {
 		return vd.tx.SequencerTransactionData().StemOutputData.PredecessorOutputID.TransactionID()
 	}
 	if vd.tx.IsBranchTransaction() && !vd.stemInputAlreadyPulled {
@@ -297,7 +297,7 @@ func (c *SolidifyConsumer) pullIfNeeded(vd *draftVertexData) {
 		c.pull(neededFor, stemInputTxID())
 		return
 	}
-	seqPredTxID := func() core.TransactionID {
+	seqPredTxID := func() ledger.TransactionID {
 		seqInputIdx := vd.tx.SequencerTransactionData().SequencerOutputData.ChainConstraint.PredecessorInputIndex
 		seqInputOID := vd.tx.MustInputAt(seqInputIdx)
 		return seqInputOID.TransactionID()
@@ -327,21 +327,21 @@ func (c *SolidifyConsumer) pullIfNeeded(vd *draftVertexData) {
 	c.pull(neededFor, util.Keys(allTheRest)...)
 }
 
-func (c *SolidifyConsumer) postDropTxID(txid *core.TransactionID) {
+func (c *SolidifyConsumer) postDropTxID(txid *ledger.TransactionID) {
 	c.Push(&SolidifyInputData{
 		Cmd:  SolidifyCommandDroppedTx,
 		TxID: txid,
 	})
 }
 
-func (c *SolidifyConsumer) postAddedTxID(txid *core.TransactionID) {
+func (c *SolidifyConsumer) postAddedTxID(txid *ledger.TransactionID) {
 	c.Push(&SolidifyInputData{
 		Cmd:  SolidifyCommandAddedTx,
 		TxID: txid,
 	})
 }
 
-func (c *SolidifyConsumer) pull(neededFor *core.TransactionID, txids ...core.TransactionID) {
+func (c *SolidifyConsumer) pull(neededFor *ledger.TransactionID, txids ...ledger.TransactionID) {
 	for i := range txids {
 		c.tracePull("submit pull %s. Needed for %s",
 			func() any { return txids[i].StringShort() },
@@ -373,7 +373,7 @@ func (c *SolidifyConsumer) solidificationDeadlineLoop() {
 	}
 }
 
-func (c *SolidifyConsumer) missingInputsString(txid core.TransactionID) string {
+func (c *SolidifyConsumer) missingInputsString(txid ledger.TransactionID) string {
 	if pendingData, found := c.txPending[txid]; found {
 		if pendingData.draftVertexData != nil {
 			return pendingData.draftVertexData.vertex.MissingInputTxIDString()

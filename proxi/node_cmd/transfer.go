@@ -8,8 +8,8 @@ import (
 
 	"github.com/lunfardo314/proxima/api"
 	"github.com/lunfardo314/proxima/api/client"
-	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/genesis"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/spf13/cobra"
@@ -41,7 +41,7 @@ func runTransferCmd(_ *cobra.Command, args []string) {
 
 	target := glb.MustGetTarget()
 
-	var tagAlongSeqID *core.ChainID
+	var tagAlongSeqID *ledger.ChainID
 	feeAmount := getTagAlongFee()
 	if feeAmount > 0 {
 		tagAlongSeqID = GetTagAlongSequencerID()
@@ -86,7 +86,7 @@ func runTransferCmd(_ *cobra.Command, args []string) {
 	glb.AssertNoError(waitForInclusion(txCtx.OutputID(0)))
 }
 
-func waitForInclusion(oid core.OutputID, timeout ...time.Duration) error {
+func waitForInclusion(oid ledger.OutputID, timeout ...time.Duration) error {
 	glb.Infof("Tracking inclusion of %s:", oid.StringShort())
 	startTime := time.Now()
 	var deadline time.Time

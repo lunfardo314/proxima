@@ -1,7 +1,7 @@
 package node_cmd
 
 import (
-	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/spf13/cobra"
 )
@@ -18,7 +18,7 @@ func initGetChainOutputCmd() *cobra.Command {
 }
 
 func runGetChainOutputCmd(_ *cobra.Command, args []string) {
-	chainID, err := core.ChainIDFromHexString(args[0])
+	chainID, err := ledger.ChainIDFromHexString(args[0])
 	glb.AssertNoError(err)
 
 	o, _, err := getClient().GetChainOutputFromHeaviestState(chainID)

@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/lunfardo314/easyfl"
-	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/txbuilder"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/utxodb"
@@ -22,7 +22,7 @@ func TestBasics(t *testing.T) {
 		t.Logf("origin address: %s", easyfl.Fmt(u.GenesisControllerAddress()))
 
 		t.Logf("genesis time slot: %d", u.GenesisTimeSlot())
-		t.Logf("current timestamp: %s", core.LogicalTimeNow().String())
+		t.Logf("current timestamp: %s", ledger.LogicalTimeNow().String())
 		_, _, addr := u.GenerateAddress(0)
 		err := u.TokensFromFaucet(addr, 100)
 		require.NoError(t, err)
@@ -34,7 +34,7 @@ func TestBasics(t *testing.T) {
 		e, stemOutData := u.StateReader().GetStem()
 		require.EqualValues(t, u.LastTimeSlot(), e)
 
-		stemOut, _, _, err := core.OutputFromBytesMain(stemOutData)
+		stemOut, _, _, err := ledger.OutputFromBytesMain(stemOutData)
 		require.NoError(t, err)
 		require.EqualValues(t, 0, stemOut.Amount())
 		stemLock, ok := stemOut.StemLock()
@@ -91,7 +91,7 @@ func TestBasics(t *testing.T) {
 			require.EqualValues(t, numOuts, u.NumUTXOs(addr))
 		}
 
-		ts := core.LogicalTimeNow()
+		ts := ledger.LogicalTimeNow()
 		t.Logf("ts = %s, %s", ts.String(), ts.Hex())
 		par, err := u.MakeTransferInputData(privKey, nil, ts)
 		require.NoError(t, err)

@@ -3,7 +3,7 @@ package sequencer_old
 import (
 	"slices"
 
-	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/utangle_old"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/spf13/viper"
@@ -19,7 +19,7 @@ type (
 		TraceTippool  bool
 		LogTimeLayout string
 		MaxFeeInputs  int
-		MaxTargetTs   core.LogicalTime
+		MaxTargetTs   ledger.LogicalTime
 		MaxMilestones int
 		MaxBranches   int
 		StartOutput   utangle_old.WrappedOutput
@@ -76,7 +76,7 @@ func WithMaxFeeInputs(maxInputs int) ConfigOpt {
 	}
 }
 
-func WithMaxTargetTs(ts core.LogicalTime) ConfigOpt {
+func WithMaxTargetTs(ts ledger.LogicalTime) ConfigOpt {
 	return func(o *ConfigOptions) {
 		o.MaxTargetTs = ts
 	}

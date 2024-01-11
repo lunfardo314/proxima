@@ -3,7 +3,7 @@ package txmetadata
 import (
 	"fmt"
 
-	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/set"
 	"github.com/lunfardo314/unitrie/common"
@@ -54,7 +54,7 @@ func TransactionMetadataFromBytes(data []byte) (*TransactionMetadata, error) {
 	ret := &TransactionMetadata{SendType: data[0]}
 	if data[1] > 0 {
 		var err error
-		if ret.StateRoot, err = common.VectorCommitmentFromBytes(core.CommitmentModel, data[2:]); err != nil {
+		if ret.StateRoot, err = common.VectorCommitmentFromBytes(ledger.CommitmentModel, data[2:]); err != nil {
 			return nil, fmt.Errorf("error while parsing tx metadata: %w", err)
 		}
 	}

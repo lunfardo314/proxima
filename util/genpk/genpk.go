@@ -11,7 +11,7 @@ import (
 
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/peer"
-	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
 	"github.com/lunfardo314/proxima/util/testutil"
@@ -31,10 +31,10 @@ func main() {
 	fmt.Printf("FOR TESTING PURPOSES ONLY! DO NOT USE IN PRODUCTION!\nGenerate %d private keys and ED25519 addresses to the file %s.yaml\n", n, os.Args[1])
 
 	privateKeys := testutil.GetTestingPrivateKeys(n, rand.Int())
-	addresses := make([]core.AddressED25519, len(privateKeys))
+	addresses := make([]ledger.AddressED25519, len(privateKeys))
 
 	for i := range privateKeys {
-		addresses[i] = core.AddressED25519FromPrivateKey(privateKeys[i])
+		addresses[i] = ledger.AddressED25519FromPrivateKey(privateKeys[i])
 	}
 
 	ln := lines.New().
@@ -64,7 +64,7 @@ type (
 		PrivateKey ed25519.PrivateKey
 		PublicKey  ed25519.PublicKey
 		HostID     peer.ID
-		Address    core.AddressED25519
+		Address    ledger.AddressED25519
 	}
 
 	testKeyYaml struct {
@@ -90,7 +90,7 @@ func ReadTestKeys(fname string) ([]TestKey, error) {
 		if err != nil {
 			return nil, fmt.Errorf("wrong private key at pos %d: %v", i, err)
 		}
-		addr := core.AddressED25519FromPrivateKey(pk)
+		addr := ledger.AddressED25519FromPrivateKey(pk)
 		if addr.String() != keyData.Addr {
 			return nil, fmt.Errorf("private key and address does not match at pos %d", i)
 		}

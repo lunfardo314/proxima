@@ -6,8 +6,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lunfardo314/proxima/core"
-	"github.com/lunfardo314/proxima/utangle/vertex"
+	"github.com/lunfardo314/proxima/core/vertex"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/set"
 	"go.uber.org/atomic"
@@ -16,20 +16,20 @@ import (
 
 type (
 	ListenEnvironment interface {
-		ListenToAccount(account core.Accountable, fun func(wOut vertex.WrappedOutput))
+		ListenToAccount(account ledger.Accountable, fun func(wOut vertex.WrappedOutput))
 		ListenToSequencers(fun func(vid *vertex.WrappedTx))
-		ScanAccount(addr core.AccountID) set.Set[vertex.WrappedOutput]
+		ScanAccount(addr ledger.AccountID) set.Set[vertex.WrappedOutput]
 		Log() *zap.SugaredLogger
 	}
 
 	SequencerTipPool struct {
 		mutex                    sync.RWMutex
 		env                      ListenEnvironment
-		account                  core.Accountable
+		account                  ledger.Accountable
 		outputs                  set.Set[vertex.WrappedOutput]
-		seqID                    core.ChainID
+		seqID                    ledger.ChainID
 		seqName                  string
-		latestMilestones         map[core.ChainID]*vertex.WrappedTx
+		latestMilestones         map[ledger.ChainID]*vertex.WrappedTx
 		lastPruned               atomic.Time
 		outputCount              int
 		removedOutputsSinceReset int
@@ -45,16 +45,16 @@ type (
 
 const fetchLastNTimeSlotsUponStartup = 5
 
-func Start(seqName string, env ListenEnvironment, seqID core.ChainID) *SequencerTipPool {
+func Start(seqName string, env ListenEnvironment, seqID ledger.ChainID) *SequencerTipPool {
 	// must be finalized somewhere
-	accountAddress := core.CloneAccountable(seqID.AsChainLock())
+	accountAddress := ledger.CloneAccountable(seqID.AsChainLock())
 	ret := &SequencerTipPool{
 		env:              env,
 		account:          accountAddress,
 		outputs:          set.New[vertex.WrappedOutput](),
 		seqID:            seqID,
 		seqName:          seqName,
-		latestMilestones: make(map[core.ChainID]*vertex.WrappedTx),
+		latestMilestones: make(map[ledger.ChainID]*vertex.WrappedTx),
 	}
 	env.Log().Debugf("starting tipPool..")
 
@@ -99,7 +99,7 @@ func Start(seqName string, env ListenEnvironment, seqID core.ChainID) *Sequencer
 }
 
 func (tp *SequencerTipPool) purgeDeleted() {
-	cleanupPeriod := core.TimeSlotDuration() / 2
+	cleanupPeriod := ledger.TimeSlotDuration() / 2
 	if time.Since(tp.lastPruned.Load()) < cleanupPeriod {
 		return
 	}
@@ -119,7 +119,7 @@ func (tp *SequencerTipPool) purgeDeleted() {
 	}
 	tp.removedOutputsSinceReset += len(toDelete)
 
-	toDeleteMilestoneChainID := make([]core.ChainID, 0)
+	toDeleteMilestoneChainID := make([]ledger.ChainID, 0)
 	for chainID, vid := range tp.latestMilestones {
 		if vid.IsBadOrDeleted() {
 			toDeleteMilestoneChainID = append(toDeleteMilestoneChainID, chainID)
@@ -146,11 +146,11 @@ func (tp *SequencerTipPool) filterAndSortOutputs(filter func(o vertex.WrappedOut
 	return ret
 }
 
-func (tp *SequencerTipPool) ChainID() core.ChainID {
+func (tp *SequencerTipPool) ChainID() ledger.ChainID {
 	return tp.seqID
 }
 
-func (tp *SequencerTipPool) preSelectAndSortEndorsableMilestones(targetTs core.LogicalTime) []*vertex.WrappedTx {
+func (tp *SequencerTipPool) preSelectAndSortEndorsableMilestones(targetTs ledger.LogicalTime) []*vertex.WrappedTx {
 	tp.purgeDeleted()
 
 	tp.mutex.RLock()
@@ -158,7 +158,7 @@ func (tp *SequencerTipPool) preSelectAndSortEndorsableMilestones(targetTs core.L
 
 	ret := make([]*vertex.WrappedTx, 0)
 	for _, ms := range tp.latestMilestones {
-		if ms.TimeSlot() != targetTs.TimeSlot() || !core.ValidTimePace(ms.Timestamp(), targetTs) {
+		if ms.TimeSlot() != targetTs.TimeSlot() || !ledger.ValidTimePace(ms.Timestamp(), targetTs) {
 			continue
 		}
 		ret = append(ret, ms)

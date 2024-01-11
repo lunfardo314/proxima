@@ -4,7 +4,7 @@ import (
 	"crypto/ed25519"
 	"testing"
 
-	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/util/testutil"
 	"github.com/lunfardo314/unitrie/common"
@@ -13,8 +13,8 @@ import (
 
 func TestOriginBase(t *testing.T) {
 	const supply = 10_000_000_000
-	addr := core.AddressED25519FromPrivateKey(testutil.GetTestingPrivateKey())
-	genesisTimeSlot := core.TimeSlot(1337)
+	addr := ledger.AddressED25519FromPrivateKey(testutil.GetTestingPrivateKey())
+	genesisTimeSlot := ledger.TimeSlot(1337)
 	gOut := InitialSupplyOutput(supply, addr, genesisTimeSlot)
 	t.Logf("Genesis: suppy = %d, genesis slot = %d:\n", supply, genesisTimeSlot)
 	t.Logf("   Genesis outputID: %s", gOut.ID.String())
@@ -43,7 +43,7 @@ func TestInitOrigin(t *testing.T) {
 
 	branchData := multistate.FetchBranchDataByRoot(store, rootData[0])
 	require.EqualValues(t, bootstrapSeqID, branchData.SequencerID)
-	require.True(t, core.CommitmentModel.EqualCommitments(genesisRoot, branchData.Root))
+	require.True(t, ledger.CommitmentModel.EqualCommitments(genesisRoot, branchData.Root))
 
 	rdr := multistate.MustNewSugaredReadableState(store, genesisRoot)
 

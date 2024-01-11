@@ -4,9 +4,9 @@ import (
 	"strconv"
 
 	"github.com/dgraph-io/badger/v4"
-	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/genesis"
 	"github.com/lunfardo314/proxima/global"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/txbuilder"
@@ -38,10 +38,10 @@ func runDBDistributeCmd(_ *cobra.Command, args []string) {
 	stateDb := badger_adaptor.MustCreateOrOpenBadgerDB(dbName)
 	defer func() { _ = stateDb.Close() }()
 
-	distribution := make([]core.LockBalance, len(args)/2)
+	distribution := make([]ledger.LockBalance, len(args)/2)
 	var err error
 	for i := 0; i < len(args); i += 2 {
-		distribution[i/2].Lock, err = core.AddressED25519FromSource(args[i])
+		distribution[i/2].Lock, err = ledger.AddressED25519FromSource(args[i])
 		glb.Assertf(err == nil, "%v in argument %d", err, i)
 		distribution[i/2].Balance, err = strconv.ParseUint(args[i+1], 10, 64)
 		glb.Assertf(err == nil, "%v in argument %d", err, i)

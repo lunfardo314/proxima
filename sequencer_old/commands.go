@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"github.com/lunfardo314/easyfl"
-	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lazybytes"
 )
@@ -18,12 +18,12 @@ const (
 )
 
 // parseSenderCommandDataRaw analyzes the input and parses out raw sequencer command data, if any
-func parseSenderCommandDataRaw(myAddr core.AddressED25519, input *core.OutputWithID) []byte {
+func parseSenderCommandDataRaw(myAddr ledger.AddressED25519, input *ledger.OutputWithID) []byte {
 	senderAddr, senderConstraintIdx := input.Output.SenderED25519()
 	if senderConstraintIdx == 0xff {
 		return nil
 	}
-	if !core.EqualConstraints(myAddr, senderAddr) {
+	if !ledger.EqualConstraints(myAddr, senderAddr) {
 		// if sender address is not equal to the controller address of the signature,
 		// the command is ignored
 		return nil
@@ -54,7 +54,7 @@ func parseSenderCommandDataRaw(myAddr core.AddressED25519, input *core.OutputWit
 // expected:
 // - byte 0: command code
 // - bytes [1:] is lazy array of parameters, interpreted depending on the command code
-func makeOutputFromCommandData(cmdDataRaw []byte) (*core.Output, error) {
+func makeOutputFromCommandData(cmdDataRaw []byte) (*ledger.Output, error) {
 	util.Assertf(len(cmdDataRaw) > 0, "len(cmdDataRaw)>0")
 	commandCode := cmdDataRaw[0]
 	cmdParams, err := lazybytes.ParseArrayFromBytesReadOnly(cmdDataRaw[1:])
@@ -70,7 +70,7 @@ func makeOutputFromCommandData(cmdDataRaw []byte) (*core.Output, error) {
 		if cmdParams.NumElements() != 2 || len(cmdParams.At(1)) != 8 {
 			return nil, fmt.Errorf("wrong params")
 		}
-		targetLock, err := core.LockFromBytes(cmdParams.At(0))
+		targetLock, err := ledger.LockFromBytes(cmdParams.At(0))
 		if err != nil {
 			return nil, err
 		}
@@ -79,7 +79,7 @@ func makeOutputFromCommandData(cmdDataRaw []byte) (*core.Output, error) {
 			return nil, fmt.Errorf("the requested amount %d is less than minimum (%d). Command igored",
 				amount, MinimumAmountToRequestFromSequencer)
 		}
-		return core.NewOutput(func(o *core.Output) {
+		return ledger.NewOutput(func(o *ledger.Output) {
 			o.WithAmount(amount).WithLock(targetLock)
 		}), nil
 	default:

@@ -3,21 +3,21 @@ package utangle_old
 import (
 	"bytes"
 
-	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/util"
 )
 
-func newVirtualTx(txid *core.TransactionID) *VirtualTransaction {
+func newVirtualTx(txid *ledger.TransactionID) *VirtualTransaction {
 	return &VirtualTransaction{
 		txid:    *txid,
-		outputs: make(map[byte]*core.Output),
+		outputs: make(map[byte]*ledger.Output),
 	}
 }
 
 func newVirtualTxFromTx(tx *transaction.Transaction) *VirtualTransaction {
 	ret := newVirtualTx(tx.ID())
-	tx.ForEachProducedOutput(func(idx byte, o *core.Output, oid *core.OutputID) bool {
+	tx.ForEachProducedOutput(func(idx byte, o *ledger.Output, oid *ledger.OutputID) bool {
 		ret.outputs[idx] = o.Clone()
 		return true
 	})
@@ -28,7 +28,7 @@ func newVirtualTxFromTx(tx *transaction.Transaction) *VirtualTransaction {
 	return ret
 }
 
-func (v *VirtualTransaction) addOutput(idx byte, o *core.Output) {
+func (v *VirtualTransaction) addOutput(idx byte, o *ledger.Output) {
 	v.mutex.Lock()
 	defer v.mutex.Unlock()
 
@@ -48,18 +48,18 @@ func (v *VirtualTransaction) Wrap() *WrappedTx {
 	return _newVID(_virtualTx{VirtualTransaction: v})
 }
 
-func (v *VirtualTransaction) outputWithIDAt(idx byte) (*core.OutputWithID, bool) {
+func (v *VirtualTransaction) outputWithIDAt(idx byte) (*ledger.OutputWithID, bool) {
 	ret, ok := v.OutputAt(idx)
 	if !ok {
 		return nil, false
 	}
-	return &core.OutputWithID{
-		ID:     core.NewOutputID(&v.txid, idx),
+	return &ledger.OutputWithID{
+		ID:     ledger.NewOutputID(&v.txid, idx),
 		Output: ret,
 	}, true
 }
 
-func (v *VirtualTransaction) OutputAt(idx byte) (*core.Output, bool) {
+func (v *VirtualTransaction) OutputAt(idx byte) (*ledger.Output, bool) {
 	v.mutex.RLock()
 	defer v.mutex.RUnlock()
 
@@ -70,14 +70,14 @@ func (v *VirtualTransaction) OutputAt(idx byte) (*core.Output, bool) {
 }
 
 // SequencerOutputs returns <seq output>, <branch output> or respective nils
-func (v *VirtualTransaction) SequencerOutputs() (*core.Output, *core.Output) {
+func (v *VirtualTransaction) SequencerOutputs() (*ledger.Output, *ledger.Output) {
 	v.mutex.RLock()
 	defer v.mutex.RUnlock()
 
 	if v.sequencerOutputs == nil {
 		return nil, nil
 	}
-	var seqOut, stemOut *core.Output
+	var seqOut, stemOut *ledger.Output
 	var ok bool
 
 	seqOut, ok = v.outputs[v.sequencerOutputs[0]]

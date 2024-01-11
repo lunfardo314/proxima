@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/api"
-	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/global"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/utangle_old"
 	"github.com/lunfardo314/proxima/util"
@@ -44,7 +44,7 @@ func getAccountOutputsHandle(ut *utangle_old.UTXOTangle) func(w http.ResponseWri
 			writeErr(w, "wrong parameters in request 'get_account_outputs'")
 			return
 		}
-		accountable, err := core.AccountableFromSource(lst[0])
+		accountable, err := ledger.AccountableFromSource(lst[0])
 		if err != nil {
 			writeErr(w, err.Error())
 			return
@@ -80,7 +80,7 @@ func getChainOutputHandle(ut *utangle_old.UTXOTangle) func(w http.ResponseWriter
 			writeErr(w, "wrong parameters in request 'get_chain_output'")
 			return
 		}
-		chainID, err := core.ChainIDFromHexString(lst[0])
+		chainID, err := ledger.ChainIDFromHexString(lst[0])
 		if err != nil {
 			writeErr(w, err.Error())
 			return
@@ -113,7 +113,7 @@ func getOutputHandle(ut *utangle_old.UTXOTangle) func(w http.ResponseWriter, r *
 			writeErr(w, "wrong parameter in request 'get_output'")
 			return
 		}
-		oid, err := core.OutputIDFromHexString(lst[0])
+		oid, err := ledger.OutputIDFromHexString(lst[0])
 		if err != nil {
 			writeErr(w, err.Error())
 			return
@@ -144,7 +144,7 @@ func getOutputInclusionHandle(ut *utangle_old.UTXOTangle) func(w http.ResponseWr
 			writeErr(w, "wrong parameter in request 'get_output'")
 			return
 		}
-		oid, err := core.OutputIDFromHexString(lst[0])
+		oid, err := ledger.OutputIDFromHexString(lst[0])
 		if err != nil {
 			writeErr(w, err.Error())
 			return

@@ -9,8 +9,8 @@ import (
 
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
-	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/global"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/unitrie/common"
 )
@@ -18,7 +18,7 @@ import (
 // pull request message 1st byte is the type of the message. The rest is message body
 
 const (
-	MaxNumTransactionID = (MaxPayloadSize - 2) / core.TransactionIDLength
+	MaxNumTransactionID = (MaxPayloadSize - 2) / ledger.TransactionIDLength
 
 	PullRequestTransactions = byte(iota)
 	PullRequestBrancheTips
@@ -80,7 +80,7 @@ func (ps *Peers) processPullFrame(msgData []byte, p *Peer) error {
 	return nil
 }
 
-func (ps *Peers) sendPullTransactionsToPeer(id peer.ID, txLst ...core.TransactionID) {
+func (ps *Peers) sendPullTransactionsToPeer(id peer.ID, txLst ...ledger.TransactionID) {
 	stream, err := ps.host.NewStream(ps.ctx, id, lppProtocolPull)
 	if err != nil {
 		return
@@ -91,7 +91,7 @@ func (ps *Peers) sendPullTransactionsToPeer(id peer.ID, txLst ...core.Transactio
 }
 
 // PullTransactionsFromRandomPeer sends pull request to the random peer which has txStore
-func (ps *Peers) PullTransactionsFromRandomPeer(txids ...core.TransactionID) bool {
+func (ps *Peers) PullTransactionsFromRandomPeer(txids ...ledger.TransactionID) bool {
 	if len(txids) == 0 {
 		return false
 	}
@@ -115,7 +115,7 @@ func (ps *Peers) PullTransactionsFromRandomPeer(txids ...core.TransactionID) boo
 	return false
 }
 
-func _txidLst(txids ...core.TransactionID) string {
+func _txidLst(txids ...ledger.TransactionID) string {
 	ret := make([]string, len(txids))
 	for i := range ret {
 		ret[i] = txids[i].StringShort()
@@ -123,7 +123,7 @@ func _txidLst(txids ...core.TransactionID) string {
 	return strings.Join(ret, ",")
 }
 
-func encodePullTransactionsMsg(txids ...core.TransactionID) []byte {
+func encodePullTransactionsMsg(txids ...ledger.TransactionID) []byte {
 	util.Assertf(len(txids) <= MaxNumTransactionID, "number of transactions IDS %d exceed maximum %d", len(txids), MaxNumTransactionID)
 
 	var buf bytes.Buffer
@@ -140,20 +140,20 @@ func encodePullTransactionsMsg(txids ...core.TransactionID) []byte {
 	return buf.Bytes()
 }
 
-func decodePullTransactionsMsg(data []byte) ([]core.TransactionID, error) {
+func decodePullTransactionsMsg(data []byte) ([]ledger.TransactionID, error) {
 	if len(data) < 3 || data[0] != PullRequestTransactions {
 		return nil, fmt.Errorf("not a pull txransactions message")
 	}
 	// read size of array
-	ret := make([]core.TransactionID, binary.BigEndian.Uint16(data[1:3]))
+	ret := make([]ledger.TransactionID, binary.BigEndian.Uint16(data[1:3]))
 	rdr := bytes.NewReader(data[3:])
-	var txid [core.TransactionIDLength]byte
+	var txid [ledger.TransactionIDLength]byte
 	for i := range ret {
 		n, err := rdr.Read(txid[:])
-		if err != nil || n != core.TransactionIDLength {
+		if err != nil || n != ledger.TransactionIDLength {
 			return nil, fmt.Errorf("DecodePeerMessageQueryTransactions: wrong msg data")
 		}
-		ret[i], err = core.TransactionIDFromBytes(txid[:])
+		ret[i], err = ledger.TransactionIDFromBytes(txid[:])
 		common.AssertNoError(err)
 	}
 	return ret, nil

@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/sequencer_old"
 	"github.com/lunfardo314/proxima/transaction"
@@ -51,7 +51,7 @@ func runSeqWithdrawCmd(_ *cobra.Command, args []string) {
 	glb.Infof("amount: %s", util.GoThousands(amount))
 
 	glb.Infof("querying wallet's outputs..")
-	walletOutputs, err := getClient().GetAccountOutputs(walletData.Account, func(o *core.Output) bool {
+	walletOutputs, err := getClient().GetAccountOutputs(walletData.Account, func(o *ledger.Output) bool {
 		// filter out chain outputs controlled by the wallet
 		_, idx := o.ChainConstraint()
 		return idx == 0xff
@@ -75,12 +75,12 @@ func runSeqWithdrawCmd(_ *cobra.Command, args []string) {
 	cmdParArr := lazybytes.MakeArrayFromDataReadOnly(targetLock.Bytes(), amountBin[:])
 	cmdData := common.Concat(sequencer_old.CommandCodeWithdrawAmount, cmdParArr)
 	constrSource := fmt.Sprintf("concat(0x%s)", hex.EncodeToString(cmdData))
-	cmdConstr, err := core.NewGeneralScriptFromSource(constrSource)
+	cmdConstr, err := ledger.NewGeneralScriptFromSource(constrSource)
 	glb.AssertNoError(err)
 
-	transferData := txbuilder.NewTransferData(walletData.PrivateKey, walletData.Account, core.LogicalTimeNow()).
+	transferData := txbuilder.NewTransferData(walletData.PrivateKey, walletData.Account, ledger.LogicalTimeNow()).
 		WithAmount(ownSequencerCmdFee).
-		WithTargetLock(core.ChainLockFromChainID(*walletData.Sequencer)).
+		WithTargetLock(ledger.ChainLockFromChainID(*walletData.Sequencer)).
 		MustWithInputs(walletOutputs...).
 		WithSender().
 		WithConstraint(cmdConstr)

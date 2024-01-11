@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"strings"
 
-	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/global"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
 	"github.com/lunfardo314/unitrie/common"
@@ -25,17 +25,17 @@ type (
 
 	AccountInfo struct {
 		LockedAccounts map[string]LockedAccountInfo
-		ChainRecords   map[core.ChainID]ChainRecordInfo
+		ChainRecords   map[ledger.ChainID]ChainRecordInfo
 	}
 
 	SummarySupplyAndInflation struct {
 		NumberOfBranches int
-		OldestSlot       core.TimeSlot
-		LatestSlot       core.TimeSlot
+		OldestSlot       ledger.TimeSlot
+		LatestSlot       ledger.TimeSlot
 		BeginSupply      uint64
 		EndSupply        uint64
 		TotalInflation   uint64
-		InfoPerSeqID     map[core.ChainID]SequencerInfo
+		InfoPerSeqID     map[ledger.ChainID]SequencerInfo
 	}
 
 	SequencerInfo struct {
@@ -77,7 +77,7 @@ func (a *AccountInfo) Lines(prefix ...string) *lines.Lines {
 	ret.Add("   Total in locked accounts: %s", util.GoThousands(sum))
 
 	ret.Add("Chains: %d", len(a.ChainRecords))
-	chainIDSSorted := util.KeysSorted(a.ChainRecords, func(k1, k2 core.ChainID) bool {
+	chainIDSSorted := util.KeysSorted(a.ChainRecords, func(k1, k2 ledger.ChainID) bool {
 		return bytes.Compare(k1[:], k2[:]) < 0
 	})
 	sum = 0
@@ -102,7 +102,7 @@ func FetchSummarySupplyAndInflation(stateStore global.StateStore, nBack int) *Su
 		NumberOfBranches: len(branchData),
 		OldestSlot:       branchData[len(branchData)-1].Stem.Timestamp().TimeSlot(),
 		LatestSlot:       branchData[0].Stem.Timestamp().TimeSlot(),
-		InfoPerSeqID:     make(map[core.ChainID]SequencerInfo),
+		InfoPerSeqID:     make(map[ledger.ChainID]SequencerInfo),
 	}
 	for i := 0; i < len(branchData)-1; i++ {
 		inflation := branchData[i].Stem.Output.MustStemLock().InflationAmount
@@ -138,7 +138,7 @@ func FetchSummarySupplyAndInflation(stateStore global.StateStore, nBack int) *Su
 func (s *SummarySupplyAndInflation) Lines(prefix ...string) *lines.Lines {
 	totalInflationPercentage := float32(s.TotalInflation*100) / float32(s.BeginSupply)
 	totalInflationPercentagePerSlot := totalInflationPercentage / float32(s.LatestSlot-s.OldestSlot+1)
-	totalInflationPercentageYearlyExtrapolation := totalInflationPercentagePerSlot * float32(core.TimeSlotsPerYear())
+	totalInflationPercentageYearlyExtrapolation := totalInflationPercentagePerSlot * float32(ledger.TimeSlotsPerYear())
 
 	ret := lines.New(prefix...).
 		Add("Slots from %d to %d inclusive. Total %d slots", s.OldestSlot, s.LatestSlot, s.LatestSlot-s.OldestSlot+1).
@@ -150,7 +150,7 @@ func (s *SummarySupplyAndInflation) Lines(prefix ...string) *lines.Lines {
 		Add("Annual inflation extrapolated: %.2f%%", totalInflationPercentageYearlyExtrapolation).
 		Add("Info per sequencer (along the heaviest chain):")
 
-	sortedSeqIDs := util.KeysSorted(s.InfoPerSeqID, func(k1, k2 core.ChainID) bool {
+	sortedSeqIDs := util.KeysSorted(s.InfoPerSeqID, func(k1, k2 ledger.ChainID) bool {
 		return bytes.Compare(k1[:], k2[:]) < 0
 	})
 	for _, seqId := range sortedSeqIDs {

@@ -1,7 +1,7 @@
 package workflow
 
 import (
-	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/ledger"
 	utangle "github.com/lunfardo314/proxima/utangle_old"
 )
 
@@ -31,7 +31,7 @@ func (ev Events) ListenSequencers(fun func(vertex *utangle.WrappedTx)) error {
 	})
 }
 
-func (ev Events) ListenSequencer(seqID core.ChainID, fun func(vid *utangle.WrappedTx)) error {
+func (ev Events) ListenSequencer(seqID ledger.ChainID, fun func(vid *utangle.WrappedTx)) error {
 	return ev.ListenSequencers(func(vid *utangle.WrappedTx) {
 		if id, available := vid.SequencerIDIfAvailable(); available && id == seqID {
 			fun(vid)
@@ -39,13 +39,13 @@ func (ev Events) ListenSequencer(seqID core.ChainID, fun func(vid *utangle.Wrapp
 	})
 }
 
-func (ev Events) ListenAccount(accountable core.Accountable, fun func(wOut utangle.WrappedOutput)) error {
+func (ev Events) ListenAccount(accountable ledger.Accountable, fun func(wOut utangle.WrappedOutput)) error {
 	counterString := "listen-" + accountable.String()
 	return ev.ListenTransactions(func(vid *utangle.WrappedTx) {
 		if v, ok := vid.UnwrapVertexForReadOnly(); ok {
 			for i := 0; i < v.Tx.NumProducedOutputs(); i++ {
 				out := v.Tx.MustProducedOutputAt(byte(i))
-				if core.LockIsIndexableByAccount(out.Lock(), accountable) {
+				if ledger.LockIsIndexableByAccount(out.Lock(), accountable) {
 					ev.pi.debugCounters.Inc(counterString)
 					fun(utangle.WrappedOutput{
 						VID:   vid,

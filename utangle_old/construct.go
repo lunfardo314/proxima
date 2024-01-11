@@ -3,8 +3,8 @@ package utangle_old
 import (
 	"fmt"
 
-	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/global"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/util"
@@ -14,8 +14,8 @@ import (
 func newUTXOTangle(stateStore global.StateStore) *UTXOTangle {
 	return &UTXOTangle{
 		stateStore: stateStore,
-		vertices:   make(map[core.TransactionID]*WrappedTx),
-		branches:   make(map[core.TimeSlot]map[*WrappedTx]common.VCommitment),
+		vertices:   make(map[ledger.TransactionID]*WrappedTx),
+		branches:   make(map[ledger.TimeSlot]map[*WrappedTx]common.VCommitment),
 		syncData:   newSyncData(),
 	}
 }
@@ -51,7 +51,7 @@ func newVirtualBranchTx(br *multistate.BranchData) *VirtualTransaction {
 	return v
 }
 
-func (ut *UTXOTangle) Contains(txid *core.TransactionID) bool {
+func (ut *UTXOTangle) Contains(txid *ledger.TransactionID) bool {
 	ut.mutex.RLock()
 	defer ut.mutex.RUnlock()
 
@@ -131,7 +131,7 @@ func (ut *UTXOTangle) _mustAttachVirtualTx(vid *WrappedTx) {
 	}})
 }
 
-func (ut *UTXOTangle) _deleteVertex(txid *core.TransactionID) {
+func (ut *UTXOTangle) _deleteVertex(txid *ledger.TransactionID) {
 	_, ok := ut.vertices[*txid]
 	if ok {
 		ut.numDeletedVertices++
@@ -249,7 +249,7 @@ func (ut *UTXOTangle) _finalizeBranch(newBranchVID *WrappedTx) error {
 	util.Assertf(newBranchVID.IsBranchTransaction(), "v.IsBranchTransaction()")
 
 	var newRoot common.VCommitment
-	var nextStemOutputID core.OutputID
+	var nextStemOutputID ledger.OutputID
 
 	tx := newBranchVID.UnwrapTransaction()
 	seqTxData := tx.SequencerTransactionData()
@@ -301,7 +301,7 @@ func (ut *UTXOTangle) _finalizeBranch(newBranchVID *WrappedTx) error {
 			return fmt.Errorf("finalizeBranch: double check failed: '%v'\n%s", err, newBranchVID.Lines().String())
 		}
 
-		var stemID core.OutputID
+		var stemID ledger.OutputID
 		err = util.CatchPanicOrError(func() error {
 			stemID = rdr.GetStemOutput().ID
 			return nil

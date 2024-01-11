@@ -3,7 +3,7 @@ package txmetadata
 import (
 	"testing"
 
-	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/unitrie/common"
 	"github.com/stretchr/testify/require"
@@ -23,7 +23,7 @@ func TestTxMetadata(t *testing.T) {
 	})
 	t.Run("2", func(t *testing.T) {
 		h := blake2b.Sum256([]byte("data"))
-		c, err := common.VectorCommitmentFromBytes(core.CommitmentModel, h[:])
+		c, err := common.VectorCommitmentFromBytes(ledger.CommitmentModel, h[:])
 		require.NoError(t, err)
 		m := &TransactionMetadata{
 			SendType:  SendTypeFromSequencer,
@@ -33,6 +33,6 @@ func TestTxMetadata(t *testing.T) {
 		require.NoError(t, err)
 
 		require.EqualValues(t, m.SendType, mBack.SendType)
-		require.True(t, core.CommitmentModel.EqualCommitments(m.StateRoot, mBack.StateRoot))
+		require.True(t, ledger.CommitmentModel.EqualCommitments(m.StateRoot, mBack.StateRoot))
 	})
 }

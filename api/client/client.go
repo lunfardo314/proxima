@@ -12,8 +12,8 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/api"
-	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/global"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/txbuilder"
 	"github.com/lunfardo314/proxima/utangle_old"
@@ -43,7 +43,7 @@ func New(serverURL string, timeout ...time.Duration) *APIClient {
 }
 
 // getAccountOutputs fetches all outputs of the account
-func (c *APIClient) getAccountOutputs(accountable core.Accountable) ([]*core.OutputDataWithID, error) {
+func (c *APIClient) getAccountOutputs(accountable ledger.Accountable) ([]*ledger.OutputDataWithID, error) {
 	path := fmt.Sprintf(api.PathGetAccountOutputs+"?accountable=%s", accountable.String())
 	body, err := c.getBody(path)
 	if err != nil {
@@ -59,10 +59,10 @@ func (c *APIClient) getAccountOutputs(accountable core.Accountable) ([]*core.Out
 		return nil, fmt.Errorf("from server: %s", res.Error.Error)
 	}
 
-	ret := make([]*core.OutputDataWithID, 0, len(res.Outputs))
+	ret := make([]*ledger.OutputDataWithID, 0, len(res.Outputs))
 
 	for idStr, dataStr := range res.Outputs {
-		id, err := core.OutputIDFromHexString(idStr)
+		id, err := ledger.OutputIDFromHexString(idStr)
 		if err != nil {
 			return nil, fmt.Errorf("wrong output ID data from server: %s", idStr)
 		}
@@ -70,7 +70,7 @@ func (c *APIClient) getAccountOutputs(accountable core.Accountable) ([]*core.Out
 		if err != nil {
 			return nil, fmt.Errorf("wrong output data from server: %s", dataStr)
 		}
-		ret = append(ret, &core.OutputDataWithID{
+		ret = append(ret, &ledger.OutputDataWithID{
 			ID:         id,
 			OutputData: oData,
 		})
@@ -82,7 +82,7 @@ func (c *APIClient) getAccountOutputs(accountable core.Accountable) ([]*core.Out
 	return ret, nil
 }
 
-func (c *APIClient) GetChainOutputData(chainID core.ChainID) (*core.OutputDataWithID, error) {
+func (c *APIClient) GetChainOutputData(chainID ledger.ChainID) (*ledger.OutputDataWithID, error) {
 	path := fmt.Sprintf(api.PathGetChainOutput+"?chainid=%s", chainID.StringHex())
 	body, err := c.getBody(path)
 	if err != nil {
@@ -98,7 +98,7 @@ func (c *APIClient) GetChainOutputData(chainID core.ChainID) (*core.OutputDataWi
 		return nil, fmt.Errorf("from server: %s", res.Error.Error)
 	}
 
-	oid, err := core.OutputIDFromHexString(res.OutputID)
+	oid, err := ledger.OutputIDFromHexString(res.OutputID)
 	if err != nil {
 		return nil, fmt.Errorf("wrong output ID data from server: %s", res.OutputID)
 	}
@@ -107,13 +107,13 @@ func (c *APIClient) GetChainOutputData(chainID core.ChainID) (*core.OutputDataWi
 		return nil, fmt.Errorf("wrong output data from server: %s", res.OutputData)
 	}
 
-	return &core.OutputDataWithID{
+	return &ledger.OutputDataWithID{
 		ID:         oid,
 		OutputData: oData,
 	}, nil
 }
 
-func (c *APIClient) GetChainOutputFromHeaviestState(chainID core.ChainID) (*core.OutputWithChainID, byte, error) {
+func (c *APIClient) GetChainOutputFromHeaviestState(chainID ledger.ChainID) (*ledger.OutputWithChainID, byte, error) {
 	oData, err := c.GetChainOutputData(chainID)
 	if err != nil {
 		return nil, 0, err
@@ -121,7 +121,7 @@ func (c *APIClient) GetChainOutputFromHeaviestState(chainID core.ChainID) (*core
 	return oData.ParseAsChainOutput()
 }
 
-func (c *APIClient) GetMilestoneDataFromHeaviestState(chainID core.ChainID) (*txbuilder.MilestoneData, error) {
+func (c *APIClient) GetMilestoneDataFromHeaviestState(chainID ledger.ChainID) (*txbuilder.MilestoneData, error) {
 	o, _, err := c.GetChainOutputFromHeaviestState(chainID)
 	if err != nil {
 		return nil, err
@@ -134,7 +134,7 @@ func (c *APIClient) GetMilestoneDataFromHeaviestState(chainID core.ChainID) (*tx
 
 // GetOutputDataFromHeaviestState returns output data from the latest heaviest state, if it exists there
 // Returns nil, nil if output does not exist
-func (c *APIClient) GetOutputDataFromHeaviestState(oid *core.OutputID) ([]byte, error) {
+func (c *APIClient) GetOutputDataFromHeaviestState(oid *ledger.OutputID) ([]byte, error) {
 	path := fmt.Sprintf(api.PathGetOutput+"?id=%s", oid.StringHex())
 	body, err := c.getBody(path)
 	if err != nil {
@@ -161,7 +161,7 @@ func (c *APIClient) GetOutputDataFromHeaviestState(oid *core.OutputID) ([]byte, 
 	return oData, nil
 }
 
-func (c *APIClient) GetOutputInclusion(oid *core.OutputID) ([]api.InclusionData, error) {
+func (c *APIClient) GetOutputInclusion(oid *ledger.OutputID) ([]api.InclusionData, error) {
 	path := fmt.Sprintf(api.PathGetOutputInclusion+"?id=%s", oid.StringHex())
 	body, err := c.getBody(path)
 	if err != nil {
@@ -194,7 +194,7 @@ const waitOutputFinalPollPeriod = 1 * time.Second
 
 // WaitOutputInTheHeaviestState return true once output is found in the latest heaviest branch.
 // Polls node until success or timeout
-func (c *APIClient) WaitOutputInTheHeaviestState(oid *core.OutputID, timeout time.Duration) error {
+func (c *APIClient) WaitOutputInTheHeaviestState(oid *ledger.OutputID, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
 	if timeout == 0 {
 		deadline = time.Now().Add(1 * time.Hour)
@@ -252,8 +252,8 @@ func (c *APIClient) SubmitTransaction(txBytes []byte, timeoutSec ...int) error {
 	return nil
 }
 
-func (c *APIClient) GetAccountOutputs(account core.Accountable, filter ...func(o *core.Output) bool) ([]*core.OutputWithID, error) {
-	filterFun := func(o *core.Output) bool { return true }
+func (c *APIClient) GetAccountOutputs(account ledger.Accountable, filter ...func(o *ledger.Output) bool) ([]*ledger.OutputWithID, error) {
+	filterFun := func(o *ledger.Output) bool { return true }
 	if len(filter) > 0 {
 		filterFun = filter[0]
 	}
@@ -283,10 +283,10 @@ func (c *APIClient) GetSyncInfo() (utangle_old.SyncInfo, error) {
 	ret := utangle_old.SyncInfo{
 		Synced:       res.Synced,
 		InSyncWindow: res.InSyncWindow,
-		PerSequencer: make(map[core.ChainID]utangle_old.SequencerSyncInfo),
+		PerSequencer: make(map[ledger.ChainID]utangle_old.SequencerSyncInfo),
 	}
 	for seqIDStr, si := range res.PerSequencer {
-		seqID, err := core.ChainIDFromHexString(seqIDStr)
+		seqID, err := ledger.ChainIDFromHexString(seqIDStr)
 		if err != nil {
 			return utangle_old.SyncInfo{}, err
 		}
@@ -307,8 +307,8 @@ func (c *APIClient) GetNodeInfo() (*global.NodeInfo, error) {
 	return global.NodeInfoFromBytes(body)
 }
 
-func (c *APIClient) GetTransferableOutputs(account core.Accountable, ts core.LogicalTime, maxOutputs ...int) ([]*core.OutputWithID, uint64, error) {
-	ret, err := c.GetAccountOutputs(account, func(o *core.Output) bool {
+func (c *APIClient) GetTransferableOutputs(account ledger.Accountable, ts ledger.LogicalTime, maxOutputs ...int) ([]*ledger.OutputWithID, uint64, error) {
+	ret, err := c.GetAccountOutputs(account, func(o *ledger.Output) bool {
 		// filter out chain outputs controlled by the wallet
 		_, idx := o.ChainConstraint()
 		if idx != 0xff {
@@ -340,10 +340,10 @@ func (c *APIClient) GetTransferableOutputs(account core.Accountable, ts core.Log
 }
 
 // MakeCompactTransaction requests server and creates a compact transaction for ED25519 outputs in the form of transaction context. Does not submit it
-func (c *APIClient) MakeCompactTransaction(walletPrivateKey ed25519.PrivateKey, tagAlongSeqID *core.ChainID, tagAlongFee uint64, maxInputs ...int) (*transaction.TransactionContext, error) {
-	walletAccount := core.AddressED25519FromPrivateKey(walletPrivateKey)
+func (c *APIClient) MakeCompactTransaction(walletPrivateKey ed25519.PrivateKey, tagAlongSeqID *ledger.ChainID, tagAlongFee uint64, maxInputs ...int) (*transaction.TransactionContext, error) {
+	walletAccount := ledger.AddressED25519FromPrivateKey(walletPrivateKey)
 
-	nowisTs := core.LogicalTimeNow()
+	nowisTs := ledger.LogicalTimeNow()
 	inTotal := uint64(0)
 
 	walletOutputs, inTotal, err := c.GetTransferableOutputs(walletAccount, nowisTs, maxInputs...)
@@ -375,10 +375,10 @@ func (c *APIClient) MakeCompactTransaction(walletPrivateKey ed25519.PrivateKey, 
 
 type TransferFromED25519WalletParams struct {
 	WalletPrivateKey ed25519.PrivateKey
-	TagAlongSeqID    *core.ChainID
+	TagAlongSeqID    *ledger.ChainID
 	TagAlongFee      uint64 // 0 means no fee output will be produced
 	Amount           uint64
-	Target           core.Lock
+	Target           ledger.Lock
 	MaxOutputs       int
 }
 
@@ -390,8 +390,8 @@ func (c *APIClient) TransferFromED25519Wallet(par TransferFromED25519WalletParam
 	if par.Amount < minimumAmount {
 		return nil, fmt.Errorf("minimum transfer amount is %d", minimumAmount)
 	}
-	walletAccount := core.AddressED25519FromPrivateKey(par.WalletPrivateKey)
-	nowisTs := core.LogicalTimeNow()
+	walletAccount := ledger.AddressED25519FromPrivateKey(par.WalletPrivateKey)
+	nowisTs := ledger.LogicalTimeNow()
 
 	walletOutputs, _, err := c.GetTransferableOutputs(walletAccount, nowisTs, par.MaxOutputs)
 
@@ -430,17 +430,17 @@ func (c *APIClient) getBody(path string) ([]byte, error) {
 	return body, nil
 }
 
-func (c *APIClient) MakeChainOrigin(par TransferFromED25519WalletParams) (*transaction.TransactionContext, core.ChainID, error) {
+func (c *APIClient) MakeChainOrigin(par TransferFromED25519WalletParams) (*transaction.TransactionContext, ledger.ChainID, error) {
 	if par.Amount < minimumAmount {
-		return nil, core.NilChainID, fmt.Errorf("minimum transfer amount is %d", minimumAmount)
+		return nil, ledger.NilChainID, fmt.Errorf("minimum transfer amount is %d", minimumAmount)
 	}
 	if par.Amount > 0 && par.TagAlongSeqID == nil {
 		return nil, [32]byte{}, fmt.Errorf("tag-along sequencer not specified")
 	}
 
-	walletAccount := core.AddressED25519FromPrivateKey(par.WalletPrivateKey)
+	walletAccount := ledger.AddressED25519FromPrivateKey(par.WalletPrivateKey)
 
-	ts := core.LogicalTimeNow()
+	ts := ledger.LogicalTimeNow()
 	inps, totalInputs, err := c.GetTransferableOutputs(walletAccount, ts)
 	if err != nil {
 		return nil, [32]byte{}, err
@@ -450,7 +450,7 @@ func (c *APIClient) MakeChainOrigin(par TransferFromED25519WalletParams) (*trans
 	}
 
 	totalInputs = 0
-	inps = util.FilterSlice(inps, func(o *core.OutputWithID) bool {
+	inps = util.FilterSlice(inps, func(o *ledger.OutputWithID) bool {
 		if totalInputs < par.Amount+par.TagAlongFee {
 			totalInputs += o.Output.Amount()
 			return true
@@ -463,23 +463,23 @@ func (c *APIClient) MakeChainOrigin(par TransferFromED25519WalletParams) (*trans
 	if err != nil {
 		return nil, [32]byte{}, err
 	}
-	ts = core.MaxLogicalTime(ts1.AddTicks(core.TransactionPaceInTicks), ts)
+	ts = ledger.MaxLogicalTime(ts1.AddTicks(ledger.TransactionPaceInTicks), ts)
 
 	err = txb.PutStandardInputUnlocks(len(inps))
 	util.AssertNoError(err)
 
-	chainOut := core.NewOutput(func(o *core.Output) {
+	chainOut := ledger.NewOutput(func(o *ledger.Output) {
 		_, _ = o.WithAmount(par.Amount).
 			WithLock(par.Target).
-			PushConstraint(core.NewChainOrigin().Bytes())
+			PushConstraint(ledger.NewChainOrigin().Bytes())
 	})
 	_, err = txb.ProduceOutput(chainOut)
 	util.AssertNoError(err)
 
 	if par.TagAlongFee > 0 {
-		tagAlongFeeOut := core.NewOutput(func(o *core.Output) {
+		tagAlongFeeOut := ledger.NewOutput(func(o *ledger.Output) {
 			o.WithAmount(par.TagAlongFee).
-				WithLock(core.ChainLockFromChainID(*par.TagAlongSeqID))
+				WithLock(ledger.ChainLockFromChainID(*par.TagAlongSeqID))
 		})
 		if _, err = txb.ProduceOutput(tagAlongFeeOut); err != nil {
 			return nil, [32]byte{}, err
@@ -487,7 +487,7 @@ func (c *APIClient) MakeChainOrigin(par TransferFromED25519WalletParams) (*trans
 	}
 
 	if totalInputs > par.Amount+par.TagAlongFee {
-		remainder := core.NewOutput(func(o *core.Output) {
+		remainder := ledger.NewOutput(func(o *ledger.Output) {
 			o.WithAmount(totalInputs - par.Amount - par.TagAlongFee).
 				WithLock(walletAccount)
 		})
@@ -519,14 +519,14 @@ func (c *APIClient) MakeChainOrigin(par TransferFromED25519WalletParams) (*trans
 }
 
 type MakeTransferTransactionParams struct {
-	Inputs        []*core.OutputWithID
-	Target        core.Lock
+	Inputs        []*ledger.OutputWithID
+	Target        ledger.Lock
 	Amount        uint64
-	Remainder     core.Lock
+	Remainder     ledger.Lock
 	PrivateKey    ed25519.PrivateKey
-	TagAlongSeqID *core.ChainID
+	TagAlongSeqID *ledger.ChainID
 	TagAlongFee   uint64
-	Timestamp     core.LogicalTime
+	Timestamp     ledger.LogicalTime
 }
 
 func MakeTransferTransaction(par MakeTransferTransactionParams) ([]byte, error) {
@@ -538,7 +538,7 @@ func MakeTransferTransaction(par MakeTransferTransactionParams) ([]byte, error) 
 	if err != nil {
 		return nil, err
 	}
-	if !core.ValidTimePace(inTs, par.Timestamp) {
+	if !ledger.ValidTimePace(inTs, par.Timestamp) {
 		return nil, fmt.Errorf("inconsistency: wrong time constraints")
 	}
 	if inTotal < par.Amount+par.TagAlongFee {
@@ -549,11 +549,11 @@ func MakeTransferTransaction(par MakeTransferTransactionParams) ([]byte, error) 
 		if i == 0 {
 			txb.PutSignatureUnlock(0)
 		} else {
-			_ = txb.PutUnlockReference(byte(i), core.ConstraintIndexLock, 0)
+			_ = txb.PutUnlockReference(byte(i), ledger.ConstraintIndexLock, 0)
 		}
 	}
 
-	mainOut := core.NewOutput(func(o *core.Output) {
+	mainOut := ledger.NewOutput(func(o *ledger.Output) {
 		o.WithAmount(par.Amount).
 			WithLock(par.Target)
 	})
@@ -565,9 +565,9 @@ func MakeTransferTransaction(par MakeTransferTransactionParams) ([]byte, error) 
 		if par.TagAlongSeqID == nil {
 			return nil, fmt.Errorf("tag-along sequencer not specified")
 		}
-		feeOut := core.NewOutput(func(o *core.Output) {
+		feeOut := ledger.NewOutput(func(o *ledger.Output) {
 			o.WithAmount(par.TagAlongFee).
-				WithLock(core.ChainLockFromChainID(*par.TagAlongSeqID))
+				WithLock(ledger.ChainLockFromChainID(*par.TagAlongSeqID))
 		})
 		if _, err = txb.ProduceOutput(feeOut); err != nil {
 			return nil, err
@@ -577,9 +577,9 @@ func MakeTransferTransaction(par MakeTransferTransactionParams) ([]byte, error) 
 	if inTotal > par.Amount+par.TagAlongFee {
 		remainderLock := par.Remainder
 		if remainderLock == nil {
-			remainderLock = core.AddressED25519FromPrivateKey(par.PrivateKey)
+			remainderLock = ledger.AddressED25519FromPrivateKey(par.PrivateKey)
 		}
-		remainderOut := core.NewOutput(func(o *core.Output) {
+		remainderOut := ledger.NewOutput(func(o *ledger.Output) {
 			o.WithAmount(inTotal - par.Amount - par.TagAlongFee).
 				WithLock(remainderLock)
 		})

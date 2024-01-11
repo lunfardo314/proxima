@@ -3,8 +3,8 @@ package genesis
 import (
 	"fmt"
 
-	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/global"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/unitrie/common"
@@ -14,13 +14,13 @@ import (
 // InitLedgerState initializes origin ledger state in the empty store
 // Writes initial supply and origin stem outputs. Plus writes root record into the DB
 // Returns root commitment to the genesis ledger state and genesis chainID
-func InitLedgerState(par LedgerIdentityData, store global.StateStore) (core.ChainID, common.VCommitment) {
+func InitLedgerState(par LedgerIdentityData, store global.StateStore) (ledger.ChainID, common.VCommitment) {
 	batch := store.BatchedWriter()
-	emptyRoot := immutable.MustInitRoot(batch, core.CommitmentModel, par.Bytes())
+	emptyRoot := immutable.MustInitRoot(batch, ledger.CommitmentModel, par.Bytes())
 	err := batch.Commit()
 	util.AssertNoError(err)
 
-	genesisAddr := core.AddressED25519FromPublicKey(par.GenesisControllerPublicKey)
+	genesisAddr := ledger.AddressED25519FromPublicKey(par.GenesisControllerPublicKey)
 	gout := InitialSupplyOutput(par.InitialSupply, genesisAddr, par.GenesisTimeSlot)
 	gStemOut := StemOutput(par.InitialSupply, par.GenesisTimeSlot)
 
@@ -31,38 +31,38 @@ func InitLedgerState(par LedgerIdentityData, store global.StateStore) (core.Chai
 	return gout.ChainID, updatable.Root()
 }
 
-func InitialSupplyOutput(initialSupply uint64, controllerAddress core.AddressED25519, genesisSlot core.TimeSlot) *core.OutputWithChainID {
+func InitialSupplyOutput(initialSupply uint64, controllerAddress ledger.AddressED25519, genesisSlot ledger.TimeSlot) *ledger.OutputWithChainID {
 	oid := InitialSupplyOutputID(genesisSlot)
-	return &core.OutputWithChainID{
-		OutputWithID: core.OutputWithID{
+	return &ledger.OutputWithChainID{
+		OutputWithID: ledger.OutputWithID{
 			ID: oid,
-			Output: core.NewOutput(func(o *core.Output) {
+			Output: ledger.NewOutput(func(o *ledger.Output) {
 				o.WithAmount(initialSupply).WithLock(controllerAddress)
-				chainIdx, err := o.PushConstraint(core.NewChainOrigin().Bytes())
+				chainIdx, err := o.PushConstraint(ledger.NewChainOrigin().Bytes())
 				util.AssertNoError(err)
-				_, err = o.PushConstraint(core.NewSequencerConstraint(chainIdx, initialSupply).Bytes())
+				_, err = o.PushConstraint(ledger.NewSequencerConstraint(chainIdx, initialSupply).Bytes())
 				util.AssertNoError(err)
 			}),
 		},
-		ChainID: core.OriginChainID(&oid),
+		ChainID: ledger.OriginChainID(&oid),
 	}
 }
 
-func StemOutput(initialSupply uint64, genesisTimeSlot core.TimeSlot) *core.OutputWithID {
-	return &core.OutputWithID{
+func StemOutput(initialSupply uint64, genesisTimeSlot ledger.TimeSlot) *ledger.OutputWithID {
+	return &ledger.OutputWithID{
 		ID: StemOutputID(genesisTimeSlot),
-		Output: core.NewOutput(func(o *core.Output) {
+		Output: ledger.NewOutput(func(o *ledger.Output) {
 			o.WithAmount(0).
-				WithLock(&core.StemLock{
+				WithLock(&ledger.StemLock{
 					Supply:              initialSupply,
 					InflationAmount:     0,
-					PredecessorOutputID: core.OutputID{},
+					PredecessorOutputID: ledger.OutputID{},
 				})
 		}),
 	}
 }
 
-func genesisUpdateMutations(genesisOut, genesisStemOut *core.OutputWithID) *multistate.Mutations {
+func genesisUpdateMutations(genesisOut, genesisStemOut *ledger.OutputWithID) *multistate.Mutations {
 	ret := multistate.NewMutations()
 	ret.InsertAddOutputMutation(genesisOut.ID, genesisOut.Output)
 	ret.InsertAddOutputMutation(genesisStemOut.ID, genesisStemOut.Output)
@@ -70,20 +70,20 @@ func genesisUpdateMutations(genesisOut, genesisStemOut *core.OutputWithID) *mult
 	return ret
 }
 
-func InitialSupplyTransactionID(genesisTimeSlot core.TimeSlot) *core.TransactionID {
-	ret := core.NewTransactionID(core.MustNewLogicalTime(genesisTimeSlot, 0), core.All0TransactionHash, true, true)
+func InitialSupplyTransactionID(genesisTimeSlot ledger.TimeSlot) *ledger.TransactionID {
+	ret := ledger.NewTransactionID(ledger.MustNewLogicalTime(genesisTimeSlot, 0), ledger.All0TransactionHash, true, true)
 	return &ret
 }
 
-func InitialSupplyOutputID(e core.TimeSlot) (ret core.OutputID) {
+func InitialSupplyOutputID(e ledger.TimeSlot) (ret ledger.OutputID) {
 	// we are placing sequencer flag = true into the genesis tx ID to please sequencer constraint
 	// of the origin branch transaction. It is the only exception
-	ret = core.NewOutputID(InitialSupplyTransactionID(e), InitialSupplyOutputIndex)
+	ret = ledger.NewOutputID(InitialSupplyTransactionID(e), InitialSupplyOutputIndex)
 	return
 }
 
-func StemOutputID(e core.TimeSlot) (ret core.OutputID) {
-	ret = core.NewOutputID(InitialSupplyTransactionID(e), StemOutputIndex)
+func StemOutputID(e ledger.TimeSlot) (ret ledger.OutputID) {
+	ret = ledger.NewOutputID(InitialSupplyTransactionID(e), StemOutputIndex)
 	return
 }
 
@@ -93,7 +93,7 @@ func ScanGenesisState(stateStore global.StateStore) (*LedgerIdentityData, common
 
 	// expecting a single branch in the genesis state
 	fetched, moreThan1 := false, false
-	multistate.IterateRootRecords(stateStore, func(_ core.TransactionID, rootData multistate.RootRecord) bool {
+	multistate.IterateRootRecords(stateStore, func(_ ledger.TransactionID, rootData multistate.RootRecord) bool {
 		if fetched {
 			moreThan1 = true
 			return false

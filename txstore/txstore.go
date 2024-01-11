@@ -1,7 +1,7 @@
 package txstore
 
 import (
-	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/unitrie/common"
 )
@@ -27,7 +27,7 @@ func (s SimpleTxBytesStore) SaveTxBytes(txBytes []byte) error {
 	return nil
 }
 
-func (s SimpleTxBytesStore) GetTxBytes(txid *core.TransactionID) []byte {
+func (s SimpleTxBytesStore) GetTxBytes(txid *ledger.TransactionID) []byte {
 	return s.s.Get(txid[:])
 }
 
@@ -39,6 +39,6 @@ func (d DummyTxBytesStore) SaveTxBytes(_ []byte) error {
 	return nil
 }
 
-func (d DummyTxBytesStore) GetTxBytes(_ *core.TransactionID) []byte {
+func (d DummyTxBytesStore) GetTxBytes(_ *ledger.TransactionID) []byte {
 	return nil
 }

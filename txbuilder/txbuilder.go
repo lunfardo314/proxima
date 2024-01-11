@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/global"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lazybytes"
@@ -22,20 +22,20 @@ import (
 
 type (
 	TransactionBuilder struct {
-		ConsumedOutputs []*core.Output
+		ConsumedOutputs []*ledger.Output
 		TransactionData *transactionData
 	}
 
 	transactionData struct {
-		InputIDs             []*core.OutputID
-		Outputs              []*core.Output
+		InputIDs             []*ledger.OutputID
+		Outputs              []*ledger.Output
 		UnlockBlocks         []*UnlockParams
 		Signature            []byte
 		SequencerOutputIndex byte
 		StemOutputIndex      byte
-		Timestamp            core.LogicalTime
+		Timestamp            ledger.LogicalTime
 		InputCommitment      [32]byte
-		Endorsements         []*core.TransactionID
+		Endorsements         []*ledger.TransactionID
 		LocalLibraries       [][]byte
 	}
 
@@ -46,16 +46,16 @@ type (
 
 func NewTransactionBuilder() *TransactionBuilder {
 	return &TransactionBuilder{
-		ConsumedOutputs: make([]*core.Output, 0),
+		ConsumedOutputs: make([]*ledger.Output, 0),
 		TransactionData: &transactionData{
-			InputIDs:             make([]*core.OutputID, 0),
-			Outputs:              make([]*core.Output, 0),
+			InputIDs:             make([]*ledger.OutputID, 0),
+			Outputs:              make([]*ledger.Output, 0),
 			UnlockBlocks:         make([]*UnlockParams, 0),
 			SequencerOutputIndex: 0xff,
 			StemOutputIndex:      0xff,
-			Timestamp:            core.NilLogicalTime,
+			Timestamp:            ledger.NilLogicalTime,
 			InputCommitment:      [32]byte{},
-			Endorsements:         make([]*core.TransactionID, 0),
+			Endorsements:         make([]*ledger.TransactionID, 0),
 			LocalLibraries:       make([][]byte, 0),
 		},
 	}
@@ -71,7 +71,7 @@ func (txb *TransactionBuilder) NumOutputs() int {
 	return len(txb.TransactionData.Outputs)
 }
 
-func (txb *TransactionBuilder) ConsumeOutput(out *core.Output, oid core.OutputID) (byte, error) {
+func (txb *TransactionBuilder) ConsumeOutput(out *ledger.Output, oid ledger.OutputID) (byte, error) {
 	if txb.NumInputs() >= 256 {
 		return 0, fmt.Errorf("too many consumed outputs")
 	}
@@ -82,24 +82,24 @@ func (txb *TransactionBuilder) ConsumeOutput(out *core.Output, oid core.OutputID
 	return byte(len(txb.ConsumedOutputs) - 1), nil
 }
 
-func (txb *TransactionBuilder) ConsumeOutputWithID(o *core.OutputWithID) (byte, error) {
+func (txb *TransactionBuilder) ConsumeOutputWithID(o *ledger.OutputWithID) (byte, error) {
 	return txb.ConsumeOutput(o.Output, o.ID)
 }
 
 // ConsumeOutputs returns total sum and maximal timestamp
-func (txb *TransactionBuilder) ConsumeOutputs(outs ...*core.OutputWithID) (uint64, core.LogicalTime, error) {
+func (txb *TransactionBuilder) ConsumeOutputs(outs ...*ledger.OutputWithID) (uint64, ledger.LogicalTime, error) {
 	retTotal := uint64(0)
-	retTs := core.NilLogicalTime
+	retTs := ledger.NilLogicalTime
 	for _, o := range outs {
 		if _, err := txb.ConsumeOutput(o.Output, o.ID); err != nil {
-			return 0, core.NilLogicalTime, err
+			return 0, ledger.NilLogicalTime, err
 		}
 		// safe arithmetics
 		if o.Output.Amount() > math.MaxUint64-retTotal {
-			return 0, core.NilLogicalTime, fmt.Errorf("arithmetic overflow when calculating total ")
+			return 0, ledger.NilLogicalTime, fmt.Errorf("arithmetic overflow when calculating total ")
 		}
 		retTotal += o.Output.Amount()
-		retTs = core.MaxLogicalTime(retTs, o.Timestamp())
+		retTs = ledger.MaxLogicalTime(retTs, o.Timestamp())
 	}
 	return retTotal, retTs, nil
 }
@@ -111,7 +111,7 @@ func (txb *TransactionBuilder) PutUnlockParams(inputIndex, constraintIndex byte,
 // PutSignatureUnlock marker 0xff references signature of the transaction.
 // It can be distinguished from any reference because it cannot be strictly less than any other reference
 func (txb *TransactionBuilder) PutSignatureUnlock(inputIndex byte) {
-	txb.PutUnlockParams(inputIndex, core.ConstraintIndexLock, []byte{0xff})
+	txb.PutUnlockParams(inputIndex, ledger.ConstraintIndexLock, []byte{0xff})
 }
 
 // PutUnlockReference references some preceding output
@@ -127,18 +127,18 @@ func (txb *TransactionBuilder) PutStandardInputUnlocks(n int) error {
 	util.Assertf(n > 0, "n > 0")
 	txb.PutSignatureUnlock(0)
 	for i := 1; i < n; i++ {
-		if err := txb.PutUnlockReference(byte(i), core.ConstraintIndexLock, 0); err != nil {
+		if err := txb.PutUnlockReference(byte(i), ledger.ConstraintIndexLock, 0); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (txb *TransactionBuilder) PushEndorsements(txid ...*core.TransactionID) {
+func (txb *TransactionBuilder) PushEndorsements(txid ...*ledger.TransactionID) {
 	txb.TransactionData.Endorsements = append(txb.TransactionData.Endorsements, txid...)
 }
 
-func (txb *TransactionBuilder) ProduceOutput(o *core.Output) (byte, error) {
+func (txb *TransactionBuilder) ProduceOutput(o *ledger.Output) (byte, error) {
 	o.MustValidOutput()
 	if txb.NumOutputs() >= 256 {
 		return 0, fmt.Errorf("too many produced outputs")
@@ -147,7 +147,7 @@ func (txb *TransactionBuilder) ProduceOutput(o *core.Output) (byte, error) {
 	return byte(len(txb.TransactionData.Outputs) - 1), nil
 }
 
-func (txb *TransactionBuilder) ProduceOutputs(outs ...*core.Output) (uint64, error) {
+func (txb *TransactionBuilder) ProduceOutputs(outs ...*ledger.Output) (uint64, error) {
 	total := uint64(0)
 	for _, o := range outs {
 		if _, err := txb.ProduceOutput(o); err != nil {
@@ -192,17 +192,17 @@ func (tx *transactionData) ToArray() *lazybytes.Array {
 	var totalBin [8]byte
 	binary.BigEndian.PutUint64(totalBin[:], total)
 
-	elems := make([]any, core.TxTreeIndexMax)
-	elems[core.TxUnlockParams] = unlockParams
-	elems[core.TxInputIDs] = inputIDs
-	elems[core.TxOutputs] = outputs
-	elems[core.TxSignature] = tx.Signature
-	elems[core.TxSequencerAndStemOutputIndices] = []byte{tx.SequencerOutputIndex, tx.StemOutputIndex}
-	elems[core.TxTimestamp] = tx.Timestamp.Bytes()
-	elems[core.TxTotalProducedAmount] = totalBin[:]
-	elems[core.TxInputCommitment] = tx.InputCommitment[:]
-	elems[core.TxEndorsements] = endorsements
-	elems[core.TxLocalLibraries] = lazybytes.MakeArrayFromDataReadOnly(tx.LocalLibraries...)
+	elems := make([]any, ledger.TxTreeIndexMax)
+	elems[ledger.TxUnlockParams] = unlockParams
+	elems[ledger.TxInputIDs] = inputIDs
+	elems[ledger.TxOutputs] = outputs
+	elems[ledger.TxSignature] = tx.Signature
+	elems[ledger.TxSequencerAndStemOutputIndices] = []byte{tx.SequencerOutputIndex, tx.StemOutputIndex}
+	elems[ledger.TxTimestamp] = tx.Timestamp.Bytes()
+	elems[ledger.TxTotalProducedAmount] = totalBin[:]
+	elems[ledger.TxInputCommitment] = tx.InputCommitment[:]
+	elems[ledger.TxEndorsements] = endorsements
+	elems[ledger.TxLocalLibraries] = lazybytes.MakeArrayFromDataReadOnly(tx.LocalLibraries...)
 	return lazybytes.MakeArrayReadOnly(elems...)
 }
 
@@ -226,18 +226,18 @@ func (txb *TransactionBuilder) SignED25519(privKey ed25519.PrivateKey) {
 type TransferData struct {
 	SenderPrivateKey  ed25519.PrivateKey
 	SenderPublicKey   ed25519.PublicKey
-	SourceAccount     core.Accountable
-	Inputs            []*core.OutputWithID
-	ChainOutput       *core.OutputWithChainID
-	Timestamp         core.LogicalTime // takes core.LogicalTimeFromTime(time.Now()) if core.NilLogicalTime
-	Lock              core.Lock
+	SourceAccount     ledger.Accountable
+	Inputs            []*ledger.OutputWithID
+	ChainOutput       *ledger.OutputWithChainID
+	Timestamp         ledger.LogicalTime // takes ledger.LogicalTimeFromTime(time.Now()) if ledger.NilLogicalTime
+	Lock              ledger.Lock
 	Amount            uint64
 	AdjustToMinimum   bool
 	AddSender         bool
 	AddConstraints    [][]byte
 	MarkAsSequencerTx bool
 	UnlockData        []*UnlockData
-	Endorsements      []*core.TransactionID
+	Endorsements      []*ledger.TransactionID
 }
 
 type UnlockData struct {
@@ -246,10 +246,10 @@ type UnlockData struct {
 	Data            []byte
 }
 
-func NewTransferData(senderKey ed25519.PrivateKey, sourceAccount core.Accountable, ts core.LogicalTime) *TransferData {
+func NewTransferData(senderKey ed25519.PrivateKey, sourceAccount ledger.Accountable, ts ledger.LogicalTime) *TransferData {
 	sourcePubKey := senderKey.Public().(ed25519.PublicKey)
 	if util.IsNil(sourceAccount) {
-		sourceAccount = core.AddressED25519FromPublicKey(sourcePubKey)
+		sourceAccount = ledger.AddressED25519FromPublicKey(sourcePubKey)
 	}
 	return &TransferData{
 		SenderPrivateKey: senderKey,
@@ -258,11 +258,11 @@ func NewTransferData(senderKey ed25519.PrivateKey, sourceAccount core.Accountabl
 		Timestamp:        ts,
 		AddConstraints:   make([][]byte, 0),
 		UnlockData:       make([]*UnlockData, 0),
-		Endorsements:     make([]*core.TransactionID, 0),
+		Endorsements:     make([]*ledger.TransactionID, 0),
 	}
 }
 
-func (t *TransferData) WithTargetLock(lock core.Lock) *TransferData {
+func (t *TransferData) WithTargetLock(lock ledger.Lock) *TransferData {
 	t.Lock = lock
 	return t
 }
@@ -277,23 +277,23 @@ func (t *TransferData) WithConstraintBinary(constr []byte, idx ...byte) *Transfe
 	if len(idx) == 0 {
 		t.AddConstraints = append(t.AddConstraints, constr)
 	} else {
-		util.Assertf(idx[0] == 0xff || idx[0] < core.ConstraintIndexFirstOptionalConstraint, "WithConstraintBinary: wrong constraint index")
+		util.Assertf(idx[0] == 0xff || idx[0] < ledger.ConstraintIndexFirstOptionalConstraint, "WithConstraintBinary: wrong constraint index")
 		t.AddConstraints[idx[0]] = constr
 	}
 	return t
 }
 
-func (t *TransferData) WithConstraint(constr core.Constraint, idx ...byte) *TransferData {
+func (t *TransferData) WithConstraint(constr ledger.Constraint, idx ...byte) *TransferData {
 	return t.WithConstraintBinary(constr.Bytes(), idx...)
 }
 
-func (t *TransferData) WithConstraintAtIndex(constr core.Constraint) *TransferData {
+func (t *TransferData) WithConstraintAtIndex(constr ledger.Constraint) *TransferData {
 	return t.WithConstraintBinary(constr.Bytes())
 }
 
-func (t *TransferData) UseOutputsAsInputs(outs ...*core.OutputWithID) error {
+func (t *TransferData) UseOutputsAsInputs(outs ...*ledger.OutputWithID) error {
 	for _, o := range outs {
-		if !core.EqualConstraints(t.SourceAccount, o.Output.Lock()) {
+		if !ledger.EqualConstraints(t.SourceAccount, o.Output.Lock()) {
 			return fmt.Errorf("UseOutputsAsInputs: output can't be consumed. Source account: %s, output: %s", t.SourceAccount.String(), o.Output.ToString())
 		}
 	}
@@ -301,12 +301,12 @@ func (t *TransferData) UseOutputsAsInputs(outs ...*core.OutputWithID) error {
 	return nil
 }
 
-func (t *TransferData) MustWithInputs(outs ...*core.OutputWithID) *TransferData {
+func (t *TransferData) MustWithInputs(outs ...*ledger.OutputWithID) *TransferData {
 	util.AssertNoError(t.UseOutputsAsInputs(outs...))
 	return t
 }
 
-func (t *TransferData) WithChainOutput(out *core.OutputWithChainID) *TransferData {
+func (t *TransferData) WithChainOutput(out *ledger.OutputWithChainID) *TransferData {
 	t.ChainOutput = out
 	return t
 }
@@ -325,7 +325,7 @@ func (t *TransferData) WithUnlockData(consumedOutputIndex, constraintIndex byte,
 	return t
 }
 
-func (t *TransferData) WithEndorsements(ids ...*core.TransactionID) *TransferData {
+func (t *TransferData) WithEndorsements(ids ...*ledger.TransactionID) *TransferData {
 	t.Endorsements = ids
 	return t
 }
@@ -337,7 +337,7 @@ func (t *TransferData) AdjustedAmount() uint64 {
 		return t.Amount
 	}
 
-	outTentative := core.NewOutput(func(o *core.Output) {
+	outTentative := ledger.NewOutput(func(o *ledger.Output) {
 		o.WithAmount(t.Amount).WithLock(t.Lock)
 		for _, c := range t.AddConstraints {
 			_, err := o.PushConstraint(c)
@@ -345,22 +345,22 @@ func (t *TransferData) AdjustedAmount() uint64 {
 		}
 	})
 
-	minimumDeposit := core.MinimumStorageDeposit(outTentative, 0)
+	minimumDeposit := ledger.MinimumStorageDeposit(outTentative, 0)
 	if t.Amount < minimumDeposit {
 		return minimumDeposit
 	}
 	return t.Amount
 }
 
-func StorageDepositOnChainOutput(lock core.Lock, addConstraints ...[]byte) uint64 {
-	outTentative := core.NewOutput(func(o *core.Output) {
+func StorageDepositOnChainOutput(lock ledger.Lock, addConstraints ...[]byte) uint64 {
+	outTentative := ledger.NewOutput(func(o *ledger.Output) {
 		o.WithAmount(math.MaxUint64).WithLock(lock)
 		for _, c := range addConstraints {
 			_, err := o.PushConstraint(c)
 			util.AssertNoError(err)
 		}
 	})
-	return core.MinimumStorageDeposit(outTentative, 0)
+	return ledger.MinimumStorageDeposit(outTentative, 0)
 }
 
 // MakeTransferTransaction makes transaction
@@ -380,7 +380,7 @@ func MakeTransferTransaction(par *TransferData, disableEndorsementValidation ...
 	return ret, err
 }
 
-func outputsToConsumeSimple(par *TransferData, amount uint64) (uint64, []*core.OutputWithID, error) {
+func outputsToConsumeSimple(par *TransferData, amount uint64) (uint64, []*ledger.OutputWithID, error) {
 	consumedOuts := par.Inputs[:0]
 	availableTokens := uint64(0)
 	numConsumedOutputs := 0
@@ -404,7 +404,7 @@ func MakeSimpleTransferTransaction(par *TransferData, disableEndorsementChecking
 	return txBytes, err
 }
 
-func MakeSimpleTransferTransactionWithRemainder(par *TransferData, disableEndorsementChecking ...bool) ([]byte, *core.OutputWithID, error) {
+func MakeSimpleTransferTransactionWithRemainder(par *TransferData, disableEndorsementChecking ...bool) ([]byte, *ledger.OutputWithID, error) {
 	if par.ChainOutput != nil {
 		return nil, nil, fmt.Errorf("MakeSimpleTransferTransactionWithRemainder: ChainInput must be nil. Use MakeSimpleTransferTransaction instead")
 	}
@@ -430,8 +430,8 @@ func MakeSimpleTransferTransactionWithRemainder(par *TransferData, disableEndors
 		return nil, nil, err
 	}
 	util.Assertf(availableTokens == checkTotal, "availableTokens == checkTotal")
-	adjustedTs := core.MaxLogicalTime(inputTs, par.Timestamp).
-		AddTicks(core.TransactionPaceInTicks)
+	adjustedTs := ledger.MaxLogicalTime(inputTs, par.Timestamp).
+		AddTicks(ledger.TransactionPaceInTicks)
 
 	for i := range par.Endorsements {
 		if len(disableEndorsementChecking) == 0 || !disableEndorsementChecking[0] {
@@ -441,15 +441,15 @@ func MakeSimpleTransferTransactionWithRemainder(par *TransferData, disableEndors
 		}
 		if par.Endorsements[i].TimeSlot() > adjustedTs.TimeSlot() {
 			// adjust timestamp to the endorsed slot
-			adjustedTs = core.MustNewLogicalTime(par.Endorsements[i].TimeSlot(), 0)
+			adjustedTs = ledger.MustNewLogicalTime(par.Endorsements[i].TimeSlot(), 0)
 		}
 	}
 
-	mainOutput := core.NewOutput(func(o *core.Output) {
+	mainOutput := ledger.NewOutput(func(o *ledger.Output) {
 		o.WithAmount(amount).WithLock(par.Lock)
 		if par.AddSender {
-			senderAddr := core.AddressED25519FromPublicKey(par.SenderPublicKey)
-			if _, err = o.PushConstraint(core.NewSenderED25519(senderAddr).Bytes()); err != nil {
+			senderAddr := ledger.AddressED25519FromPublicKey(par.SenderPublicKey)
+			if _, err = o.PushConstraint(ledger.NewSenderED25519(senderAddr).Bytes()); err != nil {
 				return
 			}
 		}
@@ -463,10 +463,10 @@ func MakeSimpleTransferTransactionWithRemainder(par *TransferData, disableEndors
 		return nil, nil, err
 	}
 
-	var remainderOut *core.Output
+	var remainderOut *ledger.Output
 	var remainderIndex byte
 	if availableTokens > amount {
-		remainderOut = core.NewOutput(func(o *core.Output) {
+		remainderOut = ledger.NewOutput(func(o *ledger.Output) {
 			o.WithAmount(availableTokens - amount).WithLock(par.SourceAccount.AsLock())
 		})
 	}
@@ -484,7 +484,7 @@ func MakeSimpleTransferTransactionWithRemainder(par *TransferData, disableEndors
 			txb.PutSignatureUnlock(0)
 		} else {
 			// always referencing the 0 output
-			err = txb.PutUnlockReference(byte(i), core.ConstraintIndexLock, 0)
+			err = txb.PutUnlockReference(byte(i), ledger.ConstraintIndexLock, 0)
 			util.AssertNoError(err)
 		}
 	}
@@ -498,7 +498,7 @@ func MakeSimpleTransferTransactionWithRemainder(par *TransferData, disableEndors
 	txb.SignED25519(par.SenderPrivateKey)
 
 	txBytes := txb.TransactionData.Bytes()
-	var rem *core.OutputWithID
+	var rem *ledger.OutputWithID
 	if remainderOut != nil {
 		if rem, err = transaction.OutputWithIDFromTransactionBytes(txBytes, remainderIndex); err != nil {
 			return nil, nil, err
@@ -540,8 +540,8 @@ func MakeChainTransferTransaction(par *TransferData, disableEndorsementChecking 
 		return nil, err
 	}
 	util.Assertf(availableTokens == checkAmount+par.ChainOutput.Output.Amount(), "availableTokens == checkAmount")
-	adjustedTs := core.MaxLogicalTime(inputTs, par.ChainOutput.Timestamp()).
-		AddTicks(core.TransactionPaceInTicks)
+	adjustedTs := ledger.MaxLogicalTime(inputTs, par.ChainOutput.Timestamp()).
+		AddTicks(ledger.TransactionPaceInTicks)
 
 	for i := range par.Endorsements {
 		if len(disableEndorsementChecking) == 0 || !disableEndorsementChecking[0] {
@@ -551,13 +551,13 @@ func MakeChainTransferTransaction(par *TransferData, disableEndorsementChecking 
 		}
 		if par.Endorsements[i].TimeSlot() > adjustedTs.TimeSlot() {
 			// adjust timestamp to the endorsed slot
-			adjustedTs = core.MustNewLogicalTime(par.Endorsements[i].TimeSlot(), 0)
+			adjustedTs = ledger.MustNewLogicalTime(par.Endorsements[i].TimeSlot(), 0)
 		}
 	}
 
-	chainConstr := core.NewChainConstraint(par.ChainOutput.ChainID, 0, par.ChainOutput.PredecessorConstraintIndex, 0)
+	chainConstr := ledger.NewChainConstraint(par.ChainOutput.ChainID, 0, par.ChainOutput.PredecessorConstraintIndex, 0)
 	util.Assertf(availableTokens > amount, "availableTokens > amount")
-	chainSuccessorOutput := par.ChainOutput.Output.Clone(func(o *core.Output) {
+	chainSuccessorOutput := par.ChainOutput.Output.Clone(func(o *ledger.Output) {
 		o.WithAmount(availableTokens-amount).
 			PutConstraint(chainConstr.Bytes(), par.ChainOutput.PredecessorConstraintIndex)
 	})
@@ -565,11 +565,11 @@ func MakeChainTransferTransaction(par *TransferData, disableEndorsementChecking 
 		return nil, err
 	}
 
-	mainOutput := core.NewOutput(func(o *core.Output) {
+	mainOutput := ledger.NewOutput(func(o *ledger.Output) {
 		o.WithAmount(amount).WithLock(par.Lock)
 		if par.AddSender {
-			senderAddr := core.AddressED25519FromPublicKey(par.SenderPublicKey)
-			if _, err = o.PushConstraint(core.NewSenderED25519(senderAddr).Bytes()); err != nil {
+			senderAddr := ledger.AddressED25519FromPublicKey(par.SenderPublicKey)
+			if _, err = o.PushConstraint(ledger.NewSenderED25519(senderAddr).Bytes()); err != nil {
 				return
 			}
 		}
@@ -592,8 +592,8 @@ func MakeChainTransferTransaction(par *TransferData, disableEndorsementChecking 
 
 	// always reference chain input
 	for i := range consumedOuts {
-		chainUnlockRef := core.NewChainLockUnlockParams(0, par.ChainOutput.PredecessorConstraintIndex)
-		txb.PutUnlockParams(byte(i+1), core.ConstraintIndexLock, chainUnlockRef)
+		chainUnlockRef := ledger.NewChainLockUnlockParams(0, par.ChainOutput.PredecessorConstraintIndex)
+		txb.PutUnlockParams(byte(i+1), ledger.ConstraintIndexLock, chainUnlockRef)
 		util.AssertNoError(err)
 	}
 
@@ -617,12 +617,12 @@ func NewUnlockBlock() *UnlockParams {
 	}
 }
 
-func GetChainAccount(chainID core.ChainID, srdr global.IndexedStateReader, desc ...bool) (*core.OutputWithChainID, []*core.OutputWithID, error) {
+func GetChainAccount(chainID ledger.ChainID, srdr global.IndexedStateReader, desc ...bool) (*ledger.OutputWithChainID, []*ledger.OutputWithID, error) {
 	chainOutData, err := srdr.GetUTXOForChainID(&chainID)
 	if err != nil {
 		return nil, nil, err
 	}
-	chainData, err := txutils.ParseChainConstraintsFromData([]*core.OutputDataWithID{chainOutData})
+	chainData, err := txutils.ParseChainConstraintsFromData([]*ledger.OutputDataWithID{chainOutData})
 	if err != nil {
 		return nil, nil, err
 	}
@@ -642,8 +642,8 @@ func GetChainAccount(chainID core.ChainID, srdr global.IndexedStateReader, desc 
 
 // InsertSimpleChainTransition inserts a simple chain transition (surprise, surprise). Takes output with chain constraint from parameters,
 // Produces identical output, only modifies timestamp. Unlocks chain-input lock with signature reference
-func (txb *TransactionBuilder) InsertSimpleChainTransition(inChainData *core.OutputDataWithChainID, ts core.LogicalTime) error {
-	chainIN, err := core.OutputFromBytesReadOnly(inChainData.OutputData)
+func (txb *TransactionBuilder) InsertSimpleChainTransition(inChainData *ledger.OutputDataWithChainID, ts ledger.LogicalTime) error {
+	chainIN, err := ledger.OutputFromBytesReadOnly(inChainData.OutputData)
 	if err != nil {
 		return err
 	}
@@ -655,8 +655,8 @@ func (txb *TransactionBuilder) InsertSimpleChainTransition(inChainData *core.Out
 	if err != nil {
 		return err
 	}
-	successor := core.NewChainConstraint(inChainData.ChainID, predecessorOutputIndex, predecessorConstraintIndex, 0)
-	chainOut := chainIN.Clone(func(out *core.Output) {
+	successor := ledger.NewChainConstraint(inChainData.ChainID, predecessorOutputIndex, predecessorConstraintIndex, 0)
+	chainOut := chainIN.Clone(func(out *ledger.Output) {
 		out.PutConstraint(successor.Bytes(), predecessorConstraintIndex)
 	})
 	successorOutputIndex, err := txb.ProduceOutput(chainOut)

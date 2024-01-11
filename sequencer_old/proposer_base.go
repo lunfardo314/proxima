@@ -3,7 +3,7 @@ package sequencer_old
 import (
 	"time"
 
-	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/utangle_old"
 	"github.com/lunfardo314/proxima/util"
@@ -18,7 +18,7 @@ type baseProposer struct {
 }
 
 func init() {
-	registerProposingStrategy(BaseProposerName, func(mf *milestoneFactory, targetTs core.LogicalTime) proposerTask {
+	registerProposingStrategy(BaseProposerName, func(mf *milestoneFactory, targetTs ledger.LogicalTime) proposerTask {
 		ret := &baseProposer{newProposerGeneric(mf, targetTs, BaseProposerName)}
 		return ret
 	})

@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/global"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/util"
@@ -13,27 +13,27 @@ import (
 	"github.com/lunfardo314/unitrie/common"
 )
 
-func (ut *UTXOTangle) _getVertex(txid *core.TransactionID) (*WrappedTx, bool) {
+func (ut *UTXOTangle) _getVertex(txid *ledger.TransactionID) (*WrappedTx, bool) {
 	ret, found := ut.vertices[*txid]
 
 	return ret, found
 }
 
-func (ut *UTXOTangle) GetVertex(txid *core.TransactionID) (*WrappedTx, bool) {
+func (ut *UTXOTangle) GetVertex(txid *ledger.TransactionID) (*WrappedTx, bool) {
 	ut.mutex.RLock()
 	defer ut.mutex.RUnlock()
 
 	return ut._getVertex(txid)
 }
 
-func (ut *UTXOTangle) MustGetVertex(txid *core.TransactionID) *WrappedTx {
+func (ut *UTXOTangle) MustGetVertex(txid *ledger.TransactionID) *WrappedTx {
 	ret, ok := ut.GetVertex(txid)
 	util.Assertf(ok, "MustGetVertex: can't find %s", txid.StringShort())
 	return ret
 }
 
 // HasTransactionOnTangle checks the tangle, does not check the finalized state
-func (ut *UTXOTangle) HasTransactionOnTangle(txid *core.TransactionID) bool {
+func (ut *UTXOTangle) HasTransactionOnTangle(txid *ledger.TransactionID) bool {
 	ut.mutex.RLock()
 	defer ut.mutex.RUnlock()
 
@@ -41,12 +41,12 @@ func (ut *UTXOTangle) HasTransactionOnTangle(txid *core.TransactionID) bool {
 	return ret
 }
 
-func (ut *UTXOTangle) _timeSlotsOrdered(descOrder ...bool) []core.TimeSlot {
+func (ut *UTXOTangle) _timeSlotsOrdered(descOrder ...bool) []ledger.TimeSlot {
 	desc := false
 	if len(descOrder) > 0 {
 		desc = descOrder[0]
 	}
-	return util.SortKeys(ut.branches, func(e1, e2 core.TimeSlot) bool {
+	return util.SortKeys(ut.branches, func(e1, e2 ledger.TimeSlot) bool {
 		if desc {
 			return e1 > e2
 		}
@@ -56,7 +56,7 @@ func (ut *UTXOTangle) _timeSlotsOrdered(descOrder ...bool) []core.TimeSlot {
 
 // Access to the tangle state is NON-DETERMINISTIC
 
-func (ut *UTXOTangle) GetUTXO(oid *core.OutputID) ([]byte, bool) {
+func (ut *UTXOTangle) GetUTXO(oid *ledger.OutputID) ([]byte, bool) {
 	txid := oid.TransactionID()
 	if vid, found := ut.GetVertex(&txid); found {
 		if o, err := vid.OutputAt(oid.Index()); err == nil && o != nil {
@@ -66,7 +66,7 @@ func (ut *UTXOTangle) GetUTXO(oid *core.OutputID) ([]byte, bool) {
 	return ut.HeaviestStateForLatestTimeSlot().GetUTXO(oid)
 }
 
-func (ut *UTXOTangle) HasUTXO(oid *core.OutputID) bool {
+func (ut *UTXOTangle) HasUTXO(oid *ledger.OutputID) bool {
 	txid := oid.TransactionID()
 	if vid, found := ut.GetVertex(&txid); found {
 		if o, err := vid.OutputAt(oid.Index()); err == nil && o != nil {
@@ -76,7 +76,7 @@ func (ut *UTXOTangle) HasUTXO(oid *core.OutputID) bool {
 	return ut.HeaviestStateForLatestTimeSlot().HasUTXO(oid)
 }
 
-func (ut *UTXOTangle) KnowsCommittedTransaction(txid *core.TransactionID) bool {
+func (ut *UTXOTangle) KnowsCommittedTransaction(txid *ledger.TransactionID) bool {
 	return ut.HasTransactionOnTangle(txid)
 }
 
@@ -127,7 +127,7 @@ func (ut *UTXOTangle) isValidBranch(br *WrappedTx) bool {
 	return found
 }
 
-func (ut *UTXOTangle) GetIndexedStateReader(branchTxID *core.TransactionID, clearCacheAtSize ...int) (global.IndexedStateReader, error) {
+func (ut *UTXOTangle) GetIndexedStateReader(branchTxID *ledger.TransactionID, clearCacheAtSize ...int) (global.IndexedStateReader, error) {
 	rr, found := multistate.FetchRootRecord(ut.stateStore, *branchTxID)
 	if !found {
 		return nil, fmt.Errorf("root record for %s has not been found", branchTxID.StringShort())
@@ -135,21 +135,21 @@ func (ut *UTXOTangle) GetIndexedStateReader(branchTxID *core.TransactionID, clea
 	return multistate.NewReadable(ut.stateStore, rr.Root, clearCacheAtSize...)
 }
 
-func (ut *UTXOTangle) MustGetIndexedStateReader(branchTxID *core.TransactionID, clearCacheAtSize ...int) global.IndexedStateReader {
+func (ut *UTXOTangle) MustGetIndexedStateReader(branchTxID *ledger.TransactionID, clearCacheAtSize ...int) global.IndexedStateReader {
 	ret, err := ut.GetIndexedStateReader(branchTxID, clearCacheAtSize...)
 	util.AssertNoError(err)
 	return ret
 }
 
-func (ut *UTXOTangle) MustGetStateReader(branchTxID *core.TransactionID, clearCacheAtSize ...int) global.StateReader {
+func (ut *UTXOTangle) MustGetStateReader(branchTxID *ledger.TransactionID, clearCacheAtSize ...int) global.StateReader {
 	return ut.MustGetIndexedStateReader(branchTxID, clearCacheAtSize...)
 }
 
-func (ut *UTXOTangle) MustGetSugaredStateReader(branchTxID *core.TransactionID) multistate.SugaredStateReader {
+func (ut *UTXOTangle) MustGetSugaredStateReader(branchTxID *ledger.TransactionID) multistate.SugaredStateReader {
 	return multistate.MakeSugared(ut.MustGetIndexedStateReader(branchTxID))
 }
 
-func (ut *UTXOTangle) GetStateUpdatable(branchTxID *core.TransactionID) (*multistate.Updatable, error) {
+func (ut *UTXOTangle) GetStateUpdatable(branchTxID *ledger.TransactionID) (*multistate.Updatable, error) {
 	rr, found := multistate.FetchRootRecord(ut.stateStore, *branchTxID)
 	if !found {
 		return nil, fmt.Errorf("root record for %s has not been found", branchTxID.StringShort())
@@ -206,7 +206,7 @@ func (ut *UTXOTangle) MustGetBaselineState(vid *WrappedTx) global.IndexedStateRe
 }
 
 // LatestTimeSlot latest time slot with some branches
-func (ut *UTXOTangle) LatestTimeSlot() core.TimeSlot {
+func (ut *UTXOTangle) LatestTimeSlot() ledger.TimeSlot {
 	ut.mutex.RLock()
 	defer ut.mutex.RUnlock()
 
@@ -218,11 +218,11 @@ func (ut *UTXOTangle) LatestTimeSlot() core.TimeSlot {
 	return 0
 }
 
-func (ut *UTXOTangle) HeaviestStemOutput() *core.OutputWithID {
+func (ut *UTXOTangle) HeaviestStemOutput() *ledger.OutputWithID {
 	return ut.HeaviestStateForLatestTimeSlot().GetStemOutput()
 }
 
-func (ut *UTXOTangle) ForEachBranchStateDescending(e core.TimeSlot, fun func(vid *WrappedTx, rdr multistate.SugaredStateReader) bool) error {
+func (ut *UTXOTangle) ForEachBranchStateDescending(e ledger.TimeSlot, fun func(vid *WrappedTx, rdr multistate.SugaredStateReader) bool) error {
 	ut.mutex.RLock()
 	defer ut.mutex.RUnlock()
 
@@ -234,7 +234,7 @@ func (ut *UTXOTangle) ForEachBranchStateDescending(e core.TimeSlot, fun func(vid
 	return nil
 }
 
-func (ut *UTXOTangle) forEachBranchSorted(e core.TimeSlot, fun func(vid *WrappedTx, root common.VCommitment) bool, desc bool) {
+func (ut *UTXOTangle) forEachBranchSorted(e ledger.TimeSlot, fun func(vid *WrappedTx, root common.VCommitment) bool, desc bool) {
 	branches, ok := ut.branches[e]
 	if !ok {
 		return
@@ -266,7 +266,7 @@ func (ut *UTXOTangle) LatestBranchesDescending() []*WrappedTx {
 	return ret
 }
 
-func (ut *UTXOTangle) GetSequencerBootstrapOutputs(seqID core.ChainID) (chainOut WrappedOutput, stemOut WrappedOutput, found bool) {
+func (ut *UTXOTangle) GetSequencerBootstrapOutputs(seqID ledger.ChainID) (chainOut WrappedOutput, stemOut WrappedOutput, found bool) {
 	branches := multistate.FetchLatestBranches(ut.stateStore)
 	for _, bd := range branches {
 		rdr := multistate.MustNewSugaredStateReader(ut.stateStore, bd.Root)
@@ -283,7 +283,7 @@ func (ut *UTXOTangle) GetSequencerBootstrapOutputs(seqID core.ChainID) (chainOut
 	return WrappedOutput{}, WrappedOutput{}, false
 }
 
-func (ut *UTXOTangle) FindOutputInLatestTimeSlot(oid *core.OutputID) (ret *WrappedTx, rdr multistate.SugaredStateReader) {
+func (ut *UTXOTangle) FindOutputInLatestTimeSlot(oid *ledger.OutputID) (ret *WrappedTx, rdr multistate.SugaredStateReader) {
 	ut.LatestTimeSlot()
 	err := ut.ForEachBranchStateDescending(ut.LatestTimeSlot(), func(branch *WrappedTx, stateReader multistate.SugaredStateReader) bool {
 		if stateReader.HasUTXO(oid) {
@@ -296,7 +296,7 @@ func (ut *UTXOTangle) FindOutputInLatestTimeSlot(oid *core.OutputID) (ret *Wrapp
 	return
 }
 
-func (ut *UTXOTangle) HasOutputInAllBranches(e core.TimeSlot, oid *core.OutputID) bool {
+func (ut *UTXOTangle) HasOutputInAllBranches(e ledger.TimeSlot, oid *ledger.OutputID) bool {
 	found := false
 	err := ut.ForEachBranchStateDescending(e, func(_ *WrappedTx, rdr multistate.SugaredStateReader) bool {
 		found = rdr.HasUTXO(oid)
@@ -306,7 +306,7 @@ func (ut *UTXOTangle) HasOutputInAllBranches(e core.TimeSlot, oid *core.OutputID
 	return found
 }
 
-func (ut *UTXOTangle) DoesNotHaveOutputInAnyBranch(e core.TimeSlot, oid *core.OutputID) bool {
+func (ut *UTXOTangle) DoesNotHaveOutputInAnyBranch(e ledger.TimeSlot, oid *ledger.OutputID) bool {
 	found := false
 	err := ut.ForEachBranchStateDescending(e, func(_ *WrappedTx, rdr multistate.SugaredStateReader) bool {
 		found = rdr.HasUTXO(oid)
@@ -319,7 +319,7 @@ func (ut *UTXOTangle) DoesNotHaveOutputInAnyBranch(e core.TimeSlot, oid *core.Ou
 // ScanAccount collects all outputIDs, unlockable by the address
 // It is a global scan of the tangle and of the state. Should be only done once upon sequencer start.
 // Further on the account should be maintained by the listener
-func (ut *UTXOTangle) ScanAccount(addr core.AccountID, lastNTimeSlots int) set.Set[WrappedOutput] {
+func (ut *UTXOTangle) ScanAccount(addr ledger.AccountID, lastNTimeSlots int) set.Set[WrappedOutput] {
 	toScan, _, _ := ut.TipList(lastNTimeSlots)
 	ret := set.New[WrappedOutput]()
 
@@ -337,10 +337,10 @@ func (ut *UTXOTangle) ScanAccount(addr core.AccountID, lastNTimeSlots int) set.S
 		}
 
 		vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
-			v.Tx.ForEachProducedOutput(func(i byte, o *core.Output, oid *core.OutputID) bool {
+			v.Tx.ForEachProducedOutput(func(i byte, o *ledger.Output, oid *ledger.OutputID) bool {
 				lck := o.Lock()
 				// Note, that stem output is unlockable with any account
-				if lck.Name() != core.StemLockName && lck.UnlockableWith(addr) {
+				if lck.Name() != ledger.StemLockName && lck.UnlockableWith(addr) {
 					ret.Insert(WrappedOutput{
 						VID:   vid,
 						Index: i,
@@ -356,7 +356,7 @@ func (ut *UTXOTangle) ScanAccount(addr core.AccountID, lastNTimeSlots int) set.S
 func (ut *UTXOTangle) _baselineTime(nLatestSlots int) (time.Time, int) {
 	util.Assertf(nLatestSlots > 0, "nLatestSlots > 0")
 
-	var earliestSlot core.TimeSlot
+	var earliestSlot ledger.TimeSlot
 	count := 0
 	for _, s := range ut._timeSlotsOrdered(true) {
 		if len(ut.branches[s]) > 0 {
@@ -403,7 +403,7 @@ func (ut *UTXOTangle) TipList(nLatestSlots int) ([]*WrappedTx, time.Time, int) {
 	return ut._tipList(nLatestSlots)
 }
 
-func (ut *UTXOTangle) FetchBranchData(branchTxID *core.TransactionID) (multistate.BranchData, bool) {
+func (ut *UTXOTangle) FetchBranchData(branchTxID *ledger.TransactionID) (multistate.BranchData, bool) {
 	return multistate.FetchBranchData(ut.stateStore, *branchTxID)
 }
 

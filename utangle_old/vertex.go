@@ -5,15 +5,15 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/global"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
 	"github.com/lunfardo314/proxima/util/set"
 )
 
-func (v *Vertex) TimeSlot() core.TimeSlot {
+func (v *Vertex) TimeSlot() ledger.TimeSlot {
 	return v.Tx.ID().TimeSlot()
 }
 
@@ -24,7 +24,7 @@ func (v *Vertex) getSequencerPredecessor() *WrappedTx {
 }
 
 // getConsumedOutput return consumed output at index i or nil, nil if input is orphaned
-func (v *Vertex) getConsumedOutput(i byte) (*core.Output, error) {
+func (v *Vertex) getConsumedOutput(i byte) (*ledger.Output, error) {
 	if int(i) >= len(v.Inputs) {
 		return nil, fmt.Errorf("wrong input index %d", i)
 	}
@@ -71,9 +71,9 @@ func (v *Vertex) NumMissingInputs() (missingInputs int, missingEndorsements int)
 }
 
 // MissingInputTxIDSet returns set of txids for the missing inputs and endorsements
-func (v *Vertex) MissingInputTxIDSet() set.Set[core.TransactionID] {
-	ret := set.New[core.TransactionID]()
-	var oid core.OutputID
+func (v *Vertex) MissingInputTxIDSet() set.Set[ledger.TransactionID] {
+	ret := set.New[ledger.TransactionID]()
+	var oid ledger.OutputID
 	v.forEachInputDependency(func(i byte, vidInput *WrappedTx) bool {
 		if vidInput == nil {
 			oid = v.Tx.MustInputAt(i)
@@ -115,7 +115,7 @@ func (v *Vertex) IsStemInputSolid() bool {
 	var stemInputIdx byte
 	var stemInputFound bool
 
-	v.Tx.ForEachInput(func(i byte, oid *core.OutputID) bool {
+	v.Tx.ForEachInput(func(i byte, oid *ledger.OutputID) bool {
 		if *oid == predOID {
 			stemInputIdx = i
 			stemInputFound = true
@@ -152,12 +152,12 @@ func (v *Vertex) _allEndorsementsSolid() bool {
 	return true
 }
 
-func (v *Vertex) MustProducedOutput(idx byte) (*core.Output, bool) {
+func (v *Vertex) MustProducedOutput(idx byte) (*ledger.Output, bool) {
 	odata, ok := v.producedOutputData(idx)
 	if !ok {
 		return nil, false
 	}
-	o, err := core.OutputFromBytesReadOnly(odata)
+	o, err := ledger.OutputFromBytesReadOnly(odata)
 	util.AssertNoError(err)
 	return o, true
 }
@@ -186,7 +186,7 @@ func (v *Vertex) forEachEndorsement(fun func(i byte, vidEndorsed *WrappedTx) boo
 }
 
 func (v *Vertex) Lines(prefix ...string) *lines.Lines {
-	return v.Tx.Lines(func(i byte) (*core.Output, error) {
+	return v.Tx.Lines(func(i byte) (*ledger.Output, error) {
 		if v.Inputs[i] == nil {
 			return nil, fmt.Errorf("input #%d not solid", i)
 		}
@@ -208,14 +208,14 @@ func (v *Vertex) Wrap() *WrappedTx {
 func (v *Vertex) convertToVirtualTx() *VirtualTransaction {
 	ret := &VirtualTransaction{
 		txid:    *v.Tx.ID(),
-		outputs: make(map[byte]*core.Output, v.Tx.NumProducedOutputs()),
+		outputs: make(map[byte]*ledger.Output, v.Tx.NumProducedOutputs()),
 	}
 	if v.Tx.IsSequencerMilestone() {
 		seqIdx, stemIdx := v.Tx.SequencerAndStemOutputIndices()
 		ret.sequencerOutputs = &[2]byte{seqIdx, stemIdx}
 	}
 
-	v.Tx.ForEachProducedOutput(func(idx byte, o *core.Output, _ *core.OutputID) bool {
+	v.Tx.ForEachProducedOutput(func(idx byte, o *ledger.Output, _ *ledger.OutputID) bool {
 		ret.outputs[idx] = o
 		return true
 	})

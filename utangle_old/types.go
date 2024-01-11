@@ -4,8 +4,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/global"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/util/set"
 	"github.com/lunfardo314/unitrie/common"
@@ -15,8 +15,8 @@ type (
 	UTXOTangle struct {
 		mutex      sync.RWMutex
 		stateStore global.StateStore
-		vertices   map[core.TransactionID]*WrappedTx
-		branches   map[core.TimeSlot]map[*WrappedTx]common.VCommitment
+		vertices   map[ledger.TransactionID]*WrappedTx
+		branches   map[ledger.TimeSlot]map[*WrappedTx]common.VCommitment
 
 		// all real-time related values in one place
 		syncData *SyncData
@@ -38,13 +38,13 @@ type (
 		// last time final cuter was run
 		lastCutFinal time.Time
 		StartTime    time.Time
-		PerSequencer map[core.ChainID]SequencerSyncStatus
+		PerSequencer map[ledger.ChainID]SequencerSyncStatus
 	}
 
 	SyncInfo struct {
 		Synced       bool
 		InSyncWindow bool
-		PerSequencer map[core.ChainID]SequencerSyncInfo
+		PerSequencer map[ledger.ChainID]SequencerSyncInfo
 	}
 
 	SequencerSyncInfo struct {
@@ -54,8 +54,8 @@ type (
 	}
 
 	SequencerSyncStatus struct {
-		latestBranchesSeen set.Set[core.TransactionID]
-		latestBranchBooked core.TransactionID
+		latestBranchesSeen set.Set[ledger.TransactionID]
+		latestBranchBooked ledger.TransactionID
 	}
 
 	PastTrack struct {
@@ -75,9 +75,9 @@ type (
 	}
 
 	VirtualTransaction struct {
-		txid             core.TransactionID
+		txid             ledger.TransactionID
 		mutex            sync.RWMutex
-		outputs          map[byte]*core.Output
+		outputs          map[byte]*ledger.Output
 		sequencerOutputs *[2]byte // if nil, it is unknown
 	}
 

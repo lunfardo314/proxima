@@ -6,8 +6,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/global"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/utangle_old"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/set"
@@ -21,11 +21,11 @@ type (
 	sequencerTipPool struct {
 		mutex                    sync.RWMutex
 		glb                      *workflow.Workflow
-		accountable              core.Accountable
+		accountable              ledger.Accountable
 		outputs                  set.Set[utangle_old.WrappedOutput]
 		log                      *zap.SugaredLogger
-		chainID                  core.ChainID
-		latestMilestones         map[core.ChainID]*utangle_old.WrappedTx
+		chainID                  ledger.ChainID
+		latestMilestones         map[ledger.ChainID]*utangle_old.WrappedTx
 		lastPruned               atomic.Time
 		outputCount              int
 		removedOutputsSinceReset int
@@ -41,17 +41,17 @@ type (
 
 const fetchLastNTimeSlotsUponStartup = 5
 
-func startTipPool(seqName string, wrk *workflow.Workflow, seqID core.ChainID, logLevel zapcore.Level) (*sequencerTipPool, error) {
+func startTipPool(seqName string, wrk *workflow.Workflow, seqID ledger.ChainID, logLevel zapcore.Level) (*sequencerTipPool, error) {
 	// must be finalized somewhere
 	name := fmt.Sprintf("[%sT-%s]", seqName, seqID.StringVeryShort())
-	accountAddress := core.CloneAccountable(seqID.AsChainLock())
+	accountAddress := ledger.CloneAccountable(seqID.AsChainLock())
 	ret := &sequencerTipPool{
 		glb:              wrk,
 		accountable:      accountAddress,
 		log:              global.NewLogger(name, logLevel, []string{"stdout"}, global.TimeLayoutDefault),
 		outputs:          set.New[utangle_old.WrappedOutput](),
 		chainID:          seqID,
-		latestMilestones: make(map[core.ChainID]*utangle_old.WrappedTx),
+		latestMilestones: make(map[ledger.ChainID]*utangle_old.WrappedTx),
 	}
 	ret.log.Debugf("starting tipPool..")
 
@@ -96,7 +96,7 @@ func startTipPool(seqName string, wrk *workflow.Workflow, seqID core.ChainID, lo
 }
 
 func (tp *sequencerTipPool) purgeDeleted() {
-	cleanupPeriod := core.TimeSlotDuration() / 2
+	cleanupPeriod := ledger.TimeSlotDuration() / 2
 	if time.Since(tp.lastPruned.Load()) < cleanupPeriod {
 		return
 	}
@@ -115,7 +115,7 @@ func (tp *sequencerTipPool) purgeDeleted() {
 	}
 	tp.removedOutputsSinceReset += len(toDelete)
 
-	toDeleteMilestoneChainID := make([]core.ChainID, 0)
+	toDeleteMilestoneChainID := make([]ledger.ChainID, 0)
 	for chainID, vid := range tp.latestMilestones {
 		if vid.IsDeleted() {
 			toDeleteMilestoneChainID = append(toDeleteMilestoneChainID, chainID)
@@ -143,11 +143,11 @@ func (tp *sequencerTipPool) filterAndSortOutputs(filter func(o utangle_old.Wrapp
 	return ret
 }
 
-func (tp *sequencerTipPool) ChainID() core.ChainID {
+func (tp *sequencerTipPool) ChainID() ledger.ChainID {
 	return tp.chainID
 }
 
-func (tp *sequencerTipPool) preSelectAndSortEndorsableMilestones(targetTs core.LogicalTime) []*utangle_old.WrappedTx {
+func (tp *sequencerTipPool) preSelectAndSortEndorsableMilestones(targetTs ledger.LogicalTime) []*utangle_old.WrappedTx {
 	tp.purgeDeleted()
 
 	tp.mutex.RLock()
@@ -155,7 +155,7 @@ func (tp *sequencerTipPool) preSelectAndSortEndorsableMilestones(targetTs core.L
 
 	ret := make([]*utangle_old.WrappedTx, 0)
 	for _, ms := range tp.latestMilestones {
-		if ms.TimeSlot() != targetTs.TimeSlot() || !core.ValidTimePace(ms.Timestamp(), targetTs) {
+		if ms.TimeSlot() != targetTs.TimeSlot() || !ledger.ValidTimePace(ms.Timestamp(), targetTs) {
 			continue
 		}
 		ret = append(ret, ms)

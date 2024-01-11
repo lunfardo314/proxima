@@ -4,8 +4,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/global"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/txutils"
 	"github.com/lunfardo314/unitrie/common"
@@ -39,35 +39,35 @@ func (s SugaredStateReader) Desugar() global.IndexedStateReader {
 	return s.IndexedStateReader
 }
 
-func (s SugaredStateReader) GetOutputWithID(oid *core.OutputID) (*core.OutputWithID, error) {
+func (s SugaredStateReader) GetOutputWithID(oid *ledger.OutputID) (*ledger.OutputWithID, error) {
 	oData, found := s.IndexedStateReader.GetUTXO(oid)
 	if !found {
 		return nil, ErrNotFound
 	}
-	ret, err := core.OutputFromBytesReadOnly(oData)
+	ret, err := ledger.OutputFromBytesReadOnly(oData)
 	if err != nil {
 		return nil, err
 	}
 
-	return &core.OutputWithID{
+	return &ledger.OutputWithID{
 		ID:     *oid,
 		Output: ret,
 	}, nil
 }
 
-func (s SugaredStateReader) GetOutputErr(oid *core.OutputID) (*core.Output, error) {
+func (s SugaredStateReader) GetOutputErr(oid *ledger.OutputID) (*ledger.Output, error) {
 	oData, found := s.IndexedStateReader.GetUTXO(oid)
 	if !found {
 		return nil, ErrNotFound
 	}
-	ret, err := core.OutputFromBytesReadOnly(oData)
+	ret, err := ledger.OutputFromBytesReadOnly(oData)
 	if err != nil {
 		return nil, err
 	}
 	return ret, nil
 }
 
-func (s SugaredStateReader) GetOutput(oid *core.OutputID) *core.Output {
+func (s SugaredStateReader) GetOutput(oid *ledger.OutputID) *ledger.Output {
 	ret, err := s.GetOutputErr(oid)
 	if err == nil {
 		return ret
@@ -76,13 +76,13 @@ func (s SugaredStateReader) GetOutput(oid *core.OutputID) *core.Output {
 	return nil
 }
 
-func (s SugaredStateReader) MustGetOutputWithID(oid *core.OutputID) *core.OutputWithID {
+func (s SugaredStateReader) MustGetOutputWithID(oid *ledger.OutputID) *ledger.OutputWithID {
 	ret, err := s.GetOutputWithID(oid)
 	util.AssertNoError(err)
 	return ret
 }
 
-func (s SugaredStateReader) GetOutputsForAccount(addr core.AccountID) ([]*core.OutputWithID, error) {
+func (s SugaredStateReader) GetOutputsForAccount(addr ledger.AccountID) ([]*ledger.OutputWithID, error) {
 	oDatas, err := s.GetUTXOsLockedInAccount(addr)
 	if err != nil {
 		return nil, err
@@ -90,8 +90,8 @@ func (s SugaredStateReader) GetOutputsForAccount(addr core.AccountID) ([]*core.O
 	return txutils.ParseAndSortOutputData(oDatas, nil)
 }
 
-func (s SugaredStateReader) GetStemOutput() *core.OutputWithID {
-	oData, err := s.IndexedStateReader.GetUTXOsLockedInAccount(core.StemAccountID)
+func (s SugaredStateReader) GetStemOutput() *ledger.OutputWithID {
+	oData, err := s.IndexedStateReader.GetUTXOsLockedInAccount(ledger.StemAccountID)
 	util.AssertNoError(err)
 	if len(oData) != 1 {
 		fmt.Println()
@@ -102,22 +102,22 @@ func (s SugaredStateReader) GetStemOutput() *core.OutputWithID {
 	return ret
 }
 
-func (s SugaredStateReader) GetChainOutput(chainID *core.ChainID) (*core.OutputWithID, error) {
+func (s SugaredStateReader) GetChainOutput(chainID *ledger.ChainID) (*ledger.OutputWithID, error) {
 	oData, err := s.IndexedStateReader.GetUTXOForChainID(chainID)
 	if err != nil {
 		return nil, err
 	}
-	ret, err := core.OutputFromBytesReadOnly(oData.OutputData)
+	ret, err := ledger.OutputFromBytesReadOnly(oData.OutputData)
 	if err != nil {
 		return nil, err
 	}
-	return &core.OutputWithID{
+	return &ledger.OutputWithID{
 		ID:     oData.ID,
 		Output: ret,
 	}, nil
 }
 
-func (s SugaredStateReader) BalanceOf(addr core.AccountID) uint64 {
+func (s SugaredStateReader) BalanceOf(addr ledger.AccountID) uint64 {
 	outs, err := s.GetOutputsForAccount(addr)
 	util.AssertNoError(err)
 	ret := uint64(0)
@@ -127,13 +127,13 @@ func (s SugaredStateReader) BalanceOf(addr core.AccountID) uint64 {
 	return ret
 }
 
-func (s SugaredStateReader) NumOutputs(addr core.AccountID) int {
+func (s SugaredStateReader) NumOutputs(addr ledger.AccountID) int {
 	outs, err := s.GetOutputsForAccount(addr)
 	util.AssertNoError(err)
 	return len(outs)
 }
 
-func (s SugaredStateReader) BalanceOnChain(chainID *core.ChainID) uint64 {
+func (s SugaredStateReader) BalanceOnChain(chainID *ledger.ChainID) uint64 {
 	o, err := s.GetChainOutput(chainID)
 	if err != nil {
 		return 0

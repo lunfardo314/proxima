@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/lunfardo314/easyfl"
-	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/txbuilder"
@@ -31,26 +31,26 @@ func TestOutput(t *testing.T) {
 	const msg = "message to be signed"
 
 	t.Run("basic", func(t *testing.T) {
-		out := core.OutputBasic(0, core.AddressED25519Null())
-		outBack, err := core.OutputFromBytesReadOnly(out.Bytes())
+		out := ledger.OutputBasic(0, ledger.AddressED25519Null())
+		outBack, err := ledger.OutputFromBytesReadOnly(out.Bytes())
 		require.NoError(t, err)
 		require.EqualValues(t, outBack.Bytes(), out.Bytes())
 		t.Logf("empty output: %d bytes", len(out.Bytes()))
 	})
 	t.Run("address", func(t *testing.T) {
-		out := core.OutputBasic(0, core.AddressED25519FromPublicKey(pubKey))
-		outBack, err := core.OutputFromBytesReadOnly(out.Bytes())
+		out := ledger.OutputBasic(0, ledger.AddressED25519FromPublicKey(pubKey))
+		outBack, err := ledger.OutputFromBytesReadOnly(out.Bytes())
 		require.NoError(t, err)
 		require.EqualValues(t, outBack.Bytes(), out.Bytes())
 		t.Logf("output: %d bytes", len(out.Bytes()))
 
-		_, err = core.AddressED25519FromBytes(outBack.Lock().Bytes())
+		_, err = ledger.AddressED25519FromBytes(outBack.Lock().Bytes())
 		require.NoError(t, err)
 		require.EqualValues(t, out.Lock(), outBack.Lock())
 	})
 	t.Run("tokens", func(t *testing.T) {
-		out := core.OutputBasic(1337, core.AddressED25519Null())
-		outBack, err := core.OutputFromBytesReadOnly(out.Bytes())
+		out := ledger.OutputBasic(1337, ledger.AddressED25519Null())
+		outBack, err := ledger.OutputFromBytesReadOnly(out.Bytes())
 		require.NoError(t, err)
 		require.EqualValues(t, outBack.Bytes(), out.Bytes())
 		t.Logf("output: %d bytes", len(out.Bytes()))
@@ -82,7 +82,7 @@ func TestMainConstraints(t *testing.T) {
 		require.EqualValues(t, 1, u.NumUTXOs(addr1))
 
 		_, _, addrNext := u.GenerateAddress(2)
-		in, err := u.MakeTransferInputData(privKey1, nil, core.NilLogicalTime)
+		in, err := u.MakeTransferInputData(privKey1, nil, ledger.NilLogicalTime)
 		require.NoError(t, err)
 		err = u.DoTransfer(in.WithTargetLock(addrNext).WithAmount(1000))
 		require.NoError(t, err)
@@ -105,7 +105,7 @@ func TestMainConstraints(t *testing.T) {
 
 		_, _, addrNext := u.GenerateAddress(2)
 		privKeyWrong, _, _ := u.GenerateAddress(3)
-		in, err := u.MakeTransferInputData(privKey1, nil, core.NilLogicalTime)
+		in, err := u.MakeTransferInputData(privKey1, nil, ledger.NilLogicalTime)
 		in.SenderPrivateKey = privKeyWrong
 		require.NoError(t, err)
 		err = u.DoTransfer(in.WithTargetLock(addrNext).WithAmount(1000))
@@ -122,7 +122,7 @@ func TestMainConstraints(t *testing.T) {
 		require.EqualValues(t, 1, u.NumUTXOs(addr1))
 
 		_, _, addrNext := u.GenerateAddress(2)
-		in, err := u.MakeTransferInputData(privKey1, nil, core.NilLogicalTime)
+		in, err := u.MakeTransferInputData(privKey1, nil, ledger.NilLogicalTime)
 		require.NoError(t, err)
 		err = u.DoTransfer(in.WithTargetLock(addrNext).WithAmount(1))
 		easyfl.RequireErrorWith(t, err, "amount is smaller than expected")
@@ -138,7 +138,7 @@ func TestTimelock(t *testing.T) {
 
 		priv1, _, addr1 := u.GenerateAddress(1)
 
-		ts := core.LogicalTimeNow()
+		ts := ledger.LogicalTimeNow()
 		t.Logf("now ts: %s", ts)
 		par, err := u.MakeTransferInputData(privKey0, nil, ts)
 		require.NoError(t, err)
@@ -147,7 +147,7 @@ func TestTimelock(t *testing.T) {
 
 		par.WithAmount(200).
 			WithTargetLock(addr1).
-			WithConstraint(core.NewTimelock(timelockSlot))
+			WithConstraint(ledger.NewTimelock(timelockSlot))
 		txBytes, err := txbuilder.MakeTransferTransaction(par)
 		require.NoError(t, err)
 
@@ -162,7 +162,7 @@ func TestTimelock(t *testing.T) {
 		require.NoError(t, err)
 		par.WithAmount(2000).
 			WithTargetLock(addr1).
-			WithConstraint(core.NewTimelock(timelockSlot))
+			WithConstraint(ledger.NewTimelock(timelockSlot))
 		err = u.DoTransfer(par)
 		require.NoError(t, err)
 		t.Logf("2000 timelocked until slot %d in addr1", timelockSlot)
@@ -173,7 +173,7 @@ func TestTimelock(t *testing.T) {
 		txTs := ts.AddTimeSlots(2)
 		par, err = u.MakeTransferInputData(priv1, nil, txTs)
 		require.NoError(t, err)
-		t.Logf("AdditionalInputs: \n%s\n", core.OutputsWithIdToString(par.Inputs...))
+		t.Logf("AdditionalInputs: \n%s\n", ledger.OutputsWithIdToString(par.Inputs...))
 
 		err = u.DoTransfer(par.
 			WithAmount(2000).
@@ -211,13 +211,13 @@ func TestTimelock(t *testing.T) {
 
 		priv1, _, addr1 := u.GenerateAddress(1)
 
-		ts := core.LogicalTimeNow()
+		ts := ledger.LogicalTimeNow()
 		par, err := u.MakeTransferInputData(privKey0, nil, ts)
 		require.NoError(t, err)
 		txBytes, err := txbuilder.MakeTransferTransaction(par.
 			WithAmount(200).
 			WithTargetLock(addr1).
-			WithConstraint(core.NewTimelock(ts.TimeSlot() + 1)),
+			WithConstraint(ledger.NewTimelock(ts.TimeSlot() + 1)),
 		)
 		require.NoError(t, err)
 		t.Logf("tx with timelock len: %d", len(txBytes))
@@ -231,7 +231,7 @@ func TestTimelock(t *testing.T) {
 		err = u.DoTransfer(par.
 			WithAmount(2000).
 			WithTargetLock(addr1).
-			WithConstraint(core.NewTimelock(ts.TimeSlot() + 11)),
+			WithConstraint(ledger.NewTimelock(ts.TimeSlot() + 11)),
 		)
 		require.NoError(t, err)
 
@@ -267,14 +267,14 @@ func TestDeadlineLock(t *testing.T) {
 	require.EqualValues(t, 0, u.Balance(addr1))
 	require.EqualValues(t, 0, u.NumUTXOs(addr1))
 
-	ts := core.LogicalTimeNow()
+	ts := ledger.LogicalTimeNow()
 
 	par, err := u.MakeTransferInputData(privKey0, nil, ts)
 	require.NoError(t, err)
-	deadlineLock := core.NewDeadlineLock(
+	deadlineLock := ledger.NewDeadlineLock(
 		ts.AddTimeSlots(10),
-		core.AddressED25519FromPublicKey(pubKey1),
-		core.AddressED25519FromPublicKey(pubKey0),
+		ledger.AddressED25519FromPublicKey(pubKey1),
+		ledger.AddressED25519FromPublicKey(pubKey0),
 	)
 	t.Logf("deadline lock: %d bytes", len(deadlineLock.Bytes()))
 	dis, err := easyfl.DecompileBytecode(deadlineLock.Bytes())
@@ -311,7 +311,7 @@ func TestSenderAddressED25519(t *testing.T) {
 	require.EqualValues(t, 0, u.Balance(addr1))
 	require.EqualValues(t, 0, u.NumUTXOs(addr1))
 
-	par, err := u.MakeTransferInputData(privKey0, nil, core.LogicalTimeNow())
+	par, err := u.MakeTransferInputData(privKey0, nil, ledger.LogicalTimeNow())
 	err = u.DoTransfer(par.
 		WithAmount(2000).
 		WithTargetLock(addr1).
@@ -330,26 +330,26 @@ func TestSenderAddressED25519(t *testing.T) {
 	require.EqualValues(t, 1, len(outs))
 	saddr, idx := outs[0].Output.SenderED25519()
 	require.True(t, idx != 0xff)
-	require.True(t, core.EqualConstraints(addr0, saddr))
+	require.True(t, ledger.EqualConstraints(addr0, saddr))
 }
 
 func TestChain1(t *testing.T) {
 	var privKey0 ed25519.PrivateKey
 	var u *utxodb.UTXODB
-	var addr0 core.AddressED25519
+	var addr0 ledger.AddressED25519
 	initTest := func() {
 		u = utxodb.NewUTXODB(true)
 		privKey0, _, addr0 = u.GenerateAddress(0)
 		err := u.TokensFromFaucet(addr0, 10000)
 		require.NoError(t, err)
 	}
-	initTest2 := func() []*core.OutputWithChainID {
+	initTest2 := func() []*ledger.OutputWithChainID {
 		initTest()
-		par, err := u.MakeTransferInputData(privKey0, nil, core.LogicalTimeNow())
+		par, err := u.MakeTransferInputData(privKey0, nil, ledger.LogicalTimeNow())
 		outs, err := u.DoTransferOutputs(par.
 			WithAmount(2000).
 			WithTargetLock(addr0).
-			WithConstraint(core.NewChainOrigin()),
+			WithConstraint(ledger.NewChainOrigin()),
 		)
 		require.NoError(t, err)
 		require.EqualValues(t, 1, u.NumUTXOs(u.GenesisControllerAddress()))
@@ -376,7 +376,7 @@ func TestChain1(t *testing.T) {
 		_, _, code, err := easyfl.CompileExpression(source)
 		require.NoError(t, err)
 
-		par, err := u.MakeTransferInputData(privKey0, nil, core.LogicalTimeNow())
+		par, err := u.MakeTransferInputData(privKey0, nil, ledger.LogicalTimeNow())
 		err = u.DoTransfer(par.
 			WithAmount(2000).
 			WithTargetLock(addr0).
@@ -395,7 +395,7 @@ func TestChain1(t *testing.T) {
 		_, _, code, err := easyfl.CompileExpression(source)
 		require.NoError(t, err)
 
-		par, err := u.MakeTransferInputData(privKey0, nil, core.LogicalTimeNow())
+		par, err := u.MakeTransferInputData(privKey0, nil, ledger.LogicalTimeNow())
 		err = u.DoTransfer(par.
 			WithAmount(2000).
 			WithTargetLock(addr0).
@@ -411,7 +411,7 @@ func TestChain1(t *testing.T) {
 		_, _, code, err := easyfl.CompileExpression(source)
 		require.NoError(t, err)
 
-		par, err := u.MakeTransferInputData(privKey0, nil, core.LogicalTimeNow())
+		par, err := u.MakeTransferInputData(privKey0, nil, ledger.LogicalTimeNow())
 		par.WithAmount(2000).WithTargetLock(addr0)
 
 		err = u.DoTransfer(par.WithConstraintBinary(code))
@@ -428,7 +428,7 @@ func TestChain1(t *testing.T) {
 		require.EqualValues(t, 1, len(chains))
 		chs, err := u.StateReader().GetUTXOForChainID(&chains[0].ChainID)
 		require.NoError(t, err)
-		o, err := core.OutputFromBytesReadOnly(chs.OutputData)
+		o, err := ledger.OutputFromBytesReadOnly(chs.OutputData)
 		require.NoError(t, err)
 		ch, idx := o.ChainConstraint()
 		require.True(t, idx != 0xff)
@@ -449,12 +449,12 @@ func TestChain1(t *testing.T) {
 		require.True(t, ch.IsOrigin())
 		t.Logf("chain created: %s", easyfl.Fmt(chains[0].ChainID[:]))
 
-		ts := chainIN.Timestamp().AddTicks(core.TransactionPaceInTicks)
+		ts := chainIN.Timestamp().AddTicks(ledger.TransactionPaceInTicks)
 
 		txb := txbuilder.NewTransactionBuilder()
 		consumedIndex, err := txb.ConsumeOutput(chainIN.Output, chainIN.ID)
 		require.NoError(t, err)
-		outNonChain := core.NewOutput(func(o *core.Output) {
+		outNonChain := ledger.NewOutput(func(o *ledger.Output) {
 			o.WithAmount(chainIN.Output.Amount()).
 				WithLock(chainIN.Output.Lock())
 		})
@@ -485,7 +485,7 @@ func TestChain1(t *testing.T) {
 func TestChain2(t *testing.T) {
 	var privKey0 ed25519.PrivateKey
 	var u *utxodb.UTXODB
-	var addr0 core.AddressED25519
+	var addr0 ledger.AddressED25519
 	initTest := func() {
 		u = utxodb.NewUTXODB(true)
 		privKey0, _, addr0 = u.GenerateAddress(0)
@@ -496,13 +496,13 @@ func TestChain2(t *testing.T) {
 		require.EqualValues(t, 10000, u.Balance(addr0))
 		require.EqualValues(t, 1, u.NumUTXOs(addr0))
 	}
-	initTest2 := func() []*core.OutputWithChainID {
+	initTest2 := func() []*ledger.OutputWithChainID {
 		initTest()
-		par, err := u.MakeTransferInputData(privKey0, nil, core.LogicalTimeNow())
+		par, err := u.MakeTransferInputData(privKey0, nil, ledger.LogicalTimeNow())
 		outs, err := u.DoTransferOutputs(par.
 			WithAmount(2000).
 			WithTargetLock(addr0).
-			WithConstraint(core.NewChainOrigin()),
+			WithConstraint(ledger.NewChainOrigin()),
 		)
 		require.NoError(t, err)
 		require.EqualValues(t, 1, u.NumUTXOs(u.GenesisControllerAddress()))
@@ -528,32 +528,32 @@ func TestChain2(t *testing.T) {
 		_, constraintIdx := chainIN.Output.ChainConstraint()
 		require.True(t, constraintIdx != 0xff)
 
-		ts := chainIN.Timestamp().AddTicks(core.TransactionPaceInTicks)
+		ts := chainIN.Timestamp().AddTicks(ledger.TransactionPaceInTicks)
 		txb := txbuilder.NewTransactionBuilder()
 		predIdx, err := txb.ConsumeOutput(chainIN.Output, chainIN.ID)
 		require.NoError(t, err)
 
-		var nextChainConstraint *core.ChainConstraint
+		var nextChainConstraint *ledger.ChainConstraint
 		// options of making it wrong
 		switch option1 {
 		case 0:
 			// good
-			nextChainConstraint = core.NewChainConstraint(theChainData.ChainID, predIdx, constraintIdx, 0)
+			nextChainConstraint = ledger.NewChainConstraint(theChainData.ChainID, predIdx, constraintIdx, 0)
 		case 1:
-			nextChainConstraint = core.NewChainConstraint(theChainData.ChainID, 0xff, constraintIdx, 0)
+			nextChainConstraint = ledger.NewChainConstraint(theChainData.ChainID, 0xff, constraintIdx, 0)
 		case 2:
-			nextChainConstraint = core.NewChainConstraint(theChainData.ChainID, predIdx, 0xff, 0)
+			nextChainConstraint = ledger.NewChainConstraint(theChainData.ChainID, predIdx, 0xff, 0)
 		case 3:
-			nextChainConstraint = core.NewChainConstraint(theChainData.ChainID, 0xff, 0xff, 0)
+			nextChainConstraint = ledger.NewChainConstraint(theChainData.ChainID, 0xff, 0xff, 0)
 		case 4:
-			nextChainConstraint = core.NewChainConstraint(theChainData.ChainID, predIdx, constraintIdx, 1)
+			nextChainConstraint = ledger.NewChainConstraint(theChainData.ChainID, predIdx, constraintIdx, 1)
 		case 5:
-			nextChainConstraint = core.NewChainConstraint(theChainData.ChainID, 0xff, 0xff, 0xff)
+			nextChainConstraint = ledger.NewChainConstraint(theChainData.ChainID, 0xff, 0xff, 0xff)
 		default:
 			panic("wrong test option 1")
 		}
 
-		chainOut := chainIN.Output.Clone(func(out *core.Output) {
+		chainOut := chainIN.Output.Clone(func(out *ledger.Output) {
 			out.PutConstraint(nextChainConstraint.Bytes(), constraintIdx)
 		})
 
@@ -647,20 +647,20 @@ func TestChain2(t *testing.T) {
 func TestChain3(t *testing.T) {
 	var privKey0 ed25519.PrivateKey
 	var u *utxodb.UTXODB
-	var addr0 core.AddressED25519
+	var addr0 ledger.AddressED25519
 	initTest := func() {
 		u = utxodb.NewUTXODB(true)
 		privKey0, _, addr0 = u.GenerateAddress(0)
 		err := u.TokensFromFaucet(addr0, 10000)
 		require.NoError(t, err)
 	}
-	initTest2 := func() []*core.OutputWithChainID {
+	initTest2 := func() []*ledger.OutputWithChainID {
 		initTest()
-		par, err := u.MakeTransferInputData(privKey0, nil, core.LogicalTimeNow())
+		par, err := u.MakeTransferInputData(privKey0, nil, ledger.LogicalTimeNow())
 		outs, err := u.DoTransferOutputs(par.
 			WithAmount(2000).
 			WithTargetLock(addr0).
-			WithConstraint(core.NewChainOrigin()),
+			WithConstraint(ledger.NewChainOrigin()),
 		)
 		require.NoError(t, err)
 		require.EqualValues(t, 1, u.NumUTXOs(u.GenesisControllerAddress()))
@@ -685,15 +685,15 @@ func TestChain3(t *testing.T) {
 	_, constraintIdx := chainIN.Output.ChainConstraint()
 	require.True(t, constraintIdx != 0xff)
 
-	ts := chainIN.Timestamp().AddTicks(core.TransactionPaceInTicks)
+	ts := chainIN.Timestamp().AddTicks(ledger.TransactionPaceInTicks)
 	txb := txbuilder.NewTransactionBuilder()
 	predIdx, err := txb.ConsumeOutput(chainIN.Output, chainIN.ID)
 	require.NoError(t, err)
 
-	var nextChainConstraint *core.ChainConstraint
-	nextChainConstraint = core.NewChainConstraint(theChainData.ChainID, predIdx, constraintIdx, 0)
+	var nextChainConstraint *ledger.ChainConstraint
+	nextChainConstraint = ledger.NewChainConstraint(theChainData.ChainID, predIdx, constraintIdx, 0)
 
-	chainOut := chainIN.Output.Clone(func(out *core.Output) {
+	chainOut := chainIN.Output.Clone(func(out *ledger.Output) {
 		out.PutConstraint(nextChainConstraint.Bytes(), constraintIdx)
 	})
 	succIdx, err := txb.ProduceOutput(chainOut)
@@ -722,10 +722,10 @@ func TestChain3(t *testing.T) {
 
 func TestChainLock(t *testing.T) {
 	var privKey0, privKey1 ed25519.PrivateKey
-	var addr0, addr1 core.AddressED25519
+	var addr0, addr1 ledger.AddressED25519
 	var u *utxodb.UTXODB
-	var chainID core.ChainID
-	var chainAddr core.ChainLock
+	var chainID ledger.ChainID
+	var chainAddr ledger.ChainLock
 
 	initTest := func() {
 		u = utxodb.NewUTXODB(true)
@@ -733,13 +733,13 @@ func TestChainLock(t *testing.T) {
 		err := u.TokensFromFaucet(addr0, 10000)
 		require.NoError(t, err)
 	}
-	initTest2 := func() *core.OutputWithChainID {
+	initTest2 := func() *ledger.OutputWithChainID {
 		initTest()
-		par, err := u.MakeTransferInputData(privKey0, nil, core.LogicalTimeNow())
+		par, err := u.MakeTransferInputData(privKey0, nil, ledger.LogicalTimeNow())
 		outs, err := u.DoTransferOutputs(par.
 			WithAmount(2000).
 			WithTargetLock(addr0).
-			WithConstraint(core.NewChainOrigin()),
+			WithConstraint(ledger.NewChainOrigin()),
 		)
 		require.NoError(t, err)
 		require.EqualValues(t, 1, u.NumUTXOs(u.GenesisControllerAddress()))
@@ -752,7 +752,7 @@ func TestChainLock(t *testing.T) {
 		require.EqualValues(t, 1, len(chains))
 
 		chainID = chains[0].ChainID
-		chainAddr = core.ChainLockFromChainID(chainID)
+		chainAddr = ledger.ChainLockFromChainID(chainID)
 		require.NoError(t, err)
 		require.EqualValues(t, chainID, chainAddr.ChainID())
 
@@ -770,7 +770,7 @@ func TestChainLock(t *testing.T) {
 		require.EqualValues(t, 20000, u.Balance(addr1))
 		return chains[0]
 	}
-	sendFun := func(amount uint64, ts core.LogicalTime) {
+	sendFun := func(amount uint64, ts ledger.LogicalTime) {
 		par, err := u.MakeTransferInputData(privKey1, nil, ts)
 		require.NoError(t, err)
 		err = u.DoTransfer(par.
@@ -783,7 +783,7 @@ func TestChainLock(t *testing.T) {
 		initTest2()
 		require.EqualValues(t, 20000, u.Balance(addr1))
 
-		ts := core.LogicalTimeNow().AddTicks(5)
+		ts := ledger.LogicalTimeNow().AddTicks(5)
 
 		sendFun(1000, ts)
 		sendFun(2000, ts.AddTicks(1))
@@ -829,7 +829,7 @@ func TestLocalLibrary(t *testing.T) {
  func fun2 : fun1(fun1($0,$1), fun1($0,$1))
  func fun3 : fun2($0, $0)
 `
-	libBin, err := core.CompileLocalLibrary(source)
+	libBin, err := ledger.CompileLocalLibrary(source)
 	require.NoError(t, err)
 	t.Run("1", func(t *testing.T) {
 		src := fmt.Sprintf("callLocalLibrary(0x%s, 2, 5)", hex.EncodeToString(libBin))
@@ -855,7 +855,7 @@ func TestLocalLibrary(t *testing.T) {
 
 func TestHashUnlock(t *testing.T) {
 	const secretUnlockScript = "func fun1: and" // fun1 always returns true
-	libBin, err := core.CompileLocalLibrary(secretUnlockScript)
+	libBin, err := ledger.CompileLocalLibrary(secretUnlockScript)
 	require.NoError(t, err)
 	t.Logf("library size: %d", len(libBin))
 	libHash := blake2b.Sum256(libBin)
@@ -872,9 +872,9 @@ func TestHashUnlock(t *testing.T) {
 	t.Logf("constraint source: %s", constraintSource)
 	t.Logf("constraint size: %d", len(constraintBin))
 
-	par, err := u.MakeTransferInputData(privKey0, nil, core.NilLogicalTime)
+	par, err := u.MakeTransferInputData(privKey0, nil, ledger.NilLogicalTime)
 	require.NoError(t, err)
-	constr := core.NewGeneralScript(constraintBin)
+	constr := ledger.NewGeneralScript(constraintBin)
 	t.Logf("constraint: %s", constr)
 	par.WithAmount(1000).
 		WithTargetLock(addr0).
@@ -889,12 +889,12 @@ func TestHashUnlock(t *testing.T) {
 	outs, err := u.DoTransferOutputs(par)
 	require.NoError(t, err)
 
-	outs = txutils.FilterOutputsSortByAmount(outs, func(o *core.Output) bool {
+	outs = txutils.FilterOutputsSortByAmount(outs, func(o *ledger.Output) bool {
 		return o.Amount() == 1000
 	})
 
 	// produce transaction without providing hash unlocking library for the output with script
-	par = txbuilder.NewTransferData(privKey0, addr0, core.NilLogicalTime)
+	par = txbuilder.NewTransferData(privKey0, addr0, ledger.NilLogicalTime)
 	par.MustWithInputs(outs...).
 		WithAmount(1000).
 		WithTargetLock(addr0)
@@ -910,7 +910,7 @@ func TestHashUnlock(t *testing.T) {
 	require.Error(t, err)
 
 	// now adding unlock data the unlocking library/script
-	par.WithUnlockData(0, core.ConstraintIndexFirstOptionalConstraint, libBin)
+	par.WithUnlockData(0, ledger.ConstraintIndexFirstOptionalConstraint, libBin)
 
 	txbytes, err = txbuilder.MakeTransferTransaction(par)
 	require.NoError(t, err)
@@ -931,10 +931,10 @@ func TestRoyalties(t *testing.T) {
 	require.NoError(t, err)
 
 	privKey1, _, addr1 := u.GenerateAddress(1)
-	in, err := u.MakeTransferInputData(privKey0, nil, core.NilLogicalTime)
+	in, err := u.MakeTransferInputData(privKey0, nil, ledger.NilLogicalTime)
 	require.NoError(t, err)
-	royaltiesConstraint := core.NewRoyalties(addr0, 500)
-	royaltiesBytecode := core.NewGeneralScript(royaltiesConstraint.Bytes())
+	royaltiesConstraint := ledger.NewRoyalties(addr0, 500)
+	royaltiesBytecode := ledger.NewGeneralScript(royaltiesConstraint.Bytes())
 	in.WithTargetLock(addr1).
 		WithAmount(1000).
 		WithConstraint(royaltiesBytecode)
@@ -957,7 +957,7 @@ func TestRoyalties(t *testing.T) {
 	require.EqualValues(t, 1, u.NumUTXOs(addr1))
 
 	// fail because not sending royalties
-	in, err = u.MakeTransferInputData(privKey1, nil, core.NilLogicalTime)
+	in, err = u.MakeTransferInputData(privKey1, nil, ledger.NilLogicalTime)
 	require.NoError(t, err)
 	in.WithTargetLock(addr1).
 		WithAmount(1000)
@@ -968,7 +968,7 @@ func TestRoyalties(t *testing.T) {
 	easyfl.RequireErrorWith(t, err, "constraint 'royaltiesED25519' failed")
 
 	// fail because unlock parameters not set properly
-	in, err = u.MakeTransferInputData(privKey1, nil, core.NilLogicalTime)
+	in, err = u.MakeTransferInputData(privKey1, nil, ledger.NilLogicalTime)
 	require.NoError(t, err)
 	in.WithTargetLock(addr0).
 		WithAmount(1000)
@@ -979,11 +979,11 @@ func TestRoyalties(t *testing.T) {
 	easyfl.RequireErrorWith(t, err, "constraint 'royaltiesED25519' failed")
 
 	// success
-	in, err = u.MakeTransferInputData(privKey1, nil, core.NilLogicalTime)
+	in, err = u.MakeTransferInputData(privKey1, nil, ledger.NilLogicalTime)
 	require.NoError(t, err)
 	in.WithTargetLock(addr0).
 		WithAmount(1000).
-		WithUnlockData(0, core.ConstraintIndexFirstOptionalConstraint, []byte{0})
+		WithUnlockData(0, ledger.ConstraintIndexFirstOptionalConstraint, []byte{0})
 	txBytes, err = txbuilder.MakeTransferTransaction(in)
 	require.NoError(t, err)
 	t.Logf("tx4 = %s", u.TxToString(txBytes))
@@ -998,10 +998,10 @@ func TestImmutable(t *testing.T) {
 	require.NoError(t, err)
 
 	// create origin chain
-	par, err := u.MakeTransferInputData(privKey, nil, core.LogicalTimeNow())
+	par, err := u.MakeTransferInputData(privKey, nil, ledger.LogicalTimeNow())
 	par.WithAmount(2000).
 		WithTargetLock(addr0).
-		WithConstraint(core.NewChainOrigin())
+		WithConstraint(ledger.NewChainOrigin())
 	txbytes, err := txbuilder.MakeTransferTransaction(par)
 	require.NoError(t, err)
 	t.Logf("tx1 = %s", u.TxToString(txbytes))
@@ -1029,25 +1029,25 @@ func TestImmutable(t *testing.T) {
 	_, chainConstraintIdx := chainIN.Output.ChainConstraint()
 	require.True(t, chainConstraintIdx != 0xff)
 
-	ts := chainIN.Timestamp().AddTicks(core.TransactionPaceInTicks)
+	ts := chainIN.Timestamp().AddTicks(ledger.TransactionPaceInTicks)
 	txb := txbuilder.NewTransactionBuilder()
 	predIdx, err := txb.ConsumeOutput(chainIN.Output, chainIN.ID)
 	require.NoError(t, err)
 
-	var nextChainConstraint *core.ChainConstraint
-	nextChainConstraint = core.NewChainConstraint(theChainData.ChainID, predIdx, chainConstraintIdx, 0)
+	var nextChainConstraint *ledger.ChainConstraint
+	nextChainConstraint = ledger.NewChainConstraint(theChainData.ChainID, predIdx, chainConstraintIdx, 0)
 
 	var dataConstraintIdx, immutableConstraintIdx byte
-	chainOut := chainIN.Output.Clone(func(o *core.Output) {
+	chainOut := chainIN.Output.Clone(func(o *ledger.Output) {
 		o.PutConstraint(nextChainConstraint.Bytes(), chainConstraintIdx)
 
-		immutableData, err := core.NewGeneralScriptFromSource("concat(0x01020304030201)")
+		immutableData, err := ledger.NewGeneralScriptFromSource("concat(0x01020304030201)")
 		require.NoError(t, err)
 		// push data constraint
 		dataConstraintIdx, err = o.PushConstraint(immutableData)
 		require.NoError(t, err)
 		// push immutable constraint
-		immutableConstraintIdx, err = o.PushConstraint(core.NewImmutable(chainConstraintIdx, dataConstraintIdx).Bytes())
+		immutableConstraintIdx, err = o.PushConstraint(ledger.NewImmutable(chainConstraintIdx, dataConstraintIdx).Bytes())
 		require.NoError(t, err)
 	})
 
@@ -1077,12 +1077,12 @@ func TestImmutable(t *testing.T) {
 	_, chainConstraintIdx = chainIN.Output.ChainConstraint()
 	require.True(t, chainConstraintIdx != 0xff)
 
-	ts = chainIN.Timestamp().AddTicks(core.TransactionPaceInTicks)
+	ts = chainIN.Timestamp().AddTicks(ledger.TransactionPaceInTicks)
 	txb = txbuilder.NewTransactionBuilder()
 	predIdx, err = txb.ConsumeOutput(chainIN.Output, chainIN.ID)
 	require.NoError(t, err)
 
-	nextChainConstraint = core.NewChainConstraint(theChainData.ChainID, predIdx, chainConstraintIdx, 0)
+	nextChainConstraint = ledger.NewChainConstraint(theChainData.ChainID, predIdx, chainConstraintIdx, 0)
 
 	chainOut = chainIN.Output.Clone()
 
@@ -1115,16 +1115,16 @@ func TestImmutable(t *testing.T) {
 	_, chainConstraintIdx = chainIN.Output.ChainConstraint()
 	require.True(t, chainConstraintIdx != 0xff)
 
-	ts = chainIN.Timestamp().AddTicks(core.TransactionPaceInTicks)
+	ts = chainIN.Timestamp().AddTicks(ledger.TransactionPaceInTicks)
 	txb = txbuilder.NewTransactionBuilder()
 	predIdx, err = txb.ConsumeOutput(chainIN.Output, chs.ID)
 	require.NoError(t, err)
 
-	nextChainConstraint = core.NewChainConstraint(theChainData.ChainID, predIdx, chainConstraintIdx, 0)
+	nextChainConstraint = ledger.NewChainConstraint(theChainData.ChainID, predIdx, chainConstraintIdx, 0)
 
-	chainOut = chainIN.Output.Clone(func(out *core.Output) {
+	chainOut = chainIN.Output.Clone(func(out *ledger.Output) {
 		// put wrong data
-		wrongImmutableData, err := core.NewGeneralScriptFromSource("concat(0x010203040302010000)")
+		wrongImmutableData, err := ledger.NewGeneralScriptFromSource("concat(0x010203040302010000)")
 		require.NoError(t, err)
 		out.PutConstraint(wrongImmutableData.Bytes(), dataConstraintIdx)
 	})
@@ -1160,16 +1160,16 @@ func TestImmutable(t *testing.T) {
 	_, chainConstraintIdx = chainIN.Output.ChainConstraint()
 	require.True(t, chainConstraintIdx != 0xff)
 
-	ts = chainIN.Timestamp().AddTicks(core.TransactionPaceInTicks)
+	ts = chainIN.Timestamp().AddTicks(ledger.TransactionPaceInTicks)
 	txb = txbuilder.NewTransactionBuilder()
 	predIdx, err = txb.ConsumeOutput(chainIN.Output, chs.ID)
 	require.NoError(t, err)
 
-	nextChainConstraint = core.NewChainConstraint(theChainData.ChainID, predIdx, chainConstraintIdx, 0)
+	nextChainConstraint = ledger.NewChainConstraint(theChainData.ChainID, predIdx, chainConstraintIdx, 0)
 
-	chainOut = chainIN.Output.Clone(func(out *core.Output) {
+	chainOut = chainIN.Output.Clone(func(out *ledger.Output) {
 		// put wrong data
-		sameImmutableData, err := core.NewGeneralScriptFromSource("concat(0x01020304030201)")
+		sameImmutableData, err := ledger.NewGeneralScriptFromSource("concat(0x01020304030201)")
 		require.NoError(t, err)
 		out.PutConstraint(sameImmutableData.Bytes(), dataConstraintIdx)
 	})

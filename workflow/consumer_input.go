@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/peer"
-	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/txmetadata"
 	"github.com/lunfardo314/proxima/util/eventtype"
@@ -37,7 +37,7 @@ type (
 
 	PrimaryConsumer struct {
 		*Consumer[*PrimaryTransactionData]
-		seen *seenset.SeenSet[core.TransactionIDVeryShort8]
+		seen *seenset.SeenSet[ledger.TransactionIDVeryShort8]
 	}
 )
 
@@ -64,13 +64,13 @@ func (t TransactionSource) String() string {
 }
 
 // EventCodeDuplicateTx this consumer rises the event with transaction ID as a parameter whenever duplicate is detected
-var EventCodeDuplicateTx = eventtype.RegisterNew[*core.TransactionID]("duplicateTx")
+var EventCodeDuplicateTx = eventtype.RegisterNew[*ledger.TransactionID]("duplicateTx")
 
 // initPrimaryInputConsumer initializes the consumer
 func (w *Workflow) initPrimaryInputConsumer() {
 	ret := &PrimaryConsumer{
 		Consumer: NewConsumer[*PrimaryTransactionData](PrimaryInputConsumerName, w),
-		seen:     seenset.New[core.TransactionIDVeryShort8](),
+		seen:     seenset.New[ledger.TransactionIDVeryShort8](),
 	}
 	ret.AddOnConsume(func(inp *PrimaryTransactionData) {
 		// tracing every input message
@@ -86,7 +86,7 @@ func (w *Workflow) initPrimaryInputConsumer() {
 	})
 
 	nmDuplicate := EventCodeDuplicateTx.String()
-	w.MustOnEvent(EventCodeDuplicateTx, func(txid *core.TransactionID) {
+	w.MustOnEvent(EventCodeDuplicateTx, func(txid *ledger.TransactionID) {
 		// log duplicate transaction upon event
 		ret.glb.IncCounter(ret.Name() + "." + nmDuplicate)
 		ret.Log().Debugf("%s: %s", nmDuplicate, txid.StringShort())
@@ -115,7 +115,7 @@ func (c *PrimaryConsumer) consume(inp *PrimaryTransactionData) {
 	})
 }
 
-func (c *PrimaryConsumer) isDuplicate(txid *core.TransactionID) bool {
+func (c *PrimaryConsumer) isDuplicate(txid *ledger.TransactionID) bool {
 	if c.seen.Seen(txid.VeryShortID8()) {
 		c.glb.IncCounter(c.Name() + ".duplicate.seen")
 		c.Log().Debugf("isInPullList seen -- " + txid.String())

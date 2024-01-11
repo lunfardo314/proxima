@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/lunfardo314/easyfl"
-	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util"
 )
 
@@ -17,20 +17,20 @@ type (
 		// sequencer name
 		SeqName string
 		// predecessor
-		ChainInput *core.OutputWithChainID
+		ChainInput *ledger.OutputWithChainID
 		//
-		StemInput *core.OutputWithID // it is branch tx if != nil
+		StemInput *ledger.OutputWithID // it is branch tx if != nil
 		// timestamp of the transaction
-		Timestamp core.LogicalTime
+		Timestamp ledger.LogicalTime
 		// minimum fee
 		MinimumFee uint64
 		// additional inputs to consume. Must be unlockable by chain
 		// can contain sender commands to the sequencer
-		AdditionalInputs []*core.OutputWithID
+		AdditionalInputs []*ledger.OutputWithID
 		// additional outputs to produce
-		AdditionalOutputs []*core.Output
+		AdditionalOutputs []*ledger.Output
 		// Endorsements
-		Endorsements []*core.TransactionID
+		Endorsements []*ledger.TransactionID
 		// chain controller
 		PrivateKey ed25519.PrivateKey
 		//
@@ -98,13 +98,13 @@ func MakeSequencerTransaction(par MakeSequencerTransactionParams) ([]byte, error
 
 	seqID := chainConstraint.ID
 	if chainConstraint.IsOrigin() {
-		seqID = core.OriginChainID(&par.ChainInput.ID)
+		seqID = ledger.OriginChainID(&par.ChainInput.ID)
 	}
 
-	chainConstraint = core.NewChainConstraint(seqID, chainPredIdx, chainConstraintIdx, 0)
-	sequencerConstraint := core.NewSequencerConstraint(chainConstraintIdx, totalProducedAmount)
+	chainConstraint = ledger.NewChainConstraint(seqID, chainPredIdx, chainConstraintIdx, 0)
+	sequencerConstraint := ledger.NewSequencerConstraint(chainConstraintIdx, totalProducedAmount)
 
-	chainOut := core.NewOutput(func(o *core.Output) {
+	chainOut := ledger.NewOutput(func(o *ledger.Output) {
 		o.PutAmount(chainOutAmount)
 		o.PutLock(par.ChainInput.Output.Lock())
 		_, _ = o.PushConstraint(chainConstraint.Bytes())
@@ -131,7 +131,7 @@ func MakeSequencerTransaction(par MakeSequencerTransactionParams) ([]byte, error
 	if err != nil {
 		return nil, errP(err)
 	}
-	txb.PutUnlockParams(chainPredIdx, chainConstraintIdx, core.NewChainUnlockParams(chainOutIndex, chainConstraintIdx, 0))
+	txb.PutUnlockParams(chainPredIdx, chainConstraintIdx, ledger.NewChainUnlockParams(chainOutIndex, chainConstraintIdx, 0))
 
 	// make stem input/output if it is a branch transaction
 	stemOutputIndex := byte(0xff)
@@ -145,9 +145,9 @@ func MakeSequencerTransaction(par MakeSequencerTransactionParams) ([]byte, error
 		if !ok {
 			return nil, errP("can't find stem lock")
 		}
-		stemOut := core.NewOutput(func(o *core.Output) {
+		stemOut := ledger.NewOutput(func(o *ledger.Output) {
 			o.WithAmount(par.StemInput.Output.Amount())
-			o.WithLock(&core.StemLock{
+			o.WithLock(&ledger.StemLock{
 				Supply:              lck.Supply + par.Inflation,
 				InflationAmount:     par.Inflation,
 				PredecessorOutputID: par.StemInput.ID,
@@ -161,26 +161,26 @@ func MakeSequencerTransaction(par MakeSequencerTransactionParams) ([]byte, error
 
 	// consume and unlock additional inputs/outputs
 	// unlock additional inputs
-	tsIn := core.MustNewLogicalTime(0, 0)
+	tsIn := ledger.MustNewLogicalTime(0, 0)
 	for _, o := range par.AdditionalInputs {
 		idx, err := txb.ConsumeOutput(o.Output, o.ID)
 		if err != nil {
 			return nil, errP(err)
 		}
 		switch lockName := o.Output.Lock().Name(); lockName {
-		case core.AddressED25519Name:
-			if err = txb.PutUnlockReference(idx, core.ConstraintIndexLock, 0); err != nil {
+		case ledger.AddressED25519Name:
+			if err = txb.PutUnlockReference(idx, ledger.ConstraintIndexLock, 0); err != nil {
 				return nil, err
 			}
-		case core.ChainLockName:
-			txb.PutUnlockParams(idx, core.ConstraintIndexLock, core.NewChainLockUnlockParams(0, chainConstraintIdx))
+		case ledger.ChainLockName:
+			txb.PutUnlockParams(idx, ledger.ConstraintIndexLock, ledger.NewChainLockUnlockParams(0, chainConstraintIdx))
 		default:
 			return nil, errP("unsupported type of additional input: %s", lockName)
 		}
-		tsIn = core.MaxLogicalTime(tsIn, o.Timestamp())
+		tsIn = ledger.MaxLogicalTime(tsIn, o.Timestamp())
 	}
 
-	if !core.ValidTimePace(tsIn, par.Timestamp) {
+	if !ledger.ValidTimePace(tsIn, par.Timestamp) {
 		return nil, errP("timestamp inconsistent with inputs")
 	}
 
@@ -199,7 +199,7 @@ func MakeSequencerTransaction(par MakeSequencerTransactionParams) ([]byte, error
 }
 
 // ParseMilestoneData expected at index 4, otherwise nil
-func ParseMilestoneData(o *core.Output) *MilestoneData {
+func ParseMilestoneData(o *ledger.Output) *MilestoneData {
 	if o.NumConstraints() < 5 {
 		return nil
 	}
@@ -210,7 +210,7 @@ func ParseMilestoneData(o *core.Output) *MilestoneData {
 	return ret
 }
 
-func (od *MilestoneData) AsConstraint() core.Constraint {
+func (od *MilestoneData) AsConstraint() ledger.Constraint {
 	dscrBin := []byte(od.Name)
 	if len(dscrBin) > 255 {
 		dscrBin = dscrBin[:256]
@@ -224,7 +224,7 @@ func (od *MilestoneData) AsConstraint() core.Constraint {
 	_, _, bytecode, err := easyfl.CompileExpression(src)
 	util.AssertNoError(err)
 
-	constr, err := core.ConstraintFromBytes(bytecode)
+	constr, err := ledger.ConstraintFromBytes(bytecode)
 	util.AssertNoError(err)
 
 	return constr

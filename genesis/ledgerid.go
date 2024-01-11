@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/lunfardo314/easyfl"
-	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/global"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lazybytes"
 	"github.com/lunfardo314/proxima/util/lines"
@@ -35,7 +35,7 @@ type (
 		// max time tick value in the slot. Up to 256 time ticks per time slot
 		MaxTimeTickValueInTimeSlot uint8
 		// time slot of the genesis
-		GenesisTimeSlot core.TimeSlot
+		GenesisTimeSlot ledger.TimeSlot
 		// core constraint library hash. For checking of ledger version compatibility with the node
 		CoreLedgerConstraintsHash [32]byte
 	}
@@ -104,16 +104,16 @@ func MustLedgerIdentityDataFromBytes(data []byte) *LedgerIdentityData {
 	// check baseline time
 	baselineTime := time.Unix(0, int64(binary.BigEndian.Uint64(arr.At(3))))
 	msg = "node assumes baseline time different from state baseline time: expected %v, got %v"
-	util.Assertf(baselineTime.UnixNano() == core.BaselineTimeUnixNano, msg, core.BaselineTimeUnixNano, baselineTime)
+	util.Assertf(baselineTime.UnixNano() == ledger.BaselineTimeUnixNano, msg, ledger.BaselineTimeUnixNano, baselineTime)
 
 	// check time tick duration
 	timeTickDuration := time.Duration(binary.BigEndian.Uint64(arr.At(4)))
 	msg = "node assumes time tick duration different from state baseline duration: expected %dns, got %dns"
-	util.Assertf(timeTickDuration == core.TimeTickDuration(), msg, core.TimeTickDuration().Nanoseconds(), timeTickDuration.Nanoseconds())
+	util.Assertf(timeTickDuration == ledger.TimeTickDuration(), msg, ledger.TimeTickDuration().Nanoseconds(), timeTickDuration.Nanoseconds())
 
 	// check time ticks per slot
 	msg = "node assumes time ticks per slot different from state assumption: expected %d, got %d"
-	util.Assertf(maxTick[0]+1 == core.TimeTicksPerSlot, msg, core.TimeTicksPerSlot, maxTick[0]+1)
+	util.Assertf(maxTick[0]+1 == ledger.TimeTicksPerSlot, msg, ledger.TimeTicksPerSlot, maxTick[0]+1)
 
 	ret := &LedgerIdentityData{
 		Description:                string(arr.At(0)),
@@ -122,23 +122,23 @@ func MustLedgerIdentityDataFromBytes(data []byte) *LedgerIdentityData {
 		BaselineTime:               baselineTime,
 		TimeTickDuration:           timeTickDuration,
 		MaxTimeTickValueInTimeSlot: maxTick[0],
-		GenesisTimeSlot:            core.MustTimeSlotFromBytes(arr.At(6)),
+		GenesisTimeSlot:            ledger.MustTimeSlotFromBytes(arr.At(6)),
 	}
 	copy(ret.CoreLedgerConstraintsHash[:], arr.At(7))
 	return ret
 }
 
-func (id *LedgerIdentityData) GenesisControlledAddress() core.AddressED25519 {
-	return core.AddressED25519FromPublicKey(id.GenesisControllerPublicKey)
+func (id *LedgerIdentityData) GenesisControlledAddress() ledger.AddressED25519 {
+	return ledger.AddressED25519FromPublicKey(id.GenesisControllerPublicKey)
 }
 
 func (id *LedgerIdentityData) TimeTicksPerTimeSlot() int {
 	return int(id.MaxTimeTickValueInTimeSlot) + 1
 }
 
-func (id *LedgerIdentityData) OriginChainID() core.ChainID {
+func (id *LedgerIdentityData) OriginChainID() ledger.ChainID {
 	oid := InitialSupplyOutputID(id.GenesisTimeSlot)
-	return core.OriginChainID(&oid)
+	return ledger.OriginChainID(&oid)
 }
 
 func (id *LedgerIdentityData) String() string {
@@ -212,7 +212,7 @@ func (id *ledgerIdentityDataYAMLable) stateIdentityData() (*LedgerIdentityData, 
 	ret.BaselineTime = time.Unix(0, id.BaselineTime)
 	ret.TimeTickDuration = time.Duration(id.TimeTickDuration)
 	ret.MaxTimeTickValueInTimeSlot = id.MaxTimeTickValueInTimeSlot
-	ret.GenesisTimeSlot = core.TimeSlot(id.GenesisTimeSlot)
+	ret.GenesisTimeSlot = ledger.TimeSlot(id.GenesisTimeSlot)
 	hBin, err := hex.DecodeString(id.CoreLedgerConstraintsHash)
 	if err != nil {
 		return nil, err
@@ -223,7 +223,7 @@ func (id *ledgerIdentityDataYAMLable) stateIdentityData() (*LedgerIdentityData, 
 	copy(ret.CoreLedgerConstraintsHash[:], hBin)
 
 	// control
-	if core.AddressED25519FromPublicKey(ret.GenesisControllerPublicKey).String() != id.GenesisControllerAddress {
+	if ledger.AddressED25519FromPublicKey(ret.GenesisControllerPublicKey).String() != id.GenesisControllerAddress {
 		return nil, fmt.Errorf("YAML data inconsistency: address and public key does not match")
 	}
 	chainID := ret.OriginChainID()
@@ -243,22 +243,22 @@ func StateIdentityDataFromYAML(yamlData []byte) (*LedgerIdentityData, error) {
 
 const DefaultSupply = 1_000_000_000_000
 
-func DefaultIdentityData(privateKey ed25519.PrivateKey, slot ...core.TimeSlot) *LedgerIdentityData {
+func DefaultIdentityData(privateKey ed25519.PrivateKey, slot ...ledger.TimeSlot) *LedgerIdentityData {
 	// creating origin 1 slot before now. More convenient for the workflow_old tests
-	var sl core.TimeSlot
+	var sl ledger.TimeSlot
 	if len(slot) > 0 {
 		sl = slot[0]
 	} else {
-		sl = core.LogicalTimeNow().TimeSlot()
+		sl = ledger.LogicalTimeNow().TimeSlot()
 	}
 	return &LedgerIdentityData{
 		CoreLedgerConstraintsHash:  easyfl.LibraryHash(),
 		Description:                fmt.Sprintf("Proxima prototype version %s", global.Version),
 		InitialSupply:              DefaultSupply,
 		GenesisControllerPublicKey: privateKey.Public().(ed25519.PublicKey),
-		BaselineTime:               core.BaselineTime,
-		TimeTickDuration:           core.TimeTickDuration(),
-		MaxTimeTickValueInTimeSlot: core.TimeTicksPerSlot - 1,
+		BaselineTime:               ledger.BaselineTime,
+		TimeTickDuration:           ledger.TimeTickDuration(),
+		MaxTimeTickValueInTimeSlot: ledger.TimeTicksPerSlot - 1,
 		GenesisTimeSlot:            sl,
 	}
 }

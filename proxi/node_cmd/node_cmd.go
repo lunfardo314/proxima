@@ -4,7 +4,7 @@ import (
 	"sync"
 
 	"github.com/lunfardo314/proxima/api/client"
-	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/proxi/node_cmd/seq_cmd"
 	"github.com/lunfardo314/proxima/util"
@@ -70,7 +70,7 @@ func getClient() *client.APIClient {
 	return client.New(endpoint)
 }
 
-func displayTotals(outs []*core.OutputWithID) {
+func displayTotals(outs []*ledger.OutputWithID) {
 	var sumOnChains, sumOutsideChains uint64
 	var numChains, numNonChains int
 
@@ -96,12 +96,12 @@ func getTagAlongFee() uint64 {
 	return viper.GetUint64("tag-along.fee")
 }
 
-func GetTagAlongSequencerID() *core.ChainID {
+func GetTagAlongSequencerID() *ledger.ChainID {
 	seqIDStr := viper.GetString("tag-along.sequencer_id")
 	if seqIDStr == "" {
 		return nil
 	}
-	ret, err := core.ChainIDFromHexString(seqIDStr)
+	ret, err := ledger.ChainIDFromHexString(seqIDStr)
 	glb.AssertNoError(err)
 
 	o, err := getClient().GetChainOutputData(ret)

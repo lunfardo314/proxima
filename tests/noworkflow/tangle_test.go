@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/genesis"
 	"github.com/lunfardo314/proxima/global"
+	"github.com/lunfardo314/proxima/ledger"
 	state "github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/txbuilder"
@@ -34,9 +34,9 @@ func TestOriginTangle(t *testing.T) {
 	t.Run("origin with distribution", func(t *testing.T) {
 		privKey := testutil.GetTestingPrivateKey()
 		par := genesis.DefaultIdentityData(privKey)
-		addr1 := core.AddressED25519FromPrivateKey(testutil.GetTestingPrivateKey(1))
-		addr2 := core.AddressED25519FromPrivateKey(testutil.GetTestingPrivateKey(2))
-		distrib := []core.LockBalance{
+		addr1 := ledger.AddressED25519FromPrivateKey(testutil.GetTestingPrivateKey(1))
+		addr2 := ledger.AddressED25519FromPrivateKey(testutil.GetTestingPrivateKey(2))
+		distrib := []ledger.LockBalance{
 			{Lock: addr1, Balance: 1_000_000},
 			{Lock: addr2, Balance: 2_000_000},
 		}
@@ -89,14 +89,14 @@ func TestOriginTangle(t *testing.T) {
 
 type conflictTestRunData struct {
 	ut               *utangle_old.UTXOTangle
-	bootstrapChainID core.ChainID
+	bootstrapChainID ledger.ChainID
 	privKey          ed25519.PrivateKey
-	addr             core.AddressED25519
+	addr             ledger.AddressED25519
 	stateIdentity    genesis.LedgerIdentityData
-	originBranchTxid core.TransactionID
-	forkOutput       *core.OutputWithID
+	originBranchTxid ledger.TransactionID
+	forkOutput       *ledger.OutputWithID
 	txBytes          [][]byte
-	outs             []*core.OutputWithID
+	outs             []*ledger.OutputWithID
 	total            uint64
 	pkController     []ed25519.PrivateKey
 }
@@ -111,7 +111,7 @@ func initConflictTest(t *testing.T, nConflicts int, verbose bool) *conflictTestR
 		privKey:       privKeys[0],
 		addr:          addrs[0],
 	}
-	require.True(t, core.AddressED25519MatchesPrivateKey(ret.addr, ret.privKey))
+	require.True(t, ledger.AddressED25519MatchesPrivateKey(ret.addr, ret.privKey))
 
 	ret.pkController = make([]ed25519.PrivateKey, nConflicts)
 	for i := range ret.pkController {
@@ -152,7 +152,7 @@ func initConflictTest(t *testing.T, nConflicts int, verbose bool) *conflictTestR
 
 	ret.txBytes = make([][]byte, nConflicts)
 
-	td := txbuilder.NewTransferData(ret.privKey, ret.addr, core.LogicalTimeNow()).
+	td := txbuilder.NewTransferData(ret.privKey, ret.addr, ledger.LogicalTimeNow()).
 		MustWithInputs(ret.forkOutput)
 
 	vids := make([]*utangle_old.WrappedTx, 0)
@@ -193,7 +193,7 @@ func initConflictTest(t *testing.T, nConflicts int, verbose bool) *conflictTestR
 		}
 	}
 
-	ret.outs = make([]*core.OutputWithID, nConflicts)
+	ret.outs = make([]*ledger.OutputWithID, nConflicts)
 	ret.total = 0
 	for i := range ret.outs {
 		tx, err := transaction.FromBytesMainChecksWithOpt(ret.txBytes[i])
@@ -209,7 +209,7 @@ func initConflictTest(t *testing.T, nConflicts int, verbose bool) *conflictTestR
 type longConflictTestRunData struct {
 	*conflictTestRunData
 	txBytesSeq [][][]byte
-	lastOuts   []*core.OutputWithID
+	lastOuts   []*ledger.OutputWithID
 }
 
 func initLongConflictTest(t *testing.T, nConflicts int, howLong int, printTx bool) *longConflictTestRunData {
@@ -232,7 +232,7 @@ func initLongConflictTest(t *testing.T, nConflicts int, howLong int, printTx boo
 		}
 	}
 
-	ret.lastOuts = make([]*core.OutputWithID, nConflicts)
+	ret.lastOuts = make([]*ledger.OutputWithID, nConflicts)
 	for i := range ret.lastOuts {
 		lastTx, err := transaction.FromBytesMainChecksWithOpt(txBytesSeq[i][howLong-1])
 		require.NoError(t, err)
@@ -255,7 +255,7 @@ func TestBookingDoubleSpends(t *testing.T) {
 		const verbose = false
 		it := initConflictTest(t, howMany, verbose)
 
-		outs := make([]*core.OutputWithID, howMany)
+		outs := make([]*ledger.OutputWithID, howMany)
 		total := uint64(0)
 		for i := range outs {
 			tx, err := transaction.FromBytesMainChecksWithOpt(it.txBytes[i])
@@ -267,7 +267,7 @@ func TestBookingDoubleSpends(t *testing.T) {
 			require.EqualValues(t, 100+i, int(outs[i].Output.Amount()))
 			total += outs[i].Output.Amount()
 		}
-		td := txbuilder.NewTransferData(it.privKey, it.addr, core.LogicalTimeNow())
+		td := txbuilder.NewTransferData(it.privKey, it.addr, ledger.LogicalTimeNow())
 		td.MustWithInputs(outs...).
 			WithAmount(total).
 			WithTargetLock(it.addr)
@@ -291,7 +291,7 @@ func TestBookingDoubleSpends(t *testing.T) {
 		)
 		it := initLongConflictTest(t, howMany, howLong, false)
 
-		td := txbuilder.NewTransferData(it.privKey, it.addr, core.LogicalTimeNow())
+		td := txbuilder.NewTransferData(it.privKey, it.addr, ledger.LogicalTimeNow())
 		td.MustWithInputs(it.lastOuts...).
 			WithAmount(it.total).
 			WithTargetLock(it.addr)
@@ -323,7 +323,7 @@ func TestEndorsements1(t *testing.T) {
 		endorseTxid := it.lastOuts[howMany-1].ID.TransactionID()
 		total := it.total - it.lastOuts[howMany-1].Output.Amount()
 
-		td := txbuilder.NewTransferData(it.privKey, it.addr, core.LogicalTimeNow())
+		td := txbuilder.NewTransferData(it.privKey, it.addr, ledger.LogicalTimeNow())
 		td.MustWithInputs(it.lastOuts[:howMany-1]...).
 			WithEndorsements(&endorseTxid).
 			WithAmount(total).
@@ -352,7 +352,7 @@ func TestEndorsements1(t *testing.T) {
 		total := it.total - it.lastOuts[nConflicts-1].Output.Amount()
 
 		// testing if tx builder allows incorrect endorsements
-		td := txbuilder.NewTransferData(it.privKey, it.addr, core.LogicalTimeNow())
+		td := txbuilder.NewTransferData(it.privKey, it.addr, ledger.LogicalTimeNow())
 		td.MustWithInputs(it.lastOuts[:nConflicts-1]...).
 			WithEndorsements(&endorseTxid).
 			WithAmount(total).
@@ -367,20 +367,20 @@ func TestEndorsements1(t *testing.T) {
 
 type multiChainTestData struct {
 	t                  *testing.T
-	ts                 core.LogicalTime
+	ts                 ledger.LogicalTime
 	ut                 *utangle_old.UTXOTangle
 	txBytesStore       global.TxBytesStore
-	bootstrapChainID   core.ChainID
+	bootstrapChainID   ledger.ChainID
 	privKey            ed25519.PrivateKey
-	addr               core.AddressED25519
+	addr               ledger.AddressED25519
 	faucetPrivKey      ed25519.PrivateKey
-	faucetAddr         core.AddressED25519
-	faucetOrigin       *core.OutputWithID
+	faucetAddr         ledger.AddressED25519
+	faucetOrigin       *ledger.OutputWithID
 	sPar               genesis.LedgerIdentityData
-	originBranchTxid   core.TransactionID
+	originBranchTxid   ledger.TransactionID
 	txBytesChainOrigin []byte
 	txBytes            [][]byte // with chain origins
-	chainOrigins       []*core.OutputWithChainID
+	chainOrigins       []*ledger.OutputWithChainID
 	total              uint64
 	pkController       []ed25519.PrivateKey
 }
@@ -388,10 +388,10 @@ type multiChainTestData struct {
 const onChainAmount = 2_000_000
 
 func initMultiChainTest(t *testing.T, nChains int, printTx bool) *multiChainTestData {
-	t.Logf("initMultiChainTest: now is: %s, %v", core.LogicalTimeNow().String(), time.Now())
+	t.Logf("initMultiChainTest: now is: %s, %v", ledger.LogicalTimeNow().String(), time.Now())
 	ret := &multiChainTestData{t: t}
 	var privKeys []ed25519.PrivateKey
-	var addrs []core.AddressED25519
+	var addrs []ledger.AddressED25519
 
 	genesisPrivKey := testutil.GetTestingPrivateKey()
 	distrib, privKeys, addrs := inittest.GenesisParamsWithPreDistribution(2, onChainAmount*uint64(nChains))
@@ -427,8 +427,8 @@ func initMultiChainTest(t *testing.T, nChains int, printTx bool) *multiChainTest
 	t.Logf("origin branch txid: %s", ret.originBranchTxid.StringShort())
 	t.Logf("%s", ret.ut.Info())
 
-	ret.faucetOrigin = &core.OutputWithID{
-		ID:     core.NewOutputID(&ret.originBranchTxid, 0),
+	ret.faucetOrigin = &ledger.OutputWithID{
+		ID:     ledger.NewOutputID(&ret.originBranchTxid, 0),
 		Output: nil,
 	}
 	bal, _ := state.BalanceOnLock(stateReader, ret.addr)
@@ -459,13 +459,13 @@ func initMultiChainTest(t *testing.T, nChains int, printTx bool) *multiChainTest
 	require.NoError(t, err)
 	txb.PutSignatureUnlock(0)
 
-	ret.ts = firstOut.Timestamp().AddTicks(core.TransactionPaceInTicks)
+	ret.ts = firstOut.Timestamp().AddTicks(ledger.TransactionPaceInTicks)
 
-	ret.chainOrigins = make([]*core.OutputWithChainID, nChains)
+	ret.chainOrigins = make([]*ledger.OutputWithChainID, nChains)
 	for range ret.chainOrigins {
-		o := core.NewOutput(func(o *core.Output) {
+		o := ledger.NewOutput(func(o *ledger.Output) {
 			o.WithAmount(onChainAmount).WithLock(ret.addr)
-			_, err := o.PushConstraint(core.NewChainOrigin().Bytes())
+			_, err := o.PushConstraint(ledger.NewChainOrigin().Bytes())
 			require.NoError(t, err)
 		})
 		_, err = txb.ProduceOutput(o)
@@ -485,15 +485,15 @@ func initMultiChainTest(t *testing.T, nChains int, printTx bool) *multiChainTest
 		t.Logf("chain origin tx: %s", tx.ToString(stateReader.GetUTXO))
 	}
 
-	tx.ForEachProducedOutput(func(idx byte, o *core.Output, oid *core.OutputID) bool {
-		out := core.OutputWithID{
+	tx.ForEachProducedOutput(func(idx byte, o *ledger.Output, oid *ledger.OutputID) bool {
+		out := ledger.OutputWithID{
 			ID:     *oid,
 			Output: o,
 		}
 		if int(idx) != nChains {
 			chainID, ok := out.ExtractChainID()
 			require.True(t, ok)
-			ret.chainOrigins[idx] = &core.OutputWithChainID{
+			ret.chainOrigins[idx] = &ledger.OutputWithChainID{
 				OutputWithID: out,
 				ChainID:      chainID,
 			}
@@ -517,7 +517,7 @@ func initMultiChainTest(t *testing.T, nChains int, printTx bool) *multiChainTest
 }
 
 func (r *multiChainTestData) createSequencerChain1(chainIdx int, pace int, printtx bool, exitFun func(i int, tx *transaction.Transaction) bool) [][]byte {
-	require.True(r.t, pace >= core.TransactionPaceInTicks*2)
+	require.True(r.t, pace >= ledger.TransactionPaceInTicks*2)
 
 	ret := make([][]byte, 0)
 	outConsumeChain := r.chainOrigins[chainIdx]
@@ -559,7 +559,7 @@ func (r *multiChainTestData) createSequencerChain1(chainIdx int, pace int, print
 
 		par.Endorsements = nil
 		if !par.ChainInput.ID.SequencerFlagON() {
-			par.Endorsements = []*core.TransactionID{&lastBranchID}
+			par.Endorsements = []*ledger.TransactionID{&lastBranchID}
 		}
 
 		txBytes, err := txbuilder.MakeSequencerTransaction(par)
@@ -744,19 +744,19 @@ func TestMultiChain(t *testing.T) {
 
 		idToBeEndorsed, tsToBeEndorsed, err := transaction.IDAndTimestampFromTransactionBytes(txBytesSeq[0][len(txBytesSeq[0])-1])
 		require.NoError(t, err)
-		ts := core.MaxLogicalTime(tsToBeEndorsed, txEndorser.Timestamp())
-		ts = ts.AddTicks(core.TransactionPaceInTicks)
+		ts := ledger.MaxLogicalTime(tsToBeEndorsed, txEndorser.Timestamp())
+		ts = ts.AddTicks(ledger.TransactionPaceInTicks)
 		t.Logf("timestamp to be endorsed: %s, endorser's timestamp: %s", tsToBeEndorsed.String(), ts.String())
 		require.True(t, ts.TimeTick() != 0 && ts.TimeSlot() == txEndorser.Timestamp().TimeSlot())
 		t.Logf("ID to be endorsed: %s", idToBeEndorsed.StringShort())
 
 		txBytes, err = txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
-			ChainInput: &core.OutputWithChainID{
+			ChainInput: &ledger.OutputWithChainID{
 				OutputWithID: *out,
 				ChainID:      r.chainOrigins[1].ChainID,
 			},
 			Timestamp:    ts,
-			Endorsements: []*core.TransactionID{&idToBeEndorsed},
+			Endorsements: []*ledger.TransactionID{&idToBeEndorsed},
 			PrivateKey:   r.privKey,
 		})
 		require.NoError(t, err)
@@ -889,7 +889,7 @@ func TestMultiChain(t *testing.T) {
 
 // n parallel sequencer chains. Each chain endorses one previous, if possible
 func (r *multiChainTestData) createSequencerChains1(pace int, howLong int) [][]byte {
-	require.True(r.t, pace >= core.TransactionPaceInTicks*2)
+	require.True(r.t, pace >= ledger.TransactionPaceInTicks*2)
 	nChains := len(r.chainOrigins)
 	require.True(r.t, nChains >= 2)
 
@@ -901,7 +901,7 @@ func (r *multiChainTestData) createSequencerChains1(pace int, howLong int) [][]b
 		txBytes, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
 			ChainInput:   r.chainOrigins[counter],
 			Timestamp:    r.chainOrigins[counter].Timestamp().AddTicks(pace),
-			Endorsements: []*core.TransactionID{&r.originBranchTxid},
+			Endorsements: []*ledger.TransactionID{&r.originBranchTxid},
 			PrivateKey:   r.privKey,
 		})
 		require.NoError(r.t, err)
@@ -926,27 +926,27 @@ func (r *multiChainTestData) createSequencerChains1(pace int, howLong int) [][]b
 
 	for i := counter; i < howLong; i++ {
 		nextChainIdx = (curChainIdx + 1) % nChains
-		ts := core.MaxLogicalTime(
+		ts := ledger.MaxLogicalTime(
 			lastInChain(nextChainIdx).Timestamp().AddTicks(pace),
-			lastInChain(curChainIdx).Timestamp().AddTicks(core.TransactionPaceInTicks),
+			lastInChain(curChainIdx).Timestamp().AddTicks(ledger.TransactionPaceInTicks),
 		)
 		chainIn := lastInChain(nextChainIdx).MustProducedOutputWithIDAt(0)
 
 		if ts.TimesTicksToNextSlotBoundary() < 2*pace {
 			ts = ts.NextTimeSlotBoundary()
 		}
-		var endorse []*core.TransactionID
-		var stemOut *core.OutputWithID
+		var endorse []*ledger.TransactionID
+		var stemOut *ledger.OutputWithID
 
 		if ts.TimeTick() == 0 {
 			// create branch tx
 			stemOut = lastStemOutput
 		} else {
 			// endorse previous sequencer tx
-			endorse = []*core.TransactionID{lastInChain(curChainIdx).ID()}
+			endorse = []*ledger.TransactionID{lastInChain(curChainIdx).ID()}
 		}
 		txBytes, err = txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
-			ChainInput: &core.OutputWithChainID{
+			ChainInput: &ledger.OutputWithChainID{
 				OutputWithID: *chainIn,
 				ChainID:      r.chainOrigins[nextChainIdx].ChainID,
 			},
@@ -978,7 +978,7 @@ func (r *multiChainTestData) createSequencerChains1(pace int, howLong int) [][]b
 
 // n parallel sequencer chains. Each sequencer transaction endorses 1 or 2 previous if possible
 func (r *multiChainTestData) createSequencerChains2(pace int, howLong int) [][]byte {
-	require.True(r.t, pace >= core.TransactionPaceInTicks*2)
+	require.True(r.t, pace >= ledger.TransactionPaceInTicks*2)
 	nChains := len(r.chainOrigins)
 	require.True(r.t, nChains >= 2)
 
@@ -989,7 +989,7 @@ func (r *multiChainTestData) createSequencerChains2(pace int, howLong int) [][]b
 		txBytes, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
 			ChainInput:   r.chainOrigins[counter],
 			Timestamp:    r.chainOrigins[counter].Timestamp().AddTicks(pace),
-			Endorsements: []*core.TransactionID{&r.originBranchTxid},
+			Endorsements: []*ledger.TransactionID{&r.originBranchTxid},
 			PrivateKey:   r.privKey,
 		})
 		require.NoError(r.t, err)
@@ -1014,17 +1014,17 @@ func (r *multiChainTestData) createSequencerChains2(pace int, howLong int) [][]b
 
 	for i := counter; i < howLong; i++ {
 		nextChainIdx = (curChainIdx + 1) % nChains
-		ts := core.MaxLogicalTime(
+		ts := ledger.MaxLogicalTime(
 			lastInChain(nextChainIdx).Timestamp().AddTicks(pace),
-			lastInChain(curChainIdx).Timestamp().AddTicks(core.TransactionPaceInTicks),
+			lastInChain(curChainIdx).Timestamp().AddTicks(ledger.TransactionPaceInTicks),
 		)
 		chainIn := lastInChain(nextChainIdx).MustProducedOutputWithIDAt(0)
 
 		if ts.TimesTicksToNextSlotBoundary() < 2*pace {
 			ts = ts.NextTimeSlotBoundary()
 		}
-		endorse := make([]*core.TransactionID, 0)
-		var stemOut *core.OutputWithID
+		endorse := make([]*ledger.TransactionID, 0)
+		var stemOut *ledger.OutputWithID
 
 		if ts.TimeTick() == 0 {
 			// create branch tx
@@ -1051,7 +1051,7 @@ func (r *multiChainTestData) createSequencerChains2(pace int, howLong int) [][]b
 			}
 		}
 		txBytes, err = txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
-			ChainInput: &core.OutputWithChainID{
+			ChainInput: &ledger.OutputWithChainID{
 				OutputWithID: *chainIn,
 				ChainID:      r.chainOrigins[nextChainIdx].ChainID,
 			},
@@ -1088,7 +1088,7 @@ func (r *multiChainTestData) createSequencerChains2(pace int, howLong int) [][]b
 // n parallel sequencer chains. Each sequencer transaction endorses 1 or 2 previous if possible
 // adding faucet transactions in between
 func (r *multiChainTestData) createSequencerChains3(pace int, howLong int, printTx bool) [][]byte {
-	require.True(r.t, pace >= core.TransactionPaceInTicks*2)
+	require.True(r.t, pace >= ledger.TransactionPaceInTicks*2)
 	nChains := len(r.chainOrigins)
 	require.True(r.t, nChains >= 2)
 
@@ -1099,7 +1099,7 @@ func (r *multiChainTestData) createSequencerChains3(pace int, howLong int, print
 		txBytes, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
 			ChainInput:   r.chainOrigins[counter],
 			Timestamp:    r.chainOrigins[counter].Timestamp().AddTicks(pace),
-			Endorsements: []*core.TransactionID{&r.originBranchTxid},
+			Endorsements: []*ledger.TransactionID{&r.originBranchTxid},
 			PrivateKey:   r.privKey,
 		})
 		require.NoError(r.t, err)
@@ -1130,8 +1130,8 @@ func (r *multiChainTestData) createSequencerChains3(pace int, howLong int, print
 	for i := counter; i < howLong; i++ {
 		nextChainIdx = (curChainIdx + 1) % nChains
 		// create faucet tx
-		td := txbuilder.NewTransferData(r.faucetPrivKey, r.faucetAddr, faucetOutput.Timestamp().AddTicks(core.TransactionPaceInTicks))
-		td.WithTargetLock(core.ChainLockFromChainID(r.chainOrigins[nextChainIdx].ChainID)).
+		td := txbuilder.NewTransferData(r.faucetPrivKey, r.faucetAddr, faucetOutput.Timestamp().AddTicks(ledger.TransactionPaceInTicks))
+		td.WithTargetLock(ledger.ChainLockFromChainID(r.chainOrigins[nextChainIdx].ChainID)).
 			WithAmount(100).
 			MustWithInputs(faucetOutput)
 		txBytes, err = txbuilder.MakeTransferTransaction(td)
@@ -1145,18 +1145,18 @@ func (r *multiChainTestData) createSequencerChains3(pace int, howLong int, print
 			r.t.Logf("faucet tx %s: amount left on faucet: %d", tx.IDShortString(), faucetOutput.Output.Amount())
 		}
 
-		ts := core.MaxLogicalTime(
+		ts := ledger.MaxLogicalTime(
 			lastInChain(nextChainIdx).Timestamp().AddTicks(pace),
-			lastInChain(curChainIdx).Timestamp().AddTicks(core.TransactionPaceInTicks),
-			tx.Timestamp().AddTicks(core.TransactionPaceInTicks),
+			lastInChain(curChainIdx).Timestamp().AddTicks(ledger.TransactionPaceInTicks),
+			tx.Timestamp().AddTicks(ledger.TransactionPaceInTicks),
 		)
 		chainIn := lastInChain(nextChainIdx).MustProducedOutputWithIDAt(0)
 
 		if ts.TimesTicksToNextSlotBoundary() < 2*pace {
 			ts = ts.NextTimeSlotBoundary()
 		}
-		endorse := make([]*core.TransactionID, 0)
-		var stemOut *core.OutputWithID
+		endorse := make([]*ledger.TransactionID, 0)
+		var stemOut *ledger.OutputWithID
 
 		if ts.TimeTick() == 0 {
 			// create branch tx
@@ -1183,12 +1183,12 @@ func (r *multiChainTestData) createSequencerChains3(pace int, howLong int, print
 			}
 		}
 		txBytes, err = txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
-			ChainInput: &core.OutputWithChainID{
+			ChainInput: &ledger.OutputWithChainID{
 				OutputWithID: *chainIn,
 				ChainID:      r.chainOrigins[nextChainIdx].ChainID,
 			},
 			StemInput:        stemOut,
-			AdditionalInputs: []*core.OutputWithID{feeOutput},
+			AdditionalInputs: []*ledger.OutputWithID{feeOutput},
 			Endorsements:     endorse,
 			Timestamp:        ts,
 			PrivateKey:       r.privKey,
@@ -1319,14 +1319,14 @@ func (r *multiChainTestData) createSequencerChains3(pace int, howLong int, print
 // n parallel sequencer chains. Each chain endorses one previous, if possible
 // Branch transactions make inflation
 func (r *multiChainTestData) create1SequencerChain(pace int, howLong int, inflation func() uint64) [][]byte {
-	require.True(r.t, pace >= core.TransactionPaceInTicks*2)
+	require.True(r.t, pace >= ledger.TransactionPaceInTicks*2)
 
 	ret := make([][]byte, 0)
 	// sequencer tx
 	txBytes, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
 		ChainInput:   r.chainOrigins[0],
 		Timestamp:    r.chainOrigins[0].Timestamp().AddTicks(pace),
-		Endorsements: []*core.TransactionID{&r.originBranchTxid},
+		Endorsements: []*ledger.TransactionID{&r.originBranchTxid},
 		PrivateKey:   r.privKey,
 	})
 	require.NoError(r.t, err)
@@ -1339,15 +1339,15 @@ func (r *multiChainTestData) create1SequencerChain(pace int, howLong int, inflat
 	lastInChain := tx
 	ret = append(ret, txBytes)
 	for i := 0; i < howLong; i++ {
-		ts := core.MaxLogicalTime(
+		ts := ledger.MaxLogicalTime(
 			lastInChain.Timestamp().AddTicks(pace),
-			lastInChain.Timestamp().AddTicks(core.TransactionPaceInTicks),
+			lastInChain.Timestamp().AddTicks(ledger.TransactionPaceInTicks),
 		)
 		chainIn := lastInChain.MustProducedOutputWithIDAt(0)
 		if ts.TimesTicksToNextSlotBoundary() < 2*pace {
 			ts = ts.NextTimeSlotBoundary()
 		}
-		var stemOut *core.OutputWithID
+		var stemOut *ledger.OutputWithID
 		var inflationAmount uint64
 		if ts.TimeTick() == 0 {
 			// create branch tx
@@ -1355,7 +1355,7 @@ func (r *multiChainTestData) create1SequencerChain(pace int, howLong int, inflat
 			inflationAmount = inflation()
 		}
 		txBytes, err = txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
-			ChainInput: &core.OutputWithChainID{
+			ChainInput: &ledger.OutputWithChainID{
 				OutputWithID: *chainIn,
 				ChainID:      r.chainOrigins[0].ChainID,
 			},

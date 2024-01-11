@@ -3,8 +3,8 @@ package workflow
 import (
 	"time"
 
-	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/global"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/utangle_old"
 	"go.uber.org/zap"
 )
@@ -22,7 +22,7 @@ const (
 )
 
 func (w *Workflow) pruneOrphanedLoop(log *zap.SugaredLogger) {
-	PruneOrphanedPeriod := core.TimeSlotDuration()
+	PruneOrphanedPeriod := ledger.TimeSlotDuration()
 
 	syncStatus := w.utxoTangle.SyncData()
 	for w.working.Load() {
@@ -41,13 +41,13 @@ func (w *Workflow) pruneOrphanedLoop(log *zap.SugaredLogger) {
 		w.utxoTangle.SyncData().SetLastPrunedOrphaned(time.Now())
 
 		log.Infof("SLOT %d. Pruned %d orphaned transactions and %d branches out of total %d dag in %v, deleted slots: %d",
-			core.LogicalTimeNow().TimeSlot(), nOrphaned, nOrphanedBranches, nVertices, time.Since(startTime), nDeletedSlots)
+			ledger.LogicalTimeNow().TimeSlot(), nOrphaned, nOrphanedBranches, nVertices, time.Since(startTime), nDeletedSlots)
 	}
 	log.Infof("Prune loop stopped")
 }
 
 func (w *Workflow) cutFinalLoop(log *zap.SugaredLogger) {
-	CutFinalPeriod := core.TimeSlotDuration() / 2
+	CutFinalPeriod := ledger.TimeSlotDuration() / 2
 
 	syncStatus := w.utxoTangle.SyncData()
 	for w.working.Load() {

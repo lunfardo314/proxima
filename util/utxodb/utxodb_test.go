@@ -3,8 +3,8 @@ package utxodb
 import (
 	"testing"
 
-	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/genesis"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/testutil"
 	"github.com/stretchr/testify/require"
@@ -33,7 +33,7 @@ func TestUTXODB(t *testing.T) {
 	})
 	t.Run("from faucet", func(t *testing.T) {
 		u := NewUTXODB()
-		addr := core.AddressED25519FromPrivateKey(testutil.GetTestingPrivateKey(100))
+		addr := ledger.AddressED25519FromPrivateKey(testutil.GetTestingPrivateKey(100))
 		err := u.TokensFromFaucet(addr, 1337)
 		require.NoError(t, err)
 		require.EqualValues(t, 1337, int(u.Balance(addr)))

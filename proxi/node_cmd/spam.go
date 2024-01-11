@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/api/client"
-	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/util"
@@ -21,9 +21,9 @@ type spammerConfig struct {
 	submitNowait      bool
 	maxTransactions   int
 	maxDuration       time.Duration
-	tagAlongSequencer core.ChainID
+	tagAlongSequencer ledger.ChainID
 	tagAlongFee       uint64
-	target            core.Accountable
+	target            ledger.Accountable
 }
 
 func initSpamCmd() *cobra.Command {
@@ -85,9 +85,9 @@ func readSpammerConfigIn(sub *viper.Viper) (ret spammerConfig) {
 	ret.tagAlongFee = sub.GetUint64("tag_along.fee")
 	seqStr := sub.GetString("tag_along.sequencer")
 	var err error
-	ret.tagAlongSequencer, err = core.ChainIDFromHexString(seqStr)
+	ret.tagAlongSequencer, err = ledger.ChainIDFromHexString(seqStr)
 	glb.AssertNoError(err)
-	ret.target, err = core.AddressED25519FromSource(sub.GetString("target"))
+	ret.target, err = ledger.AddressED25519FromSource(sub.GetString("target"))
 	glb.AssertNoError(err)
 	return
 }
@@ -136,12 +136,12 @@ func standardScenario(cfg spammerConfig) {
 
 	beginTime := time.Now()
 	for {
-		time.Sleep(time.Duration(cfg.pace) * core.TimeTickDuration())
+		time.Sleep(time.Duration(cfg.pace) * ledger.TimeTickDuration())
 
 		glb.Assertf(cfg.maxTransactions == 0 || txCounter < cfg.maxTransactions, "maximum transaction limit %d has been reached", cfg.maxTransactions)
 		glb.Assertf(time.Now().Before(deadline), "spam duration limit has been reached")
 
-		nowisTs := core.LogicalTimeNow()
+		nowisTs := ledger.LogicalTimeNow()
 		outs, balance, err := getClient().GetTransferableOutputs(walletData.Account, nowisTs, cfg.bundleSize)
 		glb.AssertNoError(err)
 
@@ -156,7 +156,7 @@ func standardScenario(cfg spammerConfig) {
 
 		bundle, oid := prepareBundle(walletData, cfg)
 		bundlePace := cfg.pace * len(bundle)
-		bundleDuration := time.Duration(bundlePace) * core.TimeTickDuration()
+		bundleDuration := time.Duration(bundlePace) * ledger.TimeTickDuration()
 		glb.Infof("submitting bundle of %d transactions, total duration %d ticks, %v", len(bundle), bundlePace, bundleDuration)
 
 		c := getClient()
@@ -178,28 +178,28 @@ func standardScenario(cfg spammerConfig) {
 	}
 }
 
-func maxTimestamp(outs []*core.OutputWithID) (ret core.LogicalTime) {
+func maxTimestamp(outs []*ledger.OutputWithID) (ret ledger.LogicalTime) {
 	for _, o := range outs {
-		ret = core.MaxLogicalTime(ret, o.Timestamp())
+		ret = ledger.MaxLogicalTime(ret, o.Timestamp())
 	}
 	return
 }
 
-func prepareBundle(walletData glb.WalletData, cfg spammerConfig) ([][]byte, core.OutputID) {
+func prepareBundle(walletData glb.WalletData, cfg spammerConfig) ([][]byte, ledger.OutputID) {
 	ret := make([][]byte, 0)
 	c := getClient()
 	txCtx, err := c.MakeCompactTransaction(walletData.PrivateKey, nil, 0, cfg.bundleSize*3)
 	glb.AssertNoError(err)
 
 	numTx := cfg.bundleSize
-	var lastOuts []*core.OutputWithID
+	var lastOuts []*ledger.OutputWithID
 	if txCtx != nil {
 		ret = append(ret, txCtx.TransactionBytes())
 		lastOut, _ := txCtx.ProducedOutput(0)
-		lastOuts = []*core.OutputWithID{lastOut}
+		lastOuts = []*ledger.OutputWithID{lastOut}
 		numTx--
 	} else {
-		lastOuts, _, err = c.GetTransferableOutputs(walletData.Account, core.LogicalTimeNow(), cfg.bundleSize)
+		lastOuts, _, err = c.GetTransferableOutputs(walletData.Account, ledger.LogicalTimeNow(), cfg.bundleSize)
 		glb.AssertNoError(err)
 	}
 
@@ -208,7 +208,7 @@ func prepareBundle(walletData glb.WalletData, cfg spammerConfig) ([][]byte, core
 		if i == numTx-1 {
 			fee = cfg.tagAlongFee
 		}
-		ts := core.MaxLogicalTime(maxTimestamp(lastOuts).AddTicks(cfg.pace), core.LogicalTimeNow())
+		ts := ledger.MaxLogicalTime(maxTimestamp(lastOuts).AddTicks(cfg.pace), ledger.LogicalTimeNow())
 		txBytes, err := client.MakeTransferTransaction(client.MakeTransferTransactionParams{
 			Inputs:        lastOuts,
 			Target:        cfg.target.AsLock(),
@@ -225,8 +225,8 @@ func prepareBundle(walletData glb.WalletData, cfg spammerConfig) ([][]byte, core
 
 		lastOuts, err = transaction.OutputsWithIDFromTransactionBytes(txBytes)
 		glb.AssertNoError(err)
-		lastOuts = util.FilterSlice(lastOuts, func(o *core.OutputWithID) bool {
-			return core.EqualConstraints(o.Output.Lock(), walletData.Account)
+		lastOuts = util.FilterSlice(lastOuts, func(o *ledger.OutputWithID) bool {
+			return ledger.EqualConstraints(o.Output.Lock(), walletData.Account)
 		})
 	}
 	glb.Verbosef("last outputs in the bundle:")

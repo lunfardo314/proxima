@@ -6,8 +6,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/global"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/util"
@@ -35,9 +35,9 @@ type (
 
 	// _genericWrapper generic types of vertex hiding behind WrappedTx identity
 	_genericWrapper interface {
-		_id() *core.TransactionID
+		_id() *ledger.TransactionID
 		_time() time.Time
-		_outputAt(idx byte) (*core.Output, error)
+		_outputAt(idx byte) (*ledger.Output, error)
 		_hasOutputAt(idx byte) (bool, bool)
 	}
 
@@ -51,7 +51,7 @@ type (
 	}
 
 	_deletedTx struct {
-		core.TransactionID
+		ledger.TransactionID
 	}
 
 	UnwrapOptions struct {
@@ -70,7 +70,7 @@ type (
 // ErrDeletedVertexAccessed exception is raised by PanicAccessDeleted handler of RUnwrap vertex so that could be caught if necessary
 var ErrDeletedVertexAccessed = errors.New("deleted vertex should not be accessed")
 
-func (v _vertex) _id() *core.TransactionID {
+func (v _vertex) _id() *ledger.TransactionID {
 	return v.Tx.ID()
 }
 
@@ -78,7 +78,7 @@ func (v _vertex) _time() time.Time {
 	return v.whenWrapped
 }
 
-func (v _vertex) _outputAt(idx byte) (*core.Output, error) {
+func (v _vertex) _outputAt(idx byte) (*ledger.Output, error) {
 	return v.Tx.ProducedOutputAt(idx)
 }
 
@@ -89,7 +89,7 @@ func (v _vertex) _hasOutputAt(idx byte) (bool, bool) {
 	return true, false
 }
 
-func (v _virtualTx) _id() *core.TransactionID {
+func (v _virtualTx) _id() *ledger.TransactionID {
 	return &v.txid
 }
 
@@ -97,7 +97,7 @@ func (v _virtualTx) _time() time.Time {
 	return time.Time{}
 }
 
-func (v _virtualTx) _outputAt(idx byte) (*core.Output, error) {
+func (v _virtualTx) _outputAt(idx byte) (*ledger.Output, error) {
 	if o, available := v.OutputAt(idx); available {
 		return o, nil
 	}
@@ -109,7 +109,7 @@ func (v _virtualTx) _hasOutputAt(idx byte) (bool, bool) {
 	return hasIt, false
 }
 
-func (v _deletedTx) _id() *core.TransactionID {
+func (v _deletedTx) _id() *ledger.TransactionID {
 	return &v.TransactionID
 }
 
@@ -117,7 +117,7 @@ func (v _deletedTx) _time() time.Time {
 	return time.Time{}
 }
 
-func (v _deletedTx) _outputAt(_ byte) (*core.Output, error) {
+func (v _deletedTx) _outputAt(_ byte) (*ledger.Output, error) {
 	panic(ErrDeletedVertexAccessed)
 }
 
@@ -135,15 +135,15 @@ func (vid *WrappedTx) _put(g _genericWrapper) {
 	vid._genericWrapper = g
 }
 
-func (vid *WrappedTx) ID() *core.TransactionID {
+func (vid *WrappedTx) ID() *ledger.TransactionID {
 	vid.mutex.RLock()
 	defer vid.mutex.RUnlock()
 
 	return vid._genericWrapper._id()
 }
 
-func DecodeIDs(vids ...*WrappedTx) []*core.TransactionID {
-	ret := make([]*core.TransactionID, len(vids))
+func DecodeIDs(vids ...*WrappedTx) []*ledger.TransactionID {
+	ret := make([]*ledger.TransactionID, len(vids))
 	for i, vid := range vids {
 		ret[i] = vid.ID()
 	}
@@ -172,11 +172,11 @@ func (vid *WrappedTx) IsSequencerMilestone() bool {
 	return vid.ID().IsSequencerMilestone()
 }
 
-func (vid *WrappedTx) Timestamp() core.LogicalTime {
+func (vid *WrappedTx) Timestamp() ledger.LogicalTime {
 	return vid.ID().Timestamp()
 }
 
-func (vid *WrappedTx) TimeSlot() core.TimeSlot {
+func (vid *WrappedTx) TimeSlot() ledger.TimeSlot {
 	return vid._genericWrapper._id().TimeSlot()
 }
 
@@ -194,13 +194,13 @@ func (vid *WrappedTx) MarkDeleted() {
 	}
 }
 
-func (vid *WrappedTx) OutputWithIDAt(idx byte) (*core.OutputWithID, error) {
+func (vid *WrappedTx) OutputWithIDAt(idx byte) (*ledger.OutputWithID, error) {
 	ret, err := vid.OutputAt(idx)
 	if err != nil || ret == nil {
 		return nil, err
 	}
-	return &core.OutputWithID{
-		ID:     core.NewOutputID(vid.ID(), idx),
+	return &ledger.OutputWithID{
+		ID:     ledger.NewOutputID(vid.ID(), idx),
 		Output: ret,
 	}, nil
 }
@@ -208,7 +208,7 @@ func (vid *WrappedTx) OutputWithIDAt(idx byte) (*core.OutputWithID, error) {
 // OutputAt return output at index, if available.
 // err != nil indicates wrong index
 // nil, nil means output not available, but no error (orphaned)
-func (vid *WrappedTx) OutputAt(idx byte) (*core.Output, error) {
+func (vid *WrappedTx) OutputAt(idx byte) (*ledger.Output, error) {
 	vid.mutex.RLock()
 	defer vid.mutex.RUnlock()
 
@@ -222,9 +222,9 @@ func (vid *WrappedTx) HasOutputAt(idx byte) (bool, bool) {
 	return vid._hasOutputAt(idx)
 }
 
-func (vid *WrappedTx) SequencerIDIfAvailable() (core.ChainID, bool) {
+func (vid *WrappedTx) SequencerIDIfAvailable() (ledger.ChainID, bool) {
 	var isAvailable bool
-	var ret core.ChainID
+	var ret ledger.ChainID
 	vid.Unwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
 			isAvailable = v.Tx.IsSequencerMilestone()
@@ -237,9 +237,9 @@ func (vid *WrappedTx) SequencerIDIfAvailable() (core.ChainID, bool) {
 				seqOData, ok := v.outputs[v.sequencerOutputs[0]].SequencerOutputData()
 				util.Assertf(ok, "sequencer output data unavailable for the output #%d", v.sequencerOutputs[0])
 				ret = seqOData.ChainConstraint.ID
-				if ret == core.NilChainID {
+				if ret == ledger.NilChainID {
 					oid := vid.OutputID(v.sequencerOutputs[0])
-					ret = core.OriginChainID(&oid)
+					ret = ledger.OriginChainID(&oid)
 				}
 				isAvailable = true
 			}
@@ -248,7 +248,7 @@ func (vid *WrappedTx) SequencerIDIfAvailable() (core.ChainID, bool) {
 	return ret, isAvailable
 }
 
-func (vid *WrappedTx) MustSequencerID() core.ChainID {
+func (vid *WrappedTx) MustSequencerID() ledger.ChainID {
 	ret, ok := vid.SequencerIDIfAvailable()
 	util.Assertf(ok, "not a sequencer milestone")
 	return ret
@@ -265,7 +265,7 @@ func (vid *WrappedTx) SequencerPredecessor() (ret *WrappedTx) {
 
 // BaseStemOutput returns wrapped stem output for the branch state or nil if unavailable
 func (vid *WrappedTx) BaseStemOutput(ut *UTXOTangle) *WrappedOutput {
-	var branchTxID *core.TransactionID
+	var branchTxID *ledger.TransactionID
 	if vid.IsBranchTransaction() {
 		branchTxID = vid.ID()
 	} else {
@@ -320,8 +320,8 @@ func (vid *WrappedTx) IsDeleted() bool {
 	return ret
 }
 
-func (vid *WrappedTx) OutputID(idx byte) (ret core.OutputID) {
-	ret = core.NewOutputID(vid.ID(), idx)
+func (vid *WrappedTx) OutputID(idx byte) (ret ledger.OutputID) {
+	ret = ledger.NewOutputID(vid.ID(), idx)
 	return
 }
 
@@ -466,9 +466,9 @@ func (vid *WrappedTx) NumProducedOutputs() int {
 	return ret
 }
 
-func (o *WrappedOutput) DecodeID() *core.OutputID {
+func (o *WrappedOutput) DecodeID() *ledger.OutputID {
 	if o.VID == nil {
-		ret := core.NewOutputID(&core.TransactionID{}, o.Index)
+		ret := ledger.NewOutputID(&ledger.TransactionID{}, o.Index)
 		return &ret
 	}
 	ret := o.VID.OutputID(o.Index)
@@ -482,7 +482,7 @@ func (o *WrappedOutput) IDShort() string {
 	return o.DecodeID().StringShort()
 }
 
-func (o *WrappedOutput) Unwrap() (ret *core.OutputWithID, err error) {
+func (o *WrappedOutput) Unwrap() (ret *ledger.OutputWithID, err error) {
 	return o.VID.OutputWithIDAt(o.Index)
 }
 
@@ -492,11 +492,11 @@ func (o *WrappedOutput) Amount() uint64 {
 	return out.Amount()
 }
 
-func (o *WrappedOutput) Timestamp() core.LogicalTime {
+func (o *WrappedOutput) Timestamp() ledger.LogicalTime {
 	return o.VID.Timestamp()
 }
 
-func (o *WrappedOutput) TimeSlot() core.TimeSlot {
+func (o *WrappedOutput) TimeSlot() ledger.TimeSlot {
 	return o.VID.TimeSlot()
 }
 
@@ -612,8 +612,8 @@ func (vid *WrappedTx) BaselineBranch() (ret *WrappedTx) {
 }
 
 type _mutationData struct {
-	outputMutations     map[core.OutputID]*core.Output
-	addTxMutations      []*core.TransactionID
+	outputMutations     map[ledger.OutputID]*ledger.Output
+	addTxMutations      []*ledger.TransactionID
 	visited             set.Set[*WrappedTx]
 	baselineStateReader global.StateReader
 }
@@ -658,7 +658,7 @@ func (vid *WrappedTx) _collectMutationData(md *_mutationData) (conflict WrappedO
 				vidEndorsed._collectMutationData(md)
 				return true
 			})
-			v.Tx.ForEachProducedOutput(func(idx byte, o *core.Output, oid *core.OutputID) bool {
+			v.Tx.ForEachProducedOutput(func(idx byte, o *ledger.Output, oid *ledger.OutputID) bool {
 				_, already := md.outputMutations[*oid]
 				util.Assertf(!already, "repeating ADD mutation %s", oid.StringShort())
 				md.outputMutations[*oid] = o
@@ -677,8 +677,8 @@ func (vid *WrappedTx) getBranchMutations(ut *UTXOTangle) (*multistate.Mutations,
 	util.Assertf(baselineBranchVID != nil, "can't get baseline branch for %s", vid.IDShort())
 
 	md := &_mutationData{
-		outputMutations:     make(map[core.OutputID]*core.Output),
-		addTxMutations:      make([]*core.TransactionID, 0),
+		outputMutations:     make(map[ledger.OutputID]*ledger.Output),
+		addTxMutations:      make([]*ledger.TransactionID, 0),
 		visited:             set.New[*WrappedTx](),
 		baselineStateReader: ut.MustGetStateReader(baselineBranchVID.ID(), 1000),
 	}
@@ -729,7 +729,7 @@ func (vid *WrappedTx) _collectCoveredOutputs(baselineStateReader global.StateRea
 	return
 }
 
-func (vid *WrappedTx) CoverageDelta(ut *UTXOTangle) (*core.TransactionID, uint64) {
+func (vid *WrappedTx) CoverageDelta(ut *UTXOTangle) (*ledger.TransactionID, uint64) {
 	if ut == nil {
 		// TODO temporary
 		return nil, 0
@@ -766,7 +766,7 @@ func (vid *WrappedTx) CoverageDelta(ut *UTXOTangle) (*core.TransactionID, uint64
 
 func (vid *WrappedTx) LedgerCoverage(ut *UTXOTangle) uint64 {
 	var deltaCoverage uint64
-	var branchTxID *core.TransactionID
+	var branchTxID *ledger.TransactionID
 
 	branchTxID, deltaCoverage = vid.CoverageDelta(ut)
 	if vid.IsBranchTransaction() || branchTxID == nil {
@@ -899,6 +899,6 @@ func (o *WrappedOutput) _isConsumedInThePastConeOf(vid *WrappedTx, visited set.S
 	return
 }
 
-func (o *WrappedOutput) ValidPace(targetTs core.LogicalTime) bool {
-	return core.ValidTimePace(o.Timestamp(), targetTs)
+func (o *WrappedOutput) ValidPace(targetTs ledger.LogicalTime) bool {
+	return ledger.ValidTimePace(o.Timestamp(), targetTs)
 }

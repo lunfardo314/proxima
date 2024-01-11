@@ -3,8 +3,8 @@ package inittest
 import (
 	"crypto/ed25519"
 
-	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/genesis"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util/testutil"
 )
 
@@ -12,12 +12,12 @@ const (
 	InitSupply = genesis.DefaultSupply
 )
 
-func GenesisParamsWithPreDistribution(n int, initBalance uint64) ([]core.LockBalance, []ed25519.PrivateKey, []core.AddressED25519) {
+func GenesisParamsWithPreDistribution(n int, initBalance uint64) ([]ledger.LockBalance, []ed25519.PrivateKey, []ledger.AddressED25519) {
 	privateKeys := testutil.GetTestingPrivateKeys(n)
-	addresses := core.AddressesED25519FromPrivateKeys(privateKeys)
-	distrib := make([]core.LockBalance, len(addresses))
+	addresses := ledger.AddressesED25519FromPrivateKeys(privateKeys)
+	distrib := make([]ledger.LockBalance, len(addresses))
 	for i := range addresses {
-		distrib[i] = core.LockBalance{
+		distrib[i] = ledger.LockBalance{
 			Lock:    addresses[i],
 			Balance: initBalance,
 		}

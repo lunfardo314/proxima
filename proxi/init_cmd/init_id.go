@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/genesis"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/txbuilder"
 	"github.com/spf13/cobra"
@@ -59,7 +59,7 @@ func runInitLedgerIDCommand(_ *cobra.Command, _ []string) {
 	glb.Infof("--------------\n%s--------------\n", string(yamlData))
 
 	// create default distribution
-	controllerAddr := core.AddressED25519FromPrivateKey(privKey)
+	controllerAddr := ledger.AddressED25519FromPrivateKey(privKey)
 	lstYAML := []byte(fmt.Sprintf(defaultDistributionListTemplate,
 		controllerAddr.String(), bootstrapAmount))
 	lstDistrib, err := txbuilder.InitialDistributionFromYAMLData(lstYAML)

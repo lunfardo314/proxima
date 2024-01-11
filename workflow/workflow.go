@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/peer"
-	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/global"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/peering"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/txmetadata"
@@ -63,7 +63,7 @@ type (
 	}
 
 	DropTxData struct {
-		TxID       *core.TransactionID
+		TxID       *ledger.TransactionID
 		WhoDropped string
 		Msg        string
 	}
@@ -115,7 +115,7 @@ func New(ut *utangle_old.UTXOTangle, peers *peering.Peers, txBytesStore global.T
 		}
 	})
 
-	ret.peers.OnReceivePullRequest(func(from peer.ID, txids []core.TransactionID) {
+	ret.peers.OnReceivePullRequest(func(from peer.ID, txids []ledger.TransactionID) {
 		if !ret.working.Load() {
 			return
 		}
@@ -207,7 +207,7 @@ func (w *Workflow) IsRunning() bool {
 const maxWaitingTimeSlots = 10_000
 
 func (w *Workflow) maxDurationInTheFuture() time.Duration {
-	return time.Duration(maxWaitingTimeSlots) * core.TransactionTimePaceDuration()
+	return time.Duration(maxWaitingTimeSlots) * ledger.TransactionTimePaceDuration()
 }
 
 func (w *Workflow) AddCounter(name string, i int) {
@@ -242,7 +242,7 @@ func (w *Workflow) CheckDebugCounters(expect map[string]int) error {
 	return w.debugCounters.CheckValues(expect)
 }
 
-func (w *Workflow) PostEventDropTxID(txid *core.TransactionID, whoDropped string, reasonFormat string, args ...any) {
+func (w *Workflow) PostEventDropTxID(txid *ledger.TransactionID, whoDropped string, reasonFormat string, args ...any) {
 	w.PostEvent(EventDroppedTx, DropTxData{
 		TxID:       txid,
 		WhoDropped: whoDropped,

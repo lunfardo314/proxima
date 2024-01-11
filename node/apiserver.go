@@ -4,8 +4,8 @@ import (
 	"fmt"
 
 	"github.com/lunfardo314/proxima/api/server"
-	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/global"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/spf13/viper"
 )
 
@@ -33,8 +33,8 @@ func (p *ProximaNode) getNodeInfo() *global.NodeInfo {
 		ID:             p.Peers.SelfID(),
 		NumStaticPeers: uint16(configuredPeers),
 		NumActivePeers: uint16(alivePeers),
-		Sequencers:     make([]core.ChainID, len(p.Sequencers)),
-		Branches:       make([]core.TransactionID, 0), // TODO
+		Sequencers:     make([]ledger.ChainID, len(p.Sequencers)),
+		Branches:       make([]ledger.TransactionID, 0), // TODO
 	}
 	for i := range p.Sequencers {
 		ret.Sequencers[i] = *p.Sequencers[i].ID()

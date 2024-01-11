@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/transaction"
 	utangle "github.com/lunfardo314/proxima/utangle_old"
@@ -28,7 +28,7 @@ type (
 	proposerTaskGeneric struct {
 		strategyName    string
 		factory         *milestoneFactory
-		targetTs        core.LogicalTime
+		targetTs        ledger.LogicalTime
 		alreadyProposed set.Set[[32]byte]
 		traceNAhead     atomic.Int64
 		startTime       time.Time
@@ -40,7 +40,7 @@ type (
 		endorse *utangle.WrappedTx
 	}
 
-	proposerTaskConstructor func(mf *milestoneFactory, targetTs core.LogicalTime) proposerTask
+	proposerTaskConstructor func(mf *milestoneFactory, targetTs ledger.LogicalTime) proposerTask
 
 	proposerRegistered struct {
 		constructor proposerTaskConstructor
@@ -64,7 +64,7 @@ func SetTraceProposer(name string, v bool) {
 	}
 }
 
-func newProposerGeneric(mf *milestoneFactory, targetTs core.LogicalTime, strategyName string) proposerTaskGeneric {
+func newProposerGeneric(mf *milestoneFactory, targetTs ledger.LogicalTime, strategyName string) proposerTaskGeneric {
 	return proposerTaskGeneric{
 		factory:         mf,
 		targetTs:        targetTs,
@@ -202,7 +202,7 @@ func (c *proposerTaskGeneric) placeProposalIfRelevant(mdProposed *proposedMilest
 		mdProposed.proposedBy, util.GoThousands(mdProposed.coverage), util.GoThousands(c.factory.proposal.bestSoFarCoverage),
 		mdProposed.tx.NumInputs(), mdProposed.elapsed)
 
-	if c.factory.proposal.targetTs == core.NilLogicalTime {
+	if c.factory.proposal.targetTs == ledger.NilLogicalTime {
 		return fmt.Sprintf("%s SKIPPED: target is nil", mdProposed.tx.IDShortString()), false
 	}
 
@@ -303,7 +303,7 @@ func (c *proposerTaskGeneric) futureConeMilestonesOrdered(rootVID *utangle.Wrapp
 		if !vid.IsDeleted() &&
 			vid.IsSequencerMilestone() &&
 			visited.Contains(vid.SequencerPredecessor()) &&
-			core.ValidTimePace(vid.Timestamp(), c.targetTs) {
+			ledger.ValidTimePace(vid.Timestamp(), c.targetTs) {
 			visited.Insert(vid)
 			ret = append(ret, c.factory.ownMilestones[vid].WrappedOutput)
 		}

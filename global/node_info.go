@@ -4,18 +4,18 @@ import (
 	"encoding/json"
 
 	"github.com/libp2p/go-libp2p/core/peer"
-	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/util/lines"
 )
 
 type NodeInfo struct {
-	Name           string               `json:"name"`
-	ID             peer.ID              `json:"id"`
-	NumStaticPeers uint16               `json:"num_static_peers"`
-	NumActivePeers uint16               `json:"num_active_peers"`
-	Sequencers     []core.ChainID       `json:"sequencers,omitempty"`
-	Branches       []core.TransactionID `json:"branches,omitempty"`
+	Name           string                 `json:"name"`
+	ID             peer.ID                `json:"id"`
+	NumStaticPeers uint16                 `json:"num_static_peers"`
+	NumActivePeers uint16                 `json:"num_active_peers"`
+	Sequencers     []ledger.ChainID       `json:"sequencers,omitempty"`
+	Branches       []ledger.TransactionID `json:"branches,omitempty"`
 }
 
 func (ni *NodeInfo) Bytes() []byte {

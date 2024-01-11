@@ -5,7 +5,7 @@ import (
 	"strconv"
 
 	"github.com/lunfardo314/proxima/api/client"
-	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/spf13/cobra"
@@ -57,13 +57,13 @@ func runMakeChainCmd(_ *cobra.Command, args []string) {
 		os.Exit(0)
 	}
 
-	ts := core.LogicalTimeNow()
+	ts := ledger.LogicalTimeNow()
 	inps, totalInputs, err := getClient().GetTransferableOutputs(wallet.Account, ts)
 	glb.AssertNoError(err)
 	glb.Assertf(totalInputs >= onChainAmount+tagAlongFee, "not enough source balance %s", util.GoThousands(totalInputs))
 
 	totalInputs = 0
-	inps = util.FilterSlice(inps, func(o *core.OutputWithID) bool {
+	inps = util.FilterSlice(inps, func(o *ledger.OutputWithID) bool {
 		if totalInputs < onChainAmount+tagAlongFee {
 			totalInputs += o.Output.Amount()
 			return true

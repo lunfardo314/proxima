@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/genesis"
 	"github.com/lunfardo314/proxima/global"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/peering"
 	"github.com/lunfardo314/proxima/transaction"
@@ -33,18 +33,18 @@ import (
 type workflowTestData struct {
 	initLedgerStatePar      genesis.LedgerIdentityData
 	distributionPrivateKeys []ed25519.PrivateKey
-	distributionAddrs       []core.AddressED25519
-	faucetOutputs           []*core.OutputWithID
+	distributionAddrs       []ledger.AddressED25519
+	faucetOutputs           []*ledger.OutputWithID
 	ut                      *utangle_old.UTXOTangle
-	bootstrapChainID        core.ChainID
-	distributionTxID        core.TransactionID
+	bootstrapChainID        ledger.ChainID
+	distributionTxID        ledger.TransactionID
 	w                       *workflow.Workflow
 }
 
 const initDistributedBalance = 10_000_000
 
-func initWorkflowTest(t *testing.T, nDistribution int, nowis core.LogicalTime, configOptions ...workflow.ConfigOption) *workflowTestData {
-	core.SetTimeTickDuration(10 * time.Millisecond)
+func initWorkflowTest(t *testing.T, nDistribution int, nowis ledger.LogicalTime, configOptions ...workflow.ConfigOption) *workflowTestData {
+	ledger.SetTimeTickDuration(10 * time.Millisecond)
 	t.Logf("nowis timestamp: %s", nowis.String())
 	genesisPrivKey := testutil.GetTestingPrivateKey()
 	par := *genesis.DefaultIdentityData(genesisPrivKey, nowis.TimeSlot())
@@ -53,7 +53,7 @@ func initWorkflowTest(t *testing.T, nDistribution int, nowis core.LogicalTime, c
 		initLedgerStatePar:      par,
 		distributionPrivateKeys: privKeys,
 		distributionAddrs:       addrs,
-		faucetOutputs:           make([]*core.OutputWithID, nDistribution),
+		faucetOutputs:           make([]*ledger.OutputWithID, nDistribution),
 	}
 
 	stateStore := common.NewInMemoryKVStore()
@@ -82,7 +82,7 @@ func initWorkflowTest(t *testing.T, nDistribution int, nowis core.LogicalTime, c
 	return ret
 }
 
-func (wd *workflowTestData) makeTxFromFaucet(amount uint64, target core.AddressED25519, idx ...int) ([]byte, error) {
+func (wd *workflowTestData) makeTxFromFaucet(amount uint64, target ledger.AddressED25519, idx ...int) ([]byte, error) {
 	idxFaucet := 0
 	if len(idx) > 0 {
 		idxFaucet = idx[0]
@@ -92,7 +92,7 @@ func (wd *workflowTestData) makeTxFromFaucet(amount uint64, target core.AddressE
 		WithTargetLock(target).
 		MustWithInputs(wd.faucetOutputs[idxFaucet])
 
-	_, err := core.LogicalTimeFromBytes(td.Timestamp[:])
+	_, err := ledger.LogicalTimeFromBytes(td.Timestamp[:])
 	util.AssertNoError(err)
 
 	txBytes, remainder, err := txbuilder.MakeSimpleTransferTransactionWithRemainder(td)
@@ -111,14 +111,14 @@ func (wd *workflowTestData) setNewVertexCounter(waitCounter *countdown.Countdown
 
 func TestWorkflowBasic(t *testing.T) {
 	t.Run("1", func(t *testing.T) {
-		wd := initWorkflowTest(t, 1, core.LogicalTimeNow(), workflow.WithLogLevel(zapcore.DebugLevel))
+		wd := initWorkflowTest(t, 1, ledger.LogicalTimeNow(), workflow.WithLogLevel(zapcore.DebugLevel))
 		wd.w.Start()
 		time.Sleep(10 * time.Millisecond)
 		wd.w.Stop()
 		time.Sleep(10 * time.Millisecond)
 	})
 	t.Run("2", func(t *testing.T) {
-		wd := initWorkflowTest(t, 1, core.LogicalTimeNow(), workflow.WithLogLevel(zapcore.DebugLevel))
+		wd := initWorkflowTest(t, 1, ledger.LogicalTimeNow(), workflow.WithLogLevel(zapcore.DebugLevel))
 		wd.w.Start()
 		err := wd.w.TransactionIn(nil)
 		require.Error(t, err)
@@ -137,13 +137,13 @@ func TestWorkflowSync(t *testing.T) {
 	t.Run("1 sync", func(t *testing.T) {
 		const numRuns = 200
 
-		wd := initWorkflowTest(t, 1, core.LogicalTimeNow())
+		wd := initWorkflowTest(t, 1, ledger.LogicalTimeNow())
 
-		t.Logf("timestamp now: %s", core.LogicalTimeNow().String())
+		t.Logf("timestamp now: %s", ledger.LogicalTimeNow().String())
 		t.Logf("distribution timestamp: %s", wd.distributionTxID.Timestamp().String())
 		t.Logf("origin slot: %d", wd.initLedgerStatePar.GenesisTimeSlot)
 
-		estimatedTimeout := (time.Duration(numRuns) * core.TransactionTimePaceDuration()) + (5 * time.Second)
+		estimatedTimeout := (time.Duration(numRuns) * ledger.TransactionTimePaceDuration()) + (5 * time.Second)
 		waitCounter := countdown.New(numRuns, estimatedTimeout)
 		var cnt atomic.Int32
 		err := wd.w.OnEvent(workflow.EventNewVertex, func(v *workflow.NewVertexEventData) {
@@ -175,7 +175,7 @@ func TestWorkflowSync(t *testing.T) {
 			numRuns = 10
 		)
 
-		wd := initWorkflowTest(t, 1, core.LogicalTimeNow()) //, DebugConfig{PrimaryInputConsumerName: zapcore.DebugLevel})
+		wd := initWorkflowTest(t, 1, ledger.LogicalTimeNow()) //, DebugConfig{PrimaryInputConsumerName: zapcore.DebugLevel})
 
 		var err error
 		txBytes := make([][]byte, numTx)
@@ -191,7 +191,7 @@ func TestWorkflowSync(t *testing.T) {
 			waitCounterAdd.Tick()
 		})
 		require.NoError(t, err)
-		err = wd.w.OnEvent(workflow.EventCodeDuplicateTx, func(_ *core.TransactionID) {
+		err = wd.w.OnEvent(workflow.EventCodeDuplicateTx, func(_ *ledger.TransactionID) {
 			waitCounterDuplicate.Tick()
 		})
 		require.NoError(t, err)
@@ -214,13 +214,13 @@ func TestWorkflowSync(t *testing.T) {
 	t.Run("listen", func(t *testing.T) {
 		const numRuns = 200
 
-		wd := initWorkflowTest(t, 1, core.LogicalTimeNow())
+		wd := initWorkflowTest(t, 1, ledger.LogicalTimeNow())
 
-		t.Logf("timestamp now: %s", core.LogicalTimeNow().String())
+		t.Logf("timestamp now: %s", ledger.LogicalTimeNow().String())
 		t.Logf("distribution timestamp: %s", wd.distributionTxID.Timestamp().String())
 		t.Logf("origin slot: %d", wd.initLedgerStatePar.GenesisTimeSlot)
 
-		estimatedTimeout := (time.Duration(numRuns) * core.TransactionTimePaceDuration()) + (10 * time.Second)
+		estimatedTimeout := (time.Duration(numRuns) * ledger.TransactionTimePaceDuration()) + (10 * time.Second)
 		waitCounter := countdown.New(numRuns, estimatedTimeout)
 		err := wd.w.OnEvent(workflow.EventNewVertex, func(v *workflow.NewVertexEventData) {
 			waitCounter.Tick()
@@ -258,13 +258,13 @@ func TestWorkflowAsync(t *testing.T) {
 	t.Run("1 async", func(t *testing.T) {
 		const numRuns = 200
 
-		wd := initWorkflowTest(t, 1, core.LogicalTimeNow())
+		wd := initWorkflowTest(t, 1, ledger.LogicalTimeNow())
 
-		t.Logf("timestamp now: %s", core.LogicalTimeNow().String())
+		t.Logf("timestamp now: %s", ledger.LogicalTimeNow().String())
 		t.Logf("distribution timestamp: %s", wd.distributionTxID.Timestamp().String())
 		t.Logf("origin slot: %d", wd.initLedgerStatePar.GenesisTimeSlot)
 
-		estimatedTimeout := (time.Duration(numRuns) * core.TransactionTimePaceDuration()) + (5 * time.Second)
+		estimatedTimeout := (time.Duration(numRuns) * ledger.TransactionTimePaceDuration()) + (5 * time.Second)
 		waitCounter := countdown.New(numRuns, estimatedTimeout)
 		var cnt atomic.Uint32
 		err := wd.w.OnEvent(workflow.EventNewVertex, func(v *workflow.NewVertexEventData) {
@@ -295,7 +295,7 @@ func TestWorkflowAsync(t *testing.T) {
 			numRuns = 10
 		)
 
-		wd := initWorkflowTest(t, 1, core.LogicalTimeNow()) //, DebugConfig{PrimaryInputConsumerName: zapcore.DebugLevel})
+		wd := initWorkflowTest(t, 1, ledger.LogicalTimeNow()) //, DebugConfig{PrimaryInputConsumerName: zapcore.DebugLevel})
 
 		var err error
 		txBytes := make([][]byte, numTx)
@@ -311,7 +311,7 @@ func TestWorkflowAsync(t *testing.T) {
 			waitCounterAdd.Tick()
 		})
 		require.NoError(t, err)
-		err = wd.w.OnEvent(workflow.EventCodeDuplicateTx, func(_ *core.TransactionID) {
+		err = wd.w.OnEvent(workflow.EventCodeDuplicateTx, func(_ *ledger.TransactionID) {
 			waitCounterDuplicate.Tick()
 		})
 		require.NoError(t, err)
@@ -334,13 +334,13 @@ func TestWorkflowAsync(t *testing.T) {
 	t.Run("listen", func(t *testing.T) {
 		const numRuns = 200
 
-		wd := initWorkflowTest(t, 1, core.LogicalTimeNow())
+		wd := initWorkflowTest(t, 1, ledger.LogicalTimeNow())
 
-		t.Logf("timestamp now: %s", core.LogicalTimeNow().String())
+		t.Logf("timestamp now: %s", ledger.LogicalTimeNow().String())
 		t.Logf("distribution timestamp: %s", wd.distributionTxID.Timestamp().String())
 		t.Logf("origin slot: %d", wd.initLedgerStatePar.GenesisTimeSlot)
 
-		estimatedTimeout := (time.Duration(numRuns) * core.TransactionTimePaceDuration()) + (6 * time.Second)
+		estimatedTimeout := (time.Duration(numRuns) * ledger.TransactionTimePaceDuration()) + (6 * time.Second)
 		waitCounter := countdown.New(numRuns, estimatedTimeout)
 		err := wd.w.OnEvent(workflow.EventNewVertex, func(v *workflow.NewVertexEventData) {
 			waitCounter.Tick()
@@ -373,7 +373,7 @@ func TestWorkflowAsync(t *testing.T) {
 
 func TestSolidifier(t *testing.T) {
 	t.Run("one tx", func(t *testing.T) {
-		wd := initWorkflowTest(t, 1, core.LogicalTimeNow(), workflow.WithLogLevel(zapcore.DebugLevel))
+		wd := initWorkflowTest(t, 1, ledger.LogicalTimeNow(), workflow.WithLogLevel(zapcore.DebugLevel))
 		cd := countdown.New(1, 3*time.Second)
 		wd.setNewVertexCounter(cd)
 
@@ -394,7 +394,7 @@ func TestSolidifier(t *testing.T) {
 	})
 	t.Run("several tx usual seq", func(t *testing.T) {
 		const howMany = 3 // 100
-		wd := initWorkflowTest(t, 1, core.LogicalTimeNow(), workflow.WithLogLevel(zapcore.DebugLevel))
+		wd := initWorkflowTest(t, 1, ledger.LogicalTimeNow(), workflow.WithLogLevel(zapcore.DebugLevel))
 		cd := countdown.New(howMany, 300*time.Second) // 10*time.Second)
 		wd.setNewVertexCounter(cd)
 		var err error
@@ -407,7 +407,7 @@ func TestSolidifier(t *testing.T) {
 		wd.w.Start()
 		for i := range txBytes {
 			err = wd.w.TransactionIn(txBytes[i], workflow.WithOnWorkflowEventPrefix("checkNewDependency.", func(event string, data any) {
-				fmt.Printf("checkNewDependency %s\n", data.(*core.TransactionID).StringShort())
+				fmt.Printf("checkNewDependency %s\n", data.(*ledger.TransactionID).StringShort())
 			}))
 			require.NoError(t, err)
 		}
@@ -420,7 +420,7 @@ func TestSolidifier(t *testing.T) {
 	})
 	t.Run("several tx reverse seq", func(t *testing.T) {
 		const howMany = 10
-		wd := initWorkflowTest(t, 1, core.LogicalTimeNow())
+		wd := initWorkflowTest(t, 1, ledger.LogicalTimeNow())
 		cd := countdown.New(howMany, 10*time.Second)
 		wd.setNewVertexCounter(cd)
 
@@ -448,7 +448,7 @@ func TestSolidifier(t *testing.T) {
 		// create all tx in the past, so that won't wait in the waiting room
 		// all are sent to solidifier in the reverse order
 		nowis := time.Now().Add(-10 * time.Second)
-		wd := initWorkflowTest(t, 1, core.LogicalTimeFromTime(nowis))
+		wd := initWorkflowTest(t, 1, ledger.LogicalTimeFromTime(nowis))
 		cd := countdown.New(howMany, 10*time.Second)
 		wd.setNewVertexCounter(cd)
 
@@ -479,7 +479,7 @@ func TestSolidifier(t *testing.T) {
 		// create all tx in the past, so that won't wait in the waiting room
 		// all are sent to solidifier in the reverse order
 		nowis := time.Now().Add(-10 * time.Second)
-		wd := initWorkflowTest(t, nAddresses, core.LogicalTimeFromTime(nowis))
+		wd := initWorkflowTest(t, nAddresses, ledger.LogicalTimeFromTime(nowis))
 		cd := countdown.New(howMany*nAddresses, 10*time.Second)
 		wd.setNewVertexCounter(cd)
 
@@ -517,20 +517,20 @@ func TestSolidifier(t *testing.T) {
 
 type multiChainTestData struct {
 	t                  *testing.T
-	ts                 core.LogicalTime
+	ts                 ledger.LogicalTime
 	ut                 *utangle_old.UTXOTangle
 	txBytesStore       global.TxBytesStore
-	bootstrapChainID   core.ChainID
+	bootstrapChainID   ledger.ChainID
 	privKey            ed25519.PrivateKey
-	addr               core.AddressED25519
+	addr               ledger.AddressED25519
 	faucetPrivKey      ed25519.PrivateKey
-	faucetAddr         core.AddressED25519
-	faucetOrigin       *core.OutputWithID
+	faucetAddr         ledger.AddressED25519
+	faucetOrigin       *ledger.OutputWithID
 	sPar               genesis.LedgerIdentityData
-	originBranchTxid   core.TransactionID
+	originBranchTxid   ledger.TransactionID
 	txBytesChainOrigin []byte
 	txBytes            [][]byte // with chain origins
-	chainOrigins       []*core.OutputWithChainID
+	chainOrigins       []*ledger.OutputWithChainID
 	total              uint64
 	pkController       []ed25519.PrivateKey
 }
@@ -538,16 +538,16 @@ type multiChainTestData struct {
 const onChainAmount = 1_000_000
 
 func initMultiChainTest(t *testing.T, nChains int, verbose bool, secondsInThePast int) *multiChainTestData {
-	core.SetTimeTickDuration(10 * time.Millisecond)
-	nowisTs := core.LogicalTimeFromTime(time.Now().Add(time.Duration(-secondsInThePast) * time.Second))
+	ledger.SetTimeTickDuration(10 * time.Millisecond)
+	nowisTs := ledger.LogicalTimeFromTime(time.Now().Add(time.Duration(-secondsInThePast) * time.Second))
 
-	t.Logf("initMultiChainTest: now is: %s, %v", core.LogicalTimeNow().String(), time.Now())
-	t.Logf("time tick duration is %v", core.TimeTickDuration())
-	t.Logf("initMultiChainTest: timeSlot now is assumed: %d, %v", nowisTs.TimeSlot(), core.MustNewLogicalTime(nowisTs.TimeSlot(), 0).Time())
+	t.Logf("initMultiChainTest: now is: %s, %v", ledger.LogicalTimeNow().String(), time.Now())
+	t.Logf("time tick duration is %v", ledger.TimeTickDuration())
+	t.Logf("initMultiChainTest: timeSlot now is assumed: %d, %v", nowisTs.TimeSlot(), ledger.MustNewLogicalTime(nowisTs.TimeSlot(), 0).Time())
 
 	ret := &multiChainTestData{t: t}
 	var privKeys []ed25519.PrivateKey
-	var addrs []core.AddressED25519
+	var addrs []ledger.AddressED25519
 
 	genesisPrivKey := testutil.GetTestingPrivateKey()
 	ret.sPar = *genesis.DefaultIdentityData(genesisPrivKey, nowisTs.TimeSlot())
@@ -583,8 +583,8 @@ func initMultiChainTest(t *testing.T, nChains int, verbose bool, secondsInThePas
 	t.Logf("origin branch txid: %s", ret.originBranchTxid.StringShort())
 	t.Logf("%s", ret.ut.Info())
 
-	ret.faucetOrigin = &core.OutputWithID{
-		ID:     core.NewOutputID(&ret.originBranchTxid, 0),
+	ret.faucetOrigin = &ledger.OutputWithID{
+		ID:     ledger.NewOutputID(&ret.originBranchTxid, 0),
 		Output: nil,
 	}
 	bal, _ := multistate.BalanceOnLock(stateReader, ret.addr)
@@ -615,13 +615,13 @@ func initMultiChainTest(t *testing.T, nChains int, verbose bool, secondsInThePas
 	require.NoError(t, err)
 	txb.PutSignatureUnlock(0)
 
-	ret.ts = firstOut.Timestamp().AddTicks(core.TransactionPaceInTicks)
+	ret.ts = firstOut.Timestamp().AddTicks(ledger.TransactionPaceInTicks)
 
-	ret.chainOrigins = make([]*core.OutputWithChainID, nChains)
+	ret.chainOrigins = make([]*ledger.OutputWithChainID, nChains)
 	for range ret.chainOrigins {
-		o := core.NewOutput(func(o *core.Output) {
+		o := ledger.NewOutput(func(o *ledger.Output) {
 			o.WithAmount(onChainAmount).WithLock(ret.addr)
-			_, err := o.PushConstraint(core.NewChainOrigin().Bytes())
+			_, err := o.PushConstraint(ledger.NewChainOrigin().Bytes())
 			require.NoError(t, err)
 		})
 		_, err = txb.ProduceOutput(o)
@@ -641,15 +641,15 @@ func initMultiChainTest(t *testing.T, nChains int, verbose bool, secondsInThePas
 		t.Logf("chain origin tx: %s", tx.ToString(stateReader.GetUTXO))
 	}
 
-	tx.ForEachProducedOutput(func(idx byte, o *core.Output, oid *core.OutputID) bool {
-		out := core.OutputWithID{
+	tx.ForEachProducedOutput(func(idx byte, o *ledger.Output, oid *ledger.OutputID) bool {
+		out := ledger.OutputWithID{
 			ID:     *oid,
 			Output: o,
 		}
 		if int(idx) != nChains {
 			chainID, ok := out.ExtractChainID()
 			require.True(t, ok)
-			ret.chainOrigins[idx] = &core.OutputWithChainID{
+			ret.chainOrigins[idx] = &ledger.OutputWithChainID{
 				OutputWithID: out,
 				ChainID:      chainID,
 			}
@@ -673,7 +673,7 @@ func initMultiChainTest(t *testing.T, nChains int, verbose bool, secondsInThePas
 }
 
 func (r *multiChainTestData) createSequencerChain1(chainIdx int, pace int, printtx bool, exitFun func(i int, tx *transaction.Transaction) bool) [][]byte {
-	require.True(r.t, pace >= core.TransactionPaceInTicks*2)
+	require.True(r.t, pace >= ledger.TransactionPaceInTicks*2)
 
 	ret := make([][]byte, 0)
 	outConsumeChain := r.chainOrigins[chainIdx]
@@ -715,7 +715,7 @@ func (r *multiChainTestData) createSequencerChain1(chainIdx int, pace int, print
 
 		par.Endorsements = nil
 		if !par.ChainInput.ID.SequencerFlagON() {
-			par.Endorsements = []*core.TransactionID{&lastBranchID}
+			par.Endorsements = []*ledger.TransactionID{&lastBranchID}
 		}
 
 		txBytes, err := txbuilder.MakeSequencerTransaction(par)
@@ -753,7 +753,7 @@ func (r *multiChainTestData) createSequencerChain1(chainIdx int, pace int, print
 }
 
 func (r *multiChainTestData) createSequencerChains1(pace int, howLong int) [][]byte {
-	require.True(r.t, pace >= core.TransactionPaceInTicks*2)
+	require.True(r.t, pace >= ledger.TransactionPaceInTicks*2)
 	nChains := len(r.chainOrigins)
 	require.True(r.t, nChains >= 2)
 
@@ -765,7 +765,7 @@ func (r *multiChainTestData) createSequencerChains1(pace int, howLong int) [][]b
 		txBytes, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
 			ChainInput:   r.chainOrigins[counter],
 			Timestamp:    r.chainOrigins[counter].Timestamp().AddTicks(pace),
-			Endorsements: []*core.TransactionID{&r.originBranchTxid},
+			Endorsements: []*ledger.TransactionID{&r.originBranchTxid},
 			PrivateKey:   r.privKey,
 		})
 		require.NoError(r.t, err)
@@ -790,27 +790,27 @@ func (r *multiChainTestData) createSequencerChains1(pace int, howLong int) [][]b
 
 	for i := counter; i < howLong; i++ {
 		nextChainIdx = (curChainIdx + 1) % nChains
-		ts := core.MaxLogicalTime(
+		ts := ledger.MaxLogicalTime(
 			lastInChain(nextChainIdx).Timestamp().AddTicks(pace),
-			lastInChain(curChainIdx).Timestamp().AddTicks(core.TransactionPaceInTicks),
+			lastInChain(curChainIdx).Timestamp().AddTicks(ledger.TransactionPaceInTicks),
 		)
 		chainIn := lastInChain(nextChainIdx).MustProducedOutputWithIDAt(0)
 
 		if ts.TimesTicksToNextSlotBoundary() < 2*pace {
 			ts = ts.NextTimeSlotBoundary()
 		}
-		var endorse []*core.TransactionID
-		var stemOut *core.OutputWithID
+		var endorse []*ledger.TransactionID
+		var stemOut *ledger.OutputWithID
 
 		if ts.TimeTick() == 0 {
 			// create branch tx
 			stemOut = lastStemOutput
 		} else {
 			// endorse previous sequencer tx
-			endorse = []*core.TransactionID{lastInChain(curChainIdx).ID()}
+			endorse = []*ledger.TransactionID{lastInChain(curChainIdx).ID()}
 		}
 		txBytes, err = txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
-			ChainInput: &core.OutputWithChainID{
+			ChainInput: &ledger.OutputWithChainID{
 				OutputWithID: *chainIn,
 				ChainID:      r.chainOrigins[nextChainIdx].ChainID,
 			},
@@ -842,7 +842,7 @@ func (r *multiChainTestData) createSequencerChains1(pace int, howLong int) [][]b
 
 // n parallel sequencer chains. Each sequencer transaction endorses 1 or 2 previous if possible
 func (r *multiChainTestData) createSequencerChains2(pace int, howLong int) [][]byte {
-	require.True(r.t, pace >= core.TransactionPaceInTicks*2)
+	require.True(r.t, pace >= ledger.TransactionPaceInTicks*2)
 	nChains := len(r.chainOrigins)
 	require.True(r.t, nChains >= 2)
 
@@ -853,7 +853,7 @@ func (r *multiChainTestData) createSequencerChains2(pace int, howLong int) [][]b
 		txBytes, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
 			ChainInput:   r.chainOrigins[counter],
 			Timestamp:    r.chainOrigins[counter].Timestamp().AddTicks(pace),
-			Endorsements: []*core.TransactionID{&r.originBranchTxid},
+			Endorsements: []*ledger.TransactionID{&r.originBranchTxid},
 			PrivateKey:   r.privKey,
 		})
 		require.NoError(r.t, err)
@@ -878,17 +878,17 @@ func (r *multiChainTestData) createSequencerChains2(pace int, howLong int) [][]b
 
 	for i := counter; i < howLong; i++ {
 		nextChainIdx = (curChainIdx + 1) % nChains
-		ts := core.MaxLogicalTime(
+		ts := ledger.MaxLogicalTime(
 			lastInChain(nextChainIdx).Timestamp().AddTicks(pace),
-			lastInChain(curChainIdx).Timestamp().AddTicks(core.TransactionPaceInTicks),
+			lastInChain(curChainIdx).Timestamp().AddTicks(ledger.TransactionPaceInTicks),
 		)
 		chainIn := lastInChain(nextChainIdx).MustProducedOutputWithIDAt(0)
 
 		if ts.TimesTicksToNextSlotBoundary() < 2*pace {
 			ts = ts.NextTimeSlotBoundary()
 		}
-		endorse := make([]*core.TransactionID, 0)
-		var stemOut *core.OutputWithID
+		endorse := make([]*ledger.TransactionID, 0)
+		var stemOut *ledger.OutputWithID
 
 		if ts.TimeTick() == 0 {
 			// create branch tx
@@ -915,7 +915,7 @@ func (r *multiChainTestData) createSequencerChains2(pace int, howLong int) [][]b
 			}
 		}
 		txBytes, err = txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
-			ChainInput: &core.OutputWithChainID{
+			ChainInput: &ledger.OutputWithChainID{
 				OutputWithID: *chainIn,
 				ChainID:      r.chainOrigins[nextChainIdx].ChainID,
 			},
@@ -952,7 +952,7 @@ func (r *multiChainTestData) createSequencerChains2(pace int, howLong int) [][]b
 // n parallel sequencer chains. Each sequencer transaction endorses 1 or 2 previous if possible
 // adding faucet transactions in between
 func (r *multiChainTestData) createSequencerChains3(pace int, howLong int, printTx bool) [][]byte {
-	require.True(r.t, pace >= core.TransactionPaceInTicks*2)
+	require.True(r.t, pace >= ledger.TransactionPaceInTicks*2)
 	nChains := len(r.chainOrigins)
 	require.True(r.t, nChains >= 2)
 
@@ -963,7 +963,7 @@ func (r *multiChainTestData) createSequencerChains3(pace int, howLong int, print
 		txBytes, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
 			ChainInput:   r.chainOrigins[counter],
 			Timestamp:    r.chainOrigins[counter].Timestamp().AddTicks(pace),
-			Endorsements: []*core.TransactionID{&r.originBranchTxid},
+			Endorsements: []*ledger.TransactionID{&r.originBranchTxid},
 			PrivateKey:   r.privKey,
 		})
 		require.NoError(r.t, err)
@@ -994,8 +994,8 @@ func (r *multiChainTestData) createSequencerChains3(pace int, howLong int, print
 	for i := counter; i < howLong; i++ {
 		nextChainIdx = (curChainIdx + 1) % nChains
 		// create faucet tx
-		td := txbuilder.NewTransferData(r.faucetPrivKey, r.faucetAddr, faucetOutput.Timestamp().AddTicks(core.TransactionPaceInTicks))
-		td.WithTargetLock(core.ChainLockFromChainID(r.chainOrigins[nextChainIdx].ChainID)).
+		td := txbuilder.NewTransferData(r.faucetPrivKey, r.faucetAddr, faucetOutput.Timestamp().AddTicks(ledger.TransactionPaceInTicks))
+		td.WithTargetLock(ledger.ChainLockFromChainID(r.chainOrigins[nextChainIdx].ChainID)).
 			WithAmount(100).
 			MustWithInputs(faucetOutput)
 		txBytes, err = txbuilder.MakeTransferTransaction(td)
@@ -1009,18 +1009,18 @@ func (r *multiChainTestData) createSequencerChains3(pace int, howLong int, print
 			r.t.Logf("faucet tx %s: amount left on faucet: %d", tx.IDShortString(), faucetOutput.Output.Amount())
 		}
 
-		ts := core.MaxLogicalTime(
+		ts := ledger.MaxLogicalTime(
 			lastInChain(nextChainIdx).Timestamp().AddTicks(pace),
-			lastInChain(curChainIdx).Timestamp().AddTicks(core.TransactionPaceInTicks),
-			tx.Timestamp().AddTicks(core.TransactionPaceInTicks),
+			lastInChain(curChainIdx).Timestamp().AddTicks(ledger.TransactionPaceInTicks),
+			tx.Timestamp().AddTicks(ledger.TransactionPaceInTicks),
 		)
 		chainIn := lastInChain(nextChainIdx).MustProducedOutputWithIDAt(0)
 
 		if ts.TimesTicksToNextSlotBoundary() < 2*pace {
 			ts = ts.NextTimeSlotBoundary()
 		}
-		endorse := make([]*core.TransactionID, 0)
-		var stemOut *core.OutputWithID
+		endorse := make([]*ledger.TransactionID, 0)
+		var stemOut *ledger.OutputWithID
 
 		if ts.TimeTick() == 0 {
 			// create branch tx
@@ -1047,12 +1047,12 @@ func (r *multiChainTestData) createSequencerChains3(pace int, howLong int, print
 			}
 		}
 		txBytes, err = txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
-			ChainInput: &core.OutputWithChainID{
+			ChainInput: &ledger.OutputWithChainID{
 				OutputWithID: *chainIn,
 				ChainID:      r.chainOrigins[nextChainIdx].ChainID,
 			},
 			StemInput:        stemOut,
-			AdditionalInputs: []*core.OutputWithID{feeOutput},
+			AdditionalInputs: []*ledger.OutputWithID{feeOutput},
 			Endorsements:     endorse,
 			Timestamp:        ts,
 			PrivateKey:       r.privKey,
@@ -1346,19 +1346,19 @@ func TestMultiChainWorkflow(t *testing.T) {
 
 		idToBeEndorsed, tsToBeEndorsed, err := transaction.IDAndTimestampFromTransactionBytes(txBytesSeq[0][len(txBytesSeq[0])-1])
 		require.NoError(t, err)
-		ts := core.MaxLogicalTime(tsToBeEndorsed, txEndorser.Timestamp())
-		ts = ts.AddTicks(core.TransactionPaceInTicks)
+		ts := ledger.MaxLogicalTime(tsToBeEndorsed, txEndorser.Timestamp())
+		ts = ts.AddTicks(ledger.TransactionPaceInTicks)
 		t.Logf("timestamp to be endorsed: %s, endorser's timestamp: %s", tsToBeEndorsed.String(), ts.String())
 		require.True(t, ts.TimeSlot() != 0 && ts.TimeSlot() == txEndorser.Timestamp().TimeSlot())
 		t.Logf("ID to be endorsed: %s", idToBeEndorsed.StringShort())
 
 		txBytesConflict, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
-			ChainInput: &core.OutputWithChainID{
+			ChainInput: &ledger.OutputWithChainID{
 				OutputWithID: *out,
 				ChainID:      r.chainOrigins[1].ChainID,
 			},
 			Timestamp:    ts,
-			Endorsements: []*core.TransactionID{&idToBeEndorsed},
+			Endorsements: []*ledger.TransactionID{&idToBeEndorsed},
 			PrivateKey:   r.privKey,
 		})
 		require.NoError(t, err)

@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/global"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/unitrie/common"
@@ -31,14 +31,14 @@ type (
 
 	RootRecord struct {
 		Root           common.VCommitment
-		SequencerID    core.ChainID
+		SequencerID    ledger.ChainID
 		LedgerCoverage LedgerCoverage
 	}
 
 	BranchData struct {
 		RootRecord
-		Stem            *core.OutputWithID
-		SequencerOutput *core.OutputWithID
+		Stem            *ledger.OutputWithID
+		SequencerOutput *ledger.OutputWithID
 	}
 )
 
@@ -59,14 +59,14 @@ const (
 
 func LedgerIdentityBytesFromStore(store global.StateStore) []byte {
 	rr := FetchAnyLatestRootRecord(store)
-	trie, err := immutable.NewTrieReader(core.CommitmentModel, store, rr.Root, 0)
+	trie, err := immutable.NewTrieReader(ledger.CommitmentModel, store, rr.Root, 0)
 	glb.AssertNoError(err)
 	return trie.Get(nil)
 }
 
 // NewReadable creates read-only ledger state with the given root
 func NewReadable(store common.KVReader, root common.VCommitment, clearCacheAtSize ...int) (*Readable, error) {
-	trie, err := immutable.NewTrieReader(core.CommitmentModel, store, root, clearCacheAtSize...)
+	trie, err := immutable.NewTrieReader(ledger.CommitmentModel, store, root, clearCacheAtSize...)
 	if err != nil {
 		return nil, err
 	}
@@ -89,7 +89,7 @@ func MustNewSugaredStateReader(store common.KVReader, root common.VCommitment, c
 // NewUpdatable creates updatable state with the given root. After updated, the root changes.
 // Suitable for chained updates of the ledger state
 func NewUpdatable(store global.StateStore, root common.VCommitment) (*Updatable, error) {
-	trie, err := immutable.NewTrieUpdatable(core.CommitmentModel, store, root)
+	trie, err := immutable.NewTrieUpdatable(ledger.CommitmentModel, store, root)
 	if err != nil {
 		return nil, err
 	}
@@ -105,14 +105,14 @@ func MustNewUpdatable(store global.StateStore, root common.VCommitment) *Updatab
 	return ret
 }
 
-func (r *Readable) GetUTXO(oid *core.OutputID) ([]byte, bool) {
+func (r *Readable) GetUTXO(oid *ledger.OutputID) ([]byte, bool) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
 	return r._getUTXO(oid)
 }
 
-func (r *Readable) _getUTXO(oid *core.OutputID) ([]byte, bool) {
+func (r *Readable) _getUTXO(oid *ledger.OutputID) ([]byte, bool) {
 	ret := common.MakeReaderPartition(r.trie, PartitionLedgerState).Get(oid[:])
 	if len(ret) == 0 {
 		return nil, false
@@ -120,7 +120,7 @@ func (r *Readable) _getUTXO(oid *core.OutputID) ([]byte, bool) {
 	return ret, true
 }
 
-func (r *Readable) HasUTXO(oid *core.OutputID) bool {
+func (r *Readable) HasUTXO(oid *ledger.OutputID) bool {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
@@ -128,24 +128,24 @@ func (r *Readable) HasUTXO(oid *core.OutputID) bool {
 }
 
 // KnowsCommittedTransaction transaction IDs are purged after some time, so the result may be
-func (r *Readable) KnowsCommittedTransaction(txid *core.TransactionID) bool {
+func (r *Readable) KnowsCommittedTransaction(txid *ledger.TransactionID) bool {
 	return common.MakeReaderPartition(r.trie, PartitionCommittedTransactionID).Has(txid[:])
 }
 
-func (r *Readable) GetIDsLockedInAccount(addr core.AccountID) ([]core.OutputID, error) {
+func (r *Readable) GetIDsLockedInAccount(addr ledger.AccountID) ([]ledger.OutputID, error) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
 	if len(addr) > 255 {
 		return nil, fmt.Errorf("accountID length should be <= 255")
 	}
-	ret := make([]core.OutputID, 0)
-	var oid core.OutputID
+	ret := make([]ledger.OutputID, 0)
+	var oid ledger.OutputID
 	var err error
 
 	accountPrefix := common.Concat(PartitionAccounts, byte(len(addr)), addr)
 	r.trie.Iterator(accountPrefix).IterateKeys(func(k []byte) bool {
-		oid, err = core.OutputIDFromBytes(k[len(accountPrefix):])
+		oid, err = ledger.OutputIDFromBytes(k[len(accountPrefix):])
 		if err != nil {
 			return false
 		}
@@ -159,7 +159,7 @@ func (r *Readable) GetIDsLockedInAccount(addr core.AccountID) ([]core.OutputID, 
 	return ret, nil
 }
 
-func (r *Readable) GetUTXOsLockedInAccount(addr core.AccountID) ([]*core.OutputDataWithID, error) {
+func (r *Readable) GetUTXOsLockedInAccount(addr ledger.AccountID) ([]*ledger.OutputDataWithID, error) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
@@ -168,12 +168,12 @@ func (r *Readable) GetUTXOsLockedInAccount(addr core.AccountID) ([]*core.OutputD
 	}
 	accountPrefix := common.Concat(PartitionAccounts, byte(len(addr)), addr)
 
-	ret := make([]*core.OutputDataWithID, 0)
+	ret := make([]*ledger.OutputDataWithID, 0)
 	var err error
 	var found bool
 	r.trie.Iterator(accountPrefix).IterateKeys(func(k []byte) bool {
-		o := &core.OutputDataWithID{}
-		o.ID, err = core.OutputIDFromBytes(k[len(accountPrefix):])
+		o := &ledger.OutputDataWithID{}
+		o.ID, err = ledger.OutputIDFromBytes(k[len(accountPrefix):])
 		if err != nil {
 			return false
 		}
@@ -191,18 +191,18 @@ func (r *Readable) GetUTXOsLockedInAccount(addr core.AccountID) ([]*core.OutputD
 	return ret, err
 }
 
-func (r *Readable) GetUTXOForChainID(id *core.ChainID) (*core.OutputDataWithID, error) {
+func (r *Readable) GetUTXOForChainID(id *ledger.ChainID) (*ledger.OutputDataWithID, error) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
-	if len(id) != core.ChainIDLength {
-		return nil, fmt.Errorf("GetUTXOForChainID: chainID length must be %d-bytes long", core.ChainIDLength)
+	if len(id) != ledger.ChainIDLength {
+		return nil, fmt.Errorf("GetUTXOForChainID: chainID length must be %d-bytes long", ledger.ChainIDLength)
 	}
 	outID := common.MakeReaderPartition(r.trie, PartitionChainID).Get(id[:])
 	if len(outID) == 0 {
 		return nil, ErrNotFound
 	}
-	oid, err := core.OutputIDFromBytes(outID)
+	oid, err := ledger.OutputIDFromBytes(outID)
 	if err != nil {
 		return nil, err
 	}
@@ -210,20 +210,20 @@ func (r *Readable) GetUTXOForChainID(id *core.ChainID) (*core.OutputDataWithID, 
 	if !found {
 		return nil, ErrNotFound
 	}
-	return &core.OutputDataWithID{
+	return &ledger.OutputDataWithID{
 		ID:         oid,
 		OutputData: outData,
 	}, nil
 }
 
-func (r *Readable) GetStem() (core.TimeSlot, []byte) {
+func (r *Readable) GetStem() (ledger.TimeSlot, []byte) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
-	accountPrefix := common.Concat(PartitionAccounts, byte(len(core.StemAccountID)), core.StemAccountID)
+	accountPrefix := common.Concat(PartitionAccounts, byte(len(ledger.StemAccountID)), ledger.StemAccountID)
 
 	var found bool
-	var retSlot core.TimeSlot
+	var retSlot ledger.TimeSlot
 	var retBytes []byte
 
 	// we iterate one element. Stem output ust always be present in the state
@@ -231,7 +231,7 @@ func (r *Readable) GetStem() (core.TimeSlot, []byte) {
 	r.trie.Iterator(accountPrefix).IterateKeys(func(k []byte) bool {
 		util.Assertf(count == 0, "inconsistency: must be exactly 1 index record for stem output")
 		count++
-		id, err := core.OutputIDFromBytes(k[len(accountPrefix):])
+		id, err := ledger.OutputIDFromBytes(k[len(accountPrefix):])
 		util.AssertNoError(err)
 		retSlot = id.TimeSlot()
 		retBytes, found = r._getUTXO(&id)
@@ -250,16 +250,16 @@ func (r *Readable) MustLedgerIdentityBytes() []byte {
 
 // IterateKnownCommittedTransactions utility function to collect old transaction IDs which may be purged from the state
 // Those txid serve no purpose after corresponding branches become committed and may appear only as virtual transactions
-func (r *Readable) IterateKnownCommittedTransactions(fun func(txid *core.TransactionID, slot core.TimeSlot) bool) {
+func (r *Readable) IterateKnownCommittedTransactions(fun func(txid *ledger.TransactionID, slot ledger.TimeSlot) bool) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
 	iter := common.MakeTraversableReaderPartition(r.trie, PartitionCommittedTransactionID).Iterator(nil)
-	var slot core.TimeSlot
+	var slot ledger.TimeSlot
 	iter.Iterate(func(k, v []byte) bool {
-		txid, err := core.TransactionIDFromBytes(k)
+		txid, err := ledger.TransactionIDFromBytes(k)
 		util.AssertNoError(err)
-		slot, err = core.TimeSlotFromBytes(v)
+		slot, err = ledger.TimeSlotFromBytes(v)
 		util.AssertNoError(err)
 
 		return fun(&txid, slot)
@@ -270,19 +270,19 @@ func (r *Readable) AccountsByLocks() map[string]LockedAccountInfo {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
-	var oid core.OutputID
+	var oid ledger.OutputID
 	var err error
 
 	ret := make(map[string]LockedAccountInfo)
 
 	r.trie.Iterator([]byte{PartitionAccounts}).IterateKeys(func(k []byte) bool {
-		oid, err = core.OutputIDFromBytes(k[2+k[1]:])
+		oid, err = ledger.OutputIDFromBytes(k[2+k[1]:])
 		util.AssertNoError(err)
 
 		oData, found := r._getUTXO(&oid)
 		util.Assertf(found, "can't get output")
 
-		_, amount, lock, err := core.OutputFromBytesMain(oData)
+		_, amount, lock, err := ledger.OutputFromBytesMain(oData)
 		util.AssertNoError(err)
 
 		lockStr := lock.String()
@@ -296,25 +296,25 @@ func (r *Readable) AccountsByLocks() map[string]LockedAccountInfo {
 	return ret
 }
 
-func (r *Readable) ChainInfo() map[core.ChainID]ChainRecordInfo {
+func (r *Readable) ChainInfo() map[ledger.ChainID]ChainRecordInfo {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
-	ret := make(map[core.ChainID]ChainRecordInfo)
-	var chainID core.ChainID
+	ret := make(map[ledger.ChainID]ChainRecordInfo)
+	var chainID ledger.ChainID
 	var err error
-	var oData *core.OutputDataWithID
-	var amount core.Amount
+	var oData *ledger.OutputDataWithID
+	var amount ledger.Amount
 
 	r.trie.Iterator([]byte{PartitionChainID}).Iterate(func(k, v []byte) bool {
-		chainID, err = core.ChainIDFromBytes(k[1:])
+		chainID, err = ledger.ChainIDFromBytes(k[1:])
 		util.AssertNoError(err)
 		oData, err = r.GetUTXOForChainID(&chainID)
 		util.AssertNoError(err)
 
 		_, already := ret[chainID]
 		util.Assertf(!already, "repeating chain record")
-		_, amount, _, err = core.OutputFromBytesMain(oData.OutputData)
+		_, amount, _, err = ledger.OutputFromBytesMain(oData.OutputData)
 		util.AssertNoError(err)
 
 		ret[chainID] = ChainRecordInfo{
@@ -345,18 +345,18 @@ func (u *Updatable) Root() common.VCommitment {
 
 // Update updates trie with mutations
 // If rootStemOutputID != nil, also writes root partition record
-func (u *Updatable) Update(muts *Mutations, rootStemOutputID *core.OutputID, rootSeqID *core.ChainID, coverage LedgerCoverage) error {
+func (u *Updatable) Update(muts *Mutations, rootStemOutputID *ledger.OutputID, rootSeqID *ledger.ChainID, coverage LedgerCoverage) error {
 	return u.updateUTXOLedgerDB(func(trie *immutable.TrieUpdatable) error {
 		return UpdateTrie(u.trie, muts)
 	}, rootStemOutputID, rootSeqID, coverage)
 }
 
-func (u *Updatable) MustUpdate(muts *Mutations, rootStemOutputID *core.OutputID, rootSeqID *core.ChainID, coverage LedgerCoverage) {
+func (u *Updatable) MustUpdate(muts *Mutations, rootStemOutputID *ledger.OutputID, rootSeqID *ledger.ChainID, coverage LedgerCoverage) {
 	err := u.Update(muts, rootStemOutputID, rootSeqID, coverage)
 	common.AssertNoError(err)
 }
 
-func (u *Updatable) updateUTXOLedgerDB(updateFun func(updatable *immutable.TrieUpdatable) error, stemOutputID *core.OutputID, seqID *core.ChainID, coverage LedgerCoverage) error {
+func (u *Updatable) updateUTXOLedgerDB(updateFun func(updatable *immutable.TrieUpdatable) error, stemOutputID *ledger.OutputID, seqID *ledger.ChainID, coverage LedgerCoverage) error {
 	if err := updateFun(u.trie); err != nil {
 		return err
 	}
@@ -377,7 +377,7 @@ func (u *Updatable) updateUTXOLedgerDB(updateFun func(updatable *immutable.TrieU
 	if err = batch.Commit(); err != nil {
 		return err
 	}
-	if u.trie, err = immutable.NewTrieUpdatable(core.CommitmentModel, u.store, newRoot); err != nil {
+	if u.trie, err = immutable.NewTrieUpdatable(ledger.CommitmentModel, u.store, newRoot); err != nil {
 		return err
 	}
 	return nil

@@ -4,8 +4,8 @@ import (
 	"fmt"
 
 	"github.com/lunfardo314/proxima/api"
-	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/genesis"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/spf13/cobra"
@@ -23,16 +23,16 @@ func initGetUTXOCmd() *cobra.Command {
 }
 
 func runGetUTXOCmd(_ *cobra.Command, args []string) {
-	oid, err := core.OutputIDFromHexString(args[0])
+	oid, err := ledger.OutputIDFromHexString(args[0])
 	glb.AssertNoError(err)
 
 	oData, err := getClient().GetOutputDataFromHeaviestState(&oid)
 	glb.AssertNoError(err)
 	if len(oData) > 0 {
-		out, err := core.OutputFromBytesReadOnly(oData)
+		out, err := ledger.OutputFromBytesReadOnly(oData)
 		glb.AssertNoError(err)
 
-		glb.Infof((&core.OutputWithID{
+		glb.Infof((&ledger.OutputWithID{
 			ID:     oid,
 			Output: out,
 		}).String())

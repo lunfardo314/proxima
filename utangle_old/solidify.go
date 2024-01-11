@@ -3,8 +3,8 @@ package utangle_old
 import (
 	"fmt"
 
-	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/global"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/util"
@@ -22,7 +22,7 @@ func (ut *UTXOTangle) MakeDraftVertexFromTxBytes(txBytes []byte) (*Vertex, error
 	return ret, nil
 }
 
-func (ut *UTXOTangle) MakeDraftVertex(tx *transaction.Transaction) (*Vertex, *core.OutputID) {
+func (ut *UTXOTangle) MakeDraftVertex(tx *transaction.Transaction) (*Vertex, *ledger.OutputID) {
 	ret := NewVertex(tx)
 	if conflict := ret.FetchMissingDependencies(ut); conflict != nil {
 		return nil, conflict
@@ -33,7 +33,7 @@ func (ut *UTXOTangle) MakeDraftVertex(tx *transaction.Transaction) (*Vertex, *co
 // FetchMissingDependencies checks solidity of inputs and fetches what is available
 // In general, the result is non-deterministic because some dependencies may be unavailable. This is ok for solidifier
 // Once transaction has all dependencies solid, further on the result is deterministic
-func (v *Vertex) FetchMissingDependencies(ut *UTXOTangle) (conflict *core.OutputID) {
+func (v *Vertex) FetchMissingDependencies(ut *UTXOTangle) (conflict *ledger.OutputID) {
 	if conflict = v.fetchMissingEndorsements(ut); conflict == nil {
 		if baselineBranch := v.BaselineBranch(); baselineBranch != nil {
 			conflict = v.fetchMissingInputs(ut, ut.MustGetSugaredStateReader(baselineBranch.ID()))
@@ -51,9 +51,9 @@ func (v *Vertex) FetchMissingDependencies(ut *UTXOTangle) (conflict *core.Output
 	return
 }
 
-func (v *Vertex) fetchMissingInputs(ut *UTXOTangle, baselineState ...multistate.SugaredStateReader) (conflict *core.OutputID) {
+func (v *Vertex) fetchMissingInputs(ut *UTXOTangle, baselineState ...multistate.SugaredStateReader) (conflict *ledger.OutputID) {
 	var conflictWrapped *WrappedOutput
-	v.Tx.ForEachInput(func(i byte, oid *core.OutputID) bool {
+	v.Tx.ForEachInput(func(i byte, oid *ledger.OutputID) bool {
 		if v.Inputs[i] != nil {
 			// it is already solid
 			return true
@@ -75,10 +75,10 @@ func (v *Vertex) fetchMissingInputs(ut *UTXOTangle, baselineState ...multistate.
 	return
 }
 
-func (v *Vertex) fetchMissingEndorsements(ut *UTXOTangle) (conflict *core.OutputID) {
+func (v *Vertex) fetchMissingEndorsements(ut *UTXOTangle) (conflict *ledger.OutputID) {
 	var conflictWrapped *WrappedOutput
 
-	v.Tx.ForEachEndorsement(func(i byte, txid *core.TransactionID) bool {
+	v.Tx.ForEachEndorsement(func(i byte, txid *ledger.TransactionID) bool {
 		if v.Endorsements[i] != nil {
 			// already solid and merged
 			return true

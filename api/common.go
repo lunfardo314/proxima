@@ -1,7 +1,7 @@
 package api
 
 import (
-	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/ledger"
 )
 
 const (
@@ -52,7 +52,7 @@ type InclusionDataEncoded struct {
 }
 
 type InclusionData struct {
-	BranchID core.TransactionID
+	BranchID ledger.TransactionID
 	Coverage uint64
 	Included bool
 }
@@ -74,7 +74,7 @@ type (
 const ErrGetOutputNotFound = "output not found"
 
 func (i *InclusionDataEncoded) Decode() (InclusionData, error) {
-	txid, err := core.TransactionIDFromHexString(i.BranchID)
+	txid, err := ledger.TransactionIDFromHexString(i.BranchID)
 	if err != nil {
 		return InclusionData{}, err
 	}

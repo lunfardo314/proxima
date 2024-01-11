@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -46,7 +46,7 @@ func runInitProfileCommand(_ *cobra.Command, args []string) {
 	glb.Assertf(!glb.FileExists(profileFname), "file %s already exists", profileFname)
 
 	privKey := glb.MustGetPrivateKey()
-	addr := core.AddressED25519FromPrivateKey(privKey)
+	addr := ledger.AddressED25519FromPrivateKey(privKey)
 	profile := fmt.Sprintf(profileTemplate, hex.EncodeToString(privKey), addr.String())
 	err := os.WriteFile(profileFname, []byte(profile), 0666)
 	glb.AssertNoError(err)

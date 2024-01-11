@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/transaction"
 )
@@ -60,7 +60,7 @@ func ConsistencyCheckBeforeAddTransaction(tx *transaction.Transaction, r *multis
 	if r.KnowsCommittedTransaction(tx.ID()) {
 		return fmt.Errorf("BeforeAddTransaction: transaction %s already in the state: cannot be added", tx.IDShortString())
 	}
-	tx.ForEachInput(func(i byte, oid *core.OutputID) bool {
+	tx.ForEachInput(func(i byte, oid *ledger.OutputID) bool {
 		if !r.HasUTXO(oid) {
 			err = fmt.Errorf("BeforeAddTransaction: output %s does not exist: cannot be consumed", oid.StringShort())
 			return false
@@ -68,10 +68,10 @@ func ConsistencyCheckBeforeAddTransaction(tx *transaction.Transaction, r *multis
 		return true
 	})
 
-	var chainInput core.OutputID
-	var oData *core.OutputDataWithID
+	var chainInput ledger.OutputID
+	var oData *ledger.OutputDataWithID
 
-	tx.ForEachProducedOutput(func(idx byte, o *core.Output, oid *core.OutputID) bool {
+	tx.ForEachProducedOutput(func(idx byte, o *ledger.Output, oid *ledger.OutputID) bool {
 		if r.HasUTXO(oid) {
 			err = fmt.Errorf("BeforeAddTransaction: output %s already exist: cannot be produced", oid.StringShort())
 			return false
@@ -82,7 +82,7 @@ func ConsistencyCheckBeforeAddTransaction(tx *transaction.Transaction, r *multis
 		}
 		if chainConstraint.IsOrigin() {
 			// chain records should not exist
-			chainID := core.OriginChainID(oid)
+			chainID := ledger.OriginChainID(oid)
 			_, err = r.GetUTXOForChainID(&chainID)
 			if errors.Is(err, multistate.ErrNotFound) {
 				return true
@@ -111,7 +111,7 @@ func ConsistencyCheckAfterAddTransaction(tx *transaction.Transaction, r *multist
 	if !r.KnowsCommittedTransaction(tx.ID()) {
 		return fmt.Errorf("AfterAddTransaction: transaction %s is expected to be in the state", tx.IDShortString())
 	}
-	tx.ForEachInput(func(i byte, oid *core.OutputID) bool {
+	tx.ForEachInput(func(i byte, oid *ledger.OutputID) bool {
 		if r.HasUTXO(oid) {
 			err = fmt.Errorf("input %s must not exist", oid.StringShort())
 			return false
@@ -119,8 +119,8 @@ func ConsistencyCheckAfterAddTransaction(tx *transaction.Transaction, r *multist
 		return true
 	})
 
-	var oData *core.OutputDataWithID
-	tx.ForEachProducedOutput(func(idx byte, o *core.Output, oid *core.OutputID) bool {
+	var oData *ledger.OutputDataWithID
+	tx.ForEachProducedOutput(func(idx byte, o *ledger.Output, oid *ledger.OutputID) bool {
 		if !r.HasUTXO(oid) {
 			err = fmt.Errorf("AfterAddTransaction: output %s must exist", oid.StringShort())
 			return false
@@ -129,9 +129,9 @@ func ConsistencyCheckAfterAddTransaction(tx *transaction.Transaction, r *multist
 		if i == 0xff {
 			return true
 		}
-		var chainID core.ChainID
+		var chainID ledger.ChainID
 		if chainConstraint.IsOrigin() {
-			chainID = core.OriginChainID(oid)
+			chainID = ledger.OriginChainID(oid)
 		} else {
 			chainID = chainConstraint.ID
 		}

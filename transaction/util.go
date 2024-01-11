@@ -7,7 +7,7 @@ import (
 	"slices"
 
 	"github.com/lunfardo314/easyfl"
-	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lazybytes"
 	"github.com/lunfardo314/proxima/util/lines"
@@ -61,13 +61,13 @@ func (ctx *TransactionContext) Lines(prefix ...string) *lines.Lines {
 	}
 
 	ret.Add("Endorsements (%d):", ctx.NumEndorsements())
-	ctx.ForEachEndorsement(func(idx byte, txid *core.TransactionID) bool {
+	ctx.ForEachEndorsement(func(idx byte, txid *ledger.TransactionID) bool {
 		ret.Add("  %d: %s", idx, txid.String())
 		return true
 	})
 
 	ret.Add("Inputs (%d consumed outputs): ", ctx.NumInputs())
-	ctx.ForEachConsumedOutput(func(idx byte, oid *core.OutputID, out *core.Output) bool {
+	ctx.ForEachConsumedOutput(func(idx byte, oid *ledger.OutputID, out *ledger.Output) bool {
 		if out == nil {
 			ret.Add("  #%d: %s (parse error)", idx, oid.String())
 			return true
@@ -83,7 +83,7 @@ func (ctx *TransactionContext) Lines(prefix ...string) *lines.Lines {
 
 	ret.Add("Outputs (%d produced): ", ctx.NumProducedOutputs())
 	totalSum := uint64(0)
-	ctx.ForEachProducedOutput(func(idx byte, out *core.Output, oid *core.OutputID) bool {
+	ctx.ForEachProducedOutput(func(idx byte, out *ledger.Output, oid *ledger.OutputID) bool {
 		if out == nil {
 			ret.Add("  #%d : parse error", idx)
 			return true
@@ -91,10 +91,10 @@ func (ctx *TransactionContext) Lines(prefix ...string) *lines.Lines {
 		totalSum += out.Amount()
 		chainIdStr := ""
 		if cc, i := out.ChainConstraint(); i != 0xff {
-			var cid core.ChainID
+			var cid ledger.ChainID
 			if cc.IsOrigin() {
-				oid := core.NewOutputID(txid, idx)
-				cid = core.OriginChainID(&oid)
+				oid := ledger.NewOutputID(txid, idx)
+				cid = ledger.OriginChainID(&oid)
 			} else {
 				cid = cc.ID
 			}
@@ -110,7 +110,7 @@ func (ctx *TransactionContext) Lines(prefix ...string) *lines.Lines {
 	return ret
 }
 
-func ParseBytesToString(txBytes []byte, fetchOutput func(oid *core.OutputID) ([]byte, bool)) string {
+func ParseBytesToString(txBytes []byte, fetchOutput func(oid *ledger.OutputID) ([]byte, bool)) string {
 	ctx, err := ContextFromTransferableBytes(txBytes, fetchOutput)
 	if err != nil {
 		return err.Error()
@@ -118,9 +118,9 @@ func ParseBytesToString(txBytes []byte, fetchOutput func(oid *core.OutputID) ([]
 	return ctx.String()
 }
 
-func PickOutputFromListFunc(lst []*core.OutputWithID) func(oid *core.OutputID) ([]byte, bool) {
-	return func(oid *core.OutputID) ([]byte, bool) {
-		idx := slices.IndexFunc(lst, func(o *core.OutputWithID) bool {
+func PickOutputFromListFunc(lst []*ledger.OutputWithID) func(oid *ledger.OutputID) ([]byte, bool) {
+	return func(oid *ledger.OutputID) ([]byte, bool) {
+		idx := slices.IndexFunc(lst, func(o *ledger.OutputWithID) bool {
 			return o.ID == *oid
 		})
 		if idx < 0 {

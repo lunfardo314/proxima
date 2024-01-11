@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/global"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/txbuilder"
@@ -52,7 +52,7 @@ func runMainChainCmd(_ *cobra.Command, args []string) {
 		onChainBalance uint64
 		name           string
 	}
-	bySeqID := make(map[core.ChainID]seqData)
+	bySeqID := make(map[ledger.ChainID]seqData)
 
 	for _, bd := range mainBranches {
 		sd := bySeqID[bd.SequencerID]
@@ -67,7 +67,7 @@ func runMainChainCmd(_ *cobra.Command, args []string) {
 		}
 		bySeqID[bd.SequencerID] = sd
 	}
-	sorted := util.SortKeys(bySeqID, func(k1, k2 core.ChainID) bool {
+	sorted := util.SortKeys(bySeqID, func(k1, k2 ledger.ChainID) bool {
 		return bySeqID[k1].onChainBalance > bySeqID[k2].onChainBalance
 	})
 	glb.Infof("stats by sequencer ID:")

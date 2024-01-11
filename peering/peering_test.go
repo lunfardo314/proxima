@@ -10,7 +10,7 @@ import (
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/peer"
-	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/txmetadata"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/countdown"
@@ -255,12 +255,12 @@ func TestSendMsg(t *testing.T) {
 		hosts := makeHosts(t, numHosts, trace)
 		counter := countdown.New(numMsg, 7*time.Second)
 
-		txSet := set.New[core.TransactionID]()
+		txSet := set.New[ledger.TransactionID]()
 		txSetMutex := &sync.Mutex{}
 
 		for _, h := range hosts {
 			h1 := h
-			h1.OnReceivePullRequest(func(from peer.ID, txids []core.TransactionID) {
+			h1.OnReceivePullRequest(func(from peer.ID, txids []ledger.TransactionID) {
 				//t.Logf("pull %d", len(txids))
 				txSetMutex.Lock()
 				defer txSetMutex.Unlock()
@@ -275,7 +275,7 @@ func TestSendMsg(t *testing.T) {
 
 			h1.OnReceiveTxBytes(func(from peer.ID, txBytes []byte, _ *txmetadata.TransactionMetadata) {
 				require.True(t, len(txBytes) == 32)
-				var txid core.TransactionID
+				var txid ledger.TransactionID
 				copy(txid[:], txBytes)
 				//t.Logf("response %s", txid.StringShort())
 
@@ -310,12 +310,12 @@ func TestSendMsg(t *testing.T) {
 	})
 }
 
-func rndTxIDs() []core.TransactionID {
+func rndTxIDs() []ledger.TransactionID {
 	rnd := rand.Intn(5) + 1
-	ret := make([]core.TransactionID, rnd)
+	ret := make([]ledger.TransactionID, rnd)
 
 	for i := range ret {
-		ret[i] = core.RandomTransactionID(false, false)
+		ret[i] = ledger.RandomTransactionID(false, false)
 	}
 	return ret
 }

@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/peer"
-	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/global"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/utangle_old"
 	"github.com/lunfardo314/proxima/util"
@@ -26,7 +26,7 @@ type (
 	Sequencer struct {
 		stopFun       context.CancelFunc
 		glb           *workflow.Workflow
-		chainID       core.ChainID
+		chainID       ledger.ChainID
 		controllerKey ed25519.PrivateKey
 		config        ConfigOptions
 
@@ -42,7 +42,7 @@ type (
 		infoMutex      sync.RWMutex
 		info           Info
 		traceNAhead    atomic.Int64
-		prevTimeTarget core.LogicalTime
+		prevTimeTarget ledger.LogicalTime
 	}
 
 	Info struct {
@@ -78,13 +78,13 @@ func defaultConfigOptions() ConfigOptions {
 		LogOutputs:    []string{"stdout"},
 		LogTimeLayout: global.TimeLayoutDefault,
 		MaxFeeInputs:  DefaultMaxFeeInputs,
-		MaxTargetTs:   core.NilLogicalTime,
+		MaxTargetTs:   ledger.NilLogicalTime,
 		MaxMilestones: math.MaxInt,
 		MaxBranches:   math.MaxInt,
 	}
 }
 
-func New(glb *workflow.Workflow, seqID core.ChainID, controllerKey ed25519.PrivateKey, opts ...ConfigOpt) (*Sequencer, error) {
+func New(glb *workflow.Workflow, seqID ledger.ChainID, controllerKey ed25519.PrivateKey, opts ...ConfigOpt) (*Sequencer, error) {
 	var err error
 
 	cfg := defaultConfigOptions()
@@ -106,7 +106,7 @@ func New(glb *workflow.Workflow, seqID core.ChainID, controllerKey ed25519.Priva
 		seq.LogStats()
 	}
 	ret.log.Infof("sequencer pace is %d time slots (%v)",
-		ret.config.Pace, time.Duration(ret.config.Pace)*core.TransactionTimePaceDuration())
+		ret.config.Pace, time.Duration(ret.config.Pace)*ledger.TransactionTimePaceDuration())
 
 	ret.log.Debugf("sequencer starting..")
 	if err = ret.createMilestoneFactory(); err != nil {
@@ -117,7 +117,7 @@ func New(glb *workflow.Workflow, seqID core.ChainID, controllerKey ed25519.Priva
 	return ret, nil
 }
 
-func MustRunNew(glb *workflow.Workflow, seqID core.ChainID, controllerKey ed25519.PrivateKey, opts ...ConfigOpt) *Sequencer {
+func MustRunNew(glb *workflow.Workflow, seqID ledger.ChainID, controllerKey ed25519.PrivateKey, opts ...ConfigOpt) *Sequencer {
 	ret, err := New(glb, seqID, controllerKey, opts...)
 	common.AssertNoError(err)
 	ret.Run()
@@ -133,7 +133,7 @@ func NewFromConfig(glb *workflow.Workflow, name string) (*Sequencer, error) {
 	if !subViper.GetBool("enable") {
 		return nil, nil
 	}
-	seqID, err := core.ChainIDFromHexString(subViper.GetString("sequencer_id"))
+	seqID, err := ledger.ChainIDFromHexString(subViper.GetString("sequencer_id"))
 	if err != nil {
 		return nil, fmt.Errorf("StartFromConfig: can't parse sequencer ID: %v", err)
 	}
@@ -210,7 +210,7 @@ func (seq *Sequencer) Stop() {
 	seq.stopFun()
 }
 
-func (seq *Sequencer) ID() *core.ChainID {
+func (seq *Sequencer) ID() *ledger.ChainID {
 	ret := seq.factory.tipPool.chainID
 	return &ret
 }
@@ -261,8 +261,8 @@ func (seq *Sequencer) WaitStop() {
 
 const sleepWaitingCurrentMilestoneTime = 10 * time.Millisecond
 
-func (seq *Sequencer) chooseNextTargetTime(avgProposalDuration time.Duration) core.LogicalTime {
-	var prevMilestoneTs core.LogicalTime
+func (seq *Sequencer) chooseNextTargetTime(avgProposalDuration time.Duration) ledger.LogicalTime {
+	var prevMilestoneTs ledger.LogicalTime
 
 	if currentMs := seq.factory.getLatestMilestone(); currentMs.VID != nil {
 		prevMilestoneTs = currentMs.Timestamp()
@@ -270,26 +270,26 @@ func (seq *Sequencer) chooseNextTargetTime(avgProposalDuration time.Duration) co
 		seqOut, stemOut, found := seq.factory.utangle.GetSequencerBootstrapOutputs(seq.factory.tipPool.chainID)
 		util.Assertf(found, "GetSequencerBootstrapOutputs failed")
 
-		prevMilestoneTs = core.MaxLogicalTime(seqOut.Timestamp(), stemOut.Timestamp())
+		prevMilestoneTs = ledger.MaxLogicalTime(seqOut.Timestamp(), stemOut.Timestamp())
 	}
 
 	// synchronize clock
-	nowis := core.LogicalTimeNow()
+	nowis := ledger.LogicalTimeNow()
 	if nowis.Before(prevMilestoneTs) {
-		waitDuration := time.Duration(core.DiffTimeTicks(prevMilestoneTs, nowis)) * core.TimeTickDuration()
+		waitDuration := time.Duration(ledger.DiffTimeTicks(prevMilestoneTs, nowis)) * ledger.TimeTickDuration()
 		seq.log.Warnf("nowis (%s) is before last milestone ts (%s). Sleep %v",
 			nowis.String(), prevMilestoneTs.String(), waitDuration)
 		time.Sleep(waitDuration)
 	}
-	nowis = core.LogicalTimeNow()
-	for ; nowis.Before(prevMilestoneTs); nowis = core.LogicalTimeNow() {
+	nowis = ledger.LogicalTimeNow()
+	for ; nowis.Before(prevMilestoneTs); nowis = ledger.LogicalTimeNow() {
 		seq.log.Warnf("nowis (%s) is before last milestone ts (%s). Sleep %v",
 			nowis.String(), prevMilestoneTs.String(), sleepWaitingCurrentMilestoneTime)
 		time.Sleep(sleepWaitingCurrentMilestoneTime)
 	}
 	// TODO taking into account average speed of proposal generation
 
-	nowis = core.LogicalTimeNow()
+	nowis = ledger.LogicalTimeNow()
 	util.Assertf(!nowis.Before(prevMilestoneTs), "!core.LogicalTimeNow().Before(prevMilestoneTs)")
 
 	targetAbsoluteMinimum := prevMilestoneTs.AddTicks(seq.config.Pace)
@@ -314,10 +314,10 @@ func (seq *Sequencer) chooseNextTargetTime(avgProposalDuration time.Duration) co
 }
 
 // Returns nil if fails to generate acceptable bestSoFarTx until the deadline
-func (seq *Sequencer) generateNextMilestoneForTargetTime(targetTs core.LogicalTime) (*transaction.Transaction, time.Duration, int) {
+func (seq *Sequencer) generateNextMilestoneForTargetTime(targetTs ledger.LogicalTime) (*transaction.Transaction, time.Duration, int) {
 	seq.trace("generateNextMilestoneForTargetTime %s", targetTs)
 
-	timeout := time.Duration(seq.config.Pace) * core.TimeTickDuration()
+	timeout := time.Duration(seq.config.Pace) * ledger.TimeTickDuration()
 	absoluteDeadline := targetTs.Time().Add(timeout)
 
 	if absoluteDeadline.Before(time.Now()) {
@@ -341,13 +341,13 @@ func (seq *Sequencer) mainLoop() {
 	milestoneCount := 0
 	branchCount := 0
 
-	var currentTimeSlot core.TimeSlot
+	var currentTimeSlot ledger.TimeSlot
 	var avgProposalDuration time.Duration
 
 	// wait for one slot at startup
-	beginAt := seq.glb.UTXOTangle().SyncData().WhenStarted().Add(core.TimeSlotDuration())
+	beginAt := seq.glb.UTXOTangle().SyncData().WhenStarted().Add(ledger.TimeSlotDuration())
 	if beginAt.After(time.Now()) {
-		seq.log.Infof("wait for one slot (%v) before starting the main loop", core.TimeSlotDuration())
+		seq.log.Infof("wait for one slot (%v) before starting the main loop", ledger.TimeSlotDuration())
 	}
 	time.Sleep(time.Until(beginAt))
 	seq.log.Infof("starting main loop")
@@ -371,7 +371,7 @@ func (seq *Sequencer) mainLoop() {
 			targetTs.String(), seq.prevTimeTarget.String())
 		seq.prevTimeTarget = targetTs
 
-		if seq.config.MaxTargetTs != core.NilLogicalTime && targetTs.After(seq.config.MaxTargetTs) {
+		if seq.config.MaxTargetTs != ledger.NilLogicalTime && targetTs.After(seq.config.MaxTargetTs) {
 			seq.log.Infof("next target ts %s is after maximum ts %s -> stopping", targetTs, seq.config.MaxTargetTs)
 			go seq.Stop()
 			break
@@ -382,12 +382,12 @@ func (seq *Sequencer) mainLoop() {
 		}
 
 		//seq.setTraceAhead(1)
-		seq.trace("target ts: %s. Now is: %s", targetTs, core.LogicalTimeNow())
+		seq.trace("target ts: %s. Now is: %s", targetTs, ledger.LogicalTimeNow())
 
 		ms, avgProposalDuration, numProposals := seq.generateNextMilestoneForTargetTime(targetTs)
 		if ms == nil {
 			//seq.setTraceAhead(1)
-			seq.trace("failed to generate ms for target: %s. Now is: %s", targetTs, core.LogicalTimeNow())
+			seq.trace("failed to generate ms for target: %s. Now is: %s", targetTs, ledger.LogicalTimeNow())
 			time.Sleep(10 * time.Millisecond)
 			continue
 		}

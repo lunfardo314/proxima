@@ -5,8 +5,8 @@ import (
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/peer"
-	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/global"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/set"
@@ -18,7 +18,7 @@ const pullPeriod = 500 * time.Millisecond
 
 type (
 	PullTxData struct {
-		TxIDs []core.TransactionID
+		TxIDs []ledger.TransactionID
 	}
 
 	PullTxConsumer struct {
@@ -26,18 +26,18 @@ type (
 		stopBackgroundLoopChan chan struct{}
 		// set of transaction being pulled
 		mutex    sync.RWMutex
-		pullList map[core.TransactionID]time.Time
+		pullList map[ledger.TransactionID]time.Time
 		// list of removed transactions
 		toRemoveSetMutex sync.RWMutex
-		toRemoveSet      set.Set[core.TransactionID]
+		toRemoveSet      set.Set[ledger.TransactionID]
 	}
 )
 
 func (w *Workflow) initPullConsumer() {
 	w.pullConsumer = &PullTxConsumer{
 		Consumer:               NewConsumer[*PullTxData](PullTxConsumerName, w),
-		pullList:               make(map[core.TransactionID]time.Time),
-		toRemoveSet:            set.New[core.TransactionID](),
+		pullList:               make(map[ledger.TransactionID]time.Time),
+		toRemoveSet:            set.New[ledger.TransactionID](),
 		stopBackgroundLoopChan: make(chan struct{}),
 	}
 	w.pullConsumer.AddOnConsume(w.pullConsumer.consume)
@@ -49,7 +49,7 @@ func (w *Workflow) initPullConsumer() {
 }
 
 func (c *PullTxConsumer) consume(inp *PullTxData) {
-	toPull := make([]core.TransactionID, 0)
+	toPull := make([]ledger.TransactionID, 0)
 	txBytesList := make([][]byte, 0)
 
 	c.mutex.Lock()
@@ -93,7 +93,7 @@ const pullLoopPeriod = 50 * time.Millisecond
 func (c *PullTxConsumer) backgroundLoop() {
 	defer c.Log().Infof("background loop stopped")
 
-	buffer := make([]core.TransactionID, 0) // minimize heap use
+	buffer := make([]ledger.TransactionID, 0) // minimize heap use
 	for {
 		select {
 		case <-c.stopBackgroundLoopChan:
@@ -104,14 +104,14 @@ func (c *PullTxConsumer) backgroundLoop() {
 	}
 }
 
-func (c *PullTxConsumer) pullAllMatured(buf []core.TransactionID) {
+func (c *PullTxConsumer) pullAllMatured(buf []ledger.TransactionID) {
 	buf = util.ClearSlice(buf)
 	toRemove := c.toRemoveSetClone()
 
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
-	toRemove.ForEach(func(removeTxID core.TransactionID) bool {
+	toRemove.ForEach(func(removeTxID ledger.TransactionID) bool {
 		delete(c.pullList, removeTxID)
 		return true
 	})
@@ -129,7 +129,7 @@ func (c *PullTxConsumer) pullAllMatured(buf []core.TransactionID) {
 	}
 }
 
-func (c *PullTxConsumer) stopPulling(txid *core.TransactionID) {
+func (c *PullTxConsumer) stopPulling(txid *ledger.TransactionID) {
 	c.toRemoveSetMutex.Lock()
 	defer c.toRemoveSetMutex.Unlock()
 
@@ -137,16 +137,16 @@ func (c *PullTxConsumer) stopPulling(txid *core.TransactionID) {
 	c.tracePull("stopPulling: %s. pull list size: %d", func() any { return txid.StringShort() }, len(c.pullList))
 }
 
-func (c *PullTxConsumer) toRemoveSetClone() set.Set[core.TransactionID] {
+func (c *PullTxConsumer) toRemoveSetClone() set.Set[ledger.TransactionID] {
 	c.toRemoveSetMutex.Lock()
 	defer c.toRemoveSetMutex.Unlock()
 
 	ret := c.toRemoveSet
-	c.toRemoveSet = set.New[core.TransactionID]()
+	c.toRemoveSet = set.New[ledger.TransactionID]()
 	return ret
 }
 
-func (c *PullTxConsumer) isInPullList(txid *core.TransactionID) (ret bool) {
+func (c *PullTxConsumer) isInPullList(txid *ledger.TransactionID) (ret bool) {
 	c.mutex.RLock()
 	defer c.mutex.RUnlock()
 
@@ -154,14 +154,14 @@ func (c *PullTxConsumer) isInPullList(txid *core.TransactionID) (ret bool) {
 	return
 }
 
-func (c *PullTxConsumer) isInToRemoveSet(txid *core.TransactionID) (ret bool) {
+func (c *PullTxConsumer) isInToRemoveSet(txid *ledger.TransactionID) (ret bool) {
 	c.toRemoveSetMutex.RLock()
 	defer c.toRemoveSetMutex.RUnlock()
 
 	return c.toRemoveSet.Contains(*txid)
 }
 
-func (c *PullTxConsumer) isBeingPulled(txid *core.TransactionID) bool {
+func (c *PullTxConsumer) isBeingPulled(txid *ledger.TransactionID) bool {
 	return !c.isInToRemoveSet(txid) && c.isInPullList(txid)
 }
 

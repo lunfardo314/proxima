@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/global"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/transaction"
 	"github.com/lunfardo314/proxima/txbuilder"
 	"github.com/lunfardo314/proxima/utangle_old"
@@ -50,7 +50,7 @@ type (
 
 	latestMilestoneProposal struct {
 		mutex             sync.RWMutex
-		targetTs          core.LogicalTime
+		targetTs          ledger.LogicalTime
 		bestSoFarCoverage uint64
 		current           *transaction.Transaction
 		currentExtended   utangle_old.WrappedOutput
@@ -131,12 +131,12 @@ func newOwnMilestone(wOut utangle_old.WrappedOutput, inputs ...utangle_old.Wrapp
 	}
 }
 
-func (mf *milestoneFactory) makeMilestone(chainIn, stemIn *utangle_old.WrappedOutput, preSelectedFeeInputs []utangle_old.WrappedOutput, endorse []*utangle_old.WrappedTx, targetTs core.LogicalTime) (*transaction.Transaction, error) {
+func (mf *milestoneFactory) makeMilestone(chainIn, stemIn *utangle_old.WrappedOutput, preSelectedFeeInputs []utangle_old.WrappedOutput, endorse []*utangle_old.WrappedTx, targetTs ledger.LogicalTime) (*transaction.Transaction, error) {
 	chainInReal, err := chainIn.Unwrap()
 	if err != nil || chainInReal == nil {
 		return nil, err
 	}
-	var stemInReal *core.OutputWithID
+	var stemInReal *ledger.OutputWithID
 
 	if stemIn != nil {
 		stemInReal, err = stemIn.Unwrap()
@@ -144,7 +144,7 @@ func (mf *milestoneFactory) makeMilestone(chainIn, stemIn *utangle_old.WrappedOu
 			return nil, err
 		}
 	}
-	feeInputsReal := make([]*core.OutputWithID, len(preSelectedFeeInputs))
+	feeInputsReal := make([]*ledger.OutputWithID, len(preSelectedFeeInputs))
 	for i, wOut := range preSelectedFeeInputs {
 		feeInputsReal[i], err = wOut.Unwrap()
 		if err != nil {
@@ -155,16 +155,16 @@ func (mf *milestoneFactory) makeMilestone(chainIn, stemIn *utangle_old.WrappedOu
 		}
 	}
 	// interpret sequencer commands contained in fee consumedInThePastPath. This also possibly adjusts consumedInThePastPath
-	var additionalOutputs []*core.Output
+	var additionalOutputs []*ledger.Output
 	capWithdrawals := uint64(0)
-	if chainInReal.Output.Amount() > core.MinimumAmountOnSequencer {
-		capWithdrawals = chainInReal.Output.Amount() - core.MinimumAmountOnSequencer
+	if chainInReal.Output.Amount() > ledger.MinimumAmountOnSequencer {
+		capWithdrawals = chainInReal.Output.Amount() - ledger.MinimumAmountOnSequencer
 	}
 
 	// calculate inflation
 	var inflationAmount uint64
 	if stemIn != nil {
-		inflationAmount = core.MaxInflationFromPredecessorAmount(chainInReal.Output.Amount())
+		inflationAmount = ledger.MaxInflationFromPredecessorAmount(chainInReal.Output.Amount())
 	}
 
 	// interpret possible sequencer commands in inputs
@@ -176,7 +176,7 @@ func (mf *milestoneFactory) makeMilestone(chainIn, stemIn *utangle_old.WrappedOu
 	}
 	txBytes, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
 		SeqName: mf.seqName,
-		ChainInput: &core.OutputWithChainID{
+		ChainInput: &ledger.OutputWithChainID{
 			OutputWithID: *chainInReal,
 			ChainID:      mf.tipPool.ChainID(),
 		},
@@ -220,7 +220,7 @@ func (mf *milestoneFactory) isConsumedInThePastPath(wOut utangle_old.WrappedOutp
 	return mf.ownMilestones[ms].consumedInThePastPath.Contains(wOut)
 }
 
-func (mf *milestoneFactory) selectInputs(targetTs core.LogicalTime, ownMs utangle_old.WrappedOutput, otherSeqVIDs ...*utangle_old.WrappedTx) ([]utangle_old.WrappedOutput, *utangle_old.WrappedOutput) {
+func (mf *milestoneFactory) selectInputs(targetTs ledger.LogicalTime, ownMs utangle_old.WrappedOutput, otherSeqVIDs ...*utangle_old.WrappedTx) ([]utangle_old.WrappedOutput, *utangle_old.WrappedOutput) {
 	if ownMs.IsConsumed(otherSeqVIDs...) {
 		return nil, &ownMs
 	}
@@ -234,7 +234,7 @@ func (mf *milestoneFactory) selectInputs(targetTs core.LogicalTime, ownMs utangl
 
 	// pre-selects not orphaned and with suitable timestamp outputs, sorts by timestamp ascending
 	selected := mf.tipPool.filterAndSortOutputs(func(wOut utangle_old.WrappedOutput) bool {
-		if !core.ValidTimePace(wOut.Timestamp(), targetTs) {
+		if !ledger.ValidTimePace(wOut.Timestamp(), targetTs) {
 			return false
 		}
 		if mf.isConsumedInThePastPath(wOut, ownMs.VID) {
@@ -268,7 +268,7 @@ func (mf *milestoneFactory) getLatestMilestone() (ret utangle_old.WrappedOutput)
 
 // setNewTarget signals proposer allMilestoneProposingStrategies about new timestamp,
 // Returns last proposed proposal
-func (mf *milestoneFactory) setNewTarget(ts core.LogicalTime) {
+func (mf *milestoneFactory) setNewTarget(ts ledger.LogicalTime) {
 	mf.proposal.mutex.Lock()
 	defer mf.proposal.mutex.Unlock()
 
@@ -303,7 +303,7 @@ func (mf *milestoneFactory) averageProposalDuration() (time.Duration, int) {
 
 // continueCandidateProposing the proposing strategy checks if its assumed target timestamp
 // is still actual. Strategy keeps proposing latestMilestone candidates until it is no longer actual
-func (mc *latestMilestoneProposal) continueCandidateProposing(ts core.LogicalTime) bool {
+func (mc *latestMilestoneProposal) continueCandidateProposing(ts ledger.LogicalTime) bool {
 	mc.mutex.RLock()
 	defer mc.mutex.RUnlock()
 
@@ -317,7 +317,7 @@ func (mc *latestMilestoneProposal) getLatestProposal() *transaction.Transaction 
 	return mc.current
 }
 
-func (mf *milestoneFactory) startProposingForTargetLogicalTime(targetTs core.LogicalTime) (*transaction.Transaction, time.Duration, int) {
+func (mf *milestoneFactory) startProposingForTargetLogicalTime(targetTs ledger.LogicalTime) (*transaction.Transaction, time.Duration, int) {
 	//mf.log.Infof("startProposingForTargetLogicalTime: %s", targetTs.String())
 	deadline := targetTs.Time()
 	nowis := time.Now()
@@ -335,11 +335,11 @@ func (mf *milestoneFactory) startProposingForTargetLogicalTime(targetTs core.Log
 	ret := mf.proposal.getLatestProposal() // will return nil if wasn't able to generate transaction
 	// set target time to nil -> signal workers to exit
 	avgProposalDuration, numProposals := mf.averageProposalDuration()
-	mf.setNewTarget(core.NilLogicalTime)
+	mf.setNewTarget(ledger.NilLogicalTime)
 	return ret, avgProposalDuration, numProposals
 }
 
-func (mf *milestoneFactory) startProposerWorkers(targetTime core.LogicalTime) {
+func (mf *milestoneFactory) startProposerWorkers(targetTime ledger.LogicalTime) {
 	for strategyName, rec := range allProposingStrategies {
 		task := rec.constructor(mf, targetTime)
 		if task != nil {
@@ -388,11 +388,11 @@ func (mf *milestoneFactory) cleanOwnMilestonesIfNecessary() {
 
 // makeAdditionalInputsOutputs makes additional outputs according to commands in inputs.
 // Filters consumedInThePastPath so that transfer commands would not exceed maximumTotal
-func (mf *milestoneFactory) makeAdditionalInputsOutputs(inputs []*core.OutputWithID, maximumTotal uint64) ([]*core.OutputWithID, []*core.Output) {
-	retImp := make([]*core.OutputWithID, 0)
-	retOut := make([]*core.Output, 0)
+func (mf *milestoneFactory) makeAdditionalInputsOutputs(inputs []*ledger.OutputWithID, maximumTotal uint64) ([]*ledger.OutputWithID, []*ledger.Output) {
+	retImp := make([]*ledger.OutputWithID, 0)
+	retOut := make([]*ledger.Output, 0)
 
-	myAddr := core.AddressED25519FromPrivateKey(mf.controllerKey)
+	myAddr := ledger.AddressED25519FromPrivateKey(mf.controllerKey)
 	total := uint64(0)
 	for _, inp := range inputs {
 		if cmdData := parseSenderCommandDataRaw(myAddr, inp); len(cmdData) > 0 {

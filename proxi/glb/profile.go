@@ -3,20 +3,20 @@ package glb
 import (
 	"crypto/ed25519"
 
-	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/spf13/viper"
 )
 
 type WalletData struct {
 	PrivateKey ed25519.PrivateKey
-	Account    core.AddressED25519
-	Sequencer  *core.ChainID
+	Account    ledger.AddressED25519
+	Sequencer  *ledger.ChainID
 }
 
 func GetWalletData() (ret WalletData) {
 	ret.PrivateKey = MustGetPrivateKey()
-	ret.Account = core.AddressED25519FromPrivateKey(ret.PrivateKey)
+	ret.Account = ledger.AddressED25519FromPrivateKey(ret.PrivateKey)
 	ret.Sequencer = GetOwnSequencerID()
 	return
 }
@@ -36,12 +36,12 @@ func GetPrivateKey() (ed25519.PrivateKey, bool) {
 	return ret, err == nil
 }
 
-func MustGetTarget() core.Accountable {
-	var ret core.Accountable
+func MustGetTarget() ledger.Accountable {
+	var ret ledger.Accountable
 	var err error
 
 	if str := viper.GetString("target"); str != "" {
-		ret, err = core.AccountableFromSource(str)
+		ret, err = ledger.AccountableFromSource(str)
 		AssertNoError(err)
 		Infof("target account is: %s", ret.String())
 	} else {
@@ -51,12 +51,12 @@ func MustGetTarget() core.Accountable {
 	return ret
 }
 
-func GetOwnSequencerID() *core.ChainID {
+func GetOwnSequencerID() *ledger.ChainID {
 	seqIDStr := viper.GetString("wallet.sequencer_id")
 	if seqIDStr == "" {
 		return nil
 	}
-	ret, err := core.ChainIDFromHexString(seqIDStr)
+	ret, err := ledger.ChainIDFromHexString(seqIDStr)
 	AssertNoError(err)
 	return &ret
 }

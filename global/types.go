@@ -1,21 +1,21 @@
 package global
 
 import (
-	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/unitrie/common"
 )
 
 type (
 	StateReader interface {
-		GetUTXO(id *core.OutputID) ([]byte, bool)
-		HasUTXO(id *core.OutputID) bool
-		KnowsCommittedTransaction(txid *core.TransactionID) bool // all txids are kept in the state for some time
+		GetUTXO(id *ledger.OutputID) ([]byte, bool)
+		HasUTXO(id *ledger.OutputID) bool
+		KnowsCommittedTransaction(txid *ledger.TransactionID) bool // all txids are kept in the state for some time
 	}
 
 	StateIndexReader interface {
-		GetIDsLockedInAccount(addr core.AccountID) ([]core.OutputID, error)
-		GetUTXOsLockedInAccount(accountID core.AccountID) ([]*core.OutputDataWithID, error)
-		GetUTXOForChainID(id *core.ChainID) (*core.OutputDataWithID, error)
+		GetIDsLockedInAccount(addr ledger.AccountID) ([]ledger.OutputID, error)
+		GetUTXOsLockedInAccount(accountID ledger.AccountID) ([]*ledger.OutputDataWithID, error)
+		GetUTXOForChainID(id *ledger.ChainID) (*ledger.OutputDataWithID, error)
 		Root() common.VCommitment
 		MustLedgerIdentityBytes() []byte // either state identity consistent or panic
 	}
@@ -35,6 +35,6 @@ type (
 
 	TxBytesStore interface {
 		SaveTxBytes([]byte) error
-		GetTxBytes(id *core.TransactionID) []byte // returns empty slice on absence
+		GetTxBytes(id *ledger.TransactionID) []byte // returns empty slice on absence
 	}
 )

@@ -4,7 +4,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/set"
 )
@@ -13,7 +13,7 @@ func newSyncData() *SyncData {
 	return &SyncData{
 		mutex:        sync.RWMutex{},
 		StartTime:    time.Now(),
-		PerSequencer: make(map[core.ChainID]SequencerSyncStatus),
+		PerSequencer: make(map[ledger.ChainID]SequencerSyncStatus),
 	}
 }
 
@@ -27,14 +27,14 @@ func (s *SyncData) GetSyncInfo() (ret SyncInfo) {
 
 	ret.Synced = s.IsSynced()
 	ret.InSyncWindow = s.isInSyncWindow()
-	ret.PerSequencer = make(map[core.ChainID]SequencerSyncInfo)
+	ret.PerSequencer = make(map[ledger.ChainID]SequencerSyncInfo)
 	for seqID := range s.PerSequencer {
 		ret.PerSequencer[seqID] = s.sequencerSyncInfo(seqID)
 	}
 	return
 }
 
-func (s *SyncData) storeLatestTxTime(txid *core.TransactionID) {
+func (s *SyncData) storeLatestTxTime(txid *ledger.TransactionID) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
@@ -81,7 +81,7 @@ func (s *SyncData) SetLastCutFinal(t time.Time) {
 // it is "unevidenced" back and life continues with latest known branch
 
 // EvidenceIncomingBranch stores branch ID immediately it sees it, before solidification
-func (s *SyncData) EvidenceIncomingBranch(txid *core.TransactionID, seqID core.ChainID) {
+func (s *SyncData) EvidenceIncomingBranch(txid *ledger.TransactionID, seqID ledger.ChainID) {
 	util.Assertf(txid.IsBranchTransaction(), "must be a branch transaction")
 
 	s.mutex.Lock()
@@ -89,23 +89,23 @@ func (s *SyncData) EvidenceIncomingBranch(txid *core.TransactionID, seqID core.C
 
 	info, found := s.PerSequencer[seqID]
 	if !found {
-		info.latestBranchesSeen = set.New[core.TransactionID]()
+		info.latestBranchesSeen = set.New[ledger.TransactionID]()
 	}
 
-	latest := info.latestBranchesSeen.Maximum(core.LessTxID)
+	latest := info.latestBranchesSeen.Maximum(ledger.LessTxID)
 	if latest.Timestamp().Before(txid.Timestamp()) {
 		info.latestBranchesSeen.Insert(*txid)
 	}
 
 	const keepLastEvidencedIncomingBranches = 5
 	if len(info.latestBranchesSeen) > keepLastEvidencedIncomingBranches {
-		oldest := info.latestBranchesSeen.Minimum(core.LessTxID)
+		oldest := info.latestBranchesSeen.Minimum(ledger.LessTxID)
 		info.latestBranchesSeen.Remove(oldest)
 	}
 	s.PerSequencer[seqID] = info
 }
 
-func (s *SyncData) UnEvidenceIncomingBranch(txid core.TransactionID) {
+func (s *SyncData) UnEvidenceIncomingBranch(txid ledger.TransactionID) {
 	util.Assertf(txid.IsBranchTransaction(), "must be a branch transaction")
 
 	s.mutex.Lock()
@@ -116,7 +116,7 @@ func (s *SyncData) UnEvidenceIncomingBranch(txid core.TransactionID) {
 	}
 }
 
-func (s *SyncData) EvidenceBookedBranch(txid *core.TransactionID, seqID core.ChainID) {
+func (s *SyncData) EvidenceBookedBranch(txid *ledger.TransactionID, seqID ledger.ChainID) {
 	util.Assertf(txid.IsBranchTransaction(), "must be a branch transaction")
 
 	s.mutex.Lock()
@@ -129,12 +129,12 @@ func (s *SyncData) EvidenceBookedBranch(txid *core.TransactionID, seqID core.Cha
 	}
 }
 
-func (s *SyncData) sequencerSyncInfo(seqID core.ChainID) SequencerSyncInfo {
+func (s *SyncData) sequencerSyncInfo(seqID ledger.ChainID) SequencerSyncInfo {
 	info, ok := s.PerSequencer[seqID]
 	if !ok {
 		return SequencerSyncInfo{}
 	}
-	latestSeen := info.latestBranchesSeen.Maximum(core.LessTxID)
+	latestSeen := info.latestBranchesSeen.Maximum(ledger.LessTxID)
 	return SequencerSyncInfo{
 		Synced:           info.latestBranchBooked.Timestamp() == latestSeen.Timestamp(),
 		LatestBookedSlot: uint32(info.latestBranchBooked.TimeSlot()),
@@ -152,7 +152,7 @@ func (s *SyncData) allSequencersSynced() bool {
 }
 
 func syncWindowDuration() time.Duration {
-	return core.TimeSlotDuration() * 2
+	return ledger.TimeSlotDuration() * 2
 }
 
 // IsInSyncWindow returns true if latest added transaction (by timestamp) is no more than 1/2 time slot back from now

@@ -7,7 +7,7 @@ import (
 	"math"
 
 	"github.com/lunfardo314/easyfl"
-	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lazybytes"
 	"github.com/lunfardo314/unitrie/common"
@@ -80,14 +80,14 @@ func (ctx *TransactionContext) Validate() error {
 
 func (ctx *TransactionContext) writeStateMutationsTo(mut common.KVWriter) {
 	// delete consumed outputs from the ledger
-	ctx.ForEachInputID(func(idx byte, oid *core.OutputID) bool {
+	ctx.ForEachInputID(func(idx byte, oid *ledger.OutputID) bool {
 		mut.Set(oid[:], nil)
 		return true
 	})
 	// add produced outputs to the ledger
 
 	ctx.ForEachProducedOutputData(func(i byte, outputData []byte) bool {
-		oid := core.NewOutputID(ctx.txid, i)
+		oid := ledger.NewOutputID(ctx.txid, i)
 		mut.Set(oid[:], outputData)
 		return true
 	})
@@ -143,9 +143,9 @@ func (ctx *TransactionContext) validateOutputsFailFast(consumedBranch bool) (uin
 func (ctx *TransactionContext) _validateOutputs(consumedBranch bool, failFast bool) (uint64, []byte, error) {
 	var branch lazybytes.TreePath
 	if consumedBranch {
-		branch = Path(core.ConsumedBranch, core.ConsumedOutputsBranch)
+		branch = Path(ledger.ConsumedBranch, ledger.ConsumedOutputsBranch)
 	} else {
-		branch = Path(core.TransactionBranch, core.TxOutputs)
+		branch = Path(ledger.TransactionBranch, ledger.TxOutputs)
 	}
 	var lastErr error
 	var sum uint64
@@ -156,7 +156,7 @@ func (ctx *TransactionContext) _validateOutputs(consumedBranch bool, failFast bo
 	ctx.tree.ForEach(func(i byte, data []byte) bool {
 		var err error
 		path[len(path)-1] = i
-		o, err := core.OutputFromBytesReadOnly(data)
+		o, err := ledger.OutputFromBytesReadOnly(data)
 		if err != nil {
 			if !failFast {
 				failedOutputs.WriteByte(i)
@@ -172,7 +172,7 @@ func (ctx *TransactionContext) _validateOutputs(consumedBranch bool, failFast bo
 			lastErr = fmt.Errorf("%v :\n%s", err, o.ToString("   "))
 			return !failFast
 		}
-		minDeposit := core.MinimumStorageDeposit(o, extraDepositWeight)
+		minDeposit := ledger.MinimumStorageDeposit(o, extraDepositWeight)
 		amount := o.Amount()
 		if amount < minDeposit {
 			lastErr = fmt.Errorf("not enough storage deposit in output %s. Minimum %d, got %d",
@@ -200,11 +200,11 @@ func (ctx *TransactionContext) _validateOutputs(consumedBranch bool, failFast bo
 }
 
 func (ctx *TransactionContext) UnlockParams(consumedOutputIdx, constraintIdx byte) []byte {
-	return ctx.tree.BytesAtPath(Path(core.TransactionBranch, core.TxUnlockParams, consumedOutputIdx, constraintIdx))
+	return ctx.tree.BytesAtPath(Path(ledger.TransactionBranch, ledger.TxUnlockParams, consumedOutputIdx, constraintIdx))
 }
 
 // runOutput checks constraints of the output one-by-one
-func (ctx *TransactionContext) runOutput(consumedBranch bool, output *core.Output, path lazybytes.TreePath) (uint32, error) {
+func (ctx *TransactionContext) runOutput(consumedBranch bool, output *ledger.Output, path lazybytes.TreePath) (uint32, error) {
 	blockPath := common.Concat(path, byte(0))
 	var err error
 	extraStorageDepositWeight := uint32(0)
@@ -262,7 +262,7 @@ func (ctx *TransactionContext) validateInputCommitment() error {
 }
 
 func (ctx *TransactionContext) ConsumedOutputHash() [32]byte {
-	consumedOutputBytes := ctx.tree.BytesAtPath(Path(core.ConsumedBranch, core.ConsumedOutputsBranch))
+	consumedOutputBytes := ctx.tree.BytesAtPath(Path(ledger.ConsumedBranch, ledger.ConsumedOutputsBranch))
 	return blake2b.Sum256(consumedOutputBytes)
 }
 
@@ -273,21 +273,21 @@ func PathToString(path []byte) string {
 	}
 	if len(path) >= 1 {
 		switch path[0] {
-		case core.TransactionBranch:
+		case ledger.TransactionBranch:
 			ret += ".tx"
 			if len(path) >= 2 {
 				switch path[1] {
-				case core.TxUnlockParams:
+				case ledger.TxUnlockParams:
 					ret += ".unlock"
-				case core.TxInputIDs:
+				case ledger.TxInputIDs:
 					ret += ".inID"
-				case core.TxOutputs:
+				case ledger.TxOutputs:
 					ret += ".out"
-				case core.TxSignature:
+				case ledger.TxSignature:
 					ret += ".sig"
-				case core.TxTimestamp:
+				case ledger.TxTimestamp:
 					ret += ".ts"
-				case core.TxInputCommitment:
+				case ledger.TxInputCommitment:
 					ret += ".inhash"
 				default:
 					ret += "WRONG[1]"
@@ -302,7 +302,7 @@ func PathToString(path []byte) string {
 			if len(path) >= 5 {
 				ret += fmt.Sprintf("..%v", path[4:])
 			}
-		case core.ConsumedBranch:
+		case ledger.ConsumedBranch:
 			ret += ".consumed"
 			if len(path) >= 2 {
 				if path[1] != 0 {
@@ -335,7 +335,7 @@ func constraintName(binCode []byte) string {
 	if err != nil {
 		return fmt.Sprintf("unknown_constraint(%s)", easyfl.Fmt(binCode))
 	}
-	name, found := core.NameByPrefix(prefix)
+	name, found := ledger.NameByPrefix(prefix)
 	if found {
 		return name
 	}

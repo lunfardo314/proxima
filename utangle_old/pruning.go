@@ -3,7 +3,7 @@ package utangle_old
 import (
 	"time"
 
-	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/set"
 )
@@ -89,7 +89,7 @@ func (ut *UTXOTangle) PruneOrphaned(nLatestSlots int) (int, int, int) {
 	// delete branches
 	orphanedBranches := make([]*WrappedTx, 0)
 	nPrunedBranches := 0
-	toDeleteSlots := make([]core.TimeSlot, 0)
+	toDeleteSlots := make([]ledger.TimeSlot, 0)
 	for slot, branches := range ut.branches {
 		orphanedBranches = orphanedBranches[:0]
 		for vid := range branches {
@@ -119,9 +119,9 @@ func (vid *WrappedTx) cleanForkSet() {
 	}})
 }
 
-func (ut *UTXOTangle) _oldestNonEmptySlot() (core.TimeSlot, int) {
+func (ut *UTXOTangle) _oldestNonEmptySlot() (ledger.TimeSlot, int) {
 	// ascending
-	slots := util.FilterSlice(ut._timeSlotsOrdered(), func(el core.TimeSlot) bool {
+	slots := util.FilterSlice(ut._timeSlotsOrdered(), func(el ledger.TimeSlot) bool {
 		return len(ut.branches[el]) > 0
 	})
 	if len(slots) < TipSlots+2 {
@@ -130,11 +130,11 @@ func (ut *UTXOTangle) _oldestNonEmptySlot() (core.TimeSlot, int) {
 	return slots[0], len(ut.branches[slots[0]])
 }
 
-func (ut *UTXOTangle) CutFinalBranchIfExists(nLatestSlots int) (*core.TransactionID, int) {
+func (ut *UTXOTangle) CutFinalBranchIfExists(nLatestSlots int) (*ledger.TransactionID, int) {
 	ut.mutex.Lock()
 	defer ut.mutex.Unlock()
 
-	slots := util.SortKeys(ut.branches, func(slot1, slot2 core.TimeSlot) bool {
+	slots := util.SortKeys(ut.branches, func(slot1, slot2 ledger.TimeSlot) bool {
 		return slot1 < slot2
 	})
 	if len(slots) < nLatestSlots+2 {

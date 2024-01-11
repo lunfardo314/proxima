@@ -9,8 +9,8 @@ import (
 
 	"github.com/dominikbraun/graph"
 	"github.com/dominikbraun/graph/draw"
-	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/global"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/set"
@@ -47,7 +47,7 @@ var (
 	}
 )
 
-func sequencerNodeAttributes(v *Vertex, coverage uint64, dict map[core.ChainID]int) []func(*graph.VertexProperties) {
+func sequencerNodeAttributes(v *Vertex, coverage uint64, dict map[ledger.ChainID]int) []func(*graph.VertexProperties) {
 	seqID := v.Tx.SequencerTransactionData().SequencerID
 	if _, found := dict[seqID]; !found {
 		dict[seqID] = (len(dict) % 9) + 1
@@ -61,7 +61,7 @@ func sequencerNodeAttributes(v *Vertex, coverage uint64, dict map[core.ChainID]i
 	return ret
 }
 
-func makeGraphNode(vid *WrappedTx, gr graph.Graph[string, string], seqDict map[core.ChainID]int, highlighted bool) {
+func makeGraphNode(vid *WrappedTx, gr graph.Graph[string, string], seqDict map[ledger.ChainID]int, highlighted bool) {
 	id := vid.IDVeryShort()
 	attr := simpleNodeAttributes
 	var err error
@@ -117,7 +117,7 @@ func (ut *UTXOTangle) MakeGraph(additionalVertices ...*WrappedTx) graph.Graph[st
 	ut.mutex.RLock()
 	defer ut.mutex.RUnlock()
 
-	seqDict := make(map[core.ChainID]int)
+	seqDict := make(map[ledger.ChainID]int)
 	for _, vid := range ut.vertices {
 		makeGraphNode(vid, ret, seqDict, false)
 	}
@@ -149,7 +149,7 @@ func MakeGraphPastCone(vid *WrappedTx, maxVertices ...int) graph.Graph[string, s
 		max = maxVertices[0]
 	}
 
-	seqDict := make(map[core.ChainID]int)
+	seqDict := make(map[ledger.ChainID]int)
 	count := 0
 
 	mkNode := func(vidCur *WrappedTx) bool {
@@ -191,7 +191,7 @@ func SaveGraphPastCone(vid *WrappedTx, fname string) {
 
 func MakeGraphFromVertexSet(vertices set.Set[*WrappedTx]) graph.Graph[string, string] {
 	ret := graph.New(graph.StringHash, graph.Directed(), graph.Acyclic())
-	seqDict := make(map[core.ChainID]int)
+	seqDict := make(map[ledger.ChainID]int)
 
 	vertices.ForEach(func(vid *WrappedTx) bool {
 		makeGraphNode(vid, ret, seqDict, false)
@@ -220,7 +220,7 @@ var _branchNodeAttributes = []func(*graph.VertexProperties){
 	graph.VertexAttribute("fillcolor", "1"),
 }
 
-func branchNodeAttributes(seqID *core.ChainID, coverage uint64, dict map[core.ChainID]int) []func(*graph.VertexProperties) {
+func branchNodeAttributes(seqID *ledger.ChainID, coverage uint64, dict map[ledger.ChainID]int) []func(*graph.VertexProperties) {
 	if _, found := dict[*seqID]; !found {
 		dict[*seqID] = (len(dict) % 9) + 1
 	}
@@ -245,8 +245,8 @@ func MakeTree(stateStore global.StateStore, slots ...int) graph.Graph[string, st
 		branches = multistate.FetchBranchDataMulti(stateStore, multistate.FetchRootRecordsNSlotsBack(stateStore, slots[0])...)
 	}
 
-	byOid := make(map[core.OutputID]*multistate.BranchData)
-	idDict := make(map[core.ChainID]int)
+	byOid := make(map[ledger.OutputID]*multistate.BranchData)
+	idDict := make(map[ledger.ChainID]int)
 	for _, b := range branches {
 		byOid[b.Stem.ID] = b
 		txid := b.Stem.ID.TransactionID()

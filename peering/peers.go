@@ -14,9 +14,9 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/peerstore"
 	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
-	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/genesis"
 	"github.com/lunfardo314/proxima/global"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/txmetadata"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/multiformats/go-multiaddr"
@@ -47,7 +47,7 @@ type (
 		host              host.Host
 		peers             map[peer.ID]*Peer // except self
 		onReceiveTx       func(from peer.ID, txBytes []byte, mdata *txmetadata.TransactionMetadata)
-		onReceivePullTx   func(from peer.ID, txids []core.TransactionID)
+		onReceivePullTx   func(from peer.ID, txids []ledger.TransactionID)
 		onReceivePullTips func(from peer.ID)
 		traceFlag         atomic.Bool
 	}
@@ -79,7 +79,7 @@ func NewPeersDummy() *Peers {
 	return &Peers{
 		peers:             make(map[peer.ID]*Peer),
 		onReceiveTx:       func(_ peer.ID, _ []byte, _ *txmetadata.TransactionMetadata) {},
-		onReceivePullTx:   func(_ peer.ID, _ []core.TransactionID) {},
+		onReceivePullTx:   func(_ peer.ID, _ []ledger.TransactionID) {},
 		onReceivePullTips: func(_ peer.ID) {},
 	}
 }
@@ -107,7 +107,7 @@ func New(cfg *Config, ctx context.Context) (*Peers, error) {
 		host:              lppHost,
 		peers:             make(map[peer.ID]*Peer),
 		onReceiveTx:       func(_ peer.ID, _ []byte, _ *txmetadata.TransactionMetadata) {},
-		onReceivePullTx:   func(_ peer.ID, _ []core.TransactionID) {},
+		onReceivePullTx:   func(_ peer.ID, _ []ledger.TransactionID) {},
 		onReceivePullTips: func(_ peer.ID) {},
 	}
 
@@ -241,7 +241,7 @@ func (ps *Peers) OnReceiveTxBytes(fun func(from peer.ID, txBytes []byte, metadat
 	ps.onReceiveTx = fun
 }
 
-func (ps *Peers) OnReceivePullRequest(fun func(from peer.ID, txids []core.TransactionID)) {
+func (ps *Peers) OnReceivePullRequest(fun func(from peer.ID, txids []ledger.TransactionID)) {
 	ps.mutex.Lock()
 	defer ps.mutex.Unlock()
 

@@ -3,7 +3,7 @@ package node_cmd
 import (
 	"os"
 
-	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/spf13/cobra"
@@ -23,7 +23,7 @@ func initChainsCmd() *cobra.Command {
 func runChainsCmd(_ *cobra.Command, args []string) {
 	wallet := glb.GetWalletData()
 
-	outs, err := getClient().GetAccountOutputs(wallet.Account, func(o *core.Output) bool {
+	outs, err := getClient().GetAccountOutputs(wallet.Account, func(o *ledger.Output) bool {
 		_, idx := o.ChainConstraint()
 		return idx != 0xff
 	})

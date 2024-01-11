@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/lunfardo314/proxima/core"
 	"github.com/lunfardo314/proxima/global"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lazybytes"
 	"github.com/lunfardo314/unitrie/common"
@@ -20,21 +20,21 @@ const (
 
 // TODO replace general.StateStore with common.KVReader wherever relevant
 
-func writeRootRecord(w common.KVWriter, branchTxID core.TransactionID, rootData RootRecord) {
+func writeRootRecord(w common.KVWriter, branchTxID ledger.TransactionID, rootData RootRecord) {
 	key := common.ConcatBytes([]byte{rootRecordDBPartition}, branchTxID[:])
 	w.Set(key, rootData.Bytes())
 }
 
-func writeLatestSlot(w common.KVWriter, slot core.TimeSlot) {
+func writeLatestSlot(w common.KVWriter, slot ledger.TimeSlot) {
 	w.Set([]byte{latestSlotDBPartition}, slot.Bytes())
 }
 
-func FetchLatestSlot(store global.StateStore) core.TimeSlot {
+func FetchLatestSlot(store global.StateStore) ledger.TimeSlot {
 	bin := store.Get([]byte{latestSlotDBPartition})
 	if len(bin) == 0 {
 		return 0
 	}
-	ret, err := core.TimeSlotFromBytes(bin)
+	ret, err := ledger.TimeSlotFromBytes(bin)
 	common.AssertNoError(err)
 	return ret
 }
@@ -97,7 +97,7 @@ func (r *RootRecord) Bytes() []byte {
 	return arr.Bytes()
 }
 
-func (br *BranchData) TxID() *core.TransactionID {
+func (br *BranchData) TxID() *ledger.TransactionID {
 	ret := br.Stem.ID.TransactionID()
 	return &ret
 }
@@ -107,11 +107,11 @@ func RootRecordFromBytes(data []byte) (RootRecord, error) {
 	if err != nil {
 		return RootRecord{}, err
 	}
-	chainID, err := core.ChainIDFromBytes(arr.At(0))
+	chainID, err := ledger.ChainIDFromBytes(arr.At(0))
 	if err != nil {
 		return RootRecord{}, err
 	}
-	root, err := common.VectorCommitmentFromBytes(core.CommitmentModel, arr.At(1))
+	root, err := common.VectorCommitmentFromBytes(ledger.CommitmentModel, arr.At(1))
 	if err != nil {
 		return RootRecord{}, err
 	}
@@ -130,9 +130,9 @@ func RootRecordFromBytes(data []byte) (RootRecord, error) {
 	}, nil
 }
 
-func iterateAllRootRecords(store global.StateStore, fun func(branchTxID core.TransactionID, rootData RootRecord) bool) {
+func iterateAllRootRecords(store global.StateStore, fun func(branchTxID ledger.TransactionID, rootData RootRecord) bool) {
 	store.Iterator([]byte{rootRecordDBPartition}).Iterate(func(k, data []byte) bool {
-		txid, err := core.TransactionIDFromBytes(k[1:])
+		txid, err := ledger.TransactionIDFromBytes(k[1:])
 		util.AssertNoError(err)
 
 		rootData, err := RootRecordFromBytes(data)
@@ -142,14 +142,14 @@ func iterateAllRootRecords(store global.StateStore, fun func(branchTxID core.Tra
 	})
 }
 
-func iterateRootRecordsOfParticularSlots(store global.StateStore, fun func(branchTxID core.TransactionID, rootData RootRecord) bool, slots []core.TimeSlot) {
+func iterateRootRecordsOfParticularSlots(store global.StateStore, fun func(branchTxID ledger.TransactionID, rootData RootRecord) bool, slots []ledger.TimeSlot) {
 	prefix := [5]byte{rootRecordDBPartition, 0, 0, 0, 0}
 	for _, s := range slots {
-		slotPrefix := core.NewTransactionIDPrefix(s, true, true)
+		slotPrefix := ledger.NewTransactionIDPrefix(s, true, true)
 		copy(prefix[1:], slotPrefix[:])
 
 		store.Iterator(prefix[:]).Iterate(func(k, data []byte) bool {
-			txid, err := core.TransactionIDFromBytes(k[1:])
+			txid, err := ledger.TransactionIDFromBytes(k[1:])
 			util.AssertNoError(err)
 
 			rootData, err := RootRecordFromBytes(data)
@@ -163,7 +163,7 @@ func iterateRootRecordsOfParticularSlots(store global.StateStore, fun func(branc
 // IterateRootRecords iterates root records in the store:
 // - if len(optSlot) > 0, it iterates specific slots
 // - if len(optSlot) == 0, it iterates all records in the store
-func IterateRootRecords(store global.StateStore, fun func(branchTxID core.TransactionID, rootData RootRecord) bool, optSlot ...core.TimeSlot) {
+func IterateRootRecords(store global.StateStore, fun func(branchTxID ledger.TransactionID, rootData RootRecord) bool, optSlot ...ledger.TimeSlot) {
 	if len(optSlot) == 0 {
 		iterateAllRootRecords(store, fun)
 	}
@@ -172,7 +172,7 @@ func IterateRootRecords(store global.StateStore, fun func(branchTxID core.Transa
 
 // FetchRootRecord returns root data, stem output index and existence flag
 // Exactly one root record must exist for the branch transaction
-func FetchRootRecord(store global.StateStore, branchTxID core.TransactionID) (ret RootRecord, found bool) {
+func FetchRootRecord(store global.StateStore, branchTxID ledger.TransactionID) (ret RootRecord, found bool) {
 	key := common.Concat(rootRecordDBPartition, branchTxID[:])
 	data := store.Get(key)
 	if len(data) == 0 {
@@ -192,30 +192,30 @@ func FetchAnyLatestRootRecord(store global.StateStore) RootRecord {
 
 func FetchRootRecordsNSlotsBack(store global.StateStore, nBack int) []RootRecord {
 	latestSlot := FetchLatestSlot(store)
-	if core.TimeSlot(nBack) >= latestSlot {
+	if ledger.TimeSlot(nBack) >= latestSlot {
 		return FetchAllRootRecords(store)
 	}
 	if latestSlot == 0 {
 		return nil
 	}
-	return FetchRootRecords(store, util.MakeRange(latestSlot-core.TimeSlot(nBack), latestSlot)...)
+	return FetchRootRecords(store, util.MakeRange(latestSlot-ledger.TimeSlot(nBack), latestSlot)...)
 }
 
 func FetchAllRootRecords(store global.StateStore) []RootRecord {
 	ret := make([]RootRecord, 0)
-	IterateRootRecords(store, func(_ core.TransactionID, rootData RootRecord) bool {
+	IterateRootRecords(store, func(_ ledger.TransactionID, rootData RootRecord) bool {
 		ret = append(ret, rootData)
 		return true
 	})
 	return ret
 }
 
-func FetchRootRecords(store global.StateStore, slots ...core.TimeSlot) []RootRecord {
+func FetchRootRecords(store global.StateStore, slots ...ledger.TimeSlot) []RootRecord {
 	if len(slots) == 0 {
 		return nil
 	}
 	ret := make([]RootRecord, 0)
-	IterateRootRecords(store, func(_ core.TransactionID, rootData RootRecord) bool {
+	IterateRootRecords(store, func(_ ledger.TransactionID, rootData RootRecord) bool {
 		ret = append(ret, rootData)
 		return true
 	}, slots...)
@@ -223,10 +223,10 @@ func FetchRootRecords(store global.StateStore, slots ...core.TimeSlot) []RootRec
 	return ret
 }
 
-func FetchStemOutputID(store global.StateStore, branchTxID core.TransactionID) (core.OutputID, bool) {
+func FetchStemOutputID(store global.StateStore, branchTxID ledger.TransactionID) (ledger.OutputID, bool) {
 	rr, ok := FetchRootRecord(store, branchTxID)
 	if !ok {
-		return core.OutputID{}, false
+		return ledger.OutputID{}, false
 	}
 	rdr, err := NewSugaredReadableState(store, rr.Root, 0)
 	util.AssertNoError(err)
@@ -235,7 +235,7 @@ func FetchStemOutputID(store global.StateStore, branchTxID core.TransactionID) (
 	return o.ID, true
 }
 
-func FetchBranchData(store global.StateStore, branchTxID core.TransactionID) (BranchData, bool) {
+func FetchBranchData(store global.StateStore, branchTxID ledger.TransactionID) (BranchData, bool) {
 	if rd, found := FetchRootRecord(store, branchTxID); found {
 		return FetchBranchDataByRoot(store, rd), true
 	}
@@ -274,9 +274,9 @@ func FetchLatestBranches(store global.StateStore) []*BranchData {
 	})
 }
 
-func FetchLatestBranchTransactionIDs(store global.StateStore) []core.TransactionID {
+func FetchLatestBranchTransactionIDs(store global.StateStore) []ledger.TransactionID {
 	bd := FetchLatestBranches(store)
-	ret := make([]core.TransactionID, len(bd))
+	ret := make([]ledger.TransactionID, len(bd))
 
 	for i := range ret {
 		ret[i] = bd[i].Stem.ID.TransactionID()
@@ -286,22 +286,22 @@ func FetchLatestBranchTransactionIDs(store global.StateStore) []core.Transaction
 
 // FetchHeaviestBranchChainNSlotsBack descending by epoch
 func FetchHeaviestBranchChainNSlotsBack(store global.StateStore, nBack int) []*BranchData {
-	rootData := make(map[core.TransactionID]RootRecord)
+	rootData := make(map[ledger.TransactionID]RootRecord)
 	latestSlot := FetchLatestSlot(store)
 
 	if nBack < 0 {
-		IterateRootRecords(store, func(branchTxID core.TransactionID, rd RootRecord) bool {
+		IterateRootRecords(store, func(branchTxID ledger.TransactionID, rd RootRecord) bool {
 			rootData[branchTxID] = rd
 			return true
 		})
 	} else {
-		IterateRootRecords(store, func(branchTxID core.TransactionID, rd RootRecord) bool {
+		IterateRootRecords(store, func(branchTxID ledger.TransactionID, rd RootRecord) bool {
 			rootData[branchTxID] = rd
 			return true
-		}, util.MakeRange(latestSlot-core.TimeSlot(nBack), latestSlot)...)
+		}, util.MakeRange(latestSlot-ledger.TimeSlot(nBack), latestSlot)...)
 	}
 
-	sortedTxIDs := util.SortKeys(rootData, func(k1, k2 core.TransactionID) bool {
+	sortedTxIDs := util.SortKeys(rootData, func(k1, k2 ledger.TransactionID) bool {
 		// descending by epoch
 		return k1.TimeSlot() > k2.TimeSlot()
 	})
@@ -339,10 +339,10 @@ func FetchHeaviestBranchChainNSlotsBack(store global.StateStore, nBack int) []*B
 }
 
 // BranchIsDescendantOf returns true if predecessor txid is known in the descendents state
-func BranchIsDescendantOf(descendant, predecessor *core.TransactionID, getStore func() global.StateStore) bool {
+func BranchIsDescendantOf(descendant, predecessor *ledger.TransactionID, getStore func() global.StateStore) bool {
 	util.Assertf(descendant.IsBranchTransaction(), "must be a branch ts")
 
-	if core.EqualTransactionIDs(descendant, predecessor) {
+	if ledger.EqualTransactionIDs(descendant, predecessor) {
 		return true
 	}
 	if descendant.Timestamp().Before(predecessor.Timestamp()) {

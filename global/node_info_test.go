@@ -6,7 +6,7 @@ import (
 
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/peer"
-	"github.com/lunfardo314/proxima/core"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/testutil"
 	"github.com/stretchr/testify/require"
@@ -47,8 +47,8 @@ func TestPeerInfo(t *testing.T) {
 		require.True(t, util.EqualSlices(pi.Branches, piBack.Branches))
 	})
 	t.Run("2", func(t *testing.T) {
-		branches := []core.TransactionID{core.RandomTransactionID(true, true), core.RandomTransactionID(true, true), core.RandomTransactionID(true, true)}
-		sequencers := []core.ChainID{core.RandomChainID()}
+		branches := []ledger.TransactionID{ledger.RandomTransactionID(true, true), ledger.RandomTransactionID(true, true), ledger.RandomTransactionID(true, true)}
+		sequencers := []ledger.ChainID{ledger.RandomChainID()}
 		pi := &NodeInfo{
 			Name:           "peerName",
 			ID:             randomPeerID(),
