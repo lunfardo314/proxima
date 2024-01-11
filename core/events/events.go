@@ -11,14 +11,14 @@ import (
 )
 
 type (
-	EventData struct {
+	Input struct {
 		cmdCode   byte
 		eventCode eventtype.EventCode
 		arg       any
 	}
 
-	EventQueue struct {
-		*queue.Queue[EventData]
+	Queue struct {
+		*queue.Queue[Input]
 		eventHandlers map[eventtype.EventCode][]func(any)
 	}
 )
@@ -29,9 +29,9 @@ const (
 )
 const chanBufferSize = 10
 
-func Start(ctx context.Context) *EventQueue {
-	ret := &EventQueue{
-		Queue:         queue.NewConsumerWithBufferSize[EventData]("events", chanBufferSize, zap.InfoLevel, nil),
+func Start(ctx context.Context) *Queue {
+	ret := &Queue{
+		Queue:         queue.NewConsumerWithBufferSize[Input]("events", chanBufferSize, zap.InfoLevel, nil),
 		eventHandlers: make(map[eventtype.EventCode][]func(any)),
 	}
 	ret.AddOnConsume(ret.consume)
@@ -47,7 +47,7 @@ func Start(ctx context.Context) *EventQueue {
 	return ret
 }
 
-func (c *EventQueue) consume(inp EventData) {
+func (c *Queue) consume(inp Input) {
 	switch inp.cmdCode {
 	case cmdCodeAddHandler:
 		handlers := c.eventHandlers[inp.eventCode]
@@ -66,18 +66,18 @@ func (c *EventQueue) consume(inp EventData) {
 }
 
 // OnEvent is async
-func (c *EventQueue) OnEvent(eventCode eventtype.EventCode, fun any) {
+func (c *Queue) OnEvent(eventCode eventtype.EventCode, fun any) {
 	handler, err := eventtype.MakeHandler(eventCode, fun)
 	util.AssertNoError(err)
-	c.Queue.Push(EventData{
+	c.Queue.Push(Input{
 		cmdCode:   cmdCodeAddHandler,
 		eventCode: eventCode,
 		arg:       handler,
 	})
 }
 
-func (c *EventQueue) PostEvent(eventCode eventtype.EventCode, arg any) {
-	c.Queue.Push(EventData{
+func (c *Queue) PostEvent(eventCode eventtype.EventCode, arg any) {
+	c.Queue.Push(Input{
 		cmdCode:   cmdCodePostEvent,
 		eventCode: eventCode,
 		arg:       arg,

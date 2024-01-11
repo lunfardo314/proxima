@@ -12,7 +12,7 @@ import (
 )
 
 // AttachTxID ensures the txid is on the utangle_old. Must be called from globally locked environment
-func AttachTxID(txid ledger.TransactionID, env AttachEnvironment, opts ...Option) (vid *vertex.WrappedTx) {
+func AttachTxID(txid ledger.TransactionID, env Environment, opts ...Option) (vid *vertex.WrappedTx) {
 	options := &_attacherOptions{}
 	for _, opt := range opts {
 		opt(options)
@@ -68,7 +68,7 @@ func AttachTxID(txid ledger.TransactionID, env AttachEnvironment, opts ...Option
 	return
 }
 
-func InvalidateTxID(txid ledger.TransactionID, env AttachEnvironment, reason error) {
+func InvalidateTxID(txid ledger.TransactionID, env Environment, reason error) {
 	tracef(env, "InvalidateTxID: %s", txid.StringShort())
 
 	if vid := env.GetVertex(&txid); vid != nil && !vid.IsSequencerMilestone() {
@@ -76,7 +76,7 @@ func InvalidateTxID(txid ledger.TransactionID, env AttachEnvironment, reason err
 	}
 }
 
-func AttachOutputID(oid ledger.OutputID, env AttachEnvironment, opts ...Option) vertex.WrappedOutput {
+func AttachOutputID(oid ledger.OutputID, env Environment, opts ...Option) vertex.WrappedOutput {
 	return vertex.WrappedOutput{
 		VID:   AttachTxID(oid.TransactionID(), env, opts...),
 		Index: oid.Index(),
@@ -85,7 +85,7 @@ func AttachOutputID(oid ledger.OutputID, env AttachEnvironment, opts ...Option) 
 
 // AttachTransaction attaches new incoming transaction. For sequencer transaction it starts attacher routine
 // which manages solidification pull until transaction becomes solid or stopped by the context
-func AttachTransaction(tx *transaction.Transaction, env AttachEnvironment, opts ...Option) (vid *vertex.WrappedTx) {
+func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Option) (vid *vertex.WrappedTx) {
 	options := &_attacherOptions{}
 	for _, opt := range opts {
 		opt(options)

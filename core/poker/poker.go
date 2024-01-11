@@ -12,8 +12,14 @@ import (
 )
 
 type (
-	Poker struct {
-		*queue.Queue[Cmd]
+	Input struct {
+		Wanted       *vertex.WrappedTx
+		WhoIsWaiting *vertex.WrappedTx
+		Cmd          Command
+	}
+
+	Queue struct {
+		*queue.Queue[Input]
 		m      map[*vertex.WrappedTx]waitingList
 		stopWG sync.WaitGroup
 	}
@@ -21,12 +27,6 @@ type (
 	waitingList struct {
 		waiting   []*vertex.WrappedTx
 		keepUntil time.Time
-	}
-
-	Cmd struct {
-		Wanted       *vertex.WrappedTx
-		WhoIsWaiting *vertex.WrappedTx
-		Cmd          Command
 	}
 
 	Command byte
@@ -40,9 +40,9 @@ const (
 
 const chanBufferSize = 10
 
-func Start(ctx context.Context) *Poker {
-	ret := &Poker{
-		Queue: queue.NewConsumerWithBufferSize[Cmd]("poke", chanBufferSize, zap.InfoLevel, nil),
+func Start(ctx context.Context) *Queue {
+	ret := &Queue{
+		Queue: queue.NewConsumerWithBufferSize[Input]("poke", chanBufferSize, zap.InfoLevel, nil),
 		m:     make(map[*vertex.WrappedTx]waitingList),
 	}
 	ret.AddOnConsume(ret.consume)
@@ -60,7 +60,7 @@ const (
 	ttlWanted  = 1 * time.Minute
 )
 
-func (c *Poker) consume(inp Cmd) {
+func (c *Queue) consume(inp Input) {
 	switch inp.Cmd {
 	case CommandAdd:
 		util.Assertf(inp.Wanted != nil, "inp.Wanted != nil")
@@ -79,7 +79,7 @@ func (c *Poker) consume(inp Cmd) {
 	}
 }
 
-func (c *Poker) addCmd(wanted, whoIsWaiting *vertex.WrappedTx) {
+func (c *Queue) addCmd(wanted, whoIsWaiting *vertex.WrappedTx) {
 	lst := c.m[wanted]
 	if len(lst.waiting) == 0 {
 		lst.waiting = []*vertex.WrappedTx{whoIsWaiting}
@@ -90,7 +90,7 @@ func (c *Poker) addCmd(wanted, whoIsWaiting *vertex.WrappedTx) {
 	c.m[wanted] = lst
 }
 
-func (c *Poker) pokeAllCmd(wanted *vertex.WrappedTx) {
+func (c *Queue) pokeAllCmd(wanted *vertex.WrappedTx) {
 	lst := c.m[wanted]
 	//c.Log().Infof("TRACE pokeAllCmd with %s (%d waiting)", wanted.IDShortString(), len(lst.waiting))
 	if len(lst.waiting) > 0 {
@@ -102,7 +102,7 @@ func (c *Poker) pokeAllCmd(wanted *vertex.WrappedTx) {
 	}
 }
 
-func (c *Poker) periodicCleanup() {
+func (c *Queue) periodicCleanup() {
 	toDelete := make([]*vertex.WrappedTx, 0)
 	nowis := time.Now()
 	for wanted, lst := range c.m {
@@ -115,7 +115,7 @@ func (c *Poker) periodicCleanup() {
 	}
 }
 
-func (c *Poker) periodicLoop(ctx context.Context) {
+func (c *Queue) periodicLoop(ctx context.Context) {
 	defer c.Stop()
 
 	for {
@@ -128,25 +128,25 @@ func (c *Poker) periodicLoop(ctx context.Context) {
 			return
 		case <-time.After(loopPeriod):
 		}
-		c.Push(Cmd{Cmd: CommandPeriodicCleanup})
+		c.Push(Input{Cmd: CommandPeriodicCleanup})
 	}
 }
 
-func (c *Poker) PokeMe(me, waitingFor *vertex.WrappedTx) {
-	c.Push(Cmd{
+func (c *Queue) PokeMe(me, waitingFor *vertex.WrappedTx) {
+	c.Push(Input{
 		Wanted:       waitingFor,
 		WhoIsWaiting: me,
 		Cmd:          CommandAdd,
 	})
 }
 
-func (c *Poker) PokeAllWith(vid *vertex.WrappedTx) {
-	c.Push(Cmd{
+func (c *Queue) PokeAllWith(vid *vertex.WrappedTx) {
+	c.Push(Input{
 		Wanted: vid,
 		Cmd:    CommandPokeAll,
 	})
 }
 
-func (c *Poker) WaitStop() {
+func (c *Queue) WaitStop() {
 	c.stopWG.Wait()
 }

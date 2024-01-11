@@ -14,18 +14,18 @@ import (
 )
 
 type (
-	TransactionInputEnvironment interface {
+	Environment interface {
 		MaxDurationInTheFuture() time.Duration
 		IncCounter(string)
 		StopPulling(txid *ledger.TransactionID)
 		DropTxID(txid *ledger.TransactionID, who string, reasonFormat string, args ...any)
-		AttachTransaction(inp *TransactionInputData)
-		GossipTransaction(inp *TransactionInputData)
+		AttachTransaction(inp *Input)
+		GossipTransaction(inp *Input)
 	}
 
 	TransactionSource byte
 
-	TransactionInputData struct {
+	Input struct {
 		Tx               *transaction.Transaction
 		TxMetadata       *txmetadata.TransactionMetadata
 		ReceivedFromPeer peer.ID
@@ -33,12 +33,12 @@ type (
 		TxSource         TransactionSource
 	}
 
-	TransactionInputQueue struct {
-		*queue.Queue[*TransactionInputData]
-		env TransactionInputEnvironment
+	Queue struct {
+		*queue.Queue[*Input]
+		env Environment
 	}
 
-	TransactionInOption func(*TransactionInputData)
+	TransactionInOption func(*Input)
 )
 
 const (
@@ -65,9 +65,10 @@ func (t TransactionSource) String() string {
 	}
 }
 
-func Start(ctx context.Context) *TransactionInputQueue {
-	ret := &TransactionInputQueue{
-		Queue: queue.NewConsumerWithBufferSize[*TransactionInputData]("txInput", chanBufferSize, zap.InfoLevel, nil),
+func Start(env Environment, ctx context.Context) *Queue {
+	ret := &Queue{
+		Queue: queue.NewConsumerWithBufferSize[*Input]("txInput", chanBufferSize, zap.InfoLevel, nil),
+		env:   env,
 	}
 	ret.AddOnConsume(ret.consume)
 	go func() {
@@ -82,7 +83,7 @@ func Start(ctx context.Context) *TransactionInputQueue {
 	return ret
 }
 
-func (q *TransactionInputQueue) consume(inp *TransactionInputData) {
+func (q *Queue) consume(inp *Input) {
 	var err error
 	// TODO revisit checking lower time bounds
 	enforceTimeBounds := inp.TxSource == TransactionSourceAPI || inp.TxSource == TransactionSourcePeer
@@ -135,15 +136,12 @@ func (q *TransactionInputQueue) consume(inp *TransactionInputData) {
 	}()
 }
 
-func (q *TransactionInputQueue) TransactionIn(txBytes []byte, opts ...TransactionInOption) error {
+func (q *Queue) TransactionIn(txBytes []byte, opts ...TransactionInOption) error {
 	_, err := q.TransactionInReturnTx(txBytes, opts...)
 	return err
 }
 
-func (q *TransactionInputQueue) TransactionInReturnTx(txBytes []byte, opts ...TransactionInOption) (*transaction.Transaction, error) {
-	//if !w.IsRunning() {
-	//	return nil, fmt.Errorf("TransactionInReturnTx: workflow_old is inactive")
-	//}
+func (q *Queue) TransactionInReturnTx(txBytes []byte, opts ...TransactionInOption) (*transaction.Transaction, error) {
 	// base validation
 	tx, err := transaction.FromBytes(txBytes)
 	if err != nil {
@@ -152,7 +150,7 @@ func (q *TransactionInputQueue) TransactionInReturnTx(txBytes []byte, opts ...Tr
 	// if raw transaction data passes the basic check, it means it is identifiable as a transaction and main properties
 	// are correct: ID, timestamp, sequencer and branch transaction flags. The signature and semantic has not been checked at this point
 
-	inData := &TransactionInputData{Tx: tx}
+	inData := &Input{Tx: tx}
 	for _, opt := range opts {
 		opt(inData)
 	}
@@ -170,19 +168,19 @@ func (q *TransactionInputQueue) TransactionInReturnTx(txBytes []byte, opts ...Tr
 }
 
 func WithTransactionSource(src TransactionSource) TransactionInOption {
-	return func(data *TransactionInputData) {
+	return func(data *Input) {
 		data.TxSource = src
 	}
 }
 
 func WithTransactionMetadata(metadata *txmetadata.TransactionMetadata) TransactionInOption {
-	return func(data *TransactionInputData) {
+	return func(data *Input) {
 		data.TxMetadata = metadata
 	}
 }
 
 func WithTransactionSourcePeer(from peer.ID) TransactionInOption {
-	return func(data *TransactionInputData) {
+	return func(data *Input) {
 		data.TxSource = TransactionSourcePeer
 		data.ReceivedFromPeer = from
 	}

@@ -1,11 +1,11 @@
-package pull
+package pull_client
 
 import (
 	"context"
 	"sync"
 	"time"
 
-	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/lunfardo314/proxima/core/txinput"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/transaction"
@@ -21,15 +21,15 @@ type (
 	Environment interface {
 		TxBytesStore() global.TxBytesStore
 		QueryTransactionsFromRandomPeer(lst ...ledger.TransactionID)
-		TransactionIn(txBytes []byte) (*transaction.Transaction, error)
+		TransactionIn(txBytes []byte, opts ...txinput.TransactionInOption) (*transaction.Transaction, error)
 	}
 
-	InputData struct {
+	Input struct {
 		TxIDs []ledger.TransactionID
 	}
 
-	RequestQueue struct {
-		*queue.Queue[*InputData]
+	Queue struct {
+		*queue.Queue[*Input]
 		env                    Environment
 		stopBackgroundLoopChan chan struct{}
 		// set of transaction being pulled
@@ -43,9 +43,9 @@ type (
 
 const chanBufferSize = 10
 
-func StartPullRequestQueue(ctx context.Context, env Environment) *RequestQueue {
-	ret := &RequestQueue{
-		Queue:                  queue.NewConsumerWithBufferSize[*InputData]("pullReq", chanBufferSize, zap.InfoLevel, nil),
+func Start(env Environment, ctx context.Context) *Queue {
+	ret := &Queue{
+		Queue:                  queue.NewConsumerWithBufferSize[*Input]("pullReq", chanBufferSize, zap.InfoLevel, nil),
 		env:                    env,
 		pullList:               make(map[ledger.TransactionID]time.Time),
 		toRemoveSet:            set.New[ledger.TransactionID](),
@@ -59,12 +59,13 @@ func StartPullRequestQueue(ctx context.Context, env Environment) *RequestQueue {
 
 	go func() {
 		<-ctx.Done()
+		close(ret.stopBackgroundLoopChan)
 		ret.Queue.Stop()
 	}()
 	return ret
 }
 
-func (q *RequestQueue) consume(inp *InputData) {
+func (q *Queue) consume(inp *Input) {
 	toPull := make([]ledger.TransactionID, 0)
 	txBytesList := make([][]byte, 0)
 
@@ -89,24 +90,19 @@ func (q *RequestQueue) consume(inp *InputData) {
 	go q.env.QueryTransactionsFromRandomPeer(toPull...)
 }
 
-func (q *RequestQueue) transactionInMany(txBytesList [][]byte) {
+func (q *Queue) transactionInMany(txBytesList [][]byte) {
 	for _, txBytes := range txBytesList {
-		tx, err := q.env.TransactionIn(txBytes,
-			WithTransactionSource(TransactionSourceStore),
-			WithTraceCondition(func(_ *transaction.Transaction, _ TransactionSource, _ peer.ID) bool {
-				return global.TraceTxEnabled()
-			}),
-		)
+		_, err := q.env.TransactionIn(txBytes, txinput.WithTransactionSource(txinput.TransactionSourceStore))
 		if err != nil {
 			q.Log().Errorf("pull:TransactionIn returned: '%v'", err)
 		}
-		q.tracePull("%s -> TransactionIn", tx.IDShortString())
+		//q.tracePull("%s -> TransactionIn", tx.IDShortString())
 	}
 }
 
 const pullLoopPeriod = 50 * time.Millisecond
 
-func (q *RequestQueue) backgroundLoop() {
+func (q *Queue) backgroundLoop() {
 	defer q.Log().Infof("background loop stopped")
 
 	buffer := make([]ledger.TransactionID, 0) // minimize heap use
@@ -120,7 +116,7 @@ func (q *RequestQueue) backgroundLoop() {
 	}
 }
 
-func (q *RequestQueue) pullAllMatured(buf []ledger.TransactionID) {
+func (q *Queue) pullAllMatured(buf []ledger.TransactionID) {
 	buf = util.ClearSlice(buf)
 	toRemove := q.toRemoveSetClone()
 
@@ -141,53 +137,23 @@ func (q *RequestQueue) pullAllMatured(buf []ledger.TransactionID) {
 		}
 	}
 	if len(buf) > 0 {
-		q.glb.peers.PullTransactionsFromRandomPeer(buf...)
+		q.env.QueryTransactionsFromRandomPeer(buf...)
 	}
 }
 
-func (q *RequestQueue) stopPulling(txid *ledger.TransactionID) {
+func (q *Queue) stopPulling(txid *ledger.TransactionID) {
 	q.toRemoveSetMutex.Lock()
 	defer q.toRemoveSetMutex.Unlock()
 
 	q.toRemoveSet.Insert(*txid)
-	q.tracePull("stopPulling: %s. pull list size: %d", func() any { return txid.StringShort() }, len(q.pullList))
+	//q.tracePull("stopPulling: %s. pull list size: %d", func() any { return txid.StringShort() }, len(q.pullList))
 }
 
-func (q *RequestQueue) toRemoveSetClone() set.Set[ledger.TransactionID] {
+func (q *Queue) toRemoveSetClone() set.Set[ledger.TransactionID] {
 	q.toRemoveSetMutex.Lock()
 	defer q.toRemoveSetMutex.Unlock()
 
 	ret := q.toRemoveSet
 	q.toRemoveSet = set.New[ledger.TransactionID]()
 	return ret
-}
-
-func (q *RequestQueue) isInPullList(txid *ledger.TransactionID) (ret bool) {
-	q.mutex.RLock()
-	defer q.mutex.RUnlock()
-
-	_, ret = q.pullList[*txid]
-	return
-}
-
-func (q *RequestQueue) isInToRemoveSet(txid *ledger.TransactionID) (ret bool) {
-	q.toRemoveSetMutex.RLock()
-	defer q.toRemoveSetMutex.RUnlock()
-
-	return q.toRemoveSet.Contains(*txid)
-}
-
-func (q *RequestQueue) isBeingPulled(txid *ledger.TransactionID) bool {
-	return !q.isInToRemoveSet(txid) && q.isInPullList(txid)
-}
-
-func (q *RequestQueue) pullListLen() int {
-	q.mutex.RLock()
-	defer q.mutex.RUnlock()
-
-	return len(q.pullList)
-}
-
-func (w *Workflow) PullListLen() int {
-	return w.pullConsumer.pullListLen()
 }

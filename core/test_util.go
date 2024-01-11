@@ -30,7 +30,7 @@ type testingWorkflow struct {
 	*dag.DAG
 	txBytesStore global.TxBytesStore
 	log          *zap.SugaredLogger
-	poker        *poker.Poker
+	poker        *poker.Queue
 }
 
 func newTestingWorkflow(txBytesStore global.TxBytesStore, dag *dag.DAG, ctx context.Context) *testingWorkflow {

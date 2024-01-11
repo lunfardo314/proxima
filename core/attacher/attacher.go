@@ -18,7 +18,7 @@ import (
 )
 
 type (
-	DAGAccess interface {
+	DAGAccessEnvironment interface {
 		WithGlobalWriteLock(fun func())
 		GetVertexNoLock(txid *ledger.TransactionID) *vertex.WrappedTx
 		GetVertex(txid *ledger.TransactionID) *vertex.WrappedTx
@@ -40,15 +40,15 @@ type (
 		PostEventNewValidated(vid *vertex.WrappedTx)
 	}
 
-	AttachEnvironment interface {
-		DAGAccess
+	Environment interface {
+		DAGAccessEnvironment
 		PullEnvironment
 		PostEventEnvironment
 		Log() *zap.SugaredLogger
 	}
 
 	attacher struct {
-		env                   AttachEnvironment
+		env                   Environment
 		vid                   *vertex.WrappedTx
 		reason                error
 		baselineBranch        *vertex.WrappedTx
@@ -113,7 +113,7 @@ func OptionInvokedBy(name string) Option {
 	}
 }
 
-func runAttacher(vid *vertex.WrappedTx, env AttachEnvironment, ctx context.Context) (vertex.Status, *attachStats, error) {
+func runAttacher(vid *vertex.WrappedTx, env Environment, ctx context.Context) (vertex.Status, *attachStats, error) {
 	a := newAttacher(vid, env, ctx)
 	defer func() {
 		go a.close()
@@ -152,7 +152,7 @@ func runAttacher(vid *vertex.WrappedTx, env AttachEnvironment, ctx context.Conte
 }
 
 // AttachTransactionFromBytes used for testing
-func AttachTransactionFromBytes(txBytes []byte, env AttachEnvironment, opts ...Option) (*vertex.WrappedTx, error) {
+func AttachTransactionFromBytes(txBytes []byte, env Environment, opts ...Option) (*vertex.WrappedTx, error) {
 	tx, err := transaction.FromBytes(txBytes, transaction.MainTxValidationOptions...)
 	if err != nil {
 		return nil, err
@@ -162,7 +162,7 @@ func AttachTransactionFromBytes(txBytes []byte, env AttachEnvironment, opts ...O
 
 const maxTimeout = 10 * time.Minute
 
-func EnsureBranch(txid ledger.TransactionID, env AttachEnvironment, timeout ...time.Duration) (*vertex.WrappedTx, error) {
+func EnsureBranch(txid ledger.TransactionID, env Environment, timeout ...time.Duration) (*vertex.WrappedTx, error) {
 	vid := AttachTxID(txid, env)
 	to := maxTimeout
 	if len(timeout) > 0 {
@@ -178,7 +178,7 @@ func EnsureBranch(txid ledger.TransactionID, env AttachEnvironment, timeout ...t
 	return vid, nil
 }
 
-func EnsureLatestBranches(env AttachEnvironment) error {
+func EnsureLatestBranches(env Environment) error {
 	branchTxIDs := multistate.FetchLatestBranchTransactionIDs(env.StateStore())
 	for _, branchID := range branchTxIDs {
 		if _, err := EnsureBranch(branchID, env); err != nil {
@@ -188,7 +188,7 @@ func EnsureLatestBranches(env AttachEnvironment) error {
 	return nil
 }
 
-func newAttacher(vid *vertex.WrappedTx, env AttachEnvironment, ctx context.Context) *attacher {
+func newAttacher(vid *vertex.WrappedTx, env Environment, ctx context.Context) *attacher {
 	ret := &attacher{
 		ctx:                   ctx,
 		vid:                   vid,
@@ -336,7 +336,7 @@ func (a *attacher) tracef(format string, lazyArgs ...any) {
 	}
 }
 
-func tracef(env AttachEnvironment, format string, lazyArgs ...any) {
+func tracef(env Environment, format string, lazyArgs ...any) {
 	if trace {
 		env.Log().Infof("TRACE "+format, util.EvalLazyArgs(lazyArgs...)...)
 	}
