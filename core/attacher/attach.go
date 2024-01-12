@@ -140,7 +140,9 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Opt
 			if forDebugging {
 				go runFun()
 			} else {
-				util.RunWrappedRoutine(vid.IDShortString(), runFun, nil, common.ErrDBUnavailable)
+				util.RunWrappedRoutine(vid.IDShortString(), runFun, func(err error) {
+					env.Log().Fatalf("uncaught exception in %s: '%v'", vid.IDShortString(), err)
+				}, common.ErrDBUnavailable)
 			}
 		},
 	})
