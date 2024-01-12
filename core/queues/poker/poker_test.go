@@ -9,6 +9,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
+	"go.uber.org/zap"
 )
 
 func TestBasic(t *testing.T) {
@@ -17,16 +18,20 @@ func TestBasic(t *testing.T) {
 		howManyPokes = 10
 	)
 	ctx, cancel := context.WithCancel(context.Background())
-	p := Start(ctx)
+	p := New(zap.DebugLevel)
+
+	var wgStop sync.WaitGroup
+	wgStop.Add(1)
+	p.Start(ctx, &wgStop)
 
 	vids := make([]*vertex.WrappedTx, howManyTx)
-	var wg sync.WaitGroup
 	for i := range vids {
 		txid := ledger.RandomTransactionID(true, false)
 		vids[i] = vertex.WrapTxID(txid)
 	}
 
 	counter := new(atomic.Int32)
+	var wg sync.WaitGroup
 
 	for i, vid := range vids {
 		vid.OnPoke(func(vid1 *vertex.WrappedTx) {
@@ -45,6 +50,6 @@ func TestBasic(t *testing.T) {
 	}
 	wg.Wait()
 	cancel()
-	p.WaitStop()
+	wgStop.Wait()
 	require.EqualValues(t, howManyPokes*howManyTx, int(counter.Load()))
 }

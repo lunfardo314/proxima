@@ -2,12 +2,12 @@ package events
 
 import (
 	"context"
-	"fmt"
+	"sync"
 
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/eventtype"
 	"github.com/lunfardo314/proxima/util/queue"
-	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
 type (
@@ -17,7 +17,7 @@ type (
 		arg       any
 	}
 
-	Queue struct {
+	Events struct {
 		*queue.Queue[Input]
 		eventHandlers map[eventtype.EventCode][]func(any)
 	}
@@ -29,25 +29,21 @@ const (
 )
 const chanBufferSize = 10
 
-func Start(ctx context.Context) *Queue {
-	ret := &Queue{
-		Queue:         queue.NewConsumerWithBufferSize[Input]("events", chanBufferSize, zap.InfoLevel, nil),
+func New(lvl zapcore.Level) *Events {
+	return &Events{
+		Queue:         queue.NewQueueWithBufferSize[Input]("events", chanBufferSize, lvl, nil),
 		eventHandlers: make(map[eventtype.EventCode][]func(any)),
 	}
-	ret.AddOnConsume(ret.consume)
-	go func() {
-		ret.Log().Infof("starting..")
-		ret.Run()
-	}()
-
-	go func() {
-		<-ctx.Done()
-		ret.Queue.Stop()
-	}()
-	return ret
 }
 
-func (c *Queue) consume(inp Input) {
+func (c *Events) Start(ctx context.Context, doneOnClose *sync.WaitGroup) {
+	c.AddOnClosed(func() {
+		doneOnClose.Done()
+	})
+	c.Queue.Start(c, ctx)
+}
+
+func (c *Events) Consume(inp Input) {
 	switch inp.cmdCode {
 	case cmdCodeAddHandler:
 		handlers := c.eventHandlers[inp.eventCode]
@@ -57,7 +53,7 @@ func (c *Queue) consume(inp Input) {
 			handlers = append(handlers, inp.arg.(func(any)))
 		}
 		c.eventHandlers[inp.eventCode] = handlers
-		fmt.Printf("added event handler for %s\n", inp.eventCode.String())
+		c.Log().Debugf("added event handler for event code '%s'", inp.eventCode.String())
 	case cmdCodePostEvent:
 		for _, fun := range c.eventHandlers[inp.eventCode] {
 			fun(inp.arg)
@@ -66,7 +62,7 @@ func (c *Queue) consume(inp Input) {
 }
 
 // OnEvent is async
-func (c *Queue) OnEvent(eventCode eventtype.EventCode, fun any) {
+func (c *Events) OnEvent(eventCode eventtype.EventCode, fun any) {
 	handler, err := eventtype.MakeHandler(eventCode, fun)
 	util.AssertNoError(err)
 	c.Queue.Push(Input{
@@ -76,7 +72,7 @@ func (c *Queue) OnEvent(eventCode eventtype.EventCode, fun any) {
 	})
 }
 
-func (c *Queue) PostEvent(eventCode eventtype.EventCode, arg any) {
+func (c *Events) PostEvent(eventCode eventtype.EventCode, arg any) {
 	c.Queue.Push(Input{
 		cmdCode:   cmdCodePostEvent,
 		eventCode: eventCode,

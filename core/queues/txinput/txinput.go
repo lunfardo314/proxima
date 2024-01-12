@@ -2,6 +2,7 @@ package txinput
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -10,7 +11,7 @@ import (
 	"github.com/lunfardo314/proxima/txmetadata"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/queue"
-	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
 type (
@@ -33,7 +34,7 @@ type (
 		TxSource         TransactionSource
 	}
 
-	Queue struct {
+	TxInput struct {
 		*queue.Queue[*Input]
 		env Environment
 	}
@@ -65,25 +66,21 @@ func (t TransactionSource) String() string {
 	}
 }
 
-func Start(env Environment, ctx context.Context) *Queue {
-	ret := &Queue{
-		Queue: queue.NewConsumerWithBufferSize[*Input]("txInput", chanBufferSize, zap.InfoLevel, nil),
+func New(env Environment, lvl zapcore.Level) *TxInput {
+	return &TxInput{
+		Queue: queue.NewQueueWithBufferSize[*Input]("txInput", chanBufferSize, lvl, nil),
 		env:   env,
 	}
-	ret.AddOnConsume(ret.consume)
-	go func() {
-		ret.Log().Infof("starting..")
-		ret.Run()
-	}()
-
-	go func() {
-		<-ctx.Done()
-		ret.Queue.Stop()
-	}()
-	return ret
 }
 
-func (q *Queue) consume(inp *Input) {
+func (q *TxInput) Start(ctx context.Context, doneOnClose *sync.WaitGroup) {
+	q.Queue.AddOnClosed(func() {
+		doneOnClose.Done()
+	})
+	q.Queue.Start(q, ctx)
+}
+
+func (q *TxInput) Consume(inp *Input) {
 	var err error
 	// TODO revisit checking lower time bounds
 	enforceTimeBounds := inp.TxSource == TransactionSourceAPI || inp.TxSource == TransactionSourcePeer
@@ -136,12 +133,12 @@ func (q *Queue) consume(inp *Input) {
 	}()
 }
 
-func (q *Queue) TransactionIn(txBytes []byte, opts ...TransactionInOption) error {
+func (q *TxInput) TransactionIn(txBytes []byte, opts ...TransactionInOption) error {
 	_, err := q.TransactionInReturnTx(txBytes, opts...)
 	return err
 }
 
-func (q *Queue) TransactionInReturnTx(txBytes []byte, opts ...TransactionInOption) (*transaction.Transaction, error) {
+func (q *TxInput) TransactionInReturnTx(txBytes []byte, opts ...TransactionInOption) (*transaction.Transaction, error) {
 	// base validation
 	tx, err := transaction.FromBytes(txBytes)
 	if err != nil {

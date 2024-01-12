@@ -2,6 +2,7 @@ package pull_server
 
 import (
 	"context"
+	"sync"
 
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/lunfardo314/proxima/global"
@@ -10,7 +11,7 @@ import (
 	"github.com/lunfardo314/proxima/txmetadata"
 	"github.com/lunfardo314/proxima/util/queue"
 	"github.com/lunfardo314/unitrie/common"
-	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
 type (
@@ -25,7 +26,7 @@ type (
 		PeerID peer.ID
 	}
 
-	Queue struct {
+	PullServer struct {
 		*queue.Queue[*Input]
 		env Environment
 	}
@@ -33,25 +34,21 @@ type (
 
 const chanBufferSize = 10
 
-func Start(env Environment, ctx context.Context) *Queue {
-	ret := &Queue{
-		Queue: queue.NewConsumerWithBufferSize[*Input]("pullReq", chanBufferSize, zap.InfoLevel, nil),
+func New(env Environment, lvl zapcore.Level) *PullServer {
+	return &PullServer{
+		Queue: queue.NewQueueWithBufferSize[*Input]("pullServer", chanBufferSize, lvl, nil),
 		env:   env,
 	}
-	ret.AddOnConsume(ret.consume)
-	go func() {
-		ret.Log().Infof("starting..")
-		ret.Run()
-	}()
-
-	go func() {
-		<-ctx.Done()
-		ret.Queue.Stop()
-	}()
-	return ret
 }
 
-func (q *Queue) consume(inp *Input) {
+func (q *PullServer) Start(ctx context.Context, doneOnClose *sync.WaitGroup) {
+	q.AddOnClosed(func() {
+		doneOnClose.Done()
+	})
+	q.Queue.Start(q, ctx)
+}
+
+func (q *PullServer) Consume(inp *Input) {
 	if txBytes := q.env.TxBytesStore().GetTxBytes(&inp.TxID); len(txBytes) > 0 {
 		var root common.VCommitment
 		if inp.TxID.IsBranchTransaction() {

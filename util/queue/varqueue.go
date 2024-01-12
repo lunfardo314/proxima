@@ -9,8 +9,8 @@ import (
 	"go.uber.org/atomic"
 )
 
-// QueueVariableSize implements variable size synchronized FIFO queue
-type QueueVariableSize[T any] struct {
+// QueueVarBuffered implements variable size synchronized FIFO queue
+type QueueVarBuffered[T any] struct {
 	d                 *deque.Deque[T]
 	dequeMutex        sync.RWMutex
 	inSignal          chan struct{}
@@ -25,12 +25,12 @@ type QueueVariableSize[T any] struct {
 
 const defaultBufferSize = 0
 
-func New[T any](bufsize ...int) *QueueVariableSize[T] {
+func New[T any](bufsize ...int) *QueueVarBuffered[T] {
 	bs := defaultBufferSize
 	if len(bufsize) > 0 {
 		bs = bufsize[0]
 	}
-	ret := &QueueVariableSize[T]{
+	ret := &QueueVarBuffered[T]{
 		d:        new(deque.Deque[T]),
 		inSignal: make(chan struct{}, 1),
 		in:       make(chan T, bs),
@@ -40,11 +40,11 @@ func New[T any](bufsize ...int) *QueueVariableSize[T] {
 	return ret
 }
 
-func (q *QueueVariableSize[T]) OnEmptyAfterClose(fun func()) {
+func (q *QueueVarBuffered[T]) OnEmptyAfterClose(fun func()) {
 	q.onEmptyAfterClose = fun
 }
 
-func (q *QueueVariableSize[T]) queueLoop() {
+func (q *QueueVarBuffered[T]) queueLoop() {
 	defer func() {
 		close(q.in)
 		close(q.inSignal)
@@ -73,7 +73,7 @@ func (q *QueueVariableSize[T]) queueLoop() {
 	}
 }
 
-func (q *QueueVariableSize[T]) pull() (T, bool) {
+func (q *QueueVarBuffered[T]) pull() (T, bool) {
 	q.dequeMutex.Lock()
 	defer q.dequeMutex.Unlock()
 
@@ -94,7 +94,7 @@ func (q *QueueVariableSize[T]) pull() (T, bool) {
 }
 
 // Push pushes element
-func (q *QueueVariableSize[T]) Push(elem T, priority ...bool) bool {
+func (q *QueueVarBuffered[T]) Push(elem T, priority ...bool) bool {
 	prio := false
 	if len(priority) > 0 {
 		prio = priority[0]
@@ -102,7 +102,7 @@ func (q *QueueVariableSize[T]) Push(elem T, priority ...bool) bool {
 	return q.push(elem, prio)
 }
 
-func (q *QueueVariableSize[T]) push(elem T, priority bool) bool {
+func (q *QueueVarBuffered[T]) push(elem T, priority bool) bool {
 	if q.closing.Load() {
 		// ignored
 		return false
@@ -143,22 +143,22 @@ func (q *QueueVariableSize[T]) push(elem T, priority bool) bool {
 	return true
 }
 
-func (q *QueueVariableSize[T]) PushAny(elem any) bool {
+func (q *QueueVarBuffered[T]) PushAny(elem any) bool {
 	return q.Push(elem.(T))
 }
 
-// Close closes QueueVariableSize deferred until all elements are pulled
-func (q *QueueVariableSize[T]) Close() {
+// Close closes QueueVarBuffered deferred until all elements are pulled
+func (q *QueueVarBuffered[T]) Close() {
 	q.closing.Store(true)
 }
 
-func (q *QueueVariableSize[T]) pullOne() (T, bool) {
+func (q *QueueVarBuffered[T]) pullOne() (T, bool) {
 	ret, ok := <-q.out
 	return ret, ok
 }
 
 // Consume reads all elements of the queue until it is closed
-func (q *QueueVariableSize[T]) Consume(consumerFunctions ...func(elem T)) {
+func (q *QueueVarBuffered[T]) Consume(consumerFunctions ...func(elem T)) {
 	util.Assertf(len(consumerFunctions) > 0, "must be at least one consumer function")
 	var e T
 	var ok bool
@@ -173,18 +173,18 @@ func (q *QueueVariableSize[T]) Consume(consumerFunctions ...func(elem T)) {
 }
 
 // Len returns number of elements in the queue. Approximate +- 1 !
-func (q *QueueVariableSize[T]) Len() int {
+func (q *QueueVarBuffered[T]) Len() int {
 	q.dequeMutex.Lock()
 	defer q.dequeMutex.Unlock()
 
 	return q.len()
 }
 
-func (q *QueueVariableSize[T]) len() int {
+func (q *QueueVarBuffered[T]) len() int {
 	return q.d.Len() + len(q.in) + len(q.out)
 }
 
-func (q *QueueVariableSize[T]) Info() (int, int) {
+func (q *QueueVarBuffered[T]) Info() (int, int) {
 	q.dequeMutex.Lock()
 	defer q.dequeMutex.Unlock()
 

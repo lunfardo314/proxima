@@ -8,7 +8,7 @@ import (
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/queue"
-	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
 type (
@@ -18,10 +18,9 @@ type (
 		Cmd          Command
 	}
 
-	Queue struct {
+	Poker struct {
 		*queue.Queue[Input]
-		m      map[*vertex.WrappedTx]waitingList
-		stopWG sync.WaitGroup
+		m map[*vertex.WrappedTx]waitingList
 	}
 
 	waitingList struct {
@@ -40,27 +39,27 @@ const (
 
 const chanBufferSize = 10
 
-func Start(ctx context.Context) *Queue {
-	ret := &Queue{
-		Queue: queue.NewConsumerWithBufferSize[Input]("poke", chanBufferSize, zap.InfoLevel, nil),
-		m:     make(map[*vertex.WrappedTx]waitingList),
-	}
-	ret.AddOnConsume(ret.consume)
-	go func() {
-		ret.Log().Infof("starting..")
-		ret.stopWG.Add(1)
-		ret.Run()
-	}()
-	go ret.periodicLoop(ctx)
-	return ret
-}
-
 const (
 	loopPeriod = 1 * time.Second
 	ttlWanted  = 1 * time.Minute
 )
 
-func (c *Queue) consume(inp Input) {
+func New(lvl zapcore.Level) *Poker {
+	return &Poker{
+		Queue: queue.NewQueueWithBufferSize[Input]("poke", chanBufferSize, lvl, nil),
+		m:     make(map[*vertex.WrappedTx]waitingList),
+	}
+}
+
+func (c *Poker) Start(ctx context.Context, doneOnClose *sync.WaitGroup) {
+	c.AddOnClosed(func() {
+		doneOnClose.Done()
+	})
+	c.Queue.Start(c, ctx)
+	go c.periodicLoop(ctx)
+}
+
+func (c *Poker) Consume(inp Input) {
 	switch inp.Cmd {
 	case CommandAdd:
 		util.Assertf(inp.Wanted != nil, "inp.Wanted != nil")
@@ -79,7 +78,7 @@ func (c *Queue) consume(inp Input) {
 	}
 }
 
-func (c *Queue) addCmd(wanted, whoIsWaiting *vertex.WrappedTx) {
+func (c *Poker) addCmd(wanted, whoIsWaiting *vertex.WrappedTx) {
 	lst := c.m[wanted]
 	if len(lst.waiting) == 0 {
 		lst.waiting = []*vertex.WrappedTx{whoIsWaiting}
@@ -90,7 +89,7 @@ func (c *Queue) addCmd(wanted, whoIsWaiting *vertex.WrappedTx) {
 	c.m[wanted] = lst
 }
 
-func (c *Queue) pokeAllCmd(wanted *vertex.WrappedTx) {
+func (c *Poker) pokeAllCmd(wanted *vertex.WrappedTx) {
 	lst := c.m[wanted]
 	//c.Log().Infof("TRACE pokeAllCmd with %s (%d waiting)", wanted.IDShortString(), len(lst.waiting))
 	if len(lst.waiting) > 0 {
@@ -102,7 +101,7 @@ func (c *Queue) pokeAllCmd(wanted *vertex.WrappedTx) {
 	}
 }
 
-func (c *Queue) periodicCleanup() {
+func (c *Poker) periodicCleanup() {
 	toDelete := make([]*vertex.WrappedTx, 0)
 	nowis := time.Now()
 	for wanted, lst := range c.m {
@@ -115,16 +114,10 @@ func (c *Queue) periodicCleanup() {
 	}
 }
 
-func (c *Queue) periodicLoop(ctx context.Context) {
-	defer c.Stop()
-
+func (c *Poker) periodicLoop(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
-			c.Log().Infof("stopping..")
-			_ = c.Log().Sync()
-			c.Stop()
-			c.stopWG.Done()
 			return
 		case <-time.After(loopPeriod):
 		}
@@ -132,7 +125,7 @@ func (c *Queue) periodicLoop(ctx context.Context) {
 	}
 }
 
-func (c *Queue) PokeMe(me, waitingFor *vertex.WrappedTx) {
+func (c *Poker) PokeMe(me, waitingFor *vertex.WrappedTx) {
 	c.Push(Input{
 		Wanted:       waitingFor,
 		WhoIsWaiting: me,
@@ -140,13 +133,9 @@ func (c *Queue) PokeMe(me, waitingFor *vertex.WrappedTx) {
 	})
 }
 
-func (c *Queue) PokeAllWith(vid *vertex.WrappedTx) {
+func (c *Poker) PokeAllWith(vid *vertex.WrappedTx) {
 	c.Push(Input{
 		Wanted: vid,
 		Cmd:    CommandPokeAll,
 	})
-}
-
-func (c *Queue) WaitStop() {
-	c.stopWG.Wait()
 }

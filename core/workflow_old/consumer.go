@@ -17,7 +17,7 @@ func NewConsumer[T any](name string, wrk *Workflow) *Consumer[T] {
 		lvl = l
 	}
 	ret := &Consumer[T]{
-		Consumer: queue.NewConsumer[T](name, lvl, wrk.configParams.logOutput),
+		Consumer: queue.NewQueue[T](name, lvl, wrk.configParams.logOutput),
 		glb:      wrk,
 	}
 	ret.AddOnConsume(func(_ T) {

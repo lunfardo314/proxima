@@ -117,7 +117,7 @@ func TestStartStop(t *testing.T) {
 	cdClosed := countdown.New(howManyQueues, 3*time.Second)
 
 	for i := range que {
-		que[i] = NewConsumer[int](fmt.Sprintf("%d", i), zap.InfoLevel, nil)
+		que[i] = NewQueue[int](fmt.Sprintf("%d", i), zap.InfoLevel, nil)
 		tmp := i
 		que[i].AddOnConsume(func(e int) {
 			require.EqualValues(t, e, tmp)
@@ -258,7 +258,7 @@ func TestMany(t *testing.T) {
 	cons := make([]*Queue[time.Time], howManyConsumers)
 	w := countdown.New(howManyMessages)
 	for i := range cons {
-		cons[i] = NewConsumerWithBufferSize[time.Time](fmt.Sprintf("%d", i), 100, zap.InfoLevel, nil)
+		cons[i] = NewQueueWithBufferSize[time.Time](fmt.Sprintf("%d", i), 100, zap.InfoLevel, nil)
 		if i+1 < howManyConsumers {
 			next := i + 1
 			cons[i].AddOnConsume(func(ts time.Time) {
@@ -301,7 +301,7 @@ func TestPriority(t *testing.T) {
 	countNormal := countdown.New(howManyNormalMessages)
 	countPriority := countdown.New(howManyPriorityMessages)
 	countRepeated := countdown.New(howManyNormalMessages)
-	consumer := NewConsumer[string]("cons", zap.InfoLevel, nil)
+	consumer := NewQueue[string]("cons", zap.InfoLevel, nil)
 	consumer.AddOnConsume(func(s string) {
 		if trace {
 			t.Logf("%s -> consume", s)

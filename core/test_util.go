@@ -8,7 +8,7 @@ import (
 
 	"github.com/lunfardo314/proxima/core/attacher"
 	"github.com/lunfardo314/proxima/core/dag"
-	"github.com/lunfardo314/proxima/core/poker"
+	"github.com/lunfardo314/proxima/core/queues/poker"
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/genesis"
 	"github.com/lunfardo314/proxima/global"
@@ -30,7 +30,7 @@ type testingWorkflow struct {
 	*dag.DAG
 	txBytesStore global.TxBytesStore
 	log          *zap.SugaredLogger
-	poker        *poker.Queue
+	poker        *poker.Poker
 }
 
 func newTestingWorkflow(txBytesStore global.TxBytesStore, dag *dag.DAG, ctx context.Context) *testingWorkflow {

@@ -1,6 +1,7 @@
 package queue
 
 import (
+	"context"
 	"sync"
 
 	"github.com/lunfardo314/proxima/global"
@@ -8,21 +9,27 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
-type Queue[T any] struct {
-	name              string
-	que               *QueueVariableSize[T]
-	onConsume         []func(T)
-	onClosed          []func()
-	emptyAfterCloseWG sync.WaitGroup
-	log               *zap.SugaredLogger
-	stopOnce          sync.Once
+type (
+	Queue[T any] struct {
+		name              string
+		que               *QueueVarBuffered[T]
+		onConsume         []func(T)
+		onClosed          []func()
+		emptyAfterCloseWG sync.WaitGroup
+		log               *zap.SugaredLogger
+		stopOnce          sync.Once
+	}
+
+	Consumer[T any] interface {
+		Consume(inp T)
+	}
+)
+
+func NewQueue[T any](name string, logLevel zapcore.Level, outputs []string) *Queue[T] {
+	return NewQueueWithBufferSize[T](name, defaultBufferSize, logLevel, outputs)
 }
 
-func NewConsumer[T any](name string, logLevel zapcore.Level, outputs []string) *Queue[T] {
-	return NewConsumerWithBufferSize[T](name, defaultBufferSize, logLevel, outputs)
-}
-
-func NewConsumerWithBufferSize[T any](name string, bufSize int, logLevel zapcore.Level, outputs []string) *Queue[T] {
+func NewQueueWithBufferSize[T any](name string, bufSize int, logLevel zapcore.Level, outputs []string) *Queue[T] {
 	log := global.NewLogger("["+name+"]", logLevel, outputs, "")
 	ret := &Queue[T]{
 		name:      name,
@@ -65,13 +72,7 @@ func (c *Queue[T]) Push(inp T, prio ...bool) {
 	c.que.Push(inp, prio...)
 }
 
-func (c *Queue[T]) PushAny(inp any) {
-	c.que.PushAny(inp)
-}
-
 func (c *Queue[T]) Run() {
-	c.log.Debugf("STARTING [%s]..", c.Log().Level())
-	_ = c.log.Sync()
 	c.que.Consume(c.onConsume...)
 }
 
@@ -85,4 +86,21 @@ func (c *Queue[T]) Stop() {
 		}
 		_ = c.Log().Sync()
 	})
+}
+
+func (c *Queue[T]) Start(consumer Consumer[T], ctx context.Context) {
+	c.AddOnConsume(consumer.Consume)
+	c.log.Debugf("STARTING [%s]..", c.Log().Level())
+	_ = c.log.Sync()
+
+	go c.Run()
+	go func() {
+		<-ctx.Done()
+		c.Log().Debugf("STOPPING...")
+		c.que.Close()
+		for _, fun := range c.onClosed {
+			fun()
+		}
+		_ = c.Log().Sync()
+	}()
 }

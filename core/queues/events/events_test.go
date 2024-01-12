@@ -7,10 +7,16 @@ import (
 	"testing"
 
 	"github.com/lunfardo314/proxima/util/eventtype"
+	"go.uber.org/zap"
 )
 
 func TestEvents(t *testing.T) {
-	e := Start(context.Background())
+	e := New(zap.DebugLevel)
+	var wgStop sync.WaitGroup
+	wgStop.Add(1)
+	ctx, cancel := context.WithCancel(context.Background())
+	e.Start(ctx, &wgStop)
+
 	EventTypeTestString := eventtype.RegisterNew[string]("a string event")
 	EventTypeTestInt := eventtype.RegisterNew[int]("an int event")
 
@@ -28,4 +34,6 @@ func TestEvents(t *testing.T) {
 	e.PostEvent(EventTypeTestString, "kuku")
 	e.PostEvent(EventTypeTestInt, 31415)
 	wg.Wait()
+	cancel()
+	wgStop.Wait()
 }

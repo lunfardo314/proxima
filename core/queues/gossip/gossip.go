@@ -2,12 +2,13 @@ package gossip
 
 import (
 	"context"
+	"sync"
 
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/txmetadata"
 	"github.com/lunfardo314/proxima/util/queue"
-	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
 type (
@@ -21,7 +22,7 @@ type (
 		Metadata     *txmetadata.TransactionMetadata
 	}
 
-	Queue struct {
+	Gossip struct {
 		*queue.Queue[*Input]
 		env Environment
 	}
@@ -29,24 +30,21 @@ type (
 
 const chanBufferSize = 10
 
-func Start(env Environment, ctx context.Context) *Queue {
-	ret := &Queue{
-		Queue: queue.NewConsumerWithBufferSize[*Input]("gossip", chanBufferSize, zap.InfoLevel, nil),
+func New(env Environment, lvl zapcore.Level) *Gossip {
+	return &Gossip{
+		Queue: queue.NewQueueWithBufferSize[*Input]("gossip", chanBufferSize, lvl, nil),
 		env:   env,
 	}
-	ret.AddOnConsume(ret.consume)
-	go func() {
-		ret.Log().Infof("starting..")
-		ret.Run()
-	}()
-	go func() {
-		<-ctx.Done()
-		ret.Queue.Stop()
-	}()
-	return ret
 }
 
-func (q *Queue) consume(inp *Input) {
+func (q *Gossip) Start(ctx context.Context, doneOnClose *sync.WaitGroup) {
+	q.AddOnClosed(func() {
+		doneOnClose.Done()
+	})
+	q.Queue.Start(q, ctx)
+}
+
+func (q *Gossip) Consume(inp *Input) {
 	if inp.ReceivedFrom == nil {
 		q.env.GossipTxBytesToPeers(inp.Tx.Bytes(), inp.Metadata)
 	} else {

@@ -5,14 +5,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lunfardo314/proxima/core/txinput"
+	"github.com/lunfardo314/proxima/core/queues/txinput"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/queue"
 	"github.com/lunfardo314/proxima/util/set"
-	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
 const pullPeriod = 500 * time.Millisecond
@@ -20,7 +20,7 @@ const pullPeriod = 500 * time.Millisecond
 type (
 	Environment interface {
 		TxBytesStore() global.TxBytesStore
-		QueryTransactionsFromRandomPeer(lst ...ledger.TransactionID)
+		QueryTransactionsFromRandomPeer(lst ...ledger.TransactionID) bool
 		TransactionIn(txBytes []byte, opts ...txinput.TransactionInOption) (*transaction.Transaction, error)
 	}
 
@@ -28,7 +28,7 @@ type (
 		TxIDs []ledger.TransactionID
 	}
 
-	Queue struct {
+	PullClient struct {
 		*queue.Queue[*Input]
 		env                    Environment
 		stopBackgroundLoopChan chan struct{}
@@ -43,29 +43,24 @@ type (
 
 const chanBufferSize = 10
 
-func Start(env Environment, ctx context.Context) *Queue {
-	ret := &Queue{
-		Queue:                  queue.NewConsumerWithBufferSize[*Input]("pullReq", chanBufferSize, zap.InfoLevel, nil),
+func New(env Environment, lvl zapcore.Level) *PullClient {
+	return &PullClient{
+		Queue:                  queue.NewQueueWithBufferSize[*Input]("pullClient", chanBufferSize, lvl, nil),
 		env:                    env,
 		pullList:               make(map[ledger.TransactionID]time.Time),
 		toRemoveSet:            set.New[ledger.TransactionID](),
 		stopBackgroundLoopChan: make(chan struct{}),
 	}
-	ret.AddOnConsume(ret.consume)
-	go func() {
-		ret.Log().Infof("starting..")
-		ret.Run()
-	}()
-
-	go func() {
-		<-ctx.Done()
-		close(ret.stopBackgroundLoopChan)
-		ret.Queue.Stop()
-	}()
-	return ret
 }
 
-func (q *Queue) consume(inp *Input) {
+func (q *PullClient) Start(ctx context.Context, doneOnClose *sync.WaitGroup) {
+	q.AddOnClosed(func() {
+		doneOnClose.Done()
+	})
+	q.Queue.Start(q, ctx)
+}
+
+func (q *PullClient) Consume(inp *Input) {
 	toPull := make([]ledger.TransactionID, 0)
 	txBytesList := make([][]byte, 0)
 
@@ -90,7 +85,7 @@ func (q *Queue) consume(inp *Input) {
 	go q.env.QueryTransactionsFromRandomPeer(toPull...)
 }
 
-func (q *Queue) transactionInMany(txBytesList [][]byte) {
+func (q *PullClient) transactionInMany(txBytesList [][]byte) {
 	for _, txBytes := range txBytesList {
 		_, err := q.env.TransactionIn(txBytes, txinput.WithTransactionSource(txinput.TransactionSourceStore))
 		if err != nil {
@@ -102,7 +97,7 @@ func (q *Queue) transactionInMany(txBytesList [][]byte) {
 
 const pullLoopPeriod = 50 * time.Millisecond
 
-func (q *Queue) backgroundLoop() {
+func (q *PullClient) backgroundLoop() {
 	defer q.Log().Infof("background loop stopped")
 
 	buffer := make([]ledger.TransactionID, 0) // minimize heap use
@@ -116,7 +111,7 @@ func (q *Queue) backgroundLoop() {
 	}
 }
 
-func (q *Queue) pullAllMatured(buf []ledger.TransactionID) {
+func (q *PullClient) pullAllMatured(buf []ledger.TransactionID) {
 	buf = util.ClearSlice(buf)
 	toRemove := q.toRemoveSetClone()
 
@@ -141,15 +136,15 @@ func (q *Queue) pullAllMatured(buf []ledger.TransactionID) {
 	}
 }
 
-func (q *Queue) stopPulling(txid *ledger.TransactionID) {
+func (q *PullClient) StopPulling(txid *ledger.TransactionID) {
 	q.toRemoveSetMutex.Lock()
 	defer q.toRemoveSetMutex.Unlock()
 
 	q.toRemoveSet.Insert(*txid)
-	//q.tracePull("stopPulling: %s. pull list size: %d", func() any { return txid.StringShort() }, len(q.pullList))
+	//q.tracePull("StopPulling: %s. pull list size: %d", func() any { return txid.StringShort() }, len(q.pullList))
 }
 
-func (q *Queue) toRemoveSetClone() set.Set[ledger.TransactionID] {
+func (q *PullClient) toRemoveSetClone() set.Set[ledger.TransactionID] {
 	q.toRemoveSetMutex.Lock()
 	defer q.toRemoveSetMutex.Unlock()
 
