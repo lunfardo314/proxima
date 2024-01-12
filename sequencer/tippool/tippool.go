@@ -20,6 +20,7 @@ type (
 		ListenToSequencers(fun func(vid *vertex.WrappedTx))
 		ScanAccount(addr ledger.AccountID) set.Set[vertex.WrappedOutput]
 		Log() *zap.SugaredLogger
+		Tracef(tag string, format string, args ...any)
 	}
 
 	SequencerTipPool struct {
@@ -46,7 +47,6 @@ type (
 const fetchLastNTimeSlotsUponStartup = 5
 
 func Start(seqName string, env ListenEnvironment, seqID ledger.ChainID) *SequencerTipPool {
-	// must be finalized somewhere
 	accountAddress := ledger.CloneAccountable(seqID.AsChainLock())
 	ret := &SequencerTipPool{
 		env:              env,
@@ -56,7 +56,7 @@ func Start(seqName string, env ListenEnvironment, seqID ledger.ChainID) *Sequenc
 		seqName:          seqName,
 		latestMilestones: make(map[ledger.ChainID]*vertex.WrappedTx),
 	}
-	env.Log().Debugf("starting tipPool..")
+	env.Tracef("tippool", "starting tipPool..")
 
 	ret.mutex.RLock()
 	defer ret.mutex.RUnlock()
@@ -68,11 +68,14 @@ func Start(seqName string, env ListenEnvironment, seqID ledger.ChainID) *Sequenc
 		ret.mutex.Lock()
 		defer ret.mutex.Unlock()
 
-		if wOut.VID.GetTxStatus() != vertex.Bad {
-			ret.outputs.Insert(wOut)
-			ret.outputCount++
-			env.Log().Debugf("IN %s", wOut.IDShortString())
+		if wOut.VID.GetTxStatus() == vertex.Bad {
+			return
 		}
+		// TODO filter out chain-constrained outputs
+
+		ret.outputs.Insert(wOut)
+		ret.outputCount++
+		env.Tracef("tippool", "[%s] output IN: %s", seqName, wOut.IDShortString)
 	})
 
 	// start listening to other sequencers
@@ -91,6 +94,7 @@ func Start(seqName string, env ListenEnvironment, seqID ledger.ChainID) *Sequenc
 		if !prevExists || !vid.Timestamp().Before(old.Timestamp()) {
 			ret.latestMilestones[seqIDIncoming] = vid
 		}
+		env.Tracef("tippool", "[%s] milestone IN: %s", seqName, vid.IDShortString)
 	})
 
 	// fetch all account into tipPool once
