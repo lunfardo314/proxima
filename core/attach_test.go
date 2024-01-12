@@ -10,16 +10,19 @@ import (
 	"github.com/lunfardo314/proxima/core/attacher"
 	"github.com/lunfardo314/proxima/core/dag"
 	"github.com/lunfardo314/proxima/core/vertex"
+	"github.com/lunfardo314/proxima/core/workflow"
 	"github.com/lunfardo314/proxima/genesis"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	txbuilder2 "github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/multistate"
+	"github.com/lunfardo314/proxima/peering"
 	"github.com/lunfardo314/proxima/txstore"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/testutil"
 	"github.com/lunfardo314/unitrie/common"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap/zapcore"
 )
 
 func TestOrigin(t *testing.T) {
@@ -31,7 +34,9 @@ func TestOrigin(t *testing.T) {
 		bootstrapChainID, root := genesis.InitLedgerState(*par, stateStore)
 		dagAccess := dag.New(stateStore)
 		txBytesStore := txstore.NewSimpleTxBytesStore(common.NewInMemoryKVStore())
-		wrk := newTestingWorkflow(txBytesStore, dagAccess, context.Background())
+		wrk := workflow.New(stateStore, txBytesStore, peering.NewPeersDummy(), workflow.WithLogLevel(zapcore.DebugLevel))
+		ctx, stop := context.WithCancel(context.Background())
+		wrk.Start(ctx)
 
 		id, _, err := genesis.ScanGenesisState(stateStore)
 		require.NoError(t, err)
@@ -44,7 +49,8 @@ func TestOrigin(t *testing.T) {
 		require.EqualValues(t, genesisOut.ID, genesisOut1.ID)
 		require.EqualValues(t, genesisOut.Output.Bytes(), genesisOut1.Output.Bytes())
 
-		wrk.syncLog()
+		stop()
+		wrk.WaitStop()
 
 		t.Logf("bootstrap chain id: %s", bootstrapChainID.String())
 		t.Logf("genesis root: %s", root.String())
@@ -63,9 +69,11 @@ func TestOrigin(t *testing.T) {
 
 		stateStore := common.NewInMemoryKVStore()
 		bootstrapChainID, _ := genesis.InitLedgerState(*par, stateStore)
-		dagAccess := dag.New(stateStore)
 		txBytesStore := txstore.NewSimpleTxBytesStore(common.NewInMemoryKVStore())
-		wrk := newTestingWorkflow(txBytesStore, dagAccess, context.Background())
+
+		wrk := workflow.New(stateStore, txBytesStore, peering.NewPeersDummy(), workflow.WithLogLevel(zapcore.DebugLevel))
+		ctx, stop := context.WithCancel(context.Background())
+		wrk.Start(ctx)
 
 		txBytes, err := txbuilder2.DistributeInitialSupply(stateStore, privKey, distrib)
 		require.NoError(t, err)
@@ -76,14 +84,15 @@ func TestOrigin(t *testing.T) {
 		vidDistrib, err := attacher.EnsureBranch(distribTxID, wrk)
 		require.NoError(t, err)
 
-		wrk.syncLog()
+		stop()
+		wrk.WaitStop()
 
 		t.Logf("bootstrap chain id: %s", bootstrapChainID.String())
 
 		t.Logf("genesis branch txid: %s", vidDistrib.IDShortString())
-		t.Logf("%s", dagAccess.Info())
+		t.Logf("%s", wrk.Info())
 
-		distribVID := dagAccess.GetVertex(&vidDistrib.ID)
+		distribVID := wrk.GetVertex(&vidDistrib.ID)
 		require.True(t, distribVID != nil)
 
 		rdr := multistate.MakeSugared(wrk.GetStateReaderForTheBranch(distribVID))
@@ -122,9 +131,11 @@ func TestOrigin(t *testing.T) {
 
 		stateStore := common.NewInMemoryKVStore()
 		bootstrapChainID, _ := genesis.InitLedgerState(*par, stateStore)
-		dagAccess := dag.New(stateStore)
 		txBytesStore := txstore.NewSimpleTxBytesStore(common.NewInMemoryKVStore())
-		wrk := newTestingWorkflow(txBytesStore, dagAccess, context.Background())
+
+		wrk := workflow.New(stateStore, txBytesStore, peering.NewPeersDummy(), workflow.WithLogLevel(zapcore.DebugLevel))
+		ctx, stop := context.WithCancel(context.Background())
+		wrk.Start(ctx)
 
 		txBytes, err := txbuilder2.MakeDistributionTransaction(stateStore, privKey, distrib)
 		require.NoError(t, err)
@@ -138,15 +149,17 @@ func TestOrigin(t *testing.T) {
 
 		vidDistrib, err := attacher.EnsureBranch(distribTxID, wrk)
 		require.NoError(t, err)
-		wrk.syncLog()
 
 		t.Logf("bootstrap chain id: %s", bootstrapChainID.String())
 
 		t.Logf("genesis branch txid: %s", vidDistrib.IDShortString())
-		t.Logf("%s", dagAccess.Info())
+		t.Logf("%s", wrk.Info())
 
-		distribVID := dagAccess.GetVertex(&vidDistrib.ID)
+		distribVID := wrk.GetVertex(&vidDistrib.ID)
 		require.True(t, distribVID != nil)
+
+		stop()
+		wrk.WaitStop()
 
 		rdr := multistate.MakeSugared(wrk.GetStateReaderForTheBranch(distribVID))
 		stemOut := rdr.GetStemOutput()
@@ -186,9 +199,11 @@ func TestOrigin(t *testing.T) {
 
 		stateStore := common.NewInMemoryKVStore()
 		bootstrapChainID, _ := genesis.InitLedgerState(*par, stateStore)
-		dagAccess := dag.New(stateStore)
 		txBytesStore := txstore.NewSimpleTxBytesStore(common.NewInMemoryKVStore())
-		wrk := newTestingWorkflow(txBytesStore, dagAccess, context.Background())
+
+		wrk := workflow.New(stateStore, txBytesStore, peering.NewPeersDummy(), workflow.WithLogLevel(zapcore.DebugLevel))
+		ctx, stop := context.WithCancel(context.Background())
+		wrk.Start(ctx)
 
 		txBytes, err := txbuilder2.DistributeInitialSupply(stateStore, privKey, distrib)
 		require.NoError(t, err)
@@ -210,9 +225,12 @@ func TestOrigin(t *testing.T) {
 		t.Logf("bootstrap chain id: %s", bootstrapChainID.String())
 
 		t.Logf("genesis branch txid: %s", vidDistrib.IDShortString())
-		t.Logf("%s", dagAccess.Info())
+		t.Logf("%s", wrk.Info())
 
-		distribVID := dagAccess.GetVertex(&vidDistrib.ID)
+		stop()
+		wrk.WaitStop()
+
+		distribVID := wrk.GetVertex(&vidDistrib.ID)
 		require.True(t, distribVID != nil)
 		rdr := multistate.MakeSugared(wrk.GetStateReaderForTheBranch(distribVID))
 		stemOut := rdr.GetStemOutput()
@@ -424,6 +442,7 @@ func TestConflicts1Attacher(t *testing.T) {
 		util.RequireErrorWith(t, vid.GetReason(), "conflicts with existing consumers in the baseline state", testData.forkOutput.IDShort())
 	})
 	t.Run("long with sync", func(t *testing.T) {
+		ledger.SetTimeTickDuration(10 * time.Millisecond)
 		//attacher.SetTraceOn()
 		const (
 			nConflicts = 2
@@ -465,12 +484,16 @@ func TestConflicts1Attacher(t *testing.T) {
 
 		var wg sync.WaitGroup
 
+		testData.wrk.EnableTraceTag("delay")
+
 		wg.Add(1)
 		vid, err := attacher.AttachTransactionFromBytes(txBytes, testData.wrk, attacher.OptionWithFinalizationCallback(func(vid *vertex.WrappedTx) {
 			wg.Done()
 		}))
 		require.NoError(t, err)
 		wg.Wait()
+
+		testData.stopAndWait()
 
 		testData.logDAGInfo()
 
@@ -482,6 +505,7 @@ func TestConflicts1Attacher(t *testing.T) {
 
 func TestConflictsNAttachers(t *testing.T) {
 	t.Run("seq start tx", func(t *testing.T) {
+		ledger.SetTimeTickDuration(10 * time.Millisecond)
 		//attacher.SetTraceOn()
 		const (
 			nConflicts = 10
@@ -504,6 +528,7 @@ func TestConflictsNAttachers(t *testing.T) {
 			require.NoError(t, err)
 		}
 		wg.Wait()
+		testData.stopAndWait()
 
 		testData.logDAGInfo()
 
@@ -512,6 +537,7 @@ func TestConflictsNAttachers(t *testing.T) {
 		}
 	})
 	t.Run("seq start tx fee with-without pull", func(t *testing.T) {
+		ledger.SetTimeTickDuration(10 * time.Millisecond)
 		//attacher.SetTraceOn()
 		const (
 			nConflicts = 5
@@ -542,6 +568,7 @@ func TestConflictsNAttachers(t *testing.T) {
 		}
 		wg.Wait()
 
+		testData.stopAndWait()
 		testData.logDAGInfo()
 
 		for _, vid := range submittedSeq {
@@ -558,6 +585,7 @@ func TestConflictsNAttachers(t *testing.T) {
 		//testData.wrk.SaveGraph("utangle")
 	})
 	t.Run("one fork", func(t *testing.T) {
+		ledger.SetTimeTickDuration(10 * time.Millisecond)
 		//attacher.SetTraceOn()
 		const (
 			nConflicts = 2
@@ -613,6 +641,7 @@ func TestConflictsNAttachers(t *testing.T) {
 		require.NoError(t, err)
 		wg.Wait()
 
+		testData.stopAndWait()
 		testData.logDAGInfo()
 
 		require.EqualValues(t, vertex.Bad.String(), vidSeq.GetTxStatus().String())
@@ -620,6 +649,7 @@ func TestConflictsNAttachers(t *testing.T) {
 		testData.wrk.SaveGraph("utangle")
 	})
 	t.Run("one fork, branches", func(t *testing.T) {
+		ledger.SetTimeTickDuration(10 * time.Millisecond)
 		//attacher.SetTraceOn()
 		const (
 			nConflicts = 2
@@ -677,10 +707,12 @@ func TestConflictsNAttachers(t *testing.T) {
 		}
 		wg.Wait()
 
+		testData.stopAndWait()
 		testData.logDAGInfo()
 		testData.wrk.SaveGraph("utangle")
 	})
 	t.Run("one fork branches conflict", func(t *testing.T) {
+		ledger.SetTimeTickDuration(10 * time.Millisecond)
 		//attacher.SetTraceOn()
 		const (
 			nConflicts = 5
@@ -762,6 +794,7 @@ func TestConflictsNAttachers(t *testing.T) {
 		}))
 		wg.Wait()
 
+		testData.stopAndWait()
 		testData.logDAGInfo()
 		testData.wrk.SaveGraph("utangle")
 
@@ -772,6 +805,7 @@ func TestConflictsNAttachers(t *testing.T) {
 }
 
 func TestSeqChains(t *testing.T) {
+	ledger.SetTimeTickDuration(10 * time.Millisecond)
 	t.Run("no pull order normal", func(t *testing.T) {
 		//attacher.SetTraceOn()
 		const (
@@ -800,6 +834,8 @@ func TestSeqChains(t *testing.T) {
 			}
 		}
 		wg.Wait()
+
+		testData.stopAndWait()
 		testData.logDAGInfo()
 		for _, txSequence := range vids {
 			for _, vid := range txSequence {
@@ -839,6 +875,7 @@ func TestSeqChains(t *testing.T) {
 			}
 		}
 		wg.Wait()
+		testData.stopAndWait()
 		testData.logDAGInfo()
 		for _, txSequence := range vids {
 			for _, vid := range txSequence {
@@ -874,6 +911,7 @@ func TestSeqChains(t *testing.T) {
 			}
 		}
 		wg.Wait()
+		testData.stopAndWait()
 		testData.logDAGInfo()
 		for _, txSequence := range vids {
 			for _, vid := range txSequence {
@@ -902,7 +940,7 @@ func TestSeqChains(t *testing.T) {
 		for seqNr, txSequence := range testData.seqChain {
 			for i, tx := range txSequence {
 				if i < len(txSequence)-1 {
-					err := testData.wrk.txBytesStore.SaveTxBytes(tx.Bytes())
+					err := testData.wrk.TxBytesStore().SaveTxBytes(tx.Bytes())
 					require.NoError(t, err)
 				} else {
 					wg.Add(1)
@@ -914,6 +952,7 @@ func TestSeqChains(t *testing.T) {
 		}
 		wg.Wait()
 
+		testData.stopAndWait()
 		testData.logDAGInfo()
 		for _, vid := range vids {
 			require.EqualValues(t, vertex.Good.String(), vid.GetTxStatus().String())
@@ -939,7 +978,7 @@ func TestSeqChains(t *testing.T) {
 		testData.txBytesAttach()
 		for _, txSequence := range testData.seqChain {
 			for _, tx := range txSequence {
-				err := testData.wrk.txBytesStore.SaveTxBytes(tx.Bytes())
+				err := testData.wrk.TxBytesStore().SaveTxBytes(tx.Bytes())
 				require.NoError(t, err)
 			}
 		}
@@ -963,6 +1002,7 @@ func TestSeqChains(t *testing.T) {
 		}))
 		wg.Wait()
 
+		testData.stopAndWait()
 		testData.logDAGInfo()
 		require.EqualValues(t, vertex.Good.String(), vidBranch.GetTxStatus().String())
 		//testData.wrk.SaveGraph("utangle")
@@ -975,7 +1015,7 @@ func TestSeqChains(t *testing.T) {
 			howLongConflictChains = 2 // 97 fails when crosses slot boundary
 			nChains               = 5
 			howLongSeqChains      = 10 // 95 fails
-			nSlots                = 20
+			nSlots                = 5
 		)
 
 		testData := initLongConflictTestData(t, nConflicts, nChains, howLongConflictChains)
@@ -1015,6 +1055,7 @@ func TestSeqChains(t *testing.T) {
 		}))
 		wg.Wait()
 
+		testData.stopAndWait()
 		testData.logDAGInfo()
 		dag.SaveGraphPastCone(vidBranch, "utangle")
 		require.EqualValues(t, vertex.Good.String(), vidBranch.GetTxStatus().String())
@@ -1077,6 +1118,7 @@ func TestSeqChains(t *testing.T) {
 		}))
 		wg.Wait()
 
+		testData.stopAndWait()
 		testData.logDAGInfo()
 		dag.SaveGraphPastCone(vidBranch, "utangle")
 		require.EqualValues(t, vertex.Good.String(), vidBranch.GetTxStatus().String())

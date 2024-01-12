@@ -22,6 +22,7 @@ type (
 		DropTxID(txid *ledger.TransactionID, who string, reasonFormat string, args ...any)
 		AttachTransaction(inp *Input)
 		GossipTransaction(inp *Input)
+		Tracef(tag string, format string, args ...any)
 	}
 
 	TransactionSource byte
@@ -124,9 +125,11 @@ func (q *TxInput) Consume(inp *Input) {
 	// timestamp is in the future. Put it into the waiting room
 	q.env.IncCounter("ok.delay")
 	delayFor := txTime.Sub(nowis)
-	q.Log().Debugf("%s -> delay for %v", txid.StringShort(), delayFor)
+	q.env.Tracef("delay", "%s -> delay for %v", txid.StringShort, delayFor)
+
 	go func() {
 		time.Sleep(delayFor)
+		q.env.Tracef("delay", "%s -> release", txid.StringShort)
 		q.env.IncCounter("ok.release")
 		q.env.GossipTransaction(inp)
 		q.env.AttachTransaction(inp)

@@ -6,6 +6,7 @@ import (
 
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/lunfardo314/proxima/core/attacher"
+	"github.com/lunfardo314/proxima/core/queues/gossip"
 	"github.com/lunfardo314/proxima/core/queues/pull_client"
 	"github.com/lunfardo314/proxima/core/queues/txinput"
 	"github.com/lunfardo314/proxima/core/vertex"
@@ -24,7 +25,7 @@ func (w *Workflow) IncCounter(name string) {
 }
 
 func (w *Workflow) Pull(txid ledger.TransactionID) {
-	w.pullClient.Push(&pull_client.Input{
+	w.pullClient.Push(&pull_client.TxList{
 		TxIDs: []ledger.TransactionID{txid},
 	})
 }
@@ -39,7 +40,15 @@ func (w *Workflow) DropTxID(txid *ledger.TransactionID, who string, reasonFormat
 }
 
 func (w *Workflow) GossipTransaction(inp *txinput.Input) {
-	w.log.Infof("GossipTransaction %s", inp.Tx.IDShortString())
+	var receivedFrom *peer.ID
+	if inp.TxSource == txinput.TransactionSourcePeer {
+		receivedFrom = &inp.ReceivedFromPeer
+	}
+	w.gossip.Push(&gossip.Input{
+		Tx:           inp.Tx,
+		ReceivedFrom: receivedFrom,
+		Metadata:     inp.TxMetadata,
+	})
 }
 
 func (w *Workflow) PokeMe(me, with *vertex.WrappedTx) {

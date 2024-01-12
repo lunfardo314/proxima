@@ -7,88 +7,29 @@ import (
 	"testing"
 
 	"github.com/lunfardo314/proxima/core/attacher"
-	"github.com/lunfardo314/proxima/core/dag"
-	"github.com/lunfardo314/proxima/core/queues/poker"
-	"github.com/lunfardo314/proxima/core/vertex"
+	"github.com/lunfardo314/proxima/core/workflow"
 	"github.com/lunfardo314/proxima/genesis"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/transaction"
-	txbuilder2 "github.com/lunfardo314/proxima/ledger/txbuilder"
+	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/multistate"
+	"github.com/lunfardo314/proxima/peering"
 	"github.com/lunfardo314/proxima/txstore"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/testutil"
 	"github.com/lunfardo314/proxima/util/testutil/inittest"
 	"github.com/lunfardo314/unitrie/common"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 	"golang.org/x/crypto/blake2b"
 )
 
-type testingWorkflow struct {
-	*dag.DAG
-	txBytesStore global.TxBytesStore
-	log          *zap.SugaredLogger
-	poker        *poker.Poker
-}
-
-func newTestingWorkflow(txBytesStore global.TxBytesStore, dag *dag.DAG, ctx context.Context) *testingWorkflow {
-	return &testingWorkflow{
-		txBytesStore: txBytesStore,
-		DAG:          dag,
-		poker:        poker.Start(ctx),
-		log:          global.NewLogger("", zap.InfoLevel, nil, ""),
-	}
-}
-
 const tracePull = false
-
-func (w *testingWorkflow) Pull(txid ledger.TransactionID) {
-	if tracePull {
-		w.log.Infof("pull request %s", txid.StringShort())
-	}
-	go func() {
-		txBytes := w.txBytesStore.GetTxBytes(&txid)
-		if len(txBytes) == 0 {
-			return
-		}
-		tx, err := transaction.FromBytes(txBytes, transaction.MainTxValidationOptions...)
-		util.AssertNoError(err, "transaction.FromBytes")
-		if tracePull {
-			w.log.Infof("pull send %s", txid.StringShort())
-		}
-		attacher.AttachTransaction(tx, w)
-	}()
-}
-
-const tracePoking = false
-
-func (w *testingWorkflow) PokeMe(me, with *vertex.WrappedTx) {
-	if tracePoking {
-		w.log.Infof("poke me %s with %s", me.IDShortString(), with.IDShortString())
-	}
-	w.poker.PokeMe(me, with)
-}
-
-func (w *testingWorkflow) PokeAllWith(wanted *vertex.WrappedTx) {
-	if tracePoking {
-		w.log.Infof("poke all with %s", wanted.IDShortString())
-	}
-	w.poker.PokeAllWith(wanted)
-}
-
-func (w *testingWorkflow) Log() *zap.SugaredLogger {
-	return w.log
-}
-
-func (w *testingWorkflow) syncLog() {
-	_ = w.log.Sync()
-}
 
 type conflictTestData struct {
 	t                      *testing.T
-	wrk                    *testingWorkflow
+	wrk                    *workflow.Workflow
 	txStore                global.TxBytesStore
 	bootstrapChainID       ledger.ChainID
 	originBranchTxid       ledger.TransactionID
@@ -109,6 +50,7 @@ type conflictTestData struct {
 	seqChain               [][]*transaction.Transaction
 	transferChain          []*transaction.Transaction
 	remainderOutput        *ledger.OutputWithID
+	stopFun                context.CancelFunc
 }
 
 func initConflictTest(t *testing.T, nConflicts int, nChains int, targetLockChain bool) *conflictTestData {
@@ -142,7 +84,7 @@ func initConflictTest(t *testing.T, nConflicts int, nChains int, targetLockChain
 
 	var genesisRoot common.VCommitment
 	ret.bootstrapChainID, genesisRoot = genesis.InitLedgerState(ret.stateIdentity, stateStore)
-	txBytes, err := txbuilder2.DistributeInitialSupply(stateStore, genesisPrivKey, distrib)
+	txBytes, err := txbuilder.DistributeInitialSupply(stateStore, genesisPrivKey, distrib)
 	require.NoError(t, err)
 	err = ret.txStore.SaveTxBytes(txBytes)
 	require.NoError(t, err)
@@ -159,7 +101,10 @@ func initConflictTest(t *testing.T, nConflicts int, nChains int, targetLockChain
 		t.Logf("--------------- distribution tx:\n%s\n--------------", tx.ToString(genesisState.GetUTXO))
 	}
 
-	ret.wrk = newTestingWorkflow(ret.txStore, dag.New(stateStore), context.Background())
+	ret.wrk = workflow.New(stateStore, ret.txStore, peering.NewPeersDummy(), workflow.WithLogLevel(zapcore.DebugLevel))
+	var ctx context.Context
+	ctx, ret.stopFun = context.WithCancel(context.Background())
+	ret.wrk.Start(ctx)
 
 	t.Logf("bootstrap chain id: %s", ret.bootstrapChainID.String())
 	t.Logf("origing branch txid: %s", ret.originBranchTxid.StringShort())
@@ -196,7 +141,7 @@ func initConflictTest(t *testing.T, nConflicts int, nChains int, targetLockChain
 
 	ret.txBytesConflicting = make([][]byte, nConflicts)
 
-	td := txbuilder2.NewTransferData(ret.privKey, ret.addr, ledger.LogicalTimeNow()).
+	td := txbuilder.NewTransferData(ret.privKey, ret.addr, ledger.LogicalTimeNow()).
 		MustWithInputs(ret.forkOutput)
 
 	for i := 0; i < nConflicts; i++ {
@@ -206,7 +151,7 @@ func initConflictTest(t *testing.T, nConflicts int, nChains int, targetLockChain
 		} else {
 			td.WithTargetLock(ret.addr)
 		}
-		ret.txBytesConflicting[i], err = txbuilder2.MakeTransferTransaction(td)
+		ret.txBytesConflicting[i], err = txbuilder.MakeTransferTransaction(td)
 		require.NoError(t, err)
 	}
 	require.EqualValues(t, nConflicts, len(ret.txBytesConflicting))
@@ -221,12 +166,17 @@ func initConflictTest(t *testing.T, nConflicts int, nChains int, targetLockChain
 	return ret
 }
 
+func (td *conflictTestData) stopAndWait() {
+	td.stopFun()
+	td.wrk.WaitStop()
+}
+
 // makes chain origins transaction from aux output
 func (td *conflictTestData) makeChainOrigins(n int) {
 	if n == 0 {
 		return
 	}
-	txb := txbuilder2.NewTransactionBuilder()
+	txb := txbuilder.NewTransactionBuilder()
 	_, _ = txb.ConsumeOutputWithID(td.auxOutput)
 	txb.PutSignatureUnlock(0)
 	amount := td.auxOutput.Output.Amount() / uint64(n)
@@ -276,7 +226,7 @@ func (td *longConflictTestData) makeSeqBeginnings(withConflictingFees bool) {
 		}
 		ts = ts.AddTicks(ledger.TransactionPaceInTicks)
 		td.seqChain[i] = make([]*transaction.Transaction, 0)
-		txBytes, err := txbuilder2.MakeSequencerTransaction(txbuilder2.MakeSequencerTransactionParams{
+		txBytes, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
 			SeqName:          "1",
 			ChainInput:       chainOrigin,
 			Timestamp:        ts,
@@ -296,7 +246,7 @@ func (td *longConflictTestData) makeSeqChains(howLong int) {
 		for seqNr := range td.seqChain {
 			endorsedSeqNr := (seqNr + 1) % len(td.seqChain)
 			endorse := td.seqChain[endorsedSeqNr][i].ID()
-			txBytesSeq, err := txbuilder2.MakeSequencerTransaction(txbuilder2.MakeSequencerTransactionParams{
+			txBytesSeq, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
 				SeqName:      fmt.Sprintf("seq%d", i),
 				ChainInput:   td.seqChain[seqNr][i].SequencerOutput().MustAsChainOutput(),
 				Timestamp:    td.seqChain[seqNr][i].Timestamp().AddTicks(ledger.TransactionPaceInTicks),
@@ -331,7 +281,7 @@ func (td *longConflictTestData) makeSlotTransactions(howLongChain int, extendBeg
 			}
 			ts = ledger.MaxLogicalTime(endorse.Timestamp(), extend.Timestamp()).AddTicks(ledger.TransactionPaceInTicks)
 
-			txBytes, err := txbuilder2.MakeSequencerTransaction(txbuilder2.MakeSequencerTransactionParams{
+			txBytes, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
 				SeqName:      fmt.Sprintf("seq%d", i),
 				ChainInput:   extend,
 				Timestamp:    ts,
@@ -381,7 +331,7 @@ func (td *longConflictTestData) makeSlotTransactionsWithTagAlong(howLongChain in
 			}
 			ts = ledger.MaxLogicalTime(endorse.Timestamp(), extend.Timestamp(), transferOut.Timestamp()).AddTicks(ledger.TransactionPaceInTicks)
 
-			txBytes, err := txbuilder2.MakeSequencerTransaction(txbuilder2.MakeSequencerTransactionParams{
+			txBytes, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
 				SeqName:          fmt.Sprintf("seq%d", i),
 				ChainInput:       extend,
 				AdditionalInputs: []*ledger.OutputWithID{transferOut},
@@ -403,7 +353,7 @@ func (td *longConflictTestData) makeBranch(extend *ledger.OutputWithChainID, pre
 	td.t.Logf("extendTS: %s, prevBranchTS: %s", extend.Timestamp().String(), prevBranch.Timestamp().String())
 	require.True(td.t, extend.Timestamp().After(prevBranch.Timestamp()))
 
-	txBytesBranch, err := txbuilder2.MakeSequencerTransaction(txbuilder2.MakeSequencerTransactionParams{
+	txBytesBranch, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
 		SeqName:    "seq0",
 		ChainInput: extend,
 		StemInput:  prevBranch.StemOutput(),
@@ -432,7 +382,7 @@ func (td *longConflictTestData) extendToNextSlot(prevSlot [][]*transaction.Trans
 			extendOut = branch.SequencerOutput().MustAsChainOutput()
 			endorse = nil
 		}
-		txBytes, err := txbuilder2.MakeSequencerTransaction(txbuilder2.MakeSequencerTransactionParams{
+		txBytes, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
 			SeqName:      "seq0",
 			ChainInput:   extendOut,
 			Timestamp:    branch.Timestamp().AddTicks(ledger.TransactionPaceInTicks),
@@ -449,7 +399,7 @@ func (td *longConflictTestData) extendToNextSlot(prevSlot [][]*transaction.Trans
 const transferAmount = 100
 
 func (td *longConflictTestData) spendToChain(o *ledger.OutputWithID, chainID ledger.ChainID) *transaction.Transaction {
-	txBytes, err := txbuilder2.MakeSimpleTransferTransaction(txbuilder2.NewTransferData(td.privKey, td.addr, o.Timestamp().AddTicks(ledger.TransactionPaceInTicks)).
+	txBytes, err := txbuilder.MakeSimpleTransferTransaction(txbuilder.NewTransferData(td.privKey, td.addr, o.Timestamp().AddTicks(ledger.TransactionPaceInTicks)).
 		WithAmount(transferAmount).
 		MustWithInputs(o).
 		WithTargetLock(ledger.ChainLockFromChainID(chainID)))
@@ -491,7 +441,7 @@ func initLongConflictTestData(t *testing.T, nConflicts int, nChains int, howLong
 			if i == 0 {
 				prev = originOut
 			}
-			trd := txbuilder2.NewTransferData(td.privKey, td.addr, originOut.Timestamp().AddTicks(ledger.TransactionPaceInTicks*(i+1)))
+			trd := txbuilder.NewTransferData(td.privKey, td.addr, originOut.Timestamp().AddTicks(ledger.TransactionPaceInTicks*(i+1)))
 			trd.WithAmount(originOut.Output.Amount())
 			trd.MustWithInputs(prev)
 			if i < howLong-1 {
@@ -503,7 +453,7 @@ func initLongConflictTestData(t *testing.T, nConflicts int, nChains int, howLong
 					trd.WithTargetLock(ledger.ChainLockFromChainID(ret.chainOrigins[seqNr%nChains].ChainID))
 				}
 			}
-			ret.txSequences[seqNr][i], err = txbuilder2.MakeSimpleTransferTransaction(trd)
+			ret.txSequences[seqNr][i], err = txbuilder.MakeSimpleTransferTransaction(trd)
 			require.NoError(t, err)
 
 			tx, err := transaction.FromBytesMainChecksWithOpt(ret.txSequences[seqNr][i])
@@ -520,7 +470,7 @@ func initLongConflictTestData(t *testing.T, nConflicts int, nChains int, howLong
 
 func (td *longConflictTestData) storeTxBytes(txBytesMulti ...[]byte) {
 	for _, txBytes := range txBytesMulti {
-		err := td.wrk.txBytesStore.SaveTxBytes(txBytes)
+		err := td.wrk.TxBytesStore().SaveTxBytes(txBytes)
 		require.NoError(td.t, err)
 	}
 }
@@ -586,12 +536,4 @@ func (td *longConflictTestData) printTxIDs() {
 			td.t.Logf("       %2d : %s", j, tx.IDShortString())
 		}
 	}
-}
-
-func (w *testingWorkflow) PostEventNewGood(vid *vertex.WrappedTx) {
-	//fmt.Printf("TEST PostEventNewGood: %s\n", vid.IDShortString())
-}
-
-func (w *testingWorkflow) PostEventNewValidated(vid *vertex.WrappedTx) {
-	//fmt.Printf("TEST PostEventNewValidated: %s\n", vid.IDShortString())
 }

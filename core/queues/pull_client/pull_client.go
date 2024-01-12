@@ -22,14 +22,15 @@ type (
 		TxBytesStore() global.TxBytesStore
 		QueryTransactionsFromRandomPeer(lst ...ledger.TransactionID) bool
 		TransactionIn(txBytes []byte, opts ...txinput.TransactionInOption) (*transaction.Transaction, error)
+		Tracef(tag string, format string, args ...any)
 	}
 
-	Input struct {
+	TxList struct {
 		TxIDs []ledger.TransactionID
 	}
 
 	PullClient struct {
-		*queue.Queue[*Input]
+		*queue.Queue[*TxList]
 		env                    Environment
 		stopBackgroundLoopChan chan struct{}
 		// set of transaction being pulled
@@ -45,7 +46,7 @@ const chanBufferSize = 10
 
 func New(env Environment, lvl zapcore.Level) *PullClient {
 	return &PullClient{
-		Queue:                  queue.NewQueueWithBufferSize[*Input]("pullClient", chanBufferSize, lvl, nil),
+		Queue:                  queue.NewQueueWithBufferSize[*TxList]("pullClient", chanBufferSize, lvl, nil),
 		env:                    env,
 		pullList:               make(map[ledger.TransactionID]time.Time),
 		toRemoveSet:            set.New[ledger.TransactionID](),
@@ -60,7 +61,9 @@ func (q *PullClient) Start(ctx context.Context, doneOnClose *sync.WaitGroup) {
 	q.Queue.Start(q, ctx)
 }
 
-func (q *PullClient) Consume(inp *Input) {
+func (q *PullClient) Consume(inp *TxList) {
+	q.env.Tracef("pull", "Consume: (%s) %s", len(inp.TxIDs), inp.TxIDs[0].StringShort())
+
 	toPull := make([]ledger.TransactionID, 0)
 	txBytesList := make([][]byte, 0)
 
