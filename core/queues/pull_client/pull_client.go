@@ -25,12 +25,12 @@ type (
 		Tracef(tag string, format string, args ...any)
 	}
 
-	TxList struct {
+	Input struct {
 		TxIDs []ledger.TransactionID
 	}
 
 	PullClient struct {
-		*queue.Queue[*TxList]
+		*queue.Queue[*Input]
 		env                    Environment
 		stopBackgroundLoopChan chan struct{}
 		// set of transaction being pulled
@@ -46,7 +46,7 @@ const chanBufferSize = 10
 
 func New(env Environment, lvl zapcore.Level) *PullClient {
 	return &PullClient{
-		Queue:                  queue.NewQueueWithBufferSize[*TxList]("pullClient", chanBufferSize, lvl, nil),
+		Queue:                  queue.NewQueueWithBufferSize[*Input]("pullClient", chanBufferSize, lvl, nil),
 		env:                    env,
 		pullList:               make(map[ledger.TransactionID]time.Time),
 		toRemoveSet:            set.New[ledger.TransactionID](),
@@ -61,7 +61,7 @@ func (q *PullClient) Start(ctx context.Context, doneOnClose *sync.WaitGroup) {
 	q.Queue.Start(q, ctx)
 }
 
-func (q *PullClient) Consume(inp *TxList) {
+func (q *PullClient) Consume(inp *Input) {
 	q.env.Tracef("pull", "Consume: (%s) %s", len(inp.TxIDs), inp.TxIDs[0].StringShort())
 
 	toPull := make([]ledger.TransactionID, 0)

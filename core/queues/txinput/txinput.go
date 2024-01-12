@@ -2,10 +2,13 @@ package txinput
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/lunfardo314/proxima/core/attacher"
+	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/txmetadata"
@@ -20,7 +23,7 @@ type (
 		IncCounter(string)
 		StopPulling(txid *ledger.TransactionID)
 		DropTxID(txid *ledger.TransactionID, who string, reasonFormat string, args ...any)
-		AttachTransaction(inp *Input)
+		AttachTransaction(inp *Input, opts ...attacher.Option)
 		GossipTransaction(inp *Input)
 		Tracef(tag string, format string, args ...any)
 	}
@@ -28,11 +31,12 @@ type (
 	TransactionSource byte
 
 	Input struct {
-		Tx               *transaction.Transaction
-		TxMetadata       *txmetadata.TransactionMetadata
-		ReceivedFromPeer peer.ID
-		ReceivedWhen     time.Time
-		TxSource         TransactionSource
+		Tx                 *transaction.Transaction
+		TxMetadata         *txmetadata.TransactionMetadata
+		ReceivedFromPeer   peer.ID
+		ReceivedWhen       time.Time
+		TxSource           TransactionSource
+		AttachmentCallback func(vid *vertex.WrappedTx)
 	}
 
 	TxInput struct {
@@ -116,10 +120,15 @@ func (q *TxInput) Consume(inp *Input) {
 	// - with delay if timestamp is in the future
 	txTime := inp.Tx.TimestampTime()
 
+	opts := []attacher.Option{attacher.OptionInvokedBy("txInput")}
+	if inp.AttachmentCallback != nil {
+		opts = append(opts, attacher.OptionWithAttachmentCallback(inp.AttachmentCallback))
+	}
+
 	if txTime.Before(nowis) {
 		// timestamp is in the past, pass it to the solidifier
 		q.env.IncCounter("ok.now")
-		q.env.AttachTransaction(inp)
+		q.env.AttachTransaction(inp, opts...)
 		return
 	}
 	// timestamp is in the future. Put it into the waiting room
@@ -132,7 +141,7 @@ func (q *TxInput) Consume(inp *Input) {
 		q.env.Tracef("delay", "%s -> release", txid.StringShort)
 		q.env.IncCounter("ok.release")
 		q.env.GossipTransaction(inp)
-		q.env.AttachTransaction(inp)
+		q.env.AttachTransaction(inp, attacher.OptionInvokedBy("txInput"))
 	}()
 }
 
@@ -154,7 +163,9 @@ func (q *TxInput) TransactionInReturnTx(txBytes []byte, opts ...TransactionInOpt
 	for _, opt := range opts {
 		opt(inData)
 	}
-
+	if inData.AttachmentCallback != nil && !tx.IsSequencerMilestone() {
+		return nil, fmt.Errorf("TransactionInReturnTx: only sequencer milestones can be attached with callback")
+	}
 	responseToPull := inData.TxMetadata != nil && inData.TxMetadata.SendType == txmetadata.SendTypeResponseToPull
 	util.Assertf(!responseToPull || inData.TxSource == TransactionSourcePeer, "!responseToPull || inData.source == TransactionSourcePeer")
 
@@ -167,22 +178,55 @@ func (q *TxInput) TransactionInReturnTx(txBytes []byte, opts ...TransactionInOpt
 	return tx, nil
 }
 
+func (q *TxInput) SequencerMilestoneAttachWait(txBytes []byte, timeout ...time.Duration) (retTx *transaction.Transaction, retErr error) {
+	if len(timeout) > 0 {
+		ctx, cancel := context.WithTimeout(context.Background(), timeout[0])
+		go func() {
+			var err error
+			retTx, retErr = q.TransactionInReturnTx(txBytes, WithAttachmentCallback(func(vid *vertex.WrappedTx) {
+				err = vid.GetReason()
+			}))
+			if retErr == nil {
+				retErr = err
+			}
+			cancel()
+		}()
+		<-ctx.Done()
+	} else {
+		var wg sync.WaitGroup
+		wg.Add(1)
+		retTx, retErr = q.TransactionInReturnTx(txBytes, WithAttachmentCallback(func(vid *vertex.WrappedTx) {
+			wg.Done()
+		}))
+		if retErr == nil {
+			wg.Wait()
+		}
+	}
+	return
+}
+
 func WithTransactionSource(src TransactionSource) TransactionInOption {
-	return func(data *Input) {
-		data.TxSource = src
+	return func(inp *Input) {
+		inp.TxSource = src
+	}
+}
+
+func WithAttachmentCallback(fun func(vid *vertex.WrappedTx)) TransactionInOption {
+	return func(inp *Input) {
+		inp.AttachmentCallback = fun
 	}
 }
 
 func WithTransactionMetadata(metadata *txmetadata.TransactionMetadata) TransactionInOption {
-	return func(data *Input) {
-		data.TxMetadata = metadata
+	return func(inp *Input) {
+		inp.TxMetadata = metadata
 	}
 }
 
 func WithTransactionSourcePeer(from peer.ID) TransactionInOption {
-	return func(data *Input) {
-		data.TxSource = TransactionSourcePeer
-		data.ReceivedFromPeer = from
+	return func(inp *Input) {
+		inp.TxSource = TransactionSourcePeer
+		inp.ReceivedFromPeer = from
 	}
 }
 

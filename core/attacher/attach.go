@@ -122,7 +122,7 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Opt
 			if ctx == nil {
 				ctx = context.Background()
 			}
-			callback := options.finalizationCallback
+			callback := options.attachmentCallback
 			if callback == nil {
 				callback = func(_ *vertex.WrappedTx) {}
 			}

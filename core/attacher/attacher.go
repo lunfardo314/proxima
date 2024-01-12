@@ -65,11 +65,11 @@ type (
 		forceTrace1Ahead      bool
 	}
 	_attacherOptions struct {
-		ctx                  context.Context
-		finalizationCallback func(vid *vertex.WrappedTx)
-		pullNonBranch        bool
-		doNotLoadBranch      bool
-		calledBy             string
+		ctx                context.Context
+		attachmentCallback func(vid *vertex.WrappedTx)
+		pullNonBranch      bool
+		doNotLoadBranch    bool
+		calledBy           string
 	}
 	Option func(*_attacherOptions)
 
@@ -86,32 +86,6 @@ const (
 	periodicCheckEach               = 1 * time.Second
 	maxToleratedParasiticChainSlots = 1
 )
-
-func OptionWithContext(ctx context.Context) Option {
-	return func(options *_attacherOptions) {
-		options.ctx = ctx
-	}
-}
-
-func OptionWithFinalizationCallback(fun func(vid *vertex.WrappedTx)) Option {
-	return func(options *_attacherOptions) {
-		options.finalizationCallback = fun
-	}
-}
-
-func OptionPullNonBranch(options *_attacherOptions) {
-	options.pullNonBranch = true
-}
-
-func OptionDoNotLoadBranch(options *_attacherOptions) {
-	options.doNotLoadBranch = true
-}
-
-func OptionInvokedBy(name string) Option {
-	return func(options *_attacherOptions) {
-		options.calledBy = name
-	}
-}
 
 func runAttacher(vid *vertex.WrappedTx, env Environment, ctx context.Context) (vertex.Status, *attachStats, error) {
 	a := newAttacher(vid, env, ctx)

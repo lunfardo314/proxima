@@ -25,7 +25,7 @@ func (w *Workflow) IncCounter(name string) {
 }
 
 func (w *Workflow) Pull(txid ledger.TransactionID) {
-	w.pullClient.Push(&pull_client.TxList{
+	w.pullClient.Push(&pull_client.Input{
 		TxIDs: []ledger.TransactionID{txid},
 	})
 }
@@ -67,12 +67,16 @@ func (w *Workflow) QueryTransactionsFromRandomPeer(lst ...ledger.TransactionID) 
 	return w.peers.PullTransactionsFromRandomPeer(lst...)
 }
 
-func (w *Workflow) AttachTransaction(inp *txinput.Input) {
-	attacher.AttachTransaction(inp.Tx, w, attacher.OptionInvokedBy("workflow"))
+func (w *Workflow) AttachTransaction(inp *txinput.Input, opts ...attacher.Option) {
+	attacher.AttachTransaction(inp.Tx, w, opts...)
 }
 
 func (w *Workflow) TransactionIn(txBytes []byte, opts ...txinput.TransactionInOption) (*transaction.Transaction, error) {
 	return w.txInput.TransactionInReturnTx(txBytes, opts...)
+}
+
+func (w *Workflow) SequencerMilestoneAttachWait(txBytes []byte, timeout ...time.Duration) (*transaction.Transaction, error) {
+	return w.txInput.SequencerMilestoneAttachWait(txBytes, timeout...)
 }
 
 func (w *Workflow) SendTxBytesToPeer(id peer.ID, txBytes []byte, metadata *txmetadata.TransactionMetadata) bool {
