@@ -17,7 +17,7 @@ import (
 )
 
 func (w *Workflow) MaxDurationInTheFuture() time.Duration {
-	return ledger.TimeSlotDuration()
+	return ledger.SlotDuration()
 }
 
 func (w *Workflow) IncCounter(name string) {

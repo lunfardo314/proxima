@@ -22,7 +22,7 @@ func TestTime(t *testing.T) {
 		const d = 10 * time.Millisecond
 		SetTimeTickDuration(d)
 		t.Logf("\n%s", TimeConstantsToString())
-		require.EqualValues(t, d, TimeTickDuration())
+		require.EqualValues(t, d, TickDuration())
 	})
 	t.Run("1", func(t *testing.T) {
 		nowis := time.Now()
@@ -36,15 +36,15 @@ func TestTime(t *testing.T) {
 		ts1 := MustNewLogicalTime(120, 55)
 		t.Logf("%s", ts0)
 		t.Logf("%s", ts1)
-		require.EqualValues(t, 100, ts0.TimeSlot())
-		require.EqualValues(t, 120, ts1.TimeSlot())
+		require.EqualValues(t, 100, ts0.Slot())
+		require.EqualValues(t, 120, ts1.Slot())
 		require.EqualValues(t, 33, ts0.TimeTick())
 		require.EqualValues(t, 55, ts1.TimeTick())
 
 		diff := DiffTimeTicks(ts0, ts1)
-		require.EqualValues(t, -(20*TimeTicksPerSlot + 22), diff)
+		require.EqualValues(t, -(20*TicksPerSlot + 22), diff)
 		diff = DiffTimeTicks(ts1, ts0)
-		require.EqualValues(t, 20*TimeTicksPerSlot+22, diff)
+		require.EqualValues(t, 20*TicksPerSlot+22, diff)
 		diff = DiffTimeTicks(ts1, ts1)
 		require.EqualValues(t, 0, diff)
 	})
@@ -78,7 +78,7 @@ func TestTime(t *testing.T) {
 		t.Logf("tsBack: %s", tsBack)
 		require.EqualValues(t, ts1, tsBack)
 
-		nowis = nowis.Add(TimeTickDuration())
+		nowis = nowis.Add(TickDuration())
 		ts2 := LogicalTimeFromTime(nowis)
 		t.Logf("ts2: %s", ts2)
 		tsBack = LogicalTimeFromTime(ts2.Time())
@@ -92,7 +92,7 @@ func TestTime(t *testing.T) {
 		t.Logf("diff slots %s - %s = %d", ts1.String(), ts2.String(), d2)
 		require.EqualValues(t, d2, -1)
 
-		nowis = nowis.Add(99 * TimeTickDuration())
+		nowis = nowis.Add(99 * TickDuration())
 		ts3 := LogicalTimeFromTime(nowis)
 		d3 := DiffTimeTicks(ts3, ts1)
 		t.Logf("diff slots %s - %s = %d", ts3.String(), ts1.String(), d3)

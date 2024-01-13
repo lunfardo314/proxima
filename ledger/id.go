@@ -15,7 +15,7 @@ const (
 	TransactionIDLength      = LogicalTimeByteLength + TransactionIDShortLength
 	OutputIDLength           = TransactionIDLength + 1
 
-	SequencerTxFlagInTimeSlot = ^(TimeSlot(0xffffffff) >> 1)
+	SequencerTxFlagInTimeSlot = ^(Slot(0xffffffff) >> 1)
 	BranchTxFlagInTimeSlot    = SequencerTxFlagInTimeSlot >> 1
 	SequencerTxFlagHigherByte = byte(0b10000000)
 	BranchTxFlagHigherByte    = byte(0b01000000)
@@ -59,7 +59,7 @@ func NewTransactionID(ts LogicalTime, h TransactionIDShort, sequencerTxFlag, bra
 }
 
 // NewTransactionIDPrefix used for database iteration by prefix, i.e. all transaction IDs of specific slot
-func NewTransactionIDPrefix(slot TimeSlot, sequencerTxFlag, branchTxFlag bool) (ret [4]byte) {
+func NewTransactionIDPrefix(slot Slot, sequencerTxFlag, branchTxFlag bool) (ret [4]byte) {
 	copy(ret[:], slot.Bytes())
 	if sequencerTxFlag {
 		ret[0] = ret[0] | SequencerTxFlagHigherByte
@@ -125,11 +125,11 @@ func (txid *TransactionID) Timestamp() (ret LogicalTime) {
 	return
 }
 
-func (txid *TransactionID) TimeSlot() TimeSlot {
-	return txid.Timestamp().TimeSlot()
+func (txid *TransactionID) TimeSlot() Slot {
+	return txid.Timestamp().Slot()
 }
 
-func (txid *TransactionID) TimeTick() TimeTick {
+func (txid *TransactionID) TimeTick() Tick {
 	return txid.Timestamp().TimeTick()
 }
 
@@ -305,12 +305,12 @@ func (oid *OutputID) Timestamp() LogicalTime {
 	return ret.Timestamp()
 }
 
-func (oid *OutputID) TimeSlot() TimeSlot {
+func (oid *OutputID) TimeSlot() Slot {
 	ret := oid.TransactionID()
 	return ret.TimeSlot()
 }
 
-func (oid *OutputID) TimeTick() TimeTick {
+func (oid *OutputID) TimeTick() Tick {
 	ret := oid.TransactionID()
 	return ret.TimeTick()
 }

@@ -124,7 +124,7 @@ func isOutputToDelete(wOut vertex.WrappedOutput) bool {
 
 // TODO purge also bad
 func (tp *SequencerTipPool) purge() {
-	cleanupPeriod := ledger.TimeSlotDuration() / 2
+	cleanupPeriod := ledger.SlotDuration() / 2
 	if time.Since(tp.lastPruned.Load()) < cleanupPeriod {
 		return
 	}
@@ -161,17 +161,11 @@ func (tp *SequencerTipPool) filterAndSortOutputs(filter func(o vertex.WrappedOut
 	tp.mutex.RLock()
 	defer tp.mutex.RUnlock()
 
-	ret := util.Keys(tp.outputs, func(o vertex.WrappedOutput) bool {
-		return !o.VID.IsBadOrDeleted() && filter(o)
-	})
+	ret := util.Keys(tp.outputs, filter)
 	sort.Slice(ret, func(i, j int) bool {
 		return ret[i].Timestamp().Before(ret[j].Timestamp())
 	})
 	return ret
-}
-
-func (tp *SequencerTipPool) ChainID() ledger.ChainID {
-	return tp.seqID
 }
 
 func (tp *SequencerTipPool) preSelectAndSortEndorsableMilestones(targetTs ledger.LogicalTime) []*vertex.WrappedTx {
@@ -182,7 +176,7 @@ func (tp *SequencerTipPool) preSelectAndSortEndorsableMilestones(targetTs ledger
 
 	ret := make([]*vertex.WrappedTx, 0)
 	for _, ms := range tp.latestMilestones {
-		if ms.TimeSlot() != targetTs.TimeSlot() || !ledger.ValidTimePace(ms.Timestamp(), targetTs) {
+		if ms.Slot() != targetTs.Slot() || !ledger.ValidTimePace(ms.Timestamp(), targetTs) {
 			continue
 		}
 		ret = append(ret, ms)

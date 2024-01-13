@@ -22,7 +22,7 @@ const (
 )
 
 func (w *Workflow) pruneOrphanedLoop(log *zap.SugaredLogger) {
-	PruneOrphanedPeriod := ledger.TimeSlotDuration()
+	PruneOrphanedPeriod := ledger.SlotDuration()
 
 	syncStatus := w.utxoTangle.SyncData()
 	for w.working.Load() {
@@ -41,13 +41,13 @@ func (w *Workflow) pruneOrphanedLoop(log *zap.SugaredLogger) {
 		w.utxoTangle.SyncData().SetLastPrunedOrphaned(time.Now())
 
 		log.Infof("SLOT %d. Pruned %d orphaned transactions and %d branches out of total %d dag in %v, deleted slots: %d",
-			ledger.LogicalTimeNow().TimeSlot(), nOrphaned, nOrphanedBranches, nVertices, time.Since(startTime), nDeletedSlots)
+			ledger.LogicalTimeNow().Slot(), nOrphaned, nOrphanedBranches, nVertices, time.Since(startTime), nDeletedSlots)
 	}
 	log.Infof("Prune loop stopped")
 }
 
 func (w *Workflow) cutFinalLoop(log *zap.SugaredLogger) {
-	CutFinalPeriod := ledger.TimeSlotDuration() / 2
+	CutFinalPeriod := ledger.SlotDuration() / 2
 
 	syncStatus := w.utxoTangle.SyncData()
 	for w.working.Load() {

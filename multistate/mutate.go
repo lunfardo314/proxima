@@ -29,7 +29,7 @@ type (
 
 	mutationAddTx struct {
 		ID              ledger.TransactionID
-		TimeSlot        ledger.TimeSlot
+		TimeSlot        ledger.Slot
 		LastOutputIndex byte
 	}
 
@@ -78,7 +78,7 @@ func (m *mutationAddTx) valueBytes() []byte {
 	return common.ConcatBytes(m.TimeSlot.Bytes(), []byte{m.LastOutputIndex})
 }
 
-func addTxValueFromBytes(data []byte) (ledger.TimeSlot, byte, error) {
+func addTxValueFromBytes(data []byte) (ledger.Slot, byte, error) {
 	if len(data) != 5 {
 		return 0, 0, fmt.Errorf("wrong data length")
 	}
@@ -117,7 +117,7 @@ func (mut *Mutations) InsertDelOutputMutation(id ledger.OutputID) {
 	mut.mut = append(mut.mut, &mutationDelOutput{ID: id})
 }
 
-func (mut *Mutations) InsertAddTxMutation(id ledger.TransactionID, slot ledger.TimeSlot, lastOutputIndex byte) {
+func (mut *Mutations) InsertAddTxMutation(id ledger.TransactionID, slot ledger.Slot, lastOutputIndex byte) {
 	mut.mut = append(mut.mut, &mutationAddTx{
 		ID:              id,
 		TimeSlot:        slot,
@@ -215,7 +215,7 @@ func addOutputToTrie(trie *immutable.TrieUpdatable, oid *ledger.OutputID, out *l
 	return nil
 }
 
-func addTxToTrie(trie *immutable.TrieUpdatable, txid *ledger.TransactionID, slot ledger.TimeSlot, lastOutputIndex byte) error {
+func addTxToTrie(trie *immutable.TrieUpdatable, txid *ledger.TransactionID, slot ledger.Slot, lastOutputIndex byte) error {
 	var stateKey [1 + ledger.TransactionIDLength]byte
 	stateKey[0] = PartitionCommittedTransactionID
 	copy(stateKey[1:], txid[:])

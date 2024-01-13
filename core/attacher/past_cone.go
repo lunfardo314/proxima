@@ -194,7 +194,7 @@ func (a *attacher) attachInput(v *vertex.Vertex, inputIdx byte, vid *vertex.Wrap
 
 	if parasiticChainHorizon == ledger.NilLogicalTime {
 		// TODO revisit parasitic chain threshold because of syncing branches
-		parasiticChainHorizon = ledger.MustNewLogicalTime(v.Inputs[inputIdx].Timestamp().TimeSlot()-maxToleratedParasiticChainSlots, 0)
+		parasiticChainHorizon = ledger.MustNewLogicalTime(v.Inputs[inputIdx].Timestamp().Slot()-maxToleratedParasiticChainSlots, 0)
 	}
 	wOut := vertex.WrappedOutput{
 		VID:   v.Inputs[inputIdx],
@@ -310,10 +310,10 @@ func (a *attacher) branchesCompatible(vid1, vid2 *vertex.WrappedTx) bool {
 	switch {
 	case vid1 == vid2:
 		return true
-	case vid1.TimeSlot() == vid2.TimeSlot():
+	case vid1.Slot() == vid2.Slot():
 		// two different branches on the same slot conflicts
 		return false
-	case vid1.TimeSlot() < vid2.TimeSlot():
+	case vid1.Slot() < vid2.Slot():
 		return multistate.BranchIsDescendantOf(&vid2.ID, &vid1.ID, a.env.StateStore)
 	default:
 		return multistate.BranchIsDescendantOf(&vid1.ID, &vid2.ID, a.env.StateStore)

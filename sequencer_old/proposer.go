@@ -139,7 +139,7 @@ func (c *proposerTaskGeneric) selectInputs(ownMs utangle.WrappedOutput, seqVIDs 
 
 func (c *proposerTaskGeneric) makeMilestone(chainIn, stemIn *utangle.WrappedOutput, feeInputs []utangle.WrappedOutput, endorse []*utangle.WrappedTx) *transaction.Transaction {
 	util.Assertf(chainIn != nil, "chainIn != nil")
-	util.Assertf(c.targetTs.TimeTick() != 0 || len(endorse) == 0, "proposer task %s: targetTs.TimeTick() != 0 || len(endorse) == 0", c.name())
+	util.Assertf(c.targetTs.TimeTick() != 0 || len(endorse) == 0, "proposer task %s: targetTs.Tick() != 0 || len(endorse) == 0", c.name())
 	util.Assertf(len(feeInputs) <= c.factory.maxFeeInputs, "proposer task %s: len(feeInputs) <= mf.maxFeeInputs", c.name())
 
 	ret, err := c.factory.makeMilestone(chainIn, stemIn, feeInputs, endorse, c.targetTs)

@@ -435,11 +435,11 @@ func MakeSimpleTransferTransactionWithRemainder(par *TransferData, disableEndors
 
 	for i := range par.Endorsements {
 		if len(disableEndorsementChecking) == 0 || !disableEndorsementChecking[0] {
-			if par.Endorsements[i].TimeSlot() < adjustedTs.TimeSlot() {
+			if par.Endorsements[i].TimeSlot() < adjustedTs.Slot() {
 				return nil, nil, fmt.Errorf("MakeSimpleTransferTransactionWithRemainder: can't endorse transaction from another time slot")
 			}
 		}
-		if par.Endorsements[i].TimeSlot() > adjustedTs.TimeSlot() {
+		if par.Endorsements[i].TimeSlot() > adjustedTs.Slot() {
 			// adjust timestamp to the endorsed slot
 			adjustedTs = ledger.MustNewLogicalTime(par.Endorsements[i].TimeSlot(), 0)
 		}
@@ -545,11 +545,11 @@ func MakeChainTransferTransaction(par *TransferData, disableEndorsementChecking 
 
 	for i := range par.Endorsements {
 		if len(disableEndorsementChecking) == 0 || !disableEndorsementChecking[0] {
-			if par.Endorsements[i].TimeSlot() < adjustedTs.TimeSlot() {
+			if par.Endorsements[i].TimeSlot() < adjustedTs.Slot() {
 				return nil, fmt.Errorf("can't endorse transaction from another slot")
 			}
 		}
-		if par.Endorsements[i].TimeSlot() > adjustedTs.TimeSlot() {
+		if par.Endorsements[i].TimeSlot() > adjustedTs.Slot() {
 			// adjust timestamp to the endorsed slot
 			adjustedTs = ledger.MustNewLogicalTime(par.Endorsements[i].TimeSlot(), 0)
 		}

@@ -35,7 +35,7 @@ type (
 		// max time tick value in the slot. Up to 256 time ticks per time slot
 		MaxTimeTickValueInTimeSlot uint8
 		// time slot of the genesis
-		GenesisTimeSlot ledger.TimeSlot
+		GenesisTimeSlot ledger.Slot
 		// core constraint library hash. For checking of ledger version compatibility with the node
 		CoreLedgerConstraintsHash [32]byte
 	}
@@ -109,11 +109,11 @@ func MustLedgerIdentityDataFromBytes(data []byte) *LedgerIdentityData {
 	// check time tick duration
 	timeTickDuration := time.Duration(binary.BigEndian.Uint64(arr.At(4)))
 	msg = "node assumes time tick duration different from state baseline duration: expected %dns, got %dns"
-	util.Assertf(timeTickDuration == ledger.TimeTickDuration(), msg, ledger.TimeTickDuration().Nanoseconds(), timeTickDuration.Nanoseconds())
+	util.Assertf(timeTickDuration == ledger.TickDuration(), msg, ledger.TickDuration().Nanoseconds(), timeTickDuration.Nanoseconds())
 
 	// check time ticks per slot
 	msg = "node assumes time ticks per slot different from state assumption: expected %d, got %d"
-	util.Assertf(maxTick[0]+1 == ledger.TimeTicksPerSlot, msg, ledger.TimeTicksPerSlot, maxTick[0]+1)
+	util.Assertf(maxTick[0]+1 == ledger.TicksPerSlot, msg, ledger.TicksPerSlot, maxTick[0]+1)
 
 	ret := &LedgerIdentityData{
 		Description:                string(arr.At(0)),
@@ -212,7 +212,7 @@ func (id *ledgerIdentityDataYAMLable) stateIdentityData() (*LedgerIdentityData, 
 	ret.BaselineTime = time.Unix(0, id.BaselineTime)
 	ret.TimeTickDuration = time.Duration(id.TimeTickDuration)
 	ret.MaxTimeTickValueInTimeSlot = id.MaxTimeTickValueInTimeSlot
-	ret.GenesisTimeSlot = ledger.TimeSlot(id.GenesisTimeSlot)
+	ret.GenesisTimeSlot = ledger.Slot(id.GenesisTimeSlot)
 	hBin, err := hex.DecodeString(id.CoreLedgerConstraintsHash)
 	if err != nil {
 		return nil, err
@@ -243,13 +243,13 @@ func StateIdentityDataFromYAML(yamlData []byte) (*LedgerIdentityData, error) {
 
 const DefaultSupply = 1_000_000_000_000
 
-func DefaultIdentityData(privateKey ed25519.PrivateKey, slot ...ledger.TimeSlot) *LedgerIdentityData {
+func DefaultIdentityData(privateKey ed25519.PrivateKey, slot ...ledger.Slot) *LedgerIdentityData {
 	// creating origin 1 slot before now. More convenient for the workflow_old tests
-	var sl ledger.TimeSlot
+	var sl ledger.Slot
 	if len(slot) > 0 {
 		sl = slot[0]
 	} else {
-		sl = ledger.LogicalTimeNow().TimeSlot()
+		sl = ledger.LogicalTimeNow().Slot()
 	}
 	return &LedgerIdentityData{
 		CoreLedgerConstraintsHash:  easyfl.LibraryHash(),
@@ -257,8 +257,8 @@ func DefaultIdentityData(privateKey ed25519.PrivateKey, slot ...ledger.TimeSlot)
 		InitialSupply:              DefaultSupply,
 		GenesisControllerPublicKey: privateKey.Public().(ed25519.PublicKey),
 		BaselineTime:               ledger.BaselineTime,
-		TimeTickDuration:           ledger.TimeTickDuration(),
-		MaxTimeTickValueInTimeSlot: ledger.TimeTicksPerSlot - 1,
+		TimeTickDuration:           ledger.TickDuration(),
+		MaxTimeTickValueInTimeSlot: ledger.TicksPerSlot - 1,
 		GenesisTimeSlot:            sl,
 	}
 }

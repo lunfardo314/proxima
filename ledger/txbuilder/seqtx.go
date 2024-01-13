@@ -61,7 +61,7 @@ func MakeSequencerTransaction(par MakeSequencerTransactionParams) ([]byte, error
 		return nil, errP("too many inputs")
 	case par.StemInput != nil && par.Timestamp.TimeTick() != 0:
 		return nil, errP("wrong timestamp for branch transaction: %s", par.Timestamp.String())
-	case par.Timestamp.TimeSlot() > par.ChainInput.ID.TimeSlot() && par.Timestamp.TimeTick() != 0 && len(par.Endorsements) == 0:
+	case par.Timestamp.Slot() > par.ChainInput.ID.TimeSlot() && par.Timestamp.TimeTick() != 0 && len(par.Endorsements) == 0:
 		return nil, errP("cross-slot sequencer tx must endorse another sequencer tx: chain input ts: %s, target: %s",
 			par.ChainInput.ID.Timestamp(), par.Timestamp)
 	case par.Inflation > 0 && par.StemInput == nil:

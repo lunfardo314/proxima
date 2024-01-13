@@ -136,7 +136,7 @@ func standardScenario(cfg spammerConfig) {
 
 	beginTime := time.Now()
 	for {
-		time.Sleep(time.Duration(cfg.pace) * ledger.TimeTickDuration())
+		time.Sleep(time.Duration(cfg.pace) * ledger.TickDuration())
 
 		glb.Assertf(cfg.maxTransactions == 0 || txCounter < cfg.maxTransactions, "maximum transaction limit %d has been reached", cfg.maxTransactions)
 		glb.Assertf(time.Now().Before(deadline), "spam duration limit has been reached")
@@ -156,7 +156,7 @@ func standardScenario(cfg spammerConfig) {
 
 		bundle, oid := prepareBundle(walletData, cfg)
 		bundlePace := cfg.pace * len(bundle)
-		bundleDuration := time.Duration(bundlePace) * ledger.TimeTickDuration()
+		bundleDuration := time.Duration(bundlePace) * ledger.TickDuration()
 		glb.Infof("submitting bundle of %d transactions, total duration %d ticks, %v", len(bundle), bundlePace, bundleDuration)
 
 		c := getClient()

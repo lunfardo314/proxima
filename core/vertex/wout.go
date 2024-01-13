@@ -32,8 +32,8 @@ func (o *WrappedOutput) Timestamp() ledger.LogicalTime {
 	return o.VID.Timestamp()
 }
 
-func (o *WrappedOutput) TimeSlot() ledger.TimeSlot {
-	return o.VID.TimeSlot()
+func (o *WrappedOutput) TimeSlot() ledger.Slot {
+	return o.VID.Slot()
 }
 
 func (o *WrappedOutput) IsConsumed(tips ...*WrappedTx) bool {

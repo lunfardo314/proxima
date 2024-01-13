@@ -216,14 +216,14 @@ func (r *Readable) GetUTXOForChainID(id *ledger.ChainID) (*ledger.OutputDataWith
 	}, nil
 }
 
-func (r *Readable) GetStem() (ledger.TimeSlot, []byte) {
+func (r *Readable) GetStem() (ledger.Slot, []byte) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
 	accountPrefix := common.Concat(PartitionAccounts, byte(len(ledger.StemAccountID)), ledger.StemAccountID)
 
 	var found bool
-	var retSlot ledger.TimeSlot
+	var retSlot ledger.Slot
 	var retBytes []byte
 
 	// we iterate one element. Stem output ust always be present in the state
@@ -250,12 +250,12 @@ func (r *Readable) MustLedgerIdentityBytes() []byte {
 
 // IterateKnownCommittedTransactions utility function to collect old transaction IDs which may be purged from the state
 // Those txid serve no purpose after corresponding branches become committed and may appear only as virtual transactions
-func (r *Readable) IterateKnownCommittedTransactions(fun func(txid *ledger.TransactionID, slot ledger.TimeSlot) bool) {
+func (r *Readable) IterateKnownCommittedTransactions(fun func(txid *ledger.TransactionID, slot ledger.Slot) bool) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
 	iter := common.MakeTraversableReaderPartition(r.trie, PartitionCommittedTransactionID).Iterator(nil)
-	var slot ledger.TimeSlot
+	var slot ledger.Slot
 	iter.Iterate(func(k, v []byte) bool {
 		txid, err := ledger.TransactionIDFromBytes(k)
 		util.AssertNoError(err)

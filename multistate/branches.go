@@ -25,11 +25,11 @@ func writeRootRecord(w common.KVWriter, branchTxID ledger.TransactionID, rootDat
 	w.Set(key, rootData.Bytes())
 }
 
-func writeLatestSlot(w common.KVWriter, slot ledger.TimeSlot) {
+func writeLatestSlot(w common.KVWriter, slot ledger.Slot) {
 	w.Set([]byte{latestSlotDBPartition}, slot.Bytes())
 }
 
-func FetchLatestSlot(store global.StateStore) ledger.TimeSlot {
+func FetchLatestSlot(store global.StateStore) ledger.Slot {
 	bin := store.Get([]byte{latestSlotDBPartition})
 	if len(bin) == 0 {
 		return 0
@@ -142,7 +142,7 @@ func iterateAllRootRecords(store global.StateStore, fun func(branchTxID ledger.T
 	})
 }
 
-func iterateRootRecordsOfParticularSlots(store global.StateStore, fun func(branchTxID ledger.TransactionID, rootData RootRecord) bool, slots []ledger.TimeSlot) {
+func iterateRootRecordsOfParticularSlots(store global.StateStore, fun func(branchTxID ledger.TransactionID, rootData RootRecord) bool, slots []ledger.Slot) {
 	prefix := [5]byte{rootRecordDBPartition, 0, 0, 0, 0}
 	for _, s := range slots {
 		slotPrefix := ledger.NewTransactionIDPrefix(s, true, true)
@@ -163,7 +163,7 @@ func iterateRootRecordsOfParticularSlots(store global.StateStore, fun func(branc
 // IterateRootRecords iterates root records in the store:
 // - if len(optSlot) > 0, it iterates specific slots
 // - if len(optSlot) == 0, it iterates all records in the store
-func IterateRootRecords(store global.StateStore, fun func(branchTxID ledger.TransactionID, rootData RootRecord) bool, optSlot ...ledger.TimeSlot) {
+func IterateRootRecords(store global.StateStore, fun func(branchTxID ledger.TransactionID, rootData RootRecord) bool, optSlot ...ledger.Slot) {
 	if len(optSlot) == 0 {
 		iterateAllRootRecords(store, fun)
 	}
@@ -192,13 +192,13 @@ func FetchAnyLatestRootRecord(store global.StateStore) RootRecord {
 
 func FetchRootRecordsNSlotsBack(store global.StateStore, nBack int) []RootRecord {
 	latestSlot := FetchLatestSlot(store)
-	if ledger.TimeSlot(nBack) >= latestSlot {
+	if ledger.Slot(nBack) >= latestSlot {
 		return FetchAllRootRecords(store)
 	}
 	if latestSlot == 0 {
 		return nil
 	}
-	return FetchRootRecords(store, util.MakeRange(latestSlot-ledger.TimeSlot(nBack), latestSlot)...)
+	return FetchRootRecords(store, util.MakeRange(latestSlot-ledger.Slot(nBack), latestSlot)...)
 }
 
 func FetchAllRootRecords(store global.StateStore) []RootRecord {
@@ -210,7 +210,7 @@ func FetchAllRootRecords(store global.StateStore) []RootRecord {
 	return ret
 }
 
-func FetchRootRecords(store global.StateStore, slots ...ledger.TimeSlot) []RootRecord {
+func FetchRootRecords(store global.StateStore, slots ...ledger.Slot) []RootRecord {
 	if len(slots) == 0 {
 		return nil
 	}
@@ -298,7 +298,7 @@ func FetchHeaviestBranchChainNSlotsBack(store global.StateStore, nBack int) []*B
 		IterateRootRecords(store, func(branchTxID ledger.TransactionID, rd RootRecord) bool {
 			rootData[branchTxID] = rd
 			return true
-		}, util.MakeRange(latestSlot-ledger.TimeSlot(nBack), latestSlot)...)
+		}, util.MakeRange(latestSlot-ledger.Slot(nBack), latestSlot)...)
 	}
 
 	sortedTxIDs := util.SortKeys(rootData, func(k1, k2 ledger.TransactionID) bool {
@@ -324,7 +324,7 @@ func FetchHeaviestBranchChainNSlotsBack(store global.StateStore, nBack int) []*B
 		if bd.SequencerOutput.ID.TimeSlot() == lastInTheChain.Stem.ID.TimeSlot() {
 			continue
 		}
-		util.Assertf(bd.SequencerOutput.ID.TimeSlot() < lastInTheChain.Stem.ID.TimeSlot(), "bd.SequencerOutput.ID.TimeSlot() < lastInTheChain.TimeSlot()")
+		util.Assertf(bd.SequencerOutput.ID.TimeSlot() < lastInTheChain.Stem.ID.TimeSlot(), "bd.SequencerOutput.ID.Slot() < lastInTheChain.Slot()")
 
 		stemLock, ok := lastInTheChain.Stem.Output.StemLock()
 		util.Assertf(ok, "stem output expected")

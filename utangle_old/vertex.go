@@ -13,7 +13,7 @@ import (
 	"github.com/lunfardo314/proxima/util/set"
 )
 
-func (v *Vertex) TimeSlot() ledger.TimeSlot {
+func (v *Vertex) TimeSlot() ledger.Slot {
 	return v.Tx.ID().TimeSlot()
 }
 

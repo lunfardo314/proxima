@@ -89,7 +89,7 @@ func (ut *UTXOTangle) PruneOrphaned(nLatestSlots int) (int, int, int) {
 	// delete branches
 	orphanedBranches := make([]*WrappedTx, 0)
 	nPrunedBranches := 0
-	toDeleteSlots := make([]ledger.TimeSlot, 0)
+	toDeleteSlots := make([]ledger.Slot, 0)
 	for slot, branches := range ut.branches {
 		orphanedBranches = orphanedBranches[:0]
 		for vid := range branches {
@@ -119,9 +119,9 @@ func (vid *WrappedTx) cleanForkSet() {
 	}})
 }
 
-func (ut *UTXOTangle) _oldestNonEmptySlot() (ledger.TimeSlot, int) {
+func (ut *UTXOTangle) _oldestNonEmptySlot() (ledger.Slot, int) {
 	// ascending
-	slots := util.FilterSlice(ut._timeSlotsOrdered(), func(el ledger.TimeSlot) bool {
+	slots := util.FilterSlice(ut._timeSlotsOrdered(), func(el ledger.Slot) bool {
 		return len(ut.branches[el]) > 0
 	})
 	if len(slots) < TipSlots+2 {
@@ -134,7 +134,7 @@ func (ut *UTXOTangle) CutFinalBranchIfExists(nLatestSlots int) (*ledger.Transact
 	ut.mutex.Lock()
 	defer ut.mutex.Unlock()
 
-	slots := util.SortKeys(ut.branches, func(slot1, slot2 ledger.TimeSlot) bool {
+	slots := util.SortKeys(ut.branches, func(slot1, slot2 ledger.Slot) bool {
 		return slot1 < slot2
 	})
 	if len(slots) < nLatestSlots+2 {

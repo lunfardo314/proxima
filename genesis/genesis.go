@@ -31,7 +31,7 @@ func InitLedgerState(par LedgerIdentityData, store global.StateStore) (ledger.Ch
 	return gout.ChainID, updatable.Root()
 }
 
-func InitialSupplyOutput(initialSupply uint64, controllerAddress ledger.AddressED25519, genesisSlot ledger.TimeSlot) *ledger.OutputWithChainID {
+func InitialSupplyOutput(initialSupply uint64, controllerAddress ledger.AddressED25519, genesisSlot ledger.Slot) *ledger.OutputWithChainID {
 	oid := InitialSupplyOutputID(genesisSlot)
 	return &ledger.OutputWithChainID{
 		OutputWithID: ledger.OutputWithID{
@@ -48,7 +48,7 @@ func InitialSupplyOutput(initialSupply uint64, controllerAddress ledger.AddressE
 	}
 }
 
-func StemOutput(initialSupply uint64, genesisTimeSlot ledger.TimeSlot) *ledger.OutputWithID {
+func StemOutput(initialSupply uint64, genesisTimeSlot ledger.Slot) *ledger.OutputWithID {
 	return &ledger.OutputWithID{
 		ID: StemOutputID(genesisTimeSlot),
 		Output: ledger.NewOutput(func(o *ledger.Output) {
@@ -70,19 +70,19 @@ func genesisUpdateMutations(genesisOut, genesisStemOut *ledger.OutputWithID) *mu
 	return ret
 }
 
-func InitialSupplyTransactionID(genesisTimeSlot ledger.TimeSlot) *ledger.TransactionID {
+func InitialSupplyTransactionID(genesisTimeSlot ledger.Slot) *ledger.TransactionID {
 	ret := ledger.NewTransactionID(ledger.MustNewLogicalTime(genesisTimeSlot, 0), ledger.All0TransactionHash, true, true)
 	return &ret
 }
 
-func InitialSupplyOutputID(e ledger.TimeSlot) (ret ledger.OutputID) {
+func InitialSupplyOutputID(e ledger.Slot) (ret ledger.OutputID) {
 	// we are placing sequencer flag = true into the genesis tx ID to please sequencer constraint
 	// of the origin branch transaction. It is the only exception
 	ret = ledger.NewOutputID(InitialSupplyTransactionID(e), InitialSupplyOutputIndex)
 	return
 }
 
-func StemOutputID(e ledger.TimeSlot) (ret ledger.OutputID) {
+func StemOutputID(e ledger.Slot) (ret ledger.OutputID) {
 	ret = ledger.NewOutputID(InitialSupplyTransactionID(e), StemOutputIndex)
 	return
 }

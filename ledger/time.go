@@ -12,74 +12,74 @@ import (
 )
 
 const (
-	timeTickDuration = 100 * time.Millisecond
-	TimeTicksPerSlot = 100
+	tickDuration = 100 * time.Millisecond
+	TicksPerSlot = 100
 
 	TimeHorizonYears    = 30 // we want next N years to fit the timestamp
 	TimeHorizonHours    = 24 * 365 * TimeHorizonYears
 	TimeHorizonDuration = TimeHorizonHours * time.Hour
-	MaxTimeSlot         = 0xffffffff >> 2
+	MaxSlot             = 0xffffffff >> 2
 
 	// TransactionPaceInTicks TODO for testing. Expected value 3 or 5
 	TransactionPaceInTicks = 1 // number of ticks between two consecutive transactions
 
-	TimeSlotByteLength    = 4
-	TimeTickByteLength    = 1
-	LogicalTimeByteLength = TimeSlotByteLength + TimeTickByteLength // bytes
+	SlotByteLength        = 4
+	TickByteLength        = 1
+	LogicalTimeByteLength = SlotByteLength + TickByteLength // bytes
 )
 
 var (
-	timeTickDurationVar = timeTickDuration
+	timeTickDurationVar = tickDuration
 
-	BaselineTime         = time.Date(2023, 10, 11, 0, 0, 0, 0, time.UTC)
+	BaselineTime         = time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
 	BaselineTimeUnixNano = BaselineTime.UnixNano()
 )
 
-func TimeTickDuration() time.Duration {
+func TickDuration() time.Duration {
 	return timeTickDurationVar
 }
 
 // SetTimeTickDuration is used for testing
 func SetTimeTickDuration(d time.Duration) {
 	timeTickDurationVar = d
-	util.Assertf(TimeTicksPerSlot <= 0xff, "TimeTicksPerSlot must fit the byte")
-	util.Assertf(TimeHorizonSlots() <= MaxTimeSlot, "TimeHorizonSlots <= MaxTimeSlot")
-	fmt.Printf("---- SetTimeTickDuration: time tick duration is set to %v ----\n", TimeTickDuration())
+	util.Assertf(TicksPerSlot <= 0xff, "TicksPerSlot must fit the byte")
+	util.Assertf(TimeHorizonSlots() <= MaxSlot, "TimeHorizonSlots <= MaxSlot")
+	fmt.Printf("---- SetTimeTickDuration: time tick duration is set to %v ----\n", TickDuration())
 }
 
-func TimeSlotDuration() time.Duration {
-	return TimeTicksPerSlot * TimeTickDuration()
+func SlotDuration() time.Duration {
+	return TicksPerSlot * TickDuration()
 }
 
 func TimeHorizonSlots() int64 {
-	return int64(TimeHorizonDuration) / int64(TimeSlotDuration())
+	return int64(TimeHorizonDuration) / int64(SlotDuration())
 }
 
-func TimeSlotsPerYear() int64 {
-	return int64(24*365*time.Hour) / int64(TimeSlotDuration())
+func SlotsPerYear() int64 {
+	return int64(24*365*time.Hour) / int64(SlotDuration())
 }
 
-func YearsPerMaxTimeSlot() int64 {
-	return MaxTimeSlot / TimeSlotsPerYear()
+func YearsPerMaxSlot() int64 {
+	return MaxSlot / SlotsPerYear()
 }
 
 func TransactionTimePaceDuration() time.Duration {
-	return TransactionPaceInTicks * TimeTickDuration()
+	return TransactionPaceInTicks * TickDuration()
 }
 
 func TimeConstantsToString() string {
 	return lines.New().
-		Add("TimeTickDuration = %v", TimeTickDuration()).
-		Add("TimeTicksPerSlot = %d", TimeTicksPerSlot).
-		Add("TimeSlotDuration = %v", TimeSlotDuration()).
+		Add("TickDuration = %v", TickDuration()).
+		Add("TicksPerSlot = %d", TicksPerSlot).
+		Add("SlotDuration = %v", SlotDuration()).
 		Add("TimeHorizonYears = %d", TimeHorizonYears).
 		Add("TimeHorizonHours = %d", TimeHorizonHours).
 		Add("TimeHorizonDuration = %v", TimeHorizonDuration).
 		Add("TimeHorizonSlots = %d", TimeHorizonSlots()).
-		Add("MaxTimeSlot = %d, %x", MaxTimeSlot, MaxTimeSlot).
-		Add("TimeSlotsPerYear = %d", TimeSlotsPerYear()).
+		Add("MaxSlot = %d, %x", MaxSlot, MaxSlot).
+		Add("SlotsPerYear = %d", SlotsPerYear()).
 		Add("seconds per year = %d", 60*60*24*365).
-		Add("YearsPerMaxTimeSlot = %d", YearsPerMaxTimeSlot()).
+		Add("YearsPerMaxSlot = %d", YearsPerMaxSlot()).
 		Add("BaselineTime = %v, unix nano: %d, unix seconds: %d", BaselineTime, BaselineTimeUnixNano, BaselineTime.Unix()).
 		Add("timestamp BaselineTime = %s", LogicalTimeFromTime(BaselineTime)).
 		Add("timestamp now = %s, now is %v", LogicalTimeNow().String(), time.Now()).
@@ -87,14 +87,14 @@ func TimeConstantsToString() string {
 }
 
 type (
-	// TimeSlot represents a particular time slot.
+	// Slot represents a particular time slot.
 	// Starting slot 0 at genesis
 	// 3.1 mil slots per year (for 100 msec/tick and slot is 100 ticks)
 	// uint32 enough for approx 1361 years
-	TimeSlot uint32
+	Slot uint32
 
-	// TimeTick is enforced to be < TimeTicksPerSlot, which is normally 100 ms
-	TimeTick byte
+	// Tick is enforced to be < TicksPerSlot, which is normally 100 ms
+	Tick byte
 
 	// LogicalTime
 	// bytes 0:3 represents time slot (bigendian)
@@ -108,7 +108,7 @@ var (
 )
 
 // TimeSlotFromBytes enforces 2 most significant bits of the first byte are 0
-func TimeSlotFromBytes(data []byte) (ret TimeSlot, err error) {
+func TimeSlotFromBytes(data []byte) (ret Slot, err error) {
 	if len(data) != 4 {
 		err = errWrongDataLength
 		return
@@ -116,24 +116,24 @@ func TimeSlotFromBytes(data []byte) (ret TimeSlot, err error) {
 	if 0b11000000&data[0] != 0 {
 		return 0, fmt.Errorf("2 most significant bits must be 0")
 	}
-	return TimeSlot(binary.BigEndian.Uint32(data)), nil
+	return Slot(binary.BigEndian.Uint32(data)), nil
 }
 
-func MustTimeSlotFromBytes(data []byte) TimeSlot {
+func MustTimeSlotFromBytes(data []byte) Slot {
 	ret, err := TimeSlotFromBytes(data)
 	util.AssertNoError(err)
 	return ret
 }
 
-func TimeTickFromByte(d byte) (ret TimeTick, err error) {
-	if ret = TimeTick(d); ret.Valid() {
+func TimeTickFromByte(d byte) (ret Tick, err error) {
+	if ret = Tick(d); ret.Valid() {
 		return
 	}
 	err = fmt.Errorf("wrong time tick value")
 	return
 }
 
-func MustNewLogicalTime(e TimeSlot, s TimeTick) (ret LogicalTime) {
+func MustNewLogicalTime(e Slot, s Tick) (ret LogicalTime) {
 	util.Assertf(s.Valid(), "s.Valid()")
 	binary.BigEndian.PutUint32(ret[:4], uint32(e))
 	ret[4] = byte(s)
@@ -143,13 +143,13 @@ func MustNewLogicalTime(e TimeSlot, s TimeTick) (ret LogicalTime) {
 func LogicalTimeFromTime(nowis time.Time) LogicalTime {
 	util.Assertf(!nowis.Before(BaselineTime), "!nowis.Before(BaselineTime)")
 	i := nowis.UnixNano() - BaselineTimeUnixNano
-	e := i / int64(TimeSlotDuration())
+	e := i / int64(SlotDuration())
 	util.Assertf(e <= math.MaxUint32, "LogicalTimeFromTime: e <= math.MaxUint32")
 	util.Assertf(uint32(e)&0xc0000000 == 0, "LogicalTimeFromTime: two highest bits must be 0. Wrong constants")
-	s := i % int64(TimeSlotDuration())
-	s = s / int64(TimeTickDuration())
-	util.Assertf(s < TimeTicksPerSlot, "LogicalTimeFromTime: s < TimeTicksPerSlot")
-	return MustNewLogicalTime(TimeSlot(uint32(e)), TimeTick(byte(s)))
+	s := i % int64(SlotDuration())
+	s = s / int64(TickDuration())
+	util.Assertf(s < TicksPerSlot, "LogicalTimeFromTime: s < TicksPerSlot")
+	return MustNewLogicalTime(Slot(uint32(e)), Tick(byte(s)))
 }
 
 func LogicalTimeNow() LogicalTime {
@@ -161,12 +161,12 @@ func LogicalTimeFromBytes(data []byte) (ret LogicalTime, err error) {
 		err = errWrongDataLength
 		return
 	}
-	var e TimeSlot
+	var e Slot
 	e, err = TimeSlotFromBytes(data[:4])
 	if err != nil {
 		return
 	}
-	var s TimeTick
+	var s Tick
 	s, err = TimeTickFromByte(data[4])
 	if err != nil {
 		return
@@ -181,34 +181,34 @@ func MustLogicalTimeFromBytes(data []byte) LogicalTime {
 	return ret
 }
 
-func (s TimeTick) Valid() bool {
-	return byte(s) < TimeTicksPerSlot
+func (s Tick) Valid() bool {
+	return byte(s) < TicksPerSlot
 }
 
-func (s TimeTick) String() string {
+func (s Tick) String() string {
 	return fmt.Sprintf("%d", s)
 }
 
-func (e TimeSlot) Bytes() []byte {
-	ret := make([]byte, TimeSlotByteLength)
+func (e Slot) Bytes() []byte {
+	ret := make([]byte, SlotByteLength)
 	binary.BigEndian.PutUint32(ret, uint32(e))
 	return ret
 }
 
-func (e TimeSlot) Hex() string {
+func (e Slot) Hex() string {
 	return fmt.Sprintf("0x%s", hex.EncodeToString(e.Bytes()))
 }
 
-func (e TimeSlot) LogicalTimeAtBeginning() LogicalTime {
+func (e Slot) LogicalTimeAtBeginning() LogicalTime {
 	return MustNewLogicalTime(e, 0)
 }
 
-func (t LogicalTime) TimeSlot() TimeSlot {
-	return TimeSlot(binary.BigEndian.Uint32(t[:4]))
+func (t LogicalTime) Slot() Slot {
+	return Slot(binary.BigEndian.Uint32(t[:4]))
 }
 
-func (t LogicalTime) TimeTick() TimeTick {
-	ret := TimeTick(t[4])
+func (t LogicalTime) TimeTick() Tick {
+	ret := Tick(t[4])
 	util.Assertf(ret.Valid(), "invalid slot value")
 	return ret
 }
@@ -219,7 +219,7 @@ func (t LogicalTime) IsSlotBoundary() bool {
 
 func (t LogicalTime) UnixNano() int64 {
 	return BaselineTimeUnixNano +
-		int64(t.TimeSlot())*int64(TimeSlotDuration()) + int64(TimeTickDuration())*int64(t.TimeTick())
+		int64(t.Slot())*int64(SlotDuration()) + int64(TickDuration())*int64(t.TimeTick())
 }
 
 func (t LogicalTime) Time() time.Time {
@@ -230,14 +230,14 @@ func (t LogicalTime) NextTimeSlotBoundary() LogicalTime {
 	if t.TimeTick() == 0 {
 		return t
 	}
-	return MustNewLogicalTime(t.TimeSlot()+1, 0)
+	return MustNewLogicalTime(t.Slot()+1, 0)
 }
 
 func (t LogicalTime) TimesTicksToNextSlotBoundary() int {
 	if t.TimeTick() == 0 {
 		return 0
 	}
-	return TimeTicksPerSlot - int(t.TimeTick())
+	return TicksPerSlot - int(t.TimeTick())
 }
 
 func (t LogicalTime) Bytes() []byte {
@@ -246,15 +246,15 @@ func (t LogicalTime) Bytes() []byte {
 }
 
 func (t LogicalTime) String() string {
-	return fmt.Sprintf("%d|%d", t.TimeSlot(), t.TimeTick())
+	return fmt.Sprintf("%d|%d", t.Slot(), t.TimeTick())
 }
 
 func (t LogicalTime) AsFileName() string {
-	return fmt.Sprintf("%d_%d", t.TimeSlot(), t.TimeTick())
+	return fmt.Sprintf("%d_%d", t.Slot(), t.TimeTick())
 }
 
 func (t LogicalTime) Short() string {
-	e := t.TimeSlot() % 1000
+	e := t.Slot() % 1000
 	return fmt.Sprintf(".%d|%d", e, t.TimeTick())
 }
 
@@ -274,8 +274,8 @@ func (t LogicalTime) Hex() string {
 // < 0 is t is before t1
 // > 0 if t1 is before t
 func DiffTimeTicks(t1, t2 LogicalTime) int64 {
-	slots1 := int64(t1.TimeSlot())*TimeTicksPerSlot + int64(t1.TimeTick())
-	slots2 := int64(t2.TimeSlot())*TimeTicksPerSlot + int64(t2.TimeTick())
+	slots1 := int64(t1.Slot())*TicksPerSlot + int64(t1.TimeTick())
+	slots2 := int64(t2.Slot())*TicksPerSlot + int64(t2.TimeTick())
 	return slots1 - slots2
 }
 
@@ -287,13 +287,13 @@ func ValidTimePace(t1, t2 LogicalTime) bool {
 func (t LogicalTime) AddTicks(s int) LogicalTime {
 	util.Assertf(s >= 0, "AddTicks: can't be negative argument")
 	s1 := int64(t.TimeTick()) + int64(s)
-	eRet := s1 / TimeTicksPerSlot
-	sRet := s1 % TimeTicksPerSlot
-	return MustNewLogicalTime(t.TimeSlot()+TimeSlot(eRet), TimeTick(sRet))
+	eRet := s1 / TicksPerSlot
+	sRet := s1 % TicksPerSlot
+	return MustNewLogicalTime(t.Slot()+Slot(eRet), Tick(sRet))
 }
 
 func (t LogicalTime) AddTimeSlots(e int) LogicalTime {
-	return MustNewLogicalTime(t.TimeSlot()+TimeSlot(e), t.TimeTick())
+	return MustNewLogicalTime(t.Slot()+Slot(e), t.TimeTick())
 }
 
 func (t LogicalTime) AddDuration(d time.Duration) LogicalTime {

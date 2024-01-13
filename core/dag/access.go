@@ -87,17 +87,17 @@ func (d *DAG) GetVertex(txid *ledger.TransactionID) *vertex.WrappedTx {
 	return d.GetVertexNoLock(txid)
 }
 
-func (d *DAG) _branchesForSlot(slot ledger.TimeSlot) []*vertex.WrappedTx {
+func (d *DAG) _branchesForSlot(slot ledger.Slot) []*vertex.WrappedTx {
 	ret := make([]*vertex.WrappedTx, 0)
 	for br := range d.branches {
-		if br.TimeSlot() == slot {
+		if br.Slot() == slot {
 			ret = append(ret, br)
 		}
 	}
 	return ret
 }
 
-func (d *DAG) _branchesDescending(slot ledger.TimeSlot) []*vertex.WrappedTx {
+func (d *DAG) _branchesDescending(slot ledger.Slot) []*vertex.WrappedTx {
 	ret := d._branchesForSlot(slot)
 	sort.Slice(ret, func(i, j int) bool {
 		return ret[i].GetLedgerCoverage().Sum() > ret[j].GetLedgerCoverage().Sum()
@@ -106,17 +106,17 @@ func (d *DAG) _branchesDescending(slot ledger.TimeSlot) []*vertex.WrappedTx {
 }
 
 // LatestBranchSlot latest time slot with some branches
-func (d *DAG) LatestBranchSlot() (ret ledger.TimeSlot) {
+func (d *DAG) LatestBranchSlot() (ret ledger.Slot) {
 	d.mutex.RLock()
 	defer d.mutex.RUnlock()
 
 	return d._latestBranchSlot()
 }
 
-func (d *DAG) _latestBranchSlot() (ret ledger.TimeSlot) {
+func (d *DAG) _latestBranchSlot() (ret ledger.Slot) {
 	for br := range d.branches {
-		if br.TimeSlot() > ret {
-			ret = br.TimeSlot()
+		if br.Slot() > ret {
+			ret = br.Slot()
 		}
 	}
 	return
@@ -134,7 +134,7 @@ func (d *DAG) FindOutputInLatestTimeSlot(oid *ledger.OutputID) (ret *vertex.Wrap
 	return
 }
 
-func (d *DAG) HasOutputInAllBranches(e ledger.TimeSlot, oid *ledger.OutputID) bool {
+func (d *DAG) HasOutputInAllBranches(e ledger.Slot, oid *ledger.OutputID) bool {
 	d.mutex.RLock()
 	defer d.mutex.RUnlock()
 

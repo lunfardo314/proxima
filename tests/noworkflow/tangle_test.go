@@ -572,7 +572,7 @@ func (r *multiChainTestData) createSequencerChain1(chainIdx int, pace int, print
 
 		if printtx {
 			ce := ""
-			if prevTs.TimeSlot() != curTs.TimeSlot() {
+			if prevTs.Slot() != curTs.Slot() {
 				ce = "(cross-slot)"
 			}
 			r.t.Logf("tx %d : %s    %s", i, tx.IDShortString(), ce)
@@ -747,7 +747,7 @@ func TestMultiChain(t *testing.T) {
 		ts := ledger.MaxLogicalTime(tsToBeEndorsed, txEndorser.Timestamp())
 		ts = ts.AddTicks(ledger.TransactionPaceInTicks)
 		t.Logf("timestamp to be endorsed: %s, endorser's timestamp: %s", tsToBeEndorsed.String(), ts.String())
-		require.True(t, ts.TimeTick() != 0 && ts.TimeSlot() == txEndorser.Timestamp().TimeSlot())
+		require.True(t, ts.TimeTick() != 0 && ts.Slot() == txEndorser.Timestamp().Slot())
 		t.Logf("ID to be endorsed: %s", idToBeEndorsed.StringShort())
 
 		txBytes, err = txbuilder2.MakeSequencerTransaction(txbuilder2.MakeSequencerTransactionParams{
@@ -1045,7 +1045,7 @@ func (r *multiChainTestData) createSequencerChains2(pace int, howLong int) [][]b
 				} else {
 					endorsedIdx--
 				}
-				if lastInChain(endorsedIdx).TimeSlot() != ts.TimeSlot() {
+				if lastInChain(endorsedIdx).TimeSlot() != ts.Slot() {
 					break
 				}
 			}
@@ -1177,7 +1177,7 @@ func (r *multiChainTestData) createSequencerChains3(pace int, howLong int, print
 				} else {
 					endorsedIdx--
 				}
-				if lastInChain(endorsedIdx).TimeSlot() != ts.TimeSlot() {
+				if lastInChain(endorsedIdx).TimeSlot() != ts.Slot() {
 					break
 				}
 			}

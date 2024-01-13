@@ -27,11 +27,11 @@ const (
 	timelockTemplate = timelockName + "(u32/%d)"
 )
 
-type Timelock TimeSlot
+type Timelock Slot
 
 var NilTimelock = Timelock(0)
 
-func NewTimelock(timeSlot TimeSlot) Timelock {
+func NewTimelock(timeSlot Slot) Timelock {
 	return Timelock(timeSlot)
 }
 

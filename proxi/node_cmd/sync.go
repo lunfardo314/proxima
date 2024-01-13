@@ -33,9 +33,9 @@ func runSyncInfoCmd(_ *cobra.Command, _ []string) {
 	})
 	for _, seqID := range sorted {
 		si := syncInfo.PerSequencer[seqID]
-		seenBack := time.Since(ledger.MustNewLogicalTime(ledger.TimeSlot(si.LatestSeenSlot), 0).Time())
-		bookedBack := time.Since(ledger.MustNewLogicalTime(ledger.TimeSlot(si.LatestBookedSlot), 0).Time())
-		active := seenBack < ledger.TimeSlotDuration()
+		seenBack := time.Since(ledger.MustNewLogicalTime(ledger.Slot(si.LatestSeenSlot), 0).Time())
+		bookedBack := time.Since(ledger.MustNewLogicalTime(ledger.Slot(si.LatestBookedSlot), 0).Time())
+		active := seenBack < ledger.SlotDuration()
 		glb.Infof("        %s : active/synced: %v/%v, last seen slot: %d (%v back), last booked slot: %d (%v back)",
 			seqID.Short(), active, si.Synced, si.LatestSeenSlot, seenBack, si.LatestBookedSlot, bookedBack)
 	}

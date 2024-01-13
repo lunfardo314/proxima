@@ -194,7 +194,7 @@ func (vid *WrappedTx) Timestamp() ledger.LogicalTime {
 	return vid.ID.Timestamp()
 }
 
-func (vid *WrappedTx) TimeSlot() ledger.TimeSlot {
+func (vid *WrappedTx) Slot() ledger.Slot {
 	return vid.ID.TimeSlot()
 }
 

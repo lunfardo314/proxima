@@ -35,7 +35,7 @@ func (d *DAG) InfoLines() *lines.Lines {
 		len(d.vertices), len(d.branches), len(slots))
 
 	branches := util.SortKeys(d.branches, func(vid1, vid2 *vertex.WrappedTx) bool {
-		return vid1.TimeSlot() > vid2.TimeSlot()
+		return vid1.Slot() > vid2.Slot()
 	})
 
 	for _, vidBranch := range branches {
@@ -44,14 +44,14 @@ func (d *DAG) InfoLines() *lines.Lines {
 	return ln
 }
 
-func (d *DAG) VerticesInSlotAndAfter(slot ledger.TimeSlot) []*vertex.WrappedTx {
+func (d *DAG) VerticesInSlotAndAfter(slot ledger.Slot) []*vertex.WrappedTx {
 	ret := make([]*vertex.WrappedTx, 0)
 
 	d.mutex.RLock()
 	defer d.mutex.RUnlock()
 
 	for _, vid := range d.vertices {
-		if vid.TimeSlot() >= slot {
+		if vid.Slot() >= slot {
 			ret = append(ret, vid)
 		}
 	}
@@ -61,25 +61,25 @@ func (d *DAG) VerticesInSlotAndAfter(slot ledger.TimeSlot) []*vertex.WrappedTx {
 	return ret
 }
 
-func (d *DAG) LinesVerticesInSlotAndAfter(slot ledger.TimeSlot) *lines.Lines {
+func (d *DAG) LinesVerticesInSlotAndAfter(slot ledger.Slot) *lines.Lines {
 	return vertex.VerticesLines(d.VerticesInSlotAndAfter(slot))
 }
 
-func (d *DAG) _timeSlotsOrdered(descOrder ...bool) []ledger.TimeSlot {
+func (d *DAG) _timeSlotsOrdered(descOrder ...bool) []ledger.Slot {
 	desc := false
 	if len(descOrder) > 0 {
 		desc = descOrder[0]
 	}
-	slots := set.New[ledger.TimeSlot]()
+	slots := set.New[ledger.Slot]()
 	for br := range d.branches {
-		slots.Insert(br.TimeSlot())
+		slots.Insert(br.Slot())
 	}
 	if desc {
-		return util.SortKeys(slots, func(e1, e2 ledger.TimeSlot) bool {
+		return util.SortKeys(slots, func(e1, e2 ledger.Slot) bool {
 			return e1 > e2
 		})
 	}
-	return util.SortKeys(slots, func(e1, e2 ledger.TimeSlot) bool {
+	return util.SortKeys(slots, func(e1, e2 ledger.Slot) bool {
 		return e1 < e2
 	})
 }

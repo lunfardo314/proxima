@@ -30,7 +30,7 @@ func NewDeadlineLock(deadline LogicalTime, main, expiry Accountable) *DeadlineLo
 
 func (dl *DeadlineLock) source() string {
 	return fmt.Sprintf(deadlineLockTemplate,
-		dl.Deadline.TimeSlot(),
+		dl.Deadline.Slot(),
 		dl.Deadline.TimeTick(),
 		hex.EncodeToString(dl.ConstraintMain.AccountID()),
 		hex.EncodeToString(dl.ConstraintExpiry.AccountID()),
@@ -42,7 +42,7 @@ func (dl *DeadlineLock) Bytes() []byte {
 }
 
 func (dl *DeadlineLock) String() string {
-	return fmt.Sprintf("%s(%d,%d,%s,%s)", DeadlineLockName, dl.Deadline.TimeSlot(), dl.Deadline.TimeTick(), dl.ConstraintMain, dl.ConstraintExpiry)
+	return fmt.Sprintf("%s(%d,%d,%s,%s)", DeadlineLockName, dl.Deadline.Slot(), dl.Deadline.TimeTick(), dl.ConstraintMain, dl.ConstraintExpiry)
 }
 
 func (dl *DeadlineLock) Accounts() []Accountable {
@@ -90,7 +90,7 @@ func DeadlineLockFromBytes(data []byte) (*DeadlineLock, error) {
 	ret := &DeadlineLock{}
 	slotBin := easyfl.StripDataPrefix(args[0])
 	tickBin := easyfl.StripDataPrefix(args[1])
-	if sym != DeadlineLockName || len(slotBin) != TimeSlotByteLength || len(tickBin) != 1 {
+	if sym != DeadlineLockName || len(slotBin) != SlotByteLength || len(tickBin) != 1 {
 		return nil, fmt.Errorf("can't parse deadline lock")
 	}
 	slot, err := TimeSlotFromBytes(slotBin)

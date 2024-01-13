@@ -30,8 +30,8 @@ type (
 
 	SummarySupplyAndInflation struct {
 		NumberOfBranches int
-		OldestSlot       ledger.TimeSlot
-		LatestSlot       ledger.TimeSlot
+		OldestSlot       ledger.Slot
+		LatestSlot       ledger.Slot
 		BeginSupply      uint64
 		EndSupply        uint64
 		TotalInflation   uint64
@@ -100,8 +100,8 @@ func FetchSummarySupplyAndInflation(stateStore global.StateStore, nBack int) *Su
 		EndSupply:        branchData[0].Stem.Output.MustStemLock().Supply,
 		TotalInflation:   0,
 		NumberOfBranches: len(branchData),
-		OldestSlot:       branchData[len(branchData)-1].Stem.Timestamp().TimeSlot(),
-		LatestSlot:       branchData[0].Stem.Timestamp().TimeSlot(),
+		OldestSlot:       branchData[len(branchData)-1].Stem.Timestamp().Slot(),
+		LatestSlot:       branchData[0].Stem.Timestamp().Slot(),
 		InfoPerSeqID:     make(map[ledger.ChainID]SequencerInfo),
 	}
 	for i := 0; i < len(branchData)-1; i++ {
@@ -138,7 +138,7 @@ func FetchSummarySupplyAndInflation(stateStore global.StateStore, nBack int) *Su
 func (s *SummarySupplyAndInflation) Lines(prefix ...string) *lines.Lines {
 	totalInflationPercentage := float32(s.TotalInflation*100) / float32(s.BeginSupply)
 	totalInflationPercentagePerSlot := totalInflationPercentage / float32(s.LatestSlot-s.OldestSlot+1)
-	totalInflationPercentageYearlyExtrapolation := totalInflationPercentagePerSlot * float32(ledger.TimeSlotsPerYear())
+	totalInflationPercentageYearlyExtrapolation := totalInflationPercentagePerSlot * float32(ledger.SlotsPerYear())
 
 	ret := lines.New(prefix...).
 		Add("Slots from %d to %d inclusive. Total %d slots", s.OldestSlot, s.LatestSlot, s.LatestSlot-s.OldestSlot+1).

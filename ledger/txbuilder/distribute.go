@@ -77,7 +77,7 @@ func MakeDistributionTransaction(stateStore global.StateStore, originPrivateKey 
 			ChainID:      bootstrapChainID,
 		},
 		StemInput:         genesisStem,
-		Timestamp:         ledger.MustNewLogicalTime(genesisStem.Timestamp().TimeSlot()+1, 0),
+		Timestamp:         ledger.MustNewLogicalTime(genesisStem.Timestamp().Slot()+1, 0),
 		MinimumFee:        0,
 		AdditionalInputs:  nil,
 		AdditionalOutputs: genesisDistributionOutputs,

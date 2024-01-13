@@ -117,12 +117,12 @@ func init() {
 	// LogicalTime is 5 bytes long:
 	// 0-3 byte is big-endian time slot
 	// 4 byte is time tick in the slot
-	// one time slot is equal to TimeTicksPerSlot time slots (usually 100)
+	// one time slot is equal to TicksPerSlot time slots (usually 100)
 	// asserts that $1 is not before $0 and calculates difference between
 	// timestamps in time slots as 8-byte big-endian uint64
 	easyfl.EmbedLong("ticksBefore", 2, evalTicksBefore)
-	easyfl.Extend("ticksPerSlot", fmt.Sprintf("%d", TimeTicksPerSlot))
-	easyfl.Extend("timeSlotSizeBytes", fmt.Sprintf("%d", TimeSlotByteLength))
+	easyfl.Extend("ticksPerSlot", fmt.Sprintf("%d", TicksPerSlot))
+	easyfl.Extend("timeSlotSizeBytes", fmt.Sprintf("%d", SlotByteLength))
 	easyfl.Extend("timestampByteSize", fmt.Sprintf("%d", LogicalTimeByteLength))
 	easyfl.Extend("mustValidTimeTick", "if(and(mustSize($0,1),lessThan($0,ticksPerSlot)),$0,!!!wrong_timeslot)")
 	easyfl.Extend("mustValidTimeSlot", "mustSize($0, timeSlotSizeBytes)")
@@ -140,8 +140,8 @@ func init() {
 		easyfl.MustError("timestamp(u32/255, 100)", "wrong timeslot")
 		easyfl.MustError("mustValidTimeSlot(255)", "wrong data size")
 		easyfl.MustError("mustValidTimeTick(200)", "wrong timeslot")
-		easyfl.MustEqual("mustValidTimeSlot(u32/255)", TimeSlot(255).Hex())
-		easyfl.MustEqual("mustValidTimeTick(88)", TimeTick(88).String())
+		easyfl.MustEqual("mustValidTimeSlot(u32/255)", Slot(255).Hex())
+		easyfl.MustEqual("mustValidTimeTick(88)", Tick(88).String())
 	}
 
 	// path constants

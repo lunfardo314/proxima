@@ -14,7 +14,7 @@ import (
 func TestOriginBase(t *testing.T) {
 	const supply = 10_000_000_000
 	addr := ledger.AddressED25519FromPrivateKey(testutil.GetTestingPrivateKey())
-	genesisTimeSlot := ledger.TimeSlot(1337)
+	genesisTimeSlot := ledger.Slot(1337)
 	gOut := InitialSupplyOutput(supply, addr, genesisTimeSlot)
 	t.Logf("Genesis: suppy = %d, genesis slot = %d:\n", supply, genesisTimeSlot)
 	t.Logf("   Genesis outputID: %s", gOut.ID.String())

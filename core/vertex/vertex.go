@@ -25,7 +25,7 @@ func New(tx *transaction2.Transaction) *Vertex {
 	return ret
 }
 
-func (v *Vertex) TimeSlot() ledger.TimeSlot {
+func (v *Vertex) TimeSlot() ledger.Slot {
 	return v.Tx.ID().TimeSlot()
 }
 

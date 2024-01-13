@@ -152,7 +152,7 @@ func (s *SyncData) allSequencersSynced() bool {
 }
 
 func syncWindowDuration() time.Duration {
-	return ledger.TimeSlotDuration() * 2
+	return ledger.SlotDuration() * 2
 }
 
 // IsInSyncWindow returns true if latest added transaction (by timestamp) is no more than 1/2 time slot back from now

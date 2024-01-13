@@ -96,7 +96,7 @@ func startTipPool(seqName string, wrk *workflow.Workflow, seqID ledger.ChainID, 
 }
 
 func (tp *sequencerTipPool) purgeDeleted() {
-	cleanupPeriod := ledger.TimeSlotDuration() / 2
+	cleanupPeriod := ledger.SlotDuration() / 2
 	if time.Since(tp.lastPruned.Load()) < cleanupPeriod {
 		return
 	}
@@ -155,7 +155,7 @@ func (tp *sequencerTipPool) preSelectAndSortEndorsableMilestones(targetTs ledger
 
 	ret := make([]*utangle_old.WrappedTx, 0)
 	for _, ms := range tp.latestMilestones {
-		if ms.TimeSlot() != targetTs.TimeSlot() || !ledger.ValidTimePace(ms.Timestamp(), targetTs) {
+		if ms.TimeSlot() != targetTs.Slot() || !ledger.ValidTimePace(ms.Timestamp(), targetTs) {
 			continue
 		}
 		ret = append(ret, ms)

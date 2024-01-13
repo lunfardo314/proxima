@@ -83,7 +83,7 @@ func (v *Vertex) fetchMissingEndorsements(ut *UTXOTangle) (conflict *ledger.Outp
 			// already solid and merged
 			return true
 		}
-		util.Assertf(v.Tx.TimeSlot() == txid.TimeSlot(), "tx.TimeTick() == txid.TimeTick()")
+		util.Assertf(v.Tx.TimeSlot() == txid.TimeSlot(), "tx.Tick() == txid.Tick()")
 		if vEndorsement, found := ut.GetVertex(txid); found {
 			if conflictWrapped = v.pastTrack.absorbPastTrack(vEndorsement, ut.StateStore); conflictWrapped != nil {
 				conflict = conflictWrapped.DecodeID()

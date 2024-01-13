@@ -143,7 +143,7 @@ func TestTimelock(t *testing.T) {
 		par, err := u.MakeTransferInputData(privKey0, nil, ts)
 		require.NoError(t, err)
 
-		timelockSlot := ts.TimeSlot() + 1
+		timelockSlot := ts.Slot() + 1
 
 		par.WithAmount(200).
 			WithTargetLock(addr1).
@@ -157,7 +157,7 @@ func TestTimelock(t *testing.T) {
 
 		require.EqualValues(t, 200, u.Balance(addr1))
 
-		timelockSlot = ts.TimeSlot() + (1 + 10)
+		timelockSlot = ts.Slot() + (1 + 10)
 		par, err = u.MakeTransferInputData(privKey0, nil, ts.AddTimeSlots(1))
 		require.NoError(t, err)
 		par.WithAmount(2000).
@@ -185,7 +185,7 @@ func TestTimelock(t *testing.T) {
 		t.Logf("failed tx with ts %s", par.Timestamp)
 
 		txTs = ts.AddTimeSlots(14)
-		require.True(t, txTs.TimeSlot() > timelockSlot)
+		require.True(t, txTs.Slot() > timelockSlot)
 		par, err = u.MakeTransferInputData(priv1, nil, txTs)
 		require.NoError(t, err)
 		t.Logf("tx time: %s", par.Timestamp)
@@ -197,7 +197,7 @@ func TestTimelock(t *testing.T) {
 			tx, err1 := transaction2.FromBytesMainChecksWithOpt(txBytes)
 			require.NoError(t, err1)
 			t.Logf("resulting tx ts: %s", tx.Timestamp())
-			require.True(t, tx.Timestamp().TimeSlot() > timelockSlot)
+			require.True(t, tx.Timestamp().Slot() > timelockSlot)
 		}
 		require.NoError(t, err)
 		require.EqualValues(t, 200, u.Balance(addr1))
@@ -217,7 +217,7 @@ func TestTimelock(t *testing.T) {
 		txBytes, err := txbuilder.MakeTransferTransaction(par.
 			WithAmount(200).
 			WithTargetLock(addr1).
-			WithConstraint(ledger.NewTimelock(ts.TimeSlot() + 1)),
+			WithConstraint(ledger.NewTimelock(ts.Slot() + 1)),
 		)
 		require.NoError(t, err)
 		t.Logf("tx with timelock len: %d", len(txBytes))
@@ -231,7 +231,7 @@ func TestTimelock(t *testing.T) {
 		err = u.DoTransfer(par.
 			WithAmount(2000).
 			WithTargetLock(addr1).
-			WithConstraint(ledger.NewTimelock(ts.TimeSlot() + 11)),
+			WithConstraint(ledger.NewTimelock(ts.Slot() + 11)),
 		)
 		require.NoError(t, err)
 

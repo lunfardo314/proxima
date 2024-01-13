@@ -23,13 +23,13 @@ import (
 // It is mainly used for testing of constraints
 type UTXODB struct {
 	state             *multistate.Updatable
-	lastSlot          ledger.TimeSlot
+	lastSlot          ledger.Slot
 	genesisChainID    ledger.ChainID
 	supply            uint64
 	genesisPrivateKey ed25519.PrivateKey
 	genesisPublicKey  ed25519.PublicKey
 	genesisAddress    ledger.AddressED25519
-	genesisSlot       ledger.TimeSlot
+	genesisSlot       ledger.Slot
 	faucetPrivateKey  ed25519.PrivateKey
 	faucetAddress     ledger.AddressED25519
 	trace             bool
@@ -54,15 +54,15 @@ func NewUTXODB(trace ...bool) *UTXODB {
 	genesisAddr := ledger.AddressED25519FromPublicKey(genesisPubKey)
 
 	stateStore := common.NewInMemoryKVStore()
-	genesisSlot := ledger.LogicalTimeNow().TimeSlot()
+	genesisSlot := ledger.LogicalTimeNow().Slot()
 
 	initLedgerParams := genesis.LedgerIdentityData{
 		Description:                utxodbDscr,
 		InitialSupply:              supplyForTesting,
 		GenesisControllerPublicKey: genesisPubKey,
 		BaselineTime:               ledger.BaselineTime,
-		TimeTickDuration:           ledger.TimeTickDuration(),
-		MaxTimeTickValueInTimeSlot: ledger.TimeTicksPerSlot - 1,
+		TimeTickDuration:           ledger.TickDuration(),
+		MaxTimeTickValueInTimeSlot: ledger.TicksPerSlot - 1,
 		GenesisTimeSlot:            genesisSlot,
 		CoreLedgerConstraintsHash:  easyfl.LibraryHash(),
 	}
@@ -113,7 +113,7 @@ func (u *UTXODB) StateIdentityData() *genesis.LedgerIdentityData {
 	return genesis.MustLedgerIdentityDataFromBytes(u.StateReader().MustLedgerIdentityBytes())
 }
 
-func (u *UTXODB) GenesisTimeSlot() ledger.TimeSlot {
+func (u *UTXODB) GenesisTimeSlot() ledger.Slot {
 	return u.genesisSlot
 }
 
@@ -158,7 +158,7 @@ func (u *UTXODB) AddTransaction(txBytes []byte, onValidationError ...func(ctx *t
 	return nil
 }
 
-func (u *UTXODB) LastTimeSlot() ledger.TimeSlot {
+func (u *UTXODB) LastTimeSlot() ledger.Slot {
 	return u.lastSlot
 }
 

@@ -325,7 +325,7 @@ func CheckEndorsements() TxValidationOption {
 			return fmt.Errorf("non-sequencer tx can't contain endorsements: %s", tx.IDShortString())
 		}
 
-		txSlot := tx.Timestamp().TimeSlot()
+		txSlot := tx.Timestamp().Slot()
 		tx.ForEachEndorsement(func(_ byte, endorsedTxID *ledger.TransactionID) bool {
 			if !endorsedTxID.IsSequencerMilestone() {
 				err = fmt.Errorf("tx %s contains endorsement of non-sequencer transaction: %s", tx.IDShortString(), endorsedTxID.StringShort())
@@ -411,8 +411,8 @@ func (tx *Transaction) IDVeryShort() string {
 	return ledger.TransactionIDStringVeryShort(tx.timestamp, tx.txHash, tx.sequencerMilestoneFlag, tx.branchTransactionFlag)
 }
 
-func (tx *Transaction) TimeSlot() ledger.TimeSlot {
-	return tx.timestamp.TimeSlot()
+func (tx *Transaction) TimeSlot() ledger.Slot {
+	return tx.timestamp.Slot()
 }
 
 func (tx *Transaction) Hash() ledger.TransactionIDShort {

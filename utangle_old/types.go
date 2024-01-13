@@ -16,7 +16,7 @@ type (
 		mutex      sync.RWMutex
 		stateStore global.StateStore
 		vertices   map[ledger.TransactionID]*WrappedTx
-		branches   map[ledger.TimeSlot]map[*WrappedTx]common.VCommitment
+		branches   map[ledger.Slot]map[*WrappedTx]common.VCommitment
 
 		// all real-time related values in one place
 		syncData *SyncData

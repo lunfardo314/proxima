@@ -45,7 +45,7 @@ func runDbInfoCmd(_ *cobra.Command, _ []string) {
 		glb.Infof("no branches found")
 		return
 	}
-	glb.Infof("Total %d latest branches (slot %d)", len(branchData), branchData[0].Stem.Timestamp().TimeSlot())
+	glb.Infof("Total %d latest branches (slot %d)", len(branchData), branchData[0].Stem.Timestamp().Slot())
 
 	sort.Slice(branchData, func(i, j int) bool {
 		return bytes.Compare(branchData[i].SequencerID[:], branchData[j].SequencerID[:]) < 0

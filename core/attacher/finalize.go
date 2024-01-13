@@ -44,7 +44,7 @@ func (a *attacher) commitBranch() {
 	}
 	// generate ADD TX and ADD OUTPUT mutations
 	for vid := range a.validPastVertices {
-		muts.InsertAddTxMutation(vid.ID, a.vid.TimeSlot(), byte(vid.NumProducedOutputs()-1))
+		muts.InsertAddTxMutation(vid.ID, a.vid.Slot(), byte(vid.NumProducedOutputs()-1))
 		a.stats.numTransactions++
 
 		// ADD OUTPUT mutations only for not consumed outputs
@@ -72,7 +72,7 @@ func (a *attacher) ledgerCoverage(coverageDelta uint64) multistate.LedgerCoverag
 
 		prevCoverage = rr.LedgerCoverage
 	}
-	return prevCoverage.MakeNext(int(a.vid.TimeSlot())-int(a.baselineBranch.TimeSlot())+1, coverageDelta)
+	return prevCoverage.MakeNext(int(a.vid.Slot())-int(a.baselineBranch.Slot())+1, coverageDelta)
 }
 
 func (a *attacher) calculateSequencerTxStats() {

@@ -54,7 +54,7 @@ func (b *baseProposer) run() {
 func (b *baseProposer) proposeBase(extend utangle_old.WrappedOutput) (*transaction.Transaction, bool) {
 	// own latest milestone exists
 	if !b.targetTs.IsSlotBoundary() {
-		if extend.TimeSlot() != b.targetTs.TimeSlot() {
+		if extend.TimeSlot() != b.targetTs.Slot() {
 			// on startup or cross-slot will only produce branches
 			//b.setTraceNAhead(1)
 			b.trace("proposeBase.force exit: cross-slot %s", extend.IDShort())
@@ -68,7 +68,7 @@ func (b *baseProposer) proposeBase(extend utangle_old.WrappedOutput) (*transacti
 		}
 	}
 
-	if !b.targetTs.IsSlotBoundary() && extend.TimeSlot() != b.targetTs.TimeSlot() {
+	if !b.targetTs.IsSlotBoundary() && extend.TimeSlot() != b.targetTs.Slot() {
 		// on startup or cross-slot will only produce branches
 		b.trace("proposeBase.force exit: cross-slot %s", extend.IDShort())
 		return nil, true

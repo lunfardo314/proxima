@@ -15,7 +15,7 @@ func newUTXOTangle(stateStore global.StateStore) *UTXOTangle {
 	return &UTXOTangle{
 		stateStore: stateStore,
 		vertices:   make(map[ledger.TransactionID]*WrappedTx),
-		branches:   make(map[ledger.TimeSlot]map[*WrappedTx]common.VCommitment),
+		branches:   make(map[ledger.Slot]map[*WrappedTx]common.VCommitment),
 		syncData:   newSyncData(),
 	}
 }

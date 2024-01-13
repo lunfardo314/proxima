@@ -276,7 +276,7 @@ func (seq *Sequencer) chooseNextTargetTime(avgProposalDuration time.Duration) le
 	// synchronize clock
 	nowis := ledger.LogicalTimeNow()
 	if nowis.Before(prevMilestoneTs) {
-		waitDuration := time.Duration(ledger.DiffTimeTicks(prevMilestoneTs, nowis)) * ledger.TimeTickDuration()
+		waitDuration := time.Duration(ledger.DiffTimeTicks(prevMilestoneTs, nowis)) * ledger.TickDuration()
 		seq.log.Warnf("nowis (%s) is before last milestone ts (%s). Sleep %v",
 			nowis.String(), prevMilestoneTs.String(), waitDuration)
 		time.Sleep(waitDuration)
@@ -317,7 +317,7 @@ func (seq *Sequencer) chooseNextTargetTime(avgProposalDuration time.Duration) le
 func (seq *Sequencer) generateNextMilestoneForTargetTime(targetTs ledger.LogicalTime) (*transaction.Transaction, time.Duration, int) {
 	seq.trace("generateNextMilestoneForTargetTime %s", targetTs)
 
-	timeout := time.Duration(seq.config.Pace) * ledger.TimeTickDuration()
+	timeout := time.Duration(seq.config.Pace) * ledger.TickDuration()
 	absoluteDeadline := targetTs.Time().Add(timeout)
 
 	if absoluteDeadline.Before(time.Now()) {
@@ -341,13 +341,13 @@ func (seq *Sequencer) mainLoop() {
 	milestoneCount := 0
 	branchCount := 0
 
-	var currentTimeSlot ledger.TimeSlot
+	var currentTimeSlot ledger.Slot
 	var avgProposalDuration time.Duration
 
 	// wait for one slot at startup
-	beginAt := seq.glb.UTXOTangle().SyncData().WhenStarted().Add(ledger.TimeSlotDuration())
+	beginAt := seq.glb.UTXOTangle().SyncData().WhenStarted().Add(ledger.SlotDuration())
 	if beginAt.After(time.Now()) {
-		seq.log.Infof("wait for one slot (%v) before starting the main loop", ledger.TimeSlotDuration())
+		seq.log.Infof("wait for one slot (%v) before starting the main loop", ledger.SlotDuration())
 	}
 	time.Sleep(time.Until(beginAt))
 	seq.log.Infof("starting main loop")
@@ -377,8 +377,8 @@ func (seq *Sequencer) mainLoop() {
 			break
 		}
 
-		if currentTimeSlot != targetTs.TimeSlot() {
-			currentTimeSlot = targetTs.TimeSlot()
+		if currentTimeSlot != targetTs.Slot() {
+			currentTimeSlot = targetTs.Slot()
 		}
 
 		//seq.setTraceAhead(1)

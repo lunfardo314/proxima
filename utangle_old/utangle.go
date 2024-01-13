@@ -41,12 +41,12 @@ func (ut *UTXOTangle) HasTransactionOnTangle(txid *ledger.TransactionID) bool {
 	return ret
 }
 
-func (ut *UTXOTangle) _timeSlotsOrdered(descOrder ...bool) []ledger.TimeSlot {
+func (ut *UTXOTangle) _timeSlotsOrdered(descOrder ...bool) []ledger.Slot {
 	desc := false
 	if len(descOrder) > 0 {
 		desc = descOrder[0]
 	}
-	return util.SortKeys(ut.branches, func(e1, e2 ledger.TimeSlot) bool {
+	return util.SortKeys(ut.branches, func(e1, e2 ledger.Slot) bool {
 		if desc {
 			return e1 > e2
 		}
@@ -206,7 +206,7 @@ func (ut *UTXOTangle) MustGetBaselineState(vid *WrappedTx) global.IndexedStateRe
 }
 
 // LatestTimeSlot latest time slot with some branches
-func (ut *UTXOTangle) LatestTimeSlot() ledger.TimeSlot {
+func (ut *UTXOTangle) LatestTimeSlot() ledger.Slot {
 	ut.mutex.RLock()
 	defer ut.mutex.RUnlock()
 
@@ -222,7 +222,7 @@ func (ut *UTXOTangle) HeaviestStemOutput() *ledger.OutputWithID {
 	return ut.HeaviestStateForLatestTimeSlot().GetStemOutput()
 }
 
-func (ut *UTXOTangle) ForEachBranchStateDescending(e ledger.TimeSlot, fun func(vid *WrappedTx, rdr multistate.SugaredStateReader) bool) error {
+func (ut *UTXOTangle) ForEachBranchStateDescending(e ledger.Slot, fun func(vid *WrappedTx, rdr multistate.SugaredStateReader) bool) error {
 	ut.mutex.RLock()
 	defer ut.mutex.RUnlock()
 
@@ -234,7 +234,7 @@ func (ut *UTXOTangle) ForEachBranchStateDescending(e ledger.TimeSlot, fun func(v
 	return nil
 }
 
-func (ut *UTXOTangle) forEachBranchSorted(e ledger.TimeSlot, fun func(vid *WrappedTx, root common.VCommitment) bool, desc bool) {
+func (ut *UTXOTangle) forEachBranchSorted(e ledger.Slot, fun func(vid *WrappedTx, root common.VCommitment) bool, desc bool) {
 	branches, ok := ut.branches[e]
 	if !ok {
 		return
@@ -296,7 +296,7 @@ func (ut *UTXOTangle) FindOutputInLatestTimeSlot(oid *ledger.OutputID) (ret *Wra
 	return
 }
 
-func (ut *UTXOTangle) HasOutputInAllBranches(e ledger.TimeSlot, oid *ledger.OutputID) bool {
+func (ut *UTXOTangle) HasOutputInAllBranches(e ledger.Slot, oid *ledger.OutputID) bool {
 	found := false
 	err := ut.ForEachBranchStateDescending(e, func(_ *WrappedTx, rdr multistate.SugaredStateReader) bool {
 		found = rdr.HasUTXO(oid)
@@ -306,7 +306,7 @@ func (ut *UTXOTangle) HasOutputInAllBranches(e ledger.TimeSlot, oid *ledger.Outp
 	return found
 }
 
-func (ut *UTXOTangle) DoesNotHaveOutputInAnyBranch(e ledger.TimeSlot, oid *ledger.OutputID) bool {
+func (ut *UTXOTangle) DoesNotHaveOutputInAnyBranch(e ledger.Slot, oid *ledger.OutputID) bool {
 	found := false
 	err := ut.ForEachBranchStateDescending(e, func(_ *WrappedTx, rdr multistate.SugaredStateReader) bool {
 		found = rdr.HasUTXO(oid)
@@ -356,7 +356,7 @@ func (ut *UTXOTangle) ScanAccount(addr ledger.AccountID, lastNTimeSlots int) set
 func (ut *UTXOTangle) _baselineTime(nLatestSlots int) (time.Time, int) {
 	util.Assertf(nLatestSlots > 0, "nLatestSlots > 0")
 
-	var earliestSlot ledger.TimeSlot
+	var earliestSlot ledger.Slot
 	count := 0
 	for _, s := range ut._timeSlotsOrdered(true) {
 		if len(ut.branches[s]) > 0 {

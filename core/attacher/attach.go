@@ -105,7 +105,7 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Opt
 				// pull non-attached non non-branch input transactions for non-sequencer transactions, which are on the same slot
 				// We limit pull to one slot not to fall into endless pull cycle
 				tx.PredecessorTransactionIDs().ForEach(func(txid ledger.TransactionID) bool {
-					if txid.TimeSlot() == vid.TimeSlot() {
+					if txid.TimeSlot() == vid.Slot() {
 						AttachTxID(txid, env).Unwrap(vertex.UnwrapOptions{VirtualTx: func(vInput *vertex.VirtualTransaction) {
 							if !txid.IsBranchTransaction() {
 								env.Pull(txid)
