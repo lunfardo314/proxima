@@ -1,12 +1,14 @@
 package attacher
 
 import (
+	"crypto/ed25519"
 	"fmt"
 	"slices"
 
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/transaction"
+	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/set"
 	"golang.org/x/exp/maps"
@@ -89,7 +91,7 @@ func (a *IncrementalAttacher) insertEndorsement(endorsement *vertex.WrappedTx, v
 func (a *IncrementalAttacher) insertSequencerInput(visited set.Set[*vertex.WrappedTx]) error {
 	a.seqOutput = a.extend.SequencerWrappedOutput()
 	if a.seqOutput.VID == nil {
-		return fmt.Errorf("sequencer output is not available in %s", a.extend.IDShortString())
+		return fmt.Errorf("NewIncrementalAttacher: sequencer output is not available in %s", a.extend.IDShortString())
 	}
 	if !a.attachOutput(a.seqOutput, ledger.NilLogicalTime, visited) {
 		return a.reason
@@ -100,7 +102,7 @@ func (a *IncrementalAttacher) insertSequencerInput(visited set.Set[*vertex.Wrapp
 func (a *IncrementalAttacher) insertStemInput(visited set.Set[*vertex.WrappedTx]) error {
 	a.stemOutput = a.baselineBranch.StemWrappedOutput()
 	if a.stemOutput.VID == nil {
-		return fmt.Errorf("stem output is not available for baseline %s", a.baselineBranch.IDShortString())
+		return fmt.Errorf("NewIncrementalAttacher: stem output is not available for baseline %s", a.baselineBranch.IDShortString())
 	}
 	if !a.attachOutput(a.stemOutput, ledger.NilLogicalTime, visited) {
 		return a.reason
@@ -111,8 +113,8 @@ func (a *IncrementalAttacher) insertStemInput(visited set.Set[*vertex.WrappedTx]
 // InsertTagAlongInput inserts tag along input.
 // In case of failure return false with attacher state consistent
 func (a *IncrementalAttacher) InsertTagAlongInput(wOut vertex.WrappedOutput, visited set.Set[*vertex.WrappedTx]) bool {
-	// save state for rollback because in case of fail the side effect makes attacher inconsistent
-	// TODO is there a better way than cloning potentially big maps?
+	// save state for possible rollback because in case of fail the side effect makes attacher inconsistent
+	// TODO a better way than cloning potentially big maps with each new input?
 	saveUndefinedPastVertices := a.pastConeAttacher.undefinedPastVertices.Clone()
 	saveValidPastVertices := a.pastConeAttacher.validPastVertices.Clone()
 	saveRooted := maps.Clone(a.pastConeAttacher.rooted)
@@ -130,10 +132,50 @@ func (a *IncrementalAttacher) InsertTagAlongInput(wOut vertex.WrappedOutput, vis
 	return true
 }
 
-func (a *IncrementalAttacher) MakeTransaction() (*transaction.Transaction, error) {
-	return nil, nil
-}
-
 func (a *IncrementalAttacher) NumInputs() int {
 	return len(a.tagAlongInputs) + 2
+}
+
+func (a *IncrementalAttacher) MakeTransaction(seqName string, privateKey ed25519.PrivateKey) (*transaction.Transaction, error) {
+	chainIn, err := a.seqOutput.VID.OutputWithIDAt(a.seqOutput.Index)
+	if err != nil {
+		return nil, err
+	}
+	var stemIn *ledger.OutputWithID
+	if a.targetTs.Tick() == 0 {
+		var stemInTmp ledger.OutputWithID
+		stemInTmp, err = a.stemOutput.VID.OutputWithIDAt(a.stemOutput.Index)
+		stemIn = &stemInTmp
+	}
+	tagAlongInputs := make([]*ledger.OutputWithID, len(a.tagAlongInputs))
+
+	var o ledger.OutputWithID
+	for i, wOut := range a.tagAlongInputs {
+		o, err = wOut.VID.OutputWithIDAt(wOut.Index)
+		if err != nil {
+			return nil, err
+		}
+		tagAlongInputs[i] = &o
+	}
+	endorsements := make([]*ledger.TransactionID, len(a.endorse))
+	for i, vid := range a.endorse {
+		endorsements[i] = &vid.ID
+	}
+	txBytes, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
+		SeqName:          seqName,
+		ChainInput:       chainIn.MustAsChainOutput(),
+		StemInput:        stemIn,
+		Timestamp:        a.targetTs,
+		AdditionalInputs: tagAlongInputs,
+		Endorsements:     endorsements,
+		PrivateKey:       privateKey,
+	})
+	if err != nil {
+		return nil, err
+	}
+	tx, err := transaction.FromBytes(txBytes, transaction.MainTxValidationOptions...)
+	if err != nil {
+		return nil, err
+	}
+	return tx, nil
 }
