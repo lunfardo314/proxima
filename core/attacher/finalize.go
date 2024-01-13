@@ -60,19 +60,8 @@ func (a *sequencerAttacher) commitBranch() {
 
 	seqID, stemOID := a.vid.MustSequencerIDAndStemID()
 	upd := multistate.MustNewUpdatable(a.env.StateStore(), a.baselineStateReader().Root())
-	a.stats.coverage = a.ledgerCoverage(coverageDelta)
+	a.stats.coverage = a.ledgerCoverage(coverageDelta, a.vid.Timestamp())
 	upd.MustUpdate(muts, &stemOID, &seqID, a.stats.coverage)
-}
-
-func (a *sequencerAttacher) ledgerCoverage(coverageDelta uint64) multistate.LedgerCoverage {
-	var prevCoverage multistate.LedgerCoverage
-	if multistate.HistoryCoverageDeltas > 1 {
-		rr, found := multistate.FetchRootRecord(a.env.StateStore(), a.baselineBranch.ID)
-		util.Assertf(found, "can't fetch root record for %s", a.baselineBranch.IDShortString())
-
-		prevCoverage = rr.LedgerCoverage
-	}
-	return prevCoverage.MakeNext(int(a.vid.Slot())-int(a.baselineBranch.Slot())+1, coverageDelta)
 }
 
 func (a *sequencerAttacher) calculateSequencerTxStats() {
@@ -86,7 +75,7 @@ func (a *sequencerAttacher) calculateSequencerTxStats() {
 	}
 	a.stats.numTransactions = len(a.validPastVertices)
 	a.stats.numCreatedOutputs = len(a.rooted)
-	a.stats.coverage = a.ledgerCoverage(coverageDelta)
+	a.stats.coverage = a.ledgerCoverage(coverageDelta, a.vid.Timestamp())
 }
 
 func (a *sequencerAttacher) checkPastConeVerticesConsistent() (err error) {

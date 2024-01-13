@@ -12,11 +12,12 @@ import (
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/proxima/util/set"
 )
 
 type (
 	sequencerAttacher struct {
-		inputAttacher
+		pastConeAttacher
 		vid       *vertex.WrappedTx
 		ctx       context.Context
 		closeOnce sync.Once
@@ -125,13 +126,13 @@ func EnsureLatestBranches(env Environment) error {
 
 func newSequencerAttacher(vid *vertex.WrappedTx, env Environment, ctx context.Context) *sequencerAttacher {
 	ret := &sequencerAttacher{
-		inputAttacher: *newInputAttacher(vid.IDShortString(), env),
-		ctx:           ctx,
-		vid:           vid,
-		pokeChan:      make(chan *vertex.WrappedTx, 1),
-		stats:         &attachStats{},
+		pastConeAttacher: newPastConeAttacher(env, vid.IDShortString()),
+		ctx:              ctx,
+		vid:              vid,
+		pokeChan:         make(chan *vertex.WrappedTx, 1),
+		stats:            &attachStats{},
 	}
-	ret.inputAttacher.pokeMe = func(vid *vertex.WrappedTx) {
+	ret.pastConeAttacher.pokeMe = func(vid *vertex.WrappedTx) {
 		ret.pokeMe(vid)
 	}
 	ret.vid.OnPoke(func(withVID *vertex.WrappedTx) {
@@ -201,6 +202,52 @@ func (a *sequencerAttacher) close() {
 		close(a.pokeChan)
 		a.vid.OnPoke(nil)
 		a.pokeMutex.Unlock()
+	})
+}
+
+func (a *sequencerAttacher) solidifyBaselineState() vertex.Status {
+	return a.lazyRepeat(func() vertex.Status {
+		var ok bool
+		success := false
+		a.vid.Unwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
+			ok = a.solidifyBaseline(v)
+			if ok && v.FlagsUp(vertex.FlagBaselineSolid) {
+				a.baselineBranch = v.BaselineBranch
+				success = true
+			}
+		}})
+		switch {
+		case !ok:
+			return vertex.Bad
+		case success:
+			return vertex.Good
+		default:
+			return vertex.Undefined
+		}
+	})
+}
+
+// solidifyPastCone solidifies and validates sequencer transaction in the context of known baseline state
+func (a *sequencerAttacher) solidifyPastCone() vertex.Status {
+	return a.lazyRepeat(func() (status vertex.Status) {
+		ok := true
+		success := false
+		a.vid.Unwrap(vertex.UnwrapOptions{
+			Vertex: func(v *vertex.Vertex) {
+				ok = a.attachVertex(v, a.vid, ledger.NilLogicalTime, set.New[*vertex.WrappedTx]())
+				if ok {
+					success = v.FlagsUp(vertex.FlagsSequencerVertexCompleted)
+				}
+			},
+		})
+		switch {
+		case !ok:
+			return vertex.Bad
+		case success:
+			return vertex.Good
+		default:
+			return vertex.Undefined
+		}
 	})
 }
 

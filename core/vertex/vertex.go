@@ -6,13 +6,13 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/ledger"
-	transaction2 "github.com/lunfardo314/proxima/ledger/transaction"
+	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
 	"github.com/lunfardo314/proxima/util/set"
 )
 
-func New(tx *transaction2.Transaction) *Vertex {
+func New(tx *transaction.Transaction) *Vertex {
 	ret := &Vertex{
 		Tx:           tx,
 		Inputs:       make([]*WrappedTx, tx.NumInputs()),
@@ -50,11 +50,11 @@ func (v *Vertex) ValidateConstraints(traceOption ...int) error {
 	if v.FlagsUp(FlagConstraintsValid) {
 		return nil
 	}
-	traceOpt := transaction2.TraceOptionFailedConstraints
+	traceOpt := transaction.TraceOptionFailedConstraints
 	if len(traceOption) > 0 {
 		traceOpt = traceOption[0]
 	}
-	ctx, err := transaction2.ContextFromTransaction(v.Tx, v.GetConsumedOutput, traceOpt)
+	ctx, err := transaction.ContextFromTransaction(v.Tx, v.GetConsumedOutput, traceOpt)
 	if err != nil {
 		return err
 	}
@@ -66,7 +66,7 @@ func (v *Vertex) ValidateConstraints(traceOption ...int) error {
 }
 
 func (v *Vertex) ValidateDebug() (string, error) {
-	ctx, err := transaction2.ContextFromTransaction(v.Tx, v.GetConsumedOutput)
+	ctx, err := transaction.ContextFromTransaction(v.Tx, v.GetConsumedOutput)
 	if err != nil {
 		return "", err
 	}

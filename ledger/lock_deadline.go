@@ -31,7 +31,7 @@ func NewDeadlineLock(deadline LogicalTime, main, expiry Accountable) *DeadlineLo
 func (dl *DeadlineLock) source() string {
 	return fmt.Sprintf(deadlineLockTemplate,
 		dl.Deadline.Slot(),
-		dl.Deadline.TimeTick(),
+		dl.Deadline.Tick(),
 		hex.EncodeToString(dl.ConstraintMain.AccountID()),
 		hex.EncodeToString(dl.ConstraintExpiry.AccountID()),
 	)
@@ -42,7 +42,7 @@ func (dl *DeadlineLock) Bytes() []byte {
 }
 
 func (dl *DeadlineLock) String() string {
-	return fmt.Sprintf("%s(%d,%d,%s,%s)", DeadlineLockName, dl.Deadline.Slot(), dl.Deadline.TimeTick(), dl.ConstraintMain, dl.ConstraintExpiry)
+	return fmt.Sprintf("%s(%d,%d,%s,%s)", DeadlineLockName, dl.Deadline.Slot(), dl.Deadline.Tick(), dl.ConstraintMain, dl.ConstraintExpiry)
 }
 
 func (dl *DeadlineLock) Accounts() []Accountable {

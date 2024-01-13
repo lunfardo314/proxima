@@ -553,7 +553,7 @@ func (r *multiChainTestData) createSequencerChain1(chainIdx int, pace int, print
 		//r.t.Logf("       %s -> %s", prevTs.String(), curTs.String())
 
 		par.StemInput = nil
-		if par.Timestamp.TimeTick() == 0 {
+		if par.Timestamp.Tick() == 0 {
 			par.StemInput = lastStem
 		}
 
@@ -747,7 +747,7 @@ func TestMultiChain(t *testing.T) {
 		ts := ledger.MaxLogicalTime(tsToBeEndorsed, txEndorser.Timestamp())
 		ts = ts.AddTicks(ledger.TransactionPaceInTicks)
 		t.Logf("timestamp to be endorsed: %s, endorser's timestamp: %s", tsToBeEndorsed.String(), ts.String())
-		require.True(t, ts.TimeTick() != 0 && ts.Slot() == txEndorser.Timestamp().Slot())
+		require.True(t, ts.Tick() != 0 && ts.Slot() == txEndorser.Timestamp().Slot())
 		t.Logf("ID to be endorsed: %s", idToBeEndorsed.StringShort())
 
 		txBytes, err = txbuilder2.MakeSequencerTransaction(txbuilder2.MakeSequencerTransactionParams{
@@ -938,7 +938,7 @@ func (r *multiChainTestData) createSequencerChains1(pace int, howLong int) [][]b
 		var endorse []*ledger.TransactionID
 		var stemOut *ledger.OutputWithID
 
-		if ts.TimeTick() == 0 {
+		if ts.Tick() == 0 {
 			// create branch tx
 			stemOut = lastStemOutput
 		} else {
@@ -1026,7 +1026,7 @@ func (r *multiChainTestData) createSequencerChains2(pace int, howLong int) [][]b
 		endorse := make([]*ledger.TransactionID, 0)
 		var stemOut *ledger.OutputWithID
 
-		if ts.TimeTick() == 0 {
+		if ts.Tick() == 0 {
 			// create branch tx
 			stemOut = lastStemOutput
 		} else {
@@ -1158,7 +1158,7 @@ func (r *multiChainTestData) createSequencerChains3(pace int, howLong int, print
 		endorse := make([]*ledger.TransactionID, 0)
 		var stemOut *ledger.OutputWithID
 
-		if ts.TimeTick() == 0 {
+		if ts.Tick() == 0 {
 			// create branch tx
 			stemOut = lastStemOutput
 		} else {
@@ -1349,7 +1349,7 @@ func (r *multiChainTestData) create1SequencerChain(pace int, howLong int, inflat
 		}
 		var stemOut *ledger.OutputWithID
 		var inflationAmount uint64
-		if ts.TimeTick() == 0 {
+		if ts.Tick() == 0 {
 			// create branch tx
 			stemOut = lastStemOutput
 			inflationAmount = inflation()

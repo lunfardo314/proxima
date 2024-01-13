@@ -709,7 +709,7 @@ func (r *multiChainTestData) createSequencerChain1(chainIdx int, pace int, print
 		//r.t.Logf("       %s -> %s", prevTs.String(), curTs.String())
 
 		par.StemInput = nil
-		if par.Timestamp.TimeTick() == 0 {
+		if par.Timestamp.Tick() == 0 {
 			par.StemInput = lastStem
 		}
 
@@ -802,7 +802,7 @@ func (r *multiChainTestData) createSequencerChains1(pace int, howLong int) [][]b
 		var endorse []*ledger.TransactionID
 		var stemOut *ledger.OutputWithID
 
-		if ts.TimeTick() == 0 {
+		if ts.Tick() == 0 {
 			// create branch tx
 			stemOut = lastStemOutput
 		} else {
@@ -890,7 +890,7 @@ func (r *multiChainTestData) createSequencerChains2(pace int, howLong int) [][]b
 		endorse := make([]*ledger.TransactionID, 0)
 		var stemOut *ledger.OutputWithID
 
-		if ts.TimeTick() == 0 {
+		if ts.Tick() == 0 {
 			// create branch tx
 			stemOut = lastStemOutput
 		} else {
@@ -1022,7 +1022,7 @@ func (r *multiChainTestData) createSequencerChains3(pace int, howLong int, print
 		endorse := make([]*ledger.TransactionID, 0)
 		var stemOut *ledger.OutputWithID
 
-		if ts.TimeTick() == 0 {
+		if ts.Tick() == 0 {
 			// create branch tx
 			stemOut = lastStemOutput
 		} else {

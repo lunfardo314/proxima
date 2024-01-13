@@ -38,8 +38,8 @@ func TestTime(t *testing.T) {
 		t.Logf("%s", ts1)
 		require.EqualValues(t, 100, ts0.Slot())
 		require.EqualValues(t, 120, ts1.Slot())
-		require.EqualValues(t, 33, ts0.TimeTick())
-		require.EqualValues(t, 55, ts1.TimeTick())
+		require.EqualValues(t, 33, ts0.Tick())
+		require.EqualValues(t, 55, ts1.Tick())
 
 		diff := DiffTimeTicks(ts0, ts1)
 		require.EqualValues(t, -(20*TicksPerSlot + 22), diff)

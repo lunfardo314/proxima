@@ -130,7 +130,7 @@ func (txid *TransactionID) TimeSlot() Slot {
 }
 
 func (txid *TransactionID) TimeTick() Tick {
-	return txid.Timestamp().TimeTick()
+	return txid.Timestamp().Tick()
 }
 
 func (txid *TransactionID) IsSequencerMilestone() bool {

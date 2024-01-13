@@ -74,7 +74,7 @@ func (b *baseProposer) proposeBase(extend utangle_old.WrappedOutput) (*transacti
 		return nil, true
 	}
 
-	if b.targetTs.TimeTick() == 0 {
+	if b.targetTs.Tick() == 0 {
 		b.trace("making branch, extending %s", extend.IDShort())
 		// generate branch, no fee outputs are consumed
 		baseStem := extend.VID.BaseStemOutput(b.factory.utangle)
