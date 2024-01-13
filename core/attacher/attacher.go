@@ -47,22 +47,27 @@ type (
 		Log() *zap.SugaredLogger
 	}
 
-	attacher struct {
+	inputAttacher struct {
 		env                   Environment
-		vid                   *vertex.WrappedTx
+		name                  string
 		reason                error
 		baselineBranch        *vertex.WrappedTx
 		validPastVertices     set.Set[*vertex.WrappedTx]
 		undefinedPastVertices set.Set[*vertex.WrappedTx]
 		rooted                map[*vertex.WrappedTx]set.Set[byte]
-		ctx                   context.Context
-		closeOnce             sync.Once
-		pokeChan              chan *vertex.WrappedTx
-		pokeMutex             sync.Mutex
-		stats                 *attachStats
-		closed                bool
-		flags                 uint8
+		pokeMe                func(vid *vertex.WrappedTx)
 		forceTrace1Ahead      bool
+	}
+
+	attacher struct {
+		inputAttacher
+		vid       *vertex.WrappedTx
+		ctx       context.Context
+		closeOnce sync.Once
+		pokeChan  chan *vertex.WrappedTx
+		pokeMutex sync.Mutex
+		stats     *attachStats
+		closed    bool
 	}
 	_attacherOptions struct {
 		ctx                context.Context
@@ -164,14 +169,20 @@ func EnsureLatestBranches(env Environment) error {
 
 func newAttacher(vid *vertex.WrappedTx, env Environment, ctx context.Context) *attacher {
 	ret := &attacher{
-		ctx:                   ctx,
-		vid:                   vid,
-		env:                   env,
-		pokeChan:              make(chan *vertex.WrappedTx, 1),
-		rooted:                make(map[*vertex.WrappedTx]set.Set[byte]),
-		validPastVertices:     set.New[*vertex.WrappedTx](),
-		undefinedPastVertices: set.New[*vertex.WrappedTx](),
-		stats:                 &attachStats{},
+		inputAttacher: inputAttacher{
+			name:                  vid.IDShortString(),
+			env:                   env,
+			rooted:                make(map[*vertex.WrappedTx]set.Set[byte]),
+			validPastVertices:     set.New[*vertex.WrappedTx](),
+			undefinedPastVertices: set.New[*vertex.WrappedTx](),
+		},
+		ctx:      ctx,
+		vid:      vid,
+		pokeChan: make(chan *vertex.WrappedTx, 1),
+		stats:    &attachStats{},
+	}
+	ret.inputAttacher.pokeMe = func(vid *vertex.WrappedTx) {
+		ret.pokeMe(vid)
 	}
 	ret.vid.OnPoke(func(withVID *vertex.WrappedTx) {
 		ret._doPoke(withVID)
@@ -233,39 +244,6 @@ func logFinalStatusString(vid *vertex.WrappedTx, stats *attachStats) string {
 	return msg + memStr
 }
 
-func (a *attacher) baselineStateReader() multistate.SugaredStateReader {
-	return multistate.MakeSugared(a.env.GetStateReaderForTheBranch(a.baselineBranch))
-}
-
-func (a *attacher) setReason(err error) {
-	a.tracef("set reason: '%v'", err)
-	a.reason = err
-}
-
-func (a *attacher) pastConeVertexVisited(vid *vertex.WrappedTx, good bool) {
-	if good {
-		a.tracef("pastConeVertexVisited: %s is GOOD", vid.IDShortString)
-		delete(a.undefinedPastVertices, vid)
-		a.validPastVertices.Insert(vid)
-	} else {
-		util.Assertf(!a.validPastVertices.Contains(vid), "!a.validPastVertices.Contains(vid)")
-		a.undefinedPastVertices.Insert(vid)
-		a.tracef("pastConeVertexVisited: %s is UNDEF", vid.IDShortString)
-	}
-}
-
-func (a *attacher) isKnownVertex(vid *vertex.WrappedTx) bool {
-	if a.validPastVertices.Contains(vid) {
-		util.Assertf(!a.undefinedPastVertices.Contains(vid), "!a.undefinedPastVertices.Contains(vid)")
-		return true
-	}
-	if a.undefinedPastVertices.Contains(vid) {
-		util.Assertf(!a.validPastVertices.Contains(vid), "!a.validPastVertices.Contains(vid)")
-		return true
-	}
-	return false
-}
-
 func (a *attacher) close() {
 	a.closeOnce.Do(func() {
 		a.pokeMutex.Lock()
@@ -289,29 +267,4 @@ func (a *attacher) pokeMe(with *vertex.WrappedTx) {
 	//a.trace1Ahead()
 	a.tracef("pokeMe with %s", with.IDShortString())
 	a.env.PokeMe(a.vid, with)
-}
-
-// not thread safe
-var trace = false
-
-func SetTraceOn() {
-	trace = true
-}
-
-func (a *attacher) trace1Ahead() {
-	a.forceTrace1Ahead = true
-}
-
-func (a *attacher) tracef(format string, lazyArgs ...any) {
-	if trace || a.forceTrace1Ahead {
-		format1 := "TRACE [attacher] " + a.vid.IDShortString() + ": " + format
-		a.env.Log().Infof(format1, util.EvalLazyArgs(lazyArgs...)...)
-		a.forceTrace1Ahead = false
-	}
-}
-
-func tracef(env Environment, format string, lazyArgs ...any) {
-	if trace {
-		env.Log().Infof("TRACE "+format, util.EvalLazyArgs(lazyArgs...)...)
-	}
 }
