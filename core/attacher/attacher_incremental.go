@@ -14,17 +14,15 @@ import (
 	"golang.org/x/exp/maps"
 )
 
-type (
-	IncrementalAttacher struct {
-		pastConeAttacher
-		extend         *vertex.WrappedTx
-		endorse        []*vertex.WrappedTx
-		tagAlongInputs []vertex.WrappedOutput
-		targetTs       ledger.LogicalTime
-		seqOutput      vertex.WrappedOutput
-		stemOutput     vertex.WrappedOutput
-	}
-)
+type IncrementalAttacher struct {
+	pastConeAttacher
+	extend         *vertex.WrappedTx
+	endorse        []*vertex.WrappedTx
+	tagAlongInputs []vertex.WrappedOutput
+	targetTs       ledger.LogicalTime
+	seqOutput      vertex.WrappedOutput
+	stemOutput     vertex.WrappedOutput
+}
 
 func NewIncrementalAttacher(name string, env Environment, targetTs ledger.LogicalTime, extend *vertex.WrappedTx, endorse ...*vertex.WrappedTx) (*IncrementalAttacher, error) {
 	util.Assertf(extend.IsSequencerMilestone(), "extend.IsSequencerMilestone()")
