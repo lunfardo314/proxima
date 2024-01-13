@@ -133,3 +133,7 @@ func (a *IncrementalAttacher) InsertTagAlongInput(wOut vertex.WrappedOutput, vis
 func (a *IncrementalAttacher) MakeTransaction() (*transaction.Transaction, error) {
 	return nil, nil
 }
+
+func (a *IncrementalAttacher) NumInputs() int {
+	return len(a.tagAlongInputs) + 2
+}
