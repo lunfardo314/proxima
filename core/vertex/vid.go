@@ -316,6 +316,30 @@ func (vid *WrappedTx) SequencerPredecessor() (ret *WrappedTx) {
 	return
 }
 
+func (vid *WrappedTx) SequencerWrappedOutput() (ret WrappedOutput) {
+	util.Assertf(vid.IsSequencerMilestone(), "vid.IsSequencerMilestone()")
+
+	vid.RUnwrap(UnwrapOptions{
+		Vertex: func(v *Vertex) {
+			if seqData := v.Tx.SequencerTransactionData(); seqData != nil {
+				ret = WrappedOutput{
+					VID:   vid,
+					Index: v.Tx.SequencerTransactionData().SequencerOutputIndex,
+				}
+			}
+		},
+		VirtualTx: func(v *VirtualTransaction) {
+			if v.sequencerOutputs != nil {
+				ret = WrappedOutput{
+					VID:   vid,
+					Index: v.sequencerOutputs[0],
+				}
+			}
+		},
+	})
+	return
+}
+
 func (vid *WrappedTx) IsVertex() (ret bool) {
 	vid.RUnwrap(UnwrapOptions{Vertex: func(_ *Vertex) {
 		ret = true

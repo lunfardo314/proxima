@@ -391,7 +391,7 @@ func (a *pastConeAttacher) attachRooted(wOut vertex.WrappedOutput, consumerTxID 
 		return true, true
 	}
 	// output has not been found in the state -> Bad
-	err := fmt.Errorf("ouput %s (consumed by %s) is not in the state %s", wOut.IDShortString(), consumerTxID.StringShort(), a.baselineBranch.IDShortString())
+	err := fmt.Errorf("output %s (consumed by %s) is not in the state %s", wOut.IDShortString(), consumerTxID.StringShort(), a.baselineBranch.IDShortString())
 	a.setReason(err)
 	a.tracef("%v", err)
 	return false, false
