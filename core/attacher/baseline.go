@@ -5,7 +5,7 @@ import (
 	"github.com/lunfardo314/proxima/util"
 )
 
-func (a *attacher) solidifyBaselineState() vertex.Status {
+func (a *sequencerAttacher) solidifyBaselineState() vertex.Status {
 	return a.lazyRepeat(func() vertex.Status {
 		var ok bool
 		success := false
@@ -29,14 +29,14 @@ func (a *attacher) solidifyBaselineState() vertex.Status {
 
 // solidifyBaseline directs attachment process down the DAG to reach the deterministically known baseline state
 // for a sequencer milestone. Existence of it is guaranteed by the ledger constraints
-func (a *attacher) solidifyBaseline(v *vertex.Vertex) (ok bool) {
+func (a *sequencerAttacher) solidifyBaseline(v *vertex.Vertex) (ok bool) {
 	if v.Tx.IsBranchTransaction() {
 		return a.solidifyStem(v)
 	}
 	return a.solidifySequencerBaseline(v)
 }
 
-func (a *attacher) solidifyStem(v *vertex.Vertex) (ok bool) {
+func (a *sequencerAttacher) solidifyStem(v *vertex.Vertex) (ok bool) {
 	stemInputIdx := v.StemInputIndex()
 	if v.Inputs[stemInputIdx] == nil {
 		// predecessor stem is pending
@@ -62,7 +62,7 @@ func (a *attacher) solidifyStem(v *vertex.Vertex) (ok bool) {
 	}
 }
 
-func (a *attacher) solidifySequencerBaseline(v *vertex.Vertex) (ok bool) {
+func (a *sequencerAttacher) solidifySequencerBaseline(v *vertex.Vertex) (ok bool) {
 	// regular sequencer tx. Go to the direction of the baseline branch
 	predOid, predIdx := v.Tx.SequencerChainPredecessor()
 	util.Assertf(predOid != nil, "inconsistency: sequencer milestone cannot be a chain origin")

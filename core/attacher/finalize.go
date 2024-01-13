@@ -8,7 +8,7 @@ import (
 	"github.com/lunfardo314/proxima/util"
 )
 
-func (a *attacher) finalize() {
+func (a *sequencerAttacher) finalize() {
 	a.tracef("finalize")
 
 	if a.vid.IsBranchTransaction() {
@@ -26,7 +26,7 @@ func (a *attacher) finalize() {
 	}
 }
 
-func (a *attacher) commitBranch() {
+func (a *sequencerAttacher) commitBranch() {
 	util.Assertf(a.vid.IsBranchTransaction(), "a.vid.IsBranchTransaction()")
 
 	muts := multistate.NewMutations()
@@ -64,7 +64,7 @@ func (a *attacher) commitBranch() {
 	upd.MustUpdate(muts, &stemOID, &seqID, a.stats.coverage)
 }
 
-func (a *attacher) ledgerCoverage(coverageDelta uint64) multistate.LedgerCoverage {
+func (a *sequencerAttacher) ledgerCoverage(coverageDelta uint64) multistate.LedgerCoverage {
 	var prevCoverage multistate.LedgerCoverage
 	if multistate.HistoryCoverageDeltas > 1 {
 		rr, found := multistate.FetchRootRecord(a.env.StateStore(), a.baselineBranch.ID)
@@ -75,7 +75,7 @@ func (a *attacher) ledgerCoverage(coverageDelta uint64) multistate.LedgerCoverag
 	return prevCoverage.MakeNext(int(a.vid.Slot())-int(a.baselineBranch.Slot())+1, coverageDelta)
 }
 
-func (a *attacher) calculateSequencerTxStats() {
+func (a *sequencerAttacher) calculateSequencerTxStats() {
 	coverageDelta := uint64(0)
 
 	for vid, consumed := range a.rooted {
@@ -89,7 +89,7 @@ func (a *attacher) calculateSequencerTxStats() {
 	a.stats.coverage = a.ledgerCoverage(coverageDelta)
 }
 
-func (a *attacher) checkPastConeVerticesConsistent() (err error) {
+func (a *sequencerAttacher) checkPastConeVerticesConsistent() (err error) {
 	defer a.env.Log().Sync()
 
 	if len(a.undefinedPastVertices) != 0 {

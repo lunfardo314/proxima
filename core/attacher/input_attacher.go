@@ -4,13 +4,69 @@ import (
 	"fmt"
 
 	"github.com/lunfardo314/proxima/core/vertex"
+	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
 	"github.com/lunfardo314/proxima/util/set"
+	"go.uber.org/zap"
 )
+
+type (
+	DAGAccessEnvironment interface {
+		WithGlobalWriteLock(fun func())
+		GetVertexNoLock(txid *ledger.TransactionID) *vertex.WrappedTx
+		GetVertex(txid *ledger.TransactionID) *vertex.WrappedTx
+		AddVertexNoLock(vid *vertex.WrappedTx)
+		StateStore() global.StateStore
+		GetStateReaderForTheBranch(branch *vertex.WrappedTx) global.IndexedStateReader
+		AddBranchNoLock(branch *vertex.WrappedTx)
+		EvidenceIncomingBranch(txid *ledger.TransactionID, seqID ledger.ChainID)
+		EvidenceBookedBranch(txid *ledger.TransactionID, seqID ledger.ChainID)
+	}
+
+	PullEnvironment interface {
+		Pull(txid ledger.TransactionID)
+		PokeMe(me, with *vertex.WrappedTx)
+		PokeAllWith(wanted *vertex.WrappedTx)
+	}
+	PostEventEnvironment interface {
+		PostEventNewGood(vid *vertex.WrappedTx)
+		PostEventNewValidated(vid *vertex.WrappedTx)
+	}
+
+	Environment interface {
+		DAGAccessEnvironment
+		PullEnvironment
+		PostEventEnvironment
+		Log() *zap.SugaredLogger
+	}
+
+	inputAttacher struct {
+		env                   Environment
+		name                  string
+		reason                error
+		baselineBranch        *vertex.WrappedTx
+		validPastVertices     set.Set[*vertex.WrappedTx]
+		undefinedPastVertices set.Set[*vertex.WrappedTx]
+		rooted                map[*vertex.WrappedTx]set.Set[byte]
+		pokeMe                func(vid *vertex.WrappedTx)
+		forceTrace1Ahead      bool
+	}
+)
+
+func newInputAttacher(name string, env Environment) *inputAttacher {
+	return &inputAttacher{
+		name:                  name,
+		env:                   env,
+		rooted:                make(map[*vertex.WrappedTx]set.Set[byte]),
+		validPastVertices:     set.New[*vertex.WrappedTx](),
+		undefinedPastVertices: set.New[*vertex.WrappedTx](),
+		pokeMe:                func(_ *vertex.WrappedTx) {},
+	}
+}
 
 func (ia *inputAttacher) baselineStateReader() multistate.SugaredStateReader {
 	return multistate.MakeSugared(ia.env.GetStateReaderForTheBranch(ia.baselineBranch))
@@ -133,7 +189,7 @@ func (ia *inputAttacher) attachEndorsements(v *vertex.Vertex, parasiticChainHori
 		if endorsedStatus == vertex.Good {
 			if !vidEndorsed.IsBranchTransaction() {
 				// do not go behind branch
-				// go deeper only if endorsement is good in order not to interfere with its attacher
+				// go deeper only if endorsement is good in order not to interfere with its sequencerAttacher
 				ok := true
 				vidEndorsed.Unwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
 					ok = ia.attachVertex(v, vidEndorsed, parasiticChainHorizon, visited) // <<<<<<<<<<< recursion
@@ -147,7 +203,7 @@ func (ia *inputAttacher) attachEndorsements(v *vertex.Vertex, parasiticChainHori
 			ia.tracef("endorsements are NOT all good in %s because of endorsed %s", v.Tx.IDShortString(), vidEndorsed.IDShortString())
 			allGood = false
 
-			// ask environment to poke this attacher whenever something change with vidEndorsed
+			// ask environment to poke this sequencerAttacher whenever something change with vidEndorsed
 			ia.pokeMe(vidEndorsed)
 		}
 	}
@@ -410,7 +466,7 @@ func (ia *inputAttacher) trace1Ahead() {
 
 func (ia *inputAttacher) tracef(format string, lazyArgs ...any) {
 	if trace || ia.forceTrace1Ahead {
-		format1 := "TRACE [attacher " + ia.name + "] " + format
+		format1 := "TRACE [sequencerAttacher " + ia.name + "] " + format
 		ia.env.Log().Infof(format1, util.EvalLazyArgs(lazyArgs...)...)
 		ia.forceTrace1Ahead = false
 	}

@@ -83,7 +83,7 @@ func AttachOutputID(oid ledger.OutputID, env Environment, opts ...Option) vertex
 	}
 }
 
-// AttachTransaction attaches new incoming transaction. For sequencer transaction it starts attacher routine
+// AttachTransaction attaches new incoming transaction. For sequencer transaction it starts sequencerAttacher routine
 // which manages solidification pull until transaction becomes solid or stopped by the context
 func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Option) (vid *vertex.WrappedTx) {
 	options := &_attacherOptions{}
@@ -97,7 +97,7 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Opt
 	}
 	vid = AttachTxID(*tx.ID(), env, OptionDoNotLoadBranch, OptionInvokedBy("addTx"))
 	vid.Unwrap(vertex.UnwrapOptions{
-		// full vertex will be ignored, virtual tx will be converted into full vertex and attacher started, if necessary
+		// full vertex will be ignored, virtual tx will be converted into full vertex and sequencerAttacher started, if necessary
 		VirtualTx: func(v *vertex.VirtualTransaction) {
 			vid.ConvertVirtualTxToVertexNoLock(vertex.New(tx))
 
@@ -117,7 +117,7 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Opt
 				env.PokeAllWith(vid)
 				return
 			}
-			// starts attacher goroutine for sequencer transaction
+			// starts sequencerAttacher goroutine for sequencer transaction
 			ctx := options.ctx
 			if ctx == nil {
 				ctx = context.Background()

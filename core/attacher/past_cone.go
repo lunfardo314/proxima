@@ -7,7 +7,7 @@ import (
 )
 
 // solidifyPastCone solidifies and validates sequencer transaction in the context of known baseline state
-func (a *attacher) solidifyPastCone() vertex.Status {
+func (a *sequencerAttacher) solidifyPastCone() vertex.Status {
 	return a.lazyRepeat(func() (status vertex.Status) {
 		ok := true
 		success := false

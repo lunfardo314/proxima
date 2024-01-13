@@ -8,58 +8,14 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/core/vertex"
-	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/util"
-	"github.com/lunfardo314/proxima/util/set"
-	"go.uber.org/zap"
 )
 
 type (
-	DAGAccessEnvironment interface {
-		WithGlobalWriteLock(fun func())
-		GetVertexNoLock(txid *ledger.TransactionID) *vertex.WrappedTx
-		GetVertex(txid *ledger.TransactionID) *vertex.WrappedTx
-		AddVertexNoLock(vid *vertex.WrappedTx)
-		StateStore() global.StateStore
-		GetStateReaderForTheBranch(branch *vertex.WrappedTx) global.IndexedStateReader
-		AddBranchNoLock(branch *vertex.WrappedTx)
-		EvidenceIncomingBranch(txid *ledger.TransactionID, seqID ledger.ChainID)
-		EvidenceBookedBranch(txid *ledger.TransactionID, seqID ledger.ChainID)
-	}
-
-	PullEnvironment interface {
-		Pull(txid ledger.TransactionID)
-		PokeMe(me, with *vertex.WrappedTx)
-		PokeAllWith(wanted *vertex.WrappedTx)
-	}
-	PostEventEnvironment interface {
-		PostEventNewGood(vid *vertex.WrappedTx)
-		PostEventNewValidated(vid *vertex.WrappedTx)
-	}
-
-	Environment interface {
-		DAGAccessEnvironment
-		PullEnvironment
-		PostEventEnvironment
-		Log() *zap.SugaredLogger
-	}
-
-	inputAttacher struct {
-		env                   Environment
-		name                  string
-		reason                error
-		baselineBranch        *vertex.WrappedTx
-		validPastVertices     set.Set[*vertex.WrappedTx]
-		undefinedPastVertices set.Set[*vertex.WrappedTx]
-		rooted                map[*vertex.WrappedTx]set.Set[byte]
-		pokeMe                func(vid *vertex.WrappedTx)
-		forceTrace1Ahead      bool
-	}
-
-	attacher struct {
+	sequencerAttacher struct {
 		inputAttacher
 		vid       *vertex.WrappedTx
 		ctx       context.Context
@@ -93,7 +49,7 @@ const (
 )
 
 func runAttacher(vid *vertex.WrappedTx, env Environment, ctx context.Context) (vertex.Status, *attachStats, error) {
-	a := newAttacher(vid, env, ctx)
+	a := newSequencerAttacher(vid, env, ctx)
 	defer func() {
 		go a.close()
 	}()
@@ -167,19 +123,13 @@ func EnsureLatestBranches(env Environment) error {
 	return nil
 }
 
-func newAttacher(vid *vertex.WrappedTx, env Environment, ctx context.Context) *attacher {
-	ret := &attacher{
-		inputAttacher: inputAttacher{
-			name:                  vid.IDShortString(),
-			env:                   env,
-			rooted:                make(map[*vertex.WrappedTx]set.Set[byte]),
-			validPastVertices:     set.New[*vertex.WrappedTx](),
-			undefinedPastVertices: set.New[*vertex.WrappedTx](),
-		},
-		ctx:      ctx,
-		vid:      vid,
-		pokeChan: make(chan *vertex.WrappedTx, 1),
-		stats:    &attachStats{},
+func newSequencerAttacher(vid *vertex.WrappedTx, env Environment, ctx context.Context) *sequencerAttacher {
+	ret := &sequencerAttacher{
+		inputAttacher: *newInputAttacher(vid.IDShortString(), env),
+		ctx:           ctx,
+		vid:           vid,
+		pokeChan:      make(chan *vertex.WrappedTx, 1),
+		stats:         &attachStats{},
 	}
 	ret.inputAttacher.pokeMe = func(vid *vertex.WrappedTx) {
 		ret.pokeMe(vid)
@@ -190,7 +140,7 @@ func newAttacher(vid *vertex.WrappedTx, env Environment, ctx context.Context) *a
 	return ret
 }
 
-func (a *attacher) lazyRepeat(fun func() vertex.Status) vertex.Status {
+func (a *sequencerAttacher) lazyRepeat(fun func() vertex.Status) vertex.Status {
 	for {
 		if status := fun(); status != vertex.Undefined {
 			return status
@@ -244,7 +194,7 @@ func logFinalStatusString(vid *vertex.WrappedTx, stats *attachStats) string {
 	return msg + memStr
 }
 
-func (a *attacher) close() {
+func (a *sequencerAttacher) close() {
 	a.closeOnce.Do(func() {
 		a.pokeMutex.Lock()
 		a.closed = true
@@ -254,7 +204,7 @@ func (a *attacher) close() {
 	})
 }
 
-func (a *attacher) _doPoke(msg *vertex.WrappedTx) {
+func (a *sequencerAttacher) _doPoke(msg *vertex.WrappedTx) {
 	a.pokeMutex.Lock()
 	defer a.pokeMutex.Unlock()
 
@@ -263,7 +213,7 @@ func (a *attacher) _doPoke(msg *vertex.WrappedTx) {
 	}
 }
 
-func (a *attacher) pokeMe(with *vertex.WrappedTx) {
+func (a *sequencerAttacher) pokeMe(with *vertex.WrappedTx) {
 	//a.trace1Ahead()
 	a.tracef("pokeMe with %s", with.IDShortString())
 	a.env.PokeMe(a.vid, with)
