@@ -10,6 +10,7 @@ import (
 
 	"github.com/lunfardo314/proxima/core/attacher"
 	"github.com/lunfardo314/proxima/core/dag"
+	"github.com/lunfardo314/proxima/core/tippool"
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/core/workflow"
 	"github.com/lunfardo314/proxima/genesis"
@@ -18,7 +19,6 @@ import (
 	txbuilder2 "github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/peering"
-	"github.com/lunfardo314/proxima/sequencer/tippool"
 	"github.com/lunfardo314/proxima/txstore"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/testutil"
@@ -1180,7 +1180,7 @@ func TestSeqChains(t *testing.T) {
 		tpools := make([]*tippool.SequencerTipPool, len(testData.chainOrigins))
 		testData.wrk.EnableTraceTag("tippool")
 		for i := range tpools {
-			tpools[i] = tippool.Start(fmt.Sprintf("seq_test%d", i), testData.wrk, testData.chainOrigins[i].ChainID)
+			tpools[i] = tippool.Start(testData.wrk, testData.chainOrigins[i].ChainID, fmt.Sprintf("seq_test%d", i))
 		}
 
 		var wg sync.WaitGroup

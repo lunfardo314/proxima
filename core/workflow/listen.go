@@ -9,6 +9,7 @@ import (
 	"github.com/lunfardo314/proxima/util/set"
 )
 
+// ListenToAccount listens to all unlockable with account ID
 func (w *Workflow) ListenToAccount(account ledger.Accountable, fun func(wOut vertex.WrappedOutput)) {
 	w.events.OnEvent(EventNewValidatedTx, func(vid *vertex.WrappedTx) {
 		var _indices [256]byte
@@ -37,18 +38,20 @@ func (w *Workflow) ListenToSequencers(fun func(vid *vertex.WrappedTx)) {
 	})
 }
 
+const fetchLastNTimeSlotsUponStartup = 5
+
 func (w *Workflow) ScanAccount(addr ledger.AccountID) set.Set[vertex.WrappedOutput] {
-	heaviest := util.Maximum(multistate.FetchRootRecordsNSlotsBack(w.StateStore(), 1), func(rr1, rr2 multistate.RootRecord) bool {
-		return rr1.LedgerCoverage.Sum() > rr2.LedgerCoverage.Sum()
-	})
-	rdr := multistate.MustNewSugaredReadableState(w.StateStore(), heaviest.Root)
-	oids, err := rdr.GetIDsLockedInAccount(addr)
-	util.AssertNoError(err)
+	roots := multistate.FetchRootRecordsNSlotsBack(w.StateStore(), fetchLastNTimeSlotsUponStartup)
 
 	ret := set.New[vertex.WrappedOutput]()
-	for _, oid := range oids {
-		ret.Insert(attacher.AttachOutputID(oid, w, attacher.OptionPullNonBranch, attacher.OptionInvokedBy("ScanAccount")))
+	for _, rr := range roots {
+		rdr := multistate.MustNewSugaredReadableState(w.StateStore(), rr.Root, 0)
+		oids, err := rdr.GetIDsLockedInAccount(addr)
+		util.AssertNoError(err)
+		for _, oid := range oids {
+			ret.Insert(attacher.AttachOutputID(oid, w, attacher.OptionPullNonBranch, attacher.OptionInvokedBy("ScanAccount")))
+		}
 	}
-	// TODO scan utangle
+	// TODO scan utangle?
 	return ret
 }

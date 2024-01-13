@@ -29,8 +29,8 @@ func NewSugaredReadableState(store common.KVReader, root common.VCommitment, cle
 	return MakeSugared(rdr), nil
 }
 
-func MustNewSugaredReadableState(store common.KVReader, root common.VCommitment) SugaredStateReader {
-	ret, err := NewSugaredReadableState(store, root)
+func MustNewSugaredReadableState(store common.KVReader, root common.VCommitment, clearCacheAsSize ...int) SugaredStateReader {
+	ret, err := NewSugaredReadableState(store, root, clearCacheAsSize...)
 	util.AssertNoError(err)
 	return ret
 }
