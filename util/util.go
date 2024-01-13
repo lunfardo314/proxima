@@ -8,8 +8,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/lunfardo314/proxima/util/set"
 	"golang.org/x/exp/constraints"
+	"golang.org/x/exp/maps"
 	"golang.org/x/text/language"
 	"golang.org/x/text/message"
 )
@@ -34,127 +34,30 @@ func ForEachUniquePair[T any](sl []T, fun func(a1, a2 T) bool) {
 	}
 }
 
-func Keys[K comparable, V any](m map[K]V, filter ...func(k K) bool) []K {
+func KeysFiltered[K comparable, V any](m map[K]V, filter func(k K) bool) []K {
 	ret := make([]K, 0, len(m))
-	if len(filter) == 0 {
-		for k := range m {
+	for k := range m {
+		if filter(k) {
 			ret = append(ret, k)
-		}
-	} else {
-		for k := range m {
-			if filter[0](k) {
-				ret = append(ret, k)
-			}
 		}
 	}
 	return ret
-}
-
-func HasKey[K comparable, V any](m map[K]V, k K) bool {
-	_, yes := m[k]
-	return yes
 }
 
 func KeysSorted[K comparable, V any](m map[K]V, less func(k1, k2 K) bool) []K {
-	ret := Keys(m)
+	ret := maps.Keys(m)
 	sort.Slice(ret, func(i, j int) bool {
 		return less(ret[i], ret[j])
 	})
-	return ret
-}
-
-// Values returns slice of values. Non-deterministic
-func Values[K comparable, V any](m map[K]V) []V {
-	ret := make([]V, 0, len(m))
-	for _, v := range m {
-		ret = append(ret, v)
-	}
-	return ret
-}
-
-func KeySet[K comparable, V any](m map[K]V, filter ...func(k K) bool) set.Set[K] {
-	ret := set.New[K]()
-	if len(filter) == 0 {
-		for k := range m {
-			ret.Insert(k)
-		}
-	} else {
-		for k := range m {
-			if filter[0](k) {
-				ret.Insert(k)
-			}
-		}
-	}
 	return ret
 }
 
 func SortKeys[K comparable, V any](m map[K]V, less func(k1, k2 K) bool) []K {
-	ret := Keys(m)
+	ret := maps.Keys(m)
 	sort.Slice(ret, func(i, j int) bool {
 		return less(ret[i], ret[j])
 	})
 	return ret
-}
-
-func SortValues[K comparable, V any](m map[K]V, less func(v1, v2 V) bool) []V {
-	ret := Values(m)
-	sort.Slice(ret, func(i, j int) bool {
-		return less(ret[i], ret[j])
-	})
-	return ret
-}
-
-func MergeKeys[K comparable, V any](maps ...map[K]V) map[K]struct{} {
-	ret := make(map[K]struct{}, 0)
-	for _, m := range maps {
-		for k := range m {
-			ret[k] = struct{}{}
-		}
-	}
-	return ret
-}
-
-func MinimumKey[K comparable, V any](m map[K]V, less func(k1, k2 K) bool) K {
-	var ret K
-	if len(m) == 0 {
-		return ret
-	}
-	for k := range m {
-		ret = k
-		break
-	}
-	for k := range m {
-		if less(k, ret) {
-			ret = k
-		}
-	}
-	return ret
-}
-
-func MaximumKey[K comparable, V any](m map[K]V, less func(k1, k2 K) bool) K {
-	return MaximumKey(m, func(k1, k2 K) bool {
-		return less(k2, k1)
-	})
-}
-
-func LargestCommonKey[K comparable, V any](m1, m2 map[K]V, less func(k1, k2 K) bool) (K, bool) {
-	greaterOrEqual := func(k1, k2 K) bool {
-		return !less(k1, k2)
-	}
-	ordered1 := SortKeys(m1, func(k1, k2 K) bool {
-		return greaterOrEqual(k1, k2) // desc
-	})
-	var ret K
-	var found bool
-	for _, k := range ordered1 {
-		if _, foundIn2 := m2[k]; foundIn2 {
-			if greaterOrEqual(k, ret) {
-				ret = k
-				found = true
-			}
-		}
-	}
-	return ret, found
 }
 
 func List[T any](elems ...T) []T {
@@ -189,14 +92,6 @@ func Minimum[T any](lst []T, less func(el1, el2 T) bool) T {
 		if less(el, ret) {
 			ret = el
 		}
-	}
-	return ret
-}
-
-func CloneMapShallow[K comparable, V any](m map[K]V) map[K]V {
-	ret := make(map[K]V)
-	for k, v := range m {
-		ret[k] = v
 	}
 	return ret
 }

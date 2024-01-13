@@ -7,6 +7,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger"
 	utangle "github.com/lunfardo314/proxima/utangle_old"
 	"github.com/lunfardo314/proxima/util"
+	"golang.org/x/exp/maps"
 )
 
 const SolidifyConsumerName = "solidify"
@@ -324,7 +325,7 @@ func (c *SolidifyConsumer) pullIfNeeded(vd *draftVertexData) {
 		vd.vertex.Tx.NumEndorsements(),
 	)
 	vd.allInputsAlreadyPulled = true
-	c.pull(neededFor, util.Keys(allTheRest)...)
+	c.pull(neededFor, maps.Keys(allTheRest)...)
 }
 
 func (c *SolidifyConsumer) postDropTxID(txid *ledger.TransactionID) {

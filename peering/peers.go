@@ -24,6 +24,7 @@ import (
 	"go.uber.org/atomic"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+	"golang.org/x/exp/maps"
 )
 
 type (
@@ -262,7 +263,7 @@ func (ps *Peers) getPeerIDs() []peer.ID {
 	ps.mutex.RLock()
 	defer ps.mutex.RUnlock()
 
-	return util.Keys(ps.peers)
+	return maps.Keys(ps.peers)
 }
 
 func (ps *Peers) getPeerIDsWithOpenComms() []peer.ID {

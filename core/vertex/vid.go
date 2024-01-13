@@ -12,6 +12,7 @@ import (
 	"github.com/lunfardo314/proxima/util/lines"
 	"github.com/lunfardo314/proxima/util/set"
 	"github.com/lunfardo314/proxima/util/testutil"
+	"golang.org/x/exp/maps"
 )
 
 // ErrDeletedVertexAccessed exception is raised by PanicAccessDeleted handler of RUnwrap vertex so that could be caught if necessary
@@ -631,7 +632,7 @@ func VerticesLines(vertices []*WrappedTx, prefix ...string) *lines.Lines {
 
 func VIDSetIDString(set set.Set[*WrappedTx], prefix ...string) string {
 	ret := lines.New(prefix...)
-	for _, vid := range util.Keys(set) {
+	for _, vid := range maps.Keys(set) {
 		ret.Add(vid.IDShortString())
 	}
 	return ret.Join(", ")

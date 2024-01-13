@@ -161,7 +161,7 @@ func (tp *SequencerTipPool) filterAndSortOutputs(filter func(o vertex.WrappedOut
 	tp.mutex.RLock()
 	defer tp.mutex.RUnlock()
 
-	ret := util.Keys(tp.outputs, filter)
+	ret := util.KeysFiltered(tp.outputs, filter)
 	sort.Slice(ret, func(i, j int) bool {
 		return ret[i].Timestamp().Before(ret[j].Timestamp())
 	})

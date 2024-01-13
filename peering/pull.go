@@ -13,6 +13,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/unitrie/common"
+	"golang.org/x/exp/maps"
 )
 
 // pull request message 1st byte is the type of the message. The rest is message body
@@ -98,7 +99,7 @@ func (ps *Peers) PullTransactionsFromRandomPeer(txids ...ledger.TransactionID) b
 	ps.mutex.RLock()
 	defer ps.mutex.RUnlock()
 
-	all := util.Keys(ps.peers)
+	all := maps.Keys(ps.peers)
 	for _, idx := range rand.Perm(len(all)) {
 		rndID := all[idx]
 		p := ps.peers[rndID]

@@ -108,6 +108,8 @@ func (a *IncrementalAttacher) insertStemInput(visited set.Set[*vertex.WrappedTx]
 	return nil
 }
 
+// InsertTagAlongInput inserts tag along input.
+// In case of failure return false with attacher state consistent
 func (a *IncrementalAttacher) InsertTagAlongInput(wOut vertex.WrappedOutput, visited set.Set[*vertex.WrappedTx]) bool {
 	// save state for rollback because in case of fail the side effect makes attacher inconsistent
 	// TODO is there a better way than cloning potentially big maps?

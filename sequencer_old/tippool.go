@@ -133,7 +133,7 @@ func (tp *sequencerTipPool) filterAndSortOutputs(filter func(o utangle_old.Wrapp
 	tp.mutex.RLock()
 	defer tp.mutex.RUnlock()
 
-	ret := util.Keys(tp.outputs, func(o utangle_old.WrappedOutput) bool {
+	ret := util.KeysFiltered(tp.outputs, func(o utangle_old.WrappedOutput) bool {
 		return !o.VID.IsDeleted() && filter(o)
 	})
 	sort.Slice(ret, func(i, j int) bool {
