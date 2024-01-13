@@ -9,17 +9,18 @@ import (
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/set"
+	"golang.org/x/exp/maps"
 )
 
 type (
 	IncrementalAttacher struct {
 		pastConeAttacher
-		extend     *vertex.WrappedTx
-		endorse    []*vertex.WrappedTx
-		inputs     []vertex.WrappedOutput
-		targetTs   ledger.LogicalTime
-		seqOutput  vertex.WrappedOutput
-		stemOutput vertex.WrappedOutput
+		extend         *vertex.WrappedTx
+		endorse        []*vertex.WrappedTx
+		tagAlongInputs []vertex.WrappedOutput
+		targetTs       ledger.LogicalTime
+		seqOutput      vertex.WrappedOutput
+		stemOutput     vertex.WrappedOutput
 	}
 )
 
@@ -43,7 +44,7 @@ func NewIncrementalAttacher(name string, env Environment, targetTs ledger.Logica
 		pastConeAttacher: newPastConeAttacher(env, name),
 		extend:           extend,
 		endorse:          slices.Clone(endorse),
-		inputs:           make([]vertex.WrappedOutput, 0),
+		tagAlongInputs:   make([]vertex.WrappedOutput, 0),
 		targetTs:         targetTs,
 	}
 	ret.baselineBranch = baseline
@@ -60,46 +61,71 @@ func NewIncrementalAttacher(name string, env Environment, targetTs ledger.Logica
 	}
 	// attach endorsements
 	for _, endorsement := range endorse {
-		if err := ret.insertEndorsement(endorsement); err != nil {
+		if err := ret.insertEndorsement(endorsement, visited); err != nil {
 			return nil, err
 		}
 	}
-	if err := ret.insertSequencerInput(); err != nil {
+	if err := ret.insertSequencerInput(visited); err != nil {
 		return nil, err
 	}
 	if targetTs.Tick() == 0 {
-		if err := ret.InsertStemInput(); err != nil {
+		if err := ret.insertStemInput(visited); err != nil {
 			return nil, err
 		}
 	}
 	return ret, nil
 }
 
-func (a *IncrementalAttacher) insertEndorsement(endorsement *vertex.WrappedTx) error {
+func (a *IncrementalAttacher) insertEndorsement(endorsement *vertex.WrappedTx, visited set.Set[*vertex.WrappedTx]) error {
 	if endorsement.IsBadOrDeleted() {
 		return fmt.Errorf("NewIncrementalAttacher: can't endorse %s. Reason: '%s'", endorsement.IDShortString(), endorsement.GetReason())
 	}
 	endorsement.Unwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
-		a.attachVertex(v, endorsement, ledger.NilLogicalTime, set.New[*vertex.WrappedTx]())
+		a.attachVertex(v, endorsement, ledger.NilLogicalTime, visited)
 	}})
 	return a.reason
 }
 
-func (a *IncrementalAttacher) insertSequencerInput() error {
+func (a *IncrementalAttacher) insertSequencerInput(visited set.Set[*vertex.WrappedTx]) error {
 	a.seqOutput = a.extend.SequencerWrappedOutput()
 	if a.seqOutput.VID == nil {
-		return fmt.Errorf("sequencer output not available in %s", a.extend.IDShortString())
+		return fmt.Errorf("sequencer output is not available in %s", a.extend.IDShortString())
 	}
-	a.attachOutput(a.seqOutput) // <<< TODO
+	if !a.attachOutput(a.seqOutput, ledger.NilLogicalTime, visited) {
+		return a.reason
+	}
 	return nil
 }
 
-func (a *IncrementalAttacher) InsertStemInput() error {
-	panic("not implemented")
+func (a *IncrementalAttacher) insertStemInput(visited set.Set[*vertex.WrappedTx]) error {
+	a.stemOutput = a.baselineBranch.StemWrappedOutput()
+	if a.stemOutput.VID == nil {
+		return fmt.Errorf("stem output is not available for baseline %s", a.baselineBranch.IDShortString())
+	}
+	if !a.attachOutput(a.stemOutput, ledger.NilLogicalTime, visited) {
+		return a.reason
+	}
+	return nil
 }
 
-func (a *IncrementalAttacher) InsertTagAlongInput(wOut vertex.WrappedOutput) error {
-	panic("not implemented")
+func (a *IncrementalAttacher) InsertTagAlongInput(wOut vertex.WrappedOutput, visited set.Set[*vertex.WrappedTx]) bool {
+	// save state for rollback because in case of fail the side effect makes attacher inconsistent
+	// TODO is there a better way than cloning potentially big maps?
+	saveUndefinedPastVertices := a.pastConeAttacher.undefinedPastVertices.Clone()
+	saveValidPastVertices := a.pastConeAttacher.validPastVertices.Clone()
+	saveRooted := maps.Clone(a.pastConeAttacher.rooted)
+	for vid, outputIdxSet := range saveRooted {
+		saveRooted[vid] = outputIdxSet.Clone()
+	}
+	if !a.attachOutput(wOut, ledger.NilLogicalTime, visited) {
+		// rollback
+		a.pastConeAttacher.undefinedPastVertices = saveUndefinedPastVertices
+		a.pastConeAttacher.validPastVertices = saveValidPastVertices
+		a.pastConeAttacher.rooted = saveRooted
+		return false
+	}
+	a.tagAlongInputs = append(a.tagAlongInputs, wOut)
+	return true
 }
 
 func (a *IncrementalAttacher) MakeTransaction() (*transaction.Transaction, error) {

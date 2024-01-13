@@ -178,8 +178,8 @@ func (a *pastConeAttacher) solidifySequencerBaseline(v *vertex.Vertex) (ok bool)
 }
 
 // attachVertex: vid corresponds to the vertex v
-// it solidifies vertex by traversing the past cone down to rooted inputs or undefined vertices
-// Repetitive calling of the function reaches all past vertices down to the rooted inputs in the validPastVertices set, while
+// it solidifies vertex by traversing the past cone down to rooted tagAlongInputs or undefined vertices
+// Repetitive calling of the function reaches all past vertices down to the rooted tagAlongInputs in the validPastVertices set, while
 // the undefinedPastVertices set becomes empty This is the exit condition of the loop.
 // It results in all validPastVertices are vertex.Good
 // Otherwise, repetition reaches conflict (double spend) or vertex.Bad vertex and exits
@@ -216,7 +216,7 @@ func (a *pastConeAttacher) attachVertex(v *vertex.Vertex, vid *vertex.WrappedTx,
 	}
 	if v.FlagsUp(vertex.FlagAllInputsSolid) {
 		// TODO nice-to-have optimization: constraints can be validated even before the vertex becomes good (solidified).
-		//  It is enough to have all inputs available, i.e. before full solidification
+		//  It is enough to have all tagAlongInputs available, i.e. before full solidification
 
 		alreadyValidated := v.FlagsUp(vertex.FlagConstraintsValid)
 		if err := v.ValidateConstraints(); err != nil {
@@ -342,7 +342,7 @@ func (a *pastConeAttacher) attachInput(v *vertex.Vertex, inputIdx byte, vid *ver
 		Index: v.Tx.MustOutputIndexOfTheInput(inputIdx),
 	}
 
-	if !a.attachOutput(wOut, v.Tx.ID(), parasiticChainHorizon, visited) {
+	if !a.attachOutput(wOut, parasiticChainHorizon, visited) {
 		return false, false
 	}
 	success = a.validPastVertices.Contains(v.Inputs[inputIdx]) || a.isRooted(v.Inputs[inputIdx])
@@ -360,7 +360,7 @@ func (a *pastConeAttacher) isValidated(vid *vertex.WrappedTx) bool {
 	return a.validPastVertices.Contains(vid)
 }
 
-func (a *pastConeAttacher) attachRooted(wOut vertex.WrappedOutput, consumerTxID *ledger.TransactionID) (ok bool, isRooted bool) {
+func (a *pastConeAttacher) attachRooted(wOut vertex.WrappedOutput) (ok bool, isRooted bool) {
 	a.tracef("attachRooted %s", wOut.IDShortString)
 
 	consumedRooted := a.rooted[wOut.VID]
@@ -391,15 +391,15 @@ func (a *pastConeAttacher) attachRooted(wOut vertex.WrappedOutput, consumerTxID 
 		return true, true
 	}
 	// output has not been found in the state -> Bad
-	err := fmt.Errorf("output %s (consumed by %s) is not in the state %s", wOut.IDShortString(), consumerTxID.StringShort(), a.baselineBranch.IDShortString())
+	err := fmt.Errorf("output %s is not in the state %s", wOut.IDShortString(), a.baselineBranch.IDShortString())
 	a.setReason(err)
 	a.tracef("%v", err)
 	return false, false
 }
 
-func (a *pastConeAttacher) attachOutput(wOut vertex.WrappedOutput, consumerTxID *ledger.TransactionID, parasiticChainHorizon ledger.LogicalTime, visited set.Set[*vertex.WrappedTx]) bool {
+func (a *pastConeAttacher) attachOutput(wOut vertex.WrappedOutput, parasiticChainHorizon ledger.LogicalTime, visited set.Set[*vertex.WrappedTx]) bool {
 	a.tracef("attachOutput %s", wOut.IDShortString)
-	ok, isRooted := a.attachRooted(wOut, consumerTxID)
+	ok, isRooted := a.attachRooted(wOut)
 	if !ok {
 		return false
 	}

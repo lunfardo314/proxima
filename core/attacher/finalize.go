@@ -110,7 +110,7 @@ func (a *sequencerAttacher) checkPastConeVerticesConsistent() (err error) {
 			}
 			missingInputs, missingEndorsements := v.NumMissingInputs()
 			if missingInputs+missingEndorsements > 0 {
-				err = fmt.Errorf("not all dependencies solid. Missing inputs: %d, missing endorsements: %d, missing input tx:\n%s",
+				err = fmt.Errorf("not all dependencies solid. Missing tagAlongInputs: %d, missing endorsements: %d, missing input tx:\n%s",
 					missingInputs, missingEndorsements, v.MissingInputTxIDString())
 			}
 		}})
