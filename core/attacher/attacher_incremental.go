@@ -186,6 +186,11 @@ func (a *IncrementalAttacher) LedgerCoverage() multistate.LedgerCoverage {
 	return a.ledgerCoverage(a.targetTs)
 }
 
+func (a *IncrementalAttacher) LedgerCoverageSum() uint64 {
+	ret := a.LedgerCoverage()
+	return ret.Sum()
+}
+
 func (a *IncrementalAttacher) NumInputs() int {
 	return len(a.tagAlongInputs) + 2
 }

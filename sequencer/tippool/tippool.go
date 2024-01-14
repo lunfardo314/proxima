@@ -8,25 +8,24 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/core/vertex"
+	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/set"
 	"go.uber.org/atomic"
-	"go.uber.org/zap"
 )
 
 type (
 	Environment interface {
+		global.Logging
 		ListenToAccount(account ledger.Accountable, fun func(wOut vertex.WrappedOutput))
 		ListenToSequencers(fun func(vid *vertex.WrappedTx))
 		ScanAccount(addr ledger.AccountID) set.Set[vertex.WrappedOutput]
-		Log() *zap.SugaredLogger
-		Tracef(tag string, format string, args ...any)
 	}
 
 	SequencerTipPool struct {
+		Environment
 		mutex                    sync.RWMutex
-		env                      Environment
 		outputs                  set.Set[vertex.WrappedOutput]
 		seqID                    ledger.ChainID
 		name                     string
@@ -49,7 +48,7 @@ type (
 func New(env Environment, seqID ledger.ChainID, namePrefix string) *SequencerTipPool {
 	accountAddress := ledger.CloneAccountable(seqID.AsChainLock())
 	ret := &SequencerTipPool{
-		env:              env,
+		Environment:      env,
 		outputs:          set.New[vertex.WrappedOutput](),
 		seqID:            seqID,
 		name:             fmt.Sprintf("%s-%s", namePrefix, seqID.StringVeryShort()),

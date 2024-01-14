@@ -11,7 +11,6 @@ import (
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
 	"github.com/lunfardo314/proxima/util/set"
-	"go.uber.org/zap"
 )
 
 type (
@@ -38,14 +37,14 @@ type (
 	}
 
 	Environment interface {
+		global.Logging
 		DAGAccessEnvironment
 		PullEnvironment
 		PostEventEnvironment
-		Log() *zap.SugaredLogger
 	}
 
 	pastConeAttacher struct {
-		env                   Environment
+		Environment
 		name                  string
 		reason                error
 		baselineBranch        *vertex.WrappedTx
@@ -61,8 +60,8 @@ type (
 
 func newPastConeAttacher(env Environment, name string) pastConeAttacher {
 	return pastConeAttacher{
+		Environment:           env,
 		name:                  name,
-		env:                   env,
 		rooted:                make(map[*vertex.WrappedTx]set.Set[byte]),
 		validPastVertices:     set.New[*vertex.WrappedTx](),
 		undefinedPastVertices: set.New[*vertex.WrappedTx](),
@@ -70,8 +69,12 @@ func newPastConeAttacher(env Environment, name string) pastConeAttacher {
 	}
 }
 
+func (a *pastConeAttacher) Name() string {
+	return a.name
+}
+
 func (a *pastConeAttacher) baselineStateReader() multistate.SugaredStateReader {
-	return multistate.MakeSugared(a.env.GetStateReaderForTheBranch(a.baselineBranch))
+	return multistate.MakeSugared(a.GetStateReaderForTheBranch(a.baselineBranch))
 }
 
 func (a *pastConeAttacher) setReason(err error) {
@@ -117,7 +120,7 @@ func (a *pastConeAttacher) solidifyStemOfTheVertex(v *vertex.Vertex) (ok bool) {
 	if v.Inputs[stemInputIdx] == nil {
 		// predecessor stem is pending
 		stemInputOid := v.Tx.MustInputAt(stemInputIdx)
-		v.Inputs[stemInputIdx] = AttachTxID(stemInputOid.TransactionID(), a.env, OptionInvokedBy(a.name))
+		v.Inputs[stemInputIdx] = AttachTxID(stemInputOid.TransactionID(), a, OptionInvokedBy(a.name))
 	}
 	util.Assertf(v.Inputs[stemInputIdx] != nil, "v.Inputs[stemInputIdx] != nil")
 
@@ -150,12 +153,12 @@ func (a *pastConeAttacher) solidifySequencerBaseline(v *vertex.Vertex) (ok bool)
 		// predecessor is on the earlier slot -> follow the first endorsement (guaranteed by the ledger constraint layer)
 		util.Assertf(v.Tx.NumEndorsements() > 0, "v.Tx.NumEndorsements()>0")
 		if v.Endorsements[0] == nil {
-			v.Endorsements[0] = AttachTxID(v.Tx.EndorsementAt(0), a.env, OptionPullNonBranch, OptionInvokedBy(a.name))
+			v.Endorsements[0] = AttachTxID(v.Tx.EndorsementAt(0), a, OptionPullNonBranch, OptionInvokedBy(a.name))
 		}
 		inputTx = v.Endorsements[0]
 	} else {
 		if v.Inputs[predIdx] == nil {
-			v.Inputs[predIdx] = AttachTxID(predOid.TransactionID(), a.env, OptionPullNonBranch, OptionInvokedBy(a.name))
+			v.Inputs[predIdx] = AttachTxID(predOid.TransactionID(), a, OptionPullNonBranch, OptionInvokedBy(a.name))
 			util.Assertf(v.Inputs[predIdx] != nil, "v.Inputs[predIdx] != nil")
 		}
 		inputTx = v.Inputs[predIdx]
@@ -227,7 +230,7 @@ func (a *pastConeAttacher) attachVertex(v *vertex.Vertex, vid *vertex.WrappedTx,
 			return false
 		}
 		if !alreadyValidated {
-			a.env.PostEventNewValidated(vid)
+			a.PostEventNewValidated(vid)
 		}
 		a.tracef("constraints has been validated OK: %s", v.Tx.IDShortString())
 		ok = true
@@ -245,7 +248,7 @@ func (a *pastConeAttacher) attachEndorsements(v *vertex.Vertex, parasiticChainHo
 	allGood := true
 	for i, vidEndorsed := range v.Endorsements {
 		if vidEndorsed == nil {
-			vidEndorsed = AttachTxID(v.Tx.EndorsementAt(byte(i)), a.env, OptionPullNonBranch, OptionInvokedBy(a.name))
+			vidEndorsed = AttachTxID(v.Tx.EndorsementAt(byte(i)), a, OptionPullNonBranch, OptionInvokedBy(a.name))
 			v.Endorsements[i] = vidEndorsed
 		}
 		baselineBranch := vidEndorsed.BaselineBranch()
@@ -311,7 +314,7 @@ func (a *pastConeAttacher) attachInputsOfTheVertex(v *vertex.Vertex, vid *vertex
 		v.SetFlagUp(vertex.FlagAllInputsSolid)
 		if !v.Tx.IsSequencerMilestone() {
 			// poke all other which are waiting for this non-sequencer tx. If sequencer tx, it will poke other upon finalization
-			a.env.PokeAllWith(vid)
+			a.PokeAllWith(vid)
 		}
 	} else {
 		a.tracef("attachInputsOfTheVertex: not solid: in %s:\n%s", v.Tx.IDShortString(), linesSelectedInputs(v.Tx, notSolid).String())
@@ -437,7 +440,7 @@ func (a *pastConeAttacher) attachOutput(wOut vertex.WrappedOutput, parasiticChai
 			}
 		},
 		VirtualTx: func(v *vertex.VirtualTransaction) {
-			a.env.Pull(wOut.VID.ID)
+			a.Pull(wOut.VID.ID)
 			// ask environment to poke when transaction arrive
 			a.pokeMe(wOut.VID)
 		},
@@ -458,9 +461,9 @@ func (a *pastConeAttacher) branchesCompatible(vid1, vid2 *vertex.WrappedTx) bool
 		// two different branches on the same slot conflicts
 		return false
 	case vid1.Slot() < vid2.Slot():
-		return multistate.BranchIsDescendantOf(&vid2.ID, &vid1.ID, a.env.StateStore)
+		return multistate.BranchIsDescendantOf(&vid2.ID, &vid1.ID, a.StateStore)
 	default:
-		return multistate.BranchIsDescendantOf(&vid1.ID, &vid2.ID, a.env.StateStore)
+		return multistate.BranchIsDescendantOf(&vid1.ID, &vid2.ID, a.StateStore)
 	}
 }
 
@@ -470,7 +473,7 @@ func (a *pastConeAttacher) attachInputID(consumerVertex *vertex.Vertex, consumer
 
 	vidInputTx := consumerVertex.Inputs[inputIdx]
 	if vidInputTx == nil {
-		vidInputTx = AttachTxID(inputOid.TransactionID(), a.env, OptionInvokedBy(a.name))
+		vidInputTx = AttachTxID(inputOid.TransactionID(), a, OptionInvokedBy(a.name))
 	}
 	util.Assertf(vidInputTx != nil, "vidInputTx != nil")
 
@@ -536,7 +539,7 @@ func (a *pastConeAttacher) setBaselineBranch(vid *vertex.WrappedTx) {
 	a.baselineBranch = vid
 	if a.baselineBranch != nil {
 		if multistate.HistoryCoverageDeltas > 1 {
-			rr, found := multistate.FetchRootRecord(a.env.StateStore(), a.baselineBranch.ID)
+			rr, found := multistate.FetchRootRecord(a.StateStore(), a.baselineBranch.ID)
 			util.Assertf(found, "setBaselineBranch: can't fetch root record for %s", a.baselineBranch.IDShortString())
 
 			a.prevCoverage = rr.LedgerCoverage
@@ -562,7 +565,7 @@ func (a *pastConeAttacher) trace1Ahead() {
 func (a *pastConeAttacher) tracef(format string, lazyArgs ...any) {
 	if trace || a.forceTrace1Ahead {
 		format1 := "TRACE [sequencerAttacher " + a.name + "] " + format
-		a.env.Log().Infof(format1, util.EvalLazyArgs(lazyArgs...)...)
+		a.Log().Infof(format1, util.EvalLazyArgs(lazyArgs...)...)
 		a.forceTrace1Ahead = false
 	}
 }

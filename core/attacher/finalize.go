@@ -14,10 +14,10 @@ func (a *sequencerAttacher) finalize() {
 	if a.vid.IsBranchTransaction() {
 		a.commitBranch()
 		a.vid.SetLedgerCoverage(a.stats.coverage)
-		a.env.WithGlobalWriteLock(func() {
-			a.env.AddBranchNoLock(a.vid)
+		a.WithGlobalWriteLock(func() {
+			a.AddBranchNoLock(a.vid)
 		})
-		a.env.EvidenceBookedBranch(&a.vid.ID, a.vid.MustSequencerID())
+		a.EvidenceBookedBranch(&a.vid.ID, a.vid.MustSequencerID())
 		a.tracef("finalized branch")
 	} else {
 		a.calculateSequencerTxStats()
@@ -59,7 +59,7 @@ func (a *sequencerAttacher) commitBranch() {
 	//a.tracef("mutations:\n%s", muts.Lines("    ").String())
 
 	seqID, stemOID := a.vid.MustSequencerIDAndStemID()
-	upd := multistate.MustNewUpdatable(a.env.StateStore(), a.baselineStateReader().Root())
+	upd := multistate.MustNewUpdatable(a.StateStore(), a.baselineStateReader().Root())
 	a.stats.coverage = a.ledgerCoverage(a.vid.Timestamp())
 	upd.MustUpdate(muts, &stemOID, &seqID, a.stats.coverage)
 }
@@ -79,7 +79,7 @@ func (a *sequencerAttacher) calculateSequencerTxStats() {
 }
 
 func (a *sequencerAttacher) checkPastConeVerticesConsistent() (err error) {
-	defer a.env.Log().Sync()
+	defer a.Log().Sync()
 
 	if len(a.undefinedPastVertices) != 0 {
 		return fmt.Errorf("undefinedPastVertices should be empty. Got: {%s}", vertex.VIDSetIDString(a.undefinedPastVertices))

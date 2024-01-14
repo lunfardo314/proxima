@@ -3,6 +3,7 @@ package proposer_base
 import (
 	"time"
 
+	"github.com/lunfardo314/proxima/core/attacher"
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/sequencer/factory/proposer"
@@ -30,12 +31,11 @@ func (b *BaseProposer) Run() {
 	startTime := time.Now()
 	var tx *transaction.Transaction
 	var forceExit bool
-	for b.Env.ContinueCandidateProposing(b.TargetTs) {
-		b.StartProposingTime()
-		latestMs := b.Env.GetLatestMilestone()
+	for b.ContinueCandidateProposing(b.TargetTs) {
+		latestMs := b.GetLatestOwnMilestone()
+
 		b.RunAndIgnoreDeletedVerticesException(func() {
 			if tx, forceExit = b.proposeBase(latestMs); forceExit {
-				b.StoreProposalDuration()
 				return
 			}
 			if tx != nil {
@@ -53,32 +53,32 @@ func (b *BaseProposer) Run() {
 	}
 }
 
-func (b *BaseProposer) proposeBase(extend vertex.WrappedOutput) (*transaction.Transaction, bool) {
+func (b *BaseProposer) proposeBase(extend vertex.WrappedOutput) (*attacher.IncrementalAttacher, bool) {
 	// own latest milestone exists
-	if !b.targetTs.IsSlotBoundary() {
-		if extend.TimeSlot() != b.targetTs.Slot() {
+	if !b.TargetTs.IsSlotBoundary() {
+		if extend.TimeSlot() != b.TargetTs.Slot() {
 			// on startup or cross-slot will only produce branches
-			//b.setTraceNAhead(1)
-			b.trace("proposeBase.force exit: cross-slot %s", extend.IDShort())
+			b.Tracef("proposer", "proposeBase.force exit: cross-slot %s", extend.IDShortString)
 			return nil, true
 		}
 		if !extend.VID.IsSequencerMilestone() {
 			// not cross-slot, but predecessor must be sequencer tx
-			//b.setTraceNAhead(1)
-			b.trace("proposeBase.force exit: not-sequencer %s", extend.IDShort())
+			b.Env.Tracef("proposer", "proposeBase.force exit: not-sequencer %s", extend.IDShortString)
 			return nil, true
 		}
 	}
 
-	if !b.targetTs.IsSlotBoundary() && extend.TimeSlot() != b.targetTs.Slot() {
+	if !b.TargetTs.IsSlotBoundary() && extend.TimeSlot() != b.TargetTs.Slot() {
 		// on startup or cross-slot will only produce branches
-		b.trace("proposeBase.force exit: cross-slot %s", extend.IDShort())
+		b.Env.Tracef("proposer", "proposeBase.force exit: cross-slot %s", extend.IDShortString)
 		return nil, true
 	}
 
-	if b.targetTs.Tick() == 0 {
-		b.trace("making branch, extending %s", extend.IDShort())
+	if b.TargetTs.Tick() == 0 {
+		b.Env.Tracef("proposer", "making branch, extending %s", extend.IDShortString)
 		// generate branch, no fee outputs are consumed
+		attacher.NewIncrementalAttacher(b.Name(), b.TargetTs, extend)
+
 		baseStem := extend.VID.BaseStemOutput(b.factory.utangle)
 		if baseStem == nil {
 			// base stem is not available for a milestone which is virtual and non-branch

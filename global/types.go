@@ -3,6 +3,7 @@ package global
 import (
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/unitrie/common"
+	"go.uber.org/zap"
 )
 
 type (
@@ -36,5 +37,10 @@ type (
 	TxBytesStore interface {
 		SaveTxBytes([]byte) error
 		GetTxBytes(id *ledger.TransactionID) []byte // returns empty slice on absence
+	}
+
+	Logging interface {
+		Log() *zap.SugaredLogger
+		Tracef(tag string, format string, args ...any)
 	}
 )

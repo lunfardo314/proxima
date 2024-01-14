@@ -14,19 +14,17 @@ import (
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/set"
 	"github.com/lunfardo314/unitrie/common"
-	"go.uber.org/zap"
 )
 
 type (
 	Environment interface {
-		Log() *zap.SugaredLogger
-		Tracef(tag string, format string, args ...any)
+		attacher.Environment
 	}
 
 	MilestoneFactory struct {
+		Environment
 		mutex                       sync.RWMutex
 		name                        string
-		env                         Environment
 		tipPool                     *tippool.SequencerTipPool
 		controllerKey               ed25519.PrivateKey
 		proposal                    latestMilestoneProposal
@@ -52,11 +50,9 @@ type (
 
 	latestMilestoneProposal struct {
 		mutex             sync.RWMutex
-		targetTs          ledger.LogicalTime
 		bestSoFarCoverage uint64
 		current           *transaction.Transaction
 		currentExtended   vertex.WrappedOutput
-		durations         []time.Duration
 	}
 
 	Stats struct {
@@ -81,8 +77,8 @@ const (
 
 func New(name string, env Environment, tpool *tippool.SequencerTipPool, controllerKey ed25519.PrivateKey, startChainOut vertex.WrappedOutput, maxTagAlongInputs int) *MilestoneFactory {
 	ret := &MilestoneFactory{
+		Environment:   env,
 		name:          name,
-		env:           env,
 		tipPool:       tpool,
 		controllerKey: controllerKey,
 		proposal:      latestMilestoneProposal{},
@@ -112,7 +108,7 @@ func (mf *MilestoneFactory) isConsumedInThePastPath(wOut vertex.WrappedOutput, m
 	return mf.ownMilestones[ms].consumedInThePastPath.Contains(wOut)
 }
 
-func (mf *MilestoneFactory) GetLatestMilestone() (ret vertex.WrappedOutput) {
+func (mf *MilestoneFactory) GetLatestOwnMilestone() (ret vertex.WrappedOutput) {
 	mf.mutex.RLock()
 	defer mf.mutex.RUnlock()
 
@@ -123,6 +119,13 @@ func (mf *MilestoneFactory) GetLatestMilestone() (ret vertex.WrappedOutput) {
 	}
 	util.Assertf(ret.VID != nil, "ret.VID != nil")
 	return ret
+}
+
+func (mf *MilestoneFactory) BestCoverage() uint64 {
+	mf.proposal.mutex.RLock()
+	defer mf.proposal.mutex.RUnlock()
+
+	return mf.proposal.bestSoFarCoverage
 }
 
 func (mf *MilestoneFactory) addOwnMilestone(wOut vertex.WrappedOutput) {
@@ -162,14 +165,6 @@ func (mf *MilestoneFactory) StartProposingForTargetLogicalTime(targetTs ledger.L
 	avgProposalDuration, numProposals := mf.averageProposalDuration()
 	mf.resetTarget()
 	return ret, avgProposalDuration, numProposals
-}
-
-func (mf *MilestoneFactory) Log() *zap.SugaredLogger {
-	return mf.env.Log()
-}
-
-func (mf *MilestoneFactory) Tracef(tag string, format string, args ...any) {
-	mf.env.Tracef(tag, format, args...)
 }
 
 // setNewTarget signals proposer allMilestoneProposingStrategies about new timestamp,
@@ -220,13 +215,13 @@ func (mf *MilestoneFactory) startProposerWorkers(targetTime ledger.LogicalTime) 
 	for strategyName, s := range allProposingStrategies {
 		task := proposer.New(mf, s, targetTime)
 		if task != nil {
-			mf.env.Tracef("proposer", "RUN '%s' proposer for the target %s", strategyName, targetTime.String())
+			mf.Tracef("proposer", "RUN '%s' proposer for the target %s", strategyName, targetTime.String())
 			util.RunWrappedRoutine(mf.name+"::"+task.Name(), func() {
 				mf.Tracef("proposer", " START proposer %s", task.Name())
 				task.Run()
 				mf.Tracef("proposer", " END proposer %s", task.Name())
 			}, func(err error) {
-				mf.env.Log().Fatal(err)
+				mf.Log().Fatal(err)
 			},
 				common.ErrDBUnavailable)
 		} else {
@@ -240,27 +235,6 @@ func (mf *MilestoneFactory) getLatestProposal() *transaction.Transaction {
 	defer mf.mutex.RUnlock()
 
 	return mf.proposal.current
-}
-
-func (mf *MilestoneFactory) StoreProposalDuration(d time.Duration) {
-	mf.proposal.mutex.Lock()
-	defer mf.proposal.mutex.Unlock()
-
-	mf.proposal.durations = append(mf.proposal.durations, d)
-}
-
-func (mf *MilestoneFactory) averageProposalDuration() (time.Duration, int) {
-	mf.proposal.mutex.RLock()
-	defer mf.proposal.mutex.RUnlock()
-
-	if len(mf.proposal.durations) == 0 {
-		return 0, 0
-	}
-	sum := int64(0)
-	for _, d := range mf.proposal.durations {
-		sum += int64(d)
-	}
-	return time.Duration(sum / int64(len(mf.proposal.durations))), len(mf.proposal.durations)
 }
 
 func (mf *MilestoneFactory) cleanOwnMilestonesIfNecessary() {

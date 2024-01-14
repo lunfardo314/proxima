@@ -82,7 +82,7 @@ func runAttacher(vid *vertex.WrappedTx, env Environment, ctx context.Context) (v
 
 	a.finalize()
 	a.vid.SetTxStatus(vertex.Good)
-	a.env.PostEventNewGood(vid)
+	a.PostEventNewGood(vid)
 	a.stats.baseline = a.baselineBranch
 	return vertex.Good, a.stats, nil
 }
@@ -263,5 +263,5 @@ func (a *sequencerAttacher) _doPoke(msg *vertex.WrappedTx) {
 func (a *sequencerAttacher) pokeMe(with *vertex.WrappedTx) {
 	//a.trace1Ahead()
 	a.tracef("pokeMe with %s", with.IDShortString())
-	a.env.PokeMe(a.vid, with)
+	a.PokeMe(a.vid, with)
 }
