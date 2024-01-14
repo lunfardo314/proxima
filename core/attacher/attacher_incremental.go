@@ -9,11 +9,14 @@ import (
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/ledger/txbuilder"
+	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/set"
 	"golang.org/x/exp/maps"
 )
 
+// IncrementalAttacher is used by the sequencer to build a sequencer milestone
+// transaction by adding new tag-along inputs one-by-one
 type IncrementalAttacher struct {
 	pastConeAttacher
 	extend         *vertex.WrappedTx
@@ -32,8 +35,8 @@ func NewIncrementalAttacher(name string, env Environment, targetTs ledger.Logica
 		util.Assertf(ledger.ValidTimePace(vid.Timestamp(), targetTs), "ledger.ValidTimePace(vid.Timestamp(), targetTs)")
 	}
 
-	all := append(slices.Clone(endorse), extend)
-	latest := util.Maximum(all, func(vid1, vid2 *vertex.WrappedTx) bool {
+	// find baseline branch as the baseline branch of the latest among extend and endorsements
+	latest := util.Maximum(append(slices.Clone(endorse), extend), func(vid1, vid2 *vertex.WrappedTx) bool {
 		return vid1.Timestamp().Before(vid2.Timestamp())
 	})
 	baseline := latest.BaselineBranch()
@@ -110,7 +113,7 @@ func (a *IncrementalAttacher) insertStemInput(visited set.Set[*vertex.WrappedTx]
 }
 
 // InsertTagAlongInput inserts tag along input.
-// In case of failure return false with attacher state consistent
+// In case of failure return false and attacher state consistent
 func (a *IncrementalAttacher) InsertTagAlongInput(wOut vertex.WrappedOutput, visited set.Set[*vertex.WrappedTx]) bool {
 	// save state for possible rollback because in case of fail the side effect makes attacher inconsistent
 	// TODO a better way than cloning potentially big maps with each new input?
@@ -122,8 +125,9 @@ func (a *IncrementalAttacher) InsertTagAlongInput(wOut vertex.WrappedOutput, vis
 	}
 	saveCoverageDelta := a.coverageDelta
 
-	if !a.attachOutput(wOut, ledger.NilLogicalTime, visited) {
-		// rollback
+	if !a.attachOutput(wOut, ledger.NilLogicalTime, visited) || !a.Done() {
+		// it is either conflicting, or not solid yet
+		// in either case rollback
 		a.pastConeAttacher.undefinedPastVertices = saveUndefinedPastVertices
 		a.pastConeAttacher.validPastVertices = saveValidPastVertices
 		a.pastConeAttacher.rooted = saveRooted
@@ -132,10 +136,6 @@ func (a *IncrementalAttacher) InsertTagAlongInput(wOut vertex.WrappedOutput, vis
 	}
 	a.tagAlongInputs = append(a.tagAlongInputs, wOut)
 	return true
-}
-
-func (a *IncrementalAttacher) NumInputs() int {
-	return len(a.tagAlongInputs) + 2
 }
 
 func (a *IncrementalAttacher) MakeTransaction(seqName string, privateKey ed25519.PrivateKey) (*transaction.Transaction, error) {
@@ -180,4 +180,20 @@ func (a *IncrementalAttacher) MakeTransaction(seqName string, privateKey ed25519
 		return nil, err
 	}
 	return tx, nil
+}
+
+func (a *IncrementalAttacher) LedgerCoverage() multistate.LedgerCoverage {
+	return a.ledgerCoverage(a.targetTs)
+}
+
+func (a *IncrementalAttacher) NumInputs() int {
+	return len(a.tagAlongInputs) + 2
+}
+
+// Done returns true is past cone all solid and consistent (no conflicts)
+func (a *IncrementalAttacher) Done() (done bool) {
+	if done = len(a.undefinedPastVertices) == 0 && len(a.rooted) > 0; done {
+		util.Assertf(a.coverageDelta > 0, "a.coverageDelta) > 0")
+	}
+	return
 }
