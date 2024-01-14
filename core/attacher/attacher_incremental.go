@@ -47,7 +47,8 @@ func NewIncrementalAttacher(name string, env Environment, targetTs ledger.Logica
 		tagAlongInputs:   make([]vertex.WrappedOutput, 0),
 		targetTs:         targetTs,
 	}
-	ret.baselineBranch = baseline
+
+	ret.setBaselineBranch(baseline) // also fetches previous coverage
 
 	// attach sequencer predecessor
 	visited := set.New[*vertex.WrappedTx]()
@@ -119,11 +120,14 @@ func (a *IncrementalAttacher) InsertTagAlongInput(wOut vertex.WrappedOutput, vis
 	for vid, outputIdxSet := range saveRooted {
 		saveRooted[vid] = outputIdxSet.Clone()
 	}
+	saveCoverageDelta := a.coverageDelta
+
 	if !a.attachOutput(wOut, ledger.NilLogicalTime, visited) {
 		// rollback
 		a.pastConeAttacher.undefinedPastVertices = saveUndefinedPastVertices
 		a.pastConeAttacher.validPastVertices = saveValidPastVertices
 		a.pastConeAttacher.rooted = saveRooted
+		a.coverageDelta = saveCoverageDelta
 		return false
 	}
 	a.tagAlongInputs = append(a.tagAlongInputs, wOut)

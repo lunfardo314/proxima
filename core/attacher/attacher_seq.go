@@ -212,7 +212,7 @@ func (a *sequencerAttacher) solidifyBaselineState() vertex.Status {
 		a.vid.Unwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
 			ok = a.solidifyBaseline(v)
 			if ok && v.FlagsUp(vertex.FlagBaselineSolid) {
-				a.baselineBranch = v.BaselineBranch
+				a.setBaselineBranch(v.BaselineBranch)
 				success = true
 			}
 		}})

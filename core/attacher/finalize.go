@@ -60,7 +60,7 @@ func (a *sequencerAttacher) commitBranch() {
 
 	seqID, stemOID := a.vid.MustSequencerIDAndStemID()
 	upd := multistate.MustNewUpdatable(a.env.StateStore(), a.baselineStateReader().Root())
-	a.stats.coverage = a.ledgerCoverage(coverageDelta, a.vid.Timestamp())
+	a.stats.coverage = a.ledgerCoverage(a.vid.Timestamp())
 	upd.MustUpdate(muts, &stemOID, &seqID, a.stats.coverage)
 }
 
@@ -75,7 +75,7 @@ func (a *sequencerAttacher) calculateSequencerTxStats() {
 	}
 	a.stats.numTransactions = len(a.validPastVertices)
 	a.stats.numCreatedOutputs = len(a.rooted)
-	a.stats.coverage = a.ledgerCoverage(coverageDelta, a.vid.Timestamp())
+	a.stats.coverage = a.ledgerCoverage(a.vid.Timestamp())
 }
 
 func (a *sequencerAttacher) checkPastConeVerticesConsistent() (err error) {

@@ -54,6 +54,8 @@ type (
 		rooted                map[*vertex.WrappedTx]set.Set[byte]
 		pokeMe                func(vid *vertex.WrappedTx)
 		forceTrace1Ahead      bool
+		prevCoverage          multistate.LedgerCoverage // set when baseline is determined
+		coverageDelta         uint64
 	}
 )
 
@@ -368,7 +370,6 @@ func (a *pastConeAttacher) attachRooted(wOut vertex.WrappedOutput) (ok bool, isR
 		// it means it is already covered. The double spends are checked by attachInputID
 		return true, true
 	}
-	// not a double spend
 	stateReader := a.baselineStateReader()
 
 	oid := wOut.DecodeID()
@@ -388,6 +389,8 @@ func (a *pastConeAttacher) attachRooted(wOut vertex.WrappedOutput) (ok bool, isR
 		}
 		consumedRooted.Insert(wOut.Index)
 		a.rooted[wOut.VID] = consumedRooted
+		// this is new rooted output -> add to the coverage delta
+		a.coverageDelta += out.Amount()
 		return true, true
 	}
 	// output has not been found in the state -> Bad
@@ -529,15 +532,20 @@ func (a *pastConeAttacher) checkConflictsFunc(consumerTx *vertex.WrappedTx) func
 	}
 }
 
-func (a *pastConeAttacher) ledgerCoverage(coverageDelta uint64, currentTS ledger.LogicalTime) multistate.LedgerCoverage {
-	var prevCoverage multistate.LedgerCoverage
-	if multistate.HistoryCoverageDeltas > 1 {
-		rr, found := multistate.FetchRootRecord(a.env.StateStore(), a.baselineBranch.ID)
-		util.Assertf(found, "can't fetch root record for %s", a.baselineBranch.IDShortString())
+func (a *pastConeAttacher) setBaselineBranch(vid *vertex.WrappedTx) {
+	a.baselineBranch = vid
+	if a.baselineBranch != nil {
+		if multistate.HistoryCoverageDeltas > 1 {
+			rr, found := multistate.FetchRootRecord(a.env.StateStore(), a.baselineBranch.ID)
+			util.Assertf(found, "setBaselineBranch: can't fetch root record for %s", a.baselineBranch.IDShortString())
 
-		prevCoverage = rr.LedgerCoverage
+			a.prevCoverage = rr.LedgerCoverage
+		}
 	}
-	return prevCoverage.MakeNext(int(currentTS.Slot())-int(a.baselineBranch.Slot())+1, coverageDelta)
+}
+
+func (a *pastConeAttacher) ledgerCoverage(currentTS ledger.LogicalTime) multistate.LedgerCoverage {
+	return a.prevCoverage.MakeNext(int(currentTS.Slot())-int(a.baselineBranch.Slot())+1, a.coverageDelta)
 }
 
 // not thread safe
