@@ -16,7 +16,7 @@ import (
 )
 
 type (
-	ListenEnvironment interface {
+	Environment interface {
 		ListenToAccount(account ledger.Accountable, fun func(wOut vertex.WrappedOutput))
 		ListenToSequencers(fun func(vid *vertex.WrappedTx))
 		ScanAccount(addr ledger.AccountID) set.Set[vertex.WrappedOutput]
@@ -26,7 +26,7 @@ type (
 
 	SequencerTipPool struct {
 		mutex                    sync.RWMutex
-		env                      ListenEnvironment
+		env                      Environment
 		outputs                  set.Set[vertex.WrappedOutput]
 		seqID                    ledger.ChainID
 		name                     string
@@ -36,17 +36,17 @@ type (
 		removedOutputsSinceReset int
 	}
 
-	tipPoolStats struct {
-		numOtherSequencers       int
-		numOutputs               int
-		outputCount              int
-		removedOutputsSinceReset int
+	Stats struct {
+		NumOtherSequencers       int
+		NumOutputs               int
+		OutputCount              int
+		RemovedOutputsSinceReset int
 	}
 )
 
 // TODO tag-along and delegation locks
 
-func Start(env ListenEnvironment, seqID ledger.ChainID, namePrefix string) *SequencerTipPool {
+func New(env Environment, seqID ledger.ChainID, namePrefix string) *SequencerTipPool {
 	accountAddress := ledger.CloneAccountable(seqID.AsChainLock())
 	ret := &SequencerTipPool{
 		env:              env,
@@ -226,15 +226,15 @@ func (tp *SequencerTipPool) numOtherMilestones() int {
 	return len(tp.latestMilestones)
 }
 
-func (tp *SequencerTipPool) getStatsAndReset() (ret tipPoolStats) {
+func (tp *SequencerTipPool) getStatsAndReset() (ret Stats) {
 	tp.mutex.RLock()
 	defer tp.mutex.RUnlock()
 
-	ret = tipPoolStats{
-		numOtherSequencers:       len(tp.latestMilestones),
-		numOutputs:               len(tp.outputs),
-		outputCount:              tp.outputCount,
-		removedOutputsSinceReset: tp.removedOutputsSinceReset,
+	ret = Stats{
+		NumOtherSequencers:       len(tp.latestMilestones),
+		NumOutputs:               len(tp.outputs),
+		OutputCount:              tp.outputCount,
+		RemovedOutputsSinceReset: tp.removedOutputsSinceReset,
 	}
 	tp.removedOutputsSinceReset = 0
 	return
@@ -245,4 +245,8 @@ func (tp *SequencerTipPool) numOutputs() int {
 	defer tp.mutex.RUnlock()
 
 	return len(tp.outputs)
+}
+
+func (tp *SequencerTipPool) SequencerID() ledger.ChainID {
+	return tp.seqID
 }

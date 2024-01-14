@@ -1,0 +1,91 @@
+package tests
+
+import (
+	"fmt"
+	"runtime"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/lunfardo314/proxima/core/attacher"
+	"github.com/lunfardo314/proxima/core/dag"
+	"github.com/lunfardo314/proxima/core/vertex"
+	"github.com/lunfardo314/proxima/ledger"
+	"github.com/lunfardo314/proxima/ledger/transaction"
+	"github.com/lunfardo314/proxima/sequencer/tippool"
+	"github.com/stretchr/testify/require"
+)
+
+func TestTippool(t *testing.T) {
+	ledger.SetTimeTickDuration(10 * time.Millisecond)
+	t.Run("with tippool", func(t *testing.T) {
+		//attacher.SetTraceOn()
+		const (
+			nConflicts            = 3
+			howLongConflictChains = 0 // 97 fails when crosses slot boundary
+			nChains               = 3
+			howLongSeqChains      = 3 // 95 fails
+			nSlots                = 3
+		)
+
+		testData := initLongConflictTestData(t, nConflicts, nChains, howLongConflictChains)
+		testData.makeSeqBeginnings(false)
+
+		slotTransactions := make([][][]*transaction.Transaction, nSlots)
+		branches := make([]*transaction.Transaction, nSlots)
+
+		testData.txBytesAttach()
+		extend := make([]*transaction.Transaction, nChains)
+		for i := range extend {
+			extend[i] = testData.seqChain[i][0]
+		}
+		testData.storeTransactions(extend...)
+		prevBranch := testData.distributionBranchTx
+
+		for branchNr := range branches {
+			slotTransactions[branchNr] = testData.makeSlotTransactionsWithTagAlong(howLongSeqChains, extend)
+			for _, txSeq := range slotTransactions[branchNr] {
+				testData.storeTransactions(txSeq...)
+			}
+
+			extendSeqIdx := branchNr % nChains
+			lastInChain := len(slotTransactions[branchNr][extendSeqIdx]) - 1
+			extendOut := slotTransactions[branchNr][extendSeqIdx][lastInChain].SequencerOutput().MustAsChainOutput()
+			branches[branchNr] = testData.makeBranch(extendOut, prevBranch)
+			prevBranch = branches[branchNr]
+			extend = testData.extendToNextSlot(slotTransactions[branchNr], prevBranch)
+			testData.storeTransactions(extend...)
+		}
+
+		testData.storeTransactions(testData.transferChain...)
+
+		testData.storeTransactions(branches...)
+
+		tpools := make([]*tippool.SequencerTipPool, len(testData.chainOrigins))
+		testData.wrk.EnableTraceTag("tippool")
+		for i := range tpools {
+			tpools[i] = tippool.New(testData.wrk, testData.chainOrigins[i].ChainID, fmt.Sprintf("seq_test%d", i))
+		}
+
+		var wg sync.WaitGroup
+		wg.Add(1)
+		vidBranch := attacher.AttachTransaction(branches[len(branches)-1], testData.wrk, attacher.OptionWithAttachmentCallback(func(vid *vertex.WrappedTx) {
+			wg.Done()
+		}))
+		wg.Wait()
+
+		testData.stopAndWait()
+		testData.logDAGInfo()
+		dag.SaveGraphPastCone(vidBranch, "utangle")
+		require.EqualValues(t, vertex.Good.String(), vidBranch.GetTxStatus().String())
+
+		time.Sleep(500 * time.Millisecond)
+		var memStats runtime.MemStats
+		runtime.ReadMemStats(&memStats)
+		t.Logf("Memory stats: allocated %.1f MB, Num GC: %d, Goroutines: %d, ",
+			float32(memStats.Alloc*10/(1024*1024))/10,
+			memStats.NumGC,
+			runtime.NumGoroutine(),
+		)
+	})
+}
