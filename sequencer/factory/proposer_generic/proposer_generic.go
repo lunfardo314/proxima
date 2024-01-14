@@ -1,14 +1,11 @@
-package proposer
+package proposer_generic
 
 import (
-	"crypto/ed25519"
-	"errors"
 	"fmt"
 
 	"github.com/lunfardo314/proxima/core/attacher"
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/ledger"
-	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/set"
 )
 
@@ -17,9 +14,8 @@ type (
 		attacher.Environment
 		ContinueCandidateProposing(ts ledger.LogicalTime) bool
 		GetLatestOwnMilestone() vertex.WrappedOutput
-		BestCoverage() uint64
-		SequencerName() string
-		ControllerPrivateKey() ed25519.PrivateKey
+		Propose(a *attacher.IncrementalAttacher) bool
+		AttachTagAlongInputs(a *attacher.IncrementalAttacher)
 	}
 
 	Task interface {
@@ -53,29 +49,6 @@ func New(env Environment, strategy *Strategy, targetTs ledger.LogicalTime) Task 
 
 func (t *TaskGeneric) Name() string {
 	return fmt.Sprintf("%s-%s", t.Strategy.Name, t.TargetTs.String())
-}
-
-func (t *TaskGeneric) RunAndIgnoreDeletedVerticesException(fun func()) {
-	err := util.CatchPanicOrError(func() error {
-		fun()
-		return nil
-	}, true)
-	if err != nil && !errors.Is(err, vertex.ErrDeletedVertexAccessed) {
-		panic(err)
-	}
-}
-
-func (t *TaskGeneric) Propose(a *attacher.IncrementalAttacher) {
-	if a.LedgerCoverageSum() <= t.BestCoverage() {
-		t.Tracef("proposer", "proposal %s rejected due no increase in coverage", a.Name())
-		return
-	}
-
-	tx, err := a.MakeTransaction(t.SequencerName(), t.ControllerPrivateKey())
-	if err != nil {
-		t.Log().Warnf("proposer '%s': error during transaction generation: '%v'", t.Name(), err)
-
-	}
 }
 
 //

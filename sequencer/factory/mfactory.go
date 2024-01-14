@@ -9,7 +9,8 @@ import (
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/transaction"
-	"github.com/lunfardo314/proxima/sequencer/factory/proposer"
+	"github.com/lunfardo314/proxima/sequencer/factory/proposer_base"
+	"github.com/lunfardo314/proxima/sequencer/factory/proposer_generic"
 	"github.com/lunfardo314/proxima/sequencer/tippool"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/set"
@@ -19,6 +20,8 @@ import (
 type (
 	Environment interface {
 		attacher.Environment
+		ControllerPrivateKey() ed25519.PrivateKey
+		SequencerName() string
 	}
 
 	MilestoneFactory struct {
@@ -40,19 +43,20 @@ type (
 		consumedInThePastPath set.Set[vertex.WrappedOutput]
 	}
 
+	latestMilestoneProposal struct {
+		mutex             sync.RWMutex
+		targetTs          ledger.LogicalTime
+		bestSoFarCoverage uint64
+		current           *transaction.Transaction
+		currentExtended   vertex.WrappedOutput
+	}
+
 	proposedMilestoneWithData struct {
 		tx         *transaction.Transaction
 		extended   vertex.WrappedOutput
 		coverage   uint64
 		elapsed    time.Duration
 		proposedBy string
-	}
-
-	latestMilestoneProposal struct {
-		mutex             sync.RWMutex
-		bestSoFarCoverage uint64
-		current           *transaction.Transaction
-		currentExtended   vertex.WrappedOutput
 	}
 
 	Stats struct {
@@ -63,10 +67,14 @@ type (
 	}
 )
 
-var allProposingStrategies = make(map[string]*proposer.Strategy)
+var allProposingStrategies = make(map[string]*proposer_generic.Strategy)
 
-func registerProposerStrategy(s *proposer.Strategy) {
+func registerProposerStrategy(s *proposer_generic.Strategy) {
 	allProposingStrategies[s.Name] = s
+}
+
+func init() {
+	registerProposerStrategy(proposer_base.Strategy())
 }
 
 const (
@@ -121,13 +129,6 @@ func (mf *MilestoneFactory) GetLatestOwnMilestone() (ret vertex.WrappedOutput) {
 	return ret
 }
 
-func (mf *MilestoneFactory) BestCoverage() uint64 {
-	mf.proposal.mutex.RLock()
-	defer mf.proposal.mutex.RUnlock()
-
-	return mf.proposal.bestSoFarCoverage
-}
-
 func (mf *MilestoneFactory) addOwnMilestone(wOut vertex.WrappedOutput) {
 	inputs := wOut.VID.WrappedInputs()
 	mf.mutex.Lock()
@@ -147,12 +148,12 @@ func (mf *MilestoneFactory) addOwnMilestone(wOut vertex.WrappedOutput) {
 	}
 }
 
-func (mf *MilestoneFactory) StartProposingForTargetLogicalTime(targetTs ledger.LogicalTime) (*transaction.Transaction, time.Duration, int) {
+func (mf *MilestoneFactory) StartProposingForTargetLogicalTime(targetTs ledger.LogicalTime) *transaction.Transaction {
 	deadline := targetTs.Time()
 	nowis := time.Now()
 
 	if deadline.Before(nowis) {
-		return nil, 0, 0
+		return nil
 	}
 	// start worker(s)
 	mf.setNewTarget(targetTs)
@@ -160,11 +161,8 @@ func (mf *MilestoneFactory) StartProposingForTargetLogicalTime(targetTs ledger.L
 	// wait util real time deadline
 	time.Sleep(deadline.Sub(nowis))
 
-	ret := mf.getLatestProposal() // will return nil if wasn't able to generate transaction
-	// set target time to nil -> signal workers to exit
-	avgProposalDuration, numProposals := mf.averageProposalDuration()
 	mf.resetTarget()
-	return ret, avgProposalDuration, numProposals
+	return mf.getLatestProposal() // will return nil if wasn't able to generate transaction
 }
 
 // setNewTarget signals proposer allMilestoneProposingStrategies about new timestamp,
@@ -178,7 +176,6 @@ func (mf *MilestoneFactory) setNewTarget(ts ledger.LogicalTime) {
 	if ts.IsSlotBoundary() {
 		mf.proposal.bestSoFarCoverage = 0
 	}
-	mf.proposal.durations = make([]time.Duration, 0)
 }
 
 func (mf *MilestoneFactory) resetTarget() {
@@ -194,9 +191,9 @@ func (mf *MilestoneFactory) ContinueCandidateProposing(ts ledger.LogicalTime) bo
 	return mf.proposal.targetTs == ts
 }
 
-func (mf *MilestoneFactory) AttachTagAlongInputs(a *attacher.IncrementalAttacher, targetTs ledger.LogicalTime) {
+func (mf *MilestoneFactory) AttachTagAlongInputs(a *attacher.IncrementalAttacher) {
 	preSelected := mf.tipPool.FilterAndSortOutputs(func(wOut vertex.WrappedOutput) bool {
-		if !ledger.ValidTimePace(wOut.Timestamp(), targetTs) {
+		if !ledger.ValidTimePace(wOut.Timestamp(), a.TargetTs()) {
 			return false
 		}
 		// fast filtering out already consumed outputs in the predecessor milestone context
@@ -213,21 +210,44 @@ func (mf *MilestoneFactory) AttachTagAlongInputs(a *attacher.IncrementalAttacher
 
 func (mf *MilestoneFactory) startProposerWorkers(targetTime ledger.LogicalTime) {
 	for strategyName, s := range allProposingStrategies {
-		task := proposer.New(mf, s, targetTime)
-		if task != nil {
-			mf.Tracef("proposer", "RUN '%s' proposer for the target %s", strategyName, targetTime.String())
-			util.RunWrappedRoutine(mf.name+"::"+task.Name(), func() {
-				mf.Tracef("proposer", " START proposer %s", task.Name())
-				task.Run()
-				mf.Tracef("proposer", " END proposer %s", task.Name())
-			}, func(err error) {
-				mf.Log().Fatal(err)
-			},
-				common.ErrDBUnavailable)
-		} else {
+		task := proposer_generic.New(mf, s, targetTime)
+		if task == nil {
 			mf.Tracef("proposer", "SKIP '%s' proposer for the target %s", strategyName, targetTime.String())
+			continue
 		}
+		mf.Tracef("proposer", "RUN '%s' proposer for the target %s", strategyName, targetTime.String())
+
+		util.RunWrappedRoutine(mf.name+"::"+task.Name(), func() {
+			mf.Tracef("proposer", " START proposer %s", task.Name())
+			task.Run()
+			mf.Tracef("proposer", " END proposer %s", task.Name())
+		}, func(err error) {
+			mf.Log().Fatal(err)
+		}, common.ErrDBUnavailable, vertex.ErrDeletedVertexAccessed)
 	}
+}
+
+func (mf *MilestoneFactory) Propose(a *attacher.IncrementalAttacher) (forceExit bool) {
+	coverage := a.LedgerCoverageSum()
+
+	mf.proposal.mutex.Lock()
+	defer mf.proposal.mutex.Unlock()
+
+	if coverage <= mf.proposal.bestSoFarCoverage {
+		mf.Tracef("proposer", "proposal %s rejected due no increase in coverage", a.Name())
+		return
+	}
+
+	tx, err := a.MakeTransaction(mf.SequencerName(), mf.ControllerPrivateKey())
+	if err != nil {
+		mf.Log().Warnf("proposer '%s': error during transaction generation: '%v'", a.Name(), err)
+		return true
+	}
+
+	mf.proposal.current = tx
+	mf.proposal.bestSoFarCoverage = coverage
+	mf.proposal.currentExtended = a.ExtendedOutput()
+	return
 }
 
 func (mf *MilestoneFactory) getLatestProposal() *transaction.Transaction {

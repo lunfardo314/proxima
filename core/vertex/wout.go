@@ -32,7 +32,7 @@ func (o *WrappedOutput) Timestamp() ledger.LogicalTime {
 	return o.VID.Timestamp()
 }
 
-func (o *WrappedOutput) TimeSlot() ledger.Slot {
+func (o *WrappedOutput) Slot() ledger.Slot {
 	return o.VID.Slot()
 }
 

@@ -191,6 +191,10 @@ func (a *IncrementalAttacher) LedgerCoverageSum() uint64 {
 	return ret.Sum()
 }
 
+func (a *IncrementalAttacher) TargetTs() ledger.LogicalTime {
+	return a.targetTs
+}
+
 func (a *IncrementalAttacher) NumInputs() int {
 	return len(a.tagAlongInputs) + 2
 }
@@ -205,4 +209,8 @@ func (a *IncrementalAttacher) Done() (done bool) {
 
 func (a *IncrementalAttacher) Extending() *vertex.WrappedTx {
 	return a.extend
+}
+
+func (a *IncrementalAttacher) ExtendedOutput() vertex.WrappedOutput {
+	return a.seqOutput
 }
