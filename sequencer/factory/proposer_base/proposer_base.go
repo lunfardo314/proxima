@@ -31,12 +31,14 @@ func (b *BaseProposer) Run() {
 
 	for b.ContinueCandidateProposing(b.TargetTs) {
 		latestMs := b.GetLatestOwnMilestone()
-
-		proposer_generic.RunAndIgnoreDeletedVerticesException(func() {
-			if a, forceExit = b.proposeBase(latestMs.VID); !forceExit && a != nil {
-				forceExit = b.Propose(a)
+		if a, forceExit = b.proposeBase(latestMs.VID); forceExit {
+			return
+		}
+		if a != nil {
+			if forceExit = b.Propose(a); forceExit {
+				return
 			}
-		})
+		}
 		time.Sleep(10 * time.Millisecond)
 	}
 }
