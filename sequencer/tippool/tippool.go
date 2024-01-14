@@ -155,7 +155,7 @@ func (tp *SequencerTipPool) purge() {
 	tp.lastPruned.Store(time.Now())
 }
 
-func (tp *SequencerTipPool) filterAndSortOutputs(filter func(o vertex.WrappedOutput) bool) []vertex.WrappedOutput {
+func (tp *SequencerTipPool) FilterAndSortOutputs(filter func(wOut vertex.WrappedOutput) bool) []vertex.WrappedOutput {
 	tp.purge()
 
 	tp.mutex.RLock()

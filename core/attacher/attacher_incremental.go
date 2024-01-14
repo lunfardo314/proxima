@@ -197,3 +197,7 @@ func (a *IncrementalAttacher) Done() (done bool) {
 	}
 	return
 }
+
+func (a *IncrementalAttacher) Extending() *vertex.WrappedTx {
+	return a.extend
+}

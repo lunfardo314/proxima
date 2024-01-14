@@ -622,6 +622,30 @@ func (vid *WrappedTx) String() (ret string) {
 	return
 }
 
+func (vid *WrappedTx) WrappedInputs() (ret []WrappedOutput) {
+	vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
+		ret = make([]WrappedOutput, v.Tx.NumInputs())
+		v.ForEachInputDependency(func(i byte, inp *WrappedTx) bool {
+			inpID := v.Tx.MustInputAt(i)
+			ret[i] = WrappedOutput{
+				VID:   inp,
+				Index: inpID.Index(),
+			}
+			return true
+		})
+	}})
+	return ret
+}
+
+func (vid *WrappedTx) SequencerPredecessor() (ret *WrappedTx) {
+	vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
+		if seqData := v.Tx.SequencerTransactionData(); seqData != nil {
+			ret = v.Inputs[seqData.SequencerOutputData.ChainConstraint.PredecessorInputIndex]
+		}
+	}})
+	return
+}
+
 func VerticesLines(vertices []*WrappedTx, prefix ...string) *lines.Lines {
 	ret := lines.New(prefix...)
 	for _, vid := range vertices {
