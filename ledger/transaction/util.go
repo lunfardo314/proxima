@@ -98,7 +98,7 @@ func (ctx *TransactionContext) Lines(prefix ...string) *lines.Lines {
 			} else {
 				cid = cc.ID
 			}
-			chainIdStr = "                      chainID: " + cid.Short()
+			chainIdStr = "                      chainID: " + cid.StringShort()
 		}
 		ret.Add("  #%d %s", idx, oid.String()).
 			Add("       bytes (%d): %s", len(out.Bytes()), hex.EncodeToString(out.Bytes())).

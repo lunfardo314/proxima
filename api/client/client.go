@@ -127,7 +127,7 @@ func (c *APIClient) GetMilestoneDataFromHeaviestState(chainID ledger.ChainID) (*
 		return nil, err
 	}
 	if !o.ID.IsSequencerTransaction() {
-		return nil, fmt.Errorf("not a sequencer milestone: %s", chainID.Short())
+		return nil, fmt.Errorf("not a sequencer milestone: %s", chainID.StringShort())
 	}
 	return txbuilder2.ParseMilestoneData(o.Output), nil
 }

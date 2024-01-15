@@ -55,7 +55,7 @@ func (id *ChainID) StringHex() string {
 	return hex.EncodeToString(id[:])
 }
 
-func (id *ChainID) Short() string {
+func (id *ChainID) StringShort() string {
 	return fmt.Sprintf("$/%s..", hex.EncodeToString(id[:6]))
 }
 

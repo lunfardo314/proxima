@@ -3,6 +3,7 @@ package tippool
 import (
 	"bytes"
 	"fmt"
+	"slices"
 	"sort"
 	"sync"
 	"time"
@@ -20,14 +21,14 @@ type (
 		global.Logging
 		ListenToAccount(account ledger.Accountable, fun func(wOut vertex.WrappedOutput))
 		ListenToSequencers(fun func(vid *vertex.WrappedTx))
-		ScanAccount(addr ledger.AccountID) set.Set[vertex.WrappedOutput]
+		PullSequencerTips(seqID ledger.ChainID, loadOwnMilestones bool) (set.Set[vertex.WrappedOutput], error)
+		SequencerID() ledger.ChainID
 	}
 
 	SequencerTipPool struct {
 		Environment
 		mutex                    sync.RWMutex
 		outputs                  set.Set[vertex.WrappedOutput]
-		seqID                    ledger.ChainID
 		name                     string
 		latestMilestones         map[ledger.ChainID]*vertex.WrappedTx
 		lastPruned               atomic.Time
@@ -45,12 +46,16 @@ type (
 
 // TODO tag-along and delegation locks
 
-func New(env Environment, seqID ledger.ChainID, namePrefix string) *SequencerTipPool {
-	accountAddress := ledger.CloneAccountable(seqID.AsChainLock())
+type Option byte
+
+// OptionDoNotLoadOwnMilestones is used for tests only
+const OptionDoNotLoadOwnMilestones = Option(iota)
+
+func New(env Environment, namePrefix string, opts ...Option) (*SequencerTipPool, error) {
+	seqID := env.SequencerID()
 	ret := &SequencerTipPool{
 		Environment:      env,
 		outputs:          set.New[vertex.WrappedOutput](),
-		seqID:            seqID,
 		name:             fmt.Sprintf("%s-%s", namePrefix, seqID.StringVeryShort()),
 		latestMilestones: make(map[ledger.ChainID]*vertex.WrappedTx),
 	}
@@ -59,10 +64,11 @@ func New(env Environment, seqID ledger.ChainID, namePrefix string) *SequencerTip
 	ret.mutex.RLock()
 	defer ret.mutex.RUnlock()
 
-	// start listening to chain account
-	env.ListenToAccount(accountAddress, func(wOut vertex.WrappedOutput) {
+	// start listening to chain-locked account
+	env.ListenToAccount(seqID.AsChainLock(), func(wOut vertex.WrappedOutput) {
 		ret.purge()
-		if isOutputToDelete(wOut) {
+
+		if !isCandidateToTagAlong(wOut) {
 			return
 		}
 
@@ -74,54 +80,63 @@ func New(env Environment, seqID ledger.ChainID, namePrefix string) *SequencerTip
 		env.Tracef("tippool", "[%s] output IN: %s", ret.name, wOut.IDShortString)
 	})
 
-	// start listening to other sequencers
+	// start listening to sequencers, including the current sequencer
 	env.ListenToSequencers(func(vid *vertex.WrappedTx) {
 		seqIDIncoming, ok := vid.SequencerIDIfAvailable()
 		util.Assertf(ok, "sequencer milestone expected")
-
-		if seqIDIncoming == seqID {
-			return
-		}
 
 		ret.mutex.Lock()
 		defer ret.mutex.Unlock()
 
 		old, prevExists := ret.latestMilestones[seqIDIncoming]
 		if !prevExists || !vid.Timestamp().Before(old.Timestamp()) {
+			// store the latest one for each seqID
 			ret.latestMilestones[seqIDIncoming] = vid
 		}
 		env.Tracef("tippool", "[%s] milestone IN: %s", ret.name, vid.IDShortString)
 	})
 
-	// fetch all account into tipPool once
-	ret.outputs = env.ScanAccount(accountAddress.AccountID())
-	return ret
+	// fetch all sequencers and all outputs in the sequencer account into to tip pool once
+	var err error
+	doNotLoadOwnMilestones := slices.Index(opts, OptionDoNotLoadOwnMilestones) >= 0
+	ret.outputs, err = env.PullSequencerTips(seqID, !doNotLoadOwnMilestones)
+	if err != nil {
+		return nil, err
+	}
+	return ret, nil
 }
 
-func isOutputToDelete(wOut vertex.WrappedOutput) bool {
+func (tp *SequencerTipPool) GetOwnLatestMilestoneTx() *vertex.WrappedTx {
+	tp.mutex.RLock()
+	defer tp.mutex.RUnlock()
+
+	return tp.latestMilestones[tp.SequencerID()]
+}
+
+func isCandidateToTagAlong(wOut vertex.WrappedOutput) bool {
 	if wOut.VID.IsBadOrDeleted() {
-		return true
+		return false
 	}
 	if wOut.VID.IsBranchTransaction() {
 		// outputs of branch transactions are filtered out
 		// TODO probably ordinary outputs must not be allowed at ledger level
-		return true
+		return false
 	}
 	o, err := wOut.VID.OutputAt(wOut.Index)
 	if err != nil {
-		return true
+		return false
 	}
 	if o != nil {
 		if _, idx := o.ChainConstraint(); idx != 0xff {
 			// filter out all chain constrained outputs
 			// TODO must be revisited with delegated accounts (delegation-locked on the current sequencer)
-			return true
+			return false
 		}
 	}
-	return false
+	return true
 }
 
-// TODO purge also bad
+// TODO purge also bad ones
 func (tp *SequencerTipPool) purge() {
 	cleanupPeriod := ledger.SlotDuration() / 2
 	if time.Since(tp.lastPruned.Load()) < cleanupPeriod {
@@ -133,7 +148,7 @@ func (tp *SequencerTipPool) purge() {
 
 	toDelete := make([]vertex.WrappedOutput, 0)
 	for wOut := range tp.outputs {
-		if isOutputToDelete(wOut) {
+		if !isCandidateToTagAlong(wOut) {
 			toDelete = append(toDelete, wOut)
 		}
 	}
@@ -244,8 +259,4 @@ func (tp *SequencerTipPool) numOutputs() int {
 	defer tp.mutex.RUnlock()
 
 	return len(tp.outputs)
-}
-
-func (tp *SequencerTipPool) SequencerID() ledger.ChainID {
-	return tp.seqID
 }

@@ -504,7 +504,7 @@ func initMultiChainTest(t *testing.T, nChains int, printTx bool) *multiChainTest
 	if printTx {
 		cstr := make([]string, 0)
 		for _, o := range ret.chainOrigins {
-			cstr = append(cstr, o.ChainID.Short())
+			cstr = append(cstr, o.ChainID.StringShort())
 		}
 		t.Logf("Chain IDs:\n%s\n", strings.Join(cstr, "\n"))
 	}
@@ -521,7 +521,7 @@ func (r *multiChainTestData) createSequencerChain1(chainIdx int, pace int, print
 
 	ret := make([][]byte, 0)
 	outConsumeChain := r.chainOrigins[chainIdx]
-	r.t.Logf("chain #%d, ID: %s, origin: %s", chainIdx, outConsumeChain.ChainID.Short(), outConsumeChain.ID.StringShort())
+	r.t.Logf("chain #%d, ID: %s, origin: %s", chainIdx, outConsumeChain.ChainID.StringShort(), outConsumeChain.ID.StringShort())
 	chainID := outConsumeChain.ChainID
 
 	par := txbuilder2.MakeSequencerTransactionParams{
@@ -910,7 +910,7 @@ func (r *multiChainTestData) createSequencerChains1(pace int, howLong int) [][]b
 		sequences[counter] = []*transaction2.Transaction{tx}
 		ret = append(ret, txBytes)
 		r.t.Logf("chain #%d, ID: %s, origin: %s, seq start: %s",
-			counter, r.chainOrigins[counter].ChainID.Short(), r.chainOrigins[counter].ID.StringShort(), tx.IDShortString())
+			counter, r.chainOrigins[counter].ChainID.StringShort(), r.chainOrigins[counter].ID.StringShort(), tx.IDShortString())
 		counter++
 	}
 
@@ -998,7 +998,7 @@ func (r *multiChainTestData) createSequencerChains2(pace int, howLong int) [][]b
 		sequences[counter] = []*transaction2.Transaction{tx}
 		ret = append(ret, txBytes)
 		r.t.Logf("chain #%d, ID: %s, origin: %s, seq start: %s",
-			counter, r.chainOrigins[counter].ChainID.Short(), r.chainOrigins[counter].ID.StringShort(), tx.IDShortString())
+			counter, r.chainOrigins[counter].ChainID.StringShort(), r.chainOrigins[counter].ID.StringShort(), tx.IDShortString())
 		counter++
 	}
 
@@ -1109,7 +1109,7 @@ func (r *multiChainTestData) createSequencerChains3(pace int, howLong int, print
 		ret = append(ret, txBytes)
 		if printTx {
 			r.t.Logf("chain #%d, ID: %s, origin: %s, seq start: %s",
-				counter, r.chainOrigins[counter].ChainID.Short(), r.chainOrigins[counter].ID.StringShort(), tx.IDShortString())
+				counter, r.chainOrigins[counter].ChainID.StringShort(), r.chainOrigins[counter].ID.StringShort(), tx.IDShortString())
 		}
 		counter++
 	}
@@ -1333,7 +1333,7 @@ func (r *multiChainTestData) create1SequencerChain(pace int, howLong int, inflat
 	tx, err := transaction2.FromBytesMainChecksWithOpt(txBytes)
 	require.NoError(r.t, err)
 	r.t.Logf("chainID: %s, origin: %s, seq start: %s",
-		r.chainOrigins[0].ChainID.Short(), r.chainOrigins[0].ID.StringShort(), tx.IDShortString())
+		r.chainOrigins[0].ChainID.StringShort(), r.chainOrigins[0].ID.StringShort(), tx.IDShortString())
 
 	lastStemOutput := r.ut.HeaviestStemOutput()
 	lastInChain := tx

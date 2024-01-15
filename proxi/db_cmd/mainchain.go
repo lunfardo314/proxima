@@ -73,7 +73,7 @@ func runMainChainCmd(_ *cobra.Command, args []string) {
 	glb.Infof("stats by sequencer ID:")
 	for _, k := range sorted {
 		sd := bySeqID[k]
-		glb.Infof("%10s %s  %8d (%2d%%)       %s", sd.name, k.Short(),
+		glb.Infof("%10s %s  %8d (%2d%%)       %s", sd.name, k.StringShort(),
 			sd.numOccurrences, (100*sd.numOccurrences)/len(mainBranches), util.GoThousands(sd.onChainBalance))
 	}
 }

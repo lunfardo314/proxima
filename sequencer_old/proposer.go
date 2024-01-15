@@ -288,7 +288,7 @@ func (c *proposerTaskGeneric) futureConeMilestonesOrdered(rootVID *utangle.Wrapp
 	om, ok := c.factory.ownMilestones[rootVID]
 	util.Assertf(ok, "futureConeMilestonesOrdered: milestone %s of chain %s is expected to be among set of own milestones (%d)",
 		rootVID.LazyIDShort(),
-		func() any { return c.factory.tipPool.chainID.Short() },
+		func() any { return c.factory.tipPool.chainID.StringShort() },
 		len(c.factory.ownMilestones))
 
 	rootOut := om.WrappedOutput

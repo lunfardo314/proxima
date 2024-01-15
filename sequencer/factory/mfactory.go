@@ -20,8 +20,10 @@ import (
 type (
 	Environment interface {
 		attacher.Environment
+		tippool.Environment
 		ControllerPrivateKey() ed25519.PrivateKey
 		SequencerName() string
+		SequencerID() ledger.ChainID
 	}
 
 	MilestoneFactory struct {
@@ -29,7 +31,6 @@ type (
 		mutex                       sync.RWMutex
 		name                        string
 		tipPool                     *tippool.SequencerTipPool
-		controllerKey               ed25519.PrivateKey
 		proposal                    latestMilestoneProposal
 		ownMilestones               map[*vertex.WrappedTx]ownMilestone
 		maxTagAlongInputs           int
@@ -83,23 +84,24 @@ const (
 	cleanupMilestonesPeriod = 1 * time.Second
 )
 
-func New(name string, env Environment, tpool *tippool.SequencerTipPool, controllerKey ed25519.PrivateKey, startChainOut vertex.WrappedOutput, maxTagAlongInputs int) *MilestoneFactory {
+func New(name string, env Environment, maxTagAlongInputs int) (*MilestoneFactory, error) {
 	ret := &MilestoneFactory{
-		Environment:   env,
-		name:          name,
-		tipPool:       tpool,
-		controllerKey: controllerKey,
-		proposal:      latestMilestoneProposal{},
-		ownMilestones: map[*vertex.WrappedTx]ownMilestone{
-			startChainOut.VID: newOwnMilestone(startChainOut),
-		},
+		Environment:       env,
+		name:              name,
+		proposal:          latestMilestoneProposal{},
+		ownMilestones:     map[*vertex.WrappedTx]ownMilestone{},
 		maxTagAlongInputs: maxTagAlongInputs,
 	}
 	if ret.maxTagAlongInputs == 0 || ret.maxTagAlongInputs > veryMaxTagAlongInputs {
 		ret.maxTagAlongInputs = veryMaxTagAlongInputs
 	}
+	var err error
+	ret.tipPool, err = tippool.New(ret, name)
+	if err != nil {
+		return nil, err
+	}
 	env.Log().Debugf("milestone factory started")
-	return ret
+	return ret, nil
 }
 
 func newOwnMilestone(wOut vertex.WrappedOutput, inputs ...vertex.WrappedOutput) ownMilestone {
@@ -116,15 +118,11 @@ func (mf *MilestoneFactory) isConsumedInThePastPath(wOut vertex.WrappedOutput, m
 	return mf.ownMilestones[ms].consumedInThePastPath.Contains(wOut)
 }
 
-func (mf *MilestoneFactory) GetLatestOwnMilestone() (ret vertex.WrappedOutput) {
-	mf.mutex.RLock()
-	defer mf.mutex.RUnlock()
+func (mf *MilestoneFactory) OwnLatestMilestone() (ret vertex.WrappedOutput) {
+	latest := mf.tipPool.GetOwnLatestMilestoneTx()
+	util.Assertf(latest != nil, "cannot find own latest milestone")
 
-	for _, ms := range mf.ownMilestones {
-		if ret.VID == nil || ms.Timestamp().After(ret.Timestamp()) {
-			ret = ms.WrappedOutput
-		}
-	}
+	mf.addOwnMilestone(latest.SequencerWrappedOutput())
 	util.Assertf(ret.VID != nil, "ret.VID != nil")
 	return ret
 }

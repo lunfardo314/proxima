@@ -68,7 +68,7 @@ func runCompactCmd(_ *cobra.Command, args []string) {
 
 	var prompt string
 	glb.Assertf(feeAmount > 0, "tag-along fee is configured 0. Fee-less option not supported yet")
-	prompt = fmt.Sprintf("compacting will cost %d of fees paid to the tag-along sequencer %s. Proceed?", feeAmount, tagAlongSeqID.Short())
+	prompt = fmt.Sprintf("compacting will cost %d of fees paid to the tag-along sequencer %s. Proceed?", feeAmount, tagAlongSeqID.StringShort())
 	if !glb.YesNoPrompt(prompt, true) {
 		glb.Infof("exit")
 		os.Exit(0)

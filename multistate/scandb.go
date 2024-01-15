@@ -156,7 +156,7 @@ func (s *SummarySupplyAndInflation) Lines(prefix ...string) *lines.Lines {
 	for _, seqId := range sortedSeqIDs {
 		seqInfo := s.InfoPerSeqID[seqId]
 		ret.Add("    %s : inflation: %s, number of branches: %d, balance: %s -> %s",
-			seqId.Short(), util.GoThousands(seqInfo.TotalInflation), seqInfo.NumBranches,
+			seqId.StringShort(), util.GoThousands(seqInfo.TotalInflation), seqInfo.NumBranches,
 			util.GoThousands(seqInfo.BeginBalance), util.GoThousands(seqInfo.EndBalance))
 	}
 	return ret

@@ -30,11 +30,11 @@ func (b *BaseProposer) Run() {
 	var forceExit bool
 
 	for b.ContinueCandidateProposing(b.TargetTs) {
-		latestMs := b.GetLatestOwnMilestone()
+		latestMs := b.OwnLatestMilestone()
 		if a, forceExit = b.proposeBase(latestMs.VID); forceExit {
 			return
 		}
-		if a != nil {
+		if a != nil && a.Completed() {
 			if forceExit = b.Propose(a); forceExit {
 				return
 			}

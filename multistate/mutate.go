@@ -188,7 +188,7 @@ func addOutputToTrie(trie *immutable.TrieUpdatable, oid *ledger.OutputID, out *l
 
 	if chainConstraint.IsOrigin() {
 		if existed := trie.Update(chainKey, oid[:]); existed {
-			return fmt.Errorf("addOutputToTrie: unexpected chain origin in the state: %s", chainID.Short())
+			return fmt.Errorf("addOutputToTrie: unexpected chain origin in the state: %s", chainID.StringShort())
 		}
 	} else {
 		const assertChainRecordsConsistency = true

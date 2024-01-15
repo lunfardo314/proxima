@@ -57,7 +57,7 @@ func runTransferCmd(_ *cobra.Command, args []string) {
 
 	var prompt string
 	if feeAmount > 0 {
-		prompt = fmt.Sprintf("transfer will cost %d of fees paid to the tag-along sequencer %s. Proceed?", feeAmount, tagAlongSeqID.Short())
+		prompt = fmt.Sprintf("transfer will cost %d of fees paid to the tag-along sequencer %s. Proceed?", feeAmount, tagAlongSeqID.StringShort())
 	} else {
 		prompt = "transfer transaction will not have tag-along fee output (fee-less). Proceed?"
 	}

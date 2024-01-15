@@ -9,7 +9,6 @@ import (
 
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/ledger"
-	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/set"
@@ -85,43 +84,6 @@ func runAttacher(vid *vertex.WrappedTx, env Environment, ctx context.Context) (v
 	a.PostEventNewGood(vid)
 	a.stats.baseline = a.baselineBranch
 	return vertex.Good, a.stats, nil
-}
-
-// AttachTransactionFromBytes used for testing
-func AttachTransactionFromBytes(txBytes []byte, env Environment, opts ...Option) (*vertex.WrappedTx, error) {
-	tx, err := transaction.FromBytes(txBytes, transaction.MainTxValidationOptions...)
-	if err != nil {
-		return nil, err
-	}
-	return AttachTransaction(tx, env, opts...), nil
-}
-
-const maxTimeout = 10 * time.Minute
-
-func EnsureBranch(txid ledger.TransactionID, env Environment, timeout ...time.Duration) (*vertex.WrappedTx, error) {
-	vid := AttachTxID(txid, env)
-	to := maxTimeout
-	if len(timeout) > 0 {
-		to = timeout[0]
-	}
-	deadline := time.Now().Add(to)
-	for vid.GetTxStatus() == vertex.Undefined {
-		if time.Now().After(deadline) {
-			return nil, fmt.Errorf("failed to fetch branch %s in %v", txid.StringShort(), to)
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	return vid, nil
-}
-
-func EnsureLatestBranches(env Environment) error {
-	branchTxIDs := multistate.FetchLatestBranchTransactionIDs(env.StateStore())
-	for _, branchID := range branchTxIDs {
-		if _, err := EnsureBranch(branchID, env); err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 func newSequencerAttacher(vid *vertex.WrappedTx, env Environment, ctx context.Context) *sequencerAttacher {

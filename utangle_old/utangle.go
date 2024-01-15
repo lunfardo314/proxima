@@ -331,7 +331,7 @@ func (ut *UTXOTangle) ScanAccount(addr ledger.AccountID, lastNTimeSlots int) set
 
 			for i := range outs {
 				ow, ok, _ := ut.GetWrappedOutput(&outs[i], rdr)
-				util.Assertf(ok, "ScanAccount: can't fetch output %s", outs[i].StringShort())
+				util.Assertf(ok, "PullSequencerTips: can't fetch output %s", outs[i].StringShort())
 				ret.Insert(ow)
 			}
 		}

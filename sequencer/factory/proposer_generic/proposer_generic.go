@@ -13,7 +13,7 @@ type (
 	Environment interface {
 		attacher.Environment
 		ContinueCandidateProposing(ts ledger.LogicalTime) bool
-		GetLatestOwnMilestone() vertex.WrappedOutput
+		OwnLatestMilestone() vertex.WrappedOutput
 		Propose(a *attacher.IncrementalAttacher) bool
 		AttachTagAlongInputs(a *attacher.IncrementalAttacher)
 	}
@@ -217,7 +217,7 @@ func (t *TaskGeneric) Name() string {
 //	om, ok := c.factory.ownMilestones[rootVID]
 //	util.Assertf(ok, "futureConeMilestonesOrdered: milestone %s of chain %s is expected to be among set of own milestones (%d)",
 //		rootVID.LazyIDShort(),
-//		func() any { return c.factory.tipPool.chainID.Short() },
+//		func() any { return c.factory.tipPool.chainID.StringShort() },
 //		len(c.factory.ownMilestones))
 //
 //	rootOut := om.WrappedOutput

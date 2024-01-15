@@ -125,7 +125,7 @@ func (a *IncrementalAttacher) InsertTagAlongInput(wOut vertex.WrappedOutput, vis
 	}
 	saveCoverageDelta := a.coverageDelta
 
-	if !a.attachOutput(wOut, ledger.NilLogicalTime, visited) || !a.Done() {
+	if !a.attachOutput(wOut, ledger.NilLogicalTime, visited) || !a.Completed() {
 		// it is either conflicting, or not solid yet
 		// in either case rollback
 		a.pastConeAttacher.undefinedPastVertices = saveUndefinedPastVertices
@@ -199,8 +199,8 @@ func (a *IncrementalAttacher) NumInputs() int {
 	return len(a.tagAlongInputs) + 2
 }
 
-// Done returns true is past cone all solid and consistent (no conflicts)
-func (a *IncrementalAttacher) Done() (done bool) {
+// Completed returns true is past cone all solid and consistent (no conflicts)
+func (a *IncrementalAttacher) Completed() (done bool) {
 	if done = len(a.undefinedPastVertices) == 0 && len(a.rooted) > 0; done {
 		util.Assertf(a.coverageDelta > 0, "a.coverageDelta) > 0")
 	}

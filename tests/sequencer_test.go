@@ -10,11 +10,21 @@ import (
 	"github.com/lunfardo314/proxima/core/attacher"
 	"github.com/lunfardo314/proxima/core/dag"
 	"github.com/lunfardo314/proxima/core/vertex"
+	"github.com/lunfardo314/proxima/core/workflow"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/sequencer/tippool"
 	"github.com/stretchr/testify/require"
 )
+
+type tippoolEnvironment struct {
+	*workflow.Workflow
+	seqID ledger.ChainID
+}
+
+func (t *tippoolEnvironment) SequencerID() ledger.ChainID {
+	return t.seqID
+}
 
 func TestTippool(t *testing.T) {
 	ledger.SetTimeTickDuration(10 * time.Millisecond)
@@ -63,8 +73,15 @@ func TestTippool(t *testing.T) {
 
 		tpools := make([]*tippool.SequencerTipPool, len(testData.chainOrigins))
 		testData.wrk.EnableTraceTag("tippool")
+		var err error
+
 		for i := range tpools {
-			tpools[i] = tippool.New(testData.wrk, testData.chainOrigins[i].ChainID, fmt.Sprintf("seq_test%d", i))
+			env := &tippoolEnvironment{
+				Workflow: testData.wrk,
+				seqID:    testData.chainOrigins[i].ChainID,
+			}
+			tpools[i], err = tippool.New(env, fmt.Sprintf("seq_test%d", i), tippool.OptionDoNotLoadOwnMilestones)
+			require.NoError(t, err)
 		}
 
 		var wg sync.WaitGroup

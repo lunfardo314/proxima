@@ -48,7 +48,7 @@ func (ut *UTXOTangle) InfoLines(verbose ...bool) *lines.Lines {
 			coverage := ut.LedgerCoverage(vid)
 			seqID, isAvailable := vid.SequencerIDIfAvailable()
 			util.Assertf(isAvailable, "sequencer ID expected in %s", vid.IDShort())
-			ln.Add("    branch %s, seqID: %s, coverage: %s", vid.IDShort(), seqID.Short(), util.GoThousands(coverage))
+			ln.Add("    branch %s, seqID: %s, coverage: %s", vid.IDShort(), seqID.StringShort(), util.GoThousands(coverage))
 			if verb {
 				ln.Add("    == root: " + ut.branches[e][vid].String()).
 					Append(vid.Lines("    "))

@@ -37,6 +37,6 @@ func runSyncInfoCmd(_ *cobra.Command, _ []string) {
 		bookedBack := time.Since(ledger.MustNewLogicalTime(ledger.Slot(si.LatestBookedSlot), 0).Time())
 		active := seenBack < ledger.SlotDuration()
 		glb.Infof("        %s : active/synced: %v/%v, last seen slot: %d (%v back), last booked slot: %d (%v back)",
-			seqID.Short(), active, si.Synced, si.LatestSeenSlot, seenBack, si.LatestBookedSlot, bookedBack)
+			seqID.StringShort(), active, si.Synced, si.LatestSeenSlot, seenBack, si.LatestBookedSlot, bookedBack)
 	}
 }
