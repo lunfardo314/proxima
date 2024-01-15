@@ -211,6 +211,10 @@ func (a *IncrementalAttacher) Extending() *vertex.WrappedTx {
 	return a.extend
 }
 
+func (a *IncrementalAttacher) Endorsing() []*vertex.WrappedTx {
+	return a.endorse
+}
+
 func (a *IncrementalAttacher) ExtendedOutput() vertex.WrappedOutput {
 	return a.seqOutput
 }

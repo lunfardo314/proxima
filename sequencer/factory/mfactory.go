@@ -35,17 +35,12 @@ type (
 		name                        string
 		tipPool                     *tippool.SequencerTipPool
 		proposal                    latestMilestoneProposal
-		ownMilestones               map[*vertex.WrappedTx]ownMilestone
+		ownMilestones               map[*vertex.WrappedTx]set.Set[vertex.WrappedOutput] // map ms -> consumed outputs in the past
 		maxTagAlongInputs           int
 		lastPruned                  time.Time
 		pastCombinations            map[[32]byte]time.Time
 		ownMilestoneCount           int
 		removedMilestonesSinceReset int
-	}
-
-	ownMilestone struct {
-		vertex.WrappedOutput
-		consumedInThePastPath set.Set[vertex.WrappedOutput]
 	}
 
 	latestMilestoneProposal struct {
@@ -54,14 +49,6 @@ type (
 		bestSoFarCoverage uint64
 		current           *transaction.Transaction
 		currentExtended   vertex.WrappedOutput
-	}
-
-	proposedMilestoneWithData struct {
-		tx         *transaction.Transaction
-		extended   vertex.WrappedOutput
-		coverage   uint64
-		elapsed    time.Duration
-		proposedBy string
 	}
 
 	Stats struct {
@@ -93,7 +80,7 @@ func New(name string, env Environment, maxTagAlongInputs int) (*MilestoneFactory
 		Environment:       env,
 		name:              name,
 		proposal:          latestMilestoneProposal{},
-		ownMilestones:     map[*vertex.WrappedTx]ownMilestone{},
+		ownMilestones:     make(map[*vertex.WrappedTx]set.Set[vertex.WrappedOutput]),
 		maxTagAlongInputs: maxTagAlongInputs,
 	}
 	if ret.maxTagAlongInputs == 0 || ret.maxTagAlongInputs > veryMaxTagAlongInputs {
@@ -108,46 +95,39 @@ func New(name string, env Environment, maxTagAlongInputs int) (*MilestoneFactory
 	return ret, nil
 }
 
-func newOwnMilestone(wOut vertex.WrappedOutput, inputs ...vertex.WrappedOutput) ownMilestone {
-	return ownMilestone{
-		WrappedOutput:         wOut,
-		consumedInThePastPath: set.New[vertex.WrappedOutput](inputs...),
-	}
-}
-
 func (mf *MilestoneFactory) isConsumedInThePastPath(wOut vertex.WrappedOutput, ms *vertex.WrappedTx) bool {
 	mf.mutex.RLock()
 	defer mf.mutex.RUnlock()
 
-	return mf.ownMilestones[ms].consumedInThePastPath.Contains(wOut)
+	return mf.ownMilestones[ms].Contains(wOut)
 }
 
-func (mf *MilestoneFactory) OwnLatestMilestone() (ret vertex.WrappedOutput) {
+func (mf *MilestoneFactory) OwnLatestMilestone() *vertex.WrappedTx {
 	latest := mf.tipPool.GetOwnLatestMilestoneTx()
 	util.Assertf(latest != nil, "cannot find own latest milestone")
+	mf.addOwnMilestone(latest)
 
-	mf.addOwnMilestone(latest.SequencerWrappedOutput())
-	util.Assertf(ret.VID != nil, "ret.VID != nil")
-	return ret
+	return latest
 }
 
-func (mf *MilestoneFactory) addOwnMilestone(wOut vertex.WrappedOutput) {
-	inputs := wOut.VID.WrappedInputs()
+func (mf *MilestoneFactory) addOwnMilestone(vid *vertex.WrappedTx) {
 	mf.mutex.Lock()
 	defer mf.mutex.Unlock()
 
-	om := newOwnMilestone(wOut, inputs...)
-	if wOut.VID.IsSequencerMilestone() {
-		if prev := wOut.VID.SequencerPredecessor(); prev != nil {
-			if prevOm, found := mf.ownMilestones[prev]; found {
-				om.consumedInThePastPath.AddAll(prevOm.consumedInThePastPath)
+	if _, already := mf.ownMilestones[vid]; already {
+		return
+	}
+
+	consumed := set.New[vertex.WrappedOutput](vid.WrappedInputs()...)
+	if vid.IsSequencerMilestone() {
+		if prev := vid.SequencerPredecessor(); prev != nil {
+			if prevConsumed, found := mf.ownMilestones[prev]; found {
+				consumed.AddAll(prevConsumed)
 			}
 		}
 	}
-	if _, found := mf.ownMilestones[wOut.VID]; !found {
-		mf.ownMilestones[wOut.VID] = om
-		mf.ownMilestoneCount++
-	}
+	mf.ownMilestones[vid] = consumed
+	mf.ownMilestoneCount++
 }
 
 func (mf *MilestoneFactory) StartProposingForTargetLogicalTime(targetTs ledger.LogicalTime) *transaction.Transaction {
@@ -214,15 +194,15 @@ func (mf *MilestoneFactory) startProposerWorkers(targetTime ledger.LogicalTime) 
 	for strategyName, s := range allProposingStrategies {
 		task := proposer_generic.New(mf, s, targetTime)
 		if task == nil {
-			mf.Tracef("proposer", "SKIP '%s' proposer for the target %s", strategyName, targetTime.String())
+			mf.Tracef("proposer", "SKIP '%s' proposer for the target %s", strategyName, targetTime.String)
 			continue
 		}
-		mf.Tracef("proposer", "RUN '%s' proposer for the target %s", strategyName, targetTime.String())
+		mf.Tracef("proposer", "RUN '%s' proposer for the target %s", strategyName, targetTime.String)
 
-		util.RunWrappedRoutine(mf.name+"::"+task.Name(), func() {
-			mf.Tracef("proposer", " START proposer %s", task.Name())
+		util.RunWrappedRoutine(mf.name+"::"+task.GetName(), func() {
+			mf.Tracef("proposer", " START proposer %s", task.GetName())
 			task.Run()
-			mf.Tracef("proposer", " END proposer %s", task.Name())
+			mf.Tracef("proposer", " END proposer %s", task.GetName())
 		}, func(err error) {
 			mf.Log().Fatal(err)
 		}, common.ErrDBUnavailable, vertex.ErrDeletedVertexAccessed)
@@ -231,18 +211,19 @@ func (mf *MilestoneFactory) startProposerWorkers(targetTime ledger.LogicalTime) 
 
 func (mf *MilestoneFactory) Propose(a *attacher.IncrementalAttacher) (forceExit bool) {
 	coverage := a.LedgerCoverageSum()
+	mf.Tracef("proposer", "factory.Propose [%s]: coverage %s", util.GoThousandsLazy(coverage))
 
 	mf.proposal.mutex.Lock()
 	defer mf.proposal.mutex.Unlock()
 
 	if coverage <= mf.proposal.bestSoFarCoverage {
-		mf.Tracef("proposer", "proposal %s rejected due no increase in coverage", a.Name())
+		mf.Tracef("proposer", "factory.Propose: [%s] proposal rejected due no increase in coverage", a.Name())
 		return
 	}
 
 	tx, err := a.MakeTransaction(mf.SequencerName(), mf.ControllerPrivateKey())
 	if err != nil {
-		mf.Log().Warnf("proposer '%s': error during transaction generation: '%v'", a.Name(), err)
+		mf.Log().Warnf("factory.Propose: [%s]: error during transaction generation: '%v'", a.Name(), err)
 		return true
 	}
 
@@ -306,13 +287,13 @@ func (mf *MilestoneFactory) ChooseExtendEndorsePair(proposerName string, targetT
 	return nil
 }
 
-func (mf *MilestoneFactory) chooseEndorseExtendPair(proposerName string, targetTs ledger.LogicalTime, endorse *vertex.WrappedTx, extendCandidates []vertex.WrappedOutput) *attacher.IncrementalAttacher {
+func (mf *MilestoneFactory) chooseEndorseExtendPair(proposerName string, targetTs ledger.LogicalTime, endorse *vertex.WrappedTx, extendCandidates []*vertex.WrappedTx) *attacher.IncrementalAttacher {
 	var ret *attacher.IncrementalAttacher
 	for _, extend := range extendCandidates {
-		if mf.knownExtendEndorseCombination(extend.VID, endorse) {
+		if mf.knownExtendEndorseCombination(extend, endorse) {
 			continue
 		}
-		a, err := attacher.NewIncrementalAttacher(proposerName, mf, targetTs, extend.VID, endorse)
+		a, err := attacher.NewIncrementalAttacher(proposerName, mf, targetTs, extend, endorse)
 		if err != nil {
 			mf.Tracef("proposer", "can't extend %s and endorse %s: %v", extend.IDShortString, endorse.IDShortString, err)
 			continue
@@ -350,7 +331,7 @@ func (mf *MilestoneFactory) rememberExtendEndorseCombination(extend *vertex.Wrap
 	mf.pastCombinations[h] = time.Now()
 }
 
-func (mf *MilestoneFactory) futureConeMilestonesOrdered(rootVID *vertex.WrappedTx, targetTs ledger.LogicalTime) []vertex.WrappedOutput {
+func (mf *MilestoneFactory) futureConeMilestonesOrdered(rootVID *vertex.WrappedTx, targetTs ledger.LogicalTime) []*vertex.WrappedTx {
 	mf.cleanOwnMilestonesIfNecessary()
 
 	mf.mutex.RLock()
@@ -359,25 +340,24 @@ func (mf *MilestoneFactory) futureConeMilestonesOrdered(rootVID *vertex.WrappedT
 	//p.setTraceNAhead(1)
 	mf.Tracef("proposer", "futureConeMilestonesOrdered for root %s. Total %d own milestones", rootVID.IDShortString, len(mf.ownMilestones))
 
-	om, ok := mf.ownMilestones[rootVID]
+	_, ok := mf.ownMilestones[rootVID]
 	util.Assertf(ok, "futureConeMilestonesOrdered: milestone %s of chain %s is expected to be among set of own milestones (%d)",
 		rootVID.IDShortString, util.Ref(mf.SequencerID()).StringShort, len(mf.ownMilestones))
 
-	rootOut := om.WrappedOutput
 	ordered := util.SortKeys(mf.ownMilestones, func(vid1, vid2 *vertex.WrappedTx) bool {
 		// by timestamp -> equivalent to topological order, ascending, i.e. older first
 		return vid1.Timestamp().Before(vid2.Timestamp())
 	})
 
 	visited := set.New[*vertex.WrappedTx](rootVID)
-	ret := append(make([]vertex.WrappedOutput, 0, len(ordered)), rootOut)
+	ret := []*vertex.WrappedTx{rootVID}
 	for _, vid := range ordered {
 		if !vid.IsBadOrDeleted() &&
 			vid.IsSequencerMilestone() &&
 			visited.Contains(vid.SequencerPredecessor()) &&
 			ledger.ValidTimePace(vid.Timestamp(), targetTs) {
 			visited.Insert(vid)
-			ret = append(ret, mf.ownMilestones[vid].WrappedOutput)
+			ret = append(ret, vid)
 		}
 	}
 	return ret

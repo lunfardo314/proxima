@@ -31,10 +31,11 @@ func (b *BaseProposer) Run() {
 
 	for b.ContinueCandidateProposing(b.TargetTs) {
 		latestMs := b.OwnLatestMilestone()
-		if a, forceExit = b.proposeBase(latestMs.VID); forceExit {
+		if a, forceExit = b.propose(latestMs); forceExit {
 			return
 		}
 		if a != nil && a.Completed() {
+			b.TraceLocal("Run: completed")
 			if forceExit = b.Propose(a); forceExit {
 				return
 			}
@@ -43,38 +44,35 @@ func (b *BaseProposer) Run() {
 	}
 }
 
-func (b *BaseProposer) proposeBase(extend *vertex.WrappedTx) (*attacher.IncrementalAttacher, bool) {
+func (b *BaseProposer) propose(extend *vertex.WrappedTx) (*attacher.IncrementalAttacher, bool) {
 	// own latest milestone exists
 	if !b.TargetTs.IsSlotBoundary() {
+		// target is not a branch target
+		b.TraceLocal("propose: target is not a branch target")
 		if extend.Slot() != b.TargetTs.Slot() {
-			// on startup or cross-slot will only produce branches
-			b.Tracef("proposer", "proposeBase.force exit: cross-slot %s", extend.IDShortString)
+			b.TraceLocal("propose.force exit: cross-slot %s", extend.IDShortString)
 			return nil, true
 		}
+		b.TraceLocal("propose: target is not a branch on the same slot")
 		if !extend.IsSequencerMilestone() {
-			// not cross-slot, but predecessor must be sequencer tx
-			b.Tracef("proposer", "proposeBase.force exit: not-sequencer %s", extend.IDShortString)
+			b.TraceLocal("propose.force exit: not-sequencer %s", extend.IDShortString)
 			return nil, true
 		}
 	}
+	b.TraceLocal("propose: predecessor is sequencer")
 
-	if !b.TargetTs.IsSlotBoundary() && extend.Slot() != b.TargetTs.Slot() {
-		// on startup or cross-slot will only produce branches
-		b.Tracef("proposer", "proposeBase.force exit: cross-slot %s", extend.IDShortString)
-		return nil, true
-	}
-
-	a, err := attacher.NewIncrementalAttacher(b.Name(), b, b.TargetTs, extend)
+	a, err := attacher.NewIncrementalAttacher(b.Name, b, b.TargetTs, extend)
 	if err != nil {
-		b.Log().Warnf("proposer %s: can't create attacher: '%v'", b.Name(), err)
+		b.Log().Warnf("proposer %s: can't create attacher: '%v'", b.Name, err)
 		return nil, true
 	}
+	b.TraceLocal("propose: created attacher")
 
 	if b.TargetTs.Tick() != 0 {
-		b.Tracef("proposer", "proposer task %s: making non-branch, extending %s", b.Name(), extend.IDShortString)
+		b.TraceLocal("propose: making non-branch, extending %s, collecting tag-along inputs", extend.IDShortString)
 		b.AttachTagAlongInputs(a)
 	} else {
-		b.Tracef("proposer", "proposer task %s making branch, extending %s", b.Name(), extend.IDShortString)
+		b.TraceLocal("propose: making branch, extending %s, no tag-along", extend.IDShortString)
 	}
 	return a, false
 }

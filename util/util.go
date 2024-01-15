@@ -24,6 +24,12 @@ func GoThousands[T Integer](v T) string {
 	return strings.Replace(prn.Sprintf("%d", v), ",", "_", -1)
 }
 
+func GoThousandsLazy[T Integer](v T) func() string {
+	return func() string {
+		return GoThousands(v)
+	}
+}
+
 func ForEachUniquePair[T any](sl []T, fun func(a1, a2 T) bool) {
 	for i, r1 := range sl {
 		for _, r2 := range sl[i+1:] {
