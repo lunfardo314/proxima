@@ -106,6 +106,23 @@ func New(env Environment, namePrefix string, opts ...Option) (*SequencerTipPool,
 	return ret, nil
 }
 
+func (tp *SequencerTipPool) OtherMilestonesSorted() []*vertex.WrappedTx {
+	tp.mutex.RLock()
+	defer tp.mutex.RUnlock()
+
+	ret := make([]*vertex.WrappedTx, 0, len(tp.latestMilestones))
+	ownSeqID := tp.SequencerID()
+	for seqID, vid := range tp.latestMilestones {
+		if seqID != ownSeqID {
+			ret = append(ret, vid)
+		}
+	}
+	sort.Slice(ret, func(i, j int) bool {
+		return isPreferredMilestoneAgainstTheOther(ret[i], ret[j])
+	})
+	return ret
+}
+
 func (tp *SequencerTipPool) GetOwnLatestMilestoneTx() *vertex.WrappedTx {
 	tp.mutex.RLock()
 	defer tp.mutex.RUnlock()
@@ -212,15 +229,19 @@ func isPreferredMilestoneAgainstTheOther(vid1, vid2 *vertex.WrappedTx) bool {
 		return true
 	}
 
-	coverage1 := vid1.GetLedgerCoverage().Sum()
-	coverage2 := vid2.GetLedgerCoverage().Sum()
+	coverage1 := vid1.LedgerCoverageSum()
+	coverage2 := vid2.LedgerCoverageSum()
 	switch {
 	case coverage1 > coverage2:
 		// main preference is by ledger coverage
 		return true
 	case coverage1 == coverage2:
-		// in case of equal coverage hash will be used
-		return bytes.Compare(vid1.ID[:], vid2.ID[:]) > 0
+		if vid1.Timestamp() == vid2.Timestamp() {
+			// prefer with bigger hash
+			return bytes.Compare(vid1.ID[:], vid2.ID[:]) > 0
+		}
+		// prefer younger
+		return vid2.Timestamp().Before(vid1.Timestamp())
 	default:
 		return false
 	}

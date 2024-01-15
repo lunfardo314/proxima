@@ -1,7 +1,9 @@
 package factory
 
 import (
+	"bytes"
 	"crypto/ed25519"
+	"errors"
 	"sync"
 	"time"
 
@@ -9,12 +11,14 @@ import (
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/transaction"
+	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/sequencer/factory/proposer_base"
 	"github.com/lunfardo314/proxima/sequencer/factory/proposer_generic"
 	"github.com/lunfardo314/proxima/sequencer/tippool"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/set"
 	"github.com/lunfardo314/unitrie/common"
+	"golang.org/x/crypto/blake2b"
 )
 
 type (
@@ -23,7 +27,6 @@ type (
 		tippool.Environment
 		ControllerPrivateKey() ed25519.PrivateKey
 		SequencerName() string
-		SequencerID() ledger.ChainID
 	}
 
 	MilestoneFactory struct {
@@ -35,6 +38,7 @@ type (
 		ownMilestones               map[*vertex.WrappedTx]ownMilestone
 		maxTagAlongInputs           int
 		lastPruned                  time.Time
+		pastCombinations            map[[32]byte]time.Time
 		ownMilestoneCount           int
 		removedMilestonesSinceReset int
 	}
@@ -273,4 +277,108 @@ func (mf *MilestoneFactory) cleanOwnMilestonesIfNecessary() {
 		delete(mf.ownMilestones, vid)
 	}
 	mf.removedMilestonesSinceReset += len(toDelete)
+}
+
+// ChooseExtendEndorsePair implements one of possible strategies
+func (mf *MilestoneFactory) ChooseExtendEndorsePair(proposerName string, targetTs ledger.LogicalTime) *attacher.IncrementalAttacher {
+	endorseCandidates := mf.tipPool.OtherMilestonesSorted()
+	seqID := mf.SequencerID()
+	var ret *attacher.IncrementalAttacher
+	for _, endorse := range endorseCandidates {
+		if !ledger.ValidTimePace(endorse.Timestamp(), targetTs) {
+			continue
+		}
+		rdr := multistate.MakeSugared(mf.GetStateReaderForTheBranch(endorse.BaselineBranch()))
+		seqOut, err := rdr.GetChainOutput(&seqID)
+		if errors.Is(err, multistate.ErrNotFound) {
+			continue
+		}
+		util.AssertNoError(err)
+		extendRoot := attacher.AttachTxID(seqOut.ID.TransactionID(), mf)
+		futureConeMilestones := mf.futureConeMilestonesOrdered(extendRoot, targetTs)
+		ret = mf.chooseEndorseExtendPair(proposerName, targetTs, endorse, futureConeMilestones)
+		if ret != nil {
+			// return first suitable pair. The search is not exhaustive along all possible endorsements
+			mf.rememberExtendEndorseCombination(ret.Extending(), endorse)
+			return ret
+		}
+	}
+	return nil
+}
+
+func (mf *MilestoneFactory) chooseEndorseExtendPair(proposerName string, targetTs ledger.LogicalTime, endorse *vertex.WrappedTx, extendCandidates []vertex.WrappedOutput) *attacher.IncrementalAttacher {
+	var ret *attacher.IncrementalAttacher
+	for _, extend := range extendCandidates {
+		if mf.knownExtendEndorseCombination(extend.VID, endorse) {
+			continue
+		}
+		a, err := attacher.NewIncrementalAttacher(proposerName, mf, targetTs, extend.VID, endorse)
+		if err != nil {
+			mf.Tracef("proposer", "can't extend %s and endorse %s: %v", extend.IDShortString, endorse.IDShortString, err)
+			continue
+		}
+		util.Assertf(a != nil, "a != nil")
+		if !a.Completed() {
+			continue
+		}
+		if ret == nil || a.LedgerCoverageSum() > ret.LedgerCoverageSum() {
+			ret = a
+		}
+	}
+	return ret
+}
+
+func extendEndorseCombinationHash(extend *vertex.WrappedTx, endorse ...*vertex.WrappedTx) [32]byte {
+	var buf bytes.Buffer
+	buf.Write(extend.ID[:])
+	for _, vid := range endorse {
+		buf.Write(vid.ID[:])
+	}
+	return blake2b.Sum256(buf.Bytes())
+}
+
+func (mf *MilestoneFactory) knownExtendEndorseCombination(extend *vertex.WrappedTx, endorse ...*vertex.WrappedTx) bool {
+	h := extendEndorseCombinationHash(extend, endorse...)
+	if _, already := mf.pastCombinations[h]; already {
+		return true
+	}
+	return false
+}
+
+func (mf *MilestoneFactory) rememberExtendEndorseCombination(extend *vertex.WrappedTx, endorse ...*vertex.WrappedTx) {
+	h := extendEndorseCombinationHash(extend, endorse...)
+	mf.pastCombinations[h] = time.Now()
+}
+
+func (mf *MilestoneFactory) futureConeMilestonesOrdered(rootVID *vertex.WrappedTx, targetTs ledger.LogicalTime) []vertex.WrappedOutput {
+	mf.cleanOwnMilestonesIfNecessary()
+
+	mf.mutex.RLock()
+	defer mf.mutex.RUnlock()
+
+	//p.setTraceNAhead(1)
+	mf.Tracef("proposer", "futureConeMilestonesOrdered for root %s. Total %d own milestones", rootVID.IDShortString, len(mf.ownMilestones))
+
+	om, ok := mf.ownMilestones[rootVID]
+	util.Assertf(ok, "futureConeMilestonesOrdered: milestone %s of chain %s is expected to be among set of own milestones (%d)",
+		rootVID.IDShortString, util.Ref(mf.SequencerID()).StringShort, len(mf.ownMilestones))
+
+	rootOut := om.WrappedOutput
+	ordered := util.SortKeys(mf.ownMilestones, func(vid1, vid2 *vertex.WrappedTx) bool {
+		// by timestamp -> equivalent to topological order, ascending, i.e. older first
+		return vid1.Timestamp().Before(vid2.Timestamp())
+	})
+
+	visited := set.New[*vertex.WrappedTx](rootVID)
+	ret := append(make([]vertex.WrappedOutput, 0, len(ordered)), rootOut)
+	for _, vid := range ordered {
+		if !vid.IsBadOrDeleted() &&
+			vid.IsSequencerMilestone() &&
+			visited.Contains(vid.SequencerPredecessor()) &&
+			ledger.ValidTimePace(vid.Timestamp(), targetTs) {
+			visited.Insert(vid)
+			ret = append(ret, mf.ownMilestones[vid].WrappedOutput)
+		}
+	}
+	return ret
 }

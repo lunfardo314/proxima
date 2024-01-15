@@ -3,6 +3,7 @@ package multistate
 import (
 	"encoding/binary"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/lunfardo314/proxima/global"
@@ -269,9 +270,10 @@ func FetchBranchDataMulti(store global.StateStore, rootData ...RootRecord) []*Br
 func FetchLatestBranches(store global.StateStore) []*BranchData {
 	ret := FetchBranchDataMulti(store, FetchRootRecords(store, FetchLatestSlot(store))...)
 
-	return util.Sort(ret, func(i, j int) bool {
+	sort.Slice(ret, func(i, j int) bool {
 		return ret[i].LedgerCoverage.Sum() > ret[j].LedgerCoverage.Sum()
 	})
+	return ret
 }
 
 func FetchLatestBranchTransactionIDs(store global.StateStore) []ledger.TransactionID {

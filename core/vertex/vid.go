@@ -555,6 +555,11 @@ func (vid *WrappedTx) SetLedgerCoverage(coverage multistate.LedgerCoverage) {
 	vid.coverage = &coverage
 }
 
+func (vid *WrappedTx) LedgerCoverageSum() uint64 {
+	ret := vid.GetLedgerCoverage()
+	return ret.Sum()
+}
+
 func Less(vid1, vid2 *WrappedTx) bool {
 	c1 := vid1.GetLedgerCoverage().Sum()
 	c2 := vid2.GetLedgerCoverage().Sum()
