@@ -32,7 +32,6 @@ type (
 	MilestoneFactory struct {
 		Environment
 		mutex                       sync.RWMutex
-		name                        string
 		tipPool                     *tippool.SequencerTipPool
 		proposal                    latestMilestoneProposal
 		ownMilestones               map[*vertex.WrappedTx]set.Set[vertex.WrappedOutput] // map ms -> consumed outputs in the past
@@ -75,10 +74,9 @@ const (
 	cleanupMilestonesPeriod = 1 * time.Second
 )
 
-func New(name string, env Environment, maxTagAlongInputs int) (*MilestoneFactory, error) {
+func New(env Environment, maxTagAlongInputs int) (*MilestoneFactory, error) {
 	ret := &MilestoneFactory{
 		Environment:       env,
-		name:              name,
 		proposal:          latestMilestoneProposal{},
 		ownMilestones:     make(map[*vertex.WrappedTx]set.Set[vertex.WrappedOutput]),
 		maxTagAlongInputs: maxTagAlongInputs,
@@ -87,7 +85,7 @@ func New(name string, env Environment, maxTagAlongInputs int) (*MilestoneFactory
 		ret.maxTagAlongInputs = veryMaxTagAlongInputs
 	}
 	var err error
-	ret.tipPool, err = tippool.New(ret, name)
+	ret.tipPool, err = tippool.New(ret, env.SequencerName())
 	if err != nil {
 		return nil, err
 	}
@@ -199,7 +197,7 @@ func (mf *MilestoneFactory) startProposerWorkers(targetTime ledger.LogicalTime) 
 		}
 		mf.Tracef("proposer", "RUN '%s' proposer for the target %s", strategyName, targetTime.String)
 
-		util.RunWrappedRoutine(mf.name+"::"+task.GetName(), func() {
+		util.RunWrappedRoutine(mf.SequencerName()+"::"+task.GetName(), func() {
 			mf.Tracef("proposer", " START proposer %s", task.GetName())
 			task.Run()
 			mf.Tracef("proposer", " END proposer %s", task.GetName())
