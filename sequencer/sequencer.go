@@ -76,14 +76,15 @@ func New(glb *workflow.Workflow, seqID ledger.ChainID, controllerKey ed25519.Pri
 }
 
 func (seq *Sequencer) Start() {
-	if !seq.ensureFirstMilestone() {
-		seq.log.Warnf("can't start sequencer. EXIT..")
-		return
-	}
 	seq.waitStop.Add(1)
 	util.RunWrappedRoutine(seq.config.SequencerName+"[mainLoop]", func() {
+		defer seq.waitStop.Done()
+
+		if !seq.ensureFirstMilestone() {
+			seq.log.Warnf("can't start sequencer. EXIT..")
+			return
+		}
 		seq.mainLoop()
-		seq.waitStop.Done()
 	}, func(err error) {
 		seq.log.Fatal(err)
 	}, common.ErrDBUnavailable)
@@ -115,6 +116,11 @@ func (seq *Sequencer) ensureFirstMilestone() bool {
 		return false
 	}
 	seq.log.Infof("sequencer will start with the milestone %s", startingMilestone.IDShortString())
+	sleepDuration := ledger.SleepDurationUntilFutureLogicalTime(startingMilestone.Timestamp())
+	if sleepDuration > 0 {
+		seq.log.Infof("will delay start for %v to sync with the real clock", sleepDuration)
+		time.Sleep(sleepDuration)
+	}
 	return true
 }
 
@@ -149,11 +155,12 @@ func (seq *Sequencer) Tracef(tag string, format string, args ...any) {
 func (seq *Sequencer) mainLoop() {
 	beginAt := seq.Workflow.SyncData().WhenStarted().Add(seq.config.DelayStart)
 	if beginAt.After(time.Now()) {
-		seq.log.Infof("wait for one slot (%v) before starting the main loop", ledger.SlotDuration())
+		seq.log.Infof("wait for %v before starting the main loop", seq.config.DelayStart)
 	}
 	time.Sleep(time.Until(beginAt))
-	seq.log.Infof("starting main loop")
-	defer seq.log.Info("sequencer STOPPING..")
+
+	seq.Tracef("seq", "starting main loop")
+	defer seq.Tracef("seq", "sequencer STOPPING..")
 
 	for {
 		select {
@@ -168,7 +175,7 @@ func (seq *Sequencer) mainLoop() {
 }
 
 func (seq *Sequencer) doSequencerStep() bool {
-	seq.log.Info("doSequencerStep")
+	seq.Tracef("seq", "doSequencerStep")
 	if seq.config.MaxMilestones != 0 && seq.milestoneCount >= seq.config.MaxMilestones {
 		seq.log.Infof("reached max limit of milestones %d -> stopping", seq.config.MaxMilestones)
 		return false
@@ -194,12 +201,11 @@ func (seq *Sequencer) doSequencerStep() bool {
 
 	msTx := seq.factory.StartProposingForTargetLogicalTime(targetTs)
 	if msTx == nil {
-		seq.Tracef("seq", "failed to generate msTx for target: %s. Now is: %s", targetTs, ledger.LogicalTimeNow())
+		seq.Tracef("seq", "failed to generate msTx for target %s. Now is %s", targetTs, ledger.LogicalTimeNow())
 		time.Sleep(10 * time.Millisecond)
 		return true
 	}
 
-	//seq.setTraceAhead(1)
 	seq.Tracef("seq", "produced milestone %s for the target logical time %s in %v",
 		msTx.IDShortString(), targetTs, time.Since(timerStart))
 
@@ -292,8 +298,17 @@ func (seq *Sequencer) generateNextMilestoneTxForTargetTime(targetTs ledger.Logic
 	return msTx
 }
 
+const submitTimeout = 5 * time.Second
+
 func (seq *Sequencer) submitMilestone(tx *transaction.Transaction) *vertex.WrappedTx {
-	panic("not implemented")
+	seq.Tracef("seq", "submit new milestone %s", tx.IDShortString)
+	vid, err := seq.SequencerMilestoneAttachWait(tx.Bytes(), submitTimeout)
+	if err == nil {
+		seq.Tracef("seq", "new milestone %s submitted successfully", tx.IDShortString)
+	} else {
+		seq.Log().Errorf("failed to submit new milestone %s: '%v'", tx.IDShortString(), err)
+	}
+	return vid
 }
 
 func (seq *Sequencer) OnMilestoneSubmitted(fun func(seq *Sequencer, ms *vertex.WrappedTx)) {

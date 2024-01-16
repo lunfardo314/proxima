@@ -109,6 +109,7 @@ func AttachTxID(txid ledger.TransactionID, env Environment, opts ...Option) (vid
 			vid.SetLedgerCoverage(bd.LedgerCoverage)
 			env.AddVertexNoLock(vid)
 			env.AddBranchNoLock(vid) // <<<< will be reading branch data twice. Not big problem
+			env.PostEventNewGood(vid)
 			tracef(env, "AttachTxID: branch fetched from the state: %s%s", txid.StringShort(), by)
 		} else {
 			// the corresponding state is not in the multistate DB -> put virtualTx to the utangle_old -> pull it

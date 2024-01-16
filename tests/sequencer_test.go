@@ -118,10 +118,9 @@ func Test1Sequencer(t *testing.T) {
 		seq, err := sequencer.New(testData.wrk, testData.bootstrapChainID, testData.privKey, ctx)
 		require.NoError(t, err)
 		seq.Start()
-		time.Sleep(time.Second)
+		time.Sleep(50 * time.Second)
 		stop()
 		seq.WaitStop()
 		testData.stopAndWait()
-
 	})
 }

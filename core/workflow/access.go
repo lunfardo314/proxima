@@ -75,8 +75,8 @@ func (w *Workflow) TransactionIn(txBytes []byte, opts ...txinput.TransactionInOp
 	return w.txInput.TransactionInReturnTx(txBytes, opts...)
 }
 
-func (w *Workflow) SequencerMilestoneAttachWait(txBytes []byte, timeout ...time.Duration) (*transaction.Transaction, error) {
-	return w.txInput.SequencerMilestoneAttachWait(txBytes, timeout...)
+func (w *Workflow) SequencerMilestoneAttachWait(txBytes []byte, timeout ...time.Duration) (*vertex.WrappedTx, error) {
+	return w.txInput.SequencerMilestoneNewAttachWait(txBytes, timeout...)
 }
 
 func (w *Workflow) SendTxBytesToPeer(id peer.ID, txBytes []byte, metadata *txmetadata.TransactionMetadata) bool {

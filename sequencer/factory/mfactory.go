@@ -135,19 +135,23 @@ func (mf *MilestoneFactory) AddOwnMilestone(vid *vertex.WrappedTx) {
 func (mf *MilestoneFactory) StartProposingForTargetLogicalTime(targetTs ledger.LogicalTime) *transaction.Transaction {
 	deadline := targetTs.Time()
 	nowis := time.Now()
+	mf.Tracef("seq", "StartProposingForTargetLogicalTime: targetTs: %v, nowis: %v", deadline, nowis)
 
 	if deadline.Before(nowis) {
+		mf.Tracef("seq", "deadline is in the past: impossible to generate milestone")
 		return nil
 	}
 	// start worker(s)
 	mf.setNewTarget(targetTs)
-	ctx, _ := context.WithDeadline(mf.Context(), deadline)
+	ctx, cancel := context.WithDeadline(mf.Context(), deadline)
+	defer cancel() // to prevent context leak
 	mf.startProposerWorkers(targetTs, ctx)
 
 	<-ctx.Done()
-	mf.resetTarget()
 
-	return mf.getLatestProposal() // will return nil if wasn't able to generate transaction
+	ret := mf.getLatestProposal() // will return nil if wasn't able to generate transaction
+	mf.resetTarget()
+	return ret
 }
 
 // setNewTarget signals proposer allMilestoneProposingStrategies about new timestamp,
@@ -167,8 +171,6 @@ func (mf *MilestoneFactory) resetTarget() {
 	mf.setNewTarget(ledger.NilLogicalTime)
 }
 
-// ContinueCandidateProposing the proposing strategy checks if its assumed target timestamp
-// is still actual. Strategy keeps proposing latestMilestone candidates until it is no longer actual
 func (mf *MilestoneFactory) CurrentTargetTs() ledger.LogicalTime {
 	mf.proposal.mutex.RLock()
 	defer mf.proposal.mutex.RUnlock()
@@ -214,25 +216,26 @@ func (mf *MilestoneFactory) startProposerWorkers(targetTime ledger.LogicalTime, 
 
 func (mf *MilestoneFactory) Propose(a *attacher.IncrementalAttacher) (forceExit bool) {
 	coverage := a.LedgerCoverageSum()
-	mf.Tracef("proposer", "factory.Propose [%s]: coverage %s", util.GoThousandsLazy(coverage))
+	mf.Tracef("proposer", "factory.Propose%s: coverage %s", a.Name(), util.GoThousandsLazy(coverage))
 
 	mf.proposal.mutex.Lock()
 	defer mf.proposal.mutex.Unlock()
 
 	if coverage <= mf.proposal.bestSoFarCoverage {
-		mf.Tracef("proposer", "factory.Propose: [%s] proposal rejected due no increase in coverage", a.Name())
+		mf.Tracef("proposer", "factory.Propose%s proposal rejected due no increase in coverage", a.Name())
 		return
 	}
 
 	tx, err := a.MakeTransaction(mf.SequencerName(), mf.ControllerPrivateKey())
 	if err != nil {
-		mf.Log().Warnf("factory.Propose: [%s]: error during transaction generation: '%v'", a.Name(), err)
+		mf.Log().Warnf("factory.Propose%s: error during transaction generation: '%v'", a.Name(), err)
 		return true
 	}
 
 	mf.proposal.current = tx
 	mf.proposal.bestSoFarCoverage = coverage
 	mf.proposal.currentExtended = a.ExtendedOutput()
+	mf.Tracef("proposer", "factory.Propose%s proposal %s ACCEPTED", a.Name(), tx.IDShortString)
 	return
 }
 

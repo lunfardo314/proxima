@@ -305,3 +305,13 @@ func MaxLogicalTime(ts ...LogicalTime) LogicalTime {
 		return ts1.Before(ts2)
 	})
 }
+
+// SleepDurationUntilFutureLogicalTime returns duration to sleep until the clock becomes to ts.Time()
+func SleepDurationUntilFutureLogicalTime(ts LogicalTime) (ret time.Duration) {
+	realTs := ts.Time()
+	nowis := time.Now()
+	if realTs.After(nowis) {
+		ret = realTs.Sub(nowis)
+	}
+	return
+}

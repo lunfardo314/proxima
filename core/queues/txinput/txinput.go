@@ -178,14 +178,16 @@ func (q *TxInput) TransactionInReturnTx(txBytes []byte, opts ...TransactionInOpt
 	return tx, nil
 }
 
-func (q *TxInput) SequencerMilestoneAttachWait(txBytes []byte, timeout ...time.Duration) (retTx *transaction.Transaction, retErr error) {
+func (q *TxInput) SequencerMilestoneNewAttachWait(txBytes []byte, timeout ...time.Duration) (retVid *vertex.WrappedTx, retErr error) {
 	if len(timeout) > 0 {
 		ctx, cancel := context.WithTimeout(context.Background(), timeout[0])
 		go func() {
 			var err error
-			retTx, retErr = q.TransactionInReturnTx(txBytes, WithAttachmentCallback(func(vid *vertex.WrappedTx) {
-				err = vid.GetReason()
-			}))
+			_, retErr = q.TransactionInReturnTx(txBytes,
+				WithTransactionSource(TransactionSourceSequencer), WithAttachmentCallback(func(vid *vertex.WrappedTx) {
+					err = vid.GetReason()
+					retVid = vid
+				}))
 			if retErr == nil {
 				retErr = err
 			}
@@ -195,7 +197,9 @@ func (q *TxInput) SequencerMilestoneAttachWait(txBytes []byte, timeout ...time.D
 	} else {
 		var wg sync.WaitGroup
 		wg.Add(1)
-		retTx, retErr = q.TransactionInReturnTx(txBytes, WithAttachmentCallback(func(vid *vertex.WrappedTx) {
+		_, retErr = q.TransactionInReturnTx(txBytes, WithAttachmentCallback(func(vid *vertex.WrappedTx) {
+			retVid = vid
+			retErr = vid.GetReason()
 			wg.Done()
 		}))
 		if retErr == nil {
