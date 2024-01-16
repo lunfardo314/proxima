@@ -86,3 +86,15 @@ func (w *Workflow) SendTxBytesToPeer(id peer.ID, txBytes []byte, metadata *txmet
 func (w *Workflow) GossipTxBytesToPeers(txBytes []byte, metadata *txmetadata.TransactionMetadata, except ...peer.ID) int {
 	return w.peers.GossipTxBytesToPeers(txBytes, metadata, except...)
 }
+
+func (w *Workflow) EvidenceIncomingBranch(txid *ledger.TransactionID, seqID ledger.ChainID) {
+	w.syncData.EvidenceIncomingBranch(txid, seqID)
+}
+
+func (w *Workflow) EvidenceBookedBranch(txid *ledger.TransactionID, seqID ledger.ChainID) {
+	w.syncData.EvidenceBookedBranch(txid, seqID)
+}
+
+func (w *Workflow) SyncData() *SyncData {
+	return w.syncData
+}

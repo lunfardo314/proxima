@@ -35,6 +35,7 @@ type (
 		gossip     *gossip.Gossip
 		poker      *poker.Poker
 		events     *events.Events
+		syncData   *SyncData
 		//
 		debugCounters *testutil.SyncCounters
 		//
@@ -64,6 +65,7 @@ func New(stateStore global.StateStore, txBytesStore global.TxBytesStore, peers *
 		peers:         peers,
 		poker:         poker.New(lvl),
 		events:        events.New(lvl),
+		syncData:      newSyncData(),
 		debugCounters: testutil.NewSynCounters(),
 		traceTags:     set.New[string](),
 	}

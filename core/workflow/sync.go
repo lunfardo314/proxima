@@ -1,4 +1,4 @@
-package dag
+package workflow
 
 import (
 	"sync"
@@ -9,16 +9,45 @@ import (
 	"github.com/lunfardo314/proxima/util/set"
 )
 
+type (
+	// SyncData contains various sync-related values. Thread safe with getters ad setters
+	SyncData struct {
+		mutex sync.RWMutex
+		// latestTransactionTSTime time converted from latest attached transaction timestamp.
+		// Is used  to determine synced of not
+		latestTransactionTSTime time.Time
+		// last time pruner was run
+		lastPrunedOrphaned time.Time
+		// last time final cuter was run
+		lastCutFinal time.Time
+		StartTime    time.Time
+		PerSequencer map[ledger.ChainID]SequencerSyncStatus
+	}
+
+	SyncInfo struct {
+		Synced       bool
+		InSyncWindow bool
+		PerSequencer map[ledger.ChainID]SequencerSyncInfo
+	}
+
+	SequencerSyncInfo struct {
+		Synced           bool
+		LatestBookedSlot uint32
+		LatestSeenSlot   uint32
+	}
+
+	SequencerSyncStatus struct {
+		latestBranchesSeen set.Set[ledger.TransactionID]
+		latestBranchBooked ledger.TransactionID
+	}
+)
+
 func newSyncData() *SyncData {
 	return &SyncData{
 		mutex:        sync.RWMutex{},
 		StartTime:    time.Now(),
 		PerSequencer: make(map[ledger.ChainID]SequencerSyncStatus),
 	}
-}
-
-func (d *DAG) SyncData() *SyncData {
-	return d.syncData
 }
 
 func (s *SyncData) GetSyncInfo() (ret SyncInfo) {

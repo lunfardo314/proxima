@@ -2,6 +2,7 @@ package sequencer
 
 import (
 	"math"
+	"time"
 
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util"
@@ -16,6 +17,7 @@ type (
 		MaxTargetTs   ledger.LogicalTime
 		MaxMilestones int
 		MaxBranches   int
+		DelayStart    time.Duration
 	}
 
 	ConfigOption func(options *ConfigOptions)
@@ -25,6 +27,10 @@ const (
 	PaceMinimumTicks    = 5
 	DefaultMaxFeeInputs = 20
 )
+
+//var DefaultDelayOnStart = ledger.SlotDuration()
+
+var DefaultDelayOnStart = time.Duration(0)
 
 func makeConfig(opts ...ConfigOption) *ConfigOptions {
 	cfg := defaultConfigOptions()
@@ -42,6 +48,7 @@ func defaultConfigOptions() *ConfigOptions {
 		MaxTargetTs:   ledger.NilLogicalTime,
 		MaxMilestones: math.MaxInt,
 		MaxBranches:   math.MaxInt,
+		DelayStart:    DefaultDelayOnStart,
 	}
 }
 

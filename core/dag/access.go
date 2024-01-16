@@ -49,14 +49,6 @@ func (d *DAG) GetStateReaderForTheBranch(branchVID *vertex.WrappedTx) global.Ind
 	return d.branches[branchVID]
 }
 
-func (d *DAG) EvidenceIncomingBranch(txid *ledger.TransactionID, seqID ledger.ChainID) {
-	d.syncData.EvidenceIncomingBranch(txid, seqID)
-}
-
-func (d *DAG) EvidenceBookedBranch(txid *ledger.TransactionID, seqID ledger.ChainID) {
-	d.syncData.EvidenceBookedBranch(txid, seqID)
-}
-
 func (d *DAG) GetIndexedStateReader(branchTxID *ledger.TransactionID, clearCacheAtSize ...int) (global.IndexedStateReader, error) {
 	rr, found := multistate.FetchRootRecord(d.stateStore, *branchTxID)
 	if !found {

@@ -102,6 +102,13 @@ func (s *Sequencer) Tracef(tag string, format string, args ...any) {
 }
 
 func (s *Sequencer) mainLoop(ctx context.Context) {
+	beginAt := s.Workflow.SyncData().WhenStarted().Add(s.config.DelayStart)
+	if beginAt.After(time.Now()) {
+		s.log.Infof("wait for one slot (%v) before starting the main loop", ledger.SlotDuration())
+	}
+	time.Sleep(time.Until(beginAt))
+	s.log.Infof("starting main loop")
+
 	for {
 		select {
 		case <-ctx.Done():
