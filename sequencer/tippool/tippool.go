@@ -247,14 +247,14 @@ func isPreferredMilestoneAgainstTheOther(vid1, vid2 *vertex.WrappedTx) bool {
 	}
 }
 
-func (tp *SequencerTipPool) numOutputsInBuffer() int {
+func (tp *SequencerTipPool) NumOutputsInBuffer() int {
 	tp.mutex.RLock()
 	defer tp.mutex.RUnlock()
 
 	return len(tp.outputs)
 }
 
-func (tp *SequencerTipPool) numOtherMilestones() int {
+func (tp *SequencerTipPool) NumMilestones() int {
 	tp.mutex.RLock()
 	defer tp.mutex.RUnlock()
 

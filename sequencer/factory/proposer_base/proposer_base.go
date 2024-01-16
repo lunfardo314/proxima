@@ -1,10 +1,7 @@
 package proposer_base
 
 import (
-	"time"
-
 	"github.com/lunfardo314/proxima/core/attacher"
-	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/sequencer/factory/proposer_generic"
 )
 
@@ -20,31 +17,17 @@ func Strategy() *proposer_generic.Strategy {
 	return &proposer_generic.Strategy{
 		Name: BaseProposerName,
 		Constructor: func(generic *proposer_generic.TaskGeneric) proposer_generic.Task {
-			return &BaseProposer{TaskGeneric: *generic}
+			ret := &BaseProposer{TaskGeneric: *generic}
+			ret.WithProposalGenerator(func() (*attacher.IncrementalAttacher, bool) {
+				return ret.propose()
+			})
+			return ret
 		},
 	}
 }
 
-func (b *BaseProposer) Run() {
-	var a *attacher.IncrementalAttacher
-	var forceExit bool
-
-	for b.ContinueCandidateProposing(b.TargetTs) {
-		latestMs := b.OwnLatestMilestone()
-		if a, forceExit = b.propose(latestMs); forceExit {
-			return
-		}
-		if a != nil && a.Completed() {
-			b.TraceLocal("Run: completed")
-			if forceExit = b.Propose(a); forceExit {
-				return
-			}
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-}
-
-func (b *BaseProposer) propose(extend *vertex.WrappedTx) (*attacher.IncrementalAttacher, bool) {
+func (b *BaseProposer) propose() (*attacher.IncrementalAttacher, bool) {
+	extend := b.OwnLatestMilestone()
 	// own latest milestone exists
 	if !b.TargetTs.IsSlotBoundary() {
 		// target is not a branch target

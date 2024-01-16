@@ -38,9 +38,10 @@ func TestBase(t *testing.T) {
 
 	testData := initLongConflictTestData(t, nConflicts, nChains, howLongConflictChains)
 	ctx, stop := context.WithCancel(context.Background())
-	seq, err := sequencer.New(testData.wrk, testData.bootstrapChainID, testData.privKey)
+	seq, err := sequencer.New(testData.wrk, testData.bootstrapChainID, testData.privKey, ctx)
 	require.NoError(t, err)
-	seq.Start(ctx)
+	seq.Start()
+	time.Sleep(time.Second)
 	stop()
 	seq.WaitStop()
 	testData.stopAndWait()

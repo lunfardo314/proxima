@@ -1,8 +1,6 @@
 package proposer_endorse1
 
 import (
-	"time"
-
 	"github.com/lunfardo314/proxima/core/attacher"
 	"github.com/lunfardo314/proxima/sequencer/factory/proposer_generic"
 	"github.com/lunfardo314/proxima/util"
@@ -20,27 +18,12 @@ func Strategy() *proposer_generic.Strategy {
 	return &proposer_generic.Strategy{
 		Name: Endorse1ProposerName,
 		Constructor: func(generic *proposer_generic.TaskGeneric) proposer_generic.Task {
-			return &Endorse1Proposer{TaskGeneric: *generic}
+			ret := &Endorse1Proposer{TaskGeneric: *generic}
+			ret.WithProposalGenerator(func() (*attacher.IncrementalAttacher, bool) {
+				return ret.propose(), false
+			})
+			return ret
 		},
-	}
-}
-
-func (b *Endorse1Proposer) Run() {
-	var a *attacher.IncrementalAttacher
-	var forceExit bool
-
-	for b.ContinueCandidateProposing(b.TargetTs) {
-		a = b.propose()
-		if a != nil {
-			b.TraceLocal("Run: proposed pair ")
-		}
-		if a != nil && a.Completed() {
-			b.TraceLocal("Run: completed")
-			if forceExit = b.Propose(a); forceExit {
-				return
-			}
-		}
-		time.Sleep(10 * time.Millisecond)
 	}
 }
 

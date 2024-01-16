@@ -2,6 +2,7 @@ package factory
 
 import (
 	"bytes"
+	"context"
 	"crypto/ed25519"
 	"errors"
 	"sync"
@@ -13,6 +14,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/sequencer/factory/proposer_base"
+	"github.com/lunfardo314/proxima/sequencer/factory/proposer_endorse1"
 	"github.com/lunfardo314/proxima/sequencer/factory/proposer_generic"
 	"github.com/lunfardo314/proxima/sequencer/tippool"
 	"github.com/lunfardo314/proxima/util"
@@ -27,6 +29,7 @@ type (
 		tippool.Environment
 		ControllerPrivateKey() ed25519.PrivateKey
 		SequencerName() string
+		Context() context.Context
 	}
 
 	MilestoneFactory struct {
@@ -66,6 +69,7 @@ func registerProposerStrategy(s *proposer_generic.Strategy) {
 
 func init() {
 	registerProposerStrategy(proposer_base.Strategy())
+	registerProposerStrategy(proposer_endorse1.Strategy())
 }
 
 const (
@@ -102,13 +106,13 @@ func (mf *MilestoneFactory) isConsumedInThePastPath(wOut vertex.WrappedOutput, m
 
 func (mf *MilestoneFactory) OwnLatestMilestone() *vertex.WrappedTx {
 	latest := mf.tipPool.GetOwnLatestMilestoneTx()
-	util.Assertf(latest != nil, "cannot find own latest milestone")
-	mf.addOwnMilestone(latest)
-
+	if latest != nil {
+		mf.AddOwnMilestone(latest)
+	}
 	return latest
 }
 
-func (mf *MilestoneFactory) addOwnMilestone(vid *vertex.WrappedTx) {
+func (mf *MilestoneFactory) AddOwnMilestone(vid *vertex.WrappedTx) {
 	mf.mutex.Lock()
 	defer mf.mutex.Unlock()
 
@@ -137,11 +141,12 @@ func (mf *MilestoneFactory) StartProposingForTargetLogicalTime(targetTs ledger.L
 	}
 	// start worker(s)
 	mf.setNewTarget(targetTs)
-	mf.startProposerWorkers(targetTs)
-	// wait util real time deadline
-	time.Sleep(deadline.Sub(nowis))
+	ctx, _ := context.WithDeadline(mf.Context(), deadline)
+	mf.startProposerWorkers(targetTs, ctx)
 
+	<-ctx.Done()
 	mf.resetTarget()
+
 	return mf.getLatestProposal() // will return nil if wasn't able to generate transaction
 }
 
@@ -164,11 +169,11 @@ func (mf *MilestoneFactory) resetTarget() {
 
 // ContinueCandidateProposing the proposing strategy checks if its assumed target timestamp
 // is still actual. Strategy keeps proposing latestMilestone candidates until it is no longer actual
-func (mf *MilestoneFactory) ContinueCandidateProposing(ts ledger.LogicalTime) bool {
+func (mf *MilestoneFactory) CurrentTargetTs() ledger.LogicalTime {
 	mf.proposal.mutex.RLock()
 	defer mf.proposal.mutex.RUnlock()
 
-	return mf.proposal.targetTs == ts
+	return mf.proposal.targetTs
 }
 
 func (mf *MilestoneFactory) AttachTagAlongInputs(a *attacher.IncrementalAttacher) {
@@ -188,9 +193,9 @@ func (mf *MilestoneFactory) AttachTagAlongInputs(a *attacher.IncrementalAttacher
 	return
 }
 
-func (mf *MilestoneFactory) startProposerWorkers(targetTime ledger.LogicalTime) {
+func (mf *MilestoneFactory) startProposerWorkers(targetTime ledger.LogicalTime, ctx context.Context) {
 	for strategyName, s := range allProposingStrategies {
-		task := proposer_generic.New(mf, s, targetTime)
+		task := proposer_generic.New(mf, s, targetTime, ctx)
 		if task == nil {
 			mf.Tracef("proposer", "SKIP '%s' proposer for the target %s", strategyName, targetTime.String)
 			continue
@@ -359,4 +364,12 @@ func (mf *MilestoneFactory) futureConeMilestonesOrdered(rootVID *vertex.WrappedT
 		}
 	}
 	return ret
+}
+
+func (mf *MilestoneFactory) NumOutputsInBuffer() int {
+	return mf.tipPool.NumOutputsInBuffer()
+}
+
+func (mf *MilestoneFactory) NumMilestones() int {
+	return mf.tipPool.NumMilestones()
 }
