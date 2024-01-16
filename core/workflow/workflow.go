@@ -3,6 +3,7 @@ package workflow
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/lunfardo314/proxima/core/dag"
@@ -19,6 +20,7 @@ import (
 	"github.com/lunfardo314/proxima/util/eventtype"
 	"github.com/lunfardo314/proxima/util/set"
 	"github.com/lunfardo314/proxima/util/testutil"
+	"go.uber.org/atomic"
 	"go.uber.org/zap"
 )
 
@@ -41,6 +43,7 @@ type (
 		//
 		waitStop sync.WaitGroup
 		//
+		enableTrace    atomic.Bool
 		traceTagsMutex sync.RWMutex
 		traceTags      set.Set[string]
 	}
@@ -102,6 +105,7 @@ func (w *Workflow) EnableTraceTag(tag string) {
 	w.traceTagsMutex.Lock()
 	defer w.traceTagsMutex.Unlock()
 
+	w.enableTrace.Store(true)
 	w.traceTags.Insert(tag)
 }
 
@@ -110,17 +114,24 @@ func (w *Workflow) DisableTraceTag(tag string) {
 	defer w.traceTagsMutex.Unlock()
 
 	w.traceTags.Remove(tag)
+	if len(w.traceTags) == 0 {
+		w.enableTrace.Store(false)
+	}
 }
 
 func (w *Workflow) TraceLog(log *zap.SugaredLogger, tag string, format string, args ...any) {
+	if !w.enableTrace.Load() {
+		return
+	}
 	w.traceTagsMutex.RLock()
 	defer w.traceTagsMutex.RUnlock()
 
-	if !w.traceTags.Contains(tag) {
-		return
+	for _, t := range strings.Split(tag, ".") {
+		if w.traceTags.Contains(t) {
+			log.Infof("TRACE(%s) %s", t, fmt.Sprintf(format, util.EvalLazyArgs(args...)...))
+			return
+		}
 	}
-
-	log.Infof("TRACE [%s] %s", tag, fmt.Sprintf(format, util.EvalLazyArgs(args...)...))
 }
 
 func (w *Workflow) Tracef(tag string, format string, args ...any) {
