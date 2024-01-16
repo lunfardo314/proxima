@@ -4,23 +4,26 @@ import (
 	"context"
 	"crypto/ed25519"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/lunfardo314/proxima/core/workflow"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/sequencer/factory"
+	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/unitrie/common"
 	"go.uber.org/zap"
 )
 
 type (
 	Sequencer struct {
 		*workflow.Workflow
-		name          string
 		sequencerID   ledger.ChainID
 		controllerKey ed25519.PrivateKey
 		config        *ConfigOptions
 		log           *zap.SugaredLogger
 		factory       *factory.MilestoneFactory
+		waitStop      sync.WaitGroup
 		//exit     atomic.Bool
 		//stopWG   sync.WaitGroup
 		//stopOnce sync.Once
@@ -48,11 +51,10 @@ type (
 	}
 )
 
-func New(glb *workflow.Workflow, seqID ledger.ChainID, controllerKey ed25519.PrivateKey, ctx context.Context, opts ...ConfigOption) (*Sequencer, error) {
+func New(glb *workflow.Workflow, seqID ledger.ChainID, controllerKey ed25519.PrivateKey, opts ...ConfigOption) (*Sequencer, error) {
 	cfg := makeConfig(opts...)
 	ret := &Sequencer{
 		Workflow:      glb,
-		name:          cfg.SequencerName,
 		sequencerID:   seqID,
 		controllerKey: controllerKey,
 		config:        cfg,
@@ -65,6 +67,20 @@ func New(glb *workflow.Workflow, seqID ledger.ChainID, controllerKey ed25519.Pri
 	return ret, nil
 }
 
+func (s *Sequencer) Start(ctx context.Context) {
+	s.waitStop.Add(1)
+	util.RunWrappedRoutine(s.config.SequencerName+"[mainLoop]", func() {
+		s.mainLoop(ctx)
+		s.waitStop.Done()
+	}, func(err error) {
+		s.log.Fatal(err)
+	}, common.ErrDBUnavailable)
+}
+
+func (s *Sequencer) WaitStop() {
+	s.waitStop.Wait()
+}
+
 func (s *Sequencer) SequencerID() ledger.ChainID {
 	return s.sequencerID
 }
@@ -74,5 +90,30 @@ func (s *Sequencer) ControllerPrivateKey() ed25519.PrivateKey {
 }
 
 func (s *Sequencer) SequencerName() string {
-	return s.name
+	return s.config.SequencerName
+}
+
+func (s *Sequencer) Log() *zap.SugaredLogger {
+	return s.log
+}
+
+func (s *Sequencer) Tracef(tag string, format string, args ...any) {
+	s.Workflow.TraceLog(s.log, tag, format, args...)
+}
+
+func (s *Sequencer) mainLoop(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			s.log.Info("sequencer STOPPING..")
+			return
+		default:
+			s.doSequencing()
+		}
+	}
+}
+
+func (s *Sequencer) doSequencing() {
+	s.log.Info("doSequencing")
+	time.Sleep(time.Second)
 }

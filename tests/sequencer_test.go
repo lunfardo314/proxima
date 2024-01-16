@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"context"
 	"fmt"
 	"runtime"
 	"sync"
@@ -13,6 +14,7 @@ import (
 	"github.com/lunfardo314/proxima/core/workflow"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/transaction"
+	"github.com/lunfardo314/proxima/sequencer"
 	"github.com/lunfardo314/proxima/sequencer/tippool"
 	"github.com/stretchr/testify/require"
 )
@@ -24,6 +26,24 @@ type tippoolEnvironment struct {
 
 func (t *tippoolEnvironment) SequencerID() ledger.ChainID {
 	return t.seqID
+}
+
+func TestBase(t *testing.T) {
+	//attacher.SetTraceOn()
+	const (
+		nConflicts            = 2
+		nChains               = 2
+		howLongConflictChains = 0 // 97 fails when crosses slot boundary
+	)
+
+	testData := initLongConflictTestData(t, nConflicts, nChains, howLongConflictChains)
+	ctx, stop := context.WithCancel(context.Background())
+	seq, err := sequencer.New(testData.wrk, testData.bootstrapChainID, testData.privKey)
+	require.NoError(t, err)
+	seq.Start(ctx)
+	stop()
+	seq.WaitStop()
+	testData.stopAndWait()
 }
 
 func TestTippool(t *testing.T) {

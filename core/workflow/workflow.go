@@ -110,7 +110,7 @@ func (w *Workflow) DisableTraceTag(tag string) {
 	w.traceTags.Remove(tag)
 }
 
-func (w *Workflow) Tracef(tag string, format string, args ...any) {
+func (w *Workflow) TraceLog(log *zap.SugaredLogger, tag string, format string, args ...any) {
 	w.traceTagsMutex.RLock()
 	defer w.traceTagsMutex.RUnlock()
 
@@ -118,5 +118,9 @@ func (w *Workflow) Tracef(tag string, format string, args ...any) {
 		return
 	}
 
-	w.log.Infof("TRACE [%s] %s", tag, fmt.Sprintf(format, util.EvalLazyArgs(args...)...))
+	log.Infof("TRACE [%s] %s", tag, fmt.Sprintf(format, util.EvalLazyArgs(args...)...))
+}
+
+func (w *Workflow) Tracef(tag string, format string, args ...any) {
+	w.TraceLog(w.log, tag, format, args...)
 }

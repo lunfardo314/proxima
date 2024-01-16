@@ -89,7 +89,7 @@ func New(env Environment, maxTagAlongInputs int) (*MilestoneFactory, error) {
 	if err != nil {
 		return nil, err
 	}
-	env.Log().Debugf("milestone factory started")
+	env.Log().Debugf("milestone factory created")
 	return ret, nil
 }
 
