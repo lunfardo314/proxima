@@ -35,7 +35,7 @@ func (w *Workflow) StopPulling(txid *ledger.TransactionID) {
 }
 
 func (w *Workflow) DropTxID(txid *ledger.TransactionID, who string, reasonFormat string, args ...any) {
-	w.log.Infof("DropTxID %s", txid.StringShort())
+	w.Tracef("workflow", "DropTxID %s", txid.StringShort())
 	attacher.InvalidateTxID(*txid, w, fmt.Errorf(reasonFormat, args...))
 }
 

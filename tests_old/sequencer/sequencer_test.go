@@ -70,7 +70,7 @@ func initSequencerTestData(t *testing.T, nFaucets, nAdditionalChains int, logica
 	ret.originControllerPrivateKey = testutil.GetTestingPrivateKey()
 	ret.stateIdentity = *genesis.DefaultIdentityData(ret.originControllerPrivateKey)
 	ret.originDistribution, ret.faucetPrivateKeys, ret.faucetAddresses =
-		inittest.GenesisParamsWithPreDistribution(nFaucets, initFaucetBalance)
+		inittest.GenesisParamsWithPreDistributionOld(nFaucets, initFaucetBalance)
 
 	stateStore := common.NewInMemoryKVStore()
 	txStore := txstore.NewDummyTxBytesStore()

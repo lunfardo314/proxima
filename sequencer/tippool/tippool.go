@@ -66,6 +66,7 @@ func New(env Environment, namePrefix string, opts ...Option) (*SequencerTipPool,
 
 	// start listening to chain-locked account
 	env.ListenToAccount(seqID.AsChainLock(), func(wOut vertex.WrappedOutput) {
+		env.Tracef("tippool", "[%s] output IN: %s", ret.name, wOut.IDShortString)
 		ret.purge()
 
 		if !isCandidateToTagAlong(wOut) {
@@ -77,11 +78,12 @@ func New(env Environment, namePrefix string, opts ...Option) (*SequencerTipPool,
 
 		ret.outputs.Insert(wOut)
 		ret.outputCount++
-		env.Tracef("tippool", "[%s] output IN: %s", ret.name, wOut.IDShortString)
+		env.Tracef("tippool", "output stored in tippool: %s", wOut.IDShortString)
 	})
 
 	// start listening to sequencers, including the current sequencer
 	env.ListenToSequencers(func(vid *vertex.WrappedTx) {
+		env.Tracef("tippool", "seq milestone IN: %s", vid.IDShortString)
 		seqIDIncoming, ok := vid.SequencerIDIfAvailable()
 		util.Assertf(ok, "sequencer milestone expected")
 
@@ -93,12 +95,13 @@ func New(env Environment, namePrefix string, opts ...Option) (*SequencerTipPool,
 			// store the latest one for each seqID
 			ret.latestMilestones[seqIDIncoming] = vid
 		}
-		env.Tracef("tippool", "[%s] milestone IN: %s", ret.name, vid.IDShortString)
+		env.Tracef("tippool", "seq milestone stored in tippool: %s", vid.IDShortString)
 	})
 
 	// fetch all sequencers and all outputs in the sequencer account into to tip pool once
 	var err error
 	doNotLoadOwnMilestones := slices.Index(opts, OptionDoNotLoadOwnMilestones) >= 0
+	env.Tracef("tippool", "PullSequencerTips: doNotLoadOwnMilestones = %v", doNotLoadOwnMilestones)
 	ret.outputs, err = env.PullSequencerTips(seqID, !doNotLoadOwnMilestones)
 	if err != nil {
 		return nil, err

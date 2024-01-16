@@ -6,12 +6,15 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/util/eventtype"
 	"go.uber.org/zap"
 )
 
 func TestEvents(t *testing.T) {
-	e := New(zap.DebugLevel)
+	log := global.NewDefaultLogging("", zap.InfoLevel, nil)
+	log.EnableTraceTags("events")
+	e := New(log)
 	var wgStop sync.WaitGroup
 	wgStop.Add(1)
 	ctx, cancel := context.WithCancel(context.Background())

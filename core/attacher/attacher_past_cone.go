@@ -526,6 +526,6 @@ func (a *pastConeAttacher) tracef(format string, lazyArgs ...any) {
 
 func tracef(env Environment, format string, lazyArgs ...any) {
 	if trace {
-		env.Log().Infof("TRACE "+format, util.EvalLazyArgs(lazyArgs...)...)
+		env.Tracef("attacher", format, util.EvalLazyArgs(lazyArgs...)...)
 	}
 }

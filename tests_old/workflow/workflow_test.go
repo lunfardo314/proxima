@@ -48,7 +48,7 @@ func initWorkflowTest(t *testing.T, nDistribution int, nowis ledger.LogicalTime,
 	t.Logf("nowis timestamp: %s", nowis.String())
 	genesisPrivKey := testutil.GetTestingPrivateKey()
 	par := *genesis.DefaultIdentityData(genesisPrivKey, nowis.Slot())
-	distrib, privKeys, addrs := inittest.GenesisParamsWithPreDistribution(nDistribution, initDistributedBalance)
+	distrib, privKeys, addrs := inittest.GenesisParamsWithPreDistributionOld(nDistribution, initDistributedBalance)
 	ret := &workflowTestData{
 		initLedgerStatePar:      par,
 		distributionPrivateKeys: privKeys,
@@ -551,7 +551,7 @@ func initMultiChainTest(t *testing.T, nChains int, verbose bool, secondsInThePas
 
 	genesisPrivKey := testutil.GetTestingPrivateKey()
 	ret.sPar = *genesis.DefaultIdentityData(genesisPrivKey, nowisTs.Slot())
-	distrib, privKeys, addrs := inittest.GenesisParamsWithPreDistribution(2, onChainAmount*uint64(nChains))
+	distrib, privKeys, addrs := inittest.GenesisParamsWithPreDistributionOld(2, onChainAmount*uint64(nChains))
 	ret.privKey = privKeys[0]
 	ret.addr = addrs[0]
 	ret.faucetPrivKey = privKeys[1]

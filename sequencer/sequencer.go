@@ -71,12 +71,13 @@ func New(glb *workflow.Workflow, seqID ledger.ChainID, controllerKey ed25519.Pri
 	if ret.factory, err = factory.New(ret, cfg.MaxFeeInputs); err != nil {
 		return nil, err
 	}
+	ret.Tracef("seq", "sequencer object created")
 	return ret, nil
 }
 
 func (seq *Sequencer) Start() {
 	if !seq.ensureFirstMilestone() {
-		seq.log.Warnf("can't start sequencer")
+		seq.log.Warnf("can't start sequencer. EXIT..")
 		return
 	}
 	seq.waitStop.Add(1)

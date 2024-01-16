@@ -27,7 +27,7 @@ import (
 
 const tracePull = false
 
-type conflictTestData struct {
+type workflowTestData struct {
 	t                      *testing.T
 	wrk                    *workflow.Workflow
 	txStore                global.TxBytesStore
@@ -53,18 +53,21 @@ type conflictTestData struct {
 	stopFun                context.CancelFunc
 }
 
-func initConflictTest(t *testing.T, nConflicts int, nChains int, targetLockChain bool) *conflictTestData {
-	const initBalance = 10_000_000
+type longConflictTestData struct {
+	workflowTestData
+	txSequences     [][][]byte
+	terminalOutputs []*ledger.OutputWithID
+}
+
+const initBalance = 10_000_000
+
+func initWorkflowTest(t *testing.T, nChains int) *workflowTestData {
+	util.Assertf(nChains > 0, "nChains > 0")
 	genesisPrivKey := testutil.GetTestingPrivateKey()
 	par := genesis.DefaultIdentityData(genesisPrivKey)
-	distrib, privKeys, addrs := inittest.GenesisParamsWithPreDistribution(2, initBalance)
-	if nChains > 0 {
-		distrib[1] = ledger.LockBalance{
-			Lock:    addrs[1],
-			Balance: uint64(initBalance * nChains),
-		}
-	}
-	ret := &conflictTestData{
+
+	distrib, privKeys, addrs := inittest.GenesisParamsWithPreDistribution(initBalance, uint64(nChains*initBalance))
+	ret := &workflowTestData{
 		t:             t,
 		stateIdentity: *par,
 		privKey:       privKeys[0],
@@ -73,11 +76,6 @@ func initConflictTest(t *testing.T, nConflicts int, nChains int, targetLockChain
 		addrAux:       addrs[1],
 	}
 	require.True(t, ledger.AddressED25519MatchesPrivateKey(ret.addr, ret.privKey))
-
-	ret.pkController = make([]ed25519.PrivateKey, nConflicts)
-	for i := range ret.pkController {
-		ret.pkController[i] = ret.privKey
-	}
 
 	stateStore := common.NewInMemoryKVStore()
 	ret.txStore = txstore.NewSimpleTxBytesStore(common.NewInMemoryKVStore())
@@ -112,10 +110,20 @@ func initConflictTest(t *testing.T, nConflicts int, nChains int, targetLockChain
 	for i := range distrib {
 		t.Logf("distributed %s -> %s", util.GoThousands(distrib[i].Balance), distrib[i].Lock.String())
 	}
-	t.Logf("%s", ret.wrk.Info())
+	return ret
+}
 
-	err = attacher.EnsureLatestBranches(ret.wrk)
+func initWorkflowTestWithConflicts(t *testing.T, nConflicts int, nChains int, targetLockChain bool) *workflowTestData {
+	ret := initWorkflowTest(t, nChains)
+
+	ret.pkController = make([]ed25519.PrivateKey, nConflicts)
+	for i := range ret.pkController {
+		ret.pkController[i] = ret.privKey
+	}
+
+	err := attacher.EnsureLatestBranches(ret.wrk)
 	require.NoError(t, err)
+	t.Logf("%s", ret.wrk.Info())
 
 	rdr := ret.wrk.HeaviestStateForLatestTimeSlot()
 	bal, _ := multistate.BalanceOnLock(rdr, ret.addr)
@@ -166,13 +174,13 @@ func initConflictTest(t *testing.T, nConflicts int, nChains int, targetLockChain
 	return ret
 }
 
-func (td *conflictTestData) stopAndWait() {
+func (td *workflowTestData) stopAndWait() {
 	td.stopFun()
 	td.wrk.WaitStop()
 }
 
 // makes chain origins transaction from aux output
-func (td *conflictTestData) makeChainOrigins(n int) {
+func (td *workflowTestData) makeChainOrigins(n int) {
 	if n == 0 {
 		return
 	}
@@ -410,22 +418,16 @@ func (td *longConflictTestData) spendToChain(o *ledger.OutputWithID, chainID led
 	return tx
 }
 
-func (td *conflictTestData) logDAGInfo() {
+func (td *workflowTestData) logDAGInfo() {
 	td.t.Logf("DAG INFO:\n%s", td.wrk.Info())
 	slot := td.wrk.LatestBranchSlot()
 	td.t.Logf("VERTICES in the latest slot %d\n%s", slot, td.wrk.LinesVerticesInSlotAndAfter(slot).String())
 }
 
-type longConflictTestData struct {
-	conflictTestData
-	txSequences     [][][]byte
-	terminalOutputs []*ledger.OutputWithID
-}
-
 func initLongConflictTestData(t *testing.T, nConflicts int, nChains int, howLong int) *longConflictTestData {
 	util.Assertf(nChains == 0 || nChains == nConflicts, "nChains == 0 || nChains == nConflicts")
 	ret := &longConflictTestData{
-		conflictTestData: *initConflictTest(t, nConflicts, nChains, false),
+		workflowTestData: *initWorkflowTestWithConflicts(t, nConflicts, nChains, false),
 		txSequences:      make([][][]byte, nConflicts),
 		terminalOutputs:  make([]*ledger.OutputWithID, nConflicts),
 	}
@@ -433,7 +435,7 @@ func initLongConflictTestData(t *testing.T, nConflicts int, nChains int, howLong
 	var prev *ledger.OutputWithID
 	var err error
 
-	td := &ret.conflictTestData
+	td := &ret.workflowTestData
 
 	for seqNr, originOut := range ret.conflictingOutputs {
 		ret.txSequences[seqNr] = make([][]byte, howLong)

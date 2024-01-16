@@ -4,10 +4,10 @@ import (
 	"context"
 	"sync"
 
+	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/eventtype"
 	"github.com/lunfardo314/proxima/util/queue"
-	"go.uber.org/zap/zapcore"
 )
 
 type (
@@ -17,7 +17,12 @@ type (
 		arg       any
 	}
 
+	Environment interface {
+		global.Logging
+	}
+
 	Events struct {
+		Environment
 		*queue.Queue[Input]
 		eventHandlers map[eventtype.EventCode][]func(any)
 	}
@@ -29,9 +34,10 @@ const (
 )
 const chanBufferSize = 10
 
-func New(lvl zapcore.Level) *Events {
+func New(env Environment) *Events {
 	return &Events{
-		Queue:         queue.NewQueueWithBufferSize[Input]("events", chanBufferSize, lvl, nil),
+		Environment:   env,
+		Queue:         queue.NewQueueWithBufferSize[Input]("events", chanBufferSize, env.Log().Level(), nil),
 		eventHandlers: make(map[eventtype.EventCode][]func(any)),
 	}
 }
@@ -53,8 +59,9 @@ func (c *Events) Consume(inp Input) {
 			handlers = append(handlers, inp.arg.(func(any)))
 		}
 		c.eventHandlers[inp.eventCode] = handlers
-		c.Log().Debugf("added event handler for event code '%s'", inp.eventCode.String())
+		c.Tracef("events", "added event handler for event code '%s'", inp.eventCode.String())
 	case cmdCodePostEvent:
+		c.Tracef("events", "posted event '%s'", inp.eventCode.String())
 		for _, fun := range c.eventHandlers[inp.eventCode] {
 			fun(inp.arg)
 		}

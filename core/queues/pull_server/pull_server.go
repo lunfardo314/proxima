@@ -11,11 +11,11 @@ import (
 	"github.com/lunfardo314/proxima/txmetadata"
 	"github.com/lunfardo314/proxima/util/queue"
 	"github.com/lunfardo314/unitrie/common"
-	"go.uber.org/zap/zapcore"
 )
 
 type (
 	Environment interface {
+		global.Logging
 		TxBytesStore() global.TxBytesStore
 		StateStore() global.StateStore
 		SendTxBytesToPeer(id peer.ID, txBytes []byte, metadata *txmetadata.TransactionMetadata) bool
@@ -28,16 +28,16 @@ type (
 
 	PullServer struct {
 		*queue.Queue[*Input]
-		env Environment
+		Environment
 	}
 )
 
 const chanBufferSize = 10
 
-func New(env Environment, lvl zapcore.Level) *PullServer {
+func New(env Environment) *PullServer {
 	return &PullServer{
-		Queue: queue.NewQueueWithBufferSize[*Input]("pullServer", chanBufferSize, lvl, nil),
-		env:   env,
+		Queue:       queue.NewQueueWithBufferSize[*Input]("pullServer", chanBufferSize, env.Log().Level(), nil),
+		Environment: env,
 	}
 }
 
@@ -49,20 +49,20 @@ func (q *PullServer) Start(ctx context.Context, doneOnClose *sync.WaitGroup) {
 }
 
 func (q *PullServer) Consume(inp *Input) {
-	if txBytes := q.env.TxBytesStore().GetTxBytes(&inp.TxID); len(txBytes) > 0 {
+	if txBytes := q.TxBytesStore().GetTxBytes(&inp.TxID); len(txBytes) > 0 {
 		var root common.VCommitment
 		if inp.TxID.IsBranchTransaction() {
-			if rr, found := multistate.FetchRootRecord(q.env.StateStore(), inp.TxID); found {
+			if rr, found := multistate.FetchRootRecord(q.StateStore(), inp.TxID); found {
 				root = rr.Root
 			}
 		}
-		q.env.SendTxBytesToPeer(inp.PeerID, txBytes, &txmetadata.TransactionMetadata{
+		q.SendTxBytesToPeer(inp.PeerID, txBytes, &txmetadata.TransactionMetadata{
 			SendType:  txmetadata.SendTypeResponseToPull,
 			StateRoot: root,
 		})
-		//c.tracePull("-> FOUND %s", func() any { return inp.TxID.StringShort() })
+		q.Tracef("pull", "-> FOUND %s", inp.TxID.StringShort)
 	} else {
 		// not found -> ignore
-		//c.tracePull("-> NOT FOUND %s", func() any { return inp.TxID.StringShort() })
+		q.Tracef("pull", "-> NOT FOUND %s", inp.TxID.StringShort)
 	}
 }

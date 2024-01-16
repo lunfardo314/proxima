@@ -6,9 +6,9 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/core/vertex"
+	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/queue"
-	"go.uber.org/zap/zapcore"
 )
 
 type (
@@ -18,8 +18,13 @@ type (
 		Cmd          Command
 	}
 
+	Environment interface {
+		global.Logging
+	}
+
 	Poker struct {
 		*queue.Queue[Input]
+		Environment
 		m map[*vertex.WrappedTx]waitingList
 	}
 
@@ -44,10 +49,11 @@ const (
 	ttlWanted  = 1 * time.Minute
 )
 
-func New(lvl zapcore.Level) *Poker {
+func New(env Environment) *Poker {
 	return &Poker{
-		Queue: queue.NewQueueWithBufferSize[Input]("poke", chanBufferSize, lvl, nil),
-		m:     make(map[*vertex.WrappedTx]waitingList),
+		Queue:       queue.NewQueueWithBufferSize[Input]("poke", chanBufferSize, env.Log().Level(), nil),
+		Environment: env,
+		m:           make(map[*vertex.WrappedTx]waitingList),
 	}
 }
 
@@ -91,10 +97,10 @@ func (c *Poker) addCmd(wanted, whoIsWaiting *vertex.WrappedTx) {
 
 func (c *Poker) pokeAllCmd(wanted *vertex.WrappedTx) {
 	lst := c.m[wanted]
-	//c.Log().Infof("TRACE pokeAllCmd with %s (%d waiting)", wanted.IDShortString(), len(lst.waiting))
+	c.Tracef("poker", "pokeAllCmd with %s (%d waiting)", wanted.IDShortString(), len(lst.waiting))
 	if len(lst.waiting) > 0 {
 		for _, vid := range lst.waiting {
-			//c.Log().Infof("TRACE poke %s with %s", vid.IDShortString(), wanted.IDShortString())
+			c.Tracef("poker", "poke %s with %s", vid.IDShortString(), wanted.IDShortString())
 			vid.PokeWith(wanted)
 		}
 		delete(c.m, wanted)
@@ -111,6 +117,9 @@ func (c *Poker) periodicCleanup() {
 	}
 	for _, vid := range toDelete {
 		delete(c.m, vid)
+	}
+	if len(toDelete) > 0 {
+		c.Tracef("poker", "purged %d entries", len(toDelete))
 	}
 }
 

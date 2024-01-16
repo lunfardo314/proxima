@@ -265,7 +265,7 @@ func TestConflicts1Attacher(t *testing.T) {
 	t.Run("n double spends", func(t *testing.T) {
 		//attacher.SetTraceOn()
 		const nConflicts = 10
-		testData := initConflictTest(t, nConflicts, 0, false)
+		testData := initWorkflowTestWithConflicts(t, nConflicts, 0, false)
 		for _, txBytes := range testData.txBytesConflicting {
 			_, err := attacher.AttachTransactionFromBytes(txBytes, testData.wrk)
 			require.NoError(t, err)
@@ -275,7 +275,7 @@ func TestConflicts1Attacher(t *testing.T) {
 	t.Run("n double spends consumed", func(t *testing.T) {
 		//attacher.SetTraceOn()
 		const nConflicts = 5
-		testData := initConflictTest(t, nConflicts, 0, true)
+		testData := initWorkflowTestWithConflicts(t, nConflicts, 0, true)
 		for _, txBytes := range testData.txBytesConflicting {
 			_, err := attacher.AttachTransactionFromBytes(txBytes, testData.wrk)
 			require.NoError(t, err)
@@ -329,7 +329,7 @@ func TestConflicts1Attacher(t *testing.T) {
 	t.Run("conflicting tx consumed", func(t *testing.T) {
 		//attacher.SetTraceOn()
 		const nConflicts = 2
-		testData := initConflictTest(t, nConflicts, 0, false)
+		testData := initWorkflowTestWithConflicts(t, nConflicts, 0, false)
 		for _, txBytes := range testData.txBytesConflicting {
 			_, err := attacher.AttachTransactionFromBytes(txBytes, testData.wrk)
 			require.NoError(t, err)
@@ -484,7 +484,7 @@ func TestConflicts1Attacher(t *testing.T) {
 
 		var wg sync.WaitGroup
 
-		testData.wrk.EnableTraceTag("delay")
+		testData.wrk.EnableTraceTags("delay")
 
 		wg.Add(1)
 		vid, err := attacher.AttachTransactionFromBytes(txBytes, testData.wrk, attacher.OptionWithAttachmentCallback(func(vid *vertex.WrappedTx) {

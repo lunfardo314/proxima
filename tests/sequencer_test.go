@@ -28,102 +28,100 @@ func (t *tippoolEnvironment) SequencerID() ledger.ChainID {
 	return t.seqID
 }
 
-func TestBase(t *testing.T) {
+func TestTippool(t *testing.T) {
+	ledger.SetTimeTickDuration(10 * time.Millisecond)
 	//attacher.SetTraceOn()
 	const (
-		nConflicts            = 2
-		nChains               = 2
+		nConflicts            = 3
 		howLongConflictChains = 0 // 97 fails when crosses slot boundary
+		nChains               = 3
+		howLongSeqChains      = 3 // 95 fails
+		nSlots                = 3
 	)
 
 	testData := initLongConflictTestData(t, nConflicts, nChains, howLongConflictChains)
-	ctx, stop := context.WithCancel(context.Background())
-	seq, err := sequencer.New(testData.wrk, testData.bootstrapChainID, testData.privKey, ctx)
-	require.NoError(t, err)
-	seq.Start()
-	time.Sleep(time.Second)
-	stop()
-	seq.WaitStop()
+	testData.makeSeqBeginnings(false)
+
+	slotTransactions := make([][][]*transaction.Transaction, nSlots)
+	branches := make([]*transaction.Transaction, nSlots)
+
+	testData.txBytesAttach()
+	extend := make([]*transaction.Transaction, nChains)
+	for i := range extend {
+		extend[i] = testData.seqChain[i][0]
+	}
+	testData.storeTransactions(extend...)
+	prevBranch := testData.distributionBranchTx
+
+	for branchNr := range branches {
+		slotTransactions[branchNr] = testData.makeSlotTransactionsWithTagAlong(howLongSeqChains, extend)
+		for _, txSeq := range slotTransactions[branchNr] {
+			testData.storeTransactions(txSeq...)
+		}
+
+		extendSeqIdx := branchNr % nChains
+		lastInChain := len(slotTransactions[branchNr][extendSeqIdx]) - 1
+		extendOut := slotTransactions[branchNr][extendSeqIdx][lastInChain].SequencerOutput().MustAsChainOutput()
+		branches[branchNr] = testData.makeBranch(extendOut, prevBranch)
+		prevBranch = branches[branchNr]
+		extend = testData.extendToNextSlot(slotTransactions[branchNr], prevBranch)
+		testData.storeTransactions(extend...)
+	}
+
+	testData.storeTransactions(testData.transferChain...)
+
+	testData.storeTransactions(branches...)
+
+	tpools := make([]*tippool.SequencerTipPool, len(testData.chainOrigins))
+	testData.wrk.EnableTraceTags("tippool")
+	var err error
+
+	for i := range tpools {
+		env := &tippoolEnvironment{
+			Workflow: testData.wrk,
+			seqID:    testData.chainOrigins[i].ChainID,
+		}
+		tpools[i], err = tippool.New(env, fmt.Sprintf("seq_test%d", i), tippool.OptionDoNotLoadOwnMilestones)
+		require.NoError(t, err)
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	vidBranch := attacher.AttachTransaction(branches[len(branches)-1], testData.wrk, attacher.OptionWithAttachmentCallback(func(vid *vertex.WrappedTx) {
+		wg.Done()
+	}))
+	wg.Wait()
+
 	testData.stopAndWait()
+	testData.logDAGInfo()
+	dag.SaveGraphPastCone(vidBranch, "utangle")
+	require.EqualValues(t, vertex.Good.String(), vidBranch.GetTxStatus().String())
+
+	time.Sleep(500 * time.Millisecond)
+	var memStats runtime.MemStats
+	runtime.ReadMemStats(&memStats)
+	t.Logf("Memory stats: allocated %.1f MB, Num GC: %d, Goroutines: %d, ",
+		float32(memStats.Alloc*10/(1024*1024))/10,
+		memStats.NumGC,
+		runtime.NumGoroutine(),
+	)
 }
 
-func TestTippool(t *testing.T) {
-	ledger.SetTimeTickDuration(10 * time.Millisecond)
-	t.Run("with tippool", func(t *testing.T) {
-		//attacher.SetTraceOn()
-		const (
-			nConflicts            = 3
-			howLongConflictChains = 0 // 97 fails when crosses slot boundary
-			nChains               = 3
-			howLongSeqChains      = 3 // 95 fails
-			nSlots                = 3
-		)
+func Test1Sequencer(t *testing.T) {
+	t.Run("start stop", func(t *testing.T) {
+		attacher.SetTraceOn()
+		testData := initWorkflowTest(t, 1)
+		t.Logf("%s", testData.wrk.Info())
 
-		testData := initLongConflictTestData(t, nConflicts, nChains, howLongConflictChains)
-		testData.makeSeqBeginnings(false)
-
-		slotTransactions := make([][][]*transaction.Transaction, nSlots)
-		branches := make([]*transaction.Transaction, nSlots)
-
-		testData.txBytesAttach()
-		extend := make([]*transaction.Transaction, nChains)
-		for i := range extend {
-			extend[i] = testData.seqChain[i][0]
-		}
-		testData.storeTransactions(extend...)
-		prevBranch := testData.distributionBranchTx
-
-		for branchNr := range branches {
-			slotTransactions[branchNr] = testData.makeSlotTransactionsWithTagAlong(howLongSeqChains, extend)
-			for _, txSeq := range slotTransactions[branchNr] {
-				testData.storeTransactions(txSeq...)
-			}
-
-			extendSeqIdx := branchNr % nChains
-			lastInChain := len(slotTransactions[branchNr][extendSeqIdx]) - 1
-			extendOut := slotTransactions[branchNr][extendSeqIdx][lastInChain].SequencerOutput().MustAsChainOutput()
-			branches[branchNr] = testData.makeBranch(extendOut, prevBranch)
-			prevBranch = branches[branchNr]
-			extend = testData.extendToNextSlot(slotTransactions[branchNr], prevBranch)
-			testData.storeTransactions(extend...)
-		}
-
-		testData.storeTransactions(testData.transferChain...)
-
-		testData.storeTransactions(branches...)
-
-		tpools := make([]*tippool.SequencerTipPool, len(testData.chainOrigins))
-		testData.wrk.EnableTraceTag("tippool")
-		var err error
-
-		for i := range tpools {
-			env := &tippoolEnvironment{
-				Workflow: testData.wrk,
-				seqID:    testData.chainOrigins[i].ChainID,
-			}
-			tpools[i], err = tippool.New(env, fmt.Sprintf("seq_test%d", i), tippool.OptionDoNotLoadOwnMilestones)
-			require.NoError(t, err)
-		}
-
-		var wg sync.WaitGroup
-		wg.Add(1)
-		vidBranch := attacher.AttachTransaction(branches[len(branches)-1], testData.wrk, attacher.OptionWithAttachmentCallback(func(vid *vertex.WrappedTx) {
-			wg.Done()
-		}))
-		wg.Wait()
-
+		testData.wrk.EnableTraceTags("attacher,seq,factory,tippool,proposer,events")
+		ctx, stop := context.WithCancel(context.Background())
+		seq, err := sequencer.New(testData.wrk, testData.bootstrapChainID, testData.privKey, ctx)
+		require.NoError(t, err)
+		seq.Start()
+		time.Sleep(time.Second)
+		stop()
+		seq.WaitStop()
 		testData.stopAndWait()
-		testData.logDAGInfo()
-		dag.SaveGraphPastCone(vidBranch, "utangle")
-		require.EqualValues(t, vertex.Good.String(), vidBranch.GetTxStatus().String())
 
-		time.Sleep(500 * time.Millisecond)
-		var memStats runtime.MemStats
-		runtime.ReadMemStats(&memStats)
-		t.Logf("Memory stats: allocated %.1f MB, Num GC: %d, Goroutines: %d, ",
-			float32(memStats.Alloc*10/(1024*1024))/10,
-			memStats.NumGC,
-			runtime.NumGoroutine(),
-		)
 	})
 }

@@ -105,7 +105,7 @@ func initConflictTest(t *testing.T, nConflicts int, verbose bool) *conflictTestR
 	const initBalance = 10_000
 	genesisPrivKey := testutil.GetTestingPrivateKey()
 	par := genesis.DefaultIdentityData(genesisPrivKey)
-	distrib, privKeys, addrs := inittest.GenesisParamsWithPreDistribution(1, initBalance)
+	distrib, privKeys, addrs := inittest.GenesisParamsWithPreDistributionOld(1, initBalance)
 	ret := &conflictTestRunData{
 		stateIdentity: *par,
 		privKey:       privKeys[0],
@@ -394,7 +394,7 @@ func initMultiChainTest(t *testing.T, nChains int, printTx bool) *multiChainTest
 	var addrs []ledger.AddressED25519
 
 	genesisPrivKey := testutil.GetTestingPrivateKey()
-	distrib, privKeys, addrs := inittest.GenesisParamsWithPreDistribution(2, onChainAmount*uint64(nChains))
+	distrib, privKeys, addrs := inittest.GenesisParamsWithPreDistributionOld(2, onChainAmount*uint64(nChains))
 	ret.sPar = *genesis.DefaultIdentityData(genesisPrivKey)
 	ret.privKey = privKeys[0]
 	ret.addr = addrs[0]
