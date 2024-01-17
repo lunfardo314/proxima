@@ -108,14 +108,15 @@ func TestTippool(t *testing.T) {
 }
 
 func Test1Sequencer(t *testing.T) {
+	ledger.SetTimeTickDuration(10 * time.Millisecond)
 	t.Run("start stop", func(t *testing.T) {
-		attacher.SetTraceOn()
+		//attacher.SetTraceOn()
 		testData := initWorkflowTest(t, 1)
 		t.Logf("%s", testData.wrk.Info())
 
-		testData.wrk.EnableTraceTags("attacher,seq,factory,tippool,proposer,events")
+		testData.wrk.EnableTraceTags("seq,factory,tippool,proposer,events")
 		ctx, stop := context.WithCancel(context.Background())
-		seq, err := sequencer.New(testData.wrk, testData.bootstrapChainID, testData.privKey, ctx)
+		seq, err := sequencer.New(testData.wrk, testData.bootstrapChainID, testData.genesisPrivKey, ctx)
 		require.NoError(t, err)
 		seq.Start()
 		time.Sleep(50 * time.Second)

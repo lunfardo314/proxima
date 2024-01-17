@@ -2,7 +2,6 @@ package vertex
 
 import (
 	"github.com/lunfardo314/proxima/ledger"
-	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/set"
 )
 
@@ -20,12 +19,6 @@ func (o *WrappedOutput) IDShortString() string {
 		return "<nil>"
 	}
 	return o.DecodeID().StringShort()
-}
-
-func (o *WrappedOutput) Amount() uint64 {
-	out, err := o.VID.OutputAt(o.Index)
-	util.AssertNoError(err)
-	return out.Amount()
 }
 
 func (o *WrappedOutput) Timestamp() ledger.LogicalTime {
@@ -80,4 +73,12 @@ func (o *WrappedOutput) _isConsumedInThePastConeOf(vid *WrappedTx, visited set.S
 
 func (o *WrappedOutput) ValidPace(targetTs ledger.LogicalTime) bool {
 	return ledger.ValidTimePace(o.Timestamp(), targetTs)
+}
+
+func (o *WrappedOutput) AmountAndLock() (uint64, ledger.Lock, error) {
+	oReal, err := o.VID.OutputAt(o.Index)
+	if err != nil {
+		return 0, nil, err
+	}
+	return oReal.Amount(), oReal.Lock(), nil
 }

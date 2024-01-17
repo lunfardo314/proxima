@@ -10,9 +10,11 @@ import (
 
 const Endorse1ProposerName = "endorse1"
 
-type Endorse1Proposer struct {
-	proposer_generic.TaskGeneric
-}
+type (
+	Endorse1Proposer struct {
+		proposer_generic.TaskGeneric
+	}
+)
 
 func Strategy() *proposer_generic.Strategy {
 	return &proposer_generic.Strategy{

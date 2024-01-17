@@ -80,6 +80,10 @@ func NewIncrementalAttacher(name string, env Environment, targetTs ledger.Logica
 	return ret, nil
 }
 
+func (a *IncrementalAttacher) BaselineBranch() *vertex.WrappedTx {
+	return a.baselineBranch
+}
+
 func (a *IncrementalAttacher) insertEndorsement(endorsement *vertex.WrappedTx, visited set.Set[*vertex.WrappedTx]) error {
 	if endorsement.IsBadOrDeleted() {
 		return fmt.Errorf("NewIncrementalAttacher: can't endorse %s. Reason: '%s'", endorsement.IDShortString(), endorsement.GetReason())

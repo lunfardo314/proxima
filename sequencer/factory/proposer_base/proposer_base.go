@@ -28,6 +28,8 @@ func Strategy() *proposer_generic.Strategy {
 
 func (b *BaseProposer) propose() (*attacher.IncrementalAttacher, bool) {
 	extend := b.OwnLatestMilestone()
+
+	b.TraceLocal("propose: extending %s", extend.IDShortString)
 	// own latest milestone exists
 	if !b.TargetTs.IsSlotBoundary() {
 		// target is not a branch target
@@ -36,24 +38,25 @@ func (b *BaseProposer) propose() (*attacher.IncrementalAttacher, bool) {
 			b.TraceLocal("propose.force exit: cross-slot %s", extend.IDShortString)
 			return nil, true
 		}
-		b.TraceLocal("propose: target is not a branch on the same slot")
+		b.TraceLocal("propose: target is not a branch and it is on the same slot")
 		if !extend.IsSequencerMilestone() {
 			b.TraceLocal("propose.force exit: not-sequencer %s", extend.IDShortString)
 			return nil, true
 		}
 	}
-	b.TraceLocal("propose: predecessor is sequencer")
+	b.TraceLocal("propose: predecessor %s is sequencer", extend.IDShortString)
 
 	a, err := attacher.NewIncrementalAttacher(b.Name, b, b.TargetTs, extend)
 	if err != nil {
 		b.Log().Warnf("proposer %s: can't create attacher: '%v'", b.Name, err)
 		return nil, true
 	}
-	b.TraceLocal("propose: created attacher")
+	b.TraceLocal("propose: created attacher with baseline %s", a.BaselineBranch().IDShortString)
 
 	if b.TargetTs.Tick() != 0 {
-		b.TraceLocal("propose: making non-branch, extending %s, collecting tag-along inputs", extend.IDShortString)
-		b.AttachTagAlongInputs(a)
+		b.TraceLocal("propose: making non-branch, extending %s, collecting and inserting tag-along inputs", extend.IDShortString)
+		numInserted := b.AttachTagAlongInputs(a)
+		b.TraceLocal("propose: inserted %d tag-along inputs", numInserted)
 	} else {
 		b.TraceLocal("propose: making branch, extending %s, no tag-along", extend.IDShortString)
 	}

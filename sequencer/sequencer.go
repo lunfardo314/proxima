@@ -71,7 +71,7 @@ func New(glb *workflow.Workflow, seqID ledger.ChainID, controllerKey ed25519.Pri
 	if ret.factory, err = factory.New(ret, cfg.MaxFeeInputs); err != nil {
 		return nil, err
 	}
-	ret.Tracef("seq", "sequencer object created")
+	ret.Tracef("seq", "sequencer created with controller address %s", ledger.AddressED25519FromPrivateKey(controllerKey).String())
 	return ret, nil
 }
 
@@ -115,10 +115,22 @@ func (seq *Sequencer) ensureFirstMilestone() bool {
 		seq.log.Errorf("failed to find a milestone to start")
 		return false
 	}
-	seq.log.Infof("sequencer will start with the milestone %s", startingMilestone.IDShortString())
+	seqOut := startingMilestone.SequencerWrappedOutput()
+	amount, lock, err := seqOut.AmountAndLock()
+	if err != nil {
+		seq.log.Errorf("sequencer start output %s is not available: %v", seqOut.IDShortString(), err)
+		return false
+	}
+	if !lock.UnlockableWith(ledger.AddressED25519FromPrivateKey(seq.controllerKey).AccountID()) {
+		seq.log.Errorf("provided private key does match sequencer lock %s", lock.String())
+		return false
+	}
+
+	seq.log.Infof("sequencer will start with the milestone output %s and amount %s",
+		seqOut.IDShortString(), util.GoThousands(amount))
 	sleepDuration := ledger.SleepDurationUntilFutureLogicalTime(startingMilestone.Timestamp())
 	if sleepDuration > 0 {
-		seq.log.Infof("will delay start for %v to sync with the real clock", sleepDuration)
+		seq.log.Infof("will delay start for %v to sync starting milestone with the real clock", sleepDuration)
 		time.Sleep(sleepDuration)
 	}
 	return true

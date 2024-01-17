@@ -31,6 +31,7 @@ type workflowTestData struct {
 	t                      *testing.T
 	wrk                    *workflow.Workflow
 	txStore                global.TxBytesStore
+	genesisPrivKey         ed25519.PrivateKey
 	bootstrapChainID       ledger.ChainID
 	originBranchTxid       ledger.TransactionID
 	distributionBranchTxID ledger.TransactionID
@@ -64,16 +65,18 @@ const initBalance = 10_000_000
 func initWorkflowTest(t *testing.T, nChains int) *workflowTestData {
 	util.Assertf(nChains > 0, "nChains > 0")
 	genesisPrivKey := testutil.GetTestingPrivateKey()
-	par := genesis.DefaultIdentityData(genesisPrivKey)
+	stateID := genesis.DefaultIdentityData(genesisPrivKey)
+	t.Logf("genesis state ID: %s", stateID.String())
 
 	distrib, privKeys, addrs := inittest.GenesisParamsWithPreDistribution(initBalance, uint64(nChains*initBalance))
 	ret := &workflowTestData{
-		t:             t,
-		stateIdentity: *par,
-		privKey:       privKeys[0],
-		addr:          addrs[0],
-		privKeyAux:    privKeys[1],
-		addrAux:       addrs[1],
+		t:              t,
+		genesisPrivKey: genesisPrivKey,
+		stateIdentity:  *stateID,
+		privKey:        privKeys[0],
+		addr:           addrs[0],
+		privKeyAux:     privKeys[1],
+		addrAux:        addrs[1],
 	}
 	require.True(t, ledger.AddressED25519MatchesPrivateKey(ret.addr, ret.privKey))
 

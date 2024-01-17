@@ -40,9 +40,12 @@ type (
 		ownMilestones               map[*vertex.WrappedTx]set.Set[vertex.WrappedOutput] // map ms -> consumed outputs in the past
 		maxTagAlongInputs           int
 		lastPruned                  time.Time
-		pastCombinations            map[[32]byte]time.Time
 		ownMilestoneCount           int
 		removedMilestonesSinceReset int
+		// past combinations
+		pastCombinationsMutex     sync.RWMutex
+		pastCombinations          map[[32]byte]time.Time
+		pastCombinationsNextPurge time.Time
 	}
 
 	latestMilestoneProposal struct {
@@ -178,7 +181,7 @@ func (mf *MilestoneFactory) CurrentTargetTs() ledger.LogicalTime {
 	return mf.proposal.targetTs
 }
 
-func (mf *MilestoneFactory) AttachTagAlongInputs(a *attacher.IncrementalAttacher) {
+func (mf *MilestoneFactory) AttachTagAlongInputs(a *attacher.IncrementalAttacher) (numInserted int) {
 	preSelected := mf.tipPool.FilterAndSortOutputs(func(wOut vertex.WrappedOutput) bool {
 		if !ledger.ValidTimePace(wOut.Timestamp(), a.TargetTs()) {
 			return false
@@ -187,7 +190,9 @@ func (mf *MilestoneFactory) AttachTagAlongInputs(a *attacher.IncrementalAttacher
 		return !mf.isConsumedInThePastPath(wOut, a.Extending())
 	})
 	for _, wOut := range preSelected {
-		a.InsertTagAlongInput(wOut, set.New[*vertex.WrappedTx]())
+		if a.InsertTagAlongInput(wOut, set.New[*vertex.WrappedTx]()) {
+			numInserted++
+		}
 		if a.NumInputs() >= mf.maxTagAlongInputs {
 			break
 		}
@@ -222,7 +227,7 @@ func (mf *MilestoneFactory) Propose(a *attacher.IncrementalAttacher) (forceExit 
 	defer mf.proposal.mutex.Unlock()
 
 	if coverage <= mf.proposal.bestSoFarCoverage {
-		mf.Tracef("proposer", "factory.Propose%s proposal rejected due no increase in coverage", a.Name())
+		mf.Tracef("proposer", "factory.Propose%s proposal REJECTED due to no increase in coverage", a.Name())
 		return
 	}
 
@@ -315,28 +320,6 @@ func (mf *MilestoneFactory) chooseEndorseExtendPair(proposerName string, targetT
 	return ret
 }
 
-func extendEndorseCombinationHash(extend *vertex.WrappedTx, endorse ...*vertex.WrappedTx) [32]byte {
-	var buf bytes.Buffer
-	buf.Write(extend.ID[:])
-	for _, vid := range endorse {
-		buf.Write(vid.ID[:])
-	}
-	return blake2b.Sum256(buf.Bytes())
-}
-
-func (mf *MilestoneFactory) knownExtendEndorseCombination(extend *vertex.WrappedTx, endorse ...*vertex.WrappedTx) bool {
-	h := extendEndorseCombinationHash(extend, endorse...)
-	if _, already := mf.pastCombinations[h]; already {
-		return true
-	}
-	return false
-}
-
-func (mf *MilestoneFactory) rememberExtendEndorseCombination(extend *vertex.WrappedTx, endorse ...*vertex.WrappedTx) {
-	h := extendEndorseCombinationHash(extend, endorse...)
-	mf.pastCombinations[h] = time.Now()
-}
-
 func (mf *MilestoneFactory) futureConeMilestonesOrdered(rootVID *vertex.WrappedTx, targetTs ledger.LogicalTime) []*vertex.WrappedTx {
 	mf.cleanOwnMilestonesIfNecessary()
 
@@ -375,4 +358,58 @@ func (mf *MilestoneFactory) NumOutputsInBuffer() int {
 
 func (mf *MilestoneFactory) NumMilestones() int {
 	return mf.tipPool.NumMilestones()
+}
+
+func extendEndorseCombinationHash(extend *vertex.WrappedTx, endorse ...*vertex.WrappedTx) (ret [32]byte) {
+	if len(endorse) == 0 {
+		ret = extend.ID
+		return
+	}
+	var buf bytes.Buffer
+	buf.Write(extend.ID[:])
+	for _, vid := range endorse {
+		buf.Write(vid.ID[:])
+	}
+	return blake2b.Sum256(buf.Bytes())
+}
+
+const (
+	pastCombinationTTL = time.Minute
+	purgePeriod        = 10 * time.Second
+)
+
+func (mf *MilestoneFactory) _purgePastCombinations() {
+	nowis := time.Now()
+	if nowis.Before(mf.pastCombinationsNextPurge) {
+		return
+	}
+	toDelete := make([][32]byte, 0)
+	for h, deadline := range mf.pastCombinations {
+		if deadline.Before(nowis) {
+			toDelete = append(toDelete, h)
+		}
+	}
+	for i := range toDelete {
+		delete(mf.pastCombinations, toDelete[i])
+	}
+	mf.pastCombinationsNextPurge = nowis.Add(purgePeriod)
+}
+
+func (mf *MilestoneFactory) knownExtendEndorseCombination(extend *vertex.WrappedTx, endorse ...*vertex.WrappedTx) bool {
+	h := extendEndorseCombinationHash(extend, endorse...)
+
+	mf.pastCombinationsMutex.RLock()
+	defer mf.pastCombinationsMutex.RUnlock()
+
+	_, already := mf.pastCombinations[h]
+	return already
+}
+
+func (mf *MilestoneFactory) rememberExtendEndorseCombination(extend *vertex.WrappedTx, endorse ...*vertex.WrappedTx) {
+	mf.pastCombinationsMutex.Lock()
+	defer mf.pastCombinationsMutex.Unlock()
+
+	h := extendEndorseCombinationHash(extend, endorse...)
+	mf.pastCombinations[h] = time.Now().Add(pastCombinationTTL)
+	mf._purgePastCombinations()
 }

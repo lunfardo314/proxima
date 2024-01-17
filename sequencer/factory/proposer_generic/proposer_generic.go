@@ -18,7 +18,7 @@ type (
 		CurrentTargetTs() ledger.LogicalTime
 		OwnLatestMilestone() *vertex.WrappedTx
 		Propose(a *attacher.IncrementalAttacher) bool
-		AttachTagAlongInputs(a *attacher.IncrementalAttacher)
+		AttachTagAlongInputs(a *attacher.IncrementalAttacher) int
 		ChooseExtendEndorsePair(proposerName string, targetTs ledger.LogicalTime) *attacher.IncrementalAttacher
 	}
 
@@ -80,7 +80,7 @@ func (t *TaskGeneric) Run() {
 			return
 		}
 		if a != nil && a.Completed() {
-			t.TraceLocal("Run: completed")
+			t.TraceLocal("Run: generated new proposal")
 			if forceExit = t.Propose(a); forceExit {
 				return
 			}

@@ -71,7 +71,7 @@ func runAttacher(vid *vertex.WrappedTx, env Environment, ctx context.Context) (v
 
 	status = a.solidifyPastCone()
 	if status != vertex.Good {
-		a.tracef("past cone solidification failed. Reason: %v", a.vid.GetReason())
+		a.tracef("past cone solidification failed. Reason: %v", a.reason)
 		return vertex.Bad, nil, a.reason
 	}
 
@@ -128,9 +128,9 @@ func logFinalStatusString(vid *vertex.WrappedTx, stats *attachStats) string {
 
 	status := vid.GetTxStatus()
 	if vid.IsBranchTransaction() {
-		msg = fmt.Sprintf("ATTACH BRANCH (%s) %s", status.String(), vid.IDShortString())
+		msg = fmt.Sprintf("-- ATTACH BRANCH (%s) %s", status.String(), vid.IDShortString())
 	} else {
-		msg = fmt.Sprintf("ATTACH SEQ TX (%s) %s", status.String(), vid.IDShortString())
+		msg = fmt.Sprintf("-- ATTACH SEQ TX (%s) %s", status.String(), vid.IDShortString())
 	}
 	if status == vertex.Bad {
 		msg += fmt.Sprintf(" reason = '%v'", vid.GetReason())

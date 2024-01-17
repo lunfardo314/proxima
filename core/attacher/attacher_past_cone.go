@@ -364,8 +364,10 @@ func (a *pastConeAttacher) attachOutput(wOut vertex.WrappedOutput, parasiticChai
 		return false
 	}
 	if isRooted {
+		a.tracef("attachOutput: %s is rooted", wOut.IDShortString)
 		return true
 	}
+	a.tracef("attachOutput: %s is NOT rooted", wOut.IDShortString)
 
 	if wOut.Timestamp().Before(parasiticChainHorizon) {
 		// parasitic chain rule
