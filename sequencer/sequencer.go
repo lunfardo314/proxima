@@ -9,7 +9,6 @@ import (
 
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/core/workflow"
-	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/sequencer/factory"
@@ -125,9 +124,9 @@ func (seq *Sequencer) ensureFirstMilestone() bool {
 		seq.log.Errorf("provided private key does match sequencer lock %s", lock.String())
 		return false
 	}
-
 	seq.log.Infof("sequencer will start with the milestone output %s and amount %s",
 		seqOut.IDShortString(), util.GoThousands(amount))
+
 	sleepDuration := ledger.SleepDurationUntilFutureLogicalTime(startingMilestone.Timestamp())
 	if sleepDuration > 0 {
 		seq.log.Infof("will delay start for %v to sync starting milestone with the real clock", sleepDuration)
@@ -222,13 +221,10 @@ func (seq *Sequencer) doSequencerStep() bool {
 		msTx.IDShortString(), targetTs, time.Since(timerStart))
 
 	msVID := seq.submitMilestone(msTx)
-
-	if global.IsShuttingDown() {
-		return false
-	}
 	if msVID == nil {
 		return true
 	}
+
 	seq.factory.AddOwnMilestone(msVID)
 	seq.milestoneCount++
 	if msVID.IsBranchTransaction() {
@@ -314,13 +310,31 @@ const submitTimeout = 5 * time.Second
 
 func (seq *Sequencer) submitMilestone(tx *transaction.Transaction) *vertex.WrappedTx {
 	seq.Tracef("seq", "submit new milestone %s", tx.IDShortString)
+	deadline := time.Now().Add(submitTimeout)
 	vid, err := seq.SequencerMilestoneAttachWait(tx.Bytes(), submitTimeout)
-	if err == nil {
-		seq.Tracef("seq", "new milestone %s submitted successfully", tx.IDShortString)
-	} else {
+	if err != nil {
 		seq.Log().Errorf("failed to submit new milestone %s: '%v'", tx.IDShortString(), err)
+		return nil
+	}
+
+	seq.Tracef("seq", "new milestone %s submitted successfully", tx.IDShortString)
+	if !seq.waitMilestoneInTippool(vid, deadline) {
+		seq.Log().Errorf("timed out while waiting %v for submitted milestone %s in the tippool", submitTimeout, vid.IDShortString())
+		return nil
 	}
 	return vid
+}
+
+func (seq *Sequencer) waitMilestoneInTippool(vid *vertex.WrappedTx, deadline time.Time) bool {
+	for {
+		if time.Now().After(deadline) {
+			return false
+		}
+		if seq.factory.OwnLatestMilestone() == vid {
+			return true
+		}
+		time.Sleep(1 * time.Millisecond)
+	}
 }
 
 func (seq *Sequencer) OnMilestoneSubmitted(fun func(seq *Sequencer, ms *vertex.WrappedTx)) {

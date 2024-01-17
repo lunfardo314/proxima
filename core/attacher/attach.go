@@ -179,7 +179,7 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Opt
 			}
 			callback := options.attachmentCallback
 			if callback == nil {
-				callback = func(_ *vertex.WrappedTx) {}
+				callback = func(_ *vertex.WrappedTx, _ error) {}
 			}
 
 			runFun := func() {
@@ -188,7 +188,7 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Opt
 				vid.SetReason(err)
 				env.Log().Info(logFinalStatusString(vid, stats))
 				env.PokeAllWith(vid)
-				callback(vid)
+				callback(vid, err)
 			}
 
 			const forDebugging = true

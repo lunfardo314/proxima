@@ -8,7 +8,6 @@ import (
 	"github.com/lunfardo314/proxima/core/queues/txinput"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
-	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/queue"
 	"github.com/lunfardo314/proxima/util/set"
@@ -21,7 +20,7 @@ type (
 		global.Logging
 		TxBytesStore() global.TxBytesStore
 		QueryTransactionsFromRandomPeer(lst ...ledger.TransactionID) bool
-		TransactionIn(txBytes []byte, opts ...txinput.TransactionInOption) (*transaction.Transaction, error)
+		TxBytesIn(txBytes []byte, opts ...txinput.TransactionInOption) error
 	}
 
 	Input struct {
@@ -75,11 +74,11 @@ func (q *PullClient) Consume(inp *Input) {
 			continue
 		}
 		if txBytes := q.TxBytesStore().GetTxBytes(&txid); len(txBytes) > 0 {
-			//q.tracePull("%s fetched from txBytesStore", func() any { return txid.StringShort() })
+			q.Tracef("pull", "%s fetched from txBytesStore", txid.StringShort)
 			txBytesList = append(txBytesList, txBytes)
 		} else {
-			//q.tracePull("%s added to pull list, pull list size: %d", func() any { return txid.StringShort() }, len(q.pullList))
 			q.pullList[txid] = nextPull
+			q.Tracef("pull", "%s added to the pull list. Pull list size: %d", txid.StringShort, len(q.pullList))
 			toPull = append(toPull, txid)
 		}
 	}
@@ -89,11 +88,10 @@ func (q *PullClient) Consume(inp *Input) {
 
 func (q *PullClient) transactionInMany(txBytesList [][]byte) {
 	for _, txBytes := range txBytesList {
-		_, err := q.TransactionIn(txBytes, txinput.WithTransactionSource(txinput.TransactionSourceStore))
+		err := q.TxBytesIn(txBytes, txinput.WithTransactionSource(txinput.TransactionSourceStore))
 		if err != nil {
-			q.Environment.Log().Errorf("pull:TransactionIn returned: '%v'", err)
+			q.Environment.Log().Errorf("tx parse error while pull: '%v'", err)
 		}
-		//q.tracePull("%s -> TransactionIn", tx.IDShortString())
 	}
 }
 

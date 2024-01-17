@@ -87,7 +87,7 @@ func TestTippool(t *testing.T) {
 
 	var wg sync.WaitGroup
 	wg.Add(1)
-	vidBranch := attacher.AttachTransaction(branches[len(branches)-1], testData.wrk, attacher.OptionWithAttachmentCallback(func(vid *vertex.WrappedTx) {
+	vidBranch := attacher.AttachTransaction(branches[len(branches)-1], testData.wrk, attacher.OptionWithAttachmentCallback(func(_ *vertex.WrappedTx, _ error) {
 		wg.Done()
 	}))
 	wg.Wait()
@@ -114,7 +114,7 @@ func Test1Sequencer(t *testing.T) {
 		testData := initWorkflowTest(t, 1)
 		t.Logf("%s", testData.wrk.Info())
 
-		testData.wrk.EnableTraceTags("seq,factory,tippool,proposer,events")
+		testData.wrk.EnableTraceTags("seq,factory,tippool,txinput, proposer")
 		ctx, stop := context.WithCancel(context.Background())
 		seq, err := sequencer.New(testData.wrk, testData.bootstrapChainID, testData.genesisPrivKey, ctx)
 		require.NoError(t, err)

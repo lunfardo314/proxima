@@ -110,7 +110,7 @@ func New(ut *utangle_old.UTXOTangle, peers *peering.Peers, txBytesStore global.T
 			},
 			))
 		if err != nil {
-			ret.log.Debugf("TransactionIn: %v", err)
+			ret.log.Debugf("TxBytesIn: %v", err)
 			return
 		}
 	})

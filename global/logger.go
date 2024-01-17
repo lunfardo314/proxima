@@ -71,7 +71,8 @@ func (l *DefaultLogging) EnableTraceTags(tags string) {
 	tSplit := strings.Split(tags, ",")
 	l.traceTagsMutex.Lock()
 	for _, t := range tSplit {
-		l.traceTags.Insert(t)
+
+		l.traceTags.Insert(strings.TrimSpace(t))
 		l.enabledTrace.Store(true)
 	}
 	l.traceTagsMutex.Unlock()

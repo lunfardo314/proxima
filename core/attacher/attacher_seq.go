@@ -27,7 +27,7 @@ type (
 	}
 	_attacherOptions struct {
 		ctx                context.Context
-		attachmentCallback func(vid *vertex.WrappedTx)
+		attachmentCallback func(vid *vertex.WrappedTx, err error)
 		pullNonBranch      bool
 		doNotLoadBranch    bool
 		calledBy           string

@@ -31,17 +31,17 @@ type (
 	TransactionSource byte
 
 	Input struct {
-		Tx                 *transaction.Transaction
-		TxMetadata         *txmetadata.TransactionMetadata
-		ReceivedFromPeer   peer.ID
-		ReceivedWhen       time.Time
-		TxSource           TransactionSource
-		AttachmentCallback func(vid *vertex.WrappedTx)
+		Tx               *transaction.Transaction
+		TxMetadata       *txmetadata.TransactionMetadata
+		ReceivedFromPeer peer.ID
+		ReceivedWhen     time.Time
+		TxSource         TransactionSource
+		Callback         func(vid *vertex.WrappedTx, err error)
 	}
 
 	TxInput struct {
 		*queue.Queue[*Input]
-		env Environment
+		Environment
 	}
 
 	TransactionInOption func(*Input)
@@ -73,8 +73,8 @@ func (t TransactionSource) String() string {
 
 func New(env Environment, lvl zapcore.Level) *TxInput {
 	return &TxInput{
-		Queue: queue.NewQueueWithBufferSize[*Input]("txInput", chanBufferSize, lvl, nil),
-		env:   env,
+		Queue:       queue.NewQueueWithBufferSize[*Input]("txInput", chanBufferSize, lvl, nil),
+		Environment: env,
 	}
 }
 
@@ -86,6 +86,7 @@ func (q *TxInput) Start(ctx context.Context, doneOnClose *sync.WaitGroup) {
 }
 
 func (q *TxInput) Consume(inp *Input) {
+	q.Tracef("txinput", "consume %s", inp.Tx.IDShortString)
 	var err error
 	// TODO revisit checking lower time bounds
 	enforceTimeBounds := inp.TxSource == TransactionSourceAPI || inp.TxSource == TransactionSourcePeer
@@ -93,27 +94,30 @@ func (q *TxInput) Consume(inp *Input) {
 	nowis := time.Now()
 	txid := inp.Tx.ID()
 
-	q.env.StopPulling(txid)
+	q.StopPulling(txid)
 
-	timeUpperBound := nowis.Add(q.env.MaxDurationInTheFuture())
+	timeUpperBound := nowis.Add(q.MaxDurationInTheFuture())
 	err = inp.Tx.Validate(transaction.CheckTimestampUpperBound(timeUpperBound))
 	if err != nil {
 		if enforceTimeBounds {
-			q.env.DropTxID(txid, "txInput", "upper timestamp bound exceeded")
-			q.env.IncCounter("invalid")
+			q.Tracef("txinput", "drop %s due to time bounds", inp.Tx.IDShortString)
+			q.DropTxID(txid, "txInput", "upper timestamp bound exceeded")
+			q.IncCounter("invalid")
 			return
 		}
 		q.Log().Warnf("checking time bounds of %s: '%v'", txid.StringShort(), err)
 	}
 	// run remaining pre-validations on the transaction
 	if err = inp.Tx.Validate(transaction.MainTxValidationOptions...); err != nil {
-		q.env.DropTxID(txid, "txInput", "error while pre-validating Tx: '%v'", err)
-		q.env.IncCounter("invalid")
+		q.Tracef("txinput", "drop %s due validation failed: '%v'", inp.Tx.IDShortString, err)
+		q.DropTxID(txid, "txInput", "error while pre-validating Tx: '%v'", err)
+		q.IncCounter("invalid")
 		return
 	}
-	q.env.IncCounter("ok")
+	q.IncCounter("ok")
 	// gossip always, even if it needs delay
-	q.env.GossipTransaction(inp)
+	q.Tracef("txinput", "send to gossip %s", inp.Tx.IDShortString)
+	q.GossipTransaction(inp)
 
 	// passes transaction for solidification
 	// - immediately if timestamp is in the past
@@ -121,92 +125,97 @@ func (q *TxInput) Consume(inp *Input) {
 	txTime := inp.Tx.TimestampTime()
 
 	opts := []attacher.Option{attacher.OptionInvokedBy("txInput")}
-	if inp.AttachmentCallback != nil {
-		opts = append(opts, attacher.OptionWithAttachmentCallback(inp.AttachmentCallback))
+	if inp.Callback != nil {
+		opts = append(opts, attacher.OptionWithAttachmentCallback(inp.Callback))
 	}
 
 	if txTime.Before(nowis) {
-		// timestamp is in the past, pass it to the solidifier
-		q.env.IncCounter("ok.now")
-		q.env.AttachTransaction(inp, opts...)
+		// timestamp is in the past
+		q.IncCounter("ok.now")
+		q.Tracef("txinput", "-> attach tx %s", inp.Tx.IDShortString)
+		q.AttachTransaction(inp, opts...)
 		return
 	}
 	// timestamp is in the future. Put it into the waiting room
-	q.env.IncCounter("ok.delay")
+	q.IncCounter("ok.delay")
 	delayFor := txTime.Sub(nowis)
-	q.env.Tracef("delay", "%s -> delay for %v", txid.StringShort, delayFor)
+	q.Tracef("txinput", "%s -> delay for %v", txid.StringShort, delayFor)
 
 	go func() {
 		time.Sleep(delayFor)
-		q.env.Tracef("delay", "%s -> release", txid.StringShort)
-		q.env.IncCounter("ok.release")
-		q.env.GossipTransaction(inp)
-		q.env.AttachTransaction(inp, attacher.OptionInvokedBy("txInput"))
+		q.Tracef("txinput", "%s -> release", txid.StringShort)
+		q.IncCounter("ok.release")
+		q.GossipTransaction(inp)
+		q.AttachTransaction(inp, attacher.OptionInvokedBy("txInput"))
 	}()
 }
 
-func (q *TxInput) TransactionIn(txBytes []byte, opts ...TransactionInOption) error {
-	_, err := q.TransactionInReturnTx(txBytes, opts...)
-	return err
-}
-
-func (q *TxInput) TransactionInReturnTx(txBytes []byte, opts ...TransactionInOption) (*transaction.Transaction, error) {
+func (q *TxInput) TxBytesIn(txBytes []byte, opts ...TransactionInOption) error {
 	// base validation
 	tx, err := transaction.FromBytes(txBytes)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	// if raw transaction data passes the basic check, it means it is identifiable as a transaction and main properties
-	// are correct: ID, timestamp, sequencer and branch transaction flags. The signature and semantic has not been checked at this point
-
-	inData := &Input{Tx: tx}
+	inData := &Input{}
 	for _, opt := range opts {
 		opt(inData)
 	}
-	if inData.AttachmentCallback != nil && !tx.IsSequencerMilestone() {
-		return nil, fmt.Errorf("TransactionInReturnTx: only sequencer milestones can be attached with callback")
-	}
+	inData.Tx = tx
 	responseToPull := inData.TxMetadata != nil && inData.TxMetadata.SendType == txmetadata.SendTypeResponseToPull
 	util.Assertf(!responseToPull || inData.TxSource == TransactionSourcePeer, "!responseToPull || inData.source == TransactionSourcePeer")
 
 	if responseToPull {
-		q.env.StopPulling(tx.ID())
+		q.StopPulling(tx.ID())
 	}
 
+	if !tx.IsSequencerMilestone() {
+		inData.Callback = func(_ *vertex.WrappedTx, _ error) {}
+	}
 	priority := responseToPull || inData.TxSource == TransactionSourceStore
 	q.Queue.Push(inData, priority) // priority for pulled
-	return tx, nil
+	return nil
 }
 
-func (q *TxInput) SequencerMilestoneNewAttachWait(txBytes []byte, timeout ...time.Duration) (retVid *vertex.WrappedTx, retErr error) {
-	if len(timeout) > 0 {
-		ctx, cancel := context.WithTimeout(context.Background(), timeout[0])
-		go func() {
-			var err error
-			_, retErr = q.TransactionInReturnTx(txBytes,
-				WithTransactionSource(TransactionSourceSequencer), WithAttachmentCallback(func(vid *vertex.WrappedTx) {
-					err = vid.GetReason()
-					retVid = vid
-				}))
-			if retErr == nil {
-				retErr = err
-			}
-			cancel()
-		}()
-		<-ctx.Done()
-	} else {
-		var wg sync.WaitGroup
-		wg.Add(1)
-		_, retErr = q.TransactionInReturnTx(txBytes, WithAttachmentCallback(func(vid *vertex.WrappedTx) {
-			retVid = vid
-			retErr = vid.GetReason()
-			wg.Done()
-		}))
-		if retErr == nil {
-			wg.Wait()
-		}
+func (q *TxInput) SequencerMilestoneNewAttachWait(txBytes []byte, timeout time.Duration) (*vertex.WrappedTx, error) {
+	type result struct {
+		vid *vertex.WrappedTx
+		err error
 	}
-	return
+
+	closed := false
+	var closedMutex sync.Mutex
+	resCh := make(chan result)
+	defer func() {
+		closedMutex.Lock()
+		defer closedMutex.Unlock()
+		closed = true
+		close(resCh)
+	}()
+
+	go func() {
+		writeResult := func(res result) {
+			closedMutex.Lock()
+			defer closedMutex.Unlock()
+			if closed {
+				return
+			}
+			resCh <- res
+		}
+		errParse := q.TxBytesIn(txBytes,
+			WithTransactionSource(TransactionSourceSequencer),
+			WithAttachmentCallback(func(vid *vertex.WrappedTx, err error) {
+				writeResult(result{vid: vid, err: err})
+			}))
+		if errParse != nil {
+			writeResult(result{err: errParse})
+		}
+	}()
+	select {
+	case res := <-resCh:
+		return res.vid, res.err
+	case <-time.After(timeout):
+		return nil, fmt.Errorf("timeout %v", timeout)
+	}
 }
 
 func WithTransactionSource(src TransactionSource) TransactionInOption {
@@ -215,9 +224,9 @@ func WithTransactionSource(src TransactionSource) TransactionInOption {
 	}
 }
 
-func WithAttachmentCallback(fun func(vid *vertex.WrappedTx)) TransactionInOption {
+func WithAttachmentCallback(fun func(vid *vertex.WrappedTx, err error)) TransactionInOption {
 	return func(inp *Input) {
-		inp.AttachmentCallback = fun
+		inp.Callback = fun
 	}
 }
 

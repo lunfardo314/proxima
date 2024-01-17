@@ -12,7 +12,6 @@ import (
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
-	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/txmetadata"
 )
 
@@ -71,12 +70,12 @@ func (w *Workflow) AttachTransaction(inp *txinput.Input, opts ...attacher.Option
 	attacher.AttachTransaction(inp.Tx, w, opts...)
 }
 
-func (w *Workflow) TransactionIn(txBytes []byte, opts ...txinput.TransactionInOption) (*transaction.Transaction, error) {
-	return w.txInput.TransactionInReturnTx(txBytes, opts...)
+func (w *Workflow) TxBytesIn(txBytes []byte, opts ...txinput.TransactionInOption) error {
+	return w.txInput.TxBytesIn(txBytes, opts...)
 }
 
-func (w *Workflow) SequencerMilestoneAttachWait(txBytes []byte, timeout ...time.Duration) (*vertex.WrappedTx, error) {
-	return w.txInput.SequencerMilestoneNewAttachWait(txBytes, timeout...)
+func (w *Workflow) SequencerMilestoneAttachWait(txBytes []byte, timeout time.Duration) (*vertex.WrappedTx, error) {
+	return w.txInput.SequencerMilestoneNewAttachWait(txBytes, timeout)
 }
 
 func (w *Workflow) SendTxBytesToPeer(id peer.ID, txBytes []byte, metadata *txmetadata.TransactionMetadata) bool {

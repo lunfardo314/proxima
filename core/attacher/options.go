@@ -12,7 +12,7 @@ func OptionWithContext(ctx context.Context) Option {
 	}
 }
 
-func OptionWithAttachmentCallback(fun func(vid *vertex.WrappedTx)) Option {
+func OptionWithAttachmentCallback(fun func(vid *vertex.WrappedTx, err error)) Option {
 	return func(options *_attacherOptions) {
 		options.attachmentCallback = fun
 	}

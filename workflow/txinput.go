@@ -21,7 +21,7 @@ func (w *Workflow) TransactionIn(txBytes []byte, opts ...TransactionInOption) er
 
 func (w *Workflow) TransactionInReturnTx(txBytes []byte, opts ...TransactionInOption) (*transaction.Transaction, error) {
 	if !w.IsRunning() {
-		return nil, fmt.Errorf("TransactionInReturnTx: workflow_old is inactive")
+		return nil, fmt.Errorf("TxBytesIn: workflow_old is inactive")
 	}
 	// base validation
 	tx, err := transaction.FromBytes(txBytes)
