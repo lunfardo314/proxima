@@ -321,6 +321,10 @@ func (a *pastConeAttacher) isValidated(vid *vertex.WrappedTx) bool {
 
 func (a *pastConeAttacher) attachRooted(wOut vertex.WrappedOutput) (ok bool, isRooted bool) {
 	a.tracef("attachRooted %s", wOut.IDShortString)
+	if wOut.Timestamp().After(a.baselineBranch.Timestamp()) {
+		// output is later than baseline -> can't be rooted in it
+		return true, false
+	}
 
 	consumedRooted := a.rooted[wOut.VID]
 	if consumedRooted.Contains(wOut.Index) {
