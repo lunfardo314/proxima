@@ -17,6 +17,7 @@ import (
 	"github.com/lunfardo314/proxima/sequencer"
 	"github.com/lunfardo314/proxima/sequencer/tippool"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/atomic"
 )
 
 type tippoolEnvironment struct {
@@ -110,18 +111,28 @@ func TestTippool(t *testing.T) {
 func Test1Sequencer(t *testing.T) {
 	ledger.SetTimeTickDuration(10 * time.Millisecond)
 	t.Run("start stop", func(t *testing.T) {
+		const maxBranches = 5
 		//attacher.SetTraceOn()
 		testData := initWorkflowTest(t, 1)
 		t.Logf("%s", testData.wrk.Info())
 
-		testData.wrk.EnableTraceTags("seq,factory,tippool,txinput, proposer")
-		ctx, stop := context.WithCancel(context.Background())
-		seq, err := sequencer.New(testData.wrk, testData.bootstrapChainID, testData.genesisPrivKey, ctx)
+		//testData.wrk.EnableTraceTags("seq,factory,tippool,txinput, proposer, incAttach")
+		ctx, _ := context.WithCancel(context.Background())
+		seq, err := sequencer.New(testData.wrk, testData.bootstrapChainID, testData.genesisPrivKey,
+			ctx, sequencer.WithMaxBranches(maxBranches))
 		require.NoError(t, err)
+		var countBr, countSeq atomic.Int32
+		seq.OnMilestoneSubmitted(func(_ *sequencer.Sequencer, ms *vertex.WrappedTx) {
+			if ms.IsBranchTransaction() {
+				countBr.Inc()
+			} else {
+				countSeq.Inc()
+			}
+		})
 		seq.Start()
-		time.Sleep(50 * time.Second)
-		stop()
 		seq.WaitStop()
 		testData.stopAndWait()
+		require.EqualValues(t, maxBranches, int(countBr.Load()))
+		require.EqualValues(t, maxBranches, int(countSeq.Load()))
 	})
 }

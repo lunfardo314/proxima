@@ -34,6 +34,8 @@ func NewIncrementalAttacher(name string, env Environment, targetTs ledger.Logica
 		util.Assertf(vid.IsSequencerMilestone(), "vid.IsSequencerMilestone()")
 		util.Assertf(ledger.ValidTimePace(vid.Timestamp(), targetTs), "ledger.ValidTimePace(vid.Timestamp(), targetTs)")
 	}
+	env.Tracef("incAttach", "NewIncrementalAttacher(%s). extend: %s, endorse: {%s}",
+		name, extend.IDShortString, func() string { return vertex.VerticesLines(endorse).Join(",") })
 
 	// find baseline branch as the baseline branch of the latest among extend and endorsements
 	latest := util.Maximum(append(slices.Clone(endorse), extend), func(vid1, vid2 *vertex.WrappedTx) bool {
@@ -43,6 +45,8 @@ func NewIncrementalAttacher(name string, env Environment, targetTs ledger.Logica
 	if baseline == nil {
 		return nil, fmt.Errorf("NewIncrementalAttacher: failed to determine the baseline branch of %s", extend.IDShortString())
 	}
+	env.Tracef("incAttach", "NewIncrementalAttacher(%s). baseline: %s", name, baseline.IDShortString)
+
 	ret := &IncrementalAttacher{
 		pastConeAttacher: newPastConeAttacher(env, name),
 		extend:           extend,
@@ -53,26 +57,33 @@ func NewIncrementalAttacher(name string, env Environment, targetTs ledger.Logica
 
 	ret.setBaselineBranch(baseline) // also fetches previous coverage
 
-	// attach sequencer predecessor
 	visited := set.New[*vertex.WrappedTx]()
-	extend.Unwrap(vertex.UnwrapOptions{
-		Vertex: func(v *vertex.Vertex) {
-			ret.attachVertex(v, extend, ledger.NilLogicalTime, visited)
-		},
-	})
-	if ret.reason != nil {
-		return nil, ret.reason
+
+	// attach sequencer predecessor
+	if !extend.IsBranchTransaction() {
+		extend.Unwrap(vertex.UnwrapOptions{
+			Vertex: func(v *vertex.Vertex) {
+				env.Tracef("incAttach", "NewIncrementalAttacher(%s). attachVertex: %s", name, baseline.IDShortString)
+				ret.attachVertex(v, extend, ledger.NilLogicalTime, visited)
+			},
+		})
+		if ret.reason != nil {
+			return nil, ret.reason
+		}
 	}
 	// attach endorsements
 	for _, endorsement := range endorse {
+		env.Tracef("incAttach", "NewIncrementalAttacher(%s). insertEndorsement: %s", name, endorsement.IDShortString)
 		if err := ret.insertEndorsement(endorsement, visited); err != nil {
 			return nil, err
 		}
 	}
+	env.Tracef("incAttach", "NewIncrementalAttacher(%s). insertSequencerInput", name)
 	if err := ret.insertSequencerInput(visited); err != nil {
 		return nil, err
 	}
 	if targetTs.Tick() == 0 {
+		env.Tracef("incAttach", "NewIncrementalAttacher(%s). insertStemInput", name)
 		if err := ret.insertStemInput(visited); err != nil {
 			return nil, err
 		}
