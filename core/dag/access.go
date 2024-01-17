@@ -72,6 +72,15 @@ func (d *DAG) HeaviestStateForLatestTimeSlot() global.IndexedStateReader {
 	return d.branches[util.Maximum(d._branchesForSlot(slot), vertex.Less)]
 }
 
+func (d *DAG) HeaviestBranchOfLatestTimeSlot() *vertex.WrappedTx {
+	slot := d.LatestBranchSlot()
+
+	d.mutex.RLock()
+	defer d.mutex.RUnlock()
+
+	return util.Maximum(d._branchesForSlot(slot), vertex.Less)
+}
+
 func (d *DAG) GetVertex(txid *ledger.TransactionID) *vertex.WrappedTx {
 	d.mutex.RLock()
 	defer d.mutex.RUnlock()
