@@ -73,13 +73,15 @@ func (m *TransactionMetadata) flags() (ret byte) {
 
 // Bytes of TransactionMetadata is nil-safe
 func (m *TransactionMetadata) Bytes() []byte {
-	if m == nil {
+	flags := m.flags()
+	// flags == 0 means no persistent information is contained
+	if m == nil || flags == 0 {
 		return []byte{0}
 	}
 	var buf bytes.Buffer
 	// size byte (will be filled-in in the end
 	buf.WriteByte(0)
-	buf.WriteByte(m.flags())
+	buf.WriteByte(flags)
 	if !util.IsNil(m.StateRoot) {
 		buf.Write(m.StateRoot.Bytes())
 	}
