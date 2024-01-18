@@ -46,7 +46,7 @@ func TestOriginTangle(t *testing.T) {
 		require.NoError(t, err)
 
 		txStore := txstore.NewSimpleTxBytesStore(common.NewInMemoryKVStore())
-		err = txStore.SaveTxBytes(txBytes)
+		err = txStore.SaveTxBytesWithMetadata(txBytes)
 		require.NoError(t, err)
 
 		ut := utangle_old.Load(stateStore)
@@ -124,7 +124,7 @@ func initConflictTest(t *testing.T, nConflicts int, verbose bool) *conflictTestR
 	ret.bootstrapChainID, _ = genesis.InitLedgerState(ret.stateIdentity, stateStore)
 	txBytes, err := txbuilder2.DistributeInitialSupply(stateStore, genesisPrivKey, distrib)
 	require.NoError(t, err)
-	err = txStore.SaveTxBytes(txBytes)
+	err = txStore.SaveTxBytesWithMetadata(txBytes)
 	require.NoError(t, err)
 
 	ret.ut = utangle_old.Load(stateStore)
@@ -168,7 +168,7 @@ func initConflictTest(t *testing.T, nConflicts int, verbose bool) *conflictTestR
 		require.True(t, vDraft.IsSolid())
 
 		vid, err := ret.ut.AppendVertex(vDraft, func() error {
-			return txStore.SaveTxBytes(ret.txBytes[i])
+			return txStore.SaveTxBytesWithMetadata(ret.txBytes[i])
 		})
 		if err != nil {
 			if vid != nil {
@@ -413,7 +413,7 @@ func initMultiChainTest(t *testing.T, nChains int, printTx bool) *multiChainTest
 	txBytes, err := txbuilder2.DistributeInitialSupply(stateStore, genesisPrivKey, distrib)
 	require.NoError(t, err)
 
-	err = ret.txBytesStore.SaveTxBytes(txBytes)
+	err = ret.txBytesStore.SaveTxBytesWithMetadata(txBytes)
 	require.NoError(t, err)
 
 	ret.ut = utangle_old.Load(stateStore)
@@ -510,7 +510,7 @@ func initMultiChainTest(t *testing.T, nChains int, printTx bool) *multiChainTest
 	}
 
 	_, _, err = ret.ut.AppendVertexFromTransactionBytesDebug(ret.txBytesChainOrigin, func() error {
-		return ret.txBytesStore.SaveTxBytes(ret.txBytesChainOrigin)
+		return ret.txBytesStore.SaveTxBytesWithMetadata(ret.txBytesChainOrigin)
 	})
 	require.NoError(t, err)
 	return ret
@@ -627,7 +627,7 @@ func TestMultiChain(t *testing.T) {
 				}
 			}
 			vid, _, err := r.ut.AppendVertexFromTransactionBytesDebug(txBytes, func() error {
-				return r.txBytesStore.SaveTxBytes(txBytes)
+				return r.txBytesStore.SaveTxBytesWithMetadata(txBytes)
 			})
 			if err != nil {
 				utangle_old.SaveGraphPastCone(vid, "failed")
@@ -674,7 +674,7 @@ func TestMultiChain(t *testing.T) {
 					t.Logf("---")
 				}
 				_, txStr, err := r.ut.AppendVertexFromTransactionBytesDebug(txBytes, func() error {
-					return r.txBytesStore.SaveTxBytes(txBytes)
+					return r.txBytesStore.SaveTxBytesWithMetadata(txBytes)
 				})
 				if err != nil {
 					t.Logf("================= failed tx ======================= %s", txStr)
@@ -723,7 +723,7 @@ func TestMultiChain(t *testing.T) {
 					}
 				}
 				_, txStr, err := r.ut.AppendVertexFromTransactionBytesDebug(txBytes, func() error {
-					return r.txBytesStore.SaveTxBytes(txBytes)
+					return r.txBytesStore.SaveTxBytesWithMetadata(txBytes)
 				})
 				if err != nil {
 					t.Logf("================= failed tx ======================= %s", txStr)
@@ -762,7 +762,7 @@ func TestMultiChain(t *testing.T) {
 		require.NoError(t, err)
 		util.RequirePanicOrErrorWith(t, func() error {
 			vid, _, err := r.ut.AppendVertexFromTransactionBytesDebug(txBytes, func() error {
-				return r.txBytesStore.SaveTxBytes(txBytes)
+				return r.txBytesStore.SaveTxBytesWithMetadata(txBytes)
 			})
 			if err == nil && vid != nil {
 				t.Logf("\n%s", vid.PastTrackLines().String())
@@ -799,7 +799,7 @@ func TestMultiChain(t *testing.T) {
 				}
 			}
 			vid, txStr, err := r.ut.AppendVertexFromTransactionBytesDebug(txBytes, func() error {
-				return r.txBytesStore.SaveTxBytes(txBytes)
+				return r.txBytesStore.SaveTxBytesWithMetadata(txBytes)
 			})
 			if err != nil {
 				t.Logf("================= failed tx ======================= %s", txStr)
@@ -838,7 +838,7 @@ func TestMultiChain(t *testing.T) {
 				}
 			}
 			_, txStr, err := r.ut.AppendVertexFromTransactionBytesDebug(txBytes, func() error {
-				return r.txBytesStore.SaveTxBytes(txBytes)
+				return r.txBytesStore.SaveTxBytesWithMetadata(txBytes)
 			})
 			if err != nil {
 				t.Logf("================= failed tx ======================= %s", txStr)
@@ -875,7 +875,7 @@ func TestMultiChain(t *testing.T) {
 				}
 			}
 			_, txStr, err := r.ut.AppendVertexFromTransactionBytesDebug(txBytes, func() error {
-				return r.txBytesStore.SaveTxBytes(txBytes)
+				return r.txBytesStore.SaveTxBytesWithMetadata(txBytes)
 			})
 			if err != nil {
 				t.Logf("================= failed tx ======================= %s", txStr)

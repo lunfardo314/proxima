@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/peer"
+	txmetadata2 "github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/ledger/transaction/txmetadata"
 	"github.com/lunfardo314/proxima/utangle_old"
@@ -63,7 +64,7 @@ func WithTransactionSource(src TransactionSource) TransactionInOption {
 	}
 }
 
-func WithTransactionMetadata(metadata *txmetadata.TransactionMetadata) TransactionInOption {
+func WithTransactionMetadata(metadata *txmetadata2.TransactionMetadata) TransactionInOption {
 	return func(data *PrimaryTransactionData) {
 		data.txMetadata = metadata
 	}

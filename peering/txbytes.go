@@ -1,19 +1,11 @@
 package peering
 
 import (
-	"bytes"
-	"fmt"
-
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
-	"github.com/lunfardo314/proxima/ledger/transaction/txmetadata"
-	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/proxima/core/txmetadata"
+	"github.com/lunfardo314/unitrie/common"
 )
-
-type txBytesMsg struct {
-	txBytes  []byte
-	metadata *txmetadata.TransactionMetadata
-}
 
 func (ps *Peers) gossipStreamHandler(stream network.Stream) {
 	id := stream.Conn().RemotePeer()
@@ -30,15 +22,21 @@ func (ps *Peers) gossipStreamHandler(stream network.Stream) {
 		return
 	}
 
-	data, err := readFrame(stream)
+	txBytesWithMetadata, err := readFrame(stream)
 	if err != nil {
 		ps.log.Errorf("error while reading message from peer %s: %v", id.String(), err)
 		_ = stream.Reset()
 		return
 	}
-	msg, err := txBytesMsgFromBytes(data)
+	metadataBytes, txBytes, err := txmetadata.SplitBytesWithMetadata(txBytesWithMetadata)
 	if err != nil {
-		ps.log.Errorf("error while parsing txBytes message from peer %s: %v", id.String(), err)
+		ps.log.Errorf("error while parsing tx message from peer %s: %v", id.String(), err)
+		_ = stream.Reset()
+		return
+	}
+	metadata, err := txmetadata.TransactionMetadataFromBytes(metadataBytes)
+	if err != nil {
+		ps.log.Errorf("error while parsing tx message metadata from peer %s: %v", id.String(), err)
 		_ = stream.Reset()
 		return
 	}
@@ -46,7 +44,7 @@ func (ps *Peers) gossipStreamHandler(stream network.Stream) {
 	defer stream.Close()
 
 	p.evidenceActivity(ps, "gossip")
-	ps.onReceiveTx(id, msg.txBytes, msg.metadata)
+	ps.onReceiveTx(id, txBytes, metadata)
 }
 
 func (ps *Peers) GossipTxBytesToPeers(txBytes []byte, metadata *txmetadata.TransactionMetadata, except ...peer.ID) int {
@@ -64,15 +62,15 @@ func (ps *Peers) GossipTxBytesToPeers(txBytes []byte, metadata *txmetadata.Trans
 		if !p.isAlive() {
 			continue
 		}
-		if ps.SendTxBytesToPeer(id, txBytes, metadata) {
+		if ps.SendTxBytesWithMetadataToPeer(id, txBytes, metadata) {
 			countSent++
 		}
 	}
 	return countSent
 }
 
-func (ps *Peers) SendTxBytesToPeer(id peer.ID, txBytes []byte, metadata *txmetadata.TransactionMetadata) bool {
-	ps.trace("SendTxBytesToPeer to %s, length: %d (host %s)",
+func (ps *Peers) SendTxBytesWithMetadataToPeer(id peer.ID, txBytes []byte, metadata *txmetadata.TransactionMetadata) bool {
+	ps.trace("SendTxBytesWithMetadataToPeer to %s, length: %d (host %s)",
 		func() any { return ShortPeerIDString(id) },
 		len(txBytes),
 		func() any { return ShortPeerIDString(ps.host.ID()) },
@@ -84,7 +82,7 @@ func (ps *Peers) SendTxBytesToPeer(id peer.ID, txBytes []byte, metadata *txmetad
 
 	stream, err := ps.host.NewStream(ps.ctx, id, lppProtocolGossip)
 	if err != nil {
-		ps.trace("SendTxBytesToPeer to %s: %v (host %s)",
+		ps.trace("SendTxBytesWithMetadataToPeer to %s: %v (host %s)",
 			func() any { return ShortPeerIDString(id) }, err,
 			func() any { return ShortPeerIDString(ps.host.ID()) },
 		)
@@ -92,45 +90,8 @@ func (ps *Peers) SendTxBytesToPeer(id peer.ID, txBytes []byte, metadata *txmetad
 	}
 	defer stream.Close()
 
-	msg := &txBytesMsg{
-		txBytes:  txBytes,
-		metadata: metadata,
-	}
-	if err = writeFrame(stream, msg.Bytes()); err != nil {
-		ps.trace("SendTxBytesToPeer.writeFrame to %s: %v (host %s)", ShortPeerIDString(id), err, ShortPeerIDString(ps.host.ID()))
+	if err = writeFrame(stream, common.ConcatBytes(metadata.Bytes(), txBytes)); err != nil {
+		ps.trace("SendTxBytesWithMetadataToPeer.writeFrame to %s: %v (host %s)", ShortPeerIDString(id), err, ShortPeerIDString(ps.host.ID()))
 	}
 	return err == nil
-}
-
-func (m *txBytesMsg) Bytes() []byte {
-	var buf bytes.Buffer
-
-	if m.metadata == nil {
-		buf.WriteByte(0)
-	} else {
-		txMetadata := m.metadata.Bytes()
-		util.Assertf(len(txMetadata) < 256, "len(txMetadata) < 256")
-		buf.WriteByte(byte(len(txMetadata)))
-		buf.Write(txMetadata)
-	}
-	buf.Write(m.txBytes)
-	return buf.Bytes()
-}
-
-func txBytesMsgFromBytes(data []byte) (*txBytesMsg, error) {
-	if len(data) == 0 {
-		return nil, fmt.Errorf("txBytesMsgFromBytes: empty data")
-	}
-	var mdata *txmetadata.TransactionMetadata
-	var err error
-	if data[0] > 0 {
-		mdata, err = txmetadata.TransactionMetadataFromBytes(data[1 : 1+data[0]])
-		if err != nil {
-			return nil, fmt.Errorf("txBytesMsgFromBytes: %w", err)
-		}
-	}
-	return &txBytesMsg{
-		txBytes:  data[1+data[0]:],
-		metadata: mdata,
-	}, nil
 }

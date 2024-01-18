@@ -15,10 +15,10 @@ import (
 // When present, metadata is used for consistency checking and workflow optimization
 type (
 	TransactionMetadata struct {
-		StateRoot             common.VCommitment // not nil may be for branch transactions
-		LedgerCoverageDelta   *uint64            // not nil may be for sequencer transactions
-		IsResponseToPull      bool
-		SendModeNotPersistent SourceType
+		StateRoot               common.VCommitment // not nil may be for branch transactions
+		LedgerCoverageDelta     *uint64            // not nil may be for sequencer transactions
+		IsResponseToPull        bool
+		SourceTypeNonPersistent SourceType
 	}
 
 	SourceType byte
@@ -27,6 +27,7 @@ type (
 const (
 	SourceTypeUndef = SourceType(iota)
 	SourceTypeSequencer
+	SourceTypePeer
 	SourceTypeAPI
 	SourceTypeTxStore
 	SourceTypeForward
@@ -73,11 +74,15 @@ func (m *TransactionMetadata) flags() (ret byte) {
 
 // Bytes of TransactionMetadata is nil-safe
 func (m *TransactionMetadata) Bytes() []byte {
-	flags := m.flags()
 	// flags == 0 means no persistent information is contained
-	if m == nil || flags == 0 {
+	if m == nil {
 		return []byte{0}
 	}
+	flags := m.flags()
+	if flags == 0 {
+		return []byte{0}
+	}
+
 	var buf bytes.Buffer
 	// size byte (will be filled-in in the end
 	buf.WriteByte(0)
@@ -130,4 +135,17 @@ func TransactionMetadataFromBytes(data []byte) (*TransactionMetadata, error) {
 		*ret.LedgerCoverageDelta = binary.BigEndian.Uint64(uint64Bin[:])
 	}
 	return ret, nil
+}
+
+// SplitBytesWithMetadata returns:
+// - metadata bytes
+// - txBytes
+func SplitBytesWithMetadata(txBytesWithMetadata []byte) ([]byte, []byte, error) {
+	if len(txBytesWithMetadata) == 0 {
+		return nil, nil, fmt.Errorf("SplitBytesWithMetadata: empty bytes")
+	}
+	if len(txBytesWithMetadata) <= int(txBytesWithMetadata[0]+1) {
+		return nil, nil, fmt.Errorf("SplitBytesWithMetadata: wrong transaction metadata prefix length")
+	}
+	return txBytesWithMetadata[:txBytesWithMetadata[0]+1], txBytesWithMetadata[txBytesWithMetadata[0]+1:], nil
 }

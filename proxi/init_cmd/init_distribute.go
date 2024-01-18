@@ -55,9 +55,9 @@ func runDistribute(_ *cobra.Command, _ []string) {
 	txBytesDistribution, txid, err := txbuilder.DistributeInitialSupplyExt(stateStore, privKey, distributionList)
 	glb.AssertNoError(err)
 
-	err = txStore.SaveTxBytes(txBytesDistribution)
+	err = txStore.SaveTxBytesWithMetadata(txBytesDistribution)
 	glb.AssertNoError(err)
-	util.Assertf(len(txStore.GetTxBytes(&txid)) > 0, "inconsistency: stored transaction has not been found")
+	util.Assertf(len(txStore.GetTxBytesWithMetadata(&txid)) > 0, "inconsistency: stored transaction has not been found")
 
 	glb.Infof("Success. Genesis distribution transaction %s has been stored in the transaction store DB", txid.String())
 }

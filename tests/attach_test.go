@@ -143,9 +143,9 @@ func TestOrigin(t *testing.T) {
 		distribTxID, _, err := transaction.IDAndTimestampFromTransactionBytes(txBytes)
 		require.NoError(t, err)
 
-		err = txBytesStore.SaveTxBytes(txBytes)
+		err = txBytesStore.SaveTxBytesWithMetadata(txBytes, nil)
 		require.NoError(t, err)
-		require.True(t, len(txBytesStore.GetTxBytes(&distribTxID)) > 0)
+		require.True(t, len(txBytesStore.GetTxBytesWithMetadata(&distribTxID)) > 0)
 
 		vidDistrib, err := attacher.EnsureBranch(distribTxID, wrk)
 		require.NoError(t, err)
@@ -213,7 +213,7 @@ func TestOrigin(t *testing.T) {
 		vidDistrib, err := attacher.AttachTransactionFromBytes(txBytes, wrk, attacher.OptionWithAttachmentCallback(func(vid *vertex.WrappedTx, err error) {
 			status := vid.GetTxStatus()
 			if status == vertex.Good {
-				err := txBytesStore.SaveTxBytes(txBytes)
+				err := txBytesStore.SaveTxBytesWithMetadata(txBytes, nil)
 				util.AssertNoError(err)
 			}
 			t.Logf("distribution tx finalized. Status: %s", vid.StatusString())
@@ -450,12 +450,12 @@ func TestConflicts1Attacher(t *testing.T) {
 		)
 		testData := initLongConflictTestData(t, nConflicts, nConflicts, howLong)
 		for _, txBytes := range testData.txBytesConflicting {
-			err := testData.txStore.SaveTxBytes(txBytes)
+			err := testData.txStore.SaveTxBytesWithMetadata(txBytes, nil)
 			require.NoError(t, err)
 		}
 		for _, txSeq := range testData.txSequences {
 			for _, txBytes := range txSeq {
-				err := testData.txStore.SaveTxBytes(txBytes)
+				err := testData.txStore.SaveTxBytesWithMetadata(txBytes, nil)
 				require.NoError(t, err)
 			}
 		}
@@ -516,7 +516,7 @@ func TestConflictsNAttachers(t *testing.T) {
 		testData := initLongConflictTestData(t, nConflicts, nChains, howLong)
 		testData.makeSeqBeginnings(false)
 
-		err := testData.txStore.SaveTxBytes(testData.chainOriginsTx.Bytes())
+		err := testData.txStore.SaveTxBytesWithMetadata(testData.chainOriginsTx.Bytes(), nil)
 		require.NoError(t, err)
 
 		submitted := make([]*vertex.WrappedTx, nChains)
@@ -762,7 +762,7 @@ func TestConflictsNAttachers(t *testing.T) {
 			})
 			require.NoError(t, err)
 
-			err = testData.txStore.SaveTxBytes(txBytesBranch[i])
+			err = testData.txStore.SaveTxBytesWithMetadata(txBytesBranch[i], nil)
 			require.NoError(t, err)
 
 			tx, err := transaction.FromBytes(txBytesBranch[i], transaction.MainTxValidationOptions...)
@@ -940,7 +940,7 @@ func TestSeqChains(t *testing.T) {
 		for seqNr, txSequence := range testData.seqChain {
 			for i, tx := range txSequence {
 				if i < len(txSequence)-1 {
-					err := testData.wrk.TxBytesStore().SaveTxBytes(tx.Bytes())
+					err := testData.wrk.TxBytesStore().SaveTxBytesWithMetadata(tx.Bytes(), nil)
 					require.NoError(t, err)
 				} else {
 					wg.Add(1)
@@ -978,7 +978,7 @@ func TestSeqChains(t *testing.T) {
 		testData.txBytesAttach()
 		for _, txSequence := range testData.seqChain {
 			for _, tx := range txSequence {
-				err := testData.wrk.TxBytesStore().SaveTxBytes(tx.Bytes())
+				err := testData.wrk.TxBytesStore().SaveTxBytesWithMetadata(tx.Bytes(), nil)
 				require.NoError(t, err)
 			}
 		}

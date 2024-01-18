@@ -5,12 +5,11 @@ import (
 	"sync"
 
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
-	"github.com/lunfardo314/proxima/ledger/transaction/txmetadata"
-	"github.com/lunfardo314/proxima/multistate"
+	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/queue"
-	"github.com/lunfardo314/unitrie/common"
 )
 
 type (
@@ -18,7 +17,7 @@ type (
 		global.Logging
 		TxBytesStore() global.TxBytesStore
 		StateStore() global.StateStore
-		SendTxBytesToPeer(id peer.ID, txBytes []byte, metadata *txmetadata.TransactionMetadata) bool
+		SendTxBytesWithMetadataToPeer(id peer.ID, txBytes []byte, metadata *txmetadata.TransactionMetadata) bool
 	}
 
 	Input struct {
@@ -49,17 +48,18 @@ func (q *PullServer) Start(ctx context.Context, doneOnClose *sync.WaitGroup) {
 }
 
 func (q *PullServer) Consume(inp *Input) {
-	if txBytes := q.TxBytesStore().GetTxBytes(&inp.TxID); len(txBytes) > 0 {
-		var root common.VCommitment
-		if inp.TxID.IsBranchTransaction() {
-			if rr, found := multistate.FetchRootRecord(q.StateStore(), inp.TxID); found {
-				root = rr.Root
-			}
+	if txBytesWithMetadata := q.TxBytesStore().GetTxBytesWithMetadata(&inp.TxID); len(txBytesWithMetadata) > 0 {
+		txBytes, metadataBytes, err := txmetadata.SplitBytesWithMetadata(txBytesWithMetadata)
+		util.AssertNoError(err)
+		metadata, err := txmetadata.TransactionMetadataFromBytes(metadataBytes)
+		util.AssertNoError(err)
+		if metadata == nil {
+			metadata = &txmetadata.TransactionMetadata{}
 		}
-		q.SendTxBytesToPeer(inp.PeerID, txBytes, &txmetadata.TransactionMetadata{
-			SendType:  txmetadata.SendTypeResponseToPull,
-			StateRoot: root,
-		})
+		// setting persistent 'response to pull' flag in metadata
+		metadata.IsResponseToPull = true
+
+		q.SendTxBytesWithMetadataToPeer(inp.PeerID, txBytes, metadata)
 		q.Tracef("pull", "-> FOUND %s", inp.TxID.StringShort)
 	} else {
 		// not found -> ignore

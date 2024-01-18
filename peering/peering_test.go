@@ -10,8 +10,8 @@ import (
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/ledger"
-	"github.com/lunfardo314/proxima/ledger/transaction/txmetadata"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/countdown"
 	"github.com/lunfardo314/proxima/util/set"
@@ -114,7 +114,7 @@ func TestSendMsg(t *testing.T) {
 		}
 		time.Sleep(1 * time.Second)
 		for i, id := range hosts[0].getPeerIDs() {
-			ok := hosts[0].SendTxBytesToPeer(id, bytes.Repeat([]byte{0xff}, i+5), nil)
+			ok := hosts[0].SendTxBytesWithMetadataToPeer(id, bytes.Repeat([]byte{0xff}, i+5), nil)
 			require.True(t, ok)
 		}
 		time.Sleep(1 * time.Second)
@@ -148,7 +148,7 @@ func TestSendMsg(t *testing.T) {
 		t.Logf("num peers: %d", len(ids))
 		for _, id := range ids {
 			for i := 0; i < numMsg; i++ {
-				ok := hosts[0].SendTxBytesToPeer(id, []byte{0xff, 0xff}, nil)
+				ok := hosts[0].SendTxBytesWithMetadataToPeer(id, []byte{0xff, 0xff}, nil)
 				require.True(t, ok)
 				count++
 			}
@@ -191,7 +191,7 @@ func TestSendMsg(t *testing.T) {
 				t.Logf("num peers: %d", len(ids))
 				for _, id := range ids {
 					for i := 0; i < numMsg; i++ {
-						ok := h1.SendTxBytesToPeer(id, []byte{0xff, 0xff}, nil)
+						ok := h1.SendTxBytesWithMetadataToPeer(id, []byte{0xff, 0xff}, nil)
 						require.True(t, ok)
 						count++
 					}
@@ -269,7 +269,7 @@ func TestSendMsg(t *testing.T) {
 
 				for i := range txids {
 					require.True(t, txSet.Contains(txids[i]))
-					go h1.SendTxBytesToPeer(from, txids[i][:], nil)
+					go h1.SendTxBytesWithMetadataToPeer(from, txids[i][:], nil)
 				}
 			})
 

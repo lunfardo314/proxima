@@ -10,7 +10,6 @@ import (
 
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
-	"github.com/lunfardo314/proxima/ledger/transaction/txmetadata"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lazybytes"
@@ -31,8 +30,7 @@ type (
 		sender                   ledger.AddressED25519
 		timestamp                ledger.LogicalTime
 		totalAmount              ledger.Amount
-		sequencerTransactionData *SequencerTransactionData       // if != nil it is sequencer milestone transaction
-		metadata                 *txmetadata.TransactionMetadata // optional metadata
+		sequencerTransactionData *SequencerTransactionData // if != nil it is sequencer milestone transaction
 	}
 
 	TxValidationOption func(tx *Transaction) error
@@ -91,49 +89,12 @@ func transactionFromBytes(txBytes []byte, opts ...TxValidationOption) (*Transact
 	return ret, nil
 }
 
-// FromBytesWithMetadata metadata bytes is a prefix to transaction bytes
-func FromBytesWithMetadata(txBytesWithMetadata []byte, opt ...TxValidationOption) (*Transaction, error) {
-	ret, err := transactionFromBytesWithMetadata(txBytesWithMetadata, BaseValidation())
-	if err != nil {
-		return nil, fmt.Errorf("transaction.FromBytes: basic parse failed: '%v'", err)
-	}
-	if err = ret.Validate(opt...); err != nil {
-		return nil, fmt.Errorf("FromBytes: validation failed, txid = %s: '%v'", ret.IDShortString(), err)
-	}
-	return ret, nil
-}
-
-func transactionFromBytesWithMetadata(txBytesWithMetadata []byte, opts ...TxValidationOption) (*Transaction, error) {
-	// parse metadata
-	if len(txBytesWithMetadata) == 0 || len(txBytesWithMetadata) < int(txBytesWithMetadata[0]+1) {
-		return nil, fmt.Errorf("transactionFromBytesWithMetadata: wrong data length while parsing matadata prefix")
-	}
-	metadata, err := txmetadata.TransactionMetadataFromBytes(txBytesWithMetadata[:txBytesWithMetadata[0]+1])
-	if err != nil {
-		return nil, fmt.Errorf("transactionFromBytesWithMetadata: error while parsing matadata prefix: %w", err)
-	}
-	tx, err := transactionFromBytes(txBytesWithMetadata[txBytesWithMetadata[0]+1:], opts...)
-	if err != nil {
-		return nil, fmt.Errorf("transactionFromBytesWithMetadata: error while parsing matadata prefix: %w", err)
-	}
-	tx.metadata = metadata
-	return tx, nil
-}
-
 func IDAndTimestampFromTransactionBytes(txBytes []byte) (ledger.TransactionID, ledger.LogicalTime, error) {
 	tx, err := FromBytes(txBytes)
 	if err != nil {
 		return ledger.TransactionID{}, ledger.LogicalTime{}, err
 	}
 	return *tx.ID(), tx.Timestamp(), nil
-}
-
-func (tx *Transaction) Metadata() *txmetadata.TransactionMetadata {
-	return tx.metadata
-}
-
-func (tx *Transaction) SetMetadata(m *txmetadata.TransactionMetadata) {
-	tx.metadata = m
 }
 
 func (tx *Transaction) Validate(opt ...TxValidationOption) error {
@@ -533,10 +494,6 @@ func EssenceBytesFromTransactionDataTree(txTree *lazybytes.Tree) []byte {
 
 func (tx *Transaction) Bytes() []byte {
 	return tx.tree.Bytes()
-}
-
-func (tx *Transaction) BytesWithMetadata() []byte {
-	return common.Concat(tx.metadata.Bytes(), tx.tree.Bytes())
 }
 
 func (tx *Transaction) EssenceBytes() []byte {

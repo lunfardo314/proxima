@@ -60,7 +60,7 @@ func (c *PullTxConsumer) consume(inp *PullTxData) {
 		if _, already := c.pullList[txid]; already {
 			continue
 		}
-		if txBytes := c.glb.txBytesStore.GetTxBytes(&txid); len(txBytes) > 0 {
+		if txBytes := c.glb.txBytesStore.GetTxBytesWithMetadata(&txid); len(txBytes) > 0 {
 			c.tracePull("%s fetched from txBytesStore", func() any { return txid.StringShort() })
 			txBytesList = append(txBytesList, txBytes)
 		} else {

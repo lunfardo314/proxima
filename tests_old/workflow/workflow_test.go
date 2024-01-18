@@ -75,7 +75,7 @@ func initWorkflowTest(t *testing.T, nDistribution int, nowis ledger.LogicalTime,
 		ret.faucetOutputs[i] = outs[0]
 
 	}
-	err = txStore.SaveTxBytes(txBytes)
+	err = txStore.SaveTxBytesWithMetadata(txBytes)
 	require.NoError(t, err)
 
 	ret.w = workflow.New(ret.ut, peering.NewPeersDummy(), txStore, configOptions...)
@@ -569,7 +569,7 @@ func initMultiChainTest(t *testing.T, nChains int, verbose bool, secondsInThePas
 	txBytes, err := txbuilder2.DistributeInitialSupply(stateStore, genesisPrivKey, distrib)
 	require.NoError(t, err)
 
-	err = ret.txBytesStore.SaveTxBytes(txBytes)
+	err = ret.txBytesStore.SaveTxBytesWithMetadata(txBytes)
 	require.NoError(t, err)
 
 	ret.ut = utangle_old.Load(stateStore)
@@ -666,7 +666,7 @@ func initMultiChainTest(t *testing.T, nChains int, verbose bool, secondsInThePas
 	}
 
 	_, _, err = ret.ut.AppendVertexFromTransactionBytesDebug(ret.txBytesChainOrigin, func() error {
-		return ret.txBytesStore.SaveTxBytes(ret.txBytesChainOrigin)
+		return ret.txBytesStore.SaveTxBytesWithMetadata(ret.txBytesChainOrigin)
 	})
 	require.NoError(t, err)
 	return ret

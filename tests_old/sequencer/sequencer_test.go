@@ -79,7 +79,7 @@ func initSequencerTestData(t *testing.T, nFaucets, nAdditionalChains int, logica
 	txBytes, err := txbuilder2.DistributeInitialSupply(stateStore, ret.originControllerPrivateKey, ret.originDistribution)
 	require.NoError(t, err)
 
-	err = txStore.SaveTxBytes(txBytes)
+	err = txStore.SaveTxBytesWithMetadata(txBytes)
 	require.NoError(t, err)
 
 	ret.ut = utangle_old.Load(stateStore)

@@ -8,10 +8,10 @@ import (
 
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/lunfardo314/proxima/core/attacher"
+	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/transaction"
-	"github.com/lunfardo314/proxima/ledger/transaction/txmetadata"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/queue"
 	"go.uber.org/zap/zapcore"
@@ -28,14 +28,11 @@ type (
 		Tracef(tag string, format string, args ...any)
 	}
 
-	TransactionSource byte
-
 	Input struct {
 		Tx               *transaction.Transaction
-		TxMetadata       *txmetadata.TransactionMetadata
+		TxMetadata       txmetadata.TransactionMetadata
 		ReceivedFromPeer peer.ID
 		ReceivedWhen     time.Time
-		TxSource         TransactionSource
 		Callback         func(vid *vertex.WrappedTx, err error)
 	}
 
@@ -47,29 +44,7 @@ type (
 	TransactionInOption func(*Input)
 )
 
-const (
-	TransactionSourceAPI = TransactionSource(iota)
-	TransactionSourceSequencer
-	TransactionSourcePeer
-	TransactionSourceStore
-)
-
 const chanBufferSize = 10
-
-func (t TransactionSource) String() string {
-	switch t {
-	case TransactionSourceAPI:
-		return "API"
-	case TransactionSourceSequencer:
-		return "sequencer"
-	case TransactionSourcePeer:
-		return "peer"
-	case TransactionSourceStore:
-		return "txStore"
-	default:
-		return "(unknown Tx TxSource)"
-	}
-}
 
 func New(env Environment, lvl zapcore.Level) *TxInput {
 	return &TxInput{
@@ -89,7 +64,7 @@ func (q *TxInput) Consume(inp *Input) {
 	q.Tracef("txinput", "consume %s", inp.Tx.IDShortString)
 	var err error
 	// TODO revisit checking lower time bounds
-	enforceTimeBounds := inp.TxSource == TransactionSourceAPI || inp.TxSource == TransactionSourcePeer
+	enforceTimeBounds := inp.TxMetadata.SourceTypeNonPersistent == txmetadata.SourceTypeAPI || inp.TxMetadata.SourceTypeNonPersistent == txmetadata.SourceTypePeer
 	// transaction is rejected if it is too far in the future wrt the local clock
 	nowis := time.Now()
 	txid := inp.Tx.ID()
@@ -115,9 +90,11 @@ func (q *TxInput) Consume(inp *Input) {
 		return
 	}
 	q.IncCounter("ok")
-	// gossip always, even if it needs delay
-	q.Tracef("txinput", "send to gossip %s", inp.Tx.IDShortString)
-	q.GossipTransaction(inp)
+	if !inp.TxMetadata.IsResponseToPull {
+		// gossip always, even if it needs delay
+		q.Tracef("txinput", "send to gossip %s", inp.Tx.IDShortString)
+		q.GossipTransaction(inp)
+	}
 
 	// passes transaction for solidification
 	// - immediately if timestamp is in the past
@@ -145,7 +122,9 @@ func (q *TxInput) Consume(inp *Input) {
 		time.Sleep(delayFor)
 		q.Tracef("txinput", "%s -> release", txid.StringShort)
 		q.IncCounter("ok.release")
-		q.GossipTransaction(inp)
+		if !inp.TxMetadata.IsResponseToPull {
+			q.GossipTransaction(inp)
+		}
 		q.AttachTransaction(inp, attacher.OptionInvokedBy("txInput"))
 	}()
 }
@@ -161,17 +140,17 @@ func (q *TxInput) TxBytesIn(txBytes []byte, opts ...TransactionInOption) error {
 		opt(inData)
 	}
 	inData.Tx = tx
-	responseToPull := inData.TxMetadata != nil && inData.TxMetadata.SendType == txmetadata.SendTypeResponseToPull
-	util.Assertf(!responseToPull || inData.TxSource == TransactionSourcePeer, "!responseToPull || inData.source == TransactionSourcePeer")
+	util.Assertf(!inData.TxMetadata.IsResponseToPull || inData.TxMetadata.SourceTypeNonPersistent == txmetadata.SourceTypePeer,
+		"inData.TxMetadata.IsResponseToPull || inData.TxMetadata.SourceTypeNonPersistent == txmetadata.SourceTypePeer")
 
-	if responseToPull {
+	if inData.TxMetadata.IsResponseToPull {
 		q.StopPulling(tx.ID())
 	}
 
 	if !tx.IsSequencerMilestone() {
 		inData.Callback = func(_ *vertex.WrappedTx, _ error) {}
 	}
-	priority := responseToPull || inData.TxSource == TransactionSourceStore
+	priority := inData.TxMetadata.IsResponseToPull || inData.TxMetadata.SourceTypeNonPersistent == txmetadata.SourceTypeTxStore
 	q.Queue.Push(inData, priority) // priority for pulled
 	return nil
 }
@@ -202,7 +181,9 @@ func (q *TxInput) SequencerMilestoneNewAttachWait(txBytes []byte, timeout time.D
 			resCh <- res
 		}
 		errParse := q.TxBytesIn(txBytes,
-			WithTransactionSource(TransactionSourceSequencer),
+			WithMetadata(&txmetadata.TransactionMetadata{
+				SourceTypeNonPersistent: txmetadata.SourceTypeSequencer,
+			}),
 			WithAttachmentCallback(func(vid *vertex.WrappedTx, err error) {
 				writeResult(result{vid: vid, err: err})
 			}))
@@ -218,34 +199,16 @@ func (q *TxInput) SequencerMilestoneNewAttachWait(txBytes []byte, timeout time.D
 	}
 }
 
-func WithTransactionSource(src TransactionSource) TransactionInOption {
-	return func(inp *Input) {
-		inp.TxSource = src
-	}
-}
-
 func WithAttachmentCallback(fun func(vid *vertex.WrappedTx, err error)) TransactionInOption {
 	return func(inp *Input) {
 		inp.Callback = fun
 	}
 }
 
-func WithTransactionMetadata(metadata *txmetadata.TransactionMetadata) TransactionInOption {
+func WithMetadata(metadata *txmetadata.TransactionMetadata) TransactionInOption {
 	return func(inp *Input) {
-		inp.TxMetadata = metadata
+		if metadata != nil {
+			inp.TxMetadata = *metadata
+		}
 	}
-}
-
-func WithTransactionSourcePeer(from peer.ID) TransactionInOption {
-	return func(inp *Input) {
-		inp.TxSource = TransactionSourcePeer
-		inp.ReceivedFromPeer = from
-	}
-}
-
-func WithTraceCondition(cond func(tx *transaction.Transaction, src TransactionSource, rcv peer.ID) bool) TransactionInOption {
-	panic("not implemented")
-	//return func(data *TransactionInputData) {
-	//	data.traceFlag = cond(data.tx, data.source, data.receivedFromPeer)
-	//}
 }

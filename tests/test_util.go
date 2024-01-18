@@ -87,7 +87,7 @@ func initWorkflowTest(t *testing.T, nChains int) *workflowTestData {
 	ret.bootstrapChainID, genesisRoot = genesis.InitLedgerState(ret.stateIdentity, stateStore)
 	txBytes, err := txbuilder.DistributeInitialSupply(stateStore, genesisPrivKey, distrib)
 	require.NoError(t, err)
-	err = ret.txStore.SaveTxBytes(txBytes)
+	err = ret.txStore.SaveTxBytesWithMetadata(txBytes, nil)
 	require.NoError(t, err)
 
 	ret.distributionBranchTx, err = transaction.FromBytes(txBytes, transaction.MainTxValidationOptions...)
@@ -475,7 +475,7 @@ func initLongConflictTestData(t *testing.T, nConflicts int, nChains int, howLong
 
 func (td *longConflictTestData) storeTxBytes(txBytesMulti ...[]byte) {
 	for _, txBytes := range txBytesMulti {
-		err := td.wrk.TxBytesStore().SaveTxBytes(txBytes)
+		err := td.wrk.TxBytesStore().SaveTxBytesWithMetadata(txBytes, nil)
 		require.NoError(td.t, err)
 	}
 }
@@ -502,7 +502,7 @@ func (td *longConflictTestData) attachTransactions(txs ...*transaction.Transacti
 }
 
 func (td *longConflictTestData) txBytesToStore() {
-	err := td.txStore.SaveTxBytes(td.chainOriginsTx.Bytes())
+	err := td.txStore.SaveTxBytesWithMetadata(td.chainOriginsTx.Bytes(), nil)
 	require.NoError(td.t, err)
 
 	td.storeTxBytes(td.txBytesConflicting...)

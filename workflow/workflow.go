@@ -8,10 +8,10 @@ import (
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/transaction"
-	"github.com/lunfardo314/proxima/ledger/transaction/txmetadata"
 	"github.com/lunfardo314/proxima/peering"
 	"github.com/lunfardo314/proxima/utangle_old"
 	"github.com/lunfardo314/proxima/util"
@@ -252,6 +252,6 @@ func (w *Workflow) PostEventDropTxID(txid *ledger.TransactionID, whoDropped stri
 
 func (w *Workflow) StoreTxBytes(txBytes []byte) func() error {
 	return func() error {
-		return w.txBytesStore.SaveTxBytes(txBytes)
+		return w.txBytesStore.SaveTxBytesWithMetadata(txBytes)
 	}
 }

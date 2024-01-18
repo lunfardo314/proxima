@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/core/queues/txinput"
+	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util"
@@ -73,9 +74,9 @@ func (q *PullClient) Consume(inp *Input) {
 		if _, already := q.pullList[txid]; already {
 			continue
 		}
-		if txBytes := q.TxBytesStore().GetTxBytes(&txid); len(txBytes) > 0 {
+		if txBytesWithMetadata := q.TxBytesStore().GetTxBytesWithMetadata(&txid); len(txBytesWithMetadata) > 0 {
 			q.Tracef("pull", "%s fetched from txBytesStore", txid.StringShort)
-			txBytesList = append(txBytesList, txBytes)
+			txBytesList = append(txBytesList, txBytesWithMetadata)
 		} else {
 			q.pullList[txid] = nextPull
 			q.Tracef("pull", "%s added to the pull list. Pull list size: %d", txid.StringShort, len(q.pullList))
@@ -87,10 +88,23 @@ func (q *PullClient) Consume(inp *Input) {
 }
 
 func (q *PullClient) transactionInMany(txBytesList [][]byte) {
-	for _, txBytes := range txBytesList {
-		err := q.TxBytesIn(txBytes, txinput.WithTransactionSource(txinput.TransactionSourceStore))
+	for _, txBytesWithMetadata := range txBytesList {
+		metadataBytes, txBytes, err := txmetadata.SplitBytesWithMetadata(txBytesWithMetadata)
 		if err != nil {
-			q.Environment.Log().Errorf("tx parse error while pull: '%v'", err)
+			q.Environment.Log().Errorf("pull: error while parsing tx metadata: '%v'", err)
+			continue
+		}
+		metadata, err := txmetadata.TransactionMetadataFromBytes(metadataBytes)
+		if err != nil {
+			q.Environment.Log().Errorf("pull: error while parsing tx metadata: '%v'", err)
+			continue
+		}
+		if metadata == nil {
+			metadata = &txmetadata.TransactionMetadata{}
+		}
+		metadata.SourceTypeNonPersistent = txmetadata.SourceTypeTxStore
+		if err = q.TxBytesIn(txBytes, txinput.WithMetadata(metadata)); err != nil {
+			q.Environment.Log().Errorf("pull: tx parse error while pull: '%v'", err)
 		}
 	}
 }

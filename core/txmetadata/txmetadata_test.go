@@ -20,7 +20,7 @@ func TestTxMetadata(t *testing.T) {
 	})
 	t.Run("1", func(t *testing.T) {
 		m := &TransactionMetadata{
-			SendModeNotPersistent: SourceTypeAPI,
+			SourceTypeNonPersistent: SourceTypeAPI,
 		}
 		mBack, err := TransactionMetadataFromBytes(m.Bytes())
 		require.NoError(t, err)
@@ -31,13 +31,13 @@ func TestTxMetadata(t *testing.T) {
 		c, err := common.VectorCommitmentFromBytes(ledger.CommitmentModel, h[:])
 		require.NoError(t, err)
 		m := &TransactionMetadata{
-			SendModeNotPersistent: SourceTypeSequencer,
-			StateRoot:             c,
+			SourceTypeNonPersistent: SourceTypeSequencer,
+			StateRoot:               c,
 		}
 		mBack, err := TransactionMetadataFromBytes(m.Bytes())
 		require.NoError(t, err)
 
-		require.EqualValues(t, SourceTypeUndef.String(), mBack.SendModeNotPersistent.String())
+		require.EqualValues(t, SourceTypeUndef.String(), mBack.SourceTypeNonPersistent.String())
 		require.EqualValues(t, m.flags(), mBack.flags())
 		require.True(t, ledger.CommitmentModel.EqualCommitments(m.StateRoot, mBack.StateRoot))
 		require.Nil(t, mBack.LedgerCoverageDelta)
@@ -45,13 +45,13 @@ func TestTxMetadata(t *testing.T) {
 	t.Run("3", func(t *testing.T) {
 		coverage := uint64(1337)
 		m := &TransactionMetadata{
-			SendModeNotPersistent: SourceTypeSequencer,
-			LedgerCoverageDelta:   &coverage,
+			SourceTypeNonPersistent: SourceTypeSequencer,
+			LedgerCoverageDelta:     &coverage,
 		}
 		mBack, err := TransactionMetadataFromBytes(m.Bytes())
 		require.NoError(t, err)
 
-		require.EqualValues(t, SourceTypeUndef.String(), mBack.SendModeNotPersistent.String())
+		require.EqualValues(t, SourceTypeUndef.String(), mBack.SourceTypeNonPersistent.String())
 		require.EqualValues(t, m.flags(), mBack.flags())
 		require.Nil(t, mBack.StateRoot)
 		require.EqualValues(t, 1337, *mBack.LedgerCoverageDelta)

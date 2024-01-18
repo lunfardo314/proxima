@@ -2,6 +2,7 @@ package workflow
 
 import (
 	"github.com/libp2p/go-libp2p/core/peer"
+	txmetadata2 "github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/transaction/txmetadata"
 	"github.com/lunfardo314/proxima/multistate"
@@ -38,14 +39,14 @@ func (w *Workflow) initRespondTxQueryConsumer() {
 }
 
 func (c *PullRespondConsumer) consume(inp PullRespondData) {
-	if txBytes := c.glb.txBytesStore.GetTxBytes(&inp.TxID); len(txBytes) > 0 {
+	if txBytes := c.glb.txBytesStore.GetTxBytesWithMetadata(&inp.TxID); len(txBytes) > 0 {
 		var root common.VCommitment
 		if inp.TxID.IsBranchTransaction() {
 			if rr, found := multistate.FetchRootRecord(c.glb.utxoTangle.StateStore(), inp.TxID); found {
 				root = rr.Root
 			}
 		}
-		c.glb.peers.SendTxBytesToPeer(inp.PeerID, txBytes, &txmetadata.TransactionMetadata{
+		c.glb.peers.SendTxBytesWithMetadataToPeer(inp.PeerID, txBytes, &txmetadata2.TransactionMetadata{
 			SendType:  txmetadata.SendTypeResponseToPull,
 			StateRoot: root,
 		})
