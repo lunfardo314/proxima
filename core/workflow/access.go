@@ -12,7 +12,7 @@ import (
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
-	"github.com/lunfardo314/proxima/txmetadata"
+	"github.com/lunfardo314/proxima/ledger/transaction/txmetadata"
 )
 
 func (w *Workflow) MaxDurationInTheFuture() time.Duration {

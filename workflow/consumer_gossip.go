@@ -2,7 +2,7 @@ package workflow
 
 import (
 	"github.com/libp2p/go-libp2p/core/peer"
-	"github.com/lunfardo314/proxima/txmetadata"
+	"github.com/lunfardo314/proxima/ledger/transaction/txmetadata"
 )
 
 // TxGossipSendConsumer is forwarding the transaction to peering which didn't see it yet
