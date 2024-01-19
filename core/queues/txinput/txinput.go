@@ -101,7 +101,10 @@ func (q *TxInput) Consume(inp *Input) {
 	// - with delay if timestamp is in the future
 	txTime := inp.Tx.TimestampTime()
 
-	opts := []attacher.Option{attacher.OptionInvokedBy("txInput")}
+	opts := []attacher.Option{
+		attacher.OptionWithTransactionMetadata(&inp.TxMetadata),
+		attacher.OptionInvokedBy("txInput"),
+	}
 	if inp.Callback != nil {
 		opts = append(opts, attacher.OptionWithAttachmentCallback(inp.Callback))
 	}
@@ -125,7 +128,7 @@ func (q *TxInput) Consume(inp *Input) {
 		if !inp.TxMetadata.IsResponseToPull {
 			q.GossipTransaction(inp)
 		}
-		q.AttachTransaction(inp, attacher.OptionInvokedBy("txInput"))
+		q.AttachTransaction(inp, opts...)
 	}()
 }
 
