@@ -49,6 +49,10 @@ func (lc *LedgerCoverage) MakeNext(shift int, nextDelta uint64) (ret LedgerCover
 	return
 }
 
+func (lc *LedgerCoverage) LatestDelta() uint64 {
+	return lc[0]
+}
+
 func (lc *LedgerCoverage) Sum() (ret uint64) {
 	if lc == nil {
 		return 0

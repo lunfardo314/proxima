@@ -4,12 +4,37 @@ import (
 	"fmt"
 
 	"github.com/lunfardo314/proxima/core/vertex"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/util"
 )
 
-func (a *sequencerAttacher) finalize() {
+// enforceConsistencyWithTxMetadata :
+// if true, node is crashed immediately upon inconsistency with provided transaction metadata
+// if false, an error is reported
+// The transaction metadata is optionally provided together with the sequencer transaction bytes by other nodes
+// or by the tx store, therefore is not trust-less.
+// A malicious node could crash other peers by sending inconsistent metadata,
+// therefore in the production environment enforceConsistencyWithTxMetadata should be false
+// and the connection with the malicious peer should be immediately severed
+const enforceConsistencyWithTxMetadata = true
+
+func (a *milestoneAttacher) finalize() {
 	a.tracef("finalize")
+
+	// check resulting ledger coverage is equal to the coverage in metadata, if provided
+	if a.metadata != nil && a.metadata.LedgerCoverageDelta != nil {
+		if *a.metadata.LedgerCoverageDelta != a.coverageDelta {
+			err := fmt.Errorf("commitBranch %s: major inconsistency: ledger coverage delta not equal to the coverage delta provided in metadata", a.vid.IDShortString())
+			if enforceConsistencyWithTxMetadata {
+				a.Log().Fatal(err)
+			} else {
+				a.Log().Error(err)
+			}
+		}
+	}
+
+	a.calculateSequencerTxTotals()
 
 	if a.vid.IsBranchTransaction() {
 		a.commitBranch()
@@ -20,65 +45,58 @@ func (a *sequencerAttacher) finalize() {
 		a.EvidenceBookedBranch(&a.vid.ID, a.vid.MustSequencerID())
 		a.tracef("finalized branch")
 	} else {
-		a.calculateSequencerTxStats()
 		a.vid.SetLedgerCoverage(a.stats.coverage)
 		a.tracef("finalized sequencer milestone")
 	}
 }
 
-func (a *sequencerAttacher) commitBranch() {
+func (a *milestoneAttacher) commitBranch() {
 	util.Assertf(a.vid.IsBranchTransaction(), "a.vid.IsBranchTransaction()")
 
 	muts := multistate.NewMutations()
-	coverageDelta := uint64(0)
 
 	// generate DEL mutations
 	for vid, consumed := range a.rooted {
 		util.Assertf(len(consumed) > 0, "len(consumed)>0")
 		for idx := range consumed {
 			out := vid.MustOutputWithIDAt(idx)
-			coverageDelta += out.Output.Amount()
 			muts.InsertDelOutputMutation(out.ID)
-			a.stats.numDeletedOutputs++
 		}
 	}
 	// generate ADD TX and ADD OUTPUT mutations
 	for vid := range a.validPastVertices {
 		muts.InsertAddTxMutation(vid.ID, a.vid.Slot(), byte(vid.NumProducedOutputs()-1))
-		a.stats.numTransactions++
-
 		// ADD OUTPUT mutations only for not consumed outputs
 		producedOutputIndices := vid.NotConsumedOutputIndices(a.validPastVertices)
 		for _, idx := range producedOutputIndices {
 			muts.InsertAddOutputMutation(vid.OutputID(idx), vid.MustOutputAt(idx))
-			a.stats.numCreatedOutputs++
 		}
 	}
-
-	//a.trace1Ahead()
-	//a.tracef("mutations:\n%s", muts.Lines("    ").String())
 
 	seqID, stemOID := a.vid.MustSequencerIDAndStemID()
 	upd := multistate.MustNewUpdatable(a.StateStore(), a.baselineStateReader().Root())
-	a.stats.coverage = a.ledgerCoverage(a.vid.Timestamp())
 	upd.MustUpdate(muts, &stemOID, &seqID, a.stats.coverage)
-}
 
-func (a *sequencerAttacher) calculateSequencerTxStats() {
-	coverageDelta := uint64(0)
-
-	for vid, consumed := range a.rooted {
-		util.Assertf(len(consumed) > 0, "len(consumed)>0")
-		for idx := range consumed {
-			coverageDelta += vid.MustOutputAt(idx).Amount()
+	// check consistency with metadata
+	if a.metadata != nil && !util.IsNil(a.metadata.StateRoot) {
+		if !ledger.CommitmentModel.EqualCommitments(upd.Root(), a.metadata.StateRoot) {
+			err := fmt.Errorf("commitBranch %s: major inconsistency: state root not equal to the state root provided in metadata", a.vid.IDShortString())
+			if enforceConsistencyWithTxMetadata {
+				a.Log().Fatal(err)
+			} else {
+				a.Log().Error(err)
+			}
 		}
 	}
+}
+
+func (a *milestoneAttacher) calculateSequencerTxTotals() {
 	a.stats.numTransactions = len(a.validPastVertices)
 	a.stats.numCreatedOutputs = len(a.rooted)
 	a.stats.coverage = a.ledgerCoverage(a.vid.Timestamp())
 }
 
-func (a *sequencerAttacher) checkPastConeVerticesConsistent() (err error) {
+func (a *milestoneAttacher) checkPastConeVerticesConsistent() (err error) {
 	defer a.Log().Sync()
 
 	if len(a.undefinedPastVertices) != 0 {

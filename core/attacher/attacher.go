@@ -12,8 +12,8 @@ import (
 	"github.com/lunfardo314/proxima/util/set"
 )
 
-func newPastConeAttacher(env Environment, name string) pastConeAttacher {
-	return pastConeAttacher{
+func newPastConeAttacher(env Environment, name string) attacher {
+	return attacher{
 		Environment:           env,
 		name:                  name,
 		rooted:                make(map[*vertex.WrappedTx]set.Set[byte]),
@@ -23,20 +23,20 @@ func newPastConeAttacher(env Environment, name string) pastConeAttacher {
 	}
 }
 
-func (a *pastConeAttacher) Name() string {
+func (a *attacher) Name() string {
 	return a.name
 }
 
-func (a *pastConeAttacher) baselineStateReader() multistate.SugaredStateReader {
+func (a *attacher) baselineStateReader() multistate.SugaredStateReader {
 	return multistate.MakeSugared(a.GetStateReaderForTheBranch(a.baselineBranch))
 }
 
-func (a *pastConeAttacher) setReason(err error) {
+func (a *attacher) setReason(err error) {
 	a.tracef("set reason: '%v'", err)
 	a.reason = err
 }
 
-func (a *pastConeAttacher) pastConeVertexVisited(vid *vertex.WrappedTx, good bool) {
+func (a *attacher) pastConeVertexVisited(vid *vertex.WrappedTx, good bool) {
 	if good {
 		a.tracef("pastConeVertexVisited: %s is GOOD", vid.IDShortString)
 		delete(a.undefinedPastVertices, vid)
@@ -48,7 +48,7 @@ func (a *pastConeAttacher) pastConeVertexVisited(vid *vertex.WrappedTx, good boo
 	}
 }
 
-func (a *pastConeAttacher) isKnownVertex(vid *vertex.WrappedTx) bool {
+func (a *attacher) isKnownVertex(vid *vertex.WrappedTx) bool {
 	if a.validPastVertices.Contains(vid) {
 		util.Assertf(!a.undefinedPastVertices.Contains(vid), "!a.undefinedPastVertices.Contains(vid)")
 		return true
@@ -62,14 +62,14 @@ func (a *pastConeAttacher) isKnownVertex(vid *vertex.WrappedTx) bool {
 
 // solidifyBaseline directs attachment process down the DAG to reach the deterministically known baseline state
 // for a sequencer milestone. Existence of it is guaranteed by the ledger constraints
-func (a *pastConeAttacher) solidifyBaseline(v *vertex.Vertex) (ok bool) {
+func (a *attacher) solidifyBaseline(v *vertex.Vertex) (ok bool) {
 	if v.Tx.IsBranchTransaction() {
 		return a.solidifyStemOfTheVertex(v)
 	}
 	return a.solidifySequencerBaseline(v)
 }
 
-func (a *pastConeAttacher) solidifyStemOfTheVertex(v *vertex.Vertex) (ok bool) {
+func (a *attacher) solidifyStemOfTheVertex(v *vertex.Vertex) (ok bool) {
 	stemInputIdx := v.StemInputIndex()
 	if v.Inputs[stemInputIdx] == nil {
 		// predecessor stem is pending
@@ -95,7 +95,7 @@ func (a *pastConeAttacher) solidifyStemOfTheVertex(v *vertex.Vertex) (ok bool) {
 	}
 }
 
-func (a *pastConeAttacher) solidifySequencerBaseline(v *vertex.Vertex) (ok bool) {
+func (a *attacher) solidifySequencerBaseline(v *vertex.Vertex) (ok bool) {
 	// regular sequencer tx. Go to the direction of the baseline branch
 	predOid, predIdx := v.Tx.SequencerChainPredecessor()
 	util.Assertf(predOid != nil, "inconsistency: sequencer milestone cannot be a chain origin")
@@ -142,7 +142,7 @@ func (a *pastConeAttacher) solidifySequencerBaseline(v *vertex.Vertex) (ok bool)
 // the undefinedPastVertices set becomes empty This is the exit condition of the loop.
 // It results in all validPastVertices are vertex.Good
 // Otherwise, repetition reaches conflict (double spend) or vertex.Bad vertex and exits
-func (a *pastConeAttacher) attachVertex(v *vertex.Vertex, vid *vertex.WrappedTx, parasiticChainHorizon ledger.LogicalTime, visited set.Set[*vertex.WrappedTx]) (ok bool) {
+func (a *attacher) attachVertex(v *vertex.Vertex, vid *vertex.WrappedTx, parasiticChainHorizon ledger.LogicalTime, visited set.Set[*vertex.WrappedTx]) (ok bool) {
 	util.Assertf(!v.Tx.IsSequencerMilestone() || v.FlagsUp(vertex.FlagBaselineSolid), "v.FlagsUp(vertex.FlagBaselineSolid) in %s", v.Tx.IDShortString)
 
 	if visited.Contains(vid) {
@@ -196,7 +196,7 @@ func (a *pastConeAttacher) attachVertex(v *vertex.Vertex, vid *vertex.WrappedTx,
 }
 
 // Attaches endorsements of the vertex
-func (a *pastConeAttacher) attachEndorsements(v *vertex.Vertex, parasiticChainHorizon ledger.LogicalTime, visited set.Set[*vertex.WrappedTx]) bool {
+func (a *attacher) attachEndorsements(v *vertex.Vertex, parasiticChainHorizon ledger.LogicalTime, visited set.Set[*vertex.WrappedTx]) bool {
 	a.tracef("attachEndorsements %s", v.Tx.IDShortString)
 
 	allGood := true
@@ -224,7 +224,7 @@ func (a *pastConeAttacher) attachEndorsements(v *vertex.Vertex, parasiticChainHo
 		if endorsedStatus == vertex.Good {
 			if !vidEndorsed.IsBranchTransaction() {
 				// do not go behind branch
-				// go deeper only if endorsement is good in order not to interfere with its sequencerAttacher
+				// go deeper only if endorsement is good in order not to interfere with its milestoneAttacher
 				ok := true
 				vidEndorsed.Unwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
 					ok = a.attachVertex(v, vidEndorsed, parasiticChainHorizon, visited) // <<<<<<<<<<< recursion
@@ -238,7 +238,7 @@ func (a *pastConeAttacher) attachEndorsements(v *vertex.Vertex, parasiticChainHo
 			a.tracef("endorsements are NOT all good in %s because of endorsed %s", v.Tx.IDShortString(), vidEndorsed.IDShortString())
 			allGood = false
 
-			// ask environment to poke this sequencerAttacher whenever something change with vidEndorsed
+			// ask environment to poke this milestoneAttacher whenever something change with vidEndorsed
 			a.pokeMe(vidEndorsed)
 		}
 	}
@@ -249,7 +249,7 @@ func (a *pastConeAttacher) attachEndorsements(v *vertex.Vertex, parasiticChainHo
 	return true
 }
 
-func (a *pastConeAttacher) attachInputsOfTheVertex(v *vertex.Vertex, vid *vertex.WrappedTx, parasiticChainHorizon ledger.LogicalTime, visited set.Set[*vertex.WrappedTx]) (ok bool) {
+func (a *attacher) attachInputsOfTheVertex(v *vertex.Vertex, vid *vertex.WrappedTx, parasiticChainHorizon ledger.LogicalTime, visited set.Set[*vertex.WrappedTx]) (ok bool) {
 	a.tracef("attachInputsOfTheVertex in %s", vid.IDShortString)
 	allInputsValidated := true
 	notSolid := make([]byte, 0, v.Tx.NumInputs())
@@ -284,7 +284,7 @@ func linesSelectedInputs(tx *transaction.Transaction, indices []byte) *lines.Lin
 	return ret
 }
 
-func (a *pastConeAttacher) attachInput(v *vertex.Vertex, inputIdx byte, vid *vertex.WrappedTx, parasiticChainHorizon ledger.LogicalTime, visited set.Set[*vertex.WrappedTx]) (ok, success bool) {
+func (a *attacher) attachInput(v *vertex.Vertex, inputIdx byte, vid *vertex.WrappedTx, parasiticChainHorizon ledger.LogicalTime, visited set.Set[*vertex.WrappedTx]) (ok, success bool) {
 	a.tracef("attachInput #%d of %s", inputIdx, vid.IDShortString)
 	if !a.attachInputID(v, vid, inputIdx) {
 		a.tracef("bad input %d", inputIdx)
@@ -311,15 +311,15 @@ func (a *pastConeAttacher) attachInput(v *vertex.Vertex, inputIdx byte, vid *ver
 	return true, success
 }
 
-func (a *pastConeAttacher) isRooted(vid *vertex.WrappedTx) bool {
+func (a *attacher) isRooted(vid *vertex.WrappedTx) bool {
 	return len(a.rooted[vid]) > 0
 }
 
-func (a *pastConeAttacher) isValidated(vid *vertex.WrappedTx) bool {
+func (a *attacher) isValidated(vid *vertex.WrappedTx) bool {
 	return a.validPastVertices.Contains(vid)
 }
 
-func (a *pastConeAttacher) attachRooted(wOut vertex.WrappedOutput) (ok bool, isRooted bool) {
+func (a *attacher) attachRooted(wOut vertex.WrappedOutput) (ok bool, isRooted bool) {
 	a.tracef("attachRooted %s", wOut.IDShortString)
 	if wOut.Timestamp().After(a.baselineBranch.Timestamp()) {
 		// output is later than baseline -> can't be rooted in it
@@ -350,7 +350,7 @@ func (a *pastConeAttacher) attachRooted(wOut vertex.WrappedOutput) (ok bool, isR
 		}
 		consumedRooted.Insert(wOut.Index)
 		a.rooted[wOut.VID] = consumedRooted
-		// this is new rooted output -> add to the coverage delta
+		// this is new rooted output -> add to the coverage delta. We need to maintain coverage delta for the incremental attaching
 		a.coverageDelta += out.Amount()
 		return true, true
 	}
@@ -361,7 +361,7 @@ func (a *pastConeAttacher) attachRooted(wOut vertex.WrappedOutput) (ok bool, isR
 	return false, false
 }
 
-func (a *pastConeAttacher) attachOutput(wOut vertex.WrappedOutput, parasiticChainHorizon ledger.LogicalTime, visited set.Set[*vertex.WrappedTx]) bool {
+func (a *attacher) attachOutput(wOut vertex.WrappedOutput, parasiticChainHorizon ledger.LogicalTime, visited set.Set[*vertex.WrappedTx]) bool {
 	a.tracef("attachOutput %s", wOut.IDShortString)
 	ok, isRooted := a.attachRooted(wOut)
 	if !ok {
@@ -411,7 +411,7 @@ func (a *pastConeAttacher) attachOutput(wOut vertex.WrappedOutput, parasiticChai
 	return true
 }
 
-func (a *pastConeAttacher) branchesCompatible(vid1, vid2 *vertex.WrappedTx) bool {
+func (a *attacher) branchesCompatible(vid1, vid2 *vertex.WrappedTx) bool {
 	util.Assertf(vid1 != nil && vid2 != nil, "vid1 != nil && vid2 != nil")
 	util.Assertf(vid1.IsBranchTransaction() && vid2.IsBranchTransaction(), "vid1.IsBranchTransaction() && vid2.IsBranchTransaction()")
 	switch {
@@ -427,7 +427,7 @@ func (a *pastConeAttacher) branchesCompatible(vid1, vid2 *vertex.WrappedTx) bool
 	}
 }
 
-func (a *pastConeAttacher) attachInputID(consumerVertex *vertex.Vertex, consumerTx *vertex.WrappedTx, inputIdx byte) (ok bool) {
+func (a *attacher) attachInputID(consumerVertex *vertex.Vertex, consumerTx *vertex.WrappedTx, inputIdx byte) (ok bool) {
 	inputOid := consumerVertex.Tx.MustInputAt(inputIdx)
 	a.tracef("attachInputID: (oid = %s) #%d in %s", inputOid.StringShort, inputIdx, consumerTx.IDShortString)
 
@@ -475,7 +475,7 @@ func (a *pastConeAttacher) attachInputID(consumerVertex *vertex.Vertex, consumer
 	return true
 }
 
-func (a *pastConeAttacher) checkConflictsFunc(consumerTx *vertex.WrappedTx) func(existingConsumers set.Set[*vertex.WrappedTx]) bool {
+func (a *attacher) checkConflictsFunc(consumerTx *vertex.WrappedTx) func(existingConsumers set.Set[*vertex.WrappedTx]) bool {
 	return func(existingConsumers set.Set[*vertex.WrappedTx]) (conflict bool) {
 		existingConsumers.ForEach(func(existingConsumer *vertex.WrappedTx) bool {
 			if existingConsumer == consumerTx {
@@ -495,7 +495,7 @@ func (a *pastConeAttacher) checkConflictsFunc(consumerTx *vertex.WrappedTx) func
 	}
 }
 
-func (a *pastConeAttacher) setBaselineBranch(vid *vertex.WrappedTx) {
+func (a *attacher) setBaselineBranch(vid *vertex.WrappedTx) {
 	a.baselineBranch = vid
 	if a.baselineBranch != nil {
 		if multistate.HistoryCoverageDeltas > 1 {
@@ -507,7 +507,7 @@ func (a *pastConeAttacher) setBaselineBranch(vid *vertex.WrappedTx) {
 	}
 }
 
-func (a *pastConeAttacher) ledgerCoverage(currentTS ledger.LogicalTime) multistate.LedgerCoverage {
+func (a *attacher) ledgerCoverage(currentTS ledger.LogicalTime) multistate.LedgerCoverage {
 	return a.prevCoverage.MakeNext(int(currentTS.Slot())-int(a.baselineBranch.Slot())+1, a.coverageDelta)
 }
 
@@ -518,13 +518,13 @@ func SetTraceOn() {
 	trace = true
 }
 
-func (a *pastConeAttacher) trace1Ahead() {
+func (a *attacher) trace1Ahead() {
 	a.forceTrace1Ahead = true
 }
 
-func (a *pastConeAttacher) tracef(format string, lazyArgs ...any) {
+func (a *attacher) tracef(format string, lazyArgs ...any) {
 	if trace || a.forceTrace1Ahead {
-		format1 := "TRACE [sequencerAttacher " + a.name + "] " + format
+		format1 := "TRACE [milestoneAttacher " + a.name + "] " + format
 		a.Log().Infof(format1, util.EvalLazyArgs(lazyArgs...)...)
 		a.forceTrace1Ahead = false
 	}

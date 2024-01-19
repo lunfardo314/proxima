@@ -4,43 +4,13 @@ import (
 	"context"
 	"fmt"
 	"runtime"
-	"sync"
 	"time"
 
+	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/ledger"
-	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/set"
-)
-
-type (
-	sequencerAttacher struct {
-		pastConeAttacher
-		vid       *vertex.WrappedTx
-		ctx       context.Context
-		closeOnce sync.Once
-		pokeChan  chan *vertex.WrappedTx
-		pokeMutex sync.Mutex
-		stats     *attachStats
-		closed    bool
-	}
-	_attacherOptions struct {
-		ctx                context.Context
-		attachmentCallback func(vid *vertex.WrappedTx, err error)
-		pullNonBranch      bool
-		doNotLoadBranch    bool
-		calledBy           string
-	}
-	Option func(*_attacherOptions)
-
-	attachStats struct {
-		coverage          multistate.LedgerCoverage
-		numTransactions   int
-		numCreatedOutputs int
-		numDeletedOutputs int
-		baseline          *vertex.WrappedTx
-	}
 )
 
 const (
@@ -48,8 +18,8 @@ const (
 	maxToleratedParasiticChainSlots = 1
 )
 
-func runAttacher(vid *vertex.WrappedTx, env Environment, ctx context.Context) (vertex.Status, *attachStats, error) {
-	a := newSequencerAttacher(vid, env, ctx)
+func runMilestoneAttacher(vid *vertex.WrappedTx, metadata *txmetadata.TransactionMetadata, env Environment, ctx context.Context) (vertex.Status, *attachStats, error) {
+	a := newMilestoneAttacher(vid, env, metadata, ctx)
 	defer func() {
 		go a.close()
 	}()
@@ -86,15 +56,16 @@ func runAttacher(vid *vertex.WrappedTx, env Environment, ctx context.Context) (v
 	return vertex.Good, a.stats, nil
 }
 
-func newSequencerAttacher(vid *vertex.WrappedTx, env Environment, ctx context.Context) *sequencerAttacher {
-	ret := &sequencerAttacher{
-		pastConeAttacher: newPastConeAttacher(env, vid.IDShortString()),
-		ctx:              ctx,
-		vid:              vid,
-		pokeChan:         make(chan *vertex.WrappedTx, 1),
-		stats:            &attachStats{},
+func newMilestoneAttacher(vid *vertex.WrappedTx, env Environment, metadata *txmetadata.TransactionMetadata, ctx context.Context) *milestoneAttacher {
+	ret := &milestoneAttacher{
+		attacher: newPastConeAttacher(env, vid.IDShortString()),
+		ctx:      ctx,
+		vid:      vid,
+		metadata: metadata,
+		pokeChan: make(chan *vertex.WrappedTx, 1),
+		stats:    &attachStats{},
 	}
-	ret.pastConeAttacher.pokeMe = func(vid *vertex.WrappedTx) {
+	ret.attacher.pokeMe = func(vid *vertex.WrappedTx) {
 		ret.pokeMe(vid)
 	}
 	ret.vid.OnPoke(func(withVID *vertex.WrappedTx) {
@@ -103,7 +74,7 @@ func newSequencerAttacher(vid *vertex.WrappedTx, env Environment, ctx context.Co
 	return ret
 }
 
-func (a *sequencerAttacher) lazyRepeat(fun func() vertex.Status) vertex.Status {
+func (a *milestoneAttacher) lazyRepeat(fun func() vertex.Status) vertex.Status {
 	for {
 		if status := fun(); status != vertex.Undefined {
 			return status
@@ -157,7 +128,7 @@ func logFinalStatusString(vid *vertex.WrappedTx, stats *attachStats) string {
 	return msg + memStr
 }
 
-func (a *sequencerAttacher) close() {
+func (a *milestoneAttacher) close() {
 	a.closeOnce.Do(func() {
 		a.pokeMutex.Lock()
 		a.closed = true
@@ -167,7 +138,7 @@ func (a *sequencerAttacher) close() {
 	})
 }
 
-func (a *sequencerAttacher) solidifyBaselineState() vertex.Status {
+func (a *milestoneAttacher) solidifyBaselineState() vertex.Status {
 	return a.lazyRepeat(func() vertex.Status {
 		var ok bool
 		success := false
@@ -190,7 +161,7 @@ func (a *sequencerAttacher) solidifyBaselineState() vertex.Status {
 }
 
 // solidifyPastCone solidifies and validates sequencer transaction in the context of known baseline state
-func (a *sequencerAttacher) solidifyPastCone() vertex.Status {
+func (a *milestoneAttacher) solidifyPastCone() vertex.Status {
 	return a.lazyRepeat(func() (status vertex.Status) {
 		ok := true
 		success := false
@@ -213,7 +184,7 @@ func (a *sequencerAttacher) solidifyPastCone() vertex.Status {
 	})
 }
 
-func (a *sequencerAttacher) _doPoke(msg *vertex.WrappedTx) {
+func (a *milestoneAttacher) _doPoke(msg *vertex.WrappedTx) {
 	a.pokeMutex.Lock()
 	defer a.pokeMutex.Unlock()
 
@@ -222,7 +193,7 @@ func (a *sequencerAttacher) _doPoke(msg *vertex.WrappedTx) {
 	}
 }
 
-func (a *sequencerAttacher) pokeMe(with *vertex.WrappedTx) {
+func (a *milestoneAttacher) pokeMe(with *vertex.WrappedTx) {
 	//a.trace1Ahead()
 	a.tracef("pokeMe with %s", with.IDShortString())
 	a.PokeMe(a.vid, with)

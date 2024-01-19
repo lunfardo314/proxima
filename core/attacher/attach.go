@@ -6,63 +6,11 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/core/vertex"
-	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/util"
-	"github.com/lunfardo314/proxima/util/set"
 	"github.com/lunfardo314/unitrie/common"
-)
-
-type (
-	DAGAccessEnvironment interface {
-		WithGlobalWriteLock(fun func())
-		GetVertexNoLock(txid *ledger.TransactionID) *vertex.WrappedTx
-		GetVertex(txid *ledger.TransactionID) *vertex.WrappedTx
-		AddVertexNoLock(vid *vertex.WrappedTx)
-		StateStore() global.StateStore
-		GetStateReaderForTheBranch(branch *vertex.WrappedTx) global.IndexedStateReader
-		AddBranchNoLock(branch *vertex.WrappedTx)
-	}
-
-	PullEnvironment interface {
-		Pull(txid ledger.TransactionID)
-		PokeMe(me, with *vertex.WrappedTx)
-		PokeAllWith(wanted *vertex.WrappedTx)
-	}
-
-	PostEventEnvironment interface {
-		PostEventNewGood(vid *vertex.WrappedTx)
-		PostEventNewValidated(vid *vertex.WrappedTx)
-	}
-
-	EvidenceEnvironment interface {
-		EvidenceIncomingBranch(txid *ledger.TransactionID, seqID ledger.ChainID)
-		EvidenceBookedBranch(txid *ledger.TransactionID, seqID ledger.ChainID)
-	}
-
-	Environment interface {
-		global.Logging
-		DAGAccessEnvironment
-		PullEnvironment
-		PostEventEnvironment
-		EvidenceEnvironment
-	}
-
-	pastConeAttacher struct {
-		Environment
-		name                  string
-		reason                error
-		baselineBranch        *vertex.WrappedTx
-		validPastVertices     set.Set[*vertex.WrappedTx]
-		undefinedPastVertices set.Set[*vertex.WrappedTx]
-		rooted                map[*vertex.WrappedTx]set.Set[byte]
-		pokeMe                func(vid *vertex.WrappedTx)
-		forceTrace1Ahead      bool
-		prevCoverage          multistate.LedgerCoverage // set when baseline is determined
-		coverageDelta         uint64
-	}
 )
 
 // AttachTxID ensures the txid is on the utangle_old. Must be called from globally locked environment
@@ -138,7 +86,7 @@ func AttachOutputID(oid ledger.OutputID, env Environment, opts ...Option) vertex
 	}
 }
 
-// AttachTransaction attaches new incoming transaction. For sequencer transaction it starts sequencerAttacher routine
+// AttachTransaction attaches new incoming transaction. For sequencer transaction it starts milestoneAttacher routine
 // which manages solidification pull until transaction becomes solid or stopped by the context
 func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Option) (vid *vertex.WrappedTx) {
 	options := &_attacherOptions{}
@@ -152,7 +100,7 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Opt
 	}
 	vid = AttachTxID(*tx.ID(), env, OptionDoNotLoadBranch, OptionInvokedBy("addTx"))
 	vid.Unwrap(vertex.UnwrapOptions{
-		// full vertex will be ignored, virtual tx will be converted into full vertex and sequencerAttacher started, if necessary
+		// full vertex will be ignored, virtual tx will be converted into full vertex and milestoneAttacher started, if necessary
 		VirtualTx: func(v *vertex.VirtualTransaction) {
 			vid.ConvertVirtualTxToVertexNoLock(vertex.New(tx))
 
@@ -172,7 +120,7 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Opt
 				env.PokeAllWith(vid)
 				return
 			}
-			// starts sequencerAttacher goroutine for sequencer transaction
+			// starts milestoneAttacher goroutine for sequencer transaction
 			ctx := options.ctx
 			if ctx == nil {
 				ctx = context.Background()
@@ -183,7 +131,7 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Opt
 			}
 
 			runFun := func() {
-				status, stats, err := runAttacher(vid, env, ctx)
+				status, stats, err := runMilestoneAttacher(vid, options.metadata, env, ctx)
 				vid.SetTxStatus(status)
 				vid.SetReason(err)
 				env.Log().Info(logFinalStatusString(vid, stats))

@@ -15,18 +15,6 @@ import (
 	"golang.org/x/exp/maps"
 )
 
-// IncrementalAttacher is used by the sequencer to build a sequencer milestone
-// transaction by adding new tag-along inputs one-by-one
-type IncrementalAttacher struct {
-	pastConeAttacher
-	extend         *vertex.WrappedTx
-	endorse        []*vertex.WrappedTx
-	tagAlongInputs []vertex.WrappedOutput
-	targetTs       ledger.LogicalTime
-	seqOutput      vertex.WrappedOutput
-	stemOutput     vertex.WrappedOutput
-}
-
 func NewIncrementalAttacher(name string, env Environment, targetTs ledger.LogicalTime, extend *vertex.WrappedTx, endorse ...*vertex.WrappedTx) (*IncrementalAttacher, error) {
 	util.Assertf(extend.IsSequencerMilestone(), "extend.IsSequencerMilestone()")
 	util.Assertf(ledger.ValidTimePace(extend.Timestamp(), targetTs), "ledger.ValidTimePace(extend.Timestamp(), targetTs)")
@@ -48,11 +36,11 @@ func NewIncrementalAttacher(name string, env Environment, targetTs ledger.Logica
 	env.Tracef("incAttach", "NewIncrementalAttacher(%s). baseline: %s", name, baseline.IDShortString)
 
 	ret := &IncrementalAttacher{
-		pastConeAttacher: newPastConeAttacher(env, name),
-		extend:           extend,
-		endorse:          slices.Clone(endorse),
-		tagAlongInputs:   make([]vertex.WrappedOutput, 0),
-		targetTs:         targetTs,
+		attacher:       newPastConeAttacher(env, name),
+		extend:         extend,
+		endorse:        slices.Clone(endorse),
+		tagAlongInputs: make([]vertex.WrappedOutput, 0),
+		targetTs:       targetTs,
 	}
 
 	ret.setBaselineBranch(baseline) // also fetches previous coverage
@@ -132,9 +120,9 @@ func (a *IncrementalAttacher) insertStemInput(visited set.Set[*vertex.WrappedTx]
 func (a *IncrementalAttacher) InsertTagAlongInput(wOut vertex.WrappedOutput, visited set.Set[*vertex.WrappedTx]) bool {
 	// save state for possible rollback because in case of fail the side effect makes attacher inconsistent
 	// TODO a better way than cloning potentially big maps with each new input?
-	saveUndefinedPastVertices := a.pastConeAttacher.undefinedPastVertices.Clone()
-	saveValidPastVertices := a.pastConeAttacher.validPastVertices.Clone()
-	saveRooted := maps.Clone(a.pastConeAttacher.rooted)
+	saveUndefinedPastVertices := a.attacher.undefinedPastVertices.Clone()
+	saveValidPastVertices := a.attacher.validPastVertices.Clone()
+	saveRooted := maps.Clone(a.attacher.rooted)
 	for vid, outputIdxSet := range saveRooted {
 		saveRooted[vid] = outputIdxSet.Clone()
 	}
@@ -143,9 +131,9 @@ func (a *IncrementalAttacher) InsertTagAlongInput(wOut vertex.WrappedOutput, vis
 	if !a.attachOutput(wOut, ledger.NilLogicalTime, visited) || !a.Completed() {
 		// it is either conflicting, or not solid yet
 		// in either case rollback
-		a.pastConeAttacher.undefinedPastVertices = saveUndefinedPastVertices
-		a.pastConeAttacher.validPastVertices = saveValidPastVertices
-		a.pastConeAttacher.rooted = saveRooted
+		a.attacher.undefinedPastVertices = saveUndefinedPastVertices
+		a.attacher.validPastVertices = saveValidPastVertices
+		a.attacher.rooted = saveRooted
 		a.coverageDelta = saveCoverageDelta
 		return false
 	}
