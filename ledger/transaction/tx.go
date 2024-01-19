@@ -97,6 +97,14 @@ func IDAndTimestampFromTransactionBytes(txBytes []byte) (ledger.TransactionID, l
 	return *tx.ID(), tx.Timestamp(), nil
 }
 
+func IDFromTransactionBytes(txBytes []byte) (ledger.TransactionID, error) {
+	tx, err := FromBytes(txBytes)
+	if err != nil {
+		return ledger.TransactionID{}, err
+	}
+	return *tx.ID(), nil
+}
+
 func (tx *Transaction) Validate(opt ...TxValidationOption) error {
 	return util.CatchPanicOrError(func() error {
 		for _, fun := range opt {

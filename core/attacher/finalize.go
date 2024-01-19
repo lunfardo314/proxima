@@ -34,20 +34,22 @@ func (a *milestoneAttacher) finalize() {
 		}
 	}
 
-	a.calculateSequencerTxTotals()
-
 	if a.vid.IsBranchTransaction() {
 		a.commitBranch()
-		a.vid.SetLedgerCoverage(a.stats.coverage)
+
 		a.WithGlobalWriteLock(func() {
 			a.AddBranchNoLock(a.vid)
 		})
 		a.EvidenceBookedBranch(&a.vid.ID, a.vid.MustSequencerID())
 		a.tracef("finalized branch")
 	} else {
-		a.vid.SetLedgerCoverage(a.stats.coverage)
 		a.tracef("finalized sequencer milestone")
 	}
+
+	a.finals.baseline = a.baselineBranch
+	a.finals.numTransactions = len(a.validPastVertices)
+	a.finals.coverage = a.ledgerCoverage(a.vid.Timestamp())
+	a.vid.SetLedgerCoverage(a.finals.coverage)
 }
 
 func (a *milestoneAttacher) commitBranch() {
@@ -61,6 +63,7 @@ func (a *milestoneAttacher) commitBranch() {
 		for idx := range consumed {
 			out := vid.MustOutputWithIDAt(idx)
 			muts.InsertDelOutputMutation(out.ID)
+			a.finals.numDeletedOutputs++
 		}
 	}
 	// generate ADD TX and ADD OUTPUT mutations
@@ -70,16 +73,18 @@ func (a *milestoneAttacher) commitBranch() {
 		producedOutputIndices := vid.NotConsumedOutputIndices(a.validPastVertices)
 		for _, idx := range producedOutputIndices {
 			muts.InsertAddOutputMutation(vid.OutputID(idx), vid.MustOutputAt(idx))
+			a.finals.numCreatedOutputs++
 		}
 	}
 
 	seqID, stemOID := a.vid.MustSequencerIDAndStemID()
 	upd := multistate.MustNewUpdatable(a.StateStore(), a.baselineStateReader().Root())
-	upd.MustUpdate(muts, &stemOID, &seqID, a.stats.coverage)
+	upd.MustUpdate(muts, &stemOID, &seqID, a.finals.coverage)
+	a.finals.root = upd.Root()
 
 	// check consistency with metadata
 	if a.metadata != nil && !util.IsNil(a.metadata.StateRoot) {
-		if !ledger.CommitmentModel.EqualCommitments(upd.Root(), a.metadata.StateRoot) {
+		if !ledger.CommitmentModel.EqualCommitments(a.finals.root, a.metadata.StateRoot) {
 			err := fmt.Errorf("commitBranch %s: major inconsistency: state root not equal to the state root provided in metadata", a.vid.IDShortString())
 			if enforceConsistencyWithTxMetadata {
 				a.Log().Fatal(err)
@@ -88,12 +93,6 @@ func (a *milestoneAttacher) commitBranch() {
 			}
 		}
 	}
-}
-
-func (a *milestoneAttacher) calculateSequencerTxTotals() {
-	a.stats.numTransactions = len(a.validPastVertices)
-	a.stats.numCreatedOutputs = len(a.rooted)
-	a.stats.coverage = a.ledgerCoverage(a.vid.Timestamp())
 }
 
 func (a *milestoneAttacher) checkPastConeVerticesConsistent() (err error) {
@@ -122,7 +121,7 @@ func (a *milestoneAttacher) checkPastConeVerticesConsistent() (err error) {
 			return fmt.Errorf("inconsistent vertex (%s) in the past cone: %s",
 				status.String(), vid.IDShortString())
 		}
-		vid.RUnwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
+		vid.Unwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
 			if !v.FlagsUp(vertex.FlagsSequencerVertexCompleted) {
 				err = fmt.Errorf("%s is not completed yet. Flags: %08b", v.Tx.IDShortString(), v.Flags)
 			}

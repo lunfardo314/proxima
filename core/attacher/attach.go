@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/transaction"
@@ -100,9 +101,16 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Opt
 	}
 	vid = AttachTxID(*tx.ID(), env, OptionDoNotLoadBranch, OptionInvokedBy("addTx"))
 	vid.Unwrap(vertex.UnwrapOptions{
-		// full vertex will be ignored, virtual tx will be converted into full vertex and milestoneAttacher started, if necessary
+		// full vertex will be ignored
+		// virtual tx will be converted into full vertex and milestoneAttacher started, if necessary
 		VirtualTx: func(v *vertex.VirtualTransaction) {
-			vid.ConvertVirtualTxToVertexNoLock(vertex.New(tx))
+			fullVertex := vertex.New(tx)
+			vid.ConvertVirtualTxToVertexNoLock(fullVertex)
+
+			if options.metadata != nil && options.metadata.SourceTypeNonPersistent == txmetadata.SourceTypeTxStore {
+				// prevent from persisting twice
+				fullVertex.SetFlagUp(vertex.FlagTxBytesPersisted)
+			}
 
 			if !vid.IsSequencerMilestone() {
 				// pull non-attached non non-branch input transactions for non-sequencer transactions, which are on the same slot

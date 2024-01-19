@@ -96,7 +96,7 @@ func runDBDistributeCmd(_ *cobra.Command, args []string) {
 	}
 	defer func() { _ = txDB.Close() }()
 
-	err = txstore.NewSimpleTxBytesStore(badger_adaptor.New(txDB)).SaveTxBytesWithMetadata(txBytes)
+	_, err = txstore.NewSimpleTxBytesStore(badger_adaptor.New(txDB)).PersistTxBytesWithMetadata(txBytes)
 	glb.AssertNoError(err)
 
 	glb.Infof("Success")

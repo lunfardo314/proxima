@@ -19,10 +19,10 @@ func NewSimpleTxBytesStore(store common.KVStore) SimpleTxBytesStore {
 	return SimpleTxBytesStore{store}
 }
 
-func (s SimpleTxBytesStore) SaveTxBytesWithMetadata(txBytes []byte, metadata *txmetadata.TransactionMetadata) error {
-	txid, _, err := transaction.IDAndTimestampFromTransactionBytes(txBytes)
+func (s SimpleTxBytesStore) PersistTxBytesWithMetadata(txBytes []byte, metadata *txmetadata.TransactionMetadata) (ledger.TransactionID, error) {
+	txid, err := transaction.IDFromTransactionBytes(txBytes)
 	if err != nil {
-		return err
+		return ledger.TransactionID{}, err
 	}
 	if metadata != nil {
 		mdTmp := *metadata
@@ -30,7 +30,7 @@ func (s SimpleTxBytesStore) SaveTxBytesWithMetadata(txBytes []byte, metadata *tx
 		metadata = &mdTmp
 	}
 	s.s.Set(txid[:], common.ConcatBytes(metadata.Bytes(), txBytes))
-	return nil
+	return txid, nil
 }
 
 func (s SimpleTxBytesStore) GetTxBytesWithMetadata(txid *ledger.TransactionID) []byte {
@@ -41,8 +41,8 @@ func NewDummyTxBytesStore() DummyTxBytesStore {
 	return DummyTxBytesStore{}
 }
 
-func (d DummyTxBytesStore) SaveTxBytesWithMetadata(_ []byte, _ *txmetadata.TransactionMetadata) error {
-	return nil
+func (d DummyTxBytesStore) PersistTxBytesWithMetadata(txBytes []byte, metadata *txmetadata.TransactionMetadata) (ledger.TransactionID, error) {
+	return ledger.TransactionID{}, nil
 }
 
 func (d DummyTxBytesStore) GetTxBytesWithMetadata(_ *ledger.TransactionID) []byte {

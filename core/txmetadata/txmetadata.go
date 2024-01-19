@@ -149,3 +149,19 @@ func SplitBytesWithMetadata(txBytesWithMetadata []byte) ([]byte, []byte, error) 
 	}
 	return txBytesWithMetadata[:txBytesWithMetadata[0]+1], txBytesWithMetadata[txBytesWithMetadata[0]+1:], nil
 }
+
+// String returns info of the persistent part
+func (m *TransactionMetadata) String() string {
+	if m == nil || m.flags() == 0 {
+		return "<empty>"
+	}
+	lcStr := "<nil>"
+	if m.LedgerCoverageDelta != nil {
+		lcStr = util.GoThousands(*m.LedgerCoverageDelta)
+	}
+	rootStr := "<nil>"
+	if !util.IsNil(m.StateRoot) {
+		rootStr = m.StateRoot.String()
+	}
+	return fmt.Sprintf("coverage delta: %s, root: %s", lcStr, rootStr)
+}

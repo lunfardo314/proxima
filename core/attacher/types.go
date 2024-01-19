@@ -10,6 +10,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/util/set"
+	"github.com/lunfardo314/unitrie/common"
 )
 
 type (
@@ -45,6 +46,7 @@ type (
 		PullEnvironment
 		PostEventEnvironment
 		EvidenceEnvironment
+		AsyncPersistTxBytesWithMetadata(txBytes []byte, metadata *txmetadata.TransactionMetadata)
 	}
 
 	attacher struct {
@@ -83,7 +85,7 @@ type (
 		closeOnce sync.Once
 		pokeChan  chan *vertex.WrappedTx
 		pokeMutex sync.Mutex
-		stats     *attachStats
+		finals    *attachFinals
 		closed    bool
 	}
 
@@ -97,8 +99,9 @@ type (
 	}
 	Option func(*_attacherOptions)
 
-	attachStats struct {
+	attachFinals struct {
 		coverage          multistate.LedgerCoverage
+		root              common.VCommitment
 		numTransactions   int
 		numCreatedOutputs int
 		numDeletedOutputs int

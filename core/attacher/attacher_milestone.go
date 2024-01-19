@@ -18,7 +18,7 @@ const (
 	maxToleratedParasiticChainSlots = 1
 )
 
-func runMilestoneAttacher(vid *vertex.WrappedTx, metadata *txmetadata.TransactionMetadata, env Environment, ctx context.Context) (vertex.Status, *attachStats, error) {
+func runMilestoneAttacher(vid *vertex.WrappedTx, metadata *txmetadata.TransactionMetadata, env Environment, ctx context.Context) (vertex.Status, *attachFinals, error) {
 	a := newMilestoneAttacher(vid, env, metadata, ctx)
 	defer func() {
 		go a.close()
@@ -51,9 +51,24 @@ func runMilestoneAttacher(vid *vertex.WrappedTx, metadata *txmetadata.Transactio
 
 	a.finalize()
 	a.vid.SetTxStatus(vertex.Good)
+
+	// persist transaction bytes, if needed
+	if a.metadata == nil || a.metadata.SourceTypeNonPersistent != txmetadata.SourceTypeTxStore {
+		a.vid.Unwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
+			if !v.FlagsUp(vertex.FlagTxBytesPersisted) {
+				c := a.coverageDelta
+				persistentMetadata := txmetadata.TransactionMetadata{
+					StateRoot:           a.finals.root,
+					LedgerCoverageDelta: &c,
+				}
+				a.AsyncPersistTxBytesWithMetadata(v.Tx.Bytes(), &persistentMetadata)
+				v.SetFlagUp(vertex.FlagTxBytesPersisted)
+			}
+		}})
+	}
+
 	a.PostEventNewGood(vid)
-	a.stats.baseline = a.baselineBranch
-	return vertex.Good, a.stats, nil
+	return vertex.Good, a.finals, nil
 }
 
 func newMilestoneAttacher(vid *vertex.WrappedTx, env Environment, metadata *txmetadata.TransactionMetadata, ctx context.Context) *milestoneAttacher {
@@ -63,7 +78,7 @@ func newMilestoneAttacher(vid *vertex.WrappedTx, env Environment, metadata *txme
 		vid:      vid,
 		metadata: metadata,
 		pokeChan: make(chan *vertex.WrappedTx, 1),
-		stats:    &attachStats{},
+		finals:   &attachFinals{},
 	}
 	ret.attacher.pokeMe = func(vid *vertex.WrappedTx) {
 		ret.pokeMe(vid)
@@ -94,7 +109,7 @@ func (a *milestoneAttacher) lazyRepeat(fun func() vertex.Status) vertex.Status {
 	}
 }
 
-func logFinalStatusString(vid *vertex.WrappedTx, stats *attachStats) string {
+func logFinalStatusString(vid *vertex.WrappedTx, finals *attachFinals) string {
 	var msg string
 
 	status := vid.GetTxStatus()
@@ -107,14 +122,14 @@ func logFinalStatusString(vid *vertex.WrappedTx, stats *attachStats) string {
 		msg += fmt.Sprintf(" reason = '%v'", vid.GetReason())
 	} else {
 		bl := "<nil>"
-		if stats.baseline != nil {
-			bl = stats.baseline.IDShortString()
+		if finals.baseline != nil {
+			bl = finals.baseline.IDShortString()
 		}
 		if vid.IsBranchTransaction() {
 			msg += fmt.Sprintf("baseline: %s, tx: %d, UTXO +%d/-%d, cov: %s",
-				bl, stats.numTransactions, stats.numCreatedOutputs, stats.numDeletedOutputs, stats.coverage.String())
+				bl, finals.numTransactions, finals.numCreatedOutputs, finals.numDeletedOutputs, finals.coverage.String())
 		} else {
-			msg += fmt.Sprintf("baseline: %s, tx: %d, cov: %s", bl, stats.numTransactions, stats.coverage.String())
+			msg += fmt.Sprintf("baseline: %s, tx: %d, cov: %s", bl, finals.numTransactions, finals.coverage.String())
 		}
 	}
 	var memStats runtime.MemStats

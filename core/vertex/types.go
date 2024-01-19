@@ -89,6 +89,7 @@ const (
 	FlagEndorsementsSolid         = 0b00000010
 	FlagAllInputsSolid            = 0b00000100
 	FlagConstraintsValid          = 0b00001000
+	FlagTxBytesPersisted          = 0b00010000
 	FlagsSequencerVertexCompleted = FlagBaselineSolid | FlagEndorsementsSolid | FlagAllInputsSolid | FlagConstraintsValid
 )
 

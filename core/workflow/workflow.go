@@ -7,6 +7,7 @@ import (
 	"github.com/lunfardo314/proxima/core/dag"
 	"github.com/lunfardo314/proxima/core/queues/events"
 	"github.com/lunfardo314/proxima/core/queues/gossip"
+	"github.com/lunfardo314/proxima/core/queues/persist_txbytes"
 	"github.com/lunfardo314/proxima/core/queues/poker"
 	"github.com/lunfardo314/proxima/core/queues/pull_client"
 	"github.com/lunfardo314/proxima/core/queues/pull_server"
@@ -24,16 +25,17 @@ type (
 	Workflow struct {
 		*dag.DAG
 		*global.DefaultLogging
-		txBytesStore global.TxBytesStore
-		peers        *peering.Peers
+		global.TxBytesStore
+		peers *peering.Peers
 		// queues
-		txInput    *txinput.TxInput
-		pullClient *pull_client.PullClient
-		pullServer *pull_server.PullServer
-		gossip     *gossip.Gossip
-		poker      *poker.Poker
-		events     *events.Events
-		syncData   *SyncData
+		txInput        *txinput.TxInput
+		pullClient     *pull_client.PullClient
+		pullServer     *pull_server.PullServer
+		gossip         *gossip.Gossip
+		persistTxBytes *persist_txbytes.PersistTxBytes
+		poker          *poker.Poker
+		events         *events.Events
+		syncData       *SyncData
 		//
 		debugCounters *testutil.SyncCounters
 		//
@@ -58,7 +60,7 @@ func New(stateStore global.StateStore, txBytesStore global.TxBytesStore, peers *
 	lvl := cfg.logLevel
 
 	ret := &Workflow{
-		txBytesStore:   txBytesStore,
+		TxBytesStore:   txBytesStore,
 		DefaultLogging: global.NewDefaultLogging("", lvl, cfg.logOutput),
 		DAG:            dag.New(stateStore),
 		peers:          peers,
@@ -68,23 +70,25 @@ func New(stateStore global.StateStore, txBytesStore global.TxBytesStore, peers *
 	}
 	ret.poker = poker.New(ret)
 	ret.events = events.New(ret)
-	ret.txInput = txinput.New(ret, lvl)
+	ret.txInput = txinput.New(ret)
 	ret.pullClient = pull_client.New(ret)
 	ret.pullServer = pull_server.New(ret)
-	ret.gossip = gossip.New(ret, lvl)
+	ret.gossip = gossip.New(ret)
+	ret.persistTxBytes = persist_txbytes.New(ret)
 
 	return ret
 }
 
 func (w *Workflow) Start(ctx context.Context) {
 	w.Log().Infof("starting queues...")
-	w.waitStop.Add(6)
+	w.waitStop.Add(7)
 	w.poker.Start(ctx, &w.waitStop)
 	w.events.Start(ctx, &w.waitStop)
 	w.txInput.Start(ctx, &w.waitStop)
 	w.pullClient.Start(ctx, &w.waitStop)
 	w.pullServer.Start(ctx, &w.waitStop)
 	w.gossip.Start(ctx, &w.waitStop)
+	w.persistTxBytes.Start(ctx, &w.waitStop)
 }
 
 func (w *Workflow) WaitStop() {

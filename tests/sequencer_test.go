@@ -111,12 +111,13 @@ func TestTippool(t *testing.T) {
 func Test1Sequencer(t *testing.T) {
 	ledger.SetTimeTickDuration(10 * time.Millisecond)
 	t.Run("idle", func(t *testing.T) {
-		const maxSlots = 5
+		const maxSlots = 3
 		testData := initWorkflowTest(t, 1)
 		t.Logf("%s", testData.wrk.Info())
 
 		//attacher.SetTraceOn()
 		//testData.wrk.EnableTraceTags("seq,factory,tippool,txinput, proposer, incAttach")
+		//testData.wrk.EnableTraceTags("persist_txbytes")
 		ctx, _ := context.WithCancel(context.Background())
 		seq, err := sequencer.New(testData.wrk, testData.bootstrapChainID, testData.genesisPrivKey,
 			ctx, sequencer.WithMaxBranches(maxSlots))

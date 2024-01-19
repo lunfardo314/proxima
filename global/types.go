@@ -35,12 +35,18 @@ type (
 		IsClosed() bool
 	}
 
-	TxBytesStore interface {
-		// SaveTxBytesWithMetadata saves txBytes prefixed with metadata bytes.
-		// metadata == nil is interpreted as empty metadata (one 0 byte as prefix)
-		SaveTxBytesWithMetadata(txBytes []byte, metadata *txmetadata.TransactionMetadata) error
+	TxBytesGet interface {
 		// GetTxBytesWithMetadata return empty slice on absence, otherwise returns concatenated metadata bytes and transaction bytes
 		GetTxBytesWithMetadata(id *ledger.TransactionID) []byte
+	}
+	TxBytesPersist interface {
+		// PersistTxBytesWithMetadata saves txBytes prefixed with metadata bytes.
+		// metadata == nil is interpreted as empty metadata (one 0 byte as prefix)
+		PersistTxBytesWithMetadata(txBytes []byte, metadata *txmetadata.TransactionMetadata) (ledger.TransactionID, error)
+	}
+	TxBytesStore interface {
+		TxBytesGet
+		TxBytesPersist
 	}
 
 	Logging interface {

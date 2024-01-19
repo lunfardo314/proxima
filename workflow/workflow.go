@@ -252,6 +252,6 @@ func (w *Workflow) PostEventDropTxID(txid *ledger.TransactionID, whoDropped stri
 
 func (w *Workflow) StoreTxBytes(txBytes []byte) func() error {
 	return func() error {
-		return w.txBytesStore.SaveTxBytesWithMetadata(txBytes)
+		return w.txBytesStore.PersistTxBytesWithMetadata(txBytes)
 	}
 }

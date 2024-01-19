@@ -7,11 +7,11 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/lunfardo314/proxima/core/attacher"
 	"github.com/lunfardo314/proxima/core/queues/gossip"
+	"github.com/lunfardo314/proxima/core/queues/persist_txbytes"
 	"github.com/lunfardo314/proxima/core/queues/pull_client"
 	"github.com/lunfardo314/proxima/core/queues/txinput"
 	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/core/vertex"
-	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util"
 )
@@ -63,10 +63,6 @@ func (w *Workflow) PokeAllWith(wanted *vertex.WrappedTx) {
 	w.poker.PokeAllWith(wanted)
 }
 
-func (w *Workflow) TxBytesStore() global.TxBytesStore {
-	return w.txBytesStore
-}
-
 func (w *Workflow) QueryTransactionsFromRandomPeer(lst ...ledger.TransactionID) bool {
 	return w.peers.PullTransactionsFromRandomPeer(lst...)
 }
@@ -101,4 +97,11 @@ func (w *Workflow) EvidenceBookedBranch(txid *ledger.TransactionID, seqID ledger
 
 func (w *Workflow) SyncData() *SyncData {
 	return w.syncData
+}
+
+func (w *Workflow) AsyncPersistTxBytesWithMetadata(txBytes []byte, metadata *txmetadata.TransactionMetadata) {
+	w.persistTxBytes.Push(persist_txbytes.Input{
+		TxBytes:  txBytes,
+		Metadata: metadata,
+	})
 }

@@ -15,7 +15,7 @@ import (
 type (
 	Environment interface {
 		global.Logging
-		TxBytesStore() global.TxBytesStore
+		global.TxBytesGet
 		StateStore() global.StateStore
 		SendTxBytesWithMetadataToPeer(id peer.ID, txBytes []byte, metadata *txmetadata.TransactionMetadata) bool
 	}
@@ -48,7 +48,7 @@ func (q *PullServer) Start(ctx context.Context, doneOnClose *sync.WaitGroup) {
 }
 
 func (q *PullServer) Consume(inp *Input) {
-	if txBytesWithMetadata := q.TxBytesStore().GetTxBytesWithMetadata(&inp.TxID); len(txBytesWithMetadata) > 0 {
+	if txBytesWithMetadata := q.GetTxBytesWithMetadata(&inp.TxID); len(txBytesWithMetadata) > 0 {
 		txBytes, metadataBytes, err := txmetadata.SplitBytesWithMetadata(txBytesWithMetadata)
 		util.AssertNoError(err)
 		metadata, err := txmetadata.TransactionMetadataFromBytes(metadataBytes)

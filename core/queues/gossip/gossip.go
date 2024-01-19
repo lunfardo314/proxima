@@ -6,13 +6,14 @@ import (
 
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/lunfardo314/proxima/core/txmetadata"
+	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/util/queue"
-	"go.uber.org/zap/zapcore"
 )
 
 type (
 	Environment interface {
+		global.Logging
 		GossipTxBytesToPeers(txBytes []byte, metadata *txmetadata.TransactionMetadata, except ...peer.ID) int
 	}
 
@@ -30,9 +31,9 @@ type (
 
 const chanBufferSize = 10
 
-func New(env Environment, lvl zapcore.Level) *Gossip {
+func New(env Environment) *Gossip {
 	return &Gossip{
-		Queue: queue.NewQueueWithBufferSize[*Input]("gossip", chanBufferSize, lvl, nil),
+		Queue: queue.NewQueueWithBufferSize[*Input]("gossip", chanBufferSize, env.Log().Level(), nil),
 		env:   env,
 	}
 }

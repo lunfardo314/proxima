@@ -175,7 +175,7 @@ func (a *attacher) attachVertex(v *vertex.Vertex, vid *vertex.WrappedTx, parasit
 	}
 	if v.FlagsUp(vertex.FlagAllInputsSolid) {
 		// TODO nice-to-have optimization: constraints can be validated even before the vertex becomes good (solidified).
-		//  It is enough to have all tagAlongInputs available, i.e. before full solidification
+		//  It is enough to have all tagAlongInputs available, i.e. before full solidification of the past cone
 
 		alreadyValidated := v.FlagsUp(vertex.FlagConstraintsValid)
 		if err := v.ValidateConstraints(); err != nil {
@@ -186,7 +186,15 @@ func (a *attacher) attachVertex(v *vertex.Vertex, vid *vertex.WrappedTx, parasit
 		if !alreadyValidated {
 			a.PostEventNewValidated(vid)
 		}
-		a.tracef("constraints has been validated OK: %s", v.Tx.IDShortString())
+		a.tracef("constraints has been validated OK: %s", v.Tx.IDShortString)
+		if !v.Tx.IsSequencerMilestone() && !v.FlagsUp(vertex.FlagTxBytesPersisted) {
+			// persist bytes of the valid non-sequencer transaction, if needed
+			// non-sequencer transaction always have empty persistent metadata
+			// sequencer transaction will be persisted upon finalization of the attacher
+			a.AsyncPersistTxBytesWithMetadata(v.Tx.Bytes(), nil)
+			v.SetFlagUp(vertex.FlagTxBytesPersisted)
+			a.tracef("tx bytes persisted: %s", v.Tx.IDShortString)
+		}
 		ok = true
 	}
 	if v.FlagsUp(vertex.FlagsSequencerVertexCompleted) {

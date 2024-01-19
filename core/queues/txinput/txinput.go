@@ -10,22 +10,22 @@ import (
 	"github.com/lunfardo314/proxima/core/attacher"
 	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/core/vertex"
+	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/queue"
-	"go.uber.org/zap/zapcore"
 )
 
 type (
 	Environment interface {
+		global.Logging
 		MaxDurationInTheFuture() time.Duration
 		IncCounter(string)
 		StopPulling(txid *ledger.TransactionID)
 		DropTxID(txid *ledger.TransactionID, who string, reasonFormat string, args ...any)
 		AttachTransaction(inp *Input, opts ...attacher.Option)
 		GossipTransaction(inp *Input)
-		Tracef(tag string, format string, args ...any)
 	}
 
 	Input struct {
@@ -46,9 +46,9 @@ type (
 
 const chanBufferSize = 10
 
-func New(env Environment, lvl zapcore.Level) *TxInput {
+func New(env Environment) *TxInput {
 	return &TxInput{
-		Queue:       queue.NewQueueWithBufferSize[*Input]("txInput", chanBufferSize, lvl, nil),
+		Queue:       queue.NewQueueWithBufferSize[*Input]("txInput", chanBufferSize, env.Log().Level(), nil),
 		Environment: env,
 	}
 }
@@ -80,7 +80,7 @@ func (q *TxInput) Consume(inp *Input) {
 			q.IncCounter("invalid")
 			return
 		}
-		q.Log().Warnf("checking time bounds of %s: '%v'", txid.StringShort(), err)
+		q.Environment.Log().Warnf("checking time bounds of %s: '%v'", txid.StringShort(), err)
 	}
 	// run remaining pre-validations on the transaction
 	if err = inp.Tx.Validate(transaction.MainTxValidationOptions...); err != nil {
