@@ -153,7 +153,6 @@ func (mf *MilestoneFactory) StartProposingForTargetLogicalTime(targetTs ledger.L
 	<-ctx.Done()
 
 	ret := mf.getLatestProposal() // will return nil if wasn't able to generate transaction
-	mf.resetTarget()
 	return ret
 }
 
@@ -163,15 +162,12 @@ func (mf *MilestoneFactory) setNewTarget(ts ledger.LogicalTime) {
 	mf.proposal.mutex.Lock()
 	defer mf.proposal.mutex.Unlock()
 
-	mf.proposal.targetTs = ts
-	mf.proposal.current = nil
-	if ts.IsSlotBoundary() {
+	if mf.proposal.targetTs.IsSlotBoundary() || mf.proposal.targetTs.Slot() != ts.Slot() {
+		// if starting new slot, reset best coverage delta
 		mf.proposal.bestSoFarCoverage = 0
 	}
-}
-
-func (mf *MilestoneFactory) resetTarget() {
-	mf.setNewTarget(ledger.NilLogicalTime)
+	mf.proposal.targetTs = ts
+	mf.proposal.current = nil
 }
 
 func (mf *MilestoneFactory) CurrentTargetTs() ledger.LogicalTime {
@@ -227,7 +223,8 @@ func (mf *MilestoneFactory) Propose(a *attacher.IncrementalAttacher) (forceExit 
 	defer mf.proposal.mutex.Unlock()
 
 	if coverage <= mf.proposal.bestSoFarCoverage {
-		mf.Tracef("proposer", "factory.Propose%s proposal REJECTED due to no increase in coverage", a.Name())
+		mf.Tracef("proposer", "factory.Propose%s proposal REJECTED due to no increase in coverage (%s vs prev %s)",
+			a.Name(), util.GoThousands(coverage), util.GoThousands(mf.proposal.bestSoFarCoverage))
 		return
 	}
 

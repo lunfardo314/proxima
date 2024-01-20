@@ -111,7 +111,7 @@ func TestTippool(t *testing.T) {
 func Test1Sequencer(t *testing.T) {
 	ledger.SetTimeTickDuration(10 * time.Millisecond)
 	t.Run("idle", func(t *testing.T) {
-		const maxSlots = 3
+		const maxSlots = 5
 		testData := initWorkflowTest(t, 1)
 		t.Logf("%s", testData.wrk.Info())
 

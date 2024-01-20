@@ -49,6 +49,8 @@ func (a *milestoneAttacher) finalize() {
 	a.finals.baseline = a.baselineBranch
 	a.finals.numTransactions = len(a.validPastVertices)
 	a.finals.coverage = a.ledgerCoverage(a.vid.Timestamp())
+	a.Tracef("seq", "set ledger coverage in %s to %s", a.vid.IDShortString(), a.finals.coverage.String())
+
 	a.vid.SetLedgerCoverage(a.finals.coverage)
 }
 
