@@ -223,28 +223,35 @@ func (txb *TransactionBuilder) SignED25519(privKey ed25519.PrivateKey) {
 	txb.TransactionData.Signature = common.Concat(sig, []byte(pubKey))
 }
 
-type TransferData struct {
-	SenderPrivateKey  ed25519.PrivateKey
-	SenderPublicKey   ed25519.PublicKey
-	SourceAccount     ledger.Accountable
-	Inputs            []*ledger.OutputWithID
-	ChainOutput       *ledger.OutputWithChainID
-	Timestamp         ledger.LogicalTime // takes ledger.LogicalTimeFromTime(time.Now()) if ledger.NilLogicalTime
-	Lock              ledger.Lock
-	Amount            uint64
-	AdjustToMinimum   bool
-	AddSender         bool
-	AddConstraints    [][]byte
-	MarkAsSequencerTx bool
-	UnlockData        []*UnlockData
-	Endorsements      []*ledger.TransactionID
-}
+type (
+	TransferData struct {
+		SenderPrivateKey  ed25519.PrivateKey
+		SenderPublicKey   ed25519.PublicKey
+		SourceAccount     ledger.Accountable
+		Inputs            []*ledger.OutputWithID
+		ChainOutput       *ledger.OutputWithChainID
+		Timestamp         ledger.LogicalTime // takes ledger.LogicalTimeFromTime(time.Now()) if ledger.NilLogicalTime
+		Lock              ledger.Lock
+		Amount            uint64
+		AdjustToMinimum   bool
+		AddSender         bool
+		AddConstraints    [][]byte
+		MarkAsSequencerTx bool
+		UnlockData        []*UnlockData
+		Endorsements      []*ledger.TransactionID
+		TagAlong          *TagAlongData
+	}
 
-type UnlockData struct {
-	OutputIndex     byte
-	ConstraintIndex byte
-	Data            []byte
-}
+	TagAlongData struct {
+		SeqID  ledger.ChainID
+		Amount uint64
+	}
+	UnlockData struct {
+		OutputIndex     byte
+		ConstraintIndex byte
+		Data            []byte
+	}
+)
 
 func NewTransferData(senderKey ed25519.PrivateKey, sourceAccount ledger.Accountable, ts ledger.LogicalTime) *TransferData {
 	sourcePubKey := senderKey.Public().(ed25519.PublicKey)
@@ -330,8 +337,16 @@ func (t *TransferData) WithEndorsements(ids ...*ledger.TransactionID) *TransferD
 	return t
 }
 
-// AdjustedAmount adjust amount to minimum storage deposit requirements
-func (t *TransferData) AdjustedAmount() uint64 {
+func (t *TransferData) WithTagAlong(seqID ledger.ChainID, amount uint64) *TransferData {
+	t.TagAlong = &TagAlongData{
+		SeqID:  seqID,
+		Amount: amount,
+	}
+	return t
+}
+
+// TotalAdjustedAmount adjust amount to minimum storage deposit requirements
+func (t *TransferData) TotalAdjustedAmount() uint64 {
 	if !t.AdjustToMinimum {
 		// not adjust. Will render wrong transaction if not enough tokens
 		return t.Amount
@@ -349,7 +364,10 @@ func (t *TransferData) AdjustedAmount() uint64 {
 	if t.Amount < minimumDeposit {
 		return minimumDeposit
 	}
-	return t.Amount
+	if t.TagAlong == nil {
+		return t.Amount
+	}
+	return t.Amount + t.TagAlong.Amount
 }
 
 func StorageDepositOnChainOutput(lock ledger.Lock, addConstraints ...[]byte) uint64 {
@@ -411,7 +429,7 @@ func MakeSimpleTransferTransactionWithRemainder(par *TransferData, disableEndors
 	if par.Lock == nil {
 		return nil, nil, fmt.Errorf("MakeSimpleTransferTransactionWithRemainder: target lock is not specified")
 	}
-	amount := par.AdjustedAmount()
+	amount := par.TotalAdjustedAmount()
 	availableTokens, consumedOuts, err := outputsToConsumeSimple(par, amount)
 	if err != nil {
 		return nil, nil, err
@@ -463,6 +481,13 @@ func MakeSimpleTransferTransactionWithRemainder(par *TransferData, disableEndors
 		return nil, nil, err
 	}
 
+	var tagAlongOut *ledger.Output
+	if par.TagAlong != nil {
+		tagAlongOut = ledger.NewOutput(func(o *ledger.Output) {
+			o.WithAmount(par.TagAlong.Amount).WithLock(ledger.ChainLockFromChainID(par.TagAlong.SeqID))
+		})
+	}
+
 	var remainderOut *ledger.Output
 	var remainderIndex byte
 	if availableTokens > amount {
@@ -477,6 +502,11 @@ func MakeSimpleTransferTransactionWithRemainder(par *TransferData, disableEndors
 	}
 	if _, err = txb.ProduceOutput(mainOutput); err != nil {
 		return nil, nil, err
+	}
+	if tagAlongOut != nil {
+		if _, err = txb.ProduceOutput(tagAlongOut); err != nil {
+			return nil, nil, err
+		}
 	}
 
 	for i := range consumedOuts {
@@ -511,7 +541,7 @@ func MakeChainTransferTransaction(par *TransferData, disableEndorsementChecking 
 	if par.ChainOutput == nil {
 		return nil, fmt.Errorf("ChainInput must be provided")
 	}
-	amount := par.AdjustedAmount()
+	amount := par.TotalAdjustedAmount()
 	// we are trying to consume non-chain outputs for the amount. Only if it is not enough, we are taking tokens from the chain
 	availableTokens, consumedOuts, err := outputsToConsumeSimple(par, amount)
 	if err != nil {

@@ -215,3 +215,9 @@ func WithMetadata(metadata *txmetadata.TransactionMetadata) TransactionInOption 
 		}
 	}
 }
+
+func WithSourceType(sourceType txmetadata.SourceType) TransactionInOption {
+	return func(inp *Input) {
+		inp.TxMetadata.SourceTypeNonPersistent = sourceType
+	}
+}

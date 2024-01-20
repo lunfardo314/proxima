@@ -14,8 +14,10 @@ import (
 	"github.com/lunfardo314/proxima/core/workflow"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/transaction"
+	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/sequencer"
 	"github.com/lunfardo314/proxima/sequencer/tippool"
+	"github.com/lunfardo314/proxima/util/testutil"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 )
@@ -117,7 +119,7 @@ func Test1Sequencer(t *testing.T) {
 
 		//attacher.SetTraceOn()
 		//testData.wrk.EnableTraceTags("seq,factory,tippool,txinput, proposer, incAttach")
-		//testData.wrk.EnableTraceTags("persist_txbytes")
+		testData.wrk.EnableTraceTags("persist_txbytes")
 		ctx, _ := context.WithCancel(context.Background())
 		seq, err := sequencer.New(testData.wrk, testData.bootstrapChainID, testData.genesisPrivKey,
 			ctx, sequencer.WithMaxBranches(maxSlots))
@@ -136,7 +138,58 @@ func Test1Sequencer(t *testing.T) {
 		require.EqualValues(t, maxSlots, int(countBr.Load()))
 		require.EqualValues(t, maxSlots, int(countSeq.Load()))
 		t.Logf("%s", testData.wrk.Info())
-		br := testData.wrk.HeaviestBranchOfLatestTimeSlot()
-		dag.SaveGraphPastCone(br, "latest_branch")
+		//br := testData.wrk.HeaviestBranchOfLatestTimeSlot()
+		//dag.SaveGraphPastCone(br, "latest_branch")
+	})
+	t.Run("tag along transfers", func(t *testing.T) {
+		const maxSlots = 5
+		testData := initWorkflowTest(t, 1)
+		t.Logf("%s", testData.wrk.Info())
+
+		//attacher.SetTraceOn()
+		//testData.wrk.EnableTraceTags("seq,factory,tippool,txinput, proposer, incAttach")
+		testData.wrk.EnableTraceTags("persist_txbytes")
+		ctx, _ := context.WithCancel(context.Background())
+		seq, err := sequencer.New(testData.wrk, testData.bootstrapChainID, testData.genesisPrivKey,
+			ctx, sequencer.WithMaxBranches(maxSlots))
+		require.NoError(t, err)
+		var countBr, countSeq atomic.Int32
+		seq.OnMilestoneSubmitted(func(_ *sequencer.Sequencer, ms *vertex.WrappedTx) {
+			if ms.IsBranchTransaction() {
+				countBr.Inc()
+			} else {
+				countSeq.Inc()
+			}
+		})
+
+		seq.Start()
+
+		rdr := multistate.MakeSugared(testData.wrk.HeaviestStateForLatestTimeSlot())
+		require.EqualValues(t, initBalance, rdr.BalanceOf(testData.addrAux.AccountID()))
+		auxOuts, err := rdr.GetOutputsForAccount(testData.addrAux.AccountID())
+		require.EqualValues(t, 1, len(auxOuts))
+		targetPrivKey := testutil.GetTestingPrivateKey(10000)
+		targetAddr := ledger.AddressED25519FromPrivateKey(targetPrivKey)
+
+		ctx, cancel := context.WithTimeout(context.Background(), (maxSlots+1)*ledger.SlotDuration())
+		go testData.spam(spammerParams{
+			privateKey:    testData.privKeyAux,
+			remainder:     auxOuts[0],
+			tagAlongSeqID: testData.bootstrapChainID,
+			target:        targetAddr,
+			batchSize:     2,
+			pace:          30,
+		}, ctx)
+
+		<-ctx.Done()
+		cancel()
+
+		seq.WaitStop()
+		testData.stopAndWait()
+		require.EqualValues(t, maxSlots, int(countBr.Load()))
+		require.EqualValues(t, maxSlots, int(countSeq.Load()))
+		t.Logf("%s", testData.wrk.Info())
+		//br := testData.wrk.HeaviestBranchOfLatestTimeSlot()
+		//dag.SaveGraphPastCone(br, "latest_branch")
 	})
 }

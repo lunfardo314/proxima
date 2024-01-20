@@ -70,7 +70,7 @@ func New(glb *workflow.Workflow, seqID ledger.ChainID, controllerKey ed25519.Pri
 	if ret.factory, err = factory.New(ret, cfg.MaxFeeInputs); err != nil {
 		return nil, err
 	}
-	ret.Tracef("seq", "sequencer created with controller address %s", ledger.AddressED25519FromPrivateKey(controllerKey).String())
+	ret.Log().Infof("sequencer created with controller %s", ledger.AddressED25519FromPrivateKey(controllerKey).String())
 	return ret, nil
 }
 

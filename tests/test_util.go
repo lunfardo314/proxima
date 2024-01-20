@@ -5,8 +5,11 @@ import (
 	"crypto/ed25519"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/lunfardo314/proxima/core/attacher"
+	"github.com/lunfardo314/proxima/core/queues/txinput"
+	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/core/workflow"
 	"github.com/lunfardo314/proxima/genesis"
 	"github.com/lunfardo314/proxima/global"
@@ -221,6 +224,12 @@ func (td *workflowTestData) makeChainOrigins(n int) {
 		return true
 	})
 }
+
+const (
+	tagAlongAmount = uint64(200)
+	sendAmount     = uint64(1000)
+	period         = 300 * time.Millisecond
+)
 
 func (td *longConflictTestData) makeSeqBeginnings(withConflictingFees bool) {
 	util.Assertf(len(td.chainOrigins) == len(td.conflictingOutputs), "td.chainOrigins)==len(td.conflictingOutputs)")
@@ -541,4 +550,51 @@ func (td *longConflictTestData) printTxIDs() {
 			td.t.Logf("       %2d : %s", j, tx.IDShortString())
 		}
 	}
+}
+
+type spammerParams struct {
+	privateKey    ed25519.PrivateKey
+	remainder     *ledger.OutputWithID
+	tagAlongSeqID ledger.ChainID
+	target        ledger.Lock
+	batchSize     int
+	pace          int
+}
+
+func (td *workflowTestData) spam(par spammerParams, ctx context.Context) {
+	par1 := par
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(time.Duration(par.pace*par.batchSize) * ledger.TickDuration()):
+		}
+		txBytesSeq := makeTransfers(par1)
+
+		for _, txBytes := range txBytesSeq {
+			err := td.wrk.TxBytesIn(txBytes, txinput.WithSourceType(txmetadata.SourceTypeAPI))
+			require.NoError(td.t, err)
+		}
+	}
+}
+
+func makeTransfers(par spammerParams) [][]byte {
+	sourceAddr := ledger.AddressED25519FromPrivateKey(par.privateKey)
+	var err error
+	ret := make([][]byte, par.batchSize)
+
+	for i := 0; i < par.batchSize; i++ {
+		ts := ledger.MaxLogicalTime(ledger.LogicalTimeNow(), par.remainder.Timestamp().AddTicks(par.pace))
+		if ts.IsSlotBoundary() {
+			ts.AddTicks(1)
+		}
+		tData := txbuilder.NewTransferData(par.privateKey, sourceAddr, ts).
+			MustWithInputs(par.remainder).
+			WithTargetLock(par.target).
+			WithAmount(sendAmount).
+			WithTagAlong(par.tagAlongSeqID, tagAlongAmount)
+		ret[i], par.remainder, err = txbuilder.MakeSimpleTransferTransactionWithRemainder(tData)
+		util.AssertNoError(err)
+	}
+	return ret
 }
