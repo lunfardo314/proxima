@@ -129,7 +129,7 @@ func TimeTickFromByte(d byte) (ret Tick, err error) {
 	if ret = Tick(d); ret.Valid() {
 		return
 	}
-	err = fmt.Errorf("wrong time tick value")
+	err = fmt.Errorf("wrong tick value")
 	return
 }
 

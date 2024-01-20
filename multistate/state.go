@@ -15,6 +15,8 @@ import (
 type (
 	// Updatable is an updatable ledger state, with the particular root
 	// Suitable for chained updates
+	// Not-thread safe, should be used individual instance for each parallel update.
+	// DB (store) is updated atomically with all mutations in one DB transaction
 	Updatable struct {
 		trie  *immutable.TrieUpdatable
 		store global.StateStore

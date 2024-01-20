@@ -113,8 +113,8 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Opt
 			}
 
 			if !vid.IsSequencerMilestone() {
-				// pull non-attached non non-branch input transactions for non-sequencer transactions, which are on the same slot
-				// We limit pull to one slot not to fall into endless pull cycle
+				// pull non-attached for non-sequencer transactions, which are on the same slot
+				// We limit pull to one slot back in order not to fall into the endless pull cycle
 				tx.PredecessorTransactionIDs().ForEach(func(txid ledger.TransactionID) bool {
 					if txid.TimeSlot() == vid.Slot() {
 						AttachTxID(txid, env).Unwrap(vertex.UnwrapOptions{VirtualTx: func(vInput *vertex.VirtualTransaction) {
@@ -147,6 +147,7 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Opt
 				callback(vid, err)
 			}
 
+			// if forDebugging == true, the panic is not caught, so it is more convenient in the debugger
 			const forDebugging = true
 			if forDebugging {
 				go runFun()
