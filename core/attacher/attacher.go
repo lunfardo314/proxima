@@ -23,8 +23,17 @@ func newPastConeAttacher(env Environment, name string) attacher {
 	}
 }
 
+const (
+	TraceTagAttachOutput = "attachOutput"
+	TraceTagAttachVertex = "attachVertex"
+)
+
 func (a *attacher) Name() string {
 	return a.name
+}
+
+func (a *attacher) GetReason() error {
+	return a.reason
 }
 
 func (a *attacher) baselineStateReader() multistate.SugaredStateReader {
@@ -150,7 +159,7 @@ func (a *attacher) attachVertex(v *vertex.Vertex, vid *vertex.WrappedTx, parasit
 	}
 	visited.Insert(vid)
 
-	a.tracef("attachVertex %s", vid.IDShortString)
+	a.Tracef(TraceTagAttachVertex, "%s", vid.IDShortString)
 	util.Assertf(!util.IsNil(a.baselineStateReader), "!util.IsNil(a.baselineStateReader)")
 	if a.validPastVertices.Contains(vid) {
 		return true
@@ -179,23 +188,25 @@ func (a *attacher) attachVertex(v *vertex.Vertex, vid *vertex.WrappedTx, parasit
 
 		if err := v.ValidateConstraints(); err != nil {
 			a.setReason(err)
-			a.tracef("%v", err)
+			// TODO how to put validation error into the vertex and propagate it to the future cone?
+			a.Tracef(TraceTagAttachVertex, "constraint validation failed: '%v'", err)
 			return false
 		}
-		a.tracef("constraints has been validated OK: %s", v.Tx.IDShortString)
+		a.Tracef(TraceTagAttachVertex, "constraints has been validated OK: %s", v.Tx.IDShortString)
 		if !v.Tx.IsSequencerMilestone() && !v.FlagsUp(vertex.FlagTxBytesPersisted) {
 			// persist bytes of the valid non-sequencer transaction, if needed
 			// non-sequencer transaction always have empty persistent metadata
 			// sequencer transaction will be persisted upon finalization of the attacher
 			a.AsyncPersistTxBytesWithMetadata(v.Tx.Bytes(), nil)
 			v.SetFlagUp(vertex.FlagTxBytesPersisted)
-			a.tracef("tx bytes persisted: %s", v.Tx.IDShortString)
+			a.Tracef(TraceTagAttachVertex, "tx bytes persisted: %s", v.Tx.IDShortString)
 		}
 		ok = true
 	}
 	if v.FlagsUp(vertex.FlagsSequencerVertexCompleted) {
 		a.pastConeVertexVisited(vid, true)
 	}
+	a.Tracef(TraceTagAttachVertex, "return OK: %s", v.Tx.IDShortString)
 	return true
 }
 
@@ -366,22 +377,22 @@ func (a *attacher) attachRooted(wOut vertex.WrappedOutput) (ok bool, isRooted bo
 }
 
 func (a *attacher) attachOutput(wOut vertex.WrappedOutput, parasiticChainHorizon ledger.LogicalTime, visited set.Set[*vertex.WrappedTx]) bool {
-	a.tracef("attachOutput %s", wOut.IDShortString)
+	a.Tracef(TraceTagAttachOutput, "%s", wOut.IDShortString)
 	ok, isRooted := a.attachRooted(wOut)
 	if !ok {
 		return false
 	}
 	if isRooted {
-		a.tracef("attachOutput: %s is rooted", wOut.IDShortString)
+		a.Tracef(TraceTagAttachOutput, "%s is rooted", wOut.IDShortString)
 		return true
 	}
-	a.tracef("attachOutput: %s is NOT rooted", wOut.IDShortString)
+	a.Tracef(TraceTagAttachOutput, "%s is NOT rooted", wOut.IDShortString)
 
 	if wOut.Timestamp().Before(parasiticChainHorizon) {
 		// parasitic chain rule
 		err := fmt.Errorf("parasitic chain threshold %s broken while attaching output %s", parasiticChainHorizon.String(), wOut.IDShortString())
 		a.setReason(err)
-		a.tracef("%v", err)
+		a.Tracef(TraceTagAttachOutput, "%v", err)
 		return false
 	}
 

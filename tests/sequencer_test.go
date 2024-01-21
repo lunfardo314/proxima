@@ -10,6 +10,7 @@ import (
 
 	"github.com/lunfardo314/proxima/core/attacher"
 	"github.com/lunfardo314/proxima/core/dag"
+	"github.com/lunfardo314/proxima/core/queues/pull_client"
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/core/workflow"
 	"github.com/lunfardo314/proxima/ledger"
@@ -149,7 +150,9 @@ func Test1Sequencer(t *testing.T) {
 
 		//attacher.SetTraceOn()
 		//testData.wrk.EnableTraceTags(factory.TraceTag, proposer_base.TraceTag)
-		testData.wrk.EnableTraceTags(factory.TraceTag)
+		testData.wrk.EnableTraceTags(factory.TraceTag, pull_client.TraceTag)
+		testData.wrk.EnableTraceTags(attacher.TraceTagAttachOutput, attacher.TraceTagAttachVertex)
+
 		ctx, _ := context.WithCancel(context.Background())
 		seq, err := sequencer.New(testData.wrk, testData.bootstrapChainID, testData.genesisPrivKey,
 			ctx, sequencer.WithMaxBranches(maxSlots))

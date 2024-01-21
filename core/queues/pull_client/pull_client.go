@@ -41,6 +41,7 @@ type (
 	}
 )
 
+const TraceTag = "pull-client"
 const chanBufferSize = 10
 
 func New(env Environment) *PullClient {
@@ -61,7 +62,7 @@ func (q *PullClient) Start(ctx context.Context, doneOnClose *sync.WaitGroup) {
 }
 
 func (q *PullClient) Consume(inp *Input) {
-	q.Tracef("pull", "Consume: (%s) %s", len(inp.TxIDs), inp.TxIDs[0].StringShort())
+	q.Tracef(TraceTag, "Consume: (%s) %s", len(inp.TxIDs), inp.TxIDs[0].StringShort())
 
 	toPull := make([]ledger.TransactionID, 0)
 	txBytesList := make([][]byte, 0)
@@ -75,11 +76,11 @@ func (q *PullClient) Consume(inp *Input) {
 			continue
 		}
 		if txBytesWithMetadata := q.GetTxBytesWithMetadata(&txid); len(txBytesWithMetadata) > 0 {
-			q.Tracef("pull", "%s fetched from txBytesStore", txid.StringShort)
+			q.Tracef(TraceTag, "%s fetched from txBytesStore", txid.StringShort)
 			txBytesList = append(txBytesList, txBytesWithMetadata)
 		} else {
 			q.pullList[txid] = nextPull
-			q.Tracef("pull", "%s added to the pull list. Pull list size: %d", txid.StringShort, len(q.pullList))
+			q.Tracef(TraceTag, "%s added to the pull list. Pull list size: %d", txid.StringShort, len(q.pullList))
 			toPull = append(toPull, txid)
 		}
 	}

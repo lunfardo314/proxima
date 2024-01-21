@@ -31,6 +31,7 @@ type (
 	}
 )
 
+const TraceTag = "pull-server"
 const chanBufferSize = 10
 
 func New(env Environment) *PullServer {
@@ -60,9 +61,9 @@ func (q *PullServer) Consume(inp *Input) {
 		metadata.IsResponseToPull = true
 
 		q.SendTxBytesWithMetadataToPeer(inp.PeerID, txBytes, metadata)
-		q.Tracef("pull", "-> FOUND %s", inp.TxID.StringShort)
+		q.Tracef(TraceTag, "-> FOUND %s", inp.TxID.StringShort)
 	} else {
 		// not found -> ignore
-		q.Tracef("pull", "-> NOT FOUND %s", inp.TxID.StringShort)
+		q.Tracef(TraceTag, "-> NOT FOUND %s", inp.TxID.StringShort)
 	}
 }

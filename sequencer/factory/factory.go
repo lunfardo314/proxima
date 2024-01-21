@@ -190,11 +190,11 @@ func (mf *MilestoneFactory) AttachTagAlongInputs(a *attacher.IncrementalAttacher
 	mf.Tracef(TraceTag, "AttachTagAlongInputs %s. Pre-selected: %d", a.Name(), len(preSelected))
 
 	for _, wOut := range preSelected {
-		if a.InsertTagAlongInput(wOut, set.New[*vertex.WrappedTx]()) {
+		if success, err := a.InsertTagAlongInput(wOut, set.New[*vertex.WrappedTx]()); success {
 			numInserted++
 			mf.Tracef(TraceTag, "AttachTagAlongInputs %s. Inserted %s", a.Name(), wOut.IDShortString)
 		} else {
-			mf.Tracef(TraceTag, "AttachTagAlongInputs %s. Failed to insert %s", a.Name(), wOut.IDShortString)
+			mf.Tracef(TraceTag, "AttachTagAlongInputs %s. Failed to insert %s. Err='%v'", a.Name(), wOut.IDShortString, err)
 		}
 		if a.NumInputs() >= mf.maxTagAlongInputs {
 			break

@@ -117,7 +117,7 @@ func (a *IncrementalAttacher) insertStemInput(visited set.Set[*vertex.WrappedTx]
 
 // InsertTagAlongInput inserts tag along input.
 // In case of failure return false and attacher state consistent
-func (a *IncrementalAttacher) InsertTagAlongInput(wOut vertex.WrappedOutput, visited set.Set[*vertex.WrappedTx]) bool {
+func (a *IncrementalAttacher) InsertTagAlongInput(wOut vertex.WrappedOutput, visited set.Set[*vertex.WrappedTx]) (bool, error) {
 	// save state for possible rollback because in case of fail the side effect makes attacher inconsistent
 	// TODO a better way than cloning potentially big maps with each new input?
 	saveUndefinedPastVertices := a.attacher.undefinedPastVertices.Clone()
@@ -135,10 +135,11 @@ func (a *IncrementalAttacher) InsertTagAlongInput(wOut vertex.WrappedOutput, vis
 		a.attacher.validPastVertices = saveValidPastVertices
 		a.attacher.rooted = saveRooted
 		a.coverageDelta = saveCoverageDelta
-		return false
+		return false, a.GetReason()
 	}
 	a.tagAlongInputs = append(a.tagAlongInputs, wOut)
-	return true
+	util.AssertNoError(a.GetReason())
+	return true, nil
 }
 
 func (a *IncrementalAttacher) MakeTransaction(seqName string, privateKey ed25519.PrivateKey) (*transaction.Transaction, error) {

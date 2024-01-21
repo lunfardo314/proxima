@@ -70,8 +70,10 @@ func (l *DefaultLogging) EnableTrace(enable bool) {
 func (l *DefaultLogging) EnableTraceTags(tags ...string) {
 	l.traceTagsMutex.Lock()
 	for _, t := range tags {
-
-		l.traceTags.Insert(strings.TrimSpace(t))
+		st := strings.Split(t, ",")
+		for _, t1 := range st {
+			l.traceTags.Insert(strings.TrimSpace(t1))
+		}
 		l.enabledTrace.Store(true)
 	}
 	l.traceTagsMutex.Unlock()
