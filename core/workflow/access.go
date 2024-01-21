@@ -34,9 +34,13 @@ func (w *Workflow) StopPulling(txid *ledger.TransactionID) {
 	w.pullClient.StopPulling(txid)
 }
 
-func (w *Workflow) DropTxID(txid *ledger.TransactionID, who string, reasonFormat string, args ...any) {
+func (w *Workflow) DropTxID(txid *ledger.TransactionID, callback func(vid *vertex.WrappedTx, err error), reasonFormat string, args ...any) {
 	w.Tracef("workflow", "DropTxID %s", txid.StringShort())
-	attacher.InvalidateTxID(*txid, w, fmt.Errorf(reasonFormat, args...))
+	err := fmt.Errorf(reasonFormat, args...)
+	vid := attacher.InvalidateTxID(*txid, w, err)
+	if callback != nil {
+		callback(vid, err)
+	}
 }
 
 func (w *Workflow) GossipTransaction(inp *txinput.Input) {

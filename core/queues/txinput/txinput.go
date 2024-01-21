@@ -23,7 +23,7 @@ type (
 		MaxDurationInTheFuture() time.Duration
 		IncCounter(string)
 		StopPulling(txid *ledger.TransactionID)
-		DropTxID(txid *ledger.TransactionID, who string, reasonFormat string, args ...any)
+		DropTxID(txid *ledger.TransactionID, callback func(vid *vertex.WrappedTx, err error), reasonFormat string, args ...any)
 		AttachTransaction(inp *Input, opts ...attacher.Option)
 		GossipTransaction(inp *Input)
 	}
@@ -76,7 +76,7 @@ func (q *TxInput) Consume(inp *Input) {
 	if err != nil {
 		if enforceTimeBounds {
 			q.Tracef("txinput", "drop %s due to time bounds", inp.Tx.IDShortString)
-			q.DropTxID(txid, "txInput", "upper timestamp bound exceeded")
+			q.DropTxID(txid, inp.Callback, "upper timestamp bound exceeded")
 			q.IncCounter("invalid")
 			return
 		}
@@ -85,7 +85,7 @@ func (q *TxInput) Consume(inp *Input) {
 	// run remaining pre-validations on the transaction
 	if err = inp.Tx.Validate(transaction.MainTxValidationOptions...); err != nil {
 		q.Tracef("txinput", "drop %s due validation failed: '%v'", inp.Tx.IDShortString, err)
-		q.DropTxID(txid, "txInput", "error while pre-validating Tx: '%v'", err)
+		q.DropTxID(txid, inp.Callback, "error while pre-validating transaction: '%v'", err)
 		q.IncCounter("invalid")
 		return
 	}
@@ -186,7 +186,7 @@ func (q *TxInput) SequencerMilestoneNewAttachWait(txBytes []byte, timeout time.D
 			WithMetadata(&txmetadata.TransactionMetadata{
 				SourceTypeNonPersistent: txmetadata.SourceTypeSequencer,
 			}),
-			WithAttachmentCallback(func(vid *vertex.WrappedTx, err error) {
+			WithCallback(func(vid *vertex.WrappedTx, err error) {
 				writeResult(result{vid: vid, err: err})
 			}))
 		if errParse != nil {
@@ -201,7 +201,7 @@ func (q *TxInput) SequencerMilestoneNewAttachWait(txBytes []byte, timeout time.D
 	}
 }
 
-func WithAttachmentCallback(fun func(vid *vertex.WrappedTx, err error)) TransactionInOption {
+func WithCallback(fun func(vid *vertex.WrappedTx, err error)) TransactionInOption {
 	return func(inp *Input) {
 		inp.Callback = fun
 	}

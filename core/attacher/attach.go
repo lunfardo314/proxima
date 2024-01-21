@@ -72,12 +72,13 @@ func AttachTxID(txid ledger.TransactionID, env Environment, opts ...Option) (vid
 	return
 }
 
-func InvalidateTxID(txid ledger.TransactionID, env Environment, reason error) {
+// InvalidateTxID marks existing vertex as BAD or creates new BAD
+func InvalidateTxID(txid ledger.TransactionID, env Environment, reason error) *vertex.WrappedTx {
 	tracef(env, "InvalidateTxID: %s", txid.StringShort())
 
-	if vid := env.GetVertex(&txid); vid != nil && !vid.IsSequencerMilestone() {
-		vid.SetTxStatusBad(reason)
-	}
+	vid := AttachTxID(txid, env, OptionDoNotLoadBranch, OptionInvokedBy("InvalidateTxID"))
+	vid.SetTxStatusBad(reason)
+	return vid
 }
 
 func AttachOutputID(oid ledger.OutputID, env Environment, opts ...Option) vertex.WrappedOutput {
