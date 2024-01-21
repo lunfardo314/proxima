@@ -86,6 +86,16 @@ func newMilestoneAttacher(vid *vertex.WrappedTx, env Environment, metadata *txme
 	ret.vid.OnPoke(func(withVID *vertex.WrappedTx) {
 		ret._doPoke(withVID)
 	})
+	vid.Unwrap(vertex.UnwrapOptions{
+		Vertex: func(v *vertex.Vertex) {
+			ret.finals.numInputs = v.Tx.NumInputs()
+			ret.finals.numOutputs = v.Tx.NumProducedOutputs()
+		},
+		VirtualTx: func(_ *vertex.VirtualTransaction) {
+			env.Log().Fatalf("unexpected virtual Tx: %s", vid.IDShortString())
+		},
+		Deleted: vid.PanicAccessDeleted,
+	})
 	return ret
 }
 
@@ -114,9 +124,9 @@ func logFinalStatusString(vid *vertex.WrappedTx, finals *attachFinals) string {
 
 	status := vid.GetTxStatus()
 	if vid.IsBranchTransaction() {
-		msg = fmt.Sprintf("-- ATTACH BRANCH (%s) %s", status.String(), vid.IDShortString())
+		msg = fmt.Sprintf("-- ATTACH BRANCH (%s) %s(%d/%d)", status.String(), vid.IDShortString(), finals.numInputs, finals.numOutputs)
 	} else {
-		msg = fmt.Sprintf("-- ATTACH SEQ TX (%s) %s", status.String(), vid.IDShortString())
+		msg = fmt.Sprintf("-- ATTACH SEQ TX (%s) %s(%d/%d)", status.String(), vid.IDShortString(), finals.numInputs, finals.numOutputs)
 	}
 	if status == vertex.Bad {
 		msg += fmt.Sprintf(" reason = '%v'", vid.GetReason())
@@ -126,10 +136,10 @@ func logFinalStatusString(vid *vertex.WrappedTx, finals *attachFinals) string {
 			bl = finals.baseline.IDShortString()
 		}
 		if vid.IsBranchTransaction() {
-			msg += fmt.Sprintf("baseline: %s, tx: %d, UTXO +%d/-%d, cov: %s",
+			msg += fmt.Sprintf(" baseline: %s, new tx: %d, UTXO mut +%d/-%d, cov: %s",
 				bl, finals.numTransactions, finals.numCreatedOutputs, finals.numDeletedOutputs, finals.coverage.String())
 		} else {
-			msg += fmt.Sprintf("baseline: %s, tx: %d, cov: %s", bl, finals.numTransactions, finals.coverage.String())
+			msg += fmt.Sprintf(" baseline: %s, new tx: %d, cov: %s", bl, finals.numTransactions, finals.coverage.String())
 		}
 	}
 	var memStats runtime.MemStats

@@ -178,6 +178,7 @@ func (mf *MilestoneFactory) CurrentTargetTs() ledger.LogicalTime {
 }
 
 func (mf *MilestoneFactory) AttachTagAlongInputs(a *attacher.IncrementalAttacher) (numInserted int) {
+	mf.Tracef("seq", "AttachTagAlongInputs: %s", a.Name())
 	preSelected := mf.tipPool.FilterAndSortOutputs(func(wOut vertex.WrappedOutput) bool {
 		if !ledger.ValidTimePace(wOut.Timestamp(), a.TargetTs()) {
 			return false
@@ -185,6 +186,8 @@ func (mf *MilestoneFactory) AttachTagAlongInputs(a *attacher.IncrementalAttacher
 		// fast filtering out already consumed outputs in the predecessor milestone context
 		return !mf.isConsumedInThePastPath(wOut, a.Extending())
 	})
+	mf.Tracef("seq", "AttachTagAlongInputs %s. Pre-selected: %d", a.Name(), len(preSelected))
+
 	for _, wOut := range preSelected {
 		if a.InsertTagAlongInput(wOut, set.New[*vertex.WrappedTx]()) {
 			numInserted++

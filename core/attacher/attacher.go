@@ -177,14 +177,10 @@ func (a *attacher) attachVertex(v *vertex.Vertex, vid *vertex.WrappedTx, parasit
 		// TODO nice-to-have optimization: constraints can be validated even before the vertex becomes good (solidified).
 		//  It is enough to have all tagAlongInputs available, i.e. before full solidification of the past cone
 
-		alreadyValidated := v.FlagsUp(vertex.FlagConstraintsValid)
 		if err := v.ValidateConstraints(); err != nil {
 			a.setReason(err)
 			a.tracef("%v", err)
 			return false
-		}
-		if !alreadyValidated {
-			a.PostEventNewValidated(vid)
 		}
 		a.tracef("constraints has been validated OK: %s", v.Tx.IDShortString)
 		if !v.Tx.IsSequencerMilestone() && !v.FlagsUp(vertex.FlagTxBytesPersisted) {

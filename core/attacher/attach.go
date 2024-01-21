@@ -106,11 +106,15 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Opt
 		VirtualTx: func(v *vertex.VirtualTransaction) {
 			fullVertex := vertex.New(tx)
 			vid.ConvertVirtualTxToVertexNoLock(fullVertex)
+			tracef(env, "converted to vertex %s", tx.IDShortString)
 
 			if options.metadata != nil && options.metadata.SourceTypeNonPersistent == txmetadata.SourceTypeTxStore {
 				// prevent from persisting twice
 				fullVertex.SetFlagUp(vertex.FlagTxBytesPersisted)
 			}
+
+			tracef(env, "post new tx event %s", tx.IDShortString)
+			env.PostEventNewTransaction(vid)
 
 			if !vid.IsSequencerMilestone() {
 				// pull non-attached for non-sequencer transactions, which are on the same slot
@@ -128,6 +132,7 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Opt
 				env.PokeAllWith(vid)
 				return
 			}
+
 			// starts milestoneAttacher goroutine for sequencer transaction
 			ctx := options.ctx
 			if ctx == nil {

@@ -32,7 +32,7 @@ type (
 
 	PostEventEnvironment interface {
 		PostEventNewGood(vid *vertex.WrappedTx)
-		PostEventNewValidated(vid *vertex.WrappedTx)
+		PostEventNewTransaction(vid *vertex.WrappedTx)
 	}
 
 	EvidenceEnvironment interface {
@@ -100,6 +100,8 @@ type (
 	Option func(*_attacherOptions)
 
 	attachFinals struct {
+		numInputs         int
+		numOutputs        int
 		coverage          multistate.LedgerCoverage
 		root              common.VCommitment
 		numTransactions   int

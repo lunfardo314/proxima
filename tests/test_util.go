@@ -559,10 +559,12 @@ type spammerParams struct {
 	target        ledger.Lock
 	batchSize     int
 	pace          int
+	maxBatches    int
 }
 
 func (td *workflowTestData) spam(par spammerParams, ctx context.Context) {
 	par1 := par
+	batchCount := 0
 	for {
 		select {
 		case <-ctx.Done():
@@ -572,8 +574,13 @@ func (td *workflowTestData) spam(par spammerParams, ctx context.Context) {
 		txBytesSeq := makeTransfers(par1)
 
 		for _, txBytes := range txBytesSeq {
-			err := td.wrk.TxBytesIn(txBytes, txinput.WithSourceType(txmetadata.SourceTypeAPI))
+			txid, err := td.wrk.TxBytesIn(txBytes, txinput.WithSourceType(txmetadata.SourceTypeAPI))
 			require.NoError(td.t, err)
+			td.t.Logf("spam -> %s", txid.StringShort())
+		}
+		batchCount++
+		if par.maxBatches != 0 && batchCount >= par.maxBatches {
+			return
 		}
 	}
 }

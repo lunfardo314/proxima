@@ -61,7 +61,7 @@ func (q *TxInput) Start(ctx context.Context, doneOnClose *sync.WaitGroup) {
 }
 
 func (q *TxInput) Consume(inp *Input) {
-	q.Tracef("txinput", "consume %s", inp.Tx.IDShortString)
+	q.Tracef("txinput", "IN %s", inp.Tx.IDShortString)
 	var err error
 	// TODO revisit checking lower time bounds
 	enforceTimeBounds := inp.TxMetadata.SourceTypeNonPersistent == txmetadata.SourceTypeAPI || inp.TxMetadata.SourceTypeNonPersistent == txmetadata.SourceTypePeer
@@ -91,7 +91,8 @@ func (q *TxInput) Consume(inp *Input) {
 	}
 	q.IncCounter("ok")
 	if !inp.TxMetadata.IsResponseToPull {
-		// gossip always, even if it needs delay
+		// gossip always, even if it needs delay.
+		// Reason: other nodes might have slightly different clock, let them handle delay themselves
 		q.Tracef("txinput", "send to gossip %s", inp.Tx.IDShortString)
 		q.GossipTransaction(inp)
 	}
@@ -125,18 +126,16 @@ func (q *TxInput) Consume(inp *Input) {
 		time.Sleep(delayFor)
 		q.Tracef("txinput", "%s -> release", txid.StringShort)
 		q.IncCounter("ok.release")
-		if !inp.TxMetadata.IsResponseToPull {
-			q.GossipTransaction(inp)
-		}
+		q.Tracef("txinput", "-> attach tx %s", inp.Tx.IDShortString)
 		q.AttachTransaction(inp, opts...)
 	}()
 }
 
-func (q *TxInput) TxBytesIn(txBytes []byte, opts ...TransactionInOption) error {
+func (q *TxInput) TxBytesIn(txBytes []byte, opts ...TransactionInOption) (*ledger.TransactionID, error) {
 	// base validation
 	tx, err := transaction.FromBytes(txBytes)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	inData := &Input{}
 	for _, opt := range opts {
@@ -155,7 +154,7 @@ func (q *TxInput) TxBytesIn(txBytes []byte, opts ...TransactionInOption) error {
 	}
 	priority := inData.TxMetadata.IsResponseToPull || inData.TxMetadata.SourceTypeNonPersistent == txmetadata.SourceTypeTxStore
 	q.Queue.Push(inData, priority) // priority for pulled
-	return nil
+	return tx.ID(), nil
 }
 
 func (q *TxInput) SequencerMilestoneNewAttachWait(txBytes []byte, timeout time.Duration) (*vertex.WrappedTx, error) {
@@ -183,7 +182,7 @@ func (q *TxInput) SequencerMilestoneNewAttachWait(txBytes []byte, timeout time.D
 			}
 			resCh <- res
 		}
-		errParse := q.TxBytesIn(txBytes,
+		_, errParse := q.TxBytesIn(txBytes,
 			WithMetadata(&txmetadata.TransactionMetadata{
 				SourceTypeNonPersistent: txmetadata.SourceTypeSequencer,
 			}),

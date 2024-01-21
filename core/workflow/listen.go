@@ -13,11 +13,10 @@ import (
 
 // ListenToAccount listens to all unlockable with account ID
 func (w *Workflow) ListenToAccount(account ledger.Accountable, fun func(wOut vertex.WrappedOutput)) {
-	w.events.OnEvent(EventNewValidatedTx, func(vid *vertex.WrappedTx) {
+	w.events.OnEvent(EventNewTx, func(vid *vertex.WrappedTx) {
 		var _indices [256]byte
 		indices := _indices[:0]
 		vid.RUnwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
-			util.Assertf(v.FlagsUp(vertex.FlagConstraintsValid), "v.FlagsUp(vertex.FlagConstraintsValid)")
 			v.Tx.ForEachProducedOutput(func(idx byte, o *ledger.Output, _ *ledger.OutputID) bool {
 				if o.Lock().UnlockableWith(account.AccountID()) {
 					indices = append(indices, idx)

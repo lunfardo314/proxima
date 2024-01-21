@@ -142,13 +142,15 @@ func Test1Sequencer(t *testing.T) {
 		//dag.SaveGraphPastCone(br, "latest_branch")
 	})
 	t.Run("tag along transfers", func(t *testing.T) {
-		const maxSlots = 5
+		const maxSlots = 3
 		testData := initWorkflowTest(t, 1)
 		t.Logf("%s", testData.wrk.Info())
 
 		//attacher.SetTraceOn()
 		//testData.wrk.EnableTraceTags("seq,factory,tippool,txinput, proposer, incAttach")
-		testData.wrk.EnableTraceTags("persist_txbytes")
+		//testData.wrk.EnableTraceTags("persist_txbytes")
+		//testData.wrk.EnableTraceTags("tippool")
+		testData.wrk.EnableTraceTags("seq, propose-base")
 		ctx, _ := context.WithCancel(context.Background())
 		seq, err := sequencer.New(testData.wrk, testData.bootstrapChainID, testData.genesisPrivKey,
 			ctx, sequencer.WithMaxBranches(maxSlots))
@@ -177,8 +179,9 @@ func Test1Sequencer(t *testing.T) {
 			remainder:     auxOuts[0],
 			tagAlongSeqID: testData.bootstrapChainID,
 			target:        targetAddr,
-			batchSize:     2,
 			pace:          30,
+			batchSize:     1,
+			maxBatches:    1,
 		}, ctx)
 
 		<-ctx.Done()
@@ -189,7 +192,7 @@ func Test1Sequencer(t *testing.T) {
 		require.EqualValues(t, maxSlots, int(countBr.Load()))
 		require.EqualValues(t, maxSlots, int(countSeq.Load()))
 		t.Logf("%s", testData.wrk.Info())
-		//br := testData.wrk.HeaviestBranchOfLatestTimeSlot()
-		//dag.SaveGraphPastCone(br, "latest_branch")
+		br := testData.wrk.HeaviestBranchOfLatestTimeSlot()
+		dag.SaveGraphPastCone(br, "last_branch")
 	})
 }

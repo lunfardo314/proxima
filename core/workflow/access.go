@@ -71,7 +71,7 @@ func (w *Workflow) AttachTransaction(inp *txinput.Input, opts ...attacher.Option
 	attacher.AttachTransaction(inp.Tx, w, opts...)
 }
 
-func (w *Workflow) TxBytesIn(txBytes []byte, opts ...txinput.TransactionInOption) error {
+func (w *Workflow) TxBytesIn(txBytes []byte, opts ...txinput.TransactionInOption) (*ledger.TransactionID, error) {
 	return w.txInput.TxBytesIn(txBytes, opts...)
 }
 

@@ -78,7 +78,7 @@ func New(env Environment, namePrefix string, opts ...Option) (*SequencerTipPool,
 
 		ret.outputs.Insert(wOut)
 		ret.outputCount++
-		env.Tracef("tippool", "output stored in tippool: %s", wOut.IDShortString)
+		env.Tracef("tippool", "output stored in tippool: %s (total: %d)", wOut.IDShortString, len(ret.outputs))
 	})
 
 	// start listening to sequencers, including the current sequencer

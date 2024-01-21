@@ -7,7 +7,7 @@ func (w *Workflow) PostEventNewGood(vid *vertex.WrappedTx) {
 	w.events.PostEvent(EventNewGoodTx, vid)
 }
 
-func (w *Workflow) PostEventNewValidated(vid *vertex.WrappedTx) {
-	w.Tracef("events", "PostEventNewValidated: %s", vid.IDShortString())
-	w.events.PostEvent(EventNewValidatedTx, vid)
+func (w *Workflow) PostEventNewTransaction(vid *vertex.WrappedTx) {
+	w.Tracef("events", "PostEventNewTransaction: %s", vid.IDShortString())
+	w.events.PostEvent(EventNewTx, vid)
 }

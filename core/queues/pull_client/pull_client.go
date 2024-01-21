@@ -21,7 +21,7 @@ type (
 		global.Logging
 		global.TxBytesGet
 		QueryTransactionsFromRandomPeer(lst ...ledger.TransactionID) bool
-		TxBytesIn(txBytes []byte, opts ...txinput.TransactionInOption) error
+		TxBytesIn(txBytes []byte, opts ...txinput.TransactionInOption) (*ledger.TransactionID, error)
 	}
 
 	Input struct {
@@ -103,7 +103,7 @@ func (q *PullClient) transactionInMany(txBytesList [][]byte) {
 			metadata = &txmetadata.TransactionMetadata{}
 		}
 		metadata.SourceTypeNonPersistent = txmetadata.SourceTypeTxStore
-		if err = q.TxBytesIn(txBytes, txinput.WithMetadata(metadata)); err != nil {
+		if _, err = q.TxBytesIn(txBytes, txinput.WithMetadata(metadata)); err != nil {
 			q.Environment.Log().Errorf("pull: tx parse error while pull: '%v'", err)
 		}
 	}

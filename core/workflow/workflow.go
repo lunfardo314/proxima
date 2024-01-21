@@ -48,8 +48,8 @@ type (
 )
 
 var (
-	EventNewGoodTx      = eventtype.RegisterNew[*vertex.WrappedTx]("new good seq")
-	EventNewValidatedTx = eventtype.RegisterNew[*vertex.WrappedTx]("new validated")
+	EventNewGoodTx = eventtype.RegisterNew[*vertex.WrappedTx]("new good seq")
+	EventNewTx     = eventtype.RegisterNew[*vertex.WrappedTx]("new tx")
 )
 
 func New(stateStore global.StateStore, txBytesStore global.TxBytesStore, peers *peering.Peers, opts ...ConfigOption) *Workflow {

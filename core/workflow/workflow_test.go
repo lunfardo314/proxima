@@ -19,10 +19,10 @@ func TestBasic(t *testing.T) {
 	ctx, stop := context.WithCancel(context.Background())
 	w.Start(ctx)
 
-	err := w.TxBytesIn(nil)
+	_, err := w.TxBytesIn(nil)
 	require.Error(t, err)
 
-	err = w.TxBytesIn([]byte("dummy data"))
+	_, err = w.TxBytesIn([]byte("dummy data"))
 	require.Error(t, err)
 
 	stop()
