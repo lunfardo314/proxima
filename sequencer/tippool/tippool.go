@@ -161,7 +161,7 @@ func isCandidateToTagAlong(wOut vertex.WrappedOutput) bool {
 
 // TODO purge also bad ones
 func (tp *SequencerTipPool) purge() {
-	cleanupPeriod := ledger.SlotDuration() / 2
+	cleanupPeriod := ledger.SlotDuration() / 5
 	if time.Since(tp.lastPruned.Load()) < cleanupPeriod {
 		return
 	}
@@ -176,6 +176,7 @@ func (tp *SequencerTipPool) purge() {
 		}
 	}
 	for _, wOut := range toDelete {
+		tp.Tracef(TraceTag, "output deleted from tippool: %s", wOut.IDShortString)
 		delete(tp.outputs, wOut)
 	}
 	tp.removedOutputsSinceReset += len(toDelete)
@@ -188,6 +189,7 @@ func (tp *SequencerTipPool) purge() {
 	}
 	for i := range toDeleteMilestoneChainID {
 		delete(tp.latestMilestones, toDeleteMilestoneChainID[i])
+		tp.Tracef(TraceTag, "milestone deleted from tippool: seqID = %s", toDeleteMilestoneChainID[i].StringShort())
 	}
 	tp.lastPruned.Store(time.Now())
 }

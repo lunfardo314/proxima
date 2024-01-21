@@ -154,6 +154,11 @@ func (a *attacher) solidifySequencerBaseline(v *vertex.Vertex) (ok bool) {
 func (a *attacher) attachVertex(v *vertex.Vertex, vid *vertex.WrappedTx, parasiticChainHorizon ledger.LogicalTime, visited set.Set[*vertex.WrappedTx]) (ok bool) {
 	util.Assertf(!v.Tx.IsSequencerMilestone() || v.FlagsUp(vertex.FlagBaselineSolid), "v.FlagsUp(vertex.FlagBaselineSolid) in %s", v.Tx.IDShortString)
 
+	if vid.GetTxStatusNoLock() == vertex.Bad {
+		a.setReason(vid.GetReasonNoLock())
+		return false
+	}
+
 	if visited.Contains(vid) {
 		return true
 	}
@@ -188,8 +193,8 @@ func (a *attacher) attachVertex(v *vertex.Vertex, vid *vertex.WrappedTx, parasit
 
 		if err := v.ValidateConstraints(); err != nil {
 			a.setReason(err)
-			// TODO how to put validation error into the vertex and propagate it to the future cone?
-			a.Tracef(TraceTagAttachVertex, "constraint validation failed: '%v'", err)
+			vid.SetTxStatusBadNoLock(err)
+			a.Tracef(TraceTagAttachVertex, "constraint validation failed in %s: '%v'", vid.IDShortString(), err)
 			return false
 		}
 		a.Tracef(TraceTagAttachVertex, "constraints has been validated OK: %s", v.Tx.IDShortString)
@@ -250,6 +255,7 @@ func (a *attacher) attachEndorsements(v *vertex.Vertex, parasiticChainHorizon le
 			}
 			a.tracef("endorsement is valid: %s", vidEndorsed.IDShortString)
 		} else {
+			// undef
 			a.tracef("endorsements are NOT all good in %s because of endorsed %s", v.Tx.IDShortString(), vidEndorsed.IDShortString())
 			allGood = false
 

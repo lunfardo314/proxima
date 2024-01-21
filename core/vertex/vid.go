@@ -117,6 +117,10 @@ func (vid *WrappedTx) GetReason() error {
 	return vid.reason
 }
 
+func (vid *WrappedTx) GetReasonNoLock() error {
+	return vid.reason
+}
+
 func (vid *WrappedTx) SetReason(err error) {
 	vid.mutex.Lock()
 	defer vid.mutex.Unlock()
@@ -128,6 +132,11 @@ func (vid *WrappedTx) SetTxStatusBad(reason error) {
 	vid.mutex.Lock()
 	defer vid.mutex.Unlock()
 
+	vid.txStatus = Bad
+	vid.reason = reason
+}
+
+func (vid *WrappedTx) SetTxStatusBadNoLock(reason error) {
 	vid.txStatus = Bad
 	vid.reason = reason
 }
@@ -182,19 +191,19 @@ func (vid *WrappedTx) ShortString() string {
 			mode = "vertex"
 			status = vid.txStatus.String()
 			if vid.reason != nil {
-				reason = vid.reason.Error()
+				reason = fmt.Sprintf(" reason: '%v'", vid.reason)
 			}
 		},
 		VirtualTx: func(v *VirtualTransaction) {
 			mode = "vertex"
 			status = vid.txStatus.String()
 			if vid.reason != nil {
-				reason = vid.reason.Error()
+				reason = fmt.Sprintf(" reason: '%v'", vid.reason)
 			}
 		},
 		Deleted: vid.PanicAccessDeleted,
 	})
-	return fmt.Sprintf("%s %10s (%s) %s", vid.IDShortString(), mode, status, reason)
+	return fmt.Sprintf("%22s %10s (%s) %s", vid.IDShortString(), mode, status, reason)
 }
 
 func (vid *WrappedTx) IDShortString() string {

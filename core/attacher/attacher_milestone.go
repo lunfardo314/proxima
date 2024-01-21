@@ -126,7 +126,11 @@ func logFinalStatusString(vid *vertex.WrappedTx, finals *attachFinals) string {
 	if vid.IsBranchTransaction() {
 		msg = fmt.Sprintf("-- ATTACH BRANCH (%s) %s(%d/%d)", status.String(), vid.IDShortString(), finals.numInputs, finals.numOutputs)
 	} else {
-		msg = fmt.Sprintf("-- ATTACH SEQ TX (%s) %s(%d/%d)", status.String(), vid.IDShortString(), finals.numInputs, finals.numOutputs)
+		nums := ""
+		if finals != nil {
+			nums = fmt.Sprintf("(%d/%d)", finals.numInputs, finals.numOutputs)
+		}
+		msg = fmt.Sprintf("-- ATTACH SEQ TX (%s) %s%s", status.String(), vid.IDShortString(), nums)
 	}
 	if status == vertex.Bad {
 		msg += fmt.Sprintf(" reason = '%v'", vid.GetReason())
