@@ -16,6 +16,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/sequencer"
+	"github.com/lunfardo314/proxima/sequencer/factory"
 	"github.com/lunfardo314/proxima/sequencer/tippool"
 	"github.com/lunfardo314/proxima/util/testutil"
 	"github.com/stretchr/testify/require"
@@ -144,13 +145,11 @@ func Test1Sequencer(t *testing.T) {
 	t.Run("tag along transfers", func(t *testing.T) {
 		const maxSlots = 3
 		testData := initWorkflowTest(t, 1)
-		t.Logf("%s", testData.wrk.Info())
+		//t.Logf("%s", testData.wrk.Info())
 
 		//attacher.SetTraceOn()
-		//testData.wrk.EnableTraceTags("seq,factory,tippool,txinput, proposer, incAttach")
-		//testData.wrk.EnableTraceTags("persist_txbytes")
-		//testData.wrk.EnableTraceTags("tippool")
-		testData.wrk.EnableTraceTags("seq, propose-base")
+		//testData.wrk.EnableTraceTags(factory.TraceTag, proposer_base.TraceTag)
+		testData.wrk.EnableTraceTags(factory.TraceTag)
 		ctx, _ := context.WithCancel(context.Background())
 		seq, err := sequencer.New(testData.wrk, testData.bootstrapChainID, testData.genesisPrivKey,
 			ctx, sequencer.WithMaxBranches(maxSlots))
@@ -189,9 +188,10 @@ func Test1Sequencer(t *testing.T) {
 
 		seq.WaitStop()
 		testData.stopAndWait()
+		t.Logf("%s", testData.wrk.Info(true))
+
 		require.EqualValues(t, maxSlots, int(countBr.Load()))
 		require.EqualValues(t, maxSlots, int(countSeq.Load()))
-		t.Logf("%s", testData.wrk.Info())
 		br := testData.wrk.HeaviestBranchOfLatestTimeSlot()
 		dag.SaveGraphPastCone(br, "last_branch")
 	})

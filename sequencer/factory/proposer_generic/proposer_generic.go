@@ -45,6 +45,8 @@ type (
 	}
 )
 
+const TraceTag = "propose-generic"
+
 func New(env Environment, strategy *Strategy, targetTs ledger.LogicalTime, ctx context.Context) Task {
 	return strategy.Constructor(&TaskGeneric{
 		Name:            fmt.Sprintf("[%s-%s]", strategy.Name, targetTs.String()),
@@ -67,10 +69,6 @@ func (t *TaskGeneric) GetName() string {
 	return t.Name
 }
 
-func (t *TaskGeneric) TraceLocal(format string, args ...any) {
-	t.Environment.Tracef("proposer", t.Name+": "+format, args...)
-}
-
 func (t *TaskGeneric) Run() {
 	var a *attacher.IncrementalAttacher
 	var forceExit bool
@@ -80,7 +78,7 @@ func (t *TaskGeneric) Run() {
 			return
 		}
 		if a != nil && a.Completed() {
-			t.TraceLocal("Run: generated new proposal")
+			t.Tracef(TraceTag, "Run: generated new proposal")
 			if forceExit = t.Propose(a); forceExit {
 				return
 			}

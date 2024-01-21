@@ -35,13 +35,6 @@ type (
 		//
 		onMilestoneSubmittedMutex sync.RWMutex
 		onMilestoneSubmitted      func(seq *Sequencer, vid *vertex.WrappedTx)
-
-		//exit     atomic.Bool
-		//stopWG   sync.WaitGroup
-		//stopOnce sync.Once
-		//
-		//
-		//traceNAhead    atomic.Int64
 	}
 
 	Info struct {
@@ -55,6 +48,8 @@ type (
 		PrevLedgerCoverage     uint64
 	}
 )
+
+const TraceTag = "sequencer"
 
 func New(glb *workflow.Workflow, seqID ledger.ChainID, controllerKey ed25519.PrivateKey, ctx context.Context, opts ...ConfigOption) (*Sequencer, error) {
 	cfg := makeConfig(opts...)
@@ -170,8 +165,8 @@ func (seq *Sequencer) mainLoop() {
 	}
 	time.Sleep(time.Until(beginAt))
 
-	seq.Tracef("seq", "starting main loop")
-	defer seq.Tracef("seq", "sequencer STOPPING..")
+	seq.Tracef(TraceTag, "starting main loop")
+	defer seq.Tracef(TraceTag, "sequencer STOPPING..")
 
 	for {
 		select {
@@ -186,7 +181,7 @@ func (seq *Sequencer) mainLoop() {
 }
 
 func (seq *Sequencer) doSequencerStep() bool {
-	seq.Tracef("seq", "doSequencerStep")
+	seq.Tracef(TraceTag, "doSequencerStep")
 	if seq.config.MaxMilestones != 0 && seq.milestoneCount >= seq.config.MaxMilestones {
 		seq.log.Infof("reached max limit of milestones %d -> stopping", seq.config.MaxMilestones)
 		return false
@@ -208,11 +203,11 @@ func (seq *Sequencer) doSequencerStep() bool {
 		return false
 	}
 
-	seq.Tracef("seq", "target ts: %s. Now is: %s", targetTs, ledger.LogicalTimeNow())
+	seq.Tracef(TraceTag, "target ts: %s. Now is: %s", targetTs, ledger.LogicalTimeNow())
 
 	msTx := seq.factory.StartProposingForTargetLogicalTime(targetTs)
 	if msTx == nil {
-		seq.Tracef("seq", "failed to generate msTx for target %s. Now is %s", targetTs, ledger.LogicalTimeNow())
+		seq.Tracef(TraceTag, "failed to generate msTx for target %s. Now is %s", targetTs, ledger.LogicalTimeNow())
 		time.Sleep(10 * time.Millisecond)
 		return true
 	}
@@ -287,7 +282,7 @@ func (seq *Sequencer) getNextTargetTime() ledger.LogicalTime {
 
 // Returns nil if fails to generate acceptable bestSoFarTx until the deadline
 func (seq *Sequencer) generateNextMilestoneTxForTargetTime(targetTs ledger.LogicalTime) *transaction.Transaction {
-	seq.Tracef("seq", "generateNextMilestoneTxForTargetTime %s", targetTs)
+	seq.Tracef(TraceTag, "generateNextMilestoneTxForTargetTime %s", targetTs)
 
 	timeout := time.Duration(seq.config.Pace) * ledger.TickDuration()
 	absoluteDeadline := targetTs.Time().Add(timeout)
@@ -309,7 +304,7 @@ func (seq *Sequencer) generateNextMilestoneTxForTargetTime(targetTs ledger.Logic
 const submitTimeout = 5 * time.Second
 
 func (seq *Sequencer) submitMilestone(tx *transaction.Transaction) *vertex.WrappedTx {
-	seq.Tracef("seq", "submit new milestone %s", tx.IDShortString)
+	seq.Tracef(TraceTag, "submit new milestone %s", tx.IDShortString)
 	deadline := time.Now().Add(submitTimeout)
 	vid, err := seq.SequencerMilestoneAttachWait(tx.Bytes(), submitTimeout)
 	if err != nil {
@@ -317,7 +312,7 @@ func (seq *Sequencer) submitMilestone(tx *transaction.Transaction) *vertex.Wrapp
 		return nil
 	}
 
-	seq.Tracef("seq", "new milestone %s submitted successfully", tx.IDShortString)
+	seq.Tracef(TraceTag, "new milestone %s submitted successfully", tx.IDShortString)
 	if !seq.waitMilestoneInTippool(vid, deadline) {
 		seq.Log().Errorf("timed out while waiting %v for submitted milestone %s in the tippool", submitTimeout, vid.IDShortString())
 		return nil

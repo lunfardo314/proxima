@@ -49,7 +49,10 @@ type (
 type Option byte
 
 // OptionDoNotLoadOwnMilestones is used for tests only
-const OptionDoNotLoadOwnMilestones = Option(iota)
+const (
+	TraceTag                     = "tippool"
+	OptionDoNotLoadOwnMilestones = Option(iota)
+)
 
 func New(env Environment, namePrefix string, opts ...Option) (*SequencerTipPool, error) {
 	seqID := env.SequencerID()
@@ -59,14 +62,14 @@ func New(env Environment, namePrefix string, opts ...Option) (*SequencerTipPool,
 		name:             fmt.Sprintf("%s-%s", namePrefix, seqID.StringVeryShort()),
 		latestMilestones: make(map[ledger.ChainID]*vertex.WrappedTx),
 	}
-	env.Tracef("tippool", "starting tipPool..")
+	env.Tracef(TraceTag, "starting tipPool..")
 
 	ret.mutex.RLock()
 	defer ret.mutex.RUnlock()
 
 	// start listening to chain-locked account
 	env.ListenToAccount(seqID.AsChainLock(), func(wOut vertex.WrappedOutput) {
-		env.Tracef("tippool", "[%s] output IN: %s", ret.name, wOut.IDShortString)
+		env.Tracef(TraceTag, "[%s] output IN: %s", ret.name, wOut.IDShortString)
 		ret.purge()
 
 		if !isCandidateToTagAlong(wOut) {
@@ -83,7 +86,7 @@ func New(env Environment, namePrefix string, opts ...Option) (*SequencerTipPool,
 
 	// start listening to sequencers, including the current sequencer
 	env.ListenToSequencers(func(vid *vertex.WrappedTx) {
-		env.Tracef("tippool", "seq milestone IN: %s", vid.IDShortString)
+		env.Tracef(TraceTag, "seq milestone IN: %s", vid.IDShortString)
 		seqIDIncoming, ok := vid.SequencerIDIfAvailable()
 		util.Assertf(ok, "sequencer milestone expected")
 
@@ -95,13 +98,13 @@ func New(env Environment, namePrefix string, opts ...Option) (*SequencerTipPool,
 			// store the latest one for each seqID
 			ret.latestMilestones[seqIDIncoming] = vid
 		}
-		env.Tracef("tippool", "seq milestone stored in tippool: %s", vid.IDShortString)
+		env.Tracef(TraceTag, "seq milestone stored in tippool: %s", vid.IDShortString)
 	})
 
 	// fetch all sequencers and all outputs in the sequencer account into to tip pool once
 	var err error
 	doNotLoadOwnMilestones := slices.Index(opts, OptionDoNotLoadOwnMilestones) >= 0
-	env.Tracef("tippool", "PullSequencerTips: doNotLoadOwnMilestones = %v", doNotLoadOwnMilestones)
+	env.Tracef(TraceTag, "PullSequencerTips: doNotLoadOwnMilestones = %v", doNotLoadOwnMilestones)
 	ret.outputs, err = env.PullSequencerTips(seqID, !doNotLoadOwnMilestones)
 	if err != nil {
 		return nil, err

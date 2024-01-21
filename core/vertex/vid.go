@@ -175,6 +175,28 @@ func WrapTxID(txid ledger.TransactionID) *WrappedTx {
 
 // TODO do we need those functions just accessing vid.ID?
 
+func (vid *WrappedTx) ShortString() string {
+	var mode, status, reason string
+	vid.Unwrap(UnwrapOptions{
+		Vertex: func(v *Vertex) {
+			mode = "vertex"
+			status = vid.txStatus.String()
+			if vid.reason != nil {
+				reason = vid.reason.Error()
+			}
+		},
+		VirtualTx: func(v *VirtualTransaction) {
+			mode = "vertex"
+			status = vid.txStatus.String()
+			if vid.reason != nil {
+				reason = vid.reason.Error()
+			}
+		},
+		Deleted: vid.PanicAccessDeleted,
+	})
+	return fmt.Sprintf("%s %10s (%s) %s", vid.IDShortString(), mode, status, reason)
+}
+
 func (vid *WrappedTx) IDShortString() string {
 	return vid.ID.StringShort()
 }

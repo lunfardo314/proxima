@@ -79,6 +79,7 @@ const (
 	maxAdditionalOutputs    = 256 - 2 // 1 for chain output, 1 for stem
 	veryMaxTagAlongInputs   = maxAdditionalOutputs
 	cleanupMilestonesPeriod = 1 * time.Second
+	TraceTag                = "factory"
 )
 
 func New(env Environment, maxTagAlongInputs int) (*MilestoneFactory, error) {
@@ -138,10 +139,10 @@ func (mf *MilestoneFactory) AddOwnMilestone(vid *vertex.WrappedTx) {
 func (mf *MilestoneFactory) StartProposingForTargetLogicalTime(targetTs ledger.LogicalTime) *transaction.Transaction {
 	deadline := targetTs.Time()
 	nowis := time.Now()
-	mf.Tracef("seq", "StartProposingForTargetLogicalTime: targetTs: %v, nowis: %v", deadline, nowis)
+	mf.Tracef(TraceTag, "StartProposingForTargetLogicalTime: targetTs: %v, nowis: %v", deadline, nowis)
 
 	if deadline.Before(nowis) {
-		mf.Tracef("seq", "deadline is in the past: impossible to generate milestone")
+		mf.Tracef(TraceTag, "deadline is in the past: impossible to generate milestone")
 		return nil
 	}
 	// start worker(s)
@@ -178,7 +179,7 @@ func (mf *MilestoneFactory) CurrentTargetTs() ledger.LogicalTime {
 }
 
 func (mf *MilestoneFactory) AttachTagAlongInputs(a *attacher.IncrementalAttacher) (numInserted int) {
-	mf.Tracef("seq", "AttachTagAlongInputs: %s", a.Name())
+	mf.Tracef(TraceTag, "AttachTagAlongInputs: %s", a.Name())
 	preSelected := mf.tipPool.FilterAndSortOutputs(func(wOut vertex.WrappedOutput) bool {
 		if !ledger.ValidTimePace(wOut.Timestamp(), a.TargetTs()) {
 			return false
@@ -186,11 +187,14 @@ func (mf *MilestoneFactory) AttachTagAlongInputs(a *attacher.IncrementalAttacher
 		// fast filtering out already consumed outputs in the predecessor milestone context
 		return !mf.isConsumedInThePastPath(wOut, a.Extending())
 	})
-	mf.Tracef("seq", "AttachTagAlongInputs %s. Pre-selected: %d", a.Name(), len(preSelected))
+	mf.Tracef(TraceTag, "AttachTagAlongInputs %s. Pre-selected: %d", a.Name(), len(preSelected))
 
 	for _, wOut := range preSelected {
 		if a.InsertTagAlongInput(wOut, set.New[*vertex.WrappedTx]()) {
 			numInserted++
+			mf.Tracef(TraceTag, "AttachTagAlongInputs %s. Inserted %s", a.Name(), wOut.IDShortString)
+		} else {
+			mf.Tracef(TraceTag, "AttachTagAlongInputs %s. Failed to insert %s", a.Name(), wOut.IDShortString)
 		}
 		if a.NumInputs() >= mf.maxTagAlongInputs {
 			break
@@ -203,15 +207,15 @@ func (mf *MilestoneFactory) startProposerWorkers(targetTime ledger.LogicalTime, 
 	for strategyName, s := range allProposingStrategies {
 		task := proposer_generic.New(mf, s, targetTime, ctx)
 		if task == nil {
-			mf.Tracef("proposer", "SKIP '%s' proposer for the target %s", strategyName, targetTime.String)
+			mf.Tracef(TraceTag, "SKIP '%s' proposer for the target %s", strategyName, targetTime.String)
 			continue
 		}
-		mf.Tracef("proposer", "RUN '%s' proposer for the target %s", strategyName, targetTime.String)
+		mf.Tracef(TraceTag, "RUN '%s' proposer for the target %s", strategyName, targetTime.String)
 
 		util.RunWrappedRoutine(mf.SequencerName()+"::"+task.GetName(), func() {
-			mf.Tracef("proposer", " START proposer %s", task.GetName())
+			mf.Tracef(TraceTag, " START proposer %s", task.GetName())
 			task.Run()
-			mf.Tracef("proposer", " END proposer %s", task.GetName())
+			mf.Tracef(TraceTag, " END proposer %s", task.GetName())
 		}, func(err error) {
 			mf.Log().Fatal(err)
 		}, common.ErrDBUnavailable, vertex.ErrDeletedVertexAccessed)
@@ -220,13 +224,13 @@ func (mf *MilestoneFactory) startProposerWorkers(targetTime ledger.LogicalTime, 
 
 func (mf *MilestoneFactory) Propose(a *attacher.IncrementalAttacher) (forceExit bool) {
 	coverage := a.LedgerCoverageSum()
-	mf.Tracef("proposer", "factory.Propose%s: coverage %s", a.Name(), util.GoThousandsLazy(coverage))
+	mf.Tracef(TraceTag, "factory.Propose%s: coverage %s", a.Name(), util.GoThousandsLazy(coverage))
 
 	mf.proposal.mutex.Lock()
 	defer mf.proposal.mutex.Unlock()
 
 	if coverage <= mf.proposal.bestSoFarCoverage {
-		mf.Tracef("proposer", "factory.Propose%s proposal REJECTED due to no increase in coverage (%s vs prev %s)",
+		mf.Tracef(TraceTag, "factory.Propose%s proposal REJECTED due to no increase in coverage (%s vs prev %s)",
 			a.Name(), util.GoThousands(coverage), util.GoThousands(mf.proposal.bestSoFarCoverage))
 		return
 	}
@@ -240,7 +244,7 @@ func (mf *MilestoneFactory) Propose(a *attacher.IncrementalAttacher) (forceExit 
 	mf.proposal.current = tx
 	mf.proposal.bestSoFarCoverage = coverage
 	mf.proposal.currentExtended = a.ExtendedOutput()
-	mf.Tracef("proposer", "factory.Propose%s proposal %s ACCEPTED", a.Name(), tx.IDShortString)
+	mf.Tracef(TraceTag, "factory.Propose%s proposal %s ACCEPTED", a.Name(), tx.IDShortString)
 	return
 }
 
@@ -306,7 +310,7 @@ func (mf *MilestoneFactory) chooseEndorseExtendPair(proposerName string, targetT
 		}
 		a, err := attacher.NewIncrementalAttacher(proposerName, mf, targetTs, extend, endorse)
 		if err != nil {
-			mf.Tracef("proposer", "can't extend %s and endorse %s: %v", extend.IDShortString, endorse.IDShortString, err)
+			mf.Tracef(TraceTag, "can't extend %s and endorse %s: %v", extend.IDShortString, endorse.IDShortString, err)
 			continue
 		}
 		util.Assertf(a != nil, "a != nil")
@@ -327,7 +331,7 @@ func (mf *MilestoneFactory) futureConeMilestonesOrdered(rootVID *vertex.WrappedT
 	defer mf.mutex.RUnlock()
 
 	//p.setTraceNAhead(1)
-	mf.Tracef("proposer", "futureConeMilestonesOrdered for root %s. Total %d own milestones", rootVID.IDShortString, len(mf.ownMilestones))
+	mf.Tracef(TraceTag, "futureConeMilestonesOrdered for root %s. Total %d own milestones", rootVID.IDShortString, len(mf.ownMilestones))
 
 	_, ok := mf.ownMilestones[rootVID]
 	util.Assertf(ok, "futureConeMilestonesOrdered: milestone %s of chain %s is expected to be among set of own milestones (%d)",

@@ -266,3 +266,7 @@ func MustPrivateKeyFromHexString(k string) ed25519.PrivateKey {
 func Ref[T any](v T) *T {
 	return &v
 }
+
+func JoinComma(str ...string) string {
+	return strings.Join(str, ",")
+}

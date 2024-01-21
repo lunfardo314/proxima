@@ -8,13 +8,14 @@ import (
 
 // Base proposer generates branches and bootstraps sequencer when no other sequencers are around
 
-const Endorse1ProposerName = "endorse1"
-
-type (
-	Endorse1Proposer struct {
-		proposer_generic.TaskGeneric
-	}
+const (
+	Endorse1ProposerName = "endorse1"
+	TraceTag             = "propose-endorse1"
 )
+
+type Endorse1Proposer struct {
+	proposer_generic.TaskGeneric
+}
 
 func Strategy() *proposer_generic.Strategy {
 	return &proposer_generic.Strategy{
@@ -32,12 +33,12 @@ func Strategy() *proposer_generic.Strategy {
 func (b *Endorse1Proposer) propose() *attacher.IncrementalAttacher {
 	a := b.ChooseExtendEndorsePair(b.Name, b.TargetTs)
 	if a == nil {
-		b.TraceLocal("propose failed to propose anything")
+		b.Tracef(TraceTag, "propose failed to propose anything")
 		return nil
 	}
 	if !a.Completed() {
 		endorsing := a.Endorsing()[0]
-		b.TraceLocal("proposal [extend=%s, endorsing=%s] not complete", a.Extending().IDShortString, endorsing.IDShortString)
+		b.Tracef(TraceTag, "proposal [extend=%s, endorsing=%s] not complete", a.Extending().IDShortString, endorsing.IDShortString)
 		return nil
 	}
 	b.AttachTagAlongInputs(a)

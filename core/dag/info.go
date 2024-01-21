@@ -9,6 +9,7 @@ import (
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
 	"github.com/lunfardo314/proxima/util/set"
+	"golang.org/x/exp/maps"
 )
 
 type ()
@@ -20,24 +21,36 @@ func (d *DAG) NumVertices() int {
 	return len(d.vertices)
 }
 
-func (d *DAG) Info() string {
-	return d.InfoLines().String()
+func (d *DAG) Info(verbose ...bool) string {
+	return d.InfoLines(verbose...).String()
 }
 
-func (d *DAG) InfoLines() *lines.Lines {
+func (d *DAG) InfoLines(verbose ...bool) *lines.Lines {
 	d.mutex.RLock()
 	defer d.mutex.RUnlock()
 
 	ln := lines.New()
+
 	slots := d._timeSlotsOrdered()
 
 	ln.Add("DAG:: vertices: %d, branches: %d, slots: %d",
 		len(d.vertices), len(d.branches), len(slots))
+	if len(verbose) > 0 && verbose[0] {
+		ln.Add("---- all vertices (verbose)")
+		all := maps.Values(d.vertices)
+		sort.Slice(all, func(i, j int) bool {
+			return all[i].Less(all[j])
+		})
+		for _, vid := range all {
+			ln.Add("    " + vid.ShortString())
+		}
+	}
 
 	branches := util.SortKeys(d.branches, func(vid1, vid2 *vertex.WrappedTx) bool {
 		return vid1.Slot() > vid2.Slot()
 	})
 
+	ln.Add("---- branches")
 	for _, vidBranch := range branches {
 		ln.Add("    %s : coverage %s", vidBranch.IDShortString(), vidBranch.GetLedgerCoverage().String())
 	}

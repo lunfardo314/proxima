@@ -26,7 +26,10 @@ type (
 	}
 )
 
-const chanBufferSize = 10
+const (
+	TraceTag       = "persist-txbytes"
+	chanBufferSize = 10
+)
 
 func New(env Environment) *PersistTxBytes {
 	return &PersistTxBytes{
@@ -47,6 +50,6 @@ func (q *PersistTxBytes) Consume(inp Input) {
 	if err != nil {
 		q.Environment.Log().Errorf("error while persisting transaction bytes: '%v'", err)
 	} else {
-		q.Tracef("persist_txbytes", "persisted tx bytes of %s, metadata: '%s'", txid.StringShort(), inp.Metadata.String())
+		q.Tracef(TraceTag, "persisted tx bytes of %s, metadata: '%s'", txid.StringShort(), inp.Metadata.String())
 	}
 }

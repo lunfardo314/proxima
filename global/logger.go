@@ -67,16 +67,15 @@ func (l *DefaultLogging) EnableTrace(enable bool) {
 	l.enabledTrace.Store(enable)
 }
 
-func (l *DefaultLogging) EnableTraceTags(tags string) {
-	tSplit := strings.Split(tags, ",")
+func (l *DefaultLogging) EnableTraceTags(tags ...string) {
 	l.traceTagsMutex.Lock()
-	for _, t := range tSplit {
+	for _, t := range tags {
 
 		l.traceTags.Insert(strings.TrimSpace(t))
 		l.enabledTrace.Store(true)
 	}
 	l.traceTagsMutex.Unlock()
-	for _, tag := range tSplit {
+	for _, tag := range tags {
 		l.Tracef(tag, "trace tag enabled")
 	}
 }
