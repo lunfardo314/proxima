@@ -225,12 +225,6 @@ func (td *workflowTestData) makeChainOrigins(n int) {
 	})
 }
 
-const (
-	tagAlongAmount = uint64(200)
-	sendAmount     = uint64(1000)
-	period         = 300 * time.Millisecond
-)
-
 func (td *longConflictTestData) makeSeqBeginnings(withConflictingFees bool) {
 	util.Assertf(len(td.chainOrigins) == len(td.conflictingOutputs), "td.chainOrigins)==len(td.conflictingOutputs)")
 	td.seqChain = make([][]*transaction.Transaction, len(td.chainOrigins))
@@ -560,6 +554,8 @@ type spammerParams struct {
 	batchSize     int
 	pace          int
 	maxBatches    int
+	sendAmount    uint64
+	tagAlongFee   uint64
 }
 
 func (td *workflowTestData) spam(par spammerParams, ctx context.Context) {
@@ -602,8 +598,8 @@ func makeTransfers(par spammerParams) [][]byte {
 		tData := txbuilder.NewTransferData(par.privateKey, sourceAddr, ts).
 			MustWithInputs(par.remainder).
 			WithTargetLock(par.target).
-			WithAmount(sendAmount).
-			WithTagAlong(par.tagAlongSeqID, tagAlongAmount)
+			WithAmount(par.sendAmount).
+			WithTagAlong(par.tagAlongSeqID, par.tagAlongFee)
 		ret[i], par.remainder, err = txbuilder.MakeSimpleTransferTransactionWithRemainder(tData)
 		util.AssertNoError(err)
 	}

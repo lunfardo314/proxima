@@ -481,18 +481,21 @@ func MakeSimpleTransferTransactionWithRemainder(par *TransferData, disableEndors
 		return nil, nil, err
 	}
 
+	tagAlongFee := uint64(0)
 	var tagAlongOut *ledger.Output
 	if par.TagAlong != nil {
 		tagAlongOut = ledger.NewOutput(func(o *ledger.Output) {
-			o.WithAmount(par.TagAlong.Amount).WithLock(ledger.ChainLockFromChainID(par.TagAlong.SeqID))
+			o.WithAmount(par.TagAlong.Amount).
+				WithLock(ledger.ChainLockFromChainID(par.TagAlong.SeqID))
 		})
+		tagAlongFee = par.TagAlong.Amount
 	}
 
 	var remainderOut *ledger.Output
 	var remainderIndex byte
-	if availableTokens > amount {
+	if availableTokens > amount+tagAlongFee {
 		remainderOut = ledger.NewOutput(func(o *ledger.Output) {
-			o.WithAmount(availableTokens - amount).WithLock(par.SourceAccount.AsLock())
+			o.WithAmount(availableTokens - amount - tagAlongFee).WithLock(par.SourceAccount.AsLock())
 		})
 	}
 	if remainderOut != nil {

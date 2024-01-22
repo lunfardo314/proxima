@@ -186,16 +186,18 @@ func WrapTxID(txid ledger.TransactionID) *WrappedTx {
 
 func (vid *WrappedTx) ShortString() string {
 	var mode, status, reason string
+	flagsStr := ""
 	vid.Unwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
 			mode = "vertex"
+			flagsStr = fmt.Sprintf(", %08b", v.Flags)
 			status = vid.txStatus.String()
 			if vid.reason != nil {
 				reason = fmt.Sprintf(" reason: '%v'", vid.reason)
 			}
 		},
 		VirtualTx: func(v *VirtualTransaction) {
-			mode = "vertex"
+			mode = "virtualTx"
 			status = vid.txStatus.String()
 			if vid.reason != nil {
 				reason = fmt.Sprintf(" reason: '%v'", vid.reason)
@@ -203,7 +205,7 @@ func (vid *WrappedTx) ShortString() string {
 		},
 		Deleted: vid.PanicAccessDeleted,
 	})
-	return fmt.Sprintf("%22s %10s (%s) %s", vid.IDShortString(), mode, status, reason)
+	return fmt.Sprintf("%22s %10s (%s%s) %s", vid.IDShortString(), mode, status, flagsStr, reason)
 }
 
 func (vid *WrappedTx) IDShortString() string {

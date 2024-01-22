@@ -63,13 +63,13 @@ func (d *DAG) MustGetIndexedStateReader(branchTxID *ledger.TransactionID, clearC
 	return ret
 }
 
-func (d *DAG) HeaviestStateForLatestTimeSlot() global.IndexedStateReader {
+func (d *DAG) HeaviestStateForLatestTimeSlot() multistate.SugaredStateReader {
 	slot := d.LatestBranchSlot()
 
 	d.mutex.RLock()
 	defer d.mutex.RUnlock()
 
-	return d.branches[util.Maximum(d._branchesForSlot(slot), vertex.Less)]
+	return multistate.MakeSugared(d.branches[util.Maximum(d._branchesForSlot(slot), vertex.Less)])
 }
 
 func (d *DAG) HeaviestBranchOfLatestTimeSlot() *vertex.WrappedTx {
