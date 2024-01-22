@@ -33,6 +33,8 @@ const tracePull = false
 type workflowTestData struct {
 	t                      *testing.T
 	wrk                    *workflow.Workflow
+	ctx                    context.Context
+	stopFun                context.CancelFunc
 	txStore                global.TxBytesStore
 	genesisPrivKey         ed25519.PrivateKey
 	bootstrapChainID       ledger.ChainID
@@ -54,7 +56,6 @@ type workflowTestData struct {
 	seqChain               [][]*transaction.Transaction
 	transferChain          []*transaction.Transaction
 	remainderOutput        *ledger.OutputWithID
-	stopFun                context.CancelFunc
 }
 
 type longConflictTestData struct {
@@ -63,7 +64,10 @@ type longConflictTestData struct {
 	terminalOutputs []*ledger.OutputWithID
 }
 
-const initBalance = 10_000_000
+const (
+	initBalance = 10_000_000
+	tagAlongFee = 500
+)
 
 func initWorkflowTest(t *testing.T, nChains int) *workflowTestData {
 	util.Assertf(nChains > 0, "nChains > 0")
@@ -71,7 +75,7 @@ func initWorkflowTest(t *testing.T, nChains int) *workflowTestData {
 	stateID := genesis.DefaultIdentityData(genesisPrivKey)
 	t.Logf("genesis state ID: %s", stateID.String())
 
-	distrib, privKeys, addrs := inittest.GenesisParamsWithPreDistribution(initBalance, uint64(nChains*initBalance))
+	distrib, privKeys, addrs := inittest.GenesisParamsWithPreDistribution(initBalance, uint64(nChains*initBalance+tagAlongFee))
 	ret := &workflowTestData{
 		t:              t,
 		genesisPrivKey: genesisPrivKey,
@@ -96,6 +100,7 @@ func initWorkflowTest(t *testing.T, nChains int) *workflowTestData {
 	ret.distributionBranchTx, err = transaction.FromBytes(txBytes, transaction.MainTxValidationOptions...)
 	require.NoError(t, err)
 	ret.distributionBranchTxID = *ret.distributionBranchTx.ID()
+	t.Logf("distribution txID: %s", ret.distributionBranchTxID.StringShort())
 
 	const printDistributionTx = false
 	if printDistributionTx {
@@ -106,9 +111,8 @@ func initWorkflowTest(t *testing.T, nChains int) *workflowTestData {
 	}
 
 	ret.wrk = workflow.New(stateStore, ret.txStore, peering.NewPeersDummy(), workflow.WithLogLevel(zapcore.DebugLevel))
-	var ctx context.Context
-	ctx, ret.stopFun = context.WithCancel(context.Background())
-	ret.wrk.Start(ctx)
+	ret.ctx, ret.stopFun = context.WithCancel(context.Background())
+	ret.wrk.Start(ret.ctx)
 
 	t.Logf("bootstrap chain id: %s", ret.bootstrapChainID.String())
 	t.Logf("origing branch txid: %s", ret.originBranchTxid.StringShort())
@@ -136,7 +140,8 @@ func (td *workflowTestData) makeChainOrigins(n int) {
 	txb := txbuilder.NewTransactionBuilder()
 	_, _ = txb.ConsumeOutputWithID(td.auxOutput)
 	txb.PutSignatureUnlock(0)
-	amount := td.auxOutput.Output.Amount() / uint64(n)
+
+	amount := (td.auxOutput.Output.Amount() - tagAlongFee) / uint64(n)
 	for i := 0; i < n; i++ {
 		o := ledger.NewOutput(func(o *ledger.Output) {
 			o.WithAmount(amount)
@@ -145,6 +150,12 @@ func (td *workflowTestData) makeChainOrigins(n int) {
 		})
 		_, _ = txb.ProduceOutput(o)
 	}
+	tagAlongOut := ledger.NewOutput(func(o *ledger.Output) {
+		o.WithAmount(tagAlongFee)
+		o.WithLock(ledger.ChainLockFromChainID(td.bootstrapChainID))
+	})
+	_, _ = txb.ProduceOutput(tagAlongOut)
+
 	txb.TransactionData.InputCommitment = txb.InputCommitment()
 	txb.TransactionData.Timestamp = td.auxOutput.Timestamp().AddTicks(ledger.TransactionPaceInTicks)
 	txb.TransactionData.InputCommitment = txb.InputCommitment()
@@ -155,6 +166,9 @@ func (td *workflowTestData) makeChainOrigins(n int) {
 	require.NoError(td.t, err)
 	td.chainOrigins = make([]*ledger.OutputWithChainID, n)
 	td.chainOriginsTx.ForEachProducedOutput(func(idx byte, o *ledger.Output, oid *ledger.OutputID) bool {
+		if int(idx) >= n {
+			return true
+		}
 		td.chainOrigins[idx] = &ledger.OutputWithChainID{
 			OutputWithID: ledger.OutputWithID{
 				ID:     *oid,

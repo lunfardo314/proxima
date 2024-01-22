@@ -25,12 +25,12 @@ func AttachTxID(txid ledger.TransactionID, env Environment, opts ...Option) (vid
 	if options.calledBy != "" {
 		by = " by " + options.calledBy
 	}
-	tracef(env, "AttachTxID: %s%s", txid.StringShort(), by)
+	env.Tracef(TraceTagAttach, "AttachTxID: %s%s", txid.StringShort(), by)
 	env.WithGlobalWriteLock(func() {
 		vid = env.GetVertexNoLock(&txid)
 		if vid != nil {
 			// found existing -> return it
-			tracef(env, "AttachTxID: found existing %s%s", txid.StringShort(), by)
+			env.Tracef(TraceTagAttach, "AttachTxID: found existing %s%s", txid.StringShort(), by)
 			return
 		}
 		// it is new
@@ -59,14 +59,14 @@ func AttachTxID(txid ledger.TransactionID, env Environment, opts ...Option) (vid
 			env.AddVertexNoLock(vid)
 			env.AddBranchNoLock(vid) // <<<< will be reading branch data twice. Not big problem
 			env.PostEventNewGood(vid)
-			tracef(env, "AttachTxID: branch fetched from the state: %s%s", txid.StringShort(), by)
+			env.Tracef(TraceTagAttach, "AttachTxID: branch fetched from the state: %s%s", txid.StringShort(), by)
 		} else {
 			// the corresponding state is not in the multistate DB -> put virtualTx to the utangle_old -> pull it
 			// the puller will trigger further solidification
 			vid = vertex.WrapTxID(txid)
 			env.AddVertexNoLock(vid)
 			env.Pull(txid) // always pull new branch. This will spin off sync process on the node
-			tracef(env, "AttachTxID: added new branch vertex and pulled %s%s", txid.StringShort(), by)
+			env.Tracef(TraceTagAttach, "AttachTxID: added new branch vertex and pulled %s%s", txid.StringShort(), by)
 		}
 	})
 	return
@@ -74,7 +74,7 @@ func AttachTxID(txid ledger.TransactionID, env Environment, opts ...Option) (vid
 
 // InvalidateTxID marks existing vertex as BAD or creates new BAD
 func InvalidateTxID(txid ledger.TransactionID, env Environment, reason error) *vertex.WrappedTx {
-	tracef(env, "InvalidateTxID: %s", txid.StringShort())
+	env.Tracef(TraceTagAttach, "InvalidateTxID: %s", txid.StringShort())
 
 	vid := AttachTxID(txid, env, OptionDoNotLoadBranch, OptionInvokedBy("InvalidateTxID"))
 	vid.SetTxStatusBad(reason)
@@ -95,7 +95,7 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Opt
 	for _, opt := range opts {
 		opt(options)
 	}
-	tracef(env, "AttachTransaction: %s", tx.IDShortString)
+	env.Tracef(TraceTagAttach, "AttachTransaction: %s", tx.IDShortString)
 
 	if tx.IsBranchTransaction() {
 		env.EvidenceIncomingBranch(tx.ID(), tx.SequencerTransactionData().SequencerID)
@@ -112,14 +112,14 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Opt
 		VirtualTx: func(v *vertex.VirtualTransaction) {
 			fullVertex := vertex.New(tx)
 			vid.ConvertVirtualTxToVertexNoLock(fullVertex)
-			tracef(env, "converted to vertex %s", tx.IDShortString)
+			env.Tracef(TraceTagAttach, "converted to vertex %s", tx.IDShortString)
 
 			if options.metadata != nil && options.metadata.SourceTypeNonPersistent == txmetadata.SourceTypeTxStore {
 				// prevent from persisting twice
 				fullVertex.SetFlagUp(vertex.FlagTxBytesPersisted)
 			}
 
-			tracef(env, "post new tx event %s", tx.IDShortString)
+			env.Tracef(TraceTagAttach, "post new tx event %s", tx.IDShortString)
 			env.PostEventNewTransaction(vid)
 
 			if !vid.IsSequencerMilestone() {
@@ -196,6 +196,7 @@ func EnsureBranch(txid ledger.TransactionID, env Environment, timeout ...time.Du
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
+	env.Tracef(TraceTagEnsureLatestBranches, "ensure branch %s", txid.StringShort())
 	return vid, nil
 }
 
@@ -204,6 +205,8 @@ func MustEnsureBranch(txid ledger.TransactionID, env Environment, timeout ...tim
 	util.AssertNoError(err)
 	return ret
 }
+
+const TraceTagEnsureLatestBranches = "latest"
 
 func EnsureLatestBranches(env Environment) error {
 	branchTxIDs := multistate.FetchLatestBranchTransactionIDs(env.StateStore())

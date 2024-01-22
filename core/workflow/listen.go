@@ -51,7 +51,8 @@ func (w *Workflow) PullSequencerTips(seqID ledger.ChainID, loadOwnMilestones boo
 	for _, rr := range roots {
 		rdr := multistate.MustNewSugaredReadableState(w.StateStore(), rr.Root, 0)
 		// load each branch
-		attacher.MustEnsureBranch(rdr.GetStemOutput().ID.TransactionID(), w, 0)
+		vidBranch := attacher.MustEnsureBranch(rdr.GetStemOutput().ID.TransactionID(), w, 0)
+		w.PostEventNewGood(vidBranch)
 
 		if loadOwnMilestones {
 			// load sequencer output in each of those branches
@@ -70,6 +71,13 @@ func (w *Workflow) PullSequencerTips(seqID ledger.ChainID, loadOwnMilestones boo
 	if loadOwnMilestones && !ownMilestoneLoaded {
 		return nil, fmt.Errorf("PullSequencerTips: failed to load milestone for the sequencer %s", seqID.StringShort())
 	}
-	// TODO scan utangle?
+
+	// scan all vertices and post new tx event
+	w.ForEachVertex(func(vid *vertex.WrappedTx) bool {
+		vid.Unwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
+			w.PostEventNewTransaction(vid)
+		}})
+		return true
+	})
 	return ret, nil
 }

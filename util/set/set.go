@@ -21,6 +21,14 @@ func (s Set[K]) Insert(elems ...K) Set[K] {
 	return s
 }
 
+func (s Set[K]) InsertNew(elem K) bool {
+	if _, already := s[elem]; already {
+		return false
+	}
+	s[elem] = struct{}{}
+	return true
+}
+
 func (s Set[K]) Remove(elems ...K) Set[K] {
 	for _, el := range elems {
 		delete(s, el)

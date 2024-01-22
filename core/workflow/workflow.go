@@ -47,7 +47,7 @@ type (
 
 var (
 	EventNewGoodTx = eventtype.RegisterNew[*vertex.WrappedTx]("new good seq")
-	EventNewTx     = eventtype.RegisterNew[*vertex.WrappedTx]("new tx")
+	EventNewTx     = eventtype.RegisterNew[*vertex.WrappedTx]("new tx") // event may be posted more than once for the transaction
 )
 
 func New(stateStore global.StateStore, txBytesStore global.TxBytesStore, peers *peering.Peers, opts ...ConfigOption) *Workflow {

@@ -16,6 +16,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/sequencer"
+	"github.com/lunfardo314/proxima/sequencer/factory"
 	"github.com/lunfardo314/proxima/sequencer/tippool"
 	"github.com/lunfardo314/proxima/util/testutil"
 	"github.com/stretchr/testify/require"
@@ -143,11 +144,10 @@ func Test1Sequencer(t *testing.T) {
 	})
 	t.Run("tag along transfers", func(t *testing.T) {
 		const (
-			maxSlots    = 20
-			batchSize   = 10
-			maxBatches  = 5
-			sendAmount  = 2000
-			tagAlongFee = 200
+			maxSlots   = 20
+			batchSize  = 10
+			maxBatches = 5
+			sendAmount = 2000
 		)
 		testData := initWorkflowTest(t, 1)
 		//t.Logf("%s", testData.wrk.Info())
@@ -175,7 +175,7 @@ func Test1Sequencer(t *testing.T) {
 		seq.Start()
 
 		rdr := multistate.MakeSugared(testData.wrk.HeaviestStateForLatestTimeSlot())
-		require.EqualValues(t, initBalance, rdr.BalanceOf(testData.addrAux.AccountID()))
+		require.EqualValues(t, initBalance+tagAlongFee, int(rdr.BalanceOf(testData.addrAux.AccountID())))
 
 		initialBalanceOnChain := rdr.BalanceOnChain(&testData.bootstrapChainID)
 
@@ -221,7 +221,7 @@ func Test1Sequencer(t *testing.T) {
 		require.EqualValues(t, maxBatches*batchSize*sendAmount, int(targetBalance))
 
 		balanceLeft := rdr.BalanceOf(testData.addrAux.AccountID())
-		require.EqualValues(t, initBalance-len(par.spammedTxIDs)*(sendAmount+tagAlongFee), balanceLeft)
+		require.EqualValues(t, initBalance-len(par.spammedTxIDs)*(sendAmount+tagAlongFee)+tagAlongFee, int(balanceLeft))
 
 		balanceOnChain := rdr.BalanceOnChain(&testData.bootstrapChainID)
 		require.EqualValues(t, int(initialBalanceOnChain)+len(par.spammedTxIDs)*tagAlongFee, int(balanceOnChain))
@@ -236,31 +236,57 @@ func TestNSequencers(t *testing.T) {
 			nSequencers = 1 // in addition to bootstrap
 		)
 		testData := initWorkflowTest(t, nSequencers)
+		testData.wrk.EnableTraceTags(tippool.TraceTag)
+		testData.wrk.EnableTraceTags(factory.TraceTag)
+		testData.wrk.EnableTraceTags(attacher.TraceTagEnsureLatestBranches)
+
 		err := attacher.EnsureLatestBranches(testData.wrk)
 		require.NoError(t, err)
 
-		testData.makeChainOrigins(nSequencers)
-		attacher.AttachTransaction(testData.chainOriginsTx, testData.wrk)
+		//testData.wrk.EnableTraceTags(events.TraceTag)
+		//testData.wrk.EnableTraceTags(workflow.TraceTagDelay)
+		//testData.wrk.EnableTraceTags(attacher.TraceTagAttach)
 
+		testData.makeChainOrigins(nSequencers)
+		chainOriginsTxID, err := testData.wrk.TxBytesIn(testData.chainOriginsTx.Bytes())
+		require.NoError(t, err)
 		require.EqualValues(t, nSequencers, len(testData.chainOrigins))
 
-		//testData.wrk.EnableTraceTags("seq,factory,tippool,txinput, proposer, incAttach")
-		//testData.wrk.EnableTraceTags("persist_txbytes")
-
-		ctx, _ := context.WithCancel(context.Background())
-		seq, err := sequencer.New(testData.wrk, testData.bootstrapChainID, testData.genesisPrivKey,
-			ctx, sequencer.WithMaxBranches(maxSlots))
+		bootstrapSeq, err := sequencer.New(testData.wrk, testData.bootstrapChainID, testData.genesisPrivKey, testData.ctx,
+			sequencer.WithName("boot"),
+			sequencer.WithMaxFeeInputs(30),
+			sequencer.WithPace(5),
+			sequencer.WithMaxBranches(maxSlots),
+		)
 		require.NoError(t, err)
+
+		bootstrapSeq.Start()
+
+		err = testData.wrk.WaitUntilTransactionInHeaviestState(*chainOriginsTxID, 5*time.Second)
+		require.NoError(t, err)
+		t.Logf("chain origins transaction is finalized")
+
+		sequencers := make([]*sequencer.Sequencer, nSequencers)
+		for seqNr := 0; seqNr < nSequencers; seqNr++ {
+			sequencers[seqNr], err = sequencer.New(testData.wrk, testData.chainOrigins[seqNr].ChainID, testData.privKeyAux, testData.ctx,
+				sequencer.WithName(fmt.Sprintf("seq%d", seqNr)),
+				sequencer.WithMaxFeeInputs(30),
+				sequencer.WithPace(5),
+				sequencer.WithMaxBranches(maxSlots),
+			)
+			require.NoError(t, err)
+		}
+
 		var countBr, countSeq atomic.Int32
-		seq.OnMilestoneSubmitted(func(_ *sequencer.Sequencer, ms *vertex.WrappedTx) {
+		bootstrapSeq.OnMilestoneSubmitted(func(_ *sequencer.Sequencer, ms *vertex.WrappedTx) {
 			if ms.IsBranchTransaction() {
 				countBr.Inc()
 			} else {
 				countSeq.Inc()
 			}
 		})
-		seq.Start()
-		seq.WaitStop()
+		bootstrapSeq.Start()
+		bootstrapSeq.WaitStop()
 		testData.stopAndWait()
 		t.Logf("%s", testData.wrk.Info(true))
 

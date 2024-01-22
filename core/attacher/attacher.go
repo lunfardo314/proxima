@@ -534,14 +534,14 @@ func (a *attacher) ledgerCoverage(currentTS ledger.LogicalTime) multistate.Ledge
 }
 
 // not thread safe
-var trace = false
-
-func (a *attacher) trace1Ahead() {
-	a.forceTrace1Ahead = true
-}
-
-func tracef(env Environment, format string, lazyArgs ...any) {
-	if trace {
-		env.Tracef("attacher", format, util.EvalLazyArgs(lazyArgs...)...)
-	}
-}
+//var trace = false
+//
+//func (a *attacher) trace1Ahead() {
+//	a.forceTrace1Ahead = true
+//}
+//
+//func tracef(env Environment, format string, lazyArgs ...any) {
+//	if trace {
+//		env.Tracef("attacher", format, util.EvalLazyArgs(lazyArgs...)...)
+//	}
+//}

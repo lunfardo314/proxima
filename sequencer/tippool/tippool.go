@@ -79,9 +79,12 @@ func New(env Environment, namePrefix string, opts ...Option) (*SequencerTipPool,
 		ret.mutex.Lock()
 		defer ret.mutex.Unlock()
 
-		ret.outputs.Insert(wOut)
+		if !ret.outputs.InsertNew(wOut) {
+			env.Tracef(TraceTag, "repeating output %s", wOut.IDShortString)
+			return
+		}
 		ret.outputCount++
-		env.Tracef("tippool", "output stored in tippool: %s (total: %d)", wOut.IDShortString, len(ret.outputs))
+		env.Tracef(TraceTag, "output stored in tippool: %s (total: %d)", wOut.IDShortString, len(ret.outputs))
 	})
 
 	// start listening to sequencers, including the current sequencer
@@ -109,6 +112,7 @@ func New(env Environment, namePrefix string, opts ...Option) (*SequencerTipPool,
 	if err != nil {
 		return nil, err
 	}
+	env.Tracef(TraceTag, "PullSequencerTips: loaded %d outputs from state", len(ret.outputs))
 	return ret, nil
 }
 

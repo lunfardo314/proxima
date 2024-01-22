@@ -34,6 +34,8 @@ const (
 )
 const chanBufferSize = 10
 
+const TraceTag = "events"
+
 func New(env Environment) *Events {
 	return &Events{
 		Environment:   env,
@@ -59,9 +61,9 @@ func (c *Events) Consume(inp Input) {
 			handlers = append(handlers, inp.arg.(func(any)))
 		}
 		c.eventHandlers[inp.eventCode] = handlers
-		c.Tracef("events", "added event handler for event code '%s'", inp.eventCode.String())
+		c.Tracef(TraceTag, "added event handler for event code '%s'", inp.eventCode.String())
 	case cmdCodePostEvent:
-		c.Tracef("events", "posted event '%s'", inp.eventCode.String())
+		c.Tracef(TraceTag, "posted event '%s'", inp.eventCode.String())
 		for _, fun := range c.eventHandlers[inp.eventCode] {
 			fun(inp.arg)
 		}

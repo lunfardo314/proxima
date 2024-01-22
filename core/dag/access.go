@@ -3,6 +3,7 @@ package dag
 import (
 	"fmt"
 	"sort"
+	"time"
 
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/global"
@@ -81,6 +82,23 @@ func (d *DAG) HeaviestBranchOfLatestTimeSlot() *vertex.WrappedTx {
 	return util.Maximum(d._branchesForSlot(slot), vertex.Less)
 }
 
+// WaitUntilTransactionInHeaviestState for testing mostly
+func (d *DAG) WaitUntilTransactionInHeaviestState(txid ledger.TransactionID, timeout ...time.Duration) error {
+	deadline := time.Now().Add(10 * time.Minute)
+	if len(timeout) > 0 {
+		deadline = time.Now().Add(timeout[0])
+	}
+	for {
+		if d.HeaviestStateForLatestTimeSlot().KnowsCommittedTransaction(&txid) {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("WaitUntilTransactionInHeaviestState: timeout")
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+}
+
 func (d *DAG) GetVertex(txid *ledger.TransactionID) *vertex.WrappedTx {
 	d.mutex.RLock()
 	defer d.mutex.RUnlock()
@@ -147,7 +165,7 @@ func (d *DAG) HasOutputInAllBranches(e ledger.Slot, oid *ledger.OutputID) bool {
 	return true
 }
 
-// ForEachVertex mostly for testing
+// ForEachVertex Traversing all vertices. Read-locked
 func (d *DAG) ForEachVertex(fun func(vid *vertex.WrappedTx) bool) {
 	d.mutex.RLock()
 	defer d.mutex.RUnlock()
