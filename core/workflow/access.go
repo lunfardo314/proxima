@@ -9,10 +9,10 @@ import (
 	"github.com/lunfardo314/proxima/core/queues/gossip"
 	"github.com/lunfardo314/proxima/core/queues/persist_txbytes"
 	"github.com/lunfardo314/proxima/core/queues/pull_client"
-	"github.com/lunfardo314/proxima/core/queues/txinput"
 	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/ledger"
+	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/util"
 )
 
@@ -43,20 +43,16 @@ func (w *Workflow) DropTxID(txid *ledger.TransactionID, callback func(vid *verte
 	}
 }
 
-func (w *Workflow) GossipTransaction(inp *txinput.Input) {
-	util.Assertf(!inp.TxMetadata.IsResponseToPull, "!inp.TxMetadata.IsResponseToPull")
-	var receivedFrom *peer.ID
-	if inp.TxMetadata.SourceTypeNonPersistent == txmetadata.SourceTypePeer {
-		receivedFrom = &inp.ReceivedFromPeer
+func (w *Workflow) GossipTransaction(tx *transaction.Transaction, metadata *txmetadata.TransactionMetadata, receivedFromPeer *peer.ID) {
+	inp := &gossip.Input{
+		Tx:           tx,
+		ReceivedFrom: receivedFromPeer,
 	}
-	metadata := inp.TxMetadata
-	metadata.SourceTypeNonPersistent = txmetadata.SourceTypeForward
-
-	w.gossip.Push(&gossip.Input{
-		Tx:           inp.Tx,
-		ReceivedFrom: receivedFrom,
-		Metadata:     metadata,
-	})
+	if metadata != nil {
+		util.Assertf(!metadata.IsResponseToPull, "!metadata.IsResponseToPull")
+		inp.Metadata = *metadata
+	}
+	w.gossip.Push(inp)
 }
 
 func (w *Workflow) PokeMe(me, with *vertex.WrappedTx) {
@@ -69,18 +65,6 @@ func (w *Workflow) PokeAllWith(wanted *vertex.WrappedTx) {
 
 func (w *Workflow) QueryTransactionsFromRandomPeer(lst ...ledger.TransactionID) bool {
 	return w.peers.PullTransactionsFromRandomPeer(lst...)
-}
-
-func (w *Workflow) AttachTransaction(inp *txinput.Input, opts ...attacher.Option) {
-	attacher.AttachTransaction(inp.Tx, w, opts...)
-}
-
-func (w *Workflow) TxBytesIn(txBytes []byte, opts ...txinput.TransactionInOption) (*ledger.TransactionID, error) {
-	return w.txInput.TxBytesIn(txBytes, opts...)
-}
-
-func (w *Workflow) SequencerMilestoneAttachWait(txBytes []byte, timeout time.Duration) (*vertex.WrappedTx, error) {
-	return w.txInput.SequencerMilestoneNewAttachWait(txBytes, timeout)
 }
 
 func (w *Workflow) SendTxBytesWithMetadataToPeer(id peer.ID, txBytes []byte, metadata *txmetadata.TransactionMetadata) bool {
@@ -108,4 +92,8 @@ func (w *Workflow) AsyncPersistTxBytesWithMetadata(txBytes []byte, metadata *txm
 		TxBytes:  txBytes,
 		Metadata: metadata,
 	})
+}
+
+func (w *Workflow) TxBytesWithMetadataIn(txBytes []byte, metadata *txmetadata.TransactionMetadata) (*ledger.TransactionID, error) {
+	return w.TxBytesIn(txBytes, WithMetadata(metadata))
 }

@@ -49,6 +49,8 @@ const (
 	ttlWanted  = 1 * time.Minute
 )
 
+const TraceTag = "poker"
+
 func New(env Environment) *Poker {
 	return &Poker{
 		Queue:       queue.NewQueueWithBufferSize[Input]("poke", chanBufferSize, env.Log().Level(), nil),
@@ -97,10 +99,10 @@ func (c *Poker) addCmd(wanted, whoIsWaiting *vertex.WrappedTx) {
 
 func (c *Poker) pokeAllCmd(wanted *vertex.WrappedTx) {
 	lst := c.m[wanted]
-	c.Tracef("poker", "pokeAllCmd with %s (%d waiting)", wanted.IDShortString(), len(lst.waiting))
+	c.Tracef(TraceTag, "pokeAllCmd with %s (%d waiting)", wanted.IDShortString(), len(lst.waiting))
 	if len(lst.waiting) > 0 {
 		for _, vid := range lst.waiting {
-			c.Tracef("poker", "poke %s with %s", vid.IDShortString(), wanted.IDShortString())
+			c.Tracef(TraceTag, "poke %s with %s", vid.IDShortString(), wanted.IDShortString())
 			vid.PokeWith(wanted)
 		}
 		delete(c.m, wanted)
@@ -119,7 +121,7 @@ func (c *Poker) periodicCleanup() {
 		delete(c.m, vid)
 	}
 	if len(toDelete) > 0 {
-		c.Tracef("poker", "purged %d entries", len(toDelete))
+		c.Tracef(TraceTag, "purged %d entries", len(toDelete))
 	}
 }
 

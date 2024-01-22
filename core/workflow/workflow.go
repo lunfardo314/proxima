@@ -11,7 +11,6 @@ import (
 	"github.com/lunfardo314/proxima/core/queues/poker"
 	"github.com/lunfardo314/proxima/core/queues/pull_client"
 	"github.com/lunfardo314/proxima/core/queues/pull_server"
-	"github.com/lunfardo314/proxima/core/queues/txinput"
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/peering"
@@ -28,7 +27,6 @@ type (
 		global.TxBytesStore
 		peers *peering.Peers
 		// queues
-		txInput        *txinput.TxInput
 		pullClient     *pull_client.PullClient
 		pullServer     *pull_server.PullServer
 		gossip         *gossip.Gossip
@@ -70,7 +68,6 @@ func New(stateStore global.StateStore, txBytesStore global.TxBytesStore, peers *
 	}
 	ret.poker = poker.New(ret)
 	ret.events = events.New(ret)
-	ret.txInput = txinput.New(ret)
 	ret.pullClient = pull_client.New(ret)
 	ret.pullServer = pull_server.New(ret)
 	ret.gossip = gossip.New(ret)
@@ -81,10 +78,9 @@ func New(stateStore global.StateStore, txBytesStore global.TxBytesStore, peers *
 
 func (w *Workflow) Start(ctx context.Context) {
 	w.Log().Infof("starting queues...")
-	w.waitStop.Add(7)
+	w.waitStop.Add(6)
 	w.poker.Start(ctx, &w.waitStop)
 	w.events.Start(ctx, &w.waitStop)
-	w.txInput.Start(ctx, &w.waitStop)
 	w.pullClient.Start(ctx, &w.waitStop)
 	w.pullServer.Start(ctx, &w.waitStop)
 	w.gossip.Start(ctx, &w.waitStop)

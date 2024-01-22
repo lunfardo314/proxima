@@ -101,6 +101,11 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Opt
 		env.EvidenceIncomingBranch(tx.ID(), tx.SequencerTransactionData().SequencerID)
 	}
 	vid = AttachTxID(*tx.ID(), env, OptionDoNotLoadBranch, OptionInvokedBy("addTx"))
+	if vid.IsBadOrDeleted() {
+		// if txid was invalidated once, it will always return the same bad transaction
+		return vid
+	}
+
 	vid.Unwrap(vertex.UnwrapOptions{
 		// full vertex will be ignored
 		// virtual tx will be converted into full vertex and milestoneAttacher started, if necessary

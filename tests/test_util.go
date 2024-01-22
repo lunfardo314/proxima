@@ -9,9 +9,7 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/core/attacher"
-	"github.com/lunfardo314/proxima/core/queues/txinput"
 	"github.com/lunfardo314/proxima/core/txmetadata"
-	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/core/workflow"
 	"github.com/lunfardo314/proxima/genesis"
 	"github.com/lunfardo314/proxima/global"
@@ -579,10 +577,7 @@ func (td *workflowTestData) spam(par spammerParams, ctx context.Context) {
 			var wg sync.WaitGroup
 			wg.Add(1)
 			txid, err := td.wrk.TxBytesIn(txBytes,
-				txinput.WithSourceType(txmetadata.SourceTypeAPI),
-				txinput.WithCallback(func(vid *vertex.WrappedTx, err error) {
-					ss
-				}),
+				workflow.WithSourceType(txmetadata.SourceTypeAPI),
 			)
 			require.NoError(td.t, err)
 			td.t.Logf("spam -> %s", txid.StringShort())

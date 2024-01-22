@@ -5,7 +5,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lunfardo314/proxima/core/queues/txinput"
 	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
@@ -21,7 +20,7 @@ type (
 		global.Logging
 		global.TxBytesGet
 		QueryTransactionsFromRandomPeer(lst ...ledger.TransactionID) bool
-		TxBytesIn(txBytes []byte, opts ...txinput.TransactionInOption) (*ledger.TransactionID, error)
+		TxBytesWithMetadataIn(txBytes []byte, metadata *txmetadata.TransactionMetadata) (*ledger.TransactionID, error)
 	}
 
 	Input struct {
@@ -104,8 +103,12 @@ func (q *PullClient) transactionInMany(txBytesList [][]byte) {
 			metadata = &txmetadata.TransactionMetadata{}
 		}
 		metadata.SourceTypeNonPersistent = txmetadata.SourceTypeTxStore
-		if _, err = q.TxBytesIn(txBytes, txinput.WithMetadata(metadata)); err != nil {
-			q.Environment.Log().Errorf("pull: tx parse error while pull: '%v'", err)
+		if txid, err := q.TxBytesWithMetadataIn(txBytes, metadata); err != nil {
+			txidStr := "<nil>"
+			if txid != nil {
+				txidStr = txid.StringShort()
+			}
+			q.Environment.Log().Errorf("pull: tx parse error while pull, txid: %s: '%v'", txidStr, err)
 		}
 	}
 }
