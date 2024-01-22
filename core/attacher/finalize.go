@@ -20,7 +20,7 @@ import (
 const enforceConsistencyWithTxMetadata = true
 
 func (a *milestoneAttacher) finalize() {
-	a.tracef("finalize")
+	a.Tracef(TraceTagAttachMilestone, "finalize")
 
 	// check resulting ledger coverage is equal to the coverage in metadata, if provided
 	if a.metadata != nil && a.metadata.LedgerCoverageDelta != nil {
@@ -41,9 +41,9 @@ func (a *milestoneAttacher) finalize() {
 			a.AddBranchNoLock(a.vid)
 		})
 		a.EvidenceBookedBranch(&a.vid.ID, a.vid.MustSequencerID())
-		a.tracef("finalized branch")
+		a.Tracef(TraceTagAttachMilestone, "finalized branch")
 	} else {
-		a.tracef("finalized sequencer milestone")
+		a.Tracef(TraceTagAttachMilestone, "finalized sequencer milestone")
 	}
 
 	a.finals.baseline = a.baselineBranch

@@ -18,34 +18,36 @@ const (
 	maxToleratedParasiticChainSlots = 1
 )
 
+const TraceTagAttachMilestone = "milestone"
+
 func runMilestoneAttacher(vid *vertex.WrappedTx, metadata *txmetadata.TransactionMetadata, env Environment, ctx context.Context) (vertex.Status, *attachFinals, error) {
 	a := newMilestoneAttacher(vid, env, metadata, ctx)
 	defer func() {
 		go a.close()
 	}()
 
-	a.tracef(">>>>>>>>>>>>> START")
-	defer a.tracef("<<<<<<<<<<<<< EXIT")
+	a.Tracef(TraceTagAttachMilestone, ">>>>>>>>>>>>> START")
+	defer a.Tracef(TraceTagAttachMilestone, "<<<<<<<<<<<<< EXIT")
 
 	// first solidify baseline state
 	status := a.solidifyBaselineState()
 	if status == vertex.Bad {
-		a.tracef("baseline solidification failed. Reason: %v", a.vid.GetReason())
+		a.Tracef(TraceTagAttachMilestone, "baseline solidification failed. Reason: %v", a.vid.GetReason)
 		return vertex.Bad, nil, a.reason
 	}
 
 	util.Assertf(a.baselineBranch != nil, "a.baselineBranch != nil")
 
 	// then continue with the rest
-	a.tracef("baseline is OK <- %s", a.baselineBranch.IDShortString())
+	a.Tracef(TraceTagAttachMilestone, "baseline is OK <- %s", a.baselineBranch.IDShortString)
 
 	status = a.solidifyPastCone()
 	if status != vertex.Good {
-		a.tracef("past cone solidification failed. Reason: %v", a.reason)
+		a.Tracef(TraceTagAttachMilestone, "past cone solidification failed. Reason: %v", a.reason)
 		return vertex.Bad, nil, a.reason
 	}
 
-	a.tracef("past cone OK")
+	a.Tracef(TraceTagAttachMilestone, "past cone OK")
 
 	util.AssertNoError(a.checkPastConeVerticesConsistent())
 
@@ -110,11 +112,10 @@ func (a *milestoneAttacher) lazyRepeat(fun func() vertex.Status) vertex.Status {
 		case withVID := <-a.pokeChan:
 			if withVID != nil {
 				//a.trace1Ahead()
-				a.tracef("poked with %s", withVID.IDShortString)
+				a.Tracef(TraceTagAttachMilestone, "poked with %s", withVID.IDShortString)
 			}
 		case <-time.After(periodicCheckEach):
-			//a.trace1Ahead()
-			a.tracef("periodic check")
+			a.Tracef(TraceTagAttachMilestone, "periodic check")
 		}
 	}
 }
@@ -223,7 +224,6 @@ func (a *milestoneAttacher) _doPoke(msg *vertex.WrappedTx) {
 }
 
 func (a *milestoneAttacher) pokeMe(with *vertex.WrappedTx) {
-	//a.trace1Ahead()
-	a.tracef("pokeMe with %s", with.IDShortString())
+	a.Tracef(TraceTagAttachMilestone, "pokeMe with %s", with.IDShortString())
 	a.PokeMe(a.vid, with)
 }
