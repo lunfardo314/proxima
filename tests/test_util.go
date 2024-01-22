@@ -119,6 +119,54 @@ func initWorkflowTest(t *testing.T, nChains int) *workflowTestData {
 	return ret
 }
 
+// makes chain origins transaction from aux output
+func (td *workflowTestData) makeChainOrigins(n int) {
+	if n == 0 {
+		return
+	}
+	rdr := td.wrk.HeaviestStateForLatestTimeSlot()
+	oDatas, err := rdr.GetUTXOsLockedInAccount(td.addrAux.AccountID())
+	require.NoError(td.t, err)
+	require.EqualValues(td.t, 1, len(oDatas))
+
+	td.auxOutput, err = oDatas[0].Parse()
+	require.NoError(td.t, err)
+	td.t.Logf("auxiliary output ID: %s", td.auxOutput.IDShort())
+
+	txb := txbuilder.NewTransactionBuilder()
+	_, _ = txb.ConsumeOutputWithID(td.auxOutput)
+	txb.PutSignatureUnlock(0)
+	amount := td.auxOutput.Output.Amount() / uint64(n)
+	for i := 0; i < n; i++ {
+		o := ledger.NewOutput(func(o *ledger.Output) {
+			o.WithAmount(amount)
+			o.WithLock(td.addrAux)
+			_, _ = o.PushConstraint(ledger.NewChainOrigin().Bytes())
+		})
+		_, _ = txb.ProduceOutput(o)
+	}
+	txb.TransactionData.InputCommitment = txb.InputCommitment()
+	txb.TransactionData.Timestamp = td.auxOutput.Timestamp().AddTicks(ledger.TransactionPaceInTicks)
+	txb.TransactionData.InputCommitment = txb.InputCommitment()
+	txb.SignED25519(td.privKeyAux)
+
+	txBytes := txb.TransactionData.Bytes()
+	td.chainOriginsTx, err = transaction.FromBytes(txBytes, transaction.MainTxValidationOptions...)
+	require.NoError(td.t, err)
+	td.chainOrigins = make([]*ledger.OutputWithChainID, n)
+	td.chainOriginsTx.ForEachProducedOutput(func(idx byte, o *ledger.Output, oid *ledger.OutputID) bool {
+		td.chainOrigins[idx] = &ledger.OutputWithChainID{
+			OutputWithID: ledger.OutputWithID{
+				ID:     *oid,
+				Output: o,
+			},
+			ChainID: blake2b.Sum256(oid[:]),
+		}
+		td.t.Logf("chain origin %s : %s", oid.StringShort(), td.chainOrigins[idx].ChainID.String())
+		return true
+	})
+}
+
 func initWorkflowTestWithConflicts(t *testing.T, nConflicts int, nChains int, targetLockChain bool) *workflowTestData {
 	ret := initWorkflowTest(t, nChains)
 
@@ -183,46 +231,6 @@ func initWorkflowTestWithConflicts(t *testing.T, nConflicts int, nChains int, ta
 func (td *workflowTestData) stopAndWait() {
 	td.stopFun()
 	td.wrk.WaitStop()
-}
-
-// makes chain origins transaction from aux output
-func (td *workflowTestData) makeChainOrigins(n int) {
-	if n == 0 {
-		return
-	}
-	txb := txbuilder.NewTransactionBuilder()
-	_, _ = txb.ConsumeOutputWithID(td.auxOutput)
-	txb.PutSignatureUnlock(0)
-	amount := td.auxOutput.Output.Amount() / uint64(n)
-	for i := 0; i < n; i++ {
-		o := ledger.NewOutput(func(o *ledger.Output) {
-			o.WithAmount(amount)
-			o.WithLock(td.addrAux)
-			_, _ = o.PushConstraint(ledger.NewChainOrigin().Bytes())
-		})
-		_, _ = txb.ProduceOutput(o)
-	}
-	txb.TransactionData.InputCommitment = txb.InputCommitment()
-	txb.TransactionData.Timestamp = td.auxOutput.Timestamp().AddTicks(ledger.TransactionPaceInTicks)
-	txb.TransactionData.InputCommitment = txb.InputCommitment()
-	txb.SignED25519(td.privKeyAux)
-
-	var err error
-	txBytes := txb.TransactionData.Bytes()
-	td.chainOriginsTx, err = transaction.FromBytes(txBytes, transaction.MainTxValidationOptions...)
-	require.NoError(td.t, err)
-	td.chainOrigins = make([]*ledger.OutputWithChainID, n)
-	td.chainOriginsTx.ForEachProducedOutput(func(idx byte, o *ledger.Output, oid *ledger.OutputID) bool {
-		td.chainOrigins[idx] = &ledger.OutputWithChainID{
-			OutputWithID: ledger.OutputWithID{
-				ID:     *oid,
-				Output: o,
-			},
-			ChainID: blake2b.Sum256(oid[:]),
-		}
-		td.t.Logf("chain origin %s : %s", oid.StringShort(), td.chainOrigins[idx].ChainID.String())
-		return true
-	})
 }
 
 func (td *longConflictTestData) makeSeqBeginnings(withConflictingFees bool) {

@@ -119,7 +119,7 @@ func Test1Sequencer(t *testing.T) {
 
 		//attacher.SetTraceOn()
 		//testData.wrk.EnableTraceTags("seq,factory,tippool,txinput, proposer, incAttach")
-		testData.wrk.EnableTraceTags("persist_txbytes")
+		//testData.wrk.EnableTraceTags("persist_txbytes")
 		ctx, _ := context.WithCancel(context.Background())
 		seq, err := sequencer.New(testData.wrk, testData.bootstrapChainID, testData.genesisPrivKey,
 			ctx, sequencer.WithMaxBranches(maxSlots))
@@ -226,4 +226,49 @@ func Test1Sequencer(t *testing.T) {
 		balanceOnChain := rdr.BalanceOnChain(&testData.bootstrapChainID)
 		require.EqualValues(t, int(initialBalanceOnChain)+len(par.spammedTxIDs)*tagAlongFee, int(balanceOnChain))
 	})
+}
+
+func TestNSequencers(t *testing.T) {
+	ledger.SetTimeTickDuration(10 * time.Millisecond)
+	t.Run("idle", func(t *testing.T) {
+		const (
+			maxSlots    = 3
+			nSequencers = 1 // in addition to bootstrap
+		)
+		testData := initWorkflowTest(t, nSequencers)
+		err := attacher.EnsureLatestBranches(testData.wrk)
+		require.NoError(t, err)
+
+		testData.makeChainOrigins(nSequencers)
+		attacher.AttachTransaction(testData.chainOriginsTx, testData.wrk)
+
+		require.EqualValues(t, nSequencers, len(testData.chainOrigins))
+
+		//testData.wrk.EnableTraceTags("seq,factory,tippool,txinput, proposer, incAttach")
+		//testData.wrk.EnableTraceTags("persist_txbytes")
+
+		ctx, _ := context.WithCancel(context.Background())
+		seq, err := sequencer.New(testData.wrk, testData.bootstrapChainID, testData.genesisPrivKey,
+			ctx, sequencer.WithMaxBranches(maxSlots))
+		require.NoError(t, err)
+		var countBr, countSeq atomic.Int32
+		seq.OnMilestoneSubmitted(func(_ *sequencer.Sequencer, ms *vertex.WrappedTx) {
+			if ms.IsBranchTransaction() {
+				countBr.Inc()
+			} else {
+				countSeq.Inc()
+			}
+		})
+		seq.Start()
+		seq.WaitStop()
+		testData.stopAndWait()
+		t.Logf("%s", testData.wrk.Info(true))
+
+		require.EqualValues(t, maxSlots, int(countBr.Load()))
+		require.EqualValues(t, maxSlots, int(countSeq.Load()))
+		t.Logf("%s", testData.wrk.Info())
+		//br := testData.wrk.HeaviestBranchOfLatestTimeSlot()
+		//dag.SaveGraphPastCone(br, "latest_branch")
+	})
+
 }
