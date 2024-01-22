@@ -37,6 +37,8 @@ type (
 		TotalSupply uint64
 		//
 		Inflation uint64
+		//
+		ReturnInputLoader bool
 	}
 
 	// MilestoneData data which is on sequencer as 'or(..)' constraint. It is not enforced by the ledger, yet maintained
@@ -49,7 +51,18 @@ type (
 	}
 )
 
+//func(i byte) (*ledger.Output, error)
+
 func MakeSequencerTransaction(par MakeSequencerTransactionParams) ([]byte, error) {
+	ret, _, err := MakeSequencerTransactionWithInputLoader(par)
+	return ret, err
+}
+
+func MakeSequencerTransactionWithInputLoader(par MakeSequencerTransactionParams) ([]byte, func(i byte) (*ledger.Output, error), error) {
+	var consumedOutputs []*ledger.Output
+	if par.ReturnInputLoader {
+		consumedOutputs = make([]*ledger.Output, 0)
+	}
 	errP := util.MakeErrFuncForPrefix("MakeSequencerTransaction")
 
 	nIn := len(par.AdditionalInputs) + 1
@@ -58,16 +71,16 @@ func MakeSequencerTransaction(par MakeSequencerTransactionParams) ([]byte, error
 	}
 	switch {
 	case nIn > 256:
-		return nil, errP("too many inputs")
+		return nil, nil, errP("too many inputs")
 	case par.StemInput != nil && par.Timestamp.Tick() != 0:
-		return nil, errP("wrong timestamp for branch transaction: %s", par.Timestamp.String())
+		return nil, nil, errP("wrong timestamp for branch transaction: %s", par.Timestamp.String())
 	case par.Timestamp.Slot() > par.ChainInput.ID.TimeSlot() && par.Timestamp.Tick() != 0 && len(par.Endorsements) == 0:
-		return nil, errP("cross-slot sequencer tx must endorse another sequencer tx: chain input ts: %s, target: %s",
+		return nil, nil, errP("cross-slot sequencer tx must endorse another sequencer tx: chain input ts: %s, target: %s",
 			par.ChainInput.ID.Timestamp(), par.Timestamp)
 	case par.Inflation > 0 && par.StemInput == nil:
-		return nil, errP("inflation must be 0 on non-branch sequencer transaction")
+		return nil, nil, errP("inflation must be 0 on non-branch sequencer transaction")
 	case !par.ChainInput.ID.SequencerFlagON() && par.StemInput == nil && len(par.Endorsements) == 0:
-		return nil, errP("chain predecessor is not a sequencer transaction -> endorsement of sequencer transaction is mandatory (unless making a branch)")
+		return nil, nil, errP("chain predecessor is not a sequencer transaction -> endorsement of sequencer transaction is mandatory (unless making a branch)")
 	}
 
 	txb := NewTransactionBuilder()
@@ -88,11 +101,14 @@ func MakeSequencerTransaction(par MakeSequencerTransactionParams) ([]byte, error
 	// make chain input/output
 	chainConstraint, chainConstraintIdx := par.ChainInput.Output.ChainConstraint()
 	if chainConstraintIdx == 0xff {
-		return nil, errP("not a chain output: %s", par.ChainInput.ID.StringShort())
+		return nil, nil, errP("not a chain output: %s", par.ChainInput.ID.StringShort())
 	}
 	chainPredIdx, err := txb.ConsumeOutput(par.ChainInput.Output, par.ChainInput.ID)
 	if err != nil {
-		return nil, errP(err)
+		return nil, nil, errP(err)
+	}
+	if par.ReturnInputLoader {
+		consumedOutputs = append(consumedOutputs, par.ChainInput.Output)
 	}
 	txb.PutSignatureUnlock(chainPredIdx)
 
@@ -129,7 +145,7 @@ func MakeSequencerTransaction(par MakeSequencerTransactionParams) ([]byte, error
 
 	chainOutIndex, err := txb.ProduceOutput(chainOut)
 	if err != nil {
-		return nil, errP(err)
+		return nil, nil, errP(err)
 	}
 	txb.PutUnlockParams(chainPredIdx, chainConstraintIdx, ledger.NewChainUnlockParams(chainOutIndex, chainConstraintIdx, 0))
 
@@ -138,12 +154,15 @@ func MakeSequencerTransaction(par MakeSequencerTransactionParams) ([]byte, error
 	if par.StemInput != nil {
 		_, err = txb.ConsumeOutput(par.StemInput.Output, par.StemInput.ID)
 		if err != nil {
-			return nil, errP(err)
+			return nil, nil, errP(err)
+		}
+		if par.ReturnInputLoader {
+			consumedOutputs = append(consumedOutputs, par.StemInput.Output)
 		}
 
 		lck, ok := par.StemInput.Output.StemLock()
 		if !ok {
-			return nil, errP("can't find stem lock")
+			return nil, nil, errP("can't find stem lock")
 		}
 		stemOut := ledger.NewOutput(func(o *ledger.Output) {
 			o.WithAmount(par.StemInput.Output.Amount())
@@ -155,7 +174,7 @@ func MakeSequencerTransaction(par MakeSequencerTransactionParams) ([]byte, error
 		})
 		stemOutputIndex, err = txb.ProduceOutput(stemOut)
 		if err != nil {
-			return nil, errP(err)
+			return nil, nil, errP(err)
 		}
 	}
 
@@ -165,28 +184,31 @@ func MakeSequencerTransaction(par MakeSequencerTransactionParams) ([]byte, error
 	for _, o := range par.AdditionalInputs {
 		idx, err := txb.ConsumeOutput(o.Output, o.ID)
 		if err != nil {
-			return nil, errP(err)
+			return nil, nil, errP(err)
+		}
+		if par.ReturnInputLoader {
+			consumedOutputs = append(consumedOutputs, o.Output)
 		}
 		switch lockName := o.Output.Lock().Name(); lockName {
 		case ledger.AddressED25519Name:
 			if err = txb.PutUnlockReference(idx, ledger.ConstraintIndexLock, 0); err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 		case ledger.ChainLockName:
 			txb.PutUnlockParams(idx, ledger.ConstraintIndexLock, ledger.NewChainLockUnlockParams(0, chainConstraintIdx))
 		default:
-			return nil, errP("unsupported type of additional input: %s", lockName)
+			return nil, nil, errP("unsupported type of additional input: %s", lockName)
 		}
 		tsIn = ledger.MaxLogicalTime(tsIn, o.Timestamp())
 	}
 
 	if !ledger.ValidTimePace(tsIn, par.Timestamp) {
-		return nil, errP("timestamp inconsistent with inputs")
+		return nil, nil, errP("timestamp inconsistent with inputs")
 	}
 
 	_, err = txb.ProduceOutputs(par.AdditionalOutputs...)
 	if err != nil {
-		return nil, errP(err)
+		return nil, nil, errP(err)
 	}
 	txb.PushEndorsements(par.Endorsements...)
 	txb.TransactionData.Timestamp = par.Timestamp
@@ -195,7 +217,15 @@ func MakeSequencerTransaction(par MakeSequencerTransactionParams) ([]byte, error
 	txb.TransactionData.InputCommitment = txb.InputCommitment()
 	txb.SignED25519(par.PrivateKey)
 
-	return txb.TransactionData.Bytes(), nil
+	inputLoader := func(i byte) (*ledger.Output, error) {
+		panic("MakeSequencerTransactionWithInputLoader: par.ReturnInputLoader parameter must be set to true")
+	}
+	if par.ReturnInputLoader {
+		inputLoader = func(i byte) (*ledger.Output, error) {
+			return consumedOutputs[i], nil
+		}
+	}
+	return txb.TransactionData.Bytes(), inputLoader, nil
 }
 
 // ParseMilestoneData expected at index 4, otherwise nil

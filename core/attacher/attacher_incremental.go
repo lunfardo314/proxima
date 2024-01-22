@@ -155,9 +155,8 @@ func (a *IncrementalAttacher) MakeTransaction(seqName string, privateKey ed25519
 	}
 	tagAlongInputs := make([]*ledger.OutputWithID, len(a.tagAlongInputs))
 
-	var o ledger.OutputWithID
 	for i, wOut := range a.tagAlongInputs {
-		o, err = wOut.VID.OutputWithIDAt(wOut.Index)
+		o, err := wOut.VID.OutputWithIDAt(wOut.Index)
 		if err != nil {
 			return nil, err
 		}
@@ -167,21 +166,26 @@ func (a *IncrementalAttacher) MakeTransaction(seqName string, privateKey ed25519
 	for i, vid := range a.endorse {
 		endorsements[i] = &vid.ID
 	}
-	txBytes, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
-		SeqName:          seqName,
-		ChainInput:       chainIn.MustAsChainOutput(),
-		StemInput:        stemIn,
-		Timestamp:        a.targetTs,
-		AdditionalInputs: tagAlongInputs,
-		Endorsements:     endorsements,
-		PrivateKey:       privateKey,
+	txBytes, inputLoader, err := txbuilder.MakeSequencerTransactionWithInputLoader(txbuilder.MakeSequencerTransactionParams{
+		SeqName:           seqName,
+		ChainInput:        chainIn.MustAsChainOutput(),
+		StemInput:         stemIn,
+		Timestamp:         a.targetTs,
+		AdditionalInputs:  tagAlongInputs,
+		Endorsements:      endorsements,
+		PrivateKey:        privateKey,
+		ReturnInputLoader: true,
 	})
 	if err != nil {
 		return nil, err
 	}
 	tx, err := transaction.FromBytes(txBytes, transaction.MainTxValidationOptions...)
 	if err != nil {
-		return nil, err
+		if tx != nil {
+			err = fmt.Errorf("%w:\n%s", err, tx.ToStringWithInputLoaderByIndex(inputLoader))
+		}
+		panic(err) // should produce correct transaction
+		//return nil, err
 	}
 	return tx, nil
 }

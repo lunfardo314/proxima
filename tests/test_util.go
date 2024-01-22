@@ -556,10 +556,10 @@ type spammerParams struct {
 	maxBatches    int
 	sendAmount    uint64
 	tagAlongFee   uint64
+	spammedTxIDs  []ledger.TransactionID
 }
 
-func (td *workflowTestData) spam(par spammerParams, ctx context.Context) {
-	par1 := par
+func (td *workflowTestData) spam(par *spammerParams, ctx context.Context) {
 	batchCount := 0
 	for {
 		select {
@@ -567,7 +567,7 @@ func (td *workflowTestData) spam(par spammerParams, ctx context.Context) {
 			return
 		case <-time.After(time.Duration(par.pace*par.batchSize) * ledger.TickDuration()):
 		}
-		txBytesSeq := makeTransfers(par1)
+		txBytesSeq := makeTransfers(par)
 
 		for _, txBytes := range txBytesSeq {
 			var wg sync.WaitGroup
@@ -577,6 +577,7 @@ func (td *workflowTestData) spam(par spammerParams, ctx context.Context) {
 			)
 			require.NoError(td.t, err)
 			td.t.Logf("spam -> %s", txid.StringShort())
+			par.spammedTxIDs = append(par.spammedTxIDs, *txid)
 		}
 		batchCount++
 		if par.maxBatches != 0 && batchCount >= par.maxBatches {
@@ -585,7 +586,7 @@ func (td *workflowTestData) spam(par spammerParams, ctx context.Context) {
 	}
 }
 
-func makeTransfers(par spammerParams) [][]byte {
+func makeTransfers(par *spammerParams) [][]byte {
 	sourceAddr := ledger.AddressED25519FromPrivateKey(par.privateKey)
 	var err error
 	ret := make([][]byte, par.batchSize)

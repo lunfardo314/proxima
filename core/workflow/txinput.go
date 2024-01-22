@@ -24,7 +24,10 @@ type (
 	TxBytesInOption func(options *txBytesInOptions)
 )
 
-const TraceTagTxInput = "txinput"
+const (
+	TraceTagTxInput = "txinput"
+	TraceTagDelay   = "delay"
+)
 
 func (w *Workflow) TxBytesIn(txBytes []byte, opts ...TxBytesInOption) (*ledger.TransactionID, error) {
 	// base validation
@@ -59,7 +62,7 @@ func (w *Workflow) TxBytesIn(txBytes []byte, opts ...TxBytesInOption) (*ledger.T
 	if err != nil {
 		if enforceTimeBounds {
 			w.Tracef(TraceTagTxInput, "invalidate %s due to time bounds", txid.StringShort)
-			err = fmt.Errorf("upper timestamp bound exceeded")
+			err = fmt.Errorf("upper timestamp bound exceeded (MaxDurationInTheFuture = %v)", w.MaxDurationInTheFuture())
 			attacher.InvalidateTxID(*txid, w, err)
 
 			w.IncCounter("invalid")
@@ -110,10 +113,12 @@ func (w *Workflow) TxBytesIn(txBytes []byte, opts ...TxBytesInOption) (*ledger.T
 	w.IncCounter("ok.delay")
 	delayFor := txTime.Sub(nowis)
 	w.Tracef(TraceTagTxInput, "%s -> delay for %v", txid.StringShort, delayFor)
+	w.Tracef(TraceTagDelay, "%s -> delay for %v", txid.StringShort, delayFor)
 
 	go func() {
 		time.Sleep(delayFor)
 		w.Tracef(TraceTagTxInput, "%s -> release", txid.StringShort)
+		w.Tracef(TraceTagDelay, "%s -> release", txid.StringShort)
 		w.IncCounter("ok.release")
 		w.Tracef(TraceTagTxInput, "-> attach tx %s", txid.StringShort)
 		attacher.AttachTransaction(tx, w, attachOpts...)

@@ -63,7 +63,7 @@ func FromBytes(txBytes []byte, opt ...TxValidationOption) (*Transaction, error) 
 		return nil, fmt.Errorf("transaction.FromBytes: basic parse failed: '%v'", err)
 	}
 	if err = ret.Validate(opt...); err != nil {
-		return nil, fmt.Errorf("FromBytes: validation failed, txid = %s: '%v'", ret.IDShortString(), err)
+		return ret, fmt.Errorf("FromBytes: validation failed, txid = %s: '%v'", ret.IDShortString(), err)
 	}
 	return ret, nil
 }
@@ -752,6 +752,14 @@ func (tx *Transaction) ToString(fetchOutput func(oid *ledger.OutputID) ([]byte, 
 		}
 		return o, nil
 	})
+	if err != nil {
+		return err.Error()
+	}
+	return ctx.String()
+}
+
+func (tx *Transaction) ToStringWithInputLoaderByIndex(fetchOutput func(i byte) (*ledger.Output, error)) string {
+	ctx, err := ContextFromTransaction(tx, fetchOutput)
 	if err != nil {
 		return err.Error()
 	}

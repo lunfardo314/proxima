@@ -16,8 +16,10 @@ import (
 	"github.com/lunfardo314/proxima/util"
 )
 
+// TODO revisit MaxDurationInTheFuture
+
 func (w *Workflow) MaxDurationInTheFuture() time.Duration {
-	return ledger.SlotDuration()
+	return ledger.SlotDuration() * 5
 }
 
 func (w *Workflow) IncCounter(name string) {

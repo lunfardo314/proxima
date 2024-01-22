@@ -143,9 +143,9 @@ func Test1Sequencer(t *testing.T) {
 	})
 	t.Run("tag along transfers", func(t *testing.T) {
 		const (
-			maxSlots    = 3
-			batchSize   = 3
-			maxBatches  = 1
+			maxSlots    = 20
+			batchSize   = 10
+			maxBatches  = 5
 			sendAmount  = 2000
 			tagAlongFee = 200
 		)
@@ -156,7 +156,8 @@ func Test1Sequencer(t *testing.T) {
 		//testData.wrk.EnableTraceTags(factory.TraceTag, proposer_base.TraceTag)
 		//testData.wrk.EnableTraceTags(factory.TraceTag, pull_client.TraceTag)
 		//testData.wrk.EnableTraceTags(attacher.TraceTagAttachOutput, attacher.TraceTagAttachVertex)
-		//testData.wrk.EnableTraceTags(tippool.TraceTag, attacher.TraceTagAttachVertex)
+		//testData.wrk.EnableTraceTags(factory.TraceTag)
+		//testData.wrk.EnableTraceTags(workflow.TraceTagDelay)
 
 		ctx, _ := context.WithCancel(context.Background())
 		seq, err := sequencer.New(testData.wrk, testData.bootstrapChainID, testData.genesisPrivKey,
@@ -175,13 +176,16 @@ func Test1Sequencer(t *testing.T) {
 
 		rdr := multistate.MakeSugared(testData.wrk.HeaviestStateForLatestTimeSlot())
 		require.EqualValues(t, initBalance, rdr.BalanceOf(testData.addrAux.AccountID()))
+
+		initialBalanceOnChain := rdr.BalanceOnChain(&testData.bootstrapChainID)
+
 		auxOuts, err := rdr.GetOutputsForAccount(testData.addrAux.AccountID())
 		require.EqualValues(t, 1, len(auxOuts))
 		targetPrivKey := testutil.GetTestingPrivateKey(10000)
 		targetAddr := ledger.AddressED25519FromPrivateKey(targetPrivKey)
 
 		ctx, cancel := context.WithTimeout(context.Background(), (maxSlots+1)*ledger.SlotDuration())
-		go testData.spam(spammerParams{
+		par := &spammerParams{
 			privateKey:    testData.privKeyAux,
 			remainder:     auxOuts[0],
 			tagAlongSeqID: testData.bootstrapChainID,
@@ -191,21 +195,35 @@ func Test1Sequencer(t *testing.T) {
 			maxBatches:    maxBatches,
 			sendAmount:    sendAmount,
 			tagAlongFee:   tagAlongFee,
-		}, ctx)
+			spammedTxIDs:  make([]ledger.TransactionID, 0),
+		}
+		go testData.spam(par, ctx)
 
 		<-ctx.Done()
 		cancel()
+
+		require.EqualValues(t, batchSize*maxBatches, len(par.spammedTxIDs))
 
 		seq.WaitStop()
 		testData.stopAndWait()
 		t.Logf("%s", testData.wrk.Info(true))
 
-		br := testData.wrk.HeaviestBranchOfLatestTimeSlot()
-		dag.SaveGraphPastCone(br, "last_branch")
+		testData.wrk.SaveGraph("utangle")
 
 		require.EqualValues(t, maxSlots, int(countBr.Load()))
 
-		targetBalance := testData.wrk.HeaviestStateForLatestTimeSlot().BalanceOf(targetAddr.AccountID())
+		rdr = testData.wrk.HeaviestStateForLatestTimeSlot()
+		for _, txid := range par.spammedTxIDs {
+			require.True(t, rdr.KnowsCommittedTransaction(&txid))
+			//t.Logf("    %s: in the heaviest state: %v", txid.StringShort(), )
+		}
+		targetBalance := rdr.BalanceOf(targetAddr.AccountID())
 		require.EqualValues(t, maxBatches*batchSize*sendAmount, int(targetBalance))
+
+		balanceLeft := rdr.BalanceOf(testData.addrAux.AccountID())
+		require.EqualValues(t, initBalance-len(par.spammedTxIDs)*(sendAmount+tagAlongFee), balanceLeft)
+
+		balanceOnChain := rdr.BalanceOnChain(&testData.bootstrapChainID)
+		require.EqualValues(t, int(initialBalanceOnChain)+len(par.spammedTxIDs)*tagAlongFee, int(balanceOnChain))
 	})
 }
