@@ -312,6 +312,7 @@ func TestNSequencers(t *testing.T) {
 		testData := initMultiSeqencerTest(t, nSequencers)
 
 		testData.wrk.EnableTraceTags(proposer_endorse1.TraceTag)
+		testData.wrk.EnableTraceTags("ChooseExtendEndorsePair")
 
 		testData.startSequencers(maxSlots)
 		time.Sleep(2 * time.Second)

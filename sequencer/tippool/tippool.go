@@ -155,7 +155,7 @@ func oldReplaceWithNew(old, new *vertex.WrappedTx) bool {
 	return false
 }
 
-func (tp *SequencerTipPool) OtherMilestonesSorted() []*vertex.WrappedTx {
+func (tp *SequencerTipPool) MilestonesSorted() []*vertex.WrappedTx {
 	tp.mutex.RLock()
 	defer tp.mutex.RUnlock()
 

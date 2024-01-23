@@ -216,6 +216,19 @@ func (vid *WrappedTx) IDVeryShort() string {
 	return vid.ID.StringVeryShort()
 }
 
+func (vid *WrappedTx) IDShortStringExt() string {
+	ret := vid.ID.StringShort()
+	if !vid.IsSequencerMilestone() {
+		return ret
+	}
+	chainID, ok := vid.SequencerIDIfAvailable()
+	if !ok {
+		return ret + "/$??"
+	} else {
+		return ret + "/" + chainID.StringShort()
+	}
+}
+
 func (vid *WrappedTx) IsBranchTransaction() bool {
 	return vid.ID.IsBranchTransaction()
 }
@@ -696,6 +709,14 @@ func VIDSetIDString(set set.Set[*WrappedTx], prefix ...string) string {
 		ret.Add(vid.IDShortString())
 	}
 	return ret.Join(", ")
+}
+
+func VerticesShortLines(vertices []*WrappedTx, prefix ...string) *lines.Lines {
+	ret := lines.New(prefix...)
+	for _, vid := range vertices {
+		ret.Add(vid.IDShortStringExt())
+	}
+	return ret
 }
 
 type _unwrapOptionsTraverse struct {

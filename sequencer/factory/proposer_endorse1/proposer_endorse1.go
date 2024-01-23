@@ -33,7 +33,7 @@ func Strategy() *proposer_generic.Strategy {
 func (b *Endorse1Proposer) propose() *attacher.IncrementalAttacher {
 	a := b.ChooseExtendEndorsePair(b.Name, b.TargetTs)
 	if a == nil {
-		b.Tracef(TraceTag, "propose: failed to propose anything")
+		b.Tracef(TraceTag, "propose: ChooseExtendEndorsePair returned nil")
 		return nil
 	}
 	if !a.Completed() {

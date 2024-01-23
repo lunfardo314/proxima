@@ -275,18 +275,24 @@ func (mf *MilestoneFactory) cleanOwnMilestonesIfNecessary() {
 	mf.removedMilestonesSinceReset += len(toDelete)
 }
 
+const TraceTagChooseExtendEndorsePair = "ChooseExtendEndorsePair"
+
 // ChooseExtendEndorsePair implements one of possible strategies
 func (mf *MilestoneFactory) ChooseExtendEndorsePair(proposerName string, targetTs ledger.LogicalTime) *attacher.IncrementalAttacher {
-	endorseCandidates := mf.tipPool.OtherMilestonesSorted()
+	endorseCandidates := mf.tipPool.MilestonesSorted()
+	mf.Tracef(TraceTagChooseExtendEndorsePair, ">>>>>>>>>>>>>>> [%s]", vertex.VerticesShortLines(endorseCandidates).Join(", "))
+
 	seqID := mf.SequencerID()
 	var ret *attacher.IncrementalAttacher
 	for _, endorse := range endorseCandidates {
 		if !ledger.ValidTimePace(endorse.Timestamp(), targetTs) {
+			mf.Tracef(TraceTagChooseExtendEndorsePair, ">>>>>>>>>>>>>>> !ledger.ValidTimePace")
 			continue
 		}
 		rdr := multistate.MakeSugared(mf.GetStateReaderForTheBranch(endorse.BaselineBranch()))
 		seqOut, err := rdr.GetChainOutput(&seqID)
 		if errors.Is(err, multistate.ErrNotFound) {
+			mf.Tracef(TraceTagChooseExtendEndorsePair, ">>>>>>>>>>>>>>> GetChainOutput not found")
 			continue
 		}
 		util.AssertNoError(err)
@@ -298,6 +304,7 @@ func (mf *MilestoneFactory) ChooseExtendEndorsePair(proposerName string, targetT
 			mf.rememberExtendEndorseCombination(ret.Extending(), endorse)
 			return ret
 		}
+		mf.Tracef(TraceTagChooseExtendEndorsePair, ">>>>>>>>>>>>>>> chooseEndorseExtendPair nil")
 	}
 	return nil
 }
@@ -310,7 +317,7 @@ func (mf *MilestoneFactory) chooseEndorseExtendPair(proposerName string, targetT
 		}
 		a, err := attacher.NewIncrementalAttacher(proposerName, mf, targetTs, extend, endorse)
 		if err != nil {
-			mf.Tracef(TraceTag, "can't extend %s and endorse %s: %v", extend.IDShortString, endorse.IDShortString, err)
+			mf.Tracef(TraceTagChooseExtendEndorsePair, "can't extend %s and endorse %s: %v", extend.IDShortString, endorse.IDShortString, err)
 			continue
 		}
 		util.Assertf(a != nil, "a != nil")
