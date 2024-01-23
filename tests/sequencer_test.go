@@ -16,7 +16,6 @@ import (
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/sequencer"
-	"github.com/lunfardo314/proxima/sequencer/factory/proposer_endorse1"
 	"github.com/lunfardo314/proxima/sequencer/tippool"
 	"github.com/lunfardo314/proxima/util/testutil"
 	"github.com/stretchr/testify/require"
@@ -118,9 +117,9 @@ func Test1Sequencer(t *testing.T) {
 		testData := initWorkflowTest(t, 1)
 		t.Logf("%s", testData.wrk.Info())
 
-		//attacher.SetTraceOn()
 		//testData.wrk.EnableTraceTags("seq,factory,tippool,txinput, proposer, incAttach")
-		//testData.wrk.EnableTraceTags("persist_txbytes")
+		//testData.wrk.EnableTraceTags(sequencer.TraceTag, factory.TraceTag, tippool.TraceTag, proposer_base.TraceTag)
+
 		ctx, _ := context.WithCancel(context.Background())
 		seq, err := sequencer.New(testData.wrk, testData.bootstrapChainID, testData.genesisPrivKey,
 			ctx, sequencer.WithMaxBranches(maxSlots))
@@ -152,12 +151,7 @@ func Test1Sequencer(t *testing.T) {
 		testData := initWorkflowTest(t, 1)
 		//t.Logf("%s", testData.wrk.Info())
 
-		//attacher.SetTraceOn()
-		//testData.wrk.EnableTraceTags(factory.TraceTag, proposer_base.TraceTag)
-		//testData.wrk.EnableTraceTags(factory.TraceTag, pull_client.TraceTag)
-		//testData.wrk.EnableTraceTags(attacher.TraceTagAttachOutput, attacher.TraceTagAttachVertex)
 		//testData.wrk.EnableTraceTags(factory.TraceTag)
-		//testData.wrk.EnableTraceTags(workflow.TraceTagDelay)
 
 		ctx, _ := context.WithCancel(context.Background())
 		seq, err := sequencer.New(testData.wrk, testData.bootstrapChainID, testData.genesisPrivKey,
@@ -185,6 +179,7 @@ func Test1Sequencer(t *testing.T) {
 		targetAddr := ledger.AddressED25519FromPrivateKey(targetPrivKey)
 
 		ctx, cancel := context.WithTimeout(context.Background(), (maxSlots+1)*ledger.SlotDuration())
+		//ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 		par := &spammerParams{
 			privateKey:    testData.privKeyAux,
 			remainder:     auxOuts[0],
@@ -306,19 +301,22 @@ func TestNSequencers(t *testing.T) {
 	})
 	t.Run("start stop", func(t *testing.T) {
 		const (
-			maxSlots    = 3
+			maxSlots    = 10
 			nSequencers = 1 // in addition to bootstrap
 		)
 		testData := initMultiSeqencerTest(t, nSequencers)
 
-		testData.wrk.EnableTraceTags(proposer_endorse1.TraceTag)
-		testData.wrk.EnableTraceTags("ChooseExtendEndorsePair")
+		//testData.wrk.EnableTraceTags(proposer_endorse1.TraceTag)
+		//testData.wrk.EnableTraceTags(factory.TraceTagChooseExtendEndorsePair)
+		//testData.wrk.EnableTraceTags(attacher.TraceTagAttachVertex, attacher.TraceTagAttachOutput)
 
 		testData.startSequencers(maxSlots)
-		time.Sleep(2 * time.Second)
+		time.Sleep(10 * time.Second)
 		testData.stopAndWaitSequencers()
 		testData.stopAndWait()
 
+		t.Logf("%s", testData.wrk.Info(true))
+		testData.wrk.SaveGraph("utangle")
 		//
 		//sequencers := make([]*sequencer.Sequencer, nSequencers)
 		//for seqNr := 0; seqNr < nSequencers; seqNr++ {

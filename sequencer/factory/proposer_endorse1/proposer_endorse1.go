@@ -21,6 +21,10 @@ func Strategy() *proposer_generic.Strategy {
 	return &proposer_generic.Strategy{
 		Name: Endorse1ProposerName,
 		Constructor: func(generic *proposer_generic.TaskGeneric) proposer_generic.Task {
+			if generic.TargetTs.Tick() == 0 {
+				// endorse strategy ia not applicable for genereting branches
+				return nil
+			}
 			ret := &Endorse1Proposer{TaskGeneric: *generic}
 			ret.WithProposalGenerator(func() (*attacher.IncrementalAttacher, bool) {
 				return ret.propose(), false
@@ -38,7 +42,8 @@ func (b *Endorse1Proposer) propose() *attacher.IncrementalAttacher {
 	}
 	if !a.Completed() {
 		endorsing := a.Endorsing()[0]
-		b.Tracef(TraceTag, "proposal [extend=%s, endorsing=%s] not complete", a.Extending().IDShortString, endorsing.IDShortString)
+		extending := a.Extending()
+		b.Tracef(TraceTag, "proposal [extend=%s, endorsing=%s] not complete", extending.IDShortString, endorsing.IDShortString)
 		return nil
 	}
 	b.AttachTagAlongInputs(a)

@@ -68,11 +68,10 @@ type (
 	// It is used to generate the transaction and after that it is discarded
 	IncrementalAttacher struct {
 		attacher
-		extend         *vertex.WrappedTx
+		extend         vertex.WrappedOutput
 		endorse        []*vertex.WrappedTx
 		tagAlongInputs []vertex.WrappedOutput
 		targetTs       ledger.LogicalTime
-		seqOutput      vertex.WrappedOutput
 		stemOutput     vertex.WrappedOutput
 	}
 

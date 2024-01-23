@@ -88,6 +88,7 @@ func New(env Environment, maxTagAlongInputs int) (*MilestoneFactory, error) {
 		proposal:          latestMilestoneProposal{},
 		ownMilestones:     make(map[*vertex.WrappedTx]set.Set[vertex.WrappedOutput]),
 		maxTagAlongInputs: maxTagAlongInputs,
+		pastCombinations:  make(map[[32]byte]time.Time),
 	}
 	if ret.maxTagAlongInputs == 0 || ret.maxTagAlongInputs > veryMaxTagAlongInputs {
 		ret.maxTagAlongInputs = veryMaxTagAlongInputs
@@ -97,7 +98,7 @@ func New(env Environment, maxTagAlongInputs int) (*MilestoneFactory, error) {
 	if err != nil {
 		return nil, err
 	}
-	env.Log().Debugf("milestone factory created")
+	env.Tracef(TraceTag, "milestone factory has been created")
 	return ret, nil
 }
 
@@ -131,6 +132,15 @@ func (mf *MilestoneFactory) AddOwnMilestone(vid *vertex.WrappedTx) {
 				consumed.AddAll(prevConsumed)
 			}
 		}
+		vid.Unwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
+			v.ForEachInputDependency(func(i byte, vidInput *vertex.WrappedTx) bool {
+				consumed.Insert(vertex.WrappedOutput{
+					VID:   vidInput,
+					Index: v.Tx.MustOutputIndexOfTheInput(i),
+				})
+				return true
+			})
+		}})
 	}
 	mf.ownMilestones[vid] = consumed
 	mf.ownMilestoneCount++
@@ -185,7 +195,7 @@ func (mf *MilestoneFactory) AttachTagAlongInputs(a *attacher.IncrementalAttacher
 			return false
 		}
 		// fast filtering out already consumed outputs in the predecessor milestone context
-		return !mf.isConsumedInThePastPath(wOut, a.Extending())
+		return !mf.isConsumedInThePastPath(wOut, a.Extending().VID)
 	})
 	mf.Tracef(TraceTag, "AttachTagAlongInputs %s. Pre-selected: %d", a.Name(), len(preSelected))
 
@@ -243,7 +253,7 @@ func (mf *MilestoneFactory) Propose(a *attacher.IncrementalAttacher) (forceExit 
 
 	mf.proposal.current = tx
 	mf.proposal.bestSoFarCoverage = coverage
-	mf.proposal.currentExtended = a.ExtendedOutput()
+	mf.proposal.currentExtended = a.Extending()
 	mf.Tracef(TraceTag, "factory.Propose%s proposal %s ACCEPTED", a.Name(), tx.IDShortString)
 	return
 }
@@ -279,8 +289,9 @@ const TraceTagChooseExtendEndorsePair = "ChooseExtendEndorsePair"
 
 // ChooseExtendEndorsePair implements one of possible strategies
 func (mf *MilestoneFactory) ChooseExtendEndorsePair(proposerName string, targetTs ledger.LogicalTime) *attacher.IncrementalAttacher {
-	endorseCandidates := mf.tipPool.MilestonesSorted()
-	mf.Tracef(TraceTagChooseExtendEndorsePair, ">>>>>>>>>>>>>>> [%s]", vertex.VerticesShortLines(endorseCandidates).Join(", "))
+	util.Assertf(targetTs.Tick() != 0, "targetTs.Tick() != 0")
+	endorseCandidates := mf.tipPool.OtherMilestonesSorted()
+	mf.Tracef(TraceTagChooseExtendEndorsePair, ">>>>>>>>>>>>>>> {%s}", vertex.VerticesShortLines(endorseCandidates).Join(", "))
 
 	seqID := mf.SequencerID()
 	var ret *attacher.IncrementalAttacher
@@ -296,12 +307,12 @@ func (mf *MilestoneFactory) ChooseExtendEndorsePair(proposerName string, targetT
 			continue
 		}
 		util.AssertNoError(err)
-		extendRoot := attacher.AttachTxID(seqOut.ID.TransactionID(), mf)
-		futureConeMilestones := mf.futureConeMilestonesOrdered(extendRoot, targetTs)
+		extendRoot := attacher.AttachOutputID(seqOut.ID, mf)
+		futureConeMilestones := mf.futureConeOwnMilestonesOrdered(extendRoot, targetTs)
 		ret = mf.chooseEndorseExtendPair(proposerName, targetTs, endorse, futureConeMilestones)
 		if ret != nil {
 			// return first suitable pair. The search is not exhaustive along all possible endorsements
-			mf.rememberExtendEndorseCombination(ret.Extending(), endorse)
+			mf.rememberExtendEndorseCombination(ret.Extending().VID, endorse)
 			return ret
 		}
 		mf.Tracef(TraceTagChooseExtendEndorsePair, ">>>>>>>>>>>>>>> chooseEndorseExtendPair nil")
@@ -309,10 +320,10 @@ func (mf *MilestoneFactory) ChooseExtendEndorsePair(proposerName string, targetT
 	return nil
 }
 
-func (mf *MilestoneFactory) chooseEndorseExtendPair(proposerName string, targetTs ledger.LogicalTime, endorse *vertex.WrappedTx, extendCandidates []*vertex.WrappedTx) *attacher.IncrementalAttacher {
+func (mf *MilestoneFactory) chooseEndorseExtendPair(proposerName string, targetTs ledger.LogicalTime, endorse *vertex.WrappedTx, extendCandidates []vertex.WrappedOutput) *attacher.IncrementalAttacher {
 	var ret *attacher.IncrementalAttacher
 	for _, extend := range extendCandidates {
-		if mf.knownExtendEndorseCombination(extend, endorse) {
+		if mf.knownExtendEndorseCombination(extend.VID, endorse) {
 			continue
 		}
 		a, err := attacher.NewIncrementalAttacher(proposerName, mf, targetTs, extend, endorse)
@@ -331,34 +342,38 @@ func (mf *MilestoneFactory) chooseEndorseExtendPair(proposerName string, targetT
 	return ret
 }
 
-func (mf *MilestoneFactory) futureConeMilestonesOrdered(rootVID *vertex.WrappedTx, targetTs ledger.LogicalTime) []*vertex.WrappedTx {
+func (mf *MilestoneFactory) futureConeOwnMilestonesOrdered(rootOutput vertex.WrappedOutput, targetTs ledger.LogicalTime) []vertex.WrappedOutput {
 	mf.cleanOwnMilestonesIfNecessary()
 
 	mf.mutex.RLock()
 	defer mf.mutex.RUnlock()
 
-	//p.setTraceNAhead(1)
-	mf.Tracef(TraceTag, "futureConeMilestonesOrdered for root %s. Total %d own milestones", rootVID.IDShortString, len(mf.ownMilestones))
+	mf.Tracef(TraceTag, "futureConeOwnMilestonesOrdered for root output %s. Total %d own milestones", rootOutput.IDShortString, len(mf.ownMilestones))
 
-	_, ok := mf.ownMilestones[rootVID]
-	util.Assertf(ok, "futureConeMilestonesOrdered: milestone %s of chain %s is expected to be among set of own milestones (%d)",
-		rootVID.IDShortString, util.Ref(mf.SequencerID()).StringShort, len(mf.ownMilestones))
+	_, ok := mf.ownMilestones[rootOutput.VID]
+	util.Assertf(ok, "futureConeOwnMilestonesOrdered: milestone output %s of chain %s is expected to be among set of own milestones (%d)",
+		rootOutput.IDShortString, util.Ref(mf.SequencerID()).StringShort, len(mf.ownMilestones))
 
 	ordered := util.SortKeys(mf.ownMilestones, func(vid1, vid2 *vertex.WrappedTx) bool {
 		// by timestamp -> equivalent to topological order, ascending, i.e. older first
 		return vid1.Timestamp().Before(vid2.Timestamp())
 	})
 
-	visited := set.New[*vertex.WrappedTx](rootVID)
-	ret := []*vertex.WrappedTx{rootVID}
+	visited := set.New[*vertex.WrappedTx](rootOutput.VID)
+	ret := []vertex.WrappedOutput{rootOutput}
 	for _, vid := range ordered {
-		if !vid.IsBadOrDeleted() &&
-			vid.IsSequencerMilestone() &&
-			visited.Contains(vid.SequencerPredecessor()) &&
-			ledger.ValidTimePace(vid.Timestamp(), targetTs) {
-			visited.Insert(vid)
-			ret = append(ret, vid)
+		switch {
+		case vid.IsBadOrDeleted():
+			continue
+		case !vid.IsSequencerMilestone():
+			continue
+		case !visited.Contains(vid.SequencerPredecessor()):
+			continue
+		case !ledger.ValidTimePace(vid.Timestamp(), targetTs):
+			continue
 		}
+		visited.Insert(vid)
+		ret = append(ret, vid.SequencerWrappedOutput())
 	}
 	return ret
 }

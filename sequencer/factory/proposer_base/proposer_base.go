@@ -30,7 +30,7 @@ func Strategy() *proposer_generic.Strategy {
 }
 
 func (b *BaseProposer) propose() (*attacher.IncrementalAttacher, bool) {
-	extend := b.OwnLatestMilestoneOutput().VID
+	extend := b.OwnLatestMilestoneOutput()
 
 	b.Tracef(TraceTag, "%s extending %s", b.Name, extend.IDShortString)
 	// own latest milestone exists
@@ -42,7 +42,7 @@ func (b *BaseProposer) propose() (*attacher.IncrementalAttacher, bool) {
 			return nil, true
 		}
 		b.Tracef(TraceTag, "%s target is not a branch and it is on the same slot", b.Name)
-		if !extend.IsSequencerMilestone() {
+		if !extend.VID.IsSequencerMilestone() {
 			b.Tracef(TraceTag, "%s force exit: not-sequencer %s", b.Name, extend.IDShortString)
 			return nil, true
 		}

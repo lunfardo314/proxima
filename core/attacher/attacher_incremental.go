@@ -15,24 +15,41 @@ import (
 	"golang.org/x/exp/maps"
 )
 
-func NewIncrementalAttacher(name string, env Environment, targetTs ledger.LogicalTime, extend *vertex.WrappedTx, endorse ...*vertex.WrappedTx) (*IncrementalAttacher, error) {
+const TraceTagIncrementalAttacher = "incAttach"
+
+func NewIncrementalAttacher(name string, env Environment, targetTs ledger.LogicalTime, extend vertex.WrappedOutput, endorse ...*vertex.WrappedTx) (*IncrementalAttacher, error) {
 	util.Assertf(ledger.ValidTimePace(extend.Timestamp(), targetTs), "ledger.ValidTimePace(extend.Timestamp(), targetTs)")
-	for _, vid := range endorse {
-		util.Assertf(vid.IsSequencerMilestone(), "vid.IsSequencerMilestone()")
-		util.Assertf(ledger.ValidTimePace(vid.Timestamp(), targetTs), "ledger.ValidTimePace(vid.Timestamp(), targetTs)")
+	for _, endorseVID := range endorse {
+		util.Assertf(endorseVID.IsSequencerMilestone(), "NewIncrementalAttacher: endorseVID.IsSequencerMilestone()")
+		util.Assertf(targetTs.Slot() == endorseVID.Slot(), "NewIncrementalAttacher: targetTs.Slot() == endorseVid.Slot()")
+		util.Assertf(ledger.ValidTimePace(endorseVID.Timestamp(), targetTs), "NewIncrementalAttacher: ledger.ValidTimePace(endorseVID.Timestamp(), targetTs)")
 	}
-	env.Tracef("incAttach", "NewIncrementalAttacher(%s). extend: %s, endorse: {%s}",
+	env.Tracef(TraceTagIncrementalAttacher, "NewIncrementalAttacher(%s). extend: %s, endorse: {%s}",
 		name, extend.IDShortString, func() string { return vertex.VerticesLines(endorse).Join(",") })
 
-	// find baseline branch as the baseline branch of the latest among extend and endorsements
-	latest := util.Maximum(append(slices.Clone(endorse), extend), func(vid1, vid2 *vertex.WrappedTx) bool {
-		return vid1.Timestamp().Before(vid2.Timestamp())
-	})
-	baseline := latest.BaselineBranch()
+	var baseline *vertex.WrappedTx
+
+	if targetTs.Tick() == 0 {
+		// target is branch
+		util.Assertf(len(endorse) == 0, "NewIncrementalAttacher: len(endorse)==0")
+		baseline = extend.VID.BaselineBranch()
+	} else {
+		// target is not branch
+		if extend.Slot() != targetTs.Slot() {
+			// cross-slot, must have endorsement
+			if len(endorse) > 0 {
+				baseline = endorse[0].BaselineBranch()
+			}
+		} else {
+			// same slot
+			baseline = extend.VID.BaselineBranch()
+		}
+	}
 	if baseline == nil {
 		return nil, fmt.Errorf("NewIncrementalAttacher: failed to determine the baseline branch of %s", extend.IDShortString())
 	}
-	env.Tracef("incAttach", "NewIncrementalAttacher(%s). baseline: %s", name, baseline.IDShortString)
+
+	env.Tracef(TraceTagIncrementalAttacher, "NewIncrementalAttacher(%s). baseline: %s", name, baseline.IDShortString)
 
 	ret := &IncrementalAttacher{
 		attacher:       newPastConeAttacher(env, name),
@@ -45,34 +62,26 @@ func NewIncrementalAttacher(name string, env Environment, targetTs ledger.Logica
 	ret.setBaselineBranch(baseline) // also fetches previous coverage
 
 	visited := set.New[*vertex.WrappedTx]()
-
 	// attach sequencer predecessor
-	if !extend.IsBranchTransaction() {
-		extend.Unwrap(vertex.UnwrapOptions{
-			Vertex: func(v *vertex.Vertex) {
-				env.Tracef("incAttach", "NewIncrementalAttacher(%s). attachVertex: %s", name, baseline.IDShortString)
-				ret.attachVertex(v, extend, ledger.NilLogicalTime, visited)
-			},
-		})
-		if ret.reason != nil {
-			return nil, ret.reason
-		}
+	if !ret.attachOutput(ret.extend, ledger.NilLogicalTime, visited) {
+		return nil, ret.reason
 	}
 	// attach endorsements
 	for _, endorsement := range endorse {
-		env.Tracef("incAttach", "NewIncrementalAttacher(%s). insertEndorsement: %s", name, endorsement.IDShortString)
+		env.Tracef(TraceTagIncrementalAttacher, "NewIncrementalAttacher(%s). insertEndorsement: %s", name, endorsement.IDShortString)
 		if err := ret.insertEndorsement(endorsement, visited); err != nil {
 			return nil, err
 		}
 	}
-	env.Tracef("incAttach", "NewIncrementalAttacher(%s). insertSequencerInput", name)
-	if err := ret.insertSequencerInput(visited); err != nil {
-		return nil, err
-	}
 	if targetTs.Tick() == 0 {
-		env.Tracef("incAttach", "NewIncrementalAttacher(%s). insertStemInput", name)
-		if err := ret.insertStemInput(visited); err != nil {
-			return nil, err
+		// for branches, include stem input
+		env.Tracef(TraceTagIncrementalAttacher, "NewIncrementalAttacher(%s). insertStemInput", name)
+		ret.stemOutput = baseline.StemWrappedOutput()
+		if ret.stemOutput.VID == nil {
+			return nil, fmt.Errorf("NewIncrementalAttacher: stem output is not available for baseline %s", baseline.IDShortString())
+		}
+		if !ret.attachOutput(ret.stemOutput, ledger.NilLogicalTime, visited) {
+			return nil, ret.reason
 		}
 	}
 	return ret, nil
@@ -92,33 +101,13 @@ func (a *IncrementalAttacher) insertEndorsement(endorsement *vertex.WrappedTx, v
 	return a.reason
 }
 
-func (a *IncrementalAttacher) insertSequencerInput(visited set.Set[*vertex.WrappedTx]) error {
-	a.seqOutput = a.extend.SequencerWrappedOutput()
-	if a.seqOutput.VID == nil {
-		return fmt.Errorf("NewIncrementalAttacher: sequencer output is not available in %s", a.extend.IDShortString())
-	}
-	if !a.attachOutput(a.seqOutput, ledger.NilLogicalTime, visited) {
-		return a.reason
-	}
-	return nil
-}
-
-func (a *IncrementalAttacher) insertStemInput(visited set.Set[*vertex.WrappedTx]) error {
-	a.stemOutput = a.baselineBranch.StemWrappedOutput()
-	if a.stemOutput.VID == nil {
-		return fmt.Errorf("NewIncrementalAttacher: stem output is not available for baseline %s", a.baselineBranch.IDShortString())
-	}
-	if !a.attachOutput(a.stemOutput, ledger.NilLogicalTime, visited) {
-		return a.reason
-	}
-	return nil
-}
-
 // InsertTagAlongInput inserts tag along input.
 // In case of failure return false and attacher state consistent
 func (a *IncrementalAttacher) InsertTagAlongInput(wOut vertex.WrappedOutput, visited set.Set[*vertex.WrappedTx]) (bool, error) {
 	// save state for possible rollback because in case of fail the side effect makes attacher inconsistent
 	// TODO a better way than cloning potentially big maps with each new input?
+	util.AssertNoError(a.reason)
+
 	saveUndefinedPastVertices := a.attacher.undefinedPastVertices.Clone()
 	saveValidPastVertices := a.attacher.validPastVertices.Clone()
 	saveRooted := maps.Clone(a.attacher.rooted)
@@ -134,7 +123,9 @@ func (a *IncrementalAttacher) InsertTagAlongInput(wOut vertex.WrappedOutput, vis
 		a.attacher.validPastVertices = saveValidPastVertices
 		a.attacher.rooted = saveRooted
 		a.coverageDelta = saveCoverageDelta
-		return false, a.GetReason()
+		retReason := a.GetReason()
+		a.setReason(nil)
+		return false, retReason
 	}
 	a.tagAlongInputs = append(a.tagAlongInputs, wOut)
 	util.AssertNoError(a.GetReason())
@@ -142,7 +133,7 @@ func (a *IncrementalAttacher) InsertTagAlongInput(wOut vertex.WrappedOutput, vis
 }
 
 func (a *IncrementalAttacher) MakeTransaction(seqName string, privateKey ed25519.PrivateKey) (*transaction.Transaction, error) {
-	chainIn, err := a.seqOutput.VID.OutputWithIDAt(a.seqOutput.Index)
+	chainIn, err := a.extend.VID.OutputWithIDAt(a.extend.Index)
 	if err != nil {
 		return nil, err
 	}
@@ -214,14 +205,10 @@ func (a *IncrementalAttacher) Completed() (done bool) {
 	return
 }
 
-func (a *IncrementalAttacher) Extending() *vertex.WrappedTx {
+func (a *IncrementalAttacher) Extending() vertex.WrappedOutput {
 	return a.extend
 }
 
 func (a *IncrementalAttacher) Endorsing() []*vertex.WrappedTx {
 	return a.endorse
-}
-
-func (a *IncrementalAttacher) ExtendedOutput() vertex.WrappedOutput {
-	return a.seqOutput
 }
