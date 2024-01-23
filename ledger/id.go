@@ -221,6 +221,13 @@ func LessTxID(txid1, txid2 TransactionID) bool {
 	return txid1.Timestamp().Before(txid2.Timestamp())
 }
 
+func TooCloseOnTimeAxis(txid1, txid2 *TransactionID) bool {
+	if util.Abs(DiffTimeTicks(txid1.Timestamp(), txid2.Timestamp())) < TransactionPaceInTicks {
+		return *txid1 != *txid2
+	}
+	return false
+}
+
 func NewOutputID(id *TransactionID, idx byte) (ret OutputID) {
 	copy(ret[:TransactionIDLength], id[:])
 	ret[TransactionIDLength] = idx

@@ -267,6 +267,9 @@ func Ref[T any](v T) *T {
 	return &v
 }
 
-func JoinComma(str ...string) string {
-	return strings.Join(str, ",")
+func Abs[T constraints.Integer](n T) T {
+	if n < 0 {
+		return -n
+	}
+	return n
 }

@@ -96,12 +96,28 @@ func New(env Environment, namePrefix string, opts ...Option) (*SequencerTipPool,
 		ret.mutex.Lock()
 		defer ret.mutex.Unlock()
 
-		old, prevExists := ret.latestMilestones[seqIDIncoming]
-		if !prevExists || !vid.Timestamp().Before(old.Timestamp()) {
-			// store the latest one for each seqID
+		storedNew := false
+		if old, prevExists := ret.latestMilestones[seqIDIncoming]; prevExists {
+			if old == vid {
+				// repeating, ignore
+				return
+			}
+			if ledger.TooCloseOnTimeAxis(&old.ID, &vid.ID) {
+				ret.Log().Warnf("tippool: %s and %s: too close on time axis", old.IDShortString(), vid.IDShortString())
+			}
+			if oldReplaceWithNew(old, vid) {
+				ret.latestMilestones[seqIDIncoming] = vid
+				storedNew = true
+			} else {
+				ret.Log().Warnf("tippool: incoming milestone %s didn't replace existing %s", vid.IDShortString(), old.IDShortString())
+			}
+		} else {
 			ret.latestMilestones[seqIDIncoming] = vid
+			storedNew = true
 		}
-		env.Tracef(TraceTag, "seq milestone stored in tippool: %s", vid.IDShortString)
+		if storedNew {
+			env.Tracef(TraceTag, "new milestone stored in tippool: %s", vid.IDShortString)
+		}
 	})
 
 	// fetch all sequencers and all outputs in the sequencer account into to tip pool once
@@ -114,6 +130,24 @@ func New(env Environment, namePrefix string, opts ...Option) (*SequencerTipPool,
 	}
 	env.Tracef(TraceTag, "PullSequencerTips: loaded %d outputs from state", len(ret.outputs))
 	return ret, nil
+}
+
+// biggerByTimestampAndCoverage compares timestamps. If equal, compares coverages. If equal, compares IDs
+func oldReplaceWithNew(old, new *vertex.WrappedTx) bool {
+	util.Assertf(old != new, "old != new")
+	tsOld := old.Timestamp()
+	tsNew := new.Timestamp()
+	switch {
+	case tsOld.Before(tsNew):
+		return true
+	case tsOld.After(tsNew):
+		return false
+	}
+	util.Assertf(tsNew == tsOld, "tsNew==tsOld")
+	if vertex.LessByCoverageAndID(old, new) {
+		return true
+	}
+	return false
 }
 
 func (tp *SequencerTipPool) OtherMilestonesSorted() []*vertex.WrappedTx {

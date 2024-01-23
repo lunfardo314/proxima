@@ -593,17 +593,15 @@ func (vid *WrappedTx) LedgerCoverageSum() uint64 {
 	return ret.Sum()
 }
 
-func Less(vid1, vid2 *WrappedTx) bool {
+// LessByCoverageAndID compares sum of ledger coverages. If equal, compares IDs
+// It means, earlier is less
+func LessByCoverageAndID(vid1, vid2 *WrappedTx) bool {
 	c1 := vid1.GetLedgerCoverage().Sum()
 	c2 := vid2.GetLedgerCoverage().Sum()
 	if c1 == c2 {
 		return ledger.LessTxID(vid1.ID, vid2.ID)
 	}
 	return c1 < c2
-}
-
-func (vid *WrappedTx) Less(vid1 *WrappedTx) bool {
-	return bytes.Compare(vid.ID[:], vid1.ID[:]) < 0
 }
 
 // NumConsumers returns:

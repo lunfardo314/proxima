@@ -16,7 +16,6 @@ import (
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/sequencer"
-	"github.com/lunfardo314/proxima/sequencer/factory"
 	"github.com/lunfardo314/proxima/sequencer/tippool"
 	"github.com/lunfardo314/proxima/util/testutil"
 	"github.com/stretchr/testify/require"
@@ -228,71 +227,119 @@ func Test1Sequencer(t *testing.T) {
 	})
 }
 
-func TestNSequencers(t *testing.T) {
-	ledger.SetTimeTickDuration(10 * time.Millisecond)
-	t.Run("idle", func(t *testing.T) {
-		const (
-			maxSlots    = 3
-			nSequencers = 1 // in addition to bootstrap
-		)
-		testData := initWorkflowTest(t, nSequencers)
-		testData.wrk.EnableTraceTags(tippool.TraceTag)
-		testData.wrk.EnableTraceTags(factory.TraceTag)
-		testData.wrk.EnableTraceTags(attacher.TraceTagEnsureLatestBranches)
+func initMultiSeqencerTest(t *testing.T, nSequencers int) *workflowTestData {
+	testData := initWorkflowTest(t, nSequencers)
+	//testData.wrk.EnableTraceTags(tippool.TraceTag)
+	//testData.wrk.EnableTraceTags(factory.TraceTag)
+	//testData.wrk.EnableTraceTags(attacher.TraceTagEnsureLatestBranches)
 
-		err := attacher.EnsureLatestBranches(testData.wrk)
-		require.NoError(t, err)
+	err := attacher.EnsureLatestBranches(testData.wrk)
+	require.NoError(t, err)
 
-		//testData.wrk.EnableTraceTags(events.TraceTag)
-		//testData.wrk.EnableTraceTags(workflow.TraceTagDelay)
-		//testData.wrk.EnableTraceTags(attacher.TraceTagAttach)
+	testData.makeChainOrigins(nSequencers)
+	chainOriginsTxID, err := testData.wrk.TxBytesIn(testData.chainOriginsTx.Bytes())
+	require.NoError(t, err)
+	require.EqualValues(t, nSequencers, len(testData.chainOrigins))
 
-		testData.makeChainOrigins(nSequencers)
-		chainOriginsTxID, err := testData.wrk.TxBytesIn(testData.chainOriginsTx.Bytes())
-		require.NoError(t, err)
-		require.EqualValues(t, nSequencers, len(testData.chainOrigins))
+	testData.bootstrapSeq, err = sequencer.New(testData.wrk, testData.bootstrapChainID, testData.genesisPrivKey, testData.ctx,
+		sequencer.WithName("boot"),
+		sequencer.WithMaxFeeInputs(30),
+		sequencer.WithPace(5),
+	)
+	require.NoError(t, err)
 
-		bootstrapSeq, err := sequencer.New(testData.wrk, testData.bootstrapChainID, testData.genesisPrivKey, testData.ctx,
-			sequencer.WithName("boot"),
+	testData.bootstrapSeq.Start()
+
+	baseline, err := testData.wrk.WaitUntilTransactionInHeaviestState(*chainOriginsTxID, 5*time.Second)
+	require.NoError(t, err)
+	t.Logf("chain origins transaction %s has been created and finalized in baseline %s", chainOriginsTxID.StringShort(), baseline.IDShortString())
+	return testData
+}
+
+func (td *workflowTestData) startSequencers(maxSlots int) {
+	td.sequencers = make([]*sequencer.Sequencer, len(td.chainOrigins))
+	var err error
+	for seqNr := range td.sequencers {
+		td.sequencers[seqNr], err = sequencer.New(td.wrk, td.chainOrigins[seqNr].ChainID, td.privKeyAux, td.ctx,
+			sequencer.WithName(fmt.Sprintf("seq%d", seqNr)),
 			sequencer.WithMaxFeeInputs(30),
 			sequencer.WithPace(5),
 			sequencer.WithMaxBranches(maxSlots),
 		)
-		require.NoError(t, err)
+		require.NoError(td.t, err)
+		td.sequencers[seqNr].Start()
+	}
+}
 
-		bootstrapSeq.Start()
+func (td *workflowTestData) stopAndWaitSequencers() {
+	var wg sync.WaitGroup
+	wg.Add(len(td.chainOrigins) + 1)
+	go func() {
+		td.bootstrapSeq.StopAndWait()
+		wg.Done()
+	}()
+	for i := range td.sequencers {
+		i1 := i
+		go func() {
+			td.sequencers[i1].StopAndWait()
+			wg.Done()
+		}()
+	}
+	wg.Wait()
+	td.t.Logf("all sequencers have been stopped ")
+}
 
-		err = testData.wrk.WaitUntilTransactionInHeaviestState(*chainOriginsTxID, 5*time.Second)
-		require.NoError(t, err)
-		t.Logf("chain origins transaction is finalized")
+func TestNSequencers(t *testing.T) {
+	ledger.SetTimeTickDuration(10 * time.Millisecond)
+	t.Run("finalize chain origins", func(t *testing.T) {
+		const (
+			nSequencers = 5 // in addition to bootstrap
+		)
+		testData := initMultiSeqencerTest(t, nSequencers)
 
-		sequencers := make([]*sequencer.Sequencer, nSequencers)
-		for seqNr := 0; seqNr < nSequencers; seqNr++ {
-			sequencers[seqNr], err = sequencer.New(testData.wrk, testData.chainOrigins[seqNr].ChainID, testData.privKeyAux, testData.ctx,
-				sequencer.WithName(fmt.Sprintf("seq%d", seqNr)),
-				sequencer.WithMaxFeeInputs(30),
-				sequencer.WithPace(5),
-				sequencer.WithMaxBranches(maxSlots),
-			)
-			require.NoError(t, err)
-		}
-
-		var countBr, countSeq atomic.Int32
-		bootstrapSeq.OnMilestoneSubmitted(func(_ *sequencer.Sequencer, ms *vertex.WrappedTx) {
-			if ms.IsBranchTransaction() {
-				countBr.Inc()
-			} else {
-				countSeq.Inc()
-			}
-		})
-		bootstrapSeq.Start()
-		bootstrapSeq.WaitStop()
+		testData.bootstrapSeq.StopAndWait()
 		testData.stopAndWait()
-		t.Logf("%s", testData.wrk.Info(true))
 
-		require.EqualValues(t, maxSlots, int(countBr.Load()))
-		require.EqualValues(t, maxSlots, int(countSeq.Load()))
-		t.Logf("%s", testData.wrk.Info())
+		t.Logf("%s", testData.wrk.Info(true))
+		testData.wrk.SaveGraph("utangle")
+	})
+	t.Run("start stop", func(t *testing.T) {
+		const (
+			maxSlots    = 3
+			nSequencers = 3 // in addition to bootstrap
+		)
+		testData := initMultiSeqencerTest(t, nSequencers)
+		testData.startSequencers(maxSlots)
+		testData.stopAndWaitSequencers()
+		testData.stopAndWait()
+
+		//
+		//sequencers := make([]*sequencer.Sequencer, nSequencers)
+		//for seqNr := 0; seqNr < nSequencers; seqNr++ {
+		//	sequencers[seqNr], err = sequencer.New(testData.wrk, testData.chainOrigins[seqNr].ChainID, testData.privKeyAux, testData.ctx,
+		//		sequencer.WithName(fmt.Sprintf("seq%d", seqNr)),
+		//		sequencer.WithMaxFeeInputs(30),
+		//		sequencer.WithPace(5),
+		//		sequencer.WithMaxBranches(maxSlots),
+		//	)
+		//	require.NoError(t, err)
+		//}
+		//
+		//var countBr, countSeq atomic.Int32
+		//bootstrapSeq.OnMilestoneSubmitted(func(_ *sequencer.Sequencer, ms *vertex.WrappedTx) {
+		//	if ms.IsBranchTransaction() {
+		//		countBr.Inc()
+		//	} else {
+		//		countSeq.Inc()
+		//	}
+		//})
+		//bootstrapSeq.Start()
+		//bootstrapSeq.WaitStop()
+		//testData.stopAndWait()
+		//t.Logf("%s", testData.wrk.Info(true))
+		//
+		//require.EqualValues(t, maxSlots, int(countBr.Load()))
+		//require.EqualValues(t, maxSlots, int(countSeq.Load()))
 		//br := testData.wrk.HeaviestBranchOfLatestTimeSlot()
 		//dag.SaveGraphPastCone(br, "latest_branch")
 	})

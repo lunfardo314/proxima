@@ -39,7 +39,7 @@ func (d *DAG) InfoLines(verbose ...bool) *lines.Lines {
 		ln.Add("---- all vertices (verbose)")
 		all := maps.Values(d.vertices)
 		sort.Slice(all, func(i, j int) bool {
-			return all[i].Less(all[j])
+			return ledger.LessTxID(all[i].ID, all[j].ID)
 		})
 		for _, vid := range all {
 			ln.Add("    " + vid.ShortString())
@@ -69,7 +69,7 @@ func (d *DAG) VerticesInSlotAndAfter(slot ledger.Slot) []*vertex.WrappedTx {
 		}
 	}
 	sort.Slice(ret, func(i, j int) bool {
-		return vertex.Less(ret[i], ret[j])
+		return vertex.LessByCoverageAndID(ret[i], ret[j])
 	})
 	return ret
 }

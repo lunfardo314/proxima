@@ -64,13 +64,19 @@ func (d *DAG) MustGetIndexedStateReader(branchTxID *ledger.TransactionID, clearC
 	return ret
 }
 
-func (d *DAG) HeaviestStateForLatestTimeSlot() multistate.SugaredStateReader {
+func (d *DAG) HeaviestStateForLatestTimeSlotWithBaseline() (multistate.SugaredStateReader, *vertex.WrappedTx) {
 	slot := d.LatestBranchSlot()
 
 	d.mutex.RLock()
 	defer d.mutex.RUnlock()
 
-	return multistate.MakeSugared(d.branches[util.Maximum(d._branchesForSlot(slot), vertex.Less)])
+	baseline := util.Maximum(d._branchesForSlot(slot), vertex.LessByCoverageAndID)
+	return multistate.MakeSugared(d.branches[baseline]), baseline
+}
+
+func (d *DAG) HeaviestStateForLatestTimeSlot() multistate.SugaredStateReader {
+	ret, _ := d.HeaviestStateForLatestTimeSlotWithBaseline()
+	return ret
 }
 
 func (d *DAG) HeaviestBranchOfLatestTimeSlot() *vertex.WrappedTx {
@@ -79,21 +85,22 @@ func (d *DAG) HeaviestBranchOfLatestTimeSlot() *vertex.WrappedTx {
 	d.mutex.RLock()
 	defer d.mutex.RUnlock()
 
-	return util.Maximum(d._branchesForSlot(slot), vertex.Less)
+	return util.Maximum(d._branchesForSlot(slot), vertex.LessByCoverageAndID)
 }
 
 // WaitUntilTransactionInHeaviestState for testing mostly
-func (d *DAG) WaitUntilTransactionInHeaviestState(txid ledger.TransactionID, timeout ...time.Duration) error {
+func (d *DAG) WaitUntilTransactionInHeaviestState(txid ledger.TransactionID, timeout ...time.Duration) (*vertex.WrappedTx, error) {
 	deadline := time.Now().Add(10 * time.Minute)
 	if len(timeout) > 0 {
 		deadline = time.Now().Add(timeout[0])
 	}
 	for {
-		if d.HeaviestStateForLatestTimeSlot().KnowsCommittedTransaction(&txid) {
-			return nil
+		rdr, baseline := d.HeaviestStateForLatestTimeSlotWithBaseline()
+		if rdr.KnowsCommittedTransaction(&txid) {
+			return baseline, nil
 		}
 		if time.Now().After(deadline) {
-			return fmt.Errorf("WaitUntilTransactionInHeaviestState: timeout")
+			return nil, fmt.Errorf("WaitUntilTransactionInHeaviestState: timeout")
 		}
 		time.Sleep(50 * time.Millisecond)
 	}

@@ -21,12 +21,13 @@ type (
 	Sequencer struct {
 		*workflow.Workflow
 		ctx            context.Context
+		stopFun        context.CancelFunc
+		waitStop       sync.WaitGroup
 		sequencerID    ledger.ChainID
 		controllerKey  ed25519.PrivateKey
 		config         *ConfigOptions
 		log            *zap.SugaredLogger
 		factory        *factory.MilestoneFactory
-		waitStop       sync.WaitGroup
 		milestoneCount int
 		branchCount    int
 		prevTimeTarget ledger.LogicalTime
@@ -55,12 +56,13 @@ func New(glb *workflow.Workflow, seqID ledger.ChainID, controllerKey ed25519.Pri
 	cfg := makeConfig(opts...)
 	ret := &Sequencer{
 		Workflow:      glb,
-		ctx:           ctx,
 		sequencerID:   seqID,
 		controllerKey: controllerKey,
 		config:        cfg,
 		log:           glb.Log().Named(fmt.Sprintf("%s-%s", cfg.SequencerName, seqID.StringVeryShort())),
 	}
+	ret.ctx, ret.stopFun = context.WithCancel(ctx)
+
 	var err error
 	if ret.factory, err = factory.New(ret, cfg.MaxFeeInputs); err != nil {
 		return nil, err
@@ -130,6 +132,15 @@ func (seq *Sequencer) ensureFirstMilestone() bool {
 	return true
 }
 
+func (seq *Sequencer) Stop() {
+	seq.stopFun()
+}
+
+func (seq *Sequencer) StopAndWait() {
+	seq.stopFun()
+	seq.waitStop.Wait()
+}
+
 func (seq *Sequencer) WaitStop() {
 	seq.waitStop.Wait()
 }
@@ -165,8 +176,11 @@ func (seq *Sequencer) mainLoop() {
 	}
 	time.Sleep(time.Until(beginAt))
 
-	seq.Tracef(TraceTag, "starting main loop")
-	defer seq.Tracef(TraceTag, "sequencer STOPPING..")
+	seq.Log().Infof("STARTING sequencer")
+	defer func() {
+		seq.Log().Infof("sequencer STOPPING..")
+		_ = seq.Log().Sync()
+	}()
 
 	for {
 		select {

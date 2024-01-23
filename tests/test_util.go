@@ -18,6 +18,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/peering"
+	"github.com/lunfardo314/proxima/sequencer"
 	"github.com/lunfardo314/proxima/txstore"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/testutil"
@@ -56,6 +57,8 @@ type workflowTestData struct {
 	seqChain               [][]*transaction.Transaction
 	transferChain          []*transaction.Transaction
 	remainderOutput        *ledger.OutputWithID
+	bootstrapSeq           *sequencer.Sequencer
+	sequencers             []*sequencer.Sequencer
 }
 
 type longConflictTestData struct {
