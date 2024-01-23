@@ -30,38 +30,38 @@ func Strategy() *proposer_generic.Strategy {
 }
 
 func (b *BaseProposer) propose() (*attacher.IncrementalAttacher, bool) {
-	extend := b.OwnLatestMilestone()
+	extend := b.OwnLatestMilestoneOutput().VID
 
-	b.Tracef(TraceTag, "extending %s", extend.IDShortString)
+	b.Tracef(TraceTag, "%s extending %s", b.Name, extend.IDShortString)
 	// own latest milestone exists
 	if !b.TargetTs.IsSlotBoundary() {
 		// target is not a branch target
-		b.Tracef(TraceTag, "target is not a branch target")
+		b.Tracef(TraceTag, "%s target is not a branch target", b.Name)
 		if extend.Slot() != b.TargetTs.Slot() {
-			b.Tracef(TraceTag, "force exit: cross-slot %s", extend.IDShortString)
+			b.Tracef(TraceTag, "%s force exit: cross-slot %s", b.Name, extend.IDShortString)
 			return nil, true
 		}
-		b.Tracef(TraceTag, "target is not a branch and it is on the same slot")
+		b.Tracef(TraceTag, "%s target is not a branch and it is on the same slot", b.Name)
 		if !extend.IsSequencerMilestone() {
-			b.Tracef(TraceTag, "force exit: not-sequencer %s", extend.IDShortString)
+			b.Tracef(TraceTag, "%s force exit: not-sequencer %s", b.Name, extend.IDShortString)
 			return nil, true
 		}
 	}
-	b.Tracef(TraceTag, "predecessor %s is sequencer", extend.IDShortString)
+	b.Tracef(TraceTag, "%s predecessor %s is sequencer", b.Name, extend.IDShortString)
 
 	a, err := attacher.NewIncrementalAttacher(b.Name, b, b.TargetTs, extend)
 	if err != nil {
-		b.Log().Warnf("proposer 'base' %s: can't create attacher: '%v'", b.Name, err)
+		b.Tracef(TraceTag, "%s can't create attacher: '%v'", b.Name, err)
 		return nil, true
 	}
-	b.Tracef(TraceTag, "created attacher with baseline %s", a.BaselineBranch().IDShortString)
+	b.Tracef(TraceTag, "%s created attacher with baseline %s", b.Name, a.BaselineBranch().IDShortString)
 
 	if b.TargetTs.Tick() != 0 {
-		b.Tracef(TraceTag, "making non-branch, extending %s, collecting and inserting tag-along inputs", extend.IDShortString)
+		b.Tracef(TraceTag, "%s making non-branch, extending %s, collecting and inserting tag-along inputs", b.Name, extend.IDShortString)
 		numInserted := b.AttachTagAlongInputs(a)
-		b.Tracef(TraceTag, "inserted %d tag-along inputs", numInserted)
+		b.Tracef(TraceTag, "%s inserted %d tag-along inputs", b.Name, numInserted)
 	} else {
-		b.Tracef(TraceTag, "making branch, extending %s, no tag-along", extend.IDShortString)
+		b.Tracef(TraceTag, "%s making branch, extending %s, no tag-along", b.Name, extend.IDShortString)
 	}
 	return a, false
 }

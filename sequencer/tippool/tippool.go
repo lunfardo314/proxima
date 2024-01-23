@@ -2,23 +2,28 @@ package tippool
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"slices"
 	"sort"
 	"sync"
 	"time"
 
+	"github.com/lunfardo314/proxima/core/attacher"
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
+	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/set"
 	"go.uber.org/atomic"
+	"golang.org/x/exp/maps"
 )
 
 type (
 	Environment interface {
 		global.Logging
+		attacher.Environment
 		ListenToAccount(account ledger.Accountable, fun func(wOut vertex.WrappedOutput))
 		ListenToSequencers(fun func(vid *vertex.WrappedTx))
 		PullSequencerTips(seqID ledger.ChainID, loadOwnMilestones bool) (set.Set[vertex.WrappedOutput], error)
@@ -89,9 +94,9 @@ func New(env Environment, namePrefix string, opts ...Option) (*SequencerTipPool,
 
 	// start listening to sequencers, including the current sequencer
 	env.ListenToSequencers(func(vid *vertex.WrappedTx) {
-		env.Tracef(TraceTag, "seq milestone IN: %s", vid.IDShortString)
 		seqIDIncoming, ok := vid.SequencerIDIfAvailable()
 		util.Assertf(ok, "sequencer milestone expected")
+		env.Tracef(TraceTag, "seq milestone IN: %s of %s", vid.IDShortString, seqIDIncoming.StringShort)
 
 		ret.mutex.Lock()
 		defer ret.mutex.Unlock()
@@ -109,7 +114,7 @@ func New(env Environment, namePrefix string, opts ...Option) (*SequencerTipPool,
 				ret.latestMilestones[seqIDIncoming] = vid
 				storedNew = true
 			} else {
-				ret.Log().Warnf("tippool: incoming milestone %s didn't replace existing %s", vid.IDShortString(), old.IDShortString())
+				ret.Tracef(TraceTag, "tippool: incoming milestone %s didn't replace existing %s", vid.IDShortString, old.IDShortString)
 			}
 		} else {
 			ret.latestMilestones[seqIDIncoming] = vid
@@ -172,6 +177,55 @@ func (tp *SequencerTipPool) GetOwnLatestMilestoneTx() *vertex.WrappedTx {
 	defer tp.mutex.RUnlock()
 
 	return tp.latestMilestones[tp.SequencerID()]
+}
+
+func (tp *SequencerTipPool) GetOwnLatestMilestoneOutput() vertex.WrappedOutput {
+	tp.purge()
+	tp.mutex.RLock()
+	defer tp.mutex.RUnlock()
+
+	if retVid, found := tp.latestMilestones[tp.SequencerID()]; found {
+		return retVid.SequencerWrappedOutput()
+	}
+
+	// there's no own milestone in the tippool (startup)
+	// find in one of baseline states of other sequencers
+	return tp.bootstrapOwnMilestoneOutput()
+}
+
+func (tp *SequencerTipPool) bootstrapOwnMilestoneOutput() vertex.WrappedOutput {
+	chainID := tp.SequencerID()
+	milestones := maps.Values(tp.latestMilestones)
+	// sort descending
+	sort.Slice(milestones, func(i, j int) bool {
+		tsI := milestones[i].Timestamp()
+		tsJ := milestones[j].Timestamp()
+		if tsI != tsJ {
+			return tsI.After(tsJ)
+		}
+		// tsI == tsJ
+		coverageI := milestones[i].LedgerCoverageSum()
+		coverageJ := milestones[j].LedgerCoverageSum()
+		if coverageJ != coverageI {
+			return coverageI > coverageJ
+		}
+		return ledger.LessTxID(milestones[j].ID, milestones[i].ID)
+	})
+	for _, ms := range milestones {
+		baseline := ms.BaselineBranch()
+		if baseline == nil {
+			continue
+		}
+		rdr := tp.GetStateReaderForTheBranch(baseline)
+		o, err := rdr.GetUTXOForChainID(&chainID)
+		if errors.Is(err, multistate.ErrNotFound) {
+			continue
+		}
+		util.AssertNoError(err)
+		ret := attacher.AttachOutputID(o.ID, tp, attacher.OptionInvokedBy("tippool"))
+		return ret
+	}
+	return vertex.WrappedOutput{}
 }
 
 func isCandidateToTagAlong(wOut vertex.WrappedOutput) bool {

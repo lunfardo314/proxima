@@ -532,16 +532,3 @@ func (a *attacher) setBaselineBranch(vid *vertex.WrappedTx) {
 func (a *attacher) ledgerCoverage(currentTS ledger.LogicalTime) multistate.LedgerCoverage {
 	return a.prevCoverage.MakeNext(int(currentTS.Slot())-int(a.baselineBranch.Slot())+1, a.coverageDelta)
 }
-
-// not thread safe
-//var trace = false
-//
-//func (a *attacher) trace1Ahead() {
-//	a.forceTrace1Ahead = true
-//}
-//
-//func tracef(env Environment, format string, lazyArgs ...any) {
-//	if trace {
-//		env.Tracef("attacher", format, util.EvalLazyArgs(lazyArgs...)...)
-//	}
-//}

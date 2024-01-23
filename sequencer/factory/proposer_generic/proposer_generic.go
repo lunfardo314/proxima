@@ -16,7 +16,7 @@ type (
 	Environment interface {
 		attacher.Environment
 		CurrentTargetTs() ledger.LogicalTime
-		OwnLatestMilestone() *vertex.WrappedTx
+		OwnLatestMilestoneOutput() vertex.WrappedOutput
 		Propose(a *attacher.IncrementalAttacher) bool
 		AttachTagAlongInputs(a *attacher.IncrementalAttacher) int
 		ChooseExtendEndorsePair(proposerName string, targetTs ledger.LogicalTime) *attacher.IncrementalAttacher

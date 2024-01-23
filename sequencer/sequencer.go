@@ -73,7 +73,8 @@ func New(glb *workflow.Workflow, seqID ledger.ChainID, controllerKey ed25519.Pri
 
 func (seq *Sequencer) Start() {
 	seq.waitStop.Add(1)
-	util.RunWrappedRoutine(seq.config.SequencerName+"[mainLoop]", func() {
+
+	runFun := func() {
 		defer seq.waitStop.Done()
 
 		if !seq.ensureFirstMilestone() {
@@ -81,16 +82,24 @@ func (seq *Sequencer) Start() {
 			return
 		}
 		seq.mainLoop()
-	}, func(err error) {
-		seq.log.Fatal(err)
-	}, common.ErrDBUnavailable)
+	}
+
+	const debuggerFriendly = true
+	if debuggerFriendly {
+		go runFun()
+	} else {
+		util.RunWrappedRoutine(seq.config.SequencerName+"[mainLoop]", runFun, func(err error) {
+			seq.log.Fatal(err)
+		}, common.ErrDBUnavailable)
+
+	}
 }
 
 const ensureStartingMilestoneTimeout = time.Second
 
 func (seq *Sequencer) ensureFirstMilestone() bool {
 	ctx, cancel := context.WithTimeout(seq.ctx, ensureStartingMilestoneTimeout)
-	var startingMilestone *vertex.WrappedTx
+	var startingMilestoneOutput vertex.WrappedOutput
 
 	go func() {
 		for {
@@ -98,8 +107,8 @@ func (seq *Sequencer) ensureFirstMilestone() bool {
 			case <-ctx.Done():
 				return
 			case <-time.After(10 * time.Millisecond):
-				startingMilestone = seq.factory.OwnLatestMilestone()
-				if startingMilestone != nil {
+				startingMilestoneOutput = seq.factory.OwnLatestMilestoneOutput()
+				if startingMilestoneOutput.VID != nil {
 					cancel()
 					return
 				}
@@ -107,14 +116,13 @@ func (seq *Sequencer) ensureFirstMilestone() bool {
 		}
 	}()
 	<-ctx.Done()
-	if startingMilestone == nil {
+	if startingMilestoneOutput.VID == nil {
 		seq.log.Errorf("failed to find a milestone to start")
 		return false
 	}
-	seqOut := startingMilestone.SequencerWrappedOutput()
-	amount, lock, err := seqOut.AmountAndLock()
+	amount, lock, err := startingMilestoneOutput.AmountAndLock()
 	if err != nil {
-		seq.log.Errorf("sequencer start output %s is not available: %v", seqOut.IDShortString(), err)
+		seq.log.Errorf("sequencer start output %s is not available: %v", startingMilestoneOutput.IDShortString(), err)
 		return false
 	}
 	if !lock.UnlockableWith(ledger.AddressED25519FromPrivateKey(seq.controllerKey).AccountID()) {
@@ -122,9 +130,9 @@ func (seq *Sequencer) ensureFirstMilestone() bool {
 		return false
 	}
 	seq.log.Infof("sequencer will start with the milestone output %s and amount %s",
-		seqOut.IDShortString(), util.GoThousands(amount))
+		startingMilestoneOutput.IDShortString(), util.GoThousands(amount))
 
-	sleepDuration := ledger.SleepDurationUntilFutureLogicalTime(startingMilestone.Timestamp())
+	sleepDuration := ledger.SleepDurationUntilFutureLogicalTime(startingMilestoneOutput.Timestamp())
 	if sleepDuration > 0 {
 		seq.log.Infof("will delay start for %v to sync starting milestone with the real clock", sleepDuration)
 		time.Sleep(sleepDuration)
@@ -249,9 +257,9 @@ const sleepWaitingCurrentMilestoneTime = 10 * time.Millisecond
 func (seq *Sequencer) getNextTargetTime() ledger.LogicalTime {
 	var prevMilestoneTs ledger.LogicalTime
 
-	currentMs := seq.factory.OwnLatestMilestone()
-	util.Assertf(currentMs != nil, "currentMs != nil")
-	prevMilestoneTs = currentMs.Timestamp()
+	currentMsOutput := seq.factory.OwnLatestMilestoneOutput()
+	util.Assertf(currentMsOutput.VID != nil, "currentMsOutput.VID != nil")
+	prevMilestoneTs = currentMsOutput.Timestamp()
 
 	// synchronize clock
 	nowis := ledger.LogicalTimeNow()
@@ -339,7 +347,7 @@ func (seq *Sequencer) waitMilestoneInTippool(vid *vertex.WrappedTx, deadline tim
 		if time.Now().After(deadline) {
 			return false
 		}
-		if seq.factory.OwnLatestMilestone() == vid {
+		if seq.factory.OwnLatestMilestoneOutput().VID == vid {
 			return true
 		}
 		time.Sleep(1 * time.Millisecond)

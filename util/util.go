@@ -50,6 +50,16 @@ func KeysFiltered[K comparable, V any](m map[K]V, filter func(k K) bool) []K {
 	return ret
 }
 
+func ValuesFiltered[K comparable, V any](m map[K]V, filter func(v V) bool) []V {
+	ret := make([]V, 0, len(m))
+	for _, v := range m {
+		if filter(v) {
+			ret = append(ret, v)
+		}
+	}
+	return ret
+}
+
 func KeysSorted[K comparable, V any](m map[K]V, less func(k1, k2 K) bool) []K {
 	ret := maps.Keys(m)
 	sort.Slice(ret, func(i, j int) bool {

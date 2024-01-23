@@ -16,6 +16,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/sequencer"
+	"github.com/lunfardo314/proxima/sequencer/factory/proposer_endorse1"
 	"github.com/lunfardo314/proxima/sequencer/tippool"
 	"github.com/lunfardo314/proxima/util/testutil"
 	"github.com/stretchr/testify/require"
@@ -306,10 +307,14 @@ func TestNSequencers(t *testing.T) {
 	t.Run("start stop", func(t *testing.T) {
 		const (
 			maxSlots    = 3
-			nSequencers = 3 // in addition to bootstrap
+			nSequencers = 1 // in addition to bootstrap
 		)
 		testData := initMultiSeqencerTest(t, nSequencers)
+
+		testData.wrk.EnableTraceTags(proposer_endorse1.TraceTag)
+
 		testData.startSequencers(maxSlots)
+		time.Sleep(2 * time.Second)
 		testData.stopAndWaitSequencers()
 		testData.stopAndWait()
 

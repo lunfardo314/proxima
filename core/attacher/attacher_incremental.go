@@ -16,7 +16,6 @@ import (
 )
 
 func NewIncrementalAttacher(name string, env Environment, targetTs ledger.LogicalTime, extend *vertex.WrappedTx, endorse ...*vertex.WrappedTx) (*IncrementalAttacher, error) {
-	util.Assertf(extend.IsSequencerMilestone(), "extend.IsSequencerMilestone()")
 	util.Assertf(ledger.ValidTimePace(extend.Timestamp(), targetTs), "ledger.ValidTimePace(extend.Timestamp(), targetTs)")
 	for _, vid := range endorse {
 		util.Assertf(vid.IsSequencerMilestone(), "vid.IsSequencerMilestone()")

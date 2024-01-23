@@ -108,10 +108,10 @@ func (mf *MilestoneFactory) isConsumedInThePastPath(wOut vertex.WrappedOutput, m
 	return mf.ownMilestones[ms].Contains(wOut)
 }
 
-func (mf *MilestoneFactory) OwnLatestMilestone() *vertex.WrappedTx {
-	latest := mf.tipPool.GetOwnLatestMilestoneTx()
-	if latest != nil {
-		mf.AddOwnMilestone(latest)
+func (mf *MilestoneFactory) OwnLatestMilestoneOutput() vertex.WrappedOutput {
+	latest := mf.tipPool.GetOwnLatestMilestoneOutput()
+	if latest.VID != nil {
+		mf.AddOwnMilestone(latest.VID)
 	}
 	return latest
 }
@@ -124,7 +124,7 @@ func (mf *MilestoneFactory) AddOwnMilestone(vid *vertex.WrappedTx) {
 		return
 	}
 
-	consumed := set.New[vertex.WrappedOutput](vid.WrappedInputs()...)
+	consumed := set.New[vertex.WrappedOutput]()
 	if vid.IsSequencerMilestone() {
 		if prev := vid.SequencerPredecessor(); prev != nil {
 			if prevConsumed, found := mf.ownMilestones[prev]; found {

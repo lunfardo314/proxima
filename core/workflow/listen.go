@@ -11,7 +11,7 @@ import (
 	"github.com/lunfardo314/proxima/util/set"
 )
 
-// ListenToAccount listens to all unlockable with account ID
+// ListenToAccount listens to all outputs unlockable with account ID
 func (w *Workflow) ListenToAccount(account ledger.Accountable, fun func(wOut vertex.WrappedOutput)) {
 	w.events.OnEvent(EventNewTx, func(vid *vertex.WrappedTx) {
 		var _indices [256]byte
