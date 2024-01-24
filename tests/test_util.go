@@ -572,6 +572,7 @@ func (td *longConflictTestData) printTxIDs() {
 }
 
 type spammerParams struct {
+	t             *testing.T
 	privateKey    ed25519.PrivateKey
 	remainder     *ledger.OutputWithID
 	tagAlongSeqID ledger.ChainID
@@ -628,6 +629,11 @@ func makeTransfers(par *spammerParams) [][]byte {
 			WithTagAlong(par.tagAlongSeqID, par.tagAlongFee)
 		ret[i], par.remainder, err = txbuilder.MakeSimpleTransferTransactionWithRemainder(tData)
 		util.AssertNoError(err)
+
+		//txStr := transaction.ParseBytesToString(ret[i], func(_ *ledger.OutputID) ([]byte, bool) {
+		//	return par.remainder.Output.Bytes(), true
+		//})
+		//par.t.Logf(">>>>>> PARSE: %s", txStr)
 	}
 	return ret
 }

@@ -169,7 +169,7 @@ func (ctx *TransactionContext) _validateOutputs(consumedBranch bool, failFast bo
 			if !failFast {
 				failedOutputs.WriteByte(i)
 			}
-			lastErr = fmt.Errorf("%v :\n%s", err, o.ToString("   "))
+			lastErr = fmt.Errorf("%w :\n%s", err, o.ToString("   "))
 			return !failFast
 		}
 		minDeposit := ledger.MinimumStorageDeposit(o, extraDepositWeight)
@@ -226,8 +226,7 @@ func (ctx *TransactionContext) runOutput(consumedBranch bool, output *ledger.Out
 
 		res, name, err = ctx.checkConstraint(data, blockPath)
 		if err != nil {
-			err = fmt.Errorf("constraint '%s' failed with error '%v'. Path: %s",
-				name, err, PathToString(blockPath))
+			err = fmt.Errorf("constraint '%s' failed with error '%v'. Path: %s", name, err, PathToString(blockPath))
 			return false
 		}
 		if len(res) == 0 {

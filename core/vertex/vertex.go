@@ -59,10 +59,11 @@ func (v *Vertex) ValidateConstraints(traceOption ...int) error {
 		return err
 	}
 	err = ctx.Validate()
-	if err == nil {
-		v.SetFlagUp(FlagConstraintsValid)
+	if err != nil {
+		return fmt.Errorf("ValidateConstraints: %s: %w", v.Tx.IDShortString(), err)
 	}
-	return err
+	v.SetFlagUp(FlagConstraintsValid)
+	return nil
 }
 
 func (v *Vertex) ValidateDebug() (string, error) {

@@ -34,6 +34,12 @@ func (a *milestoneAttacher) finalize() {
 		}
 	}
 
+	a.finals.baseline = a.baselineBranch
+	a.finals.numTransactions = len(a.validPastVertices)
+	a.finals.coverage = a.ledgerCoverage(a.vid.Timestamp())
+	a.Tracef(TraceTagAttachMilestone, "set ledger coverage in %s to %s", a.vid.IDShortString(), a.finals.coverage.String())
+	a.vid.SetLedgerCoverage(a.finals.coverage)
+
 	if a.vid.IsBranchTransaction() {
 		a.commitBranch()
 
@@ -46,12 +52,6 @@ func (a *milestoneAttacher) finalize() {
 		a.Tracef(TraceTagAttachMilestone, "finalized sequencer milestone")
 	}
 
-	a.finals.baseline = a.baselineBranch
-	a.finals.numTransactions = len(a.validPastVertices)
-	a.finals.coverage = a.ledgerCoverage(a.vid.Timestamp())
-	a.Tracef("seq", "set ledger coverage in %s to %s", a.vid.IDShortString(), a.finals.coverage.String())
-
-	a.vid.SetLedgerCoverage(a.finals.coverage)
 }
 
 func (a *milestoneAttacher) commitBranch() {
@@ -81,7 +81,7 @@ func (a *milestoneAttacher) commitBranch() {
 
 	seqID, stemOID := a.vid.MustSequencerIDAndStemID()
 	upd := multistate.MustNewUpdatable(a.StateStore(), a.baselineStateReader().Root())
-	upd.MustUpdate(muts, &stemOID, &seqID, a.finals.coverage)
+	upd.MustUpdate(muts, &stemOID, &seqID, *a.vid.GetLedgerCoverage())
 	a.finals.root = upd.Root()
 
 	// check consistency with metadata

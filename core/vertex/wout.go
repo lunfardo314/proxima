@@ -2,6 +2,7 @@ package vertex
 
 import (
 	"github.com/lunfardo314/proxima/ledger"
+	"github.com/lunfardo314/proxima/util/lines"
 	"github.com/lunfardo314/proxima/util/set"
 )
 
@@ -81,4 +82,12 @@ func (o *WrappedOutput) AmountAndLock() (uint64, ledger.Lock, error) {
 		return 0, nil, err
 	}
 	return oReal.Amount(), oReal.Lock(), nil
+}
+
+func WrappedOutputsShortLines(wOuts []WrappedOutput) *lines.Lines {
+	ret := lines.New()
+	for _, wOut := range wOuts {
+		ret.Add(wOut.IDShortString())
+	}
+	return ret
 }

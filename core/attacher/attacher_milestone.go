@@ -16,7 +16,7 @@ import (
 
 const (
 	periodicCheckEach               = 1 * time.Second
-	maxToleratedParasiticChainSlots = 1
+	maxToleratedParasiticChainSlots = 5
 )
 
 const TraceTagAttachMilestone = "milestone"
@@ -124,34 +124,31 @@ func (a *milestoneAttacher) lazyRepeat(fun func() vertex.Status) vertex.Status {
 func logFinalStatusString(vid *vertex.WrappedTx, finals *attachFinals, msData *txbuilder.MilestoneData) string {
 	var msg string
 
-	status := vid.GetTxStatus()
-	brNum := "?"
-	seqNum := "?"
+	msDataStr := ""
 	if msData != nil {
-		brNum = fmt.Sprintf("%d", msData.BranchHeight)
-		seqNum = fmt.Sprintf("%d", msData.ChainHeight)
+		msDataStr = fmt.Sprintf(" (%s %d/%d)", msData.Name, msData.BranchHeight, msData.ChainHeight)
 	}
 	if vid.IsBranchTransaction() {
-		msg = fmt.Sprintf("-- ATTACH BRANCH (%s, b# %s/s# %s) %s(in %d/out %d)", status.String(), vid.IDShortString(), brNum, seqNum, finals.numInputs, finals.numOutputs)
+		msg = fmt.Sprintf("-- ATTACH BRANCH%s %s(in %d/out %d)", msDataStr, vid.IDShortString(), finals.numInputs, finals.numOutputs)
 	} else {
 		nums := ""
 		if finals != nil {
 			nums = fmt.Sprintf("(in %d/out %d)", finals.numInputs, finals.numOutputs)
 		}
-		msg = fmt.Sprintf("-- ATTACH SEQ TX (%s, b# %s/s# %s) %s%s", status.String(), brNum, seqNum, vid.IDShortString(), nums)
+		msg = fmt.Sprintf("-- ATTACH SEQ TX%s %s%s", msDataStr, vid.IDShortString(), nums)
 	}
-	if status == vertex.Bad {
-		msg += fmt.Sprintf(" reason = '%v'", vid.GetReason())
+	if vid.GetTxStatus() == vertex.Bad {
+		msg += fmt.Sprintf("BAD: reason = '%v'", vid.GetReason())
 	} else {
 		bl := "<nil>"
 		if finals.baseline != nil {
 			bl = finals.baseline.IDShortString()
 		}
 		if vid.IsBranchTransaction() {
-			msg += fmt.Sprintf(" baseline: %s, new tx: %d, UTXO mut +%d/-%d, cov: %s",
+			msg += fmt.Sprintf(" base: %s, new tx: %d, UTXO mut +%d/-%d, cov: %s",
 				bl, finals.numTransactions, finals.numCreatedOutputs, finals.numDeletedOutputs, finals.coverage.String())
 		} else {
-			msg += fmt.Sprintf(" baseline: %s, new tx: %d, cov: %s", bl, finals.numTransactions, finals.coverage.String())
+			msg += fmt.Sprintf(" base: %s, new tx: %d, cov: %s", bl, finals.numTransactions, finals.coverage.String())
 		}
 	}
 	var memStats runtime.MemStats

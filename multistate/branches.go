@@ -102,6 +102,10 @@ func (r *RootRecord) Bytes() []byte {
 	return arr.Bytes()
 }
 
+func (r *RootRecord) String() string {
+	return fmt.Sprintf("root record %s, %s, %s", r.SequencerID.StringShort(), r.LedgerCoverage.String(), r.Root.String())
+}
+
 func (br *BranchData) TxID() *ledger.TransactionID {
 	ret := br.Stem.ID.TransactionID()
 	return &ret

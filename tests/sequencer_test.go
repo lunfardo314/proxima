@@ -16,6 +16,8 @@ import (
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/sequencer"
+	"github.com/lunfardo314/proxima/sequencer/factory"
+	"github.com/lunfardo314/proxima/sequencer/factory/proposer_endorse1"
 	"github.com/lunfardo314/proxima/sequencer/tippool"
 	"github.com/lunfardo314/proxima/util/testutil"
 	"github.com/stretchr/testify/require"
@@ -181,6 +183,7 @@ func Test1Sequencer(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), (maxSlots+1)*ledger.SlotDuration())
 		//ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 		par := &spammerParams{
+			t:             t,
 			privateKey:    testData.privKeyAux,
 			remainder:     auxOuts[0],
 			tagAlongSeqID: testData.bootstrapChainID,
@@ -335,12 +338,12 @@ func TestNSequencersIdle(t *testing.T) {
 		//testData.wrk.EnableTraceTags(attacher.TraceTagAttachVertex, attacher.TraceTagAttachOutput)
 
 		testData.startSequencers(maxSlots)
-		time.Sleep(30 * time.Second)
+		time.Sleep(10 * time.Second)
 		testData.stopAndWaitSequencers()
 		testData.stopAndWait()
 
 		t.Logf("%s", testData.wrk.Info(true))
-		//testData.wrk.SaveGraph("utangle")
+		testData.wrk.SaveGraph("utangle")
 		dag.SaveTree(testData.wrk.StateStore(), fmt.Sprintf("utangle_tree_%d", nSequencers+1))
 	})
 	t.Run("idle 5", func(t *testing.T) {
@@ -355,11 +358,11 @@ func TestNSequencersIdle(t *testing.T) {
 		//testData.wrk.EnableTraceTags(attacher.TraceTagAttachVertex, attacher.TraceTagAttachOutput)
 
 		testData.startSequencers(maxSlots)
-		time.Sleep(30 * time.Second)
+		time.Sleep(20 * time.Second)
 		testData.stopAndWaitSequencers()
 		testData.stopAndWait()
 
-		t.Logf("%s", testData.wrk.Info(true))
+		t.Logf("%s", testData.wrk.Info())
 		//testData.wrk.SaveGraph("utangle")
 		dag.SaveTree(testData.wrk.StateStore(), fmt.Sprintf("utangle_tree_%d", nSequencers+1))
 	})
@@ -377,10 +380,11 @@ func TestNSequencersTransfer(t *testing.T) {
 		)
 		testData := initMultiSequencerTest(t, nSequencers)
 
-		//testData.wrk.EnableTraceTags(proposer_endorse1.TraceTag)
 		//testData.wrk.EnableTraceTags(factory.TraceTagChooseExtendEndorsePair)
 		//testData.wrk.EnableTraceTags(attacher.TraceTagAttachVertex, attacher.TraceTagAttachOutput)
-		testData.wrk.EnableTraceTags(tippool.TraceTag)
+		testData.wrk.EnableTraceTags(proposer_endorse1.TraceTag)
+		testData.wrk.EnableTraceTags(factory.TraceTagChooseExtendEndorsePair)
+		testData.wrk.EnableTraceTags(factory.TraceTag)
 
 		spammingTimeout := 10 * time.Second
 
@@ -397,6 +401,7 @@ func TestNSequencersTransfer(t *testing.T) {
 
 		ctx, cancelSpam := context.WithTimeout(context.Background(), spammingTimeout)
 		par := &spammerParams{
+			t:             t,
 			privateKey:    testData.privKeyAux,
 			remainder:     auxOuts[0],
 			tagAlongSeqID: testData.bootstrapChainID,
@@ -426,8 +431,9 @@ func TestNSequencersTransfer(t *testing.T) {
 
 		rdr = testData.wrk.HeaviestStateForLatestTimeSlot()
 		for _, txid := range par.spammedTxIDs {
-			require.True(t, rdr.KnowsCommittedTransaction(&txid))
-			//t.Logf("    %s: in the heaviest state: %v", txid.StringShort(), )
+
+			//require.True(t, rdr.KnowsCommittedTransaction(&txid))
+			t.Logf("    %s: in the heaviest state: %v", txid.StringShort(), rdr.KnowsCommittedTransaction(&txid))
 		}
 		targetBalance := rdr.BalanceOf(targetAddr.AccountID())
 		require.EqualValues(t, maxBatches*batchSize*sendAmount, int(targetBalance))

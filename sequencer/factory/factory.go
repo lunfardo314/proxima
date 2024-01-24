@@ -1,7 +1,6 @@
 package factory
 
 import (
-	"bytes"
 	"context"
 	"crypto/ed25519"
 	"errors"
@@ -20,7 +19,6 @@ import (
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/set"
 	"github.com/lunfardo314/unitrie/common"
-	"golang.org/x/crypto/blake2b"
 )
 
 type (
@@ -43,9 +41,9 @@ type (
 		ownMilestoneCount           int
 		removedMilestonesSinceReset int
 		// past combinations
-		pastCombinationsMutex     sync.RWMutex
-		pastCombinations          map[[32]byte]time.Time
-		pastCombinationsNextPurge time.Time
+		//pastCombinationsMutex     sync.RWMutex
+		//pastCombinations          map[[32]byte]time.Time
+		//pastCombinationsNextPurge time.Time
 	}
 
 	latestMilestoneProposal struct {
@@ -88,7 +86,7 @@ func New(env Environment, maxTagAlongInputs int) (*MilestoneFactory, error) {
 		proposal:          latestMilestoneProposal{},
 		ownMilestones:     make(map[*vertex.WrappedTx]set.Set[vertex.WrappedOutput]),
 		maxTagAlongInputs: maxTagAlongInputs,
-		pastCombinations:  make(map[[32]byte]time.Time),
+		//pastCombinations:  make(map[[32]byte]time.Time),
 	}
 	if ret.maxTagAlongInputs == 0 || ret.maxTagAlongInputs > veryMaxTagAlongInputs {
 		ret.maxTagAlongInputs = veryMaxTagAlongInputs
@@ -259,8 +257,8 @@ func (mf *MilestoneFactory) Propose(a *attacher.IncrementalAttacher) (forceExit 
 }
 
 func (mf *MilestoneFactory) getLatestProposal() *transaction.Transaction {
-	mf.mutex.RLock()
-	defer mf.mutex.RUnlock()
+	mf.proposal.mutex.RLock()
+	defer mf.proposal.mutex.RUnlock()
 
 	return mf.proposal.current
 }
@@ -291,7 +289,7 @@ const TraceTagChooseExtendEndorsePair = "ChooseExtendEndorsePair"
 func (mf *MilestoneFactory) ChooseExtendEndorsePair(proposerName string, targetTs ledger.LogicalTime) *attacher.IncrementalAttacher {
 	util.Assertf(targetTs.Tick() != 0, "targetTs.Tick() != 0")
 	endorseCandidates := mf.tipPool.CandidatesToEndorseSorted(targetTs)
-	mf.Tracef(TraceTagChooseExtendEndorsePair, ">>>>>>>>>>>>>>> {%s}", vertex.VerticesShortLines(endorseCandidates).Join(", "))
+	mf.Tracef(TraceTagChooseExtendEndorsePair, ">>>>>>>>>>>>>>> target %s {%s}", targetTs.String(), vertex.VerticesShortLines(endorseCandidates).Join(", "))
 
 	seqID := mf.SequencerID()
 	var ret *attacher.IncrementalAttacher
@@ -309,30 +307,39 @@ func (mf *MilestoneFactory) ChooseExtendEndorsePair(proposerName string, targetT
 		util.AssertNoError(err)
 		extendRoot := attacher.AttachOutputID(seqOut.ID, mf)
 		futureConeMilestones := mf.futureConeOwnMilestonesOrdered(extendRoot, targetTs)
-		ret = mf.chooseEndorseExtendPair(proposerName, targetTs, endorse, futureConeMilestones)
-		if ret != nil {
-			// return first suitable pair. The search is not exhaustive along all possible endorsements
-			mf.rememberExtendEndorseCombination(ret.Extending().VID, endorse)
+
+		mf.Tracef(TraceTagChooseExtendEndorsePair, ">>>>>>>>>>>>>>> check endorsement candidate %s against future cone of extension candidates {%s}",
+			endorse.IDShortString, func() string { return vertex.WrappedOutputsShortLines(futureConeMilestones).Join(", ") })
+
+		if ret = mf.chooseEndorseExtendPair(proposerName, targetTs, endorse, futureConeMilestones); ret != nil {
+			mf.Tracef(TraceTagChooseExtendEndorsePair, ">>>>>>>>>>>>>>> chooseEndorseExtendPair return %s", ret.Name())
 			return ret
 		}
-		mf.Tracef(TraceTagChooseExtendEndorsePair, ">>>>>>>>>>>>>>> chooseEndorseExtendPair nil")
+		//if ret != nil {
+		//	// return first suitable pair. The search is not exhaustive along all possible endorsements
+		//	mf.rememberExtendEndorseCombination(ret.Extending().VID, endorse)
+		//	return ret
+		//}
 	}
+	mf.Tracef(TraceTagChooseExtendEndorsePair, ">>>>>>>>>>>>>>> chooseEndorseExtendPair nil")
 	return nil
 }
 
 func (mf *MilestoneFactory) chooseEndorseExtendPair(proposerName string, targetTs ledger.LogicalTime, endorse *vertex.WrappedTx, extendCandidates []vertex.WrappedOutput) *attacher.IncrementalAttacher {
 	var ret *attacher.IncrementalAttacher
 	for _, extend := range extendCandidates {
-		if mf.knownExtendEndorseCombination(extend.VID, endorse) {
-			continue
-		}
+		//if mf.knownExtendEndorseCombination(extend.VID, endorse) {
+		//	mf.Tracef(TraceTagChooseExtendEndorsePair, "%s known combination extend: %s, endorse: %s", targetTs.String, extend.VID.IDShortString, endorse.IDShortString)
+		//	continue
+		//}
 		a, err := attacher.NewIncrementalAttacher(proposerName, mf, targetTs, extend, endorse)
 		if err != nil {
-			mf.Tracef(TraceTagChooseExtendEndorsePair, "can't extend %s and endorse %s: %v", extend.IDShortString, endorse.IDShortString, err)
+			mf.Tracef(TraceTagChooseExtendEndorsePair, "%s can't extend %s and endorse %s: %v", targetTs.String, extend.IDShortString, endorse.IDShortString, err)
 			continue
 		}
 		util.Assertf(a != nil, "a != nil")
 		if !a.Completed() {
+			mf.Tracef(TraceTagChooseExtendEndorsePair, "%s not completed", a.Name())
 			continue
 		}
 		if ret == nil || a.LedgerCoverageSum() > ret.LedgerCoverageSum() {
@@ -386,56 +393,57 @@ func (mf *MilestoneFactory) NumMilestones() int {
 	return mf.tipPool.NumMilestones()
 }
 
-func extendEndorseCombinationHash(extend *vertex.WrappedTx, endorse ...*vertex.WrappedTx) (ret [32]byte) {
-	if len(endorse) == 0 {
-		ret = extend.ID
-		return
-	}
-	var buf bytes.Buffer
-	buf.Write(extend.ID[:])
-	for _, vid := range endorse {
-		buf.Write(vid.ID[:])
-	}
-	return blake2b.Sum256(buf.Bytes())
-}
-
-const (
-	pastCombinationTTL = time.Minute
-	purgePeriod        = 10 * time.Second
-)
-
-func (mf *MilestoneFactory) _purgePastCombinations() {
-	nowis := time.Now()
-	if nowis.Before(mf.pastCombinationsNextPurge) {
-		return
-	}
-	toDelete := make([][32]byte, 0)
-	for h, deadline := range mf.pastCombinations {
-		if deadline.Before(nowis) {
-			toDelete = append(toDelete, h)
-		}
-	}
-	for i := range toDelete {
-		delete(mf.pastCombinations, toDelete[i])
-	}
-	mf.pastCombinationsNextPurge = nowis.Add(purgePeriod)
-}
-
-func (mf *MilestoneFactory) knownExtendEndorseCombination(extend *vertex.WrappedTx, endorse ...*vertex.WrappedTx) bool {
-	h := extendEndorseCombinationHash(extend, endorse...)
-
-	mf.pastCombinationsMutex.RLock()
-	defer mf.pastCombinationsMutex.RUnlock()
-
-	_, already := mf.pastCombinations[h]
-	return already
-}
-
-func (mf *MilestoneFactory) rememberExtendEndorseCombination(extend *vertex.WrappedTx, endorse ...*vertex.WrappedTx) {
-	mf.pastCombinationsMutex.Lock()
-	defer mf.pastCombinationsMutex.Unlock()
-
-	h := extendEndorseCombinationHash(extend, endorse...)
-	mf.pastCombinations[h] = time.Now().Add(pastCombinationTTL)
-	mf._purgePastCombinations()
-}
+//
+//func extendEndorseCombinationHash(extend *vertex.WrappedTx, endorse ...*vertex.WrappedTx) (ret [32]byte) {
+//	if len(endorse) == 0 {
+//		ret = extend.ID
+//		return
+//	}
+//	var buf bytes.Buffer
+//	buf.Write(extend.ID[:])
+//	for _, vid := range endorse {
+//		buf.Write(vid.ID[:])
+//	}
+//	return blake2b.Sum256(buf.Bytes())
+//}
+//
+//const (
+//	pastCombinationTTL = time.Minute
+//	purgePeriod        = 10 * time.Second
+//)
+//
+//func (mf *MilestoneFactory) _purgePastCombinations() {
+//	nowis := time.Now()
+//	if nowis.Before(mf.pastCombinationsNextPurge) {
+//		return
+//	}
+//	toDelete := make([][32]byte, 0)
+//	for h, deadline := range mf.pastCombinations {
+//		if deadline.Before(nowis) {
+//			toDelete = append(toDelete, h)
+//		}
+//	}
+//	for i := range toDelete {
+//		delete(mf.pastCombinations, toDelete[i])
+//	}
+//	mf.pastCombinationsNextPurge = nowis.Add(purgePeriod)
+//}
+//
+//func (mf *MilestoneFactory) knownExtendEndorseCombination(extend *vertex.WrappedTx, endorse ...*vertex.WrappedTx) bool {
+//	h := extendEndorseCombinationHash(extend, endorse...)
+//
+//	mf.pastCombinationsMutex.RLock()
+//	defer mf.pastCombinationsMutex.RUnlock()
+//
+//	_, already := mf.pastCombinations[h]
+//	return already
+//}
+//
+//func (mf *MilestoneFactory) rememberExtendEndorseCombination(extend *vertex.WrappedTx, endorse ...*vertex.WrappedTx) {
+//	mf.pastCombinationsMutex.Lock()
+//	defer mf.pastCombinationsMutex.Unlock()
+//
+//	h := extendEndorseCombinationHash(extend, endorse...)
+//	mf.pastCombinations[h] = time.Now().Add(pastCombinationTTL)
+//	mf._purgePastCombinations()
+//}

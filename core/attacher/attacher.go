@@ -530,5 +530,6 @@ func (a *attacher) setBaselineBranch(vid *vertex.WrappedTx) {
 }
 
 func (a *attacher) ledgerCoverage(currentTS ledger.LogicalTime) multistate.LedgerCoverage {
-	return a.prevCoverage.MakeNext(int(currentTS.Slot())-int(a.baselineBranch.Slot())+1, a.coverageDelta)
+	ret := a.prevCoverage.MakeNext(int(currentTS.Slot())-int(a.baselineBranch.Slot())+1, a.coverageDelta)
+	return ret
 }

@@ -95,6 +95,12 @@ func (a *IncrementalAttacher) insertEndorsement(endorsement *vertex.WrappedTx, v
 	if endorsement.IsBadOrDeleted() {
 		return fmt.Errorf("NewIncrementalAttacher: can't endorse %s. Reason: '%s'", endorsement.IDShortString(), endorsement.GetReason())
 	}
+	endBaseline := endorsement.BaselineBranch()
+	if !a.branchesCompatible(a.baselineBranch, endBaseline) {
+		return fmt.Errorf("baseline branch %s of the endorsement branch %s is incompatible with the baseline %s",
+			endBaseline.IDShortString(), endorsement.IDShortString(), a.baselineBranch.IDShortString())
+	}
+
 	endorsement.Unwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
 		a.attachVertex(v, endorsement, ledger.NilLogicalTime, visited)
 	}})

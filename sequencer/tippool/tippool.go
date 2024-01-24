@@ -81,6 +81,13 @@ func New(env Environment, namePrefix string, opts ...Option) (*SequencerTipPool,
 			return
 		}
 
+		{
+			// sanity check
+			wOut.VID.Unwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
+				util.Assertf(int(wOut.Index) < v.Tx.NumProducedOutputs(), "int(wOut.Index) < v.Tx.NumProducedOutputs()")
+			}})
+		}
+
 		ret.mutex.Lock()
 		defer ret.mutex.Unlock()
 
