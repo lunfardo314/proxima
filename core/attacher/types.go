@@ -8,6 +8,7 @@ import (
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
+	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/util/set"
 	"github.com/lunfardo314/unitrie/common"
@@ -47,6 +48,7 @@ type (
 		PostEventEnvironment
 		EvidenceEnvironment
 		AsyncPersistTxBytesWithMetadata(txBytes []byte, metadata *txmetadata.TransactionMetadata)
+		ParseMilestoneData(msVID *vertex.WrappedTx) *txbuilder.MilestoneData
 	}
 
 	attacher struct {

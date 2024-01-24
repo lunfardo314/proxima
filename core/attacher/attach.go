@@ -153,7 +153,8 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Opt
 				status, stats, err := runMilestoneAttacher(vid, options.metadata, env, ctx)
 				vid.SetTxStatus(status)
 				vid.SetReason(err)
-				env.Log().Info(logFinalStatusString(vid, stats))
+				msData := env.ParseMilestoneData(vid)
+				env.Log().Info(logFinalStatusString(vid, stats, msData))
 				env.PokeAllWith(vid)
 				callback(vid, err)
 			}

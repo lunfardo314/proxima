@@ -9,6 +9,7 @@ import (
 	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/ledger"
+	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/set"
 )
@@ -120,18 +121,24 @@ func (a *milestoneAttacher) lazyRepeat(fun func() vertex.Status) vertex.Status {
 	}
 }
 
-func logFinalStatusString(vid *vertex.WrappedTx, finals *attachFinals) string {
+func logFinalStatusString(vid *vertex.WrappedTx, finals *attachFinals, msData *txbuilder.MilestoneData) string {
 	var msg string
 
 	status := vid.GetTxStatus()
+	brNum := "?"
+	seqNum := "?"
+	if msData != nil {
+		brNum = fmt.Sprintf("%d", msData.BranchHeight)
+		seqNum = fmt.Sprintf("%d", msData.ChainHeight)
+	}
 	if vid.IsBranchTransaction() {
-		msg = fmt.Sprintf("-- ATTACH BRANCH (%s) %s(%d/%d)", status.String(), vid.IDShortString(), finals.numInputs, finals.numOutputs)
+		msg = fmt.Sprintf("-- ATTACH BRANCH (%s, b# %s/s# %s) %s(in %d/out %d)", status.String(), vid.IDShortString(), brNum, seqNum, finals.numInputs, finals.numOutputs)
 	} else {
 		nums := ""
 		if finals != nil {
-			nums = fmt.Sprintf("(%d/%d)", finals.numInputs, finals.numOutputs)
+			nums = fmt.Sprintf("(in %d/out %d)", finals.numInputs, finals.numOutputs)
 		}
-		msg = fmt.Sprintf("-- ATTACH SEQ TX (%s) %s%s", status.String(), vid.IDShortString(), nums)
+		msg = fmt.Sprintf("-- ATTACH SEQ TX (%s, b# %s/s# %s) %s%s", status.String(), brNum, seqNum, vid.IDShortString(), nums)
 	}
 	if status == vertex.Bad {
 		msg += fmt.Sprintf(" reason = '%v'", vid.GetReason())

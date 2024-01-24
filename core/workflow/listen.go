@@ -11,14 +11,14 @@ import (
 	"github.com/lunfardo314/proxima/util/set"
 )
 
-// ListenToAccount listens to all outputs unlockable with account ID
+// ListenToAccount listens to all outputs unlockable with account ID (except stem-locked outputs)
 func (w *Workflow) ListenToAccount(account ledger.Accountable, fun func(wOut vertex.WrappedOutput)) {
 	w.events.OnEvent(EventNewTx, func(vid *vertex.WrappedTx) {
 		var _indices [256]byte
 		indices := _indices[:0]
 		vid.RUnwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
 			v.Tx.ForEachProducedOutput(func(idx byte, o *ledger.Output, _ *ledger.OutputID) bool {
-				if o.Lock().UnlockableWith(account.AccountID()) {
+				if o.Lock().UnlockableWith(account.AccountID()) && o.Lock().Name() != ledger.StemLockName {
 					indices = append(indices, idx)
 				}
 				return true

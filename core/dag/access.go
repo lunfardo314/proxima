@@ -8,6 +8,7 @@ import (
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
+	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/util"
 )
@@ -182,4 +183,11 @@ func (d *DAG) ForEachVertex(fun func(vid *vertex.WrappedTx) bool) {
 			return
 		}
 	}
+}
+
+func (s *DAG) ParseMilestoneData(msVID *vertex.WrappedTx) (ret *txbuilder.MilestoneData) {
+	msVID.Unwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
+		ret = txbuilder.ParseMilestoneData(v.Tx.SequencerOutput().Output)
+	}})
+	return
 }

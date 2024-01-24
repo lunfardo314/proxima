@@ -223,7 +223,7 @@ func Test1Sequencer(t *testing.T) {
 	})
 }
 
-func initMultiSeqencerTest(t *testing.T, nSequencers int) *workflowTestData {
+func initMultiSequencerTest(t *testing.T, nSequencers int) *workflowTestData {
 	testData := initWorkflowTest(t, nSequencers)
 	//testData.wrk.EnableTraceTags(tippool.TraceTag)
 	//testData.wrk.EnableTraceTags(factory.TraceTag)
@@ -252,11 +252,16 @@ func initMultiSeqencerTest(t *testing.T, nSequencers int) *workflowTestData {
 	return testData
 }
 
-func (td *workflowTestData) startSequencers(maxSlots int) {
+func (td *workflowTestData) startSequencers(maxSlots int, timeout ...time.Duration) {
+	ctx := td.ctx
+	cancel := func() {}
+	if len(timeout) > 0 {
+		ctx, cancel = context.WithTimeout(td.ctx, timeout[0])
+	}
 	td.sequencers = make([]*sequencer.Sequencer, len(td.chainOrigins))
 	var err error
 	for seqNr := range td.sequencers {
-		td.sequencers[seqNr], err = sequencer.New(td.wrk, td.chainOrigins[seqNr].ChainID, td.privKeyAux, td.ctx,
+		td.sequencers[seqNr], err = sequencer.New(td.wrk, td.chainOrigins[seqNr].ChainID, td.privKeyAux, ctx,
 			sequencer.WithName(fmt.Sprintf("seq%d", seqNr)),
 			sequencer.WithMaxFeeInputs(30),
 			sequencer.WithPace(5),
@@ -265,6 +270,10 @@ func (td *workflowTestData) startSequencers(maxSlots int) {
 		require.NoError(td.t, err)
 		td.sequencers[seqNr].Start()
 	}
+	go func() {
+		<-ctx.Done()
+		cancel()
+	}()
 }
 
 func (td *workflowTestData) stopAndWaitSequencers() {
@@ -285,13 +294,28 @@ func (td *workflowTestData) stopAndWaitSequencers() {
 	td.t.Logf("all sequencers have been stopped ")
 }
 
-func TestNSequencers(t *testing.T) {
+func (td *workflowTestData) waitSequencers() {
+	var wg sync.WaitGroup
+	wg.Add(len(td.chainOrigins))
+	for i := range td.sequencers {
+		i1 := i
+		go func() {
+			td.sequencers[i1].WaitStop()
+			wg.Done()
+		}()
+	}
+	wg.Wait()
+	td.bootstrapSeq.StopAndWait()
+	td.t.Logf("all sequencers have been stopped ")
+}
+
+func TestNSequencersIdle(t *testing.T) {
 	ledger.SetTimeTickDuration(10 * time.Millisecond)
 	t.Run("finalize chain origins", func(t *testing.T) {
 		const (
 			nSequencers = 5 // in addition to bootstrap
 		)
-		testData := initMultiSeqencerTest(t, nSequencers)
+		testData := initMultiSequencerTest(t, nSequencers)
 
 		testData.bootstrapSeq.StopAndWait()
 		testData.stopAndWait()
@@ -304,7 +328,7 @@ func TestNSequencers(t *testing.T) {
 			maxSlots    = 50
 			nSequencers = 1 // in addition to bootstrap
 		)
-		testData := initMultiSeqencerTest(t, nSequencers)
+		testData := initMultiSequencerTest(t, nSequencers)
 
 		//testData.wrk.EnableTraceTags(proposer_endorse1.TraceTag)
 		//testData.wrk.EnableTraceTags(factory.TraceTagChooseExtendEndorsePair)
@@ -324,7 +348,7 @@ func TestNSequencers(t *testing.T) {
 			maxSlots    = 50
 			nSequencers = 4 // in addition to bootstrap
 		)
-		testData := initMultiSeqencerTest(t, nSequencers)
+		testData := initMultiSequencerTest(t, nSequencers)
 
 		//testData.wrk.EnableTraceTags(proposer_endorse1.TraceTag)
 		//testData.wrk.EnableTraceTags(factory.TraceTagChooseExtendEndorsePair)
@@ -339,5 +363,79 @@ func TestNSequencers(t *testing.T) {
 		//testData.wrk.SaveGraph("utangle")
 		dag.SaveTree(testData.wrk.StateStore(), fmt.Sprintf("utangle_tree_%d", nSequencers+1))
 	})
+}
 
+func TestNSequencersTransfer(t *testing.T) {
+	ledger.SetTimeTickDuration(10 * time.Millisecond)
+	t.Run("seq 2 transfer 1", func(t *testing.T) {
+		const (
+			maxSlots    = 50
+			nSequencers = 1 // in addition to bootstrap
+			batchSize   = 5
+			maxBatches  = 5
+			sendAmount  = 2000
+		)
+		testData := initMultiSequencerTest(t, nSequencers)
+
+		//testData.wrk.EnableTraceTags(proposer_endorse1.TraceTag)
+		//testData.wrk.EnableTraceTags(factory.TraceTagChooseExtendEndorsePair)
+		//testData.wrk.EnableTraceTags(attacher.TraceTagAttachVertex, attacher.TraceTagAttachOutput)
+		testData.wrk.EnableTraceTags(tippool.TraceTag)
+
+		spammingTimeout := 10 * time.Second
+
+		rdr := multistate.MakeSugared(testData.wrk.HeaviestStateForLatestTimeSlot())
+		require.EqualValues(t, initBalance*nSequencers, int(rdr.BalanceOf(testData.addrAux.AccountID())))
+
+		initialBalanceOnChain := rdr.BalanceOnChain(&testData.bootstrapChainID)
+
+		auxOuts, err := rdr.GetOutputsForAccount(testData.addrAux.AccountID())
+		require.NoError(t, err)
+		require.EqualValues(t, 1, len(auxOuts))
+		targetPrivKey := testutil.GetTestingPrivateKey(10000)
+		targetAddr := ledger.AddressED25519FromPrivateKey(targetPrivKey)
+
+		ctx, cancelSpam := context.WithTimeout(context.Background(), spammingTimeout)
+		par := &spammerParams{
+			privateKey:    testData.privKeyAux,
+			remainder:     auxOuts[0],
+			tagAlongSeqID: testData.bootstrapChainID,
+			target:        targetAddr,
+			pace:          30,
+			batchSize:     batchSize,
+			//maxBatches:    maxBatches,
+			sendAmount:   sendAmount,
+			tagAlongFee:  tagAlongFee,
+			spammedTxIDs: make([]ledger.TransactionID, 0),
+		}
+		go testData.spam(par, ctx)
+		go func() {
+			<-ctx.Done()
+			cancelSpam()
+			t.Log("spamming stopped")
+		}()
+
+		testData.startSequencers(maxSlots, spammingTimeout+(5*time.Second))
+
+		testData.waitSequencers()
+		testData.stopAndWait()
+
+		t.Logf("%s", testData.wrk.Info())
+		//testData.wrk.SaveGraph("utangle")
+		dag.SaveTree(testData.wrk.StateStore(), fmt.Sprintf("utangle_tree_%d", nSequencers+1))
+
+		rdr = testData.wrk.HeaviestStateForLatestTimeSlot()
+		for _, txid := range par.spammedTxIDs {
+			require.True(t, rdr.KnowsCommittedTransaction(&txid))
+			//t.Logf("    %s: in the heaviest state: %v", txid.StringShort(), )
+		}
+		targetBalance := rdr.BalanceOf(targetAddr.AccountID())
+		require.EqualValues(t, maxBatches*batchSize*sendAmount, int(targetBalance))
+
+		balanceLeft := rdr.BalanceOf(testData.addrAux.AccountID())
+		require.EqualValues(t, initBalance-len(par.spammedTxIDs)*(sendAmount+tagAlongFee), int(balanceLeft))
+
+		balanceOnChain := rdr.BalanceOnChain(&testData.bootstrapChainID)
+		require.EqualValues(t, int(initialBalanceOnChain)+len(par.spammedTxIDs), int(balanceOnChain))
+	})
 }
