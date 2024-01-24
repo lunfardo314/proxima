@@ -299,9 +299,9 @@ func TestNSequencers(t *testing.T) {
 		t.Logf("%s", testData.wrk.Info(true))
 		testData.wrk.SaveGraph("utangle")
 	})
-	t.Run("start stop", func(t *testing.T) {
+	t.Run("idle 2", func(t *testing.T) {
 		const (
-			maxSlots    = 10
+			maxSlots    = 50
 			nSequencers = 1 // in addition to bootstrap
 		)
 		testData := initMultiSeqencerTest(t, nSequencers)
@@ -311,41 +311,33 @@ func TestNSequencers(t *testing.T) {
 		//testData.wrk.EnableTraceTags(attacher.TraceTagAttachVertex, attacher.TraceTagAttachOutput)
 
 		testData.startSequencers(maxSlots)
-		time.Sleep(10 * time.Second)
+		time.Sleep(30 * time.Second)
 		testData.stopAndWaitSequencers()
 		testData.stopAndWait()
 
 		t.Logf("%s", testData.wrk.Info(true))
-		testData.wrk.SaveGraph("utangle")
-		//
-		//sequencers := make([]*sequencer.Sequencer, nSequencers)
-		//for seqNr := 0; seqNr < nSequencers; seqNr++ {
-		//	sequencers[seqNr], err = sequencer.New(testData.wrk, testData.chainOrigins[seqNr].ChainID, testData.privKeyAux, testData.ctx,
-		//		sequencer.WithName(fmt.Sprintf("seq%d", seqNr)),
-		//		sequencer.WithMaxFeeInputs(30),
-		//		sequencer.WithPace(5),
-		//		sequencer.WithMaxBranches(maxSlots),
-		//	)
-		//	require.NoError(t, err)
-		//}
-		//
-		//var countBr, countSeq atomic.Int32
-		//bootstrapSeq.OnMilestoneSubmitted(func(_ *sequencer.Sequencer, ms *vertex.WrappedTx) {
-		//	if ms.IsBranchTransaction() {
-		//		countBr.Inc()
-		//	} else {
-		//		countSeq.Inc()
-		//	}
-		//})
-		//bootstrapSeq.Start()
-		//bootstrapSeq.WaitStop()
-		//testData.stopAndWait()
-		//t.Logf("%s", testData.wrk.Info(true))
-		//
-		//require.EqualValues(t, maxSlots, int(countBr.Load()))
-		//require.EqualValues(t, maxSlots, int(countSeq.Load()))
-		//br := testData.wrk.HeaviestBranchOfLatestTimeSlot()
-		//dag.SaveGraphPastCone(br, "latest_branch")
+		//testData.wrk.SaveGraph("utangle")
+		dag.SaveTree(testData.wrk.StateStore(), fmt.Sprintf("utangle_tree_%d", nSequencers+1))
+	})
+	t.Run("idle 5", func(t *testing.T) {
+		const (
+			maxSlots    = 50
+			nSequencers = 4 // in addition to bootstrap
+		)
+		testData := initMultiSeqencerTest(t, nSequencers)
+
+		//testData.wrk.EnableTraceTags(proposer_endorse1.TraceTag)
+		//testData.wrk.EnableTraceTags(factory.TraceTagChooseExtendEndorsePair)
+		//testData.wrk.EnableTraceTags(attacher.TraceTagAttachVertex, attacher.TraceTagAttachOutput)
+
+		testData.startSequencers(maxSlots)
+		time.Sleep(30 * time.Second)
+		testData.stopAndWaitSequencers()
+		testData.stopAndWait()
+
+		t.Logf("%s", testData.wrk.Info(true))
+		//testData.wrk.SaveGraph("utangle")
+		dag.SaveTree(testData.wrk.StateStore(), fmt.Sprintf("utangle_tree_%d", nSequencers+1))
 	})
 
 }

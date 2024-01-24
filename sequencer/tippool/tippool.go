@@ -155,14 +155,15 @@ func oldReplaceWithNew(old, new *vertex.WrappedTx) bool {
 	return false
 }
 
-func (tp *SequencerTipPool) OtherMilestonesSorted() []*vertex.WrappedTx {
+func (tp *SequencerTipPool) CandidatesToEndorseSorted(targetTs ledger.LogicalTime) []*vertex.WrappedTx {
 	tp.mutex.RLock()
 	defer tp.mutex.RUnlock()
 
 	ret := make([]*vertex.WrappedTx, 0, len(tp.latestMilestones))
 	ownSeqID := tp.SequencerID()
+	targetSlot := targetTs.Slot()
 	for seqID, vid := range tp.latestMilestones {
-		if seqID != ownSeqID {
+		if vid.Slot() == targetSlot && seqID != ownSeqID {
 			ret = append(ret, vid)
 		}
 	}

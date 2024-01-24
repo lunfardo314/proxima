@@ -290,7 +290,7 @@ const TraceTagChooseExtendEndorsePair = "ChooseExtendEndorsePair"
 // ChooseExtendEndorsePair implements one of possible strategies
 func (mf *MilestoneFactory) ChooseExtendEndorsePair(proposerName string, targetTs ledger.LogicalTime) *attacher.IncrementalAttacher {
 	util.Assertf(targetTs.Tick() != 0, "targetTs.Tick() != 0")
-	endorseCandidates := mf.tipPool.OtherMilestonesSorted()
+	endorseCandidates := mf.tipPool.CandidatesToEndorseSorted(targetTs)
 	mf.Tracef(TraceTagChooseExtendEndorsePair, ">>>>>>>>>>>>>>> {%s}", vertex.VerticesShortLines(endorseCandidates).Join(", "))
 
 	seqID := mf.SequencerID()
