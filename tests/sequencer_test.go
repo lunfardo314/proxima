@@ -282,7 +282,7 @@ func TestNSequencersIdle(t *testing.T) {
 		//testData.wrk.EnableTraceTags(factory.TraceTagChooseExtendEndorsePair)
 		//testData.wrk.EnableTraceTags(attacher.TraceTagAttachVertex, attacher.TraceTagAttachOutput)
 
-		testData.startSequencers(maxSlots)
+		testData.startSequencersWithTimeout(maxSlots)
 		time.Sleep(5 * time.Second)
 		testData.stopAndWaitSequencers()
 		testData.stopAndWait()
@@ -302,7 +302,7 @@ func TestNSequencersIdle(t *testing.T) {
 		//testData.wrk.EnableTraceTags(factory.TraceTagChooseExtendEndorsePair)
 		//testData.wrk.EnableTraceTags(attacher.TraceTagAttachVertex, attacher.TraceTagAttachOutput)
 
-		testData.startSequencers(maxSlots)
+		testData.startSequencersWithTimeout(maxSlots)
 		time.Sleep(20 * time.Second)
 		testData.stopAndWaitSequencers()
 		testData.stopAndWait()
@@ -360,7 +360,7 @@ func TestNSequencersTransfer(t *testing.T) {
 			t.Log("spamming stopped")
 		}()
 
-		testData.startSequencers(maxSlots, spammingTimeout+(5*time.Second))
+		testData.startSequencersWithTimeout(maxSlots, spammingTimeout+(5*time.Second))
 
 		testData.waitSequencers()
 		testData.stopAndWait()
@@ -437,20 +437,23 @@ func TestNSequencersTransfer(t *testing.T) {
 			t.Log("spamming stopped")
 		}()
 
-		testData.startSequencers(maxSlots, spammingTimeout+(5*time.Second))
+		testData.startSequencersWithTimeout(maxSlots, spammingTimeout+(5*time.Second))
 
 		testData.waitSequencers()
 		testData.stopAndWait()
 
 		t.Logf("%s", testData.wrk.Info())
-		testData.wrk.SaveSequencerGraph(fmt.Sprintf("utangle_seq_tree_%d", nSequencers+1))
-		dag.SaveTree(testData.wrk.StateStore(), fmt.Sprintf("utangle_tree_%d", nSequencers+1))
-
 		rdr = testData.wrk.HeaviestStateForLatestTimeSlot()
 		for _, txid := range par.spammedTxIDs {
 			//require.True(t, rdr.KnowsCommittedTransaction(&txid))
 			t.Logf("    %s: in the heaviest state: %v", txid.StringShort(), rdr.KnowsCommittedTransaction(&txid))
 		}
+
+		t.Logf("============== 1")
+		//testData.wrk.SaveSequencerGraph(fmt.Sprintf("utangle_seq_tree_%d", nSequencers+1))
+		t.Logf("============== 2")
+		dag.SaveTree(testData.wrk.StateStore(), fmt.Sprintf("utangle_tree_%d", nSequencers+1))
+		t.Logf("============== 3")
 
 		targetBalance := rdr.BalanceOf(targetAddr.AccountID())
 		require.EqualValues(t, len(par.spammedTxIDs)*sendAmount, int(targetBalance))

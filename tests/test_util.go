@@ -662,7 +662,7 @@ func makeTransfers(par *spammerParams) [][]byte {
 	return ret
 }
 
-func (td *workflowTestData) startSequencers(maxSlots int, timeout ...time.Duration) {
+func (td *workflowTestData) startSequencersWithTimeout(maxSlots int, timeout ...time.Duration) {
 	ctx := td.ctx
 	cancel := func() {}
 	if len(timeout) > 0 {

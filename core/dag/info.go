@@ -46,13 +46,27 @@ func (d *DAG) InfoLines(verbose ...bool) *lines.Lines {
 		}
 	}
 
-	branches := util.SortKeys(d.branches, func(vid1, vid2 *vertex.WrappedTx) bool {
-		return vid1.Slot() > vid2.Slot()
-	})
-
 	ln.Add("---- branches")
-	for _, vidBranch := range branches {
-		ln.Add("    %s : coverage %s", vidBranch.IDShortString(), vidBranch.GetLedgerCoverage().String())
+	byChainID := make(map[ledger.ChainID][]*vertex.WrappedTx)
+	for vidBranch := range d.branches {
+		chainID, ok := vidBranch.SequencerIDIfAvailable()
+		util.Assertf(ok, "sequencer ID not available in %s", vidBranch.IDShortString)
+		lst := byChainID[chainID]
+		if len(lst) == 0 {
+			lst = make([]*vertex.WrappedTx, 0)
+		}
+		lst = append(lst, vidBranch)
+		byChainID[chainID] = lst
+	}
+
+	for chainID, lst := range byChainID {
+		ln.Add("%s:", chainID.StringShort())
+		sort.Slice(lst, func(i, j int) bool {
+			return lst[i].Slot() > lst[j].Slot()
+		})
+		for _, vid := range lst {
+			ln.Add("    %s : coverage %s", vid.IDShortString(), vid.GetLedgerCoverage().String())
+		}
 	}
 	return ln
 }
