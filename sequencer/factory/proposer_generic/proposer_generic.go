@@ -20,6 +20,7 @@ type (
 		Propose(a *attacher.IncrementalAttacher) bool
 		AttachTagAlongInputs(a *attacher.IncrementalAttacher) int
 		ChooseExtendEndorsePair(proposerName string, targetTs ledger.LogicalTime) *attacher.IncrementalAttacher
+		HeaviestBranchInTheSlot(slot ledger.Slot) *vertex.WrappedTx
 	}
 
 	Task interface {

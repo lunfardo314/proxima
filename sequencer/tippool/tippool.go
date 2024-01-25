@@ -389,3 +389,27 @@ func (tp *SequencerTipPool) numOutputs() int {
 
 	return len(tp.outputs)
 }
+
+func (tp *SequencerTipPool) HeaviestBranchInTheSlot(slot ledger.Slot) *vertex.WrappedTx {
+	tp.mutex.RLock()
+	defer tp.mutex.RUnlock()
+	var ret *vertex.WrappedTx
+	var largestCoverage uint64
+
+	for _, vid := range tp.latestMilestones {
+		if vid.Slot() != slot {
+			continue
+		}
+		if ret == nil {
+			ret = vid
+			largestCoverage = vid.LedgerCoverageSum()
+			continue
+		}
+		lc := vid.LedgerCoverageSum()
+		if lc > largestCoverage {
+			ret = vid
+			largestCoverage = lc
+		}
+	}
+	return ret
+}

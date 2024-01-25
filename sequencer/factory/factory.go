@@ -86,7 +86,6 @@ func New(env Environment, maxTagAlongInputs int) (*MilestoneFactory, error) {
 		proposal:          latestMilestoneProposal{},
 		ownMilestones:     make(map[*vertex.WrappedTx]set.Set[vertex.WrappedOutput]),
 		maxTagAlongInputs: maxTagAlongInputs,
-		//pastCombinations:  make(map[[32]byte]time.Time),
 	}
 	if ret.maxTagAlongInputs == 0 || ret.maxTagAlongInputs > veryMaxTagAlongInputs {
 		ret.maxTagAlongInputs = veryMaxTagAlongInputs
@@ -315,11 +314,6 @@ func (mf *MilestoneFactory) ChooseExtendEndorsePair(proposerName string, targetT
 			mf.Tracef(TraceTagChooseExtendEndorsePair, ">>>>>>>>>>>>>>> chooseEndorseExtendPair return %s", ret.Name())
 			return ret
 		}
-		//if ret != nil {
-		//	// return first suitable pair. The search is not exhaustive along all possible endorsements
-		//	mf.rememberExtendEndorseCombination(ret.Extending().VID, endorse)
-		//	return ret
-		//}
 	}
 	mf.Tracef(TraceTagChooseExtendEndorsePair, ">>>>>>>>>>>>>>> chooseEndorseExtendPair nil")
 	return nil
@@ -328,10 +322,6 @@ func (mf *MilestoneFactory) ChooseExtendEndorsePair(proposerName string, targetT
 func (mf *MilestoneFactory) chooseEndorseExtendPair(proposerName string, targetTs ledger.LogicalTime, endorse *vertex.WrappedTx, extendCandidates []vertex.WrappedOutput) *attacher.IncrementalAttacher {
 	var ret *attacher.IncrementalAttacher
 	for _, extend := range extendCandidates {
-		//if mf.knownExtendEndorseCombination(extend.VID, endorse) {
-		//	mf.Tracef(TraceTagChooseExtendEndorsePair, "%s known combination extend: %s, endorse: %s", targetTs.String, extend.VID.IDShortString, endorse.IDShortString)
-		//	continue
-		//}
 		a, err := attacher.NewIncrementalAttacher(proposerName, mf, targetTs, extend, endorse)
 		if err != nil {
 			mf.Tracef(TraceTagChooseExtendEndorsePair, "%s can't extend %s and endorse %s: %v", targetTs.String, extend.IDShortString, endorse.IDShortString, err)
@@ -393,57 +383,6 @@ func (mf *MilestoneFactory) NumMilestones() int {
 	return mf.tipPool.NumMilestones()
 }
 
-//
-//func extendEndorseCombinationHash(extend *vertex.WrappedTx, endorse ...*vertex.WrappedTx) (ret [32]byte) {
-//	if len(endorse) == 0 {
-//		ret = extend.ID
-//		return
-//	}
-//	var buf bytes.Buffer
-//	buf.Write(extend.ID[:])
-//	for _, vid := range endorse {
-//		buf.Write(vid.ID[:])
-//	}
-//	return blake2b.Sum256(buf.Bytes())
-//}
-//
-//const (
-//	pastCombinationTTL = time.Minute
-//	purgePeriod        = 10 * time.Second
-//)
-//
-//func (mf *MilestoneFactory) _purgePastCombinations() {
-//	nowis := time.Now()
-//	if nowis.Before(mf.pastCombinationsNextPurge) {
-//		return
-//	}
-//	toDelete := make([][32]byte, 0)
-//	for h, deadline := range mf.pastCombinations {
-//		if deadline.Before(nowis) {
-//			toDelete = append(toDelete, h)
-//		}
-//	}
-//	for i := range toDelete {
-//		delete(mf.pastCombinations, toDelete[i])
-//	}
-//	mf.pastCombinationsNextPurge = nowis.Add(purgePeriod)
-//}
-//
-//func (mf *MilestoneFactory) knownExtendEndorseCombination(extend *vertex.WrappedTx, endorse ...*vertex.WrappedTx) bool {
-//	h := extendEndorseCombinationHash(extend, endorse...)
-//
-//	mf.pastCombinationsMutex.RLock()
-//	defer mf.pastCombinationsMutex.RUnlock()
-//
-//	_, already := mf.pastCombinations[h]
-//	return already
-//}
-//
-//func (mf *MilestoneFactory) rememberExtendEndorseCombination(extend *vertex.WrappedTx, endorse ...*vertex.WrappedTx) {
-//	mf.pastCombinationsMutex.Lock()
-//	defer mf.pastCombinationsMutex.Unlock()
-//
-//	h := extendEndorseCombinationHash(extend, endorse...)
-//	mf.pastCombinations[h] = time.Now().Add(pastCombinationTTL)
-//	mf._purgePastCombinations()
-//}
+func (mf *MilestoneFactory) HeaviestBranchInTheSlot(slot ledger.Slot) *vertex.WrappedTx {
+	return mf.tipPool.HeaviestBranchInTheSlot(slot)
+}
