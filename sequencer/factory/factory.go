@@ -232,27 +232,27 @@ func (mf *MilestoneFactory) startProposerWorkers(targetTime ledger.LogicalTime, 
 
 func (mf *MilestoneFactory) Propose(a *attacher.IncrementalAttacher) (forceExit bool) {
 	coverage := a.LedgerCoverage()
-	mf.Tracef(TraceTag, "factory.Propose%s: coverage %s", a.Name(), coverage.String())
+	mf.Tracef(TraceTag, "Propose%s: extend: %s, coverage %s", a.Name(), util.Ref(a.Extending()).IDShortString, coverage.String)
 
 	mf.proposal.mutex.Lock()
 	defer mf.proposal.mutex.Unlock()
 
 	if coverage.Sum() <= mf.proposal.bestSoFarCoverage.Sum() {
-		mf.Tracef(TraceTag, "factory.Propose%s proposal REJECTED due to no increase in coverage (%s vs prev %s)",
-			a.Name(), coverage.String(), mf.proposal.bestSoFarCoverage.String())
+		mf.Tracef(TraceTag, "Propose%s proposal REJECTED due to no increase in coverage (%s vs prev %s)",
+			a.Name(), coverage.String(), mf.proposal.bestSoFarCoverage.String)
 		return
 	}
 
 	tx, err := a.MakeTransaction(mf.SequencerName(), mf.ControllerPrivateKey())
 	if err != nil {
-		mf.Log().Warnf("factory.Propose%s: error during transaction generation: '%v'", a.Name(), err)
+		mf.Log().Warnf("Propose%s: error during transaction generation: '%v'", a.Name(), err)
 		return true
 	}
 
 	mf.proposal.current = tx
 	mf.proposal.bestSoFarCoverage = coverage
 	mf.proposal.currentExtended = a.Extending()
-	mf.Tracef(TraceTag, "factory.Propose%s proposal %s ACCEPTED", a.Name(), tx.IDShortString)
+	mf.Tracef(TraceTag, "Propose%s proposal %s ACCEPTED", a.Name(), tx.IDShortString)
 	return
 }
 

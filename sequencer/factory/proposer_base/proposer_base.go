@@ -3,6 +3,7 @@ package proposer_base
 import (
 	"github.com/lunfardo314/proxima/core/attacher"
 	"github.com/lunfardo314/proxima/sequencer/factory/proposer_generic"
+	"github.com/lunfardo314/proxima/util"
 )
 
 // Base proposer generates branches and bootstraps sequencer when no other sequencers are around
@@ -61,7 +62,8 @@ func (b *BaseProposer) propose() (*attacher.IncrementalAttacher, bool) {
 		numInserted := b.AttachTagAlongInputs(a)
 		b.Tracef(TraceTag, "%s inserted %d tag-along inputs", b.Name, numInserted)
 	} else {
-		b.Tracef(TraceTag, "%s making branch, extending %s, no tag-along", b.Name, extend.IDShortString)
+		b.Tracef(TraceTag, "%s making branch, no tag-along, extending %s cov: %s, attacher %s cov: %s",
+			b.Name, extend.IDShortString, extend.VID.GetLedgerCoverage().String(), a.Name(), util.Ref(a.LedgerCoverage()).String())
 	}
 	return a, false
 }
