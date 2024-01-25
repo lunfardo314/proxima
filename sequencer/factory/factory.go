@@ -49,7 +49,7 @@ type (
 	latestMilestoneProposal struct {
 		mutex             sync.RWMutex
 		targetTs          ledger.LogicalTime
-		bestSoFarCoverage uint64
+		bestSoFarCoverage multistate.LedgerCoverage
 		current           *transaction.Transaction
 		currentExtended   vertex.WrappedOutput
 	}
@@ -173,7 +173,7 @@ func (mf *MilestoneFactory) setNewTarget(ts ledger.LogicalTime) {
 
 	if mf.proposal.targetTs.IsSlotBoundary() || mf.proposal.targetTs.Slot() != ts.Slot() {
 		// if starting new slot, reset best coverage delta
-		mf.proposal.bestSoFarCoverage = 0
+		mf.proposal.bestSoFarCoverage = multistate.LedgerCoverage{}
 	}
 	mf.proposal.targetTs = ts
 	mf.proposal.current = nil
@@ -231,15 +231,15 @@ func (mf *MilestoneFactory) startProposerWorkers(targetTime ledger.LogicalTime, 
 }
 
 func (mf *MilestoneFactory) Propose(a *attacher.IncrementalAttacher) (forceExit bool) {
-	coverage := a.LedgerCoverageSum()
-	mf.Tracef(TraceTag, "factory.Propose%s: coverage %s", a.Name(), util.GoThousandsLazy(coverage))
+	coverage := a.LedgerCoverage()
+	mf.Tracef(TraceTag, "factory.Propose%s: coverage %s", a.Name(), coverage.String())
 
 	mf.proposal.mutex.Lock()
 	defer mf.proposal.mutex.Unlock()
 
-	if coverage <= mf.proposal.bestSoFarCoverage {
+	if coverage.Sum() <= mf.proposal.bestSoFarCoverage.Sum() {
 		mf.Tracef(TraceTag, "factory.Propose%s proposal REJECTED due to no increase in coverage (%s vs prev %s)",
-			a.Name(), util.GoThousands(coverage), util.GoThousands(mf.proposal.bestSoFarCoverage))
+			a.Name(), coverage.String(), mf.proposal.bestSoFarCoverage.String())
 		return
 	}
 

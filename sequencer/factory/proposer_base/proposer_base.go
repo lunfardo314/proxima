@@ -32,7 +32,7 @@ func Strategy() *proposer_generic.Strategy {
 func (b *BaseProposer) propose() (*attacher.IncrementalAttacher, bool) {
 	extend := b.OwnLatestMilestoneOutput()
 
-	b.Tracef(TraceTag, "%s extending %s", b.Name, extend.IDShortString)
+	b.Tracef(TraceTag, "%s extending %s, coverage: %s", b.Name, extend.IDShortString, extend.VID.GetLedgerCoverage().String())
 	// own latest milestone exists
 	if !b.TargetTs.IsSlotBoundary() {
 		// target is not a branch target
