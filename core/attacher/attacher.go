@@ -372,8 +372,8 @@ func (a *attacher) attachRooted(wOut vertex.WrappedOutput) (ok bool, isRooted bo
 		}
 		consumedRooted.Insert(wOut.Index)
 		a.rooted[wOut.VID] = consumedRooted
-		// this is new rooted output -> add to the coverage delta. We need to maintain coverage delta for the incremental attaching
-		a.coverageDelta += out.Amount()
+		// this is new rooted output -> add to the coverage delta
+		a.coverage.AddDelta(out.Amount())
 		return true, true
 	}
 	// output has not been found in the state -> Bad
@@ -517,19 +517,17 @@ func (a *attacher) checkConflictsFunc(consumerTx *vertex.WrappedTx) func(existin
 	}
 }
 
-func (a *attacher) setBaselineBranch(vid *vertex.WrappedTx) {
+// setBaseline sets baseline, fetches its coverage and initializes attacher's coverage according to the currentTS
+func (a *attacher) setBaseline(vid *vertex.WrappedTx, currentTS ledger.LogicalTime) {
 	a.baselineBranch = vid
+	var coverage multistate.LedgerCoverage
 	if a.baselineBranch != nil {
 		if multistate.HistoryCoverageDeltas > 1 {
 			rr, found := multistate.FetchRootRecord(a.StateStore(), a.baselineBranch.ID)
-			util.Assertf(found, "setBaselineBranch: can't fetch root record for %s", a.baselineBranch.IDShortString())
+			util.Assertf(found, "setBaseline: can't fetch root record for %s", a.baselineBranch.IDShortString())
 
-			a.prevCoverage = rr.LedgerCoverage
+			coverage = rr.LedgerCoverage
 		}
 	}
-}
-
-func (a *attacher) ledgerCoverage(currentTS ledger.LogicalTime) multistate.LedgerCoverage {
-	ret := a.prevCoverage.MakeNext(int(currentTS.Slot())-int(a.baselineBranch.Slot())+1, a.coverageDelta)
-	return ret
+	a.coverage = coverage.MakeNext(int(currentTS.Slot()) - int(a.baselineBranch.Slot()) + 1)
 }

@@ -61,8 +61,7 @@ type (
 		rooted                map[*vertex.WrappedTx]set.Set[byte]
 		pokeMe                func(vid *vertex.WrappedTx)
 		forceTrace1Ahead      bool
-		prevCoverage          multistate.LedgerCoverage // set when baseline is determined
-		coverageDelta         uint64
+		coverage              multistate.LedgerCoverage
 	}
 
 	// IncrementalAttacher is used by the sequencer to build a sequencer milestone

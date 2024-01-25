@@ -59,7 +59,7 @@ func runMilestoneAttacher(vid *vertex.WrappedTx, metadata *txmetadata.Transactio
 	if a.metadata == nil || a.metadata.SourceTypeNonPersistent != txmetadata.SourceTypeTxStore {
 		a.vid.Unwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
 			if !v.FlagsUp(vertex.FlagTxBytesPersisted) {
-				c := a.coverageDelta
+				c := a.coverage.LatestDelta()
 				persistentMetadata := txmetadata.TransactionMetadata{
 					StateRoot:           a.finals.root,
 					LedgerCoverageDelta: &c,
@@ -179,7 +179,7 @@ func (a *milestoneAttacher) solidifyBaselineState() vertex.Status {
 		a.vid.Unwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
 			ok = a.solidifyBaseline(v)
 			if ok && v.FlagsUp(vertex.FlagBaselineSolid) {
-				a.setBaselineBranch(v.BaselineBranch)
+				a.setBaseline(v.BaselineBranch, a.vid.Timestamp())
 				success = true
 			}
 		}})

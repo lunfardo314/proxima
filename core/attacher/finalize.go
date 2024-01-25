@@ -24,7 +24,7 @@ func (a *milestoneAttacher) finalize() {
 
 	// check resulting ledger coverage is equal to the coverage in metadata, if provided
 	if a.metadata != nil && a.metadata.LedgerCoverageDelta != nil {
-		if *a.metadata.LedgerCoverageDelta != a.coverageDelta {
+		if *a.metadata.LedgerCoverageDelta != a.coverage.LatestDelta() {
 			err := fmt.Errorf("commitBranch %s: major inconsistency: ledger coverage delta not equal to the coverage delta provided in metadata", a.vid.IDShortString())
 			if enforceConsistencyWithTxMetadata {
 				a.Log().Fatal(err)
@@ -36,7 +36,7 @@ func (a *milestoneAttacher) finalize() {
 
 	a.finals.baseline = a.baselineBranch
 	a.finals.numTransactions = len(a.validPastVertices)
-	a.finals.coverage = a.ledgerCoverage(a.vid.Timestamp())
+	a.finals.coverage = a.coverage
 	a.Tracef(TraceTagAttachMilestone, "set ledger coverage in %s to %s", a.vid.IDShortString(), a.finals.coverage.String())
 	a.vid.SetLedgerCoverage(a.finals.coverage)
 

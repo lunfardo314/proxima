@@ -59,7 +59,7 @@ func NewIncrementalAttacher(name string, env Environment, targetTs ledger.Logica
 		targetTs:       targetTs,
 	}
 
-	ret.setBaselineBranch(baseline) // also fetches previous coverage
+	ret.setBaseline(baseline, targetTs) // also fetches baseline coverage
 
 	visited := set.New[*vertex.WrappedTx]()
 	// attach sequencer predecessor
@@ -120,7 +120,7 @@ func (a *IncrementalAttacher) InsertTagAlongInput(wOut vertex.WrappedOutput, vis
 	for vid, outputIdxSet := range saveRooted {
 		saveRooted[vid] = outputIdxSet.Clone()
 	}
-	saveCoverageDelta := a.coverageDelta
+	saveCoverageDelta := a.coverage
 
 	if !a.attachOutput(wOut, ledger.NilLogicalTime, visited) || !a.Completed() {
 		// it is either conflicting, or not solid yet
@@ -128,7 +128,7 @@ func (a *IncrementalAttacher) InsertTagAlongInput(wOut vertex.WrappedOutput, vis
 		a.attacher.undefinedPastVertices = saveUndefinedPastVertices
 		a.attacher.validPastVertices = saveValidPastVertices
 		a.attacher.rooted = saveRooted
-		a.coverageDelta = saveCoverageDelta
+		a.coverage = saveCoverageDelta
 		retReason := a.GetReason()
 		a.setReason(nil)
 		return false, retReason
@@ -187,12 +187,11 @@ func (a *IncrementalAttacher) MakeTransaction(seqName string, privateKey ed25519
 }
 
 func (a *IncrementalAttacher) LedgerCoverage() multistate.LedgerCoverage {
-	return a.ledgerCoverage(a.targetTs)
+	return a.coverage
 }
 
 func (a *IncrementalAttacher) LedgerCoverageSum() uint64 {
-	ret := a.LedgerCoverage()
-	return ret.Sum()
+	return a.coverage.Sum()
 }
 
 func (a *IncrementalAttacher) TargetTs() ledger.LogicalTime {
@@ -206,7 +205,7 @@ func (a *IncrementalAttacher) NumInputs() int {
 // Completed returns true is past cone all solid and consistent (no conflicts)
 func (a *IncrementalAttacher) Completed() (done bool) {
 	if done = len(a.undefinedPastVertices) == 0 && len(a.rooted) > 0; done {
-		util.Assertf(a.coverageDelta > 0, "a.coverageDelta) > 0")
+		util.Assertf(a.coverage.LatestDelta() > 0, "a.coverage.LatestDelta() > 0")
 	}
 	return
 }

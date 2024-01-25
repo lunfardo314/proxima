@@ -16,8 +16,6 @@ import (
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/sequencer"
-	"github.com/lunfardo314/proxima/sequencer/factory"
-	"github.com/lunfardo314/proxima/sequencer/factory/proposer_base"
 	"github.com/lunfardo314/proxima/sequencer/tippool"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/testutil"
@@ -208,6 +206,7 @@ func Test1Sequencer(t *testing.T) {
 		t.Logf("%s", testData.wrk.Info(true))
 
 		testData.wrk.SaveGraph("utangle")
+		testData.wrk.SaveTree("utangle_tree")
 
 		require.EqualValues(t, maxSlots, int(countBr.Load()))
 
@@ -272,14 +271,14 @@ func TestNSequencersIdle(t *testing.T) {
 	})
 	t.Run("idle 2", func(t *testing.T) {
 		const (
-			maxSlots    = 3 // 50
+			maxSlots    = 50
 			nSequencers = 1 // in addition to bootstrap
 		)
 		testData := initMultiSequencerTest(t, nSequencers)
 
 		//testData.wrk.EnableTraceTags(proposer_endorse1.TraceTag)
-		testData.wrk.EnableTraceTags(proposer_base.TraceTag)
-		testData.wrk.EnableTraceTags(factory.TraceTag)
+		//testData.wrk.EnableTraceTags(proposer_base.TraceTag)
+		//testData.wrk.EnableTraceTags(factory.TraceTag)
 		//testData.wrk.EnableTraceTags(factory.TraceTagChooseExtendEndorsePair)
 		//testData.wrk.EnableTraceTags(attacher.TraceTagAttachVertex, attacher.TraceTagAttachOutput)
 

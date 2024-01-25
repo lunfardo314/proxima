@@ -1,10 +1,8 @@
 package multistate
 
 import (
-	"encoding/binary"
 	"fmt"
 	"sort"
-	"strings"
 
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
@@ -38,60 +36,6 @@ func FetchLatestSlot(store global.StateStore) ledger.Slot {
 	ret, err := ledger.TimeSlotFromBytes(bin)
 	common.AssertNoError(err)
 	return ret
-}
-
-func (lc *LedgerCoverage) MakeNext(shift int, nextDelta uint64) (ret LedgerCoverage) {
-	util.Assertf(shift >= 1, "shift >= 1")
-	if shift < HistoryCoverageDeltas {
-		copy(ret[shift:], lc[:])
-	}
-	ret[0] = nextDelta
-	return
-}
-
-func (lc *LedgerCoverage) LatestDelta() uint64 {
-	return lc[0]
-}
-
-func (lc *LedgerCoverage) Sum() (ret uint64) {
-	if lc == nil {
-		return 0
-	}
-	for _, v := range lc {
-		ret += v
-	}
-	return
-}
-
-func (lc *LedgerCoverage) Bytes() []byte {
-	util.Assertf(len(lc) == HistoryCoverageDeltas, "len(lc) == HistoryCoverageDeltas")
-	ret := make([]byte, len(lc)*8)
-	for i, d := range lc {
-		binary.BigEndian.PutUint64(ret[i*8:(i+1)*8], d)
-	}
-	return ret
-}
-
-func (lc *LedgerCoverage) String() string {
-	if lc == nil {
-		return "0"
-	}
-	all := make([]string, len(lc))
-	for i, c := range lc {
-		all[i] = util.GoThousands(c)
-	}
-	return fmt.Sprintf("sum(%s) -> %s", strings.Join(all, ", "), util.GoThousands(lc.Sum()))
-}
-
-func LedgerCoverageFromBytes(data []byte) (ret LedgerCoverage, err error) {
-	if len(data) != HistoryCoverageDeltas*8 {
-		err = fmt.Errorf("LedgerCoverageFromBytes: wrong data size")
-		return
-	}
-	for i := 0; i < HistoryCoverageDeltas; i++ {
-		ret[i] = binary.BigEndian.Uint64(data[i*8 : (i+1)*8])
-	}
-	return
 }
 
 func (r *RootRecord) Bytes() []byte {
