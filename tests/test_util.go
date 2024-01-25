@@ -46,9 +46,13 @@ type workflowTestData struct {
 	addr                   ledger.AddressED25519
 	privKeyAux             ed25519.PrivateKey
 	addrAux                ledger.AddressED25519
+	privKeyFaucet          ed25519.PrivateKey
+	addrFaucet             ledger.AddressED25519
 	stateIdentity          genesis.LedgerIdentityData
 	forkOutput             *ledger.OutputWithID
 	auxOutput              *ledger.OutputWithID
+	faucetOutput           *ledger.OutputWithID
+	remainderOutput        *ledger.OutputWithID
 	txBytesConflicting     [][]byte
 	conflictingOutputs     []*ledger.OutputWithID
 	chainOrigins           []*ledger.OutputWithChainID
@@ -56,7 +60,6 @@ type workflowTestData struct {
 	chainOriginsTx         *transaction.Transaction
 	seqChain               [][]*transaction.Transaction
 	transferChain          []*transaction.Transaction
-	remainderOutput        *ledger.OutputWithID
 	bootstrapSeq           *sequencer.Sequencer
 	sequencers             []*sequencer.Sequencer
 }
@@ -78,7 +81,7 @@ func initWorkflowTest(t *testing.T, nChains int) *workflowTestData {
 	stateID := genesis.DefaultIdentityData(genesisPrivKey)
 	t.Logf("genesis state ID: %s", stateID.String())
 
-	distrib, privKeys, addrs := inittest.GenesisParamsWithPreDistribution(initBalance, uint64(nChains*initBalance+tagAlongFee))
+	distrib, privKeys, addrs := inittest.GenesisParamsWithPreDistribution(initBalance, uint64(nChains*initBalance+tagAlongFee), initBalance)
 	ret := &workflowTestData{
 		t:              t,
 		genesisPrivKey: genesisPrivKey,
@@ -87,6 +90,8 @@ func initWorkflowTest(t *testing.T, nChains int) *workflowTestData {
 		addr:           addrs[0],
 		privKeyAux:     privKeys[1],
 		addrAux:        addrs[1],
+		privKeyFaucet:  privKeys[2],
+		addrFaucet:     addrs[2],
 	}
 	require.True(t, ledger.AddressED25519MatchesPrivateKey(ret.addr, ret.privKey))
 
@@ -105,12 +110,14 @@ func initWorkflowTest(t *testing.T, nChains int) *workflowTestData {
 	ret.distributionBranchTxID = *ret.distributionBranchTx.ID()
 	t.Logf("distribution txID: %s", ret.distributionBranchTxID.StringShort())
 
+	ret.faucetOutput = ret.distributionBranchTx.MustProducedOutputWithIDAt(4)
 	const printDistributionTx = false
 	if printDistributionTx {
 		tx, err := transaction.FromBytes(txBytes, transaction.MainTxValidationOptions...)
 		require.NoError(t, err)
 		genesisState := multistate.MustNewReadable(stateStore, genesisRoot)
 		t.Logf("--------------- distribution tx:\n%s\n--------------", tx.ToString(genesisState.GetUTXO))
+		t.Logf("--------------- faucet output\n%s\n--------------", ret.faucetOutput)
 	}
 
 	ret.wrk = workflow.New(stateStore, ret.txStore, peering.NewPeersDummy(), workflow.WithLogLevel(zapcore.DebugLevel))
@@ -636,4 +643,61 @@ func makeTransfers(par *spammerParams) [][]byte {
 		//par.t.Logf(">>>>>> PARSE: %s", txStr)
 	}
 	return ret
+}
+
+func (td *workflowTestData) startSequencers(maxSlots int, timeout ...time.Duration) {
+	ctx := td.ctx
+	cancel := func() {}
+	if len(timeout) > 0 {
+		ctx, cancel = context.WithTimeout(td.ctx, timeout[0])
+	}
+	td.sequencers = make([]*sequencer.Sequencer, len(td.chainOrigins))
+	var err error
+	for seqNr := range td.sequencers {
+		td.sequencers[seqNr], err = sequencer.New(td.wrk, td.chainOrigins[seqNr].ChainID, td.privKeyAux, ctx,
+			sequencer.WithName(fmt.Sprintf("seq%d", seqNr)),
+			sequencer.WithMaxFeeInputs(30),
+			sequencer.WithPace(5),
+			sequencer.WithMaxBranches(maxSlots),
+		)
+		require.NoError(td.t, err)
+		td.sequencers[seqNr].Start()
+	}
+	go func() {
+		<-ctx.Done()
+		cancel()
+	}()
+}
+
+func (td *workflowTestData) stopAndWaitSequencers() {
+	var wg sync.WaitGroup
+	wg.Add(len(td.chainOrigins) + 1)
+	go func() {
+		td.bootstrapSeq.StopAndWait()
+		wg.Done()
+	}()
+	for i := range td.sequencers {
+		i1 := i
+		go func() {
+			td.sequencers[i1].StopAndWait()
+			wg.Done()
+		}()
+	}
+	wg.Wait()
+	td.t.Logf("all sequencers have been stopped ")
+}
+
+func (td *workflowTestData) waitSequencers() {
+	var wg sync.WaitGroup
+	wg.Add(len(td.chainOrigins))
+	for i := range td.sequencers {
+		i1 := i
+		go func() {
+			td.sequencers[i1].WaitStop()
+			wg.Done()
+		}()
+	}
+	wg.Wait()
+	td.bootstrapSeq.StopAndWait()
+	td.t.Logf("all sequencers have been stopped ")
 }
