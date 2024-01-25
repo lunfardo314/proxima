@@ -17,6 +17,7 @@ import (
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/sequencer"
 	"github.com/lunfardo314/proxima/sequencer/tippool"
+	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/testutil"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
@@ -184,7 +185,7 @@ func Test1Sequencer(t *testing.T) {
 			t:             t,
 			privateKey:    testData.privKeyFaucet,
 			remainder:     testData.faucetOutput,
-			tagAlongSeqID: testData.bootstrapChainID,
+			tagAlongSeqID: []ledger.ChainID{testData.bootstrapChainID},
 			target:        targetAddr,
 			pace:          30,
 			batchSize:     batchSize,
@@ -311,7 +312,7 @@ func TestNSequencersIdle(t *testing.T) {
 
 func TestNSequencersTransfer(t *testing.T) {
 	ledger.SetTimeTickDuration(10 * time.Millisecond)
-	t.Run("seq 3 transfer 1", func(t *testing.T) {
+	t.Run("seq 3 transfer 1 tag along", func(t *testing.T) {
 		const (
 			maxSlots        = 50
 			nSequencers     = 2 // in addition to bootstrap
@@ -340,7 +341,7 @@ func TestNSequencersTransfer(t *testing.T) {
 			t:             t,
 			privateKey:    testData.privKeyFaucet,
 			remainder:     testData.faucetOutput,
-			tagAlongSeqID: testData.bootstrapChainID,
+			tagAlongSeqID: []ledger.ChainID{testData.bootstrapChainID},
 			target:        targetAddr,
 			pace:          30,
 			batchSize:     batchSize,
@@ -380,5 +381,84 @@ func TestNSequencersTransfer(t *testing.T) {
 
 		balanceOnChain := rdr.BalanceOnChain(&testData.bootstrapChainID)
 		require.EqualValues(t, int(initialBalanceOnChain)+len(par.spammedTxIDs)*tagAlongFee, int(balanceOnChain))
+	})
+	t.Run("seq 3 transfer multi tag along", func(t *testing.T) {
+		const (
+			maxSlots        = 50
+			nSequencers     = 4 // in addition to bootstrap
+			batchSize       = 10
+			sendAmount      = 2000
+			spammingTimeout = 10 * time.Second
+		)
+		testData := initMultiSequencerTest(t, nSequencers)
+
+		//testData.wrk.EnableTraceTags(factory.TraceTagChooseExtendEndorsePair)
+		//testData.wrk.EnableTraceTags(attacher.TraceTagAttachVertex, attacher.TraceTagAttachOutput)
+		//testData.wrk.EnableTraceTags(proposer_endorse1.TraceTag)
+		//testData.wrk.EnableTraceTags(factory.TraceTagChooseExtendEndorsePair)
+		//testData.wrk.EnableTraceTags(factory.TraceTag)
+
+		rdr := multistate.MakeSugared(testData.wrk.HeaviestStateForLatestTimeSlot())
+		require.EqualValues(t, initBalance*nSequencers, int(rdr.BalanceOf(testData.addrAux.AccountID())))
+
+		targetPrivKey := testutil.GetTestingPrivateKey(10000)
+		targetAddr := ledger.AddressED25519FromPrivateKey(targetPrivKey)
+
+		tagAlongSeqIDs := []ledger.ChainID{testData.bootstrapChainID}
+		for _, o := range testData.chainOrigins {
+			tagAlongSeqIDs = append(tagAlongSeqIDs, o.ChainID)
+		}
+		tagAlongInitBalances := make(map[ledger.ChainID]uint64)
+		for _, seqID := range tagAlongSeqIDs {
+			tagAlongInitBalances[seqID] = rdr.BalanceOnChain(&seqID)
+		}
+
+		ctx, cancelSpam := context.WithTimeout(context.Background(), spammingTimeout)
+		par := &spammerParams{
+			t:             t,
+			privateKey:    testData.privKeyFaucet,
+			remainder:     testData.faucetOutput,
+			tagAlongSeqID: tagAlongSeqIDs,
+			target:        targetAddr,
+			pace:          30,
+			batchSize:     batchSize,
+			//maxBatches:    maxBatches,
+			sendAmount:   sendAmount,
+			tagAlongFee:  tagAlongFee,
+			spammedTxIDs: make([]ledger.TransactionID, 0),
+		}
+		go testData.spam(par, ctx)
+		go func() {
+			<-ctx.Done()
+			cancelSpam()
+			t.Log("spamming stopped")
+		}()
+
+		testData.startSequencers(maxSlots, spammingTimeout+(5*time.Second))
+
+		testData.waitSequencers()
+		testData.stopAndWait()
+
+		t.Logf("%s", testData.wrk.Info())
+		testData.wrk.SaveSequencerGraph(fmt.Sprintf("utangle_seq_tree_%d", nSequencers+1))
+		dag.SaveTree(testData.wrk.StateStore(), fmt.Sprintf("utangle_tree_%d", nSequencers+1))
+
+		rdr = testData.wrk.HeaviestStateForLatestTimeSlot()
+		for _, txid := range par.spammedTxIDs {
+			require.True(t, rdr.KnowsCommittedTransaction(&txid))
+			//t.Logf("    %s: in the heaviest state: %v", txid.StringShort(), rdr.KnowsCommittedTransaction(&txid))
+		}
+
+		targetBalance := rdr.BalanceOf(targetAddr.AccountID())
+		require.EqualValues(t, len(par.spammedTxIDs)*sendAmount, int(targetBalance))
+
+		balanceLeft := rdr.BalanceOf(testData.addrFaucet.AccountID())
+		require.EqualValues(t, initBalance-len(par.spammedTxIDs)*(sendAmount+tagAlongFee), int(balanceLeft))
+
+		for seqID, initBal := range tagAlongInitBalances {
+			balanceOnChain := rdr.BalanceOnChain(&seqID)
+			t.Logf("%s tx: %d, init: %s, final: %s", seqID.StringShort(), par.perChainID[seqID], util.GoThousands(initBal), util.GoThousands(balanceOnChain))
+			//require.EqualValues(t, int(initBal)+par.perChainID[seqID]*tagAlongFee, int(balanceOnChain))
+		}
 	})
 }

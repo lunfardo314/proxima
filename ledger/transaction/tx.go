@@ -878,3 +878,17 @@ func (tx *Transaction) Lines(inputLoaderByIndex func(i byte) (*ledger.Output, er
 	}
 	return ctx.Lines(prefix...)
 }
+
+func (tx *Transaction) ProducedOutputsWithTargetLock(lock ledger.Lock) []*ledger.OutputWithID {
+	ret := make([]*ledger.OutputWithID, 0)
+	tx.ForEachProducedOutput(func(_ byte, o *ledger.Output, oid *ledger.OutputID) bool {
+		if ledger.EqualConstraints(lock, o.Lock()) {
+			ret = append(ret, &ledger.OutputWithID{
+				ID:     *oid,
+				Output: o,
+			})
+		}
+		return true
+	})
+	return ret
+}

@@ -317,3 +317,78 @@ func SaveTree(stateStore global.StateStore, fname string, slotsBack ...int) {
 	util.AssertNoError(err)
 	_ = dotFile.Close()
 }
+
+func (d *DAG) SaveSequencerGraph(fname string) {
+	gr := d.MakeSequencerGraph()
+	dotFile, _ := os.Create(fname + ".gv")
+	err := draw.DOT(gr, dotFile)
+	util.AssertNoError(err)
+	_ = dotFile.Close()
+}
+
+func (d *DAG) MakeSequencerGraph() graph.Graph[string, string] {
+	ret := graph.New(graph.StringHash, graph.Directed(), graph.Acyclic())
+
+	d.mutex.RLock()
+	defer d.mutex.RUnlock()
+
+	seqDict := make(map[ledger.ChainID]int)
+	seqVertices := make([]*vertex.WrappedTx, 0)
+	for _, vid := range d.vertices {
+		if !vid.IsSequencerMilestone() {
+			continue
+		}
+		makeGraphNode(vid, ret, seqDict, false)
+		seqVertices = append(seqVertices, vid)
+	}
+	for _, vid := range seqVertices {
+		makeSequencerGraphEdges(vid, ret)
+	}
+	return ret
+}
+
+func makeSequencerGraphEdges(vid *vertex.WrappedTx, gr graph.Graph[string, string]) {
+	id := vid.IDVeryShort()
+	vid.RUnwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
+		var stemInputIdx, seqInputIdx byte
+		if vid.IsBranchTransaction() {
+			stemInputIdx = v.StemInputIndex()
+		}
+		seqInputIdx = v.SequencerInputIndex()
+
+		v.ForEachInputDependency(func(i byte, inp *vertex.WrappedTx) bool {
+			if inp == nil {
+				return true
+			}
+			if i == seqInputIdx || (vid.IsBranchTransaction() && i == stemInputIdx) {
+				o, err := v.GetConsumedOutput(i)
+				util.AssertNoError(err)
+				outIndex := v.Tx.MustOutputIndexOfTheInput(i)
+				amountStr := "???"
+				if o != nil {
+					amountStr = util.GoThousands(o.Amount())
+				}
+				edgeAttributes := []func(_ *graph.EdgeProperties){
+					graph.EdgeAttribute("label", fmt.Sprintf("%s(#%d)", amountStr, outIndex)),
+					graph.EdgeAttribute("fontsize", "10"),
+				}
+				_ = gr.AddEdge(id, inp.IDVeryShort(), edgeAttributes...)
+			}
+			return true
+		})
+		v.ForEachEndorsement(func(i byte, vEnd *vertex.WrappedTx) bool {
+			if vEnd == nil {
+				idNil := fmt.Sprintf("%d", nilCount)
+				err := gr.AddVertex(idNil, graph.VertexAttribute("shape", "point"))
+				util.AssertNoError(err)
+				nilCount++
+				err = gr.AddEdge(id, idNil)
+				util.AssertNoError(err)
+				return true
+			}
+			_ = gr.AddEdge(id, vEnd.IDVeryShort(), graph.EdgeAttribute("color", "red"))
+			//util.Assertf(err == nil || errors.Is(err, graph.ErrEdgeAlreadyExists), "%v", err)
+			return true
+		})
+	}})
+}

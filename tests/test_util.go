@@ -582,7 +582,7 @@ type spammerParams struct {
 	t             *testing.T
 	privateKey    ed25519.PrivateKey
 	remainder     *ledger.OutputWithID
-	tagAlongSeqID ledger.ChainID
+	tagAlongSeqID []ledger.ChainID
 	target        ledger.Lock
 	batchSize     int
 	pace          int
@@ -590,6 +590,7 @@ type spammerParams struct {
 	sendAmount    uint64
 	tagAlongFee   uint64
 	spammedTxIDs  []ledger.TransactionID
+	perChainID    map[ledger.ChainID]int
 }
 
 func (td *workflowTestData) spam(par *spammerParams, ctx context.Context) {
@@ -609,7 +610,6 @@ func (td *workflowTestData) spam(par *spammerParams, ctx context.Context) {
 				workflow.WithSourceType(txmetadata.SourceTypeAPI),
 			)
 			require.NoError(td.t, err)
-			td.t.Logf("spam -> %s", txid.StringShort())
 			par.spammedTxIDs = append(par.spammedTxIDs, *txid)
 		}
 		batchCount++
@@ -620,6 +620,10 @@ func (td *workflowTestData) spam(par *spammerParams, ctx context.Context) {
 }
 
 func makeTransfers(par *spammerParams) [][]byte {
+	if par.perChainID == nil {
+		par.perChainID = make(map[ledger.ChainID]int)
+	}
+	require.True(par.t, len(par.tagAlongSeqID) > 0)
 	sourceAddr := ledger.AddressED25519FromPrivateKey(par.privateKey)
 	var err error
 	ret := make([][]byte, par.batchSize)
@@ -629,14 +633,27 @@ func makeTransfers(par *spammerParams) [][]byte {
 		if ts.IsSlotBoundary() {
 			ts.AddTicks(1)
 		}
+		seqID := par.tagAlongSeqID[i%len(par.tagAlongSeqID)]
+		par.perChainID[seqID] = par.perChainID[seqID] + 1
+
 		tData := txbuilder.NewTransferData(par.privateKey, sourceAddr, ts).
 			MustWithInputs(par.remainder).
 			WithTargetLock(par.target).
 			WithAmount(par.sendAmount).
-			WithTagAlong(par.tagAlongSeqID, par.tagAlongFee)
+			WithTagAlong(seqID, par.tagAlongFee)
 		ret[i], par.remainder, err = txbuilder.MakeSimpleTransferTransactionWithRemainder(tData)
 		util.AssertNoError(err)
 
+		tx, err := transaction.FromBytes(ret[i], transaction.MainTxValidationOptions...)
+		require.NoError(par.t, err)
+		tagAlongOuts := tx.ProducedOutputsWithTargetLock(seqID.AsChainLock())
+		require.EqualValues(par.t, 1, len(tagAlongOuts))
+		lck := tagAlongOuts[0].Output.Lock()
+		require.True(par.t, lck.Name() == ledger.ChainLockName)
+		lckChain := lck.(ledger.ChainLock)
+		require.EqualValues(par.t, lckChain.ChainID(), seqID)
+
+		par.t.Logf("spam -> %s, tag along: %s", tx.IDShortString(), seqID.StringShort())
 		//txStr := transaction.ParseBytesToString(ret[i], func(_ *ledger.OutputID) ([]byte, bool) {
 		//	return par.remainder.Output.Bytes(), true
 		//})
