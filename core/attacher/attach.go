@@ -166,9 +166,9 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Opt
 				}
 			}
 
-			// if forDebugging == true, the panic is not caught, so it is more convenient in the debugger
-			const forDebugging = true
-			if forDebugging {
+			// if debuggerFriendly == true, the panic is not caught, so it is more convenient in the debugger
+			const debuggerFriendly = true
+			if debuggerFriendly {
 				go runFun()
 			} else {
 				util.RunWrappedRoutine(vid.IDShortString(), runFun, func(err error) {

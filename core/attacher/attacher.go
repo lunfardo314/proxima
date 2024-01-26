@@ -529,5 +529,6 @@ func (a *attacher) setBaseline(vid *vertex.WrappedTx, currentTS ledger.LogicalTi
 			coverage = rr.LedgerCoverage
 		}
 	}
+	// FIXME if attached transaction is a branch (currentTS.Ticks()==0), then shift will be 2 and a.coverage will be set to (0, 0). Not correct
 	a.coverage = coverage.MakeNext(int(currentTS.Slot()) - int(a.baselineBranch.Slot()) + 1)
 }
