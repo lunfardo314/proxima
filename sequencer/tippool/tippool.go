@@ -1,7 +1,6 @@
 package tippool
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"slices"
@@ -175,7 +174,7 @@ func (tp *SequencerTipPool) CandidatesToEndorseSorted(targetTs ledger.LogicalTim
 		}
 	}
 	sort.Slice(ret, func(i, j int) bool {
-		return isPreferredMilestoneAgainstTheOther(ret[i], ret[j])
+		return vertex.IsPreferredMilestoneAgainstTheOther(ret[i], ret[j])
 	})
 	return ret
 }
@@ -321,38 +320,9 @@ func (tp *SequencerTipPool) preSelectAndSortEndorsableMilestones(targetTs ledger
 		ret = append(ret, ms)
 	}
 	sort.Slice(ret, func(i, j int) bool {
-		return isPreferredMilestoneAgainstTheOther(ret[i], ret[j]) // order is important !!!
+		return vertex.IsPreferredMilestoneAgainstTheOther(ret[i], ret[j]) // order is important !!!
 	})
 	return ret
-}
-
-// betterMilestone returns if vid1 is strongly better than vid2
-func isPreferredMilestoneAgainstTheOther(vid1, vid2 *vertex.WrappedTx) bool {
-	util.Assertf(vid1.IsSequencerMilestone() && vid2.IsSequencerMilestone(), "vid1.IsSequencerMilestone() && vid2.IsSequencerMilestone()")
-
-	if vid1 == vid2 {
-		return false
-	}
-	if vid2 == nil {
-		return true
-	}
-
-	coverage1 := vid1.LedgerCoverageSum()
-	coverage2 := vid2.LedgerCoverageSum()
-	switch {
-	case coverage1 > coverage2:
-		// main preference is by ledger coverage
-		return true
-	case coverage1 == coverage2:
-		if vid1.Timestamp() == vid2.Timestamp() {
-			// prefer with bigger hash
-			return bytes.Compare(vid1.ID[:], vid2.ID[:]) > 0
-		}
-		// prefer younger
-		return vid2.Timestamp().Before(vid1.Timestamp())
-	default:
-		return false
-	}
 }
 
 func (tp *SequencerTipPool) NumOutputsInBuffer() int {
@@ -390,25 +360,18 @@ func (tp *SequencerTipPool) numOutputs() int {
 	return len(tp.outputs)
 }
 
-func (tp *SequencerTipPool) HeaviestBranchInTheSlot(slot ledger.Slot) *vertex.WrappedTx {
+func (tp *SequencerTipPool) BestMilestoneInTheSlot(slot ledger.Slot) *vertex.WrappedTx {
 	tp.mutex.RLock()
 	defer tp.mutex.RUnlock()
+
 	var ret *vertex.WrappedTx
-	var largestCoverage uint64
 
 	for _, vid := range tp.latestMilestones {
 		if vid.Slot() != slot {
 			continue
 		}
-		if ret == nil {
+		if ret == nil || vertex.IsPreferredMilestoneAgainstTheOther(vid, ret) {
 			ret = vid
-			largestCoverage = vid.LedgerCoverageSum()
-			continue
-		}
-		lc := vid.LedgerCoverageSum()
-		if lc > largestCoverage {
-			ret = vid
-			largestCoverage = lc
 		}
 	}
 	return ret

@@ -301,6 +301,7 @@ func Test5SequencersIdle(t *testing.T) {
 	)
 	testData := initMultiSequencerTest(t, nSequencers)
 
+	//testData.wrk.EnableTraceTags(proposer_base.TraceTag)
 	testData.startSequencersWithTimeout(maxSlots)
 	time.Sleep(20 * time.Second)
 	testData.stopAndWaitSequencers()

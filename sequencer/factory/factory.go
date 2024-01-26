@@ -237,7 +237,7 @@ func (mf *MilestoneFactory) Propose(a *attacher.IncrementalAttacher) (forceExit 
 	defer mf.proposal.mutex.Unlock()
 
 	if coverage.Sum() <= mf.proposal.bestSoFarCoverage.Sum() {
-		mf.Tracef(TraceTag, "Propose%s proposal REJECTED due to no increase in coverage (%s vs prev %s)",
+		mf.Tracef(TraceTag, "Propose%s: proposal REJECTED due to no increase in coverage (%s vs prev %s)",
 			a.Name(), coverage.String(), mf.proposal.bestSoFarCoverage.String)
 		return
 	}
@@ -248,10 +248,19 @@ func (mf *MilestoneFactory) Propose(a *attacher.IncrementalAttacher) (forceExit 
 		return true
 	}
 
+	// now we are taking into account also transaction ID. This is important for equal coverages
+	if bestInSlot := mf.BestMilestoneInTheSlot(a.TargetTs().Slot()); bestInSlot != nil {
+		if vertex.IsPreferredBase(bestInSlot.LedgerCoverageSum(), coverage.Sum(), &bestInSlot.ID, tx.ID()) {
+			mf.Tracef(TraceTag, "Propose%s: proposal REJECTED due to better milestone %s in the same slot %s",
+				a.Name(), mf.proposal.bestSoFarCoverage.String, a.TargetTs().Slot())
+			return false
+		}
+	}
+
 	mf.proposal.current = tx
 	mf.proposal.bestSoFarCoverage = coverage
 	mf.proposal.currentExtended = a.Extending()
-	mf.Tracef(TraceTag, "Propose%s proposal %s ACCEPTED", a.Name(), tx.IDShortString)
+	mf.Tracef(TraceTag, "Propose%s: proposal %s ACCEPTED", a.Name(), tx.IDShortString)
 	return
 }
 
@@ -383,6 +392,6 @@ func (mf *MilestoneFactory) NumMilestones() int {
 	return mf.tipPool.NumMilestones()
 }
 
-func (mf *MilestoneFactory) HeaviestBranchInTheSlot(slot ledger.Slot) *vertex.WrappedTx {
-	return mf.tipPool.HeaviestBranchInTheSlot(slot)
+func (mf *MilestoneFactory) BestMilestoneInTheSlot(slot ledger.Slot) *vertex.WrappedTx {
+	return mf.tipPool.BestMilestoneInTheSlot(slot)
 }

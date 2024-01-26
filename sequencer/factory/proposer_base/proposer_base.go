@@ -2,6 +2,7 @@ package proposer_base
 
 import (
 	"github.com/lunfardo314/proxima/core/attacher"
+	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/sequencer/factory/proposer_generic"
 	"github.com/lunfardo314/proxima/util"
 )
@@ -65,14 +66,12 @@ func (b *BaseProposer) propose() (*attacher.IncrementalAttacher, bool) {
 		b.Tracef(TraceTag, "%s making branch, no tag-along, extending %s cov: %s, attacher %s cov: %s",
 			b.Name, extend.IDShortString, extend.VID.GetLedgerCoverage().String(), a.Name(), util.Ref(a.LedgerCoverage()).String)
 	}
-	if b.TargetTs.IsSlotBoundary() {
-		if heaviest := b.HeaviestBranchInTheSlot(b.TargetTs.Slot()); heaviest != nil {
-			proposedCoverage := heaviest.GetLedgerCoverage()
-			if proposedCoverage != nil && proposedCoverage.Sum() > a.LedgerCoverageSum() {
-				b.Tracef(TraceTag, "%s abandoning branch proposal because heavier branch %s has been proposed already with %s",
-					b.Name, heaviest.IDShortString, proposedCoverage.String())
-				return nil, true
-			}
+	if bestInSlot := b.BestMilestoneInTheSlot(b.TargetTs.Slot()); bestInSlot != nil {
+		bestLC := bestInSlot.GetLedgerCoverage()
+		if bestLC != nil && vertex.IsPreferredBase(bestLC.Sum(), a.LedgerCoverageSum(), nil, nil) {
+			b.Tracef(TraceTag, "%s abandoning milestone proposal because larger coverage %s has been already proposed",
+				b.Name, bestLC.String())
+			return nil, true
 		}
 	}
 	return a, false
