@@ -51,7 +51,6 @@ func (a *milestoneAttacher) finalize() {
 	} else {
 		a.Tracef(TraceTagAttachMilestone, "finalized sequencer milestone")
 	}
-
 }
 
 func (a *milestoneAttacher) commitBranch() {

@@ -289,7 +289,7 @@ func TestNSequencersIdle(t *testing.T) {
 
 		t.Logf("%s", testData.wrk.Info(true))
 		testData.wrk.SaveGraph("utangle")
-		dag.SaveTree(testData.wrk.StateStore(), fmt.Sprintf("utangle_tree_%d", nSequencers+1))
+		dag.SaveBranchTree(testData.wrk.StateStore(), fmt.Sprintf("utangle_tree_%d", nSequencers+1))
 	})
 	t.Run("idle 5", func(t *testing.T) {
 		const (
@@ -307,9 +307,16 @@ func TestNSequencersIdle(t *testing.T) {
 		testData.stopAndWaitSequencers()
 		testData.stopAndWait()
 
+		allUnwrapped := testData.wrk.AllUnwrapped()
+		if len(allUnwrapped) > 0 {
+			t.Logf("wrong: still unwrapped vertices:\n%s", vertex.VerticesLines(allUnwrapped, "     ").String())
+		}
+		require.EqualValues(t, 0, len(allUnwrapped))
+
 		t.Logf("%s", testData.wrk.Info())
 		//testData.wrk.SaveGraph("utangle")
-		dag.SaveTree(testData.wrk.StateStore(), fmt.Sprintf("utangle_tree_%d", nSequencers+1))
+		testData.wrk.SaveSequencerGraph(fmt.Sprintf("utangle_seq_tree_%d", nSequencers+1))
+		//dag.SaveBranchTree(testData.wrk.StateStore(), fmt.Sprintf("utangle_tree_%d", nSequencers+1))
 	})
 }
 
@@ -367,7 +374,7 @@ func TestNSequencersTransfer(t *testing.T) {
 
 		t.Logf("%s", testData.wrk.Info())
 		//testData.wrk.SaveGraph("utangle")
-		dag.SaveTree(testData.wrk.StateStore(), fmt.Sprintf("utangle_tree_%d", nSequencers+1))
+		dag.SaveBranchTree(testData.wrk.StateStore(), fmt.Sprintf("utangle_tree_%d", nSequencers+1))
 
 		rdr = testData.wrk.HeaviestStateForLatestTimeSlot()
 		for _, txid := range par.spammedTxIDs {
@@ -452,7 +459,7 @@ func TestNSequencersTransfer(t *testing.T) {
 		t.Logf("============== 1")
 		//testData.wrk.SaveSequencerGraph(fmt.Sprintf("utangle_seq_tree_%d", nSequencers+1))
 		t.Logf("============== 2")
-		dag.SaveTree(testData.wrk.StateStore(), fmt.Sprintf("utangle_tree_%d", nSequencers+1))
+		dag.SaveBranchTree(testData.wrk.StateStore(), fmt.Sprintf("utangle_tree_%d", nSequencers+1))
 		t.Logf("============== 3")
 
 		targetBalance := rdr.BalanceOf(targetAddr.AccountID())

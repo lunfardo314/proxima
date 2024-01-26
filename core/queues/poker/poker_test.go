@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/lunfardo314/proxima/core/vertex"
+	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
@@ -18,7 +19,8 @@ func TestBasic(t *testing.T) {
 		howManyPokes = 10
 	)
 	ctx, cancel := context.WithCancel(context.Background())
-	p := New(zap.DebugLevel)
+	log := global.NewDefaultLogging("", zap.DebugLevel, nil)
+	p := New(log)
 
 	var wgStop sync.WaitGroup
 	wgStop.Add(1)

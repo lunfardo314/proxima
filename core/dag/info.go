@@ -1,6 +1,8 @@
 package dag
 
 import (
+	"fmt"
+	"slices"
 	"sort"
 
 	"github.com/lunfardo314/proxima/core/vertex"
@@ -26,8 +28,12 @@ func (d *DAG) Info(verbose ...bool) string {
 }
 
 func (d *DAG) InfoLines(verbose ...bool) *lines.Lines {
+	fmt.Printf("InfoLines 1\n")
+
 	d.mutex.RLock()
 	defer d.mutex.RUnlock()
+
+	fmt.Printf("InfoLines 2\n")
 
 	ln := lines.New()
 
@@ -35,6 +41,7 @@ func (d *DAG) InfoLines(verbose ...bool) *lines.Lines {
 
 	ln.Add("DAG:: vertices: %d, branches: %d, slots: %d",
 		len(d.vertices), len(d.branches), len(slots))
+
 	if len(verbose) > 0 && verbose[0] {
 		ln.Add("---- all vertices (verbose)")
 		all := maps.Values(d.vertices)
@@ -46,6 +53,7 @@ func (d *DAG) InfoLines(verbose ...bool) *lines.Lines {
 		}
 	}
 
+	fmt.Printf("InfoLines 3\n")
 	ln.Add("---- branches")
 	byChainID := make(map[ledger.ChainID][]*vertex.WrappedTx)
 	for vidBranch := range d.branches {
@@ -59,16 +67,35 @@ func (d *DAG) InfoLines(verbose ...bool) *lines.Lines {
 		byChainID[chainID] = lst
 	}
 
+	fmt.Printf("InfoLines 4\n")
 	for chainID, lst := range byChainID {
+		lstClone := slices.Clone(lst)
 		ln.Add("%s:", chainID.StringShort())
-		sort.Slice(lst, func(i, j int) bool {
-			return lst[i].Slot() > lst[j].Slot()
+		sort.Slice(lstClone, func(i, j int) bool {
+			return lstClone[i].Slot() > lstClone[j].Slot()
 		})
-		for _, vid := range lst {
-			ln.Add("    %s : coverage %s", vid.IDShortString(), vid.GetLedgerCoverage().String())
+		for _, vid := range lstClone {
+			fmt.Printf("InfoLines 4. before lc %s\n", vid.IDShortString())
+			//ln.Add("    %s : coverage %s", vid.IDShortString(), vid.GetLedgerCoverage().String())
+			ln.Add("    %s : coverage ???, unwrap count: %d", vid.IDShortString(), vid.UnwrapCount())
 		}
 	}
+	fmt.Printf("InfoLines 5\n")
 	return ln
+}
+
+// AllUnwrapped for debugging
+func (d *DAG) AllUnwrapped() []*vertex.WrappedTx {
+	ret := make([]*vertex.WrappedTx, 0)
+	d.mutex.RLock()
+	defer d.mutex.RUnlock()
+
+	for _, vid := range d.vertices {
+		if vid.UnwrapCount() > 0 {
+			ret = append(ret, vid)
+		}
+	}
+	return ret
 }
 
 func (d *DAG) VerticesInSlotAndAfter(slot ledger.Slot) []*vertex.WrappedTx {

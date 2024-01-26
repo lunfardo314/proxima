@@ -96,7 +96,6 @@ func (vid *WrappedTx) MutexWriteLocked_() bool {
 }
 
 func (vid *WrappedTx) GetTxStatus() Status {
-
 	vid.mutex.RLock()
 	defer vid.mutex.RUnlock()
 
@@ -421,9 +420,16 @@ func (vid *WrappedTx) OutputID(idx byte) (ret ledger.OutputID) {
 	return
 }
 
+func (vid *WrappedTx) UnwrapCount() int32 {
+	return vid.unwrapCount.Load()
+}
+
 func (vid *WrappedTx) Unwrap(opt UnwrapOptions) {
 	vid.mutex.Lock()
 	defer vid.mutex.Unlock()
+
+	vid.unwrapCount.Add(1)
+	defer vid.unwrapCount.Add(-1)
 
 	vid._unwrap(opt)
 }
@@ -436,6 +442,7 @@ func (vid *WrappedTx) RUnwrap(opt UnwrapOptions) {
 }
 
 func (vid *WrappedTx) _unwrap(opt UnwrapOptions) {
+
 	switch v := vid._genericWrapper.(type) {
 	case _vertex:
 		if opt.Vertex != nil {

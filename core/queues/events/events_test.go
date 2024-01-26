@@ -12,7 +12,7 @@ import (
 )
 
 func TestEvents(t *testing.T) {
-	log := global.NewDefaultLogging("", zap.InfoLevel, nil)
+	log := global.NewDefaultLogging("", zap.DebugLevel, nil)
 	log.EnableTraceTags("events")
 	e := New(log)
 	var wgStop sync.WaitGroup

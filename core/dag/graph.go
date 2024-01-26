@@ -66,11 +66,16 @@ func makeGraphNode(vid *vertex.WrappedTx, gr graph.Graph[string, string], seqDic
 	attr := simpleNodeAttributes
 	var err error
 
+	fmt.Printf(">>>>>> makeGraphNode: A Unwrap count: %s %d\n", vid.IDShortString(), vid.UnwrapCount())
 	status := vid.GetTxStatus()
+	fmt.Printf(">>>>>> makeGraphNode: B Unwrap count: %s %d\n", vid.IDShortString(), vid.UnwrapCount())
+	lcSum := vid.GetLedgerCoverage().Sum()
+	fmt.Printf(">>>>>> makeGraphNode: C %s\n", vid.IDShortString())
 	vid.RUnwrap(vertex.UnwrapOptions{
 		Vertex: func(v *vertex.Vertex) {
+			fmt.Printf(">>>>>> makeGraphNode: inside unwrap 1 %s\n", vid.IDShortString())
 			if v.Tx.IsSequencerMilestone() {
-				attr = sequencerNodeAttributes(v, vid.GetLedgerCoverage().Sum(), seqDict)
+				attr = sequencerNodeAttributes(v, lcSum, seqDict)
 			}
 			switch status {
 			case vertex.Bad:
@@ -88,9 +93,11 @@ func makeGraphNode(vid *vertex.WrappedTx, gr graph.Graph[string, string], seqDic
 			err = gr.AddVertex(id, attr...)
 		},
 		VirtualTx: func(v *vertex.VirtualTransaction) {
+			fmt.Printf(">>>>>> makeGraphNode: inside unwrap 2 %s\n", vid.IDShortString())
 			err = gr.AddVertex(id, finalTxAttributes...)
 		},
 		Deleted: func() {
+			fmt.Printf(">>>>>> makeGraphNode: inside unwrap 3 %s\n", vid.IDShortString())
 			err = gr.AddVertex(id, orphanedTxAttributes...)
 		},
 	})
@@ -106,6 +113,7 @@ func makeGraphEdges(vid *vertex.WrappedTx, gr graph.Graph[string, string]) {
 	id := vid.IDVeryShort()
 	vid.RUnwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
 		v.ForEachInputDependency(func(i byte, inp *vertex.WrappedTx) bool {
+			fmt.Printf(">>>>>>    makeGraphEdges: %s inside ForEachInputDependency %d\n", vid.IDShortString(), i)
 			if inp == nil {
 				idNil := fmt.Sprintf("%d", nilCount)
 				err := gr.AddVertex(idNil, graph.VertexAttribute("shape", "point"))
@@ -130,6 +138,7 @@ func makeGraphEdges(vid *vertex.WrappedTx, gr graph.Graph[string, string]) {
 			return true
 		})
 		v.ForEachEndorsement(func(i byte, vEnd *vertex.WrappedTx) bool {
+			fmt.Printf(">>>>>>    makeGraphEdges: %s inside ForEachEndorsement %d\n", vid.IDShortString(), i)
 			if vEnd == nil {
 				idNil := fmt.Sprintf("%d", nilCount)
 				err := gr.AddVertex(idNil, graph.VertexAttribute("shape", "point"))
@@ -268,7 +277,7 @@ func branchNodeAttributes(seqID *ledger.ChainID, coverage uint64, dict map[ledge
 	return ret
 }
 
-// TODO MakeTree and SaveTree move to multistate
+// TODO MakeTree and SaveBranchTree move to multistate
 
 func MakeTree(stateStore global.StateStore, slots ...int) graph.Graph[string, string] {
 	ret := graph.New(graph.StringHash, graph.Directed(), graph.Acyclic())
@@ -307,10 +316,10 @@ func MakeTree(stateStore global.StateStore, slots ...int) graph.Graph[string, st
 }
 
 func (d *DAG) SaveTree(fname string) {
-	SaveTree(d.stateStore, fname)
+	SaveBranchTree(d.stateStore, fname)
 }
 
-func SaveTree(stateStore global.StateStore, fname string, slotsBack ...int) {
+func SaveBranchTree(stateStore global.StateStore, fname string, slotsBack ...int) {
 	gr := MakeTree(stateStore, slotsBack...)
 	dotFile, _ := os.Create(fname + ".gv")
 	err := draw.DOT(gr, dotFile)
@@ -338,10 +347,12 @@ func (d *DAG) MakeSequencerGraph() graph.Graph[string, string] {
 		if !vid.IsSequencerMilestone() {
 			continue
 		}
+		fmt.Printf(">>>>>> before makeGraphNode: %s\n", vid.IDShortString())
 		makeGraphNode(vid, ret, seqDict, false)
 		seqVertices = append(seqVertices, vid)
 	}
 	for _, vid := range seqVertices {
+		fmt.Printf(">>>>>> makeSequencerGraphEdges: %s\n", vid.IDShortString())
 		makeSequencerGraphEdges(vid, ret)
 	}
 	return ret
@@ -349,7 +360,10 @@ func (d *DAG) MakeSequencerGraph() graph.Graph[string, string] {
 
 func makeSequencerGraphEdges(vid *vertex.WrappedTx, gr graph.Graph[string, string]) {
 	id := vid.IDVeryShort()
+	fmt.Printf(">>>>>> makeSequencerGraphEdges: A %s, unwrap count: %s\n", vid.IDShortString(), vid.UnwrapCount())
+
 	vid.RUnwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
+		fmt.Printf(">>>>>> makeSequencerGraphEdges: inside unwrap %s\n", vid.IDShortString())
 		var stemInputIdx, seqInputIdx byte
 		if vid.IsBranchTransaction() {
 			stemInputIdx = v.StemInputIndex()

@@ -13,13 +13,12 @@ import (
 
 type (
 	Queue[T any] struct {
-		name              string
-		que               *QueueVarBuffered[T]
-		onConsume         []func(T)
-		onClosed          []func()
-		emptyAfterCloseWG sync.WaitGroup
-		log               *zap.SugaredLogger
-		stopOnce          sync.Once
+		name      string
+		que       *VarBuffered[T]
+		onConsume []func(T)
+		onClosed  []func()
+		log       *zap.SugaredLogger
+		stopOnce  sync.Once
 	}
 
 	Consumer[T any] interface {
@@ -40,10 +39,6 @@ func NewQueueWithBufferSize[T any](name string, bufSize int, logLevel zapcore.Le
 		onConsume: make([]func(T), 0),
 		onClosed:  make([]func(), 0),
 	}
-	ret.emptyAfterCloseWG.Add(1)
-	ret.que.OnEmptyAfterClose(func() {
-		ret.emptyAfterCloseWG.Done()
-	})
 	return ret
 }
 
@@ -82,7 +77,6 @@ func (c *Queue[T]) Stop() {
 	c.stopOnce.Do(func() {
 		c.Log().Debugf("STOPPING...")
 		c.que.Close()
-		c.emptyAfterCloseWG.Wait()
 		for _, fun := range c.onClosed {
 			fun()
 		}

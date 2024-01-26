@@ -1,12 +1,15 @@
 package util
 
 import (
+	"context"
 	"crypto/ed25519"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"slices"
 	"sort"
 	"strings"
+	"time"
 
 	"golang.org/x/exp/constraints"
 	"golang.org/x/exp/maps"
@@ -282,4 +285,14 @@ func Abs[T constraints.Integer](n T) T {
 		return -n
 	}
 	return n
+}
+
+func CallWithTimeout(fun func(), timeout time.Duration) error{
+	ctx, cancel := context.WithTimeoutCause(context.Background(), timeout, errors.New("timeout"))
+	go func() {
+		fun()
+		cancel()
+	}()
+	<- ctx.Done()
+	ctx.()
 }

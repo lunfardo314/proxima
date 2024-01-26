@@ -121,7 +121,12 @@ func initWorkflowTest(t *testing.T, nChains int) *workflowTestData {
 	}
 
 	ret.wrk = workflow.New(stateStore, ret.txStore, peering.NewPeersDummy(), workflow.WithLogLevel(zapcore.DebugLevel))
-	ret.ctx, ret.stopFun = context.WithCancel(context.Background())
+	var cancelFun context.CancelFunc
+	ret.ctx, cancelFun = context.WithCancel(context.Background())
+	ret.stopFun = func() {
+		t.Logf("workflow stop function invoked")
+		cancelFun()
+	}
 	ret.wrk.Start(ret.ctx)
 
 	t.Logf("bootstrap chain id: %s", ret.bootstrapChainID.String())
@@ -254,7 +259,9 @@ func initWorkflowTestWithConflicts(t *testing.T, nConflicts int, nChains int, ta
 
 func (td *workflowTestData) stopAndWait() {
 	td.stopFun()
+	fmt.Printf("stopAndWait before wait\n")
 	td.wrk.WaitStop()
+	fmt.Printf("stopAndWait after wait\n")
 }
 
 func (td *longConflictTestData) makeSeqBeginnings(withConflictingFees bool) {

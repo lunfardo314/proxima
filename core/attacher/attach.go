@@ -157,6 +157,7 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Opt
 				env.Log().Info(logFinalStatusString(vid, stats, msData))
 				env.PokeAllWith(vid)
 				callback(vid, err)
+				util.Assertf(vid.UnwrapCount() == 0, "vid.UnwrapCount() == 0")
 			}
 
 			// if forDebugging == true, the panic is not caught, so it is more convenient in the debugger
