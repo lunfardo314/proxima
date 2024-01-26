@@ -70,9 +70,9 @@ func (a *attacher) isKnownVertex(vid *vertex.WrappedTx) bool {
 	return false
 }
 
-// solidifyBaseline directs attachment process down the DAG to reach the deterministically known baseline state
+// solidifyBaselineVertex directs attachment process down the DAG to reach the deterministically known baseline state
 // for a sequencer milestone. Existence of it is guaranteed by the ledger constraints
-func (a *attacher) solidifyBaseline(v *vertex.Vertex) (ok bool) {
+func (a *attacher) solidifyBaselineVertex(v *vertex.Vertex) (ok bool) {
 	if v.Tx.IsBranchTransaction() {
 		return a.solidifyStemOfTheVertex(v)
 	}

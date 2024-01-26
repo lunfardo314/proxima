@@ -41,7 +41,7 @@ type (
 
 		txStatus Status
 		reason   error
-		coverage *multistate.LedgerCoverage // nil for non-sequencer
+		coverage *multistate.LedgerCoverage // nil for non-sequencer or if not set yet
 		// notification callback. Must be func(vid *WrappedTx)
 		onPoke atomic.Value
 	}

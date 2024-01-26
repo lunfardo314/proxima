@@ -31,7 +31,7 @@ func runMilestoneAttacher(vid *vertex.WrappedTx, metadata *txmetadata.Transactio
 	defer a.Tracef(TraceTagAttachMilestone, "<<<<<<<<<<<<< EXIT")
 
 	// first solidify baseline state
-	status := a.solidifyBaselineState()
+	status := a.solidifyBaseline()
 	if status == vertex.Bad {
 		a.Tracef(TraceTagAttachMilestone, "baseline solidification failed. Reason: %v", a.vid.GetReason)
 		return vertex.Bad, nil, a.reason
@@ -172,12 +172,12 @@ func (a *milestoneAttacher) close() {
 	})
 }
 
-func (a *milestoneAttacher) solidifyBaselineState() vertex.Status {
+func (a *milestoneAttacher) solidifyBaseline() vertex.Status {
 	return a.lazyRepeat(func() vertex.Status {
 		var ok bool
 		success := false
 		a.vid.Unwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
-			ok = a.solidifyBaseline(v)
+			ok = a.solidifyBaselineVertex(v)
 			if ok && v.FlagsUp(vertex.FlagBaselineSolid) {
 				a.setBaseline(v.BaselineBranch, a.vid.Timestamp())
 				success = true
