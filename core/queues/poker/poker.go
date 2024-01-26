@@ -62,7 +62,6 @@ func New(env Environment) *Poker {
 func (c *Poker) Start(ctx context.Context, doneOnClose *sync.WaitGroup) {
 	c.AddOnClosed(func() {
 		doneOnClose.Done()
-		c.Queue.Log().Debugf("on close done")
 	})
 	c.Queue.Start(c, ctx)
 	go c.periodicLoop(ctx)

@@ -3,6 +3,9 @@ package util
 import (
 	"fmt"
 	"testing"
+	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestForEachUniquePair(t *testing.T) {
@@ -40,4 +43,16 @@ func TestForEachUniquePair(t *testing.T) {
 		fmt.Printf("(%d, %d)\n", a1, a2)
 		return true
 	})
+}
+
+func TestCallWithTimeout(t *testing.T) {
+	success := CallWithTimeout(func() {
+		time.Sleep(1 * time.Millisecond)
+	}, 2*time.Second)
+	require.True(t, success)
+
+	success = CallWithTimeout(func() {
+		time.Sleep(100 * time.Millisecond)
+	}, time.Millisecond)
+	require.False(t, success)
 }

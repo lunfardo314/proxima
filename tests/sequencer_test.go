@@ -291,33 +291,26 @@ func TestNSequencersIdle(t *testing.T) {
 		testData.wrk.SaveGraph("utangle")
 		dag.SaveBranchTree(testData.wrk.StateStore(), fmt.Sprintf("utangle_tree_%d", nSequencers+1))
 	})
-	t.Run("idle 5", func(t *testing.T) {
-		const (
-			maxSlots    = 50
-			nSequencers = 4 // in addition to bootstrap
-		)
-		testData := initMultiSequencerTest(t, nSequencers)
+}
 
-		//testData.wrk.EnableTraceTags(proposer_endorse1.TraceTag)
-		//testData.wrk.EnableTraceTags(factory.TraceTagChooseExtendEndorsePair)
-		//testData.wrk.EnableTraceTags(attacher.TraceTagAttachVertex, attacher.TraceTagAttachOutput)
+func Test5SequencersIdle(t *testing.T) {
+	ledger.SetTimeTickDuration(10 * time.Millisecond)
+	const (
+		maxSlots    = 50
+		nSequencers = 4 // in addition to bootstrap
+	)
+	testData := initMultiSequencerTest(t, nSequencers)
 
-		testData.startSequencersWithTimeout(maxSlots)
-		time.Sleep(20 * time.Second)
-		testData.stopAndWaitSequencers()
-		testData.stopAndWait()
+	testData.startSequencersWithTimeout(maxSlots)
+	time.Sleep(20 * time.Second)
+	testData.stopAndWaitSequencers()
+	testData.stopAndWait()
 
-		allUnwrapped := testData.wrk.AllUnwrapped()
-		if len(allUnwrapped) > 0 {
-			t.Logf("wrong: still unwrapped vertices:\n%s", vertex.VerticesLines(allUnwrapped, "     ").String())
-		}
-		require.EqualValues(t, 0, len(allUnwrapped))
+	t.Logf("--------\n%s", testData.wrk.Info())
+	//testData.wrk.SaveGraph("utangle")
+	testData.wrk.SaveSequencerGraph(fmt.Sprintf("utangle_seq_tree_%d", nSequencers+1))
+	dag.SaveBranchTree(testData.wrk.StateStore(), fmt.Sprintf("utangle_tree_%d", nSequencers+1))
 
-		t.Logf("%s", testData.wrk.Info())
-		//testData.wrk.SaveGraph("utangle")
-		testData.wrk.SaveSequencerGraph(fmt.Sprintf("utangle_seq_tree_%d", nSequencers+1))
-		//dag.SaveBranchTree(testData.wrk.StateStore(), fmt.Sprintf("utangle_tree_%d", nSequencers+1))
-	})
 }
 
 func TestNSequencersTransfer(t *testing.T) {

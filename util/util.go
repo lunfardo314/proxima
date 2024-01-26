@@ -287,12 +287,12 @@ func Abs[T constraints.Integer](n T) T {
 	return n
 }
 
-func CallWithTimeout(fun func(), timeout time.Duration) error{
+func CallWithTimeout(fun func(), timeout time.Duration) bool {
 	ctx, cancel := context.WithTimeoutCause(context.Background(), timeout, errors.New("timeout"))
 	go func() {
 		fun()
 		cancel()
 	}()
-	<- ctx.Done()
-	ctx.()
+	<-ctx.Done()
+	return !errors.Is(ctx.Err(), context.DeadlineExceeded)
 }

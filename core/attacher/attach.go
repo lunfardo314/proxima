@@ -14,7 +14,7 @@ import (
 	"github.com/lunfardo314/unitrie/common"
 )
 
-// AttachTxID ensures the txid is on the utangle_old. Must be called from globally locked environment
+// AttachTxID ensures the txid is on the utangle. Must be called from globally locked environment
 func AttachTxID(txid ledger.TransactionID, env Environment, opts ...Option) (vid *vertex.WrappedTx) {
 	options := &_attacherOptions{}
 	for _, opt := range opts {
@@ -156,8 +156,14 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Opt
 				msData := env.ParseMilestoneData(vid)
 				env.Log().Info(logFinalStatusString(vid, stats, msData))
 				env.PokeAllWith(vid)
-				callback(vid, err)
-				util.Assertf(vid.UnwrapCount() == 0, "vid.UnwrapCount() == 0")
+
+				// calling callback with timeout in order to detect wrong callbacks immediately
+				ok := util.CallWithTimeout(func() {
+					callback(vid, err)
+				}, 10*time.Millisecond)
+				if !ok {
+					env.Log().Fatalf("AttachTransaction: Internal error: 10 milisec timeout exceeded while calling callback")
+				}
 			}
 
 			// if forDebugging == true, the panic is not caught, so it is more convenient in the debugger

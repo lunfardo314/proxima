@@ -56,7 +56,6 @@ func New(env Environment) *PullClient {
 func (q *PullClient) Start(ctx context.Context, doneOnClose *sync.WaitGroup) {
 	q.AddOnClosed(func() {
 		doneOnClose.Done()
-		q.Queue.Log().Debugf("on close done")
 	})
 	q.Queue.Start(q, ctx)
 }

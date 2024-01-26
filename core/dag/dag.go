@@ -3,6 +3,7 @@ package dag
 import (
 	"fmt"
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/lunfardo314/proxima/core/vertex"
@@ -12,6 +13,23 @@ import (
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/util"
 )
+
+type (
+	DAG struct {
+		mutex      sync.RWMutex
+		stateStore global.StateStore
+		vertices   map[ledger.TransactionID]*vertex.WrappedTx
+		branches   map[*vertex.WrappedTx]global.IndexedStateReader
+	}
+)
+
+func New(stateStore global.StateStore) *DAG {
+	return &DAG{
+		stateStore: stateStore,
+		vertices:   make(map[ledger.TransactionID]*vertex.WrappedTx),
+		branches:   make(map[*vertex.WrappedTx]global.IndexedStateReader),
+	}
+}
 
 func (d *DAG) StateStore() global.StateStore {
 	return d.stateStore

@@ -47,7 +47,6 @@ func New(env Environment) *Events {
 func (c *Events) Start(ctx context.Context, doneOnClose *sync.WaitGroup) {
 	c.AddOnClosed(func() {
 		doneOnClose.Done()
-		c.Queue.Log().Debugf("on close done")
 	})
 	c.Queue.Start(c, ctx)
 }

@@ -66,14 +66,10 @@ func makeGraphNode(vid *vertex.WrappedTx, gr graph.Graph[string, string], seqDic
 	attr := simpleNodeAttributes
 	var err error
 
-	fmt.Printf(">>>>>> makeGraphNode: A Unwrap count: %s %d\n", vid.IDShortString(), vid.UnwrapCount())
 	status := vid.GetTxStatus()
-	fmt.Printf(">>>>>> makeGraphNode: B Unwrap count: %s %d\n", vid.IDShortString(), vid.UnwrapCount())
 	lcSum := vid.GetLedgerCoverage().Sum()
-	fmt.Printf(">>>>>> makeGraphNode: C %s\n", vid.IDShortString())
 	vid.RUnwrap(vertex.UnwrapOptions{
 		Vertex: func(v *vertex.Vertex) {
-			fmt.Printf(">>>>>> makeGraphNode: inside unwrap 1 %s\n", vid.IDShortString())
 			if v.Tx.IsSequencerMilestone() {
 				attr = sequencerNodeAttributes(v, lcSum, seqDict)
 			}
@@ -93,11 +89,9 @@ func makeGraphNode(vid *vertex.WrappedTx, gr graph.Graph[string, string], seqDic
 			err = gr.AddVertex(id, attr...)
 		},
 		VirtualTx: func(v *vertex.VirtualTransaction) {
-			fmt.Printf(">>>>>> makeGraphNode: inside unwrap 2 %s\n", vid.IDShortString())
 			err = gr.AddVertex(id, finalTxAttributes...)
 		},
 		Deleted: func() {
-			fmt.Printf(">>>>>> makeGraphNode: inside unwrap 3 %s\n", vid.IDShortString())
 			err = gr.AddVertex(id, orphanedTxAttributes...)
 		},
 	})
@@ -113,7 +107,6 @@ func makeGraphEdges(vid *vertex.WrappedTx, gr graph.Graph[string, string]) {
 	id := vid.IDVeryShort()
 	vid.RUnwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
 		v.ForEachInputDependency(func(i byte, inp *vertex.WrappedTx) bool {
-			fmt.Printf(">>>>>>    makeGraphEdges: %s inside ForEachInputDependency %d\n", vid.IDShortString(), i)
 			if inp == nil {
 				idNil := fmt.Sprintf("%d", nilCount)
 				err := gr.AddVertex(idNil, graph.VertexAttribute("shape", "point"))
@@ -138,7 +131,6 @@ func makeGraphEdges(vid *vertex.WrappedTx, gr graph.Graph[string, string]) {
 			return true
 		})
 		v.ForEachEndorsement(func(i byte, vEnd *vertex.WrappedTx) bool {
-			fmt.Printf(">>>>>>    makeGraphEdges: %s inside ForEachEndorsement %d\n", vid.IDShortString(), i)
 			if vEnd == nil {
 				idNil := fmt.Sprintf("%d", nilCount)
 				err := gr.AddVertex(idNil, graph.VertexAttribute("shape", "point"))
@@ -338,21 +330,16 @@ func (d *DAG) SaveSequencerGraph(fname string) {
 func (d *DAG) MakeSequencerGraph() graph.Graph[string, string] {
 	ret := graph.New(graph.StringHash, graph.Directed(), graph.Acyclic())
 
-	d.mutex.RLock()
-	defer d.mutex.RUnlock()
-
 	seqDict := make(map[ledger.ChainID]int)
 	seqVertices := make([]*vertex.WrappedTx, 0)
-	for _, vid := range d.vertices {
+	for _, vid := range d.Vertices() {
 		if !vid.IsSequencerMilestone() {
 			continue
 		}
-		fmt.Printf(">>>>>> before makeGraphNode: %s\n", vid.IDShortString())
 		makeGraphNode(vid, ret, seqDict, false)
 		seqVertices = append(seqVertices, vid)
 	}
 	for _, vid := range seqVertices {
-		fmt.Printf(">>>>>> makeSequencerGraphEdges: %s\n", vid.IDShortString())
 		makeSequencerGraphEdges(vid, ret)
 	}
 	return ret
@@ -360,10 +347,8 @@ func (d *DAG) MakeSequencerGraph() graph.Graph[string, string] {
 
 func makeSequencerGraphEdges(vid *vertex.WrappedTx, gr graph.Graph[string, string]) {
 	id := vid.IDVeryShort()
-	fmt.Printf(">>>>>> makeSequencerGraphEdges: A %s, unwrap count: %s\n", vid.IDShortString(), vid.UnwrapCount())
 
 	vid.RUnwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
-		fmt.Printf(">>>>>> makeSequencerGraphEdges: inside unwrap %s\n", vid.IDShortString())
 		var stemInputIdx, seqInputIdx byte
 		if vid.IsBranchTransaction() {
 			stemInputIdx = v.StemInputIndex()

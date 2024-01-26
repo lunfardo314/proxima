@@ -1,7 +1,6 @@
 package dag
 
 import (
-	"fmt"
 	"slices"
 	"sort"
 
@@ -23,18 +22,27 @@ func (d *DAG) NumVertices() int {
 	return len(d.vertices)
 }
 
+// Vertices to avoid global lock while traversing all utangle
+func (d *DAG) Vertices() []*vertex.WrappedTx {
+	d.mutex.RLock()
+	defer d.mutex.RUnlock()
+
+	return maps.Values(d.vertices)
+}
+
+// Branches to avoid global lock while traversing all utangle
+func (d *DAG) Branches() []*vertex.WrappedTx {
+	d.mutex.RLock()
+	defer d.mutex.RUnlock()
+
+	return maps.Keys(d.branches)
+}
+
 func (d *DAG) Info(verbose ...bool) string {
 	return d.InfoLines(verbose...).String()
 }
 
 func (d *DAG) InfoLines(verbose ...bool) *lines.Lines {
-	fmt.Printf("InfoLines 1\n")
-
-	d.mutex.RLock()
-	defer d.mutex.RUnlock()
-
-	fmt.Printf("InfoLines 2\n")
-
 	ln := lines.New()
 
 	slots := d._timeSlotsOrdered()
@@ -43,20 +51,19 @@ func (d *DAG) InfoLines(verbose ...bool) *lines.Lines {
 		len(d.vertices), len(d.branches), len(slots))
 
 	if len(verbose) > 0 && verbose[0] {
+		vertices := d.Vertices()
 		ln.Add("---- all vertices (verbose)")
-		all := maps.Values(d.vertices)
-		sort.Slice(all, func(i, j int) bool {
-			return ledger.LessTxID(all[i].ID, all[j].ID)
+		sort.Slice(vertices, func(i, j int) bool {
+			return ledger.LessTxID(vertices[i].ID, vertices[j].ID)
 		})
-		for _, vid := range all {
+		for _, vid := range vertices {
 			ln.Add("    " + vid.ShortString())
 		}
 	}
 
-	fmt.Printf("InfoLines 3\n")
 	ln.Add("---- branches")
 	byChainID := make(map[ledger.ChainID][]*vertex.WrappedTx)
-	for vidBranch := range d.branches {
+	for _, vidBranch := range d.Branches() {
 		chainID, ok := vidBranch.SequencerIDIfAvailable()
 		util.Assertf(ok, "sequencer ID not available in %s", vidBranch.IDShortString)
 		lst := byChainID[chainID]
@@ -67,7 +74,6 @@ func (d *DAG) InfoLines(verbose ...bool) *lines.Lines {
 		byChainID[chainID] = lst
 	}
 
-	fmt.Printf("InfoLines 4\n")
 	for chainID, lst := range byChainID {
 		lstClone := slices.Clone(lst)
 		ln.Add("%s:", chainID.StringShort())
@@ -75,27 +81,10 @@ func (d *DAG) InfoLines(verbose ...bool) *lines.Lines {
 			return lstClone[i].Slot() > lstClone[j].Slot()
 		})
 		for _, vid := range lstClone {
-			fmt.Printf("InfoLines 4. before lc %s\n", vid.IDShortString())
-			//ln.Add("    %s : coverage %s", vid.IDShortString(), vid.GetLedgerCoverage().String())
-			ln.Add("    %s : coverage ???, unwrap count: %d", vid.IDShortString(), vid.UnwrapCount())
+			ln.Add("    %s : coverage %s", vid.IDShortString(), vid.GetLedgerCoverage().String())
 		}
 	}
-	fmt.Printf("InfoLines 5\n")
 	return ln
-}
-
-// AllUnwrapped for debugging
-func (d *DAG) AllUnwrapped() []*vertex.WrappedTx {
-	ret := make([]*vertex.WrappedTx, 0)
-	d.mutex.RLock()
-	defer d.mutex.RUnlock()
-
-	for _, vid := range d.vertices {
-		if vid.UnwrapCount() > 0 {
-			ret = append(ret, vid)
-		}
-	}
-	return ret
 }
 
 func (d *DAG) VerticesInSlotAndAfter(slot ledger.Slot) []*vertex.WrappedTx {

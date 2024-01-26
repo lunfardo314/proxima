@@ -30,9 +30,8 @@ type (
 	// Behind this identity can be wrapped usual vertex, virtual or orphaned transactions
 	WrappedTx struct {
 		// immutable ID. It does not change with the change of the underlying wrapped vertex type
-		ID          ledger.TransactionID
-		mutex       sync.RWMutex // protects _genericWrapper
-		unwrapCount atomic.Int32
+		ID    ledger.TransactionID
+		mutex sync.RWMutex // protects _genericWrapper
 
 		_genericWrapper
 		// future cone references. Protected by global utangle_old lock

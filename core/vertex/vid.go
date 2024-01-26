@@ -420,16 +420,9 @@ func (vid *WrappedTx) OutputID(idx byte) (ret ledger.OutputID) {
 	return
 }
 
-func (vid *WrappedTx) UnwrapCount() int32 {
-	return vid.unwrapCount.Load()
-}
-
 func (vid *WrappedTx) Unwrap(opt UnwrapOptions) {
 	vid.mutex.Lock()
 	defer vid.mutex.Unlock()
-
-	vid.unwrapCount.Add(1)
-	defer vid.unwrapCount.Add(-1)
 
 	vid._unwrap(opt)
 }
@@ -722,6 +715,14 @@ func VerticesShortLines(vertices []*WrappedTx, prefix ...string) *lines.Lines {
 	ret := lines.New(prefix...)
 	for _, vid := range vertices {
 		ret.Add(vid.IDShortStringExt())
+	}
+	return ret
+}
+
+func VerticesIDLines(vertices []*WrappedTx, prefix ...string) *lines.Lines {
+	ret := lines.New(prefix...)
+	for _, vid := range vertices {
+		ret.Add(vid.IDShortString())
 	}
 	return ret
 }
