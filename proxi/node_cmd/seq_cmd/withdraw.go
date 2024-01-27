@@ -46,9 +46,9 @@ func runSeqWithdrawCmd(_ *cobra.Command, args []string) {
 	glb.AssertNoError(err)
 
 	glb.Assertf(amount >= sequencer_old.MinimumAmountToRequestFromSequencer, "amount must be at least %s",
-		util.GoThousands(sequencer_old.MinimumAmountToRequestFromSequencer))
+		util.GoTh(sequencer_old.MinimumAmountToRequestFromSequencer))
 
-	glb.Infof("amount: %s", util.GoThousands(amount))
+	glb.Infof("amount: %s", util.GoTh(amount))
 
 	glb.Infof("querying wallet's outputs..")
 	walletOutputs, err := getClient().GetAccountOutputs(walletData.Account, func(o *ledger.Output) bool {
@@ -60,11 +60,11 @@ func runSeqWithdrawCmd(_ *cobra.Command, args []string) {
 
 	glb.Infof("will be using fee amount of %d from the wallet. Outputs in the wallet:", ownSequencerCmdFee)
 	for i, o := range walletOutputs {
-		glb.Infof("%d : %s : %s", i, o.ID.StringShort(), util.GoThousands(o.Output.Amount()))
+		glb.Infof("%d : %s : %s", i, o.ID.StringShort(), util.GoTh(o.Output.Amount()))
 	}
 
 	prompt := fmt.Sprintf("withdraw %s from %s to the target %s?",
-		util.GoThousands(amount), walletData.Sequencer.StringShort(), targetLock.String())
+		util.GoTh(amount), walletData.Sequencer.StringShort(), targetLock.String())
 	if !glb.YesNoPrompt(prompt, false) {
 		glb.Infof("exit")
 		return

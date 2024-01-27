@@ -64,6 +64,6 @@ func displayInclusionState(inclusion []api.InclusionData, inSec ...float64) {
 		} else {
 			yn = " NO"
 		}
-		glb.Verbosef("   %s   %s    %s", yn, inclusion[i].BranchID.StringShort(), util.GoThousands(inclusion[i].Coverage))
+		glb.Verbosef("   %s   %s    %s", yn, inclusion[i].BranchID.StringShort(), util.GoTh(inclusion[i].Coverage))
 	}
 }

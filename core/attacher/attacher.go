@@ -531,3 +531,24 @@ func (a *attacher) setBaseline(vid *vertex.WrappedTx, currentTS ledger.LogicalTi
 	}
 	util.Assertf(a.coverage.LatestDelta() == 0, "a.coverage.LatestDelta() == 0")
 }
+
+func (a *attacher) dumpLines(prefix ...string) *lines.Lines {
+	ret := lines.New(prefix...)
+	ret.Add("attacher %s", a.name)
+	ret.Add("   validPastVertices:")
+	a.validPastVertices.ForEach(func(vid *vertex.WrappedTx) bool {
+		ret.Add("        %s", vid.String())
+		return true
+	})
+	ret.Add("   rooted:")
+	for vid, consumed := range a.rooted {
+		for idx := range consumed {
+			o, err := vid.OutputAt(idx)
+			if err == nil {
+				oid := vid.OutputID(idx)
+				ret.Add("           %s : %s", oid.StringShort(), util.GoTh(o.Amount()))
+			}
+		}
+	}
+	return ret
+}

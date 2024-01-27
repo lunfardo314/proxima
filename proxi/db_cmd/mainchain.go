@@ -44,7 +44,7 @@ func runMainChainCmd(_ *cobra.Command, args []string) {
 
 		for _, bd := range mainBranches {
 			_, _ = fmt.Fprintf(outFile, "%s, %d, %s, %s\n",
-				bd.SequencerID.String(), bd.LedgerCoverage, bd.Stem.ID.String(), util.GoThousands(bd.SequencerOutput.Output.Amount()))
+				bd.SequencerID.String(), bd.LedgerCoverage, bd.Stem.ID.String(), util.GoTh(bd.SequencerOutput.Output.Amount()))
 		}
 	}
 	type seqData struct {
@@ -74,6 +74,6 @@ func runMainChainCmd(_ *cobra.Command, args []string) {
 	for _, k := range sorted {
 		sd := bySeqID[k]
 		glb.Infof("%10s %s  %8d (%2d%%)       %s", sd.name, k.StringShort(),
-			sd.numOccurrences, (100*sd.numOccurrences)/len(mainBranches), util.GoThousands(sd.onChainBalance))
+			sd.numOccurrences, (100*sd.numOccurrences)/len(mainBranches), util.GoTh(sd.onChainBalance))
 	}
 }

@@ -162,7 +162,7 @@ func InitialDistributionFromYAMLData(yamlData []byte) ([]ledger.LockBalance, err
 func DistributionListToLines(lst []ledger.LockBalance, prefix ...string) *lines.Lines {
 	ret := lines.New(prefix...)
 	for i := range lst {
-		ret.Add("%s : %s", lst[i].Lock.String(), util.GoThousands(lst[i].Balance))
+		ret.Add("%s : %s", lst[i].Lock.String(), util.GoTh(lst[i].Balance))
 	}
 	return ret
 }

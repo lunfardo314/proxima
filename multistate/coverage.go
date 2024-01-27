@@ -64,9 +64,9 @@ func (lc *LedgerCoverage) String() string {
 	}
 	all := make([]string, len(lc))
 	for i, c := range lc {
-		all[i] = util.GoThousands(c)
+		all[i] = util.GoTh(c)
 	}
-	return fmt.Sprintf("sum(%s)->%s", strings.Join(all, ", "), util.GoThousands(lc.Sum()))
+	return fmt.Sprintf("sum(%s)->%s", strings.Join(all, ", "), util.GoTh(lc.Sum()))
 }
 
 func (lc *LedgerCoverage) StringShort() string {
@@ -75,7 +75,7 @@ func (lc *LedgerCoverage) StringShort() string {
 	}
 	all := make([]string, len(lc))
 	for i, c := range lc {
-		all[i] = util.GoThousands(c)
+		all[i] = util.GoTh(c)
 	}
 	return fmt.Sprintf("(%s)", strings.Join(all, ", "))
 }

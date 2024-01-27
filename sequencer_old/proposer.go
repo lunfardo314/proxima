@@ -199,7 +199,7 @@ func (c *proposerTaskGeneric) placeProposalIfRelevant(mdProposed *proposedMilest
 
 	//c.setTraceNAhead(1)
 	c.trace("proposed %s: coverage: %s (base %s), numIN: %d, elapsed: %v",
-		mdProposed.proposedBy, util.GoThousands(mdProposed.coverage), util.GoThousands(c.factory.proposal.bestSoFarCoverage),
+		mdProposed.proposedBy, util.GoTh(mdProposed.coverage), util.GoTh(c.factory.proposal.bestSoFarCoverage),
 		mdProposed.tx.NumInputs(), mdProposed.elapsed)
 
 	if c.factory.proposal.targetTs == ledger.NilLogicalTime {
@@ -222,7 +222,7 @@ func (c *proposerTaskGeneric) placeProposalIfRelevant(mdProposed *proposedMilest
 	if !mdProposed.tx.IsBranchTransaction() {
 		if mdProposed.coverage <= baselineCoverage {
 			return fmt.Sprintf("%s SKIPPED: no increase in coverage %s <- %s)",
-				mdProposed.tx.IDShortString(), util.GoThousands(mdProposed.coverage), util.GoThousands(c.factory.proposal.bestSoFarCoverage)), false
+				mdProposed.tx.IDShortString(), util.GoTh(mdProposed.coverage), util.GoTh(c.factory.proposal.bestSoFarCoverage)), false
 		}
 	}
 
@@ -235,8 +235,8 @@ func (c *proposerTaskGeneric) placeProposalIfRelevant(mdProposed *proposedMilest
 	c.trace("(%s): ACCEPTED %s, coverage: %s (base: %s), elapsed: %v, inputs: %d, tipPool: %d",
 		mdProposed.proposedBy,
 		mdProposed.tx.IDShortString(),
-		util.GoThousands(mdProposed.coverage),
-		util.GoThousands(baselineCoverage),
+		util.GoTh(mdProposed.coverage),
+		util.GoTh(baselineCoverage),
 		mdProposed.elapsed,
 		mdProposed.tx.NumInputs(),
 		c.factory.tipPool.numOutputsInBuffer(),

@@ -133,7 +133,7 @@ func initWorkflowTest(t *testing.T, nChains int) *workflowTestData {
 	t.Logf("origing branch txid: %s", ret.originBranchTxid.StringShort())
 
 	for i := range distrib {
-		t.Logf("distributed %s -> %s", util.GoThousands(distrib[i].Balance), distrib[i].Lock.String())
+		t.Logf("distributed %s -> %s", util.GoTh(distrib[i].Balance), distrib[i].Lock.String())
 	}
 	return ret
 }

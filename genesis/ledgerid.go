@@ -150,7 +150,7 @@ func (id *LedgerIdentityData) Lines(prefix ...string) *lines.Lines {
 	return lines.New(prefix...).
 		Add("Description: '%s'", id.Description).
 		Add("Core ledger constraints hash: %s", hex.EncodeToString(id.CoreLedgerConstraintsHash[:])).
-		Add("Initial supply: %s", util.GoThousands(id.InitialSupply)).
+		Add("Initial supply: %s", util.GoTh(id.InitialSupply)).
 		Add("Genesis controller address: %s", id.GenesisControlledAddress().String()).
 		Add("Baseline time: %s", id.BaselineTime.Format(time.RFC3339)).
 		Add("Time tick duration: %v", id.TimeTickDuration).

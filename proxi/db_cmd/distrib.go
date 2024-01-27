@@ -54,13 +54,13 @@ func runDBDistributeCmd(_ *cobra.Command, args []string) {
 	glb.Infof("Re-check the distribution list:")
 	totalToDistribute := uint64(0)
 	for i := range distribution {
-		glb.Infof("%s -> %s", util.GoThousands(distribution[i].Balance), distribution[i].Lock.String())
+		glb.Infof("%s -> %s", util.GoTh(distribution[i].Balance), distribution[i].Lock.String())
 		glb.Assertf(stateID.InitialSupply-distribution[i].Balance > totalToDistribute, "wrong distribution sum")
 		totalToDistribute += distribution[i].Balance
 	}
-	glb.Infof("Total to distribute: %s", util.GoThousands(totalToDistribute))
-	glb.Infof("Total initial supply: %s", util.GoThousands(stateID.InitialSupply))
-	glb.Infof("Will remain on origin account: %s", util.GoThousands(stateID.InitialSupply-totalToDistribute))
+	glb.Infof("Total to distribute: %s", util.GoTh(totalToDistribute))
+	glb.Infof("Total initial supply: %s", util.GoTh(stateID.InitialSupply))
+	glb.Infof("Will remain on origin account: %s", util.GoTh(stateID.InitialSupply-totalToDistribute))
 
 	if !glb.YesNoPrompt("Continue?", false) {
 		glb.Infof("Exit. Genesis state hasn't been modified")

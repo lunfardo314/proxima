@@ -275,9 +275,9 @@ func (ut *UTXOTangle) _finalizeBranch(newBranchVID *WrappedTx) error {
 		coverageDelta := ut.LedgerCoverageDelta(newBranchVID)
 		util.Assertf(coverageDelta <= seqTxData.StemOutputData.Supply-seqTxData.StemOutputData.InflationAmount,
 			"coverageDelta (%s) <= seqTxData.StemOutputData.Supply (%s) - seqTxData.StemOutputData.InflationAmount (%s)",
-			func() any { return util.GoThousands(coverageDelta) },
-			func() any { return util.GoThousands(seqTxData.StemOutputData.Supply) },
-			func() any { return util.GoThousands(seqTxData.StemOutputData.InflationAmount) },
+			func() any { return util.GoTh(coverageDelta) },
+			func() any { return util.GoTh(seqTxData.StemOutputData.Supply) },
+			func() any { return util.GoTh(seqTxData.StemOutputData.InflationAmount) },
 		)
 
 		var prevCoverage multistate.LedgerCoverage

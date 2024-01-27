@@ -23,13 +23,13 @@ type Integer interface {
 
 var prn = message.NewPrinter(language.English)
 
-func GoThousands[T Integer](v T) string {
+func GoTh[T Integer](v T) string {
 	return strings.Replace(prn.Sprintf("%d", v), ",", "_", -1)
 }
 
 func GoThousandsLazy[T Integer](v T) func() string {
 	return func() string {
-		return GoThousands(v)
+		return GoTh(v)
 	}
 }
 

@@ -133,7 +133,7 @@ func initConflictTest(t *testing.T, nConflicts int, verbose bool) *conflictTestR
 	t.Logf("origing branch txid: %s", ret.originBranchTxid.StringShort())
 
 	for i := range distrib {
-		t.Logf("distributed %s -> %s", util.GoThousands(distrib[i].Balance), distrib[i].Lock.String())
+		t.Logf("distributed %s -> %s", util.GoTh(distrib[i].Balance), distrib[i].Lock.String())
 	}
 	t.Logf("%s", ret.ut.Info())
 

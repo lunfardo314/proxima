@@ -56,7 +56,7 @@ func sequencerNodeAttributes(v *Vertex, coverage uint64, dict map[ledger.ChainID
 	copy(ret, seqNodeAttributes)
 	ret = append(ret, graph.VertexAttribute("fillcolor", strconv.Itoa(dict[seqID])))
 	if coverage > 0 {
-		ret = append(ret, graph.VertexAttribute("xlabel", util.GoThousands(coverage)))
+		ret = append(ret, graph.VertexAttribute("xlabel", util.GoTh(coverage)))
 	}
 	return ret
 }
@@ -97,7 +97,7 @@ func makeGraphEdges(vid *WrappedTx, gr graph.Graph[string, string]) {
 			util.AssertNoError(err)
 			outIndex := v.Tx.MustOutputIndexOfTheInput(i)
 			edgeAttributes := []func(_ *graph.EdgeProperties){
-				graph.EdgeAttribute("label", fmt.Sprintf("%s(#%d)", util.GoThousands(o.Amount()), outIndex)),
+				graph.EdgeAttribute("label", fmt.Sprintf("%s(#%d)", util.GoTh(o.Amount()), outIndex)),
 				graph.EdgeAttribute("fontsize", "10"),
 			}
 			_ = gr.AddEdge(id, inp.IDVeryShort(), edgeAttributes...)
@@ -228,7 +228,7 @@ func branchNodeAttributes(seqID *ledger.ChainID, coverage uint64, dict map[ledge
 	copy(ret, _branchNodeAttributes)
 	ret = append(ret, graph.VertexAttribute("fillcolor", strconv.Itoa(dict[*seqID])))
 	if coverage > 0 {
-		ret = append(ret, graph.VertexAttribute("xlabel", util.GoThousands(coverage)))
+		ret = append(ret, graph.VertexAttribute("xlabel", util.GoTh(coverage)))
 	}
 	return ret
 }

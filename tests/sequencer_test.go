@@ -464,7 +464,7 @@ func TestNSequencersTransfer(t *testing.T) {
 
 		for seqID, initBal := range tagAlongInitBalances {
 			balanceOnChain := rdr.BalanceOnChain(&seqID)
-			t.Logf("%s tx: %d, init: %s, final: %s", seqID.StringShort(), par.perChainID[seqID], util.GoThousands(initBal), util.GoThousands(balanceOnChain))
+			t.Logf("%s tx: %d, init: %s, final: %s", seqID.StringShort(), par.perChainID[seqID], util.GoTh(initBal), util.GoTh(balanceOnChain))
 			//require.EqualValues(t, int(initBal)+par.perChainID[seqID]*tagAlongFee, int(balanceOnChain))
 		}
 	})

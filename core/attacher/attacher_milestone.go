@@ -50,7 +50,7 @@ func runMilestoneAttacher(vid *vertex.WrappedTx, metadata *txmetadata.Transactio
 
 	a.Tracef(TraceTagAttachMilestone, "past cone OK")
 
-	util.AssertNoError(a.checkPastConeVerticesConsistent())
+	util.AssertNoError(a.checkConsistencyBeforeFinalization())
 
 	a.finalize()
 	a.vid.SetTxStatus(vertex.Good)

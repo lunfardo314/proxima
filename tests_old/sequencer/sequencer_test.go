@@ -55,7 +55,7 @@ type sequencerTestData struct {
 }
 
 func TestMax(t *testing.T) {
-	t.Logf("Max uint64 = %s", util.GoThousands(uint64(math.MaxUint64)))
+	t.Logf("Max uint64 = %s", util.GoTh(uint64(math.MaxUint64)))
 }
 
 func initSequencerTestData(t *testing.T, nFaucets, nAdditionalChains int, logicalNow ledger.LogicalTime, workflowOpt ...workflow.ConfigOption) *sequencerTestData {
@@ -365,7 +365,7 @@ func Test1Sequencer(t *testing.T) {
 		require.EqualValues(t, numFaucetTransactions*transferAmount, int(bal))
 
 		bal = heaviestState.BalanceOnChain(&r.bootstrapChainID)
-		require.EqualValues(t, util.GoThousands(initOnSeqBalance+totalInflation+(1+numFaucetTransactions)*feeAmount), util.GoThousands(bal))
+		require.EqualValues(t, util.GoTh(initOnSeqBalance+totalInflation+(1+numFaucetTransactions)*feeAmount), util.GoTh(bal))
 	})
 	t.Run("1 faucet txs async", func(t *testing.T) {
 		const (

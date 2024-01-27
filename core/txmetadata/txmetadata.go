@@ -157,7 +157,7 @@ func (m *TransactionMetadata) String() string {
 	}
 	lcStr := "<nil>"
 	if m.LedgerCoverageDelta != nil {
-		lcStr = util.GoThousands(*m.LedgerCoverageDelta)
+		lcStr = util.GoTh(*m.LedgerCoverageDelta)
 	}
 	rootStr := "<nil>"
 	if !util.IsNil(m.StateRoot) {

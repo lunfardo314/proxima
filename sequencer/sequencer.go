@@ -130,7 +130,7 @@ func (seq *Sequencer) ensureFirstMilestone() bool {
 		return false
 	}
 	seq.log.Infof("sequencer will start with the milestone output %s and amount %s",
-		startingMilestoneOutput.IDShortString(), util.GoThousands(amount))
+		startingMilestoneOutput.IDShortString(), util.GoTh(amount))
 
 	sleepDuration := ledger.SleepDurationUntilFutureLogicalTime(startingMilestoneOutput.Timestamp())
 	if sleepDuration > 0 {

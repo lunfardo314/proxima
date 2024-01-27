@@ -84,12 +84,12 @@ func displayTotals(outs []*ledger.OutputWithID) {
 		}
 	}
 	if numNonChains > 0 {
-		glb.Infof("amount controlled on %d non-chain outputs: %s", numNonChains, util.GoThousands(sumOutsideChains))
+		glb.Infof("amount controlled on %d non-chain outputs: %s", numNonChains, util.GoTh(sumOutsideChains))
 	}
 	if numChains > 0 {
-		glb.Infof("amount controlled on %d chain outputs: %s", numChains, util.GoThousands(sumOnChains))
+		glb.Infof("amount controlled on %d chain outputs: %s", numChains, util.GoTh(sumOnChains))
 	}
-	glb.Infof("TOTAL controlled on %d outputs: %s", numChains+numNonChains, util.GoThousands(sumOnChains+sumOutsideChains))
+	glb.Infof("TOTAL controlled on %d outputs: %s", numChains+numNonChains, util.GoTh(sumOnChains+sumOutsideChains))
 }
 
 func getTagAlongFee() uint64 {

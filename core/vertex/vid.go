@@ -640,7 +640,7 @@ func (vid *WrappedTx) String() (ret string) {
 	vid.RUnwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
 			t := "vertex (" + vid.txStatus.String() + ")"
-			ret = fmt.Sprintf("%20s %s :: in: %d, out: %d, consumed: %d, conflicts: %d, Flags: %08b, reason: '%v'",
+			ret = fmt.Sprintf("%20s %s :: in: %d, out: %d, consumed: %d, conflicts: %d, Flags: %08b, reason: '%v', cov: %s",
 				t,
 				vid.ID.StringShort(),
 				v.Tx.NumInputs(),
@@ -649,6 +649,7 @@ func (vid *WrappedTx) String() (ret string) {
 				doubleSpent,
 				v.Flags,
 				reason,
+				vid.coverage.String(),
 			)
 		},
 		VirtualTx: func(v *VirtualTransaction) {

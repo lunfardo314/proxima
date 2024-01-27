@@ -70,11 +70,11 @@ func (a *AccountInfo) Lines(prefix ...string) *lines.Lines {
 	sum := uint64(0)
 	for _, k := range lockedAccountsSorted {
 		ai := a.LockedAccounts[k]
-		ret.Add("   %s :: balance: %s, outputs: %d", k, util.GoThousands(ai.Balance), ai.NumOutputs)
+		ret.Add("   %s :: balance: %s, outputs: %d", k, util.GoTh(ai.Balance), ai.NumOutputs)
 		sum += ai.Balance
 	}
 	ret.Add("--------------------------------")
-	ret.Add("   Total in locked accounts: %s", util.GoThousands(sum))
+	ret.Add("   Total in locked accounts: %s", util.GoTh(sum))
 
 	ret.Add("Chains: %d", len(a.ChainRecords))
 	chainIDSSorted := util.KeysSorted(a.ChainRecords, func(k1, k2 ledger.ChainID) bool {
@@ -83,11 +83,11 @@ func (a *AccountInfo) Lines(prefix ...string) *lines.Lines {
 	sum = 0
 	for _, chainID := range chainIDSSorted {
 		ci := a.ChainRecords[chainID]
-		ret.Add("   %s :: %s   seq=%v branch=%v", chainID.String(), util.GoThousands(ci.Balance), ci.IsSequencer, ci.IsBranch)
+		ret.Add("   %s :: %s   seq=%v branch=%v", chainID.String(), util.GoTh(ci.Balance), ci.IsSequencer, ci.IsBranch)
 		sum += ci.Balance
 	}
 	ret.Add("--------------------------------")
-	ret.Add("   Total on chains: %s", util.GoThousands(sum))
+	ret.Add("   Total on chains: %s", util.GoTh(sum))
 	return ret
 }
 
@@ -143,9 +143,9 @@ func (s *SummarySupplyAndInflation) Lines(prefix ...string) *lines.Lines {
 	ret := lines.New(prefix...).
 		Add("Slots from %d to %d inclusive. Total %d slots", s.OldestSlot, s.LatestSlot, s.LatestSlot-s.OldestSlot+1).
 		Add("Number of branches: %d", s.NumberOfBranches).
-		Add("Supply begin: %s", util.GoThousands(s.BeginSupply)).
-		Add("Supply end: %s", util.GoThousands(s.EndSupply)).
-		Add("Total inflation: %s (%.6f%%)", util.GoThousands(s.TotalInflation), totalInflationPercentage).
+		Add("Supply begin: %s", util.GoTh(s.BeginSupply)).
+		Add("Supply end: %s", util.GoTh(s.EndSupply)).
+		Add("Total inflation: %s (%.6f%%)", util.GoTh(s.TotalInflation), totalInflationPercentage).
 		Add("Average inflation per slot: %.8f%%", totalInflationPercentagePerSlot).
 		Add("Annual inflation extrapolated: %.2f%%", totalInflationPercentageYearlyExtrapolation).
 		Add("Info per sequencer (along the heaviest chain):")
@@ -156,8 +156,8 @@ func (s *SummarySupplyAndInflation) Lines(prefix ...string) *lines.Lines {
 	for _, seqId := range sortedSeqIDs {
 		seqInfo := s.InfoPerSeqID[seqId]
 		ret.Add("    %s : inflation: %s, number of branches: %d, balance: %s -> %s",
-			seqId.StringShort(), util.GoThousands(seqInfo.TotalInflation), seqInfo.NumBranches,
-			util.GoThousands(seqInfo.BeginBalance), util.GoThousands(seqInfo.EndBalance))
+			seqId.StringShort(), util.GoTh(seqInfo.TotalInflation), seqInfo.NumBranches,
+			util.GoTh(seqInfo.BeginBalance), util.GoTh(seqInfo.EndBalance))
 	}
 	return ret
 }

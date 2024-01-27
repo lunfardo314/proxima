@@ -78,7 +78,7 @@ func DisplayBranchData(branches []*multistate.BranchData) {
 		onChainAmount := br.SequencerOutput.Output.Amount()
 		supply := br.Stem.Output.MustStemLock().Supply
 		glb.Infof(" %2d: %20s %10s %10s %20s %20s    %-70s",
-			i, br.Stem.IDShort(), name, util.GoThousands(supply), util.GoThousands(onChainAmount),
-			util.GoThousands(br.LedgerCoverage.Sum()), br.Root.String())
+			i, br.Stem.IDShort(), name, util.GoTh(supply), util.GoTh(onChainAmount),
+			util.GoTh(br.LedgerCoverage.Sum()), br.Root.String())
 	}
 }

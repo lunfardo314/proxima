@@ -758,7 +758,7 @@ func (vid *WrappedTx) CoverageDelta(ut *UTXOTangle) (*ledger.TransactionID, uint
 		})
 		SaveGraphPastCone(vid, "failed_coverage")
 		util.Panicf("CoverageDelta inconsistency: result for vertex %s = %s -> exceeds current total supply %s. Outputs summed up:\n%s",
-			vid.IDShort(), util.GoThousands(ret), util.GoThousands(coverageCap), baselineOutputsLines.String(),
+			vid.IDShort(), util.GoTh(ret), util.GoTh(coverageCap), baselineOutputsLines.String(),
 		)
 	}
 	return baselineTxID, ret

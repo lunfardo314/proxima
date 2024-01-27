@@ -73,7 +73,7 @@ func (ctx *TransactionContext) Validate() error {
 	}
 	if inSum+ctx.inflationAmount != outSum {
 		return fmt.Errorf("unbalanced amount between inputs and outputs: inputs %s, outputs %s, inflation: %s",
-			util.GoThousands(inSum), util.GoThousands(outSum), util.GoThousands(ctx.inflationAmount))
+			util.GoTh(inSum), util.GoTh(outSum), util.GoTh(ctx.inflationAmount))
 	}
 	return nil
 }
@@ -126,7 +126,7 @@ func (ctx *TransactionContext) ValidateWithReportOnConsumedOutputs() ([]byte, er
 
 	if inSum+ctx.inflationAmount != outSum {
 		return nil, fmt.Errorf("unbalanced amount between inputs and outputs: inputs %s, outputs %s, inflation: %s",
-			util.GoThousands(inSum), util.GoThousands(outSum), util.GoThousands(ctx.inflationAmount))
+			util.GoTh(inSum), util.GoTh(outSum), util.GoTh(ctx.inflationAmount))
 	}
 	return nil, nil
 }
