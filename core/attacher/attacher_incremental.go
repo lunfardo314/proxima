@@ -61,15 +61,14 @@ func NewIncrementalAttacher(name string, env Environment, targetTs ledger.Logica
 
 	ret.setBaseline(baseline, targetTs) // also fetches baseline baselineCoverage
 
-	visited := set.New[*vertex.WrappedTx]()
 	// attach sequencer predecessor
-	if !ret.attachOutput(ret.extend, ledger.NilLogicalTime, visited) {
+	if !ret.attachOutput(ret.extend, ledger.NilLogicalTime) {
 		return nil, ret.reason
 	}
 	// attach endorsements
 	for _, endorsement := range endorse {
 		env.Tracef(TraceTagIncrementalAttacher, "NewIncrementalAttacher(%s). insertEndorsement: %s", name, endorsement.IDShortString)
-		if err := ret.insertEndorsement(endorsement, visited); err != nil {
+		if err := ret.insertEndorsement(endorsement); err != nil {
 			return nil, err
 		}
 	}
@@ -80,7 +79,7 @@ func NewIncrementalAttacher(name string, env Environment, targetTs ledger.Logica
 		if ret.stemOutput.VID == nil {
 			return nil, fmt.Errorf("NewIncrementalAttacher: stem output is not available for baseline %s", baseline.IDShortString())
 		}
-		if !ret.attachOutput(ret.stemOutput, ledger.NilLogicalTime, visited) {
+		if !ret.attachOutput(ret.stemOutput, ledger.NilLogicalTime) {
 			return nil, ret.reason
 		}
 	}
@@ -91,7 +90,7 @@ func (a *IncrementalAttacher) BaselineBranch() *vertex.WrappedTx {
 	return a.baselineBranch
 }
 
-func (a *IncrementalAttacher) insertEndorsement(endorsement *vertex.WrappedTx, visited set.Set[*vertex.WrappedTx]) error {
+func (a *IncrementalAttacher) insertEndorsement(endorsement *vertex.WrappedTx) error {
 	if endorsement.IsBadOrDeleted() {
 		return fmt.Errorf("NewIncrementalAttacher: can't endorse %s. Reason: '%s'", endorsement.IDShortString(), endorsement.GetReason())
 	}
@@ -102,7 +101,7 @@ func (a *IncrementalAttacher) insertEndorsement(endorsement *vertex.WrappedTx, v
 	}
 
 	endorsement.Unwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
-		a.attachVertex(v, endorsement, ledger.NilLogicalTime, visited)
+		a.attachVertex(v, endorsement, ledger.NilLogicalTime)
 	}})
 	return a.reason
 }
@@ -115,18 +114,18 @@ func (a *IncrementalAttacher) InsertTagAlongInput(wOut vertex.WrappedOutput, vis
 	util.AssertNoError(a.reason)
 
 	saveUndefinedPastVertices := a.attacher.undefinedPastVertices.Clone()
-	saveValidPastVertices := a.attacher.validPastVertices.Clone()
+	saveValidPastVertices := a.attacher.definedPastVertices.Clone()
 	saveRooted := maps.Clone(a.attacher.rooted)
 	for vid, outputIdxSet := range saveRooted {
 		saveRooted[vid] = outputIdxSet.Clone()
 	}
 	saveCoverageDelta := a.coverage
 
-	if !a.attachOutput(wOut, ledger.NilLogicalTime, visited) || !a.Completed() {
+	if !a.attachOutput(wOut, ledger.NilLogicalTime) || !a.Completed() {
 		// it is either conflicting, or not solid yet
 		// in either case rollback
 		a.attacher.undefinedPastVertices = saveUndefinedPastVertices
-		a.attacher.validPastVertices = saveValidPastVertices
+		a.attacher.definedPastVertices = saveValidPastVertices
 		a.attacher.rooted = saveRooted
 		a.coverage = saveCoverageDelta
 		retReason := a.GetReason()

@@ -56,7 +56,7 @@ type (
 		name                  string
 		reason                error
 		baselineBranch        *vertex.WrappedTx
-		validPastVertices     set.Set[*vertex.WrappedTx]
+		definedPastVertices   set.Set[*vertex.WrappedTx]
 		undefinedPastVertices set.Set[*vertex.WrappedTx]
 		rooted                map[*vertex.WrappedTx]set.Set[byte]
 		pokeMe                func(vid *vertex.WrappedTx)

@@ -35,13 +35,13 @@ func (a *milestoneAttacher) finalize() {
 	}
 
 	a.finals.baseline = a.baselineBranch
-	a.finals.numTransactions = len(a.validPastVertices)
+	a.finals.numTransactions = len(a.definedPastVertices)
 
-	tmp := a.coverage.MakeNext(int(a.vid.Slot() - a.baselineBranch.Slot()))
-	if tmp.Sum() == 10_000_000 {
-		fmt.Printf(">>>>>>>>>>>>>>>>>>>>>> 10_000_000 %s\n", a.vid.IDShortString())
-		fmt.Printf("%s\n", a.dumpLines("   ").String())
-	}
+	//tmp := a.coverage.MakeNext(int(a.vid.Slot() - a.baselineBranch.Slot()))
+	//if tmp.Sum() == 10_000_000 {
+	//	fmt.Printf(">>>>>>>>>>>>>>>>>>>>>> 10_000_000 %s\n", a.vid.IDShortString())
+	//}
+	//fmt.Printf("%s\n", a.dumpLines("   ").String())
 
 	a.finals.coverage = a.coverage.MakeNext(int(a.vid.Slot() - a.baselineBranch.Slot()))
 	util.Assertf(!a.vid.IsBranchTransaction() || a.finals.coverage.LatestDelta() == 0, "final baselineCoverage of the branch must have latest delta == 0")
@@ -77,10 +77,10 @@ func (a *milestoneAttacher) commitBranch() {
 		}
 	}
 	// generate ADD TX and ADD OUTPUT mutations
-	for vid := range a.validPastVertices {
+	for vid := range a.definedPastVertices {
 		muts.InsertAddTxMutation(vid.ID, a.vid.Slot(), byte(vid.NumProducedOutputs()-1))
 		// ADD OUTPUT mutations only for not consumed outputs
-		producedOutputIndices := vid.NotConsumedOutputIndices(a.validPastVertices)
+		producedOutputIndices := vid.NotConsumedOutputIndices(a.definedPastVertices)
 		for _, idx := range producedOutputIndices {
 			muts.InsertAddOutputMutation(vid.OutputID(idx), vid.MustOutputAt(idx))
 			a.finals.numCreatedOutputs++
@@ -115,8 +115,8 @@ func (a *milestoneAttacher) checkConsistencyBeforeFinalization() (err error) {
 	if len(a.rooted) == 0 {
 		return fmt.Errorf("checkConsistencyBeforeFinalization: at least one rooted output is expected")
 	}
-	if len(a.validPastVertices) == 0 {
-		return fmt.Errorf("checkConsistencyBeforeFinalization: validPastVertices is empty")
+	if len(a.definedPastVertices) == 0 {
+		return fmt.Errorf("checkConsistencyBeforeFinalization: definedPastVertices is empty")
 	}
 	sumRooted := uint64(0)
 	for vid, consumed := range a.rooted {
@@ -134,12 +134,16 @@ func (a *milestoneAttacher) checkConsistencyBeforeFinalization() (err error) {
 		err = fmt.Errorf("checkConsistencyBeforeFinalization: %w", err)
 		return
 	}
+	if sumRooted == 0 {
+		err = fmt.Errorf("checkConsistencyBeforeFinalization: sum of rooted cannot be 0")
+		return
+	}
 	if sumRooted != a.coverage.LatestDelta() {
 		err = fmt.Errorf("checkConsistencyBeforeFinalization: sum of amounts of rooted outputs %s is not equal to the coverage sumRooted %s",
 			util.GoTh(sumRooted), util.GoTh(a.coverage.LatestDelta()))
 	}
 
-	for vid := range a.validPastVertices {
+	for vid := range a.definedPastVertices {
 		if vid == a.vid {
 			if vid.GetTxStatus() == vertex.Bad {
 				return fmt.Errorf("vertex %s is bad", vid.IDShortString())
@@ -172,12 +176,15 @@ func (a *milestoneAttacher) checkConsistencyBeforeFinalization() (err error) {
 				return false
 			}
 			if a.coverage.LatestDelta() < lc.LatestDelta() {
-				err = fmt.Errorf("checkConsistencyBeforeFinalization: coverage delta should not decrease. Got: delta(%s) at %s <= delta(%s) in %s",
-					util.GoTh(a.coverage.LatestDelta()), a.vid.Timestamp().String(), util.GoTh(lc.LatestDelta()), vidEndorsed.IDShortString())
+				err = fmt.Errorf("checkConsistencyBeforeFinalization in %s: coverage delta should not decrease.\nGot: delta(%s) at %s <= delta(%s) in %s",
+					a.name, util.GoTh(a.coverage.LatestDelta()), a.vid.Timestamp().String(), util.GoTh(lc.LatestDelta()), vidEndorsed.IDShortString())
 				return false
 			}
 			return true
 		})
 	}})
+	if err != nil {
+		err = fmt.Errorf("%w:\n%s", err, a.dumpLines("           ").String())
+	}
 	return
 }

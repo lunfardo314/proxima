@@ -11,7 +11,6 @@ import (
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/util"
-	"github.com/lunfardo314/proxima/util/set"
 )
 
 const (
@@ -201,7 +200,7 @@ func (a *milestoneAttacher) solidifyPastCone() vertex.Status {
 		success := false
 		a.vid.Unwrap(vertex.UnwrapOptions{
 			Vertex: func(v *vertex.Vertex) {
-				ok = a.attachVertex(v, a.vid, ledger.NilLogicalTime, set.New[*vertex.WrappedTx]())
+				ok = a.attachVertex(v, a.vid, ledger.NilLogicalTime)
 				if ok {
 					success = v.FlagsUp(vertex.FlagsSequencerVertexCompleted)
 				}
