@@ -244,6 +244,7 @@ func (a *attacher) attachEndorsements(v *vertex.Vertex, parasiticChainHorizon le
 		}
 		if endorsedStatus == vertex.Good {
 			if !vidEndorsed.IsBranchTransaction() {
+				// FIXME: must go deeper to collect coverage!!!!
 				// do not go behind branch
 				// go deeper only if endorsement is good in order not to interfere with its milestoneAttacher
 				ok := true
