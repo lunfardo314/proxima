@@ -59,7 +59,7 @@ func NewIncrementalAttacher(name string, env Environment, targetTs ledger.Logica
 		targetTs:       targetTs,
 	}
 
-	ret.setBaseline(baseline, targetTs) // also fetches baseline coverage
+	ret.setBaseline(baseline, targetTs) // also fetches baseline baselineCoverage
 
 	visited := set.New[*vertex.WrappedTx]()
 	// attach sequencer predecessor

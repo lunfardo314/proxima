@@ -517,20 +517,17 @@ func (a *attacher) checkConflictsFunc(consumerTx *vertex.WrappedTx) func(existin
 	}
 }
 
-// setBaseline sets baseline, fetches its coverage and initializes attacher's coverage according to the currentTS
+// setBaseline sets baseline, fetches its baselineCoverage and initializes attacher's baselineCoverage according to the currentTS
 func (a *attacher) setBaseline(vid *vertex.WrappedTx, currentTS ledger.LogicalTime) {
 	util.Assertf(vid.IsBranchTransaction(), "setBaseline: vid.IsBranchTransaction()")
 	util.Assertf(currentTS.Slot() >= vid.Slot(), "currentTS.Slot() >= vid.Slot()")
 
 	a.baselineBranch = vid
-	var coverage multistate.LedgerCoverage
-	if a.baselineBranch != nil {
-		if multistate.HistoryCoverageDeltas > 1 {
-			rr, found := multistate.FetchRootRecord(a.StateStore(), a.baselineBranch.ID)
-			util.Assertf(found, "setBaseline: can't fetch root record for %s", a.baselineBranch.IDShortString())
+	if multistate.HistoryCoverageDeltas > 1 {
+		rr, found := multistate.FetchRootRecord(a.StateStore(), a.baselineBranch.ID)
+		util.Assertf(found, "setBaseline: can't fetch root record for %s", a.baselineBranch.IDShortString())
 
-			coverage = rr.LedgerCoverage
-		}
+		a.coverage = rr.LedgerCoverage
 	}
-	a.coverage = coverage.MakeNext(int(currentTS.Slot()) - int(a.baselineBranch.Slot()))
+	util.Assertf(a.coverage.LatestDelta() == 0, "a.coverage.LatestDelta() == 0")
 }

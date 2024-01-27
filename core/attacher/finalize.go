@@ -22,10 +22,10 @@ const enforceConsistencyWithTxMetadata = true
 func (a *milestoneAttacher) finalize() {
 	a.Tracef(TraceTagAttachMilestone, "finalize")
 
-	// check resulting ledger coverage is equal to the coverage in metadata, if provided
+	// check resulting ledger baselineCoverage is equal to the baselineCoverage in metadata, if provided
 	if a.metadata != nil && a.metadata.LedgerCoverageDelta != nil {
 		if *a.metadata.LedgerCoverageDelta != a.coverage.LatestDelta() {
-			err := fmt.Errorf("commitBranch %s: major inconsistency: ledger coverage delta not equal to the coverage delta provided in metadata", a.vid.IDShortString())
+			err := fmt.Errorf("commitBranch %s: major inconsistency: ledger baselineCoverage delta not equal to the baselineCoverage delta provided in metadata", a.vid.IDShortString())
 			if enforceConsistencyWithTxMetadata {
 				a.Log().Fatal(err)
 			} else {
@@ -37,14 +37,10 @@ func (a *milestoneAttacher) finalize() {
 	a.finals.baseline = a.baselineBranch
 	a.finals.numTransactions = len(a.validPastVertices)
 
-	if a.vid.IsBranchTransaction() {
-		// for branches coverage needs to be shifted by 1
-		a.finals.coverage = a.coverage.MakeNext(1)
-	} else {
-		a.finals.coverage = a.coverage
-	}
+	a.finals.coverage = a.coverage.MakeNext(int(a.vid.Slot() - a.baselineBranch.Slot()))
+	util.Assertf(!a.vid.IsBranchTransaction() || a.finals.coverage.LatestDelta() == 0, "final baselineCoverage of the branch mut have latest delta == 0")
 
-	a.Tracef(TraceTagAttachMilestone, "set ledger coverage in %s to %s", a.vid.IDShortString(), a.finals.coverage.String())
+	a.Tracef(TraceTagAttachMilestone, "set ledger baselineCoverage in %s to %s", a.vid.IDShortString(), a.finals.coverage.String())
 	a.vid.SetLedgerCoverage(a.finals.coverage)
 
 	if a.vid.IsBranchTransaction() {
@@ -109,7 +105,7 @@ func (a *milestoneAttacher) checkPastConeVerticesConsistent() (err error) {
 	if len(a.undefinedPastVertices) != 0 {
 		return fmt.Errorf("undefinedPastVertices should be empty. Got: {%s}", vertex.VIDSetIDString(a.undefinedPastVertices))
 	}
-	// should be at least one rooted output ( ledger coverage must be > 0)
+	// should be at least one rooted output ( ledger baselineCoverage must be > 0)
 	if len(a.rooted) == 0 {
 		return fmt.Errorf("at least one rooted output is expected")
 	}
