@@ -63,7 +63,7 @@ func TestOriginTangle(t *testing.T) {
 		t.Logf("forks of distribution transaction:\n%s", distribVID.PastTrackLines().String())
 
 		stemOut := ut.HeaviestStemOutput()
-		require.EqualValues(t, int(stemOut.ID.TimeSlot()), int(distribTxID.TimeSlot()))
+		require.EqualValues(t, int(stemOut.ID.TimeSlot()), int(distribTxID.Slot()))
 		require.EqualValues(t, 0, stemOut.Output.Amount())
 		stemLock, ok := stemOut.Output.StemLock()
 		require.True(t, ok)

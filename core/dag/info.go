@@ -10,7 +10,6 @@ import (
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
 	"github.com/lunfardo314/proxima/util/set"
-	"golang.org/x/exp/maps"
 )
 
 type ()
@@ -20,22 +19,6 @@ func (d *DAG) NumVertices() int {
 	defer d.mutex.RUnlock()
 
 	return len(d.vertices)
-}
-
-// Vertices to avoid global lock while traversing all utangle
-func (d *DAG) Vertices() []*vertex.WrappedTx {
-	d.mutex.RLock()
-	defer d.mutex.RUnlock()
-
-	return maps.Values(d.vertices)
-}
-
-// Branches to avoid global lock while traversing all utangle
-func (d *DAG) Branches() []*vertex.WrappedTx {
-	d.mutex.RLock()
-	defer d.mutex.RUnlock()
-
-	return maps.Keys(d.branches)
 }
 
 func (d *DAG) Info(verbose ...bool) string {
@@ -88,16 +71,9 @@ func (d *DAG) InfoLines(verbose ...bool) *lines.Lines {
 }
 
 func (d *DAG) VerticesInSlotAndAfter(slot ledger.Slot) []*vertex.WrappedTx {
-	ret := make([]*vertex.WrappedTx, 0)
-
-	d.mutex.RLock()
-	defer d.mutex.RUnlock()
-
-	for _, vid := range d.vertices {
-		if vid.Slot() >= slot {
-			ret = append(ret, vid)
-		}
-	}
+	ret := d.Vertices(func(txid *ledger.TransactionID) bool {
+		return txid.Slot() >= slot
+	})
 	sort.Slice(ret, func(i, j int) bool {
 		return vertex.LessByCoverageAndID(ret[i], ret[j])
 	})

@@ -337,7 +337,7 @@ func CheckEndorsements() TxValidationOption {
 				err = fmt.Errorf("tx %s contains endorsement of non-sequencer transaction: %s", tx.IDShortString(), endorsedTxID.StringShort())
 				return false
 			}
-			if endorsedTxID.TimeSlot() != txSlot {
+			if endorsedTxID.Slot() != txSlot {
 				err = fmt.Errorf("tx %s can't endorse tx from another slot: %s", tx.IDShortString(), endorsedTxID.StringShort())
 				return false
 			}

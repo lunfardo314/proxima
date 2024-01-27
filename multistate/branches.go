@@ -258,7 +258,7 @@ func FetchHeaviestBranchChainNSlotsBack(store global.StateStore, nBack int) []*B
 
 	sortedTxIDs := util.SortKeys(rootData, func(k1, k2 ledger.TransactionID) bool {
 		// descending by epoch
-		return k1.TimeSlot() > k2.TimeSlot()
+		return k1.Slot() > k2.Slot()
 	})
 
 	latestBD := FetchLatestBranches(store)

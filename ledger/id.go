@@ -125,7 +125,7 @@ func (txid *TransactionID) Timestamp() (ret LogicalTime) {
 	return
 }
 
-func (txid *TransactionID) TimeSlot() Slot {
+func (txid *TransactionID) Slot() Slot {
 	return txid.Timestamp().Slot()
 }
 
@@ -314,7 +314,7 @@ func (oid *OutputID) Timestamp() LogicalTime {
 
 func (oid *OutputID) TimeSlot() Slot {
 	ret := oid.TransactionID()
-	return ret.TimeSlot()
+	return ret.Slot()
 }
 
 func (oid *OutputID) TimeTick() Tick {

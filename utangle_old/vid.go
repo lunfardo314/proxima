@@ -177,7 +177,7 @@ func (vid *WrappedTx) Timestamp() ledger.LogicalTime {
 }
 
 func (vid *WrappedTx) TimeSlot() ledger.Slot {
-	return vid._genericWrapper._id().TimeSlot()
+	return vid._genericWrapper._id().Slot()
 }
 
 func (vid *WrappedTx) MarkDeleted() {

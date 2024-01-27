@@ -12,6 +12,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/util"
+	"golang.org/x/exp/maps"
 )
 
 type (
@@ -208,4 +209,25 @@ func (s *DAG) ParseMilestoneData(msVID *vertex.WrappedTx) (ret *txbuilder.Milest
 		ret = txbuilder.ParseMilestoneData(v.Tx.SequencerOutput().Output)
 	}})
 	return
+}
+
+// Vertices to avoid global lock while traversing all utangle
+func (d *DAG) Vertices(filterByID ...func(txid *ledger.TransactionID) bool) []*vertex.WrappedTx {
+	d.mutex.RLock()
+	defer d.mutex.RUnlock()
+
+	if len(filterByID) == 0 {
+		return maps.Values(d.vertices)
+	}
+	return util.ValuesFiltered(d.vertices, func(vid *vertex.WrappedTx) bool {
+		return filterByID[0](&vid.ID)
+	})
+}
+
+// Branches to avoid global lock while traversing all utangle
+func (d *DAG) Branches() []*vertex.WrappedTx {
+	d.mutex.RLock()
+	defer d.mutex.RUnlock()
+
+	return maps.Keys(d.branches)
 }

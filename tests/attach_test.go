@@ -238,7 +238,7 @@ func TestOrigin(t *testing.T) {
 		distribTxID, _, err := transaction.IDAndTimestampFromTransactionBytes(txBytes)
 		require.NoError(t, err)
 
-		require.EqualValues(t, int(stemOut.ID.TimeSlot()), int(distribTxID.TimeSlot()))
+		require.EqualValues(t, int(stemOut.ID.TimeSlot()), int(distribTxID.Slot()))
 		require.EqualValues(t, 0, stemOut.Output.Amount())
 		stemLock, ok := stemOut.Output.StemLock()
 		require.True(t, ok)
@@ -584,9 +584,8 @@ func TestConflictsNAttachers(t *testing.T) {
 
 		//testData.wrk.SaveGraph("utangle")
 	})
-	t.Run("one fork", func(t *testing.T) {
+	t.Run("DEADLOCKS one fork", func(t *testing.T) {
 		ledger.SetTimeTickDuration(10 * time.Millisecond)
-		//attacher.SetTraceOn()
 		const (
 			nConflicts = 2
 			nChains    = 2
@@ -598,7 +597,9 @@ func TestConflictsNAttachers(t *testing.T) {
 
 		testData := initLongConflictTestData(t, nConflicts, nChains, howLong)
 		testData.makeSeqBeginnings(true)
-		testData.printTxIDs()
+		//testData.printTxIDs()
+
+		testData.wrk.EnableTraceTags(attacher.TraceTagAttachVertex)
 
 		if pullYN {
 			testData.txBytesToStore()
@@ -800,10 +801,11 @@ func TestConflictsNAttachers(t *testing.T) {
 
 		require.EqualValues(t, vid.GetTxStatus(), vertex.Bad)
 		t.Logf("expected error: %v", vid.GetReason())
-		util.RequireErrorWith(t, vid.GetReason(), "is incompatible with baseline state", tx1.IDShortString())
+		util.RequireErrorWith(t, vid.GetReason(), "is incompatible with the baseline branch", tx1.IDShortString())
 	})
 }
 
+// all FAILS
 func TestSeqChains(t *testing.T) {
 	ledger.SetTimeTickDuration(10 * time.Millisecond)
 	t.Run("no pull order normal", func(t *testing.T) {

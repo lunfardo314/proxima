@@ -159,6 +159,7 @@ func (a *attacher) solidifySequencerBaseline(v *vertex.Vertex) (ok bool) {
 // the undefinedPastVertices set becomes empty This is the exit condition of the loop.
 // It results in all definedPastVertices are vertex.Good
 // Otherwise, repetition reaches conflict (double spend) or vertex.Bad vertex and exits
+// Returns OK (= not bad)
 func (a *attacher) attachVertex(v *vertex.Vertex, vid *vertex.WrappedTx, parasiticChainHorizon ledger.LogicalTime) (ok bool) {
 	util.Assertf(!v.Tx.IsSequencerMilestone() || v.FlagsUp(vertex.FlagBaselineSolid), "v.FlagsUp(vertex.FlagBaselineSolid) in %s", v.Tx.IDShortString)
 
@@ -180,6 +181,7 @@ func (a *attacher) attachVertex(v *vertex.Vertex, vid *vertex.WrappedTx, parasit
 		a.Tracef(TraceTagAttachVertex, "endorsements not solid in %s\n", v.Tx.IDShortString())
 		// depth-first along endorsements
 		if !a.attachEndorsements(v, parasiticChainHorizon) { // <<< recursive
+			// no ok, have to abandon attacher
 			return false
 		}
 	}
@@ -221,6 +223,7 @@ func (a *attacher) attachVertex(v *vertex.Vertex, vid *vertex.WrappedTx, parasit
 }
 
 // Attaches endorsements of the vertex
+// Return OK (== not bad)
 func (a *attacher) attachEndorsements(v *vertex.Vertex, parasiticChainHorizon ledger.LogicalTime) bool {
 	a.Tracef(TraceTagAttachVertex, "attachEndorsements: %s", v.Tx.IDShortString)
 
@@ -234,7 +237,7 @@ func (a *attacher) attachEndorsements(v *vertex.Vertex, parasiticChainHorizon le
 		if baselineBranch == nil {
 			// baseline branch not solid yet, abandon traverse. No need for any pull because
 			// endorsed sequencer milestones are solidified proactively by attachers
-			return false
+			return true
 		}
 		// baseline must be compatible with baseline of the attacher
 		if !a.branchesCompatible(a.baselineBranch, baselineBranch) {
@@ -253,30 +256,31 @@ func (a *attacher) attachEndorsements(v *vertex.Vertex, parasiticChainHorizon le
 			return false
 		}
 		if a.isDefinedVertex(vidEndorsed) {
-			// it means past cone of vidEndorsed is fully validated already
+			// it means past cone of vidEndorsed is fully validated by this attacher already, no need to go deeper
 			continue
 		}
-		// TODO WIP HERE >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-		if endorsedStatus == vertex.Good {
-			if !vidEndorsed.IsBranchTransaction() {
-				// do not go behind branch
-				// go deeper only if endorsement is good in order not to interfere with its milestoneAttacher
-				ok := true
-				vidEndorsed.Unwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
-					ok = a.attachVertex(v, vidEndorsed, parasiticChainHorizon) // <<<<<<<<<<< recursion
-				}})
-				if !ok {
-					return false
-				}
+		// it is undefined endorsement
+		if vidEndorsed.IsBranchTransaction() {
+			if endorsedStatus != vertex.Good {
+				allGood = false
 			}
-			a.Tracef(TraceTagAttachVertex, "endorsement is valid: %s", vidEndorsed.IDShortString)
-		} else {
-			// undef
-			a.Tracef(TraceTagAttachVertex, "endorsements are NOT all good in %s because of endorsed %s", v.Tx.IDShortString(), vidEndorsed.IDShortString())
+			// don't go behind endorsed branch
+			continue
+		}
+		// non-branch undefined milestone. Go deep recursively
+		ok := true
+		vidEndorsed.Unwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
+			ok = a.attachVertex(v, vidEndorsed, parasiticChainHorizon) // <<<<<<<<<<< recursion
+		}})
+		if !ok {
+			// check status again
+			if vidEndorsed.GetTxStatus() == vertex.Bad {
+				a.setReason(vidEndorsed.GetReason())
+				return false
+			}
 			allGood = false
-
-			// ask environment to poke this milestoneAttacher whenever something change with vidEndorsed
 			a.pokeMe(vidEndorsed)
+			continue
 		}
 	}
 	if allGood {

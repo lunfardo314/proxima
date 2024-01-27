@@ -137,8 +137,8 @@ func (s *SyncData) sequencerSyncInfo(seqID ledger.ChainID) SequencerSyncInfo {
 	latestSeen := info.latestBranchesSeen.Maximum(ledger.LessTxID)
 	return SequencerSyncInfo{
 		Synced:           info.latestBranchBooked.Timestamp() == latestSeen.Timestamp(),
-		LatestBookedSlot: uint32(info.latestBranchBooked.TimeSlot()),
-		LatestSeenSlot:   uint32(latestSeen.TimeSlot()),
+		LatestBookedSlot: uint32(info.latestBranchBooked.Slot()),
+		LatestSeenSlot:   uint32(latestSeen.Slot()),
 	}
 }
 

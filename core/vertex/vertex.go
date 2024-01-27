@@ -26,7 +26,7 @@ func New(tx *transaction.Transaction) *Vertex {
 }
 
 func (v *Vertex) TimeSlot() ledger.Slot {
-	return v.Tx.ID().TimeSlot()
+	return v.Tx.ID().Slot()
 }
 
 func (v *Vertex) getSequencerPredecessor() *WrappedTx {
