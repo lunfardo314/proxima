@@ -273,7 +273,9 @@ func (a *attacher) attachEndorsements(v *vertex.Vertex, parasiticChainHorizon le
 			ok = a.attachVertex(v, vidEndorsed, parasiticChainHorizon) // <<<<<<<<<<< recursion
 		}})
 		if !ok {
-			// check status again
+			if a.reason != nil {
+				return false
+			}
 			if vidEndorsed.GetTxStatus() == vertex.Bad {
 				a.setReason(vidEndorsed.GetReason())
 				return false

@@ -503,306 +503,309 @@ func TestConflicts1Attacher(t *testing.T) {
 	})
 }
 
-func TestConflictsNAttachers(t *testing.T) {
-	t.Run("seq start tx", func(t *testing.T) {
-		ledger.SetTimeTickDuration(10 * time.Millisecond)
-		//attacher.SetTraceOn()
-		const (
-			nConflicts = 10
-			nChains    = 10
-			howLong    = 2 // 97 fails when crosses slot boundary
-		)
-		var wg sync.WaitGroup
-		testData := initLongConflictTestData(t, nConflicts, nChains, howLong)
-		testData.makeSeqBeginnings(false)
+func TestConflictsNAttachersSeqStartTx(t *testing.T) {
+	ledger.SetTimeTickDuration(10 * time.Millisecond)
+	//attacher.SetTraceOn()
+	const (
+		nConflicts = 10
+		nChains    = 10
+		howLong    = 2 // 97 fails when crosses slot boundary
+	)
+	var wg sync.WaitGroup
+	testData := initLongConflictTestData(t, nConflicts, nChains, howLong)
+	testData.makeSeqBeginnings(false)
 
-		_, err := testData.txStore.PersistTxBytesWithMetadata(testData.chainOriginsTx.Bytes(), nil)
-		require.NoError(t, err)
+	_, err := testData.txStore.PersistTxBytesWithMetadata(testData.chainOriginsTx.Bytes(), nil)
+	require.NoError(t, err)
 
-		submitted := make([]*vertex.WrappedTx, nChains)
-		wg.Add(len(testData.seqChain))
-		for i, seqChain := range testData.seqChain {
-			submitted[i], err = attacher.AttachTransactionFromBytes(seqChain[0].Bytes(), testData.wrk, attacher.OptionWithAttachmentCallback(func(_ *vertex.WrappedTx, _ error) {
-				wg.Done()
-			}))
-			require.NoError(t, err)
-		}
-		wg.Wait()
-		testData.stopAndWait()
-
-		testData.logDAGInfo()
-
-		for _, vid := range submitted {
-			require.EqualValues(t, vertex.Good, vid.GetTxStatus())
-		}
-	})
-	t.Run("seq start tx fee with-without pull", func(t *testing.T) {
-		ledger.SetTimeTickDuration(10 * time.Millisecond)
-		//attacher.SetTraceOn()
-		const (
-			nConflicts = 5
-			nChains    = 5
-			howLong    = 5 // 97 fails when crosses slot boundary
-			pullYN     = true
-		)
-		var wg sync.WaitGroup
-		var err error
-
-		testData := initLongConflictTestData(t, nConflicts, nChains, howLong)
-		testData.makeSeqBeginnings(true)
-		testData.printTxIDs()
-
-		if pullYN {
-			testData.txBytesToStore()
-		} else {
-			testData.txBytesAttach()
-		}
-
-		submittedSeq := make([]*vertex.WrappedTx, nChains)
-		wg.Add(len(testData.seqChain))
-		for i, seqChain := range testData.seqChain {
-			submittedSeq[i], err = attacher.AttachTransactionFromBytes(seqChain[0].Bytes(), testData.wrk, attacher.OptionWithAttachmentCallback(func(_ *vertex.WrappedTx, _ error) {
-				wg.Done()
-			}))
-			require.NoError(t, err)
-		}
-		wg.Wait()
-
-		testData.stopAndWait()
-		testData.logDAGInfo()
-
-		for _, vid := range submittedSeq {
-			require.EqualValues(t, vertex.Good, vid.GetTxStatus())
-		}
-
-		testData.wrk.ForEachVertex(func(vid *vertex.WrappedTx) bool {
-			vid.RUnwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
-				require.True(t, !v.Tx.IsSequencerMilestone() || v.FlagsUp(vertex.FlagsSequencerVertexCompleted))
-			}})
-			return true
-		})
-
-		//testData.wrk.SaveGraph("utangle")
-	})
-	t.Run("DEADLOCKS one fork", func(t *testing.T) {
-		ledger.SetTimeTickDuration(10 * time.Millisecond)
-		const (
-			nConflicts = 2
-			nChains    = 2
-			howLong    = 20 // 97 fails when crosses slot boundary
-			pullYN     = true
-		)
-		var wg sync.WaitGroup
-		var err error
-
-		testData := initLongConflictTestData(t, nConflicts, nChains, howLong)
-		testData.makeSeqBeginnings(true)
-		//testData.printTxIDs()
-
-		testData.wrk.EnableTraceTags(attacher.TraceTagAttachVertex)
-
-		if pullYN {
-			testData.txBytesToStore()
-			for seqNr := range testData.seqChain {
-				testData.storeTransactions(testData.seqChain[seqNr]...)
-			}
-		} else {
-			testData.txBytesAttach()
-			for seqNr := range testData.seqChain {
-				testData.attachTransactions(testData.seqChain[seqNr]...)
-			}
-		}
-
-		chainIn := make([]*ledger.OutputWithChainID, len(testData.seqChain))
-		var ts ledger.LogicalTime
-		for seqNr := range testData.seqChain {
-			tx := testData.seqChain[seqNr][0]
-			o := tx.MustProducedOutputWithIDAt(tx.SequencerTransactionData().SequencerOutputIndex)
-			chainIn[seqNr] = o.MustAsChainOutput()
-			ts = ledger.MaxLogicalTime(ts, o.Timestamp())
-		}
-		ts = ts.AddTicks(ledger.TransactionPaceInTicks)
-		txBytesSeq, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
-			SeqName:      "seq",
-			ChainInput:   chainIn[0],
-			Timestamp:    ts,
-			Endorsements: util.List(util.Ref(chainIn[1].ID.TransactionID())),
-			PrivateKey:   testData.privKeyAux,
-		})
-		require.NoError(t, err)
-		txid, _, _ := transaction.IDAndTimestampFromTransactionBytes(txBytesSeq)
-		t.Logf("seq tx expected to fail: %s", txid.StringShort())
-		t.Logf("   chain input: %s", chainIn[0].ID.StringShort())
-		t.Logf("   endrosement: %s", chainIn[1].ID.StringShort())
-
-		wg.Add(1)
-		vidSeq, err := attacher.AttachTransactionFromBytes(txBytesSeq, testData.wrk, attacher.OptionWithAttachmentCallback(func(_ *vertex.WrappedTx, _ error) {
+	submitted := make([]*vertex.WrappedTx, nChains)
+	wg.Add(len(testData.seqChain))
+	for i, seqChain := range testData.seqChain {
+		submitted[i], err = attacher.AttachTransactionFromBytes(seqChain[0].Bytes(), testData.wrk, attacher.OptionWithAttachmentCallback(func(_ *vertex.WrappedTx, _ error) {
 			wg.Done()
 		}))
 		require.NoError(t, err)
-		wg.Wait()
+	}
+	wg.Wait()
+	testData.stopAndWait()
 
-		testData.stopAndWait()
-		testData.logDAGInfo()
+	testData.logDAGInfo()
 
-		require.EqualValues(t, vertex.Bad.String(), vidSeq.GetTxStatus().String())
-		util.RequireErrorWith(t, vidSeq.GetReason(), "conflicts with existing consumers in the baseline state", "(double spend)", testData.forkOutput.IDShort())
-		testData.wrk.SaveGraph("utangle")
-	})
-	t.Run("one fork, branches", func(t *testing.T) {
-		ledger.SetTimeTickDuration(10 * time.Millisecond)
-		//attacher.SetTraceOn()
-		const (
-			nConflicts = 2
-			nChains    = 2
-			howLong    = 5 // 97 fails when crosses slot boundary
-			pullYN     = true
-		)
+	for _, vid := range submitted {
+		require.EqualValues(t, vertex.Good, vid.GetTxStatus())
+	}
+}
 
-		testData := initLongConflictTestData(t, nConflicts, nChains, howLong)
-		testData.makeSeqBeginnings(true)
-		testData.printTxIDs()
+func TestConflictsNAttachersSeqStartTxFee(t *testing.T) {
+	ledger.SetTimeTickDuration(10 * time.Millisecond)
+	//attacher.SetTraceOn()
+	const (
+		nConflicts = 5
+		nChains    = 5
+		howLong    = 5 // 97 fails when crosses slot boundary
+		pullYN     = true
+	)
+	var wg sync.WaitGroup
+	var err error
 
-		if pullYN {
-			testData.txBytesToStore()
-			for seqNr := range testData.seqChain {
-				testData.storeTransactions(testData.seqChain[seqNr]...)
-			}
-		} else {
-			testData.txBytesAttach()
-			for seqNr := range testData.seqChain {
-				testData.attachTransactions(testData.seqChain[seqNr]...)
-			}
-		}
+	testData := initLongConflictTestData(t, nConflicts, nChains, howLong)
+	testData.makeSeqBeginnings(true)
+	testData.printTxIDs()
 
-		chainIn := make([]*ledger.OutputWithChainID, len(testData.seqChain))
-		var ts ledger.LogicalTime
-		for seqNr := range testData.seqChain {
-			tx := testData.seqChain[seqNr][0]
-			o := tx.MustProducedOutputWithIDAt(tx.SequencerTransactionData().SequencerOutputIndex)
-			chainIn[seqNr] = o.MustAsChainOutput()
-			ts = ledger.MaxLogicalTime(ts, o.Timestamp())
-		}
-		ts = ts.NextTimeSlotBoundary()
+	if pullYN {
+		testData.txBytesToStore()
+	} else {
+		testData.txBytesAttach()
+	}
 
-		var err error
-		var wg sync.WaitGroup
-		branches := make([]*vertex.WrappedTx, len(chainIn))
-		var txBytes []byte
-		stem := multistate.MakeSugared(testData.wrk.HeaviestStateForLatestTimeSlot()).GetStemOutput()
-		for i := range chainIn {
-			txBytes, err = txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
-				SeqName:    "seq",
-				StemInput:  stem,
-				ChainInput: chainIn[i],
-				Timestamp:  ts,
-				PrivateKey: testData.privKeyAux,
-			})
-			require.NoError(t, err)
-			wg.Add(1)
-			branches[i], err = attacher.AttachTransactionFromBytes(txBytes, testData.wrk, attacher.OptionWithAttachmentCallback(func(_ *vertex.WrappedTx, _ error) {
-				wg.Done()
-			}))
-			require.NoError(t, err)
-			t.Logf("attaching branch %s", branches[i].IDShortString())
-		}
-		wg.Wait()
-
-		testData.stopAndWait()
-		testData.logDAGInfo()
-		testData.wrk.SaveGraph("utangle")
-	})
-	t.Run("one fork branches conflict", func(t *testing.T) {
-		ledger.SetTimeTickDuration(10 * time.Millisecond)
-		//attacher.SetTraceOn()
-		const (
-			nConflicts = 5
-			nChains    = 5
-			howLong    = 5 // 97 fails when crosses slot boundary
-			pullYN     = true
-		)
-
-		testData := initLongConflictTestData(t, nConflicts, nChains, howLong)
-		testData.makeSeqBeginnings(true)
-		//testData.printTxIDs()
-
-		if pullYN {
-			testData.txBytesToStore()
-			for seqNr := range testData.seqChain {
-				testData.storeTransactions(testData.seqChain[seqNr]...)
-			}
-		} else {
-			testData.txBytesAttach()
-			for seqNr := range testData.seqChain {
-				testData.attachTransactions(testData.seqChain[seqNr]...)
-			}
-		}
-
-		chainIn := make([]*ledger.OutputWithChainID, len(testData.seqChain))
-		var ts ledger.LogicalTime
-		for seqNr := range testData.seqChain {
-			tx := testData.seqChain[seqNr][0]
-			o := tx.MustProducedOutputWithIDAt(tx.SequencerTransactionData().SequencerOutputIndex)
-			chainIn[seqNr] = o.MustAsChainOutput()
-			ts = ledger.MaxLogicalTime(ts, o.Timestamp())
-		}
-		ts = ts.NextTimeSlotBoundary()
-
-		var err error
-		txBytesBranch := make([][]byte, nChains)
-		require.True(t, len(txBytesBranch) >= 2)
-
-		stem := multistate.MakeSugared(testData.wrk.HeaviestStateForLatestTimeSlot()).GetStemOutput()
-		for i := range chainIn {
-			txBytesBranch[i], err = txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
-				SeqName:    "seq",
-				StemInput:  stem,
-				ChainInput: chainIn[i],
-				Timestamp:  ts,
-				PrivateKey: testData.privKeyAux,
-			})
-			require.NoError(t, err)
-
-			_, err = testData.txStore.PersistTxBytesWithMetadata(txBytesBranch[i], nil)
-			require.NoError(t, err)
-
-			tx, err := transaction.FromBytes(txBytesBranch[i], transaction.MainTxValidationOptions...)
-			require.NoError(t, err)
-			t.Logf("branch #%d : %s", i, tx.IDShortString())
-		}
-
-		tx0, err := transaction.FromBytes(txBytesBranch[0], transaction.MainTxValidationOptions...)
+	submittedSeq := make([]*vertex.WrappedTx, nChains)
+	wg.Add(len(testData.seqChain))
+	for i, seqChain := range testData.seqChain {
+		submittedSeq[i], err = attacher.AttachTransactionFromBytes(seqChain[0].Bytes(), testData.wrk, attacher.OptionWithAttachmentCallback(func(_ *vertex.WrappedTx, _ error) {
+			wg.Done()
+		}))
 		require.NoError(t, err)
-		t.Logf("will be extending %s", tx0.IDShortString())
+	}
+	wg.Wait()
 
-		tx1, err := transaction.FromBytes(txBytesBranch[1], transaction.MainTxValidationOptions...)
+	testData.stopAndWait()
+	testData.logDAGInfo()
+
+	for _, vid := range submittedSeq {
+		require.EqualValues(t, vertex.Good, vid.GetTxStatus())
+	}
+
+	testData.wrk.ForEachVertex(func(vid *vertex.WrappedTx) bool {
+		vid.RUnwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
+			require.True(t, !v.Tx.IsSequencerMilestone() || v.FlagsUp(vertex.FlagsSequencerVertexCompleted))
+		}})
+		return true
+	})
+
+	//testData.wrk.SaveGraph("utangle")
+}
+
+func TestConflictsNAttachersOneFork(t *testing.T) {
+	ledger.SetTimeTickDuration(10 * time.Millisecond)
+	const (
+		nConflicts = 2
+		nChains    = 2
+		howLong    = 20 // 97 fails when crosses slot boundary
+		pullYN     = true
+	)
+	var wg sync.WaitGroup
+	var err error
+
+	testData := initLongConflictTestData(t, nConflicts, nChains, howLong)
+	testData.makeSeqBeginnings(true)
+	//testData.printTxIDs()
+
+	//testData.wrk.EnableTraceTags(attacher.TraceTagAttach)
+
+	if pullYN {
+		testData.txBytesToStore()
+		for seqNr := range testData.seqChain {
+			testData.storeTransactions(testData.seqChain[seqNr]...)
+		}
+	} else {
+		testData.txBytesAttach()
+		for seqNr := range testData.seqChain {
+			testData.attachTransactions(testData.seqChain[seqNr]...)
+		}
+	}
+
+	chainIn := make([]*ledger.OutputWithChainID, len(testData.seqChain))
+	var ts ledger.LogicalTime
+	for seqNr := range testData.seqChain {
+		tx := testData.seqChain[seqNr][0]
+		o := tx.MustProducedOutputWithIDAt(tx.SequencerTransactionData().SequencerOutputIndex)
+		chainIn[seqNr] = o.MustAsChainOutput()
+		ts = ledger.MaxLogicalTime(ts, o.Timestamp())
+	}
+	ts = ts.AddTicks(ledger.TransactionPaceInTicks)
+	txBytesSeq, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
+		SeqName:      "seq",
+		ChainInput:   chainIn[0],
+		Timestamp:    ts,
+		Endorsements: util.List(util.Ref(chainIn[1].ID.TransactionID())),
+		PrivateKey:   testData.privKeyAux,
+	})
+	require.NoError(t, err)
+	txid, _, _ := transaction.IDAndTimestampFromTransactionBytes(txBytesSeq)
+	t.Logf("seq tx expected to fail: %s", txid.StringShort())
+	t.Logf("   chain input: %s", chainIn[0].ID.StringShort())
+	t.Logf("   endrosement: %s", chainIn[1].ID.StringShort())
+
+	wg.Add(1)
+	vidSeq, err := attacher.AttachTransactionFromBytes(txBytesSeq, testData.wrk, attacher.OptionWithAttachmentCallback(func(_ *vertex.WrappedTx, _ error) {
+		wg.Done()
+	}))
+	require.NoError(t, err)
+	wg.Wait()
+
+	testData.stopAndWait()
+	testData.logDAGInfo()
+
+	require.EqualValues(t, vertex.Bad.String(), vidSeq.GetTxStatus().String())
+	util.RequireErrorWith(t, vidSeq.GetReason(), "conflicts with existing consumers in the baseline state", "(double spend)", testData.forkOutput.IDShort())
+	testData.wrk.SaveGraph("utangle")
+}
+
+func TestConflictsNAttachersOneForkBranches(t *testing.T) {
+	ledger.SetTimeTickDuration(10 * time.Millisecond)
+	//attacher.SetTraceOn()
+	const (
+		nConflicts = 2
+		nChains    = 2
+		howLong    = 5 // 97 fails when crosses slot boundary
+		pullYN     = true
+	)
+
+	testData := initLongConflictTestData(t, nConflicts, nChains, howLong)
+	testData.makeSeqBeginnings(true)
+	testData.printTxIDs()
+
+	if pullYN {
+		testData.txBytesToStore()
+		for seqNr := range testData.seqChain {
+			testData.storeTransactions(testData.seqChain[seqNr]...)
+		}
+	} else {
+		testData.txBytesAttach()
+		for seqNr := range testData.seqChain {
+			testData.attachTransactions(testData.seqChain[seqNr]...)
+		}
+	}
+
+	chainIn := make([]*ledger.OutputWithChainID, len(testData.seqChain))
+	var ts ledger.LogicalTime
+	for seqNr := range testData.seqChain {
+		tx := testData.seqChain[seqNr][0]
+		o := tx.MustProducedOutputWithIDAt(tx.SequencerTransactionData().SequencerOutputIndex)
+		chainIn[seqNr] = o.MustAsChainOutput()
+		ts = ledger.MaxLogicalTime(ts, o.Timestamp())
+	}
+	ts = ts.NextTimeSlotBoundary()
+
+	var err error
+	var wg sync.WaitGroup
+	branches := make([]*vertex.WrappedTx, len(chainIn))
+	var txBytes []byte
+	stem := multistate.MakeSugared(testData.wrk.HeaviestStateForLatestTimeSlot()).GetStemOutput()
+	for i := range chainIn {
+		txBytes, err = txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
+			SeqName:    "seq",
+			StemInput:  stem,
+			ChainInput: chainIn[i],
+			Timestamp:  ts,
+			PrivateKey: testData.privKeyAux,
+		})
 		require.NoError(t, err)
-		t.Logf("will be endorsing %s", tx1.IDShortString())
+		wg.Add(1)
+		branches[i], err = attacher.AttachTransactionFromBytes(txBytes, testData.wrk, attacher.OptionWithAttachmentCallback(func(_ *vertex.WrappedTx, _ error) {
+			wg.Done()
+		}))
+		require.NoError(t, err)
+		t.Logf("attaching branch %s", branches[i].IDShortString())
+	}
+	wg.Wait()
 
-		txBytesConflicting, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
-			SeqName:      "dummy",
-			ChainInput:   tx0.SequencerOutput().MustAsChainOutput(),
-			Timestamp:    ts.AddTicks(ledger.TransactionPaceInTicks),
-			Endorsements: util.List(tx1.ID()),
-			PrivateKey:   testData.privKeyAux,
+	testData.stopAndWait()
+	testData.logDAGInfo()
+	testData.wrk.SaveGraph("utangle")
+}
+
+func TestConflictsNAttachersOneForkBranchesConflict(t *testing.T) {
+	ledger.SetTimeTickDuration(10 * time.Millisecond)
+	//attacher.SetTraceOn()
+	const (
+		nConflicts = 5
+		nChains    = 5
+		howLong    = 5 // 97 fails when crosses slot boundary
+		pullYN     = true
+	)
+
+	testData := initLongConflictTestData(t, nConflicts, nChains, howLong)
+	testData.makeSeqBeginnings(true)
+	//testData.printTxIDs()
+
+	if pullYN {
+		testData.txBytesToStore()
+		for seqNr := range testData.seqChain {
+			testData.storeTransactions(testData.seqChain[seqNr]...)
+		}
+	} else {
+		testData.txBytesAttach()
+		for seqNr := range testData.seqChain {
+			testData.attachTransactions(testData.seqChain[seqNr]...)
+		}
+	}
+
+	chainIn := make([]*ledger.OutputWithChainID, len(testData.seqChain))
+	var ts ledger.LogicalTime
+	for seqNr := range testData.seqChain {
+		tx := testData.seqChain[seqNr][0]
+		o := tx.MustProducedOutputWithIDAt(tx.SequencerTransactionData().SequencerOutputIndex)
+		chainIn[seqNr] = o.MustAsChainOutput()
+		ts = ledger.MaxLogicalTime(ts, o.Timestamp())
+	}
+	ts = ts.NextTimeSlotBoundary()
+
+	var err error
+	txBytesBranch := make([][]byte, nChains)
+	require.True(t, len(txBytesBranch) >= 2)
+
+	stem := multistate.MakeSugared(testData.wrk.HeaviestStateForLatestTimeSlot()).GetStemOutput()
+	for i := range chainIn {
+		txBytesBranch[i], err = txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
+			SeqName:    "seq",
+			StemInput:  stem,
+			ChainInput: chainIn[i],
+			Timestamp:  ts,
+			PrivateKey: testData.privKeyAux,
 		})
 		require.NoError(t, err)
 
-		var wg sync.WaitGroup
-		wg.Add(1)
-		vid, err := attacher.AttachTransactionFromBytes(txBytesConflicting, testData.wrk, attacher.OptionWithAttachmentCallback(func(_ *vertex.WrappedTx, _ error) {
-			wg.Done()
-		}))
-		wg.Wait()
+		_, err = testData.txStore.PersistTxBytesWithMetadata(txBytesBranch[i], nil)
+		require.NoError(t, err)
 
-		testData.stopAndWait()
-		testData.logDAGInfo()
-		testData.wrk.SaveGraph("utangle")
+		tx, err := transaction.FromBytes(txBytesBranch[i], transaction.MainTxValidationOptions...)
+		require.NoError(t, err)
+		t.Logf("branch #%d : %s", i, tx.IDShortString())
+	}
 
-		require.EqualValues(t, vid.GetTxStatus(), vertex.Bad)
-		t.Logf("expected error: %v", vid.GetReason())
-		util.RequireErrorWith(t, vid.GetReason(), "is incompatible with the baseline branch", tx1.IDShortString())
+	tx0, err := transaction.FromBytes(txBytesBranch[0], transaction.MainTxValidationOptions...)
+	require.NoError(t, err)
+	t.Logf("will be extending %s", tx0.IDShortString())
+
+	tx1, err := transaction.FromBytes(txBytesBranch[1], transaction.MainTxValidationOptions...)
+	require.NoError(t, err)
+	t.Logf("will be endorsing %s", tx1.IDShortString())
+
+	txBytesConflicting, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
+		SeqName:      "dummy",
+		ChainInput:   tx0.SequencerOutput().MustAsChainOutput(),
+		Timestamp:    ts.AddTicks(ledger.TransactionPaceInTicks),
+		Endorsements: util.List(tx1.ID()),
+		PrivateKey:   testData.privKeyAux,
 	})
+	require.NoError(t, err)
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	vid, err := attacher.AttachTransactionFromBytes(txBytesConflicting, testData.wrk, attacher.OptionWithAttachmentCallback(func(_ *vertex.WrappedTx, _ error) {
+		wg.Done()
+	}))
+	wg.Wait()
+
+	testData.stopAndWait()
+	testData.logDAGInfo()
+
+	testData.wrk.SaveGraph("utangle")
+
+	require.EqualValues(t, vid.GetTxStatus(), vertex.Bad)
+	t.Logf("expected error: %v", vid.GetReason())
+	util.RequireErrorWith(t, vid.GetReason(), "is incompatible with the baseline branch", tx1.IDShortString())
 }
 
 // all FAILS

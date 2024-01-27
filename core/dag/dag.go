@@ -153,28 +153,19 @@ func (d *DAG) _branchesDescending(slot ledger.Slot) []*vertex.WrappedTx {
 
 // LatestBranchSlot latest time slot with some branches
 func (d *DAG) LatestBranchSlot() (ret ledger.Slot) {
-	d.mutex.RLock()
-	defer d.mutex.RUnlock()
-
-	return d._latestBranchSlot()
+	m := util.Maximum(d.Branches(), func(vid1, vid2 *vertex.WrappedTx) bool {
+		return vid1.Slot() < vid2.Slot()
+	})
+	if m == nil {
+		return 0
+	}
+	return m.Slot()
 }
 
 func (d *DAG) _latestBranchSlot() (ret ledger.Slot) {
 	for br := range d.branches {
 		if br.Slot() > ret {
 			ret = br.Slot()
-		}
-	}
-	return
-}
-
-func (d *DAG) FindOutputInLatestTimeSlot(oid *ledger.OutputID) (ret *vertex.WrappedTx, rdr multistate.SugaredStateReader) {
-	d.mutex.RLock()
-	defer d.mutex.RUnlock()
-
-	for _, br := range d._branchesDescending(d._latestBranchSlot()) {
-		if d.branches[br].HasUTXO(oid) {
-			return br, multistate.MakeSugared(d.branches[br])
 		}
 	}
 	return

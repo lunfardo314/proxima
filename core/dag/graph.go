@@ -150,17 +150,16 @@ func makeGraphEdges(vid *vertex.WrappedTx, gr graph.Graph[string, string]) {
 func (d *DAG) MakeGraph(additionalVertices ...*vertex.WrappedTx) graph.Graph[string, string] {
 	ret := graph.New(graph.StringHash, graph.Directed(), graph.Acyclic())
 
-	d.mutex.RLock()
-	defer d.mutex.RUnlock()
+	vertices := d.Vertices()
 
 	seqDict := make(map[ledger.ChainID]int)
-	for _, vid := range d.vertices {
+	for _, vid := range vertices {
 		makeGraphNode(vid, ret, seqDict, false)
 	}
 	for _, vid := range additionalVertices {
 		makeGraphNode(vid, ret, seqDict, true)
 	}
-	for _, vid := range d.vertices {
+	for _, vid := range vertices {
 		makeGraphEdges(vid, ret)
 	}
 	for _, vid := range additionalVertices {
