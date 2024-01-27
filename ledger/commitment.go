@@ -1,6 +1,9 @@
 package ledger
 
 import (
+	"crypto/rand"
+
+	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/unitrie/common"
 	"github.com/lunfardo314/unitrie/models/trie_blake2b"
 )
@@ -19,3 +22,14 @@ const (
 )
 
 var CommitmentModel = trie_blake2b.New(TrieArity, TrieHashSize)
+
+// RandomVCommitment for testing
+func RandomVCommitment() common.VCommitment {
+	var data [TrieHashSize]byte
+	n, err := rand.Read(data[:])
+	util.AssertNoError(err)
+	util.Assertf(n == 32, "n == 32")
+	ret, err := common.VectorCommitmentFromBytes(CommitmentModel, data[:])
+	util.AssertNoError(err)
+	return ret
+}

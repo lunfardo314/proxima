@@ -519,6 +519,9 @@ func (a *attacher) checkConflictsFunc(consumerTx *vertex.WrappedTx) func(existin
 
 // setBaseline sets baseline, fetches its coverage and initializes attacher's coverage according to the currentTS
 func (a *attacher) setBaseline(vid *vertex.WrappedTx, currentTS ledger.LogicalTime) {
+	util.Assertf(vid.IsBranchTransaction(), "setBaseline: vid.IsBranchTransaction()")
+	util.Assertf(currentTS.Slot() >= vid.Slot(), "currentTS.Slot() >= vid.Slot()")
+
 	a.baselineBranch = vid
 	var coverage multistate.LedgerCoverage
 	if a.baselineBranch != nil {
@@ -529,6 +532,5 @@ func (a *attacher) setBaseline(vid *vertex.WrappedTx, currentTS ledger.LogicalTi
 			coverage = rr.LedgerCoverage
 		}
 	}
-	// FIXME if attached transaction is a branch (currentTS.Ticks()==0), then shift will be 2 and a.coverage will be set to (0, 0). Not correct
-	a.coverage = coverage.MakeNext(int(currentTS.Slot()) - int(a.baselineBranch.Slot()) + 1)
+	a.coverage = coverage.MakeNext(int(currentTS.Slot()) - int(a.baselineBranch.Slot()))
 }

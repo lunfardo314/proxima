@@ -10,8 +10,6 @@ import (
 )
 
 func (lc *LedgerCoverage) MakeNext(shift int) LedgerCoverage {
-	util.Assertf(shift >= 1, "shift >= 1")
-
 	ret := LedgerCoverage{}
 	if shift < HistoryCoverageDeltas {
 		copy(ret[shift:], lc[:])
@@ -38,11 +36,24 @@ func (lc *LedgerCoverage) Sum() (ret uint64) {
 	return
 }
 
-func (lc *LedgerCoverage) Bytes() []byte {
+func (lc *LedgerCoverage) BytesOld() []byte {
 	util.Assertf(len(lc) == HistoryCoverageDeltas, "len(lc) == HistoryCoverageDeltas")
 	ret := make([]byte, len(lc)*8)
 	for i, d := range lc {
 		binary.BigEndian.PutUint64(ret[i*8:(i+1)*8], d)
+	}
+	return ret
+}
+
+func (lc *LedgerCoverage) BytesOfBranchCoverage() []byte {
+	util.Assertf(len(lc) == HistoryCoverageDeltas, "len(lc) == HistoryCoverageDeltas")
+	util.Assertf(lc[0] == 0, "coverage of the branch must have latest delta == 0")
+	ret := make([]byte, (HistoryCoverageDeltas-1)*8)
+	for i := range lc {
+		if i == 0 {
+			continue
+		}
+		binary.BigEndian.PutUint64(ret[(i-1)*8:i*8], lc[i])
 	}
 	return ret
 }
@@ -69,13 +80,13 @@ func (lc *LedgerCoverage) StringShort() string {
 	return fmt.Sprintf("(%s)", strings.Join(all, ", "))
 }
 
-func LedgerCoverageFromBytes(data []byte) (ret LedgerCoverage, err error) {
-	if len(data) != HistoryCoverageDeltas*8 {
+func BranchLedgerCoverageFromBytes(data []byte) (ret LedgerCoverage, err error) {
+	if len(data) != (HistoryCoverageDeltas-1)*8 {
 		err = fmt.Errorf("LedgerCoverageFromBytes: wrong data size")
 		return
 	}
-	for i := 0; i < HistoryCoverageDeltas; i++ {
-		ret[i] = binary.BigEndian.Uint64(data[i*8 : (i+1)*8])
+	for i := 0; i < HistoryCoverageDeltas-1; i++ {
+		ret[i+1] = binary.BigEndian.Uint64(data[i*8 : (i+1)*8])
 	}
 	return
 }

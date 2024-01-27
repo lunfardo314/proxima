@@ -36,7 +36,14 @@ func (a *milestoneAttacher) finalize() {
 
 	a.finals.baseline = a.baselineBranch
 	a.finals.numTransactions = len(a.validPastVertices)
-	a.finals.coverage = a.coverage
+
+	if a.vid.IsBranchTransaction() {
+		// for branches coverage needs to be shifted by 1
+		a.finals.coverage = a.coverage.MakeNext(1)
+	} else {
+		a.finals.coverage = a.coverage
+	}
+
 	a.Tracef(TraceTagAttachMilestone, "set ledger coverage in %s to %s", a.vid.IDShortString(), a.finals.coverage.String())
 	a.vid.SetLedgerCoverage(a.finals.coverage)
 
