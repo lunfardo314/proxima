@@ -87,7 +87,7 @@ type (
 
 const (
 	FlagBaselineSolid             = 0b00000001
-	FlagEndorsementsSolid         = 0b00000010
+	FlagEndorsementsSolid         = 0b00000010 // FIXME remove
 	FlagAllInputsSolid            = 0b00000100
 	FlagConstraintsValid          = 0b00001000
 	FlagTxBytesPersisted          = 0b00010000

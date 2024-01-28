@@ -184,7 +184,7 @@ func (a *attacher) attachVertexUnwrapped(v *vertex.Vertex, vid *vertex.WrappedTx
 		return false
 	}
 
-	a.Tracef(TraceTagAttachVertex, "%s", vid.IDShortString)
+	a.Tracef(TraceTagAttachVertex, " %s IN: %s", a.name, vid.IDShortString)
 	util.Assertf(!util.IsNil(a.baselineStateReader), "!util.IsNil(a.baselineStateReader)")
 
 	if a.isKnownDefined(vid) {
@@ -192,6 +192,8 @@ func (a *attacher) attachVertexUnwrapped(v *vertex.Vertex, vid *vertex.WrappedTx
 	}
 	// mark vertex in the past cone, undefined yet
 	a.markVertexUndefined(vid)
+
+	// FIXME vertex.FlagEndorsementsSolid is wrong!!!! because it must be is local to the attacher
 
 	if !v.FlagsUp(vertex.FlagEndorsementsSolid) {
 		a.Tracef(TraceTagAttachVertex, "attacher %s: endorsements not solid in %s", a.name, v.Tx.IDShortString())
@@ -203,7 +205,6 @@ func (a *attacher) attachVertexUnwrapped(v *vertex.Vertex, vid *vertex.WrappedTx
 	}
 	if v.FlagsUp(vertex.FlagEndorsementsSolid) {
 		err := a.allEndorsementsDefined(v)
-		a.Log().Sync()
 		util.Assertf(err == nil, "%w:\ndefined: %s\nundefined:\n%s",
 			err, a.linesDefined("       ").String(), a.linesUndefined("       ").String())
 
@@ -248,6 +249,7 @@ const TraceTagAttachEndorsements = "attachEndorsements"
 // Return OK (== not bad)
 func (a *attacher) attachEndorsements(v *vertex.Vertex, parasiticChainHorizon ledger.LogicalTime) bool {
 	a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s) IN of %s", a.name, v.Tx.IDShortString)
+	defer a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s) OUT of %s return", a.name, v.Tx.IDShortString)
 
 	util.Assertf(!v.FlagsUp(vertex.FlagEndorsementsSolid), "!v.FlagsUp(vertex.FlagEndorsementsSolid)")
 

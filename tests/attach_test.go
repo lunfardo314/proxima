@@ -939,7 +939,7 @@ func TestSeqChains(t *testing.T) {
 		//testData.printTxIDs()
 
 		testData.wrk.EnableTraceTags(attacher.TraceTagMarkDefUndef)
-		testData.wrk.EnableTraceTags(attacher.TraceTagAttachEndorsements)
+		testData.wrk.EnableTraceTags(attacher.TraceTagAttachEndorsements, attacher.TraceTagAttachVertex)
 
 		var wg sync.WaitGroup
 
