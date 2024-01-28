@@ -101,7 +101,7 @@ func (a *IncrementalAttacher) insertEndorsement(endorsement *vertex.WrappedTx) e
 	}
 
 	endorsement.Unwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
-		a.attachVertex(v, endorsement, ledger.NilLogicalTime)
+		a.attachVertexUnwrapped(v, endorsement, ledger.NilLogicalTime)
 	}})
 	return a.reason
 }

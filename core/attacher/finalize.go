@@ -105,18 +105,24 @@ func (a *milestoneAttacher) commitBranch() {
 	}
 }
 
-func (a *milestoneAttacher) checkConsistencyBeforeFinalization() (err error) {
-	defer a.Log().Sync()
+func (a *milestoneAttacher) checkConsistencyBeforeFinalization() error {
+	err := a._checkConsistencyBeforeFinalization()
+	if err != nil {
+		err = fmt.Errorf("checkConsistencyBeforeFinalization in attacher %s: %w\n%s", a.name, err, a.dumpLines("       "))
+	}
+	return err
+}
 
+func (a *milestoneAttacher) _checkConsistencyBeforeFinalization() (err error) {
 	if len(a.undefinedPastVertices) != 0 {
-		return fmt.Errorf("checkConsistencyBeforeFinalization: undefinedPastVertices should be empty. Got: {%s}", vertex.VIDSetIDString(a.undefinedPastVertices))
+		return fmt.Errorf("undefinedPastVertices should be empty. Got: {%s}", vertex.VIDSetIDString(a.undefinedPastVertices))
 	}
 	// should be at least one rooted output ( ledger baselineCoverage must be > 0)
 	if len(a.rooted) == 0 {
-		return fmt.Errorf("checkConsistencyBeforeFinalization: at least one rooted output is expected")
+		return fmt.Errorf("at least one rooted output is expected")
 	}
 	if len(a.definedPastVertices) == 0 {
-		return fmt.Errorf("checkConsistencyBeforeFinalization: definedPastVertices is empty")
+		return fmt.Errorf("definedPastVertices is empty")
 	}
 	sumRooted := uint64(0)
 	for vid, consumed := range a.rooted {
@@ -131,15 +137,14 @@ func (a *milestoneAttacher) checkConsistencyBeforeFinalization() (err error) {
 		})
 	}
 	if err != nil {
-		err = fmt.Errorf("checkConsistencyBeforeFinalization: %w", err)
 		return
 	}
 	if sumRooted == 0 {
-		err = fmt.Errorf("checkConsistencyBeforeFinalization: sum of rooted cannot be 0")
+		err = fmt.Errorf("sum of rooted cannot be 0")
 		return
 	}
 	if sumRooted != a.coverage.LatestDelta() {
-		err = fmt.Errorf("checkConsistencyBeforeFinalization: sum of amounts of rooted outputs %s is not equal to the coverage sumRooted %s",
+		err = fmt.Errorf("sum of amounts of rooted outputs %s is not equal to the coverage sumRooted %s",
 			util.GoTh(sumRooted), util.GoTh(a.coverage.LatestDelta()))
 	}
 
@@ -151,9 +156,11 @@ func (a *milestoneAttacher) checkConsistencyBeforeFinalization() (err error) {
 			continue
 		}
 		status := vid.GetTxStatus()
-		if status == vertex.Bad || (status != vertex.Good && vid.IsSequencerMilestone()) {
-			return fmt.Errorf("inconsistent vertex (%s) in the past cone: %s",
-				status.String(), vid.IDShortString())
+		if status == vertex.Bad {
+			return fmt.Errorf("BAD vertex in the past cone: %s", vid.IDShortString())
+		}
+		if status != vertex.Good && vid.IsSequencerMilestone() {
+			return fmt.Errorf("UNDEFINED sequencer vertex in the past cone: %s", vid.IDShortString())
 		}
 
 		vid.Unwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
@@ -172,19 +179,16 @@ func (a *milestoneAttacher) checkConsistencyBeforeFinalization() (err error) {
 		v.ForEachEndorsement(func(i byte, vidEndorsed *vertex.WrappedTx) bool {
 			lc := vidEndorsed.GetLedgerCoverage()
 			if lc == nil {
-				err = fmt.Errorf("checkConsistencyBeforeFinalization: coverage not set in the endorsed %s", vidEndorsed.IDShortString())
+				err = fmt.Errorf("coverage not set in the endorsed %s", vidEndorsed.IDShortString())
 				return false
 			}
 			if a.coverage.LatestDelta() < lc.LatestDelta() {
-				err = fmt.Errorf("checkConsistencyBeforeFinalization in %s: coverage delta should not decrease.\nGot: delta(%s) at %s <= delta(%s) in %s",
-					a.name, util.GoTh(a.coverage.LatestDelta()), a.vid.Timestamp().String(), util.GoTh(lc.LatestDelta()), vidEndorsed.IDShortString())
+				err = fmt.Errorf("coverage delta should not decrease.\nGot: delta(%s) at %s <= delta(%s) in %s",
+					util.GoTh(a.coverage.LatestDelta()), a.vid.Timestamp().String(), util.GoTh(lc.LatestDelta()), vidEndorsed.IDShortString())
 				return false
 			}
 			return true
 		})
 	}})
-	if err != nil {
-		err = fmt.Errorf("%w:\n%s", err, a.dumpLines("           ").String())
-	}
 	return
 }

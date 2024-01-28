@@ -562,9 +562,6 @@ func (vid *WrappedTx) AttachConsumer(outputIndex byte, consumer *WrappedTx, chec
 	}
 	vid.consumed[outputIndex] = outputConsumers
 	conflict := checkConflicts(outputConsumers)
-	//if conflict {
-	//	fmt.Printf("output: %s, consumer: %s, other consumers:\n%s\n", util.Ref(vid.OutputID(outputIndex)).StringShort(), consumer.IDShortString(), VIDSetIDString(outputConsumers))
-	//}
 	return !conflict
 }
 

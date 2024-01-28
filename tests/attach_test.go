@@ -924,7 +924,7 @@ func TestSeqChains(t *testing.T) {
 			}
 		}
 	})
-	t.Run("with pull", func(t *testing.T) {
+	t.Run("FAILS with pull", func(t *testing.T) {
 		//attacher.SetTraceOn()
 		const (
 			nConflicts            = 10

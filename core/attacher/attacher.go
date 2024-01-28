@@ -26,7 +26,7 @@ func newPastConeAttacher(env Environment, name string) attacher {
 const (
 	TraceTagAttach       = "attach"
 	TraceTagAttachOutput = "attachOutput"
-	TraceTagAttachVertex = "attachVertex"
+	TraceTagAttachVertex = "attachVertexUnwrapped"
 )
 
 func (a *attacher) Name() string {
@@ -58,7 +58,7 @@ func (a *attacher) markVertexUndefined(vid *vertex.WrappedTx) {
 	a.Tracef(TraceTagAttach, "pastConeVertexVisited%s: %s is UNDEFINED", a.name, vid.IDShortString)
 }
 
-func (a *attacher) isDefinedVertex(vid *vertex.WrappedTx) bool {
+func (a *attacher) isKnownDefined(vid *vertex.WrappedTx) bool {
 	if a.definedPastVertices.Contains(vid) {
 		util.Assertf(!a.undefinedPastVertices.Contains(vid), "!a.undefinedPastVertices.Contains(vid)")
 		return true
@@ -66,15 +66,30 @@ func (a *attacher) isDefinedVertex(vid *vertex.WrappedTx) bool {
 	return false
 }
 
-func (a *attacher) isKnownVertex(vid *vertex.WrappedTx) bool {
-	if a.isDefinedVertex(vid) {
-		return true
-	}
+func (a *attacher) isKnownUndefined(vid *vertex.WrappedTx) bool {
 	if a.undefinedPastVertices.Contains(vid) {
 		util.Assertf(!a.definedPastVertices.Contains(vid), "!a.definedPastVertices.Contains(vid)")
 		return true
 	}
 	return false
+}
+
+func (a *attacher) isKnownNotRooted(vid *vertex.WrappedTx) (yes bool) {
+	yes = a.isKnownDefined(vid) || a.isKnownUndefined(vid)
+	if yes {
+		_, found := a.rooted[vid]
+		util.Assertf(!found, "inconsistency: transaction should not be marked rooted")
+	}
+	return
+}
+
+func (a *attacher) isRootedOutput(wOut vertex.WrappedOutput) bool {
+	rootedIndices := a.rooted[wOut.VID]
+	if len(rootedIndices) == 0 {
+		return false
+	}
+	util.Assertf(!a.isKnownNotRooted(wOut.VID), "!a.isKnownNotRooted(wOut.VID)")
+	return rootedIndices.Contains(wOut.Index)
 }
 
 // solidifyBaselineVertex directs attachment process down the DAG to reach the deterministically known baseline state
@@ -153,14 +168,14 @@ func (a *attacher) solidifySequencerBaseline(v *vertex.Vertex) (ok bool) {
 	}
 }
 
-// attachVertex: vid corresponds to the vertex v
+// attachVertexUnwrapped: vid corresponds to the vertex v
 // it solidifies vertex by traversing the past cone down to rooted tagAlongInputs or undefined vertices
 // Repetitive calling of the function reaches all past vertices down to the rooted tagAlongInputs in the definedPastVertices set, while
 // the undefinedPastVertices set becomes empty This is the exit condition of the loop.
 // It results in all definedPastVertices are vertex.Good
 // Otherwise, repetition reaches conflict (double spend) or vertex.Bad vertex and exits
 // Returns OK (= not bad)
-func (a *attacher) attachVertex(v *vertex.Vertex, vid *vertex.WrappedTx, parasiticChainHorizon ledger.LogicalTime) (ok bool) {
+func (a *attacher) attachVertexUnwrapped(v *vertex.Vertex, vid *vertex.WrappedTx, parasiticChainHorizon ledger.LogicalTime) (ok bool) {
 	util.Assertf(!v.Tx.IsSequencerMilestone() || v.FlagsUp(vertex.FlagBaselineSolid), "v.FlagsUp(vertex.FlagBaselineSolid) in %s", v.Tx.IDShortString)
 
 	if vid.GetTxStatusNoLock() == vertex.Bad {
@@ -171,7 +186,7 @@ func (a *attacher) attachVertex(v *vertex.Vertex, vid *vertex.WrappedTx, parasit
 	a.Tracef(TraceTagAttachVertex, "%s", vid.IDShortString)
 	util.Assertf(!util.IsNil(a.baselineStateReader), "!util.IsNil(a.baselineStateReader)")
 
-	if a.isDefinedVertex(vid) {
+	if a.isKnownDefined(vid) {
 		return true
 	}
 	// mark vertex in the past cone, undefined yet
@@ -181,7 +196,7 @@ func (a *attacher) attachVertex(v *vertex.Vertex, vid *vertex.WrappedTx, parasit
 		a.Tracef(TraceTagAttachVertex, "endorsements not solid in %s\n", v.Tx.IDShortString())
 		// depth-first along endorsements
 		if !a.attachEndorsements(v, parasiticChainHorizon) { // <<< recursive
-			// no ok, have to abandon attacher
+			// not ok -> abandon attacher
 			return false
 		}
 	}
@@ -251,11 +266,11 @@ func (a *attacher) attachEndorsements(v *vertex.Vertex, parasiticChainHorizon le
 
 		endorsedStatus := vidEndorsed.GetTxStatus()
 		if endorsedStatus == vertex.Bad {
-			util.Assertf(!a.isDefinedVertex(vidEndorsed), "attachEndorsements: !a.isDefinedVertex(vidEndorsed)")
+			util.Assertf(!a.isKnownDefined(vidEndorsed), "attachEndorsements: !a.isKnownDefined(vidEndorsed)")
 			a.setReason(vidEndorsed.GetReason())
 			return false
 		}
-		if a.isDefinedVertex(vidEndorsed) {
+		if a.isKnownDefined(vidEndorsed) {
 			// it means past cone of vidEndorsed is fully validated by this attacher already, no need to go deeper
 			continue
 		}
@@ -270,7 +285,7 @@ func (a *attacher) attachEndorsements(v *vertex.Vertex, parasiticChainHorizon le
 		// non-branch undefined milestone. Go deep recursively
 		ok := true
 		vidEndorsed.Unwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
-			ok = a.attachVertex(v, vidEndorsed, parasiticChainHorizon) // <<<<<<<<<<< recursion
+			ok = a.attachVertexUnwrapped(v, vidEndorsed, parasiticChainHorizon) // <<<<<<<<<<< recursion
 		}})
 		if !ok {
 			if a.reason != nil {
@@ -314,17 +329,19 @@ func (a *attacher) attachInputsOfTheVertex(v *vertex.Vertex, vid *vertex.Wrapped
 			a.PokeAllWith(vid)
 		}
 	} else {
-		a.Tracef(TraceTagAttachVertex, "attachInputsOfTheVertex: not solid: in %s:\n%s", v.Tx.IDShortString(), linesSelectedInputs(v.Tx, notSolid).String())
+		a.Tracef(TraceTagAttachVertex, "attachInputsOfTheVertex: not solid: in %s:\n%s", v.Tx.IDShortString(), _lazyStringSelectedInputs(v.Tx, notSolid))
 	}
 	return true
 }
 
-func linesSelectedInputs(tx *transaction.Transaction, indices []byte) *lines.Lines {
-	ret := lines.New("      ")
-	for _, i := range indices {
-		ret.Add("#%d %s", i, util.Ref(tx.MustInputAt(i)).StringShort())
+func _lazyStringSelectedInputs(tx *transaction.Transaction, indices []byte) func() string {
+	return func() string {
+		ret := lines.New("      ")
+		for _, i := range indices {
+			ret.Add("#%d %s", i, util.Ref(tx.MustInputAt(i)).StringShort())
+		}
+		return ret.String()
 	}
-	return ret
 }
 
 func (a *attacher) attachInput(v *vertex.Vertex, inputIdx byte, vid *vertex.WrappedTx, parasiticChainHorizon ledger.LogicalTime) (ok, success bool) {
@@ -347,15 +364,11 @@ func (a *attacher) attachInput(v *vertex.Vertex, inputIdx byte, vid *vertex.Wrap
 	if !a.attachOutput(wOut, parasiticChainHorizon) {
 		return false, false
 	}
-	success = a.definedPastVertices.Contains(v.Inputs[inputIdx]) || a.isRooted(v.Inputs[inputIdx])
+	success = a.isKnownDefined(v.Inputs[inputIdx]) || a.isRootedOutput(wOut)
 	if success {
-		a.Tracef(TraceTagAttachVertex, "input #%d (%s) solidified", inputIdx, util.Ref(v.Tx.MustInputAt(inputIdx)).StringShort())
+		a.Tracef(TraceTagAttachVertex, "input #%d (%s) solidified", inputIdx, wOut.IDShortString)
 	}
 	return true, success
-}
-
-func (a *attacher) isRooted(vid *vertex.WrappedTx) bool {
-	return len(a.rooted[vid]) > 0
 }
 
 func (a *attacher) isValidated(vid *vertex.WrappedTx) bool {
@@ -371,7 +384,7 @@ func (a *attacher) attachRooted(wOut vertex.WrappedOutput) (ok bool, isRooted bo
 
 	consumedRooted := a.rooted[wOut.VID]
 	if consumedRooted.Contains(wOut.Index) {
-		// it means it is already covered. The double spends are checked by attachInputID
+		// it means it is already covered. The double-spend checks are done by attachInputID
 		return true, true
 	}
 	stateReader := a.baselineStateReader()
@@ -379,29 +392,34 @@ func (a *attacher) attachRooted(wOut vertex.WrappedOutput) (ok bool, isRooted bo
 	oid := wOut.DecodeID()
 	txid := oid.TransactionID()
 	if len(consumedRooted) == 0 && !stateReader.KnowsCommittedTransaction(&txid) {
-		// it is not rooted, but it is fine
+		// it is not rooted in the baseline state, but it is fine
 		return true, false
 	}
-	// it is rooted -> must be in the state
-	// check if output is in the state
-	if out := stateReader.GetOutput(oid); out != nil {
-		// output has been found in the state -> Good
-		ensured := wOut.VID.EnsureOutput(wOut.Index, out)
-		util.Assertf(ensured, "ensureOutput: internal inconsistency")
-		if len(consumedRooted) == 0 {
-			consumedRooted = set.New[byte]()
-		}
-		consumedRooted.Insert(wOut.Index)
-		a.rooted[wOut.VID] = consumedRooted
-		// this is new rooted output -> add to the coverage delta
-		a.coverage.AddDelta(out.Amount())
-		return true, true
+	// transaction is known in the state -> check if output is in the state (i.e. not consumed yet)
+	out := stateReader.GetOutput(oid)
+	if out == nil {
+		// output has not been found in the state -> Bad (already consumed)
+		err := fmt.Errorf("output %s is already consumed in the baseline state %s", wOut.IDShortString(), a.baselineBranch.IDShortString())
+		a.setReason(err)
+		a.Tracef(TraceTagAttachOutput, "%v", err)
+		return false, false
+
 	}
-	// output has not been found in the state -> Bad
-	err := fmt.Errorf("output %s is already consumed in the baseline state %s", wOut.IDShortString(), a.baselineBranch.IDShortString())
-	a.setReason(err)
-	a.Tracef(TraceTagAttachOutput, "%v", err)
-	return false, false
+
+	// output has been found in the state -> Good
+	ensured := wOut.VID.EnsureOutput(wOut.Index, out)
+	util.Assertf(ensured, "ensureOutput: internal inconsistency")
+	if len(consumedRooted) == 0 {
+		consumedRooted = set.New[byte](wOut.Index)
+	} else {
+		consumedRooted.Insert(wOut.Index)
+	}
+	a.rooted[wOut.VID] = consumedRooted
+	util.Assertf(!a.isKnownNotRooted(wOut.VID), "attachRooted(: !a.isKnownNotRooted(wOut.VID")
+
+	// this is new rooted output -> add to the coverage delta
+	a.coverage.AddDelta(out.Amount())
+	return true, true
 }
 
 func (a *attacher) attachOutput(wOut vertex.WrappedOutput, parasiticChainHorizon ledger.LogicalTime) bool {
@@ -418,7 +436,7 @@ func (a *attacher) attachOutput(wOut vertex.WrappedOutput, parasiticChainHorizon
 
 	if wOut.Timestamp().Before(parasiticChainHorizon) {
 		// parasitic chain rule
-		err := fmt.Errorf("parasitic chain threshold %s broken while attaching output %s", parasiticChainHorizon.String(), wOut.IDShortString())
+		err := fmt.Errorf("parasitic chain threshold %s has been broken while attaching output %s", parasiticChainHorizon.String(), wOut.IDShortString())
 		a.setReason(err)
 		a.Tracef(TraceTagAttachOutput, "%v", err)
 		return false
@@ -436,7 +454,7 @@ func (a *attacher) attachOutput(wOut vertex.WrappedOutput, parasiticChainHorizon
 					// good seq milestone, reset parasitic chain horizon
 					parasiticChainHorizon = ledger.NilLogicalTime
 				}
-				ok = a.attachVertex(v, wOut.VID, parasiticChainHorizon) // >>>>>>> recursion
+				ok = a.attachVertexUnwrapped(v, wOut.VID, parasiticChainHorizon) // >>>>>>> recursion
 			} else {
 				// not a seq milestone OR is not good yet -> don't go deeper
 				a.pokeMe(wOut.VID)
@@ -470,6 +488,7 @@ func (a *attacher) branchesCompatible(vid1, vid2 *vertex.WrappedTx) bool {
 	}
 }
 
+// attachInputID links input vertex with the consumer, detects conflicts
 func (a *attacher) attachInputID(consumerVertex *vertex.Vertex, consumerTx *vertex.WrappedTx, inputIdx byte) (ok bool) {
 	inputOid := consumerVertex.Tx.MustInputAt(inputIdx)
 	a.Tracef(TraceTagAttachOutput, "attachInputID: (oid = %s) #%d in %s", inputOid.StringShort, inputIdx, consumerTx.IDShortString)
@@ -480,19 +499,32 @@ func (a *attacher) attachInputID(consumerVertex *vertex.Vertex, consumerTx *vert
 	}
 	util.Assertf(vidInputTx != nil, "vidInputTx != nil")
 
-	//if vidInputTx.MutexWriteLocked_() {
-	//	vidInputTx.GetTxStatus()
-	//}
 	if vidInputTx.GetTxStatus() == vertex.Bad {
 		a.setReason(vidInputTx.GetReason())
 		return false
 	}
+
+	if vidInputTx.IsSequencerMilestone() {
+		// if input is a sequencer milestones, check if baselines are compatible
+		if inputBaselineBranch := vidInputTx.BaselineBranch(); inputBaselineBranch != nil {
+			if !a.branchesCompatible(a.baselineBranch, inputBaselineBranch) {
+				err := fmt.Errorf("branches %s and %s not compatible", a.baselineBranch.IDShortString(), inputBaselineBranch.IDShortString())
+				a.setReason(err)
+				a.Tracef(TraceTagAttachOutput, "%v", err)
+				return false
+			}
+		}
+	}
+
 	// attach consumer and check for conflicts
-	// CONFLICT DETECTION
-	util.Assertf(a.isKnownVertex(consumerTx), "a.isKnownVertex(consumerTx)")
+	// LEDGER CONFLICT (DOUBLE-SPEND) DETECTION
+	util.Assertf(a.isKnownNotRooted(consumerTx), "attachInputID: a.isKnownNotRooted(consumerTx)")
 
 	a.Tracef(TraceTagAttachOutput, "before AttachConsumer of %s:\n       good: %s\n       undef: %s",
-		inputOid.StringShort, vertex.VIDSetIDString(a.definedPastVertices), vertex.VIDSetIDString(a.undefinedPastVertices))
+		inputOid.StringShort,
+		func() string { return vertex.VIDSetIDString(a.definedPastVertices) },
+		func() string { return vertex.VIDSetIDString(a.undefinedPastVertices) },
+	)
 
 	if !vidInputTx.AttachConsumer(inputOid.Index(), consumerTx, a.checkConflictsFunc(consumerTx)) {
 		err := fmt.Errorf("input %s of consumer %s conflicts with existing consumers in the baseline state %s (double spend)",
@@ -503,17 +535,6 @@ func (a *attacher) attachInputID(consumerVertex *vertex.Vertex, consumerTx *vert
 	}
 	a.Tracef(TraceTagAttachOutput, "attached consumer %s of %s", consumerTx.IDShortString, inputOid.StringShort)
 
-	if vidInputTx.IsSequencerMilestone() {
-		// for sequencer milestones check if baselines are compatible
-		if inputBaselineBranch := vidInputTx.BaselineBranch(); inputBaselineBranch != nil {
-			if !a.branchesCompatible(a.baselineBranch, inputBaselineBranch) {
-				err := fmt.Errorf("branches %s and %s not compatible", a.baselineBranch.IDShortString(), inputBaselineBranch.IDShortString())
-				a.setReason(err)
-				a.Tracef(TraceTagAttachOutput, "%v", err)
-				return false
-			}
-		}
-	}
 	consumerVertex.Inputs[inputIdx] = vidInputTx
 	return true
 }
@@ -560,6 +581,11 @@ func (a *attacher) dumpLines(prefix ...string) *lines.Lines {
 	ret.Add("   coverage: %s", a.coverage.String())
 	ret.Add("   definedPastVertices:")
 	a.definedPastVertices.ForEach(func(vid *vertex.WrappedTx) bool {
+		ret.Add("        %s", vid.String())
+		return true
+	})
+	ret.Add("   undefinedPastVertices:")
+	a.undefinedPastVertices.ForEach(func(vid *vertex.WrappedTx) bool {
 		ret.Add("        %s", vid.String())
 		return true
 	})
