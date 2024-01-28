@@ -111,7 +111,6 @@ func (a *milestoneAttacher) lazyRepeat(fun func() vertex.Status) vertex.Status {
 			return vertex.Undefined
 		case withVID := <-a.pokeChan:
 			if withVID != nil {
-				//a.trace1Ahead()
 				a.Tracef(TraceTagAttachMilestone, "poked with %s", withVID.IDShortString)
 			}
 		case <-time.After(periodicCheckEach):
@@ -203,6 +202,8 @@ func (a *milestoneAttacher) solidifyPastCone() vertex.Status {
 				ok = a.attachVertexUnwrapped(v, a.vid, ledger.NilLogicalTime)
 				if ok {
 					success = v.FlagsUp(vertex.FlagsSequencerVertexCompleted)
+					util.AssertNoError(a.allEndorsementsDefined(v))
+					util.AssertNoError(a.allInputsDefined(v))
 				}
 			},
 		})

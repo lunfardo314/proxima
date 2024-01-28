@@ -46,16 +46,22 @@ func (a *attacher) setReason(err error) {
 	a.reason = err
 }
 
+const TraceTagMarkDefUndef = "markDefUndef"
+
 func (a *attacher) markVertexDefined(vid *vertex.WrappedTx) {
-	a.Tracef(TraceTagAttach, "pastConeVertexVisited%s: %s is DEFINED", a.name, vid.IDShortString)
 	delete(a.undefinedPastVertices, vid)
 	a.definedPastVertices.Insert(vid)
+
+	a.Tracef(TraceTagAttach, "markVertexDefined%s: %s is DEFINED", a.name, vid.IDShortString)
+	a.Tracef(TraceTagMarkDefUndef, "markVertexDefined%s: %s is DEFINED", a.name, vid.IDShortString)
 }
 
 func (a *attacher) markVertexUndefined(vid *vertex.WrappedTx) {
 	util.Assertf(!a.definedPastVertices.Contains(vid), "!a.definedPastVertices.Contains(vid)")
 	a.undefinedPastVertices.Insert(vid)
-	a.Tracef(TraceTagAttach, "pastConeVertexVisited%s: %s is UNDEFINED", a.name, vid.IDShortString)
+
+	a.Tracef(TraceTagAttach, "markVertexUndefined%s: %s is UNDEFINED", a.name, vid.IDShortString)
+	a.Tracef(TraceTagMarkDefUndef, "markVertexUndefined%s: %s is UNDEFINED", a.name, vid.IDShortString)
 }
 
 func (a *attacher) isKnownDefined(vid *vertex.WrappedTx) bool {
@@ -80,6 +86,11 @@ func (a *attacher) isKnownNotRooted(vid *vertex.WrappedTx) (yes bool) {
 		_, found := a.rooted[vid]
 		util.Assertf(!found, "inconsistency: transaction should not be marked rooted")
 	}
+	return
+}
+
+func (a *attacher) isKnownRooted(vid *vertex.WrappedTx) (yes bool) {
+	_, yes = a.rooted[vid]
 	return
 }
 
@@ -201,6 +212,7 @@ func (a *attacher) attachVertexUnwrapped(v *vertex.Vertex, vid *vertex.WrappedTx
 		}
 	}
 	if v.FlagsUp(vertex.FlagEndorsementsSolid) {
+		util.AssertNoError(a.allEndorsementsDefined(v))
 		a.Tracef(TraceTagAttachVertex, "endorsements (%d) are all solid in %s", v.Tx.NumEndorsements(), v.Tx.IDShortString)
 	} else {
 		a.Tracef(TraceTagAttachVertex, "endorsements (%d) NOT solid in %s", v.Tx.NumEndorsements(), v.Tx.IDShortString)
@@ -228,7 +240,6 @@ func (a *attacher) attachVertexUnwrapped(v *vertex.Vertex, vid *vertex.WrappedTx
 			v.SetFlagUp(vertex.FlagTxBytesPersisted)
 			a.Tracef(TraceTagAttachVertex, "tx bytes persisted: %s", v.Tx.IDShortString)
 		}
-		ok = true
 	}
 	if v.FlagsUp(vertex.FlagsSequencerVertexCompleted) {
 		a.markVertexDefined(vid)
@@ -242,12 +253,18 @@ func (a *attacher) attachVertexUnwrapped(v *vertex.Vertex, vid *vertex.WrappedTx
 func (a *attacher) attachEndorsements(v *vertex.Vertex, parasiticChainHorizon ledger.LogicalTime) bool {
 	a.Tracef(TraceTagAttachVertex, "attachEndorsements: %s", v.Tx.IDShortString)
 
-	allGood := true
+	numUndefined := len(v.Endorsements)
 	for i, vidEndorsed := range v.Endorsements {
 		if vidEndorsed == nil {
 			vidEndorsed = AttachTxID(v.Tx.EndorsementAt(byte(i)), a, OptionPullNonBranch, OptionInvokedBy(a.name))
 			v.Endorsements[i] = vidEndorsed
 		}
+		if a.isKnownDefined(vidEndorsed) {
+			numUndefined--
+			continue
+		}
+		a.markVertexUndefined(vidEndorsed)
+
 		baselineBranch := vidEndorsed.BaselineBranch()
 		if baselineBranch == nil {
 			// baseline branch not solid yet, abandon traverse. No need for any pull because
@@ -260,27 +277,22 @@ func (a *attacher) attachEndorsements(v *vertex.Vertex, parasiticChainHorizon le
 				baselineBranch.IDShortString(), vidEndorsed.IDShortString(), a.baselineBranch.IDShortString()))
 			return false
 		}
-		// only one branch transaction can be endorsed
+		// sanity check: only one branch transaction can be endorsed
 		util.Assertf(!vidEndorsed.IsBranchTransaction() || baselineBranch == a.baselineBranch,
 			"attachEndorsements: !vidEndorsed.IsBranchTransaction() || baselineBranch == a.baselineBranch")
 
-		endorsedStatus := vidEndorsed.GetTxStatus()
-		if endorsedStatus == vertex.Bad {
+		switch vidEndorsed.GetTxStatus() {
+		case vertex.Bad:
 			util.Assertf(!a.isKnownDefined(vidEndorsed), "attachEndorsements: !a.isKnownDefined(vidEndorsed)")
 			a.setReason(vidEndorsed.GetReason())
 			return false
-		}
-		if a.isKnownDefined(vidEndorsed) {
-			// it means past cone of vidEndorsed is fully validated by this attacher already, no need to go deeper
-			continue
-		}
-		// it is undefined endorsement
-		if vidEndorsed.IsBranchTransaction() {
-			if endorsedStatus != vertex.Good {
-				allGood = false
+		case vertex.Good:
+			if vidEndorsed.IsBranchTransaction() {
+				// good branch endorsements are always 'defined'
+				a.markVertexDefined(vidEndorsed)
+				numUndefined--
+				continue
 			}
-			// don't go behind endorsed branch
-			continue
 		}
 		// non-branch undefined milestone. Go deep recursively
 		ok := true
@@ -288,19 +300,24 @@ func (a *attacher) attachEndorsements(v *vertex.Vertex, parasiticChainHorizon le
 			ok = a.attachVertexUnwrapped(v, vidEndorsed, parasiticChainHorizon) // <<<<<<<<<<< recursion
 		}})
 		if !ok {
-			if a.reason != nil {
-				return false
-			}
-			if vidEndorsed.GetTxStatus() == vertex.Bad {
-				a.setReason(vidEndorsed.GetReason())
-				return false
-			}
-			allGood = false
+			a.setReason(vidEndorsed.GetReason())
+			return false
+		}
+		util.AssertNoError(a.reason)
+
+		// check status again
+		switch status := vidEndorsed.GetTxStatus(); status {
+		case vertex.Good:
+			// this endorsement is defined for the attacher
+			a.markVertexDefined(vidEndorsed)
+			numUndefined--
+		case vertex.Undefined:
 			a.pokeMe(vidEndorsed)
-			continue
+		default:
+			a.Log().Fatalf("attacher %s: unexpected state of the vertex %s (%s)", a.name, vidEndorsed.IDShortString(), status.String())
 		}
 	}
-	if allGood {
+	if numUndefined == 0 {
 		a.Tracef(TraceTagAttachVertex, "endorsements are all good in %s", v.Tx.IDShortString())
 		v.SetFlagUp(vertex.FlagEndorsementsSolid)
 	}
@@ -415,7 +432,7 @@ func (a *attacher) attachRooted(wOut vertex.WrappedOutput) (ok bool, isRooted bo
 		consumedRooted.Insert(wOut.Index)
 	}
 	a.rooted[wOut.VID] = consumedRooted
-	util.Assertf(!a.isKnownNotRooted(wOut.VID), "attachRooted(: !a.isKnownNotRooted(wOut.VID")
+	a.markVertexDefined(wOut.VID)
 
 	// this is new rooted output -> add to the coverage delta
 	a.coverage.AddDelta(out.Amount())
@@ -601,4 +618,24 @@ func (a *attacher) dumpLines(prefix ...string) *lines.Lines {
 		}
 	}
 	return ret
+}
+
+func (a *attacher) allEndorsementsDefined(v *vertex.Vertex) (err error) {
+	v.ForEachEndorsement(func(i byte, vidEndorsed *vertex.WrappedTx) bool {
+		if !a.isKnownDefined(vidEndorsed) {
+			err = fmt.Errorf("attacher %s: endorsement must be defined %s", a.name, vidEndorsed.String())
+		}
+		return err == nil
+	})
+	return
+}
+
+func (a *attacher) allInputsDefined(v *vertex.Vertex) (err error) {
+	v.ForEachInputDependency(func(i byte, vidInput *vertex.WrappedTx) bool {
+		if !a.isKnownDefined(vidInput) {
+			err = fmt.Errorf("attacher %s: input must be defined %s", a.name, vidInput.String())
+		}
+		return err == nil
+	})
+	return
 }

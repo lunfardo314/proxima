@@ -78,6 +78,9 @@ func (a *milestoneAttacher) commitBranch() {
 	}
 	// generate ADD TX and ADD OUTPUT mutations
 	for vid := range a.definedPastVertices {
+		if a.isKnownRooted(vid) {
+			continue
+		}
 		muts.InsertAddTxMutation(vid.ID, a.vid.Slot(), byte(vid.NumProducedOutputs()-1))
 		// ADD OUTPUT mutations only for not consumed outputs
 		producedOutputIndices := vid.NotConsumedOutputIndices(a.definedPastVertices)
@@ -115,11 +118,16 @@ func (a *milestoneAttacher) checkConsistencyBeforeFinalization() error {
 
 func (a *milestoneAttacher) _checkConsistencyBeforeFinalization() (err error) {
 	if len(a.undefinedPastVertices) != 0 {
-		return fmt.Errorf("undefinedPastVertices should be empty. Got: {%s}", vertex.VIDSetIDString(a.undefinedPastVertices))
+		return fmt.Errorf("undefinedPastVertices should be empty")
 	}
 	// should be at least one rooted output ( ledger baselineCoverage must be > 0)
 	if len(a.rooted) == 0 {
 		return fmt.Errorf("at least one rooted output is expected")
+	}
+	for vid := range a.rooted {
+		if !a.isKnownDefined(vid) {
+			return fmt.Errorf("all rooted must be defined. This is not: %s", vid.IDShortString())
+		}
 	}
 	if len(a.definedPastVertices) == 0 {
 		return fmt.Errorf("definedPastVertices is empty")

@@ -924,7 +924,7 @@ func TestSeqChains(t *testing.T) {
 			}
 		}
 	})
-	t.Run("FAILS with pull", func(t *testing.T) {
+	t.Run("FAIL with pull", func(t *testing.T) {
 		//attacher.SetTraceOn()
 		const (
 			nConflicts            = 10
@@ -937,6 +937,8 @@ func TestSeqChains(t *testing.T) {
 		testData.makeSeqBeginnings(false)
 		testData.makeSeqChains(howLongSeqChains)
 		//testData.printTxIDs()
+
+		testData.wrk.EnableTraceTags(attacher.TraceTagMarkDefUndef)
 
 		var wg sync.WaitGroup
 
@@ -958,7 +960,7 @@ func TestSeqChains(t *testing.T) {
 		wg.Wait()
 
 		testData.stopAndWait()
-		testData.logDAGInfo()
+		//testData.logDAGInfo()
 		for _, vid := range vids {
 			require.EqualValues(t, vertex.Good.String(), vid.GetTxStatus().String())
 		}
