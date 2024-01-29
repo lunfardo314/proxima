@@ -204,7 +204,9 @@ func (a *milestoneAttacher) solidifyPastCone() vertex.Status {
 				ok = a.attachVertexUnwrapped(v, a.vid, ledger.NilLogicalTime)
 				if ok {
 					success = a.flags(a.vid).FlagsUp(FlagDefined) && a.err == nil
-					//if success{
+
+					// correct assertion but not necessary because it is checked before finalization
+					//if success {
 					//	util.AssertNoError(a.allEndorsementsDefined(v))
 					//	util.AssertNoError(a.allInputsDefined(v))
 					//}
