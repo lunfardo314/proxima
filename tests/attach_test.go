@@ -25,7 +25,7 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
-func TestOrigin(t *testing.T) {
+func TestBasic(t *testing.T) {
 	t.Run("base", func(t *testing.T) {
 		//attacher.SetTraceOn()
 		par := genesis.DefaultIdentityData(testutil.GetTestingPrivateKey())
