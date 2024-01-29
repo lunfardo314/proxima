@@ -46,31 +46,13 @@ func runMilestoneAttacher(vid *vertex.WrappedTx, metadata *txmetadata.Transactio
 		a.Tracef(TraceTagAttachMilestone, "past cone solidification failed. Reason: %v", a.err)
 		return vertex.Bad, nil, a.err
 	}
-
 	a.Tracef(TraceTagAttachMilestone, "past cone OK")
 
-	a.markVertexDefined(a.vid)
+	util.AssertNoError(a.checkConsistencyBeforeWrapUp())
 
-	util.AssertNoError(a.checkConsistencyBeforeFinalization())
+	a.wrapUpAttacher()
 
-	a.finalize()
 	a.vid.SetTxStatusGood()
-
-	// persist transaction bytes, if needed
-	if a.metadata == nil || a.metadata.SourceTypeNonPersistent != txmetadata.SourceTypeTxStore {
-		a.vid.Unwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
-			flags := vid.FlagsNoLock()
-			if !flags.FlagsUp(vertex.FlagTxBytesPersisted) {
-				c := a.coverage.LatestDelta()
-				persistentMetadata := txmetadata.TransactionMetadata{
-					StateRoot:           a.finals.root,
-					LedgerCoverageDelta: &c,
-				}
-				a.AsyncPersistTxBytesWithMetadata(v.Tx.Bytes(), &persistentMetadata)
-				vid.SetFlagsUpNoLock(vertex.FlagTxBytesPersisted)
-			}
-		}})
-	}
 	a.PostEventNewGood(vid)
 	return vertex.Good, a.finals, nil
 }
@@ -196,27 +178,26 @@ func (a *milestoneAttacher) solidifyBaseline() vertex.Status {
 
 // solidifyPastCone solidifies and validates sequencer transaction in the context of known baseline state
 func (a *milestoneAttacher) solidifyPastCone() vertex.Status {
+	fmt.Printf(">>>>>>>>>>>>> solidifyPastCone START: %s\n", a.name)
+	defer fmt.Printf(">>>>>>>>>>>>> solidifyPastCone END: %s\n", a.name)
+
 	return a.lazyRepeat(func() (status vertex.Status) {
 		ok := true
-		success := false
+		finalSuccess := false
 		a.vid.Unwrap(vertex.UnwrapOptions{
 			Vertex: func(v *vertex.Vertex) {
-				ok = a.attachVertexUnwrapped(v, a.vid, ledger.NilLogicalTime)
-				if ok {
-					success = a.flags(a.vid).FlagsUp(FlagDefined) && a.err == nil
-
-					// correct assertion but not necessary because it is checked before finalization
-					//if success {
-					//	util.AssertNoError(a.allEndorsementsDefined(v))
-					//	util.AssertNoError(a.allInputsDefined(v))
-					//}
+				if ok = a.attachVertexUnwrapped(v, a.vid, ledger.NilLogicalTime); !ok {
+					util.Assertf(a.err != nil, "a.err!=nil")
+					return
 				}
+				ok, finalSuccess = a.validateSequencerTx(v, a.vid)
+				util.Assertf(ok || a.err != nil, "ok || a.err!=nil")
 			},
 		})
 		switch {
 		case !ok:
 			return vertex.Bad
-		case success:
+		case finalSuccess:
 			return vertex.Good
 		default:
 			return vertex.Undefined

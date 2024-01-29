@@ -201,7 +201,7 @@ func (a *IncrementalAttacher) NumInputs() int {
 
 // Completed returns true is past cone all solid and consistent (no conflicts)
 func (a *IncrementalAttacher) Completed() (done bool) {
-	done = !a.containsUndefined() && len(a.rooted) > 0
+	done = !a.containsUndefinedExcept(nil) && len(a.rooted) > 0
 	if done {
 		util.Assertf(a.coverage.LatestDelta() > 0, "a.coverage.LatestDelta() > 0")
 	}

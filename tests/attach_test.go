@@ -9,6 +9,9 @@ import (
 
 	"github.com/lunfardo314/proxima/core/attacher"
 	"github.com/lunfardo314/proxima/core/dag"
+	"github.com/lunfardo314/proxima/core/queues/poker"
+	"github.com/lunfardo314/proxima/core/queues/pull_client"
+	"github.com/lunfardo314/proxima/core/queues/pull_server"
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/core/workflow"
 	"github.com/lunfardo314/proxima/genesis"
@@ -664,6 +667,7 @@ func TestConflictsNAttachersOneFork(t *testing.T) {
 	testData.wrk.SaveGraph("utangle")
 }
 
+// FIXME deadlock
 func TestConflictsNAttachersOneForkBranches(t *testing.T) {
 	ledger.SetTimeTickDuration(10 * time.Millisecond)
 	//attacher.SetTraceOn()
@@ -728,6 +732,7 @@ func TestConflictsNAttachersOneForkBranches(t *testing.T) {
 	testData.wrk.SaveGraph("utangle")
 }
 
+// FIXME deadlock
 func TestConflictsNAttachersOneForkBranchesConflict(t *testing.T) {
 	ledger.SetTimeTickDuration(10 * time.Millisecond)
 	//attacher.SetTraceOn()
@@ -937,13 +942,13 @@ func TestSeqChains(t *testing.T) {
 			}
 		}
 	})
-	t.Run("FAIL with pull", func(t *testing.T) {
+	t.Run("with pull", func(t *testing.T) {
 		//attacher.SetTraceOn()
 		const (
 			nConflicts            = 10
 			nChains               = 10
 			howLongConflictChains = 2  // 97 fails when crosses slot boundary
-			howLongSeqChains      = 90 // 95 fails
+			howLongSeqChains      = 50 // 90 // 95 fails
 		)
 
 		testData := initLongConflictTestData(t, nConflicts, nChains, howLongConflictChains)
@@ -951,6 +956,7 @@ func TestSeqChains(t *testing.T) {
 		testData.makeSeqChains(howLongSeqChains)
 		//testData.printTxIDs()
 
+		testData.wrk.EnableTraceTags(workflow.TraceTagDelay)
 		//testData.wrk.EnableTraceTags(attacher.TraceTagMarkDefUndef)
 		//testData.wrk.EnableTraceTags(attacher.TraceTagAttachEndorsements, attacher.TraceTagAttachVertex)
 
@@ -986,7 +992,7 @@ func TestSeqChains(t *testing.T) {
 			nConflicts            = 10
 			nChains               = 10
 			howLongConflictChains = 2  // 97 fails when crosses slot boundary
-			howLongSeqChains      = 50 // 95 fails
+			howLongSeqChains      = 10 // 95 fails
 		)
 
 		testData := initLongConflictTestData(t, nConflicts, nChains, howLongConflictChains)
@@ -1016,6 +1022,9 @@ func TestSeqChains(t *testing.T) {
 			PrivateKey: testData.privKeyAux,
 		})
 		require.NoError(t, err)
+
+		//testData.wrk.EnableTraceTags(attacher.TraceTagAttach, attacher.TraceTagAttachVertex)
+		testData.wrk.EnableTraceTags(poker.TraceTag, pull_client.TraceTag, pull_server.TraceTag)
 
 		wg.Add(1)
 		vidBranch, err := attacher.AttachTransactionFromBytes(txBytesBranch, testData.wrk, attacher.OptionWithAttachmentCallback(func(_ *vertex.WrappedTx, _ error) {

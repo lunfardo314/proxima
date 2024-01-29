@@ -40,7 +40,7 @@ type (
 	}
 )
 
-const TraceTag = "pull-client"
+const TraceTag = "pull_client"
 const chanBufferSize = 10
 
 func New(env Environment) *PullClient {
@@ -61,7 +61,7 @@ func (q *PullClient) Start(ctx context.Context, doneOnClose *sync.WaitGroup) {
 }
 
 func (q *PullClient) Consume(inp *Input) {
-	q.Tracef(TraceTag, "Consume: (%s) %s", len(inp.TxIDs), inp.TxIDs[0].StringShort())
+	q.Tracef(TraceTag, "Consume: (%d) %s", len(inp.TxIDs), inp.TxIDs[0].StringShort())
 
 	toPull := make([]ledger.TransactionID, 0)
 	txBytesList := make([][]byte, 0)

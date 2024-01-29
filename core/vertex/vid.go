@@ -149,6 +149,11 @@ func (vid *WrappedTx) SetTxStatusBadNoLock(reason error) {
 	vid.err = reason
 }
 
+func (vid *WrappedTx) SetTxStatusGoodNoLock() {
+	util.Assertf(vid.err == nil, "vid.err == nil")
+	vid.flags.SetFlagsUp(FlagDefined)
+}
+
 func (vid *WrappedTx) GetError() error {
 	vid.mutex.RLock()
 	defer vid.mutex.RUnlock()

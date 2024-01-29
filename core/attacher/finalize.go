@@ -3,6 +3,7 @@ package attacher
 import (
 	"fmt"
 
+	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/multistate"
@@ -20,8 +21,8 @@ import (
 // and the connection with the malicious peer should be immediately severed
 const enforceConsistencyWithTxMetadata = true
 
-func (a *milestoneAttacher) finalize() {
-	a.Tracef(TraceTagAttachMilestone, "finalize")
+func (a *milestoneAttacher) wrapUpAttacher() {
+	a.Tracef(TraceTagAttachMilestone, "wrapUpAttacher")
 
 	// check resulting ledger baselineCoverage is equal to the baselineCoverage in metadata, if provided
 	if a.metadata != nil && a.metadata.LedgerCoverageDelta != nil {
@@ -37,12 +38,6 @@ func (a *milestoneAttacher) finalize() {
 
 	a.finals.baseline = a.baseline
 	a.finals.numTransactions = len(a.vertices)
-
-	//tmp := a.coverage.MakeNext(int(a.vid.Slot() - a.baseline.Slot()))
-	//if tmp.Sum() == 10_000_000 {
-	//	fmt.Printf(">>>>>>>>>>>>>>>>>>>>>> 10_000_000 %s\n", a.vid.IDShortString())
-	//}
-	//fmt.Printf("%s\n", a.dumpLines("   ").String())
 
 	a.finals.coverage = a.coverage.MakeNext(int(a.vid.Slot() - a.baseline.Slot()))
 	util.Assertf(!a.vid.IsBranchTransaction() || a.finals.coverage.LatestDelta() == 0, "final baselineCoverage of the branch must have latest delta == 0")
@@ -60,6 +55,22 @@ func (a *milestoneAttacher) finalize() {
 		a.Tracef(TraceTagAttachMilestone, "finalized branch")
 	} else {
 		a.Tracef(TraceTagAttachMilestone, "finalized sequencer milestone")
+	}
+
+	// persist transaction bytes, if needed
+	if a.metadata == nil || a.metadata.SourceTypeNonPersistent != txmetadata.SourceTypeTxStore {
+		a.vid.Unwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
+			flags := a.vid.FlagsNoLock()
+			if !flags.FlagsUp(vertex.FlagTxBytesPersisted) {
+				c := a.coverage.LatestDelta()
+				persistentMetadata := txmetadata.TransactionMetadata{
+					StateRoot:           a.finals.root,
+					LedgerCoverageDelta: &c,
+				}
+				a.AsyncPersistTxBytesWithMetadata(v.Tx.Bytes(), &persistentMetadata)
+				a.vid.SetFlagsUpNoLock(vertex.FlagTxBytesPersisted)
+			}
+		}})
 	}
 }
 
@@ -110,16 +121,16 @@ func (a *milestoneAttacher) commitBranch() {
 	}
 }
 
-func (a *milestoneAttacher) checkConsistencyBeforeFinalization() error {
+func (a *milestoneAttacher) checkConsistencyBeforeWrapUp() error {
 	err := a._checkConsistencyBeforeFinalization()
 	if err != nil {
-		err = fmt.Errorf("checkConsistencyBeforeFinalization in attacher %s: %w\n%s", a.name, err, a.dumpLines("       "))
+		err = fmt.Errorf("checkConsistencyBeforeWrapUp in attacher %s: %w\n%s", a.name, err, a.dumpLines("       "))
 	}
 	return err
 }
 
 func (a *milestoneAttacher) _checkConsistencyBeforeFinalization() (err error) {
-	if a.containsUndefined() {
+	if a.containsUndefinedExcept(a.vid) {
 		return fmt.Errorf("still contains undefined vertices")
 	}
 	// should be at least one rooted output ( ledger baselineCoverage must be > 0)
@@ -159,8 +170,11 @@ func (a *milestoneAttacher) _checkConsistencyBeforeFinalization() (err error) {
 	}
 
 	for vid, flags := range a.vertices {
-		if !flags.FlagsUp(FlagKnown | FlagDefined) {
-			return fmt.Errorf("wrong flags %08b in %s", flags, vid.IDShortString())
+		if !flags.FlagsUp(FlagKnown) {
+			return fmt.Errorf("wrong flags 1 %08b in %s", flags, vid.IDShortString())
+		}
+		if !flags.FlagsUp(FlagDefined) && vid != a.vid {
+			return fmt.Errorf("wrong flags 2 %08b in %s", flags, vid.IDShortString())
 		}
 		if vid == a.vid {
 			if vid.GetTxStatus() == vertex.Bad {
