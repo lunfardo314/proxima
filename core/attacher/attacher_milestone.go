@@ -52,23 +52,23 @@ func runMilestoneAttacher(vid *vertex.WrappedTx, metadata *txmetadata.Transactio
 	util.AssertNoError(a.checkConsistencyBeforeFinalization())
 
 	a.finalize()
-	a.vid.SetTxStatus(vertex.Good)
+	a.vid.SetTxStatusGood()
 
 	// persist transaction bytes, if needed
 	if a.metadata == nil || a.metadata.SourceTypeNonPersistent != txmetadata.SourceTypeTxStore {
 		a.vid.Unwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
-			if !v.FlagsUp(vertex.FlagTxBytesPersisted) {
+			flags := vid.FlagsNoLock()
+			if !flags.FlagsUp(vertex.FlagTxBytesPersisted) {
 				c := a.coverage.LatestDelta()
 				persistentMetadata := txmetadata.TransactionMetadata{
 					StateRoot:           a.finals.root,
 					LedgerCoverageDelta: &c,
 				}
 				a.AsyncPersistTxBytesWithMetadata(v.Tx.Bytes(), &persistentMetadata)
-				v.SetFlagUp(vertex.FlagTxBytesPersisted)
+				vid.SetFlagsUpNoLock(vertex.FlagTxBytesPersisted)
 			}
 		}})
 	}
-
 	a.PostEventNewGood(vid)
 	return vertex.Good, a.finals, nil
 }
@@ -176,7 +176,7 @@ func (a *milestoneAttacher) solidifyBaseline() vertex.Status {
 		success := false
 		a.vid.Unwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
 			ok = a.solidifyBaselineVertex(v)
-			if ok && v.FlagsUp(vertex.FlagBaselineSolid) {
+			if ok && v.BaselineBranch != nil {
 				a.setBaseline(v.BaselineBranch, a.vid.Timestamp())
 				success = true
 			}
@@ -201,7 +201,7 @@ func (a *milestoneAttacher) solidifyPastCone() vertex.Status {
 			Vertex: func(v *vertex.Vertex) {
 				ok = a.attachVertexUnwrapped(v, a.vid, ledger.NilLogicalTime)
 				if ok {
-					success = v.FlagsUp(vertex.FlagsSequencerVertexCompleted)
+					success = a.flags(a.vid).FlagsUp(FlagDefined) && a.err == nil
 					util.AssertNoError(a.allEndorsementsDefined(v))
 					util.AssertNoError(a.allInputsDefined(v))
 				}

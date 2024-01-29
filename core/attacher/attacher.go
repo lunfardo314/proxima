@@ -235,7 +235,7 @@ func (a *attacher) attachVertexUnwrapped(v *vertex.Vertex, vid *vertex.WrappedTx
 				a.Tracef(TraceTagAttachVertex, "constraint validation failed in %s: '%v'", vid.IDShortString(), err)
 				return false
 			}
-			vid.SetFlagOnNoLock(vertex.FlagConstraintsValid)
+			vid.SetFlagsUpNoLock(vertex.FlagConstraintsValid)
 			a.Tracef(TraceTagAttachVertex, "constraints has been validated OK: %s", v.Tx.IDShortString)
 		}
 
@@ -244,7 +244,7 @@ func (a *attacher) attachVertexUnwrapped(v *vertex.Vertex, vid *vertex.WrappedTx
 			// non-sequencer transaction always have empty persistent metadata
 			// sequencer transaction will be persisted upon finalization of the attacher
 			a.AsyncPersistTxBytesWithMetadata(v.Tx.Bytes(), nil)
-			vid.SetFlagOnNoLock(vertex.FlagTxBytesPersisted)
+			vid.SetFlagsUpNoLock(vertex.FlagTxBytesPersisted)
 			a.Tracef(TraceTagAttachVertex, "tx bytes persisted: %s", v.Tx.IDShortString)
 		}
 	}
@@ -661,4 +661,13 @@ func (a *attacher) allInputsDefined(v *vertex.Vertex) (err error) {
 		return err == nil
 	})
 	return
+}
+
+func (a *attacher) containsUndefined() bool {
+	for _, flags := range a.vertices {
+		if !flags.FlagsUp(FlagDefined) {
+			return true
+		}
+	}
+	return false
 }

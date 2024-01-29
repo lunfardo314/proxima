@@ -8,9 +8,22 @@ import (
 
 type Set[K comparable] map[K]struct{}
 
+func newWithSizeHint[K comparable](numElems int) Set[K] {
+	return make(Set[K], numElems+1)
+}
+
 func New[K comparable](elems ...K) Set[K] {
-	ret := make(Set[K], len(elems)+1)
+	ret := newWithSizeHint[K](len(elems))
 	ret.Insert(elems...)
+	return ret
+}
+
+func NewFromKeys[K comparable, V any](m map[K]V) Set[K] {
+	//return New(maps.Keys(m)...)
+	ret := newWithSizeHint[K](len(m))
+	for k := range m {
+		ret.Insert(k)
+	}
 	return ret
 }
 

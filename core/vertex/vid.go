@@ -90,8 +90,19 @@ func (vid *WrappedTx) FlagsNoLock() Flags {
 	return vid.flags
 }
 
-func (vid *WrappedTx) SetFlagOnNoLock(f Flags) {
+func (vid *WrappedTx) SetFlagsUpNoLock(f Flags) {
 	vid.flags = vid.flags | f
+}
+
+func (vid *WrappedTx) FlagsUp(f Flags) bool {
+	vid.mutex.RLock()
+	defer vid.mutex.RUnlock()
+
+	return vid.flags&f == f
+}
+
+func (vid *WrappedTx) FlagsUpNoLock(f Flags) bool {
+	return vid.flags&f == f
 }
 
 func (vid *WrappedTx) ConvertVirtualTxToVertexNoLock(v *Vertex) {

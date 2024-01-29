@@ -73,7 +73,7 @@ func (w *Workflow) PullSequencerTips(seqID ledger.ChainID, loadOwnMilestones boo
 	}
 
 	// scan all vertices and post new tx event
-	w.ForEachVertex(func(vid *vertex.WrappedTx) bool {
+	w.ForEachVertexReadLocked(func(vid *vertex.WrappedTx) bool {
 		vid.Unwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
 			w.PostEventNewTransaction(vid)
 		}})

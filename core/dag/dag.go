@@ -183,8 +183,8 @@ func (d *DAG) HasOutputInAllBranches(e ledger.Slot, oid *ledger.OutputID) bool {
 	return true
 }
 
-// ForEachVertex Traversing all vertices. Read-locked
-func (d *DAG) ForEachVertex(fun func(vid *vertex.WrappedTx) bool) {
+// ForEachVertexReadLocked Traversing all vertices. Beware: read-locked!
+func (d *DAG) ForEachVertexReadLocked(fun func(vid *vertex.WrappedTx) bool) {
 	d.mutex.RLock()
 	defer d.mutex.RUnlock()
 
@@ -195,7 +195,7 @@ func (d *DAG) ForEachVertex(fun func(vid *vertex.WrappedTx) bool) {
 	}
 }
 
-func (s *DAG) ParseMilestoneData(msVID *vertex.WrappedTx) (ret *txbuilder.MilestoneData) {
+func (d *DAG) ParseMilestoneData(msVID *vertex.WrappedTx) (ret *txbuilder.MilestoneData) {
 	msVID.Unwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
 		ret = txbuilder.ParseMilestoneData(v.Tx.SequencerOutput().Output)
 	}})

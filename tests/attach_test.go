@@ -575,12 +575,9 @@ func TestConflictsNAttachersSeqStartTxFee(t *testing.T) {
 		require.EqualValues(t, vertex.Good, vid.GetTxStatus())
 	}
 
-	testData.wrk.ForEachVertex(func(vid *vertex.WrappedTx) bool {
-		vid.RUnwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
-			require.True(t, !v.Tx.IsSequencerMilestone() || v.FlagsUp(vertex.FlagsSequencerVertexCompleted))
-		}})
-		return true
-	})
+	for _, vid := range testData.wrk.Vertices() {
+		require.True(t, !vid.IsSequencerMilestone() || vid.FlagsUp(attacher.FlagKnown|attacher.FlagDefined|attacher.FlagEndorsementsSolid|attacher.FlagInputsSolid))
+	}
 
 	//testData.wrk.SaveGraph("utangle")
 }

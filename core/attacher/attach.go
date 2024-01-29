@@ -54,7 +54,7 @@ func AttachTxID(txid ledger.TransactionID, env Environment, opts ...Option) (vid
 		if bd, branchAvailable := multistate.FetchBranchData(env.StateStore(), txid); branchAvailable {
 			// corresponding state has been found, it is solid -> put virtual branch tx with the state reader
 			vid = vertex.NewVirtualBranchTx(&bd).WrapWithID(txid)
-			vid.SetTxStatus(vertex.Good)
+			vid.SetTxStatusGood()
 			vid.SetLedgerCoverage(bd.LedgerCoverage)
 			env.AddVertexNoLock(vid)
 			env.AddBranchNoLock(vid) // <<<< will be reading branch data twice. Not big problem
@@ -116,7 +116,7 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Opt
 
 			if options.metadata != nil && options.metadata.SourceTypeNonPersistent == txmetadata.SourceTypeTxStore {
 				// prevent from persisting twice
-				fullVertex.SetFlagUp(vertex.FlagTxBytesPersisted)
+				vid.SetFlagsUpNoLock(vertex.FlagTxBytesPersisted)
 			}
 
 			env.Tracef(TraceTagAttach, "post new tx event %s", tx.IDShortString)
@@ -151,8 +151,15 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Opt
 
 			runFun := func() {
 				status, stats, err := runMilestoneAttacher(vid, options.metadata, env, ctx)
-				vid.SetTxStatus(status)
-				vid.SetReason(err)
+				switch status {
+				case vertex.Good:
+					vid.SetTxStatusGood()
+				case vertex.Bad:
+					vid.SetTxStatusBad(err)
+				default:
+					env.Log().Fatalf("AttachTransaction: Internal error: bad status")
+				}
+
 				msData := env.ParseMilestoneData(vid)
 				env.Log().Info(logFinalStatusString(vid, stats, msData))
 				env.PokeAllWith(vid)

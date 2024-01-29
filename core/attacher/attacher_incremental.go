@@ -113,8 +113,7 @@ func (a *IncrementalAttacher) InsertTagAlongInput(wOut vertex.WrappedOutput, vis
 	// TODO a better way than cloning potentially big maps with each new input?
 	util.AssertNoError(a.err)
 
-	saveUndefinedPastVertices := a.attacher.undefinedPastVertices.Clone()
-	saveValidPastVertices := a.attacher.vertices.Clone()
+	saveVertices := maps.Clone(a.attacher.vertices)
 	saveRooted := maps.Clone(a.attacher.rooted)
 	for vid, outputIdxSet := range saveRooted {
 		saveRooted[vid] = outputIdxSet.Clone()
@@ -124,8 +123,7 @@ func (a *IncrementalAttacher) InsertTagAlongInput(wOut vertex.WrappedOutput, vis
 	if !a.attachOutput(wOut, ledger.NilLogicalTime) || !a.Completed() {
 		// it is either conflicting, or not solid yet
 		// in either case rollback
-		a.attacher.undefinedPastVertices = saveUndefinedPastVertices
-		a.attacher.vertices = saveValidPastVertices
+		a.attacher.vertices = saveVertices
 		a.attacher.rooted = saveRooted
 		a.coverage = saveCoverageDelta
 		retReason := a.GetReason()
@@ -203,7 +201,8 @@ func (a *IncrementalAttacher) NumInputs() int {
 
 // Completed returns true is past cone all solid and consistent (no conflicts)
 func (a *IncrementalAttacher) Completed() (done bool) {
-	if done = len(a.undefinedPastVertices) == 0 && len(a.rooted) > 0; done {
+	done = !a.containsUndefined() && len(a.rooted) > 0
+	if done {
 		util.Assertf(a.coverage.LatestDelta() > 0, "a.coverage.LatestDelta() > 0")
 	}
 	return

@@ -7,6 +7,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/proxima/util/set"
 )
 
 // enforceConsistencyWithTxMetadata :
@@ -77,13 +78,14 @@ func (a *milestoneAttacher) commitBranch() {
 		}
 	}
 	// generate ADD TX and ADD OUTPUT mutations
+	allVerticesSet := set.NewFromKeys(a.vertices)
 	for vid := range a.vertices {
 		if a.isKnownRooted(vid) {
 			continue
 		}
 		muts.InsertAddTxMutation(vid.ID, a.vid.Slot(), byte(vid.NumProducedOutputs()-1))
 		// ADD OUTPUT mutations only for not consumed outputs
-		producedOutputIndices := vid.NotConsumedOutputIndices(a.vertices)
+		producedOutputIndices := vid.NotConsumedOutputIndices(allVerticesSet)
 		for _, idx := range producedOutputIndices {
 			muts.InsertAddOutputMutation(vid.OutputID(idx), vid.MustOutputAt(idx))
 			a.finals.numCreatedOutputs++
@@ -117,8 +119,8 @@ func (a *milestoneAttacher) checkConsistencyBeforeFinalization() error {
 }
 
 func (a *milestoneAttacher) _checkConsistencyBeforeFinalization() (err error) {
-	if len(a.undefinedPastVertices) != 0 {
-		return fmt.Errorf("undefinedPastVertices should be empty")
+	if a.containsUndefined() {
+		return fmt.Errorf("still contains undefined vertices")
 	}
 	// should be at least one rooted output ( ledger baselineCoverage must be > 0)
 	if len(a.rooted) == 0 {
@@ -156,10 +158,13 @@ func (a *milestoneAttacher) _checkConsistencyBeforeFinalization() (err error) {
 			util.GoTh(sumRooted), util.GoTh(a.coverage.LatestDelta()))
 	}
 
-	for vid := range a.vertices {
+	for vid, flags := range a.vertices {
+		if !flags.FlagsUp(FlagKnown | FlagDefined | FlagEndorsementsSolid | FlagInputsSolid) {
+			return fmt.Errorf("wrong flags %08b in %s", flags, vid.IDShortString())
+		}
 		if vid == a.vid {
 			if vid.GetTxStatus() == vertex.Bad {
-				return fmt.Errorf("vertex %s is bad", vid.IDShortString())
+				return fmt.Errorf("vertex %s is BAD", vid.IDShortString())
 			}
 			continue
 		}
@@ -172,9 +177,6 @@ func (a *milestoneAttacher) _checkConsistencyBeforeFinalization() (err error) {
 		}
 
 		vid.Unwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
-			if !v.FlagsUp(vertex.FlagsSequencerVertexCompleted) {
-				err = fmt.Errorf("%s is not completed yet. Flags: %08b", v.Tx.IDShortString(), v.Flags)
-			}
 			missingInputs, missingEndorsements := v.NumMissingInputs()
 			if missingInputs+missingEndorsements > 0 {
 				err = fmt.Errorf("not all dependencies solid. Missing tagAlongInputs: %d, missing endorsements: %d, missing input tx:\n%s",
