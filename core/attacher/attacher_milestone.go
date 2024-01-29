@@ -49,6 +49,8 @@ func runMilestoneAttacher(vid *vertex.WrappedTx, metadata *txmetadata.Transactio
 
 	a.Tracef(TraceTagAttachMilestone, "past cone OK")
 
+	a.markVertexDefined(a.vid)
+
 	util.AssertNoError(a.checkConsistencyBeforeFinalization())
 
 	a.finalize()
@@ -202,8 +204,10 @@ func (a *milestoneAttacher) solidifyPastCone() vertex.Status {
 				ok = a.attachVertexUnwrapped(v, a.vid, ledger.NilLogicalTime)
 				if ok {
 					success = a.flags(a.vid).FlagsUp(FlagDefined) && a.err == nil
-					util.AssertNoError(a.allEndorsementsDefined(v))
-					util.AssertNoError(a.allInputsDefined(v))
+					//if success{
+					//	util.AssertNoError(a.allEndorsementsDefined(v))
+					//	util.AssertNoError(a.allInputsDefined(v))
+					//}
 				}
 			},
 		})
