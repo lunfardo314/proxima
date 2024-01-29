@@ -92,7 +92,7 @@ func (a *IncrementalAttacher) BaselineBranch() *vertex.WrappedTx {
 
 func (a *IncrementalAttacher) insertEndorsement(endorsement *vertex.WrappedTx) error {
 	if endorsement.IsBadOrDeleted() {
-		return fmt.Errorf("NewIncrementalAttacher: can't endorse %s. Reason: '%s'", endorsement.IDShortString(), endorsement.GetReason())
+		return fmt.Errorf("NewIncrementalAttacher: can't endorse %s. Reason: '%s'", endorsement.IDShortString(), endorsement.GetError())
 	}
 	endBaseline := endorsement.BaselineBranch()
 	if !a.branchesCompatible(a.baseline, endBaseline) {

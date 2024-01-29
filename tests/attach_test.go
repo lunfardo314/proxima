@@ -135,6 +135,10 @@ func TestOrigin(t *testing.T) {
 
 		wrk := workflow.New(stateStore, txBytesStore, peering.NewPeersDummy(), workflow.WithLogLevel(zapcore.DebugLevel))
 		ctx, stop := context.WithCancel(context.Background())
+
+		//wrk.EnableTraceTags(attacher.TraceTagAttach, attacher.TraceTagAttachMilestone, attacher.TraceTagAttachVertex)
+		//wrk.EnableTraceTags(attacher.TraceTagAttachEndorsements, attacher.TraceTagAttachOutput)
+		//wrk.EnableTraceTags(attacher.TraceTagMarkDefUndef)
 		wrk.Start(ctx)
 
 		txBytes, err := txbuilder.MakeDistributionTransaction(stateStore, privKey, distrib)
@@ -319,8 +323,8 @@ func TestConflicts1Attacher(t *testing.T) {
 
 		if nConflicts > 1 {
 			require.True(t, vertex.Bad == vid.GetTxStatus())
-			t.Logf("reason: %v", vid.GetReason())
-			util.RequireErrorWith(t, vid.GetReason(), "conflicts with existing consumers in the baseline state", testData.forkOutput.IDShort())
+			t.Logf("reason: %v", vid.GetError())
+			util.RequireErrorWith(t, vid.GetError(), "conflicts with existing consumers in the baseline state", testData.forkOutput.IDShort())
 		} else {
 			require.True(t, vertex.Good == vid.GetTxStatus())
 		}
@@ -383,8 +387,8 @@ func TestConflicts1Attacher(t *testing.T) {
 		testData.logDAGInfo()
 
 		require.True(t, vertex.Bad == vid.GetTxStatus())
-		t.Logf("reason: %v", vid.GetReason())
-		util.RequireErrorWith(t, vid.GetReason(), "conflicts with existing consumers in the baseline state", testData.forkOutput.IDShort())
+		t.Logf("reason: %v", vid.GetError())
+		util.RequireErrorWith(t, vid.GetError(), "conflicts with existing consumers in the baseline state", testData.forkOutput.IDShort())
 	})
 	t.Run("long", func(t *testing.T) {
 		//attacher.SetTraceOn()
@@ -438,8 +442,8 @@ func TestConflicts1Attacher(t *testing.T) {
 		//testData.logDAGInfo()
 
 		require.True(t, vertex.Bad == vid.GetTxStatus())
-		t.Logf("expected reason: %v", vid.GetReason())
-		util.RequireErrorWith(t, vid.GetReason(), "conflicts with existing consumers in the baseline state", testData.forkOutput.IDShort())
+		t.Logf("expected reason: %v", vid.GetError())
+		util.RequireErrorWith(t, vid.GetError(), "conflicts with existing consumers in the baseline state", testData.forkOutput.IDShort())
 	})
 	t.Run("long with sync", func(t *testing.T) {
 		ledger.SetTimeTickDuration(10 * time.Millisecond)
@@ -498,8 +502,8 @@ func TestConflicts1Attacher(t *testing.T) {
 		testData.logDAGInfo()
 
 		require.True(t, vertex.Bad == vid.GetTxStatus())
-		t.Logf("expected reason: %v", vid.GetReason())
-		util.RequireErrorWith(t, vid.GetReason(), "conflicts with existing consumers in the baseline state", testData.forkOutput.IDShort())
+		t.Logf("expected reason: %v", vid.GetError())
+		util.RequireErrorWith(t, vid.GetError(), "conflicts with existing consumers in the baseline state", testData.forkOutput.IDShort())
 	})
 }
 
@@ -644,7 +648,7 @@ func TestConflictsNAttachersOneFork(t *testing.T) {
 	testData.logDAGInfo()
 
 	require.EqualValues(t, vertex.Bad.String(), vidSeq.GetTxStatus().String())
-	util.RequireErrorWith(t, vidSeq.GetReason(), "conflicts with existing consumers in the baseline state", "(double spend)", testData.forkOutput.IDShort())
+	util.RequireErrorWith(t, vidSeq.GetError(), "conflicts with existing consumers in the baseline state", "(double spend)", testData.forkOutput.IDShort())
 	testData.wrk.SaveGraph("utangle")
 }
 
@@ -801,8 +805,8 @@ func TestConflictsNAttachersOneForkBranchesConflict(t *testing.T) {
 	testData.wrk.SaveGraph("utangle")
 
 	require.EqualValues(t, vid.GetTxStatus(), vertex.Bad)
-	t.Logf("expected error: %v", vid.GetReason())
-	util.RequireErrorWith(t, vid.GetReason(), "is incompatible with the baseline branch", tx1.IDShortString())
+	t.Logf("expected error: %v", vid.GetError())
+	util.RequireErrorWith(t, vid.GetError(), "is incompatible with the baseline branch", tx1.IDShortString())
 }
 
 // all FAILS

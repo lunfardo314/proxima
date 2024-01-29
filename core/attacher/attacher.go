@@ -58,8 +58,8 @@ func (a *attacher) setFlagsUp(vid *vertex.WrappedTx, f Flags) {
 }
 
 func (a *attacher) markVertexDefined(vid *vertex.WrappedTx) {
-	util.Assertf(a.isKnownUndefined(vid), "a.isKnownUndefined(vid)")
-	a.vertices[vid] = a.flags(vid) | FlagDefined
+	//util.Assertf(a.isKnownUndefined(vid), "a.isKnownUndefined(vid)")
+	a.vertices[vid] = a.flags(vid) | FlagKnown | FlagDefined
 
 	a.Tracef(TraceTagMarkDefUndef, "markVertexDefined in %s: %s is DEFINED", a.name, vid.IDShortString)
 }
@@ -133,7 +133,7 @@ func (a *attacher) solidifyStemOfTheVertex(v *vertex.Vertex) (ok bool) {
 		v.BaselineBranch = v.Inputs[stemInputIdx]
 		return true
 	case vertex.Bad:
-		a.setError(v.Inputs[stemInputIdx].GetReason())
+		a.setError(v.Inputs[stemInputIdx].GetError())
 		return false
 	case vertex.Undefined:
 		a.pokeMe(v.Inputs[stemInputIdx])
@@ -168,7 +168,7 @@ func (a *attacher) solidifySequencerBaseline(v *vertex.Vertex) (ok bool) {
 		a.pokeMe(inputTx)
 		return true
 	case vertex.Bad:
-		a.setError(inputTx.GetReason())
+		a.setError(inputTx.GetError())
 		return false
 	default:
 		panic("wrong vertex state")
@@ -227,7 +227,7 @@ func (a *attacher) attachVertexUnwrapped(v *vertex.Vertex, vid *vertex.WrappedTx
 		// TODO nice-to-have optimization: constraints can be validated even before the vertex becomes good (solidified).
 		//  It is enough to have all tagAlongInputs available, i.e. before full solidification of the past cone
 
-		glbFlags := vid.Flags()
+		glbFlags := vid.FlagsNoLock()
 		if !glbFlags.FlagsUp(vertex.FlagConstraintsValid) {
 			if err := v.ValidateConstraints(); err != nil {
 				a.setError(err)
@@ -302,7 +302,7 @@ func (a *attacher) attachEndorsements(v *vertex.Vertex, vid *vertex.WrappedTx, p
 		switch vidEndorsed.GetTxStatus() {
 		case vertex.Bad:
 			util.Assertf(!a.isKnownDefined(vidEndorsed), "attachEndorsements: !a.isKnownDefined(vidEndorsed)")
-			a.setError(vidEndorsed.GetReason())
+			a.setError(vidEndorsed.GetError())
 			a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s): %s is BAD", a.name, vidEndorsed.IDShortString)
 			return false
 		case vertex.Good:
@@ -327,7 +327,7 @@ func (a *attacher) attachEndorsements(v *vertex.Vertex, vid *vertex.WrappedTx, p
 		a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s): non-branch after unwrap %s. ok = %v", a.name, vidEndorsed.String, ok)
 		if !ok {
 			a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s): %s attachVertex not ok", a.name, vidEndorsed.IDShortString)
-			a.setError(vidEndorsed.GetReason())
+			a.setError(vidEndorsed.GetError())
 			return false
 		}
 		util.AssertNoError(a.err)
@@ -415,7 +415,7 @@ func (a *attacher) attachInput(v *vertex.Vertex, inputIdx byte, vid *vertex.Wrap
 	}
 	success = a.isKnownDefined(v.Inputs[inputIdx]) || a.isRootedOutput(wOut)
 	if success {
-		a.Tracef(TraceTagAttachVertex, "attacher %s: input #%d (%s) solidified", a.name, inputIdx, wOut.IDShortString)
+		a.Tracef(TraceTagAttachVertex, "attacher %s: input #%d (%s) has been solidified", a.name, inputIdx, wOut.IDShortString)
 	}
 	return true, success
 }
@@ -545,7 +545,7 @@ func (a *attacher) attachInputID(consumerVertex *vertex.Vertex, consumerTx *vert
 	util.Assertf(vidInputTx != nil, "vidInputTx != nil")
 
 	if vidInputTx.GetTxStatus() == vertex.Bad {
-		a.setError(vidInputTx.GetReason())
+		a.setError(vidInputTx.GetError())
 		return false
 	}
 
@@ -656,7 +656,8 @@ func (a *attacher) allEndorsementsDefined(v *vertex.Vertex) (err error) {
 func (a *attacher) allInputsDefined(v *vertex.Vertex) (err error) {
 	v.ForEachInputDependency(func(i byte, vidInput *vertex.WrappedTx) bool {
 		if !a.isKnownDefined(vidInput) {
-			err = fmt.Errorf("attacher %s: input must be defined %s", a.name, vidInput.String())
+			err = fmt.Errorf("attacher %s: input #%d must be 'defined' in the tx:\n   %s\nvertices:\n%s",
+				a.name, i, vidInput.String(), a.linesVertices("   "))
 		}
 		return err == nil
 	})

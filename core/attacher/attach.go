@@ -151,13 +151,8 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Opt
 
 			runFun := func() {
 				status, stats, err := runMilestoneAttacher(vid, options.metadata, env, ctx)
-				switch status {
-				case vertex.Good:
-					vid.SetTxStatusGood()
-				case vertex.Bad:
+				if status == vertex.Bad {
 					vid.SetTxStatusBad(err)
-				default:
-					env.Log().Fatalf("AttachTransaction: Internal error: bad status")
 				}
 
 				msData := env.ParseMilestoneData(vid)

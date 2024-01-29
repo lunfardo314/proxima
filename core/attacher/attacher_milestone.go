@@ -32,7 +32,7 @@ func runMilestoneAttacher(vid *vertex.WrappedTx, metadata *txmetadata.Transactio
 	// first solidify baseline state
 	status := a.solidifyBaseline()
 	if status == vertex.Bad {
-		a.Tracef(TraceTagAttachMilestone, "baseline solidification failed. Reason: %v", a.vid.GetReason)
+		a.Tracef(TraceTagAttachMilestone, "baseline solidification failed. Reason: %v", a.vid.GetError)
 		return vertex.Bad, nil, a.err
 	}
 
@@ -136,7 +136,7 @@ func logFinalStatusString(vid *vertex.WrappedTx, finals *attachFinals, msData *t
 		msg = fmt.Sprintf("-- ATTACH SEQ TX%s %s%s", msDataStr, vid.IDShortString(), nums)
 	}
 	if vid.GetTxStatus() == vertex.Bad {
-		msg += fmt.Sprintf("BAD: err = '%v'", vid.GetReason())
+		msg += fmt.Sprintf("BAD: err = '%v'", vid.GetError())
 	} else {
 		bl := "<nil>"
 		if finals.baseline != nil {

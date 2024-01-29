@@ -79,13 +79,6 @@ func (vid *WrappedTx) _put(g _genericWrapper) {
 	vid._genericWrapper = g
 }
 
-func (vid *WrappedTx) Flags() Flags {
-	vid.mutex.RLock()
-	defer vid.mutex.RUnlock()
-
-	return vid.flags
-}
-
 func (vid *WrappedTx) FlagsNoLock() Flags {
 	return vid.flags
 }
@@ -112,6 +105,13 @@ func (vid *WrappedTx) ConvertVirtualTxToVertexNoLock(v *Vertex) {
 	vid._put(_vertex{Vertex: v})
 }
 
+func (vid *WrappedTx) GetTxStatus() Status {
+	vid.mutex.RLock()
+	defer vid.mutex.RUnlock()
+
+	return vid.GetTxStatusNoLock()
+}
+
 func (vid *WrappedTx) GetTxStatusNoLock() Status {
 	if !vid.flags.FlagsUp(FlagDefined) {
 		util.Assertf(vid.err == nil, "vid.err == nil")
@@ -126,13 +126,6 @@ func (vid *WrappedTx) GetTxStatusNoLock() Status {
 // MutexWriteLocked_ for deadlock debugging
 func (vid *WrappedTx) MutexWriteLocked_() bool {
 	return testutil.RWMutexWriteLocked(&vid.mutex)
-}
-
-func (vid *WrappedTx) GetTxStatus() Status {
-	vid.mutex.RLock()
-	defer vid.mutex.RUnlock()
-
-	return vid.GetTxStatusNoLock()
 }
 
 func (vid *WrappedTx) SetTxStatusGood() {
@@ -156,7 +149,7 @@ func (vid *WrappedTx) SetTxStatusBadNoLock(reason error) {
 	vid.err = reason
 }
 
-func (vid *WrappedTx) GetReason() error {
+func (vid *WrappedTx) GetError() error {
 	vid.mutex.RLock()
 	defer vid.mutex.RUnlock()
 
@@ -165,13 +158,6 @@ func (vid *WrappedTx) GetReason() error {
 
 func (vid *WrappedTx) GetErrorNoLock() error {
 	return vid.err
-}
-
-func (vid *WrappedTx) SetReason(err error) {
-	vid.mutex.Lock()
-	defer vid.mutex.Unlock()
-
-	vid.err = err
 }
 
 // IsBadOrDeleted non-deterministic
@@ -187,7 +173,7 @@ func (vid *WrappedTx) IsBadOrDeleted() bool {
 }
 
 func (vid *WrappedTx) StatusString() string {
-	r := vid.GetReason()
+	r := vid.GetError()
 
 	switch s := vid.GetTxStatus(); s {
 	case Good, Undefined:
@@ -667,7 +653,7 @@ func (vid *WrappedTx) NumConsumers() (int, int) {
 
 func (vid *WrappedTx) String() (ret string) {
 	consumed, doubleSpent := vid.NumConsumers()
-	reason := vid.GetReason()
+	reason := vid.GetError()
 	vid.RUnwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
 			t := "vertex (" + vid.GetTxStatusNoLock().String() + ")"

@@ -159,7 +159,7 @@ func (a *milestoneAttacher) _checkConsistencyBeforeFinalization() (err error) {
 	}
 
 	for vid, flags := range a.vertices {
-		if !flags.FlagsUp(FlagKnown | FlagDefined | FlagEndorsementsSolid | FlagInputsSolid) {
+		if !flags.FlagsUp(FlagKnown | FlagDefined) {
 			return fmt.Errorf("wrong flags %08b in %s", flags, vid.IDShortString())
 		}
 		if vid == a.vid {
