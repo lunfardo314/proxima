@@ -187,6 +187,7 @@ func (a *attacher) attachVertexUnwrapped(v *vertex.Vertex, vid *vertex.WrappedTx
 
 	if vid.GetTxStatusNoLock() == vertex.Bad {
 		a.setError(vid.GetErrorNoLock())
+		util.Assertf(a.err != nil, "a.err != nil")
 		return false
 	}
 
@@ -205,6 +206,7 @@ func (a *attacher) attachVertexUnwrapped(v *vertex.Vertex, vid *vertex.WrappedTx
 		// depth-first along endorsements
 		if !a.attachEndorsements(v, vid, parasiticChainHorizon) { // <<< recursive
 			// not ok -> abandon attacher
+			util.Assertf(a.err != nil, "a.err != nil")
 			return false
 		}
 	}
@@ -220,6 +222,7 @@ func (a *attacher) attachVertexUnwrapped(v *vertex.Vertex, vid *vertex.WrappedTx
 
 	inputsOk := a.attachInputsOfTheVertex(v, vid, parasiticChainHorizon) // deep recursion
 	if !inputsOk {
+		util.Assertf(a.err != nil, "a.err != nil")
 		return false
 	}
 
@@ -233,6 +236,7 @@ func (a *attacher) attachVertexUnwrapped(v *vertex.Vertex, vid *vertex.WrappedTx
 				a.setError(err)
 				vid.SetTxStatusBadNoLock(err)
 				a.Tracef(TraceTagAttachVertex, "constraint validation failed in %s: '%v'", vid.IDShortString(), err)
+				util.Assertf(a.err != nil, "a.err != nil")
 				return false
 			}
 			vid.SetFlagsUpNoLock(vertex.FlagConstraintsValid)
@@ -327,7 +331,7 @@ func (a *attacher) attachEndorsements(v *vertex.Vertex, vid *vertex.WrappedTx, p
 		a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s): non-branch after unwrap %s. ok = %v", a.name, vidEndorsed.String, ok)
 		if !ok {
 			a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s): %s attachVertex not ok", a.name, vidEndorsed.IDShortString)
-			a.setError(vidEndorsed.GetError())
+			util.Assertf(a.err != nil, "a.err != nil")
 			return false
 		}
 		util.AssertNoError(a.err)
@@ -363,6 +367,7 @@ func (a *attacher) attachInputsOfTheVertex(v *vertex.Vertex, vid *vertex.Wrapped
 	for i := range v.Inputs {
 		ok, success = a.attachInput(v, byte(i), vid, parasiticChainHorizon)
 		if !ok {
+			util.Assertf(a.err != nil, "a.err != nil")
 			return false
 		}
 		if !success {

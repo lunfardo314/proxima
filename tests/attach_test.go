@@ -951,8 +951,8 @@ func TestSeqChains(t *testing.T) {
 		testData.makeSeqChains(howLongSeqChains)
 		//testData.printTxIDs()
 
-		testData.wrk.EnableTraceTags(attacher.TraceTagMarkDefUndef)
-		testData.wrk.EnableTraceTags(attacher.TraceTagAttachEndorsements, attacher.TraceTagAttachVertex)
+		//testData.wrk.EnableTraceTags(attacher.TraceTagMarkDefUndef)
+		//testData.wrk.EnableTraceTags(attacher.TraceTagAttachEndorsements, attacher.TraceTagAttachVertex)
 
 		var wg sync.WaitGroup
 
@@ -980,7 +980,7 @@ func TestSeqChains(t *testing.T) {
 		}
 		testData.wrk.SaveGraph("utangle")
 	})
-	t.Run("with 1 branch pull", func(t *testing.T) {
+	t.Run("FAIL with 1 branch pull", func(t *testing.T) {
 		//attacher.SetTraceOn()
 		const (
 			nConflicts            = 10
@@ -1029,7 +1029,7 @@ func TestSeqChains(t *testing.T) {
 		//testData.wrk.SaveGraph("utangle")
 		dag.SaveGraphPastCone(vidBranch, "utangle")
 	})
-	t.Run("with N branches pull", func(t *testing.T) {
+	t.Run("FAIL with N branches pull", func(t *testing.T) {
 		//attacher.SetTraceOn()
 		const (
 			nConflicts            = 5
@@ -1090,7 +1090,7 @@ func TestSeqChains(t *testing.T) {
 			runtime.NumGoroutine(),
 		)
 	})
-	t.Run("N branches and transfers", func(t *testing.T) {
+	t.Run("FAIL N branches and transfers", func(t *testing.T) {
 		//attacher.SetTraceOn()
 		const (
 			nConflicts            = 3
