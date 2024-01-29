@@ -580,7 +580,19 @@ func TestConflictsNAttachersSeqStartTxFee(t *testing.T) {
 	}
 
 	for _, vid := range testData.wrk.Vertices() {
-		require.True(t, !vid.IsSequencerMilestone() || vid.FlagsUp(attacher.FlagKnown|attacher.FlagDefined|attacher.FlagEndorsementsSolid|attacher.FlagInputsSolid))
+		if !vid.FlagsUp(vertex.FlagConstraintsValid | vertex.FlagTxBytesPersisted) {
+			t.Logf("wrong flags: %s", vid.String())
+		}
+		if vid.IsVirtualTx() {
+			require.True(t, vid.FlagsUp(vertex.FlagDefined))
+		} else {
+			require.True(t, vid.FlagsUp(vertex.FlagConstraintsValid|vertex.FlagTxBytesPersisted))
+		}
+		if vid.IsSequencerMilestone() {
+			require.True(t, vid.GetTxStatus() == vertex.Good)
+		} else {
+			require.True(t, vid.GetTxStatus() == vertex.Undefined)
+		}
 	}
 
 	//testData.wrk.SaveGraph("utangle")

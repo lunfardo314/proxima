@@ -141,7 +141,7 @@ func logFinalStatusString(vid *vertex.WrappedTx, finals *attachFinals, msData *t
 		msg += fmt.Sprintf("BAD: err = '%v'", vid.GetError())
 	} else {
 		bl := "<nil>"
-		if finals.baseline != nil {
+		if finals != nil && finals.baseline != nil {
 			bl = finals.baseline.IDShortString()
 		}
 		if vid.IsBranchTransaction() {

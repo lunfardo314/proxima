@@ -675,12 +675,13 @@ func (vid *WrappedTx) String() (ret string) {
 			v.mutex.RLock()
 			defer v.mutex.RUnlock()
 
-			ret = fmt.Sprintf("%20s %s:: out: %d, consumed: %d, conflicts: %d, err: %v",
+			ret = fmt.Sprintf("%20s %s:: out: %d, consumed: %d, conflicts: %d, flags: %08b, err: %v",
 				t,
 				vid.ID.StringShort(),
 				len(v.outputs),
 				consumed,
 				doubleSpent,
+				vid.flags,
 				reason,
 			)
 		},

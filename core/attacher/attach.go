@@ -153,10 +153,12 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Opt
 				status, stats, err := runMilestoneAttacher(vid, options.metadata, env, ctx)
 				if status == vertex.Bad {
 					vid.SetTxStatusBad(err)
+					env.Log().Warnf("-- ATTACH %s -> BAD(%v)", vid.IDShortString(), err)
+				} else {
+					msData := env.ParseMilestoneData(vid)
+					env.Log().Info(logFinalStatusString(vid, stats, msData))
 				}
 
-				msData := env.ParseMilestoneData(vid)
-				env.Log().Info(logFinalStatusString(vid, stats, msData))
 				env.PokeAllWith(vid)
 
 				// calling callback with timeout in order to detect wrong callbacks immediately
