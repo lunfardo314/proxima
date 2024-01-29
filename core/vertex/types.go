@@ -17,7 +17,6 @@ type (
 		Inputs         []*WrappedTx
 		Endorsements   []*WrappedTx
 		BaselineBranch *WrappedTx
-		Flags          uint8
 	}
 
 	VirtualTransaction struct {
@@ -34,13 +33,12 @@ type (
 		mutex sync.RWMutex // protects _genericWrapper
 
 		_genericWrapper
-		// future cone references. Protected by global utangle_old lock
-		// numConsumers contains number of consumed for outputs
+
 		mutexDescendants sync.RWMutex
 		consumed         map[byte]set.Set[*WrappedTx]
 
-		txStatus Status
-		reason   error
+		flags    Flags
+		err      error
 		coverage *multistate.LedgerCoverage // nil for non-sequencer or if not set yet
 		// notification callback. Must be func(vid *WrappedTx)
 		onPoke atomic.Value
@@ -83,15 +81,13 @@ type (
 	}
 
 	Status byte
+	Flags  uint8
 )
 
 const (
-	FlagBaselineSolid             = 0b00000001
-	FlagEndorsementsSolid         = 0b00000010 // FIXME remove
-	FlagAllInputsSolid            = 0b00000100
-	FlagConstraintsValid          = 0b00001000
-	FlagTxBytesPersisted          = 0b00010000
-	FlagsSequencerVertexCompleted = FlagBaselineSolid | FlagEndorsementsSolid | FlagAllInputsSolid | FlagConstraintsValid
+	FlagDefined          = Flags(0b00000001)
+	FlagConstraintsValid = Flags(0b00000010)
+	FlagTxBytesPersisted = Flags(0b00000100)
 )
 
 const (
@@ -110,4 +106,12 @@ func (s Status) String() string {
 		return "BAD"
 	}
 	panic("wrong vertex status")
+}
+
+func (f *Flags) FlagsUp(fl Flags) bool {
+	return *f&fl == fl
+}
+
+func (f *Flags) SetFlagsUp(fl Flags) {
+	*f = *f | fl
 }

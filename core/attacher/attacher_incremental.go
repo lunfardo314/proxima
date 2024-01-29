@@ -63,7 +63,7 @@ func NewIncrementalAttacher(name string, env Environment, targetTs ledger.Logica
 
 	// attach sequencer predecessor
 	if !ret.attachOutput(ret.extend, ledger.NilLogicalTime) {
-		return nil, ret.reason
+		return nil, ret.err
 	}
 	// attach endorsements
 	for _, endorsement := range endorse {
@@ -80,14 +80,14 @@ func NewIncrementalAttacher(name string, env Environment, targetTs ledger.Logica
 			return nil, fmt.Errorf("NewIncrementalAttacher: stem output is not available for baseline %s", baseline.IDShortString())
 		}
 		if !ret.attachOutput(ret.stemOutput, ledger.NilLogicalTime) {
-			return nil, ret.reason
+			return nil, ret.err
 		}
 	}
 	return ret, nil
 }
 
 func (a *IncrementalAttacher) BaselineBranch() *vertex.WrappedTx {
-	return a.baselineBranch
+	return a.baseline
 }
 
 func (a *IncrementalAttacher) insertEndorsement(endorsement *vertex.WrappedTx) error {
@@ -95,15 +95,15 @@ func (a *IncrementalAttacher) insertEndorsement(endorsement *vertex.WrappedTx) e
 		return fmt.Errorf("NewIncrementalAttacher: can't endorse %s. Reason: '%s'", endorsement.IDShortString(), endorsement.GetReason())
 	}
 	endBaseline := endorsement.BaselineBranch()
-	if !a.branchesCompatible(a.baselineBranch, endBaseline) {
+	if !a.branchesCompatible(a.baseline, endBaseline) {
 		return fmt.Errorf("baseline branch %s of the endorsement branch %s is incompatible with the baseline %s",
-			endBaseline.IDShortString(), endorsement.IDShortString(), a.baselineBranch.IDShortString())
+			endBaseline.IDShortString(), endorsement.IDShortString(), a.baseline.IDShortString())
 	}
 
 	endorsement.Unwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
 		a.attachVertexUnwrapped(v, endorsement, ledger.NilLogicalTime)
 	}})
-	return a.reason
+	return a.err
 }
 
 // InsertTagAlongInput inserts tag along input.
@@ -111,10 +111,10 @@ func (a *IncrementalAttacher) insertEndorsement(endorsement *vertex.WrappedTx) e
 func (a *IncrementalAttacher) InsertTagAlongInput(wOut vertex.WrappedOutput, visited set.Set[*vertex.WrappedTx]) (bool, error) {
 	// save state for possible rollback because in case of fail the side effect makes attacher inconsistent
 	// TODO a better way than cloning potentially big maps with each new input?
-	util.AssertNoError(a.reason)
+	util.AssertNoError(a.err)
 
 	saveUndefinedPastVertices := a.attacher.undefinedPastVertices.Clone()
-	saveValidPastVertices := a.attacher.definedPastVertices.Clone()
+	saveValidPastVertices := a.attacher.vertices.Clone()
 	saveRooted := maps.Clone(a.attacher.rooted)
 	for vid, outputIdxSet := range saveRooted {
 		saveRooted[vid] = outputIdxSet.Clone()
@@ -125,11 +125,11 @@ func (a *IncrementalAttacher) InsertTagAlongInput(wOut vertex.WrappedOutput, vis
 		// it is either conflicting, or not solid yet
 		// in either case rollback
 		a.attacher.undefinedPastVertices = saveUndefinedPastVertices
-		a.attacher.definedPastVertices = saveValidPastVertices
+		a.attacher.vertices = saveValidPastVertices
 		a.attacher.rooted = saveRooted
 		a.coverage = saveCoverageDelta
 		retReason := a.GetReason()
-		a.setReason(nil)
+		a.setError(nil)
 		return false, retReason
 	}
 	a.tagAlongInputs = append(a.tagAlongInputs, wOut)

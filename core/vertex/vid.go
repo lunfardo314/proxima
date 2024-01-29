@@ -79,6 +79,21 @@ func (vid *WrappedTx) _put(g _genericWrapper) {
 	vid._genericWrapper = g
 }
 
+func (vid *WrappedTx) Flags() Flags {
+	vid.mutex.RLock()
+	defer vid.mutex.RUnlock()
+
+	return vid.flags
+}
+
+func (vid *WrappedTx) FlagsNoLock() Flags {
+	return vid.flags
+}
+
+func (vid *WrappedTx) SetFlagOnNoLock(f Flags) {
+	vid.flags = vid.flags | f
+}
+
 func (vid *WrappedTx) ConvertVirtualTxToVertexNoLock(v *Vertex) {
 	util.Assertf(vid.ID == *v.Tx.ID(), "ConvertVirtualTxToVertexNoLock: txid-s do not match in: %s", vid.ID.StringShort)
 	_, isVirtualTx := vid._genericWrapper.(_virtualTx)
@@ -87,7 +102,14 @@ func (vid *WrappedTx) ConvertVirtualTxToVertexNoLock(v *Vertex) {
 }
 
 func (vid *WrappedTx) GetTxStatusNoLock() Status {
-	return vid.txStatus
+	if !vid.flags.FlagsUp(FlagDefined) {
+		util.Assertf(vid.err == nil, "vid.err == nil")
+		return Undefined
+	}
+	if vid.err != nil {
+		return Bad
+	}
+	return Good
 }
 
 // MutexWriteLocked_ for deadlock debugging
@@ -99,45 +121,46 @@ func (vid *WrappedTx) GetTxStatus() Status {
 	vid.mutex.RLock()
 	defer vid.mutex.RUnlock()
 
-	return vid.txStatus
+	return vid.GetTxStatusNoLock()
 }
 
-func (vid *WrappedTx) SetTxStatus(s Status) {
+func (vid *WrappedTx) SetTxStatusGood() {
 	vid.mutex.Lock()
 	defer vid.mutex.Unlock()
 
-	vid.txStatus = s
-}
-
-func (vid *WrappedTx) GetReason() error {
-	vid.mutex.RLock()
-	defer vid.mutex.RUnlock()
-
-	return vid.reason
-}
-
-func (vid *WrappedTx) GetReasonNoLock() error {
-	return vid.reason
-}
-
-func (vid *WrappedTx) SetReason(err error) {
-	vid.mutex.Lock()
-	defer vid.mutex.Unlock()
-
-	vid.reason = err
+	util.Assertf(vid.GetTxStatusNoLock() == Undefined, "vid.GetTxStatusNoLock() == Undefined")
+	vid.flags.SetFlagsUp(FlagDefined)
 }
 
 func (vid *WrappedTx) SetTxStatusBad(reason error) {
 	vid.mutex.Lock()
 	defer vid.mutex.Unlock()
 
-	vid.txStatus = Bad
-	vid.reason = reason
+	vid.SetTxStatusBadNoLock(reason)
 }
 
 func (vid *WrappedTx) SetTxStatusBadNoLock(reason error) {
-	vid.txStatus = Bad
-	vid.reason = reason
+	util.Assertf(vid.GetTxStatusNoLock() == Undefined, "vid.GetTxStatusNoLock() == Undefined")
+	vid.flags.SetFlagsUp(FlagDefined)
+	vid.err = reason
+}
+
+func (vid *WrappedTx) GetReason() error {
+	vid.mutex.RLock()
+	defer vid.mutex.RUnlock()
+
+	return vid.err
+}
+
+func (vid *WrappedTx) GetErrorNoLock() error {
+	return vid.err
+}
+
+func (vid *WrappedTx) SetReason(err error) {
+	vid.mutex.Lock()
+	defer vid.mutex.Unlock()
+
+	vid.err = err
 }
 
 // IsBadOrDeleted non-deterministic
@@ -145,7 +168,7 @@ func (vid *WrappedTx) IsBadOrDeleted() bool {
 	vid.mutex.RLock()
 	defer vid.mutex.RUnlock()
 
-	if vid.txStatus == Bad {
+	if vid.GetTxStatusNoLock() == Bad {
 		return true
 	}
 	_, isDeleted := vid._genericWrapper.(_deletedTx)
@@ -189,17 +212,17 @@ func (vid *WrappedTx) ShortString() string {
 	vid.Unwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
 			mode = "vertex"
-			flagsStr = fmt.Sprintf(", %08b", v.Flags)
-			status = vid.txStatus.String()
-			if vid.reason != nil {
-				reason = fmt.Sprintf(" reason: '%v'", vid.reason)
+			flagsStr = fmt.Sprintf(", %08b", vid.flags)
+			status = vid.GetTxStatusNoLock().String()
+			if vid.err != nil {
+				reason = fmt.Sprintf(" err: '%v'", vid.err)
 			}
 		},
 		VirtualTx: func(v *VirtualTransaction) {
 			mode = "virtualTx"
-			status = vid.txStatus.String()
-			if vid.reason != nil {
-				reason = fmt.Sprintf(" reason: '%v'", vid.reason)
+			status = vid.GetTxStatusNoLock().String()
+			if vid.err != nil {
+				reason = fmt.Sprintf(" err: '%v'", vid.err)
 			}
 		},
 		Deleted: vid.PanicAccessDeleted,
@@ -636,26 +659,26 @@ func (vid *WrappedTx) String() (ret string) {
 	reason := vid.GetReason()
 	vid.RUnwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
-			t := "vertex (" + vid.txStatus.String() + ")"
-			ret = fmt.Sprintf("%20s %s :: in: %d, out: %d, consumed: %d, conflicts: %d, Flags: %08b, reason: '%v', cov: %s",
+			t := "vertex (" + vid.GetTxStatusNoLock().String() + ")"
+			ret = fmt.Sprintf("%20s %s :: in: %d, out: %d, consumed: %d, conflicts: %d, Flags: %08b, err: '%v', cov: %s",
 				t,
 				vid.ID.StringShort(),
 				v.Tx.NumInputs(),
 				v.Tx.NumProducedOutputs(),
 				consumed,
 				doubleSpent,
-				v.Flags,
+				vid.flags,
 				reason,
 				vid.coverage.String(),
 			)
 		},
 		VirtualTx: func(v *VirtualTransaction) {
-			t := "virtualTx (" + vid.txStatus.String() + ")"
+			t := "virtualTx (" + vid.GetTxStatus().String() + ")"
 
 			v.mutex.RLock()
 			defer v.mutex.RUnlock()
 
-			ret = fmt.Sprintf("%20s %s:: out: %d, consumed: %d, conflicts: %d, reason: %v",
+			ret = fmt.Sprintf("%20s %s:: out: %d, consumed: %d, conflicts: %d, err: %v",
 				t,
 				vid.ID.StringShort(),
 				len(v.outputs),

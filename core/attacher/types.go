@@ -53,15 +53,13 @@ type (
 
 	attacher struct {
 		Environment
-		name                  string
-		reason                error
-		baselineBranch        *vertex.WrappedTx
-		definedPastVertices   set.Set[*vertex.WrappedTx]
-		undefinedPastVertices set.Set[*vertex.WrappedTx]
-		rooted                map[*vertex.WrappedTx]set.Set[byte]
-		pokeMe                func(vid *vertex.WrappedTx)
-		forceTrace1Ahead      bool
-		coverage              multistate.LedgerCoverage
+		name     string
+		err      error
+		baseline *vertex.WrappedTx
+		vertices map[*vertex.WrappedTx]Flags
+		rooted   map[*vertex.WrappedTx]set.Set[byte]
+		pokeMe   func(vid *vertex.WrappedTx)
+		coverage multistate.LedgerCoverage
 	}
 
 	// IncrementalAttacher is used by the sequencer to build a sequencer milestone
@@ -109,4 +107,17 @@ type (
 		numDeletedOutputs int
 		baseline          *vertex.WrappedTx
 	}
+
+	Flags uint8
 )
+
+const (
+	FlagKnown             = 0b00000001
+	FlagDefined           = 0b00000010
+	FlagEndorsementsSolid = 0b00000100
+	FlagInputsSolid       = 0b00001000
+)
+
+func (f Flags) FlagsUp(fl Flags) bool {
+	return f&fl == fl
+}

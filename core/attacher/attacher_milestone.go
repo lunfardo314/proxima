@@ -33,18 +33,18 @@ func runMilestoneAttacher(vid *vertex.WrappedTx, metadata *txmetadata.Transactio
 	status := a.solidifyBaseline()
 	if status == vertex.Bad {
 		a.Tracef(TraceTagAttachMilestone, "baseline solidification failed. Reason: %v", a.vid.GetReason)
-		return vertex.Bad, nil, a.reason
+		return vertex.Bad, nil, a.err
 	}
 
-	util.Assertf(a.baselineBranch != nil, "a.baselineBranch != nil")
+	util.Assertf(a.baseline != nil, "a.baseline != nil")
 
 	// then continue with the rest
-	a.Tracef(TraceTagAttachMilestone, "baseline is OK <- %s", a.baselineBranch.IDShortString)
+	a.Tracef(TraceTagAttachMilestone, "baseline is OK <- %s", a.baseline.IDShortString)
 
 	status = a.solidifyPastCone()
 	if status != vertex.Good {
-		a.Tracef(TraceTagAttachMilestone, "past cone solidification failed. Reason: %v", a.reason)
-		return vertex.Bad, nil, a.reason
+		a.Tracef(TraceTagAttachMilestone, "past cone solidification failed. Reason: %v", a.err)
+		return vertex.Bad, nil, a.err
 	}
 
 	a.Tracef(TraceTagAttachMilestone, "past cone OK")
@@ -136,7 +136,7 @@ func logFinalStatusString(vid *vertex.WrappedTx, finals *attachFinals, msData *t
 		msg = fmt.Sprintf("-- ATTACH SEQ TX%s %s%s", msDataStr, vid.IDShortString(), nums)
 	}
 	if vid.GetTxStatus() == vertex.Bad {
-		msg += fmt.Sprintf("BAD: reason = '%v'", vid.GetReason())
+		msg += fmt.Sprintf("BAD: err = '%v'", vid.GetReason())
 	} else {
 		bl := "<nil>"
 		if finals.baseline != nil {

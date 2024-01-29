@@ -18,10 +18,6 @@ func New(tx *transaction.Transaction) *Vertex {
 		Inputs:       make([]*WrappedTx, tx.NumInputs()),
 		Endorsements: make([]*WrappedTx, tx.NumEndorsements()),
 	}
-	if !tx.IsSequencerMilestone() {
-		// for non-sequencer transaction baseline, endorsements are no concern
-		ret.Flags = FlagBaselineSolid | FlagEndorsementsSolid
-	}
 	return ret
 }
 
@@ -47,9 +43,6 @@ func (v *Vertex) GetConsumedOutput(i byte) (*ledger.Output, error) {
 }
 
 func (v *Vertex) ValidateConstraints(traceOption ...int) error {
-	if v.FlagsUp(FlagConstraintsValid) {
-		return nil
-	}
 	traceOpt := transaction.TraceOptionFailedConstraints
 	if len(traceOption) > 0 {
 		traceOpt = traceOption[0]
@@ -62,7 +55,6 @@ func (v *Vertex) ValidateConstraints(traceOption ...int) error {
 	if err != nil {
 		return fmt.Errorf("ValidateConstraints: %s: %w", v.Tx.IDShortString(), err)
 	}
-	v.SetFlagUp(FlagConstraintsValid)
 	return nil
 }
 
@@ -252,12 +244,4 @@ func (v *Vertex) PendingDependenciesLines(prefix ...string) *lines.Lines {
 		return true
 	})
 	return ret
-}
-
-func (v *Vertex) FlagsUp(mask uint8) bool {
-	return v.Flags&mask == mask
-}
-
-func (v *Vertex) SetFlagUp(mask uint8) {
-	v.Flags |= mask
 }

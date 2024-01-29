@@ -34,16 +34,16 @@ func (a *milestoneAttacher) finalize() {
 		}
 	}
 
-	a.finals.baseline = a.baselineBranch
-	a.finals.numTransactions = len(a.definedPastVertices)
+	a.finals.baseline = a.baseline
+	a.finals.numTransactions = len(a.vertices)
 
-	//tmp := a.coverage.MakeNext(int(a.vid.Slot() - a.baselineBranch.Slot()))
+	//tmp := a.coverage.MakeNext(int(a.vid.Slot() - a.baseline.Slot()))
 	//if tmp.Sum() == 10_000_000 {
 	//	fmt.Printf(">>>>>>>>>>>>>>>>>>>>>> 10_000_000 %s\n", a.vid.IDShortString())
 	//}
 	//fmt.Printf("%s\n", a.dumpLines("   ").String())
 
-	a.finals.coverage = a.coverage.MakeNext(int(a.vid.Slot() - a.baselineBranch.Slot()))
+	a.finals.coverage = a.coverage.MakeNext(int(a.vid.Slot() - a.baseline.Slot()))
 	util.Assertf(!a.vid.IsBranchTransaction() || a.finals.coverage.LatestDelta() == 0, "final baselineCoverage of the branch must have latest delta == 0")
 
 	a.Tracef(TraceTagAttachMilestone, "set ledger baselineCoverage in %s to %s", a.vid.IDShortString(), a.finals.coverage.String())
@@ -77,13 +77,13 @@ func (a *milestoneAttacher) commitBranch() {
 		}
 	}
 	// generate ADD TX and ADD OUTPUT mutations
-	for vid := range a.definedPastVertices {
+	for vid := range a.vertices {
 		if a.isKnownRooted(vid) {
 			continue
 		}
 		muts.InsertAddTxMutation(vid.ID, a.vid.Slot(), byte(vid.NumProducedOutputs()-1))
 		// ADD OUTPUT mutations only for not consumed outputs
-		producedOutputIndices := vid.NotConsumedOutputIndices(a.definedPastVertices)
+		producedOutputIndices := vid.NotConsumedOutputIndices(a.vertices)
 		for _, idx := range producedOutputIndices {
 			muts.InsertAddOutputMutation(vid.OutputID(idx), vid.MustOutputAt(idx))
 			a.finals.numCreatedOutputs++
@@ -129,8 +129,8 @@ func (a *milestoneAttacher) _checkConsistencyBeforeFinalization() (err error) {
 			return fmt.Errorf("all rooted must be defined. This is not: %s", vid.IDShortString())
 		}
 	}
-	if len(a.definedPastVertices) == 0 {
-		return fmt.Errorf("definedPastVertices is empty")
+	if len(a.vertices) == 0 {
+		return fmt.Errorf("vertices is empty")
 	}
 	sumRooted := uint64(0)
 	for vid, consumed := range a.rooted {
@@ -156,7 +156,7 @@ func (a *milestoneAttacher) _checkConsistencyBeforeFinalization() (err error) {
 			util.GoTh(sumRooted), util.GoTh(a.coverage.LatestDelta()))
 	}
 
-	for vid := range a.definedPastVertices {
+	for vid := range a.vertices {
 		if vid == a.vid {
 			if vid.GetTxStatus() == vertex.Bad {
 				return fmt.Errorf("vertex %s is bad", vid.IDShortString())
