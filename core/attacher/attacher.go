@@ -175,6 +175,50 @@ func (a *attacher) solidifySequencerBaseline(v *vertex.Vertex) (ok bool) {
 	}
 }
 
+func (a *attacher) attachVertex(vid *vertex.WrappedTx, parasiticChainHorizon ledger.LogicalTime) (ok, defined bool) {
+	if a.isKnownDefined(vid) {
+		return true, true
+	}
+	a.markVertexUndefined(vid)
+
+	vid.Unwrap(vertex.UnwrapOptions{
+		Vertex: func(v *vertex.Vertex) {
+			switch vid.GetTxStatusNoLock() {
+			case vertex.Undefined:
+				if vid.IsSequencerMilestone() {
+					// don't go deeper for undefined sequencers
+					ok = true
+					return
+				}
+				ok = a.attachVertexUnwrapped(v, vid, parasiticChainHorizon)
+				if ok && vid.FlagsUpNoLock(vertex.FlagConstraintsValid) {
+					a.markVertexDefined(vid)
+					defined = true
+				}
+			case vertex.Good:
+				util.Assertf(vid.IsSequencerMilestone(), "vid.IsSequencerMilestone()")
+				ok = a.attachVertexUnwrapped(v, vid, ledger.NilLogicalTime)
+				if ok && vid.GetTxStatusNoLock() == vertex.Good {
+					a.markVertexDefined(vid)
+					defined = true
+				}
+			case vertex.Bad:
+			default:
+				a.Log().Fatalf("bat tx status")
+			}
+		},
+		VirtualTx: func(v *vertex.VirtualTransaction) {
+			ok = true
+			a.Pull(vid.ID)
+		},
+	})
+	if !defined {
+		a.pokeMe(vid)
+	}
+	util.Assertf(ok || a.err != nil, "ok || a.err != nil")
+	return
+}
+
 // attachVertexUnwrapped: vid corresponds to the vertex v
 // it solidifies vertex by traversing the past cone down to rooted outputs or undefined vertices
 // Repetitive calling of the function reaches all past vertices down to the rooted outputs
@@ -193,13 +237,6 @@ func (a *attacher) attachVertexUnwrapped(v *vertex.Vertex, vid *vertex.WrappedTx
 
 	a.Tracef(TraceTagAttachVertex, " %s IN: %s", a.name, vid.IDShortString)
 	util.Assertf(!util.IsNil(a.baselineStateReader), "!util.IsNil(a.baselineStateReader)")
-
-	if a.isKnownDefined(vid) {
-		// it is done with the vertex, it's state in the attacher is fully determined and immutable from now on
-		return true
-	}
-	// mark vertex in the past cone undefined. If it is already known, it won't change its flags
-	a.markVertexUndefined(vid)
 
 	if !a.flags(vid).FlagsUp(FlagEndorsementsSolid) {
 		a.Tracef(TraceTagAttachVertex, "attacher %s: endorsements not solid in %s", a.name, v.Tx.IDShortString())
@@ -328,9 +365,11 @@ func (a *attacher) attachEndorsements(v *vertex.Vertex, vid *vertex.WrappedTx, p
 			a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s): not compatible with baselines", a.name)
 			return false
 		}
-		// sanity check: only one branch transaction can be endorsed
+
+		// sanity check: only one branch transaction can be endorsed FIXME incorrect assertion
 		util.Assertf(!vidEndorsed.IsBranchTransaction() || baselineBranch == a.baseline,
-			"attachEndorsements: !vidEndorsed.IsBranchTransaction() || baseline == a.baseline")
+			"attachEndorsements: !vidEndorsed.IsBranchTransaction(%s) || baseline(%s) == a.baseline(%s)",
+			vid.IDShortString, baselineBranch.IDShortString, a.baseline.IDShortString)
 
 		switch vidEndorsed.GetTxStatus() {
 		case vertex.Bad:
@@ -347,35 +386,15 @@ func (a *attacher) attachEndorsements(v *vertex.Vertex, vid *vertex.WrappedTx, p
 			}
 		}
 		// non-branch undefined milestone. Go deep recursively
-		a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s): non-branch before unwrap %s", a.name, vidEndorsed.String)
-		ok := true
-		vidEndorsed.Unwrap(vertex.UnwrapOptions{
-			Vertex: func(v *vertex.Vertex) {
-				ok = a.attachVertexUnwrapped(v, vidEndorsed, parasiticChainHorizon) // <<<<<<<<<<< recursion
-			},
-			VirtualTx: func(v *vertex.VirtualTransaction) {
-				fmt.Printf(">>>>>>>>>>>>>>>\n")
-			},
-		})
-		a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s): non-branch after unwrap %s. ok = %v", a.name, vidEndorsed.String, ok)
+		ok, defined := a.attachVertex(vidEndorsed, ledger.NilLogicalTime)
 		if !ok {
 			a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s): %s attachVertex not ok", a.name, vidEndorsed.IDShortString)
 			util.Assertf(a.err != nil, "a.err != nil")
 			return false
 		}
 		util.AssertNoError(a.err)
-
-		// check status again
-		switch status := vidEndorsed.GetTxStatus(); status {
-		case vertex.Good:
-			// this endorsement is defined for the attacher
-			a.markVertexDefined(vidEndorsed)
+		if defined {
 			numUndefined--
-		case vertex.Undefined:
-			a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s): %s is undef", a.name, vidEndorsed.IDShortString)
-			a.pokeMe(vidEndorsed)
-		default:
-			a.Log().Fatalf("attacher %s: unexpected state of the vertex %s (%s)", a.name, vidEndorsed.IDShortString(), status.String())
 		}
 	}
 	if numUndefined == 0 {
@@ -519,33 +538,9 @@ func (a *attacher) attachOutput(wOut vertex.WrappedOutput, parasiticChainHorizon
 	}
 
 	// input is not rooted
-	ok = true
-	status := wOut.VID.GetTxStatus()
-	wOut.VID.Unwrap(vertex.UnwrapOptions{
-		Vertex: func(v *vertex.Vertex) {
-			isSeq := wOut.VID.ID.IsSequencerMilestone()
-			if !isSeq || status == vertex.Good {
-				// go deeper if it is not seq milestone or its is good
-				if isSeq {
-					// good seq milestone, reset parasitic chain horizon
-					parasiticChainHorizon = ledger.NilLogicalTime
-				}
-				ok = a.attachVertexUnwrapped(v, wOut.VID, parasiticChainHorizon) // >>>>>>> recursion
-			} else {
-				// not a seq milestone OR is not good yet -> don't go deeper
-				a.pokeMe(wOut.VID)
-			}
-		},
-		VirtualTx: func(v *vertex.VirtualTransaction) {
-			a.Pull(wOut.VID.ID)
-			// ask environment to poke when transaction arrive
-			a.pokeMe(wOut.VID)
-		},
-	})
-	if !ok {
-		return false
-	}
-	return true
+	ok, _ = a.attachVertex(wOut.VID, parasiticChainHorizon)
+	// check is output index is correct??
+	return ok
 }
 
 func (a *attacher) branchesCompatible(vid1, vid2 *vertex.WrappedTx) bool {

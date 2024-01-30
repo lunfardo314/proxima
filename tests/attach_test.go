@@ -9,9 +9,6 @@ import (
 
 	"github.com/lunfardo314/proxima/core/attacher"
 	"github.com/lunfardo314/proxima/core/dag"
-	"github.com/lunfardo314/proxima/core/queues/poker"
-	"github.com/lunfardo314/proxima/core/queues/pull_client"
-	"github.com/lunfardo314/proxima/core/queues/pull_server"
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/core/workflow"
 	"github.com/lunfardo314/proxima/genesis"
@@ -667,7 +664,6 @@ func TestConflictsNAttachersOneFork(t *testing.T) {
 	testData.wrk.SaveGraph("utangle")
 }
 
-// FIXME deadlock
 func TestConflictsNAttachersOneForkBranches(t *testing.T) {
 	ledger.SetTimeTickDuration(10 * time.Millisecond)
 	//attacher.SetTraceOn()
@@ -732,7 +728,6 @@ func TestConflictsNAttachersOneForkBranches(t *testing.T) {
 	testData.wrk.SaveGraph("utangle")
 }
 
-// FIXME deadlock
 func TestConflictsNAttachersOneForkBranchesConflict(t *testing.T) {
 	ledger.SetTimeTickDuration(10 * time.Millisecond)
 	//attacher.SetTraceOn()
@@ -986,7 +981,7 @@ func TestSeqChains(t *testing.T) {
 		}
 		testData.wrk.SaveGraph("utangle")
 	})
-	t.Run("FAIL with 1 branch pull", func(t *testing.T) {
+	t.Run("with 1 branch pull", func(t *testing.T) {
 		//attacher.SetTraceOn()
 		const (
 			nConflicts            = 10
@@ -1024,7 +1019,7 @@ func TestSeqChains(t *testing.T) {
 		require.NoError(t, err)
 
 		//testData.wrk.EnableTraceTags(attacher.TraceTagAttach, attacher.TraceTagAttachVertex)
-		testData.wrk.EnableTraceTags(poker.TraceTag, pull_client.TraceTag, pull_server.TraceTag)
+		//testData.wrk.EnableTraceTags(poker.TraceTag, pull_client.TraceTag, pull_server.TraceTag)
 
 		wg.Add(1)
 		vidBranch, err := attacher.AttachTransactionFromBytes(txBytesBranch, testData.wrk, attacher.OptionWithAttachmentCallback(func(_ *vertex.WrappedTx, _ error) {

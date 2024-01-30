@@ -100,9 +100,8 @@ func (a *IncrementalAttacher) insertEndorsement(endorsement *vertex.WrappedTx) e
 			endBaseline.IDShortString(), endorsement.IDShortString(), a.baseline.IDShortString())
 	}
 
-	endorsement.Unwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
-		a.attachVertexUnwrapped(v, endorsement, ledger.NilLogicalTime)
-	}})
+	ok, _ := a.attachVertex(endorsement, ledger.NilLogicalTime)
+	util.Assertf(ok || a.err != nil, "ok || a.err != nil")
 	return a.err
 }
 
