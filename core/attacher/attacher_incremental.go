@@ -11,7 +11,6 @@ import (
 	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/util"
-	"github.com/lunfardo314/proxima/util/set"
 	"golang.org/x/exp/maps"
 )
 
@@ -59,18 +58,18 @@ func NewIncrementalAttacher(name string, env Environment, targetTs ledger.Logica
 		targetTs:       targetTs,
 	}
 
-	ret.setBaseline(baseline, targetTs) // also fetches baseline baselineCoverage
+	ret.setBaseline(baseline, targetTs) // also fetches baseline coverage
 
-	// attach sequencer predecessor
-	if !ret.attachOutput(ret.extend, ledger.NilLogicalTime) {
-		return nil, ret.err
-	}
 	// attach endorsements
 	for _, endorsement := range endorse {
 		env.Tracef(TraceTagIncrementalAttacher, "NewIncrementalAttacher(%s). insertEndorsement: %s", name, endorsement.IDShortString)
 		if err := ret.insertEndorsement(endorsement); err != nil {
 			return nil, err
 		}
+	}
+	// attach sequencer predecessor
+	if !ret.attachOutput(ret.extend, ledger.NilLogicalTime) {
+		return nil, ret.err
 	}
 	if targetTs.Tick() == 0 {
 		// for branches, include stem input
@@ -99,15 +98,20 @@ func (a *IncrementalAttacher) insertEndorsement(endorsement *vertex.WrappedTx) e
 		return fmt.Errorf("baseline branch %s of the endorsement branch %s is incompatible with the baseline %s",
 			endBaseline.IDShortString(), endorsement.IDShortString(), a.baseline.IDShortString())
 	}
-
-	ok, _ := a.attachVertex(endorsement, ledger.NilLogicalTime)
-	util.Assertf(ok || a.err != nil, "ok || a.err != nil")
+	if endorsement.IsBranchTransaction() {
+		// branch is compatible with the baseline
+		a.markVertexDefined(endorsement)
+		a.markVertexRooted(endorsement)
+	} else {
+		ok, _ := a.attachVertexNonBranch(endorsement, ledger.NilLogicalTime)
+		util.Assertf(ok || a.err != nil, "ok || a.err != nil")
+	}
 	return a.err
 }
 
 // InsertTagAlongInput inserts tag along input.
 // In case of failure return false and attacher state consistent
-func (a *IncrementalAttacher) InsertTagAlongInput(wOut vertex.WrappedOutput, visited set.Set[*vertex.WrappedTx]) (bool, error) {
+func (a *IncrementalAttacher) InsertTagAlongInput(wOut vertex.WrappedOutput) (bool, error) {
 	// save state for possible rollback because in case of fail the side effect makes attacher inconsistent
 	// TODO a better way than cloning potentially big maps with each new input?
 	util.AssertNoError(a.err)
@@ -176,9 +180,10 @@ func (a *IncrementalAttacher) MakeTransaction(seqName string, privateKey ed25519
 		if tx != nil {
 			err = fmt.Errorf("%w:\n%s", err, tx.ToStringWithInputLoaderByIndex(inputLoader))
 		}
-		panic(err) // should produce correct transaction
+		a.Log().Fatalf("IncrementalAttacher.MakeTransaction: %v", err) // should produce correct transaction
 		//return nil, err
 	}
+	a.Log().Infof("\n>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\n%s\n<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<", a.dumpLines().String())
 	return tx, nil
 }
 

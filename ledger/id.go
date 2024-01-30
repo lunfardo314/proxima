@@ -302,6 +302,11 @@ func (oid *OutputID) StringShort() string {
 	return fmt.Sprintf("%s[%d]", txid.StringShort(), oid.Index())
 }
 
+func (oid *OutputID) StringVeryShort() string {
+	txid := oid.TransactionID()
+	return fmt.Sprintf("%s[%d]", txid.StringVeryShort(), oid.Index())
+}
+
 func (oid *OutputID) TransactionID() (ret TransactionID) {
 	copy(ret[:], oid[:TransactionIDLength])
 	return

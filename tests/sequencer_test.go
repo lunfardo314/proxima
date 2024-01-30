@@ -98,7 +98,7 @@ func TestTippool(t *testing.T) {
 
 	testData.stopAndWait()
 	testData.logDAGInfo()
-	dag.SaveGraphPastCone(vidBranch, "utangle")
+	//dag.SaveGraphPastCone(vidBranch, "utangle")
 	require.EqualValues(t, vertex.Good.String(), vidBranch.GetTxStatus().String())
 
 	time.Sleep(500 * time.Millisecond)
@@ -267,7 +267,7 @@ func TestNSequencersIdle(t *testing.T) {
 		testData.stopAndWait()
 
 		t.Logf("%s", testData.wrk.Info(true))
-		testData.wrk.SaveGraph("utangle")
+		//testData.wrk.SaveGraph("utangle")
 	})
 	t.Run("idle 2", func(t *testing.T) {
 		const (

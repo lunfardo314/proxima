@@ -10,6 +10,7 @@ import (
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
 	"github.com/lunfardo314/proxima/util/set"
+	"golang.org/x/exp/maps"
 )
 
 func newPastConeAttacher(env Environment, name string) attacher {
@@ -180,7 +181,7 @@ func (a *attacher) solidifySequencerBaseline(v *vertex.Vertex) (ok bool) {
 	}
 }
 
-func (a *attacher) attachVertex(vid *vertex.WrappedTx, parasiticChainHorizon ledger.LogicalTime) (ok, defined bool) {
+func (a *attacher) attachVertexNonBranch(vid *vertex.WrappedTx, parasiticChainHorizon ledger.LogicalTime) (ok, defined bool) {
 	util.Assertf(!vid.IsBranchTransaction(), "!vid.IsBranchTransaction(): %s", vid.IDShortString)
 
 	if a.isKnownDefined(vid) {
@@ -205,7 +206,7 @@ func (a *attacher) attachVertex(vid *vertex.WrappedTx, parasiticChainHorizon led
 			case vertex.Good:
 				util.Assertf(vid.IsSequencerMilestone(), "vid.IsSequencerMilestone()")
 				ok = a.attachVertexUnwrapped(v, vid, ledger.NilLogicalTime)
-				if ok && vid.GetTxStatusNoLock() == vertex.Good {
+				if ok {
 					a.markVertexDefined(vid)
 					defined = true
 				}
@@ -389,9 +390,9 @@ func (a *attacher) attachEndorsements(v *vertex.Vertex, vid *vertex.WrappedTx, p
 			}
 		}
 		// non-branch undefined milestone. Go deep recursively
-		ok, defined := a.attachVertex(vidEndorsed, ledger.NilLogicalTime)
+		ok, defined := a.attachVertexNonBranch(vidEndorsed, ledger.NilLogicalTime)
 		if !ok {
-			a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s): attachVertex returned: endorsement %s -> %s NOT OK",
+			a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s): attachVertexNonBranch returned: endorsement %s -> %s NOT OK",
 				a.name, vid.IDShortString, vidEndorsed.IDShortString)
 			util.Assertf(a.err != nil, "a.err != nil")
 			return false
@@ -542,7 +543,7 @@ func (a *attacher) attachOutput(wOut vertex.WrappedOutput, parasiticChainHorizon
 	}
 
 	// input is not rooted
-	ok, _ = a.attachVertex(wOut.VID, parasiticChainHorizon)
+	ok, _ = a.attachVertexNonBranch(wOut.VID, parasiticChainHorizon)
 	// check is output index is correct??
 	return ok
 }
@@ -655,10 +656,12 @@ func (a *attacher) dumpLines(prefix ...string) *lines.Lines {
 	for vid, consumed := range a.rooted {
 		for idx := range consumed {
 			o, err := vid.OutputAt(idx)
+			consumers := vid.ConsumersOf(idx)
+			consStr := vertex.VerticesIDLines(maps.Keys(consumers)).Join(", ")
 			if err == nil {
 				oid := vid.OutputID(idx)
-				ret.Add("         %s : %s", oid.StringShort(), util.GoTh(o.Amount()))
-				ret.Append(o.Lines("                                 "))
+				ret.Add("         %s : amount: %s, consumers: {%s}", oid.StringShort(), util.GoTh(o.Amount()), consStr)
+				ret.Append(o.Lines("                    "))
 			}
 		}
 	}

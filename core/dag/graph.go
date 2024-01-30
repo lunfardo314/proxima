@@ -109,7 +109,12 @@ func makeGraphEdges(vid *vertex.WrappedTx, gr graph.Graph[string, string]) {
 		v.ForEachInputDependency(func(i byte, inp *vertex.WrappedTx) bool {
 			if inp == nil {
 				idNil := fmt.Sprintf("%d", nilCount)
-				err := gr.AddVertex(idNil, graph.VertexAttribute("shape", "point"))
+				oid := v.Tx.MustInputAt(i)
+				err := gr.AddVertex(idNil,
+					graph.VertexAttribute("shape", "point"),
+					graph.VertexAttribute("xlabel", oid.StringVeryShort()),
+					graph.VertexAttribute("fontsize", "10"),
+				)
 				util.AssertNoError(err)
 				nilCount++
 				err = gr.AddEdge(id, idNil)

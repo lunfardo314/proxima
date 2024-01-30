@@ -656,6 +656,13 @@ func (vid *WrappedTx) NumConsumers() (int, int) {
 	return retConsumed, retCS
 }
 
+func (vid *WrappedTx) ConsumersOf(outIdx byte) set.Set[*WrappedTx] {
+	vid.mutexDescendants.RLock()
+	defer vid.mutexDescendants.RUnlock()
+
+	return vid.consumed[outIdx].Clone()
+}
+
 func (vid *WrappedTx) String() (ret string) {
 	consumed, doubleSpent := vid.NumConsumers()
 	reason := vid.GetError()
