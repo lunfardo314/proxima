@@ -719,6 +719,22 @@ func (vid *WrappedTx) SequencerPredecessor() (ret *WrappedTx) {
 	return
 }
 
+func (vid *WrappedTx) LinesTx(prefix ...string) *lines.Lines {
+	ret := lines.New()
+	vid.RUnwrap(UnwrapOptions{
+		Vertex: func(v *Vertex) {
+			ret.Append(v.Tx.LinesShort(prefix...))
+		},
+		VirtualTx: func(v *VirtualTransaction) {
+			ret.Add("a virtual tx %s", vid.IDShortString())
+		},
+		Deleted: func() {
+			ret.Add("deleted tx %s", vid.IDShortString())
+		},
+	})
+	return ret
+}
+
 func VerticesLines(vertices []*WrappedTx, prefix ...string) *lines.Lines {
 	ret := lines.New(prefix...)
 	for _, vid := range vertices {

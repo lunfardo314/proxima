@@ -892,3 +892,38 @@ func (tx *Transaction) ProducedOutputsWithTargetLock(lock ledger.Lock) []*ledger
 	})
 	return ret
 }
+
+func (tx *Transaction) LinesShort(prefix ...string) *lines.Lines {
+	ret := lines.New(prefix...)
+	ret.Add("ID: %s", tx.ID().String())
+	ret.Add("Sender address: %s", tx.SenderAddress().String())
+	ret.Add("Total: %s", util.GoTh(uint64(tx.TotalAmount())))
+	if tx.IsSequencerMilestone() {
+		ret.Add("Sequencer output index: %d, Stem output index: %d", tx.sequencerTransactionData.SequencerOutputIndex, tx.sequencerTransactionData.StemOutputIndex)
+	}
+	ret.Add("Endorsements (%d):", tx.NumEndorsements())
+	tx.ForEachEndorsement(func(idx byte, txid *ledger.TransactionID) bool {
+		ret.Add("    %3d: %s", idx, txid.String())
+		return true
+	})
+	ret.Add("Inputs (%d):", tx.NumInputs())
+	tx.ForEachInput(func(i byte, oid *ledger.OutputID) bool {
+		ret.Add("    %3d: %s", i, oid.String())
+		return true
+	})
+	ret.Add("Outputs (%d):", tx.NumProducedOutputs())
+	pref := ""
+	if len(prefix) > 0 {
+		pref = prefix[0]
+	}
+	tx.ForEachProducedOutput(func(idx byte, o *ledger.Output, oid *ledger.OutputID) bool {
+		ret.Add("%s", oid.StringShort())
+		ret.Append(o.Lines(pref + "    "))
+		return true
+	})
+	return ret
+}
+
+func (tx *Transaction) String() string {
+	return tx.LinesShort().String()
+}

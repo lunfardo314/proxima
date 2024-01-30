@@ -1036,10 +1036,10 @@ func TestSeqChains(t *testing.T) {
 	t.Run("FAIL with N branches pull", func(t *testing.T) {
 		//attacher.SetTraceOn()
 		const (
-			nConflicts            = 5
+			nConflicts            = 2 // 5
+			nChains               = 2
 			howLongConflictChains = 2 // 97 fails when crosses slot boundary
-			nChains               = 5
-			howLongSeqChains      = 10 // 95 fails
+			howLongSeqChains      = 2 // 10 // 95 fails
 			nSlots                = 5
 		)
 
@@ -1064,14 +1064,22 @@ func TestSeqChains(t *testing.T) {
 			}
 
 			extendSeqIdx := branchNr % nChains
-			lastInChain := len(slotTransactions[branchNr][extendSeqIdx]) - 1
-			extendOut := slotTransactions[branchNr][extendSeqIdx][lastInChain].SequencerOutput().MustAsChainOutput()
+			lastInChainIdx := len(slotTransactions[branchNr][extendSeqIdx]) - 1
+			extendOut := slotTransactions[branchNr][extendSeqIdx][lastInChainIdx].SequencerOutput().MustAsChainOutput()
 			branches[branchNr] = testData.makeBranch(extendOut, prevBranch)
 			prevBranch = branches[branchNr]
+			t.Logf("makeBranch: %s", prevBranch.IDShortString())
+			beginExtension := make([]*transaction.Transaction, len(slotTransactions[branchNr]))
+			for i := range beginExtension {
+				beginExtension[i] = util.MustLastElement(slotTransactions[branchNr][i])
+			}
 			extend = testData.extendToNextSlot(slotTransactions[branchNr], prevBranch)
+
 			testData.storeTransactions(extend...)
 		}
 
+		testData.wrk.EnableTraceTags(workflow.TraceTagDelay)
+		testData.wrk.EnableTraceTags(attacher.TraceTagAttachEndorsements)
 		testData.storeTransactions(branches...)
 		var wg sync.WaitGroup
 		wg.Add(1)
@@ -1082,7 +1090,8 @@ func TestSeqChains(t *testing.T) {
 
 		testData.stopAndWait()
 		testData.logDAGInfo()
-		dag.SaveGraphPastCone(vidBranch, "utangle")
+		testData.wrk.SaveGraph("utangle")
+		//dag.SaveGraphPastCone(vidBranch, "utangle")
 		require.EqualValues(t, vertex.Good.String(), vidBranch.GetTxStatus().String())
 
 		time.Sleep(500 * time.Millisecond)

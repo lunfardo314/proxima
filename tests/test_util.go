@@ -345,6 +345,7 @@ func (td *longConflictTestData) makeSlotTransactions(howLongChain int, extendBeg
 			tx, err := transaction.FromBytes(txBytes, transaction.MainTxValidationOptions...)
 			require.NoError(td.t, err)
 			ret[seqNr] = append(ret[seqNr], tx)
+			td.t.Logf("%3d  %s", seqNr, tx.IDShortString())
 		}
 	}
 

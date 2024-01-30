@@ -173,6 +173,10 @@ func AppendUnique[T comparable](slice []T, elems ...T) []T {
 	return slice
 }
 
+func MustLastElement[T any](sl []T) T {
+	return sl[len(sl)-1]
+}
+
 func FindFirstKeyInMap[K comparable, V any](m map[K]V, cond ...func(k K) bool) (K, bool) {
 	var fun func(k K) bool
 	if len(cond) > 0 {

@@ -176,6 +176,8 @@ func (a *attacher) solidifySequencerBaseline(v *vertex.Vertex) (ok bool) {
 }
 
 func (a *attacher) attachVertex(vid *vertex.WrappedTx, parasiticChainHorizon ledger.LogicalTime) (ok, defined bool) {
+	util.Assertf(!vid.IsBranchTransaction(), "!vid.IsBranchTransaction(): %s", vid.IDShortString)
+
 	if a.isKnownDefined(vid) {
 		return true, true
 	}
@@ -366,11 +368,6 @@ func (a *attacher) attachEndorsements(v *vertex.Vertex, vid *vertex.WrappedTx, p
 			return false
 		}
 
-		// sanity check: only one branch transaction can be endorsed FIXME incorrect assertion
-		util.Assertf(!vidEndorsed.IsBranchTransaction() || baselineBranch == a.baseline,
-			"attachEndorsements: !vidEndorsed.IsBranchTransaction(%s) || baseline(%s) == a.baseline(%s)",
-			vid.IDShortString, baselineBranch.IDShortString, a.baseline.IDShortString)
-
 		switch vidEndorsed.GetTxStatus() {
 		case vertex.Bad:
 			util.Assertf(!a.isKnownDefined(vidEndorsed), "attachEndorsements: !a.isKnownDefined(vidEndorsed)")
@@ -388,7 +385,8 @@ func (a *attacher) attachEndorsements(v *vertex.Vertex, vid *vertex.WrappedTx, p
 		// non-branch undefined milestone. Go deep recursively
 		ok, defined := a.attachVertex(vidEndorsed, ledger.NilLogicalTime)
 		if !ok {
-			a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s): %s attachVertex not ok", a.name, vidEndorsed.IDShortString)
+			a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s): attachVertex returned: endorsement %s -> %s NOT OK",
+				a.name, vid.IDShortString, vidEndorsed.IDShortString)
 			util.Assertf(a.err != nil, "a.err != nil")
 			return false
 		}
