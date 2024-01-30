@@ -85,9 +85,9 @@ type (
 )
 
 const (
-	FlagDefined          = Flags(0b00000001)
-	FlagConstraintsValid = Flags(0b00000010)
-	FlagTxBytesPersisted = Flags(0b00000100)
+	FlagVertexDefined          = Flags(0b00000001)
+	FlagVertexConstraintsValid = Flags(0b00000010)
+	FlagVertexTxBytesPersisted = Flags(0b00000100)
 )
 
 const (

@@ -580,13 +580,13 @@ func TestConflictsNAttachersSeqStartTxFee(t *testing.T) {
 	}
 
 	for _, vid := range testData.wrk.Vertices() {
-		if !vid.FlagsUp(vertex.FlagConstraintsValid | vertex.FlagTxBytesPersisted) {
+		if !vid.FlagsUp(vertex.FlagVertexConstraintsValid | vertex.FlagVertexTxBytesPersisted) {
 			t.Logf("wrong flags: %s", vid.String())
 		}
 		if vid.IsVirtualTx() {
-			require.True(t, vid.FlagsUp(vertex.FlagDefined))
+			require.True(t, vid.FlagsUp(vertex.FlagVertexDefined))
 		} else {
-			require.True(t, vid.FlagsUp(vertex.FlagConstraintsValid|vertex.FlagTxBytesPersisted))
+			require.True(t, vid.FlagsUp(vertex.FlagVertexConstraintsValid|vertex.FlagVertexTxBytesPersisted))
 		}
 		if vid.IsSequencerMilestone() {
 			require.True(t, vid.GetTxStatus() == vertex.Good)

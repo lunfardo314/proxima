@@ -112,10 +112,10 @@ type (
 )
 
 const (
-	FlagKnown             = 0b00000001
-	FlagDefined           = 0b00000010
-	FlagEndorsementsSolid = 0b00000100
-	FlagInputsSolid       = 0b00001000
+	FlagAttachedVertexKnown             = 0b00000001
+	FlagAttachedVertexDefined           = 0b00000010
+	FlagAttachedVertexEndorsementsSolid = 0b00000100
+	FlagAttachedVertexInputsSolid       = 0b00001000
 )
 
 func (f Flags) FlagsUp(fl Flags) bool {

@@ -53,21 +53,21 @@ func (a *attacher) flags(vid *vertex.WrappedTx) Flags {
 
 func (a *attacher) setFlagsUp(vid *vertex.WrappedTx, f Flags) {
 	flags := a.flags(vid)
-	util.Assertf(flags.FlagsUp(FlagKnown) && !flags.FlagsUp(FlagDefined), "flags.FlagsUp(FlagKnown) && !flags.FlagsUp(FlagDefined)")
+	util.Assertf(flags.FlagsUp(FlagAttachedVertexKnown) && !flags.FlagsUp(FlagAttachedVertexDefined), "flags.FlagsUp(FlagKnown) && !flags.FlagsUp(FlagDefined)")
 	a.vertices[vid] = flags | f
 }
 
 func (a *attacher) markVertexDefined(vid *vertex.WrappedTx) {
 	//util.Assertf(a.isKnownUndefined(vid), "a.isKnownUndefined(vid)")
-	a.vertices[vid] = a.flags(vid) | FlagKnown | FlagDefined
+	a.vertices[vid] = a.flags(vid) | FlagAttachedVertexKnown | FlagAttachedVertexDefined
 
 	a.Tracef(TraceTagMarkDefUndef, "markVertexDefined in %s: %s is DEFINED", a.name, vid.IDShortString)
 }
 
 func (a *attacher) markVertexUndefined(vid *vertex.WrappedTx) {
 	f := a.flags(vid)
-	util.Assertf(!f.FlagsUp(FlagDefined), "!f.FlagsUp(FlagDefined)")
-	a.vertices[vid] = f | FlagKnown
+	util.Assertf(!f.FlagsUp(FlagAttachedVertexDefined), "!f.FlagsUp(FlagDefined)")
+	a.vertices[vid] = f | FlagAttachedVertexKnown
 
 	a.Tracef(TraceTagMarkDefUndef, "markVertexUndefined in %s: %s is UNDEFINED", a.name, vid.IDShortString)
 }
@@ -78,15 +78,15 @@ func (a *attacher) markVertexRooted(vid *vertex.WrappedTx) {
 }
 
 func (a *attacher) isKnownDefined(vid *vertex.WrappedTx) bool {
-	return a.flags(vid).FlagsUp(FlagKnown | FlagDefined)
+	return a.flags(vid).FlagsUp(FlagAttachedVertexKnown | FlagAttachedVertexDefined)
 }
 
 func (a *attacher) isKnownUndefined(vid *vertex.WrappedTx) bool {
 	f := a.flags(vid)
-	if !f.FlagsUp(FlagKnown) {
+	if !f.FlagsUp(FlagAttachedVertexKnown) {
 		return false
 	}
-	return !f.FlagsUp(FlagDefined)
+	return !f.FlagsUp(FlagAttachedVertexDefined)
 }
 
 func (a *attacher) isKnownNotRooted(vid *vertex.WrappedTx) (yes bool) {
@@ -198,7 +198,7 @@ func (a *attacher) attachVertex(vid *vertex.WrappedTx, parasiticChainHorizon led
 					return
 				}
 				ok = a.attachVertexUnwrapped(v, vid, parasiticChainHorizon)
-				if ok && vid.FlagsUpNoLock(vertex.FlagConstraintsValid) {
+				if ok && vid.FlagsUpNoLock(vertex.FlagVertexConstraintsValid) {
 					a.markVertexDefined(vid)
 					defined = true
 				}
@@ -245,7 +245,7 @@ func (a *attacher) attachVertexUnwrapped(v *vertex.Vertex, vid *vertex.WrappedTx
 	a.Tracef(TraceTagAttachVertex, " %s IN: %s", a.name, vid.IDShortString)
 	util.Assertf(!util.IsNil(a.baselineStateReader), "!util.IsNil(a.baselineStateReader)")
 
-	if !a.flags(vid).FlagsUp(FlagEndorsementsSolid) {
+	if !a.flags(vid).FlagsUp(FlagAttachedVertexEndorsementsSolid) {
 		a.Tracef(TraceTagAttachVertex, "attacher %s: endorsements not solid in %s", a.name, v.Tx.IDShortString())
 		// depth-first along endorsements
 		if !a.attachEndorsements(v, vid, parasiticChainHorizon) { // <<< recursive
@@ -255,7 +255,7 @@ func (a *attacher) attachVertexUnwrapped(v *vertex.Vertex, vid *vertex.WrappedTx
 		}
 	}
 	// check consistency
-	if a.flags(vid).FlagsUp(FlagEndorsementsSolid) {
+	if a.flags(vid).FlagsUp(FlagAttachedVertexEndorsementsSolid) {
 		err := a.allEndorsementsDefined(v)
 		util.Assertf(err == nil, "%w:\nvertices: %s", err, a.linesVertices("       ").String)
 
@@ -270,7 +270,7 @@ func (a *attacher) attachVertexUnwrapped(v *vertex.Vertex, vid *vertex.WrappedTx
 		return false
 	}
 
-	if !v.Tx.IsSequencerMilestone() && a.flags(vid).FlagsUp(FlagInputsSolid) {
+	if !v.Tx.IsSequencerMilestone() && a.flags(vid).FlagsUp(FlagAttachedVertexInputsSolid) {
 		if !a.finalTouchNonSequencer(v, vid) {
 			util.Assertf(a.err != nil, "a.err != nil")
 			return false
@@ -282,7 +282,7 @@ func (a *attacher) attachVertexUnwrapped(v *vertex.Vertex, vid *vertex.WrappedTx
 
 func (a *attacher) finalTouchNonSequencer(v *vertex.Vertex, vid *vertex.WrappedTx) (ok bool) {
 	glbFlags := vid.FlagsNoLock()
-	if !glbFlags.FlagsUp(vertex.FlagConstraintsValid) {
+	if !glbFlags.FlagsUp(vertex.FlagVertexConstraintsValid) {
 		// constraints are not validated yet
 		if err := v.ValidateConstraints(); err != nil {
 			a.setError(err)
@@ -290,20 +290,20 @@ func (a *attacher) finalTouchNonSequencer(v *vertex.Vertex, vid *vertex.WrappedT
 			a.Tracef(TraceTagAttachVertex, "constraint validation failed in %s: '%v'", vid.IDShortString(), err)
 			return false
 		}
-		vid.SetFlagsUpNoLock(vertex.FlagConstraintsValid)
+		vid.SetFlagsUpNoLock(vertex.FlagVertexConstraintsValid)
 
 		a.Tracef(TraceTagAttachVertex, "constraints has been validated OK: %s", v.Tx.IDShortString)
 		a.PokeAllWith(vid)
 	}
 	glbFlags = vid.FlagsNoLock()
-	util.Assertf(glbFlags.FlagsUp(vertex.FlagConstraintsValid), "glbFlags.FlagsUp(vertex.FlagConstraintsValid)")
+	util.Assertf(glbFlags.FlagsUp(vertex.FlagVertexConstraintsValid), "glbFlags.FlagsUp(vertex.FlagConstraintsValid)")
 
 	// persist bytes of the valid non-sequencer transaction, if not yet persisted
 	// non-sequencer transaction always have empty persistent metadata
 	// (sequencer transactions will be persisted upon finalization of the attacher)
-	if !glbFlags.FlagsUp(vertex.FlagTxBytesPersisted) {
+	if !glbFlags.FlagsUp(vertex.FlagVertexTxBytesPersisted) {
 		a.AsyncPersistTxBytesWithMetadata(v.Tx.Bytes(), nil)
-		vid.SetFlagsUpNoLock(vertex.FlagTxBytesPersisted)
+		vid.SetFlagsUpNoLock(vertex.FlagVertexTxBytesPersisted)
 
 		a.Tracef(TraceTagAttachVertex, "tx bytes persisted: %s", v.Tx.IDShortString)
 	}
@@ -314,12 +314,12 @@ func (a *attacher) finalTouchNonSequencer(v *vertex.Vertex, vid *vertex.WrappedT
 
 func (a *attacher) validateSequencerTx(v *vertex.Vertex, vid *vertex.WrappedTx) (ok, finalSuccess bool) {
 	flags := a.flags(vid)
-	if !flags.FlagsUp(FlagEndorsementsSolid) || !flags.FlagsUp(FlagInputsSolid) {
+	if !flags.FlagsUp(FlagAttachedVertexEndorsementsSolid) || !flags.FlagsUp(FlagAttachedVertexInputsSolid) {
 		return true, false
 	}
 	// inputs solid
 	glbFlags := vid.FlagsNoLock()
-	util.Assertf(!glbFlags.FlagsUp(vertex.FlagConstraintsValid), "!glbFlags.FlagsUp(vertex.FlagConstraintsValid)")
+	util.Assertf(!glbFlags.FlagsUp(vertex.FlagVertexConstraintsValid), "!glbFlags.FlagsUp(vertex.FlagConstraintsValid)")
 
 	if err := v.ValidateConstraints(); err != nil {
 		a.setError(err)
@@ -327,7 +327,7 @@ func (a *attacher) validateSequencerTx(v *vertex.Vertex, vid *vertex.WrappedTx) 
 		a.Tracef(TraceTagAttachVertex, "constraint validation failed in %s: '%v'", vid.IDShortString(), err)
 		return false, false
 	}
-	vid.SetFlagsUpNoLock(vertex.FlagConstraintsValid)
+	vid.SetFlagsUpNoLock(vertex.FlagVertexConstraintsValid)
 	a.Tracef(TraceTagAttachVertex, "constraints has been validated OK: %s", v.Tx.IDShortString)
 	return true, true
 }
@@ -340,7 +340,7 @@ func (a *attacher) attachEndorsements(v *vertex.Vertex, vid *vertex.WrappedTx, p
 	a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s) IN of %s", a.name, v.Tx.IDShortString)
 	defer a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s) OUT of %s return", a.name, v.Tx.IDShortString)
 
-	util.Assertf(!a.flags(vid).FlagsUp(FlagEndorsementsSolid), "!v.FlagsUp(vertex.FlagEndorsementsSolid)")
+	util.Assertf(!a.flags(vid).FlagsUp(FlagAttachedVertexEndorsementsSolid), "!v.FlagsUp(vertex.FlagAttachedvertexEndorsementsSolid)")
 
 	numUndefined := len(v.Endorsements)
 	for i, vidEndorsed := range v.Endorsements {
@@ -403,7 +403,7 @@ func (a *attacher) attachEndorsements(v *vertex.Vertex, vid *vertex.WrappedTx, p
 	}
 	if numUndefined == 0 {
 		util.AssertNoError(a.allEndorsementsDefined(v))
-		a.setFlagsUp(vid, FlagEndorsementsSolid)
+		a.setFlagsUp(vid, FlagAttachedVertexEndorsementsSolid)
 		a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s): endorsements are all good in %s", a.name, v.Tx.IDShortString)
 	} else {
 		a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s): endorsements are NOT all good in %s", a.name, v.Tx.IDShortString)
@@ -429,7 +429,7 @@ func (a *attacher) attachInputsOfTheVertex(v *vertex.Vertex, vid *vertex.Wrapped
 		}
 	}
 	if numUndefined == 0 {
-		a.setFlagsUp(vid, FlagInputsSolid)
+		a.setFlagsUp(vid, FlagAttachedVertexInputsSolid)
 	} else {
 		a.Tracef(TraceTagAttachVertex, "attachInputsOfTheVertex: not solid: in %s:\n%s", v.Tx.IDShortString(), _lazyStringSelectedInputs(v.Tx, notSolid))
 	}
@@ -696,7 +696,7 @@ func (a *attacher) allInputsDefined(v *vertex.Vertex) (err error) {
 
 func (a *attacher) containsUndefinedExcept(except *vertex.WrappedTx) bool {
 	for vid, flags := range a.vertices {
-		if !flags.FlagsUp(FlagDefined) && vid != except {
+		if !flags.FlagsUp(FlagAttachedVertexDefined) && vid != except {
 			return true
 		}
 	}

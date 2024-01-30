@@ -113,7 +113,7 @@ func (vid *WrappedTx) GetTxStatus() Status {
 }
 
 func (vid *WrappedTx) GetTxStatusNoLock() Status {
-	if !vid.flags.FlagsUp(FlagDefined) {
+	if !vid.flags.FlagsUp(FlagVertexDefined) {
 		util.Assertf(vid.err == nil, "vid.err == nil")
 		return Undefined
 	}
@@ -133,7 +133,7 @@ func (vid *WrappedTx) SetTxStatusGood() {
 	defer vid.mutex.Unlock()
 
 	util.Assertf(vid.GetTxStatusNoLock() == Undefined, "vid.GetTxStatusNoLock() == Undefined")
-	vid.flags.SetFlagsUp(FlagDefined)
+	vid.flags.SetFlagsUp(FlagVertexDefined)
 }
 
 func (vid *WrappedTx) SetTxStatusBad(reason error) {
@@ -145,13 +145,13 @@ func (vid *WrappedTx) SetTxStatusBad(reason error) {
 
 func (vid *WrappedTx) SetTxStatusBadNoLock(reason error) {
 	util.Assertf(vid.GetTxStatusNoLock() == Undefined, "vid.GetTxStatusNoLock() == Undefined")
-	vid.flags.SetFlagsUp(FlagDefined)
+	vid.flags.SetFlagsUp(FlagVertexDefined)
 	vid.err = reason
 }
 
 func (vid *WrappedTx) SetTxStatusGoodNoLock() {
 	util.Assertf(vid.err == nil, "vid.err == nil")
-	vid.flags.SetFlagsUp(FlagDefined)
+	vid.flags.SetFlagsUp(FlagVertexDefined)
 }
 
 func (vid *WrappedTx) GetError() error {

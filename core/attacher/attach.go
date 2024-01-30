@@ -116,7 +116,7 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Opt
 
 			if options.metadata != nil && options.metadata.SourceTypeNonPersistent == txmetadata.SourceTypeTxStore {
 				// prevent from persisting twice
-				vid.SetFlagsUpNoLock(vertex.FlagTxBytesPersisted)
+				vid.SetFlagsUpNoLock(vertex.FlagVertexTxBytesPersisted)
 			}
 
 			env.Tracef(TraceTagAttach, "post new tx event %s", tx.IDShortString)

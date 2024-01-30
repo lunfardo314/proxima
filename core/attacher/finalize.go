@@ -61,14 +61,14 @@ func (a *milestoneAttacher) wrapUpAttacher() {
 	if a.metadata == nil || a.metadata.SourceTypeNonPersistent != txmetadata.SourceTypeTxStore {
 		a.vid.Unwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
 			flags := a.vid.FlagsNoLock()
-			if !flags.FlagsUp(vertex.FlagTxBytesPersisted) {
+			if !flags.FlagsUp(vertex.FlagVertexTxBytesPersisted) {
 				c := a.coverage.LatestDelta()
 				persistentMetadata := txmetadata.TransactionMetadata{
 					StateRoot:           a.finals.root,
 					LedgerCoverageDelta: &c,
 				}
 				a.AsyncPersistTxBytesWithMetadata(v.Tx.Bytes(), &persistentMetadata)
-				a.vid.SetFlagsUpNoLock(vertex.FlagTxBytesPersisted)
+				a.vid.SetFlagsUpNoLock(vertex.FlagVertexTxBytesPersisted)
 			}
 		}})
 	}
@@ -169,10 +169,10 @@ func (a *milestoneAttacher) _checkConsistencyBeforeFinalization() (err error) {
 	}
 
 	for vid, flags := range a.vertices {
-		if !flags.FlagsUp(FlagKnown) {
+		if !flags.FlagsUp(FlagAttachedVertexKnown) {
 			return fmt.Errorf("wrong flags 1 %08b in %s", flags, vid.IDShortString())
 		}
-		if !flags.FlagsUp(FlagDefined) && vid != a.vid {
+		if !flags.FlagsUp(FlagAttachedVertexDefined) && vid != a.vid {
 			return fmt.Errorf("wrong flags 2 %08b in %s", flags, vid.IDShortString())
 		}
 		if vid == a.vid {
