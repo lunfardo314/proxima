@@ -490,7 +490,7 @@ func (a *attacher) attachRooted(wOut vertex.WrappedOutput) (ok bool, isRooted bo
 	// transaction is known in the state -> check if output is in the state (i.e. not consumed yet)
 	out := stateReader.GetOutput(oid)
 	if out == nil {
-		// output has not been found in the state -> Bad (already consumed)
+		// output has not been found in the state -> Bad (already consumed) FIXME not quite right
 		err := fmt.Errorf("output %s is already consumed in the baseline state %s", wOut.IDShortString(), a.baseline.IDShortString())
 		a.setError(err)
 		a.Tracef(TraceTagAttachOutput, "%v", err)
