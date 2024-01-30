@@ -821,7 +821,6 @@ func TestConflictsNAttachersOneForkBranchesConflict(t *testing.T) {
 	util.RequireErrorWith(t, vid.GetError(), "is incompatible with the baseline branch", tx1.IDShortString())
 }
 
-// all FAILS
 func TestSeqChains(t *testing.T) {
 	ledger.SetTimeTickDuration(10 * time.Millisecond)
 	t.Run("no pull order normal", func(t *testing.T) {
@@ -1033,13 +1032,13 @@ func TestSeqChains(t *testing.T) {
 		//testData.wrk.SaveGraph("utangle")
 		dag.SaveGraphPastCone(vidBranch, "utangle")
 	})
-	t.Run("FAIL with N branches pull", func(t *testing.T) {
+	t.Run("with N branches pull", func(t *testing.T) {
 		//attacher.SetTraceOn()
 		const (
-			nConflicts            = 2 // 5
-			nChains               = 2
-			howLongConflictChains = 2 // 97 fails when crosses slot boundary
-			howLongSeqChains      = 2 // 10 // 95 fails
+			nConflicts            = 5 // 5
+			nChains               = 5
+			howLongConflictChains = 5  // 97 fails when crosses slot boundary
+			howLongSeqChains      = 10 // 10 // 95 fails
 			nSlots                = 5
 		)
 
@@ -1079,7 +1078,7 @@ func TestSeqChains(t *testing.T) {
 		}
 
 		testData.wrk.EnableTraceTags(workflow.TraceTagDelay)
-		testData.wrk.EnableTraceTags(attacher.TraceTagAttachEndorsements)
+		//testData.wrk.EnableTraceTags(attacher.TraceTagAttachEndorsements)
 		testData.storeTransactions(branches...)
 		var wg sync.WaitGroup
 		wg.Add(1)
@@ -1103,7 +1102,7 @@ func TestSeqChains(t *testing.T) {
 			runtime.NumGoroutine(),
 		)
 	})
-	t.Run("FAIL N branches and transfers", func(t *testing.T) {
+	t.Run("with N branches and transfers", func(t *testing.T) {
 		//attacher.SetTraceOn()
 		const (
 			nConflicts            = 3

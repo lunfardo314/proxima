@@ -72,6 +72,11 @@ func (a *attacher) markVertexUndefined(vid *vertex.WrappedTx) {
 	a.Tracef(TraceTagMarkDefUndef, "markVertexUndefined in %s: %s is UNDEFINED", a.name, vid.IDShortString)
 }
 
+func (a *attacher) markVertexRooted(vid *vertex.WrappedTx) {
+	// creates entry in rooted, probably empty
+	a.rooted[vid] = a.rooted[vid]
+}
+
 func (a *attacher) isKnownDefined(vid *vertex.WrappedTx) bool {
 	return a.flags(vid).FlagsUp(FlagKnown | FlagDefined)
 }
@@ -375,8 +380,9 @@ func (a *attacher) attachEndorsements(v *vertex.Vertex, vid *vertex.WrappedTx, p
 			a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s): %s is BAD", a.name, vidEndorsed.IDShortString)
 			return false
 		case vertex.Good:
-			if vidEndorsed.IsBranchTransaction() {
-				// good branch endorsements are always 'defined'
+			if a.baselineStateReader().KnowsCommittedTransaction(&vidEndorsed.ID) {
+				// all endorsed transactions known to the baseline state are 'defined' and 'rooted'
+				a.markVertexRooted(vidEndorsed)
 				a.markVertexDefined(vidEndorsed)
 				numUndefined--
 				continue
@@ -490,7 +496,7 @@ func (a *attacher) attachRooted(wOut vertex.WrappedOutput) (ok bool, isRooted bo
 	// transaction is known in the state -> check if output is in the state (i.e. not consumed yet)
 	out := stateReader.GetOutput(oid)
 	if out == nil {
-		// output has not been found in the state -> Bad (already consumed) FIXME not quite right
+		// output has not been found in the state -> Bad (already consumed)
 		err := fmt.Errorf("output %s is already consumed in the baseline state %s", wOut.IDShortString(), a.baseline.IDShortString())
 		a.setError(err)
 		a.Tracef(TraceTagAttachOutput, "%v", err)
@@ -501,13 +507,13 @@ func (a *attacher) attachRooted(wOut vertex.WrappedOutput) (ok bool, isRooted bo
 	// output has been found in the state -> Good
 	ensured := wOut.VID.EnsureOutput(wOut.Index, out)
 	util.Assertf(ensured, "ensureOutput: internal inconsistency")
+
 	if len(consumedRooted) == 0 {
 		consumedRooted = set.New[byte](wOut.Index)
 	} else {
 		consumedRooted.Insert(wOut.Index)
 	}
 	a.rooted[wOut.VID] = consumedRooted
-
 	a.markVertexDefined(wOut.VID)
 
 	// this is new rooted output -> add to the coverage delta

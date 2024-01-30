@@ -81,7 +81,6 @@ func (a *milestoneAttacher) commitBranch() {
 
 	// generate DEL mutations
 	for vid, consumed := range a.rooted {
-		util.Assertf(len(consumed) > 0, "len(consumed)>0")
 		for idx := range consumed {
 			out := vid.MustOutputWithIDAt(idx)
 			muts.InsertDelOutputMutation(out.ID)

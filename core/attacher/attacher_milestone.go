@@ -179,9 +179,6 @@ func (a *milestoneAttacher) solidifyBaseline() vertex.Status {
 
 // solidifyPastCone solidifies and validates sequencer transaction in the context of known baseline state
 func (a *milestoneAttacher) solidifyPastCone() vertex.Status {
-	//fmt.Printf(">>>>>>>>>>>>> solidifyPastCone START: %s\n", a.name)
-	//defer fmt.Printf(">>>>>>>>>>>>> solidifyPastCone END: %s\n", a.name)
-
 	return a.lazyRepeat(func() (status vertex.Status) {
 		ok := true
 		finalSuccess := false
