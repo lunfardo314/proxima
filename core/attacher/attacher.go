@@ -33,10 +33,6 @@ func (a *attacher) Name() string {
 	return a.name
 }
 
-func (a *attacher) GetReason() error {
-	return a.err
-}
-
 func (a *attacher) baselineStateReader() multistate.SugaredStateReader {
 	return multistate.MakeSugared(a.GetStateReaderForTheBranch(a.baseline))
 }
@@ -90,17 +86,15 @@ func (a *attacher) isKnownUndefined(vid *vertex.WrappedTx) bool {
 	return !f.FlagsUp(FlagAttachedVertexDefined)
 }
 
-func (a *attacher) isKnownNotRooted(vid *vertex.WrappedTx) (yes bool) {
-	yes = a.isKnownDefined(vid) || a.isKnownUndefined(vid)
-	if yes {
-		_, found := a.rooted[vid]
-		util.Assertf(!found, "inconsistency: transaction should not be marked rooted")
-	}
-	return
+func (a *attacher) isKnownNotRooted(vid *vertex.WrappedTx) bool {
+	known := a.isKnownDefined(vid) || a.isKnownUndefined(vid)
+	_, rooted := a.rooted[vid]
+	return known && !rooted
 }
 
 func (a *attacher) isKnownRooted(vid *vertex.WrappedTx) (yes bool) {
 	_, yes = a.rooted[vid]
+	util.Assertf(!yes || a.isKnownDefined(vid) || a.isKnownUndefined(vid), "!yes || a.isKnownDefined(vid) || a.isKnownUndefined(vid)")
 	return
 }
 
@@ -390,6 +384,8 @@ func (a *attacher) attachEndorsements(v *vertex.Vertex, vid *vertex.WrappedTx, p
 			}
 		}
 		// non-branch undefined milestone. Go deep recursively
+		util.Assertf(!vidEndorsed.IsBranchTransaction(), "attachEndorsements(%s): !vidEndorsed.IsBranchTransaction(): %s", a.name, vidEndorsed.IDShortString)
+
 		ok, defined := a.attachVertexNonBranch(vidEndorsed, ledger.NilLogicalTime)
 		if !ok {
 			a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s): attachVertexNonBranch returned: endorsement %s -> %s NOT OK",
@@ -447,7 +443,7 @@ func _lazyStringSelectedInputs(tx *transaction.Transaction, indices []byte) func
 	}
 }
 
-func (a *attacher) attachInput(v *vertex.Vertex, inputIdx byte, vid *vertex.WrappedTx, parasiticChainHorizon ledger.LogicalTime) (ok, success bool) {
+func (a *attacher) attachInput(v *vertex.Vertex, inputIdx byte, vid *vertex.WrappedTx, parasiticChainHorizon ledger.LogicalTime) (ok, defined bool) {
 	a.Tracef(TraceTagAttachVertex, "attachInput #%d of %s", inputIdx, vid.IDShortString)
 	if !a.attachInputID(v, vid, inputIdx) {
 		a.Tracef(TraceTagAttachVertex, "bad input %d", inputIdx)
@@ -464,14 +460,15 @@ func (a *attacher) attachInput(v *vertex.Vertex, inputIdx byte, vid *vertex.Wrap
 		Index: v.Tx.MustOutputIndexOfTheInput(inputIdx),
 	}
 
-	if !a.attachOutput(wOut, parasiticChainHorizon) {
-		return false, false
+	ok, defined = a.attachOutput(wOut, parasiticChainHorizon)
+	if !ok {
+		return ok, false
 	}
-	success = a.isKnownDefined(v.Inputs[inputIdx]) || a.isRootedOutput(wOut)
-	if success {
+	defined = a.isKnownDefined(v.Inputs[inputIdx]) || a.isRootedOutput(wOut)
+	if defined {
 		a.Tracef(TraceTagAttachVertex, "attacher %s: input #%d (%s) has been solidified", a.name, inputIdx, wOut.IDShortString)
 	}
-	return true, success
+	return true, defined
 }
 
 func (a *attacher) attachRooted(wOut vertex.WrappedOutput) (ok bool, isRooted bool) {
@@ -522,30 +519,40 @@ func (a *attacher) attachRooted(wOut vertex.WrappedOutput) (ok bool, isRooted bo
 	return true, true
 }
 
-func (a *attacher) attachOutput(wOut vertex.WrappedOutput, parasiticChainHorizon ledger.LogicalTime) bool {
+func (a *attacher) attachOutput(wOut vertex.WrappedOutput, parasiticChainHorizon ledger.LogicalTime) (ok, defined bool) {
 	a.Tracef(TraceTagAttachOutput, "%s", wOut.IDShortString)
 	ok, isRooted := a.attachRooted(wOut)
 	if !ok {
-		return false
+		return false, false
 	}
 	if isRooted {
 		a.Tracef(TraceTagAttachOutput, "%s is rooted", wOut.IDShortString)
-		return true
+		return true, true
 	}
+	// not rooted
 	a.Tracef(TraceTagAttachOutput, "%s is NOT rooted", wOut.IDShortString)
+
+	if wOut.VID.IsBranchTransaction() {
+		// not rooted branch output -> BAD
+		err := fmt.Errorf("attachOutput: branch output %s is expected to be rooted in the baseline %s", wOut.VID.IDShortString(), a.baseline.IDShortString())
+		a.setError(err)
+		a.Tracef(TraceTagAttachOutput, "%v", err)
+		return false, false
+	}
 
 	if wOut.Timestamp().Before(parasiticChainHorizon) {
 		// parasitic chain rule
-		err := fmt.Errorf("parasitic chain threshold %s has been broken while attaching output %s", parasiticChainHorizon.String(), wOut.IDShortString())
+		err := fmt.Errorf("attachOutput: parasitic chain threshold %s has been broken while attaching output %s", parasiticChainHorizon.String(), wOut.IDShortString())
 		a.setError(err)
 		a.Tracef(TraceTagAttachOutput, "%v", err)
-		return false
+		return false, false
 	}
 
+	util.Assertf(!wOut.VID.IsBranchTransaction(), "attachOutput: !wOut.VID.IsBranchTransaction(): %s", wOut.IDShortString)
+
 	// input is not rooted
-	ok, _ = a.attachVertexNonBranch(wOut.VID, parasiticChainHorizon)
 	// check is output index is correct??
-	return ok
+	return a.attachVertexNonBranch(wOut.VID, parasiticChainHorizon)
 }
 
 func (a *attacher) branchesCompatible(vid1, vid2 *vertex.WrappedTx) bool {

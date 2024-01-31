@@ -269,7 +269,7 @@ func TestNSequencersIdle(t *testing.T) {
 		t.Logf("%s", testData.wrk.Info(true))
 		//testData.wrk.SaveGraph("utangle")
 	})
-	t.Run("WEIRD BEHAVIOR idle 2", func(t *testing.T) {
+	t.Run("idle 2", func(t *testing.T) {
 		const (
 			maxSlots    = 50
 			nSequencers = 1 // in addition to bootstrap

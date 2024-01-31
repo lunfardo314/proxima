@@ -2,6 +2,7 @@ package attacher
 
 import (
 	"crypto/ed25519"
+	"errors"
 	"fmt"
 	"slices"
 
@@ -15,6 +16,8 @@ import (
 )
 
 const TraceTagIncrementalAttacher = "incAttach"
+
+var ErrPastConeNotSolidYet = errors.New("past cone not solid yet")
 
 func NewIncrementalAttacher(name string, env Environment, targetTs ledger.LogicalTime, extend vertex.WrappedOutput, endorse ...*vertex.WrappedTx) (*IncrementalAttacher, error) {
 	util.Assertf(ledger.ValidTimePace(extend.Timestamp(), targetTs), "ledger.ValidTimePace(extend.Timestamp(), targetTs)")
@@ -67,9 +70,25 @@ func NewIncrementalAttacher(name string, env Environment, targetTs ledger.Logica
 			return nil, err
 		}
 	}
+	if len(endorse) > 0 {
+		util.Assertf(len(ret.rooted) > 0, "NewIncrementalAttacher: len(ret.rooted)>0:\n%s", func() string { return ret.dumpLines("      ").String() })
+	}
+	isRootedAlongEndorsements := ret.isRootedOutput(ret.extend)
+
+	if ret.extend.VID.IsBranchTransaction() {
+		fmt.Printf(">>>>>>>>>>>>>> NewIncrementalAttacher(%s): extending branch output %s -> isRooted along endorsements: %v\n",
+			name, ret.extend.IDShortString(), isRootedAlongEndorsements)
+	}
 	// attach sequencer predecessor
-	if !ret.attachOutput(ret.extend, ledger.NilLogicalTime) {
+	ok, defined := ret.attachOutput(ret.extend, ledger.NilLogicalTime)
+	util.Assertf(!isRootedAlongEndorsements || !ok, "NewIncrementalAttacher(%s): attaching output %s expected to fail", name, ret.extend.IDShortString)
+
+	if !ok {
+		util.Assertf(ret.err != nil, "ret.err != nil")
 		return nil, ret.err
+	}
+	if !defined {
+		return nil, ErrPastConeNotSolidYet
 	}
 	if targetTs.Tick() == 0 {
 		// for branches, include stem input
@@ -78,8 +97,13 @@ func NewIncrementalAttacher(name string, env Environment, targetTs ledger.Logica
 		if ret.stemOutput.VID == nil {
 			return nil, fmt.Errorf("NewIncrementalAttacher: stem output is not available for baseline %s", baseline.IDShortString())
 		}
-		if !ret.attachOutput(ret.stemOutput, ledger.NilLogicalTime) {
+		ok, defined = ret.attachOutput(ret.stemOutput, ledger.NilLogicalTime)
+		if !ok {
+			util.Assertf(ret.err != nil, "ret.err != nil")
 			return nil, ret.err
+		}
+		if !defined {
+			return nil, ErrPastConeNotSolidYet
 		}
 	}
 	return ret, nil
@@ -102,11 +126,19 @@ func (a *IncrementalAttacher) insertEndorsement(endorsement *vertex.WrappedTx) e
 		// branch is compatible with the baseline
 		a.markVertexDefined(endorsement)
 		a.markVertexRooted(endorsement)
-	} else {
-		ok, _ := a.attachVertexNonBranch(endorsement, ledger.NilLogicalTime)
-		util.Assertf(ok || a.err != nil, "ok || a.err != nil")
+		return nil
 	}
-	return a.err
+	ok, defined := a.attachVertexNonBranch(endorsement, ledger.NilLogicalTime)
+	util.Assertf(ok || a.err != nil, "ok || a.err != nil")
+	if !ok {
+		util.Assertf(a.err != nil, "a.err != nil")
+		return a.err
+	}
+	util.Assertf(a.err == nil, "a.err == nil")
+	if !defined {
+		return ErrPastConeNotSolidYet
+	}
+	return nil
 }
 
 // InsertTagAlongInput inserts tag along input.
@@ -123,18 +155,26 @@ func (a *IncrementalAttacher) InsertTagAlongInput(wOut vertex.WrappedOutput) (bo
 	}
 	saveCoverageDelta := a.coverage
 
-	if !a.attachOutput(wOut, ledger.NilLogicalTime) || !a.Completed() {
+	ok, defined := a.attachOutput(wOut, ledger.NilLogicalTime)
+	if !ok || !defined {
 		// it is either conflicting, or not solid yet
 		// in either case rollback
 		a.attacher.vertices = saveVertices
 		a.attacher.rooted = saveRooted
 		a.coverage = saveCoverageDelta
-		retReason := a.GetReason()
+		var retErr error
+		if !ok {
+			retErr = a.err
+		} else {
+			if !defined {
+				retErr = ErrPastConeNotSolidYet
+			}
+		}
 		a.setError(nil)
-		return false, retReason
+		return false, retErr
 	}
 	a.tagAlongInputs = append(a.tagAlongInputs, wOut)
-	util.AssertNoError(a.GetReason())
+	util.AssertNoError(a.err)
 	return true, nil
 }
 
@@ -183,7 +223,7 @@ func (a *IncrementalAttacher) MakeTransaction(seqName string, privateKey ed25519
 		a.Log().Fatalf("IncrementalAttacher.MakeTransaction: %v", err) // should produce correct transaction
 		//return nil, err
 	}
-	a.Log().Infof("\n>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\n%s\n<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<", a.dumpLines().String())
+	//a.Log().Infof("\n>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\n%s\n<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<", a.dumpLines().String())
 	return tx, nil
 }
 
