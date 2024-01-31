@@ -219,13 +219,21 @@ func (mf *MilestoneFactory) startProposerWorkers(targetTime ledger.LogicalTime, 
 		}
 		mf.Tracef(TraceTag, "RUN '%s' proposer for the target %s", strategyName, targetTime.String)
 
-		util.RunWrappedRoutine(mf.SequencerName()+"::"+task.GetName(), func() {
+		runFun := func() {
 			mf.Tracef(TraceTag, " START proposer %s", task.GetName())
 			task.Run()
 			mf.Tracef(TraceTag, " END proposer %s", task.GetName())
-		}, func(err error) {
-			mf.Log().Fatal(err)
-		}, common.ErrDBUnavailable, vertex.ErrDeletedVertexAccessed)
+		}
+		const debuggerFriendly = true
+		if debuggerFriendly {
+			runFun()
+		} else {
+			util.RunWrappedRoutine(mf.SequencerName()+"::"+task.GetName(), runFun,
+				func(err error) {
+					mf.Log().Fatal(err)
+				},
+				common.ErrDBUnavailable, vertex.ErrDeletedVertexAccessed)
+		}
 	}
 }
 

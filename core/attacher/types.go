@@ -67,11 +67,10 @@ type (
 	// It is used to generate the transaction and after that it is discarded
 	IncrementalAttacher struct {
 		attacher
-		extend         vertex.WrappedOutput
-		endorse        []*vertex.WrappedTx
-		tagAlongInputs []vertex.WrappedOutput
-		targetTs       ledger.LogicalTime
-		stemOutput     vertex.WrappedOutput
+		endorse    []*vertex.WrappedTx
+		inputs     []vertex.WrappedOutput
+		targetTs   ledger.LogicalTime
+		stemOutput vertex.WrappedOutput
 	}
 
 	// milestoneAttacher is used to attach a sequencer transaction

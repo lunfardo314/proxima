@@ -283,7 +283,7 @@ func TestNSequencersIdle(t *testing.T) {
 		//testData.wrk.EnableTraceTags(attacher.TraceTagAttachVertex, attacher.TraceTagAttachOutput)
 
 		testData.startSequencersWithTimeout(maxSlots)
-		time.Sleep(5 * time.Second)
+		time.Sleep(20 * time.Second)
 		testData.stopAndWaitSequencers()
 		testData.stopAndWait()
 
@@ -446,15 +446,12 @@ func TestNSequencersTransfer(t *testing.T) {
 		t.Logf("%s", testData.wrk.Info())
 		rdr = testData.wrk.HeaviestStateForLatestTimeSlot()
 		for _, txid := range par.spammedTxIDs {
-			//require.True(t, rdr.KnowsCommittedTransaction(&txid))
+			require.True(t, rdr.KnowsCommittedTransaction(&txid))
 			t.Logf("    %s: in the heaviest state: %v", txid.StringShort(), rdr.KnowsCommittedTransaction(&txid))
 		}
 
-		t.Logf("============== 1")
 		//testData.wrk.SaveSequencerGraph(fmt.Sprintf("utangle_seq_tree_%d", nSequencers+1))
-		t.Logf("============== 2")
 		dag.SaveBranchTree(testData.wrk.StateStore(), fmt.Sprintf("utangle_tree_%d", nSequencers+1))
-		t.Logf("============== 3")
 
 		targetBalance := rdr.BalanceOf(targetAddr.AccountID())
 		require.EqualValues(t, len(par.spammedTxIDs)*sendAmount, int(targetBalance))
@@ -465,7 +462,7 @@ func TestNSequencersTransfer(t *testing.T) {
 		for seqID, initBal := range tagAlongInitBalances {
 			balanceOnChain := rdr.BalanceOnChain(&seqID)
 			t.Logf("%s tx: %d, init: %s, final: %s", seqID.StringShort(), par.perChainID[seqID], util.GoTh(initBal), util.GoTh(balanceOnChain))
-			//require.EqualValues(t, int(initBal)+par.perChainID[seqID]*tagAlongFee, int(balanceOnChain))
+			require.EqualValues(t, int(initBal)+par.perChainID[seqID]*tagAlongFee, int(balanceOnChain))
 		}
 	})
 }

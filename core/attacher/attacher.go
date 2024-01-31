@@ -74,6 +74,10 @@ func (a *attacher) markVertexRooted(vid *vertex.WrappedTx) {
 	a.rooted[vid] = a.rooted[vid]
 }
 
+func (a *attacher) isKnown(vid *vertex.WrappedTx) bool {
+	return a.flags(vid).FlagsUp(FlagAttachedVertexKnown)
+}
+
 func (a *attacher) isKnownDefined(vid *vertex.WrappedTx) bool {
 	return a.flags(vid).FlagsUp(FlagAttachedVertexKnown | FlagAttachedVertexDefined)
 }
@@ -635,6 +639,14 @@ func (a *attacher) checkConflictsFunc(consumerTx *vertex.WrappedTx) func(existin
 		})
 		return
 	}
+}
+
+func (a *attacher) isKnownConsumed(wOut vertex.WrappedOutput) (isConsumed bool) {
+	wOut.VID.ConsumersOf(wOut.Index).ForEach(func(consumer *vertex.WrappedTx) bool {
+		isConsumed = a.isKnown(consumer)
+		return !isConsumed
+	})
+	return
 }
 
 // setBaseline sets baseline, fetches its baselineCoverage and initializes attacher's baselineCoverage according to the currentTS

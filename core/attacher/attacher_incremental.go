@@ -4,7 +4,6 @@ import (
 	"crypto/ed25519"
 	"errors"
 	"fmt"
-	"slices"
 
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/ledger"
@@ -54,11 +53,10 @@ func NewIncrementalAttacher(name string, env Environment, targetTs ledger.Logica
 	env.Tracef(TraceTagIncrementalAttacher, "NewIncrementalAttacher(%s). baseline: %s", name, baseline.IDShortString)
 
 	ret := &IncrementalAttacher{
-		attacher:       newPastConeAttacher(env, name),
-		extend:         extend,
-		endorse:        slices.Clone(endorse),
-		tagAlongInputs: make([]vertex.WrappedOutput, 0),
-		targetTs:       targetTs,
+		attacher: newPastConeAttacher(env, name),
+		endorse:  make([]*vertex.WrappedTx, 0),
+		inputs:   make([]vertex.WrappedOutput, 0),
+		targetTs: targetTs,
 	}
 
 	ret.setBaseline(baseline, targetTs) // also fetches baseline coverage
@@ -70,40 +68,21 @@ func NewIncrementalAttacher(name string, env Environment, targetTs ledger.Logica
 			return nil, err
 		}
 	}
-	if len(endorse) > 0 {
-		util.Assertf(len(ret.rooted) > 0, "NewIncrementalAttacher: len(ret.rooted)>0:\n%s", func() string { return ret.dumpLines("      ").String() })
+	// extend input will always be at index 0
+	if err := ret.insertOutput(extend); err != nil {
+		return nil, err
 	}
-	isRootedAlongEndorsements := ret.isRootedOutput(ret.extend)
 
-	if ret.extend.VID.IsBranchTransaction() {
-		fmt.Printf(">>>>>>>>>>>>>> NewIncrementalAttacher(%s): extending branch output %s -> isRooted along endorsements: %v\n",
-			name, ret.extend.IDShortString(), isRootedAlongEndorsements)
-	}
-	// attach sequencer predecessor
-	ok, defined := ret.attachOutput(ret.extend, ledger.NilLogicalTime)
-	util.Assertf(!isRootedAlongEndorsements || !ok, "NewIncrementalAttacher(%s): attaching output %s expected to fail", name, ret.extend.IDShortString)
-
-	if !ok {
-		util.Assertf(ret.err != nil, "ret.err != nil")
-		return nil, ret.err
-	}
-	if !defined {
-		return nil, ErrPastConeNotSolidYet
-	}
 	if targetTs.Tick() == 0 {
+		// stem input, if any, will be at index 1
 		// for branches, include stem input
 		env.Tracef(TraceTagIncrementalAttacher, "NewIncrementalAttacher(%s). insertStemInput", name)
 		ret.stemOutput = baseline.StemWrappedOutput()
 		if ret.stemOutput.VID == nil {
 			return nil, fmt.Errorf("NewIncrementalAttacher: stem output is not available for baseline %s", baseline.IDShortString())
 		}
-		ok, defined = ret.attachOutput(ret.stemOutput, ledger.NilLogicalTime)
-		if !ok {
-			util.Assertf(ret.err != nil, "ret.err != nil")
-			return nil, ret.err
-		}
-		if !defined {
-			return nil, ErrPastConeNotSolidYet
+		if err := ret.insertOutput(ret.stemOutput); err != nil {
+			return nil, err
 		}
 	}
 	return ret, nil
@@ -111,6 +90,22 @@ func NewIncrementalAttacher(name string, env Environment, targetTs ledger.Logica
 
 func (a *IncrementalAttacher) BaselineBranch() *vertex.WrappedTx {
 	return a.baseline
+}
+
+func (a *IncrementalAttacher) insertOutput(wOut vertex.WrappedOutput) error {
+	if a.isKnownConsumed(wOut) {
+		return fmt.Errorf("output %s is already consumed", wOut.IDShortString())
+	}
+	ok, defined := a.attachOutput(wOut, ledger.NilLogicalTime)
+	if !ok {
+		util.Assertf(a.err != nil, "a.err!=nil")
+		return a.err
+	}
+	if !defined {
+		return ErrPastConeNotSolidYet
+	}
+	a.inputs = append(a.inputs, wOut)
+	return nil
 }
 
 func (a *IncrementalAttacher) insertEndorsement(endorsement *vertex.WrappedTx) error {
@@ -126,18 +121,19 @@ func (a *IncrementalAttacher) insertEndorsement(endorsement *vertex.WrappedTx) e
 		// branch is compatible with the baseline
 		a.markVertexDefined(endorsement)
 		a.markVertexRooted(endorsement)
-		return nil
+	} else {
+		ok, defined := a.attachVertexNonBranch(endorsement, ledger.NilLogicalTime)
+		util.Assertf(ok || a.err != nil, "ok || a.err != nil")
+		if !ok {
+			util.Assertf(a.err != nil, "a.err != nil")
+			return a.err
+		}
+		util.Assertf(a.err == nil, "a.err == nil")
+		if !defined {
+			return ErrPastConeNotSolidYet
+		}
 	}
-	ok, defined := a.attachVertexNonBranch(endorsement, ledger.NilLogicalTime)
-	util.Assertf(ok || a.err != nil, "ok || a.err != nil")
-	if !ok {
-		util.Assertf(a.err != nil, "a.err != nil")
-		return a.err
-	}
-	util.Assertf(a.err == nil, "a.err == nil")
-	if !defined {
-		return ErrPastConeNotSolidYet
-	}
+	a.endorse = append(a.endorse, endorsement)
 	return nil
 }
 
@@ -173,31 +169,39 @@ func (a *IncrementalAttacher) InsertTagAlongInput(wOut vertex.WrappedOutput) (bo
 		a.setError(nil)
 		return false, retErr
 	}
-	a.tagAlongInputs = append(a.tagAlongInputs, wOut)
+	a.inputs = append(a.inputs, wOut)
 	util.AssertNoError(a.err)
 	return true, nil
 }
 
 func (a *IncrementalAttacher) MakeTransaction(seqName string, privateKey ed25519.PrivateKey) (*transaction.Transaction, error) {
-	chainIn, err := a.extend.VID.OutputWithIDAt(a.extend.Index)
-	if err != nil {
-		return nil, err
-	}
-	var stemIn *ledger.OutputWithID
-	if a.targetTs.Tick() == 0 {
-		var stemInTmp ledger.OutputWithID
-		stemInTmp, err = a.stemOutput.VID.OutputWithIDAt(a.stemOutput.Index)
-		stemIn = &stemInTmp
-	}
-	tagAlongInputs := make([]*ledger.OutputWithID, len(a.tagAlongInputs))
+	otherInputs := make([]*ledger.OutputWithID, 0, len(a.inputs))
 
-	for i, wOut := range a.tagAlongInputs {
-		o, err := wOut.VID.OutputWithIDAt(wOut.Index)
-		if err != nil {
-			return nil, err
+	var chainIn ledger.OutputWithID
+	var stemIn *ledger.OutputWithID
+	var err error
+
+	for i, wOut := range a.inputs {
+		switch {
+		case i == 0:
+			if chainIn, err = wOut.VID.OutputWithIDAt(a.inputs[0].Index); err != nil {
+				return nil, err
+			}
+		case i == 1 && a.targetTs.Tick() == 0:
+			var stemInTmp ledger.OutputWithID
+			if stemInTmp, err = a.stemOutput.VID.OutputWithIDAt(a.stemOutput.Index); err != nil {
+				return nil, err
+			}
+			stemIn = &stemInTmp
+		default:
+			o, err := wOut.VID.OutputWithIDAt(wOut.Index)
+			if err != nil {
+				return nil, err
+			}
+			otherInputs = append(otherInputs, &o)
 		}
-		tagAlongInputs[i] = &o
 	}
+
 	endorsements := make([]*ledger.TransactionID, len(a.endorse))
 	for i, vid := range a.endorse {
 		endorsements[i] = &vid.ID
@@ -207,7 +211,7 @@ func (a *IncrementalAttacher) MakeTransaction(seqName string, privateKey ed25519
 		ChainInput:        chainIn.MustAsChainOutput(),
 		StemInput:         stemIn,
 		Timestamp:         a.targetTs,
-		AdditionalInputs:  tagAlongInputs,
+		AdditionalInputs:  otherInputs,
 		Endorsements:      endorsements,
 		PrivateKey:        privateKey,
 		ReturnInputLoader: true,
@@ -240,7 +244,7 @@ func (a *IncrementalAttacher) TargetTs() ledger.LogicalTime {
 }
 
 func (a *IncrementalAttacher) NumInputs() int {
-	return len(a.tagAlongInputs) + 2
+	return len(a.inputs) + 2
 }
 
 // Completed returns true is past cone all solid and consistent (no conflicts)
@@ -253,7 +257,7 @@ func (a *IncrementalAttacher) Completed() (done bool) {
 }
 
 func (a *IncrementalAttacher) Extending() vertex.WrappedOutput {
-	return a.extend
+	return a.inputs[0]
 }
 
 func (a *IncrementalAttacher) Endorsing() []*vertex.WrappedTx {
