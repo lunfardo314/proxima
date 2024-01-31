@@ -1,6 +1,7 @@
 package util
 
 import (
+	"errors"
 	"fmt"
 	"reflect"
 	"strings"
@@ -48,6 +49,15 @@ func AssertNoError(err error, prefix ...string) {
 		pref = strings.Join(prefix, " ") + ": "
 	}
 	Assertf(err == nil, pref+"%w", err)
+}
+
+func AssertMustError(err error, target ...error) {
+	Assertf(err != nil, "error expected")
+	if len(target) > 0 {
+		Assertf(errors.Is(err, target[0]), "error '%s' was expected", target[0])
+	} else {
+		Assertf(err != nil, "an error was expected")
+	}
 }
 
 func IsNil(p interface{}) bool {

@@ -265,13 +265,13 @@ func (a *attacher) attachVertexUnwrapped(v *vertex.Vertex, vid *vertex.WrappedTx
 
 	inputsOk := a.attachInputsOfTheVertex(v, vid, parasiticChainHorizon) // deep recursion
 	if !inputsOk {
-		util.Assertf(a.err != nil, "a.err != nil")
+		util.AssertMustError(a.err)
 		return false
 	}
 
 	if !v.Tx.IsSequencerMilestone() && a.flags(vid).FlagsUp(FlagAttachedVertexInputsSolid) {
 		if !a.finalTouchNonSequencer(v, vid) {
-			util.Assertf(a.err != nil, "a.err != nil")
+			util.AssertMustError(a.err)
 			return false
 		}
 	}
@@ -394,7 +394,7 @@ func (a *attacher) attachEndorsements(v *vertex.Vertex, vid *vertex.WrappedTx, p
 		if !ok {
 			a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s): attachVertexNonBranch returned: endorsement %s -> %s NOT OK",
 				a.name, vid.IDShortString, vidEndorsed.IDShortString)
-			util.Assertf(a.err != nil, "a.err != nil")
+			util.AssertMustError(a.err)
 			return false
 		}
 		util.AssertNoError(a.err)
@@ -606,12 +606,6 @@ func (a *attacher) attachInputID(consumerVertex *vertex.Vertex, consumerTx *vert
 	// attach consumer and check for conflicts
 	// LEDGER CONFLICT (DOUBLE-SPEND) DETECTION
 	util.Assertf(a.isKnownNotRooted(consumerTx), "attachInputID: a.isKnownNotRooted(consumerTx)")
-
-	//a.Tracef(TraceTagAttachOutput, "before AttachConsumer of %s:\n       good: %s\n       undef: %s",
-	//	inputOid.StringShort,
-	//	func() string { return vertex.VIDSetIDString(a.vertices) },
-	//	func() string { return vertex.VIDSetIDString(a.undefinedPastVertices) },
-	//)
 
 	if !vidInputTx.AttachConsumer(inputOid.Index(), consumerTx, a.checkConflictsFunc(consumerTx)) {
 		err := fmt.Errorf("input %s of consumer %s conflicts with existing consumers in the baseline state %s (double spend)",

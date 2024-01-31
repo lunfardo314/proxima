@@ -185,11 +185,12 @@ func (a *milestoneAttacher) solidifyPastCone() vertex.Status {
 		a.vid.Unwrap(vertex.UnwrapOptions{
 			Vertex: func(v *vertex.Vertex) {
 				if ok = a.attachVertexUnwrapped(v, a.vid, ledger.NilLogicalTime); !ok {
-					util.Assertf(a.err != nil, "a.err!=nil")
+					util.AssertMustError(a.err)
 					return
 				}
-				ok, finalSuccess = a.validateSequencerTx(v, a.vid)
-				util.Assertf(ok || a.err != nil, "ok || a.err!=nil")
+				if ok, finalSuccess = a.validateSequencerTx(v, a.vid); !ok {
+					util.AssertMustError(a.err)
+				}
 			},
 		})
 		switch {

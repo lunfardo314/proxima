@@ -98,7 +98,7 @@ func (a *IncrementalAttacher) insertOutput(wOut vertex.WrappedOutput) error {
 	}
 	ok, defined := a.attachOutput(wOut, ledger.NilLogicalTime)
 	if !ok {
-		util.Assertf(a.err != nil, "a.err!=nil")
+		util.AssertMustError(a.err)
 		return a.err
 	}
 	if !defined {
