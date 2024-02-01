@@ -21,7 +21,12 @@ func TestBase(t *testing.T) {
 			Amount:         1_000_000,
 		})
 		require.NoError(t, err)
-		t.Logf("%s", o.ToString("    "))
+		t.Logf("commnd output:\n%s", o.ToString("    "))
+
+		parser := NewCommandParser(addrController)
+		sendOutput, err := parser.ParseSequencerCommandToOutput(&ledger.OutputWithID{Output: o})
+		require.NoError(t, err)
+		t.Logf("send output:\n%s", sendOutput[0].ToString("    "))
 	})
 	t.Run("not ok", func(t *testing.T) {
 		addrController := ledger.AddressED25519FromPrivateKey(testutil.GetTestingPrivateKey(1000))

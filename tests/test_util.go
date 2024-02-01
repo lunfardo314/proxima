@@ -19,6 +19,7 @@ import (
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/peering"
 	"github.com/lunfardo314/proxima/sequencer"
+	"github.com/lunfardo314/proxima/sequencer/factory"
 	"github.com/lunfardo314/proxima/txstore"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/testutil"
@@ -601,7 +602,7 @@ type spammerParams struct {
 	perChainID    map[ledger.ChainID]int
 }
 
-func (td *workflowTestData) spam(par *spammerParams, ctx context.Context) {
+func (td *workflowTestData) spamTransfers(par *spammerParams, ctx context.Context) {
 	batchCount := 0
 	for {
 		select {
@@ -661,13 +662,69 @@ func makeTransfers(par *spammerParams) [][]byte {
 		lckChain := lck.(ledger.ChainLock)
 		require.EqualValues(par.t, lckChain.ChainID(), seqID)
 
-		par.t.Logf("spam -> %s, tag along: %s", tx.IDShortString(), seqID.StringShort())
+		par.t.Logf("spamTransfers -> %s, tag along: %s", tx.IDShortString(), seqID.StringShort())
 		//txStr := transaction.ParseBytesToString(ret[i], func(_ *ledger.OutputID) ([]byte, bool) {
 		//	return par.remainder.Output.Bytes(), true
 		//})
 		//par.t.Logf(">>>>>> PARSE: %s", txStr)
 	}
 	return ret
+}
+
+type spammerWithdrawCmdParams struct {
+	seqID                   ledger.ChainID
+	seqControllerPrivateKey ed25519.PrivateKey
+	withdrawAmount          uint64
+	pace                    int
+	target                  ledger.AddressED25519
+	remainder               *ledger.OutputWithID
+	totalWithdrawn          uint64
+}
+
+func (td *workflowTestData) spamWithdrawCommands(par spammerWithdrawCmdParams, ctx context.Context) {
+	srcAddr := ledger.AddressED25519FromPrivateKey(par.seqControllerPrivateKey)
+
+	const withdrawAmount = factory.MinimumAmountToRequestFromSequencer
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(time.Duration(par.pace) * ledger.TickDuration()):
+		}
+		txb := txbuilder.NewTransactionBuilder()
+		_, err := txb.ConsumeOutput(par.remainder.Output, par.remainder.ID)
+		require.NoError(td.t, err)
+		reminder := ledger.NewOutput(func(o *ledger.Output) {
+			o.WithAmount(par.remainder.Output.Amount() - 500).WithLock(par.remainder.Output.Lock())
+		})
+		_, err = txb.ProduceOutput(reminder)
+		require.NoError(td.t, err)
+		cmdOut, err := factory.MakeSequencerWithdrawCmdOutput(factory.MakeSequencerWithdrawCmdOutputParams{
+			SeqID:          par.seqID,
+			ControllerAddr: srcAddr,
+			TargetLock:     par.target,
+			TagAlongFee:    500,
+			Amount:         withdrawAmount,
+		})
+		_, err = txb.ProduceOutput(cmdOut)
+		require.NoError(td.t, err)
+
+		txb.TransactionData.Timestamp = ledger.LogicalTimeNow()
+		txb.TransactionData.InputCommitment = txb.InputCommitment()
+		txb.SignED25519(par.seqControllerPrivateKey)
+		txBytes := txb.TransactionData.Bytes()
+
+		tx, err := transaction.FromBytes(txBytes, transaction.MainTxValidationOptions...)
+		require.NoError(td.t, err)
+
+		par.remainder = tx.MustProducedOutputWithIDAt(1)
+
+		_, err = td.wrk.TxBytesIn(txBytes)
+		require.NoError(td.t, err)
+
+		par.totalWithdrawn += withdrawAmount
+	}
 }
 
 func (td *workflowTestData) startSequencersWithTimeout(maxSlots int, timeout ...time.Duration) {

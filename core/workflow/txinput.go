@@ -190,3 +190,9 @@ func WithSourceType(sourceType txmetadata.SourceType) TxBytesInOption {
 		opts.txMetadata.SourceTypeNonPersistent = sourceType
 	}
 }
+
+func WithWaitGroup(wg *sync.WaitGroup) TxBytesInOption {
+	return WithCallback(func(_ *vertex.WrappedTx, _ error) {
+		wg.Done()
+	})
+}

@@ -194,7 +194,7 @@ func Test1Sequencer(t *testing.T) {
 			tagAlongFee:   tagAlongFee,
 			spammedTxIDs:  make([]ledger.TransactionID, 0),
 		}
-		go testData.spam(par, ctx)
+		go testData.spamTransfers(par, ctx)
 
 		<-ctx.Done()
 		cancel()
@@ -354,7 +354,7 @@ func TestNSequencersTransfer(t *testing.T) {
 			tagAlongFee:  tagAlongFee,
 			spammedTxIDs: make([]ledger.TransactionID, 0),
 		}
-		go testData.spam(par, ctx)
+		go testData.spamTransfers(par, ctx)
 		go func() {
 			<-ctx.Done()
 			cancelSpam()
@@ -431,7 +431,7 @@ func TestNSequencersTransfer(t *testing.T) {
 			tagAlongFee:  tagAlongFee,
 			spammedTxIDs: make([]ledger.TransactionID, 0),
 		}
-		go testData.spam(par, ctx)
+		go testData.spamTransfers(par, ctx)
 		go func() {
 			<-ctx.Done()
 			cancelSpam()
