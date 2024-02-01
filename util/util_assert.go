@@ -59,6 +59,10 @@ func AssertMustError(err error, target ...error) {
 		Assertf(err != nil, "an error was expected")
 	}
 }
+func AssertNotNil[T comparable](el T) {
+	var nilT T
+	Assertf(el != nilT, "must not be nil, got %v", el)
+}
 
 func IsNil(p interface{}) bool {
 	return p == nil || (reflect.ValueOf(p).Kind() == reflect.Ptr && reflect.ValueOf(p).IsNil())

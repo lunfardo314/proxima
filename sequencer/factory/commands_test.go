@@ -1,0 +1,38 @@
+package factory
+
+import (
+	"testing"
+
+	"github.com/lunfardo314/proxima/ledger"
+	"github.com/lunfardo314/proxima/util/testutil"
+	"github.com/lunfardo314/unitrie/common"
+	"github.com/stretchr/testify/require"
+)
+
+func TestBase(t *testing.T) {
+	t.Run("ok", func(t *testing.T) {
+		addrController := ledger.AddressED25519FromPrivateKey(testutil.GetTestingPrivateKey(1000))
+		addrTarget := ledger.AddressED25519FromPrivateKey(testutil.GetTestingPrivateKey(2000))
+		o, err := MakeSequencerWithdrawCmdOutput(MakeSequencerWithdrawCmdOutputParams{
+			SeqID:          ledger.RandomChainID(),
+			ControllerAddr: addrController,
+			TargetLock:     addrTarget,
+			TagAlongFee:    500,
+			Amount:         1_000_000,
+		})
+		require.NoError(t, err)
+		t.Logf("%s", o.ToString("    "))
+	})
+	t.Run("not ok", func(t *testing.T) {
+		addrController := ledger.AddressED25519FromPrivateKey(testutil.GetTestingPrivateKey(1000))
+		addrTarget := ledger.AddressED25519FromPrivateKey(testutil.GetTestingPrivateKey(2000))
+		_, err := MakeSequencerWithdrawCmdOutput(MakeSequencerWithdrawCmdOutputParams{
+			SeqID:          ledger.RandomChainID(),
+			ControllerAddr: addrController,
+			TargetLock:     addrTarget,
+			TagAlongFee:    500,
+			Amount:         1_000,
+		})
+		common.RequireErrorWith(t, err, "is less than required minimum")
+	})
+}

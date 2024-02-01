@@ -200,7 +200,7 @@ func (a *IncrementalAttacher) MakeSequencerTransaction(seqName string, privateKe
 				return nil, err
 			}
 			otherInputs = append(otherInputs, &o)
-			outputs, err := cmdParser.ParseInputCommandToOutput(&o)
+			outputs, err := cmdParser.ParseSequencerCommandToOutput(&o)
 			if err != nil {
 				a.Tracef(TraceTagIncrementalAttacher, "error while parsing input: %v", err)
 			} else {
