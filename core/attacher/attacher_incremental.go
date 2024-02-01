@@ -174,13 +174,14 @@ func (a *IncrementalAttacher) InsertTagAlongInput(wOut vertex.WrappedOutput) (bo
 	return true, nil
 }
 
-func (a *IncrementalAttacher) MakeTransaction(seqName string, privateKey ed25519.PrivateKey) (*transaction.Transaction, error) {
+func (a *IncrementalAttacher) MakeSequencerTransaction(seqName string, privateKey ed25519.PrivateKey, cmdParser SequencerCommandParser) (*transaction.Transaction, error) {
 	otherInputs := make([]*ledger.OutputWithID, 0, len(a.inputs))
 
 	var chainIn ledger.OutputWithID
 	var stemIn *ledger.OutputWithID
 	var err error
 
+	additionalOutputs := make([]*ledger.Output, 0)
 	for i, wOut := range a.inputs {
 		switch {
 		case i == 0:
@@ -199,6 +200,12 @@ func (a *IncrementalAttacher) MakeTransaction(seqName string, privateKey ed25519
 				return nil, err
 			}
 			otherInputs = append(otherInputs, &o)
+			outputs, err := cmdParser.ParseInputCommandToOutput(&o)
+			if err != nil {
+				a.Tracef(TraceTagIncrementalAttacher, "error while parsing input: %v", err)
+			} else {
+				additionalOutputs = append(additionalOutputs, outputs...)
+			}
 		}
 	}
 
@@ -212,6 +219,7 @@ func (a *IncrementalAttacher) MakeTransaction(seqName string, privateKey ed25519
 		StemInput:         stemIn,
 		Timestamp:         a.targetTs,
 		AdditionalInputs:  otherInputs,
+		AdditionalOutputs: additionalOutputs,
 		Endorsements:      endorsements,
 		PrivateKey:        privateKey,
 		ReturnInputLoader: true,
@@ -224,7 +232,7 @@ func (a *IncrementalAttacher) MakeTransaction(seqName string, privateKey ed25519
 		if tx != nil {
 			err = fmt.Errorf("%w:\n%s", err, tx.ToStringWithInputLoaderByIndex(inputLoader))
 		}
-		a.Log().Fatalf("IncrementalAttacher.MakeTransaction: %v", err) // should produce correct transaction
+		a.Log().Fatalf("IncrementalAttacher.MakeSequencerTransaction: %v", err) // should produce correct transaction
 		//return nil, err
 	}
 	//a.Log().Infof("\n>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\n%s\n<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<", a.dumpLines().String())

@@ -108,6 +108,15 @@ type (
 	}
 
 	Flags uint8
+
+	SequencerCommandParser interface {
+		// ParseInputCommandToOutput analyzes consumed output for sequencer command and produces
+		// one or several outputs as an effect of the command. Returns:
+		// - nil, nil if a syntactically valid sequencer command is not detected  in the inputs
+		// - nil, err if a syntactically valid command can be detected, however it contains errors
+		// - list of outputs, nil if it is a success
+		ParseInputCommandToOutput(input *ledger.OutputWithID) ([]*ledger.Output, error)
+	}
 )
 
 const (

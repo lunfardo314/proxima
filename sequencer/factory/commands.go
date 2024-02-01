@@ -17,6 +17,27 @@ const (
 	MinimumAmountToRequestFromSequencer = 100_000
 )
 
+type CommandParser struct {
+	ownerAddress ledger.AddressED25519
+}
+
+func NewCommandParser(ownerAddress ledger.AddressED25519) CommandParser {
+	return CommandParser{ownerAddress}
+}
+
+func (p CommandParser) ParseInputCommandToOutput(input *ledger.OutputWithID) ([]*ledger.Output, error) {
+	cmdRawData := parseSenderCommandDataRaw(p.ownerAddress, input)
+	if len(cmdRawData) == 0 {
+		return nil, nil
+	}
+
+	o, err := makeOutputFromCommandData(cmdRawData)
+	if err != nil {
+		return nil, fmt.Errorf("ParseInputCommandToOutput: error while parsing %s: %w", input.ID.StringShort(), err)
+	}
+	return []*ledger.Output{o}, nil
+}
+
 // parseSenderCommandDataRaw analyzes the input and parses out raw sequencer command data, if any
 func parseSenderCommandDataRaw(myAddr ledger.AddressED25519, input *ledger.OutputWithID) []byte {
 	senderAddr, senderConstraintIdx := input.Output.SenderED25519()

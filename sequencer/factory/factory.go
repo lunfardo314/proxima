@@ -250,7 +250,8 @@ func (mf *MilestoneFactory) Propose(a *attacher.IncrementalAttacher) (forceExit 
 		return
 	}
 
-	tx, err := a.MakeTransaction(mf.SequencerName(), mf.ControllerPrivateKey())
+	commandParser := NewCommandParser(ledger.AddressED25519FromPrivateKey(mf.ControllerPrivateKey()))
+	tx, err := a.MakeSequencerTransaction(mf.SequencerName(), mf.ControllerPrivateKey(), commandParser)
 	if err != nil {
 		mf.Log().Warnf("Propose%s: error during transaction generation: '%v'", a.Name(), err)
 		return true
