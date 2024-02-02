@@ -82,7 +82,7 @@ func addTxValueFromBytes(data []byte) (ledger.Slot, byte, error) {
 	if len(data) != 5 {
 		return 0, 0, fmt.Errorf("wrong data length")
 	}
-	retSlot, err := ledger.TimeSlotFromBytes(data[:4])
+	retSlot, err := ledger.SlotFromBytes(data[:4])
 	if err != nil {
 		return 0, 0, err
 	}

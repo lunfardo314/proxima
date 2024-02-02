@@ -53,7 +53,7 @@ func (cl ChainLock) Accounts() []Accountable {
 	return []Accountable{cl}
 }
 
-func (cl ChainLock) UnlockableWith(acc AccountID, _ ...LogicalTime) bool {
+func (cl ChainLock) UnlockableWith(acc AccountID, _ ...Time) bool {
 	return bytes.Equal(cl.AccountID(), acc)
 }
 

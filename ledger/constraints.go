@@ -29,7 +29,7 @@ type (
 	Lock interface {
 		Constraint
 		Accounts() []Accountable
-		UnlockableWith(acc AccountID, ts ...LogicalTime) bool
+		UnlockableWith(acc AccountID, ts ...Time) bool
 	}
 
 	Parser func([]byte) (Constraint, error)

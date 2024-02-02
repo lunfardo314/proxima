@@ -78,7 +78,7 @@ func runSeqWithdrawCmd(_ *cobra.Command, args []string) {
 	cmdConstr, err := ledger.NewGeneralScriptFromSource(constrSource)
 	glb.AssertNoError(err)
 
-	transferData := txbuilder.NewTransferData(walletData.PrivateKey, walletData.Account, ledger.LogicalTimeNow()).
+	transferData := txbuilder.NewTransferData(walletData.PrivateKey, walletData.Account, ledger.TimeNow()).
 		WithAmount(ownSequencerCmdFee).
 		WithTargetLock(ledger.ChainLockFromChainID(*walletData.Sequencer)).
 		MustWithInputs(walletOutputs...).

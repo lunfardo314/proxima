@@ -19,7 +19,7 @@ type (
 		TraceTippool  bool
 		LogTimeLayout string
 		MaxFeeInputs  int
-		MaxTargetTs   ledger.LogicalTime
+		MaxTargetTs   ledger.Time
 		MaxMilestones int
 		MaxBranches   int
 		StartOutput   utangle_old.WrappedOutput
@@ -76,7 +76,7 @@ func WithMaxFeeInputs(maxInputs int) ConfigOpt {
 	}
 }
 
-func WithMaxTargetTs(ts ledger.LogicalTime) ConfigOpt {
+func WithMaxTargetTs(ts ledger.Time) ConfigOpt {
 	return func(o *ConfigOptions) {
 		o.MaxTargetTs = ts
 	}

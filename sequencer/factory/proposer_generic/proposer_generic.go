@@ -15,11 +15,11 @@ import (
 type (
 	Environment interface {
 		attacher.Environment
-		CurrentTargetTs() ledger.LogicalTime
+		CurrentTargetTs() ledger.Time
 		OwnLatestMilestoneOutput() vertex.WrappedOutput
 		Propose(a *attacher.IncrementalAttacher) bool
 		AttachTagAlongInputs(a *attacher.IncrementalAttacher) int
-		ChooseExtendEndorsePair(proposerName string, targetTs ledger.LogicalTime) *attacher.IncrementalAttacher
+		ChooseExtendEndorsePair(proposerName string, targetTs ledger.Time) *attacher.IncrementalAttacher
 		BestMilestoneInTheSlot(slot ledger.Slot) *vertex.WrappedTx
 	}
 
@@ -33,7 +33,7 @@ type (
 		Name             string
 		ctx              context.Context
 		Strategy         *Strategy
-		TargetTs         ledger.LogicalTime
+		TargetTs         ledger.Time
 		alreadyProposed  set.Set[[32]byte]
 		generateProposal func() (*attacher.IncrementalAttacher, bool)
 	}
@@ -48,7 +48,7 @@ type (
 
 const TraceTag = "propose-generic"
 
-func New(env Environment, strategy *Strategy, targetTs ledger.LogicalTime, ctx context.Context) Task {
+func New(env Environment, strategy *Strategy, targetTs ledger.Time, ctx context.Context) Task {
 	return strategy.Constructor(&TaskGeneric{
 		Name:            fmt.Sprintf("[%s-%s]", strategy.Name, targetTs.String()),
 		ctx:             ctx,

@@ -14,7 +14,7 @@ type (
 		SequencerName string
 		Pace          int // pace in slots
 		MaxFeeInputs  int
-		MaxTargetTs   ledger.LogicalTime
+		MaxTargetTs   ledger.Time
 		MaxMilestones int
 		MaxBranches   int
 		DelayStart    time.Duration
@@ -45,7 +45,7 @@ func defaultConfigOptions() *ConfigOptions {
 		SequencerName: "seq",
 		Pace:          PaceMinimumTicks,
 		MaxFeeInputs:  DefaultMaxFeeInputs,
-		MaxTargetTs:   ledger.NilLogicalTime,
+		MaxTargetTs:   ledger.NilLedgerTime,
 		MaxMilestones: math.MaxInt,
 		MaxBranches:   math.MaxInt,
 		DelayStart:    DefaultDelayOnStart,
@@ -74,7 +74,7 @@ func WithMaxFeeInputs(maxInputs int) ConfigOption {
 	}
 }
 
-func WithMaxTargetTs(ts ledger.LogicalTime) ConfigOption {
+func WithMaxTargetTs(ts ledger.Time) ConfigOption {
 	return func(o *ConfigOptions) {
 		o.MaxTargetTs = ts
 	}

@@ -22,7 +22,7 @@ func TestBasics(t *testing.T) {
 		t.Logf("origin address: %s", easyfl.Fmt(u.GenesisControllerAddress()))
 
 		t.Logf("genesis time slot: %d", u.GenesisTimeSlot())
-		t.Logf("current timestamp: %s", ledger.LogicalTimeNow().String())
+		t.Logf("current timestamp: %s", ledger.TimeNow().String())
 		_, _, addr := u.GenerateAddress(0)
 		err := u.TokensFromFaucet(addr, 100)
 		require.NoError(t, err)
@@ -91,7 +91,7 @@ func TestBasics(t *testing.T) {
 			require.EqualValues(t, numOuts, u.NumUTXOs(addr))
 		}
 
-		ts := ledger.LogicalTimeNow()
+		ts := ledger.TimeNow()
 		t.Logf("ts = %s, %s", ts.String(), ts.Hex())
 		par, err := u.MakeTransferInputData(privKey, nil, ts)
 		require.NoError(t, err)

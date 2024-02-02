@@ -18,7 +18,7 @@ const TraceTagIncrementalAttacher = "incAttach"
 
 var ErrPastConeNotSolidYet = errors.New("past cone not solid yet")
 
-func NewIncrementalAttacher(name string, env Environment, targetTs ledger.LogicalTime, extend vertex.WrappedOutput, endorse ...*vertex.WrappedTx) (*IncrementalAttacher, error) {
+func NewIncrementalAttacher(name string, env Environment, targetTs ledger.Time, extend vertex.WrappedOutput, endorse ...*vertex.WrappedTx) (*IncrementalAttacher, error) {
 	util.Assertf(ledger.ValidTimePace(extend.Timestamp(), targetTs), "ledger.ValidTimePace(extend.Timestamp(), targetTs)")
 	for _, endorseVID := range endorse {
 		util.Assertf(endorseVID.IsSequencerMilestone(), "NewIncrementalAttacher: endorseVID.IsSequencerMilestone()")
@@ -96,7 +96,7 @@ func (a *IncrementalAttacher) insertOutput(wOut vertex.WrappedOutput) error {
 	if a.isKnownConsumed(wOut) {
 		return fmt.Errorf("output %s is already consumed", wOut.IDShortString())
 	}
-	ok, defined := a.attachOutput(wOut, ledger.NilLogicalTime)
+	ok, defined := a.attachOutput(wOut, ledger.NilLedgerTime)
 	if !ok {
 		util.AssertMustError(a.err)
 		return a.err
@@ -122,7 +122,7 @@ func (a *IncrementalAttacher) insertEndorsement(endorsement *vertex.WrappedTx) e
 		a.markVertexDefined(endorsement)
 		a.markVertexRooted(endorsement)
 	} else {
-		ok, defined := a.attachVertexNonBranch(endorsement, ledger.NilLogicalTime)
+		ok, defined := a.attachVertexNonBranch(endorsement, ledger.NilLedgerTime)
 		util.Assertf(ok || a.err != nil, "ok || a.err != nil")
 		if !ok {
 			util.Assertf(a.err != nil, "a.err != nil")
@@ -151,7 +151,7 @@ func (a *IncrementalAttacher) InsertTagAlongInput(wOut vertex.WrappedOutput) (bo
 	}
 	saveCoverageDelta := a.coverage
 
-	ok, defined := a.attachOutput(wOut, ledger.NilLogicalTime)
+	ok, defined := a.attachOutput(wOut, ledger.NilLedgerTime)
 	if !ok || !defined {
 		// it is either conflicting, or not solid yet
 		// in either case rollback
@@ -247,7 +247,7 @@ func (a *IncrementalAttacher) LedgerCoverageSum() uint64 {
 	return a.coverage.Sum()
 }
 
-func (a *IncrementalAttacher) TargetTs() ledger.LogicalTime {
+func (a *IncrementalAttacher) TargetTs() ledger.Time {
 	return a.targetTs
 }
 

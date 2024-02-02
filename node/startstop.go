@@ -155,7 +155,7 @@ func (p *ProximaNode) loadUTXOTangle() {
 
 	p.UTXOTangle = utangle_old.Load(p.multiStateStore)
 	latestSlot := p.UTXOTangle.LatestTimeSlot()
-	currentSlot := ledger.LogicalTimeNow().Slot()
+	currentSlot := ledger.TimeNow().Slot()
 	p.log.Infof("current time slot: %d, latest time slot in the multi-state: %d, lagging behind: %d slots",
 		currentSlot, latestSlot, currentSlot-latestSlot)
 

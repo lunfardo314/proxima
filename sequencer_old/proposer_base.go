@@ -18,7 +18,7 @@ type baseProposer struct {
 }
 
 func init() {
-	registerProposingStrategy(BaseProposerName, func(mf *milestoneFactory, targetTs ledger.LogicalTime) proposerTask {
+	registerProposingStrategy(BaseProposerName, func(mf *milestoneFactory, targetTs ledger.Time) proposerTask {
 		ret := &baseProposer{newProposerGeneric(mf, targetTs, BaseProposerName)}
 		return ret
 	})

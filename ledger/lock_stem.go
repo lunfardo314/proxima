@@ -52,7 +52,7 @@ func (st *StemLock) Accounts() []Accountable {
 	return []Accountable{st}
 }
 
-func (st *StemLock) UnlockableWith(_ AccountID, _ ...LogicalTime) bool {
+func (st *StemLock) UnlockableWith(_ AccountID, _ ...Time) bool {
 	return true
 }
 

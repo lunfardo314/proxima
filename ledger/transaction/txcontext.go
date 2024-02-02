@@ -194,9 +194,9 @@ func (ctx *TransactionContext) InputID(idx byte) ledger.OutputID {
 	return ret
 }
 
-func (ctx *TransactionContext) MustTimestampData() ([]byte, ledger.LogicalTime) {
+func (ctx *TransactionContext) MustTimestampData() ([]byte, ledger.Time) {
 	ret := ctx.tree.BytesAtPath(Path(ledger.TransactionBranch, ledger.TxTimestamp))
-	retTs, err := ledger.LogicalTimeFromBytes(ret)
+	retTs, err := ledger.TimeFromBytes(ret)
 	util.AssertNoError(err)
 	return ret, retTs
 }

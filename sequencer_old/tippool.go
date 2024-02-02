@@ -147,7 +147,7 @@ func (tp *sequencerTipPool) ChainID() ledger.ChainID {
 	return tp.chainID
 }
 
-func (tp *sequencerTipPool) preSelectAndSortEndorsableMilestones(targetTs ledger.LogicalTime) []*utangle_old.WrappedTx {
+func (tp *sequencerTipPool) preSelectAndSortEndorsableMilestones(targetTs ledger.Time) []*utangle_old.WrappedTx {
 	tp.purgeDeleted()
 
 	tp.mutex.RLock()

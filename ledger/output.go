@@ -396,7 +396,7 @@ func (o *OutputWithID) MustAsChainOutput() *OutputWithChainID {
 	return ret
 }
 
-func (o *OutputWithID) Timestamp() LogicalTime {
+func (o *OutputWithID) Timestamp() Time {
 	return o.ID.Timestamp()
 }
 

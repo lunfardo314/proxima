@@ -28,7 +28,7 @@ type (
 	proposerTaskGeneric struct {
 		strategyName    string
 		factory         *milestoneFactory
-		targetTs        ledger.LogicalTime
+		targetTs        ledger.Time
 		alreadyProposed set.Set[[32]byte]
 		traceNAhead     atomic.Int64
 		startTime       time.Time
@@ -40,7 +40,7 @@ type (
 		endorse *utangle.WrappedTx
 	}
 
-	proposerTaskConstructor func(mf *milestoneFactory, targetTs ledger.LogicalTime) proposerTask
+	proposerTaskConstructor func(mf *milestoneFactory, targetTs ledger.Time) proposerTask
 
 	proposerRegistered struct {
 		constructor proposerTaskConstructor
@@ -64,7 +64,7 @@ func SetTraceProposer(name string, v bool) {
 	}
 }
 
-func newProposerGeneric(mf *milestoneFactory, targetTs ledger.LogicalTime, strategyName string) proposerTaskGeneric {
+func newProposerGeneric(mf *milestoneFactory, targetTs ledger.Time, strategyName string) proposerTaskGeneric {
 	return proposerTaskGeneric{
 		factory:         mf,
 		targetTs:        targetTs,
@@ -202,7 +202,7 @@ func (c *proposerTaskGeneric) placeProposalIfRelevant(mdProposed *proposedMilest
 		mdProposed.proposedBy, util.GoTh(mdProposed.coverage), util.GoTh(c.factory.proposal.bestSoFarCoverage),
 		mdProposed.tx.NumInputs(), mdProposed.elapsed)
 
-	if c.factory.proposal.targetTs == ledger.NilLogicalTime {
+	if c.factory.proposal.targetTs == ledger.NilLedgerTime {
 		return fmt.Sprintf("%s SKIPPED: target is nil", mdProposed.tx.IDShortString()), false
 	}
 

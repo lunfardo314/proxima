@@ -307,7 +307,7 @@ func (c *APIClient) GetNodeInfo() (*global.NodeInfo, error) {
 	return global.NodeInfoFromBytes(body)
 }
 
-func (c *APIClient) GetTransferableOutputs(account ledger.Accountable, ts ledger.LogicalTime, maxOutputs ...int) ([]*ledger.OutputWithID, uint64, error) {
+func (c *APIClient) GetTransferableOutputs(account ledger.Accountable, ts ledger.Time, maxOutputs ...int) ([]*ledger.OutputWithID, uint64, error) {
 	ret, err := c.GetAccountOutputs(account, func(o *ledger.Output) bool {
 		// filter out chain outputs controlled by the wallet
 		_, idx := o.ChainConstraint()
@@ -343,7 +343,7 @@ func (c *APIClient) GetTransferableOutputs(account ledger.Accountable, ts ledger
 func (c *APIClient) MakeCompactTransaction(walletPrivateKey ed25519.PrivateKey, tagAlongSeqID *ledger.ChainID, tagAlongFee uint64, maxInputs ...int) (*transaction2.TransactionContext, error) {
 	walletAccount := ledger.AddressED25519FromPrivateKey(walletPrivateKey)
 
-	nowisTs := ledger.LogicalTimeNow()
+	nowisTs := ledger.TimeNow()
 	inTotal := uint64(0)
 
 	walletOutputs, inTotal, err := c.GetTransferableOutputs(walletAccount, nowisTs, maxInputs...)
@@ -391,7 +391,7 @@ func (c *APIClient) TransferFromED25519Wallet(par TransferFromED25519WalletParam
 		return nil, fmt.Errorf("minimum transfer amount is %d", minimumAmount)
 	}
 	walletAccount := ledger.AddressED25519FromPrivateKey(par.WalletPrivateKey)
-	nowisTs := ledger.LogicalTimeNow()
+	nowisTs := ledger.TimeNow()
 
 	walletOutputs, _, err := c.GetTransferableOutputs(walletAccount, nowisTs, par.MaxOutputs)
 
@@ -440,7 +440,7 @@ func (c *APIClient) MakeChainOrigin(par TransferFromED25519WalletParams) (*trans
 
 	walletAccount := ledger.AddressED25519FromPrivateKey(par.WalletPrivateKey)
 
-	ts := ledger.LogicalTimeNow()
+	ts := ledger.TimeNow()
 	inps, totalInputs, err := c.GetTransferableOutputs(walletAccount, ts)
 	if err != nil {
 		return nil, [32]byte{}, err
@@ -463,7 +463,7 @@ func (c *APIClient) MakeChainOrigin(par TransferFromED25519WalletParams) (*trans
 	if err != nil {
 		return nil, [32]byte{}, err
 	}
-	ts = ledger.MaxLogicalTime(ts1.AddTicks(ledger.TransactionPaceInTicks), ts)
+	ts = ledger.MaxTime(ts1.AddTicks(ledger.TransactionPaceInTicks), ts)
 
 	err = txb.PutStandardInputUnlocks(len(inps))
 	util.AssertNoError(err)
@@ -526,7 +526,7 @@ type MakeTransferTransactionParams struct {
 	PrivateKey    ed25519.PrivateKey
 	TagAlongSeqID *ledger.ChainID
 	TagAlongFee   uint64
-	Timestamp     ledger.LogicalTime
+	Timestamp     ledger.Time
 }
 
 func MakeTransferTransaction(par MakeTransferTransactionParams) ([]byte, error) {

@@ -54,7 +54,7 @@ func NewUTXODB(trace ...bool) *UTXODB {
 	genesisAddr := ledger.AddressED25519FromPublicKey(genesisPubKey)
 
 	stateStore := common.NewInMemoryKVStore()
-	genesisSlot := ledger.LogicalTimeNow().Slot()
+	genesisSlot := ledger.TimeNow().Slot()
 
 	initLedgerParams := genesis.LedgerIdentityData{
 		Description:                utxodbDscr,
@@ -175,7 +175,7 @@ func (u *UTXODB) MakeTransactionFromFaucet(addr ledger.AddressED25519, amountPar
 	if err != nil {
 		return nil, err
 	}
-	par := txbuilder.NewTransferData(u.faucetPrivateKey, nil, ledger.LogicalTimeNow()).
+	par := txbuilder.NewTransferData(u.faucetPrivateKey, nil, ledger.TimeNow()).
 		WithAmount(amount, true).
 		WithTargetLock(addr).
 		MustWithInputs(faucetInputs...)
@@ -309,9 +309,9 @@ func (u *UTXODB) GenerateAddressesWithFaucetAmount(startIndex int, n int, amount
 	return retPriv, retPub, retAddr
 }
 
-func (u *UTXODB) MakeTransferInputData(privKey ed25519.PrivateKey, sourceAccount ledger.Accountable, ts ledger.LogicalTime, desc ...bool) (*txbuilder.TransferData, error) {
-	if ts == ledger.NilLogicalTime {
-		ts = ledger.LogicalTimeNow()
+func (u *UTXODB) MakeTransferInputData(privKey ed25519.PrivateKey, sourceAccount ledger.Accountable, ts ledger.Time, desc ...bool) (*txbuilder.TransferData, error) {
+	if ts == ledger.NilLedgerTime {
+		ts = ledger.TimeNow()
 	}
 	ret := txbuilder.NewTransferData(privKey, sourceAccount, ts)
 
@@ -365,7 +365,7 @@ func (u *UTXODB) TransferTokensReturnTx(privKey ed25519.PrivateKey, targetLock l
 }
 
 func (u *UTXODB) transferTokens(privKey ed25519.PrivateKey, targetLock ledger.Lock, amount uint64) ([]byte, error) {
-	par, err := u.MakeTransferInputData(privKey, nil, ledger.NilLogicalTime)
+	par, err := u.MakeTransferInputData(privKey, nil, ledger.NilLedgerTime)
 	if err != nil {
 		return nil, err
 	}
@@ -388,7 +388,7 @@ func (u *UTXODB) TransferTokens(privKey ed25519.PrivateKey, targetLock ledger.Lo
 	return err
 }
 
-func (u *UTXODB) account(addr ledger.Accountable, ts ...ledger.LogicalTime) (uint64, int) {
+func (u *UTXODB) account(addr ledger.Accountable, ts ...ledger.Time) (uint64, int) {
 	outs, err := u.StateReader().GetUTXOsLockedInAccount(addr.AccountID())
 	util.AssertNoError(err)
 	balance := uint64(0)
@@ -409,7 +409,7 @@ func (u *UTXODB) account(addr ledger.Accountable, ts ...ledger.LogicalTime) (uin
 
 // Balance returns balance of address unlockable at timestamp ts, if provided. Otherwise, all outputs taken
 // For chains, this does not include te chain-output itself
-func (u *UTXODB) Balance(addr ledger.Accountable, ts ...ledger.LogicalTime) uint64 {
+func (u *UTXODB) Balance(addr ledger.Accountable, ts ...ledger.Time) uint64 {
 	ret, _ := u.account(addr, ts...)
 	return ret
 }
@@ -428,7 +428,7 @@ func (u *UTXODB) BalanceOnChain(chainID ledger.ChainID) (uint64, uint64, error) 
 }
 
 // NumUTXOs returns number of outputs of address unlockable at timestamp ts, if provided. Otherwise, all outputs taken
-func (u *UTXODB) NumUTXOs(addr ledger.Accountable, ts ...ledger.LogicalTime) int {
+func (u *UTXODB) NumUTXOs(addr ledger.Accountable, ts ...ledger.Time) int {
 	_, ret := u.account(addr, ts...)
 	return ret
 }
@@ -484,7 +484,7 @@ func (u *UTXODB) TxToString(txbytes []byte) string {
 }
 
 // CreateChainOrigin takes all tokens from controller address and puts them on the chain output
-func (u *UTXODB) CreateChainOrigin(controllerPrivateKey ed25519.PrivateKey, ts ledger.LogicalTime) (ledger.ChainID, error) {
+func (u *UTXODB) CreateChainOrigin(controllerPrivateKey ed25519.PrivateKey, ts ledger.Time) (ledger.ChainID, error) {
 	controllerAddress := ledger.AddressED25519FromPrivateKey(controllerPrivateKey)
 	amount := u.Balance(controllerAddress)
 	td, err := u.MakeTransferInputData(controllerPrivateKey, controllerAddress, ts)

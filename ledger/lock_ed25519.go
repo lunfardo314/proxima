@@ -83,7 +83,7 @@ func (a AddressED25519) Accounts() []Accountable {
 	return []Accountable{a}
 }
 
-func (a AddressED25519) UnlockableWith(acc AccountID, _ ...LogicalTime) bool {
+func (a AddressED25519) UnlockableWith(acc AccountID, _ ...Time) bool {
 	return bytes.Equal(a.AccountID(), acc)
 }
 

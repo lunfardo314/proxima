@@ -152,7 +152,7 @@ func initConflictTest(t *testing.T, nConflicts int, verbose bool) *conflictTestR
 
 	ret.txBytes = make([][]byte, nConflicts)
 
-	td := txbuilder2.NewTransferData(ret.privKey, ret.addr, ledger.LogicalTimeNow()).
+	td := txbuilder2.NewTransferData(ret.privKey, ret.addr, ledger.TimeNow()).
 		MustWithInputs(ret.forkOutput)
 
 	vids := make([]*utangle_old.WrappedTx, 0)
@@ -267,7 +267,7 @@ func TestBookingDoubleSpends(t *testing.T) {
 			require.EqualValues(t, 100+i, int(outs[i].Output.Amount()))
 			total += outs[i].Output.Amount()
 		}
-		td := txbuilder2.NewTransferData(it.privKey, it.addr, ledger.LogicalTimeNow())
+		td := txbuilder2.NewTransferData(it.privKey, it.addr, ledger.TimeNow())
 		td.MustWithInputs(outs...).
 			WithAmount(total).
 			WithTargetLock(it.addr)
@@ -291,7 +291,7 @@ func TestBookingDoubleSpends(t *testing.T) {
 		)
 		it := initLongConflictTest(t, howMany, howLong, false)
 
-		td := txbuilder2.NewTransferData(it.privKey, it.addr, ledger.LogicalTimeNow())
+		td := txbuilder2.NewTransferData(it.privKey, it.addr, ledger.TimeNow())
 		td.MustWithInputs(it.lastOuts...).
 			WithAmount(it.total).
 			WithTargetLock(it.addr)
@@ -323,7 +323,7 @@ func TestEndorsements1(t *testing.T) {
 		endorseTxid := it.lastOuts[howMany-1].ID.TransactionID()
 		total := it.total - it.lastOuts[howMany-1].Output.Amount()
 
-		td := txbuilder2.NewTransferData(it.privKey, it.addr, ledger.LogicalTimeNow())
+		td := txbuilder2.NewTransferData(it.privKey, it.addr, ledger.TimeNow())
 		td.MustWithInputs(it.lastOuts[:howMany-1]...).
 			WithEndorsements(&endorseTxid).
 			WithAmount(total).
@@ -352,7 +352,7 @@ func TestEndorsements1(t *testing.T) {
 		total := it.total - it.lastOuts[nConflicts-1].Output.Amount()
 
 		// testing if tx builder allows incorrect endorsements
-		td := txbuilder2.NewTransferData(it.privKey, it.addr, ledger.LogicalTimeNow())
+		td := txbuilder2.NewTransferData(it.privKey, it.addr, ledger.TimeNow())
 		td.MustWithInputs(it.lastOuts[:nConflicts-1]...).
 			WithEndorsements(&endorseTxid).
 			WithAmount(total).
@@ -367,7 +367,7 @@ func TestEndorsements1(t *testing.T) {
 
 type multiChainTestData struct {
 	t                  *testing.T
-	ts                 ledger.LogicalTime
+	ts                 ledger.Time
 	ut                 *utangle_old.UTXOTangle
 	txBytesStore       global.TxBytesStore
 	bootstrapChainID   ledger.ChainID
@@ -388,7 +388,7 @@ type multiChainTestData struct {
 const onChainAmount = 2_000_000
 
 func initMultiChainTest(t *testing.T, nChains int, printTx bool) *multiChainTestData {
-	t.Logf("initMultiChainTest: now is: %s, %v", ledger.LogicalTimeNow().String(), time.Now())
+	t.Logf("initMultiChainTest: now is: %s, %v", ledger.TimeNow().String(), time.Now())
 	ret := &multiChainTestData{t: t}
 	var privKeys []ed25519.PrivateKey
 	var addrs []ledger.AddressED25519
@@ -744,7 +744,7 @@ func TestMultiChain(t *testing.T) {
 
 		idToBeEndorsed, tsToBeEndorsed, err := transaction2.IDAndTimestampFromTransactionBytes(txBytesSeq[0][len(txBytesSeq[0])-1])
 		require.NoError(t, err)
-		ts := ledger.MaxLogicalTime(tsToBeEndorsed, txEndorser.Timestamp())
+		ts := ledger.MaxTime(tsToBeEndorsed, txEndorser.Timestamp())
 		ts = ts.AddTicks(ledger.TransactionPaceInTicks)
 		t.Logf("timestamp to be endorsed: %s, endorser's timestamp: %s", tsToBeEndorsed.String(), ts.String())
 		require.True(t, ts.Tick() != 0 && ts.Slot() == txEndorser.Timestamp().Slot())
@@ -926,7 +926,7 @@ func (r *multiChainTestData) createSequencerChains1(pace int, howLong int) [][]b
 
 	for i := counter; i < howLong; i++ {
 		nextChainIdx = (curChainIdx + 1) % nChains
-		ts := ledger.MaxLogicalTime(
+		ts := ledger.MaxTime(
 			lastInChain(nextChainIdx).Timestamp().AddTicks(pace),
 			lastInChain(curChainIdx).Timestamp().AddTicks(ledger.TransactionPaceInTicks),
 		)
@@ -1014,7 +1014,7 @@ func (r *multiChainTestData) createSequencerChains2(pace int, howLong int) [][]b
 
 	for i := counter; i < howLong; i++ {
 		nextChainIdx = (curChainIdx + 1) % nChains
-		ts := ledger.MaxLogicalTime(
+		ts := ledger.MaxTime(
 			lastInChain(nextChainIdx).Timestamp().AddTicks(pace),
 			lastInChain(curChainIdx).Timestamp().AddTicks(ledger.TransactionPaceInTicks),
 		)
@@ -1145,7 +1145,7 @@ func (r *multiChainTestData) createSequencerChains3(pace int, howLong int, print
 			r.t.Logf("faucet tx %s: amount left on faucet: %d", tx.IDShortString(), faucetOutput.Output.Amount())
 		}
 
-		ts := ledger.MaxLogicalTime(
+		ts := ledger.MaxTime(
 			lastInChain(nextChainIdx).Timestamp().AddTicks(pace),
 			lastInChain(curChainIdx).Timestamp().AddTicks(ledger.TransactionPaceInTicks),
 			tx.Timestamp().AddTicks(ledger.TransactionPaceInTicks),
@@ -1339,7 +1339,7 @@ func (r *multiChainTestData) create1SequencerChain(pace int, howLong int, inflat
 	lastInChain := tx
 	ret = append(ret, txBytes)
 	for i := 0; i < howLong; i++ {
-		ts := ledger.MaxLogicalTime(
+		ts := ledger.MaxTime(
 			lastInChain.Timestamp().AddTicks(pace),
 			lastInChain.Timestamp().AddTicks(ledger.TransactionPaceInTicks),
 		)

@@ -30,7 +30,7 @@ func (d *DAG) _topList(verticesDescending []*vertex.WrappedTx, nTopSlots int) (l
 	return pruningSlot, ret
 }
 
-func (d *DAG) badVerticesOlderThan(ts ledger.LogicalTime) []*vertex.WrappedTx {
+func (d *DAG) badVerticesOlderThan(ts ledger.Time) []*vertex.WrappedTx {
 	ret := make([]*vertex.WrappedTx, 0)
 	for _, vid := range d.Vertices() {
 		if ts.Before(vid.Timestamp()) && vid.IsBadOrDeleted() {

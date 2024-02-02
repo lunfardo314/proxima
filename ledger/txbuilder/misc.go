@@ -21,7 +21,7 @@ func MakeTransactionSequence(howLong int, firstUTXO *ledger.OutputWithID, privK 
 		SenderPublicKey:  pubK,
 		SourceAccount:    addr,
 		Inputs:           []*ledger.OutputWithID{firstUTXO},
-		Timestamp:        ledger.NilLogicalTime,
+		Timestamp:        ledger.NilLedgerTime,
 		Lock:             addr,
 		Amount:           firstUTXO.Output.Amount(),
 	}

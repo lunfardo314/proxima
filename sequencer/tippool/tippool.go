@@ -161,7 +161,7 @@ func oldReplaceWithNew(old, new *vertex.WrappedTx) bool {
 	return false
 }
 
-func (tp *SequencerTipPool) CandidatesToEndorseSorted(targetTs ledger.LogicalTime) []*vertex.WrappedTx {
+func (tp *SequencerTipPool) CandidatesToEndorseSorted(targetTs ledger.Time) []*vertex.WrappedTx {
 	tp.mutex.RLock()
 	defer tp.mutex.RUnlock()
 
@@ -306,7 +306,7 @@ func (tp *SequencerTipPool) FilterAndSortOutputs(filter func(wOut vertex.Wrapped
 	return ret
 }
 
-func (tp *SequencerTipPool) preSelectAndSortEndorsableMilestones(targetTs ledger.LogicalTime) []*vertex.WrappedTx {
+func (tp *SequencerTipPool) preSelectAndSortEndorsableMilestones(targetTs ledger.Time) []*vertex.WrappedTx {
 	tp.purge()
 
 	tp.mutex.RLock()

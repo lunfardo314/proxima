@@ -172,7 +172,7 @@ func (vid *WrappedTx) IsSequencerMilestone() bool {
 	return vid.ID().IsSequencerMilestone()
 }
 
-func (vid *WrappedTx) Timestamp() ledger.LogicalTime {
+func (vid *WrappedTx) Timestamp() ledger.Time {
 	return vid.ID().Timestamp()
 }
 
@@ -492,7 +492,7 @@ func (o *WrappedOutput) Amount() uint64 {
 	return out.Amount()
 }
 
-func (o *WrappedOutput) Timestamp() ledger.LogicalTime {
+func (o *WrappedOutput) Timestamp() ledger.Time {
 	return o.VID.Timestamp()
 }
 
@@ -899,6 +899,6 @@ func (o *WrappedOutput) _isConsumedInThePastConeOf(vid *WrappedTx, visited set.S
 	return
 }
 
-func (o *WrappedOutput) ValidPace(targetTs ledger.LogicalTime) bool {
+func (o *WrappedOutput) ValidPace(targetTs ledger.Time) bool {
 	return ledger.ValidTimePace(o.Timestamp(), targetTs)
 }

@@ -10,7 +10,7 @@ import (
 )
 
 type DeadlineLock struct {
-	Deadline         LogicalTime
+	Deadline         Time
 	ConstraintMain   Accountable
 	ConstraintExpiry Accountable
 }
@@ -20,7 +20,7 @@ const (
 	deadlineLockTemplate = DeadlineLockName + "(u32/%d, %d, x/%s, x/%s)"
 )
 
-func NewDeadlineLock(deadline LogicalTime, main, expiry Accountable) *DeadlineLock {
+func NewDeadlineLock(deadline Time, main, expiry Accountable) *DeadlineLock {
 	return &DeadlineLock{
 		Deadline:         deadline,
 		ConstraintMain:   main,
@@ -49,7 +49,7 @@ func (dl *DeadlineLock) Accounts() []Accountable {
 	return []Accountable{dl.ConstraintMain, dl.ConstraintExpiry}
 }
 
-func (dl *DeadlineLock) UnlockableWith(acc AccountID, ts ...LogicalTime) bool {
+func (dl *DeadlineLock) UnlockableWith(acc AccountID, ts ...Time) bool {
 	if len(ts) == 0 {
 		return bytes.Equal(dl.ConstraintMain.AccountID(), acc) || bytes.Equal(dl.ConstraintExpiry.AccountID(), acc)
 	}
@@ -66,7 +66,7 @@ func (dl *DeadlineLock) Name() string {
 func initDeadlineLockConstraint() {
 	easyfl.MustExtendMany(deadlineLockSource)
 
-	ts := MustNewLogicalTime(1337, 5)
+	ts := MustNewLedgerTime(1337, 5)
 	example := NewDeadlineLock(ts, AddressED25519Null(), AddressED25519Null())
 	lockBack, err := DeadlineLockFromBytes(example.Bytes())
 	util.AssertNoError(err)
@@ -93,15 +93,15 @@ func DeadlineLockFromBytes(data []byte) (*DeadlineLock, error) {
 	if sym != DeadlineLockName || len(slotBin) != SlotByteLength || len(tickBin) != 1 {
 		return nil, fmt.Errorf("can't parse deadline lock")
 	}
-	slot, err := TimeSlotFromBytes(slotBin)
+	slot, err := SlotFromBytes(slotBin)
 	if err != nil {
 		return nil, err
 	}
-	tick, err := TimeTickFromByte(tickBin[0])
+	tick, err := TickFromByte(tickBin[0])
 	if err != nil {
 		return nil, err
 	}
-	ret.Deadline = MustNewLogicalTime(slot, tick)
+	ret.Deadline = MustNewLedgerTime(slot, tick)
 	if ret.ConstraintMain, err = AccountableFromBytes(args[2]); err != nil {
 		return nil, err
 	}

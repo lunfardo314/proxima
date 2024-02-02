@@ -28,7 +28,7 @@ type (
 		sequencerMilestoneFlag   bool
 		branchTransactionFlag    bool
 		sender                   ledger.AddressED25519
-		timestamp                ledger.LogicalTime
+		timestamp                ledger.Time
 		totalAmount              ledger.Amount
 		sequencerTransactionData *SequencerTransactionData // if != nil it is sequencer milestone transaction
 	}
@@ -89,10 +89,10 @@ func transactionFromBytes(txBytes []byte, opts ...TxValidationOption) (*Transact
 	return ret, nil
 }
 
-func IDAndTimestampFromTransactionBytes(txBytes []byte) (ledger.TransactionID, ledger.LogicalTime, error) {
+func IDAndTimestampFromTransactionBytes(txBytes []byte) (ledger.TransactionID, ledger.Time, error) {
 	tx, err := FromBytes(txBytes)
 	if err != nil {
-		return ledger.TransactionID{}, ledger.LogicalTime{}, err
+		return ledger.TransactionID{}, ledger.Time{}, err
 	}
 	return *tx.ID(), tx.Timestamp(), nil
 }
@@ -132,7 +132,7 @@ func BaseValidation() TxValidationOption {
 			return fmt.Errorf("wrong branch transaction flag")
 		}
 
-		if tx.timestamp, err = ledger.LogicalTimeFromBytes(tsBin); err != nil {
+		if tx.timestamp, err = ledger.TimeFromBytes(tsBin); err != nil {
 			return err
 		}
 		if tx.timestamp.Tick() == 0 && tx.sequencerMilestoneFlag && !tx.branchTransactionFlag {
@@ -477,7 +477,7 @@ func (tx *Transaction) SenderAddress() ledger.AddressED25519 {
 	return tx.sender
 }
 
-func (tx *Transaction) Timestamp() ledger.LogicalTime {
+func (tx *Transaction) Timestamp() ledger.Time {
 	return tx.timestamp
 }
 

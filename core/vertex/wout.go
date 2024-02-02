@@ -22,7 +22,7 @@ func (o *WrappedOutput) IDShortString() string {
 	return o.DecodeID().StringShort()
 }
 
-func (o *WrappedOutput) Timestamp() ledger.LogicalTime {
+func (o *WrappedOutput) Timestamp() ledger.Time {
 	return o.VID.Timestamp()
 }
 
@@ -72,7 +72,7 @@ func (o *WrappedOutput) _isConsumedInThePastConeOf(vid *WrappedTx, visited set.S
 	return
 }
 
-func (o *WrappedOutput) ValidPace(targetTs ledger.LogicalTime) bool {
+func (o *WrappedOutput) ValidPace(targetTs ledger.Time) bool {
 	return ledger.ValidTimePace(o.Timestamp(), targetTs)
 }
 

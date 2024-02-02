@@ -261,7 +261,7 @@ func (vid *WrappedTx) IsSequencerMilestone() bool {
 	return vid.ID.IsSequencerMilestone()
 }
 
-func (vid *WrappedTx) Timestamp() ledger.LogicalTime {
+func (vid *WrappedTx) Timestamp() ledger.Time {
 	return vid.ID.Timestamp()
 }
 

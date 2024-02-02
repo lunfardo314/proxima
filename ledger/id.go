@@ -12,7 +12,7 @@ import (
 
 const (
 	TransactionIDShortLength = 27
-	TransactionIDLength      = LogicalTimeByteLength + TransactionIDShortLength
+	TransactionIDLength      = TimeByteLength + TransactionIDShortLength
 	OutputIDLength           = TransactionIDLength + 1
 
 	SequencerTxFlagInTimeSlot = ^(Slot(0xffffffff) >> 1)
@@ -46,15 +46,15 @@ func HashTransactionBytes(txBytes []byte) (ret TransactionIDShort) {
 	return
 }
 
-func NewTransactionID(ts LogicalTime, h TransactionIDShort, sequencerTxFlag, branchTxFlag bool) (ret TransactionID) {
+func NewTransactionID(ts Time, h TransactionIDShort, sequencerTxFlag, branchTxFlag bool) (ret TransactionID) {
 	if sequencerTxFlag {
 		ts[0] = ts[0] | SequencerTxFlagHigherByte
 	}
 	if branchTxFlag {
 		ts[0] = ts[0] | BranchTxFlagHigherByte
 	}
-	copy(ret[:LogicalTimeByteLength], ts[:])
-	copy(ret[LogicalTimeByteLength:], h[:])
+	copy(ret[:TimeByteLength], ts[:])
+	copy(ret[TimeByteLength:], h[:])
 	return
 }
 
@@ -96,31 +96,31 @@ func TransactionIDFromHexString(str string) (ret TransactionID, err error) {
 func RandomTransactionID(sequencerFlag, branchFlag bool) TransactionID {
 	var hash TransactionIDShort
 	_, _ = rand.Read(hash[:])
-	return NewTransactionID(LogicalTimeNow(), hash, sequencerFlag, branchFlag)
+	return NewTransactionID(TimeNow(), hash, sequencerFlag, branchFlag)
 }
 
 // ShortID return hash part of ID
 func (txid *TransactionID) ShortID() (ret TransactionIDShort) {
-	copy(ret[:], txid[LogicalTimeByteLength:])
+	copy(ret[:], txid[TimeByteLength:])
 	return
 }
 
 // VeryShortID4 returns first 8 bytes of the ShortID, i.e. of the hash
 // Collisions cannot be ruled out! Intended use is in Bloom filtering, when false positives are acceptable
 func (txid *TransactionID) VeryShortID4() (ret TransactionIDVeryShort4) {
-	copy(ret[:], txid[LogicalTimeByteLength:LogicalTimeByteLength+4])
+	copy(ret[:], txid[TimeByteLength:TimeByteLength+4])
 	return
 }
 
 // VeryShortID8 returns first 8 bytes of the ShortID, i.e. of the hash
 // Collisions cannot be ruled out! Intended use is in Bloom filtering, when false positives are acceptable
 func (txid *TransactionID) VeryShortID8() (ret TransactionIDVeryShort8) {
-	copy(ret[:], txid[LogicalTimeByteLength:LogicalTimeByteLength+8])
+	copy(ret[:], txid[TimeByteLength:TimeByteLength+8])
 	return
 }
 
-func (txid *TransactionID) Timestamp() (ret LogicalTime) {
-	copy(ret[:], txid[:LogicalTimeByteLength])
+func (txid *TransactionID) Timestamp() (ret Time) {
+	copy(ret[:], txid[:TimeByteLength])
 	ret[0] &= 0b00111111 // erase 2 most significant bits of the first byte
 	return
 }
@@ -145,7 +145,7 @@ func (txid *TransactionID) Bytes() []byte {
 	return txid[:]
 }
 
-func timestampPrefixString(ts LogicalTime, seqMilestoneFlag, branchFlag bool, shortTimeSlot ...bool) string {
+func timestampPrefixString(ts Time, seqMilestoneFlag, branchFlag bool, shortTimeSlot ...bool) string {
 	var s string
 	switch {
 	case seqMilestoneFlag && branchFlag:
@@ -163,7 +163,7 @@ func timestampPrefixString(ts LogicalTime, seqMilestoneFlag, branchFlag bool, sh
 	return fmt.Sprintf("%s%s", ts.String(), s)
 }
 
-func timestampPrefixStringAsFileName(ts LogicalTime, seqMilestoneFlag, branchFlag bool, shortTimeSlot ...bool) string {
+func timestampPrefixStringAsFileName(ts Time, seqMilestoneFlag, branchFlag bool, shortTimeSlot ...bool) string {
 	var s string
 	switch {
 	case seqMilestoneFlag && branchFlag:
@@ -181,19 +181,19 @@ func timestampPrefixStringAsFileName(ts LogicalTime, seqMilestoneFlag, branchFla
 	return fmt.Sprintf("%s%s", ts.AsFileName(), s)
 }
 
-func TransactionIDString(ts LogicalTime, txHash TransactionIDShort, sequencerFlag, branchFlag bool) string {
+func TransactionIDString(ts Time, txHash TransactionIDShort, sequencerFlag, branchFlag bool) string {
 	return fmt.Sprintf("[%s]%s", timestampPrefixString(ts, sequencerFlag, branchFlag), hex.EncodeToString(txHash[:]))
 }
 
-func TransactionIDStringShort(ts LogicalTime, txHash TransactionIDShort, sequencerFlag, branchFlag bool) string {
+func TransactionIDStringShort(ts Time, txHash TransactionIDShort, sequencerFlag, branchFlag bool) string {
 	return fmt.Sprintf("[%s]%s..", timestampPrefixString(ts, sequencerFlag, branchFlag), hex.EncodeToString(txHash[:3]))
 }
 
-func TransactionIDStringVeryShort(ts LogicalTime, txHash TransactionIDShort, sequencerFlag, branchFlag bool) string {
+func TransactionIDStringVeryShort(ts Time, txHash TransactionIDShort, sequencerFlag, branchFlag bool) string {
 	return fmt.Sprintf("[%s]%s..", timestampPrefixString(ts, sequencerFlag, branchFlag, true), hex.EncodeToString(txHash[:3]))
 }
 
-func TransactionIDAsFileName(ts LogicalTime, txHash TransactionIDShort, sequencerFlag, branchFlag bool) string {
+func TransactionIDAsFileName(ts Time, txHash TransactionIDShort, sequencerFlag, branchFlag bool) string {
 	return fmt.Sprintf("%s_%s.tx", timestampPrefixStringAsFileName(ts, sequencerFlag, branchFlag), hex.EncodeToString(txHash[:]))
 }
 
@@ -222,7 +222,7 @@ func LessTxID(txid1, txid2 TransactionID) bool {
 }
 
 func TooCloseOnTimeAxis(txid1, txid2 *TransactionID) bool {
-	if util.Abs(DiffTimeTicks(txid1.Timestamp(), txid2.Timestamp())) < TransactionPaceInTicks {
+	if util.Abs(DiffTicks(txid1.Timestamp(), txid2.Timestamp())) < TransactionPaceInTicks {
 		return *txid1 != *txid2
 	}
 	return false
@@ -312,7 +312,7 @@ func (oid *OutputID) TransactionID() (ret TransactionID) {
 	return
 }
 
-func (oid *OutputID) Timestamp() LogicalTime {
+func (oid *OutputID) Timestamp() Time {
 	ret := oid.TransactionID()
 	return ret.Timestamp()
 }
@@ -328,7 +328,7 @@ func (oid *OutputID) TimeTick() Tick {
 }
 
 func (oid *OutputID) TransactionHash() (ret TransactionIDShort) {
-	copy(ret[:], oid[LogicalTimeByteLength:TransactionIDLength])
+	copy(ret[:], oid[TimeByteLength:TransactionIDLength])
 	return
 }
 

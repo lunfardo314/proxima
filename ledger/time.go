@@ -23,9 +23,9 @@ const (
 	// TransactionPaceInTicks TODO for testing. Expected value 3 or 5
 	TransactionPaceInTicks = 1 // number of ticks between two consecutive transactions
 
-	SlotByteLength        = 4
-	TickByteLength        = 1
-	LogicalTimeByteLength = SlotByteLength + TickByteLength // bytes
+	SlotByteLength = 4
+	TickByteLength = 1
+	TimeByteLength = SlotByteLength + TickByteLength // bytes
 )
 
 var (
@@ -81,8 +81,8 @@ func TimeConstantsToString() string {
 		Add("seconds per year = %d", 60*60*24*365).
 		Add("YearsPerMaxSlot = %d", YearsPerMaxSlot()).
 		Add("BaselineTime = %v, unix nano: %d, unix seconds: %d", BaselineTime, BaselineTimeUnixNano, BaselineTime.Unix()).
-		Add("timestamp BaselineTime = %s", LogicalTimeFromRealTime(BaselineTime)).
-		Add("timestamp now = %s, now is %v", LogicalTimeNow().String(), time.Now()).
+		Add("timestamp BaselineTime = %s", TimeFromRealTime(BaselineTime)).
+		Add("timestamp now = %s, now is %v", TimeNow().String(), time.Now()).
 		String()
 }
 
@@ -96,19 +96,20 @@ type (
 	// Tick is enforced to be < TicksPerSlot, which is normally 100 ms
 	Tick byte
 
-	// LogicalTime
+	// Time (ledger.Time)
 	// bytes 0:3 represents time slot (bigendian)
 	// byte 4 represents slot
-	LogicalTime [LogicalTimeByteLength]byte
+
+	Time [TimeByteLength]byte
 )
 
 var (
-	NilLogicalTime     LogicalTime
+	NilLedgerTime      Time
 	errWrongDataLength = fmt.Errorf("wrong data length")
 )
 
-// TimeSlotFromBytes enforces 2 most significant bits of the first byte are 0
-func TimeSlotFromBytes(data []byte) (ret Slot, err error) {
+// SlotFromBytes enforces 2 most significant bits of the first byte are 0
+func SlotFromBytes(data []byte) (ret Slot, err error) {
 	if len(data) != 4 {
 		err = errWrongDataLength
 		return
@@ -119,13 +120,13 @@ func TimeSlotFromBytes(data []byte) (ret Slot, err error) {
 	return Slot(binary.BigEndian.Uint32(data)), nil
 }
 
-func MustTimeSlotFromBytes(data []byte) Slot {
-	ret, err := TimeSlotFromBytes(data)
+func MustSlotFromBytes(data []byte) Slot {
+	ret, err := SlotFromBytes(data)
 	util.AssertNoError(err)
 	return ret
 }
 
-func TimeTickFromByte(d byte) (ret Tick, err error) {
+func TickFromByte(d byte) (ret Tick, err error) {
 	if ret = Tick(d); ret.Valid() {
 		return
 	}
@@ -133,45 +134,45 @@ func TimeTickFromByte(d byte) (ret Tick, err error) {
 	return
 }
 
-func MustNewLogicalTime(e Slot, s Tick) (ret LogicalTime) {
+func MustNewLedgerTime(e Slot, s Tick) (ret Time) {
 	util.Assertf(s.Valid(), "s.Valid()")
 	binary.BigEndian.PutUint32(ret[:4], uint32(e))
 	ret[4] = byte(s)
 	return
 }
 
-func LogicalTimeFromRealTime(nowis time.Time) LogicalTime {
+func TimeFromRealTime(nowis time.Time) Time {
 	util.Assertf(!nowis.Before(BaselineTime), "!nowis.Before(BaselineTime)")
 	i := nowis.UnixNano() - BaselineTimeUnixNano
 	e := i / int64(SlotDuration())
-	util.Assertf(e <= math.MaxUint32, "LogicalTimeFromRealTime: e <= math.MaxUint32")
-	util.Assertf(uint32(e)&0xc0000000 == 0, "LogicalTimeFromRealTime: two highest bits must be 0. Wrong constants")
+	util.Assertf(e <= math.MaxUint32, "TimeFromRealTime: e <= math.MaxUint32")
+	util.Assertf(uint32(e)&0xc0000000 == 0, "TimeFromRealTime: two highest bits must be 0. Wrong constants")
 	s := i % int64(SlotDuration())
 	s = s / int64(TickDuration())
-	util.Assertf(s < TicksPerSlot, "LogicalTimeFromRealTime: s < TicksPerSlot")
-	return MustNewLogicalTime(Slot(uint32(e)), Tick(byte(s)))
+	util.Assertf(s < TicksPerSlot, "TimeFromRealTime: s < TicksPerSlot")
+	return MustNewLedgerTime(Slot(uint32(e)), Tick(byte(s)))
 }
 
-func LogicalTimeNow() LogicalTime {
-	return LogicalTimeFromRealTime(time.Now())
+func TimeNow() Time {
+	return TimeFromRealTime(time.Now())
 }
 
-func LogicalTimeFromBytes(data []byte) (ret LogicalTime, err error) {
-	if len(data) != LogicalTimeByteLength {
+func TimeFromBytes(data []byte) (ret Time, err error) {
+	if len(data) != TimeByteLength {
 		err = errWrongDataLength
 		return
 	}
 	var e Slot
-	e, err = TimeSlotFromBytes(data[:4])
+	e, err = SlotFromBytes(data[:4])
 	if err != nil {
 		return
 	}
 	var s Tick
-	s, err = TimeTickFromByte(data[4])
+	s, err = TickFromByte(data[4])
 	if err != nil {
 		return
 	}
-	ret = MustNewLogicalTime(e, s)
+	ret = MustNewLedgerTime(e, s)
 	return
 }
 
@@ -193,111 +194,111 @@ func (e Slot) Hex() string {
 	return fmt.Sprintf("0x%s", hex.EncodeToString(e.Bytes()))
 }
 
-func (t LogicalTime) Slot() Slot {
+func (t Time) Slot() Slot {
 	return Slot(binary.BigEndian.Uint32(t[:4]))
 }
 
-func (t LogicalTime) Tick() Tick {
+func (t Time) Tick() Tick {
 	ret := Tick(t[4])
 	util.Assertf(ret.Valid(), "invalid slot value")
 	return ret
 }
 
-func (t LogicalTime) IsSlotBoundary() bool {
-	return t != NilLogicalTime && t.Tick() == 0
+func (t Time) IsSlotBoundary() bool {
+	return t != NilLedgerTime && t.Tick() == 0
 }
 
-func (t LogicalTime) UnixNano() int64 {
+func (t Time) UnixNano() int64 {
 	return BaselineTimeUnixNano +
 		int64(t.Slot())*int64(SlotDuration()) + int64(TickDuration())*int64(t.Tick())
 }
 
-func (t LogicalTime) Time() time.Time {
+func (t Time) Time() time.Time {
 	return time.Unix(0, t.UnixNano())
 }
 
-func (t LogicalTime) NextTimeSlotBoundary() LogicalTime {
+func (t Time) NextTimeSlotBoundary() Time {
 	if t.Tick() == 0 {
 		return t
 	}
-	return MustNewLogicalTime(t.Slot()+1, 0)
+	return MustNewLedgerTime(t.Slot()+1, 0)
 }
 
-func (t LogicalTime) TimesTicksToNextSlotBoundary() int {
+func (t Time) TimesTicksToNextSlotBoundary() int {
 	if t.Tick() == 0 {
 		return 0
 	}
 	return TicksPerSlot - int(t.Tick())
 }
 
-func (t LogicalTime) Bytes() []byte {
+func (t Time) Bytes() []byte {
 	ret := t
 	return ret[:]
 }
 
-func (t LogicalTime) String() string {
+func (t Time) String() string {
 	return fmt.Sprintf("%d|%d", t.Slot(), t.Tick())
 }
 
-func (t LogicalTime) AsFileName() string {
+func (t Time) AsFileName() string {
 	return fmt.Sprintf("%d_%d", t.Slot(), t.Tick())
 }
 
-func (t LogicalTime) Short() string {
+func (t Time) Short() string {
 	e := t.Slot() % 1000
 	return fmt.Sprintf(".%d|%d", e, t.Tick())
 }
 
-func (t LogicalTime) After(t1 LogicalTime) bool {
-	return DiffTimeTicks(t, t1) > 0
+func (t Time) After(t1 Time) bool {
+	return DiffTicks(t, t1) > 0
 }
 
-func (t LogicalTime) Before(t1 LogicalTime) bool {
-	return DiffTimeTicks(t, t1) < 0
+func (t Time) Before(t1 Time) bool {
+	return DiffTicks(t, t1) < 0
 }
 
-func (t LogicalTime) Hex() string {
+func (t Time) Hex() string {
 	return fmt.Sprintf("0x%s", hex.EncodeToString(t[:]))
 }
 
-// DiffTimeTicks returns difference in slots between two timestamps:
+// DiffTicks returns difference in slots between two timestamps:
 // < 0 is t is before t1
 // > 0 if t1 is before t
-func DiffTimeTicks(t1, t2 LogicalTime) int64 {
+func DiffTicks(t1, t2 Time) int64 {
 	slots1 := int64(t1.Slot())*TicksPerSlot + int64(t1.Tick())
 	slots2 := int64(t2.Slot())*TicksPerSlot + int64(t2.Tick())
 	return slots1 - slots2
 }
 
 // ValidTimePace checks if 2 timestamps have at least time pace slots in between
-func ValidTimePace(t1, t2 LogicalTime) bool {
-	return DiffTimeTicks(t2, t1) >= int64(TransactionPaceInTicks)
+func ValidTimePace(t1, t2 Time) bool {
+	return DiffTicks(t2, t1) >= int64(TransactionPaceInTicks)
 }
 
-func (t LogicalTime) AddTicks(s int) LogicalTime {
+func (t Time) AddTicks(s int) Time {
 	util.Assertf(s >= 0, "AddTicks: can't be negative argument")
 	s1 := int64(t.Tick()) + int64(s)
 	eRet := s1 / TicksPerSlot
 	sRet := s1 % TicksPerSlot
-	return MustNewLogicalTime(t.Slot()+Slot(eRet), Tick(sRet))
+	return MustNewLedgerTime(t.Slot()+Slot(eRet), Tick(sRet))
 }
 
-func (t LogicalTime) AddTimeSlots(e int) LogicalTime {
-	return MustNewLogicalTime(t.Slot()+Slot(e), t.Tick())
+func (t Time) AddSlots(e int) Time {
+	return MustNewLedgerTime(t.Slot()+Slot(e), t.Tick())
 }
 
-func (t LogicalTime) AddDuration(d time.Duration) LogicalTime {
-	return LogicalTimeFromRealTime(t.Time().Add(d))
+func (t Time) AddDuration(d time.Duration) Time {
+	return TimeFromRealTime(t.Time().Add(d))
 }
 
-func MaxLogicalTime(ts ...LogicalTime) LogicalTime {
-	return util.Maximum(ts, func(ts1, ts2 LogicalTime) bool {
+func MaxTime(ts ...Time) Time {
+	return util.Maximum(ts, func(ts1, ts2 Time) bool {
 		return ts1.Before(ts2)
 	})
 }
 
-// SleepDurationUntilFutureLogicalTime returns duration to sleep until the clock becomes to ts.Time()
-func SleepDurationUntilFutureLogicalTime(ts LogicalTime) (ret time.Duration) {
+// SleepDurationUntilFutureLedgerTime returns duration to sleep until the clock becomes to ts.Time()
+func SleepDurationUntilFutureLedgerTime(ts Time) (ret time.Duration) {
 	realTs := ts.Time()
 	nowis := time.Now()
 	if realTs.After(nowis) {

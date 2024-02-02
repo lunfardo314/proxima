@@ -58,13 +58,13 @@ func TestMax(t *testing.T) {
 	t.Logf("Max uint64 = %s", util.GoTh(uint64(math.MaxUint64)))
 }
 
-func initSequencerTestData(t *testing.T, nFaucets, nAdditionalChains int, logicalNow ledger.LogicalTime, workflowOpt ...workflow.ConfigOption) *sequencerTestData {
+func initSequencerTestData(t *testing.T, nFaucets, nAdditionalChains int, logicalNow ledger.Time, workflowOpt ...workflow.ConfigOption) *sequencerTestData {
 	ledger.SetTimeTickDuration(20 * time.Millisecond)
 
 	require.True(t, nFaucets >= 0)
 	t.Logf("time tick duration: %v, time slot duration: %v", ledger.TickDuration(), ledger.SlotDuration())
 	now := time.Now()
-	t.Logf("now is: %v, %s", now.Format("04:05.00000"), ledger.LogicalTimeFromRealTime(now).String())
+	t.Logf("now is: %v, %s", now.Format("04:05.00000"), ledger.TimeFromRealTime(now).String())
 	t.Logf("logical now: %v, %s", logicalNow.Time().Format("04:05.00000"), logicalNow.String())
 	ret := &sequencerTestData{t: t}
 	ret.originControllerPrivateKey = testutil.GetTestingPrivateKey()
@@ -236,7 +236,7 @@ func makeAddresses(n int) ([]ledger.AddressED25519, []ed25519.PrivateKey) {
 func Test1Sequencer(t *testing.T) {
 	t.Run("run idle", func(t *testing.T) {
 		const maxSlots = 7
-		r := initSequencerTestData(t, 1, 0, ledger.LogicalTimeNow())
+		r := initSequencerTestData(t, 1, 0, ledger.TimeNow())
 		transaction2.SetPrintEasyFLTraceOnFail(true)
 		r.wrk.Start()
 
@@ -246,7 +246,7 @@ func Test1Sequencer(t *testing.T) {
 			sequencer_old.WithName("boot"),
 			sequencer_old.WithPace(5),
 			sequencer_old.WithMaxBranches(maxSlots),
-			sequencer_old.WithMaxTargetTs(ledger.LogicalTimeNow().AddTimeSlots(maxSlots+2)),
+			sequencer_old.WithMaxTargetTs(ledger.TimeNow().AddSlots(maxSlots+2)),
 			sequencer_old.WithLogLevel(zapcore.InfoLevel),
 		)
 
@@ -268,7 +268,7 @@ func Test1Sequencer(t *testing.T) {
 	t.Run("run add chain origins tx", func(t *testing.T) {
 		const maxTimeSlots = 10
 
-		r := initSequencerTestData(t, 1, 1, ledger.LogicalTimeNow())
+		r := initSequencerTestData(t, 1, 1, ledger.TimeNow())
 		transaction2.SetPrintEasyFLTraceOnFail(false)
 		r.wrk.Start()
 
@@ -280,7 +280,7 @@ func Test1Sequencer(t *testing.T) {
 			sequencer_old.WithName("boot"),
 			sequencer_old.WithPace(5),
 			sequencer_old.WithMaxBranches(maxTimeSlots),
-			sequencer_old.WithMaxTargetTs(ledger.LogicalTimeNow().AddTimeSlots(maxTimeSlots+2)),
+			sequencer_old.WithMaxTargetTs(ledger.TimeNow().AddSlots(maxTimeSlots+2)),
 		)
 
 		// add transaction with chain origins
@@ -314,7 +314,7 @@ func Test1Sequencer(t *testing.T) {
 			maxSlots              = numFaucetTransactions/maxFeeInputs + 3 // 10
 		)
 
-		r := initSequencerTestData(t, 1, 1, ledger.LogicalTimeNow())
+		r := initSequencerTestData(t, 1, 1, ledger.TimeNow())
 		transaction2.SetPrintEasyFLTraceOnFail(false)
 		r.wrk.Start()
 
@@ -325,7 +325,7 @@ func Test1Sequencer(t *testing.T) {
 			sequencer_old.WithName("boot"),
 			sequencer_old.WithPace(5),
 			sequencer_old.WithMaxBranches(maxSlots),
-			sequencer_old.WithMaxTargetTs(ledger.LogicalTimeNow().AddTimeSlots(maxSlots+2)),
+			sequencer_old.WithMaxTargetTs(ledger.TimeNow().AddSlots(maxSlots+2)),
 			sequencer_old.WithMaxFeeInputs(maxFeeInputs),
 		)
 
@@ -375,7 +375,7 @@ func Test1Sequencer(t *testing.T) {
 			maxSlots              = numFaucetTransactions/maxInputs + 3
 		)
 
-		r := initSequencerTestData(t, 1, 1, ledger.LogicalTimeNow())
+		r := initSequencerTestData(t, 1, 1, ledger.TimeNow())
 		//workflow_old.WithConsumerLogLevel(workflow_old.RejectConsumerName, zapcore.DebugLevel),
 		//workflow_old.WithConsumerLogLevel(workflow_old.PreValidateConsumerName, zapcore.DebugLevel),
 		//workflow_old.WithConsumerLogLevel(workflow_old.SolidifyConsumerName, zapcore.DebugLevel),
@@ -392,7 +392,7 @@ func Test1Sequencer(t *testing.T) {
 			sequencer_old.WithName("boot"),
 			sequencer_old.WithPace(5),
 			sequencer_old.WithMaxBranches(maxSlots+2),
-			sequencer_old.WithMaxTargetTs(ledger.LogicalTimeNow().AddTimeSlots(maxSlots+2)),
+			sequencer_old.WithMaxTargetTs(ledger.TimeNow().AddSlots(maxSlots+2)),
 			sequencer_old.WithMaxFeeInputs(maxInputs),
 		)
 
@@ -465,7 +465,7 @@ func Test1Sequencer(t *testing.T) {
 			maxSlots              = numFaucetTransactions*numFaucets/maxInputs + 6
 		)
 		t.Logf("numFaucets: %d, numFaucetTransactions: %d", numFaucets, numFaucetTransactions)
-		r := initSequencerTestData(t, numFaucets, 1, ledger.LogicalTimeNow())
+		r := initSequencerTestData(t, numFaucets, 1, ledger.TimeNow())
 		transaction2.SetPrintEasyFLTraceOnFail(false)
 		r.wrk.Start()
 
@@ -475,7 +475,7 @@ func Test1Sequencer(t *testing.T) {
 			sequencer_old.WithName("boot"),
 			sequencer_old.WithPace(5),
 			sequencer_old.WithMaxBranches(maxSlots),
-			sequencer_old.WithMaxTargetTs(ledger.LogicalTimeNow().AddTimeSlots(maxSlots+2)),
+			sequencer_old.WithMaxTargetTs(ledger.TimeNow().AddSlots(maxSlots+2)),
 			sequencer_old.WithMaxFeeInputs(maxInputs),
 		)
 
@@ -547,11 +547,11 @@ func (r *sequencerTestData) createSequencers(maxInputsInTx, maxSlots, pace int, 
 		sequencer_old.WithLogLevel(loglevel),
 		sequencer_old.WithPace(pace),
 		sequencer_old.WithMaxBranches(maxSlots),
-		sequencer_old.WithMaxTargetTs(ledger.LogicalTimeNow().AddTimeSlots(maxSlots)),
+		sequencer_old.WithMaxTargetTs(ledger.TimeNow().AddSlots(maxSlots)),
 		sequencer_old.WithMaxFeeInputs(maxInputsInTx),
 	)
 
-	maxTargetTs := ledger.LogicalTimeNow().AddTimeSlots(maxSlots)
+	maxTargetTs := ledger.TimeNow().AddSlots(maxSlots)
 	r.sequencers = make([]*sequencer_old.Sequencer, len(r.chainOrigins))
 	for i := range r.chainOrigins {
 		chainOut, ok, wrong := r.ut.GetWrappedOutput(&r.chainOrigins[i].OutputWithID.ID)
@@ -630,7 +630,7 @@ func TestNSequencers(t *testing.T) {
 			stopAfterBranches     = 40
 		)
 		t.Logf("\n   numFaucets: %d\n   numFaucetTransactions: %d\n", numFaucets, numFaucetTransactions)
-		r := initSequencerTestData(t, numFaucets, 1, ledger.LogicalTimeNow())
+		r := initSequencerTestData(t, numFaucets, 1, ledger.TimeNow())
 		transaction2.SetPrintEasyFLTraceOnFail(false)
 		r.wrk.Start()
 		// add transaction with chain origins
@@ -703,7 +703,7 @@ func TestNSequencers(t *testing.T) {
 		)
 		t.Logf("\n   numFaucets: %d\n   numTxPerFaucet: %d\n   transferAmount: %d",
 			numFaucets, numTxPerFaucet, transferAmount)
-		r := initSequencerTestData(t, numFaucets, nSequencers-1, ledger.LogicalTimeNow())
+		r := initSequencerTestData(t, numFaucets, nSequencers-1, ledger.TimeNow())
 		transaction2.SetPrintEasyFLTraceOnFail(false)
 		r.wrk.Start()
 		//r.createTransactionLogger()
@@ -788,7 +788,7 @@ func TestNSequencers(t *testing.T) {
 		)
 		t.Logf("\n   numFaucets: %d\n   numTxPerFaucet: %d\n   transferAmount: %d",
 			numFaucets, numTxPerFaucet, transferAmount)
-		r := initSequencerTestData(t, numFaucets, nSequencers-1, ledger.LogicalTimeNow())
+		r := initSequencerTestData(t, numFaucets, nSequencers-1, ledger.TimeNow())
 		transaction2.SetPrintEasyFLTraceOnFail(false)
 		r.wrk.Start()
 		//r.createTransactionLogger()
@@ -884,7 +884,7 @@ func TestNSequencers(t *testing.T) {
 			nSequencers           = 3
 		)
 		t.Logf("\n   numFaucets: %d\n   numFaucetTransactions: %d\n", numFaucets, numFaucetTransactions)
-		r := initSequencerTestData(t, numFaucets, nSequencers-1, ledger.LogicalTimeNow())
+		r := initSequencerTestData(t, numFaucets, nSequencers-1, ledger.TimeNow())
 		transaction2.SetPrintEasyFLTraceOnFail(false)
 		r.wrk.Start()
 		// add transaction with chain origins
@@ -963,7 +963,7 @@ func TestNSequencers(t *testing.T) {
 			nSequencers           = 5
 		)
 		t.Logf("\n   numFaucets: %d\n   numFaucetTransactions: %d\n", numFaucets, numFaucetTransactions)
-		r := initSequencerTestData(t, numFaucets, nSequencers-1, ledger.LogicalTimeNow())
+		r := initSequencerTestData(t, numFaucets, nSequencers-1, ledger.TimeNow())
 		transaction2.SetPrintEasyFLTraceOnFail(false)
 		r.wrk.Start()
 		//r.createTransactionLogger()
@@ -1035,7 +1035,7 @@ func TestPruning(t *testing.T) {
 			nSequencers           = 3
 		)
 		t.Logf("\n   numFaucets: %d\n   numFaucetTransactions: %d\n", numFaucets, numFaucetTransactions)
-		r := initSequencerTestData(t, numFaucets, nSequencers-1, ledger.LogicalTimeNow())
+		r := initSequencerTestData(t, numFaucets, nSequencers-1, ledger.TimeNow())
 		transaction2.SetPrintEasyFLTraceOnFail(false)
 
 		r.wrk.Start()
@@ -1137,7 +1137,7 @@ func TestPruning(t *testing.T) {
 			nSequencers           = 3
 		)
 		t.Logf("\n   numFaucets: %d\n   numFaucetTransactions: %d\n", numFaucets, numFaucetTransactions)
-		r := initSequencerTestData(t, numFaucets, nSequencers-1, ledger.LogicalTimeNow())
+		r := initSequencerTestData(t, numFaucets, nSequencers-1, ledger.TimeNow())
 		transaction2.SetPrintEasyFLTraceOnFail(false)
 
 		r.wrk.Start()
@@ -1224,7 +1224,7 @@ func TestPruning(t *testing.T) {
 			nSequencers           = 5
 		)
 		t.Logf("\n   numFaucets: %d\n   numFaucetTransactions: %d\n", numFaucets, numFaucetTransactions)
-		r := initSequencerTestData(t, numFaucets, nSequencers-1, ledger.LogicalTimeNow())
+		r := initSequencerTestData(t, numFaucets, nSequencers-1, ledger.TimeNow())
 		transaction2.SetPrintEasyFLTraceOnFail(false)
 
 		r.wrk.Start()

@@ -296,7 +296,7 @@ func TestConflicts1Attacher(t *testing.T) {
 		bd := branches[0]
 
 		chainOut := bd.SequencerOutput.MustAsChainOutput()
-		inTS := []ledger.LogicalTime{chainOut.Timestamp()}
+		inTS := []ledger.Time{chainOut.Timestamp()}
 		for _, o := range testData.conflictingOutputs {
 			inTS = append(inTS, o.Timestamp())
 		}
@@ -304,7 +304,7 @@ func TestConflicts1Attacher(t *testing.T) {
 		txBytes, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
 			SeqName:          "test",
 			ChainInput:       chainOut,
-			Timestamp:        ledger.MaxLogicalTime(inTS...).AddTicks(ledger.TransactionPaceInTicks),
+			Timestamp:        ledger.MaxTime(inTS...).AddTicks(ledger.TransactionPaceInTicks),
 			AdditionalInputs: testData.conflictingOutputs,
 			PrivateKey:       testData.privKey,
 			TotalSupply:      0,
@@ -345,12 +345,12 @@ func TestConflicts1Attacher(t *testing.T) {
 			amount += o.Output.Amount()
 		}
 
-		inTS := make([]ledger.LogicalTime, 0)
+		inTS := make([]ledger.Time, 0)
 		for _, o := range testData.conflictingOutputs {
 			inTS = append(inTS, o.Timestamp())
 		}
 
-		td := txbuilder.NewTransferData(testData.privKey, testData.addr, ledger.MaxLogicalTime(inTS...).AddTicks(ledger.TransactionPaceInTicks))
+		td := txbuilder.NewTransferData(testData.privKey, testData.addr, ledger.MaxTime(inTS...).AddTicks(ledger.TransactionPaceInTicks))
 		td.WithAmount(amount).
 			WithTargetLock(ledger.ChainLockFromChainID(testData.bootstrapChainID)).
 			MustWithInputs(testData.conflictingOutputs...)
@@ -413,7 +413,7 @@ func TestConflicts1Attacher(t *testing.T) {
 		bd := branches[0]
 
 		chainOut := bd.SequencerOutput.MustAsChainOutput()
-		inTS := []ledger.LogicalTime{chainOut.Timestamp()}
+		inTS := []ledger.Time{chainOut.Timestamp()}
 		amount := uint64(0)
 		for _, o := range testData.terminalOutputs {
 			inTS = append(inTS, o.Timestamp())
@@ -423,7 +423,7 @@ func TestConflicts1Attacher(t *testing.T) {
 		txBytes, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
 			SeqName:          "test",
 			ChainInput:       chainOut,
-			Timestamp:        ledger.MaxLogicalTime(inTS...).AddTicks(ledger.TransactionPaceInTicks),
+			Timestamp:        ledger.MaxTime(inTS...).AddTicks(ledger.TransactionPaceInTicks),
 			AdditionalInputs: testData.terminalOutputs,
 			PrivateKey:       testData.privKey,
 			TotalSupply:      0,
@@ -469,7 +469,7 @@ func TestConflicts1Attacher(t *testing.T) {
 		bd := branches[0]
 
 		chainOut := bd.SequencerOutput.MustAsChainOutput()
-		inTS := []ledger.LogicalTime{chainOut.Timestamp()}
+		inTS := []ledger.Time{chainOut.Timestamp()}
 		amount := uint64(0)
 		for _, o := range testData.terminalOutputs {
 			inTS = append(inTS, o.Timestamp())
@@ -479,7 +479,7 @@ func TestConflicts1Attacher(t *testing.T) {
 		txBytes, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
 			SeqName:          "test",
 			ChainInput:       chainOut,
-			Timestamp:        ledger.MaxLogicalTime(inTS...).AddTicks(ledger.TransactionPaceInTicks),
+			Timestamp:        ledger.MaxTime(inTS...).AddTicks(ledger.TransactionPaceInTicks),
 			AdditionalInputs: testData.terminalOutputs,
 			PrivateKey:       testData.privKey,
 			TotalSupply:      0,
@@ -628,12 +628,12 @@ func TestConflictsNAttachersOneFork(t *testing.T) {
 	}
 
 	chainIn := make([]*ledger.OutputWithChainID, len(testData.seqChain))
-	var ts ledger.LogicalTime
+	var ts ledger.Time
 	for seqNr := range testData.seqChain {
 		tx := testData.seqChain[seqNr][0]
 		o := tx.MustProducedOutputWithIDAt(tx.SequencerTransactionData().SequencerOutputIndex)
 		chainIn[seqNr] = o.MustAsChainOutput()
-		ts = ledger.MaxLogicalTime(ts, o.Timestamp())
+		ts = ledger.MaxTime(ts, o.Timestamp())
 	}
 	ts = ts.AddTicks(ledger.TransactionPaceInTicks)
 	txBytesSeq, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
@@ -691,12 +691,12 @@ func TestConflictsNAttachersOneForkBranches(t *testing.T) {
 	}
 
 	chainIn := make([]*ledger.OutputWithChainID, len(testData.seqChain))
-	var ts ledger.LogicalTime
+	var ts ledger.Time
 	for seqNr := range testData.seqChain {
 		tx := testData.seqChain[seqNr][0]
 		o := tx.MustProducedOutputWithIDAt(tx.SequencerTransactionData().SequencerOutputIndex)
 		chainIn[seqNr] = o.MustAsChainOutput()
-		ts = ledger.MaxLogicalTime(ts, o.Timestamp())
+		ts = ledger.MaxTime(ts, o.Timestamp())
 	}
 	ts = ts.NextTimeSlotBoundary()
 
@@ -755,12 +755,12 @@ func TestConflictsNAttachersOneForkBranchesConflict(t *testing.T) {
 	}
 
 	chainIn := make([]*ledger.OutputWithChainID, len(testData.seqChain))
-	var ts ledger.LogicalTime
+	var ts ledger.Time
 	for seqNr := range testData.seqChain {
 		tx := testData.seqChain[seqNr][0]
 		o := tx.MustProducedOutputWithIDAt(tx.SequencerTransactionData().SequencerOutputIndex)
 		chainIn[seqNr] = o.MustAsChainOutput()
-		ts = ledger.MaxLogicalTime(ts, o.Timestamp())
+		ts = ledger.MaxTime(ts, o.Timestamp())
 	}
 	ts = ts.NextTimeSlotBoundary()
 

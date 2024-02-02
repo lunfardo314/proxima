@@ -42,7 +42,7 @@ type (
 		infoMutex      sync.RWMutex
 		info           Info
 		traceNAhead    atomic.Int64
-		prevTimeTarget ledger.LogicalTime
+		prevTimeTarget ledger.Time
 	}
 
 	Info struct {
@@ -78,7 +78,7 @@ func defaultConfigOptions() ConfigOptions {
 		LogOutputs:    []string{"stdout"},
 		LogTimeLayout: global.TimeLayoutDefault,
 		MaxFeeInputs:  DefaultMaxFeeInputs,
-		MaxTargetTs:   ledger.NilLogicalTime,
+		MaxTargetTs:   ledger.NilLedgerTime,
 		MaxMilestones: math.MaxInt,
 		MaxBranches:   math.MaxInt,
 	}
@@ -261,8 +261,8 @@ func (seq *Sequencer) WaitStop() {
 
 const sleepWaitingCurrentMilestoneTime = 10 * time.Millisecond
 
-func (seq *Sequencer) chooseNextTargetTime(avgProposalDuration time.Duration) ledger.LogicalTime {
-	var prevMilestoneTs ledger.LogicalTime
+func (seq *Sequencer) chooseNextTargetTime(avgProposalDuration time.Duration) ledger.Time {
+	var prevMilestoneTs ledger.Time
 
 	if currentMs := seq.factory.getLatestMilestone(); currentMs.VID != nil {
 		prevMilestoneTs = currentMs.Timestamp()
@@ -270,27 +270,27 @@ func (seq *Sequencer) chooseNextTargetTime(avgProposalDuration time.Duration) le
 		seqOut, stemOut, found := seq.factory.utangle.GetSequencerBootstrapOutputs(seq.factory.tipPool.chainID)
 		util.Assertf(found, "GetSequencerBootstrapOutputs failed")
 
-		prevMilestoneTs = ledger.MaxLogicalTime(seqOut.Timestamp(), stemOut.Timestamp())
+		prevMilestoneTs = ledger.MaxTime(seqOut.Timestamp(), stemOut.Timestamp())
 	}
 
 	// synchronize clock
-	nowis := ledger.LogicalTimeNow()
+	nowis := ledger.TimeNow()
 	if nowis.Before(prevMilestoneTs) {
-		waitDuration := time.Duration(ledger.DiffTimeTicks(prevMilestoneTs, nowis)) * ledger.TickDuration()
+		waitDuration := time.Duration(ledger.DiffTicks(prevMilestoneTs, nowis)) * ledger.TickDuration()
 		seq.log.Warnf("nowis (%s) is before last milestone ts (%s). Sleep %v",
 			nowis.String(), prevMilestoneTs.String(), waitDuration)
 		time.Sleep(waitDuration)
 	}
-	nowis = ledger.LogicalTimeNow()
-	for ; nowis.Before(prevMilestoneTs); nowis = ledger.LogicalTimeNow() {
+	nowis = ledger.TimeNow()
+	for ; nowis.Before(prevMilestoneTs); nowis = ledger.TimeNow() {
 		seq.log.Warnf("nowis (%s) is before last milestone ts (%s). Sleep %v",
 			nowis.String(), prevMilestoneTs.String(), sleepWaitingCurrentMilestoneTime)
 		time.Sleep(sleepWaitingCurrentMilestoneTime)
 	}
 	// TODO taking into account average speed of proposal generation
 
-	nowis = ledger.LogicalTimeNow()
-	util.Assertf(!nowis.Before(prevMilestoneTs), "!core.LogicalTimeNow().Before(prevMilestoneTs)")
+	nowis = ledger.TimeNow()
+	util.Assertf(!nowis.Before(prevMilestoneTs), "!core.TimeNow().Before(prevMilestoneTs)")
 
 	targetAbsoluteMinimum := prevMilestoneTs.AddTicks(seq.config.Pace)
 	nextSlotBoundary := nowis.NextTimeSlotBoundary()
@@ -314,7 +314,7 @@ func (seq *Sequencer) chooseNextTargetTime(avgProposalDuration time.Duration) le
 }
 
 // Returns nil if fails to generate acceptable bestSoFarTx until the deadline
-func (seq *Sequencer) generateNextMilestoneForTargetTime(targetTs ledger.LogicalTime) (*transaction.Transaction, time.Duration, int) {
+func (seq *Sequencer) generateNextMilestoneForTargetTime(targetTs ledger.Time) (*transaction.Transaction, time.Duration, int) {
 	seq.trace("generateNextMilestoneForTargetTime %s", targetTs)
 
 	timeout := time.Duration(seq.config.Pace) * ledger.TickDuration()
@@ -371,7 +371,7 @@ func (seq *Sequencer) mainLoop() {
 			targetTs.String(), seq.prevTimeTarget.String())
 		seq.prevTimeTarget = targetTs
 
-		if seq.config.MaxTargetTs != ledger.NilLogicalTime && targetTs.After(seq.config.MaxTargetTs) {
+		if seq.config.MaxTargetTs != ledger.NilLedgerTime && targetTs.After(seq.config.MaxTargetTs) {
 			seq.log.Infof("next target ts %s is after maximum ts %s -> stopping", targetTs, seq.config.MaxTargetTs)
 			go seq.Stop()
 			break
@@ -382,12 +382,12 @@ func (seq *Sequencer) mainLoop() {
 		}
 
 		//seq.setTraceAhead(1)
-		seq.trace("target ts: %s. Now is: %s", targetTs, ledger.LogicalTimeNow())
+		seq.trace("target ts: %s. Now is: %s", targetTs, ledger.TimeNow())
 
 		ms, avgProposalDuration, numProposals := seq.generateNextMilestoneForTargetTime(targetTs)
 		if ms == nil {
 			//seq.setTraceAhead(1)
-			seq.trace("failed to generate ms for target: %s. Now is: %s", targetTs, ledger.LogicalTimeNow())
+			seq.trace("failed to generate ms for target: %s. Now is: %s", targetTs, ledger.TimeNow())
 			time.Sleep(10 * time.Millisecond)
 			continue
 		}

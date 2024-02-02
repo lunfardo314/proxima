@@ -233,7 +233,7 @@ func initWorkflowTestWithConflicts(t *testing.T, nConflicts int, nChains int, ta
 
 	ret.txBytesConflicting = make([][]byte, nConflicts)
 
-	td := txbuilder.NewTransferData(ret.privKey, ret.addr, ledger.LogicalTimeNow()).
+	td := txbuilder.NewTransferData(ret.privKey, ret.addr, ledger.TimeNow()).
 		MustWithInputs(ret.forkOutput)
 
 	for i := 0; i < nConflicts; i++ {
@@ -270,10 +270,10 @@ func (td *longConflictTestData) makeSeqBeginnings(withConflictingFees bool) {
 	td.seqChain = make([][]*transaction.Transaction, len(td.chainOrigins))
 	var additionalIn []*ledger.OutputWithID
 	for i, chainOrigin := range td.chainOrigins {
-		var ts ledger.LogicalTime
+		var ts ledger.Time
 		if withConflictingFees {
 			additionalIn = []*ledger.OutputWithID{td.terminalOutputs[i]}
-			ts = ledger.MaxLogicalTime(chainOrigin.Timestamp(), td.terminalOutputs[i].Timestamp())
+			ts = ledger.MaxTime(chainOrigin.Timestamp(), td.terminalOutputs[i].Timestamp())
 		} else {
 			additionalIn = nil
 			ts = chainOrigin.Timestamp()
@@ -319,7 +319,7 @@ func (td *longConflictTestData) makeSlotTransactions(howLongChain int, extendBeg
 	ret := make([][]*transaction.Transaction, len(extendBegin))
 	var extend *ledger.OutputWithChainID
 	var endorse *ledger.TransactionID
-	var ts ledger.LogicalTime
+	var ts ledger.Time
 
 	for i := 0; i < howLongChain; i++ {
 		for seqNr := range ret {
@@ -333,7 +333,7 @@ func (td *longConflictTestData) makeSlotTransactions(howLongChain int, extendBeg
 				endorseIdx := (seqNr + 1) % len(extendBegin)
 				endorse = ret[endorseIdx][i-1].ID()
 			}
-			ts = ledger.MaxLogicalTime(endorse.Timestamp(), extend.Timestamp()).AddTicks(ledger.TransactionPaceInTicks)
+			ts = ledger.MaxTime(endorse.Timestamp(), extend.Timestamp()).AddTicks(ledger.TransactionPaceInTicks)
 
 			txBytes, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
 				SeqName:      fmt.Sprintf("seq%d", i),
@@ -357,7 +357,7 @@ func (td *longConflictTestData) makeSlotTransactionsWithTagAlong(howLongChain in
 	ret := make([][]*transaction.Transaction, len(extendBegin))
 	var extend *ledger.OutputWithChainID
 	var endorse *ledger.TransactionID
-	var ts ledger.LogicalTime
+	var ts ledger.Time
 
 	if td.remainderOutput == nil {
 		td.transferChain = make([]*transaction.Transaction, 0)
@@ -384,7 +384,7 @@ func (td *longConflictTestData) makeSlotTransactionsWithTagAlong(howLongChain in
 				endorseIdx := (seqNr + 1) % len(extendBegin)
 				endorse = ret[endorseIdx][i-1].ID()
 			}
-			ts = ledger.MaxLogicalTime(endorse.Timestamp(), extend.Timestamp(), transferOut.Timestamp()).AddTicks(ledger.TransactionPaceInTicks)
+			ts = ledger.MaxTime(endorse.Timestamp(), extend.Timestamp(), transferOut.Timestamp()).AddTicks(ledger.TransactionPaceInTicks)
 
 			txBytes, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
 				SeqName:          fmt.Sprintf("seq%d", i),
@@ -638,7 +638,7 @@ func makeTransfers(par *spammerParams) [][]byte {
 	ret := make([][]byte, par.batchSize)
 
 	for i := 0; i < par.batchSize; i++ {
-		ts := ledger.MaxLogicalTime(ledger.LogicalTimeNow(), par.remainder.Timestamp().AddTicks(par.pace))
+		ts := ledger.MaxTime(ledger.TimeNow(), par.remainder.Timestamp().AddTicks(par.pace))
 		if ts.IsSlotBoundary() {
 			ts.AddTicks(1)
 		}
@@ -710,7 +710,7 @@ func (td *workflowTestData) spamWithdrawCommands(par spammerWithdrawCmdParams, c
 		_, err = txb.ProduceOutput(cmdOut)
 		require.NoError(td.t, err)
 
-		txb.TransactionData.Timestamp = ledger.LogicalTimeNow()
+		txb.TransactionData.Timestamp = ledger.TimeNow()
 		txb.TransactionData.InputCommitment = txb.InputCommitment()
 		txb.SignED25519(par.seqControllerPrivateKey)
 		txBytes := txb.TransactionData.Bytes()

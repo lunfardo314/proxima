@@ -55,24 +55,24 @@ func FilterOutputsSortByAmount(outs []*ledger.OutputWithID, filter func(o *ledge
 	return ret
 }
 
-func ParseAndSortOutputDataUpToAmount(outs []*ledger.OutputDataWithID, amount uint64, filter func(o *ledger.Output) bool, desc ...bool) ([]*ledger.OutputWithID, uint64, ledger.LogicalTime, error) {
+func ParseAndSortOutputDataUpToAmount(outs []*ledger.OutputDataWithID, amount uint64, filter func(o *ledger.Output) bool, desc ...bool) ([]*ledger.OutputWithID, uint64, ledger.Time, error) {
 	outsWitID, err := ParseAndSortOutputData(outs, filter, desc...)
 	if err != nil {
-		return nil, 0, ledger.NilLogicalTime, err
+		return nil, 0, ledger.NilLedgerTime, err
 	}
-	retTs := ledger.NilLogicalTime
+	retTs := ledger.NilLedgerTime
 	retSum := uint64(0)
 	retOuts := make([]*ledger.OutputWithID, 0, len(outs))
 	for _, o := range outsWitID {
 		retSum += o.Output.Amount()
-		retTs = ledger.MaxLogicalTime(retTs, o.Timestamp())
+		retTs = ledger.MaxTime(retTs, o.Timestamp())
 		retOuts = append(retOuts, o)
 		if retSum >= amount {
 			break
 		}
 	}
 	if retSum < amount {
-		return nil, 0, ledger.NilLogicalTime, fmt.Errorf("not enough tokens")
+		return nil, 0, ledger.NilLedgerTime, fmt.Errorf("not enough tokens")
 	}
 	return retOuts, retSum, retTs, nil
 }

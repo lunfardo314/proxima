@@ -122,7 +122,7 @@ func MustLedgerIdentityDataFromBytes(data []byte) *LedgerIdentityData {
 		BaselineTime:               baselineTime,
 		TimeTickDuration:           timeTickDuration,
 		MaxTimeTickValueInTimeSlot: maxTick[0],
-		GenesisTimeSlot:            ledger.MustTimeSlotFromBytes(arr.At(6)),
+		GenesisTimeSlot:            ledger.MustSlotFromBytes(arr.At(6)),
 	}
 	copy(ret.CoreLedgerConstraintsHash[:], arr.At(7))
 	return ret
@@ -249,7 +249,7 @@ func DefaultIdentityData(privateKey ed25519.PrivateKey, slot ...ledger.Slot) *Le
 	if len(slot) > 0 {
 		sl = slot[0]
 	} else {
-		sl = ledger.LogicalTimeNow().Slot()
+		sl = ledger.TimeNow().Slot()
 	}
 	return &LedgerIdentityData{
 		CoreLedgerConstraintsHash:  easyfl.LibraryHash(),

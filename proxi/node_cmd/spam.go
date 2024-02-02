@@ -141,7 +141,7 @@ func standardScenario(cfg spammerConfig) {
 		glb.Assertf(cfg.maxTransactions == 0 || txCounter < cfg.maxTransactions, "maximum transaction limit %d has been reached", cfg.maxTransactions)
 		glb.Assertf(time.Now().Before(deadline), "spam duration limit has been reached")
 
-		nowisTs := ledger.LogicalTimeNow()
+		nowisTs := ledger.TimeNow()
 		outs, balance, err := getClient().GetTransferableOutputs(walletData.Account, nowisTs, cfg.bundleSize)
 		glb.AssertNoError(err)
 
@@ -178,9 +178,9 @@ func standardScenario(cfg spammerConfig) {
 	}
 }
 
-func maxTimestamp(outs []*ledger.OutputWithID) (ret ledger.LogicalTime) {
+func maxTimestamp(outs []*ledger.OutputWithID) (ret ledger.Time) {
 	for _, o := range outs {
-		ret = ledger.MaxLogicalTime(ret, o.Timestamp())
+		ret = ledger.MaxTime(ret, o.Timestamp())
 	}
 	return
 }
@@ -199,7 +199,7 @@ func prepareBundle(walletData glb.WalletData, cfg spammerConfig) ([][]byte, ledg
 		lastOuts = []*ledger.OutputWithID{lastOut}
 		numTx--
 	} else {
-		lastOuts, _, err = c.GetTransferableOutputs(walletData.Account, ledger.LogicalTimeNow(), cfg.bundleSize)
+		lastOuts, _, err = c.GetTransferableOutputs(walletData.Account, ledger.TimeNow(), cfg.bundleSize)
 		glb.AssertNoError(err)
 	}
 
@@ -208,7 +208,7 @@ func prepareBundle(walletData glb.WalletData, cfg spammerConfig) ([][]byte, ledg
 		if i == numTx-1 {
 			fee = cfg.tagAlongFee
 		}
-		ts := ledger.MaxLogicalTime(maxTimestamp(lastOuts).AddTicks(cfg.pace), ledger.LogicalTimeNow())
+		ts := ledger.MaxTime(maxTimestamp(lastOuts).AddTicks(cfg.pace), ledger.TimeNow())
 		txBytes, err := client.MakeTransferTransaction(client.MakeTransferTransactionParams{
 			Inputs:        lastOuts,
 			Target:        cfg.target.AsLock(),

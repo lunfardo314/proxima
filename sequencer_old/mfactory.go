@@ -50,7 +50,7 @@ type (
 
 	latestMilestoneProposal struct {
 		mutex             sync.RWMutex
-		targetTs          ledger.LogicalTime
+		targetTs          ledger.Time
 		bestSoFarCoverage uint64
 		current           *transaction.Transaction
 		currentExtended   utangle_old.WrappedOutput
@@ -131,7 +131,7 @@ func newOwnMilestone(wOut utangle_old.WrappedOutput, inputs ...utangle_old.Wrapp
 	}
 }
 
-func (mf *milestoneFactory) makeMilestone(chainIn, stemIn *utangle_old.WrappedOutput, preSelectedFeeInputs []utangle_old.WrappedOutput, endorse []*utangle_old.WrappedTx, targetTs ledger.LogicalTime) (*transaction.Transaction, error) {
+func (mf *milestoneFactory) makeMilestone(chainIn, stemIn *utangle_old.WrappedOutput, preSelectedFeeInputs []utangle_old.WrappedOutput, endorse []*utangle_old.WrappedTx, targetTs ledger.Time) (*transaction.Transaction, error) {
 	chainInReal, err := chainIn.Unwrap()
 	if err != nil || chainInReal == nil {
 		return nil, err
@@ -220,7 +220,7 @@ func (mf *milestoneFactory) isConsumedInThePastPath(wOut utangle_old.WrappedOutp
 	return mf.ownMilestones[ms].consumedInThePastPath.Contains(wOut)
 }
 
-func (mf *milestoneFactory) selectInputs(targetTs ledger.LogicalTime, ownMs utangle_old.WrappedOutput, otherSeqVIDs ...*utangle_old.WrappedTx) ([]utangle_old.WrappedOutput, *utangle_old.WrappedOutput) {
+func (mf *milestoneFactory) selectInputs(targetTs ledger.Time, ownMs utangle_old.WrappedOutput, otherSeqVIDs ...*utangle_old.WrappedTx) ([]utangle_old.WrappedOutput, *utangle_old.WrappedOutput) {
 	if ownMs.IsConsumed(otherSeqVIDs...) {
 		return nil, &ownMs
 	}
@@ -268,7 +268,7 @@ func (mf *milestoneFactory) getLatestMilestone() (ret utangle_old.WrappedOutput)
 
 // setNewTarget signals proposer allMilestoneProposingStrategies about new timestamp,
 // Returns last proposed proposal
-func (mf *milestoneFactory) setNewTarget(ts ledger.LogicalTime) {
+func (mf *milestoneFactory) setNewTarget(ts ledger.Time) {
 	mf.proposal.mutex.Lock()
 	defer mf.proposal.mutex.Unlock()
 
@@ -303,7 +303,7 @@ func (mf *milestoneFactory) averageProposalDuration() (time.Duration, int) {
 
 // continueCandidateProposing the proposing strategy checks if its assumed target timestamp
 // is still actual. Strategy keeps proposing latestMilestone candidates until it is no longer actual
-func (mc *latestMilestoneProposal) continueCandidateProposing(ts ledger.LogicalTime) bool {
+func (mc *latestMilestoneProposal) continueCandidateProposing(ts ledger.Time) bool {
 	mc.mutex.RLock()
 	defer mc.mutex.RUnlock()
 
@@ -317,7 +317,7 @@ func (mc *latestMilestoneProposal) getLatestProposal() *transaction.Transaction 
 	return mc.current
 }
 
-func (mf *milestoneFactory) startProposingForTargetLogicalTime(targetTs ledger.LogicalTime) (*transaction.Transaction, time.Duration, int) {
+func (mf *milestoneFactory) startProposingForTargetLogicalTime(targetTs ledger.Time) (*transaction.Transaction, time.Duration, int) {
 	//mf.log.Infof("startProposingForTargetLogicalTime: %s", targetTs.String())
 	deadline := targetTs.Time()
 	nowis := time.Now()
@@ -335,11 +335,11 @@ func (mf *milestoneFactory) startProposingForTargetLogicalTime(targetTs ledger.L
 	ret := mf.proposal.getLatestProposal() // will return nil if wasn't able to generate transaction
 	// set target time to nil -> signal workers to exit
 	avgProposalDuration, numProposals := mf.averageProposalDuration()
-	mf.setNewTarget(ledger.NilLogicalTime)
+	mf.setNewTarget(ledger.NilLedgerTime)
 	return ret, avgProposalDuration, numProposals
 }
 
-func (mf *milestoneFactory) startProposerWorkers(targetTime ledger.LogicalTime) {
+func (mf *milestoneFactory) startProposerWorkers(targetTime ledger.Time) {
 	for strategyName, rec := range allProposingStrategies {
 		task := rec.constructor(mf, targetTime)
 		if task != nil {

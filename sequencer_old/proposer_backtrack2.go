@@ -24,7 +24,7 @@ func init() {
 	if !EnabledBacktrackProposer2 {
 		return
 	}
-	registerProposingStrategy(BacktrackProposer2Name, func(mf *milestoneFactory, targetTs ledger.LogicalTime) proposerTask {
+	registerProposingStrategy(BacktrackProposer2Name, func(mf *milestoneFactory, targetTs ledger.Time) proposerTask {
 		if targetTs.Tick() == 0 {
 			// doesn't propose branches
 			return nil

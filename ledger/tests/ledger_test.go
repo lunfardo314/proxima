@@ -82,7 +82,7 @@ func TestMainConstraints(t *testing.T) {
 		require.EqualValues(t, 1, u.NumUTXOs(addr1))
 
 		_, _, addrNext := u.GenerateAddress(2)
-		in, err := u.MakeTransferInputData(privKey1, nil, ledger.NilLogicalTime)
+		in, err := u.MakeTransferInputData(privKey1, nil, ledger.NilLedgerTime)
 		require.NoError(t, err)
 		err = u.DoTransfer(in.WithTargetLock(addrNext).WithAmount(1000))
 		require.NoError(t, err)
@@ -105,7 +105,7 @@ func TestMainConstraints(t *testing.T) {
 
 		_, _, addrNext := u.GenerateAddress(2)
 		privKeyWrong, _, _ := u.GenerateAddress(3)
-		in, err := u.MakeTransferInputData(privKey1, nil, ledger.NilLogicalTime)
+		in, err := u.MakeTransferInputData(privKey1, nil, ledger.NilLedgerTime)
 		in.SenderPrivateKey = privKeyWrong
 		require.NoError(t, err)
 		err = u.DoTransfer(in.WithTargetLock(addrNext).WithAmount(1000))
@@ -122,7 +122,7 @@ func TestMainConstraints(t *testing.T) {
 		require.EqualValues(t, 1, u.NumUTXOs(addr1))
 
 		_, _, addrNext := u.GenerateAddress(2)
-		in, err := u.MakeTransferInputData(privKey1, nil, ledger.NilLogicalTime)
+		in, err := u.MakeTransferInputData(privKey1, nil, ledger.NilLedgerTime)
 		require.NoError(t, err)
 		err = u.DoTransfer(in.WithTargetLock(addrNext).WithAmount(1))
 		easyfl.RequireErrorWith(t, err, "amount is smaller than expected")
@@ -138,7 +138,7 @@ func TestTimelock(t *testing.T) {
 
 		priv1, _, addr1 := u.GenerateAddress(1)
 
-		ts := ledger.LogicalTimeNow()
+		ts := ledger.TimeNow()
 		t.Logf("now ts: %s", ts)
 		par, err := u.MakeTransferInputData(privKey0, nil, ts)
 		require.NoError(t, err)
@@ -158,7 +158,7 @@ func TestTimelock(t *testing.T) {
 		require.EqualValues(t, 200, u.Balance(addr1))
 
 		timelockSlot = ts.Slot() + (1 + 10)
-		par, err = u.MakeTransferInputData(privKey0, nil, ts.AddTimeSlots(1))
+		par, err = u.MakeTransferInputData(privKey0, nil, ts.AddSlots(1))
 		require.NoError(t, err)
 		par.WithAmount(2000).
 			WithTargetLock(addr1).
@@ -170,7 +170,7 @@ func TestTimelock(t *testing.T) {
 		// total 2200, but with different timelocks
 		require.EqualValues(t, 2200, u.Balance(addr1))
 
-		txTs := ts.AddTimeSlots(2)
+		txTs := ts.AddSlots(2)
 		par, err = u.MakeTransferInputData(priv1, nil, txTs)
 		require.NoError(t, err)
 		t.Logf("AdditionalInputs: \n%s\n", ledger.OutputsWithIdToString(par.Inputs...))
@@ -184,7 +184,7 @@ func TestTimelock(t *testing.T) {
 		require.EqualValues(t, 2200, u.Balance(addr1)) // funds weren't moved
 		t.Logf("failed tx with ts %s", par.Timestamp)
 
-		txTs = ts.AddTimeSlots(14)
+		txTs = ts.AddSlots(14)
 		require.True(t, txTs.Slot() > timelockSlot)
 		par, err = u.MakeTransferInputData(priv1, nil, txTs)
 		require.NoError(t, err)
@@ -211,7 +211,7 @@ func TestTimelock(t *testing.T) {
 
 		priv1, _, addr1 := u.GenerateAddress(1)
 
-		ts := ledger.LogicalTimeNow()
+		ts := ledger.TimeNow()
 		par, err := u.MakeTransferInputData(privKey0, nil, ts)
 		require.NoError(t, err)
 		txBytes, err := txbuilder.MakeTransferTransaction(par.
@@ -226,7 +226,7 @@ func TestTimelock(t *testing.T) {
 
 		require.EqualValues(t, 200, u.Balance(addr1))
 
-		par, err = u.MakeTransferInputData(privKey0, nil, ts.AddTimeSlots(1))
+		par, err = u.MakeTransferInputData(privKey0, nil, ts.AddSlots(1))
 		require.NoError(t, err)
 		err = u.DoTransfer(par.
 			WithAmount(2000).
@@ -237,7 +237,7 @@ func TestTimelock(t *testing.T) {
 
 		require.EqualValues(t, 2200, u.Balance(addr1))
 
-		par, err = u.MakeTransferInputData(priv1, nil, ts.AddTimeSlots(2))
+		par, err = u.MakeTransferInputData(priv1, nil, ts.AddSlots(2))
 		require.NoError(t, err)
 		err = u.DoTransfer(par.
 			WithAmount(2000).
@@ -246,7 +246,7 @@ func TestTimelock(t *testing.T) {
 		easyfl.RequireErrorWith(t, err, "failed")
 		require.EqualValues(t, 2200, u.Balance(addr1))
 
-		par, err = u.MakeTransferInputData(priv1, nil, ts.AddTimeSlots(12))
+		par, err = u.MakeTransferInputData(priv1, nil, ts.AddSlots(12))
 		require.NoError(t, err)
 		err = u.DoTransfer(par.
 			WithAmount(2000).
@@ -267,12 +267,12 @@ func TestDeadlineLock(t *testing.T) {
 	require.EqualValues(t, 0, u.Balance(addr1))
 	require.EqualValues(t, 0, u.NumUTXOs(addr1))
 
-	ts := ledger.LogicalTimeNow()
+	ts := ledger.TimeNow()
 
 	par, err := u.MakeTransferInputData(privKey0, nil, ts)
 	require.NoError(t, err)
 	deadlineLock := ledger.NewDeadlineLock(
-		ts.AddTimeSlots(10),
+		ts.AddSlots(10),
 		ledger.AddressED25519FromPublicKey(pubKey1),
 		ledger.AddressED25519FromPublicKey(pubKey0),
 	)
@@ -289,16 +289,16 @@ func TestDeadlineLock(t *testing.T) {
 	require.EqualValues(t, 2, u.NumUTXOs(addr0))
 	require.EqualValues(t, 10000, u.Balance(addr0))
 
-	require.EqualValues(t, 1, u.NumUTXOs(addr0, ts.AddTimeSlots(9)))
-	require.EqualValues(t, 2, u.NumUTXOs(addr0, ts.AddTimeSlots(11)))
-	require.EqualValues(t, 8000, int(u.Balance(addr0, ts.AddTimeSlots(9))))
-	require.EqualValues(t, 10000, int(u.Balance(addr0, ts.AddTimeSlots(11))))
+	require.EqualValues(t, 1, u.NumUTXOs(addr0, ts.AddSlots(9)))
+	require.EqualValues(t, 2, u.NumUTXOs(addr0, ts.AddSlots(11)))
+	require.EqualValues(t, 8000, int(u.Balance(addr0, ts.AddSlots(9))))
+	require.EqualValues(t, 10000, int(u.Balance(addr0, ts.AddSlots(11))))
 
 	require.EqualValues(t, 1, u.NumUTXOs(addr1))
-	require.EqualValues(t, 1, u.NumUTXOs(addr1, ts.AddTimeSlots(9)))
-	require.EqualValues(t, 0, u.NumUTXOs(addr1, ts.AddTimeSlots(11)))
-	require.EqualValues(t, 2000, int(u.Balance(addr1, ts.AddTimeSlots(9))))
-	require.EqualValues(t, 0, int(u.Balance(addr1, ts.AddTimeSlots(11))))
+	require.EqualValues(t, 1, u.NumUTXOs(addr1, ts.AddSlots(9)))
+	require.EqualValues(t, 0, u.NumUTXOs(addr1, ts.AddSlots(11)))
+	require.EqualValues(t, 2000, int(u.Balance(addr1, ts.AddSlots(9))))
+	require.EqualValues(t, 0, int(u.Balance(addr1, ts.AddSlots(11))))
 }
 
 func TestSenderAddressED25519(t *testing.T) {
@@ -311,7 +311,7 @@ func TestSenderAddressED25519(t *testing.T) {
 	require.EqualValues(t, 0, u.Balance(addr1))
 	require.EqualValues(t, 0, u.NumUTXOs(addr1))
 
-	par, err := u.MakeTransferInputData(privKey0, nil, ledger.LogicalTimeNow())
+	par, err := u.MakeTransferInputData(privKey0, nil, ledger.TimeNow())
 	err = u.DoTransfer(par.
 		WithAmount(2000).
 		WithTargetLock(addr1).
@@ -345,7 +345,7 @@ func TestChain1(t *testing.T) {
 	}
 	initTest2 := func() []*ledger.OutputWithChainID {
 		initTest()
-		par, err := u.MakeTransferInputData(privKey0, nil, ledger.LogicalTimeNow())
+		par, err := u.MakeTransferInputData(privKey0, nil, ledger.TimeNow())
 		outs, err := u.DoTransferOutputs(par.
 			WithAmount(2000).
 			WithTargetLock(addr0).
@@ -376,7 +376,7 @@ func TestChain1(t *testing.T) {
 		_, _, code, err := easyfl.CompileExpression(source)
 		require.NoError(t, err)
 
-		par, err := u.MakeTransferInputData(privKey0, nil, ledger.LogicalTimeNow())
+		par, err := u.MakeTransferInputData(privKey0, nil, ledger.TimeNow())
 		err = u.DoTransfer(par.
 			WithAmount(2000).
 			WithTargetLock(addr0).
@@ -395,7 +395,7 @@ func TestChain1(t *testing.T) {
 		_, _, code, err := easyfl.CompileExpression(source)
 		require.NoError(t, err)
 
-		par, err := u.MakeTransferInputData(privKey0, nil, ledger.LogicalTimeNow())
+		par, err := u.MakeTransferInputData(privKey0, nil, ledger.TimeNow())
 		err = u.DoTransfer(par.
 			WithAmount(2000).
 			WithTargetLock(addr0).
@@ -411,7 +411,7 @@ func TestChain1(t *testing.T) {
 		_, _, code, err := easyfl.CompileExpression(source)
 		require.NoError(t, err)
 
-		par, err := u.MakeTransferInputData(privKey0, nil, ledger.LogicalTimeNow())
+		par, err := u.MakeTransferInputData(privKey0, nil, ledger.TimeNow())
 		par.WithAmount(2000).WithTargetLock(addr0)
 
 		err = u.DoTransfer(par.WithConstraintBinary(code))
@@ -498,7 +498,7 @@ func TestChain2(t *testing.T) {
 	}
 	initTest2 := func() []*ledger.OutputWithChainID {
 		initTest()
-		par, err := u.MakeTransferInputData(privKey0, nil, ledger.LogicalTimeNow())
+		par, err := u.MakeTransferInputData(privKey0, nil, ledger.TimeNow())
 		outs, err := u.DoTransferOutputs(par.
 			WithAmount(2000).
 			WithTargetLock(addr0).
@@ -656,7 +656,7 @@ func TestChain3(t *testing.T) {
 	}
 	initTest2 := func() []*ledger.OutputWithChainID {
 		initTest()
-		par, err := u.MakeTransferInputData(privKey0, nil, ledger.LogicalTimeNow())
+		par, err := u.MakeTransferInputData(privKey0, nil, ledger.TimeNow())
 		outs, err := u.DoTransferOutputs(par.
 			WithAmount(2000).
 			WithTargetLock(addr0).
@@ -735,7 +735,7 @@ func TestChainLock(t *testing.T) {
 	}
 	initTest2 := func() *ledger.OutputWithChainID {
 		initTest()
-		par, err := u.MakeTransferInputData(privKey0, nil, ledger.LogicalTimeNow())
+		par, err := u.MakeTransferInputData(privKey0, nil, ledger.TimeNow())
 		outs, err := u.DoTransferOutputs(par.
 			WithAmount(2000).
 			WithTargetLock(addr0).
@@ -770,7 +770,7 @@ func TestChainLock(t *testing.T) {
 		require.EqualValues(t, 20000, u.Balance(addr1))
 		return chains[0]
 	}
-	sendFun := func(amount uint64, ts ledger.LogicalTime) {
+	sendFun := func(amount uint64, ts ledger.Time) {
 		par, err := u.MakeTransferInputData(privKey1, nil, ts)
 		require.NoError(t, err)
 		err = u.DoTransfer(par.
@@ -783,7 +783,7 @@ func TestChainLock(t *testing.T) {
 		initTest2()
 		require.EqualValues(t, 20000, u.Balance(addr1))
 
-		ts := ledger.LogicalTimeNow().AddTicks(5)
+		ts := ledger.TimeNow().AddTicks(5)
 
 		sendFun(1000, ts)
 		sendFun(2000, ts.AddTicks(1))
@@ -872,7 +872,7 @@ func TestHashUnlock(t *testing.T) {
 	t.Logf("constraint source: %s", constraintSource)
 	t.Logf("constraint size: %d", len(constraintBin))
 
-	par, err := u.MakeTransferInputData(privKey0, nil, ledger.NilLogicalTime)
+	par, err := u.MakeTransferInputData(privKey0, nil, ledger.NilLedgerTime)
 	require.NoError(t, err)
 	constr := ledger.NewGeneralScript(constraintBin)
 	t.Logf("constraint: %s", constr)
@@ -894,7 +894,7 @@ func TestHashUnlock(t *testing.T) {
 	})
 
 	// produce transaction without providing hash unlocking library for the output with script
-	par = txbuilder.NewTransferData(privKey0, addr0, ledger.NilLogicalTime)
+	par = txbuilder.NewTransferData(privKey0, addr0, ledger.NilLedgerTime)
 	par.MustWithInputs(outs...).
 		WithAmount(1000).
 		WithTargetLock(addr0)
@@ -931,7 +931,7 @@ func TestRoyalties(t *testing.T) {
 	require.NoError(t, err)
 
 	privKey1, _, addr1 := u.GenerateAddress(1)
-	in, err := u.MakeTransferInputData(privKey0, nil, ledger.NilLogicalTime)
+	in, err := u.MakeTransferInputData(privKey0, nil, ledger.NilLedgerTime)
 	require.NoError(t, err)
 	royaltiesConstraint := ledger.NewRoyalties(addr0, 500)
 	royaltiesBytecode := ledger.NewGeneralScript(royaltiesConstraint.Bytes())
@@ -957,7 +957,7 @@ func TestRoyalties(t *testing.T) {
 	require.EqualValues(t, 1, u.NumUTXOs(addr1))
 
 	// fail because not sending royalties
-	in, err = u.MakeTransferInputData(privKey1, nil, ledger.NilLogicalTime)
+	in, err = u.MakeTransferInputData(privKey1, nil, ledger.NilLedgerTime)
 	require.NoError(t, err)
 	in.WithTargetLock(addr1).
 		WithAmount(1000)
@@ -968,7 +968,7 @@ func TestRoyalties(t *testing.T) {
 	easyfl.RequireErrorWith(t, err, "constraint 'royaltiesED25519' failed")
 
 	// fail because unlock parameters not set properly
-	in, err = u.MakeTransferInputData(privKey1, nil, ledger.NilLogicalTime)
+	in, err = u.MakeTransferInputData(privKey1, nil, ledger.NilLedgerTime)
 	require.NoError(t, err)
 	in.WithTargetLock(addr0).
 		WithAmount(1000)
@@ -979,7 +979,7 @@ func TestRoyalties(t *testing.T) {
 	easyfl.RequireErrorWith(t, err, "constraint 'royaltiesED25519' failed")
 
 	// success
-	in, err = u.MakeTransferInputData(privKey1, nil, ledger.NilLogicalTime)
+	in, err = u.MakeTransferInputData(privKey1, nil, ledger.NilLedgerTime)
 	require.NoError(t, err)
 	in.WithTargetLock(addr0).
 		WithAmount(1000).
@@ -998,7 +998,7 @@ func TestImmutable(t *testing.T) {
 	require.NoError(t, err)
 
 	// create origin chain
-	par, err := u.MakeTransferInputData(privKey, nil, ledger.LogicalTimeNow())
+	par, err := u.MakeTransferInputData(privKey, nil, ledger.TimeNow())
 	par.WithAmount(2000).
 		WithTargetLock(addr0).
 		WithConstraint(ledger.NewChainOrigin())

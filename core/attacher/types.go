@@ -69,7 +69,7 @@ type (
 		attacher
 		endorse    []*vertex.WrappedTx
 		inputs     []vertex.WrappedOutput
-		targetTs   ledger.LogicalTime
+		targetTs   ledger.Time
 		stemOutput vertex.WrappedOutput
 	}
 

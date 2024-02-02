@@ -43,7 +43,7 @@ type workflowTestData struct {
 
 const initDistributedBalance = 10_000_000
 
-func initWorkflowTest(t *testing.T, nDistribution int, nowis ledger.LogicalTime, configOptions ...workflow.ConfigOption) *workflowTestData {
+func initWorkflowTest(t *testing.T, nDistribution int, nowis ledger.Time, configOptions ...workflow.ConfigOption) *workflowTestData {
 	ledger.SetTimeTickDuration(10 * time.Millisecond)
 	t.Logf("nowis timestamp: %s", nowis.String())
 	genesisPrivKey := testutil.GetTestingPrivateKey()
@@ -92,7 +92,7 @@ func (wd *workflowTestData) makeTxFromFaucet(amount uint64, target ledger.Addres
 		WithTargetLock(target).
 		MustWithInputs(wd.faucetOutputs[idxFaucet])
 
-	_, err := ledger.LogicalTimeFromBytes(td.Timestamp[:])
+	_, err := ledger.TimeFromBytes(td.Timestamp[:])
 	util.AssertNoError(err)
 
 	txBytes, remainder, err := txbuilder2.MakeSimpleTransferTransactionWithRemainder(td)
@@ -111,14 +111,14 @@ func (wd *workflowTestData) setNewVertexCounter(waitCounter *countdown.Countdown
 
 func TestWorkflowBasic(t *testing.T) {
 	t.Run("1", func(t *testing.T) {
-		wd := initWorkflowTest(t, 1, ledger.LogicalTimeNow(), workflow.WithLogLevel(zapcore.DebugLevel))
+		wd := initWorkflowTest(t, 1, ledger.TimeNow(), workflow.WithLogLevel(zapcore.DebugLevel))
 		wd.w.Start()
 		time.Sleep(10 * time.Millisecond)
 		wd.w.Stop()
 		time.Sleep(10 * time.Millisecond)
 	})
 	t.Run("2", func(t *testing.T) {
-		wd := initWorkflowTest(t, 1, ledger.LogicalTimeNow(), workflow.WithLogLevel(zapcore.DebugLevel))
+		wd := initWorkflowTest(t, 1, ledger.TimeNow(), workflow.WithLogLevel(zapcore.DebugLevel))
 		wd.w.Start()
 		err := wd.w.TransactionIn(nil)
 		require.Error(t, err)
@@ -137,9 +137,9 @@ func TestWorkflowSync(t *testing.T) {
 	t.Run("1 sync", func(t *testing.T) {
 		const numRuns = 200
 
-		wd := initWorkflowTest(t, 1, ledger.LogicalTimeNow())
+		wd := initWorkflowTest(t, 1, ledger.TimeNow())
 
-		t.Logf("timestamp now: %s", ledger.LogicalTimeNow().String())
+		t.Logf("timestamp now: %s", ledger.TimeNow().String())
 		t.Logf("distribution timestamp: %s", wd.distributionTxID.Timestamp().String())
 		t.Logf("origin slot: %d", wd.initLedgerStatePar.GenesisTimeSlot)
 
@@ -175,7 +175,7 @@ func TestWorkflowSync(t *testing.T) {
 			numRuns = 10
 		)
 
-		wd := initWorkflowTest(t, 1, ledger.LogicalTimeNow()) //, DebugConfig{PrimaryInputConsumerName: zapcore.DebugLevel})
+		wd := initWorkflowTest(t, 1, ledger.TimeNow()) //, DebugConfig{PrimaryInputConsumerName: zapcore.DebugLevel})
 
 		var err error
 		txBytes := make([][]byte, numTx)
@@ -214,9 +214,9 @@ func TestWorkflowSync(t *testing.T) {
 	t.Run("listen", func(t *testing.T) {
 		const numRuns = 200
 
-		wd := initWorkflowTest(t, 1, ledger.LogicalTimeNow())
+		wd := initWorkflowTest(t, 1, ledger.TimeNow())
 
-		t.Logf("timestamp now: %s", ledger.LogicalTimeNow().String())
+		t.Logf("timestamp now: %s", ledger.TimeNow().String())
 		t.Logf("distribution timestamp: %s", wd.distributionTxID.Timestamp().String())
 		t.Logf("origin slot: %d", wd.initLedgerStatePar.GenesisTimeSlot)
 
@@ -258,9 +258,9 @@ func TestWorkflowAsync(t *testing.T) {
 	t.Run("1 async", func(t *testing.T) {
 		const numRuns = 200
 
-		wd := initWorkflowTest(t, 1, ledger.LogicalTimeNow())
+		wd := initWorkflowTest(t, 1, ledger.TimeNow())
 
-		t.Logf("timestamp now: %s", ledger.LogicalTimeNow().String())
+		t.Logf("timestamp now: %s", ledger.TimeNow().String())
 		t.Logf("distribution timestamp: %s", wd.distributionTxID.Timestamp().String())
 		t.Logf("origin slot: %d", wd.initLedgerStatePar.GenesisTimeSlot)
 
@@ -295,7 +295,7 @@ func TestWorkflowAsync(t *testing.T) {
 			numRuns = 10
 		)
 
-		wd := initWorkflowTest(t, 1, ledger.LogicalTimeNow()) //, DebugConfig{PrimaryInputConsumerName: zapcore.DebugLevel})
+		wd := initWorkflowTest(t, 1, ledger.TimeNow()) //, DebugConfig{PrimaryInputConsumerName: zapcore.DebugLevel})
 
 		var err error
 		txBytes := make([][]byte, numTx)
@@ -334,9 +334,9 @@ func TestWorkflowAsync(t *testing.T) {
 	t.Run("listen", func(t *testing.T) {
 		const numRuns = 200
 
-		wd := initWorkflowTest(t, 1, ledger.LogicalTimeNow())
+		wd := initWorkflowTest(t, 1, ledger.TimeNow())
 
-		t.Logf("timestamp now: %s", ledger.LogicalTimeNow().String())
+		t.Logf("timestamp now: %s", ledger.TimeNow().String())
 		t.Logf("distribution timestamp: %s", wd.distributionTxID.Timestamp().String())
 		t.Logf("origin slot: %d", wd.initLedgerStatePar.GenesisTimeSlot)
 
@@ -373,7 +373,7 @@ func TestWorkflowAsync(t *testing.T) {
 
 func TestSolidifier(t *testing.T) {
 	t.Run("one tx", func(t *testing.T) {
-		wd := initWorkflowTest(t, 1, ledger.LogicalTimeNow(), workflow.WithLogLevel(zapcore.DebugLevel))
+		wd := initWorkflowTest(t, 1, ledger.TimeNow(), workflow.WithLogLevel(zapcore.DebugLevel))
 		cd := countdown.New(1, 3*time.Second)
 		wd.setNewVertexCounter(cd)
 
@@ -394,7 +394,7 @@ func TestSolidifier(t *testing.T) {
 	})
 	t.Run("several tx usual seq", func(t *testing.T) {
 		const howMany = 3 // 100
-		wd := initWorkflowTest(t, 1, ledger.LogicalTimeNow(), workflow.WithLogLevel(zapcore.DebugLevel))
+		wd := initWorkflowTest(t, 1, ledger.TimeNow(), workflow.WithLogLevel(zapcore.DebugLevel))
 		cd := countdown.New(howMany, 300*time.Second) // 10*time.Second)
 		wd.setNewVertexCounter(cd)
 		var err error
@@ -420,7 +420,7 @@ func TestSolidifier(t *testing.T) {
 	})
 	t.Run("several tx reverse seq", func(t *testing.T) {
 		const howMany = 10
-		wd := initWorkflowTest(t, 1, ledger.LogicalTimeNow())
+		wd := initWorkflowTest(t, 1, ledger.TimeNow())
 		cd := countdown.New(howMany, 10*time.Second)
 		wd.setNewVertexCounter(cd)
 
@@ -448,7 +448,7 @@ func TestSolidifier(t *testing.T) {
 		// create all tx in the past, so that won't wait in the waiting room
 		// all are sent to solidifier in the reverse order
 		nowis := time.Now().Add(-10 * time.Second)
-		wd := initWorkflowTest(t, 1, ledger.LogicalTimeFromRealTime(nowis))
+		wd := initWorkflowTest(t, 1, ledger.TimeFromRealTime(nowis))
 		cd := countdown.New(howMany, 10*time.Second)
 		wd.setNewVertexCounter(cd)
 
@@ -479,7 +479,7 @@ func TestSolidifier(t *testing.T) {
 		// create all tx in the past, so that won't wait in the waiting room
 		// all are sent to solidifier in the reverse order
 		nowis := time.Now().Add(-10 * time.Second)
-		wd := initWorkflowTest(t, nAddresses, ledger.LogicalTimeFromRealTime(nowis))
+		wd := initWorkflowTest(t, nAddresses, ledger.TimeFromRealTime(nowis))
 		cd := countdown.New(howMany*nAddresses, 10*time.Second)
 		wd.setNewVertexCounter(cd)
 
@@ -517,7 +517,7 @@ func TestSolidifier(t *testing.T) {
 
 type multiChainTestData struct {
 	t                  *testing.T
-	ts                 ledger.LogicalTime
+	ts                 ledger.Time
 	ut                 *utangle_old.UTXOTangle
 	txBytesStore       global.TxBytesStore
 	bootstrapChainID   ledger.ChainID
@@ -539,11 +539,11 @@ const onChainAmount = 1_000_000
 
 func initMultiChainTest(t *testing.T, nChains int, verbose bool, secondsInThePast int) *multiChainTestData {
 	ledger.SetTimeTickDuration(10 * time.Millisecond)
-	nowisTs := ledger.LogicalTimeFromRealTime(time.Now().Add(time.Duration(-secondsInThePast) * time.Second))
+	nowisTs := ledger.TimeFromRealTime(time.Now().Add(time.Duration(-secondsInThePast) * time.Second))
 
-	t.Logf("initMultiChainTest: now is: %s, %v", ledger.LogicalTimeNow().String(), time.Now())
+	t.Logf("initMultiChainTest: now is: %s, %v", ledger.TimeNow().String(), time.Now())
 	t.Logf("time tick duration is %v", ledger.TickDuration())
-	t.Logf("initMultiChainTest: timeSlot now is assumed: %d, %v", nowisTs.Slot(), ledger.MustNewLogicalTime(nowisTs.Slot(), 0).Time())
+	t.Logf("initMultiChainTest: timeSlot now is assumed: %d, %v", nowisTs.Slot(), ledger.MustNewLedgerTime(nowisTs.Slot(), 0).Time())
 
 	ret := &multiChainTestData{t: t}
 	var privKeys []ed25519.PrivateKey
@@ -790,7 +790,7 @@ func (r *multiChainTestData) createSequencerChains1(pace int, howLong int) [][]b
 
 	for i := counter; i < howLong; i++ {
 		nextChainIdx = (curChainIdx + 1) % nChains
-		ts := ledger.MaxLogicalTime(
+		ts := ledger.MaxTime(
 			lastInChain(nextChainIdx).Timestamp().AddTicks(pace),
 			lastInChain(curChainIdx).Timestamp().AddTicks(ledger.TransactionPaceInTicks),
 		)
@@ -878,7 +878,7 @@ func (r *multiChainTestData) createSequencerChains2(pace int, howLong int) [][]b
 
 	for i := counter; i < howLong; i++ {
 		nextChainIdx = (curChainIdx + 1) % nChains
-		ts := ledger.MaxLogicalTime(
+		ts := ledger.MaxTime(
 			lastInChain(nextChainIdx).Timestamp().AddTicks(pace),
 			lastInChain(curChainIdx).Timestamp().AddTicks(ledger.TransactionPaceInTicks),
 		)
@@ -1009,7 +1009,7 @@ func (r *multiChainTestData) createSequencerChains3(pace int, howLong int, print
 			r.t.Logf("faucet tx %s: amount left on faucet: %d", tx.IDShortString(), faucetOutput.Output.Amount())
 		}
 
-		ts := ledger.MaxLogicalTime(
+		ts := ledger.MaxTime(
 			lastInChain(nextChainIdx).Timestamp().AddTicks(pace),
 			lastInChain(curChainIdx).Timestamp().AddTicks(ledger.TransactionPaceInTicks),
 			tx.Timestamp().AddTicks(ledger.TransactionPaceInTicks),
@@ -1346,7 +1346,7 @@ func TestMultiChainWorkflow(t *testing.T) {
 
 		idToBeEndorsed, tsToBeEndorsed, err := transaction2.IDAndTimestampFromTransactionBytes(txBytesSeq[0][len(txBytesSeq[0])-1])
 		require.NoError(t, err)
-		ts := ledger.MaxLogicalTime(tsToBeEndorsed, txEndorser.Timestamp())
+		ts := ledger.MaxTime(tsToBeEndorsed, txEndorser.Timestamp())
 		ts = ts.AddTicks(ledger.TransactionPaceInTicks)
 		t.Logf("timestamp to be endorsed: %s, endorser's timestamp: %s", tsToBeEndorsed.String(), ts.String())
 		require.True(t, ts.Slot() != 0 && ts.Slot() == txEndorser.Timestamp().Slot())

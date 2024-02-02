@@ -33,7 +33,7 @@ func FetchLatestSlot(store global.StateStore) ledger.Slot {
 	if len(bin) == 0 {
 		return 0
 	}
-	ret, err := ledger.TimeSlotFromBytes(bin)
+	ret, err := ledger.SlotFromBytes(bin)
 	common.AssertNoError(err)
 	return ret
 }

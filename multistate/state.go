@@ -261,7 +261,7 @@ func (r *Readable) IterateKnownCommittedTransactions(fun func(txid *ledger.Trans
 	iter.Iterate(func(k, v []byte) bool {
 		txid, err := ledger.TransactionIDFromBytes(k)
 		util.AssertNoError(err)
-		slot, err = ledger.TimeSlotFromBytes(v)
+		slot, err = ledger.SlotFromBytes(v)
 		util.AssertNoError(err)
 
 		return fun(&txid, slot)

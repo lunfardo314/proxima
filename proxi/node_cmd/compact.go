@@ -49,7 +49,7 @@ func runCompactCmd(_ *cobra.Command, args []string) {
 	}
 
 	walletData := glb.GetWalletData()
-	nowisTs := ledger.LogicalTimeNow()
+	nowisTs := ledger.TimeNow()
 	walletOutputs, err := getClient().GetAccountOutputs(walletData.Account, func(o *ledger.Output) bool {
 		// filter out chain outputs controlled by the wallet
 		_, idx := o.ChainConstraint()

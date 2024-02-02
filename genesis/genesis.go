@@ -71,7 +71,7 @@ func genesisUpdateMutations(genesisOut, genesisStemOut *ledger.OutputWithID) *mu
 }
 
 func InitialSupplyTransactionID(genesisTimeSlot ledger.Slot) *ledger.TransactionID {
-	ret := ledger.NewTransactionID(ledger.MustNewLogicalTime(genesisTimeSlot, 0), ledger.All0TransactionHash, true, true)
+	ret := ledger.NewTransactionID(ledger.MustNewLedgerTime(genesisTimeSlot, 0), ledger.All0TransactionHash, true, true)
 	return &ret
 }
 

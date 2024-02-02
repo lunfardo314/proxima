@@ -30,7 +30,7 @@ type (
 		factory        *factory.MilestoneFactory
 		milestoneCount int
 		branchCount    int
-		prevTimeTarget ledger.LogicalTime
+		prevTimeTarget ledger.Time
 		infoMutex      sync.RWMutex
 		info           Info
 		//
@@ -132,7 +132,7 @@ func (seq *Sequencer) ensureFirstMilestone() bool {
 	seq.log.Infof("sequencer will start with the milestone output %s and amount %s",
 		startingMilestoneOutput.IDShortString(), util.GoTh(amount))
 
-	sleepDuration := ledger.SleepDurationUntilFutureLogicalTime(startingMilestoneOutput.Timestamp())
+	sleepDuration := ledger.SleepDurationUntilFutureLedgerTime(startingMilestoneOutput.Timestamp())
 	if sleepDuration > 0 {
 		seq.log.Infof("will delay start for %v to sync starting milestone with the real clock", sleepDuration)
 		time.Sleep(sleepDuration)
@@ -220,16 +220,16 @@ func (seq *Sequencer) doSequencerStep() bool {
 		targetTs.String(), seq.prevTimeTarget.String())
 	seq.prevTimeTarget = targetTs
 
-	if seq.config.MaxTargetTs != ledger.NilLogicalTime && targetTs.After(seq.config.MaxTargetTs) {
+	if seq.config.MaxTargetTs != ledger.NilLedgerTime && targetTs.After(seq.config.MaxTargetTs) {
 		seq.log.Infof("next target ts %s is after maximum ts %s -> stopping", targetTs, seq.config.MaxTargetTs)
 		return false
 	}
 
-	seq.Tracef(TraceTag, "target ts: %s. Now is: %s", targetTs, ledger.LogicalTimeNow())
+	seq.Tracef(TraceTag, "target ts: %s. Now is: %s", targetTs, ledger.TimeNow())
 
 	msTx := seq.factory.StartProposingForTargetLogicalTime(targetTs)
 	if msTx == nil {
-		seq.Tracef(TraceTag, "failed to generate msTx for target %s. Now is %s", targetTs, ledger.LogicalTimeNow())
+		seq.Tracef(TraceTag, "failed to generate msTx for target %s. Now is %s", targetTs, ledger.TimeNow())
 		time.Sleep(10 * time.Millisecond)
 		return true
 	}
@@ -254,30 +254,30 @@ func (seq *Sequencer) doSequencerStep() bool {
 
 const sleepWaitingCurrentMilestoneTime = 10 * time.Millisecond
 
-func (seq *Sequencer) getNextTargetTime() ledger.LogicalTime {
-	var prevMilestoneTs ledger.LogicalTime
+func (seq *Sequencer) getNextTargetTime() ledger.Time {
+	var prevMilestoneTs ledger.Time
 
 	currentMsOutput := seq.factory.OwnLatestMilestoneOutput()
 	util.Assertf(currentMsOutput.VID != nil, "currentMsOutput.VID != nil")
 	prevMilestoneTs = currentMsOutput.Timestamp()
 
 	// synchronize clock
-	nowis := ledger.LogicalTimeNow()
+	nowis := ledger.TimeNow()
 	if nowis.Before(prevMilestoneTs) {
-		waitDuration := time.Duration(ledger.DiffTimeTicks(prevMilestoneTs, nowis)) * ledger.TickDuration()
+		waitDuration := time.Duration(ledger.DiffTicks(prevMilestoneTs, nowis)) * ledger.TickDuration()
 		seq.log.Warnf("nowis (%s) is before last milestone ts (%s). Sleep %v",
 			nowis.String(), prevMilestoneTs.String(), waitDuration)
 		time.Sleep(waitDuration)
 	}
-	nowis = ledger.LogicalTimeNow()
-	for ; nowis.Before(prevMilestoneTs); nowis = ledger.LogicalTimeNow() {
+	nowis = ledger.TimeNow()
+	for ; nowis.Before(prevMilestoneTs); nowis = ledger.TimeNow() {
 		seq.log.Warnf("nowis (%s) is before last milestone ts (%s). Sleep %v",
 			nowis.String(), prevMilestoneTs.String(), sleepWaitingCurrentMilestoneTime)
 		time.Sleep(sleepWaitingCurrentMilestoneTime)
 	}
 	// logical time now is approximately equal to the clock time
-	nowis = ledger.LogicalTimeNow()
-	util.Assertf(!nowis.Before(prevMilestoneTs), "!core.LogicalTimeNow().Before(prevMilestoneTs)")
+	nowis = ledger.TimeNow()
+	util.Assertf(!nowis.Before(prevMilestoneTs), "!core.TimeNow().Before(prevMilestoneTs)")
 
 	// TODO taking into account average speed of proposal generation
 
@@ -303,7 +303,7 @@ func (seq *Sequencer) getNextTargetTime() ledger.LogicalTime {
 }
 
 // Returns nil if fails to generate acceptable bestSoFarTx until the deadline
-func (seq *Sequencer) generateNextMilestoneTxForTargetTime(targetTs ledger.LogicalTime) *transaction.Transaction {
+func (seq *Sequencer) generateNextMilestoneTxForTargetTime(targetTs ledger.Time) *transaction.Transaction {
 	seq.Tracef(TraceTag, "generateNextMilestoneTxForTargetTime %s", targetTs)
 
 	timeout := time.Duration(seq.config.Pace) * ledger.TickDuration()

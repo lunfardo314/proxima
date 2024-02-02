@@ -48,7 +48,7 @@ type (
 
 	latestMilestoneProposal struct {
 		mutex             sync.RWMutex
-		targetTs          ledger.LogicalTime
+		targetTs          ledger.Time
 		bestSoFarCoverage multistate.LedgerCoverage
 		current           *transaction.Transaction
 		currentExtended   vertex.WrappedOutput
@@ -143,7 +143,7 @@ func (mf *MilestoneFactory) AddOwnMilestone(vid *vertex.WrappedTx) {
 	mf.ownMilestoneCount++
 }
 
-func (mf *MilestoneFactory) StartProposingForTargetLogicalTime(targetTs ledger.LogicalTime) *transaction.Transaction {
+func (mf *MilestoneFactory) StartProposingForTargetLogicalTime(targetTs ledger.Time) *transaction.Transaction {
 	deadline := targetTs.Time()
 	nowis := time.Now()
 	mf.Tracef(TraceTag, "StartProposingForTargetLogicalTime: targetTs: %v, nowis: %v", deadline, nowis)
@@ -166,7 +166,7 @@ func (mf *MilestoneFactory) StartProposingForTargetLogicalTime(targetTs ledger.L
 
 // setNewTarget signals proposer allMilestoneProposingStrategies about new timestamp,
 // Returns last proposed proposal
-func (mf *MilestoneFactory) setNewTarget(ts ledger.LogicalTime) {
+func (mf *MilestoneFactory) setNewTarget(ts ledger.Time) {
 	mf.proposal.mutex.Lock()
 	defer mf.proposal.mutex.Unlock()
 
@@ -178,7 +178,7 @@ func (mf *MilestoneFactory) setNewTarget(ts ledger.LogicalTime) {
 	mf.proposal.current = nil
 }
 
-func (mf *MilestoneFactory) CurrentTargetTs() ledger.LogicalTime {
+func (mf *MilestoneFactory) CurrentTargetTs() ledger.Time {
 	mf.proposal.mutex.RLock()
 	defer mf.proposal.mutex.RUnlock()
 
@@ -210,7 +210,7 @@ func (mf *MilestoneFactory) AttachTagAlongInputs(a *attacher.IncrementalAttacher
 	return
 }
 
-func (mf *MilestoneFactory) startProposerWorkers(targetTime ledger.LogicalTime, ctx context.Context) {
+func (mf *MilestoneFactory) startProposerWorkers(targetTime ledger.Time, ctx context.Context) {
 	for strategyName, s := range allProposingStrategies {
 		task := proposer_generic.New(mf, s, targetTime, ctx)
 		if task == nil {
@@ -303,7 +303,7 @@ func (mf *MilestoneFactory) cleanOwnMilestonesIfNecessary() {
 const TraceTagChooseExtendEndorsePair = "ChooseExtendEndorsePair"
 
 // ChooseExtendEndorsePair implements one of possible strategies
-func (mf *MilestoneFactory) ChooseExtendEndorsePair(proposerName string, targetTs ledger.LogicalTime) *attacher.IncrementalAttacher {
+func (mf *MilestoneFactory) ChooseExtendEndorsePair(proposerName string, targetTs ledger.Time) *attacher.IncrementalAttacher {
 	util.Assertf(targetTs.Tick() != 0, "targetTs.Tick() != 0")
 	endorseCandidates := mf.tipPool.CandidatesToEndorseSorted(targetTs)
 	mf.Tracef(TraceTagChooseExtendEndorsePair, ">>>>>>>>>>>>>>> target %s {%s}", targetTs.String(), vertex.VerticesShortLines(endorseCandidates).Join(", "))
@@ -337,7 +337,7 @@ func (mf *MilestoneFactory) ChooseExtendEndorsePair(proposerName string, targetT
 	return nil
 }
 
-func (mf *MilestoneFactory) chooseEndorseExtendPair(proposerName string, targetTs ledger.LogicalTime, endorse *vertex.WrappedTx, extendCandidates []vertex.WrappedOutput) *attacher.IncrementalAttacher {
+func (mf *MilestoneFactory) chooseEndorseExtendPair(proposerName string, targetTs ledger.Time, endorse *vertex.WrappedTx, extendCandidates []vertex.WrappedOutput) *attacher.IncrementalAttacher {
 	var ret *attacher.IncrementalAttacher
 	for _, extend := range extendCandidates {
 		a, err := attacher.NewIncrementalAttacher(proposerName, mf, targetTs, extend, endorse)
@@ -357,7 +357,7 @@ func (mf *MilestoneFactory) chooseEndorseExtendPair(proposerName string, targetT
 	return ret
 }
 
-func (mf *MilestoneFactory) futureConeOwnMilestonesOrdered(rootOutput vertex.WrappedOutput, targetTs ledger.LogicalTime) []vertex.WrappedOutput {
+func (mf *MilestoneFactory) futureConeOwnMilestonesOrdered(rootOutput vertex.WrappedOutput, targetTs ledger.Time) []vertex.WrappedOutput {
 	mf.cleanOwnMilestonesIfNecessary()
 
 	mf.mutex.RLock()

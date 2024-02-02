@@ -179,7 +179,7 @@ func (a *attacher) solidifySequencerBaseline(v *vertex.Vertex) (ok bool) {
 	}
 }
 
-func (a *attacher) attachVertexNonBranch(vid *vertex.WrappedTx, parasiticChainHorizon ledger.LogicalTime) (ok, defined bool) {
+func (a *attacher) attachVertexNonBranch(vid *vertex.WrappedTx, parasiticChainHorizon ledger.Time) (ok, defined bool) {
 	util.Assertf(!vid.IsBranchTransaction(), "!vid.IsBranchTransaction(): %s", vid.IDShortString)
 
 	if a.isKnownDefined(vid) {
@@ -203,7 +203,7 @@ func (a *attacher) attachVertexNonBranch(vid *vertex.WrappedTx, parasiticChainHo
 				}
 			case vertex.Good:
 				util.Assertf(vid.IsSequencerMilestone(), "vid.IsSequencerMilestone()")
-				ok = a.attachVertexUnwrapped(v, vid, ledger.NilLogicalTime)
+				ok = a.attachVertexUnwrapped(v, vid, ledger.NilLedgerTime)
 				if ok {
 					a.markVertexDefined(vid)
 					defined = true
@@ -232,7 +232,7 @@ func (a *attacher) attachVertexNonBranch(vid *vertex.WrappedTx, parasiticChainHo
 // It results in all vertices are vertex.Good
 // Otherwise, repetition reaches conflict (double spend) or vertex.Bad vertex and exits
 // Returns OK (= not bad)
-func (a *attacher) attachVertexUnwrapped(v *vertex.Vertex, vid *vertex.WrappedTx, parasiticChainHorizon ledger.LogicalTime) (ok bool) {
+func (a *attacher) attachVertexUnwrapped(v *vertex.Vertex, vid *vertex.WrappedTx, parasiticChainHorizon ledger.Time) (ok bool) {
 	util.Assertf(!v.Tx.IsSequencerMilestone() || a.baseline != nil, "!v.Tx.IsSequencerMilestone() || a.baseline != nil in %s", v.Tx.IDShortString)
 
 	if vid.GetTxStatusNoLock() == vertex.Bad {
@@ -335,7 +335,7 @@ const TraceTagAttachEndorsements = "attachEndorsements"
 
 // Attaches endorsements of the vertex
 // Return OK (== not bad)
-func (a *attacher) attachEndorsements(v *vertex.Vertex, vid *vertex.WrappedTx, parasiticChainHorizon ledger.LogicalTime) bool {
+func (a *attacher) attachEndorsements(v *vertex.Vertex, vid *vertex.WrappedTx, parasiticChainHorizon ledger.Time) bool {
 	a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s) IN of %s", a.name, v.Tx.IDShortString)
 	defer a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s) OUT of %s return", a.name, v.Tx.IDShortString)
 
@@ -390,7 +390,7 @@ func (a *attacher) attachEndorsements(v *vertex.Vertex, vid *vertex.WrappedTx, p
 		// non-branch undefined milestone. Go deep recursively
 		util.Assertf(!vidEndorsed.IsBranchTransaction(), "attachEndorsements(%s): !vidEndorsed.IsBranchTransaction(): %s", a.name, vidEndorsed.IDShortString)
 
-		ok, defined := a.attachVertexNonBranch(vidEndorsed, ledger.NilLogicalTime)
+		ok, defined := a.attachVertexNonBranch(vidEndorsed, ledger.NilLedgerTime)
 		if !ok {
 			a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s): attachVertexNonBranch returned: endorsement %s -> %s NOT OK",
 				a.name, vid.IDShortString, vidEndorsed.IDShortString)
@@ -412,7 +412,7 @@ func (a *attacher) attachEndorsements(v *vertex.Vertex, vid *vertex.WrappedTx, p
 	return true
 }
 
-func (a *attacher) attachInputsOfTheVertex(v *vertex.Vertex, vid *vertex.WrappedTx, parasiticChainHorizon ledger.LogicalTime) (ok bool) {
+func (a *attacher) attachInputsOfTheVertex(v *vertex.Vertex, vid *vertex.WrappedTx, parasiticChainHorizon ledger.Time) (ok bool) {
 	a.Tracef(TraceTagAttachVertex, "attachInputsOfTheVertex in %s", vid.IDShortString)
 	numUndefined := v.Tx.NumInputs()
 	notSolid := make([]byte, 0, v.Tx.NumInputs())
@@ -447,7 +447,7 @@ func _lazyStringSelectedInputs(tx *transaction.Transaction, indices []byte) func
 	}
 }
 
-func (a *attacher) attachInput(v *vertex.Vertex, inputIdx byte, vid *vertex.WrappedTx, parasiticChainHorizon ledger.LogicalTime) (ok, defined bool) {
+func (a *attacher) attachInput(v *vertex.Vertex, inputIdx byte, vid *vertex.WrappedTx, parasiticChainHorizon ledger.Time) (ok, defined bool) {
 	a.Tracef(TraceTagAttachVertex, "attachInput #%d of %s", inputIdx, vid.IDShortString)
 	if !a.attachInputID(v, vid, inputIdx) {
 		a.Tracef(TraceTagAttachVertex, "bad input %d", inputIdx)
@@ -455,9 +455,9 @@ func (a *attacher) attachInput(v *vertex.Vertex, inputIdx byte, vid *vertex.Wrap
 	}
 	util.Assertf(v.Inputs[inputIdx] != nil, "v.Inputs[i] != nil")
 
-	if parasiticChainHorizon == ledger.NilLogicalTime {
+	if parasiticChainHorizon == ledger.NilLedgerTime {
 		// TODO revisit parasitic chain threshold because of syncing branches
-		parasiticChainHorizon = ledger.MustNewLogicalTime(v.Inputs[inputIdx].Timestamp().Slot()-maxToleratedParasiticChainSlots, 0)
+		parasiticChainHorizon = ledger.MustNewLedgerTime(v.Inputs[inputIdx].Timestamp().Slot()-maxToleratedParasiticChainSlots, 0)
 	}
 	wOut := vertex.WrappedOutput{
 		VID:   v.Inputs[inputIdx],
@@ -523,7 +523,7 @@ func (a *attacher) attachRooted(wOut vertex.WrappedOutput) (ok bool, isRooted bo
 	return true, true
 }
 
-func (a *attacher) attachOutput(wOut vertex.WrappedOutput, parasiticChainHorizon ledger.LogicalTime) (ok, defined bool) {
+func (a *attacher) attachOutput(wOut vertex.WrappedOutput, parasiticChainHorizon ledger.Time) (ok, defined bool) {
 	a.Tracef(TraceTagAttachOutput, "%s", wOut.IDShortString)
 	ok, isRooted := a.attachRooted(wOut)
 	if !ok {
@@ -644,7 +644,7 @@ func (a *attacher) isKnownConsumed(wOut vertex.WrappedOutput) (isConsumed bool) 
 }
 
 // setBaseline sets baseline, fetches its baselineCoverage and initializes attacher's baselineCoverage according to the currentTS
-func (a *attacher) setBaseline(vid *vertex.WrappedTx, currentTS ledger.LogicalTime) {
+func (a *attacher) setBaseline(vid *vertex.WrappedTx, currentTS ledger.Time) {
 	util.Assertf(vid.IsBranchTransaction(), "setBaseline: vid.IsBranchTransaction()")
 	util.Assertf(currentTS.Slot() >= vid.Slot(), "currentTS.Slot() >= vid.Slot()")
 

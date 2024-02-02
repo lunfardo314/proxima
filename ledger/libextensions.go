@@ -123,7 +123,7 @@ func init() {
 	easyfl.EmbedLong("ticksBefore", 2, evalTicksBefore)
 	easyfl.Extend("ticksPerSlot", fmt.Sprintf("%d", TicksPerSlot))
 	easyfl.Extend("timeSlotSizeBytes", fmt.Sprintf("%d", SlotByteLength))
-	easyfl.Extend("timestampByteSize", fmt.Sprintf("%d", LogicalTimeByteLength))
+	easyfl.Extend("timestampByteSize", fmt.Sprintf("%d", TimeByteLength))
 	easyfl.Extend("mustValidTimeTick", "if(and(mustSize($0,1),lessThan($0,ticksPerSlot)),$0,!!!wrong_timeslot)")
 	easyfl.Extend("mustValidTimeSlot", "mustSize($0, timeSlotSizeBytes)")
 	easyfl.Extend("timeSlotPrefix", "slice($0, 0, sub8(timeSlotSizeBytes,1))") // first 4 bytes of any array. It is not time slot yet
@@ -135,7 +135,7 @@ func init() {
 
 	{
 		// inline tests
-		easyfl.MustEqual("timestamp(u32/255, 21)", MustNewLogicalTime(255, 21).Hex())
+		easyfl.MustEqual("timestamp(u32/255, 21)", MustNewLedgerTime(255, 21).Hex())
 		easyfl.MustEqual("ticksBefore(timestamp(u32/100, 5), timestamp(u32/101, 10))", "u64/105")
 		easyfl.MustError("timestamp(u32/255, 100)", "wrong timeslot")
 		easyfl.MustError("mustValidTimeSlot(255)", "wrong data size")
@@ -360,15 +360,15 @@ func evalCallLocalLibrary(ctx *easyfl.CallParams) []byte {
 // number of time slots between ts0 and ts1 otherwise as big-endian uint64
 func evalTicksBefore(ctx *easyfl.CallParams) []byte {
 	ts0bin, ts1bin := ctx.Arg(0), ctx.Arg(1)
-	ts0, err := LogicalTimeFromBytes(ts0bin)
+	ts0, err := TimeFromBytes(ts0bin)
 	if err != nil {
 		ctx.TracePanic("evalTicksBefore: %v", err)
 	}
-	ts1, err := LogicalTimeFromBytes(ts1bin)
+	ts1, err := TimeFromBytes(ts1bin)
 	if err != nil {
 		ctx.TracePanic("evalTicksBefore: %v", err)
 	}
-	diff := DiffTimeTicks(ts1, ts0)
+	diff := DiffTicks(ts1, ts0)
 	if diff < 0 {
 		// ts1 is before ts0
 		return nil

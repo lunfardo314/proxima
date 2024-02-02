@@ -60,7 +60,7 @@ func TimelockFromBytes(data []byte) (Timelock, error) {
 		return NilTimelock, fmt.Errorf("not a timelock constraint")
 	}
 	tlBin := easyfl.StripDataPrefix(args[0])
-	ret, err := TimeSlotFromBytes(tlBin)
+	ret, err := SlotFromBytes(tlBin)
 	if err != nil {
 		return NilTimelock, err
 	}
@@ -74,7 +74,7 @@ func initTimelockConstraint() {
 	sym, prefix, args, err := easyfl.ParseBytecodeOneLevel(example.Bytes(), 1)
 	util.AssertNoError(err)
 	tlBin := easyfl.StripDataPrefix(args[0])
-	e, err := TimeSlotFromBytes(tlBin)
+	e, err := SlotFromBytes(tlBin)
 	util.AssertNoError(err)
 
 	util.Assertf(sym == timelockName && e == 1337, "inconsistency in 'timelock'")

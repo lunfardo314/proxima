@@ -21,7 +21,7 @@ type (
 		//
 		StemInput *ledger.OutputWithID // it is branch tx if != nil
 		// timestamp of the transaction
-		Timestamp ledger.LogicalTime
+		Timestamp ledger.Time
 		// minimum fee
 		MinimumFee uint64
 		// additional inputs to consume. Must be unlockable by chain
@@ -180,7 +180,7 @@ func MakeSequencerTransactionWithInputLoader(par MakeSequencerTransactionParams)
 
 	// consume and unlock additional inputs/outputs
 	// unlock additional inputs
-	tsIn := ledger.MustNewLogicalTime(0, 0)
+	tsIn := ledger.MustNewLedgerTime(0, 0)
 	for _, o := range par.AdditionalInputs {
 		idx, err := txb.ConsumeOutput(o.Output, o.ID)
 		if err != nil {
@@ -199,7 +199,7 @@ func MakeSequencerTransactionWithInputLoader(par MakeSequencerTransactionParams)
 		default:
 			return nil, nil, errP("unsupported type of additional input: %s", lockName)
 		}
-		tsIn = ledger.MaxLogicalTime(tsIn, o.Timestamp())
+		tsIn = ledger.MaxTime(tsIn, o.Timestamp())
 	}
 
 	if !ledger.ValidTimePace(tsIn, par.Timestamp) {
