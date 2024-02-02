@@ -15,20 +15,16 @@ import (
 )
 
 type (
-	Environment interface {
-		global.Logging
-	}
-
 	Pruner struct {
 		*dag.DAG
-		Environment
+		global.Logging
 	}
 )
 
-func New(dag *dag.DAG, env Environment) *Pruner {
+func New(dag *dag.DAG, log global.Logging) *Pruner {
 	return &Pruner{
-		DAG:         dag,
-		Environment: env,
+		DAG:     dag,
+		Logging: global.MakeSubLogger(log, "[prune]"),
 	}
 }
 
@@ -40,8 +36,9 @@ func (p *Pruner) Start(ctx context.Context, doneOnClose *sync.WaitGroup) {
 	}()
 }
 
-// _topList returns a descending list of vertices which belongs to top nSlots slots, also the oldest slot in the top list
-func (p *Pruner) _topList(verticesDescending []*vertex.WrappedTx, nTopSlots int) (ledger.Slot, []*vertex.WrappedTx) {
+// pruneBaselineSlot vertices older than pruneBaselineSlot are candidates for pruning
+// Vertices with the pruneBaselineSlot and younger are not touched
+func pruneBaselineSlot(verticesDescending []*vertex.WrappedTx, nTopSlots int) ledger.Slot {
 	topSlots := set.New[ledger.Slot]()
 	for _, vid := range verticesDescending {
 		topSlots.Insert(vid.Slot())
@@ -49,17 +46,21 @@ func (p *Pruner) _topList(verticesDescending []*vertex.WrappedTx, nTopSlots int)
 			break
 		}
 	}
-	earliestTopSlot := util.Minimum(maps.Keys(topSlots), func(s1, s2 ledger.Slot) bool {
+	return util.Minimum(maps.Keys(topSlots), func(s1, s2 ledger.Slot) bool {
 		return s1 < s2
 	})
+}
+
+// topList returns a descending list of vertices which belongs to top nSlots slots, also the oldest slot in the top list
+func topList(verticesDescending []*vertex.WrappedTx, pruneBaselineSlot ledger.Slot) []*vertex.WrappedTx {
 	ret := make([]*vertex.WrappedTx, 0)
 	for _, vid := range verticesDescending {
-		if vid.Slot() < earliestTopSlot {
+		if vid.Slot() < pruneBaselineSlot {
 			break
 		}
 		ret = append(ret, vid)
 	}
-	return earliestTopSlot, ret
+	return ret
 }
 
 func _collectReachableSet(rootVID *vertex.WrappedTx, ret set.Set[*vertex.WrappedTx]) {
@@ -95,13 +96,13 @@ func _reachableFromTopList(topList []*vertex.WrappedTx) set.Set[*vertex.WrappedT
 
 // _orphanedFromReachableSet no global lock while traversing
 // Returns vertices not reachable and older than baseline real time
-func _badOrOrphanedFromReachableSet(verticesDescending []*vertex.WrappedTx, reachable set.Set[*vertex.WrappedTx], oldestSlotInTopList ledger.Slot) []*vertex.WrappedTx {
+func _badOrOrphanedFromReachableSet(verticesDescending []*vertex.WrappedTx, reachable set.Set[*vertex.WrappedTx], pruneBaselineSlot ledger.Slot) []*vertex.WrappedTx {
 	ret := make([]*vertex.WrappedTx, 0)
 	for _, vid := range verticesDescending {
 		if vid.GetTxStatus() == vertex.Bad {
 			ret = append(ret, vid)
 		}
-		if vid.Slot() >= oldestSlotInTopList {
+		if vid.Slot() >= pruneBaselineSlot {
 			continue
 		}
 		if !reachable.Contains(vid) {
@@ -111,11 +112,21 @@ func _badOrOrphanedFromReachableSet(verticesDescending []*vertex.WrappedTx, reac
 	return ret
 }
 
-func (p *Pruner) BadOrOrphanedVertices(nTopSlots int) []*vertex.WrappedTx {
-	verticesDescending := p.VerticesDescending()
-	oldestSlotInTopList, top := p._topList(verticesDescending, nTopSlots)
-	reachable := _reachableFromTopList(top)
-	return _badOrOrphanedFromReachableSet(verticesDescending, reachable, oldestSlotInTopList)
+func badOrOrphanedVertices(verticesDescending, topList []*vertex.WrappedTx, pruneBaselineSlot ledger.Slot) []*vertex.WrappedTx {
+	reachable := _reachableFromTopList(topList)
+	return _badOrOrphanedFromReachableSet(verticesDescending, reachable, pruneBaselineSlot)
+}
+
+func (p *Pruner) branchesToPrune(pruneBaselineSlot ledger.Slot) []*vertex.WrappedTx {
+	branches := p.Branches()
+	toDelete := make([]*vertex.WrappedTx, 0)
+	for _, vid := range branches {
+		if vid.Slot() < pruneBaselineSlot {
+			vid.ConvertBranchVertexToVirtualTx()
+			toDelete = append(toDelete, vid)
+		}
+	}
+	return toDelete
 }
 
 var prunerLoopPeriod = ledger.SlotDuration() / 2
@@ -129,7 +140,22 @@ func (p *Pruner) mainLoop(ctx context.Context) {
 			return
 		case <-time.After(prunerLoopPeriod):
 		}
-		toDelete := p.BadOrOrphanedVertices(TopSlots)
-	}
 
+		verticesDescending := p.VerticesDescending()
+		_pruneBaselineSlot := pruneBaselineSlot(verticesDescending, TopSlots)
+
+		_branchesToPrune := p.branchesToPrune(_pruneBaselineSlot)
+		p.PurgeBranches(_branchesToPrune)
+		p.Log().Infof("pruned %d branches", len(_branchesToPrune))
+
+		_topList := topList(verticesDescending, _pruneBaselineSlot)
+		toDelete := badOrOrphanedVertices(verticesDescending, _topList, _pruneBaselineSlot)
+		for _, vid := range toDelete {
+			vid.MarkDeleted()
+		}
+		// here deleted transactions are discoverable in the DAG in 'deleted' state
+		p.PurgeDeleted(toDelete)
+		// not discoverable anymore
+		p.Log().Infof("pruned %d vertices", len(toDelete))
+	}
 }

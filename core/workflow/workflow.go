@@ -8,6 +8,7 @@ import (
 	"github.com/lunfardo314/proxima/core/daemon/gossip"
 	"github.com/lunfardo314/proxima/core/daemon/persist_txbytes"
 	"github.com/lunfardo314/proxima/core/daemon/poker"
+	"github.com/lunfardo314/proxima/core/daemon/pruner"
 	"github.com/lunfardo314/proxima/core/daemon/pull_client"
 	"github.com/lunfardo314/proxima/core/daemon/pull_server"
 	"github.com/lunfardo314/proxima/core/dag"
@@ -78,13 +79,26 @@ func New(stateStore global.StateStore, txBytesStore global.TxBytesStore, peers *
 
 func (w *Workflow) Start(ctx context.Context) {
 	w.Log().Infof("starting queues...")
-	w.waitStop.Add(6)
+
+	w.waitStop.Add(1)
 	w.poker.Start(ctx, &w.waitStop)
+	w.waitStop.Add(1)
 	w.events.Start(ctx, &w.waitStop)
+	w.waitStop.Add(1)
 	w.pullClient.Start(ctx, &w.waitStop)
+	w.waitStop.Add(1)
 	w.pullServer.Start(ctx, &w.waitStop)
+	w.waitStop.Add(1)
 	w.gossip.Start(ctx, &w.waitStop)
+	w.waitStop.Add(1)
 	w.persistTxBytes.Start(ctx, &w.waitStop)
+
+	const startPruner = false
+	if startPruner {
+		w.waitStop.Add(1)
+		prune := pruner.New(w.DAG, w.DefaultLogging)
+		prune.Start(ctx, &w.waitStop)
+	}
 }
 
 func (w *Workflow) WaitStop() {

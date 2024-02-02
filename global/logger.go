@@ -111,3 +111,14 @@ func (l *DefaultLogging) TraceLog(log *zap.SugaredLogger, tag string, format str
 func (l *DefaultLogging) Tracef(tag string, format string, args ...any) {
 	l.TraceLog(l.Log(), tag, format, args...)
 }
+
+type SubLogger struct {
+	Logging
+}
+
+func MakeSubLogger(l Logging, name string) Logging {
+	return SubLogger{&DefaultLogging{
+		SugaredLogger: l.Log().Named(name),
+		traceTags:     set.New[string](),
+	}}
+}

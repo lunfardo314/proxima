@@ -105,6 +105,12 @@ func (vid *WrappedTx) ConvertVirtualTxToVertexNoLock(v *Vertex) {
 	vid._put(_vertex{Vertex: v})
 }
 
+func (vid *WrappedTx) ConvertBranchVertexToVirtualTx() {
+	vid.Unwrap(UnwrapOptions{Vertex: func(_ *Vertex) {
+
+	}})
+}
+
 func (vid *WrappedTx) GetTxStatus() Status {
 	vid.mutex.RLock()
 	defer vid.mutex.RUnlock()

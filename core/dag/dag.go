@@ -68,6 +68,23 @@ func (d *DAG) AddBranchNoLock(branchVID *vertex.WrappedTx) {
 	}
 }
 
+// PurgeDeleted with global lock
+func (d *DAG) PurgeDeleted(deleted []*vertex.WrappedTx) {
+	d.WithGlobalWriteLock(func() {
+		for _, vid := range deleted {
+			delete(d.vertices, vid.ID)
+		}
+	})
+}
+
+func (d *DAG) PurgeBranches(deleted []*vertex.WrappedTx) {
+	d.WithGlobalWriteLock(func() {
+		for _, vid := range deleted {
+			delete(d.branches, vid)
+		}
+	})
+}
+
 func (d *DAG) GetStateReaderForTheBranch(branchVID *vertex.WrappedTx) global.IndexedStateReader {
 	util.Assertf(branchVID.IsBranchTransaction(), "branchVID.IsBranchTransaction()")
 
