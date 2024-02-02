@@ -141,6 +141,9 @@ func (p *Pruner) mainLoop(ctx context.Context) {
 		case <-time.After(prunerLoopPeriod):
 		}
 
+		// TODO take into account real time, not ledger time
+		// top list must contain those which appeared recently
+
 		verticesDescending := p.VerticesDescending()
 		_pruneBaselineSlot := pruneBaselineSlot(verticesDescending, TopSlots)
 
