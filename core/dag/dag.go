@@ -46,6 +46,13 @@ func (d *DAG) GetVertexNoLock(txid *ledger.TransactionID) *vertex.WrappedTx {
 	return d.vertices[*txid]
 }
 
+func (d *DAG) GetVertex(txid *ledger.TransactionID) *vertex.WrappedTx {
+	d.mutex.RLock()
+	defer d.mutex.RUnlock()
+
+	return d.GetVertexNoLock(txid)
+}
+
 func (d *DAG) AddVertexNoLock(vid *vertex.WrappedTx) {
 	util.Assertf(d.GetVertexNoLock(&vid.ID) == nil, "d.GetVertexNoLock(vid.ID())==nil")
 	d.vertices[vid.ID] = vid
@@ -124,13 +131,6 @@ func (d *DAG) WaitUntilTransactionInHeaviestState(txid ledger.TransactionID, tim
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-}
-
-func (d *DAG) GetVertex(txid *ledger.TransactionID) *vertex.WrappedTx {
-	d.mutex.RLock()
-	defer d.mutex.RUnlock()
-
-	return d.GetVertexNoLock(txid)
 }
 
 func (d *DAG) _branchesForSlot(slot ledger.Slot) []*vertex.WrappedTx {

@@ -6,9 +6,9 @@ import (
 
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/lunfardo314/proxima/core/attacher"
-	"github.com/lunfardo314/proxima/core/queues/gossip"
-	"github.com/lunfardo314/proxima/core/queues/persist_txbytes"
-	"github.com/lunfardo314/proxima/core/queues/pull_client"
+	"github.com/lunfardo314/proxima/core/daemon/gossip"
+	"github.com/lunfardo314/proxima/core/daemon/persist_txbytes"
+	"github.com/lunfardo314/proxima/core/daemon/pull_client"
 	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/ledger"
