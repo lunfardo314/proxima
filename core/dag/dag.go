@@ -215,6 +215,14 @@ func (d *DAG) Vertices(filterByID ...func(txid *ledger.TransactionID) bool) []*v
 	})
 }
 
+func (d *DAG) VerticesDescending() []*vertex.WrappedTx {
+	ret := d.Vertices()
+	sort.Slice(ret, func(i, j int) bool {
+		return ret[i].Timestamp().After(ret[j].Timestamp())
+	})
+	return ret
+}
+
 // Branches to avoid global lock while traversing all utangle
 func (d *DAG) Branches() []*vertex.WrappedTx {
 	d.mutex.RLock()

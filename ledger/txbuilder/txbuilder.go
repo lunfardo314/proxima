@@ -230,7 +230,7 @@ type (
 		SourceAccount     ledger.Accountable
 		Inputs            []*ledger.OutputWithID
 		ChainOutput       *ledger.OutputWithChainID
-		Timestamp         ledger.LogicalTime // takes ledger.LogicalTimeFromTime(time.Now()) if ledger.NilLogicalTime
+		Timestamp         ledger.LogicalTime // takes ledger.LogicalTimeFromRealTime(time.Now()) if ledger.NilLogicalTime
 		Lock              ledger.Lock
 		Amount            uint64
 		AdjustToMinimum   bool

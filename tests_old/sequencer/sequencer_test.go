@@ -64,7 +64,7 @@ func initSequencerTestData(t *testing.T, nFaucets, nAdditionalChains int, logica
 	require.True(t, nFaucets >= 0)
 	t.Logf("time tick duration: %v, time slot duration: %v", ledger.TickDuration(), ledger.SlotDuration())
 	now := time.Now()
-	t.Logf("now is: %v, %s", now.Format("04:05.00000"), ledger.LogicalTimeFromTime(now).String())
+	t.Logf("now is: %v, %s", now.Format("04:05.00000"), ledger.LogicalTimeFromRealTime(now).String())
 	t.Logf("logical now: %v, %s", logicalNow.Time().Format("04:05.00000"), logicalNow.String())
 	ret := &sequencerTestData{t: t}
 	ret.originControllerPrivateKey = testutil.GetTestingPrivateKey()

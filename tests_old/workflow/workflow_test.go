@@ -448,7 +448,7 @@ func TestSolidifier(t *testing.T) {
 		// create all tx in the past, so that won't wait in the waiting room
 		// all are sent to solidifier in the reverse order
 		nowis := time.Now().Add(-10 * time.Second)
-		wd := initWorkflowTest(t, 1, ledger.LogicalTimeFromTime(nowis))
+		wd := initWorkflowTest(t, 1, ledger.LogicalTimeFromRealTime(nowis))
 		cd := countdown.New(howMany, 10*time.Second)
 		wd.setNewVertexCounter(cd)
 
@@ -479,7 +479,7 @@ func TestSolidifier(t *testing.T) {
 		// create all tx in the past, so that won't wait in the waiting room
 		// all are sent to solidifier in the reverse order
 		nowis := time.Now().Add(-10 * time.Second)
-		wd := initWorkflowTest(t, nAddresses, ledger.LogicalTimeFromTime(nowis))
+		wd := initWorkflowTest(t, nAddresses, ledger.LogicalTimeFromRealTime(nowis))
 		cd := countdown.New(howMany*nAddresses, 10*time.Second)
 		wd.setNewVertexCounter(cd)
 
@@ -539,7 +539,7 @@ const onChainAmount = 1_000_000
 
 func initMultiChainTest(t *testing.T, nChains int, verbose bool, secondsInThePast int) *multiChainTestData {
 	ledger.SetTimeTickDuration(10 * time.Millisecond)
-	nowisTs := ledger.LogicalTimeFromTime(time.Now().Add(time.Duration(-secondsInThePast) * time.Second))
+	nowisTs := ledger.LogicalTimeFromRealTime(time.Now().Add(time.Duration(-secondsInThePast) * time.Second))
 
 	t.Logf("initMultiChainTest: now is: %s, %v", ledger.LogicalTimeNow().String(), time.Now())
 	t.Logf("time tick duration is %v", ledger.TickDuration())

@@ -81,7 +81,7 @@ func TimeConstantsToString() string {
 		Add("seconds per year = %d", 60*60*24*365).
 		Add("YearsPerMaxSlot = %d", YearsPerMaxSlot()).
 		Add("BaselineTime = %v, unix nano: %d, unix seconds: %d", BaselineTime, BaselineTimeUnixNano, BaselineTime.Unix()).
-		Add("timestamp BaselineTime = %s", LogicalTimeFromTime(BaselineTime)).
+		Add("timestamp BaselineTime = %s", LogicalTimeFromRealTime(BaselineTime)).
 		Add("timestamp now = %s, now is %v", LogicalTimeNow().String(), time.Now()).
 		String()
 }
@@ -140,20 +140,20 @@ func MustNewLogicalTime(e Slot, s Tick) (ret LogicalTime) {
 	return
 }
 
-func LogicalTimeFromTime(nowis time.Time) LogicalTime {
+func LogicalTimeFromRealTime(nowis time.Time) LogicalTime {
 	util.Assertf(!nowis.Before(BaselineTime), "!nowis.Before(BaselineTime)")
 	i := nowis.UnixNano() - BaselineTimeUnixNano
 	e := i / int64(SlotDuration())
-	util.Assertf(e <= math.MaxUint32, "LogicalTimeFromTime: e <= math.MaxUint32")
-	util.Assertf(uint32(e)&0xc0000000 == 0, "LogicalTimeFromTime: two highest bits must be 0. Wrong constants")
+	util.Assertf(e <= math.MaxUint32, "LogicalTimeFromRealTime: e <= math.MaxUint32")
+	util.Assertf(uint32(e)&0xc0000000 == 0, "LogicalTimeFromRealTime: two highest bits must be 0. Wrong constants")
 	s := i % int64(SlotDuration())
 	s = s / int64(TickDuration())
-	util.Assertf(s < TicksPerSlot, "LogicalTimeFromTime: s < TicksPerSlot")
+	util.Assertf(s < TicksPerSlot, "LogicalTimeFromRealTime: s < TicksPerSlot")
 	return MustNewLogicalTime(Slot(uint32(e)), Tick(byte(s)))
 }
 
 func LogicalTimeNow() LogicalTime {
-	return LogicalTimeFromTime(time.Now())
+	return LogicalTimeFromRealTime(time.Now())
 }
 
 func LogicalTimeFromBytes(data []byte) (ret LogicalTime, err error) {
@@ -175,12 +175,6 @@ func LogicalTimeFromBytes(data []byte) (ret LogicalTime, err error) {
 	return
 }
 
-func MustLogicalTimeFromBytes(data []byte) LogicalTime {
-	ret, err := LogicalTimeFromBytes(data)
-	util.AssertNoError(err)
-	return ret
-}
-
 func (s Tick) Valid() bool {
 	return byte(s) < TicksPerSlot
 }
@@ -197,10 +191,6 @@ func (e Slot) Bytes() []byte {
 
 func (e Slot) Hex() string {
 	return fmt.Sprintf("0x%s", hex.EncodeToString(e.Bytes()))
-}
-
-func (e Slot) LogicalTimeAtBeginning() LogicalTime {
-	return MustNewLogicalTime(e, 0)
 }
 
 func (t LogicalTime) Slot() Slot {
@@ -297,7 +287,7 @@ func (t LogicalTime) AddTimeSlots(e int) LogicalTime {
 }
 
 func (t LogicalTime) AddDuration(d time.Duration) LogicalTime {
-	return LogicalTimeFromTime(t.Time().Add(d))
+	return LogicalTimeFromRealTime(t.Time().Add(d))
 }
 
 func MaxLogicalTime(ts ...LogicalTime) LogicalTime {
