@@ -28,7 +28,7 @@ func NewIncrementalAttacher(name string, env Environment, targetTs ledger.Time, 
 	env.Tracef(TraceTagIncrementalAttacher, "NewIncrementalAttacher(%s). extend: %s, endorse: {%s}",
 		name, extend.IDShortString, func() string { return vertex.VerticesLines(endorse).Join(",") })
 
-	var baseline *vertex.WrappedTx
+	var baseline *ledger.TransactionID
 
 	if targetTs.Tick() == 0 {
 		// target is branch
@@ -50,7 +50,7 @@ func NewIncrementalAttacher(name string, env Environment, targetTs ledger.Time, 
 		return nil, fmt.Errorf("NewIncrementalAttacher: failed to determine the baseline branch of %s", extend.IDShortString())
 	}
 
-	env.Tracef(TraceTagIncrementalAttacher, "NewIncrementalAttacher(%s). baseline: %s", name, baseline.IDShortString)
+	env.Tracef(TraceTagIncrementalAttacher, "NewIncrementalAttacher(%s). baseline: %s", name, baseline.StringShort)
 
 	ret := &IncrementalAttacher{
 		attacher: newPastConeAttacher(env, name),
@@ -77,9 +77,9 @@ func NewIncrementalAttacher(name string, env Environment, targetTs ledger.Time, 
 		// stem input, if any, will be at index 1
 		// for branches, include stem input
 		env.Tracef(TraceTagIncrementalAttacher, "NewIncrementalAttacher(%s). insertStemInput", name)
-		ret.stemOutput = baseline.StemWrappedOutput()
+		ret.stemOutput = env.GetStemWrappedOutput(baseline)
 		if ret.stemOutput.VID == nil {
-			return nil, fmt.Errorf("NewIncrementalAttacher: stem output is not available for baseline %s", baseline.IDShortString())
+			return nil, fmt.Errorf("NewIncrementalAttacher: stem output is not available for baseline %s", baseline.StringShort())
 		}
 		if err := ret.insertOutput(ret.stemOutput); err != nil {
 			return nil, err
@@ -88,7 +88,7 @@ func NewIncrementalAttacher(name string, env Environment, targetTs ledger.Time, 
 	return ret, nil
 }
 
-func (a *IncrementalAttacher) BaselineBranch() *vertex.WrappedTx {
+func (a *IncrementalAttacher) BaselineBranch() *ledger.TransactionID {
 	return a.baseline
 }
 
@@ -115,7 +115,7 @@ func (a *IncrementalAttacher) insertEndorsement(endorsement *vertex.WrappedTx) e
 	endBaseline := endorsement.BaselineBranch()
 	if !a.branchesCompatible(a.baseline, endBaseline) {
 		return fmt.Errorf("baseline branch %s of the endorsement branch %s is incompatible with the baseline %s",
-			endBaseline.IDShortString(), endorsement.IDShortString(), a.baseline.IDShortString())
+			endBaseline.StringShort(), endorsement.IDShortString(), a.baseline.StringShort())
 	}
 	if endorsement.IsBranchTransaction() {
 		// branch is compatible with the baseline

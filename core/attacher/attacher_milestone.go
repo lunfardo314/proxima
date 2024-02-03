@@ -39,7 +39,7 @@ func runMilestoneAttacher(vid *vertex.WrappedTx, metadata *txmetadata.Transactio
 	util.Assertf(a.baseline != nil, "a.baseline != nil")
 
 	// then continue with the rest
-	a.Tracef(TraceTagAttachMilestone, "baseline is OK <- %s", a.baseline.IDShortString)
+	a.Tracef(TraceTagAttachMilestone, "baseline is OK <- %s", a.baseline.StringShort)
 
 	status = a.solidifyPastCone()
 	if status != vertex.Good {
@@ -125,7 +125,7 @@ func logFinalStatusString(vid *vertex.WrappedTx, finals *attachFinals, msData *t
 	} else {
 		bl := "<nil>"
 		if finals != nil && finals.baseline != nil {
-			bl = finals.baseline.IDShortString()
+			bl = finals.baseline.StringShort()
 		}
 		if vid.IsBranchTransaction() {
 			msg += fmt.Sprintf(" base: %s, new tx: %d, UTXO mut +%d/-%d, cov: %s",

@@ -103,27 +103,34 @@ func (d *DAG) PurgeCachedStateReaders() {
 	}
 }
 
-func (d *DAG) GetStateReaderForTheBranch(branchVID *vertex.WrappedTx) global.IndexedStateReader {
-	util.Assertf(branchVID.IsBranchTransaction(), "branchVID.IsBranchTransaction()")
+func (d *DAG) GetStateReaderForTheBranch(branch *ledger.TransactionID) global.IndexedStateReader {
+	util.Assertf(branch != nil && branch.IsBranchTransaction(), "branch != nil && branch.IsBranchTransaction()")
 
 	d.stateReadersMutex.Lock()
 	defer d.stateReadersMutex.Unlock()
 
-	ret := d.stateReaders[branchVID.ID]
+	ret := d.stateReaders[*branch]
 	if ret != nil {
 		ret.lastActivity = time.Now()
 		return ret.IndexedStateReader
 	}
-	rootRecord, found := multistate.FetchRootRecord(d.stateStore, branchVID.ID)
+	rootRecord, found := multistate.FetchRootRecord(d.stateStore, *branch)
 	if !found {
 		return nil
 	}
-	d.stateReaders[branchVID.ID] = &cachedStateReader{
+	d.stateReaders[*branch] = &cachedStateReader{
 		IndexedStateReader: multistate.MustNewReadable(d.stateStore, rootRecord.Root, sharedStateReaderCacheSize),
 		lastActivity:       time.Now(),
 	}
 
-	return d.stateReaders[branchVID.ID]
+	return d.stateReaders[*branch]
+}
+
+func (d *DAG) GetStemWrappedOutput(branch *ledger.TransactionID) (ret vertex.WrappedOutput) {
+	if vid := d.GetVertex(branch); vid != nil {
+		ret = vid.StemWrappedOutput()
+	}
+	return
 }
 
 func (d *DAG) GetIndexedStateReader(branchTxID *ledger.TransactionID, clearCacheAtSize ...int) (global.IndexedStateReader, error) {

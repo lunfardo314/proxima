@@ -16,7 +16,7 @@ type (
 		Tx             *transaction.Transaction
 		Inputs         []*WrappedTx
 		Endorsements   []*WrappedTx
-		BaselineBranch *WrappedTx
+		BaselineBranch *ledger.TransactionID
 	}
 
 	VirtualTransaction struct {

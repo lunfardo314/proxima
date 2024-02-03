@@ -20,7 +20,8 @@ type (
 		GetVertexNoLock(txid *ledger.TransactionID) *vertex.WrappedTx
 		AddVertexNoLock(vid *vertex.WrappedTx)
 		StateStore() global.StateStore
-		GetStateReaderForTheBranch(branch *vertex.WrappedTx) global.IndexedStateReader
+		GetStateReaderForTheBranch(branch *ledger.TransactionID) global.IndexedStateReader
+		GetStemWrappedOutput(branch *ledger.TransactionID) vertex.WrappedOutput
 	}
 
 	PullEnvironment interface {
@@ -53,7 +54,7 @@ type (
 		Environment
 		name     string
 		err      error
-		baseline *vertex.WrappedTx
+		baseline *ledger.TransactionID
 		vertices map[*vertex.WrappedTx]Flags
 		rooted   map[*vertex.WrappedTx]set.Set[byte]
 		pokeMe   func(vid *vertex.WrappedTx)
@@ -102,13 +103,13 @@ type (
 		numTransactions   int
 		numCreatedOutputs int
 		numDeletedOutputs int
-		baseline          *vertex.WrappedTx
+		baseline          *ledger.TransactionID
 	}
 
 	Flags uint8
 
 	SequencerCommandParser interface {
-		// ParseInputCommandToOutput analyzes consumed output for sequencer command and produces
+		// ParseSequencerCommandToOutput analyzes consumed output for sequencer command and produces
 		// one or several outputs as an effect of the command. Returns:
 		// - nil, nil if a syntactically valid sequencer command is not detected  in the inputs
 		// - nil, err if a syntactically valid command can be detected, however it contains errors

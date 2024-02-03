@@ -548,9 +548,9 @@ func (vid *WrappedTx) PanicAccessDeleted() {
 	util.Panicf("%w: %s", ErrDeletedVertexAccessed, vid.ID.StringShort())
 }
 
-func (vid *WrappedTx) BaselineBranch() (baselineBranch *WrappedTx) {
+func (vid *WrappedTx) BaselineBranch() (baselineBranch *ledger.TransactionID) {
 	if vid.ID.IsBranchTransaction() {
-		return vid
+		return &vid.ID
 	}
 	vid.RUnwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {

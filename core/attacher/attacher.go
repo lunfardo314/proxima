@@ -133,8 +133,8 @@ func (a *attacher) solidifyStemOfTheVertex(v *vertex.Vertex) (ok bool) {
 	status := v.Inputs[stemInputIdx].GetTxStatus()
 	switch status {
 	case vertex.Good:
-		//v.BaselineBranch = v.Inputs[stemInputIdx].BaselineBranch()
-		v.BaselineBranch = v.Inputs[stemInputIdx]
+		txid := v.Inputs[stemInputIdx].ID
+		v.BaselineBranch = &txid
 		return true
 	case vertex.Bad:
 		a.setError(v.Inputs[stemInputIdx].GetError())
@@ -362,12 +362,12 @@ func (a *attacher) attachEndorsements(v *vertex.Vertex, vid *vertex.WrappedTx, p
 			// endorsed sequencer milestones are solidified proactively by attachers
 			return true
 		}
-		a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s): baseline branch %s", a.name, baselineBranch.IDShortString)
+		a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s): baseline branch %s", a.name, baselineBranch.StringShort)
 
 		// baseline must be compatible with baseline of the attacher
 		if !a.branchesCompatible(a.baseline, baselineBranch) {
 			a.setError(fmt.Errorf("attachEndorsements: baseline %s of endorsement %s is incompatible with the baseline branch%s",
-				baselineBranch.IDShortString(), vidEndorsed.IDShortString(), a.baseline.IDShortString()))
+				baselineBranch.StringShort(), vidEndorsed.IDShortString(), a.baseline.StringShort()))
 			a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s): not compatible with baselines", a.name)
 			return false
 		}
@@ -499,7 +499,7 @@ func (a *attacher) attachRooted(wOut vertex.WrappedOutput) (ok bool, isRooted bo
 	out := stateReader.GetOutput(oid)
 	if out == nil {
 		// output has not been found in the state -> Bad (already consumed)
-		err := fmt.Errorf("output %s is already consumed in the baseline state %s", wOut.IDShortString(), a.baseline.IDShortString())
+		err := fmt.Errorf("output %s is already consumed in the baseline state %s", wOut.IDShortString(), a.baseline.StringShort())
 		a.setError(err)
 		a.Tracef(TraceTagAttachOutput, "%v", err)
 		return false, false
@@ -538,7 +538,7 @@ func (a *attacher) attachOutput(wOut vertex.WrappedOutput, parasiticChainHorizon
 
 	if wOut.VID.IsBranchTransaction() {
 		// not rooted branch output -> BAD
-		err := fmt.Errorf("attachOutput: branch output %s is expected to be rooted in the baseline %s", wOut.VID.IDShortString(), a.baseline.IDShortString())
+		err := fmt.Errorf("attachOutput: branch output %s is expected to be rooted in the baseline %s", wOut.VID.IDShortString(), a.baseline.StringShort())
 		a.setError(err)
 		a.Tracef(TraceTagAttachOutput, "%v", err)
 		return false, false
@@ -559,19 +559,19 @@ func (a *attacher) attachOutput(wOut vertex.WrappedOutput, parasiticChainHorizon
 	return a.attachVertexNonBranch(wOut.VID, parasiticChainHorizon)
 }
 
-func (a *attacher) branchesCompatible(vid1, vid2 *vertex.WrappedTx) bool {
-	util.Assertf(vid1 != nil && vid2 != nil, "vid1 != nil && vid2 != nil")
-	util.Assertf(vid1.IsBranchTransaction() && vid2.IsBranchTransaction(), "vid1.IsBranchTransaction() && vid2.IsBranchTransaction()")
+func (a *attacher) branchesCompatible(txid1, txid2 *ledger.TransactionID) bool {
+	util.Assertf(txid1 != nil && txid2 != nil, "txid1 != nil && txid2 != nil")
+	util.Assertf(txid1.IsBranchTransaction() && txid2.IsBranchTransaction(), "txid1.IsBranchTransaction() && txid2.IsBranchTransaction()")
 	switch {
-	case vid1 == vid2:
+	case *txid1 == *txid2:
 		return true
-	case vid1.Slot() == vid2.Slot():
+	case txid1.Slot() == txid2.Slot():
 		// two different branches on the same slot conflicts
 		return false
-	case vid1.Slot() < vid2.Slot():
-		return multistate.BranchIsDescendantOf(&vid2.ID, &vid1.ID, a.StateStore)
+	case txid1.Slot() < txid2.Slot():
+		return multistate.BranchIsDescendantOf(txid2, txid1, a.StateStore)
 	default:
-		return multistate.BranchIsDescendantOf(&vid1.ID, &vid2.ID, a.StateStore)
+		return multistate.BranchIsDescendantOf(txid1, txid2, a.StateStore)
 	}
 }
 
@@ -595,7 +595,7 @@ func (a *attacher) attachInputID(consumerVertex *vertex.Vertex, consumerTx *vert
 		// if input is a sequencer milestones, check if baselines are compatible
 		if inputBaselineBranch := vidInputTx.BaselineBranch(); inputBaselineBranch != nil {
 			if !a.branchesCompatible(a.baseline, inputBaselineBranch) {
-				err := fmt.Errorf("branches %s and %s not compatible", a.baseline.IDShortString(), inputBaselineBranch.IDShortString())
+				err := fmt.Errorf("branches %s and %s not compatible", a.baseline.StringShort(), inputBaselineBranch.StringShort())
 				a.setError(err)
 				a.Tracef(TraceTagAttachOutput, "%v", err)
 				return false
@@ -609,7 +609,7 @@ func (a *attacher) attachInputID(consumerVertex *vertex.Vertex, consumerTx *vert
 
 	if !vidInputTx.AttachConsumer(inputOid.Index(), consumerTx, a.checkConflictsFunc(consumerTx)) {
 		err := fmt.Errorf("input %s of consumer %s conflicts with existing consumers in the baseline state %s (double spend)",
-			inputOid.StringShort(), consumerTx.IDShortString(), a.baseline.IDShortString())
+			inputOid.StringShort(), consumerTx.IDShortString(), a.baseline.StringShort())
 		a.setError(err)
 		a.Tracef(TraceTagAttachOutput, "%v", err)
 		return false
@@ -644,14 +644,14 @@ func (a *attacher) isKnownConsumed(wOut vertex.WrappedOutput) (isConsumed bool) 
 }
 
 // setBaseline sets baseline, fetches its baselineCoverage and initializes attacher's baselineCoverage according to the currentTS
-func (a *attacher) setBaseline(vid *vertex.WrappedTx, currentTS ledger.Time) {
-	util.Assertf(vid.IsBranchTransaction(), "setBaseline: vid.IsBranchTransaction()")
-	util.Assertf(currentTS.Slot() >= vid.Slot(), "currentTS.Slot() >= vid.Slot()")
+func (a *attacher) setBaseline(txid *ledger.TransactionID, currentTS ledger.Time) {
+	util.Assertf(txid.IsBranchTransaction(), "setBaseline: vid.IsBranchTransaction()")
+	util.Assertf(currentTS.Slot() >= txid.Slot(), "currentTS.Slot() >= vid.Slot()")
 
-	a.baseline = vid
+	a.baseline = txid
 	if multistate.HistoryCoverageDeltas > 1 {
-		rr, found := multistate.FetchRootRecord(a.StateStore(), a.baseline.ID)
-		util.Assertf(found, "setBaseline: can't fetch root record for %s", a.baseline.IDShortString())
+		rr, found := multistate.FetchRootRecord(a.StateStore(), *a.baseline)
+		util.Assertf(found, "setBaseline: can't fetch root record for %s", a.baseline.StringShort)
 
 		a.coverage = rr.LedgerCoverage
 	}
