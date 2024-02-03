@@ -271,7 +271,7 @@ func (c *proposerTaskGeneric) extensionChoicesInEndorsementTargetPastCone(endors
 
 	cone := c.futureConeMilestonesOrdered(rootWrapped.VID)
 
-	return util.FilterSlice(cone, func(extensionChoice utangle.WrappedOutput) bool {
+	return util.PurgeSlice(cone, func(extensionChoice utangle.WrappedOutput) bool {
 		return !c.alreadyVisited(extensionChoice.VID, endorsementTarget)
 	})
 }

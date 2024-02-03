@@ -245,7 +245,7 @@ func (mf *milestoneFactory) selectInputs(targetTs ledger.Time, ownMs utangle_old
 	})
 
 	// filters outputs which can be merged into the target delta but no more than maxFeeInputs limit
-	selected = util.FilterSlice(selected, func(wOut utangle_old.WrappedOutput) bool {
+	selected = util.PurgeSlice(selected, func(wOut utangle_old.WrappedOutput) bool {
 		conflict = consolidatedPastTrack.AbsorbPastTrackSafe(wOut.VID, mf.utangle.StateStore)
 		return conflict == nil && !wOut.IsConsumed(otherSeqVIDs...)
 	}, mf.maxFeeInputs)

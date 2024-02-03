@@ -225,7 +225,7 @@ func prepareBundle(walletData glb.WalletData, cfg spammerConfig) ([][]byte, ledg
 
 		lastOuts, err = transaction.OutputsWithIDFromTransactionBytes(txBytes)
 		glb.AssertNoError(err)
-		lastOuts = util.FilterSlice(lastOuts, func(o *ledger.OutputWithID) bool {
+		lastOuts = util.PurgeSlice(lastOuts, func(o *ledger.OutputWithID) bool {
 			return ledger.EqualConstraints(o.Output.Lock(), walletData.Account)
 		})
 	}

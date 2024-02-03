@@ -58,7 +58,6 @@ func AttachTxID(txid ledger.TransactionID, env Environment, opts ...Option) (vid
 			vid.SetTxStatusGood()
 			vid.SetLedgerCoverage(bd.LedgerCoverage)
 			env.AddVertexNoLock(vid)
-			env.AddBranchNoLock(vid) // <<<< will be reading branch data twice. Not big problem
 			env.PostEventNewGood(vid)
 			env.Tracef(TraceTagAttach, "AttachTxID: branch fetched from the state: %s%s", txid.StringShort(), by)
 		} else {
@@ -155,7 +154,6 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Opt
 				if status == vertex.Bad {
 					vid.SetTxStatusBad(err)
 					env.Log().Warnf("-- ATTACH %s -> BAD(%v)\n%s", vid.IDShortString(), err, vid.LinesTx("      ").String())
-					env.Log().Fatalf("tmp panic")
 				} else {
 					msData := env.ParseMilestoneData(vid)
 					env.Log().Info(logFinalStatusString(vid, stats, msData))

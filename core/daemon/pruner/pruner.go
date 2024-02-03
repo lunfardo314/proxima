@@ -122,16 +122,17 @@ func badOrOrphanedVertices(verticesDescending, topList []*vertex.WrappedTx, prun
 
 // pruneBranches branches older than particular slot or real time deadline converts into virtual transactions.
 // The past cone of the branch becomes unreachable from the branch
-func (p *Pruner) pruneBranches(pruneBaselineSlot ledger.Slot, pruneDeadline time.Time) []*vertex.WrappedTx {
-	branches := p.Branches()
-	toDelete := make([]*vertex.WrappedTx, 0)
-	for _, vid := range branches {
+func (p *Pruner) pruneBranches(verticesDescending []*vertex.WrappedTx, pruneBaselineSlot ledger.Slot, pruneDeadline time.Time) (ret int) {
+	for _, vid := range verticesDescending {
+		if !vid.IsBranchTransaction() {
+			continue
+		}
 		if vid.Slot() < pruneBaselineSlot || vid.Time().Before(pruneDeadline) {
 			vid.ConvertBranchVertexToVirtualTx()
-			toDelete = append(toDelete, vid)
+			ret++
 		}
 	}
-	return toDelete
+	return
 }
 
 var prunerLoopPeriod = ledger.SlotDuration() / 2
@@ -147,9 +148,8 @@ func (p *Pruner) mainLoop(ctx context.Context) {
 		verticesDescending := p.VerticesDescending()
 		_pruneBaselineSlot, _pruningDeadline := pruningBaselineSlotAndDeadline(verticesDescending, keepNumTopSlots)
 
-		_branchesToPrune := p.pruneBranches(_pruneBaselineSlot, _pruningDeadline)
-		p.PurgeBranches(_branchesToPrune)
-		p.Log().Infof("pruned %d branches", len(_branchesToPrune))
+		nPrunedBranches := p.pruneBranches(verticesDescending, _pruneBaselineSlot, _pruningDeadline)
+		p.Log().Infof("pruned %d branches", nPrunedBranches)
 
 		_topList := topList(verticesDescending, _pruneBaselineSlot, _pruningDeadline)
 		toDelete := badOrOrphanedVertices(verticesDescending, _topList, _pruneBaselineSlot)
@@ -163,8 +163,10 @@ func (p *Pruner) mainLoop(ctx context.Context) {
 			vid.MarkDeleted()
 		}
 		// here deleted transactions are discoverable in the DAG in 'deleted' state
-		p.PurgeDeleted(toDelete)
+		p.PurgeDeletedVertices(toDelete)
 		// not discoverable anymore
 		p.Log().Infof("pruned %d vertices", len(toDelete))
+
+		p.PurgeCachedStateReaders()
 	}
 }

@@ -450,7 +450,7 @@ func (c *APIClient) MakeChainOrigin(par TransferFromED25519WalletParams) (*trans
 	}
 
 	totalInputs = 0
-	inps = util.FilterSlice(inps, func(o *ledger.OutputWithID) bool {
+	inps = util.PurgeSlice(inps, func(o *ledger.OutputWithID) bool {
 		if totalInputs < par.Amount+par.TagAlongFee {
 			totalInputs += o.Output.Amount()
 			return true

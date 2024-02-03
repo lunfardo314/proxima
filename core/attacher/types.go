@@ -21,7 +21,6 @@ type (
 		AddVertexNoLock(vid *vertex.WrappedTx)
 		StateStore() global.StateStore
 		GetStateReaderForTheBranch(branch *vertex.WrappedTx) global.IndexedStateReader
-		AddBranchNoLock(branch *vertex.WrappedTx)
 	}
 
 	PullEnvironment interface {

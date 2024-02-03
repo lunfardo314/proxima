@@ -47,10 +47,6 @@ func (a *milestoneAttacher) wrapUpAttacher() {
 
 	if a.vid.IsBranchTransaction() {
 		a.commitBranch()
-
-		a.WithGlobalWriteLock(func() {
-			a.AddBranchNoLock(a.vid)
-		})
 		a.EvidenceBookedBranch(&a.vid.ID, a.vid.MustSequencerID())
 		a.Tracef(TraceTagAttachMilestone, "finalized branch")
 	} else {

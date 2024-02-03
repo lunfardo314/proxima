@@ -34,7 +34,8 @@ func TestBasic(t *testing.T) {
 		bootstrapChainID, root := genesis.InitLedgerState(*par, stateStore)
 		dagAccess := dag.New(stateStore)
 		txBytesStore := txstore.NewSimpleTxBytesStore(common.NewInMemoryKVStore())
-		wrk := workflow.New(stateStore, txBytesStore, peering.NewPeersDummy(), workflow.WithLogLevel(zapcore.DebugLevel))
+		wrk := workflow.New(stateStore, txBytesStore, peering.NewPeersDummy(),
+			workflow.WithLogLevel(zapcore.DebugLevel), workflow.OptionDoNotStartPruner)
 		ctx, stop := context.WithCancel(context.Background())
 		wrk.Start(ctx)
 
@@ -71,7 +72,8 @@ func TestBasic(t *testing.T) {
 		bootstrapChainID, _ := genesis.InitLedgerState(*par, stateStore)
 		txBytesStore := txstore.NewSimpleTxBytesStore(common.NewInMemoryKVStore())
 
-		wrk := workflow.New(stateStore, txBytesStore, peering.NewPeersDummy(), workflow.WithLogLevel(zapcore.DebugLevel))
+		wrk := workflow.New(stateStore, txBytesStore, peering.NewPeersDummy(),
+			workflow.WithLogLevel(zapcore.DebugLevel), workflow.OptionDoNotStartPruner)
 		ctx, stop := context.WithCancel(context.Background())
 		wrk.Start(ctx)
 
@@ -133,7 +135,8 @@ func TestBasic(t *testing.T) {
 		bootstrapChainID, _ := genesis.InitLedgerState(*par, stateStore)
 		txBytesStore := txstore.NewSimpleTxBytesStore(common.NewInMemoryKVStore())
 
-		wrk := workflow.New(stateStore, txBytesStore, peering.NewPeersDummy(), workflow.WithLogLevel(zapcore.DebugLevel))
+		wrk := workflow.New(stateStore, txBytesStore, peering.NewPeersDummy(),
+			workflow.WithLogLevel(zapcore.DebugLevel), workflow.OptionDoNotStartPruner)
 		ctx, stop := context.WithCancel(context.Background())
 
 		//wrk.EnableTraceTags(attacher.TraceTagAttach, attacher.TraceTagAttachMilestone, attacher.TraceTagAttachVertex)
@@ -205,7 +208,8 @@ func TestBasic(t *testing.T) {
 		bootstrapChainID, _ := genesis.InitLedgerState(*par, stateStore)
 		txBytesStore := txstore.NewSimpleTxBytesStore(common.NewInMemoryKVStore())
 
-		wrk := workflow.New(stateStore, txBytesStore, peering.NewPeersDummy(), workflow.WithLogLevel(zapcore.DebugLevel))
+		wrk := workflow.New(stateStore, txBytesStore, peering.NewPeersDummy(),
+			workflow.WithLogLevel(zapcore.DebugLevel), workflow.OptionDoNotStartPruner)
 		ctx, stop := context.WithCancel(context.Background())
 		wrk.Start(ctx)
 

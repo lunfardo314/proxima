@@ -63,7 +63,7 @@ func runMakeChainCmd(_ *cobra.Command, args []string) {
 	glb.Assertf(totalInputs >= onChainAmount+tagAlongFee, "not enough source balance %s", util.GoTh(totalInputs))
 
 	totalInputs = 0
-	inps = util.FilterSlice(inps, func(o *ledger.OutputWithID) bool {
+	inps = util.PurgeSlice(inps, func(o *ledger.OutputWithID) bool {
 		if totalInputs < onChainAmount+tagAlongFee {
 			totalInputs += o.Output.Amount()
 			return true

@@ -121,7 +121,7 @@ func (vid *WrappedTx) cleanForkSet() {
 
 func (ut *UTXOTangle) _oldestNonEmptySlot() (ledger.Slot, int) {
 	// ascending
-	slots := util.FilterSlice(ut._timeSlotsOrdered(), func(el ledger.Slot) bool {
+	slots := util.PurgeSlice(ut._timeSlotsOrdered(), func(el ledger.Slot) bool {
 		return len(ut.branches[el]) > 0
 	})
 	if len(slots) < TipSlots+2 {

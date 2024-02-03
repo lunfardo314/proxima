@@ -221,14 +221,19 @@ func FetchBranchDataMulti(store global.StateStore, rootData ...RootRecord) []*Br
 
 // FetchLatestBranches branches of the latest slot sorted by coverage descending
 func FetchLatestBranches(store global.StateStore) []*BranchData {
-	ret := FetchBranchDataMulti(store, FetchRootRecords(store, FetchLatestSlot(store))...)
+	return FetchBranchDataMulti(store, FetchLatestRootRecords(store)...)
+}
 
+// FetchLatestRootRecords sorted descending by coverage
+func FetchLatestRootRecords(store global.StateStore) []RootRecord {
+	ret := FetchRootRecords(store, FetchLatestSlot(store))
 	sort.Slice(ret, func(i, j int) bool {
 		return ret[i].LedgerCoverage.Sum() > ret[j].LedgerCoverage.Sum()
 	})
 	return ret
 }
 
+// FetchLatestBranchTransactionIDs sorted descending by coverage
 func FetchLatestBranchTransactionIDs(store global.StateStore) []ledger.TransactionID {
 	bd := FetchLatestBranches(store)
 	ret := make([]ledger.TransactionID, len(bd))

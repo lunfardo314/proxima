@@ -1,7 +1,6 @@
 package dag
 
 import (
-	"slices"
 	"sort"
 
 	"github.com/lunfardo314/proxima/core/vertex"
@@ -30,8 +29,8 @@ func (d *DAG) InfoLines(verbose ...bool) *lines.Lines {
 
 	slots := d._timeSlotsOrdered()
 
-	ln.Add("DAG:: vertices: %d, branches: %d, slots: %d",
-		len(d.vertices), len(d.branches), len(slots))
+	ln.Add("DAG:: vertices: %d, stateReaders: %d, slots: %d",
+		len(d.vertices), len(d.stateReaders), len(slots))
 
 	if len(verbose) > 0 && verbose[0] {
 		vertices := d.Vertices()
@@ -41,30 +40,6 @@ func (d *DAG) InfoLines(verbose ...bool) *lines.Lines {
 		})
 		for _, vid := range vertices {
 			ln.Add("    " + vid.ShortString())
-		}
-	}
-
-	ln.Add("---- branches")
-	byChainID := make(map[ledger.ChainID][]*vertex.WrappedTx)
-	for _, vidBranch := range d.Branches() {
-		chainID, ok := vidBranch.SequencerIDIfAvailable()
-		util.Assertf(ok, "sequencer ID not available in %s", vidBranch.IDShortString)
-		lst := byChainID[chainID]
-		if len(lst) == 0 {
-			lst = make([]*vertex.WrappedTx, 0)
-		}
-		lst = append(lst, vidBranch)
-		byChainID[chainID] = lst
-	}
-
-	for chainID, lst := range byChainID {
-		lstClone := slices.Clone(lst)
-		ln.Add("%s:", chainID.StringShort())
-		sort.Slice(lstClone, func(i, j int) bool {
-			return lstClone[i].Slot() > lstClone[j].Slot()
-		})
-		for _, vid := range lstClone {
-			ln.Add("    %s : coverage %s", vid.IDShortString(), vid.GetLedgerCoverage().String())
 		}
 	}
 	return ln
@@ -90,7 +65,7 @@ func (d *DAG) _timeSlotsOrdered(descOrder ...bool) []ledger.Slot {
 		desc = descOrder[0]
 	}
 	slots := set.New[ledger.Slot]()
-	for br := range d.branches {
+	for br := range d.stateReaders {
 		slots.Insert(br.Slot())
 	}
 	if desc {
