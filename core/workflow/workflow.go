@@ -28,13 +28,14 @@ type (
 		global.TxBytesStore
 		peers *peering.Peers
 		// queues
-		pullClient     *pull_client.PullClient
-		pullServer     *pull_server.PullServer
-		gossip         *gossip.Gossip
-		persistTxBytes *persist_txbytes.PersistTxBytes
-		poker          *poker.Poker
-		events         *events.Events
-		syncData       *SyncData
+		pullClient       *pull_client.PullClient
+		pullServer       *pull_server.PullServer
+		gossip           *gossip.Gossip
+		persistTxBytes   *persist_txbytes.PersistTxBytes
+		poker            *poker.Poker
+		events           *events.Events
+		syncData         *SyncData
+		doNotStartPruner bool
 		//
 		debugCounters *testutil.SyncCounters
 		//
@@ -59,13 +60,14 @@ func New(stateStore global.StateStore, txBytesStore global.TxBytesStore, peers *
 	lvl := cfg.logLevel
 
 	ret := &Workflow{
-		TxBytesStore:   txBytesStore,
-		DefaultLogging: global.NewDefaultLogging("", lvl, cfg.logOutput),
-		DAG:            dag.New(stateStore),
-		peers:          peers,
-		syncData:       newSyncData(),
-		debugCounters:  testutil.NewSynCounters(),
-		traceTags:      set.New[string](),
+		TxBytesStore:     txBytesStore,
+		DefaultLogging:   global.NewDefaultLogging("", lvl, cfg.logOutput),
+		DAG:              dag.New(stateStore),
+		peers:            peers,
+		syncData:         newSyncData(),
+		debugCounters:    testutil.NewSynCounters(),
+		traceTags:        set.New[string](),
+		doNotStartPruner: cfg.doNotStartPruner,
 	}
 	ret.poker = poker.New(ret)
 	ret.events = events.New(ret)
@@ -92,9 +94,7 @@ func (w *Workflow) Start(ctx context.Context) {
 	w.gossip.Start(ctx, &w.waitStop)
 	w.waitStop.Add(1)
 	w.persistTxBytes.Start(ctx, &w.waitStop)
-
-	const startPruner = false
-	if startPruner {
+	if !w.doNotStartPruner {
 		w.waitStop.Add(1)
 		prune := pruner.New(w.DAG, w.DefaultLogging)
 		prune.Start(ctx, &w.waitStop)

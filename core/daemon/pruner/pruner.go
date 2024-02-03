@@ -21,6 +21,8 @@ type (
 	}
 )
 
+const keepNumTopSlots = 5
+
 func New(dag *dag.DAG, log global.Logging) *Pruner {
 	return &Pruner{
 		DAG:     dag,
@@ -36,9 +38,9 @@ func (p *Pruner) Start(ctx context.Context, doneOnClose *sync.WaitGroup) {
 	}()
 }
 
-// pruneBaselineSlot vertices older than pruneBaselineSlot are candidates for pruning
-// Vertices with the pruneBaselineSlot and younger are not touched
-func pruneBaselineSlot(verticesDescending []*vertex.WrappedTx, nTopSlots int) ledger.Slot {
+// pruningBaselineSlotAndDeadline vertices older than pruningBaselineSlotAndDeadline are candidates for pruning
+// Vertices with the pruningBaselineSlotAndDeadline and younger are not touched
+func pruningBaselineSlotAndDeadline(verticesDescending []*vertex.WrappedTx, nTopSlots int) (ledger.Slot, time.Time) {
 	topSlots := set.New[ledger.Slot]()
 	for _, vid := range verticesDescending {
 		topSlots.Insert(vid.Slot())
@@ -48,14 +50,15 @@ func pruneBaselineSlot(verticesDescending []*vertex.WrappedTx, nTopSlots int) le
 	}
 	return util.Minimum(maps.Keys(topSlots), func(s1, s2 ledger.Slot) bool {
 		return s1 < s2
-	})
+	}), time.Now().Add(-keepNumTopSlots * ledger.SlotDuration())
 }
 
-// topList returns a descending list of vertices which belongs to top nSlots slots, also the oldest slot in the top list
-func topList(verticesDescending []*vertex.WrappedTx, pruneBaselineSlot ledger.Slot) []*vertex.WrappedTx {
+// topList returns a descending list of vertices which either belongs
+// to top nSlots slots or is younger than a particular deadline
+func topList(verticesDescending []*vertex.WrappedTx, pruneBaselineSlot ledger.Slot, youngerThan time.Time) []*vertex.WrappedTx {
 	ret := make([]*vertex.WrappedTx, 0)
 	for _, vid := range verticesDescending {
-		if vid.Slot() < pruneBaselineSlot {
+		if vid.Slot() < pruneBaselineSlot || vid.Time().After(youngerThan) {
 			break
 		}
 		ret = append(ret, vid)
@@ -117,11 +120,13 @@ func badOrOrphanedVertices(verticesDescending, topList []*vertex.WrappedTx, prun
 	return _badOrOrphanedFromReachableSet(verticesDescending, reachable, pruneBaselineSlot)
 }
 
-func (p *Pruner) branchesToPrune(pruneBaselineSlot ledger.Slot) []*vertex.WrappedTx {
+// pruneBranches branches older than particular slot or real time deadline converts into virtual transactions.
+// The past cone of the branch becomes unreachable from the branch
+func (p *Pruner) pruneBranches(pruneBaselineSlot ledger.Slot, pruneDeadline time.Time) []*vertex.WrappedTx {
 	branches := p.Branches()
 	toDelete := make([]*vertex.WrappedTx, 0)
 	for _, vid := range branches {
-		if vid.Slot() < pruneBaselineSlot {
+		if vid.Slot() < pruneBaselineSlot || vid.Time().Before(pruneDeadline) {
 			vid.ConvertBranchVertexToVirtualTx()
 			toDelete = append(toDelete, vid)
 		}
@@ -131,8 +136,6 @@ func (p *Pruner) branchesToPrune(pruneBaselineSlot ledger.Slot) []*vertex.Wrappe
 
 var prunerLoopPeriod = ledger.SlotDuration() / 2
 
-const TopSlots = 5
-
 func (p *Pruner) mainLoop(ctx context.Context) {
 	for {
 		select {
@@ -141,18 +144,21 @@ func (p *Pruner) mainLoop(ctx context.Context) {
 		case <-time.After(prunerLoopPeriod):
 		}
 
-		// TODO take into account real time, not ledger time
-		// top list must contain those which appeared recently
-
 		verticesDescending := p.VerticesDescending()
-		_pruneBaselineSlot := pruneBaselineSlot(verticesDescending, TopSlots)
+		_pruneBaselineSlot, _pruningDeadline := pruningBaselineSlotAndDeadline(verticesDescending, keepNumTopSlots)
 
-		_branchesToPrune := p.branchesToPrune(_pruneBaselineSlot)
+		_branchesToPrune := p.pruneBranches(_pruneBaselineSlot, _pruningDeadline)
 		p.PurgeBranches(_branchesToPrune)
 		p.Log().Infof("pruned %d branches", len(_branchesToPrune))
 
-		_topList := topList(verticesDescending, _pruneBaselineSlot)
+		_topList := topList(verticesDescending, _pruneBaselineSlot, _pruningDeadline)
 		toDelete := badOrOrphanedVertices(verticesDescending, _topList, _pruneBaselineSlot)
+
+		// we do 2-step mark deleted-purge in order to avoid deadlocks. It is not completely correct,
+		// because deletion from the DAG is not an atomic action. In some period, a transaction can be discovered
+		// in the DAG by its ID (by AttachTxID function), however in the 'deleted state'. It means repetitive attachment of the
+		// transaction is not possible until complete purge. Is that a problem? TODO
+
 		for _, vid := range toDelete {
 			vid.MarkDeleted()
 		}

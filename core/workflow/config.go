@@ -14,6 +14,7 @@ type (
 		consumerLogLevel map[string]zapcore.Level
 		logOutput        []string
 		logTimeLayout    string
+		doNotStartPruner bool
 	}
 
 	ConfigOption func(c *ConfigParams)
@@ -54,6 +55,10 @@ func WithLogTimeLayout(layout string) ConfigOption {
 			c.logTimeLayout = layout
 		}
 	}
+}
+
+func OptionDoNotStartPruner(c *ConfigParams) {
+	c.doNotStartPruner = true
 }
 
 var allComponentNames = make([]string, 0)

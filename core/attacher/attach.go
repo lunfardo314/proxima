@@ -14,7 +14,7 @@ import (
 	"github.com/lunfardo314/unitrie/common"
 )
 
-// AttachTxID ensures the txid is on the utangle. Must be called from globally locked environment
+// AttachTxID ensures the txid is on the utangle
 func AttachTxID(txid ledger.TransactionID, env Environment, opts ...Option) (vid *vertex.WrappedTx) {
 	options := &_attacherOptions{}
 	for _, opt := range opts {
@@ -26,6 +26,7 @@ func AttachTxID(txid ledger.TransactionID, env Environment, opts ...Option) (vid
 		by = " by " + options.calledBy
 	}
 	env.Tracef(TraceTagAttach, "AttachTxID: %s%s", txid.StringShort(), by)
+
 	env.WithGlobalWriteLock(func() {
 		vid = env.GetVertexNoLock(&txid)
 		if vid != nil {
@@ -89,7 +90,7 @@ func AttachOutputID(oid ledger.OutputID, env Environment, opts ...Option) vertex
 }
 
 // AttachTransaction attaches new incoming transaction. For sequencer transaction it starts milestoneAttacher routine
-// which manages solidification pull until transaction becomes solid or stopped by the context
+// which manages solidification pulling until transaction becomes solid or stopped by the context
 func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Option) (vid *vertex.WrappedTx) {
 	options := &_attacherOptions{}
 	for _, opt := range opts {

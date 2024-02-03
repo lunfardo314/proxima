@@ -76,7 +76,7 @@ const (
 	tagAlongFee = 500
 )
 
-func initWorkflowTest(t *testing.T, nChains int) *workflowTestData {
+func initWorkflowTest(t *testing.T, nChains int, startPruner ...bool) *workflowTestData {
 	util.Assertf(nChains > 0, "nChains > 0")
 	genesisPrivKey := testutil.GetTestingPrivateKey()
 	stateID := genesis.DefaultIdentityData(genesisPrivKey)
@@ -121,7 +121,12 @@ func initWorkflowTest(t *testing.T, nChains int) *workflowTestData {
 		t.Logf("--------------- faucet output\n%s\n--------------", ret.faucetOutput)
 	}
 
-	ret.wrk = workflow.New(stateStore, ret.txStore, peering.NewPeersDummy(), workflow.WithLogLevel(zapcore.DebugLevel))
+	if len(startPruner) > 0 && startPruner[0] {
+		ret.wrk = workflow.New(stateStore, ret.txStore, peering.NewPeersDummy(), workflow.WithLogLevel(zapcore.DebugLevel))
+	} else {
+		ret.wrk = workflow.New(stateStore, ret.txStore, peering.NewPeersDummy(),
+			workflow.WithLogLevel(zapcore.DebugLevel), workflow.OptionDoNotStartPruner)
+	}
 	var cancelFun context.CancelFunc
 	ret.ctx, cancelFun = context.WithCancel(context.Background())
 	ret.stopFun = func() {

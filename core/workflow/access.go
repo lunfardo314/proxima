@@ -1,11 +1,9 @@
 package workflow
 
 import (
-	"fmt"
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/peer"
-	"github.com/lunfardo314/proxima/core/attacher"
 	"github.com/lunfardo314/proxima/core/daemon/gossip"
 	"github.com/lunfardo314/proxima/core/daemon/persist_txbytes"
 	"github.com/lunfardo314/proxima/core/daemon/pull_client"
@@ -34,15 +32,6 @@ func (w *Workflow) Pull(txid ledger.TransactionID) {
 
 func (w *Workflow) StopPulling(txid *ledger.TransactionID) {
 	w.pullClient.StopPulling(txid)
-}
-
-func (w *Workflow) DropTxID(txid *ledger.TransactionID, callback func(vid *vertex.WrappedTx, err error), reasonFormat string, args ...any) {
-	w.Tracef("workflow", "DropTxID %s", txid.StringShort())
-	err := fmt.Errorf(reasonFormat, args...)
-	vid := attacher.InvalidateTxID(*txid, w, err)
-	if callback != nil {
-		callback(vid, err)
-	}
 }
 
 func (w *Workflow) GossipTransaction(tx *transaction.Transaction, metadata *txmetadata.TransactionMetadata, receivedFromPeer *peer.ID) {
