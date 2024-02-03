@@ -2,6 +2,7 @@ package pruner
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -33,7 +34,7 @@ func New(dag *dag.DAG, log global.Logging) *Pruner {
 func (p *Pruner) Start(ctx context.Context, doneOnClose *sync.WaitGroup) {
 	go func() {
 		p.mainLoop(ctx)
-		doneOnClose.Wait()
+		doneOnClose.Done()
 		p.Log().Infof("DAG pruner STOPPED")
 	}()
 }
@@ -53,7 +54,7 @@ func pruningBaselineSlotAndDeadline(verticesDescending []*vertex.WrappedTx, nTop
 	}), time.Now().Add(-keepNumTopSlots * ledger.SlotDuration())
 }
 
-// topList returns a descending list of vertices which either belongs
+// topList returns a descending list of sequencer vertices which either belongs
 // to top nSlots slots or is younger than a particular deadline
 func topList(verticesDescending []*vertex.WrappedTx, pruneBaselineSlot ledger.Slot, youngerThan time.Time) []*vertex.WrappedTx {
 	ret := make([]*vertex.WrappedTx, 0)
@@ -89,7 +90,7 @@ func _collectReachableSet(rootVID *vertex.WrappedTx, ret set.Set[*vertex.Wrapped
 }
 
 // _reachableFromTipSet a set of dag reachable from any of the vertex in the top set
-func _reachableFromTopList(topList []*vertex.WrappedTx) set.Set[*vertex.WrappedTx] {
+func reachableFromTopList(topList []*vertex.WrappedTx) set.Set[*vertex.WrappedTx] {
 	ret := set.New[*vertex.WrappedTx]()
 	for _, vid := range topList {
 		_collectReachableSet(vid, ret)
@@ -99,14 +100,11 @@ func _reachableFromTopList(topList []*vertex.WrappedTx) set.Set[*vertex.WrappedT
 
 // _orphanedFromReachableSet no global lock while traversing
 // Returns vertices not reachable and older than baseline real time
-func _badOrOrphanedFromReachableSet(verticesDescending []*vertex.WrappedTx, reachable set.Set[*vertex.WrappedTx], pruneBaselineSlot ledger.Slot) []*vertex.WrappedTx {
+func badOrOrphanedFromReachableSet(verticesDescending []*vertex.WrappedTx, reachable set.Set[*vertex.WrappedTx]) []*vertex.WrappedTx {
 	ret := make([]*vertex.WrappedTx, 0)
 	for _, vid := range verticesDescending {
 		if vid.GetTxStatus() == vertex.Bad {
 			ret = append(ret, vid)
-		}
-		if vid.Slot() >= pruneBaselineSlot {
-			continue
 		}
 		if !reachable.Contains(vid) {
 			ret = append(ret, vid)
@@ -115,9 +113,10 @@ func _badOrOrphanedFromReachableSet(verticesDescending []*vertex.WrappedTx, reac
 	return ret
 }
 
-func badOrOrphanedVertices(verticesDescending, topList []*vertex.WrappedTx, pruneBaselineSlot ledger.Slot) []*vertex.WrappedTx {
-	reachable := _reachableFromTopList(topList)
-	return _badOrOrphanedFromReachableSet(verticesDescending, reachable, pruneBaselineSlot)
+func verticesToPrune(verticesDescending, topList []*vertex.WrappedTx, pruningDeadline time.Time) []*vertex.WrappedTx {
+	reachable := reachableFromTopList(topList)
+	fmt.Printf(">>>>>>>>>> reachable set: %d\n", len(reachable))
+	return badOrOrphanedFromReachableSet(verticesDescending, reachable)
 }
 
 // pruneBranches branches older than particular slot or real time deadline converts into virtual transactions.
@@ -149,10 +148,9 @@ func (p *Pruner) mainLoop(ctx context.Context) {
 		_pruneBaselineSlot, _pruningDeadline := pruningBaselineSlotAndDeadline(verticesDescending, keepNumTopSlots)
 
 		nPrunedBranches := p.pruneBranches(verticesDescending, _pruneBaselineSlot, _pruningDeadline)
-		p.Log().Infof("pruned %d branches", nPrunedBranches)
 
 		_topList := topList(verticesDescending, _pruneBaselineSlot, _pruningDeadline)
-		toDelete := badOrOrphanedVertices(verticesDescending, _topList, _pruneBaselineSlot)
+		toDelete := verticesToPrune(verticesDescending, _topList, _pruningDeadline)
 
 		// we do 2-step mark deleted-purge in order to avoid deadlocks. It is not completely correct,
 		// because deletion from the DAG is not an atomic action. In some period, a transaction can be discovered
@@ -165,7 +163,8 @@ func (p *Pruner) mainLoop(ctx context.Context) {
 		// here deleted transactions are discoverable in the DAG in 'deleted' state
 		p.PurgeDeletedVertices(toDelete)
 		// not discoverable anymore
-		p.Log().Infof("pruned %d vertices", len(toDelete))
+		p.Log().Infof("pruned %d branches and deleted %d vertices. Top list contains %d vertices. Total vertices on the DAG: %d",
+			nPrunedBranches, len(toDelete), len(_topList), len(verticesDescending))
 
 		p.PurgeCachedStateReaders()
 	}
