@@ -11,15 +11,6 @@ import (
 	"github.com/lunfardo314/proxima/util/set"
 )
 
-type ()
-
-func (d *DAG) NumVertices() int {
-	d.mutex.RLock()
-	defer d.mutex.RUnlock()
-
-	return len(d.vertices)
-}
-
 func (d *DAG) Info(verbose ...bool) string {
 	return d.InfoLines(verbose...).String()
 }

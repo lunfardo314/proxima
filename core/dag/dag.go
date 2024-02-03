@@ -64,6 +64,13 @@ func (d *DAG) GetVertex(txid *ledger.TransactionID) *vertex.WrappedTx {
 	return d.GetVertexNoLock(txid)
 }
 
+func (d *DAG) NumVertices() int {
+	d.mutex.RLock()
+	defer d.mutex.RUnlock()
+
+	return len(d.vertices)
+}
+
 func (d *DAG) AddVertexNoLock(vid *vertex.WrappedTx) {
 	util.Assertf(d.GetVertexNoLock(&vid.ID) == nil, "d.GetVertexNoLock(vid.ID())==nil")
 	d.vertices[vid.ID] = vid

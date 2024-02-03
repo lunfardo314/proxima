@@ -2,7 +2,6 @@ package pruner
 
 import (
 	"context"
-	"fmt"
 	"sync"
 	"time"
 
@@ -10,9 +9,6 @@ import (
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
-	"github.com/lunfardo314/proxima/util"
-	"github.com/lunfardo314/proxima/util/set"
-	"golang.org/x/exp/maps"
 )
 
 type (
@@ -21,8 +17,6 @@ type (
 		global.Logging
 	}
 )
-
-const keepNumTopSlots = 5
 
 func New(dag *dag.DAG, log global.Logging) *Pruner {
 	return &Pruner{
@@ -39,99 +33,19 @@ func (p *Pruner) Start(ctx context.Context, doneOnClose *sync.WaitGroup) {
 	}()
 }
 
-// pruningBaselineSlotAndDeadline vertices older than pruningBaselineSlotAndDeadline are candidates for pruning
-// Vertices with the pruningBaselineSlotAndDeadline and younger are not touched
-func pruningBaselineSlotAndDeadline(verticesDescending []*vertex.WrappedTx, nTopSlots int) (ledger.Slot, time.Time) {
-	topSlots := set.New[ledger.Slot]()
-	for _, vid := range verticesDescending {
-		topSlots.Insert(vid.Slot())
-		if len(topSlots) == nTopSlots {
-			break
-		}
-	}
-	return util.Minimum(maps.Keys(topSlots), func(s1, s2 ledger.Slot) bool {
-		return s1 < s2
-	}), time.Now().Add(-keepNumTopSlots * ledger.SlotDuration())
-}
+const pruningTTLSlots = 5
 
-// topList returns a descending list of sequencer vertices which either belongs
-// to top nSlots slots or is younger than a particular deadline
-func topList(verticesDescending []*vertex.WrappedTx, pruneBaselineSlot ledger.Slot, youngerThan time.Time) []*vertex.WrappedTx {
+var pruningTTL = pruningTTLSlots * ledger.SlotDuration()
+
+func (p *Pruner) selectVerticesToPrune() []*vertex.WrappedTx {
+	ttlHorizon := time.Now().Add(-pruningTTL)
 	ret := make([]*vertex.WrappedTx, 0)
-	for _, vid := range verticesDescending {
-		if vid.Slot() < pruneBaselineSlot || vid.Time().After(youngerThan) {
-			break
-		}
-		ret = append(ret, vid)
-	}
-	return ret
-}
-
-func _collectReachableSet(rootVID *vertex.WrappedTx, ret set.Set[*vertex.WrappedTx]) {
-	if ret.Contains(rootVID) {
-		return
-	}
-	rootVID.Unwrap(vertex.UnwrapOptions{
-		Vertex: func(v *vertex.Vertex) {
-			ret.Insert(rootVID)
-			v.ForEachInputDependency(func(_ byte, inp *vertex.WrappedTx) bool {
-				_collectReachableSet(inp, ret)
-				return true
-			})
-			v.ForEachEndorsement(func(_ byte, vEnd *vertex.WrappedTx) bool {
-				_collectReachableSet(vEnd, ret)
-				return true
-			})
-		},
-		VirtualTx: func(_ *vertex.VirtualTransaction) {
-			ret.Insert(rootVID)
-		},
-	})
-}
-
-// _reachableFromTipSet a set of dag reachable from any of the vertex in the top set
-func reachableFromTopList(topList []*vertex.WrappedTx) set.Set[*vertex.WrappedTx] {
-	ret := set.New[*vertex.WrappedTx]()
-	for _, vid := range topList {
-		_collectReachableSet(vid, ret)
-	}
-	return ret
-}
-
-// _orphanedFromReachableSet no global lock while traversing
-// Returns vertices not reachable and older than baseline real time
-func badOrOrphanedFromReachableSet(verticesDescending []*vertex.WrappedTx, reachable set.Set[*vertex.WrappedTx]) []*vertex.WrappedTx {
-	ret := make([]*vertex.WrappedTx, 0)
-	for _, vid := range verticesDescending {
-		if vid.GetTxStatus() == vertex.Bad {
-			ret = append(ret, vid)
-		}
-		if !reachable.Contains(vid) {
+	for _, vid := range p.Vertices() {
+		if vid.GetTxStatus() == vertex.Bad || vid.Time().Before(ttlHorizon) {
 			ret = append(ret, vid)
 		}
 	}
 	return ret
-}
-
-func verticesToPrune(verticesDescending, topList []*vertex.WrappedTx, pruningDeadline time.Time) []*vertex.WrappedTx {
-	reachable := reachableFromTopList(topList)
-	fmt.Printf(">>>>>>>>>> reachable set: %d\n", len(reachable))
-	return badOrOrphanedFromReachableSet(verticesDescending, reachable)
-}
-
-// pruneBranches branches older than particular slot or real time deadline converts into virtual transactions.
-// The past cone of the branch becomes unreachable from the branch
-func (p *Pruner) pruneBranches(verticesDescending []*vertex.WrappedTx, pruneBaselineSlot ledger.Slot, pruneDeadline time.Time) (ret int) {
-	for _, vid := range verticesDescending {
-		if !vid.IsBranchTransaction() {
-			continue
-		}
-		if vid.Slot() < pruneBaselineSlot || vid.Time().Before(pruneDeadline) {
-			vid.ConvertBranchVertexToVirtualTx()
-			ret++
-		}
-	}
-	return
 }
 
 var prunerLoopPeriod = ledger.SlotDuration() / 2
@@ -144,13 +58,7 @@ func (p *Pruner) mainLoop(ctx context.Context) {
 		case <-time.After(prunerLoopPeriod):
 		}
 
-		verticesDescending := p.VerticesDescending()
-		_pruneBaselineSlot, _pruningDeadline := pruningBaselineSlotAndDeadline(verticesDescending, keepNumTopSlots)
-
-		nPrunedBranches := p.pruneBranches(verticesDescending, _pruneBaselineSlot, _pruningDeadline)
-
-		_topList := topList(verticesDescending, _pruneBaselineSlot, _pruningDeadline)
-		toDelete := verticesToPrune(verticesDescending, _topList, _pruningDeadline)
+		toDelete := p.selectVerticesToPrune()
 
 		// we do 2-step mark deleted-purge in order to avoid deadlocks. It is not completely correct,
 		// because deletion from the DAG is not an atomic action. In some period, a transaction can be discovered
@@ -163,8 +71,7 @@ func (p *Pruner) mainLoop(ctx context.Context) {
 		// here deleted transactions are discoverable in the DAG in 'deleted' state
 		p.PurgeDeletedVertices(toDelete)
 		// not discoverable anymore
-		p.Log().Infof("pruned %d branches and deleted %d vertices. Top list contains %d vertices. Total vertices on the DAG: %d",
-			nPrunedBranches, len(toDelete), len(_topList), len(verticesDescending))
+		p.Log().Infof("pruned %d vertices. Total vertices on the DAG: %d", len(toDelete), p.NumVertices())
 
 		p.PurgeCachedStateReaders()
 	}
