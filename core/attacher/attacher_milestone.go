@@ -14,8 +14,7 @@ import (
 )
 
 const (
-	periodicCheckEach               = 1 * time.Second
-	maxToleratedParasiticChainSlots = 5
+	periodicCheckEach = 1 * time.Second
 )
 
 const TraceTagAttachMilestone = "milestone"

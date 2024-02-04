@@ -22,6 +22,7 @@ type (
 		StateStore() global.StateStore
 		GetStateReaderForTheBranch(branch *ledger.TransactionID) global.IndexedStateReader
 		GetStemWrappedOutput(branch *ledger.TransactionID) vertex.WrappedOutput
+		MaxToleratedParasiticChainSlots() int
 	}
 
 	PullEnvironment interface {

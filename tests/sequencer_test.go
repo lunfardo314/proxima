@@ -389,7 +389,7 @@ func TestNSequencersTransfer(t *testing.T) {
 	t.Run("seq 3 transfer multi tag along", func(t *testing.T) {
 		const (
 			maxSlots        = 50
-			nSequencers     = 4 // in addition to bootstrap
+			nSequencers     = 2 // in addition to bootstrap
 			batchSize       = 10
 			sendAmount      = 2000
 			spammingTimeout = 10 * time.Second

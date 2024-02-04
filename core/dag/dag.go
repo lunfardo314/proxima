@@ -41,7 +41,20 @@ func New(stateStore global.StateStore) *DAG {
 	}
 }
 
-const sharedStateReaderCacheSize = 3000
+const (
+	pruningTTLSlots                 = 5
+	maxToleratedParasiticChainSlots = 5
+
+	sharedStateReaderCacheSize = 3000
+)
+
+func (d *DAG) PruningTTLSlots() int {
+	return pruningTTLSlots
+}
+
+func (d *DAG) MaxToleratedParasiticChainSlots() int {
+	return maxToleratedParasiticChainSlots
+}
 
 func (d *DAG) StateStore() global.StateStore {
 	return d.stateStore

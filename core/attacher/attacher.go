@@ -247,7 +247,7 @@ func (a *attacher) attachVertexUnwrapped(v *vertex.Vertex, vid *vertex.WrappedTx
 	if !a.flags(vid).FlagsUp(FlagAttachedVertexEndorsementsSolid) {
 		a.Tracef(TraceTagAttachVertex, "attacher %s: endorsements not solid in %s", a.name, v.Tx.IDShortString())
 		// depth-first along endorsements
-		if !a.attachEndorsements(v, vid, parasiticChainHorizon) { // <<< recursive
+		if !a.attachEndorsements(v, vid) { // <<< recursive
 			// not ok -> abandon attacher
 			util.Assertf(a.err != nil, "a.err != nil")
 			return false
@@ -335,7 +335,7 @@ const TraceTagAttachEndorsements = "attachEndorsements"
 
 // Attaches endorsements of the vertex
 // Return OK (== not bad)
-func (a *attacher) attachEndorsements(v *vertex.Vertex, vid *vertex.WrappedTx, parasiticChainHorizon ledger.Time) bool {
+func (a *attacher) attachEndorsements(v *vertex.Vertex, vid *vertex.WrappedTx) bool {
 	a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s) IN of %s", a.name, v.Tx.IDShortString)
 	defer a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s) OUT of %s return", a.name, v.Tx.IDShortString)
 
@@ -457,7 +457,7 @@ func (a *attacher) attachInput(v *vertex.Vertex, inputIdx byte, vid *vertex.Wrap
 
 	if parasiticChainHorizon == ledger.NilLedgerTime {
 		// TODO revisit parasitic chain threshold because of syncing branches
-		parasiticChainHorizon = ledger.MustNewLedgerTime(v.Inputs[inputIdx].Timestamp().Slot()-maxToleratedParasiticChainSlots, 0)
+		parasiticChainHorizon = ledger.MustNewLedgerTime(v.Inputs[inputIdx].Timestamp().Slot()-ledger.Slot(a.MaxToleratedParasiticChainSlots()), 0)
 	}
 	wOut := vertex.WrappedOutput{
 		VID:   v.Inputs[inputIdx],
