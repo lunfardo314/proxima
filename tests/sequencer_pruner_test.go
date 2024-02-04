@@ -20,7 +20,7 @@ import (
 func Test1SequencerPruner(t *testing.T) {
 	ledger.SetTimeTickDuration(10 * time.Millisecond)
 	t.Run("idle", func(t *testing.T) {
-		const maxSlots = 5
+		const maxSlots = 20
 		testData := initWorkflowTest(t, 1, true)
 		t.Logf("%s", testData.wrk.Info())
 

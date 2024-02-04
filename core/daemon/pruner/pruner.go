@@ -29,6 +29,7 @@ func New(dag *dag.DAG, log global.Logging) *Pruner {
 }
 
 func (p *Pruner) Start(ctx context.Context, doneOnClose *sync.WaitGroup) {
+	p.Log().Infof("STARTING.. [%s]", p.Log().Level().String())
 	go func() {
 		p.mainLoop(ctx)
 		doneOnClose.Done()
@@ -80,6 +81,9 @@ func (p *Pruner) mainLoop(ctx context.Context) {
 		case <-time.After(prunerLoopPeriod):
 		}
 
+		nReadersPurged := p.PurgeCachedStateReaders()
+		p.Log().Infof("purged %d state readers from the cache", nReadersPurged)
+
 		toDelete := p.selectVerticesToPrune()
 
 		// we do 2-step mark deleted-purge in order to avoid deadlocks. It is not completely correct,
@@ -96,6 +100,6 @@ func (p *Pruner) mainLoop(ctx context.Context) {
 		// not discoverable anymore
 		p.Log().Infof("pruned %d vertices. Total vertices on the DAG: %d", len(toDelete), p.NumVertices())
 
-		p.PurgeCachedStateReaders()
+		//p.Log().Infof("\n------------------\n%s\n-------------------", p.Info(true))
 	}
 }

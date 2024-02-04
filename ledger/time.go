@@ -44,7 +44,8 @@ func SetTimeTickDuration(d time.Duration) {
 	timeTickDurationVar = d
 	util.Assertf(TicksPerSlot <= 0xff, "TicksPerSlot must fit the byte")
 	util.Assertf(TimeHorizonSlots() <= MaxSlot, "TimeHorizonSlots <= MaxSlot")
-	fmt.Printf("---- SetTimeTickDuration: time tick duration is set to %v ----\n", TickDuration())
+	fmt.Printf("---- SetTimeTickDuration: time tick duration is set to %v, slot duration is %v ----\n",
+		TickDuration(), SlotDuration())
 }
 
 func SlotDuration() time.Duration {

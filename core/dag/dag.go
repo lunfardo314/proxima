@@ -104,23 +104,25 @@ func (d *DAG) PurgeDeletedVertices(deleted []*vertex.WrappedTx) {
 	})
 }
 
-var stateReaderCacheTTL = 3 * ledger.SlotDuration()
+func _stateReaderCacheTTL() time.Duration {
+	return 3 * ledger.SlotDuration()
+}
 
-func (d *DAG) PurgeCachedStateReaders() {
+func (d *DAG) PurgeCachedStateReaders() int {
 	d.stateReadersMutex.Lock()
 	defer d.stateReadersMutex.Unlock()
 
-	deadline := time.Now().Add(-stateReaderCacheTTL)
 	toDelete := make([]ledger.TransactionID, 0)
-
+	ttl := _stateReaderCacheTTL()
 	for txid, b := range d.stateReaders {
-		if b.lastActivity.Before(deadline) {
+		if time.Since(b.lastActivity) > ttl {
 			toDelete = append(toDelete, txid)
 		}
 	}
 	for i := range toDelete {
 		delete(d.stateReaders, toDelete[i])
 	}
+	return len(toDelete)
 }
 
 func (d *DAG) GetStateReaderForTheBranch(branch *ledger.TransactionID) global.IndexedStateReader {

@@ -1,7 +1,9 @@
 package dag
 
 import (
+	"bytes"
 	"sort"
+	"time"
 
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/ledger"
@@ -32,6 +34,20 @@ func (d *DAG) InfoLines(verbose ...bool) *lines.Lines {
 		for _, vid := range vertices {
 			ln.Add("    " + vid.ShortString())
 		}
+
+		ln.Add("---- cached state readers (verbose)")
+		func() {
+			d.stateReadersMutex.Lock()
+			defer d.stateReadersMutex.Unlock()
+
+			branches := util.KeysSorted(d.stateReaders, func(id1, id2 ledger.TransactionID) bool {
+				return bytes.Compare(id1[:], id2[:]) < 0
+			})
+			for _, br := range branches {
+				rdrData := d.stateReaders[br]
+				ln.Add("    %s, last activity %v", br.StringShort(), time.Since(rdrData.lastActivity))
+			}
+		}()
 	}
 	return ln
 }

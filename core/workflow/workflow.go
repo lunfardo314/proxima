@@ -80,7 +80,7 @@ func New(stateStore global.StateStore, txBytesStore global.TxBytesStore, peers *
 }
 
 func (w *Workflow) Start(ctx context.Context) {
-	w.Log().Infof("starting queues...")
+	w.Log().Infof("starting daemons...")
 
 	w.waitStop.Add(1)
 	w.poker.Start(ctx, &w.waitStop)
