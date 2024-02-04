@@ -2,6 +2,8 @@ package pruner
 
 import (
 	"context"
+	"fmt"
+	"runtime"
 	"sync"
 	"time"
 
@@ -80,25 +82,39 @@ func (p *Pruner) mainLoop(ctx context.Context) {
 			return
 		case <-time.After(prunerLoopPeriod):
 		}
-
-		nReadersPurged := p.PurgeCachedStateReaders()
-		p.Log().Infof("purged %d state readers from the cache", nReadersPurged)
-
+		nReadersPurged, readersLeft := p.PurgeCachedStateReaders()
 		toDelete := p.selectVerticesToPrune()
 
-		// we do 2-step mark deleted-purge in order to avoid deadlocks. It is not completely correct,
-		// because this way deletion from the DAG is not an atomic action. In some period, a transaction can be discovered
-		// in the DAG by its ID (by AttachTxID function), however in the 'deleted state'. It means repetitive attachment of the
-		// transaction is not possible until complete purge.
+		// we do 2-step mark-deleted/purge in order to avoid deadlocks. It is not completely correct,
+		// because this way deletion from the DAG and changing the vertex state to 'deleted' is not an atomic action.
+		// In some period, a transaction can be discovered in the DAG by its ID (by AttachTxID function),
+		// however in the 'deleted state'.
+		// It means repetitive attachment of the transaction is not possible until complete purge.
 		// This may create non-determinism TODO !!!
-
+		var seqDeleted, branchDeleted, nonSeqDeleted int
 		for _, vid := range toDelete {
+			switch {
+			case vid.IsBranchTransaction():
+				branchDeleted++
+			case vid.IsSequencerMilestone():
+				seqDeleted++
+			default:
+				nonSeqDeleted++
+			}
 			vid.MarkDeleted()
 		}
 		// --- > here deleted transactions are still discoverable in the DAG in 'deleted' state
 		p.PurgeDeletedVertices(toDelete)
 		// not discoverable anymore
-		p.Log().Infof("pruned %d vertices. Total vertices on the DAG: %d", len(toDelete), p.NumVertices())
+		var memStats runtime.MemStats
+		runtime.ReadMemStats(&memStats)
+		memStr := fmt.Sprintf("Mem. alloc: %.1f MB, GC: %d, GoRt: %d, ",
+			float32(memStats.Alloc*10/(1024*1024))/10,
+			memStats.NumGC,
+			runtime.NumGoroutine(),
+		)
+		p.Log().Infof("vertices pruned: (branches %d, seq: %d, other: %d). Vertices left: %d. Cached state readers purged: %d, left: %d. "+memStr,
+			branchDeleted, seqDeleted, nonSeqDeleted, p.NumVertices(), nReadersPurged, readersLeft)
 
 		//p.Log().Infof("\n------------------\n%s\n-------------------", p.Info(true))
 	}

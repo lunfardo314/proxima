@@ -226,8 +226,8 @@ func Test1Sequencer(t *testing.T) {
 	})
 }
 
-func initMultiSequencerTest(t *testing.T, nSequencers int) *workflowTestData {
-	testData := initWorkflowTest(t, nSequencers)
+func initMultiSequencerTest(t *testing.T, nSequencers int, startPruner ...bool) *workflowTestData {
+	testData := initWorkflowTest(t, nSequencers, startPruner...)
 	//testData.wrk.EnableTraceTags(tippool.TraceTag)
 	//testData.wrk.EnableTraceTags(factory.TraceTag)
 	//testData.wrk.EnableTraceTags(attacher.TraceTagEnsureLatestBranches)

@@ -3,7 +3,6 @@ package attacher
 import (
 	"context"
 	"fmt"
-	"runtime"
 	"time"
 
 	"github.com/lunfardo314/proxima/core/txmetadata"
@@ -133,15 +132,15 @@ func logFinalStatusString(vid *vertex.WrappedTx, finals *attachFinals, msData *t
 			msg += fmt.Sprintf(" base: %s, new tx: %d, cov: %s", bl, finals.numTransactions, finals.coverage.String())
 		}
 	}
-	var memStats runtime.MemStats
-	runtime.ReadMemStats(&memStats)
-	memStr := fmt.Sprintf(", alloc: %.1f MB, GC: %d, Gort: %d, ",
-		float32(memStats.Alloc*10/(1024*1024))/10,
-		memStats.NumGC,
-		runtime.NumGoroutine(),
-	)
-
-	return msg + memStr
+	//var memStats runtime.MemStats
+	//runtime.ReadMemStats(&memStats)
+	//memStr := fmt.Sprintf(", alloc: %.1f MB, GC: %d, Gort: %d, ",
+	//	float32(memStats.Alloc*10/(1024*1024))/10,
+	//	memStats.NumGC,
+	//	runtime.NumGoroutine(),
+	//)
+	//return msg + memStr
+	return msg
 }
 
 func (a *milestoneAttacher) close() {

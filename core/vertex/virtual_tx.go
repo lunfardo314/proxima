@@ -46,11 +46,12 @@ func (v *VirtualTransaction) addSequencerIndices(seqIdx, stemIdx byte) {
 	v.sequencerOutputs = &[2]byte{seqIdx, stemIdx}
 }
 
+// OutputAt return output at the index and true, or nil, false if output is not available in the virtual tx
 func (v *VirtualTransaction) OutputAt(idx byte) (*ledger.Output, bool) {
 	v.mutex.RLock()
 	defer v.mutex.RUnlock()
 
-	if o, isFetched := v.outputs[idx]; isFetched {
+	if o, isAvailable := v.outputs[idx]; isAvailable {
 		return o, true
 	}
 	return nil, false

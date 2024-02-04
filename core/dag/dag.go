@@ -108,7 +108,7 @@ func _stateReaderCacheTTL() time.Duration {
 	return 3 * ledger.SlotDuration()
 }
 
-func (d *DAG) PurgeCachedStateReaders() int {
+func (d *DAG) PurgeCachedStateReaders() (int, int) {
 	d.stateReadersMutex.Lock()
 	defer d.stateReadersMutex.Unlock()
 
@@ -122,7 +122,7 @@ func (d *DAG) PurgeCachedStateReaders() int {
 	for i := range toDelete {
 		delete(d.stateReaders, toDelete[i])
 	}
-	return len(toDelete)
+	return len(toDelete), len(d.stateReaders)
 }
 
 func (d *DAG) GetStateReaderForTheBranch(branch *ledger.TransactionID) global.IndexedStateReader {

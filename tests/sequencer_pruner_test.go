@@ -138,7 +138,7 @@ func TestNSequencersIdlePruner(t *testing.T) {
 		const (
 			nSequencers = 5 // in addition to bootstrap
 		)
-		testData := initMultiSequencerTest(t, nSequencers)
+		testData := initMultiSequencerTest(t, nSequencers, true)
 
 		testData.bootstrapSeq.StopAndWait()
 		testData.stopAndWait()
@@ -151,7 +151,7 @@ func TestNSequencersIdlePruner(t *testing.T) {
 			maxSlots    = 50
 			nSequencers = 1 // in addition to bootstrap
 		)
-		testData := initMultiSequencerTest(t, nSequencers)
+		testData := initMultiSequencerTest(t, nSequencers, true)
 
 		//testData.wrk.EnableTraceTags(proposer_endorse1.TraceTag)
 		//testData.wrk.EnableTraceTags(proposer_base.TraceTag)
@@ -176,7 +176,7 @@ func Test5SequencersIdlePruner(t *testing.T) {
 		maxSlots    = 50
 		nSequencers = 4 // in addition to bootstrap
 	)
-	testData := initMultiSequencerTest(t, nSequencers)
+	testData := initMultiSequencerTest(t, nSequencers, true)
 
 	//testData.wrk.EnableTraceTags(proposer_base.TraceTag)
 	testData.startSequencersWithTimeout(maxSlots)
@@ -188,7 +188,6 @@ func Test5SequencersIdlePruner(t *testing.T) {
 	//testData.wrk.SaveGraph("utangle")
 	testData.wrk.SaveSequencerGraph(fmt.Sprintf("utangle_seq_tree_%d", nSequencers+1))
 	dag.SaveBranchTree(testData.wrk.StateStore(), fmt.Sprintf("utangle_tree_%d", nSequencers+1))
-
 }
 
 func TestNSequencersTransferPruner(t *testing.T) {
@@ -199,9 +198,9 @@ func TestNSequencersTransferPruner(t *testing.T) {
 			nSequencers     = 2 // in addition to bootstrap
 			batchSize       = 10
 			sendAmount      = 2000
-			spammingTimeout = 10 * time.Second
+			spammingTimeout = 30 * time.Second
 		)
-		testData := initMultiSequencerTest(t, nSequencers)
+		testData := initMultiSequencerTest(t, nSequencers, true)
 
 		//testData.wrk.EnableTraceTags(factory.TraceTagChooseExtendEndorsePair)
 		//testData.wrk.EnableTraceTags(attacher.TraceTagAttachVertex, attacher.TraceTagAttachOutput)
@@ -269,9 +268,9 @@ func TestNSequencersTransferPruner(t *testing.T) {
 			nSequencers     = 4 // in addition to bootstrap
 			batchSize       = 10
 			sendAmount      = 2000
-			spammingTimeout = 10 * time.Second
+			spammingTimeout = 30 * time.Second
 		)
-		testData := initMultiSequencerTest(t, nSequencers)
+		testData := initMultiSequencerTest(t, nSequencers, true)
 
 		//testData.wrk.EnableTraceTags(factory.TraceTagChooseExtendEndorsePair)
 		//testData.wrk.EnableTraceTags(attacher.TraceTagAttachVertex, attacher.TraceTagAttachOutput)

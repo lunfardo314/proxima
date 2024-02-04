@@ -31,15 +31,29 @@ func (v *Vertex) getSequencerPredecessor() *WrappedTx {
 	return v.Inputs[predIdx]
 }
 
-// GetConsumedOutput return consumed output at index i or nil, nil if input is orphaned
-func (v *Vertex) GetConsumedOutput(i byte) (*ledger.Output, error) {
-	if int(i) >= len(v.Inputs) {
-		return nil, fmt.Errorf("wrong input index %d", i)
+// InputLoaderByIndex returns consumed output at index i or nil (if input is orphaned or inaccessible in the virtualTx)
+func (v *Vertex) InputLoaderByIndex(i byte) (*ledger.Output, error) {
+	o := v.GetConsumedOutput(i)
+	if o == nil {
+		return nil, fmt.Errorf("consumed output at index %d is not available", i)
 	}
-	if v.Inputs[i] == nil {
-		return nil, fmt.Errorf("input %s not solid at index %d", util.Ref(v.Tx.MustInputAt(i)).StringShort(), i)
+	return o, nil
+}
+
+// GetConsumedOutput return produced output, is available. Returns nil if unavailable for any reason
+func (v *Vertex) GetConsumedOutput(i byte) (ret *ledger.Output) {
+	if int(i) >= len(v.Inputs) || v.Inputs[i] == nil {
+		return
 	}
-	return v.Inputs[i].OutputAt(v.Tx.MustOutputIndexOfTheInput(i))
+	v.Inputs[i].RUnwrap(UnwrapOptions{
+		Vertex: func(vCons *Vertex) {
+			ret = vCons.Tx.MustProducedOutputAt(v.Tx.MustOutputIndexOfTheInput(i))
+		},
+		VirtualTx: func(vCons *VirtualTransaction) {
+			ret, _ = vCons.OutputAt(v.Tx.MustOutputIndexOfTheInput(i))
+		},
+	})
+	return
 }
 
 func (v *Vertex) ValidateConstraints(traceOption ...int) error {
@@ -47,7 +61,7 @@ func (v *Vertex) ValidateConstraints(traceOption ...int) error {
 	if len(traceOption) > 0 {
 		traceOpt = traceOption[0]
 	}
-	ctx, err := transaction.ContextFromTransaction(v.Tx, v.GetConsumedOutput, traceOpt)
+	ctx, err := transaction.ContextFromTransaction(v.Tx, v.InputLoaderByIndex, traceOpt)
 	if err != nil {
 		return err
 	}
@@ -56,14 +70,6 @@ func (v *Vertex) ValidateConstraints(traceOption ...int) error {
 		return fmt.Errorf("ValidateConstraints: %s: %w", v.Tx.IDShortString(), err)
 	}
 	return nil
-}
-
-func (v *Vertex) ValidateDebug() (string, error) {
-	ctx, err := transaction.ContextFromTransaction(v.Tx, v.GetConsumedOutput)
-	if err != nil {
-		return "", err
-	}
-	return ctx.String(), ctx.Validate()
 }
 
 func (v *Vertex) NumMissingInputs() (missingInputs int, missingEndorsements int) {

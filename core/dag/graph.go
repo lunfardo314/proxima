@@ -121,8 +121,7 @@ func makeGraphEdges(vid *vertex.WrappedTx, gr graph.Graph[string, string]) {
 				util.AssertNoError(err)
 				return true
 			}
-			o, err := v.GetConsumedOutput(i)
-			util.AssertNoError(err)
+			o := v.GetConsumedOutput(i)
 			outIndex := v.Tx.MustOutputIndexOfTheInput(i)
 			amountStr := "???"
 			if o != nil {
@@ -364,8 +363,7 @@ func makeSequencerGraphEdges(vid *vertex.WrappedTx, gr graph.Graph[string, strin
 				return true
 			}
 			if i == seqInputIdx || (vid.IsBranchTransaction() && i == stemInputIdx) {
-				o, err := v.GetConsumedOutput(i)
-				util.AssertNoError(err)
+				o := v.GetConsumedOutput(i)
 				outIndex := v.Tx.MustOutputIndexOfTheInput(i)
 				amountStr := "???"
 				if o != nil {
