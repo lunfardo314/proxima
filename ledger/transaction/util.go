@@ -28,11 +28,11 @@ func SaveTransactionAsFile(txBytes []byte, fname ...string) error {
 	return os.WriteFile(fn, txBytes, 0644)
 }
 
-func (ctx *TransactionContext) String() string {
+func (ctx *TxContext) String() string {
 	return ctx.Lines().String()
 }
 
-func (ctx *TransactionContext) Lines(prefix ...string) *lines.Lines {
+func (ctx *TxContext) Lines(prefix ...string) *lines.Lines {
 	txid := ctx.TransactionID()
 	ret := lines.New(prefix...)
 	ret.Add("Transaction ID: %s, size: %d", txid.String(), len(ctx.TransactionBytes()))
@@ -111,7 +111,7 @@ func (ctx *TransactionContext) Lines(prefix ...string) *lines.Lines {
 }
 
 func ParseBytesToString(txBytes []byte, fetchOutput func(oid *ledger.OutputID) ([]byte, bool)) string {
-	ctx, err := ContextFromTransferableBytes(txBytes, fetchOutput)
+	ctx, err := TxContextFromTransferableBytes(txBytes, fetchOutput)
 	if err != nil {
 		return err.Error()
 	}

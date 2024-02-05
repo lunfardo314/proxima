@@ -13,8 +13,8 @@ func updateValidateNoDebug(u *multistate.Updatable, txBytes []byte) (*transactio
 	return updateValidateOptions(u, txBytes, transaction2.TraceOptionNone, nil)
 }
 
-func updateValidateDebug(u *multistate.Updatable, txBytes []byte, onValidation ...func(ctx *transaction2.TransactionContext, err error) error) (*transaction2.Transaction, error) {
-	var fun func(ctx *transaction2.TransactionContext, err error) error
+func updateValidateDebug(u *multistate.Updatable, txBytes []byte, onValidation ...func(ctx *transaction2.TxContext, err error) error) (*transaction2.Transaction, error) {
+	var fun func(ctx *transaction2.TxContext, err error) error
 	if len(onValidation) > 0 {
 		fun = onValidation[0]
 	}
@@ -22,12 +22,12 @@ func updateValidateDebug(u *multistate.Updatable, txBytes []byte, onValidation .
 }
 
 // updateValidateNoDebug updates/mutates the ledger state by transaction. For testing mostly
-func updateValidateOptions(u *multistate.Updatable, txBytes []byte, traceOption int, onValidation func(ctx *transaction2.TransactionContext, err error) error) (*transaction2.Transaction, error) {
+func updateValidateOptions(u *multistate.Updatable, txBytes []byte, traceOption int, onValidation func(ctx *transaction2.TxContext, err error) error) (*transaction2.Transaction, error) {
 	tx, err := transaction2.FromBytesMainChecksWithOpt(txBytes)
 	if err != nil {
 		return nil, err
 	}
-	ctx, err := transaction2.ContextFromTransaction(tx, tx.InputLoaderByIndex(u.Readable().GetUTXO), traceOption)
+	ctx, err := transaction2.TxContextFromTransaction(tx, tx.InputLoaderByIndex(u.Readable().GetUTXO), traceOption)
 	if err != nil {
 		return nil, err
 	}

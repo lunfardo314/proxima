@@ -39,7 +39,7 @@ func (v *Vertex) Validate(traceOption ...int) error {
 	if len(traceOption) > 0 {
 		traceOpt = traceOption[0]
 	}
-	ctx, err := transaction.ContextFromTransaction(v.Tx, v.getConsumedOutput, traceOpt)
+	ctx, err := transaction.TxContextFromTransaction(v.Tx, v.getConsumedOutput, traceOpt)
 	if err != nil {
 		return err
 	}
@@ -47,7 +47,7 @@ func (v *Vertex) Validate(traceOption ...int) error {
 }
 
 func (v *Vertex) ValidateDebug() (string, error) {
-	ctx, err := transaction.ContextFromTransaction(v.Tx, v.getConsumedOutput)
+	ctx, err := transaction.TxContextFromTransaction(v.Tx, v.getConsumedOutput)
 	if err != nil {
 		return "", err
 	}

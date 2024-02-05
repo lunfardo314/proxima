@@ -340,7 +340,7 @@ func (c *APIClient) GetTransferableOutputs(account ledger.Accountable, ts ledger
 }
 
 // MakeCompactTransaction requests server and creates a compact transaction for ED25519 outputs in the form of transaction context. Does not submit it
-func (c *APIClient) MakeCompactTransaction(walletPrivateKey ed25519.PrivateKey, tagAlongSeqID *ledger.ChainID, tagAlongFee uint64, maxInputs ...int) (*transaction2.TransactionContext, error) {
+func (c *APIClient) MakeCompactTransaction(walletPrivateKey ed25519.PrivateKey, tagAlongSeqID *ledger.ChainID, tagAlongFee uint64, maxInputs ...int) (*transaction2.TxContext, error) {
 	walletAccount := ledger.AddressED25519FromPrivateKey(walletPrivateKey)
 
 	nowisTs := ledger.TimeNow()
@@ -366,7 +366,7 @@ func (c *APIClient) MakeCompactTransaction(walletPrivateKey ed25519.PrivateKey, 
 		return nil, err
 	}
 
-	txCtx, err := transaction2.ContextFromTransferableBytes(txBytes, transaction2.PickOutputFromListFunc(walletOutputs))
+	txCtx, err := transaction2.TxContextFromTransferableBytes(txBytes, transaction2.PickOutputFromListFunc(walletOutputs))
 	if err != nil {
 		return nil, err
 	}
@@ -386,7 +386,7 @@ const (
 	minimumAmount = uint64(500)
 )
 
-func (c *APIClient) TransferFromED25519Wallet(par TransferFromED25519WalletParams) (*transaction2.TransactionContext, error) {
+func (c *APIClient) TransferFromED25519Wallet(par TransferFromED25519WalletParams) (*transaction2.TxContext, error) {
 	if par.Amount < minimumAmount {
 		return nil, fmt.Errorf("minimum transfer amount is %d", minimumAmount)
 	}
@@ -407,7 +407,7 @@ func (c *APIClient) TransferFromED25519Wallet(par TransferFromED25519WalletParam
 	if err != nil {
 		return nil, err
 	}
-	txCtx, err := transaction2.ContextFromTransferableBytes(txBytes, transaction2.PickOutputFromListFunc(walletOutputs))
+	txCtx, err := transaction2.TxContextFromTransferableBytes(txBytes, transaction2.PickOutputFromListFunc(walletOutputs))
 	if err != nil {
 		return nil, err
 	}
@@ -430,7 +430,7 @@ func (c *APIClient) getBody(path string) ([]byte, error) {
 	return body, nil
 }
 
-func (c *APIClient) MakeChainOrigin(par TransferFromED25519WalletParams) (*transaction2.TransactionContext, ledger.ChainID, error) {
+func (c *APIClient) MakeChainOrigin(par TransferFromED25519WalletParams) (*transaction2.TxContext, ledger.ChainID, error) {
 	if par.Amount < minimumAmount {
 		return nil, ledger.NilChainID, fmt.Errorf("minimum transfer amount is %d", minimumAmount)
 	}
@@ -501,7 +501,7 @@ func (c *APIClient) MakeChainOrigin(par TransferFromED25519WalletParams) (*trans
 
 	txBytes := txb.TransactionData.Bytes()
 
-	txCtx, err := transaction2.ContextFromTransferableBytes(txBytes, transaction2.PickOutputFromListFunc(inps))
+	txCtx, err := transaction2.TxContextFromTransferableBytes(txBytes, transaction2.PickOutputFromListFunc(inps))
 	if err != nil {
 		return nil, [32]byte{}, err
 	}

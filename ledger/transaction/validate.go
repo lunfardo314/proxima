@@ -15,7 +15,7 @@ import (
 	"golang.org/x/crypto/blake2b"
 )
 
-func (ctx *TransactionContext) evalContext(path []byte) easyfl.GlobalData {
+func (ctx *TxContext) evalContext(path []byte) easyfl.GlobalData {
 	ctx.dataContext.SetPath(path)
 	switch ctx.traceOption {
 	case TraceOptionNone:
@@ -31,7 +31,7 @@ func (ctx *TransactionContext) evalContext(path []byte) easyfl.GlobalData {
 
 // checkConstraint checks the constraint at path. In-line and unlock scripts are ignored
 // for 'produces output' context
-func (ctx *TransactionContext) checkConstraint(constraintData []byte, constraintPath lazybytes.TreePath) ([]byte, string, error) {
+func (ctx *TxContext) checkConstraint(constraintData []byte, constraintPath lazybytes.TreePath) ([]byte, string, error) {
 	var ret []byte
 	var name string
 	err := util.CatchPanicOrError(func() error {
@@ -45,7 +45,7 @@ func (ctx *TransactionContext) checkConstraint(constraintData []byte, constraint
 	return ret, name, nil
 }
 
-func (ctx *TransactionContext) Validate() error {
+func (ctx *TxContext) Validate() error {
 	var inSum, outSum uint64
 	var err error
 
@@ -78,7 +78,7 @@ func (ctx *TransactionContext) Validate() error {
 	return nil
 }
 
-func (ctx *TransactionContext) writeStateMutationsTo(mut common.KVWriter) {
+func (ctx *TxContext) writeStateMutationsTo(mut common.KVWriter) {
 	// delete consumed outputs from the ledger
 	ctx.ForEachInputID(func(idx byte, oid *ledger.OutputID) bool {
 		mut.Set(oid[:], nil)
@@ -95,7 +95,7 @@ func (ctx *TransactionContext) writeStateMutationsTo(mut common.KVWriter) {
 
 // ValidateWithReportOnConsumedOutputs validates the transaction and returns indices of failing consumed outputs, if any
 // This for the convenience of automated VMs and sequencers
-func (ctx *TransactionContext) ValidateWithReportOnConsumedOutputs() ([]byte, error) {
+func (ctx *TxContext) ValidateWithReportOnConsumedOutputs() ([]byte, error) {
 	var inSum, outSum uint64
 	var err error
 	var retFailedConsumed []byte
@@ -131,7 +131,7 @@ func (ctx *TransactionContext) ValidateWithReportOnConsumedOutputs() ([]byte, er
 	return nil, nil
 }
 
-func (ctx *TransactionContext) validateOutputsFailFast(consumedBranch bool) (uint64, error) {
+func (ctx *TxContext) validateOutputsFailFast(consumedBranch bool) (uint64, error) {
 	totalAmount, _, err := ctx._validateOutputs(consumedBranch, true)
 	return totalAmount, err
 }
@@ -140,7 +140,7 @@ func (ctx *TransactionContext) validateOutputsFailFast(consumedBranch bool) (uin
 // or return the list of indices of failed outputs
 // If err != nil and failFast = false, returns list of failed consumed and produced output respectively
 // if failFast = true, returns (totalAmount, nil, nil, error)
-func (ctx *TransactionContext) _validateOutputs(consumedBranch bool, failFast bool) (uint64, []byte, error) {
+func (ctx *TxContext) _validateOutputs(consumedBranch bool, failFast bool) (uint64, []byte, error) {
 	var branch lazybytes.TreePath
 	if consumedBranch {
 		branch = Path(ledger.ConsumedBranch, ledger.ConsumedOutputsBranch)
@@ -199,12 +199,12 @@ func (ctx *TransactionContext) _validateOutputs(consumedBranch bool, failFast bo
 	return sum, nil, nil
 }
 
-func (ctx *TransactionContext) UnlockParams(consumedOutputIdx, constraintIdx byte) []byte {
+func (ctx *TxContext) UnlockParams(consumedOutputIdx, constraintIdx byte) []byte {
 	return ctx.tree.BytesAtPath(Path(ledger.TransactionBranch, ledger.TxUnlockParams, consumedOutputIdx, constraintIdx))
 }
 
 // runOutput checks constraints of the output one-by-one
-func (ctx *TransactionContext) runOutput(consumedBranch bool, output *ledger.Output, path lazybytes.TreePath) (uint32, error) {
+func (ctx *TxContext) runOutput(consumedBranch bool, output *ledger.Output, path lazybytes.TreePath) (uint32, error) {
 	blockPath := common.Concat(path, byte(0))
 	var err error
 	extraStorageDepositWeight := uint32(0)
@@ -250,7 +250,7 @@ func (ctx *TransactionContext) runOutput(consumedBranch bool, output *ledger.Out
 	return extraStorageDepositWeight, nil
 }
 
-func (ctx *TransactionContext) validateInputCommitment() error {
+func (ctx *TxContext) validateInputCommitment() error {
 	consumeOutputHash := ctx.ConsumedOutputHash()
 	inputCommitment := ctx.InputCommitment()
 	if !bytes.Equal(consumeOutputHash[:], inputCommitment) {
@@ -260,7 +260,7 @@ func (ctx *TransactionContext) validateInputCommitment() error {
 	return nil
 }
 
-func (ctx *TransactionContext) ConsumedOutputHash() [32]byte {
+func (ctx *TxContext) ConsumedOutputHash() [32]byte {
 	consumedOutputBytes := ctx.tree.BytesAtPath(Path(ledger.ConsumedBranch, ledger.ConsumedOutputsBranch))
 	return blake2b.Sum256(consumedOutputBytes)
 }
@@ -341,7 +341,7 @@ func constraintName(binCode []byte) string {
 	return fmt.Sprintf("constraint_call_prefix(%s)", easyfl.Fmt(prefix))
 }
 
-func (ctx *TransactionContext) evalConstraint(constr []byte, path lazybytes.TreePath) ([]byte, string, error) {
+func (ctx *TxContext) evalConstraint(constr []byte, path lazybytes.TreePath) ([]byte, string, error) {
 	if len(constr) == 0 {
 		return nil, "", fmt.Errorf("constraint can't be empty")
 	}

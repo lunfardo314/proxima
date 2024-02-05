@@ -61,7 +61,7 @@ func (v *Vertex) ValidateConstraints(traceOption ...int) error {
 	if len(traceOption) > 0 {
 		traceOpt = traceOption[0]
 	}
-	ctx, err := transaction.ContextFromTransaction(v.Tx, v.InputLoaderByIndex, traceOpt)
+	ctx, err := transaction.TxContextFromTransaction(v.Tx, v.InputLoaderByIndex, traceOpt)
 	if err != nil {
 		return err
 	}

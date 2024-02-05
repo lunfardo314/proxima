@@ -882,7 +882,7 @@ func TestHashUnlock(t *testing.T) {
 	txbytes, err := txbuilder.MakeTransferTransaction(par)
 	require.NoError(t, err)
 
-	ctx, err := transaction2.ContextFromTransferableBytes(txbytes, u.StateReader().GetUTXO)
+	ctx, err := transaction2.TxContextFromTransferableBytes(txbytes, u.StateReader().GetUTXO)
 	require.NoError(t, err)
 
 	t.Logf("%s", ctx.String())
@@ -902,7 +902,7 @@ func TestHashUnlock(t *testing.T) {
 	txbytes, err = txbuilder.MakeTransferTransaction(par)
 	require.NoError(t, err)
 
-	ctx, err = transaction2.ContextFromTransferableBytes(txbytes, u.StateReader().GetUTXO)
+	ctx, err = transaction2.TxContextFromTransferableBytes(txbytes, u.StateReader().GetUTXO)
 	require.NoError(t, err)
 
 	t.Logf("---- transaction without hash unlock: FAILING\n %s", ctx.String())
@@ -915,7 +915,7 @@ func TestHashUnlock(t *testing.T) {
 	txbytes, err = txbuilder.MakeTransferTransaction(par)
 	require.NoError(t, err)
 
-	ctx, err = transaction2.ContextFromTransferableBytes(txbytes, u.StateReader().GetUTXO)
+	ctx, err = transaction2.TxContextFromTransferableBytes(txbytes, u.StateReader().GetUTXO)
 	require.NoError(t, err)
 
 	t.Logf("---- transaction with hash unlock, the library/script: SUCCESS\n %s", ctx.String())

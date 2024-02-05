@@ -395,12 +395,12 @@ func CheckSizeOfOutputCommitment() TxValidationOption {
 
 func ValidateOptionWithFullContext(inputLoaderByIndex func(i byte) (*ledger.Output, error)) TxValidationOption {
 	return func(tx *Transaction) error {
-		var ctx *TransactionContext
+		var ctx *TxContext
 		var err error
 		if __printLogOnFail.Load() {
-			ctx, err = ContextFromTransaction(tx, inputLoaderByIndex, TraceOptionAll)
+			ctx, err = TxContextFromTransaction(tx, inputLoaderByIndex, TraceOptionAll)
 		} else {
-			ctx, err = ContextFromTransaction(tx, inputLoaderByIndex)
+			ctx, err = TxContextFromTransaction(tx, inputLoaderByIndex)
 		}
 		if err != nil {
 			return err
@@ -743,7 +743,7 @@ func OutputsWithIDFromTransactionBytes(txBytes []byte) ([]*ledger.OutputWithID, 
 }
 
 func (tx *Transaction) ToString(fetchOutput func(oid *ledger.OutputID) ([]byte, bool)) string {
-	ctx, err := ContextFromTransaction(tx, func(i byte) (*ledger.Output, error) {
+	ctx, err := TxContextFromTransaction(tx, func(i byte) (*ledger.Output, error) {
 		oid, err1 := tx.InputAt(i)
 		if err1 != nil {
 			return nil, err1
@@ -765,7 +765,7 @@ func (tx *Transaction) ToString(fetchOutput func(oid *ledger.OutputID) ([]byte, 
 }
 
 func (tx *Transaction) ToStringWithInputLoaderByIndex(fetchOutput func(i byte) (*ledger.Output, error)) string {
-	ctx, err := ContextFromTransaction(tx, fetchOutput)
+	ctx, err := TxContextFromTransaction(tx, fetchOutput)
 	if err != nil {
 		return err.Error()
 	}
@@ -876,7 +876,7 @@ func (tx *Transaction) StateMutations() *multistate.Mutations {
 }
 
 func (tx *Transaction) Lines(inputLoaderByIndex func(i byte) (*ledger.Output, error), prefix ...string) *lines.Lines {
-	ctx, err := ContextFromTransaction(tx, inputLoaderByIndex)
+	ctx, err := TxContextFromTransaction(tx, inputLoaderByIndex)
 	if err != nil {
 		ret := lines.New(prefix...)
 		ret.Add("can't create context of transaction %s: '%v'", tx.IDShortString(), err)
