@@ -85,7 +85,7 @@ func zeroTickOnBranchOnly : or(
 func sequencer: and(
 	mustSize($0,1),
     mustMinimumAmountOnSequencer, // enforcing minimum amount on sequencer
-    if(
+    or(
         selfIsConsumedOutput,
 		and(
 			// produced
@@ -96,8 +96,7 @@ func sequencer: and(
             require(equal($1, txTotalProducedAmount), !!!wrong_total_amount_on_sequencer_output),
                 // check chain's past'
 			_sequencer( chainPredecessorInputIndex($0) )
-		),
-        true
+		)
     )
 )
 `
