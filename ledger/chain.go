@@ -155,6 +155,13 @@ func destroyUnlockParams : 0xffffff
 // $0 - chain constraint data
 func chainID : slice($0, 0, 31)
 func predecessorInputIndexFromChainData : byte($0, 32)
+func requireChainTransition : require(
+    and(
+       not(equal(chainID($0), repeat(0,32))),
+       isZero(byte($0, 34))
+	),
+    !!!must_be_a_chain_transition
+)
 
 func transitionMode: byte($0, 34)
 func predecessorConstraintIndex : slice($0, 32, 33) // 2 bytes
@@ -233,6 +240,11 @@ func chainSuccessorData :
 // It is enforced by the chain constraint 
 // but it is interpreted by other constraints, linked to the chain 
 // constraint, such as controller locks
+// -----
+// unlock parameters for the chain constraint. 3 bytes:
+// 0 - successor output index
+// 1 - successor block index
+// 2 - transition mode must be equal to the transition mode in the successor constraint data
 func chain: and(
       // chain constraint cannot be on output with index 0xff = 255
    not(equal(selfOutputIndex, 0xff)),  

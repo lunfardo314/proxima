@@ -10,7 +10,7 @@ import (
 	"github.com/lunfardo314/unitrie/common"
 )
 
-/*
+/*self
 
 All integers are treated big-endian. This way lexicographical order coincides with the arithmetic order
 
@@ -275,6 +275,7 @@ func init() {
 	initCommitToSiblingConstraint()
 	initStateIndexConstraint()
 	initTotalAmountConstraint()
+	initInflationConstraint()
 
 	runCommonUnitTests()
 
