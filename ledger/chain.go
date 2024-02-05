@@ -2,7 +2,6 @@ package ledger
 
 import (
 	"bytes"
-	"crypto/rand"
 	"encoding/hex"
 	"fmt"
 
@@ -13,89 +12,20 @@ import (
 )
 
 // ChainConstraint is a chain constraint
-type (
-	ChainID [ChainIDLength]byte
-
-	ChainConstraint struct {
-		// ID all-0 for origin
-		ID ChainID
-		// 0xFF for origin, 0x00 for state transition, other reserved
-		TransitionMode byte
-		// Previous index of the consumed chain input with the same ID. Must be 0xFF for the origin
-		PredecessorInputIndex      byte
-		PredecessorConstraintIndex byte
-	}
-)
+type ChainConstraint struct {
+	// ID all-0 for origin
+	ID ChainID
+	// 0xFF for origin, 0x00 for state transition, other reserved
+	TransitionMode byte
+	// Previous index of the consumed chain input with the same ID. Must be 0xFF for the origin
+	PredecessorInputIndex      byte
+	PredecessorConstraintIndex byte
+}
 
 const (
-	ChainIDLength           = 32
 	ChainConstraintName     = "chain"
 	chainConstraintTemplate = ChainConstraintName + "(0x%s)"
 )
-
-var (
-	NilChainID ChainID
-	RndChainID = func() ChainID {
-		var ret ChainID
-		_, err := rand.Read(ret[:])
-		util.AssertNoError(err)
-		return ret
-	}()
-)
-
-func (id *ChainID) Bytes() []byte {
-	return id[:]
-}
-
-func (id *ChainID) String() string {
-	return fmt.Sprintf("$/%s", hex.EncodeToString(id[:]))
-}
-
-func (id *ChainID) StringHex() string {
-	return hex.EncodeToString(id[:])
-}
-
-func (id *ChainID) StringShort() string {
-	return fmt.Sprintf("$/%s..", hex.EncodeToString(id[:6]))
-}
-
-func (id *ChainID) StringVeryShort() string {
-	return fmt.Sprintf("$/%s..", hex.EncodeToString(id[:3]))
-}
-
-func (id *ChainID) AsChainLock() ChainLock {
-	return ChainLockFromChainID(*id)
-}
-
-func (id *ChainID) AsAccountID() AccountID {
-	return id.AsChainLock().AccountID()
-}
-
-func ChainIDFromBytes(data []byte) (ret ChainID, err error) {
-	if len(data) != ChainIDLength {
-		err = fmt.Errorf("ChainIDFromBytes: wrong data length %d", len(data))
-		return
-	}
-	copy(ret[:], data)
-	return
-}
-
-func ChainIDFromHexString(str string) (ret ChainID, err error) {
-	data, err := hex.DecodeString(str)
-	if err != nil {
-		return [32]byte{}, err
-	}
-	return ChainIDFromBytes(data)
-}
-
-func RandomChainID() (ret ChainID) {
-	_, _ = rand.Read(ret[:])
-	return
-}
-
-func OriginChainID(oid *OutputID) ChainID {
-	return blake2b.Sum256(oid[:])
-}
 
 func NewChainConstraint(id ChainID, prevOut, prevBlock, mode byte) *ChainConstraint {
 	return &ChainConstraint{

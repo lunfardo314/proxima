@@ -14,6 +14,7 @@ const (
 	TransactionIDShortLength = 27
 	TransactionIDLength      = TimeByteLength + TransactionIDShortLength
 	OutputIDLength           = TransactionIDLength + 1
+	ChainIDLength            = 32
 
 	SequencerTxFlagInTimeSlot = ^(Slot(0xffffffff) >> 1)
 	BranchTxFlagInTimeSlot    = SequencerTxFlagInTimeSlot >> 1
@@ -36,6 +37,8 @@ type (
 	// [5:32] TransactionIDShort
 	TransactionID [TransactionIDLength]byte
 	OutputID      [OutputIDLength]byte
+	// ChainID all-0 for origin
+	ChainID [ChainIDLength]byte
 )
 
 var All0TransactionHash = TransactionIDShort{}
@@ -348,4 +351,62 @@ func EqualTransactionIDs(txid1, txid2 *TransactionID) bool {
 		return false
 	}
 	return *txid1 == *txid2
+}
+
+// ChainID
+
+var NilChainID ChainID
+
+func (id *ChainID) Bytes() []byte {
+	return id[:]
+}
+
+func (id *ChainID) String() string {
+	return fmt.Sprintf("$/%s", hex.EncodeToString(id[:]))
+}
+
+func (id *ChainID) StringHex() string {
+	return hex.EncodeToString(id[:])
+}
+
+func (id *ChainID) StringShort() string {
+	return fmt.Sprintf("$/%s..", hex.EncodeToString(id[:6]))
+}
+
+func (id *ChainID) StringVeryShort() string {
+	return fmt.Sprintf("$/%s..", hex.EncodeToString(id[:3]))
+}
+
+func (id *ChainID) AsChainLock() ChainLock {
+	return ChainLockFromChainID(*id)
+}
+
+func (id *ChainID) AsAccountID() AccountID {
+	return id.AsChainLock().AccountID()
+}
+
+func ChainIDFromBytes(data []byte) (ret ChainID, err error) {
+	if len(data) != ChainIDLength {
+		err = fmt.Errorf("ChainIDFromBytes: wrong data length %d", len(data))
+		return
+	}
+	copy(ret[:], data)
+	return
+}
+
+func ChainIDFromHexString(str string) (ret ChainID, err error) {
+	data, err := hex.DecodeString(str)
+	if err != nil {
+		return [32]byte{}, err
+	}
+	return ChainIDFromBytes(data)
+}
+
+func RandomChainID() (ret ChainID) {
+	_, _ = rand.Read(ret[:])
+	return
+}
+
+func OriginChainID(oid *OutputID) ChainID {
+	return blake2b.Sum256(oid[:])
 }

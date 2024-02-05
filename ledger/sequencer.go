@@ -24,9 +24,9 @@ const (
 	)
 	`
 	validInflationTemplate = `
-	// check is inflation amount is valid
+	// check if inflation amount is valid
 	// $0 - total produced amount on predecessor. It does not matter for simple sequencer tx, it is equal 
-	//    to total inout amount of the branch tx   
+	//    to total input amount of the branch tx   
 	// $1 - inflation amount
 	if(
 		 isBranchTransaction,
@@ -75,7 +75,7 @@ require(
 		isBranchTransaction, 
 		not(isZero(numEndorsements))
 	), 
-	!!!sequencer_tx_has_incorrect_cross_slot_chain_predecessor_or_dont_have_any_endorsements
+	!!!sequencer_tx_has_incorrect_cross_slot_chain_predecessor_or_don't_have_any_endorsements
 )
 
 // $0 chain predecessor input index
@@ -121,14 +121,12 @@ const (
 	sequencerConstraintTemplate = SequencerConstraintName + "(%d, u64/%d)"
 )
 
-type (
-	SequencerConstraint struct {
-		// must point to the sibling chain constraint
-		ChainConstraintIndex byte
-		// must be equal to the total produced amount of the transaction
-		TotalProducedAmount uint64
-	}
-)
+type SequencerConstraint struct {
+	// must point to the sibling chain constraint
+	ChainConstraintIndex byte
+	// must be equal to the total produced amount of the transaction
+	TotalProducedAmount uint64
+}
 
 func NewSequencerConstraint(chainConstraintIndex byte, totalProducedAmount uint64) *SequencerConstraint {
 	return &SequencerConstraint{
