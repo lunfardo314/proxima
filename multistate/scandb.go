@@ -106,14 +106,14 @@ func FetchSummarySupplyAndInflation(stateStore global.StateStore, nBack int) *Su
 	}
 	for i := 0; i < len(branchData)-1; i++ {
 		//inflation := branchData[i].Stem.Output.MustStemLock().InflationAmount
-		//ret.TotalInflation += inflation
+		//ret.SlotInflation += inflation
 
 		seqInfo := ret.InfoPerSeqID[branchData[i].SequencerID]
 		seqInfo.NumBranches++
-		//seqInfo.TotalInflation += inflation
+		//seqInfo.SlotInflation += inflation
 		ret.InfoPerSeqID[branchData[i].SequencerID] = seqInfo
 	}
-	util.Assertf(ret.EndSupply-ret.BeginSupply == ret.TotalInflation, "FetchSummarySupplyAndInflation: ret.EndSupply - ret.BeginSupply == ret.TotalInflation")
+	util.Assertf(ret.EndSupply-ret.BeginSupply == ret.TotalInflation, "FetchSummarySupplyAndInflation: ret.EndSupply - ret.BeginSupply == ret.SlotInflation")
 
 	for seqID, seqInfo := range ret.InfoPerSeqID {
 		rdr := MustNewSugaredReadableState(stateStore, branchData[0].Root)

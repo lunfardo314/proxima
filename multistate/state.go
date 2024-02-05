@@ -32,9 +32,19 @@ type (
 	LedgerCoverage [HistoryCoverageDeltas]uint64
 
 	RootRecord struct {
-		Root           common.VCommitment
-		SequencerID    ledger.ChainID
+		Root        common.VCommitment
+		SequencerID ledger.ChainID
+		// Note: LedgerCoverage, SlotInflation and Supply are deterministic values calculated from the ledger past cone
+		// Each node calculates them itself, and they must be equal on each
+		// LedgerCoverage: a vector of coverage deltas. Index 0 is delta of the latest slot. It does not include
+		// coverage of the branch itself
 		LedgerCoverage LedgerCoverage
+		// SlotInflation: total inflation delta from previous root. It is a sum of individual transaction inflation values
+		// of the previous slot/past cone. It includes the branch tx inflation itself and does not include inflation of the previous branch
+		SlotInflation uint64
+		// Supply: total supply at this root (including the branch itself, excluding prev branch).
+		// It is the sum of the Supply of the previous branch and SlotInflation of the current
+		Supply uint64
 	}
 
 	BranchData struct {

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"io"
 
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util"
@@ -17,6 +18,8 @@ type (
 	TransactionMetadata struct {
 		StateRoot               common.VCommitment // not nil may be for branch transactions
 		LedgerCoverageDelta     *uint64            // not nil may be for sequencer transactions
+		SlotInflation           *uint64            // not nil may be for branch transactions
+		Supply                  *uint64            // not nil may be for branch transactions
 		IsResponseToPull        bool
 		SourceTypeNonPersistent SourceType
 	}
@@ -47,10 +50,8 @@ const (
 	flagIsResponseToPull      = 0b00000001
 	flagRootProvided          = 0b00000010
 	flagCoverageDeltaProvided = 0b00000100
-)
-
-const (
-	MaxTransactionMetadataByteSize = 255
+	flagSlotInflationProvided = 0b00001000
+	flagSupplyProvided        = 0b00010000
 )
 
 func (s SourceType) String() string {
@@ -68,6 +69,12 @@ func (m *TransactionMetadata) flags() (ret byte) {
 	}
 	if m.LedgerCoverageDelta != nil {
 		ret |= flagCoverageDeltaProvided
+	}
+	if m.SlotInflation != nil {
+		ret |= flagSlotInflationProvided
+	}
+	if m.Supply != nil {
+		ret |= flagSupplyProvided
 	}
 	return
 }
@@ -95,10 +102,32 @@ func (m *TransactionMetadata) Bytes() []byte {
 		binary.BigEndian.PutUint64(coverageBin[:], *m.LedgerCoverageDelta)
 		buf.Write(coverageBin[:])
 	}
+	if m.SlotInflation != nil {
+		var slotInflationBin [8]byte
+		binary.BigEndian.PutUint64(slotInflationBin[:], *m.SlotInflation)
+		buf.Write(slotInflationBin[:])
+	}
+	if m.Supply != nil {
+		var supplyBin [8]byte
+		binary.BigEndian.PutUint64(supplyBin[:], *m.Supply)
+		buf.Write(supplyBin[:])
+	}
 	ret := buf.Bytes()
 	util.Assertf(len(ret) <= 256, "too big TransactionMetadata")
 	ret[0] = byte(len(ret) - 1)
 	return ret
+}
+
+func _readUint64(r io.Reader) (uint64, error) {
+	var uint64Bin [8]byte
+	n, err := r.Read(uint64Bin[:])
+	if err != nil {
+		return 0, fmt.Errorf("TransactionMetadataFromBytes: %w", err)
+	}
+	if n != 8 {
+		return 0, fmt.Errorf("TransactionMetadataFromBytes: unexpected EOF")
+	}
+	return binary.BigEndian.Uint64(uint64Bin[:]), nil
 }
 
 func TransactionMetadataFromBytes(data []byte) (*TransactionMetadata, error) {
@@ -123,16 +152,22 @@ func TransactionMetadataFromBytes(data []byte) (*TransactionMetadata, error) {
 		}
 	}
 	if flags&flagCoverageDeltaProvided != 0 {
-		var uint64Bin [8]byte
-		n, err := rdr.Read(uint64Bin[:])
-		if err != nil {
-			return nil, fmt.Errorf("TransactionMetadataFromBytes: %w", err)
-		}
-		if n != 8 {
-			return nil, fmt.Errorf("TransactionMetadataFromBytes: unexpected EOF")
-		}
 		ret.LedgerCoverageDelta = new(uint64)
-		*ret.LedgerCoverageDelta = binary.BigEndian.Uint64(uint64Bin[:])
+		if *ret.LedgerCoverageDelta, err = _readUint64(rdr); err != nil {
+			return nil, err
+		}
+	}
+	if flags&flagSlotInflationProvided != 0 {
+		ret.SlotInflation = new(uint64)
+		if *ret.SlotInflation, err = _readUint64(rdr); err != nil {
+			return nil, err
+		}
+	}
+	if flags&flagSupplyProvided != 0 {
+		ret.Supply = new(uint64)
+		if *ret.Supply, err = _readUint64(rdr); err != nil {
+			return nil, err
+		}
 	}
 	return ret, nil
 }

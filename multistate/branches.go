@@ -1,6 +1,7 @@
 package multistate
 
 import (
+	"encoding/binary"
 	"fmt"
 	"sort"
 
@@ -40,10 +41,15 @@ func FetchLatestSlot(store global.StateStore) ledger.Slot {
 
 func (r *RootRecord) Bytes() []byte {
 	util.Assertf(r.LedgerCoverage.LatestDelta() == 0, "r.LedgerCoverage.LatestDelta() == 0")
-	arr := lazybytes.EmptyArray(3)
+	arr := lazybytes.EmptyArray(5)
 	arr.Push(r.SequencerID.Bytes())
 	arr.Push(r.Root.Bytes())
 	arr.Push(r.LedgerCoverage.BytesOfBranchCoverage())
+	var slotInflationBin, supplyBin [8]byte
+	binary.BigEndian.PutUint64(slotInflationBin[:], r.SlotInflation)
+	arr.Push(slotInflationBin[:])
+	binary.BigEndian.PutUint64(supplyBin[:], r.Supply)
+	arr.Push(supplyBin[:])
 	return arr.Bytes()
 }
 
@@ -57,7 +63,7 @@ func (br *BranchData) TxID() *ledger.TransactionID {
 }
 
 func RootRecordFromBytes(data []byte) (RootRecord, error) {
-	arr, err := lazybytes.ParseArrayFromBytesReadOnly(data, 3)
+	arr, err := lazybytes.ParseArrayFromBytesReadOnly(data, 5)
 	if err != nil {
 		return RootRecord{}, err
 	}
@@ -76,11 +82,16 @@ func RootRecordFromBytes(data []byte) (RootRecord, error) {
 	if err != nil {
 		return RootRecord{}, err
 	}
+	if len(arr.At(3)) != 8 || len(arr.At(4)) != 8 {
+		return RootRecord{}, fmt.Errorf("wrong data length")
+	}
 
 	return RootRecord{
 		Root:           root,
 		SequencerID:    chainID,
 		LedgerCoverage: coverage,
+		SlotInflation:  binary.BigEndian.Uint64(arr.At(3)),
+		Supply:         binary.BigEndian.Uint64(arr.At(4)),
 	}, nil
 }
 
