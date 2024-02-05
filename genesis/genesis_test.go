@@ -21,7 +21,7 @@ func TestOriginBase(t *testing.T) {
 	t.Logf("   Genesis chain ID: %s", gOut.ChainID.String())
 	t.Logf("   Genesis output constraints:\n%s", gOut.Output.ToString("        "))
 
-	sOut := StemOutput(supply, genesisTimeSlot)
+	sOut := StemOutput(genesisTimeSlot)
 	t.Logf("   Stem outputID: %s", sOut.ID.String())
 	t.Logf("   Stem output constraints:\n%s", sOut.Output.ToString("        "))
 

@@ -12,8 +12,6 @@ import (
 const (
 	// MinimumAmountOnSequencer minimum amount of tokens on the sequencer's chain output
 	MinimumAmountOnSequencer = 1_000_000 //
-	// MaxInflationPerBranchFraction total amount on the predecessor is divided by this constant to get inflation amount on branch
-	MaxInflationPerBranchFraction = 1_000_000
 )
 
 const (
@@ -23,22 +21,10 @@ const (
 		 !!!minimum_sequencer_amount_constraint_failed
 	)
 	`
-	validInflationTemplate = `
-	// check if inflation amount is valid
-	// $0 - total produced amount on predecessor. It does not matter for simple sequencer tx, it is equal 
-	//    to total input amount of the branch tx   
-	// $1 - inflation amount
-	if(
-		 isBranchTransaction,
-		 require(lessOrEqualThan($1, div64($0, u64/%d)), !!!wrong_inflation_amount_on_branch_transaction),
-		 require(isZero($1), !!!inflation_must_be_zero_on_non_branch_transaction)
-	)
-`
 )
 
 var (
 	minimumAmountOnSeqSource = fmt.Sprintf(mustMinSeqAmountTemplate, MinimumAmountOnSequencer)
-	validInflationSource     = fmt.Sprintf(validInflationTemplate, MaxInflationPerBranchFraction)
 )
 
 const sequencerConstraintSource = `
@@ -101,7 +87,6 @@ func sequencer: and(
     mustMinimumAmountOnSequencer, // enforcing minimum amount on sequencer
     if(
         selfIsConsumedOutput,
-		require( validInflation($1, txInflationAmount), !!!wrong_inflation_amount ),
 		and(
 			// produced
 			require(not(equal(selfOutputIndex, 0xff)), !!!sequencer_output_can't_be_at_index_0xff),
@@ -111,7 +96,8 @@ func sequencer: and(
             require(equal($1, txTotalProducedAmount), !!!wrong_total_amount_on_sequencer_output),
                 // check chain's past'
 			_sequencer( chainPredecessorInputIndex($0) )
-		)
+		),
+        true
     )
 )
 `
@@ -133,10 +119,6 @@ func NewSequencerConstraint(chainConstraintIndex byte, totalProducedAmount uint6
 		ChainConstraintIndex: chainConstraintIndex,
 		TotalProducedAmount:  totalProducedAmount,
 	}
-}
-
-func MaxInflationFromPredecessorAmount(amount uint64) uint64 {
-	return amount / MaxInflationPerBranchFraction
 }
 
 func (s *SequencerConstraint) Name() string {
@@ -182,7 +164,6 @@ func SequencerConstraintFromBytes(data []byte) (*SequencerConstraint, error) {
 
 func initSequencerConstraint() {
 	easyfl.Extend("mustMinimumAmountOnSequencer", minimumAmountOnSeqSource)
-	easyfl.Extend("validInflation", validInflationSource)
 	easyfl.MustExtendMany(sequencerConstraintSource)
 
 	example := NewSequencerConstraint(4, 1337)

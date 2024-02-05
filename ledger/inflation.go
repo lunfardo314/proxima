@@ -143,12 +143,16 @@ func initInflationConstraint() {
 	easyfl.MustExtendMany(inflationConstraintSource)
 	// sanity check
 	example := NewInflationConstraint(125, 1337)
-	sym, prefix, args, err := easyfl.ParseBytecodeOneLevel(example.Bytes(), 2)
+	exampleBin := example.Bytes()
+	util.Assertf(example.ChainConstraintIndex == 125, "init 'inflation' failed")
+	util.Assertf(example.Amount == 1337, "init 'inflation' failed")
+	exampleBack, err := InflationConstraintFromBytes(exampleBin)
 	util.AssertNoError(err)
-	chainConstrIdx := easyfl.StripDataPrefix(args[0])
-	util.Assertf(sym == InflationConstraintName && len(chainConstrIdx) == 1 && chainConstrIdx[0] == 125, "'inflation' consistency check failed")
-	amountBin := easyfl.StripDataPrefix(args[1])
-	util.Assertf(len(amountBin) == 8 && binary.BigEndian.Uint64(amountBin) == 1337, "'inflation' consistency check failed")
+	util.Assertf(example.ChainConstraintIndex == exampleBack.ChainConstraintIndex, "init 'inflation' failed")
+	util.Assertf(example.Amount == exampleBack.Amount, "init 'inflation' failed")
+
+	prefix, err := easyfl.ParseBytecodePrefix(exampleBin)
+	util.AssertNoError(err)
 
 	registerConstraint(InflationConstraintName, prefix, func(data []byte) (Constraint, error) {
 		return InflationConstraintFromBytes(data)

@@ -96,8 +96,8 @@ func FetchSummarySupplyAndInflation(stateStore global.StateStore, nBack int) *Su
 	util.Assertf(len(branchData) > 0, "len(branchData) > 0")
 
 	ret := &SummarySupplyAndInflation{
-		BeginSupply:      branchData[len(branchData)-1].Stem.Output.MustStemLock().Supply,
-		EndSupply:        branchData[0].Stem.Output.MustStemLock().Supply,
+		BeginSupply:      0, // branchData[len(branchData)-1].Stem.Output.MustStemLock().Supply,
+		EndSupply:        0, // branchData[0].Stem.Output.MustStemLock().Supply,
 		TotalInflation:   0,
 		NumberOfBranches: len(branchData),
 		OldestSlot:       branchData[len(branchData)-1].Stem.Timestamp().Slot(),
@@ -105,12 +105,12 @@ func FetchSummarySupplyAndInflation(stateStore global.StateStore, nBack int) *Su
 		InfoPerSeqID:     make(map[ledger.ChainID]SequencerInfo),
 	}
 	for i := 0; i < len(branchData)-1; i++ {
-		inflation := branchData[i].Stem.Output.MustStemLock().InflationAmount
-		ret.TotalInflation += inflation
+		//inflation := branchData[i].Stem.Output.MustStemLock().InflationAmount
+		//ret.TotalInflation += inflation
 
 		seqInfo := ret.InfoPerSeqID[branchData[i].SequencerID]
 		seqInfo.NumBranches++
-		seqInfo.TotalInflation += inflation
+		//seqInfo.TotalInflation += inflation
 		ret.InfoPerSeqID[branchData[i].SequencerID] = seqInfo
 	}
 	util.Assertf(ret.EndSupply-ret.BeginSupply == ret.TotalInflation, "FetchSummarySupplyAndInflation: ret.EndSupply - ret.BeginSupply == ret.TotalInflation")

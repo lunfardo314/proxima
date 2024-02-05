@@ -37,11 +37,9 @@ func TestBasics(t *testing.T) {
 		stemOut, _, _, err := ledger.OutputFromBytesMain(stemOutData)
 		require.NoError(t, err)
 		require.EqualValues(t, 0, stemOut.Amount())
-		stemLock, ok := stemOut.StemLock()
+		_, ok := stemOut.StemLock()
 		require.True(t, ok)
 
-		require.EqualValues(t, u.Supply(), stemLock.Supply)
-		// TODO check state root
 	})
 	t.Run("utxodb 2", func(t *testing.T) {
 		u := utxodb.NewUTXODB(true)

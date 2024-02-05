@@ -41,7 +41,7 @@ func TestBasic(t *testing.T) {
 
 		id, _, err := genesis.ScanGenesisState(stateStore)
 		require.NoError(t, err)
-		genesisOut := genesis.StemOutput(id.InitialSupply, id.GenesisTimeSlot)
+		genesisOut := genesis.StemOutput(id.GenesisTimeSlot)
 		vidGenesis, err := attacher.EnsureBranch(genesisOut.ID.TransactionID(), wrk)
 		require.NoError(t, err)
 

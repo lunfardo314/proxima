@@ -22,7 +22,7 @@ func InitLedgerState(par LedgerIdentityData, store global.StateStore) (ledger.Ch
 
 	genesisAddr := ledger.AddressED25519FromPublicKey(par.GenesisControllerPublicKey)
 	gout := InitialSupplyOutput(par.InitialSupply, genesisAddr, par.GenesisTimeSlot)
-	gStemOut := StemOutput(par.InitialSupply, par.GenesisTimeSlot)
+	gStemOut := StemOutput(par.GenesisTimeSlot)
 
 	updatable := multistate.MustNewUpdatable(store, emptyRoot)
 	coverage := multistate.LedgerCoverage{0, par.InitialSupply}
@@ -48,14 +48,12 @@ func InitialSupplyOutput(initialSupply uint64, controllerAddress ledger.AddressE
 	}
 }
 
-func StemOutput(initialSupply uint64, genesisTimeSlot ledger.Slot) *ledger.OutputWithID {
+func StemOutput(genesisTimeSlot ledger.Slot) *ledger.OutputWithID {
 	return &ledger.OutputWithID{
 		ID: StemOutputID(genesisTimeSlot),
 		Output: ledger.NewOutput(func(o *ledger.Output) {
 			o.WithAmount(0).
 				WithLock(&ledger.StemLock{
-					Supply:              initialSupply,
-					InflationAmount:     0,
 					PredecessorOutputID: ledger.OutputID{},
 				})
 		}),

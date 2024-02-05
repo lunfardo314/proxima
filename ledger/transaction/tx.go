@@ -29,7 +29,8 @@ type (
 		branchTransactionFlag    bool
 		sender                   ledger.AddressED25519
 		timestamp                ledger.Time
-		totalAmount              ledger.Amount
+		totalAmount              uint64                    // persisted in tx
+		totalInflation           uint64                    // calculated
 		sequencerTransactionData *SequencerTransactionData // if != nil it is sequencer milestone transaction
 	}
 
@@ -145,7 +146,7 @@ func BaseValidation() TxValidationOption {
 		if len(totalAmountBin) != 8 {
 			return fmt.Errorf("wrong total amount bytes, must be 8 bytes")
 		}
-		tx.totalAmount = ledger.Amount(binary.BigEndian.Uint64(totalAmountBin))
+		tx.totalAmount = binary.BigEndian.Uint64(totalAmountBin)
 
 		tx.txHash = ledger.HashTransactionBytes(tx.tree.Bytes())
 
@@ -347,25 +348,33 @@ func CheckEndorsements() TxValidationOption {
 	}
 }
 
-// ScanOutputs validation option scans all inputs, enforces existence of mandatory constrains and computes total of outputs
+// ScanOutputs validation option scans all inputs, enforces existence of mandatory constrains,
+// computes total of outputs and total inflation
 func ScanOutputs() TxValidationOption {
 	return func(tx *Transaction) error {
 		numOutputs := tx.tree.NumElements(Path(ledger.TxOutputs))
-		ret := make([]*ledger.Output, numOutputs)
 		var err error
-		var amount, totalAmount ledger.Amount
+		var totalAmount uint64
+		var amount ledger.Amount
+		var o *ledger.Output
 
 		path := []byte{ledger.TxOutputs, 0}
-		for i := range ret {
+		for i := 0; i < numOutputs; i++ {
 			path[1] = byte(i)
-			ret[i], amount, _, err = ledger.OutputFromBytesMain(tx.tree.BytesAtPath(path))
+			o, amount, _, err = ledger.OutputFromBytesMain(tx.tree.BytesAtPath(path))
 			if err != nil {
 				return fmt.Errorf("scanning output #%d: '%v'", i, err)
 			}
-			if amount > math.MaxUint64-totalAmount {
+			if uint64(amount) > math.MaxUint64-totalAmount {
 				return fmt.Errorf("scanning output #%d: 'arithmetic overflow while calculating total of outputs'", i)
 			}
-			totalAmount += amount
+			totalAmount += uint64(amount)
+			if ic, idx := o.InflationConstraint(); idx != 0xff {
+				if ic.Amount > math.MaxUint64-tx.totalInflation {
+					return fmt.Errorf("scanning output #%d: 'arithmetic overflow while calculating inflation'", i)
+				}
+				tx.totalInflation += ic.Amount
+			}
 		}
 		if tx.totalAmount != totalAmount {
 			return fmt.Errorf("wrong total produced amount value")
@@ -485,7 +494,7 @@ func (tx *Transaction) TimestampTime() time.Time {
 	return tx.timestamp.Time()
 }
 
-func (tx *Transaction) TotalAmount() ledger.Amount {
+func (tx *Transaction) TotalAmount() uint64 {
 	return tx.totalAmount
 }
 
@@ -703,10 +712,7 @@ func (tx *Transaction) OutputID(idx byte) ledger.OutputID {
 }
 
 func (tx *Transaction) InflationAmount() uint64 {
-	if tx.IsBranchTransaction() {
-		return tx.SequencerTransactionData().StemOutputData.InflationAmount
-	}
-	return 0
+	return tx.totalInflation
 }
 
 func OutputWithIDFromTransactionBytes(txBytes []byte, idx byte) (*ledger.OutputWithID, error) {

@@ -160,15 +160,9 @@ func MakeSequencerTransactionWithInputLoader(par MakeSequencerTransactionParams)
 			consumedOutputs = append(consumedOutputs, par.StemInput.Output)
 		}
 
-		lck, ok := par.StemInput.Output.StemLock()
-		if !ok {
-			return nil, nil, errP("can't find stem lock")
-		}
 		stemOut := ledger.NewOutput(func(o *ledger.Output) {
 			o.WithAmount(par.StemInput.Output.Amount())
 			o.WithLock(&ledger.StemLock{
-				Supply:              lck.Supply + par.Inflation,
-				InflationAmount:     par.Inflation,
 				PredecessorOutputID: par.StemInput.ID,
 			})
 		})
