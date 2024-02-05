@@ -32,11 +32,20 @@ func requireValidInflationAmount : require(
 
 // $0 - chain successor output index
 // $1 - inflation constraint index
-func requireSuccessorWith0Amount : 
-require(
-   equal(unwrapBytecodeArg(producedConstraintByIndex(concat($0,$1)), #chain, 1), 0),
-   !!!wrong_inflation_constraint_in_the_successor
-)
+func requireInflationSuccessor : and(
+    require(
+       equal(unwrapBytecodeArg(producedConstraintByIndex(concat($0,$1)), #chain, 1), 0),
+       !!!wrong_inflation_constraint_in_the_successor
+    ),
+    require(
+       lessOrEqualThan(
+           selfAmountValue,
+           amountValue(producedOutputByIndex($0))
+       ),
+       !!!amount_should_not_decrease_on_inflated_output_successor
+    )
+) 
+
 
 // $0 - sibling chain constraint index
 // $1 - u64 inflation amount or u8/0 
@@ -51,10 +60,10 @@ func inflation : or(
         selfIsConsumedOutput,
 		if(
             equal(timeSlotOfInputByIndex(selfOutputIndex), txTimeSlot),
-               // on the same slot. Next must be with nil amount
-            requireSuccessorWith0Amount(
+               // on the same slot. Next must be with nil amount and not shrinking amount
+            requireInflationSuccessor(
                 byte(selfSiblingUnlockBlock($0) , 0), 
-                selfUnlockParameters // must be one bte of index
+                selfUnlockParameters // must be one byte of index
             ), 
                // cross slot - do not enforce
             true

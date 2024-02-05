@@ -267,6 +267,27 @@ func (o *Output) ChainConstraint() (*ChainConstraint, byte) {
 	return nil, 0xff
 }
 
+func (o *Output) InflationConstraint() (*InflationConstraint, byte) {
+	var ret *InflationConstraint
+	var err error
+	found := byte(0xff)
+	o.ForEachConstraint(func(idx byte, constr []byte) bool {
+		if idx < ConstraintIndexFirstOptionalConstraint {
+			return true
+		}
+		ret, err = InflationConstraintFromBytes(constr)
+		if err == nil {
+			found = idx
+			return false
+		}
+		return true
+	})
+	if found != 0xff {
+		return ret, found
+	}
+	return nil, 0xff
+}
+
 func (o *Output) SequencerOutputData() (*SequencerOutputData, bool) {
 	chainConstraint, chainConstraintIndex := o.ChainConstraint()
 	if chainConstraintIndex == 0xff {
