@@ -274,7 +274,6 @@ func init() {
 	initImmutableConstraint()
 	initCommitToSiblingConstraint()
 	initStateIndexConstraint()
-	initSequencerRequestConstraint()
 	initTotalAmountConstraint()
 
 	runCommonUnitTests()

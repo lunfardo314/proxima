@@ -301,7 +301,7 @@ func chainSuccessorData :
 //     0x00 - state transition
 //     0xff - origin state, can be any other values. 
 // It is enforced by the chain constraint 
-// but it is interpreted by other constraints, bound to chain 
+// but it is interpreted by other constraints, linked to the chain 
 // constraint, such as controller locks
 func chain: and(
       // chain constraint cannot be on output with index 0xff = 255
