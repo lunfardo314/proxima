@@ -653,7 +653,7 @@ func (a *attacher) setBaseline(txid *ledger.TransactionID, currentTS ledger.Time
 	util.Assertf(found, "setBaseline: can't fetch root record for %s", a.baseline.StringShort)
 
 	a.coverage = rr.LedgerCoverage
-	a.supply = rr.Supply
+	a.baselineSupply = rr.Supply
 	util.Assertf(a.coverage.LatestDelta() == 0, "a.coverage.LatestDelta() == 0")
 }
 
@@ -662,6 +662,7 @@ func (a *attacher) dumpLines(prefix ...string) *lines.Lines {
 	ret.Add("attacher %s", a.name)
 	ret.Add("   baseline: %s", a.baseline.String())
 	ret.Add("   coverage: %s", a.coverage.String())
+	ret.Add("   baselineSupply: %s", util.GoTh(a.baselineSupply))
 	ret.Add("   vertices:")
 	ret.Append(a.linesVertices(prefix...))
 	ret.Add("   rooted:")

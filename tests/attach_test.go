@@ -80,7 +80,7 @@ func TestBasic(t *testing.T) {
 		txBytes, err := txbuilder.DistributeInitialSupply(stateStore, privKey, distrib)
 		require.NoError(t, err)
 
-		distribTxID, _, err := transaction.IDAndTimestampFromTransactionBytes(txBytes)
+		distribTxID, err := transaction.IDFromTransactionBytes(txBytes)
 		require.NoError(t, err)
 
 		vidDistrib, err := attacher.EnsureBranch(distribTxID, wrk)
@@ -101,9 +101,11 @@ func TestBasic(t *testing.T) {
 		stemOut := rdr.GetStemOutput()
 		require.EqualValues(t, distribTxID, stemOut.ID.TransactionID())
 		require.EqualValues(t, 0, stemOut.Output.Amount())
-		stemLock, ok := stemOut.Output.StemLock()
+
+		rr, ok := multistate.FetchRootRecord(wrk.StateStore(), distribVID.ID)
 		require.True(t, ok)
-		require.EqualValues(t, genesis.DefaultSupply, int(stemLock.Supply))
+		require.EqualValues(t, genesis.DefaultSupply, int(rr.Supply))
+		require.EqualValues(t, 0, int(rr.SlotInflation))
 
 		bal1, n1 := multistate.BalanceOnLock(rdr, addr1)
 		require.EqualValues(t, 1_000_000, int(bal1))
@@ -170,9 +172,11 @@ func TestBasic(t *testing.T) {
 
 		require.EqualValues(t, distribTxID, stemOut.ID.TransactionID())
 		require.EqualValues(t, 0, stemOut.Output.Amount())
-		stemLock, ok := stemOut.Output.StemLock()
+
+		rr, ok := multistate.FetchRootRecord(wrk.StateStore(), distribTxID)
 		require.True(t, ok)
-		require.EqualValues(t, genesis.DefaultSupply, int(stemLock.Supply))
+		require.EqualValues(t, genesis.DefaultSupply, int(rr.Supply))
+		require.EqualValues(t, 0, int(rr.SlotInflation))
 
 		bal1, n1 := multistate.BalanceOnLock(rdr, addr1)
 		require.EqualValues(t, 1_000_000, int(bal1))
@@ -245,9 +249,11 @@ func TestBasic(t *testing.T) {
 
 		require.EqualValues(t, int(stemOut.ID.TimeSlot()), int(distribTxID.Slot()))
 		require.EqualValues(t, 0, stemOut.Output.Amount())
-		stemLock, ok := stemOut.Output.StemLock()
+
+		rr, ok := multistate.FetchRootRecord(wrk.StateStore(), stemOut.ID.TransactionID())
 		require.True(t, ok)
-		require.EqualValues(t, genesis.DefaultSupply, int(stemLock.Supply))
+		require.EqualValues(t, genesis.DefaultSupply, int(rr.Supply))
+		require.EqualValues(t, 0, int(rr.SlotInflation))
 
 		bal1, n1 := multistate.BalanceOnLock(rdr, addr1)
 		require.EqualValues(t, 1_000_000, int(bal1))

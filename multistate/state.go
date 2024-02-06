@@ -387,10 +387,13 @@ func (u *Updatable) updateUTXOLedgerDB(updateFun func(updatable *immutable.TrieU
 		if latestSlot < rootRecordsParams.StemOutputID.TimeSlot() {
 			writeLatestSlot(batch, rootRecordsParams.StemOutputID.TimeSlot())
 		}
-		writeRootRecord(batch, rootRecordsParams.StemOutputID.TransactionID(), RootRecord{
+		branchID := rootRecordsParams.StemOutputID.TransactionID()
+		writeRootRecord(batch, branchID, RootRecord{
 			Root:           newRoot,
 			SequencerID:    rootRecordsParams.SeqID,
 			LedgerCoverage: rootRecordsParams.Coverage,
+			SlotInflation:  rootRecordsParams.SlotInflation,
+			Supply:         rootRecordsParams.Supply,
 		})
 	}
 	var err error

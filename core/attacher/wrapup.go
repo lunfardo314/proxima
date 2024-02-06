@@ -100,12 +100,14 @@ func (a *milestoneAttacher) commitBranch() {
 
 	seqID, stemOID := a.vid.MustSequencerIDAndStemID()
 	upd := multistate.MustNewUpdatable(a.StateStore(), a.baselineStateReader().Root())
+	a.finals.slotInflation = a.calculateSlotInflation()
+	a.finals.supply = a.baselineSupply + a.finals.slotInflation
 	upd.MustUpdate(muts, &multistate.RootRecordParams{
 		StemOutputID:  stemOID,
 		SeqID:         seqID,
 		Coverage:      *a.vid.GetLedgerCoverage(),
-		SlotInflation: 0,
-		Supply:        0,
+		SlotInflation: a.finals.slotInflation,
+		Supply:        a.baselineSupply + a.finals.slotInflation,
 	})
 	a.finals.root = upd.Root()
 

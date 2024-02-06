@@ -126,10 +126,12 @@ func logFinalStatusString(vid *vertex.WrappedTx, finals *attachFinals, msData *t
 			bl = finals.baseline.StringShort()
 		}
 		if vid.IsBranchTransaction() {
-			msg += fmt.Sprintf(" base: %s, new tx: %d, UTXO mut +%d/-%d, cov: %s",
-				bl, finals.numTransactions, finals.numCreatedOutputs, finals.numDeletedOutputs, finals.coverage.String())
+			msg += fmt.Sprintf(" base: %s, new tx: %d, UTXO mut +%d/-%d, cov: %s, inflation: %s, supply: %s",
+				bl, finals.numTransactions, finals.numCreatedOutputs, finals.numDeletedOutputs, finals.coverage.String(),
+				util.GoTh(finals.slotInflation), util.GoTh(finals.supply))
 		} else {
-			msg += fmt.Sprintf(" base: %s, new tx: %d, cov: %s", bl, finals.numTransactions, finals.coverage.String())
+			msg += fmt.Sprintf(" base: %s, new tx: %d, cov: %s, inflation: %s",
+				bl, finals.numTransactions, finals.coverage.String(), util.GoTh(finals.slotInflation))
 		}
 	}
 	//var memStats runtime.MemStats

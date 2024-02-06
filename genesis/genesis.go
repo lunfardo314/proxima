@@ -31,7 +31,7 @@ func InitLedgerState(par LedgerIdentityData, store global.StateStore) (ledger.Ch
 		SeqID:         gout.ChainID,
 		Coverage:      coverage,
 		SlotInflation: 0,
-		Supply:        0,
+		Supply:        par.InitialSupply,
 	})
 	return gout.ChainID, updatable.Root()
 }

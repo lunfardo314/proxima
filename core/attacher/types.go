@@ -61,7 +61,7 @@ type (
 		pokeMe   func(vid *vertex.WrappedTx)
 		coverage multistate.LedgerCoverage
 		// only supported for branch transactions
-		supply uint64
+		baselineSupply uint64
 	}
 
 	// IncrementalAttacher is used by the sequencer to build a sequencer milestone
@@ -102,6 +102,8 @@ type (
 		numInputs         int
 		numOutputs        int
 		coverage          multistate.LedgerCoverage
+		slotInflation     uint64
+		supply            uint64
 		root              common.VCommitment
 		numTransactions   int
 		numCreatedOutputs int

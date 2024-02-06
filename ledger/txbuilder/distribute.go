@@ -121,7 +121,7 @@ func MustDistributeInitialSupplyExt(stateStore global.StateStore, originPrivateK
 		SeqID:         bootstrapChainID,
 		Coverage:      multistate.LedgerCoverage{0, stateID.InitialSupply},
 		SlotInflation: 0,
-		Supply:        0,
+		Supply:        stateID.InitialSupply,
 	})
 	return txBytes, *tx.ID()
 }
