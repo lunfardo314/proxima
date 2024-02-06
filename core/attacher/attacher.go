@@ -285,7 +285,6 @@ func (a *attacher) finalTouchNonSequencer(v *vertex.Vertex, vid *vertex.WrappedT
 		// constraints are not validated yet
 		if err := v.ValidateConstraints(); err != nil {
 			a.setError(err)
-			vid.SetTxStatusBadNoLock(err)
 			a.Tracef(TraceTagAttachVertex, "constraint validation failed in %s: '%v'", vid.IDShortString(), err)
 			return false
 		}
@@ -322,7 +321,6 @@ func (a *attacher) validateSequencerTx(v *vertex.Vertex, vid *vertex.WrappedTx) 
 
 	if err := v.ValidateConstraints(); err != nil {
 		a.setError(err)
-		vid.SetTxStatusBadNoLock(err)
 		a.Tracef(TraceTagAttachVertex, "constraint validation failed in %s: '%v'", vid.IDShortString(), err)
 		return false, false
 	}
