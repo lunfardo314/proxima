@@ -112,6 +112,7 @@ func requireCorrectInflationAmount :
        ),
        require(
            // must be selfAmountValue == inflation * (fraction+1)
+           // i.e. output amount must include inflation
            or(
                isZero($0), 
                equal( selfAmountValue, mul64($0, sum64(chainInflationFraction, u64/1))) 
@@ -141,7 +142,7 @@ func requireInflationSuccessor : and(
 ) 
 
 // $0 - sibling chain constraint index
-// $1 - u64 inflation amount
+// $1 - u64 inflation amount. The amount on the output must be *including* inflation
 func _inflation : or(
     and(
         selfIsProducedOutput,

@@ -125,8 +125,8 @@ func (ctx *TxContext) ValidateWithReportOnConsumedOutputs() ([]byte, error) {
 	}
 
 	if inSum+ctx.inflationAmount != outSum {
-		return nil, fmt.Errorf("unbalanced amount between inputs and outputs: inputs %s, outputs %s, inflation: %s",
-			util.GoTh(inSum), util.GoTh(outSum), util.GoTh(ctx.inflationAmount))
+		return nil, fmt.Errorf("unbalanced amount between inputs and outputs: inputs %s + inflation: %s != outputs %s",
+			util.GoTh(inSum), util.GoTh(ctx.inflationAmount), util.GoTh(outSum))
 	}
 	return nil, nil
 }

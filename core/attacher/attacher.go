@@ -649,12 +649,11 @@ func (a *attacher) setBaseline(txid *ledger.TransactionID, currentTS ledger.Time
 	util.Assertf(currentTS.Slot() >= txid.Slot(), "currentTS.Slot() >= vid.Slot()")
 
 	a.baseline = txid
-	if multistate.HistoryCoverageDeltas > 1 {
-		rr, found := multistate.FetchRootRecord(a.StateStore(), *a.baseline)
-		util.Assertf(found, "setBaseline: can't fetch root record for %s", a.baseline.StringShort)
+	rr, found := multistate.FetchRootRecord(a.StateStore(), *a.baseline)
+	util.Assertf(found, "setBaseline: can't fetch root record for %s", a.baseline.StringShort)
 
-		a.coverage = rr.LedgerCoverage
-	}
+	a.coverage = rr.LedgerCoverage
+	a.supply = rr.Supply
 	util.Assertf(a.coverage.LatestDelta() == 0, "a.coverage.LatestDelta() == 0")
 }
 
@@ -717,4 +716,13 @@ func (a *attacher) containsUndefinedExcept(except *vertex.WrappedTx) bool {
 		}
 	}
 	return false
+}
+
+func (a *attacher) calculateSlotInflation() (ret uint64) {
+	for vid := range a.vertices {
+		if _, isRooted := a.rooted[vid]; !isRooted {
+			ret += vid.InflationAmount()
+		}
+	}
+	return
 }

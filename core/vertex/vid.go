@@ -861,11 +861,11 @@ func (vid *WrappedTx) InflationAmount() (ret uint64) {
 			ret = v.Tx.InflationAmount()
 		},
 		VirtualTx: func(v *VirtualTransaction) {
-			_, stemOut := v.SequencerOutputs()
-			util.Assertf(stemOut != nil, "can't get stem output")
-			lck, ok := stemOut.StemLock()
-			util.Assertf(ok, "can't get stem output")
-			ret = lck.InflationAmount
+			seqOut, _ := v.SequencerOutputs()
+			util.Assertf(seqOut != nil, "can't get sequencer output")
+			if inflationConstraint, idx := seqOut.InflationConstraint(); idx != 0xff {
+				ret = inflationConstraint.Amount
+			}
 		},
 		Deleted: vid.PanicAccessDeleted,
 	})

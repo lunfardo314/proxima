@@ -59,7 +59,7 @@ type (
 const HistoryCoverageDeltas = 2
 
 func init() {
-	util.Assertf(HistoryCoverageDeltas*8 <= 256, "HistoryCoverageDeltas*8 <= 256")
+	util.Assertf(1 < HistoryCoverageDeltas && HistoryCoverageDeltas*8 <= 256, "HistoryCoverageDeltas*8 <= 256")
 }
 
 const (

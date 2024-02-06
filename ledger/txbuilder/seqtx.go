@@ -5,7 +5,6 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
-	"math"
 	"strings"
 
 	"github.com/lunfardo314/easyfl"
@@ -109,33 +108,48 @@ func MakeSequencerTransactionWithInputLoader(par MakeSequencerTransactionParams)
 	continueInflationOnTheSlot :=
 		inInflationIdx != 0xff && !par.ChainInput.ID.IsBranchTransaction() && par.Timestamp.Slot() == par.ChainInput.Timestamp().Slot()
 
+	totalInAmount := chainInAmount + additionalIn
+	if totalInAmount < additionalOut {
+		return nil, nil, errP("not enough tokens in the input")
+	}
+
+	chainOutAmount := totalInAmount - additionalOut // >= 0
+
 	switch {
 	case par.Timestamp.Tick() == 0 && !par.DoNotInflateBranch:
 		// always put inflation constraint to the branch
 		putInflationConstraint = true
 		inflateBy = ledger.InflationAmountBranchFixed
+		chainOutAmount += inflateBy
 	case par.Timestamp.Slot() == par.ChainInput.Timestamp().Slot():
 		if continueInflationOnTheSlot {
 			// there is an inflation constraint in the predecessor
 			// will put with inflation amount 0 until next slot
 			putInflationConstraint = true
+			if chainOutAmount < chainInAmount {
+				// broken inflation constraint
+				return nil, nil, errP("after inflation, chain balance cannot decrease on the same slot")
+			}
 		} else {
 			// there is no inflation constraint in the predecessor on the same slot.
-			// Put initial inflation constraint with calculated amount
+			// Put initial inflation constraint with calculated amount. Satisfy inflation constraint
 			if par.Inflate {
-				// but initial inflation amount
-				inflateBy = chainInAmount / ledger.InflationAmountPerChainFraction
+				// put initial inflation amount
+				inflateBy = chainOutAmount / ledger.InflationAmountPerChainFraction
+				chainOutAmount += inflateBy
 				putInflationConstraint = inflateBy > 0
+				if putInflationConstraint {
+					util.Assertf(chainOutAmount == inflateBy*(ledger.InflationAmountPerChainFraction+1), "inflation amount validity check failed")
+				}
 			}
 		}
 	}
-	// safe arithmetics
-	if additionalIn > math.MaxUint64-chainInAmount || additionalIn+chainInAmount > math.MaxUint64-inflateBy {
-		return nil, nil, errP("arithmetic overflow")
+	if chainOutAmount < ledger.MinimumAmountOnSequencer {
+		return nil, nil, errP("amount on the chain output is below minimum required for the sequencer")
 	}
 
-	totalProducedAmount := chainInAmount + additionalIn + inflateBy
-	chainOutAmount := totalProducedAmount - additionalOut
+	totalOutAmount := chainOutAmount + additionalOut
+	util.Assertf(totalInAmount+inflateBy == totalOutAmount, "totalInAmount + inflateBy == totalOutAmount")
 
 	// make chain input/output
 	chainPredIdx, err := txb.ConsumeOutput(par.ChainInput.Output, par.ChainInput.ID)
@@ -161,7 +175,7 @@ func MakeSequencerTransactionWithInputLoader(par MakeSequencerTransactionParams)
 		chainOutConstraint := ledger.NewChainConstraint(seqID, chainPredIdx, chainInConstraintIdx, 0)
 		chainOutConstraintIdx, _ = o.PushConstraint(chainOutConstraint.Bytes())
 		// put sequencer constraint
-		sequencerConstraint := ledger.NewSequencerConstraint(chainOutConstraintIdx, totalProducedAmount)
+		sequencerConstraint := ledger.NewSequencerConstraint(chainOutConstraintIdx, totalOutAmount)
 		_, _ = o.PushConstraint(sequencerConstraint.Bytes())
 		if putInflationConstraint {
 			inflationConstraint := ledger.NewInflationConstraint(chainOutConstraintIdx, inflateBy)
