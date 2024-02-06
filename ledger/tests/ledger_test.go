@@ -67,7 +67,7 @@ func TestMainConstraints(t *testing.T) {
 		err := u.TokensFromFaucet(addr, 10_000)
 		require.NoError(t, err)
 		require.EqualValues(t, 1, u.NumUTXOs(u.GenesisControllerAddress()))
-		require.EqualValues(t, u.Supply()-u.FaucetBalance()-10_000, u.Balance(u.GenesisControllerAddress()))
+		require.EqualValues(t, int(u.Supply()-u.FaucetBalance()-10_000), int(u.Balance(u.GenesisControllerAddress())))
 		require.EqualValues(t, 10_000, u.Balance(addr))
 		require.EqualValues(t, 1, u.NumUTXOs(addr))
 	})

@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"math"
 	"strings"
 
 	"github.com/lunfardo314/easyfl"
@@ -35,8 +36,11 @@ type (
 		PrivateKey ed25519.PrivateKey
 		//
 		TotalSupply uint64
-		//
+		// Inflate if true, it indicates to begin inflation constraints, if relevant. Otherwise 'continue' inflation constraints
+		// and in branched are added automatically and with auto-calculated values
 		Inflate bool
+		// by default branch is always inflated. This option supresses it
+		DoNotInflateBranch bool
 		//
 		ReturnInputLoader bool
 	}
@@ -69,31 +73,6 @@ func MakeSequencerTransactionWithInputLoader(par MakeSequencerTransactionParams)
 	if par.StemInput != nil {
 		nIn++
 	}
-	// TODO
-	inflate := false
-	var inflateBy uint64
-	switch {
-	case par.Timestamp.Tick() == 0:
-		if par.Inflate {
-			inflateBy = ledger.InflationAmountBranchFixed
-		}
-	case par.Timestamp.Slot() == par.ChainInput.Timestamp().Slot():
-		_, iIdx := par.ChainInput.Output.InflationConstraint()
-		if iIdx != 0xff {
-			if par.Inflate {
-				return nil, nil, errP("cannot inflate more than once in the same slot")
-			}
-		} else {
-
-		}
-
-	}
-	if par.Timestamp.Tick() == 0 {
-		if par.Inflate {
-			inflateBy = ledger.InflationAmountBranchFixed
-		}
-	}
-
 	switch {
 	case nIn > 256:
 		return nil, nil, errP("too many inputs")
@@ -102,10 +81,13 @@ func MakeSequencerTransactionWithInputLoader(par MakeSequencerTransactionParams)
 	case par.Timestamp.Slot() > par.ChainInput.ID.TimeSlot() && par.Timestamp.Tick() != 0 && len(par.Endorsements) == 0:
 		return nil, nil, errP("cross-slot sequencer tx must endorse another sequencer tx: chain input ts: %s, target: %s",
 			par.ChainInput.ID.Timestamp(), par.Timestamp)
-	case par.Inflate > 0 && par.StemInput == nil:
-		return nil, nil, errP("inflation must be 0 on non-branch sequencer transaction")
 	case !par.ChainInput.ID.SequencerFlagON() && par.StemInput == nil && len(par.Endorsements) == 0:
 		return nil, nil, errP("chain predecessor is not a sequencer transaction -> endorsement of sequencer transaction is mandatory (unless making a branch)")
+	}
+
+	chainInConstraint, chainInConstraintIdx := par.ChainInput.Output.ChainConstraint()
+	if chainInConstraintIdx == 0xff {
+		return nil, nil, errP("not a chain output: %s", par.ChainInput.ID.StringShort())
 	}
 
 	txb := NewTransactionBuilder()
@@ -119,15 +101,43 @@ func MakeSequencerTransactionWithInputLoader(par MakeSequencerTransactionParams)
 	}
 	chainInAmount := par.ChainInput.Output.Amount()
 
-	// TODO safe arithmetics and checking against total supply etc. Temporary!!!!!
-	totalProducedAmount := chainInAmount + additionalIn + par.Inflate
+	// decide if to put 'inflation' constraint and what amount
+	putInflationConstraint := false
+	inflateBy := uint64(0)
+
+	_, inInflationIdx := par.ChainInput.Output.InflationConstraint()
+	continueInflationOnTheSlot :=
+		inInflationIdx != 0xff && !par.ChainInput.ID.IsBranchTransaction() && par.Timestamp.Slot() == par.ChainInput.Timestamp().Slot()
+
+	switch {
+	case par.Timestamp.Tick() == 0 && !par.DoNotInflateBranch:
+		// always put inflation constraint to the branch
+		putInflationConstraint = true
+		inflateBy = ledger.InflationAmountBranchFixed
+	case par.Timestamp.Slot() == par.ChainInput.Timestamp().Slot():
+		if continueInflationOnTheSlot {
+			// there is an inflation constraint in the predecessor
+			// will put with inflation amount 0 until next slot
+			putInflationConstraint = true
+		} else {
+			// there is no inflation constraint in the predecessor on the same slot.
+			// Put initial inflation constraint with calculated amount
+			if par.Inflate {
+				// but initial inflation amount
+				inflateBy = chainInAmount / ledger.InflationAmountPerChainFraction
+				putInflationConstraint = inflateBy > 0
+			}
+		}
+	}
+	// safe arithmetics
+	if additionalIn > math.MaxUint64-chainInAmount || additionalIn+chainInAmount > math.MaxUint64-inflateBy {
+		return nil, nil, errP("arithmetic overflow")
+	}
+
+	totalProducedAmount := chainInAmount + additionalIn + inflateBy
 	chainOutAmount := totalProducedAmount - additionalOut
 
 	// make chain input/output
-	chainConstraint, chainConstraintIdx := par.ChainInput.Output.ChainConstraint()
-	if chainConstraintIdx == 0xff {
-		return nil, nil, errP("not a chain output: %s", par.ChainInput.ID.StringShort())
-	}
 	chainPredIdx, err := txb.ConsumeOutput(par.ChainInput.Output, par.ChainInput.ID)
 	if err != nil {
 		return nil, nil, errP(err)
@@ -137,24 +147,25 @@ func MakeSequencerTransactionWithInputLoader(par MakeSequencerTransactionParams)
 	}
 	txb.PutSignatureUnlock(chainPredIdx)
 
-	seqID := chainConstraint.ID
-	if chainConstraint.IsOrigin() {
+	seqID := chainInConstraint.ID
+	if chainInConstraint.IsOrigin() {
 		seqID = ledger.OriginChainID(&par.ChainInput.ID)
 	}
 
-	chainConstraint = ledger.NewChainConstraint(seqID, chainPredIdx, chainConstraintIdx, 0)
-	sequencerConstraint := ledger.NewSequencerConstraint(chainConstraintIdx, totalProducedAmount)
-	var slotInflation uint64
+	var chainOutConstraintIdx, inflationOutConstraintIdx byte
 
 	chainOut := ledger.NewOutput(func(o *ledger.Output) {
 		o.PutAmount(chainOutAmount)
 		o.PutLock(par.ChainInput.Output.Lock())
-		chainConstrIdx, _ := o.PushConstraint(chainConstraint.Bytes())
+		// put chain constraint
+		chainOutConstraint := ledger.NewChainConstraint(seqID, chainPredIdx, chainInConstraintIdx, 0)
+		chainOutConstraintIdx, _ = o.PushConstraint(chainOutConstraint.Bytes())
+		// put sequencer constraint
+		sequencerConstraint := ledger.NewSequencerConstraint(chainOutConstraintIdx, totalProducedAmount)
 		_, _ = o.PushConstraint(sequencerConstraint.Bytes())
-		if par.Timestamp.Tick() == 0 {
-			iConstraint = ledger.NewInflationConstraint(chainConstrIdx, ledger.InflationAmountBranchFixed)
-		} else {
-
+		if putInflationConstraint {
+			inflationConstraint := ledger.NewInflationConstraint(chainOutConstraintIdx, inflateBy)
+			inflationOutConstraintIdx, _ = o.PushConstraint(inflationConstraint.Bytes())
 		}
 
 		outData := ParseMilestoneData(par.ChainInput.Output)
@@ -173,14 +184,17 @@ func MakeSequencerTransactionWithInputLoader(par MakeSequencerTransactionParams)
 			outData.Name = par.SeqName
 		}
 		_, _ = o.PushConstraint(outData.AsConstraint().Bytes())
-
 	})
 
 	chainOutIndex, err := txb.ProduceOutput(chainOut)
 	if err != nil {
 		return nil, nil, errP(err)
 	}
-	txb.PutUnlockParams(chainPredIdx, chainConstraintIdx, ledger.NewChainUnlockParams(chainOutIndex, chainConstraintIdx, 0))
+	// unlock chain input (chain constraint unlock + inflation (optionally)
+	txb.PutUnlockParams(chainPredIdx, chainInConstraintIdx, ledger.NewChainUnlockParams(chainOutIndex, chainOutConstraintIdx, 0))
+	if putInflationConstraint && continueInflationOnTheSlot {
+		txb.PutUnlockParams(chainPredIdx, inInflationIdx, ledger.NewInflationConstraintUnlockParams(inflationOutConstraintIdx))
+	}
 
 	// make stem input/output if it is a branch transaction
 	stemOutputIndex := byte(0xff)
@@ -222,7 +236,7 @@ func MakeSequencerTransactionWithInputLoader(par MakeSequencerTransactionParams)
 				return nil, nil, err
 			}
 		case ledger.ChainLockName:
-			txb.PutUnlockParams(idx, ledger.ConstraintIndexLock, ledger.NewChainLockUnlockParams(0, chainConstraintIdx))
+			txb.PutUnlockParams(idx, ledger.ConstraintIndexLock, ledger.NewChainLockUnlockParams(0, chainInConstraintIdx))
 		default:
 			return nil, nil, errP("unsupported type of additional input: %s", lockName)
 		}
