@@ -355,10 +355,9 @@ func (u *Updatable) Root() common.VCommitment {
 	return u.trie.Root()
 }
 
-type UpdateParams struct {
-	Mutations     *Mutations
-	StemOutputID  *ledger.OutputID
-	SeqID         *ledger.ChainID
+type RootRecordParams struct {
+	StemOutputID  ledger.OutputID
+	SeqID         ledger.ChainID
 	Coverage      LedgerCoverage
 	SlotInflation uint64
 	Supply        uint64
@@ -366,32 +365,32 @@ type UpdateParams struct {
 
 // Update updates trie with mutations
 // If par.StemOutputID != nil, also writes root partition record
-func (u *Updatable) Update(par *UpdateParams) error {
+func (u *Updatable) Update(muts *Mutations, rootRecordParams *RootRecordParams) error {
 	return u.updateUTXOLedgerDB(func(trie *immutable.TrieUpdatable) error {
-		return UpdateTrie(u.trie, par.Mutations)
-	}, par.StemOutputID, par.SeqID, par.Coverage)
+		return UpdateTrie(u.trie, muts)
+	}, rootRecordParams)
 }
 
-func (u *Updatable) MustUpdate(par *UpdateParams) {
-	err := u.Update(par)
+func (u *Updatable) MustUpdate(muts *Mutations, par *RootRecordParams) {
+	err := u.Update(muts, par)
 	util.AssertNoError(err)
 }
 
-func (u *Updatable) updateUTXOLedgerDB(updateFun func(updatable *immutable.TrieUpdatable) error, stemOutputID *ledger.OutputID, seqID *ledger.ChainID, coverage LedgerCoverage) error {
+func (u *Updatable) updateUTXOLedgerDB(updateFun func(updatable *immutable.TrieUpdatable) error, rootRecordsParams *RootRecordParams) error {
 	if err := updateFun(u.trie); err != nil {
 		return err
 	}
 	batch := u.store.BatchedWriter()
 	newRoot := u.trie.Commit(batch)
-	if stemOutputID != nil {
+	if rootRecordsParams != nil {
 		latestSlot := FetchLatestSlot(u.store)
-		if latestSlot < stemOutputID.TimeSlot() {
-			writeLatestSlot(batch, stemOutputID.TimeSlot())
+		if latestSlot < rootRecordsParams.StemOutputID.TimeSlot() {
+			writeLatestSlot(batch, rootRecordsParams.StemOutputID.TimeSlot())
 		}
-		writeRootRecord(batch, stemOutputID.TransactionID(), RootRecord{
+		writeRootRecord(batch, rootRecordsParams.StemOutputID.TransactionID(), RootRecord{
 			Root:           newRoot,
-			SequencerID:    *seqID,
-			LedgerCoverage: coverage,
+			SequencerID:    rootRecordsParams.SeqID,
+			LedgerCoverage: rootRecordsParams.Coverage,
 		})
 	}
 	var err error

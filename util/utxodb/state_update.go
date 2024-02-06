@@ -44,9 +44,7 @@ func updateValidateOptions(u *multistate.Updatable, txBytes []byte, traceOption 
 		return nil, err
 	}
 
-	err = u.Update(&multistate.UpdateParams{
-		Mutations: muts,
-	})
+	err = u.Update(muts, nil)
 	if err != nil {
 		return nil, err
 	}

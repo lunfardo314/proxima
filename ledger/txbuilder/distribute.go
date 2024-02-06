@@ -116,10 +116,9 @@ func MustDistributeInitialSupplyExt(stateStore global.StateStore, originPrivateK
 	muts := tx.StateMutations()
 
 	updatableOrigin := multistate.MustNewUpdatable(stateStore, genesisRoot)
-	updatableOrigin.MustUpdate(&multistate.UpdateParams{
-		Mutations:     muts,
-		StemOutputID:  &nextStem.ID,
-		SeqID:         &bootstrapChainID,
+	updatableOrigin.MustUpdate(muts, &multistate.RootRecordParams{
+		StemOutputID:  nextStem.ID,
+		SeqID:         bootstrapChainID,
 		Coverage:      multistate.LedgerCoverage{0, stateID.InitialSupply},
 		SlotInflation: 0,
 		Supply:        0,

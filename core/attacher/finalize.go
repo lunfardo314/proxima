@@ -100,10 +100,9 @@ func (a *milestoneAttacher) commitBranch() {
 
 	seqID, stemOID := a.vid.MustSequencerIDAndStemID()
 	upd := multistate.MustNewUpdatable(a.StateStore(), a.baselineStateReader().Root())
-	upd.MustUpdate(&multistate.UpdateParams{
-		Mutations:     muts,
-		StemOutputID:  &stemOID,
-		SeqID:         &seqID,
+	upd.MustUpdate(muts, &multistate.RootRecordParams{
+		StemOutputID:  stemOID,
+		SeqID:         seqID,
 		Coverage:      *a.vid.GetLedgerCoverage(),
 		SlotInflation: 0,
 		Supply:        0,
