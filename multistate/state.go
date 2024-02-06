@@ -355,17 +355,26 @@ func (u *Updatable) Root() common.VCommitment {
 	return u.trie.Root()
 }
 
-// Update updates trie with mutations
-// If rootStemOutputID != nil, also writes root partition record
-func (u *Updatable) Update(muts *Mutations, rootStemOutputID *ledger.OutputID, rootSeqID *ledger.ChainID, coverage LedgerCoverage) error {
-	return u.updateUTXOLedgerDB(func(trie *immutable.TrieUpdatable) error {
-		return UpdateTrie(u.trie, muts)
-	}, rootStemOutputID, rootSeqID, coverage)
+type UpdateParams struct {
+	Mutations     *Mutations
+	StemOutputID  *ledger.OutputID
+	SeqID         *ledger.ChainID
+	Coverage      LedgerCoverage
+	SlotInflation uint64
+	Supply        uint64
 }
 
-func (u *Updatable) MustUpdate(muts *Mutations, rootStemOutputID *ledger.OutputID, rootSeqID *ledger.ChainID, coverage LedgerCoverage) {
-	err := u.Update(muts, rootStemOutputID, rootSeqID, coverage)
-	common.AssertNoError(err)
+// Update updates trie with mutations
+// If par.StemOutputID != nil, also writes root partition record
+func (u *Updatable) Update(par *UpdateParams) error {
+	return u.updateUTXOLedgerDB(func(trie *immutable.TrieUpdatable) error {
+		return UpdateTrie(u.trie, par.Mutations)
+	}, par.StemOutputID, par.SeqID, par.Coverage)
+}
+
+func (u *Updatable) MustUpdate(par *UpdateParams) {
+	err := u.Update(par)
+	util.AssertNoError(err)
 }
 
 func (u *Updatable) updateUTXOLedgerDB(updateFun func(updatable *immutable.TrieUpdatable) error, stemOutputID *ledger.OutputID, seqID *ledger.ChainID, coverage LedgerCoverage) error {

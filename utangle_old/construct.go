@@ -289,7 +289,7 @@ func (ut *UTXOTangle) _finalizeBranch(newBranchVID *WrappedTx) error {
 		}
 		nextCoverage := prevCoverage.MakeNext(int(newBranchVID.TimeSlot())-int(baselineVID.TimeSlot()), coverageDelta)
 
-		err = upd.Update(muts, &nextStemOutputID, &seqTxData.SequencerID, nextCoverage)
+		err = upd.UpdateOld(muts, &nextStemOutputID, &seqTxData.SequencerID, nextCoverage)
 		if err != nil {
 			return fmt.Errorf("finalizeBranch %s: '%v'\n=== mutations: %d\n%s",
 				newBranchVID.IDShort(), err, muts.Len(), muts.Lines("          ").String())
