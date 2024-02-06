@@ -141,9 +141,8 @@ func requireInflationSuccessor : and(
 ) 
 
 // $0 - sibling chain constraint index
-// $1 - u64 inflation amount or u8/0 
-// unlock data: one byte slice with successor inflation constraint index
-func inflation : or(
+// $1 - u64 inflation amount
+func _inflation : or(
     and(
         selfIsProducedOutput,
 		requireSiblingChainConstraint($0),
@@ -164,5 +163,12 @@ func inflation : or(
     )
 )
 
-func inflationRepeat : inflation($0, 0)
+// $0 - sibling chain constraint index
+// $1 - u64 inflation amount
+// unlock data: one byte slice with successor inflation constraint index
+func inflation : and(
+    mustSize($0, 1),
+    mustSize($1, 8),
+    _inflation($0, $1)
+)
 `
