@@ -50,6 +50,7 @@ func (a *milestoneAttacher) wrapUpAttacher() {
 		a.EvidenceBookedBranch(&a.vid.ID, a.vid.MustSequencerID())
 		a.Tracef(TraceTagAttachMilestone, "finalized branch")
 	} else {
+		a.finals.slotInflation = a.calculateSlotInflation()
 		a.Tracef(TraceTagAttachMilestone, "finalized sequencer milestone")
 	}
 

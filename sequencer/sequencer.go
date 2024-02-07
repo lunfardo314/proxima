@@ -234,7 +234,7 @@ func (seq *Sequencer) doSequencerStep() bool {
 		return true
 	}
 
-	seq.Tracef("seq", "produced milestone %s for the target logical time %s in %v",
+	seq.Tracef(TraceTag, "produced milestone %s for the target logical time %s in %v",
 		msTx.IDShortString(), targetTs, time.Since(timerStart))
 
 	msVID := seq.submitMilestone(msTx)

@@ -105,7 +105,7 @@ func (a *milestoneAttacher) lazyRepeat(fun func() vertex.Status) vertex.Status {
 func logFinalStatusString(vid *vertex.WrappedTx, finals *attachFinals, msData *txbuilder.MilestoneData) string {
 	var msg string
 
-	msDataStr := ""
+	msDataStr := " (n/a)"
 	if msData != nil {
 		msDataStr = fmt.Sprintf(" (%s %d/%d)", msData.Name, msData.BranchHeight, msData.ChainHeight)
 	}
@@ -134,14 +134,6 @@ func logFinalStatusString(vid *vertex.WrappedTx, finals *attachFinals, msData *t
 				bl, finals.numTransactions, finals.coverage.String(), util.GoTh(finals.slotInflation))
 		}
 	}
-	//var memStats runtime.MemStats
-	//runtime.ReadMemStats(&memStats)
-	//memStr := fmt.Sprintf(", alloc: %.1f MB, GC: %d, Gort: %d, ",
-	//	float32(memStats.Alloc*10/(1024*1024))/10,
-	//	memStats.NumGC,
-	//	runtime.NumGoroutine(),
-	//)
-	//return msg + memStr
 	return msg
 }
 

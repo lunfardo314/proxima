@@ -177,10 +177,6 @@ func MakeSequencerTransactionWithInputLoader(par MakeSequencerTransactionParams)
 		// put sequencer constraint
 		sequencerConstraint := ledger.NewSequencerConstraint(chainOutConstraintIdx, totalOutAmount)
 		_, _ = o.PushConstraint(sequencerConstraint.Bytes())
-		if putInflationConstraint {
-			inflationConstraint := ledger.NewInflationConstraint(chainOutConstraintIdx, inflateBy)
-			inflationOutConstraintIdx, _ = o.PushConstraint(inflationConstraint.Bytes())
-		}
 
 		outData := ParseMilestoneData(par.ChainInput.Output)
 		if outData == nil {
@@ -197,7 +193,13 @@ func MakeSequencerTransactionWithInputLoader(par MakeSequencerTransactionParams)
 			}
 			outData.Name = par.SeqName
 		}
-		_, _ = o.PushConstraint(outData.AsConstraint().Bytes())
+		idxMsData, _ := o.PushConstraint(outData.AsConstraint().Bytes())
+		util.Assertf(idxMsData == MilestoneDataFixedIndex, "idxMsData == MilestoneDataFixedIndex")
+
+		if putInflationConstraint {
+			inflationConstraint := ledger.NewInflationConstraint(chainOutConstraintIdx, inflateBy)
+			inflationOutConstraintIdx, _ = o.PushConstraint(inflationConstraint.Bytes())
+		}
 	})
 
 	chainOutIndex, err := txb.ProduceOutput(chainOut)
@@ -283,12 +285,14 @@ func MakeSequencerTransactionWithInputLoader(par MakeSequencerTransactionParams)
 	return txb.TransactionData.Bytes(), inputLoader, nil
 }
 
+const MilestoneDataFixedIndex = 4
+
 // ParseMilestoneData expected at index 4, otherwise nil
 func ParseMilestoneData(o *ledger.Output) *MilestoneData {
-	if o.NumConstraints() < 5 {
+	if o.NumConstraints() <= MilestoneDataFixedIndex {
 		return nil
 	}
-	ret, err := MilestoneDataFromConstraint(o.ConstraintAt(4))
+	ret, err := MilestoneDataFromConstraint(o.ConstraintAt(MilestoneDataFixedIndex))
 	if err != nil {
 		return nil
 	}
