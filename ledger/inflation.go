@@ -111,11 +111,11 @@ func requireCorrectInflationAmount :
            !!!wrong_inflation_amount_on_branch
        ),
        require(
-           // must be selfAmountValue == inflation * (fraction+1)
+           // must be (selfAmountValue-inflation) / fraction == inflation . Here '/' is integer division, floor(a/b)
            // i.e. output amount must include inflation
            or(
                isZero($0), 
-               equal( selfAmountValue, mul64($0, sum64(chainInflationFraction, u64/1))) 
+               equal( $0, div64(sub64(selfAmountValue, $0), chainInflationFraction)) 
            ), 
            !!!wrong_inflation_amount
        )

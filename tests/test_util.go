@@ -358,7 +358,7 @@ func (td *longConflictTestData) makeSlotTransactions(howLongChain int, extendBeg
 	return ret
 }
 
-func (td *longConflictTestData) makeSlotTransactionsWithTagAlong(howLongChain int, extendBegin []*transaction.Transaction) [][]*transaction.Transaction {
+func (td *longConflictTestData) makeSlotTransactionsWithTagAlong(howLongChain int, extendBegin []*transaction.Transaction, inflate ...bool) [][]*transaction.Transaction {
 	ret := make([][]*transaction.Transaction, len(extendBegin))
 	var extend *ledger.OutputWithChainID
 	var endorse *ledger.TransactionID
@@ -391,6 +391,7 @@ func (td *longConflictTestData) makeSlotTransactionsWithTagAlong(howLongChain in
 			}
 			ts = ledger.MaxTime(endorse.Timestamp(), extend.Timestamp(), transferOut.Timestamp()).AddTicks(ledger.TransactionPaceInTicks)
 
+			infl := len(inflate) > 0 && inflate[0]
 			txBytes, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
 				SeqName:          fmt.Sprintf("seq%d", i),
 				ChainInput:       extend,
@@ -398,6 +399,7 @@ func (td *longConflictTestData) makeSlotTransactionsWithTagAlong(howLongChain in
 				Timestamp:        ts,
 				Endorsements:     util.List(endorse),
 				PrivateKey:       td.privKeyAux,
+				Inflate:          infl,
 			})
 			require.NoError(td.t, err)
 			tx, err := transaction.FromBytes(txBytes, transaction.MainTxValidationOptions...)

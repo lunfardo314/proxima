@@ -139,7 +139,7 @@ func MakeSequencerTransactionWithInputLoader(par MakeSequencerTransactionParams)
 				chainOutAmount += inflateBy
 				putInflationConstraint = inflateBy > 0
 				if putInflationConstraint {
-					util.Assertf(chainOutAmount == inflateBy*(ledger.InflationAmountPerChainFraction+1), "inflation amount validity check failed")
+					util.Assertf((chainOutAmount-inflateBy)/ledger.InflationAmountPerChainFraction == inflateBy, "inflation amount validity check failed")
 				}
 			}
 		}
