@@ -28,7 +28,11 @@ type (
 		ControllerPrivateKey() ed25519.PrivateKey
 		SequencerName() string
 		Context() context.Context
+		MaxTagAlongOutputs() int
+		InflationPolicy() InflationPolicy
 	}
+
+	InflationPolicy int
 
 	MilestoneFactory struct {
 		Environment
@@ -62,6 +66,11 @@ type (
 	}
 )
 
+const (
+	InflationPolicyBranchesOnly = InflationPolicy(iota) // default
+	InflationPolicyAlways
+)
+
 var allProposingStrategies = make(map[string]*proposer_generic.Strategy)
 
 func registerProposerStrategy(s *proposer_generic.Strategy) {
@@ -80,12 +89,12 @@ const (
 	TraceTag                = "factory"
 )
 
-func New(env Environment, maxTagAlongInputs int) (*MilestoneFactory, error) {
+func New(env Environment) (*MilestoneFactory, error) {
 	ret := &MilestoneFactory{
 		Environment:       env,
 		proposal:          latestMilestoneProposal{},
 		ownMilestones:     make(map[*vertex.WrappedTx]set.Set[vertex.WrappedOutput]),
-		maxTagAlongInputs: maxTagAlongInputs,
+		maxTagAlongInputs: env.MaxTagAlongOutputs(),
 	}
 	if ret.maxTagAlongInputs == 0 || ret.maxTagAlongInputs > veryMaxTagAlongInputs {
 		ret.maxTagAlongInputs = veryMaxTagAlongInputs
@@ -251,7 +260,9 @@ func (mf *MilestoneFactory) Propose(a *attacher.IncrementalAttacher) (forceExit 
 	}
 
 	commandParser := NewCommandParser(ledger.AddressED25519FromPrivateKey(mf.ControllerPrivateKey()))
-	tx, err := a.MakeSequencerTransaction(mf.SequencerName(), mf.ControllerPrivateKey(), commandParser)
+	// inflate whenever possible
+	inflate := mf.Environment.InflationPolicy() == InflationPolicyAlways
+	tx, err := a.MakeSequencerTransaction(mf.SequencerName(), mf.ControllerPrivateKey(), commandParser, inflate)
 	if err != nil {
 		mf.Log().Warnf("Propose%s: error during transaction generation: '%v'", a.Name(), err)
 		return true

@@ -174,7 +174,7 @@ func (a *IncrementalAttacher) InsertTagAlongInput(wOut vertex.WrappedOutput) (bo
 	return true, nil
 }
 
-func (a *IncrementalAttacher) MakeSequencerTransaction(seqName string, privateKey ed25519.PrivateKey, cmdParser SequencerCommandParser) (*transaction.Transaction, error) {
+func (a *IncrementalAttacher) MakeSequencerTransaction(seqName string, privateKey ed25519.PrivateKey, cmdParser SequencerCommandParser, inflate ...bool) (*transaction.Transaction, error) {
 	otherInputs := make([]*ledger.OutputWithID, 0, len(a.inputs))
 
 	var chainIn ledger.OutputWithID
@@ -223,6 +223,7 @@ func (a *IncrementalAttacher) MakeSequencerTransaction(seqName string, privateKe
 		Endorsements:      endorsements,
 		PrivateKey:        privateKey,
 		ReturnInputLoader: true,
+		Inflate:           len(inflate) > 0 && inflate[0],
 	})
 	if err != nil {
 		return nil, err

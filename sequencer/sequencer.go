@@ -64,7 +64,7 @@ func New(glb *workflow.Workflow, seqID ledger.ChainID, controllerKey ed25519.Pri
 	ret.ctx, ret.stopFun = context.WithCancel(ctx)
 
 	var err error
-	if ret.factory, err = factory.New(ret, cfg.MaxFeeInputs); err != nil {
+	if ret.factory, err = factory.New(ret); err != nil {
 		return nil, err
 	}
 	ret.Log().Infof("sequencer created with controller %s", ledger.AddressED25519FromPrivateKey(controllerKey).String())
@@ -376,4 +376,12 @@ func (seq *Sequencer) runOnMilestoneSubmitted(ms *vertex.WrappedTx) {
 	if seq.onMilestoneSubmitted != nil {
 		seq.onMilestoneSubmitted(seq, ms)
 	}
+}
+
+func (seq *Sequencer) MaxTagAlongOutputs() int {
+	return seq.config.MaxFeeInputs
+}
+
+func (seq *Sequencer) InflationPolicy() factory.InflationPolicy {
+	return seq.config.InflationPolicy
 }
