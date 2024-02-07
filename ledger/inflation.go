@@ -129,7 +129,8 @@ func requireSiblingChainConstraint : requireChainTransition(unwrapBytecodeArg(se
 // $1 - inflation constraint index
 func requireInflationSuccessor : and(
     require(
-       equal(unwrapBytecodeArg(producedConstraintByIndex(concat($0,$1)), #chain, 1), 0),
+       // next must be zero inflation
+       isZero(unwrapBytecodeArg(producedConstraintByIndex(concat($0,$1)), selfBytecodePrefix, 1)),
        !!!wrong_inflation_constraint_in_the_successor
     ),
     require(
@@ -158,8 +159,8 @@ func _inflation : or(
             not(equal(timeSlotOfInputByIndex(selfOutputIndex), txTimeSlot)),
             // on the same slot requires valid inflation successor
             requireInflationSuccessor(
-                byte(selfSiblingUnlockBlock($0) , 0), 
-                selfUnlockParameters // must be one byte of index
+                byte(selfSiblingUnlockBlock($0), 0), // take index of chain successor output
+                selfUnlockParameters // must be one byte of inflation constraint index on successor
             )
         )
     )
