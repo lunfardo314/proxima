@@ -153,7 +153,8 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Opt
 				status, stats, err := runMilestoneAttacher(vid, options.metadata, env, ctx)
 				if status == vertex.Bad {
 					vid.SetTxStatusBad(err)
-					env.Log().Warnf("-- ATTACH %s -> BAD(%v)\n%s", vid.IDShortString(), err, vid.LinesTx("      ").String())
+					env.Log().Warnf("-- ATTACH %s -> BAD(%v)\n>>>>>>>>>>>>> failed tx <<<<<<<<<<<<<\n%s\n<<<<<<<<<<<<<<<<<<<<<<<<<<",
+						vid.IDShortString(), err, vid.LinesTx("      ").String())
 				} else {
 					msData := env.ParseMilestoneData(vid)
 					env.Log().Info(logFinalStatusString(vid, stats, msData))

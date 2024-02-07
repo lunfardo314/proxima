@@ -200,7 +200,7 @@ func (ctx *TxContext) _validateOutputs(consumedBranch bool, failFast bool) (uint
 }
 
 func (ctx *TxContext) UnlockParams(consumedOutputIdx, constraintIdx byte) []byte {
-	return ctx.tree.BytesAtPath(Path(ledger.TransactionBranch, ledger.TxUnlockParams, consumedOutputIdx, constraintIdx))
+	return ctx.tree.BytesAtPath(Path(ledger.TransactionBranch, ledger.TxUnlockData, consumedOutputIdx, constraintIdx))
 }
 
 // runOutput checks constraints of the output one-by-one
@@ -276,7 +276,7 @@ func PathToString(path []byte) string {
 			ret += ".tx"
 			if len(path) >= 2 {
 				switch path[1] {
-				case ledger.TxUnlockParams:
+				case ledger.TxUnlockData:
 					ret += ".unlock"
 				case ledger.TxInputIDs:
 					ret += ".inID"

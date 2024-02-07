@@ -151,15 +151,16 @@ func _inflation : or(
     ),
 	and(
         selfIsConsumedOutput,
-		if(
-            equal(timeSlotOfInputByIndex(selfOutputIndex), txTimeSlot),
-               // on the same slot. Next must be with nil amount and not shrinking amount
+        or(
+            // branch does not enforce next inflation
+            branchFlagsON(inputIDByIndex(selfOutputIndex)),
+            // cross-slot does not enforce next inflation
+            not(equal(timeSlotOfInputByIndex(selfOutputIndex), txTimeSlot)),
+            // on the same slot requires valid inflation successor
             requireInflationSuccessor(
                 byte(selfSiblingUnlockBlock($0) , 0), 
                 selfUnlockParameters // must be one byte of index
-            ), 
-               // cross slot - do not enforce
-            true
+            )
         )
     )
 )

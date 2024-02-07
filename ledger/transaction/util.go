@@ -3,6 +3,7 @@ package transaction
 import (
 	"bytes"
 	"encoding/hex"
+	"fmt"
 	"os"
 	"slices"
 
@@ -72,12 +73,11 @@ func (ctx *TxContext) Lines(prefix ...string) *lines.Lines {
 			ret.Add("  #%d: %s (parse error)", idx, oid.String())
 			return true
 		}
-		unlockBin := ctx.UnlockData(idx)
-		arr := lazybytes.ArrayFromBytesReadOnly(unlockBin)
+		unlockBin := ctx.UnlockDataAt(idx)
 		ret.Add("  #%d: %s", idx, oid.String()).
 			Add("       bytes (%d): %s", len(out.Bytes()), hex.EncodeToString(out.Bytes())).
 			Append(out.Lines("     ")).
-			Add("     Unlock data: %s", arr.ParsedString())
+			Add("     Unlock data: %s", UnlockDataToString(unlockBin))
 		return true
 	})
 
@@ -108,6 +108,14 @@ func (ctx *TxContext) Lines(prefix ...string) *lines.Lines {
 	})
 	ret.Add("TOTAL: %s", util.GoTh(totalSum))
 	return ret
+}
+
+func UnlockDataToString(data []byte) string {
+	arr, err := lazybytes.ParseArrayFromBytesReadOnly(data)
+	if err != nil {
+		return fmt.Sprintf("error while parsing lazy array: %v", err)
+	}
+	return arr.ParsedString()
 }
 
 func ParseBytesToString(txBytes []byte, fetchOutput func(oid *ledger.OutputID) ([]byte, bool)) string {

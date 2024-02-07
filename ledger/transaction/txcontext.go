@@ -75,7 +75,7 @@ func TxContextFromTransferableBytes(txBytes []byte, fetchInput func(oid *ledger.
 // unlockScriptBinary finds script from unlock block
 func (ctx *TxContext) unlockScriptBinary(invocationFullPath lazybytes.TreePath) []byte {
 	unlockBlockPath := common.Concat(invocationFullPath)
-	unlockBlockPath[1] = ledger.TxUnlockParams
+	unlockBlockPath[1] = ledger.TxUnlockData
 	return ctx.tree.BytesAtPath(unlockBlockPath)
 }
 
@@ -156,8 +156,8 @@ func (ctx *TxContext) ConsumedOutput(idx byte) (*ledger.Output, error) {
 	return ledger.OutputFromBytesReadOnly(ctx.ConsumedOutputData(idx))
 }
 
-func (ctx *TxContext) UnlockData(idx byte) []byte {
-	return ctx.tree.BytesAtPath(Path(ledger.TransactionBranch, ledger.TxUnlockParams, idx))
+func (ctx *TxContext) UnlockDataAt(idx byte) []byte {
+	return ctx.tree.BytesAtPath(Path(ledger.TransactionBranch, ledger.TxUnlockData, idx))
 }
 
 func (ctx *TxContext) ProducedOutputData(idx byte) []byte {

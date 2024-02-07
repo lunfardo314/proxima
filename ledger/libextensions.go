@@ -22,7 +22,7 @@ Constants which define validation context data tree branches. Structure of the d
 
 (root)
   -- TransactionBranch = 0x00
-       -- TxUnlockParams = 0x00 (path 0x0000)  -- contains unlock params for each input
+       -- TxUnlockData = 0x00 (path 0x0000)  -- contains unlock params for each input
        -- TxInputIDs = 0x01     (path 0x0001)  -- contains up to 256 inputs, the IDs of consumed outputs
        -- TxOutputBranch = 0x02       (path 0x0002)  -- contains up to 256 produced outputs
        -- TxSignature = 0x03          (path 0x0003)  -- contains the only signature of the essence. It is mandatory
@@ -48,7 +48,7 @@ const (
 
 // Transaction tree
 const (
-	TxUnlockParams = byte(iota)
+	TxUnlockData = byte(iota)
 	TxInputIDs
 	TxOutputs
 	TxSignature
@@ -68,7 +68,7 @@ const (
 var (
 	PathToConsumedOutputs               = lazybytes.Path(ConsumedBranch, ConsumedOutputsBranch)
 	PathToProducedOutputs               = lazybytes.Path(TransactionBranch, TxOutputs)
-	PathToUnlockParams                  = lazybytes.Path(TransactionBranch, TxUnlockParams)
+	PathToUnlockParams                  = lazybytes.Path(TransactionBranch, TxUnlockData)
 	PathToInputIDs                      = lazybytes.Path(TransactionBranch, TxInputIDs)
 	PathToSignature                     = lazybytes.Path(TransactionBranch, TxSignature)
 	PathToSequencerAndStemOutputIndices = lazybytes.Path(TransactionBranch, TxSequencerAndStemOutputIndices)

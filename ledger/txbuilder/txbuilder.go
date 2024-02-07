@@ -193,7 +193,7 @@ func (tx *transactionData) ToArray() *lazybytes.Array {
 	binary.BigEndian.PutUint64(totalBin[:], total)
 
 	elems := make([]any, ledger.TxTreeIndexMax)
-	elems[ledger.TxUnlockParams] = unlockParams
+	elems[ledger.TxUnlockData] = unlockParams
 	elems[ledger.TxInputIDs] = inputIDs
 	elems[ledger.TxOutputs] = outputs
 	elems[ledger.TxSignature] = tx.Signature

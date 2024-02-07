@@ -260,7 +260,7 @@ func CheckNumElements() TxValidationOption {
 			return fmt.Errorf("number of inputs can't be 0")
 		}
 
-		if numInputs != tx.tree.NumElements(Path(ledger.TxUnlockParams)) {
+		if numInputs != tx.tree.NumElements(Path(ledger.TxUnlockData)) {
 			return fmt.Errorf("number of unlock params must be equal to the number of inputs")
 		}
 
@@ -618,6 +618,10 @@ func (tx *Transaction) Inputs() []ledger.OutputID {
 	return ret
 }
 
+func (tx *Transaction) MustUnlockDataAt(idx byte) []byte {
+	return tx.tree.BytesAtPath(common.Concat(ledger.TxUnlockData, idx))
+}
+
 func (tx *Transaction) ConsumedOutputAt(idx byte, fetchOutput func(id *ledger.OutputID) ([]byte, bool)) (*ledger.OutputDataWithID, error) {
 	oid, err := tx.InputAt(idx)
 	if err != nil {
@@ -915,6 +919,7 @@ func (tx *Transaction) LinesShort(prefix ...string) *lines.Lines {
 	ret.Add("Inputs (%d):", tx.NumInputs())
 	tx.ForEachInput(func(i byte, oid *ledger.OutputID) bool {
 		ret.Add("    %3d: %s", i, oid.String())
+		ret.Add("       Unlock data: %s", UnlockDataToString(tx.MustUnlockDataAt(i)))
 		return true
 	})
 	ret.Add("Outputs (%d):", tx.NumProducedOutputs())
