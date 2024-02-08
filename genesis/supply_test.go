@@ -93,14 +93,6 @@ const (
 	MaxAnnualInflationChain       = MaxSlotInflationChain * SlotsPerYear
 )
 
-var chainFractionSchedule = []int{
-	ChainInflationFractionPerTick,
-	ChainInflationFractionPerTick / 2,
-	ChainInflationFractionPerTick / 4,
-	ChainInflationFractionPerTick / 8,
-	ChainInflationFractionPerTick / 16,
-}
-
 func TestInflationCalculations2(t *testing.T) {
 	const template2 = `
 		InitialSupply						: %s (%s PRXI)
@@ -131,6 +123,110 @@ func TestInflationCalculations2(t *testing.T) {
 	)
 }
 
+var chainFractionSchedule = []int{
+	ChainInflationFractionPerSlot,
+	ChainInflationFractionPerSlot * 2,
+	ChainInflationFractionPerSlot * 4,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+	ChainInflationFractionPerSlot * 8,
+}
+
 func TestInflationCalculations3(t *testing.T) {
 	for i, fr := range chainFractionSchedule {
 		t.Logf("    year %d : chain fraction %s", i, util.GoTh(fr))
@@ -139,38 +235,50 @@ func TestInflationCalculations3(t *testing.T) {
 
 type (
 	yearData struct {
-		chainFraction int
-		branchBonus   int
-	}
-	slotData struct {
-		supply         int
-		chainInflation int
+		chainInflation  int
+		branchInflation int
+		slots           []int
 	}
 )
 
-const capitalParticipatingPerc = 100
+const capitalParticipatingShare = 100
 
 func TestInflationProjections(t *testing.T) {
-	supply := make([]int, SlotsPerYear)
-	totalChainInflation, totalBranchInflation := 0, 0
-	for i := range supply {
-		if i == 0 {
-			supply[0] = InitialSupply
-			continue
+	years := make([]yearData, len(chainFractionSchedule))
+	var chainSlotInflation int
+	branchI := BranchInflationBonus
+	for y, year := range years {
+		year.slots = make([]int, SlotsPerYear)
+		for i := range year.slots {
+			if i == 0 {
+				if y == 0 {
+					year.slots[0] = InitialSupply
+					chainSlotInflation = 0
+				} else {
+					year.slots[0] = years[y-1].slots[SlotsPerYear-1]
+					chainSlotInflation = (years[y-1].slots[SlotsPerYear-1] / chainFractionSchedule[y]) * capitalParticipatingShare / 100
+				}
+			} else {
+				chainSlotInflation = (year.slots[i-1] / chainFractionSchedule[y]) * capitalParticipatingShare / 100
+				year.slots[i] = year.slots[i-1] + chainSlotInflation + branchI
+			}
+			year.chainInflation += chainSlotInflation
+			year.branchInflation += branchI
 		}
-		chainInflation := (supply[i-1] / ChainInflationFractionPerSlot) * capitalParticipatingPerc / 100
-		supply[i] = supply[i-1] + chainInflation + BranchInflationBonus
-		totalChainInflation += chainInflation
-		totalBranchInflation += BranchInflationBonus
+		years[y] = year
+		branchI = branchI + branchI/20 // 5% indexing
 	}
 
-	initSupply := supply[0]
-	finalSupply := supply[len(supply)-1]
-	annualInflation := finalSupply - initSupply
-	fmt.Printf("final supply: %s\n", util.GoTh(finalSupply))
-	fmt.Printf("annual inflation: %s = %s + %s\n", util.GoTh(annualInflation), util.GoTh(totalChainInflation), util.GoTh(totalBranchInflation))
-	fmt.Printf("final inflation (%d slots) %%: %.2f%%\n", len(supply), percent(annualInflation, initSupply))
-	fmt.Printf("total chain inflation %%: %.2f%%\n", percent(totalChainInflation, initSupply))
-	fmt.Printf("total branch inflation %%: %.2f%%\n", percent(totalBranchInflation, initSupply))
+	for y, year := range years {
+		initSupply := year.slots[0]
+		finalSupply := year.slots[SlotsPerYear-1]
+		annualInflation := finalSupply - initSupply
+		fmt.Printf("year %d (%s), supply: %s (%d bits) -> %s, inflation: %s, %.2f%%  chain inflation: %.2f%%, branch inflation %.2f%%\n",
+			y, util.GoTh(chainFractionSchedule[y]),
+			util.GoTh(initSupply), requireBits(uint64(initSupply)), util.GoTh(finalSupply),
+			util.GoTh(annualInflation), percent(annualInflation, initSupply),
+			percent(year.chainInflation, initSupply), percent(year.branchInflation, initSupply),
+		)
+	}
 
 }
