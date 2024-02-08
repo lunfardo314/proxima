@@ -151,23 +151,26 @@ type (
 const capitalParticipatingPerc = 100
 
 func TestInflationProjections(t *testing.T) {
-	s := slotData{
-		supply:         InitialSupply,
-		chainInflation: 0,
-	}
-	history := []slotData{s}
-	for i := 0; i < SlotsPerYear; i++ {
-		s = slotData{
-			supply:         history[i].supply + s.chainInflation + BranchInflationBonus,
-			chainInflation: (s.supply / ChainInflationFractionPerSlot) * capitalParticipatingPerc / 100,
+	supply := make([]int, SlotsPerYear)
+	totalChainInflation, totalBranchInflation := 0, 0
+	for i := range supply {
+		if i == 0 {
+			supply[0] = InitialSupply
+			continue
 		}
-		history = append(history, s)
+		chainInflation := (supply[i-1] / ChainInflationFractionPerSlot) * capitalParticipatingPerc / 100
+		supply[i] = supply[i-1] + chainInflation + BranchInflationBonus
+		totalChainInflation += chainInflation
+		totalBranchInflation += BranchInflationBonus
 	}
 
-	//for i, s := range history {
-	//	fmt.Printf("%d : supply: %s, inflation: %s\n", i, util.GoTh(s.supply), util.GoTh(s.chainInflation))
-	//}
-	//
-	fmt.Printf("final supply: %s\n", util.GoTh(history[len(history)-1].supply))
-	fmt.Printf("final inflation (%d slots) %%: %.2f\n", len(history), 100*(1-float64(history[0].supply)/float64(history[len(history)-1].supply)))
+	initSupply := supply[0]
+	finalSupply := supply[len(supply)-1]
+	annualInflation := finalSupply - initSupply
+	fmt.Printf("final supply: %s\n", util.GoTh(finalSupply))
+	fmt.Printf("annual inflation: %s = %s + %s\n", util.GoTh(annualInflation), util.GoTh(totalChainInflation), util.GoTh(totalBranchInflation))
+	fmt.Printf("final inflation (%d slots) %%: %.2f%%\n", len(supply), percent(annualInflation, initSupply))
+	fmt.Printf("total chain inflation %%: %.2f%%\n", percent(totalChainInflation, initSupply))
+	fmt.Printf("total branch inflation %%: %.2f%%\n", percent(totalBranchInflation, initSupply))
+
 }
