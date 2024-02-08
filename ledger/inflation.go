@@ -129,7 +129,7 @@ func requireSiblingChainConstraint : requireChainTransition(unwrapBytecodeArg(se
 // $1 - inflation constraint index
 func requireInflationSuccessor : and(
     require(
-       // next must be zero inflation
+       // next in the same slot must be zero inflation
        isZero(unwrapBytecodeArg(producedConstraintByIndex(concat($0,$1)), selfBytecodePrefix, 1)),
        !!!wrong_inflation_constraint_in_the_successor
     ),
@@ -168,7 +168,7 @@ func _inflation : or(
 
 // $0 - sibling chain constraint index
 // $1 - u64 inflation amount
-// unlock data: one byte slice with successor inflation constraint index
+// unlock data: one byte with successor inflation constraint index on successor chain output
 func inflation : and(
     mustSize($0, 1),
     mustSize($1, 8),
