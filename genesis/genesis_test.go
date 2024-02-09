@@ -26,7 +26,7 @@ func TestOriginBase(t *testing.T) {
 	t.Logf("   Stem output constraints:\n%s", sOut.Output.ToString("        "))
 
 	privateKey := testutil.GetTestingPrivateKey(100)
-	id := DefaultIdentityData(privateKey)
+	id := ledger.DefaultIdentityData(privateKey)
 	pubKey := privateKey.Public().(ed25519.PublicKey)
 	require.True(t, pubKey.Equal(id.GenesisControllerPublicKey))
 	t.Logf("Identity data:\n%s", id.String())
@@ -34,7 +34,7 @@ func TestOriginBase(t *testing.T) {
 
 func TestInitOrigin(t *testing.T) {
 	privateKey := testutil.GetTestingPrivateKey()
-	id := DefaultIdentityData(privateKey)
+	id := ledger.DefaultIdentityData(privateKey)
 	store := common.NewInMemoryKVStore()
 	bootstrapSeqID, genesisRoot := InitLedgerState(*id, store)
 
@@ -48,22 +48,22 @@ func TestInitOrigin(t *testing.T) {
 	rdr := multistate.MustNewSugaredReadableState(store, genesisRoot)
 
 	stemBack := rdr.GetStemOutput()
-	require.EqualValues(t, StemOutputID(id.GenesisSlot), stemBack.ID)
+	require.EqualValues(t, ledger.StemOutputID(id.GenesisSlot), stemBack.ID)
 
 	initSupplyOut, err := rdr.GetChainOutput(&bootstrapSeqID)
 	require.NoError(t, err)
-	require.EqualValues(t, InitialSupplyOutputID(id.GenesisSlot), initSupplyOut.ID)
+	require.EqualValues(t, ledger.InitialSupplyOutputID(id.GenesisSlot), initSupplyOut.ID)
 
 	require.EqualValues(t, id.Bytes(), rdr.MustLedgerIdentityBytes())
 }
 
 func TestYAML(t *testing.T) {
 	privateKey := testutil.GetTestingPrivateKey()
-	id := DefaultIdentityData(privateKey)
-	yamlableStr := id.yamlAble().YAML()
+	id := ledger.DefaultIdentityData(privateKey)
+	yamlableStr := id.YAMLAble().YAML()
 	t.Logf("\n" + string(yamlableStr))
 
-	idBack, err := StateIdentityDataFromYAML(yamlableStr)
+	idBack, err := ledger.StateIdentityDataFromYAML(yamlableStr)
 	require.NoError(t, err)
 	require.EqualValues(t, id.Bytes(), idBack.Bytes())
 }

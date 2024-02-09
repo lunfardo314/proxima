@@ -6,8 +6,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/lunfardo314/proxima/genesis"
 	"github.com/lunfardo314/proxima/global"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/proxi/glb"
@@ -54,7 +54,7 @@ func runDbInfoCmd(_ *cobra.Command, _ []string) {
 	reader, err := multistate.NewSugaredReadableState(stateStore, branchData[0].Root)
 	glb.AssertNoError(err)
 
-	id := genesis.MustLedgerIdentityDataFromBytes(reader.MustLedgerIdentityBytes())
+	id := ledger.MustLedgerIdentityDataFromBytes(reader.MustLedgerIdentityBytes())
 
 	glb.Infof("\n----------------- Ledger state identity ----------------")
 	glb.Infof("%s", id.String())

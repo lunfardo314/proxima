@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/lunfardo314/proxima/genesis"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/proxi/glb"
@@ -51,7 +50,7 @@ func runInitLedgerIDCommand(_ *cobra.Command, _ []string) {
 	privKey := glb.MustGetPrivateKey()
 
 	// create ledger identity
-	id := genesis.DefaultIdentityData(privKey)
+	id := ledger.DefaultIdentityData(privKey)
 	yamlData := id.YAML()
 	err := os.WriteFile(ledgerIDFileName, yamlData, 0666)
 	glb.AssertNoError(err)

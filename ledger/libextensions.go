@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/lunfardo314/easyfl"
+	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lazybytes"
 	"github.com/lunfardo314/unitrie/common"
 )
@@ -91,7 +92,24 @@ const (
 const MaxNumberOfEndorsements = 4
 
 func init() {
+	fmt.Printf("------ Base EasyFL library:\n")
+	easyfl.PrintLibraryStats()
+
+	Init()
+
+	fmt.Printf("------ Extended EasyFL library:\n")
+	easyfl.PrintLibraryStats()
+}
+
+var _libraryAlreadyExtended bool
+
+func initLedgerBaseConstants() {
+
+}
+
+func Init() {
 	//-------------------------------- standard EasyFL library extensions ------------------------------
+	util.Assertf(!_libraryAlreadyExtended, "library cannot be extended twice")
 
 	// data context access
 	// data context is a lazybytes.Tree

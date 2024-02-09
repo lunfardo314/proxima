@@ -1,17 +1,17 @@
-package genesis
+package ledger
 
 // not thread-safe. Set once upon startup, later read-only
 
 var (
-	ledgerIDSingleton     *LedgerIdentityData
+	ledgerIDSingleton     *IdentityData
 	ledgerIDHashSingleton [32]byte
 )
 
-func SaveGlobalLedgerIdentityData(ledgerID *LedgerIdentityData) {
+func SaveGlobalLedgerIdentityData(ledgerID *IdentityData) {
 	ledgerIDSingleton = ledgerID
 	ledgerIDHashSingleton = ledgerIDSingleton.Hash()
 }
 
-func GetGlobalLedgerIdentity() *LedgerIdentityData {
+func GetGlobalLedgerIdentity() *IdentityData {
 	return ledgerIDSingleton
 }

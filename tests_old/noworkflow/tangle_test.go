@@ -23,7 +23,7 @@ import (
 
 func TestOriginTangle(t *testing.T) {
 	t.Run("origin", func(t *testing.T) {
-		par := genesis.DefaultIdentityData(testutil.GetTestingPrivateKey())
+		par := ledger.DefaultIdentityData(testutil.GetTestingPrivateKey())
 		stateStore := common.NewInMemoryKVStore()
 		bootstrapChainID, root := genesis.InitLedgerState(*par, stateStore)
 		ut := utangle_old.Load(stateStore)
@@ -33,7 +33,7 @@ func TestOriginTangle(t *testing.T) {
 	})
 	t.Run("origin with distribution", func(t *testing.T) {
 		privKey := testutil.GetTestingPrivateKey()
-		par := genesis.DefaultIdentityData(privKey)
+		par := ledger.DefaultIdentityData(privKey)
 		addr1 := ledger.AddressED25519FromPrivateKey(testutil.GetTestingPrivateKey(1))
 		addr2 := ledger.AddressED25519FromPrivateKey(testutil.GetTestingPrivateKey(2))
 		distrib := []ledger.LockBalance{
@@ -67,7 +67,7 @@ func TestOriginTangle(t *testing.T) {
 		require.EqualValues(t, 0, stemOut.Output.Amount())
 		stemLock, ok := stemOut.Output.StemLock()
 		require.True(t, ok)
-		require.EqualValues(t, genesis.DefaultInitialSupply, int(stemLock.Supply))
+		require.EqualValues(t, ledger.DefaultInitialSupply, int(stemLock.Supply))
 
 		rdr := ut.HeaviestStateForLatestTimeSlot()
 		bal1, n1 := state.BalanceOnLock(rdr, addr1)
@@ -83,7 +83,7 @@ func TestOriginTangle(t *testing.T) {
 		require.EqualValues(t, 0, nChain)
 
 		balChain = state.BalanceOnChainOutput(rdr, &bootstrapChainID)
-		require.EqualValues(t, genesis.DefaultInitialSupply-1_000_000-2_000_000, int(balChain))
+		require.EqualValues(t, ledger.DefaultInitialSupply-1_000_000-2_000_000, int(balChain))
 	})
 }
 
@@ -92,7 +92,7 @@ type conflictTestRunData struct {
 	bootstrapChainID ledger.ChainID
 	privKey          ed25519.PrivateKey
 	addr             ledger.AddressED25519
-	stateIdentity    genesis.LedgerIdentityData
+	stateIdentity    ledger.IdentityData
 	originBranchTxid ledger.TransactionID
 	forkOutput       *ledger.OutputWithID
 	txBytes          [][]byte
@@ -104,7 +104,7 @@ type conflictTestRunData struct {
 func initConflictTest(t *testing.T, nConflicts int, verbose bool) *conflictTestRunData {
 	const initBalance = 10_000
 	genesisPrivKey := testutil.GetTestingPrivateKey()
-	par := genesis.DefaultIdentityData(genesisPrivKey)
+	par := ledger.DefaultIdentityData(genesisPrivKey)
 	distrib, privKeys, addrs := inittest.GenesisParamsWithPreDistributionOld(1, initBalance)
 	ret := &conflictTestRunData{
 		stateIdentity: *par,
@@ -376,7 +376,7 @@ type multiChainTestData struct {
 	faucetPrivKey      ed25519.PrivateKey
 	faucetAddr         ledger.AddressED25519
 	faucetOrigin       *ledger.OutputWithID
-	sPar               genesis.LedgerIdentityData
+	sPar               ledger.IdentityData
 	originBranchTxid   ledger.TransactionID
 	txBytesChainOrigin []byte
 	txBytes            [][]byte // with chain origins
@@ -395,7 +395,7 @@ func initMultiChainTest(t *testing.T, nChains int, printTx bool) *multiChainTest
 
 	genesisPrivKey := testutil.GetTestingPrivateKey()
 	distrib, privKeys, addrs := inittest.GenesisParamsWithPreDistributionOld(2, onChainAmount*uint64(nChains))
-	ret.sPar = *genesis.DefaultIdentityData(genesisPrivKey)
+	ret.sPar = *ledger.DefaultIdentityData(genesisPrivKey)
 	ret.privKey = privKeys[0]
 	ret.addr = addrs[0]
 	ret.faucetPrivKey = privKeys[1]
@@ -423,7 +423,7 @@ func initMultiChainTest(t *testing.T, nChains int, printTx bool) *multiChainTest
 
 	stateReader := ret.ut.HeaviestStateForLatestTimeSlot()
 
-	t.Logf("state identity:\n%s", genesis.MustLedgerIdentityDataFromBytes(stateReader.MustLedgerIdentityBytes()).String())
+	t.Logf("state identity:\n%s", ledger.MustLedgerIdentityDataFromBytes(stateReader.MustLedgerIdentityBytes()).String())
 	t.Logf("origin branch txid: %s", ret.originBranchTxid.StringShort())
 	t.Logf("%s", ret.ut.Info())
 

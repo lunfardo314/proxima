@@ -6,7 +6,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lunfardo314/proxima/genesis"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/multistate"
@@ -99,9 +98,9 @@ func (p *ProximaNode) startMultiStateDB() {
 	p.multiStateStore = badger_adaptor.New(bdb)
 	p.log.Infof("opened multi-state DB '%s", dbname)
 
-	ledgerID := genesis.MustLedgerIdentityDataFromBytes(multistate.LedgerIdentityBytesFromStore(p.multiStateStore))
+	ledgerID := ledger.MustLedgerIdentityDataFromBytes(multistate.LedgerIdentityBytesFromStore(p.multiStateStore))
 	// saving globally for faster access anywhere in the code
-	genesis.SaveGlobalLedgerIdentityData(ledgerID)
+	ledger.SaveGlobalLedgerIdentityData(ledgerID)
 
 	p.log.Infof("Ledger identity:\n%s", ledgerID.Lines("       ").String())
 
@@ -147,7 +146,7 @@ func mustReadStateIdentity(store global.StateStore) {
 	util.AssertNoError(err)
 
 	// it will panic if constraint libraries are incompatible
-	genesis.MustLedgerIdentityDataFromBytes(stateReader.MustLedgerIdentityBytes())
+	ledger.MustLedgerIdentityDataFromBytes(stateReader.MustLedgerIdentityBytes())
 }
 
 func (p *ProximaNode) loadUTXOTangle() {

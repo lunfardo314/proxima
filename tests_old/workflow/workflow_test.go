@@ -31,7 +31,7 @@ import (
 )
 
 type workflowTestData struct {
-	initLedgerStatePar      genesis.LedgerIdentityData
+	initLedgerStatePar      ledger.IdentityData
 	distributionPrivateKeys []ed25519.PrivateKey
 	distributionAddrs       []ledger.AddressED25519
 	faucetOutputs           []*ledger.OutputWithID
@@ -47,7 +47,7 @@ func initWorkflowTest(t *testing.T, nDistribution int, nowis ledger.Time, config
 	ledger.SetTimeTickDuration(10 * time.Millisecond)
 	t.Logf("nowis timestamp: %s", nowis.String())
 	genesisPrivKey := testutil.GetTestingPrivateKey()
-	par := *genesis.DefaultIdentityData(genesisPrivKey, nowis.Slot())
+	par := *ledger.DefaultIdentityData(genesisPrivKey, nowis.Slot())
 	distrib, privKeys, addrs := inittest.GenesisParamsWithPreDistributionOld(nDistribution, initDistributedBalance)
 	ret := &workflowTestData{
 		initLedgerStatePar:      par,
@@ -526,7 +526,7 @@ type multiChainTestData struct {
 	faucetPrivKey      ed25519.PrivateKey
 	faucetAddr         ledger.AddressED25519
 	faucetOrigin       *ledger.OutputWithID
-	sPar               genesis.LedgerIdentityData
+	sPar               ledger.IdentityData
 	originBranchTxid   ledger.TransactionID
 	txBytesChainOrigin []byte
 	txBytes            [][]byte // with chain origins
@@ -550,7 +550,7 @@ func initMultiChainTest(t *testing.T, nChains int, verbose bool, secondsInThePas
 	var addrs []ledger.AddressED25519
 
 	genesisPrivKey := testutil.GetTestingPrivateKey()
-	ret.sPar = *genesis.DefaultIdentityData(genesisPrivKey, nowisTs.Slot())
+	ret.sPar = *ledger.DefaultIdentityData(genesisPrivKey, nowisTs.Slot())
 	distrib, privKeys, addrs := inittest.GenesisParamsWithPreDistributionOld(2, onChainAmount*uint64(nChains))
 	ret.privKey = privKeys[0]
 	ret.addr = addrs[0]
@@ -579,7 +579,7 @@ func initMultiChainTest(t *testing.T, nChains int, verbose bool, secondsInThePas
 
 	stateReader := ret.ut.HeaviestStateForLatestTimeSlot()
 
-	t.Logf("state identity:\n%s", genesis.MustLedgerIdentityDataFromBytes(stateReader.MustLedgerIdentityBytes()).String())
+	t.Logf("state identity:\n%s", ledger.MustLedgerIdentityDataFromBytes(stateReader.MustLedgerIdentityBytes()).String())
 	t.Logf("origin branch txid: %s", ret.originBranchTxid.StringShort())
 	t.Logf("%s", ret.ut.Info())
 

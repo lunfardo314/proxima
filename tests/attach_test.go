@@ -29,7 +29,7 @@ import (
 func TestBasic(t *testing.T) {
 	t.Run("base", func(t *testing.T) {
 		//attacher.SetTraceOn()
-		par := genesis.DefaultIdentityData(testutil.GetTestingPrivateKey())
+		par := ledger.DefaultIdentityData(testutil.GetTestingPrivateKey())
 
 		stateStore := common.NewInMemoryKVStore()
 		bootstrapChainID, root := genesis.InitLedgerState(*par, stateStore)
@@ -61,7 +61,7 @@ func TestBasic(t *testing.T) {
 	t.Run("with distribution", func(t *testing.T) {
 		//attacher.SetTraceOn()
 		privKey := testutil.GetTestingPrivateKey()
-		par := genesis.DefaultIdentityData(privKey)
+		par := ledger.DefaultIdentityData(privKey)
 		addr1 := ledger.AddressED25519FromPrivateKey(testutil.GetTestingPrivateKey(1))
 		addr2 := ledger.AddressED25519FromPrivateKey(testutil.GetTestingPrivateKey(2))
 		distrib := []ledger.LockBalance{
@@ -105,7 +105,7 @@ func TestBasic(t *testing.T) {
 
 		rr, ok := multistate.FetchRootRecord(wrk.StateStore(), distribVID.ID)
 		require.True(t, ok)
-		require.EqualValues(t, genesis.DefaultInitialSupply, int(rr.Supply))
+		require.EqualValues(t, ledger.DefaultInitialSupply, int(rr.Supply))
 		require.EqualValues(t, 0, int(rr.SlotInflation))
 
 		bal1, n1 := multistate.BalanceOnLock(rdr, addr1)
@@ -121,12 +121,12 @@ func TestBasic(t *testing.T) {
 		require.EqualValues(t, 0, nChain)
 
 		balChain = multistate.BalanceOnChainOutput(rdr, &bootstrapChainID)
-		require.EqualValues(t, genesis.DefaultInitialSupply-1_000_000-2_000_000, int(balChain))
+		require.EqualValues(t, ledger.DefaultInitialSupply-1_000_000-2_000_000, int(balChain))
 	})
 	t.Run("sync scenario", func(t *testing.T) {
 		//attacher.SetTraceOn()
 		privKey := testutil.GetTestingPrivateKey()
-		par := genesis.DefaultIdentityData(privKey)
+		par := ledger.DefaultIdentityData(privKey)
 		addr1 := ledger.AddressED25519FromPrivateKey(testutil.GetTestingPrivateKey(1))
 		addr2 := ledger.AddressED25519FromPrivateKey(testutil.GetTestingPrivateKey(2))
 		distrib := []ledger.LockBalance{
@@ -176,7 +176,7 @@ func TestBasic(t *testing.T) {
 
 		rr, ok := multistate.FetchRootRecord(wrk.StateStore(), distribTxID)
 		require.True(t, ok)
-		require.EqualValues(t, genesis.DefaultInitialSupply, int(rr.Supply))
+		require.EqualValues(t, ledger.DefaultInitialSupply, int(rr.Supply))
 		require.EqualValues(t, 0, int(rr.SlotInflation))
 
 		bal1, n1 := multistate.BalanceOnLock(rdr, addr1)
@@ -192,13 +192,13 @@ func TestBasic(t *testing.T) {
 		require.EqualValues(t, 0, nChain)
 
 		balChain = multistate.BalanceOnChainOutput(rdr, &bootstrapChainID)
-		require.EqualValues(t, genesis.DefaultInitialSupply-1_000_000-2_000_000, int(balChain))
+		require.EqualValues(t, ledger.DefaultInitialSupply-1_000_000-2_000_000, int(balChain))
 
 	})
 	t.Run("with distribution tx", func(t *testing.T) {
 		//attacher.SetTraceOn()
 		privKey := testutil.GetTestingPrivateKey()
-		par := genesis.DefaultIdentityData(privKey)
+		par := ledger.DefaultIdentityData(privKey)
 		addr1 := ledger.AddressED25519FromPrivateKey(testutil.GetTestingPrivateKey(1))
 		addr2 := ledger.AddressED25519FromPrivateKey(testutil.GetTestingPrivateKey(2))
 		distrib := []ledger.LockBalance{
@@ -253,7 +253,7 @@ func TestBasic(t *testing.T) {
 
 		rr, ok := multistate.FetchRootRecord(wrk.StateStore(), stemOut.ID.TransactionID())
 		require.True(t, ok)
-		require.EqualValues(t, genesis.DefaultInitialSupply, int(rr.Supply))
+		require.EqualValues(t, ledger.DefaultInitialSupply, int(rr.Supply))
 		require.EqualValues(t, 0, int(rr.SlotInflation))
 
 		bal1, n1 := multistate.BalanceOnLock(rdr, addr1)
@@ -269,7 +269,7 @@ func TestBasic(t *testing.T) {
 		require.EqualValues(t, 0, nChain)
 
 		balChain = multistate.BalanceOnChainOutput(rdr, &bootstrapChainID)
-		require.EqualValues(t, genesis.DefaultInitialSupply-1_000_000-2_000_000, int(balChain))
+		require.EqualValues(t, ledger.DefaultInitialSupply-1_000_000-2_000_000, int(balChain))
 	})
 }
 

@@ -5,7 +5,6 @@ import (
 	"encoding/binary"
 	"fmt"
 
-	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/proxima/genesis"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/transaction"
@@ -56,21 +55,25 @@ func NewUTXODB(trace ...bool) *UTXODB {
 	stateStore := common.NewInMemoryKVStore()
 	genesisSlot := ledger.TimeNow().Slot()
 
-	initLedgerParams := genesis.LedgerIdentityData{
-		Description:                utxodbDscr,
-		InitialSupply:              supplyForTesting,
-		GenesisControllerPublicKey: genesisPubKey,
-		BaselineTime:               ledger.BaselineTime,
-		TimeTickDuration:           ledger.TickDuration(),
-		MaxTickValueInSlot:         ledger.TicksPerSlot - 1,
-		GenesisSlot:                genesisSlot,
-		CoreLedgerConstraintsHash:  easyfl.LibraryHash(),
-	}
+	initLedgerParams := ledger.DefaultIdentityData(genesisPrivateKey, genesisSlot)
+	initLedgerParams.Description = utxodbDscr
+	initLedgerParams.InitialSupply = supplyForTesting
+	//
+	//initLedgerParams := ledger.IdentityData{
+	//	Description:                utxodbDscr,
+	//	InitialSupply:              supplyForTesting,
+	//	GenesisControllerPublicKey: genesisPubKey,
+	//	BaselineTime:               ledger.BaselineTime,
+	//	TimeTickDuration:           ledger.TickDuration(),
+	//	MaxTickValueInSlot:         ledger.TicksPerSlot - 1,
+	//	GenesisSlot:                genesisSlot,
+	//	CoreLedgerConstraintsHash:  easyfl.LibraryHash(),
+	//}
 
 	faucetPrivateKey := testutil.GetTestingPrivateKey(31415926535)
 	faucetAddress := ledger.AddressED25519FromPrivateKey(faucetPrivateKey)
 
-	originChainID, genesisRoot := genesis.InitLedgerState(initLedgerParams, stateStore)
+	originChainID, genesisRoot := genesis.InitLedgerState(*initLedgerParams, stateStore)
 	rdr := multistate.MustNewSugaredReadableState(stateStore, genesisRoot)
 
 	genesisOut, err := rdr.GetChainOutput(&originChainID)
@@ -109,8 +112,8 @@ func (u *UTXODB) Supply() uint64 {
 	return u.supply
 }
 
-func (u *UTXODB) StateIdentityData() *genesis.LedgerIdentityData {
-	return genesis.MustLedgerIdentityDataFromBytes(u.StateReader().MustLedgerIdentityBytes())
+func (u *UTXODB) StateIdentityData() *ledger.IdentityData {
+	return ledger.MustLedgerIdentityDataFromBytes(u.StateReader().MustLedgerIdentityBytes())
 }
 
 func (u *UTXODB) GenesisTimeSlot() ledger.Slot {
@@ -508,8 +511,8 @@ func (u *UTXODB) CreateChainOrigin(controllerPrivateKey ed25519.PrivateKey, ts l
 }
 
 func (u *UTXODB) OriginDistributionTransactionString() string {
-	genesisStemOutputID := genesis.StemOutputID(u.GenesisTimeSlot())
-	genesisOutputID := genesis.InitialSupplyOutputID(u.GenesisTimeSlot())
+	genesisStemOutputID := ledger.StemOutputID(u.GenesisTimeSlot())
+	genesisOutputID := ledger.InitialSupplyOutputID(u.GenesisTimeSlot())
 
 	return transaction.ParseBytesToString(u.originDistributionTxBytes, func(oid *ledger.OutputID) ([]byte, bool) {
 		switch *oid {

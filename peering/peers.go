@@ -15,7 +15,6 @@ import (
 	"github.com/libp2p/go-libp2p/core/peerstore"
 	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
 	"github.com/lunfardo314/proxima/core/txmetadata"
-	"github.com/lunfardo314/proxima/genesis"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util"
@@ -173,7 +172,7 @@ func NewPeersFromConfig(ctx context.Context, logLevel zapcore.Level, logOutputs 
 
 	cfg.LogLevel = logLevel
 	cfg.LogOutputs = logOutputs
-	cfg.LedgerIDHash = genesis.GetGlobalLedgerIdentity().Hash()
+	cfg.LedgerIDHash = ledger.GetGlobalLedgerIdentity().Hash()
 
 	return New(cfg, ctx)
 }

@@ -1,4 +1,4 @@
-package genesis
+package ledger
 
 import (
 	"fmt"
@@ -20,14 +20,15 @@ func percent(n, d int) float32 {
 	return (float32(n) * 100) / float32(d)
 }
 
+var (
+	SlotsPerDay  = 24 * time.Hour / SlotDuration()
+	SlotsPerHour = int64(time.Hour / SlotDuration())
+	TicksPerYear = int64(SlotsPerYear() * TicksPerSlot)
+	TicksPerHour = int64(time.Hour / TickDuration())
+)
+
 const (
-	PricePRXI    = 1.0
-	SlotsPerDay  = int(24*time.Hour) / int(SlotDuration)
-	SlotsPerHour = int(time.Hour) / int(SlotDuration)
-	TicksPerSlot = 100
-	TickDuration = SlotDuration / TicksPerSlot
-	TicksPerYear = SlotsPerYear * TicksPerSlot
-	TicksPerHour = int(time.Hour) / int(TickDuration)
+	PricePRXI = 1.0
 )
 
 func TestInflationCalculations1(t *testing.T) {
@@ -64,25 +65,27 @@ func TestInflationCalculations1(t *testing.T) {
 		requireBits(DefaultInitialSupply),
 		PricePRXI,
 		util.GoTh(int(PricePRXI*InitialSupplyProxi)),
-		SlotDuration,
+		SlotDuration(),
 		TicksPerSlot,
-		TickDuration,
-		util.GoTh(SlotsPerYear),
-		util.GoTh(SlotsPerDay),
+		TickDuration(),
+		util.GoTh(SlotsPerYear()),
+		util.GoTh(int64(SlotsPerDay)),
 		util.GoTh(TicksPerYear),
-		util.GoTh(SlotsPerHour),
+		util.GoTh(int64(SlotsPerHour)),
 		util.GoTh(TicksPerHour),
 	)
 }
 
-const (
-	BranchInflationAnnual = int(SlotsPerYear) * InitialBranchInflationBonus
+var (
+	BranchInflationAnnual   = SlotsPerYear() * InitialBranchInflationBonus
+	MaxAnnualInflationChain = MaxSlotInflationChain * SlotsPerYear()
+)
 
+const (
 	ChainInflationFractionPerSlot = ChainInflationFractionPerTick / TicksPerSlot
 	MinInflatableAmountPerTick    = ChainInflationFractionPerTick
 	MinInflatableAmountPerSlot    = MinInflatableAmountPerTick / TicksPerSlot
 	MaxSlotInflationChain         = (DefaultInitialSupply * TicksPerSlot) / ChainInflationFractionPerTick
-	MaxAnnualInflationChain       = MaxSlotInflationChain * int(SlotsPerYear)
 )
 
 func TestInflationCalculations2(t *testing.T) {
@@ -111,7 +114,7 @@ func TestInflationCalculations2(t *testing.T) {
 		util.GoTh(MaxSlotInflationChain), util.GoTh(MaxSlotInflationChain/DustPerProxi),
 		util.GoTh(MaxAnnualInflationChain), util.GoTh(MaxAnnualInflationChain/DustPerProxi),
 		percent(int(MaxAnnualInflationChain), DefaultInitialSupply),
-		percent(int(MaxAnnualInflationChain)+BranchInflationAnnual, DefaultInitialSupply),
+		percent(int(MaxAnnualInflationChain+BranchInflationAnnual), DefaultInitialSupply),
 	)
 }
 
@@ -240,15 +243,15 @@ func TestInflationProjections(t *testing.T) {
 	var chainSlotInflation int
 	branchI := InitialBranchInflationBonus
 	for y, year := range years {
-		year.slots = make([]int, SlotsPerYear)
+		year.slots = make([]int, SlotsPerYear())
 		for i := range year.slots {
 			if i == 0 {
 				if y == 0 {
 					year.slots[0] = DefaultInitialSupply
 					chainSlotInflation = 0
 				} else {
-					year.slots[0] = years[y-1].slots[SlotsPerYear-1]
-					chainSlotInflation = (years[y-1].slots[SlotsPerYear-1] / chainFractionSchedule[y]) * capitalParticipatingShare / 100
+					year.slots[0] = years[y-1].slots[SlotsPerYear()-1]
+					chainSlotInflation = (years[y-1].slots[SlotsPerYear()-1] / chainFractionSchedule[y]) * capitalParticipatingShare / 100
 				}
 			} else {
 				chainSlotInflation = (year.slots[i-1] / chainFractionSchedule[y]) * capitalParticipatingShare / 100
@@ -263,7 +266,7 @@ func TestInflationProjections(t *testing.T) {
 
 	for y, year := range years {
 		initSupply := year.slots[0]
-		finalSupply := year.slots[SlotsPerYear-1]
+		finalSupply := year.slots[SlotsPerYear()-1]
 		annualInflation := finalSupply - initSupply
 		fmt.Printf("year %d (%s), supply: %s (%d bits) -> %s, inflation: %s, %.2f%%  chain inflation: %.2f%%, branch inflation %.2f%%\n",
 			y, util.GoTh(chainFractionSchedule[y]),

@@ -3,14 +3,13 @@ package inittest
 import (
 	"crypto/ed25519"
 
-	"github.com/lunfardo314/proxima/genesis"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/testutil"
 )
 
 const (
-	InitSupply = genesis.DefaultInitialSupply
+	InitSupply = ledger.DefaultInitialSupply
 )
 
 func GenesisParamsWithPreDistributionOld(n int, initBalance uint64) ([]ledger.LockBalance, []ed25519.PrivateKey, []ledger.AddressED25519) {

@@ -36,7 +36,7 @@ const (
 
 type sequencerTestData struct {
 	t                           *testing.T
-	stateIdentity               genesis.LedgerIdentityData
+	stateIdentity               ledger.IdentityData
 	originControllerPrivateKey  ed25519.PrivateKey
 	originDistribution          []ledger.LockBalance
 	faucetPrivateKeys           []ed25519.PrivateKey
@@ -68,7 +68,7 @@ func initSequencerTestData(t *testing.T, nFaucets, nAdditionalChains int, logica
 	t.Logf("logical now: %v, %s", logicalNow.Time().Format("04:05.00000"), logicalNow.String())
 	ret := &sequencerTestData{t: t}
 	ret.originControllerPrivateKey = testutil.GetTestingPrivateKey()
-	ret.stateIdentity = *genesis.DefaultIdentityData(ret.originControllerPrivateKey)
+	ret.stateIdentity = *ledger.DefaultIdentityData(ret.originControllerPrivateKey)
 	ret.originDistribution, ret.faucetPrivateKeys, ret.faucetAddresses =
 		inittest.GenesisParamsWithPreDistributionOld(nFaucets, initFaucetBalance)
 
@@ -98,7 +98,7 @@ func initSequencerTestData(t *testing.T, nFaucets, nAdditionalChains int, logica
 
 	ret.makeAdditionalChainOrigins(0, nAdditionalChains)
 
-	t.Logf("state identity:\n%s", genesis.MustLedgerIdentityDataFromBytes(ret.ut.HeaviestStateForLatestTimeSlot().MustLedgerIdentityBytes()).String())
+	t.Logf("state identity:\n%s", ledger.MustLedgerIdentityDataFromBytes(ret.ut.HeaviestStateForLatestTimeSlot().MustLedgerIdentityBytes()).String())
 	ret.wrk = workflow.New(ret.ut, peering.NewPeersDummy(), txStore, workflowOpt...)
 	return ret
 }

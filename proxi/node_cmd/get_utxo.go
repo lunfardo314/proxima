@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/lunfardo314/proxima/api"
-	"github.com/lunfardo314/proxima/genesis"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/util"
@@ -47,7 +46,7 @@ func runGetUTXOCmd(_ *cobra.Command, args []string) {
 }
 
 func displayInclusionState(inclusion []api.InclusionData, inSec ...float64) {
-	scoreAll, scorePercTotal, scorePercDominating := glb.InclusionScore(inclusion, genesis.DefaultInitialSupply)
+	scoreAll, scorePercTotal, scorePercDominating := glb.InclusionScore(inclusion, ledger.DefaultInitialSupply)
 	inSecStr := ""
 	if len(inSec) > 0 {
 		inSecStr = fmt.Sprintf(" in %.1f sec", inSec[0])

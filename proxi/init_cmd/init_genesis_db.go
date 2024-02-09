@@ -6,6 +6,7 @@ import (
 	"github.com/dgraph-io/badger/v4"
 	"github.com/lunfardo314/proxima/genesis"
 	"github.com/lunfardo314/proxima/global"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/unitrie/adaptors/badger_adaptor"
 	"github.com/spf13/cobra"
@@ -27,7 +28,7 @@ func runGenesis(_ *cobra.Command, _ []string) {
 
 	idDataYAML, err := os.ReadFile(ledgerIDFileName)
 	glb.AssertNoError(err)
-	idData, err := genesis.StateIdentityDataFromYAML(idDataYAML)
+	idData, err := ledger.StateIdentityDataFromYAML(idDataYAML)
 	glb.AssertNoError(err)
 
 	glb.Infof("Will be creating genesis from the ledger identity data:")

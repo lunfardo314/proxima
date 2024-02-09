@@ -1,4 +1,4 @@
-package genesis
+package ledger
 
 import (
 	"bytes"
@@ -6,23 +6,19 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"slices"
 	"time"
 
-	"github.com/lunfardo314/easyfl"
-	"github.com/lunfardo314/proxima/global"
-	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
 	"golang.org/x/crypto/blake2b"
 	"gopkg.in/yaml.v2"
 )
 
-// LedgerIdentityData is provided at genesis and will remain immutable during lifetime
+// IdentityData is provided at genesis and will remain immutable during lifetime
 // All integers are serialized as big-endian
 type (
-	LedgerIdentityData struct {
-		// core constraint library hash. For checking of ledger version compatibility with the node
-		CoreLedgerConstraintsHash [32]byte
+	IdentityData struct {
 		// arbitrary string up 255 bytes
 		Description string
 		// initial supply of tokens
@@ -36,12 +32,12 @@ type (
 		// max time tick value in the slot. Up to 256 time ticks per time slot, default 100
 		MaxTickValueInSlot uint8
 		// time slot of the genesis
-		GenesisSlot ledger.Slot
+		GenesisSlot Slot
 		// ----------- inflation-related
-		// InitialBranchInflation inflation bonus. Inflated every year by AnnualBranchBonusInflationPromille
+		// InitialBranchInflation inflation bonus. Inflated every year by BranchBonusYearlyGrowthPromille
 		InitialBranchBonus uint64
-		// AnnualBranchBonusInflationPromille branch bonus is inflated y/y
-		AnnualBranchBonusInflationPromille uint16
+		// BranchBonusYearlyGrowthPromille branch bonus is inflated y/y
+		BranchBonusYearlyGrowthPromille uint16
 		// approx one year in slots. Default 2_289_600
 		SlotsPerLedgerYear uint32
 		// ChainInflationPerTickFraction fractions year-over-year. SlotsPerLedgerYear is used as year duration
@@ -50,17 +46,20 @@ type (
 		ChainInflationPerTickFractionYoY []uint64
 	}
 
-	// ledgerIdentityDataYAMLable structure for canonical yamlAble marshaling
-	ledgerIdentityDataYAMLable struct {
-		Description                string `yaml:"description"`
-		InitialSupply              uint64 `yaml:"initial_supply"`
-		GenesisControllerPublicKey string `yaml:"genesis_controller_public_key"`
-		BaselineTime               int64  `yaml:"baseline_time"`
-		TimeTickDuration           int64  `yaml:"time_tick_duration"`
-		MaxTimeTickValueInTimeSlot uint8  `yaml:"max_time_tick_value_in_time_slot"`
-		GenesisTimeSlot            uint32 `yaml:"genesis_time_slot"`
-		CoreLedgerConstraintsHash  string `yaml:"core_ledger_constraints_hash"`
-		// for control
+	// IdentityDataYAMLAble structure for canonical YAMLAble marshaling
+	IdentityDataYAMLAble struct {
+		Description                      string   `yaml:"description"`
+		InitialSupply                    uint64   `yaml:"initial_supply"`
+		GenesisControllerPublicKey       string   `yaml:"genesis_controller_public_key"`
+		BaselineTime                     int64    `yaml:"baseline_time"`
+		TimeTickDuration                 int64    `yaml:"time_tick_duration"`
+		MaxTimeTickValueInTimeSlot       uint8    `yaml:"max_time_tick_value_in_time_slot"`
+		GenesisTimeSlot                  uint32   `yaml:"genesis_time_slot"`
+		InitialBranchBonus               uint64   `yaml:"initial_branch_bonus"`
+		BranchBonusYearlyGrowthPromille  uint16   `yaml:"branch_bonus_yearly_growth_promille"`
+		SlotsPerLedgerYear               uint32   `yaml:"slots_per_ledger_year"`
+		ChainInflationPerTickFractionYoY []uint64 `yaml:"chain_inflation_per_tick_fraction_yoy"`
+		// non-persistent, for control
 		GenesisControllerAddress string `yaml:"genesis_controller_address"`
 		BootstrapChainID         string `yaml:"bootstrap_chain_id"`
 	}
@@ -71,10 +70,9 @@ const (
 	StemOutputIndex          = byte(1)
 )
 
-func (id *LedgerIdentityData) Bytes() []byte {
+func (id *IdentityData) Bytes() []byte {
 	var buf bytes.Buffer
-	buf.Write(id.CoreLedgerConstraintsHash[:])
-	_ = binary.Write(&buf, binary.BigEndian, uint16(len([]byte(id.Description))))
+	_ = binary.Write(&buf, binary.BigEndian, uint16(len(id.Description)))
 	buf.Write([]byte(id.Description))
 	util.Assertf(len(id.GenesisControllerPublicKey) == ed25519.PublicKeySize, "id.GenesisControllerPublicKey)==ed25519.PublicKeySize")
 	buf.Write(id.GenesisControllerPublicKey)
@@ -85,8 +83,8 @@ func (id *LedgerIdentityData) Bytes() []byte {
 	_ = binary.Write(&buf, binary.BigEndian, id.GenesisSlot)
 	_ = binary.Write(&buf, binary.BigEndian, id.SlotsPerLedgerYear)
 	_ = binary.Write(&buf, binary.BigEndian, id.InitialBranchBonus)
-	_ = binary.Write(&buf, binary.BigEndian, id.AnnualBranchBonusInflationPromille)
-	util.Assertf(0 < len(id.ChainInflationPerTickFractionYoY) && len(id.ChainInflationPerTickFractionYoY) <= 255, "too long array")
+	_ = binary.Write(&buf, binary.BigEndian, id.BranchBonusYearlyGrowthPromille)
+	util.Assertf(0 < len(id.ChainInflationPerTickFractionYoY) && len(id.ChainInflationPerTickFractionYoY) <= 255, "ChainInflationPerTickFractionYoY array must be non-empty with size <= 255")
 	_ = binary.Write(&buf, binary.BigEndian, byte(len(id.ChainInflationPerTickFractionYoY))) // array length
 	for _, v := range id.ChainInflationPerTickFractionYoY {
 		_ = binary.Write(&buf, binary.BigEndian, v) // array elements
@@ -94,23 +92,15 @@ func (id *LedgerIdentityData) Bytes() []byte {
 	return buf.Bytes()
 }
 
-func MustLedgerIdentityDataFromBytes(data []byte) *LedgerIdentityData {
-	ret := &LedgerIdentityData{}
+func MustLedgerIdentityDataFromBytes(data []byte) *IdentityData {
+	ret := &IdentityData{}
 	rdr := bytes.NewReader(data)
-	var ledgerConstraintHash [32]byte
-	n, err := rdr.Read(ledgerConstraintHash[:])
-	util.AssertNoError(err)
-	util.Assertf(n == 32, "wrong data size")
-	libraryHash := easyfl.LibraryHash()
-	msg := "node's constraint library is incompatible with the multi-state identity\nExpected library hash %s, got %s"
-	util.Assertf(libraryHash == ledgerConstraintHash, msg, hex.EncodeToString(libraryHash[:]), hex.EncodeToString(ledgerConstraintHash[:]))
-
 	var size16 uint16
 
-	err = binary.Read(rdr, binary.BigEndian, &size16)
+	err := binary.Read(rdr, binary.BigEndian, &size16)
 	util.AssertNoError(err)
 	buf := make([]byte, size16)
-	n, err = rdr.Read(buf)
+	n, err := rdr.Read(buf)
 	util.AssertNoError(err)
 	util.Assertf(n == int(size16), "wrong data size")
 	ret.Description = string(buf)
@@ -145,7 +135,7 @@ func MustLedgerIdentityDataFromBytes(data []byte) *LedgerIdentityData {
 	err = binary.Read(rdr, binary.BigEndian, &ret.InitialBranchBonus)
 	util.AssertNoError(err)
 
-	err = binary.Read(rdr, binary.BigEndian, &ret.AnnualBranchBonusInflationPromille)
+	err = binary.Read(rdr, binary.BigEndian, &ret.BranchBonusYearlyGrowthPromille)
 	util.AssertNoError(err)
 
 	var size8 byte
@@ -162,32 +152,31 @@ func MustLedgerIdentityDataFromBytes(data []byte) *LedgerIdentityData {
 	return ret
 }
 
-func (id *LedgerIdentityData) Hash() [32]byte {
+func (id *IdentityData) Hash() [32]byte {
 	return blake2b.Sum256(id.Bytes())
 }
 
-func (id *LedgerIdentityData) GenesisControlledAddress() ledger.AddressED25519 {
-	return ledger.AddressED25519FromPublicKey(id.GenesisControllerPublicKey)
+func (id *IdentityData) GenesisControlledAddress() AddressED25519 {
+	return AddressED25519FromPublicKey(id.GenesisControllerPublicKey)
 }
 
-func (id *LedgerIdentityData) TimeTicksPerTimeSlot() int {
+func (id *IdentityData) TimeTicksPerTimeSlot() int {
 	return int(id.MaxTickValueInSlot) + 1
 }
 
-func (id *LedgerIdentityData) OriginChainID() ledger.ChainID {
+func (id *IdentityData) OriginChainID() ChainID {
 	oid := InitialSupplyOutputID(id.GenesisSlot)
-	return ledger.OriginChainID(&oid)
+	return OriginChainID(&oid)
 }
 
-func (id *LedgerIdentityData) String() string {
+func (id *IdentityData) String() string {
 	return id.Lines().String()
 }
 
-func (id *LedgerIdentityData) Lines(prefix ...string) *lines.Lines {
+func (id *IdentityData) Lines(prefix ...string) *lines.Lines {
 	originChainID := id.OriginChainID()
 	return lines.New(prefix...).
 		Add("Description: '%s'", id.Description).
-		Add("Core ledger constraints hash: %s", hex.EncodeToString(id.CoreLedgerConstraintsHash[:])).
 		Add("Initial supply: %s", util.GoTh(id.InitialSupply)).
 		Add("Genesis controller address: %s", id.GenesisControlledAddress().String()).
 		Add("Baseline time: %s", id.BaselineTime.Format(time.RFC3339)).
@@ -197,24 +186,27 @@ func (id *LedgerIdentityData) Lines(prefix ...string) *lines.Lines {
 		Add("Origin chain ID: %s", originChainID.String())
 }
 
-func (id *LedgerIdentityData) yamlAble() *ledgerIdentityDataYAMLable {
+func (id *IdentityData) YAMLAble() *IdentityDataYAMLAble {
 	chainID := id.OriginChainID()
-	return &ledgerIdentityDataYAMLable{
-		Description:                id.Description,
-		InitialSupply:              id.InitialSupply,
-		GenesisControllerPublicKey: hex.EncodeToString(id.GenesisControllerPublicKey),
-		BaselineTime:               id.BaselineTime.UnixNano(),
-		TimeTickDuration:           id.TimeTickDuration.Nanoseconds(),
-		MaxTimeTickValueInTimeSlot: id.MaxTickValueInSlot,
-		GenesisTimeSlot:            uint32(id.GenesisSlot),
-		CoreLedgerConstraintsHash:  hex.EncodeToString(id.CoreLedgerConstraintsHash[:]),
-		GenesisControllerAddress:   id.GenesisControlledAddress().String(),
-		BootstrapChainID:           chainID.StringHex(),
+	return &IdentityDataYAMLAble{
+		Description:                      id.Description,
+		InitialSupply:                    id.InitialSupply,
+		GenesisControllerPublicKey:       hex.EncodeToString(id.GenesisControllerPublicKey),
+		BaselineTime:                     id.BaselineTime.UnixNano(),
+		TimeTickDuration:                 id.TimeTickDuration.Nanoseconds(),
+		MaxTimeTickValueInTimeSlot:       id.MaxTickValueInSlot,
+		GenesisTimeSlot:                  uint32(id.GenesisSlot),
+		InitialBranchBonus:               id.InitialBranchBonus,
+		BranchBonusYearlyGrowthPromille:  id.BranchBonusYearlyGrowthPromille,
+		SlotsPerLedgerYear:               id.SlotsPerLedgerYear,
+		ChainInflationPerTickFractionYoY: slices.Clone(id.ChainInflationPerTickFractionYoY),
+		GenesisControllerAddress:         id.GenesisControlledAddress().String(),
+		BootstrapChainID:                 chainID.StringHex(),
 	}
 }
 
-func (id *LedgerIdentityData) YAML() []byte {
-	return id.yamlAble().YAML()
+func (id *IdentityData) YAML() []byte {
+	return id.YAMLAble().YAML()
 }
 
 const stateIDComment = `# This file contains Proxima ledger identity data.
@@ -226,7 +218,7 @@ const stateIDComment = `# This file contains Proxima ledger identity data.
 # Values 'genesis_controller_address' and 'bootstrap_chain_id' are computed values used for control
 `
 
-func (id *ledgerIdentityDataYAMLable) YAML() []byte {
+func (id *IdentityDataYAMLAble) YAML() []byte {
 	var buf bytes.Buffer
 	data, err := yaml.Marshal(id)
 	util.AssertNoError(err)
@@ -235,9 +227,9 @@ func (id *ledgerIdentityDataYAMLable) YAML() []byte {
 	return buf.Bytes()
 }
 
-func (id *ledgerIdentityDataYAMLable) stateIdentityData() (*LedgerIdentityData, error) {
+func (id *IdentityDataYAMLAble) stateIdentityData() (*IdentityData, error) {
 	var err error
-	ret := &LedgerIdentityData{}
+	ret := &IdentityData{}
 	ret.Description = id.Description
 	ret.InitialSupply = id.InitialSupply
 	ret.GenesisControllerPublicKey, err = hex.DecodeString(id.GenesisControllerPublicKey)
@@ -250,18 +242,14 @@ func (id *ledgerIdentityDataYAMLable) stateIdentityData() (*LedgerIdentityData, 
 	ret.BaselineTime = time.Unix(0, id.BaselineTime)
 	ret.TimeTickDuration = time.Duration(id.TimeTickDuration)
 	ret.MaxTickValueInSlot = id.MaxTimeTickValueInTimeSlot
-	ret.GenesisSlot = ledger.Slot(id.GenesisTimeSlot)
-	hBin, err := hex.DecodeString(id.CoreLedgerConstraintsHash)
-	if err != nil {
-		return nil, err
-	}
-	if len(hBin) != 32 {
-		return nil, fmt.Errorf("wrong core library hash")
-	}
-	copy(ret.CoreLedgerConstraintsHash[:], hBin)
+	ret.GenesisSlot = Slot(id.GenesisTimeSlot)
+	ret.InitialBranchBonus = id.InitialBranchBonus
+	ret.BranchBonusYearlyGrowthPromille = id.BranchBonusYearlyGrowthPromille
+	ret.SlotsPerLedgerYear = id.SlotsPerLedgerYear
+	ret.ChainInflationPerTickFractionYoY = slices.Clone(id.ChainInflationPerTickFractionYoY)
 
 	// control
-	if ledger.AddressED25519FromPublicKey(ret.GenesisControllerPublicKey).String() != id.GenesisControllerAddress {
+	if AddressED25519FromPublicKey(ret.GenesisControllerPublicKey).String() != id.GenesisControllerAddress {
 		return nil, fmt.Errorf("YAML data inconsistency: address and public key does not match")
 	}
 	chainID := ret.OriginChainID()
@@ -271,8 +259,8 @@ func (id *ledgerIdentityDataYAMLable) stateIdentityData() (*LedgerIdentityData, 
 	return ret, nil
 }
 
-func StateIdentityDataFromYAML(yamlData []byte) (*LedgerIdentityData, error) {
-	yamlAble := &ledgerIdentityDataYAMLable{}
+func StateIdentityDataFromYAML(yamlData []byte) (*IdentityData, error) {
+	yamlAble := &IdentityDataYAMLAble{}
 	if err := yaml.Unmarshal(yamlData, &yamlAble); err != nil {
 		return nil, err
 	}
@@ -283,35 +271,31 @@ const (
 	DustPerProxi         = 1_000_000
 	InitialSupplyProxi   = 1_000_000_000
 	DefaultInitialSupply = InitialSupplyProxi * DustPerProxi
-	SlotDuration         = 10 * time.Second
-	YearDuration         = 24 * 265 * time.Hour
-	SlotsPerYear         = uint32(YearDuration / SlotDuration)
 
 	InitialBranchInflationBonus   = 20_000_000
 	AnnualBranchInflationPromille = 40
 	ChainInflationFractionPerTick = 400_000_000
 )
 
-func DefaultIdentityData(privateKey ed25519.PrivateKey, slot ...ledger.Slot) *LedgerIdentityData {
+func DefaultIdentityData(privateKey ed25519.PrivateKey, slot ...Slot) *IdentityData {
 	// creating origin 1 slot before now. More convenient for the workflow_old tests
-	var sl ledger.Slot
+	var sl Slot
 	if len(slot) > 0 {
 		sl = slot[0]
 	} else {
-		sl = ledger.TimeNow().Slot()
+		sl = TimeNow().Slot()
 	}
-	return &LedgerIdentityData{
-		CoreLedgerConstraintsHash:          easyfl.LibraryHash(),
-		Description:                        fmt.Sprintf("Proxima prototype version %s", global.Version),
-		InitialSupply:                      DefaultInitialSupply,
-		GenesisControllerPublicKey:         privateKey.Public().(ed25519.PublicKey),
-		BaselineTime:                       ledger.BaselineTime,
-		TimeTickDuration:                   ledger.TickDuration(),
-		MaxTickValueInSlot:                 ledger.TicksPerSlot - 1,
-		GenesisSlot:                        sl,
-		SlotsPerLedgerYear:                 SlotsPerYear,
-		InitialBranchBonus:                 InitialBranchInflationBonus,
-		AnnualBranchBonusInflationPromille: AnnualBranchInflationPromille,
+	return &IdentityData{
+		Description:                     fmt.Sprintf("Proxima prototype version 0.0.0"),
+		InitialSupply:                   DefaultInitialSupply,
+		GenesisControllerPublicKey:      privateKey.Public().(ed25519.PublicKey),
+		BaselineTime:                    BaselineTime,
+		TimeTickDuration:                TickDuration(),
+		MaxTickValueInSlot:              TicksPerSlot - 1,
+		GenesisSlot:                     sl,
+		SlotsPerLedgerYear:              uint32(SlotsPerYear()),
+		InitialBranchBonus:              InitialBranchInflationBonus,
+		BranchBonusYearlyGrowthPromille: AnnualBranchInflationPromille,
 		ChainInflationPerTickFractionYoY: []uint64{
 			ChainInflationFractionPerTick,
 			ChainInflationFractionPerTick * 2,
@@ -320,4 +304,21 @@ func DefaultIdentityData(privateKey ed25519.PrivateKey, slot ...ledger.Slot) *Le
 			ChainInflationFractionPerTick * 14,
 		},
 	}
+}
+
+func InitialSupplyTransactionID(genesisTimeSlot Slot) *TransactionID {
+	ret := NewTransactionID(MustNewLedgerTime(genesisTimeSlot, 0), All0TransactionHash, true, true)
+	return &ret
+}
+
+func InitialSupplyOutputID(e Slot) (ret OutputID) {
+	// we are placing sequencer flag = true into the genesis tx ID to please sequencer constraint
+	// of the origin branch transaction. It is the only exception
+	ret = NewOutputID(InitialSupplyTransactionID(e), InitialSupplyOutputIndex)
+	return
+}
+
+func StemOutputID(e Slot) (ret OutputID) {
+	ret = NewOutputID(InitialSupplyTransactionID(e), StemOutputIndex)
+	return
 }
