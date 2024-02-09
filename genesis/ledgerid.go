@@ -12,7 +12,6 @@ import (
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util"
-	"github.com/lunfardo314/proxima/util/lazybytes"
 	"github.com/lunfardo314/proxima/util/lines"
 	"golang.org/x/crypto/blake2b"
 	"gopkg.in/yaml.v2"
@@ -22,6 +21,8 @@ import (
 // All integers are serialized as big-endian
 type (
 	LedgerIdentityData struct {
+		// core constraint library hash. For checking of ledger version compatibility with the node
+		CoreLedgerConstraintsHash [32]byte
 		// arbitrary string up 255 bytes
 		Description string
 		// initial supply of tokens
@@ -32,15 +33,24 @@ type (
 		BaselineTime time.Time
 		// time tick duration in nanoseconds
 		TimeTickDuration time.Duration
-		// max time tick value in the slot. Up to 256 time ticks per time slot
-		MaxTimeTickValueInTimeSlot uint8
+		// max time tick value in the slot. Up to 256 time ticks per time slot, default 100
+		MaxTickValueInSlot uint8
 		// time slot of the genesis
-		GenesisTimeSlot ledger.Slot
-		// core constraint library hash. For checking of ledger version compatibility with the node
-		CoreLedgerConstraintsHash [32]byte
+		GenesisSlot ledger.Slot
+		// ----------- inflation-related
+		// InitialBranchInflation inflation bonus. Inflated every year by AnnualBranchBonusInflationPromille
+		InitialBranchBonus uint64
+		// AnnualBranchBonusInflationPromille branch bonus is inflated y/y
+		AnnualBranchBonusInflationPromille uint16
+		// approx one year in slots. Default 2_289_600
+		SlotsPerLedgerYear uint32
+		// ChainInflationPerTickFraction fractions year-over-year. SlotsPerLedgerYear is used as year duration
+		// The last value in the list is repeated infinitely
+		// Is used as inflation for one tick
+		ChainInflationPerTickFractionYoY []uint64
 	}
 
-	// ledgerIdentityDataYAMLable structure for canonic yamlAble marshaling
+	// ledgerIdentityDataYAMLable structure for canonical yamlAble marshaling
 	ledgerIdentityDataYAMLable struct {
 		Description                string `yaml:"description"`
 		InitialSupply              uint64 `yaml:"initial_supply"`
@@ -62,70 +72,98 @@ const (
 )
 
 func (id *LedgerIdentityData) Bytes() []byte {
-	var supplyBin [8]byte
-	binary.BigEndian.PutUint64(supplyBin[:], id.InitialSupply)
-	var baselineTimeBin [8]byte
-	binary.BigEndian.PutUint64(baselineTimeBin[:], uint64(id.BaselineTime.UnixNano()))
-	var timeTickDurationBin [8]byte
-	binary.BigEndian.PutUint64(timeTickDurationBin[:], uint64(id.TimeTickDuration.Nanoseconds()))
-	maxTickBin := []byte{id.MaxTimeTickValueInTimeSlot}
-	var genesisTimesSlotBin [4]byte
-	binary.BigEndian.PutUint32(genesisTimesSlotBin[:], uint32(id.GenesisTimeSlot))
+	var buf bytes.Buffer
+	buf.Write(id.CoreLedgerConstraintsHash[:])
+	_ = binary.Write(&buf, binary.BigEndian, uint16(len([]byte(id.Description))))
+	buf.Write([]byte(id.Description))
+	util.Assertf(len(id.GenesisControllerPublicKey) == ed25519.PublicKeySize, "id.GenesisControllerPublicKey)==ed25519.PublicKeySize")
+	buf.Write(id.GenesisControllerPublicKey)
+	_ = binary.Write(&buf, binary.BigEndian, id.InitialSupply)
+	_ = binary.Write(&buf, binary.BigEndian, id.BaselineTime.UnixNano())
+	_ = binary.Write(&buf, binary.BigEndian, id.TimeTickDuration.Nanoseconds())
+	_ = binary.Write(&buf, binary.BigEndian, id.MaxTickValueInSlot)
+	_ = binary.Write(&buf, binary.BigEndian, id.GenesisSlot)
+	_ = binary.Write(&buf, binary.BigEndian, id.SlotsPerLedgerYear)
+	_ = binary.Write(&buf, binary.BigEndian, id.InitialBranchBonus)
+	_ = binary.Write(&buf, binary.BigEndian, id.AnnualBranchBonusInflationPromille)
+	util.Assertf(0 < len(id.ChainInflationPerTickFractionYoY) && len(id.ChainInflationPerTickFractionYoY) <= 255, "too long array")
+	_ = binary.Write(&buf, binary.BigEndian, byte(len(id.ChainInflationPerTickFractionYoY))) // array length
+	for _, v := range id.ChainInflationPerTickFractionYoY {
+		_ = binary.Write(&buf, binary.BigEndian, v) // array elements
+	}
+	return buf.Bytes()
+}
 
-	return lazybytes.MakeArrayFromDataReadOnly(
-		[]byte(id.Description),          // 0
-		supplyBin[:],                    // 1
-		id.GenesisControllerPublicKey,   // 2
-		baselineTimeBin[:],              // 3
-		timeTickDurationBin[:],          // 4
-		maxTickBin[:],                   // 5
-		genesisTimesSlotBin[:],          // 6
-		id.CoreLedgerConstraintsHash[:], // 7
-	).Bytes()
+func MustLedgerIdentityDataFromBytes(data []byte) *LedgerIdentityData {
+	ret := &LedgerIdentityData{}
+	rdr := bytes.NewReader(data)
+	var ledgerConstraintHash [32]byte
+	n, err := rdr.Read(ledgerConstraintHash[:])
+	util.AssertNoError(err)
+	util.Assertf(n == 32, "wrong data size")
+	libraryHash := easyfl.LibraryHash()
+	msg := "node's constraint library is incompatible with the multi-state identity\nExpected library hash %s, got %s"
+	util.Assertf(libraryHash == ledgerConstraintHash, msg, hex.EncodeToString(libraryHash[:]), hex.EncodeToString(ledgerConstraintHash[:]))
+
+	var size16 uint16
+
+	err = binary.Read(rdr, binary.BigEndian, &size16)
+	util.AssertNoError(err)
+	buf := make([]byte, size16)
+	n, err = rdr.Read(buf)
+	util.AssertNoError(err)
+	util.Assertf(n == int(size16), "wrong data size")
+	ret.Description = string(buf)
+
+	buf = make([]byte, ed25519.PublicKeySize)
+	n, err = rdr.Read(buf)
+	util.AssertNoError(err)
+	util.Assertf(n == ed25519.PublicKeySize, "wrong data size")
+	ret.GenesisControllerPublicKey = buf
+
+	err = binary.Read(rdr, binary.BigEndian, &ret.InitialSupply)
+	util.AssertNoError(err)
+
+	var bufNano int64
+	err = binary.Read(rdr, binary.BigEndian, &bufNano)
+	util.AssertNoError(err)
+	ret.BaselineTime = time.Unix(0, bufNano)
+
+	err = binary.Read(rdr, binary.BigEndian, &bufNano)
+	util.AssertNoError(err)
+	ret.TimeTickDuration = time.Duration(bufNano)
+
+	err = binary.Read(rdr, binary.BigEndian, &ret.MaxTickValueInSlot)
+	util.AssertNoError(err)
+
+	err = binary.Read(rdr, binary.BigEndian, &ret.GenesisSlot)
+	util.AssertNoError(err)
+
+	err = binary.Read(rdr, binary.BigEndian, &ret.SlotsPerLedgerYear)
+	util.AssertNoError(err)
+
+	err = binary.Read(rdr, binary.BigEndian, &ret.InitialBranchBonus)
+	util.AssertNoError(err)
+
+	err = binary.Read(rdr, binary.BigEndian, &ret.AnnualBranchBonusInflationPromille)
+	util.AssertNoError(err)
+
+	var size8 byte
+	err = binary.Read(rdr, binary.BigEndian, &size8)
+	util.AssertNoError(err)
+
+	ret.ChainInflationPerTickFractionYoY = make([]uint64, size8)
+	for i := range ret.ChainInflationPerTickFractionYoY {
+		err = binary.Read(rdr, binary.BigEndian, &ret.ChainInflationPerTickFractionYoY[i])
+		util.AssertNoError(err)
+	}
+
+	util.Assertf(rdr.Len() == 0, "not all bytes has been read")
+	return ret
 }
 
 func (id *LedgerIdentityData) Hash() [32]byte {
 	return blake2b.Sum256(id.Bytes())
-}
-
-func MustLedgerIdentityDataFromBytes(data []byte) *LedgerIdentityData {
-	arr, err := lazybytes.ParseArrayFromBytesReadOnly(data, 8)
-	util.AssertNoError(err)
-	publicKey := ed25519.PublicKey(arr.At(2))
-	util.Assertf(len(publicKey) == ed25519.PublicKeySize, "len(publicKey)==ed25519.PublicKeySize")
-	maxTick := arr.At(5)
-	util.Assertf(len(maxTick) == 1, "len(maxTick)==1")
-
-	// check library hashes
-	libraryHash := easyfl.LibraryHash()
-	msg := "node's constraint library is incompatible with the multi-state identity\nExpected library hash %s, got %s"
-	util.Assertf(bytes.Equal(libraryHash[:], arr.At(7)), msg, hex.EncodeToString(libraryHash[:]), hex.EncodeToString(arr.At(7)))
-
-	// check baseline time
-	baselineTime := time.Unix(0, int64(binary.BigEndian.Uint64(arr.At(3))))
-	msg = "node assumes baseline time different from state baseline time: expected %v, got %v"
-	util.Assertf(baselineTime.UnixNano() == ledger.BaselineTimeUnixNano, msg, ledger.BaselineTimeUnixNano, baselineTime)
-
-	// check time tick duration
-	timeTickDuration := time.Duration(binary.BigEndian.Uint64(arr.At(4)))
-	msg = "node assumes time tick duration different from state baseline duration: expected %dns, got %dns"
-	util.Assertf(timeTickDuration == ledger.TickDuration(), msg, ledger.TickDuration().Nanoseconds(), timeTickDuration.Nanoseconds())
-
-	// check time ticks per slot
-	msg = "node assumes time ticks per slot different from state assumption: expected %d, got %d"
-	util.Assertf(maxTick[0]+1 == ledger.TicksPerSlot, msg, ledger.TicksPerSlot, maxTick[0]+1)
-
-	ret := &LedgerIdentityData{
-		Description:                string(arr.At(0)),
-		InitialSupply:              binary.BigEndian.Uint64(arr.At(1)),
-		GenesisControllerPublicKey: publicKey,
-		BaselineTime:               baselineTime,
-		TimeTickDuration:           timeTickDuration,
-		MaxTimeTickValueInTimeSlot: maxTick[0],
-		GenesisTimeSlot:            ledger.MustSlotFromBytes(arr.At(6)),
-	}
-	copy(ret.CoreLedgerConstraintsHash[:], arr.At(7))
-	return ret
 }
 
 func (id *LedgerIdentityData) GenesisControlledAddress() ledger.AddressED25519 {
@@ -133,11 +171,11 @@ func (id *LedgerIdentityData) GenesisControlledAddress() ledger.AddressED25519 {
 }
 
 func (id *LedgerIdentityData) TimeTicksPerTimeSlot() int {
-	return int(id.MaxTimeTickValueInTimeSlot) + 1
+	return int(id.MaxTickValueInSlot) + 1
 }
 
 func (id *LedgerIdentityData) OriginChainID() ledger.ChainID {
-	oid := InitialSupplyOutputID(id.GenesisTimeSlot)
+	oid := InitialSupplyOutputID(id.GenesisSlot)
 	return ledger.OriginChainID(&oid)
 }
 
@@ -155,7 +193,7 @@ func (id *LedgerIdentityData) Lines(prefix ...string) *lines.Lines {
 		Add("Baseline time: %s", id.BaselineTime.Format(time.RFC3339)).
 		Add("Time tick duration: %v", id.TimeTickDuration).
 		Add("Time ticks per time slot: %d", id.TimeTicksPerTimeSlot()).
-		Add("Genesis time slot: %d", id.GenesisTimeSlot).
+		Add("Genesis time slot: %d", id.GenesisSlot).
 		Add("Origin chain ID: %s", originChainID.String())
 }
 
@@ -167,8 +205,8 @@ func (id *LedgerIdentityData) yamlAble() *ledgerIdentityDataYAMLable {
 		GenesisControllerPublicKey: hex.EncodeToString(id.GenesisControllerPublicKey),
 		BaselineTime:               id.BaselineTime.UnixNano(),
 		TimeTickDuration:           id.TimeTickDuration.Nanoseconds(),
-		MaxTimeTickValueInTimeSlot: id.MaxTimeTickValueInTimeSlot,
-		GenesisTimeSlot:            uint32(id.GenesisTimeSlot),
+		MaxTimeTickValueInTimeSlot: id.MaxTickValueInSlot,
+		GenesisTimeSlot:            uint32(id.GenesisSlot),
 		CoreLedgerConstraintsHash:  hex.EncodeToString(id.CoreLedgerConstraintsHash[:]),
 		GenesisControllerAddress:   id.GenesisControlledAddress().String(),
 		BootstrapChainID:           chainID.StringHex(),
@@ -211,8 +249,8 @@ func (id *ledgerIdentityDataYAMLable) stateIdentityData() (*LedgerIdentityData, 
 	}
 	ret.BaselineTime = time.Unix(0, id.BaselineTime)
 	ret.TimeTickDuration = time.Duration(id.TimeTickDuration)
-	ret.MaxTimeTickValueInTimeSlot = id.MaxTimeTickValueInTimeSlot
-	ret.GenesisTimeSlot = ledger.Slot(id.GenesisTimeSlot)
+	ret.MaxTickValueInSlot = id.MaxTimeTickValueInTimeSlot
+	ret.GenesisSlot = ledger.Slot(id.GenesisTimeSlot)
 	hBin, err := hex.DecodeString(id.CoreLedgerConstraintsHash)
 	if err != nil {
 		return nil, err
@@ -241,7 +279,18 @@ func StateIdentityDataFromYAML(yamlData []byte) (*LedgerIdentityData, error) {
 	return yamlAble.stateIdentityData()
 }
 
-const DefaultSupply = 1_000_000_000_000
+const (
+	DustPerProxi         = 1_000_000
+	InitialSupplyProxi   = 1_000_000_000
+	DefaultInitialSupply = InitialSupplyProxi * DustPerProxi
+	SlotDuration         = 10 * time.Second
+	YearDuration         = 24 * 265 * time.Hour
+	SlotsPerYear         = uint32(YearDuration / SlotDuration)
+
+	InitialBranchInflationBonus   = 20_000_000
+	AnnualBranchInflationPromille = 40
+	ChainInflationFractionPerTick = 400_000_000
+)
 
 func DefaultIdentityData(privateKey ed25519.PrivateKey, slot ...ledger.Slot) *LedgerIdentityData {
 	// creating origin 1 slot before now. More convenient for the workflow_old tests
@@ -252,13 +301,23 @@ func DefaultIdentityData(privateKey ed25519.PrivateKey, slot ...ledger.Slot) *Le
 		sl = ledger.TimeNow().Slot()
 	}
 	return &LedgerIdentityData{
-		CoreLedgerConstraintsHash:  easyfl.LibraryHash(),
-		Description:                fmt.Sprintf("Proxima prototype version %s", global.Version),
-		InitialSupply:              DefaultSupply,
-		GenesisControllerPublicKey: privateKey.Public().(ed25519.PublicKey),
-		BaselineTime:               ledger.BaselineTime,
-		TimeTickDuration:           ledger.TickDuration(),
-		MaxTimeTickValueInTimeSlot: ledger.TicksPerSlot - 1,
-		GenesisTimeSlot:            sl,
+		CoreLedgerConstraintsHash:          easyfl.LibraryHash(),
+		Description:                        fmt.Sprintf("Proxima prototype version %s", global.Version),
+		InitialSupply:                      DefaultInitialSupply,
+		GenesisControllerPublicKey:         privateKey.Public().(ed25519.PublicKey),
+		BaselineTime:                       ledger.BaselineTime,
+		TimeTickDuration:                   ledger.TickDuration(),
+		MaxTickValueInSlot:                 ledger.TicksPerSlot - 1,
+		GenesisSlot:                        sl,
+		SlotsPerLedgerYear:                 SlotsPerYear,
+		InitialBranchBonus:                 InitialBranchInflationBonus,
+		AnnualBranchBonusInflationPromille: AnnualBranchInflationPromille,
+		ChainInflationPerTickFractionYoY: []uint64{
+			ChainInflationFractionPerTick,
+			ChainInflationFractionPerTick * 2,
+			ChainInflationFractionPerTick * 4,
+			ChainInflationFractionPerTick * 8,
+			ChainInflationFractionPerTick * 14,
+		},
 	}
 }

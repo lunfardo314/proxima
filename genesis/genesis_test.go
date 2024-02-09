@@ -48,11 +48,11 @@ func TestInitOrigin(t *testing.T) {
 	rdr := multistate.MustNewSugaredReadableState(store, genesisRoot)
 
 	stemBack := rdr.GetStemOutput()
-	require.EqualValues(t, StemOutputID(id.GenesisTimeSlot), stemBack.ID)
+	require.EqualValues(t, StemOutputID(id.GenesisSlot), stemBack.ID)
 
 	initSupplyOut, err := rdr.GetChainOutput(&bootstrapSeqID)
 	require.NoError(t, err)
-	require.EqualValues(t, InitialSupplyOutputID(id.GenesisTimeSlot), initSupplyOut.ID)
+	require.EqualValues(t, InitialSupplyOutputID(id.GenesisSlot), initSupplyOut.ID)
 
 	require.EqualValues(t, id.Bytes(), rdr.MustLedgerIdentityBytes())
 }

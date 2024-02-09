@@ -107,7 +107,7 @@ func waitForInclusion(oid ledger.OutputID, timeout ...time.Duration) error {
 		displayInclusionState(inclusionData, time.Since(startTime).Seconds())
 	}, func() bool {
 		// TODO not 100% correct because depends on the number of active sequencers
-		_, percOfTotal, percOfDominating := glb.InclusionScore(inclusionData, genesis.DefaultSupply)
+		_, percOfTotal, percOfDominating := glb.InclusionScore(inclusionData, genesis.DefaultInitialSupply)
 		if percOfTotal == 100 || percOfDominating == 100 {
 			glb.Infof("full inclusion reached in %v", time.Since(startTime))
 			return true

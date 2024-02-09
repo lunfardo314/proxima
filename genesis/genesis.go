@@ -21,8 +21,8 @@ func InitLedgerState(par LedgerIdentityData, store global.StateStore) (ledger.Ch
 	util.AssertNoError(err)
 
 	genesisAddr := ledger.AddressED25519FromPublicKey(par.GenesisControllerPublicKey)
-	gout := InitialSupplyOutput(par.InitialSupply, genesisAddr, par.GenesisTimeSlot)
-	gStemOut := StemOutput(par.GenesisTimeSlot)
+	gout := InitialSupplyOutput(par.InitialSupply, genesisAddr, par.GenesisSlot)
+	gStemOut := StemOutput(par.GenesisSlot)
 
 	updatable := multistate.MustNewUpdatable(store, emptyRoot)
 	coverage := multistate.LedgerCoverage{0, par.InitialSupply}
@@ -113,7 +113,7 @@ func ScanGenesisState(stateStore global.StateStore) (*LedgerIdentityData, common
 	rdr := multistate.MustNewSugaredReadableState(stateStore, branchData.Root)
 	stateID := MustLedgerIdentityDataFromBytes(rdr.MustLedgerIdentityBytes())
 
-	genesisOid := InitialSupplyOutputID(stateID.GenesisTimeSlot)
+	genesisOid := InitialSupplyOutputID(stateID.GenesisSlot)
 	out, err := rdr.GetOutputErr(&genesisOid)
 	if err != nil {
 		return nil, nil, fmt.Errorf("GetOutputErr(%s): %w", genesisOid.StringShort(), err)

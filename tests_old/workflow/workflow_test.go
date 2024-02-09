@@ -141,7 +141,7 @@ func TestWorkflowSync(t *testing.T) {
 
 		t.Logf("timestamp now: %s", ledger.TimeNow().String())
 		t.Logf("distribution timestamp: %s", wd.distributionTxID.Timestamp().String())
-		t.Logf("origin slot: %d", wd.initLedgerStatePar.GenesisTimeSlot)
+		t.Logf("origin slot: %d", wd.initLedgerStatePar.GenesisSlot)
 
 		estimatedTimeout := (time.Duration(numRuns) * ledger.TransactionTimePaceDuration()) + (5 * time.Second)
 		waitCounter := countdown.New(numRuns, estimatedTimeout)
@@ -218,7 +218,7 @@ func TestWorkflowSync(t *testing.T) {
 
 		t.Logf("timestamp now: %s", ledger.TimeNow().String())
 		t.Logf("distribution timestamp: %s", wd.distributionTxID.Timestamp().String())
-		t.Logf("origin slot: %d", wd.initLedgerStatePar.GenesisTimeSlot)
+		t.Logf("origin slot: %d", wd.initLedgerStatePar.GenesisSlot)
 
 		estimatedTimeout := (time.Duration(numRuns) * ledger.TransactionTimePaceDuration()) + (10 * time.Second)
 		waitCounter := countdown.New(numRuns, estimatedTimeout)
@@ -262,7 +262,7 @@ func TestWorkflowAsync(t *testing.T) {
 
 		t.Logf("timestamp now: %s", ledger.TimeNow().String())
 		t.Logf("distribution timestamp: %s", wd.distributionTxID.Timestamp().String())
-		t.Logf("origin slot: %d", wd.initLedgerStatePar.GenesisTimeSlot)
+		t.Logf("origin slot: %d", wd.initLedgerStatePar.GenesisSlot)
 
 		estimatedTimeout := (time.Duration(numRuns) * ledger.TransactionTimePaceDuration()) + (5 * time.Second)
 		waitCounter := countdown.New(numRuns, estimatedTimeout)
@@ -338,7 +338,7 @@ func TestWorkflowAsync(t *testing.T) {
 
 		t.Logf("timestamp now: %s", ledger.TimeNow().String())
 		t.Logf("distribution timestamp: %s", wd.distributionTxID.Timestamp().String())
-		t.Logf("origin slot: %d", wd.initLedgerStatePar.GenesisTimeSlot)
+		t.Logf("origin slot: %d", wd.initLedgerStatePar.GenesisSlot)
 
 		estimatedTimeout := (time.Duration(numRuns) * ledger.TransactionTimePaceDuration()) + (6 * time.Second)
 		waitCounter := countdown.New(numRuns, estimatedTimeout)

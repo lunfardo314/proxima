@@ -21,24 +21,18 @@ func percent(n, d int) float32 {
 }
 
 const (
-	DustPerProxi       = 1_000_000
-	InitialSupplyProxi = 1_000_000_000
-	InitialSupply      = InitialSupplyProxi * DustPerProxi
-	PricePRXI          = 1.0
-	SlotDuration       = 10 * time.Second
-	YearDuration       = 24 * 265 * time.Hour
-	SlotsPerYear       = int(YearDuration) / int(SlotDuration)
-	SlotsPerDay        = int(24*time.Hour) / int(SlotDuration)
-	SlotsPerHour       = int(time.Hour) / int(SlotDuration)
-	TicksPerSlot       = 100
-	TickDuration       = SlotDuration / TicksPerSlot
-	TicksPerYear       = SlotsPerYear * TicksPerSlot
-	TicksPerHour       = int(time.Hour) / int(TickDuration)
+	PricePRXI    = 1.0
+	SlotsPerDay  = int(24*time.Hour) / int(SlotDuration)
+	SlotsPerHour = int(time.Hour) / int(SlotDuration)
+	TicksPerSlot = 100
+	TickDuration = SlotDuration / TicksPerSlot
+	TicksPerYear = SlotsPerYear * TicksPerSlot
+	TicksPerHour = int(time.Hour) / int(TickDuration)
 )
 
 func TestInflationCalculations1(t *testing.T) {
 	t.Logf("MaxUint64: %s, require bits: %d", util.GoTh(uint64(math.MaxUint64)), requireBits(uint64(math.MaxUint64)))
-	t.Logf("Proxima default supply: %s, require bits: %d", util.GoTh(DefaultSupply), requireBits(DefaultSupply))
+	t.Logf("Proxima default supply: %s, require bits: %d", util.GoTh(DefaultInitialSupply), requireBits(DefaultInitialSupply))
 	const (
 		SatoshiInBTC = 100_000_000
 		MaxBTCApprox = 21_000_000
@@ -66,8 +60,8 @@ func TestInflationCalculations1(t *testing.T) {
 		requireBits(DustPerProxi),
 		util.GoTh(InitialSupplyProxi),
 		requireBits(InitialSupplyProxi),
-		util.GoTh(InitialSupply),
-		requireBits(InitialSupply),
+		util.GoTh(DefaultInitialSupply),
+		requireBits(DefaultInitialSupply),
 		PricePRXI,
 		util.GoTh(int(PricePRXI*InitialSupplyProxi)),
 		SlotDuration,
@@ -82,21 +76,19 @@ func TestInflationCalculations1(t *testing.T) {
 }
 
 const (
-	BranchInflationBonus  = 20_000_000
-	BranchInflationAnnual = SlotsPerYear * BranchInflationBonus
+	BranchInflationAnnual = int(SlotsPerYear) * InitialBranchInflationBonus
 
-	ChainInflationFractionPerTick = 400_000_000
 	ChainInflationFractionPerSlot = ChainInflationFractionPerTick / TicksPerSlot
 	MinInflatableAmountPerTick    = ChainInflationFractionPerTick
 	MinInflatableAmountPerSlot    = MinInflatableAmountPerTick / TicksPerSlot
-	MaxSlotInflationChain         = (InitialSupply * TicksPerSlot) / ChainInflationFractionPerTick
-	MaxAnnualInflationChain       = MaxSlotInflationChain * SlotsPerYear
+	MaxSlotInflationChain         = (DefaultInitialSupply * TicksPerSlot) / ChainInflationFractionPerTick
+	MaxAnnualInflationChain       = MaxSlotInflationChain * int(SlotsPerYear)
 )
 
 func TestInflationCalculations2(t *testing.T) {
 	const template2 = `
 		InitialSupply						: %s (%s PRXI)
-		BranchInflationBonus				: %s (%s PRXI)
+		InitialBranchInflationBonus				: %s (%s PRXI)
 		BranchInflationAnnual				: %s (%s PRXI)
 		BranchInflationAnnual %%				: %.2f%%
 		ChainInflationFractionPerTick		: %s (%d bits) 
@@ -109,17 +101,17 @@ func TestInflationCalculations2(t *testing.T) {
 `
 
 	t.Logf(template2,
-		util.GoTh(InitialSupply), util.GoTh(InitialSupplyProxi),
-		util.GoTh(BranchInflationBonus), util.GoTh(BranchInflationBonus/DustPerProxi),
+		util.GoTh(DefaultInitialSupply), util.GoTh(InitialSupplyProxi),
+		util.GoTh(InitialBranchInflationBonus), util.GoTh(InitialBranchInflationBonus/DustPerProxi),
 		util.GoTh(BranchInflationAnnual), util.GoTh(BranchInflationAnnual/DustPerProxi),
-		percent(BranchInflationAnnual, InitialSupply),
+		percent(int(BranchInflationAnnual), DefaultInitialSupply),
 		util.GoTh(ChainInflationFractionPerTick), requireBits(ChainInflationFractionPerTick),
 		util.GoTh(MinInflatableAmountPerTick), util.GoTh(MinInflatableAmountPerTick/DustPerProxi),
 		util.GoTh(MinInflatableAmountPerSlot), util.GoTh(MinInflatableAmountPerSlot/DustPerProxi),
 		util.GoTh(MaxSlotInflationChain), util.GoTh(MaxSlotInflationChain/DustPerProxi),
 		util.GoTh(MaxAnnualInflationChain), util.GoTh(MaxAnnualInflationChain/DustPerProxi),
-		percent(MaxAnnualInflationChain, InitialSupply),
-		percent(MaxAnnualInflationChain+BranchInflationAnnual, InitialSupply),
+		percent(int(MaxAnnualInflationChain), DefaultInitialSupply),
+		percent(int(MaxAnnualInflationChain)+BranchInflationAnnual, DefaultInitialSupply),
 	)
 }
 
@@ -246,13 +238,13 @@ const capitalParticipatingShare = 100
 func TestInflationProjections(t *testing.T) {
 	years := make([]yearData, len(chainFractionSchedule))
 	var chainSlotInflation int
-	branchI := BranchInflationBonus
+	branchI := InitialBranchInflationBonus
 	for y, year := range years {
 		year.slots = make([]int, SlotsPerYear)
 		for i := range year.slots {
 			if i == 0 {
 				if y == 0 {
-					year.slots[0] = InitialSupply
+					year.slots[0] = DefaultInitialSupply
 					chainSlotInflation = 0
 				} else {
 					year.slots[0] = years[y-1].slots[SlotsPerYear-1]
@@ -266,7 +258,7 @@ func TestInflationProjections(t *testing.T) {
 			year.branchInflation += branchI
 		}
 		years[y] = year
-		branchI = branchI + branchI/25 // 4% indexing
+		branchI = branchI + branchI*AnnualBranchInflationPromille/1000 // 4% indexing
 	}
 
 	for y, year := range years {
@@ -280,5 +272,4 @@ func TestInflationProjections(t *testing.T) {
 			percent(year.chainInflation, initSupply), percent(year.branchInflation, initSupply),
 		)
 	}
-
 }

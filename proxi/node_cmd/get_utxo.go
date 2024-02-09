@@ -47,7 +47,7 @@ func runGetUTXOCmd(_ *cobra.Command, args []string) {
 }
 
 func displayInclusionState(inclusion []api.InclusionData, inSec ...float64) {
-	scoreAll, scorePercTotal, scorePercDominating := glb.InclusionScore(inclusion, genesis.DefaultSupply)
+	scoreAll, scorePercTotal, scorePercDominating := glb.InclusionScore(inclusion, genesis.DefaultInitialSupply)
 	inSecStr := ""
 	if len(inSec) > 0 {
 		inSecStr = fmt.Sprintf(" in %.1f sec", inSec[0])

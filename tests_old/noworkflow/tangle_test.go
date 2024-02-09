@@ -67,7 +67,7 @@ func TestOriginTangle(t *testing.T) {
 		require.EqualValues(t, 0, stemOut.Output.Amount())
 		stemLock, ok := stemOut.Output.StemLock()
 		require.True(t, ok)
-		require.EqualValues(t, genesis.DefaultSupply, int(stemLock.Supply))
+		require.EqualValues(t, genesis.DefaultInitialSupply, int(stemLock.Supply))
 
 		rdr := ut.HeaviestStateForLatestTimeSlot()
 		bal1, n1 := state.BalanceOnLock(rdr, addr1)
@@ -83,7 +83,7 @@ func TestOriginTangle(t *testing.T) {
 		require.EqualValues(t, 0, nChain)
 
 		balChain = state.BalanceOnChainOutput(rdr, &bootstrapChainID)
-		require.EqualValues(t, genesis.DefaultSupply-1_000_000-2_000_000, int(balChain))
+		require.EqualValues(t, genesis.DefaultInitialSupply-1_000_000-2_000_000, int(balChain))
 	})
 }
 

@@ -62,8 +62,8 @@ func NewUTXODB(trace ...bool) *UTXODB {
 		GenesisControllerPublicKey: genesisPubKey,
 		BaselineTime:               ledger.BaselineTime,
 		TimeTickDuration:           ledger.TickDuration(),
-		MaxTimeTickValueInTimeSlot: ledger.TicksPerSlot - 1,
-		GenesisTimeSlot:            genesisSlot,
+		MaxTickValueInSlot:         ledger.TicksPerSlot - 1,
+		GenesisSlot:                genesisSlot,
 		CoreLedgerConstraintsHash:  easyfl.LibraryHash(),
 	}
 

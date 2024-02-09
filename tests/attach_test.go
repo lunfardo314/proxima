@@ -42,7 +42,7 @@ func TestBasic(t *testing.T) {
 
 		id, _, err := genesis.ScanGenesisState(stateStore)
 		require.NoError(t, err)
-		genesisOut := genesis.StemOutput(id.GenesisTimeSlot)
+		genesisOut := genesis.StemOutput(id.GenesisSlot)
 		vidGenesis, err := attacher.EnsureBranch(genesisOut.ID.TransactionID(), wrk)
 		require.NoError(t, err)
 
@@ -105,7 +105,7 @@ func TestBasic(t *testing.T) {
 
 		rr, ok := multistate.FetchRootRecord(wrk.StateStore(), distribVID.ID)
 		require.True(t, ok)
-		require.EqualValues(t, genesis.DefaultSupply, int(rr.Supply))
+		require.EqualValues(t, genesis.DefaultInitialSupply, int(rr.Supply))
 		require.EqualValues(t, 0, int(rr.SlotInflation))
 
 		bal1, n1 := multistate.BalanceOnLock(rdr, addr1)
@@ -121,7 +121,7 @@ func TestBasic(t *testing.T) {
 		require.EqualValues(t, 0, nChain)
 
 		balChain = multistate.BalanceOnChainOutput(rdr, &bootstrapChainID)
-		require.EqualValues(t, genesis.DefaultSupply-1_000_000-2_000_000, int(balChain))
+		require.EqualValues(t, genesis.DefaultInitialSupply-1_000_000-2_000_000, int(balChain))
 	})
 	t.Run("sync scenario", func(t *testing.T) {
 		//attacher.SetTraceOn()
@@ -176,7 +176,7 @@ func TestBasic(t *testing.T) {
 
 		rr, ok := multistate.FetchRootRecord(wrk.StateStore(), distribTxID)
 		require.True(t, ok)
-		require.EqualValues(t, genesis.DefaultSupply, int(rr.Supply))
+		require.EqualValues(t, genesis.DefaultInitialSupply, int(rr.Supply))
 		require.EqualValues(t, 0, int(rr.SlotInflation))
 
 		bal1, n1 := multistate.BalanceOnLock(rdr, addr1)
@@ -192,7 +192,7 @@ func TestBasic(t *testing.T) {
 		require.EqualValues(t, 0, nChain)
 
 		balChain = multistate.BalanceOnChainOutput(rdr, &bootstrapChainID)
-		require.EqualValues(t, genesis.DefaultSupply-1_000_000-2_000_000, int(balChain))
+		require.EqualValues(t, genesis.DefaultInitialSupply-1_000_000-2_000_000, int(balChain))
 
 	})
 	t.Run("with distribution tx", func(t *testing.T) {
@@ -253,7 +253,7 @@ func TestBasic(t *testing.T) {
 
 		rr, ok := multistate.FetchRootRecord(wrk.StateStore(), stemOut.ID.TransactionID())
 		require.True(t, ok)
-		require.EqualValues(t, genesis.DefaultSupply, int(rr.Supply))
+		require.EqualValues(t, genesis.DefaultInitialSupply, int(rr.Supply))
 		require.EqualValues(t, 0, int(rr.SlotInflation))
 
 		bal1, n1 := multistate.BalanceOnLock(rdr, addr1)
@@ -269,7 +269,7 @@ func TestBasic(t *testing.T) {
 		require.EqualValues(t, 0, nChain)
 
 		balChain = multistate.BalanceOnChainOutput(rdr, &bootstrapChainID)
-		require.EqualValues(t, genesis.DefaultSupply-1_000_000-2_000_000, int(balChain))
+		require.EqualValues(t, genesis.DefaultInitialSupply-1_000_000-2_000_000, int(balChain))
 	})
 }
 
