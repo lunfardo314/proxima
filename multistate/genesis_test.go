@@ -1,11 +1,10 @@
-package genesis
+package multistate
 
 import (
 	"crypto/ed25519"
 	"testing"
 
 	"github.com/lunfardo314/proxima/ledger"
-	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/util/testutil"
 	"github.com/lunfardo314/unitrie/common"
 	"github.com/stretchr/testify/require"
@@ -36,34 +35,23 @@ func TestInitOrigin(t *testing.T) {
 	privateKey := testutil.GetTestingPrivateKey()
 	id := ledger.DefaultIdentityData(privateKey)
 	store := common.NewInMemoryKVStore()
-	bootstrapSeqID, genesisRoot := InitLedgerState(*id, store)
+	bootstrapSeqID, genesisRoot := InitStateStore(*id, store)
 
-	rootData := multistate.FetchAllRootRecords(store)
+	rootData := FetchAllRootRecords(store)
 	require.EqualValues(t, 1, len(rootData))
 
-	branchData := multistate.FetchBranchDataByRoot(store, rootData[0])
+	branchData := FetchBranchDataByRoot(store, rootData[0])
 	require.EqualValues(t, bootstrapSeqID, branchData.SequencerID)
 	require.True(t, ledger.CommitmentModel.EqualCommitments(genesisRoot, branchData.Root))
 
-	rdr := multistate.MustNewSugaredReadableState(store, genesisRoot)
+	rdr := MustNewSugaredReadableState(store, genesisRoot)
 
 	stemBack := rdr.GetStemOutput()
 	require.EqualValues(t, ledger.StemOutputID(id.GenesisSlot), stemBack.ID)
 
 	initSupplyOut, err := rdr.GetChainOutput(&bootstrapSeqID)
 	require.NoError(t, err)
-	require.EqualValues(t, ledger.InitialSupplyOutputID(id.GenesisSlot), initSupplyOut.ID)
+	require.EqualValues(t, ledger.GenesisOutputID(id.GenesisSlot), initSupplyOut.ID)
 
 	require.EqualValues(t, id.Bytes(), rdr.MustLedgerIdentityBytes())
-}
-
-func TestYAML(t *testing.T) {
-	privateKey := testutil.GetTestingPrivateKey()
-	id := ledger.DefaultIdentityData(privateKey)
-	yamlableStr := id.YAMLAble().YAML()
-	t.Logf("\n" + string(yamlableStr))
-
-	idBack, err := ledger.StateIdentityDataFromYAML(yamlableStr)
-	require.NoError(t, err)
-	require.EqualValues(t, id.Bytes(), idBack.Bytes())
 }

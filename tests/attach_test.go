@@ -11,7 +11,6 @@ import (
 	"github.com/lunfardo314/proxima/core/dag"
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/core/workflow"
-	"github.com/lunfardo314/proxima/genesis"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/ledger/txbuilder"
@@ -32,7 +31,7 @@ func TestBasic(t *testing.T) {
 		par := ledger.DefaultIdentityData(testutil.GetTestingPrivateKey())
 
 		stateStore := common.NewInMemoryKVStore()
-		bootstrapChainID, root := genesis.InitLedgerState(*par, stateStore)
+		bootstrapChainID, root := multistate.InitStateStore(*par, stateStore)
 		dagAccess := dag.New(stateStore)
 		txBytesStore := txstore.NewSimpleTxBytesStore(common.NewInMemoryKVStore())
 		wrk := workflow.New(stateStore, txBytesStore, peering.NewPeersDummy(),
@@ -40,9 +39,9 @@ func TestBasic(t *testing.T) {
 		ctx, stop := context.WithCancel(context.Background())
 		wrk.Start(ctx)
 
-		id, _, err := genesis.ScanGenesisState(stateStore)
+		id, _, err := multistate.ScanGenesisState(stateStore)
 		require.NoError(t, err)
-		genesisOut := genesis.StemOutput(id.GenesisSlot)
+		genesisOut := multistate.StemOutput(id.GenesisSlot)
 		vidGenesis, err := attacher.EnsureBranch(genesisOut.ID.TransactionID(), wrk)
 		require.NoError(t, err)
 
@@ -70,7 +69,7 @@ func TestBasic(t *testing.T) {
 		}
 
 		stateStore := common.NewInMemoryKVStore()
-		bootstrapChainID, _ := genesis.InitLedgerState(*par, stateStore)
+		bootstrapChainID, _ := multistate.InitStateStore(*par, stateStore)
 		txBytesStore := txstore.NewSimpleTxBytesStore(common.NewInMemoryKVStore())
 
 		wrk := workflow.New(stateStore, txBytesStore, peering.NewPeersDummy(),
@@ -135,7 +134,7 @@ func TestBasic(t *testing.T) {
 		}
 
 		stateStore := common.NewInMemoryKVStore()
-		bootstrapChainID, _ := genesis.InitLedgerState(*par, stateStore)
+		bootstrapChainID, _ := multistate.InitStateStore(*par, stateStore)
 		txBytesStore := txstore.NewSimpleTxBytesStore(common.NewInMemoryKVStore())
 
 		wrk := workflow.New(stateStore, txBytesStore, peering.NewPeersDummy(),
@@ -207,7 +206,7 @@ func TestBasic(t *testing.T) {
 		}
 
 		stateStore := common.NewInMemoryKVStore()
-		bootstrapChainID, _ := genesis.InitLedgerState(*par, stateStore)
+		bootstrapChainID, _ := multistate.InitStateStore(*par, stateStore)
 		txBytesStore := txstore.NewSimpleTxBytesStore(common.NewInMemoryKVStore())
 
 		wrk := workflow.New(stateStore, txBytesStore, peering.NewPeersDummy(),

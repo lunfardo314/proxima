@@ -4,14 +4,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/proxima/util/testutil"
 	"github.com/stretchr/testify/require"
 )
 
 func TestLoad(t *testing.T) {
 	t.Logf("---------- loading constraint library extensions -----------")
-	easyfl.PrintLibraryStats()
+	genesisPrivateKey := testutil.GetTestingPrivateKey(314)
+	id := DefaultIdentityData(genesisPrivateKey)
+	Init(id)
 }
 
 func TestTime(t *testing.T) {

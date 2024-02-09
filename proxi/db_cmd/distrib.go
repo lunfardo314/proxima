@@ -4,11 +4,11 @@ import (
 	"strconv"
 
 	"github.com/dgraph-io/badger/v4"
-	"github.com/lunfardo314/proxima/genesis"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	transaction2 "github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/ledger/txbuilder"
+	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/txstore"
 	"github.com/lunfardo314/proxima/util"
@@ -48,7 +48,7 @@ func runDBDistributeCmd(_ *cobra.Command, args []string) {
 	}
 
 	stateStore := badger_adaptor.New(stateDb)
-	stateID, _, err := genesis.ScanGenesisState(stateStore)
+	stateID, _, err := multistate.ScanGenesisState(stateStore)
 	glb.AssertNoError(err)
 
 	glb.Infof("Re-check the distribution list:")

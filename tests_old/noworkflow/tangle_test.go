@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lunfardo314/proxima/genesis"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	transaction2 "github.com/lunfardo314/proxima/ledger/transaction"
@@ -25,7 +24,7 @@ func TestOriginTangle(t *testing.T) {
 	t.Run("origin", func(t *testing.T) {
 		par := ledger.DefaultIdentityData(testutil.GetTestingPrivateKey())
 		stateStore := common.NewInMemoryKVStore()
-		bootstrapChainID, root := genesis.InitLedgerState(*par, stateStore)
+		bootstrapChainID, root := state.InitStateStore(*par, stateStore)
 		ut := utangle_old.Load(stateStore)
 		t.Logf("bootstrap chain id: %s", bootstrapChainID.String())
 		t.Logf("genesis root: %s", root.String())
@@ -41,7 +40,7 @@ func TestOriginTangle(t *testing.T) {
 			{Lock: addr2, Balance: 2_000_000},
 		}
 		stateStore := common.NewInMemoryKVStore()
-		bootstrapChainID, _ := genesis.InitLedgerState(*par, stateStore)
+		bootstrapChainID, _ := state.InitStateStore(*par, stateStore)
 		txBytes, err := txbuilder2.DistributeInitialSupply(stateStore, privKey, distrib)
 		require.NoError(t, err)
 
@@ -121,7 +120,7 @@ func initConflictTest(t *testing.T, nConflicts int, verbose bool) *conflictTestR
 	stateStore := common.NewInMemoryKVStore()
 	txStore := txstore.NewDummyTxBytesStore()
 
-	ret.bootstrapChainID, _ = genesis.InitLedgerState(ret.stateIdentity, stateStore)
+	ret.bootstrapChainID, _ = state.InitStateStore(ret.stateIdentity, stateStore)
 	txBytes, err := txbuilder2.DistributeInitialSupply(stateStore, genesisPrivKey, distrib)
 	require.NoError(t, err)
 	_, err = txStore.PersistTxBytesWithMetadata(txBytes)
@@ -409,7 +408,7 @@ func initMultiChainTest(t *testing.T, nChains int, printTx bool) *multiChainTest
 	stateStore := common.NewInMemoryKVStore()
 	ret.txBytesStore = txstore.NewDummyTxBytesStore()
 
-	ret.bootstrapChainID, _ = genesis.InitLedgerState(ret.sPar, stateStore)
+	ret.bootstrapChainID, _ = state.InitStateStore(ret.sPar, stateStore)
 	txBytes, err := txbuilder2.DistributeInitialSupply(stateStore, genesisPrivKey, distrib)
 	require.NoError(t, err)
 

@@ -1,20 +1,20 @@
-package genesis
+package multistate
 
 import (
 	"fmt"
 
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
-	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/unitrie/common"
 	"github.com/lunfardo314/unitrie/immutable"
 )
 
-// InitLedgerState initializes origin ledger state in the empty store
+// InitStateStore initializes origin ledger state in the empty store
 // Writes initial supply and origin stem outputs. Plus writes root record into the DB
 // Returns root commitment to the genesis ledger state and genesis chainID
-func InitLedgerState(par ledger.IdentityData, store global.StateStore) (ledger.ChainID, common.VCommitment) {
+func InitStateStore(par ledger.IdentityData, store global.StateStore) (ledger.ChainID, common.VCommitment) {
+	ledger.Init(&par)
 	batch := store.BatchedWriter()
 	emptyRoot := immutable.MustInitRoot(batch, ledger.CommitmentModel, par.Bytes())
 	err := batch.Commit()
@@ -24,9 +24,9 @@ func InitLedgerState(par ledger.IdentityData, store global.StateStore) (ledger.C
 	gout := InitialSupplyOutput(par.InitialSupply, genesisAddr, par.GenesisSlot)
 	gStemOut := StemOutput(par.GenesisSlot)
 
-	updatable := multistate.MustNewUpdatable(store, emptyRoot)
-	coverage := multistate.LedgerCoverage{0, par.InitialSupply}
-	updatable.MustUpdate(genesisUpdateMutations(&gout.OutputWithID, gStemOut), &multistate.RootRecordParams{
+	updatable := MustNewUpdatable(store, emptyRoot)
+	coverage := LedgerCoverage{0, par.InitialSupply}
+	updatable.MustUpdate(genesisUpdateMutations(&gout.OutputWithID, gStemOut), &RootRecordParams{
 		StemOutputID:  gStemOut.ID,
 		SeqID:         gout.ChainID,
 		Coverage:      coverage,
@@ -37,7 +37,7 @@ func InitLedgerState(par ledger.IdentityData, store global.StateStore) (ledger.C
 }
 
 func InitialSupplyOutput(initialSupply uint64, controllerAddress ledger.AddressED25519, genesisSlot ledger.Slot) *ledger.OutputWithChainID {
-	oid := ledger.InitialSupplyOutputID(genesisSlot)
+	oid := ledger.GenesisOutputID(genesisSlot)
 	return &ledger.OutputWithChainID{
 		OutputWithID: ledger.OutputWithID{
 			ID: oid,
@@ -65,21 +65,21 @@ func StemOutput(genesisTimeSlot ledger.Slot) *ledger.OutputWithID {
 	}
 }
 
-func genesisUpdateMutations(genesisOut, genesisStemOut *ledger.OutputWithID) *multistate.Mutations {
-	ret := multistate.NewMutations()
+func genesisUpdateMutations(genesisOut, genesisStemOut *ledger.OutputWithID) *Mutations {
+	ret := NewMutations()
 	ret.InsertAddOutputMutation(genesisOut.ID, genesisOut.Output)
 	ret.InsertAddOutputMutation(genesisStemOut.ID, genesisStemOut.Output)
-	ret.InsertAddTxMutation(*ledger.InitialSupplyTransactionID(genesisOut.ID.TimeSlot()), genesisOut.ID.TimeSlot(), 1)
+	ret.InsertAddTxMutation(*ledger.GenesisTransactionID(genesisOut.ID.TimeSlot()), genesisOut.ID.TimeSlot(), 1)
 	return ret
 }
 
 // ScanGenesisState TODO more checks
 func ScanGenesisState(stateStore global.StateStore) (*ledger.IdentityData, common.VCommitment, error) {
-	var genesisRootRecord multistate.RootRecord
+	var genesisRootRecord RootRecord
 
 	// expecting a single branch in the genesis state
 	fetched, moreThan1 := false, false
-	multistate.IterateRootRecords(stateStore, func(_ ledger.TransactionID, rootData multistate.RootRecord) bool {
+	IterateRootRecords(stateStore, func(_ ledger.TransactionID, rootData RootRecord) bool {
 		if fetched {
 			moreThan1 = true
 			return false
@@ -92,11 +92,11 @@ func ScanGenesisState(stateStore global.StateStore) (*ledger.IdentityData, commo
 		return nil, nil, fmt.Errorf("ScanGenesisState: exactly 1 branch expected. Not a genesis state")
 	}
 
-	branchData := multistate.FetchBranchDataByRoot(stateStore, genesisRootRecord)
-	rdr := multistate.MustNewSugaredReadableState(stateStore, branchData.Root)
+	branchData := FetchBranchDataByRoot(stateStore, genesisRootRecord)
+	rdr := MustNewSugaredReadableState(stateStore, branchData.Root)
 	stateID := ledger.MustLedgerIdentityDataFromBytes(rdr.MustLedgerIdentityBytes())
 
-	genesisOid := ledger.InitialSupplyOutputID(stateID.GenesisSlot)
+	genesisOid := ledger.GenesisOutputID(stateID.GenesisSlot)
 	out, err := rdr.GetOutputErr(&genesisOid)
 	if err != nil {
 		return nil, nil, fmt.Errorf("GetOutputErr(%s): %w", genesisOid.StringShort(), err)

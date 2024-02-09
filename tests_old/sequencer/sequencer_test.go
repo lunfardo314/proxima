@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lunfardo314/proxima/genesis"
 	"github.com/lunfardo314/proxima/ledger"
 	transaction2 "github.com/lunfardo314/proxima/ledger/transaction"
 	txbuilder2 "github.com/lunfardo314/proxima/ledger/txbuilder"
+	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/peering"
 	"github.com/lunfardo314/proxima/sequencer_old"
 	"github.com/lunfardo314/proxima/txstore"
@@ -75,7 +75,7 @@ func initSequencerTestData(t *testing.T, nFaucets, nAdditionalChains int, logica
 	stateStore := common.NewInMemoryKVStore()
 	txStore := txstore.NewDummyTxBytesStore()
 
-	ret.bootstrapChainID, _ = genesis.InitLedgerState(ret.stateIdentity, stateStore)
+	ret.bootstrapChainID, _ = multistate.InitStateStore(ret.stateIdentity, stateStore)
 	txBytes, err := txbuilder2.DistributeInitialSupply(stateStore, ret.originControllerPrivateKey, ret.originDistribution)
 	require.NoError(t, err)
 

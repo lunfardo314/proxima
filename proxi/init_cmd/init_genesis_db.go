@@ -4,9 +4,9 @@ import (
 	"os"
 
 	"github.com/dgraph-io/badger/v4"
-	"github.com/lunfardo314/proxima/genesis"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
+	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/unitrie/adaptors/badger_adaptor"
 	"github.com/spf13/cobra"
@@ -46,7 +46,7 @@ func runGenesis(_ *cobra.Command, _ []string) {
 	stateStore := badger_adaptor.New(stateDb)
 	defer func() { _ = stateStore.Close() }()
 
-	bootstrapChainID, _ := genesis.InitLedgerState(*idData, stateStore)
+	bootstrapChainID, _ := multistate.InitStateStore(*idData, stateStore)
 	glb.Infof("Genesis state DB '%s' has been created successfully.\nBootstrap sequencer chainID: %s", global.MultiStateDBName, bootstrapChainID.String())
 
 	txStore := badger_adaptor.New(badger_adaptor.MustCreateOrOpenBadgerDB(global.TxStoreDBName, badger.DefaultOptions(global.TxStoreDBName)))

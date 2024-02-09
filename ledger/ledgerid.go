@@ -160,12 +160,12 @@ func (id *IdentityData) GenesisControlledAddress() AddressED25519 {
 	return AddressED25519FromPublicKey(id.GenesisControllerPublicKey)
 }
 
-func (id *IdentityData) TimeTicksPerTimeSlot() int {
+func (id *IdentityData) TicksPerSlot() int {
 	return int(id.MaxTickValueInSlot) + 1
 }
 
 func (id *IdentityData) OriginChainID() ChainID {
-	oid := InitialSupplyOutputID(id.GenesisSlot)
+	oid := GenesisOutputID(id.GenesisSlot)
 	return OriginChainID(&oid)
 }
 
@@ -181,7 +181,7 @@ func (id *IdentityData) Lines(prefix ...string) *lines.Lines {
 		Add("Genesis controller address: %s", id.GenesisControlledAddress().String()).
 		Add("Baseline time: %s", id.BaselineTime.Format(time.RFC3339)).
 		Add("Time tick duration: %v", id.TimeTickDuration).
-		Add("Time ticks per time slot: %d", id.TimeTicksPerTimeSlot()).
+		Add("Time ticks per time slot: %d", id.TicksPerSlot()).
 		Add("Genesis time slot: %d", id.GenesisSlot).
 		Add("Origin chain ID: %s", originChainID.String())
 }
@@ -306,19 +306,19 @@ func DefaultIdentityData(privateKey ed25519.PrivateKey, slot ...Slot) *IdentityD
 	}
 }
 
-func InitialSupplyTransactionID(genesisTimeSlot Slot) *TransactionID {
+func GenesisTransactionID(genesisTimeSlot Slot) *TransactionID {
 	ret := NewTransactionID(MustNewLedgerTime(genesisTimeSlot, 0), All0TransactionHash, true, true)
 	return &ret
 }
 
-func InitialSupplyOutputID(e Slot) (ret OutputID) {
+func GenesisOutputID(e Slot) (ret OutputID) {
 	// we are placing sequencer flag = true into the genesis tx ID to please sequencer constraint
 	// of the origin branch transaction. It is the only exception
-	ret = NewOutputID(InitialSupplyTransactionID(e), InitialSupplyOutputIndex)
+	ret = NewOutputID(GenesisTransactionID(e), InitialSupplyOutputIndex)
 	return
 }
 
 func StemOutputID(e Slot) (ret OutputID) {
-	ret = NewOutputID(InitialSupplyTransactionID(e), StemOutputIndex)
+	ret = NewOutputID(GenesisTransactionID(e), StemOutputIndex)
 	return
 }

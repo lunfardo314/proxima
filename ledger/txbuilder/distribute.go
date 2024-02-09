@@ -4,7 +4,6 @@ import (
 	"crypto/ed25519"
 	"fmt"
 
-	"github.com/lunfardo314/proxima/genesis"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/transaction"
@@ -25,7 +24,7 @@ func MustDistributeInitialSupply(stateStore global.StateStore, originPrivateKey 
 }
 
 func MakeDistributionTransaction(stateStore global.StateStore, originPrivateKey ed25519.PrivateKey, genesisDistribution []ledger.LockBalance) ([]byte, error) {
-	stateID, genesisRoot, err := genesis.ScanGenesisState(stateStore)
+	stateID, genesisRoot, err := multistate.ScanGenesisState(stateStore)
 	if err != nil {
 		return nil, err
 	}
@@ -96,7 +95,7 @@ func MustDistributeInitialSupplyExt(stateStore global.StateStore, originPrivateK
 	txBytes, err := MakeDistributionTransaction(stateStore, originPrivateKey, genesisDistribution)
 	util.AssertNoError(err)
 
-	stateID, genesisRoot, err := genesis.ScanGenesisState(stateStore)
+	stateID, genesisRoot, err := multistate.ScanGenesisState(stateStore)
 	util.AssertNoError(err)
 
 	rdr := multistate.MustNewSugaredReadableState(stateStore, genesisRoot)

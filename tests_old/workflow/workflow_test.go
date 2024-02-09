@@ -9,7 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lunfardo314/proxima/genesis"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	transaction2 "github.com/lunfardo314/proxima/ledger/transaction"
@@ -59,7 +58,7 @@ func initWorkflowTest(t *testing.T, nDistribution int, nowis ledger.Time, config
 	stateStore := common.NewInMemoryKVStore()
 	txStore := txstore.NewDummyTxBytesStore()
 
-	ret.bootstrapChainID, _ = genesis.InitLedgerState(par, stateStore)
+	ret.bootstrapChainID, _ = multistate.InitStateStore(par, stateStore)
 	txBytes, err := txbuilder2.DistributeInitialSupply(stateStore, genesisPrivKey, distrib)
 	require.NoError(t, err)
 
@@ -565,7 +564,7 @@ func initMultiChainTest(t *testing.T, nChains int, verbose bool, secondsInThePas
 	stateStore := common.NewInMemoryKVStore()
 	ret.txBytesStore = txstore.NewDummyTxBytesStore()
 
-	ret.bootstrapChainID, _ = genesis.InitLedgerState(ret.sPar, stateStore)
+	ret.bootstrapChainID, _ = multistate.InitStateStore(ret.sPar, stateStore)
 	txBytes, err := txbuilder2.DistributeInitialSupply(stateStore, genesisPrivKey, distrib)
 	require.NoError(t, err)
 

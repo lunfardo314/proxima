@@ -76,6 +76,12 @@ func LedgerIdentityBytesFromStore(store global.StateStore) []byte {
 	return trie.Get(nil)
 }
 
+func LoadLedgerState(store global.StateStore) {
+	idData := LedgerIdentityBytesFromStore(store)
+	id := ledger.MustLedgerIdentityDataFromBytes(idData)
+	ledger.Init(id)
+}
+
 // NewReadable creates read-only ledger state with the given root
 func NewReadable(store common.KVReader, root common.VCommitment, clearCacheAtSize ...int) (*Readable, error) {
 	trie, err := immutable.NewTrieReader(ledger.CommitmentModel, store, root, clearCacheAtSize...)

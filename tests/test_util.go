@@ -11,7 +11,6 @@ import (
 	"github.com/lunfardo314/proxima/core/attacher"
 	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/core/workflow"
-	"github.com/lunfardo314/proxima/genesis"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/transaction"
@@ -100,7 +99,7 @@ func initWorkflowTest(t *testing.T, nChains int, startPruner ...bool) *workflowT
 	ret.txStore = txstore.NewSimpleTxBytesStore(common.NewInMemoryKVStore())
 
 	var genesisRoot common.VCommitment
-	ret.bootstrapChainID, genesisRoot = genesis.InitLedgerState(ret.stateIdentity, stateStore)
+	ret.bootstrapChainID, genesisRoot = multistate.InitStateStore(ret.stateIdentity, stateStore)
 	txBytes, err := txbuilder.DistributeInitialSupply(stateStore, genesisPrivKey, distrib)
 	require.NoError(t, err)
 	_, err = ret.txStore.PersistTxBytesWithMetadata(txBytes, nil)

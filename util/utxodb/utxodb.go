@@ -5,7 +5,6 @@ import (
 	"encoding/binary"
 	"fmt"
 
-	"github.com/lunfardo314/proxima/genesis"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/ledger/txbuilder"
@@ -73,7 +72,7 @@ func NewUTXODB(trace ...bool) *UTXODB {
 	faucetPrivateKey := testutil.GetTestingPrivateKey(31415926535)
 	faucetAddress := ledger.AddressED25519FromPrivateKey(faucetPrivateKey)
 
-	originChainID, genesisRoot := genesis.InitLedgerState(*initLedgerParams, stateStore)
+	originChainID, genesisRoot := multistate.InitStateStore(*initLedgerParams, stateStore)
 	rdr := multistate.MustNewSugaredReadableState(stateStore, genesisRoot)
 
 	genesisOut, err := rdr.GetChainOutput(&originChainID)
@@ -512,7 +511,7 @@ func (u *UTXODB) CreateChainOrigin(controllerPrivateKey ed25519.PrivateKey, ts l
 
 func (u *UTXODB) OriginDistributionTransactionString() string {
 	genesisStemOutputID := ledger.StemOutputID(u.GenesisTimeSlot())
-	genesisOutputID := ledger.InitialSupplyOutputID(u.GenesisTimeSlot())
+	genesisOutputID := ledger.GenesisOutputID(u.GenesisTimeSlot())
 
 	return transaction.ParseBytesToString(u.originDistributionTxBytes, func(oid *ledger.OutputID) ([]byte, bool) {
 		switch *oid {

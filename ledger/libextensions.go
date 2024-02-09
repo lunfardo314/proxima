@@ -92,24 +92,41 @@ const (
 const MaxNumberOfEndorsements = 4
 
 func init() {
-	fmt.Printf("------ Base EasyFL library:\n")
-	easyfl.PrintLibraryStats()
-
-	Init()
-
-	fmt.Printf("------ Extended EasyFL library:\n")
-	easyfl.PrintLibraryStats()
+	//fmt.Printf("------ Base EasyFL library:\n")
+	//easyfl.PrintLibraryStats()
+	//
+	//Init(nil)
+	//
+	//fmt.Printf("------ Extended EasyFL library:\n")
+	//easyfl.PrintLibraryStats()
 }
 
 var _libraryAlreadyExtended bool
 
-func initLedgerBaseConstants() {
+func extendLedgerWithBaseConstants(id *IdentityData) {
+
+	// constants
+	easyfl.Extend("vbCost16", "u16/1")
+	//easyfl.Extend("ticksPerSlot", fmt.Sprintf("%d", id.TicksPerSlot()))
+	easyfl.Extend("ticksPerSlot", fmt.Sprintf("%d", TicksPerSlot))
+	easyfl.Extend("timeSlotSizeBytes", fmt.Sprintf("%d", SlotByteLength))
+	easyfl.Extend("timestampByteSize", fmt.Sprintf("%d", TimeByteLength))
+	easyfl.Extend("timePace", fmt.Sprintf("%d", TransactionPaceInTicks))
+	easyfl.Extend("timePace64", fmt.Sprintf("u64/%d", TransactionPaceInTicks))
 
 }
 
-func Init() {
+func Init(id *IdentityData) {
 	//-------------------------------- standard EasyFL library extensions ------------------------------
 	util.Assertf(!_libraryAlreadyExtended, "library cannot be extended twice")
+	fmt.Printf("------ Base EasyFL library:\n")
+	easyfl.PrintLibraryStats()
+	defer func() {
+		fmt.Printf("------ Extended EasyFL library:\n")
+		easyfl.PrintLibraryStats()
+	}()
+
+	extendLedgerWithBaseConstants(id)
 
 	// data context access
 	// data context is a lazybytes.Tree
@@ -125,30 +142,16 @@ func Init() {
 	// calls local EasyFL library
 	easyfl.EmbedLong("callLocalLibrary", -1, evalCallLocalLibrary)
 
-	// constants
-	easyfl.Extend("vbCost16", "u16/1")
-
 	// helpers
 	easyfl.Extend("sizeIs", "equal(len8($0), $1)")
 	easyfl.Extend("mustSize", "if(sizeIs($0,$1), $0, !!!wrong_data_size)")
 
-	// LogicalTime is 5 bytes long:
-	// 0-3 byte is big-endian time slot
-	// 4 byte is time tick in the slot
-	// one time slot is equal to TicksPerSlot time slots (usually 100)
-	// asserts that $1 is not before $0 and calculates difference between
-	// timestamps in time slots as 8-byte big-endian uint64
 	easyfl.EmbedLong("ticksBefore", 2, evalTicksBefore)
-	easyfl.Extend("ticksPerSlot", fmt.Sprintf("%d", TicksPerSlot))
-	easyfl.Extend("timeSlotSizeBytes", fmt.Sprintf("%d", SlotByteLength))
-	easyfl.Extend("timestampByteSize", fmt.Sprintf("%d", TimeByteLength))
 	easyfl.Extend("mustValidTimeTick", "if(and(mustSize($0,1),lessThan($0,ticksPerSlot)),$0,!!!wrong_timeslot)")
 	easyfl.Extend("mustValidTimeSlot", "mustSize($0, timeSlotSizeBytes)")
 	easyfl.Extend("timeSlotPrefix", "slice($0, 0, sub8(timeSlotSizeBytes,1))") // first 4 bytes of any array. It is not time slot yet
 	easyfl.Extend("timeSlotFromTimeSlotPrefix", "bitwiseAND($0, 0x3fffffff)")
 	easyfl.Extend("timeTickFromTimestamp", "byte($0, timeSlotSizeBytes)")
-	easyfl.Extend("timePace", fmt.Sprintf("%d", TransactionPaceInTicks))
-	easyfl.Extend("timePace64", fmt.Sprintf("u64/%d", TransactionPaceInTicks))
 	easyfl.Extend("timestamp", "concat(mustValidTimeSlot($0),mustValidTimeTick($1))")
 
 	{
