@@ -279,11 +279,11 @@ const (
 
 func DefaultIdentityData(privateKey ed25519.PrivateKey, slot ...Slot) *IdentityData {
 	// creating origin 1 slot before now. More convenient for the workflow_old tests
-	var sl Slot
+	var genesisSlot Slot
 	if len(slot) > 0 {
-		sl = slot[0]
+		genesisSlot = slot[0]
 	} else {
-		sl = TimeNow().Slot()
+		genesisSlot = TimeNow().Slot()
 	}
 	return &IdentityData{
 		Description:                     fmt.Sprintf("Proxima prototype version 0.0.0"),
@@ -292,7 +292,7 @@ func DefaultIdentityData(privateKey ed25519.PrivateKey, slot ...Slot) *IdentityD
 		BaselineTime:                    BaselineTime,
 		TimeTickDuration:                TickDuration(),
 		MaxTickValueInSlot:              TicksPerSlot - 1,
-		GenesisSlot:                     sl,
+		GenesisSlot:                     genesisSlot,
 		SlotsPerLedgerYear:              uint32(SlotsPerYear()),
 		InitialBranchBonus:              InitialBranchInflationBonus,
 		BranchBonusYearlyGrowthPromille: AnnualBranchInflationPromille,

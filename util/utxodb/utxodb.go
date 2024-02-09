@@ -46,28 +46,16 @@ const (
 	utxodbDscr              = "utxodb"
 )
 
+var startupSlot = ledger.TimeNow().Slot()
+
 func NewUTXODB(trace ...bool) *UTXODB {
 	genesisPrivateKey := testutil.GetTestingPrivateKey()
 	genesisPubKey := genesisPrivateKey.Public().(ed25519.PublicKey)
 	genesisAddr := ledger.AddressED25519FromPublicKey(genesisPubKey)
 
 	stateStore := common.NewInMemoryKVStore()
-	genesisSlot := ledger.TimeNow().Slot()
 
-	initLedgerParams := ledger.DefaultIdentityData(genesisPrivateKey, genesisSlot)
-	initLedgerParams.Description = utxodbDscr
-	initLedgerParams.InitialSupply = supplyForTesting
-	//
-	//initLedgerParams := ledger.IdentityData{
-	//	Description:                utxodbDscr,
-	//	InitialSupply:              supplyForTesting,
-	//	GenesisControllerPublicKey: genesisPubKey,
-	//	BaselineTime:               ledger.BaselineTime,
-	//	TimeTickDuration:           ledger.TickDuration(),
-	//	MaxTickValueInSlot:         ledger.TicksPerSlot - 1,
-	//	GenesisSlot:                genesisSlot,
-	//	CoreLedgerConstraintsHash:  easyfl.LibraryHash(),
-	//}
+	initLedgerParams := ledger.DefaultIdentityData(genesisPrivateKey, startupSlot)
 
 	faucetPrivateKey := testutil.GetTestingPrivateKey(31415926535)
 	faucetAddress := ledger.AddressED25519FromPrivateKey(faucetPrivateKey)
@@ -90,13 +78,13 @@ func NewUTXODB(trace ...bool) *UTXODB {
 
 	ret := &UTXODB{
 		state:                     updatable,
-		lastSlot:                  genesisSlot,
+		lastSlot:                  startupSlot,
 		genesisChainID:            originChainID,
-		supply:                    supplyForTesting,
+		supply:                    initLedgerParams.InitialSupply,
 		genesisPrivateKey:         genesisPrivateKey,
 		genesisPublicKey:          genesisPubKey,
 		genesisAddress:            genesisAddr,
-		genesisSlot:               genesisSlot,
+		genesisSlot:               startupSlot,
 		faucetPrivateKey:          faucetPrivateKey,
 		faucetAddress:             faucetAddress,
 		trace:                     len(trace) > 0 && trace[0],

@@ -1,13 +1,16 @@
 package ledger
 
 import (
+	"crypto/ed25519"
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"sync"
 
 	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lazybytes"
+	"github.com/lunfardo314/proxima/util/testutil"
 	"github.com/lunfardo314/unitrie/common"
 )
 
@@ -91,20 +94,9 @@ const (
 // Here it can be any number from 0 to MaxNumberOfEndorsements inclusive
 const MaxNumberOfEndorsements = 4
 
-func init() {
-	//fmt.Printf("------ Base EasyFL library:\n")
-	//easyfl.PrintLibraryStats()
-	//
-	//Init(nil)
-	//
-	//fmt.Printf("------ Extended EasyFL library:\n")
-	//easyfl.PrintLibraryStats()
-}
-
 var _libraryAlreadyExtended bool
 
 func extendLedgerWithBaseConstants(id *IdentityData) {
-
 	// constants
 	easyfl.Extend("vbCost16", "u16/1")
 	//easyfl.Extend("ticksPerSlot", fmt.Sprintf("%d", id.TicksPerSlot()))
@@ -116,9 +108,24 @@ func extendLedgerWithBaseConstants(id *IdentityData) {
 
 }
 
+var (
+	stateIdSingleton      *IdentityData
+	stateIdSingletonMutex sync.Mutex
+)
+
 func Init(id *IdentityData) {
 	//-------------------------------- standard EasyFL library extensions ------------------------------
-	util.Assertf(!_libraryAlreadyExtended, "library cannot be extended twice")
+	stateIdSingletonMutex.Lock()
+	defer stateIdSingletonMutex.Unlock()
+
+	tmp := stateIdSingleton
+	if stateIdSingleton != nil {
+		util.Assertf(stateIdSingleton.Hash() == id.Hash(), "library cannot be extended twice")
+		return
+	}
+	stateIdSingleton = id
+	tmp = tmp
+
 	fmt.Printf("------ Base EasyFL library:\n")
 	easyfl.PrintLibraryStats()
 	defer func() {
@@ -302,6 +309,21 @@ func Init(id *IdentityData) {
 
 	libraryHash := easyfl.LibraryHash()
 	fmt.Printf("Core constraint library hash is: %s\n", hex.EncodeToString(libraryHash[:]))
+}
+
+// for determinism in multiple tests
+var startupLedgerTime = TimeNow()
+
+// InitWithDefaultLedgerIDData for testing
+func InitWithDefaultLedgerIDData(seed ...int) (ed25519.PrivateKey, *IdentityData) {
+	s := 10000
+	if len(seed) > 0 {
+		s = seed[0]
+	}
+	pk := testutil.GetTestingPrivateKeys(1, s)
+	id := DefaultIdentityData(pk[0], startupLedgerTime.Slot())
+	Init(id)
+	return pk[0], id
 }
 
 // DataContext is the data structure passed to the eval call. It contains:
