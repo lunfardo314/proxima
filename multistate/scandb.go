@@ -138,7 +138,7 @@ func FetchSummarySupplyAndInflation(stateStore global.StateStore, nBack int) *Su
 func (s *SummarySupplyAndInflation) Lines(prefix ...string) *lines.Lines {
 	totalInflationPercentage := float32(s.TotalInflation*100) / float32(s.BeginSupply)
 	totalInflationPercentagePerSlot := totalInflationPercentage / float32(s.LatestSlot-s.OldestSlot+1)
-	totalInflationPercentageYearlyExtrapolation := totalInflationPercentagePerSlot * float32(ledger.SlotsPerYear())
+	totalInflationPercentageYearlyExtrapolation := totalInflationPercentagePerSlot * float32(ledger.SlotsPerLedgerYear())
 
 	ret := lines.New(prefix...).
 		Add("Slots from %d to %d inclusive. Total %d slots", s.OldestSlot, s.LatestSlot, s.LatestSlot-s.OldestSlot+1).

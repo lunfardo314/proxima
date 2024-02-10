@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"math"
 	"slices"
 	"time"
 
@@ -28,7 +29,7 @@ type (
 		// baseline time unix nanoseconds
 		BaselineTime time.Time
 		// time tick duration in nanoseconds
-		TimeTickDuration time.Duration
+		TickDuration time.Duration
 		// max time tick value in the slot. Up to 256 time ticks per time slot, default 100
 		MaxTickValueInSlot uint8
 		// time slot of the genesis
@@ -44,6 +45,8 @@ type (
 		// The last value in the list is repeated infinitely
 		// Is used as inflation for one tick
 		ChainInflationPerTickFractionYoY []uint64
+		// VBCost
+		VBCost uint64
 	}
 
 	// IdentityDataYAMLAble structure for canonical YAMLAble marshaling
@@ -58,6 +61,7 @@ type (
 		InitialBranchBonus               uint64   `yaml:"initial_branch_bonus"`
 		BranchBonusYearlyGrowthPromille  uint16   `yaml:"branch_bonus_yearly_growth_promille"`
 		SlotsPerLedgerYear               uint32   `yaml:"slots_per_ledger_year"`
+		VBCost                           uint64   `yaml:"vb_cost"`
 		ChainInflationPerTickFractionYoY []uint64 `yaml:"chain_inflation_per_tick_fraction_yoy"`
 		// non-persistent, for control
 		GenesisControllerAddress string `yaml:"genesis_controller_address"`
@@ -78,12 +82,13 @@ func (id *IdentityData) Bytes() []byte {
 	buf.Write(id.GenesisControllerPublicKey)
 	_ = binary.Write(&buf, binary.BigEndian, id.InitialSupply)
 	_ = binary.Write(&buf, binary.BigEndian, id.BaselineTime.UnixNano())
-	_ = binary.Write(&buf, binary.BigEndian, id.TimeTickDuration.Nanoseconds())
+	_ = binary.Write(&buf, binary.BigEndian, id.TickDuration.Nanoseconds())
 	_ = binary.Write(&buf, binary.BigEndian, id.MaxTickValueInSlot)
 	_ = binary.Write(&buf, binary.BigEndian, id.GenesisSlot)
 	_ = binary.Write(&buf, binary.BigEndian, id.SlotsPerLedgerYear)
 	_ = binary.Write(&buf, binary.BigEndian, id.InitialBranchBonus)
 	_ = binary.Write(&buf, binary.BigEndian, id.BranchBonusYearlyGrowthPromille)
+	_ = binary.Write(&buf, binary.BigEndian, id.VBCost)
 	util.Assertf(0 < len(id.ChainInflationPerTickFractionYoY) && len(id.ChainInflationPerTickFractionYoY) <= 255, "ChainInflationPerTickFractionYoY array must be non-empty with size <= 255")
 	_ = binary.Write(&buf, binary.BigEndian, byte(len(id.ChainInflationPerTickFractionYoY))) // array length
 	for _, v := range id.ChainInflationPerTickFractionYoY {
@@ -121,7 +126,7 @@ func MustLedgerIdentityDataFromBytes(data []byte) *IdentityData {
 
 	err = binary.Read(rdr, binary.BigEndian, &bufNano)
 	util.AssertNoError(err)
-	ret.TimeTickDuration = time.Duration(bufNano)
+	ret.TickDuration = time.Duration(bufNano)
 
 	err = binary.Read(rdr, binary.BigEndian, &ret.MaxTickValueInSlot)
 	util.AssertNoError(err)
@@ -136,6 +141,9 @@ func MustLedgerIdentityDataFromBytes(data []byte) *IdentityData {
 	util.AssertNoError(err)
 
 	err = binary.Read(rdr, binary.BigEndian, &ret.BranchBonusYearlyGrowthPromille)
+	util.AssertNoError(err)
+
+	err = binary.Read(rdr, binary.BigEndian, &ret.VBCost)
 	util.AssertNoError(err)
 
 	var size8 byte
@@ -160,6 +168,22 @@ func (id *IdentityData) GenesisControlledAddress() AddressED25519 {
 	return AddressED25519FromPublicKey(id.GenesisControllerPublicKey)
 }
 
+func (id *IdentityData) TimeFromRealTime(nowis time.Time) Time {
+	util.Assertf(!nowis.Before(id.BaselineTime), "!nowis.Before(id.BaselineTime)")
+	i := nowis.UnixNano() - id.BaselineTime.UnixNano()
+	e := i / int64(id.SlotDuration())
+	util.Assertf(e <= math.MaxUint32, "TimeFromRealTime: e <= math.MaxUint32")
+	util.Assertf(uint32(e)&0xc0000000 == 0, "TimeFromRealTime: two highest bits must be 0. Wrong constants")
+	s := i % int64(id.SlotDuration())
+	s = s / int64(id.TickDuration)
+	util.Assertf(s < DefaultTicksPerSlot, "TimeFromRealTime: s < DefaultTicksPerSlot")
+	return MustNewLedgerTime(Slot(uint32(e)), Tick(byte(s)))
+}
+
+func (id *IdentityData) SlotDuration() time.Duration {
+	return id.TickDuration * time.Duration(id.TicksPerSlot())
+}
+
 func (id *IdentityData) TicksPerSlot() int {
 	return int(id.MaxTickValueInSlot) + 1
 }
@@ -180,7 +204,7 @@ func (id *IdentityData) Lines(prefix ...string) *lines.Lines {
 		Add("Initial supply: %s", util.GoTh(id.InitialSupply)).
 		Add("Genesis controller address: %s", id.GenesisControlledAddress().String()).
 		Add("Baseline time: %s", id.BaselineTime.Format(time.RFC3339)).
-		Add("Time tick duration: %v", id.TimeTickDuration).
+		Add("Time tick duration: %v", id.TickDuration).
 		Add("Time ticks per time slot: %d", id.TicksPerSlot()).
 		Add("Genesis time slot: %d", id.GenesisSlot).
 		Add("Origin chain ID: %s", originChainID.String())
@@ -193,16 +217,41 @@ func (id *IdentityData) YAMLAble() *IdentityDataYAMLAble {
 		InitialSupply:                    id.InitialSupply,
 		GenesisControllerPublicKey:       hex.EncodeToString(id.GenesisControllerPublicKey),
 		BaselineTime:                     id.BaselineTime.UnixNano(),
-		TimeTickDuration:                 id.TimeTickDuration.Nanoseconds(),
+		TimeTickDuration:                 id.TickDuration.Nanoseconds(),
 		MaxTimeTickValueInTimeSlot:       id.MaxTickValueInSlot,
 		GenesisTimeSlot:                  uint32(id.GenesisSlot),
 		InitialBranchBonus:               id.InitialBranchBonus,
 		BranchBonusYearlyGrowthPromille:  id.BranchBonusYearlyGrowthPromille,
+		VBCost:                           id.VBCost,
 		SlotsPerLedgerYear:               id.SlotsPerLedgerYear,
 		ChainInflationPerTickFractionYoY: slices.Clone(id.ChainInflationPerTickFractionYoY),
 		GenesisControllerAddress:         id.GenesisControlledAddress().String(),
 		BootstrapChainID:                 chainID.StringHex(),
 	}
+}
+
+func (id *IdentityData) TimeHorizonYears() int {
+	return (math.MaxUint32 - int(id.GenesisSlot)) / int(id.SlotsPerLedgerYear)
+}
+
+func (id *IdentityData) SlotsPerDay() int {
+	return int(24 * time.Hour / id.SlotDuration())
+}
+
+func (id *IdentityData) TimeConstantsToString() string {
+	return lines.New().
+		Add("TickDuration = %v", id.TickDuration).
+		Add("DefaultTicksPerSlot = %d", id.TicksPerSlot()).
+		Add("SlotDuration = %v", id.SlotDuration()).
+		Add("SlotsPerDay = %v", id.SlotsPerDay()).
+		Add("GenesisSlot = %d", id.GenesisSlot).
+		Add("TimeHorizonYears = %d", id.TimeHorizonYears()).
+		Add("SlotsPerLedgerYear = %d", id.SlotsPerLedgerYear).
+		Add("seconds per year = %d", 60*60*24*365).
+		Add("BaselineTime = %v", id.BaselineTime).
+		Add("timestamp BaselineTime = %s", id.TimeFromRealTime(id.BaselineTime)).
+		Add("timestamp now = %s, now is %v", id.TimeFromRealTime(time.Now()).String(), time.Now()).
+		String()
 }
 
 func (id *IdentityData) YAML() []byte {
@@ -213,7 +262,6 @@ const stateIDComment = `# This file contains Proxima ledger identity data.
 # It will be used to create genesis ledger state for the Proxima network.
 # The ledger identity file does not contain secrets, it is public.
 # The data in the file must match genesis controller private key and hardcoded protocol constants.
-# Except 'description' field, file should not be modified.
 # Once used to create genesis, identity data should never be modified.
 # Values 'genesis_controller_address' and 'bootstrap_chain_id' are computed values used for control
 `
@@ -240,11 +288,12 @@ func (id *IdentityDataYAMLAble) stateIdentityData() (*IdentityData, error) {
 		return nil, fmt.Errorf("wrong public key")
 	}
 	ret.BaselineTime = time.Unix(0, id.BaselineTime)
-	ret.TimeTickDuration = time.Duration(id.TimeTickDuration)
+	ret.TickDuration = time.Duration(id.TimeTickDuration)
 	ret.MaxTickValueInSlot = id.MaxTimeTickValueInTimeSlot
 	ret.GenesisSlot = Slot(id.GenesisTimeSlot)
 	ret.InitialBranchBonus = id.InitialBranchBonus
 	ret.BranchBonusYearlyGrowthPromille = id.BranchBonusYearlyGrowthPromille
+	ret.VBCost = id.VBCost
 	ret.SlotsPerLedgerYear = id.SlotsPerLedgerYear
 	ret.ChainInflationPerTickFractionYoY = slices.Clone(id.ChainInflationPerTickFractionYoY)
 
@@ -265,45 +314,6 @@ func StateIdentityDataFromYAML(yamlData []byte) (*IdentityData, error) {
 		return nil, err
 	}
 	return yamlAble.stateIdentityData()
-}
-
-const (
-	DustPerProxi         = 1_000_000
-	InitialSupplyProxi   = 1_000_000_000
-	DefaultInitialSupply = InitialSupplyProxi * DustPerProxi
-
-	InitialBranchInflationBonus   = 20_000_000
-	AnnualBranchInflationPromille = 40
-	ChainInflationFractionPerTick = 400_000_000
-)
-
-func DefaultIdentityData(privateKey ed25519.PrivateKey, slot ...Slot) *IdentityData {
-	// creating origin 1 slot before now. More convenient for the workflow_old tests
-	var genesisSlot Slot
-	if len(slot) > 0 {
-		genesisSlot = slot[0]
-	} else {
-		genesisSlot = TimeNow().Slot()
-	}
-	return &IdentityData{
-		Description:                     fmt.Sprintf("Proxima prototype version 0.0.0"),
-		InitialSupply:                   DefaultInitialSupply,
-		GenesisControllerPublicKey:      privateKey.Public().(ed25519.PublicKey),
-		BaselineTime:                    BaselineTime,
-		TimeTickDuration:                TickDuration(),
-		MaxTickValueInSlot:              TicksPerSlot - 1,
-		GenesisSlot:                     genesisSlot,
-		SlotsPerLedgerYear:              uint32(SlotsPerYear()),
-		InitialBranchBonus:              InitialBranchInflationBonus,
-		BranchBonusYearlyGrowthPromille: AnnualBranchInflationPromille,
-		ChainInflationPerTickFractionYoY: []uint64{
-			ChainInflationFractionPerTick,
-			ChainInflationFractionPerTick * 2,
-			ChainInflationFractionPerTick * 4,
-			ChainInflationFractionPerTick * 8,
-			ChainInflationFractionPerTick * 14,
-		},
-	}
 }
 
 func GenesisTransactionID(genesisTimeSlot Slot) *TransactionID {

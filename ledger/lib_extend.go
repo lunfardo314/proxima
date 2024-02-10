@@ -1,13 +1,11 @@
 package ledger
 
 import (
-	"crypto/ed25519"
 	"encoding/binary"
 	"fmt"
 
 	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/proxima/util/lazybytes"
-	"github.com/lunfardo314/proxima/util/testutil"
 	"github.com/lunfardo314/unitrie/common"
 )
 
@@ -90,56 +88,6 @@ const (
 // MaxNumberOfEndorsements is equivalent to 2 parents in the original UTXOTangle.
 // Here it can be any number from 0 to MaxNumberOfEndorsements inclusive
 const MaxNumberOfEndorsements = 4
-
-type Library struct {
-	*easyfl.Library
-	constraintByPrefix map[string]*constraintRecord
-	constraintNames    map[string]struct{}
-}
-
-func newLibrary() *Library {
-	ret := &Library{
-		Library:            easyfl.NewBase(),
-		constraintByPrefix: make(map[string]*constraintRecord),
-		constraintNames:    make(map[string]struct{}),
-	}
-	return ret
-}
-
-func init() {
-	Init(nil) // temporary
-}
-
-var librarySingleton *Library
-
-func L() *Library {
-	common.Assert(librarySingleton != nil, "ledger constraint library not initialized")
-	return librarySingleton
-}
-
-func Init(id *IdentityData) {
-	librarySingleton = newLibrary()
-	fmt.Printf("------ Base EasyFL library:\n")
-	librarySingleton.PrintLibraryStats()
-	defer func() {
-		fmt.Printf("------ Extended EasyFL library:\n")
-		librarySingleton.PrintLibraryStats()
-	}()
-
-	librarySingleton.extendWithBaseConstants(id)
-	librarySingleton.extend()
-}
-
-func (lib *Library) extendWithBaseConstants(id *IdentityData) {
-	// constants
-	lib.Extend("vbCost16", "u16/1")
-	//easyfl.Extend("ticksPerSlot", fmt.Sprintf("%d", id.TicksPerSlot()))
-	lib.Extend("ticksPerSlot", fmt.Sprintf("%d", TicksPerSlot))
-	lib.Extend("timeSlotSizeBytes", fmt.Sprintf("%d", SlotByteLength))
-	lib.Extend("timestampByteSize", fmt.Sprintf("%d", TimeByteLength))
-	lib.Extend("timePace", fmt.Sprintf("%d", TransactionPaceInTicks))
-	lib.Extend("timePace64", fmt.Sprintf("u64/%d", TransactionPaceInTicks))
-}
 
 func (lib *Library) extend() {
 	// data context access
@@ -313,21 +261,6 @@ func (lib *Library) extend() {
 	initInflationConstraint()
 
 	runCommonUnitTests()
-}
-
-// for determinism in multiple tests
-var startupLedgerTime = TimeNow()
-
-// InitWithDefaultLedgerIDData for testing
-func InitWithDefaultLedgerIDData(seed ...int) (ed25519.PrivateKey, *IdentityData) {
-	s := 10000
-	if len(seed) > 0 {
-		s = seed[0]
-	}
-	pk := testutil.GetTestingPrivateKeys(1, s)
-	id := DefaultIdentityData(pk[0], startupLedgerTime.Slot())
-	Init(id)
-	return pk[0], id
 }
 
 // DataContext is the data structure passed to the eval call. It contains:

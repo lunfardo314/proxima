@@ -43,7 +43,6 @@ const (
 	supplyForTesting        = uint64(1_000_000_000_000)
 	initFaucetBalance       = supplyForTesting / 2
 	TokensFromFaucetDefault = uint64(1_000_000)
-	utxodbDscr              = "utxodb"
 )
 
 var startupSlot = ledger.TimeNow().Slot()

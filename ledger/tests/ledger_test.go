@@ -23,7 +23,7 @@ import (
 )
 
 func TestOutput(t *testing.T) {
-	ledger.InitWithDefaultLedgerIDData()
+	ledger.InitWithTestingLedgerIDData()
 	rnd := rand.New(rand.NewSource(time.Now().UnixNano()))
 
 	pubKey, _, err := ed25519.GenerateKey(rnd)

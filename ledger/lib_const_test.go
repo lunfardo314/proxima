@@ -9,22 +9,37 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestPrintTimeConstants(t *testing.T) {
+	InitWithTestingLedgerIDData()
+	t.Log(L().ID.TimeConstantsToString())
+}
+
 func TestLoad(t *testing.T) {
 	t.Logf("---------- loading constraint library extensions -----------")
 	genesisPrivateKey := testutil.GetTestingPrivateKey(314)
 	id := DefaultIdentityData(genesisPrivateKey)
 	Init(id)
+	t.Logf("------------------\n%s", id.String())
+	t.Logf("------------------\n" + string(id.YAML()))
+	t.Logf("------------------\n" + L().ID.TimeConstantsToString())
+}
+
+func TestTimeConstSet(t *testing.T) {
+	const d = 10 * time.Millisecond
+	id, _ := GetTestingIdentityData()
+	id.SetTickDuration(d)
+	Init(id)
+	t.Logf("\n%s", L().ID.TimeConstantsToString())
+	require.EqualValues(t, d, TickDuration())
+	t.Logf("------------------\n%s", id.String())
+	t.Logf("------------------\n" + string(id.YAML()))
+	t.Logf("------------------\n" + L().ID.TimeConstantsToString())
 }
 
 func TestTime(t *testing.T) {
 	t.Run("time constants", func(t *testing.T) {
-		t.Logf("%s", TimeConstantsToString())
-	})
-	t.Run("time constants set", func(t *testing.T) {
-		const d = 10 * time.Millisecond
-		SetTimeTickDuration(d)
-		t.Logf("\n%s", TimeConstantsToString())
-		require.EqualValues(t, d, TickDuration())
+		InitWithTestingLedgerIDData()
+		t.Logf("%s", L().ID.TimeConstantsToString())
 	})
 	t.Run("1", func(t *testing.T) {
 		nowis := time.Now()
@@ -44,9 +59,9 @@ func TestTime(t *testing.T) {
 		require.EqualValues(t, 55, ts1.Tick())
 
 		diff := DiffTicks(ts0, ts1)
-		require.EqualValues(t, -(20*TicksPerSlot + 22), diff)
+		require.EqualValues(t, -(20*DefaultTicksPerSlot + 22), diff)
 		diff = DiffTicks(ts1, ts0)
-		require.EqualValues(t, 20*TicksPerSlot+22, diff)
+		require.EqualValues(t, 20*DefaultTicksPerSlot+22, diff)
 		diff = DiffTicks(ts1, ts1)
 		require.EqualValues(t, 0, diff)
 	})
@@ -72,7 +87,7 @@ func TestTime(t *testing.T) {
 		require.EqualValues(t, ts, tsBack)
 	})
 	t.Run("6", func(t *testing.T) {
-		nowisNano := BaselineTimeUnixNano + 1_000
+		nowisNano := BaselineTime().UnixNano() + 1_000
 		nowis := time.Unix(0, nowisNano)
 		ts1 := TimeFromRealTime(nowis)
 		t.Logf("ts1: %s", ts1)
