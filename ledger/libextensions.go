@@ -106,6 +106,10 @@ func newLibrary() *Library {
 	return ret
 }
 
+func init() {
+	Init(nil) // temporary
+}
+
 var librarySingleton *Library
 
 func L() *Library {
