@@ -64,7 +64,7 @@ func (dl *DeadlineLock) Name() string {
 }
 
 func initDeadlineLockConstraint() {
-	easyfl.MustExtendMany(deadlineLockSource)
+	L().MustExtendMany(deadlineLockSource)
 
 	ts := MustNewLedgerTime(1337, 5)
 	example := NewDeadlineLock(ts, AddressED25519Null(), AddressED25519Null())
@@ -74,7 +74,7 @@ func initDeadlineLockConstraint() {
 	util.Assertf(EqualConstraints(lockBack.ConstraintMain, AddressED25519Null()), "inconsistency "+DeadlineLockName)
 	util.Assertf(EqualConstraints(lockBack.ConstraintExpiry, AddressED25519Null()), "inconsistency "+DeadlineLockName)
 
-	prefix, err := easyfl.ParseBytecodePrefix(example.Bytes())
+	prefix, err := L().ParseBytecodePrefix(example.Bytes())
 	util.AssertNoError(err)
 
 	registerConstraint(DeadlineLockName, prefix, func(data []byte) (Constraint, error) {
@@ -83,7 +83,7 @@ func initDeadlineLockConstraint() {
 }
 
 func DeadlineLockFromBytes(data []byte) (*DeadlineLock, error) {
-	sym, _, args, err := easyfl.ParseBytecodeOneLevel(data, 4)
+	sym, _, args, err := L().ParseBytecodeOneLevel(data, 4)
 	if err != nil {
 		return nil, err
 	}

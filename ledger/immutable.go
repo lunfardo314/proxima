@@ -28,7 +28,7 @@ func NewImmutable(chainBlockIndex, dataBlockIndex byte) *Immutable {
 }
 
 func ImmutableFromBytes(data []byte) (*Immutable, error) {
-	sym, _, args, err := easyfl.ParseBytecodeOneLevel(data, 1)
+	sym, _, args, err := L().ParseBytecodeOneLevel(data, 1)
 	if err != nil {
 		return nil, err
 	}
@@ -59,7 +59,7 @@ func (d *Immutable) String() string {
 }
 
 func initImmutableConstraint() {
-	easyfl.MustExtendMany(ImmutableDataSource)
+	L().MustExtendMany(ImmutableDataSource)
 
 	example := NewImmutable(1, 5)
 	immutableDataBack, err := ImmutableFromBytes(example.Bytes())
@@ -67,7 +67,7 @@ func initImmutableConstraint() {
 	util.Assertf(immutableDataBack.DataBlockIndex == 5, "inconsistency "+ImmutableName)
 	util.Assertf(immutableDataBack.ChainBlockIndex == 1, "inconsistency "+ImmutableName)
 
-	prefix, err := easyfl.ParseBytecodePrefix(example.Bytes())
+	prefix, err := L().ParseBytecodePrefix(example.Bytes())
 	util.AssertNoError(err)
 
 	registerConstraint(ImmutableName, prefix, func(data []byte) (Constraint, error) {

@@ -7,7 +7,7 @@ require (
 	github.com/dominikbraun/graph v0.23.0
 	github.com/gammazero/deque v0.2.1
 	github.com/libp2p/go-libp2p v0.32.1
-	github.com/lunfardo314/easyfl v0.0.0-20240209100847-cc385f329ed7
+	github.com/lunfardo314/easyfl v0.0.0-20240209191731-a45f8c3c2c70
 	github.com/lunfardo314/unitrie v0.0.0-20231207174746-c5161b37b3d0
 	github.com/multiformats/go-multiaddr v0.12.0
 	github.com/spf13/cobra v1.8.0

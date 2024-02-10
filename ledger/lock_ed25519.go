@@ -20,7 +20,7 @@ const (
 )
 
 func AddressED25519FromBytes(data []byte) (AddressED25519, error) {
-	sym, _, args, err := easyfl.ParseBytecodeOneLevel(data, 1)
+	sym, _, args, err := L().ParseBytecodeOneLevel(data, 1)
 	if err != nil {
 		return nil, err
 	}
@@ -108,14 +108,14 @@ func (a AddressED25519) AsLock() Lock {
 }
 
 func initAddressED25519Constraint() {
-	easyfl.MustExtendMany(AddressED25519ConstraintSource)
+	L().MustExtendMany(AddressED25519ConstraintSource)
 
 	example := AddressED25519Null()
 	addrBack, err := AddressED25519FromBytes(example.Bytes())
 	util.AssertNoError(err)
 	util.Assertf(EqualConstraints(addrBack, AddressED25519Null()), "inconsistency "+AddressED25519Name)
 
-	prefix, err := easyfl.ParseBytecodePrefix(example.Bytes())
+	prefix, err := L().ParseBytecodePrefix(example.Bytes())
 	util.AssertNoError(err)
 
 	registerConstraint(AddressED25519Name, prefix, func(data []byte) (Constraint, error) {

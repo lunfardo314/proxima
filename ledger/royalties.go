@@ -29,7 +29,7 @@ func NewRoyalties(addr AddressED25519, amount uint64) *RoyaltiesED25519 {
 }
 
 func RoyaltiesED25519FromBytes(data []byte) (*RoyaltiesED25519, error) {
-	sym, _, args, err := easyfl.ParseBytecodeOneLevel(data, 2)
+	sym, _, args, err := L().ParseBytecodeOneLevel(data, 2)
 	if err != nil {
 		return nil, err
 	}
@@ -65,7 +65,7 @@ func (cl RoyaltiesED25519) String() string {
 }
 
 func initRoyaltiesED25519Constraint() {
-	easyfl.MustExtendMany(RoyaltiesED25519Source)
+	L().MustExtendMany(RoyaltiesED25519Source)
 
 	addr0 := AddressED25519Null()
 	example := NewRoyalties(addr0, 1337)
@@ -74,7 +74,7 @@ func initRoyaltiesED25519Constraint() {
 	util.Assertf(EqualConstraints(royaltiesBack.Address, addr0), "inconsistency "+RoyaltiesED25519Name)
 	util.Assertf(royaltiesBack.Amount == 1337, "inconsistency "+RoyaltiesED25519Name)
 
-	prefix, err := easyfl.ParseBytecodePrefix(example.Bytes())
+	prefix, err := L().ParseBytecodePrefix(example.Bytes())
 	util.AssertNoError(err)
 
 	registerConstraint(RoyaltiesED25519Name, prefix, func(data []byte) (Constraint, error) {

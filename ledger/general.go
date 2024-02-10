@@ -13,7 +13,7 @@ func NewGeneralScript(data []byte) GeneralScript {
 }
 
 func NewGeneralScriptFromSource(src string) (GeneralScript, error) {
-	_, _, bytecode, err := easyfl.CompileExpression(src)
+	_, _, bytecode, err := L().CompileExpression(src)
 	if err != nil {
 		return nil, err
 	}
@@ -29,7 +29,7 @@ func (u GeneralScript) Bytes() []byte {
 }
 
 func (u GeneralScript) String() string {
-	src, err := easyfl.DecompileBytecode(u)
+	src, err := L().DecompileBytecode(u)
 	if err != nil {
 		src = fmt.Sprintf("failed decompile")
 	}

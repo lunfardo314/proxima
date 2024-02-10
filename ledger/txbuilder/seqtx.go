@@ -310,7 +310,7 @@ func (od *MilestoneData) AsConstraint() ledger.Constraint {
 	minFeeStr := fmt.Sprintf("u64/%d", od.MinimumFee)
 
 	src := fmt.Sprintf("or(%s)", strings.Join([]string{dscrBinStr, chainIndexStr, branchIndexStr, minFeeStr}, ","))
-	_, _, bytecode, err := easyfl.CompileExpression(src)
+	_, _, bytecode, err := ledger.L().CompileExpression(src)
 	util.AssertNoError(err)
 
 	constr, err := ledger.ConstraintFromBytes(bytecode)
@@ -320,7 +320,7 @@ func (od *MilestoneData) AsConstraint() ledger.Constraint {
 }
 
 func MilestoneDataFromConstraint(constr []byte) (*MilestoneData, error) {
-	sym, _, args, err := easyfl.ParseBytecodeOneLevel(constr)
+	sym, _, args, err := ledger.L().ParseBytecodeOneLevel(constr)
 	if err != nil {
 		return nil, err
 	}

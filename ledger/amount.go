@@ -72,10 +72,10 @@ func NewAmount(a uint64) Amount {
 }
 
 func initAmountConstraint() {
-	easyfl.MustExtendMany(amountSource)
+	L().MustExtendMany(amountSource)
 	// sanity check
 	example := NewAmount(1337)
-	sym, prefix, args, err := easyfl.ParseBytecodeOneLevel(example.Bytes(), 1)
+	sym, prefix, args, err := L().ParseBytecodeOneLevel(example.Bytes(), 1)
 	util.AssertNoError(err)
 	amountBin := easyfl.StripDataPrefix(args[0])
 	util.Assertf(sym == AmountConstraintName && len(amountBin) == 8 && binary.BigEndian.Uint64(amountBin) == 1337, "'amount' consistency check failed")
@@ -85,7 +85,7 @@ func initAmountConstraint() {
 }
 
 func AmountFromBytes(data []byte) (Amount, error) {
-	sym, _, args, err := easyfl.ParseBytecodeOneLevel(data)
+	sym, _, args, err := L().ParseBytecodeOneLevel(data)
 	if err != nil {
 		return 0, err
 	}

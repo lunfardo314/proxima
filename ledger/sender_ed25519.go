@@ -58,7 +58,7 @@ func (s *SenderED25519) source() string {
 }
 
 func SenderED25519FromBytes(data []byte) (*SenderED25519, error) {
-	sym, _, args, err := easyfl.ParseBytecodeOneLevel(data, 1)
+	sym, _, args, err := L().ParseBytecodeOneLevel(data, 1)
 	if err != nil {
 		return nil, err
 	}
@@ -73,11 +73,11 @@ func SenderED25519FromBytes(data []byte) (*SenderED25519, error) {
 }
 
 func initSenderED25519Constraint() {
-	easyfl.MustExtendMany(senderED25519Source)
+	L().MustExtendMany(senderED25519Source)
 
 	addr := AddressED25519Null()
 	example := NewSenderED25519(addr)
-	sym, prefix, args, err := easyfl.ParseBytecodeOneLevel(example.Bytes(), 1)
+	sym, prefix, args, err := L().ParseBytecodeOneLevel(example.Bytes(), 1)
 	util.AssertNoError(err)
 	addrBin := easyfl.StripDataPrefix(args[0])
 	util.Assertf(sym == SenderAddressED25519Name && bytes.Equal(addrBin, addr), "inconsistency in 'senderAddressED25519'")

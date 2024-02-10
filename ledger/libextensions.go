@@ -3,12 +3,9 @@ package ledger
 import (
 	"crypto/ed25519"
 	"encoding/binary"
-	"encoding/hex"
 	"fmt"
-	"sync"
 
 	"github.com/lunfardo314/easyfl"
-	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lazybytes"
 	"github.com/lunfardo314/proxima/util/testutil"
 	"github.com/lunfardo314/unitrie/common"
@@ -94,201 +91,207 @@ const (
 // Here it can be any number from 0 to MaxNumberOfEndorsements inclusive
 const MaxNumberOfEndorsements = 4
 
-var _libraryAlreadyExtended bool
-
-func extendLedgerWithBaseConstants(id *IdentityData) {
-	// constants
-	easyfl.Extend("vbCost16", "u16/1")
-	//easyfl.Extend("ticksPerSlot", fmt.Sprintf("%d", id.TicksPerSlot()))
-	easyfl.Extend("ticksPerSlot", fmt.Sprintf("%d", TicksPerSlot))
-	easyfl.Extend("timeSlotSizeBytes", fmt.Sprintf("%d", SlotByteLength))
-	easyfl.Extend("timestampByteSize", fmt.Sprintf("%d", TimeByteLength))
-	easyfl.Extend("timePace", fmt.Sprintf("%d", TransactionPaceInTicks))
-	easyfl.Extend("timePace64", fmt.Sprintf("u64/%d", TransactionPaceInTicks))
-
+type Library struct {
+	*easyfl.Library
+	constraintByPrefix map[string]*constraintRecord
+	constraintNames    map[string]struct{}
 }
 
-var (
-	stateIdSingleton      *IdentityData
-	stateIdSingletonMutex sync.Mutex
-)
+func newLibrary() *Library {
+	ret := &Library{
+		Library:            easyfl.NewBase(),
+		constraintByPrefix: make(map[string]*constraintRecord),
+		constraintNames:    make(map[string]struct{}),
+	}
+	return ret
+}
+
+var librarySingleton *Library
+
+func L() *Library {
+	common.Assert(librarySingleton != nil, "ledger constraint library not initialized")
+	return librarySingleton
+}
 
 func Init(id *IdentityData) {
-	//-------------------------------- standard EasyFL library extensions ------------------------------
-	stateIdSingletonMutex.Lock()
-	defer stateIdSingletonMutex.Unlock()
-
-	tmp := stateIdSingleton
-	if stateIdSingleton != nil {
-		util.Assertf(stateIdSingleton.Hash() == id.Hash(), "library cannot be extended twice")
-		return
-	}
-	stateIdSingleton = id
-	tmp = tmp
-
+	librarySingleton = newLibrary()
 	fmt.Printf("------ Base EasyFL library:\n")
-	easyfl.PrintLibraryStats()
+	librarySingleton.PrintLibraryStats()
 	defer func() {
 		fmt.Printf("------ Extended EasyFL library:\n")
-		easyfl.PrintLibraryStats()
+		librarySingleton.PrintLibraryStats()
 	}()
 
-	extendLedgerWithBaseConstants(id)
+	librarySingleton.extendWithBaseConstants(id)
+	librarySingleton.extend()
+}
 
+func (lib *Library) extendWithBaseConstants(id *IdentityData) {
+	// constants
+	lib.Extend("vbCost16", "u16/1")
+	//easyfl.Extend("ticksPerSlot", fmt.Sprintf("%d", id.TicksPerSlot()))
+	lib.Extend("ticksPerSlot", fmt.Sprintf("%d", TicksPerSlot))
+	lib.Extend("timeSlotSizeBytes", fmt.Sprintf("%d", SlotByteLength))
+	lib.Extend("timestampByteSize", fmt.Sprintf("%d", TimeByteLength))
+	lib.Extend("timePace", fmt.Sprintf("%d", TransactionPaceInTicks))
+	lib.Extend("timePace64", fmt.Sprintf("u64/%d", TransactionPaceInTicks))
+}
+
+func (lib *Library) extend() {
 	// data context access
 	// data context is a lazybytes.Tree
-	easyfl.EmbedShort("@", 0, evalPath, true)
+	lib.EmbedShort("@", 0, evalPath, true)
 	// returns data bytes at the given path of the data context (lazy tree)
-	easyfl.EmbedShort("@Path", 1, evalAtPath)
+	lib.EmbedShort("@Path", 1, evalAtPath)
 
 	// @Array8 interprets $0 as serialized LazyArray with max 256 elements. Takes the $1 element of it. $1 is expected 1-byte long
-	easyfl.EmbedLong("@Array8", 2, evalAtArray8)
+	lib.EmbedLong("@Array8", 2, evalAtArray8)
 	// ArrayLength8 interprets $0 as serialized LazyArray with max 256 elements. Returns number of elements in the array as 1-byte value
-	easyfl.EmbedLong("ArrayLength8", 1, evalNumElementsOfArray)
+	lib.EmbedLong("ArrayLength8", 1, evalNumElementsOfArray)
 
 	// calls local EasyFL library
-	easyfl.EmbedLong("callLocalLibrary", -1, evalCallLocalLibrary)
+	lib.EmbedLong("callLocalLibrary", -1, lib.evalCallLocalLibrary)
 
 	// helpers
-	easyfl.Extend("sizeIs", "equal(len8($0), $1)")
-	easyfl.Extend("mustSize", "if(sizeIs($0,$1), $0, !!!wrong_data_size)")
+	lib.Extend("sizeIs", "equal(len8($0), $1)")
+	lib.Extend("mustSize", "if(sizeIs($0,$1), $0, !!!wrong_data_size)")
 
-	easyfl.EmbedLong("ticksBefore", 2, evalTicksBefore)
-	easyfl.Extend("mustValidTimeTick", "if(and(mustSize($0,1),lessThan($0,ticksPerSlot)),$0,!!!wrong_timeslot)")
-	easyfl.Extend("mustValidTimeSlot", "mustSize($0, timeSlotSizeBytes)")
-	easyfl.Extend("timeSlotPrefix", "slice($0, 0, sub8(timeSlotSizeBytes,1))") // first 4 bytes of any array. It is not time slot yet
-	easyfl.Extend("timeSlotFromTimeSlotPrefix", "bitwiseAND($0, 0x3fffffff)")
-	easyfl.Extend("timeTickFromTimestamp", "byte($0, timeSlotSizeBytes)")
-	easyfl.Extend("timestamp", "concat(mustValidTimeSlot($0),mustValidTimeTick($1))")
+	lib.EmbedLong("ticksBefore", 2, evalTicksBefore)
+	lib.Extend("mustValidTimeTick", "if(and(mustSize($0,1),lessThan($0,ticksPerSlot)),$0,!!!wrong_timeslot)")
+	lib.Extend("mustValidTimeSlot", "mustSize($0, timeSlotSizeBytes)")
+	lib.Extend("timeSlotPrefix", "slice($0, 0, sub8(timeSlotSizeBytes,1))") // first 4 bytes of any array. It is not time slot yet
+	lib.Extend("timeSlotFromTimeSlotPrefix", "bitwiseAND($0, 0x3fffffff)")
+	lib.Extend("timeTickFromTimestamp", "byte($0, timeSlotSizeBytes)")
+	lib.Extend("timestamp", "concat(mustValidTimeSlot($0),mustValidTimeTick($1))")
 
 	{
 		// inline tests
-		easyfl.MustEqual("timestamp(u32/255, 21)", MustNewLedgerTime(255, 21).Hex())
-		easyfl.MustEqual("ticksBefore(timestamp(u32/100, 5), timestamp(u32/101, 10))", "u64/105")
-		easyfl.MustError("timestamp(u32/255, 100)", "wrong timeslot")
-		easyfl.MustError("mustValidTimeSlot(255)", "wrong data size")
-		easyfl.MustError("mustValidTimeTick(200)", "wrong timeslot")
-		easyfl.MustEqual("mustValidTimeSlot(u32/255)", Slot(255).Hex())
-		easyfl.MustEqual("mustValidTimeTick(88)", Tick(88).String())
+		lib.MustEqual("timestamp(u32/255, 21)", MustNewLedgerTime(255, 21).Hex())
+		lib.MustEqual("ticksBefore(timestamp(u32/100, 5), timestamp(u32/101, 10))", "u64/105")
+		lib.MustError("timestamp(u32/255, 100)", "wrong timeslot")
+		lib.MustError("mustValidTimeSlot(255)", "wrong data size")
+		lib.MustError("mustValidTimeTick(200)", "wrong timeslot")
+		lib.MustEqual("mustValidTimeSlot(u32/255)", Slot(255).Hex())
+		lib.MustEqual("mustValidTimeTick(88)", Tick(88).String())
 	}
 
 	// path constants
-	easyfl.Extend("pathToTransaction", fmt.Sprintf("%d", TransactionBranch))
-	easyfl.Extend("pathToConsumedOutputs", fmt.Sprintf("0x%s", PathToConsumedOutputs.Hex()))
-	easyfl.Extend("pathToProducedOutputs", fmt.Sprintf("0x%s", PathToProducedOutputs.Hex()))
-	easyfl.Extend("pathToUnlockParams", fmt.Sprintf("0x%s", PathToUnlockParams.Hex()))
-	easyfl.Extend("pathToInputIDs", fmt.Sprintf("0x%s", PathToInputIDs.Hex()))
-	easyfl.Extend("pathToSignature", fmt.Sprintf("0x%s", PathToSignature.Hex()))
-	easyfl.Extend("pathToSeqAndStemOutputIndices", fmt.Sprintf("0x%s", PathToSequencerAndStemOutputIndices.Hex()))
-	easyfl.Extend("pathToInputCommitment", fmt.Sprintf("0x%s", PathToInputCommitment.Hex()))
-	easyfl.Extend("pathToEndorsements", fmt.Sprintf("0x%s", PathToEndorsements.Hex()))
-	easyfl.Extend("pathToLocalLibrary", fmt.Sprintf("0x%s", PathToLocalLibraries.Hex()))
-	easyfl.Extend("pathToTimestamp", fmt.Sprintf("0x%s", PathToTimestamp.Hex()))
-	easyfl.Extend("pathToTotalProducedAmount", fmt.Sprintf("0x%s", PathToTotalProducedAmount.Hex()))
+	lib.Extend("pathToTransaction", fmt.Sprintf("%d", TransactionBranch))
+	lib.Extend("pathToConsumedOutputs", fmt.Sprintf("0x%s", PathToConsumedOutputs.Hex()))
+	lib.Extend("pathToProducedOutputs", fmt.Sprintf("0x%s", PathToProducedOutputs.Hex()))
+	lib.Extend("pathToUnlockParams", fmt.Sprintf("0x%s", PathToUnlockParams.Hex()))
+	lib.Extend("pathToInputIDs", fmt.Sprintf("0x%s", PathToInputIDs.Hex()))
+	lib.Extend("pathToSignature", fmt.Sprintf("0x%s", PathToSignature.Hex()))
+	lib.Extend("pathToSeqAndStemOutputIndices", fmt.Sprintf("0x%s", PathToSequencerAndStemOutputIndices.Hex()))
+	lib.Extend("pathToInputCommitment", fmt.Sprintf("0x%s", PathToInputCommitment.Hex()))
+	lib.Extend("pathToEndorsements", fmt.Sprintf("0x%s", PathToEndorsements.Hex()))
+	lib.Extend("pathToLocalLibrary", fmt.Sprintf("0x%s", PathToLocalLibraries.Hex()))
+	lib.Extend("pathToTimestamp", fmt.Sprintf("0x%s", PathToTimestamp.Hex()))
+	lib.Extend("pathToTotalProducedAmount", fmt.Sprintf("0x%s", PathToTotalProducedAmount.Hex()))
 
 	// mandatory block indices in the output
-	easyfl.Extend("amountConstraintIndex", fmt.Sprintf("%d", ConstraintIndexAmount))
-	easyfl.Extend("lockConstraintIndex", fmt.Sprintf("%d", ConstraintIndexLock))
+	lib.Extend("amountConstraintIndex", fmt.Sprintf("%d", ConstraintIndexAmount))
+	lib.Extend("lockConstraintIndex", fmt.Sprintf("%d", ConstraintIndexLock))
 
 	// mandatory constraints and values
 	// $0 is output binary as lazy array
-	easyfl.Extend("amountConstraint", "@Array8($0, amountConstraintIndex)")
-	easyfl.Extend("lockConstraint", "@Array8($0, lockConstraintIndex)")
+	lib.Extend("amountConstraint", "@Array8($0, amountConstraintIndex)")
+	lib.Extend("lockConstraint", "@Array8($0, lockConstraintIndex)")
 
 	// recognize what kind of path is at $0
-	easyfl.Extend("isPathToConsumedOutput", "hasPrefix($0, pathToConsumedOutputs)")
-	easyfl.Extend("isPathToProducedOutput", "hasPrefix($0, pathToProducedOutputs)")
+	lib.Extend("isPathToConsumedOutput", "hasPrefix($0, pathToConsumedOutputs)")
+	lib.Extend("isPathToProducedOutput", "hasPrefix($0, pathToProducedOutputs)")
 
 	// make branch path by index $0
-	easyfl.Extend("consumedOutputPathByIndex", "concat(pathToConsumedOutputs,$0)")
-	easyfl.Extend("unlockParamsPathByIndex", "concat(pathToUnlockParams,$0)")
-	easyfl.Extend("producedOutputPathByIndex", "concat(pathToProducedOutputs,$0)")
+	lib.Extend("consumedOutputPathByIndex", "concat(pathToConsumedOutputs,$0)")
+	lib.Extend("unlockParamsPathByIndex", "concat(pathToUnlockParams,$0)")
+	lib.Extend("producedOutputPathByIndex", "concat(pathToProducedOutputs,$0)")
 
 	// takes 1-byte $0 as output index
-	easyfl.Extend("consumedOutputByIndex", "@Path(consumedOutputPathByIndex($0))")
-	easyfl.Extend("unlockParamsByIndex", "@Path(unlockParamsPathByIndex($0))")
-	easyfl.Extend("producedOutputByIndex", "@Path(producedOutputPathByIndex($0))")
+	lib.Extend("consumedOutputByIndex", "@Path(consumedOutputPathByIndex($0))")
+	lib.Extend("unlockParamsByIndex", "@Path(unlockParamsPathByIndex($0))")
+	lib.Extend("producedOutputByIndex", "@Path(producedOutputPathByIndex($0))")
 
 	// takes $0 'constraint index' as 2 bytes: 0 for output index, 1 for block index
-	easyfl.Extend("producedConstraintByIndex", "@Array8(producedOutputByIndex(byte($0,0)), byte($0,1))")
-	easyfl.Extend("consumedConstraintByIndex", "@Array8(consumedOutputByIndex(byte($0,0)), byte($0,1))")
-	easyfl.Extend("unlockParamsByConstraintIndex", "@Array8(unlockParamsByIndex(byte($0,0)), byte($0,1))")
+	lib.Extend("producedConstraintByIndex", "@Array8(producedOutputByIndex(byte($0,0)), byte($0,1))")
+	lib.Extend("consumedConstraintByIndex", "@Array8(consumedOutputByIndex(byte($0,0)), byte($0,1))")
+	lib.Extend("unlockParamsByConstraintIndex", "@Array8(unlockParamsByIndex(byte($0,0)), byte($0,1))")
 
-	easyfl.Extend("consumedLockByInputIndex", "consumedConstraintByIndex(concat($0, lockConstraintIndex))")
+	lib.Extend("consumedLockByInputIndex", "consumedConstraintByIndex(concat($0, lockConstraintIndex))")
 
-	easyfl.Extend("inputIDByIndex", "@Path(concat(pathToInputIDs,$0))")
-	easyfl.Extend("timeSlotOfInputByIndex", "timeSlotFromTimeSlotPrefix(timeSlotPrefix(inputIDByIndex($0)))")
+	lib.Extend("inputIDByIndex", "@Path(concat(pathToInputIDs,$0))")
+	lib.Extend("timeSlotOfInputByIndex", "timeSlotFromTimeSlotPrefix(timeSlotPrefix(inputIDByIndex($0)))")
 
 	// special transaction related
 
-	easyfl.Extend("txBytes", "@Path(pathToTransaction)")
-	easyfl.Extend("txSignature", "@Path(pathToSignature)")
-	easyfl.Extend("txTimestampBytes", "@Path(pathToTimestamp)")
-	easyfl.Extend("txTotalProducedAmount", "@Path(pathToTotalProducedAmount)")
-	easyfl.Extend("txTimeSlot", "timeSlotPrefix(txTimestampBytes)")
-	easyfl.Extend("txTimeTick", "timeTickFromTimestamp(txTimestampBytes)")
-	easyfl.Extend("txSequencerOutputIndex", "byte(@Path(pathToSeqAndStemOutputIndices), 0)")
-	easyfl.Extend("txStemOutputIndex", "byte(@Path(pathToSeqAndStemOutputIndices), 1)")
-	easyfl.Extend("txEssenceBytes", "concat("+
+	lib.Extend("txBytes", "@Path(pathToTransaction)")
+	lib.Extend("txSignature", "@Path(pathToSignature)")
+	lib.Extend("txTimestampBytes", "@Path(pathToTimestamp)")
+	lib.Extend("txTotalProducedAmount", "@Path(pathToTotalProducedAmount)")
+	lib.Extend("txTimeSlot", "timeSlotPrefix(txTimestampBytes)")
+	lib.Extend("txTimeTick", "timeTickFromTimestamp(txTimestampBytes)")
+	lib.Extend("txSequencerOutputIndex", "byte(@Path(pathToSeqAndStemOutputIndices), 0)")
+	lib.Extend("txStemOutputIndex", "byte(@Path(pathToSeqAndStemOutputIndices), 1)")
+	lib.Extend("txEssenceBytes", "concat("+
 		"@Path(pathToInputIDs), "+
 		"@Path(pathToProducedOutputs), "+
 		"@Path(pathToTimestamp), "+
 		"@Path(pathToSeqAndStemOutputIndices), "+
 		"@Path(pathToInputCommitment), "+
 		"@Path(pathToEndorsements))")
-	easyfl.Extend("isSequencerTransaction", "not(equal(txSequencerOutputIndex, 0xff))")
-	easyfl.Extend("isBranchTransaction", "and(isSequencerTransaction, not(equal(txStemOutputIndex, 0xff)))")
+	lib.Extend("isSequencerTransaction", "not(equal(txSequencerOutputIndex, 0xff))")
+	lib.Extend("isBranchTransaction", "and(isSequencerTransaction, not(equal(txStemOutputIndex, 0xff)))")
 
 	// endorsements
-	easyfl.Extend("numEndorsements", "ArrayLength8(@Path(pathToEndorsements))")
-	easyfl.Extend("sequencerFlagON", "not(isZero(bitwiseAND(byte($0,0),0x80)))")
-	easyfl.Extend("branchFlagsON", "equal(bitwiseAND(byte($0,0),0xc0), 0xc0)")
+	lib.Extend("numEndorsements", "ArrayLength8(@Path(pathToEndorsements))")
+	lib.Extend("sequencerFlagON", "not(isZero(bitwiseAND(byte($0,0),0x80)))")
+	lib.Extend("branchFlagsON", "equal(bitwiseAND(byte($0,0),0xc0), 0xc0)")
 
 	// functions with prefix 'self' are invocation context specific, i.e. they use function '@' to calculate
 	// local values which depend on the invoked constraint
 
-	easyfl.Extend("selfOutputPath", "slice(@,0,2)")
-	easyfl.Extend("selfSiblingConstraint", "@Array8(@Path(selfOutputPath), $0)")
-	easyfl.Extend("selfOutputBytes", "@Path(selfOutputPath)")
-	easyfl.Extend("selfNumConstraints", "ArrayLength8(selfOutputBytes)")
+	lib.Extend("selfOutputPath", "slice(@,0,2)")
+	lib.Extend("selfSiblingConstraint", "@Array8(@Path(selfOutputPath), $0)")
+	lib.Extend("selfOutputBytes", "@Path(selfOutputPath)")
+	lib.Extend("selfNumConstraints", "ArrayLength8(selfOutputBytes)")
 
 	// unlock param branch (0 - transaction, 0 unlock params)
 	// invoked output block
-	easyfl.Extend("self", "@Path(@)")
+	lib.Extend("self", "@Path(@)")
 	// bytecode prefix of the invoked constraint
-	easyfl.Extend("selfBytecodePrefix", "parseBytecodePrefix(self)")
+	lib.Extend("selfBytecodePrefix", "parseBytecodePrefix(self)")
 
-	easyfl.Extend("selfIsConsumedOutput", "isPathToConsumedOutput(@)")
-	easyfl.Extend("selfIsProducedOutput", "isPathToProducedOutput(@)")
+	lib.Extend("selfIsConsumedOutput", "isPathToConsumedOutput(@)")
+	lib.Extend("selfIsProducedOutput", "isPathToProducedOutput(@)")
 
 	// output index of the invocation
-	easyfl.Extend("selfOutputIndex", "byte(@, 2)")
+	lib.Extend("selfOutputIndex", "byte(@, 2)")
 	// block index of the invocation
-	easyfl.Extend("selfBlockIndex", "tail(@, 3)")
+	lib.Extend("selfBlockIndex", "tail(@, 3)")
 	// branch (2 bytes) of the constraint invocation
-	easyfl.Extend("selfBranch", "slice(@,0,1)")
+	lib.Extend("selfBranch", "slice(@,0,1)")
 	// output index || block index
-	easyfl.Extend("selfConstraintIndex", "slice(@, 2, 3)")
+	lib.Extend("selfConstraintIndex", "slice(@, 2, 3)")
 	// data of a constraint
-	easyfl.Extend("constraintData", "tail($0,1)")
+	lib.Extend("constraintData", "tail($0,1)")
 	// invocation output data
-	easyfl.Extend("selfConstraintData", "constraintData(self)")
+	lib.Extend("selfConstraintData", "constraintData(self)")
 	// unlock parameters of the invoked consumed constraint
-	easyfl.Extend("selfUnlockParameters", "@Path(concat(pathToUnlockParams, selfConstraintIndex))")
+	lib.Extend("selfUnlockParameters", "@Path(concat(pathToUnlockParams, selfConstraintIndex))")
 	// path referenced by the reference unlock params
-	easyfl.Extend("selfReferencedPath", "concat(selfBranch, selfUnlockParameters, selfBlockIndex)")
+	lib.Extend("selfReferencedPath", "concat(selfBranch, selfUnlockParameters, selfBlockIndex)")
 	// returns unlock block of the sibling
-	easyfl.Extend("selfSiblingUnlockBlock", "@Array8(@Path(concat(pathToUnlockParams, selfOutputIndex)), $0)")
+	lib.Extend("selfSiblingUnlockBlock", "@Array8(@Path(concat(pathToUnlockParams, selfOutputIndex)), $0)")
 
 	// returns selfUnlockParameters if blake2b hash of it is equal to the given hash, otherwise nil
-	easyfl.Extend("selfHashUnlock", "if(equal($0, blake2b(selfUnlockParameters)),selfUnlockParameters,nil)")
+	lib.Extend("selfHashUnlock", "if(equal($0, blake2b(selfUnlockParameters)),selfUnlockParameters,nil)")
 
 	// takes ED25519 signature from full signature, first 64 bytes
-	easyfl.Extend("signatureED25519", "slice($0, 0, 63)")
+	lib.Extend("signatureED25519", "slice($0, 0, 63)")
 	// takes ED25519 public key from full signature
-	easyfl.Extend("publicKeyED25519", "slice($0, 64, 95)")
+	lib.Extend("publicKeyED25519", "slice($0, 64, 95)")
 
-	// init constraints
+	// extend constraints
 	initAmountConstraint()
 	initAddressED25519Constraint()
 	initDeadlineLockConstraint()
@@ -306,9 +309,6 @@ func Init(id *IdentityData) {
 	initInflationConstraint()
 
 	runCommonUnitTests()
-
-	libraryHash := easyfl.LibraryHash()
-	fmt.Printf("Core constraint library hash is: %s\n", hex.EncodeToString(libraryHash[:]))
 }
 
 // for determinism in multiple tests
@@ -373,8 +373,8 @@ func evalNumElementsOfArray(ctx *easyfl.CallParams) []byte {
 }
 
 // CompileLocalLibrary compiles local library and serializes it as lazy array
-func CompileLocalLibrary(source string) ([]byte, error) {
-	libBin, err := easyfl.CompileLocalLibrary(source)
+func (lib *Library) CompileLocalLibrary(source string) ([]byte, error) {
+	libBin, err := lib.Library.CompileLocalLibrary(source)
 	if err != nil {
 		return nil, err
 	}
@@ -385,14 +385,14 @@ func CompileLocalLibrary(source string) ([]byte, error) {
 // arg 0 - local library binary (as lazy array)
 // arg 1 - 1-byte index of then function in the library
 // arg 2 ... arg 15 optional arguments
-func evalCallLocalLibrary(ctx *easyfl.CallParams) []byte {
+func (lib *Library) evalCallLocalLibrary(ctx *easyfl.CallParams) []byte {
 	arr := lazybytes.ArrayFromBytesReadOnly(ctx.Arg(0))
 	libData := arr.Parsed()
 	idx := ctx.Arg(1)
 	if len(idx) != 1 || int(idx[0]) >= len(libData) {
 		ctx.TracePanic("evalCallLocalLibrary: wrong function index")
 	}
-	ret := easyfl.CallLocalLibrary(ctx.Slice(2, ctx.Arity()), libData, int(idx[0]))
+	ret := lib.CallLocalLibrary(ctx.Slice(2, ctx.Arity()), libData, int(idx[0]))
 	ctx.Trace("evalCallLocalLibrary: lib#%d -> %s", idx[0], easyfl.Fmt(ret))
 	return ret
 }

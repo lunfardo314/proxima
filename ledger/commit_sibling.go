@@ -34,7 +34,7 @@ func NewCommitToSibling(siblingIndex byte, siblingHash []byte) *CommitToSibling 
 }
 
 func CommitToSiblingFromBytes(data []byte) (*CommitToSibling, error) {
-	sym, _, args, err := easyfl.ParseBytecodeOneLevel(data, 2)
+	sym, _, args, err := L().ParseBytecodeOneLevel(data, 2)
 	if err != nil {
 		return nil, err
 	}
@@ -69,7 +69,7 @@ func (cs *CommitToSibling) String() string {
 }
 
 func initCommitToSiblingConstraint() {
-	easyfl.MustExtendMany(CommitToSiblingSource)
+	L().MustExtendMany(CommitToSiblingSource)
 
 	h := blake2b.Sum256([]byte("just data"))
 	example := NewCommitToSibling(2, h[:])
@@ -78,7 +78,7 @@ func initCommitToSiblingConstraint() {
 	util.Assertf(csBack.SiblingIndex == 2, "inconsistency "+CommitToSiblingName)
 	util.Assertf(bytes.Equal(csBack.SiblingHash, h[:]), "inconsistency "+CommitToSiblingName)
 
-	prefix, err := easyfl.ParseBytecodePrefix(example.Bytes())
+	prefix, err := L().ParseBytecodePrefix(example.Bytes())
 	util.AssertNoError(err)
 
 	registerConstraint(CommitToSiblingName, prefix, func(data []byte) (Constraint, error) {

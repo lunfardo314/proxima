@@ -231,7 +231,7 @@ func (ctx *TxContext) runOutput(consumedBranch bool, output *ledger.Output, path
 		}
 		if len(res) == 0 {
 			var decomp string
-			decomp, err = easyfl.DecompileBytecode(data)
+			decomp, err = ledger.L().DecompileBytecode(data)
 			if err != nil {
 				decomp = fmt.Sprintf("(error while decompiling constraint: '%v')", err)
 			}
@@ -330,7 +330,7 @@ func constraintName(binCode []byte) string {
 	if binCode[0] == 0 {
 		return "array_constraint"
 	}
-	prefix, err := easyfl.ParseBytecodePrefix(binCode)
+	prefix, err := ledger.L().ParseBytecodePrefix(binCode)
 	if err != nil {
 		return fmt.Sprintf("unknown_constraint(%s)", easyfl.Fmt(binCode))
 	}
@@ -356,7 +356,7 @@ func (ctx *TxContext) evalConstraint(constr []byte, path lazybytes.TreePath) ([]
 
 	if constr[0] != 0 {
 		// inline constraint. Binary code cannot begin with 0-byte
-		ret, err = easyfl.EvalFromBinary(evalCtx, constr)
+		ret, err = ledger.L().EvalFromBinary(evalCtx, constr)
 	} else {
 		// array constraint TODO do we need it?
 		arr := lazybytes.ArrayFromBytesReadOnly(constr[1:], 256)
@@ -368,7 +368,7 @@ func (ctx *TxContext) evalConstraint(constr []byte, path lazybytes.TreePath) ([]
 			for i := 1; i < arr.NumElements(); i++ {
 				args[i] = arr.At(i)
 			}
-			ret, err = easyfl.EvalFromBinary(evalCtx, binCode, args...)
+			ret, err = ledger.L().EvalFromBinary(evalCtx, binCode, args...)
 		}
 	}
 

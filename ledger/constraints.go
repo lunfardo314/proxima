@@ -46,34 +46,30 @@ type (
 	}
 )
 
-var (
-	constraintByPrefix = make(map[string]*constraintRecord)
-	constraintNames    = make(map[string]struct{})
-)
-
 func registerConstraint(name string, prefix []byte, parser Parser) {
-	_, already := constraintNames[name]
+	lib := L()
+	_, already := lib.constraintNames[name]
 	util.Assertf(!already, "repeating constraint name '%s'", name)
-	_, already = constraintByPrefix[string(prefix)]
+	_, already = lib.constraintByPrefix[string(prefix)]
 	util.Assertf(!already, "repeating constraint prefix %s with name '%s'", easyfl.Fmt(prefix), name)
 	util.Assertf(0 < len(prefix) && len(prefix) <= 2, "wrong constraint prefix %s, name: %s", easyfl.Fmt(prefix), name)
-	constraintByPrefix[string(prefix)] = &constraintRecord{
+	lib.constraintByPrefix[string(prefix)] = &constraintRecord{
 		name:   name,
 		prefix: common.Concat(prefix),
 		parser: parser,
 	}
-	constraintNames[name] = struct{}{}
+	lib.constraintNames[name] = struct{}{}
 }
 
 func NameByPrefix(prefix []byte) (string, bool) {
-	if ret, found := constraintByPrefix[string(prefix)]; found {
+	if ret, found := L().constraintByPrefix[string(prefix)]; found {
 		return ret.name, true
 	}
 	return "", false
 }
 
 func parserByPrefix(prefix []byte) (Parser, bool) {
-	if ret, found := constraintByPrefix[string(prefix)]; found {
+	if ret, found := L().constraintByPrefix[string(prefix)]; found {
 		return ret.parser, true
 	}
 	return nil, false
@@ -86,7 +82,7 @@ func mustBinFromSource(src string) []byte {
 }
 
 func binFromSource(src string) ([]byte, error) {
-	_, _, binCode, err := easyfl.CompileExpression(src)
+	_, _, binCode, err := L().CompileExpression(src)
 	return binCode, err
 }
 
@@ -105,7 +101,7 @@ func EqualAccountIDs(a1, a2 AccountID) bool {
 }
 
 func ConstraintFromBytes(data []byte) (Constraint, error) {
-	prefix, err := easyfl.ParseBytecodePrefix(data)
+	prefix, err := L().ParseBytecodePrefix(data)
 	if err != nil {
 		return nil, err
 	}
@@ -128,7 +124,7 @@ var AllLockNames = []string{
 }
 
 func LockFromBytes(data []byte) (Lock, error) {
-	prefix, err := easyfl.ParseBytecodePrefix(data)
+	prefix, err := L().ParseBytecodePrefix(data)
 	if err != nil {
 		return nil, err
 	}
@@ -150,7 +146,7 @@ func LockFromBytes(data []byte) (Lock, error) {
 }
 
 func LockFromSource(src string) (Lock, error) {
-	_, _, bytecode, err := easyfl.CompileExpression(src)
+	_, _, bytecode, err := L().CompileExpression(src)
 	if err != nil {
 		return nil, err
 	}
@@ -158,7 +154,7 @@ func LockFromSource(src string) (Lock, error) {
 }
 
 func AccountableFromBytes(data []byte) (Accountable, error) {
-	prefix, err := easyfl.ParseBytecodePrefix(data)
+	prefix, err := L().ParseBytecodePrefix(data)
 	if err != nil {
 		return nil, err
 	}

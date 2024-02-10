@@ -47,7 +47,7 @@ func NewInflationConstraint(chainConstraintIndex byte, amount uint64) *Inflation
 }
 
 func InflationConstraintFromBytes(data []byte) (*InflationConstraint, error) {
-	sym, _, args, err := easyfl.ParseBytecodeOneLevel(data, 2)
+	sym, _, args, err := L().ParseBytecodeOneLevel(data, 2)
 	if err != nil {
 		return nil, err
 	}
@@ -73,19 +73,19 @@ func NewInflationConstraintUnlockParams(successorConstraintIndex byte) []byte {
 }
 
 func initInflationConstraint() {
-	easyfl.MustExtendMany(fmt.Sprintf(inflationConstantsTemplate, InflationAmountBranchFixed, InflationAmountPerChainFraction))
-	easyfl.MustExtendMany(inflationConstraintSource)
+	L().MustExtendMany(fmt.Sprintf(inflationConstantsTemplate, InflationAmountBranchFixed, InflationAmountPerChainFraction))
+	L().MustExtendMany(inflationConstraintSource)
 	// sanity check
 	example := NewInflationConstraint(125, 1337)
 	exampleBin := example.Bytes()
-	util.Assertf(example.ChainConstraintIndex == 125, "init 'inflation' failed")
-	util.Assertf(example.Amount == 1337, "init 'inflation' failed")
+	util.Assertf(example.ChainConstraintIndex == 125, "extend 'inflation' failed")
+	util.Assertf(example.Amount == 1337, "extend 'inflation' failed")
 	exampleBack, err := InflationConstraintFromBytes(exampleBin)
 	util.AssertNoError(err)
-	util.Assertf(example.ChainConstraintIndex == exampleBack.ChainConstraintIndex, "init 'inflation' failed")
-	util.Assertf(example.Amount == exampleBack.Amount, "init 'inflation' failed")
+	util.Assertf(example.ChainConstraintIndex == exampleBack.ChainConstraintIndex, "extend 'inflation' failed")
+	util.Assertf(example.Amount == exampleBack.Amount, "extend 'inflation' failed")
 
-	prefix, err := easyfl.ParseBytecodePrefix(exampleBin)
+	prefix, err := L().ParseBytecodePrefix(exampleBin)
 	util.AssertNoError(err)
 
 	registerConstraint(InflationConstraintName, prefix, func(data []byte) (Constraint, error) {

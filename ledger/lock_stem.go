@@ -54,7 +54,7 @@ func (st *StemLock) UnlockableWith(_ AccountID, _ ...Time) bool {
 }
 
 func initStemLockConstraint() {
-	easyfl.MustExtendMany(stemLockSource)
+	L().MustExtendMany(stemLockSource)
 	txid := RandomTransactionID(true, true)
 	predID := NewOutputID(&txid, 42)
 	example := StemLock{
@@ -63,7 +63,7 @@ func initStemLockConstraint() {
 	stem, err := StemLockFromBytes(example.Bytes())
 	util.AssertNoError(err)
 	util.Assertf(stem.PredecessorOutputID == predID, "stem.PredecessorOutputID == predID")
-	prefix, err := easyfl.ParseBytecodePrefix(example.Bytes())
+	prefix, err := L().ParseBytecodePrefix(example.Bytes())
 	util.AssertNoError(err)
 	registerConstraint(StemLockName, prefix, func(data []byte) (Constraint, error) {
 		return StemLockFromBytes(data)
@@ -71,7 +71,7 @@ func initStemLockConstraint() {
 }
 
 func StemLockFromBytes(data []byte) (*StemLock, error) {
-	sym, _, args, err := easyfl.ParseBytecodeOneLevel(data, 1)
+	sym, _, args, err := L().ParseBytecodeOneLevel(data, 1)
 	if err != nil {
 		return nil, err
 	}

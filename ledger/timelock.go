@@ -52,7 +52,7 @@ func (t Timelock) source() string {
 }
 
 func TimelockFromBytes(data []byte) (Timelock, error) {
-	sym, _, args, err := easyfl.ParseBytecodeOneLevel(data, 1)
+	sym, _, args, err := L().ParseBytecodeOneLevel(data, 1)
 	if err != nil {
 		return NilTimelock, err
 	}
@@ -68,10 +68,10 @@ func TimelockFromBytes(data []byte) (Timelock, error) {
 }
 
 func initTimelockConstraint() {
-	easyfl.MustExtendMany(timelockSource)
+	L().MustExtendMany(timelockSource)
 
 	example := NewTimelock(1337)
-	sym, prefix, args, err := easyfl.ParseBytecodeOneLevel(example.Bytes(), 1)
+	sym, prefix, args, err := L().ParseBytecodeOneLevel(example.Bytes(), 1)
 	util.AssertNoError(err)
 	tlBin := easyfl.StripDataPrefix(args[0])
 	e, err := SlotFromBytes(tlBin)

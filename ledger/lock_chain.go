@@ -25,7 +25,7 @@ func ChainLockFromChainID(chainID ChainID) ChainLock {
 }
 
 func ChainLockFromBytes(data []byte) (ChainLock, error) {
-	sym, _, args, err := easyfl.ParseBytecodeOneLevel(data, 1)
+	sym, _, args, err := L().ParseBytecodeOneLevel(data, 1)
 	if err != nil {
 		return nil, err
 	}
@@ -84,14 +84,14 @@ func NewChainLockUnlockParams(chainOutputIndex, chainConstraintIndex byte) []byt
 }
 
 func initChainLockConstraint() {
-	easyfl.MustExtendMany(ChainLockConstraintSource)
+	L().MustExtendMany(ChainLockConstraintSource)
 
 	example := NilChainLock
 	chainLockBack, err := ChainLockFromBytes(example.Bytes())
 	util.AssertNoError(err)
 	util.Assertf(EqualConstraints(chainLockBack, NilChainLock), "inconsistency "+ChainLockName)
 
-	prefix, err := easyfl.ParseBytecodePrefix(example.Bytes())
+	prefix, err := L().ParseBytecodePrefix(example.Bytes())
 	util.AssertNoError(err)
 
 	registerConstraint(ChainLockName, prefix, func(data []byte) (Constraint, error) {

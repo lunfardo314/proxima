@@ -74,7 +74,7 @@ func (ch *ChainConstraint) source() string {
 }
 
 func ChainConstraintFromBytes(data []byte) (*ChainConstraint, error) {
-	sym, _, args, err := easyfl.ParseBytecodeOneLevel(data, 1)
+	sym, _, args, err := L().ParseBytecodeOneLevel(data, 1)
 	if err != nil {
 		return nil, err
 	}
@@ -104,14 +104,14 @@ func NewChainUnlockParams(successorOutputIdx, successorConstraintBlockIndex, tra
 }
 
 func initChainConstraint() {
-	easyfl.MustExtendMany(chainConstraintSource)
+	L().MustExtendMany(chainConstraintSource)
 
 	example := NewChainOrigin()
 	back, err := ChainConstraintFromBytes(example.Bytes())
 	util.AssertNoError(err)
 	util.Assertf(bytes.Equal(back.Bytes(), example.Bytes()), "inconsistency in "+ChainConstraintName)
 
-	_, prefix, _, err := easyfl.ParseBytecodeOneLevel(example.Bytes(), 1)
+	_, prefix, _, err := L().ParseBytecodeOneLevel(example.Bytes(), 1)
 	util.AssertNoError(err)
 
 	registerConstraint(ChainConstraintName, prefix, func(data []byte) (Constraint, error) {
@@ -137,7 +137,7 @@ func chainConstraintInlineTest() {
 	}
 }
 
-// TODO re-write chain constraint with two functions: 'chainInit' and 'chain'. To get rid of all0 init code
+// TODO ?? re-write chain constraint with two functions: 'chainInit' and 'chain'. To get rid of all0 extend code
 
 const chainConstraintSource = `
 // chain(<chain constraint data>)

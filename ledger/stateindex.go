@@ -28,7 +28,7 @@ func NewStateIndex(chainBlockIndex byte, stateIndex uint32) *StateIndex {
 }
 
 func StateIndexFromBytes(data []byte) (*StateIndex, error) {
-	sym, _, args, err := easyfl.ParseBytecodeOneLevel(data, 2)
+	sym, _, args, err := L().ParseBytecodeOneLevel(data, 2)
 	if err != nil {
 		return nil, err
 	}
@@ -67,7 +67,7 @@ func (s *StateIndex) String() string {
 }
 
 func initStateIndexConstraint() {
-	easyfl.MustExtendMany(StateIndexSource)
+	L().MustExtendMany(StateIndexSource)
 
 	example := NewStateIndex(5, 314)
 	stateIndexBack, err := StateIndexFromBytes(example.Bytes())
@@ -75,7 +75,7 @@ func initStateIndexConstraint() {
 	util.Assertf(stateIndexBack.StateIndex == 314, "inconsistency "+StateIndexName)
 	util.Assertf(stateIndexBack.ChainBlockIndex == 5, "inconsistency "+StateIndexName)
 
-	prefix, err := easyfl.ParseBytecodePrefix(example.Bytes())
+	prefix, err := L().ParseBytecodePrefix(example.Bytes())
 	util.AssertNoError(err)
 
 	registerConstraint(StateIndexName, prefix, func(data []byte) (Constraint, error) {

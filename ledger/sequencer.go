@@ -137,7 +137,7 @@ func (s *SequencerConstraint) source() string {
 }
 
 func SequencerConstraintFromBytes(data []byte) (*SequencerConstraint, error) {
-	sym, _, args, err := easyfl.ParseBytecodeOneLevel(data, 2)
+	sym, _, args, err := L().ParseBytecodeOneLevel(data, 2)
 	if err != nil {
 		return nil, err
 	}
@@ -162,11 +162,11 @@ func SequencerConstraintFromBytes(data []byte) (*SequencerConstraint, error) {
 }
 
 func initSequencerConstraint() {
-	easyfl.Extend("mustMinimumAmountOnSequencer", minimumAmountOnSeqSource)
-	easyfl.MustExtendMany(sequencerConstraintSource)
+	L().Extend("mustMinimumAmountOnSequencer", minimumAmountOnSeqSource)
+	L().MustExtendMany(sequencerConstraintSource)
 
 	example := NewSequencerConstraint(4, 1337)
-	sym, prefix, args, err := easyfl.ParseBytecodeOneLevel(example.Bytes(), 2)
+	sym, prefix, args, err := L().ParseBytecodeOneLevel(example.Bytes(), 2)
 	util.AssertNoError(err)
 	util.Assertf(sym == SequencerConstraintName, "sym == SequencerConstraintName")
 
