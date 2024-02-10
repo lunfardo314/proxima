@@ -37,8 +37,8 @@ func TestTimeConstSet(t *testing.T) {
 }
 
 func TestTime(t *testing.T) {
+	InitWithTestingLedgerIDData()
 	t.Run("time constants", func(t *testing.T) {
-		InitWithTestingLedgerIDData()
 		t.Logf("%s", L().ID.TimeConstantsToString())
 	})
 	t.Run("1", func(t *testing.T) {
@@ -124,4 +124,15 @@ func TestTime(t *testing.T) {
 		t.Logf("tsExpect = %s", tsExpect)
 		require.EqualValues(t, tsExpect, ts1)
 	})
+}
+
+func TestLedgerIDYAML(t *testing.T) {
+	privateKey := testutil.GetTestingPrivateKey()
+	id := DefaultIdentityData(privateKey)
+	yamlableStr := id.YAMLAble().YAML()
+	t.Logf("\n" + string(yamlableStr))
+
+	idBack, err := StateIdentityDataFromYAML(yamlableStr)
+	require.NoError(t, err)
+	require.EqualValues(t, id.Bytes(), idBack.Bytes())
 }

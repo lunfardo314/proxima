@@ -47,6 +47,10 @@ type (
 		ChainInflationPerTickFractionYoY []uint64
 		// VBCost
 		VBCost uint64
+		// number of ticks between non-sequencer transactions
+		TransactionPace byte
+		// number of ticks between sequencer transactions
+		TransactionPaceSequencer byte
 	}
 
 	// IdentityDataYAMLAble structure for canonical YAMLAble marshaling
@@ -62,6 +66,8 @@ type (
 		BranchBonusYearlyGrowthPromille  uint16   `yaml:"branch_bonus_yearly_growth_promille"`
 		SlotsPerLedgerYear               uint32   `yaml:"slots_per_ledger_year"`
 		VBCost                           uint64   `yaml:"vb_cost"`
+		TransactionPace                  byte     `yaml:"transaction_pace"`
+		TransactionPaceSequencer         byte     `yaml:"transaction_pace_sequencer"`
 		ChainInflationPerTickFractionYoY []uint64 `yaml:"chain_inflation_per_tick_fraction_yoy"`
 		// non-persistent, for control
 		GenesisControllerAddress string `yaml:"genesis_controller_address"`
@@ -89,6 +95,8 @@ func (id *IdentityData) Bytes() []byte {
 	_ = binary.Write(&buf, binary.BigEndian, id.InitialBranchBonus)
 	_ = binary.Write(&buf, binary.BigEndian, id.BranchBonusYearlyGrowthPromille)
 	_ = binary.Write(&buf, binary.BigEndian, id.VBCost)
+	_ = binary.Write(&buf, binary.BigEndian, id.TransactionPace)
+	_ = binary.Write(&buf, binary.BigEndian, id.TransactionPaceSequencer)
 	util.Assertf(0 < len(id.ChainInflationPerTickFractionYoY) && len(id.ChainInflationPerTickFractionYoY) <= 255, "ChainInflationPerTickFractionYoY array must be non-empty with size <= 255")
 	_ = binary.Write(&buf, binary.BigEndian, byte(len(id.ChainInflationPerTickFractionYoY))) // array length
 	for _, v := range id.ChainInflationPerTickFractionYoY {
@@ -144,6 +152,12 @@ func MustLedgerIdentityDataFromBytes(data []byte) *IdentityData {
 	util.AssertNoError(err)
 
 	err = binary.Read(rdr, binary.BigEndian, &ret.VBCost)
+	util.AssertNoError(err)
+
+	err = binary.Read(rdr, binary.BigEndian, &ret.TransactionPace)
+	util.AssertNoError(err)
+
+	err = binary.Read(rdr, binary.BigEndian, &ret.TransactionPaceSequencer)
 	util.AssertNoError(err)
 
 	var size8 byte
@@ -223,6 +237,8 @@ func (id *IdentityData) YAMLAble() *IdentityDataYAMLAble {
 		InitialBranchBonus:               id.InitialBranchBonus,
 		BranchBonusYearlyGrowthPromille:  id.BranchBonusYearlyGrowthPromille,
 		VBCost:                           id.VBCost,
+		TransactionPace:                  id.TransactionPace,
+		TransactionPaceSequencer:         id.TransactionPaceSequencer,
 		SlotsPerLedgerYear:               id.SlotsPerLedgerYear,
 		ChainInflationPerTickFractionYoY: slices.Clone(id.ChainInflationPerTickFractionYoY),
 		GenesisControllerAddress:         id.GenesisControlledAddress().String(),
@@ -241,10 +257,10 @@ func (id *IdentityData) SlotsPerDay() int {
 func (id *IdentityData) TimeConstantsToString() string {
 	return lines.New().
 		Add("TickDuration = %v", id.TickDuration).
-		Add("DefaultTicksPerSlot = %d", id.TicksPerSlot()).
+		Add("TicksPerSlot = %d", id.TicksPerSlot()).
 		Add("SlotDuration = %v", id.SlotDuration()).
 		Add("SlotsPerDay = %v", id.SlotsPerDay()).
-		Add("GenesisSlot = %d", id.GenesisSlot).
+		Add("GenesisSlot = %d (%.2f %% of max)", id.GenesisSlot, float32(id.GenesisSlot)*100/float32(math.MaxUint32)).
 		Add("TimeHorizonYears = %d", id.TimeHorizonYears()).
 		Add("SlotsPerLedgerYear = %d", id.SlotsPerLedgerYear).
 		Add("seconds per year = %d", 60*60*24*365).
@@ -294,6 +310,8 @@ func (id *IdentityDataYAMLAble) stateIdentityData() (*IdentityData, error) {
 	ret.InitialBranchBonus = id.InitialBranchBonus
 	ret.BranchBonusYearlyGrowthPromille = id.BranchBonusYearlyGrowthPromille
 	ret.VBCost = id.VBCost
+	ret.TransactionPace = id.TransactionPace
+	ret.TransactionPaceSequencer = id.TransactionPaceSequencer
 	ret.SlotsPerLedgerYear = id.SlotsPerLedgerYear
 	ret.ChainInflationPerTickFractionYoY = slices.Clone(id.ChainInflationPerTickFractionYoY)
 

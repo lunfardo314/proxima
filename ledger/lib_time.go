@@ -10,11 +10,6 @@ import (
 )
 
 const (
-	TimeHorizonYears    = 30 // we want next N years to fit the timestamp
-	TimeHorizonHours    = 24 * 365 * TimeHorizonYears
-	TimeHorizonDuration = TimeHorizonHours * time.Hour
-	MaxSlot             = 0xffffffff >> 2
-
 	// TransactionPaceInTicks TODO for testing. Expected value 3 or 5
 	TransactionPaceInTicks = 1 // number of ticks between two consecutive transactions
 
@@ -51,16 +46,8 @@ func SlotDuration() time.Duration {
 	return DefaultTicksPerSlot * TickDuration()
 }
 
-func TimeHorizonSlots() int64 {
-	return int64(TimeHorizonDuration) / int64(SlotDuration())
-}
-
 func SlotsPerLedgerYear() int64 {
 	return int64(L().ID.SlotsPerLedgerYear)
-}
-
-func YearsPerMaxSlot() int64 {
-	return MaxSlot / SlotsPerLedgerYear()
 }
 
 func TransactionTimePaceDuration() time.Duration {

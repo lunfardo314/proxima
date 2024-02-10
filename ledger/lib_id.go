@@ -32,6 +32,8 @@ const (
 	DefaultInitialChainInflationFractionPerTick = 400_000_000
 	DefaultYearsHalving                         = 5
 	DefaultVBCost                               = 1
+	DefaultTransactionPace                      = 10
+	DefaultTransactionPaceSequencer             = 5
 )
 
 func newLibrary() *Library {
@@ -42,11 +44,6 @@ func newLibrary() *Library {
 	}
 	return ret
 }
-
-//
-//func init() {
-//	Init(nil) // temporary
-//}
 
 var librarySingleton *Library
 
@@ -109,6 +106,8 @@ func DefaultIdentityData(privateKey ed25519.PrivateKey, slot ...Slot) *IdentityD
 		InitialBranchBonus:               DefaultInitialBranchInflationBonus,
 		BranchBonusYearlyGrowthPromille:  DefaultAnnualBranchInflationPromille,
 		VBCost:                           DefaultVBCost,
+		TransactionPace:                  DefaultTransactionPace,
+		TransactionPaceSequencer:         DefaultTransactionPaceSequencer,
 		ChainInflationPerTickFractionYoY: fractionYoY,
 	}
 
