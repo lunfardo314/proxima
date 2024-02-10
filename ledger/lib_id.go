@@ -2,6 +2,7 @@ package ledger
 
 import (
 	"crypto/ed25519"
+	"encoding/hex"
 	"fmt"
 	"time"
 
@@ -68,13 +69,20 @@ func Init(id *IdentityData) {
 
 func (lib *Library) extendWithBaseConstants(id *IdentityData) {
 	// constants
-	lib.Extend("vbCost16", "u16/1")
-	//easyfl.Extend("ticksPerSlot", fmt.Sprintf("%d", id.DefaultTicksPerSlot()))
-	lib.Extend("ticksPerSlot", fmt.Sprintf("%d", DefaultTicksPerSlot))
+	lib.Extend("constInitialSupply", fmt.Sprintf("u64/%d", id.InitialSupply))
+	lib.Extend("constGenesisControllerPublicKey", fmt.Sprintf("0x%s", hex.EncodeToString(id.GenesisControllerPublicKey)))
+	lib.Extend("constBaselineTime", fmt.Sprintf("u64/%d", id.BaselineTime.UnixNano()))
+	lib.Extend("constVBCost16", fmt.Sprintf("u16/%d", id.VBCost))
+	lib.Extend("ticksPerSlot", fmt.Sprintf("%d", id.TicksPerSlot()))
+
+	// TODO enforce time pace
+	//lib.Extend("timePace", fmt.Sprintf("%d", id.TransactionPace))
+	//lib.Extend("timePace64", fmt.Sprintf("u64/%d", id.TransactionPace))
+	//lib.Extend("timePaceSeq", fmt.Sprintf("%d", id.TransactionPaceSequencer))
+	//lib.Extend("timePaceSeq64", fmt.Sprintf("u64/%d", id.TransactionPaceSequencer))
+
 	lib.Extend("timeSlotSizeBytes", fmt.Sprintf("%d", SlotByteLength))
 	lib.Extend("timestampByteSize", fmt.Sprintf("%d", TimeByteLength))
-	lib.Extend("timePace", fmt.Sprintf("%d", TransactionPaceInTicks))
-	lib.Extend("timePace64", fmt.Sprintf("u64/%d", TransactionPaceInTicks))
 }
 
 func GetTestingIdentityData(seed ...int) (*IdentityData, ed25519.PrivateKey) {

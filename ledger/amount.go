@@ -39,7 +39,7 @@ func selfMustAmountAtLeast : if(
 )
 
 func selfMustStandardAmount: selfMustAmountAtLeast( 
-	concat(u32/0, mul16_32(vbCost16,len16(selfOutputBytes)))
+	concat(u32/0, mul16_32(constVBCost16,len16(selfOutputBytes)))
 )
 
 `
