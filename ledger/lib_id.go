@@ -31,7 +31,7 @@ const (
 	DefaultInitialBranchInflationBonus          = 20_000_000
 	DefaultAnnualBranchInflationPromille        = 40
 	DefaultInitialChainInflationFractionPerTick = 400_000_000
-	DefaultYearsHalving                         = 5
+	DefaultYearsHalving                         = 4
 	DefaultVBCost                               = 1
 	DefaultTransactionPace                      = 10
 	DefaultTransactionPaceSequencer             = 5
@@ -69,21 +69,85 @@ func Init(id *IdentityData) {
 
 func (lib *Library) extendWithBaseConstants(id *IdentityData) {
 	// constants
-	lib.Extend("constInitialSupply", fmt.Sprintf("u64/%d", id.InitialSupply))
-	lib.Extend("constGenesisControllerPublicKey", fmt.Sprintf("0x%s", hex.EncodeToString(id.GenesisControllerPublicKey)))
-	lib.Extend("constBaselineTime", fmt.Sprintf("u64/%d", id.BaselineTime.UnixNano()))
-	lib.Extend("constVBCost16", fmt.Sprintf("u16/%d", id.VBCost))
-	lib.Extend("ticksPerSlot", fmt.Sprintf("%d", id.TicksPerSlot()))
+	lib.Extendf("constInitialSupply", "u64/%d", id.InitialSupply)
+	lib.Extendf("constGenesisControllerPublicKey", "0x%s", hex.EncodeToString(id.GenesisControllerPublicKey))
+	lib.Extendf("constBaselineTime", "u64/%d", id.BaselineTime.UnixNano())
+	lib.Extendf("constTickDuration", "u64/%d", int64(id.TickDuration))
+	lib.Extendf("constMaxTickValuePerSlot", "%d", id.MaxTickValueInSlot)
+	lib.Extendf("constGenesisSlot", "u64/%d", id.GenesisSlot)
+	lib.Extendf("constInitialBranchBonus", "u64/%d", id.InitialBranchBonus)
+	lib.Extendf("constBranchBonusYearlyGrowthPromille", "u64/%d", id.BranchBonusYearlyGrowthPromille)
+	lib.Extendf("constYearsHalving", "u64/%d", id.ChainInflationHalvingYears)
+	lib.Extendf("constChainInflationFractionBase", "u64/%d", id.ChainInflationPerTickFractionBase)
 
-	// TODO enforce time pace
-	//lib.Extend("timePace", fmt.Sprintf("%d", id.TransactionPace))
-	//lib.Extend("timePace64", fmt.Sprintf("u64/%d", id.TransactionPace))
-	//lib.Extend("timePaceSeq", fmt.Sprintf("%d", id.TransactionPaceSequencer))
-	//lib.Extend("timePaceSeq64", fmt.Sprintf("u64/%d", id.TransactionPaceSequencer))
+	lib.Extendf("constSlotsPerLedgerYear", "u64/%d", id.SlotsPerLedgerYear)
+	lib.Extendf("constTransactionPace", "%d", id.TransactionPace)
+	lib.Extendf("constTransactionPaceSequencer", "%d", id.TransactionPaceSequencer)
+	lib.Extendf("constVBCost16", "u16/%d", id.VBCost)
+	lib.Extendf("ticksPerSlot", "%d", id.TicksPerSlot())
+	lib.Extendf("timeSlotSizeBytes", "%d", SlotByteLength)
+	lib.Extendf("timestampByteSize", "%d", TimeByteLength)
 
-	lib.Extend("timeSlotSizeBytes", fmt.Sprintf("%d", SlotByteLength))
-	lib.Extend("timestampByteSize", fmt.Sprintf("%d", TimeByteLength))
+	lib.EmbedLong("ticksBefore", 2, evalTicksBefore)
+
+	// base helpers
+	lib.Extend("sizeIs", "equal(len8($0), $1)")
+	lib.Extend("mustSize", "if(sizeIs($0,$1), $0, !!!wrong_data_size)")
+
+	lib.Extend("mustValidTimeTick", "if(and(mustSize($0,1),lessThan($0,ticksPerSlot)),$0,!!!wrong_timeslot)")
+	lib.Extend("mustValidTimeSlot", "mustSize($0, timeSlotSizeBytes)")
+	lib.Extend("timeSlotPrefix", "slice($0, 0, sub8(timeSlotSizeBytes,1))") // first 4 bytes of any array. It is not time slot yet
+	lib.Extend("timeSlotFromTimeSlotPrefix", "bitwiseAND($0, 0x3fffffff)")
+	lib.Extend("timeTickFromTimestamp", "byte($0, timeSlotSizeBytes)")
+	lib.Extend("timestamp", "concat(mustValidTimeSlot($0),mustValidTimeTick($1))")
+
+	lib.MustExtendMany(inflationFractionBySlotSource)
 }
+
+// TODO branch bonus inflation
+
+const inflationFractionBySlotSource = `
+// $0 - slot of the chain input as u64
+func yearFromGenesis : div64(sub64($0, constGenesisSlot), constSlotsPerLedgerYear)
+
+// $0 - year from genesis
+func halvingYear :
+	if(
+		lessThan($0, constYearsHalving),
+        $0,
+        constYearsHalving
+	)
+
+// $0 slot of the chain input as u64
+// result - inflation fraction corresponding to that year (taking into account halving) 
+func inflationFractionBySlot : and(
+	require(lessOrEqualThan(constGenesisSlot, $0), !!!wrong_slot_value),
+    mul64(
+        constChainInflationFractionBase, 
+        lshift64(u64/1, halvingYear(yearFromGenesis($0)))
+    )
+)
+
+// $0 - timestamp of the chain input
+// $1 - timestamp of the transaction (and of the output)
+// $2 - amount on the chain input
+// result: (dt * amount)/inflationFraction
+func chainInflationAmount : 
+div64(
+   mul64(
+	  ticksBefore($0, $1), 
+	  $2
+   ), 
+   inflationFractionBySlot( concat(u32/0, timeSlotFromTimeSlotPrefix(timeSlotPrefix($0))) )
+)
+
+// TODO must be inflated each year
+// $0 - timestamp of the chain input
+// $1 - timestamp of the transaction (and of the output)
+// $2 - amount on the chain input
+// Result: maximum allowed inflation amount on the chain output
+func inflationAmount : sum64(chainInflationAmount($0, $1, $2), constInitialBranchBonus)
+`
 
 func GetTestingIdentityData(seed ...int) (*IdentityData, ed25519.PrivateKey) {
 	s := 10000
@@ -98,25 +162,22 @@ func GetTestingIdentityData(seed ...int) (*IdentityData, ed25519.PrivateKey) {
 var startupLedgerTime *Time
 
 func DefaultIdentityData(privateKey ed25519.PrivateKey, slot ...Slot) *IdentityData {
-	fractionYoY := make([]uint64, DefaultYearsHalving)
-	for i := range fractionYoY {
-		fractionYoY[i] = DefaultInitialChainInflationFractionPerTick * (1 << i)
-	}
 	ret := &IdentityData{
-		Description:                      "Proxima prototype ledger. Ver 0.0.0",
-		InitialSupply:                    DefaultInitialSupply,
-		GenesisControllerPublicKey:       privateKey.Public().(ed25519.PublicKey),
-		BaselineTime:                     time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
-		TickDuration:                     DefaultTickDuration,
-		MaxTickValueInSlot:               DefaultTicksPerSlot - 1,
-		GenesisSlot:                      0,
-		SlotsPerLedgerYear:               uint32(DefaultSlotsPerLedgerYear),
-		InitialBranchBonus:               DefaultInitialBranchInflationBonus,
-		BranchBonusYearlyGrowthPromille:  DefaultAnnualBranchInflationPromille,
-		VBCost:                           DefaultVBCost,
-		TransactionPace:                  DefaultTransactionPace,
-		TransactionPaceSequencer:         DefaultTransactionPaceSequencer,
-		ChainInflationPerTickFractionYoY: fractionYoY,
+		Description:                       "Proxima prototype ledger. Ver 0.0.0",
+		InitialSupply:                     DefaultInitialSupply,
+		GenesisControllerPublicKey:        privateKey.Public().(ed25519.PublicKey),
+		BaselineTime:                      time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+		TickDuration:                      DefaultTickDuration,
+		MaxTickValueInSlot:                DefaultTicksPerSlot - 1,
+		GenesisSlot:                       0,
+		SlotsPerLedgerYear:                uint32(DefaultSlotsPerLedgerYear),
+		InitialBranchBonus:                DefaultInitialBranchInflationBonus,
+		BranchBonusYearlyGrowthPromille:   DefaultAnnualBranchInflationPromille,
+		VBCost:                            DefaultVBCost,
+		TransactionPace:                   DefaultTransactionPace,
+		TransactionPaceSequencer:          DefaultTransactionPaceSequencer,
+		ChainInflationHalvingYears:        DefaultYearsHalving,
+		ChainInflationPerTickFractionBase: DefaultInitialChainInflationFractionPerTick,
 	}
 
 	// creating origin 1 slot before now. More convenient for the workflow_old tests

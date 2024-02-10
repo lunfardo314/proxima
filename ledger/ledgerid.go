@@ -7,7 +7,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"math"
-	"slices"
 	"time"
 
 	"github.com/lunfardo314/proxima/util"
@@ -41,10 +40,9 @@ type (
 		BranchBonusYearlyGrowthPromille uint16
 		// approx one year in slots. Default 2_289_600
 		SlotsPerLedgerYear uint32
-		// ChainInflationPerTickFraction fractions year-over-year. SlotsPerLedgerYear is used as year duration
-		// The last value in the list is repeated infinitely
-		// Is used as inflation for one tick
-		ChainInflationPerTickFractionYoY []uint64
+		// ChainInflationPerTickFractionBase and HalvingYears
+		ChainInflationPerTickFractionBase uint64
+		ChainInflationHalvingYears        byte
 		// VBCost
 		VBCost uint64
 		// number of ticks between non-sequencer transactions
@@ -55,20 +53,21 @@ type (
 
 	// IdentityDataYAMLAble structure for canonical YAMLAble marshaling
 	IdentityDataYAMLAble struct {
-		Description                      string   `yaml:"description"`
-		InitialSupply                    uint64   `yaml:"initial_supply"`
-		GenesisControllerPublicKey       string   `yaml:"genesis_controller_public_key"`
-		BaselineTime                     int64    `yaml:"baseline_time"`
-		TimeTickDuration                 int64    `yaml:"time_tick_duration"`
-		MaxTimeTickValueInTimeSlot       uint8    `yaml:"max_time_tick_value_in_time_slot"`
-		GenesisTimeSlot                  uint32   `yaml:"genesis_time_slot"`
-		InitialBranchBonus               uint64   `yaml:"initial_branch_bonus"`
-		BranchBonusYearlyGrowthPromille  uint16   `yaml:"branch_bonus_yearly_growth_promille"`
-		SlotsPerLedgerYear               uint32   `yaml:"slots_per_ledger_year"`
-		VBCost                           uint64   `yaml:"vb_cost"`
-		TransactionPace                  byte     `yaml:"transaction_pace"`
-		TransactionPaceSequencer         byte     `yaml:"transaction_pace_sequencer"`
-		ChainInflationPerTickFractionYoY []uint64 `yaml:"chain_inflation_per_tick_fraction_yoy"`
+		Description                       string `yaml:"description"`
+		InitialSupply                     uint64 `yaml:"initial_supply"`
+		GenesisControllerPublicKey        string `yaml:"genesis_controller_public_key"`
+		BaselineTime                      int64  `yaml:"baseline_time"`
+		TimeTickDuration                  int64  `yaml:"time_tick_duration"`
+		MaxTimeTickValueInTimeSlot        uint8  `yaml:"max_time_tick_value_in_time_slot"`
+		GenesisTimeSlot                   uint32 `yaml:"genesis_time_slot"`
+		InitialBranchBonus                uint64 `yaml:"initial_branch_bonus"`
+		BranchBonusYearlyGrowthPromille   uint16 `yaml:"branch_bonus_yearly_growth_promille"`
+		SlotsPerLedgerYear                uint32 `yaml:"slots_per_ledger_year"`
+		VBCost                            uint64 `yaml:"vb_cost"`
+		TransactionPace                   byte   `yaml:"transaction_pace"`
+		TransactionPaceSequencer          byte   `yaml:"transaction_pace_sequencer"`
+		ChainInflationHalvingYears        byte   `yaml:"chain_inflation_halving_years"`
+		ChainInflationPerTickFractionBase uint64 `yaml:"chain_inflation_per_tick_base"`
 		// non-persistent, for control
 		GenesisControllerAddress string `yaml:"genesis_controller_address"`
 		BootstrapChainID         string `yaml:"bootstrap_chain_id"`
@@ -94,14 +93,12 @@ func (id *IdentityData) Bytes() []byte {
 	_ = binary.Write(&buf, binary.BigEndian, id.SlotsPerLedgerYear)
 	_ = binary.Write(&buf, binary.BigEndian, id.InitialBranchBonus)
 	_ = binary.Write(&buf, binary.BigEndian, id.BranchBonusYearlyGrowthPromille)
+	_ = binary.Write(&buf, binary.BigEndian, id.ChainInflationHalvingYears)
+	_ = binary.Write(&buf, binary.BigEndian, id.ChainInflationPerTickFractionBase)
 	_ = binary.Write(&buf, binary.BigEndian, id.VBCost)
 	_ = binary.Write(&buf, binary.BigEndian, id.TransactionPace)
 	_ = binary.Write(&buf, binary.BigEndian, id.TransactionPaceSequencer)
-	util.Assertf(0 < len(id.ChainInflationPerTickFractionYoY) && len(id.ChainInflationPerTickFractionYoY) <= 255, "ChainInflationPerTickFractionYoY array must be non-empty with size <= 255")
-	_ = binary.Write(&buf, binary.BigEndian, byte(len(id.ChainInflationPerTickFractionYoY))) // array length
-	for _, v := range id.ChainInflationPerTickFractionYoY {
-		_ = binary.Write(&buf, binary.BigEndian, v) // array elements
-	}
+
 	return buf.Bytes()
 }
 
@@ -151,6 +148,12 @@ func MustLedgerIdentityDataFromBytes(data []byte) *IdentityData {
 	err = binary.Read(rdr, binary.BigEndian, &ret.BranchBonusYearlyGrowthPromille)
 	util.AssertNoError(err)
 
+	err = binary.Read(rdr, binary.BigEndian, &ret.ChainInflationHalvingYears)
+	util.AssertNoError(err)
+
+	err = binary.Read(rdr, binary.BigEndian, &ret.ChainInflationPerTickFractionBase)
+	util.AssertNoError(err)
+
 	err = binary.Read(rdr, binary.BigEndian, &ret.VBCost)
 	util.AssertNoError(err)
 
@@ -159,16 +162,6 @@ func MustLedgerIdentityDataFromBytes(data []byte) *IdentityData {
 
 	err = binary.Read(rdr, binary.BigEndian, &ret.TransactionPaceSequencer)
 	util.AssertNoError(err)
-
-	var size8 byte
-	err = binary.Read(rdr, binary.BigEndian, &size8)
-	util.AssertNoError(err)
-
-	ret.ChainInflationPerTickFractionYoY = make([]uint64, size8)
-	for i := range ret.ChainInflationPerTickFractionYoY {
-		err = binary.Read(rdr, binary.BigEndian, &ret.ChainInflationPerTickFractionYoY[i])
-		util.AssertNoError(err)
-	}
 
 	util.Assertf(rdr.Len() == 0, "not all bytes has been read")
 	return ret
@@ -227,22 +220,23 @@ func (id *IdentityData) Lines(prefix ...string) *lines.Lines {
 func (id *IdentityData) YAMLAble() *IdentityDataYAMLAble {
 	chainID := id.OriginChainID()
 	return &IdentityDataYAMLAble{
-		Description:                      id.Description,
-		InitialSupply:                    id.InitialSupply,
-		GenesisControllerPublicKey:       hex.EncodeToString(id.GenesisControllerPublicKey),
-		BaselineTime:                     id.BaselineTime.UnixNano(),
-		TimeTickDuration:                 id.TickDuration.Nanoseconds(),
-		MaxTimeTickValueInTimeSlot:       id.MaxTickValueInSlot,
-		GenesisTimeSlot:                  uint32(id.GenesisSlot),
-		InitialBranchBonus:               id.InitialBranchBonus,
-		BranchBonusYearlyGrowthPromille:  id.BranchBonusYearlyGrowthPromille,
-		VBCost:                           id.VBCost,
-		TransactionPace:                  id.TransactionPace,
-		TransactionPaceSequencer:         id.TransactionPaceSequencer,
-		SlotsPerLedgerYear:               id.SlotsPerLedgerYear,
-		ChainInflationPerTickFractionYoY: slices.Clone(id.ChainInflationPerTickFractionYoY),
-		GenesisControllerAddress:         id.GenesisControlledAddress().String(),
-		BootstrapChainID:                 chainID.StringHex(),
+		Description:                       id.Description,
+		InitialSupply:                     id.InitialSupply,
+		GenesisControllerPublicKey:        hex.EncodeToString(id.GenesisControllerPublicKey),
+		BaselineTime:                      id.BaselineTime.UnixNano(),
+		TimeTickDuration:                  id.TickDuration.Nanoseconds(),
+		MaxTimeTickValueInTimeSlot:        id.MaxTickValueInSlot,
+		GenesisTimeSlot:                   uint32(id.GenesisSlot),
+		InitialBranchBonus:                id.InitialBranchBonus,
+		BranchBonusYearlyGrowthPromille:   id.BranchBonusYearlyGrowthPromille,
+		VBCost:                            id.VBCost,
+		TransactionPace:                   id.TransactionPace,
+		TransactionPaceSequencer:          id.TransactionPaceSequencer,
+		SlotsPerLedgerYear:                id.SlotsPerLedgerYear,
+		ChainInflationHalvingYears:        id.ChainInflationHalvingYears,
+		ChainInflationPerTickFractionBase: id.ChainInflationPerTickFractionBase,
+		GenesisControllerAddress:          id.GenesisControlledAddress().String(),
+		BootstrapChainID:                  chainID.StringHex(),
 	}
 }
 
@@ -313,7 +307,8 @@ func (id *IdentityDataYAMLAble) stateIdentityData() (*IdentityData, error) {
 	ret.TransactionPace = id.TransactionPace
 	ret.TransactionPaceSequencer = id.TransactionPaceSequencer
 	ret.SlotsPerLedgerYear = id.SlotsPerLedgerYear
-	ret.ChainInflationPerTickFractionYoY = slices.Clone(id.ChainInflationPerTickFractionYoY)
+	ret.ChainInflationPerTickFractionBase = id.ChainInflationPerTickFractionBase
+	ret.ChainInflationHalvingYears = id.ChainInflationHalvingYears
 
 	// control
 	if AddressED25519FromPublicKey(ret.GenesisControllerPublicKey).String() != id.GenesisControllerAddress {

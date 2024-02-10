@@ -104,18 +104,6 @@ func (lib *Library) extend() {
 	// calls local EasyFL library
 	lib.EmbedLong("callLocalLibrary", -1, lib.evalCallLocalLibrary)
 
-	// helpers
-	lib.Extend("sizeIs", "equal(len8($0), $1)")
-	lib.Extend("mustSize", "if(sizeIs($0,$1), $0, !!!wrong_data_size)")
-
-	lib.EmbedLong("ticksBefore", 2, evalTicksBefore)
-	lib.Extend("mustValidTimeTick", "if(and(mustSize($0,1),lessThan($0,ticksPerSlot)),$0,!!!wrong_timeslot)")
-	lib.Extend("mustValidTimeSlot", "mustSize($0, timeSlotSizeBytes)")
-	lib.Extend("timeSlotPrefix", "slice($0, 0, sub8(timeSlotSizeBytes,1))") // first 4 bytes of any array. It is not time slot yet
-	lib.Extend("timeSlotFromTimeSlotPrefix", "bitwiseAND($0, 0x3fffffff)")
-	lib.Extend("timeTickFromTimestamp", "byte($0, timeSlotSizeBytes)")
-	lib.Extend("timestamp", "concat(mustValidTimeSlot($0),mustValidTimeTick($1))")
-
 	{
 		// inline tests
 		lib.MustEqual("timestamp(u32/255, 21)", MustNewLedgerTime(255, 21).Hex())
@@ -337,7 +325,7 @@ func (lib *Library) evalCallLocalLibrary(ctx *easyfl.CallParams) []byte {
 // arg 0 and arg 1 are timestamps (5 bytes each)
 // returns:
 // nil, if ts1 is before ts0
-// number of time slots between ts0 and ts1 otherwise as big-endian uint64
+// number of ticks between ts0 and ts1 otherwise as big-endian uint64
 func evalTicksBefore(ctx *easyfl.CallParams) []byte {
 	ts0bin, ts1bin := ctx.Arg(0), ctx.Arg(1)
 	ts0, err := TimeFromBytes(ts0bin)
