@@ -383,6 +383,16 @@ func (id *IdentityData) _epochFromGenesis(slot Slot) uint64 {
 	return uint64(slot-id.GenesisSlot) / uint64(id.SlotsPerLedgerEpoch)
 }
 
+/*
+// $0 -  slot of the chain input as u64
+func halvingEpoch :
+	if(
+		lessThan(sub64($0, constGenesisSlot), constHalvingEpochs),
+        sub64($0, constGenesisSlot),
+        constHalvingEpochs
+	)
+*/
+
 func (id *IdentityData) _halvingEpoch(epochFromGenesis uint64) uint64 {
 	if epochFromGenesis < uint64(id.ChainInflationHalvingEpochs) {
 		return epochFromGenesis

@@ -143,18 +143,72 @@ func TestInflation(t *testing.T) {
 		id, _ := GetTestingIdentityData()
 		lib := newLibrary()
 		lib.extendWithBaseConstants(id)
-		t.Logf("genesis slot: %d", lib.GenesisSlot())
+		t.Logf("genesis slot: %d", lib.Const().GenesisSlot())
+		lib.MustEqual("constGenesisSlot", fmt.Sprintf("u64/%d", lib.Const().GenesisSlot()))
+		require.EqualValues(t, id.TicksPerSlot(), lib.Const().TicksPerSlot())
 	})
 	t.Run("2", func(t *testing.T) {
 		id, _ := GetTestingIdentityData()
 		lib := newLibrary()
 		lib.extendWithBaseConstants(id)
-		genesisSlot := lib.GenesisSlot()
+		genesisSlot := lib.Const().GenesisSlot()
 		t.Logf("genesis slot: %d", genesisSlot)
 		tsIn := MustNewLedgerTime(genesisSlot, 1)
 		tsOut := MustNewLedgerTime(genesisSlot, 51)
 		src := fmt.Sprintf("chainInflationAmount(%s, %s, u64/100000)", tsIn.Source(), tsOut.Source())
 		//lib.EvalFromSource(easyfl.NewGlobalDataTracePrint(nil), src)
 		lib.MustEqual(src, "u64/0")
+		inflationDirect := id.ChainInflationAmount(tsIn, tsOut, 100000)
+		require.EqualValues(t, 0, inflationDirect)
+	})
+	t.Run("3", func(t *testing.T) {
+		id, _ := GetTestingIdentityData()
+		lib := newLibrary()
+		lib.extendWithBaseConstants(id)
+		genesisSlot := lib.Const().GenesisSlot()
+		t.Logf("genesis slot: %d", genesisSlot)
+		tsIn := MustNewLedgerTime(genesisSlot, 1)
+		tsOut := MustNewLedgerTime(genesisSlot, 51)
+
+		amountIn := lib.Const().ChainInflationPerTickFractionBase()
+		t.Logf("ChainInflationPerTickFractionBase const: %s", util.GoTh(amountIn))
+		src := fmt.Sprintf("chainInflationAmount(%s, %s, u64/%d)", tsIn.Source(), tsOut.Source(), amountIn)
+		lib.MustEqual(src, "u64/50")
+		lib.MustEqual(src, fmt.Sprintf("u64/%d", lib.ID.ChainInflationAmount(tsIn, tsOut, amountIn)))
+
+		src = fmt.Sprintf("inflationAmount(%s, %s, u64/%d)", tsIn.Source(), tsOut.Source(), amountIn)
+		lib.MustEqual(src, fmt.Sprintf("u64/%d", lib.ID.InflationAmount(tsIn, tsOut, amountIn)))
+		t.Logf("inflationAmount: %s", util.GoTh(lib.ID.InflationAmount(tsIn, tsOut, amountIn)))
+
+		//lib.EvalFromSource(easyfl.NewGlobalDataTracePrint(nil), src)
+	})
+	t.Run("4", func(t *testing.T) {
+		id, _ := GetTestingIdentityData()
+		lib := newLibrary()
+		lib.extendWithBaseConstants(id)
+		genesisSlot := lib.Const().GenesisSlot()
+		t.Logf("genesis slot: %d", genesisSlot)
+		t.Logf("halving epochs: %d", lib.Const().HalvingEpochs())
+		t.Logf("slots per epoch: %d", lib.Const().SlotsPerEpoch())
+		t.Logf("seconds per year: %d", 24*365*60*60)
+		nowis := time.Now()
+		year := time.Duration(365*24) * time.Hour
+
+		// TODO wrong test. Does not fall into the opportunity window
+		tsIn := MustNewLedgerTime(genesisSlot, 1)
+		amountIn := lib.Const().ChainInflationPerTickFractionBase()
+		for i := 0; i < 10; i++ {
+			tsOut := lib.TimeFromRealTime(nowis.Add(time.Duration(i) * year))
+			t.Logf("year %d: ts: %s, ledger epoch: %d", i, tsOut.String(), lib.Const().HalvingEpoch(tsOut))
+
+			t.Logf("inflationAmount direct: %s", util.GoTh(lib.ID.InflationAmount(tsIn, tsOut, amountIn)))
+
+			t.Logf("ChainInflationPerTickFractionBase const: %s", util.GoTh(amountIn))
+			src := fmt.Sprintf("chainInflationAmount(%s, %s, u64/%d)", tsIn.Source(), tsOut.Source(), amountIn)
+			lib.MustEqual(src, fmt.Sprintf("u64/%d", lib.ID.ChainInflationAmount(tsIn, tsOut, amountIn)))
+
+			src = fmt.Sprintf("inflationAmount(%s, %s, u64/%d)", tsIn.Source(), tsOut.Source(), amountIn)
+			lib.MustEqual(src, fmt.Sprintf("u64/%d", lib.ID.InflationAmount(tsIn, tsOut, amountIn)))
+		}
 	})
 }

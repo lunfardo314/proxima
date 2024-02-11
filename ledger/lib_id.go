@@ -14,12 +14,18 @@ import (
 	"github.com/lunfardo314/unitrie/common"
 )
 
-type Library struct {
-	*easyfl.Library
-	ID                 *IdentityData
-	constraintByPrefix map[string]*constraintRecord
-	constraintNames    map[string]struct{}
-}
+type (
+	Library struct {
+		*easyfl.Library
+		ID                 *IdentityData
+		constraintByPrefix map[string]*constraintRecord
+		constraintNames    map[string]struct{}
+	}
+
+	LibraryConst struct {
+		*Library
+	}
+)
 
 const (
 	DefaultTickDuration        = 100 * time.Millisecond
@@ -57,21 +63,16 @@ func L() *Library {
 	return librarySingleton
 }
 
-func Init(id *IdentityData) {
-	librarySingleton = newLibrary()
-	librarySingleton.ID = id
-	fmt.Printf("------ Base EasyFL library:\n")
-	librarySingleton.PrintLibraryStats()
-	defer func() {
-		fmt.Printf("------ Extended EasyFL library:\n")
-		librarySingleton.PrintLibraryStats()
-	}()
+func (lib *Library) Const() LibraryConst {
+	return LibraryConst{lib}
+}
 
-	librarySingleton.extendWithBaseConstants(id)
-	librarySingleton.extend()
+func (lib *Library) TimeFromRealTime(t time.Time) Time {
+	return lib.ID.TimeFromRealTime(t)
 }
 
 func (lib *Library) extendWithBaseConstants(id *IdentityData) {
+	lib.ID = id
 	// constants
 	lib.Extendf("constInitialSupply", "u64/%d", id.InitialSupply)
 	lib.Extendf("constGenesisControllerPublicKey", "0x%s", hex.EncodeToString(id.GenesisControllerPublicKey))
@@ -109,13 +110,30 @@ func (lib *Library) extendWithBaseConstants(id *IdentityData) {
 	lib.MustExtendMany(inflationFractionBySlotSource)
 }
 
+func Init(id *IdentityData) {
+	librarySingleton = newLibrary()
+	fmt.Printf("------ Base EasyFL library:\n")
+	librarySingleton.PrintLibraryStats()
+	defer func() {
+		fmt.Printf("------ Extended EasyFL library:\n")
+		librarySingleton.PrintLibraryStats()
+	}()
+
+	librarySingleton.extendWithBaseConstants(id)
+	librarySingleton.extend()
+}
+
 // TODO branch bonus inflation
 
 const inflationFractionBySlotSource = `
-// $0 - slot of the chain input as u64
-func epochFromGenesis : div64(sub64($0, constGenesisSlot), constSlotsPerLedgerEpoch)
+// $0 -  slot of the chain input as u64
+func epochFromGenesis :
+	div64(
+       sub64($0, constGenesisSlot),
+       constSlotsPerLedgerEpoch
+    )
 
-// $0 - genesis epoch u64
+// $0 -  epochFromGenesis
 func halvingEpoch :
 	if(
 		lessThan($0, constHalvingEpochs),
@@ -225,10 +243,51 @@ func InitWithTestingLedgerIDData(seed ...int) ed25519.PrivateKey {
 	return pk
 }
 
-func (lib *Library) GenesisSlot() Slot {
-	genesisSlotBin, err := lib.EvalFromSource(nil, "constGenesisSlot")
+// Library constants
+
+func (lib LibraryConst) GenesisSlot() Slot {
+	bin, err := lib.EvalFromSource(nil, "constGenesisSlot")
 	util.AssertNoError(err)
-	slot64 := binary.BigEndian.Uint64(genesisSlotBin)
-	util.Assertf(slot64 <= math.MaxUint32, "slot64 <= math.MaxUint32")
-	return Slot(slot64)
+	ret := binary.BigEndian.Uint64(bin)
+	util.Assertf(ret <= math.MaxUint32, "ret <= math.MaxUint32")
+	return Slot(ret)
+}
+
+func (lib LibraryConst) TicksPerSlot() int {
+	bin, err := lib.EvalFromSource(nil, "ticksPerSlot")
+	util.AssertNoError(err)
+	ret := binary.BigEndian.Uint64(bin)
+	util.Assertf(ret <= math.MaxUint32, "ret <= math.MaxUint32")
+	return int(ret)
+}
+
+func (lib LibraryConst) ChainInflationPerTickFractionBase() uint64 {
+	bin, err := lib.EvalFromSource(nil, "constChainInflationFractionBase")
+	util.AssertNoError(err)
+	return binary.BigEndian.Uint64(bin)
+}
+
+func (lib LibraryConst) HalvingEpochs() byte {
+	bin, err := lib.EvalFromSource(nil, "constHalvingEpochs")
+	util.AssertNoError(err)
+	ret := binary.BigEndian.Uint64(bin)
+	util.Assertf(ret < 256, "ret<256")
+	return byte(ret)
+}
+
+func (lib LibraryConst) HalvingEpoch(ts Time) byte {
+	src := fmt.Sprintf("halvingEpoch(epochFromGenesis(u64/%d))", ts.Slot())
+	bin, err := lib.EvalFromSource(nil, src)
+	util.AssertNoError(err)
+	ret := binary.BigEndian.Uint64(bin)
+	util.Assertf(ret < 256, "ret<256")
+	return byte(ret)
+}
+
+func (lib LibraryConst) SlotsPerEpoch() uint32 {
+	bin, err := lib.EvalFromSource(nil, "constSlotsPerLedgerEpoch")
+	util.AssertNoError(err)
+	ret := binary.BigEndian.Uint64(bin)
+	util.Assertf(ret < math.MaxUint32, "ret < math.MaxUint32")
+	return uint32(ret)
 }
