@@ -42,7 +42,7 @@ func TestInflationCalculations1(t *testing.T) {
 		SlotDuration        		: %v
 		DefaultTicksPerSlot				: %d
 		TickDuration				: %v
-		SlotsPerLedgerYear        		: %s
+		SlotsPerLedgerEpoch        		: %s
 		SlotsPerDay 	       		: %s
 		TicksPerYear				: %s
 		SlotsPerHour        		: %s

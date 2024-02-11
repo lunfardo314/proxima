@@ -34,15 +34,17 @@ type (
 		// time slot of the genesis
 		GenesisSlot Slot
 		// ----------- inflation-related
-		// InitialBranchInflation inflation bonus. Inflated every year by BranchBonusYearlyGrowthPromille
+		// InitialBranchInflation inflation bonus. Inflated every year by BranchBonusInflationPerEpochPromille
 		InitialBranchBonus uint64
-		// BranchBonusYearlyGrowthPromille branch bonus is inflated y/y
-		BranchBonusYearlyGrowthPromille uint16
+		// BranchBonusInflationPerEpochPromille branch bonus is inflated y/y
+		BranchBonusInflationPerEpochPromille uint16
 		// approx one year in slots. Default 2_289_600
-		SlotsPerLedgerYear uint32
+		SlotsPerLedgerEpoch uint32
 		// ChainInflationPerTickFractionBase and HalvingYears
 		ChainInflationPerTickFractionBase uint64
-		ChainInflationHalvingYears        byte
+		ChainInflationHalvingEpochs       byte
+		// ChainInflationOpportunitySlots maximum gap between chain outputs for the non-zero inflation
+		ChainInflationOpportunitySlots uint64
 		// VBCost
 		VBCost uint64
 		// number of ticks between non-sequencer transactions
@@ -53,21 +55,22 @@ type (
 
 	// IdentityDataYAMLAble structure for canonical YAMLAble marshaling
 	IdentityDataYAMLAble struct {
-		Description                       string `yaml:"description"`
-		InitialSupply                     uint64 `yaml:"initial_supply"`
-		GenesisControllerPublicKey        string `yaml:"genesis_controller_public_key"`
-		BaselineTime                      int64  `yaml:"baseline_time"`
-		TimeTickDuration                  int64  `yaml:"time_tick_duration"`
-		MaxTimeTickValueInTimeSlot        uint8  `yaml:"max_time_tick_value_in_time_slot"`
-		GenesisTimeSlot                   uint32 `yaml:"genesis_time_slot"`
-		InitialBranchBonus                uint64 `yaml:"initial_branch_bonus"`
-		BranchBonusYearlyGrowthPromille   uint16 `yaml:"branch_bonus_yearly_growth_promille"`
-		SlotsPerLedgerYear                uint32 `yaml:"slots_per_ledger_year"`
-		VBCost                            uint64 `yaml:"vb_cost"`
-		TransactionPace                   byte   `yaml:"transaction_pace"`
-		TransactionPaceSequencer          byte   `yaml:"transaction_pace_sequencer"`
-		ChainInflationHalvingYears        byte   `yaml:"chain_inflation_halving_years"`
-		ChainInflationPerTickFractionBase uint64 `yaml:"chain_inflation_per_tick_base"`
+		Description                          string `yaml:"description"`
+		InitialSupply                        uint64 `yaml:"initial_supply"`
+		GenesisControllerPublicKey           string `yaml:"genesis_controller_public_key"`
+		BaselineTime                         int64  `yaml:"baseline_time"`
+		TimeTickDuration                     int64  `yaml:"time_tick_duration"`
+		MaxTimeTickValueInTimeSlot           uint8  `yaml:"max_time_tick_value_in_time_slot"`
+		GenesisTimeSlot                      uint32 `yaml:"genesis_time_slot"`
+		InitialBranchBonus                   uint64 `yaml:"initial_branch_bonus"`
+		BranchBonusInflationPerEpochPromille uint16 `yaml:"branch_bonus_inflation_per_epoch_promille"`
+		SlotsPerLedgerEpoch                  uint32 `yaml:"slots_per_ledger_epoch"`
+		VBCost                               uint64 `yaml:"vb_cost"`
+		TransactionPace                      byte   `yaml:"transaction_pace"`
+		TransactionPaceSequencer             byte   `yaml:"transaction_pace_sequencer"`
+		ChainInflationHalvingYears           byte   `yaml:"chain_inflation_halving_years"`
+		ChainInflationPerTickFractionBase    uint64 `yaml:"chain_inflation_per_tick_base"`
+		ChainInflationOpportunitySlots       uint64 `yaml:"chain_inflation_opportunity_slots"`
 		// non-persistent, for control
 		GenesisControllerAddress string `yaml:"genesis_controller_address"`
 		BootstrapChainID         string `yaml:"bootstrap_chain_id"`
@@ -90,11 +93,12 @@ func (id *IdentityData) Bytes() []byte {
 	_ = binary.Write(&buf, binary.BigEndian, id.TickDuration.Nanoseconds())
 	_ = binary.Write(&buf, binary.BigEndian, id.MaxTickValueInSlot)
 	_ = binary.Write(&buf, binary.BigEndian, id.GenesisSlot)
-	_ = binary.Write(&buf, binary.BigEndian, id.SlotsPerLedgerYear)
+	_ = binary.Write(&buf, binary.BigEndian, id.SlotsPerLedgerEpoch)
 	_ = binary.Write(&buf, binary.BigEndian, id.InitialBranchBonus)
-	_ = binary.Write(&buf, binary.BigEndian, id.BranchBonusYearlyGrowthPromille)
-	_ = binary.Write(&buf, binary.BigEndian, id.ChainInflationHalvingYears)
+	_ = binary.Write(&buf, binary.BigEndian, id.BranchBonusInflationPerEpochPromille)
+	_ = binary.Write(&buf, binary.BigEndian, id.ChainInflationHalvingEpochs)
 	_ = binary.Write(&buf, binary.BigEndian, id.ChainInflationPerTickFractionBase)
+	_ = binary.Write(&buf, binary.BigEndian, id.ChainInflationOpportunitySlots)
 	_ = binary.Write(&buf, binary.BigEndian, id.VBCost)
 	_ = binary.Write(&buf, binary.BigEndian, id.TransactionPace)
 	_ = binary.Write(&buf, binary.BigEndian, id.TransactionPaceSequencer)
@@ -139,19 +143,22 @@ func MustLedgerIdentityDataFromBytes(data []byte) *IdentityData {
 	err = binary.Read(rdr, binary.BigEndian, &ret.GenesisSlot)
 	util.AssertNoError(err)
 
-	err = binary.Read(rdr, binary.BigEndian, &ret.SlotsPerLedgerYear)
+	err = binary.Read(rdr, binary.BigEndian, &ret.SlotsPerLedgerEpoch)
 	util.AssertNoError(err)
 
 	err = binary.Read(rdr, binary.BigEndian, &ret.InitialBranchBonus)
 	util.AssertNoError(err)
 
-	err = binary.Read(rdr, binary.BigEndian, &ret.BranchBonusYearlyGrowthPromille)
+	err = binary.Read(rdr, binary.BigEndian, &ret.BranchBonusInflationPerEpochPromille)
 	util.AssertNoError(err)
 
-	err = binary.Read(rdr, binary.BigEndian, &ret.ChainInflationHalvingYears)
+	err = binary.Read(rdr, binary.BigEndian, &ret.ChainInflationHalvingEpochs)
 	util.AssertNoError(err)
 
 	err = binary.Read(rdr, binary.BigEndian, &ret.ChainInflationPerTickFractionBase)
+	util.AssertNoError(err)
+
+	err = binary.Read(rdr, binary.BigEndian, &ret.ChainInflationOpportunitySlots)
 	util.AssertNoError(err)
 
 	err = binary.Read(rdr, binary.BigEndian, &ret.VBCost)
@@ -220,28 +227,29 @@ func (id *IdentityData) Lines(prefix ...string) *lines.Lines {
 func (id *IdentityData) YAMLAble() *IdentityDataYAMLAble {
 	chainID := id.OriginChainID()
 	return &IdentityDataYAMLAble{
-		Description:                       id.Description,
-		InitialSupply:                     id.InitialSupply,
-		GenesisControllerPublicKey:        hex.EncodeToString(id.GenesisControllerPublicKey),
-		BaselineTime:                      id.BaselineTime.UnixNano(),
-		TimeTickDuration:                  id.TickDuration.Nanoseconds(),
-		MaxTimeTickValueInTimeSlot:        id.MaxTickValueInSlot,
-		GenesisTimeSlot:                   uint32(id.GenesisSlot),
-		InitialBranchBonus:                id.InitialBranchBonus,
-		BranchBonusYearlyGrowthPromille:   id.BranchBonusYearlyGrowthPromille,
-		VBCost:                            id.VBCost,
-		TransactionPace:                   id.TransactionPace,
-		TransactionPaceSequencer:          id.TransactionPaceSequencer,
-		SlotsPerLedgerYear:                id.SlotsPerLedgerYear,
-		ChainInflationHalvingYears:        id.ChainInflationHalvingYears,
-		ChainInflationPerTickFractionBase: id.ChainInflationPerTickFractionBase,
-		GenesisControllerAddress:          id.GenesisControlledAddress().String(),
-		BootstrapChainID:                  chainID.StringHex(),
+		Description:                          id.Description,
+		InitialSupply:                        id.InitialSupply,
+		GenesisControllerPublicKey:           hex.EncodeToString(id.GenesisControllerPublicKey),
+		BaselineTime:                         id.BaselineTime.UnixNano(),
+		TimeTickDuration:                     id.TickDuration.Nanoseconds(),
+		MaxTimeTickValueInTimeSlot:           id.MaxTickValueInSlot,
+		GenesisTimeSlot:                      uint32(id.GenesisSlot),
+		InitialBranchBonus:                   id.InitialBranchBonus,
+		BranchBonusInflationPerEpochPromille: id.BranchBonusInflationPerEpochPromille,
+		VBCost:                               id.VBCost,
+		TransactionPace:                      id.TransactionPace,
+		TransactionPaceSequencer:             id.TransactionPaceSequencer,
+		SlotsPerLedgerEpoch:                  id.SlotsPerLedgerEpoch,
+		ChainInflationHalvingYears:           id.ChainInflationHalvingEpochs,
+		ChainInflationPerTickFractionBase:    id.ChainInflationPerTickFractionBase,
+		ChainInflationOpportunitySlots:       id.ChainInflationOpportunitySlots,
+		GenesisControllerAddress:             id.GenesisControlledAddress().String(),
+		BootstrapChainID:                     chainID.StringHex(),
 	}
 }
 
 func (id *IdentityData) TimeHorizonYears() int {
-	return (math.MaxUint32 - int(id.GenesisSlot)) / int(id.SlotsPerLedgerYear)
+	return (math.MaxUint32 - int(id.GenesisSlot)) / int(id.SlotsPerLedgerEpoch)
 }
 
 func (id *IdentityData) SlotsPerDay() int {
@@ -256,7 +264,7 @@ func (id *IdentityData) TimeConstantsToString() string {
 		Add("SlotsPerDay = %v", id.SlotsPerDay()).
 		Add("GenesisSlot = %d (%.2f %% of max)", id.GenesisSlot, float32(id.GenesisSlot)*100/float32(math.MaxUint32)).
 		Add("TimeHorizonYears = %d", id.TimeHorizonYears()).
-		Add("SlotsPerLedgerYear = %d", id.SlotsPerLedgerYear).
+		Add("SlotsPerLedgerEpoch = %d", id.SlotsPerLedgerEpoch).
 		Add("seconds per year = %d", 60*60*24*365).
 		Add("BaselineTime = %v", id.BaselineTime).
 		Add("timestamp BaselineTime = %s", id.TimeFromRealTime(id.BaselineTime)).
@@ -302,13 +310,14 @@ func (id *IdentityDataYAMLAble) stateIdentityData() (*IdentityData, error) {
 	ret.MaxTickValueInSlot = id.MaxTimeTickValueInTimeSlot
 	ret.GenesisSlot = Slot(id.GenesisTimeSlot)
 	ret.InitialBranchBonus = id.InitialBranchBonus
-	ret.BranchBonusYearlyGrowthPromille = id.BranchBonusYearlyGrowthPromille
+	ret.BranchBonusInflationPerEpochPromille = id.BranchBonusInflationPerEpochPromille
 	ret.VBCost = id.VBCost
 	ret.TransactionPace = id.TransactionPace
 	ret.TransactionPaceSequencer = id.TransactionPaceSequencer
-	ret.SlotsPerLedgerYear = id.SlotsPerLedgerYear
+	ret.SlotsPerLedgerEpoch = id.SlotsPerLedgerEpoch
 	ret.ChainInflationPerTickFractionBase = id.ChainInflationPerTickFractionBase
-	ret.ChainInflationHalvingYears = id.ChainInflationHalvingYears
+	ret.ChainInflationOpportunitySlots = id.ChainInflationOpportunitySlots
+	ret.ChainInflationHalvingEpochs = id.ChainInflationHalvingYears
 
 	// control
 	if AddressED25519FromPublicKey(ret.GenesisControllerPublicKey).String() != id.GenesisControllerAddress {
@@ -344,4 +353,44 @@ func GenesisOutputID(e Slot) (ret OutputID) {
 func StemOutputID(e Slot) (ret OutputID) {
 	ret = NewOutputID(GenesisTransactionID(e), StemOutputIndex)
 	return
+}
+
+func (id *IdentityData) InflationAmount(inTs, outTs Time, inAmount uint64) uint64 {
+	return id.ChainInflationAmount(inTs, outTs, inAmount) + id.InitialBranchBonus // TODO branch bonus inflation
+}
+
+// ChainInflationAmount mocks inflation amount formula from the constraint library
+func (id *IdentityData) ChainInflationAmount(inTs, outTs Time, inAmount uint64) uint64 {
+	ticks := DiffTicks(outTs, inTs)
+	util.Assertf(ticks > 0, "wrong timestamps")
+	util.Assertf(inAmount > 0, "inAmount > 0")
+	util.Assertf(uint64(ticks) <= math.MaxUint64/inAmount, "ChainInflationAmount: arithmetic overflow ")
+
+	if id._insideInflationOpportunityWindow(inTs, outTs) {
+		return uint64(ticks) * inAmount / id._inflationFractionBySlot(inTs.Slot())
+	}
+	// non-zero inflation is only within the window of opportunity
+	// to disincentivise "lazy whales"
+	return 0
+}
+
+func (id *IdentityData) _insideInflationOpportunityWindow(inTs, outTs Time) bool {
+	ticks := DiffTicks(outTs, inTs)
+	return uint64(ticks)/uint64(id.TicksPerSlot()) <= id.ChainInflationOpportunitySlots
+}
+
+func (id *IdentityData) _epochFromGenesis(slot Slot) uint64 {
+	return uint64(slot-id.GenesisSlot) / uint64(id.SlotsPerLedgerEpoch)
+}
+
+func (id *IdentityData) _halvingEpoch(epochFromGenesis uint64) uint64 {
+	if epochFromGenesis < uint64(id.ChainInflationHalvingEpochs) {
+		return epochFromGenesis
+	}
+	return uint64(id.ChainInflationHalvingEpochs)
+}
+
+func (id *IdentityData) _inflationFractionBySlot(slotIn Slot) uint64 {
+	util.Assertf(slotIn >= id.GenesisSlot, "slot >= id.GenesisSlot")
+	return id.ChainInflationPerTickFractionBase * (1 << id._halvingEpoch(id._epochFromGenesis(slotIn)))
 }

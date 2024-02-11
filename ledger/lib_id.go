@@ -2,11 +2,14 @@ package ledger
 
 import (
 	"crypto/ed25519"
+	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/lunfardo314/easyfl"
+	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/testutil"
 	"github.com/lunfardo314/unitrie/common"
 )
@@ -19,10 +22,10 @@ type Library struct {
 }
 
 const (
-	DefaultTickDuration       = 100 * time.Millisecond
-	DefaultTicksPerSlot       = 100
-	DefaultSlotDuration       = DefaultTickDuration * DefaultTicksPerSlot
-	DefaultSlotsPerLedgerYear = time.Hour * 24 * 365 / DefaultSlotDuration
+	DefaultTickDuration        = 100 * time.Millisecond
+	DefaultTicksPerSlot        = 100
+	DefaultSlotDuration        = DefaultTickDuration * DefaultTicksPerSlot
+	DefaultSlotsPerLedgerEpoch = time.Hour * 24 * 365 / DefaultSlotDuration
 
 	DustPerProxi         = 1_000_000
 	InitialSupplyProxi   = 1_000_000_000
@@ -31,7 +34,8 @@ const (
 	DefaultInitialBranchInflationBonus          = 20_000_000
 	DefaultAnnualBranchInflationPromille        = 40
 	DefaultInitialChainInflationFractionPerTick = 400_000_000
-	DefaultYearsHalving                         = 4
+	DefaultHalvingEpochs                        = 4
+	DefaultChainInflationOpportunitySlots       = 12
 	DefaultVBCost                               = 1
 	DefaultTransactionPace                      = 10
 	DefaultTransactionPaceSequencer             = 5
@@ -76,11 +80,12 @@ func (lib *Library) extendWithBaseConstants(id *IdentityData) {
 	lib.Extendf("constMaxTickValuePerSlot", "%d", id.MaxTickValueInSlot)
 	lib.Extendf("constGenesisSlot", "u64/%d", id.GenesisSlot)
 	lib.Extendf("constInitialBranchBonus", "u64/%d", id.InitialBranchBonus)
-	lib.Extendf("constBranchBonusYearlyGrowthPromille", "u64/%d", id.BranchBonusYearlyGrowthPromille)
-	lib.Extendf("constYearsHalving", "u64/%d", id.ChainInflationHalvingYears)
+	lib.Extendf("constBranchBonusYearlyGrowthPromille", "u64/%d", id.BranchBonusInflationPerEpochPromille)
+	lib.Extendf("constHalvingEpochs", "u64/%d", id.ChainInflationHalvingEpochs)
 	lib.Extendf("constChainInflationFractionBase", "u64/%d", id.ChainInflationPerTickFractionBase)
+	lib.Extendf("constChainInflationOpportunitySlots", "u64/%d", id.ChainInflationOpportunitySlots)
 
-	lib.Extendf("constSlotsPerLedgerYear", "u64/%d", id.SlotsPerLedgerYear)
+	lib.Extendf("constSlotsPerLedgerEpoch", "u64/%d", id.SlotsPerLedgerEpoch)
 	lib.Extendf("constTransactionPace", "%d", id.TransactionPace)
 	lib.Extendf("constTransactionPaceSequencer", "%d", id.TransactionPaceSequencer)
 	lib.Extendf("constVBCost16", "u16/%d", id.VBCost)
@@ -108,14 +113,14 @@ func (lib *Library) extendWithBaseConstants(id *IdentityData) {
 
 const inflationFractionBySlotSource = `
 // $0 - slot of the chain input as u64
-func yearFromGenesis : div64(sub64($0, constGenesisSlot), constSlotsPerLedgerYear)
+func epochFromGenesis : div64(sub64($0, constGenesisSlot), constSlotsPerLedgerEpoch)
 
 // $0 - year from genesis
-func halvingYear :
+func halvingEpoch :
 	if(
-		lessThan($0, constYearsHalving),
+		lessThan($0, constHalvingEpochs),
         $0,
-        constYearsHalving
+        constHalvingEpochs
 	)
 
 // $0 slot of the chain input as u64
@@ -124,21 +129,36 @@ func inflationFractionBySlot : and(
 	require(lessOrEqualThan(constGenesisSlot, $0), !!!wrong_slot_value),
     mul64(
         constChainInflationFractionBase, 
-        lshift64(u64/1, halvingYear(yearFromGenesis($0)))
+        lshift64(u64/1, halvingEpoch(epochFromGenesis($0)))
     )
 )
+
+// $0 - timestamp of the chain input
+// $1 - timestamp of the transaction (and of the output)
+func insideInflationOpportunityWindow :
+   lessOrEqualThan(
+	   div64(
+		  ticksBefore($0, $1),
+		  ticksPerSlot
+	   ),
+       constChainInflationOpportunitySlots
+   )
 
 // $0 - timestamp of the chain input
 // $1 - timestamp of the transaction (and of the output)
 // $2 - amount on the chain input
 // result: (dt * amount)/inflationFraction
 func chainInflationAmount : 
-div64(
-   mul64(
-	  ticksBefore($0, $1), 
-	  $2
-   ), 
-   inflationFractionBySlot( concat(u32/0, timeSlotFromTimeSlotPrefix(timeSlotPrefix($0))) )
+if(
+    insideInflationOpportunityWindow($0, $1),
+	div64(
+	   mul64(
+		  ticksBefore($0, $1), 
+		  $2
+	   ), 
+	   inflationFractionBySlot( concat(u32/0, timeSlotFromTimeSlotPrefix(timeSlotPrefix($0))) )
+   ),
+   u64/0
 )
 
 // TODO must be inflated each year
@@ -163,24 +183,25 @@ var startupLedgerTime *Time
 
 func DefaultIdentityData(privateKey ed25519.PrivateKey, slot ...Slot) *IdentityData {
 	ret := &IdentityData{
-		Description:                       "Proxima prototype ledger. Ver 0.0.0",
-		InitialSupply:                     DefaultInitialSupply,
-		GenesisControllerPublicKey:        privateKey.Public().(ed25519.PublicKey),
-		BaselineTime:                      time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
-		TickDuration:                      DefaultTickDuration,
-		MaxTickValueInSlot:                DefaultTicksPerSlot - 1,
-		GenesisSlot:                       0,
-		SlotsPerLedgerYear:                uint32(DefaultSlotsPerLedgerYear),
-		InitialBranchBonus:                DefaultInitialBranchInflationBonus,
-		BranchBonusYearlyGrowthPromille:   DefaultAnnualBranchInflationPromille,
-		VBCost:                            DefaultVBCost,
-		TransactionPace:                   DefaultTransactionPace,
-		TransactionPaceSequencer:          DefaultTransactionPaceSequencer,
-		ChainInflationHalvingYears:        DefaultYearsHalving,
-		ChainInflationPerTickFractionBase: DefaultInitialChainInflationFractionPerTick,
+		Description:                          "Proxima prototype ledger. Ver 0.0.0",
+		InitialSupply:                        DefaultInitialSupply,
+		GenesisControllerPublicKey:           privateKey.Public().(ed25519.PublicKey),
+		BaselineTime:                         time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+		TickDuration:                         DefaultTickDuration,
+		MaxTickValueInSlot:                   DefaultTicksPerSlot - 1,
+		GenesisSlot:                          0,
+		SlotsPerLedgerEpoch:                  uint32(DefaultSlotsPerLedgerEpoch),
+		InitialBranchBonus:                   DefaultInitialBranchInflationBonus,
+		BranchBonusInflationPerEpochPromille: DefaultAnnualBranchInflationPromille,
+		VBCost:                               DefaultVBCost,
+		TransactionPace:                      DefaultTransactionPace,
+		TransactionPaceSequencer:             DefaultTransactionPaceSequencer,
+		ChainInflationHalvingEpochs:          DefaultHalvingEpochs,
+		ChainInflationPerTickFractionBase:    DefaultInitialChainInflationFractionPerTick,
+		ChainInflationOpportunitySlots:       DefaultChainInflationOpportunitySlots,
 	}
 
-	// creating origin 1 slot before now. More convenient for the workflow_old tests
+	// creating origin 1 slot before now. More convenient for the tests
 	if len(slot) > 0 {
 		ret.GenesisSlot = slot[0]
 	} else {
@@ -196,7 +217,7 @@ func DefaultIdentityData(privateKey ed25519.PrivateKey, slot ...Slot) *IdentityD
 func (id *IdentityData) SetTickDuration(d time.Duration) {
 	id.TickDuration = d
 	id.GenesisSlot = Slot(time.Now().Sub(id.BaselineTime)/d) - 1
-	id.SlotsPerLedgerYear = uint32((24 * 365 * time.Hour) / id.SlotDuration())
+	id.SlotsPerLedgerEpoch = uint32((24 * 365 * time.Hour) / id.SlotDuration())
 }
 
 // InitWithTestingLedgerIDData for testing
@@ -204,4 +225,12 @@ func InitWithTestingLedgerIDData(seed ...int) ed25519.PrivateKey {
 	id, pk := GetTestingIdentityData(seed...)
 	Init(id)
 	return pk
+}
+
+func (lib *Library) GenesisSlot() Slot {
+	genesisSlotBin, err := lib.EvalFromSource(nil, "constGenesisSlot")
+	util.AssertNoError(err)
+	slot64 := binary.BigEndian.Uint64(genesisSlotBin)
+	util.Assertf(slot64 <= math.MaxUint32, "slot64 <= math.MaxUint32")
+	return Slot(slot64)
 }

@@ -136,3 +136,12 @@ func TestLedgerIDYAML(t *testing.T) {
 	require.NoError(t, err)
 	require.EqualValues(t, id.Bytes(), idBack.Bytes())
 }
+
+func TestInflation(t *testing.T) {
+	t.Run("1", func(t *testing.T) {
+		id, _ := GetTestingIdentityData()
+		lib := newLibrary()
+		lib.extendWithBaseConstants(id)
+		t.Logf("genesis slot: %d", lib.GenesisSlot())
+	})
+}

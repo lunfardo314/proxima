@@ -47,7 +47,7 @@ func SlotDuration() time.Duration {
 }
 
 func SlotsPerLedgerYear() int64 {
-	return int64(L().ID.SlotsPerLedgerYear)
+	return int64(L().ID.SlotsPerLedgerEpoch)
 }
 
 func TransactionTimePaceDuration() time.Duration {
