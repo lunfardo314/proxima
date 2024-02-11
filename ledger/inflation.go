@@ -78,12 +78,12 @@ func initInflationConstraint() {
 	// sanity check
 	example := NewInflationConstraint(125, 1337)
 	exampleBin := example.Bytes()
-	util.Assertf(example.ChainConstraintIndex == 125, "extend 'inflation' failed")
-	util.Assertf(example.Amount == 1337, "extend 'inflation' failed")
+	util.Assertf(example.ChainConstraintIndex == 125, "extendWithMainFunctions 'inflation' failed")
+	util.Assertf(example.Amount == 1337, "extendWithMainFunctions 'inflation' failed")
 	exampleBack, err := InflationConstraintFromBytes(exampleBin)
 	util.AssertNoError(err)
-	util.Assertf(example.ChainConstraintIndex == exampleBack.ChainConstraintIndex, "extend 'inflation' failed")
-	util.Assertf(example.Amount == exampleBack.Amount, "extend 'inflation' failed")
+	util.Assertf(example.ChainConstraintIndex == exampleBack.ChainConstraintIndex, "extendWithMainFunctions 'inflation' failed")
+	util.Assertf(example.Amount == exampleBack.Amount, "extendWithMainFunctions 'inflation' failed")
 
 	prefix, err := L().ParseBytecodePrefix(exampleBin)
 	util.AssertNoError(err)

@@ -89,7 +89,7 @@ const (
 // Here it can be any number from 0 to MaxNumberOfEndorsements inclusive
 const MaxNumberOfEndorsements = 4
 
-func (lib *Library) extend() {
+func (lib *Library) extendWithMainFunctions() {
 	// data context access
 	// data context is a lazybytes.Tree
 	lib.EmbedShort("@", 0, evalPath, true)
@@ -230,8 +230,10 @@ func (lib *Library) extend() {
 	lib.Extend("signatureED25519", "slice($0, 0, 63)")
 	// takes ED25519 public key from full signature
 	lib.Extend("publicKeyED25519", "slice($0, 64, 95)")
+}
 
-	// extend constraints
+func extendWithConstraints() {
+	// extendWithMainFunctions constraints
 	initAmountConstraint()
 	initAddressED25519Constraint()
 	initDeadlineLockConstraint()

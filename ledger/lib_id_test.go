@@ -141,16 +141,14 @@ func TestLedgerIDYAML(t *testing.T) {
 func TestInflation(t *testing.T) {
 	t.Run("1", func(t *testing.T) {
 		id, _ := GetTestingIdentityData()
-		lib := newLibrary()
-		lib.extendWithBaseConstants(id)
+		lib := newLibraryInit(id)
 		t.Logf("genesis slot: %d", lib.Const().GenesisSlot())
 		lib.MustEqual("constGenesisSlot", fmt.Sprintf("u64/%d", lib.Const().GenesisSlot()))
 		require.EqualValues(t, id.TicksPerSlot(), lib.Const().TicksPerSlot())
 	})
 	t.Run("2", func(t *testing.T) {
 		id, _ := GetTestingIdentityData()
-		lib := newLibrary()
-		lib.extendWithBaseConstants(id)
+		lib := newLibraryInit(id)
 		genesisSlot := lib.Const().GenesisSlot()
 		t.Logf("genesis slot: %d", genesisSlot)
 		tsIn := MustNewLedgerTime(genesisSlot, 1)
@@ -163,8 +161,7 @@ func TestInflation(t *testing.T) {
 	})
 	t.Run("3", func(t *testing.T) {
 		id, _ := GetTestingIdentityData()
-		lib := newLibrary()
-		lib.extendWithBaseConstants(id)
+		lib := newLibraryInit(id)
 		genesisSlot := lib.Const().GenesisSlot()
 		t.Logf("genesis slot: %d", genesisSlot)
 		tsIn := MustNewLedgerTime(genesisSlot, 1)
@@ -184,31 +181,37 @@ func TestInflation(t *testing.T) {
 	})
 	t.Run("4", func(t *testing.T) {
 		id, _ := GetTestingIdentityData()
-		lib := newLibrary()
-		lib.extendWithBaseConstants(id)
+		lib := newLibraryInit(id)
 		genesisSlot := lib.Const().GenesisSlot()
 		t.Logf("genesis slot: %d", genesisSlot)
 		t.Logf("halving epochs: %d", lib.Const().HalvingEpochs())
 		t.Logf("slots per epoch: %d", lib.Const().SlotsPerEpoch())
 		t.Logf("seconds per year: %d", 24*365*60*60)
-		nowis := time.Now()
-		year := time.Duration(365*24) * time.Hour
 
 		// TODO wrong test. Does not fall into the opportunity window
-		tsIn := MustNewLedgerTime(genesisSlot, 1)
-		amountIn := lib.Const().ChainInflationPerTickFractionBase()
+		tsStart := MustNewLedgerTime(genesisSlot, 1)
+		amountIn := lib.Const().ChainInflationPerTickFractionBase() + 13370000
+		t.Logf("amountIn: %s", util.GoTh(amountIn))
 		for i := 0; i < 10; i++ {
-			tsOut := lib.TimeFromRealTime(nowis.Add(time.Duration(i) * year))
-			t.Logf("year %d: ts: %s, ledger epoch: %d", i, tsOut.String(), lib.Const().HalvingEpoch(tsOut))
+			tsIn := tsStart.AddSlots(int(lib.ID.SlotsPerLedgerEpoch) * i)
+			tsOut1 := tsIn.AddSlots(3)
+			src := fmt.Sprintf("inflationAmount(%s, %s, u64/%d)", tsIn.Source(), tsOut1.Source(), amountIn)
+			lib.MustEqual(src, fmt.Sprintf("u64/%d", lib.ID.InflationAmount(tsIn, tsOut1, amountIn)))
+			t.Logf("year %d: tsIn: %s, tsOut: %s, ledger epoch: %d, chainInflationDirect: %s, inflation: %s",
+				i, tsIn.String(), tsOut1.String(), lib.Const().HalvingEpoch(tsOut1),
+				util.GoTh(lib.ID.ChainInflationAmount(tsIn, tsOut1, amountIn)),
+				util.GoTh(lib.ID.InflationAmount(tsIn, tsOut1, amountIn)),
+			)
+			tsOut2 := tsIn.AddSlots(4)
+			tsOut2 = MustNewLedgerTime(tsOut2.Slot(), 0)
+			src = fmt.Sprintf("inflationAmount(%s, %s, u64/%d)", tsIn.Source(), tsOut2.Source(), amountIn)
+			lib.MustEqual(src, fmt.Sprintf("u64/%d", lib.ID.InflationAmount(tsIn, tsOut2, amountIn)))
+			t.Logf("year %d: tsIn: %s, tsOut: %s, ledger epoch: %d, chainInflationDirect: %s, inflation: %s",
+				i, tsIn.String(), tsOut2.String(), lib.Const().HalvingEpoch(tsOut2),
+				util.GoTh(lib.ID.ChainInflationAmount(tsIn, tsOut2, amountIn)),
+				util.GoTh(lib.ID.InflationAmount(tsIn, tsOut2, amountIn)),
+			)
 
-			t.Logf("inflationAmount direct: %s", util.GoTh(lib.ID.InflationAmount(tsIn, tsOut, amountIn)))
-
-			t.Logf("ChainInflationPerTickFractionBase const: %s", util.GoTh(amountIn))
-			src := fmt.Sprintf("chainInflationAmount(%s, %s, u64/%d)", tsIn.Source(), tsOut.Source(), amountIn)
-			lib.MustEqual(src, fmt.Sprintf("u64/%d", lib.ID.ChainInflationAmount(tsIn, tsOut, amountIn)))
-
-			src = fmt.Sprintf("inflationAmount(%s, %s, u64/%d)", tsIn.Source(), tsOut.Source(), amountIn)
-			lib.MustEqual(src, fmt.Sprintf("u64/%d", lib.ID.InflationAmount(tsIn, tsOut, amountIn)))
 		}
 	})
 }

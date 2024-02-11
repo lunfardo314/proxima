@@ -241,9 +241,10 @@ func ValidTimePace(t1, t2 Time) bool {
 
 func (t Time) AddTicks(s int) Time {
 	util.Assertf(s >= 0, "AddTicks: can't be negative argument")
-	s1 := int64(t.Tick()) + int64(s)
-	eRet := s1 / DefaultTicksPerSlot
-	sRet := s1 % DefaultTicksPerSlot
+	s1 := int(t.Tick()) + int(s)
+	ticksPerSlot := L().ID.TicksPerSlot()
+	eRet := s1 / ticksPerSlot // DefaultTicksPerSlot
+	sRet := s1 % ticksPerSlot // DefaultTicksPerSlot
 	return MustNewLedgerTime(t.Slot()+Slot(eRet), Tick(sRet))
 }
 

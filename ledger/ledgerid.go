@@ -356,7 +356,12 @@ func StemOutputID(e Slot) (ret OutputID) {
 }
 
 func (id *IdentityData) InflationAmount(inTs, outTs Time, inAmount uint64) uint64 {
-	return id.ChainInflationAmount(inTs, outTs, inAmount) + id.InitialBranchBonus // TODO branch bonus inflation
+	ret := id.ChainInflationAmount(inTs, outTs, inAmount)
+	if outTs.IsSlotBoundary() {
+		// for branch transactions fixed bonus
+		ret += +id.InitialBranchBonus // TODO branch bonus inflation
+	}
+	return ret
 }
 
 // ChainInflationAmount mocks inflation amount formula from the constraint library
@@ -370,7 +375,7 @@ func (id *IdentityData) ChainInflationAmount(inTs, outTs Time, inAmount uint64) 
 		return uint64(ticks) * inAmount / id._inflationFractionBySlot(inTs.Slot())
 	}
 	// non-zero inflation is only within the window of opportunity
-	// to disincentivise "lazy whales"
+	// to disincentivize "lazy whales"
 	return 0
 }
 
@@ -382,16 +387,6 @@ func (id *IdentityData) _insideInflationOpportunityWindow(inTs, outTs Time) bool
 func (id *IdentityData) _epochFromGenesis(slot Slot) uint64 {
 	return uint64(slot-id.GenesisSlot) / uint64(id.SlotsPerLedgerEpoch)
 }
-
-/*
-// $0 -  slot of the chain input as u64
-func halvingEpoch :
-	if(
-		lessThan(sub64($0, constGenesisSlot), constHalvingEpochs),
-        sub64($0, constGenesisSlot),
-        constHalvingEpochs
-	)
-*/
 
 func (id *IdentityData) _halvingEpoch(epochFromGenesis uint64) uint64 {
 	if epochFromGenesis < uint64(id.ChainInflationHalvingEpochs) {

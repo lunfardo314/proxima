@@ -90,7 +90,8 @@ func (lib *Library) extendWithBaseConstants(id *IdentityData) {
 	lib.Extendf("constTransactionPace", "u64/%d", id.TransactionPace)
 	lib.Extendf("constTransactionPaceSequencer", "u64/%d", id.TransactionPaceSequencer)
 	lib.Extendf("constVBCost16", "u16/%d", id.VBCost) // change to 64
-	lib.Extendf("ticksPerSlot", "u64/%d", id.TicksPerSlot())
+	lib.Extendf("ticksPerSlot", "%d", id.TicksPerSlot())
+	lib.Extendf("ticksPerSlot64", "u64/%d", id.TicksPerSlot())
 	lib.Extendf("timeSlotSizeBytes", "%d", SlotByteLength)
 	lib.Extendf("timestampByteSize", "%d", TimeByteLength)
 
@@ -106,8 +107,6 @@ func (lib *Library) extendWithBaseConstants(id *IdentityData) {
 	lib.Extend("timeSlotFromTimeSlotPrefix", "bitwiseAND($0, 0x3fffffff)")
 	lib.Extend("timeTickFromTimestamp", "byte($0, timeSlotSizeBytes)")
 	lib.Extend("timestamp", "concat(mustValidTimeSlot($0),mustValidTimeTick($1))")
-
-	lib.MustExtendMany(inflationFractionBySlotSource)
 }
 
 func Init(id *IdentityData) {
@@ -119,13 +118,24 @@ func Init(id *IdentityData) {
 		librarySingleton.PrintLibraryStats()
 	}()
 
-	librarySingleton.extendWithBaseConstants(id)
-	librarySingleton.extend()
+	librarySingleton.initNoTxConstraints(id)
+	extendWithConstraints()
+}
+
+func (lib *Library) initNoTxConstraints(id *IdentityData) *Library {
+	lib.extendWithBaseConstants(id)
+	lib.extendWithMainFunctions()
+	lib.MustExtendMany(inflationSource)
+	return lib
+}
+
+func newLibraryInit(id *IdentityData) *Library {
+	return newLibrary().initNoTxConstraints(id)
 }
 
 // TODO branch bonus inflation
 
-const inflationFractionBySlotSource = `
+const inflationSource = `
 // $0 -  slot of the chain input as u64
 func epochFromGenesis :
 	div64(
@@ -155,14 +165,14 @@ func insideInflationOpportunityWindow :
    lessOrEqualThan(
 	   div64(
 		  ticksBefore($0, $1),
-		  ticksPerSlot
+		  ticksPerSlot64
 	   ),
        constChainInflationOpportunitySlots
    )
 
 // $0 - timestamp of the chain input
 // $1 - timestamp of the transaction (and of the output)
-// $2 - amount on the chain input
+// $2 - amount on the chain input (no branch bonus)
 // result: (dt * amount)/inflationFraction
 func chainInflationAmount : 
 if(
@@ -177,12 +187,15 @@ if(
    u64/0
 )
 
-// TODO must be inflated each year
 // $0 - timestamp of the chain input
 // $1 - timestamp of the transaction (and of the output)
 // $2 - amount on the chain input
-// Result: maximum allowed inflation amount on the chain output
-func inflationAmount : sum64(chainInflationAmount($0, $1, $2), constInitialBranchBonus)
+func inflationAmount : 
+if(
+	isZero(timeTickFromTimestamp($1)),
+    sum64(chainInflationAmount($0, $1, $2), constInitialBranchBonus),
+    chainInflationAmount($0, $1, $2)
+)
 `
 
 func GetTestingIdentityData(seed ...int) (*IdentityData, ed25519.PrivateKey) {
@@ -253,12 +266,10 @@ func (lib LibraryConst) GenesisSlot() Slot {
 	return Slot(ret)
 }
 
-func (lib LibraryConst) TicksPerSlot() int {
+func (lib LibraryConst) TicksPerSlot() byte {
 	bin, err := lib.EvalFromSource(nil, "ticksPerSlot")
 	util.AssertNoError(err)
-	ret := binary.BigEndian.Uint64(bin)
-	util.Assertf(ret <= math.MaxUint32, "ret <= math.MaxUint32")
-	return int(ret)
+	return bin[0]
 }
 
 func (lib LibraryConst) ChainInflationPerTickFractionBase() uint64 {

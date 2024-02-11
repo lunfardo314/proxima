@@ -137,7 +137,7 @@ func chainConstraintInlineTest() {
 	}
 }
 
-// TODO ?? re-write chain constraint with two functions: 'chainInit' and 'chain'. To get rid of all0 extend code
+// TODO ?? re-write chain constraint with two functions: 'chainInit' and 'chain'. To get rid of all0 extendWithMainFunctions code
 
 const chainConstraintSource = `
 // chain(<chain constraint data>)
