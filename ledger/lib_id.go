@@ -77,7 +77,7 @@ func (lib *Library) extendWithBaseConstants(id *IdentityData) {
 	lib.Extendf("constGenesisControllerPublicKey", "0x%s", hex.EncodeToString(id.GenesisControllerPublicKey))
 	lib.Extendf("constBaselineTime", "u64/%d", id.BaselineTime.UnixNano())
 	lib.Extendf("constTickDuration", "u64/%d", int64(id.TickDuration))
-	lib.Extendf("constMaxTickValuePerSlot", "%d", id.MaxTickValueInSlot)
+	lib.Extendf("constMaxTickValuePerSlot", "u64/%d", id.MaxTickValueInSlot)
 	lib.Extendf("constGenesisSlot", "u64/%d", id.GenesisSlot)
 	lib.Extendf("constInitialBranchBonus", "u64/%d", id.InitialBranchBonus)
 	lib.Extendf("constBranchBonusYearlyGrowthPromille", "u64/%d", id.BranchBonusInflationPerEpochPromille)
@@ -86,14 +86,14 @@ func (lib *Library) extendWithBaseConstants(id *IdentityData) {
 	lib.Extendf("constChainInflationOpportunitySlots", "u64/%d", id.ChainInflationOpportunitySlots)
 
 	lib.Extendf("constSlotsPerLedgerEpoch", "u64/%d", id.SlotsPerLedgerEpoch)
-	lib.Extendf("constTransactionPace", "%d", id.TransactionPace)
-	lib.Extendf("constTransactionPaceSequencer", "%d", id.TransactionPaceSequencer)
-	lib.Extendf("constVBCost16", "u16/%d", id.VBCost)
-	lib.Extendf("ticksPerSlot", "%d", id.TicksPerSlot())
+	lib.Extendf("constTransactionPace", "u64/%d", id.TransactionPace)
+	lib.Extendf("constTransactionPaceSequencer", "u64/%d", id.TransactionPaceSequencer)
+	lib.Extendf("constVBCost16", "u16/%d", id.VBCost) // change to 64
+	lib.Extendf("ticksPerSlot", "u64/%d", id.TicksPerSlot())
 	lib.Extendf("timeSlotSizeBytes", "%d", SlotByteLength)
 	lib.Extendf("timestampByteSize", "%d", TimeByteLength)
 
-	lib.EmbedLong("ticksBefore", 2, evalTicksBefore)
+	lib.EmbedLong("ticksBefore", 2, evalTicksBefore64)
 
 	// base helpers
 	lib.Extend("sizeIs", "equal(len8($0), $1)")
@@ -115,7 +115,7 @@ const inflationFractionBySlotSource = `
 // $0 - slot of the chain input as u64
 func epochFromGenesis : div64(sub64($0, constGenesisSlot), constSlotsPerLedgerEpoch)
 
-// $0 - year from genesis
+// $0 - genesis epoch u64
 func halvingEpoch :
 	if(
 		lessThan($0, constHalvingEpochs),
@@ -125,13 +125,11 @@ func halvingEpoch :
 
 // $0 slot of the chain input as u64
 // result - inflation fraction corresponding to that year (taking into account halving) 
-func inflationFractionBySlot : and(
-	require(lessOrEqualThan(constGenesisSlot, $0), !!!wrong_slot_value),
+func inflationFractionBySlot :
     mul64(
         constChainInflationFractionBase, 
         lshift64(u64/1, halvingEpoch(epochFromGenesis($0)))
     )
-)
 
 // $0 - timestamp of the chain input
 // $1 - timestamp of the transaction (and of the output)

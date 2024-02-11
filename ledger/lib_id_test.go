@@ -1,6 +1,7 @@
 package ledger
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -143,5 +144,17 @@ func TestInflation(t *testing.T) {
 		lib := newLibrary()
 		lib.extendWithBaseConstants(id)
 		t.Logf("genesis slot: %d", lib.GenesisSlot())
+	})
+	t.Run("2", func(t *testing.T) {
+		id, _ := GetTestingIdentityData()
+		lib := newLibrary()
+		lib.extendWithBaseConstants(id)
+		genesisSlot := lib.GenesisSlot()
+		t.Logf("genesis slot: %d", genesisSlot)
+		tsIn := MustNewLedgerTime(genesisSlot, 1)
+		tsOut := MustNewLedgerTime(genesisSlot, 51)
+		src := fmt.Sprintf("chainInflationAmount(%s, %s, u64/100000)", tsIn.Source(), tsOut.Source())
+		//lib.EvalFromSource(easyfl.NewGlobalDataTracePrint(nil), src)
+		lib.MustEqual(src, "u64/0")
 	})
 }

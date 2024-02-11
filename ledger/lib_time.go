@@ -200,6 +200,10 @@ func (t Time) String() string {
 	return fmt.Sprintf("%d|%d", t.Slot(), t.Tick())
 }
 
+func (t Time) Source() string {
+	return fmt.Sprintf("0x%s", hex.EncodeToString(t.Bytes()))
+}
+
 func (t Time) AsFileName() string {
 	return fmt.Sprintf("%d_%d", t.Slot(), t.Tick())
 }
