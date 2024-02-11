@@ -1,7 +1,6 @@
 package ledger
 
 import (
-	"encoding/hex"
 	"testing"
 
 	"github.com/lunfardo314/proxima/util/lazybytes"
@@ -9,11 +8,13 @@ import (
 )
 
 func TestRawOutputBytes(t *testing.T) {
-	InitWithTestingLedgerIDData() // FIXME some mess with library singleton
-	const rawBytesStr = "40050b459488000000e8d40c798023459ba0c83f68984984271cd5e67c5c5c58cdadb69f2335109b5334c727d6f172291b542645aaa3108c086a4183c3434392f0d16f07c6895990a96dd74753d1a5695bad3e9934b40002000d49bb81028800000000000000000d49bc8102880000000000000000"
+	pk := InitWithTestingLedgerIDData()
 
-	rawBytes, err := hex.DecodeString(rawBytesStr)
-	require.NoError(t, err)
+	o := NewOutput(func(o *Output) {
+		o.WithAmount(1337).WithLock(AddressED25519FromPrivateKey(pk))
+	})
+
+	rawBytes := o.Bytes()
 
 	o, err := OutputFromBytesReadOnly(rawBytes)
 	require.NoError(t, err)
