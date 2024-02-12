@@ -110,7 +110,7 @@ func (a AddressED25519) AsLock() Lock {
 func addAddressED25519Constraint(lib *Library) {
 	lib.extendWithConstraint(AddressED25519Name, addressED25519ConstraintSource, 1, func(data []byte) (Constraint, error) {
 		return AddressED25519FromBytes(data)
-	})
+	}, initTestAddressED25519Constraint)
 }
 
 func initTestAddressED25519Constraint() {

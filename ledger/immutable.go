@@ -61,7 +61,7 @@ func (d *Immutable) String() string {
 func addImmutableConstraint(lib *Library) {
 	lib.extendWithConstraint(ImmutableName, immutableDataSource, 1, func(data []byte) (Constraint, error) {
 		return ImmutableFromBytes(data)
-	})
+	}, initTestImmutableConstraint)
 }
 
 func initTestImmutableConstraint() {

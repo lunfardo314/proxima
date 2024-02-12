@@ -69,7 +69,7 @@ func (s *StateIndex) String() string {
 func addStateIndexConstraint(lib *Library) {
 	lib.extendWithConstraint(StateIndexName, stateIndexSource, 2, func(data []byte) (Constraint, error) {
 		return StateIndexFromBytes(data)
-	})
+	}, initTestStateIndexConstraint)
 }
 
 func initTestStateIndexConstraint() {

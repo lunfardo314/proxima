@@ -50,7 +50,7 @@ func NewTotalAmount(a uint64) TotalAmount {
 func addTotalAmountConstraint(lib *Library) {
 	lib.extendWithConstraint(TotalAmountConstraintName, totalAmountSource, 1, func(data []byte) (Constraint, error) {
 		return TotalAmountFromBytes(data)
-	})
+	}, initTestTotalAmountConstraint)
 }
 
 func initTestTotalAmountConstraint() {

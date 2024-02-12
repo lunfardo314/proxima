@@ -56,7 +56,7 @@ func (st *StemLock) UnlockableWith(_ AccountID, _ ...Time) bool {
 func addStemLockConstraint(lib *Library) {
 	lib.extendWithConstraint(StemLockName, stemLockSource, 1, func(data []byte) (Constraint, error) {
 		return StemLockFromBytes(data)
-	})
+	}, initTestStemLockConstraint)
 }
 
 func initTestStemLockConstraint() {

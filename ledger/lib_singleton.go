@@ -23,21 +23,25 @@ func L() *Library {
 }
 
 func Init(id *IdentityData) {
-	libraryGlobalMutex.Lock()
-	defer libraryGlobalMutex.Unlock()
+	func() {
+		libraryGlobalMutex.Lock()
+		defer libraryGlobalMutex.Unlock()
 
-	util.Assertf(libraryGlobal == nil, "global library already initialized")
+		util.Assertf(libraryGlobal == nil, "global library already initialized")
 
-	libraryGlobal = newLibrary()
-	fmt.Printf("------ Base EasyFL library:\n")
-	libraryGlobal.PrintLibraryStats()
-	defer func() {
+		libraryGlobal = newLibrary()
+
+		fmt.Printf("------ Base EasyFL library:\n")
+		libraryGlobal.PrintLibraryStats()
+
+		libraryGlobal.initNoTxConstraints(id)
+		libraryGlobal.extendWithConstraints()
+
 		fmt.Printf("------ Extended EasyFL library:\n")
 		libraryGlobal.PrintLibraryStats()
 	}()
 
-	libraryGlobal.initNoTxConstraints(id)
-	libraryGlobal.extendWithConstraints()
+	libraryGlobal.runInlineTests()
 }
 
 // InitWithTestingLedgerIDData for testing

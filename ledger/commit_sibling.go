@@ -71,7 +71,7 @@ func (cs *CommitToSibling) String() string {
 func addCommitToSiblingConstraint(lib *Library) {
 	lib.extendWithConstraint(CommitToSiblingName, commitToSiblingSource, 2, func(data []byte) (Constraint, error) {
 		return CommitToSiblingFromBytes(data)
-	})
+	}, initTestCommitToSiblingConstraint)
 }
 
 func initTestCommitToSiblingConstraint() {

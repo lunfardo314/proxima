@@ -66,7 +66,7 @@ func (dl *DeadlineLock) Name() string {
 func addDeadlineLockConstraint(lib *Library) {
 	lib.extendWithConstraint(DeadlineLockName, deadlineLockSource, 4, func(data []byte) (Constraint, error) {
 		return DeadlineLockFromBytes(data)
-	})
+	}, initTestDeadlineLockConstraint)
 }
 
 func initTestDeadlineLockConstraint() {

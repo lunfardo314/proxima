@@ -19,6 +19,7 @@ type (
 		ID                 *IdentityData
 		constraintByPrefix map[string]*constraintRecord
 		constraintNames    map[string]struct{}
+		inlineTests        []func()
 	}
 
 	LibraryConst struct {
@@ -53,6 +54,7 @@ func newLibrary() *Library {
 		Library:            easyfl.NewBase(),
 		constraintByPrefix: make(map[string]*constraintRecord),
 		constraintNames:    make(map[string]struct{}),
+		inlineTests:        make([]func(), 0),
 	}
 	return ret
 }

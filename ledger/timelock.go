@@ -70,7 +70,7 @@ func TimelockFromBytes(data []byte) (Timelock, error) {
 func addTimeLockConstraint(lib *Library) {
 	lib.extendWithConstraint(TimelockName, timelockSource, 1, func(data []byte) (Constraint, error) {
 		return TimelockFromBytes(data)
-	})
+	}, initTestTimelockConstraint)
 }
 
 func initTestTimelockConstraint() {

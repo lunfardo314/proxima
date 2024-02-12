@@ -74,7 +74,7 @@ func NewAmount(a uint64) Amount {
 func addAmountConstraint(lib *Library) {
 	lib.extendWithConstraint(AmountConstraintName, amountSource, 1, func(data []byte) (Constraint, error) {
 		return AmountFromBytes(data)
-	})
+	}, initTestAmountConstraint)
 }
 
 func initTestAmountConstraint() {

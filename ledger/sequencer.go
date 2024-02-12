@@ -151,7 +151,7 @@ func SequencerConstraintFromBytes(data []byte) (*SequencerConstraint, error) {
 func addSequencerConstraint(lib *Library) {
 	lib.extendWithConstraint(SequencerConstraintName, sequencerConstraintSource, 2, func(data []byte) (Constraint, error) {
 		return SequencerConstraintFromBytes(data)
-	})
+	}, initTestSequencerConstraint)
 }
 
 func initTestSequencerConstraint() {

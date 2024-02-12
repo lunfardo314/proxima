@@ -46,7 +46,7 @@ type (
 	}
 )
 
-func (lib *Library) extendWithConstraint(name, source string, nArgs byte, parser Parser) {
+func (lib *Library) extendWithConstraint(name, source string, nArgs byte, parser Parser, inlineTests ...func()) {
 	lib.MustExtendMany(source)
 	prefix, err := lib.FunctionCallPrefixByName(name, nArgs)
 	util.AssertNoError(err)
@@ -61,6 +61,13 @@ func (lib *Library) extendWithConstraint(name, source string, nArgs byte, parser
 		parser: parser,
 	}
 	lib.constraintNames[name] = struct{}{}
+	lib.inlineTests = append(lib.inlineTests, inlineTests...)
+}
+
+func (lib *Library) runInlineTests() {
+	for _, fun := range lib.inlineTests {
+		fun()
+	}
 }
 
 func NameByPrefix(prefix []byte) (string, bool) {

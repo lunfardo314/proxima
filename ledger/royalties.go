@@ -67,7 +67,7 @@ func (cl RoyaltiesED25519) String() string {
 func addRoyaltiesED25519Constraint(lib *Library) {
 	lib.extendWithConstraint(RoyaltiesED25519Name, royaltiesED25519Source, 2, func(data []byte) (Constraint, error) {
 		return RoyaltiesED25519FromBytes(data)
-	})
+	}, initTestRoyaltiesED25519Constraint)
 }
 
 func initTestRoyaltiesED25519Constraint() {
