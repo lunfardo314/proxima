@@ -84,14 +84,12 @@ func NewChainLockUnlockParams(chainOutputIndex, chainConstraintIndex byte) []byt
 }
 
 func addChainLockConstraint(lib *Library) {
-	lib.extendWithConstraint(ChainLockName, chainLockConstraintSource, func(data []byte) (Constraint, error) {
+	lib.extendWithConstraint(ChainLockName, chainLockConstraintSource, 1, func(data []byte) (Constraint, error) {
 		return ChainLockFromBytes(data)
 	})
 }
 
 func initTestChainLockConstraint() {
-	L().MustExtendMany(chainLockConstraintSource)
-
 	example := NilChainLock
 	chainLockBack, err := ChainLockFromBytes(example.Bytes())
 	util.AssertNoError(err)

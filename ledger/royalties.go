@@ -65,14 +65,12 @@ func (cl RoyaltiesED25519) String() string {
 }
 
 func addRoyaltiesED25519Constraint(lib *Library) {
-	lib.extendWithConstraint(RoyaltiesED25519Name, royaltiesED25519Source, func(data []byte) (Constraint, error) {
+	lib.extendWithConstraint(RoyaltiesED25519Name, royaltiesED25519Source, 2, func(data []byte) (Constraint, error) {
 		return RoyaltiesED25519FromBytes(data)
 	})
 }
 
 func initTestRoyaltiesED25519Constraint() {
-	L().MustExtendMany(royaltiesED25519Source)
-
 	addr0 := AddressED25519Null()
 	example := NewRoyalties(addr0, 1337)
 	royaltiesBack, err := RoyaltiesED25519FromBytes(example.Bytes())

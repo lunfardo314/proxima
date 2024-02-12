@@ -37,7 +37,7 @@ func Init(id *IdentityData) {
 	}()
 
 	libraryGlobal.initNoTxConstraints(id)
-	extendWithConstraints()
+	libraryGlobal.extendWithConstraints()
 }
 
 // InitWithTestingLedgerIDData for testing

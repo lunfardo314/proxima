@@ -51,6 +51,8 @@ type (
 		TransactionPace byte
 		// number of ticks between sequencer transactions
 		TransactionPaceSequencer byte
+		//
+		MinimumAmountOnSequencer uint64
 	}
 
 	// IdentityDataYAMLAble structure for canonical YAMLAble marshaling
@@ -71,6 +73,7 @@ type (
 		ChainInflationHalvingYears           byte   `yaml:"chain_inflation_halving_years"`
 		ChainInflationPerTickFractionBase    uint64 `yaml:"chain_inflation_per_tick_base"`
 		ChainInflationOpportunitySlots       uint64 `yaml:"chain_inflation_opportunity_slots"`
+		MinimumAmountOnSequencer             uint64 `yaml:"minimum_amount_on_sequencer"`
 		// non-persistent, for control
 		GenesisControllerAddress string `yaml:"genesis_controller_address"`
 		BootstrapChainID         string `yaml:"bootstrap_chain_id"`
@@ -102,6 +105,7 @@ func (id *IdentityData) Bytes() []byte {
 	_ = binary.Write(&buf, binary.BigEndian, id.VBCost)
 	_ = binary.Write(&buf, binary.BigEndian, id.TransactionPace)
 	_ = binary.Write(&buf, binary.BigEndian, id.TransactionPaceSequencer)
+	_ = binary.Write(&buf, binary.BigEndian, id.MinimumAmountOnSequencer)
 
 	return buf.Bytes()
 }
@@ -168,6 +172,9 @@ func MustLedgerIdentityDataFromBytes(data []byte) *IdentityData {
 	util.AssertNoError(err)
 
 	err = binary.Read(rdr, binary.BigEndian, &ret.TransactionPaceSequencer)
+	util.AssertNoError(err)
+
+	err = binary.Read(rdr, binary.BigEndian, &ret.MinimumAmountOnSequencer)
 	util.AssertNoError(err)
 
 	util.Assertf(rdr.Len() == 0, "not all bytes has been read")
@@ -244,6 +251,7 @@ func (id *IdentityData) YAMLAble() *IdentityDataYAMLAble {
 		ChainInflationPerTickFractionBase:    id.ChainInflationPerTickFractionBase,
 		ChainInflationOpportunitySlots:       id.ChainInflationOpportunitySlots,
 		GenesisControllerAddress:             id.GenesisControlledAddress().String(),
+		MinimumAmountOnSequencer:             id.MinimumAmountOnSequencer,
 		BootstrapChainID:                     chainID.StringHex(),
 	}
 }
@@ -318,6 +326,7 @@ func (id *IdentityDataYAMLAble) stateIdentityData() (*IdentityData, error) {
 	ret.ChainInflationPerTickFractionBase = id.ChainInflationPerTickFractionBase
 	ret.ChainInflationOpportunitySlots = id.ChainInflationOpportunitySlots
 	ret.ChainInflationHalvingEpochs = id.ChainInflationHalvingYears
+	ret.MinimumAmountOnSequencer = id.MinimumAmountOnSequencer
 
 	// control
 	if AddressED25519FromPublicKey(ret.GenesisControllerPublicKey).String() != id.GenesisControllerAddress {

@@ -8,26 +8,13 @@ import (
 	"github.com/lunfardo314/proxima/util"
 )
 
-// TODO TEMPORARY. Only for testing and experimenting. Constants must be different in reality
-const (
-	// MinimumAmountOnSequencer minimum amount of tokens on the sequencer's chain output
-	MinimumAmountOnSequencer = 1_000_000 //
-)
-
-const (
-	mustMinSeqAmountTemplate = `
+const sequencerConstraintSource = `
+func mustMinimumAmountOnSequencer : 
 	require(
- 	 	 not(lessThan(selfAmountValue, u64/%d)), 
+ 	 	 not(lessThan(selfAmountValue, constMinimumAmountOnSequencer)), 
 		 !!!minimum_sequencer_amount_constraint_failed
 	)
-	`
-)
 
-var (
-	minimumAmountOnSeqSource = fmt.Sprintf(mustMinSeqAmountTemplate, MinimumAmountOnSequencer)
-)
-
-const sequencerConstraintSource = `
 // $0 chain predecessor input index
 func _inputSameSlot :
 equal(
@@ -162,15 +149,12 @@ func SequencerConstraintFromBytes(data []byte) (*SequencerConstraint, error) {
 }
 
 func addSequencerConstraint(lib *Library) {
-	lib.extendWithConstraint(SequencerConstraintName, sequencerConstraintSource, func(data []byte) (Constraint, error) {
+	lib.extendWithConstraint(SequencerConstraintName, sequencerConstraintSource, 2, func(data []byte) (Constraint, error) {
 		return SequencerConstraintFromBytes(data)
 	})
 }
 
 func initTestSequencerConstraint() {
-	L().Extend("mustMinimumAmountOnSequencer", minimumAmountOnSeqSource)
-	L().MustExtendMany(sequencerConstraintSource)
-
 	example := NewSequencerConstraint(4, 1337)
 	sym, _, args, err := L().ParseBytecodeOneLevel(example.Bytes(), 2)
 	util.AssertNoError(err)

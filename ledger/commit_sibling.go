@@ -69,14 +69,12 @@ func (cs *CommitToSibling) String() string {
 }
 
 func addCommitToSiblingConstraint(lib *Library) {
-	lib.extendWithConstraint(CommitToSiblingName, commitToSiblingSource, func(data []byte) (Constraint, error) {
+	lib.extendWithConstraint(CommitToSiblingName, commitToSiblingSource, 2, func(data []byte) (Constraint, error) {
 		return CommitToSiblingFromBytes(data)
 	})
 }
 
 func initTestCommitToSiblingConstraint() {
-	L().MustExtendMany(commitToSiblingSource)
-
 	h := blake2b.Sum256([]byte("just data"))
 	example := NewCommitToSibling(2, h[:])
 	csBack, err := CommitToSiblingFromBytes(example.Bytes())

@@ -72,14 +72,12 @@ func NewAmount(a uint64) Amount {
 }
 
 func addAmountConstraint(lib *Library) {
-	lib.extendWithConstraint(AmountConstraintName, amountSource, func(data []byte) (Constraint, error) {
+	lib.extendWithConstraint(AmountConstraintName, amountSource, 1, func(data []byte) (Constraint, error) {
 		return AmountFromBytes(data)
 	})
 }
 
 func initTestAmountConstraint() {
-	L().MustExtendMany(amountSource)
-	// sanity check
 	example := NewAmount(1337)
 	sym, _, args, err := L().ParseBytecodeOneLevel(example.Bytes(), 1)
 	util.AssertNoError(err)

@@ -108,14 +108,12 @@ func (a AddressED25519) AsLock() Lock {
 }
 
 func addAddressED25519Constraint(lib *Library) {
-	lib.extendWithConstraint(AddressED25519Name, addressED25519ConstraintSource, func(data []byte) (Constraint, error) {
+	lib.extendWithConstraint(AddressED25519Name, addressED25519ConstraintSource, 1, func(data []byte) (Constraint, error) {
 		return AddressED25519FromBytes(data)
 	})
 }
 
 func initTestAddressED25519Constraint() {
-	L().MustExtendMany(addressED25519ConstraintSource)
-
 	example := AddressED25519Null()
 	addrBack, err := AddressED25519FromBytes(example.Bytes())
 	util.AssertNoError(err)

@@ -46,9 +46,9 @@ type (
 	}
 )
 
-func (lib *Library) extendWithConstraint(name, source string, parser Parser) {
+func (lib *Library) extendWithConstraint(name, source string, nArgs byte, parser Parser) {
 	lib.MustExtendMany(source)
-	prefix, err := lib.FunctionCallPrefixByName(name, 1)
+	prefix, err := lib.FunctionCallPrefixByName(name, nArgs)
 	util.AssertNoError(err)
 	_, already := lib.constraintNames[name]
 	util.Assertf(!already, "repeating constraint name '%s'", name)

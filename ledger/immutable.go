@@ -59,14 +59,12 @@ func (d *Immutable) String() string {
 }
 
 func addImmutableConstraint(lib *Library) {
-	lib.extendWithConstraint(ImmutableName, immutableDataSource, func(data []byte) (Constraint, error) {
+	lib.extendWithConstraint(ImmutableName, immutableDataSource, 1, func(data []byte) (Constraint, error) {
 		return ImmutableFromBytes(data)
 	})
 }
 
 func initTestImmutableConstraint() {
-	L().MustExtendMany(immutableDataSource)
-
 	example := NewImmutable(1, 5)
 	immutableDataBack, err := ImmutableFromBytes(example.Bytes())
 	util.AssertNoError(err)

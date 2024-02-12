@@ -48,13 +48,12 @@ func NewTotalAmount(a uint64) TotalAmount {
 }
 
 func addTotalAmountConstraint(lib *Library) {
-	lib.extendWithConstraint(TotalAmountConstraintName, totalAmountSource, func(data []byte) (Constraint, error) {
+	lib.extendWithConstraint(TotalAmountConstraintName, totalAmountSource, 1, func(data []byte) (Constraint, error) {
 		return TotalAmountFromBytes(data)
 	})
 }
 
 func initTestTotalAmountConstraint() {
-	L().MustExtendMany(totalAmountSource)
 	// sanity check
 	example := NewTotalAmount(1337)
 	sym, _, args, err := L().ParseBytecodeOneLevel(example.Bytes(), 1)

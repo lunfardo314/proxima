@@ -64,14 +64,12 @@ func (dl *DeadlineLock) Name() string {
 }
 
 func addDeadlineLockConstraint(lib *Library) {
-	lib.extendWithConstraint(DeadlineLockName, deadlineLockSource, func(data []byte) (Constraint, error) {
+	lib.extendWithConstraint(DeadlineLockName, deadlineLockSource, 4, func(data []byte) (Constraint, error) {
 		return DeadlineLockFromBytes(data)
 	})
 }
 
 func initTestDeadlineLockConstraint() {
-	L().MustExtendMany(deadlineLockSource)
-
 	ts := MustNewLedgerTime(1337, 5)
 	example := NewDeadlineLock(ts, AddressED25519Null(), AddressED25519Null())
 	lockBack, err := DeadlineLockFromBytes(example.Bytes())

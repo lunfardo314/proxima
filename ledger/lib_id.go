@@ -33,10 +33,11 @@ const (
 	DefaultSlotsPerLedgerEpoch = time.Hour * 24 * 365 / DefaultSlotDuration
 
 	DustPerProxi         = 1_000_000
+	PRXI                 = DustPerProxi
 	InitialSupplyProxi   = 1_000_000_000
-	DefaultInitialSupply = InitialSupplyProxi * DustPerProxi
+	DefaultInitialSupply = InitialSupplyProxi * PRXI
 
-	DefaultInitialBranchInflationBonus          = 20_000_000
+	DefaultInitialBranchInflationBonus          = 20 * PRXI
 	DefaultAnnualBranchInflationPromille        = 40
 	DefaultInitialChainInflationFractionPerTick = 400_000_000
 	DefaultHalvingEpochs                        = 4
@@ -44,6 +45,7 @@ const (
 	DefaultVBCost                               = 1
 	DefaultTransactionPace                      = 10
 	DefaultTransactionPaceSequencer             = 5
+	DefaultMinimumAmountOnSequencer             = 1_000 * PRXI
 )
 
 func newLibrary() *Library {
@@ -77,6 +79,7 @@ func (lib *Library) extendWithBaseConstants(id *IdentityData) {
 	lib.Extendf("constHalvingEpochs", "u64/%d", id.ChainInflationHalvingEpochs)
 	lib.Extendf("constChainInflationFractionBase", "u64/%d", id.ChainInflationPerTickFractionBase)
 	lib.Extendf("constChainInflationOpportunitySlots", "u64/%d", id.ChainInflationOpportunitySlots)
+	lib.Extendf("constMinimumAmountOnSequencer", "u64/%d", id.MinimumAmountOnSequencer)
 
 	lib.Extendf("constSlotsPerLedgerEpoch", "u64/%d", id.SlotsPerLedgerEpoch)
 	lib.Extendf("constTransactionPace", "u64/%d", id.TransactionPace)
@@ -207,6 +210,7 @@ func DefaultIdentityData(privateKey ed25519.PrivateKey, slot ...Slot) *IdentityD
 		ChainInflationHalvingEpochs:          DefaultHalvingEpochs,
 		ChainInflationPerTickFractionBase:    DefaultInitialChainInflationFractionPerTick,
 		ChainInflationOpportunitySlots:       DefaultChainInflationOpportunitySlots,
+		MinimumAmountOnSequencer:             DefaultMinimumAmountOnSequencer,
 	}
 
 	// creating origin 1 slot before now. More convenient for the tests

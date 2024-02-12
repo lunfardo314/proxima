@@ -67,14 +67,12 @@ func (s *StateIndex) String() string {
 }
 
 func addStateIndexConstraint(lib *Library) {
-	lib.extendWithConstraint(StateIndexName, stateIndexSource, func(data []byte) (Constraint, error) {
+	lib.extendWithConstraint(StateIndexName, stateIndexSource, 2, func(data []byte) (Constraint, error) {
 		return StateIndexFromBytes(data)
 	})
 }
 
 func initTestStateIndexConstraint() {
-	L().MustExtendMany(stateIndexSource)
-
 	example := NewStateIndex(5, 314)
 	stateIndexBack, err := StateIndexFromBytes(example.Bytes())
 	util.AssertNoError(err)

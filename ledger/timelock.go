@@ -68,14 +68,12 @@ func TimelockFromBytes(data []byte) (Timelock, error) {
 }
 
 func addTimeLockConstraint(lib *Library) {
-	lib.extendWithConstraint(TimelockName, timelockSource, func(data []byte) (Constraint, error) {
+	lib.extendWithConstraint(TimelockName, timelockSource, 1, func(data []byte) (Constraint, error) {
 		return TimelockFromBytes(data)
 	})
 }
 
 func initTestTimelockConstraint() {
-	L().MustExtendMany(timelockSource)
-
 	example := NewTimelock(1337)
 	sym, _, args, err := L().ParseBytecodeOneLevel(example.Bytes(), 1)
 	util.AssertNoError(err)
