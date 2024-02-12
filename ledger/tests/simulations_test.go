@@ -145,7 +145,7 @@ type yearData struct {
 }
 
 func TestReverseFractionEstimation(t *testing.T) {
-	const targetAnnualChainInflationPercentage = 79
+	const targetAnnualChainInflationPercentage = 60
 
 	absChainInflationEpoch := int((ledger.L().ID.InitialSupply * targetAnnualChainInflationPercentage) / 100)
 	absChainInflationPerSlot := absChainInflationEpoch / int(ledger.L().ID.SlotsPerLedgerEpoch)
@@ -154,7 +154,7 @@ func TestReverseFractionEstimation(t *testing.T) {
 
 	actualInflationPerTick := int(ledger.L().ID.InitialSupply) / int(ledger.L().ID.ChainInflationPerTickFractionBase)
 	actualInflationPerEpoch := actualInflationPerTick * int(ledger.TicksPerSlot()) * int(ledger.SlotsPerLedgerEpoch())
-	actualInflationPerEpochPerc := 100 * float32(actualInflationPerEpoch) / float32(ledger.L().ID.InitialSupply)
+	actualInflationPerEpochPerc := percent(actualInflationPerEpoch, int(ledger.L().ID.InitialSupply))
 
 	template := `
 		targetInflation  		: %d%%
