@@ -303,7 +303,7 @@ func (c *proposerTaskGeneric) futureConeMilestonesOrdered(rootVID *utangle.Wrapp
 		if !vid.IsDeleted() &&
 			vid.IsSequencerMilestone() &&
 			visited.Contains(vid.SequencerPredecessor()) &&
-			ledger.ValidTimePace(vid.Timestamp(), c.targetTs) {
+			ledger.ValidTransactionPace(vid.Timestamp(), c.targetTs) {
 			visited.Insert(vid)
 			ret = append(ret, c.factory.ownMilestones[vid].WrappedOutput)
 		}

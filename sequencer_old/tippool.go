@@ -155,7 +155,7 @@ func (tp *sequencerTipPool) preSelectAndSortEndorsableMilestones(targetTs ledger
 
 	ret := make([]*utangle_old.WrappedTx, 0)
 	for _, ms := range tp.latestMilestones {
-		if ms.TimeSlot() != targetTs.Slot() || !ledger.ValidTimePace(ms.Timestamp(), targetTs) {
+		if ms.TimeSlot() != targetTs.Slot() || !ledger.ValidTransactionPace(ms.Timestamp(), targetTs) {
 			continue
 		}
 		ret = append(ret, ms)

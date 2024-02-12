@@ -197,7 +197,7 @@ func (mf *MilestoneFactory) CurrentTargetTs() ledger.Time {
 func (mf *MilestoneFactory) AttachTagAlongInputs(a *attacher.IncrementalAttacher) (numInserted int) {
 	mf.Tracef(TraceTag, "AttachTagAlongInputs: %s", a.Name())
 	preSelected := mf.tipPool.FilterAndSortOutputs(func(wOut vertex.WrappedOutput) bool {
-		if !ledger.ValidTimePace(wOut.Timestamp(), a.TargetTs()) {
+		if !ledger.ValidTransactionPace(wOut.Timestamp(), a.TargetTs()) {
 			return false
 		}
 		// fast filtering out already consumed outputs in the predecessor milestone context
@@ -322,8 +322,8 @@ func (mf *MilestoneFactory) ChooseExtendEndorsePair(proposerName string, targetT
 	seqID := mf.SequencerID()
 	var ret *attacher.IncrementalAttacher
 	for _, endorse := range endorseCandidates {
-		if !ledger.ValidTimePace(endorse.Timestamp(), targetTs) {
-			mf.Tracef(TraceTagChooseExtendEndorsePair, ">>>>>>>>>>>>>>> !ledger.ValidTimePace")
+		if !ledger.ValidTransactionPace(endorse.Timestamp(), targetTs) {
+			mf.Tracef(TraceTagChooseExtendEndorsePair, ">>>>>>>>>>>>>>> !ledger.ValidTransactionPace")
 			continue
 		}
 		rdr := multistate.MakeSugared(mf.GetStateReaderForTheBranch(endorse.BaselineBranch()))
@@ -395,7 +395,7 @@ func (mf *MilestoneFactory) futureConeOwnMilestonesOrdered(rootOutput vertex.Wra
 			continue
 		case !visited.Contains(vid.SequencerPredecessor()):
 			continue
-		case !ledger.ValidTimePace(vid.Timestamp(), targetTs):
+		case !ledger.ValidTransactionPace(vid.Timestamp(), targetTs):
 			continue
 		}
 		visited.Insert(vid)

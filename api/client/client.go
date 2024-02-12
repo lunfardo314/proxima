@@ -538,7 +538,7 @@ func MakeTransferTransaction(par MakeTransferTransactionParams) ([]byte, error) 
 	if err != nil {
 		return nil, err
 	}
-	if !ledger.ValidTimePace(inTs, par.Timestamp) {
+	if !ledger.ValidTransactionPace(inTs, par.Timestamp) {
 		return nil, fmt.Errorf("inconsistency: wrong time constraints")
 	}
 	if inTotal < par.Amount+par.TagAlongFee {

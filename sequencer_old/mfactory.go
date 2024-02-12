@@ -234,7 +234,7 @@ func (mf *milestoneFactory) selectInputs(targetTs ledger.Time, ownMs utangle_old
 
 	// pre-selects not orphaned and with suitable timestamp outputs, sorts by timestamp ascending
 	selected := mf.tipPool.filterAndSortOutputs(func(wOut utangle_old.WrappedOutput) bool {
-		if !ledger.ValidTimePace(wOut.Timestamp(), targetTs) {
+		if !ledger.ValidTransactionPace(wOut.Timestamp(), targetTs) {
 			return false
 		}
 		if mf.isConsumedInThePastPath(wOut, ownMs.VID) {

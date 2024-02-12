@@ -2,6 +2,7 @@ package tests
 
 import (
 	"context"
+	"crypto/ed25519"
 	"runtime"
 	"sync"
 	"testing"
@@ -25,13 +26,18 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
+var genesisPrivateKey ed25519.PrivateKey
+
+func init() {
+	genesisPrivateKey = ledger.InitWithTestingLedgerIDData()
+}
+
 func TestBasic(t *testing.T) {
 	t.Run("base", func(t *testing.T) {
 		//attacher.SetTraceOn()
-		par := ledger.DefaultIdentityData(testutil.GetTestingPrivateKey())
 
 		stateStore := common.NewInMemoryKVStore()
-		bootstrapChainID, root := multistate.InitStateStore(*par, stateStore)
+		bootstrapChainID, root := multistate.InitStateStore(*ledger.L().ID, stateStore)
 		dagAccess := dag.New(stateStore)
 		txBytesStore := txstore.NewSimpleTxBytesStore(common.NewInMemoryKVStore())
 		wrk := workflow.New(stateStore, txBytesStore, peering.NewPeersDummy(),
@@ -311,10 +317,9 @@ func TestConflicts1Attacher(t *testing.T) {
 		txBytes, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
 			SeqName:          "test",
 			ChainInput:       chainOut,
-			Timestamp:        ledger.MaxTime(inTS...).AddTicks(ledger.TransactionPaceInTicks),
+			Timestamp:        ledger.MaxTime(inTS...).AddTicks(ledger.TransactionPaceSequencer()),
 			AdditionalInputs: testData.conflictingOutputs,
 			PrivateKey:       testData.privKey,
-			TotalSupply:      0,
 		})
 		require.NoError(t, err)
 
@@ -357,7 +362,7 @@ func TestConflicts1Attacher(t *testing.T) {
 			inTS = append(inTS, o.Timestamp())
 		}
 
-		td := txbuilder.NewTransferData(testData.privKey, testData.addr, ledger.MaxTime(inTS...).AddTicks(ledger.TransactionPaceInTicks))
+		td := txbuilder.NewTransferData(testData.privKey, testData.addr, ledger.MaxTime(inTS...).AddTicks(ledger.TransactionPace()))
 		td.WithAmount(amount).
 			WithTargetLock(ledger.ChainLockFromChainID(testData.bootstrapChainID)).
 			MustWithInputs(testData.conflictingOutputs...)
@@ -376,10 +381,9 @@ func TestConflicts1Attacher(t *testing.T) {
 		txBytes, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
 			SeqName:          "test",
 			ChainInput:       chainOut,
-			Timestamp:        outToConsume.Timestamp().AddTicks(ledger.TransactionPaceInTicks),
+			Timestamp:        outToConsume.Timestamp().AddTicks(ledger.TransactionPaceSequencer()),
 			AdditionalInputs: []*ledger.OutputWithID{&outToConsume},
 			PrivateKey:       testData.privKey,
-			TotalSupply:      0,
 		})
 
 		require.NoError(t, err)
@@ -430,10 +434,9 @@ func TestConflicts1Attacher(t *testing.T) {
 		txBytes, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
 			SeqName:          "test",
 			ChainInput:       chainOut,
-			Timestamp:        ledger.MaxTime(inTS...).AddTicks(ledger.TransactionPaceInTicks),
+			Timestamp:        ledger.MaxTime(inTS...).AddTicks(ledger.TransactionPaceSequencer()),
 			AdditionalInputs: testData.terminalOutputs,
 			PrivateKey:       testData.privKey,
-			TotalSupply:      0,
 		})
 		require.NoError(t, err)
 
@@ -453,7 +456,6 @@ func TestConflicts1Attacher(t *testing.T) {
 		util.RequireErrorWith(t, vid.GetError(), "conflicts with existing consumers in the baseline state", testData.forkOutput.IDShort())
 	})
 	t.Run("long with sync", func(t *testing.T) {
-		ledger.SetTimeTickDuration(10 * time.Millisecond)
 		//attacher.SetTraceOn()
 		const (
 			nConflicts = 2
@@ -486,10 +488,9 @@ func TestConflicts1Attacher(t *testing.T) {
 		txBytes, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
 			SeqName:          "test",
 			ChainInput:       chainOut,
-			Timestamp:        ledger.MaxTime(inTS...).AddTicks(ledger.TransactionPaceInTicks),
+			Timestamp:        ledger.MaxTime(inTS...).AddTicks(ledger.TransactionPaceSequencer()),
 			AdditionalInputs: testData.terminalOutputs,
 			PrivateKey:       testData.privKey,
-			TotalSupply:      0,
 		})
 		require.NoError(t, err)
 
@@ -515,7 +516,6 @@ func TestConflicts1Attacher(t *testing.T) {
 }
 
 func TestConflictsNAttachersSeqStartTx(t *testing.T) {
-	ledger.SetTimeTickDuration(10 * time.Millisecond)
 	//attacher.SetTraceOn()
 	const (
 		nConflicts = 10
@@ -548,7 +548,6 @@ func TestConflictsNAttachersSeqStartTx(t *testing.T) {
 }
 
 func TestConflictsNAttachersSeqStartTxFee(t *testing.T) {
-	ledger.SetTimeTickDuration(10 * time.Millisecond)
 	//attacher.SetTraceOn()
 	const (
 		nConflicts = 5
@@ -606,7 +605,6 @@ func TestConflictsNAttachersSeqStartTxFee(t *testing.T) {
 }
 
 func TestConflictsNAttachersOneFork(t *testing.T) {
-	ledger.SetTimeTickDuration(10 * time.Millisecond)
 	const (
 		nConflicts = 2
 		nChains    = 2
@@ -642,7 +640,7 @@ func TestConflictsNAttachersOneFork(t *testing.T) {
 		chainIn[seqNr] = o.MustAsChainOutput()
 		ts = ledger.MaxTime(ts, o.Timestamp())
 	}
-	ts = ts.AddTicks(ledger.TransactionPaceInTicks)
+	ts = ts.AddTicks(ledger.TransactionPace())
 	txBytesSeq, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
 		SeqName:      "seq",
 		ChainInput:   chainIn[0],
@@ -672,7 +670,6 @@ func TestConflictsNAttachersOneFork(t *testing.T) {
 }
 
 func TestConflictsNAttachersOneForkBranches(t *testing.T) {
-	ledger.SetTimeTickDuration(10 * time.Millisecond)
 	//attacher.SetTraceOn()
 	const (
 		nConflicts = 2
@@ -736,7 +733,6 @@ func TestConflictsNAttachersOneForkBranches(t *testing.T) {
 }
 
 func TestConflictsNAttachersOneForkBranchesConflict(t *testing.T) {
-	ledger.SetTimeTickDuration(10 * time.Millisecond)
 	//attacher.SetTraceOn()
 	const (
 		nConflicts = 5
@@ -805,7 +801,7 @@ func TestConflictsNAttachersOneForkBranchesConflict(t *testing.T) {
 	txBytesConflicting, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
 		SeqName:      "dummy",
 		ChainInput:   tx0.SequencerOutput().MustAsChainOutput(),
-		Timestamp:    ts.AddTicks(ledger.TransactionPaceInTicks),
+		Timestamp:    ts.AddTicks(ledger.TransactionPace()),
 		Endorsements: util.List(tx1.ID()),
 		PrivateKey:   testData.privKeyAux,
 	})
@@ -829,7 +825,6 @@ func TestConflictsNAttachersOneForkBranchesConflict(t *testing.T) {
 }
 
 func TestSeqChains(t *testing.T) {
-	ledger.SetTimeTickDuration(10 * time.Millisecond)
 	t.Run("no pull order normal", func(t *testing.T) {
 		//attacher.SetTraceOn()
 		const (

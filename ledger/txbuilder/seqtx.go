@@ -33,13 +33,8 @@ type (
 		Endorsements []*ledger.TransactionID
 		// chain controller
 		PrivateKey ed25519.PrivateKey
-		//
-		TotalSupply uint64
-		// Inflate if true, it indicates to begin inflation constraints, if relevant. Otherwise 'continue' inflation constraints
-		// and in branched are added automatically and with auto-calculated values
-		Inflate bool
-		// by default branch is always inflated. This option supresses it
-		DoNotInflateBranch bool
+		// by default sequencer output is inflated. This option suppresses it
+		DoNotInflate bool
 		//
 		ReturnInputLoader bool
 	}
@@ -105,10 +100,16 @@ func MakeSequencerTransactionWithInputLoader(par MakeSequencerTransactionParams)
 		return nil, nil, errP("not enough tokens in the input")
 	}
 
-	chainOutAmount := totalInAmount - additionalOut // >= 0
+	var inflationAmount uint64
+	if !par.DoNotInflate {
+		inflationAmount = ledger.L().ID.InflationAmount(par.ChainInput.Timestamp(), par.Timestamp, par.ChainInput.Output.Amount())
+	}
+
+	chainOutAmount := totalInAmount + inflationAmount - additionalOut // >= 0
 
 	if chainOutAmount < ledger.L().Const().MinimumAmountOnSequencer() {
-		return nil, nil, errP("amount on the chain output is below minimum required for the sequencer")
+		return nil, nil, errP("amount on the chain output is below minimum required for the sequencer: %s",
+			util.GoTh(ledger.L().Const().MinimumAmountOnSequencer()))
 	}
 
 	totalOutAmount := chainOutAmount + additionalOut
@@ -135,7 +136,7 @@ func MakeSequencerTransactionWithInputLoader(par MakeSequencerTransactionParams)
 		o.PutAmount(chainOutAmount)
 		o.PutLock(par.ChainInput.Output.Lock())
 		// put chain constraint
-		chainOutConstraint := ledger.NewChainConstraint(seqID, chainPredIdx, chainInConstraintIdx, 0)
+		chainOutConstraint := ledger.NewChainConstraint(seqID, chainPredIdx, chainInConstraintIdx, 0, inflationAmount)
 		chainOutConstraintIdx, _ = o.PushConstraint(chainOutConstraint.Bytes())
 		// put sequencer constraint
 		sequencerConstraint := ledger.NewSequencerConstraint(chainOutConstraintIdx, totalOutAmount)
@@ -214,8 +215,8 @@ func MakeSequencerTransactionWithInputLoader(par MakeSequencerTransactionParams)
 		tsIn = ledger.MaxTime(tsIn, o.Timestamp())
 	}
 
-	if !ledger.ValidTimePace(tsIn, par.Timestamp) {
-		return nil, nil, errP("timestamp inconsistent with inputs")
+	if !ledger.ValidSequencerPace(tsIn, par.Timestamp) {
+		return nil, nil, errP("sequencer tx timestamp inconsistent with inputs")
 	}
 
 	_, err = txb.ProduceOutputs(par.AdditionalOutputs...)

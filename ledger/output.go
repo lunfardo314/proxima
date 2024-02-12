@@ -267,6 +267,14 @@ func (o *Output) ChainConstraint() (*ChainConstraint, byte) {
 	return nil, 0xff
 }
 
+func (o *Output) Inflation() uint64 {
+	chainConstraint, idx := o.ChainConstraint()
+	if idx == 0xff {
+		return 0
+	}
+	return chainConstraint.Inflation
+}
+
 func (o *Output) SequencerOutputData() (*SequencerOutputData, bool) {
 	chainConstraint, chainConstraintIndex := o.ChainConstraint()
 	if chainConstraintIndex == 0xff {

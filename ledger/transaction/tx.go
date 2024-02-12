@@ -313,7 +313,7 @@ func CheckTimePace() TxValidationOption {
 		var err error
 		ts := tx.Timestamp()
 		tx.ForEachInput(func(_ byte, oid *ledger.OutputID) bool {
-			if !ledger.ValidTimePace(oid.Timestamp(), ts) {
+			if !ledger.ValidTransactionPace(oid.Timestamp(), ts) {
 				err = fmt.Errorf("timestamp of input violates time pace constraint: %s", oid.StringShort())
 				return false
 			}
@@ -359,10 +359,11 @@ func ScanOutputs() TxValidationOption {
 
 		// TODO inflation
 
+		var o *ledger.Output
 		path := []byte{ledger.TxOutputs, 0}
 		for i := 0; i < numOutputs; i++ {
 			path[1] = byte(i)
-			_, amount, _, err = ledger.OutputFromBytesMain(tx.tree.BytesAtPath(path))
+			o, amount, _, err = ledger.OutputFromBytesMain(tx.tree.BytesAtPath(path))
 			if err != nil {
 				return fmt.Errorf("scanning output #%d: '%v'", i, err)
 			}
@@ -370,8 +371,9 @@ func ScanOutputs() TxValidationOption {
 				return fmt.Errorf("scanning output #%d: 'arithmetic overflow while calculating total of outputs'", i)
 			}
 			totalAmount += uint64(amount)
+			tx.totalInflation += o.Inflation()
 		}
-		if tx.totalAmount != totalAmount {
+		if tx.totalAmount != totalAmount+tx.totalInflation {
 			return fmt.Errorf("wrong total produced amount value")
 		}
 		return nil

@@ -19,11 +19,11 @@ const TraceTagIncrementalAttacher = "incAttach"
 var ErrPastConeNotSolidYet = errors.New("past cone not solid yet")
 
 func NewIncrementalAttacher(name string, env Environment, targetTs ledger.Time, extend vertex.WrappedOutput, endorse ...*vertex.WrappedTx) (*IncrementalAttacher, error) {
-	util.Assertf(ledger.ValidTimePace(extend.Timestamp(), targetTs), "ledger.ValidTimePace(extend.Timestamp(), targetTs)")
+	util.Assertf(ledger.ValidTransactionPace(extend.Timestamp(), targetTs), "ledger.ValidTransactionPace(extend.Timestamp(), targetTs)")
 	for _, endorseVID := range endorse {
 		util.Assertf(endorseVID.IsSequencerMilestone(), "NewIncrementalAttacher: endorseVID.IsSequencerMilestone()")
 		util.Assertf(targetTs.Slot() == endorseVID.Slot(), "NewIncrementalAttacher: targetTs.Slot() == endorseVid.Slot()")
-		util.Assertf(ledger.ValidTimePace(endorseVID.Timestamp(), targetTs), "NewIncrementalAttacher: ledger.ValidTimePace(endorseVID.Timestamp(), targetTs)")
+		util.Assertf(ledger.ValidTransactionPace(endorseVID.Timestamp(), targetTs), "NewIncrementalAttacher: ledger.ValidTransactionPace(endorseVID.Timestamp(), targetTs)")
 	}
 	env.Tracef(TraceTagIncrementalAttacher, "NewIncrementalAttacher(%s). extend: %s, endorse: {%s}",
 		name, extend.IDShortString, func() string { return vertex.VerticesLines(endorse).Join(",") })

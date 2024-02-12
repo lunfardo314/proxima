@@ -73,7 +73,7 @@ func (o *WrappedOutput) _isConsumedInThePastConeOf(vid *WrappedTx, visited set.S
 }
 
 func (o *WrappedOutput) ValidPace(targetTs ledger.Time) bool {
-	return ledger.ValidTimePace(o.Timestamp(), targetTs)
+	return ledger.ValidTransactionPace(o.Timestamp(), targetTs)
 }
 
 func (o *WrappedOutput) AmountAndLock() (uint64, ledger.Lock, error) {

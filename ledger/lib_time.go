@@ -231,9 +231,13 @@ func DiffTicks(t1, t2 Time) int64 {
 	return slots1 - slots2
 }
 
-// ValidTimePace checks if 2 timestamps have at least time pace slots in between
-func ValidTimePace(t1, t2 Time) bool {
+// ValidTransactionPace checks if 2 timestamps have at least time pace slots in between
+func ValidTransactionPace(t1, t2 Time) bool {
 	return DiffTicks(t2, t1) >= int64(TransactionPace())
+}
+
+func ValidSequencerPace(t1, t2 Time) bool {
+	return DiffTicks(t2, t1) >= int64(TransactionPaceSequencer())
 }
 
 func (t Time) AddTicks(s int) Time {

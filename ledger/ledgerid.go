@@ -368,7 +368,7 @@ func (id *IdentityData) InflationAmount(inTs, outTs Time, inAmount uint64) uint6
 	ret := id.ChainInflationAmount(inTs, outTs, inAmount)
 	if outTs.IsSlotBoundary() {
 		// for branch transactions fixed bonus
-		ret += +id.InitialBranchBonus // TODO branch bonus inflation
+		ret += +id.InitialBranchBonus // TODO branch bonus inflation nice to have
 	}
 	return ret
 }
