@@ -74,7 +74,7 @@ func BranchInflationAnnual() int64 {
 	return ledger.SlotsPerLedgerEpoch() * int64(ledger.L().ID.InitialBranchBonus)
 }
 
-func MaxAnnualInflationChain() int64 {
+func MaxInflationChainEpoch() int64 {
 	return InitialSlotInflationChain() * ledger.SlotsPerLedgerEpoch()
 }
 
@@ -91,7 +91,7 @@ func MinInflatableAmountPerSlot() int64 {
 }
 
 func InitialSlotInflationChain() int64 {
-	return (int64(ledger.L().ID.InitialSupply) * int64(ledger.TicksPerSlot())) / ChainInitialInflationFractionPerSlot()
+	return int64(ledger.L().ID.InitialSupply) / ChainInitialInflationFractionPerSlot()
 }
 
 func TestInflationCalculations2(t *testing.T) {
@@ -104,8 +104,8 @@ func TestInflationCalculations2(t *testing.T) {
 		MinInflatableAmountPerTick			: %s (%s PRXI)
 		MinInflatableAmountPerSlot			: %s (%s PRXI)
 		InitialSlotInflationChain				: %s (%s PRXI)
-		MaxAnnualInflationChain				: %s (%s PRXI)
-		MaxAnnualInflationChain %%			: %.2f%%
+		MaxInflationChainEpoch				: %s (%s PRXI)
+		MaxInflationChainEpoch %%			: %.2f%%
 		MaxAnnualInflationTotal %%			: %.2f%%
 `
 
@@ -118,13 +118,13 @@ func TestInflationCalculations2(t *testing.T) {
 		util.GoTh(MinInflatableAmountPerTick()), util.GoTh(MinInflatableAmountPerTick()/ledger.PRXI),
 		util.GoTh(MinInflatableAmountPerSlot()), util.GoTh(MinInflatableAmountPerSlot()/ledger.DustPerProxi),
 		util.GoTh(InitialSlotInflationChain()), util.GoTh(InitialSlotInflationChain()/ledger.DustPerProxi),
-		util.GoTh(MaxAnnualInflationChain()), util.GoTh(MaxAnnualInflationChain()/ledger.DustPerProxi),
-		percent(int(MaxAnnualInflationChain()), int(ledger.L().ID.InitialSupply)),
-		percent(int(MaxAnnualInflationChain()+BranchInflationAnnual()), int(ledger.L().ID.InitialSupply)),
+		util.GoTh(MaxInflationChainEpoch()), util.GoTh(MaxInflationChainEpoch()/ledger.DustPerProxi),
+		percent(int(MaxInflationChainEpoch()), int(ledger.L().ID.InitialSupply)),
+		percent(int(MaxInflationChainEpoch()+BranchInflationAnnual()), int(ledger.L().ID.InitialSupply)),
 	)
 }
 
-const simulateYears = 10
+const simulateYears = 20 // > 78 int64 overflows
 
 func chainFractionBySlot(s ledger.Slot) int {
 	return int(ledger.L().ID.InflationFractionBySlot(s))
@@ -144,14 +144,48 @@ type yearData struct {
 	supplyInSlot    []int
 }
 
-const capitalParticipatingShare = 100
+func TestReverseFractionEstimation(t *testing.T) {
+	const targetAnnualChainInflationPercentage = 79
+
+	absChainInflationEpoch := int((ledger.L().ID.InitialSupply * targetAnnualChainInflationPercentage) / 100)
+	absChainInflationPerSlot := absChainInflationEpoch / int(ledger.L().ID.SlotsPerLedgerEpoch)
+	absChainInflationPerTick := absChainInflationPerSlot / int(ledger.TicksPerSlot())
+	projectedFraction := int(ledger.L().ID.InitialSupply) / absChainInflationPerTick
+
+	actualInflationPerTick := int(ledger.L().ID.InitialSupply) / int(ledger.L().ID.ChainInflationPerTickFractionBase)
+	actualInflationPerEpoch := actualInflationPerTick * int(ledger.TicksPerSlot()) * int(ledger.SlotsPerLedgerEpoch())
+	actualInflationPerEpochPerc := 100 * float32(actualInflationPerEpoch) / float32(ledger.L().ID.InitialSupply)
+
+	template := `
+		targetInflation  		: %d%%
+		absChainInflationEpoch : %s
+        absChainInflationPerSlot: %s
+		absChainInflationPerTick: %s
+  		projectedFraction       : %s
+		currentFraction			: %s
+		actualInflationPerTick	: %s
+		actualInflationPerEpoch	: %s
+		actualInflationPerEpoch %% : %.2f %%
+`
+	t.Logf(template,
+		targetAnnualChainInflationPercentage,
+		util.GoTh(absChainInflationEpoch),
+		util.GoTh(absChainInflationPerSlot),
+		util.GoTh(absChainInflationPerTick),
+		util.GoTh(projectedFraction),
+		util.GoTh(ledger.L().ID.ChainInflationPerTickFractionBase),
+		util.GoTh(actualInflationPerTick),
+		util.GoTh(actualInflationPerEpoch),
+		actualInflationPerEpochPerc,
+	)
+}
 
 func TestInflationProjections(t *testing.T) {
 	t.Logf("initial branch bonus: %s", util.GoTh(ledger.L().ID.InitialBranchBonus))
-	t.Logf("branch inflation annual: %s (%.2f%%)",
-		util.GoTh(BranchInflationAnnual()), 100*float32(BranchInflationAnnual())/float32(ledger.L().ID.InitialSupply))
-	t.Logf("chain inflation annual: %s (%.2f%%)",
-		util.GoTh(MaxAnnualInflationChain()), 100*float32(MaxAnnualInflationChain())/float32(ledger.L().ID.InitialSupply))
+	t.Logf("initial branch inflation epoch: %s (%.2f%%)",
+		util.GoTh(BranchInflationAnnual()), percent(int(BranchInflationAnnual()), int(ledger.L().ID.InitialSupply)))
+	t.Logf("initial chain inflation epoch: %s (%.2f%%)",
+		util.GoTh(MaxInflationChainEpoch()), percent(int(MaxInflationChainEpoch()), int(ledger.L().ID.InitialSupply)))
 
 	years := make([]yearData, simulateYears)
 	var chainSlotInflation int
@@ -170,27 +204,25 @@ func TestInflationProjections(t *testing.T) {
 					chainSlotInflation = years[y-1].supplyInSlot[slotsPerEpoch-1] / chainFractionBySlot(slot) //  * capitalParticipatingShare / 100
 				}
 			} else {
-				chainSlotInflation = year.supplyInSlot[i-1] / chainFractionBySlot(slot) // * capitalParticipatingShare / 100
+				chainSlotInflation = (year.supplyInSlot[i-1] * ledger.L().ID.TicksPerSlot()) / chainFractionBySlot(slot) // * capitalParticipatingShare / 100
 				year.supplyInSlot[i] = year.supplyInSlot[i-1] + chainSlotInflation + int(ledger.L().ID.InitialBranchBonus)
 			}
 			year.chainInflation += chainSlotInflation
 			year.branchInflation += int(ledger.L().ID.InitialBranchBonus)
 		}
 		years[y] = year
-		//require.EqualValues(t, year.chainInflation+year.branchInflation, year.supplyInSlot[slotsPerEpoch-1]-year.supplyInSlot[0])
-		// no branch bonus inflation
-		//branchI = branchI + branchI*ledger.DefaultAnnualBranchInflationPromille/1000 // 4% indexing
 	}
 
+	t.Logf("ASSUMpTION: 100%% of ledger capital is inflated every year. More realistic assumtion would be 60%% - 70%%")
 	for y, year := range years {
 		slot := genesisSlot + ledger.Slot(y*int(slotsPerEpoch))
 		initSupply := year.supplyInSlot[0]
-		finalSupply := year.supplyInSlot[ledger.SlotsPerLedgerEpoch()-1]
-		annualInflation := finalSupply - initSupply
+		finalSupply := year.supplyInSlot[slotsPerEpoch-1]
+		inflationPerEpoch := finalSupply - initSupply
 		fmt.Printf("year %d (%s), supply: %s (%d bits) -> %s, inflation: %s, %.2f%%  chain inflation: %.2f%%, branch inflation %.2f%%\n",
 			y, util.GoTh(chainFractionBySlot(slot)),
 			util.GoTh(initSupply), requireBits(uint64(initSupply)), util.GoTh(finalSupply),
-			util.GoTh(annualInflation), percent(annualInflation, initSupply),
+			util.GoTh(inflationPerEpoch), percent(inflationPerEpoch, initSupply),
 			percent(year.chainInflation, initSupply), percent(year.branchInflation, initSupply),
 		)
 	}

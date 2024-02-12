@@ -39,8 +39,8 @@ const (
 
 	DefaultInitialBranchInflationBonus          = 20 * PRXI
 	DefaultAnnualBranchInflationPromille        = 40
-	DefaultInitialChainInflationFractionPerTick = 400_000_000
-	DefaultHalvingEpochs                        = 4
+	DefaultInitialChainInflationFractionPerTick = 500_000_000
+	DefaultHalvingEpochs                        = 5
 	DefaultChainInflationOpportunitySlots       = 12
 	DefaultVBCost                               = 1
 	DefaultTransactionPace                      = 10
