@@ -278,3 +278,12 @@ func (lib LibraryConst) SlotsPerEpoch() uint32 {
 	util.Assertf(ret < math.MaxUint32, "ret < math.MaxUint32")
 	return uint32(ret)
 }
+
+func (lib LibraryConst) MinimumAmountOnSequencer() uint64 {
+	bin, err := lib.EvalFromSource(nil, "constMinimumAmountOnSequencer")
+	util.AssertNoError(err)
+	ret := binary.BigEndian.Uint64(bin)
+	util.Assertf(ret < math.MaxUint32, "ret < math.MaxUint32")
+	return ret
+
+}

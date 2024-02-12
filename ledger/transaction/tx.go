@@ -356,12 +356,13 @@ func ScanOutputs() TxValidationOption {
 		var err error
 		var totalAmount uint64
 		var amount ledger.Amount
-		var o *ledger.Output
+
+		// TODO inflation
 
 		path := []byte{ledger.TxOutputs, 0}
 		for i := 0; i < numOutputs; i++ {
 			path[1] = byte(i)
-			o, amount, _, err = ledger.OutputFromBytesMain(tx.tree.BytesAtPath(path))
+			_, amount, _, err = ledger.OutputFromBytesMain(tx.tree.BytesAtPath(path))
 			if err != nil {
 				return fmt.Errorf("scanning output #%d: '%v'", i, err)
 			}
@@ -369,12 +370,6 @@ func ScanOutputs() TxValidationOption {
 				return fmt.Errorf("scanning output #%d: 'arithmetic overflow while calculating total of outputs'", i)
 			}
 			totalAmount += uint64(amount)
-			if ic, idx := o.InflationConstraint(); idx != 0xff {
-				if ic.Amount > math.MaxUint64-tx.totalInflation {
-					return fmt.Errorf("scanning output #%d: 'arithmetic overflow while calculating inflation'", i)
-				}
-				tx.totalInflation += ic.Amount
-			}
 		}
 		if tx.totalAmount != totalAmount {
 			return fmt.Errorf("wrong total produced amount value")

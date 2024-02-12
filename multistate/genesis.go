@@ -14,7 +14,6 @@ import (
 // Writes initial supply and origin stem outputs. Plus writes root record into the DB
 // Returns root commitment to the genesis ledger state and genesis chainID
 func InitStateStore(par ledger.IdentityData, store global.StateStore) (ledger.ChainID, common.VCommitment) {
-	ledger.Init(&par)
 	batch := store.BatchedWriter()
 	emptyRoot := immutable.MustInitRoot(batch, ledger.CommitmentModel, par.Bytes())
 	err := batch.Commit()

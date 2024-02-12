@@ -100,14 +100,6 @@ func MakeSequencerTransactionWithInputLoader(par MakeSequencerTransactionParams)
 	}
 	chainInAmount := par.ChainInput.Output.Amount()
 
-	// decide if to put 'inflation' constraint and what amount
-	putInflationConstraint := false
-	inflateBy := uint64(0)
-
-	_, inInflationIdx := par.ChainInput.Output.InflationConstraint()
-	continueInflationOnTheSlot :=
-		inInflationIdx != 0xff && !par.ChainInput.ID.IsBranchTransaction() && par.Timestamp.Slot() == par.ChainInput.Timestamp().Slot()
-
 	totalInAmount := chainInAmount + additionalIn
 	if totalInAmount < additionalOut {
 		return nil, nil, errP("not enough tokens in the input")
@@ -115,41 +107,12 @@ func MakeSequencerTransactionWithInputLoader(par MakeSequencerTransactionParams)
 
 	chainOutAmount := totalInAmount - additionalOut // >= 0
 
-	switch {
-	case par.Timestamp.Tick() == 0 && !par.DoNotInflateBranch:
-		// always put inflation constraint to the branch
-		putInflationConstraint = true
-		inflateBy = ledger.InflationAmountBranchFixed
-		chainOutAmount += inflateBy
-	case par.Timestamp.Slot() == par.ChainInput.Timestamp().Slot():
-		if continueInflationOnTheSlot {
-			// there is an inflation constraint in the predecessor
-			// will put with inflation amount 0 until next slot
-			putInflationConstraint = true
-			if chainOutAmount < chainInAmount {
-				// broken inflation constraint
-				return nil, nil, errP("after inflation, chain balance cannot decrease on the same slot")
-			}
-		} else {
-			// there is no inflation constraint in the predecessor on the same slot.
-			// Put initial inflation constraint with calculated amount. Satisfy inflation constraint
-			if par.Inflate {
-				// put initial inflation amount
-				inflateBy = chainOutAmount / ledger.InflationAmountPerChainFraction
-				chainOutAmount += inflateBy
-				putInflationConstraint = inflateBy > 0
-				if putInflationConstraint {
-					util.Assertf((chainOutAmount-inflateBy)/ledger.InflationAmountPerChainFraction == inflateBy, "inflation amount validity check failed")
-				}
-			}
-		}
-	}
-	if chainOutAmount < ledger.MinimumAmountOnSequencer {
+	if chainOutAmount < ledger.L().Const().MinimumAmountOnSequencer() {
 		return nil, nil, errP("amount on the chain output is below minimum required for the sequencer")
 	}
 
 	totalOutAmount := chainOutAmount + additionalOut
-	util.Assertf(totalInAmount+inflateBy == totalOutAmount, "totalInAmount + inflateBy == totalOutAmount")
+	util.Assertf(totalInAmount == totalOutAmount, "totalInAmount == totalOutAmount")
 
 	// make chain input/output
 	chainPredIdx, err := txb.ConsumeOutput(par.ChainInput.Output, par.ChainInput.ID)
@@ -166,7 +129,7 @@ func MakeSequencerTransactionWithInputLoader(par MakeSequencerTransactionParams)
 		seqID = ledger.OriginChainID(&par.ChainInput.ID)
 	}
 
-	var chainOutConstraintIdx, inflationOutConstraintIdx byte
+	var chainOutConstraintIdx byte
 
 	chainOut := ledger.NewOutput(func(o *ledger.Output) {
 		o.PutAmount(chainOutAmount)
@@ -195,11 +158,6 @@ func MakeSequencerTransactionWithInputLoader(par MakeSequencerTransactionParams)
 		}
 		idxMsData, _ := o.PushConstraint(outData.AsConstraint().Bytes())
 		util.Assertf(idxMsData == MilestoneDataFixedIndex, "idxMsData == MilestoneDataFixedIndex")
-
-		if putInflationConstraint {
-			inflationConstraint := ledger.NewInflationConstraint(chainOutConstraintIdx, inflateBy)
-			inflationOutConstraintIdx, _ = o.PushConstraint(inflationConstraint.Bytes())
-		}
 	})
 
 	chainOutIndex, err := txb.ProduceOutput(chainOut)
@@ -208,9 +166,6 @@ func MakeSequencerTransactionWithInputLoader(par MakeSequencerTransactionParams)
 	}
 	// unlock chain input (chain constraint unlock + inflation (optionally)
 	txb.PutUnlockParams(chainPredIdx, chainInConstraintIdx, ledger.NewChainUnlockParams(chainOutIndex, chainOutConstraintIdx, 0))
-	if putInflationConstraint && continueInflationOnTheSlot {
-		txb.PutUnlockParams(chainPredIdx, inInflationIdx, ledger.NewInflationConstraintUnlockParams(inflationOutConstraintIdx))
-	}
 
 	// make stem input/output if it is a branch transaction
 	stemOutputIndex := byte(0xff)

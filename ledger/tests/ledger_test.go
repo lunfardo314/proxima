@@ -23,7 +23,6 @@ import (
 )
 
 func TestOutput(t *testing.T) {
-	ledger.InitWithTestingLedgerIDData()
 	rnd := rand.New(rand.NewSource(time.Now().UnixNano()))
 
 	pubKey, _, err := ed25519.GenerateKey(rnd)
@@ -63,7 +62,7 @@ func TestOutput(t *testing.T) {
 
 func TestMainConstraints(t *testing.T) {
 	t.Run("faucet", func(t *testing.T) {
-		u := utxodb.NewUTXODB(true)
+		u := utxodb.NewUTXODB(genesisPrivateKey, true)
 		_, _, addr := u.GenerateAddress(1)
 		err := u.TokensFromFaucet(addr, 10_000)
 		require.NoError(t, err)
@@ -73,7 +72,7 @@ func TestMainConstraints(t *testing.T) {
 		require.EqualValues(t, 1, u.NumUTXOs(addr))
 	})
 	t.Run("simple transfer", func(t *testing.T) {
-		u := utxodb.NewUTXODB(true)
+		u := utxodb.NewUTXODB(genesisPrivateKey, true)
 		privKey1, _, addr1 := u.GenerateAddress(1)
 		err := u.TokensFromFaucet(addr1, 10000)
 		require.NoError(t, err)
@@ -95,7 +94,7 @@ func TestMainConstraints(t *testing.T) {
 		require.EqualValues(t, 1, u.NumUTXOs(addrNext))
 	})
 	t.Run("transfer wrong key", func(t *testing.T) {
-		u := utxodb.NewUTXODB(true)
+		u := utxodb.NewUTXODB(genesisPrivateKey, true)
 		privKey1, _, addr1 := u.GenerateAddress(1)
 		err := u.TokensFromFaucet(addr1, 10000)
 		require.NoError(t, err)
@@ -113,7 +112,7 @@ func TestMainConstraints(t *testing.T) {
 		easyfl.RequireErrorWith(t, err, "addressED25519 unlock failed")
 	})
 	t.Run("not enough deposit", func(t *testing.T) {
-		u := utxodb.NewUTXODB(true)
+		u := utxodb.NewUTXODB(genesisPrivateKey, true)
 		privKey1, _, addr1 := u.GenerateAddress(1)
 		err := u.TokensFromFaucet(addr1, 10000)
 		require.NoError(t, err)
@@ -132,7 +131,7 @@ func TestMainConstraints(t *testing.T) {
 
 func TestTimelock(t *testing.T) {
 	t.Run("time lock 1", func(t *testing.T) {
-		u := utxodb.NewUTXODB(true)
+		u := utxodb.NewUTXODB(genesisPrivateKey, true)
 		privKey0, _, addr0 := u.GenerateAddress(0)
 		err := u.TokensFromFaucet(addr0, 10000)
 		require.NoError(t, err)
@@ -204,7 +203,7 @@ func TestTimelock(t *testing.T) {
 		require.EqualValues(t, 200, u.Balance(addr1))
 	})
 	t.Run("time lock 2", func(t *testing.T) {
-		u := utxodb.NewUTXODB(true)
+		u := utxodb.NewUTXODB(genesisPrivateKey, true)
 
 		privKey0, _, addr0 := u.GenerateAddress(0)
 		err := u.TokensFromFaucet(addr0, 10000)
@@ -259,7 +258,7 @@ func TestTimelock(t *testing.T) {
 }
 
 func TestDeadlineLock(t *testing.T) {
-	u := utxodb.NewUTXODB(true)
+	u := utxodb.NewUTXODB(genesisPrivateKey, true)
 	privKey0, pubKey0, addr0 := u.GenerateAddress(0)
 	err := u.TokensFromFaucet(addr0, 10000)
 	require.NoError(t, err)
@@ -303,7 +302,7 @@ func TestDeadlineLock(t *testing.T) {
 }
 
 func TestSenderAddressED25519(t *testing.T) {
-	u := utxodb.NewUTXODB(true)
+	u := utxodb.NewUTXODB(genesisPrivateKey, true)
 	privKey0, _, addr0 := u.GenerateAddress(0)
 	err := u.TokensFromFaucet(addr0, 10000)
 	require.NoError(t, err)
@@ -339,7 +338,7 @@ func TestChain1(t *testing.T) {
 	var u *utxodb.UTXODB
 	var addr0 ledger.AddressED25519
 	initTest := func() {
-		u = utxodb.NewUTXODB(true)
+		u = utxodb.NewUTXODB(genesisPrivateKey, true)
 		privKey0, _, addr0 = u.GenerateAddress(0)
 		err := u.TokensFromFaucet(addr0, 10000)
 		require.NoError(t, err)
@@ -488,7 +487,7 @@ func TestChain2(t *testing.T) {
 	var u *utxodb.UTXODB
 	var addr0 ledger.AddressED25519
 	initTest := func() {
-		u = utxodb.NewUTXODB(true)
+		u = utxodb.NewUTXODB(genesisPrivateKey, true)
 		privKey0, _, addr0 = u.GenerateAddress(0)
 		err := u.TokensFromFaucet(addr0, 10000)
 		require.NoError(t, err)
@@ -650,7 +649,7 @@ func TestChain3(t *testing.T) {
 	var u *utxodb.UTXODB
 	var addr0 ledger.AddressED25519
 	initTest := func() {
-		u = utxodb.NewUTXODB(true)
+		u = utxodb.NewUTXODB(genesisPrivateKey, true)
 		privKey0, _, addr0 = u.GenerateAddress(0)
 		err := u.TokensFromFaucet(addr0, 10000)
 		require.NoError(t, err)
@@ -729,7 +728,7 @@ func TestChainLock(t *testing.T) {
 	var chainAddr ledger.ChainLock
 
 	initTest := func() {
-		u = utxodb.NewUTXODB(true)
+		u = utxodb.NewUTXODB(genesisPrivateKey, true)
 		privKey0, _, addr0 = u.GenerateAddress(0)
 		err := u.TokensFromFaucet(addr0, 10000)
 		require.NoError(t, err)
@@ -862,7 +861,7 @@ func TestHashUnlock(t *testing.T) {
 	libHash := blake2b.Sum256(libBin)
 	t.Logf("library hash: %s", easyfl.Fmt(libHash[:]))
 
-	u := utxodb.NewUTXODB(true)
+	u := utxodb.NewUTXODB(genesisPrivateKey, true)
 	privKey0, _, addr0 := u.GenerateAddress(0)
 	err = u.TokensFromFaucet(addr0, 10000)
 	require.NoError(t, err)
@@ -926,7 +925,7 @@ func TestHashUnlock(t *testing.T) {
 }
 
 func TestRoyalties(t *testing.T) {
-	u := utxodb.NewUTXODB(true)
+	u := utxodb.NewUTXODB(genesisPrivateKey, true)
 	privKey0, _, addr0 := u.GenerateAddress(0)
 	err := u.TokensFromFaucet(addr0, 10000)
 	require.NoError(t, err)
@@ -993,7 +992,7 @@ func TestRoyalties(t *testing.T) {
 }
 
 func TestImmutable(t *testing.T) {
-	u := utxodb.NewUTXODB(true)
+	u := utxodb.NewUTXODB(genesisPrivateKey, true)
 	privKey, _, addr0 := u.GenerateAddress(0)
 	err := u.TokensFromFaucet(addr0, 10000)
 	require.NoError(t, err)

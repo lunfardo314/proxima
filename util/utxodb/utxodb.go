@@ -45,18 +45,17 @@ const (
 	TokensFromFaucetDefault = uint64(1_000_000)
 )
 
-func NewUTXODB(trace ...bool) *UTXODB {
-	genesisPrivateKey := testutil.GetTestingPrivateKey()
-	genesisPubKey := genesisPrivateKey.Public().(ed25519.PublicKey)
+func NewUTXODB(genesisPrivateKey ed25519.PrivateKey, trace ...bool) *UTXODB {
+	genesisPubKey := ledger.L().ID.GenesisControllerPublicKey
 	genesisAddr := ledger.AddressED25519FromPublicKey(genesisPubKey)
+	util.Assertf(ledger.AddressED25519MatchesPrivateKey(genesisAddr, genesisPrivateKey), "private key does not match controller address")
 
 	stateStore := common.NewInMemoryKVStore()
-
-	initLedgerParams := ledger.DefaultIdentityData(genesisPrivateKey, startupSlot)
 
 	faucetPrivateKey := testutil.GetTestingPrivateKey(31415926535)
 	faucetAddress := ledger.AddressED25519FromPrivateKey(faucetPrivateKey)
 
+	initLedgerParams := ledger.L().ID
 	originChainID, genesisRoot := multistate.InitStateStore(*initLedgerParams, stateStore)
 	rdr := multistate.MustNewSugaredReadableState(stateStore, genesisRoot)
 
@@ -75,13 +74,13 @@ func NewUTXODB(trace ...bool) *UTXODB {
 
 	ret := &UTXODB{
 		state:                     updatable,
-		lastSlot:                  startupSlot,
+		lastSlot:                  initLedgerParams.GenesisSlot,
 		genesisChainID:            originChainID,
 		supply:                    initLedgerParams.InitialSupply,
 		genesisPrivateKey:         genesisPrivateKey,
 		genesisPublicKey:          genesisPubKey,
 		genesisAddress:            genesisAddr,
-		genesisSlot:               startupSlot,
+		genesisSlot:               initLedgerParams.GenesisSlot,
 		faucetPrivateKey:          faucetPrivateKey,
 		faucetAddress:             faucetAddress,
 		trace:                     len(trace) > 0 && trace[0],

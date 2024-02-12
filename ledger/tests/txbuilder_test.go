@@ -15,7 +15,7 @@ func TestBasics(t *testing.T) {
 	t.Run("utxodb 1", func(t *testing.T) {
 		//transaction.SetPrintEasyFLTraceOnFail(true)
 
-		u := utxodb.NewUTXODB(true)
+		u := utxodb.NewUTXODB(genesisPrivateKey, true)
 		priv, pub := u.GenesisKeys()
 		t.Logf("orig priv key: %s", easyfl.Fmt(priv))
 		t.Logf("orig pub key: %s", easyfl.Fmt(pub))
@@ -42,7 +42,7 @@ func TestBasics(t *testing.T) {
 
 	})
 	t.Run("utxodb 2", func(t *testing.T) {
-		u := utxodb.NewUTXODB(true)
+		u := utxodb.NewUTXODB(genesisPrivateKey, true)
 		priv, pub := u.GenesisKeys()
 		t.Logf("orig priv key: %s", easyfl.Fmt(priv))
 		t.Logf("orig pub key: %s", easyfl.Fmt(pub))
@@ -66,7 +66,7 @@ func TestBasics(t *testing.T) {
 		require.EqualValues(t, 1, u.NumUTXOs(addr))
 	})
 	t.Run("utxodb 3 compress outputs", func(t *testing.T) {
-		u := utxodb.NewUTXODB(true)
+		u := utxodb.NewUTXODB(genesisPrivateKey, true)
 		priv, pub := u.GenesisKeys()
 		t.Logf("orig priv key: %s", easyfl.Fmt(priv))
 		t.Logf("orig pub key: %s", easyfl.Fmt(pub))
@@ -108,7 +108,7 @@ func TestBasics(t *testing.T) {
 		require.EqualValues(t, 1, u.NumUTXOs(addr))
 	})
 	t.Run("utxodb too many inputs", func(t *testing.T) {
-		u := utxodb.NewUTXODB(true)
+		u := utxodb.NewUTXODB(genesisPrivateKey, true)
 		priv, pub := u.GenesisKeys()
 		t.Logf("orig priv key: %s", easyfl.Fmt(priv))
 		t.Logf("orig pub key: %s", easyfl.Fmt(pub))
@@ -136,7 +136,7 @@ func TestBasics(t *testing.T) {
 		util.RequireErrorWith(t, err, "exceeded max number of consumed outputs")
 	})
 	t.Run("utxodb fan out outputs", func(t *testing.T) {
-		u := utxodb.NewUTXODB(true)
+		u := utxodb.NewUTXODB(genesisPrivateKey, true)
 		priv, pub := u.GenesisKeys()
 		t.Logf("orig priv key: %s", easyfl.Fmt(priv))
 		t.Logf("orig pub key: %s", easyfl.Fmt(pub))
@@ -180,7 +180,7 @@ func TestBasics(t *testing.T) {
 		//require.EqualValues(t, addr1, snd)
 	})
 	t.Run("multi faucet", func(t *testing.T) {
-		u := utxodb.NewUTXODB(true)
+		u := utxodb.NewUTXODB(genesisPrivateKey, true)
 		_, _, addrs := u.GenerateAddressesWithFaucetAmount(1, 255, 10_000)
 		for i := range addrs {
 			require.EqualValues(t, 10000, u.Balance(addrs[i]))
@@ -189,7 +189,7 @@ func TestBasics(t *testing.T) {
 }
 
 func TestManyInputs(t *testing.T) {
-	u := utxodb.NewUTXODB(true)
+	u := utxodb.NewUTXODB(genesisPrivateKey, true)
 	const (
 		numAddr    = 256
 		initAmount = 10_000
