@@ -46,3 +46,11 @@ func InitWithTestingLedgerIDData(seed ...int) ed25519.PrivateKey {
 	Init(id)
 	return pk
 }
+
+func GenesisSlot() Slot {
+	return L().Const().GenesisSlot()
+}
+
+func TicksPerSlot() byte {
+	return L().Const().TicksPerSlot()
+}

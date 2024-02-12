@@ -1,22 +1,21 @@
-package ledger
+package tests
 
 import (
 	"testing"
 
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util/lazybytes"
 	"github.com/stretchr/testify/require"
 )
 
 func TestRawOutputBytes(t *testing.T) {
-	pk := InitWithTestingLedgerIDData()
-
-	o := NewOutput(func(o *Output) {
-		o.WithAmount(1337).WithLock(AddressED25519FromPrivateKey(pk))
+	o := ledger.NewOutput(func(o *ledger.Output) {
+		o.WithAmount(1337).WithLock(ledger.AddressED25519FromPrivateKey(genesisPrivateKey))
 	})
 
 	rawBytes := o.Bytes()
 
-	o, err := OutputFromBytesReadOnly(rawBytes)
+	o, err := ledger.OutputFromBytesReadOnly(rawBytes)
 	require.NoError(t, err)
 
 	t.Logf("Decompiled:\n%s", o.ToString())

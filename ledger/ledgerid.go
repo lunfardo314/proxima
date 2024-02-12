@@ -381,7 +381,7 @@ func (id *IdentityData) ChainInflationAmount(inTs, outTs Time, inAmount uint64) 
 	util.Assertf(uint64(ticks) <= math.MaxUint64/inAmount, "ChainInflationAmount: arithmetic overflow ")
 
 	if id._insideInflationOpportunityWindow(inTs, outTs) {
-		return uint64(ticks) * inAmount / id._inflationFractionBySlot(inTs.Slot())
+		return uint64(ticks) * inAmount / id.InflationFractionBySlot(inTs.Slot())
 	}
 	// non-zero inflation is only within the window of opportunity
 	// to disincentivize "lazy whales"
@@ -404,7 +404,7 @@ func (id *IdentityData) _halvingEpoch(epochFromGenesis uint64) uint64 {
 	return uint64(id.ChainInflationHalvingEpochs)
 }
 
-func (id *IdentityData) _inflationFractionBySlot(slotIn Slot) uint64 {
+func (id *IdentityData) InflationFractionBySlot(slotIn Slot) uint64 {
 	util.Assertf(slotIn >= id.GenesisSlot, "slot >= id.GenesisSlot")
 	return id.ChainInflationPerTickFractionBase * (1 << id._halvingEpoch(id._epochFromGenesis(slotIn)))
 }
