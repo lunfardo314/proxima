@@ -86,16 +86,16 @@ func TestTime(t *testing.T) {
 		require.EqualValues(t, ts2, tsBack)
 
 		d1 := ledger.DiffTicks(ts2, ts1)
-		t.Logf("diff slots %s - %s = %d", ts2.String(), ts1.String(), d1)
+		t.Logf("diff supplyInSlot %s - %s = %d", ts2.String(), ts1.String(), d1)
 		require.EqualValues(t, 1, d1)
 		d2 := ledger.DiffTicks(ts1, ts2)
-		t.Logf("diff slots %s - %s = %d", ts1.String(), ts2.String(), d2)
+		t.Logf("diff supplyInSlot %s - %s = %d", ts1.String(), ts2.String(), d2)
 		require.EqualValues(t, d2, -1)
 
 		nowis = nowis.Add(99 * ledger.TickDuration())
 		ts3 := ledger.TimeFromRealTime(nowis)
 		d3 := ledger.DiffTicks(ts3, ts1)
-		t.Logf("diff slots %s - %s = %d", ts3.String(), ts1.String(), d3)
+		t.Logf("diff supplyInSlot %s - %s = %d", ts3.String(), ts1.String(), d3)
 		require.EqualValues(t, d3, 100)
 	})
 	t.Run("7", func(t *testing.T) {

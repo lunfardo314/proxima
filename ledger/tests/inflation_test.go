@@ -45,7 +45,7 @@ func TestInflation(t *testing.T) {
 	t.Run("4", func(t *testing.T) {
 		t.Logf("genesis slot: %d", ledger.GenesisSlot())
 		t.Logf("halving epochs: %d", ledger.L().Const().HalvingEpochs())
-		t.Logf("slots per epoch: %d", ledger.L().Const().SlotsPerEpoch())
+		t.Logf("supplyInSlot per epoch: %d", ledger.L().Const().SlotsPerEpoch())
 		t.Logf("seconds per year: %d", 24*365*60*60)
 
 		// TODO wrong test. Does not fall into the opportunity window

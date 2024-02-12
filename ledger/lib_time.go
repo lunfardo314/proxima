@@ -27,7 +27,7 @@ func SlotsPerHour() int {
 }
 
 func TicksPerYear() int {
-	return int(SlotsPerLedgerYear() * DefaultTicksPerSlot)
+	return int(SlotsPerLedgerEpoch() * DefaultTicksPerSlot)
 }
 
 func TicksPerHour() int {
@@ -46,7 +46,7 @@ func SlotDuration() time.Duration {
 	return DefaultTicksPerSlot * TickDuration()
 }
 
-func SlotsPerLedgerYear() int64 {
+func SlotsPerLedgerEpoch() int64 {
 	return int64(L().ID.SlotsPerLedgerEpoch)
 }
 
