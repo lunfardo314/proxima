@@ -53,7 +53,13 @@ func (st *StemLock) UnlockableWith(_ AccountID, _ ...Time) bool {
 	return true
 }
 
-func initStemLockConstraint() {
+func addStemLockConstraint(lib *Library) {
+	lib.extendWithConstraint(StemLockName, stemLockSource, func(data []byte) (Constraint, error) {
+		return StemLockFromBytes(data)
+	})
+}
+
+func initTestStemLockConstraint() {
 	L().MustExtendMany(stemLockSource)
 	txid := RandomTransactionID(true, true)
 	predID := NewOutputID(&txid, 42)
@@ -63,11 +69,8 @@ func initStemLockConstraint() {
 	stem, err := StemLockFromBytes(example.Bytes())
 	util.AssertNoError(err)
 	util.Assertf(stem.PredecessorOutputID == predID, "stem.PredecessorOutputID == predID")
-	prefix, err := L().ParseBytecodePrefix(example.Bytes())
+	_, err = L().ParseBytecodePrefix(example.Bytes())
 	util.AssertNoError(err)
-	registerConstraint(StemLockName, prefix, func(data []byte) (Constraint, error) {
-		return StemLockFromBytes(data)
-	})
 }
 
 func StemLockFromBytes(data []byte) (*StemLock, error) {

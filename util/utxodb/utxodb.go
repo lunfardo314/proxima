@@ -45,8 +45,6 @@ const (
 	TokensFromFaucetDefault = uint64(1_000_000)
 )
 
-var startupSlot = ledger.TimeNow().Slot()
-
 func NewUTXODB(trace ...bool) *UTXODB {
 	genesisPrivateKey := testutil.GetTestingPrivateKey()
 	genesisPubKey := genesisPrivateKey.Public().(ed25519.PublicKey)

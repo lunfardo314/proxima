@@ -11,7 +11,6 @@ import (
 	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/testutil"
-	"github.com/lunfardo314/unitrie/common"
 )
 
 type (
@@ -54,13 +53,6 @@ func newLibrary() *Library {
 		constraintNames:    make(map[string]struct{}),
 	}
 	return ret
-}
-
-var librarySingleton *Library
-
-func L() *Library {
-	common.Assert(librarySingleton != nil, "ledger constraint library not initialized")
-	return librarySingleton
 }
 
 func (lib *Library) Const() LibraryConst {
@@ -107,19 +99,6 @@ func (lib *Library) extendWithBaseConstants(id *IdentityData) {
 	lib.Extend("timeSlotFromTimeSlotPrefix", "bitwiseAND($0, 0x3fffffff)")
 	lib.Extend("timeTickFromTimestamp", "byte($0, timeSlotSizeBytes)")
 	lib.Extend("timestamp", "concat(mustValidTimeSlot($0),mustValidTimeTick($1))")
-}
-
-func Init(id *IdentityData) {
-	librarySingleton = newLibrary()
-	fmt.Printf("------ Base EasyFL library:\n")
-	librarySingleton.PrintLibraryStats()
-	defer func() {
-		fmt.Printf("------ Extended EasyFL library:\n")
-		librarySingleton.PrintLibraryStats()
-	}()
-
-	librarySingleton.initNoTxConstraints(id)
-	extendWithConstraints()
 }
 
 func (lib *Library) initNoTxConstraints(id *IdentityData) *Library {
@@ -247,13 +226,6 @@ func (id *IdentityData) SetTickDuration(d time.Duration) {
 	id.TickDuration = d
 	id.GenesisSlot = Slot(time.Now().Sub(id.BaselineTime)/d) - 1
 	id.SlotsPerLedgerEpoch = uint32((24 * 365 * time.Hour) / id.SlotDuration())
-}
-
-// InitWithTestingLedgerIDData for testing
-func InitWithTestingLedgerIDData(seed ...int) ed25519.PrivateKey {
-	id, pk := GetTestingIdentityData(seed...)
-	Init(id)
-	return pk
 }
 
 // Library constants

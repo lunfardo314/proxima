@@ -64,8 +64,14 @@ func (cl RoyaltiesED25519) String() string {
 	return cl.source()
 }
 
-func initRoyaltiesED25519Constraint() {
-	L().MustExtendMany(RoyaltiesED25519Source)
+func addRoyaltiesED25519Constraint(lib *Library) {
+	lib.extendWithConstraint(RoyaltiesED25519Name, royaltiesED25519Source, func(data []byte) (Constraint, error) {
+		return RoyaltiesED25519FromBytes(data)
+	})
+}
+
+func initTestRoyaltiesED25519Constraint() {
+	L().MustExtendMany(royaltiesED25519Source)
 
 	addr0 := AddressED25519Null()
 	example := NewRoyalties(addr0, 1337)
@@ -74,15 +80,11 @@ func initRoyaltiesED25519Constraint() {
 	util.Assertf(EqualConstraints(royaltiesBack.Address, addr0), "inconsistency "+RoyaltiesED25519Name)
 	util.Assertf(royaltiesBack.Amount == 1337, "inconsistency "+RoyaltiesED25519Name)
 
-	prefix, err := L().ParseBytecodePrefix(example.Bytes())
+	_, err = L().ParseBytecodePrefix(example.Bytes())
 	util.AssertNoError(err)
-
-	registerConstraint(RoyaltiesED25519Name, prefix, func(data []byte) (Constraint, error) {
-		return RoyaltiesED25519FromBytes(data)
-	})
 }
 
-const RoyaltiesED25519Source = `
+const royaltiesED25519Source = `
 // constraint royaltiesED25519($0, $1) enforces sending at least amount $1 to the address $0 
 // The 1-byte long unlock parameters of the constraint must point to the output which sends at least specified amount of 
 // tokens to the lock constraint specified by $0

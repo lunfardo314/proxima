@@ -107,23 +107,25 @@ func (a AddressED25519) AsLock() Lock {
 	return a
 }
 
-func initAddressED25519Constraint() {
-	L().MustExtendMany(AddressED25519ConstraintSource)
+func addAddressED25519Constraint(lib *Library) {
+	lib.extendWithConstraint(AddressED25519Name, addressED25519ConstraintSource, func(data []byte) (Constraint, error) {
+		return AddressED25519FromBytes(data)
+	})
+}
+
+func initTestAddressED25519Constraint() {
+	L().MustExtendMany(addressED25519ConstraintSource)
 
 	example := AddressED25519Null()
 	addrBack, err := AddressED25519FromBytes(example.Bytes())
 	util.AssertNoError(err)
 	util.Assertf(EqualConstraints(addrBack, AddressED25519Null()), "inconsistency "+AddressED25519Name)
 
-	prefix, err := L().ParseBytecodePrefix(example.Bytes())
+	_, err = L().ParseBytecodePrefix(example.Bytes())
 	util.AssertNoError(err)
-
-	registerConstraint(AddressED25519Name, prefix, func(data []byte) (Constraint, error) {
-		return AddressED25519FromBytes(data)
-	})
 }
 
-const AddressED25519ConstraintSource = `
+const addressED25519ConstraintSource = `
 
 // ED25519 address constraint wraps 32 bytes address, the blake2b hash of the public key
 // For example expression 'addressED25519(0x010203040506..)' used as constraint in the output makes 

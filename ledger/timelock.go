@@ -23,8 +23,8 @@ func timelock: and(
 `
 
 const (
-	timelockName     = "timelock"
-	timelockTemplate = timelockName + "(u32/%d)"
+	TimelockName     = "timelock"
+	timelockTemplate = TimelockName + "(u32/%d)"
 )
 
 type Timelock Slot
@@ -36,7 +36,7 @@ func NewTimelock(timeSlot Slot) Timelock {
 }
 
 func (t Timelock) Name() string {
-	return timelockName
+	return TimelockName
 }
 
 func (t Timelock) Bytes() []byte {
@@ -44,7 +44,7 @@ func (t Timelock) Bytes() []byte {
 }
 
 func (t Timelock) String() string {
-	return fmt.Sprintf("%s(%d)", timelockName, t)
+	return fmt.Sprintf("%s(%d)", TimelockName, t)
 }
 
 func (t Timelock) source() string {
@@ -56,7 +56,7 @@ func TimelockFromBytes(data []byte) (Timelock, error) {
 	if err != nil {
 		return NilTimelock, err
 	}
-	if sym != timelockName {
+	if sym != TimelockName {
 		return NilTimelock, fmt.Errorf("not a timelock constraint")
 	}
 	tlBin := easyfl.StripDataPrefix(args[0])
@@ -67,19 +67,21 @@ func TimelockFromBytes(data []byte) (Timelock, error) {
 	return Timelock(ret), nil
 }
 
-func initTimelockConstraint() {
+func addTimeLockConstraint(lib *Library) {
+	lib.extendWithConstraint(TimelockName, timelockSource, func(data []byte) (Constraint, error) {
+		return TimelockFromBytes(data)
+	})
+}
+
+func initTestTimelockConstraint() {
 	L().MustExtendMany(timelockSource)
 
 	example := NewTimelock(1337)
-	sym, prefix, args, err := L().ParseBytecodeOneLevel(example.Bytes(), 1)
+	sym, _, args, err := L().ParseBytecodeOneLevel(example.Bytes(), 1)
 	util.AssertNoError(err)
 	tlBin := easyfl.StripDataPrefix(args[0])
 	e, err := SlotFromBytes(tlBin)
 	util.AssertNoError(err)
 
-	util.Assertf(sym == timelockName && e == 1337, "inconsistency in 'timelock'")
-
-	registerConstraint(timelockName, prefix, func(data []byte) (Constraint, error) {
-		return TimelockFromBytes(data)
-	})
+	util.Assertf(sym == TimelockName && e == 1337, "inconsistency in 'timelock'")
 }

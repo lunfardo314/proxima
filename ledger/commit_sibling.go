@@ -68,8 +68,14 @@ func (cs *CommitToSibling) String() string {
 	return cs.source()
 }
 
-func initCommitToSiblingConstraint() {
-	L().MustExtendMany(CommitToSiblingSource)
+func addCommitToSiblingConstraint(lib *Library) {
+	lib.extendWithConstraint(CommitToSiblingName, commitToSiblingSource, func(data []byte) (Constraint, error) {
+		return CommitToSiblingFromBytes(data)
+	})
+}
+
+func initTestCommitToSiblingConstraint() {
+	L().MustExtendMany(commitToSiblingSource)
 
 	h := blake2b.Sum256([]byte("just data"))
 	example := NewCommitToSibling(2, h[:])
@@ -78,15 +84,11 @@ func initCommitToSiblingConstraint() {
 	util.Assertf(csBack.SiblingIndex == 2, "inconsistency "+CommitToSiblingName)
 	util.Assertf(bytes.Equal(csBack.SiblingHash, h[:]), "inconsistency "+CommitToSiblingName)
 
-	prefix, err := L().ParseBytecodePrefix(example.Bytes())
+	_, err = L().ParseBytecodePrefix(example.Bytes())
 	util.AssertNoError(err)
-
-	registerConstraint(CommitToSiblingName, prefix, func(data []byte) (Constraint, error) {
-		return CommitToSiblingFromBytes(data)
-	})
 }
 
-const CommitToSiblingSource = `
+const commitToSiblingSource = `
 func commitToSibling : or(
 	and(
 		selfIsConsumedOutput,

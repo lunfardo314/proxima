@@ -71,17 +71,20 @@ func NewAmount(a uint64) Amount {
 	return Amount(a)
 }
 
-func initAmountConstraint() {
+func addAmountConstraint(lib *Library) {
+	lib.extendWithConstraint(AmountConstraintName, amountSource, func(data []byte) (Constraint, error) {
+		return AmountFromBytes(data)
+	})
+}
+
+func initTestAmountConstraint() {
 	L().MustExtendMany(amountSource)
 	// sanity check
 	example := NewAmount(1337)
-	sym, prefix, args, err := L().ParseBytecodeOneLevel(example.Bytes(), 1)
+	sym, _, args, err := L().ParseBytecodeOneLevel(example.Bytes(), 1)
 	util.AssertNoError(err)
 	amountBin := easyfl.StripDataPrefix(args[0])
 	util.Assertf(sym == AmountConstraintName && len(amountBin) == 8 && binary.BigEndian.Uint64(amountBin) == 1337, "'amount' consistency check failed")
-	registerConstraint(AmountConstraintName, prefix, func(data []byte) (Constraint, error) {
-		return AmountFromBytes(data)
-	})
 }
 
 func AmountFromBytes(data []byte) (Amount, error) {

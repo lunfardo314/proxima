@@ -66,8 +66,14 @@ func (s *StateIndex) String() string {
 	return s.source()
 }
 
-func initStateIndexConstraint() {
-	L().MustExtendMany(StateIndexSource)
+func addStateIndexConstraint(lib *Library) {
+	lib.extendWithConstraint(StateIndexName, stateIndexSource, func(data []byte) (Constraint, error) {
+		return StateIndexFromBytes(data)
+	})
+}
+
+func initTestStateIndexConstraint() {
+	L().MustExtendMany(stateIndexSource)
 
 	example := NewStateIndex(5, 314)
 	stateIndexBack, err := StateIndexFromBytes(example.Bytes())
@@ -75,16 +81,12 @@ func initStateIndexConstraint() {
 	util.Assertf(stateIndexBack.StateIndex == 314, "inconsistency "+StateIndexName)
 	util.Assertf(stateIndexBack.ChainBlockIndex == 5, "inconsistency "+StateIndexName)
 
-	prefix, err := L().ParseBytecodePrefix(example.Bytes())
+	_, err = L().ParseBytecodePrefix(example.Bytes())
 	util.AssertNoError(err)
-
-	registerConstraint(StateIndexName, prefix, func(data []byte) (Constraint, error) {
-		return StateIndexFromBytes(data)
-	})
 }
 
 // TODO
 
-const StateIndexSource = `
+const stateIndexSource = `
 func stateIndex : concat($0, $1, !!!implement_me_StateIndexConstraint)
 `

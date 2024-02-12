@@ -232,24 +232,25 @@ func (lib *Library) extendWithMainFunctions() {
 	lib.Extend("publicKeyED25519", "slice($0, 64, 95)")
 }
 
-func extendWithConstraints() {
+func (lib *Library) extendWithConstraints() {
 	// extendWithMainFunctions constraints
-	initAmountConstraint()
-	initAddressED25519Constraint()
-	initDeadlineLockConstraint()
-	initTimelockConstraint()
-	initChainConstraint()
-	initStemLockConstraint()
-	initSequencerConstraint()
-	initSenderED25519Constraint()
-	initChainLockConstraint()
-	initRoyaltiesED25519Constraint()
-	initImmutableConstraint()
-	initCommitToSiblingConstraint()
-	initStateIndexConstraint()
-	initTotalAmountConstraint()
-	initInflationConstraint()
+	addAmountConstraint(lib)
+	addAddressED25519Constraint(lib)
+	addDeadlineLockConstraint(lib)
+	addTimeLockConstraint(lib)
+	addChainConstraint(lib)
+	addStemLockConstraint(lib)
+	addSequencerConstraint(lib)
+	addSenderED25519Constraint(lib)
+	addChainLockConstraint(lib)
+	addRoyaltiesED25519Constraint(lib)
+	addImmutableConstraint(lib)
+	addCommitToSiblingConstraint(lib)
+	addStateIndexConstraint(lib)
+	addTotalAmountConstraint(lib)
+}
 
+func runInitTests() {
 	runCommonUnitTests()
 }
 

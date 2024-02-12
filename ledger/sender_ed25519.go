@@ -72,17 +72,19 @@ func SenderED25519FromBytes(data []byte) (*SenderED25519, error) {
 	return &SenderED25519{addr}, nil
 }
 
-func initSenderED25519Constraint() {
+func addSenderED25519Constraint(lib *Library) {
+	lib.extendWithConstraint(SenderAddressED25519Name, senderED25519Source, func(data []byte) (Constraint, error) {
+		return SequencerConstraintFromBytes(data)
+	})
+}
+
+func initTestSenderED25519Constraint() {
 	L().MustExtendMany(senderED25519Source)
 
 	addr := AddressED25519Null()
 	example := NewSenderED25519(addr)
-	sym, prefix, args, err := L().ParseBytecodeOneLevel(example.Bytes(), 1)
+	sym, _, args, err := L().ParseBytecodeOneLevel(example.Bytes(), 1)
 	util.AssertNoError(err)
 	addrBin := easyfl.StripDataPrefix(args[0])
 	util.Assertf(sym == SenderAddressED25519Name && bytes.Equal(addrBin, addr), "inconsistency in 'senderAddressED25519'")
-
-	registerConstraint(SenderAddressED25519Name, prefix, func(data []byte) (Constraint, error) {
-		return SenderED25519FromBytes(data)
-	})
 }

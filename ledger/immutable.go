@@ -58,8 +58,14 @@ func (d *Immutable) String() string {
 	return d.source()
 }
 
-func initImmutableConstraint() {
-	L().MustExtendMany(ImmutableDataSource)
+func addImmutableConstraint(lib *Library) {
+	lib.extendWithConstraint(ImmutableName, immutableDataSource, func(data []byte) (Constraint, error) {
+		return ImmutableFromBytes(data)
+	})
+}
+
+func initTestImmutableConstraint() {
+	L().MustExtendMany(immutableDataSource)
 
 	example := NewImmutable(1, 5)
 	immutableDataBack, err := ImmutableFromBytes(example.Bytes())
@@ -67,15 +73,11 @@ func initImmutableConstraint() {
 	util.Assertf(immutableDataBack.DataBlockIndex == 5, "inconsistency "+ImmutableName)
 	util.Assertf(immutableDataBack.ChainBlockIndex == 1, "inconsistency "+ImmutableName)
 
-	prefix, err := L().ParseBytecodePrefix(example.Bytes())
+	_, err = L().ParseBytecodePrefix(example.Bytes())
 	util.AssertNoError(err)
-
-	registerConstraint(ImmutableName, prefix, func(data []byte) (Constraint, error) {
-		return ImmutableFromBytes(data)
-	})
 }
 
-const ImmutableDataSource = `
+const immutableDataSource = `
 
 // constraint 'immutable(c)' makes the sibling constraint immutable in the chain
 // It requires unlock parameters 2-byte long:

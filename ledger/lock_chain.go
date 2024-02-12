@@ -83,23 +83,25 @@ func NewChainLockUnlockParams(chainOutputIndex, chainConstraintIndex byte) []byt
 	return []byte{chainOutputIndex, chainConstraintIndex}
 }
 
-func initChainLockConstraint() {
-	L().MustExtendMany(ChainLockConstraintSource)
+func addChainLockConstraint(lib *Library) {
+	lib.extendWithConstraint(ChainLockName, chainLockConstraintSource, func(data []byte) (Constraint, error) {
+		return ChainLockFromBytes(data)
+	})
+}
+
+func initTestChainLockConstraint() {
+	L().MustExtendMany(chainLockConstraintSource)
 
 	example := NilChainLock
 	chainLockBack, err := ChainLockFromBytes(example.Bytes())
 	util.AssertNoError(err)
 	util.Assertf(EqualConstraints(chainLockBack, NilChainLock), "inconsistency "+ChainLockName)
 
-	prefix, err := L().ParseBytecodePrefix(example.Bytes())
+	_, err = L().ParseBytecodePrefix(example.Bytes())
 	util.AssertNoError(err)
-
-	registerConstraint(ChainLockName, prefix, func(data []byte) (Constraint, error) {
-		return ChainLockFromBytes(data)
-	})
 }
 
-const ChainLockConstraintSource = `
+const chainLockConstraintSource = `
 
 func selfReferencedChainData :
 	unwrapBytecodeArg(

@@ -103,7 +103,13 @@ func NewChainUnlockParams(successorOutputIdx, successorConstraintBlockIndex, tra
 	return []byte{successorOutputIdx, successorConstraintBlockIndex, transitionMode}
 }
 
-func initChainConstraint() {
+func addChainConstraint(lib *Library) {
+	lib.extendWithConstraint(ChainConstraintName, chainConstraintSource, func(data []byte) (Constraint, error) {
+		return ChainConstraintFromBytes(data)
+	})
+}
+
+func initTestChainConstraint() {
 	L().MustExtendMany(chainConstraintSource)
 
 	example := NewChainOrigin()
@@ -111,12 +117,9 @@ func initChainConstraint() {
 	util.AssertNoError(err)
 	util.Assertf(bytes.Equal(back.Bytes(), example.Bytes()), "inconsistency in "+ChainConstraintName)
 
-	_, prefix, _, err := L().ParseBytecodeOneLevel(example.Bytes(), 1)
+	_, err = L().ParseBytecodePrefix(example.Bytes())
 	util.AssertNoError(err)
 
-	registerConstraint(ChainConstraintName, prefix, func(data []byte) (Constraint, error) {
-		return ChainConstraintFromBytes(data)
-	})
 	chainConstraintInlineTest()
 }
 

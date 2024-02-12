@@ -161,12 +161,18 @@ func SequencerConstraintFromBytes(data []byte) (*SequencerConstraint, error) {
 	}, nil
 }
 
-func initSequencerConstraint() {
+func addSequencerConstraint(lib *Library) {
+	lib.extendWithConstraint(SequencerConstraintName, sequencerConstraintSource, func(data []byte) (Constraint, error) {
+		return SequencerConstraintFromBytes(data)
+	})
+}
+
+func initTestSequencerConstraint() {
 	L().Extend("mustMinimumAmountOnSequencer", minimumAmountOnSeqSource)
 	L().MustExtendMany(sequencerConstraintSource)
 
 	example := NewSequencerConstraint(4, 1337)
-	sym, prefix, args, err := L().ParseBytecodeOneLevel(example.Bytes(), 2)
+	sym, _, args, err := L().ParseBytecodeOneLevel(example.Bytes(), 2)
 	util.AssertNoError(err)
 	util.Assertf(sym == SequencerConstraintName, "sym == SequencerConstraintName")
 
@@ -177,8 +183,4 @@ func initSequencerConstraint() {
 	totalBin := easyfl.StripDataPrefix(args[1])
 	util.Assertf(len(totalBin) == 8, "len(totalBin) == 8")
 	util.Assertf(binary.BigEndian.Uint64(totalBin) == 1337, "binary.BigEndian.Uint64(totalBin) == 1337")
-
-	registerConstraint(SequencerConstraintName, prefix, func(data []byte) (Constraint, error) {
-		return SequencerConstraintFromBytes(data)
-	})
 }

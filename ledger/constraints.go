@@ -46,8 +46,10 @@ type (
 	}
 )
 
-func registerConstraint(name string, prefix []byte, parser Parser) {
-	lib := L()
+func (lib *Library) extendWithConstraint(name, source string, parser Parser) {
+	lib.MustExtendMany(source)
+	prefix, err := lib.FunctionCallPrefixByName(name, 1)
+	util.AssertNoError(err)
 	_, already := lib.constraintNames[name]
 	util.Assertf(!already, "repeating constraint name '%s'", name)
 	_, already = lib.constraintByPrefix[string(prefix)]

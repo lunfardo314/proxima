@@ -47,17 +47,20 @@ func NewTotalAmount(a uint64) TotalAmount {
 	return TotalAmount(a)
 }
 
-func initTotalAmountConstraint() {
+func addTotalAmountConstraint(lib *Library) {
+	lib.extendWithConstraint(TotalAmountConstraintName, totalAmountSource, func(data []byte) (Constraint, error) {
+		return TotalAmountFromBytes(data)
+	})
+}
+
+func initTestTotalAmountConstraint() {
 	L().MustExtendMany(totalAmountSource)
 	// sanity check
 	example := NewTotalAmount(1337)
-	sym, prefix, args, err := L().ParseBytecodeOneLevel(example.Bytes(), 1)
+	sym, _, args, err := L().ParseBytecodeOneLevel(example.Bytes(), 1)
 	util.AssertNoError(err)
 	totalAmountBin := easyfl.StripDataPrefix(args[0])
 	util.Assertf(sym == TotalAmountConstraintName && len(totalAmountBin) == 8 && binary.BigEndian.Uint64(totalAmountBin) == 1337, "'total' constraint consistency check failed")
-	registerConstraint(TotalAmountConstraintName, prefix, func(data []byte) (Constraint, error) {
-		return TotalAmountFromBytes(data)
-	})
 }
 
 func TotalAmountFromBytes(data []byte) (TotalAmount, error) {

@@ -63,7 +63,13 @@ func (dl *DeadlineLock) Name() string {
 	return DeadlineLockName
 }
 
-func initDeadlineLockConstraint() {
+func addDeadlineLockConstraint(lib *Library) {
+	lib.extendWithConstraint(DeadlineLockName, deadlineLockSource, func(data []byte) (Constraint, error) {
+		return DeadlineLockFromBytes(data)
+	})
+}
+
+func initTestDeadlineLockConstraint() {
 	L().MustExtendMany(deadlineLockSource)
 
 	ts := MustNewLedgerTime(1337, 5)
@@ -74,12 +80,8 @@ func initDeadlineLockConstraint() {
 	util.Assertf(EqualConstraints(lockBack.ConstraintMain, AddressED25519Null()), "inconsistency "+DeadlineLockName)
 	util.Assertf(EqualConstraints(lockBack.ConstraintExpiry, AddressED25519Null()), "inconsistency "+DeadlineLockName)
 
-	prefix, err := L().ParseBytecodePrefix(example.Bytes())
+	_, err = L().ParseBytecodePrefix(example.Bytes())
 	util.AssertNoError(err)
-
-	registerConstraint(DeadlineLockName, prefix, func(data []byte) (Constraint, error) {
-		return DeadlineLockFromBytes(data)
-	})
 }
 
 func DeadlineLockFromBytes(data []byte) (*DeadlineLock, error) {
