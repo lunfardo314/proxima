@@ -104,6 +104,8 @@ func (lib *Library) extendWithBaseConstants(id *IdentityData) {
 	lib.Extend("timeSlotFromTimeSlotPrefix", "bitwiseAND($0, 0x3fffffff)")
 	lib.Extend("timeTickFromTimestamp", "byte($0, timeSlotSizeBytes)")
 	lib.Extend("timestamp", "concat(mustValidTimeSlot($0),mustValidTimeTick($1))")
+	// takes first 5 bytes and sets first 2 bit to zero
+	lib.Extend("timestampPrefix", "bitwiseAND(slice($0, 0, sub8(timestampByteSize,1)), 0x3fffffffff)")
 }
 
 func (lib *Library) initNoTxConstraints(id *IdentityData) *Library {

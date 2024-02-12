@@ -362,7 +362,7 @@ func TestChain1(t *testing.T) {
 		return chains
 	}
 	t.Run("compile", func(t *testing.T) {
-		const source = "chain(originChainData)"
+		const source = "chain(originChainData, u64/0)"
 		_, _, _, err := ledger.L().CompileExpression(source)
 		require.NoError(t, err)
 	})
@@ -372,7 +372,7 @@ func TestChain1(t *testing.T) {
 	t.Run("create origin ok 2", func(t *testing.T) {
 		initTest()
 
-		const source = "chain(originChainData)"
+		const source = "chain(originChainData, u64/0)"
 		_, _, code, err := ledger.L().CompileExpression(source)
 		require.NoError(t, err)
 
@@ -391,7 +391,7 @@ func TestChain1(t *testing.T) {
 	t.Run("create origin twice in same output", func(t *testing.T) {
 		initTest()
 
-		const source = "chain(originChainData)"
+		const source = "chain(originChainData, u64/0)"
 		_, _, code, err := ledger.L().CompileExpression(source)
 		require.NoError(t, err)
 
@@ -407,7 +407,7 @@ func TestChain1(t *testing.T) {
 	t.Run("create origin wrong 1", func(t *testing.T) {
 		initTest()
 
-		const source = "chain(0x0001)"
+		const source = "chain(0x0001, u64/0)"
 		_, _, code, err := ledger.L().CompileExpression(source)
 		require.NoError(t, err)
 

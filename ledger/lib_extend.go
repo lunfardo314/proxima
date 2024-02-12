@@ -161,6 +161,7 @@ func (lib *Library) extendWithMainFunctions() {
 
 	lib.Extend("inputIDByIndex", "@Path(concat(pathToInputIDs,$0))")
 	lib.Extend("timeSlotOfInputByIndex", "timeSlotFromTimeSlotPrefix(timeSlotPrefix(inputIDByIndex($0)))")
+	lib.Extend("timestampOfInputByIndex", "timestampPrefix(inputIDByIndex($0))")
 
 	// special transaction related
 
