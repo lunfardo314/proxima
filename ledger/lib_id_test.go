@@ -17,11 +17,9 @@ func TestPrintTimeConstants(t *testing.T) {
 
 func TestLoad(t *testing.T) {
 	t.Logf("---------- loading constraint library extensions -----------")
-	genesisPrivateKey := testutil.GetTestingPrivateKey(314)
-	id := DefaultIdentityData(genesisPrivateKey)
-	Init(id)
-	t.Logf("------------------\n%s", id.String())
-	t.Logf("------------------\n" + string(id.YAML()))
+	InitWithTestingLedgerIDData()
+	t.Logf("------------------\n%s", L().ID.String())
+	t.Logf("------------------\n" + string(L().ID.YAML()))
 	t.Logf("------------------\n" + L().ID.TimeConstantsToString())
 }
 
