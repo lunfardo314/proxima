@@ -1,39 +1,40 @@
-package ledger
+package tests
 
 import (
 	"encoding/json"
 	"testing"
 
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/stretchr/testify/require"
 )
 
 func TestMarshaling(t *testing.T) {
 	t.Run("1", func(t *testing.T) {
-		txids := []TransactionID{
-			RandomTransactionID(true, true),
-			RandomTransactionID(true, false),
-			RandomTransactionID(false, false),
+		txids := []ledger.TransactionID{
+			ledger.RandomTransactionID(true, true),
+			ledger.RandomTransactionID(true, false),
+			ledger.RandomTransactionID(false, false),
 		}
 		data, err := json.Marshal(txids)
 		require.NoError(t, err)
 		t.Logf("txid JSON: %s", string(data))
-		var txidsBack []TransactionID
+		var txidsBack []ledger.TransactionID
 		err = json.Unmarshal(data, &txidsBack)
 		require.NoError(t, err)
 		require.True(t, util.EqualSlices(txids, txidsBack))
 	})
 	t.Run("1", func(t *testing.T) {
-		chainIDs := []ChainID{
-			RandomChainID(),
-			RandomChainID(),
-			RandomChainID(),
-			RandomChainID(),
+		chainIDs := []ledger.ChainID{
+			ledger.RandomChainID(),
+			ledger.RandomChainID(),
+			ledger.RandomChainID(),
+			ledger.RandomChainID(),
 		}
 		data, err := json.Marshal(chainIDs)
 		require.NoError(t, err)
 		t.Logf("chainid JSON: %s", string(data))
-		var chainIDsBack []ChainID
+		var chainIDsBack []ledger.ChainID
 		err = json.Unmarshal(data, &chainIDsBack)
 		require.NoError(t, err)
 		require.True(t, util.EqualSlices(chainIDs, chainIDsBack))

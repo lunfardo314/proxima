@@ -449,7 +449,7 @@ func TestChain1(t *testing.T) {
 		require.True(t, ch.IsOrigin())
 		t.Logf("chain created: %s", easyfl.Fmt(chains[0].ChainID[:]))
 
-		ts := chainIN.Timestamp().AddTicks(ledger.TransactionPaceInTicks)
+		ts := chainIN.Timestamp().AddTicks(ledger.TransactionPace())
 
 		txb := txbuilder.NewTransactionBuilder()
 		consumedIndex, err := txb.ConsumeOutput(chainIN.Output, chainIN.ID)
@@ -528,7 +528,7 @@ func TestChain2(t *testing.T) {
 		_, constraintIdx := chainIN.Output.ChainConstraint()
 		require.True(t, constraintIdx != 0xff)
 
-		ts := chainIN.Timestamp().AddTicks(ledger.TransactionPaceInTicks)
+		ts := chainIN.Timestamp().AddTicks(ledger.TransactionPace())
 		txb := txbuilder.NewTransactionBuilder()
 		predIdx, err := txb.ConsumeOutput(chainIN.Output, chainIN.ID)
 		require.NoError(t, err)
@@ -685,7 +685,7 @@ func TestChain3(t *testing.T) {
 	_, constraintIdx := chainIN.Output.ChainConstraint()
 	require.True(t, constraintIdx != 0xff)
 
-	ts := chainIN.Timestamp().AddTicks(ledger.TransactionPaceInTicks)
+	ts := chainIN.Timestamp().AddTicks(ledger.TransactionPace())
 	txb := txbuilder.NewTransactionBuilder()
 	predIdx, err := txb.ConsumeOutput(chainIN.Output, chainIN.ID)
 	require.NoError(t, err)
@@ -1029,7 +1029,7 @@ func TestImmutable(t *testing.T) {
 	_, chainConstraintIdx := chainIN.Output.ChainConstraint()
 	require.True(t, chainConstraintIdx != 0xff)
 
-	ts := chainIN.Timestamp().AddTicks(ledger.TransactionPaceInTicks)
+	ts := chainIN.Timestamp().AddTicks(ledger.TransactionPace())
 	txb := txbuilder.NewTransactionBuilder()
 	predIdx, err := txb.ConsumeOutput(chainIN.Output, chainIN.ID)
 	require.NoError(t, err)
@@ -1077,7 +1077,7 @@ func TestImmutable(t *testing.T) {
 	_, chainConstraintIdx = chainIN.Output.ChainConstraint()
 	require.True(t, chainConstraintIdx != 0xff)
 
-	ts = chainIN.Timestamp().AddTicks(ledger.TransactionPaceInTicks)
+	ts = chainIN.Timestamp().AddTicks(ledger.TransactionPace())
 	txb = txbuilder.NewTransactionBuilder()
 	predIdx, err = txb.ConsumeOutput(chainIN.Output, chainIN.ID)
 	require.NoError(t, err)
@@ -1115,7 +1115,7 @@ func TestImmutable(t *testing.T) {
 	_, chainConstraintIdx = chainIN.Output.ChainConstraint()
 	require.True(t, chainConstraintIdx != 0xff)
 
-	ts = chainIN.Timestamp().AddTicks(ledger.TransactionPaceInTicks)
+	ts = chainIN.Timestamp().AddTicks(ledger.TransactionPace())
 	txb = txbuilder.NewTransactionBuilder()
 	predIdx, err = txb.ConsumeOutput(chainIN.Output, chs.ID)
 	require.NoError(t, err)
@@ -1160,7 +1160,7 @@ func TestImmutable(t *testing.T) {
 	_, chainConstraintIdx = chainIN.Output.ChainConstraint()
 	require.True(t, chainConstraintIdx != 0xff)
 
-	ts = chainIN.Timestamp().AddTicks(ledger.TransactionPaceInTicks)
+	ts = chainIN.Timestamp().AddTicks(ledger.TransactionPace())
 	txb = txbuilder.NewTransactionBuilder()
 	predIdx, err = txb.ConsumeOutput(chainIN.Output, chs.ID)
 	require.NoError(t, err)

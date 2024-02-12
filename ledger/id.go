@@ -225,7 +225,7 @@ func LessTxID(txid1, txid2 TransactionID) bool {
 }
 
 func TooCloseOnTimeAxis(txid1, txid2 *TransactionID) bool {
-	if util.Abs(DiffTicks(txid1.Timestamp(), txid2.Timestamp())) < TransactionPaceInTicks {
+	if util.Abs(DiffTicks(txid1.Timestamp(), txid2.Timestamp())) < int64(TransactionPace()) {
 		return *txid1 != *txid2
 	}
 	return false

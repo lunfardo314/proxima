@@ -449,7 +449,7 @@ func MakeSimpleTransferTransactionWithRemainder(par *TransferData, disableEndors
 	}
 	util.Assertf(availableTokens == checkTotal, "availableTokens == checkTotal")
 	adjustedTs := ledger.MaxTime(inputTs, par.Timestamp).
-		AddTicks(ledger.TransactionPaceInTicks)
+		AddTicks(ledger.TransactionPace())
 
 	for i := range par.Endorsements {
 		if len(disableEndorsementChecking) == 0 || !disableEndorsementChecking[0] {
@@ -574,7 +574,7 @@ func MakeChainTransferTransaction(par *TransferData, disableEndorsementChecking 
 	}
 	util.Assertf(availableTokens == checkAmount+par.ChainOutput.Output.Amount(), "availableTokens == checkAmount")
 	adjustedTs := ledger.MaxTime(inputTs, par.ChainOutput.Timestamp()).
-		AddTicks(ledger.TransactionPaceInTicks)
+		AddTicks(ledger.TransactionPace())
 
 	for i := range par.Endorsements {
 		if len(disableEndorsementChecking) == 0 || !disableEndorsementChecking[0] {

@@ -10,9 +10,6 @@ import (
 )
 
 const (
-	// TransactionPaceInTicks TODO for testing. Expected value 3 or 5
-	TransactionPaceInTicks = 1 // number of ticks between two consecutive transactions
-
 	SlotByteLength = 4
 	TickByteLength = 1
 	TimeByteLength = SlotByteLength + TickByteLength // bytes
@@ -51,7 +48,7 @@ func SlotsPerLedgerEpoch() int64 {
 }
 
 func TransactionTimePaceDuration() time.Duration {
-	return TransactionPaceInTicks * TickDuration()
+	return time.Duration(TransactionPace()) * TickDuration()
 }
 
 type (
@@ -236,7 +233,7 @@ func DiffTicks(t1, t2 Time) int64 {
 
 // ValidTimePace checks if 2 timestamps have at least time pace slots in between
 func ValidTimePace(t1, t2 Time) bool {
-	return DiffTicks(t2, t1) >= int64(TransactionPaceInTicks)
+	return DiffTicks(t2, t1) >= int64(TransactionPace())
 }
 
 func (t Time) AddTicks(s int) Time {

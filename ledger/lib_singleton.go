@@ -54,3 +54,11 @@ func GenesisSlot() Slot {
 func TicksPerSlot() byte {
 	return L().Const().TicksPerSlot()
 }
+
+func TransactionPace() int {
+	return int(L().ID.TransactionPace)
+}
+
+func TransactionPaceSequencer() int {
+	return int(L().ID.TransactionPaceSequencer)
+}
