@@ -671,7 +671,6 @@ func TestConflictsNAttachersOneFork(t *testing.T) {
 }
 
 func TestConflictsNAttachersOneForkBranches(t *testing.T) {
-	//attacher.SetTraceOn()
 	const (
 		nConflicts = 2
 		nChains    = 2

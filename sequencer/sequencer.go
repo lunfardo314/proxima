@@ -129,8 +129,8 @@ func (seq *Sequencer) ensureFirstMilestone() bool {
 		seq.log.Errorf("provided private key does match sequencer lock %s", lock.String())
 		return false
 	}
-	seq.log.Infof("sequencer will start with the milestone output %s and amount %s",
-		startingMilestoneOutput.IDShortString(), util.GoTh(amount))
+	seq.log.Infof("sequencer will start with the milestone output %s and amount %s (%s%% initial supply)",
+		startingMilestoneOutput.IDShortString(), util.GoTh(amount), util.PercentString(int(amount), int(ledger.L().ID.InitialSupply)))
 
 	sleepDuration := ledger.SleepDurationUntilFutureLedgerTime(startingMilestoneOutput.Timestamp())
 	if sleepDuration > 0 {

@@ -301,3 +301,11 @@ func CallWithTimeout(fun func(), timeout time.Duration) bool {
 	<-ctx.Done()
 	return !errors.Is(ctx.Err(), context.DeadlineExceeded)
 }
+
+func Percent(n, d int) float32 {
+	return (float32(n) * 100) / float32(d)
+}
+
+func PercentString(n, d int) string {
+	return fmt.Sprintf("%.2f", Percent(n, d))
+}
