@@ -237,9 +237,10 @@ func initWorkflowTestWithConflicts(t *testing.T, nConflicts int, nChains int, ta
 
 	ret.txBytesConflicting = make([][]byte, nConflicts)
 
-	require.True(t, ledger.ValidTime(ledger.TimeNow()))
-	td := txbuilder.NewTransferData(ret.privKey, ret.addr, ledger.TimeNow()).
+	ts := ret.forkOutput.Timestamp().AddTicks(ledger.TransactionPace())
+	td := txbuilder.NewTransferData(ret.privKey, ret.addr, ts).
 		MustWithInputs(ret.forkOutput)
+
 	require.True(t, ledger.ValidTime(td.Timestamp))
 
 	for i := 0; i < nConflicts; i++ {
@@ -286,6 +287,7 @@ func (td *longConflictTestData) makeSeqBeginnings(withConflictingFees bool) {
 			ts = chainOrigin.Timestamp()
 		}
 		ts = ts.AddTicks(ledger.TransactionPaceSequencer())
+
 		td.seqChain[i] = make([]*transaction.Transaction, 0)
 		txBytes, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
 			SeqName:          "1",
@@ -497,7 +499,9 @@ func initLongConflictTestData(t *testing.T, nConflicts int, nChains int, howLong
 			if i == 0 {
 				prev = originOut
 			}
-			trd := txbuilder.NewTransferData(td.privKey, td.addr, originOut.Timestamp().AddTicks(ledger.TransactionPace()*(i+1)))
+			ts := originOut.Timestamp().AddTicks(ledger.TransactionPace() * (i + 1))
+
+			trd := txbuilder.NewTransferData(td.privKey, td.addr, ts)
 			trd.WithAmount(originOut.Output.Amount())
 			trd.MustWithInputs(prev)
 			if i < howLong-1 {
@@ -670,10 +674,6 @@ func makeTransfers(par *spammerParams) [][]byte {
 		require.EqualValues(par.t, lckChain.ChainID(), seqID)
 
 		par.t.Logf("spamTransfers -> %s, tag along: %s", tx.IDShortString(), seqID.StringShort())
-		//txStr := transaction.ParseBytesToString(ret[i], func(_ *ledger.OutputID) ([]byte, bool) {
-		//	return par.remainder.Output.Bytes(), true
-		//})
-		//par.t.Logf(">>>>>> PARSE: %s", txStr)
 	}
 	return ret
 }
