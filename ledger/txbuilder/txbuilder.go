@@ -4,6 +4,7 @@ import (
 	"crypto"
 	"crypto/ed25519"
 	"encoding/binary"
+	"encoding/hex"
 	"fmt"
 	"math"
 	"math/rand"
@@ -388,6 +389,7 @@ func MakeTransferTransaction(par *TransferData, disableEndorsementValidation ...
 	if par.Amount == 0 || par.Lock == nil {
 		return nil, fmt.Errorf("MakeTransferTransaction: wrong amount or lock")
 	}
+
 	var err error
 	var ret []byte
 	if par.ChainOutput == nil {
@@ -423,6 +425,10 @@ func MakeSimpleTransferTransaction(par *TransferData, disableEndorsementChecking
 }
 
 func MakeSimpleTransferTransactionWithRemainder(par *TransferData, disableEndorsementChecking ...bool) ([]byte, *ledger.OutputWithID, error) {
+	if !ledger.ValidTime(par.Timestamp) {
+		return nil, nil, fmt.Errorf("MakeSimpleTransferTransactionWithRemainder: wrong timestamp bytes 0x%s", hex.EncodeToString(par.Timestamp[:]))
+	}
+
 	if par.ChainOutput != nil {
 		return nil, nil, fmt.Errorf("MakeSimpleTransferTransactionWithRemainder: ChainInput must be nil. Use MakeSimpleTransferTransaction instead")
 	}
@@ -448,8 +454,11 @@ func MakeSimpleTransferTransactionWithRemainder(par *TransferData, disableEndors
 		return nil, nil, err
 	}
 	util.Assertf(availableTokens == checkTotal, "availableTokens == checkTotal")
+
 	adjustedTs := ledger.MaxTime(inputTs, par.Timestamp).
 		AddTicks(ledger.TransactionPace())
+
+	util.Assertf(ledger.ValidTime(adjustedTs), "ledger.ValidTime(adjustedTs): ts bytes 0x%s", hex.EncodeToString(adjustedTs[:]))
 
 	for i := range par.Endorsements {
 		if len(disableEndorsementChecking) == 0 || !disableEndorsementChecking[0] {

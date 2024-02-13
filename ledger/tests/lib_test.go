@@ -25,6 +25,9 @@ func TestTime(t *testing.T) {
 	t.Run("time constants", func(t *testing.T) {
 		t.Logf("%s", ledger.L().ID.TimeConstantsToString())
 	})
+	t.Run("0", func(t *testing.T) {
+		require.True(t, ledger.ValidTime(ledger.TimeNow()))
+	})
 	t.Run("1", func(t *testing.T) {
 		nowis := time.Now()
 		ts0 := ledger.TimeFromRealTime(nowis)

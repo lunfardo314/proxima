@@ -21,8 +21,7 @@ func init() {
      tick duration    : %v
      transaction pace : %d ticks
      sequencer pace   : %d ticks
-     genesis slot	  : %d 
 `,
-		ledger.TickDuration(), ledger.TransactionPace(), ledger.TransactionPaceSequencer(), ledger.GenesisSlot()
+		ledger.TickDuration(), ledger.TransactionPace(), ledger.TransactionPaceSequencer(),
 	)
 }

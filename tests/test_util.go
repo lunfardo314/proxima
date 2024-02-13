@@ -237,8 +237,10 @@ func initWorkflowTestWithConflicts(t *testing.T, nConflicts int, nChains int, ta
 
 	ret.txBytesConflicting = make([][]byte, nConflicts)
 
+	require.True(t, ledger.ValidTime(ledger.TimeNow()))
 	td := txbuilder.NewTransferData(ret.privKey, ret.addr, ledger.TimeNow()).
 		MustWithInputs(ret.forkOutput)
+	require.True(t, ledger.ValidTime(td.Timestamp))
 
 	for i := 0; i < nConflicts; i++ {
 		td.WithAmount(uint64(100_000 + i))

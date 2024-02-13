@@ -114,6 +114,11 @@ func TimeNow() Time {
 	return TimeFromRealTime(time.Now())
 }
 
+func ValidTime(ts Time) bool {
+	_, err := TimeFromBytes(ts[:])
+	return err == nil
+}
+
 func TimeFromBytes(data []byte) (ret Time, err error) {
 	if len(data) != TimeByteLength {
 		err = errWrongDataLength

@@ -181,7 +181,7 @@ func (id *IdentityData) GenesisTime() time.Time {
 }
 
 func (id *IdentityData) GenesisTimeUnixNano() int64 {
-	return int64(id.GenesisTimeUnix) * int64(time.Nanosecond)
+	return time.Unix(int64(id.GenesisTimeUnix), 0).UnixNano()
 }
 
 func (id *IdentityData) Hash() [32]byte {

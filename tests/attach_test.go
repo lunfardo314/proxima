@@ -25,6 +25,12 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
+func TestTime(t *testing.T) {
+	ts := ledger.TimeNow()
+	t.Logf("tick duration:\n%v\nledger time now: %s", ledger.TickDuration(), ts.String())
+	require.True(t, ledger.ValidTime(ts))
+}
+
 func TestBasic(t *testing.T) {
 	t.Run("base", func(t *testing.T) {
 		//attacher.SetTraceOn()
@@ -38,9 +44,9 @@ func TestBasic(t *testing.T) {
 		ctx, stop := context.WithCancel(context.Background())
 		wrk.Start(ctx)
 
-		id, _, err := multistate.ScanGenesisState(stateStore)
+		_, _, err := multistate.ScanGenesisState(stateStore)
 		require.NoError(t, err)
-		genesisOut := multistate.GenesisStemOutput(id.GenesisSlot)
+		genesisOut := multistate.GenesisStemOutput()
 		vidGenesis, err := attacher.EnsureBranch(genesisOut.ID.TransactionID(), wrk)
 		require.NoError(t, err)
 
@@ -305,10 +311,6 @@ func TestConflicts1Attacher(t *testing.T) {
 		inTS := []ledger.Time{chainOut.Timestamp()}
 		for _, o := range testData.conflictingOutputs {
 			inTS = append(inTS, o.Timestamp())
-		}
-		t.Logf("genesis slot: %d", ledger.GenesisSlot())
-		for _, ts := range inTS {
-			t.Logf("in TS: %s", ts.String())
 		}
 		txBytes, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
 			SeqName:          "test",

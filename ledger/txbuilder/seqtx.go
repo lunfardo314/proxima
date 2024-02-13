@@ -113,7 +113,7 @@ func MakeSequencerTransactionWithInputLoader(par MakeSequencerTransactionParams)
 	}
 
 	totalOutAmount := chainOutAmount + additionalOut
-	util.Assertf(totalInAmount == totalOutAmount, "totalInAmount == totalOutAmount")
+	util.Assertf(totalInAmount+inflationAmount == totalOutAmount, "totalInAmount == totalOutAmount")
 
 	// make chain input/output
 	chainPredIdx, err := txb.ConsumeOutput(par.ChainInput.Output, par.ChainInput.ID)
