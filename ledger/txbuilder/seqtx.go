@@ -193,7 +193,7 @@ func MakeSequencerTransactionWithInputLoader(par MakeSequencerTransactionParams)
 
 	// consume and unlock additional inputs/outputs
 	// unlock additional inputs
-	tsIn := ledger.MustNewLedgerTime(0, 0)
+	tsIn := par.ChainInput.ID.Timestamp()
 	for _, o := range par.AdditionalInputs {
 		idx, err := txb.ConsumeOutput(o.Output, o.ID)
 		if err != nil {
@@ -216,7 +216,7 @@ func MakeSequencerTransactionWithInputLoader(par MakeSequencerTransactionParams)
 	}
 
 	if !ledger.ValidSequencerPace(tsIn, par.Timestamp) {
-		return nil, nil, errP("sequencer tx timestamp inconsistent with inputs")
+		return nil, nil, errP("timestamp %s is inconsistent with latest input timestamp %s", par.Timestamp.String(), tsIn.String())
 	}
 
 	_, err = txb.ProduceOutputs(par.AdditionalOutputs...)

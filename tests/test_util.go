@@ -71,7 +71,7 @@ type longConflictTestData struct {
 }
 
 const (
-	initBalance = 10_000_000
+	initBalance = 10_000_000_000
 	tagAlongFee = 500
 )
 
@@ -285,7 +285,7 @@ func (td *longConflictTestData) makeSeqBeginnings(withConflictingFees bool) {
 			additionalIn = nil
 			ts = chainOrigin.Timestamp()
 		}
-		ts = ts.AddTicks(ledger.TransactionPace())
+		ts = ts.AddTicks(ledger.TransactionPaceSequencer())
 		td.seqChain[i] = make([]*transaction.Transaction, 0)
 		txBytes, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
 			SeqName:          "1",

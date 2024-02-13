@@ -139,7 +139,7 @@ func BaseValidation() TxValidationOption {
 		if tx.timestamp.Tick() == 0 && tx.sequencerMilestoneFlag && !tx.branchTransactionFlag {
 			// enforcing only branch milestones on the time slot boundary (i.e. with tick = 0)
 			// non-sequencer transactions with tick == 0 are still allowed
-			return fmt.Errorf("when on time slot boundary, a sequencer transaction must be a branch")
+			return fmt.Errorf("when on time slot boundary, a sequencer transaction must be a branch: %s", tx.IDShortString())
 		}
 
 		totalAmountBin := tx.tree.BytesAtPath(Path(ledger.TxTotalProducedAmount))

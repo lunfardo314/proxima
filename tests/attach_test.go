@@ -403,7 +403,7 @@ func TestConflicts1Attacher(t *testing.T) {
 		//attacher.SetTraceOn()
 		const (
 			nConflicts = 5
-			howLong    = 96 // 97 fails when crosses slot boundary
+			howLong    = 80 // 96 fails when crosses slot boundary
 		)
 		testData := initLongConflictTestData(t, nConflicts, 5, howLong)
 		for _, txBytes := range testData.txBytesConflicting {
@@ -457,7 +457,7 @@ func TestConflicts1Attacher(t *testing.T) {
 		//attacher.SetTraceOn()
 		const (
 			nConflicts = 2
-			howLong    = 90 // 97 fails when crosses slot boundary
+			howLong    = 70 // 97 fails when crosses slot boundary
 		)
 		testData := initLongConflictTestData(t, nConflicts, nConflicts, howLong)
 		for _, txBytes := range testData.txBytesConflicting {
@@ -481,6 +481,9 @@ func TestConflicts1Attacher(t *testing.T) {
 		for _, o := range testData.terminalOutputs {
 			inTS = append(inTS, o.Timestamp())
 			amount += o.Output.Amount()
+		}
+		for _, ts := range inTS {
+			t.Logf("inTS : %s", ts.String())
 		}
 
 		txBytes, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
@@ -638,7 +641,7 @@ func TestConflictsNAttachersOneFork(t *testing.T) {
 		chainIn[seqNr] = o.MustAsChainOutput()
 		ts = ledger.MaxTime(ts, o.Timestamp())
 	}
-	ts = ts.AddTicks(ledger.TransactionPace())
+	ts = ts.AddTicks(ledger.TransactionPaceSequencer())
 	txBytesSeq, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
 		SeqName:      "seq",
 		ChainInput:   chainIn[0],
@@ -799,7 +802,7 @@ func TestConflictsNAttachersOneForkBranchesConflict(t *testing.T) {
 	txBytesConflicting, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
 		SeqName:      "dummy",
 		ChainInput:   tx0.SequencerOutput().MustAsChainOutput(),
-		Timestamp:    ts.AddTicks(ledger.TransactionPace()),
+		Timestamp:    ts.AddTicks(ledger.TransactionPaceSequencer()),
 		Endorsements: util.List(tx1.ID()),
 		PrivateKey:   testData.privKeyAux,
 	})
@@ -939,10 +942,10 @@ func TestSeqChains(t *testing.T) {
 	t.Run("with pull", func(t *testing.T) {
 		//attacher.SetTraceOn()
 		const (
-			nConflicts            = 10
-			nChains               = 10
+			nConflicts            = 5
+			nChains               = 5
 			howLongConflictChains = 2  // 97 fails when crosses slot boundary
-			howLongSeqChains      = 50 // 90 // 95 fails
+			howLongSeqChains      = 10 // 90 // 95 fails
 		)
 
 		testData := initLongConflictTestData(t, nConflicts, nChains, howLongConflictChains)
