@@ -433,7 +433,7 @@ func (tx *Transaction) IDVeryShort() string {
 	return ledger.TransactionIDStringVeryShort(tx.timestamp, tx.txHash, tx.sequencerMilestoneFlag, tx.branchTransactionFlag)
 }
 
-func (tx *Transaction) TimeSlot() ledger.Slot {
+func (tx *Transaction) Slot() ledger.Slot {
 	return tx.timestamp.Slot()
 }
 
@@ -882,7 +882,7 @@ func (tx *Transaction) StateMutations() *multistate.Mutations {
 		ret.InsertAddOutputMutation(*oid, o)
 		return true
 	})
-	ret.InsertAddTxMutation(*tx.ID(), tx.TimeSlot(), byte(tx.NumProducedOutputs()-1))
+	ret.InsertAddTxMutation(*tx.ID(), tx.Slot(), byte(tx.NumProducedOutputs()-1))
 	return ret
 }
 

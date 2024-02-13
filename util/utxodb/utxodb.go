@@ -21,7 +21,6 @@ import (
 // It is mainly used for testing of constraints
 type UTXODB struct {
 	state             *multistate.Updatable
-	lastSlot          ledger.Slot
 	genesisChainID    ledger.ChainID
 	supply            uint64
 	genesisPrivateKey ed25519.PrivateKey
@@ -73,7 +72,6 @@ func NewUTXODB(genesisPrivateKey ed25519.PrivateKey, trace ...bool) *UTXODB {
 
 	ret := &UTXODB{
 		state:                     updatable,
-		lastSlot:                  0,
 		genesisChainID:            originChainID,
 		supply:                    initLedgerParams.InitialSupply,
 		genesisPrivateKey:         genesisPrivateKey,
@@ -124,22 +122,16 @@ func (u *UTXODB) FaucetAddress() ledger.AddressED25519 {
 // Ledger state and indexer are on different DB transactions, so ledger state can
 // succeed while indexer fails. In that case indexer can be updated from ledger state
 func (u *UTXODB) AddTransaction(txBytes []byte, onValidationError ...func(ctx *transaction.TxContext, err error) error) error {
-	var tx *transaction.Transaction
 	var err error
 	if u.trace {
-		tx, err = updateValidateDebug(u.state, txBytes, onValidationError...)
+		_, err = updateValidateDebug(u.state, txBytes, onValidationError...)
 	} else {
-		tx, err = updateValidateNoDebug(u.state, txBytes)
+		_, err = updateValidateNoDebug(u.state, txBytes)
 	}
 	if err != nil {
 		return err
 	}
-	u.lastSlot = tx.TimeSlot()
 	return nil
-}
-
-func (u *UTXODB) LastTimeSlot() ledger.Slot {
-	return u.lastSlot
 }
 
 func (u *UTXODB) MakeTransactionFromFaucet(addr ledger.AddressED25519, amountPar ...uint64) ([]byte, error) {

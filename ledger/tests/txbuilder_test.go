@@ -30,8 +30,7 @@ func TestBasics(t *testing.T) {
 		require.EqualValues(t, 100, u.Balance(addr))
 		require.EqualValues(t, 1, u.NumUTXOs(addr))
 
-		e, stemOutData := u.StateReader().GetStem()
-		require.EqualValues(t, u.LastTimeSlot(), e)
+		_, stemOutData := u.StateReader().GetStem()
 
 		stemOut, _, _, err := ledger.OutputFromBytesMain(stemOutData)
 		require.NoError(t, err)

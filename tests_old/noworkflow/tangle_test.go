@@ -1044,7 +1044,7 @@ func (r *multiChainTestData) createSequencerChains2(pace int, howLong int) [][]b
 				} else {
 					endorsedIdx--
 				}
-				if lastInChain(endorsedIdx).TimeSlot() != ts.Slot() {
+				if lastInChain(endorsedIdx).Slot() != ts.Slot() {
 					break
 				}
 			}
@@ -1176,7 +1176,7 @@ func (r *multiChainTestData) createSequencerChains3(pace int, howLong int, print
 				} else {
 					endorsedIdx--
 				}
-				if lastInChain(endorsedIdx).TimeSlot() != ts.Slot() {
+				if lastInChain(endorsedIdx).Slot() != ts.Slot() {
 					break
 				}
 			}

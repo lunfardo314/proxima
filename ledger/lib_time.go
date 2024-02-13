@@ -166,7 +166,7 @@ func (t Time) IsSlotBoundary() bool {
 }
 
 func (t Time) UnixNano() int64 {
-	return GenesisTime().UnixNano() +
+	return L().ID.GenesisTimeUnixNano() +
 		int64(t.Slot())*int64(SlotDuration()) + int64(TickDuration())*int64(t.Tick())
 }
 
@@ -222,9 +222,10 @@ func (t Time) Hex() string {
 	return fmt.Sprintf("0x%s", hex.EncodeToString(t[:]))
 }
 
-// DiffTicks returns difference in slots between two timestamps:
-// < 0 is t is before t1
-// > 0 if t1 is before t
+// DiffTicks returns difference in ticks between two timestamps:
+// < 0 is t1 is before t2
+// > 0 if t2 is before t1
+// (i.e. t1 - t2)
 func DiffTicks(t1, t2 Time) int64 {
 	slots1 := int64(t1.Slot())*DefaultTicksPerSlot + int64(t1.Tick())
 	slots2 := int64(t2.Slot())*DefaultTicksPerSlot + int64(t2.Tick())

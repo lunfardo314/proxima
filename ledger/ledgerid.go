@@ -180,6 +180,10 @@ func (id *IdentityData) GenesisTime() time.Time {
 	return time.Unix(int64(id.GenesisTimeUnix), 0)
 }
 
+func (id *IdentityData) GenesisTimeUnixNano() int64 {
+	return int64(id.GenesisTimeUnix) * int64(time.Nanosecond)
+}
+
 func (id *IdentityData) Hash() [32]byte {
 	return blake2b.Sum256(id.Bytes())
 }
@@ -190,14 +194,12 @@ func (id *IdentityData) GenesisControlledAddress() AddressED25519 {
 
 func (id *IdentityData) TimeFromRealTime(nowis time.Time) Time {
 	util.Assertf(!nowis.Before(id.GenesisTime()), "!nowis.Before(id.GenesisTimeUnix)")
-	i := nowis.UnixNano() / (int64(id.GenesisTimeUnix) * int64(time.Nanosecond))
-	e := i / int64(id.SlotDuration())
-	util.Assertf(e <= math.MaxUint32, "TimeFromRealTime: e <= math.MaxUint32")
-	util.Assertf(uint32(e)&0xc0000000 == 0, "TimeFromRealTime: two highest bits must be 0. Wrong constants")
-	s := i % int64(id.SlotDuration())
-	s = s / int64(id.TickDuration)
-	util.Assertf(s < DefaultTicksPerSlot, "TimeFromRealTime: s < DefaultTicksPerSlot")
-	return MustNewLedgerTime(Slot(uint32(e)), Tick(byte(s)))
+	sinceGenesisNano := nowis.UnixNano() - id.GenesisTimeUnixNano()
+	totalTicks := sinceGenesisNano / int64(id.TickDuration)
+	tps := int64(id.TicksPerSlot())
+	slot := totalTicks / tps
+	ticks := totalTicks % tps
+	return MustNewLedgerTime(Slot(uint32(slot)), Tick(byte(ticks)))
 }
 
 func (id *IdentityData) SlotDuration() time.Duration {
@@ -262,6 +264,10 @@ func (id *IdentityData) SlotsPerDay() int {
 }
 
 func (id *IdentityData) TimeConstantsToString() string {
+	nowis := time.Now()
+	timestampNowis := id.TimeFromRealTime(nowis)
+	util.Assertf(nowis.UnixNano()-timestampNowis.UnixNano() < int64(TickDuration()),
+		"nowis.UnixNano()-timestampNowis.UnixNano() < int64(TickDuration())")
 	return lines.New().
 		Add("TickDuration = %v", id.TickDuration).
 		Add("TicksPerSlot = %d", id.TicksPerSlot()).
@@ -271,8 +277,16 @@ func (id *IdentityData) TimeConstantsToString() string {
 		Add("SlotsPerLedgerEpoch = %d", id.SlotsPerLedgerEpoch).
 		Add("seconds per year = %d", 60*60*24*365).
 		Add("timestamp GenesisTime = %v", id.GenesisTime()).
+		Add("nowis %v", nowis).
+		Add("nowis nano %d", nowis.UnixNano()).
 		Add("GenesisTimeUnix = %d", id.GenesisTimeUnix).
-		Add("timestamp now = %s, now is %v", id.TimeFromRealTime(time.Now()).String(), time.Now()).
+		Add("GenesisTimeUnixNano = %d", id.GenesisTimeUnixNano()).
+		Add("timestampNowis = %s ", timestampNowis.String()).
+		Add("timestampNowis.Time() = %v ", timestampNowis.Time()).
+		Add("timestampNowis.Time().UnixNano() = %v ", timestampNowis.Time().UnixNano()).
+		Add("timestampNowis.UnixNano() = %v ", timestampNowis.UnixNano()).
+		Add("rounding: nowis.UnixNano() - timestampNowis.UnixNano() = %d", nowis.UnixNano()-timestampNowis.UnixNano()).
+		Add("tick duration nano = %d", int64(TickDuration())).
 		String()
 }
 
