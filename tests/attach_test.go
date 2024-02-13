@@ -306,7 +306,10 @@ func TestConflicts1Attacher(t *testing.T) {
 		for _, o := range testData.conflictingOutputs {
 			inTS = append(inTS, o.Timestamp())
 		}
-
+		t.Logf("genesis slot: %d", ledger.GenesisSlot())
+		for _, ts := range inTS {
+			t.Logf("in TS: %s", ts.String())
+		}
 		txBytes, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
 			SeqName:          "test",
 			ChainInput:       chainOut,

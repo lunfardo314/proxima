@@ -256,6 +256,7 @@ func initWorkflowTestWithConflicts(t *testing.T, nConflicts int, nChains int, ta
 	for i := range ret.conflictingOutputs {
 		tx, err := transaction.FromBytesMainChecksWithOpt(ret.txBytesConflicting[i])
 		require.NoError(t, err)
+		t.Logf("conflicting tx ts: %s", tx.Timestamp().String())
 		ret.conflictingOutputs[i] = tx.MustProducedOutputWithIDAt(1)
 		require.EqualValues(t, 100_000+i, int(ret.conflictingOutputs[i].Output.Amount()))
 	}

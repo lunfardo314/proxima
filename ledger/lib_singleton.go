@@ -46,13 +46,31 @@ func Init(id *IdentityData) {
 }
 
 // InitWithTestingLedgerIDData for testing
-func InitWithTestingLedgerIDData(tickDuration ...time.Duration) ed25519.PrivateKey {
+func InitWithTestingLedgerIDData(opts ...func(data *IdentityData)) ed25519.PrivateKey {
 	id, pk := GetTestingIdentityData(31415926535)
-	if len(tickDuration) > 0 {
-		id.SetTickDuration(tickDuration[0])
+	for _, opt := range opts {
+		opt(id)
 	}
 	Init(id)
 	return pk
+}
+
+func WithTickDuration(d time.Duration) func(id *IdentityData) {
+	return func(id *IdentityData) {
+		id.SetTickDuration(d)
+	}
+}
+
+func WithTransactionPace(ticks byte) func(id *IdentityData) {
+	return func(id *IdentityData) {
+		id.TransactionPace = ticks
+	}
+}
+
+func WithSequencerPace(ticks byte) func(id *IdentityData) {
+	return func(id *IdentityData) {
+		id.TransactionPaceSequencer = ticks
+	}
 }
 
 func GenesisSlot() Slot {
