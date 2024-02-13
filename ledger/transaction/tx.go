@@ -312,13 +312,23 @@ func CheckTimePace() TxValidationOption {
 	return func(tx *Transaction) error {
 		var err error
 		ts := tx.Timestamp()
-		tx.ForEachInput(func(_ byte, oid *ledger.OutputID) bool {
-			if !ledger.ValidTransactionPace(oid.Timestamp(), ts) {
-				err = fmt.Errorf("timestamp of input violates time pace constraint: %s", oid.StringShort())
-				return false
-			}
-			return true
-		})
+		if tx.IsSequencerMilestone() {
+			tx.ForEachInput(func(_ byte, oid *ledger.OutputID) bool {
+				if !ledger.ValidSequencerPace(oid.Timestamp(), ts) {
+					err = fmt.Errorf("timestamp of input violates sequencer time pace constraint: %s", oid.StringShort())
+					return false
+				}
+				return true
+			})
+		} else {
+			tx.ForEachInput(func(_ byte, oid *ledger.OutputID) bool {
+				if !ledger.ValidTransactionPace(oid.Timestamp(), ts) {
+					err = fmt.Errorf("timestamp of input violates non-sequencer time pace constraint: %s", oid.StringShort())
+					return false
+				}
+				return true
+			})
+		}
 		return err
 	}
 }

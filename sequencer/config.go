@@ -5,21 +5,19 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/ledger"
-	"github.com/lunfardo314/proxima/sequencer/factory"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/spf13/viper"
 )
 
 type (
 	ConfigOptions struct {
-		SequencerName   string
-		Pace            int // pace in slots
-		MaxFeeInputs    int
-		MaxTargetTs     ledger.Time
-		MaxMilestones   int
-		MaxBranches     int
-		DelayStart      time.Duration
-		InflationPolicy factory.InflationPolicy
+		SequencerName string
+		Pace          int // pace in slots
+		MaxFeeInputs  int
+		MaxTargetTs   ledger.Time
+		MaxMilestones int
+		MaxBranches   int
+		DelayStart    time.Duration
 	}
 
 	ConfigOption func(options *ConfigOptions)
@@ -44,14 +42,13 @@ func makeConfig(opts ...ConfigOption) *ConfigOptions {
 
 func defaultConfigOptions() *ConfigOptions {
 	return &ConfigOptions{
-		SequencerName:   "seq",
-		Pace:            PaceMinimumTicks,
-		MaxFeeInputs:    DefaultMaxFeeInputs,
-		MaxTargetTs:     ledger.NilLedgerTime,
-		MaxMilestones:   math.MaxInt,
-		MaxBranches:     math.MaxInt,
-		DelayStart:      DefaultDelayOnStart,
-		InflationPolicy: factory.InflationPolicyBranchesOnly,
+		SequencerName: "seq",
+		Pace:          PaceMinimumTicks,
+		MaxFeeInputs:  DefaultMaxFeeInputs,
+		MaxTargetTs:   ledger.NilLedgerTime,
+		MaxMilestones: math.MaxInt,
+		MaxBranches:   math.MaxInt,
+		DelayStart:    DefaultDelayOnStart,
 	}
 }
 
@@ -62,16 +59,9 @@ func WithName(name string) ConfigOption {
 }
 
 func WithPace(pace int) ConfigOption {
-	util.Assertf(pace >= PaceMinimumTicks, "pace>=PaceMinimumTicks")
+	util.Assertf(pace >= ledger.TransactionPaceSequencer(), "sequencer pace can't be less than %d ticks", ledger.TransactionPaceSequencer())
 	return func(o *ConfigOptions) {
 		o.Pace = pace
-	}
-}
-
-func WithInflationPolicy(p factory.InflationPolicy) ConfigOption {
-	util.Assertf(p == factory.InflationPolicyBranchesOnly || p == factory.InflationPolicyAlways, "wrong inflation policy")
-	return func(o *ConfigOptions) {
-		o.InflationPolicy = p
 	}
 }
 

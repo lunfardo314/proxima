@@ -29,7 +29,6 @@ type (
 		SequencerName() string
 		Context() context.Context
 		MaxTagAlongOutputs() int
-		InflationPolicy() InflationPolicy
 	}
 
 	InflationPolicy int
@@ -64,11 +63,6 @@ type (
 		RemovedMilestonesSinceReset int
 		tippool.Stats
 	}
-)
-
-const (
-	InflationPolicyBranchesOnly = InflationPolicy(iota) // default
-	InflationPolicyAlways
 )
 
 var allProposingStrategies = make(map[string]*proposer_generic.Strategy)
@@ -261,8 +255,7 @@ func (mf *MilestoneFactory) Propose(a *attacher.IncrementalAttacher) (forceExit 
 
 	commandParser := NewCommandParser(ledger.AddressED25519FromPrivateKey(mf.ControllerPrivateKey()))
 	// inflate whenever possible
-	inflate := mf.Environment.InflationPolicy() == InflationPolicyAlways
-	tx, err := a.MakeSequencerTransaction(mf.SequencerName(), mf.ControllerPrivateKey(), commandParser, inflate)
+	tx, err := a.MakeSequencerTransaction(mf.SequencerName(), mf.ControllerPrivateKey(), commandParser)
 	if err != nil {
 		mf.Log().Warnf("Propose%s: error during transaction generation: '%v'", a.Name(), err)
 		return true

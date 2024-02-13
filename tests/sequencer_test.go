@@ -16,7 +16,6 @@ import (
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/sequencer"
-	"github.com/lunfardo314/proxima/sequencer/factory"
 	"github.com/lunfardo314/proxima/sequencer/tippool"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/testutil"
@@ -34,7 +33,6 @@ func (t *tippoolEnvironment) SequencerID() ledger.ChainID {
 }
 
 func TestTippool(t *testing.T) {
-	ledger.SetTimeTickDuration(10 * time.Millisecond)
 	//attacher.SetTraceOn()
 	const (
 		nConflicts            = 3
@@ -113,7 +111,6 @@ func TestTippool(t *testing.T) {
 }
 
 func Test1Sequencer(t *testing.T) {
-	ledger.SetTimeTickDuration(10 * time.Millisecond)
 	t.Run("idle", func(t *testing.T) {
 		const maxSlots = 5
 		testData := initWorkflowTest(t, 1)
@@ -239,7 +236,7 @@ func Test1Sequencer(t *testing.T) {
 
 		ctx, _ := context.WithCancel(context.Background())
 		seq, err := sequencer.New(testData.wrk, testData.bootstrapChainID, testData.genesisPrivKey,
-			ctx, sequencer.WithMaxBranches(maxSlots), sequencer.WithInflationPolicy(factory.InflationPolicyAlways))
+			ctx, sequencer.WithMaxBranches(maxSlots))
 		require.NoError(t, err)
 		var countBr, countSeq atomic.Int32
 		seq.OnMilestoneSubmitted(func(_ *sequencer.Sequencer, ms *vertex.WrappedTx) {
@@ -350,7 +347,6 @@ func initMultiSequencerTest(t *testing.T, nSequencers int, startPruner ...bool) 
 }
 
 func TestNSequencersIdle(t *testing.T) {
-	ledger.SetTimeTickDuration(10 * time.Millisecond)
 	t.Run("finalize chain origins", func(t *testing.T) {
 		const (
 			nSequencers = 5 // in addition to bootstrap
@@ -388,7 +384,6 @@ func TestNSequencersIdle(t *testing.T) {
 }
 
 func Test5SequencersIdle(t *testing.T) {
-	ledger.SetTimeTickDuration(10 * time.Millisecond)
 	const (
 		maxSlots    = 50
 		nSequencers = 4 // in addition to bootstrap
@@ -409,7 +404,6 @@ func Test5SequencersIdle(t *testing.T) {
 }
 
 func TestNSequencersTransfer(t *testing.T) {
-	ledger.SetTimeTickDuration(10 * time.Millisecond)
 	t.Run("seq 3 transfer 1 tag along", func(t *testing.T) {
 		const (
 			maxSlots        = 50

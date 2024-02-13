@@ -2,7 +2,6 @@ package tests
 
 import (
 	"context"
-	"crypto/ed25519"
 	"runtime"
 	"sync"
 	"testing"
@@ -25,12 +24,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zapcore"
 )
-
-var genesisPrivateKey ed25519.PrivateKey
-
-func init() {
-	genesisPrivateKey = ledger.InitWithTestingLedgerIDData()
-}
 
 func TestBasic(t *testing.T) {
 	t.Run("base", func(t *testing.T) {

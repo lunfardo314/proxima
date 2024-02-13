@@ -18,7 +18,6 @@ import (
 )
 
 func Test1SequencerPruner(t *testing.T) {
-	ledger.SetTimeTickDuration(10 * time.Millisecond)
 	t.Run("idle", func(t *testing.T) {
 		const maxSlots = 20
 		testData := initWorkflowTest(t, 1, true)
@@ -133,7 +132,6 @@ func Test1SequencerPruner(t *testing.T) {
 }
 
 func TestNSequencersIdlePruner(t *testing.T) {
-	ledger.SetTimeTickDuration(10 * time.Millisecond)
 	t.Run("finalize chain origins", func(t *testing.T) {
 		const (
 			nSequencers = 5 // in addition to bootstrap
@@ -171,7 +169,6 @@ func TestNSequencersIdlePruner(t *testing.T) {
 }
 
 func Test5SequencersIdlePruner(t *testing.T) {
-	ledger.SetTimeTickDuration(10 * time.Millisecond)
 	const (
 		maxSlots    = 50
 		nSequencers = 4 // in addition to bootstrap
@@ -191,7 +188,6 @@ func Test5SequencersIdlePruner(t *testing.T) {
 }
 
 func TestNSequencersTransferPruner(t *testing.T) {
-	ledger.SetTimeTickDuration(10 * time.Millisecond)
 	t.Run("seq 3 transfer 1 tag along", func(t *testing.T) {
 		const (
 			maxSlots        = 50

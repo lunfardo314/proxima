@@ -4,6 +4,7 @@ import (
 	"crypto/ed25519"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/unitrie/common"
@@ -45,8 +46,11 @@ func Init(id *IdentityData) {
 }
 
 // InitWithTestingLedgerIDData for testing
-func InitWithTestingLedgerIDData(seed ...int) ed25519.PrivateKey {
-	id, pk := GetTestingIdentityData(seed...)
+func InitWithTestingLedgerIDData(tickDuration ...time.Duration) ed25519.PrivateKey {
+	id, pk := GetTestingIdentityData(31415926535)
+	if len(tickDuration) > 0 {
+		id.SetTickDuration(tickDuration[0])
+	}
 	Init(id)
 	return pk
 }

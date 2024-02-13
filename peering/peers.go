@@ -172,7 +172,7 @@ func NewPeersFromConfig(ctx context.Context, logLevel zapcore.Level, logOutputs 
 
 	cfg.LogLevel = logLevel
 	cfg.LogOutputs = logOutputs
-	cfg.LedgerIDHash = ledger.GetGlobalLedgerIdentity().Hash()
+	cfg.LedgerIDHash = ledger.L().ID.Hash()
 
 	return New(cfg, ctx)
 }

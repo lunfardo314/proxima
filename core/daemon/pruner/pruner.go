@@ -73,9 +73,9 @@ func (p *Pruner) pruningBaselineSlot(verticesDescending []*vertex.WrappedTx) led
 	})
 }
 
-var prunerLoopPeriod = ledger.SlotDuration() / 2
-
 func (p *Pruner) mainLoop(ctx context.Context) {
+	prunerLoopPeriod := ledger.SlotDuration() / 2
+
 	for {
 		select {
 		case <-ctx.Done():

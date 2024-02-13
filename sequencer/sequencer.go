@@ -381,7 +381,3 @@ func (seq *Sequencer) runOnMilestoneSubmitted(ms *vertex.WrappedTx) {
 func (seq *Sequencer) MaxTagAlongOutputs() int {
 	return seq.config.MaxFeeInputs
 }
-
-func (seq *Sequencer) InflationPolicy() factory.InflationPolicy {
-	return seq.config.InflationPolicy
-}

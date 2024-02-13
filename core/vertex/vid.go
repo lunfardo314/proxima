@@ -857,13 +857,6 @@ func (vid *WrappedTx) InflationAmount() (ret uint64) {
 		Vertex: func(v *Vertex) {
 			ret = v.Tx.InflationAmount()
 		},
-		VirtualTx: func(v *VirtualTransaction) {
-			seqOut, _ := v.SequencerOutputs()
-			util.Assertf(seqOut != nil, "can't get sequencer output")
-			if inflationConstraint, idx := seqOut.InflationConstraint(); idx != 0xff {
-				ret = inflationConstraint.Amount
-			}
-		},
 		Deleted: vid.PanicAccessDeleted,
 	})
 	return
