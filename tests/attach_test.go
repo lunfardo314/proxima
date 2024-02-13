@@ -40,7 +40,7 @@ func TestBasic(t *testing.T) {
 
 		id, _, err := multistate.ScanGenesisState(stateStore)
 		require.NoError(t, err)
-		genesisOut := multistate.StemOutput(id.GenesisSlot)
+		genesisOut := multistate.GenesisStemOutput(id.GenesisSlot)
 		vidGenesis, err := attacher.EnsureBranch(genesisOut.ID.TransactionID(), wrk)
 		require.NoError(t, err)
 

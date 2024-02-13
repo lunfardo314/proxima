@@ -72,10 +72,9 @@ func (lib *Library) extendWithBaseConstants(id *IdentityData) {
 	// constants
 	lib.Extendf("constInitialSupply", "u64/%d", id.InitialSupply)
 	lib.Extendf("constGenesisControllerPublicKey", "0x%s", hex.EncodeToString(id.GenesisControllerPublicKey))
-	lib.Extendf("constBaselineTime", "u64/%d", id.BaselineTime.UnixNano())
+	lib.Extendf("constGenesisTimeUnix", "u64/%d", id.GenesisTimeUnix)
 	lib.Extendf("constTickDuration", "u64/%d", int64(id.TickDuration))
 	lib.Extendf("constMaxTickValuePerSlot", "u64/%d", id.MaxTickValueInSlot)
-	lib.Extendf("constGenesisSlot", "u64/%d", id.GenesisSlot)
 	lib.Extendf("constInitialBranchBonus", "u64/%d", id.InitialBranchBonus)
 	lib.Extendf("constBranchBonusYearlyGrowthPromille", "u64/%d", id.BranchBonusInflationPerEpochPromille)
 	lib.Extendf("constHalvingEpochs", "u64/%d", id.ChainInflationHalvingEpochs)
@@ -123,11 +122,7 @@ func newLibraryInit(id *IdentityData) *Library {
 
 const inflationSource = `
 // $0 -  slot of the chain input as u64
-func epochFromGenesis :
-	div64(
-       sub64($0, constGenesisSlot),
-       constSlotsPerLedgerEpoch
-    )
+func epochFromGenesis : div64( $0, constSlotsPerLedgerEpoch )
 
 // $0 -  epochFromGenesis
 func halvingEpoch :
@@ -193,18 +188,15 @@ func GetTestingIdentityData(seed ...int) (*IdentityData, ed25519.PrivateKey) {
 	return DefaultIdentityData(pk), pk
 }
 
-// for determinism in multiple tests
-var startupLedgerTime *Time
+func DefaultIdentityData(privateKey ed25519.PrivateKey) *IdentityData {
+	genesisTimeUnix := uint32(time.Now().Unix())
 
-func DefaultIdentityData(privateKey ed25519.PrivateKey, slot ...Slot) *IdentityData {
-	ret := &IdentityData{
-		Description:                          "Proxima prototype ledger. Ver 0.0.0",
-		InitialSupply:                        DefaultInitialSupply,
+	return &IdentityData{
+		GenesisTimeUnix:                      genesisTimeUnix,
 		GenesisControllerPublicKey:           privateKey.Public().(ed25519.PublicKey),
-		BaselineTime:                         time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+		InitialSupply:                        DefaultInitialSupply,
 		TickDuration:                         DefaultTickDuration,
 		MaxTickValueInSlot:                   DefaultTicksPerSlot - 1,
-		GenesisSlot:                          0,
 		SlotsPerLedgerEpoch:                  uint32(DefaultSlotsPerLedgerEpoch),
 		InitialBranchBonus:                   DefaultInitialBranchInflationBonus,
 		BranchBonusInflationPerEpochPromille: DefaultAnnualBranchInflationPromille,
@@ -215,36 +207,16 @@ func DefaultIdentityData(privateKey ed25519.PrivateKey, slot ...Slot) *IdentityD
 		ChainInflationPerTickFractionBase:    DefaultInitialChainInflationFractionPerTick,
 		ChainInflationOpportunitySlots:       DefaultChainInflationOpportunitySlots,
 		MinimumAmountOnSequencer:             DefaultMinimumAmountOnSequencer,
+		Description:                          "Proxima prototype ledger. Ver 0.0.0",
 	}
-
-	// creating origin 1 slot before now. More convenient for the tests
-	if len(slot) > 0 {
-		ret.GenesisSlot = slot[0]
-	} else {
-		if startupLedgerTime == nil {
-			t := ret.TimeFromRealTime(time.Now())
-			startupLedgerTime = &t
-		}
-		ret.GenesisSlot = startupLedgerTime.Slot()
-	}
-	return ret
 }
 
 func (id *IdentityData) SetTickDuration(d time.Duration) {
 	id.TickDuration = d
-	id.GenesisSlot = Slot(time.Now().Sub(id.BaselineTime)/d) - 1
 	id.SlotsPerLedgerEpoch = uint32((24 * 365 * time.Hour) / id.SlotDuration())
 }
 
 // Library constants
-
-func (lib LibraryConst) GenesisSlot() Slot {
-	bin, err := lib.EvalFromSource(nil, "constGenesisSlot")
-	util.AssertNoError(err)
-	ret := binary.BigEndian.Uint64(bin)
-	util.Assertf(ret <= math.MaxUint32, "ret <= math.MaxUint32")
-	return Slot(ret)
-}
 
 func (lib LibraryConst) TicksPerSlot() byte {
 	bin, err := lib.EvalFromSource(nil, "ticksPerSlot")

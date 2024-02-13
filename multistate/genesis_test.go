@@ -20,7 +20,7 @@ func TestOriginBase(t *testing.T) {
 	t.Logf("   Genesis chain ID: %s", gOut.ChainID.String())
 	t.Logf("   Genesis output constraints:\n%s", gOut.Output.ToString("        "))
 
-	sOut := StemOutput(genesisTimeSlot)
+	sOut := GenesisStemOutput(genesisTimeSlot)
 	t.Logf("   Stem outputID: %s", sOut.ID.String())
 	t.Logf("   Stem output constraints:\n%s", sOut.Output.ToString("        "))
 
@@ -47,7 +47,7 @@ func TestInitOrigin(t *testing.T) {
 	rdr := MustNewSugaredReadableState(store, genesisRoot)
 
 	stemBack := rdr.GetStemOutput()
-	require.EqualValues(t, ledger.StemOutputID(id.GenesisSlot), stemBack.ID)
+	require.EqualValues(t, ledger.GenesisStemOutputID(id.GenesisSlot), stemBack.ID)
 
 	initSupplyOut, err := rdr.GetChainOutput(&bootstrapSeqID)
 	require.NoError(t, err)

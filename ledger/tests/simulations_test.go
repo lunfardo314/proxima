@@ -131,9 +131,8 @@ func chainFractionBySlot(s ledger.Slot) int {
 }
 
 func TestInflationCalculations3(t *testing.T) {
-	genesisSlot := ledger.GenesisSlot()
 	for i := 0; i < simulateYears; i++ {
-		slot := genesisSlot + ledger.Slot(i*int(ledger.L().ID.SlotsPerLedgerEpoch))
+		slot := ledger.Slot(i * int(ledger.L().ID.SlotsPerLedgerEpoch))
 		t.Logf("    year %d : chain fraction %s", i, util.GoTh(int(slot)))
 	}
 }
@@ -189,11 +188,10 @@ func TestInflationProjections(t *testing.T) {
 
 	years := make([]yearData, simulateYears)
 	var chainSlotInflation int
-	genesisSlot := ledger.GenesisSlot()
 	slotsPerEpoch := ledger.L().ID.SlotsPerLedgerEpoch
 	for y, year := range years {
 		year.supplyInSlot = make([]int, slotsPerEpoch)
-		slot := genesisSlot + ledger.Slot(y*int(slotsPerEpoch))
+		slot := ledger.Slot(y * int(slotsPerEpoch))
 		for i := range year.supplyInSlot {
 			if i == 0 {
 				if y == 0 {
@@ -215,7 +213,7 @@ func TestInflationProjections(t *testing.T) {
 
 	t.Logf("ASSUMpTION: 100%% of ledger capital is inflated every year. More realistic assumtion would be 60%% - 70%%")
 	for y, year := range years {
-		slot := genesisSlot + ledger.Slot(y*int(slotsPerEpoch))
+		slot := ledger.Slot(y * int(slotsPerEpoch))
 		initSupply := year.supplyInSlot[0]
 		finalSupply := year.supplyInSlot[slotsPerEpoch-1]
 		inflationPerEpoch := finalSupply - initSupply

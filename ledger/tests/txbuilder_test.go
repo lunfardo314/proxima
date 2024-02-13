@@ -21,7 +21,6 @@ func TestBasics(t *testing.T) {
 		t.Logf("orig pub key: %s", easyfl.Fmt(pub))
 		t.Logf("origin address: %s", easyfl.Fmt(u.GenesisControllerAddress()))
 
-		t.Logf("genesis time slot: %d", u.GenesisTimeSlot())
 		t.Logf("current timestamp: %s", ledger.TimeNow().String())
 		_, _, addr := u.GenerateAddress(0)
 		err := u.TokensFromFaucet(addr, 100)

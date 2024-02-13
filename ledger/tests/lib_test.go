@@ -70,7 +70,7 @@ func TestTime(t *testing.T) {
 		require.EqualValues(t, ts, tsBack)
 	})
 	t.Run("6", func(t *testing.T) {
-		nowisNano := ledger.BaselineTime().UnixNano() + 1_000
+		nowisNano := ledger.GenesisTime().UnixNano() + 1_000
 		nowis := time.Unix(0, nowisNano)
 		ts1 := ledger.TimeFromRealTime(nowis)
 		t.Logf("ts1: %s", ts1)
@@ -78,6 +78,7 @@ func TestTime(t *testing.T) {
 		t.Logf("tsBack: %s", tsBack)
 		require.EqualValues(t, ts1, tsBack)
 
+		t.Logf("tick duration: %v", ledger.TickDuration())
 		nowis = nowis.Add(ledger.TickDuration())
 		ts2 := ledger.TimeFromRealTime(nowis)
 		t.Logf("ts2: %s", ts2)

@@ -20,8 +20,8 @@ func InitStateStore(par ledger.IdentityData, store global.StateStore) (ledger.Ch
 	util.AssertNoError(err)
 
 	genesisAddr := ledger.AddressED25519FromPublicKey(par.GenesisControllerPublicKey)
-	gout := InitialSupplyOutput(par.InitialSupply, genesisAddr, par.GenesisSlot)
-	gStemOut := StemOutput(par.GenesisSlot)
+	gout := InitialSupplyOutput(par.InitialSupply, genesisAddr)
+	gStemOut := GenesisStemOutput()
 
 	updatable := MustNewUpdatable(store, emptyRoot)
 	coverage := LedgerCoverage{0, par.InitialSupply}
@@ -35,8 +35,8 @@ func InitStateStore(par ledger.IdentityData, store global.StateStore) (ledger.Ch
 	return gout.ChainID, updatable.Root()
 }
 
-func InitialSupplyOutput(initialSupply uint64, controllerAddress ledger.AddressED25519, genesisSlot ledger.Slot) *ledger.OutputWithChainID {
-	oid := ledger.GenesisOutputID(genesisSlot)
+func InitialSupplyOutput(initialSupply uint64, controllerAddress ledger.AddressED25519) *ledger.OutputWithChainID {
+	oid := ledger.GenesisOutputID()
 	return &ledger.OutputWithChainID{
 		OutputWithID: ledger.OutputWithID{
 			ID: oid,
@@ -52,9 +52,9 @@ func InitialSupplyOutput(initialSupply uint64, controllerAddress ledger.AddressE
 	}
 }
 
-func StemOutput(genesisTimeSlot ledger.Slot) *ledger.OutputWithID {
+func GenesisStemOutput() *ledger.OutputWithID {
 	return &ledger.OutputWithID{
-		ID: ledger.StemOutputID(genesisTimeSlot),
+		ID: ledger.GenesisStemOutputID(),
 		Output: ledger.NewOutput(func(o *ledger.Output) {
 			o.WithAmount(0).
 				WithLock(&ledger.StemLock{
@@ -68,7 +68,7 @@ func genesisUpdateMutations(genesisOut, genesisStemOut *ledger.OutputWithID) *Mu
 	ret := NewMutations()
 	ret.InsertAddOutputMutation(genesisOut.ID, genesisOut.Output)
 	ret.InsertAddOutputMutation(genesisStemOut.ID, genesisStemOut.Output)
-	ret.InsertAddTxMutation(*ledger.GenesisTransactionID(genesisOut.ID.TimeSlot()), genesisOut.ID.TimeSlot(), 1)
+	ret.InsertAddTxMutation(*ledger.GenesisTransactionID(), genesisOut.ID.TimeSlot(), 1)
 	return ret
 }
 
@@ -95,7 +95,7 @@ func ScanGenesisState(stateStore global.StateStore) (*ledger.IdentityData, commo
 	rdr := MustNewSugaredReadableState(stateStore, branchData.Root)
 	stateID := ledger.MustLedgerIdentityDataFromBytes(rdr.MustLedgerIdentityBytes())
 
-	genesisOid := ledger.GenesisOutputID(stateID.GenesisSlot)
+	genesisOid := ledger.GenesisOutputID()
 	out, err := rdr.GetOutputErr(&genesisOid)
 	if err != nil {
 		return nil, nil, fmt.Errorf("GetOutputErr(%s): %w", genesisOid.StringShort(), err)

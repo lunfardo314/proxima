@@ -73,10 +73,6 @@ func WithSequencerPace(ticks byte) func(id *IdentityData) {
 	}
 }
 
-func GenesisSlot() Slot {
-	return L().Const().GenesisSlot()
-}
-
 func TicksPerSlot() byte {
 	return L().Const().TicksPerSlot()
 }

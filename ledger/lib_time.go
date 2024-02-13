@@ -31,8 +31,8 @@ func TicksPerHour() int {
 	return int(SlotsPerHour() * DefaultTicksPerSlot)
 }
 
-func BaselineTime() time.Time {
-	return L().ID.BaselineTime
+func GenesisTime() time.Time {
+	return L().ID.GenesisTime()
 }
 
 func TickDuration() time.Duration {
@@ -166,7 +166,7 @@ func (t Time) IsSlotBoundary() bool {
 }
 
 func (t Time) UnixNano() int64 {
-	return BaselineTime().UnixNano() +
+	return GenesisTime().UnixNano() +
 		int64(t.Slot())*int64(SlotDuration()) + int64(TickDuration())*int64(t.Tick())
 }
 

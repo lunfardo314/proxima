@@ -27,7 +27,6 @@ type UTXODB struct {
 	genesisPrivateKey ed25519.PrivateKey
 	genesisPublicKey  ed25519.PublicKey
 	genesisAddress    ledger.AddressED25519
-	genesisSlot       ledger.Slot
 	faucetPrivateKey  ed25519.PrivateKey
 	faucetAddress     ledger.AddressED25519
 	trace             bool
@@ -74,13 +73,12 @@ func NewUTXODB(genesisPrivateKey ed25519.PrivateKey, trace ...bool) *UTXODB {
 
 	ret := &UTXODB{
 		state:                     updatable,
-		lastSlot:                  initLedgerParams.GenesisSlot,
+		lastSlot:                  0,
 		genesisChainID:            originChainID,
 		supply:                    initLedgerParams.InitialSupply,
 		genesisPrivateKey:         genesisPrivateKey,
 		genesisPublicKey:          genesisPubKey,
 		genesisAddress:            genesisAddr,
-		genesisSlot:               initLedgerParams.GenesisSlot,
 		faucetPrivateKey:          faucetPrivateKey,
 		faucetAddress:             faucetAddress,
 		trace:                     len(trace) > 0 && trace[0],
@@ -97,10 +95,6 @@ func (u *UTXODB) Supply() uint64 {
 
 func (u *UTXODB) StateIdentityData() *ledger.IdentityData {
 	return ledger.MustLedgerIdentityDataFromBytes(u.StateReader().MustLedgerIdentityBytes())
-}
-
-func (u *UTXODB) GenesisTimeSlot() ledger.Slot {
-	return u.genesisSlot
 }
 
 func (u *UTXODB) GenesisChainID() *ledger.ChainID {
@@ -494,8 +488,8 @@ func (u *UTXODB) CreateChainOrigin(controllerPrivateKey ed25519.PrivateKey, ts l
 }
 
 func (u *UTXODB) OriginDistributionTransactionString() string {
-	genesisStemOutputID := ledger.StemOutputID(u.GenesisTimeSlot())
-	genesisOutputID := ledger.GenesisOutputID(u.GenesisTimeSlot())
+	genesisStemOutputID := ledger.GenesisStemOutputID()
+	genesisOutputID := ledger.GenesisOutputID()
 
 	return transaction.ParseBytesToString(u.originDistributionTxBytes, func(oid *ledger.OutputID) ([]byte, bool) {
 		switch *oid {

@@ -21,18 +21,16 @@ type (
 	IdentityData struct {
 		// arbitrary string up 255 bytes
 		Description string
+		// genesis time unix seconds
+		GenesisTimeUnix uint32
 		// initial supply of tokens
 		InitialSupply uint64
 		// ED25519 public key of the controller
 		GenesisControllerPublicKey ed25519.PublicKey
-		// baseline time unix nanoseconds
-		BaselineTime time.Time
 		// time tick duration in nanoseconds
 		TickDuration time.Duration
 		// max time tick value in the slot. Up to 256 time ticks per time slot, default 100
 		MaxTickValueInSlot uint8
-		// time slot of the genesis
-		GenesisSlot Slot
 		// ----------- inflation-related
 		// InitialBranchInflation inflation bonus. Inflated every year by BranchBonusInflationPerEpochPromille
 		InitialBranchBonus uint64
@@ -57,10 +55,9 @@ type (
 
 	// IdentityDataYAMLAble structure for canonical YAMLAble marshaling
 	IdentityDataYAMLAble struct {
-		Description                          string `yaml:"description"`
+		GenesisTimeUnix                      uint32 `yaml:"genesis_time_unix"`
 		InitialSupply                        uint64 `yaml:"initial_supply"`
 		GenesisControllerPublicKey           string `yaml:"genesis_controller_public_key"`
-		BaselineTime                         int64  `yaml:"baseline_time"`
 		TimeTickDuration                     int64  `yaml:"time_tick_duration"`
 		MaxTimeTickValueInTimeSlot           uint8  `yaml:"max_time_tick_value_in_time_slot"`
 		GenesisTimeSlot                      uint32 `yaml:"genesis_time_slot"`
@@ -74,6 +71,7 @@ type (
 		ChainInflationPerTickFractionBase    uint64 `yaml:"chain_inflation_per_tick_base"`
 		ChainInflationOpportunitySlots       uint64 `yaml:"chain_inflation_opportunity_slots"`
 		MinimumAmountOnSequencer             uint64 `yaml:"minimum_amount_on_sequencer"`
+		Description                          string `yaml:"description"`
 		// non-persistent, for control
 		GenesisControllerAddress string `yaml:"genesis_controller_address"`
 		BootstrapChainID         string `yaml:"bootstrap_chain_id"`
@@ -87,15 +85,12 @@ const (
 
 func (id *IdentityData) Bytes() []byte {
 	var buf bytes.Buffer
-	_ = binary.Write(&buf, binary.BigEndian, uint16(len(id.Description)))
-	buf.Write([]byte(id.Description))
+	_ = binary.Write(&buf, binary.BigEndian, id.GenesisTimeUnix)
 	util.Assertf(len(id.GenesisControllerPublicKey) == ed25519.PublicKeySize, "id.GenesisControllerPublicKey)==ed25519.PublicKeySize")
 	buf.Write(id.GenesisControllerPublicKey)
 	_ = binary.Write(&buf, binary.BigEndian, id.InitialSupply)
-	_ = binary.Write(&buf, binary.BigEndian, id.BaselineTime.UnixNano())
 	_ = binary.Write(&buf, binary.BigEndian, id.TickDuration.Nanoseconds())
 	_ = binary.Write(&buf, binary.BigEndian, id.MaxTickValueInSlot)
-	_ = binary.Write(&buf, binary.BigEndian, id.GenesisSlot)
 	_ = binary.Write(&buf, binary.BigEndian, id.SlotsPerLedgerEpoch)
 	_ = binary.Write(&buf, binary.BigEndian, id.InitialBranchBonus)
 	_ = binary.Write(&buf, binary.BigEndian, id.BranchBonusInflationPerEpochPromille)
@@ -106,6 +101,8 @@ func (id *IdentityData) Bytes() []byte {
 	_ = binary.Write(&buf, binary.BigEndian, id.TransactionPace)
 	_ = binary.Write(&buf, binary.BigEndian, id.TransactionPaceSequencer)
 	_ = binary.Write(&buf, binary.BigEndian, id.MinimumAmountOnSequencer)
+	_ = binary.Write(&buf, binary.BigEndian, uint16(len(id.Description)))
+	buf.Write([]byte(id.Description))
 
 	return buf.Bytes()
 }
@@ -113,17 +110,14 @@ func (id *IdentityData) Bytes() []byte {
 func MustLedgerIdentityDataFromBytes(data []byte) *IdentityData {
 	ret := &IdentityData{}
 	rdr := bytes.NewReader(data)
+
 	var size16 uint16
+	var n int
 
-	err := binary.Read(rdr, binary.BigEndian, &size16)
+	err := binary.Read(rdr, binary.BigEndian, &ret.GenesisTimeUnix)
 	util.AssertNoError(err)
-	buf := make([]byte, size16)
-	n, err := rdr.Read(buf)
-	util.AssertNoError(err)
-	util.Assertf(n == int(size16), "wrong data size")
-	ret.Description = string(buf)
 
-	buf = make([]byte, ed25519.PublicKeySize)
+	buf := make([]byte, ed25519.PublicKeySize)
 	n, err = rdr.Read(buf)
 	util.AssertNoError(err)
 	util.Assertf(n == ed25519.PublicKeySize, "wrong data size")
@@ -135,16 +129,9 @@ func MustLedgerIdentityDataFromBytes(data []byte) *IdentityData {
 	var bufNano int64
 	err = binary.Read(rdr, binary.BigEndian, &bufNano)
 	util.AssertNoError(err)
-	ret.BaselineTime = time.Unix(0, bufNano)
-
-	err = binary.Read(rdr, binary.BigEndian, &bufNano)
-	util.AssertNoError(err)
 	ret.TickDuration = time.Duration(bufNano)
 
 	err = binary.Read(rdr, binary.BigEndian, &ret.MaxTickValueInSlot)
-	util.AssertNoError(err)
-
-	err = binary.Read(rdr, binary.BigEndian, &ret.GenesisSlot)
 	util.AssertNoError(err)
 
 	err = binary.Read(rdr, binary.BigEndian, &ret.SlotsPerLedgerEpoch)
@@ -177,8 +164,20 @@ func MustLedgerIdentityDataFromBytes(data []byte) *IdentityData {
 	err = binary.Read(rdr, binary.BigEndian, &ret.MinimumAmountOnSequencer)
 	util.AssertNoError(err)
 
+	err = binary.Read(rdr, binary.BigEndian, &size16)
+	util.AssertNoError(err)
+	buf = make([]byte, size16)
+	n, err = rdr.Read(buf)
+	util.AssertNoError(err)
+	util.Assertf(n == int(size16), "wrong data size")
+	ret.Description = string(buf)
+
 	util.Assertf(rdr.Len() == 0, "not all bytes has been read")
 	return ret
+}
+
+func (id *IdentityData) GenesisTime() time.Time {
+	return time.Unix(int64(id.GenesisTimeUnix), 0)
 }
 
 func (id *IdentityData) Hash() [32]byte {
@@ -190,8 +189,8 @@ func (id *IdentityData) GenesisControlledAddress() AddressED25519 {
 }
 
 func (id *IdentityData) TimeFromRealTime(nowis time.Time) Time {
-	util.Assertf(!nowis.Before(id.BaselineTime), "!nowis.Before(id.BaselineTime)")
-	i := nowis.UnixNano() - id.BaselineTime.UnixNano()
+	util.Assertf(!nowis.Before(id.GenesisTime()), "!nowis.Before(id.GenesisTimeUnix)")
+	i := nowis.UnixNano() / (int64(id.GenesisTimeUnix) * int64(time.Nanosecond))
 	e := i / int64(id.SlotDuration())
 	util.Assertf(e <= math.MaxUint32, "TimeFromRealTime: e <= math.MaxUint32")
 	util.Assertf(uint32(e)&0xc0000000 == 0, "TimeFromRealTime: two highest bits must be 0. Wrong constants")
@@ -210,7 +209,7 @@ func (id *IdentityData) TicksPerSlot() int {
 }
 
 func (id *IdentityData) OriginChainID() ChainID {
-	oid := GenesisOutputID(id.GenesisSlot)
+	oid := GenesisOutputID()
 	return OriginChainID(&oid)
 }
 
@@ -224,23 +223,20 @@ func (id *IdentityData) Lines(prefix ...string) *lines.Lines {
 		Add("Description: '%s'", id.Description).
 		Add("Initial supply: %s", util.GoTh(id.InitialSupply)).
 		Add("Genesis controller address: %s", id.GenesisControlledAddress().String()).
-		Add("Baseline time: %s", id.BaselineTime.Format(time.RFC3339)).
+		Add("Baseline time: %s", id.GenesisTime().Format(time.RFC3339)).
 		Add("Time tick duration: %v", id.TickDuration).
 		Add("Time ticks per time slot: %d", id.TicksPerSlot()).
-		Add("Genesis time slot: %d", id.GenesisSlot).
 		Add("Origin chain ID: %s", originChainID.String())
 }
 
 func (id *IdentityData) YAMLAble() *IdentityDataYAMLAble {
 	chainID := id.OriginChainID()
 	return &IdentityDataYAMLAble{
-		Description:                          id.Description,
-		InitialSupply:                        id.InitialSupply,
+		GenesisTimeUnix:                      id.GenesisTimeUnix,
 		GenesisControllerPublicKey:           hex.EncodeToString(id.GenesisControllerPublicKey),
-		BaselineTime:                         id.BaselineTime.UnixNano(),
+		InitialSupply:                        id.InitialSupply,
 		TimeTickDuration:                     id.TickDuration.Nanoseconds(),
 		MaxTimeTickValueInTimeSlot:           id.MaxTickValueInSlot,
-		GenesisTimeSlot:                      uint32(id.GenesisSlot),
 		InitialBranchBonus:                   id.InitialBranchBonus,
 		BranchBonusInflationPerEpochPromille: id.BranchBonusInflationPerEpochPromille,
 		VBCost:                               id.VBCost,
@@ -253,11 +249,12 @@ func (id *IdentityData) YAMLAble() *IdentityDataYAMLAble {
 		GenesisControllerAddress:             id.GenesisControlledAddress().String(),
 		MinimumAmountOnSequencer:             id.MinimumAmountOnSequencer,
 		BootstrapChainID:                     chainID.StringHex(),
+		Description:                          id.Description,
 	}
 }
 
 func (id *IdentityData) TimeHorizonYears() int {
-	return (math.MaxUint32 - int(id.GenesisSlot)) / int(id.SlotsPerLedgerEpoch)
+	return math.MaxUint32 / int(id.SlotsPerLedgerEpoch)
 }
 
 func (id *IdentityData) SlotsPerDay() int {
@@ -270,12 +267,11 @@ func (id *IdentityData) TimeConstantsToString() string {
 		Add("TicksPerSlot = %d", id.TicksPerSlot()).
 		Add("SlotDuration = %v", id.SlotDuration()).
 		Add("SlotsPerDay = %v", id.SlotsPerDay()).
-		Add("GenesisSlot = %d (%.2f %% of max)", id.GenesisSlot, float32(id.GenesisSlot)*100/float32(math.MaxUint32)).
 		Add("TimeHorizonYears = %d", id.TimeHorizonYears()).
 		Add("SlotsPerLedgerEpoch = %d", id.SlotsPerLedgerEpoch).
 		Add("seconds per year = %d", 60*60*24*365).
-		Add("BaselineTime = %v", id.BaselineTime).
-		Add("timestamp BaselineTime = %s", id.TimeFromRealTime(id.BaselineTime)).
+		Add("timestamp GenesisTime = %v", id.GenesisTime()).
+		Add("GenesisTimeUnix = %d", id.GenesisTimeUnix).
 		Add("timestamp now = %s, now is %v", id.TimeFromRealTime(time.Now()).String(), time.Now()).
 		String()
 }
@@ -304,19 +300,17 @@ func (id *IdentityDataYAMLAble) YAML() []byte {
 func (id *IdentityDataYAMLAble) stateIdentityData() (*IdentityData, error) {
 	var err error
 	ret := &IdentityData{}
-	ret.Description = id.Description
-	ret.InitialSupply = id.InitialSupply
+	ret.GenesisTimeUnix = id.GenesisTimeUnix
 	ret.GenesisControllerPublicKey, err = hex.DecodeString(id.GenesisControllerPublicKey)
+	ret.InitialSupply = id.InitialSupply
 	if err != nil {
 		return nil, err
 	}
 	if len(ret.GenesisControllerPublicKey) != ed25519.PublicKeySize {
 		return nil, fmt.Errorf("wrong public key")
 	}
-	ret.BaselineTime = time.Unix(0, id.BaselineTime)
 	ret.TickDuration = time.Duration(id.TimeTickDuration)
 	ret.MaxTickValueInSlot = id.MaxTimeTickValueInTimeSlot
-	ret.GenesisSlot = Slot(id.GenesisTimeSlot)
 	ret.InitialBranchBonus = id.InitialBranchBonus
 	ret.BranchBonusInflationPerEpochPromille = id.BranchBonusInflationPerEpochPromille
 	ret.VBCost = id.VBCost
@@ -327,6 +321,7 @@ func (id *IdentityDataYAMLAble) stateIdentityData() (*IdentityData, error) {
 	ret.ChainInflationOpportunitySlots = id.ChainInflationOpportunitySlots
 	ret.ChainInflationHalvingEpochs = id.ChainInflationHalvingYears
 	ret.MinimumAmountOnSequencer = id.MinimumAmountOnSequencer
+	ret.Description = id.Description
 
 	// control
 	if AddressED25519FromPublicKey(ret.GenesisControllerPublicKey).String() != id.GenesisControllerAddress {
@@ -347,20 +342,20 @@ func StateIdentityDataFromYAML(yamlData []byte) (*IdentityData, error) {
 	return yamlAble.stateIdentityData()
 }
 
-func GenesisTransactionID(genesisTimeSlot Slot) *TransactionID {
-	ret := NewTransactionID(MustNewLedgerTime(genesisTimeSlot, 0), All0TransactionHash, true, true)
+func GenesisTransactionID() *TransactionID {
+	ret := NewTransactionID(MustNewLedgerTime(0, 0), All0TransactionHash, true, true)
 	return &ret
 }
 
-func GenesisOutputID(e Slot) (ret OutputID) {
+func GenesisOutputID() (ret OutputID) {
 	// we are placing sequencer flag = true into the genesis tx ID to please sequencer constraint
 	// of the origin branch transaction. It is the only exception
-	ret = NewOutputID(GenesisTransactionID(e), InitialSupplyOutputIndex)
+	ret = NewOutputID(GenesisTransactionID(), InitialSupplyOutputIndex)
 	return
 }
 
-func StemOutputID(e Slot) (ret OutputID) {
-	ret = NewOutputID(GenesisTransactionID(e), StemOutputIndex)
+func GenesisStemOutputID() (ret OutputID) {
+	ret = NewOutputID(GenesisTransactionID(), StemOutputIndex)
 	return
 }
 
@@ -394,7 +389,7 @@ func (id *IdentityData) _insideInflationOpportunityWindow(inTs, outTs Time) bool
 }
 
 func (id *IdentityData) _epochFromGenesis(slot Slot) uint64 {
-	return uint64(slot-id.GenesisSlot) / uint64(id.SlotsPerLedgerEpoch)
+	return uint64(slot) / uint64(id.SlotsPerLedgerEpoch)
 }
 
 func (id *IdentityData) _halvingEpoch(epochFromGenesis uint64) uint64 {
@@ -405,6 +400,5 @@ func (id *IdentityData) _halvingEpoch(epochFromGenesis uint64) uint64 {
 }
 
 func (id *IdentityData) InflationFractionBySlot(slotIn Slot) uint64 {
-	util.Assertf(slotIn >= id.GenesisSlot, "slot >= id.GenesisSlot")
 	return id.ChainInflationPerTickFractionBase * (1 << id._halvingEpoch(id._epochFromGenesis(slotIn)))
 }

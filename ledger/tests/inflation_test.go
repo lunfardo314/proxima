@@ -11,14 +11,12 @@ import (
 
 func TestInflation(t *testing.T) {
 	t.Run("1", func(t *testing.T) {
-		t.Logf("genesis slot: %d", ledger.GenesisSlot())
-		ledger.L().MustEqual("constGenesisSlot", fmt.Sprintf("u64/%d", ledger.GenesisSlot()))
+		ledger.L().MustEqual("constGenesisTimeUnix", fmt.Sprintf("u64/%d", ledger.L().ID.GenesisTimeUnix))
 		require.EqualValues(t, ledger.L().ID.TicksPerSlot(), ledger.TicksPerSlot())
 	})
 	t.Run("2", func(t *testing.T) {
-		t.Logf("genesis slot: %d", ledger.GenesisSlot())
-		tsIn := ledger.MustNewLedgerTime(ledger.GenesisSlot(), 1)
-		tsOut := ledger.MustNewLedgerTime(ledger.GenesisSlot(), 51)
+		tsIn := ledger.MustNewLedgerTime(0, 1)
+		tsOut := ledger.MustNewLedgerTime(0, 51)
 		src := fmt.Sprintf("chainInflationAmount(%s, %s, u64/100000)", tsIn.Source(), tsOut.Source())
 		//lib.EvalFromSource(easyfl.NewGlobalDataTracePrint(nil), src)
 		ledger.L().MustEqual(src, "u64/0")
@@ -26,9 +24,8 @@ func TestInflation(t *testing.T) {
 		require.EqualValues(t, 0, inflationDirect)
 	})
 	t.Run("3", func(t *testing.T) {
-		t.Logf("genesis slot: %d", ledger.GenesisSlot())
-		tsIn := ledger.MustNewLedgerTime(ledger.GenesisSlot(), 1)
-		tsOut := ledger.MustNewLedgerTime(ledger.GenesisSlot(), 51)
+		tsIn := ledger.MustNewLedgerTime(0, 1)
+		tsOut := ledger.MustNewLedgerTime(0, 51)
 
 		amountIn := ledger.L().ID.ChainInflationPerTickFractionBase
 		t.Logf("ChainInflationPerTickFractionBase const: %s", util.GoTh(amountIn))
@@ -43,13 +40,12 @@ func TestInflation(t *testing.T) {
 		//lib.EvalFromSource(easyfl.NewGlobalDataTracePrint(nil), src)
 	})
 	t.Run("4", func(t *testing.T) {
-		t.Logf("genesis slot: %d", ledger.GenesisSlot())
 		t.Logf("halving epochs: %d", ledger.L().Const().HalvingEpochs())
 		t.Logf("supplyInSlot per epoch: %d", ledger.L().Const().SlotsPerEpoch())
 		t.Logf("seconds per year: %d", 24*365*60*60)
 
 		// TODO wrong test. Does not fall into the opportunity window
-		tsStart := ledger.MustNewLedgerTime(ledger.GenesisSlot(), 1)
+		tsStart := ledger.MustNewLedgerTime(0, 1)
 		amountIn := ledger.L().Const().ChainInflationPerTickFractionBase() + 13370000
 		t.Logf("amountIn: %s", util.GoTh(amountIn))
 		for i := 0; i < 10; i++ {
