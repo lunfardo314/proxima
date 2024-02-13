@@ -383,8 +383,8 @@ func ScanOutputs() TxValidationOption {
 			totalAmount += uint64(amount)
 			tx.totalInflation += o.Inflation()
 		}
-		if tx.totalAmount != totalAmount+tx.totalInflation {
-			return fmt.Errorf("wrong total produced amount value")
+		if tx.totalAmount != totalAmount {
+			return fmt.Errorf("wrong total produced amount")
 		}
 		return nil
 	}

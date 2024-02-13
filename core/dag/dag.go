@@ -52,10 +52,6 @@ func (d *DAG) PruningTTLSlots() int {
 	return pruningTTLSlots
 }
 
-func (d *DAG) MaxToleratedParasiticChainSlots() int {
-	return maxToleratedParasiticChainSlots
-}
-
 func (d *DAG) StateStore() global.StateStore {
 	return d.stateStore
 }

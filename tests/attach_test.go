@@ -327,8 +327,8 @@ func TestConflicts1Attacher(t *testing.T) {
 		vid, err := attacher.AttachTransactionFromBytes(txBytes, testData.wrk, attacher.OptionWithAttachmentCallback(func(_ *vertex.WrappedTx, _ error) {
 			wg.Done()
 		}))
-		wg.Wait()
 		require.NoError(t, err)
+		wg.Wait()
 		testData.logDAGInfo()
 
 		if nConflicts > 1 {

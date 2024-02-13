@@ -13,6 +13,7 @@ const (
 	SlotByteLength = 4
 	TickByteLength = 1
 	TimeByteLength = SlotByteLength + TickByteLength // bytes
+	MaxSlot        = 0xffffffff >> 2                 // 2 most significant bytes must be 0
 )
 
 func SlotsPerDay() time.Duration {
@@ -257,6 +258,13 @@ func (t Time) AddTicks(s int) Time {
 
 func (t Time) AddSlots(e int) Time {
 	return MustNewLedgerTime(t.Slot()+Slot(e), t.Tick())
+}
+
+func (t Time) SubtractSlotsSafe(s Slot) Time {
+	if t.Slot() < s {
+		return MustNewLedgerTime(0, t.Tick())
+	}
+	return MustNewLedgerTime(t.Slot()-s, t.Tick())
 }
 
 func (t Time) AddDuration(d time.Duration) Time {

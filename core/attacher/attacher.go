@@ -455,7 +455,7 @@ func (a *attacher) attachInput(v *vertex.Vertex, inputIdx byte, vid *vertex.Wrap
 
 	if parasiticChainHorizon == ledger.NilLedgerTime {
 		// TODO revisit parasitic chain threshold because of syncing branches
-		parasiticChainHorizon = ledger.MustNewLedgerTime(v.Inputs[inputIdx].Timestamp().Slot()-ledger.Slot(a.MaxToleratedParasiticChainSlots()), 0)
+		parasiticChainHorizon = v.Inputs[inputIdx].Timestamp().SubtractSlotsSafe(ledger.Slot(ledger.L().ID.MaxToleratedParasiticChainSlots))
 	}
 	wOut := vertex.WrappedOutput{
 		VID:   v.Inputs[inputIdx],
