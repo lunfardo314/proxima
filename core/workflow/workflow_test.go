@@ -4,6 +4,8 @@ import (
 	"context"
 	"testing"
 
+	"github.com/lunfardo314/proxima/global"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/peering"
 	"github.com/lunfardo314/proxima/txstore"
 	"github.com/lunfardo314/unitrie/common"
@@ -11,11 +13,29 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
+func init() {
+	ledger.InitWithTestingLedgerIDData()
+}
+
+type workflowDummyEnvironment struct {
+	global.Logging
+	global.StateStore
+	global.TxBytesStore
+}
+
+func newWorkflowDummyEnvironment() *workflowDummyEnvironment {
+	return &workflowDummyEnvironment{
+		Logging:      global.NewDefaultLogging("wrk", zapcore.DebugLevel, nil),
+		StateStore:   common.NewInMemoryKVStore(),
+		TxBytesStore: txstore.NewSimpleTxBytesStore(common.NewInMemoryKVStore()),
+	}
+}
+
 func TestBasic(t *testing.T) {
-	stateStore := common.NewInMemoryKVStore()
-	txBytesStore := txstore.NewSimpleTxBytesStore(common.NewInMemoryKVStore())
+	env := newWorkflowDummyEnvironment()
 	peers := peering.NewPeersDummy()
-	w := New(stateStore, txBytesStore, peers, WithLogLevel(zapcore.DebugLevel))
+
+	w := New(env, peers, OptionDoNotStartPruner)
 	ctx, stop := context.WithCancel(context.Background())
 	w.Start(ctx)
 

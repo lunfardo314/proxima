@@ -76,7 +76,7 @@ func TestTippool(t *testing.T) {
 	testData.storeTransactions(branches...)
 
 	tpools := make([]*tippool.SequencerTipPool, len(testData.chainOrigins))
-	testData.wrk.EnableTraceTags("tippool")
+	testData.env.EnableTraceTags("tippool")
 	var err error
 
 	for i := range tpools {

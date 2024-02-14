@@ -29,10 +29,23 @@ import (
 	"golang.org/x/crypto/blake2b"
 )
 
-const tracePull = false
+type workflowDummyEnvironment struct {
+	*global.DefaultLogging
+	global.StateStore
+	global.TxBytesStore
+}
+
+func newWorkflowDummyEnvironment(stateStore global.StateStore, txStore global.TxBytesStore) *workflowDummyEnvironment {
+	return &workflowDummyEnvironment{
+		DefaultLogging: global.NewDefaultLogging("", zapcore.DebugLevel, nil),
+		StateStore:     stateStore,
+		TxBytesStore:   txStore,
+	}
+}
 
 type workflowTestData struct {
 	t                      *testing.T
+	env                    *workflowDummyEnvironment
 	wrk                    *workflow.Workflow
 	ctx                    context.Context
 	stopFun                context.CancelFunc
@@ -120,11 +133,11 @@ func initWorkflowTest(t *testing.T, nChains int, startPruner ...bool) *workflowT
 		t.Logf("--------------- faucet output\n%s\n--------------", ret.faucetOutput)
 	}
 
+	ret.env = newWorkflowDummyEnvironment(stateStore, ret.txStore)
 	if len(startPruner) > 0 && startPruner[0] {
-		ret.wrk = workflow.New(stateStore, ret.txStore, peering.NewPeersDummy(), workflow.WithLogLevel(zapcore.DebugLevel))
+		ret.wrk = workflow.New(ret.env, peering.NewPeersDummy())
 	} else {
-		ret.wrk = workflow.New(stateStore, ret.txStore, peering.NewPeersDummy(),
-			workflow.WithLogLevel(zapcore.DebugLevel), workflow.OptionDoNotStartPruner)
+		ret.wrk = workflow.New(ret.env, peering.NewPeersDummy(), workflow.OptionDoNotStartPruner)
 	}
 	var cancelFun context.CancelFunc
 	ret.ctx, cancelFun = context.WithCancel(context.Background())

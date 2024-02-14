@@ -173,9 +173,9 @@ func (seq *Sequencer) Log() *zap.SugaredLogger {
 	return seq.log
 }
 
-func (seq *Sequencer) Tracef(tag string, format string, args ...any) {
-	seq.Workflow.TraceLog(seq.log, tag, format, args...)
-}
+//	func (seq *Sequencer) Tracef(tag string, format string, args ...any) {
+//		seq.Workflow.TraceLog(seq.log, tag, format, args...)
+//	}
 
 func (seq *Sequencer) mainLoop() {
 	beginAt := seq.Workflow.SyncData().WhenStarted().Add(seq.config.DelayStart)

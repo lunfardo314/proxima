@@ -16,6 +16,8 @@ import (
 	"golang.org/x/exp/maps"
 )
 
+// TODO refactor with environment
+
 type (
 	Pruner struct {
 		*dag.DAG

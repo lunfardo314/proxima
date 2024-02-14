@@ -22,7 +22,6 @@ import (
 	"github.com/lunfardo314/proxima/util/testutil"
 	"github.com/lunfardo314/unitrie/common"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/zap/zapcore"
 )
 
 func TestTime(t *testing.T) {
@@ -39,8 +38,8 @@ func TestBasic(t *testing.T) {
 		bootstrapChainID, root := multistate.InitStateStore(*ledger.L().ID, stateStore)
 		dagAccess := dag.New(stateStore)
 		txBytesStore := txstore.NewSimpleTxBytesStore(common.NewInMemoryKVStore())
-		wrk := workflow.New(stateStore, txBytesStore, peering.NewPeersDummy(),
-			workflow.WithLogLevel(zapcore.DebugLevel), workflow.OptionDoNotStartPruner)
+		env := newWorkflowDummyEnvironment(stateStore, txBytesStore)
+		wrk := workflow.New(env, peering.NewPeersDummy(), workflow.OptionDoNotStartPruner)
 		ctx, stop := context.WithCancel(context.Background())
 		wrk.Start(ctx)
 
@@ -77,8 +76,8 @@ func TestBasic(t *testing.T) {
 		bootstrapChainID, _ := multistate.InitStateStore(*par, stateStore)
 		txBytesStore := txstore.NewSimpleTxBytesStore(common.NewInMemoryKVStore())
 
-		wrk := workflow.New(stateStore, txBytesStore, peering.NewPeersDummy(),
-			workflow.WithLogLevel(zapcore.DebugLevel), workflow.OptionDoNotStartPruner)
+		env := newWorkflowDummyEnvironment(stateStore, txBytesStore)
+		wrk := workflow.New(env, peering.NewPeersDummy(), workflow.OptionDoNotStartPruner)
 		ctx, stop := context.WithCancel(context.Background())
 		wrk.Start(ctx)
 
@@ -142,8 +141,8 @@ func TestBasic(t *testing.T) {
 		bootstrapChainID, _ := multistate.InitStateStore(*par, stateStore)
 		txBytesStore := txstore.NewSimpleTxBytesStore(common.NewInMemoryKVStore())
 
-		wrk := workflow.New(stateStore, txBytesStore, peering.NewPeersDummy(),
-			workflow.WithLogLevel(zapcore.DebugLevel), workflow.OptionDoNotStartPruner)
+		env := newWorkflowDummyEnvironment(stateStore, txBytesStore)
+		wrk := workflow.New(env, peering.NewPeersDummy(), workflow.OptionDoNotStartPruner)
 		ctx, stop := context.WithCancel(context.Background())
 
 		//wrk.EnableTraceTags(attacher.TraceTagAttach, attacher.TraceTagAttachMilestone, attacher.TraceTagAttachVertex)
@@ -214,8 +213,8 @@ func TestBasic(t *testing.T) {
 		bootstrapChainID, _ := multistate.InitStateStore(*par, stateStore)
 		txBytesStore := txstore.NewSimpleTxBytesStore(common.NewInMemoryKVStore())
 
-		wrk := workflow.New(stateStore, txBytesStore, peering.NewPeersDummy(),
-			workflow.WithLogLevel(zapcore.DebugLevel), workflow.OptionDoNotStartPruner)
+		env := newWorkflowDummyEnvironment(stateStore, txBytesStore)
+		wrk := workflow.New(env, peering.NewPeersDummy(), workflow.OptionDoNotStartPruner)
 		ctx, stop := context.WithCancel(context.Background())
 		wrk.Start(ctx)
 
@@ -497,7 +496,7 @@ func TestConflicts1Attacher(t *testing.T) {
 
 		var wg sync.WaitGroup
 
-		testData.wrk.EnableTraceTags("delay")
+		testData.env.EnableTraceTags("delay")
 
 		wg.Add(1)
 		vid, err := attacher.AttachTransactionFromBytes(txBytes, testData.wrk, attacher.OptionWithAttachmentCallback(func(_ *vertex.WrappedTx, _ error) {
@@ -952,7 +951,7 @@ func TestSeqChains(t *testing.T) {
 		testData.makeSeqChains(howLongSeqChains)
 		//testData.printTxIDs()
 
-		testData.wrk.EnableTraceTags(workflow.TraceTagDelay)
+		testData.env.EnableTraceTags(workflow.TraceTagDelay)
 		//testData.wrk.EnableTraceTags(attacher.TraceTagMarkDefUndef)
 		//testData.wrk.EnableTraceTags(attacher.TraceTagAttachEndorsements, attacher.TraceTagAttachVertex)
 
@@ -1079,7 +1078,7 @@ func TestSeqChains(t *testing.T) {
 			testData.storeTransactions(extend...)
 		}
 
-		testData.wrk.EnableTraceTags(workflow.TraceTagDelay)
+		testData.env.EnableTraceTags(workflow.TraceTagDelay)
 		//testData.wrk.EnableTraceTags(attacher.TraceTagAttachEndorsements)
 		testData.storeTransactions(branches...)
 		var wg sync.WaitGroup
@@ -1147,7 +1146,7 @@ func TestSeqChains(t *testing.T) {
 
 		testData.storeTransactions(branches...)
 
-		testData.wrk.EnableTraceTags("persist_txbytes")
+		testData.env.EnableTraceTags("persist_txbytes")
 
 		var wg sync.WaitGroup
 		wg.Add(1)
@@ -1184,7 +1183,7 @@ func TestSeqChains(t *testing.T) {
 		testData := initLongConflictTestData(t, nConflicts, nChains, howLongConflictChains)
 		testData.makeSeqBeginnings(false)
 
-		testData.wrk.EnableTraceTags(sequencer.TraceTag + "_tx")
+		testData.env.EnableTraceTags(sequencer.TraceTag + "_tx")
 
 		slotTransactions := make([][][]*transaction.Transaction, nSlots)
 		branches := make([]*transaction.Transaction, nSlots)
@@ -1216,7 +1215,7 @@ func TestSeqChains(t *testing.T) {
 
 		testData.storeTransactions(branches...)
 
-		testData.wrk.EnableTraceTags("persist_txbytes")
+		testData.env.EnableTraceTags("persist_txbytes")
 
 		var wg sync.WaitGroup
 		wg.Add(1)

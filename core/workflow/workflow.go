@@ -22,11 +22,15 @@ import (
 )
 
 type (
-	Workflow struct {
-		*dag.DAG
-		*global.DefaultLogging
+	Environment interface {
+		global.Logging
+		global.StateStore
 		global.TxBytesStore
-		peers *peering.Peers
+	}
+	Workflow struct {
+		Environment
+		*dag.DAG
+		*peering.Peers
 		// queues
 		pullClient       *pull_client.PullClient
 		pullServer       *pull_server.PullServer
@@ -52,18 +56,16 @@ var (
 	EventNewTx     = eventtype.RegisterNew[*vertex.WrappedTx]("new tx") // event may be posted more than once for the transaction
 )
 
-func New(stateStore global.StateStore, txBytesStore global.TxBytesStore, peers *peering.Peers, opts ...ConfigOption) *Workflow {
+func New(env Environment, peers *peering.Peers, opts ...ConfigOption) *Workflow {
 	cfg := defaultConfigParams()
 	for _, opt := range opts {
 		opt(&cfg)
 	}
-	lvl := cfg.logLevel
 
 	ret := &Workflow{
-		TxBytesStore:     txBytesStore,
-		DefaultLogging:   global.NewDefaultLogging("", lvl, cfg.logOutput),
-		DAG:              dag.New(stateStore),
-		peers:            peers,
+		Environment:      env,
+		DAG:              dag.New(env),
+		Peers:            peers,
 		syncData:         newSyncData(),
 		debugCounters:    testutil.NewSynCounters(),
 		traceTags:        set.New[string](),
@@ -96,7 +98,7 @@ func (w *Workflow) Start(ctx context.Context) {
 	w.persistTxBytes.Start(ctx, &w.waitStop)
 	if !w.doNotStartPruner {
 		w.waitStop.Add(1)
-		prune := pruner.New(w.DAG, w.DefaultLogging)
+		prune := pruner.New(w.DAG, w) // refactor
 		prune.Start(ctx, &w.waitStop)
 	}
 }

@@ -55,15 +55,15 @@ func (w *Workflow) PokeAllWith(wanted *vertex.WrappedTx) {
 }
 
 func (w *Workflow) QueryTransactionsFromRandomPeer(lst ...ledger.TransactionID) bool {
-	return w.peers.PullTransactionsFromRandomPeer(lst...)
+	return w.Peers.PullTransactionsFromRandomPeer(lst...)
 }
 
 func (w *Workflow) SendTxBytesWithMetadataToPeer(id peer.ID, txBytes []byte, metadata *txmetadata.TransactionMetadata) bool {
-	return w.peers.SendTxBytesWithMetadataToPeer(id, txBytes, metadata)
+	return w.Peers.SendTxBytesWithMetadataToPeer(id, txBytes, metadata)
 }
 
 func (w *Workflow) GossipTxBytesToPeers(txBytes []byte, metadata *txmetadata.TransactionMetadata, except ...peer.ID) int {
-	return w.peers.GossipTxBytesToPeers(txBytes, metadata, except...)
+	return w.Peers.GossipTxBytesToPeers(txBytes, metadata, except...)
 }
 
 func (w *Workflow) EvidenceIncomingBranch(txid *ledger.TransactionID, seqID ledger.ChainID) {
