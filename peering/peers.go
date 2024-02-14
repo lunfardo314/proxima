@@ -20,27 +20,27 @@ import (
 	"github.com/lunfardo314/proxima/util"
 	"github.com/multiformats/go-multiaddr"
 	"github.com/spf13/viper"
-	"go.uber.org/atomic"
-	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"golang.org/x/exp/maps"
 )
 
 type (
+	Environment interface {
+		global.Logging
+	}
+
 	Config struct {
-		LedgerIDHash     [32]byte
 		HostIDPrivateKey ed25519.PrivateKey
 		HostID           peer.ID
 		HostPort         int
 		KnownPeers       map[string]multiaddr.Multiaddr // name -> PeerAddr
-		LogLevel         zapcore.Level
-		LogOutputs       []string
 	}
 
 	Peers struct {
+		Environment
 		mutex             sync.RWMutex
 		cfg               *Config
-		log               *zap.SugaredLogger
+		ledgerIDHash      [32]byte
 		ctx               context.Context
 		stopHeartbeatChan chan struct{}
 		stopOnce          sync.Once
@@ -49,7 +49,6 @@ type (
 		onReceiveTx       func(from peer.ID, txBytes []byte, mdata *txmetadata.TransactionMetadata)
 		onReceivePullTx   func(from peer.ID, txids []ledger.TransactionID)
 		onReceivePullTips func(from peer.ID)
-		traceFlag         atomic.Bool
 	}
 
 	Peer struct {
@@ -62,6 +61,8 @@ type (
 		needsLogLostConnection bool
 	}
 )
+
+const TraceTag = "peers"
 
 const (
 	lppProtocolGossip    = "/proxima/gossip/1.0.0"
@@ -84,7 +85,7 @@ func NewPeersDummy() *Peers {
 	}
 }
 
-func New(cfg *Config, ctx context.Context) (*Peers, error) {
+func New(env Environment, cfg *Config, ctx context.Context) (*Peers, error) {
 	hostIDPrivateKey, err := crypto.UnmarshalEd25519PrivateKey(cfg.HostIDPrivateKey)
 	if err != nil {
 		return nil, fmt.Errorf("wrong private key: %w", err)
@@ -100,8 +101,9 @@ func New(cfg *Config, ctx context.Context) (*Peers, error) {
 	}
 
 	ret := &Peers{
+		Environment:       env,
 		cfg:               cfg,
-		log:               global.NewLogger("[peering]", cfg.LogLevel, cfg.LogOutputs, ""),
+		ledgerIDHash:      ledger.L().ID.Hash(),
 		ctx:               ctx,
 		stopHeartbeatChan: make(chan struct{}),
 		host:              lppHost,
@@ -164,17 +166,13 @@ func readPeeringConfig() (*Config, error) {
 	return cfg, nil
 }
 
-func NewPeersFromConfig(ctx context.Context, logLevel zapcore.Level, logOutputs []string) (*Peers, error) {
+func NewPeersFromConfig(env Environment, ctx context.Context, logLevel zapcore.Level, logOutputs []string) (*Peers, error) {
 	cfg, err := readPeeringConfig()
 	if err != nil {
 		return nil, err
 	}
 
-	cfg.LogLevel = logLevel
-	cfg.LogOutputs = logOutputs
-	cfg.LedgerIDHash = ledger.L().ID.Hash()
-
-	return New(cfg, ctx)
+	return New(env, cfg, ctx)
 }
 
 func (ps *Peers) SelfID() peer.ID {
@@ -192,14 +190,14 @@ func (ps *Peers) Run() {
 		ps.Stop()
 	}()
 
-	ps.log.Infof("libp2p host %s (self) started on %v with %d configured known peers", ShortPeerIDString(ps.host.ID()), ps.host.Addrs(), len(ps.cfg.KnownPeers))
-	_ = ps.log.Sync()
+	ps.Log().Infof("libp2p host %s (self) started on %v with %d configured known peers", ShortPeerIDString(ps.host.ID()), ps.host.Addrs(), len(ps.cfg.KnownPeers))
+	_ = ps.Log().Sync()
 }
 
 func (ps *Peers) Stop() {
 	ps.stopOnce.Do(func() {
-		ps.log.Infof("stopping libp2p host %s (self)..", ShortPeerIDString(ps.host.ID()))
-		_ = ps.log.Sync()
+		ps.Log().Infof("stopping libp2p host %s (self)..", ShortPeerIDString(ps.host.ID()))
+		_ = ps.Log().Sync()
 		close(ps.stopHeartbeatChan)
 		_ = ps.host.Close()
 	})
@@ -221,17 +219,6 @@ func (ps *Peers) AddPeer(maddr multiaddr.Multiaddr, name string) error {
 		}
 	}
 	return nil
-}
-
-func (ps *Peers) SetTrace(b bool) {
-	ps.traceFlag.Store(b)
-}
-
-func (ps *Peers) trace(format string, args ...any) {
-	if ps.traceFlag.Load() {
-		ps.log.Infof("TRACE "+format, util.EvalLazyArgs(args...)...)
-		_ = ps.log.Sync()
-	}
 }
 
 func (ps *Peers) OnReceiveTxBytes(fun func(from peer.ID, txBytes []byte, metadata *txmetadata.TransactionMetadata)) {

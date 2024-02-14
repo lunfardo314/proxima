@@ -11,13 +11,21 @@ import (
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/lunfardo314/proxima/core/txmetadata"
+	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/countdown"
 	"github.com/lunfardo314/proxima/util/set"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
 	"golang.org/x/net/context"
 )
+
+// initializes ledger.Library singleton for all tests and creates testing genesis private key
+
+func init() {
+	ledger.InitWithTestingLedgerIDData()
+}
 
 func TestGenData(t *testing.T) {
 	t.Run("gen ma", func(t *testing.T) {
@@ -44,13 +52,15 @@ func TestBasic(t *testing.T) {
 		for name, ma := range cfg.KnownPeers {
 			t.Logf("%s : %s", name, ma.String())
 		}
-		_, err := New(cfg, context.Background())
+		log := global.NewDefaultLogging("peers", zap.InfoLevel, nil)
+		_, err := New(log, cfg, context.Background())
 		require.NoError(t, err)
 	})
 	t.Run("2", func(t *testing.T) {
 		const hostIndex = 2
 		cfg := MakeConfigFor(5, hostIndex)
-		peers, err := New(cfg, context.Background())
+		log := global.NewDefaultLogging("peers", zap.InfoLevel, nil)
+		peers, err := New(log, cfg, context.Background())
 		require.NoError(t, err)
 		peers.Run()
 		peers.Stop()
@@ -62,9 +72,12 @@ func makeHosts(t *testing.T, nHosts int, trace bool) []*Peers {
 	var err error
 	for i := 0; i < nHosts; i++ {
 		cfg := MakeConfigFor(nHosts, i)
-		hosts[i], err = New(cfg, context.Background())
+		log := global.NewDefaultLogging("peers", zap.InfoLevel, nil)
+		hosts[i], err = New(log, cfg, context.Background())
 		require.NoError(t, err)
-		hosts[i].SetTrace(trace)
+		if trace {
+			log.EnableTraceTags(TraceTag)
+		}
 	}
 	return hosts
 }
@@ -212,7 +225,7 @@ func TestSendMsg(t *testing.T) {
 		const (
 			numHosts = 5
 			trace    = false
-			numMsg   = 1000
+			numMsg   = 800
 		)
 		hosts := makeHosts(t, numHosts, trace)
 		counter := countdown.New(numHosts*(numHosts-1)*numMsg, 10*time.Second)

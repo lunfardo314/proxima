@@ -79,7 +79,7 @@ func (p *Peer) evidenceActivity(ps *Peers, srcMsg string) {
 	defer p.mutex.Unlock()
 
 	if !p._isAlive() {
-		ps.log.Infof("libp2p host %s (self) connected to peer %s (%s) (%s)",
+		ps.Log().Infof("libp2p host %s (self) connected to peer %s (%s) (%s)",
 			ShortPeerIDString(ps.host.ID()), ShortPeerIDString(p.id), p.name, srcMsg)
 	}
 	p.lastActivity = time.Now()
@@ -109,7 +109,7 @@ func (p *Peer) blockComms() {
 
 func (ps *Peers) blockCommsWithPeer(p *Peer) {
 	p.blockComms()
-	ps.log.Warnf("blocked communications with peer %s (%s) for %v", ShortPeerIDString(p.id), p.name, commBlockDuration)
+	ps.Log().Warnf("blocked communications with peer %s (%s) for %v", ShortPeerIDString(p.id), p.name, commBlockDuration)
 }
 
 func (ps *Peers) NumPeers() (alive, configured int) {
@@ -135,7 +135,7 @@ func (ps *Peers) logInactivityIfNeeded(id peer.ID) {
 	defer p.mutex.Unlock()
 
 	if !p._isAlive() && p.needsLogLostConnection {
-		ps.log.Infof("host %s (self) lost connection with peer %s (%s)", ShortPeerIDString(ps.host.ID()), ShortPeerIDString(id), ps.PeerName(id))
+		ps.Log().Infof("host %s (self) lost connection with peer %s (%s)", ShortPeerIDString(ps.host.ID()), ShortPeerIDString(id), ps.PeerName(id))
 		p.needsLogLostConnection = false
 	}
 }
@@ -163,13 +163,13 @@ func checkRemoteClockTolerance(remoteTime time.Time) (bool, bool) {
 func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 	id := stream.Conn().RemotePeer()
 	if traceHeartbeat {
-		ps.trace("heartbeatStreamHandler invoked in %s from %s", ps.host.ID().String(), id.String())
+		ps.Tracef(TraceTag, "heartbeatStreamHandler invoked in %s from %s", ps.host.ID().String, id.String)
 	}
 
 	p := ps.getPeer(id)
 	if p == nil {
 		// peer not found
-		ps.log.Warnf("unknown peer %s", id.String())
+		ps.Log().Warnf("unknown peer %s", id.String())
 		_ = stream.Reset()
 		return
 	}
@@ -187,14 +187,14 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 		hbInfo, err = heartbeatInfoFromBytes(msgData)
 	}
 	if err != nil {
-		ps.log.Errorf("error while reading message from peer %s: %v", id.String(), err)
+		ps.Log().Errorf("error while reading message from peer %s: %v", id.String(), err)
 		ps.blockCommsWithPeer(p)
 		_ = stream.Reset()
 		return
 	}
 
-	if hbInfo.ledgerIDHash != ps.cfg.LedgerIDHash {
-		ps.log.Warnf("incompatible ledger ID hash from %s (%s)", id.String(), p.name)
+	if hbInfo.ledgerIDHash != ps.ledgerIDHash {
+		ps.Log().Warnf("incompatible ledger ID hash from %s (%s)", id.String(), p.name)
 		ps.blockCommsWithPeer(p)
 		_ = stream.Reset()
 		return
@@ -205,14 +205,20 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 		if behind {
 			b = "behind"
 		}
-		ps.log.Warnf("clock of the peer %s is %s of the local clock more than tolerance interval %v", id.String(), b, clockTolerance)
+		ps.Log().Warnf("clock of the peer %s is %s of the local clock more than tolerance interval %v", id.String(), b, clockTolerance)
 		ps.blockCommsWithPeer(p)
 		_ = stream.Reset()
 		return
 	}
 	defer stream.Close()
 
-	ps.trace("peer %s is alive: %v, has txStore: %v", ShortPeerIDString(id), p.isAlive(), hbInfo.hasTxStore)
+	if traceHeartbeat {
+		ps.Tracef(TraceTag, "peer %s is alive: %v, has txStore: %v",
+			func() string { return ShortPeerIDString(id) },
+			func() any { return p.isAlive() },
+			hbInfo.hasTxStore,
+		)
+	}
 
 	p.evidenceActivity(ps, "heartbeat")
 	p.evidenceTxStore(hbInfo.hasTxStore)
@@ -222,7 +228,7 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 
 func (ps *Peers) sendHeartbeatToPeer(id peer.ID) {
 	if traceHeartbeat {
-		ps.trace("sendHeartbeatToPeer from %s to %s", ps.host.ID().String(), id.String())
+		ps.Tracef(TraceTag, "sendHeartbeatToPeer from %s to %s", ps.host.ID().String, id.String)
 	}
 
 	stream, err := ps.host.NewStream(ps.ctx, id, lppProtocolHeartbeat)
@@ -233,7 +239,7 @@ func (ps *Peers) sendHeartbeatToPeer(id peer.ID) {
 
 	hbInfo := heartbeatInfo{
 		clock:        time.Now(),
-		ledgerIDHash: ps.cfg.LedgerIDHash,
+		ledgerIDHash: ps.ledgerIDHash,
 		hasTxStore:   true,
 	}
 	_ = writeFrame(stream, hbInfo.Bytes())
@@ -253,7 +259,7 @@ func (ps *Peers) heartbeatLoop() {
 		nowis := time.Now()
 		if nowis.After(logNumPeersDeadline) {
 			alive, configured := ps.NumPeers()
-			ps.log.Infof("node is connected to %d peer(s) out of %d configured", alive, configured)
+			ps.Log().Infof("node is connected to %d peer(s) out of %d configured", alive, configured)
 			logNumPeersDeadline = nowis.Add(logNumPeersPeriod)
 		}
 		for _, id := range ps.getPeerIDsWithOpenComms() {

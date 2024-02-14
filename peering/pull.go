@@ -9,7 +9,6 @@ import (
 
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
-	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/unitrie/common"
@@ -30,7 +29,7 @@ func (ps *Peers) pullStreamHandler(stream network.Stream) {
 	p := ps.getPeer(id)
 	if p == nil {
 		// peer not found
-		ps.log.Warnf("unknown peer %s", id.String())
+		ps.Log().Warnf("unknown peer %s", id.String())
 		_ = stream.Reset()
 		return
 	}
@@ -42,12 +41,12 @@ func (ps *Peers) pullStreamHandler(stream network.Stream) {
 
 	msgData, err := readFrame(stream)
 	if err != nil {
-		ps.log.Errorf("error while reading message from peer %s: %v", id.String(), err)
+		ps.Log().Errorf("error while reading message from peer %s: %v", id.String(), err)
 		_ = stream.Reset()
 		return
 	}
 	if err = ps.processPullFrame(msgData, p); err != nil {
-		ps.log.Errorf("error while decoding message from peer %s: %v", id.String(), err)
+		ps.Log().Errorf("error while decoding message from peer %s: %v", id.String(), err)
 		_ = stream.Reset()
 		return
 
@@ -104,7 +103,7 @@ func (ps *Peers) PullTransactionsFromRandomPeer(txids ...ledger.TransactionID) b
 		rndID := all[idx]
 		p := ps.peers[rndID]
 		if p.isCommunicationOpen() && p.isAlive() && p.HasTxStore() {
-			global.TracePull(ps.log, "pull from random peer %s: %s",
+			ps.Tracef(TraceTag, "pull from random peer %s: %s",
 				func() any { return ShortPeerIDString(rndID) },
 				func() any { return _txidLst(txids...) },
 			)
