@@ -19,6 +19,7 @@ import (
 	"github.com/lunfardo314/proxima/utangle_old"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/txutils"
+	"github.com/lunfardo314/unitrie/common"
 	"golang.org/x/crypto/blake2b"
 )
 
@@ -40,6 +41,37 @@ func New(serverURL string, timeout ...time.Duration) *APIClient {
 		c:      http.Client{Timeout: to},
 		prefix: serverURL,
 	}
+}
+
+// GetLedgerID retrieves ledger ID from server
+func (c *APIClient) GetLedgerID() (*ledger.IdentityData, error) {
+	body, err := c.getBody(api.PathGetLedgerID)
+	if err != nil {
+		return nil, err
+	}
+
+	var res api.LedgerID
+	err = json.Unmarshal(body, &res)
+	if err != nil {
+		return nil, err
+	}
+	if res.Error.Error != "" {
+		return nil, fmt.Errorf("GetLedgerID: from server: %s", res.Error.Error)
+	}
+
+	idBin, err := hex.DecodeString(res.LedgerIDBytes)
+	if err != nil {
+		return nil, fmt.Errorf("GetLedgerID: error while decoding data: %w", err)
+	}
+	var ret *ledger.IdentityData
+	err = common.CatchPanicOrError(func() error {
+		ret = ledger.MustLedgerIdentityDataFromBytes(idBin)
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("GetLedgerID: error while parsing received data: %w", err)
+	}
+	return ret, nil
 }
 
 // getAccountOutputs fetches all outputs of the account
@@ -463,7 +495,7 @@ func (c *APIClient) MakeChainOrigin(par TransferFromED25519WalletParams) (*trans
 	if err != nil {
 		return nil, [32]byte{}, err
 	}
-	ts = ledger.MaxTime(ts1.AddTicks(ledger.TransactionPaceInTicks), ts)
+	ts = ledger.MaxTime(ts1.AddTicks(ledger.TransactionPace()), ts)
 
 	err = txb.PutStandardInputUnlocks(len(inps))
 	util.AssertNoError(err)

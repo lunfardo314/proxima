@@ -5,19 +5,25 @@ import (
 )
 
 const (
-	PathGetAccountOutputs       = "/get_account_outputs"
-	PathGetChainOutput          = "/get_chain_output"
-	PathGetOutput               = "/get_output"
-	PathSubmitTransactionWait   = "/submit_wait"   // wait appending to the utangle_old
-	PathSubmitTransactionNowait = "/submit_nowait" // async submitting
-	PathGetOutputInclusion      = "/inclusion"
-	PathGetSyncInfo             = "/sync_info"
-	PathGetNodeInfo             = "/node_info"
+	PathGetLedgerID        = "/get_ledger_id"
+	PathGetAccountOutputs  = "/get_account_outputs"
+	PathGetChainOutput     = "/get_chain_output"
+	PathGetOutput          = "/get_output"
+	PathSubmitTransaction  = "/submit_tx" // wait appending to the utangle_old
+	PathGetOutputInclusion = "/inclusion"
+	PathGetSyncInfo        = "/sync_info"
+	PathGetNodeInfo        = "/node_info"
 )
 
 type Error struct {
 	// empty string when no error
 	Error string `json:"error,omitempty"`
+}
+
+type LedgerID struct {
+	Error
+	// hex-encoded ledger id bytes
+	LedgerIDBytes string `json:"ledger_id_bytes,omitempty"`
 }
 
 // OutputList is returned by 'get_account_outputs'

@@ -10,34 +10,47 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/api"
+	"github.com/lunfardo314/proxima/core/dag"
+	"github.com/lunfardo314/proxima/core/workflow"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
-	"github.com/lunfardo314/proxima/multistate"
-	"github.com/lunfardo314/proxima/utangle_old"
 	"github.com/lunfardo314/proxima/util"
-	"github.com/lunfardo314/proxima/workflow"
+	"golang.org/x/exp/slices"
 )
 
 func registerHandlers(wFlow *workflow.Workflow, getNodeInfo func() *global.NodeInfo) {
 	// GET request format: 'get_account_outputs?accountable=<EasyFL source form of the accountable lock constraint>'
-	http.HandleFunc(api.PathGetAccountOutputs, getAccountOutputsHandle(wFlow.UTXOTangle()))
+	http.HandleFunc(api.PathGetLedgerID, getLedgerIDHandle)
+	// GET request format: 'get_account_outputs?accountable=<EasyFL source form of the accountable lock constraint>'
+	http.HandleFunc(api.PathGetAccountOutputs, getAccountOutputsHandle(wFlow.DAG))
 	// GET request format: 'get_chain_output?chainid=<hex-encoded chain ID>'
-	http.HandleFunc(api.PathGetChainOutput, getChainOutputHandle(wFlow.UTXOTangle()))
+	http.HandleFunc(api.PathGetChainOutput, getChainOutputHandle(wFlow.DAG))
 	// GET request format: 'get_output?id=<hex-encoded output ID>'
-	http.HandleFunc(api.PathGetOutput, getOutputHandle(wFlow.UTXOTangle()))
+	http.HandleFunc(api.PathGetOutput, getOutputHandle(wFlow.DAG))
 	// GET request format: 'inclusion?id=<hex-encoded output ID>'
-	http.HandleFunc(api.PathGetOutputInclusion, getOutputInclusionHandle(wFlow.UTXOTangle()))
-	// POST request format 'submit_wait'. Waiting until added to utangle_old or rejected
-	http.HandleFunc(api.PathSubmitTransactionWait, submitTxHandle(wFlow, true))
-	// POST request format 'submit_nowait'. Async posting to utangle_old. No feedback in case of wrong tx
-	http.HandleFunc(api.PathSubmitTransactionNowait, submitTxHandle(wFlow, false))
+	http.HandleFunc(api.PathGetOutputInclusion, getOutputInclusionHandle(wFlow.DAG))
+	// POST request format 'submit_nowait'. Feedback only on parsing error, otherwise async posting
+	http.HandleFunc(api.PathSubmitTransaction, submitTxHandle(wFlow))
 	// GET sync info from the node
-	http.HandleFunc(api.PathGetSyncInfo, getSyncInfoHandle(wFlow.UTXOTangle()))
+	http.HandleFunc(api.PathGetSyncInfo, getSyncInfoHandle(wFlow.DAG))
 	// GET sync info from the node
 	http.HandleFunc(api.PathGetNodeInfo, getNodeInfoHandle(getNodeInfo))
 }
 
-func getAccountOutputsHandle(ut *utangle_old.UTXOTangle) func(w http.ResponseWriter, r *http.Request) {
+func getLedgerIDHandle(w http.ResponseWriter, r *http.Request) {
+	resp := &api.LedgerID{
+		LedgerIDBytes: hex.EncodeToString(ledger.L().ID.Bytes()),
+	}
+	respBin, err := json.MarshalIndent(resp, "", "  ")
+	if err != nil {
+		writeErr(w, err.Error())
+		return
+	}
+	_, err = w.Write(respBin)
+	util.AssertNoError(err)
+}
+
+func getAccountOutputsHandle(ut *dag.DAG) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		lst, ok := r.URL.Query()["accountable"]
 		if !ok || len(lst) != 1 {
@@ -73,7 +86,7 @@ func getAccountOutputsHandle(ut *utangle_old.UTXOTangle) func(w http.ResponseWri
 	}
 }
 
-func getChainOutputHandle(ut *utangle_old.UTXOTangle) func(w http.ResponseWriter, r *http.Request) {
+func getChainOutputHandle(ut *dag.DAG) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		lst, ok := r.URL.Query()["chainid"]
 		if !ok || len(lst) != 1 {
@@ -106,7 +119,7 @@ func getChainOutputHandle(ut *utangle_old.UTXOTangle) func(w http.ResponseWriter
 	}
 }
 
-func getOutputHandle(ut *utangle_old.UTXOTangle) func(w http.ResponseWriter, r *http.Request) {
+func getOutputHandle(ut *dag.DAG) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		lst, ok := r.URL.Query()["id"]
 		if !ok || len(lst) != 1 {
@@ -137,7 +150,7 @@ func getOutputHandle(ut *utangle_old.UTXOTangle) func(w http.ResponseWriter, r *
 	}
 }
 
-func getOutputInclusionHandle(ut *utangle_old.UTXOTangle) func(w http.ResponseWriter, r *http.Request) {
+func getOutputInclusionHandle(ut *dag.DAG) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		lst, ok := r.URL.Query()["id"]
 		if !ok || len(lst) != 1 {
@@ -149,42 +162,43 @@ func getOutputInclusionHandle(ut *utangle_old.UTXOTangle) func(w http.ResponseWr
 			writeErr(w, err.Error())
 			return
 		}
+		writeErr(w, fmt.Sprintf("getOutputInclusionHandle(%s): not implemented", oid.StringShort()))
 
-		type branchState struct {
-			vid *utangle_old.WrappedTx
-			rdr multistate.SugaredStateReader
-		}
-		allBranches := make([]branchState, 0)
-		err = ut.ForEachBranchStateDescending(ut.LatestTimeSlot(), func(vid *utangle_old.WrappedTx, rdr multistate.SugaredStateReader) bool {
-			allBranches = append(allBranches, branchState{
-				vid: vid,
-				rdr: rdr,
-			})
-			return true
-		})
-		if err != nil {
-			writeErr(w, err.Error())
-			return
-		}
-		resp := &api.OutputData{
-			Inclusion: make([]api.InclusionDataEncoded, len(allBranches)),
-		}
-
-		for i, bs := range allBranches {
-			resp.Inclusion[i] = api.InclusionDataEncoded{
-				BranchID: bs.vid.ID().StringHex(),
-				Coverage: bs.vid.LedgerCoverage(ut),
-				Included: bs.rdr.HasUTXO(&oid),
-			}
-		}
-
-		respBin, err := json.MarshalIndent(resp, "", "  ")
-		if err != nil {
-			writeErr(w, err.Error())
-			return
-		}
-		_, err = w.Write(respBin)
-		util.AssertNoError(err)
+		//type branchState struct {
+		//	vid *utangle_old.WrappedTx
+		//	rdr multistate.SugaredStateReader
+		//}
+		//allBranches := make([]branchState, 0)
+		//err = ut.ForEachBranchStateDescending(ut.LatestTimeSlot(), func(vid *utangle_old.WrappedTx, rdr multistate.SugaredStateReader) bool {
+		//	allBranches = append(allBranches, branchState{
+		//		vid: vid,
+		//		rdr: rdr,
+		//	})
+		//	return true
+		//})
+		//if err != nil {
+		//	writeErr(w, err.Error())
+		//	return
+		//}
+		//resp := &api.OutputData{
+		//	Inclusion: make([]api.InclusionDataEncoded, len(allBranches)),
+		//}
+		//
+		//for i, bs := range allBranches {
+		//	resp.Inclusion[i] = api.InclusionDataEncoded{
+		//		BranchID: bs.vid.ID().StringHex(),
+		//		Coverage: bs.vid.LedgerCoverage(ut),
+		//		Included: bs.rdr.HasUTXO(&oid),
+		//	}
+		//}
+		//
+		//respBin, err := json.MarshalIndent(resp, "", "  ")
+		//if err != nil {
+		//	writeErr(w, err.Error())
+		//	return
+		//}
+		//_, err = w.Write(respBin)
+		//util.AssertNoError(err)
 	}
 }
 
@@ -194,7 +208,7 @@ const (
 	maxTxAppendWaitTimeout     = 2 * time.Minute
 )
 
-func submitTxHandle(wFlow *workflow.Workflow, wait bool) func(w http.ResponseWriter, r *http.Request) {
+func submitTxHandle(wFlow *workflow.Workflow) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "POST" {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -225,13 +239,7 @@ func submitTxHandle(wFlow *workflow.Workflow, wait bool) func(w http.ResponseWri
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		txBytes = util.CloneExactCap(txBytes)
-
-		if wait {
-			_, err = wFlow.TransactionInWaitAppend(txBytes, timeout)
-		} else {
-			err = wFlow.TransactionIn(txBytes)
-		}
+		_, err = wFlow.TxBytesIn(slices.Clip(txBytes))
 		if err != nil {
 			writeErr(w, fmt.Sprintf("submit_tx: %v", err))
 			return
@@ -240,28 +248,29 @@ func submitTxHandle(wFlow *workflow.Workflow, wait bool) func(w http.ResponseWri
 	}
 }
 
-func getSyncInfoHandle(ut *utangle_old.UTXOTangle) func(w http.ResponseWriter, r *http.Request) {
+func getSyncInfoHandle(ut *dag.DAG) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		syncInfo := ut.SyncData().GetSyncInfo()
-		resp := api.SyncInfo{
-			Synced:       syncInfo.Synced,
-			InSyncWindow: syncInfo.InSyncWindow,
-			PerSequencer: make(map[string]api.SequencerSyncInfo),
-		}
-		for seqID, si := range syncInfo.PerSequencer {
-			resp.PerSequencer[seqID.StringHex()] = api.SequencerSyncInfo{
-				Synced:           si.Synced,
-				LatestBookedSlot: si.LatestBookedSlot,
-				LatestSeenSlot:   si.LatestSeenSlot,
-			}
-		}
-		respBin, err := json.MarshalIndent(resp, "", "  ")
-		if err != nil {
-			writeErr(w, err.Error())
-			return
-		}
-		_, err = w.Write(respBin)
-		util.AssertNoError(err)
+		writeErr(w, "getSynInfo: not implemented")
+		//syncInfo := ut.SyncData().GetSyncInfo()
+		//resp := api.SyncInfo{
+		//	Synced:       syncInfo.Synced,
+		//	InSyncWindow: syncInfo.InSyncWindow,
+		//	PerSequencer: make(map[string]api.SequencerSyncInfo),
+		//}
+		//for seqID, si := range syncInfo.PerSequencer {
+		//	resp.PerSequencer[seqID.StringHex()] = api.SequencerSyncInfo{
+		//		Synced:           si.Synced,
+		//		LatestBookedSlot: si.LatestBookedSlot,
+		//		LatestSeenSlot:   si.LatestSeenSlot,
+		//	}
+		//}
+		//respBin, err := json.MarshalIndent(resp, "", "  ")
+		//if err != nil {
+		//	writeErr(w, err.Error())
+		//	return
+		//}
+		//_, err = w.Write(respBin)
+		//util.AssertNoError(err)
 	}
 }
 

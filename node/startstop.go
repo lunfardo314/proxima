@@ -98,9 +98,9 @@ func (p *ProximaNode) startMultiStateDB() {
 	p.multiStateStore = badger_adaptor.New(bdb)
 	p.log.Infof("opened multi-state DB '%s", dbname)
 
+	// init ledger with the ledger ID data from DB
 	ledgerID := ledger.MustLedgerIdentityDataFromBytes(multistate.LedgerIdentityBytesFromStore(p.multiStateStore))
-	// saving globally for faster access anywhere in the code
-	ledger.SaveGlobalLedgerIdentityData(ledgerID)
+	ledger.Init(ledgerID)
 
 	p.log.Infof("Ledger identity:\n%s", ledgerID.Lines("       ").String())
 
