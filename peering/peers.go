@@ -20,7 +20,6 @@ import (
 	"github.com/lunfardo314/proxima/util"
 	"github.com/multiformats/go-multiaddr"
 	"github.com/spf13/viper"
-	"go.uber.org/zap/zapcore"
 	"golang.org/x/exp/maps"
 )
 
@@ -166,7 +165,7 @@ func readPeeringConfig() (*Config, error) {
 	return cfg, nil
 }
 
-func NewPeersFromConfig(env Environment, ctx context.Context, logLevel zapcore.Level, logOutputs []string) (*Peers, error) {
+func NewPeersFromConfig(env Environment, ctx context.Context) (*Peers, error) {
 	cfg, err := readPeeringConfig()
 	if err != nil {
 		return nil, err
