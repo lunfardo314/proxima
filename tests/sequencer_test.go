@@ -338,7 +338,7 @@ func initMultiSequencerTest(t *testing.T, nSequencers int, startPruner ...bool) 
 
 	testData.bootstrapSeq, err = sequencer.New(testData.wrk, testData.bootstrapChainID, testData.genesisPrivKey, testData.ctx,
 		sequencer.WithName("boot"),
-		sequencer.WithMaxFeeInputs(30),
+		sequencer.WithMaxTagAlongInputs(30),
 		sequencer.WithPace(5),
 	)
 	require.NoError(t, err)

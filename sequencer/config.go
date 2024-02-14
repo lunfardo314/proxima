@@ -1,6 +1,8 @@
 package sequencer
 
 import (
+	"crypto/ed25519"
+	"fmt"
 	"math"
 	"time"
 
@@ -11,28 +13,35 @@ import (
 
 type (
 	ConfigOptions struct {
-		SequencerName string
-		Pace          int // pace in slots
-		MaxFeeInputs  int
-		MaxTargetTs   ledger.Time
-		MaxMilestones int
-		MaxBranches   int
-		DelayStart    time.Duration
+		SequencerName     string
+		Pace              int // pace in ticks
+		MaxTagAlongInputs int
+		MaxTargetTs       ledger.Time
+		MaxMilestones     int
+		MaxBranches       int
+		DelayStart        time.Duration
 	}
 
 	ConfigOption func(options *ConfigOptions)
 )
 
 const (
-	PaceMinimumTicks    = 5
-	DefaultMaxFeeInputs = 20
+	DefaultMaxTagAlongInputs = 20
 )
 
-//var DefaultDelayOnStart = ledger.SlotDuration()
+func defaultConfigOptions() *ConfigOptions {
+	return &ConfigOptions{
+		SequencerName:     "seq",
+		Pace:              ledger.TransactionPaceSequencer(),
+		MaxTagAlongInputs: DefaultMaxTagAlongInputs,
+		MaxTargetTs:       ledger.NilLedgerTime,
+		MaxMilestones:     math.MaxInt,
+		MaxBranches:       math.MaxInt,
+		DelayStart:        ledger.SlotDuration(),
+	}
+}
 
-var DefaultDelayOnStart = time.Duration(0)
-
-func makeConfig(opts ...ConfigOption) *ConfigOptions {
+func configOptions(opts ...ConfigOption) *ConfigOptions {
 	cfg := defaultConfigOptions()
 	for _, opt := range opts {
 		opt(cfg)
@@ -40,16 +49,31 @@ func makeConfig(opts ...ConfigOption) *ConfigOptions {
 	return cfg
 }
 
-func defaultConfigOptions() *ConfigOptions {
-	return &ConfigOptions{
-		SequencerName: "seq",
-		Pace:          PaceMinimumTicks,
-		MaxFeeInputs:  DefaultMaxFeeInputs,
-		MaxTargetTs:   ledger.NilLedgerTime,
-		MaxMilestones: math.MaxInt,
-		MaxBranches:   math.MaxInt,
-		DelayStart:    DefaultDelayOnStart,
+func paramsFromConfig(name string) ([]ConfigOption, ledger.ChainID, ed25519.PrivateKey, error) {
+	subViper := viper.Sub("sequencers." + name)
+	if subViper == nil {
+		return nil, ledger.ChainID{}, nil, fmt.Errorf("can't read config")
 	}
+
+	if !subViper.GetBool("enable") {
+		// will skip
+		return nil, ledger.ChainID{}, nil, nil
+	}
+	seqID, err := ledger.ChainIDFromHexString(subViper.GetString("sequencer_id"))
+	if err != nil {
+		return nil, ledger.ChainID{}, nil, fmt.Errorf("StartFromConfig: can't parse sequencer ID: %v", err)
+	}
+	controllerKey, err := util.ED25519PrivateKeyFromHexString(subViper.GetString("controller_key"))
+	if err != nil {
+		return nil, ledger.ChainID{}, nil, fmt.Errorf("StartFromConfig: can't parse private key: %v", err)
+	}
+	cfg := []ConfigOption{
+		WithName(name),
+		WithPace(subViper.GetInt("pace")),
+		WithMaxTagAlongInputs(subViper.GetInt("max_tag_along_inputs")),
+		WithMaxBranches(subViper.GetInt("max_branches")),
+	}
+	return cfg, seqID, controllerKey, nil
 }
 
 func WithName(name string) ConfigOption {
@@ -59,28 +83,25 @@ func WithName(name string) ConfigOption {
 }
 
 func WithPace(pace int) ConfigOption {
-	util.Assertf(pace >= ledger.TransactionPaceSequencer(), "sequencer pace can't be less than %d ticks", ledger.TransactionPaceSequencer())
 	return func(o *ConfigOptions) {
+		if pace < ledger.TransactionPaceSequencer() {
+			pace = ledger.TransactionPaceSequencer()
+		}
 		o.Pace = pace
 	}
 }
 
-func WithMaxFeeInputs(maxInputs int) ConfigOption {
-	util.Assertf(maxInputs <= 254, "maxInputs<=254")
+func WithMaxTagAlongInputs(maxInputs int) ConfigOption {
 	return func(o *ConfigOptions) {
-		o.MaxFeeInputs = maxInputs
-	}
-}
-
-func WithMaxTargetTs(ts ledger.Time) ConfigOption {
-	return func(o *ConfigOptions) {
-		o.MaxTargetTs = ts
-	}
-}
-
-func WithMaxMilestones(maxMs int) ConfigOption {
-	return func(o *ConfigOptions) {
-		o.MaxMilestones = maxMs
+		if maxInputs < 1 {
+			o.MaxTagAlongInputs = 1
+		} else {
+			if maxInputs > 254 {
+				o.MaxTagAlongInputs = 254
+			} else {
+				o.MaxTagAlongInputs = maxInputs
+			}
+		}
 	}
 }
 
@@ -88,8 +109,4 @@ func WithMaxBranches(maxBranches int) ConfigOption {
 	return func(o *ConfigOptions) {
 		o.MaxBranches = maxBranches
 	}
-}
-
-func ReadSequencerConfig() map[string][]string {
-	return viper.GetStringMapStringSlice("sequencers")
 }

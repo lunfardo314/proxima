@@ -53,7 +53,7 @@ type (
 const TraceTag = "sequencer"
 
 func New(glb *workflow.Workflow, seqID ledger.ChainID, controllerKey ed25519.PrivateKey, ctx context.Context, opts ...ConfigOption) (*Sequencer, error) {
-	cfg := makeConfig(opts...)
+	cfg := configOptions(opts...)
 	ret := &Sequencer{
 		Workflow:      glb,
 		sequencerID:   seqID,
@@ -69,6 +69,14 @@ func New(glb *workflow.Workflow, seqID ledger.ChainID, controllerKey ed25519.Pri
 	}
 	ret.Log().Infof("sequencer created with controller %s", ledger.AddressED25519FromPrivateKey(controllerKey).String())
 	return ret, nil
+}
+
+func NewFromConfig(name string, glb *workflow.Workflow, ctx context.Context) (*Sequencer, error) {
+	cfg, seqID, controllerKey, err := paramsFromConfig(name)
+	if err != nil {
+		return nil, err
+	}
+	return New(glb, seqID, controllerKey, ctx, cfg...)
 }
 
 func (seq *Sequencer) Start() {
@@ -379,5 +387,5 @@ func (seq *Sequencer) runOnMilestoneSubmitted(ms *vertex.WrappedTx) {
 }
 
 func (seq *Sequencer) MaxTagAlongOutputs() int {
-	return seq.config.MaxFeeInputs
+	return seq.config.MaxTagAlongInputs
 }

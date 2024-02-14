@@ -6,7 +6,6 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/node"
 )
 
@@ -18,7 +17,6 @@ func main() {
 
 	go func() {
 		<-killChan
-		global.SetShutDown()
 		globalStopFun()
 	}()
 

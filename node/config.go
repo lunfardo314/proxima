@@ -5,24 +5,13 @@ import (
 
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/util"
-	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
 
-func init() {
-	pflag.String("logger.level", "info", "log level")
-	pflag.String("logger.timelayout", global.TimeLayoutDefault, "time format")
-	pflag.String("logger.output", "stdout", "a list where to write log")
-
-	pflag.Bool("pprof.enable", false, "enable pprof")
-	pflag.Int("pprof.port", 8080, "default pprof port")
-}
-
 const (
 	bootstrapLoggerName = "[boot]"
-	nodeLoggerName      = "[node]"
 )
 
 func newBootstrapLogger() *zap.SugaredLogger {
@@ -41,5 +30,5 @@ func newNodeLoggerFromConfig() *global.DefaultLogging {
 		outputs = append(outputs, "stdout")
 	}
 
-	return global.NewDefaultLogging(nodeLoggerName, logLevel, outputs)
+	return global.NewDefaultLogging("", logLevel, outputs)
 }

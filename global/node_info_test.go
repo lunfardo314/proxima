@@ -2,6 +2,7 @@ package global
 
 import (
 	"encoding/json"
+	"fmt"
 	"testing"
 
 	"github.com/libp2p/go-libp2p/core/crypto"
@@ -11,6 +12,18 @@ import (
 	"github.com/lunfardo314/proxima/util/testutil"
 	"github.com/stretchr/testify/require"
 )
+
+func init() {
+	ledger.InitWithTestingLedgerIDData()
+	fmt.Printf(`
+>>> ledger parameters for the test <<<
+     tick duration    : %v
+     transaction pace : %d ticks
+     sequencer pace   : %d ticks
+`,
+		ledger.TickDuration(), ledger.TransactionPace(), ledger.TransactionPaceSequencer(),
+	)
+}
 
 func randomPeerID() peer.ID {
 	privateKey := testutil.GetTestingPrivateKey(101)

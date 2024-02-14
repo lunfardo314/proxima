@@ -71,7 +71,6 @@ func (p *ProximaNode) Run() {
 		p.startPProfIfEnabled()
 		p.startMultiStateDB()
 		p.startTxStore()
-		p.loadUTXOTangle()
 		p.startPeering()
 		p.startWorkflow()
 		p.startSequencers()
@@ -108,12 +107,13 @@ func (p *ProximaNode) startMultiStateDB() {
 
 	p.Log().Infof("Ledger identity:\n%s", ledgerID.Lines("       ").String())
 
-	go func() {
-		<-p.ctx.Done()
-
-		_ = p.multiStateDB.Close()
-		p.Log().Infof("multi-state database has been closed")
-	}()
+	// TODO close after all the rest
+	//go func() {
+	//	<-p.ctx.Done()
+	//
+	//	_ = p.multiStateDB.Close()
+	//	p.Log().Infof("multi-state database has been closed")
+	//}()
 }
 
 func (p *ProximaNode) startTxStore() {
@@ -133,43 +133,14 @@ func (p *ProximaNode) startTxStore() {
 		p.TxBytesStore = txstore.NewSimpleTxBytesStore(p.txStoreDB)
 		p.Log().Infof("opened DB '%s' as transaction store", dbname)
 
-		go func() {
-			<-p.ctx.Done()
-
-			_ = p.txStoreDB.Close()
-			p.Log().Infof("transaction store database has been closed")
-		}()
+		// TODO close after all the rest
+		//go func() {
+		//	<-p.ctx.Done()
+		//
+		//	_ = p.txStoreDB.Close()
+		//	p.Log().Infof("transaction store database has been closed")
+		//}()
 	}
-}
-
-// MustCompatibleStateBootstrapData branches of the latest slot sorted by coverage descending
-func mustReadStateIdentity(store global.StateStore) {
-	rootRecords := multistate.FetchRootRecords(store, multistate.FetchLatestSlot(store))
-	util.Assertf(len(rootRecords) > 0, "at least on root record expected")
-	stateReader, err := multistate.NewSugaredReadableState(store, rootRecords[0].Root)
-	util.AssertNoError(err)
-
-	// it will panic if constraint libraries are incompatible
-	ledger.MustLedgerIdentityDataFromBytes(stateReader.MustLedgerIdentityBytes())
-}
-
-func (p *ProximaNode) loadUTXOTangle() {
-	//mustReadStateIdentity(p.multiStateStore)
-	//
-	//p.UTXOTangle = utangle_old.Load(p.multiStateStore)
-	//latestSlot := p.UTXOTangle.LatestTimeSlot()
-	//currentSlot := ledger.TimeNow().Slot()
-	//p.Log().Infof("current time slot: %d, latest time slot in the multi-state: %d, lagging behind: %d slots",
-	//	currentSlot, latestSlot, currentSlot-latestSlot)
-	//
-	//branches := multistate.FetchLatestBranches(p.multiStateStore)
-	//p.Log().Infof("latest time slot %d contains %d branches", latestSlot, len(branches))
-	//for _, br := range branches {
-	//	txid := br.Stem.ID.TransactionID()
-	//	p.Log().Infof("    branch %s : sequencer: %s, coverage: %s", txid.StringShort(), br.SequencerID.StringShort(), br.LedgerCoverage.String())
-	//}
-	//p.Log().Infof("UTXO tangle has been created successfully")
-	p.Log().Infof("not implemented")
 }
 
 func (p *ProximaNode) startPeering() {
@@ -186,16 +157,6 @@ func (p *ProximaNode) startWorkflow() {
 }
 
 func (p *ProximaNode) startSequencers() {
-	//traceProposers := viper.GetStringMap("debug.trace_proposers")
-	viper.GetStringMap("debug.trace_proposers")
-
-	//for pname := range traceProposers {
-	//	if viper.GetBool("debug.trace_proposers." + pname) {
-	//		sequencer.SetTraceProposer(pname, true)
-	//		p.log.Infof("will be tracing proposer '%s'", pname)
-	//	}
-	//}
-
 	sequencers := viper.GetStringMap("Sequencers")
 	if len(sequencers) == 0 {
 		p.Log().Infof("No Sequencers will be started")
@@ -207,7 +168,7 @@ func (p *ProximaNode) startSequencers() {
 		return k1 < k2
 	})
 	for _, name := range seqNames {
-		seq, err := sequencer.NewFromConfig(p.Workflow, name)
+		seq, err := sequencer.NewFromConfig(name, p.Workflow, p.ctx)
 		if err != nil {
 			p.Log().Errorf("can't start sequencer '%s': '%v'", name, err)
 			continue
@@ -216,9 +177,9 @@ func (p *ProximaNode) startSequencers() {
 			p.Log().Infof("skipping sequencer '%s'", name)
 			continue
 		}
-		seq.Run(p.ctx)
+		seq.Run()
 
-		p.Log().Infof("started sequencer '%s', seqID: %s", name, seq.ID().String())
+		p.Log().Infof("started sequencer '%s', seqID: %s", name, util.Ref(seq.SequencerID()).String())
 		p.Sequencers = append(p.Sequencers, seq)
 		time.Sleep(500 * time.Millisecond)
 	}
