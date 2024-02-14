@@ -38,8 +38,8 @@ const (
 	InitialSupplyProxi   = 1_000_000_000
 	DefaultInitialSupply = InitialSupplyProxi * PRXI
 
-	DefaultInitialBranchInflationBonus          = 20 * PRXI
-	DefaultAnnualBranchInflationPromille        = 40
+	DefaultInitialBranchInflationBonus          = 5 * PRXI
+	DefaultAnnualBranchInflationPromille        = 40 // not in use
 	DefaultInitialChainInflationFractionPerTick = 500_000_000
 	DefaultHalvingEpochs                        = 5
 	DefaultChainInflationOpportunitySlots       = 12
@@ -119,67 +119,6 @@ func (lib *Library) initNoTxConstraints(id *IdentityData) *Library {
 func newLibraryInit(id *IdentityData) *Library {
 	return newLibrary().initNoTxConstraints(id)
 }
-
-// TODO branch bonus inflation
-
-const inflationSource = `
-// $0 -  slot of the chain input as u64
-func epochFromGenesis : div64( $0, constSlotsPerLedgerEpoch )
-
-// $0 -  epochFromGenesis
-func halvingEpoch :
-	if(
-		lessThan($0, constHalvingEpochs),
-        $0,
-        constHalvingEpochs
-	)
-
-// $0 slot of the chain input as u64
-// result - inflation fraction corresponding to that year (taking into account halving) 
-func inflationFractionBySlot :
-    mul64(
-        constChainInflationFractionBase, 
-        lshift64(u64/1, halvingEpoch(epochFromGenesis($0)))
-    )
-
-// $0 - timestamp of the chain input
-// $1 - timestamp of the transaction (and of the output)
-func insideInflationOpportunityWindow :
-   lessOrEqualThan(
-	   div64(
-		  ticksBefore($0, $1),
-		  ticksPerSlot64
-	   ),
-       constChainInflationOpportunitySlots
-   )
-
-// $0 - timestamp of the chain input
-// $1 - timestamp of the transaction (and of the output)
-// $2 - amount on the chain input (no branch bonus)
-// result: (dt * amount)/inflationFraction
-func chainInflationAmount : 
-if(
-    insideInflationOpportunityWindow($0, $1),
-	div64(
-	   mul64(
-		  ticksBefore($0, $1), 
-		  $2
-	   ), 
-	   inflationFractionBySlot( concat(u32/0, timeSlotFromTimeSlotPrefix(timeSlotPrefix($0))) )
-   ),
-   u64/0
-)
-
-// $0 - timestamp of the chain input
-// $1 - timestamp of the transaction (and of the output)
-// $2 - amount on the chain input
-func inflationAmount : 
-if(
-	isZero(timeTickFromTimestamp($1)),
-    sum64(chainInflationAmount($0, $1, $2), constInitialBranchBonus),
-    chainInflationAmount($0, $1, $2)
-)
-`
 
 func GetTestingIdentityData(seed ...int) (*IdentityData, ed25519.PrivateKey) {
 	s := 10000
