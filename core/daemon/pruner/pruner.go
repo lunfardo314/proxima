@@ -5,7 +5,6 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/lunfardo314/proxima/core/dag"
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
@@ -17,18 +16,21 @@ import (
 type (
 	Environment interface {
 		global.Glb
+		PurgeDeletedVertices(deleted []*vertex.WrappedTx)
+		VerticesDescending() []*vertex.WrappedTx
+		PruningTTLSlots() int
+		PurgeCachedStateReaders() (int, int)
+		NumVertices() int
 	}
 	Pruner struct {
-		*dag.DAG
 		Environment
 	}
 )
 
 const Name = "pruner"
 
-func New(dag *dag.DAG, env Environment) *Pruner {
+func New(env Environment) *Pruner {
 	return &Pruner{
-		DAG:         dag,
 		Environment: env,
 	}
 }

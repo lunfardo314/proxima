@@ -17,7 +17,7 @@ func (p *ProximaNode) startApiServer() {
 
 	go server.RunOn(addr, p)
 	go func() {
-		<-p.ctx.Done()
+		<-p.Ctx().Done()
 		p.stopAPIServer()
 	}()
 }

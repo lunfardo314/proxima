@@ -1,7 +1,6 @@
 package peering
 
 import (
-	"context"
 	"crypto/ed25519"
 	"encoding/hex"
 	"fmt"
@@ -25,7 +24,7 @@ import (
 
 type (
 	Environment interface {
-		global.Logging
+		global.Glb
 	}
 
 	Config struct {
@@ -40,7 +39,6 @@ type (
 		mutex             sync.RWMutex
 		cfg               *Config
 		ledgerIDHash      [32]byte
-		ctx               context.Context
 		stopHeartbeatChan chan struct{}
 		stopOnce          sync.Once
 		host              host.Host
@@ -61,7 +59,10 @@ type (
 	}
 )
 
-const TraceTag = "peers"
+const (
+	Name     = "peers"
+	TraceTag = Name
+)
 
 const (
 	lppProtocolGossip    = "/proxima/gossip/1.0.0"
@@ -84,7 +85,7 @@ func NewPeersDummy() *Peers {
 	}
 }
 
-func New(env Environment, cfg *Config, ctx context.Context) (*Peers, error) {
+func New(env Environment, cfg *Config) (*Peers, error) {
 	hostIDPrivateKey, err := crypto.UnmarshalEd25519PrivateKey(cfg.HostIDPrivateKey)
 	if err != nil {
 		return nil, fmt.Errorf("wrong private key: %w", err)
@@ -103,7 +104,6 @@ func New(env Environment, cfg *Config, ctx context.Context) (*Peers, error) {
 		Environment:       env,
 		cfg:               cfg,
 		ledgerIDHash:      ledger.L().ID.Hash(),
-		ctx:               ctx,
 		stopHeartbeatChan: make(chan struct{}),
 		host:              lppHost,
 		peers:             make(map[peer.ID]*Peer),
@@ -165,13 +165,13 @@ func readPeeringConfig() (*Config, error) {
 	return cfg, nil
 }
 
-func NewPeersFromConfig(env Environment, ctx context.Context) (*Peers, error) {
+func NewPeersFromConfig(env Environment) (*Peers, error) {
 	cfg, err := readPeeringConfig()
 	if err != nil {
 		return nil, err
 	}
 
-	return New(env, cfg, ctx)
+	return New(env, cfg)
 }
 
 func (ps *Peers) SelfID() peer.ID {
@@ -179,13 +179,15 @@ func (ps *Peers) SelfID() peer.ID {
 }
 
 func (ps *Peers) Run() {
+	ps.Environment.MarkStartedComponent(Name)
+
 	ps.host.SetStreamHandler(lppProtocolGossip, ps.gossipStreamHandler)
 	ps.host.SetStreamHandler(lppProtocolPull, ps.pullStreamHandler)
 	ps.host.SetStreamHandler(lppProtocolHeartbeat, ps.heartbeatStreamHandler)
 
 	go ps.heartbeatLoop()
 	go func() {
-		<-ps.ctx.Done()
+		<-ps.Environment.Ctx().Done()
 		ps.Stop()
 	}()
 
@@ -195,6 +197,8 @@ func (ps *Peers) Run() {
 
 func (ps *Peers) Stop() {
 	ps.stopOnce.Do(func() {
+		ps.Environment.MarkStoppedComponent(Name)
+
 		ps.Log().Infof("stopping libp2p host %s (self)..", ShortPeerIDString(ps.host.ID()))
 		_ = ps.Log().Sync()
 		close(ps.stopHeartbeatChan)

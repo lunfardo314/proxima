@@ -18,8 +18,8 @@ func main() {
 		n.Stop()
 	}()
 
-	n.Run()
-	<-n.Ctx().Done()
+	n.Start()
 
-	n.WaitStop()
+	n.WaitComponentsToStop()
+	n.WaitAllDBClosed()
 }

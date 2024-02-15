@@ -16,7 +16,6 @@ import (
 	"github.com/lunfardo314/unitrie/adaptors/badger_adaptor"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
-	"go.uber.org/zap"
 )
 
 type (
@@ -37,21 +36,31 @@ type ProximaNode struct {
 	workflow   *workflow.Workflow
 	Sequencers []*sequencer.Sequencer
 	stopOnce   sync.Once
+	dbClosedWG sync.WaitGroup
 }
 
-const (
-	bootstrapLoggerName = "[boot]"
-)
-
-func newBootstrapLogger() *zap.SugaredLogger {
-	return global.NewLogger(bootstrapLoggerName, zap.InfoLevel, []string{"stderr"}, "")
-}
+//const (
+//	bootstrapLoggerName = "[boot]"
+//)
+//
+//func newBootstrapLogger() *zap.SugaredLogger {
+//	return global.NewLogger(bootstrapLoggerName, zap.InfoLevel, []string{"stderr"}, "")
+//}
 
 func New() *ProximaNode {
 	return &ProximaNode{
 		Global:     global.New(),
 		Sequencers: make([]*sequencer.Sequencer, 0),
 	}
+}
+
+func (p *ProximaNode) WaitComponentsToStop() {
+	<-p.Ctx().Done()
+	p.Global.MustWaitStop()
+}
+
+func (p *ProximaNode) WaitAllDBClosed() {
+	p.dbClosedWG.Wait()
 }
 
 func (p *ProximaNode) initConfig() {
@@ -66,7 +75,7 @@ func (p *ProximaNode) initConfig() {
 	util.AssertNoError(err)
 }
 
-func (p *ProximaNode) Run() {
+func (p *ProximaNode) Start() {
 	p.Log().Info(global.BannerString())
 	p.initConfig()
 
@@ -92,11 +101,6 @@ func (p *ProximaNode) Run() {
 	p.Log().Debug("running in debug mode")
 }
 
-func (p *ProximaNode) WaitStop() {
-	p.MustWaitStop()
-	p.Log().Info("all components stopped")
-}
-
 // initMultiStateLedger opens ledger state DB and initializes global ledger object
 func (p *ProximaNode) initMultiStateLedger() {
 	var err error
@@ -105,6 +109,7 @@ func (p *ProximaNode) initMultiStateLedger() {
 	if err != nil {
 		p.Log().Fatalf("can't open '%s'", dbname)
 	}
+	p.dbClosedWG.Add(1)
 	p.multiStateDB = multiStateDB{badger_adaptor.New(bdb)}
 	p.Log().Infof("opened multi-state DB '%s", dbname)
 
@@ -114,11 +119,11 @@ func (p *ProximaNode) initMultiStateLedger() {
 
 	p.Log().Infof("Ledger identity:\n%s", ledgerID.Lines("       ").String())
 	go func() {
-		<-p.Ctx().Done()
 		// wait until others will stop
-		p.MustWaitStop()
+		p.WaitComponentsToStop()
 		_ = p.multiStateDB.Close()
 		p.Log().Infof("multi-state database has been closed")
+		p.dbClosedWG.Done()
 	}()
 }
 
@@ -136,22 +141,22 @@ func (p *ProximaNode) initTxStore() {
 		dbname := global.TxStoreDBName
 		p.Log().Infof("transaction store database dbname is '%s'", dbname)
 		p.txStoreDB = txStoreDB{badger_adaptor.New(badger_adaptor.MustCreateOrOpenBadgerDB(dbname))}
+		p.dbClosedWG.Add(1)
 		p.TxBytesStore = txstore.NewSimpleTxBytesStore(p.txStoreDB)
 		p.Log().Infof("opened DB '%s' as transaction store", dbname)
 
 		go func() {
-			<-p.Ctx().Done()
-			// wait until others will stop
-			p.MustWaitStop()
+			p.WaitComponentsToStop()
 			_ = p.txStoreDB.Close()
 			p.Log().Infof("transaction store database has been closed")
+			p.dbClosedWG.Done()
 		}()
 	}
 }
 
 func (p *ProximaNode) initPeering() {
 	var err error
-	p.peers, err = peering.NewPeersFromConfig(p, p.ctx)
+	p.peers, err = peering.NewPeersFromConfig(p)
 	util.AssertNoError(err)
 
 	p.peers.Run()
@@ -164,7 +169,7 @@ func (p *ProximaNode) initPeering() {
 
 func (p *ProximaNode) startWorkflow() {
 	p.workflow = workflow.New(p, p.peers, workflow.WithGlobalConfigOptions)
-	p.workflow.Start(p.Ctx())
+	p.workflow.Start()
 }
 
 func (p *ProximaNode) startSequencers() {
@@ -179,7 +184,7 @@ func (p *ProximaNode) startSequencers() {
 		return k1 < k2
 	})
 	for _, name := range seqNames {
-		seq, err := sequencer.NewFromConfig(name, p.workflow, p.ctx)
+		seq, err := sequencer.NewFromConfig(name, p.workflow)
 		if err != nil {
 			p.Log().Errorf("can't start sequencer '%s': '%v'", name, err)
 			continue
@@ -188,7 +193,7 @@ func (p *ProximaNode) startSequencers() {
 			p.Log().Infof("skipping sequencer '%s'", name)
 			continue
 		}
-		seq.Run()
+		seq.Start()
 
 		p.Log().Infof("started sequencer '%s', seqID: %s", name, util.Ref(seq.SequencerID()).String())
 		p.Sequencers = append(p.Sequencers, seq)

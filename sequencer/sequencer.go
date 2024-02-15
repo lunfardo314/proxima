@@ -71,7 +71,7 @@ func New(glb *workflow.Workflow, seqID ledger.ChainID, controllerKey ed25519.Pri
 	return ret, nil
 }
 
-func NewFromConfig(name string, glb *workflow.Workflow, ctx context.Context) (*Sequencer, error) {
+func NewFromConfig(name string, glb *workflow.Workflow) (*Sequencer, error) {
 	cfg, seqID, controllerKey, err := paramsFromConfig(name)
 	if err != nil {
 		return nil, err

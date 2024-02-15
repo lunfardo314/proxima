@@ -231,7 +231,7 @@ func (ps *Peers) sendHeartbeatToPeer(id peer.ID) {
 		ps.Tracef(TraceTag, "sendHeartbeatToPeer from %s to %s", ps.host.ID().String, id.String)
 	}
 
-	stream, err := ps.host.NewStream(ps.ctx, id, lppProtocolHeartbeat)
+	stream, err := ps.host.NewStream(ps.Ctx(), id, lppProtocolHeartbeat)
 	if err != nil {
 		return
 	}

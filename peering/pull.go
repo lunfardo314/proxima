@@ -81,7 +81,7 @@ func (ps *Peers) processPullFrame(msgData []byte, p *Peer) error {
 }
 
 func (ps *Peers) sendPullTransactionsToPeer(id peer.ID, txLst ...ledger.TransactionID) {
-	stream, err := ps.host.NewStream(ps.ctx, id, lppProtocolPull)
+	stream, err := ps.host.NewStream(ps.Ctx(), id, lppProtocolPull)
 	if err != nil {
 		return
 	}

@@ -3,7 +3,6 @@ package proposer_generic
 import (
 	"context"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/lunfardo314/proxima/core/attacher"
@@ -93,12 +92,4 @@ func (t *TaskGeneric) Run() {
 			return
 		}
 	}
-}
-
-func outputSliceString(path []vertex.WrappedOutput) string {
-	ret := make([]string, 0)
-	for _, wOut := range path {
-		ret = append(ret, "       "+wOut.IDShortString())
-	}
-	return strings.Join(ret, "\n")
 }

@@ -88,7 +88,7 @@ func (w *Workflow) Start() {
 	w.gossip.Start()
 	w.persistTxBytes.Start()
 	if !w.doNotStartPruner {
-		prune := pruner.New(w.DAG, w) // refactor
+		prune := pruner.New(w) // refactor
 		prune.Start()
 	}
 }
