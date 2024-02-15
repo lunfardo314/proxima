@@ -22,7 +22,6 @@ type (
 		*workflow.Workflow
 		ctx            context.Context
 		stopFun        context.CancelFunc
-		waitStop       sync.WaitGroup
 		sequencerID    ledger.ChainID
 		controllerKey  ed25519.PrivateKey
 		config         *ConfigOptions
@@ -34,8 +33,9 @@ type (
 		infoMutex      sync.RWMutex
 		info           Info
 		//
-		onMilestoneSubmittedMutex sync.RWMutex
-		onMilestoneSubmitted      func(seq *Sequencer, vid *vertex.WrappedTx)
+		onCallbackMutex      sync.RWMutex
+		onMilestoneSubmitted func(seq *Sequencer, vid *vertex.WrappedTx)
+		onExit               func()
 	}
 
 	Info struct {
@@ -80,16 +80,22 @@ func NewFromConfig(name string, glb *workflow.Workflow, ctx context.Context) (*S
 }
 
 func (seq *Sequencer) Start() {
-	seq.waitStop.Add(1)
-
 	runFun := func() {
-		defer seq.waitStop.Done()
+		seq.MarkStartedComponent()
+		defer seq.MarkStoppedComponent()
 
 		if !seq.ensureFirstMilestone() {
 			seq.log.Warnf("can't start sequencer. EXIT..")
 			return
 		}
 		seq.mainLoop()
+
+		seq.onCallbackMutex.RLock()
+		defer seq.onCallbackMutex.RUnlock()
+
+		if seq.onExit != nil {
+			seq.onExit()
+		}
 	}
 
 	const debuggerFriendly = true
@@ -148,19 +154,6 @@ func (seq *Sequencer) ensureFirstMilestone() bool {
 	return true
 }
 
-func (seq *Sequencer) Stop() {
-	seq.stopFun()
-}
-
-func (seq *Sequencer) StopAndWait() {
-	seq.stopFun()
-	seq.waitStop.Wait()
-}
-
-func (seq *Sequencer) WaitStop() {
-	seq.waitStop.Wait()
-}
-
 func (seq *Sequencer) SequencerID() ledger.ChainID {
 	return seq.sequencerID
 }
@@ -180,10 +173,6 @@ func (seq *Sequencer) SequencerName() string {
 func (seq *Sequencer) Log() *zap.SugaredLogger {
 	return seq.log
 }
-
-//	func (seq *Sequencer) Tracef(tag string, format string, args ...any) {
-//		seq.workflow.TraceLog(seq.log, tag, format, args...)
-//	}
 
 func (seq *Sequencer) mainLoop() {
 	beginAt := seq.Workflow.SyncData().WhenStarted().Add(seq.config.DelayStart)
@@ -363,8 +352,8 @@ func (seq *Sequencer) waitMilestoneInTippool(vid *vertex.WrappedTx, deadline tim
 }
 
 func (seq *Sequencer) OnMilestoneSubmitted(fun func(seq *Sequencer, ms *vertex.WrappedTx)) {
-	seq.onMilestoneSubmittedMutex.Lock()
-	defer seq.onMilestoneSubmittedMutex.Unlock()
+	seq.onCallbackMutex.Lock()
+	defer seq.onCallbackMutex.Unlock()
 
 	if seq.onMilestoneSubmitted == nil {
 		seq.onMilestoneSubmitted = fun
@@ -377,9 +366,24 @@ func (seq *Sequencer) OnMilestoneSubmitted(fun func(seq *Sequencer, ms *vertex.W
 	}
 }
 
+func (seq *Sequencer) OnExit(fun func()) {
+	seq.onCallbackMutex.Lock()
+	defer seq.onCallbackMutex.Unlock()
+
+	if seq.onExit == nil {
+		seq.onExit = fun
+	} else {
+		prevFun := seq.onExit
+		seq.onExit = func() {
+			prevFun()
+			fun()
+		}
+	}
+}
+
 func (seq *Sequencer) runOnMilestoneSubmitted(ms *vertex.WrappedTx) {
-	seq.onMilestoneSubmittedMutex.RLock()
-	defer seq.onMilestoneSubmittedMutex.RUnlock()
+	seq.onCallbackMutex.RLock()
+	defer seq.onCallbackMutex.RUnlock()
 
 	if seq.onMilestoneSubmitted != nil {
 		seq.onMilestoneSubmitted(seq, ms)

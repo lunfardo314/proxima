@@ -1,7 +1,6 @@
 package pull_client
 
 import (
-	"context"
 	"sync"
 	"time"
 
@@ -53,12 +52,12 @@ func New(env Environment) *PullClient {
 	}
 }
 
-func (d *PullClient) Start(ctx context.Context) {
-	d.MarkStarted()
+func (d *PullClient) Start() {
+	d.MarkStartedComponent()
 	d.AddOnClosed(func() {
-		d.MarkStopped()
+		d.MarkStoppedComponent()
 	})
-	d.Queue.Start(d, ctx)
+	d.Queue.Start(d, d.Ctx())
 }
 
 func (d *PullClient) Consume(inp *Input) {

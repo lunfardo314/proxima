@@ -39,7 +39,6 @@ func Test1SequencerPruner(t *testing.T) {
 			}
 		})
 		seq.Start()
-		seq.WaitStop()
 		testData.stopAndWait()
 		require.EqualValues(t, maxSlots, int(countBr.Load()))
 		require.EqualValues(t, maxSlots, int(countSeq.Load()))
@@ -106,7 +105,6 @@ func Test1SequencerPruner(t *testing.T) {
 
 		require.EqualValues(t, batchSize*maxBatches, len(par.spammedTxIDs))
 
-		seq.WaitStop()
 		testData.stopAndWait()
 		t.Logf("%s", testData.wrk.Info(true))
 
@@ -138,7 +136,6 @@ func TestNSequencersIdlePruner(t *testing.T) {
 		)
 		testData := initMultiSequencerTest(t, nSequencers, true)
 
-		testData.bootstrapSeq.StopAndWait()
 		testData.stopAndWait()
 
 		t.Logf("%s", testData.wrk.Info(true))
@@ -159,7 +156,6 @@ func TestNSequencersIdlePruner(t *testing.T) {
 
 		testData.startSequencersWithTimeout(maxSlots)
 		time.Sleep(20 * time.Second)
-		testData.stopAndWaitSequencers()
 		testData.stopAndWait()
 
 		t.Logf("%s", testData.wrk.Info(true))
@@ -178,7 +174,6 @@ func Test5SequencersIdlePruner(t *testing.T) {
 	//testData.wrk.EnableTraceTags(proposer_base.TraceTag)
 	testData.startSequencersWithTimeout(maxSlots)
 	time.Sleep(20 * time.Second)
-	testData.stopAndWaitSequencers()
 	testData.stopAndWait()
 
 	t.Logf("--------\n%s", testData.wrk.Info())
@@ -235,7 +230,6 @@ func TestNSequencersTransferPruner(t *testing.T) {
 
 		testData.startSequencersWithTimeout(maxSlots, spammingTimeout+(5*time.Second))
 
-		testData.waitSequencers()
 		testData.stopAndWait()
 
 		t.Logf("%s", testData.wrk.Info())
@@ -312,7 +306,6 @@ func TestNSequencersTransferPruner(t *testing.T) {
 
 		testData.startSequencersWithTimeout(maxSlots, spammingTimeout+(5*time.Second))
 
-		testData.waitSequencers()
 		testData.stopAndWait()
 
 		t.Logf("%s", testData.wrk.Info())

@@ -1,8 +1,6 @@
 package pull_server
 
 import (
-	"context"
-
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/global"
@@ -40,12 +38,12 @@ func New(env Environment) *PullServer {
 	}
 }
 
-func (d *PullServer) Start(ctx context.Context) {
-	d.MarkStarted()
+func (d *PullServer) Start() {
+	d.MarkStartedComponent()
 	d.AddOnClosed(func() {
-		d.MarkStopped()
+		d.MarkStoppedComponent()
 	})
-	d.Queue.Start(d, ctx)
+	d.Queue.Start(d, d.Ctx())
 }
 
 func (d *PullServer) Consume(inp *Input) {

@@ -1,6 +1,7 @@
 package global
 
 import (
+	"context"
 	"sync"
 
 	"github.com/lunfardo314/proxima/core/txmetadata"
@@ -60,8 +61,10 @@ type (
 
 	// StopWaitGroup interface of the global objet\ct which coordinates graceful shutdown
 	StopWaitGroup interface {
-		MarkStarted()
-		MarkStopped()
+		Ctx() context.Context
+		Stop()
+		MarkStartedComponent()
+		MarkStoppedComponent()
 	}
 
 	Glb interface {

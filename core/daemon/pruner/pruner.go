@@ -1,7 +1,6 @@
 package pruner
 
 import (
-	"context"
 	"fmt"
 	"runtime"
 	"time"
@@ -32,10 +31,10 @@ func New(dag *dag.DAG, env Environment) *Pruner {
 	}
 }
 
-func (d *Pruner) Start(ctx context.Context) {
+func (d *Pruner) Start() {
 	d.Log().Infof("STARTING.. [%s]", d.Log().Level().String())
 	go func() {
-		d.mainLoop(ctx)
+		d.mainLoop()
 		d.Log().Infof("DAG pruner STOPPED")
 	}()
 }
@@ -74,15 +73,15 @@ func (d *Pruner) pruningBaselineSlot(verticesDescending []*vertex.WrappedTx) led
 	})
 }
 
-func (d *Pruner) mainLoop(ctx context.Context) {
-	d.MarkStarted()
-	defer d.MarkStopped()
+func (d *Pruner) mainLoop() {
+	d.MarkStartedComponent()
+	defer d.MarkStoppedComponent()
 
 	prunerLoopPeriod := ledger.SlotDuration() / 2
 
 	for {
 		select {
-		case <-ctx.Done():
+		case <-d.Ctx().Done():
 			return
 		case <-time.After(prunerLoopPeriod):
 		}

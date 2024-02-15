@@ -1,6 +1,7 @@
 package global
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"sync"
@@ -12,28 +13,52 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
-type Global struct {
-	*zap.SugaredLogger
-	*sync.WaitGroup
-	enabledTrace   atomic.Bool
-	traceTagsMutex sync.RWMutex
-	traceTags      set.Set[string]
-}
+type (
+	Global struct {
+		*zap.SugaredLogger
+		*sync.WaitGroup
+		ctx            context.Context
+		stopFun        context.CancelFunc
+		once           *sync.Once
+		enabledTrace   atomic.Bool
+		traceTagsMutex sync.RWMutex
+		traceTags      set.Set[string]
+	}
+)
 
-func New(name string, lvl zapcore.Level, outputs []string) *Global {
+func New() *Global {
+	ctx, cancelFun := context.WithCancel(context.Background())
 	return &Global{
-		SugaredLogger: NewLogger(name, lvl, outputs, ""),
+		ctx:           ctx,
+		stopFun:       cancelFun,
+		SugaredLogger: NewLogger("", zapcore.InfoLevel, nil, ""),
 		traceTags:     set.New[string](),
 		WaitGroup:     &sync.WaitGroup{},
+		once:          &sync.Once{},
 	}
 }
 
-func (l *Global) MarkStarted() {
+func (l *Global) MarkStartedComponent() {
 	l.WaitGroup.Add(1)
 }
 
-func (l *Global) MarkStopped() {
+func (l *Global) MarkStoppedComponent() {
 	l.WaitGroup.Done()
+}
+
+func (l *Global) Stop() {
+	l.stopFun()
+}
+
+func (l *Global) Ctx() context.Context {
+	return l.ctx
+}
+
+func (l *Global) Wait() {
+	l.WaitGroup.Wait()
+	l.once.Do(func() {
+		l.Log().Info("all components stopped")
+	})
 }
 
 func (l *Global) Log() *zap.SugaredLogger {

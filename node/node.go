@@ -1,9 +1,7 @@
 package node
 
 import (
-	"context"
 	"os"
-	"strings"
 	"sync"
 	"time"
 
@@ -19,7 +17,6 @@ import (
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
 )
 
 type (
@@ -40,7 +37,6 @@ type ProximaNode struct {
 	workflow   *workflow.Workflow
 	Sequencers []*sequencer.Sequencer
 	stopOnce   sync.Once
-	ctx        context.Context
 }
 
 const (
@@ -51,25 +47,10 @@ func newBootstrapLogger() *zap.SugaredLogger {
 	return global.NewLogger(bootstrapLoggerName, zap.InfoLevel, []string{"stderr"}, "")
 }
 
-func initGlobalFromConfig() *global.Global {
-	logLevel := zapcore.InfoLevel
-	if viper.GetString("logger.level") == "debug" {
-		logLevel = zapcore.DebugLevel
-	}
-
-	outputStr := viper.GetString("logger.output")
-	outputs := strings.Split(outputStr, ",")
-	if util.Find(outputs, "stdout") < 0 {
-		outputs = append(outputs, "stdout")
-	}
-
-	return global.New("", logLevel, outputs)
-}
-
-func New(ctx context.Context) *ProximaNode {
+func New() *ProximaNode {
 	return &ProximaNode{
+		Global:     global.New(),
 		Sequencers: make([]*sequencer.Sequencer, 0),
-		ctx:        ctx,
 	}
 }
 
@@ -86,9 +67,8 @@ func (p *ProximaNode) initConfig() {
 }
 
 func (p *ProximaNode) Run() {
-	newBootstrapLogger().Info(global.BannerString())
+	p.Log().Info(global.BannerString())
 	p.initConfig()
-	p.Global = initGlobalFromConfig()
 
 	p.Log().Info("---------------- starting up Proxima node ver. %s--------------", global.Version)
 
@@ -134,7 +114,7 @@ func (p *ProximaNode) initMultiStateLedger() {
 
 	p.Log().Infof("Ledger identity:\n%s", ledgerID.Lines("       ").String())
 	go func() {
-		<-p.ctx.Done()
+		<-p.Ctx().Done()
 		// wait until others will stop
 		p.Wait()
 		_ = p.multiStateDB.Close()
@@ -160,7 +140,7 @@ func (p *ProximaNode) initTxStore() {
 		p.Log().Infof("opened DB '%s' as transaction store", dbname)
 
 		go func() {
-			<-p.ctx.Done()
+			<-p.Ctx().Done()
 			// wait until others will stop
 			p.Wait()
 			_ = p.txStoreDB.Close()
@@ -177,14 +157,14 @@ func (p *ProximaNode) initPeering() {
 	p.peers.Run()
 
 	go func() {
-		<-p.ctx.Done()
+		<-p.Ctx().Done()
 		p.peers.Stop()
 	}()
 }
 
 func (p *ProximaNode) startWorkflow() {
 	p.workflow = workflow.New(p, p.peers, workflow.WithGlobalConfigOptions)
-	p.workflow.Start(p.ctx)
+	p.workflow.Start(p.Ctx())
 }
 
 func (p *ProximaNode) startSequencers() {

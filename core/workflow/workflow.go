@@ -1,7 +1,6 @@
 package workflow
 
 import (
-	"context"
 	"sync"
 
 	"github.com/lunfardo314/proxima/core/daemon/events"
@@ -79,17 +78,17 @@ func New(env Environment, peers *peering.Peers, opts ...ConfigOption) *Workflow 
 	return ret
 }
 
-func (w *Workflow) Start(ctx context.Context) {
+func (w *Workflow) Start() {
 	w.Log().Infof("starting daemons...")
 
-	w.poker.Start(ctx)
-	w.events.Start(ctx)
-	w.pullClient.Start(ctx)
-	w.pullServer.Start(ctx)
-	w.gossip.Start(ctx)
-	w.persistTxBytes.Start(ctx)
+	w.poker.Start()
+	w.events.Start()
+	w.pullClient.Start()
+	w.pullServer.Start()
+	w.gossip.Start()
+	w.persistTxBytes.Start()
 	if !w.doNotStartPruner {
 		prune := pruner.New(w.DAG, w) // refactor
-		prune.Start(ctx)
+		prune.Start()
 	}
 }

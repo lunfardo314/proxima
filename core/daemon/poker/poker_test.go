@@ -1,7 +1,6 @@
 package poker
 
 import (
-	"context"
 	"sync"
 	"testing"
 
@@ -10,21 +9,21 @@ import (
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
-	"go.uber.org/zap"
 )
+
+func init() {
+	ledger.InitWithTestingLedgerIDData()
+}
 
 func TestBasic(t *testing.T) {
 	const (
 		howManyTx    = 10_000
 		howManyPokes = 10
 	)
-	ctx, cancel := context.WithCancel(context.Background())
-	log := global.New("", zap.DebugLevel, nil)
-	p := New(log)
+	glb := global.New()
+	p := New(glb)
 
-	var wgStop sync.WaitGroup
-	wgStop.Add(1)
-	p.Start(ctx, &wgStop)
+	p.Start()
 
 	vids := make([]*vertex.WrappedTx, howManyTx)
 	for i := range vids {
@@ -51,7 +50,7 @@ func TestBasic(t *testing.T) {
 		p.PokeAllWith(vid)
 	}
 	wg.Wait()
-	cancel()
-	wgStop.Wait()
+	glb.Stop()
+	glb.Wait()
 	require.EqualValues(t, howManyPokes*howManyTx, int(counter.Load()))
 }

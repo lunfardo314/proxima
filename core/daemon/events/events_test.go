@@ -1,22 +1,19 @@
 package events
 
 import (
-	"context"
 	"fmt"
 	"sync"
 	"testing"
 
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/util/eventtype"
-	"go.uber.org/zap"
 )
 
 func TestEvents(t *testing.T) {
-	glb := global.New("", zap.DebugLevel, nil)
+	glb := global.New()
 	glb.EnableTraceTags("events")
 	e := New(glb)
-	ctx, cancel := context.WithCancel(context.Background())
-	e.Start(ctx)
+	e.Start()
 
 	EventTypeTestString := eventtype.RegisterNew[string]("a string event")
 	EventTypeTestInt := eventtype.RegisterNew[int]("an int event")
@@ -35,6 +32,6 @@ func TestEvents(t *testing.T) {
 	e.PostEvent(EventTypeTestString, "kuku")
 	e.PostEvent(EventTypeTestInt, 31415)
 	wg.Wait()
-	cancel()
+	glb.Stop()
 	glb.Wait()
 }

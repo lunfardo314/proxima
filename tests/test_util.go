@@ -279,11 +279,17 @@ func initWorkflowTestWithConflicts(t *testing.T, nConflicts int, nChains int, ta
 	return ret
 }
 
+func (td *workflowTestData) stop() {
+	td.stopFun()
+}
+
+func (td *workflowTestData) waitStop() {
+	td.env.Wait()
+}
+
 func (td *workflowTestData) stopAndWait() {
 	td.stopFun()
-	fmt.Printf("stopAndWait before wait\n")
 	td.env.Wait()
-	fmt.Printf("stopAndWait after wait\n")
 }
 
 func (td *longConflictTestData) makeSeqBeginnings(withConflictingFees bool) {
@@ -769,37 +775,4 @@ func (td *workflowTestData) startSequencersWithTimeout(maxSlots int, timeout ...
 		<-ctx.Done()
 		cancel()
 	}()
-}
-
-func (td *workflowTestData) stopAndWaitSequencers() {
-	var wg sync.WaitGroup
-	wg.Add(len(td.chainOrigins) + 1)
-	go func() {
-		td.bootstrapSeq.StopAndWait()
-		wg.Done()
-	}()
-	for i := range td.sequencers {
-		i1 := i
-		go func() {
-			td.sequencers[i1].StopAndWait()
-			wg.Done()
-		}()
-	}
-	wg.Wait()
-	td.t.Logf("all sequencers have been stopped ")
-}
-
-func (td *workflowTestData) waitSequencers() {
-	var wg sync.WaitGroup
-	wg.Add(len(td.chainOrigins))
-	for i := range td.sequencers {
-		i1 := i
-		go func() {
-			td.sequencers[i1].WaitStop()
-			wg.Done()
-		}()
-	}
-	wg.Wait()
-	td.bootstrapSeq.StopAndWait()
-	td.t.Logf("all sequencers have been stopped ")
 }

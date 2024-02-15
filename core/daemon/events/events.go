@@ -1,8 +1,6 @@
 package events
 
 import (
-	"context"
-
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/eventtype"
@@ -43,12 +41,12 @@ func New(env Environment) *Events {
 	}
 }
 
-func (d *Events) Start(ctx context.Context) {
-	d.MarkStarted()
+func (d *Events) Start() {
+	d.MarkStartedComponent()
 	d.AddOnClosed(func() {
-		d.MarkStopped()
+		d.MarkStoppedComponent()
 	})
-	d.Queue.Start(d, ctx)
+	d.Queue.Start(d, d.Environment.Ctx())
 }
 
 func (d *Events) Consume(inp Input) {

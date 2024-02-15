@@ -1,7 +1,6 @@
 package poker
 
 import (
-	"context"
 	"time"
 
 	"github.com/lunfardo314/proxima/core/vertex"
@@ -58,13 +57,13 @@ func New(env Environment) *Poker {
 	}
 }
 
-func (d *Poker) Start(ctx context.Context) {
-	d.MarkStarted()
+func (d *Poker) Start() {
+	d.MarkStartedComponent()
 	d.AddOnClosed(func() {
-		d.MarkStopped()
+		d.MarkStoppedComponent()
 	})
-	d.Queue.Start(d, ctx)
-	go d.periodicLoop(ctx)
+	d.Queue.Start(d, d.Ctx())
+	go d.periodicLoop()
 }
 
 func (d *Poker) Consume(inp Input) {
@@ -125,10 +124,10 @@ func (d *Poker) periodicCleanup() {
 	}
 }
 
-func (d *Poker) periodicLoop(ctx context.Context) {
+func (d *Poker) periodicLoop() {
 	for {
 		select {
-		case <-ctx.Done():
+		case <-d.Ctx().Done():
 			return
 		case <-time.After(loopPeriod):
 		}

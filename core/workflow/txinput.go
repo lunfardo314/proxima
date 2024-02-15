@@ -166,6 +166,8 @@ func (w *Workflow) SequencerMilestoneAttachWait(txBytes []byte, timeout time.Dur
 	select {
 	case res := <-resCh:
 		return res.vid, res.err
+	case <-w.Ctx().Done():
+		return nil, fmt.Errorf("cancelled")
 	case <-time.After(timeout):
 		return nil, fmt.Errorf("timeout %v", timeout)
 	}

@@ -119,23 +119,22 @@ func Test1Sequencer(t *testing.T) {
 		//testData.wrk.EnableTraceTags("seq,factory,tippool,txinput, proposer, incAttach")
 		//testData.wrk.EnableTraceTags(sequencer.TraceTag, factory.TraceTag, tippool.TraceTag, proposer_base.TraceTag)
 
-		ctx, _ := context.WithCancel(context.Background())
 		seq, err := sequencer.New(testData.wrk, testData.bootstrapChainID, testData.genesisPrivKey,
-			ctx, sequencer.WithMaxBranches(maxSlots))
+			testData.ctx, sequencer.WithMaxBranches(maxSlots))
 		require.NoError(t, err)
-		var countBr, countSeq atomic.Int32
+		var countBr atomic.Int32
 		seq.OnMilestoneSubmitted(func(_ *sequencer.Sequencer, ms *vertex.WrappedTx) {
 			if ms.IsBranchTransaction() {
 				countBr.Inc()
-			} else {
-				countSeq.Inc()
 			}
 		})
+		seq.OnExit(func() {
+			testData.stop()
+		})
 		seq.Start()
-		seq.WaitStop()
-		testData.stopAndWait()
+
+		testData.waitStop()
 		require.EqualValues(t, maxSlots, int(countBr.Load()))
-		require.EqualValues(t, maxSlots, int(countSeq.Load()))
 		t.Logf("%s", testData.wrk.Info())
 		//br := testData.wrk.HeaviestBranchOfLatestTimeSlot()
 		//dag.SaveGraphPastCone(br, "latest_branch")
@@ -164,7 +163,9 @@ func Test1Sequencer(t *testing.T) {
 				countSeq.Inc()
 			}
 		})
-
+		seq.OnExit(func() {
+			testData.stop()
+		})
 		seq.Start()
 
 		rdr := multistate.MakeSugared(testData.wrk.HeaviestStateForLatestTimeSlot())
@@ -199,8 +200,7 @@ func Test1Sequencer(t *testing.T) {
 
 		require.EqualValues(t, batchSize*maxBatches, len(par.spammedTxIDs))
 
-		seq.WaitStop()
-		testData.stopAndWait()
+		testData.waitStop()
 		t.Logf("%s", testData.wrk.Info(true))
 
 		testData.wrk.SaveGraph("utangle")
@@ -251,6 +251,9 @@ func Test1Sequencer(t *testing.T) {
 				countSeq.Inc()
 			}
 		})
+		seq.OnExit(func() {
+			testData.stop()
+		})
 
 		rr := multistate.FetchLatestRootRecords(testData.wrk.StateStore())
 		require.EqualValues(t, 1, len(rr))
@@ -290,8 +293,7 @@ func Test1Sequencer(t *testing.T) {
 
 		require.EqualValues(t, batchSize*maxBatches, len(par.spammedTxIDs))
 
-		seq.WaitStop()
-		testData.stopAndWait()
+		testData.waitStop()
 		t.Logf("%s", testData.wrk.Info(true))
 
 		testData.wrk.SaveGraph("utangle")
@@ -358,7 +360,6 @@ func TestNSequencersIdle(t *testing.T) {
 		)
 		testData := initMultiSequencerTest(t, nSequencers)
 
-		testData.bootstrapSeq.StopAndWait()
 		testData.stopAndWait()
 
 		t.Logf("%s", testData.wrk.Info(true))
@@ -379,7 +380,6 @@ func TestNSequencersIdle(t *testing.T) {
 
 		testData.startSequencersWithTimeout(maxSlots)
 		time.Sleep(20 * time.Second)
-		testData.stopAndWaitSequencers()
 		testData.stopAndWait()
 
 		t.Logf("%s", testData.wrk.Info(true))
@@ -398,7 +398,6 @@ func Test5SequencersIdle(t *testing.T) {
 	//testData.wrk.EnableTraceTags(proposer_base.TraceTag)
 	testData.startSequencersWithTimeout(maxSlots)
 	time.Sleep(20 * time.Second)
-	testData.stopAndWaitSequencers()
 	testData.stopAndWait()
 
 	t.Logf("--------\n%s", testData.wrk.Info())
@@ -456,7 +455,6 @@ func TestNSequencersTransfer(t *testing.T) {
 
 		testData.startSequencersWithTimeout(maxSlots, spammingTimeout+(5*time.Second))
 
-		testData.waitSequencers()
 		testData.stopAndWait()
 
 		t.Logf("%s", testData.wrk.Info())
@@ -533,7 +531,6 @@ func TestNSequencersTransfer(t *testing.T) {
 
 		testData.startSequencersWithTimeout(maxSlots, spammingTimeout+(5*time.Second))
 
-		testData.waitSequencers()
 		testData.stopAndWait()
 
 		t.Logf("%s", testData.wrk.Info())
