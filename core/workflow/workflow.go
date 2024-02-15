@@ -29,8 +29,8 @@ type (
 	Workflow struct {
 		Environment
 		*dag.DAG
-		*peering.Peers
-		// queues
+		peers *peering.Peers
+		// daemons
 		pullClient       *pull_client.PullClient
 		pullServer       *pull_server.PullServer
 		gossip           *gossip.Gossip
@@ -62,7 +62,7 @@ func New(env Environment, peers *peering.Peers, opts ...ConfigOption) *Workflow 
 	ret := &Workflow{
 		Environment:      env,
 		DAG:              dag.New(env),
-		Peers:            peers,
+		peers:            peers,
 		syncData:         newSyncData(),
 		debugCounters:    testutil.NewSynCounters(),
 		traceTags:        set.New[string](),

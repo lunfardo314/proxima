@@ -24,21 +24,22 @@ type (
 )
 
 const (
-	TraceTag       = "persist-txbytes"
+	Name           = "txStore"
+	TraceTag       = Name
 	chanBufferSize = 10
 )
 
 func New(env Environment) *PersistTxBytes {
 	return &PersistTxBytes{
-		Queue:       queue.NewQueueWithBufferSize[Input]("txStore", chanBufferSize, env.Log().Level(), nil),
+		Queue:       queue.NewQueueWithBufferSize[Input](Name, chanBufferSize, env.Log().Level(), nil),
 		Environment: env,
 	}
 }
 
 func (d *PersistTxBytes) Start() {
-	d.MarkStartedComponent()
+	d.MarkStartedComponent(Name)
 	d.AddOnClosed(func() {
-		d.MarkStoppedComponent()
+		d.MarkStoppedComponent(Name)
 	})
 	d.Queue.Start(d, d.Environment.Ctx())
 }

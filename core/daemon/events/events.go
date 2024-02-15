@@ -31,20 +31,23 @@ const (
 )
 const chanBufferSize = 10
 
-const TraceTag = "events"
+const (
+	Name     = "events"
+	TraceTag = Name
+)
 
 func New(env Environment) *Events {
 	return &Events{
 		Environment:   env,
-		Queue:         queue.NewQueueWithBufferSize[Input]("events", chanBufferSize, env.Log().Level(), nil),
+		Queue:         queue.NewQueueWithBufferSize[Input](Name, chanBufferSize, env.Log().Level(), nil),
 		eventHandlers: make(map[eventtype.EventCode][]func(any)),
 	}
 }
 
 func (d *Events) Start() {
-	d.MarkStartedComponent()
+	d.MarkStartedComponent(Name)
 	d.AddOnClosed(func() {
-		d.MarkStoppedComponent()
+		d.MarkStoppedComponent(Name)
 	})
 	d.Queue.Start(d, d.Environment.Ctx())
 }

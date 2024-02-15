@@ -26,9 +26,8 @@ func Test1SequencerPruner(t *testing.T) {
 		//testData.wrk.EnableTraceTags("seq,factory,tippool,txinput, proposer, incAttach")
 		//testData.wrk.EnableTraceTags(sequencer.TraceTag, factory.TraceTag, tippool.TraceTag, proposer_base.TraceTag)
 
-		ctx, _ := context.WithCancel(context.Background())
 		seq, err := sequencer.New(testData.wrk, testData.bootstrapChainID, testData.genesisPrivKey,
-			ctx, sequencer.WithMaxBranches(maxSlots))
+			sequencer.WithMaxBranches(maxSlots))
 		require.NoError(t, err)
 		var countBr, countSeq atomic.Int32
 		seq.OnMilestoneSubmitted(func(_ *sequencer.Sequencer, ms *vertex.WrappedTx) {
@@ -60,7 +59,7 @@ func Test1SequencerPruner(t *testing.T) {
 
 		ctx, _ := context.WithCancel(context.Background())
 		seq, err := sequencer.New(testData.wrk, testData.bootstrapChainID, testData.genesisPrivKey,
-			ctx, sequencer.WithMaxBranches(maxSlots))
+			sequencer.WithMaxBranches(maxSlots))
 		require.NoError(t, err)
 		var countBr, countSeq atomic.Int32
 		seq.OnMilestoneSubmitted(func(_ *sequencer.Sequencer, ms *vertex.WrappedTx) {

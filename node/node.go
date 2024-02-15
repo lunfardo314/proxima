@@ -93,7 +93,7 @@ func (p *ProximaNode) Run() {
 }
 
 func (p *ProximaNode) WaitStop() {
-	p.Wait()
+	p.MustWaitStop()
 	p.Log().Info("all components stopped")
 }
 
@@ -116,7 +116,7 @@ func (p *ProximaNode) initMultiStateLedger() {
 	go func() {
 		<-p.Ctx().Done()
 		// wait until others will stop
-		p.Wait()
+		p.MustWaitStop()
 		_ = p.multiStateDB.Close()
 		p.Log().Infof("multi-state database has been closed")
 	}()
@@ -142,7 +142,7 @@ func (p *ProximaNode) initTxStore() {
 		go func() {
 			<-p.Ctx().Done()
 			// wait until others will stop
-			p.Wait()
+			p.MustWaitStop()
 			_ = p.txStoreDB.Close()
 			p.Log().Infof("transaction store database has been closed")
 		}()

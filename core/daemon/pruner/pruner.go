@@ -24,6 +24,8 @@ type (
 	}
 )
 
+const Name = "pruner"
+
 func New(dag *dag.DAG, env Environment) *Pruner {
 	return &Pruner{
 		DAG:         dag,
@@ -74,8 +76,8 @@ func (d *Pruner) pruningBaselineSlot(verticesDescending []*vertex.WrappedTx) led
 }
 
 func (d *Pruner) mainLoop() {
-	d.MarkStartedComponent()
-	defer d.MarkStoppedComponent()
+	d.MarkStartedComponent(Name)
+	defer d.MarkStoppedComponent(Name)
 
 	prunerLoopPeriod := ledger.SlotDuration() / 2
 

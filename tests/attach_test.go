@@ -1,7 +1,6 @@
 package tests
 
 import (
-	"context"
 	"runtime"
 	"sync"
 	"testing"
@@ -40,8 +39,7 @@ func TestBasic(t *testing.T) {
 		txBytesStore := txstore.NewSimpleTxBytesStore(common.NewInMemoryKVStore())
 		env := newWorkflowDummyEnvironment(stateStore, txBytesStore)
 		wrk := workflow.New(env, peering.NewPeersDummy(), workflow.OptionDoNotStartPruner)
-		ctx, stop := context.WithCancel(context.Background())
-		wrk.Start(ctx)
+		wrk.Start()
 
 		_, _, err := multistate.ScanGenesisState(stateStore)
 		require.NoError(t, err)
@@ -54,8 +52,8 @@ func TestBasic(t *testing.T) {
 		require.EqualValues(t, genesisOut.ID, genesisOut1.ID)
 		require.EqualValues(t, genesisOut.Output.Bytes(), genesisOut1.Output.Bytes())
 
-		stop()
-		env.Wait()
+		env.Stop()
+		env.MustWaitStop()
 
 		t.Logf("bootstrap chain id: %s", bootstrapChainID.String())
 		t.Logf("genesis root: %s", root.String())
@@ -78,8 +76,7 @@ func TestBasic(t *testing.T) {
 
 		env := newWorkflowDummyEnvironment(stateStore, txBytesStore)
 		wrk := workflow.New(env, peering.NewPeersDummy(), workflow.OptionDoNotStartPruner)
-		ctx, stop := context.WithCancel(context.Background())
-		wrk.Start(ctx)
+		wrk.Start()
 
 		txBytes, err := txbuilder.DistributeInitialSupply(stateStore, privKey, distrib)
 		require.NoError(t, err)
@@ -90,8 +87,8 @@ func TestBasic(t *testing.T) {
 		vidDistrib, err := attacher.EnsureBranch(distribTxID, wrk)
 		require.NoError(t, err)
 
-		stop()
-		env.Wait()
+		env.Stop()
+		env.MustWaitStop()
 
 		t.Logf("bootstrap chain id: %s", bootstrapChainID.String())
 
@@ -143,12 +140,11 @@ func TestBasic(t *testing.T) {
 
 		env := newWorkflowDummyEnvironment(stateStore, txBytesStore)
 		wrk := workflow.New(env, peering.NewPeersDummy(), workflow.OptionDoNotStartPruner)
-		ctx, stop := context.WithCancel(context.Background())
 
 		//wrk.EnableTraceTags(attacher.TraceTagAttach, attacher.TraceTagAttachMilestone, attacher.TraceTagAttachVertex)
 		//wrk.EnableTraceTags(attacher.TraceTagAttachEndorsements, attacher.TraceTagAttachOutput)
 		//wrk.EnableTraceTags(attacher.TraceTagMarkDefUndef)
-		wrk.Start(ctx)
+		wrk.Start()
 
 		txBytes, err := txbuilder.MakeDistributionTransaction(stateStore, privKey, distrib)
 		require.NoError(t, err)
@@ -168,8 +164,8 @@ func TestBasic(t *testing.T) {
 		t.Logf("genesis branch txid: %s", vidDistrib.IDShortString())
 		t.Logf("%s", wrk.Info())
 
-		stop()
-		env.Wait()
+		env.Stop()
+		env.MustWaitStop()
 
 		rdr := multistate.MakeSugared(wrk.GetStateReaderForTheBranch(&vidDistrib.ID))
 		stemOut := rdr.GetStemOutput()
@@ -215,8 +211,7 @@ func TestBasic(t *testing.T) {
 
 		env := newWorkflowDummyEnvironment(stateStore, txBytesStore)
 		wrk := workflow.New(env, peering.NewPeersDummy(), workflow.OptionDoNotStartPruner)
-		ctx, stop := context.WithCancel(context.Background())
-		wrk.Start(ctx)
+		wrk.Start()
 
 		txBytes, err := txbuilder.DistributeInitialSupply(stateStore, privKey, distrib)
 		require.NoError(t, err)
@@ -240,8 +235,8 @@ func TestBasic(t *testing.T) {
 		t.Logf("genesis branch txid: %s", vidDistrib.IDShortString())
 		t.Logf("%s", wrk.Info())
 
-		stop()
-		env.Wait()
+		env.Stop()
+		env.MustWaitStop()
 
 		distribVID := wrk.GetVertex(&vidDistrib.ID)
 		require.True(t, distribVID != nil)

@@ -45,22 +45,22 @@ const chanBufferSize = 10
 const (
 	loopPeriod = 1 * time.Second
 	ttlWanted  = 1 * time.Minute
+	Name       = "poker"
+	TraceTag   = Name
 )
-
-const TraceTag = "poker"
 
 func New(env Environment) *Poker {
 	return &Poker{
-		Queue:       queue.NewQueueWithBufferSize[Input]("poke", chanBufferSize, env.Log().Level(), nil),
+		Queue:       queue.NewQueueWithBufferSize[Input](Name, chanBufferSize, env.Log().Level(), nil),
 		Environment: env,
 		m:           make(map[*vertex.WrappedTx]waitingList),
 	}
 }
 
 func (d *Poker) Start() {
-	d.MarkStartedComponent()
+	d.MarkStartedComponent(Name)
 	d.AddOnClosed(func() {
-		d.MarkStoppedComponent()
+		d.MarkStoppedComponent(Name)
 	})
 	d.Queue.Start(d, d.Ctx())
 	go d.periodicLoop()

@@ -26,19 +26,22 @@ type (
 	}
 )
 
-const chanBufferSize = 10
+const (
+	Name           = "gossip"
+	chanBufferSize = 10
+)
 
 func New(env Environment) *Gossip {
 	return &Gossip{
-		Queue:       queue.NewQueueWithBufferSize[*Input]("gossip", chanBufferSize, env.Log().Level(), nil),
+		Queue:       queue.NewQueueWithBufferSize[*Input](Name, chanBufferSize, env.Log().Level(), nil),
 		Environment: env,
 	}
 }
 
 func (d *Gossip) Start() {
-	d.MarkStartedComponent()
+	d.MarkStartedComponent(Name)
 	d.AddOnClosed(func() {
-		d.MarkStoppedComponent()
+		d.MarkStoppedComponent(Name)
 	})
 	d.Queue.Start(d, d.Environment.Ctx())
 }

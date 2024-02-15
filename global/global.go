@@ -6,8 +6,10 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/proxima/util/lines"
 	"github.com/lunfardo314/proxima/util/set"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -16,10 +18,12 @@ import (
 type (
 	Global struct {
 		*zap.SugaredLogger
-		*sync.WaitGroup
 		ctx            context.Context
 		stopFun        context.CancelFunc
-		once           *sync.Once
+		logStopOnce    *sync.Once
+		stopOnce       *sync.Once
+		mutex          sync.RWMutex
+		components     set.Set[string]
 		enabledTrace   atomic.Bool
 		traceTagsMutex sync.RWMutex
 		traceTags      set.Set[string]
@@ -31,34 +35,72 @@ func New() *Global {
 	return &Global{
 		ctx:           ctx,
 		stopFun:       cancelFun,
-		SugaredLogger: NewLogger("", zapcore.InfoLevel, nil, ""),
+		SugaredLogger: NewLogger("", zapcore.DebugLevel, nil, ""),
 		traceTags:     set.New[string](),
-		WaitGroup:     &sync.WaitGroup{},
-		once:          &sync.Once{},
+		logStopOnce:   &sync.Once{},
+		components:    set.New[string](),
 	}
 }
 
-func (l *Global) MarkStartedComponent() {
-	l.WaitGroup.Add(1)
+func (l *Global) MarkStartedComponent(name string) {
+	l.mutex.Lock()
+	defer l.mutex.Unlock()
+
+	util.Assertf(!l.components.Contains(name), "global: repeating component %s", name)
+	l.components.Insert(name)
 }
 
-func (l *Global) MarkStoppedComponent() {
-	l.WaitGroup.Done()
+func (l *Global) MarkStoppedComponent(name string) {
+	l.mutex.Lock()
+	defer l.mutex.Unlock()
+
+	util.Assertf(l.components.Contains(name), "global: unknown component %s", name)
+	l.components.Remove(name)
 }
 
 func (l *Global) Stop() {
-	l.stopFun()
+	l.stopOnce.Do(func() {
+		l.Log().Info("global stop invoked..")
+		l.stopFun()
+	})
 }
 
 func (l *Global) Ctx() context.Context {
 	return l.ctx
 }
 
-func (l *Global) Wait() {
-	l.WaitGroup.Wait()
-	l.once.Do(func() {
-		l.Log().Info("all components stopped")
-	})
+const defaultWaitTimeout = 5 * time.Second
+
+func (l *Global) MustWaitStop(timeout ...time.Duration) {
+	deadline := time.Now().Add(defaultWaitTimeout)
+	if len(timeout) > 0 {
+		deadline = time.Now().Add(timeout[0])
+	}
+	for {
+		l.mutex.RLock()
+		if len(l.components) == 0 {
+			l.logStopOnce.Do(func() {
+				l.Log().Info("all components stopped")
+			})
+			break
+		}
+		l.mutex.RLock()
+
+		time.Sleep(5 * time.Millisecond)
+		if time.Now().After(deadline) {
+			func() {
+				l.mutex.RLock()
+				defer l.mutex.RUnlock()
+
+				ln := lines.New()
+				for s := range l.components {
+					ln.Add(s)
+				}
+				l.Log().Errorf("MustWaitStop: exceeded timeout. Still running components: %s", ln.Join(","))
+			}()
+			return
+		}
+	}
 }
 
 func (l *Global) Log() *zap.SugaredLogger {

@@ -25,7 +25,6 @@ import (
 	"github.com/lunfardo314/proxima/util/testutil/inittest"
 	"github.com/lunfardo314/unitrie/common"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/zap/zapcore"
 	"golang.org/x/crypto/blake2b"
 )
 
@@ -37,7 +36,7 @@ type workflowDummyEnvironment struct {
 
 func newWorkflowDummyEnvironment(stateStore global.StateStore, txStore global.TxBytesStore) *workflowDummyEnvironment {
 	return &workflowDummyEnvironment{
-		Global:       global.New("", zapcore.DebugLevel, nil),
+		Global:       global.New(),
 		StateStore:   stateStore,
 		TxBytesStore: txStore,
 	}
@@ -47,8 +46,6 @@ type workflowTestData struct {
 	t                      *testing.T
 	env                    *workflowDummyEnvironment
 	wrk                    *workflow.Workflow
-	ctx                    context.Context
-	stopFun                context.CancelFunc
 	txStore                global.TxBytesStore
 	genesisPrivKey         ed25519.PrivateKey
 	bootstrapChainID       ledger.ChainID
@@ -139,13 +136,7 @@ func initWorkflowTest(t *testing.T, nChains int, startPruner ...bool) *workflowT
 	} else {
 		ret.wrk = workflow.New(ret.env, peering.NewPeersDummy(), workflow.OptionDoNotStartPruner)
 	}
-	var cancelFun context.CancelFunc
-	ret.ctx, cancelFun = context.WithCancel(context.Background())
-	ret.stopFun = func() {
-		t.Logf("workflow stop function invoked")
-		cancelFun()
-	}
-	ret.wrk.Start(ret.ctx)
+	ret.wrk.Start()
 
 	t.Logf("bootstrap chain id: %s", ret.bootstrapChainID.String())
 	t.Logf("origing branch txid: %s", ret.originBranchTxid.StringShort())
@@ -280,16 +271,16 @@ func initWorkflowTestWithConflicts(t *testing.T, nConflicts int, nChains int, ta
 }
 
 func (td *workflowTestData) stop() {
-	td.stopFun()
+	td.env.Stop()
 }
 
 func (td *workflowTestData) waitStop() {
-	td.env.Wait()
+	td.env.MustWaitStop()
 }
 
 func (td *workflowTestData) stopAndWait() {
-	td.stopFun()
-	td.env.Wait()
+	td.env.Stop()
+	td.env.MustWaitStop()
 }
 
 func (td *longConflictTestData) makeSeqBeginnings(withConflictingFees bool) {
@@ -754,15 +745,17 @@ func (td *workflowTestData) spamWithdrawCommands(par spammerWithdrawCmdParams, c
 }
 
 func (td *workflowTestData) startSequencersWithTimeout(maxSlots int, timeout ...time.Duration) {
-	ctx := td.ctx
-	cancel := func() {}
+	var ctx context.Context
 	if len(timeout) > 0 {
-		ctx, cancel = context.WithTimeout(td.ctx, timeout[0])
+		ctx, _ = context.WithTimeout(td.env.Ctx(), timeout[0])
+	} else {
+		ctx = td.env.Ctx()
 	}
+
 	td.sequencers = make([]*sequencer.Sequencer, len(td.chainOrigins))
 	var err error
 	for seqNr := range td.sequencers {
-		td.sequencers[seqNr], err = sequencer.New(td.wrk, td.chainOrigins[seqNr].ChainID, td.privKeyAux, ctx,
+		td.sequencers[seqNr], err = sequencer.New(td.wrk, td.chainOrigins[seqNr].ChainID, td.privKeyAux,
 			sequencer.WithName(fmt.Sprintf("seq%d", seqNr)),
 			sequencer.WithMaxTagAlongInputs(30),
 			sequencer.WithPace(5),
@@ -771,8 +764,4 @@ func (td *workflowTestData) startSequencersWithTimeout(maxSlots int, timeout ...
 		require.NoError(td.t, err)
 		td.sequencers[seqNr].Start()
 	}
-	go func() {
-		<-ctx.Done()
-		cancel()
-	}()
 }

@@ -120,7 +120,7 @@ func Test1Sequencer(t *testing.T) {
 		//testData.wrk.EnableTraceTags(sequencer.TraceTag, factory.TraceTag, tippool.TraceTag, proposer_base.TraceTag)
 
 		seq, err := sequencer.New(testData.wrk, testData.bootstrapChainID, testData.genesisPrivKey,
-			testData.ctx, sequencer.WithMaxBranches(maxSlots))
+			sequencer.WithMaxBranches(maxSlots))
 		require.NoError(t, err)
 		var countBr atomic.Int32
 		seq.OnMilestoneSubmitted(func(_ *sequencer.Sequencer, ms *vertex.WrappedTx) {
@@ -153,7 +153,7 @@ func Test1Sequencer(t *testing.T) {
 
 		ctx, _ := context.WithCancel(context.Background())
 		seq, err := sequencer.New(testData.wrk, testData.bootstrapChainID, testData.genesisPrivKey,
-			ctx, sequencer.WithMaxBranches(maxSlots))
+			sequencer.WithMaxBranches(maxSlots))
 		require.NoError(t, err)
 		var countBr, countSeq atomic.Int32
 		seq.OnMilestoneSubmitted(func(_ *sequencer.Sequencer, ms *vertex.WrappedTx) {
@@ -241,7 +241,7 @@ func Test1Sequencer(t *testing.T) {
 
 		ctx, _ := context.WithCancel(context.Background())
 		seq, err := sequencer.New(testData.wrk, testData.bootstrapChainID, testData.genesisPrivKey,
-			ctx, sequencer.WithMaxBranches(maxSlots))
+			sequencer.WithMaxBranches(maxSlots))
 		require.NoError(t, err)
 		var countBr, countSeq atomic.Int32
 		seq.OnMilestoneSubmitted(func(_ *sequencer.Sequencer, ms *vertex.WrappedTx) {
@@ -338,7 +338,7 @@ func initMultiSequencerTest(t *testing.T, nSequencers int, startPruner ...bool) 
 	require.NoError(t, err)
 	require.EqualValues(t, nSequencers, len(testData.chainOrigins))
 
-	testData.bootstrapSeq, err = sequencer.New(testData.wrk, testData.bootstrapChainID, testData.genesisPrivKey, testData.ctx,
+	testData.bootstrapSeq, err = sequencer.New(testData.wrk, testData.bootstrapChainID, testData.genesisPrivKey,
 		sequencer.WithName("boot"),
 		sequencer.WithMaxTagAlongInputs(30),
 		sequencer.WithPace(5),

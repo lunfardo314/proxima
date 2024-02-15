@@ -27,7 +27,6 @@ type (
 		tippool.Environment
 		ControllerPrivateKey() ed25519.PrivateKey
 		SequencerName() string
-		Context() context.Context
 		MaxTagAlongOutputs() int
 	}
 
@@ -157,7 +156,7 @@ func (mf *MilestoneFactory) StartProposingForTargetLogicalTime(targetTs ledger.T
 	}
 	// start worker(s)
 	mf.setNewTarget(targetTs)
-	ctx, cancel := context.WithDeadline(mf.Context(), deadline)
+	ctx, cancel := context.WithDeadline(mf.Ctx(), deadline)
 	defer cancel() // to prevent context leak
 	mf.startProposerWorkers(targetTs, ctx)
 

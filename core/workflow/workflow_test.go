@@ -1,7 +1,6 @@
 package workflow
 
 import (
-	"context"
 	"testing"
 
 	"github.com/lunfardo314/proxima/global"
@@ -10,7 +9,6 @@ import (
 	"github.com/lunfardo314/proxima/txstore"
 	"github.com/lunfardo314/unitrie/common"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/zap/zapcore"
 )
 
 func init() {
@@ -25,7 +23,7 @@ type workflowDummyEnvironment struct {
 
 func newWorkflowDummyEnvironment() *workflowDummyEnvironment {
 	return &workflowDummyEnvironment{
-		Global:       global.New("[wrk]", zapcore.DebugLevel, nil),
+		Global:       global.New(),
 		StateStore:   common.NewInMemoryKVStore(),
 		TxBytesStore: txstore.NewSimpleTxBytesStore(common.NewInMemoryKVStore()),
 	}
@@ -36,8 +34,7 @@ func TestBasic(t *testing.T) {
 	peers := peering.NewPeersDummy()
 
 	w := New(env, peers, OptionDoNotStartPruner)
-	ctx, stop := context.WithCancel(context.Background())
-	w.Start(ctx)
+	w.Start()
 
 	_, err := w.TxBytesIn(nil)
 	require.Error(t, err)
@@ -45,6 +42,6 @@ func TestBasic(t *testing.T) {
 	_, err = w.TxBytesIn([]byte("dummy data"))
 	require.Error(t, err)
 
-	stop()
-	env.Wait()
+	env.Stop()
+	env.MustWaitStop()
 }

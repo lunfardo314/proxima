@@ -63,8 +63,8 @@ type (
 	StopWaitGroup interface {
 		Ctx() context.Context
 		Stop()
-		MarkStartedComponent()
-		MarkStoppedComponent()
+		MarkStartedComponent(name string)
+		MarkStoppedComponent(name string)
 	}
 
 	Glb interface {
@@ -76,3 +76,5 @@ type (
 		*sync.WaitGroup
 	}
 )
+
+const Name = "attach"

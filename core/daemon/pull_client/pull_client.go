@@ -39,12 +39,15 @@ type (
 	}
 )
 
-const TraceTag = "pull_client"
-const chanBufferSize = 10
+const (
+	Name           = "pull_client"
+	TraceTag       = Name
+	chanBufferSize = 10
+)
 
 func New(env Environment) *PullClient {
 	return &PullClient{
-		Queue:                  queue.NewQueueWithBufferSize[*Input]("pullClient", chanBufferSize, env.Log().Level(), nil),
+		Queue:                  queue.NewQueueWithBufferSize[*Input](Name, chanBufferSize, env.Log().Level(), nil),
 		Environment:            env,
 		pullList:               make(map[ledger.TransactionID]time.Time),
 		toRemoveSet:            set.New[ledger.TransactionID](),
@@ -53,9 +56,9 @@ func New(env Environment) *PullClient {
 }
 
 func (d *PullClient) Start() {
-	d.MarkStartedComponent()
+	d.MarkStartedComponent(Name)
 	d.AddOnClosed(func() {
-		d.MarkStoppedComponent()
+		d.MarkStoppedComponent(Name)
 	})
 	d.Queue.Start(d, d.Ctx())
 }

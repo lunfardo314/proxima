@@ -150,8 +150,8 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Opt
 			}
 
 			runFun := func() {
-				env.MarkStartedComponent()
-				defer env.MarkStoppedComponent()
+				env.MarkStartedComponent(vid.IDShortString())
+				defer env.MarkStoppedComponent(vid.IDShortString())
 
 				status, stats, err := runMilestoneAttacher(vid, options.metadata, env, ctx)
 				if status == vertex.Bad {

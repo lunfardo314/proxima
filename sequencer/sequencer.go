@@ -20,8 +20,7 @@ import (
 type (
 	Sequencer struct {
 		*workflow.Workflow
-		ctx            context.Context
-		stopFun        context.CancelFunc
+		ctx            context.Context // local context
 		sequencerID    ledger.ChainID
 		controllerKey  ed25519.PrivateKey
 		config         *ConfigOptions
@@ -52,7 +51,7 @@ type (
 
 const TraceTag = "sequencer"
 
-func New(glb *workflow.Workflow, seqID ledger.ChainID, controllerKey ed25519.PrivateKey, ctx context.Context, opts ...ConfigOption) (*Sequencer, error) {
+func New(glb *workflow.Workflow, seqID ledger.ChainID, controllerKey ed25519.PrivateKey, opts ...ConfigOption) (*Sequencer, error) {
 	cfg := configOptions(opts...)
 	ret := &Sequencer{
 		Workflow:      glb,
@@ -61,8 +60,6 @@ func New(glb *workflow.Workflow, seqID ledger.ChainID, controllerKey ed25519.Pri
 		config:        cfg,
 		log:           glb.Log().Named(fmt.Sprintf("%s-%s", cfg.SequencerName, seqID.StringVeryShort())),
 	}
-	ret.ctx, ret.stopFun = context.WithCancel(ctx)
-
 	var err error
 	if ret.factory, err = factory.New(ret); err != nil {
 		return nil, err
@@ -76,13 +73,13 @@ func NewFromConfig(name string, glb *workflow.Workflow, ctx context.Context) (*S
 	if err != nil {
 		return nil, err
 	}
-	return New(glb, seqID, controllerKey, ctx, cfg...)
+	return New(glb, seqID, controllerKey, cfg...)
 }
 
 func (seq *Sequencer) Start() {
 	runFun := func() {
-		seq.MarkStartedComponent()
-		defer seq.MarkStoppedComponent()
+		seq.MarkStartedComponent(seq.config.SequencerName)
+		defer seq.MarkStoppedComponent(seq.config.SequencerName)
 
 		if !seq.ensureFirstMilestone() {
 			seq.log.Warnf("can't start sequencer. EXIT..")
@@ -109,10 +106,14 @@ func (seq *Sequencer) Start() {
 	}
 }
 
+func (seq *Sequencer) Ctx() context.Context {
+	return seq.ctx
+}
+
 const ensureStartingMilestoneTimeout = time.Second
 
 func (seq *Sequencer) ensureFirstMilestone() bool {
-	ctx, cancel := context.WithTimeout(seq.ctx, ensureStartingMilestoneTimeout)
+	ctx, cancel := context.WithTimeout(seq.Ctx(), ensureStartingMilestoneTimeout)
 	var startingMilestoneOutput vertex.WrappedOutput
 
 	go func() {
@@ -162,10 +163,6 @@ func (seq *Sequencer) ControllerPrivateKey() ed25519.PrivateKey {
 	return seq.controllerKey
 }
 
-func (seq *Sequencer) Context() context.Context {
-	return seq.ctx
-}
-
 func (seq *Sequencer) SequencerName() string {
 	return seq.config.SequencerName
 }
@@ -189,7 +186,7 @@ func (seq *Sequencer) mainLoop() {
 
 	for {
 		select {
-		case <-seq.ctx.Done():
+		case <-seq.Ctx().Done():
 			return
 		default:
 			if !seq.doSequencerStep() {

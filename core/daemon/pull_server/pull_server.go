@@ -28,8 +28,11 @@ type (
 	}
 )
 
-const TraceTag = "pull_server"
-const chanBufferSize = 10
+const (
+	Name           = "pull_server"
+	TraceTag       = Name
+	chanBufferSize = 10
+)
 
 func New(env Environment) *PullServer {
 	return &PullServer{
@@ -39,9 +42,9 @@ func New(env Environment) *PullServer {
 }
 
 func (d *PullServer) Start() {
-	d.MarkStartedComponent()
+	d.MarkStartedComponent(Name)
 	d.AddOnClosed(func() {
-		d.MarkStoppedComponent()
+		d.MarkStoppedComponent(Name)
 	})
 	d.Queue.Start(d, d.Ctx())
 }
