@@ -23,7 +23,7 @@ import (
 
 type (
 	Environment interface {
-		global.Logging
+		global.Glb
 		global.StateStore
 		global.TxBytesStore
 	}
@@ -42,8 +42,6 @@ type (
 		doNotStartPruner bool
 		//
 		debugCounters *testutil.SyncCounters
-		//
-		waitStop sync.WaitGroup
 		//
 		enableTrace    atomic.Bool
 		traceTagsMutex sync.RWMutex
@@ -84,27 +82,14 @@ func New(env Environment, peers *peering.Peers, opts ...ConfigOption) *Workflow 
 func (w *Workflow) Start(ctx context.Context) {
 	w.Log().Infof("starting daemons...")
 
-	w.waitStop.Add(1)
-	w.poker.Start(ctx, &w.waitStop)
-	w.waitStop.Add(1)
-	w.events.Start(ctx, &w.waitStop)
-	w.waitStop.Add(1)
-	w.pullClient.Start(ctx, &w.waitStop)
-	w.waitStop.Add(1)
-	w.pullServer.Start(ctx, &w.waitStop)
-	w.waitStop.Add(1)
-	w.gossip.Start(ctx, &w.waitStop)
-	w.waitStop.Add(1)
-	w.persistTxBytes.Start(ctx, &w.waitStop)
+	w.poker.Start(ctx)
+	w.events.Start(ctx)
+	w.pullClient.Start(ctx)
+	w.pullServer.Start(ctx)
+	w.gossip.Start(ctx)
+	w.persistTxBytes.Start(ctx)
 	if !w.doNotStartPruner {
-		w.waitStop.Add(1)
 		prune := pruner.New(w.DAG, w) // refactor
-		prune.Start(ctx, &w.waitStop)
+		prune.Start(ctx)
 	}
-}
-
-func (w *Workflow) WaitStop() {
-	w.Log().Infof("waiting all queues to stop...")
-	_ = w.Log().Sync()
-	w.waitStop.Wait()
 }

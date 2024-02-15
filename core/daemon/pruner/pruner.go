@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"runtime"
-	"sync"
 	"time"
 
 	"github.com/lunfardo314/proxima/core/dag"
@@ -16,35 +15,35 @@ import (
 	"golang.org/x/exp/maps"
 )
 
-// TODO refactor with environment
-
 type (
+	Environment interface {
+		global.Glb
+	}
 	Pruner struct {
 		*dag.DAG
-		global.Logging
+		Environment
 	}
 )
 
-func New(dag *dag.DAG, log global.Logging) *Pruner {
+func New(dag *dag.DAG, env Environment) *Pruner {
 	return &Pruner{
-		DAG:     dag,
-		Logging: global.MakeSubLogger(log, "[prune]"),
+		DAG:         dag,
+		Environment: env,
 	}
 }
 
-func (p *Pruner) Start(ctx context.Context, doneOnClose *sync.WaitGroup) {
-	p.Log().Infof("STARTING.. [%s]", p.Log().Level().String())
+func (d *Pruner) Start(ctx context.Context) {
+	d.Log().Infof("STARTING.. [%s]", d.Log().Level().String())
 	go func() {
-		p.mainLoop(ctx)
-		doneOnClose.Done()
-		p.Log().Infof("DAG pruner STOPPED")
+		d.mainLoop(ctx)
+		d.Log().Infof("DAG pruner STOPPED")
 	}()
 }
 
-func (p *Pruner) selectVerticesToPrune() []*vertex.WrappedTx {
-	verticesDescending := p.VerticesDescending()
-	baselineSlot := p.pruningBaselineSlot(verticesDescending)
-	ttlHorizon := time.Now().Add(-time.Duration(p.PruningTTLSlots()) * ledger.SlotDuration())
+func (d *Pruner) selectVerticesToPrune() []*vertex.WrappedTx {
+	verticesDescending := d.VerticesDescending()
+	baselineSlot := d.pruningBaselineSlot(verticesDescending)
+	ttlHorizon := time.Now().Add(-time.Duration(d.PruningTTLSlots()) * ledger.SlotDuration())
 
 	ret := make([]*vertex.WrappedTx, 0)
 	for _, vid := range verticesDescending {
@@ -62,11 +61,11 @@ func (p *Pruner) selectVerticesToPrune() []*vertex.WrappedTx {
 
 // pruningBaselineSlot vertices older than pruningBaselineSlot are candidates for pruning
 // Vertices with the pruningBaselineSlot and younger are not touched
-func (p *Pruner) pruningBaselineSlot(verticesDescending []*vertex.WrappedTx) ledger.Slot {
+func (d *Pruner) pruningBaselineSlot(verticesDescending []*vertex.WrappedTx) ledger.Slot {
 	topSlots := set.New[ledger.Slot]()
 	for _, vid := range verticesDescending {
 		topSlots.Insert(vid.Slot())
-		if len(topSlots) == p.PruningTTLSlots() {
+		if len(topSlots) == d.PruningTTLSlots() {
 			break
 		}
 	}
@@ -75,7 +74,10 @@ func (p *Pruner) pruningBaselineSlot(verticesDescending []*vertex.WrappedTx) led
 	})
 }
 
-func (p *Pruner) mainLoop(ctx context.Context) {
+func (d *Pruner) mainLoop(ctx context.Context) {
+	d.MarkStarted()
+	defer d.MarkStopped()
+
 	prunerLoopPeriod := ledger.SlotDuration() / 2
 
 	for {
@@ -84,8 +86,8 @@ func (p *Pruner) mainLoop(ctx context.Context) {
 			return
 		case <-time.After(prunerLoopPeriod):
 		}
-		nReadersPurged, readersLeft := p.PurgeCachedStateReaders()
-		toDelete := p.selectVerticesToPrune()
+		nReadersPurged, readersLeft := d.PurgeCachedStateReaders()
+		toDelete := d.selectVerticesToPrune()
 
 		// we do 2-step mark-deleted/purge in order to avoid deadlocks. It is not completely correct,
 		// because this way deletion from the DAG and changing the vertex state to 'deleted' is not an atomic action.
@@ -106,7 +108,7 @@ func (p *Pruner) mainLoop(ctx context.Context) {
 			vid.MarkDeleted()
 		}
 		// --- > here deleted transactions are still discoverable in the DAG in 'deleted' state
-		p.PurgeDeletedVertices(toDelete)
+		d.PurgeDeletedVertices(toDelete)
 		// not discoverable anymore
 		var memStats runtime.MemStats
 		runtime.ReadMemStats(&memStats)
@@ -115,8 +117,8 @@ func (p *Pruner) mainLoop(ctx context.Context) {
 			memStats.NumGC,
 			runtime.NumGoroutine(),
 		)
-		p.Log().Infof("vertices pruned: (branches %d, seq: %d, other: %d). Vertices left: %d. Cached state readers purged: %d, left: %d. "+memStr,
-			branchDeleted, seqDeleted, nonSeqDeleted, p.NumVertices(), nReadersPurged, readersLeft)
+		d.Log().Infof("vertices pruned: (branches %d, seq: %d, other: %d). Vertices left: %d. Cached state readers purged: %d, left: %d. "+memStr,
+			branchDeleted, seqDeleted, nonSeqDeleted, d.NumVertices(), nReadersPurged, readersLeft)
 
 		//p.Log().Infof("\n------------------\n%s\n-------------------", p.Info(true))
 	}

@@ -30,16 +30,16 @@ import (
 )
 
 type workflowDummyEnvironment struct {
-	*global.DefaultLogging
+	*global.Global
 	global.StateStore
 	global.TxBytesStore
 }
 
 func newWorkflowDummyEnvironment(stateStore global.StateStore, txStore global.TxBytesStore) *workflowDummyEnvironment {
 	return &workflowDummyEnvironment{
-		DefaultLogging: global.NewDefaultLogging("", zapcore.DebugLevel, nil),
-		StateStore:     stateStore,
-		TxBytesStore:   txStore,
+		Global:       global.New("", zapcore.DebugLevel, nil),
+		StateStore:   stateStore,
+		TxBytesStore: txStore,
 	}
 }
 
@@ -282,7 +282,7 @@ func initWorkflowTestWithConflicts(t *testing.T, nConflicts int, nChains int, ta
 func (td *workflowTestData) stopAndWait() {
 	td.stopFun()
 	fmt.Printf("stopAndWait before wait\n")
-	td.wrk.WaitStop()
+	td.env.Wait()
 	fmt.Printf("stopAndWait after wait\n")
 }
 

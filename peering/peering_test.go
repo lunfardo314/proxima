@@ -52,14 +52,14 @@ func TestBasic(t *testing.T) {
 		for name, ma := range cfg.KnownPeers {
 			t.Logf("%s : %s", name, ma.String())
 		}
-		log := global.NewDefaultLogging("peers", zap.InfoLevel, nil)
+		log := global.New("peers", zap.InfoLevel, nil)
 		_, err := New(log, cfg, context.Background())
 		require.NoError(t, err)
 	})
 	t.Run("2", func(t *testing.T) {
 		const hostIndex = 2
 		cfg := MakeConfigFor(5, hostIndex)
-		log := global.NewDefaultLogging("peers", zap.InfoLevel, nil)
+		log := global.New("peers", zap.InfoLevel, nil)
 		peers, err := New(log, cfg, context.Background())
 		require.NoError(t, err)
 		peers.Run()
@@ -72,7 +72,7 @@ func makeHosts(t *testing.T, nHosts int, trace bool) []*Peers {
 	var err error
 	for i := 0; i < nHosts; i++ {
 		cfg := MakeConfigFor(nHosts, i)
-		log := global.NewDefaultLogging("peers", zap.InfoLevel, nil)
+		log := global.New("peers", zap.InfoLevel, nil)
 		hosts[i], err = New(log, cfg, context.Background())
 		require.NoError(t, err)
 		if trace {

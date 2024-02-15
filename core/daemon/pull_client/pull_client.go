@@ -17,7 +17,7 @@ const pullPeriod = 500 * time.Millisecond
 
 type (
 	Environment interface {
-		global.Logging
+		global.Glb
 		global.TxBytesGet
 		QueryTransactionsFromRandomPeer(lst ...ledger.TransactionID) bool
 		TxBytesWithMetadataIn(txBytes []byte, metadata *txmetadata.TransactionMetadata) (*ledger.TransactionID, error)
@@ -53,120 +53,121 @@ func New(env Environment) *PullClient {
 	}
 }
 
-func (q *PullClient) Start(ctx context.Context, doneOnClose *sync.WaitGroup) {
-	q.AddOnClosed(func() {
-		doneOnClose.Done()
+func (d *PullClient) Start(ctx context.Context) {
+	d.MarkStarted()
+	d.AddOnClosed(func() {
+		d.MarkStopped()
 	})
-	q.Queue.Start(q, ctx)
+	d.Queue.Start(d, ctx)
 }
 
-func (q *PullClient) Consume(inp *Input) {
-	q.Tracef(TraceTag, "Consume: (%d) %s", len(inp.TxIDs), inp.TxIDs[0].StringShort())
+func (d *PullClient) Consume(inp *Input) {
+	d.Tracef(TraceTag, "Consume: (%d) %s", len(inp.TxIDs), inp.TxIDs[0].StringShort())
 
 	toPull := make([]ledger.TransactionID, 0)
 	txBytesList := make([][]byte, 0)
 
-	q.mutex.Lock()
-	defer q.mutex.Unlock()
+	d.mutex.Lock()
+	defer d.mutex.Unlock()
 
 	nextPull := time.Now().Add(pullPeriod)
 	for _, txid := range inp.TxIDs {
-		if _, already := q.pullList[txid]; already {
+		if _, already := d.pullList[txid]; already {
 			continue
 		}
-		if txBytesWithMetadata := q.GetTxBytesWithMetadata(&txid); len(txBytesWithMetadata) > 0 {
-			q.Tracef(TraceTag, "%s fetched from txBytesStore", txid.StringShort)
+		if txBytesWithMetadata := d.GetTxBytesWithMetadata(&txid); len(txBytesWithMetadata) > 0 {
+			d.Tracef(TraceTag, "%s fetched from txBytesStore", txid.StringShort)
 			txBytesList = append(txBytesList, txBytesWithMetadata)
 		} else {
-			q.pullList[txid] = nextPull
-			q.Tracef(TraceTag, "%s added to the pull list. Pull list size: %d", txid.StringShort, len(q.pullList))
+			d.pullList[txid] = nextPull
+			d.Tracef(TraceTag, "%s added to the pull list. Pull list size: %d", txid.StringShort, len(d.pullList))
 			toPull = append(toPull, txid)
 		}
 	}
-	go q.transactionInMany(txBytesList)
-	go q.QueryTransactionsFromRandomPeer(toPull...)
+	go d.transactionInMany(txBytesList)
+	go d.QueryTransactionsFromRandomPeer(toPull...)
 }
 
-func (q *PullClient) transactionInMany(txBytesList [][]byte) {
+func (d *PullClient) transactionInMany(txBytesList [][]byte) {
 	for _, txBytesWithMetadata := range txBytesList {
 		metadataBytes, txBytes, err := txmetadata.SplitBytesWithMetadata(txBytesWithMetadata)
 		if err != nil {
-			q.Environment.Log().Errorf("pull: error while parsing tx metadata: '%v'", err)
+			d.Environment.Log().Errorf("pull: error while parsing tx metadata: '%v'", err)
 			continue
 		}
 		metadata, err := txmetadata.TransactionMetadataFromBytes(metadataBytes)
 		if err != nil {
-			q.Environment.Log().Errorf("pull: error while parsing tx metadata: '%v'", err)
+			d.Environment.Log().Errorf("pull: error while parsing tx metadata: '%v'", err)
 			continue
 		}
 		if metadata == nil {
 			metadata = &txmetadata.TransactionMetadata{}
 		}
 		metadata.SourceTypeNonPersistent = txmetadata.SourceTypeTxStore
-		if txid, err := q.TxBytesWithMetadataIn(txBytes, metadata); err != nil {
+		if txid, err := d.TxBytesWithMetadataIn(txBytes, metadata); err != nil {
 			txidStr := "<nil>"
 			if txid != nil {
 				txidStr = txid.StringShort()
 			}
-			q.Environment.Log().Errorf("pull: tx parse error while pull, txid: %s: '%v'", txidStr, err)
+			d.Environment.Log().Errorf("pull: tx parse error while pull, txid: %s: '%v'", txidStr, err)
 		}
 	}
 }
 
 const pullLoopPeriod = 50 * time.Millisecond
 
-func (q *PullClient) backgroundLoop() {
-	defer q.Environment.Log().Infof("background loop stopped")
+func (d *PullClient) backgroundLoop() {
+	defer d.Environment.Log().Infof("background loop stopped")
 
 	buffer := make([]ledger.TransactionID, 0) // minimize heap use
 	for {
 		select {
-		case <-q.stopBackgroundLoopChan:
+		case <-d.stopBackgroundLoopChan:
 			return
 		case <-time.After(pullLoopPeriod):
 		}
-		q.pullAllMatured(buffer)
+		d.pullAllMatured(buffer)
 	}
 }
 
-func (q *PullClient) pullAllMatured(buf []ledger.TransactionID) {
+func (d *PullClient) pullAllMatured(buf []ledger.TransactionID) {
 	buf = util.ClearSlice(buf)
-	toRemove := q.toRemoveSetClone()
+	toRemove := d.toRemoveSetClone()
 
-	q.mutex.Lock()
-	defer q.mutex.Unlock()
+	d.mutex.Lock()
+	defer d.mutex.Unlock()
 
 	toRemove.ForEach(func(removeTxID ledger.TransactionID) bool {
-		delete(q.pullList, removeTxID)
+		delete(d.pullList, removeTxID)
 		return true
 	})
 
 	nowis := time.Now()
 	nextDeadline := nowis.Add(pullPeriod)
-	for txid, deadline := range q.pullList {
+	for txid, deadline := range d.pullList {
 		if nowis.After(deadline) {
 			buf = append(buf, txid)
-			q.pullList[txid] = nextDeadline
+			d.pullList[txid] = nextDeadline
 		}
 	}
 	if len(buf) > 0 {
-		q.QueryTransactionsFromRandomPeer(buf...)
+		d.QueryTransactionsFromRandomPeer(buf...)
 	}
 }
 
-func (q *PullClient) StopPulling(txid *ledger.TransactionID) {
-	q.toRemoveSetMutex.Lock()
-	defer q.toRemoveSetMutex.Unlock()
+func (d *PullClient) StopPulling(txid *ledger.TransactionID) {
+	d.toRemoveSetMutex.Lock()
+	defer d.toRemoveSetMutex.Unlock()
 
-	q.toRemoveSet.Insert(*txid)
+	d.toRemoveSet.Insert(*txid)
 	//q.tracePull("StopPulling: %s. pull list size: %d", func() any { return txid.StringShort() }, len(q.pullList))
 }
 
-func (q *PullClient) toRemoveSetClone() set.Set[ledger.TransactionID] {
-	q.toRemoveSetMutex.Lock()
-	defer q.toRemoveSetMutex.Unlock()
+func (d *PullClient) toRemoveSetClone() set.Set[ledger.TransactionID] {
+	d.toRemoveSetMutex.Lock()
+	defer d.toRemoveSetMutex.Unlock()
 
-	ret := q.toRemoveSet
-	q.toRemoveSet = set.New[ledger.TransactionID]()
+	ret := d.toRemoveSet
+	d.toRemoveSet = set.New[ledger.TransactionID]()
 	return ret
 }

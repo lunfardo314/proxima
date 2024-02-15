@@ -2,7 +2,6 @@ package poker
 
 import (
 	"context"
-	"sync"
 	"time"
 
 	"github.com/lunfardo314/proxima/core/vertex"
@@ -19,7 +18,7 @@ type (
 	}
 
 	Environment interface {
-		global.Logging
+		global.Glb
 	}
 
 	Poker struct {
@@ -59,93 +58,94 @@ func New(env Environment) *Poker {
 	}
 }
 
-func (c *Poker) Start(ctx context.Context, doneOnClose *sync.WaitGroup) {
-	c.AddOnClosed(func() {
-		doneOnClose.Done()
+func (d *Poker) Start(ctx context.Context) {
+	d.MarkStarted()
+	d.AddOnClosed(func() {
+		d.MarkStopped()
 	})
-	c.Queue.Start(c, ctx)
-	go c.periodicLoop(ctx)
+	d.Queue.Start(d, ctx)
+	go d.periodicLoop(ctx)
 }
 
-func (c *Poker) Consume(inp Input) {
+func (d *Poker) Consume(inp Input) {
 	switch inp.Cmd {
 	case CommandAdd:
 		util.Assertf(inp.Wanted != nil, "inp.Wanted != nil")
 		util.Assertf(inp.WhoIsWaiting != nil, "inp.WhoIsWaiting != nil")
-		c.addCmd(inp.Wanted, inp.WhoIsWaiting)
+		d.addCmd(inp.Wanted, inp.WhoIsWaiting)
 
 	case CommandPokeAll:
 		util.Assertf(inp.Wanted != nil, "inp.Wanted != nil")
 		util.Assertf(inp.WhoIsWaiting == nil, "inp.WhoIsWaiting == nil")
-		c.pokeAllCmd(inp.Wanted)
+		d.pokeAllCmd(inp.Wanted)
 
 	case CommandPeriodicCleanup:
 		util.Assertf(inp.Wanted == nil, "inp.Wanted == nil")
 		util.Assertf(inp.WhoIsWaiting == nil, "inp.WhoIsWaiting == nil")
-		c.periodicCleanup()
+		d.periodicCleanup()
 	}
 }
 
-func (c *Poker) addCmd(wanted, whoIsWaiting *vertex.WrappedTx) {
-	lst := c.m[wanted]
+func (d *Poker) addCmd(wanted, whoIsWaiting *vertex.WrappedTx) {
+	lst := d.m[wanted]
 	if len(lst.waiting) == 0 {
 		lst.waiting = []*vertex.WrappedTx{whoIsWaiting}
 	} else {
 		lst.waiting = util.AppendUnique(lst.waiting, whoIsWaiting)
 	}
 	lst.keepUntil = time.Now().Add(ttlWanted)
-	c.m[wanted] = lst
+	d.m[wanted] = lst
 }
 
-func (c *Poker) pokeAllCmd(wanted *vertex.WrappedTx) {
-	lst := c.m[wanted]
-	c.Tracef(TraceTag, "pokeAllCmd with %s (%d waiting)", wanted.IDShortString(), len(lst.waiting))
+func (d *Poker) pokeAllCmd(wanted *vertex.WrappedTx) {
+	lst := d.m[wanted]
+	d.Tracef(TraceTag, "pokeAllCmd with %s (%d waiting)", wanted.IDShortString(), len(lst.waiting))
 	if len(lst.waiting) > 0 {
 		for _, vid := range lst.waiting {
-			c.Tracef(TraceTag, "poke %s with %s", vid.IDShortString(), wanted.IDShortString())
+			d.Tracef(TraceTag, "poke %s with %s", vid.IDShortString(), wanted.IDShortString())
 			vid.PokeWith(wanted)
 		}
-		delete(c.m, wanted)
+		delete(d.m, wanted)
 	}
 }
 
-func (c *Poker) periodicCleanup() {
+func (d *Poker) periodicCleanup() {
 	toDelete := make([]*vertex.WrappedTx, 0)
 	nowis := time.Now()
-	for wanted, lst := range c.m {
+	for wanted, lst := range d.m {
 		if nowis.After(lst.keepUntil) {
 			toDelete = append(toDelete, wanted)
 		}
 	}
 	for _, vid := range toDelete {
-		delete(c.m, vid)
+		delete(d.m, vid)
 	}
 	if len(toDelete) > 0 {
-		c.Tracef(TraceTag, "purged %d entries", len(toDelete))
+		d.Tracef(TraceTag, "purged %d entries", len(toDelete))
 	}
 }
 
-func (c *Poker) periodicLoop(ctx context.Context) {
+func (d *Poker) periodicLoop(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-time.After(loopPeriod):
 		}
-		c.Push(Input{Cmd: CommandPeriodicCleanup})
+		d.Push(Input{Cmd: CommandPeriodicCleanup})
 	}
 }
 
-func (c *Poker) PokeMe(me, waitingFor *vertex.WrappedTx) {
-	c.Push(Input{
+func (d *Poker) PokeMe(me, waitingFor *vertex.WrappedTx) {
+	d.Push(Input{
 		Wanted:       waitingFor,
 		WhoIsWaiting: me,
 		Cmd:          CommandAdd,
 	})
 }
 
-func (c *Poker) PokeAllWith(vid *vertex.WrappedTx) {
-	c.Push(Input{
+func (d *Poker) PokeAllWith(vid *vertex.WrappedTx) {
+	d.Push(Input{
 		Wanted: vid,
 		Cmd:    CommandPokeAll,
 	})

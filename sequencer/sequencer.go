@@ -182,7 +182,7 @@ func (seq *Sequencer) Log() *zap.SugaredLogger {
 }
 
 //	func (seq *Sequencer) Tracef(tag string, format string, args ...any) {
-//		seq.Workflow.TraceLog(seq.log, tag, format, args...)
+//		seq.workflow.TraceLog(seq.log, tag, format, args...)
 //	}
 
 func (seq *Sequencer) mainLoop() {

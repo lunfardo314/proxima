@@ -2,7 +2,6 @@ package events
 
 import (
 	"context"
-	"sync"
 
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/util"
@@ -18,7 +17,7 @@ type (
 	}
 
 	Environment interface {
-		global.Logging
+		global.Glb
 	}
 
 	Events struct {
@@ -44,45 +43,46 @@ func New(env Environment) *Events {
 	}
 }
 
-func (c *Events) Start(ctx context.Context, doneOnClose *sync.WaitGroup) {
-	c.AddOnClosed(func() {
-		doneOnClose.Done()
+func (d *Events) Start(ctx context.Context) {
+	d.MarkStarted()
+	d.AddOnClosed(func() {
+		d.MarkStopped()
 	})
-	c.Queue.Start(c, ctx)
+	d.Queue.Start(d, ctx)
 }
 
-func (c *Events) Consume(inp Input) {
+func (d *Events) Consume(inp Input) {
 	switch inp.cmdCode {
 	case cmdCodeAddHandler:
-		handlers := c.eventHandlers[inp.eventCode]
+		handlers := d.eventHandlers[inp.eventCode]
 		if len(handlers) == 0 {
 			handlers = []func(any){inp.arg.(func(any))}
 		} else {
 			handlers = append(handlers, inp.arg.(func(any)))
 		}
-		c.eventHandlers[inp.eventCode] = handlers
-		c.Tracef(TraceTag, "added event handler for event code '%s'", inp.eventCode.String())
+		d.eventHandlers[inp.eventCode] = handlers
+		d.Tracef(TraceTag, "added event handler for event code '%s'", inp.eventCode.String())
 	case cmdCodePostEvent:
-		c.Tracef(TraceTag, "posted event '%s'", inp.eventCode.String())
-		for _, fun := range c.eventHandlers[inp.eventCode] {
+		d.Tracef(TraceTag, "posted event '%s'", inp.eventCode.String())
+		for _, fun := range d.eventHandlers[inp.eventCode] {
 			fun(inp.arg)
 		}
 	}
 }
 
 // OnEvent is async
-func (c *Events) OnEvent(eventCode eventtype.EventCode, fun any) {
+func (d *Events) OnEvent(eventCode eventtype.EventCode, fun any) {
 	handler, err := eventtype.MakeHandler(eventCode, fun)
 	util.AssertNoError(err)
-	c.Queue.Push(Input{
+	d.Queue.Push(Input{
 		cmdCode:   cmdCodeAddHandler,
 		eventCode: eventCode,
 		arg:       handler,
 	})
 }
 
-func (c *Events) PostEvent(eventCode eventtype.EventCode, arg any) {
-	c.Queue.Push(Input{
+func (d *Events) PostEvent(eventCode eventtype.EventCode, arg any) {
+	d.Queue.Push(Input{
 		cmdCode:   cmdCodePostEvent,
 		eventCode: eventCode,
 		arg:       arg,

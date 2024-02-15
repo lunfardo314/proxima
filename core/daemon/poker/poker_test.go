@@ -19,7 +19,7 @@ func TestBasic(t *testing.T) {
 		howManyPokes = 10
 	)
 	ctx, cancel := context.WithCancel(context.Background())
-	log := global.NewDefaultLogging("", zap.DebugLevel, nil)
+	log := global.New("", zap.DebugLevel, nil)
 	p := New(log)
 
 	var wgStop sync.WaitGroup

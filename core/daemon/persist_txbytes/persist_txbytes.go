@@ -2,7 +2,6 @@ package persist_txbytes
 
 import (
 	"context"
-	"sync"
 
 	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/global"
@@ -11,7 +10,7 @@ import (
 
 type (
 	Environment interface {
-		global.Logging
+		global.Glb
 		global.TxBytesPersist
 	}
 
@@ -38,18 +37,19 @@ func New(env Environment) *PersistTxBytes {
 	}
 }
 
-func (q *PersistTxBytes) Start(ctx context.Context, doneOnClose *sync.WaitGroup) {
-	q.AddOnClosed(func() {
-		doneOnClose.Done()
+func (d *PersistTxBytes) Start(ctx context.Context) {
+	d.MarkStarted()
+	d.AddOnClosed(func() {
+		d.MarkStopped()
 	})
-	q.Queue.Start(q, ctx)
+	d.Queue.Start(d, ctx)
 }
 
-func (q *PersistTxBytes) Consume(inp Input) {
-	txid, err := q.PersistTxBytesWithMetadata(inp.TxBytes, inp.Metadata)
+func (d *PersistTxBytes) Consume(inp Input) {
+	txid, err := d.PersistTxBytesWithMetadata(inp.TxBytes, inp.Metadata)
 	if err != nil {
-		q.Environment.Log().Errorf("error while persisting transaction bytes: '%v'", err)
+		d.Environment.Log().Errorf("error while persisting transaction bytes: '%v'", err)
 	} else {
-		q.Tracef(TraceTag, "persisted tx bytes of %s, metadata: '%s'", txid.StringShort(), inp.Metadata.String())
+		d.Tracef(TraceTag, "persisted tx bytes of %s, metadata: '%s'", txid.StringShort(), inp.Metadata.String())
 	}
 }

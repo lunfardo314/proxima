@@ -2,7 +2,6 @@ package pull_server
 
 import (
 	"context"
-	"sync"
 
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/lunfardo314/proxima/core/txmetadata"
@@ -14,7 +13,7 @@ import (
 
 type (
 	Environment interface {
-		global.Logging
+		global.Glb
 		global.TxBytesGet
 		StateStore() global.StateStore
 		SendTxBytesWithMetadataToPeer(id peer.ID, txBytes []byte, metadata *txmetadata.TransactionMetadata) bool
@@ -41,15 +40,16 @@ func New(env Environment) *PullServer {
 	}
 }
 
-func (q *PullServer) Start(ctx context.Context, doneOnClose *sync.WaitGroup) {
-	q.AddOnClosed(func() {
-		doneOnClose.Done()
+func (d *PullServer) Start(ctx context.Context) {
+	d.MarkStarted()
+	d.AddOnClosed(func() {
+		d.MarkStopped()
 	})
-	q.Queue.Start(q, ctx)
+	d.Queue.Start(d, ctx)
 }
 
-func (q *PullServer) Consume(inp *Input) {
-	if txBytesWithMetadata := q.GetTxBytesWithMetadata(&inp.TxID); len(txBytesWithMetadata) > 0 {
+func (d *PullServer) Consume(inp *Input) {
+	if txBytesWithMetadata := d.GetTxBytesWithMetadata(&inp.TxID); len(txBytesWithMetadata) > 0 {
 		txBytes, metadataBytes, err := txmetadata.SplitBytesWithMetadata(txBytesWithMetadata)
 		util.AssertNoError(err)
 		metadata, err := txmetadata.TransactionMetadataFromBytes(metadataBytes)
@@ -60,10 +60,10 @@ func (q *PullServer) Consume(inp *Input) {
 		// setting persistent 'response to pull' flag in metadata
 		metadata.IsResponseToPull = true
 
-		q.SendTxBytesWithMetadataToPeer(inp.PeerID, txBytes, metadata)
-		q.Tracef(TraceTag, "-> FOUND %s", inp.TxID.StringShort)
+		d.SendTxBytesWithMetadataToPeer(inp.PeerID, txBytes, metadata)
+		d.Tracef(TraceTag, "-> FOUND %s", inp.TxID.StringShort)
 	} else {
 		// not found -> ignore
-		q.Tracef(TraceTag, "-> NOT FOUND %s", inp.TxID.StringShort)
+		d.Tracef(TraceTag, "-> NOT FOUND %s", inp.TxID.StringShort)
 	}
 }

@@ -41,7 +41,7 @@ type (
 	}
 
 	Environment interface {
-		global.Logging
+		global.Glb
 		DAGAccessEnvironment
 		PullEnvironment
 		PostEventEnvironment

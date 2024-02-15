@@ -18,14 +18,14 @@ func init() {
 }
 
 type workflowDummyEnvironment struct {
-	global.Logging
+	*global.Global
 	global.StateStore
 	global.TxBytesStore
 }
 
 func newWorkflowDummyEnvironment() *workflowDummyEnvironment {
 	return &workflowDummyEnvironment{
-		Logging:      global.NewDefaultLogging("wrk", zapcore.DebugLevel, nil),
+		Global:       global.New("[wrk]", zapcore.DebugLevel, nil),
 		StateStore:   common.NewInMemoryKVStore(),
 		TxBytesStore: txstore.NewSimpleTxBytesStore(common.NewInMemoryKVStore()),
 	}
@@ -46,5 +46,5 @@ func TestBasic(t *testing.T) {
 	require.Error(t, err)
 
 	stop()
-	w.WaitStop()
+	env.Wait()
 }

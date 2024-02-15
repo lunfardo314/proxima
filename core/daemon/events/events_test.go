@@ -12,13 +12,11 @@ import (
 )
 
 func TestEvents(t *testing.T) {
-	log := global.NewDefaultLogging("", zap.DebugLevel, nil)
-	log.EnableTraceTags("events")
-	e := New(log)
-	var wgStop sync.WaitGroup
-	wgStop.Add(1)
+	glb := global.New("", zap.DebugLevel, nil)
+	glb.EnableTraceTags("events")
+	e := New(glb)
 	ctx, cancel := context.WithCancel(context.Background())
-	e.Start(ctx, &wgStop)
+	e.Start(ctx)
 
 	EventTypeTestString := eventtype.RegisterNew[string]("a string event")
 	EventTypeTestInt := eventtype.RegisterNew[int]("an int event")
@@ -38,5 +36,5 @@ func TestEvents(t *testing.T) {
 	e.PostEvent(EventTypeTestInt, 31415)
 	wg.Wait()
 	cancel()
-	wgStop.Wait()
+	glb.Wait()
 }

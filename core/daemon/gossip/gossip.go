@@ -2,7 +2,6 @@ package gossip
 
 import (
 	"context"
-	"sync"
 
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/lunfardo314/proxima/core/txmetadata"
@@ -13,7 +12,7 @@ import (
 
 type (
 	Environment interface {
-		global.Logging
+		global.Glb
 		GossipTxBytesToPeers(txBytes []byte, metadata *txmetadata.TransactionMetadata, except ...peer.ID) int
 	}
 
@@ -25,7 +24,7 @@ type (
 
 	Gossip struct {
 		*queue.Queue[*Input]
-		env Environment
+		Environment
 	}
 )
 
@@ -33,22 +32,23 @@ const chanBufferSize = 10
 
 func New(env Environment) *Gossip {
 	return &Gossip{
-		Queue: queue.NewQueueWithBufferSize[*Input]("gossip", chanBufferSize, env.Log().Level(), nil),
-		env:   env,
+		Queue:       queue.NewQueueWithBufferSize[*Input]("gossip", chanBufferSize, env.Log().Level(), nil),
+		Environment: env,
 	}
 }
 
-func (q *Gossip) Start(ctx context.Context, doneOnClose *sync.WaitGroup) {
-	q.AddOnClosed(func() {
-		doneOnClose.Done()
+func (d *Gossip) Start(ctx context.Context) {
+	d.MarkStarted()
+	d.AddOnClosed(func() {
+		d.MarkStopped()
 	})
-	q.Queue.Start(q, ctx)
+	d.Queue.Start(d, ctx)
 }
 
-func (q *Gossip) Consume(inp *Input) {
+func (d *Gossip) Consume(inp *Input) {
 	if inp.ReceivedFrom == nil {
-		q.env.GossipTxBytesToPeers(inp.Tx.Bytes(), &inp.Metadata)
+		d.GossipTxBytesToPeers(inp.Tx.Bytes(), &inp.Metadata)
 	} else {
-		q.env.GossipTxBytesToPeers(inp.Tx.Bytes(), &inp.Metadata, *inp.ReceivedFrom)
+		d.GossipTxBytesToPeers(inp.Tx.Bytes(), &inp.Metadata, *inp.ReceivedFrom)
 	}
 }

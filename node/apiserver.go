@@ -28,10 +28,10 @@ func (p *ProximaNode) stopAPIServer() {
 }
 
 func (p *ProximaNode) GetNodeInfo() *global.NodeInfo {
-	alivePeers, configuredPeers := p.Peers.NumPeers()
+	alivePeers, configuredPeers := p.peers.NumPeers()
 	ret := &global.NodeInfo{
 		Name:           "a Proxima node",
-		ID:             p.Peers.SelfID(),
+		ID:             p.peers.SelfID(),
 		NumStaticPeers: uint16(configuredPeers),
 		NumActivePeers: uint16(alivePeers),
 		Sequencers:     make([]ledger.ChainID, len(p.Sequencers)),
@@ -45,10 +45,10 @@ func (p *ProximaNode) GetNodeInfo() *global.NodeInfo {
 }
 
 func (p *ProximaNode) HeaviestStateForLatestTimeSlot() multistate.SugaredStateReader {
-	return p.Workflow.HeaviestStateForLatestTimeSlot()
+	return p.workflow.HeaviestStateForLatestTimeSlot()
 }
 
 func (p *ProximaNode) SubmitTxBytesFromAPI(txBytes []byte) error {
-	_, err := p.Workflow.TxBytesIn(txBytes)
+	_, err := p.workflow.TxBytesIn(txBytes)
 	return err
 }

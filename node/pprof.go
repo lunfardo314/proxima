@@ -15,7 +15,7 @@ func (p *ProximaNode) startPProfIfEnabled() {
 	}
 	port := viper.GetInt("pprof.port")
 	url := fmt.Sprintf("localhost:%d", port)
-	p.log.Infof("starting pprof on '%s'", url)
+	p.Log().Infof("starting pprof on '%s'", url)
 
 	go func() {
 		util.AssertNoError(http.ListenAndServe("localhost:8080", nil))

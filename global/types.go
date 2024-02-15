@@ -1,6 +1,8 @@
 package global
 
 import (
+	"sync"
+
 	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/unitrie/common"
@@ -39,11 +41,13 @@ type (
 		// GetTxBytesWithMetadata return empty slice on absence, otherwise returns concatenated metadata bytes and transaction bytes
 		GetTxBytesWithMetadata(id *ledger.TransactionID) []byte
 	}
+
 	TxBytesPersist interface {
 		// PersistTxBytesWithMetadata saves txBytes prefixed with metadata bytes.
 		// metadata == nil is interpreted as empty metadata (one 0 byte as prefix)
 		PersistTxBytesWithMetadata(txBytes []byte, metadata *txmetadata.TransactionMetadata) (ledger.TransactionID, error)
 	}
+
 	TxBytesStore interface {
 		TxBytesGet
 		TxBytesPersist
@@ -52,5 +56,20 @@ type (
 	Logging interface {
 		Log() *zap.SugaredLogger
 		Tracef(tag string, format string, args ...any)
+	}
+
+	// StopWaitGroup interface of the global objet\ct which coordinates graceful shutdown
+	StopWaitGroup interface {
+		MarkStarted()
+		MarkStopped()
+	}
+
+	Glb interface {
+		Logging
+		StopWaitGroup
+	}
+
+	stopWaitGroup struct {
+		*sync.WaitGroup
 	}
 )
