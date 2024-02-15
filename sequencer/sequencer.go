@@ -20,7 +20,8 @@ import (
 type (
 	Sequencer struct {
 		*workflow.Workflow
-		ctx            context.Context // local context
+		ctx            context.Context    // local context
+		stopFun        context.CancelFunc // local stop function
 		sequencerID    ledger.ChainID
 		controllerKey  ed25519.PrivateKey
 		config         *ConfigOptions
@@ -60,6 +61,8 @@ func New(glb *workflow.Workflow, seqID ledger.ChainID, controllerKey ed25519.Pri
 		config:        cfg,
 		log:           glb.Log().Named(fmt.Sprintf("%s-%s", cfg.SequencerName, seqID.StringVeryShort())),
 	}
+	ret.ctx, ret.stopFun = context.WithCancel(glb.Ctx())
+
 	var err error
 	if ret.factory, err = factory.New(ret); err != nil {
 		return nil, err
@@ -108,6 +111,10 @@ func (seq *Sequencer) Start() {
 
 func (seq *Sequencer) Ctx() context.Context {
 	return seq.ctx
+}
+
+func (seq *Sequencer) Stop() {
+	seq.stopFun()
 }
 
 const ensureStartingMilestoneTimeout = time.Second

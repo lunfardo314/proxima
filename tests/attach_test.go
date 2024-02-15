@@ -10,6 +10,7 @@ import (
 	"github.com/lunfardo314/proxima/core/dag"
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/core/workflow"
+	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/ledger/txbuilder"
@@ -31,13 +32,14 @@ func TestTime(t *testing.T) {
 
 func TestBasic(t *testing.T) {
 	t.Run("base", func(t *testing.T) {
-		//attacher.SetTraceOn()
-
 		stateStore := common.NewInMemoryKVStore()
 		bootstrapChainID, root := multistate.InitStateStore(*ledger.L().ID, stateStore)
 		dagAccess := dag.New(stateStore)
 		txBytesStore := txstore.NewSimpleTxBytesStore(common.NewInMemoryKVStore())
 		env := newWorkflowDummyEnvironment(stateStore, txBytesStore)
+
+		env.EnableTraceTags(global.TraceTag)
+
 		wrk := workflow.New(env, peering.NewPeersDummy(), workflow.OptionDoNotStartPruner)
 		wrk.Start()
 

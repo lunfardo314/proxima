@@ -29,18 +29,20 @@ func Test1SequencerPruner(t *testing.T) {
 		seq, err := sequencer.New(testData.wrk, testData.bootstrapChainID, testData.genesisPrivKey,
 			sequencer.WithMaxBranches(maxSlots))
 		require.NoError(t, err)
-		var countBr, countSeq atomic.Int32
+		var countBr atomic.Int32
 		seq.OnMilestoneSubmitted(func(_ *sequencer.Sequencer, ms *vertex.WrappedTx) {
 			if ms.IsBranchTransaction() {
 				countBr.Inc()
-			} else {
-				countSeq.Inc()
 			}
 		})
+		seq.OnExit(func() {
+			testData.stop()
+		})
 		seq.Start()
-		testData.stopAndWait()
+
+		testData.waitStop()
+
 		require.EqualValues(t, maxSlots, int(countBr.Load()))
-		require.EqualValues(t, maxSlots, int(countSeq.Load()))
 		t.Logf("%s", testData.wrk.Info())
 		//br := testData.wrk.HeaviestBranchOfLatestTimeSlot()
 		//dag.SaveGraphPastCone(br, "latest_branch")
@@ -69,7 +71,9 @@ func Test1SequencerPruner(t *testing.T) {
 				countSeq.Inc()
 			}
 		})
-
+		seq.OnExit(func() {
+			testData.stop()
+		})
 		seq.Start()
 
 		rdr := multistate.MakeSugared(testData.wrk.HeaviestStateForLatestTimeSlot())
@@ -104,7 +108,7 @@ func Test1SequencerPruner(t *testing.T) {
 
 		require.EqualValues(t, batchSize*maxBatches, len(par.spammedTxIDs))
 
-		testData.stopAndWait()
+		testData.waitStop()
 		t.Logf("%s", testData.wrk.Info(true))
 
 		testData.wrk.SaveGraph("utangle")

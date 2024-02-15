@@ -3,6 +3,7 @@ package global
 import (
 	"context"
 	"fmt"
+	"math"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -15,20 +16,20 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
-type (
-	Global struct {
-		*zap.SugaredLogger
-		ctx            context.Context
-		stopFun        context.CancelFunc
-		logStopOnce    *sync.Once
-		stopOnce       *sync.Once
-		mutex          sync.RWMutex
-		components     set.Set[string]
-		enabledTrace   atomic.Bool
-		traceTagsMutex sync.RWMutex
-		traceTags      set.Set[string]
-	}
-)
+type Global struct {
+	*zap.SugaredLogger
+	ctx            context.Context
+	stopFun        context.CancelFunc
+	logStopOnce    *sync.Once
+	stopOnce       *sync.Once
+	mutex          sync.RWMutex
+	components     set.Set[string]
+	enabledTrace   atomic.Bool
+	traceTagsMutex sync.RWMutex
+	traceTags      set.Set[string]
+}
+
+const TraceTag = "global"
 
 func New() *Global {
 	ctx, cancelFun := context.WithCancel(context.Background())
@@ -37,6 +38,7 @@ func New() *Global {
 		stopFun:       cancelFun,
 		SugaredLogger: NewLogger("", zapcore.DebugLevel, nil, ""),
 		traceTags:     set.New[string](),
+		stopOnce:      &sync.Once{},
 		logStopOnce:   &sync.Once{},
 		components:    set.New[string](),
 	}
@@ -59,6 +61,7 @@ func (l *Global) MarkStoppedComponent(name string) {
 }
 
 func (l *Global) Stop() {
+	l.Tracef(TraceTag, "Stop")
 	l.stopOnce.Do(func() {
 		l.Log().Info("global stop invoked..")
 		l.stopFun()
@@ -69,35 +72,41 @@ func (l *Global) Ctx() context.Context {
 	return l.ctx
 }
 
-const defaultWaitTimeout = 5 * time.Second
+func (l *Global) _withRLock(fun func()) {
+	l.mutex.RLock()
+	fun()
+	l.mutex.RUnlock()
+}
 
 func (l *Global) MustWaitStop(timeout ...time.Duration) {
-	deadline := time.Now().Add(defaultWaitTimeout)
+	l.Tracef(TraceTag, "MustWaitStop")
+
+	deadline := time.Now().Add(math.MaxInt)
 	if len(timeout) > 0 {
 		deadline = time.Now().Add(timeout[0])
 	}
+	exit := false
 	for {
-		l.mutex.RLock()
-		if len(l.components) == 0 {
-			l.logStopOnce.Do(func() {
-				l.Log().Info("all components stopped")
-			})
-			break
+		l._withRLock(func() {
+			if len(l.components) == 0 {
+				l.logStopOnce.Do(func() {
+					l.Log().Info("all components stopped")
+				})
+				exit = true
+			}
+		})
+		if exit {
+			return
 		}
-		l.mutex.RLock()
-
 		time.Sleep(5 * time.Millisecond)
 		if time.Now().After(deadline) {
-			func() {
-				l.mutex.RLock()
-				defer l.mutex.RUnlock()
-
+			l._withRLock(func() {
 				ln := lines.New()
 				for s := range l.components {
 					ln.Add(s)
 				}
 				l.Log().Errorf("MustWaitStop: exceeded timeout. Still running components: %s", ln.Join(","))
-			}()
+			})
 			return
 		}
 	}

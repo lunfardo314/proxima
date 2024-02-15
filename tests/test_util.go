@@ -764,4 +764,10 @@ func (td *workflowTestData) startSequencersWithTimeout(maxSlots int, timeout ...
 		require.NoError(td.t, err)
 		td.sequencers[seqNr].Start()
 	}
+	go func() {
+		<-ctx.Done()
+		for _, seq := range td.sequencers {
+			seq.Stop()
+		}
+	}()
 }

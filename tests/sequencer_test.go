@@ -12,6 +12,7 @@ import (
 	"github.com/lunfardo314/proxima/core/dag"
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/core/workflow"
+	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/multistate"
@@ -116,8 +117,7 @@ func Test1Sequencer(t *testing.T) {
 		testData := initWorkflowTest(t, 1)
 		t.Logf("%s", testData.wrk.Info())
 
-		//testData.wrk.EnableTraceTags("seq,factory,tippool,txinput, proposer, incAttach")
-		//testData.wrk.EnableTraceTags(sequencer.TraceTag, factory.TraceTag, tippool.TraceTag, proposer_base.TraceTag)
+		testData.env.EnableTraceTags(global.TraceTag)
 
 		seq, err := sequencer.New(testData.wrk, testData.bootstrapChainID, testData.genesisPrivKey,
 			sequencer.WithMaxBranches(maxSlots))
@@ -132,7 +132,6 @@ func Test1Sequencer(t *testing.T) {
 			testData.stop()
 		})
 		seq.Start()
-
 		testData.waitStop()
 		require.EqualValues(t, maxSlots, int(countBr.Load()))
 		t.Logf("%s", testData.wrk.Info())
