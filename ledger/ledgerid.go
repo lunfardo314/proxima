@@ -62,7 +62,6 @@ type (
 		GenesisControllerPublicKey           string `yaml:"genesis_controller_public_key"`
 		TimeTickDuration                     int64  `yaml:"time_tick_duration"`
 		MaxTimeTickValueInTimeSlot           uint8  `yaml:"max_time_tick_value_in_time_slot"`
-		GenesisTimeSlot                      uint32 `yaml:"genesis_time_slot"`
 		InitialBranchBonus                   uint64 `yaml:"initial_branch_bonus"`
 		BranchBonusInflationPerEpochPromille uint16 `yaml:"branch_bonus_inflation_per_epoch_promille"`
 		SlotsPerLedgerEpoch                  uint32 `yaml:"slots_per_ledger_epoch"`
@@ -70,7 +69,7 @@ type (
 		TransactionPace                      byte   `yaml:"transaction_pace"`
 		TransactionPaceSequencer             byte   `yaml:"transaction_pace_sequencer"`
 		ChainInflationHalvingYears           byte   `yaml:"chain_inflation_halving_years"`
-		ChainInflationPerTickFractionBase    uint64 `yaml:"chain_inflation_per_tick_base"`
+		ChainInflationPerTickFractionBase    uint64 `yaml:"chain_inflation_per_tick_fraction_base"`
 		ChainInflationOpportunitySlots       uint64 `yaml:"chain_inflation_opportunity_slots"`
 		MinimumAmountOnSequencer             uint64 `yaml:"minimum_amount_on_sequencer"`
 		MaxToleratedParasiticChainSlots      byte   `yaml:"max_tolerated_parasitic_chain_slots"`

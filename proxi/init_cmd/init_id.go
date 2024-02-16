@@ -11,19 +11,17 @@ import (
 	"github.com/spf13/viper"
 )
 
-// TODO create default initial distribution
-
 const (
 	ledgerIDFileName            = "proxi.genesis.id.yaml"
 	genesisDistributionFileName = "proxi.genesis.distribute.yaml"
-	bootstrapAmount             = 10_000
+	bootstrapAmount             = 1_000_000
 )
 
 func initIDCmd() *cobra.Command {
 	initLedgerIDCmd := &cobra.Command{
 		Use:   "ledger_id",
 		Args:  cobra.NoArgs,
-		Short: "creates identity data of the ledger in 'proxi.genesis.id' and default initial distribution list in 'proxi.genesis.distribution.yaml'",
+		Short: "creates identity data of the ledger in the file 'proxi.genesis.id.yaml' and default initial distribution list in 'proxi.genesis.distribution.yaml'",
 		PersistentPreRun: func(_ *cobra.Command, _ []string) {
 			glb.ReadInConfig()
 		},
@@ -51,6 +49,8 @@ func runInitLedgerIDCommand(_ *cobra.Command, _ []string) {
 
 	// create ledger identity
 	id := ledger.DefaultIdentityData(privKey)
+	ledger.Init(id)
+
 	yamlData := id.YAML()
 	err := os.WriteFile(ledgerIDFileName, yamlData, 0666)
 	glb.AssertNoError(err)

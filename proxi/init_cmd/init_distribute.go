@@ -4,6 +4,7 @@ import (
 	"os"
 
 	"github.com/dgraph-io/badger/v4"
+	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/proxi/glb"
@@ -55,7 +56,15 @@ func runDistribute(_ *cobra.Command, _ []string) {
 	txBytesDistribution, txid, err := txbuilder.DistributeInitialSupplyExt(stateStore, privKey, distributionList)
 	glb.AssertNoError(err)
 
-	_, err = txStore.PersistTxBytesWithMetadata(txBytesDistribution)
+	txMetadata := txmetadata.TransactionMetadata{
+		StateRoot:               nil,
+		LedgerCoverageDelta:     nil,
+		SlotInflation:           nil,
+		Supply:                  nil,
+		IsResponseToPull:        false,
+		SourceTypeNonPersistent: 0,
+	}
+	_, err = txStore.PersistTxBytesWithMetadata(txBytesDistribution, &txMetadata)
 	glb.AssertNoError(err)
 	util.Assertf(len(txStore.GetTxBytesWithMetadata(&txid)) > 0, "inconsistency: stored transaction has not been found")
 

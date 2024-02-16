@@ -4,10 +4,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/lunfardo314/proxima/proxi/db_cmd"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/proxi/init_cmd"
-	"github.com/lunfardo314/proxima/proxi/node_cmd"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -21,7 +19,8 @@ func main() {
 		Long: `proxi is a CLI tool for the Proxima project. It provides:
       - initialization of the ledger, node and wallet
       - database level access to the Proxima ledger for admin purposes, including genesis creation
-      - access to ledger via the Proxima node API. This includes simple wallet functions
+      - access to ledger via the Proxima node API. This includes simple wallet functions to access usual accounts 
+and withdraw funds from the sequencer chain
 `,
 		Run: func(cmd *cobra.Command, _ []string) {
 			_ = cmd.Help()
@@ -38,11 +37,11 @@ func main() {
 
 	rootCmd.AddCommand(
 		init_cmd.CmdInit(),
-		db_cmd.Init(),
-		node_cmd.Init(),
+		//db_cmd.Init(),
+		//node_cmd.Init(),
 	)
 	rootCmd.InitDefaultHelpCmd()
-	if err := rootCmd.Execute(); err != nil {
+	if err = rootCmd.Execute(); err != nil {
 		os.Exit(1)
 	}
 }
