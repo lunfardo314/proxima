@@ -818,12 +818,12 @@ func TestConflictsNAttachersOneForkBranchesConflict(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	var wg sync.WaitGroup
-	wg.Add(1)
-	vid, err := attacher.AttachTransactionFromBytes(txBytesConflicting, testData.wrk, attacher.OptionWithAttachmentCallback(func(_ *vertex.WrappedTx, _ error) {
-		wg.Done()
-	}))
-	wg.Wait()
+	vid, err := attacher.AttachTransactionFromBytes(txBytesConflicting, testData.wrk)
+	require.NoError(t, err)
+
+	status, err := testData.wrk.WaitTxIDDefined(&vid.ID, time.Millisecond, 5*time.Second)
+	require.NoError(t, err)
+	require.EqualValues(t, status, dag.TxIDStatusBad)
 
 	testData.stopAndWait()
 	testData.logDAGInfo()
