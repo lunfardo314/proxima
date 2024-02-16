@@ -78,8 +78,8 @@ func (d *Pruner) pruningBaselineSlot(verticesDescending []*vertex.WrappedTx) led
 }
 
 func (d *Pruner) mainLoop() {
-	d.MarkStartedComponent(Name)
-	defer d.MarkStoppedComponent(Name)
+	d.MarkComponentStarted(Name)
+	defer d.MarkComponentStopped(Name)
 
 	prunerLoopPeriod := ledger.SlotDuration() / 2
 

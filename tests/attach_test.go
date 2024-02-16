@@ -754,7 +754,7 @@ func TestConflictsNAttachersOneForkBranchesConflict(t *testing.T) {
 	testData.makeSeqBeginnings(true)
 	//testData.printTxIDs()
 
-	testData.env.EnableTraceTags(global.TraceTag)
+	//testData.env.EnableTraceTags(global.TraceTag, attacher.TraceTagAttachMilestone)
 
 	if pullYN {
 		testData.txBytesToStore()

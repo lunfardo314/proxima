@@ -59,9 +59,6 @@ func (d *DAG) QueryTxIDStatus(txid *ledger.TransactionID) (mode string, status s
 }
 
 func (d *DAG) WaitTxIDDefined(txid *ledger.TransactionID, pollPeriod time.Duration, timeout ...time.Duration) (string, error) {
-	fmt.Printf(">>>>>>>>>>>>>>>>>>>>>> WaitTxIDDefined IN: %s\n", txid.StringShort())
-	defer fmt.Printf(">>>>>>>>>>>>>>>>>>>>>> WaitTxIDDefined OUT: %s\n", txid.StringShort())
-
 	deadline := time.Now().Add(time.Minute)
 	if len(timeout) > 0 {
 		deadline = time.Now().Add(timeout[0])
@@ -72,7 +69,6 @@ func (d *DAG) WaitTxIDDefined(txid *ledger.TransactionID, pollPeriod time.Durati
 			return TxIDStatusUndef, fmt.Errorf("vertex mode: %s", mode)
 		}
 		if status == TxIDStatusGood || status == TxIDStatusBad {
-			fmt.Printf(">>>>>>>>>>>>>>>>>>>>>> WaitTxIDDefined %s: %s\n", txid.StringShort(), status)
 			return status, nil
 		}
 		time.Sleep(pollPeriod)

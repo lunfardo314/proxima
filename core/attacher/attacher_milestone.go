@@ -1,7 +1,6 @@
 package attacher
 
 import (
-	"context"
 	"fmt"
 	"time"
 
@@ -18,8 +17,8 @@ const (
 
 const TraceTagAttachMilestone = "milestone"
 
-func runMilestoneAttacher(vid *vertex.WrappedTx, metadata *txmetadata.TransactionMetadata, env Environment, ctx context.Context) (vertex.Status, *attachFinals, error) {
-	a := newMilestoneAttacher(vid, env, metadata, ctx)
+func runMilestoneAttacher(vid *vertex.WrappedTx, metadata *txmetadata.TransactionMetadata, env Environment) (vertex.Status, *attachFinals, error) {
+	a := newMilestoneAttacher(vid, env, metadata)
 	defer func() {
 		go a.close()
 	}()
@@ -55,10 +54,9 @@ func runMilestoneAttacher(vid *vertex.WrappedTx, metadata *txmetadata.Transactio
 	return vertex.Good, a.finals, nil
 }
 
-func newMilestoneAttacher(vid *vertex.WrappedTx, env Environment, metadata *txmetadata.TransactionMetadata, ctx context.Context) *milestoneAttacher {
+func newMilestoneAttacher(vid *vertex.WrappedTx, env Environment, metadata *txmetadata.TransactionMetadata) *milestoneAttacher {
 	ret := &milestoneAttacher{
 		attacher: newPastConeAttacher(env, vid.IDShortString()),
-		ctx:      ctx,
 		vid:      vid,
 		metadata: metadata,
 		pokeChan: make(chan *vertex.WrappedTx, 1),
@@ -90,8 +88,8 @@ func (a *milestoneAttacher) lazyRepeat(fun func() vertex.Status) vertex.Status {
 			return status
 		}
 		select {
-		case <-a.ctx.Done():
-			return vertex.Undefined
+		case <-a.Ctx().Done():
+			return vertex.Bad
 		case withVID := <-a.pokeChan:
 			if withVID != nil {
 				a.Tracef(TraceTagAttachMilestone, "poked with %s", withVID.IDShortString)

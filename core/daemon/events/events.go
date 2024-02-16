@@ -45,9 +45,9 @@ func New(env Environment) *Events {
 }
 
 func (d *Events) Start() {
-	d.MarkStartedComponent(Name)
+	d.MarkComponentStarted(Name)
 	d.AddOnClosed(func() {
-		d.MarkStoppedComponent(Name)
+		d.MarkComponentStopped(Name)
 	})
 	d.Queue.Start(d, d.Environment.Ctx())
 }

@@ -81,8 +81,8 @@ func NewFromConfig(name string, glb *workflow.Workflow) (*Sequencer, error) {
 
 func (seq *Sequencer) Start() {
 	runFun := func() {
-		seq.MarkStartedComponent(seq.config.SequencerName)
-		defer seq.MarkStoppedComponent(seq.config.SequencerName)
+		seq.MarkComponentStarted(seq.config.SequencerName)
+		defer seq.MarkComponentStopped(seq.config.SequencerName)
 
 		if !seq.ensureFirstMilestone() {
 			seq.log.Warnf("can't start sequencer. EXIT..")

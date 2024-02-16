@@ -63,8 +63,8 @@ type (
 	StopWaitGroup interface {
 		Ctx() context.Context
 		Stop()
-		MarkStartedComponent(name string)
-		MarkStoppedComponent(name string)
+		MarkComponentStarted(name string)
+		MarkComponentStopped(name string)
 	}
 
 	Glb interface {

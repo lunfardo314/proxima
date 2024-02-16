@@ -1,7 +1,6 @@
 package attacher
 
 import (
-	"context"
 	"fmt"
 	"time"
 
@@ -95,7 +94,8 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Opt
 	for _, opt := range opts {
 		opt(options)
 	}
-	env.Tracef(TraceTagAttach, "AttachTransaction: %s", tx.IDShortString)
+	txidStr := tx.IDShortString()
+	env.Tracef(TraceTagAttach, "AttachTransaction: %s", txidStr)
 
 	if tx.IsBranchTransaction() {
 		env.EvidenceIncomingBranch(tx.ID(), tx.SequencerTransactionData().SequencerID)
@@ -112,14 +112,14 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Opt
 		VirtualTx: func(v *vertex.VirtualTransaction) {
 			fullVertex := vertex.New(tx)
 			vid.ConvertVirtualTxToVertexNoLock(fullVertex)
-			env.Tracef(TraceTagAttach, "converted to vertex %s", tx.IDShortString)
+			env.Tracef(TraceTagAttach, "converted to vertex %s", txidStr)
 
 			if options.metadata != nil && options.metadata.SourceTypeNonPersistent == txmetadata.SourceTypeTxStore {
 				// prevent from persisting twice
 				vid.SetFlagsUpNoLock(vertex.FlagVertexTxBytesPersisted)
 			}
 
-			env.Tracef(TraceTagAttach, "post new tx event %s", tx.IDShortString)
+			env.Tracef(TraceTagAttach, "post new tx event %s", txidStr)
 			env.PostEventNewTransaction(vid)
 
 			if !vid.IsSequencerMilestone() {
@@ -139,25 +139,24 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Opt
 				return
 			}
 
-			// starts milestoneAttacher goroutine for sequencer transaction
-			ctx := options.ctx
-			if ctx == nil {
-				ctx = context.Background()
-			}
 			callback := options.attachmentCallback
 			if callback == nil {
 				callback = func(_ *vertex.WrappedTx, _ error) {}
 			}
 
 			runFun := func() {
-				env.MarkStartedComponent(vid.IDShortString())
-				defer env.MarkStoppedComponent(vid.IDShortString())
+				env.MarkComponentStarted(txidStr)
+				defer env.MarkComponentStopped(txidStr)
 
-				status, stats, err := runMilestoneAttacher(vid, options.metadata, env, ctx)
+				status, stats, err := runMilestoneAttacher(vid, options.metadata, env)
 				if status == vertex.Bad {
-					vid.SetTxStatusBad(err)
-					env.Log().Errorf("-- ATTACH %s -> BAD(%v)\n>>>>>>>>>>>>> failed tx <<<<<<<<<<<<<\n%s\n<<<<<<<<<<<<<<<<<<<<<<<<<<",
-						vid.IDShortString(), err, vid.LinesTx("      ").String())
+					if err != nil {
+						vid.SetTxStatusBad(err)
+						env.Log().Errorf("-- ATTACH %s -> BAD(%v)\n>>>>>>>>>>>>> failed tx <<<<<<<<<<<<<\n%s\n<<<<<<<<<<<<<<<<<<<<<<<<<<",
+							txidStr, err, vid.LinesTx("      ").String())
+					} else {
+						env.Log().Warnf("attacher %s has been ended abnormally", txidStr)
+					}
 				} else {
 					msData := env.ParseMilestoneData(vid)
 					env.Log().Info(logFinalStatusString(vid, stats, msData))
@@ -172,7 +171,6 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Opt
 				if !ok {
 					env.Log().Fatalf("AttachTransaction: Internal error: 10 milisec timeout exceeded while calling callback")
 				}
-				env.Log().Infof(">>>>>>>>>>>>>>>>>> exitting runFun %s", vid.IDShortString())
 			}
 
 			// if debuggerFriendly == true, the panic is not caught, so it is more convenient in the debugger
@@ -181,7 +179,7 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Opt
 				go runFun()
 			} else {
 				util.RunWrappedRoutine(vid.IDShortString(), runFun, func(err error) {
-					env.Log().Fatalf("uncaught exception in %s: '%v'", vid.IDShortString(), err)
+					env.Log().Fatalf("uncaught exception in %s: '%v'", txidStr, err)
 				}, common.ErrDBUnavailable)
 			}
 		},

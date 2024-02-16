@@ -725,3 +725,7 @@ func (a *attacher) calculateSlotInflation() (ret uint64) {
 	}
 	return
 }
+
+func (a *attacher) Tracef(traceLabel string, format string, args ...any) {
+	a.Environment.Tracef(traceLabel, a.name+format+" ", args...)
+}

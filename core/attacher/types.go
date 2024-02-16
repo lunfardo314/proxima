@@ -1,7 +1,6 @@
 package attacher
 
 import (
-	"context"
 	"sync"
 
 	"github.com/lunfardo314/proxima/core/txmetadata"
@@ -79,7 +78,6 @@ type (
 		attacher
 		vid       *vertex.WrappedTx
 		metadata  *txmetadata.TransactionMetadata
-		ctx       context.Context
 		closeOnce sync.Once
 		pokeChan  chan *vertex.WrappedTx
 		pokeMutex sync.Mutex
@@ -88,7 +86,6 @@ type (
 	}
 
 	_attacherOptions struct {
-		ctx                context.Context
 		metadata           *txmetadata.TransactionMetadata
 		attachmentCallback func(vid *vertex.WrappedTx, err error)
 		pullNonBranch      bool

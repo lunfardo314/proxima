@@ -1,17 +1,9 @@
 package attacher
 
 import (
-	"context"
-
 	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/core/vertex"
 )
-
-func OptionWithContext(ctx context.Context) Option {
-	return func(options *_attacherOptions) {
-		options.ctx = ctx
-	}
-}
 
 func OptionWithTransactionMetadata(metadata *txmetadata.TransactionMetadata) Option {
 	return func(options *_attacherOptions) {
