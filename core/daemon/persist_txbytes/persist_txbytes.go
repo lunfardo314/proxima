@@ -9,7 +9,7 @@ import (
 type (
 	Environment interface {
 		global.Glb
-		global.TxBytesPersist
+		TxBytesStore() global.TxBytesStore
 	}
 
 	Input struct {
@@ -45,7 +45,7 @@ func (d *PersistTxBytes) Start() {
 }
 
 func (d *PersistTxBytes) Consume(inp Input) {
-	txid, err := d.PersistTxBytesWithMetadata(inp.TxBytes, inp.Metadata)
+	txid, err := d.TxBytesStore().PersistTxBytesWithMetadata(inp.TxBytes, inp.Metadata)
 	if err != nil {
 		d.Environment.Log().Errorf("error while persisting transaction bytes: '%v'", err)
 	} else {

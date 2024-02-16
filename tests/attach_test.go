@@ -30,11 +30,24 @@ func TestTime(t *testing.T) {
 	require.True(t, ledger.ValidTime(ts))
 }
 
+type dummyEnvironment struct {
+	*global.Global
+	stateStore   global.StateStore
+	txBytesStore global.TxBytesStore
+}
+
+func (w *dummyEnvironment) StateStore() global.StateStore {
+	return w.stateStore
+}
+
+func (w *dummyEnvironment) TxBytesStore() global.TxBytesStore {
+	return w.txBytesStore
+}
+
 func TestBasic(t *testing.T) {
 	t.Run("base", func(t *testing.T) {
 		stateStore := common.NewInMemoryKVStore()
 		bootstrapChainID, root := multistate.InitStateStore(*ledger.L().ID, stateStore)
-		dagAccess := dag.New(stateStore)
 		txBytesStore := txstore.NewSimpleTxBytesStore(common.NewInMemoryKVStore())
 		env := newWorkflowDummyEnvironment(stateStore, txBytesStore)
 
@@ -59,7 +72,7 @@ func TestBasic(t *testing.T) {
 
 		t.Logf("bootstrap chain id: %s", bootstrapChainID.String())
 		t.Logf("genesis root: %s", root.String())
-		t.Logf("%s", dagAccess.Info())
+		t.Logf("%s", wrk.Info())
 	})
 	t.Run("with distribution", func(t *testing.T) {
 		//attacher.SetTraceOn()
@@ -741,6 +754,8 @@ func TestConflictsNAttachersOneForkBranchesConflict(t *testing.T) {
 	testData.makeSeqBeginnings(true)
 	//testData.printTxIDs()
 
+	testData.env.EnableTraceTags(global.TraceTag)
+
 	if pullYN {
 		testData.txBytesToStore()
 		for seqNr := range testData.seqChain {
@@ -959,7 +974,7 @@ func TestSeqChains(t *testing.T) {
 		for seqNr, txSequence := range testData.seqChain {
 			for i, tx := range txSequence {
 				if i < len(txSequence)-1 {
-					_, err := testData.wrk.PersistTxBytesWithMetadata(tx.Bytes(), nil)
+					_, err := testData.wrk.TxBytesStore().PersistTxBytesWithMetadata(tx.Bytes(), nil)
 					require.NoError(t, err)
 				} else {
 					wg.Add(1)
@@ -997,7 +1012,7 @@ func TestSeqChains(t *testing.T) {
 		testData.txBytesAttach()
 		for _, txSequence := range testData.seqChain {
 			for _, tx := range txSequence {
-				_, err := testData.wrk.PersistTxBytesWithMetadata(tx.Bytes(), nil)
+				_, err := testData.wrk.TxBytesStore().PersistTxBytesWithMetadata(tx.Bytes(), nil)
 				require.NoError(t, err)
 			}
 		}

@@ -23,8 +23,8 @@ import (
 type (
 	Environment interface {
 		global.Glb
-		global.StateStore
-		global.TxBytesStore
+		StateStore() global.StateStore
+		TxBytesStore() global.TxBytesStore
 	}
 	Workflow struct {
 		Environment

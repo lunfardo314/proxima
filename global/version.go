@@ -10,8 +10,7 @@ const Version = "0.0-proto"
 const bannerTemplate = `
 ---------------------------------------------------
           Proxima node version %s
----------------------------------------------------
-`
+---------------------------------------------------`
 
 func BannerString() string {
 	return fmt.Sprintf(bannerTemplate, Version)

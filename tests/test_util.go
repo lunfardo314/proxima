@@ -30,15 +30,23 @@ import (
 
 type workflowDummyEnvironment struct {
 	*global.Global
-	global.StateStore
-	global.TxBytesStore
+	stateStore   global.StateStore
+	txBytesStore global.TxBytesStore
+}
+
+func (w *workflowDummyEnvironment) StateStore() global.StateStore {
+	return w.stateStore
+}
+
+func (w *workflowDummyEnvironment) TxBytesStore() global.TxBytesStore {
+	return w.txBytesStore
 }
 
 func newWorkflowDummyEnvironment(stateStore global.StateStore, txStore global.TxBytesStore) *workflowDummyEnvironment {
 	return &workflowDummyEnvironment{
 		Global:       global.New(),
-		StateStore:   stateStore,
-		TxBytesStore: txStore,
+		stateStore:   stateStore,
+		txBytesStore: txStore,
 	}
 }
 
@@ -280,7 +288,7 @@ func (td *workflowTestData) waitStop() {
 
 func (td *workflowTestData) stopAndWait() {
 	td.env.Stop()
-	td.env.MustWaitStop()
+	td.env.MustWaitStop(5 * time.Second)
 }
 
 func (td *longConflictTestData) makeSeqBeginnings(withConflictingFees bool) {
@@ -540,7 +548,7 @@ func initLongConflictTestData(t *testing.T, nConflicts int, nChains int, howLong
 
 func (td *longConflictTestData) storeTxBytes(txBytesMulti ...[]byte) {
 	for _, txBytes := range txBytesMulti {
-		_, err := td.wrk.PersistTxBytesWithMetadata(txBytes, nil)
+		_, err := td.wrk.TxBytesStore().PersistTxBytesWithMetadata(txBytes, nil)
 		require.NoError(td.t, err)
 	}
 }

@@ -311,7 +311,7 @@ func MakeTree(stateStore global.StateStore, slots ...int) graph.Graph[string, st
 }
 
 func (d *DAG) SaveTree(fname string) {
-	SaveBranchTree(d.stateStore, fname)
+	SaveBranchTree(d.StateStore(), fname)
 }
 
 func SaveBranchTree(stateStore global.StateStore, fname string, slotsBack ...int) {

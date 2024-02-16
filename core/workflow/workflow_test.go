@@ -17,15 +17,23 @@ func init() {
 
 type workflowDummyEnvironment struct {
 	*global.Global
-	global.StateStore
-	global.TxBytesStore
+	stateStore   global.StateStore
+	txBytesStore global.TxBytesStore
+}
+
+func (d *workflowDummyEnvironment) StateStore() global.StateStore {
+	return d.stateStore
+}
+
+func (d *workflowDummyEnvironment) TxBytesStore() global.TxBytesStore {
+	return d.txBytesStore
 }
 
 func newWorkflowDummyEnvironment() *workflowDummyEnvironment {
 	return &workflowDummyEnvironment{
 		Global:       global.New(),
-		StateStore:   common.NewInMemoryKVStore(),
-		TxBytesStore: txstore.NewSimpleTxBytesStore(common.NewInMemoryKVStore()),
+		stateStore:   common.NewInMemoryKVStore(),
+		txBytesStore: txstore.NewSimpleTxBytesStore(common.NewInMemoryKVStore()),
 	}
 }
 

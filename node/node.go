@@ -18,25 +18,16 @@ import (
 	"github.com/spf13/viper"
 )
 
-type (
-	multiStateDB struct {
-		*badger_adaptor.DB
-	}
-	txStoreDB struct {
-		*badger_adaptor.DB
-	}
-)
-
 type ProximaNode struct {
 	*global.Global
-	multiStateDB
-	txStoreDB
-	global.TxBytesStore
-	peers      *peering.Peers
-	workflow   *workflow.Workflow
-	Sequencers []*sequencer.Sequencer
-	stopOnce   sync.Once
-	dbClosedWG sync.WaitGroup
+	multiStateDB *badger_adaptor.DB
+	txStoreDB    *badger_adaptor.DB
+	txBytesStore global.TxBytesStore
+	peers        *peering.Peers
+	workflow     *workflow.Workflow
+	Sequencers   []*sequencer.Sequencer
+	stopOnce     sync.Once
+	dbClosedWG   sync.WaitGroup
 }
 
 //const (
@@ -63,6 +54,14 @@ func (p *ProximaNode) WaitAllDBClosed() {
 	p.dbClosedWG.Wait()
 }
 
+func (p *ProximaNode) StateStore() global.StateStore {
+	return p.multiStateDB
+}
+
+func (p *ProximaNode) TxBytesStore() global.TxBytesStore {
+	return p.txBytesStore
+}
+
 func (p *ProximaNode) initConfig() {
 	pflag.Parse()
 	err := viper.BindPFlags(pflag.CommandLine)
@@ -78,8 +77,6 @@ func (p *ProximaNode) initConfig() {
 func (p *ProximaNode) Start() {
 	p.Log().Info(global.BannerString())
 	p.initConfig()
-
-	p.Log().Info("---------------- starting up Proxima node ver. %s--------------", global.Version)
 
 	err := util.CatchPanicOrError(func() error {
 		p.initMultiStateLedger()
@@ -110,7 +107,7 @@ func (p *ProximaNode) initMultiStateLedger() {
 		p.Log().Fatalf("can't open '%s'", dbname)
 	}
 	p.dbClosedWG.Add(1)
-	p.multiStateDB = multiStateDB{badger_adaptor.New(bdb)}
+	p.multiStateDB = badger_adaptor.New(bdb)
 	p.Log().Infof("opened multi-state DB '%s", dbname)
 
 	// initialize global ledger object with the ledger ID data from DB
@@ -131,7 +128,7 @@ func (p *ProximaNode) initTxStore() {
 	switch viper.GetString(global.ConfigKeyTxStoreType) {
 	case "dummy":
 		p.Log().Infof("transaction store is 'dummy'")
-		p.TxBytesStore = txstore.NewDummyTxBytesStore()
+		p.txBytesStore = txstore.NewDummyTxBytesStore()
 
 	case "url":
 		panic("'url' type of transaction store is not supported yet")
@@ -140,9 +137,9 @@ func (p *ProximaNode) initTxStore() {
 		// default option is predefined database name
 		dbname := global.TxStoreDBName
 		p.Log().Infof("transaction store database dbname is '%s'", dbname)
-		p.txStoreDB = txStoreDB{badger_adaptor.New(badger_adaptor.MustCreateOrOpenBadgerDB(dbname))}
+		p.txStoreDB = badger_adaptor.New(badger_adaptor.MustCreateOrOpenBadgerDB(dbname))
 		p.dbClosedWG.Add(1)
-		p.TxBytesStore = txstore.NewSimpleTxBytesStore(p.txStoreDB)
+		p.txBytesStore = txstore.NewSimpleTxBytesStore(p.txStoreDB)
 		p.Log().Infof("opened DB '%s' as transaction store", dbname)
 
 		go func() {

@@ -17,7 +17,7 @@ const pullPeriod = 500 * time.Millisecond
 type (
 	Environment interface {
 		global.Glb
-		global.TxBytesGet
+		TxBytesStore() global.TxBytesStore
 		QueryTransactionsFromRandomPeer(lst ...ledger.TransactionID) bool
 		TxBytesWithMetadataIn(txBytes []byte, metadata *txmetadata.TransactionMetadata) (*ledger.TransactionID, error)
 	}
@@ -77,7 +77,7 @@ func (d *PullClient) Consume(inp *Input) {
 		if _, already := d.pullList[txid]; already {
 			continue
 		}
-		if txBytesWithMetadata := d.GetTxBytesWithMetadata(&txid); len(txBytesWithMetadata) > 0 {
+		if txBytesWithMetadata := d.TxBytesStore().GetTxBytesWithMetadata(&txid); len(txBytesWithMetadata) > 0 {
 			d.Tracef(TraceTag, "%s fetched from txBytesStore", txid.StringShort)
 			txBytesList = append(txBytesList, txBytesWithMetadata)
 		} else {

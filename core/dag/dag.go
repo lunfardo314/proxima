@@ -16,9 +16,13 @@ import (
 )
 
 type (
+	Environment interface {
+		StateStore() global.StateStore
+	}
+
 	DAG struct {
+		Environment
 		mutex            sync.RWMutex
-		stateStore       global.StateStore
 		vertices         map[ledger.TransactionID]*vertex.WrappedTx
 		latestTimestamp  ledger.Time
 		latestBranchSlot ledger.Slot
@@ -33,9 +37,9 @@ type (
 	}
 )
 
-func New(stateStore global.StateStore) *DAG {
+func New(env Environment) *DAG {
 	return &DAG{
-		stateStore:   stateStore,
+		Environment:  env,
 		vertices:     make(map[ledger.TransactionID]*vertex.WrappedTx),
 		stateReaders: make(map[ledger.TransactionID]*cachedStateReader),
 	}
@@ -48,10 +52,6 @@ const (
 
 func (d *DAG) PruningTTLSlots() int {
 	return pruningTTLSlots
-}
-
-func (d *DAG) StateStore() global.StateStore {
-	return d.stateStore
 }
 
 func (d *DAG) WithGlobalWriteLock(fun func()) {
@@ -130,12 +130,12 @@ func (d *DAG) GetStateReaderForTheBranch(branch *ledger.TransactionID) global.In
 		ret.lastActivity = time.Now()
 		return ret.IndexedStateReader
 	}
-	rootRecord, found := multistate.FetchRootRecord(d.stateStore, *branch)
+	rootRecord, found := multistate.FetchRootRecord(d.StateStore(), *branch)
 	if !found {
 		return nil
 	}
 	d.stateReaders[*branch] = &cachedStateReader{
-		IndexedStateReader: multistate.MustNewReadable(d.stateStore, rootRecord.Root, sharedStateReaderCacheSize),
+		IndexedStateReader: multistate.MustNewReadable(d.StateStore(), rootRecord.Root, sharedStateReaderCacheSize),
 		lastActivity:       time.Now(),
 	}
 
@@ -150,11 +150,11 @@ func (d *DAG) GetStemWrappedOutput(branch *ledger.TransactionID) (ret vertex.Wra
 }
 
 func (d *DAG) GetIndexedStateReader(branchTxID *ledger.TransactionID, clearCacheAtSize ...int) (global.IndexedStateReader, error) {
-	rr, found := multistate.FetchRootRecord(d.stateStore, *branchTxID)
+	rr, found := multistate.FetchRootRecord(d.StateStore(), *branchTxID)
 	if !found {
 		return nil, fmt.Errorf("root record for %s has not been found", branchTxID.StringShort())
 	}
-	return multistate.NewReadable(d.stateStore, rr.Root, clearCacheAtSize...)
+	return multistate.NewReadable(d.StateStore(), rr.Root, clearCacheAtSize...)
 }
 
 func (d *DAG) MustGetIndexedStateReader(branchTxID *ledger.TransactionID, clearCacheAtSize ...int) global.IndexedStateReader {
@@ -164,18 +164,18 @@ func (d *DAG) MustGetIndexedStateReader(branchTxID *ledger.TransactionID, clearC
 }
 
 func (d *DAG) HeaviestStateForLatestTimeSlotWithBaseline() (multistate.SugaredStateReader, *vertex.WrappedTx) {
-	branchRecords := multistate.FetchLatestBranches(d.stateStore)
+	branchRecords := multistate.FetchLatestBranches(d.StateStore())
 	util.Assertf(len(branchRecords) > 0, "len(branchRecords)>0")
 
-	return multistate.MakeSugared(multistate.MustNewReadable(d.stateStore, branchRecords[0].Root, 0)),
+	return multistate.MakeSugared(multistate.MustNewReadable(d.StateStore(), branchRecords[0].Root, 0)),
 		d.GetVertex(branchRecords[0].TxID())
 }
 
 func (d *DAG) HeaviestStateForLatestTimeSlot() multistate.SugaredStateReader {
-	rootRecords := multistate.FetchLatestRootRecords(d.stateStore)
+	rootRecords := multistate.FetchLatestRootRecords(d.StateStore())
 	util.Assertf(len(rootRecords) > 0, "len(rootRecords)>0")
 
-	return multistate.MakeSugared(multistate.MustNewReadable(d.stateStore, rootRecords[0].Root, 0))
+	return multistate.MakeSugared(multistate.MustNewReadable(d.StateStore(), rootRecords[0].Root, 0))
 }
 
 // WaitUntilTransactionInHeaviestState for testing mostly

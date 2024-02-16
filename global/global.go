@@ -45,6 +45,7 @@ func New() *Global {
 }
 
 func (l *Global) MarkStartedComponent(name string) {
+	l.Tracef(TraceTag, "MarkStartedComponent: %s", name)
 	l.mutex.Lock()
 	defer l.mutex.Unlock()
 
@@ -53,6 +54,7 @@ func (l *Global) MarkStartedComponent(name string) {
 }
 
 func (l *Global) MarkStoppedComponent(name string) {
+	l.Tracef(TraceTag, "MarkStoppedComponent: %s", name)
 	l.mutex.Lock()
 	defer l.mutex.Unlock()
 

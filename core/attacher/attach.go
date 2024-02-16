@@ -156,7 +156,7 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Opt
 				status, stats, err := runMilestoneAttacher(vid, options.metadata, env, ctx)
 				if status == vertex.Bad {
 					vid.SetTxStatusBad(err)
-					env.Log().Warnf("-- ATTACH %s -> BAD(%v)\n>>>>>>>>>>>>> failed tx <<<<<<<<<<<<<\n%s\n<<<<<<<<<<<<<<<<<<<<<<<<<<",
+					env.Log().Errorf("-- ATTACH %s -> BAD(%v)\n>>>>>>>>>>>>> failed tx <<<<<<<<<<<<<\n%s\n<<<<<<<<<<<<<<<<<<<<<<<<<<",
 						vid.IDShortString(), err, vid.LinesTx("      ").String())
 				} else {
 					msData := env.ParseMilestoneData(vid)
@@ -172,6 +172,7 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Opt
 				if !ok {
 					env.Log().Fatalf("AttachTransaction: Internal error: 10 milisec timeout exceeded while calling callback")
 				}
+				env.Log().Infof(">>>>>>>>>>>>>>>>>> exitting runFun %s", vid.IDShortString())
 			}
 
 			// if debuggerFriendly == true, the panic is not caught, so it is more convenient in the debugger
