@@ -6,13 +6,11 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/util"
-	"github.com/lunfardo314/unitrie/adaptors/badger_adaptor"
 	"github.com/spf13/cobra"
 )
 
@@ -32,15 +30,10 @@ func initDBInfoCmd() *cobra.Command {
 }
 
 func runDbInfoCmd(_ *cobra.Command, _ []string) {
-	dbName := global.MultiStateDBName
-	glb.FileMustExist(dbName)
-	glb.Infof("---------------- multi-state DB info ------------------")
-	stateDb := badger_adaptor.MustCreateOrOpenBadgerDB(dbName)
-	defer func() { _ = stateDb.Close() }()
+	glb.InitLedger()
+	defer glb.CloseStateStore()
 
-	stateStore := badger_adaptor.New(stateDb)
-
-	branchData := multistate.FetchLatestBranches(stateStore)
+	branchData := multistate.FetchLatestBranches(glb.StateStore())
 	if len(branchData) == 0 {
 		glb.Infof("no branches found")
 		return
@@ -51,7 +44,7 @@ func runDbInfoCmd(_ *cobra.Command, _ []string) {
 		return bytes.Compare(branchData[i].SequencerID[:], branchData[j].SequencerID[:]) < 0
 	})
 
-	reader, err := multistate.NewSugaredReadableState(stateStore, branchData[0].Root)
+	reader, err := multistate.NewSugaredReadableState(glb.StateStore(), branchData[0].Root)
 	glb.AssertNoError(err)
 
 	id := ledger.MustLedgerIdentityDataFromBytes(reader.MustLedgerIdentityBytes())
@@ -61,7 +54,7 @@ func runDbInfoCmd(_ *cobra.Command, _ []string) {
 	glb.Infof("\n----------------- Global branch data ----------------------")
 	DisplayBranchData(branchData)
 	glb.Infof("\n------------- Supply and inflation summary -------------")
-	summary := multistate.FetchSummarySupplyAndInflation(stateStore, slotsBack)
+	summary := multistate.FetchSummarySupplyAndInflation(glb.StateStore(), slotsBack)
 	glb.Infof("%s", summary.Lines("   ").String())
 }
 
@@ -76,7 +69,7 @@ func DisplayBranchData(branches []*multistate.BranchData) {
 		}
 		name = fmt.Sprintf("%s (%s)", name, br.SequencerID.StringVeryShort())
 		onChainAmount := br.SequencerOutput.Output.Amount()
-		supply := br.Stem.Output.MustStemLock().Supply
+		supply := br.Supply
 		glb.Infof(" %2d: %20s %10s %10s %20s %20s    %-70s",
 			i, br.Stem.IDShort(), name, util.GoTh(supply), util.GoTh(onChainAmount),
 			util.GoTh(br.LedgerCoverage.Sum()), br.Root.String())

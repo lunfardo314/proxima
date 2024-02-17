@@ -6,7 +6,6 @@ import (
 
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
-	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/unitrie/common"
 	"github.com/lunfardo314/unitrie/immutable"
@@ -72,7 +71,7 @@ const (
 func LedgerIdentityBytesFromStore(store global.StateStore) []byte {
 	rr := FetchAnyLatestRootRecord(store)
 	trie, err := immutable.NewTrieReader(ledger.CommitmentModel, store, rr.Root, 0)
-	glb.AssertNoError(err)
+	util.AssertNoError(err)
 	return trie.Get(nil)
 }
 

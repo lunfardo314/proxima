@@ -5,7 +5,7 @@ import (
 
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/lunfardo314/proxima/ledger"
-	"github.com/lunfardo314/proxima/proxi/glb"
+	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
 )
 
@@ -20,7 +20,7 @@ type NodeInfo struct {
 
 func (ni *NodeInfo) Bytes() []byte {
 	ret, err := json.Marshal(ni)
-	glb.AssertNoError(err)
+	util.AssertNoError(err)
 	return ret
 }
 

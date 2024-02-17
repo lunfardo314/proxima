@@ -3,16 +3,13 @@ package db_cmd
 import (
 	"strconv"
 
-	"github.com/dgraph-io/badger/v4"
-	"github.com/lunfardo314/proxima/global"
+	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/ledger"
-	transaction2 "github.com/lunfardo314/proxima/ledger/transaction"
+	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/proxi/glb"
-	"github.com/lunfardo314/proxima/txstore"
 	"github.com/lunfardo314/proxima/util"
-	"github.com/lunfardo314/unitrie/adaptors/badger_adaptor"
 	"github.com/spf13/cobra"
 )
 
@@ -29,14 +26,10 @@ func initDBDistributeCmd() *cobra.Command {
 func runDBDistributeCmd(_ *cobra.Command, args []string) {
 	glb.Assertf(len(args) > 0 && len(args)%2 == 0, "even-sized list of arguments is expected")
 
-	dbName := global.MultiStateDBName
-	glb.Infof("Multi-state database: %s", dbName)
-
-	txDBName := global.TxStoreDBName
-	glb.Infof("Transaction store database: %s", txDBName)
-
-	stateDb := badger_adaptor.MustCreateOrOpenBadgerDB(dbName)
-	defer func() { _ = stateDb.Close() }()
+	glb.InitLedger()
+	defer glb.CloseStateStore()
+	glb.InitTxStoreDB()
+	defer glb.CloseTxBytesStore()
 
 	distribution := make([]ledger.LockBalance, len(args)/2)
 	var err error
@@ -47,8 +40,7 @@ func runDBDistributeCmd(_ *cobra.Command, args []string) {
 		glb.Assertf(err == nil, "%v in argument %d", err, i)
 	}
 
-	stateStore := badger_adaptor.New(stateDb)
-	stateID, _, err := multistate.ScanGenesisState(stateStore)
+	stateID, _, err := multistate.ScanGenesisState(glb.StateStore())
 	glb.AssertNoError(err)
 
 	glb.Infof("Re-check the distribution list:")
@@ -68,36 +60,30 @@ func runDBDistributeCmd(_ *cobra.Command, args []string) {
 	}
 
 	walletData := glb.GetWalletData()
-	txBytes, err := txbuilder.DistributeInitialSupply(stateStore, walletData.PrivateKey, distribution)
+	txBytes, err := txbuilder.DistributeInitialSupply(glb.StateStore(), walletData.PrivateKey, distribution)
 	glb.AssertNoError(err)
 
-	txID, _, err := transaction2.IDAndTimestampFromTransactionBytes(txBytes)
+	txID, err := transaction.IDFromTransactionBytes(txBytes)
 	glb.AssertNoError(err)
+
+	rr, found := multistate.FetchRootRecord(glb.StateStore(), txID)
+	glb.Assertf(found, "inconsistency: can't find branch")
 
 	glb.Infof("New branch has been created. Distribution transaction ID: %s", txID.String())
 	fname := txID.AsFileName()
 	glb.Infof("Saving distribution transaction to the file '%s'", fname)
-	err = transaction2.SaveTransactionAsFile(txBytes, fname)
+	err = transaction.SaveTransactionAsFile(txBytes, fname)
 	glb.AssertNoError(err)
 	glb.Infof("Success")
 
-	glb.Infof("Storing transaction into DB '%s'...", txDBName)
+	glb.Infof("Storing transaction into transaction store")
 
-	// try to save distribution transaction in the transaction store
-	var txDB *badger.DB
-	err = util.CatchPanicOrError(func() error {
-		txDB = badger_adaptor.MustCreateOrOpenBadgerDB(txDBName)
-		return nil
+	_, err = glb.TxBytesStore().PersistTxBytesWithMetadata(txBytes, &txmetadata.TransactionMetadata{
+		StateRoot:           rr.Root,
+		LedgerCoverageDelta: util.Ref(rr.LedgerCoverage.LatestDelta()),
+		SlotInflation:       util.Ref(rr.SlotInflation),
+		Supply:              util.Ref(rr.Supply),
 	})
-
-	if err != nil {
-		glb.Infof("Warning: can't open tx store DB due to error '%v'", err)
-		return
-	}
-	defer func() { _ = txDB.Close() }()
-
-	_, err = txstore.NewSimpleTxBytesStore(badger_adaptor.New(txDB)).PersistTxBytesWithMetadata(txBytes)
 	glb.AssertNoError(err)
-
 	glb.Infof("Success")
 }
