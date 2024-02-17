@@ -22,10 +22,12 @@ func initGetUTXOCmd() *cobra.Command {
 }
 
 func runGetUTXOCmd(_ *cobra.Command, args []string) {
+	glb.InitLedgerFromNode()
+
 	oid, err := ledger.OutputIDFromHexString(args[0])
 	glb.AssertNoError(err)
 
-	oData, err := getClient().GetOutputDataFromHeaviestState(&oid)
+	oData, err := glb.GetClient().GetOutputDataFromHeaviestState(&oid)
 	glb.AssertNoError(err)
 	if len(oData) > 0 {
 		out, err := ledger.OutputFromBytesReadOnly(oData)
@@ -39,7 +41,7 @@ func runGetUTXOCmd(_ *cobra.Command, args []string) {
 	glb.Assertf(glb.IsVerbose(), "output not found in the heaviest state. Use '--verbose, -v' to retrieve inclusions state")
 
 	glb.Infof("Inclusion state:")
-	inclusion, err := getClient().GetOutputInclusion(&oid)
+	inclusion, err := glb.GetClient().GetOutputInclusion(&oid)
 	glb.AssertNoError(err)
 
 	displayInclusionState(inclusion)

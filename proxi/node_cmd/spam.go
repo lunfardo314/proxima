@@ -27,6 +27,8 @@ type spammerConfig struct {
 }
 
 func initSpamCmd() *cobra.Command {
+	glb.InitLedgerFromNode()
+
 	spamCmd := &cobra.Command{
 		Use:   "spam",
 		Short: `spams the ledger according to spammer.scenario`,
@@ -142,7 +144,7 @@ func standardScenario(cfg spammerConfig) {
 		glb.Assertf(time.Now().Before(deadline), "spam duration limit has been reached")
 
 		nowisTs := ledger.TimeNow()
-		outs, balance, err := getClient().GetTransferableOutputs(walletData.Account, nowisTs, cfg.bundleSize)
+		outs, balance, err := glb.GetClient().GetTransferableOutputs(walletData.Account, nowisTs, cfg.bundleSize)
 		glb.AssertNoError(err)
 
 		glb.Infof("transferable balance: %s, number of outputs: %d", util.GoTh(balance), len(outs))
@@ -159,13 +161,8 @@ func standardScenario(cfg spammerConfig) {
 		bundleDuration := time.Duration(bundlePace) * ledger.TickDuration()
 		glb.Infof("submitting bundle of %d transactions, total duration %d ticks, %v", len(bundle), bundlePace, bundleDuration)
 
-		c := getClient()
-		timeout := 0
-		if !cfg.submitNowait {
-			timeout = 100
-		}
 		for _, txBytes := range bundle {
-			err = c.SubmitTransaction(txBytes, timeout)
+			err = glb.GetClient().SubmitTransaction(txBytes)
 			glb.AssertNoError(err)
 		}
 		glb.Verbosef("%d transactions submitted", len(bundle))
@@ -187,8 +184,7 @@ func maxTimestamp(outs []*ledger.OutputWithID) (ret ledger.Time) {
 
 func prepareBundle(walletData glb.WalletData, cfg spammerConfig) ([][]byte, ledger.OutputID) {
 	ret := make([][]byte, 0)
-	c := getClient()
-	txCtx, err := c.MakeCompactTransaction(walletData.PrivateKey, nil, 0, cfg.bundleSize*3)
+	txCtx, err := glb.GetClient().MakeCompactTransaction(walletData.PrivateKey, nil, 0, cfg.bundleSize*3)
 	glb.AssertNoError(err)
 
 	numTx := cfg.bundleSize
@@ -199,7 +195,7 @@ func prepareBundle(walletData glb.WalletData, cfg spammerConfig) ([][]byte, ledg
 		lastOuts = []*ledger.OutputWithID{lastOut}
 		numTx--
 	} else {
-		lastOuts, _, err = c.GetTransferableOutputs(walletData.Account, ledger.TimeNow(), cfg.bundleSize)
+		lastOuts, _, err = glb.GetClient().GetTransferableOutputs(walletData.Account, ledger.TimeNow(), cfg.bundleSize)
 		glb.AssertNoError(err)
 	}
 

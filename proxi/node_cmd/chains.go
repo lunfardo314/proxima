@@ -21,9 +21,10 @@ func initChainsCmd() *cobra.Command {
 }
 
 func runChainsCmd(_ *cobra.Command, args []string) {
+	glb.InitLedgerFromNode()
 	wallet := glb.GetWalletData()
 
-	outs, err := getClient().GetAccountOutputs(wallet.Account, func(o *ledger.Output) bool {
+	outs, err := glb.GetClient().GetAccountOutputs(wallet.Account, func(o *ledger.Output) bool {
 		_, idx := o.ChainConstraint()
 		return idx != 0xff
 	})
@@ -36,7 +37,7 @@ func runChainsCmd(_ *cobra.Command, args []string) {
 
 	glb.Infof("list of chains controlled by %s", wallet.Account.String())
 	for _, o := range outs {
-		chainID, ok := o.ExtractChainID()
+		chainID, _, ok := o.ExtractChainID()
 		glb.Assertf(ok, "can't extract chainID")
 		glb.Infof("   %s with balance %s on %s", chainID.String(), util.GoTh(o.Output.Amount()), o.IDShort())
 	}

@@ -30,6 +30,8 @@ const (
 )
 
 func runMakeChainCmd(_ *cobra.Command, args []string) {
+	glb.InitLedgerFromNode()
+
 	wallet := glb.GetWalletData()
 	target := glb.MustGetTarget()
 
@@ -58,7 +60,7 @@ func runMakeChainCmd(_ *cobra.Command, args []string) {
 	}
 
 	ts := ledger.TimeNow()
-	inps, totalInputs, err := getClient().GetTransferableOutputs(wallet.Account, ts)
+	inps, totalInputs, err := glb.GetClient().GetTransferableOutputs(wallet.Account, ts)
 	glb.AssertNoError(err)
 	glb.Assertf(totalInputs >= onChainAmount+tagAlongFee, "not enough source balance %s", util.GoTh(totalInputs))
 
@@ -71,7 +73,7 @@ func runMakeChainCmd(_ *cobra.Command, args []string) {
 		return false
 	})
 
-	txCtx, chainID, err := getClient().MakeChainOrigin(client.TransferFromED25519WalletParams{
+	txCtx, chainID, err := glb.GetClient().MakeChainOrigin(client.TransferFromED25519WalletParams{
 		WalletPrivateKey: wallet.PrivateKey,
 		TagAlongSeqID:    tagAlongSeqID,
 		TagAlongFee:      tagAlongFee,

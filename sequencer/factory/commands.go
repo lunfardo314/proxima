@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/lunfardo314/proxima/ledger"
+	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lazybytes"
 	"github.com/lunfardo314/unitrie/common"
@@ -157,4 +158,21 @@ func MakeSequencerWithdrawCmdOutput(par MakeSequencerWithdrawCmdOutputParams) (*
 	util.Assertf(out[0].Amount() == par.Amount, "out[0].Amount()==par.Amount")
 	util.Assertf(ledger.EqualConstraints(par.TargetLock, out[0].Lock()), "ledger.EqualConstraints(par.TargetLock, out[0].Lock())")
 	return ret, nil
+}
+
+const minimumWithdrawAmountFromSequencer = 1_000_000
+
+func MakeSequencerWithdrawCommand(amount uint64, targetLock ledger.Lock) (ledger.GeneralScript, error) {
+	if amount < minimumWithdrawAmountFromSequencer {
+		return nil, fmt.Errorf("withdraw from sequencer amount must be ar least %s", util.GoTh(minimumWithdrawAmountFromSequencer))
+	}
+	var amountBin [8]byte
+	binary.BigEndian.PutUint64(amountBin[:], amount)
+	cmdParArr := lazybytes.MakeArrayFromDataReadOnly(targetLock.Bytes(), amountBin[:])
+	cmdData := common.Concat(CommandCodeWithdrawAmount, cmdParArr)
+	constrSource := fmt.Sprintf("concat(0x%s)", hex.EncodeToString(cmdData))
+	cmdConstr, err := ledger.NewGeneralScriptFromSource(constrSource)
+	glb.AssertNoError(err)
+
+	return cmdConstr, nil
 }

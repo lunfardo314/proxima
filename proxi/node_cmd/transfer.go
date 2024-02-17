@@ -32,6 +32,8 @@ func initTransferCmd() *cobra.Command {
 }
 
 func runTransferCmd(_ *cobra.Command, args []string) {
+	glb.InitLedgerFromNode()
+
 	walletData := glb.GetWalletData()
 
 	glb.Infof("source is the wallet account: %s", walletData.Account.String())
@@ -46,7 +48,7 @@ func runTransferCmd(_ *cobra.Command, args []string) {
 		tagAlongSeqID = GetTagAlongSequencerID()
 		glb.Assertf(tagAlongSeqID != nil, "tag-along sequencer not specified")
 
-		md, err := getClient().GetMilestoneDataFromHeaviestState(*tagAlongSeqID)
+		md, err := glb.GetClient().GetMilestoneDataFromHeaviestState(*tagAlongSeqID)
 		glb.AssertNoError(err)
 
 		if md != nil && md.MinimumFee > feeAmount {
@@ -65,7 +67,7 @@ func runTransferCmd(_ *cobra.Command, args []string) {
 		os.Exit(0)
 	}
 
-	txCtx, err := getClient().TransferFromED25519Wallet(client.TransferFromED25519WalletParams{
+	txCtx, err := glb.GetClient().TransferFromED25519Wallet(client.TransferFromED25519WalletParams{
 		WalletPrivateKey: walletData.PrivateKey,
 		TagAlongSeqID:    tagAlongSeqID,
 		TagAlongFee:      feeAmount,
@@ -85,6 +87,7 @@ func runTransferCmd(_ *cobra.Command, args []string) {
 	glb.AssertNoError(waitForInclusion(txCtx.OutputID(0)))
 }
 
+// TODO vertex status
 func waitForInclusion(oid ledger.OutputID, timeout ...time.Duration) error {
 	glb.Infof("Tracking inclusion of %s:", oid.StringShort())
 	startTime := time.Now()
@@ -100,7 +103,7 @@ func waitForInclusion(oid ledger.OutputID, timeout ...time.Duration) error {
 	var err error
 
 	util.DoUntil(func() {
-		inclusionData, err = getClient().GetOutputInclusion(&oid)
+		inclusionData, err = glb.GetClient().GetOutputInclusion(&oid)
 		glb.AssertNoError(err)
 
 		displayInclusionState(inclusionData, time.Since(startTime).Seconds())

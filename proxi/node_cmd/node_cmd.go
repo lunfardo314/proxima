@@ -1,9 +1,6 @@
 package node_cmd
 
 import (
-	"sync"
-
-	"github.com/lunfardo314/proxima/api/client"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/proxi/node_cmd/seq_cmd"
@@ -49,7 +46,7 @@ func Init() *cobra.Command {
 		initSpamCmd(),
 		initMakeChainCmd(),
 		initChainsCmd(),
-		initSyncInfoCmd(),
+		//initSyncInfoCmd(),
 		initNodeInfoCmd(),
 		seq_cmd.Init(),
 	)
@@ -57,17 +54,6 @@ func Init() *cobra.Command {
 	//node_cmd.Init(nodeCmd) ????
 
 	return nodeCmd
-}
-
-var displayEndpointOnce sync.Once
-
-func getClient() *client.APIClient {
-	endpoint := viper.GetString("api.endpoint")
-	glb.Assertf(endpoint != "", "node API endpoint not specified")
-	displayEndpointOnce.Do(func() {
-		glb.Infof("using API endpoint: %s", endpoint)
-	})
-	return client.New(endpoint)
 }
 
 func displayTotals(outs []*ledger.OutputWithID) {
@@ -104,7 +90,7 @@ func GetTagAlongSequencerID() *ledger.ChainID {
 	ret, err := ledger.ChainIDFromHexString(seqIDStr)
 	glb.AssertNoError(err)
 
-	o, err := getClient().GetChainOutputData(ret)
+	o, err := glb.GetClient().GetChainOutputData(ret)
 	glb.AssertNoError(err)
 	glb.Assertf(o.ID.IsSequencerTransaction(), "can't get tag-along sequencer %s: chain output %s is not a sequencer output",
 		ret.StringShort(), o.ID.StringShort())

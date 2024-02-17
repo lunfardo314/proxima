@@ -16,7 +16,6 @@ import (
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/ledger/txbuilder"
-	"github.com/lunfardo314/proxima/utangle_old"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/txutils"
 	"github.com/lunfardo314/unitrie/common"
@@ -291,35 +290,35 @@ func (c *APIClient) GetAccountOutputs(account ledger.Accountable, filter ...func
 	return outs, nil
 }
 
-func (c *APIClient) GetSyncInfo() (utangle_old.SyncInfo, error) {
-	body, err := c.getBody(api.PathGetSyncInfo)
-	if err != nil {
-		return utangle_old.SyncInfo{}, err
-	}
-
-	res := api.SyncInfo{PerSequencer: make(map[string]api.SequencerSyncInfo)}
-	err = json.Unmarshal(body, &res)
-	if err != nil {
-		return utangle_old.SyncInfo{}, err
-	}
-	ret := utangle_old.SyncInfo{
-		Synced:       res.Synced,
-		InSyncWindow: res.InSyncWindow,
-		PerSequencer: make(map[ledger.ChainID]utangle_old.SequencerSyncInfo),
-	}
-	for seqIDStr, si := range res.PerSequencer {
-		seqID, err := ledger.ChainIDFromHexString(seqIDStr)
-		if err != nil {
-			return utangle_old.SyncInfo{}, err
-		}
-		ret.PerSequencer[seqID] = utangle_old.SequencerSyncInfo{
-			Synced:           si.Synced,
-			LatestBookedSlot: si.LatestBookedSlot,
-			LatestSeenSlot:   si.LatestSeenSlot,
-		}
-	}
-	return ret, nil
-}
+//func (c *APIClient) GetSyncInfo() (utangle_old.SyncInfo, error) {
+//	body, err := c.getBody(api.PathGetSyncInfo)
+//	if err != nil {
+//		return utangle_old.SyncInfo{}, err
+//	}
+//
+//	res := api.SyncInfo{PerSequencer: make(map[string]api.SequencerSyncInfo)}
+//	err = json.Unmarshal(body, &res)
+//	if err != nil {
+//		return utangle_old.SyncInfo{}, err
+//	}
+//	ret := utangle_old.SyncInfo{
+//		Synced:       res.Synced,
+//		InSyncWindow: res.InSyncWindow,
+//		PerSequencer: make(map[ledger.ChainID]utangle_old.SequencerSyncInfo),
+//	}
+//	for seqIDStr, si := range res.PerSequencer {
+//		seqID, err := ledger.ChainIDFromHexString(seqIDStr)
+//		if err != nil {
+//			return utangle_old.SyncInfo{}, err
+//		}
+//		ret.PerSequencer[seqID] = utangle_old.SequencerSyncInfo{
+//			Synced:           si.Synced,
+//			LatestBookedSlot: si.LatestBookedSlot,
+//			LatestSeenSlot:   si.LatestSeenSlot,
+//		}
+//	}
+//	return ret, nil
+//}
 
 func (c *APIClient) GetNodeInfo() (*global.NodeInfo, error) {
 	body, err := c.getBody(api.PathGetNodeInfo)

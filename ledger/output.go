@@ -374,6 +374,7 @@ func (o *OutputDataWithID) MustParse() *OutputWithID {
 	return ret
 }
 
+// ExtractChainID return chainID, predecessor constraint index, existence flag
 func (o *OutputWithID) ExtractChainID() (ChainID, byte, bool) {
 	cc, blockIdx := o.Output.ChainConstraint()
 	if blockIdx == 0xff {

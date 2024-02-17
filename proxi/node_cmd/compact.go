@@ -27,6 +27,8 @@ func initCompactOutputsCmd() *cobra.Command {
 }
 
 func runCompactCmd(_ *cobra.Command, args []string) {
+	glb.InitLedgerFromNode()
+
 	maxNumberOfInputs := defaultMaxNumberOfInputs
 	var err error
 	if len(args) > 0 {
@@ -38,7 +40,7 @@ func runCompactCmd(_ *cobra.Command, args []string) {
 	feeAmount := getTagAlongFee() // 0 interpreted as no fee output
 	if feeAmount > 0 {
 		tagAlongSeqID = GetTagAlongSequencerID()
-		md, err := getClient().GetMilestoneDataFromHeaviestState(*tagAlongSeqID)
+		md, err := glb.GetClient().GetMilestoneDataFromHeaviestState(*tagAlongSeqID)
 		glb.AssertNoError(err)
 
 		if feeAmount > 0 {
@@ -50,7 +52,7 @@ func runCompactCmd(_ *cobra.Command, args []string) {
 
 	walletData := glb.GetWalletData()
 	nowisTs := ledger.TimeNow()
-	walletOutputs, err := getClient().GetAccountOutputs(walletData.Account, func(o *ledger.Output) bool {
+	walletOutputs, err := glb.GetClient().GetAccountOutputs(walletData.Account, func(o *ledger.Output) bool {
 		// filter out chain outputs controlled by the wallet
 		_, idx := o.ChainConstraint()
 		if idx != 0xff {
@@ -74,7 +76,7 @@ func runCompactCmd(_ *cobra.Command, args []string) {
 		os.Exit(0)
 	}
 
-	txCtx, err := getClient().MakeCompactTransaction(walletData.PrivateKey, tagAlongSeqID, feeAmount, maxNumberOfInputs)
+	txCtx, err := glb.GetClient().MakeCompactTransaction(walletData.PrivateKey, tagAlongSeqID, feeAmount, maxNumberOfInputs)
 	if err != nil {
 		if txCtx != nil {
 			glb.Verbosef("------- failed transaction -------- \n%s\n--------------------------", txCtx.String())
@@ -82,7 +84,7 @@ func runCompactCmd(_ *cobra.Command, args []string) {
 		glb.AssertNoError(err)
 	}
 	glb.Infof("Submitting compact transaction with %d inputs..", txCtx.NumInputs())
-	err = getClient().SubmitTransaction(txCtx.TransactionBytes())
+	err = glb.GetClient().SubmitTransaction(txCtx.TransactionBytes())
 	glb.AssertNoError(err)
 
 	if !NoWait() {

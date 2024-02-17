@@ -18,10 +18,12 @@ func initGetChainOutputCmd() *cobra.Command {
 }
 
 func runGetChainOutputCmd(_ *cobra.Command, args []string) {
+	glb.InitLedgerFromNode()
+
 	chainID, err := ledger.ChainIDFromHexString(args[0])
 	glb.AssertNoError(err)
 
-	o, _, err := getClient().GetChainOutputFromHeaviestState(chainID)
+	o, _, err := glb.GetClient().GetChainOutputFromHeaviestState(chainID)
 	glb.AssertNoError(err)
 
 	glb.Infof(o.String())
