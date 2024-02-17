@@ -31,7 +31,7 @@ func initDBInfoCmd() *cobra.Command {
 
 func runDbInfoCmd(_ *cobra.Command, _ []string) {
 	glb.InitLedger()
-	defer glb.CloseStateStore()
+	defer glb.CloseDatabases()
 
 	branchData := multistate.FetchLatestBranches(glb.StateStore())
 	if len(branchData) == 0 {

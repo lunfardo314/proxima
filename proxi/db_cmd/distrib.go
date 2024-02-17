@@ -27,9 +27,8 @@ func runDBDistributeCmd(_ *cobra.Command, args []string) {
 	glb.Assertf(len(args) > 0 && len(args)%2 == 0, "even-sized list of arguments is expected")
 
 	glb.InitLedger()
-	defer glb.CloseStateStore()
 	glb.InitTxStoreDB()
-	defer glb.CloseTxBytesStore()
+	defer glb.CloseDatabases()
 
 	distribution := make([]ledger.LockBalance, len(args)/2)
 	var err error

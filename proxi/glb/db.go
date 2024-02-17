@@ -28,8 +28,14 @@ func StateStore() global.StateStore {
 	return stateStore
 }
 
-func CloseStateStore() {
-	_ = stateDB.Close()
+func CloseDatabases() {
+	if stateDB != nil {
+		_ = stateDB.Close()
+	}
+	if txBytesDB != nil {
+		_ = txBytesDB.Close()
+
+	}
 }
 
 func InitTxStoreDB() {
@@ -42,8 +48,4 @@ func InitTxStoreDB() {
 
 func TxBytesStore() global.TxBytesStore {
 	return txBytesStore
-}
-
-func CloseTxBytesStore() {
-	_ = txBytesDB.Close()
 }

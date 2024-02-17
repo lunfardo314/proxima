@@ -32,7 +32,7 @@ func runMainChainCmd(_ *cobra.Command, args []string) {
 	makeFile := fname != ""
 
 	glb.InitLedger()
-	defer glb.CloseStateStore()
+	defer glb.CloseDatabases()
 
 	mainBranches := multistate.FetchHeaviestBranchChainNSlotsBack(glb.StateStore(), -1)
 	if makeFile {

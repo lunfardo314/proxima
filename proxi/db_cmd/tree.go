@@ -31,7 +31,7 @@ func initDBTreeCmd() *cobra.Command {
 
 func runDbTreeCmd(_ *cobra.Command, args []string) {
 	glb.InitLedger()
-	defer glb.CloseStateStore()
+	defer glb.CloseDatabases()
 
 	pwdPath, err := os.Getwd()
 	glb.AssertNoError(err)
