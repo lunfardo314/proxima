@@ -23,6 +23,7 @@ type (
 		GetNodeInfo() *global.NodeInfo
 		HeaviestStateForLatestTimeSlot() multistate.SugaredStateReader
 		SubmitTxBytesFromAPI(txBytes []byte) error
+		QueryTxIDStatus(txid *ledger.TransactionID) (mode string, status string)
 	}
 
 	Server struct {
@@ -43,6 +44,8 @@ func (srv *Server) registerHandlers() {
 	http.HandleFunc(api.PathGetChainOutput, srv.getChainOutput)
 	// GET request format: 'get_output?id=<hex-encoded output ID>'
 	http.HandleFunc(api.PathGetOutput, srv.getOutput)
+	// GET request format: 'query_txid_status?txid=<hex-encoded transaction ID>'
+	http.HandleFunc(api.PathQueryTxIDStatus, srv.queryTxIDStatus)
 	// GET request format: 'inclusion?id=<hex-encoded output ID>'
 	http.HandleFunc(api.PathGetOutputInclusion, srv.getOutputInclusion)
 	// POST request format 'submit_nowait'. Feedback only on parsing error, otherwise async posting
@@ -280,6 +283,32 @@ func (srv *Server) getSyncInfo(w http.ResponseWriter, r *http.Request) {
 func (srv *Server) getNodeInfo(w http.ResponseWriter, r *http.Request) {
 	nodeInfo := srv.GetNodeInfo()
 	respBin, err := json.MarshalIndent(nodeInfo, "", "  ")
+	if err != nil {
+		writeErr(w, err.Error())
+		return
+	}
+	_, err = w.Write(respBin)
+	util.AssertNoError(err)
+}
+
+func (srv *Server) queryTxIDStatus(w http.ResponseWriter, r *http.Request) {
+	lst, ok := r.URL.Query()["txid"]
+	if !ok || len(lst) != 1 {
+		writeErr(w, "wrong parameter in request 'get_txid_status'")
+		return
+	}
+	txid, err := ledger.TransactionIDFromHexString(lst[0])
+	if err != nil {
+		writeErr(w, err.Error())
+		return
+	}
+
+	resp := api.QueryTxIDStatus{
+		TxID: lst[0],
+	}
+	resp.Mode, resp.Status = srv.QueryTxIDStatus(&txid)
+
+	respBin, err := json.MarshalIndent(resp, "", "  ")
 	if err != nil {
 		writeErr(w, err.Error())
 		return

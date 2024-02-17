@@ -9,6 +9,7 @@ const (
 	PathGetAccountOutputs  = "/get_account_outputs"
 	PathGetChainOutput     = "/get_chain_output"
 	PathGetOutput          = "/get_output"
+	PathQueryTxIDStatus    = "/query_txid_status"
 	PathSubmitTransaction  = "/submit_tx" // wait appending to the utangle_old
 	PathGetOutputInclusion = "/inclusion"
 	PathGetSyncInfo        = "/sync_info"
@@ -61,6 +62,13 @@ type InclusionData struct {
 	BranchID ledger.TransactionID
 	Coverage uint64
 	Included bool
+}
+
+type QueryTxIDStatus struct {
+	Error
+	TxID   string `json:"txid"`
+	Mode   string `json:"mode"`
+	Status string `json:"status"`
 }
 
 type (

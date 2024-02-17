@@ -320,6 +320,24 @@ func (c *APIClient) GetAccountOutputs(account ledger.Accountable, filter ...func
 //	return ret, nil
 //}
 
+func (c *APIClient) QueryTxIDStatus(txid ledger.TransactionID) (mode, status string, err error) {
+	path := fmt.Sprintf(api.PathQueryTxIDStatus+"?txid=%s", txid.StringHex())
+	body, err := c.getBody(path)
+	if err != nil {
+		return "", "", err
+	}
+
+	var res api.QueryTxIDStatus
+	err = json.Unmarshal(body, &res)
+	if err != nil {
+		return "", "", err
+	}
+	if res.Error.Error != "" {
+		return "", "", fmt.Errorf("from server: %s", res.Error.Error)
+	}
+	return res.Mode, res.Status, nil
+}
+
 func (c *APIClient) GetNodeInfo() (*global.NodeInfo, error) {
 	body, err := c.getBody(api.PathGetNodeInfo)
 	if err != nil {
