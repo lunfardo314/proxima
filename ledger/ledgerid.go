@@ -222,7 +222,7 @@ func (id *IdentityData) OriginChainID() ChainID {
 }
 
 func (id *IdentityData) String() string {
-	return id.Lines().String()
+	return string(id.YAMLAble().YAML())
 }
 
 func (id *IdentityData) Lines(prefix ...string) *lines.Lines {

@@ -49,9 +49,9 @@ func runDbInfoCmd(_ *cobra.Command, _ []string) {
 
 	id := ledger.MustLedgerIdentityDataFromBytes(reader.MustLedgerIdentityBytes())
 
-	glb.Infof("\n----------------- Ledger state identity ----------------")
-	glb.Infof("%s", id.String())
-	glb.Infof("\n----------------- Global branch data ----------------------")
+	glb.Verbosef("\n----------------- Ledger state identity ----------------")
+	glb.Verbosef("%s", id.String())
+	glb.Infof("----------------- Global branch data ----------------------")
 	DisplayBranchData(branchData)
 	glb.Infof("\n------------- Supply and inflation summary -------------")
 	summary := multistate.FetchSummarySupplyAndInflation(glb.StateStore(), slotsBack)

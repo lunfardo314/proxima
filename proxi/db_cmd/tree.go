@@ -9,7 +9,6 @@ import (
 	"github.com/lunfardo314/proxima/core/dag"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/proxi/glb"
-	"github.com/lunfardo314/unitrie/adaptors/badger_adaptor"
 	"github.com/spf13/cobra"
 )
 
@@ -31,29 +30,26 @@ func initDBTreeCmd() *cobra.Command {
 }
 
 func runDbTreeCmd(_ *cobra.Command, args []string) {
-	dbName := global.MultiStateDBName
+	glb.InitLedger()
+	defer glb.CloseStateStore()
+
 	pwdPath, err := os.Getwd()
 	glb.AssertNoError(err)
 	currentWorkingDir := filepath.Base(pwdPath)
 
 	outFile := outputFile
 	if outFile == "" {
-		outFile = dbName + "_TREE_" + currentWorkingDir
+		outFile = global.MultiStateDBName + "_TREE_" + currentWorkingDir
 	}
-
-	stateDb := badger_adaptor.MustCreateOrOpenBadgerDB(dbName)
-	defer stateDb.Close()
-
-	stateStore := badger_adaptor.New(stateDb)
 
 	numSlotsBack := defaultMaxSlotsBack
 	if len(args) == 0 {
-		dag.SaveBranchTree(stateStore, outFile, numSlotsBack)
+		dag.SaveBranchTree(glb.StateStore(), outFile, numSlotsBack)
 	} else {
 		var err error
 		numSlotsBack, err = strconv.Atoi(args[0])
 		glb.AssertNoError(err)
-		dag.SaveBranchTree(stateStore, outFile, numSlotsBack)
+		dag.SaveBranchTree(glb.StateStore(), outFile, numSlotsBack)
 	}
 	glb.Infof("branch tree has been store in .DOT format in the file '%s', %d slots back", outFile, numSlotsBack)
 }

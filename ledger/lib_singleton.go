@@ -23,7 +23,11 @@ func L() *Library {
 	return libraryGlobal
 }
 
-func Init(id *IdentityData) {
+func Init(id *IdentityData, verbose ...bool) {
+	printStats := false
+	if len(verbose) > 0 && verbose[0] {
+		printStats = true
+	}
 	func() {
 		libraryGlobalMutex.Lock()
 		defer libraryGlobalMutex.Unlock()
@@ -32,14 +36,18 @@ func Init(id *IdentityData) {
 
 		libraryGlobal = newLibrary()
 
-		fmt.Printf("------ Base EasyFL library:\n")
-		libraryGlobal.PrintLibraryStats()
+		if printStats {
+			fmt.Printf("------ Base EasyFL library:\n")
+			libraryGlobal.PrintLibraryStats()
+		}
 
 		libraryGlobal.initNoTxConstraints(id)
 		libraryGlobal.extendWithConstraints()
 
-		fmt.Printf("------ Extended EasyFL library:\n")
-		libraryGlobal.PrintLibraryStats()
+		if printStats {
+			fmt.Printf("------ Extended EasyFL library:\n")
+			libraryGlobal.PrintLibraryStats()
+		}
 	}()
 
 	libraryGlobal.runInlineTests()

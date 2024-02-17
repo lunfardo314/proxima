@@ -206,6 +206,10 @@ func (r *Readable) GetUTXOForChainID(id *ledger.ChainID) (*ledger.OutputDataWith
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
+	return r._getUTXOForChainID(id)
+}
+
+func (r *Readable) _getUTXOForChainID(id *ledger.ChainID) (*ledger.OutputDataWithID, error) {
 	if len(id) != ledger.ChainIDLength {
 		return nil, fmt.Errorf("GetUTXOForChainID: chainID length must be %d-bytes long", ledger.ChainIDLength)
 	}
@@ -320,7 +324,7 @@ func (r *Readable) ChainInfo() map[ledger.ChainID]ChainRecordInfo {
 	r.trie.Iterator([]byte{PartitionChainID}).Iterate(func(k, v []byte) bool {
 		chainID, err = ledger.ChainIDFromBytes(k[1:])
 		util.AssertNoError(err)
-		oData, err = r.GetUTXOForChainID(&chainID)
+		oData, err = r._getUTXOForChainID(&chainID)
 		util.AssertNoError(err)
 
 		_, already := ret[chainID]

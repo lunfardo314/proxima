@@ -106,6 +106,6 @@ func ScanGenesisState(stateStore global.StateStore) (*ledger.IdentityData, commo
 	return stateID, branchData.Root, nil
 }
 
-func InitLedgerFromStore(stateStore global.StateStore) {
-	ledger.Init(ledger.MustLedgerIdentityDataFromBytes(LedgerIdentityBytesFromStore(stateStore)))
+func InitLedgerFromStore(stateStore global.StateStore, verbose ...bool) {
+	ledger.Init(ledger.MustLedgerIdentityDataFromBytes(LedgerIdentityBytesFromStore(stateStore)), verbose...)
 }

@@ -4,13 +4,11 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/util"
-	"github.com/lunfardo314/unitrie/adaptors/badger_adaptor"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -33,11 +31,10 @@ func runMainChainCmd(_ *cobra.Command, args []string) {
 
 	makeFile := fname != ""
 
-	dbName := global.MultiStateDBName
-	stateStore := badger_adaptor.New(badger_adaptor.MustCreateOrOpenBadgerDB(dbName))
-	defer stateStore.Close()
+	glb.InitLedger()
+	defer glb.CloseStateStore()
 
-	mainBranches := multistate.FetchHeaviestBranchChainNSlotsBack(stateStore, -1)
+	mainBranches := multistate.FetchHeaviestBranchChainNSlotsBack(glb.StateStore(), -1)
 	if makeFile {
 		outFile, err := os.Create(fname + ".branches")
 		glb.AssertNoError(err)

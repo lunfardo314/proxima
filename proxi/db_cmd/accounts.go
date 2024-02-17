@@ -1,11 +1,9 @@
 package db_cmd
 
 import (
-	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/util"
-	"github.com/lunfardo314/unitrie/adaptors/badger_adaptor"
 	"github.com/spf13/cobra"
 )
 
@@ -21,14 +19,12 @@ func initAccountsCmd() *cobra.Command {
 }
 
 func runAccountsCmd(_ *cobra.Command, _ []string) {
+	glb.InitLedger()
+	defer glb.CloseStateStore()
+
 	glb.Infof("---------------- account totals at the heaviest branch ------------------")
-	dbName := global.MultiStateDBName
-	stateDb := badger_adaptor.MustCreateOrOpenBadgerDB(dbName)
-	defer func() { _ = stateDb.Close() }()
 
-	stateStore := badger_adaptor.New(stateDb)
-
-	branchData := multistate.FetchLatestBranches(stateStore)
+	branchData := multistate.FetchLatestBranches(glb.StateStore())
 	if len(branchData) == 0 {
 		glb.Infof("no branches found")
 		return
@@ -38,6 +34,6 @@ func runAccountsCmd(_ *cobra.Command, _ []string) {
 		return br1.LedgerCoverage.Sum() < br2.LedgerCoverage.Sum()
 	})
 
-	accountInfo := multistate.MustCollectAccountInfo(stateStore, brHeaviest.Root)
+	accountInfo := multistate.MustCollectAccountInfo(glb.StateStore(), brHeaviest.Root)
 	glb.Infof("%s\n", accountInfo.Lines("   ").String())
 }
