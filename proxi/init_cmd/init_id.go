@@ -75,7 +75,7 @@ const defaultDistributionListTemplate = `# Genesis distribution list consists th
 # the controlling address of the bootstrap chain. 
 # I.e. both the bootstrap chain and bootstrap address is controlled by the same private key
 # The tokens in the ED25519 address are needed to be able to 
-# provide tokens for the command output to te bootstrap sequencer
+# provide tokens for the command output to the bootstrap sequencer
 -
   lock: %s
   balance: %d

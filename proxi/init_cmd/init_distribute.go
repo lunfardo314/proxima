@@ -7,6 +7,7 @@ import (
 	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger/txbuilder"
+	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/txstore"
 	"github.com/lunfardo314/proxima/util"
@@ -18,7 +19,7 @@ func initDistributeDBCmd() *cobra.Command {
 	distributeCmd := &cobra.Command{
 		Use:   "genesis_distribute",
 		Short: "writes genesis distribution transaction into the DB according to 'proxi.genesis.distribute.yaml'",
-		Long: `writes genesis distribution transaction into the DB. Distribution data is take from the file
+		Long: `writes genesis distribution transaction into the DB. Distribution data is taken from the file
 'proxi.genesis.distribute.yaml'.
 `,
 		PersistentPreRun: func(_ *cobra.Command, _ []string) {
@@ -31,7 +32,18 @@ func initDistributeDBCmd() *cobra.Command {
 }
 
 func runDistribute(_ *cobra.Command, _ []string) {
-	privKey := glb.MustGetPrivateKey()
+
+	stateDb := badger_adaptor.MustCreateOrOpenBadgerDB(global.MultiStateDBName, badger.DefaultOptions(global.MultiStateDBName))
+	stateStore := badger_adaptor.New(stateDb)
+	defer func() { _ = stateDb.Close() }()
+
+	multistate.InitLedgerFromStore(stateStore)
+
+	// run initial distribution
+	txStoreDB := badger_adaptor.New(badger_adaptor.MustCreateOrOpenBadgerDB(global.TxStoreDBName, badger.DefaultOptions(global.TxStoreDBName)))
+	txStore := txstore.NewSimpleTxBytesStore(txStoreDB)
+	defer func() { _ = txStoreDB.Close() }()
+
 	distributionDataYAML, err := os.ReadFile(genesisDistributionFileName)
 	glb.AssertNoError(err)
 	distributionList, err := txbuilder.InitialDistributionFromYAMLData(distributionDataYAML)
@@ -44,29 +56,20 @@ func runDistribute(_ *cobra.Command, _ []string) {
 		glb.Fatalf("exit: distribution transaction wasn't created")
 	}
 
-	stateDb := badger_adaptor.MustCreateOrOpenBadgerDB(global.MultiStateDBName, badger.DefaultOptions(global.MultiStateDBName))
-	stateStore := badger_adaptor.New(stateDb)
-	defer func() { _ = stateDb.Close() }()
-
-	// run initial distribution
-	txStoreDB := badger_adaptor.New(badger_adaptor.MustCreateOrOpenBadgerDB(global.TxStoreDBName, badger.DefaultOptions(global.TxStoreDBName)))
-	txStore := txstore.NewSimpleTxBytesStore(txStoreDB)
-	defer func() { _ = txStoreDB.Close() }()
-
+	privKey := glb.MustGetPrivateKey()
 	txBytesDistribution, txid, err := txbuilder.DistributeInitialSupplyExt(stateStore, privKey, distributionList)
 	glb.AssertNoError(err)
 
-	txMetadata := txmetadata.TransactionMetadata{
-		StateRoot:               nil,
-		LedgerCoverageDelta:     nil,
-		SlotInflation:           nil,
-		Supply:                  nil,
-		IsResponseToPull:        false,
-		SourceTypeNonPersistent: 0,
-	}
-	_, err = txStore.PersistTxBytesWithMetadata(txBytesDistribution, &txMetadata)
+	rr, found := multistate.FetchRootRecord(stateStore, txid)
+	glb.Assertf(found, "inconsistency: can't find root record")
+	_, err = txStore.PersistTxBytesWithMetadata(txBytesDistribution, &txmetadata.TransactionMetadata{
+		StateRoot:           rr.Root,
+		LedgerCoverageDelta: util.Ref(rr.LedgerCoverage.LatestDelta()),
+		SlotInflation:       util.Ref(rr.SlotInflation),
+		Supply:              util.Ref(rr.Supply),
+	})
 	glb.AssertNoError(err)
-	util.Assertf(len(txStore.GetTxBytesWithMetadata(&txid)) > 0, "inconsistency: stored transaction has not been found")
+	util.Assertf(len(txStore.GetTxBytesWithMetadata(&txid)) > 0, "inconsistency: just stored transaction has not been found")
 
 	glb.Infof("Success. Genesis distribution transaction %s has been stored in the transaction store DB", txid.String())
 }

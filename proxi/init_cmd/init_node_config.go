@@ -137,48 +137,19 @@ api:
 # usually none or 1 sequencer is configured for the node
 sequencers:
   boot:
-    enable: false
-    loglevel: info
+    enable: false # will not start if false 
     # chain ID of the sequencer
     sequencer_id: 
     # chain controller's private key (hex-encoded)
     controller_key: 
     # sequencer pace
     pace: 5
-    # maximum fee inputs allowed in the sequencer milestone transaction
+    # maximum tag-along inputs allowed in the sequencer milestone transaction
     max_fee_inputs: 50
-    trace_tippool: false
-
-# logger config
-logger:
-  level: info
-  output: testlog.log
 
 # Other parameters used for tracing and debugging
 # pprof config
 pprof:
   enable: false
   port: 8080
-
-# workflow_old debug config
-workflow_old:
-  addtx:
-    loglevel: info
-  events:
-    loglevel: info
-  input:
-    loglevel: info
-  reject:
-    loglevel: info
-  prevalid:
-    loglevel: info
-  solidify:
-    loglevel: info
-  validate:
-    loglevel: info
-
-# specify milestone proposer strategies to trace
-trace_proposers:
-  base: false
-  btrack2: false
 `

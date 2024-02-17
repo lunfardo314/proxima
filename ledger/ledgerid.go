@@ -60,7 +60,7 @@ type (
 		GenesisTimeUnix                      uint32 `yaml:"genesis_time_unix"`
 		InitialSupply                        uint64 `yaml:"initial_supply"`
 		GenesisControllerPublicKey           string `yaml:"genesis_controller_public_key"`
-		TimeTickDuration                     int64  `yaml:"time_tick_duration"`
+		TimeTickDurationNanosec              int64  `yaml:"time_tick_duration_nanosec"`
 		MaxTimeTickValueInTimeSlot           uint8  `yaml:"max_time_tick_value_in_time_slot"`
 		InitialBranchBonus                   uint64 `yaml:"initial_branch_bonus"`
 		BranchBonusInflationPerEpochPromille uint16 `yaml:"branch_bonus_inflation_per_epoch_promille"`
@@ -68,7 +68,7 @@ type (
 		VBCost                               uint64 `yaml:"vb_cost"`
 		TransactionPace                      byte   `yaml:"transaction_pace"`
 		TransactionPaceSequencer             byte   `yaml:"transaction_pace_sequencer"`
-		ChainInflationHalvingYears           byte   `yaml:"chain_inflation_halving_years"`
+		ChainInflationHalvingEpochs          byte   `yaml:"chain_inflation_halving_epochs"`
 		ChainInflationPerTickFractionBase    uint64 `yaml:"chain_inflation_per_tick_fraction_base"`
 		ChainInflationOpportunitySlots       uint64 `yaml:"chain_inflation_opportunity_slots"`
 		MinimumAmountOnSequencer             uint64 `yaml:"minimum_amount_on_sequencer"`
@@ -243,7 +243,7 @@ func (id *IdentityData) YAMLAble() *IdentityDataYAMLAble {
 		GenesisTimeUnix:                      id.GenesisTimeUnix,
 		GenesisControllerPublicKey:           hex.EncodeToString(id.GenesisControllerPublicKey),
 		InitialSupply:                        id.InitialSupply,
-		TimeTickDuration:                     id.TickDuration.Nanoseconds(),
+		TimeTickDurationNanosec:              id.TickDuration.Nanoseconds(),
 		MaxTimeTickValueInTimeSlot:           id.MaxTickValueInSlot,
 		InitialBranchBonus:                   id.InitialBranchBonus,
 		BranchBonusInflationPerEpochPromille: id.BranchBonusInflationPerEpochPromille,
@@ -251,7 +251,7 @@ func (id *IdentityData) YAMLAble() *IdentityDataYAMLAble {
 		TransactionPace:                      id.TransactionPace,
 		TransactionPaceSequencer:             id.TransactionPaceSequencer,
 		SlotsPerLedgerEpoch:                  id.SlotsPerLedgerEpoch,
-		ChainInflationHalvingYears:           id.ChainInflationHalvingEpochs,
+		ChainInflationHalvingEpochs:          id.ChainInflationHalvingEpochs,
 		ChainInflationPerTickFractionBase:    id.ChainInflationPerTickFractionBase,
 		ChainInflationOpportunitySlots:       id.ChainInflationOpportunitySlots,
 		GenesisControllerAddress:             id.GenesisControlledAddress().String(),
@@ -330,7 +330,7 @@ func (id *IdentityDataYAMLAble) stateIdentityData() (*IdentityData, error) {
 	if len(ret.GenesisControllerPublicKey) != ed25519.PublicKeySize {
 		return nil, fmt.Errorf("wrong public key")
 	}
-	ret.TickDuration = time.Duration(id.TimeTickDuration)
+	ret.TickDuration = time.Duration(id.TimeTickDurationNanosec)
 	ret.MaxTickValueInSlot = id.MaxTimeTickValueInTimeSlot
 	ret.InitialBranchBonus = id.InitialBranchBonus
 	ret.BranchBonusInflationPerEpochPromille = id.BranchBonusInflationPerEpochPromille
@@ -340,7 +340,7 @@ func (id *IdentityDataYAMLAble) stateIdentityData() (*IdentityData, error) {
 	ret.SlotsPerLedgerEpoch = id.SlotsPerLedgerEpoch
 	ret.ChainInflationPerTickFractionBase = id.ChainInflationPerTickFractionBase
 	ret.ChainInflationOpportunitySlots = id.ChainInflationOpportunitySlots
-	ret.ChainInflationHalvingEpochs = id.ChainInflationHalvingYears
+	ret.ChainInflationHalvingEpochs = id.ChainInflationHalvingEpochs
 	ret.MinimumAmountOnSequencer = id.MinimumAmountOnSequencer
 	ret.MaxToleratedParasiticChainSlots = id.MaxToleratedParasiticChainSlots
 	ret.Description = id.Description

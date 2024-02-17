@@ -111,10 +111,9 @@ func (p *ProximaNode) initMultiStateLedger() {
 	p.Log().Infof("opened multi-state DB '%s", dbname)
 
 	// initialize global ledger object with the ledger ID data from DB
-	ledgerID := ledger.MustLedgerIdentityDataFromBytes(multistate.LedgerIdentityBytesFromStore(p.multiStateDB))
-	ledger.Init(ledgerID)
+	multistate.InitLedgerFromStore(p.multiStateDB)
+	p.Log().Infof("Ledger identity:\n%s", ledger.L().ID.Lines("       ").String())
 
-	p.Log().Infof("Ledger identity:\n%s", ledgerID.Lines("       ").String())
 	go func() {
 		// wait until others will stop
 		p.WaitComponentsToStop()

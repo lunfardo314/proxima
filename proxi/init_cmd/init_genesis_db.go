@@ -31,6 +31,8 @@ func runGenesis(_ *cobra.Command, _ []string) {
 	idData, err := ledger.StateIdentityDataFromYAML(idDataYAML)
 	glb.AssertNoError(err)
 
+	ledger.Init(idData)
+
 	glb.Infof("Will be creating genesis from the ledger identity data:")
 	glb.Infof(idData.Lines("      ").String())
 	glb.Infof("Multi-state database name: '%s'", global.MultiStateDBName)
