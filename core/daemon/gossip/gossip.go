@@ -10,7 +10,7 @@ import (
 
 type (
 	Environment interface {
-		global.Glb
+		global.NodeGlobal
 		GossipTxBytesToPeers(txBytes []byte, metadata *txmetadata.TransactionMetadata, except ...peer.ID) int
 	}
 
@@ -39,9 +39,9 @@ func New(env Environment) *Gossip {
 }
 
 func (d *Gossip) Start() {
-	d.MarkComponentStarted(Name)
+	d.MarkWorkProcessStarted(Name)
 	d.AddOnClosed(func() {
-		d.MarkComponentStopped(Name)
+		d.MarkWorkProcessStopped(Name)
 	})
 	d.Queue.Start(d, d.Environment.Ctx())
 }

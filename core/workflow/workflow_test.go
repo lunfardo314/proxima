@@ -51,5 +51,5 @@ func TestBasic(t *testing.T) {
 	require.Error(t, err)
 
 	env.Stop()
-	env.MustWaitStop()
+	env.MustWaitAllWorkProcessesStop()
 }

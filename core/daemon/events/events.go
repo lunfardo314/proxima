@@ -15,7 +15,7 @@ type (
 	}
 
 	Environment interface {
-		global.Glb
+		global.NodeGlobal
 	}
 
 	Events struct {
@@ -45,9 +45,9 @@ func New(env Environment) *Events {
 }
 
 func (d *Events) Start() {
-	d.MarkComponentStarted(Name)
+	d.MarkWorkProcessStarted(Name)
 	d.AddOnClosed(func() {
-		d.MarkComponentStopped(Name)
+		d.MarkWorkProcessStopped(Name)
 	})
 	d.Queue.Start(d, d.Environment.Ctx())
 }

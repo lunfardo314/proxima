@@ -24,7 +24,7 @@ import (
 
 type (
 	Environment interface {
-		global.Glb
+		global.NodeGlobal
 	}
 
 	Config struct {
@@ -179,7 +179,7 @@ func (ps *Peers) SelfID() peer.ID {
 }
 
 func (ps *Peers) Run() {
-	ps.Environment.MarkComponentStarted(Name)
+	ps.Environment.MarkWorkProcessStarted(Name)
 
 	ps.host.SetStreamHandler(lppProtocolGossip, ps.gossipStreamHandler)
 	ps.host.SetStreamHandler(lppProtocolPull, ps.pullStreamHandler)
@@ -197,7 +197,7 @@ func (ps *Peers) Run() {
 
 func (ps *Peers) Stop() {
 	ps.stopOnce.Do(func() {
-		ps.Environment.MarkComponentStopped(Name)
+		ps.Environment.MarkWorkProcessStopped(Name)
 
 		ps.Log().Infof("stopping libp2p host %s (self)..", ShortPeerIDString(ps.host.ID()))
 		_ = ps.Log().Sync()

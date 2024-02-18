@@ -30,14 +30,6 @@ type ProximaNode struct {
 	dbClosedWG   sync.WaitGroup
 }
 
-//const (
-//	bootstrapLoggerName = "[boot]"
-//)
-//
-//func newBootstrapLogger() *zap.SugaredLogger {
-//	return global.NewLogger(bootstrapLoggerName, zap.InfoLevel, []string{"stderr"}, "")
-//}
-
 func New() *ProximaNode {
 	return &ProximaNode{
 		Global:     global.New(),
@@ -45,11 +37,13 @@ func New() *ProximaNode {
 	}
 }
 
-func (p *ProximaNode) WaitComponentsToStop() {
+// WaitAllWorkProcessesToStop wait everything to stop before closing databases
+func (p *ProximaNode) WaitAllWorkProcessesToStop() {
 	<-p.Ctx().Done()
-	p.Global.MustWaitStop()
+	p.Global.MustWaitAllWorkProcessesStop()
 }
 
+// WaitAllDBClosed ensuring databases has been closed
 func (p *ProximaNode) WaitAllDBClosed() {
 	p.dbClosedWG.Wait()
 }
@@ -74,9 +68,14 @@ func (p *ProximaNode) initConfig() {
 	util.AssertNoError(err)
 }
 
+func (p *ProximaNode) readInTraceTags() {
+	p.Global.EnableTraceTags(viper.GetStringSlice("trace_tags")...)
+}
+
 func (p *ProximaNode) Start() {
 	p.Log().Info(global.BannerString())
 	p.initConfig()
+	p.readInTraceTags()
 
 	err := util.CatchPanicOrError(func() error {
 		p.initMultiStateLedger()
@@ -116,7 +115,7 @@ func (p *ProximaNode) initMultiStateLedger() {
 
 	go func() {
 		// wait until others will stop
-		p.WaitComponentsToStop()
+		p.WaitAllWorkProcessesToStop()
 		_ = p.multiStateDB.Close()
 		p.Log().Infof("multi-state database has been closed")
 		p.dbClosedWG.Done()
@@ -142,7 +141,7 @@ func (p *ProximaNode) initTxStore() {
 		p.Log().Infof("opened DB '%s' as transaction store", dbname)
 
 		go func() {
-			p.WaitComponentsToStop()
+			p.WaitAllWorkProcessesToStop()
 			_ = p.txStoreDB.Close()
 			p.Log().Infof("transaction store database has been closed")
 			p.dbClosedWG.Done()
@@ -169,7 +168,7 @@ func (p *ProximaNode) startWorkflow() {
 }
 
 func (p *ProximaNode) startSequencers() {
-	sequencers := viper.GetStringMap("Sequencers")
+	sequencers := viper.GetStringMap("sequencers")
 	if len(sequencers) == 0 {
 		p.Log().Infof("No Sequencers will be started")
 		return

@@ -17,7 +17,7 @@ type (
 	}
 
 	Environment interface {
-		global.Glb
+		global.NodeGlobal
 	}
 
 	Poker struct {
@@ -58,9 +58,9 @@ func New(env Environment) *Poker {
 }
 
 func (d *Poker) Start() {
-	d.MarkComponentStarted(Name)
+	d.MarkWorkProcessStarted(Name)
 	d.AddOnClosed(func() {
-		d.MarkComponentStopped(Name)
+		d.MarkWorkProcessStopped(Name)
 	})
 	d.Queue.Start(d, d.Ctx())
 	go d.periodicLoop()

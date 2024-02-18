@@ -16,7 +16,7 @@ const pullPeriod = 500 * time.Millisecond
 
 type (
 	Environment interface {
-		global.Glb
+		global.NodeGlobal
 		TxBytesStore() global.TxBytesStore
 		QueryTransactionsFromRandomPeer(lst ...ledger.TransactionID) bool
 		TxBytesWithMetadataIn(txBytes []byte, metadata *txmetadata.TransactionMetadata) (*ledger.TransactionID, error)
@@ -56,9 +56,9 @@ func New(env Environment) *PullClient {
 }
 
 func (d *PullClient) Start() {
-	d.MarkComponentStarted(Name)
+	d.MarkWorkProcessStarted(Name)
 	d.AddOnClosed(func() {
-		d.MarkComponentStopped(Name)
+		d.MarkWorkProcessStopped(Name)
 	})
 	d.Queue.Start(d, d.Ctx())
 }

@@ -22,7 +22,7 @@ import (
 
 type (
 	Environment interface {
-		global.Glb
+		global.NodeGlobal
 		StateStore() global.StateStore
 		TxBytesStore() global.TxBytesStore
 	}

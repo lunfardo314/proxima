@@ -2,7 +2,6 @@ package global
 
 import (
 	"context"
-	"sync"
 
 	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/ledger"
@@ -59,21 +58,17 @@ type (
 		Tracef(tag string, format string, args ...any)
 	}
 
-	// StopWaitGroup interface of the global objet\ct which coordinates graceful shutdown
-	StopWaitGroup interface {
+	// StartStop interface of the global objet\ct which coordinates graceful shutdown
+	StartStop interface {
 		Ctx() context.Context
 		Stop()
-		MarkComponentStarted(name string)
-		MarkComponentStopped(name string)
+		MarkWorkProcessStarted(name string)
+		MarkWorkProcessStopped(name string)
 	}
 
-	Glb interface {
+	NodeGlobal interface {
 		Logging
-		StopWaitGroup
-	}
-
-	stopWaitGroup struct {
-		*sync.WaitGroup
+		StartStop
 	}
 )
 

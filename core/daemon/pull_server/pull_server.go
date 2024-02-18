@@ -11,7 +11,7 @@ import (
 
 type (
 	Environment interface {
-		global.Glb
+		global.NodeGlobal
 		TxBytesStore() global.TxBytesStore
 		StateStore() global.StateStore
 		SendTxBytesWithMetadataToPeer(id peer.ID, txBytes []byte, metadata *txmetadata.TransactionMetadata) bool
@@ -42,9 +42,9 @@ func New(env Environment) *PullServer {
 }
 
 func (d *PullServer) Start() {
-	d.MarkComponentStarted(Name)
+	d.MarkWorkProcessStarted(Name)
 	d.AddOnClosed(func() {
-		d.MarkComponentStopped(Name)
+		d.MarkWorkProcessStopped(Name)
 	})
 	d.Queue.Start(d, d.Ctx())
 }

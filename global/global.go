@@ -44,8 +44,8 @@ func New() *Global {
 	}
 }
 
-func (l *Global) MarkComponentStarted(name string) {
-	l.Tracef(TraceTag, "MarkComponentStarted: %s", name)
+func (l *Global) MarkWorkProcessStarted(name string) {
+	l.Tracef(TraceTag, "MarkWorkProcessStarted: %s", name)
 	l.mutex.Lock()
 	defer l.mutex.Unlock()
 
@@ -53,8 +53,8 @@ func (l *Global) MarkComponentStarted(name string) {
 	l.components.Insert(name)
 }
 
-func (l *Global) MarkComponentStopped(name string) {
-	l.Tracef(TraceTag, "MarkComponentStopped: %s", name)
+func (l *Global) MarkWorkProcessStopped(name string) {
+	l.Tracef(TraceTag, "MarkWorkProcessStopped: %s", name)
 	l.mutex.Lock()
 	defer l.mutex.Unlock()
 
@@ -80,8 +80,8 @@ func (l *Global) _withRLock(fun func()) {
 	l.mutex.RUnlock()
 }
 
-func (l *Global) MustWaitStop(timeout ...time.Duration) {
-	l.Tracef(TraceTag, "MustWaitStop")
+func (l *Global) MustWaitAllWorkProcessesStop(timeout ...time.Duration) {
+	l.Tracef(TraceTag, "MustWaitAllWorkProcessesStop")
 
 	deadline := time.Now().Add(math.MaxInt)
 	if len(timeout) > 0 {
@@ -107,7 +107,7 @@ func (l *Global) MustWaitStop(timeout ...time.Duration) {
 				for s := range l.components {
 					ln.Add(s)
 				}
-				l.Log().Errorf("MustWaitStop: exceeded timeout. Still running components: %s", ln.Join(","))
+				l.Log().Errorf("MustWaitAllWorkProcessesStop: exceeded timeout. Still running components: %s", ln.Join(","))
 			})
 			return
 		}
@@ -123,15 +123,19 @@ func (l *Global) EnableTrace(enable bool) {
 }
 
 func (l *Global) EnableTraceTags(tags ...string) {
-	l.traceTagsMutex.Lock()
-	for _, t := range tags {
-		st := strings.Split(t, ",")
-		for _, t1 := range st {
-			l.traceTags.Insert(strings.TrimSpace(t1))
+	func() {
+		l.traceTagsMutex.Lock()
+		defer l.traceTagsMutex.Unlock()
+
+		for _, t := range tags {
+			st := strings.Split(t, ",")
+			for _, t1 := range st {
+				l.traceTags.Insert(strings.TrimSpace(t1))
+			}
+			l.enabledTrace.Store(true)
 		}
-		l.enabledTrace.Store(true)
-	}
-	l.traceTagsMutex.Unlock()
+	}()
+
 	for _, tag := range tags {
 		l.Tracef(tag, "trace tag enabled")
 	}
@@ -165,15 +169,4 @@ func (l *Global) TraceLog(log *zap.SugaredLogger, tag string, format string, arg
 
 func (l *Global) Tracef(tag string, format string, args ...any) {
 	l.TraceLog(l.Log(), tag, format, args...)
-}
-
-type SubLogger struct {
-	Logging
-}
-
-func MakeSubLogger(l Logging, name string) Logging {
-	return SubLogger{&Global{
-		SugaredLogger: l.Log().Named(name),
-		traceTags:     set.New[string](),
-	}}
 }

@@ -40,7 +40,7 @@ type (
 	}
 
 	Environment interface {
-		global.Glb
+		global.NodeGlobal
 		DAGAccessEnvironment
 		PullEnvironment
 		PostEventEnvironment

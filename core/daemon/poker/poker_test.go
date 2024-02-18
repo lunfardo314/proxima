@@ -51,6 +51,6 @@ func TestBasic(t *testing.T) {
 	}
 	wg.Wait()
 	glb.Stop()
-	glb.MustWaitStop()
+	glb.MustWaitAllWorkProcessesStop()
 	require.EqualValues(t, howManyPokes*howManyTx, int(counter.Load()))
 }

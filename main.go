@@ -20,6 +20,6 @@ func main() {
 
 	n.Start()
 
-	n.WaitComponentsToStop()
+	n.WaitAllWorkProcessesToStop()
 	n.WaitAllDBClosed()
 }

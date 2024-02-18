@@ -8,7 +8,7 @@ import (
 
 type (
 	Environment interface {
-		global.Glb
+		global.NodeGlobal
 		TxBytesStore() global.TxBytesStore
 	}
 
@@ -37,9 +37,9 @@ func New(env Environment) *PersistTxBytes {
 }
 
 func (d *PersistTxBytes) Start() {
-	d.MarkComponentStarted(Name)
+	d.MarkWorkProcessStarted(Name)
 	d.AddOnClosed(func() {
-		d.MarkComponentStopped(Name)
+		d.MarkWorkProcessStopped(Name)
 	})
 	d.Queue.Start(d, d.Environment.Ctx())
 }

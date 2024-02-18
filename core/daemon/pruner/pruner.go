@@ -15,7 +15,7 @@ import (
 
 type (
 	Environment interface {
-		global.Glb
+		global.NodeGlobal
 		PurgeDeletedVertices(deleted []*vertex.WrappedTx)
 		VerticesDescending() []*vertex.WrappedTx
 		PruningTTLSlots() int
@@ -78,8 +78,8 @@ func (d *Pruner) pruningBaselineSlot(verticesDescending []*vertex.WrappedTx) led
 }
 
 func (d *Pruner) mainLoop() {
-	d.MarkComponentStarted(Name)
-	defer d.MarkComponentStopped(Name)
+	d.MarkWorkProcessStarted(Name)
+	defer d.MarkWorkProcessStopped(Name)
 
 	prunerLoopPeriod := ledger.SlotDuration() / 2
 

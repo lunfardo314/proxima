@@ -68,7 +68,7 @@ func TestBasic(t *testing.T) {
 		require.EqualValues(t, genesisOut.Output.Bytes(), genesisOut1.Output.Bytes())
 
 		env.Stop()
-		env.MustWaitStop()
+		env.MustWaitAllWorkProcessesStop()
 
 		t.Logf("bootstrap chain id: %s", bootstrapChainID.String())
 		t.Logf("genesis root: %s", root.String())
@@ -103,7 +103,7 @@ func TestBasic(t *testing.T) {
 		require.NoError(t, err)
 
 		env.Stop()
-		env.MustWaitStop()
+		env.MustWaitAllWorkProcessesStop()
 
 		t.Logf("bootstrap chain id: %s", bootstrapChainID.String())
 
@@ -180,7 +180,7 @@ func TestBasic(t *testing.T) {
 		t.Logf("%s", wrk.Info())
 
 		env.Stop()
-		env.MustWaitStop()
+		env.MustWaitAllWorkProcessesStop()
 
 		rdr := multistate.MakeSugared(wrk.GetStateReaderForTheBranch(&vidDistrib.ID))
 		stemOut := rdr.GetStemOutput()
@@ -251,7 +251,7 @@ func TestBasic(t *testing.T) {
 		t.Logf("%s", wrk.Info())
 
 		env.Stop()
-		env.MustWaitStop()
+		env.MustWaitAllWorkProcessesStop()
 
 		distribVID := wrk.GetVertex(&vidDistrib.ID)
 		require.True(t, distribVID != nil)
