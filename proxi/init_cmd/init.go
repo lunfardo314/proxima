@@ -16,7 +16,7 @@ func CmdInit() *cobra.Command {
 		initProfileCmd(),
 		initIDCmd(),
 		initGenesisDBCmd(),
-		//initDistributeDBCmd(),
+		initBootstrapAccountCmd(),
 		initNodeConfigCmd(),
 	)
 	initCmd.InitDefaultHelpCmd()

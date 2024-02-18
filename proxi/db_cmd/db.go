@@ -16,7 +16,6 @@ func Init() *cobra.Command {
 	dbCmd.AddCommand(
 		initDBInfoCmd(),
 		initDBTreeCmd(),
-		initDBDistributeCmd(),
 		initMainChainCmd(),
 		initAccountsCmd(),
 	)

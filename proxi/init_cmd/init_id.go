@@ -5,9 +5,7 @@ import (
 	"os"
 
 	"github.com/lunfardo314/proxima/ledger"
-	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/proxi/glb"
-	"github.com/lunfardo314/proxima/util"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -22,7 +20,7 @@ func initIDCmd() *cobra.Command {
 	initLedgerIDCmd := &cobra.Command{
 		Use:   "ledger_id",
 		Args:  cobra.NoArgs,
-		Short: "creates identity data of the ledger in the file 'proxi.genesis.id.yaml' and default initial distribution list in 'proxi.genesis.distribution.yaml'",
+		Short: "creates identity data of the ledger in the file 'proxi.genesis.id.yaml'",
 		PersistentPreRun: func(_ *cobra.Command, _ []string) {
 			glb.ReadInConfig()
 		},
@@ -41,11 +39,6 @@ func runInitLedgerIDCommand(_ *cobra.Command, _ []string) {
 			os.Exit(0)
 		}
 	}
-	if glb.FileExists(genesisDistributionFileName) {
-		if !glb.YesNoPrompt(fmt.Sprintf("file '%s' already exists. Overwrite?", genesisDistributionFileName), false) {
-			os.Exit(0)
-		}
-	}
 	privKey := glb.MustGetPrivateKey()
 
 	// create ledger identity
@@ -57,27 +50,4 @@ func runInitLedgerIDCommand(_ *cobra.Command, _ []string) {
 	glb.AssertNoError(err)
 	glb.Infof("new ledger identity data has been stored in the file '%s':", ledgerIDFileName)
 	glb.Infof("--------------\n%s--------------\n", string(yamlData))
-
-	// create default distribution
-	controllerAddr := ledger.AddressED25519FromPrivateKey(privKey)
-	lstYAML := []byte(fmt.Sprintf(defaultDistributionListTemplate,
-		util.GoTh(bootstrapAmount), controllerAddr.String(), bootstrapAmount))
-	lstDistrib, err := txbuilder.InitialDistributionFromYAMLData(lstYAML)
-	glb.AssertNoError(err)
-	err = os.WriteFile(genesisDistributionFileName, lstYAML, 0666)
-	glb.AssertNoError(err)
-	glb.Infof("default genesis distribution list has been stored in the file '%s':", genesisDistributionFileName)
-	glb.Infof(txbuilder.DistributionListToLines(lstDistrib, "     ").String())
 }
-
-const defaultDistributionListTemplate = `# Genesis distribution list consists of lock/balance pairs.
-# The default genesis distribution list contains only one lock/balance pair.
-# It assigns %s tokens to the target ED25519 address ('bootstrap address'). 
-# The rest of initial supply tokens remains in the bootstrap sequencer's chain output.
-# The whole genesis supply, i.e. both on the bootstrap chain and on the bootstrap address is controlled by the same genesis
-# private key. The tokens in the bootstrap address are needed to be able to withdraw tokens  
-# from the bootstrap sequencer's chain to other accounts by sending 'withdraw' on-ledger commands to the bootstrap sequencer
--
-  lock: %s
-  balance: %d
-`
