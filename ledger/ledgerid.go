@@ -303,10 +303,11 @@ func (id *IdentityData) YAML() []byte {
 
 const stateIDComment = `# This file contains Proxima ledger identity data.
 # It will be used to create genesis ledger state for the Proxima network.
-# The ledger identity file does not contain secrets, it is public.
+# The ledger identity file contain public data.
 # The data in the file must match genesis controller private key and hardcoded protocol constants.
 # Once used to create genesis, identity data should never be modified.
-# Values 'genesis_controller_address' and 'bootstrap_chain_id' are computed values used for control
+# Values 'genesis_controller_address' is computed from the public key
+# 'bootstrap_chain_id' is a constant, i.e. same for all ledgers
 `
 
 func (id *IdentityDataYAMLAble) YAML() []byte {
