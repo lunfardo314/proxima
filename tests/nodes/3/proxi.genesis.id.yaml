@@ -1,17 +1,25 @@
-# This file contains Proxima ledger identity data.
-# It will be used to create genesis ledger state for the Proxima network.
-# The ledger identity file does not contain secrets, it is public.
-# The data in the file must match genesis controller private key and hardcoded protocol constants.
-# Except 'description' field, file should not be modified.
-# Once used to create genesis, identity data should never be modified.
-# Values 'genesis_controller_address' and 'bootstrap_chain_id' are computed values used for control
-description: Proxima prototype version 0.0
-initial_supply: 1000000000000
+# This is a Proxima ledger identity file.
+# It contains public Proxima ledger constants set at genesis and never changed after. 
+# The ledger identity file is used to create genesis ledger state for Proxima nodes.
+# Private key of the controller should be known only to the creator of the genesis ledger state.
+# Public key of the controller identifies originator of the ledger for its lifetime.
+# 'genesis_controller_address' is computed from the public key of the controller
+# 'bootstrap_chain_id' is a constant, i.e. same for all ledgers
+genesis_time_unix: 1708279239
+initial_supply: 1000000000000000
 genesis_controller_public_key: 0530b790e0e7de626f36e20ba656f09e324c68203de899d0daf9f98fcb3cf684
-baseline_time: 1696982400000000000
-time_tick_duration: 100000000
+time_tick_duration_nanosec: 100000000
 max_time_tick_value_in_time_slot: 99
-genesis_time_slot: 446638
-core_ledger_constraints_hash: 119a3448744e80c5ed0d9a19c5de87ff4afdb6724784a4ad70c163204ea7cc73
+branch_bonus_base: 5000000
+slots_per_halving_epoch: 3153600
+vb_cost: 1
+transaction_pace: 10
+transaction_pace_sequencer: 5
+num_halving_epochs: 5
+chain_inflation_per_tick_fraction_base: 500000000
+chain_inflation_opportunity_slots: 12
+minimum_amount_on_sequencer: 1000000000
+max_tolerated_parasitic_chain_slots: 5
+description: Proxima prototype ledger. Ver 0.0.0
 genesis_controller_address: addressED25519(0x3faf090d38f18ea211936b8bcf19b7b30cdcb8e224394a5c30f9ba644f8bb2fb)
-bootstrap_chain_id: 1e8e129701aeea94c50e24864a8f950c4efd7a4a1a1cf12ed0a519bfa6fc0e84
+bootstrap_chain_id: 3053dcd151cf11713e16644d0746a9dc4c22fe8ea11c6260f3fee695720dde3c
