@@ -347,7 +347,7 @@ func (vid *WrappedTx) SequencerIDIfAvailable() (ledger.ChainID, bool) {
 				ret = seqOData.ChainConstraint.ID
 				if ret == ledger.NilChainID {
 					oid := vid.OutputID(v.sequencerOutputs[0])
-					ret = ledger.OriginChainID(&oid)
+					ret = ledger.MakeOriginChainID(&oid)
 				}
 				isAvailable = true
 			}
@@ -370,7 +370,7 @@ func (vid *WrappedTx) MustSequencerIDAndStemID() (seqID ledger.ChainID, stemID l
 			seqID = seqOData.ChainConstraint.ID
 			if seqID == ledger.NilChainID {
 				oid := vid.OutputID(v.sequencerOutputs[0])
-				seqID = ledger.OriginChainID(&oid)
+				seqID = ledger.MakeOriginChainID(&oid)
 			}
 			stemID = vid.OutputID(v.sequencerOutputs[1])
 		},

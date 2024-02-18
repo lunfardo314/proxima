@@ -20,8 +20,8 @@ func InitStateStore(par ledger.IdentityData, store global.StateStore) (ledger.Ch
 	util.AssertNoError(err)
 
 	genesisAddr := ledger.AddressED25519FromPublicKey(par.GenesisControllerPublicKey)
-	gout := InitialSupplyOutput(par.InitialSupply, genesisAddr)
-	gStemOut := GenesisStemOutput()
+	gout := ledger.GenesisOutput(par.InitialSupply, genesisAddr)
+	gStemOut := ledger.GenesisStemOutput()
 
 	updatable := MustNewUpdatable(store, emptyRoot)
 	coverage := LedgerCoverage{0, par.InitialSupply}
@@ -33,35 +33,6 @@ func InitStateStore(par ledger.IdentityData, store global.StateStore) (ledger.Ch
 		Supply:        par.InitialSupply,
 	})
 	return gout.ChainID, updatable.Root()
-}
-
-func InitialSupplyOutput(initialSupply uint64, controllerAddress ledger.AddressED25519) *ledger.OutputWithChainID {
-	oid := ledger.GenesisOutputID()
-	return &ledger.OutputWithChainID{
-		OutputWithID: ledger.OutputWithID{
-			ID: oid,
-			Output: ledger.NewOutput(func(o *ledger.Output) {
-				o.WithAmount(initialSupply).WithLock(controllerAddress)
-				chainIdx, err := o.PushConstraint(ledger.NewChainOrigin().Bytes())
-				util.AssertNoError(err)
-				_, err = o.PushConstraint(ledger.NewSequencerConstraint(chainIdx, initialSupply).Bytes())
-				util.AssertNoError(err)
-			}),
-		},
-		ChainID: ledger.OriginChainID(&oid),
-	}
-}
-
-func GenesisStemOutput() *ledger.OutputWithID {
-	return &ledger.OutputWithID{
-		ID: ledger.GenesisStemOutputID(),
-		Output: ledger.NewOutput(func(o *ledger.Output) {
-			o.WithAmount(0).
-				WithLock(&ledger.StemLock{
-					PredecessorOutputID: ledger.OutputID{},
-				})
-		}),
-	}
 }
 
 func genesisUpdateMutations(genesisOut, genesisStemOut *ledger.OutputWithID) *Mutations {

@@ -218,7 +218,7 @@ func (id *IdentityData) TicksPerSlot() int {
 
 func (id *IdentityData) OriginChainID() ChainID {
 	oid := GenesisOutputID()
-	return OriginChainID(&oid)
+	return MakeOriginChainID(&oid)
 }
 
 func (id *IdentityData) String() string {
@@ -231,7 +231,7 @@ func (id *IdentityData) Lines(prefix ...string) *lines.Lines {
 		Add("Description: '%s'", id.Description).
 		Add("Initial supply: %s", util.GoTh(id.InitialSupply)).
 		Add("Genesis controller address: %s", id.GenesisControlledAddress().String()).
-		Add("Baseline time: %s", id.GenesisTime().Format(time.RFC3339)).
+		Add("Baseline time: %s (Unix %d)", id.GenesisTime().Format(time.RFC3339), id.GenesisTimeUnix).
 		Add("Time tick duration: %v", id.TickDuration).
 		Add("Time ticks per time slot: %d", id.TicksPerSlot()).
 		Add("Origin chain ID: %s", originChainID.String())

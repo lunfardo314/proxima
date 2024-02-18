@@ -4,7 +4,7 @@
 # the controlling address of the bootstrap chain. 
 # I.e. both the bootstrap chain and bootstrap address is controlled by the same private key
 # The tokens in the ED25519 address are needed to be able to 
-# provide tokens for the command output to te bootstrap sequencer
+# provide tokens for the command output to the bootstrap sequencer
 -
   lock: addressED25519(0x3faf090d38f18ea211936b8bcf19b7b30cdcb8e224394a5c30f9ba644f8bb2fb)
-  balance: 10000
+  balance: 1000000

@@ -9,7 +9,6 @@ import (
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
-	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/util"
 	"golang.org/x/exp/maps"
@@ -216,9 +215,9 @@ func (d *DAG) ForEachVertexReadLocked(fun func(vid *vertex.WrappedTx) bool) {
 	}
 }
 
-func (d *DAG) ParseMilestoneData(msVID *vertex.WrappedTx) (ret *txbuilder.MilestoneData) {
+func (d *DAG) ParseMilestoneData(msVID *vertex.WrappedTx) (ret *ledger.MilestoneData) {
 	msVID.Unwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
-		ret = txbuilder.ParseMilestoneData(v.Tx.SequencerOutput().Output)
+		ret = ledger.ParseMilestoneData(v.Tx.SequencerOutput().Output)
 	}})
 	return
 }

@@ -83,7 +83,7 @@ func ConsistencyCheckBeforeAddTransaction(tx *transaction2.Transaction, r *multi
 		}
 		if chainConstraint.IsOrigin() {
 			// chain records should not exist
-			chainID := ledger.OriginChainID(oid)
+			chainID := ledger.MakeOriginChainID(oid)
 			_, err = r.GetUTXOForChainID(&chainID)
 			if errors.Is(err, multistate.ErrNotFound) {
 				return true
@@ -132,7 +132,7 @@ func ConsistencyCheckAfterAddTransaction(tx *transaction2.Transaction, r *multis
 		}
 		var chainID ledger.ChainID
 		if chainConstraint.IsOrigin() {
-			chainID = ledger.OriginChainID(oid)
+			chainID = ledger.MakeOriginChainID(oid)
 		} else {
 			chainID = chainConstraint.ID
 		}

@@ -5,7 +5,6 @@ import (
 	"os"
 
 	"github.com/lunfardo314/proxima/ledger"
-	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/util"
@@ -58,7 +57,7 @@ func runMainChainCmd(_ *cobra.Command, args []string) {
 			sd.onChainBalance = bd.SequencerOutput.Output.Amount()
 		}
 		if sd.name == "" {
-			if md := txbuilder.ParseMilestoneData(bd.SequencerOutput.Output); md != nil {
+			if md := ledger.ParseMilestoneData(bd.SequencerOutput.Output); md != nil {
 				sd.name = md.Name
 			}
 		}

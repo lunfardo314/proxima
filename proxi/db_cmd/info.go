@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/lunfardo314/proxima/ledger"
-	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/util"
@@ -64,7 +63,7 @@ func DisplayBranchData(branches []*multistate.BranchData) {
 	glb.Infof(strings.Repeat("-", 150))
 	for i, br := range branches {
 		name := "(no name)"
-		if msData := txbuilder.ParseMilestoneData(br.SequencerOutput.Output); msData != nil {
+		if msData := ledger.ParseMilestoneData(br.SequencerOutput.Output); msData != nil {
 			name = msData.Name
 		}
 		name = fmt.Sprintf("%s (%s)", name, br.SequencerID.StringVeryShort())

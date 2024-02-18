@@ -180,7 +180,7 @@ func addOutputToTrie(trie *immutable.TrieUpdatable, oid *ledger.OutputID, out *l
 	// update chain output records
 	var chainID ledger.ChainID
 	if chainConstraint.IsOrigin() {
-		chainID = ledger.OriginChainID(oid)
+		chainID = ledger.MakeOriginChainID(oid)
 	} else {
 		chainID = chainConstraint.ID
 	}

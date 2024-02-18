@@ -8,6 +8,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestBoostrapSequencerID(t *testing.T) {
+	t.Logf("bootstrap sequencer ID: %s", ledger.BoostrapSequencerID.String())
+	t.Logf("bootstrap sequencer ID hex: %s", ledger.BoostrapSequencerIDHex)
+}
+
 func TestSerialization(t *testing.T) {
 	t.Run("ok", func(t *testing.T) {
 		rr := RootRecord{

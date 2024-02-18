@@ -15,13 +15,13 @@ func TestOriginBase(t *testing.T) {
 	const supply = 10_000_000_000
 	addr := ledger.AddressED25519FromPrivateKey(testutil.GetTestingPrivateKey())
 	genesisTimeSlot := ledger.Slot(1337)
-	gOut := multistate.InitialSupplyOutput(supply, addr)
+	gOut := ledger.GenesisOutput(supply, addr)
 	t.Logf("Genesis: suppy = %d, genesis slot = %d:\n", supply, genesisTimeSlot)
 	t.Logf("   Genesis outputID: %s", gOut.ID.String())
 	t.Logf("   Genesis chain ID: %s", gOut.ChainID.String())
 	t.Logf("   Genesis output constraints:\n%s", gOut.Output.ToString("        "))
 
-	sOut := multistate.GenesisStemOutput()
+	sOut := ledger.GenesisStemOutput()
 	t.Logf("   Stem outputID: %s", sOut.ID.String())
 	t.Logf("   Stem output constraints:\n%s", sOut.Output.ToString("        "))
 

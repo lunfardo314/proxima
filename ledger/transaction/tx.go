@@ -200,7 +200,7 @@ func ScanSequencerData() TxValidationOption {
 
 		var sequencerID ledger.ChainID
 		if seqOutputData.ChainConstraint.IsOrigin() {
-			sequencerID = ledger.OriginChainID(&out.ID)
+			sequencerID = ledger.MakeOriginChainID(&out.ID)
 		} else {
 			sequencerID = seqOutputData.ChainConstraint.ID
 		}
@@ -833,7 +833,7 @@ func (tx *Transaction) FindChainOutput(chainID ledger.ChainID) *ledger.OutputWit
 		}
 		cID := cc.ID
 		if cc.IsOrigin() {
-			cID = ledger.OriginChainID(oid)
+			cID = ledger.MakeOriginChainID(oid)
 		}
 		if cID == chainID {
 			ret = &ledger.OutputWithID{

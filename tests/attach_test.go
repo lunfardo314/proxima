@@ -58,7 +58,7 @@ func TestBasic(t *testing.T) {
 
 		_, _, err := multistate.ScanGenesisState(stateStore)
 		require.NoError(t, err)
-		genesisOut := multistate.GenesisStemOutput()
+		genesisOut := ledger.GenesisStemOutput()
 		vidGenesis, err := attacher.EnsureBranch(genesisOut.ID.TransactionID(), wrk)
 		require.NoError(t, err)
 

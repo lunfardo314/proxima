@@ -7,7 +7,6 @@ import (
 	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/ledger"
-	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/util"
 )
 
@@ -100,7 +99,7 @@ func (a *milestoneAttacher) lazyRepeat(fun func() vertex.Status) vertex.Status {
 	}
 }
 
-func logFinalStatusString(vid *vertex.WrappedTx, finals *attachFinals, msData *txbuilder.MilestoneData) string {
+func logFinalStatusString(vid *vertex.WrappedTx, finals *attachFinals, msData *ledger.MilestoneData) string {
 	var msg string
 
 	msDataStr := " (n/a)"

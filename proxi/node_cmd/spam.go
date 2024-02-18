@@ -27,8 +27,6 @@ type spammerConfig struct {
 }
 
 func initSpamCmd() *cobra.Command {
-	glb.InitLedgerFromNode()
-
 	spamCmd := &cobra.Command{
 		Use:   "spam",
 		Short: `spams the ledger according to spammer.scenario`,
@@ -116,6 +114,7 @@ func displaySpammerConfig() spammerConfig {
 }
 
 func runSpamCmd(_ *cobra.Command, args []string) {
+	glb.InitLedgerFromNode()
 	cfg := displaySpammerConfig()
 	switch cfg.scenario {
 	case "standard":

@@ -3,7 +3,6 @@ package sequencer
 import (
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/ledger"
-	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/util"
 )
 
@@ -55,7 +54,7 @@ func (seq *Sequencer) LogMilestoneSubmitDefault(ms *vertex.WrappedTx) {
 	}
 
 	var branchIndex, msIndex uint32
-	if od := txbuilder.ParseMilestoneData(sequencerOutput.Output); od != nil {
+	if od := ledger.ParseMilestoneData(sequencerOutput.Output); od != nil {
 		branchIndex = od.BranchHeight
 		msIndex = od.ChainHeight
 	}

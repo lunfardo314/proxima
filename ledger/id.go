@@ -407,6 +407,6 @@ func RandomChainID() (ret ChainID) {
 	return
 }
 
-func OriginChainID(oid *OutputID) ChainID {
-	return blake2b.Sum256(oid[:])
+func MakeOriginChainID(originOutputID *OutputID) ChainID {
+	return blake2b.Sum256(originOutputID[:])
 }

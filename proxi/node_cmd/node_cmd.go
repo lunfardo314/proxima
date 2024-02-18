@@ -79,11 +79,11 @@ func displayTotals(outs []*ledger.OutputWithID) {
 }
 
 func getTagAlongFee() uint64 {
-	return viper.GetUint64("tag-along.fee")
+	return viper.GetUint64("tag_along.fee")
 }
 
 func GetTagAlongSequencerID() *ledger.ChainID {
-	seqIDStr := viper.GetString("tag-along.sequencer_id")
+	seqIDStr := viper.GetString("tag_along.sequencer_id")
 	if seqIDStr == "" {
 		return nil
 	}

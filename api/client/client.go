@@ -152,7 +152,7 @@ func (c *APIClient) GetChainOutputFromHeaviestState(chainID ledger.ChainID) (*le
 	return oData.ParseAsChainOutput()
 }
 
-func (c *APIClient) GetMilestoneDataFromHeaviestState(chainID ledger.ChainID) (*txbuilder.MilestoneData, error) {
+func (c *APIClient) GetMilestoneDataFromHeaviestState(chainID ledger.ChainID) (*ledger.MilestoneData, error) {
 	o, _, err := c.GetChainOutputFromHeaviestState(chainID)
 	if err != nil {
 		return nil, err
@@ -160,7 +160,7 @@ func (c *APIClient) GetMilestoneDataFromHeaviestState(chainID ledger.ChainID) (*
 	if !o.ID.IsSequencerTransaction() {
 		return nil, fmt.Errorf("not a sequencer milestone: %s", chainID.StringShort())
 	}
-	return txbuilder.ParseMilestoneData(o.Output), nil
+	return ledger.ParseMilestoneData(o.Output), nil
 }
 
 // GetOutputDataFromHeaviestState returns output data from the latest heaviest state, if it exists there

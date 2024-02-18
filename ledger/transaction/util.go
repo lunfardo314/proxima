@@ -94,7 +94,7 @@ func (ctx *TxContext) Lines(prefix ...string) *lines.Lines {
 			var cid ledger.ChainID
 			if cc.IsOrigin() {
 				oid := ledger.NewOutputID(txid, idx)
-				cid = ledger.OriginChainID(&oid)
+				cid = ledger.MakeOriginChainID(&oid)
 			} else {
 				cid = cc.ID
 			}
