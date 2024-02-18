@@ -70,13 +70,13 @@ func runInitLedgerIDCommand(_ *cobra.Command, _ []string) {
 	glb.Infof(txbuilder.DistributionListToLines(lstDistrib, "     ").String())
 }
 
-const defaultDistributionListTemplate = `# Genesis distribution list consists the list of lock/balance pairs.
+const defaultDistributionListTemplate = `# Genesis distribution list consists of lock/balance pairs.
 # The default genesis distribution list contains only one lock/balance pair.
-# It assigns %s tokens to the target ED25519 address ('bootstrap address') which is also
-# the controlling address of the bootstrap chain. 
-# I.e. both the bootstrap chain and bootstrap address is controlled by the same private key
-# The tokens in the ED25519 address are needed to be able to 
-# provide tokens for the command output to the bootstrap sequencer
+# It assigns %s tokens to the target ED25519 address ('bootstrap address'). 
+# The rest of initial supply tokens remains in the bootstrap sequencer's chain output.
+# The whole genesis supply, i.e. both on the bootstrap chain and on the bootstrap address is controlled by the same genesis
+# private key. The tokens in the bootstrap address are needed to be able to withdraw tokens  
+# from the bootstrap sequencer's chain to other accounts by sending 'withdraw' on-ledger commands to the bootstrap sequencer
 -
   lock: %s
   balance: %d

@@ -32,15 +32,14 @@ type (
 		// max time tick value in the slot. Up to 256 time ticks per time slot, default 100
 		MaxTickValueInSlot uint8
 		// ----------- inflation-related
-		// InitialBranchInflation inflation bonus. Inflated every year by BranchBonusInflationPerEpochPromille
-		InitialBranchBonus uint64
-		// BranchBonusInflationPerEpochPromille branch bonus is inflated y/y
-		BranchBonusInflationPerEpochPromille uint16
-		// approx one year in slots. Default 2_289_600
-		SlotsPerLedgerEpoch uint32
+		// NumHalvingEpochs number of halving epochs
+		NumHalvingEpochs byte
+		// Default 2_289_600. approx one year in slots.
+		SlotsPerHalvingEpoch uint32
+		// IBranchBonusBase inflation bonus
+		BranchBonusBase uint64
 		// ChainInflationPerTickFractionBase and HalvingYears
 		ChainInflationPerTickFractionBase uint64
-		ChainInflationHalvingEpochs       byte
 		// ChainInflationOpportunitySlots maximum gap between chain outputs for the non-zero inflation
 		ChainInflationOpportunitySlots uint64
 		// VBCost
@@ -57,23 +56,22 @@ type (
 
 	// IdentityDataYAMLAble structure for canonical YAMLAble marshaling
 	IdentityDataYAMLAble struct {
-		GenesisTimeUnix                      uint32 `yaml:"genesis_time_unix"`
-		InitialSupply                        uint64 `yaml:"initial_supply"`
-		GenesisControllerPublicKey           string `yaml:"genesis_controller_public_key"`
-		TimeTickDurationNanosec              int64  `yaml:"time_tick_duration_nanosec"`
-		MaxTimeTickValueInTimeSlot           uint8  `yaml:"max_time_tick_value_in_time_slot"`
-		InitialBranchBonus                   uint64 `yaml:"initial_branch_bonus"`
-		BranchBonusInflationPerEpochPromille uint16 `yaml:"branch_bonus_inflation_per_epoch_promille"`
-		SlotsPerLedgerEpoch                  uint32 `yaml:"slots_per_ledger_epoch"`
-		VBCost                               uint64 `yaml:"vb_cost"`
-		TransactionPace                      byte   `yaml:"transaction_pace"`
-		TransactionPaceSequencer             byte   `yaml:"transaction_pace_sequencer"`
-		ChainInflationHalvingEpochs          byte   `yaml:"chain_inflation_halving_epochs"`
-		ChainInflationPerTickFractionBase    uint64 `yaml:"chain_inflation_per_tick_fraction_base"`
-		ChainInflationOpportunitySlots       uint64 `yaml:"chain_inflation_opportunity_slots"`
-		MinimumAmountOnSequencer             uint64 `yaml:"minimum_amount_on_sequencer"`
-		MaxToleratedParasiticChainSlots      byte   `yaml:"max_tolerated_parasitic_chain_slots"`
-		Description                          string `yaml:"description"`
+		GenesisTimeUnix                   uint32 `yaml:"genesis_time_unix"`
+		InitialSupply                     uint64 `yaml:"initial_supply"`
+		GenesisControllerPublicKey        string `yaml:"genesis_controller_public_key"`
+		TimeTickDurationNanosec           int64  `yaml:"time_tick_duration_nanosec"`
+		MaxTimeTickValueInTimeSlot        uint8  `yaml:"max_time_tick_value_in_time_slot"`
+		BranchBonusBase                   uint64 `yaml:"branch_bonus_base"`
+		SlotsPerHalvingEpoch              uint32 `yaml:"slots_per_halving_epoch"`
+		VBCost                            uint64 `yaml:"vb_cost"`
+		TransactionPace                   byte   `yaml:"transaction_pace"`
+		TransactionPaceSequencer          byte   `yaml:"transaction_pace_sequencer"`
+		NumHalvingEpochs                  byte   `yaml:"num_halving_epochs"`
+		ChainInflationPerTickFractionBase uint64 `yaml:"chain_inflation_per_tick_fraction_base"`
+		ChainInflationOpportunitySlots    uint64 `yaml:"chain_inflation_opportunity_slots"`
+		MinimumAmountOnSequencer          uint64 `yaml:"minimum_amount_on_sequencer"`
+		MaxToleratedParasiticChainSlots   byte   `yaml:"max_tolerated_parasitic_chain_slots"`
+		Description                       string `yaml:"description"`
 		// non-persistent, for control
 		GenesisControllerAddress string `yaml:"genesis_controller_address"`
 		BootstrapChainID         string `yaml:"bootstrap_chain_id"`
@@ -93,10 +91,9 @@ func (id *IdentityData) Bytes() []byte {
 	_ = binary.Write(&buf, binary.BigEndian, id.InitialSupply)
 	_ = binary.Write(&buf, binary.BigEndian, id.TickDuration.Nanoseconds())
 	_ = binary.Write(&buf, binary.BigEndian, id.MaxTickValueInSlot)
-	_ = binary.Write(&buf, binary.BigEndian, id.SlotsPerLedgerEpoch)
-	_ = binary.Write(&buf, binary.BigEndian, id.InitialBranchBonus)
-	_ = binary.Write(&buf, binary.BigEndian, id.BranchBonusInflationPerEpochPromille)
-	_ = binary.Write(&buf, binary.BigEndian, id.ChainInflationHalvingEpochs)
+	_ = binary.Write(&buf, binary.BigEndian, id.SlotsPerHalvingEpoch)
+	_ = binary.Write(&buf, binary.BigEndian, id.BranchBonusBase)
+	_ = binary.Write(&buf, binary.BigEndian, id.NumHalvingEpochs)
 	_ = binary.Write(&buf, binary.BigEndian, id.ChainInflationPerTickFractionBase)
 	_ = binary.Write(&buf, binary.BigEndian, id.ChainInflationOpportunitySlots)
 	_ = binary.Write(&buf, binary.BigEndian, id.VBCost)
@@ -137,16 +134,13 @@ func MustLedgerIdentityDataFromBytes(data []byte) *IdentityData {
 	err = binary.Read(rdr, binary.BigEndian, &ret.MaxTickValueInSlot)
 	util.AssertNoError(err)
 
-	err = binary.Read(rdr, binary.BigEndian, &ret.SlotsPerLedgerEpoch)
+	err = binary.Read(rdr, binary.BigEndian, &ret.SlotsPerHalvingEpoch)
 	util.AssertNoError(err)
 
-	err = binary.Read(rdr, binary.BigEndian, &ret.InitialBranchBonus)
+	err = binary.Read(rdr, binary.BigEndian, &ret.BranchBonusBase)
 	util.AssertNoError(err)
 
-	err = binary.Read(rdr, binary.BigEndian, &ret.BranchBonusInflationPerEpochPromille)
-	util.AssertNoError(err)
-
-	err = binary.Read(rdr, binary.BigEndian, &ret.ChainInflationHalvingEpochs)
+	err = binary.Read(rdr, binary.BigEndian, &ret.NumHalvingEpochs)
 	util.AssertNoError(err)
 
 	err = binary.Read(rdr, binary.BigEndian, &ret.ChainInflationPerTickFractionBase)
@@ -240,30 +234,29 @@ func (id *IdentityData) Lines(prefix ...string) *lines.Lines {
 func (id *IdentityData) YAMLAble() *IdentityDataYAMLAble {
 	chainID := id.OriginChainID()
 	return &IdentityDataYAMLAble{
-		GenesisTimeUnix:                      id.GenesisTimeUnix,
-		GenesisControllerPublicKey:           hex.EncodeToString(id.GenesisControllerPublicKey),
-		InitialSupply:                        id.InitialSupply,
-		TimeTickDurationNanosec:              id.TickDuration.Nanoseconds(),
-		MaxTimeTickValueInTimeSlot:           id.MaxTickValueInSlot,
-		InitialBranchBonus:                   id.InitialBranchBonus,
-		BranchBonusInflationPerEpochPromille: id.BranchBonusInflationPerEpochPromille,
-		VBCost:                               id.VBCost,
-		TransactionPace:                      id.TransactionPace,
-		TransactionPaceSequencer:             id.TransactionPaceSequencer,
-		SlotsPerLedgerEpoch:                  id.SlotsPerLedgerEpoch,
-		ChainInflationHalvingEpochs:          id.ChainInflationHalvingEpochs,
-		ChainInflationPerTickFractionBase:    id.ChainInflationPerTickFractionBase,
-		ChainInflationOpportunitySlots:       id.ChainInflationOpportunitySlots,
-		GenesisControllerAddress:             id.GenesisControlledAddress().String(),
-		MinimumAmountOnSequencer:             id.MinimumAmountOnSequencer,
-		MaxToleratedParasiticChainSlots:      id.MaxToleratedParasiticChainSlots,
-		BootstrapChainID:                     chainID.StringHex(),
-		Description:                          id.Description,
+		GenesisTimeUnix:                   id.GenesisTimeUnix,
+		GenesisControllerPublicKey:        hex.EncodeToString(id.GenesisControllerPublicKey),
+		InitialSupply:                     id.InitialSupply,
+		TimeTickDurationNanosec:           id.TickDuration.Nanoseconds(),
+		MaxTimeTickValueInTimeSlot:        id.MaxTickValueInSlot,
+		BranchBonusBase:                   id.BranchBonusBase,
+		VBCost:                            id.VBCost,
+		TransactionPace:                   id.TransactionPace,
+		TransactionPaceSequencer:          id.TransactionPaceSequencer,
+		SlotsPerHalvingEpoch:              id.SlotsPerHalvingEpoch,
+		NumHalvingEpochs:                  id.NumHalvingEpochs,
+		ChainInflationPerTickFractionBase: id.ChainInflationPerTickFractionBase,
+		ChainInflationOpportunitySlots:    id.ChainInflationOpportunitySlots,
+		GenesisControllerAddress:          id.GenesisControlledAddress().String(),
+		MinimumAmountOnSequencer:          id.MinimumAmountOnSequencer,
+		MaxToleratedParasiticChainSlots:   id.MaxToleratedParasiticChainSlots,
+		BootstrapChainID:                  chainID.StringHex(),
+		Description:                       id.Description,
 	}
 }
 
 func (id *IdentityData) TimeHorizonYears() int {
-	return math.MaxUint32 / int(id.SlotsPerLedgerEpoch)
+	return math.MaxUint32 / int(id.SlotsPerHalvingEpoch)
 }
 
 func (id *IdentityData) SlotsPerDay() int {
@@ -281,7 +274,7 @@ func (id *IdentityData) TimeConstantsToString() string {
 		Add("SlotDuration = %v", id.SlotDuration()).
 		Add("SlotsPerDay = %v", id.SlotsPerDay()).
 		Add("TimeHorizonYears = %d", id.TimeHorizonYears()).
-		Add("SlotsPerLedgerEpoch = %d", id.SlotsPerLedgerEpoch).
+		Add("SlotsPerHalvingEpoch = %d", id.SlotsPerHalvingEpoch).
 		Add("seconds per year = %d", 60*60*24*365).
 		Add("timestamp GenesisTime = %v", id.GenesisTime()).
 		Add("nowis %v", nowis).
@@ -303,10 +296,10 @@ func (id *IdentityData) YAML() []byte {
 
 const stateIDComment = `# This file contains Proxima ledger identity data.
 # It will be used to create genesis ledger state for the Proxima network.
-# The ledger identity file contain public data.
-# The data in the file must match genesis controller private key and hardcoded protocol constants.
+# The ledger identity file contains only public data.
 # Once used to create genesis, identity data should never be modified.
-# Values 'genesis_controller_address' is computed from the public key
+# Private key of the controller should be known only to the creator of the ledger.
+# 'genesis_controller_address' is computed from the public key of the controller
 # 'bootstrap_chain_id' is a constant, i.e. same for all ledgers
 `
 
@@ -333,15 +326,14 @@ func (id *IdentityDataYAMLAble) stateIdentityData() (*IdentityData, error) {
 	}
 	ret.TickDuration = time.Duration(id.TimeTickDurationNanosec)
 	ret.MaxTickValueInSlot = id.MaxTimeTickValueInTimeSlot
-	ret.InitialBranchBonus = id.InitialBranchBonus
-	ret.BranchBonusInflationPerEpochPromille = id.BranchBonusInflationPerEpochPromille
+	ret.BranchBonusBase = id.BranchBonusBase
 	ret.VBCost = id.VBCost
 	ret.TransactionPace = id.TransactionPace
 	ret.TransactionPaceSequencer = id.TransactionPaceSequencer
-	ret.SlotsPerLedgerEpoch = id.SlotsPerLedgerEpoch
+	ret.SlotsPerHalvingEpoch = id.SlotsPerHalvingEpoch
 	ret.ChainInflationPerTickFractionBase = id.ChainInflationPerTickFractionBase
 	ret.ChainInflationOpportunitySlots = id.ChainInflationOpportunitySlots
-	ret.ChainInflationHalvingEpochs = id.ChainInflationHalvingEpochs
+	ret.NumHalvingEpochs = id.NumHalvingEpochs
 	ret.MinimumAmountOnSequencer = id.MinimumAmountOnSequencer
 	ret.MaxToleratedParasiticChainSlots = id.MaxToleratedParasiticChainSlots
 	ret.Description = id.Description

@@ -39,7 +39,6 @@ const (
 	DefaultInitialSupply = InitialSupplyProxi * PRXI
 
 	DefaultInitialBranchInflationBonus          = 5 * PRXI
-	DefaultAnnualBranchInflationPromille        = 40 // not in use
 	DefaultInitialChainInflationFractionPerTick = 500_000_000
 	DefaultHalvingEpochs                        = 5
 	DefaultChainInflationOpportunitySlots       = 12
@@ -76,15 +75,14 @@ func (lib *Library) extendWithBaseConstants(id *IdentityData) {
 	lib.Extendf("constGenesisTimeUnix", "u64/%d", id.GenesisTimeUnix)
 	lib.Extendf("constTickDuration", "u64/%d", int64(id.TickDuration))
 	lib.Extendf("constMaxTickValuePerSlot", "u64/%d", id.MaxTickValueInSlot)
-	lib.Extendf("constInitialBranchBonus", "u64/%d", id.InitialBranchBonus)
-	lib.Extendf("constBranchBonusYearlyGrowthPromille", "u64/%d", id.BranchBonusInflationPerEpochPromille)
-	lib.Extendf("constHalvingEpochs", "u64/%d", id.ChainInflationHalvingEpochs)
+	lib.Extendf("constInitialBranchBonus", "u64/%d", id.BranchBonusBase)
+	lib.Extendf("constHalvingEpochs", "u64/%d", id.NumHalvingEpochs)
 	lib.Extendf("constChainInflationFractionBase", "u64/%d", id.ChainInflationPerTickFractionBase)
 	lib.Extendf("constChainInflationOpportunitySlots", "u64/%d", id.ChainInflationOpportunitySlots)
 	lib.Extendf("constMinimumAmountOnSequencer", "u64/%d", id.MinimumAmountOnSequencer)
 	lib.Extendf("constMaxToleratedParasiticChainSlots", "%d", id.MaxToleratedParasiticChainSlots)
 
-	lib.Extendf("constSlotsPerLedgerEpoch", "u64/%d", id.SlotsPerLedgerEpoch)
+	lib.Extendf("constSlotsPerLedgerEpoch", "u64/%d", id.SlotsPerHalvingEpoch)
 	lib.Extendf("constTransactionPace", "u64/%d", id.TransactionPace)
 	lib.Extendf("constTransactionPaceSequencer", "u64/%d", id.TransactionPaceSequencer)
 	lib.Extendf("constVBCost16", "u16/%d", id.VBCost) // change to 64
@@ -133,29 +131,28 @@ func DefaultIdentityData(privateKey ed25519.PrivateKey) *IdentityData {
 	genesisTimeUnix := uint32(time.Now().Unix())
 
 	return &IdentityData{
-		GenesisTimeUnix:                      genesisTimeUnix,
-		GenesisControllerPublicKey:           privateKey.Public().(ed25519.PublicKey),
-		InitialSupply:                        DefaultInitialSupply,
-		TickDuration:                         DefaultTickDuration,
-		MaxTickValueInSlot:                   DefaultTicksPerSlot - 1,
-		SlotsPerLedgerEpoch:                  uint32(DefaultSlotsPerLedgerEpoch),
-		InitialBranchBonus:                   DefaultInitialBranchInflationBonus,
-		BranchBonusInflationPerEpochPromille: DefaultAnnualBranchInflationPromille,
-		VBCost:                               DefaultVBCost,
-		TransactionPace:                      DefaultTransactionPace,
-		TransactionPaceSequencer:             DefaultTransactionPaceSequencer,
-		ChainInflationHalvingEpochs:          DefaultHalvingEpochs,
-		ChainInflationPerTickFractionBase:    DefaultInitialChainInflationFractionPerTick,
-		ChainInflationOpportunitySlots:       DefaultChainInflationOpportunitySlots,
-		MinimumAmountOnSequencer:             DefaultMinimumAmountOnSequencer,
-		MaxToleratedParasiticChainSlots:      DefaultMaxToleratedParasiticChainSlots,
-		Description:                          "Proxima prototype ledger. Ver 0.0.0",
+		GenesisTimeUnix:                   genesisTimeUnix,
+		GenesisControllerPublicKey:        privateKey.Public().(ed25519.PublicKey),
+		InitialSupply:                     DefaultInitialSupply,
+		TickDuration:                      DefaultTickDuration,
+		MaxTickValueInSlot:                DefaultTicksPerSlot - 1,
+		SlotsPerHalvingEpoch:              uint32(DefaultSlotsPerLedgerEpoch),
+		BranchBonusBase:                   DefaultInitialBranchInflationBonus,
+		VBCost:                            DefaultVBCost,
+		TransactionPace:                   DefaultTransactionPace,
+		TransactionPaceSequencer:          DefaultTransactionPaceSequencer,
+		NumHalvingEpochs:                  DefaultHalvingEpochs,
+		ChainInflationPerTickFractionBase: DefaultInitialChainInflationFractionPerTick,
+		ChainInflationOpportunitySlots:    DefaultChainInflationOpportunitySlots,
+		MinimumAmountOnSequencer:          DefaultMinimumAmountOnSequencer,
+		MaxToleratedParasiticChainSlots:   DefaultMaxToleratedParasiticChainSlots,
+		Description:                       "Proxima prototype ledger. Ver 0.0.0",
 	}
 }
 
 func (id *IdentityData) SetTickDuration(d time.Duration) {
 	id.TickDuration = d
-	id.SlotsPerLedgerEpoch = uint32((24 * 365 * time.Hour) / id.SlotDuration())
+	id.SlotsPerHalvingEpoch = uint32((24 * 365 * time.Hour) / id.SlotDuration())
 }
 
 // Library constants

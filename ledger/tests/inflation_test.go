@@ -49,7 +49,7 @@ func TestInflation(t *testing.T) {
 		amountIn := ledger.L().Const().ChainInflationPerTickFractionBase() + 13370000
 		t.Logf("amountIn: %s", util.GoTh(amountIn))
 		for i := 0; i < 10; i++ {
-			tsIn := tsStart.AddSlots(int(ledger.L().ID.SlotsPerLedgerEpoch) * i)
+			tsIn := tsStart.AddSlots(int(ledger.L().ID.SlotsPerHalvingEpoch) * i)
 			tsOut1 := tsIn.AddSlots(3)
 			src := fmt.Sprintf("inflationAmount(%s, %s, u64/%d)", tsIn.Source(), tsOut1.Source(), amountIn)
 			ledger.L().MustEqual(src, fmt.Sprintf("u64/%d", ledger.L().ID.InflationAmount(tsIn, tsOut1, amountIn)))

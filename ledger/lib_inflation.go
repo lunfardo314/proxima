@@ -15,7 +15,7 @@ import (
 func (id *IdentityData) InflationAmount(inTs, outTs Time, inAmount uint64) uint64 {
 	if outTs.IsSlotBoundary() {
 		// for branch transactions fixed inflation
-		return id.InitialBranchBonus
+		return id.BranchBonusBase
 	}
 	return id.ChainInflationAmount(inTs, outTs, inAmount)
 }
@@ -41,14 +41,14 @@ func (id *IdentityData) _insideInflationOpportunityWindow(inTs, outTs Time) bool
 }
 
 func (id *IdentityData) _epochFromGenesis(slot Slot) uint64 {
-	return uint64(slot) / uint64(id.SlotsPerLedgerEpoch)
+	return uint64(slot) / uint64(id.SlotsPerHalvingEpoch)
 }
 
 func (id *IdentityData) _halvingEpoch(epochFromGenesis uint64) uint64 {
-	if epochFromGenesis < uint64(id.ChainInflationHalvingEpochs) {
+	if epochFromGenesis < uint64(id.NumHalvingEpochs) {
 		return epochFromGenesis
 	}
-	return uint64(id.ChainInflationHalvingEpochs)
+	return uint64(id.NumHalvingEpochs)
 }
 
 func (id *IdentityData) InflationFractionBySlot(slotIn Slot) uint64 {

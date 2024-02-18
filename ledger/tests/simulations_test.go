@@ -44,7 +44,7 @@ func TestInflationCalculations1(t *testing.T) {
 		SlotDuration        		: %v
 		TicksPerSlot				: %d
 		TickDuration				: %v
-		SlotsPerLedgerEpoch    		: %s
+		SlotsPerHalvingEpoch    		: %s
 		SlotsPerDay 	       		: %s
 		TicksPerYear				: %s
 		SlotsPerHour        		: %s
@@ -71,7 +71,7 @@ func TestInflationCalculations1(t *testing.T) {
 }
 
 func BranchInflationAnnual() int64 {
-	return ledger.SlotsPerLedgerEpoch() * int64(ledger.L().ID.InitialBranchBonus)
+	return ledger.SlotsPerLedgerEpoch() * int64(ledger.L().ID.BranchBonusBase)
 }
 
 func MaxInflationChainEpoch() int64 {
@@ -111,7 +111,7 @@ func TestInflationCalculations2(t *testing.T) {
 
 	t.Logf(template2,
 		util.GoTh(ledger.L().ID.InitialSupply), util.GoTh(ledger.L().ID.InitialSupply/ledger.PRXI),
-		util.GoTh(ledger.L().ID.InitialBranchBonus), util.GoTh(ledger.L().ID.InitialBranchBonus/ledger.DustPerProxi),
+		util.GoTh(ledger.L().ID.BranchBonusBase), util.GoTh(ledger.L().ID.BranchBonusBase/ledger.DustPerProxi),
 		util.GoTh(BranchInflationAnnual()), util.GoTh(BranchInflationAnnual()/ledger.DustPerProxi),
 		percent(int(BranchInflationAnnual()), int(ledger.L().ID.InitialSupply)),
 		util.GoTh(ledger.L().ID.ChainInflationPerTickFractionBase),
@@ -132,7 +132,7 @@ func chainFractionBySlot(s ledger.Slot) int {
 
 func TestInflationCalculations3(t *testing.T) {
 	for i := 0; i < simulateYears; i++ {
-		slot := ledger.Slot(i * int(ledger.L().ID.SlotsPerLedgerEpoch))
+		slot := ledger.Slot(i * int(ledger.L().ID.SlotsPerHalvingEpoch))
 		t.Logf("    year %d : chain fraction %s", i, util.GoTh(int(slot)))
 	}
 }
@@ -147,7 +147,7 @@ func TestReverseFractionEstimation(t *testing.T) {
 	const targetAnnualChainInflationPercentage = 60
 
 	absChainInflationEpoch := int((ledger.L().ID.InitialSupply * targetAnnualChainInflationPercentage) / 100)
-	absChainInflationPerSlot := absChainInflationEpoch / int(ledger.L().ID.SlotsPerLedgerEpoch)
+	absChainInflationPerSlot := absChainInflationEpoch / int(ledger.L().ID.SlotsPerHalvingEpoch)
 	absChainInflationPerTick := absChainInflationPerSlot / int(ledger.TicksPerSlot())
 	projectedFraction := int(ledger.L().ID.InitialSupply) / absChainInflationPerTick
 
@@ -180,7 +180,7 @@ func TestReverseFractionEstimation(t *testing.T) {
 }
 
 func TestInflationProjections(t *testing.T) {
-	t.Logf("initial branch bonus: %s", util.GoTh(ledger.L().ID.InitialBranchBonus))
+	t.Logf("initial branch bonus: %s", util.GoTh(ledger.L().ID.BranchBonusBase))
 	t.Logf("initial branch inflation epoch: %s (%.2f%%)",
 		util.GoTh(BranchInflationAnnual()), percent(int(BranchInflationAnnual()), int(ledger.L().ID.InitialSupply)))
 	t.Logf("initial chain inflation epoch: %s (%.2f%%)",
@@ -188,7 +188,7 @@ func TestInflationProjections(t *testing.T) {
 
 	years := make([]yearData, simulateYears)
 	var chainSlotInflation int
-	slotsPerEpoch := ledger.L().ID.SlotsPerLedgerEpoch
+	slotsPerEpoch := ledger.L().ID.SlotsPerHalvingEpoch
 	for y, year := range years {
 		year.supplyInSlot = make([]int, slotsPerEpoch)
 		slot := ledger.Slot(y * int(slotsPerEpoch))
@@ -203,10 +203,10 @@ func TestInflationProjections(t *testing.T) {
 				}
 			} else {
 				chainSlotInflation = (year.supplyInSlot[i-1] * ledger.L().ID.TicksPerSlot()) / chainFractionBySlot(slot) // * capitalParticipatingShare / 100
-				year.supplyInSlot[i] = year.supplyInSlot[i-1] + chainSlotInflation + int(ledger.L().ID.InitialBranchBonus)
+				year.supplyInSlot[i] = year.supplyInSlot[i-1] + chainSlotInflation + int(ledger.L().ID.BranchBonusBase)
 			}
 			year.chainInflation += chainSlotInflation
-			year.branchInflation += int(ledger.L().ID.InitialBranchBonus)
+			year.branchInflation += int(ledger.L().ID.BranchBonusBase)
 		}
 		years[y] = year
 	}
