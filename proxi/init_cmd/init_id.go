@@ -7,6 +7,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/proxi/glb"
+	"github.com/lunfardo314/proxima/util"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -60,7 +61,7 @@ func runInitLedgerIDCommand(_ *cobra.Command, _ []string) {
 	// create default distribution
 	controllerAddr := ledger.AddressED25519FromPrivateKey(privKey)
 	lstYAML := []byte(fmt.Sprintf(defaultDistributionListTemplate,
-		controllerAddr.String(), bootstrapAmount))
+		util.GoTh(bootstrapAmount), controllerAddr.String(), bootstrapAmount))
 	lstDistrib, err := txbuilder.InitialDistributionFromYAMLData(lstYAML)
 	glb.AssertNoError(err)
 	err = os.WriteFile(genesisDistributionFileName, lstYAML, 0666)
@@ -71,7 +72,7 @@ func runInitLedgerIDCommand(_ *cobra.Command, _ []string) {
 
 const defaultDistributionListTemplate = `# Genesis distribution list consists the list of lock/balance pairs.
 # The default genesis distribution list contains only one lock/balance pair.
-# It assigns 10_000 tokens to the target ED25519 address ('bootstrap address') which is also
+# It assigns %s tokens to the target ED25519 address ('bootstrap address') which is also
 # the controlling address of the bootstrap chain. 
 # I.e. both the bootstrap chain and bootstrap address is controlled by the same private key
 # The tokens in the ED25519 address are needed to be able to 

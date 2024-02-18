@@ -81,8 +81,8 @@ type (
 )
 
 const (
-	InitialSupplyOutputIndex = byte(0)
-	StemOutputIndex          = byte(1)
+	GenesisOutputIndex     = byte(0)
+	GenesisStemOutputIndex = byte(1)
 )
 
 func (id *IdentityData) Bytes() []byte {
@@ -372,11 +372,11 @@ func GenesisTransactionID() *TransactionID {
 func GenesisOutputID() (ret OutputID) {
 	// we are placing sequencer flag = true into the genesis tx ID to please sequencer constraint
 	// of the origin branch transaction. It is the only exception
-	ret = NewOutputID(GenesisTransactionID(), InitialSupplyOutputIndex)
+	ret = NewOutputID(GenesisTransactionID(), GenesisOutputIndex)
 	return
 }
 
 func GenesisStemOutputID() (ret OutputID) {
-	ret = NewOutputID(GenesisTransactionID(), StemOutputIndex)
+	ret = NewOutputID(GenesisTransactionID(), GenesisStemOutputIndex)
 	return
 }

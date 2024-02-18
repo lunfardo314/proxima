@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 
 	"github.com/lunfardo314/proxima/util"
+	"golang.org/x/crypto/blake2b"
 )
 
 const (
@@ -21,6 +22,11 @@ func init() {
 	BoostrapSequencerID, err = ChainIDFromBytes(data)
 	util.AssertNoError(err)
 	util.Assertf(BoostrapSequencerID == id, "inconsistency: bootstrap sequencer ID ")
+
+	// calculate directly and check
+	var zero33 [33]byte
+	zero33[0] = 0b11000000
+	util.Assertf(BoostrapSequencerID == blake2b.Sum256(zero33[:]), "BoostrapSequencerID must be equal to the blake2b hash of 33-long zero bytes array with first 2 bits sets to 1")
 }
 
 func GenesisOutput(initialSupply uint64, controllerAddress AddressED25519) *OutputWithChainID {
