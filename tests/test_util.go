@@ -282,13 +282,13 @@ func (td *workflowTestData) stop() {
 	td.env.Stop()
 }
 
-func (td *workflowTestData) waitStop() {
-	td.env.MustWaitAllWorkProcessesStop(5 * time.Second)
+func (td *workflowTestData) waitStop(timeout ...time.Duration) {
+	td.env.MustWaitAllWorkProcessesStop(timeout...)
 }
 
-func (td *workflowTestData) stopAndWait() {
+func (td *workflowTestData) stopAndWait(timeout ...time.Duration) {
 	td.env.Stop()
-	td.env.MustWaitAllWorkProcessesStop(5 * time.Second)
+	td.env.MustWaitAllWorkProcessesStop(timeout...)
 }
 
 func (td *longConflictTestData) makeSeqBeginnings(withConflictingFees bool) {
@@ -777,5 +777,6 @@ func (td *workflowTestData) startSequencersWithTimeout(maxSlots int, timeout ...
 		for _, seq := range td.sequencers {
 			seq.Stop()
 		}
+		td.bootstrapSeq.Stop()
 	}()
 }

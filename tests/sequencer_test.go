@@ -452,12 +452,11 @@ func TestNSequencersTransfer(t *testing.T) {
 			t.Log("spamming stopped")
 		}()
 
-		testData.startSequencersWithTimeout(maxSlots, spammingTimeout+(10*time.Second))
+		testData.startSequencersWithTimeout(maxSlots)
 
 		<-ctx.Done()
-		testData.env.Stop()
-
-		testData.waitStop()
+		time.Sleep(5 * time.Second)
+		testData.stopAndWait(3 * time.Second)
 
 		t.Logf("%s", testData.wrk.Info())
 		//testData.wrk.SaveGraph("utangle")
@@ -531,9 +530,11 @@ func TestNSequencersTransfer(t *testing.T) {
 			t.Log("spamming stopped")
 		}()
 
-		testData.startSequencersWithTimeout(maxSlots, spammingTimeout+(5*time.Second))
+		testData.startSequencersWithTimeout(maxSlots)
 
-		testData.stopAndWait()
+		<-ctx.Done()
+		time.Sleep(5 * time.Second)
+		testData.stopAndWait(3 * time.Second)
 
 		t.Logf("%s", testData.wrk.Info())
 		rdr = testData.wrk.HeaviestStateForLatestTimeSlot()
