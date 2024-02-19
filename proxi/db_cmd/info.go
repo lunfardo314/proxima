@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"sort"
-	"strings"
 
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/multistate"
@@ -58,19 +57,18 @@ func runDbInfoCmd(_ *cobra.Command, _ []string) {
 }
 
 func DisplayBranchData(branches []*multistate.BranchData) {
-	glb.Infof("     %-23s %-22s %-20s %-20s %-20s %-70s",
-		"stemID", "name (seqID)", "supply (diluted)", "on-chain", "coverage", "root")
-	glb.Infof(strings.Repeat("-", 150))
 	for i, br := range branches {
 		name := "(no name)"
 		if msData := ledger.ParseMilestoneData(br.SequencerOutput.Output); msData != nil {
 			name = msData.Name
 		}
 		name = fmt.Sprintf("%s (%s)", name, br.SequencerID.StringVeryShort())
-		onChainAmount := br.SequencerOutput.Output.Amount()
-		supply := br.Supply
-		glb.Infof(" %2d: %20s %10s %10s %20s %20s    %-70s",
-			i, br.Stem.IDShort(), name, util.GoTh(supply), util.GoTh(onChainAmount),
-			util.GoTh(br.LedgerCoverage.Sum()), br.Root.String())
+		glb.Infof(" %2d: %s stem: %s, supply: %s, infl: %s, on chain: %s, coverage: %s, root: %s",
+			i, name, br.Stem.IDShort(),
+			util.GoTh(br.Supply),
+			util.GoTh(br.SlotInflation),
+			util.GoTh(br.SequencerOutput.Output.Amount()),
+			util.GoTh(br.LedgerCoverage.Sum()),
+			br.Root.String())
 	}
 }

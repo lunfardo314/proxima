@@ -39,10 +39,9 @@ type (
 	}
 
 	SequencerInfo struct {
-		BeginBalance   uint64
-		EndBalance     uint64
-		TotalInflation uint64
-		NumBranches    int
+		BeginBalance uint64
+		EndBalance   uint64
+		NumBranches  int
 	}
 )
 
@@ -96,21 +95,18 @@ func FetchSummarySupplyAndInflation(stateStore global.StateStore, nBack int) *Su
 	util.Assertf(len(branchData) > 0, "len(branchData) > 0")
 
 	ret := &SummarySupplyAndInflation{
-		BeginSupply:      0, // branchData[len(branchData)-1].Stem.Output.MustStemLock().Supply,
-		EndSupply:        0, // branchData[0].Stem.Output.MustStemLock().Supply,
-		TotalInflation:   0,
+		BeginSupply:      branchData[len(branchData)-1].Supply,
+		EndSupply:        branchData[0].Supply,
+		TotalInflation:   branchData[0].Supply - branchData[len(branchData)-1].Supply,
 		NumberOfBranches: len(branchData),
 		OldestSlot:       branchData[len(branchData)-1].Stem.Timestamp().Slot(),
 		LatestSlot:       branchData[0].Stem.Timestamp().Slot(),
 		InfoPerSeqID:     make(map[ledger.ChainID]SequencerInfo),
 	}
+	// count branches per sequencer
 	for i := 0; i < len(branchData)-1; i++ {
-		//inflation := branchData[i].Stem.Output.MustStemLock().InflationAmount
-		//ret.SlotInflation += inflation
-
 		seqInfo := ret.InfoPerSeqID[branchData[i].SequencerID]
 		seqInfo.NumBranches++
-		//seqInfo.SlotInflation += inflation
 		ret.InfoPerSeqID[branchData[i].SequencerID] = seqInfo
 	}
 	util.Assertf(ret.EndSupply-ret.BeginSupply == ret.TotalInflation, "FetchSummarySupplyAndInflation: ret.EndSupply - ret.BeginSupply == ret.SlotInflation")
@@ -122,13 +118,10 @@ func FetchSummarySupplyAndInflation(stateStore global.StateStore, nBack int) *Su
 			seqInfo.EndBalance = o.Output.Amount()
 		}
 
-		for i := len(branchData) - 1; i >= 0; i-- {
-			rdr = MustNewSugaredReadableState(stateStore, branchData[i].Root)
-			o, err = rdr.GetChainOutput(&seqID)
-			if err == nil {
-				seqInfo.BeginBalance = o.Output.Amount()
-				break
-			}
+		rdr = MustNewSugaredReadableState(stateStore, branchData[len(branchData)-1].Root)
+		o, err = rdr.GetChainOutput(&seqID)
+		if err == nil {
+			seqInfo.BeginBalance = o.Output.Amount()
 		}
 		ret.InfoPerSeqID[seqID] = seqInfo
 	}
@@ -136,28 +129,24 @@ func FetchSummarySupplyAndInflation(stateStore global.StateStore, nBack int) *Su
 }
 
 func (s *SummarySupplyAndInflation) Lines(prefix ...string) *lines.Lines {
-	totalInflationPercentage := float32(s.TotalInflation*100) / float32(s.BeginSupply)
-	totalInflationPercentagePerSlot := totalInflationPercentage / float32(s.LatestSlot-s.OldestSlot+1)
-	totalInflationPercentageYearlyExtrapolation := totalInflationPercentagePerSlot * float32(ledger.SlotsPerLedgerEpoch())
-
+	pInfl := util.Percent(int(s.TotalInflation), int(s.BeginSupply))
+	nSlots := s.LatestSlot - s.OldestSlot + 1
 	ret := lines.New(prefix...).
-		Add("Slots from %d to %d inclusive. Total %d slots", s.OldestSlot, s.LatestSlot, s.LatestSlot-s.OldestSlot+1).
+		Add("Slots from %d to %d inclusive. Total %d slots", s.OldestSlot, s.LatestSlot, nSlots).
 		Add("Number of branches: %d", s.NumberOfBranches).
-		Add("Supply begin: %s", util.GoTh(s.BeginSupply)).
-		Add("Supply end: %s", util.GoTh(s.EndSupply)).
-		Add("Total inflation: %s (%.6f%%)", util.GoTh(s.TotalInflation), totalInflationPercentage).
-		Add("Average inflation per slot: %.8f%%", totalInflationPercentagePerSlot).
-		Add("Annual inflation extrapolated: %.2f%%", totalInflationPercentageYearlyExtrapolation).
-		Add("Info per sequencer (along the heaviest chain):")
+		Add("Supply: %s -> %s (+%s, %.6f%%)", util.GoTh(s.BeginSupply), util.GoTh(s.EndSupply), util.GoTh(s.TotalInflation), pInfl).
+		Add("Inflation per halving epoch extrapolated: %.2f%%", (pInfl*float32(ledger.SlotsPerHalvingEpoch()))/float32(nSlots)).
+		Add("Per sequencer along the heaviest chain:")
 
 	sortedSeqIDs := util.KeysSorted(s.InfoPerSeqID, func(k1, k2 ledger.ChainID) bool {
 		return bytes.Compare(k1[:], k2[:]) < 0
 	})
 	for _, seqId := range sortedSeqIDs {
 		seqInfo := s.InfoPerSeqID[seqId]
-		ret.Add("    %s : inflation: %s, number of branches: %d, balance: %s -> %s",
-			seqId.StringShort(), util.GoTh(seqInfo.TotalInflation), seqInfo.NumBranches,
-			util.GoTh(seqInfo.BeginBalance), util.GoTh(seqInfo.EndBalance))
+		ret.Add("         %s : branches: %d, balance: %s -> %s (+%s)",
+			seqId.StringShort(), seqInfo.NumBranches,
+			util.GoTh(seqInfo.BeginBalance), util.GoTh(seqInfo.EndBalance),
+			util.GoTh(seqInfo.EndBalance-seqInfo.BeginBalance))
 	}
 	return ret
 }

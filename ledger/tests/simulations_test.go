@@ -62,7 +62,7 @@ func TestInflationCalculations1(t *testing.T) {
 		ledger.SlotDuration(),
 		ledger.TicksPerSlot(),
 		ledger.TickDuration(),
-		util.GoTh(ledger.SlotsPerLedgerEpoch()),
+		util.GoTh(ledger.SlotsPerHalvingEpoch()),
 		util.GoTh(int64(ledger.SlotsPerDay())),
 		util.GoTh(ledger.TicksPerYear()),
 		util.GoTh(ledger.SlotsPerHour()),
@@ -71,11 +71,11 @@ func TestInflationCalculations1(t *testing.T) {
 }
 
 func BranchInflationAnnual() int64 {
-	return ledger.SlotsPerLedgerEpoch() * int64(ledger.L().ID.BranchBonusBase)
+	return ledger.SlotsPerHalvingEpoch() * int64(ledger.L().ID.BranchBonusBase)
 }
 
 func MaxInflationChainEpoch() int64 {
-	return InitialSlotInflationChain() * ledger.SlotsPerLedgerEpoch()
+	return InitialSlotInflationChain() * ledger.SlotsPerHalvingEpoch()
 }
 
 func ChainInitialInflationFractionPerSlot() int64 {
@@ -152,7 +152,7 @@ func TestReverseFractionEstimation(t *testing.T) {
 	projectedFraction := int(ledger.L().ID.InitialSupply) / absChainInflationPerTick
 
 	actualInflationPerTick := int(ledger.L().ID.InitialSupply) / int(ledger.L().ID.ChainInflationPerTickFractionBase)
-	actualInflationPerEpoch := actualInflationPerTick * int(ledger.TicksPerSlot()) * int(ledger.SlotsPerLedgerEpoch())
+	actualInflationPerEpoch := actualInflationPerTick * int(ledger.TicksPerSlot()) * int(ledger.SlotsPerHalvingEpoch())
 	actualInflationPerEpochPerc := percent(actualInflationPerEpoch, int(ledger.L().ID.InitialSupply))
 
 	template := `
