@@ -20,7 +20,7 @@ func TestBasic(t *testing.T) {
 		howManyTx    = 10_000
 		howManyPokes = 10
 	)
-	glb := global.New()
+	glb := global.NewDefault()
 	p := New(glb)
 
 	p.Start()

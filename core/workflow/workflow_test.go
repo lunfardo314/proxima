@@ -31,7 +31,7 @@ func (d *workflowDummyEnvironment) TxBytesStore() global.TxBytesStore {
 
 func newWorkflowDummyEnvironment() *workflowDummyEnvironment {
 	return &workflowDummyEnvironment{
-		Global:       global.New(),
+		Global:       global.NewDefault(),
 		stateStore:   common.NewInMemoryKVStore(),
 		txBytesStore: txstore.NewSimpleTxBytesStore(common.NewInMemoryKVStore()),
 	}

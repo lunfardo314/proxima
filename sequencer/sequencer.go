@@ -76,6 +76,9 @@ func NewFromConfig(name string, glb *workflow.Workflow) (*Sequencer, error) {
 	if err != nil {
 		return nil, err
 	}
+	if cfg == nil {
+		return nil, nil
+	}
 	return New(glb, seqID, controllerKey, cfg...)
 }
 

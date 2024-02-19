@@ -50,7 +50,7 @@ func runGenesis(_ *cobra.Command, _ []string) {
 	bootstrapChainID, _ := multistate.InitStateStore(*idData, stateStore)
 	glb.Infof("Genesis state DB '%s' has been created successfully.\nBootstrap sequencer chainID: %s", global.MultiStateDBName, bootstrapChainID.String())
 
-	//txStore := badger_adaptor.New(badger_adaptor.MustCreateOrOpenBadgerDB(global.TxStoreDBName, badger.DefaultOptions(global.TxStoreDBName)))
+	//txStore := badger_adaptor.NewDefault(badger_adaptor.MustCreateOrOpenBadgerDB(global.TxStoreDBName, badger.DefaultOptions(global.TxStoreDBName)))
 	//glb.Infof("Transaction store DB '%s' has been created successfully", global.TxStoreDBName)
 	//defer func() { _ = txStore.Close() }()
 }

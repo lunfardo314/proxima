@@ -46,7 +46,7 @@ sequencers:
 
 # logger config
 logger:
-  level: info
+  level: debug
   output: testlog_0.log
 
 # Other parameters used for tracing and debugging
@@ -56,4 +56,4 @@ pprof:
   port: 9090
 
 trace_tags:
-  - global
+#  - global

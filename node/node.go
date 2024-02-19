@@ -30,9 +30,21 @@ type ProximaNode struct {
 	dbClosedWG   sync.WaitGroup
 }
 
+func init() {
+	pflag.Parse()
+	err := viper.BindPFlags(pflag.CommandLine)
+	util.AssertNoError(err)
+
+	viper.SetConfigName("proxima")
+	viper.SetConfigType("yaml")
+	viper.AddConfigPath(".")
+	err = viper.ReadInConfig()
+	util.AssertNoError(err)
+}
+
 func New() *ProximaNode {
 	return &ProximaNode{
-		Global:     global.New(),
+		Global:     global.NewFromConfig(),
 		Sequencers: make([]*sequencer.Sequencer, 0),
 	}
 }
@@ -56,25 +68,12 @@ func (p *ProximaNode) TxBytesStore() global.TxBytesStore {
 	return p.txBytesStore
 }
 
-func (p *ProximaNode) initConfig() {
-	pflag.Parse()
-	err := viper.BindPFlags(pflag.CommandLine)
-	util.AssertNoError(err)
-
-	viper.SetConfigName("proxima")
-	viper.SetConfigType("yaml")
-	viper.AddConfigPath(".")
-	err = viper.ReadInConfig()
-	util.AssertNoError(err)
-}
-
 func (p *ProximaNode) readInTraceTags() {
 	p.Global.EnableTraceTags(viper.GetStringSlice("trace_tags")...)
 }
 
 func (p *ProximaNode) Start() {
 	p.Log().Info(global.BannerString())
-	p.initConfig()
 	p.readInTraceTags()
 
 	err := util.CatchPanicOrError(func() error {
@@ -173,7 +172,7 @@ func (p *ProximaNode) startSequencers() {
 		p.Log().Infof("No Sequencers will be started")
 		return
 	}
-	p.Log().Infof("%d sequencer config profiles has been found", len(sequencers))
+	p.Log().Infof("%d sequencer config profile(s) has been found", len(sequencers))
 
 	seqNames := util.SortKeys(sequencers, func(k1, k2 string) bool {
 		return k1 < k2
@@ -185,7 +184,7 @@ func (p *ProximaNode) startSequencers() {
 			continue
 		}
 		if seq == nil {
-			p.Log().Infof("skipping sequencer '%s'", name)
+			p.Log().Infof("skipping disabled sequencer '%s'", name)
 			continue
 		}
 		seq.Start()

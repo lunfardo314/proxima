@@ -10,7 +10,7 @@ import (
 )
 
 func TestEvents(t *testing.T) {
-	glb := global.New()
+	glb := global.NewDefault()
 	glb.EnableTraceTags("events")
 	e := New(glb)
 	e.Start()

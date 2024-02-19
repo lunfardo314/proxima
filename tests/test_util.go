@@ -44,7 +44,7 @@ func (w *workflowDummyEnvironment) TxBytesStore() global.TxBytesStore {
 
 func newWorkflowDummyEnvironment(stateStore global.StateStore, txStore global.TxBytesStore) *workflowDummyEnvironment {
 	return &workflowDummyEnvironment{
-		Global:       global.New(),
+		Global:       global.NewDefault(),
 		stateStore:   stateStore,
 		txBytesStore: txStore,
 	}

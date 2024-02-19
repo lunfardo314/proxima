@@ -39,7 +39,7 @@ func (d *Pruner) Start() {
 	d.Log().Infof("STARTING.. [%s]", d.Log().Level().String())
 	go func() {
 		d.mainLoop()
-		d.Log().Infof("DAG pruner STOPPED")
+		d.Log().Debugf("DAG pruner STOPPED")
 	}()
 }
 

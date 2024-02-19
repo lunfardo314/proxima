@@ -24,7 +24,7 @@ func (p *ProximaNode) startApiServer() {
 
 func (p *ProximaNode) stopAPIServer() {
 	// do we need to do something here?
-	p.Log().Infof("API server has been stopped")
+	p.Log().Debugf("API server has been stopped")
 }
 
 func (p *ProximaNode) GetNodeInfo() *global.NodeInfo {

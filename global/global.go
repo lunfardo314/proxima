@@ -12,6 +12,7 @@ import (
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
 	"github.com/lunfardo314/proxima/util/set"
+	"github.com/spf13/viper"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
@@ -31,12 +32,33 @@ type Global struct {
 
 const TraceTag = "global"
 
-func New() *Global {
+func NewFromConfig() *Global {
+	lvlStr := viper.GetString("logger.level")
+	lvl := zapcore.InfoLevel
+	if lvlStr != "" {
+		var err error
+		lvl, err = zapcore.ParseLevel(lvlStr)
+		util.AssertNoError(err)
+	}
+
+	output := []string{"stderr"}
+	out := viper.GetString("logger.output")
+	if out != "" {
+		output = append(output, out)
+	}
+	return _new(lvl, output)
+}
+
+func NewDefault() *Global {
+	return _new(zapcore.DebugLevel, []string{"stderr"})
+}
+
+func _new(logLevel zapcore.Level, outputs []string) *Global {
 	ctx, cancelFun := context.WithCancel(context.Background())
 	return &Global{
 		ctx:           ctx,
 		stopFun:       cancelFun,
-		SugaredLogger: NewLogger("", zapcore.DebugLevel, nil, ""),
+		SugaredLogger: NewLogger("", logLevel, outputs, ""),
 		traceTags:     set.New[string](),
 		stopOnce:      &sync.Once{},
 		logStopOnce:   &sync.Once{},
