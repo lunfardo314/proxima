@@ -23,7 +23,7 @@ type (
 		GetNodeInfo() *global.NodeInfo
 		HeaviestStateForLatestTimeSlot() multistate.SugaredStateReader
 		SubmitTxBytesFromAPI(txBytes []byte) error
-		QueryTxIDStatus(txid *ledger.TransactionID) (mode string, status string)
+		QueryTxIDStatus(txid *ledger.TransactionID) (mode string, status string, err error)
 	}
 
 	Server struct {
@@ -306,7 +306,7 @@ func (srv *Server) queryTxIDStatus(w http.ResponseWriter, r *http.Request) {
 	resp := api.QueryTxIDStatus{
 		TxID: lst[0],
 	}
-	resp.Mode, resp.Status = srv.QueryTxIDStatus(&txid)
+	resp.Mode, resp.Status, resp.Err = srv.QueryTxIDStatus(&txid)
 
 	respBin, err := json.MarshalIndent(resp, "", "  ")
 	if err != nil {

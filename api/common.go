@@ -69,6 +69,7 @@ type QueryTxIDStatus struct {
 	TxID   string `json:"txid"`
 	Mode   string `json:"mode"`
 	Status string `json:"status"`
+	Err    error  `json:"err,omitempty"`
 }
 
 type (

@@ -335,7 +335,7 @@ func (c *APIClient) QueryTxIDStatus(txid ledger.TransactionID) (mode, status str
 	if res.Error.Error != "" {
 		return "", "", fmt.Errorf("from server: %s", res.Error.Error)
 	}
-	return res.Mode, res.Status, nil
+	return res.Mode, res.Status, res.Err
 }
 
 func (c *APIClient) GetNodeInfo() (*global.NodeInfo, error) {

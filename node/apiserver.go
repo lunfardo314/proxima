@@ -53,6 +53,6 @@ func (p *ProximaNode) SubmitTxBytesFromAPI(txBytes []byte) error {
 	return err
 }
 
-func (p *ProximaNode) QueryTxIDStatus(txid *ledger.TransactionID) (mode string, status string) {
+func (p *ProximaNode) QueryTxIDStatus(txid *ledger.TransactionID) (mode string, status string, err error) {
 	return p.workflow.QueryTxIDStatus(txid)
 }

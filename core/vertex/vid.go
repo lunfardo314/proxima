@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"runtime/debug"
 	"time"
 
 	"github.com/lunfardo314/proxima/ledger"
@@ -57,11 +58,11 @@ func (v _deletedTx) _time() time.Time {
 }
 
 func (v _deletedTx) _outputAt(_ byte) (*ledger.Output, error) {
-	panic(ErrDeletedVertexAccessed)
+	return nil, ErrDeletedVertexAccessed
 }
 
 func (v _deletedTx) _hasOutputAt(_ byte) (bool, bool) {
-	panic(ErrDeletedVertexAccessed)
+	return false, false
 }
 
 var nopFun = func(_ *WrappedTx) {}
@@ -545,6 +546,7 @@ func (vid *WrappedTx) ConvertToVirtualTx() {
 }
 
 func (vid *WrappedTx) PanicAccessDeleted() {
+	fmt.Printf(">>>>>>>>>>>>>>>>> PanicAccessDeleted:\n%s\n<<<<<<<<<<<<<<<<<<<<<<<\n", string(debug.Stack()))
 	util.Panicf("%w: %s", ErrDeletedVertexAccessed, vid.ID.StringShort())
 }
 

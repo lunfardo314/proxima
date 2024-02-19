@@ -36,13 +36,13 @@ func RunWrappedRoutine(name string, fun func(), onPanic func(err error) bool) {
 		err := CatchPanicOrError(func() error {
 			fun()
 			return nil
-		}, true)
+		}, false)
 		if err == nil {
 			return
 		}
 		if onPanic(err) {
-			// if not processed, rise panic
-			panic(fmt.Errorf("panic in '%s': %v (err type = %T)", name, err, err))
+			// if not suppressed, rise panic
+			panic(fmt.Errorf("panic in '%s': %v (err type = %T)\n%s", name, err, err, string(debug.Stack())))
 		}
 	}()
 }

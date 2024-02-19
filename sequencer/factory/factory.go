@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"errors"
+	"runtime/debug"
 	"sync"
 	"time"
 
@@ -233,10 +234,10 @@ func (mf *MilestoneFactory) startProposerWorkers(targetTime ledger.Time, ctx con
 				func(err error) bool {
 					if errors.Is(err, vertex.ErrDeletedVertexAccessed) {
 						// do not panic, just abandon
-						mf.Log().Warnf("deleted vertex accessed: %v", err)
+						mf.Log().Warnf("startProposerWorkers: %v", err)
 						return false
 					}
-					mf.Log().Fatal(err)
+					mf.Log().Fatalf("startProposerWorkers: %v\n%s", err, string(debug.Stack()))
 					return true
 				})
 		}

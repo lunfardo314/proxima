@@ -21,8 +21,8 @@ const (
 	VertexModeDeleted   = "deleted"
 )
 
-// QueryTxIDStatus returns vertex mode and tx status
-func (d *DAG) QueryTxIDStatus(txid *ledger.TransactionID) (mode string, status string) {
+// QueryTxIDStatus returns vertex mode, tx status and error of the vertex
+func (d *DAG) QueryTxIDStatus(txid *ledger.TransactionID) (mode string, status string, err error) {
 	d.mutex.RLock()
 	defer d.mutex.RUnlock()
 
@@ -40,6 +40,7 @@ func (d *DAG) QueryTxIDStatus(txid *ledger.TransactionID) (mode string, status s
 				status = TxIDStatusGood
 			case vertex.Bad:
 				status = TxIDStatusBad
+				err = vid.GetErrorNoLock()
 			}
 		},
 		VirtualTx: func(v *vertex.VirtualTransaction) {
@@ -49,6 +50,7 @@ func (d *DAG) QueryTxIDStatus(txid *ledger.TransactionID) (mode string, status s
 				status = TxIDStatusGood
 			case vertex.Bad:
 				status = TxIDStatusBad
+				err = vid.GetErrorNoLock()
 			}
 		},
 		Deleted: func() {
@@ -64,17 +66,17 @@ func (d *DAG) WaitTxIDDefined(txid *ledger.TransactionID, pollPeriod time.Durati
 		deadline = time.Now().Add(timeout[0])
 	}
 	for {
-		mode, status := d.QueryTxIDStatus(txid)
+		mode, status, err := d.QueryTxIDStatus(txid)
 		if mode != VertexModeVertex {
 			return TxIDStatusUndef, fmt.Errorf("vertex mode: %s", mode)
 		}
 		if status == TxIDStatusGood || status == TxIDStatusBad {
-			return status, nil
+			return status, err
 		}
 		time.Sleep(pollPeriod)
 
 		if time.Now().After(deadline) {
-			return TxIDStatusUndef, fmt.Errorf("timeout")
+			return TxIDStatusUndef, fmt.Errorf("WaitTxIDDefined: timeout")
 		}
 	}
 }

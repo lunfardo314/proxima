@@ -1,7 +1,9 @@
 package attacher
 
 import (
+	"errors"
 	"fmt"
+	"runtime/debug"
 	"time"
 
 	"github.com/lunfardo314/proxima/core/txmetadata"
@@ -178,7 +180,11 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Opt
 				go runFun()
 			} else {
 				util.RunWrappedRoutine(vid.IDShortString(), runFun, func(err error) bool {
-					env.Log().Fatalf("uncaught exception in %s: '%v'", txidStr, err)
+					if errors.Is(err, vertex.ErrDeletedVertexAccessed) {
+						env.Log().Warnf("AttachTransaction: %v", err)
+						return false
+					}
+					env.Log().Fatalf("AttachTransaction: %s: '%v'\n%s", txidStr, err, string(debug.Stack()))
 					return false
 				})
 			}

@@ -105,8 +105,7 @@ func waitForTxStatusDefined(txid ledger.TransactionID, timeout ...time.Duration)
 	var err error
 	util.DoUntil(func() {
 		mode, status, err = glb.GetClient().QueryTxIDStatus(txid)
-		glb.AssertNoError(err)
-		glb.Infof("   %s: mode: %s, status: %s", txid.StringShort(), mode, status)
+		glb.Infof("   %s: mode: %s, status: %s, err: %v", txid.StringShort(), mode, status, err)
 	}, func() bool {
 		if time.Now().After(deadline) || err != nil || status != dag.TxIDStatusUndef {
 			return true
