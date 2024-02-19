@@ -19,7 +19,9 @@ const TraceTagIncrementalAttacher = "incAttach"
 var ErrPastConeNotSolidYet = errors.New("past cone not solid yet")
 
 func NewIncrementalAttacher(name string, env Environment, targetTs ledger.Time, extend vertex.WrappedOutput, endorse ...*vertex.WrappedTx) (*IncrementalAttacher, error) {
-	util.Assertf(ledger.ValidTransactionPace(extend.Timestamp(), targetTs), "ledger.ValidTransactionPace(extend.Timestamp(), targetTs)")
+	util.Assertf(ledger.ValidSequencerPace(extend.Timestamp(), targetTs), "NewIncrementalAttacher: target is closer than allowed pace (%d): %s -> %s",
+		ledger.TransactionPaceSequencer(), extend.Timestamp().String, targetTs.String)
+
 	for _, endorseVID := range endorse {
 		util.Assertf(endorseVID.IsSequencerMilestone(), "NewIncrementalAttacher: endorseVID.IsSequencerMilestone()")
 		util.Assertf(targetTs.Slot() == endorseVID.Slot(), "NewIncrementalAttacher: targetTs.Slot() == endorseVid.Slot()")

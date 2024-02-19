@@ -67,7 +67,7 @@ func New(glb *workflow.Workflow, seqID ledger.ChainID, controllerKey ed25519.Pri
 	if ret.factory, err = factory.New(ret); err != nil {
 		return nil, err
 	}
-	ret.Log().Infof("sequencer created with controller %s", ledger.AddressED25519FromPrivateKey(controllerKey).String())
+	ret.Log().Infof("sequencer created with controller %s, pace: %d", ledger.AddressED25519FromPrivateKey(controllerKey).String(), cfg.Pace)
 	return ret, nil
 }
 
@@ -219,9 +219,14 @@ func (seq *Sequencer) doSequencerStep() bool {
 
 	timerStart := time.Now()
 
-	targetTs := seq.getNextTargetTime()
+	targetTs, prevMsTs := seq.getNextTargetTime()
+
+	util.Assertf(ledger.ValidSequencerPace(prevMsTs, targetTs), "target is closer than allowed pace (%d): %s -> %s",
+		ledger.TransactionPaceSequencer(), prevMsTs.String, targetTs.String)
+
 	util.Assertf(!targetTs.Before(seq.prevTimeTarget), "wrong target ts %s: must not be before previous target %s",
 		targetTs.String(), seq.prevTimeTarget.String())
+
 	seq.prevTimeTarget = targetTs
 
 	if seq.config.MaxTargetTs != ledger.NilLedgerTime && targetTs.After(seq.config.MaxTargetTs) {
@@ -258,7 +263,7 @@ func (seq *Sequencer) doSequencerStep() bool {
 
 const sleepWaitingCurrentMilestoneTime = 10 * time.Millisecond
 
-func (seq *Sequencer) getNextTargetTime() ledger.Time {
+func (seq *Sequencer) getNextTargetTime() (ledger.Time, ledger.Time) {
 	var prevMilestoneTs ledger.Time
 
 	currentMsOutput := seq.factory.OwnLatestMilestoneOutput()
@@ -279,31 +284,32 @@ func (seq *Sequencer) getNextTargetTime() ledger.Time {
 			nowis.String(), prevMilestoneTs.String(), sleepWaitingCurrentMilestoneTime)
 		time.Sleep(sleepWaitingCurrentMilestoneTime)
 	}
-	// logical time now is approximately equal to the clock time
+	// ledger time now is approximately equal to the clock time
 	nowis = ledger.TimeNow()
 	util.Assertf(!nowis.Before(prevMilestoneTs), "!core.TimeNow().Before(prevMilestoneTs)")
 
-	// TODO taking into account average speed of proposal generation
+	// TODO take into account average speed of proposal generation
 
 	targetAbsoluteMinimum := prevMilestoneTs.AddTicks(seq.config.Pace)
+	//seq.Tracef("tmp", ">>>>>>>>>>>>>>>> targetAbsoluteMinimum: %s", targetAbsoluteMinimum.String())
+
 	nextSlotBoundary := nowis.NextTimeSlotBoundary()
 
 	if !targetAbsoluteMinimum.Before(nextSlotBoundary) {
-		return targetAbsoluteMinimum
+		return targetAbsoluteMinimum, prevMilestoneTs
 	}
-	// absolute minimum is before the next slot boundary
-	// set absolute minimum starting from now
+	// absolute minimum is before the next slot boundary, take the time now as a baseline
 	minimumTicksAheadFromNow := (seq.config.Pace * 2) / 3 // seq.config.Pace
-	targetAbsoluteMinimum = nowis.AddTicks(minimumTicksAheadFromNow)
+	targetAbsoluteMinimum = ledger.MaxTime(targetAbsoluteMinimum, nowis.AddTicks(minimumTicksAheadFromNow))
 	if !targetAbsoluteMinimum.Before(nextSlotBoundary) {
-		return targetAbsoluteMinimum
+		return targetAbsoluteMinimum, prevMilestoneTs
 	}
 
 	if targetAbsoluteMinimum.TimesTicksToNextSlotBoundary() <= seq.config.Pace {
-		return nextSlotBoundary
+		return nextSlotBoundary, prevMilestoneTs
 	}
 
-	return targetAbsoluteMinimum
+	return targetAbsoluteMinimum, prevMilestoneTs
 }
 
 // Returns nil if fails to generate acceptable bestSoFarTx until the deadline

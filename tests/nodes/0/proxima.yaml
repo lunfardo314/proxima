@@ -33,7 +33,7 @@ api:
 # usually none or 1 sequencer is configured for the node
 sequencers:
   boot:
-    enable: false
+    enable: true
     loglevel: info
     # chain ID of the sequencer
     sequencer_id: 3053dcd151cf11713e16644d0746a9dc4c22fe8ea11c6260f3fee695720dde3c
@@ -56,4 +56,5 @@ pprof:
   port: 9090
 
 trace_tags:
-#  - global
+#  - sequencer
+
