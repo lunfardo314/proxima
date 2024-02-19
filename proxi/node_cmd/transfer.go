@@ -8,6 +8,7 @@ import (
 
 	"github.com/lunfardo314/proxima/api"
 	"github.com/lunfardo314/proxima/api/client"
+	"github.com/lunfardo314/proxima/core/dag"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/util"
@@ -84,10 +85,38 @@ func runTransferCmd(_ *cobra.Command, args []string) {
 	if NoWait() {
 		return
 	}
-	glb.AssertNoError(waitForInclusion(txCtx.OutputID(0)))
+
+	glb.AssertNoError(waitForTxStatusDefined(*txCtx.TransactionID()))
+	//glb.AssertNoError(waitForInclusion(txCtx.OutputID(0)))
 }
 
-// TODO vertex status
+func waitForTxStatusDefined(txid ledger.TransactionID, timeout ...time.Duration) error {
+	glb.Infof("Tracking status of %s:", txid.StringShort())
+
+	startTime := time.Now()
+	var deadline time.Time
+	if len(timeout) > 0 {
+		deadline = startTime.Add(timeout[0])
+	} else {
+		deadline = startTime.Add(10 * time.Second)
+	}
+
+	var mode, status string
+	var err error
+	util.DoUntil(func() {
+		mode, status, err = glb.GetClient().QueryTxIDStatus(txid)
+		glb.AssertNoError(err)
+		glb.Infof("   %s: mode: %s, status: %s", txid.StringShort(), mode, status)
+	}, func() bool {
+		if time.Now().After(deadline) || err != nil || status != dag.TxIDStatusUndef {
+			return true
+		}
+		time.Sleep(1 * time.Second)
+		return false
+	})
+	return err
+}
+
 func waitForInclusion(oid ledger.OutputID, timeout ...time.Duration) error {
 	glb.Infof("Tracking inclusion of %s:", oid.StringShort())
 	startTime := time.Now()

@@ -86,7 +86,7 @@ func (d *DAG) _timeSlotsOrdered(descOrder ...bool) []ledger.Slot {
 }
 
 func (d *DAG) FetchSummarySupplyAndInflation(nBack int) *multistate.SummarySupplyAndInflation {
-	return multistate.FetchSummarySupplyAndInflation(d.StateStore(), nBack)
+	return multistate.FetchSummarySupply(d.StateStore(), nBack)
 }
 
 //

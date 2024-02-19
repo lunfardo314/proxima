@@ -52,7 +52,7 @@ func runDbInfoCmd(_ *cobra.Command, _ []string) {
 	glb.Infof("----------------- Global branch data ----------------------")
 	DisplayBranchData(branchData)
 	glb.Infof("\n------------- Supply and inflation summary -------------")
-	summary := multistate.FetchSummarySupplyAndInflation(glb.StateStore(), slotsBack)
+	summary := multistate.FetchSummarySupply(glb.StateStore(), slotsBack)
 	glb.Infof("%s", summary.Lines("   ").String())
 }
 

@@ -231,12 +231,12 @@ func (mf *MilestoneFactory) startProposerWorkers(targetTime ledger.Time, ctx con
 		} else {
 			util.RunWrappedRoutine(mf.SequencerName()+"::"+task.GetName(), runFun,
 				func(err error) bool {
-					mf.Log().Fatal(err)
 					if errors.Is(err, vertex.ErrDeletedVertexAccessed) {
 						// do not panic, just abandon
 						mf.Log().Warnf("deleted vertex accessed: %v", err)
 						return false
 					}
+					mf.Log().Fatal(err)
 					return true
 				})
 		}

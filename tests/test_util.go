@@ -283,7 +283,7 @@ func (td *workflowTestData) stop() {
 }
 
 func (td *workflowTestData) waitStop() {
-	td.env.MustWaitAllWorkProcessesStop()
+	td.env.MustWaitAllWorkProcessesStop(5 * time.Second)
 }
 
 func (td *workflowTestData) stopAndWait() {

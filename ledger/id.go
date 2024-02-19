@@ -225,6 +225,9 @@ func LessTxID(txid1, txid2 TransactionID) bool {
 }
 
 func TooCloseOnTimeAxis(txid1, txid2 *TransactionID) bool {
+	if txid1.Timestamp().After(txid2.Timestamp()) {
+		txid1, txid2 = txid2, txid1
+	}
 	if txid1.IsSequencerMilestone() && txid2.IsSequencerMilestone() {
 		return !ValidSequencerPace(txid1.Timestamp(), txid2.Timestamp()) && *txid1 != *txid2
 	}

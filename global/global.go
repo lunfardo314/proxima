@@ -114,7 +114,7 @@ func (l *Global) MustWaitAllWorkProcessesStop(timeout ...time.Duration) {
 		l._withRLock(func() {
 			if len(l.components) == 0 {
 				l.logStopOnce.Do(func() {
-					l.Log().Info("all components stopped")
+					l.Log().Info("all work processes stopped")
 				})
 				exit = true
 			}

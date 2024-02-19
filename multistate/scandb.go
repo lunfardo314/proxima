@@ -90,7 +90,7 @@ func (a *AccountInfo) Lines(prefix ...string) *lines.Lines {
 	return ret
 }
 
-func FetchSummarySupplyAndInflation(stateStore global.StateStore, nBack int) *SummarySupplyAndInflation {
+func FetchSummarySupply(stateStore global.StateStore, nBack int) *SummarySupplyAndInflation {
 	branchData := FetchHeaviestBranchChainNSlotsBack(stateStore, nBack) // descending
 	util.Assertf(len(branchData) > 0, "len(branchData) > 0")
 
@@ -109,7 +109,7 @@ func FetchSummarySupplyAndInflation(stateStore global.StateStore, nBack int) *Su
 		seqInfo.NumBranches++
 		ret.InfoPerSeqID[branchData[i].SequencerID] = seqInfo
 	}
-	util.Assertf(ret.EndSupply-ret.BeginSupply == ret.TotalInflation, "FetchSummarySupplyAndInflation: ret.EndSupply - ret.BeginSupply == ret.SlotInflation")
+	util.Assertf(ret.EndSupply-ret.BeginSupply == ret.TotalInflation, "FetchSummarySupply: ret.EndSupply - ret.BeginSupply == ret.SlotInflation")
 
 	for seqID, seqInfo := range ret.InfoPerSeqID {
 		rdr := MustNewSugaredReadableState(stateStore, branchData[0].Root)
@@ -131,6 +131,7 @@ func FetchSummarySupplyAndInflation(stateStore global.StateStore, nBack int) *Su
 func (s *SummarySupplyAndInflation) Lines(prefix ...string) *lines.Lines {
 	pInfl := util.Percent(int(s.TotalInflation), int(s.BeginSupply))
 	nSlots := s.LatestSlot - s.OldestSlot + 1
+
 	ret := lines.New(prefix...).
 		Add("Slots from %d to %d inclusive. Total %d slots", s.OldestSlot, s.LatestSlot, nSlots).
 		Add("Number of branches: %d", s.NumberOfBranches).
@@ -142,11 +143,18 @@ func (s *SummarySupplyAndInflation) Lines(prefix ...string) *lines.Lines {
 		return bytes.Compare(k1[:], k2[:]) < 0
 	})
 	for _, seqId := range sortedSeqIDs {
+
 		seqInfo := s.InfoPerSeqID[seqId]
-		ret.Add("         %s : branches: %d, balance: %s -> %s (+%s)",
+		var inflStr string
+		if seqInfo.EndBalance >= seqInfo.BeginBalance {
+			inflStr = "+" + util.GoTh(seqInfo.EndBalance-seqInfo.BeginBalance)
+		} else {
+			inflStr = "-" + util.GoTh(seqInfo.BeginBalance-seqInfo.EndBalance)
+		}
+		ret.Add("         %s : branches: %d, balance: %s -> %s (%s)",
 			seqId.StringShort(), seqInfo.NumBranches,
 			util.GoTh(seqInfo.BeginBalance), util.GoTh(seqInfo.EndBalance),
-			util.GoTh(seqInfo.EndBalance-seqInfo.BeginBalance))
+			inflStr)
 	}
 	return ret
 }
