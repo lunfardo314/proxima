@@ -501,7 +501,6 @@ func (a *attacher) attachRooted(wOut vertex.WrappedOutput) (ok bool, isRooted bo
 		a.setError(err)
 		a.Tracef(TraceTagAttachOutput, "%v", err)
 		return false, false
-
 	}
 
 	// output has been found in the state -> Good

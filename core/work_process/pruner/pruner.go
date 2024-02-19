@@ -43,6 +43,8 @@ func (d *Pruner) Start() {
 	}()
 }
 
+// TODO do not delete those accesible from top milestones, even if old
+
 func (d *Pruner) selectVerticesToPrune() []*vertex.WrappedTx {
 	verticesDescending := d.VerticesDescending()
 	baselineSlot := d.pruningBaselineSlot(verticesDescending)
