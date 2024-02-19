@@ -81,9 +81,9 @@ func (p *ProximaNode) Start() {
 		p.initTxStore()
 		p.initPeering()
 
-		p.startWorkflow()
+		p.startWorkProcesses()
 		p.startSequencers()
-		p.startApiServer()
+		p.startAPIServer()
 		p.startMemoryLogging()
 		p.startPProfIfEnabled()
 		return nil
@@ -161,7 +161,7 @@ func (p *ProximaNode) initPeering() {
 	}()
 }
 
-func (p *ProximaNode) startWorkflow() {
+func (p *ProximaNode) startWorkProcesses() {
 	p.workflow = workflow.New(p, p.peers, workflow.WithGlobalConfigOptions)
 	p.workflow.Start()
 }

@@ -10,7 +10,7 @@ import (
 	"github.com/spf13/viper"
 )
 
-func (p *ProximaNode) startApiServer() {
+func (p *ProximaNode) startAPIServer() {
 	port := viper.GetInt("api.server.port")
 	addr := fmt.Sprintf(":%d", port)
 	p.Log().Infof("starting API server on %s", addr)
@@ -23,7 +23,7 @@ func (p *ProximaNode) startApiServer() {
 }
 
 func (p *ProximaNode) stopAPIServer() {
-	// do we need to do something here?
+	// do we need to do something else here?
 	p.Log().Debugf("API server has been stopped")
 }
 
