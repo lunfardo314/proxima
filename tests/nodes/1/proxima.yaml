@@ -36,7 +36,7 @@ sequencers:
     enable: false
     loglevel: info
     # chain ID of the sequencer
-    sequencer_id: f789b6a80f22162b197b70b6bcbdbec2a5202cf0b4c60d73d5c09004e11bf632
+    sequencer_id:
     # chain controller's private key (hex-encoded)
     controller_key: a66f8768224b241fe4dd2e4c00132d029452468846b149f2c2c4d894805964c8e63df08176c9443f0fe015d3582635d3d5a02e33765fbb3a2995db9cf3bbe606
     # sequencer pace
@@ -47,7 +47,7 @@ sequencers:
 
 # logger config
 logger:
-  level: info
+  level: debug
   output: testlog_1.log
 
 # Other parameters used for tracing and debugging
@@ -55,30 +55,3 @@ logger:
 pprof:
   enable: false
   port: 8080
-
-# workflow_old debug config
-workflow:
-  addtx:
-    loglevel: info
-  events:
-    loglevel: info
-  input:
-    loglevel: info
-  reject:
-    loglevel: info
-  prevalid:
-    loglevel: info
-  solidify:
-    loglevel: info
-  validate:
-    loglevel: info
-
-debug:
-  trace_workflow:
-    pull: false
-    tx: false
-
-  # specify milestone proposer strategies to trace
-  trace_proposers:
-    base: false
-    btrack2: false

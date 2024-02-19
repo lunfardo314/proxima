@@ -10,7 +10,6 @@ import (
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/util"
-	"github.com/lunfardo314/unitrie/common"
 )
 
 // AttachTxID ensures the txid is on the utangle
@@ -174,13 +173,14 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Opt
 			}
 
 			// if debuggerFriendly == true, the panic is not caught, so it is more convenient in the debugger
-			const debuggerFriendly = true
+			const debuggerFriendly = false
 			if debuggerFriendly {
 				go runFun()
 			} else {
-				util.RunWrappedRoutine(vid.IDShortString(), runFun, func(err error) {
+				util.RunWrappedRoutine(vid.IDShortString(), runFun, func(err error) bool {
 					env.Log().Fatalf("uncaught exception in %s: '%v'", txidStr, err)
-				}, common.ErrDBUnavailable)
+					return false
+				})
 			}
 		},
 	})

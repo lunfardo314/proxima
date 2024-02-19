@@ -29,22 +29,15 @@ const ownSequencerCmdFee = 500
 
 func runSeqWithdrawCmd(_ *cobra.Command, args []string) {
 	glb.InitLedgerFromNode()
-
 	walletData := glb.GetWalletData()
 	glb.Assertf(walletData.Sequencer != nil, "can't get own sequencer ID")
 	glb.Infof("sequencer ID (source): %s", walletData.Sequencer.String())
-
-	//md, err := getClient().GetMilestoneDataFromHeaviestState(*walletData.Sequencer)
-	//glb.AssertNoError(err)
 
 	glb.Infof("wallet account is: %s", walletData.Account.String())
 	targetLock := glb.MustGetTarget()
 
 	amount, err := strconv.ParseUint(args[0], 10, 64)
 	glb.AssertNoError(err)
-
-	glb.Assertf(amount >= ledger.L().ID.MinimumAmountOnSequencer, "amount must be at least %s",
-		util.GoTh(ledger.L().ID.MinimumAmountOnSequencer))
 
 	glb.Infof("amount: %s", util.GoTh(amount))
 
@@ -56,7 +49,7 @@ func runSeqWithdrawCmd(_ *cobra.Command, args []string) {
 	})
 	glb.AssertNoError(err)
 
-	glb.Infof("will be using fee amount of %d from the wallet. Outputs in the wallet:", ownSequencerCmdFee)
+	glb.Infof("will be using %d tokens as tag-along fee. Outputs in the wallet:", ownSequencerCmdFee)
 	for i, o := range walletOutputs {
 		glb.Infof("%d : %s : %s", i, o.ID.StringShort(), util.GoTh(o.Output.Amount()))
 	}

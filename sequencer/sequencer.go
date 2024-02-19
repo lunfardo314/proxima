@@ -13,7 +13,6 @@ import (
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/sequencer/factory"
 	"github.com/lunfardo314/proxima/util"
-	"github.com/lunfardo314/unitrie/common"
 	"go.uber.org/zap"
 )
 
@@ -101,13 +100,14 @@ func (seq *Sequencer) Start() {
 		}
 	}
 
-	const debuggerFriendly = true
+	const debuggerFriendly = false
 	if debuggerFriendly {
 		go runFun()
 	} else {
-		util.RunWrappedRoutine(seq.config.SequencerName+"[mainLoop]", runFun, func(err error) {
+		util.RunWrappedRoutine(seq.config.SequencerName+"[mainLoop]", runFun, func(err error) bool {
 			seq.log.Fatal(err)
-		}, common.ErrDBUnavailable)
+			return false
+		})
 
 	}
 }

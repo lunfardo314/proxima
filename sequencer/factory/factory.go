@@ -18,7 +18,6 @@ import (
 	"github.com/lunfardo314/proxima/sequencer/tippool"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/set"
-	"github.com/lunfardo314/unitrie/common"
 )
 
 type (
@@ -226,15 +225,20 @@ func (mf *MilestoneFactory) startProposerWorkers(targetTime ledger.Time, ctx con
 			task.Run()
 			mf.Tracef(TraceTag, " END proposer %s", task.GetName())
 		}
-		const debuggerFriendly = true
+		const debuggerFriendly = false
 		if debuggerFriendly {
 			runFun()
 		} else {
 			util.RunWrappedRoutine(mf.SequencerName()+"::"+task.GetName(), runFun,
-				func(err error) {
+				func(err error) bool {
 					mf.Log().Fatal(err)
-				},
-				common.ErrDBUnavailable, vertex.ErrDeletedVertexAccessed)
+					if errors.Is(err, vertex.ErrDeletedVertexAccessed) {
+						// do not panic, just abandon
+						mf.Log().Warnf("deleted vertex accessed: %v", err)
+						return false
+					}
+					return true
+				})
 		}
 	}
 }

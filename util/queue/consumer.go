@@ -6,7 +6,6 @@ import (
 
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/util"
-	"github.com/lunfardo314/unitrie/common"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
@@ -91,9 +90,10 @@ func (c *Queue[T]) Start(consumer Consumer[T], ctx context.Context) {
 
 	util.RunWrappedRoutine(c.Name(), func() {
 		c.Run()
-	}, func(err error) {
+	}, func(err error) bool {
 		c.log.Fatalf("uncaught exception in '%s': '%v'", c.Name(), err)
-	}, common.ErrDBUnavailable)
+		return false
+	})
 
 	go func() {
 		<-ctx.Done()

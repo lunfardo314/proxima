@@ -15,13 +15,14 @@ func Init() *cobra.Command {
 		Aliases: []string{"seq"},
 		Short:   `defines subcommands for the sequencer`,
 		Args:    cobra.NoArgs,
-		Run: func(cmd *cobra.Command, args []string) {
-			glb.Infof("target sequencer ID is %s", glb.GetOwnSequencerID().String())
-		},
 	}
 
 	seqCmd.PersistentFlags().StringVar(&seqIDstr, "sequencer.id", "", "default sequencer chainID in hex-encoded form")
 	err := viper.BindPFlag("sequencer.id", seqCmd.PersistentFlags().Lookup("sequencer.id"))
+	glb.AssertNoError(err)
+
+	seqCmd.PersistentFlags().StringP("target", "t", "", "target lock in EasyFL source format")
+	err = viper.BindPFlag("target", seqCmd.PersistentFlags().Lookup("target"))
 	glb.AssertNoError(err)
 
 	seqCmd.AddCommand(
