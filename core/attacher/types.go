@@ -20,6 +20,7 @@ type (
 		StateStore() global.StateStore
 		GetStateReaderForTheBranch(branch *ledger.TransactionID) global.IndexedStateReader
 		GetStemWrappedOutput(branch *ledger.TransactionID) vertex.WrappedOutput
+		SendToTippool(vid *vertex.WrappedTx)
 	}
 
 	PullEnvironment interface {

@@ -9,6 +9,7 @@ import (
 	"github.com/lunfardo314/proxima/core/work_process/gossip"
 	"github.com/lunfardo314/proxima/core/work_process/persist_txbytes"
 	"github.com/lunfardo314/proxima/core/work_process/pull_client"
+	"github.com/lunfardo314/proxima/core/work_process/tippool"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/util"
@@ -87,4 +88,8 @@ func (w *Workflow) AsyncPersistTxBytesWithMetadata(txBytes []byte, metadata *txm
 
 func (w *Workflow) TxBytesWithMetadataIn(txBytes []byte, metadata *txmetadata.TransactionMetadata) (*ledger.TransactionID, error) {
 	return w.TxBytesIn(txBytes, WithMetadata(metadata))
+}
+
+func (w *Workflow) SendToTippool(vid *vertex.WrappedTx) {
+	w.tippool.Push(tippool.Input{VID: vid})
 }

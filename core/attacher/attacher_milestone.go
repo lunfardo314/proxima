@@ -50,6 +50,7 @@ func runMilestoneAttacher(vid *vertex.WrappedTx, metadata *txmetadata.Transactio
 
 	a.vid.SetTxStatusGood()
 	a.PostEventNewGood(vid)
+	a.SendToTippool(vid)
 	return vertex.Good, a.finals, nil
 }
 

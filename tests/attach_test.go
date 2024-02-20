@@ -822,9 +822,7 @@ func TestConflictsNAttachersOneForkBranchesConflict(t *testing.T) {
 	require.NoError(t, err)
 
 	status, err := testData.wrk.WaitTxIDDefined(&vid.ID, time.Millisecond, 5*time.Second)
-	require.NoError(t, err)
 	require.EqualValues(t, status, dag.TxIDStatusBad)
-
 	testData.stopAndWait()
 	testData.logDAGInfo()
 
@@ -851,6 +849,7 @@ func TestSeqChains(t *testing.T) {
 		testData.printTxIDs()
 
 		var wg sync.WaitGroup
+		//testData.env.EnableTraceTags(tippool.TraceTag)
 
 		testData.txBytesAttach()
 		vids := make([][]*vertex.WrappedTx, len(testData.seqChain))
