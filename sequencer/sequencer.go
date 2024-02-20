@@ -357,10 +357,10 @@ func (seq *Sequencer) waitMilestoneInTippool(vid *vertex.WrappedTx, deadline tim
 		if time.Now().After(deadline) {
 			return false
 		}
-		if seq.factory.OwnLatestMilestoneOutput().VID == vid {
+		if seq.GetLatestMilestone(seq.sequencerID) == vid {
 			return true
 		}
-		time.Sleep(1 * time.Millisecond)
+		time.Sleep(10 * time.Millisecond)
 	}
 }
 

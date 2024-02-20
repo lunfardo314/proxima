@@ -1,7 +1,6 @@
 package tippool
 
 import (
-	"errors"
 	"fmt"
 	"slices"
 	"sort"
@@ -12,7 +11,6 @@ import (
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
-	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/set"
 	"go.uber.org/atomic"
@@ -120,37 +118,6 @@ func (tp *SequencerTipPool) CandidatesToEndorseSorted(targetTs ledger.Time) []*v
 
 func (tp *SequencerTipPool) GetOwnLatestMilestoneTx() *vertex.WrappedTx {
 	return tp.GetLatestMilestone(tp.SequencerID())
-}
-
-func (tp *SequencerTipPool) GetOwnLatestMilestoneOutput() vertex.WrappedOutput {
-	ret := tp.GetLatestMilestone(tp.SequencerID())
-	if ret != nil {
-		ret.SequencerWrappedOutput()
-	}
-
-	// there's no own milestone in the tippool (startup)
-	// find in one of baseline states of other sequencers
-	return tp.bootstrapOwnMilestoneOutput()
-}
-
-func (tp *SequencerTipPool) bootstrapOwnMilestoneOutput() vertex.WrappedOutput {
-	chainID := tp.SequencerID()
-	milestones := tp.LatestMilestonesDescending()
-	for _, ms := range milestones {
-		baseline := ms.BaselineBranch()
-		if baseline == nil {
-			continue
-		}
-		rdr := tp.GetStateReaderForTheBranch(baseline)
-		o, err := rdr.GetUTXOForChainID(&chainID)
-		if errors.Is(err, multistate.ErrNotFound) {
-			continue
-		}
-		util.AssertNoError(err)
-		ret := attacher.AttachOutputID(o.ID, tp, attacher.OptionInvokedBy("tippool"))
-		return ret
-	}
-	return vertex.WrappedOutput{}
 }
 
 func isCandidateToTagAlong(wOut vertex.WrappedOutput) bool {

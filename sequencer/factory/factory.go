@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"errors"
+	"fmt"
 	"runtime/debug"
 	"sync"
 	"time"
@@ -109,11 +110,37 @@ func (mf *MilestoneFactory) isConsumedInThePastPath(wOut vertex.WrappedOutput, m
 }
 
 func (mf *MilestoneFactory) OwnLatestMilestoneOutput() vertex.WrappedOutput {
-	latest := mf.tipPool.GetOwnLatestMilestoneOutput()
-	if latest.VID != nil {
-		mf.AddOwnMilestone(latest.VID)
+	ret := mf.GetLatestMilestone(mf.SequencerID())
+	if ret != nil {
+		ret.SequencerWrappedOutput()
+		fmt.Printf(">>>>>>>>>>>>>>>>> 1 %s\n", ret.IDShortString())
+	} else {
+		fmt.Printf(">>>>>>>>>>>>>>>>> 2 nil\n")
 	}
-	return latest
+
+	// there's no own milestone in the tippool (startup)
+	// find in one of baseline states of other sequencers
+	return mf.bootstrapOwnMilestoneOutput()
+}
+
+func (mf *MilestoneFactory) bootstrapOwnMilestoneOutput() vertex.WrappedOutput {
+	chainID := mf.SequencerID()
+	milestones := mf.LatestMilestonesDescending()
+	for _, ms := range milestones {
+		baseline := ms.BaselineBranch()
+		if baseline == nil {
+			continue
+		}
+		rdr := mf.GetStateReaderForTheBranch(baseline)
+		o, err := rdr.GetUTXOForChainID(&chainID)
+		if errors.Is(err, multistate.ErrNotFound) {
+			continue
+		}
+		util.AssertNoError(err)
+		ret := attacher.AttachOutputID(o.ID, mf, attacher.OptionInvokedBy("tippool"))
+		return ret
+	}
+	return vertex.WrappedOutput{}
 }
 
 func (mf *MilestoneFactory) AddOwnMilestone(vid *vertex.WrappedTx) {

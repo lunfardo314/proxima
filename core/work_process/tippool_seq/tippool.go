@@ -1,4 +1,4 @@
-package tippool
+package tippool_seq
 
 import (
 	"sort"
@@ -30,7 +30,7 @@ type (
 )
 
 const (
-	Name           = "tippool"
+	Name           = "tippool-seq"
 	TraceTag       = Name
 	chanBufferSize = 10
 )
@@ -60,7 +60,8 @@ func (t *SequencerTips) Consume(inp Input) {
 	defer t.mutex.Unlock()
 
 	storedNew := false
-	if old, prevExists := t.latestMilestones[seqIDIncoming]; prevExists {
+	old, prevExists := t.latestMilestones[seqIDIncoming]
+	if prevExists {
 		if old == inp.VID {
 			// repeating, ignore
 			return
@@ -78,8 +79,12 @@ func (t *SequencerTips) Consume(inp Input) {
 		t.latestMilestones[seqIDIncoming] = inp.VID
 		storedNew = true
 	}
+	prevStr := "<none>"
+	if prevExists {
+		prevStr = old.IDShortString()
+	}
 	if storedNew {
-		t.Tracef(TraceTag, "new milestone stored in tippool: %s", inp.VID.IDShortString)
+		t.Tracef(TraceTag, "new milestone stored in sequencer tippool: %s (prev: %s)", inp.VID.IDShortString, prevStr)
 	}
 }
 

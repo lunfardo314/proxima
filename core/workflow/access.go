@@ -9,7 +9,7 @@ import (
 	"github.com/lunfardo314/proxima/core/work_process/gossip"
 	"github.com/lunfardo314/proxima/core/work_process/persist_txbytes"
 	"github.com/lunfardo314/proxima/core/work_process/pull_client"
-	"github.com/lunfardo314/proxima/core/work_process/tippool"
+	"github.com/lunfardo314/proxima/core/work_process/tippool_seq"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/util"
@@ -91,7 +91,7 @@ func (w *Workflow) TxBytesWithMetadataIn(txBytes []byte, metadata *txmetadata.Tr
 }
 
 func (w *Workflow) SendToTippool(vid *vertex.WrappedTx) {
-	w.tippool.Push(tippool.Input{VID: vid})
+	w.tippool.Push(tippool_seq.Input{VID: vid})
 }
 
 func (w *Workflow) LatestMilestonesDescending(filter ...func(seqID ledger.ChainID, vid *vertex.WrappedTx) bool) []*vertex.WrappedTx {
