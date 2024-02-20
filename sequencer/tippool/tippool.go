@@ -16,7 +16,6 @@ import (
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/set"
 	"go.uber.org/atomic"
-	"golang.org/x/exp/maps"
 )
 
 type (
@@ -27,6 +26,9 @@ type (
 		ListenToSequencers(fun func(vid *vertex.WrappedTx))
 		PullSequencerTips(seqID ledger.ChainID, loadOwnMilestones bool) (set.Set[vertex.WrappedOutput], error)
 		SequencerID() ledger.ChainID
+		GetLatestMilestone(seqID ledger.ChainID) *vertex.WrappedTx
+		LatestMilestonesDescending(filter ...func(seqID ledger.ChainID, vid *vertex.WrappedTx) bool) []*vertex.WrappedTx
+		NumSequencerTips() int
 	}
 
 	SequencerTipPool struct {
@@ -34,7 +36,6 @@ type (
 		mutex                    sync.RWMutex
 		outputs                  set.Set[vertex.WrappedOutput]
 		name                     string
-		latestMilestones         map[ledger.ChainID]*vertex.WrappedTx
 		lastPruned               atomic.Time
 		outputCount              int
 		removedOutputsSinceReset int
@@ -61,10 +62,9 @@ const (
 func New(env Environment, namePrefix string, opts ...Option) (*SequencerTipPool, error) {
 	seqID := env.SequencerID()
 	ret := &SequencerTipPool{
-		Environment:      env,
-		outputs:          set.New[vertex.WrappedOutput](),
-		name:             fmt.Sprintf("%s-%s", namePrefix, seqID.StringVeryShort()),
-		latestMilestones: make(map[ledger.ChainID]*vertex.WrappedTx),
+		Environment: env,
+		outputs:     set.New[vertex.WrappedOutput](),
+		name:        fmt.Sprintf("%s-%s", namePrefix, seqID.StringVeryShort()),
 	}
 	env.Tracef(TraceTag, "starting tipPool..")
 
@@ -98,39 +98,6 @@ func New(env Environment, namePrefix string, opts ...Option) (*SequencerTipPool,
 		env.Tracef(TraceTag, "output stored in tippool: %s (total: %d)", wOut.IDShortString, len(ret.outputs))
 	})
 
-	// start listening to sequencers, including the current sequencer
-	env.ListenToSequencers(func(vid *vertex.WrappedTx) {
-		seqIDIncoming, ok := vid.SequencerIDIfAvailable()
-		util.Assertf(ok, "sequencer milestone expected")
-		env.Tracef(TraceTag, "seq milestone IN: %s of %s", vid.IDShortString, seqIDIncoming.StringShort)
-
-		ret.mutex.Lock()
-		defer ret.mutex.Unlock()
-
-		storedNew := false
-		if old, prevExists := ret.latestMilestones[seqIDIncoming]; prevExists {
-			if old == vid {
-				// repeating, ignore
-				return
-			}
-			if ledger.TooCloseOnTimeAxis(&old.ID, &vid.ID) {
-				ret.Log().Warnf("tippool: %s and %s: too close on time axis", old.IDShortString(), vid.IDShortString())
-			}
-			if oldReplaceWithNew(old, vid) {
-				ret.latestMilestones[seqIDIncoming] = vid
-				storedNew = true
-			} else {
-				ret.Tracef(TraceTag, "tippool: incoming milestone %s didn't replace existing %s", vid.IDShortString, old.IDShortString)
-			}
-		} else {
-			ret.latestMilestones[seqIDIncoming] = vid
-			storedNew = true
-		}
-		if storedNew {
-			env.Tracef(TraceTag, "new milestone stored in tippool: %s", vid.IDShortString)
-		}
-	})
-
 	// fetch all sequencers and all outputs in the sequencer account into to tip pool once
 	var err error
 	doNotLoadOwnMilestones := slices.Index(opts, OptionDoNotLoadOwnMilestones) >= 0
@@ -143,56 +110,22 @@ func New(env Environment, namePrefix string, opts ...Option) (*SequencerTipPool,
 	return ret, nil
 }
 
-// biggerByTimestampAndCoverage compares timestamps. If equal, compares coverages. If equal, compares IDs
-func oldReplaceWithNew(old, new *vertex.WrappedTx) bool {
-	util.Assertf(old != new, "old != new")
-	tsOld := old.Timestamp()
-	tsNew := new.Timestamp()
-	switch {
-	case tsOld.Before(tsNew):
-		return true
-	case tsOld.After(tsNew):
-		return false
-	}
-	util.Assertf(tsNew == tsOld, "tsNew==tsOld")
-	if vertex.LessByCoverageAndID(old, new) {
-		return true
-	}
-	return false
-}
-
 func (tp *SequencerTipPool) CandidatesToEndorseSorted(targetTs ledger.Time) []*vertex.WrappedTx {
-	tp.mutex.RLock()
-	defer tp.mutex.RUnlock()
-
-	ret := make([]*vertex.WrappedTx, 0, len(tp.latestMilestones))
-	ownSeqID := tp.SequencerID()
 	targetSlot := targetTs.Slot()
-	for seqID, vid := range tp.latestMilestones {
-		if vid.Slot() == targetSlot && seqID != ownSeqID {
-			ret = append(ret, vid)
-		}
-	}
-	sort.Slice(ret, func(i, j int) bool {
-		return vertex.IsPreferredMilestoneAgainstTheOther(ret[i], ret[j])
+	ownSeqID := tp.SequencerID()
+	return tp.LatestMilestonesDescending(func(seqID ledger.ChainID, vid *vertex.WrappedTx) bool {
+		return vid.Slot() == targetSlot && seqID != ownSeqID
 	})
-	return ret
 }
 
 func (tp *SequencerTipPool) GetOwnLatestMilestoneTx() *vertex.WrappedTx {
-	tp.mutex.RLock()
-	defer tp.mutex.RUnlock()
-
-	return tp.latestMilestones[tp.SequencerID()]
+	return tp.GetLatestMilestone(tp.SequencerID())
 }
 
 func (tp *SequencerTipPool) GetOwnLatestMilestoneOutput() vertex.WrappedOutput {
-	tp.purge()
-	tp.mutex.RLock()
-	defer tp.mutex.RUnlock()
-
-	if retVid, found := tp.latestMilestones[tp.SequencerID()]; found {
-		return retVid.SequencerWrappedOutput()
+	ret := tp.GetLatestMilestone(tp.SequencerID())
+	if ret != nil {
+		ret.SequencerWrappedOutput()
 	}
 
 	// there's no own milestone in the tippool (startup)
@@ -202,22 +135,7 @@ func (tp *SequencerTipPool) GetOwnLatestMilestoneOutput() vertex.WrappedOutput {
 
 func (tp *SequencerTipPool) bootstrapOwnMilestoneOutput() vertex.WrappedOutput {
 	chainID := tp.SequencerID()
-	milestones := maps.Values(tp.latestMilestones)
-	// sort descending
-	sort.Slice(milestones, func(i, j int) bool {
-		tsI := milestones[i].Timestamp()
-		tsJ := milestones[j].Timestamp()
-		if tsI != tsJ {
-			return tsI.After(tsJ)
-		}
-		// tsI == tsJ
-		coverageI := milestones[i].LedgerCoverageSum()
-		coverageJ := milestones[j].LedgerCoverageSum()
-		if coverageJ != coverageI {
-			return coverageI > coverageJ
-		}
-		return ledger.LessTxID(milestones[j].ID, milestones[i].ID)
-	})
+	milestones := tp.LatestMilestonesDescending()
 	for _, ms := range milestones {
 		baseline := ms.BaselineBranch()
 		if baseline == nil {
@@ -279,17 +197,6 @@ func (tp *SequencerTipPool) purge() {
 		delete(tp.outputs, wOut)
 	}
 	tp.removedOutputsSinceReset += len(toDelete)
-
-	toDeleteMilestoneChainID := make([]ledger.ChainID, 0)
-	for chainID, vid := range tp.latestMilestones {
-		if vid.IsBadOrDeleted() {
-			toDeleteMilestoneChainID = append(toDeleteMilestoneChainID, chainID)
-		}
-	}
-	for i := range toDeleteMilestoneChainID {
-		delete(tp.latestMilestones, toDeleteMilestoneChainID[i])
-		tp.Tracef(TraceTag, "milestone deleted from tippool: seqID = %s", toDeleteMilestoneChainID[i].StringShort())
-	}
 	tp.lastPruned.Store(time.Now())
 }
 
@@ -306,25 +213,6 @@ func (tp *SequencerTipPool) FilterAndSortOutputs(filter func(wOut vertex.Wrapped
 	return ret
 }
 
-func (tp *SequencerTipPool) preSelectAndSortEndorsableMilestones(targetTs ledger.Time) []*vertex.WrappedTx {
-	tp.purge()
-
-	tp.mutex.RLock()
-	defer tp.mutex.RUnlock()
-
-	ret := make([]*vertex.WrappedTx, 0)
-	for _, ms := range tp.latestMilestones {
-		if ms.Slot() != targetTs.Slot() || !ledger.ValidTransactionPace(ms.Timestamp(), targetTs) {
-			continue
-		}
-		ret = append(ret, ms)
-	}
-	sort.Slice(ret, func(i, j int) bool {
-		return vertex.IsPreferredMilestoneAgainstTheOther(ret[i], ret[j]) // order is important !!!
-	})
-	return ret
-}
-
 func (tp *SequencerTipPool) NumOutputsInBuffer() int {
 	tp.mutex.RLock()
 	defer tp.mutex.RUnlock()
@@ -333,10 +221,7 @@ func (tp *SequencerTipPool) NumOutputsInBuffer() int {
 }
 
 func (tp *SequencerTipPool) NumMilestones() int {
-	tp.mutex.RLock()
-	defer tp.mutex.RUnlock()
-
-	return len(tp.latestMilestones)
+	return tp.NumSequencerTips()
 }
 
 func (tp *SequencerTipPool) getStatsAndReset() (ret Stats) {
@@ -344,7 +229,7 @@ func (tp *SequencerTipPool) getStatsAndReset() (ret Stats) {
 	defer tp.mutex.RUnlock()
 
 	ret = Stats{
-		NumOtherSequencers:       len(tp.latestMilestones),
+		NumOtherSequencers:       tp.NumSequencerTips(),
 		NumOutputs:               len(tp.outputs),
 		OutputCount:              tp.outputCount,
 		RemovedOutputsSinceReset: tp.removedOutputsSinceReset,
@@ -361,18 +246,11 @@ func (tp *SequencerTipPool) numOutputs() int {
 }
 
 func (tp *SequencerTipPool) BestMilestoneInTheSlot(slot ledger.Slot) *vertex.WrappedTx {
-	tp.mutex.RLock()
-	defer tp.mutex.RUnlock()
-
-	var ret *vertex.WrappedTx
-
-	for _, vid := range tp.latestMilestones {
-		if vid.Slot() != slot {
-			continue
-		}
-		if ret == nil || vertex.IsPreferredMilestoneAgainstTheOther(vid, ret) {
-			ret = vid
-		}
+	all := tp.LatestMilestonesDescending(func(seqID ledger.ChainID, vid *vertex.WrappedTx) bool {
+		return vid.Slot() == slot
+	})
+	if len(all) == 0 {
+		return nil
 	}
-	return ret
+	return all[0]
 }

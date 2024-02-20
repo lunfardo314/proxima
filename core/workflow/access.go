@@ -93,3 +93,15 @@ func (w *Workflow) TxBytesWithMetadataIn(txBytes []byte, metadata *txmetadata.Tr
 func (w *Workflow) SendToTippool(vid *vertex.WrappedTx) {
 	w.tippool.Push(tippool.Input{VID: vid})
 }
+
+func (w *Workflow) LatestMilestonesDescending(filter ...func(seqID ledger.ChainID, vid *vertex.WrappedTx) bool) []*vertex.WrappedTx {
+	return w.tippool.LatestMilestonesDescending(filter...)
+}
+
+func (w *Workflow) GetLatestMilestone(seqID ledger.ChainID) *vertex.WrappedTx {
+	return w.tippool.GetLatestMilestone(seqID)
+}
+
+func (w *Workflow) NumSequencerTips() int {
+	return w.tippool.NumSequencerTips()
+}

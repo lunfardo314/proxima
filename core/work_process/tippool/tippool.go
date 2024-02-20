@@ -103,6 +103,13 @@ func oldReplaceWithNew(old, new *vertex.WrappedTx) bool {
 	return false
 }
 
+func (t *SequencerTips) GetLatestMilestone(seqID ledger.ChainID) *vertex.WrappedTx {
+	t.mutex.RLock()
+	defer t.mutex.RUnlock()
+
+	return t.latestMilestones[seqID]
+}
+
 func (t *SequencerTips) LatestMilestonesDescending(filter ...func(seqID ledger.ChainID, vid *vertex.WrappedTx) bool) []*vertex.WrappedTx {
 	flt := func(_ ledger.ChainID, _ *vertex.WrappedTx) bool { return true }
 	if len(filter) > 0 {
@@ -118,4 +125,11 @@ func (t *SequencerTips) LatestMilestonesDescending(filter ...func(seqID ledger.C
 		return vertex.IsPreferredMilestoneAgainstTheOther(ret[i], ret[j])
 	})
 	return ret
+}
+
+func (t *SequencerTips) NumSequencerTips() int {
+	t.mutex.RLock()
+	defer t.mutex.RUnlock()
+
+	return len(t.latestMilestones)
 }
