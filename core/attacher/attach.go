@@ -14,7 +14,7 @@ import (
 	"github.com/lunfardo314/proxima/util"
 )
 
-// AttachTxID ensures the txid is on the utangle
+// AttachTxID ensures the txid is on the DAG
 func AttachTxID(txid ledger.TransactionID, env Environment, opts ...Option) (vid *vertex.WrappedTx) {
 	options := &_attacherOptions{}
 	for _, opt := range opts {

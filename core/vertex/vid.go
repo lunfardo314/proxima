@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"math"
 	"runtime/debug"
 	"time"
 
@@ -12,14 +13,12 @@ import (
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
 	"github.com/lunfardo314/proxima/util/set"
-	"github.com/lunfardo314/proxima/util/testutil"
 	"golang.org/x/exp/maps"
 )
 
 // ErrDeletedVertexAccessed exception is raised by PanicAccessDeleted handler of RUnwrap vertex so that could be caught if necessary
 var (
 	ErrDeletedVertexAccessed = errors.New("deleted vertex should not be accessed")
-	ErrShouldNotBeVirtualTx  = errors.New("virtualTx is unexpected")
 )
 
 func (v _vertex) _time() time.Time {
@@ -71,6 +70,7 @@ func _newVID(g _genericWrapper, txid ledger.TransactionID) *WrappedTx {
 	ret := &WrappedTx{
 		ID:              txid,
 		_genericWrapper: g,
+		references:      1, // we always start with 1 reference, which is reference by the DAG itself. 0 references means it is deleted
 	}
 	ret.onPoke.Store(nopFun)
 	return ret
@@ -112,6 +112,20 @@ func (vid *WrappedTx) ConvertBranchVertexToVirtualTx() {
 	}})
 }
 
+func (vid *WrappedTx) MarkDeleted() {
+	vid.mutex.Lock()
+	defer vid.mutex.Unlock()
+
+	switch vid._genericWrapper.(type) {
+	case _vertex:
+		vid._put(_deletedTx{})
+	case _virtualTx:
+		vid._put(_deletedTx{})
+	case _deletedTx:
+		vid.PanicAccessDeleted()
+	}
+}
+
 func (vid *WrappedTx) GetTxStatus() Status {
 	vid.mutex.RLock()
 	defer vid.mutex.RUnlock()
@@ -128,11 +142,6 @@ func (vid *WrappedTx) GetTxStatusNoLock() Status {
 		return Bad
 	}
 	return Good
-}
-
-// MutexWriteLocked_ for deadlock debugging
-func (vid *WrappedTx) MutexWriteLocked_() bool {
-	return testutil.RWMutexWriteLocked(&vid.mutex)
 }
 
 func (vid *WrappedTx) SetTxStatusGood() {
@@ -172,6 +181,26 @@ func (vid *WrappedTx) GetErrorNoLock() error {
 	return vid.err
 }
 
+func (vid *WrappedTx) Reference() bool {
+	vid.mutex.Lock()
+	defer vid.mutex.Unlock()
+
+	if vid.references == 0 {
+		return false
+	}
+	util.Assertf(vid.references < math.MaxUint16, "Reference: overflow in %s", vid.ID.StringShort)
+	vid.references++
+	return true
+}
+
+func (vid *WrappedTx) UnReference() {
+	vid.mutex.Lock()
+	defer vid.mutex.Unlock()
+
+	util.Assertf(vid.references > 0, "UnReference: vertex is deleted: %s", vid.ID.StringShort)
+	vid.references--
+}
+
 // IsBadOrDeleted non-deterministic
 func (vid *WrappedTx) IsBadOrDeleted() bool {
 	vid.mutex.RLock()
@@ -182,6 +211,13 @@ func (vid *WrappedTx) IsBadOrDeleted() bool {
 	}
 	_, isDeleted := vid._genericWrapper.(_deletedTx)
 	return isDeleted
+}
+
+func (vid *WrappedTx) IsDeleted() bool {
+	vid.mutex.RLock()
+	defer vid.mutex.RUnlock()
+
+	return vid.references == 0
 }
 
 func (vid *WrappedTx) StatusString() string {
@@ -274,20 +310,6 @@ func (vid *WrappedTx) Timestamp() ledger.Time {
 
 func (vid *WrappedTx) Slot() ledger.Slot {
 	return vid.ID.Slot()
-}
-
-func (vid *WrappedTx) MarkDeleted() {
-	vid.mutex.Lock()
-	defer vid.mutex.Unlock()
-
-	switch vid._genericWrapper.(type) {
-	case _vertex:
-		vid._put(_deletedTx{})
-	case _virtualTx:
-		vid._put(_deletedTx{})
-	case _deletedTx:
-		vid.PanicAccessDeleted()
-	}
 }
 
 func (vid *WrappedTx) OutputWithIDAt(idx byte) (ledger.OutputWithID, error) {

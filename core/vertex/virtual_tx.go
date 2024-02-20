@@ -23,10 +23,7 @@ func NewVirtualBranchTx(br *multistate.BranchData) *VirtualTransaction {
 }
 
 func (v *VirtualTransaction) WrapWithID(txid ledger.TransactionID) *WrappedTx {
-	return _newVID(_virtualTx{
-		VirtualTransaction: v},
-		txid,
-	)
+	return _newVID(_virtualTx{VirtualTransaction: v}, txid)
 }
 
 func (v *VirtualTransaction) addOutput(idx byte, o *ledger.Output) {

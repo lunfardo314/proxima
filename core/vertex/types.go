@@ -29,19 +29,21 @@ type (
 	// Behind this identity can be wrapped usual vertex, virtual or orphaned transactions
 	WrappedTx struct {
 		// immutable ID. It does not change with the change of the underlying wrapped vertex type
-		ID    ledger.TransactionID
-		mutex sync.RWMutex // protects _genericWrapper
+		ID       ledger.TransactionID
+		mutex    sync.RWMutex // protects _genericWrapper
+		flags    Flags
+		err      error
+		coverage *multistate.LedgerCoverage // nil for non-sequencer or if not set yet
+		// referencing for orphaning/GC
+		references uint16
+
+		// notification callback. Must be func(vid *WrappedTx)
+		onPoke atomic.Value
 
 		_genericWrapper
 
 		mutexDescendants sync.RWMutex
 		consumed         map[byte]set.Set[*WrappedTx]
-
-		flags    Flags
-		err      error
-		coverage *multistate.LedgerCoverage // nil for non-sequencer or if not set yet
-		// notification callback. Must be func(vid *WrappedTx)
-		onPoke atomic.Value
 	}
 
 	WrappedOutput struct {
