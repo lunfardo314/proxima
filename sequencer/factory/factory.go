@@ -111,6 +111,7 @@ func (mf *MilestoneFactory) isConsumedInThePastPath(wOut vertex.WrappedOutput, m
 func (mf *MilestoneFactory) OwnLatestMilestoneOutput() vertex.WrappedOutput {
 	ret := mf.GetLatestMilestone(mf.SequencerID())
 	if ret != nil {
+		mf.AddOwnMilestone(ret)
 		return ret.SequencerWrappedOutput()
 	}
 	// there's no own milestone in the tippool (startup)
