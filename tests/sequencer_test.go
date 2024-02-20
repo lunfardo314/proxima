@@ -118,7 +118,8 @@ func Test1Sequencer(t *testing.T) {
 		testData := initWorkflowTest(t, 1)
 		t.Logf("%s", testData.wrk.Info())
 
-		//testData.env.EnableTraceTags(tippool_seq.TraceTag)
+		testData.env.EnableTraceTags(proposer_base.TraceTag)
+		testData.env.EnableTraceTags(tippool_seq.TraceTag)
 
 		seq, err := sequencer.New(testData.wrk, testData.bootstrapChainID, testData.genesisPrivKey,
 			sequencer.WithMaxBranches(maxSlots))
@@ -136,22 +137,21 @@ func Test1Sequencer(t *testing.T) {
 		testData.waitStop()
 		require.EqualValues(t, maxSlots, int(countBr.Load()))
 		t.Logf("%s", testData.wrk.Info())
-		//br := testData.wrk.HeaviestBranchOfLatestTimeSlot()
-		//dag.SaveGraphPastCone(br, "latest_branch")
+		testData.wrk.SaveGraph("utangle")
 	})
 	t.Run("tag along transfers", func(t *testing.T) {
 		const (
-			maxSlots   = 5
-			batchSize  = 5 // 10
-			maxBatches = 2 // 5
+			maxSlots   = 20
+			batchSize  = 10
+			maxBatches = 5
 			sendAmount = 2000
 		)
 		testData := initWorkflowTest(t, 1)
 		//t.Logf("%s", testData.wrk.Info())
 
 		//testData.env.EnableTraceTags(global.TraceTag)
-		testData.env.EnableTraceTags(proposer_base.TraceTag)
-		testData.env.EnableTraceTags(tippool_seq.TraceTag)
+		//testData.env.EnableTraceTags(proposer_base.TraceTag)
+		//testData.env.EnableTraceTags(tippool_seq.TraceTag)
 
 		seq, err := sequencer.New(testData.wrk, testData.bootstrapChainID, testData.genesisPrivKey)
 		require.NoError(t, err)
@@ -199,8 +199,8 @@ func Test1Sequencer(t *testing.T) {
 
 		rdr = testData.wrk.HeaviestStateForLatestTimeSlot()
 		for _, txid := range par.spammedTxIDs {
-			//require.True(t, rdr.KnowsCommittedTransaction(&txid))
-			t.Logf("    %s: in the heaviest state: %v", txid.StringShort(), rdr.KnowsCommittedTransaction(&txid))
+			require.True(t, rdr.KnowsCommittedTransaction(&txid))
+			//t.Logf("    %s: in the heaviest state: %v", txid.StringShort(), rdr.KnowsCommittedTransaction(&txid))
 		}
 		targetBalance := rdr.BalanceOf(targetAddr.AccountID())
 		require.EqualValues(t, maxBatches*batchSize*sendAmount, int(targetBalance))
@@ -228,7 +228,6 @@ func Test1Sequencer(t *testing.T) {
 
 		//testData.wrk.EnableTraceTags(factory.TraceTag)
 
-		ctx, _ := context.WithCancel(context.Background())
 		seq, err := sequencer.New(testData.wrk, testData.bootstrapChainID, testData.genesisPrivKey,
 			sequencer.WithMaxBranches(maxSlots))
 		require.NoError(t, err)
@@ -261,7 +260,6 @@ func Test1Sequencer(t *testing.T) {
 		targetAddr := ledger.AddressED25519FromPrivateKey(targetPrivKey)
 
 		ctx, cancel := context.WithTimeout(context.Background(), (maxSlots+1)*ledger.SlotDuration())
-		//ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 		par := &spammerParams{
 			t:             t,
 			privateKey:    testData.privKeyFaucet,
@@ -278,11 +276,13 @@ func Test1Sequencer(t *testing.T) {
 		go testData.spamTransfers(par, ctx)
 
 		<-ctx.Done()
+		t.Logf("spamming stopped")
 		cancel()
 
+		time.Sleep(3 * time.Second)
 		require.EqualValues(t, batchSize*maxBatches, len(par.spammedTxIDs))
 
-		testData.waitStop()
+		testData.stopAndWait(3 * time.Second)
 		t.Logf("%s", testData.wrk.Info(true))
 
 		testData.wrk.SaveGraph("utangle")
