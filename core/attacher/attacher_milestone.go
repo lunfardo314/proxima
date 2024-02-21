@@ -137,6 +137,8 @@ func logFinalStatusString(vid *vertex.WrappedTx, finals *attachFinals, msData *l
 
 func (a *milestoneAttacher) close() {
 	a.closeOnce.Do(func() {
+		a.unReferenceAll()
+
 		a.pokeMutex.Lock()
 		a.closed = true
 		close(a.pokeChan)
@@ -180,6 +182,7 @@ func (a *milestoneAttacher) solidifyPastCone() vertex.Status {
 				}
 				if ok, finalSuccess = a.validateSequencerTx(v, a.vid); !ok {
 					util.AssertMustError(a.err)
+					v.UnReferenceDependencies()
 				}
 			},
 		})

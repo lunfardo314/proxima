@@ -34,8 +34,8 @@ type (
 		flags    Flags
 		err      error
 		coverage *multistate.LedgerCoverage // nil for non-sequencer or if not set yet
-		// referencing for orphaning/GC
-		references uint16
+		// keeping track of references for orphaning/GC
+		references int
 
 		// notification callback. Must be func(vid *WrappedTx)
 		onPoke atomic.Value

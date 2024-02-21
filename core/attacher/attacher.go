@@ -55,13 +55,18 @@ func (a *attacher) setFlagsUp(vid *vertex.WrappedTx, f Flags) {
 }
 
 func (a *attacher) markVertexDefined(vid *vertex.WrappedTx) {
-	//util.Assertf(a.isKnownUndefined(vid), "a.isKnownUndefined(vid)")
+	if _, already := a.vertices[vid]; !already {
+		vid.MustReference()
+	}
 	a.vertices[vid] = a.flags(vid) | FlagAttachedVertexKnown | FlagAttachedVertexDefined
 
 	a.Tracef(TraceTagMarkDefUndef, "markVertexDefined in %s: %s is DEFINED", a.name, vid.IDShortString)
 }
 
 func (a *attacher) markVertexUndefined(vid *vertex.WrappedTx) {
+	if _, already := a.vertices[vid]; !already {
+		vid.MustReference()
+	}
 	f := a.flags(vid)
 	util.Assertf(!f.FlagsUp(FlagAttachedVertexDefined), "!f.FlagsUp(FlagDefined)")
 	a.vertices[vid] = f | FlagAttachedVertexKnown
@@ -71,7 +76,22 @@ func (a *attacher) markVertexUndefined(vid *vertex.WrappedTx) {
 
 func (a *attacher) markVertexRooted(vid *vertex.WrappedTx) {
 	// creates entry in rooted, probably empty
+	if _, already := a.rooted[vid]; !already {
+		vid.MustReference()
+	}
 	a.rooted[vid] = a.rooted[vid]
+}
+
+func (a *attacher) unReferenceAll() {
+	if a.baseline != nil {
+		a.baseline.UnReference()
+	}
+	for vid := range a.vertices {
+		vid.UnReference()
+	}
+	for vid := range a.rooted {
+		vid.UnReference()
+	}
 }
 
 func (a *attacher) isKnown(vid *vertex.WrappedTx) bool {
@@ -288,6 +308,7 @@ func (a *attacher) finalTouchNonSequencer(v *vertex.Vertex, vid *vertex.WrappedT
 	if !glbFlags.FlagsUp(vertex.FlagVertexConstraintsValid) {
 		// constraints are not validated yet
 		if err := v.ValidateConstraints(); err != nil {
+			v.UnReferenceDependencies()
 			a.setError(err)
 			a.Tracef(TraceTagAttachVertex, "constraint validation failed in %s: '%v'", vid.IDShortString(), err)
 			return false
@@ -347,7 +368,11 @@ func (a *attacher) attachEndorsements(v *vertex.Vertex, vid *vertex.WrappedTx) b
 	for i, vidEndorsed := range v.Endorsements {
 		if vidEndorsed == nil {
 			vidEndorsed = AttachTxID(v.Tx.EndorsementAt(byte(i)), a, OptionPullNonBranch, OptionInvokedBy(a.name))
-			v.Endorsements[i] = vidEndorsed
+			if !v.ReferenceEndorsement(byte(i), vidEndorsed) {
+				// if failed to reference, remains nil
+				a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s): failed to reference endorsement %s", a.name, vidEndorsed.IDShortString)
+				continue
+			}
 		}
 		a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s): endorsement %s", a.name, vidEndorsed.IDShortString)
 
@@ -516,6 +541,8 @@ func (a *attacher) attachRooted(wOut vertex.WrappedOutput) (ok bool, isRooted bo
 	} else {
 		consumedRooted.Insert(wOut.Index)
 	}
+
+	a.markVertexRooted(wOut.VID)
 	a.rooted[wOut.VID] = consumedRooted
 	a.markVertexDefined(wOut.VID)
 
@@ -617,7 +644,10 @@ func (a *attacher) attachInputID(consumerVertex *vertex.Vertex, consumerTx *vert
 	}
 	a.Tracef(TraceTagAttachOutput, "attached consumer %s of %s", consumerTx.IDShortString, inputOid.StringShort)
 
-	consumerVertex.Inputs[inputIdx] = vidInputTx
+	// only will become solid if successfully referenced
+	if consumerVertex.Inputs[inputIdx] == nil {
+		consumerVertex.ReferenceInput(inputIdx, vidInputTx)
+	}
 	return true
 }
 
@@ -649,8 +679,7 @@ func (a *attacher) setBaseline(vid *vertex.WrappedTx, currentTS ledger.Time) {
 	util.Assertf(vid.IsBranchTransaction(), "setBaseline: vid.IsBranchTransaction()")
 	util.Assertf(currentTS.Slot() >= vid.Slot(), "currentTS.Slot() >= vid.Slot()")
 
-	succRef := vid.Reference()
-	util.Assertf(succRef, "setBaseline: reference failed")
+	vid.MustReference()
 	a.baseline = vid
 
 	rr, found := multistate.FetchRootRecord(a.StateStore(), a.baseline.ID)

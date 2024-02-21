@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"math"
 	"runtime/debug"
 	"time"
 
@@ -108,8 +107,8 @@ func (vid *WrappedTx) ConvertVirtualTxToVertexNoLock(v *Vertex) {
 
 func (vid *WrappedTx) ConvertBranchVertexToVirtualTx() {
 	vid.Unwrap(UnwrapOptions{Vertex: func(_ *Vertex) {
-
 	}})
+	panic("ConvertBranchVertexToVirtualTx not implemented")
 }
 
 func (vid *WrappedTx) MarkDeleted() {
@@ -188,17 +187,21 @@ func (vid *WrappedTx) Reference() bool {
 	if vid.references == 0 {
 		return false
 	}
-	util.Assertf(vid.references < math.MaxUint16, "Reference: overflow in %s", vid.ID.StringShort)
 	vid.references++
 	return true
+}
+
+func (vid *WrappedTx) MustReference() {
+	util.Assertf(vid.Reference(), "MustReference: failed with %s", vid.IDShortString)
 }
 
 func (vid *WrappedTx) UnReference() {
 	vid.mutex.Lock()
 	defer vid.mutex.Unlock()
 
-	util.Assertf(vid.references > 0, "UnReference: vertex is deleted: %s", vid.ID.StringShort)
+	// must be references >= 1. Only pruner can put it to 0
 	vid.references--
+	util.Assertf(vid.references >= 1, "UnReference: reference count can't go below 1: %s", vid.ID.StringShort)
 }
 
 // IsBadOrDeleted non-deterministic
