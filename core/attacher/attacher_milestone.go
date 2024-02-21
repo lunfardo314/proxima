@@ -35,7 +35,7 @@ func runMilestoneAttacher(vid *vertex.WrappedTx, metadata *txmetadata.Transactio
 	util.Assertf(a.baseline != nil, "a.baseline != nil")
 
 	// then continue with the rest
-	a.Tracef(TraceTagAttachMilestone, "baseline is OK <- %s", a.baseline.StringShort)
+	a.Tracef(TraceTagAttachMilestone, "baseline is OK <- %s", a.baseline.IDShortString)
 
 	status = a.solidifyPastCone()
 	if status != vertex.Good {

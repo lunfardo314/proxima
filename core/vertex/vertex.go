@@ -31,6 +31,44 @@ func (v *Vertex) getSequencerPredecessor() *WrappedTx {
 	return v.Inputs[predIdx]
 }
 
+// ReferenceNewInput puts new input and references it. In case referencing fails, no change and return false
+func (v *Vertex) ReferenceNewInput(i byte, vid *WrappedTx) bool {
+	util.Assertf(int(i) < len(v.Inputs), "PutNewInput: wrong input index")
+	util.Assertf(v.Inputs[i] == nil, "PutNewInput: repetitive")
+	referenced := vid.Reference()
+	if referenced {
+		v.Inputs[i] = vid
+	}
+	return referenced
+}
+
+func (v *Vertex) ReferenceEndorsements(i byte, vid *WrappedTx) bool {
+	util.Assertf(int(i) < len(v.Endorsements), "PutNewEndorsement: wrong endorsement index")
+	util.Assertf(v.Endorsements[i] == nil, "PutNewEndorsement: repetitive")
+	referenced := vid.Reference()
+	if referenced {
+		v.Endorsements[i] = vid
+	}
+	return referenced
+}
+
+// UnReferenceDependencies un-references all not nil inputs
+func (v *Vertex) UnReferenceDependencies() {
+	for _, vidInput := range v.Inputs {
+		if vidInput != nil {
+			vidInput.UnReference()
+		}
+	}
+	if v.BaselineBranch != nil {
+		v.BaselineBranch.UnReference()
+	}
+	for _, vidEndorsement := range v.Endorsements {
+		if vidEndorsement != nil {
+			vidEndorsement.UnReference()
+		}
+	}
+}
+
 // InputLoaderByIndex returns consumed output at index i or nil (if input is orphaned or inaccessible in the virtualTx)
 func (v *Vertex) InputLoaderByIndex(i byte) (*ledger.Output, error) {
 	o := v.GetConsumedOutput(i)

@@ -30,29 +30,29 @@ func NewIncrementalAttacher(name string, env Environment, targetTs ledger.Time, 
 	env.Tracef(TraceTagIncrementalAttacher, "NewIncrementalAttacher(%s). extend: %s, endorse: {%s}",
 		name, extend.IDShortString, func() string { return vertex.VerticesLines(endorse).Join(",") })
 
-	var baseline *ledger.TransactionID
+	var baseline *vertex.WrappedTx
 
 	if targetTs.Tick() == 0 {
 		// target is branch
 		util.Assertf(len(endorse) == 0, "NewIncrementalAttacher: len(endorse)==0")
-		baseline = extend.VID.BaselineBranch()
+		baseline = extend.VID
 	} else {
 		// target is not branch
 		if extend.Slot() != targetTs.Slot() {
 			// cross-slot, must have endorsement
 			if len(endorse) > 0 {
-				baseline = endorse[0].BaselineBranch()
+				baseline = endorse[0]
 			}
 		} else {
 			// same slot
-			baseline = extend.VID.BaselineBranch()
+			baseline = extend.VID
 		}
 	}
 	if baseline == nil {
 		return nil, fmt.Errorf("NewIncrementalAttacher: failed to determine the baseline branch of %s", extend.IDShortString())
 	}
 
-	env.Tracef(TraceTagIncrementalAttacher, "NewIncrementalAttacher(%s). baseline: %s", name, baseline.StringShort)
+	env.Tracef(TraceTagIncrementalAttacher, "NewIncrementalAttacher(%s). baseline: %s", name, baseline.IDShortString)
 
 	ret := &IncrementalAttacher{
 		attacher: newPastConeAttacher(env, name),
@@ -79,9 +79,9 @@ func NewIncrementalAttacher(name string, env Environment, targetTs ledger.Time, 
 		// stem input, if any, will be at index 1
 		// for branches, include stem input
 		env.Tracef(TraceTagIncrementalAttacher, "NewIncrementalAttacher(%s). insertStemInput", name)
-		ret.stemOutput = env.GetStemWrappedOutput(baseline)
+		ret.stemOutput = env.GetStemWrappedOutput(&baseline.ID)
 		if ret.stemOutput.VID == nil {
-			return nil, fmt.Errorf("NewIncrementalAttacher: stem output is not available for baseline %s", baseline.StringShort())
+			return nil, fmt.Errorf("NewIncrementalAttacher: stem output is not available for baseline %s", baseline.IDShortString())
 		}
 		if err := ret.insertOutput(ret.stemOutput); err != nil {
 			return nil, err
@@ -90,7 +90,7 @@ func NewIncrementalAttacher(name string, env Environment, targetTs ledger.Time, 
 	return ret, nil
 }
 
-func (a *IncrementalAttacher) BaselineBranch() *ledger.TransactionID {
+func (a *IncrementalAttacher) BaselineBranch() *vertex.WrappedTx {
 	return a.baseline
 }
 
@@ -115,9 +115,9 @@ func (a *IncrementalAttacher) insertEndorsement(endorsement *vertex.WrappedTx) e
 		return fmt.Errorf("NewIncrementalAttacher: can't endorse %s. Reason: '%s'", endorsement.IDShortString(), endorsement.GetError())
 	}
 	endBaseline := endorsement.BaselineBranch()
-	if !a.branchesCompatible(a.baseline, endBaseline) {
+	if !a.branchesCompatible(&a.baseline.ID, &endBaseline.ID) {
 		return fmt.Errorf("baseline branch %s of the endorsement branch %s is incompatible with the baseline %s",
-			endBaseline.StringShort(), endorsement.IDShortString(), a.baseline.StringShort())
+			endBaseline.IDShortString, endorsement.IDShortString(), a.baseline.IDShortString())
 	}
 	if endorsement.IsBranchTransaction() {
 		// branch is compatible with the baseline

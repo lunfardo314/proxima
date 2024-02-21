@@ -36,7 +36,7 @@ func (a *milestoneAttacher) wrapUpAttacher() {
 		}
 	}
 
-	a.finals.baseline = a.baseline
+	a.finals.baseline = &a.baseline.ID
 	a.finals.numTransactions = len(a.vertices)
 
 	a.finals.coverage = a.coverage.MakeNext(int(a.vid.Slot() - a.baseline.Slot()))

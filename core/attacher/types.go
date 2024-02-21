@@ -53,7 +53,7 @@ type (
 		Environment
 		name     string
 		err      error
-		baseline *ledger.TransactionID
+		baseline *vertex.WrappedTx
 		vertices map[*vertex.WrappedTx]Flags
 		rooted   map[*vertex.WrappedTx]set.Set[byte]
 		pokeMe   func(vid *vertex.WrappedTx)

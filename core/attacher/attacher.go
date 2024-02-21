@@ -34,7 +34,7 @@ func (a *attacher) Name() string {
 }
 
 func (a *attacher) baselineStateReader() multistate.SugaredStateReader {
-	return multistate.MakeSugared(a.GetStateReaderForTheBranch(a.baseline))
+	return multistate.MakeSugared(a.GetStateReaderForTheBranch(&a.baseline.ID))
 }
 
 func (a *attacher) setError(err error) {
@@ -114,6 +114,7 @@ func (a *attacher) isRootedOutput(wOut vertex.WrappedOutput) bool {
 // solidifyBaselineVertex directs attachment process down the DAG to reach the deterministically known baseline state
 // for a sequencer milestone. Existence of it is guaranteed by the ledger constraints
 func (a *attacher) solidifyBaselineVertex(v *vertex.Vertex) (ok bool) {
+	util.Assertf(a.baseline == nil, "a.baseline == nil")
 	if v.Tx.IsBranchTransaction() {
 		return a.solidifyStemOfTheVertex(v)
 	}
@@ -121,26 +122,25 @@ func (a *attacher) solidifyBaselineVertex(v *vertex.Vertex) (ok bool) {
 }
 
 func (a *attacher) solidifyStemOfTheVertex(v *vertex.Vertex) (ok bool) {
-	stemInputIdx := v.StemInputIndex()
-	if v.Inputs[stemInputIdx] == nil {
-		// predecessor stem is pending
-		stemInputOid := v.Tx.MustInputAt(stemInputIdx)
-		v.Inputs[stemInputIdx] = AttachTxID(stemInputOid.TransactionID(), a, OptionInvokedBy(a.name))
-	}
-	util.Assertf(v.Inputs[stemInputIdx] != nil, "v.Inputs[stemInputIdx] != nil")
-	util.Assertf(v.Inputs[stemInputIdx].IsBranchTransaction(), "v.Inputs[stemInputIdx].IsBranchTransaction()")
+	util.Assertf(v.BaselineBranch == nil, "v.BaselineBranchTxID == nil")
 
-	status := v.Inputs[stemInputIdx].GetTxStatus()
-	switch status {
+	stemInputIdx := v.StemInputIndex()
+	stemInputOid := v.Tx.MustInputAt(stemInputIdx)
+	stemVid := AttachTxID(stemInputOid.TransactionID(), a, OptionInvokedBy(a.name))
+	if !stemVid.Reference() {
+		// failed to reference (pruned), but it is ok (rare event)
+		return true
+	}
+	util.Assertf(stemVid.IsBranchTransaction(), "stemVid.IsBranchTransaction()")
+	switch stemVid.GetTxStatus() {
 	case vertex.Good:
-		txid := v.Inputs[stemInputIdx].ID
-		v.BaselineBranch = &txid
+		v.BaselineBranch = stemVid
 		return true
 	case vertex.Bad:
-		a.setError(v.Inputs[stemInputIdx].GetError())
+		a.setError(stemVid.GetError())
 		return false
 	case vertex.Undefined:
-		a.pokeMe(v.Inputs[stemInputIdx])
+		a.pokeMe(stemVid)
 		return true
 	default:
 		panic("wrong vertex state")
@@ -162,10 +162,14 @@ func (a *attacher) solidifySequencerBaseline(v *vertex.Vertex) (ok bool) {
 	} else {
 		inputTx = AttachTxID(predOid.TransactionID(), a, OptionPullNonBranch, OptionInvokedBy(a.name))
 	}
+	if !inputTx.Reference() {
+		// wasn't able to reference but it is ok
+		return true
+	}
 	switch inputTx.GetTxStatus() {
 	case vertex.Good:
 		v.BaselineBranch = inputTx.BaselineBranch()
-		util.Assertf(v.BaselineBranch != nil, "v.BaselineBranch!=nil")
+		util.Assertf(v.BaselineBranch != nil, "v.BaselineBranchTxID!=nil")
 		return true
 	case vertex.Undefined:
 		// vertex can be undefined but with correct baseline branch
@@ -360,12 +364,12 @@ func (a *attacher) attachEndorsements(v *vertex.Vertex, vid *vertex.WrappedTx) b
 			// endorsed sequencer milestones are solidified proactively by attachers
 			return true
 		}
-		a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s): baseline branch %s", a.name, baselineBranch.StringShort)
+		a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s): baseline branch %s", a.name, baselineBranch.IDShortString)
 
 		// baseline must be compatible with baseline of the attacher
-		if !a.branchesCompatible(a.baseline, baselineBranch) {
-			a.setError(fmt.Errorf("attachEndorsements: baseline %s of endorsement %s is incompatible with the baseline branch%s",
-				baselineBranch.StringShort(), vidEndorsed.IDShortString(), a.baseline.StringShort()))
+		if !a.branchesCompatible(&a.baseline.ID, &baselineBranch.ID) {
+			a.setError(fmt.Errorf("attachEndorsements: baseline %s of endorsement %s is incompatible with the baseline branch %s",
+				baselineBranch.IDShortString(), vidEndorsed.IDShortString(), a.baseline.IDShortString()))
 			a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s): not compatible with baselines", a.name)
 			return false
 		}
@@ -497,7 +501,7 @@ func (a *attacher) attachRooted(wOut vertex.WrappedOutput) (ok bool, isRooted bo
 	out := stateReader.GetOutput(oid)
 	if out == nil {
 		// output has not been found in the state -> Bad (already consumed)
-		err := fmt.Errorf("output %s is already consumed in the baseline state %s", wOut.IDShortString(), a.baseline.StringShort())
+		err := fmt.Errorf("output %s is already consumed in the baseline state %s", wOut.IDShortString(), a.baseline.IDShortString())
 		a.setError(err)
 		a.Tracef(TraceTagAttachOutput, "%v", err)
 		return false, false
@@ -535,7 +539,7 @@ func (a *attacher) attachOutput(wOut vertex.WrappedOutput, parasiticChainHorizon
 
 	if wOut.VID.IsBranchTransaction() {
 		// not rooted branch output -> BAD
-		err := fmt.Errorf("attachOutput: branch output %s is expected to be rooted in the baseline %s", wOut.VID.IDShortString(), a.baseline.StringShort())
+		err := fmt.Errorf("attachOutput: branch output %s is expected to be rooted in the baseline %s", wOut.VID.IDShortString(), a.baseline.IDShortString())
 		a.setError(err)
 		a.Tracef(TraceTagAttachOutput, "%v", err)
 		return false, false
@@ -591,8 +595,8 @@ func (a *attacher) attachInputID(consumerVertex *vertex.Vertex, consumerTx *vert
 	if vidInputTx.IsSequencerMilestone() {
 		// if input is a sequencer milestones, check if baselines are compatible
 		if inputBaselineBranch := vidInputTx.BaselineBranch(); inputBaselineBranch != nil {
-			if !a.branchesCompatible(a.baseline, inputBaselineBranch) {
-				err := fmt.Errorf("branches %s and %s not compatible", a.baseline.StringShort(), inputBaselineBranch.StringShort())
+			if !a.branchesCompatible(&a.baseline.ID, &inputBaselineBranch.ID) {
+				err := fmt.Errorf("branches %s and %s not compatible", a.baseline.IDShortString(), inputBaselineBranch.IDShortString())
 				a.setError(err)
 				a.Tracef(TraceTagAttachOutput, "%v", err)
 				return false
@@ -606,7 +610,7 @@ func (a *attacher) attachInputID(consumerVertex *vertex.Vertex, consumerTx *vert
 
 	if !vidInputTx.AttachConsumer(inputOid.Index(), consumerTx, a.checkConflictsFunc(consumerTx)) {
 		err := fmt.Errorf("input %s of consumer %s conflicts with existing consumers in the baseline state %s (double spend)",
-			inputOid.StringShort(), consumerTx.IDShortString(), a.baseline.StringShort())
+			inputOid.StringShort(), consumerTx.IDShortString(), a.baseline.IDShortString())
 		a.setError(err)
 		a.Tracef(TraceTagAttachOutput, "%v", err)
 		return false
@@ -641,13 +645,16 @@ func (a *attacher) isKnownConsumed(wOut vertex.WrappedOutput) (isConsumed bool) 
 }
 
 // setBaseline sets baseline, fetches its baselineCoverage and initializes attacher's baselineCoverage according to the currentTS
-func (a *attacher) setBaseline(txid *ledger.TransactionID, currentTS ledger.Time) {
-	util.Assertf(txid.IsBranchTransaction(), "setBaseline: vid.IsBranchTransaction()")
-	util.Assertf(currentTS.Slot() >= txid.Slot(), "currentTS.Slot() >= vid.Slot()")
+func (a *attacher) setBaseline(vid *vertex.WrappedTx, currentTS ledger.Time) {
+	util.Assertf(vid.IsBranchTransaction(), "setBaseline: vid.IsBranchTransaction()")
+	util.Assertf(currentTS.Slot() >= vid.Slot(), "currentTS.Slot() >= vid.Slot()")
 
-	a.baseline = txid
-	rr, found := multistate.FetchRootRecord(a.StateStore(), *a.baseline)
-	util.Assertf(found, "setBaseline: can't fetch root record for %s", a.baseline.StringShort)
+	succRef := vid.Reference()
+	util.Assertf(succRef, "setBaseline: reference failed")
+	a.baseline = vid
+
+	rr, found := multistate.FetchRootRecord(a.StateStore(), a.baseline.ID)
+	util.Assertf(found, "setBaseline: can't fetch root record for %s", a.baseline.IDShortString)
 
 	a.coverage = rr.LedgerCoverage
 	a.baselineSupply = rr.Supply

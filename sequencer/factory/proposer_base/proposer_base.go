@@ -56,7 +56,7 @@ func (b *BaseProposer) propose() (*attacher.IncrementalAttacher, bool) {
 		b.Tracef(TraceTag, "%s can't create attacher: '%v'", b.Name, err)
 		return nil, true
 	}
-	b.Tracef(TraceTag, "%s created attacher with baseline %s, cov: %s", b.Name, a.BaselineBranch().StringShort, util.Ref(a.LedgerCoverage()).String)
+	b.Tracef(TraceTag, "%s created attacher with baseline %s, cov: %s", b.Name, a.BaselineBranch().IDShortString, util.Ref(a.LedgerCoverage()).String)
 
 	if b.TargetTs.Tick() != 0 {
 		b.Tracef(TraceTag, "%s making non-branch, extending %s, collecting and inserting tag-along inputs", b.Name, extend.IDShortString)

@@ -127,7 +127,7 @@ func (mf *MilestoneFactory) bootstrapOwnMilestoneOutput() vertex.WrappedOutput {
 		if baseline == nil {
 			continue
 		}
-		rdr := mf.GetStateReaderForTheBranch(baseline)
+		rdr := mf.GetStateReaderForTheBranch(&baseline.ID)
 		o, err := rdr.GetUTXOForChainID(&chainID)
 		if errors.Is(err, multistate.ErrNotFound) {
 			continue
@@ -346,7 +346,7 @@ func (mf *MilestoneFactory) ChooseExtendEndorsePair(proposerName string, targetT
 			mf.Tracef(TraceTagChooseExtendEndorsePair, ">>>>>>>>>>>>>>> !ledger.ValidTransactionPace")
 			continue
 		}
-		rdr := multistate.MakeSugared(mf.GetStateReaderForTheBranch(endorse.BaselineBranch()))
+		rdr := multistate.MakeSugared(mf.GetStateReaderForTheBranch(&endorse.BaselineBranch().ID))
 		seqOut, err := rdr.GetChainOutput(&seqID)
 		if errors.Is(err, multistate.ErrNotFound) {
 			mf.Tracef(TraceTagChooseExtendEndorsePair, ">>>>>>>>>>>>>>> GetChainOutput not found")

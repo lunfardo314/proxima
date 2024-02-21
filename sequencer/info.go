@@ -64,7 +64,7 @@ func (seq *Sequencer) LogMilestoneSubmitDefault(ms *vertex.WrappedTx) {
 		msIndex,
 		branchIndex,
 		sequencerOutput.IDShort(),
-		ms.BaselineBranch().StringShort(),
+		ms.BaselineBranch().IDShortString(),
 		util.GoTh(info.LedgerCoverage),
 		util.GoTh(info.PrevLedgerCoverage),
 		util.GoTh(info.InflationAmount),
