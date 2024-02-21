@@ -58,7 +58,7 @@ func NewIncrementalAttacher(name string, env Environment, targetTs ledger.Time, 
 		inputs:   make([]vertex.WrappedOutput, 0),
 		targetTs: targetTs,
 	}
-	if err := ret.initIncrementalAttacher(baseline, targetTs, extend, endorse...); err != nil {
+	if err := ret.initIncrementalAttacher(baseline.BaselineBranch(), targetTs, extend, endorse...); err != nil {
 		ret.UnReferenceAll()
 		return nil, err
 	}
