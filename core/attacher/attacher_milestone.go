@@ -154,8 +154,8 @@ func (a *milestoneAttacher) solidifyBaseline() vertex.Status {
 		a.vid.Unwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
 			ok = a.solidifyBaselineVertex(v)
 			if ok && v.BaselineBranch != nil {
-				a.setBaseline(v.BaselineBranch, a.vid.Timestamp())
-				success = true
+				success = a.setBaseline(v.BaselineBranch, a.vid.Timestamp())
+				util.Assertf(success, "solidifyBaseline %s: failed to set baseline", a.name)
 			}
 		}})
 		switch {

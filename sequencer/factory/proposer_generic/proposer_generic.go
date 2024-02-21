@@ -77,11 +77,17 @@ func (t *TaskGeneric) Run() {
 		if a, forceExit = t.generateProposal(); forceExit {
 			return
 		}
-		if a != nil && a.Completed() {
-			t.Tracef(TraceTag, "Run: generated new proposal")
-			if forceExit = t.Propose(a); forceExit {
-				return
-			}
+		if a != nil {
+			func() {
+				defer a.UnReferenceAll()
+
+				if a.Completed() {
+					t.Tracef(TraceTag, "Run: generated new proposal")
+					if forceExit = t.Propose(a); forceExit {
+						return
+					}
+				}
+			}()
 		}
 		select {
 		case <-t.ctx.Done():

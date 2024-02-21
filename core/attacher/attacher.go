@@ -675,11 +675,13 @@ func (a *attacher) isKnownConsumed(wOut vertex.WrappedOutput) (isConsumed bool) 
 }
 
 // setBaseline sets baseline, fetches its baselineCoverage and initializes attacher's baselineCoverage according to the currentTS
-func (a *attacher) setBaseline(vid *vertex.WrappedTx, currentTS ledger.Time) {
+func (a *attacher) setBaseline(vid *vertex.WrappedTx, currentTS ledger.Time) bool {
 	util.Assertf(vid.IsBranchTransaction(), "setBaseline: vid.IsBranchTransaction()")
 	util.Assertf(currentTS.Slot() >= vid.Slot(), "currentTS.Slot() >= vid.Slot()")
 
-	vid.MustReference()
+	if !vid.Reference() {
+		return false
+	}
 	a.baseline = vid
 
 	rr, found := multistate.FetchRootRecord(a.StateStore(), a.baseline.ID)
@@ -688,6 +690,7 @@ func (a *attacher) setBaseline(vid *vertex.WrappedTx, currentTS ledger.Time) {
 	a.coverage = rr.LedgerCoverage
 	a.baselineSupply = rr.Supply
 	util.Assertf(a.coverage.LatestDelta() == 0, "a.coverage.LatestDelta() == 0")
+	return true
 }
 
 func (a *attacher) dumpLines(prefix ...string) *lines.Lines {

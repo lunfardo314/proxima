@@ -31,7 +31,6 @@ func NewIncrementalAttacher(name string, env Environment, targetTs ledger.Time, 
 		name, extend.IDShortString, func() string { return vertex.VerticesLines(endorse).Join(",") })
 
 	var baseline *vertex.WrappedTx
-
 	if targetTs.Tick() == 0 {
 		// target is branch
 		util.Assertf(len(endorse) == 0, "NewIncrementalAttacher: len(endorse)==0")
@@ -51,7 +50,6 @@ func NewIncrementalAttacher(name string, env Environment, targetTs ledger.Time, 
 	if baseline == nil {
 		return nil, fmt.Errorf("NewIncrementalAttacher: failed to determine the baseline branch of %s", extend.IDShortString())
 	}
-
 	env.Tracef(TraceTagIncrementalAttacher, "NewIncrementalAttacher(%s). baseline: %s", name, baseline.IDShortString)
 
 	ret := &IncrementalAttacher{
@@ -60,34 +58,60 @@ func NewIncrementalAttacher(name string, env Environment, targetTs ledger.Time, 
 		inputs:   make([]vertex.WrappedOutput, 0),
 		targetTs: targetTs,
 	}
+	if err := ret.initIncrementalAttacher(baseline, targetTs, extend, endorse...); err != nil {
+		ret.UnReferenceAll()
+		return nil, err
+	}
+	return ret, nil
+}
 
-	ret.setBaseline(baseline, targetTs) // also fetches baseline coverage
+func (a *IncrementalAttacher) initIncrementalAttacher(baseline *vertex.WrappedTx, targetTs ledger.Time, extend vertex.WrappedOutput, endorse ...*vertex.WrappedTx) error {
+	// also fetches baseline coverage
+	if !a.setBaseline(baseline, targetTs) {
+		return fmt.Errorf("NewIncrementalAttacher: failed to set baseline branch of %s", extend.IDShortString())
+	}
 
 	// attach endorsements
 	for _, endorsement := range endorse {
-		env.Tracef(TraceTagIncrementalAttacher, "NewIncrementalAttacher(%s). insertEndorsement: %s", name, endorsement.IDShortString)
-		if err := ret.insertEndorsement(endorsement); err != nil {
-			return nil, err
+		a.Tracef(TraceTagIncrementalAttacher, "NewIncrementalAttacher(%s). insertEndorsement: %s", a.name, endorsement.IDShortString)
+		if err := a.insertEndorsement(endorsement); err != nil {
+			return err
 		}
 	}
 	// extend input will always be at index 0
-	if err := ret.insertOutput(extend); err != nil {
-		return nil, err
+	if err := a.insertOutput(extend); err != nil {
+		return err
 	}
 
 	if targetTs.Tick() == 0 {
 		// stem input, if any, will be at index 1
 		// for branches, include stem input
-		env.Tracef(TraceTagIncrementalAttacher, "NewIncrementalAttacher(%s). insertStemInput", name)
-		ret.stemOutput = env.GetStemWrappedOutput(&baseline.ID)
-		if ret.stemOutput.VID == nil {
-			return nil, fmt.Errorf("NewIncrementalAttacher: stem output is not available for baseline %s", baseline.IDShortString())
+		a.Tracef(TraceTagIncrementalAttacher, "NewIncrementalAttacher(%s). insertStemInput", a.name)
+		a.stemOutput = a.GetStemWrappedOutput(&baseline.ID)
+		if a.stemOutput.VID == nil {
+			return fmt.Errorf("NewIncrementalAttacher: stem output is not available for baseline %s", baseline.IDShortString())
 		}
-		if err := ret.insertOutput(ret.stemOutput); err != nil {
-			return nil, err
+		if !a.stemOutput.VID.Reference() {
+			return fmt.Errorf("NewIncrementalAttacher: failed to reference stem output %s", a.stemOutput.IDShortString())
+		}
+		if err := a.insertOutput(a.stemOutput); err != nil {
+			return err
 		}
 	}
-	return ret, nil
+	return nil
+}
+
+func (a *IncrementalAttacher) UnReferenceAll() {
+	a.attacher.unReferenceAll()
+	for _, vid := range a.endorse {
+		vid.UnReference()
+	}
+	for _, wOut := range a.inputs {
+		wOut.VID.UnReference()
+	}
+	if a.stemOutput.VID != nil {
+		a.stemOutput.VID.UnReference()
+	}
 }
 
 func (a *IncrementalAttacher) BaselineBranch() *vertex.WrappedTx {
@@ -105,6 +129,9 @@ func (a *IncrementalAttacher) insertOutput(wOut vertex.WrappedOutput) error {
 	}
 	if !defined {
 		return ErrPastConeNotSolidYet
+	}
+	if !wOut.VID.Reference() {
+		return fmt.Errorf("insertOutput: failed to reference output %s", wOut.IDShortString())
 	}
 	a.inputs = append(a.inputs, wOut)
 	return nil
@@ -134,6 +161,9 @@ func (a *IncrementalAttacher) insertEndorsement(endorsement *vertex.WrappedTx) e
 		if !defined {
 			return ErrPastConeNotSolidYet
 		}
+	}
+	if !endorsement.Reference() {
+		return fmt.Errorf("insertEndorsement: failed to reference endorsement %s", endorsement.IDShortString())
 	}
 	a.endorse = append(a.endorse, endorsement)
 	return nil
