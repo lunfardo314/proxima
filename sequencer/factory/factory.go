@@ -13,10 +13,10 @@ import (
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/multistate"
+	"github.com/lunfardo314/proxima/sequencer/backlog"
 	"github.com/lunfardo314/proxima/sequencer/factory/proposer_base"
 	"github.com/lunfardo314/proxima/sequencer/factory/proposer_endorse1"
 	"github.com/lunfardo314/proxima/sequencer/factory/proposer_generic"
-	"github.com/lunfardo314/proxima/sequencer/tippool"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/set"
 )
@@ -24,18 +24,16 @@ import (
 type (
 	Environment interface {
 		attacher.Environment
-		tippool.Environment
+		backlog.Environment
 		ControllerPrivateKey() ed25519.PrivateKey
 		SequencerName() string
 		MaxTagAlongOutputs() int
 	}
 
-	InflationPolicy int
-
 	MilestoneFactory struct {
 		Environment
 		mutex                       sync.RWMutex
-		tipPool                     *tippool.SequencerTipPool
+		tipPool                     *backlog.Backlog
 		proposal                    latestMilestoneProposal
 		ownMilestones               map[*vertex.WrappedTx]set.Set[vertex.WrappedOutput] // map ms -> consumed outputs in the past
 		maxTagAlongInputs           int
@@ -60,7 +58,7 @@ type (
 		NumOwnMilestones            int
 		OwnMilestoneCount           int
 		RemovedMilestonesSinceReset int
-		tippool.Stats
+		backlog.Stats
 	}
 )
 
@@ -93,7 +91,7 @@ func New(env Environment) (*MilestoneFactory, error) {
 		ret.maxTagAlongInputs = veryMaxTagAlongInputs
 	}
 	var err error
-	ret.tipPool, err = tippool.New(ret, env.SequencerName())
+	ret.tipPool, err = backlog.New(ret)
 	if err != nil {
 		return nil, err
 	}
@@ -253,7 +251,7 @@ func (mf *MilestoneFactory) startProposerWorkers(targetTime ledger.Time, ctx con
 		if debuggerFriendly {
 			runFun()
 		} else {
-			util.RunWrappedRoutine(mf.SequencerName()+"::"+task.GetName(), runFun,
+			util.RunWrappedRoutine(mf.Environment.SequencerName()+"::"+task.GetName(), runFun,
 				func(err error) bool {
 					if errors.Is(err, vertex.ErrDeletedVertexAccessed) {
 						// do not panic, just abandon
@@ -282,7 +280,7 @@ func (mf *MilestoneFactory) Propose(a *attacher.IncrementalAttacher) (forceExit 
 
 	commandParser := NewCommandParser(ledger.AddressED25519FromPrivateKey(mf.ControllerPrivateKey()))
 	// inflate whenever possible
-	tx, err := a.MakeSequencerTransaction(mf.SequencerName(), mf.ControllerPrivateKey(), commandParser)
+	tx, err := a.MakeSequencerTransaction(mf.Environment.SequencerName(), mf.ControllerPrivateKey(), commandParser)
 	if err != nil {
 		mf.Log().Warnf("Propose%s: error during transaction generation: '%v'", a.Name(), err)
 		return true
@@ -429,9 +427,15 @@ func (mf *MilestoneFactory) NumOutputsInBuffer() int {
 }
 
 func (mf *MilestoneFactory) NumMilestones() int {
-	return mf.tipPool.NumMilestones()
+	return mf.NumSequencerTips()
 }
 
 func (mf *MilestoneFactory) BestMilestoneInTheSlot(slot ledger.Slot) *vertex.WrappedTx {
-	return mf.tipPool.BestMilestoneInTheSlot(slot)
+	all := mf.LatestMilestonesDescending(func(seqID ledger.ChainID, vid *vertex.WrappedTx) bool {
+		return vid.Slot() == slot
+	})
+	if len(all) == 0 {
+		return nil
+	}
+	return all[0]
 }

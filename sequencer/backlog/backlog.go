@@ -1,40 +1,33 @@
-package tippool
+package backlog
 
 import (
-	"fmt"
 	"slices"
 	"sort"
 	"sync"
-	"time"
 
-	"github.com/lunfardo314/proxima/core/attacher"
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/set"
-	"go.uber.org/atomic"
 )
 
 type (
 	Environment interface {
 		global.Logging
-		attacher.Environment
 		ListenToAccount(account ledger.Accountable, fun func(wOut vertex.WrappedOutput))
-		ListenToSequencers(fun func(vid *vertex.WrappedTx))
 		PullSequencerTips(seqID ledger.ChainID, loadOwnMilestones bool) (set.Set[vertex.WrappedOutput], error)
 		SequencerID() ledger.ChainID
+		SequencerName() string
 		GetLatestMilestone(seqID ledger.ChainID) *vertex.WrappedTx
 		LatestMilestonesDescending(filter ...func(seqID ledger.ChainID, vid *vertex.WrappedTx) bool) []*vertex.WrappedTx
 		NumSequencerTips() int
 	}
 
-	SequencerTipPool struct {
+	Backlog struct {
 		Environment
 		mutex                    sync.RWMutex
 		outputs                  set.Set[vertex.WrappedOutput]
-		name                     string
-		lastPruned               atomic.Time
 		outputCount              int
 		removedOutputsSinceReset int
 	}
@@ -53,16 +46,15 @@ type Option byte
 
 // OptionDoNotLoadOwnMilestones is used for tests only
 const (
-	TraceTag                     = "tippool"
+	TraceTag                     = "backlog"
 	OptionDoNotLoadOwnMilestones = Option(iota)
 )
 
-func New(env Environment, namePrefix string, opts ...Option) (*SequencerTipPool, error) {
+func New(env Environment, opts ...Option) (*Backlog, error) {
 	seqID := env.SequencerID()
-	ret := &SequencerTipPool{
+	ret := &Backlog{
 		Environment: env,
 		outputs:     set.New[vertex.WrappedOutput](),
-		name:        fmt.Sprintf("%s-%s", namePrefix, seqID.StringVeryShort()),
 	}
 	env.Tracef(TraceTag, "starting tipPool..")
 
@@ -71,8 +63,7 @@ func New(env Environment, namePrefix string, opts ...Option) (*SequencerTipPool,
 
 	// start listening to chain-locked account
 	env.ListenToAccount(seqID.AsChainLock(), func(wOut vertex.WrappedOutput) {
-		env.Tracef(TraceTag, "[%s] output IN: %s", ret.name, wOut.IDShortString)
-		ret.purge()
+		env.Tracef(TraceTag, "[%s] output IN: %s", ret.SequencerName, wOut.IDShortString)
 
 		if !isCandidateToTagAlong(wOut) {
 			return
@@ -108,7 +99,7 @@ func New(env Environment, namePrefix string, opts ...Option) (*SequencerTipPool,
 	return ret, nil
 }
 
-func (tp *SequencerTipPool) CandidatesToEndorseSorted(targetTs ledger.Time) []*vertex.WrappedTx {
+func (tp *Backlog) CandidatesToEndorseSorted(targetTs ledger.Time) []*vertex.WrappedTx {
 	targetSlot := targetTs.Slot()
 	ownSeqID := tp.SequencerID()
 	return tp.LatestMilestonesDescending(func(seqID ledger.ChainID, vid *vertex.WrappedTx) bool {
@@ -116,7 +107,7 @@ func (tp *SequencerTipPool) CandidatesToEndorseSorted(targetTs ledger.Time) []*v
 	})
 }
 
-func (tp *SequencerTipPool) GetOwnLatestMilestoneTx() *vertex.WrappedTx {
+func (tp *Backlog) GetOwnLatestMilestoneTx() *vertex.WrappedTx {
 	return tp.GetLatestMilestone(tp.SequencerID())
 }
 
@@ -143,33 +134,7 @@ func isCandidateToTagAlong(wOut vertex.WrappedOutput) bool {
 	return true
 }
 
-// TODO purge also bad ones
-func (tp *SequencerTipPool) purge() {
-	cleanupPeriod := ledger.SlotDuration() / 5
-	if time.Since(tp.lastPruned.Load()) < cleanupPeriod {
-		return
-	}
-
-	tp.mutex.Lock()
-	defer tp.mutex.Unlock()
-
-	toDelete := make([]vertex.WrappedOutput, 0)
-	for wOut := range tp.outputs {
-		if !isCandidateToTagAlong(wOut) {
-			toDelete = append(toDelete, wOut)
-		}
-	}
-	for _, wOut := range toDelete {
-		tp.Tracef(TraceTag, "output deleted from tippool: %s", wOut.IDShortString)
-		delete(tp.outputs, wOut)
-	}
-	tp.removedOutputsSinceReset += len(toDelete)
-	tp.lastPruned.Store(time.Now())
-}
-
-func (tp *SequencerTipPool) FilterAndSortOutputs(filter func(wOut vertex.WrappedOutput) bool) []vertex.WrappedOutput {
-	tp.purge()
-
+func (tp *Backlog) FilterAndSortOutputs(filter func(wOut vertex.WrappedOutput) bool) []vertex.WrappedOutput {
 	tp.mutex.RLock()
 	defer tp.mutex.RUnlock()
 
@@ -180,18 +145,14 @@ func (tp *SequencerTipPool) FilterAndSortOutputs(filter func(wOut vertex.Wrapped
 	return ret
 }
 
-func (tp *SequencerTipPool) NumOutputsInBuffer() int {
+func (tp *Backlog) NumOutputsInBuffer() int {
 	tp.mutex.RLock()
 	defer tp.mutex.RUnlock()
 
 	return len(tp.outputs)
 }
 
-func (tp *SequencerTipPool) NumMilestones() int {
-	return tp.NumSequencerTips()
-}
-
-func (tp *SequencerTipPool) getStatsAndReset() (ret Stats) {
+func (tp *Backlog) getStatsAndReset() (ret Stats) {
 	tp.mutex.RLock()
 	defer tp.mutex.RUnlock()
 
@@ -205,19 +166,9 @@ func (tp *SequencerTipPool) getStatsAndReset() (ret Stats) {
 	return
 }
 
-func (tp *SequencerTipPool) numOutputs() int {
+func (tp *Backlog) numOutputs() int {
 	tp.mutex.RLock()
 	defer tp.mutex.RUnlock()
 
 	return len(tp.outputs)
-}
-
-func (tp *SequencerTipPool) BestMilestoneInTheSlot(slot ledger.Slot) *vertex.WrappedTx {
-	all := tp.LatestMilestonesDescending(func(seqID ledger.ChainID, vid *vertex.WrappedTx) bool {
-		return vid.Slot() == slot
-	})
-	if len(all) == 0 {
-		return nil
-	}
-	return all[0]
 }
