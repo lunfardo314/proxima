@@ -66,6 +66,10 @@ func (a *attacher) markReferencedByAttacher(vid *vertex.WrappedTx) bool {
 	return false
 }
 
+func (a *attacher) mustMarkReferencedByAttacher(vid *vertex.WrappedTx) {
+	util.Assertf(a.markReferencedByAttacher(vid), "attacher %s: failed to reference %s", a.name, vid.IDShortString)
+}
+
 func (a *attacher) unReferenceAllByAttacher() {
 	for vid := range a.referenced {
 		vid.UnReference()
@@ -73,18 +77,14 @@ func (a *attacher) unReferenceAllByAttacher() {
 }
 
 func (a *attacher) markVertexDefined(vid *vertex.WrappedTx) {
-	if _, already := a.vertices[vid]; !already {
-		vid.MustReference()
-	}
+	a.mustMarkReferencedByAttacher(vid)
 	a.vertices[vid] = a.flags(vid) | FlagAttachedVertexKnown | FlagAttachedVertexDefined
 
 	a.Tracef(TraceTagMarkDefUndef, "markVertexDefined in %s: %s is DEFINED", a.name, vid.IDShortString)
 }
 
 func (a *attacher) markVertexUndefined(vid *vertex.WrappedTx) {
-	if _, already := a.vertices[vid]; !already {
-		vid.MustReference()
-	}
+	a.mustMarkReferencedByAttacher(vid)
 	f := a.flags(vid)
 	util.Assertf(!f.FlagsUp(FlagAttachedVertexDefined), "!f.FlagsUp(FlagDefined)")
 	a.vertices[vid] = f | FlagAttachedVertexKnown
@@ -93,10 +93,8 @@ func (a *attacher) markVertexUndefined(vid *vertex.WrappedTx) {
 }
 
 func (a *attacher) markVertexRooted(vid *vertex.WrappedTx) {
+	a.mustMarkReferencedByAttacher(vid)
 	// creates entry in rooted, probably empty
-	if _, already := a.rooted[vid]; !already {
-		vid.MustReference()
-	}
 	a.rooted[vid] = a.rooted[vid]
 }
 
