@@ -79,7 +79,7 @@ func (t *TaskGeneric) Run() {
 		}
 		if a != nil {
 			func() {
-				defer a.UnReferenceAll()
+				defer a.Dispose()
 
 				if a.Completed() {
 					t.Tracef(TraceTag, "Run: generated new proposal")

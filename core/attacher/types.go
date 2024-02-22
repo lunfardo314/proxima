@@ -51,13 +51,14 @@ type (
 
 	attacher struct {
 		Environment
-		name     string
-		err      error
-		baseline *vertex.WrappedTx
-		vertices map[*vertex.WrappedTx]Flags
-		rooted   map[*vertex.WrappedTx]set.Set[byte]
-		pokeMe   func(vid *vertex.WrappedTx)
-		coverage multistate.LedgerCoverage
+		name       string
+		err        error
+		baseline   *vertex.WrappedTx
+		vertices   map[*vertex.WrappedTx]Flags
+		rooted     map[*vertex.WrappedTx]set.Set[byte]
+		referenced set.Set[*vertex.WrappedTx]
+		pokeMe     func(vid *vertex.WrappedTx)
+		coverage   multistate.LedgerCoverage
 		// only supported for branch transactions
 		baselineSupply uint64
 	}
@@ -71,7 +72,6 @@ type (
 		inputs     []vertex.WrappedOutput
 		targetTs   ledger.Time
 		stemOutput vertex.WrappedOutput
-		referenced set.Set[*vertex.WrappedTx]
 	}
 
 	// milestoneAttacher is used to attach a sequencer transaction

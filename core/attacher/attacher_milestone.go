@@ -137,7 +137,7 @@ func logFinalStatusString(vid *vertex.WrappedTx, finals *attachFinals, msData *l
 
 func (a *milestoneAttacher) close() {
 	a.closeOnce.Do(func() {
-		a.unReferenceAll()
+		a.unReferenceAllByAttacher()
 
 		a.pokeMutex.Lock()
 		a.closed = true
