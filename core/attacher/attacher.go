@@ -55,6 +55,7 @@ func (a *attacher) setFlagsUp(vid *vertex.WrappedTx, f Flags) {
 	a.vertices[vid] = flags | f
 }
 
+// markReferencedByAttacher maintains a set of vertices referenced by the attacher
 func (a *attacher) markReferencedByAttacher(vid *vertex.WrappedTx) bool {
 	if a.referenced.Contains(vid) {
 		return true
@@ -70,6 +71,7 @@ func (a *attacher) mustMarkReferencedByAttacher(vid *vertex.WrappedTx) {
 	util.Assertf(a.markReferencedByAttacher(vid), "attacher %s: failed to reference %s", a.name, vid.IDShortString)
 }
 
+// unReferenceAllByAttacher releases all references
 func (a *attacher) unReferenceAllByAttacher() {
 	for vid := range a.referenced {
 		vid.UnReference()

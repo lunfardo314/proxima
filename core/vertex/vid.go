@@ -184,6 +184,7 @@ func (vid *WrappedTx) Reference() bool {
 	vid.mutex.Lock()
 	defer vid.mutex.Unlock()
 
+	// can't use atomic.Int because of this
 	if vid.references == 0 {
 		return false
 	}
@@ -208,7 +209,7 @@ func (vid *WrappedTx) NumReferences() int {
 	vid.mutex.RLock()
 	defer vid.mutex.RUnlock()
 
-	return vid.references
+	return int(vid.references)
 }
 
 // IsBadOrDeleted non-deterministic
