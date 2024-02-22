@@ -1,7 +1,6 @@
 package backlog
 
 import (
-	"slices"
 	"sort"
 	"sync"
 
@@ -16,7 +15,7 @@ type (
 	Environment interface {
 		global.Logging
 		ListenToAccount(account ledger.Accountable, fun func(wOut vertex.WrappedOutput))
-		PullSequencerTips(seqID ledger.ChainID, loadOwnMilestones bool) (set.Set[vertex.WrappedOutput], error)
+		PullSequencerTips(seqID ledger.ChainID) (set.Set[vertex.WrappedOutput], error)
 		SequencerID() ledger.ChainID
 		SequencerName() string
 		GetLatestMilestone(seqID ledger.ChainID) *vertex.WrappedTx
@@ -42,15 +41,9 @@ type (
 
 // TODO tag-along and delegation locks
 
-type Option byte
+const TraceTag = "backlog"
 
-// OptionDoNotLoadOwnMilestones is used for tests only
-const (
-	TraceTag                     = "backlog"
-	OptionDoNotLoadOwnMilestones = Option(iota)
-)
-
-func New(env Environment, opts ...Option) (*Backlog, error) {
+func New(env Environment) (*Backlog, error) {
 	seqID := env.SequencerID()
 	ret := &Backlog{
 		Environment: env,
@@ -89,9 +82,7 @@ func New(env Environment, opts ...Option) (*Backlog, error) {
 
 	// fetch all sequencers and all outputs in the sequencer account into to tip pool once
 	var err error
-	doNotLoadOwnMilestones := slices.Index(opts, OptionDoNotLoadOwnMilestones) >= 0
-	env.Tracef(TraceTag, "PullSequencerTips: doNotLoadOwnMilestones = %v", doNotLoadOwnMilestones)
-	ret.outputs, err = env.PullSequencerTips(seqID, !doNotLoadOwnMilestones)
+	ret.outputs, err = env.PullSequencerTips(seqID)
 	if err != nil {
 		return nil, err
 	}

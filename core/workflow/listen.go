@@ -42,7 +42,7 @@ func (w *Workflow) ListenToSequencers(fun func(vid *vertex.WrappedTx)) {
 
 const fetchLastNTimeSlotsUponStartup = 5
 
-func (w *Workflow) PullSequencerTips(seqID ledger.ChainID, loadOwnMilestones bool) (set.Set[vertex.WrappedOutput], error) {
+func (w *Workflow) PullSequencerTips(seqID ledger.ChainID) (set.Set[vertex.WrappedOutput], error) {
 	roots := multistate.FetchRootRecordsNSlotsBack(w.StateStore(), fetchLastNTimeSlotsUponStartup)
 
 	addr := seqID.AsChainLock().AccountID()
@@ -54,12 +54,10 @@ func (w *Workflow) PullSequencerTips(seqID ledger.ChainID, loadOwnMilestones boo
 		vidBranch := attacher.MustEnsureBranch(rdr.GetStemOutput().ID.TransactionID(), w, 0)
 		w.PostEventNewGood(vidBranch)
 
-		if loadOwnMilestones {
-			// load sequencer output in each of those branches
-			if oSeq, _ := rdr.GetUTXOForChainID(&seqID); oSeq != nil {
-				attacher.AttachOutputID(oSeq.ID, w, attacher.OptionPullNonBranch, attacher.OptionInvokedBy("PullSequencerTips"))
-				ownMilestoneLoaded = true
-			}
+		// load sequencer output in each of those branches
+		if oSeq, _ := rdr.GetUTXOForChainID(&seqID); oSeq != nil {
+			attacher.AttachOutputID(oSeq.ID, w, attacher.OptionPullNonBranch, attacher.OptionInvokedBy("PullSequencerTips"))
+			ownMilestoneLoaded = true
 		}
 		// load all tag along outputs
 		oids, err := rdr.GetIDsLockedInAccount(addr)
@@ -68,7 +66,7 @@ func (w *Workflow) PullSequencerTips(seqID ledger.ChainID, loadOwnMilestones boo
 			ret.Insert(attacher.AttachOutputID(oid, w, attacher.OptionPullNonBranch, attacher.OptionInvokedBy("PullSequencerTips")))
 		}
 	}
-	if loadOwnMilestones && !ownMilestoneLoaded {
+	if !ownMilestoneLoaded {
 		return nil, fmt.Errorf("PullSequencerTips: failed to load milestone for the sequencer %s", seqID.StringShort())
 	}
 
