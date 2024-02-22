@@ -3,6 +3,7 @@ package backlog
 import (
 	"sort"
 	"sync"
+	"time"
 
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/global"
@@ -13,7 +14,7 @@ import (
 
 type (
 	Environment interface {
-		global.Logging
+		global.NodeGlobal
 		ListenToAccount(account ledger.Accountable, fun func(wOut vertex.WrappedOutput))
 		PullSequencerTips(seqID ledger.ChainID) (set.Set[vertex.WrappedOutput], error)
 		SequencerID() ledger.ChainID
@@ -21,12 +22,13 @@ type (
 		GetLatestMilestone(seqID ledger.ChainID) *vertex.WrappedTx
 		LatestMilestonesDescending(filter ...func(seqID ledger.ChainID, vid *vertex.WrappedTx) bool) []*vertex.WrappedTx
 		NumSequencerTips() int
+		BacklogTTLSlots() int
 	}
 
 	InputBacklog struct {
 		Environment
 		mutex                    sync.RWMutex
-		outputs                  set.Set[vertex.WrappedOutput]
+		outputs                  map[vertex.WrappedOutput]time.Time
 		outputCount              int
 		removedOutputsSinceReset int
 	}
@@ -47,7 +49,7 @@ func New(env Environment) (*InputBacklog, error) {
 	seqID := env.SequencerID()
 	ret := &InputBacklog{
 		Environment: env,
-		outputs:     set.New[vertex.WrappedOutput](),
+		outputs:     make(map[vertex.WrappedOutput]time.Time),
 	}
 	env.Tracef(TraceTag, "starting input backlog for the sequencer %s..", env.SequencerName)
 
@@ -66,23 +68,33 @@ func New(env Environment) (*InputBacklog, error) {
 		ret.mutex.Lock()
 		defer ret.mutex.Unlock()
 
-		if !ret.outputs.InsertNew(wOut) {
-			// repeating
+		if _, alraedy := ret.outputs[wOut]; alraedy {
 			wOut.VID.UnReference()
 			env.Tracef(TraceTag, "repeating output %s", wOut.IDShortString)
 			return
 		}
+		ret.outputs[wOut] = time.Now()
 		ret.outputCount++
 		env.Tracef(TraceTag, "output stored in input backlog: %s (total: %d)", wOut.IDShortString, len(ret.outputs))
 	})
 
 	// fetch backlog and milestone once
 	var err error
-	ret.outputs, err = env.PullSequencerTips(seqID)
+	outs, err := env.PullSequencerTips(seqID)
 	if err != nil {
 		return nil, err
 	}
+
+	for wOut := range outs {
+		if wOut.VID.Reference() {
+			ret.outputs[wOut] = time.Now()
+		}
+	}
+
 	env.Tracef(TraceTag, "PullSequencerTips: loaded %d outputs", len(ret.outputs))
+
+	go ret.purgeLoop()
+
 	return ret, nil
 }
 
@@ -117,53 +129,89 @@ func checkAndReferenceCandidate(wOut vertex.WrappedOutput) bool {
 	return true
 }
 
-func (tp *InputBacklog) CandidatesToEndorseSorted(targetTs ledger.Time) []*vertex.WrappedTx {
+func (b *InputBacklog) CandidatesToEndorseSorted(targetTs ledger.Time) []*vertex.WrappedTx {
 	targetSlot := targetTs.Slot()
-	ownSeqID := tp.SequencerID()
-	return tp.LatestMilestonesDescending(func(seqID ledger.ChainID, vid *vertex.WrappedTx) bool {
+	ownSeqID := b.SequencerID()
+	return b.LatestMilestonesDescending(func(seqID ledger.ChainID, vid *vertex.WrappedTx) bool {
 		return vid.Slot() == targetSlot && seqID != ownSeqID
 	})
 }
 
-func (tp *InputBacklog) GetOwnLatestMilestoneTx() *vertex.WrappedTx {
-	return tp.GetLatestMilestone(tp.SequencerID())
+func (b *InputBacklog) GetOwnLatestMilestoneTx() *vertex.WrappedTx {
+	return b.GetLatestMilestone(b.SequencerID())
 }
 
-func (tp *InputBacklog) FilterAndSortOutputs(filter func(wOut vertex.WrappedOutput) bool) []vertex.WrappedOutput {
-	tp.mutex.RLock()
-	defer tp.mutex.RUnlock()
+func (b *InputBacklog) FilterAndSortOutputs(filter func(wOut vertex.WrappedOutput) bool) []vertex.WrappedOutput {
+	b.mutex.RLock()
+	defer b.mutex.RUnlock()
 
-	ret := util.KeysFiltered(tp.outputs, filter)
+	ret := util.KeysFiltered(b.outputs, filter)
 	sort.Slice(ret, func(i, j int) bool {
 		return ret[i].Timestamp().Before(ret[j].Timestamp())
 	})
 	return ret
 }
 
-func (tp *InputBacklog) NumOutputsInBuffer() int {
-	tp.mutex.RLock()
-	defer tp.mutex.RUnlock()
+func (b *InputBacklog) NumOutputsInBuffer() int {
+	b.mutex.RLock()
+	defer b.mutex.RUnlock()
 
-	return len(tp.outputs)
+	return len(b.outputs)
 }
 
-func (tp *InputBacklog) getStatsAndReset() (ret Stats) {
-	tp.mutex.RLock()
-	defer tp.mutex.RUnlock()
+func (b *InputBacklog) getStatsAndReset() (ret Stats) {
+	b.mutex.RLock()
+	defer b.mutex.RUnlock()
 
 	ret = Stats{
-		NumOtherSequencers:       tp.NumSequencerTips(),
-		NumOutputs:               len(tp.outputs),
-		OutputCount:              tp.outputCount,
-		RemovedOutputsSinceReset: tp.removedOutputsSinceReset,
+		NumOtherSequencers:       b.NumSequencerTips(),
+		NumOutputs:               len(b.outputs),
+		OutputCount:              b.outputCount,
+		RemovedOutputsSinceReset: b.removedOutputsSinceReset,
 	}
-	tp.removedOutputsSinceReset = 0
+	b.removedOutputsSinceReset = 0
 	return
 }
 
-func (tp *InputBacklog) numOutputs() int {
-	tp.mutex.RLock()
-	defer tp.mutex.RUnlock()
+func (b *InputBacklog) numOutputs() int {
+	b.mutex.RLock()
+	defer b.mutex.RUnlock()
 
-	return len(tp.outputs)
+	return len(b.outputs)
+}
+
+func (b *InputBacklog) purgeLoop() {
+	ttl := time.Duration(b.BacklogTTLSlots()) * ledger.L().ID.SlotDuration()
+
+	for {
+		select {
+		case <-b.Ctx().Done():
+			return
+
+		case <-time.After(time.Second):
+			if n := b.purge(ttl); n > 0 {
+				b.Log().Infof("purged %d outputs from the backlog", n)
+			}
+		}
+	}
+}
+
+func (b *InputBacklog) purge(ttl time.Duration) int {
+	horizon := time.Now().Add(-ttl)
+
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
+
+	toDelete := make([]vertex.WrappedOutput, 0)
+	for wOut, since := range b.outputs {
+		if since.Before(horizon) {
+			toDelete = append(toDelete, wOut)
+		}
+	}
+
+	for _, wOut := range toDelete {
+		wOut.VID.UnReference()
+		delete(b.outputs, wOut)
+	}
+	return len(toDelete)
 }

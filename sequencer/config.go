@@ -13,31 +13,37 @@ import (
 
 type (
 	ConfigOptions struct {
-		SequencerName     string
-		Pace              int // pace in ticks
-		MaxTagAlongInputs int
-		MaxTargetTs       ledger.Time
-		MaxMilestones     int
-		MaxBranches       int
-		DelayStart        time.Duration
+		SequencerName      string
+		Pace               int // pace in ticks
+		MaxTagAlongInputs  int
+		MaxTargetTs        ledger.Time
+		MaxMilestones      int
+		MaxBranches        int
+		DelayStart         time.Duration
+		BacklogTTLSlots    int
+		MilestonesTTLSlots int
 	}
 
 	ConfigOption func(options *ConfigOptions)
 )
 
 const (
-	DefaultMaxTagAlongInputs = 20
+	DefaultMaxTagAlongInputs  = 20
+	MinimumBacklogTTLSlots    = 10
+	MinimumMilestonesTTLSlots = 10
 )
 
 func defaultConfigOptions() *ConfigOptions {
 	return &ConfigOptions{
-		SequencerName:     "seq",
-		Pace:              ledger.TransactionPaceSequencer(),
-		MaxTagAlongInputs: DefaultMaxTagAlongInputs,
-		MaxTargetTs:       ledger.NilLedgerTime,
-		MaxMilestones:     math.MaxInt,
-		MaxBranches:       math.MaxInt,
-		DelayStart:        ledger.SlotDuration(),
+		SequencerName:      "seq",
+		Pace:               ledger.TransactionPaceSequencer(),
+		MaxTagAlongInputs:  DefaultMaxTagAlongInputs,
+		MaxTargetTs:        ledger.NilLedgerTime,
+		MaxMilestones:      math.MaxInt,
+		MaxBranches:        math.MaxInt,
+		DelayStart:         ledger.SlotDuration(),
+		BacklogTTLSlots:    MinimumBacklogTTLSlots,
+		MilestonesTTLSlots: MinimumMilestonesTTLSlots,
 	}
 }
 
@@ -67,11 +73,22 @@ func paramsFromConfig(name string) ([]ConfigOption, ledger.ChainID, ed25519.Priv
 	if err != nil {
 		return nil, ledger.ChainID{}, nil, fmt.Errorf("StartFromConfig: can't parse private key: %v", err)
 	}
+	backlogTTLSlots := viper.GetInt("backlog_ttl_slots")
+	if backlogTTLSlots < MinimumBacklogTTLSlots {
+		backlogTTLSlots = MinimumBacklogTTLSlots
+	}
+	milestonesTTLSlots := viper.GetInt("milestones_ttl_slots")
+	if milestonesTTLSlots < MinimumMilestonesTTLSlots {
+		milestonesTTLSlots = MinimumMilestonesTTLSlots
+	}
+
 	cfg := []ConfigOption{
 		WithName(name),
 		WithPace(subViper.GetInt("pace")),
 		WithMaxTagAlongInputs(subViper.GetInt("max_tag_along_inputs")),
 		WithMaxBranches(subViper.GetInt("max_branches")),
+		WithBacklogTTLSlots(backlogTTLSlots),
+		WithMilestonesTTLSlots(milestonesTTLSlots),
 	}
 	return cfg, seqID, controllerKey, nil
 }
@@ -108,5 +125,17 @@ func WithMaxTagAlongInputs(maxInputs int) ConfigOption {
 func WithMaxBranches(maxBranches int) ConfigOption {
 	return func(o *ConfigOptions) {
 		o.MaxBranches = maxBranches
+	}
+}
+
+func WithBacklogTTLSlots(slots int) ConfigOption {
+	return func(o *ConfigOptions) {
+		o.BacklogTTLSlots = slots
+	}
+}
+
+func WithMilestonesTTLSlots(slots int) ConfigOption {
+	return func(o *ConfigOptions) {
+		o.MilestonesTTLSlots = slots
 	}
 }

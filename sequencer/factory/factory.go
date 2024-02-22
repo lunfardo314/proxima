@@ -27,19 +27,24 @@ type (
 		backlog.Environment
 		ControllerPrivateKey() ed25519.PrivateKey
 		SequencerName() string
-		MaxTagAlongOutputs() int
 		Backlog() *backlog.InputBacklog
+		MaxTagAlongOutputs() int
+		MilestonesTTLSlots() int
 	}
 
 	MilestoneFactory struct {
 		Environment
 		mutex                       sync.RWMutex
 		proposal                    latestMilestoneProposal
-		ownMilestones               map[*vertex.WrappedTx]set.Set[vertex.WrappedOutput] // map ms -> consumed outputs in the past
+		ownMilestones               map[*vertex.WrappedTx]outputsWithTime // map ms -> consumed outputs in the past
 		maxTagAlongInputs           int
-		lastPruned                  time.Time
 		ownMilestoneCount           int
 		removedMilestonesSinceReset int
+	}
+
+	outputsWithTime struct {
+		consumed set.Set[vertex.WrappedOutput]
+		since    time.Time
 	}
 
 	latestMilestoneProposal struct {
@@ -80,12 +85,14 @@ func New(env Environment) (*MilestoneFactory, error) {
 	ret := &MilestoneFactory{
 		Environment:       env,
 		proposal:          latestMilestoneProposal{},
-		ownMilestones:     make(map[*vertex.WrappedTx]set.Set[vertex.WrappedOutput]),
+		ownMilestones:     make(map[*vertex.WrappedTx]outputsWithTime),
 		maxTagAlongInputs: env.MaxTagAlongOutputs(),
 	}
 	if ret.maxTagAlongInputs == 0 || ret.maxTagAlongInputs > veryMaxTagAlongInputs {
 		ret.maxTagAlongInputs = veryMaxTagAlongInputs
 	}
+	go ret.purgeLoop()
+
 	env.Tracef(TraceTag, "milestone factory has been created")
 	return ret, nil
 }
@@ -94,7 +101,7 @@ func (mf *MilestoneFactory) isConsumedInThePastPath(wOut vertex.WrappedOutput, m
 	mf.mutex.RLock()
 	defer mf.mutex.RUnlock()
 
-	return mf.ownMilestones[ms].Contains(wOut)
+	return mf.ownMilestones[ms].consumed.Contains(wOut)
 }
 
 func (mf *MilestoneFactory) OwnLatestMilestoneOutput() vertex.WrappedOutput {
@@ -136,16 +143,21 @@ func (mf *MilestoneFactory) AddOwnMilestone(vid *vertex.WrappedTx) {
 		return
 	}
 
-	consumed := set.New[vertex.WrappedOutput]()
+	vid.MustReference()
+
+	withTime := outputsWithTime{
+		consumed: set.New[vertex.WrappedOutput](),
+		since:    time.Now(),
+	}
 	if vid.IsSequencerMilestone() {
 		if prev := vid.SequencerPredecessor(); prev != nil {
 			if prevConsumed, found := mf.ownMilestones[prev]; found {
-				consumed.AddAll(prevConsumed)
+				withTime.consumed.AddAll(prevConsumed.consumed)
 			}
 		}
 		vid.Unwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
 			v.ForEachInputDependency(func(i byte, vidInput *vertex.WrappedTx) bool {
-				consumed.Insert(vertex.WrappedOutput{
+				withTime.consumed.Insert(vertex.WrappedOutput{
 					VID:   vidInput,
 					Index: v.Tx.MustOutputIndexOfTheInput(i),
 				})
@@ -153,7 +165,7 @@ func (mf *MilestoneFactory) AddOwnMilestone(vid *vertex.WrappedTx) {
 			})
 		}})
 	}
-	mf.ownMilestones[vid] = consumed
+	mf.ownMilestones[vid] = withTime
 	mf.ownMilestoneCount++
 }
 
@@ -300,26 +312,6 @@ func (mf *MilestoneFactory) getLatestProposal() *transaction.Transaction {
 	return mf.proposal.current
 }
 
-func (mf *MilestoneFactory) cleanOwnMilestonesIfNecessary() {
-	mf.mutex.Lock()
-	defer mf.mutex.Unlock()
-
-	if time.Since(mf.lastPruned) < cleanupMilestonesPeriod {
-		return
-	}
-
-	toDelete := make([]*vertex.WrappedTx, 0)
-	for vid := range mf.ownMilestones {
-		if vid.IsBadOrDeleted() {
-			toDelete = append(toDelete, vid)
-		}
-	}
-	for _, vid := range toDelete {
-		delete(mf.ownMilestones, vid)
-	}
-	mf.removedMilestonesSinceReset += len(toDelete)
-}
-
 const TraceTagChooseExtendEndorsePair = "ChooseExtendEndorsePair"
 
 // ChooseExtendEndorsePair implements one of possible strategies
@@ -378,8 +370,6 @@ func (mf *MilestoneFactory) chooseEndorseExtendPair(proposerName string, targetT
 }
 
 func (mf *MilestoneFactory) futureConeOwnMilestonesOrdered(rootOutput vertex.WrappedOutput, targetTs ledger.Time) []vertex.WrappedOutput {
-	mf.cleanOwnMilestonesIfNecessary()
-
 	mf.mutex.RLock()
 	defer mf.mutex.RUnlock()
 
@@ -429,4 +419,40 @@ func (mf *MilestoneFactory) BestMilestoneInTheSlot(slot ledger.Slot) *vertex.Wra
 		return nil
 	}
 	return all[0]
+}
+
+func (mf *MilestoneFactory) purge(ttl time.Duration) int {
+	horizon := time.Now().Add(-ttl)
+
+	mf.mutex.Lock()
+	defer mf.mutex.Unlock()
+
+	toDelete := make([]*vertex.WrappedTx, 0)
+	for vid, withTime := range mf.ownMilestones {
+		if withTime.since.Before(horizon) {
+			toDelete = append(toDelete, vid)
+		}
+	}
+
+	for _, vid := range toDelete {
+		vid.UnReference()
+		delete(mf.ownMilestones, vid)
+	}
+	return len(toDelete)
+}
+
+func (mf *MilestoneFactory) purgeLoop() {
+	ttl := time.Duration(mf.MilestonesTTLSlots()) * ledger.L().ID.SlotDuration()
+
+	for {
+		select {
+		case <-mf.Ctx().Done():
+			return
+
+		case <-time.After(time.Second):
+			if n := mf.purge(ttl); n > 0 {
+				mf.Log().Infof("purged %d own milestones", n)
+			}
+		}
+	}
 }

@@ -60,7 +60,7 @@ func New(glb *workflow.Workflow, seqID ledger.ChainID, controllerKey ed25519.Pri
 		sequencerID:   seqID,
 		controllerKey: controllerKey,
 		config:        cfg,
-		log:           glb.Log().Named(fmt.Sprintf("%s-%s", cfg.SequencerName, seqID.StringVeryShort())),
+		log:           glb.Log().Named(fmt.Sprintf("[%s-%s]", cfg.SequencerName, seqID.StringVeryShort())),
 	}
 	ret.ctx, ret.stopFun = context.WithCancel(glb.Ctx())
 	var err error
@@ -416,4 +416,12 @@ func (seq *Sequencer) runOnMilestoneSubmitted(ms *vertex.WrappedTx) {
 
 func (seq *Sequencer) MaxTagAlongOutputs() int {
 	return seq.config.MaxTagAlongInputs
+}
+
+func (seq *Sequencer) BacklogTTLSlots() int {
+	return seq.config.BacklogTTLSlots
+}
+
+func (seq *Sequencer) MilestonesTTLSlots() int {
+	return seq.config.MilestonesTTLSlots
 }

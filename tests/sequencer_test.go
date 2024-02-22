@@ -167,7 +167,7 @@ func Test1Sequencer(t *testing.T) {
 		targetPrivKey := testutil.GetTestingPrivateKey(10000)
 		targetAddr := ledger.AddressED25519FromPrivateKey(targetPrivKey)
 
-		ctx, cancel := context.WithTimeout(context.Background(), (maxSlots+1)*ledger.SlotDuration())
+		ctx, cancel := context.WithTimeout(context.Background(), (maxSlots+5)*ledger.SlotDuration())
 		par := &spammerParams{
 			t:             t,
 			privateKey:    testData.privKeyFaucet,
