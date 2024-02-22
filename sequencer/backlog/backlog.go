@@ -23,7 +23,7 @@ type (
 		NumSequencerTips() int
 	}
 
-	Backlog struct {
+	InputBacklog struct {
 		Environment
 		mutex                    sync.RWMutex
 		outputs                  set.Set[vertex.WrappedOutput]
@@ -43,13 +43,13 @@ type (
 
 const TraceTag = "backlog"
 
-func New(env Environment) (*Backlog, error) {
+func New(env Environment) (*InputBacklog, error) {
 	seqID := env.SequencerID()
-	ret := &Backlog{
+	ret := &InputBacklog{
 		Environment: env,
 		outputs:     set.New[vertex.WrappedOutput](),
 	}
-	env.Tracef(TraceTag, "starting tipPool..")
+	env.Tracef(TraceTag, "starting input backlog for the sequencer %s..", env.SequencerName)
 
 	ret.mutex.RLock()
 	defer ret.mutex.RUnlock()
@@ -58,39 +58,66 @@ func New(env Environment) (*Backlog, error) {
 	env.ListenToAccount(seqID.AsChainLock(), func(wOut vertex.WrappedOutput) {
 		env.Tracef(TraceTag, "[%s] output IN: %s", ret.SequencerName, wOut.IDShortString)
 
-		if !isCandidateToTagAlong(wOut) {
+		if !checkAndReferenceCandidate(wOut) {
+			// failed to reference -> ignore
 			return
 		}
-
-		{
-			// sanity check
-			wOut.VID.Unwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
-				util.Assertf(int(wOut.Index) < v.Tx.NumProducedOutputs(), "int(wOut.Index) < v.Tx.NumProducedOutputs()")
-			}})
-		}
-
+		// referenced
 		ret.mutex.Lock()
 		defer ret.mutex.Unlock()
 
 		if !ret.outputs.InsertNew(wOut) {
+			// repeating
+			wOut.VID.UnReference()
 			env.Tracef(TraceTag, "repeating output %s", wOut.IDShortString)
 			return
 		}
 		ret.outputCount++
-		env.Tracef(TraceTag, "output stored in tippool: %s (total: %d)", wOut.IDShortString, len(ret.outputs))
+		env.Tracef(TraceTag, "output stored in input backlog: %s (total: %d)", wOut.IDShortString, len(ret.outputs))
 	})
 
-	// fetch all sequencers and all outputs in the sequencer account into to tip pool once
+	// fetch backlog and milestone once
 	var err error
 	ret.outputs, err = env.PullSequencerTips(seqID)
 	if err != nil {
 		return nil, err
 	}
-	env.Tracef(TraceTag, "PullSequencerTips: loaded %d outputs from state", len(ret.outputs))
+	env.Tracef(TraceTag, "PullSequencerTips: loaded %d outputs", len(ret.outputs))
 	return ret, nil
 }
 
-func (tp *Backlog) CandidatesToEndorseSorted(targetTs ledger.Time) []*vertex.WrappedTx {
+// checkAndReferenceCandidate if returns false, it is unreferenced, otherwise referenced
+func checkAndReferenceCandidate(wOut vertex.WrappedOutput) bool {
+	if wOut.VID.IsBranchTransaction() {
+		// outputs of branch transactions are filtered out
+		// TODO probably ordinary outputs must not be allowed at ledger constraints level
+		return false
+	}
+	if !wOut.VID.Reference() {
+		return false
+	}
+	if wOut.VID.GetTxStatus() == vertex.Bad {
+		wOut.VID.UnReference()
+		return false
+	}
+	o, err := wOut.VID.OutputAt(wOut.Index)
+	if err != nil {
+		wOut.VID.UnReference()
+		return false
+	}
+	if o != nil {
+		if _, idx := o.ChainConstraint(); idx != 0xff {
+			// filter out all chain constrained outputs
+			// TODO must be revisited with delegated accounts (delegation-locked on the current sequencer)
+			wOut.VID.UnReference()
+			return false
+		}
+	}
+	// it is referenced
+	return true
+}
+
+func (tp *InputBacklog) CandidatesToEndorseSorted(targetTs ledger.Time) []*vertex.WrappedTx {
 	targetSlot := targetTs.Slot()
 	ownSeqID := tp.SequencerID()
 	return tp.LatestMilestonesDescending(func(seqID ledger.ChainID, vid *vertex.WrappedTx) bool {
@@ -98,34 +125,11 @@ func (tp *Backlog) CandidatesToEndorseSorted(targetTs ledger.Time) []*vertex.Wra
 	})
 }
 
-func (tp *Backlog) GetOwnLatestMilestoneTx() *vertex.WrappedTx {
+func (tp *InputBacklog) GetOwnLatestMilestoneTx() *vertex.WrappedTx {
 	return tp.GetLatestMilestone(tp.SequencerID())
 }
 
-func isCandidateToTagAlong(wOut vertex.WrappedOutput) bool {
-	if wOut.VID.IsBadOrDeleted() {
-		return false
-	}
-	if wOut.VID.IsBranchTransaction() {
-		// outputs of branch transactions are filtered out
-		// TODO probably ordinary outputs must not be allowed at ledger level
-		return false
-	}
-	o, err := wOut.VID.OutputAt(wOut.Index)
-	if err != nil {
-		return false
-	}
-	if o != nil {
-		if _, idx := o.ChainConstraint(); idx != 0xff {
-			// filter out all chain constrained outputs
-			// TODO must be revisited with delegated accounts (delegation-locked on the current sequencer)
-			return false
-		}
-	}
-	return true
-}
-
-func (tp *Backlog) FilterAndSortOutputs(filter func(wOut vertex.WrappedOutput) bool) []vertex.WrappedOutput {
+func (tp *InputBacklog) FilterAndSortOutputs(filter func(wOut vertex.WrappedOutput) bool) []vertex.WrappedOutput {
 	tp.mutex.RLock()
 	defer tp.mutex.RUnlock()
 
@@ -136,14 +140,14 @@ func (tp *Backlog) FilterAndSortOutputs(filter func(wOut vertex.WrappedOutput) b
 	return ret
 }
 
-func (tp *Backlog) NumOutputsInBuffer() int {
+func (tp *InputBacklog) NumOutputsInBuffer() int {
 	tp.mutex.RLock()
 	defer tp.mutex.RUnlock()
 
 	return len(tp.outputs)
 }
 
-func (tp *Backlog) getStatsAndReset() (ret Stats) {
+func (tp *InputBacklog) getStatsAndReset() (ret Stats) {
 	tp.mutex.RLock()
 	defer tp.mutex.RUnlock()
 
@@ -157,7 +161,7 @@ func (tp *Backlog) getStatsAndReset() (ret Stats) {
 	return
 }
 
-func (tp *Backlog) numOutputs() int {
+func (tp *InputBacklog) numOutputs() int {
 	tp.mutex.RLock()
 	defer tp.mutex.RUnlock()
 

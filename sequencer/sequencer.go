@@ -11,6 +11,7 @@ import (
 	"github.com/lunfardo314/proxima/core/workflow"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/transaction"
+	"github.com/lunfardo314/proxima/sequencer/backlog"
 	"github.com/lunfardo314/proxima/sequencer/factory"
 	"github.com/lunfardo314/proxima/util"
 	"go.uber.org/zap"
@@ -25,6 +26,7 @@ type (
 		controllerKey  ed25519.PrivateKey
 		config         *ConfigOptions
 		log            *zap.SugaredLogger
+		backlog        *backlog.InputBacklog
 		factory        *factory.MilestoneFactory
 		milestoneCount int
 		branchCount    int
@@ -61,8 +63,11 @@ func New(glb *workflow.Workflow, seqID ledger.ChainID, controllerKey ed25519.Pri
 		log:           glb.Log().Named(fmt.Sprintf("%s-%s", cfg.SequencerName, seqID.StringVeryShort())),
 	}
 	ret.ctx, ret.stopFun = context.WithCancel(glb.Ctx())
-
 	var err error
+
+	if ret.backlog, err = backlog.New(ret); err != nil {
+		return nil, err
+	}
 	if ret.factory, err = factory.New(ret); err != nil {
 		return nil, err
 	}
@@ -165,6 +170,10 @@ func (seq *Sequencer) ensureFirstMilestone() bool {
 		time.Sleep(sleepDuration)
 	}
 	return true
+}
+
+func (seq *Sequencer) Backlog() *backlog.InputBacklog {
+	return seq.backlog
 }
 
 func (seq *Sequencer) SequencerID() ledger.ChainID {

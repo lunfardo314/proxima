@@ -28,22 +28,18 @@ type (
 		ControllerPrivateKey() ed25519.PrivateKey
 		SequencerName() string
 		MaxTagAlongOutputs() int
+		Backlog() *backlog.InputBacklog
 	}
 
 	MilestoneFactory struct {
 		Environment
 		mutex                       sync.RWMutex
-		tipPool                     *backlog.Backlog
 		proposal                    latestMilestoneProposal
 		ownMilestones               map[*vertex.WrappedTx]set.Set[vertex.WrappedOutput] // map ms -> consumed outputs in the past
 		maxTagAlongInputs           int
 		lastPruned                  time.Time
 		ownMilestoneCount           int
 		removedMilestonesSinceReset int
-		// past combinations
-		//pastCombinationsMutex     sync.RWMutex
-		//pastCombinations          map[[32]byte]time.Time
-		//pastCombinationsNextPurge time.Time
 	}
 
 	latestMilestoneProposal struct {
@@ -89,11 +85,6 @@ func New(env Environment) (*MilestoneFactory, error) {
 	}
 	if ret.maxTagAlongInputs == 0 || ret.maxTagAlongInputs > veryMaxTagAlongInputs {
 		ret.maxTagAlongInputs = veryMaxTagAlongInputs
-	}
-	var err error
-	ret.tipPool, err = backlog.New(ret)
-	if err != nil {
-		return nil, err
 	}
 	env.Tracef(TraceTag, "milestone factory has been created")
 	return ret, nil
@@ -210,7 +201,7 @@ func (mf *MilestoneFactory) CurrentTargetTs() ledger.Time {
 
 func (mf *MilestoneFactory) AttachTagAlongInputs(a *attacher.IncrementalAttacher) (numInserted int) {
 	mf.Tracef(TraceTag, "AttachTagAlongInputs: %s", a.Name())
-	preSelected := mf.tipPool.FilterAndSortOutputs(func(wOut vertex.WrappedOutput) bool {
+	preSelected := mf.Backlog().FilterAndSortOutputs(func(wOut vertex.WrappedOutput) bool {
 		if !ledger.ValidTransactionPace(wOut.Timestamp(), a.TargetTs()) {
 			return false
 		}
@@ -334,7 +325,7 @@ const TraceTagChooseExtendEndorsePair = "ChooseExtendEndorsePair"
 // ChooseExtendEndorsePair implements one of possible strategies
 func (mf *MilestoneFactory) ChooseExtendEndorsePair(proposerName string, targetTs ledger.Time) *attacher.IncrementalAttacher {
 	util.Assertf(targetTs.Tick() != 0, "targetTs.Tick() != 0")
-	endorseCandidates := mf.tipPool.CandidatesToEndorseSorted(targetTs)
+	endorseCandidates := mf.Backlog().CandidatesToEndorseSorted(targetTs)
 	mf.Tracef(TraceTagChooseExtendEndorsePair, ">>>>>>>>>>>>>>> target %s {%s}", targetTs.String(), vertex.VerticesShortLines(endorseCandidates).Join(", "))
 
 	seqID := mf.SequencerID()
@@ -423,7 +414,7 @@ func (mf *MilestoneFactory) futureConeOwnMilestonesOrdered(rootOutput vertex.Wra
 }
 
 func (mf *MilestoneFactory) NumOutputsInBuffer() int {
-	return mf.tipPool.NumOutputsInBuffer()
+	return mf.Backlog().NumOutputsInBuffer()
 }
 
 func (mf *MilestoneFactory) NumMilestones() int {
