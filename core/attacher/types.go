@@ -71,6 +71,7 @@ type (
 		inputs     []vertex.WrappedOutput
 		targetTs   ledger.Time
 		stemOutput vertex.WrappedOutput
+		referenced set.Set[*vertex.WrappedTx]
 	}
 
 	// milestoneAttacher is used to attach a sequencer transaction

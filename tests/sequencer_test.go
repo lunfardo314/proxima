@@ -136,7 +136,7 @@ func Test1Sequencer(t *testing.T) {
 		seq.Start()
 		testData.waitStop()
 		require.EqualValues(t, maxSlots, int(countBr.Load()))
-		t.Logf("%s", testData.wrk.Info())
+		t.Logf("%s", testData.wrk.Info(true))
 		testData.wrk.SaveGraph("utangle")
 	})
 	t.Run("tag along transfers", func(t *testing.T) {

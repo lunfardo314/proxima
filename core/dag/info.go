@@ -32,7 +32,7 @@ func (d *DAG) InfoLines(verbose ...bool) *lines.Lines {
 			return ledger.LessTxID(vertices[i].ID, vertices[j].ID)
 		})
 		for _, vid := range vertices {
-			ln.Add("    " + vid.ShortString())
+			ln.Add("    %s, referenced by: %d", vid.ShortString(), vid.NumReferences())
 		}
 
 		ln.Add("---- cached state readers (verbose)")

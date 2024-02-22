@@ -204,6 +204,13 @@ func (vid *WrappedTx) UnReference() {
 	util.Assertf(vid.references >= 1, "UnReference: reference count can't go below 1: %s", vid.ID.StringShort)
 }
 
+func (vid *WrappedTx) NumReferences() int {
+	vid.mutex.RLock()
+	defer vid.mutex.RUnlock()
+
+	return vid.references
+}
+
 // IsBadOrDeleted non-deterministic
 func (vid *WrappedTx) IsBadOrDeleted() bool {
 	vid.mutex.RLock()
@@ -702,13 +709,14 @@ func (vid *WrappedTx) String() (ret string) {
 	vid.RUnwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
 			t := "vertex (" + vid.GetTxStatusNoLock().String() + ")"
-			ret = fmt.Sprintf("%20s %s :: in: %d, out: %d, consumed: %d, conflicts: %d, Flags: %08b, err: '%v', cov: %s",
+			ret = fmt.Sprintf("%20s %s :: in: %d, out: %d, consumed: %d, conflicts: %d, ref: %d, Flags: %08b, err: '%v', cov: %s",
 				t,
 				vid.ID.StringShort(),
 				v.Tx.NumInputs(),
 				v.Tx.NumProducedOutputs(),
 				consumed,
 				doubleSpent,
+				vid.references,
 				vid.flags,
 				reason,
 				vid.coverage.String(),

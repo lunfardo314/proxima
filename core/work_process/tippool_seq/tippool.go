@@ -70,14 +70,19 @@ func (t *SequencerTips) Consume(inp Input) {
 			t.Environment.Log().Warnf("tippool: %s and %s: too close on time axis", old.IDShortString(), inp.VID.IDShortString())
 		}
 		if oldReplaceWithNew(old, inp.VID) {
-			t.latestMilestones[seqIDIncoming] = inp.VID
-			storedNew = true
+			if inp.VID.Reference() {
+				old.UnReference()
+				t.latestMilestones[seqIDIncoming] = inp.VID
+				storedNew = true
+			}
 		} else {
 			t.Tracef(TraceTag, "tippool: incoming milestone %s didn't replace existing %s", inp.VID.IDShortString, old.IDShortString)
 		}
 	} else {
-		t.latestMilestones[seqIDIncoming] = inp.VID
-		storedNew = true
+		if inp.VID.Reference() {
+			t.latestMilestones[seqIDIncoming] = inp.VID
+			storedNew = true
+		}
 	}
 	prevStr := "<none>"
 	if prevExists {

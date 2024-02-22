@@ -30,20 +30,6 @@ func TestTime(t *testing.T) {
 	require.True(t, ledger.ValidTime(ts))
 }
 
-type dummyEnvironment struct {
-	*global.Global
-	stateStore   global.StateStore
-	txBytesStore global.TxBytesStore
-}
-
-func (w *dummyEnvironment) StateStore() global.StateStore {
-	return w.stateStore
-}
-
-func (w *dummyEnvironment) TxBytesStore() global.TxBytesStore {
-	return w.txBytesStore
-}
-
 func TestBasic(t *testing.T) {
 	t.Run("base", func(t *testing.T) {
 		stateStore := common.NewInMemoryKVStore()
@@ -517,7 +503,7 @@ func TestConflicts1Attacher(t *testing.T) {
 
 		testData.stopAndWait()
 
-		testData.logDAGInfo()
+		testData.logDAGInfo(true)
 
 		require.True(t, vertex.Bad == vid.GetTxStatus())
 		t.Logf("expected reason: %v", vid.GetError())

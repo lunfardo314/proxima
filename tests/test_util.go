@@ -492,8 +492,8 @@ func (td *longConflictTestData) spendToChain(o *ledger.OutputWithID, chainID led
 	return tx
 }
 
-func (td *workflowTestData) logDAGInfo() {
-	td.t.Logf("DAG INFO:\n%s", td.wrk.Info())
+func (td *workflowTestData) logDAGInfo(verbose ...bool) {
+	td.t.Logf("DAG INFO:\n%s", td.wrk.Info(verbose...))
 	slot := td.wrk.LatestBranchSlot()
 	td.t.Logf("VERTICES in the latest slot %d\n%s", slot, td.wrk.LinesVerticesInSlotAndAfter(slot).String())
 }

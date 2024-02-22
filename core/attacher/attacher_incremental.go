@@ -11,6 +11,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/proxima/util/set"
 	"golang.org/x/exp/maps"
 )
 
@@ -53,10 +54,11 @@ func NewIncrementalAttacher(name string, env Environment, targetTs ledger.Time, 
 	env.Tracef(TraceTagIncrementalAttacher, "NewIncrementalAttacher(%s). baseline: %s", name, baseline.IDShortString)
 
 	ret := &IncrementalAttacher{
-		attacher: newPastConeAttacher(env, name),
-		endorse:  make([]*vertex.WrappedTx, 0),
-		inputs:   make([]vertex.WrappedOutput, 0),
-		targetTs: targetTs,
+		attacher:   newPastConeAttacher(env, name),
+		endorse:    make([]*vertex.WrappedTx, 0),
+		inputs:     make([]vertex.WrappedOutput, 0),
+		referenced: set.New[*vertex.WrappedTx](),
+		targetTs:   targetTs,
 	}
 	if err := ret.initIncrementalAttacher(baseline.BaselineBranch(), targetTs, extend, endorse...); err != nil {
 		ret.UnReferenceAll()
@@ -91,7 +93,7 @@ func (a *IncrementalAttacher) initIncrementalAttacher(baseline *vertex.WrappedTx
 		if a.stemOutput.VID == nil {
 			return fmt.Errorf("NewIncrementalAttacher: stem output is not available for baseline %s", baseline.IDShortString())
 		}
-		if !a.stemOutput.VID.Reference() {
+		if !a.markReferenced(a.stemOutput.VID) {
 			return fmt.Errorf("NewIncrementalAttacher: failed to reference stem output %s", a.stemOutput.IDShortString())
 		}
 		if err := a.insertOutput(a.stemOutput); err != nil {
@@ -101,17 +103,22 @@ func (a *IncrementalAttacher) initIncrementalAttacher(baseline *vertex.WrappedTx
 	return nil
 }
 
+func (a *IncrementalAttacher) markReferenced(vid *vertex.WrappedTx) bool {
+	if a.referenced.Contains(vid) {
+		return true
+	}
+	if vid.Reference() {
+		a.referenced.Insert(vid)
+		return true
+	}
+	return false
+}
+
 func (a *IncrementalAttacher) UnReferenceAll() {
-	a.attacher.unReferenceAll()
-	for _, vid := range a.endorse {
+	for vid := range a.referenced {
 		vid.UnReference()
 	}
-	for _, wOut := range a.inputs {
-		wOut.VID.UnReference()
-	}
-	if a.stemOutput.VID != nil {
-		a.stemOutput.VID.UnReference()
-	}
+	a.unReferenceAll()
 }
 
 func (a *IncrementalAttacher) BaselineBranch() *vertex.WrappedTx {
@@ -130,7 +137,7 @@ func (a *IncrementalAttacher) insertOutput(wOut vertex.WrappedOutput) error {
 	if !defined {
 		return ErrPastConeNotSolidYet
 	}
-	if !wOut.VID.Reference() {
+	if !a.markReferenced(wOut.VID) {
 		return fmt.Errorf("insertOutput: failed to reference output %s", wOut.IDShortString())
 	}
 	a.inputs = append(a.inputs, wOut)
@@ -162,7 +169,7 @@ func (a *IncrementalAttacher) insertEndorsement(endorsement *vertex.WrappedTx) e
 			return ErrPastConeNotSolidYet
 		}
 	}
-	if !endorsement.Reference() {
+	if !a.markReferenced(endorsement) {
 		return fmt.Errorf("insertEndorsement: failed to reference endorsement %s", endorsement.IDShortString())
 	}
 	a.endorse = append(a.endorse, endorsement)
