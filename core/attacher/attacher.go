@@ -60,7 +60,7 @@ func (a *attacher) markReferencedByAttacher(vid *vertex.WrappedTx) bool {
 	if a.referenced.Contains(vid) {
 		return true
 	}
-	if vid.Reference("markReferencedByAttacher") {
+	if vid.Reference("markReferencedByAttacher" + a.Name()) {
 		a.referenced.Insert(vid)
 		return true
 	}

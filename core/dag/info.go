@@ -3,6 +3,7 @@ package dag
 import (
 	"bytes"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/lunfardo314/proxima/core/vertex"
@@ -33,6 +34,10 @@ func (d *DAG) InfoLines(verbose ...bool) *lines.Lines {
 		})
 		for _, vid := range vertices {
 			ln.Add("    %s, referenced by: %d", vid.ShortString(), vid.NumReferences())
+			rl := vid.RefLines()
+			if vid.NumReferences() > 150 {
+				ln.Add("references: %s", strings.Join(rl, "\n"))
+			}
 		}
 
 		ln.Add("---- cached state readers (verbose)")

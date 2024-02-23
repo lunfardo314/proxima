@@ -150,7 +150,15 @@ func (vid *WrappedTx) Reference(by ...string) bool {
 	vid.mutex.Lock()
 	defer vid.mutex.Unlock()
 
-	//fmt.Printf(">>>>>>>>>>>> reference %s (%d) by %+v\n", vid.ID.StringShort(), vid.references, by)
+	{
+		if len(by) > 0 {
+			if len(vid.tmpRefBy) == 0 {
+				vid.tmpRefBy = make([]string, 0)
+			}
+			vid.tmpRefBy = append(vid.tmpRefBy, fmt.Sprintf("ref %s (%d)", by[0], vid.references))
+		}
+		//fmt.Printf(">>>>>>>>>>>> reference %s (%d) by %+v\n", vid.ID.StringShort(), vid.references, by)
+	}
 
 	// can't use atomic.Int because of this
 	if vid.references == 0 {
@@ -164,11 +172,26 @@ func (vid *WrappedTx) UnReference(by ...string) {
 	vid.mutex.Lock()
 	defer vid.mutex.Unlock()
 
-	//fmt.Printf(">>>>>>>>>>>> UNreference %s (%d) by %v\n", vid.ID.StringShort(), vid.references, by)
+	{
+		if len(by) > 0 {
+			if len(vid.tmpRefBy) == 0 {
+				vid.tmpRefBy = make([]string, 0)
+			}
+			vid.tmpRefBy = append(vid.tmpRefBy, fmt.Sprintf("UNref %s (%d)", by[0], vid.references))
+		}
+		//fmt.Printf(">>>>>>>>>>>> UNreference %s (%d) by %v\n", vid.ID.StringShort(), vid.references, by)
+	}
 
 	// must be references >= 1. Only pruner can put it to 0
 	vid.references--
 	util.Assertf(vid.references >= 1, "UnReference: reference count can't go below 1: %s", vid.ID.StringShort)
+}
+
+func (vid *WrappedTx) RefLines() []string {
+	vid.mutex.RLock()
+	defer vid.mutex.RUnlock()
+
+	return vid.tmpRefBy
 }
 
 func (vid *WrappedTx) MarkDeletedIfNotReferenced() (markedDeleted bool) {
