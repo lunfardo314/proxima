@@ -105,10 +105,12 @@ func (vid *WrappedTx) ConvertVirtualTxToVertexNoLock(v *Vertex) {
 	vid._put(_vertex{Vertex: v})
 }
 
-func (vid *WrappedTx) ConvertBranchVertexToVirtualTx() {
-	vid.Unwrap(UnwrapOptions{Vertex: func(_ *Vertex) {
+// ConvertVertexToVirtualTx detaches past cone and leaves only a collection of produced outputs
+func (vid *WrappedTx) ConvertVertexToVirtualTx() {
+	vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
+		vid._put(_virtualTx{VirtualTxFromVertex(v.Tx)})
+		v.UnReferenceDependencies()
 	}})
-	panic("ConvertBranchVertexToVirtualTx not implemented")
 }
 
 func (vid *WrappedTx) MarkDeleted() {
@@ -180,9 +182,11 @@ func (vid *WrappedTx) GetErrorNoLock() error {
 	return vid.err
 }
 
-func (vid *WrappedTx) Reference() bool {
+func (vid *WrappedTx) Reference(by ...string) bool {
 	vid.mutex.Lock()
 	defer vid.mutex.Unlock()
+
+	//fmt.Printf(">>>>>>>>>>>> reference %s (%d) by %+v\n", vid.ID.StringShort(), vid.references, by)
 
 	// can't use atomic.Int because of this
 	if vid.references == 0 {
@@ -192,13 +196,15 @@ func (vid *WrappedTx) Reference() bool {
 	return true
 }
 
-func (vid *WrappedTx) MustReference() {
-	util.Assertf(vid.Reference(), "MustReference: failed with %s", vid.IDShortString)
+func (vid *WrappedTx) MustReference(by ...string) {
+	util.Assertf(vid.Reference(by...), "MustReference: failed with %s", vid.IDShortString)
 }
 
-func (vid *WrappedTx) UnReference() {
+func (vid *WrappedTx) UnReference(by ...string) {
 	vid.mutex.Lock()
 	defer vid.mutex.Unlock()
+
+	//fmt.Printf(">>>>>>>>>>>> UNreference %s (%d) by %v\n", vid.ID.StringShort(), vid.references, by)
 
 	// must be references >= 1. Only pruner can put it to 0
 	vid.references--

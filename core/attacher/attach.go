@@ -176,7 +176,7 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Opt
 			}
 
 			// if debuggerFriendly == true, the panic is not caught, so it is more convenient in the debugger
-			const debuggerFriendly = true
+			const debuggerFriendly = false
 			if debuggerFriendly {
 				go runFun()
 			} else {

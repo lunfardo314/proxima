@@ -9,7 +9,7 @@ import (
 	"github.com/lunfardo314/proxima/core/attacher"
 	"github.com/lunfardo314/proxima/core/dag"
 	"github.com/lunfardo314/proxima/core/vertex"
-	"github.com/lunfardo314/proxima/core/work_process/tippool_seq"
+	"github.com/lunfardo314/proxima/core/work_process/tippool"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/sequencer"
@@ -27,7 +27,7 @@ func Test1Sequencer(t *testing.T) {
 		t.Logf("%s", testData.wrk.Info())
 
 		testData.env.EnableTraceTags(proposer_base.TraceTag)
-		testData.env.EnableTraceTags(tippool_seq.TraceTag)
+		testData.env.EnableTraceTags(tippool.TraceTag)
 
 		seq, err := sequencer.New(testData.wrk, testData.bootstrapChainID, testData.genesisPrivKey,
 			sequencer.WithMaxBranches(maxSlots))

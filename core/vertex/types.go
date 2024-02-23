@@ -12,6 +12,7 @@ import (
 )
 
 type (
+	// Vertex is a transaction with past cone dependencies
 	Vertex struct {
 		Tx             *transaction.Transaction
 		Inputs         []*WrappedTx
@@ -19,6 +20,7 @@ type (
 		BaselineBranch *WrappedTx
 	}
 
+	// VirtualTransaction is a collection of produced outputs
 	VirtualTransaction struct {
 		mutex            sync.RWMutex
 		outputs          map[byte]*ledger.Output
@@ -26,7 +28,7 @@ type (
 	}
 
 	// WrappedTx value of *WrappedTx is used as transaction identity on the UTXO tangle, a vertex
-	// Behind this identity can be wrapped usual vertex, virtual or orphaned transactions
+	// Behind this identity can be wrapped usual vertex or virtual transactions
 	WrappedTx struct {
 		// immutable ID. It does not change with the change of the underlying wrapped vertex type
 		ID       ledger.TransactionID

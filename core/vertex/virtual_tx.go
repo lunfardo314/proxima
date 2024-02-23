@@ -4,6 +4,7 @@ import (
 	"bytes"
 
 	"github.com/lunfardo314/proxima/ledger"
+	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/util"
 )
@@ -20,6 +21,21 @@ func NewVirtualBranchTx(br *multistate.BranchData) *VirtualTransaction {
 	v.addOutput(br.SequencerOutput.ID.Index(), br.SequencerOutput.Output)
 	v.addOutput(br.Stem.ID.Index(), br.Stem.Output)
 	return v
+}
+
+// VirtualTxFromVertex converts transaction to a collection of produced outputs
+func VirtualTxFromVertex(tx *transaction.Transaction) *VirtualTransaction {
+	ret := &VirtualTransaction{
+		outputs: make(map[byte]*ledger.Output),
+	}
+	for i := 0; i < tx.NumProducedOutputs(); i++ {
+		ret.outputs[byte(i)] = tx.MustProducedOutputAt(byte(i))
+	}
+	if tx.IsSequencerMilestone() {
+		seqIdx, stemIdx := tx.SequencerAndStemOutputIndices()
+		ret.addSequencerIndices(seqIdx, stemIdx)
+	}
+	return ret
 }
 
 func (v *VirtualTransaction) WrapWithID(txid ledger.TransactionID) *WrappedTx {

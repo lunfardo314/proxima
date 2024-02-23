@@ -46,7 +46,14 @@ func runMilestoneAttacher(vid *vertex.WrappedTx, metadata *txmetadata.Transactio
 
 	util.AssertNoError(a.checkConsistencyBeforeWrapUp())
 
+	// finalizing touches
 	a.wrapUpAttacher()
+
+	if a.vid.IsBranchTransaction() {
+		// branch transaction vertex is immediately converted to the virtual transaction.
+		// Thus branch transaction does not reference past cone
+		a.vid.ConvertVertexToVirtualTx()
+	}
 
 	a.vid.SetTxStatusGood()
 	a.PostEventNewGood(vid)

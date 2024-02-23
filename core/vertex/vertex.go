@@ -35,7 +35,7 @@ func (v *Vertex) getSequencerPredecessor() *WrappedTx {
 func (v *Vertex) ReferenceInput(i byte, vid *WrappedTx) bool {
 	util.Assertf(int(i) < len(v.Inputs), "PutNewInput: wrong input index")
 	util.Assertf(v.Inputs[i] == nil, "PutNewInput: repetitive")
-	referenced := vid.Reference()
+	referenced := vid.Reference("ReferenceInput")
 	if referenced {
 		v.Inputs[i] = vid
 	}
@@ -45,7 +45,7 @@ func (v *Vertex) ReferenceInput(i byte, vid *WrappedTx) bool {
 func (v *Vertex) ReferenceEndorsement(i byte, vid *WrappedTx) bool {
 	util.Assertf(int(i) < len(v.Endorsements), "PutNewEndorsement: wrong endorsement index")
 	util.Assertf(v.Endorsements[i] == nil, "PutNewEndorsement: repetitive")
-	referenced := vid.Reference()
+	referenced := vid.Reference("ReferenceEndorsement")
 	if referenced {
 		v.Endorsements[i] = vid
 	}
@@ -56,17 +56,17 @@ func (v *Vertex) ReferenceEndorsement(i byte, vid *WrappedTx) bool {
 func (v *Vertex) UnReferenceDependencies() {
 	for i, vidInput := range v.Inputs {
 		if vidInput != nil {
-			vidInput.UnReference()
+			vidInput.UnReference("UnReferenceDependencies 1")
 			v.Inputs[i] = nil
 		}
 	}
 	if v.BaselineBranch != nil {
-		v.BaselineBranch.UnReference()
+		v.BaselineBranch.UnReference("UnReferenceDependencies 2")
 		v.BaselineBranch = nil
 	}
 	for i, vidEndorsement := range v.Endorsements {
 		if vidEndorsement != nil {
-			vidEndorsement.UnReference()
+			vidEndorsement.UnReference("UnReferenceDependencies 3")
 			v.Endorsements[i] = nil
 		}
 	}

@@ -12,7 +12,7 @@ import (
 	"github.com/lunfardo314/proxima/core/work_process/pruner"
 	"github.com/lunfardo314/proxima/core/work_process/pull_client"
 	"github.com/lunfardo314/proxima/core/work_process/pull_server"
-	"github.com/lunfardo314/proxima/core/work_process/tippool_seq"
+	"github.com/lunfardo314/proxima/core/work_process/tippool"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/peering"
 	"github.com/lunfardo314/proxima/util/eventtype"
@@ -38,7 +38,7 @@ type (
 		persistTxBytes   *persist_txbytes.PersistTxBytes
 		poker            *poker.Poker
 		events           *events.Events
-		tippool          *tippool_seq.SequencerTips
+		tippool          *tippool.SequencerTips
 		syncData         *SyncData
 		doNotStartPruner bool
 		//
@@ -76,7 +76,7 @@ func New(env Environment, peers *peering.Peers, opts ...ConfigOption) *Workflow 
 	ret.pullServer = pull_server.New(ret)
 	ret.gossip = gossip.New(ret)
 	ret.persistTxBytes = persist_txbytes.New(ret)
-	ret.tippool = tippool_seq.New(ret)
+	ret.tippool = tippool.New(ret)
 
 	return ret
 }

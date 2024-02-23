@@ -69,7 +69,7 @@ func New(env Environment) (*InputBacklog, error) {
 		defer ret.mutex.Unlock()
 
 		if _, alraedy := ret.outputs[wOut]; alraedy {
-			wOut.VID.UnReference()
+			wOut.VID.UnReference("backlog new")
 			env.Tracef(TraceTag, "repeating output %s", wOut.IDShortString)
 			return
 		}
@@ -86,7 +86,7 @@ func New(env Environment) (*InputBacklog, error) {
 	}
 
 	for wOut := range outs {
-		if wOut.VID.Reference() {
+		if wOut.VID.Reference("backlog new") {
 			ret.outputs[wOut] = time.Now()
 		}
 	}
@@ -105,23 +105,23 @@ func checkAndReferenceCandidate(wOut vertex.WrappedOutput) bool {
 		// TODO probably ordinary outputs must not be allowed at ledger constraints level
 		return false
 	}
-	if !wOut.VID.Reference() {
+	if !wOut.VID.Reference("checkAndReferenceCandidate") {
 		return false
 	}
 	if wOut.VID.GetTxStatus() == vertex.Bad {
-		wOut.VID.UnReference()
+		wOut.VID.UnReference("checkAndReferenceCandidate 1")
 		return false
 	}
 	o, err := wOut.VID.OutputAt(wOut.Index)
 	if err != nil {
-		wOut.VID.UnReference()
+		wOut.VID.UnReference("checkAndReferenceCandidate 2")
 		return false
 	}
 	if o != nil {
 		if _, idx := o.ChainConstraint(); idx != 0xff {
 			// filter out all chain constrained outputs
 			// TODO must be revisited with delegated accounts (delegation-locked on the current sequencer)
-			wOut.VID.UnReference()
+			wOut.VID.UnReference("checkAndReferenceCandidate 3")
 			return false
 		}
 	}
@@ -210,7 +210,7 @@ func (b *InputBacklog) purge(ttl time.Duration) int {
 	}
 
 	for _, wOut := range toDelete {
-		wOut.VID.UnReference()
+		wOut.VID.UnReference("backlog purge")
 		delete(b.outputs, wOut)
 	}
 	return len(toDelete)
