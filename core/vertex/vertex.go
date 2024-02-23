@@ -56,19 +56,19 @@ func (v *Vertex) ReferenceEndorsement(i byte, vid *WrappedTx) bool {
 func (v *Vertex) UnReferenceDependencies() {
 	for i, vidInput := range v.Inputs {
 		if vidInput != nil {
-			vidInput.UnReference("UnReferenceDependencies 1")
+			vidInput.UnReference("UnReferenceDependencies input")
 			v.Inputs[i] = nil
 		}
 	}
-	if v.BaselineBranch != nil {
-		v.BaselineBranch.UnReference("UnReferenceDependencies 2")
-		v.BaselineBranch = nil
-	}
 	for i, vidEndorsement := range v.Endorsements {
 		if vidEndorsement != nil {
-			vidEndorsement.UnReference("UnReferenceDependencies 3")
+			vidEndorsement.UnReference("UnReferenceDependencies endorsement")
 			v.Endorsements[i] = nil
 		}
+	}
+	if v.BaselineBranch != nil {
+		v.BaselineBranch.UnReference("UnReferenceDependencies baseline")
+		v.BaselineBranch = nil
 	}
 }
 

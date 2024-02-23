@@ -113,20 +113,6 @@ func (vid *WrappedTx) ConvertVertexToVirtualTx() {
 	}})
 }
 
-func (vid *WrappedTx) MarkDeleted() {
-	vid.mutex.Lock()
-	defer vid.mutex.Unlock()
-
-	switch vid._genericWrapper.(type) {
-	case _vertex:
-		vid._put(_deletedTx{})
-	case _virtualTx:
-		vid._put(_deletedTx{})
-	case _deletedTx:
-		vid.PanicAccessDeleted()
-	}
-}
-
 func (vid *WrappedTx) GetTxStatus() Status {
 	vid.mutex.RLock()
 	defer vid.mutex.RUnlock()
@@ -242,11 +228,7 @@ func (vid *WrappedTx) IsBadOrDeleted() bool {
 	vid.mutex.RLock()
 	defer vid.mutex.RUnlock()
 
-	if vid.GetTxStatusNoLock() == Bad {
-		return true
-	}
-	_, isDeleted := vid._genericWrapper.(_deletedTx)
-	return isDeleted
+	return vid.GetTxStatusNoLock() == Bad || vid.references == 0
 }
 
 func (vid *WrappedTx) IsDeleted() bool {
