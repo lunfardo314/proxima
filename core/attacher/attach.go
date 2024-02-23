@@ -161,6 +161,9 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Opt
 					}
 				} else {
 					msData := env.ParseMilestoneData(vid)
+					if msData == nil {
+						env.ParseMilestoneData(vid)
+					}
 					env.Log().Info(logFinalStatusString(vid, stats, msData))
 				}
 

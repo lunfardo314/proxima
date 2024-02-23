@@ -216,9 +216,15 @@ func (d *DAG) ForEachVertexReadLocked(fun func(vid *vertex.WrappedTx) bool) {
 }
 
 func (d *DAG) ParseMilestoneData(msVID *vertex.WrappedTx) (ret *ledger.MilestoneData) {
-	msVID.Unwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
-		ret = ledger.ParseMilestoneData(v.Tx.SequencerOutput().Output)
-	}})
+	msVID.Unwrap(vertex.UnwrapOptions{
+		Vertex: func(v *vertex.Vertex) {
+			ret = ledger.ParseMilestoneData(v.Tx.SequencerOutput().Output)
+		},
+		VirtualTx: func(v *vertex.VirtualTransaction) {
+			seqOut, _ := v.SequencerOutputs()
+			ret = ledger.ParseMilestoneData(seqOut)
+		},
+	})
 	return
 }
 

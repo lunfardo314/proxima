@@ -125,6 +125,10 @@ func (t *SequencerTips) LatestMilestonesDescending(filter ...func(seqID ledger.C
 	if len(filter) > 0 {
 		flt = filter[0]
 	}
+
+	t.mutex.RLock()
+	defer t.mutex.RUnlock()
+
 	ret := make([]*vertex.WrappedTx, 0, len(t.latestMilestones))
 	for seqID, vid := range t.latestMilestones {
 		if flt(seqID, vid) {
