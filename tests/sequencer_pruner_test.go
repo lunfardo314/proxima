@@ -169,18 +169,18 @@ func TestNSequencersIdlePruner(t *testing.T) {
 
 func Test5SequencersIdlePruner(t *testing.T) {
 	const (
-		maxSlots    = 500
+		maxSlots    = 20
 		nSequencers = 4 // in addition to bootstrap
 	)
 	testData := initMultiSequencerTest(t, nSequencers, true)
 
 	//testData.wrk.EnableTraceTags(proposer_base.TraceTag)
 	testData.startSequencersWithTimeout(maxSlots)
-	time.Sleep(600 * time.Second)
+	time.Sleep(20 * time.Second)
 	testData.stopAndWait()
 
-	t.Logf("--------\n%s", testData.wrk.Info())
-	//testData.wrk.SaveGraph("utangle")
+	t.Logf("--------\n%s", testData.wrk.Info(true))
+	testData.wrk.SaveGraph("utangle")
 	testData.wrk.SaveSequencerGraph(fmt.Sprintf("utangle_seq_tree_%d", nSequencers+1))
 	dag.SaveBranchTree(testData.wrk.StateStore(), fmt.Sprintf("utangle_tree_%d", nSequencers+1))
 }
