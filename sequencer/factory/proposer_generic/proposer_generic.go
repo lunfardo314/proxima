@@ -20,6 +20,7 @@ type (
 		AttachTagAlongInputs(a *attacher.IncrementalAttacher) int
 		ChooseExtendEndorsePair(proposerName string, targetTs ledger.Time) *attacher.IncrementalAttacher
 		BestMilestoneInTheSlot(slot ledger.Slot) *vertex.WrappedTx
+		SequencerName() string
 	}
 
 	Task interface {
@@ -49,7 +50,7 @@ const TraceTag = "propose-generic"
 
 func New(env Environment, strategy *Strategy, targetTs ledger.Time, ctx context.Context) Task {
 	return strategy.Constructor(&TaskGeneric{
-		Name:            fmt.Sprintf("[%s-%s]", strategy.Name, targetTs.String()),
+		Name:            fmt.Sprintf("[%s-%s-%s]", env.SequencerName(), strategy.Name, targetTs.String()),
 		ctx:             ctx,
 		Environment:     env,
 		Strategy:        strategy,
@@ -79,8 +80,6 @@ func (t *TaskGeneric) Run() {
 		}
 		if a != nil {
 			func() {
-				defer a.Dispose()
-
 				if a.Completed() {
 					t.Tracef(TraceTag, "Run: generated new proposal")
 					if forceExit = t.Propose(a); forceExit {

@@ -269,6 +269,8 @@ func (mf *MilestoneFactory) startProposerWorkers(targetTime ledger.Time, ctx con
 }
 
 func (mf *MilestoneFactory) Propose(a *attacher.IncrementalAttacher) (forceExit bool) {
+	defer a.UnReferenceAll()
+
 	coverage := a.LedgerCoverage()
 	mf.Tracef(TraceTag, "Propose%s: extend: %s, coverage %s", a.Name(), util.Ref(a.Extending()).IDShortString, coverage.String)
 
@@ -340,16 +342,16 @@ func (mf *MilestoneFactory) ChooseExtendEndorsePair(proposerName string, targetT
 		mf.Tracef(TraceTagChooseExtendEndorsePair, ">>>>>>>>>>>>>>> check endorsement candidate %s against future cone of extension candidates {%s}",
 			endorse.IDShortString, func() string { return vertex.WrappedOutputsShortLines(futureConeMilestones).Join(", ") })
 
-		if ret = mf.chooseEndorseExtendPair(proposerName, targetTs, endorse, futureConeMilestones); ret != nil {
-			mf.Tracef(TraceTagChooseExtendEndorsePair, ">>>>>>>>>>>>>>> chooseEndorseExtendPair return %s", ret.Name())
+		if ret = mf.chooseEndorseExtendPairAttacher(proposerName, targetTs, endorse, futureConeMilestones); ret != nil {
+			mf.Tracef(TraceTagChooseExtendEndorsePair, ">>>>>>>>>>>>>>> chooseEndorseExtendPairAttacher return %s", ret.Name())
 			return ret
 		}
 	}
-	mf.Tracef(TraceTagChooseExtendEndorsePair, ">>>>>>>>>>>>>>> chooseEndorseExtendPair nil")
+	mf.Tracef(TraceTagChooseExtendEndorsePair, ">>>>>>>>>>>>>>> chooseEndorseExtendPairAttacher nil")
 	return nil
 }
 
-func (mf *MilestoneFactory) chooseEndorseExtendPair(proposerName string, targetTs ledger.Time, endorse *vertex.WrappedTx, extendCandidates []vertex.WrappedOutput) *attacher.IncrementalAttacher {
+func (mf *MilestoneFactory) chooseEndorseExtendPairAttacher(proposerName string, targetTs ledger.Time, endorse *vertex.WrappedTx, extendCandidates []vertex.WrappedOutput) *attacher.IncrementalAttacher {
 	var ret *attacher.IncrementalAttacher
 	for _, extend := range extendCandidates {
 		a, err := attacher.NewIncrementalAttacher(proposerName, mf, targetTs, extend, endorse)
@@ -357,13 +359,17 @@ func (mf *MilestoneFactory) chooseEndorseExtendPair(proposerName string, targetT
 			mf.Tracef(TraceTagChooseExtendEndorsePair, "%s can't extend %s and endorse %s: %v", targetTs.String, extend.IDShortString, endorse.IDShortString, err)
 			continue
 		}
-		util.Assertf(a != nil, "a != nil")
-		if !a.Completed() {
-			mf.Tracef(TraceTagChooseExtendEndorsePair, "%s not completed", a.Name())
-			continue
-		}
-		if ret == nil || a.LedgerCoverageSum() > ret.LedgerCoverageSum() {
+		// we must carefully dispose unused references, otherwise pruning does not work
+		switch {
+		case !a.Completed():
+			a.UnReferenceAll()
+		case ret == nil:
 			ret = a
+		case a.LedgerCoverageSum() > ret.LedgerCoverageSum():
+			ret.UnReferenceAll()
+			ret = a
+		default:
+			a.UnReferenceAll()
 		}
 	}
 	return ret

@@ -65,7 +65,7 @@ func NewIncrementalAttacher(name string, env Environment, targetTs ledger.Time, 
 	return ret, nil
 }
 
-func (a *IncrementalAttacher) Dispose() {
+func (a *IncrementalAttacher) UnReferenceAll() {
 	a.unReferenceAllByAttacher()
 }
 

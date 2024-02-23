@@ -76,6 +76,7 @@ func (a *attacher) unReferenceAllByAttacher() {
 	for vid := range a.referenced {
 		vid.UnReference("unReferenceAllByAttacher " + a.Name())
 	}
+	a.referenced = nil // invalidate
 }
 
 func (a *attacher) markVertexDefined(vid *vertex.WrappedTx) {

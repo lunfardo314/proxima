@@ -71,6 +71,7 @@ func (b *BaseProposer) propose() (*attacher.IncrementalAttacher, bool) {
 		if bestLC != nil && vertex.IsPreferredBase(bestLC.Sum(), a.LedgerCoverageSum(), nil, nil) {
 			b.Tracef(TraceTag, "%s abandoning milestone proposal because larger coverage %s has been already proposed",
 				b.Name, bestLC.String())
+			a.UnReferenceAll()
 			return nil, true
 		}
 	}

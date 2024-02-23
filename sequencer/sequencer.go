@@ -304,7 +304,7 @@ func (seq *Sequencer) getNextTargetTime() (ledger.Time, ledger.Time) {
 	targetAbsoluteMinimum := prevMilestoneTs.AddTicks(seq.config.Pace)
 	//seq.Tracef("tmp", ">>>>>>>>>>>>>>>> targetAbsoluteMinimum: %s", targetAbsoluteMinimum.String())
 
-	nextSlotBoundary := nowis.NextTimeSlotBoundary()
+	nextSlotBoundary := nowis.NextSlotBoundary()
 
 	if !targetAbsoluteMinimum.Before(nextSlotBoundary) {
 		return targetAbsoluteMinimum, prevMilestoneTs
@@ -316,7 +316,7 @@ func (seq *Sequencer) getNextTargetTime() (ledger.Time, ledger.Time) {
 		return targetAbsoluteMinimum, prevMilestoneTs
 	}
 
-	if targetAbsoluteMinimum.TimesTicksToNextSlotBoundary() <= seq.config.Pace {
+	if targetAbsoluteMinimum.TicksToNextSlotBoundary() <= seq.config.Pace {
 		return nextSlotBoundary, prevMilestoneTs
 	}
 

@@ -169,7 +169,7 @@ func TestNSequencersIdlePruner(t *testing.T) {
 
 func Test5SequencersIdlePruner(t *testing.T) {
 	const (
-		maxSlots    = 20
+		maxSlots    = 40
 		nSequencers = 4 // in addition to bootstrap
 	)
 	testData := initMultiSequencerTest(t, nSequencers, true)
@@ -179,9 +179,9 @@ func Test5SequencersIdlePruner(t *testing.T) {
 	time.Sleep(20 * time.Second)
 	testData.stopAndWait()
 
-	t.Logf("--------\n%s", testData.wrk.Info(true))
+	//t.Logf("--------\n%s", testData.wrk.Info(true))
 	testData.wrk.SaveGraph("utangle")
-	testData.wrk.SaveSequencerGraph(fmt.Sprintf("utangle_seq_tree_%d", nSequencers+1))
+	//testData.wrk.SaveSequencerGraph(fmt.Sprintf("utangle_seq_tree_%d", nSequencers+1))
 	dag.SaveBranchTree(testData.wrk.StateStore(), fmt.Sprintf("utangle_tree_%d", nSequencers+1))
 }
 
@@ -255,7 +255,7 @@ func TestNSequencersTransferPruner(t *testing.T) {
 		//balanceOnChain := rdr.BalanceOnChain(&testData.bootstrapChainID)
 		//require.EqualValues(t, int(initialBalanceOnChain)+len(par.spammedTxIDs)*tagAlongFee, int(balanceOnChain))
 	})
-	t.Run("seq 3 transfer multi tag along", func(t *testing.T) {
+	t.Run("seq 5 transfer multi tag along", func(t *testing.T) {
 		const (
 			maxSlots        = 50
 			nSequencers     = 4 // in addition to bootstrap
@@ -307,19 +307,22 @@ func TestNSequencersTransferPruner(t *testing.T) {
 			t.Log("spamming stopped")
 		}()
 
-		testData.startSequencersWithTimeout(maxSlots, spammingTimeout+(5*time.Second))
+		testData.startSequencersWithTimeout(maxSlots)
+		<-ctx.Done()
 
+		time.Sleep(15 * time.Second)
 		testData.stopAndWait()
 
 		t.Logf("%s", testData.wrk.Info())
 		rdr = testData.wrk.HeaviestStateForLatestTimeSlot()
 		for _, txid := range par.spammedTxIDs {
 			require.True(t, rdr.KnowsCommittedTransaction(&txid))
-			t.Logf("    %s: in the heaviest state: %v", txid.StringShort(), rdr.KnowsCommittedTransaction(&txid))
+			//t.Logf("    %s: in the heaviest state: %v", txid.StringShort(), rdr.KnowsCommittedTransaction(&txid))
 		}
 
 		//testData.wrk.SaveSequencerGraph(fmt.Sprintf("utangle_seq_tree_%d", nSequencers+1))
 		dag.SaveBranchTree(testData.wrk.StateStore(), fmt.Sprintf("utangle_tree_%d", nSequencers+1))
+		testData.wrk.SaveGraph("utangle")
 
 		targetBalance := rdr.BalanceOf(targetAddr.AccountID())
 		require.EqualValues(t, len(par.spammedTxIDs)*sendAmount, int(targetBalance))

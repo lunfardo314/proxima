@@ -697,7 +697,7 @@ func TestConflictsNAttachersOneForkBranches(t *testing.T) {
 		chainIn[seqNr] = o.MustAsChainOutput()
 		ts = ledger.MaxTime(ts, o.Timestamp())
 	}
-	ts = ts.NextTimeSlotBoundary()
+	ts = ts.NextSlotBoundary()
 
 	var err error
 	var wg sync.WaitGroup
@@ -762,7 +762,7 @@ func TestConflictsNAttachersOneForkBranchesConflict(t *testing.T) {
 		chainIn[seqNr] = o.MustAsChainOutput()
 		ts = ledger.MaxTime(ts, o.Timestamp())
 	}
-	ts = ts.NextTimeSlotBoundary()
+	ts = ts.NextSlotBoundary()
 
 	var err error
 	txBytesBranch := make([][]byte, nChains)
@@ -1010,7 +1010,7 @@ func TestSeqChains(t *testing.T) {
 			SeqName:    "seq0",
 			ChainInput: chainIn,
 			StemInput:  distribBD.Stem,
-			Timestamp:  chainIn.Timestamp().NextTimeSlotBoundary(),
+			Timestamp:  chainIn.Timestamp().NextSlotBoundary(),
 			PrivateKey: testData.privKeyAux,
 		})
 		require.NoError(t, err)

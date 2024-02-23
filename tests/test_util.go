@@ -439,7 +439,7 @@ func (td *longConflictTestData) makeBranch(extend *ledger.OutputWithChainID, pre
 		SeqName:    "seq0",
 		ChainInput: extend,
 		StemInput:  prevBranch.StemOutput(),
-		Timestamp:  extend.Timestamp().NextTimeSlotBoundary(),
+		Timestamp:  extend.Timestamp().NextSlotBoundary(),
 		PrivateKey: td.privKeyAux,
 	})
 	require.NoError(td.t, err)

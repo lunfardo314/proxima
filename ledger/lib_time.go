@@ -180,18 +180,18 @@ func (t Time) Time() time.Time {
 	return time.Unix(0, t.UnixNano())
 }
 
-func (t Time) NextTimeSlotBoundary() Time {
+func (t Time) NextSlotBoundary() Time {
 	if t.Tick() == 0 {
 		return t
 	}
 	return MustNewLedgerTime(t.Slot()+1, 0)
 }
 
-func (t Time) TimesTicksToNextSlotBoundary() int {
+func (t Time) TicksToNextSlotBoundary() int {
 	if t.Tick() == 0 {
 		return 0
 	}
-	return DefaultTicksPerSlot - int(t.Tick())
+	return L().ID.TicksPerSlot() - int(t.Tick())
 }
 
 func (t Time) Bytes() []byte {
