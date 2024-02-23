@@ -8,17 +8,15 @@ import (
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
-	"github.com/lunfardo314/proxima/util"
-	"github.com/lunfardo314/proxima/util/set"
-	"golang.org/x/exp/maps"
 )
 
 type (
 	Environment interface {
 		global.NodeGlobal
-		PurgeDeletedVertices(deleted []*vertex.WrappedTx)
-		VerticesDescending() []*vertex.WrappedTx
+		WithGlobalWriteLock(func())
+		Vertices(filterByID ...func(txid *ledger.TransactionID) bool) []*vertex.WrappedTx
 		PruningTTLSlots() int
+		PurgeDeletedVertices(deleted []*vertex.WrappedTx)
 		PurgeCachedStateReaders() (int, int)
 		NumVertices() int
 	}
@@ -35,48 +33,23 @@ func New(env Environment) *Pruner {
 	}
 }
 
+func (d *Pruner) pruneVertices() int {
+	toDelete := make([]*vertex.WrappedTx, 0)
+	for _, vid := range d.Vertices() {
+		if vid.MarkDeletedIfNotReferenced() {
+			toDelete = append(toDelete, vid)
+		}
+	}
+	d.PurgeDeletedVertices(toDelete)
+	return len(toDelete)
+}
+
 func (d *Pruner) Start() {
 	d.Log().Infof("STARTING.. [%s]", d.Log().Level().String())
 	go func() {
 		d.mainLoop()
 		d.Log().Debugf("DAG pruner STOPPED")
 	}()
-}
-
-// TODO do not delete those accesible from top milestones, even if old
-
-func (d *Pruner) selectVerticesToPrune() []*vertex.WrappedTx {
-	verticesDescending := d.VerticesDescending()
-	baselineSlot := d.pruningBaselineSlot(verticesDescending)
-	ttlHorizon := time.Now().Add(-time.Duration(d.PruningTTLSlots()) * ledger.SlotDuration())
-
-	ret := make([]*vertex.WrappedTx, 0)
-	for _, vid := range verticesDescending {
-		switch {
-		case vid.GetTxStatus() == vertex.Bad:
-			ret = append(ret, vid)
-		case vid.Time().After(ttlHorizon):
-		case vid.Slot() >= baselineSlot:
-		default:
-			ret = append(ret, vid)
-		}
-	}
-	return ret
-}
-
-// pruningBaselineSlot vertices older than pruningBaselineSlot are candidates for pruning
-// Vertices with the pruningBaselineSlot and younger are not touched
-func (d *Pruner) pruningBaselineSlot(verticesDescending []*vertex.WrappedTx) ledger.Slot {
-	topSlots := set.New[ledger.Slot]()
-	for _, vid := range verticesDescending {
-		topSlots.Insert(vid.Slot())
-		if len(topSlots) == d.PruningTTLSlots() {
-			break
-		}
-	}
-	return util.Minimum(maps.Keys(topSlots), func(s1, s2 ledger.Slot) bool {
-		return s1 < s2
-	})
 }
 
 func (d *Pruner) mainLoop() {
@@ -91,29 +64,9 @@ func (d *Pruner) mainLoop() {
 			return
 		case <-time.After(prunerLoopPeriod):
 		}
+		nDeleted := d.pruneVertices()
 		nReadersPurged, readersLeft := d.PurgeCachedStateReaders()
-		toDelete := d.selectVerticesToPrune()
 
-		// we do 2-step mark-deleted/purge in order to avoid deadlocks. It is not completely correct,
-		// because this way deletion from the DAG and changing the vertex state to 'deleted' is not an atomic action.
-		// In some period, a transaction can be discovered in the DAG by its ID (by AttachTxID function),
-		// however in the 'deleted state'.
-		// It means repetitive attachment of the transaction is not possible until complete purge.
-		// This may create non-determinism TODO !!!
-		var seqDeleted, branchDeleted, nonSeqDeleted int
-		for _, vid := range toDelete {
-			switch {
-			case vid.IsBranchTransaction():
-				branchDeleted++
-			case vid.IsSequencerMilestone():
-				seqDeleted++
-			default:
-				nonSeqDeleted++
-			}
-			vid.MarkDeleted()
-		}
-		// --- > here deleted transactions are still discoverable in the DAG in 'deleted' state
-		d.PurgeDeletedVertices(toDelete)
 		// not discoverable anymore
 		var memStats runtime.MemStats
 		runtime.ReadMemStats(&memStats)
@@ -122,8 +75,8 @@ func (d *Pruner) mainLoop() {
 			memStats.NumGC,
 			runtime.NumGoroutine(),
 		)
-		d.Log().Infof("vertices pruned: (branches %d, seq: %d, other: %d). Vertices left: %d. Cached state readers purged: %d, left: %d. "+memStr,
-			branchDeleted, seqDeleted, nonSeqDeleted, d.NumVertices(), nReadersPurged, readersLeft)
+		d.Log().Infof("vertices pruned: %d. Vertices left: %d. Cached state readers purged: %d, left: %d. "+memStr,
+			nDeleted, d.NumVertices(), nReadersPurged, readersLeft)
 
 		//p.Log().Infof("\n------------------\n%s\n-------------------", p.Info(true))
 	}

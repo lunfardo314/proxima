@@ -196,10 +196,6 @@ func (vid *WrappedTx) Reference(by ...string) bool {
 	return true
 }
 
-func (vid *WrappedTx) MustReference(by ...string) {
-	util.Assertf(vid.Reference(by...), "MustReference: failed with %s", vid.IDShortString)
-}
-
 func (vid *WrappedTx) UnReference(by ...string) {
 	vid.mutex.Lock()
 	defer vid.mutex.Unlock()
@@ -209,6 +205,29 @@ func (vid *WrappedTx) UnReference(by ...string) {
 	// must be references >= 1. Only pruner can put it to 0
 	vid.references--
 	util.Assertf(vid.references >= 1, "UnReference: reference count can't go below 1: %s", vid.ID.StringShort)
+}
+
+func (vid *WrappedTx) MarkDeletedIfNotReferenced() (markedDeleted bool) {
+	vid.Unwrap(UnwrapOptions{
+		Vertex: func(v *Vertex) {
+			if vid.references <= 1 {
+				vid.references = 0
+				markedDeleted = true
+				v.UnReferenceDependencies()
+			}
+		},
+		VirtualTx: func(_ *VirtualTransaction) {
+			if vid.references <= 1 {
+				vid.references = 0
+				markedDeleted = true
+			}
+		},
+	})
+	return
+}
+
+func (vid *WrappedTx) MustReference(by ...string) {
+	util.Assertf(vid.Reference(by...), "MustReference: failed with %s", vid.IDShortString)
 }
 
 func (vid *WrappedTx) NumReferences() int {
