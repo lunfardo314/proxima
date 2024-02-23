@@ -5,24 +5,18 @@ import (
 	"errors"
 	"fmt"
 	"runtime/debug"
-	"time"
 
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
 	"github.com/lunfardo314/proxima/util/set"
-	"golang.org/x/exp/maps"
 )
 
 // ErrDeletedVertexAccessed exception is raised by PanicAccessDeleted handler of RUnwrap vertex so that could be caught if necessary
 var (
 	ErrDeletedVertexAccessed = errors.New("deleted vertex should not be accessed")
 )
-
-func (v _vertex) _time() time.Time {
-	return v.whenWrapped
-}
 
 func (v _vertex) _outputAt(idx byte) (*ledger.Output, error) {
 	return v.Tx.ProducedOutputAt(idx)
@@ -33,10 +27,6 @@ func (v _vertex) _hasOutputAt(idx byte) (bool, bool) {
 		return false, true
 	}
 	return true, false
-}
-
-func (v _virtualTx) _time() time.Time {
-	return time.Time{}
 }
 
 func (v _virtualTx) _outputAt(idx byte) (*ledger.Output, error) {
@@ -51,32 +41,20 @@ func (v _virtualTx) _hasOutputAt(idx byte) (bool, bool) {
 	return hasIt, false
 }
 
-func (v _deletedTx) _time() time.Time {
-	return time.Time{}
-}
-
-func (v _deletedTx) _outputAt(_ byte) (*ledger.Output, error) {
-	return nil, ErrDeletedVertexAccessed
-}
-
-func (v _deletedTx) _hasOutputAt(_ byte) (bool, bool) {
-	return false, false
-}
-
 var nopFun = func(_ *WrappedTx) {}
 
-func _newVID(g _genericWrapper, txid ledger.TransactionID) *WrappedTx {
+func _newVID(g _genericVertex, txid ledger.TransactionID) *WrappedTx {
 	ret := &WrappedTx{
-		ID:              txid,
-		_genericWrapper: g,
-		references:      1, // we always start with 1 reference, which is reference by the DAG itself. 0 references means it is deleted
+		ID:             txid,
+		_genericVertex: g,
+		references:     1, // we always start with 1 reference, which is reference by the DAG itself. 0 references means it is deleted
 	}
 	ret.onPoke.Store(nopFun)
 	return ret
 }
 
-func (vid *WrappedTx) _put(g _genericWrapper) {
-	vid._genericWrapper = g
+func (vid *WrappedTx) _put(g _genericVertex) {
+	vid._genericVertex = g
 }
 
 func (vid *WrappedTx) FlagsNoLock() Flags {
@@ -100,7 +78,7 @@ func (vid *WrappedTx) FlagsUpNoLock(f Flags) bool {
 
 func (vid *WrappedTx) ConvertVirtualTxToVertexNoLock(v *Vertex) {
 	util.Assertf(vid.ID == *v.Tx.ID(), "ConvertVirtualTxToVertexNoLock: txid-s do not match in: %s", vid.ID.StringShort)
-	_, isVirtualTx := vid._genericWrapper.(_virtualTx)
+	_, isVirtualTx := vid._genericVertex.(_virtualTx)
 	util.Assertf(isVirtualTx, "ConvertVirtualTxToVertexNoLock: virtual tx target expected %s", vid.ID.StringShort)
 	vid._put(_vertex{Vertex: v})
 }
@@ -507,8 +485,7 @@ func (vid *WrappedTx) RUnwrap(opt UnwrapOptions) {
 }
 
 func (vid *WrappedTx) _unwrap(opt UnwrapOptions) {
-
-	switch v := vid._genericWrapper.(type) {
+	switch v := vid._genericVertex.(type) {
 	case _vertex:
 		if opt.Vertex != nil {
 			opt.Vertex(v.Vertex)
@@ -517,20 +494,11 @@ func (vid *WrappedTx) _unwrap(opt UnwrapOptions) {
 		if opt.VirtualTx != nil {
 			opt.VirtualTx(v.VirtualTransaction)
 		}
-	case _deletedTx:
-		if opt.Deleted != nil {
+	default:
+		if vid.references == 0 && opt.Deleted != nil {
 			opt.Deleted()
 		}
-	default:
-		util.Assertf(false, "inconsistency: unsupported wrapped type")
 	}
-}
-
-func (vid *WrappedTx) Time() time.Time {
-	vid.mutex.RLock()
-	defer vid.mutex.RUnlock()
-
-	return vid._genericWrapper._time()
 }
 
 func (vid *WrappedTx) Lines(prefix ...string) *lines.Lines {
@@ -577,11 +545,10 @@ func (vid *WrappedTx) ConvertToVirtualTx() {
 	vid.mutex.Lock()
 	defer vid.mutex.Unlock()
 
-	switch v := vid._genericWrapper.(type) {
+	util.Assertf(vid.references > 0, "access deleted tx")
+	switch v := vid._genericVertex.(type) {
 	case _vertex:
 		vid._put(_virtualTx{VirtualTransaction: v.convertToVirtualTx()})
-	case _deletedTx:
-		vid.PanicAccessDeleted()
 	}
 }
 
@@ -799,14 +766,6 @@ func VerticesLines(vertices []*WrappedTx, prefix ...string) *lines.Lines {
 	return ret
 }
 
-func VIDSetIDString(set set.Set[*WrappedTx], prefix ...string) string {
-	ret := lines.New(prefix...)
-	for _, vid := range maps.Keys(set) {
-		ret.Add(vid.IDShortString())
-	}
-	return ret.Join(", ")
-}
-
 func VerticesShortLines(vertices []*WrappedTx, prefix ...string) *lines.Lines {
 	ret := lines.New(prefix...)
 	for _, vid := range vertices {
@@ -887,8 +846,8 @@ func (vid *WrappedTx) _traversePastCone(opt *_unwrapOptionsTraverse) bool {
 			}
 		},
 		Deleted: func() {
-			if opt.Orphaned != nil {
-				ret = opt.Orphaned(vid)
+			if opt.Deleted != nil {
+				ret = opt.Deleted(vid)
 			}
 		},
 	})

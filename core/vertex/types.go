@@ -32,7 +32,7 @@ type (
 	WrappedTx struct {
 		// immutable ID. It does not change with the change of the underlying wrapped vertex type
 		ID       ledger.TransactionID
-		mutex    sync.RWMutex // protects _genericWrapper
+		mutex    sync.RWMutex // protects _genericVertex
 		flags    Flags
 		err      error
 		coverage *multistate.LedgerCoverage // nil for non-sequencer or if not set yet
@@ -42,7 +42,7 @@ type (
 		// notification callback. Must be func(vid *WrappedTx)
 		onPoke atomic.Value
 
-		_genericWrapper
+		_genericVertex
 
 		mutexDescendants sync.RWMutex
 		consumed         map[byte]set.Set[*WrappedTx]
@@ -53,9 +53,8 @@ type (
 		Index byte
 	}
 
-	// _genericWrapper generic types of vertex hiding behind WrappedTx identity
-	_genericWrapper interface {
-		_time() time.Time
+	// _genericVertex generic types of vertex hiding behind WrappedTx identity
+	_genericVertex interface {
 		_outputAt(idx byte) (*ledger.Output, error)
 		_hasOutputAt(idx byte) (bool, bool)
 	}
@@ -69,8 +68,6 @@ type (
 		*VirtualTransaction
 	}
 
-	_deletedTx struct{}
-
 	UnwrapOptions struct {
 		Vertex    func(v *Vertex)
 		VirtualTx func(v *VirtualTransaction)
@@ -81,7 +78,7 @@ type (
 		Vertex    func(vidCur *WrappedTx, v *Vertex) bool
 		VirtualTx func(vidCur *WrappedTx, v *VirtualTransaction) bool
 		TxID      func(txid *ledger.TransactionID)
-		Orphaned  func(vidCur *WrappedTx) bool
+		Deleted   func(vidCur *WrappedTx) bool
 	}
 
 	Status byte
