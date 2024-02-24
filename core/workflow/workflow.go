@@ -17,7 +17,6 @@ import (
 	"github.com/lunfardo314/proxima/peering"
 	"github.com/lunfardo314/proxima/util/eventtype"
 	"github.com/lunfardo314/proxima/util/set"
-	"github.com/lunfardo314/proxima/util/testutil"
 	"go.uber.org/atomic"
 )
 
@@ -42,8 +41,6 @@ type (
 		syncData         *SyncData
 		doNotStartPruner bool
 		//
-		debugCounters *testutil.SyncCounters
-		//
 		enableTrace    atomic.Bool
 		traceTagsMutex sync.RWMutex
 		traceTags      set.Set[string]
@@ -66,7 +63,6 @@ func New(env Environment, peers *peering.Peers, opts ...ConfigOption) *Workflow 
 		DAG:              dag.New(env),
 		peers:            peers,
 		syncData:         newSyncData(),
-		debugCounters:    testutil.NewSynCounters(),
 		traceTags:        set.New[string](),
 		doNotStartPruner: cfg.doNotStartPruner,
 	}

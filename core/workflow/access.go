@@ -21,10 +21,6 @@ func (w *Workflow) MaxDurationInTheFuture() time.Duration {
 	return ledger.SlotDuration() * 5
 }
 
-func (w *Workflow) IncCounter(name string) {
-	w.debugCounters.Inc(name)
-}
-
 func (w *Workflow) Pull(txid ledger.TransactionID) {
 	w.pullClient.Push(&pull_client.Input{
 		TxIDs: []ledger.TransactionID{txid},

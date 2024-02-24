@@ -65,7 +65,6 @@ func (w *Workflow) TxBytesIn(txBytes []byte, opts ...TxBytesInOption) (*ledger.T
 			err = fmt.Errorf("upper timestamp bound exceeded (MaxDurationInTheFuture = %v)", w.MaxDurationInTheFuture())
 			attacher.InvalidateTxID(*txid, w, err)
 
-			w.IncCounter("invalid")
 			return txid, err
 		}
 		w.Log().Warnf("checking time bounds of %s: '%v'", txid.StringShort(), err)
@@ -76,11 +75,9 @@ func (w *Workflow) TxBytesIn(txBytes []byte, opts ...TxBytesInOption) (*ledger.T
 		w.Tracef(TraceTagTxInput, "invalidate %s due to failed validation: '%v'", txid.StringShort, err)
 		err = fmt.Errorf("error while pre-validating transaction %s: '%w'", txid.StringShort(), err)
 		attacher.InvalidateTxID(*txid, w, err)
-		w.IncCounter("invalid")
 		return txid, err
 	}
 
-	w.IncCounter("ok")
 	if !options.txMetadata.IsResponseToPull {
 		// gossip always, even if it needs delay.
 		// Reason: other nodes might have slightly different clock, let them handle delay themselves
@@ -103,7 +100,6 @@ func (w *Workflow) TxBytesIn(txBytes []byte, opts ...TxBytesInOption) (*ledger.T
 
 	if txTime.Before(nowis) {
 		// timestamp is in the past -> attach immediately
-		w.IncCounter("ok.now")
 		w.Tracef(TraceTagTxInput, "-> attach tx %s", txid.StringShort)
 		vid := attacher.AttachTransaction(tx, w, attachOpts...)
 		if vid.IsBadOrDeleted() {
@@ -115,7 +111,6 @@ func (w *Workflow) TxBytesIn(txBytes []byte, opts ...TxBytesInOption) (*ledger.T
 	}
 
 	// timestamp is in the future. Put it on wait
-	w.IncCounter("ok.delay")
 	delayFor := txTime.Sub(nowis)
 	w.Tracef(TraceTagTxInput, "%s -> delay for %v", txid.StringShort, delayFor)
 	w.Tracef(TraceTagDelay, "%s -> delay for %v", txid.StringShort, delayFor)
@@ -124,7 +119,6 @@ func (w *Workflow) TxBytesIn(txBytes []byte, opts ...TxBytesInOption) (*ledger.T
 		time.Sleep(delayFor)
 		w.Tracef(TraceTagTxInput, "%s -> release", txid.StringShort)
 		w.Tracef(TraceTagDelay, "%s -> release", txid.StringShort)
-		w.IncCounter("ok.release")
 		w.Tracef(TraceTagTxInput, "-> attach tx %s", txid.StringShort)
 		vid := attacher.AttachTransaction(tx, w, attachOpts...)
 		if vid.IsBadOrDeleted() {
