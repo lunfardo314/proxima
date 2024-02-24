@@ -105,7 +105,12 @@ func (w *Workflow) TxBytesIn(txBytes []byte, opts ...TxBytesInOption) (*ledger.T
 		// timestamp is in the past -> attach immediately
 		w.IncCounter("ok.now")
 		w.Tracef(TraceTagTxInput, "-> attach tx %s", txid.StringShort)
-		attacher.AttachTransaction(tx, w, attachOpts...)
+		vid := attacher.AttachTransaction(tx, w, attachOpts...)
+		if vid.IsBadOrDeleted() {
+			// rare event. If tx is deleted, this was unlucky try.
+			// Transaction will be erased from the dag and pulled again
+			w.Tracef(TraceTagTxInput, "-> failed to attach tx %s: it is bad or deleted. Drop", txid.StringShort)
+		}
 		return txid, nil
 	}
 
@@ -121,7 +126,12 @@ func (w *Workflow) TxBytesIn(txBytes []byte, opts ...TxBytesInOption) (*ledger.T
 		w.Tracef(TraceTagDelay, "%s -> release", txid.StringShort)
 		w.IncCounter("ok.release")
 		w.Tracef(TraceTagTxInput, "-> attach tx %s", txid.StringShort)
-		attacher.AttachTransaction(tx, w, attachOpts...)
+		vid := attacher.AttachTransaction(tx, w, attachOpts...)
+		if vid.IsBadOrDeleted() {
+			// rare event. If tx is deleted, this was unlucky try.
+			// Transaction will be erased from the dag and pulled again
+			w.Tracef(TraceTagTxInput, "-> failed to attach tx %s: it is bad or deleted. Drop", txid.StringShort)
+		}
 	}()
 	return txid, nil
 }

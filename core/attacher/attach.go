@@ -104,7 +104,7 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Opt
 	}
 	vid = AttachTxID(*tx.ID(), env, OptionDoNotLoadBranch, OptionInvokedBy("addTx"))
 	if vid.IsBadOrDeleted() {
-		// if txid was invalidated once, it will always return the same bad transaction
+		// if txid was invalidated once, it will always return the same transaction until deleted
 		return vid
 	}
 
