@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"runtime/debug"
-	"time"
 
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/multistate"
@@ -49,6 +48,7 @@ func _newVID(g _genericVertex, txid ledger.TransactionID) *WrappedTx {
 		ID:             txid,
 		_genericVertex: g,
 		references:     1, // we always start with 1 reference, which is reference by the DAG itself. 0 references means it is deleted
+
 	}
 	ret.onPoke.Store(nopFun)
 	return ret
@@ -145,95 +145,6 @@ func (vid *WrappedTx) GetError() error {
 
 func (vid *WrappedTx) GetErrorNoLock() error {
 	return vid.err
-}
-
-func (vid *WrappedTx) Reference(by ...string) bool {
-	vid.mutex.Lock()
-	defer vid.mutex.Unlock()
-
-	{
-		if len(by) > 0 {
-			if len(vid.tmpRefBy) == 0 {
-				vid.tmpRefBy = make([]string, 0)
-			}
-			vid.tmpRefBy = append(vid.tmpRefBy, fmt.Sprintf("ref %s (%d)", by[0], vid.references))
-		}
-		//fmt.Printf(">>>>>>>>>>>> reference %s (%d) by %+v\n", vid.ID.StringShort(), vid.references, by)
-	}
-
-	// can't use atomic.Int because of this
-	if vid.references == 0 {
-		return false
-	}
-	vid.references++
-	return true
-}
-
-func (vid *WrappedTx) UnReference(by ...string) {
-	vid.mutex.Lock()
-	defer vid.mutex.Unlock()
-
-	{
-		if len(by) > 0 {
-			if len(vid.tmpRefBy) == 0 {
-				vid.tmpRefBy = make([]string, 0)
-			}
-			vid.tmpRefBy = append(vid.tmpRefBy, fmt.Sprintf("UNref %s (%d)", by[0], vid.references))
-		}
-		//fmt.Printf(">>>>>>>>>>>> UNreference %s (%d) by %v\n", vid.ID.StringShort(), vid.references, by)
-	}
-
-	// must be references >= 1. Only pruner can put it to 0
-	vid.references--
-	util.Assertf(vid.references >= 1, "UnReference: reference count can't go below 1: %s", vid.ID.StringShort)
-	if vid.references == 1 {
-		vid.dontDeleteUntil = time.Now().Add(ledger.L().ID.SlotDuration())
-	}
-}
-
-func (vid *WrappedTx) RefLines() []string {
-	vid.mutex.RLock()
-	defer vid.mutex.RUnlock()
-
-	return vid.tmpRefBy
-}
-
-func (vid *WrappedTx) MarkDeletedIfNotReferenced(nowis time.Time) (markedDeleted bool) {
-	vid.Unwrap(UnwrapOptions{
-		Vertex: func(v *Vertex) {
-			if vid.references == 0 {
-				markedDeleted = true
-				return
-			}
-			if vid.references == 1 && nowis.After(vid.dontDeleteUntil) {
-				vid.references = 0
-				markedDeleted = true
-				v.UnReferenceDependencies()
-			}
-		},
-		VirtualTx: func(_ *VirtualTransaction) {
-			if vid.references == 0 {
-				markedDeleted = true
-				return
-			}
-			if vid.references == 1 && nowis.After(vid.dontDeleteUntil) {
-				vid.references = 0
-				markedDeleted = true
-			}
-		},
-	})
-	return
-}
-
-func (vid *WrappedTx) MustReference(by ...string) {
-	util.Assertf(vid.Reference(by...), "MustReference: failed with %s", vid.IDShortString)
-}
-
-func (vid *WrappedTx) NumReferences() int {
-	vid.mutex.RLock()
-	defer vid.mutex.RUnlock()
-
-	return int(vid.references)
 }
 
 // IsBadOrDeleted non-deterministic

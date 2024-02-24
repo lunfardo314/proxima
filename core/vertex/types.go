@@ -38,9 +38,13 @@ type (
 		coverage *multistate.LedgerCoverage // nil for non-sequencer or if not set yet
 		// keeping track of references for orphaning/GC
 		references uint32
+		// dontPruneUntil interpreted depending on value of references
+		// - if references > 1, dontPruneUntil is the deadline until when the past cone should not be un-referenced
+		// - if references == 1, dontPruneUntil is clock time, until which it should not be deleted
+		// - if references == 0 (deleted) it is not interpreted
 		// valid when references == 1. It is needed to prevent immediate pruning after adding to the DAG
-		dontDeleteUntil time.Time
-		tmpRefBy        []string // TODO for tracing only, remove
+		dontPruneUntil time.Time
+		tmpRefBy       []string // TODO for tracing only, remove
 		// notification callback. Must be func(vid *WrappedTx)
 		onPoke atomic.Value
 

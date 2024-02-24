@@ -33,16 +33,23 @@ func New(env Environment) *Pruner {
 	}
 }
 
-func (d *Pruner) pruneVertices() int {
+// pruneVertices returns how many marked for deletion and how many past cones unreferenced
+func (d *Pruner) pruneVertices() (int, int) {
 	toDelete := make([]*vertex.WrappedTx, 0)
 	nowis := time.Now()
+	var markedForDeletionCount, unreferencedPastConeCount int
 	for _, vid := range d.Vertices() {
-		if vid.MarkDeletedIfNotReferenced(nowis) {
+		markedForDeletion, unreferencedPastCone := vid.DoPruningIfRelevant(nowis)
+		if markedForDeletion {
 			toDelete = append(toDelete, vid)
+			markedForDeletionCount++
+		}
+		if unreferencedPastCone {
+			unreferencedPastConeCount++
 		}
 	}
 	d.PurgeDeletedVertices(toDelete)
-	return len(toDelete)
+	return markedForDeletionCount, unreferencedPastConeCount
 }
 
 func (d *Pruner) Start() {
@@ -65,7 +72,7 @@ func (d *Pruner) mainLoop() {
 			return
 		case <-time.After(prunerLoopPeriod):
 		}
-		nDeleted := d.pruneVertices()
+		nDeleted, nUnReferenced := d.pruneVertices()
 		nReadersPurged, readersLeft := d.PurgeCachedStateReaders()
 
 		// not discoverable anymore
@@ -76,8 +83,8 @@ func (d *Pruner) mainLoop() {
 			memStats.NumGC,
 			runtime.NumGoroutine(),
 		)
-		d.Log().Infof("vertices pruned: %d. Vertices left: %d. Cached state readers purged: %d, left: %d. "+memStr,
-			nDeleted, d.NumVertices(), nReadersPurged, readersLeft)
+		d.Log().Infof("vertices deleted: %d, detached past cones: %d. Vertices left: %d. Cached state readers purged: %d, left: %d. "+memStr,
+			nDeleted, nUnReferenced, d.NumVertices(), nReadersPurged, readersLeft)
 
 		//p.Log().Infof("\n------------------\n%s\n-------------------", p.Info(true))
 	}
