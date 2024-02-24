@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"runtime/debug"
+	"time"
 
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/multistate"
@@ -185,6 +186,9 @@ func (vid *WrappedTx) UnReference(by ...string) {
 	// must be references >= 1. Only pruner can put it to 0
 	vid.references--
 	util.Assertf(vid.references >= 1, "UnReference: reference count can't go below 1: %s", vid.ID.StringShort)
+	if vid.references == 1 {
+		vid.dontDeleteUntil = time.Now().Add(ledger.L().ID.SlotDuration())
+	}
 }
 
 func (vid *WrappedTx) RefLines() []string {
@@ -194,17 +198,25 @@ func (vid *WrappedTx) RefLines() []string {
 	return vid.tmpRefBy
 }
 
-func (vid *WrappedTx) MarkDeletedIfNotReferenced() (markedDeleted bool) {
+func (vid *WrappedTx) MarkDeletedIfNotReferenced(nowis time.Time) (markedDeleted bool) {
 	vid.Unwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
-			if vid.references <= 1 {
+			if vid.references == 0 {
+				markedDeleted = true
+				return
+			}
+			if vid.references == 1 && nowis.After(vid.dontDeleteUntil) {
 				vid.references = 0
 				markedDeleted = true
 				v.UnReferenceDependencies()
 			}
 		},
 		VirtualTx: func(_ *VirtualTransaction) {
-			if vid.references <= 1 {
+			if vid.references == 0 {
+				markedDeleted = true
+				return
+			}
+			if vid.references == 1 && nowis.After(vid.dontDeleteUntil) {
 				vid.references = 0
 				markedDeleted = true
 			}

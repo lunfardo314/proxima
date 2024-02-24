@@ -38,7 +38,9 @@ type (
 		coverage *multistate.LedgerCoverage // nil for non-sequencer or if not set yet
 		// keeping track of references for orphaning/GC
 		references uint32
-		tmpRefBy   []string
+		// valid when references == 1. It is needed to prevent immediate pruning after adding to the DAG
+		dontDeleteUntil time.Time
+		tmpRefBy        []string // TODO for tracing only, remove
 		// notification callback. Must be func(vid *WrappedTx)
 		onPoke atomic.Value
 

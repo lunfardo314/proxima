@@ -35,8 +35,9 @@ func New(env Environment) *Pruner {
 
 func (d *Pruner) pruneVertices() int {
 	toDelete := make([]*vertex.WrappedTx, 0)
+	nowis := time.Now()
 	for _, vid := range d.Vertices() {
-		if vid.MarkDeletedIfNotReferenced() {
+		if vid.MarkDeletedIfNotReferenced(nowis) {
 			toDelete = append(toDelete, vid)
 		}
 	}
