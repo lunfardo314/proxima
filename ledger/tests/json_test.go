@@ -12,9 +12,9 @@ import (
 func TestMarshaling(t *testing.T) {
 	t.Run("1", func(t *testing.T) {
 		txids := []ledger.TransactionID{
-			ledger.RandomTransactionID(true, true),
-			ledger.RandomTransactionID(true, false),
-			ledger.RandomTransactionID(false, false),
+			ledger.RandomTransactionID(true),
+			ledger.RandomTransactionID(true),
+			ledger.RandomTransactionID(false),
 		}
 		data, err := json.Marshal(txids)
 		require.NoError(t, err)

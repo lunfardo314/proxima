@@ -110,7 +110,7 @@ func iterateAllRootRecords(store global.StateStore, fun func(branchTxID ledger.T
 func iterateRootRecordsOfParticularSlots(store global.StateStore, fun func(branchTxID ledger.TransactionID, rootData RootRecord) bool, slots []ledger.Slot) {
 	prefix := [5]byte{rootRecordDBPartition, 0, 0, 0, 0}
 	for _, s := range slots {
-		slotPrefix := ledger.NewTransactionIDPrefix(s, true, true)
+		slotPrefix := ledger.NewTransactionIDPrefix(s, true)
 		copy(prefix[1:], slotPrefix[:])
 
 		store.Iterator(prefix[:]).Iterate(func(k, data []byte) bool {

@@ -60,7 +60,7 @@ func addStemLockConstraint(lib *Library) {
 }
 
 func initTestStemLockConstraint() {
-	txid := RandomTransactionID(true, true)
+	txid := RandomTransactionID(true)
 	predID := NewOutputID(&txid, 42)
 	example := StemLock{
 		PredecessorOutputID: predID,

@@ -270,11 +270,13 @@ func (id *IdentityData) TimeConstantsToString() string {
 	timestampNowis := id.TimeFromRealTime(nowis)
 	util.Assertf(nowis.UnixNano()-timestampNowis.UnixNano() < int64(TickDuration()),
 		"nowis.UnixNano()-timestampNowis.UnixNano() < int64(TickDuration())")
+	maxYears := MaxSlot / (id.SlotsPerDay() * 365)
 	return lines.New().
 		Add("TickDuration = %v", id.TickDuration).
 		Add("TicksPerSlot = %d", id.TicksPerSlot()).
 		Add("SlotDuration = %v", id.SlotDuration()).
-		Add("SlotsPerDay = %v", id.SlotsPerDay()).
+		Add("SlotsPerDay = %d", id.SlotsPerDay()).
+		Add("MaxYears = %d", maxYears).
 		Add("TimeHorizonYears = %d", id.TimeHorizonYears()).
 		Add("SlotsPerHalvingEpoch = %d", id.SlotsPerHalvingEpoch).
 		Add("seconds per year = %d", 60*60*24*365).
@@ -360,7 +362,7 @@ func StateIdentityDataFromYAML(yamlData []byte) (*IdentityData, error) {
 }
 
 func GenesisTransactionID() *TransactionID {
-	ret := NewTransactionID(MustNewLedgerTime(0, 0), All0TransactionHash, true, true)
+	ret := NewTransactionID(MustNewLedgerTime(0, 0), All0TransactionHash, true)
 	return &ret
 }
 

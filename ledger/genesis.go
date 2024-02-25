@@ -9,7 +9,7 @@ import (
 
 const (
 	BootstrapSequencerName = "boot"
-	BoostrapSequencerIDHex = "3053dcd151cf11713e16644d0746a9dc4c22fe8ea11c6260f3fee695720dde3c"
+	BoostrapSequencerIDHex = "af7bedde1fea222230b82d63d5b665ac75afbe4ad3f75999bb3386cf994a6963"
 )
 
 var BoostrapSequencerID ChainID
@@ -25,8 +25,8 @@ func init() {
 
 	// calculate directly and check
 	var zero33 [33]byte
-	zero33[0] = 0b11000000
-	util.Assertf(BoostrapSequencerID == blake2b.Sum256(zero33[:]), "BoostrapSequencerID must be equal to the blake2b hash of 33-long zero bytes array with first 2 bits sets to 1")
+	zero33[0] = 0b10000000
+	util.Assertf(BoostrapSequencerID == blake2b.Sum256(zero33[:]), "BoostrapSequencerID must be equal to the blake2b hash of 33-long zero bytes array with first 1 bit set to 1")
 }
 
 func GenesisOutput(initialSupply uint64, controllerAddress AddressED25519) *OutputWithChainID {

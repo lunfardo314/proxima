@@ -26,7 +26,6 @@ type (
 		tree                     *lazybytes.Tree
 		txHash                   ledger.TransactionIDShort
 		sequencerMilestoneFlag   bool
-		branchTransactionFlag    bool
 		sender                   ledger.AddressED25519
 		timestamp                ledger.Time
 		totalAmount              uint64                    // persisted in tx
@@ -125,29 +124,20 @@ func BaseValidation() TxValidationOption {
 		var err error
 		outputIndexData := tx.tree.BytesAtPath(Path(ledger.TxSequencerAndStemOutputIndices))
 		if len(outputIndexData) != 2 {
-			return fmt.Errorf("wrong sequencer and stem output indices, must be 2 bytes")
+			return fmt.Errorf("wrong sequencer output index data, must be 2 bytes")
 		}
-
-		tx.sequencerMilestoneFlag, tx.branchTransactionFlag = outputIndexData[0] != 0xff, outputIndexData[1] != 0xff
-		if tx.branchTransactionFlag && !tx.sequencerMilestoneFlag {
-			return fmt.Errorf("wrong branch transaction flag")
-		}
-
+		tx.sequencerMilestoneFlag = outputIndexData[0] != 0xff
 		if tx.timestamp, err = ledger.TimeFromBytes(tsBin); err != nil {
 			return err
 		}
-		if tx.timestamp.Tick() == 0 && tx.sequencerMilestoneFlag && !tx.branchTransactionFlag {
-			// enforcing only branch milestones on the time slot boundary (i.e. with tick = 0)
-			// non-sequencer transactions with tick == 0 are still allowed
-			return fmt.Errorf("when on time slot boundary, a sequencer transaction must be a branch: %s", tx.IDShortString())
+		if tx.sequencerMilestoneFlag && tx.timestamp.Tick() == 0 && outputIndexData[1] == 0xff {
+			return fmt.Errorf("wrong stem output index")
 		}
-
 		totalAmountBin := tx.tree.BytesAtPath(Path(ledger.TxTotalProducedAmount))
 		if len(totalAmountBin) != 8 {
 			return fmt.Errorf("wrong total amount bytes, must be 8 bytes")
 		}
 		tx.totalAmount = binary.BigEndian.Uint64(totalAmountBin)
-
 		tx.txHash = ledger.HashTransactionBytes(tx.tree.Bytes())
 
 		return nil
@@ -175,7 +165,6 @@ func CheckTimestampUpperBound(upperBound time.Time) TxValidationOption {
 
 func ScanSequencerData() TxValidationOption {
 	return func(tx *Transaction) error {
-		util.Assertf(tx.sequencerMilestoneFlag || !tx.branchTransactionFlag, "tx.sequencerMilestoneFlag || !tx.branchTransactionFlag")
 		if !tx.sequencerMilestoneFlag {
 			return nil
 		}
@@ -187,12 +176,10 @@ func ScanSequencerData() TxValidationOption {
 		if int(sequencerOutputIndex) >= tx.NumProducedOutputs() {
 			return fmt.Errorf("wrong sequencer output index")
 		}
-
 		out, err := tx.ProducedOutputWithIDAt(sequencerOutputIndex)
 		if err != nil {
 			return fmt.Errorf("ScanSequencerData: '%v' at produced output %d", err, sequencerOutputIndex)
 		}
-
 		seqOutputData, valid := out.Output.SequencerOutputData()
 		if !valid {
 			return fmt.Errorf("ScanSequencerData: invalid sequencer output data")
@@ -205,7 +192,7 @@ func ScanSequencerData() TxValidationOption {
 			sequencerID = seqOutputData.ChainConstraint.ID
 		}
 
-		// it is sequencer milestone transaction
+		// it is a sequencer milestone transaction
 		tx.sequencerTransactionData = &SequencerTransactionData{
 			SequencerOutputData: seqOutputData,
 			SequencerID:         sequencerID,
@@ -214,8 +201,7 @@ func ScanSequencerData() TxValidationOption {
 		}
 
 		// ---  check stem output data
-
-		if !tx.branchTransactionFlag {
+		if tx.timestamp.Tick() != 0 {
 			// not a branch transaction
 			return nil
 		}
@@ -417,20 +403,20 @@ func ValidateOptionWithFullContext(inputLoaderByIndex func(i byte) (*ledger.Outp
 }
 
 func (tx *Transaction) ID() *ledger.TransactionID {
-	ret := ledger.NewTransactionID(tx.timestamp, tx.txHash, tx.sequencerMilestoneFlag, tx.branchTransactionFlag)
+	ret := ledger.NewTransactionID(tx.timestamp, tx.txHash, tx.sequencerMilestoneFlag)
 	return &ret
 }
 
 func (tx *Transaction) IDString() string {
-	return ledger.TransactionIDString(tx.timestamp, tx.txHash, tx.sequencerMilestoneFlag, tx.branchTransactionFlag)
+	return ledger.TransactionIDString(tx.timestamp, tx.txHash, tx.sequencerMilestoneFlag)
 }
 
 func (tx *Transaction) IDShortString() string {
-	return ledger.TransactionIDStringShort(tx.timestamp, tx.txHash, tx.sequencerMilestoneFlag, tx.branchTransactionFlag)
+	return ledger.TransactionIDStringShort(tx.timestamp, tx.txHash, tx.sequencerMilestoneFlag)
 }
 
 func (tx *Transaction) IDVeryShort() string {
-	return ledger.TransactionIDStringVeryShort(tx.timestamp, tx.txHash, tx.sequencerMilestoneFlag, tx.branchTransactionFlag)
+	return ledger.TransactionIDStringVeryShort(tx.timestamp, tx.txHash, tx.sequencerMilestoneFlag)
 }
 
 func (tx *Transaction) Slot() ledger.Slot {
@@ -465,7 +451,7 @@ func (tx *Transaction) SequencerInfoString() string {
 }
 
 func (tx *Transaction) IsBranchTransaction() bool {
-	return tx.sequencerMilestoneFlag && tx.branchTransactionFlag
+	return tx.sequencerMilestoneFlag && tx.timestamp.Tick() == 0
 }
 
 func (tx *Transaction) StemOutputData() *ledger.StemLock {

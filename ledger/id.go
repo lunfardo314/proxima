@@ -15,11 +15,7 @@ const (
 	OutputIDLength           = TransactionIDLength + 1
 	ChainIDLength            = 32
 
-	SequencerTxFlagInTimeSlot = ^(Slot(0xffffffff) >> 1)
-	BranchTxFlagInTimeSlot    = SequencerTxFlagInTimeSlot >> 1
 	SequencerTxFlagHigherByte = byte(0b10000000)
-	BranchTxFlagHigherByte    = byte(0b01000000)
-	TimeSlotMaskHigherByte    = SequencerTxFlagHigherByte | BranchTxFlagHigherByte
 )
 
 type (
@@ -48,12 +44,9 @@ func HashTransactionBytes(txBytes []byte) (ret TransactionIDShort) {
 	return
 }
 
-func NewTransactionID(ts Time, h TransactionIDShort, sequencerTxFlag, branchTxFlag bool) (ret TransactionID) {
+func NewTransactionID(ts Time, h TransactionIDShort, sequencerTxFlag bool) (ret TransactionID) {
 	if sequencerTxFlag {
 		ts[0] = ts[0] | SequencerTxFlagHigherByte
-	}
-	if branchTxFlag {
-		ts[0] = ts[0] | BranchTxFlagHigherByte
 	}
 	copy(ret[:TimeByteLength], ts[:])
 	copy(ret[TimeByteLength:], h[:])
@@ -61,13 +54,10 @@ func NewTransactionID(ts Time, h TransactionIDShort, sequencerTxFlag, branchTxFl
 }
 
 // NewTransactionIDPrefix used for database iteration by prefix, i.e. all transaction IDs of specific slot
-func NewTransactionIDPrefix(slot Slot, sequencerTxFlag, branchTxFlag bool) (ret [4]byte) {
+func NewTransactionIDPrefix(slot Slot, sequencerTxFlag bool) (ret [4]byte) {
 	copy(ret[:], slot.Bytes())
 	if sequencerTxFlag {
 		ret[0] = ret[0] | SequencerTxFlagHigherByte
-	}
-	if branchTxFlag {
-		ret[0] = ret[0] | BranchTxFlagHigherByte
 	}
 	return
 }
@@ -75,10 +65,6 @@ func NewTransactionIDPrefix(slot Slot, sequencerTxFlag, branchTxFlag bool) (ret 
 func TransactionIDFromBytes(data []byte) (ret TransactionID, err error) {
 	if len(data) != TransactionIDLength {
 		err = errors.New("TransactionIDFromBytes: wrong data length")
-		return
-	}
-	if data[0]&TimeSlotMaskHigherByte == BranchTxFlagHigherByte {
-		err = errors.New("TransactionIDFromBytes: inconsistent flags: branch flag can be on only if sequencer flag is on")
 		return
 	}
 	copy(ret[:], data)
@@ -95,10 +81,10 @@ func TransactionIDFromHexString(str string) (ret TransactionID, err error) {
 }
 
 // RandomTransactionID not completely random. For testing
-func RandomTransactionID(sequencerFlag, branchFlag bool) TransactionID {
+func RandomTransactionID(sequencerFlag bool) TransactionID {
 	var hash TransactionIDShort
 	_, _ = rand.Read(hash[:])
-	return NewTransactionID(TimeNow(), hash, sequencerFlag, branchFlag)
+	return NewTransactionID(TimeNow(), hash, sequencerFlag)
 }
 
 // ShortID return hash part of ID
@@ -123,7 +109,7 @@ func (txid *TransactionID) VeryShortID8() (ret TransactionIDVeryShort8) {
 
 func (txid *TransactionID) Timestamp() (ret Time) {
 	copy(ret[:], txid[:TimeByteLength])
-	ret[0] &= 0b00111111 // erase 2 most significant bits of the first byte
+	ret[0] &= ^SequencerTxFlagHigherByte // erase 1 most significant bit of the first byte
 	return
 }
 
@@ -136,23 +122,26 @@ func (txid *TransactionID) IsSequencerMilestone() bool {
 }
 
 func (txid *TransactionID) IsBranchTransaction() bool {
-	return txid[0]&BranchTxFlagHigherByte != 0
+	return txid[0]&SequencerTxFlagHigherByte != 0 && txid[4] == 0
+	//ts := txid.Timestamp()
+	//return txid.IsSequencerMilestone() && ts.Tick() == 0
 }
 
 func (txid *TransactionID) Bytes() []byte {
 	return txid[:]
 }
 
-func timestampPrefixString(ts Time, seqMilestoneFlag, branchFlag bool, shortTimeSlot ...bool) string {
+func timestampPrefixString(ts Time, seqMilestoneFlag bool, shortTimeSlot ...bool) string {
+	isBranch := seqMilestoneFlag && ts.Tick() == 0
 	var s string
 	switch {
-	case seqMilestoneFlag && branchFlag:
+	case seqMilestoneFlag && isBranch:
 		s = "br"
-	case seqMilestoneFlag && !branchFlag:
+	case seqMilestoneFlag && !isBranch:
 		s = "sq"
-	case !seqMilestoneFlag && branchFlag:
+	case !seqMilestoneFlag && isBranch:
 		s = "??"
-	case !seqMilestoneFlag && !branchFlag:
+	case !seqMilestoneFlag && !isBranch:
 		s = ""
 	}
 	if len(shortTimeSlot) > 0 && shortTimeSlot[0] {
@@ -179,16 +168,16 @@ func timestampPrefixStringAsFileName(ts Time, seqMilestoneFlag, branchFlag bool,
 	return fmt.Sprintf("%s%s", ts.AsFileName(), s)
 }
 
-func TransactionIDString(ts Time, txHash TransactionIDShort, sequencerFlag, branchFlag bool) string {
-	return fmt.Sprintf("[%s]%s", timestampPrefixString(ts, sequencerFlag, branchFlag), hex.EncodeToString(txHash[:]))
+func TransactionIDString(ts Time, txHash TransactionIDShort, sequencerFlag bool) string {
+	return fmt.Sprintf("[%s]%s", timestampPrefixString(ts, sequencerFlag), hex.EncodeToString(txHash[:]))
 }
 
-func TransactionIDStringShort(ts Time, txHash TransactionIDShort, sequencerFlag, branchFlag bool) string {
-	return fmt.Sprintf("[%s]%s..", timestampPrefixString(ts, sequencerFlag, branchFlag), hex.EncodeToString(txHash[:3]))
+func TransactionIDStringShort(ts Time, txHash TransactionIDShort, sequencerFlag bool) string {
+	return fmt.Sprintf("[%s]%s..", timestampPrefixString(ts, sequencerFlag), hex.EncodeToString(txHash[:3]))
 }
 
-func TransactionIDStringVeryShort(ts Time, txHash TransactionIDShort, sequencerFlag, branchFlag bool) string {
-	return fmt.Sprintf("[%s]%s..", timestampPrefixString(ts, sequencerFlag, branchFlag, true), hex.EncodeToString(txHash[:3]))
+func TransactionIDStringVeryShort(ts Time, txHash TransactionIDShort, sequencerFlag bool) string {
+	return fmt.Sprintf("[%s]%s..", timestampPrefixString(ts, sequencerFlag, true), hex.EncodeToString(txHash[:3]))
 }
 
 func TransactionIDAsFileName(ts Time, txHash TransactionIDShort, sequencerFlag, branchFlag bool) string {
@@ -196,7 +185,7 @@ func TransactionIDAsFileName(ts Time, txHash TransactionIDShort, sequencerFlag, 
 }
 
 func (txid *TransactionID) String() string {
-	return TransactionIDString(txid.Timestamp(), txid.ShortID(), txid.IsSequencerMilestone(), txid.IsBranchTransaction())
+	return TransactionIDString(txid.Timestamp(), txid.ShortID(), txid.IsSequencerMilestone())
 }
 
 func (txid *TransactionID) StringHex() string {
@@ -204,11 +193,11 @@ func (txid *TransactionID) StringHex() string {
 }
 
 func (txid *TransactionID) StringShort() string {
-	return TransactionIDStringShort(txid.Timestamp(), txid.ShortID(), txid.IsSequencerMilestone(), txid.IsBranchTransaction())
+	return TransactionIDStringShort(txid.Timestamp(), txid.ShortID(), txid.IsSequencerMilestone())
 }
 
 func (txid *TransactionID) StringVeryShort() string {
-	return TransactionIDStringVeryShort(txid.Timestamp(), txid.ShortID(), txid.IsSequencerMilestone(), txid.IsBranchTransaction())
+	return TransactionIDStringVeryShort(txid.Timestamp(), txid.ShortID(), txid.IsSequencerMilestone())
 }
 
 func (txid *TransactionID) AsFileName() string {
@@ -266,20 +255,12 @@ func OutputIDIndexFromBytes(data []byte) (ret byte, err error) {
 	return data[TransactionIDLength], nil
 }
 
-func (oid *OutputID) SequencerFlagON() bool {
+func (oid *OutputID) IsSequencerTransaction() bool {
 	return oid[0]&SequencerTxFlagHigherByte != 0
 }
 
-func (oid *OutputID) BranchFlagON() bool {
-	return oid[0]&BranchTxFlagHigherByte != 0
-}
-
-func (oid *OutputID) IsSequencerTransaction() bool {
-	return oid.SequencerFlagON()
-}
-
 func (oid *OutputID) IsBranchTransaction() bool {
-	return oid.SequencerFlagON() && oid.BranchFlagON()
+	return oid[0]&SequencerTxFlagHigherByte != 0 && oid[4] == 0
 }
 
 func (oid *OutputID) String() string {

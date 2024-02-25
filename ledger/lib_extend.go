@@ -186,7 +186,6 @@ func (lib *Library) extendWithMainFunctions() {
 	// endorsements
 	lib.Extend("numEndorsements", "ArrayLength8(@Path(pathToEndorsements))")
 	lib.Extend("sequencerFlagON", "not(isZero(bitwiseAND(byte($0,0),0x80)))")
-	lib.Extend("branchFlagsON", "equal(bitwiseAND(byte($0,0),0xc0), 0xc0)")
 
 	// functions with prefix 'self' are invocation context specific, i.e. they use function '@' to calculate
 	// local values which depend on the invoked constraint
