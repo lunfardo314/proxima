@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/lunfardo314/proxima/util"
 	"golang.org/x/crypto/blake2b"
 )
 
@@ -130,10 +129,6 @@ func (txid *TransactionID) Timestamp() (ret Time) {
 
 func (txid *TransactionID) Slot() Slot {
 	return txid.Timestamp().Slot()
-}
-
-func (txid *TransactionID) TimeTick() Tick {
-	return txid.Timestamp().Tick()
 }
 
 func (txid *TransactionID) IsSequencerMilestone() bool {
@@ -271,13 +266,6 @@ func OutputIDIndexFromBytes(data []byte) (ret byte, err error) {
 	return data[TransactionIDLength], nil
 }
 
-func MustOutputIDIndexFromBytes(data []byte) (ret byte) {
-	var err error
-	ret, err = OutputIDIndexFromBytes(data)
-	util.AssertNoError(err)
-	return
-}
-
 func (oid *OutputID) SequencerFlagON() bool {
 	return oid[0]&SequencerTxFlagHigherByte != 0
 }
@@ -323,14 +311,9 @@ func (oid *OutputID) Timestamp() Time {
 	return ret.Timestamp()
 }
 
-func (oid *OutputID) TimeSlot() Slot {
+func (oid *OutputID) Slot() Slot {
 	ret := oid.TransactionID()
 	return ret.Slot()
-}
-
-func (oid *OutputID) TimeTick() Tick {
-	ret := oid.TransactionID()
-	return ret.TimeTick()
 }
 
 func (oid *OutputID) TransactionHash() (ret TransactionIDShort) {

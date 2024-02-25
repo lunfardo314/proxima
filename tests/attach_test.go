@@ -247,7 +247,7 @@ func TestBasic(t *testing.T) {
 		distribTxID, _, err := transaction.IDAndTimestampFromTransactionBytes(txBytes)
 		require.NoError(t, err)
 
-		require.EqualValues(t, int(stemOut.ID.TimeSlot()), int(distribTxID.Slot()))
+		require.EqualValues(t, int(stemOut.ID.Slot()), int(distribTxID.Slot()))
 		require.EqualValues(t, 0, stemOut.Output.Amount())
 
 		rr, ok := multistate.FetchRootRecord(wrk.StateStore(), stemOut.ID.TransactionID())

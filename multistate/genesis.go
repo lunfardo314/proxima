@@ -39,7 +39,7 @@ func genesisUpdateMutations(genesisOut, genesisStemOut *ledger.OutputWithID) *Mu
 	ret := NewMutations()
 	ret.InsertAddOutputMutation(genesisOut.ID, genesisOut.Output)
 	ret.InsertAddOutputMutation(genesisStemOut.ID, genesisStemOut.Output)
-	ret.InsertAddTxMutation(*ledger.GenesisTransactionID(), genesisOut.ID.TimeSlot(), 1)
+	ret.InsertAddTxMutation(*ledger.GenesisTransactionID(), genesisOut.ID.Slot(), 1)
 	return ret
 }
 

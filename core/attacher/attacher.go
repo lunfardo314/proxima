@@ -182,7 +182,7 @@ func (a *attacher) solidifySequencerBaseline(v *vertex.Vertex) (ok bool) {
 	var inputTx *vertex.WrappedTx
 
 	// follow the endorsement if it is cross-slot or predecessor is not sequencer tx
-	followTheEndorsement := predOid.TimeSlot() != v.Tx.Slot() || !predOid.IsSequencerTransaction()
+	followTheEndorsement := predOid.Slot() != v.Tx.Slot() || !predOid.IsSequencerTransaction()
 	if followTheEndorsement {
 		// predecessor is on the earlier slot -> follow the first endorsement (guaranteed by the ledger constraint layer)
 		util.Assertf(v.Tx.NumEndorsements() > 0, "v.Tx.NumEndorsements()>0")

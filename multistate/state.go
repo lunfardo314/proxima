@@ -248,7 +248,7 @@ func (r *Readable) GetStem() (ledger.Slot, []byte) {
 		count++
 		id, err := ledger.OutputIDFromBytes(k[len(accountPrefix):])
 		util.AssertNoError(err)
-		retSlot = id.TimeSlot()
+		retSlot = id.Slot()
 		retBytes, found = r._getUTXO(&id)
 		util.Assertf(found, "can't find stem output")
 		return true
@@ -387,8 +387,8 @@ func (u *Updatable) updateUTXOLedgerDB(updateFun func(updatable *immutable.TrieU
 	newRoot := u.trie.Commit(batch)
 	if rootRecordsParams != nil {
 		latestSlot := FetchLatestSlot(u.store)
-		if latestSlot < rootRecordsParams.StemOutputID.TimeSlot() {
-			writeLatestSlot(batch, rootRecordsParams.StemOutputID.TimeSlot())
+		if latestSlot < rootRecordsParams.StemOutputID.Slot() {
+			writeLatestSlot(batch, rootRecordsParams.StemOutputID.Slot())
 		}
 		branchID := rootRecordsParams.StemOutputID.TransactionID()
 		writeRootRecord(batch, branchID, RootRecord{

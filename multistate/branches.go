@@ -292,10 +292,10 @@ func FetchHeaviestBranchChainNSlotsBack(store global.StateStore, nBack int) []*B
 		rd := rootData[txid]
 		bd := FetchBranchDataByRoot(store, rd)
 
-		if bd.SequencerOutput.ID.TimeSlot() == lastInTheChain.Stem.ID.TimeSlot() {
+		if bd.SequencerOutput.ID.Slot() == lastInTheChain.Stem.ID.Slot() {
 			continue
 		}
-		util.Assertf(bd.SequencerOutput.ID.TimeSlot() < lastInTheChain.Stem.ID.TimeSlot(), "bd.SequencerOutput.ID.Slot() < lastInTheChain.Slot()")
+		util.Assertf(bd.SequencerOutput.ID.Slot() < lastInTheChain.Stem.ID.Slot(), "bd.SequencerOutput.ID.Slot() < lastInTheChain.Slot()")
 
 		stemLock, ok := lastInTheChain.Stem.Output.StemLock()
 		util.Assertf(ok, "stem output expected")
