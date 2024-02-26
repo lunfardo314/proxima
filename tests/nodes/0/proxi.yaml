@@ -3,11 +3,11 @@ wallet:
     private_key: 136381bd4dea7b2f0fa6c6ca14ee660dc7929975b47e6cdb85adee9e26032a810530b790e0e7de626f36e20ba656f09e324c68203de899d0daf9f98fcb3cf684
     account: addressED25519(0x3faf090d38f18ea211936b8bcf19b7b30cdcb8e224394a5c30f9ba644f8bb2fb)
     # own sequencer (controlled by the private key). Defaults to bootstrap sequencer ID
-    sequencer_id: 3053dcd151cf11713e16644d0746a9dc4c22fe8ea11c6260f3fee695720dde3c
+    sequencer_id: af7bedde1fea222230b82d63d5b665ac75afbe4ad3f75999bb3386cf994a6963
 api:
     endpoint: http://127.0.0.1:8000
 tag_along:
-    sequencer_id: 3053dcd151cf11713e16644d0746a9dc4c22fe8ea11c6260f3fee695720dde3c
+    sequencer_id: af7bedde1fea222230b82d63d5b665ac75afbe4ad3f75999bb3386cf994a6963
     fee: 500
 spammer:
     bundle_size: 30

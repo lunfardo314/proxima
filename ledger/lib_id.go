@@ -114,10 +114,6 @@ func (lib *Library) initNoTxConstraints(id *IdentityData) *Library {
 	return lib
 }
 
-func newLibraryInit(id *IdentityData) *Library {
-	return newLibrary().initNoTxConstraints(id)
-}
-
 func GetTestingIdentityData(seed ...int) (*IdentityData, ed25519.PrivateKey) {
 	s := 10000
 	if len(seed) > 0 {

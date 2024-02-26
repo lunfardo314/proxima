@@ -7,5 +7,5 @@ wallet:
 api:
     endpoint: http://127.0.0.1:8000
 tag-along:
-    sequencer_id: 1e8e129701aeea94c50e24864a8f950c4efd7a4a1a1cf12ed0a519bfa6fc0e84
+    sequencer_id:
     fee: 500
