@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"os/signal"
@@ -11,10 +10,14 @@ import (
 	"syscall"
 
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/lunfardo314/proxima/core/txmetadata"
+	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/peering"
 	"github.com/lunfardo314/proxima/util"
 	"go.uber.org/atomic"
 )
+
+// FIXME not working, not a priority
 
 // A small program which allows to start a network of up to 5 peers and test messaging with the peering package
 // Usage: testpeers <peer index 0-4>
@@ -31,14 +34,13 @@ func main() {
 	}
 
 	cfg := peering.MakeConfigFor(5, hostIdx)
+	env := global.NewDefault()
 
-	ctx, stopFun := context.WithCancel(context.Background())
-
-	host, err := peering.New(cfg, ctx)
+	host, err := peering.New(env, cfg)
 	util.AssertNoError(err)
 
 	receiveCounter := 0
-	host.OnReceiveTxBytes(func(from peer.ID, data []byte) {
+	host.OnReceiveTxBytes(func(from peer.ID, data []byte, _ *txmetadata.TransactionMetadata) {
 		msg := string(data)
 		if receiveCounter%100 == 0 {
 			fmt.Printf("recv   <- %s\n", msg)
@@ -53,7 +55,7 @@ func main() {
 		sendCounter := 0
 		for !exit.Load() {
 			msg := fmt.Sprintf("%d", sendCounter)
-			n := host.GossipTxBytesToPeers([]byte(msg))
+			n := host.GossipTxBytesToPeers([]byte(msg), nil)
 			if sendCounter%100 == 0 {
 				fmt.Printf("send %d -> %s\n", n, msg)
 			}

@@ -17,8 +17,6 @@ import (
 	"github.com/lunfardo314/proxima/util/countdown"
 	"github.com/lunfardo314/proxima/util/set"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/zap"
-	"golang.org/x/net/context"
 )
 
 // initializes ledger.Library singleton for all tests and creates testing genesis private key
@@ -52,15 +50,15 @@ func TestBasic(t *testing.T) {
 		for name, ma := range cfg.KnownPeers {
 			t.Logf("%s : %s", name, ma.String())
 		}
-		log := global.NewDefault("peers", zap.InfoLevel, nil)
-		_, err := New(log, cfg, context.Background())
+		env := global.NewDefault()
+		_, err := New(env, cfg)
 		require.NoError(t, err)
 	})
 	t.Run("2", func(t *testing.T) {
 		const hostIndex = 2
 		cfg := MakeConfigFor(5, hostIndex)
-		log := global.NewDefault("peers", zap.InfoLevel, nil)
-		peers, err := New(log, cfg, context.Background())
+		env := global.NewDefault()
+		peers, err := New(env, cfg)
 		require.NoError(t, err)
 		peers.Run()
 		peers.Stop()
@@ -72,11 +70,11 @@ func makeHosts(t *testing.T, nHosts int, trace bool) []*Peers {
 	var err error
 	for i := 0; i < nHosts; i++ {
 		cfg := MakeConfigFor(nHosts, i)
-		log := global.NewDefault("peers", zap.InfoLevel, nil)
-		hosts[i], err = New(log, cfg, context.Background())
+		env := global.NewDefault()
+		hosts[i], err = New(env, cfg)
 		require.NoError(t, err)
 		if trace {
-			log.EnableTraceTags(TraceTag)
+			env.EnableTraceTags(TraceTag)
 		}
 	}
 	return hosts
@@ -328,7 +326,7 @@ func rndTxIDs() []ledger.TransactionID {
 	ret := make([]ledger.TransactionID, rnd)
 
 	for i := range ret {
-		ret[i] = ledger.RandomTransactionID(false, false)
+		ret[i] = ledger.RandomTransactionID(false)
 	}
 	return ret
 }

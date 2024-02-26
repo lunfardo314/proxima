@@ -3,7 +3,9 @@ package workflow
 import (
 	"sync"
 
+	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/lunfardo314/proxima/core/dag"
+	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/core/work_process/events"
 	"github.com/lunfardo314/proxima/core/work_process/gossip"
@@ -14,6 +16,7 @@ import (
 	"github.com/lunfardo314/proxima/core/work_process/pull_server"
 	"github.com/lunfardo314/proxima/core/work_process/tippool"
 	"github.com/lunfardo314/proxima/global"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/peering"
 	"github.com/lunfardo314/proxima/util/eventtype"
 	"github.com/lunfardo314/proxima/util/set"
@@ -91,4 +94,27 @@ func (w *Workflow) Start() {
 		prune := pruner.New(w) // refactor
 		prune.Start()
 	}
+
+	w.peers.OnReceiveTxBytes(func(from peer.ID, txBytes []byte, metadata *txmetadata.TransactionMetadata) {
+		txid, err := w.TxBytesIn(txBytes, WithPeerMetadata(from, metadata))
+		if err != nil {
+			txidStr := "(no id)"
+			if txid != nil {
+				txidStr = txid.StringShort()
+			}
+			w.Tracef(gossip.TraceTag, "tx-input from peer %s. Parse error: %s -> %v", from.String, txidStr, err)
+		} else {
+			w.Tracef(gossip.TraceTag, "tx-input from peer %s: %s", from.String, txid.StringShort)
+		}
+	})
+
+	w.peers.OnReceivePullRequest(func(from peer.ID, txids []ledger.TransactionID) {
+		for i := range txids {
+			w.Tracef(pull_server.TraceTag, "received pull request for %s", txids[i].StringShort)
+			w.pullServer.Push(&pull_server.Input{
+				TxID:   txids[i],
+				PeerID: from,
+			})
+		}
+	})
 }

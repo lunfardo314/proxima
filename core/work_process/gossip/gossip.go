@@ -28,6 +28,7 @@ type (
 
 const (
 	Name           = "gossip"
+	TraceTag       = Name
 	chanBufferSize = 10
 )
 
@@ -48,8 +49,10 @@ func (d *Gossip) Start() {
 
 func (d *Gossip) Consume(inp *Input) {
 	if inp.ReceivedFrom == nil {
+		d.Tracef(TraceTag, "send %s to all peers", inp.Tx.IDShortString)
 		d.GossipTxBytesToPeers(inp.Tx.Bytes(), &inp.Metadata)
 	} else {
+		d.Tracef(TraceTag, "send %s to peers except %s", inp.ReceivedFrom.String)
 		d.GossipTxBytesToPeers(inp.Tx.Bytes(), &inp.Metadata, *inp.ReceivedFrom)
 	}
 }

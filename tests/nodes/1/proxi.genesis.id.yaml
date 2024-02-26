@@ -22,4 +22,4 @@ minimum_amount_on_sequencer: 1000000000
 max_tolerated_parasitic_chain_slots: 5
 description: Proxima prototype ledger. Ver 0.0.0
 genesis_controller_address: addressED25519(0x3faf090d38f18ea211936b8bcf19b7b30cdcb8e224394a5c30f9ba644f8bb2fb)
-bootstrap_chain_id: 3053dcd151cf11713e16644d0746a9dc4c22fe8ea11c6260f3fee695720dde3c
+bootstrap_chain_id: af7bedde1fea222230b82d63d5b665ac75afbe4ad3f75999bb3386cf994a6963

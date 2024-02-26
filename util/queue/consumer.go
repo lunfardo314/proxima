@@ -5,7 +5,6 @@ import (
 	"sync"
 
 	"github.com/lunfardo314/proxima/global"
-	"github.com/lunfardo314/proxima/util"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
@@ -88,12 +87,7 @@ func (c *Queue[T]) Start(consumer Consumer[T], ctx context.Context) {
 	c.log.Debugf("STARTING [%s]..", c.Log().Level())
 	_ = c.log.Sync()
 
-	util.RunWrappedRoutine(c.Name(), func() {
-		c.Run()
-	}, func(err error) bool {
-		c.log.Fatalf("uncaught exception in '%s': '%v'", c.Name(), err)
-		return false
-	})
+	c.Run()
 
 	go func() {
 		<-ctx.Done()

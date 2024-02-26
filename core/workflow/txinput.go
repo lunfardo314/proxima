@@ -61,7 +61,7 @@ func (w *Workflow) TxBytesIn(txBytes []byte, opts ...TxBytesInOption) (*ledger.T
 	err = tx.Validate(transaction.CheckTimestampUpperBound(timeUpperBound))
 	if err != nil {
 		if enforceTimeBounds {
-			w.Tracef(TraceTagTxInput, "invalidate %s due to time bounds", txid.StringShort)
+			w.Tracef(TraceTagTxInput, "invalidate %s: time bounds", txid.StringShort)
 			err = fmt.Errorf("upper timestamp bound exceeded (MaxDurationInTheFuture = %v)", w.MaxDurationInTheFuture())
 			attacher.InvalidateTxID(*txid, w, err)
 
@@ -197,8 +197,12 @@ func WithSourceType(sourceType txmetadata.SourceType) TxBytesInOption {
 	}
 }
 
-func WithWaitGroup(wg *sync.WaitGroup) TxBytesInOption {
-	return WithCallback(func(_ *vertex.WrappedTx, _ error) {
-		wg.Done()
-	})
+func WithPeerMetadata(peerID peer.ID, metadata *txmetadata.TransactionMetadata) TxBytesInOption {
+	return func(opts *txBytesInOptions) {
+		if metadata != nil {
+			opts.txMetadata = *metadata
+		}
+		opts.txMetadata.SourceTypeNonPersistent = txmetadata.SourceTypePeer
+		opts.receivedFromPeer = &peerID
+	}
 }
