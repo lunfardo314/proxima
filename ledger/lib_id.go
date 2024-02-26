@@ -38,7 +38,7 @@ const (
 	InitialSupplyProxi   = 1_000_000_000
 	DefaultInitialSupply = InitialSupplyProxi * PRXI
 
-	DefaultInitialBranchInflationBonus          = 5 * PRXI
+	DefaultMaxBranchInflationBonus              = 5 * PRXI
 	DefaultInitialChainInflationFractionPerTick = 500_000_000
 	DefaultHalvingEpochs                        = 5
 	DefaultChainInflationOpportunitySlots       = 12
@@ -137,7 +137,7 @@ func DefaultIdentityData(privateKey ed25519.PrivateKey) *IdentityData {
 		TickDuration:                      DefaultTickDuration,
 		MaxTickValueInSlot:                DefaultTicksPerSlot - 1,
 		SlotsPerHalvingEpoch:              uint32(DefaultSlotsPerLedgerEpoch),
-		BranchBonusBase:                   DefaultInitialBranchInflationBonus,
+		BranchBonusBase:                   DefaultMaxBranchInflationBonus,
 		VBCost:                            DefaultVBCost,
 		TransactionPace:                   DefaultTransactionPace,
 		TransactionPaceSequencer:          DefaultTransactionPaceSequencer,

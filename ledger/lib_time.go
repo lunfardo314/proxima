@@ -13,7 +13,7 @@ const (
 	SlotByteLength = 4
 	TickByteLength = 1
 	TimeByteLength = SlotByteLength + TickByteLength // bytes
-	MaxSlot        = 0xffffffff >> 1                 // 2 most significant bytes must be 0
+	MaxSlot        = 0xffffffff >> 1                 // 1 most significant bit must be 0
 )
 
 func SlotsPerDay() time.Duration {
@@ -29,11 +29,7 @@ func TicksPerYear() int {
 }
 
 func TicksPerHour() int {
-	return int(SlotsPerHour() * DefaultTicksPerSlot)
-}
-
-func GenesisTime() time.Time {
-	return L().ID.GenesisTime()
+	return SlotsPerHour() * DefaultTicksPerSlot
 }
 
 func TickDuration() time.Duration {
@@ -48,24 +44,18 @@ func SlotsPerHalvingEpoch() int64 {
 	return int64(L().ID.SlotsPerHalvingEpoch)
 }
 
-func TransactionTimePaceDuration() time.Duration {
-	return time.Duration(TransactionPace()) * TickDuration()
-}
-
 type (
 	// Slot represents a particular time slot.
 	// Starting slot 0 at genesis
-	// 3.1 mil slots per year (for 100 msec/tick and slot is 100 ticks)
-	// uint32 enough for approx 1361 years
 	Slot uint32
 
-	// Tick is enforced to be < DefaultTicksPerSlot, which is normally 100 ms
+	// Tick is enforced to be <= MaxTickValueInSlot of the ledger identity
+	// Usually it is 100, can be up to 255
 	Tick byte
 
-	// Time (ledger.Time)
-	// bytes 0:3 represents time slot (bigendian)
-	// byte 4 represents slot
-
+	// Time (ledger time) is 5 bytes:
+	// - bytes [0:3] is slot (big endian). Most significant of the byte 0 in the slot must be 0
+	// - byte 4 is tick
 	Time [TimeByteLength]byte
 )
 
@@ -80,16 +70,10 @@ func SlotFromBytes(data []byte) (ret Slot, err error) {
 		err = errWrongDataLength
 		return
 	}
-	if 0b11000000&data[0] != 0 {
-		return 0, fmt.Errorf("2 most significant bits must be 0")
+	if 0b10000000&data[0] != 0 {
+		return 0, fmt.Errorf("most significant bit must be 0")
 	}
 	return Slot(binary.BigEndian.Uint32(data)), nil
-}
-
-func MustSlotFromBytes(data []byte) Slot {
-	ret, err := SlotFromBytes(data)
-	util.AssertNoError(err)
-	return ret
 }
 
 func TickFromByte(d byte) (ret Tick, err error) {

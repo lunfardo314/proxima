@@ -28,7 +28,7 @@ type (
 	// Warning. Collisions cannot be ruled out
 	TransactionIDVeryShort8 [8]byte
 	// TransactionID :
-	// [0:5] - timestamp bytes (4 bytes time slot big endian, 1 byte time tick)
+	// [0:5] - timestamp bytes
 	// [5:32] TransactionIDShort
 	TransactionID [TransactionIDLength]byte
 	OutputID      [OutputIDLength]byte

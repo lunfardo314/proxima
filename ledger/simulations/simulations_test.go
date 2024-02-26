@@ -1,4 +1,4 @@
-package tests
+package simulations
 
 import (
 	"fmt"
@@ -97,7 +97,7 @@ func InitialSlotInflationChain() int64 {
 func TestInflationCalculations2(t *testing.T) {
 	const template2 = `
 		InitialSupply						: %s (%s PRXI)
-		DefaultInitialBranchInflationBonus	: %s (%s PRXI)
+		DefaultMaxBranchInflationBonus	: %s (%s PRXI)
 		BranchInflationAnnual				: %s (%s PRXI)
 		BranchInflationAnnual %%				: %.2f%%
 		InitialChainInflationFractionPerTick: %s
