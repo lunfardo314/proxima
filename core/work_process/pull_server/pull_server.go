@@ -51,7 +51,7 @@ func (d *PullServer) Start() {
 
 func (d *PullServer) Consume(inp *Input) {
 	if txBytesWithMetadata := d.TxBytesStore().GetTxBytesWithMetadata(&inp.TxID); len(txBytesWithMetadata) > 0 {
-		txBytes, metadataBytes, err := txmetadata.SplitBytesWithMetadata(txBytesWithMetadata)
+		metadataBytes, txBytes, err := txmetadata.SplitBytesWithMetadata(txBytesWithMetadata)
 		util.AssertNoError(err)
 		metadata, err := txmetadata.TransactionMetadataFromBytes(metadataBytes)
 		util.AssertNoError(err)

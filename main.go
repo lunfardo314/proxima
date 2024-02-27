@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/lunfardo314/proxima/node"
 )
@@ -20,6 +21,6 @@ func main() {
 
 	n.Start()
 
-	n.WaitAllWorkProcessesToStop()
+	n.WaitAllWorkProcessesToStop(5 * time.Second)
 	n.WaitAllDBClosed()
 }

@@ -49,10 +49,12 @@ func (d *Gossip) Start() {
 
 func (d *Gossip) Consume(inp *Input) {
 	if inp.ReceivedFrom == nil {
-		d.Tracef(TraceTag, "send %s to all peers", inp.Tx.IDShortString)
+		d.Tracef(TraceTag, "send %s to all peers, meta: %s",
+			inp.Tx.IDShortString, inp.Metadata.String())
 		d.GossipTxBytesToPeers(inp.Tx.Bytes(), &inp.Metadata)
 	} else {
-		d.Tracef(TraceTag, "send %s to peers except %s", inp.ReceivedFrom.String)
+		d.Tracef(TraceTag, "send %s to peers except %s, meta: %s",
+			inp.ReceivedFrom.String, inp.Metadata.String())
 		d.GossipTxBytesToPeers(inp.Tx.Bytes(), &inp.Metadata, *inp.ReceivedFrom)
 	}
 }

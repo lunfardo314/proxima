@@ -87,8 +87,7 @@ func (c *Queue[T]) Start(consumer Consumer[T], ctx context.Context) {
 	c.log.Debugf("STARTING [%s]..", c.Log().Level())
 	_ = c.log.Sync()
 
-	c.Run()
-
+	go c.Run()
 	go func() {
 		<-ctx.Done()
 		c.Log().Debugf("STOPPING...")

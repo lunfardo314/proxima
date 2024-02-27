@@ -131,8 +131,12 @@ func _readUint64(r io.Reader) (uint64, error) {
 }
 
 func TransactionMetadataFromBytes(data []byte) (*TransactionMetadata, error) {
-	if len(data) == 0 || int(data[0]) != len(data)-1 {
-		return nil, fmt.Errorf("wrong data length")
+	if len(data) == 0 {
+		return nil, fmt.Errorf("txmetadata must be at least 1 byte")
+	}
+	if int(data[0]) != len(data)-1 {
+		return nil, fmt.Errorf("txmetadata first byte (%d) not equal to the length of the remaining data (%d)",
+			data[0], len(data)-1)
 	}
 	if len(data) == 1 {
 		// empty metadata
@@ -172,9 +176,8 @@ func TransactionMetadataFromBytes(data []byte) (*TransactionMetadata, error) {
 	return ret, nil
 }
 
-// SplitBytesWithMetadata returns:
-// - metadata bytes
-// - txBytes
+// SplitBytesWithMetadata splits received bytes into two pieces
+// Returns: metadata bytes, txBytes
 func SplitBytesWithMetadata(txBytesWithMetadata []byte) ([]byte, []byte, error) {
 	if len(txBytesWithMetadata) == 0 {
 		return nil, nil, fmt.Errorf("SplitBytesWithMetadata: empty bytes")

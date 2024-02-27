@@ -27,7 +27,7 @@ func TestBasic(t *testing.T) {
 
 	vids := make([]*vertex.WrappedTx, howManyTx)
 	for i := range vids {
-		txid := ledger.RandomTransactionID(true, false)
+		txid := ledger.RandomTransactionID(true)
 		vids[i] = vertex.WrapTxID(txid)
 	}
 

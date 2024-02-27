@@ -81,7 +81,7 @@ func New(env Environment, peers *peering.Peers, opts ...ConfigOption) *Workflow 
 }
 
 func (w *Workflow) Start() {
-	w.Log().Infof("starting daemons...")
+	w.Log().Infof("starting work processes...")
 
 	w.poker.Start()
 	w.events.Start()

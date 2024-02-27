@@ -27,7 +27,8 @@ func (a *milestoneAttacher) wrapUpAttacher() {
 	// check resulting ledger baselineCoverage is equal to the baselineCoverage in metadata, if provided
 	if a.metadata != nil && a.metadata.LedgerCoverageDelta != nil {
 		if *a.metadata.LedgerCoverageDelta != a.coverage.LatestDelta() {
-			err := fmt.Errorf("commitBranch %s: major inconsistency: ledger baselineCoverage delta not equal to the baselineCoverage delta provided in metadata", a.vid.IDShortString())
+			err := fmt.Errorf("commitBranch %s: major inconsistency: computed coverage delta (%s) not equal to the coverage delta provided in metadata (%s)",
+				a.vid.IDShortString(), util.GoTh(a.coverage.LatestDelta()), util.GoTh(*a.metadata.LedgerCoverageDelta))
 			if enforceConsistencyWithTxMetadata {
 				a.Log().Fatal(err)
 			} else {

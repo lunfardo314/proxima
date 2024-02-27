@@ -50,9 +50,9 @@ func New() *ProximaNode {
 }
 
 // WaitAllWorkProcessesToStop wait everything to stop before closing databases
-func (p *ProximaNode) WaitAllWorkProcessesToStop() {
+func (p *ProximaNode) WaitAllWorkProcessesToStop(timeout ...time.Duration) {
 	<-p.Ctx().Done()
-	p.Global.MustWaitAllWorkProcessesStop()
+	p.Global.MustWaitAllWorkProcessesStop(timeout...)
 }
 
 // WaitAllDBClosed ensuring databases has been closed

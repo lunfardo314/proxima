@@ -203,6 +203,7 @@ func (ps *Peers) Stop() {
 		_ = ps.Log().Sync()
 		close(ps.stopHeartbeatChan)
 		_ = ps.host.Close()
+		ps.Log().Infof("libp2p host %s (self) has been stopped", ShortPeerIDString(ps.host.ID()))
 	})
 }
 
