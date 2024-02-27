@@ -57,5 +57,5 @@ pprof:
 
 trace_tags:
   - gossip
-  - txinput
+  - pull_server
 

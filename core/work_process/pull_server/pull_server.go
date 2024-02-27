@@ -62,7 +62,7 @@ func (d *PullServer) Consume(inp *Input) {
 		metadata.IsResponseToPull = true
 
 		d.SendTxBytesWithMetadataToPeer(inp.PeerID, txBytes, metadata)
-		d.Tracef(TraceTag, "-> FOUND %s", inp.TxID.StringShort)
+		d.Tracef(TraceTag, "-> FOUND %s, meta: %s", inp.TxID.StringShort, metadata.String())
 	} else {
 		// not found -> ignore
 		d.Tracef(TraceTag, "-> NOT FOUND %s", inp.TxID.StringShort)
