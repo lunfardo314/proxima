@@ -589,17 +589,6 @@ func (vid *WrappedTx) LedgerCoverageSum() uint64 {
 	return ret.Sum()
 }
 
-// LessByCoverageAndID compares sum of ledger coverages. If equal, compares IDs
-// It means, earlier is less
-func LessByCoverageAndID(vid1, vid2 *WrappedTx) bool {
-	c1 := vid1.GetLedgerCoverage().Sum()
-	c2 := vid2.GetLedgerCoverage().Sum()
-	if c1 == c2 {
-		return ledger.LessTxID(vid1.ID, vid2.ID)
-	}
-	return c1 < c2
-}
-
 // NumConsumers returns:
 // - number of consumed outputs
 // - number of conflict sets
@@ -808,37 +797,4 @@ func (vid *WrappedTx) InflationAmount() (ret uint64) {
 		Deleted: vid.PanicAccessDeleted,
 	})
 	return
-}
-
-// IsPreferredMilestoneAgainstTheOther betterMilestone returns if vid1 is strongly better than vid2
-func IsPreferredMilestoneAgainstTheOther(vid1, vid2 *WrappedTx) bool {
-	util.Assertf(vid1.IsSequencerMilestone() && vid2.IsSequencerMilestone(), "vid1.IsSequencerMilestone() && vid2.IsSequencerMilestone()")
-
-	if vid1 == vid2 {
-		return false
-	}
-	if vid2 == nil {
-		return true
-	}
-	return IsPreferredBase(vid1.LedgerCoverageSum(), vid2.LedgerCoverageSum(), &vid1.ID, &vid2.ID)
-}
-
-func IsPreferredBase(covSum1, covSum2 uint64, txid1, txid2 *ledger.TransactionID) bool {
-	switch {
-	case covSum1 > covSum2:
-		// main preference is by ledger coverage
-		return true
-	case covSum1 == covSum2:
-		if txid1 == nil || txid2 == nil {
-			return false
-		}
-		if txid1.Timestamp() == txid2.Timestamp() {
-			// prefer with bigger hash
-			return bytes.Compare(txid1[:], txid2[:]) > 0
-		}
-		// prefer younger
-		return txid2.Timestamp().Before(txid1.Timestamp())
-	}
-	return false
-
 }

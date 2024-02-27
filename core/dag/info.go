@@ -62,7 +62,7 @@ func (d *DAG) VerticesInSlotAndAfter(slot ledger.Slot) []*vertex.WrappedTx {
 		return txid.Slot() >= slot
 	})
 	sort.Slice(ret, func(i, j int) bool {
-		return vertex.LessByCoverageAndID(ret[i], ret[j])
+		return ret[i].Timestamp().Before(ret[j].Timestamp())
 	})
 	return ret
 }

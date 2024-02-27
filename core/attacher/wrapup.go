@@ -40,8 +40,8 @@ func (a *milestoneAttacher) wrapUpAttacher() {
 	a.finals.baseline = &a.baseline.ID
 	a.finals.numTransactions = len(a.vertices)
 
-	a.finals.coverage = a.coverage.MakeNext(int(a.vid.Slot() - a.baseline.Slot()))
-	util.Assertf(!a.vid.IsBranchTransaction() || a.finals.coverage.LatestDelta() == 0, "final baselineCoverage of the branch must have latest delta == 0")
+	a.finals.coverage = a.coverage
+	util.Assertf(a.finals.coverage.LatestDelta() > 0, "final coverage must be positive")
 
 	a.Tracef(TraceTagAttachMilestone, "set ledger baselineCoverage in %s to %s", a.vid.IDShortString(), a.finals.coverage.String())
 	a.vid.SetLedgerCoverage(a.finals.coverage)
@@ -211,7 +211,7 @@ func (a *milestoneAttacher) _checkConsistencyBeforeFinalization() (err error) {
 				err = fmt.Errorf("coverage not set in the endorsed %s", vidEndorsed.IDShortString())
 				return false
 			}
-			if a.coverage.LatestDelta() < lc.LatestDelta() {
+			if !vidEndorsed.IsBranchTransaction() && a.coverage.LatestDelta() < lc.LatestDelta() {
 				err = fmt.Errorf("coverage delta should not decrease.\nGot: delta(%s) at %s <= delta(%s) in %s",
 					util.GoTh(a.coverage.LatestDelta()), a.vid.Timestamp().String(), util.GoTh(lc.LatestDelta()), vidEndorsed.IDShortString())
 				return false

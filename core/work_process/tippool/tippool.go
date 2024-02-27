@@ -93,7 +93,8 @@ func (t *SequencerTips) Consume(inp Input) {
 	}
 }
 
-// oldReplaceWithNew compares timestamps. If equal, compares coverages. If equal, compares IDs
+// oldReplaceWithNew compares timestamps, chooses the younger one.
+// If timestamps equal, chooses the preferred one, older is preferred
 func oldReplaceWithNew(old, new *vertex.WrappedTx) bool {
 	util.Assertf(old != new, "old != new")
 	tsOld := old.Timestamp()
@@ -105,12 +106,7 @@ func oldReplaceWithNew(old, new *vertex.WrappedTx) bool {
 		return false
 	}
 	util.Assertf(tsNew == tsOld, "tsNew==tsOld")
-
-	// TODO take into account slot while comparing coverages
-	if vertex.LessByCoverageAndID(old, new) {
-		return true
-	}
-	return false
+	return vertex.IsPreferredMilestoneAgainstTheOther(new, old, false)
 }
 
 func (t *SequencerTips) GetLatestMilestone(seqID ledger.ChainID) *vertex.WrappedTx {
@@ -136,7 +132,7 @@ func (t *SequencerTips) LatestMilestonesDescending(filter ...func(seqID ledger.C
 		}
 	}
 	sort.Slice(ret, func(i, j int) bool {
-		return vertex.IsPreferredMilestoneAgainstTheOther(ret[i], ret[j])
+		return vertex.IsPreferredMilestoneAgainstTheOther(ret[i], ret[j], false)
 	})
 	return ret
 }

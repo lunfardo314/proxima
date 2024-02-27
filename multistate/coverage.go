@@ -9,7 +9,7 @@ import (
 	"github.com/lunfardo314/proxima/util"
 )
 
-func (lc *LedgerCoverage) MakeNext(shift int) LedgerCoverage {
+func (lc *LedgerCoverage) Shift(shift int) LedgerCoverage {
 	ret := LedgerCoverage{}
 	if shift < HistoryCoverageDeltas {
 		copy(ret[shift:], lc[:])
@@ -47,7 +47,6 @@ func (lc *LedgerCoverage) BytesOld() []byte {
 
 func (lc *LedgerCoverage) BytesOfBranchCoverage() []byte {
 	util.Assertf(len(lc) == HistoryCoverageDeltas, "len(lc) == HistoryCoverageDeltas")
-	util.Assertf(lc[0] == 0, "coverage of the branch must have latest delta == 0")
 	ret := make([]byte, (HistoryCoverageDeltas-1)*8)
 	for i := range lc {
 		if i == 0 {

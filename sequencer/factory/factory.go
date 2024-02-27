@@ -293,7 +293,7 @@ func (mf *MilestoneFactory) Propose(a *attacher.IncrementalAttacher) (forceExit 
 
 	// now we are taking into account also transaction ID. This is important for equal coverages
 	if bestInSlot := mf.BestMilestoneInTheSlot(a.TargetTs().Slot()); bestInSlot != nil {
-		if vertex.IsPreferredBase(bestInSlot.LedgerCoverageSum(), coverage.Sum(), &bestInSlot.ID, tx.ID()) {
+		if !bestInSlot.IsBetterProposal(&coverage, a.TargetTs()) {
 			mf.Tracef(TraceTag, "Propose%s: proposal REJECTED due to better milestone %s in the same slot %s",
 				a.Name(), mf.proposal.bestSoFarCoverage.String, a.TargetTs().Slot())
 			return false

@@ -696,9 +696,10 @@ func (a *attacher) setBaseline(vid *vertex.WrappedTx, currentTS ledger.Time) boo
 	rr, found := multistate.FetchRootRecord(a.StateStore(), a.baseline.ID)
 	util.Assertf(found, "setBaseline: can't fetch root record for %s", a.baseline.IDShortString)
 
-	a.coverage = rr.LedgerCoverage
-	a.baselineSupply = rr.Supply
+	// shifting baseline coverage by 1 or more slots. Current delta becomes 0
+	a.coverage = rr.LedgerCoverage.Shift(int(currentTS.Slot() - vid.Slot() + 1))
 	util.Assertf(a.coverage.LatestDelta() == 0, "a.coverage.LatestDelta() == 0")
+	a.baselineSupply = rr.Supply
 	return true
 }
 

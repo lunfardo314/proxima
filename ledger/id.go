@@ -1,6 +1,7 @@
 package ledger
 
 import (
+	"bytes"
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
@@ -204,8 +205,14 @@ func (txid *TransactionID) AsFileName() string {
 	return TransactionIDAsFileName(txid.Timestamp(), txid.ShortID(), txid.IsSequencerMilestone(), txid.IsBranchTransaction())
 }
 
+// LessTxID compares tx IDs b timestamp and by tx hash
 func LessTxID(txid1, txid2 TransactionID) bool {
-	return txid1.Timestamp().Before(txid2.Timestamp())
+	if txid1.Timestamp().Before(txid2.Timestamp()) {
+		return true
+	}
+	h1 := txid1.ShortID()
+	h2 := txid2.ShortID()
+	return bytes.Compare(h1[:], h2[:]) < 0
 }
 
 func TooCloseOnTimeAxis(txid1, txid2 *TransactionID) bool {

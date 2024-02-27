@@ -40,7 +40,7 @@ func FetchLatestSlot(store global.StateStore) ledger.Slot {
 }
 
 func (r *RootRecord) Bytes() []byte {
-	util.Assertf(r.LedgerCoverage.LatestDelta() == 0, "r.LedgerCoverage.LatestDelta() == 0")
+	util.Assertf(r.LedgerCoverage.LatestDelta() > 0, "r.LedgerCoverage.LatestDelta() > 0")
 	arr := lazybytes.EmptyArray(5)
 	arr.Push(r.SequencerID.Bytes())
 	arr.Push(r.Root.Bytes())
