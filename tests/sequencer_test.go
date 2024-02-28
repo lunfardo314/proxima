@@ -46,6 +46,10 @@ func Test1Sequencer(t *testing.T) {
 		require.EqualValues(t, maxSlots, int(countBr.Load()))
 		t.Logf("%s", testData.wrk.Info(true))
 		testData.wrk.SaveGraph("utangle")
+
+		branchTxIDS := multistate.FetchLatestBranchTransactionIDs(testData.wrk.StateStore())
+		tmpDag := dag.MakeDAGFromTxStore(testData.txStore, 0, branchTxIDS...)
+		tmpDag.SaveGraph("utangle_full")
 	})
 	t.Run("tag along transfers", func(t *testing.T) {
 		const (
@@ -103,6 +107,11 @@ func Test1Sequencer(t *testing.T) {
 		t.Logf("%s", testData.wrk.Info(true))
 
 		testData.wrk.SaveGraph("utangle")
+
+		branchTxIDS := multistate.FetchLatestBranchTransactionIDs(testData.wrk.StateStore())
+		tmpDag := dag.MakeDAGFromTxStore(testData.txStore, 0, branchTxIDS...)
+		tmpDag.SaveGraph("utangle_full")
+
 		testData.wrk.SaveTree("utangle_tree")
 
 		rdr = testData.wrk.HeaviestStateForLatestTimeSlot()

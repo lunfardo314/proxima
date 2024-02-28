@@ -92,7 +92,7 @@ func (d *PullClient) Consume(inp *Input) {
 
 func (d *PullClient) transactionInMany(txBytesList [][]byte) {
 	for _, txBytesWithMetadata := range txBytesList {
-		metadataBytes, txBytes, err := txmetadata.SplitBytesWithMetadata(txBytesWithMetadata)
+		metadataBytes, txBytes, err := txmetadata.SplitTxBytesWithMetadata(txBytesWithMetadata)
 		if err != nil {
 			d.Environment.Log().Errorf("pull: error while parsing tx metadata: '%v'", err)
 			continue

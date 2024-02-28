@@ -28,7 +28,7 @@ func (ps *Peers) gossipStreamHandler(stream network.Stream) {
 		_ = stream.Reset()
 		return
 	}
-	metadataBytes, txBytes, err := txmetadata.SplitBytesWithMetadata(txBytesWithMetadata)
+	metadataBytes, txBytes, err := txmetadata.SplitTxBytesWithMetadata(txBytesWithMetadata)
 	if err != nil {
 		ps.Log().Errorf("error while parsing tx message from peer %s: %v", id.String(), err)
 		_ = stream.Reset()

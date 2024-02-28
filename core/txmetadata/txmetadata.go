@@ -176,14 +176,14 @@ func TransactionMetadataFromBytes(data []byte) (*TransactionMetadata, error) {
 	return ret, nil
 }
 
-// SplitBytesWithMetadata splits received bytes into two pieces
+// SplitTxBytesWithMetadata splits received bytes into two pieces
 // Returns: metadata bytes, txBytes
-func SplitBytesWithMetadata(txBytesWithMetadata []byte) ([]byte, []byte, error) {
+func SplitTxBytesWithMetadata(txBytesWithMetadata []byte) ([]byte, []byte, error) {
 	if len(txBytesWithMetadata) == 0 {
-		return nil, nil, fmt.Errorf("SplitBytesWithMetadata: empty bytes")
+		return nil, nil, fmt.Errorf("SplitTxBytesWithMetadata: empty bytes")
 	}
 	if len(txBytesWithMetadata) <= int(txBytesWithMetadata[0]+1) {
-		return nil, nil, fmt.Errorf("SplitBytesWithMetadata: wrong transaction metadata prefix length")
+		return nil, nil, fmt.Errorf("SplitTxBytesWithMetadata: wrong transaction metadata prefix length")
 	}
 	return txBytesWithMetadata[:txBytesWithMetadata[0]+1], txBytesWithMetadata[txBytesWithMetadata[0]+1:], nil
 }

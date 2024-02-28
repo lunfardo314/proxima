@@ -8,9 +8,11 @@ import (
 
 	"github.com/dominikbraun/graph"
 	"github.com/dominikbraun/graph/draw"
+	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
+	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/set"
@@ -155,7 +157,6 @@ func (d *DAG) MakeGraph(additionalVertices ...*vertex.WrappedTx) graph.Graph[str
 	ret := graph.New(graph.StringHash, graph.Directed(), graph.Acyclic())
 
 	vertices := d.Vertices()
-
 	seqDict := make(map[ledger.ChainID]int)
 	for _, vid := range vertices {
 		makeGraphNode(vid, ret, seqDict, false)
@@ -392,4 +393,43 @@ func makeSequencerGraphEdges(vid *vertex.WrappedTx, gr graph.Graph[string, strin
 			return true
 		})
 	}})
+}
+
+func MakeDAGFromTxStore(txStore global.TxBytesGet, oldestSlot ledger.Slot, tips ...ledger.TransactionID) *DAG {
+	d := New(nil)
+	for i := range tips {
+		d.loadPastConeFromTxStore(tips[i], txStore, oldestSlot)
+	}
+	return d
+}
+
+// loadPastConeFromTxStore for generating graph only. Not thread safe
+func (d *DAG) loadPastConeFromTxStore(txid ledger.TransactionID, txStore global.TxBytesGet, oldestSlot ledger.Slot) *vertex.WrappedTx {
+	if txid.Slot() < oldestSlot {
+		return nil
+	}
+	if vid, already := d.vertices[txid]; already {
+		return vid
+	}
+	txBytesWithMetadata := txStore.GetTxBytesWithMetadata(&txid)
+	if len(txBytesWithMetadata) == 0 {
+		return nil
+	}
+	_, txBytes, err := txmetadata.SplitTxBytesWithMetadata(txBytesWithMetadata)
+	util.AssertNoError(err)
+	tx, err := transaction.FromBytes(txBytes, transaction.MainTxValidationOptions...)
+	util.AssertNoError(err)
+
+	v := vertex.New(tx)
+	for i := range v.Inputs {
+		oid := tx.MustInputAt(byte(i))
+		v.Inputs[i] = d.loadPastConeFromTxStore(oid.TransactionID(), txStore, oldestSlot)
+	}
+	for i := range v.Endorsements {
+		endID := tx.EndorsementAt(byte(i))
+		v.Endorsements[i] = d.loadPastConeFromTxStore(endID, txStore, oldestSlot)
+	}
+	vid := v.Wrap()
+	d.AddVertexNoLock(vid)
+	return vid
 }
