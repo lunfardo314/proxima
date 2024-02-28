@@ -395,6 +395,8 @@ func makeSequencerGraphEdges(vid *vertex.WrappedTx, gr graph.Graph[string, strin
 	}})
 }
 
+// MakeDAGFromTxStore creates dummy DAG from past cones of tips. Only uses txBytes from txStore
+// It is used in testing, to visualize real transaction DAG, not the pruned cache kept in the node
 func MakeDAGFromTxStore(txStore global.TxBytesGet, oldestSlot ledger.Slot, tips ...ledger.TransactionID) *DAG {
 	d := New(nil)
 	for i := range tips {
