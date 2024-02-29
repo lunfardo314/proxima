@@ -34,6 +34,10 @@ func NewIncrementalAttacher(name string, env Environment, targetTs ledger.Time, 
 	if targetTs.Tick() == 0 {
 		// target is branch
 		util.Assertf(len(endorse) == 0, "NewIncrementalAttacher: len(endorse)==0")
+		if !extend.VID.IsSequencerMilestone() {
+			return nil, fmt.Errorf("NewIncrementalAttacher %s: cannot extend non-sequencer milestone %s into a branch",
+				name, extend.VID)
+		}
 		baseline = extend.VID
 	} else {
 		// target is not branch
@@ -48,8 +52,12 @@ func NewIncrementalAttacher(name string, env Environment, targetTs ledger.Time, 
 		}
 	}
 	if baseline == nil {
-		return nil, fmt.Errorf("NewIncrementalAttacher: failed to determine the baseline branch of %s", extend.IDShortString())
+		return nil, fmt.Errorf("NewIncrementalAttacher %s: failed to determine the baseline branch of %s",
+			name, extend.IDShortString())
 	}
+	util.Assertf(baseline.BaselineBranch() != nil, "incremental attacher %s, BaselineBranch of %s must not be nil",
+		name, baseline.IDShortString)
+
 	env.Tracef(TraceTagIncrementalAttacher, "NewIncrementalAttacher(%s). baseline: %s", name, baseline.IDShortString)
 
 	ret := &IncrementalAttacher{

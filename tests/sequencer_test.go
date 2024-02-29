@@ -45,11 +45,8 @@ func Test1Sequencer(t *testing.T) {
 		testData.waitStop()
 		require.EqualValues(t, maxSlots, int(countBr.Load()))
 		t.Logf("%s", testData.wrk.Info(true))
-		testData.wrk.SaveGraph("utangle")
-
-		branchTxIDS := multistate.FetchLatestBranchTransactionIDs(testData.wrk.StateStore())
-		tmpDag := dag.MakeDAGFromTxStore(testData.txStore, 0, branchTxIDS...)
-		tmpDag.SaveGraph("utangle_full")
+		//testData.wrk.SaveGraph("utangle")
+		testData.saveFullDAG("utangle_full")
 	})
 	t.Run("tag along transfers", func(t *testing.T) {
 		const (
@@ -106,12 +103,9 @@ func Test1Sequencer(t *testing.T) {
 		testData.stopAndWait(5 * time.Second)
 		t.Logf("%s", testData.wrk.Info(true))
 
-		testData.wrk.SaveGraph("utangle")
+		//testData.wrk.SaveGraph("utangle")
 
-		branchTxIDS := multistate.FetchLatestBranchTransactionIDs(testData.wrk.StateStore())
-		tmpDag := dag.MakeDAGFromTxStore(testData.txStore, 0, branchTxIDS...)
-		tmpDag.SaveGraph("utangle_full")
-
+		testData.saveFullDAG("utangle_full")
 		testData.wrk.SaveTree("utangle_tree")
 
 		rdr = testData.wrk.HeaviestStateForLatestTimeSlot()
@@ -202,8 +196,10 @@ func Test1Sequencer(t *testing.T) {
 		testData.stopAndWait(3 * time.Second)
 		t.Logf("%s", testData.wrk.Info(true))
 
-		testData.wrk.SaveGraph("utangle")
-		testData.wrk.SaveTree("utangle_tree")
+		testData.saveFullDAG("utangle_full")
+
+		//testData.wrk.SaveGraph("utangle")
+		//testData.wrk.SaveTree("utangle_tree")
 
 		require.EqualValues(t, maxSlots, int(countBr.Load()))
 
@@ -269,7 +265,7 @@ func TestNSequencersIdle(t *testing.T) {
 		testData.stopAndWait()
 
 		t.Logf("%s", testData.wrk.Info(true))
-		//testData.wrk.SaveGraph("utangle")
+		//testData.saveFullDAG("utangle_full")
 	})
 	t.Run("idle 2", func(t *testing.T) {
 		const (
@@ -289,8 +285,9 @@ func TestNSequencersIdle(t *testing.T) {
 		testData.stopAndWait()
 
 		t.Logf("%s", testData.wrk.Info(true))
-		testData.wrk.SaveGraph("utangle")
-		dag.SaveBranchTree(testData.wrk.StateStore(), fmt.Sprintf("utangle_tree_%d", nSequencers+1))
+		testData.saveFullDAG("utangle_full")
+		//testData.wrk.SaveGraph("utangle")
+		//dag.SaveBranchTree(testData.wrk.StateStore(), fmt.Sprintf("utangle_tree_%d", nSequencers+1))
 	})
 }
 

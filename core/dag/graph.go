@@ -432,6 +432,7 @@ func (d *DAG) loadPastConeFromTxStore(txid ledger.TransactionID, txStore global.
 		v.Endorsements[i] = d.loadPastConeFromTxStore(endID, txStore, oldestSlot)
 	}
 	vid := v.Wrap()
+	vid.SetTxStatusGood()
 	d.AddVertexNoLock(vid)
 	return vid
 }

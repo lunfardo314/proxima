@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/core/attacher"
+	"github.com/lunfardo314/proxima/core/dag"
 	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/core/workflow"
 	"github.com/lunfardo314/proxima/global"
@@ -153,6 +154,13 @@ func initWorkflowTest(t *testing.T, nChains int, startPruner ...bool) *workflowT
 		t.Logf("distributed %s -> %s", util.GoTh(distrib[i].Balance), distrib[i].Lock.String())
 	}
 	return ret
+}
+
+func (td *workflowTestData) saveFullDAG(fname string) {
+	branchTxIDS := multistate.FetchLatestBranchTransactionIDs(td.wrk.StateStore())
+	tmpDag := dag.MakeDAGFromTxStore(td.txStore, 0, branchTxIDS...)
+	tmpDag.SaveGraph(fname)
+
 }
 
 // makes chain origins transaction from aux output
