@@ -697,7 +697,13 @@ func (a *attacher) setBaseline(vid *vertex.WrappedTx, currentTS ledger.Time) boo
 	util.Assertf(found, "setBaseline: can't fetch root record for %s", a.baseline.IDShortString)
 
 	// shifting baseline coverage by 1 or more slots. Current delta becomes 0
-	a.coverage = rr.LedgerCoverage.Shift(int(currentTS.Slot() - vid.Slot() + 1))
+	var shiftCoverageBy int
+	if currentTS.Tick() == 0 {
+		shiftCoverageBy = int(currentTS.Slot() - vid.Slot())
+	} else {
+		shiftCoverageBy = int(currentTS.Slot()-vid.Slot()) + 1
+	}
+	a.coverage = rr.LedgerCoverage.Shift(shiftCoverageBy)
 	util.Assertf(a.coverage.LatestDelta() == 0, "a.coverage.LatestDelta() == 0")
 	a.baselineSupply = rr.Supply
 	return true

@@ -48,7 +48,7 @@ func (b *BaseProposer) propose() (*attacher.IncrementalAttacher, bool) {
 			return nil, true
 		}
 	}
-	b.Tracef(TraceTag, "%s predecessor %s is sequencer milestone",
+	b.Tracef(TraceTag, "%s predecessor %s is sequencer milestone with coverage %s",
 		b.Name, extend.IDShortString, extend.VID.GetLedgerCoverage().String)
 
 	a, err := attacher.NewIncrementalAttacher(b.Name, b, b.TargetTs, extend)

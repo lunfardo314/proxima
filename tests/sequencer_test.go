@@ -24,6 +24,11 @@ func Test1Sequencer(t *testing.T) {
 		const maxSlots = 20
 		testData := initWorkflowTest(t, 1)
 		t.Logf("%s", testData.wrk.Info())
+		//testData.env.EnableTraceTags(proposer_base.TraceTag)
+		//testData.env.EnableTraceTags(attacher.TraceTagAttach)
+		//testData.env.EnableTraceTags(sequencer.TraceTag)
+		//testData.env.EnableTraceTags(proposer_base.TraceTag)
+		//testData.env.EnableTraceTags(factory.TraceTag)
 
 		//testData.env.EnableTraceTags(proposer_base.TraceTag)
 		//testData.env.EnableTraceTags(tippool.TraceTag)

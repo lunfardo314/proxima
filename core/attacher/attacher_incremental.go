@@ -58,8 +58,6 @@ func NewIncrementalAttacher(name string, env Environment, targetTs ledger.Time, 
 	util.Assertf(baseline.BaselineBranch() != nil, "incremental attacher %s, BaselineBranch of %s must not be nil",
 		name, baseline.IDShortString)
 
-	env.Tracef(TraceTagIncrementalAttacher, "NewIncrementalAttacher(%s). baseline: %s", name, baseline.IDShortString)
-
 	ret := &IncrementalAttacher{
 		attacher: newPastConeAttacher(env, name),
 		endorse:  make([]*vertex.WrappedTx, 0),
@@ -82,6 +80,8 @@ func (a *IncrementalAttacher) initIncrementalAttacher(baseline *vertex.WrappedTx
 	if !a.setBaseline(baseline, targetTs) {
 		return fmt.Errorf("NewIncrementalAttacher: failed to set baseline branch of %s", extend.IDShortString())
 	}
+	a.Tracef(TraceTagIncrementalAttacher, "NewIncrementalAttacher(%s). baseline: %s, start with coverage: %s",
+		a.name, baseline.IDShortString, a.coverage.String)
 
 	// attach endorsements
 	for _, endorsement := range endorse {

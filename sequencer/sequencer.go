@@ -250,7 +250,7 @@ func (seq *Sequencer) doSequencerStep() bool {
 	msTx := seq.factory.StartProposingForTargetLogicalTime(targetTs)
 	if msTx == nil {
 		seq.Tracef(TraceTag, "failed to generate msTx for target %s. Now is %s", targetTs, ledger.TimeNow())
-		time.Sleep(10 * time.Millisecond)
+		//time.Sleep(10 * time.Millisecond)
 		return true
 	}
 
@@ -321,27 +321,6 @@ func (seq *Sequencer) getNextTargetTime() (ledger.Time, ledger.Time) {
 	}
 
 	return targetAbsoluteMinimum, prevMilestoneTs
-}
-
-// Returns nil if fails to generate acceptable bestSoFarTx until the deadline
-func (seq *Sequencer) generateNextMilestoneTxForTargetTime(targetTs ledger.Time) *transaction.Transaction {
-	seq.Tracef(TraceTag, "generateNextMilestoneTxForTargetTime %s", targetTs)
-
-	timeout := time.Duration(seq.config.Pace) * ledger.TickDuration()
-	absoluteDeadline := targetTs.Time().Add(timeout)
-
-	if absoluteDeadline.Before(time.Now()) {
-		// too late, was too slow, failed to meet the target deadline
-		seq.log.Warnf("didn't start proposers for target %s: nowis %v, too late for absolute deadline %v",
-			targetTs.String(), time.Now(), absoluteDeadline)
-		return nil
-	}
-
-	msTx := seq.factory.StartProposingForTargetLogicalTime(targetTs)
-	if msTx != nil {
-		util.Assertf(msTx.Timestamp() == targetTs, "msTx.Timestamp() (%v) == targetTs (%v)", msTx.Timestamp(), targetTs)
-	}
-	return msTx
 }
 
 const submitTimeout = 5 * time.Second

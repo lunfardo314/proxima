@@ -175,7 +175,8 @@ func (mf *MilestoneFactory) StartProposingForTargetLogicalTime(targetTs ledger.T
 	mf.Tracef(TraceTag, "StartProposingForTargetLogicalTime: targetTs: %v, nowis: %v", deadline, nowis)
 
 	if deadline.Before(nowis) {
-		mf.Tracef(TraceTag, "deadline is in the past: impossible to generate milestone")
+		mf.Tracef(TraceTag, "target %s is in the past by %v: impossible to generate milestone",
+			targetTs.String, nowis.Sub(deadline))
 		return nil
 	}
 	// start worker(s)
