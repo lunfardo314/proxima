@@ -9,7 +9,6 @@ import (
 	"github.com/lunfardo314/proxima/core/attacher"
 	"github.com/lunfardo314/proxima/core/dag"
 	"github.com/lunfardo314/proxima/core/vertex"
-	"github.com/lunfardo314/proxima/core/work_process/tippool"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/sequencer"
@@ -22,12 +21,12 @@ import (
 
 func Test1Sequencer(t *testing.T) {
 	t.Run("idle", func(t *testing.T) {
-		const maxSlots = 5
+		const maxSlots = 20
 		testData := initWorkflowTest(t, 1)
 		t.Logf("%s", testData.wrk.Info())
 
-		testData.env.EnableTraceTags(proposer_base.TraceTag)
-		testData.env.EnableTraceTags(tippool.TraceTag)
+		//testData.env.EnableTraceTags(proposer_base.TraceTag)
+		//testData.env.EnableTraceTags(tippool.TraceTag)
 
 		seq, err := sequencer.New(testData.wrk, testData.bootstrapChainID, testData.genesisPrivKey,
 			sequencer.WithMaxBranches(maxSlots))
@@ -56,11 +55,10 @@ func Test1Sequencer(t *testing.T) {
 			sendAmount = 2000
 		)
 		testData := initWorkflowTest(t, 1)
-		//t.Logf("%s", testData.wrk.Info())
 
-		//testData.env.EnableTraceTags(global.TraceTag)
-		//testData.env.EnableTraceTags(proposer_base.TraceTag)
-		//testData.env.EnableTraceTags(tippool_seq.TraceTag)
+		testData.env.EnableTraceTags(proposer_base.TraceTag)
+		testData.env.EnableTraceTags(attacher.TraceTagAttach)
+		testData.env.EnableTraceTags(attacher.TraceTagIncrementalAttacher)
 
 		seq, err := sequencer.New(testData.wrk, testData.bootstrapChainID, testData.genesisPrivKey)
 		require.NoError(t, err)
@@ -103,10 +101,8 @@ func Test1Sequencer(t *testing.T) {
 		testData.stopAndWait(5 * time.Second)
 		t.Logf("%s", testData.wrk.Info(true))
 
-		//testData.wrk.SaveGraph("utangle")
-
 		testData.saveFullDAG("utangle_full")
-		testData.wrk.SaveTree("utangle_tree")
+		//testData.wrk.SaveTree("utangle_tree")
 
 		rdr = testData.wrk.HeaviestStateForLatestTimeSlot()
 		for _, txid := range par.spammedTxIDs {

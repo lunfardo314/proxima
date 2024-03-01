@@ -18,7 +18,7 @@ func TestSerialization(t *testing.T) {
 		rr := RootRecord{
 			Root:           ledger.RandomVCommitment(),
 			SequencerID:    ledger.RandomChainID(),
-			LedgerCoverage: LedgerCoverage{0, 1337},
+			LedgerCoverage: LedgerCoverage{1337, 1337 + 1337},
 		}
 		bin := rr.Bytes()
 		rrBack, err := RootRecordFromBytes(bin)
@@ -26,8 +26,8 @@ func TestSerialization(t *testing.T) {
 		require.True(t, ledger.CommitmentModel.EqualCommitments(rr.Root, rrBack.Root))
 		require.EqualValues(t, rr.SequencerID, rrBack.SequencerID)
 		require.EqualValues(t, rr.LedgerCoverage, rrBack.LedgerCoverage)
-		require.EqualValues(t, LedgerCoverage{0, 1337}, rrBack.LedgerCoverage)
-		require.True(t, rr.LedgerCoverage.LatestDelta() == 0)
+		require.EqualValues(t, LedgerCoverage{1337, 1337 + 1337}, rrBack.LedgerCoverage)
+		require.True(t, rr.LedgerCoverage.LatestDelta() == 1337)
 	})
 	t.Run("with panic", func(t *testing.T) {
 		rr := RootRecord{

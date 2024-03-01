@@ -60,7 +60,8 @@ func AttachTxID(txid ledger.TransactionID, env Environment, opts ...Option) (vid
 			env.AddVertexNoLock(vid)
 			env.PostEventNewGood(vid)
 			env.SendToTippool(vid)
-			env.Tracef(TraceTagAttach, "AttachTxID: branch fetched from the state: %s%s", txid.StringShort(), by)
+			env.Tracef(TraceTagAttach, "AttachTxID: branch fetched from the state: %s%s, coverage: %s",
+				txid.StringShort, by, vid.GetLedgerCoverage().String)
 		} else {
 			// the corresponding state is not in the multistate DB -> put virtualTx to the utangle_old -> pull it
 			// the puller will trigger further solidification

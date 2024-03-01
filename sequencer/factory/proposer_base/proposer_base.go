@@ -33,7 +33,7 @@ func Strategy() *proposer_generic.Strategy {
 func (b *BaseProposer) propose() (*attacher.IncrementalAttacher, bool) {
 	extend := b.OwnLatestMilestoneOutput()
 
-	b.Tracef(TraceTag, "%s extending %s, coverage: %s", b.Name, extend.IDShortString, extend.VID.GetLedgerCoverage().String())
+	b.Tracef(TraceTag, "%s extending %s", b.Name, extend.IDShortString)
 	// own latest milestone exists
 	if !b.TargetTs.IsSlotBoundary() {
 		// target is not a branch target
@@ -48,14 +48,16 @@ func (b *BaseProposer) propose() (*attacher.IncrementalAttacher, bool) {
 			return nil, true
 		}
 	}
-	b.Tracef(TraceTag, "%s predecessor %s is sequencer", b.Name, extend.IDShortString)
+	b.Tracef(TraceTag, "%s predecessor %s is sequencer milestone",
+		b.Name, extend.IDShortString, extend.VID.GetLedgerCoverage().String)
 
 	a, err := attacher.NewIncrementalAttacher(b.Name, b, b.TargetTs, extend)
 	if err != nil {
 		b.Tracef(TraceTag, "%s can't create attacher: '%v'", b.Name, err)
 		return nil, true
 	}
-	b.Tracef(TraceTag, "%s created attacher with baseline %s, cov: %s", b.Name, a.BaselineBranch().IDShortString, util.Ref(a.LedgerCoverage()).String)
+	b.Tracef(TraceTag, "%s created attacher with baseline %s, cov: %s",
+		b.Name, a.BaselineBranch().IDShortString, util.Ref(a.LedgerCoverage()).String)
 
 	if b.TargetTs.Tick() != 0 {
 		b.Tracef(TraceTag, "%s making non-branch, extending %s, collecting and inserting tag-along inputs", b.Name, extend.IDShortString)
@@ -69,8 +71,8 @@ func (b *BaseProposer) propose() (*attacher.IncrementalAttacher, bool) {
 		bestLC := bestInSlot.GetLedgerCoverage()
 		lc := a.LedgerCoverage()
 		if bestLC != nil && !bestInSlot.IsBetterProposal(&lc, b.TargetTs) {
-			b.Tracef(TraceTag, "%s abandoning milestone proposal because larger coverage %s has been already proposed",
-				b.Name, bestLC.String())
+			b.Tracef(TraceTag, "%s abandoning milestone proposal because proposal %s with larger coverage %s has been already proposed",
+				b.Name, bestInSlot.IDShortString, bestLC.String)
 			a.UnReferenceAll()
 			return nil, true
 		}
