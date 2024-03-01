@@ -12,7 +12,6 @@ import (
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/sequencer"
-	"github.com/lunfardo314/proxima/sequencer/factory/proposer_base"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/testutil"
 	"github.com/stretchr/testify/require"
@@ -28,10 +27,6 @@ func Test1Sequencer(t *testing.T) {
 		//testData.env.EnableTraceTags(attacher.TraceTagAttach)
 		//testData.env.EnableTraceTags(sequencer.TraceTag)
 		//testData.env.EnableTraceTags(proposer_base.TraceTag)
-		//testData.env.EnableTraceTags(factory.TraceTag)
-
-		//testData.env.EnableTraceTags(proposer_base.TraceTag)
-		//testData.env.EnableTraceTags(tippool.TraceTag)
 
 		seq, err := sequencer.New(testData.wrk, testData.bootstrapChainID, testData.genesisPrivKey,
 			sequencer.WithMaxBranches(maxSlots))
@@ -61,9 +56,9 @@ func Test1Sequencer(t *testing.T) {
 		)
 		testData := initWorkflowTest(t, 1)
 
-		testData.env.EnableTraceTags(proposer_base.TraceTag)
-		testData.env.EnableTraceTags(attacher.TraceTagAttach)
-		testData.env.EnableTraceTags(attacher.TraceTagIncrementalAttacher)
+		//testData.env.EnableTraceTags(proposer_base.TraceTag)
+		//testData.env.EnableTraceTags(attacher.TraceTagAttach)
+		//testData.env.EnableTraceTags(attacher.TraceTagIncrementalAttacher)
 
 		seq, err := sequencer.New(testData.wrk, testData.bootstrapChainID, testData.genesisPrivKey)
 		require.NoError(t, err)

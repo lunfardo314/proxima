@@ -250,7 +250,6 @@ func (seq *Sequencer) doSequencerStep() bool {
 	msTx := seq.factory.StartProposingForTargetLogicalTime(targetTs)
 	if msTx == nil {
 		seq.Tracef(TraceTag, "failed to generate msTx for target %s. Now is %s", targetTs, ledger.TimeNow())
-		//time.Sleep(10 * time.Millisecond)
 		return true
 	}
 
@@ -301,9 +300,10 @@ func (seq *Sequencer) getNextTargetTime() (ledger.Time, ledger.Time) {
 
 	// TODO take into account average speed of proposal generation
 
-	targetAbsoluteMinimum := prevMilestoneTs.AddTicks(seq.config.Pace)
-	//seq.Tracef("tmp", ">>>>>>>>>>>>>>>> targetAbsoluteMinimum: %s", targetAbsoluteMinimum.String())
-
+	targetAbsoluteMinimum := ledger.MaxTime(
+		prevMilestoneTs.AddTicks(seq.config.Pace),
+		nowis.AddTicks(1),
+	)
 	nextSlotBoundary := nowis.NextSlotBoundary()
 
 	if !targetAbsoluteMinimum.Before(nextSlotBoundary) {
