@@ -282,8 +282,6 @@ func TestNSequencersIdle(t *testing.T) {
 
 		t.Logf("%s", testData.wrk.Info(true))
 		testData.saveFullDAG("utangle_full")
-		//testData.wrk.SaveGraph("utangle")
-		//dag.SaveBranchTree(testData.wrk.StateStore(), fmt.Sprintf("utangle_tree_%d", nSequencers+1))
 	})
 }
 
@@ -300,10 +298,8 @@ func Test5SequencersIdle(t *testing.T) {
 	testData.stopAndWait()
 
 	t.Logf("--------\n%s", testData.wrk.Info())
-	//testData.wrk.SaveGraph("utangle")
-	testData.wrk.SaveSequencerGraph(fmt.Sprintf("utangle_seq_tree_%d", nSequencers+1))
 	dag.SaveBranchTree(testData.wrk.StateStore(), fmt.Sprintf("utangle_tree_%d", nSequencers+1))
-
+	testData.saveFullDAG("utangle_full")
 }
 
 func TestNSequencersTransfer(t *testing.T) {
@@ -359,8 +355,7 @@ func TestNSequencersTransfer(t *testing.T) {
 		testData.stopAndWait(3 * time.Second)
 
 		t.Logf("%s", testData.wrk.Info())
-		//testData.wrk.SaveGraph("utangle")
-		dag.SaveBranchTree(testData.wrk.StateStore(), fmt.Sprintf("utangle_tree_%d", nSequencers+1))
+		testData.saveFullDAG("utangle_full_3")
 
 		rdr = testData.wrk.HeaviestStateForLatestTimeSlot()
 		for _, txid := range par.spammedTxIDs {
@@ -443,8 +438,8 @@ func TestNSequencersTransfer(t *testing.T) {
 			t.Logf("    %s: in the heaviest state: %v", txid.StringShort(), rdr.KnowsCommittedTransaction(&txid))
 		}
 
-		//testData.wrk.SaveSequencerGraph(fmt.Sprintf("utangle_seq_tree_%d", nSequencers+1))
-		dag.SaveBranchTree(testData.wrk.StateStore(), fmt.Sprintf("utangle_tree_%d", nSequencers+1))
+		testData.saveFullDAG(fmt.Sprintf("utangle_full_%d_1", nSequencers+1))
+		dag.SaveBranchTree(testData.wrk.StateStore(), fmt.Sprintf("utangle_tree_%d_1", nSequencers+1))
 
 		targetBalance := rdr.BalanceOf(targetAddr.AccountID())
 		require.EqualValues(t, len(par.spammedTxIDs)*sendAmount, int(targetBalance))
