@@ -160,7 +160,6 @@ func (td *workflowTestData) saveFullDAG(fname string) {
 	branchTxIDS := multistate.FetchLatestBranchTransactionIDs(td.wrk.StateStore())
 	tmpDag := dag.MakeDAGFromTxStore(td.txStore, 0, branchTxIDS...)
 	tmpDag.SaveGraph(fname)
-
 }
 
 // makes chain origins transaction from aux output
