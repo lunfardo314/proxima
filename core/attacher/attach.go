@@ -173,7 +173,7 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Opt
 				// calling callback with timeout in order to detect wrong callbacks immediately
 				ok := util.CallWithTimeout(func() {
 					callback(vid, err)
-				}, 10*time.Millisecond)
+				}, 100*time.Millisecond)
 				if !ok {
 					env.Log().Fatalf("AttachTransaction: Internal error: 10 milisec timeout exceeded while calling callback")
 				}

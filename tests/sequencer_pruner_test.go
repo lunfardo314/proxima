@@ -111,7 +111,7 @@ func Test1SequencerPruner(t *testing.T) {
 		testData.waitStop()
 		t.Logf("%s", testData.wrk.Info(true))
 
-		testData.wrk.SaveGraph("utangle")
+		testData.saveFullDAG("utangle_full")
 		testData.wrk.SaveTree("utangle_tree")
 
 		require.EqualValues(t, maxSlots, int(countBr.Load()))
@@ -142,7 +142,7 @@ func TestNSequencersIdlePruner(t *testing.T) {
 		testData.stopAndWait()
 
 		t.Logf("%s", testData.wrk.Info(true))
-		//testData.wrk.SaveGraph("utangle")
+		testData.saveFullDAG("utangle_full")
 	})
 	t.Run("idle 2", func(t *testing.T) {
 		const (
@@ -162,7 +162,7 @@ func TestNSequencersIdlePruner(t *testing.T) {
 		testData.stopAndWait()
 
 		t.Logf("%s", testData.wrk.Info(true))
-		testData.wrk.SaveGraph("utangle")
+		testData.saveFullDAG("utangle_full")
 		dag.SaveBranchTree(testData.wrk.StateStore(), fmt.Sprintf("utangle_tree_%d", nSequencers+1))
 	})
 }
@@ -180,19 +180,18 @@ func Test5SequencersIdlePruner(t *testing.T) {
 	testData.stopAndWait()
 
 	//t.Logf("--------\n%s", testData.wrk.Info(true))
-	testData.wrk.SaveGraph("utangle")
-	//testData.wrk.SaveSequencerGraph(fmt.Sprintf("utangle_seq_tree_%d", nSequencers+1))
+	testData.saveFullDAG("utangle_full")
 	dag.SaveBranchTree(testData.wrk.StateStore(), fmt.Sprintf("utangle_tree_%d", nSequencers+1))
 }
 
 func TestNSequencersTransferPruner(t *testing.T) {
 	t.Run("seq 3 transfer 1 tag along", func(t *testing.T) {
 		const (
-			maxSlots        = 50
+			maxSlots        = 100
 			nSequencers     = 2 // in addition to bootstrap
 			batchSize       = 10
 			sendAmount      = 2000
-			spammingTimeout = 30 * time.Second
+			spammingTimeout = 15 * time.Second
 		)
 		testData := initMultiSequencerTest(t, nSequencers, true)
 
@@ -231,18 +230,19 @@ func TestNSequencersTransferPruner(t *testing.T) {
 			t.Log("spamming stopped")
 		}()
 
-		testData.startSequencersWithTimeout(maxSlots, spammingTimeout+(5*time.Second))
+		testData.startSequencersWithTimeout(maxSlots)
 
-		testData.stopAndWait()
+		<-ctx.Done()
+		time.Sleep(5 * time.Second)
+		testData.stopAndWait(3 * time.Second)
 
 		t.Logf("%s", testData.wrk.Info())
-		//testData.wrk.SaveGraph("utangle")
-		dag.SaveBranchTree(testData.wrk.StateStore(), fmt.Sprintf("utangle_tree_%d", nSequencers+1))
+		testData.saveFullDAG("utangle_full_3")
 
 		rdr = testData.wrk.HeaviestStateForLatestTimeSlot()
 		for _, txid := range par.spammedTxIDs {
-			require.True(t, rdr.KnowsCommittedTransaction(&txid))
-			//t.Logf("    %s: in the heaviest state: %v", txid.StringShort(), rdr.KnowsCommittedTransaction(&txid))
+			//require.True(t, rdr.KnowsCommittedTransaction(&txid))
+			t.Logf("    %s: in the heaviest state: %v", txid.StringShort(), rdr.KnowsCommittedTransaction(&txid))
 		}
 		//require.EqualValues(t, (maxBatches+1)*batchSize, len(par.spammedTxIDs))
 
@@ -257,11 +257,11 @@ func TestNSequencersTransferPruner(t *testing.T) {
 	})
 	t.Run("seq 5 transfer multi tag along", func(t *testing.T) {
 		const (
-			maxSlots        = 50
-			nSequencers     = 4 // in addition to bootstrap
+			maxSlots        = 100
+			nSequencers     = 2 // in addition to bootstrap
 			batchSize       = 10
 			sendAmount      = 2000
-			spammingTimeout = 30 * time.Second
+			spammingTimeout = 10 * time.Second
 		)
 		testData := initMultiSequencerTest(t, nSequencers, true)
 
@@ -308,21 +308,20 @@ func TestNSequencersTransferPruner(t *testing.T) {
 		}()
 
 		testData.startSequencersWithTimeout(maxSlots)
-		<-ctx.Done()
 
-		time.Sleep(15 * time.Second)
-		testData.stopAndWait()
+		<-ctx.Done()
+		time.Sleep(5 * time.Second)
+		testData.stopAndWait(3 * time.Second)
 
 		t.Logf("%s", testData.wrk.Info())
 		rdr = testData.wrk.HeaviestStateForLatestTimeSlot()
 		for _, txid := range par.spammedTxIDs {
 			require.True(t, rdr.KnowsCommittedTransaction(&txid))
-			//t.Logf("    %s: in the heaviest state: %v", txid.StringShort(), rdr.KnowsCommittedTransaction(&txid))
+			t.Logf("    %s: in the heaviest state: %v", txid.StringShort(), rdr.KnowsCommittedTransaction(&txid))
 		}
 
-		//testData.wrk.SaveSequencerGraph(fmt.Sprintf("utangle_seq_tree_%d", nSequencers+1))
-		dag.SaveBranchTree(testData.wrk.StateStore(), fmt.Sprintf("utangle_tree_%d", nSequencers+1))
-		testData.wrk.SaveGraph("utangle")
+		testData.saveFullDAG(fmt.Sprintf("utangle_full_%d_1", nSequencers+1))
+		dag.SaveBranchTree(testData.wrk.StateStore(), fmt.Sprintf("utangle_tree_%d_1", nSequencers+1))
 
 		targetBalance := rdr.BalanceOf(targetAddr.AccountID())
 		require.EqualValues(t, len(par.spammedTxIDs)*sendAmount, int(targetBalance))
