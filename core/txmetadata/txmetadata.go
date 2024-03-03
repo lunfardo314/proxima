@@ -18,10 +18,11 @@ type (
 	TransactionMetadata struct {
 		StateRoot               common.VCommitment // not nil may be for branch transactions
 		LedgerCoverageDelta     *uint64            // not nil may be for sequencer transactions
-		SlotInflation           *uint64            // not nil may be for branch transactions
-		Supply                  *uint64            // not nil may be for branch transactions TODO remove
-		IsResponseToPull        bool
-		SourceTypeNonPersistent SourceType
+		SlotInflation           *uint64            // not nil may be for sequencer transactions
+		Supply                  *uint64            // not nil may be for branch transactions
+		SourceTypeNonPersistent SourceType         // non-persistent, used for internal workflow
+		DoNotNeedGossiping      bool               // non-persistent flag, to prevent redundant gossiping
+		IsResponseToPull        bool               // only used as a persistent flag in tx gossip
 	}
 
 	SourceType byte
@@ -33,7 +34,6 @@ const (
 	SourceTypePeer
 	SourceTypeAPI
 	SourceTypeTxStore
-	SourceTypeForward
 )
 
 var allSourceTypes = map[SourceType]string{
@@ -41,11 +41,9 @@ var allSourceTypes = map[SourceType]string{
 	SourceTypeSequencer: "sequencer",
 	SourceTypeAPI:       "API",
 	SourceTypeTxStore:   "txStore",
-	SourceTypeForward:   "forward",
 }
 
 // persistent flags for (de)serialization
-
 const (
 	flagIsResponseToPull      = 0b00000001
 	flagRootProvided          = 0b00000010

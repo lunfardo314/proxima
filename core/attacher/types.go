@@ -7,6 +7,7 @@ import (
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
+	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/util/set"
 	"github.com/lunfardo314/unitrie/common"
@@ -46,19 +47,21 @@ type (
 		PostEventEnvironment
 		EvidenceEnvironment
 		AsyncPersistTxBytesWithMetadata(txBytes []byte, metadata *txmetadata.TransactionMetadata)
+		GossipAttachedTransaction(tx *transaction.Transaction, metadata *txmetadata.TransactionMetadata)
 		ParseMilestoneData(msVID *vertex.WrappedTx) *ledger.MilestoneData
 	}
 
 	attacher struct {
 		Environment
-		name       string
-		err        error
-		baseline   *vertex.WrappedTx
-		vertices   map[*vertex.WrappedTx]Flags
-		rooted     map[*vertex.WrappedTx]set.Set[byte]
-		referenced set.Set[*vertex.WrappedTx]
-		pokeMe     func(vid *vertex.WrappedTx)
-		coverage   multistate.LedgerCoverage
+		name          string
+		err           error
+		baseline      *vertex.WrappedTx
+		vertices      map[*vertex.WrappedTx]Flags
+		rooted        map[*vertex.WrappedTx]set.Set[byte]
+		referenced    set.Set[*vertex.WrappedTx]
+		pokeMe        func(vid *vertex.WrappedTx)
+		coverage      multistate.LedgerCoverage
+		slotInflation uint64
 		// only supported for branch transactions
 		baselineSupply uint64
 	}

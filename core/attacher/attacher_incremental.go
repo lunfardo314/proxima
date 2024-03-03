@@ -205,6 +205,8 @@ func (a *IncrementalAttacher) InsertTagAlongInput(wOut vertex.WrappedOutput) (bo
 	return true, nil
 }
 
+// MakeSequencerTransaction creates sequencer transaction from the incremental attacher.
+// Increments slotInflation by the amount inflated in the transaction
 func (a *IncrementalAttacher) MakeSequencerTransaction(seqName string, privateKey ed25519.PrivateKey, cmdParser SequencerCommandParser) (*transaction.Transaction, error) {
 	otherInputs := make([]*ledger.OutputWithID, 0, len(a.inputs))
 
@@ -266,6 +268,10 @@ func (a *IncrementalAttacher) MakeSequencerTransaction(seqName string, privateKe
 		a.Log().Fatalf("IncrementalAttacher.MakeSequencerTransaction: %v", err) // should produce correct transaction
 		//return nil, err
 	}
+	a.calculateSlotInflation()
+	// in the incremental attacher we must add inflation on the branch
+	a.slotInflation += tx.InflationAmount()
+
 	//a.Log().Infof("\n>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\n%s\n<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<", a.dumpLines().String())
 	return tx, nil
 }
@@ -276,10 +282,6 @@ func (a *IncrementalAttacher) LedgerCoverage() multistate.LedgerCoverage {
 
 func (a *IncrementalAttacher) LedgerCoverageSum() uint64 {
 	return a.coverage.Sum()
-}
-
-func (a *IncrementalAttacher) SlotInflation() uint64 {
-	return a.calculateSlotInflation()
 }
 
 func (a *IncrementalAttacher) TargetTs() ledger.Time {

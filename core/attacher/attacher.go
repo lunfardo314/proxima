@@ -771,15 +771,19 @@ func (a *attacher) containsUndefinedExcept(except *vertex.WrappedTx) bool {
 	return false
 }
 
-func (a *attacher) calculateSlotInflation() (ret uint64) {
+func (a *attacher) calculateSlotInflation() {
+	a.slotInflation = 0
 	for vid := range a.vertices {
 		if _, isRooted := a.rooted[vid]; !isRooted {
-			ret += vid.InflationAmount()
+			a.slotInflation += vid.InflationAmount()
 		}
 	}
-	return
 }
 
 func (a *attacher) Tracef(traceLabel string, format string, args ...any) {
 	a.Environment.Tracef(traceLabel, a.name+format+" ", args...)
+}
+
+func (a *attacher) SlotInflation() uint64 {
+	return a.slotInflation
 }

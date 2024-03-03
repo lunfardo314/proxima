@@ -1,6 +1,8 @@
 package attacher
 
 import (
+	"fmt"
+
 	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/multistate"
@@ -11,13 +13,15 @@ import (
 func (a *milestoneAttacher) wrapUpAttacher() {
 	a.Tracef(TraceTagAttachMilestone, "wrapUpAttacher")
 
-	a.checkMetadataLedgerCoverage()
+	a.calculateSlotInflation()
+	a.checkConsistencyWithMetadata()
 
 	a.finals.baseline = &a.baseline.ID
 	a.finals.numTransactions = len(a.vertices)
 
 	a.finals.coverage = a.coverage
 	util.Assertf(a.finals.coverage.LatestDelta() > 0, "final coverage must be positive")
+	a.finals.slotInflation = a.slotInflation
 
 	a.Tracef(TraceTagAttachMilestone, "set ledger baselineCoverage in %s to %s", a.vid.IDShortString(), a.finals.coverage.String())
 	a.vid.SetLedgerCoverage(a.finals.coverage)
@@ -27,21 +31,41 @@ func (a *milestoneAttacher) wrapUpAttacher() {
 		a.EvidenceBookedBranch(&a.vid.ID, a.vid.MustSequencerID())
 		a.Tracef(TraceTagAttachMilestone, "finalized branch")
 	} else {
-		a.finals.slotInflation = a.calculateSlotInflation()
 		a.Tracef(TraceTagAttachMilestone, "finalized sequencer milestone")
 	}
 
-	// persist transaction bytes, if needed
+	calculatedMetadata := txmetadata.TransactionMetadata{
+		LedgerCoverageDelta: util.Ref(a.coverage.LatestDelta()),
+		SlotInflation:       util.Ref(a.finals.slotInflation),
+	}
+	if a.metadata != nil {
+		calculatedMetadata.DoNotNeedGossiping = a.metadata.DoNotNeedGossiping
+	}
+	if a.vid.IsBranchTransaction() {
+		calculatedMetadata.StateRoot = a.finals.root
+		calculatedMetadata.Supply = util.Ref(a.baselineSupply + a.slotInflation)
+	}
+
+	fmt.Printf(">>>>>>>>>> calculatedMetadata: %s\n", calculatedMetadata.String())
+
+	a.vid.Unwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
+		// persist transaction bytes, if needed
+		if a.metadata == nil || a.metadata.SourceTypeNonPersistent != txmetadata.SourceTypeTxStore {
+			flags := a.vid.FlagsNoLock()
+			if !flags.FlagsUp(vertex.FlagVertexTxBytesPersisted) {
+				a.AsyncPersistTxBytesWithMetadata(v.Tx.Bytes(), &calculatedMetadata)
+				a.vid.SetFlagsUpNoLock(vertex.FlagVertexTxBytesPersisted)
+			}
+		}
+		// gossip tx if needed
+		a.GossipAttachedTransaction(v.Tx, &calculatedMetadata)
+	}})
+
 	if a.metadata == nil || a.metadata.SourceTypeNonPersistent != txmetadata.SourceTypeTxStore {
 		a.vid.Unwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
 			flags := a.vid.FlagsNoLock()
 			if !flags.FlagsUp(vertex.FlagVertexTxBytesPersisted) {
-				persistentMetadata := txmetadata.TransactionMetadata{
-					StateRoot:           a.finals.root,
-					LedgerCoverageDelta: util.Ref(a.coverage.LatestDelta()),
-					SlotInflation:       util.Ref(a.finals.slotInflation),
-				}
-				a.AsyncPersistTxBytesWithMetadata(v.Tx.Bytes(), &persistentMetadata)
+				a.AsyncPersistTxBytesWithMetadata(v.Tx.Bytes(), &calculatedMetadata)
 				a.vid.SetFlagsUpNoLock(vertex.FlagVertexTxBytesPersisted)
 			}
 		}})
@@ -78,17 +102,16 @@ func (a *milestoneAttacher) commitBranch() {
 
 	seqID, stemOID := a.vid.MustSequencerIDAndStemID()
 	upd := multistate.MustNewUpdatable(a.StateStore(), a.baselineStateReader().Root())
-	a.finals.slotInflation = a.calculateSlotInflation()
 	a.finals.supply = a.baselineSupply + a.finals.slotInflation
 	upd.MustUpdate(muts, &multistate.RootRecordParams{
 		StemOutputID:  stemOID,
 		SeqID:         seqID,
 		Coverage:      *a.vid.GetLedgerCoverage(),
-		SlotInflation: a.finals.slotInflation,
+		SlotInflation: a.slotInflation,
 		Supply:        a.baselineSupply + a.finals.slotInflation,
 	})
 	a.finals.root = upd.Root()
 
 	// check consistency with state root provided with metadata
-	a.checkMetadataStateRoot()
+	a.checkStateRootConsistentWithMetadata()
 }

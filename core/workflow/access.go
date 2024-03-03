@@ -31,7 +31,19 @@ func (w *Workflow) StopPulling(txid *ledger.TransactionID) {
 	w.pullClient.StopPulling(txid)
 }
 
-func (w *Workflow) GossipTransaction(tx *transaction.Transaction, metadata *txmetadata.TransactionMetadata, receivedFromPeer *peer.ID) {
+func (w *Workflow) GossipAttachedTransaction(tx *transaction.Transaction, metadata *txmetadata.TransactionMetadata) {
+	w.GossipTransactionIfNeeded(tx, metadata, nil)
+}
+
+func (w *Workflow) GossipTransactionIfNeeded(tx *transaction.Transaction, metadata *txmetadata.TransactionMetadata, receivedFromPeer *peer.ID) {
+	util.Assertf(metadata != nil, "metadata!=nil")
+	if metadata.DoNotNeedGossiping {
+		return
+	}
+	if metadata.IsResponseToPull {
+		metadata.DoNotNeedGossiping = true
+		return
+	}
 	inp := &gossip.Input{
 		Tx:           tx,
 		ReceivedFrom: receivedFromPeer,
@@ -40,6 +52,7 @@ func (w *Workflow) GossipTransaction(tx *transaction.Transaction, metadata *txme
 		util.Assertf(!metadata.IsResponseToPull, "!metadata.IsResponseToPull")
 		inp.Metadata = *metadata
 	}
+	metadata.DoNotNeedGossiping = true
 	w.gossip.Push(inp)
 }
 

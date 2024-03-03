@@ -114,22 +114,34 @@ func (a *milestoneAttacher) _checkConsistencyBeforeFinalization() (err error) {
 // and the connection with the malicious peer should be immediately severed
 const enforceConsistencyWithTxMetadata = true
 
-func (a *milestoneAttacher) checkMetadataLedgerCoverage() {
-	if a.metadata == nil || a.metadata.LedgerCoverageDelta == nil {
+// checkConsistencyWithMetadata does not check root
+func (a *milestoneAttacher) checkConsistencyWithMetadata() {
+	if a.metadata == nil {
 		return
 	}
-	if *a.metadata.LedgerCoverageDelta != a.coverage.LatestDelta() {
-		err := fmt.Errorf("commitBranch %s: major inconsistency: computed coverage delta (%s) not equal to the coverage delta provided in metadata (%s)",
+	var err error
+	switch {
+	case a.metadata.LedgerCoverageDelta != nil && *a.metadata.LedgerCoverageDelta != a.coverage.LatestDelta():
+		err = fmt.Errorf("commitBranch %s: major inconsistency: computed coverage delta (%s) not equal to the coverage delta provided in the metadata (%s)",
 			a.vid.IDShortString(), util.GoTh(a.coverage.LatestDelta()), util.GoTh(*a.metadata.LedgerCoverageDelta))
-		if enforceConsistencyWithTxMetadata {
-			a.Log().Fatal(err)
-		} else {
-			a.Log().Error(err)
-		}
+	case a.metadata.SlotInflation != nil && *a.metadata.SlotInflation != a.slotInflation:
+		err = fmt.Errorf("commitBranch %s: major inconsistency: computed slot inflation (%s) not equal to the slot inflation provided in the metadata (%s)",
+			a.vid.IDShortString(), util.GoTh(a.slotInflation), util.GoTh(*a.metadata.SlotInflation))
+	case a.metadata.Supply != nil && *a.metadata.Supply != a.baselineSupply+a.slotInflation:
+		err = fmt.Errorf("commitBranch %s: major inconsistency: computed supply (%s) not equal to the supply provided in the metadata (%s)",
+			a.vid.IDShortString(), util.GoTh(a.baselineSupply+a.slotInflation), util.GoTh(*a.metadata.Supply))
+	}
+	if err == nil {
+		return
+	}
+	if enforceConsistencyWithTxMetadata {
+		a.Log().Fatal(err)
+	} else {
+		a.Log().Error(err)
 	}
 }
 
-func (a *milestoneAttacher) checkMetadataStateRoot() {
+func (a *milestoneAttacher) checkStateRootConsistentWithMetadata() {
 	if a.metadata == nil || util.IsNil(a.metadata.StateRoot) {
 		return
 	}

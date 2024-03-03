@@ -33,6 +33,7 @@ func (w *Workflow) TxBytesIn(txBytes []byte, opts ...TxBytesInOption) (*ledger.T
 	// base validation
 	tx, err := transaction.FromBytes(txBytes)
 	if err != nil {
+		// any malformed data chunk will be rejected immediately before all the advanced validations
 		return nil, err
 	}
 	txid := tx.ID()
@@ -46,13 +47,17 @@ func (w *Workflow) TxBytesIn(txBytes []byte, opts ...TxBytesInOption) (*ledger.T
 	util.Assertf(!options.txMetadata.IsResponseToPull || options.txMetadata.SourceTypeNonPersistent == txmetadata.SourceTypePeer,
 		"inData.TxMetadata.IsResponseToPull || inData.TxMetadata.SourceTypeNonPersistent == txmetadata.SourceTypePeer")
 
+	// transaction is here, stop pulling, if pulled before
 	w.StopPulling(tx.ID())
 
 	if !tx.IsSequencerMilestone() {
+		// callback is only possible when tx is sequencer milestone
 		options.callback = func(_ *vertex.WrappedTx, _ error) {}
 	}
 
+	// check time bounds
 	// TODO revisit checking lower time bounds
+
 	enforceTimeBounds := options.txMetadata.SourceTypeNonPersistent == txmetadata.SourceTypeAPI || options.txMetadata.SourceTypeNonPersistent == txmetadata.SourceTypePeer
 	// transaction is rejected if it is too far in the future wrt the local clock
 	nowis := time.Now()
@@ -61,7 +66,7 @@ func (w *Workflow) TxBytesIn(txBytes []byte, opts ...TxBytesInOption) (*ledger.T
 	err = tx.Validate(transaction.CheckTimestampUpperBound(timeUpperBound))
 	if err != nil {
 		if enforceTimeBounds {
-			w.Tracef(TraceTagTxInput, "invalidate %s: time bounds", txid.StringShort)
+			w.Tracef(TraceTagTxInput, "invalidate %s: time bounds validation failed", txid.StringShort)
 			err = fmt.Errorf("upper timestamp bound exceeded (MaxDurationInTheFuture = %v)", w.MaxDurationInTheFuture())
 			attacher.InvalidateTxID(*txid, w, err)
 
@@ -78,11 +83,13 @@ func (w *Workflow) TxBytesIn(txBytes []byte, opts ...TxBytesInOption) (*ledger.T
 		return txid, err
 	}
 
-	if !options.txMetadata.IsResponseToPull {
-		// always gossip pre-validated (parsed) transaction, even if it needs delay.
+	if options.txMetadata.SourceTypeNonPersistent == txmetadata.SourceTypePeer ||
+		options.txMetadata.SourceTypeNonPersistent == txmetadata.SourceTypeAPI {
+		// always gossip pre-validated (parsed) transaction received from peer or from API, even if it needs delay.
 		// Reason: other nodes might have slightly different clocks, let them handle delay themselves
-		w.Tracef(TraceTagTxInput, "send to gossip %s", txid.StringShort)
-		w.GossipTransaction(tx, &options.txMetadata, options.receivedFromPeer)
+		// Sequencer transactions not from outside will be gossiped by attacher
+		w.Tracef(TraceTagTxInput, "send to GossipTransactionIfNeeded %s", txid.StringShort)
+		w.GossipTransactionIfNeeded(tx, &options.txMetadata, options.receivedFromPeer)
 	}
 
 	// passes transaction to attacher
