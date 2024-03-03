@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/core/attacher"
+	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/transaction"
@@ -49,9 +50,10 @@ type (
 
 	latestMilestoneProposal struct {
 		mutex             sync.RWMutex
+		current           *transaction.Transaction
+		txMetadata        *txmetadata.TransactionMetadata
 		targetTs          ledger.Time
 		bestSoFarCoverage multistate.LedgerCoverage
-		current           *transaction.Transaction
 		currentExtended   vertex.WrappedOutput
 	}
 
@@ -169,7 +171,7 @@ func (mf *MilestoneFactory) AddOwnMilestone(vid *vertex.WrappedTx) {
 	mf.ownMilestoneCount++
 }
 
-func (mf *MilestoneFactory) StartProposingForTargetLogicalTime(targetTs ledger.Time) *transaction.Transaction {
+func (mf *MilestoneFactory) StartProposingForTargetLogicalTime(targetTs ledger.Time) (*transaction.Transaction, *txmetadata.TransactionMetadata) {
 	deadline := targetTs.Time()
 	nowis := time.Now()
 	mf.Tracef(TraceTag, "StartProposingForTargetLogicalTime: targetTs: %v, nowis: %v", deadline, nowis)
@@ -177,7 +179,7 @@ func (mf *MilestoneFactory) StartProposingForTargetLogicalTime(targetTs ledger.T
 	if deadline.Before(nowis) {
 		mf.Tracef(TraceTag, "target %s is in the past by %v: impossible to generate milestone",
 			targetTs.String, nowis.Sub(deadline))
-		return nil
+		return nil, nil
 	}
 	// start worker(s)
 	mf.setNewTarget(targetTs)
@@ -187,8 +189,7 @@ func (mf *MilestoneFactory) StartProposingForTargetLogicalTime(targetTs ledger.T
 
 	<-ctx.Done()
 
-	ret := mf.getLatestProposal() // will return nil if wasn't able to generate transaction
-	return ret
+	return mf.getLatestProposal() // will return nil if wasn't able to generate transaction
 }
 
 // setNewTarget signals proposer allMilestoneProposingStrategies about new timestamp,
@@ -203,6 +204,7 @@ func (mf *MilestoneFactory) setNewTarget(ts ledger.Time) {
 	}
 	mf.proposal.targetTs = ts
 	mf.proposal.current = nil
+	mf.proposal.txMetadata = nil
 }
 
 func (mf *MilestoneFactory) CurrentTargetTs() ledger.Time {
@@ -302,17 +304,24 @@ func (mf *MilestoneFactory) Propose(a *attacher.IncrementalAttacher) (forceExit 
 	}
 
 	mf.proposal.current = tx
+	mf.proposal.txMetadata = &txmetadata.TransactionMetadata{
+		StateRoot:               nil,
+		LedgerCoverageDelta:     util.Ref(coverage.LatestDelta()),
+		SlotInflation:           util.Ref(a.SlotInflation()),
+		IsResponseToPull:        false,
+		SourceTypeNonPersistent: txmetadata.SourceTypeSequencer,
+	}
 	mf.proposal.bestSoFarCoverage = coverage
 	mf.proposal.currentExtended = a.Extending()
 	mf.Tracef(TraceTag, "Propose%s: proposal %s ACCEPTED", a.Name(), tx.IDShortString)
 	return
 }
 
-func (mf *MilestoneFactory) getLatestProposal() *transaction.Transaction {
+func (mf *MilestoneFactory) getLatestProposal() (*transaction.Transaction, *txmetadata.TransactionMetadata) {
 	mf.proposal.mutex.RLock()
 	defer mf.proposal.mutex.RUnlock()
 
-	return mf.proposal.current
+	return mf.proposal.current, mf.proposal.txMetadata
 }
 
 const TraceTagChooseExtendEndorsePair = "ChooseExtendEndorsePair"

@@ -76,6 +76,7 @@ func (w *Workflow) SyncData() *SyncData {
 }
 
 func (w *Workflow) AsyncPersistTxBytesWithMetadata(txBytes []byte, metadata *txmetadata.TransactionMetadata) {
+	w.Tracef(persist_txbytes.TraceTag, "AsyncPersistTxBytesWithMetadata: %d bytes, meta: %s", len(txBytes), metadata.String())
 	w.persistTxBytes.Push(persist_txbytes.Input{
 		TxBytes:  txBytes,
 		Metadata: metadata,

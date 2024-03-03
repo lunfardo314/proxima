@@ -278,6 +278,10 @@ func (a *IncrementalAttacher) LedgerCoverageSum() uint64 {
 	return a.coverage.Sum()
 }
 
+func (a *IncrementalAttacher) SlotInflation() uint64 {
+	return a.calculateSlotInflation()
+}
+
 func (a *IncrementalAttacher) TargetTs() ledger.Time {
 	return a.targetTs
 }

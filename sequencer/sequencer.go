@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/core/workflow"
 	"github.com/lunfardo314/proxima/ledger"
@@ -247,16 +248,16 @@ func (seq *Sequencer) doSequencerStep() bool {
 
 	seq.Tracef(TraceTag, "target ts: %s. Now is: %s", targetTs, ledger.TimeNow())
 
-	msTx := seq.factory.StartProposingForTargetLogicalTime(targetTs)
+	msTx, meta := seq.factory.StartProposingForTargetLogicalTime(targetTs)
 	if msTx == nil {
 		seq.Tracef(TraceTag, "failed to generate msTx for target %s. Now is %s", targetTs, ledger.TimeNow())
 		return true
 	}
 
-	seq.Tracef(TraceTag, "produced milestone %s for the target logical time %s in %v",
-		msTx.IDShortString(), targetTs, time.Since(timerStart))
+	seq.Tracef(TraceTag, "produced milestone %s for the target logical time %s in %v. Meta: %s",
+		msTx.IDShortString, targetTs, time.Since(timerStart), meta.String)
 
-	msVID := seq.submitMilestone(msTx)
+	msVID := seq.submitMilestone(msTx, meta)
 	if msVID == nil {
 		return true
 	}
@@ -325,10 +326,10 @@ func (seq *Sequencer) getNextTargetTime() (ledger.Time, ledger.Time) {
 
 const submitTimeout = 5 * time.Second
 
-func (seq *Sequencer) submitMilestone(tx *transaction.Transaction) *vertex.WrappedTx {
-	seq.Tracef(TraceTag, "submit new milestone %s", tx.IDShortString)
+func (seq *Sequencer) submitMilestone(tx *transaction.Transaction, meta *txmetadata.TransactionMetadata) *vertex.WrappedTx {
+	seq.Tracef(TraceTag, "submit new milestone %s, meta: %s", tx.IDShortString, meta.String)
 	deadline := time.Now().Add(submitTimeout)
-	vid, err := seq.SequencerMilestoneAttachWait(tx.Bytes(), submitTimeout)
+	vid, err := seq.SequencerMilestoneAttachWait(tx.Bytes(), meta, submitTimeout)
 	if err != nil {
 		seq.Log().Errorf("failed to submit new milestone %s: '%v'", tx.IDShortString(), err)
 		return nil

@@ -58,4 +58,7 @@ pprof:
 trace_tags:
   - gossip
   - pull_server
+  - txinput
+  - txStore
+  - global
 

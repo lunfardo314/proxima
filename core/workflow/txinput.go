@@ -36,12 +36,12 @@ func (w *Workflow) TxBytesIn(txBytes []byte, opts ...TxBytesInOption) (*ledger.T
 		return nil, err
 	}
 	txid := tx.ID()
-	w.Tracef(TraceTagTxInput, "IN %s", txid.StringShort)
 
 	options := &txBytesInOptions{}
 	for _, opt := range opts {
 		opt(options)
 	}
+	w.Tracef(TraceTagTxInput, "-> %s, meta: %s", txid.StringShort, options.txMetadata.String())
 	// bytes are identifiable as transaction
 	util.Assertf(!options.txMetadata.IsResponseToPull || options.txMetadata.SourceTypeNonPersistent == txmetadata.SourceTypePeer,
 		"inData.TxMetadata.IsResponseToPull || inData.TxMetadata.SourceTypeNonPersistent == txmetadata.SourceTypePeer")
@@ -79,8 +79,8 @@ func (w *Workflow) TxBytesIn(txBytes []byte, opts ...TxBytesInOption) (*ledger.T
 	}
 
 	if !options.txMetadata.IsResponseToPull {
-		// gossip always, even if it needs delay.
-		// Reason: other nodes might have slightly different clock, let them handle delay themselves
+		// always gossip pre-validated (parsed) transaction, even if it needs delay.
+		// Reason: other nodes might have slightly different clocks, let them handle delay themselves
 		w.Tracef(TraceTagTxInput, "send to gossip %s", txid.StringShort)
 		w.GossipTransaction(tx, &options.txMetadata, options.receivedFromPeer)
 	}
@@ -130,7 +130,7 @@ func (w *Workflow) TxBytesIn(txBytes []byte, opts ...TxBytesInOption) (*ledger.T
 	return txid, nil
 }
 
-func (w *Workflow) SequencerMilestoneAttachWait(txBytes []byte, timeout time.Duration) (*vertex.WrappedTx, error) {
+func (w *Workflow) SequencerMilestoneAttachWait(txBytes []byte, meta *txmetadata.TransactionMetadata, timeout time.Duration) (*vertex.WrappedTx, error) {
 	type result struct {
 		vid *vertex.WrappedTx
 		err error
@@ -157,9 +157,7 @@ func (w *Workflow) SequencerMilestoneAttachWait(txBytes []byte, timeout time.Dur
 		}
 
 		_, errParse := w.TxBytesIn(txBytes,
-			WithMetadata(&txmetadata.TransactionMetadata{
-				SourceTypeNonPersistent: txmetadata.SourceTypeSequencer,
-			}),
+			WithMetadata(meta),
 			WithCallback(func(vid *vertex.WrappedTx, err error) {
 				writeResult(result{vid: vid, err: err})
 			}))

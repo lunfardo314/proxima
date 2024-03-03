@@ -19,7 +19,7 @@ type (
 		StateRoot               common.VCommitment // not nil may be for branch transactions
 		LedgerCoverageDelta     *uint64            // not nil may be for sequencer transactions
 		SlotInflation           *uint64            // not nil may be for branch transactions
-		Supply                  *uint64            // not nil may be for branch transactions
+		Supply                  *uint64            // not nil may be for branch transactions TODO remove
 		IsResponseToPull        bool
 		SourceTypeNonPersistent SourceType
 	}
@@ -201,5 +201,9 @@ func (m *TransactionMetadata) String() string {
 	if !util.IsNil(m.StateRoot) {
 		rootStr = m.StateRoot.String()
 	}
-	return fmt.Sprintf("coverage delta: %s, root: %s", lcStr, rootStr)
+	inflationStr := "<nil>"
+	if m.SlotInflation != nil {
+		inflationStr = util.GoTh(*m.SlotInflation)
+	}
+	return fmt.Sprintf("coverage delta: %s, slot inflation: %s, root: %s, from: %s", lcStr, inflationStr, rootStr, m.SourceTypeNonPersistent.String())
 }
