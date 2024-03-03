@@ -351,11 +351,11 @@ func (a *attacher) validateSequencerTx(v *vertex.Vertex, vid *vertex.WrappedTx) 
 	}
 	// inputs solid
 	glbFlags := vid.FlagsNoLock()
-	util.Assertf(!glbFlags.FlagsUp(vertex.FlagVertexConstraintsValid), "!glbFlags.FlagsUp(vertex.FlagConstraintsValid)")
+	util.Assertf(!glbFlags.FlagsUp(vertex.FlagVertexConstraintsValid), "%s: !glbFlags.FlagsUp(vertex.FlagConstraintsValid) in %s", a.name, vid.IDShortString)
 
 	if err := v.ValidateConstraints(); err != nil {
 		a.setError(err)
-		a.Tracef(TraceTagAttachVertex, "constraint validation failed in %s: '%v'", vid.IDShortString(), err)
+		a.Tracef(TraceTagAttachVertex, "constraint validation failed in %s: '%v'", vid.IDShortString, err)
 		return false, false
 	}
 	vid.SetFlagsUpNoLock(vertex.FlagVertexConstraintsValid)

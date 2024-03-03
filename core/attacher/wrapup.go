@@ -1,8 +1,6 @@
 package attacher
 
 import (
-	"fmt"
-
 	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/multistate"
@@ -45,8 +43,7 @@ func (a *milestoneAttacher) wrapUpAttacher() {
 		calculatedMetadata.StateRoot = a.finals.root
 		calculatedMetadata.Supply = util.Ref(a.baselineSupply + a.slotInflation)
 	}
-
-	fmt.Printf(">>>>>>>>>> calculatedMetadata: %s\n", calculatedMetadata.String())
+	a.Tracef(TraceTagAttachMilestone, "%s: calculated metadata: %s", a.name, calculatedMetadata.String)
 
 	a.vid.Unwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
 		// persist transaction bytes, if needed
@@ -60,16 +57,6 @@ func (a *milestoneAttacher) wrapUpAttacher() {
 		// gossip tx if needed
 		a.GossipAttachedTransaction(v.Tx, &calculatedMetadata)
 	}})
-
-	if a.metadata == nil || a.metadata.SourceTypeNonPersistent != txmetadata.SourceTypeTxStore {
-		a.vid.Unwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
-			flags := a.vid.FlagsNoLock()
-			if !flags.FlagsUp(vertex.FlagVertexTxBytesPersisted) {
-				a.AsyncPersistTxBytesWithMetadata(v.Tx.Bytes(), &calculatedMetadata)
-				a.vid.SetFlagsUpNoLock(vertex.FlagVertexTxBytesPersisted)
-			}
-		}})
-	}
 }
 
 func (a *milestoneAttacher) commitBranch() {

@@ -115,3 +115,7 @@ func (w *Workflow) GetLatestMilestone(seqID ledger.ChainID) *vertex.WrappedTx {
 func (w *Workflow) NumSequencerTips() int {
 	return w.tippool.NumSequencerTips()
 }
+
+func (w *Workflow) PeerName(id peer.ID) string {
+	return w.peers.PeerName(id)
+}

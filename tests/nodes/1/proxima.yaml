@@ -34,7 +34,6 @@ api:
 sequencers:
   seq1:
     enable: false
-    loglevel: info
     # chain ID of the sequencer
     sequencer_id:
     # chain controller's private key (hex-encoded)
@@ -55,3 +54,11 @@ logger:
 pprof:
   enable: false
   port: 8080
+
+trace_tags:
+  - gossip
+#  - pull_server
+#  - txinput
+#  - txStore
+  - global
+

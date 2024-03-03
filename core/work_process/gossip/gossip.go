@@ -11,6 +11,7 @@ import (
 type (
 	Environment interface {
 		global.NodeGlobal
+		PeerName(id peer.ID) string
 		GossipTxBytesToPeers(txBytes []byte, metadata *txmetadata.TransactionMetadata, except ...peer.ID) int
 	}
 
@@ -53,8 +54,8 @@ func (d *Gossip) Consume(inp *Input) {
 			inp.Tx.IDShortString, inp.Metadata.String())
 		d.GossipTxBytesToPeers(inp.Tx.Bytes(), &inp.Metadata)
 	} else {
-		d.Tracef(TraceTag, "send %s to peers except %s, meta: %s",
-			inp.ReceivedFrom.String, inp.Metadata.String())
+		d.Tracef(TraceTag, "send %s to peers except %s(%s), meta: %s",
+			inp.Tx.IDShortString, inp.ReceivedFrom, d.PeerName(*inp.ReceivedFrom), inp.Metadata.String())
 		d.GossipTxBytesToPeers(inp.Tx.Bytes(), &inp.Metadata, *inp.ReceivedFrom)
 	}
 }

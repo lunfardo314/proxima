@@ -39,6 +39,7 @@ const (
 var allSourceTypes = map[SourceType]string{
 	SourceTypeUndef:     "undef",
 	SourceTypeSequencer: "sequencer",
+	SourceTypePeer:      "peer",
 	SourceTypeAPI:       "API",
 	SourceTypeTxStore:   "txStore",
 }
@@ -203,5 +204,5 @@ func (m *TransactionMetadata) String() string {
 	if m.SlotInflation != nil {
 		inflationStr = util.GoTh(*m.SlotInflation)
 	}
-	return fmt.Sprintf("coverage delta: %s, slot inflation: %s, root: %s, from: %s", lcStr, inflationStr, rootStr, m.SourceTypeNonPersistent.String())
+	return fmt.Sprintf("coverage delta: %s, slot inflation: %s, root: %s, source type: '%s'", lcStr, inflationStr, rootStr, m.SourceTypeNonPersistent.String())
 }

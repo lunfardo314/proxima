@@ -48,7 +48,7 @@ sequencers:
 # logger config
 logger:
   level: info
-  output: testlog.log
+  output: testlog_3.log
 
 # Other parameters used for tracing and debugging
 # pprof config
@@ -56,29 +56,9 @@ pprof:
   enable: false
   port: 8080
 
-# workflow_old debug config
-workflow:
-  addtx:
-    loglevel: info
-  events:
-    loglevel: info
-  input:
-    loglevel: info
-  reject:
-    loglevel: info
-  prevalid:
-    loglevel: info
-  solidify:
-    loglevel: info
-  validate:
-    loglevel: info
-
-debug:
-  trace_workflow:
-    pull: false
-    tx: false
-
-  # specify milestone proposer strategies to trace
-  trace_proposers:
-    base: false
-    btrack2: false
+trace_tags:
+#  - gossip
+#  - pull_server
+#  - txinput
+#  - txStore
+#  - global
