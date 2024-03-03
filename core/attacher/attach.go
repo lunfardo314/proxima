@@ -103,16 +103,21 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Opt
 	if tx.IsBranchTransaction() {
 		env.EvidenceIncomingBranch(tx.ID(), tx.SequencerTransactionData().SequencerID)
 	}
-	vid = AttachTxID(*tx.ID(), env, OptionDoNotLoadBranch, OptionInvokedBy("addTx"))
-	if vid.IsBadOrDeleted() {
-		// if txid was invalidated once, it will always return the same transaction until deleted
-		return vid
-	}
 
+	vid = AttachTxID(*tx.ID(), env, OptionDoNotLoadBranch, OptionInvokedBy("addTx"))
+	// will be ignored if defined (good or bad)
 	vid.Unwrap(vertex.UnwrapOptions{
-		// full vertex will be ignored
-		// virtual tx will be converted into full vertex and milestoneAttacher started, if necessary
+		Vertex: func(_ *vertex.Vertex) {
+			if vid.GetTxStatusNoLock() != vertex.Undefined {
+				return
+			}
+		},
+		// full vertex or defined virtual tx will be ignored
+		// non-defined virtual tx will be converted into full vertex and milestoneAttacher started, if necessary
 		VirtualTx: func(v *vertex.VirtualTransaction) {
+			if vid.GetTxStatusNoLock() != vertex.Undefined {
+				return
+			}
 			fullVertex := vertex.New(tx)
 			vid.ConvertVirtualTxToVertexNoLock(fullVertex)
 			env.Tracef(TraceTagAttach, "converted to vertex %s", txidStr)
