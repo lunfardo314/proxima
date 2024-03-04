@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/lunfardo314/proxima/api/server"
+	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/multistate"
@@ -53,6 +54,6 @@ func (p *ProximaNode) SubmitTxBytesFromAPI(txBytes []byte) error {
 	return err
 }
 
-func (p *ProximaNode) QueryTxIDStatus(txid *ledger.TransactionID) (mode string, status string, err error) {
+func (p *ProximaNode) QueryTxIDStatus(txid *ledger.TransactionID) vertex.TxIDStatus {
 	return p.workflow.QueryTxIDStatus(txid)
 }

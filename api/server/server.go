@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/api"
+	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/multistate"
@@ -23,7 +24,7 @@ type (
 		GetNodeInfo() *global.NodeInfo
 		HeaviestStateForLatestTimeSlot() multistate.SugaredStateReader
 		SubmitTxBytesFromAPI(txBytes []byte) error
-		QueryTxIDStatus(txid *ledger.TransactionID) (mode string, status string, err error)
+		QueryTxIDStatus(txid *ledger.TransactionID) vertex.TxIDStatus
 	}
 
 	Server struct {
@@ -303,10 +304,20 @@ func (srv *Server) queryTxIDStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	res := srv.QueryTxIDStatus(&txid)
 	resp := api.QueryTxIDStatus{
-		TxID: lst[0],
+		ID:        lst[0],
+		OnDAG:     res.OnDAG,
+		InStorage: res.InStorage,
+		VirtualTx: res.VirtualTx,
+		Deleted:   res.Deleted,
+		Status:    res.Status.String(),
+		Flags:     byte(res.Flags),
+		Err:       res.Err,
 	}
-	resp.Mode, resp.Status, resp.Err = srv.QueryTxIDStatus(&txid)
+	if res.Coverage != nil {
+		resp.Coverage = res.Coverage[:]
+	}
 
 	respBin, err := json.MarshalIndent(resp, "", "  ")
 	if err != nil {

@@ -66,10 +66,15 @@ type InclusionData struct {
 
 type QueryTxIDStatus struct {
 	Error
-	TxID   string `json:"txid"`
-	Mode   string `json:"mode"`
-	Status string `json:"status"`
-	Err    error  `json:"err,omitempty"`
+	ID        string   `json:"txid"`
+	OnDAG     bool     `json:"on_dag"`
+	InStorage bool     `json:"in_storage"`
+	VirtualTx bool     `json:"virtual_tx"`
+	Deleted   bool     `json:"deleted"`
+	Status    string   `json:"status"`
+	Flags     byte     `json:"flags"`
+	Coverage  []uint64 `json:"coverage,omitempty"`
+	Err       error    `json:"err,omitempty"`
 }
 
 type (

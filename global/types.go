@@ -71,5 +71,3 @@ type (
 		StartStop
 	}
 )
-
-const Name = "attach"

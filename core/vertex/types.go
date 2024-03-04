@@ -7,6 +7,7 @@ import (
 
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/transaction"
+	"github.com/lunfardo314/proxima/util/lines"
 	"github.com/lunfardo314/proxima/util/set"
 )
 
@@ -88,6 +89,18 @@ type (
 
 	Status byte
 	Flags  uint8
+
+	TxIDStatus struct {
+		ID        ledger.TransactionID
+		OnDAG     bool
+		InStorage bool
+		VirtualTx bool
+		Deleted   bool
+		Status    Status
+		Flags     Flags
+		Coverage  *ledger.Coverage
+		Err       error
+	}
 )
 
 const (
@@ -115,10 +128,49 @@ func (s Status) String() string {
 	panic("wrong vertex status")
 }
 
+func StatusFromString(s string) Status {
+	switch s {
+	case "GOOD", "good":
+		return Good
+	case "BAD", "bad":
+		return Bad
+	default:
+		return Undefined
+	}
+}
+
 func (f *Flags) FlagsUp(fl Flags) bool {
 	return *f&fl == fl
 }
 
 func (f *Flags) SetFlagsUp(fl Flags) {
 	*f = *f | fl
+}
+
+func (s *TxIDStatus) Lines(prefix ...string) *lines.Lines {
+	ret := lines.New(prefix...)
+	if !s.OnDAG {
+		ret.Add("NOT FOUND")
+		return ret
+	}
+	if s.Status != Bad {
+		ret.Add(s.Status.String())
+	} else {
+		ret.Add("BAD(%v)", s.Err)
+	}
+	ret.Add("flags: %8b", s.Flags)
+	if s.VirtualTx {
+		ret.Add("virtualTx: true")
+	}
+	if s.Deleted {
+		ret.Add("deleted: true")
+	}
+
+	ret.Add("in storage: %v", s.InStorage)
+	if s.Coverage != nil {
+		ret.Add("coverage: %s", s.Coverage.String())
+	} else {
+		ret.Add("coverage: n/a")
+	}
+	return ret
 }

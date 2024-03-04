@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/api"
+	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/transaction"
@@ -320,22 +321,37 @@ func (c *APIClient) GetAccountOutputs(account ledger.Accountable, filter ...func
 //	return ret, nil
 //}
 
-func (c *APIClient) QueryTxIDStatus(txid ledger.TransactionID) (mode, status string, err error) {
+func (c *APIClient) QueryTxIDStatus(txid ledger.TransactionID) (*vertex.TxIDStatus, error) {
 	path := fmt.Sprintf(api.PathQueryTxIDStatus+"?txid=%s", txid.StringHex())
 	body, err := c.getBody(path)
 	if err != nil {
-		return "", "", err
+		return nil, err
 	}
 
 	var res api.QueryTxIDStatus
 	err = json.Unmarshal(body, &res)
 	if err != nil {
-		return "", "", err
+		return nil, err
 	}
 	if res.Error.Error != "" {
-		return "", "", fmt.Errorf("from server: %s", res.Error.Error)
+		return nil, fmt.Errorf("from server: %s", res.Error.Error)
 	}
-	return res.Mode, res.Status, res.Err
+	ret := &vertex.TxIDStatus{
+		OnDAG:     res.OnDAG,
+		InStorage: res.InStorage,
+		VirtualTx: res.VirtualTx,
+		Deleted:   res.Deleted,
+		Status:    vertex.StatusFromString(res.Status),
+		Flags:     vertex.Flags(res.Flags),
+		Coverage:  nil,
+		Err:       res.Err,
+	}
+	ret.ID, err = ledger.TransactionIDFromHexString(res.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	return ret, nil
 }
 
 func (c *APIClient) GetNodeInfo() (*global.NodeInfo, error) {

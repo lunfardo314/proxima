@@ -119,3 +119,9 @@ func (w *Workflow) NumSequencerTips() int {
 func (w *Workflow) PeerName(id peer.ID) string {
 	return w.peers.PeerName(id)
 }
+
+func (w *Workflow) QueryTxIDStatus(txid *ledger.TransactionID) (ret vertex.TxIDStatus) {
+	ret = w.DAG.QueryTxIDStatus(txid)
+	ret.InStorage = len(w.TxBytesStore().GetTxBytesWithMetadata(txid)) > 0
+	return
+}

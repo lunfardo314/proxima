@@ -1,6 +1,9 @@
 package node_cmd
 
 import (
+	"time"
+
+	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/proxi/node_cmd/seq_cmd"
@@ -100,4 +103,21 @@ func GetTagAlongSequencerID() *ledger.ChainID {
 
 func NoWait() bool {
 	return viper.GetBool("nowait")
+}
+
+func ReportTxStatusUntilDefined(txid ledger.TransactionID, every ...time.Duration) {
+	period := time.Second
+	if len(every) > 0 {
+		period = every[0]
+	}
+	glb.Infof("Transaction %s:", txid.String())
+	for {
+		status, err := glb.GetClient().QueryTxIDStatus(txid)
+		util.Assertf(err == nil, "error occurred while querying transaction status: '%v'", err)
+		glb.Infof("%s", status.Lines("    ").Join(","))
+		if status.Status != vertex.Undefined {
+			return
+		}
+		time.Sleep(period)
+	}
 }

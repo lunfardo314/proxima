@@ -570,6 +570,10 @@ func (vid *WrappedTx) NotConsumedOutputIndices(allConsumers set.Set[*WrappedTx])
 	return ret
 }
 
+func (vid *WrappedTx) GetLedgerCoverageNoLock() *ledger.Coverage {
+	return vid.coverage
+}
+
 func (vid *WrappedTx) GetLedgerCoverage() *ledger.Coverage {
 	vid.mutex.RLock()
 	defer vid.mutex.RUnlock()

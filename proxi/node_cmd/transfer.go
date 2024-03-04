@@ -84,7 +84,7 @@ func runTransferCmd(_ *cobra.Command, args []string) {
 	if NoWait() {
 		return
 	}
-	//glb.AssertNoError(waitForInclusion(txCtx.OutputID(0)))
+	ReportTxStatusUntilDefined(*txCtx.TransactionID())
 }
 
 // TODO take into account vertex status
