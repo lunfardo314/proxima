@@ -1,9 +1,7 @@
 package attacher
 
 import (
-	"errors"
 	"fmt"
-	"runtime/debug"
 	"time"
 
 	"github.com/lunfardo314/proxima/core/txmetadata"
@@ -152,52 +150,26 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Opt
 				callback = func(_ *vertex.WrappedTx, _ error) {}
 			}
 
-			runFun := func() {
+			go func() {
 				env.MarkWorkProcessStarted(txidStr)
-				defer env.MarkWorkProcessStopped(txidStr)
+				runMilestoneAttacher(vid, options.metadata, callback, env)
+				env.MarkWorkProcessStopped(txidStr)
+			}()
 
-				status, stats, err := runMilestoneAttacher(vid, options.metadata, env)
-				if status == vertex.Bad {
-					if err != nil {
-						vid.SetTxStatusBad(err)
-						env.Log().Errorf("-- ATTACH %s -> BAD(%v)\n>>>>>>>>>>>>> failed tx <<<<<<<<<<<<<\n%s\n<<<<<<<<<<<<<<<<<<<<<<<<<<",
-							txidStr, err, vid.LinesTx("      ").String())
-					} else {
-						env.Log().Warnf("attacher %s has been ended abnormally", txidStr)
-					}
-				} else {
-					msData := env.ParseMilestoneData(vid)
-					if msData == nil {
-						env.ParseMilestoneData(vid)
-					}
-					env.Log().Info(logFinalStatusString(vid, stats, msData))
-				}
-
-				env.PokeAllWith(vid)
-
-				// calling callback with timeout in order to detect wrong callbacks immediately
-				ok := util.CallWithTimeout(func() {
-					callback(vid, err)
-				}, 100*time.Millisecond)
-				if !ok {
-					env.Log().Fatalf("AttachTransaction: Internal error: 10 milisec timeout exceeded while calling callback")
-				}
-			}
-
-			// if debuggerFriendly == true, the panic is not caught, so it is more convenient in the debugger
-			const debuggerFriendly = true
-			if debuggerFriendly {
-				go runFun()
-			} else {
-				util.RunWrappedRoutine(vid.IDShortString(), runFun, func(err error) bool {
-					if errors.Is(err, vertex.ErrDeletedVertexAccessed) {
-						env.Log().Warnf("AttachTransaction: %v", err)
-						return false
-					}
-					env.Log().Fatalf("AttachTransaction: %s: '%v'\n%s", txidStr, err, string(debug.Stack()))
-					return false
-				})
-			}
+			//// if debuggerFriendly == true, the panic is not caught, so it is more convenient in the debugger
+			//const debuggerFriendly = true
+			//if debuggerFriendly {
+			//	go runFun()
+			//} else {
+			//	util.RunWrappedRoutine(vid.IDShortString(), runFun, func(err error) bool {
+			//		if errors.Is(err, vertex.ErrDeletedVertexAccessed) {
+			//			env.Log().Warnf("AttachTransaction: %v", err)
+			//			return false
+			//		}
+			//		env.Log().Fatalf("AttachTransaction: %s: '%v'\n%s", txidStr, err, string(debug.Stack()))
+			//		return false
+			//	})
+			//}
 		},
 	})
 	return

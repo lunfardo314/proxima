@@ -71,7 +71,7 @@ func (l *Global) MarkWorkProcessStarted(name string) {
 	l.mutex.Lock()
 	defer l.mutex.Unlock()
 
-	util.Assertf(!l.components.Contains(name), "global: repeating component %s", name)
+	util.Assertf(!l.components.Contains(name), "global: repeating work-process %s", name)
 	l.components.Insert(name)
 }
 

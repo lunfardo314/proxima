@@ -1,12 +1,12 @@
 # proxi profile 
 wallet:
-    # key 2
-    private_key: 3a2ed3c4f738a06e9543f80e032fd870be5e524585e0144f2499d1a28bc4797902e2a7a85bd158469adae3294a615e17ef49e72642c4eb58ff00d92301b9bb88
-    account: addressED25519(0x62c733803a83a26d4db1ce9f22206281f64af69401da6eb26390d34e6a88c5fa)
+    # key 4
+    private_key: a8088c55a9827ddcd2207b373d7c01c4efb21a1ffdfd87fe973cccdbb897125a8601428a67a956d625889c264adae2b9e3e74b1f2bf3e3957eb7b1f78c6314aa
+    account: addressED25519(0xaad6a0102e6f51834bf26b6d8367cc424cf78713f59dd3bc6d54eab23ccdee52)
     # own sequencer (controlled by the private key). Defaults to bootstrap sequencer ID
     sequencer:
 api:
-    endpoint: http://127.0.0.1:8002
+    endpoint: http://127.0.0.1:8004
 tag-along:
     sequencer_id:
     fee: 500
@@ -22,4 +22,4 @@ spammer:
         fee: 500
         sequencer:
     # target key 0
-    target: addressED25519(0x3faf090d38f18ea211936b8bcf19b7b30cdcb8e224394a5c30f9ba644f8bb2fb)
+    target: 

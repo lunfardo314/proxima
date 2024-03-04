@@ -165,7 +165,9 @@ func (a *attacher) solidifyStemOfTheVertex(v *vertex.Vertex) (ok bool) {
 		v.BaselineBranch = stemVid
 		return true
 	case vertex.Bad:
-		a.setError(stemVid.GetError())
+		err := stemVid.GetError()
+		util.AssertMustError(err)
+		a.setError(err)
 		return false
 	case vertex.Undefined:
 		a.pokeMe(stemVid)
@@ -205,7 +207,9 @@ func (a *attacher) solidifySequencerBaseline(v *vertex.Vertex) (ok bool) {
 		a.pokeMe(inputTx)
 		return true
 	case vertex.Bad:
-		a.setError(inputTx.GetError())
+		err := inputTx.GetError()
+		util.AssertMustError(err)
+		a.setError(err)
 		return false
 	default:
 		panic("wrong vertex state")

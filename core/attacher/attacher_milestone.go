@@ -11,54 +11,40 @@ import (
 )
 
 const (
-	periodicCheckEach = 1 * time.Second
+	TraceTagAttachMilestone = "milestone"
+	periodicCheckEach       = 1 * time.Second
 )
 
-const TraceTagAttachMilestone = "milestone"
-
-func runMilestoneAttacher(vid *vertex.WrappedTx, metadata *txmetadata.TransactionMetadata, env Environment) (vertex.Status, *attachFinals, error) {
+func runMilestoneAttacher(vid *vertex.WrappedTx, metadata *txmetadata.TransactionMetadata, callback func(vid *vertex.WrappedTx, err error), env Environment) {
 	a := newMilestoneAttacher(vid, env, metadata)
 	defer func() {
 		go a.close()
 	}()
 
-	a.Tracef(TraceTagAttachMilestone, ">>>>>>>>>>>>> START")
-	defer a.Tracef(TraceTagAttachMilestone, "<<<<<<<<<<<<< EXIT")
-
-	// first solidify baseline state
-	status := a.solidifyBaseline()
-	if status == vertex.Bad {
-		a.Tracef(TraceTagAttachMilestone, "baseline solidification failed. Reason: %v", a.vid.GetError)
-		return vertex.Bad, nil, a.err
+	finals, err := a.run()
+	if err != nil {
+		vid.SetTxStatusBad(err)
+		env.Log().Errorf("-- ATTACH %s -> BAD(%v)", vid.ID.StringShort(), err)
+		//env.Log().Errorf("-- ATTACH %s -> BAD(%v)\n>>>>>>>>>>>>> failed tx <<<<<<<<<<<<<\n%s\n<<<<<<<<<<<<<<<<<<<<<<<<<<",
+		//	vid.ID.StringShort(), err, vid.LinesTx("      ").String())
+	} else {
+		util.Assertf(finals != nil, "finals != nil")
+		msData := env.ParseMilestoneData(vid)
+		if msData == nil {
+			env.ParseMilestoneData(vid)
+		}
+		env.Log().Info(logFinalStatusString(vid, finals, msData))
 	}
 
-	util.Assertf(a.baseline != nil, "a.baseline != nil")
+	env.PokeAllWith(vid)
 
-	// then continue with the rest
-	a.Tracef(TraceTagAttachMilestone, "baseline is OK <- %s", a.baseline.IDShortString)
-
-	status = a.solidifyPastCone()
-	if status != vertex.Good {
-		a.Tracef(TraceTagAttachMilestone, "past cone solidification failed. Reason: %v", a.err)
-		return vertex.Bad, nil, a.err
+	// calling callback with timeout in order to detect wrong callbacks immediately
+	ok := util.CallWithTimeout(func() {
+		callback(vid, err)
+	}, 100*time.Millisecond)
+	if !ok {
+		env.Log().Fatalf("AttachTransaction: Internal error: 10 milisec timeout exceeded while calling callback")
 	}
-	a.Tracef(TraceTagAttachMilestone, "past cone OK")
-
-	util.AssertNoError(a.checkConsistencyBeforeWrapUp())
-
-	// finalizing touches
-	a.wrapUpAttacher()
-
-	if a.vid.IsBranchTransaction() {
-		// branch transaction vertex is immediately converted to the virtual transaction.
-		// Thus branch transaction does not reference past cone
-		a.vid.ConvertVertexToVirtualTx()
-	}
-
-	a.vid.SetTxStatusGood()
-	a.PostEventNewGood(vid)
-	a.SendToTippool(vid)
-	return vertex.Good, a.finals, nil
 }
 
 func newMilestoneAttacher(vid *vertex.WrappedTx, env Environment, metadata *txmetadata.TransactionMetadata) *milestoneAttacher {
@@ -89,6 +75,45 @@ func newMilestoneAttacher(vid *vertex.WrappedTx, env Environment, metadata *txme
 	return ret
 }
 
+func (a *milestoneAttacher) run() (*attachFinals, error) {
+	// first solidify baseline state
+	status := a.solidifyBaseline()
+	if status != vertex.Good {
+		a.Tracef(TraceTagAttachMilestone, "baseline solidification failed. Reason: %v", a.err)
+		util.AssertMustError(a.err)
+		return nil, a.err
+	}
+
+	util.Assertf(a.baseline != nil, "a.baseline != nil")
+	// then continue with the rest
+	a.Tracef(TraceTagAttachMilestone, "baseline is OK <- %s", a.baseline.IDShortString)
+
+	status = a.solidifyPastCone()
+	if status != vertex.Good {
+		a.Tracef(TraceTagAttachMilestone, "past cone solidification failed. Reason: %v", a.err)
+		util.AssertMustError(a.err)
+		return nil, a.err
+	}
+	a.Tracef(TraceTagAttachMilestone, "past cone OK")
+	util.AssertNoError(a.err)
+	util.AssertNoError(a.checkConsistencyBeforeWrapUp())
+
+	// finalizing touches
+	a.wrapUpAttacher()
+
+	if a.vid.IsBranchTransaction() {
+		// branch transaction vertex is immediately converted to the virtual transaction.
+		// Thus branch transaction does not reference past cone
+		a.vid.ConvertVertexToVirtualTx()
+	}
+
+	a.vid.SetTxStatusGood()
+	a.PostEventNewGood(a.vid)
+	a.SendToTippool(a.vid)
+
+	return a.finals, nil
+}
+
 func (a *milestoneAttacher) lazyRepeat(fun func() vertex.Status) vertex.Status {
 	for {
 		if status := fun(); status != vertex.Undefined {
@@ -96,6 +121,7 @@ func (a *milestoneAttacher) lazyRepeat(fun func() vertex.Status) vertex.Status {
 		}
 		select {
 		case <-a.Ctx().Done():
+			a.setError(fmt.Errorf("attacher has been interruped"))
 			return vertex.Bad
 		case withVID := <-a.pokeChan:
 			if withVID != nil {
@@ -158,13 +184,18 @@ func (a *milestoneAttacher) solidifyBaseline() vertex.Status {
 	return a.lazyRepeat(func() vertex.Status {
 		var ok bool
 		success := false
-		a.vid.Unwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
-			ok = a.solidifyBaselineVertex(v)
-			if ok && v.BaselineBranch != nil {
-				success = a.setBaseline(v.BaselineBranch, a.vid.Timestamp())
-				util.Assertf(success, "solidifyBaseline %s: failed to set baseline", a.name)
-			}
-		}})
+		a.vid.Unwrap(vertex.UnwrapOptions{
+			Vertex: func(v *vertex.Vertex) {
+				ok = a.solidifyBaselineVertex(v)
+				if ok && v.BaselineBranch != nil {
+					success = a.setBaseline(v.BaselineBranch, a.vid.Timestamp())
+					util.Assertf(success, "solidifyBaseline %s: failed to set baseline", a.name)
+				}
+			},
+			VirtualTx: func(_ *vertex.VirtualTransaction) {
+				a.Log().Fatalf("solidifyBaseline: unexpected virtual tx %s", a.vid.IDShortString())
+			},
+		})
 		switch {
 		case !ok:
 			return vertex.Bad

@@ -255,7 +255,7 @@ func TestNSequencersTransferPruner(t *testing.T) {
 		//balanceOnChain := rdr.BalanceOnChain(&testData.bootstrapChainID)
 		//require.EqualValues(t, int(initialBalanceOnChain)+len(par.spammedTxIDs)*tagAlongFee, int(balanceOnChain))
 	})
-	t.Run("seq 5 transfer multi tag along", func(t *testing.T) {
+	t.Run("seq 3 transfer multi tag along", func(t *testing.T) {
 		const (
 			maxSlots        = 100
 			nSequencers     = 2 // in addition to bootstrap
