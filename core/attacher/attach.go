@@ -95,42 +95,48 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Opt
 	for _, opt := range opts {
 		opt(options)
 	}
-	txidStr := tx.IDShortString()
-	env.Tracef(TraceTagAttach, "AttachTransaction: %s", txidStr)
+	env.Tracef(TraceTagAttach, "AttachTransaction: %s", tx.IDShortString)
 
 	if tx.IsBranchTransaction() {
 		env.EvidenceIncomingBranch(tx.ID(), tx.SequencerTransactionData().SequencerID)
 	}
 
 	vid = AttachTxID(*tx.ID(), env, OptionDoNotLoadBranch, OptionInvokedBy("addTx"))
-	// will be ignored if defined (good or bad)
 	vid.Unwrap(vertex.UnwrapOptions{
-		Vertex: func(_ *vertex.Vertex) {
-			if vid.GetTxStatusNoLock() != vertex.Undefined {
-				return
-			}
-		},
-		// full vertex or defined virtual tx will be ignored
-		// non-defined virtual tx will be converted into full vertex and milestoneAttacher started, if necessary
+		// full vertex or defined virtual tx once solidified by the attacher will be ignored
 		VirtualTx: func(v *vertex.VirtualTransaction) {
-			if vid.GetTxStatusNoLock() != vertex.Undefined {
+			// non-defined virtual tx will be converted into full vertex and milestoneAttacher started, if necessary
+			if vid.FlagsUpNoLock(vertex.FlagVertexAttacherInvoked) {
 				return
 			}
-			fullVertex := vertex.New(tx)
-			vid.ConvertVirtualTxToVertexNoLock(fullVertex)
-			env.Tracef(TraceTagAttach, "converted to vertex %s", txidStr)
-
 			if options.metadata != nil && options.metadata.SourceTypeNonPersistent == txmetadata.SourceTypeTxStore {
-				// prevent from persisting twice
+				// prevent persisting transaction bytes twice
 				vid.SetFlagsUpNoLock(vertex.FlagVertexTxBytesPersisted)
 			}
 
-			env.Tracef(TraceTagAttach, "post new tx event %s", txidStr)
-			env.PostEventNewTransaction(vid)
+			// virtual tx is converted into full vertex with the full transaction
+			env.Tracef(TraceTagAttach, "convert %s to full vertex. Post event new tx", tx.IDShortString)
 
-			if !vid.IsSequencerMilestone() {
-				// pull non-attached for non-sequencer transactions, which are on the same slot
-				// We limit pull to one slot back in order not to fall into the endless pull cycle
+			vid.ConvertVirtualTxToVertexNoLock(vertex.New(tx))
+
+			if vid.IsSequencerMilestone() {
+				// for sequencer milestones start attacher
+				callback := options.attachmentCallback
+				if callback == nil {
+					callback = func(_ *vertex.WrappedTx, _ error) {}
+				}
+				metadata := options.metadata
+
+				// mark the sequencer vertex in order to prevent repetitive attacher invocation
+				vid.SetFlagsUpNoLock(vertex.FlagVertexAttacherInvoked)
+				go func() {
+					env.MarkWorkProcessStarted(vid.IDShortString())
+					runMilestoneAttacher(vid, metadata, callback, env)
+					env.MarkWorkProcessStopped(vid.IDShortString())
+				}()
+			} else {
+				// pull predecessors of non-sequencer transactions which are on the same slot.
+				// We limit pull to the same slot so that not to fall into the endless pull cycle
 				tx.PredecessorTransactionIDs().ForEach(func(txid ledger.TransactionID) bool {
 					if txid.Slot() == vid.Slot() {
 						AttachTxID(txid, env).Unwrap(vertex.UnwrapOptions{VirtualTx: func(vInput *vertex.VirtualTransaction) {
@@ -141,35 +147,11 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Opt
 					}
 					return true
 				})
+				// notify others who are waiting for the vid
 				env.PokeAllWith(vid)
-				return
 			}
 
-			callback := options.attachmentCallback
-			if callback == nil {
-				callback = func(_ *vertex.WrappedTx, _ error) {}
-			}
-
-			go func() {
-				env.MarkWorkProcessStarted(txidStr)
-				runMilestoneAttacher(vid, options.metadata, callback, env)
-				env.MarkWorkProcessStopped(txidStr)
-			}()
-
-			//// if debuggerFriendly == true, the panic is not caught, so it is more convenient in the debugger
-			//const debuggerFriendly = true
-			//if debuggerFriendly {
-			//	go runFun()
-			//} else {
-			//	util.RunWrappedRoutine(vid.IDShortString(), runFun, func(err error) bool {
-			//		if errors.Is(err, vertex.ErrDeletedVertexAccessed) {
-			//			env.Log().Warnf("AttachTransaction: %v", err)
-			//			return false
-			//		}
-			//		env.Log().Fatalf("AttachTransaction: %s: '%v'\n%s", txidStr, err, string(debug.Stack()))
-			//		return false
-			//	})
-			//}
+			env.PostEventNewTransaction(vid)
 		},
 	})
 	return
