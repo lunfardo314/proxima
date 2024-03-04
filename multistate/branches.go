@@ -40,7 +40,7 @@ func FetchLatestSlot(store global.StateStore) ledger.Slot {
 }
 
 func (r *RootRecord) Bytes() []byte {
-	util.Assertf(r.LedgerCoverage.LatestDelta() > 0, "r.LedgerCoverage.LatestDelta() > 0")
+	util.Assertf(r.LedgerCoverage.LatestDelta() > 0, "r.Coverage.LatestDelta() > 0")
 	arr := lazybytes.EmptyArray(5)
 	arr.Push(r.SequencerID.Bytes())
 	arr.Push(r.Root.Bytes())
@@ -75,10 +75,10 @@ func RootRecordFromBytes(data []byte) (RootRecord, error) {
 	if err != nil {
 		return RootRecord{}, err
 	}
-	if len(arr.At(2)) != 8*HistoryCoverageDeltas {
+	if len(arr.At(2)) != 8*ledger.HistoryCoverageDeltas {
 		return RootRecord{}, fmt.Errorf("RootRecordFromBytes: wrong data length")
 	}
-	coverage, err := LedgerCoverageFromBytes(arr.At(2))
+	coverage, err := ledger.LedgerCoverageFromBytes(arr.At(2))
 	if err != nil {
 		return RootRecord{}, err
 	}

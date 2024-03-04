@@ -115,7 +115,7 @@ func MustDistributeInitialSupplyExt(stateStore global.StateStore, originPrivateK
 	updatableOrigin.MustUpdate(muts, &multistate.RootRecordParams{
 		StemOutputID:  nextStem.ID,
 		SeqID:         bootstrapChainID,
-		Coverage:      multistate.LedgerCoverage{stateID.InitialSupply, stateID.InitialSupply},
+		Coverage:      ledger.Coverage{stateID.InitialSupply, stateID.InitialSupply},
 		SlotInflation: 0,
 		Supply:        stateID.InitialSupply,
 	})

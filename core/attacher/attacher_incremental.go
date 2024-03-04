@@ -9,7 +9,6 @@ import (
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/ledger/txbuilder"
-	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/util"
 	"golang.org/x/exp/maps"
 )
@@ -276,7 +275,7 @@ func (a *IncrementalAttacher) MakeSequencerTransaction(seqName string, privateKe
 	return tx, nil
 }
 
-func (a *IncrementalAttacher) LedgerCoverage() multistate.LedgerCoverage {
+func (a *IncrementalAttacher) LedgerCoverage() ledger.Coverage {
 	return a.coverage
 }
 

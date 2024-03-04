@@ -53,7 +53,7 @@ type (
 		current           *transaction.Transaction
 		txMetadata        *txmetadata.TransactionMetadata
 		targetTs          ledger.Time
-		bestSoFarCoverage multistate.LedgerCoverage
+		bestSoFarCoverage ledger.Coverage
 		currentExtended   vertex.WrappedOutput
 	}
 
@@ -200,7 +200,7 @@ func (mf *MilestoneFactory) setNewTarget(ts ledger.Time) {
 
 	if mf.proposal.targetTs.IsSlotBoundary() || mf.proposal.targetTs.Slot() != ts.Slot() {
 		// if starting new slot, reset best coverage delta
-		mf.proposal.bestSoFarCoverage = multistate.LedgerCoverage{}
+		mf.proposal.bestSoFarCoverage = ledger.Coverage{}
 	}
 	mf.proposal.targetTs = ts
 	mf.proposal.current = nil

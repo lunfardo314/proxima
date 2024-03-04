@@ -56,3 +56,8 @@ func TestInitOrigin(t *testing.T) {
 
 	require.EqualValues(t, id.Bytes(), rdr.MustLedgerIdentityBytes())
 }
+
+func TestBoostrapSequencerID(t *testing.T) {
+	t.Logf("bootstrap sequencer ID: %s", ledger.BoostrapSequencerID.String())
+	t.Logf("bootstrap sequencer ID hex: %s", ledger.BoostrapSequencerIDHex)
+}

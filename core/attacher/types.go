@@ -8,7 +8,6 @@ import (
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/transaction"
-	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/util/set"
 	"github.com/lunfardo314/unitrie/common"
 )
@@ -60,7 +59,7 @@ type (
 		rooted        map[*vertex.WrappedTx]set.Set[byte]
 		referenced    set.Set[*vertex.WrappedTx]
 		pokeMe        func(vid *vertex.WrappedTx)
-		coverage      multistate.LedgerCoverage
+		coverage      ledger.Coverage
 		slotInflation uint64
 		// only supported for branch transactions
 		baselineSupply uint64
@@ -102,7 +101,7 @@ type (
 	attachFinals struct {
 		numInputs         int
 		numOutputs        int
-		coverage          multistate.LedgerCoverage
+		coverage          ledger.Coverage
 		slotInflation     uint64
 		supply            uint64
 		root              common.VCommitment

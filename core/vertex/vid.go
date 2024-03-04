@@ -7,7 +7,6 @@ import (
 	"runtime/debug"
 
 	"github.com/lunfardo314/proxima/ledger"
-	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
 	"github.com/lunfardo314/proxima/util/set"
@@ -571,14 +570,14 @@ func (vid *WrappedTx) NotConsumedOutputIndices(allConsumers set.Set[*WrappedTx])
 	return ret
 }
 
-func (vid *WrappedTx) GetLedgerCoverage() *multistate.LedgerCoverage {
+func (vid *WrappedTx) GetLedgerCoverage() *ledger.Coverage {
 	vid.mutex.RLock()
 	defer vid.mutex.RUnlock()
 
 	return vid.coverage
 }
 
-func (vid *WrappedTx) SetLedgerCoverage(coverage multistate.LedgerCoverage) {
+func (vid *WrappedTx) SetLedgerCoverage(coverage ledger.Coverage) {
 	vid.mutex.Lock()
 	defer vid.mutex.Unlock()
 

@@ -2,13 +2,12 @@ package vertex
 
 import (
 	"github.com/lunfardo314/proxima/ledger"
-	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/unitrie/common"
 )
 
 // AlignedCoverages shifts one of coverages, if necessary, so that to make them comparable
-func AlignedCoverages(vid1, vid2 *WrappedTx) (multistate.LedgerCoverage, multistate.LedgerCoverage) {
+func AlignedCoverages(vid1, vid2 *WrappedTx) (ledger.Coverage, ledger.Coverage) {
 	lc1 := vid1.GetLedgerCoverage()
 	common.Assert(lc1 != nil, "coverage not set in %s", vid1.IDShortString)
 	lc2 := vid2.GetLedgerCoverage()
@@ -57,7 +56,7 @@ func IsPreferredMilestoneAgainstTheOther(vid1, vid2 *WrappedTx, preferYounger bo
 	return !preferYounger
 }
 
-func (vid *WrappedTx) IsBetterProposal(cov *multistate.LedgerCoverage, ts ledger.Time) bool {
+func (vid *WrappedTx) IsBetterProposal(cov *ledger.Coverage, ts ledger.Time) bool {
 	vidDummy := &WrappedTx{
 		ID:       ledger.NewTransactionID(ts, vid.ID.ShortID(), vid.IsSequencerMilestone()),
 		coverage: cov,

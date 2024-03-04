@@ -28,8 +28,6 @@ type (
 		trie  *immutable.TrieReader
 	}
 
-	LedgerCoverage [HistoryCoverageDeltas]uint64
-
 	RootRecord struct {
 		Root        common.VCommitment
 		SequencerID ledger.ChainID
@@ -37,7 +35,7 @@ type (
 		// Each node calculates them itself, and they must be equal on each
 		// LedgerCoverage: a vector of coverage deltas. Index 0 is delta of the latest slot. It does not include
 		// coverage of the branch itself
-		LedgerCoverage LedgerCoverage
+		LedgerCoverage ledger.Coverage
 		// SlotInflation: total inflation delta from previous root. It is a sum of individual transaction inflation values
 		// of the previous slot/past cone. It includes the branch tx inflation itself and does not include inflation of the previous branch
 		SlotInflation uint64
@@ -54,13 +52,6 @@ type (
 )
 
 // partitions of the state store on the trie
-
-const HistoryCoverageDeltas = 2
-
-func init() {
-	util.Assertf(1 < HistoryCoverageDeltas && HistoryCoverageDeltas*8 <= 256, "HistoryCoverageDeltas*8 <= 256")
-}
-
 const (
 	PartitionLedgerState = byte(iota)
 	PartitionAccounts
@@ -361,7 +352,7 @@ func (u *Updatable) Root() common.VCommitment {
 type RootRecordParams struct {
 	StemOutputID  ledger.OutputID
 	SeqID         ledger.ChainID
-	Coverage      LedgerCoverage
+	Coverage      ledger.Coverage
 	SlotInflation uint64
 	Supply        uint64
 }

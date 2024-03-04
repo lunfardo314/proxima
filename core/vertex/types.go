@@ -7,7 +7,6 @@ import (
 
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/transaction"
-	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/util/set"
 )
 
@@ -35,7 +34,7 @@ type (
 		mutex    sync.RWMutex // protects _genericVertex
 		flags    Flags
 		err      error
-		coverage *multistate.LedgerCoverage // nil for non-sequencer or if not set yet
+		coverage *ledger.Coverage // nil for non-sequencer or if not set yet
 		// keeping track of references for orphaning/GC
 		references uint32
 		// dontPruneUntil interpreted depending on value of references

@@ -1,4 +1,4 @@
-package multistate
+package ledger
 
 import (
 	"encoding/binary"
@@ -9,24 +9,32 @@ import (
 	"github.com/lunfardo314/proxima/util"
 )
 
-func (lc *LedgerCoverage) Shift(shift int) LedgerCoverage {
-	ret := LedgerCoverage{}
+const HistoryCoverageDeltas = 2
+
+func init() {
+	util.Assertf(1 < HistoryCoverageDeltas && HistoryCoverageDeltas*8 <= 256, "HistoryCoverageDeltas*8 <= 256")
+}
+
+type Coverage [HistoryCoverageDeltas]uint64
+
+func (lc *Coverage) Shift(shift int) Coverage {
+	ret := Coverage{}
 	if shift < HistoryCoverageDeltas {
 		copy(ret[shift:], lc[:])
 	}
 	return ret
 }
 
-func (lc *LedgerCoverage) AddDelta(a uint64) {
-	util.Assertf(lc[0] <= math.MaxUint64-a, "LedgerCoverage.AddDelta: overflow")
+func (lc *Coverage) AddDelta(a uint64) {
+	util.Assertf(lc[0] <= math.MaxUint64-a, "Coverage.AddDelta: overflow")
 	lc[0] += a
 }
 
-func (lc *LedgerCoverage) LatestDelta() uint64 {
+func (lc *Coverage) LatestDelta() uint64 {
 	return lc[0]
 }
 
-func (lc *LedgerCoverage) Sum() (ret uint64) {
+func (lc *Coverage) Sum() (ret uint64) {
 	if lc == nil {
 		return 0
 	}
@@ -36,7 +44,7 @@ func (lc *LedgerCoverage) Sum() (ret uint64) {
 	return
 }
 
-func (lc *LedgerCoverage) Bytes() []byte {
+func (lc *Coverage) Bytes() []byte {
 	util.Assertf(len(lc) == HistoryCoverageDeltas, "len(lc) == HistoryCoverageDeltas")
 	ret := make([]byte, len(lc)*8)
 	for i, d := range lc {
@@ -46,7 +54,7 @@ func (lc *LedgerCoverage) Bytes() []byte {
 }
 
 //
-//func (lc *LedgerCoverage) BytesOfBranchCoverage() []byte {
+//func (lc *Coverage) BytesOfBranchCoverage() []byte {
 //	util.Assertf(len(lc) == HistoryCoverageDeltas, "len(lc) == HistoryCoverageDeltas")
 //	ret := make([]byte, (HistoryCoverageDeltas-1)*8)
 //	for i := range lc {
@@ -58,7 +66,7 @@ func (lc *LedgerCoverage) Bytes() []byte {
 //	return ret
 //}
 
-func (lc *LedgerCoverage) String() string {
+func (lc *Coverage) String() string {
 	if lc == nil {
 		return "0"
 	}
@@ -69,7 +77,7 @@ func (lc *LedgerCoverage) String() string {
 	return fmt.Sprintf("sum(%s)->%s", strings.Join(all, ", "), util.GoTh(lc.Sum()))
 }
 
-func (lc *LedgerCoverage) StringShort() string {
+func (lc *Coverage) StringShort() string {
 	if lc == nil {
 		return "0"
 	}
@@ -80,7 +88,7 @@ func (lc *LedgerCoverage) StringShort() string {
 	return fmt.Sprintf("(%s)", strings.Join(all, ", "))
 }
 
-func LedgerCoverageFromBytes(data []byte) (ret LedgerCoverage, err error) {
+func LedgerCoverageFromBytes(data []byte) (ret Coverage, err error) {
 	if len(data) != HistoryCoverageDeltas*8 {
 		err = fmt.Errorf("LedgerCoverageFromBytes: wrong data size")
 		return
