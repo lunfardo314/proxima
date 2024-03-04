@@ -103,20 +103,21 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Opt
 
 	vid = AttachTxID(*tx.ID(), env, OptionDoNotLoadBranch, OptionInvokedBy("addTx"))
 	vid.Unwrap(vertex.UnwrapOptions{
-		// full vertex or defined virtual tx once solidified by the attacher will be ignored
+		// full vertex or with attachment process already invoked will be ignored
 		VirtualTx: func(v *vertex.VirtualTransaction) {
-			// non-defined virtual tx will be converted into full vertex and milestoneAttacher started, if necessary
-			if vid.FlagsUpNoLock(vertex.FlagVertexAttacherInvoked) {
+			if vid.FlagsUpNoLock(vertex.FlagVertexTxAttachmentInvoked) {
 				return
 			}
+			// mark the vertex in order to prevent repetitive attachment
+			vid.SetFlagsUpNoLock(vertex.FlagVertexTxAttachmentInvoked)
+
 			if options.metadata != nil && options.metadata.SourceTypeNonPersistent == txmetadata.SourceTypeTxStore {
 				// prevent persisting transaction bytes twice
 				vid.SetFlagsUpNoLock(vertex.FlagVertexTxBytesPersisted)
 			}
 
 			// virtual tx is converted into full vertex with the full transaction
-			env.Tracef(TraceTagAttach, "convert %s to full vertex. Post event new tx", tx.IDShortString)
-
+			env.Tracef(TraceTagAttach, ">>>>>>>>>>>>>>>>>>>>>>> ConvertVirtualTxToVertexNoLock: %s", tx.IDShortString())
 			vid.ConvertVirtualTxToVertexNoLock(vertex.New(tx))
 
 			if vid.IsSequencerMilestone() {
@@ -127,8 +128,6 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Opt
 				}
 				metadata := options.metadata
 
-				// mark the sequencer vertex in order to prevent repetitive attacher invocation
-				vid.SetFlagsUpNoLock(vertex.FlagVertexAttacherInvoked)
 				go func() {
 					env.MarkWorkProcessStarted(vid.IDShortString())
 					runMilestoneAttacher(vid, metadata, callback, env)

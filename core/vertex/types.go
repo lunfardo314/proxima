@@ -92,10 +92,10 @@ type (
 )
 
 const (
-	FlagVertexDefined          = Flags(0b00000001)
-	FlagVertexConstraintsValid = Flags(0b00000010)
-	FlagVertexTxBytesPersisted = Flags(0b00000100)
-	FlagVertexAttacherInvoked  = Flags(0b00001000)
+	FlagVertexDefined             = Flags(0b00000001)
+	FlagVertexConstraintsValid    = Flags(0b00000010)
+	FlagVertexTxBytesPersisted    = Flags(0b00000100)
+	FlagVertexTxAttachmentInvoked = Flags(0b00001000)
 )
 
 const (

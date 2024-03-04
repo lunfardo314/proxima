@@ -107,13 +107,7 @@ func (w *Workflow) TxBytesIn(txBytes []byte, opts ...TxBytesInOption) (*ledger.T
 
 	if txTime.Before(nowis) {
 		// timestamp is in the past -> attach immediately
-		w.Tracef(TraceTagTxInput, "-> attach tx %s", txid.StringShort)
-		vid := attacher.AttachTransaction(tx, w, attachOpts...)
-		if vid.IsBadOrDeleted() {
-			// rare event. If tx is deleted, this was unlucky try.
-			// Transaction will be erased from the dag and pulled again
-			w.Tracef(TraceTagTxInput, "-> failed to attach tx %s: it is bad or deleted. Drop", txid.StringShort)
-		}
+		w._attach(tx, attachOpts...)
 		return txid, nil
 	}
 
@@ -126,15 +120,19 @@ func (w *Workflow) TxBytesIn(txBytes []byte, opts ...TxBytesInOption) (*ledger.T
 		time.Sleep(delayFor)
 		w.Tracef(TraceTagTxInput, "%s -> release", txid.StringShort)
 		w.Tracef(TraceTagDelay, "%s -> release", txid.StringShort)
-		w.Tracef(TraceTagTxInput, "-> attach tx %s", txid.StringShort)
-		vid := attacher.AttachTransaction(tx, w, attachOpts...)
-		if vid.IsBadOrDeleted() {
-			// rare event. If tx is deleted, this was unlucky try.
-			// Transaction will be erased from the dag and pulled again
-			w.Tracef(TraceTagTxInput, "-> failed to attach tx %s: it is bad or deleted. Drop", txid.StringShort)
-		}
+
+		w._attach(tx, attachOpts...)
 	}()
 	return txid, nil
+}
+
+func (w *Workflow) _attach(tx *transaction.Transaction, opts ...attacher.Option) {
+	w.Tracef(TraceTagTxInput, "-> attach tx %s", tx.IDShortString)
+	if vid := attacher.AttachTransaction(tx, w, opts...); vid.IsBadOrDeleted() {
+		// rare event. If tx is already purged, this was an unlucky try.
+		// Transaction will be erased from the dag and pulled again, if necessary
+		w.Tracef(TraceTagTxInput, "-> failed to attach tx %s: it is bad or deleted. Drop", vid.IDShortString)
+	}
 }
 
 func (w *Workflow) SequencerMilestoneAttachWait(txBytes []byte, meta *txmetadata.TransactionMetadata, timeout time.Duration) (*vertex.WrappedTx, error) {

@@ -48,6 +48,8 @@ func runMilestoneAttacher(vid *vertex.WrappedTx, metadata *txmetadata.Transactio
 }
 
 func newMilestoneAttacher(vid *vertex.WrappedTx, env Environment, metadata *txmetadata.TransactionMetadata) *milestoneAttacher {
+	util.Assertf(vid.IsSequencerMilestone(), "newMilestoneAttacher: %s not a sequencer milestone", vid.IDShortString)
+
 	ret := &milestoneAttacher{
 		attacher: newPastConeAttacher(env, vid.IDShortString()),
 		vid:      vid,
@@ -104,6 +106,8 @@ func (a *milestoneAttacher) run() (*attachFinals, error) {
 	if a.vid.IsBranchTransaction() {
 		// branch transaction vertex is immediately converted to the virtual transaction.
 		// Thus branch transaction does not reference past cone
+		a.Tracef(TraceTagAttachMilestone, ">>>>>>>>>>>>>>> ConvertVertexToVirtualTx: %s", a.vid.IDShortString())
+
 		a.vid.ConvertVertexToVirtualTx()
 	}
 
@@ -116,6 +120,7 @@ func (a *milestoneAttacher) run() (*attachFinals, error) {
 
 func (a *milestoneAttacher) lazyRepeat(fun func() vertex.Status) vertex.Status {
 	for {
+		// repeat until becomes defined
 		if status := fun(); status != vertex.Undefined {
 			return status
 		}
@@ -182,7 +187,7 @@ func (a *milestoneAttacher) close() {
 
 func (a *milestoneAttacher) solidifyBaseline() vertex.Status {
 	return a.lazyRepeat(func() vertex.Status {
-		var ok bool
+		ok := false
 		success := false
 		a.vid.Unwrap(vertex.UnwrapOptions{
 			Vertex: func(v *vertex.Vertex) {
