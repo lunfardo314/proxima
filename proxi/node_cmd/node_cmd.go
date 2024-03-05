@@ -117,7 +117,7 @@ func ReportTxStatus(txid ledger.TransactionID, poll time.Duration, stopFun ...fu
 
 	glb.Infof("Transaction %s (hex=%s):", txid.String(), txid.StringHex())
 	for {
-		vertexStatus, inclusionData, err := glb.GetClient().QueryTxIDStatus(txid)
+		vertexStatus, inclusionData, err := glb.GetClient().QueryTxIDStatus(&txid)
 		glb.AssertNoError(err)
 		glb.Infof(vertexStatus.Lines().Join(", "))
 		if len(inclusionData) > 0 {

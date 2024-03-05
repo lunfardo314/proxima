@@ -24,13 +24,14 @@ type (
 		global.Logging
 		GetNodeInfo() *global.NodeInfo
 		HeaviestStateForLatestTimeSlot() multistate.SugaredStateReader
-		SubmitTxBytesFromAPI(txBytes []byte) error
+		SubmitTxBytesFromAPI(txBytes []byte) (*ledger.TransactionID, error)
 		QueryTxIDStatusJSONAble(txid *ledger.TransactionID) vertex.TxIDStatusJSONAble
 		TxInclusionJSONAble(txid *ledger.TransactionID) map[string]tippool.TxInclusionJSONAble
 	}
 
 	Server struct {
 		Environment
+		lastSubmittedTxID ledger.TransactionID
 	}
 
 	TxStatus struct {
@@ -40,7 +41,7 @@ type (
 )
 
 func New(env Environment) *Server {
-	return &Server{env}
+	return &Server{Environment: env}
 }
 
 func (srv *Server) registerHandlers() {
@@ -205,10 +206,12 @@ func (srv *Server) submitTx(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	if err = srv.SubmitTxBytesFromAPI(slices.Clip(txBytes)); err != nil {
+	txid, err := srv.SubmitTxBytesFromAPI(slices.Clip(txBytes))
+	if err != nil {
 		writeErr(w, fmt.Sprintf("submit_tx: %v", err))
 		return
 	}
+	srv.lastSubmittedTxID = *txid
 	writeOk(w)
 }
 
@@ -248,22 +251,25 @@ func (srv *Server) getNodeInfo(w http.ResponseWriter, r *http.Request) {
 }
 
 func (srv *Server) queryTxStatus(w http.ResponseWriter, r *http.Request) {
+	var txid ledger.TransactionID
+	var err error
+
 	lst, ok := r.URL.Query()["txid"]
 	if !ok || len(lst) != 1 {
-		writeErr(w, "wrong parameter in request 'get_txid_status'")
-		return
-	}
-	txid, err := ledger.TransactionIDFromHexString(lst[0])
-	if err != nil {
-		writeErr(w, err.Error())
-		return
+		txid = srv.lastSubmittedTxID
+	} else {
+		txid, err = ledger.TransactionIDFromHexString(lst[0])
+		if err != nil {
+			writeErr(w, err.Error())
+			return
+		}
 	}
 
 	// query tx ID status
 	resp := api.QueryTxStatus{
 		TxIDStatus: srv.QueryTxIDStatusJSONAble(&txid),
 	}
-	if resp.TxIDStatus.OnDAG && vertex.StatusFromString(resp.TxIDStatus.Status) == vertex.Good {
+	if resp.TxIDStatus.OnDAG && vertex.StatusFromString(resp.TxIDStatus.Status) != vertex.Bad {
 		resp.Inclusion = srv.TxInclusionJSONAble(&txid)
 	}
 	respBin, err := json.MarshalIndent(resp, "", "  ")

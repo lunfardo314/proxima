@@ -50,9 +50,8 @@ func (p *ProximaNode) HeaviestStateForLatestTimeSlot() multistate.SugaredStateRe
 	return p.workflow.HeaviestStateForLatestTimeSlot()
 }
 
-func (p *ProximaNode) SubmitTxBytesFromAPI(txBytes []byte) error {
-	_, err := p.workflow.TxBytesIn(txBytes)
-	return err
+func (p *ProximaNode) SubmitTxBytesFromAPI(txBytes []byte) (*ledger.TransactionID, error) {
+	return p.workflow.TxBytesIn(txBytes)
 }
 
 func (p *ProximaNode) QueryTxIDStatusJSONAble(txid *ledger.TransactionID) vertex.TxIDStatusJSONAble {

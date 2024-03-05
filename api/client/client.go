@@ -293,8 +293,13 @@ func (c *APIClient) GetAccountOutputs(account ledger.Accountable, filter ...func
 //	return ret, nil
 //}
 
-func (c *APIClient) QueryTxIDStatus(txid ledger.TransactionID) (*vertex.TxIDStatus, map[ledger.ChainID]tippool.TxInclusion, error) {
-	path := fmt.Sprintf(api.PathQueryTxStatus+"?txid=%s", txid.StringHex())
+func (c *APIClient) QueryTxIDStatus(txid *ledger.TransactionID) (*vertex.TxIDStatus, map[ledger.ChainID]tippool.TxInclusion, error) {
+	var path string
+	if txid != nil {
+		path = fmt.Sprintf(api.PathQueryTxStatus+"?txid=%s", txid.StringHex())
+	} else {
+		path = api.PathQueryTxStatus
+	}
 	body, err := c.getBody(path)
 	if err != nil {
 		return nil, nil, err
