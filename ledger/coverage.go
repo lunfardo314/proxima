@@ -88,13 +88,22 @@ func (lc *Coverage) StringShort() string {
 	return fmt.Sprintf("(%s)", strings.Join(all, ", "))
 }
 
-func LedgerCoverageFromBytes(data []byte) (ret Coverage, err error) {
+func CoverageFromBytes(data []byte) (ret Coverage, err error) {
 	if len(data) != HistoryCoverageDeltas*8 {
-		err = fmt.Errorf("LedgerCoverageFromBytes: wrong data size")
+		err = fmt.Errorf("CoverageFromBytes: wrong data size")
 		return
 	}
 	for i := 0; i < HistoryCoverageDeltas; i++ {
 		ret[i] = binary.BigEndian.Uint64(data[i*8 : (i+1)*8])
 	}
+	return
+}
+
+func CoverageFromArray(arr []uint64) (ret Coverage, err error) {
+	if len(arr) != HistoryCoverageDeltas {
+		err = fmt.Errorf("CoverageFromArray: wrong number of array elements")
+		return
+	}
+	copy(ret[:], arr)
 	return
 }

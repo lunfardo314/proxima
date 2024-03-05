@@ -44,6 +44,14 @@ type (
 		Supply uint64
 	}
 
+	RootRecordJSONAble struct {
+		Root           string   `json:"root"`
+		SequencerID    string   `json:"sequencer_id"`
+		LedgerCoverage []uint64 `json:"ledger_coverage"`
+		SlotInflation  uint64   `json:"slot_inflation"`
+		Supply         uint64   `json:"supply"`
+	}
+
 	BranchData struct {
 		RootRecord
 		Stem            *ledger.OutputWithID

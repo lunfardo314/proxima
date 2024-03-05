@@ -6,7 +6,6 @@ import (
 	"fmt"
 
 	"github.com/lunfardo314/proxima/ledger"
-	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lazybytes"
 	"github.com/lunfardo314/unitrie/common"
@@ -172,7 +171,7 @@ func MakeSequencerWithdrawCommand(amount uint64, targetLock ledger.Lock) (ledger
 	cmdData := common.Concat(CommandCodeWithdrawAmount, cmdParArr)
 	constrSource := fmt.Sprintf("concat(0x%s)", hex.EncodeToString(cmdData))
 	cmdConstr, err := ledger.NewGeneralScriptFromSource(constrSource)
-	glb.AssertNoError(err)
+	util.AssertNoError(err)
 
 	return cmdConstr, nil
 }

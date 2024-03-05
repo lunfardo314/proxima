@@ -162,7 +162,7 @@ func (p *ProximaNode) initPeering() {
 }
 
 func (p *ProximaNode) startWorkProcesses() {
-	p.workflow = workflow.New(p, p.peers, workflow.WithGlobalConfigOptions)
+	p.workflow = workflow.New(p, p.peers)
 	p.workflow.Start()
 }
 

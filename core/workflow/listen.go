@@ -42,6 +42,7 @@ func (w *Workflow) ListenToSequencers(fun func(vid *vertex.WrappedTx)) {
 
 const fetchLastNTimeSlotsUponStartup = 5
 
+// PullSequencerTips implements interface
 func (w *Workflow) PullSequencerTips(seqID ledger.ChainID) (set.Set[vertex.WrappedOutput], error) {
 	roots := multistate.FetchRootRecordsNSlotsBack(w.StateStore(), fetchLastNTimeSlotsUponStartup)
 

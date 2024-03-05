@@ -808,7 +808,7 @@ func TestConflictsNAttachersOneForkBranchesConflict(t *testing.T) {
 	require.NoError(t, err)
 
 	status, err := testData.wrk.WaitTxIDDefined(&vid.ID, time.Millisecond, 5*time.Second)
-	require.EqualValues(t, status, dag.TxIDStatusBad)
+	require.EqualValues(t, status, vertex.Bad)
 	testData.stopAndWait()
 	testData.logDAGInfo()
 

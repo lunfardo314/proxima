@@ -11,6 +11,7 @@ import (
 
 	"github.com/lunfardo314/proxima/api"
 	"github.com/lunfardo314/proxima/core/vertex"
+	"github.com/lunfardo314/proxima/core/work_process/tippool"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/multistate"
@@ -24,11 +25,17 @@ type (
 		GetNodeInfo() *global.NodeInfo
 		HeaviestStateForLatestTimeSlot() multistate.SugaredStateReader
 		SubmitTxBytesFromAPI(txBytes []byte) error
-		QueryTxIDStatus(txid *ledger.TransactionID) vertex.TxIDStatus
+		QueryTxIDStatusJSONAble(txid *ledger.TransactionID) vertex.TxIDStatusJSONAble
+		TxInclusionJSONAble(txid *ledger.TransactionID) map[string]tippool.TxInclusionJSONAble
 	}
 
 	Server struct {
 		Environment
+	}
+
+	TxStatus struct {
+		vertex.TxIDStatus
+		Inclusion map[ledger.ChainID]tippool.TxInclusion
 	}
 )
 
@@ -46,9 +53,7 @@ func (srv *Server) registerHandlers() {
 	// GET request format: 'get_output?id=<hex-encoded output ID>'
 	http.HandleFunc(api.PathGetOutput, srv.getOutput)
 	// GET request format: 'query_txid_status?txid=<hex-encoded transaction ID>'
-	http.HandleFunc(api.PathQueryTxIDStatus, srv.queryTxIDStatus)
-	// GET request format: 'inclusion?id=<hex-encoded output ID>'
-	http.HandleFunc(api.PathGetOutputInclusion, srv.getOutputInclusion)
+	http.HandleFunc(api.PathQueryTxStatus, srv.queryTxStatus)
 	// POST request format 'submit_nowait'. Feedback only on parsing error, otherwise async posting
 	http.HandleFunc(api.PathSubmitTransaction, srv.submitTx)
 	// GET sync info from the node
@@ -164,56 +169,6 @@ func (srv *Server) getOutput(w http.ResponseWriter, r *http.Request) {
 	util.AssertNoError(err)
 }
 
-func (srv *Server) getOutputInclusion(w http.ResponseWriter, r *http.Request) {
-	lst, ok := r.URL.Query()["id"]
-	if !ok || len(lst) != 1 {
-		writeErr(w, "wrong parameter in request 'get_output'")
-		return
-	}
-	oid, err := ledger.OutputIDFromHexString(lst[0])
-	if err != nil {
-		writeErr(w, err.Error())
-		return
-	}
-	writeErr(w, fmt.Sprintf("getOutputInclusion(%s): not implemented", oid.StringShort()))
-
-	//type branchState struct {
-	//	vid *utangle_old.WrappedTx
-	//	rdr multistate.SugaredStateReader
-	//}
-	//allBranches := make([]branchState, 0)
-	//err = ut.ForEachBranchStateDescending(ut.LatestTimeSlot(), func(vid *utangle_old.WrappedTx, rdr multistate.SugaredStateReader) bool {
-	//	allBranches = append(allBranches, branchState{
-	//		vid: vid,
-	//		rdr: rdr,
-	//	})
-	//	return true
-	//})
-	//if err != nil {
-	//	writeErr(w, err.Error())
-	//	return
-	//}
-	//resp := &api.OutputData{
-	//	Inclusion: make([]api.InclusionDataEncoded, len(allBranches)),
-	//}
-	//
-	//for i, bs := range allBranches {
-	//	resp.Inclusion[i] = api.InclusionDataEncoded{
-	//		BranchID: bs.vid.ID().StringHex(),
-	//		Coverage: bs.vid.Coverage(ut),
-	//		Included: bs.rdr.HasUTXO(&oid),
-	//	}
-	//}
-	//
-	//respBin, err := json.MarshalIndent(resp, "", "  ")
-	//if err != nil {
-	//	writeErr(w, err.Error())
-	//	return
-	//}
-	//_, err = w.Write(respBin)
-	//util.AssertNoError(err)
-}
-
 const (
 	maxTxUploadSize            = 64 * (1 << 10)
 	defaultTxAppendWaitTimeout = 10 * time.Second
@@ -292,7 +247,7 @@ func (srv *Server) getNodeInfo(w http.ResponseWriter, r *http.Request) {
 	util.AssertNoError(err)
 }
 
-func (srv *Server) queryTxIDStatus(w http.ResponseWriter, r *http.Request) {
+func (srv *Server) queryTxStatus(w http.ResponseWriter, r *http.Request) {
 	lst, ok := r.URL.Query()["txid"]
 	if !ok || len(lst) != 1 {
 		writeErr(w, "wrong parameter in request 'get_txid_status'")
@@ -304,21 +259,11 @@ func (srv *Server) queryTxIDStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	res := srv.QueryTxIDStatus(&txid)
-	resp := api.QueryTxIDStatus{
-		ID:        lst[0],
-		OnDAG:     res.OnDAG,
-		InStorage: res.InStorage,
-		VirtualTx: res.VirtualTx,
-		Deleted:   res.Deleted,
-		Status:    res.Status.String(),
-		Flags:     byte(res.Flags),
-		Err:       res.Err,
+	// query tx ID status
+	resp := api.QueryTxStatus{
+		TxIDStatus: srv.QueryTxIDStatusJSONAble(&txid),
+		Inclusion:  srv.TxInclusionJSONAble(&txid),
 	}
-	if res.Coverage != nil {
-		resp.Coverage = res.Coverage[:]
-	}
-
 	respBin, err := json.MarshalIndent(resp, "", "  ")
 	if err != nil {
 		writeErr(w, err.Error())

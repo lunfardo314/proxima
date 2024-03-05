@@ -87,7 +87,6 @@ func runTransferCmd(_ *cobra.Command, args []string) {
 	ReportTxStatusUntilDefined(*txCtx.TransactionID())
 }
 
-// TODO take into account vertex status
 func waitForInclusion(oid ledger.OutputID, timeout ...time.Duration) error {
 	glb.Infof("Tracking inclusion of %s:", oid.StringShort())
 	startTime := time.Now()

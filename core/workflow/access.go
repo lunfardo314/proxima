@@ -1,6 +1,7 @@
 package workflow
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -124,4 +125,23 @@ func (w *Workflow) QueryTxIDStatus(txid *ledger.TransactionID) (ret vertex.TxIDS
 	ret = w.DAG.QueryTxIDStatus(txid)
 	ret.InStorage = len(w.TxBytesStore().GetTxBytesWithMetadata(txid)) > 0
 	return
+}
+
+func (w *Workflow) QueryTxIDStatusJSONAble(txid *ledger.TransactionID) vertex.TxIDStatusJSONAble {
+	ret := w.QueryTxIDStatus(txid)
+	return ret.JSONAble()
+}
+
+func (w *Workflow) WaitTxIDDefined(txid *ledger.TransactionID, pollPeriod, timeout time.Duration) (vertex.Status, error) {
+	deadline := time.Now().Add(timeout)
+	for {
+		status := w.QueryTxIDStatus(txid)
+		if status.Status != vertex.Undefined {
+			return status.Status, nil
+		}
+		time.Sleep(pollPeriod)
+		if time.Now().After(deadline) {
+			return vertex.Undefined, fmt.Errorf("timeout")
+		}
+	}
 }

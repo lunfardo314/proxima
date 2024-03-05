@@ -78,7 +78,7 @@ func RootRecordFromBytes(data []byte) (RootRecord, error) {
 	if len(arr.At(2)) != 8*ledger.HistoryCoverageDeltas {
 		return RootRecord{}, fmt.Errorf("RootRecordFromBytes: wrong data length")
 	}
-	coverage, err := ledger.LedgerCoverageFromBytes(arr.At(2))
+	coverage, err := ledger.CoverageFromBytes(arr.At(2))
 	if err != nil {
 		return RootRecord{}, err
 	}

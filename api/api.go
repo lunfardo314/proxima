@@ -1,19 +1,19 @@
 package api
 
 import (
-	"github.com/lunfardo314/proxima/ledger"
+	"github.com/lunfardo314/proxima/core/vertex"
+	"github.com/lunfardo314/proxima/core/work_process/tippool"
 )
 
 const (
-	PathGetLedgerID        = "/get_ledger_id"
-	PathGetAccountOutputs  = "/get_account_outputs"
-	PathGetChainOutput     = "/get_chain_output"
-	PathGetOutput          = "/get_output"
-	PathQueryTxIDStatus    = "/query_txid_status"
-	PathSubmitTransaction  = "/submit_tx" // wait appending to the utangle_old
-	PathGetOutputInclusion = "/inclusion"
-	PathGetSyncInfo        = "/sync_info"
-	PathGetNodeInfo        = "/node_info"
+	PathGetLedgerID       = "/get_ledger_id"
+	PathGetAccountOutputs = "/get_account_outputs"
+	PathGetChainOutput    = "/get_chain_output"
+	PathGetOutput         = "/get_output"
+	PathQueryTxStatus     = "/query_tx_status"
+	PathSubmitTransaction = "/submit_tx"
+	PathGetSyncInfo       = "/sync_info"
+	PathGetNodeInfo       = "/node_info"
 )
 
 type Error struct {
@@ -48,33 +48,14 @@ type ChainOutput struct {
 type OutputData struct {
 	Error
 	// hex-encoded output data
-	OutputData string                 `json:"output_data,omitempty"`
-	Inclusion  []InclusionDataEncoded `json:"inclusion,omitempty"`
+	OutputData string `json:"output_data,omitempty"`
+	//Inclusion  []InclusionDataEncoded `json:"inclusion,omitempty"`
 }
 
-type InclusionDataEncoded struct {
-	BranchID string `json:"branch_id"`
-	Coverage uint64 `json:"coverage"`
-	Included bool   `json:"included"`
-}
-
-type InclusionData struct {
-	BranchID ledger.TransactionID
-	Coverage uint64
-	Included bool
-}
-
-type QueryTxIDStatus struct {
+type QueryTxStatus struct {
 	Error
-	ID        string   `json:"txid"`
-	OnDAG     bool     `json:"on_dag"`
-	InStorage bool     `json:"in_storage"`
-	VirtualTx bool     `json:"virtual_tx"`
-	Deleted   bool     `json:"deleted"`
-	Status    string   `json:"status"`
-	Flags     byte     `json:"flags"`
-	Coverage  []uint64 `json:"coverage,omitempty"`
-	Err       error    `json:"err,omitempty"`
+	TxIDStatus vertex.TxIDStatusJSONAble              `json:"txid_status"`
+	Inclusion  map[string]tippool.TxInclusionJSONAble `json:"inclusion"`
 }
 
 type (
@@ -92,15 +73,3 @@ type (
 )
 
 const ErrGetOutputNotFound = "output not found"
-
-func (i *InclusionDataEncoded) Decode() (InclusionData, error) {
-	txid, err := ledger.TransactionIDFromHexString(i.BranchID)
-	if err != nil {
-		return InclusionData{}, err
-	}
-	return InclusionData{
-		BranchID: txid,
-		Coverage: i.Coverage,
-		Included: i.Included,
-	}, nil
-}

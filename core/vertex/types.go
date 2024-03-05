@@ -1,6 +1,7 @@
 package vertex
 
 import (
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -101,6 +102,18 @@ type (
 		Coverage  *ledger.Coverage
 		Err       error
 	}
+
+	TxIDStatusJSONAble struct {
+		ID        string   `json:"id"`
+		OnDAG     bool     `json:"on_dag"`
+		InStorage bool     `json:"in_storage"`
+		VirtualTx bool     `json:"virtual_tx"`
+		Deleted   bool     `json:"deleted"`
+		Status    string   `json:"status"`
+		Flags     byte     `json:"flags"`
+		Coverage  []uint64 `json:"coverage,omitempty"`
+		Err       error    `json:"err"`
+	}
 )
 
 const (
@@ -151,19 +164,19 @@ func (s *TxIDStatus) Lines(prefix ...string) *lines.Lines {
 	ret := lines.New(prefix...)
 	if !s.OnDAG {
 		ret.Add("NOT FOUND")
-		return ret
-	}
-	if s.Status != Bad {
-		ret.Add(s.Status.String())
 	} else {
-		ret.Add("BAD(%v)", s.Err)
-	}
-	ret.Add("flags: %8b", s.Flags)
-	if s.VirtualTx {
-		ret.Add("virtualTx: true")
-	}
-	if s.Deleted {
-		ret.Add("deleted: true")
+		if s.Status != Bad {
+			ret.Add(s.Status.String())
+		} else {
+			ret.Add("BAD(%v)", s.Err)
+		}
+		ret.Add("flags: %8b", s.Flags)
+		if s.VirtualTx {
+			ret.Add("virtualTx: true")
+		}
+		if s.Deleted {
+			ret.Add("deleted: true")
+		}
 	}
 
 	ret.Add("in storage: %v", s.InStorage)
@@ -173,4 +186,47 @@ func (s *TxIDStatus) Lines(prefix ...string) *lines.Lines {
 		ret.Add("coverage: n/a")
 	}
 	return ret
+}
+
+func (s *TxIDStatus) JSONAble() (ret TxIDStatusJSONAble) {
+	ret = TxIDStatusJSONAble{
+		ID:        s.ID.StringHex(),
+		OnDAG:     s.OnDAG,
+		InStorage: s.InStorage,
+		VirtualTx: s.VirtualTx,
+		Deleted:   s.Deleted,
+		Status:    s.Status.String(),
+		Flags:     byte(s.Flags),
+		Err:       s.Err,
+	}
+	if s.Coverage != nil {
+		ret.Coverage = s.Coverage[:]
+	}
+	return ret
+}
+
+func TxIDStatusFromJSONAble(s *TxIDStatusJSONAble) (*TxIDStatus, error) {
+	ret := &TxIDStatus{
+		OnDAG:     s.OnDAG,
+		InStorage: s.InStorage,
+		VirtualTx: s.VirtualTx,
+		Deleted:   s.Deleted,
+		Status:    StatusFromString(s.Status),
+		Flags:     Flags(s.Flags),
+		Coverage:  nil,
+		Err:       s.Err,
+	}
+	var err error
+	ret.ID, err = ledger.TransactionIDFromHexString(s.ID)
+	if err != nil {
+		return nil, err
+	}
+	if len(s.Coverage) != 0 {
+		if len(s.Coverage) != ledger.HistoryCoverageDeltas {
+			return nil, fmt.Errorf("wrong array length")
+		}
+		ret.Coverage = new(ledger.Coverage)
+		copy(ret.Coverage[:], s.Coverage)
+	}
+	return ret, nil
 }

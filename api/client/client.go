@@ -13,6 +13,7 @@ import (
 
 	"github.com/lunfardo314/proxima/api"
 	"github.com/lunfardo314/proxima/core/vertex"
+	"github.com/lunfardo314/proxima/core/work_process/tippool"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/transaction"
@@ -193,35 +194,6 @@ func (c *APIClient) GetOutputDataFromHeaviestState(oid *ledger.OutputID) ([]byte
 	return oData, nil
 }
 
-func (c *APIClient) GetOutputInclusion(oid *ledger.OutputID) ([]api.InclusionData, error) {
-	path := fmt.Sprintf(api.PathGetOutputInclusion+"?id=%s", oid.StringHex())
-	body, err := c.getBody(path)
-	if err != nil {
-		return nil, err
-	}
-
-	var res api.OutputData
-	err = json.Unmarshal(body, &res)
-	if err != nil {
-		return nil, err
-	}
-	if res.Error.Error == api.ErrGetOutputNotFound {
-		return nil, nil
-	}
-	if res.Error.Error != "" {
-		return nil, fmt.Errorf("from server: %s", res.Error.Error)
-	}
-
-	ret := make([]api.InclusionData, len(res.Inclusion))
-	for i := range ret {
-		ret[i], err = res.Inclusion[i].Decode()
-		if err != nil {
-			return nil, err
-		}
-	}
-	return ret, nil
-}
-
 const waitOutputFinalPollPeriod = 1 * time.Second
 
 // WaitOutputInTheHeaviestState return true once output is found in the latest heaviest branch.
@@ -321,37 +293,40 @@ func (c *APIClient) GetAccountOutputs(account ledger.Accountable, filter ...func
 //	return ret, nil
 //}
 
-func (c *APIClient) QueryTxIDStatus(txid ledger.TransactionID) (*vertex.TxIDStatus, error) {
-	path := fmt.Sprintf(api.PathQueryTxIDStatus+"?txid=%s", txid.StringHex())
+func (c *APIClient) QueryTxIDStatus(txid ledger.TransactionID) (*vertex.TxIDStatus, map[ledger.ChainID]tippool.TxInclusion, error) {
+	path := fmt.Sprintf(api.PathQueryTxStatus+"?txid=%s", txid.StringHex())
 	body, err := c.getBody(path)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	var res api.QueryTxIDStatus
+	var res api.QueryTxStatus
 	err = json.Unmarshal(body, &res)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if res.Error.Error != "" {
-		return nil, fmt.Errorf("from server: %s", res.Error.Error)
-	}
-	ret := &vertex.TxIDStatus{
-		OnDAG:     res.OnDAG,
-		InStorage: res.InStorage,
-		VirtualTx: res.VirtualTx,
-		Deleted:   res.Deleted,
-		Status:    vertex.StatusFromString(res.Status),
-		Flags:     vertex.Flags(res.Flags),
-		Coverage:  nil,
-		Err:       res.Err,
-	}
-	ret.ID, err = ledger.TransactionIDFromHexString(res.ID)
-	if err != nil {
-		return nil, err
+		return nil, nil, fmt.Errorf("from server: %s", res.Error.Error)
 	}
 
-	return ret, nil
+	retTxIDStatus, err := vertex.TxIDStatusFromJSONAble(&res.TxIDStatus)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	retInclusion := make(map[ledger.ChainID]tippool.TxInclusion)
+	for seqIDStr, inclJSON := range res.Inclusion {
+		seqID, err := ledger.ChainIDFromHexString(seqIDStr)
+		if err != nil {
+			return nil, nil, err
+		}
+		incl, err := tippool.RootDataFromJSONAble(&inclJSON.RootDataJSONAble)
+		retInclusion[seqID] = tippool.TxInclusion{
+			RootData: *incl,
+			Included: inclJSON.Included,
+		}
+	}
+	return retTxIDStatus, retInclusion, nil
 }
 
 func (c *APIClient) GetNodeInfo() (*global.NodeInfo, error) {
