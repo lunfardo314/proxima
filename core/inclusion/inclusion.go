@@ -7,10 +7,10 @@ import (
 )
 
 type InSlotInclusionData struct {
-	numBranchesTotal      int
-	numBranchesDominating int
-	numIncludedTotal      int
-	numIncludedDominating int
+	NumBranchesTotal      int
+	NumBranchesDominating int
+	NumIncludedTotal      int
+	NumIncludedDominating int
 }
 
 func InSlot(inclusionData map[ledger.ChainID]tippool.TxInclusion, slot ledger.Slot) (ret InSlotInclusionData) {
@@ -18,14 +18,14 @@ func InSlot(inclusionData map[ledger.ChainID]tippool.TxInclusion, slot ledger.Sl
 		if incl.BranchID.Slot() != slot {
 			continue
 		}
-		ret.numBranchesTotal++
+		ret.NumBranchesTotal++
 		if incl.Included {
-			ret.numIncludedTotal++
+			ret.NumIncludedTotal++
 		}
 		if incl.RootRecord.IsDominating() {
-			ret.numBranchesDominating++
+			ret.NumBranchesDominating++
 			if incl.Included {
-				ret.numIncludedDominating++
+				ret.NumIncludedDominating++
 			}
 		}
 	}
@@ -46,20 +46,20 @@ func InLatestSlot(inclusionData map[ledger.ChainID]tippool.TxInclusion) (retSlot
 }
 
 // Score calculates simple inclusion score for the slot
-func (i *InSlotInclusionData) Score() (retTotal, retDominating int) {
-	util.Assertf(i.numBranchesTotal >= i.numBranchesDominating, "i.numBranchesTotal >= i.numBranchesDominating")
-	util.Assertf(i.numIncludedTotal >= i.numIncludedDominating, "i.numIncludedTotal >= i.numIncludedDominating")
+func (i *InSlotInclusionData) Score() (retPercentTotal, retPercentDominating int) {
+	util.Assertf(i.NumBranchesTotal >= i.NumBranchesDominating, "i.NumBranchesTotal >= i.NumBranchesDominating")
+	util.Assertf(i.NumIncludedTotal >= i.NumIncludedDominating, "i.NumIncludedTotal >= i.NumIncludedDominating")
 	nT, nD := 0, 0
-	if i.numBranchesTotal > 0 {
-		nT = (i.numIncludedTotal * 100) / i.numBranchesTotal
+	if i.NumBranchesTotal > 0 {
+		nT = (i.NumIncludedTotal * 100) / i.NumBranchesTotal
 	}
-	if i.numBranchesDominating > 0 {
-		nT = (i.numIncludedDominating * 100) / i.numBranchesDominating
+	if i.NumBranchesDominating > 0 {
+		nT = (i.NumIncludedDominating * 100) / i.NumBranchesDominating
 	}
 	return nT, nD
 }
 
-func ScoreLatestSlot(inclusionData map[ledger.ChainID]tippool.TxInclusion) (retTotal, retDominating int) {
-	_, ret := InLatestSlot(inclusionData)
-	return ret.Score()
+func ScoreLatestSlot(inclusionData map[ledger.ChainID]tippool.TxInclusion) (retPercentTotal, retPercentDominating int) {
+	_, incl := InLatestSlot(inclusionData)
+	return incl.Score()
 }

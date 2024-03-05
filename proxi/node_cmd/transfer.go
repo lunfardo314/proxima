@@ -6,11 +6,9 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/lunfardo314/proxima/api"
 	"github.com/lunfardo314/proxima/api/client"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/proxi/glb"
-	"github.com/lunfardo314/proxima/util"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -84,41 +82,5 @@ func runTransferCmd(_ *cobra.Command, args []string) {
 	if NoWait() {
 		return
 	}
-	ReportTxStatusUntilDefined(*txCtx.TransactionID())
-}
-
-func waitForInclusion(oid ledger.OutputID, timeout ...time.Duration) error {
-	glb.Infof("Tracking inclusion of %s:", oid.StringShort())
-	startTime := time.Now()
-	var deadline time.Time
-	if len(timeout) > 0 {
-		deadline = startTime.Add(timeout[0])
-	} else {
-		deadline = startTime.Add(2 * time.Minute)
-	}
-	time.Sleep(1 * time.Second)
-
-	var inclusionData []api.InclusionData
-	var err error
-
-	util.DoUntil(func() {
-		inclusionData, err = glb.GetClient().GetOutputInclusion(&oid)
-		glb.AssertNoError(err)
-
-		displayInclusionState(inclusionData, time.Since(startTime).Seconds())
-	}, func() bool {
-		// TODO not 100% correct because depends on the number of active sequencers
-		_, percOfTotal, percOfDominating := glb.InclusionScore(inclusionData, ledger.DefaultInitialSupply)
-		if percOfTotal == 100 || percOfDominating == 100 {
-			glb.Infof("full inclusion reached in %v", time.Since(startTime))
-			return true
-		}
-		if time.Now().After(deadline) {
-			err = fmt.Errorf("waitForInclusion: timeout")
-			return true
-		}
-		time.Sleep(1 * time.Second)
-		return false
-	})
-	return err
+	ReportTxStatus(*txCtx.TransactionID(), time.Second)
 }

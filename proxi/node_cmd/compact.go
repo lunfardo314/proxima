@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"time"
 
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/proxi/glb"
@@ -88,6 +89,6 @@ func runCompactCmd(_ *cobra.Command, args []string) {
 	glb.AssertNoError(err)
 
 	if !NoWait() {
-		glb.AssertNoError(waitForInclusion(txCtx.OutputID(0)))
+		ReportTxStatus(*txCtx.TransactionID(), time.Second)
 	}
 }

@@ -5,6 +5,7 @@ import (
 
 	"github.com/lunfardo314/proxima/api/server"
 	"github.com/lunfardo314/proxima/core/vertex"
+	"github.com/lunfardo314/proxima/core/work_process/tippool"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/multistate"
@@ -54,6 +55,10 @@ func (p *ProximaNode) SubmitTxBytesFromAPI(txBytes []byte) error {
 	return err
 }
 
-func (p *ProximaNode) QueryTxIDStatus(txid *ledger.TransactionID) vertex.TxIDStatus {
-	return p.workflow.QueryTxIDStatus(txid)
+func (p *ProximaNode) QueryTxIDStatusJSONAble(txid *ledger.TransactionID) vertex.TxIDStatusJSONAble {
+	return p.workflow.QueryTxIDStatusJSONAble(txid)
+}
+
+func (p *ProximaNode) TxInclusionJSONAble(txid *ledger.TransactionID) map[string]tippool.TxInclusionJSONAble {
+	return p.workflow.TxInclusionJSONAble(txid)
 }

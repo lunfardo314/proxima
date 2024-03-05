@@ -3,7 +3,9 @@ package node_cmd
 import (
 	"time"
 
+	"github.com/lunfardo314/proxima/core/inclusion"
 	"github.com/lunfardo314/proxima/core/vertex"
+	"github.com/lunfardo314/proxima/core/work_process/tippool"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/proxi/node_cmd/seq_cmd"
@@ -41,7 +43,6 @@ func Init() *cobra.Command {
 	nodeCmd.InitDefaultHelpCmd()
 	nodeCmd.AddCommand(
 		initGetOutputsCmd(),
-		initGetUTXOCmd(),
 		initGetChainOutputCmd(),
 		initCompactOutputsCmd(),
 		initBalanceCmd(),
@@ -105,19 +106,31 @@ func NoWait() bool {
 	return viper.GetBool("nowait")
 }
 
-func ReportTxStatusUntilDefined(txid ledger.TransactionID, every ...time.Duration) {
-	period := time.Second
-	if len(every) > 0 {
-		period = every[0]
+func ReportTxStatus(txid ledger.TransactionID, poll time.Duration, stopFun ...func(status *vertex.TxIDStatus, inclusionData map[ledger.ChainID]tippool.TxInclusion) bool) {
+	stop := func(_ *vertex.TxIDStatus, inclusionData map[ledger.ChainID]tippool.TxInclusion) bool {
+		percTotal, percDominating := inclusion.ScoreLatestSlot(inclusionData)
+		return percTotal == 100 && percDominating == 100
 	}
+	if len(stopFun) > 0 {
+		stop = stopFun[0]
+	}
+
 	glb.Infof("Transaction %s:", txid.String())
 	for {
-		status, err := glb.GetClient().QueryTxIDStatus(txid)
-		util.Assertf(err == nil, "error occurred while querying transaction status: '%v'", err)
-		glb.Infof("%s", status.Lines("    ").Join(","))
-		if status.Status != vertex.Undefined {
+		vertexStatus, inclusionData, err := glb.GetClient().QueryTxIDStatus(txid)
+		glb.AssertNoError(err)
+		glb.Infof(vertexStatus.Lines().Join(","))
+		if len(inclusionData) > 0 {
+			_, incl := inclusion.InLatestSlot(inclusionData)
+			percTotal, percDominating := incl.Score()
+			glb.Infof("   total branches: %d, included in total: %d%%, in dominating: %d%%", incl.NumBranchesTotal, percTotal, percDominating)
+		}
+		if vertexStatus.Deleted || vertexStatus.Status == vertex.Bad {
 			return
 		}
-		time.Sleep(period)
+		if stop(vertexStatus, inclusionData) {
+			return
+		}
+		time.Sleep(poll)
 	}
 }

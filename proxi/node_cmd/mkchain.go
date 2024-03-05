@@ -3,6 +3,7 @@ package node_cmd
 import (
 	"os"
 	"strconv"
+	"time"
 
 	"github.com/lunfardo314/proxima/api/client"
 	"github.com/lunfardo314/proxima/ledger"
@@ -83,6 +84,6 @@ func runMakeChainCmd(_ *cobra.Command, args []string) {
 	glb.AssertNoError(err)
 	glb.Infof("new chain ID will be %s", chainID.String())
 	if !NoWait() {
-		glb.AssertNoError(waitForInclusion(txCtx.OutputID(0)))
+		ReportTxStatus(*txCtx.TransactionID(), time.Second)
 	}
 }

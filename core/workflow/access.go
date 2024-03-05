@@ -132,6 +132,10 @@ func (w *Workflow) QueryTxIDStatusJSONAble(txid *ledger.TransactionID) vertex.Tx
 	return ret.JSONAble()
 }
 
+func (w *Workflow) TxInclusionJSONAble(txid *ledger.TransactionID) map[string]tippool.TxInclusionJSONAble {
+	return w.tippool.TxInclusionJSONAble(txid)
+}
+
 func (w *Workflow) WaitTxIDDefined(txid *ledger.TransactionID, pollPeriod, timeout time.Duration) (vertex.Status, error) {
 	deadline := time.Now().Add(timeout)
 	for {
