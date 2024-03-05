@@ -115,11 +115,11 @@ func ReportTxStatus(txid ledger.TransactionID, poll time.Duration, stopFun ...fu
 		stop = stopFun[0]
 	}
 
-	glb.Infof("Transaction %s:", txid.String())
+	glb.Infof("Transaction %s (hex=%s):", txid.String(), txid.StringHex())
 	for {
 		vertexStatus, inclusionData, err := glb.GetClient().QueryTxIDStatus(txid)
 		glb.AssertNoError(err)
-		glb.Infof(vertexStatus.Lines().Join(","))
+		glb.Infof(vertexStatus.Lines().Join(", "))
 		if len(inclusionData) > 0 {
 			_, incl := inclusion.InLatestSlot(inclusionData)
 			percTotal, percDominating := incl.Score()

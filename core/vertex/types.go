@@ -160,6 +160,15 @@ func (f *Flags) SetFlagsUp(fl Flags) {
 	*f = *f | fl
 }
 
+func (f *Flags) String() string {
+	return fmt.Sprintf("Defined: %v, Validated: %v, Persisted: %v, Attached: %v",
+		f.FlagsUp(FlagVertexDefined),
+		f.FlagsUp(FlagVertexConstraintsValid),
+		f.FlagsUp(FlagVertexTxBytesPersisted),
+		f.FlagsUp(FlagVertexTxAttachmentInvoked),
+	)
+}
+
 func (s *TxIDStatus) Lines(prefix ...string) *lines.Lines {
 	ret := lines.New(prefix...)
 	if !s.OnDAG {
@@ -170,7 +179,7 @@ func (s *TxIDStatus) Lines(prefix ...string) *lines.Lines {
 		} else {
 			ret.Add("BAD(%v)", s.Err)
 		}
-		ret.Add("flags: %8b", s.Flags)
+		ret.Add("flags: %s", s.Flags.String())
 		if s.VirtualTx {
 			ret.Add("virtualTx: true")
 		}
@@ -180,11 +189,6 @@ func (s *TxIDStatus) Lines(prefix ...string) *lines.Lines {
 	}
 
 	ret.Add("in storage: %v", s.InStorage)
-	if s.Coverage != nil {
-		ret.Add("coverage: %s", s.Coverage.String())
-	} else {
-		ret.Add("coverage: n/a")
-	}
 	return ret
 }
 
