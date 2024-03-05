@@ -10,7 +10,6 @@ import (
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 )
 
 func initTransferCmd() *cobra.Command {
@@ -21,15 +20,14 @@ func initTransferCmd() *cobra.Command {
 		Run:   runTransferCmd,
 	}
 
-	transferCmd.PersistentFlags().StringP("target", "t", "", "target lock in EasyFL source format")
-	err := viper.BindPFlag("target", transferCmd.PersistentFlags().Lookup("target"))
-	glb.AssertNoError(err)
+	glb.AddFlagTarget(transferCmd)
 
 	transferCmd.InitDefaultHelpCmd()
 	return transferCmd
 }
 
-func runTransferCmd(_ *cobra.Command, args []string) {
+func runTransferCmd(cmd *cobra.Command, args []string) {
+	cmd.DebugFlags()
 	glb.InitLedgerFromNode()
 
 	walletData := glb.GetWalletData()

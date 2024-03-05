@@ -5,6 +5,7 @@ import (
 
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util"
+	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
 
@@ -36,12 +37,24 @@ func GetPrivateKey() (ed25519.PrivateKey, bool) {
 	return ret, err == nil
 }
 
+// without Var does not work
+var targetStr string
+
+func AddFlagTarget(cmd *cobra.Command) {
+	cmd.PersistentFlags().StringVarP(&targetStr, "target", "t", "", "target lock in EasyFL source format")
+	err := viper.BindPFlag("target", cmd.PersistentFlags().Lookup("target"))
+	AssertNoError(err)
+}
+
 func MustGetTarget() ledger.Accountable {
 	var ret ledger.Accountable
 	var err error
 
-	if str := viper.GetString("target"); str != "" {
-		ret, err = ledger.AccountableFromSource(str)
+	//if str := viper.GetString("target"); str != "" {
+	// viper.GetString does not work for some reason
+
+	if targetStr != "" {
+		ret, err = ledger.AccountableFromSource(targetStr)
 		AssertNoError(err)
 		Infof("target account is: %s", ret.String())
 	} else {

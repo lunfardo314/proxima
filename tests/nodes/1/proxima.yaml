@@ -56,8 +56,8 @@ pprof:
   port: 8080
 
 trace_tags:
-  - milestone
-  - attach
+#  - milestone
+#  - attach
 #  - gossip
 #  - pull_server
 #  - txinput

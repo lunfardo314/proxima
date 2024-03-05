@@ -21,9 +21,7 @@ func Init() *cobra.Command {
 	err := viper.BindPFlag("sequencer.id", seqCmd.PersistentFlags().Lookup("sequencer.id"))
 	glb.AssertNoError(err)
 
-	seqCmd.PersistentFlags().StringP("target", "t", "", "target lock in EasyFL source format")
-	err = viper.BindPFlag("target", seqCmd.PersistentFlags().Lookup("target"))
-	glb.AssertNoError(err)
+	glb.AddFlagTarget(seqCmd)
 
 	seqCmd.AddCommand(
 		initSeqWithdrawCmd(),

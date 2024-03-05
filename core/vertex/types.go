@@ -161,7 +161,7 @@ func (f *Flags) SetFlagsUp(fl Flags) {
 }
 
 func (f *Flags) String() string {
-	return fmt.Sprintf("Defined: %v, Validated: %v, Persisted: %v, Attached: %v",
+	return fmt.Sprintf("def: %v, valid: %v, persist: %v, attach: %v",
 		f.FlagsUp(FlagVertexDefined),
 		f.FlagsUp(FlagVertexConstraintsValid),
 		f.FlagsUp(FlagVertexTxBytesPersisted),
