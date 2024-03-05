@@ -262,7 +262,9 @@ func (srv *Server) queryTxStatus(w http.ResponseWriter, r *http.Request) {
 	// query tx ID status
 	resp := api.QueryTxStatus{
 		TxIDStatus: srv.QueryTxIDStatusJSONAble(&txid),
-		Inclusion:  srv.TxInclusionJSONAble(&txid),
+	}
+	if resp.TxIDStatus.OnDAG && vertex.StatusFromString(resp.TxIDStatus.Status) == vertex.Good {
+		resp.Inclusion = srv.TxInclusionJSONAble(&txid)
 	}
 	respBin, err := json.MarshalIndent(resp, "", "  ")
 	if err != nil {

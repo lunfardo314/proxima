@@ -55,7 +55,7 @@ type OutputData struct {
 type QueryTxStatus struct {
 	Error
 	TxIDStatus vertex.TxIDStatusJSONAble              `json:"txid_status"`
-	Inclusion  map[string]tippool.TxInclusionJSONAble `json:"inclusion"`
+	Inclusion  map[string]tippool.TxInclusionJSONAble `json:"inclusion,omitempty"`
 }
 
 type (

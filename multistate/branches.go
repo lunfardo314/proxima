@@ -57,6 +57,11 @@ func (r *RootRecord) String() string {
 	return fmt.Sprintf("root record %s, %s, %s", r.SequencerID.StringShort(), r.LedgerCoverage.String(), r.Root.String())
 }
 
+// IsDominating the root is dominating if coverage last delta is mora than half of the supply
+func (r *RootRecord) IsDominating() bool {
+	return r.LedgerCoverage.LatestDelta() > r.Supply/2
+}
+
 func (br *BranchData) TxID() *ledger.TransactionID {
 	ret := br.Stem.ID.TransactionID()
 	return &ret
