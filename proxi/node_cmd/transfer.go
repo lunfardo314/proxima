@@ -26,8 +26,8 @@ func initTransferCmd() *cobra.Command {
 	return transferCmd
 }
 
-func runTransferCmd(cmd *cobra.Command, args []string) {
-	cmd.DebugFlags()
+func runTransferCmd(_ *cobra.Command, args []string) {
+	//cmd.DebugFlags()
 	glb.InitLedgerFromNode()
 
 	walletData := glb.GetWalletData()

@@ -47,6 +47,7 @@ sequencers:
 logger:
   level: debug
   output: testlog_0.log
+  erase_at_start: true
 
 # Other parameters used for tracing and debugging
 # pprof config
@@ -55,7 +56,7 @@ pprof:
   port: 9090
 
 trace_tags:
-#  - gossip
+  - gossip
 #  - pull_server
 #  - txinput
 #  - txStore

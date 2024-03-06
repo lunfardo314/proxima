@@ -78,12 +78,10 @@ func runCompactCmd(_ *cobra.Command, args []string) {
 	}
 
 	txCtx, err := glb.GetClient().MakeCompactTransaction(walletData.PrivateKey, tagAlongSeqID, feeAmount, maxNumberOfInputs)
-	if err != nil {
-		if txCtx != nil {
-			glb.Verbosef("------- failed transaction -------- \n%s\n--------------------------", txCtx.String())
-		}
-		glb.AssertNoError(err)
+	if txCtx != nil {
+		glb.Verbosef("------- failed transaction -------- \n%s\n--------------------------", txCtx.String())
 	}
+	glb.AssertNoError(err)
 	glb.Infof("Submitting compact transaction with %d inputs..", txCtx.NumInputs())
 	err = glb.GetClient().SubmitTransaction(txCtx.TransactionBytes())
 	glb.AssertNoError(err)

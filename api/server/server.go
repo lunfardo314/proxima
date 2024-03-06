@@ -40,6 +40,8 @@ type (
 	}
 )
 
+const TraceTag = "apiServer"
+
 func New(env Environment) *Server {
 	return &Server{Environment: env}
 }
@@ -77,6 +79,8 @@ func getLedgerID(w http.ResponseWriter, r *http.Request) {
 }
 
 func (srv *Server) getAccountOutputs(w http.ResponseWriter, r *http.Request) {
+	srv.Tracef(TraceTag, "getAccountOutputs invoked")
+
 	lst, ok := r.URL.Query()["accountable"]
 	if !ok || len(lst) != 1 {
 		writeErr(w, "wrong parameters in request 'get_account_outputs'")
@@ -111,6 +115,8 @@ func (srv *Server) getAccountOutputs(w http.ResponseWriter, r *http.Request) {
 }
 
 func (srv *Server) getChainOutput(w http.ResponseWriter, r *http.Request) {
+	srv.Tracef(TraceTag, "getChainOutput invoked")
+
 	lst, ok := r.URL.Query()["chainid"]
 	if !ok || len(lst) != 1 {
 		writeErr(w, "wrong parameters in request 'get_chain_output'")
@@ -142,6 +148,8 @@ func (srv *Server) getChainOutput(w http.ResponseWriter, r *http.Request) {
 }
 
 func (srv *Server) getOutput(w http.ResponseWriter, r *http.Request) {
+	srv.Tracef(TraceTag, "getOutput invoked")
+
 	lst, ok := r.URL.Query()["id"]
 	if !ok || len(lst) != 1 {
 		writeErr(w, "wrong parameter in request 'get_output'")
@@ -177,6 +185,8 @@ const (
 )
 
 func (srv *Server) submitTx(w http.ResponseWriter, r *http.Request) {
+	srv.Tracef(TraceTag, "submitTx invoked")
+
 	if r.Method != "POST" {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -209,9 +219,12 @@ func (srv *Server) submitTx(w http.ResponseWriter, r *http.Request) {
 	txid, err := srv.SubmitTxBytesFromAPI(slices.Clip(txBytes))
 	if err != nil {
 		writeErr(w, fmt.Sprintf("submit_tx: %v", err))
+		srv.Tracef(TraceTag, "submit transaction: '%v'", err)
 		return
 	}
 	srv.lastSubmittedTxID = *txid
+	srv.Tracef(TraceTag, "submitted transaction %s", txid.StringShort)
+
 	writeOk(w)
 }
 
@@ -251,6 +264,8 @@ func (srv *Server) getNodeInfo(w http.ResponseWriter, r *http.Request) {
 }
 
 func (srv *Server) queryTxStatus(w http.ResponseWriter, r *http.Request) {
+	srv.Tracef(TraceTag, "queryTxStatus invoked")
+
 	var txid ledger.TransactionID
 	var err error
 

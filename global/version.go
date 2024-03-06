@@ -7,10 +7,12 @@ import (
 // Version is the version of the Proxima node
 const Version = "0.0-proto"
 
-const bannerTemplate = `
----------------------------------------------------
-          Proxima node version %s
----------------------------------------------------`
+//const bannerTemplate = `
+//---------------------------------------------------
+//          Proxima node version %s
+//---------------------------------------------------`
+
+const bannerTemplate = "starting Proxima node version %s"
 
 func BannerString() string {
 	return fmt.Sprintf(bannerTemplate, Version)

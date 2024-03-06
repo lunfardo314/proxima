@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -42,20 +43,25 @@ func NewFromConfig() *Global {
 	}
 
 	output := []string{"stderr"}
+	erasedPrev := false
 	out := viper.GetString("logger.output")
 	if out != "" {
 		output = append(output, out)
+		if viper.GetBool("logger.erase_at_start") {
+			_ = os.Remove(out)
+			erasedPrev = true
+		}
 	}
-	return _new(lvl, output)
+	return _new(lvl, output, erasedPrev)
 }
 
 func NewDefault() *Global {
-	return _new(zapcore.DebugLevel, []string{"stderr"})
+	return _new(zapcore.DebugLevel, []string{"stderr"}, false)
 }
 
-func _new(logLevel zapcore.Level, outputs []string) *Global {
+func _new(logLevel zapcore.Level, outputs []string, erasedPrevious bool) *Global {
 	ctx, cancelFun := context.WithCancel(context.Background())
-	return &Global{
+	ret := &Global{
 		ctx:           ctx,
 		stopFun:       cancelFun,
 		SugaredLogger: NewLogger("", logLevel, outputs, ""),
@@ -64,6 +70,10 @@ func _new(logLevel zapcore.Level, outputs []string) *Global {
 		logStopOnce:   &sync.Once{},
 		components:    set.New[string](),
 	}
+	if erasedPrevious {
+		ret.SugaredLogger.Warnf("previous logfile may have been erased")
+	}
+	return ret
 }
 
 func (l *Global) MarkWorkProcessStarted(name string) {

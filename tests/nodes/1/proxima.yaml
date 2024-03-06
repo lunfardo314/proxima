@@ -48,6 +48,7 @@ sequencers:
 logger:
   level: debug
   output: testlog_1.log
+  erase_at_start: true
 
 # Other parameters used for tracing and debugging
 # pprof config
@@ -58,9 +59,10 @@ pprof:
 trace_tags:
 #  - milestone
 #  - attach
-#  - gossip
+  - gossip
 #  - pull_server
-#  - txinput
+  - txinput
+  - apiServer
 #  - txStore
 #  - global
 

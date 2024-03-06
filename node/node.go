@@ -14,7 +14,6 @@ import (
 	"github.com/lunfardo314/proxima/txstore"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/unitrie/adaptors/badger_adaptor"
-	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 )
 
@@ -31,14 +30,14 @@ type ProximaNode struct {
 }
 
 func init() {
-	pflag.Parse()
-	err := viper.BindPFlags(pflag.CommandLine)
-	util.AssertNoError(err)
+	//pflag.Parse()
+	//err := viper.BindPFlags(pflag.CommandLine)
+	//util.AssertNoError(err)
 
 	viper.SetConfigName("proxima")
 	viper.SetConfigType("yaml")
 	viper.AddConfigPath(".")
-	err = viper.ReadInConfig()
+	err := viper.ReadInConfig()
 	util.AssertNoError(err)
 }
 
