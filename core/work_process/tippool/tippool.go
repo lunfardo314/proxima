@@ -8,7 +8,6 @@ import (
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/multistate"
-	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/queue"
 )
 
@@ -80,7 +79,7 @@ func (t *SequencerTips) Start() {
 
 func (t *SequencerTips) Consume(inp Input) {
 	seqIDIncoming, ok := inp.VID.SequencerIDIfAvailable()
-	util.Assertf(ok, "sequencer milestone expected")
+	t.Assertf(ok, "sequencer milestone expected")
 	t.Environment.Tracef(TraceTag, "seq milestone IN: %s of %s", inp.VID.IDShortString, seqIDIncoming.StringShort)
 
 	t.mutex.Lock()
@@ -96,7 +95,7 @@ func (t *SequencerTips) Consume(inp Input) {
 		if ledger.TooCloseOnTimeAxis(&old.ID, &inp.VID.ID) {
 			t.Environment.Log().Warnf("tippool: %s and %s: too close on time axis", old.IDShortString(), inp.VID.IDShortString())
 		}
-		if oldReplaceWithNew(old.WrappedTx, inp.VID) {
+		if t.oldReplaceWithNew(old.WrappedTx, inp.VID) {
 			if inp.VID.Reference("tippool 1") {
 				old.UnReference("tippool 1")
 				t.latestMilestones[seqIDIncoming] = milestoneData{WrappedTx: inp.VID, BranchID: inp.VID.BaselineBranch().ID}
@@ -122,8 +121,8 @@ func (t *SequencerTips) Consume(inp Input) {
 
 // oldReplaceWithNew compares timestamps, chooses the younger one.
 // If timestamps equal, chooses the preferred one, older is preferred
-func oldReplaceWithNew(old, new *vertex.WrappedTx) bool {
-	util.Assertf(old != new, "old != new")
+func (t *SequencerTips) oldReplaceWithNew(old, new *vertex.WrappedTx) bool {
+	t.Assertf(old != new, "old != new")
 	tsOld := old.Timestamp()
 	tsNew := new.Timestamp()
 	switch {
@@ -132,7 +131,7 @@ func oldReplaceWithNew(old, new *vertex.WrappedTx) bool {
 	case tsOld.After(tsNew):
 		return false
 	}
-	util.Assertf(tsNew == tsOld, "tsNew==tsOld")
+	t.Assertf(tsNew == tsOld, "tsNew==tsOld")
 	return vertex.IsPreferredMilestoneAgainstTheOther(new, old, false)
 }
 
@@ -179,7 +178,7 @@ func (t *SequencerTips) TxInclusion(txid *ledger.TransactionID) map[ledger.Chain
 
 	for seqID, msData := range t.latestMilestones {
 		rr, hasIt := t.BranchHasTransaction(&msData.BranchID, txid)
-		util.Assertf(rr != nil, "inconsistency: root record is nil for branch %s", msData.BranchID.StringShort)
+		t.Assertf(rr != nil, "inconsistency: root record is nil for branch %s", msData.BranchID.StringShort)
 
 		ret[seqID] = TxInclusion{
 			RootData: RootData{

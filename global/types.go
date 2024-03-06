@@ -56,6 +56,9 @@ type (
 	Logging interface {
 		Log() *zap.SugaredLogger
 		Tracef(tag string, format string, args ...any)
+		Assertf(cond bool, format string, args ...any)
+		AssertNoError(err error, prefix ...string)
+		AssertMustError(err error)
 	}
 
 	// StartStop interface of the global objet\ct which coordinates graceful shutdown

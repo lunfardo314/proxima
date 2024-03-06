@@ -130,7 +130,7 @@ func (mf *MilestoneFactory) bootstrapOwnMilestoneOutput() vertex.WrappedOutput {
 		if errors.Is(err, multistate.ErrNotFound) {
 			continue
 		}
-		util.AssertNoError(err)
+		mf.AssertNoError(err)
 		ret := attacher.AttachOutputID(o.ID, mf, attacher.OptionInvokedBy("tippool"))
 		return ret
 	}
@@ -328,7 +328,7 @@ const TraceTagChooseExtendEndorsePair = "ChooseExtendEndorsePair"
 
 // ChooseExtendEndorsePair implements one of possible strategies
 func (mf *MilestoneFactory) ChooseExtendEndorsePair(proposerName string, targetTs ledger.Time) *attacher.IncrementalAttacher {
-	util.Assertf(targetTs.Tick() != 0, "targetTs.Tick() != 0")
+	mf.Assertf(targetTs.Tick() != 0, "targetTs.Tick() != 0")
 	endorseCandidates := mf.Backlog().CandidatesToEndorseSorted(targetTs)
 	mf.Tracef(TraceTagChooseExtendEndorsePair, ">>>>>>>>>>>>>>> target %s {%s}", targetTs.String(), vertex.VerticesShortLines(endorseCandidates).Join(", "))
 
@@ -345,7 +345,7 @@ func (mf *MilestoneFactory) ChooseExtendEndorsePair(proposerName string, targetT
 			mf.Tracef(TraceTagChooseExtendEndorsePair, ">>>>>>>>>>>>>>> GetChainOutput not found")
 			continue
 		}
-		util.AssertNoError(err)
+		mf.AssertNoError(err)
 		extendRoot := attacher.AttachOutputID(seqOut.ID, mf)
 		futureConeMilestones := mf.futureConeOwnMilestonesOrdered(extendRoot, targetTs)
 
@@ -392,7 +392,7 @@ func (mf *MilestoneFactory) futureConeOwnMilestonesOrdered(rootOutput vertex.Wra
 	mf.Tracef(TraceTag, "futureConeOwnMilestonesOrdered for root output %s. Total %d own milestones", rootOutput.IDShortString, len(mf.ownMilestones))
 
 	_, ok := mf.ownMilestones[rootOutput.VID]
-	util.Assertf(ok, "futureConeOwnMilestonesOrdered: milestone output %s of chain %s is expected to be among set of own milestones (%d)",
+	mf.Assertf(ok, "futureConeOwnMilestonesOrdered: milestone output %s of chain %s is expected to be among set of own milestones (%d)",
 		rootOutput.IDShortString, util.Ref(mf.SequencerID()).StringShort, len(mf.ownMilestones))
 
 	ordered := util.SortKeys(mf.ownMilestones, func(vid1, vid2 *vertex.WrappedTx) bool {

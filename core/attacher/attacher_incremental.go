@@ -18,13 +18,13 @@ const TraceTagIncrementalAttacher = "incAttach"
 var ErrPastConeNotSolidYet = errors.New("past cone not solid yet")
 
 func NewIncrementalAttacher(name string, env Environment, targetTs ledger.Time, extend vertex.WrappedOutput, endorse ...*vertex.WrappedTx) (*IncrementalAttacher, error) {
-	util.Assertf(ledger.ValidSequencerPace(extend.Timestamp(), targetTs), "NewIncrementalAttacher: target is closer than allowed pace (%d): %s -> %s",
+	env.Assertf(ledger.ValidSequencerPace(extend.Timestamp(), targetTs), "NewIncrementalAttacher: target is closer than allowed pace (%d): %s -> %s",
 		ledger.TransactionPaceSequencer(), extend.Timestamp().String, targetTs.String)
 
 	for _, endorseVID := range endorse {
-		util.Assertf(endorseVID.IsSequencerMilestone(), "NewIncrementalAttacher: endorseVID.IsSequencerMilestone()")
-		util.Assertf(targetTs.Slot() == endorseVID.Slot(), "NewIncrementalAttacher: targetTs.Slot() == endorseVid.Slot()")
-		util.Assertf(ledger.ValidTransactionPace(endorseVID.Timestamp(), targetTs), "NewIncrementalAttacher: ledger.ValidTransactionPace(endorseVID.Timestamp(), targetTs)")
+		env.Assertf(endorseVID.IsSequencerMilestone(), "NewIncrementalAttacher: endorseVID.IsSequencerMilestone()")
+		env.Assertf(targetTs.Slot() == endorseVID.Slot(), "NewIncrementalAttacher: targetTs.Slot() == endorseVid.Slot()")
+		env.Assertf(ledger.ValidTransactionPace(endorseVID.Timestamp(), targetTs), "NewIncrementalAttacher: ledger.ValidTransactionPace(endorseVID.Timestamp(), targetTs)")
 	}
 	env.Tracef(TraceTagIncrementalAttacher, "NewIncrementalAttacher(%s). extend: %s, endorse: {%s}",
 		name, extend.IDShortString, func() string { return vertex.VerticesLines(endorse).Join(",") })
@@ -32,7 +32,7 @@ func NewIncrementalAttacher(name string, env Environment, targetTs ledger.Time, 
 	var baseline *vertex.WrappedTx
 	if targetTs.Tick() == 0 {
 		// target is branch
-		util.Assertf(len(endorse) == 0, "NewIncrementalAttacher: len(endorse)==0")
+		env.Assertf(len(endorse) == 0, "NewIncrementalAttacher: len(endorse)==0")
 		if !extend.VID.IsSequencerMilestone() {
 			return nil, fmt.Errorf("NewIncrementalAttacher %s: cannot extend non-sequencer milestone %s into a branch",
 				name, extend.VID)
@@ -54,7 +54,7 @@ func NewIncrementalAttacher(name string, env Environment, targetTs ledger.Time, 
 		return nil, fmt.Errorf("NewIncrementalAttacher %s: failed to determine the baseline branch of %s",
 			name, extend.IDShortString())
 	}
-	util.Assertf(baseline.BaselineBranch() != nil, "incremental attacher %s, BaselineBranch of %s must not be nil",
+	env.Assertf(baseline.BaselineBranch() != nil, "incremental attacher %s, BaselineBranch of %s must not be nil",
 		name, baseline.IDShortString)
 
 	ret := &IncrementalAttacher{
@@ -150,12 +150,12 @@ func (a *IncrementalAttacher) insertEndorsement(endorsement *vertex.WrappedTx) e
 		a.markVertexRooted(endorsement)
 	} else {
 		ok, defined := a.attachVertexNonBranch(endorsement, ledger.NilLedgerTime)
-		util.Assertf(ok || a.err != nil, "ok || a.err != nil")
+		a.Assertf(ok || a.err != nil, "ok || a.err != nil")
 		if !ok {
-			util.Assertf(a.err != nil, "a.err != nil")
+			a.Assertf(a.err != nil, "a.err != nil")
 			return a.err
 		}
-		util.Assertf(a.err == nil, "a.err == nil")
+		a.Assertf(a.err == nil, "a.err == nil")
 		if !defined {
 			return ErrPastConeNotSolidYet
 		}
@@ -295,7 +295,7 @@ func (a *IncrementalAttacher) NumInputs() int {
 func (a *IncrementalAttacher) Completed() (done bool) {
 	done = !a.containsUndefinedExcept(nil) && len(a.rooted) > 0
 	if done {
-		util.Assertf(a.coverage.LatestDelta() > 0, "a.coverage.LatestDelta() > 0")
+		a.Assertf(a.coverage.LatestDelta() > 0, "a.coverage.LatestDelta() > 0")
 	}
 	return
 }

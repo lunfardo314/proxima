@@ -13,7 +13,6 @@ import (
 	"github.com/lunfardo314/proxima/core/work_process/tippool"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/transaction"
-	"github.com/lunfardo314/proxima/util"
 )
 
 // TODO revisit MaxDurationInTheFuture
@@ -37,7 +36,7 @@ func (w *Workflow) GossipAttachedTransaction(tx *transaction.Transaction, metada
 }
 
 func (w *Workflow) GossipTransactionIfNeeded(tx *transaction.Transaction, metadata *txmetadata.TransactionMetadata, receivedFromPeer *peer.ID) {
-	util.Assertf(metadata != nil, "metadata!=nil")
+	w.Assertf(metadata != nil, "metadata!=nil")
 	if metadata.DoNotNeedGossiping {
 		return
 	}
@@ -50,7 +49,7 @@ func (w *Workflow) GossipTransactionIfNeeded(tx *transaction.Transaction, metada
 		ReceivedFrom: receivedFromPeer,
 	}
 	if metadata != nil {
-		util.Assertf(!metadata.IsResponseToPull, "!metadata.IsResponseToPull")
+		w.Assertf(!metadata.IsResponseToPull, "!metadata.IsResponseToPull")
 		inp.Metadata = *metadata
 	}
 	metadata.DoNotNeedGossiping = true

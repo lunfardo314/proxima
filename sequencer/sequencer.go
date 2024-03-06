@@ -233,10 +233,10 @@ func (seq *Sequencer) doSequencerStep() bool {
 
 	targetTs, prevMsTs := seq.getNextTargetTime()
 
-	util.Assertf(ledger.ValidSequencerPace(prevMsTs, targetTs), "target is closer than allowed pace (%d): %s -> %s",
+	seq.Assertf(ledger.ValidSequencerPace(prevMsTs, targetTs), "target is closer than allowed pace (%d): %s -> %s",
 		ledger.TransactionPaceSequencer(), prevMsTs.String, targetTs.String)
 
-	util.Assertf(!targetTs.Before(seq.prevTimeTarget), "wrong target ts %s: must not be before previous target %s",
+	seq.Assertf(!targetTs.Before(seq.prevTimeTarget), "wrong target ts %s: must not be before previous target %s",
 		targetTs.String(), seq.prevTimeTarget.String())
 
 	seq.prevTimeTarget = targetTs
@@ -278,7 +278,7 @@ func (seq *Sequencer) getNextTargetTime() (ledger.Time, ledger.Time) {
 	var prevMilestoneTs ledger.Time
 
 	currentMsOutput := seq.factory.OwnLatestMilestoneOutput()
-	util.Assertf(currentMsOutput.VID != nil, "currentMsOutput.VID != nil")
+	seq.Assertf(currentMsOutput.VID != nil, "currentMsOutput.VID != nil")
 	prevMilestoneTs = currentMsOutput.Timestamp()
 
 	// synchronize clock
@@ -297,7 +297,7 @@ func (seq *Sequencer) getNextTargetTime() (ledger.Time, ledger.Time) {
 	}
 	// ledger time now is approximately equal to the clock time
 	nowis = ledger.TimeNow()
-	util.Assertf(!nowis.Before(prevMilestoneTs), "!core.TimeNow().Before(prevMilestoneTs)")
+	seq.Assertf(!nowis.Before(prevMilestoneTs), "!core.TimeNow().Before(prevMilestoneTs)")
 
 	// TODO take into account average speed of proposal generation
 

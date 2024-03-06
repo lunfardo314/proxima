@@ -18,7 +18,7 @@ func (a *milestoneAttacher) wrapUpAttacher() {
 	a.finals.numTransactions = len(a.vertices)
 
 	a.finals.coverage = a.coverage
-	util.Assertf(a.finals.coverage.LatestDelta() > 0, "final coverage must be positive")
+	a.Assertf(a.finals.coverage.LatestDelta() > 0, "final coverage must be positive")
 	a.finals.slotInflation = a.slotInflation
 
 	a.Tracef(TraceTagAttachMilestone, "set ledger baselineCoverage in %s to %s", a.vid.IDShortString(), a.finals.coverage.String())
@@ -60,7 +60,7 @@ func (a *milestoneAttacher) wrapUpAttacher() {
 }
 
 func (a *milestoneAttacher) commitBranch() {
-	util.Assertf(a.vid.IsBranchTransaction(), "a.vid.IsBranchTransaction()")
+	a.Assertf(a.vid.IsBranchTransaction(), "a.vid.IsBranchTransaction()")
 
 	muts := multistate.NewMutations()
 

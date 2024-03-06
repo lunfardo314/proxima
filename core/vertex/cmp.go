@@ -3,15 +3,14 @@ package vertex
 import (
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util"
-	"github.com/lunfardo314/unitrie/common"
 )
 
 // AlignedCoverages shifts one of coverages, if necessary, so that to make them comparable
 func AlignedCoverages(vid1, vid2 *WrappedTx) (ledger.Coverage, ledger.Coverage) {
 	lc1 := vid1.GetLedgerCoverage()
-	common.Assert(lc1 != nil, "coverage not set in %s", vid1.IDShortString)
+	util.Assertf(lc1 != nil, "coverage not set in %s", vid1.IDShortString)
 	lc2 := vid2.GetLedgerCoverage()
-	common.Assert(lc2 != nil, "coverage not set in %s", vid2.IDShortString)
+	util.Assertf(lc2 != nil, "coverage not set in %s", vid2.IDShortString)
 
 	if vid1.Timestamp() == vid2.Timestamp() {
 		// same time -> coverages are comparable
@@ -26,7 +25,7 @@ func AlignedCoverages(vid1, vid2 *WrappedTx) (ledger.Coverage, ledger.Coverage) 
 		swapped = true
 	}
 	// now v1 is strongly before v2
-	common.Assert(v1.Timestamp().Before(v2.Timestamp()), "v1.Timestamp().Before(v2.Timestamp())")
+	util.Assertf(v1.Timestamp().Before(v2.Timestamp()), "v1.Timestamp().Before(v2.Timestamp())")
 	lc1Ret := *lc1
 	lc2Ret := *lc2
 	if v1.IsBranchTransaction() || v1.Slot() != v2.Slot() {

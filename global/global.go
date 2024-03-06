@@ -136,8 +136,50 @@ func (l *Global) MustWaitAllWorkProcessesStop(timeout ...time.Duration) {
 	}
 }
 
+func (l *Global) TraceLog(log *zap.SugaredLogger, tag string, format string, args ...any) {
+	if !l.enabledTrace.Load() {
+		return
+	}
+
+	l.traceTagsMutex.RLock()
+	defer l.traceTagsMutex.RUnlock()
+
+	for _, t := range strings.Split(tag, ",") {
+		if l.traceTags.Contains(t) {
+			log.Infof("TRACE(%s) %s", t, fmt.Sprintf(format, util.EvalLazyArgs(args...)...))
+			return
+		}
+	}
+}
+
 func (l *Global) Log() *zap.SugaredLogger {
 	return l.SugaredLogger
+}
+
+func (l *Global) Tracef(tag string, format string, args ...any) {
+	l.TraceLog(l.Log(), tag, format, args...)
+}
+
+func (l *Global) Assertf(cond bool, format string, args ...any) {
+	if !cond {
+		l.SugaredLogger.Fatalf("assertion failed:: "+format, util.EvalLazyArgs(args...)...)
+	}
+}
+
+func (l *Global) AssertNoError(err error, prefix ...string) {
+	if err != nil {
+		pref := "error: "
+		if len(prefix) > 0 {
+			pref = strings.Join(prefix, " ") + ": "
+		}
+		l.SugaredLogger.Fatalf(pref+"%w", err)
+	}
+}
+
+func (l *Global) AssertMustError(err error) {
+	if err == nil {
+		l.SugaredLogger.Panicf("AssertMustError: error expected")
+	}
 }
 
 func (l *Global) EnableTrace(enable bool) {
@@ -171,24 +213,4 @@ func (l *Global) DisableTraceTag(tag string) {
 	if len(l.traceTags) == 0 {
 		l.enabledTrace.Store(true)
 	}
-}
-
-func (l *Global) TraceLog(log *zap.SugaredLogger, tag string, format string, args ...any) {
-	if !l.enabledTrace.Load() {
-		return
-	}
-
-	l.traceTagsMutex.RLock()
-	defer l.traceTagsMutex.RUnlock()
-
-	for _, t := range strings.Split(tag, ",") {
-		if l.traceTags.Contains(t) {
-			log.Infof("TRACE(%s) %s", t, fmt.Sprintf(format, util.EvalLazyArgs(args...)...))
-			return
-		}
-	}
-}
-
-func (l *Global) Tracef(tag string, format string, args ...any) {
-	l.TraceLog(l.Log(), tag, format, args...)
 }

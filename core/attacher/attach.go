@@ -9,7 +9,6 @@ import (
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/multistate"
-	"github.com/lunfardo314/proxima/util"
 )
 
 // AttachTxID ensures the txid is on the DAG
@@ -186,7 +185,7 @@ func EnsureBranch(txid ledger.TransactionID, env Environment, timeout ...time.Du
 
 func MustEnsureBranch(txid ledger.TransactionID, env Environment, timeout ...time.Duration) *vertex.WrappedTx {
 	ret, err := EnsureBranch(txid, env, timeout...)
-	util.AssertNoError(err)
+	env.AssertNoError(err)
 	return ret
 }
 

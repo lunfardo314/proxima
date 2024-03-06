@@ -69,18 +69,18 @@ func (d *Poker) Start() {
 func (d *Poker) Consume(inp Input) {
 	switch inp.Cmd {
 	case CommandAdd:
-		util.Assertf(inp.Wanted != nil, "inp.Wanted != nil")
-		util.Assertf(inp.WhoIsWaiting != nil, "inp.WhoIsWaiting != nil")
+		d.Assertf(inp.Wanted != nil, "inp.Wanted != nil")
+		d.Assertf(inp.WhoIsWaiting != nil, "inp.WhoIsWaiting != nil")
 		d.addCmd(inp.Wanted, inp.WhoIsWaiting)
 
 	case CommandPokeAll:
-		util.Assertf(inp.Wanted != nil, "inp.Wanted != nil")
-		util.Assertf(inp.WhoIsWaiting == nil, "inp.WhoIsWaiting == nil")
+		d.Assertf(inp.Wanted != nil, "inp.Wanted != nil")
+		d.Assertf(inp.WhoIsWaiting == nil, "inp.WhoIsWaiting == nil")
 		d.pokeAllCmd(inp.Wanted)
 
 	case CommandPeriodicCleanup:
-		util.Assertf(inp.Wanted == nil, "inp.Wanted == nil")
-		util.Assertf(inp.WhoIsWaiting == nil, "inp.WhoIsWaiting == nil")
+		d.Assertf(inp.Wanted == nil, "inp.Wanted == nil")
+		d.Assertf(inp.WhoIsWaiting == nil, "inp.WhoIsWaiting == nil")
 		d.periodicCleanup()
 	}
 }

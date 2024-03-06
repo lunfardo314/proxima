@@ -10,7 +10,7 @@ func (seq *Sequencer) updateInfo(ms *vertex.WrappedTx) {
 	seq.infoMutex.Lock()
 	defer seq.infoMutex.Unlock()
 
-	util.Assertf(ms.IsSequencerMilestone(), "msOutput.VID.IsSequencerMilestone()")
+	seq.Assertf(ms.IsSequencerMilestone(), "msOutput.VID.IsSequencerMilestone()")
 
 	nConsumed := ms.NumInputs() - 1
 	if ms.IsBranchTransaction() {

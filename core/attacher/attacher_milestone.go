@@ -28,7 +28,7 @@ func runMilestoneAttacher(vid *vertex.WrappedTx, metadata *txmetadata.Transactio
 		//env.Log().Errorf("-- ATTACH %s -> BAD(%v)\n>>>>>>>>>>>>> failed tx <<<<<<<<<<<<<\n%s\n<<<<<<<<<<<<<<<<<<<<<<<<<<",
 		//	vid.ID.StringShort(), err, vid.LinesTx("      ").String())
 	} else {
-		util.Assertf(finals != nil, "finals != nil")
+		env.Assertf(finals != nil, "finals != nil")
 		msData := env.ParseMilestoneData(vid)
 		if msData == nil {
 			env.ParseMilestoneData(vid)
@@ -48,7 +48,7 @@ func runMilestoneAttacher(vid *vertex.WrappedTx, metadata *txmetadata.Transactio
 }
 
 func newMilestoneAttacher(vid *vertex.WrappedTx, env Environment, metadata *txmetadata.TransactionMetadata) *milestoneAttacher {
-	util.Assertf(vid.IsSequencerMilestone(), "newMilestoneAttacher: %s not a sequencer milestone", vid.IDShortString)
+	env.Assertf(vid.IsSequencerMilestone(), "newMilestoneAttacher: %s not a sequencer milestone", vid.IDShortString)
 
 	ret := &milestoneAttacher{
 		attacher: newPastConeAttacher(env, vid.IDShortString()),
@@ -86,7 +86,7 @@ func (a *milestoneAttacher) run() (*attachFinals, error) {
 		return nil, a.err
 	}
 
-	util.Assertf(a.baseline != nil, "a.baseline != nil")
+	a.Assertf(a.baseline != nil, "a.baseline != nil")
 	// then continue with the rest
 	a.Tracef(TraceTagAttachMilestone, "baseline is OK <- %s", a.baseline.IDShortString)
 
@@ -194,7 +194,7 @@ func (a *milestoneAttacher) solidifyBaseline() vertex.Status {
 				ok = a.solidifyBaselineVertex(v)
 				if ok && v.BaselineBranch != nil {
 					success = a.setBaseline(v.BaselineBranch, a.vid.Timestamp())
-					util.Assertf(success, "solidifyBaseline %s: failed to set baseline", a.name)
+					a.Assertf(success, "solidifyBaseline %s: failed to set baseline", a.name)
 				}
 			},
 			VirtualTx: func(_ *vertex.VirtualTransaction) {

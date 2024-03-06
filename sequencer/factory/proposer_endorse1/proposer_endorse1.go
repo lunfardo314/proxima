@@ -3,7 +3,6 @@ package proposer_endorse1
 import (
 	"github.com/lunfardo314/proxima/core/attacher"
 	"github.com/lunfardo314/proxima/sequencer/factory/proposer_generic"
-	"github.com/lunfardo314/proxima/util"
 )
 
 // Base proposer generates branches and bootstraps sequencer when no other sequencers are around
@@ -47,6 +46,6 @@ func (b *Endorse1Proposer) propose() *attacher.IncrementalAttacher {
 		return nil
 	}
 	b.AttachTagAlongInputs(a)
-	util.Assertf(a.Completed(), "incremental attacher %s is not complete", a.Name())
+	b.Assertf(a.Completed(), "incremental attacher %s is not complete", a.Name())
 	return a
 }
