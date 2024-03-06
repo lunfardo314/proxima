@@ -166,7 +166,7 @@ func standardScenario(cfg spammerConfig) {
 		}
 		glb.Verbosef("%d transactions submitted", len(bundle))
 
-		ReportTxStatus(oid.TransactionID(), time.Second)
+		glb.ReportTxStatus(oid.TransactionID(), time.Second)
 
 		txCounter += len(bundle)
 		timeSinceBeginning := time.Since(beginTime)

@@ -88,7 +88,7 @@ func runCompactCmd(_ *cobra.Command, args []string) {
 	err = glb.GetClient().SubmitTransaction(txCtx.TransactionBytes())
 	glb.AssertNoError(err)
 
-	if !NoWait() {
-		ReportTxStatus(*txCtx.TransactionID(), time.Second)
+	if !glb.NoWait() {
+		glb.ReportTxStatus(*txCtx.TransactionID(), time.Second)
 	}
 }

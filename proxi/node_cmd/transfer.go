@@ -77,8 +77,8 @@ func runTransferCmd(cmd *cobra.Command, args []string) {
 	glb.Assertf(txCtx != nil, "inconsistency: txCtx == nil")
 	glb.Infof("transaction submitted successfully")
 
-	if NoWait() {
+	if glb.NoWait() {
 		return
 	}
-	ReportTxStatus(*txCtx.TransactionID(), time.Second)
+	glb.ReportTxStatus(*txCtx.TransactionID(), time.Second)
 }

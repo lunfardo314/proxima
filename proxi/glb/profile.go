@@ -2,7 +2,11 @@ package glb
 
 import (
 	"crypto/ed25519"
+	"time"
 
+	"github.com/lunfardo314/proxima/core/inclusion"
+	"github.com/lunfardo314/proxima/core/vertex"
+	"github.com/lunfardo314/proxima/core/work_process/tippool"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/spf13/cobra"
@@ -92,4 +96,37 @@ func ReadInConfig() {
 
 	_ = viper.ReadInConfig()
 	Infof("using profile: %s", viper.ConfigFileUsed())
+}
+
+func NoWait() bool {
+	return viper.GetBool("nowait")
+}
+
+func ReportTxStatus(txid ledger.TransactionID, poll time.Duration, stopFun ...func(status *vertex.TxIDStatus, inclusionData map[ledger.ChainID]tippool.TxInclusion) bool) {
+	stop := func(_ *vertex.TxIDStatus, inclusionData map[ledger.ChainID]tippool.TxInclusion) bool {
+		percTotal, _ := inclusion.ScoreLatestSlot(inclusionData)
+		return percTotal == 100
+	}
+	if len(stopFun) > 0 {
+		stop = stopFun[0]
+	}
+
+	Infof("Transaction %s (hex=%s):", txid.String(), txid.StringHex())
+	for {
+		vertexStatus, inclusionData, err := GetClient().QueryTxIDStatus(&txid)
+		AssertNoError(err)
+		Infof(vertexStatus.Lines().Join(", "))
+		if len(inclusionData) > 0 {
+			_, incl := inclusion.InLatestSlot(inclusionData)
+			percTotal, percDominating := incl.Score()
+			Infof("   total branches: %d, included in total: %d%%, in dominating: %d%%", incl.NumBranchesTotal, percTotal, percDominating)
+		}
+		if vertexStatus.Deleted || vertexStatus.Status == vertex.Bad {
+			return
+		}
+		if stop(vertexStatus, inclusionData) {
+			return
+		}
+		time.Sleep(poll)
+	}
 }

@@ -3,6 +3,7 @@ package seq_cmd
 import (
 	"fmt"
 	"strconv"
+	"time"
 
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/transaction"
@@ -81,6 +82,13 @@ func runSeqWithdrawCmd(_ *cobra.Command, args []string) {
 	glb.Infof("submitting the transaction...")
 
 	err = getClient().SubmitTransaction(txBytes)
-	// TODO track inclusion
 	glb.AssertNoError(err)
+
+	if glb.NoWait() {
+		return
+	}
+	txid, err := transaction.IDFromTransactionBytes(txBytes)
+	glb.AssertNoError(err)
+
+	glb.ReportTxStatus(txid, time.Second)
 }
