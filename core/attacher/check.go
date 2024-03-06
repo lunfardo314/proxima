@@ -73,9 +73,7 @@ func (a *milestoneAttacher) _checkConsistencyBeforeFinalization() (err error) {
 		if status == vertex.Bad {
 			return fmt.Errorf("BAD vertex in the past cone: %s", vid.IDShortString())
 		}
-		if status != vertex.Good && vid.IsSequencerMilestone() {
-			return fmt.Errorf("UNDEFINED sequencer vertex in the past cone: %s", vid.IDShortString())
-		}
+		// transaction can be undefined in the past cone (virtual, non-sequencer etc)
 
 		vid.Unwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
 			missingInputs, missingEndorsements := v.NumMissingInputs()

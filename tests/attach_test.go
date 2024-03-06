@@ -677,6 +677,9 @@ func TestConflictsNAttachersOneForkBranches(t *testing.T) {
 	testData.makeSeqBeginnings(true)
 	testData.printTxIDs()
 
+	testData.env.EnableTraceTags(attacher.TraceTagAttachVertex)
+	testData.env.EnableTraceTags(attacher.TraceTagAttachOutput)
+
 	if pullYN {
 		testData.txBytesToStore()
 		for seqNr := range testData.seqChain {

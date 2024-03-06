@@ -566,6 +566,7 @@ func (a *attacher) attachRooted(wOut vertex.WrappedOutput) (ok bool, isRooted bo
 
 func (a *attacher) attachOutput(wOut vertex.WrappedOutput, parasiticChainHorizon ledger.Time) (ok, defined bool) {
 	a.Tracef(TraceTagAttachOutput, "%s", wOut.IDShortString)
+
 	ok, isRooted := a.attachRooted(wOut)
 	if !ok {
 		return false, false

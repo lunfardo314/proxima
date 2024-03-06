@@ -10,7 +10,7 @@ import (
 
 const (
 	vertexTTLSlots      = 5
-	keepNotDeletedSlots = 1
+	keepNotDeletedSlots = 5
 )
 
 func (vid *WrappedTx) Reference(by ...string) bool {
@@ -78,11 +78,14 @@ func (vid *WrappedTx) DoPruningIfRelevant(nowis time.Time) (markedForDeletion, u
 			case 0:
 				markedForDeletion = true
 			case 1:
-				if nowis.After(vid.dontPruneUntil) {
-					vid.references = 0
-					markedForDeletion = true
-					v.UnReferenceDependencies()
-					unreferencedPastCone = true
+				// do not prune those with not-started attachers
+				if !vid.IsSequencerMilestone() || vid.FlagsUpNoLock(FlagVertexTxAttachmentInvoked) {
+					if nowis.After(vid.dontPruneUntil) {
+						vid.references = 0
+						markedForDeletion = true
+						v.UnReferenceDependencies()
+						unreferencedPastCone = true
+					}
 				}
 			default:
 				// vid.references > 1
