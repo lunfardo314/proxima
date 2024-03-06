@@ -151,7 +151,6 @@ func standardScenario(cfg spammerConfig) {
 		if balance < requiredBalance {
 			glb.Infof("transferable balance (%s) is too small for the bundle (required is %s). Waiting for more..",
 				util.GoTh(balance), util.GoTh(requiredBalance))
-
 			continue
 		}
 
@@ -160,11 +159,13 @@ func standardScenario(cfg spammerConfig) {
 		bundleDuration := time.Duration(bundlePace) * ledger.TickDuration()
 		glb.Infof("submitting bundle of %d transactions, total duration %d ticks, %v", len(bundle), bundlePace, bundleDuration)
 
-		for _, txBytes := range bundle {
+		for i, txBytes := range bundle {
 			err = glb.GetClient().SubmitTransaction(txBytes)
 			glb.AssertNoError(err)
+			txid, err := transaction.IDFromTransactionBytes(txBytes)
+			glb.AssertNoError(err)
+			glb.Verbosef("%2d: submitted %s", i, txid.StringShort())
 		}
-		glb.Verbosef("%d transactions submitted", len(bundle))
 
 		glb.ReportTxStatus(oid.TransactionID(), time.Second)
 

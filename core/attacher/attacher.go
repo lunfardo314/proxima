@@ -247,7 +247,7 @@ func (a *attacher) attachVertexNonBranch(vid *vertex.WrappedTx, parasiticChainHo
 				}
 			case vertex.Bad:
 			default:
-				a.Log().Fatalf("bat tx status")
+				a.Log().Fatalf("inconsistency: wrong tx status")
 			}
 		},
 		VirtualTx: func(v *vertex.VirtualTransaction) {
@@ -597,7 +597,7 @@ func (a *attacher) attachOutput(wOut vertex.WrappedOutput, parasiticChainHorizon
 	a.Assertf(!wOut.VID.IsBranchTransaction(), "attachOutput: !wOut.VID.IsBranchTransaction(): %s", wOut.IDShortString)
 
 	// input is not rooted
-	// check is output index is correct??
+	// check if output index is correct??
 	return a.attachVertexNonBranch(wOut.VID, parasiticChainHorizon)
 }
 

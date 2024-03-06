@@ -223,14 +223,14 @@ func (mf *MilestoneFactory) AttachTagAlongInputs(a *attacher.IncrementalAttacher
 		// fast filtering out already consumed outputs in the predecessor milestone context
 		return !mf.isConsumedInThePastPath(wOut, a.Extending().VID)
 	})
-	mf.Tracef(TraceTag, "AttachTagAlongInputs %s. Pre-selected: %d", a.Name(), len(preSelected))
+	mf.Tracef(TraceTag+"_tmp", "AttachTagAlongInputs %s. Pre-selected: %d", a.Name(), len(preSelected))
 
 	for _, wOut := range preSelected {
 		if success, err := a.InsertTagAlongInput(wOut); success {
 			numInserted++
-			mf.Tracef(TraceTag, "AttachTagAlongInputs %s. Inserted %s", a.Name(), wOut.IDShortString)
+			mf.Tracef(TraceTag+"_tmp", "AttachTagAlongInputs %s. Inserted %s", a.Name(), wOut.IDShortString)
 		} else {
-			mf.Tracef(TraceTag, "AttachTagAlongInputs %s. Failed to insert %s. Err='%v'", a.Name(), wOut.IDShortString, err)
+			mf.Tracef(TraceTag+"_tmp", "AttachTagAlongInputs %s. Failed to insert %s. Err='%v'", a.Name(), wOut.IDShortString, err)
 		}
 		if a.NumInputs() >= mf.maxTagAlongInputs {
 			break

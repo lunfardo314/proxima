@@ -62,7 +62,7 @@ trace_tags:
   - gossip
 #  - pull_server
   - txinput
-  - apiServer
+#  - apiServer
 #  - txStore
 #  - global
 

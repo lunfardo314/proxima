@@ -126,7 +126,7 @@ func (a *IncrementalAttacher) insertOutput(wOut vertex.WrappedOutput) error {
 		return a.err
 	}
 	if !defined {
-		return ErrPastConeNotSolidYet
+		return fmt.Errorf("insertOutput: %w", ErrPastConeNotSolidYet)
 	}
 	if !a.markReferencedByAttacher(wOut.VID) {
 		return fmt.Errorf("insertOutput: failed to reference output %s", wOut.IDShortString())
@@ -157,7 +157,7 @@ func (a *IncrementalAttacher) insertEndorsement(endorsement *vertex.WrappedTx) e
 		}
 		a.Assertf(a.err == nil, "a.err == nil")
 		if !defined {
-			return ErrPastConeNotSolidYet
+			return fmt.Errorf("insertEndorsement: %w", ErrPastConeNotSolidYet)
 		}
 	}
 	if !a.markReferencedByAttacher(endorsement) {
@@ -191,10 +191,8 @@ func (a *IncrementalAttacher) InsertTagAlongInput(wOut vertex.WrappedOutput) (bo
 		var retErr error
 		if !ok {
 			retErr = a.err
-		} else {
-			if !defined {
-				retErr = ErrPastConeNotSolidYet
-			}
+		} else if !defined {
+			retErr = fmt.Errorf("InsertTagAlongInput: %w", ErrPastConeNotSolidYet)
 		}
 		a.setError(nil)
 		return false, retErr

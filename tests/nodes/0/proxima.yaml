@@ -56,9 +56,15 @@ pprof:
   port: 9090
 
 trace_tags:
-  - gossip
+#  - gossip
 #  - pull_server
 #  - txinput
 #  - txStore
 #  - global
+  - backlog
+#  - propose-base
+  - factory_tmp
+
+
+
 
