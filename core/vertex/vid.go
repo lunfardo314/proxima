@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"runtime/debug"
+	"time"
 
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util"
@@ -47,7 +48,7 @@ func _newVID(g _genericVertex, txid ledger.TransactionID) *WrappedTx {
 		ID:             txid,
 		_genericVertex: g,
 		references:     1, // we always start with 1 reference, which is reference by the DAG itself. 0 references means it is deleted
-
+		dontPruneUntil: time.Now().Add(notReferencedVertexTTLSlots * ledger.SlotDuration()),
 	}
 	ret.onPoke.Store(nopFun)
 	return ret

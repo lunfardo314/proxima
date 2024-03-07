@@ -1,6 +1,7 @@
 package attacher
 
 import (
+	"fmt"
 	"sync"
 
 	"github.com/lunfardo314/proxima/core/txmetadata"
@@ -132,6 +133,16 @@ const (
 
 func (f Flags) FlagsUp(fl Flags) bool {
 	return f&fl == fl
+}
+
+func (f Flags) String() string {
+	return fmt.Sprintf("%08b known = %v, defined = %v, endorsementsOk = %v, inputsOk = %v",
+		f,
+		f.FlagsUp(FlagAttachedVertexKnown),
+		f.FlagsUp(FlagAttachedVertexDefined),
+		f.FlagsUp(FlagAttachedVertexEndorsementsSolid),
+		f.FlagsUp(FlagAttachedVertexInputsSolid),
+	)
 }
 
 func OptionWithTransactionMetadata(metadata *txmetadata.TransactionMetadata) Option {

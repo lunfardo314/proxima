@@ -624,23 +624,24 @@ func (td *longConflictTestData) printTxIDs() {
 }
 
 type spammerParams struct {
-	t                *testing.T
-	privateKey       ed25519.PrivateKey
-	remainder        *ledger.OutputWithID
-	tagAlongSeqID    []ledger.ChainID
-	target           ledger.Lock
-	batchSize        int
-	tagAlongLastOnly bool
-	pace             int
-	maxBatches       int
-	sendAmount       uint64
-	tagAlongFee      uint64
-	spammedTxIDs     []ledger.TransactionID
-	perChainID       map[ledger.ChainID]int
+	t                 *testing.T
+	privateKey        ed25519.PrivateKey
+	remainder         *ledger.OutputWithID
+	tagAlongSeqID     []ledger.ChainID
+	target            ledger.Lock
+	batchSize         int
+	tagAlongLastOnly  bool
+	pace              int
+	maxBatches        int
+	sendAmount        uint64
+	tagAlongFee       uint64
+	spammedTxIDs      []ledger.TransactionID
+	numSpammedBatches int
+	perChainID        map[ledger.ChainID]int
 }
 
 func (td *workflowTestData) spamTransfers(par *spammerParams, ctx context.Context) {
-	batchCount := 0
+	par.numSpammedBatches = 0
 	for {
 		select {
 		case <-ctx.Done():
@@ -658,8 +659,8 @@ func (td *workflowTestData) spamTransfers(par *spammerParams, ctx context.Contex
 			require.NoError(td.t, err)
 			par.spammedTxIDs = append(par.spammedTxIDs, *txid)
 		}
-		batchCount++
-		if par.maxBatches != 0 && batchCount >= par.maxBatches {
+		par.numSpammedBatches++
+		if par.maxBatches != 0 && par.numSpammedBatches >= par.maxBatches {
 			return
 		}
 	}

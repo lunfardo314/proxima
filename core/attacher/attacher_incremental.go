@@ -170,10 +170,10 @@ func (a *IncrementalAttacher) insertEndorsement(endorsement *vertex.WrappedTx) e
 // InsertTagAlongInput inserts tag along input.
 // In case of failure return false and attacher state consistent
 func (a *IncrementalAttacher) InsertTagAlongInput(wOut vertex.WrappedOutput) (bool, error) {
-	// save state for possible rollback because in case of fail the side effect makes attacher inconsistent
-	// TODO a better way than cloning potentially big maps with each new input?
 	util.AssertNoError(a.err)
 
+	// save state for possible rollback because in case of fail the side effect makes attacher inconsistent
+	// TODO a better way than cloning potentially big maps with each new input?
 	saveVertices := maps.Clone(a.attacher.vertices)
 	saveRooted := maps.Clone(a.attacher.rooted)
 	for vid, outputIdxSet := range saveRooted {
@@ -183,13 +183,6 @@ func (a *IncrementalAttacher) InsertTagAlongInput(wOut vertex.WrappedOutput) (bo
 
 	ok, defined := a.attachOutput(wOut, ledger.NilLedgerTime)
 	if !ok || !defined {
-		//{
-		//	// for testing
-		//	if ok && !defined {
-		//		dag.SaveGraphPastCone(wOut.VID, "wout")
-		//		a.Log().Infof(">>>>>>>>>>>>>>>>>>>>>>>>>>>>> InsertTagAlongInput %s >>>>>>>>>>>>>>>>>>>> \n%s", wOut.IDShortString(), a.dumpLines())
-		//	}
-		//}
 		// it is either conflicting, or not solid yet
 		// in either case rollback
 		a.attacher.vertices = saveVertices

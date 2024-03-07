@@ -9,8 +9,8 @@ import (
 )
 
 const (
-	vertexTTLSlots      = 5
-	keepNotDeletedSlots = 5
+	referencedVertexTTLSlots    = 5
+	notReferencedVertexTTLSlots = 5
 )
 
 func (vid *WrappedTx) Reference(by ...string) bool {
@@ -33,7 +33,7 @@ func (vid *WrappedTx) Reference(by ...string) bool {
 	}
 	if vid.references == 1 {
 		// lifetime of the vertex starts (or re-starts, if completely unreferenced before)
-		vid.dontPruneUntil = time.Now().Add(vertexTTLSlots * ledger.L().ID.SlotDuration())
+		vid.dontPruneUntil = time.Now().Add(referencedVertexTTLSlots * ledger.L().ID.SlotDuration())
 	}
 	vid.references++
 	return true
@@ -57,7 +57,7 @@ func (vid *WrappedTx) UnReference(by ...string) {
 	vid.references--
 	util.Assertf(vid.references >= 1, "UnReference: reference count can't go below 1: %s", vid.ID.StringShort)
 	if vid.references == 1 {
-		vid.dontPruneUntil = time.Now().Add(keepNotDeletedSlots * ledger.L().ID.SlotDuration())
+		vid.dontPruneUntil = time.Now().Add(notReferencedVertexTTLSlots * ledger.L().ID.SlotDuration())
 	}
 }
 

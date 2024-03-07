@@ -25,7 +25,10 @@ type (
 	}
 )
 
-const Name = "pruner"
+const (
+	Name     = "pruner"
+	TraceTag = Name
+)
 
 func New(env Environment) *Pruner {
 	return &Pruner{
@@ -34,11 +37,11 @@ func New(env Environment) *Pruner {
 }
 
 // pruneVertices returns how many marked for deletion and how many past cones unreferenced
-func (d *Pruner) pruneVertices() (int, int) {
+func (p *Pruner) pruneVertices() (int, int) {
 	toDelete := make([]*vertex.WrappedTx, 0)
 	nowis := time.Now()
 	var markedForDeletionCount, unreferencedPastConeCount int
-	for _, vid := range d.Vertices() {
+	for _, vid := range p.Vertices() {
 		markedForDeletion, unreferencedPastCone := vid.DoPruningIfRelevant(nowis)
 		if markedForDeletion {
 			toDelete = append(toDelete, vid)
@@ -48,32 +51,35 @@ func (d *Pruner) pruneVertices() (int, int) {
 			unreferencedPastConeCount++
 		}
 	}
-	d.PurgeDeletedVertices(toDelete)
+	p.PurgeDeletedVertices(toDelete)
+	for _, deleted := range toDelete {
+		p.Tracef(TraceTag, "deleted %s", deleted.IDShortString)
+	}
 	return markedForDeletionCount, unreferencedPastConeCount
 }
 
-func (d *Pruner) Start() {
-	d.Log().Infof("STARTING.. [%s]", d.Log().Level().String())
+func (p *Pruner) Start() {
+	p.Log().Infof("STARTING.. [%s]", p.Log().Level().String())
 	go func() {
-		d.mainLoop()
-		d.Log().Debugf("DAG pruner STOPPED")
+		p.mainLoop()
+		p.Log().Debugf("DAG pruner STOPPED")
 	}()
 }
 
-func (d *Pruner) mainLoop() {
-	d.MarkWorkProcessStarted(Name)
-	defer d.MarkWorkProcessStopped(Name)
+func (p *Pruner) mainLoop() {
+	p.MarkWorkProcessStarted(Name)
+	defer p.MarkWorkProcessStopped(Name)
 
 	prunerLoopPeriod := ledger.SlotDuration() / 2
 
 	for {
 		select {
-		case <-d.Ctx().Done():
+		case <-p.Ctx().Done():
 			return
 		case <-time.After(prunerLoopPeriod):
 		}
-		nDeleted, nUnReferenced := d.pruneVertices()
-		nReadersPurged, readersLeft := d.PurgeCachedStateReaders()
+		nDeleted, nUnReferenced := p.pruneVertices()
+		nReadersPurged, readersLeft := p.PurgeCachedStateReaders()
 
 		// not discoverable anymore
 		var memStats runtime.MemStats
@@ -83,8 +89,8 @@ func (d *Pruner) mainLoop() {
 			memStats.NumGC,
 			runtime.NumGoroutine(),
 		)
-		d.Log().Infof("vertices deleted: %d, detached past cones: %d. Vertices left: %d. Cached state readers purged: %d, left: %d. "+memStr,
-			nDeleted, nUnReferenced, d.NumVertices(), nReadersPurged, readersLeft)
+		p.Log().Infof("vertices deleted: %d, detached past cones: %d. Vertices left: %d. Cached state readers purged: %d, left: %d. "+memStr,
+			nDeleted, nUnReferenced, p.NumVertices(), nReadersPurged, readersLeft)
 
 		//p.Log().Infof("\n------------------\n%s\n-------------------", p.Info(true))
 	}
