@@ -22,21 +22,23 @@ func AttachTxID(txid ledger.TransactionID, env Environment, opts ...Option) (vid
 	if options.calledBy != "" {
 		by = " by " + options.calledBy
 	}
-	env.Tracef(TraceTagAttach, "AttachTxID: %s%s", txid.StringShort(), by)
+	env.Tracef(TraceTagAttach, "AttachTxID: %s%s", txid.StringShort, by)
 
 	env.WithGlobalWriteLock(func() {
 		vid = env.GetVertexNoLock(&txid)
 		if vid != nil {
 			// found existing -> return it
-			env.Tracef(TraceTagAttach, "AttachTxID: found existing %s%s", txid.StringShort(), by)
+			env.Tracef(TraceTagAttach, "AttachTxID: found existing %s%s", txid.StringShort, by)
 			return
 		}
+		env.Tracef(TraceTagAttach, "AttachTxID: new ID %s%s", txid.StringShort, by)
 		// it is new
 		if !txid.IsBranchTransaction() {
 			// if not branch -> just place the empty virtualTx on the utangle_old, no further action
 			vid = vertex.WrapTxID(txid)
 			env.AddVertexNoLock(vid)
 			if options.pullNonBranch {
+				env.Tracef(TraceTagAttach, "AttachTxID: pull new ID %s%s", txid.StringShort, by)
 				env.Pull(txid)
 			}
 			return
@@ -135,14 +137,10 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Opt
 			} else {
 				// pull predecessors of non-sequencer transactions which are on the same slot.
 				// We limit pull to the same slot so that not to fall into the endless pull cycle
+				slot := vid.Slot()
 				tx.PredecessorTransactionIDs().ForEach(func(txid ledger.TransactionID) bool {
-					if txid.Slot() == vid.Slot() {
-						// TODO revisit
-						AttachTxID(txid, env).Unwrap(vertex.UnwrapOptions{VirtualTx: func(vInput *vertex.VirtualTransaction) {
-							if !txid.IsBranchTransaction() {
-								env.Pull(txid)
-							}
-						}})
+					if txid.Slot() == slot {
+						AttachTxID(txid, env, OptionPullNonBranch)
 					}
 					return true
 				})
