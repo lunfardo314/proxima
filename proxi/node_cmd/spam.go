@@ -146,6 +146,8 @@ func standardScenario(cfg spammerConfig) {
 		outs, balance, err := glb.GetClient().GetTransferableOutputs(walletData.Account, nowisTs, cfg.bundleSize)
 		glb.AssertNoError(err)
 
+		glb.Verbosef("Fetched inputs from account %s:\n%s", walletData.Account.String(), glb.LinesOutputsWithIDs(outs).String())
+
 		glb.Infof("transferable balance: %s, number of outputs: %d", util.GoTh(balance), len(outs))
 		requiredBalance := minimumBalance + cfg.outputAmount*uint64(cfg.bundleSize) + cfg.tagAlongFee
 		if balance < requiredBalance {

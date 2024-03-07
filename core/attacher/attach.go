@@ -137,6 +137,7 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Opt
 				// We limit pull to the same slot so that not to fall into the endless pull cycle
 				tx.PredecessorTransactionIDs().ForEach(func(txid ledger.TransactionID) bool {
 					if txid.Slot() == vid.Slot() {
+						// TODO revisit
 						AttachTxID(txid, env).Unwrap(vertex.UnwrapOptions{VirtualTx: func(vInput *vertex.VirtualTransaction) {
 							if !txid.IsBranchTransaction() {
 								env.Pull(txid)

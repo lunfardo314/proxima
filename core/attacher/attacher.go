@@ -741,7 +741,7 @@ func (a *attacher) dumpLines(prefix ...string) *lines.Lines {
 func (a *attacher) linesVertices(prefix ...string) *lines.Lines {
 	ret := lines.New(prefix...)
 	for vid, flags := range a.vertices {
-		ret.Add("%s local: %08b", vid.IDShortString(), flags)
+		ret.Add("%s local flags: %08b", vid.IDShortString(), flags)
 	}
 	return ret
 }

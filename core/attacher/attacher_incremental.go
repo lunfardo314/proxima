@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/lunfardo314/proxima/core/dag"
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/transaction"
@@ -183,6 +184,10 @@ func (a *IncrementalAttacher) InsertTagAlongInput(wOut vertex.WrappedOutput) (bo
 
 	ok, defined := a.attachOutput(wOut, ledger.NilLedgerTime)
 	if !ok || !defined {
+		if ok && !defined {
+			dag.SaveGraphPastCone(wOut.VID, "wout")
+			a.Log().Infof(">>>>>>>>>>>>>>>>>>>>>>>>>>>>> InsertTagAlongInput %s >>>>>>>>>>>>>>>>>>>> \n%s", wOut.IDShortString(), a.dumpLines())
+		}
 		// it is either conflicting, or not solid yet
 		// in either case rollback
 		a.attacher.vertices = saveVertices

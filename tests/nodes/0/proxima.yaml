@@ -58,12 +58,12 @@ pprof:
 trace_tags:
 #  - gossip
 #  - pull_server
-#  - txinput
+  - txinput
 #  - txStore
 #  - global
-  - backlog
+#  - backlog
 #  - propose-base
-  - factory_tmp
+#  - factory_tmp
 
 
 
