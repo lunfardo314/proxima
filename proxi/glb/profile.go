@@ -103,7 +103,7 @@ func NoWait() bool {
 }
 
 func ReportTxStatus(txid ledger.TransactionID, poll time.Duration, stopFun ...func(status *vertex.TxIDStatus, inclusionData map[ledger.ChainID]tippool.TxInclusion) bool) {
-	stop := func(_ *vertex.TxIDStatus, inclusionData map[ledger.ChainID]tippool.TxInclusion) bool {
+	stop := func(status *vertex.TxIDStatus, inclusionData map[ledger.ChainID]tippool.TxInclusion) bool {
 		percTotal, _ := inclusion.ScoreLatestSlot(inclusionData)
 		return percTotal == 100
 	}

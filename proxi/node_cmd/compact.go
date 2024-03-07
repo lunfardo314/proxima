@@ -37,20 +37,20 @@ func runCompactCmd(_ *cobra.Command, args []string) {
 		glb.AssertNoError(err)
 		glb.Assertf(0 < maxNumberOfInputs && maxNumberOfInputs <= 256, "parameter must be > 0 and <= 256")
 	}
+
 	var tagAlongSeqID *ledger.ChainID
-	feeAmount := getTagAlongFee() // 0 interpreted as no fee output
+	feeAmount := getTagAlongFee()
 	if feeAmount > 0 {
 		tagAlongSeqID = GetTagAlongSequencerID()
+		glb.Assertf(tagAlongSeqID != nil, "tag-along sequencer not specified")
+
 		md, err := glb.GetClient().GetMilestoneDataFromHeaviestState(*tagAlongSeqID)
 		glb.AssertNoError(err)
 
-		if feeAmount > 0 {
-			if md != nil && md.MinimumFee > feeAmount {
-				feeAmount = md.MinimumFee
-			}
+		if md != nil && md.MinimumFee > feeAmount {
+			feeAmount = md.MinimumFee
 		}
 	}
-
 	walletData := glb.GetWalletData()
 	nowisTs := ledger.TimeNow()
 	walletOutputs, err := glb.GetClient().GetAccountOutputs(walletData.Account, func(o *ledger.Output) bool {
