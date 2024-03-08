@@ -37,7 +37,7 @@ func TestBasic(t *testing.T) {
 		txBytesStore := txstore.NewSimpleTxBytesStore(common.NewInMemoryKVStore())
 		env := newWorkflowDummyEnvironment(stateStore, txBytesStore)
 
-		env.EnableTraceTags(global.TraceTag)
+		env.StartTracingTags(global.TraceTag)
 
 		wrk := workflow.New(env, peering.NewPeersDummy(), workflow.OptionDoNotStartPruner)
 		wrk.Start()
@@ -142,9 +142,9 @@ func TestBasic(t *testing.T) {
 		env := newWorkflowDummyEnvironment(stateStore, txBytesStore)
 		wrk := workflow.New(env, peering.NewPeersDummy(), workflow.OptionDoNotStartPruner)
 
-		//wrk.EnableTraceTags(attacher.TraceTagAttach, attacher.TraceTagAttachMilestone, attacher.TraceTagAttachVertex)
-		//wrk.EnableTraceTags(attacher.TraceTagAttachEndorsements, attacher.TraceTagAttachOutput)
-		//wrk.EnableTraceTags(attacher.TraceTagMarkDefUndef)
+		//wrk.StartTracingTags(attacher.TraceTagAttach, attacher.TraceTagAttachMilestone, attacher.TraceTagAttachVertex)
+		//wrk.StartTracingTags(attacher.TraceTagAttachEndorsements, attacher.TraceTagAttachOutput)
+		//wrk.StartTracingTags(attacher.TraceTagMarkDefUndef)
 		wrk.Start()
 
 		txBytes, err := txbuilder.MakeDistributionTransaction(stateStore, privKey, distrib)
@@ -492,7 +492,7 @@ func TestConflicts1Attacher(t *testing.T) {
 
 		var wg sync.WaitGroup
 
-		testData.env.EnableTraceTags("delay")
+		testData.env.StartTracingTags("delay")
 
 		wg.Add(1)
 		vid, err := attacher.AttachTransactionFromBytes(txBytes, testData.wrk, attacher.OptionWithAttachmentCallback(func(_ *vertex.WrappedTx, _ error) {
@@ -614,7 +614,7 @@ func TestConflictsNAttachersOneFork(t *testing.T) {
 	testData.makeSeqBeginnings(true)
 	//testData.printTxIDs()
 
-	//testData.env.EnableTraceTags(attacher.TraceTagAttach)
+	//testData.env.StartTracingTags(attacher.TraceTagAttach)
 
 	if pullYN {
 		testData.txBytesToStore()
@@ -677,8 +677,8 @@ func TestConflictsNAttachersOneForkBranches(t *testing.T) {
 	testData.makeSeqBeginnings(true)
 	testData.printTxIDs()
 
-	testData.env.EnableTraceTags(attacher.TraceTagAttachVertex)
-	testData.env.EnableTraceTags(attacher.TraceTagAttachOutput)
+	testData.env.StartTracingTags(attacher.TraceTagAttachVertex)
+	testData.env.StartTracingTags(attacher.TraceTagAttachOutput)
 
 	if pullYN {
 		testData.txBytesToStore()
@@ -743,7 +743,7 @@ func TestConflictsNAttachersOneForkBranchesConflict(t *testing.T) {
 	testData.makeSeqBeginnings(true)
 	//testData.printTxIDs()
 
-	//testData.env.EnableTraceTags(global.TraceTag, attacher.TraceTagAttachMilestone)
+	//testData.env.StartTracingTags(global.TraceTag, attacher.TraceTagAttachMilestone)
 
 	if pullYN {
 		testData.txBytesToStore()
@@ -838,7 +838,7 @@ func TestSeqChains(t *testing.T) {
 		testData.printTxIDs()
 
 		var wg sync.WaitGroup
-		//testData.env.EnableTraceTags(tippool.TraceTag)
+		//testData.env.StartTracingTags(tippool.TraceTag)
 
 		testData.txBytesAttach()
 		vids := make([][]*vertex.WrappedTx, len(testData.seqChain))
@@ -951,10 +951,6 @@ func TestSeqChains(t *testing.T) {
 		testData.makeSeqChains(howLongSeqChains)
 		//testData.printTxIDs()
 
-		testData.env.EnableTraceTags(workflow.TraceTagDelay)
-		//testData.wrk.EnableTraceTags(attacher.TraceTagMarkDefUndef)
-		//testData.wrk.EnableTraceTags(attacher.TraceTagAttachEndorsements, attacher.TraceTagAttachVertex)
-
 		var wg sync.WaitGroup
 
 		testData.txBytesAttach()
@@ -1018,8 +1014,8 @@ func TestSeqChains(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		//testData.wrk.EnableTraceTags(attacher.TraceTagAttach, attacher.TraceTagAttachVertex)
-		//testData.wrk.EnableTraceTags(poker.TraceTag, pull_client.TraceTag, pull_server.TraceTag)
+		//testData.wrk.StartTracingTags(attacher.TraceTagAttach, attacher.TraceTagAttachVertex)
+		//testData.wrk.StartTracingTags(poker.TraceTag, pull_client.TraceTag, pull_server.TraceTag)
 
 		wg.Add(1)
 		vidBranch, err := attacher.AttachTransactionFromBytes(txBytesBranch, testData.wrk, attacher.OptionWithAttachmentCallback(func(_ *vertex.WrappedTx, _ error) {
@@ -1078,8 +1074,6 @@ func TestSeqChains(t *testing.T) {
 			testData.storeTransactions(extend...)
 		}
 
-		testData.env.EnableTraceTags(workflow.TraceTagDelay)
-		//testData.wrk.EnableTraceTags(attacher.TraceTagAttachEndorsements)
 		testData.storeTransactions(branches...)
 		var wg sync.WaitGroup
 		wg.Add(1)
@@ -1146,7 +1140,7 @@ func TestSeqChains(t *testing.T) {
 
 		testData.storeTransactions(branches...)
 
-		testData.env.EnableTraceTags("persist_txbytes")
+		testData.env.StartTracingTags("persist_txbytes")
 
 		var wg sync.WaitGroup
 		wg.Add(1)
@@ -1183,7 +1177,7 @@ func TestSeqChains(t *testing.T) {
 		testData := initLongConflictTestData(t, nConflicts, nChains, howLongConflictChains)
 		testData.makeSeqBeginnings(false)
 
-		testData.env.EnableTraceTags(sequencer.TraceTag + "_tx")
+		testData.env.StartTracingTags(sequencer.TraceTag + "_tx")
 
 		slotTransactions := make([][][]*transaction.Transaction, nSlots)
 		branches := make([]*transaction.Transaction, nSlots)
@@ -1215,7 +1209,7 @@ func TestSeqChains(t *testing.T) {
 
 		testData.storeTransactions(branches...)
 
-		testData.env.EnableTraceTags("persist_txbytes")
+		testData.env.StartTracingTags("persist_txbytes")
 
 		var wg sync.WaitGroup
 		wg.Add(1)

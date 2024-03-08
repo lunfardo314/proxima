@@ -23,8 +23,8 @@ func Test1SequencerPruner(t *testing.T) {
 		testData := initWorkflowTest(t, 1, true)
 		t.Logf("%s", testData.wrk.Info())
 
-		//testData.wrk.EnableTraceTags("seq,factory,tippool,txinput, proposer, incAttach")
-		//testData.wrk.EnableTraceTags(sequencer.TraceTag, factory.TraceTag, tippool.TraceTag, proposer_base.TraceTag)
+		//testData.wrk.StartTracingTags("seq,factory,tippool,txinput, proposer, incAttach")
+		//testData.wrk.StartTracingTags(sequencer.TraceTag, factory.TraceTag, tippool.TraceTag, proposer_base.TraceTag)
 
 		seq, err := sequencer.New(testData.wrk, testData.bootstrapChainID, testData.genesisPrivKey,
 			sequencer.WithMaxBranches(maxSlots))
@@ -57,7 +57,7 @@ func Test1SequencerPruner(t *testing.T) {
 		testData := initWorkflowTest(t, 1, true)
 		//t.Logf("%s", testData.wrk.Info())
 
-		//testData.wrk.EnableTraceTags(factory.TraceTag)
+		//testData.wrk.StartTracingTags(factory.TraceTag)
 
 		ctx, _ := context.WithCancel(context.Background())
 		seq, err := sequencer.New(testData.wrk, testData.bootstrapChainID, testData.genesisPrivKey,
@@ -151,11 +151,11 @@ func TestNSequencersIdlePruner(t *testing.T) {
 		)
 		testData := initMultiSequencerTest(t, nSequencers, true)
 
-		//testData.wrk.EnableTraceTags(proposer_endorse1.TraceTag)
-		//testData.wrk.EnableTraceTags(proposer_base.TraceTag)
-		//testData.wrk.EnableTraceTags(factory.TraceTag)
-		//testData.wrk.EnableTraceTags(factory.TraceTagChooseExtendEndorsePair)
-		//testData.wrk.EnableTraceTags(attacher.TraceTagAttachVertex, attacher.TraceTagAttachOutput)
+		//testData.wrk.StartTracingTags(proposer_endorse1.TraceTag)
+		//testData.wrk.StartTracingTags(proposer_base.TraceTag)
+		//testData.wrk.StartTracingTags(factory.TraceTag)
+		//testData.wrk.StartTracingTags(factory.TraceTagChooseExtendEndorsePair)
+		//testData.wrk.StartTracingTags(attacher.TraceTagAttachVertex, attacher.TraceTagAttachOutput)
 
 		testData.startSequencersWithTimeout(maxSlots)
 		time.Sleep(20 * time.Second)
@@ -174,7 +174,7 @@ func Test5SequencersIdlePruner(t *testing.T) {
 	)
 	testData := initMultiSequencerTest(t, nSequencers, true)
 
-	//testData.wrk.EnableTraceTags(proposer_base.TraceTag)
+	//testData.wrk.StartTracingTags(proposer_base.TraceTag)
 	testData.startSequencersWithTimeout(maxSlots)
 	time.Sleep(20 * time.Second)
 	testData.stopAndWait()
@@ -195,11 +195,11 @@ func TestNSequencersTransferPruner(t *testing.T) {
 		)
 		testData := initMultiSequencerTest(t, nSequencers, true)
 
-		//testData.wrk.EnableTraceTags(factory.TraceTagChooseExtendEndorsePair)
-		//testData.wrk.EnableTraceTags(attacher.TraceTagAttachVertex, attacher.TraceTagAttachOutput)
-		//testData.wrk.EnableTraceTags(proposer_endorse1.TraceTag)
-		//testData.wrk.EnableTraceTags(factory.TraceTagChooseExtendEndorsePair)
-		//testData.wrk.EnableTraceTags(factory.TraceTag)
+		//testData.wrk.StartTracingTags(factory.TraceTagChooseExtendEndorsePair)
+		//testData.wrk.StartTracingTags(attacher.TraceTagAttachVertex, attacher.TraceTagAttachOutput)
+		//testData.wrk.StartTracingTags(proposer_endorse1.TraceTag)
+		//testData.wrk.StartTracingTags(factory.TraceTagChooseExtendEndorsePair)
+		//testData.wrk.StartTracingTags(factory.TraceTag)
 
 		rdr := multistate.MakeSugared(testData.wrk.HeaviestStateForLatestTimeSlot())
 		require.EqualValues(t, initBalance*nSequencers, int(rdr.BalanceOf(testData.addrAux.AccountID())))
@@ -265,11 +265,11 @@ func TestNSequencersTransferPruner(t *testing.T) {
 		)
 		testData := initMultiSequencerTest(t, nSequencers, true)
 
-		//testData.wrk.EnableTraceTags(factory.TraceTagChooseExtendEndorsePair)
-		//testData.wrk.EnableTraceTags(attacher.TraceTagAttachVertex, attacher.TraceTagAttachOutput)
-		//testData.wrk.EnableTraceTags(proposer_endorse1.TraceTag)
-		//testData.wrk.EnableTraceTags(factory.TraceTagChooseExtendEndorsePair)
-		//testData.wrk.EnableTraceTags(factory.TraceTag)
+		//testData.wrk.StartTracingTags(factory.TraceTagChooseExtendEndorsePair)
+		//testData.wrk.StartTracingTags(attacher.TraceTagAttachVertex, attacher.TraceTagAttachOutput)
+		//testData.wrk.StartTracingTags(proposer_endorse1.TraceTag)
+		//testData.wrk.StartTracingTags(factory.TraceTagChooseExtendEndorsePair)
+		//testData.wrk.StartTracingTags(factory.TraceTag)
 
 		rdr := multistate.MakeSugared(testData.wrk.HeaviestStateForLatestTimeSlot())
 		require.EqualValues(t, initBalance*nSequencers, int(rdr.BalanceOf(testData.addrAux.AccountID())))
@@ -346,8 +346,8 @@ func TestNSequencersTransferPruner(t *testing.T) {
 		)
 		testData := initMultiSequencerTest(t, nSequencers, startPruner)
 
-		//testData.env.EnableTraceTags(pruner.TraceTag)
-		//testData.env.EnableTraceTags(pull_client.TraceTag)
+		//testData.env.StartTracingTags(pruner.TraceTag)
+		//testData.env.StartTracingTags(pull_client.TraceTag)
 
 		rdr := multistate.MakeSugared(testData.wrk.HeaviestStateForLatestTimeSlot())
 		require.EqualValues(t, initBalance*nSequencers, int(rdr.BalanceOf(testData.addrAux.AccountID())))

@@ -74,7 +74,7 @@ func makeHosts(t *testing.T, nHosts int, trace bool) []*Peers {
 		hosts[i], err = New(env, cfg)
 		require.NoError(t, err)
 		if trace {
-			env.EnableTraceTags(TraceTag)
+			env.StartTracingTags(TraceTag)
 		}
 	}
 	return hosts

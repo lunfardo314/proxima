@@ -18,6 +18,7 @@ type (
 		txMetadata       txmetadata.TransactionMetadata
 		receivedFromPeer *peer.ID
 		callback         func(vid *vertex.WrappedTx, err error)
+		txTrace          bool
 	}
 
 	TxBytesInOption func(options *txBytesInOptions)
@@ -25,7 +26,6 @@ type (
 
 const (
 	TraceTagTxInput = "txinput"
-	TraceTagDelay   = "delay"
 )
 
 func (w *Workflow) TxBytesIn(txBytes []byte, opts ...TxBytesInOption) (*ledger.TransactionID, error) {
@@ -40,6 +40,9 @@ func (w *Workflow) TxBytesIn(txBytes []byte, opts ...TxBytesInOption) (*ledger.T
 	options := &txBytesInOptions{}
 	for _, opt := range opts {
 		opt(options)
+	}
+	if options.txTrace {
+		w.StartTracingTx(*txid)
 	}
 	w.Tracef(TraceTagTxInput, "-> %s, meta: %s", txid.StringShort, options.txMetadata.String())
 	// bytes are identifiable as transaction
@@ -72,12 +75,14 @@ func (w *Workflow) TxBytesIn(txBytes []byte, opts ...TxBytesInOption) (*ledger.T
 			return txid, err
 		}
 		w.Log().Warnf("checking time bounds of %s: '%v'", txid.StringShort(), err)
+		w.TraceTx(txid, "checking time bounds: '%v'", err)
 	}
 
 	// run remaining pre-validations on the transaction
 	if err = tx.Validate(transaction.MainTxValidationOptions...); err != nil {
-		w.Tracef(TraceTagTxInput, "invalidate %s due to failed validation: '%v'", txid.StringShort, err)
 		err = fmt.Errorf("error while pre-validating transaction %s: '%w'", txid.StringShort(), err)
+		w.Tracef(TraceTagTxInput, "%v", err)
+		w.TraceTx(txid, "%v", err)
 		attacher.InvalidateTxID(*txid, w, err)
 		return txid, err
 	}
@@ -88,6 +93,7 @@ func (w *Workflow) TxBytesIn(txBytes []byte, opts ...TxBytesInOption) (*ledger.T
 		// Reason: other nodes might have slightly different clocks, let them handle delay themselves
 		// Sequencer transactions not from outside will be gossiped by attacher
 		w.Tracef(TraceTagTxInput, "send to GossipTransactionIfNeeded %s", txid.StringShort)
+		w.TraceTx(txid, "send to GossipTransactionIfNeeded")
 		w.GossipTransactionIfNeeded(tx, &options.txMetadata, options.receivedFromPeer)
 	}
 
@@ -113,12 +119,12 @@ func (w *Workflow) TxBytesIn(txBytes []byte, opts ...TxBytesInOption) (*ledger.T
 	// timestamp is in the future. Put it on wait
 	delayFor := txTime.Sub(nowis)
 	w.Tracef(TraceTagTxInput, "%s -> delay for %v", txid.StringShort, delayFor)
-	w.Tracef(TraceTagDelay, "%s -> delay for %v", txid.StringShort, delayFor)
+	w.TraceTx(txid, "delay for %v", delayFor)
 
 	go func() {
 		time.Sleep(delayFor)
 		w.Tracef(TraceTagTxInput, "%s -> release", txid.StringShort)
-		w.Tracef(TraceTagDelay, "%s -> release", txid.StringShort)
+		w.TraceTx(txid, "-> release")
 
 		w._attach(tx, attachOpts...)
 	}()
@@ -126,11 +132,13 @@ func (w *Workflow) TxBytesIn(txBytes []byte, opts ...TxBytesInOption) (*ledger.T
 }
 
 func (w *Workflow) _attach(tx *transaction.Transaction, opts ...attacher.Option) {
+	w.TraceTx(tx.ID(), "send to attach")
 	w.Tracef(TraceTagTxInput, "-> attach tx %s", tx.IDShortString)
 	if vid := attacher.AttachTransaction(tx, w, opts...); vid.IsBadOrDeleted() {
 		// rare event. If tx is already purged, this was an unlucky try.
 		// Transaction will be erased from the dag and pulled again, if necessary
-		w.Tracef(TraceTagTxInput, "-> failed to attach tx %s: it is bad or deleted. Drop", vid.IDShortString)
+		w.TraceTx(&vid.ID, "-> failed to attach: bad or deleted: err = %v", vid.GetError)
+		w.Tracef(TraceTagTxInput, "-> failed to attach tx %s: it is bad or deleted: err = %v", vid.IDShortString, vid.GetError)
 	}
 }
 
@@ -207,4 +215,8 @@ func WithPeerMetadata(peerID peer.ID, metadata *txmetadata.TransactionMetadata) 
 		opts.txMetadata.SourceTypeNonPersistent = txmetadata.SourceTypePeer
 		opts.receivedFromPeer = &peerID
 	}
+}
+
+func WithTxTrace(opts *txBytesInOptions) {
+	opts.txTrace = true
 }

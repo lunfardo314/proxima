@@ -16,6 +16,8 @@ const (
 )
 
 func runMilestoneAttacher(vid *vertex.WrappedTx, metadata *txmetadata.TransactionMetadata, callback func(vid *vertex.WrappedTx, err error), env Environment) {
+	env.TraceTx(&vid.ID, "runMilestoneAttacher")
+
 	a := newMilestoneAttacher(vid, env, metadata)
 	defer func() {
 		go a.close()

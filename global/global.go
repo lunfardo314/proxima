@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
 	"github.com/lunfardo314/proxima/util/set"
@@ -20,15 +21,20 @@ import (
 
 type Global struct {
 	*zap.SugaredLogger
-	ctx            context.Context
-	stopFun        context.CancelFunc
-	logStopOnce    *sync.Once
-	stopOnce       *sync.Once
-	mutex          sync.RWMutex
-	components     set.Set[string]
+	ctx         context.Context
+	stopFun     context.CancelFunc
+	logStopOnce *sync.Once
+	stopOnce    *sync.Once
+	mutex       sync.RWMutex
+	components  set.Set[string]
+	// statically enabled trace tags
 	enabledTrace   atomic.Bool
 	traceTagsMutex sync.RWMutex
 	traceTags      set.Set[string]
+	// dynamic transaction tracing with TTL
+	enabledTraceTx atomic.Bool
+	txTraceMutex   sync.RWMutex
+	txTraceIDs     map[ledger.TransactionID]time.Time
 }
 
 const TraceTag = "global"
@@ -69,10 +75,13 @@ func _new(logLevel zapcore.Level, outputs []string, erasedPrevious bool) *Global
 		stopOnce:      &sync.Once{},
 		logStopOnce:   &sync.Once{},
 		components:    set.New[string](),
+		txTraceIDs:    make(map[ledger.TransactionID]time.Time),
 	}
 	if erasedPrevious {
 		ret.SugaredLogger.Warnf("previous logfile may have been erased")
 	}
+	go ret.purgeLoop()
+
 	return ret
 }
 
@@ -146,30 +155,6 @@ func (l *Global) MustWaitAllWorkProcessesStop(timeout ...time.Duration) {
 	}
 }
 
-func (l *Global) TraceLog(log *zap.SugaredLogger, tag string, format string, args ...any) {
-	if !l.enabledTrace.Load() {
-		return
-	}
-
-	l.traceTagsMutex.RLock()
-	defer l.traceTagsMutex.RUnlock()
-
-	for _, t := range strings.Split(tag, ",") {
-		if l.traceTags.Contains(t) {
-			log.Infof("TRACE(%s) %s", t, fmt.Sprintf(format, util.EvalLazyArgs(args...)...))
-			return
-		}
-	}
-}
-
-func (l *Global) Log() *zap.SugaredLogger {
-	return l.SugaredLogger
-}
-
-func (l *Global) Tracef(tag string, format string, args ...any) {
-	l.TraceLog(l.Log(), tag, format, args...)
-}
-
 func (l *Global) Assertf(cond bool, format string, args ...any) {
 	if !cond {
 		l.SugaredLogger.Fatalf("assertion failed:: "+format, util.EvalLazyArgs(args...)...)
@@ -192,11 +177,11 @@ func (l *Global) AssertMustError(err error) {
 	}
 }
 
-func (l *Global) EnableTrace(enable bool) {
-	l.enabledTrace.Store(enable)
+func (l *Global) Log() *zap.SugaredLogger {
+	return l.SugaredLogger
 }
 
-func (l *Global) EnableTraceTags(tags ...string) {
+func (l *Global) StartTracingTags(tags ...string) {
 	func() {
 		l.traceTagsMutex.Lock()
 		defer l.traceTagsMutex.Unlock()
@@ -215,12 +200,103 @@ func (l *Global) EnableTraceTags(tags ...string) {
 	}
 }
 
-func (l *Global) DisableTraceTag(tag string) {
+func (l *Global) StopTracingTag(tag string) {
 	l.traceTagsMutex.Lock()
 	defer l.traceTagsMutex.Unlock()
 
 	l.traceTags.Remove(tag)
 	if len(l.traceTags) == 0 {
-		l.enabledTrace.Store(true)
+		l.enabledTrace.Store(false)
+	}
+}
+
+func (l *Global) Tracef(tag string, format string, args ...any) {
+	if !l.enabledTrace.Load() {
+		return
+	}
+
+	l.traceTagsMutex.RLock()
+	defer l.traceTagsMutex.RUnlock()
+
+	for _, t := range strings.Split(tag, ",") {
+		if l.traceTags.Contains(t) {
+			l.SugaredLogger.Infof("TRACE(%s) %s", t, fmt.Sprintf(format, util.EvalLazyArgs(args...)...))
+			return
+		}
+	}
+}
+
+const (
+	defaultTxTracingTTL = time.Minute
+	purgeLoopPeriod     = time.Second
+)
+
+func (l *Global) StartTracingTx(txid ledger.TransactionID) {
+	l.txTraceMutex.Lock()
+	defer l.txTraceMutex.Unlock()
+
+	l.txTraceIDs[txid] = time.Now().Add(defaultTxTracingTTL)
+	l.enabledTraceTx.Store(true)
+	l.SugaredLogger.Infof("TRACE_TX(%s) started tracing", txid.StringShort())
+}
+
+func (l *Global) StopTracingTx(txid ledger.TransactionID) {
+	l.txTraceMutex.Lock()
+	defer l.txTraceMutex.Unlock()
+
+	delete(l.txTraceIDs, txid)
+	l.SugaredLogger.Infof("TRACE_TX(%s) stopped tracing", txid.StringShort())
+	if len(l.txTraceIDs) == 0 {
+		l.enabledTraceTx.Store(false)
+	}
+}
+
+func (l *Global) TraceTx(txid *ledger.TransactionID, format string, args ...any) {
+	if !l.enabledTraceTx.Load() {
+		return
+	}
+
+	l.txTraceMutex.RLock()
+	defer l.txTraceMutex.RUnlock()
+
+	if _, found := l.txTraceIDs[*txid]; !found {
+		return
+	}
+
+	l.SugaredLogger.Infof("TRACE_TX(%s) %s", txid.StringShort(), fmt.Sprintf(format, util.EvalLazyArgs(args...)...))
+}
+
+func (l *Global) purgeLoop() {
+	for {
+		select {
+		case <-l.ctx.Done():
+			return
+		case <-time.After(purgeLoopPeriod):
+			l.purge()
+		}
+	}
+}
+
+func (l *Global) purge() {
+	l.txTraceMutex.Lock()
+	defer l.txTraceMutex.Unlock()
+
+	nowis := time.Now()
+	var toDelete []ledger.TransactionID
+
+	for txid, ttl := range l.txTraceIDs {
+		if nowis.Before(ttl) {
+			continue
+		}
+		if len(toDelete) == 0 {
+			toDelete = []ledger.TransactionID{txid}
+		} else {
+			toDelete = append(toDelete, txid)
+		}
+	}
+
+	for i := range toDelete {
+		delete(l.txTraceIDs, toDelete[i])
+		l.SugaredLogger.Infof("TRACE_TX(%s) stopped tracing", toDelete[i].StringShort())
 	}
 }

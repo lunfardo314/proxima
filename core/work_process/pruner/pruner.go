@@ -54,6 +54,7 @@ func (p *Pruner) pruneVertices() (int, int) {
 	p.PurgeDeletedVertices(toDelete)
 	for _, deleted := range toDelete {
 		p.Tracef(TraceTag, "deleted %s", deleted.IDShortString)
+		p.StopTracingTx(deleted.ID)
 	}
 	return markedForDeletionCount, unreferencedPastConeCount
 }

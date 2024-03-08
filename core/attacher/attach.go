@@ -9,10 +9,13 @@ import (
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/multistate"
+	"github.com/lunfardo314/proxima/util"
 )
 
 // AttachTxID ensures the txid is on the DAG
 func AttachTxID(txid ledger.TransactionID, env Environment, opts ...Option) (vid *vertex.WrappedTx) {
+	env.TraceTx(&txid, "AttachTxID")
+
 	options := &_attacherOptions{}
 	for _, opt := range opts {
 		opt(options)
@@ -29,9 +32,12 @@ func AttachTxID(txid ledger.TransactionID, env Environment, opts ...Option) (vid
 		if vid != nil {
 			// found existing -> return it
 			env.Tracef(TraceTagAttach, "AttachTxID: found existing %s%s", txid.StringShort, by)
+			env.TraceTx(&txid, "AttachTxID: found existing")
 			return
 		}
 		env.Tracef(TraceTagAttach, "AttachTxID: new ID %s%s", txid.StringShort, by)
+		env.TraceTx(&txid, "AttachTxID: new ID")
+
 		// it is new
 		if !txid.IsBranchTransaction() {
 			// if not branch -> just place the empty virtualTx on the utangle_old, no further action
@@ -39,6 +45,7 @@ func AttachTxID(txid ledger.TransactionID, env Environment, opts ...Option) (vid
 			env.AddVertexNoLock(vid)
 			if options.pullNonBranch {
 				env.Tracef(TraceTagAttach, "AttachTxID: pull new ID %s%s", txid.StringShort, by)
+				env.TraceTx(&txid, "AttachTxID: pull new ID")
 				env.Pull(txid)
 			}
 			return
@@ -61,6 +68,8 @@ func AttachTxID(txid ledger.TransactionID, env Environment, opts ...Option) (vid
 			env.SendToTippool(vid)
 			env.Tracef(TraceTagAttach, "AttachTxID: branch fetched from the state: %s%s, coverage: %s",
 				txid.StringShort, by, vid.GetLedgerCoverage().String)
+			env.TraceTx(&txid, "AttachTxID: branch fetched from the state")
+
 		} else {
 			// the corresponding state is not in the multistate DB -> put virtualTx to the utangle_old -> pull it
 			// the puller will trigger further solidification
@@ -68,6 +77,7 @@ func AttachTxID(txid ledger.TransactionID, env Environment, opts ...Option) (vid
 			env.AddVertexNoLock(vid)
 			env.Pull(txid) // always pull new branch. This will spin off sync process on the node
 			env.Tracef(TraceTagAttach, "AttachTxID: added new branch vertex and pulled %s%s", txid.StringShort(), by)
+			env.TraceTx(&txid, "AttachTxID: added new branch vertex and pulled")
 		}
 	})
 	return
@@ -76,6 +86,7 @@ func AttachTxID(txid ledger.TransactionID, env Environment, opts ...Option) (vid
 // InvalidateTxID marks existing vertex as BAD or creates new BAD
 func InvalidateTxID(txid ledger.TransactionID, env Environment, reason error) *vertex.WrappedTx {
 	env.Tracef(TraceTagAttach, "InvalidateTxID: %s", txid.StringShort())
+	env.TraceTx(&txid, "InvalidateTxID")
 
 	vid := AttachTxID(txid, env, OptionDoNotLoadBranch, OptionInvokedBy("InvalidateTxID"))
 	vid.SetTxStatusBad(reason)
@@ -83,6 +94,7 @@ func InvalidateTxID(txid ledger.TransactionID, env Environment, reason error) *v
 }
 
 func AttachOutputID(oid ledger.OutputID, env Environment, opts ...Option) vertex.WrappedOutput {
+	env.TraceTx(util.Ref(oid.TransactionID()), "AttachOutputID: #%d", oid.Index())
 	return vertex.WrappedOutput{
 		VID:   AttachTxID(oid.TransactionID(), env, opts...),
 		Index: oid.Index(),
@@ -97,6 +109,7 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Opt
 		opt(options)
 	}
 	env.Tracef(TraceTagAttach, "AttachTransaction: %s", tx.IDShortString)
+	env.TraceTx(tx.ID(), "AttachTransaction")
 
 	if tx.IsBranchTransaction() {
 		env.EvidenceIncomingBranch(tx.ID(), tx.SequencerTransactionData().SequencerID)

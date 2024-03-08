@@ -24,7 +24,7 @@ type (
 		global.Logging
 		GetNodeInfo() *global.NodeInfo
 		HeaviestStateForLatestTimeSlot() multistate.SugaredStateReader
-		SubmitTxBytesFromAPI(txBytes []byte) (*ledger.TransactionID, error)
+		SubmitTxBytesFromAPI(txBytes []byte, trace ...bool) (*ledger.TransactionID, error)
 		QueryTxIDStatusJSONAble(txid *ledger.TransactionID) vertex.TxIDStatusJSONAble
 		TxInclusionJSONAble(txid *ledger.TransactionID) map[string]tippool.TxInclusionJSONAble
 	}
@@ -216,14 +216,16 @@ func (srv *Server) submitTx(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	txid, err := srv.SubmitTxBytesFromAPI(slices.Clip(txBytes))
+	// tx tracing on server parameter
+	_, trace := r.URL.Query()["trace"]
+	txid, err := srv.SubmitTxBytesFromAPI(slices.Clip(txBytes), trace)
 	if err != nil {
 		writeErr(w, fmt.Sprintf("submit_tx: %v", err))
 		srv.Tracef(TraceTag, "submit transaction: '%v'", err)
 		return
 	}
 	srv.lastSubmittedTxID = *txid
-	srv.Tracef(TraceTag, "submitted transaction %s", txid.StringShort)
+	srv.Tracef(TraceTag, "submitted transaction %s, trace = %v", txid.StringShort, trace)
 
 	writeOk(w)
 }

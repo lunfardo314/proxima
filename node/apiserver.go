@@ -52,7 +52,10 @@ func (p *ProximaNode) HeaviestStateForLatestTimeSlot() multistate.SugaredStateRe
 	return p.workflow.HeaviestStateForLatestTimeSlot()
 }
 
-func (p *ProximaNode) SubmitTxBytesFromAPI(txBytes []byte) (*ledger.TransactionID, error) {
+func (p *ProximaNode) SubmitTxBytesFromAPI(txBytes []byte, trace ...bool) (*ledger.TransactionID, error) {
+	if len(trace) > 0 && trace[0] {
+		return p.workflow.TxBytesIn(txBytes, workflow.WithSourceType(txmetadata.SourceTypeAPI), workflow.WithTxTrace)
+	}
 	return p.workflow.TxBytesIn(txBytes, workflow.WithSourceType(txmetadata.SourceTypeAPI))
 }
 

@@ -42,10 +42,12 @@ func init() {
 }
 
 func New() *ProximaNode {
-	return &ProximaNode{
+	ret := &ProximaNode{
 		Global:     global.NewFromConfig(),
 		Sequencers: make([]*sequencer.Sequencer, 0),
 	}
+	global.SetGlobalLogger(ret.Global)
+	return ret
 }
 
 // WaitAllWorkProcessesToStop wait everything to stop before closing databases
@@ -68,7 +70,7 @@ func (p *ProximaNode) TxBytesStore() global.TxBytesStore {
 }
 
 func (p *ProximaNode) readInTraceTags() {
-	p.Global.EnableTraceTags(viper.GetStringSlice("trace_tags")...)
+	p.Global.StartTracingTags(viper.GetStringSlice("trace_tags")...)
 }
 
 func (p *ProximaNode) Start() {

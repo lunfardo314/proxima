@@ -56,6 +56,7 @@ type (
 	Logging interface {
 		Log() *zap.SugaredLogger
 		Tracef(tag string, format string, args ...any)
+		TraceTx(txid *ledger.TransactionID, format string, args ...any)
 		Assertf(cond bool, format string, args ...any)
 		AssertNoError(err error, prefix ...string)
 		AssertMustError(err error)
@@ -69,8 +70,14 @@ type (
 		MarkWorkProcessStopped(name string)
 	}
 
+	TraceTx interface {
+		StartTracingTx(txid ledger.TransactionID)
+		StopTracingTx(txid ledger.TransactionID)
+	}
+
 	NodeGlobal interface {
 		Logging
+		TraceTx
 		StartStop
 	}
 )
