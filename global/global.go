@@ -244,8 +244,11 @@ func (l *Global) StopTracingTx(txid ledger.TransactionID) {
 	l.txTraceMutex.Lock()
 	defer l.txTraceMutex.Unlock()
 
+	if _, found := l.txTraceIDs[txid]; found {
+		l.SugaredLogger.Infof("TRACE_TX(%s) stopped tracing", txid.StringShort())
+	}
 	delete(l.txTraceIDs, txid)
-	l.SugaredLogger.Infof("TRACE_TX(%s) stopped tracing", txid.StringShort())
+
 	if len(l.txTraceIDs) == 0 {
 		l.enabledTraceTx.Store(false)
 	}

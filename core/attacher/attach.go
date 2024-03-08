@@ -119,11 +119,11 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Opt
 	vid.Unwrap(vertex.UnwrapOptions{
 		// full vertex or with attachment process already invoked will be ignored
 		VirtualTx: func(v *vertex.VirtualTransaction) {
-			if vid.FlagsUpNoLock(vertex.FlagVertexTxAttachmentInvoked) {
+			if vid.FlagsUpNoLock(vertex.FlagVertexTxAttachmentStarted) {
 				return
 			}
 			// mark the vertex in order to prevent repetitive attachment
-			vid.SetFlagsUpNoLock(vertex.FlagVertexTxAttachmentInvoked)
+			vid.SetFlagsUpNoLock(vertex.FlagVertexTxAttachmentStarted)
 
 			if options.metadata != nil && options.metadata.SourceTypeNonPersistent == txmetadata.SourceTypeTxStore {
 				// prevent persisting transaction bytes twice
@@ -159,6 +159,7 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Opt
 					}
 					return true
 				})
+				vid.SetFlagsUpNoLock(vertex.FlagVertexTxAttachmentFinished)
 				// notify others who are waiting for the vid
 				env.PokeAllWith(vid)
 			}

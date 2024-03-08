@@ -22,6 +22,7 @@ func runMilestoneAttacher(vid *vertex.WrappedTx, metadata *txmetadata.Transactio
 	}()
 
 	finals, err := a.run()
+
 	if err != nil {
 		vid.SetTxStatusBad(err)
 		env.Log().Errorf("-- ATTACH %s -> BAD(%v)", vid.ID.StringShort(), err)
@@ -34,6 +35,7 @@ func runMilestoneAttacher(vid *vertex.WrappedTx, metadata *txmetadata.Transactio
 			env.ParseMilestoneData(vid)
 		}
 		env.Log().Info(logFinalStatusString(vid, finals, msData))
+		vid.SetSequencerAttachmentFinished()
 	}
 
 	env.PokeAllWith(vid)
@@ -198,6 +200,7 @@ func (a *milestoneAttacher) solidifyBaseline() vertex.Status {
 				}
 			},
 			VirtualTx: func(_ *vertex.VirtualTransaction) {
+				// TODO not needed.
 				a.Log().Fatalf("solidifyBaseline: unexpected virtual tx %s", a.vid.IDShortString())
 			},
 		})

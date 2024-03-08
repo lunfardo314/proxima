@@ -78,8 +78,8 @@ func (vid *WrappedTx) DoPruningIfRelevant(nowis time.Time) (markedForDeletion, u
 			case 0:
 				markedForDeletion = true
 			case 1:
-				// do not prune those with not-started attachers
-				if !vid.IsSequencerMilestone() || vid.FlagsUpNoLock(FlagVertexTxAttachmentInvoked) {
+				// do not prune those with not-started or not finished attachers
+				if vid.FlagsUpNoLock(FlagVertexTxAttachmentStarted | FlagVertexTxAttachmentFinished) {
 					if nowis.After(vid.dontPruneUntil) {
 						vid.references = 0
 						markedForDeletion = true

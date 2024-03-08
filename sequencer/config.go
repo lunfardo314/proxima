@@ -17,7 +17,6 @@ type (
 		Pace               int // pace in ticks
 		MaxTagAlongInputs  int
 		MaxTargetTs        ledger.Time
-		MaxMilestones      int
 		MaxBranches        int
 		DelayStart         time.Duration
 		BacklogTTLSlots    int
@@ -39,7 +38,6 @@ func defaultConfigOptions() *ConfigOptions {
 		Pace:               ledger.TransactionPaceSequencer(),
 		MaxTagAlongInputs:  DefaultMaxTagAlongInputs,
 		MaxTargetTs:        ledger.NilLedgerTime,
-		MaxMilestones:      math.MaxInt,
 		MaxBranches:        math.MaxInt,
 		DelayStart:         ledger.SlotDuration(),
 		BacklogTTLSlots:    MinimumBacklogTTLSlots,
@@ -110,9 +108,7 @@ func WithPace(pace int) ConfigOption {
 
 func WithMaxTagAlongInputs(maxInputs int) ConfigOption {
 	return func(o *ConfigOptions) {
-		if maxInputs < 1 {
-			o.MaxTagAlongInputs = 1
-		} else {
+		if maxInputs >= 1 {
 			if maxInputs > 254 {
 				o.MaxTagAlongInputs = 254
 			} else {
@@ -124,7 +120,9 @@ func WithMaxTagAlongInputs(maxInputs int) ConfigOption {
 
 func WithMaxBranches(maxBranches int) ConfigOption {
 	return func(o *ConfigOptions) {
-		o.MaxBranches = maxBranches
+		if maxBranches >= 1 {
+			o.MaxBranches = maxBranches
+		}
 	}
 }
 

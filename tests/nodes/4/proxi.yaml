@@ -7,7 +7,7 @@ wallet:
     sequencer:
 api:
     endpoint: http://127.0.0.1:8004
-tag-along:
+tag_along:
     sequencer_id:
     fee: 500
 spammer:

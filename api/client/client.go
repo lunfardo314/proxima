@@ -419,15 +419,14 @@ type TransferFromED25519WalletParams struct {
 	Amount           uint64
 	Target           ledger.Lock
 	MaxOutputs       int
+	TraceTx          bool
 }
 
-const (
-	minimumAmount = uint64(500)
-)
+const minimumTransferAmount = uint64(1000)
 
 func (c *APIClient) TransferFromED25519Wallet(par TransferFromED25519WalletParams) (*transaction.TxContext, error) {
-	if par.Amount < minimumAmount {
-		return nil, fmt.Errorf("minimum transfer amount is %d", minimumAmount)
+	if par.Amount < minimumTransferAmount {
+		return nil, fmt.Errorf("minimum transfer amount is %d", minimumTransferAmount)
 	}
 	walletAccount := ledger.AddressED25519FromPrivateKey(par.WalletPrivateKey)
 	nowisTs := ledger.TimeNow()
@@ -450,7 +449,7 @@ func (c *APIClient) TransferFromED25519Wallet(par TransferFromED25519WalletParam
 	if err != nil {
 		return nil, err
 	}
-	err = c.SubmitTransaction(txBytes)
+	err = c.SubmitTransaction(txBytes, par.TraceTx)
 	return txCtx, err
 }
 
@@ -470,8 +469,8 @@ func (c *APIClient) getBody(path string) ([]byte, error) {
 }
 
 func (c *APIClient) MakeChainOrigin(par TransferFromED25519WalletParams) (*transaction.TxContext, ledger.ChainID, error) {
-	if par.Amount < minimumAmount {
-		return nil, ledger.NilChainID, fmt.Errorf("minimum transfer amount is %d", minimumAmount)
+	if par.Amount < minimumTransferAmount {
+		return nil, ledger.NilChainID, fmt.Errorf("minimum transfer amount is %d", minimumTransferAmount)
 	}
 	if par.Amount > 0 && par.TagAlongSeqID == nil {
 		return nil, [32]byte{}, fmt.Errorf("tag-along sequencer not specified")
@@ -569,8 +568,8 @@ type MakeTransferTransactionParams struct {
 }
 
 func MakeTransferTransaction(par MakeTransferTransactionParams) ([]byte, error) {
-	if par.Amount < minimumAmount {
-		return nil, fmt.Errorf("minimum transfer amount is %d", minimumAmount)
+	if par.Amount < minimumTransferAmount {
+		return nil, fmt.Errorf("minimum transfer amount is %d", minimumTransferAmount)
 	}
 	txb := txbuilder.NewTransactionBuilder()
 	inTotal, inTs, err := txb.ConsumeOutputs(par.Inputs...)

@@ -15,6 +15,7 @@ import (
 	"github.com/lunfardo314/proxima/sequencer/backlog"
 	"github.com/lunfardo314/proxima/sequencer/factory"
 	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/proxima/util/lines"
 	"go.uber.org/zap"
 )
 
@@ -72,7 +73,7 @@ func New(glb *workflow.Workflow, seqID ledger.ChainID, controllerKey ed25519.Pri
 	if ret.factory, err = factory.New(ret); err != nil {
 		return nil, err
 	}
-	ret.Log().Infof("sequencer created with controller %s, pace: %d", ledger.AddressED25519FromPrivateKey(controllerKey).String(), cfg.Pace)
+	ret.Log().Infof("sequencer started with config:\n%s", cfg.lines(seqID, ledger.AddressED25519FromPrivateKey(controllerKey), "     ").String())
 	return ret, nil
 }
 
@@ -114,8 +115,21 @@ func (seq *Sequencer) Start() {
 			seq.log.Fatal(err)
 			return false
 		})
-
 	}
+}
+
+func (cfg *ConfigOptions) lines(seqID ledger.ChainID, controller ledger.AddressED25519, prefix ...string) *lines.Lines {
+	return lines.New(prefix...).
+		Add("ID: %s", seqID.String()).
+		Add("Controller: %s", controller.String()).
+		Add("Name: %s", cfg.SequencerName).
+		Add("Pace: %d ticks", cfg.Pace).
+		Add("MaxTagAlongInputs: %d", cfg.MaxTagAlongInputs).
+		Add("MaxTargetTs: %s", cfg.MaxTargetTs.String()).
+		Add("MaxBranches: %d", cfg.MaxBranches).
+		Add("DelayStart: %v", cfg.DelayStart).
+		Add("BacklogTTLSlots: %d", cfg.BacklogTTLSlots).
+		Add("MilestoneTTLSlots: %d", cfg.MilestonesTTLSlots)
 }
 
 func (seq *Sequencer) Ctx() context.Context {
@@ -220,10 +234,6 @@ func (seq *Sequencer) mainLoop() {
 
 func (seq *Sequencer) doSequencerStep() bool {
 	seq.Tracef(TraceTag, "doSequencerStep")
-	if seq.config.MaxMilestones != 0 && seq.milestoneCount >= seq.config.MaxMilestones {
-		seq.log.Infof("reached max limit of milestones %d -> stopping", seq.config.MaxMilestones)
-		return false
-	}
 	if seq.config.MaxBranches != 0 && seq.branchCount >= seq.config.MaxBranches {
 		seq.log.Infof("reached max limit of branch milestones %d -> stopping", seq.config.MaxBranches)
 		return false

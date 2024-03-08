@@ -118,11 +118,22 @@ func (vid *WrappedTx) SetTxStatusGood() {
 	vid.flags.SetFlagsUp(FlagVertexDefined)
 }
 
+func (vid *WrappedTx) SetSequencerAttachmentFinished() {
+	util.Assertf(vid.IsSequencerMilestone(), "vid.IsSequencerMilestone()")
+
+	vid.mutex.Lock()
+	defer vid.mutex.Unlock()
+
+	vid.flags.SetFlagsUp(FlagVertexTxAttachmentFinished)
+	vid.dontPruneUntil = time.Now().Add(referencedVertexTTLSlots * ledger.L().ID.SlotDuration())
+}
+
 func (vid *WrappedTx) SetTxStatusBad(reason error) {
 	vid.mutex.Lock()
 	defer vid.mutex.Unlock()
 
 	vid.SetTxStatusBadNoLock(reason)
+	vid.SetFlagsUpNoLock(FlagVertexTxAttachmentFinished)
 }
 
 func (vid *WrappedTx) SetTxStatusBadNoLock(reason error) {

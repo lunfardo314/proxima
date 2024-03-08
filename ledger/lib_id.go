@@ -44,7 +44,7 @@ const (
 	DefaultChainInflationOpportunitySlots       = 12
 	DefaultVBCost                               = 1
 	DefaultTransactionPace                      = 10
-	DefaultTransactionPaceSequencer             = 5
+	DefaultTransactionPaceSequencer             = 1
 	DefaultMinimumAmountOnSequencer             = 1_000 * PRXI
 	DefaultMaxToleratedParasiticChainSlots      = 5
 )

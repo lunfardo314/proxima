@@ -59,9 +59,9 @@ pprof:
 trace_tags:
 #  - milestone
 #  - attach
-  - gossip
+#  - gossip
 #  - pull_server
-  - txinput
+#  - txinput
 #  - apiServer
 #  - txStore
 #  - global

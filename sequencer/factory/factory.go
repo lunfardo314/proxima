@@ -237,8 +237,8 @@ func (mf *MilestoneFactory) AttachTagAlongInputs(a *attacher.IncrementalAttacher
 			mf.Tracef(TraceTag, "AttachTagAlongInputs %s. Inserted %s", a.Name(), wOut.IDShortString)
 			mf.TraceTx(&wOut.VID.ID, "AttachTagAlongInputs %s. Inserted #%d", a.Name(), wOut.Index)
 		} else {
-			mf.Tracef(TraceTag, "AttachTagAlongInputs %s. Failed to insert %s. Err='%v'", a.Name(), wOut.IDShortString, err)
-			mf.TraceTx(&wOut.VID.ID, "AttachTagAlongInputs %s. Failed to insert #%d, Err='%v'", a.Name(), wOut.Index, err)
+			mf.Tracef(TraceTag, "AttachTagAlongInputs %s. Failed to insert %s: '%v'", a.Name(), wOut.IDShortString, err)
+			mf.TraceTx(&wOut.VID.ID, "AttachTagAlongInputs %s. Failed to insert #%d: '%v'", a.Name(), wOut.Index, err)
 		}
 		if a.NumInputs() >= mf.maxTagAlongInputs {
 			break
