@@ -83,7 +83,7 @@ func runCompactCmd(_ *cobra.Command, args []string) {
 	}
 	glb.AssertNoError(err)
 	glb.Infof("Submitting compact transaction with %d inputs..", txCtx.NumInputs())
-	err = glb.GetClient().SubmitTransaction(txCtx.TransactionBytes())
+	err = glb.GetClient().SubmitTransaction(txCtx.TransactionBytes(), true)
 	glb.AssertNoError(err)
 
 	if !glb.NoWait() {

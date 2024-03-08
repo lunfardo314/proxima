@@ -219,8 +219,12 @@ func (c *APIClient) WaitOutputInTheHeaviestState(oid *ledger.OutputID, timeout t
 	}
 }
 
-func (c *APIClient) SubmitTransaction(txBytes []byte) error {
-	req, err := http.NewRequest(http.MethodPost, c.prefix+api.PathSubmitTransaction, bytes.NewBuffer(txBytes))
+func (c *APIClient) SubmitTransaction(txBytes []byte, trace ...bool) error {
+	url := c.prefix + api.PathSubmitTransaction
+	if len(trace) > 0 && trace[0] {
+		url += "?trace=true"
+	}
+	req, err := http.NewRequest(http.MethodPost, url, bytes.NewBuffer(txBytes))
 	if err != nil {
 		return err
 	}
