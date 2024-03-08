@@ -283,6 +283,19 @@ func TestConflicts1Attacher(t *testing.T) {
 		}
 		testData.logDAGInfo()
 	})
+	t.Run("n double spends with TraceTx", func(t *testing.T) {
+		//attacher.SetTraceOn()
+		const nConflicts = 10
+		testData := initWorkflowTestWithConflicts(t, nConflicts, 1, false)
+		for _, txBytes := range testData.txBytesConflicting {
+			txid, err := transaction.IDFromTransactionBytes(txBytes)
+			require.NoError(t, err)
+			testData.env.StartTracingTx(txid)
+			_, err = attacher.AttachTransactionFromBytes(txBytes, testData.wrk)
+			require.NoError(t, err)
+		}
+		testData.logDAGInfo()
+	})
 	t.Run("n double spends consumed", func(t *testing.T) {
 		//attacher.SetTraceOn()
 		const nConflicts = 5
@@ -902,7 +915,6 @@ func TestSeqChains(t *testing.T) {
 		}
 	})
 	t.Run("no pull reverse", func(t *testing.T) {
-		//attacher.SetTraceOn()
 		const (
 			nConflicts            = 5
 			nChains               = 5
@@ -962,6 +974,46 @@ func TestSeqChains(t *testing.T) {
 					require.NoError(t, err)
 				} else {
 					wg.Add(1)
+					vids[seqNr] = attacher.AttachTransaction(tx, testData.wrk, attacher.OptionWithAttachmentCallback(func(_ *vertex.WrappedTx, _ error) {
+						wg.Done()
+					}))
+				}
+			}
+		}
+		wg.Wait()
+
+		testData.stopAndWait()
+		//testData.logDAGInfo()
+		for _, vid := range vids {
+			require.EqualValues(t, vertex.Good.String(), vid.GetTxStatus().String())
+		}
+		testData.wrk.SaveGraph("utangle")
+	})
+	t.Run("with pull TraceTx", func(t *testing.T) {
+		const (
+			nConflicts            = 5
+			nChains               = 5
+			howLongConflictChains = 2  // 97 fails when crosses slot boundary
+			howLongSeqChains      = 10 // 90 // 95 fails
+		)
+
+		testData := initLongConflictTestData(t, nConflicts, nChains, howLongConflictChains)
+		testData.makeSeqBeginnings(false)
+		testData.makeSeqChains(howLongSeqChains)
+		//testData.printTxIDs()
+
+		var wg sync.WaitGroup
+
+		testData.txBytesAttach()
+		vids := make([]*vertex.WrappedTx, len(testData.seqChain))
+		for seqNr, txSequence := range testData.seqChain {
+			for i, tx := range txSequence {
+				if i < len(txSequence)-1 {
+					_, err := testData.wrk.TxBytesStore().PersistTxBytesWithMetadata(tx.Bytes(), nil)
+					require.NoError(t, err)
+				} else {
+					wg.Add(1)
+					testData.env.StartTracingTx(*tx.ID())
 					vids[seqNr] = attacher.AttachTransaction(tx, testData.wrk, attacher.OptionWithAttachmentCallback(func(_ *vertex.WrappedTx, _ error) {
 						wg.Done()
 					}))
@@ -1097,8 +1149,77 @@ func TestSeqChains(t *testing.T) {
 			runtime.NumGoroutine(),
 		)
 	})
+	t.Run("with N branches pull with TraceTx", func(t *testing.T) {
+		const (
+			nConflicts            = 5 // 5
+			nChains               = 5
+			howLongConflictChains = 5  // 97 fails when crosses slot boundary
+			howLongSeqChains      = 10 // 10 // 95 fails
+			nSlots                = 5
+		)
+
+		testData := initLongConflictTestData(t, nConflicts, nChains, howLongConflictChains)
+		testData.makeSeqBeginnings(false)
+
+		slotTransactions := make([][][]*transaction.Transaction, nSlots)
+		branches := make([]*transaction.Transaction, nSlots)
+
+		testData.txBytesAttach()
+		extend := make([]*transaction.Transaction, nChains)
+		for i := range extend {
+			extend[i] = testData.seqChain[i][0]
+		}
+		testData.storeTransactions(extend...)
+		prevBranch := testData.distributionBranchTx
+
+		for branchNr := range branches {
+			slotTransactions[branchNr] = testData.makeSlotTransactions(howLongSeqChains, extend)
+			for _, txSeq := range slotTransactions[branchNr] {
+				testData.storeTransactions(txSeq...)
+			}
+
+			extendSeqIdx := branchNr % nChains
+			lastInChainIdx := len(slotTransactions[branchNr][extendSeqIdx]) - 1
+			extendOut := slotTransactions[branchNr][extendSeqIdx][lastInChainIdx].SequencerOutput().MustAsChainOutput()
+			branches[branchNr] = testData.makeBranch(extendOut, prevBranch)
+			prevBranch = branches[branchNr]
+			t.Logf("makeBranch: %s", prevBranch.IDShortString())
+			beginExtension := make([]*transaction.Transaction, len(slotTransactions[branchNr]))
+			for i := range beginExtension {
+				beginExtension[i] = util.MustLastElement(slotTransactions[branchNr][i])
+			}
+			extend = testData.extendToNextSlot(slotTransactions[branchNr], prevBranch)
+
+			testData.storeTransactions(extend...)
+			testData.startTraceTx(extend...)
+		}
+
+		testData.storeTransactions(branches...)
+		testData.startTraceTx(branches...)
+
+		var wg sync.WaitGroup
+		wg.Add(1)
+		vidBranch := attacher.AttachTransaction(branches[len(branches)-1], testData.wrk, attacher.OptionWithAttachmentCallback(func(_ *vertex.WrappedTx, _ error) {
+			wg.Done()
+		}))
+		wg.Wait()
+
+		testData.stopAndWait()
+		testData.logDAGInfo()
+		testData.wrk.SaveGraph("utangle")
+		//dag.SaveGraphPastCone(vidBranch, "utangle")
+		require.EqualValues(t, vertex.Good.String(), vidBranch.GetTxStatus().String())
+
+		time.Sleep(500 * time.Millisecond)
+		var memStats runtime.MemStats
+		runtime.ReadMemStats(&memStats)
+		t.Logf("Memory stats: allocated %.1f MB, Num GC: %d, Goroutines: %d, ",
+			float32(memStats.Alloc*10/(1024*1024))/10,
+			memStats.NumGC,
+			runtime.NumGoroutine(),
+		)
+	})
 	t.Run("with N branches and transfers", func(t *testing.T) {
-		//attacher.SetTraceOn()
 		const (
 			nConflicts            = 3
 			howLongConflictChains = 0 // 97 fails when crosses slot boundary

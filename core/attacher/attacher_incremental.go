@@ -171,6 +171,7 @@ func (a *IncrementalAttacher) insertEndorsement(endorsement *vertex.WrappedTx) e
 // In case of failure return false and attacher state consistent
 func (a *IncrementalAttacher) InsertTagAlongInput(wOut vertex.WrappedOutput) (bool, error) {
 	util.AssertNoError(a.err)
+	a.TraceTx(&wOut.VID.ID, "%s::InsertTagAlongInput #%d", a.name, wOut.Index)
 
 	// save state for possible rollback because in case of fail the side effect makes attacher inconsistent
 	// TODO a better way than cloning potentially big maps with each new input?
@@ -194,11 +195,13 @@ func (a *IncrementalAttacher) InsertTagAlongInput(wOut vertex.WrappedOutput) (bo
 		} else if !defined {
 			retErr = fmt.Errorf("InsertTagAlongInput: %w", ErrPastConeNotSolidYet)
 		}
+		a.TraceTx(&wOut.VID.ID, "%s::InsertTagAlongInput failed insert #%d: %v", a.name, wOut.Index, retErr)
 		a.setError(nil)
 		return false, retErr
 	}
 	a.inputs = append(a.inputs, wOut)
 	util.AssertNoError(a.err)
+	a.TraceTx(&wOut.VID.ID, "%s::InsertTagAlongInput #%d: success", a.name, wOut.Index)
 	return true, nil
 }
 

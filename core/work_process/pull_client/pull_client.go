@@ -79,10 +79,12 @@ func (p *PullClient) Consume(inp *Input) {
 		}
 		if txBytesWithMetadata := p.TxBytesStore().GetTxBytesWithMetadata(&txid); len(txBytesWithMetadata) > 0 {
 			p.Tracef(TraceTag, "%s fetched from txBytesStore", txid.StringShort)
+			p.TraceTx(&txid, TraceTag+": fetched from txBytesStore")
 			txBytesList = append(txBytesList, txBytesWithMetadata)
 		} else {
 			p.pullList[txid] = nextPull
 			p.Tracef(TraceTag, "%s added to the pull list. Pull list size: %d", txid.StringShort, len(p.pullList))
+			p.TraceTx(&txid, TraceTag+": added to the pull list")
 			toPull = append(toPull, txid)
 		}
 	}
@@ -163,6 +165,7 @@ func (p *PullClient) StopPulling(txid *ledger.TransactionID) {
 
 	p.toRemoveSet.Insert(*txid)
 	p.Tracef(TraceTag, "stop pulling %s", txid.StringShort)
+	p.TraceTx(txid, "stop pulling")
 }
 
 func (p *PullClient) toRemoveSetClone() set.Set[ledger.TransactionID] {

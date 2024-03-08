@@ -69,7 +69,7 @@ func (d *Gossip) Consume(inp *Input) {
 	// check filter
 	vsID := inp.Tx.ID().VeryShortID4()
 	if _, already := d.gossipedFilter[vsID]; already {
-		// repeating, ignore
+		// repeating, ignore. Rare false positives won't be gossiped. No problem: it will be pulled if needed
 		d.Tracef(TraceTag, "%s already gossiped, ignore", inp.Tx.IDShortString)
 		return
 	}
@@ -78,10 +78,12 @@ func (d *Gossip) Consume(inp *Input) {
 	if inp.ReceivedFrom == nil {
 		d.Tracef(TraceTag, "send %s to all peers, meta: %s",
 			inp.Tx.IDShortString, inp.Metadata.String)
+		d.TraceTx(inp.Tx.ID(), TraceTag+": send to all peers")
 		d.GossipTxBytesToPeers(inp.Tx.Bytes(), &inp.Metadata)
 	} else {
 		d.Tracef(TraceTag, "send %s to peers except %s(%s), meta: %s",
 			inp.Tx.IDShortString, inp.ReceivedFrom, d.PeerName(*inp.ReceivedFrom), inp.Metadata.String)
+		d.TraceTx(inp.Tx.ID(), TraceTag+": send to all peers, except %s(%s)", inp.ReceivedFrom, d.PeerName(*inp.ReceivedFrom))
 		d.GossipTxBytesToPeers(inp.Tx.Bytes(), &inp.Metadata, *inp.ReceivedFrom)
 	}
 }

@@ -53,10 +53,14 @@ func (p *ProximaNode) HeaviestStateForLatestTimeSlot() multistate.SugaredStateRe
 }
 
 func (p *ProximaNode) SubmitTxBytesFromAPI(txBytes []byte, trace ...bool) (*ledger.TransactionID, error) {
-	if len(trace) > 0 && trace[0] {
-		return p.workflow.TxBytesIn(txBytes, workflow.WithSourceType(txmetadata.SourceTypeAPI), workflow.WithTxTrace)
+	traceFlag := false
+	if len(trace) > 0 {
+		traceFlag = trace[0]
 	}
-	return p.workflow.TxBytesIn(txBytes, workflow.WithSourceType(txmetadata.SourceTypeAPI))
+	return p.workflow.TxBytesIn(txBytes,
+		workflow.WithSourceType(txmetadata.SourceTypeAPI),
+		workflow.WithTxTraceFlag(traceFlag),
+	)
 }
 
 func (p *ProximaNode) QueryTxIDStatusJSONAble(txid *ledger.TransactionID) vertex.TxIDStatusJSONAble {

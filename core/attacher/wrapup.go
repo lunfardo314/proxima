@@ -63,6 +63,7 @@ func (a *milestoneAttacher) commitBranch() {
 	a.Assertf(a.vid.IsBranchTransaction(), "a.vid.IsBranchTransaction()")
 
 	muts := multistate.NewMutations()
+	bsName := a.baseline.ID.StringShort
 
 	// generate DEL mutations
 	for vid, consumed := range a.rooted {
@@ -70,6 +71,7 @@ func (a *milestoneAttacher) commitBranch() {
 			out := vid.MustOutputWithIDAt(idx)
 			muts.InsertDelOutputMutation(out.ID)
 			a.finals.numDeletedOutputs++
+			a.TraceTx(&vid.ID, "commitBranch in attacher %s: output #%d consumed in the baseline state %s", a.name, idx, bsName)
 		}
 	}
 	// generate ADD TX and ADD OUTPUT mutations
@@ -79,6 +81,7 @@ func (a *milestoneAttacher) commitBranch() {
 			continue
 		}
 		muts.InsertAddTxMutation(vid.ID, a.vid.Slot(), byte(vid.NumProducedOutputs()-1))
+		a.TraceTx(&vid.ID, "commitBranch in attacher %s: added to the baseline state %s", a.name, bsName)
 		// ADD OUTPUT mutations only for not consumed outputs
 		producedOutputIndices := vid.NotConsumedOutputIndices(allVerticesSet)
 		for _, idx := range producedOutputIndices {
@@ -98,7 +101,6 @@ func (a *milestoneAttacher) commitBranch() {
 		Supply:        a.baselineSupply + a.finals.slotInflation,
 	})
 	a.finals.root = upd.Root()
-
 	// check consistency with state root provided with metadata
 	a.checkStateRootConsistentWithMetadata()
 }

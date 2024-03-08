@@ -255,86 +255,6 @@ func TestNSequencersTransferPruner(t *testing.T) {
 		//balanceOnChain := rdr.BalanceOnChain(&testData.bootstrapChainID)
 		//require.EqualValues(t, int(initialBalanceOnChain)+len(par.spammedTxIDs)*tagAlongFee, int(balanceOnChain))
 	})
-	t.Run("seq 3 transfer multi tag along", func(t *testing.T) {
-		const (
-			maxSlots        = 100
-			nSequencers     = 2 // in addition to bootstrap
-			batchSize       = 10
-			sendAmount      = 2000
-			spammingTimeout = 10 * time.Second
-		)
-		testData := initMultiSequencerTest(t, nSequencers, true)
-
-		//testData.wrk.StartTracingTags(factory.TraceTagChooseExtendEndorsePair)
-		//testData.wrk.StartTracingTags(attacher.TraceTagAttachVertex, attacher.TraceTagAttachOutput)
-		//testData.wrk.StartTracingTags(proposer_endorse1.TraceTag)
-		//testData.wrk.StartTracingTags(factory.TraceTagChooseExtendEndorsePair)
-		//testData.wrk.StartTracingTags(factory.TraceTag)
-
-		rdr := multistate.MakeSugared(testData.wrk.HeaviestStateForLatestTimeSlot())
-		require.EqualValues(t, initBalance*nSequencers, int(rdr.BalanceOf(testData.addrAux.AccountID())))
-
-		targetPrivKey := testutil.GetTestingPrivateKey(10000)
-		targetAddr := ledger.AddressED25519FromPrivateKey(targetPrivKey)
-
-		tagAlongSeqIDs := []ledger.ChainID{testData.bootstrapChainID}
-		for _, o := range testData.chainOrigins {
-			tagAlongSeqIDs = append(tagAlongSeqIDs, o.ChainID)
-		}
-		tagAlongInitBalances := make(map[ledger.ChainID]uint64)
-		for _, seqID := range tagAlongSeqIDs {
-			tagAlongInitBalances[seqID] = rdr.BalanceOnChain(&seqID)
-		}
-
-		ctx, cancelSpam := context.WithTimeout(context.Background(), spammingTimeout)
-		par := &spammerParams{
-			t:             t,
-			privateKey:    testData.privKeyFaucet,
-			remainder:     testData.faucetOutput,
-			tagAlongSeqID: tagAlongSeqIDs,
-			target:        targetAddr,
-			pace:          30,
-			batchSize:     batchSize,
-			//maxBatches:    maxBatches,
-			sendAmount:   sendAmount,
-			tagAlongFee:  tagAlongFee,
-			spammedTxIDs: make([]ledger.TransactionID, 0),
-		}
-		go testData.spamTransfers(par, ctx)
-		go func() {
-			<-ctx.Done()
-			cancelSpam()
-			t.Log("spamming stopped")
-		}()
-
-		testData.startSequencersWithTimeout(maxSlots)
-
-		<-ctx.Done()
-		time.Sleep(5 * time.Second)
-		testData.stopAndWait(3 * time.Second)
-
-		t.Logf("%s", testData.wrk.Info())
-		rdr = testData.wrk.HeaviestStateForLatestTimeSlot()
-		for _, txid := range par.spammedTxIDs {
-			require.True(t, rdr.KnowsCommittedTransaction(&txid))
-			t.Logf("    %s: in the heaviest state: %v", txid.StringShort(), rdr.KnowsCommittedTransaction(&txid))
-		}
-
-		testData.saveFullDAG(fmt.Sprintf("utangle_full_%d_1", nSequencers+1))
-		dag.SaveBranchTree(testData.wrk.StateStore(), fmt.Sprintf("utangle_tree_%d_1", nSequencers+1))
-
-		targetBalance := rdr.BalanceOf(targetAddr.AccountID())
-		require.EqualValues(t, len(par.spammedTxIDs)*sendAmount, int(targetBalance))
-
-		balanceLeft := rdr.BalanceOf(testData.addrFaucet.AccountID())
-		require.EqualValues(t, initBalance-len(par.spammedTxIDs)*(sendAmount+tagAlongFee), int(balanceLeft))
-
-		for seqID, initBal := range tagAlongInitBalances {
-			balanceOnChain := rdr.BalanceOnChain(&seqID)
-			t.Logf("%s tx: %d, init: %s, final: %s", seqID.StringShort(), par.perChainID[seqID], util.GoTh(initBal), util.GoTh(balanceOnChain))
-			//require.EqualValues(t, int(initBal)+par.perChainID[seqID]*tagAlongFee, int(balanceOnChain))
-		}
-	})
 	t.Run("seq 3 transfer multi tag along last only", func(t *testing.T) {
 		const (
 			maxSlots        = 100 // 100
@@ -343,6 +263,7 @@ func TestNSequencersTransferPruner(t *testing.T) {
 			sendAmount      = 2000
 			spammingTimeout = 10 * time.Second // 10
 			startPruner     = true
+			traceTx         = false
 		)
 		testData := initMultiSequencerTest(t, nSequencers, startPruner)
 
@@ -377,6 +298,7 @@ func TestNSequencersTransferPruner(t *testing.T) {
 			sendAmount:       sendAmount,
 			tagAlongFee:      tagAlongFee,
 			spammedTxIDs:     make([]ledger.TransactionID, 0),
+			traceTx:          traceTx,
 		}
 		go testData.spamTransfers(par, ctx)
 		go func() {

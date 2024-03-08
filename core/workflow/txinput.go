@@ -217,6 +217,8 @@ func WithPeerMetadata(peerID peer.ID, metadata *txmetadata.TransactionMetadata) 
 	}
 }
 
-func WithTxTrace(opts *txBytesInOptions) {
-	opts.txTrace = true
+func WithTxTraceFlag(trace bool) TxBytesInOption {
+	return func(opts *txBytesInOptions) {
+		opts.txTrace = trace
+	}
 }
