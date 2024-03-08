@@ -217,20 +217,28 @@ func (mf *MilestoneFactory) CurrentTargetTs() ledger.Time {
 func (mf *MilestoneFactory) AttachTagAlongInputs(a *attacher.IncrementalAttacher) (numInserted int) {
 	mf.Tracef(TraceTag, "AttachTagAlongInputs: %s", a.Name())
 	preSelected := mf.Backlog().FilterAndSortOutputs(func(wOut vertex.WrappedOutput) bool {
-		if !ledger.ValidTransactionPace(wOut.Timestamp(), a.TargetTs()) {
+		if !ledger.ValidSequencerPace(wOut.Timestamp(), a.TargetTs()) {
+			mf.TraceTx(&wOut.VID.ID, "AttachTagAlongInputs:#%d  not valid pace -> not pre-selected (target %s)", wOut.Index, a.TargetTs().String)
 			return false
 		}
 		// fast filtering out already consumed outputs in the predecessor milestone context
-		return !mf.isConsumedInThePastPath(wOut, a.Extending().VID)
+		already := mf.isConsumedInThePastPath(wOut, a.Extending().VID)
+		if already {
+			mf.TraceTx(&wOut.VID.ID, "AttachTagAlongInputs: #%d already consumed in the past path -> not pre-selected", wOut.Index)
+		}
+		return !already
 	})
-	mf.Tracef(TraceTag+"_tmp", "AttachTagAlongInputs %s. Pre-selected: %d", a.Name(), len(preSelected))
+	mf.Tracef(TraceTag, "AttachTagAlongInputs %s. Pre-selected: %d", a.Name(), len(preSelected))
 
 	for _, wOut := range preSelected {
+		mf.TraceTx(&wOut.VID.ID, "AttachTagAlongInputs: pre-selected #%d", wOut.Index)
 		if success, err := a.InsertTagAlongInput(wOut); success {
 			numInserted++
-			mf.Tracef(TraceTag+"_tmp", "AttachTagAlongInputs %s. Inserted %s", a.Name(), wOut.IDShortString)
+			mf.Tracef(TraceTag, "AttachTagAlongInputs %s. Inserted %s", a.Name(), wOut.IDShortString)
+			mf.TraceTx(&wOut.VID.ID, "AttachTagAlongInputs %s. Inserted #%d", a.Name(), wOut.Index)
 		} else {
-			mf.Tracef(TraceTag+"_tmp", "AttachTagAlongInputs %s. Failed to insert %s. Err='%v'", a.Name(), wOut.IDShortString, err)
+			mf.Tracef(TraceTag, "AttachTagAlongInputs %s. Failed to insert %s. Err='%v'", a.Name(), wOut.IDShortString, err)
+			mf.TraceTx(&wOut.VID.ID, "AttachTagAlongInputs %s. Failed to insert #%d, Err='%v'", a.Name(), wOut.Index, err)
 		}
 		if a.NumInputs() >= mf.maxTagAlongInputs {
 			break

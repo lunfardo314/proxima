@@ -24,6 +24,7 @@ type spammerConfig struct {
 	tagAlongSequencer ledger.ChainID
 	tagAlongFee       uint64
 	target            ledger.Accountable
+	traceOnNode       bool
 }
 
 func initSpamCmd() *cobra.Command {
@@ -83,6 +84,7 @@ func readSpammerConfigIn(sub *viper.Viper) (ret spammerConfig) {
 	ret.maxTransactions = sub.GetInt("max_transactions")
 	ret.maxDuration = time.Duration(sub.GetInt("max_duration_minutes")) * time.Minute
 	ret.tagAlongFee = sub.GetUint64("tag_along.fee")
+	ret.traceOnNode = sub.GetBool("trace_on_node")
 	seqStr := sub.GetString("tag_along.sequencer")
 	var err error
 	ret.tagAlongSequencer, err = ledger.ChainIDFromHexString(seqStr)
@@ -103,6 +105,7 @@ func displaySpammerConfig() spammerConfig {
 	glb.Infof("max duration: %v", cfg.maxDuration)
 	glb.Infof("tag-along sequencer: %s", cfg.tagAlongSequencer.String())
 	glb.Infof("tag-along fee: %d", cfg.tagAlongFee)
+	glb.Infof("trace_on_node: %v", cfg.traceOnNode)
 
 	walletData := glb.GetWalletData()
 	glb.Infof("source account (wallet): %s", walletData.Account.String())
@@ -162,11 +165,15 @@ func standardScenario(cfg spammerConfig) {
 		glb.Infof("submitting bundle of %d transactions, total duration %d ticks, %v", len(bundle), bundlePace, bundleDuration)
 
 		for i, txBytes := range bundle {
-			err = glb.GetClient().SubmitTransaction(txBytes)
+			err = glb.GetClient().SubmitTransaction(txBytes, cfg.traceOnNode)
 			glb.AssertNoError(err)
 			txid, err := transaction.IDFromTransactionBytes(txBytes)
 			glb.AssertNoError(err)
-			glb.Verbosef("%2d: submitted %s", i, txid.StringShort())
+			if i == len(bundle)-1 {
+				glb.Verbosef("%2d: submitted %s -> tag-along", i, txid.StringShort())
+			} else {
+				glb.Verbosef("%2d: submitted %s", i, txid.StringShort())
+			}
 		}
 
 		glb.ReportTxStatus(oid.TransactionID(), time.Second)
