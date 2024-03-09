@@ -9,7 +9,6 @@ import (
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/core/work_process/gossip"
 	"github.com/lunfardo314/proxima/core/work_process/persist_txbytes"
-	"github.com/lunfardo314/proxima/core/work_process/pull_client"
 	"github.com/lunfardo314/proxima/core/work_process/tippool"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/transaction"
@@ -22,9 +21,7 @@ func (w *Workflow) MaxDurationInTheFuture() time.Duration {
 }
 
 func (w *Workflow) Pull(txid ledger.TransactionID) {
-	w.pullClient.Push(&pull_client.Input{
-		TxIDs: []ledger.TransactionID{txid},
-	})
+	w.pullClient.Pull(&txid)
 }
 
 func (w *Workflow) StopPulling(txid *ledger.TransactionID) {

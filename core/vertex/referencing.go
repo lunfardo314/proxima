@@ -89,12 +89,13 @@ func (vid *WrappedTx) DoPruningIfRelevant(nowis time.Time) (markedForDeletion, u
 				}
 			default:
 				// vid.references > 1
-				if nowis.After(vid.dontPruneUntil) {
-					// vertex is old enough, un-reference its past cone
-					// by converting vertex to virtual tx
-					vid._put(_virtualTx{VirtualTxFromVertex(v.Tx)})
-					v.UnReferenceDependencies()
-					unreferencedPastCone = true
+				if vid.FlagsUpNoLock(FlagVertexTxAttachmentStarted | FlagVertexTxAttachmentFinished) {
+					if nowis.After(vid.dontPruneUntil) {
+						// vertex is old enough, un-reference its past cone by converting vertex to virtual tx
+						vid._put(_virtualTx{VirtualTxFromVertex(v.Tx)})
+						v.UnReferenceDependencies()
+						unreferencedPastCone = true
+					}
 				}
 			}
 		},

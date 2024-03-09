@@ -7,9 +7,7 @@ import (
 	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
-	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/queue"
-	"github.com/lunfardo314/proxima/util/set"
 )
 
 const pullPeriod = 500 * time.Millisecond
@@ -24,18 +22,15 @@ type (
 
 	Input struct {
 		TxIDs []ledger.TransactionID
+		Stop  bool
 	}
 
 	PullClient struct {
 		*queue.Queue[*Input]
 		Environment
-		stopBackgroundLoopChan chan struct{}
 		// set of transaction being pulled
 		mutex    sync.RWMutex
 		pullList map[ledger.TransactionID]time.Time
-		// list of removed transactions
-		toRemoveSetMutex sync.RWMutex
-		toRemoveSet      set.Set[ledger.TransactionID]
 	}
 )
 
@@ -47,11 +42,9 @@ const (
 
 func New(env Environment) *PullClient {
 	return &PullClient{
-		Queue:                  queue.NewQueueWithBufferSize[*Input](Name, chanBufferSize, env.Log().Level(), nil),
-		Environment:            env,
-		pullList:               make(map[ledger.TransactionID]time.Time),
-		toRemoveSet:            set.New[ledger.TransactionID](),
-		stopBackgroundLoopChan: make(chan struct{}),
+		Queue:       queue.NewQueueWithBufferSize[*Input](Name, chanBufferSize, env.Log().Level(), nil),
+		Environment: env,
+		pullList:    make(map[ledger.TransactionID]time.Time),
 	}
 }
 
@@ -64,8 +57,14 @@ func (p *PullClient) Start() {
 }
 
 func (p *PullClient) Consume(inp *Input) {
-	p.Tracef(TraceTag, "Consume: (%d) %s", len(inp.TxIDs), inp.TxIDs[0].StringShort())
+	if inp.Stop {
+		p.stopPulling(inp.TxIDs)
+	} else {
+		p.startPulling(inp.TxIDs)
+	}
+}
 
+func (p *PullClient) startPulling(txids []ledger.TransactionID) {
 	toPull := make([]ledger.TransactionID, 0)
 	txBytesList := make([][]byte, 0)
 
@@ -73,7 +72,7 @@ func (p *PullClient) Consume(inp *Input) {
 	defer p.mutex.Unlock()
 
 	nextPull := time.Now().Add(pullPeriod)
-	for _, txid := range inp.TxIDs {
+	for _, txid := range txids {
 		if _, already := p.pullList[txid]; already {
 			continue
 		}
@@ -126,7 +125,7 @@ func (p *PullClient) backgroundLoop() {
 	buffer := make([]ledger.TransactionID, 0) // minimize heap use
 	for {
 		select {
-		case <-p.stopBackgroundLoopChan:
+		case <-p.Ctx().Done():
 			return
 		case <-time.After(pullLoopPeriod):
 		}
@@ -135,16 +134,8 @@ func (p *PullClient) backgroundLoop() {
 }
 
 func (p *PullClient) pullAllMatured(buf []ledger.TransactionID) {
-	buf = util.ClearSlice(buf)
-	toRemove := p.toRemoveSetClone()
-
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
-
-	toRemove.ForEach(func(removeTxID ledger.TransactionID) bool {
-		delete(p.pullList, removeTxID)
-		return true
-	})
 
 	nowis := time.Now()
 	nextDeadline := nowis.Add(pullPeriod)
@@ -159,20 +150,28 @@ func (p *PullClient) pullAllMatured(buf []ledger.TransactionID) {
 	}
 }
 
-func (p *PullClient) StopPulling(txid *ledger.TransactionID) {
-	p.toRemoveSetMutex.Lock()
-	defer p.toRemoveSetMutex.Unlock()
-
-	p.toRemoveSet.Insert(*txid)
-	p.Tracef(TraceTag, "stop pulling %s", txid.StringShort)
-	p.TraceTx(txid, "stop pulling")
+func (p *PullClient) Pull(txid *ledger.TransactionID) {
+	p.Queue.Push(&Input{
+		TxIDs: []ledger.TransactionID{*txid},
+	})
 }
 
-func (p *PullClient) toRemoveSetClone() set.Set[ledger.TransactionID] {
-	p.toRemoveSetMutex.Lock()
-	defer p.toRemoveSetMutex.Unlock()
+func (p *PullClient) StopPulling(txid *ledger.TransactionID) {
+	p.Queue.Push(&Input{
+		TxIDs: []ledger.TransactionID{*txid},
+		Stop:  true,
+	})
+}
 
-	ret := p.toRemoveSet
-	p.toRemoveSet = set.New[ledger.TransactionID]()
-	return ret
+func (p *PullClient) stopPulling(txids []ledger.TransactionID) {
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
+
+	for _, txid := range txids {
+		if _, found := p.pullList[txid]; found {
+			delete(p.pullList, txid)
+			p.Tracef(TraceTag, "stop pulling %s", txid.StringShort)
+			p.TraceTx(&txid, "stop pulling")
+		}
+	}
 }
