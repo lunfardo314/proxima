@@ -84,7 +84,7 @@ type (
 		metadata  *txmetadata.TransactionMetadata
 		closeOnce sync.Once
 		pokeChan  chan *vertex.WrappedTx
-		pokeMutex sync.Mutex
+		pokeMutex sync.RWMutex
 		finals    *attachFinals
 		closed    bool
 	}

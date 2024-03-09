@@ -61,7 +61,7 @@ trace_tags:
 #  - attach
 #  - gossip
 #  - pull_client
-  - poker
+#  - poker
 #  - pruner
 #  - txinput
 #  - apiServer

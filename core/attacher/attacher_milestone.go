@@ -47,6 +47,8 @@ func runMilestoneAttacher(vid *vertex.WrappedTx, metadata *txmetadata.Transactio
 	}
 }
 
+const pokeChanBufferSize = 1
+
 func newMilestoneAttacher(vid *vertex.WrappedTx, env Environment, metadata *txmetadata.TransactionMetadata) *milestoneAttacher {
 	env.Assertf(vid.IsSequencerMilestone(), "newMilestoneAttacher: %s not a sequencer milestone", vid.IDShortString)
 
@@ -54,7 +56,7 @@ func newMilestoneAttacher(vid *vertex.WrappedTx, env Environment, metadata *txme
 		attacher: newPastConeAttacher(env, vid.IDShortString()),
 		vid:      vid,
 		metadata: metadata,
-		pokeChan: make(chan *vertex.WrappedTx, 1),
+		pokeChan: make(chan *vertex.WrappedTx, pokeChanBufferSize),
 		finals:   &attachFinals{},
 	}
 	ret.attacher.pokeMe = func(vid *vertex.WrappedTx) {
@@ -125,13 +127,13 @@ func (a *milestoneAttacher) lazyRepeat(fun func() vertex.Status) vertex.Status {
 			return status
 		}
 		select {
-		case <-a.Ctx().Done():
-			a.setError(fmt.Errorf("attacher has been interrupted"))
-			return vertex.Bad
 		case withVID := <-a.pokeChan:
 			if withVID != nil {
 				a.Tracef(TraceTagAttachMilestone, "poked with %s", withVID.IDShortString)
 			}
+		case <-a.Ctx().Done():
+			a.setError(fmt.Errorf("attacher has been interrupted"))
+			return vertex.Bad
 		case <-time.After(periodicCheckEach):
 			a.Tracef(TraceTagAttachMilestone, "periodic check")
 		}
@@ -245,11 +247,16 @@ func (a *milestoneAttacher) solidifyPastCone() vertex.Status {
 }
 
 func (a *milestoneAttacher) _doPoke(msg *vertex.WrappedTx) {
-	a.pokeMutex.Lock()
-	defer a.pokeMutex.Unlock()
+	a.pokeMutex.RLock()
+	defer a.pokeMutex.RUnlock()
 
+	// must be non-blocking, otherwise deadlocks when syncing or high TPS
 	if !a.closed {
-		a.pokeChan <- msg
+		select {
+		case a.pokeChan <- msg:
+		default:
+			// poke is lost when blocked but that is ok because there's pull from the attacher side
+		}
 	}
 }
 

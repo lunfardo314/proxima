@@ -99,10 +99,10 @@ func (d *Poker) addCmd(wanted, whoIsWaiting *vertex.WrappedTx) {
 
 func (d *Poker) pokeAllCmd(wanted *vertex.WrappedTx) {
 	lst := d.m[wanted]
-	d.Tracef(TraceTag, "pokeAllCmd with %s (%d waiting)", wanted.IDShortString(), len(lst.waiting))
+	d.Tracef(TraceTag, "pokeAllCmd with %s (%d waiting)", wanted.IDShortString, len(lst.waiting))
 	if len(lst.waiting) > 0 {
 		for _, vid := range lst.waiting {
-			d.Tracef(TraceTag, "poke %s with %s", vid.IDShortString(), wanted.IDShortString())
+			d.Tracef(TraceTag, "poke %s with %s", vid.IDShortString, wanted.IDShortString)
 			vid.PokeWith(wanted)
 		}
 		delete(d.m, wanted)
