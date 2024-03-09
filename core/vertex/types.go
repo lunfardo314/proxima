@@ -121,7 +121,7 @@ const (
 	FlagVertexConstraintsValid     = Flags(0b00000010)
 	FlagVertexTxBytesPersisted     = Flags(0b00000100)
 	FlagVertexTxAttachmentStarted  = Flags(0b00001000)
-	FlagVertexTxAttachmentFinished = Flags(0b00001000)
+	FlagVertexTxAttachmentFinished = Flags(0b00010000)
 )
 
 const (

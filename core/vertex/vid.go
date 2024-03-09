@@ -87,7 +87,7 @@ func (vid *WrappedTx) ConvertVirtualTxToVertexNoLock(v *Vertex) {
 // ConvertVertexToVirtualTx detaches past cone and leaves only a collection of produced outputs
 func (vid *WrappedTx) ConvertVertexToVirtualTx() {
 	vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
-		vid._put(_virtualTx{VirtualTxFromVertex(v.Tx)})
+		vid._put(_virtualTx{VirtualTxFromTx(v.Tx)})
 		v.UnReferenceDependencies()
 	}})
 }

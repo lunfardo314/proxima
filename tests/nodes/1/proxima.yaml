@@ -60,8 +60,9 @@ trace_tags:
 #  - milestone
 #  - attach
 #  - gossip
-  - pull_client
-  - pruner
+#  - pull_client
+  - poker
+#  - pruner
 #  - txinput
 #  - apiServer
 #  - txStore

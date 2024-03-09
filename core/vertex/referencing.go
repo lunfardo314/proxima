@@ -76,6 +76,7 @@ func (vid *WrappedTx) DoPruningIfRelevant(nowis time.Time) (markedForDeletion, u
 		Vertex: func(v *Vertex) {
 			switch vid.references {
 			case 0:
+				util.Assertf(vid.FlagsUpNoLock(FlagVertexTxAttachmentStarted|FlagVertexTxAttachmentFinished), "attachment expected to be over 1")
 				markedForDeletion = true
 			case 1:
 				// do not prune those with not-started or not finished attachers
@@ -92,7 +93,7 @@ func (vid *WrappedTx) DoPruningIfRelevant(nowis time.Time) (markedForDeletion, u
 				if vid.FlagsUpNoLock(FlagVertexTxAttachmentStarted | FlagVertexTxAttachmentFinished) {
 					if nowis.After(vid.dontPruneUntil) {
 						// vertex is old enough, un-reference its past cone by converting vertex to virtual tx
-						vid._put(_virtualTx{VirtualTxFromVertex(v.Tx)})
+						vid._put(_virtualTx{VirtualTxFromTx(v.Tx)})
 						v.UnReferenceDependencies()
 						unreferencedPastCone = true
 					}
@@ -102,6 +103,7 @@ func (vid *WrappedTx) DoPruningIfRelevant(nowis time.Time) (markedForDeletion, u
 		VirtualTx: func(_ *VirtualTransaction) {
 			switch vid.references {
 			case 0:
+				util.Assertf(vid.FlagsUpNoLock(FlagVertexTxAttachmentStarted|FlagVertexTxAttachmentFinished), "attachment expected to be over 2")
 				markedForDeletion = true
 			case 1:
 				if nowis.After(vid.dontPruneUntil) {

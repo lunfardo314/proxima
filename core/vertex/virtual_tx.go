@@ -23,8 +23,8 @@ func NewVirtualBranchTx(br *multistate.BranchData) *VirtualTransaction {
 	return v
 }
 
-// VirtualTxFromVertex converts transaction to a collection of produced outputs
-func VirtualTxFromVertex(tx *transaction.Transaction) *VirtualTransaction {
+// VirtualTxFromTx converts transaction to a collection of produced outputs
+func VirtualTxFromTx(tx *transaction.Transaction) *VirtualTransaction {
 	ret := &VirtualTransaction{
 		outputs: make(map[byte]*ledger.Output),
 	}

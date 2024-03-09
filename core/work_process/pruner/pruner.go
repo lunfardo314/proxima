@@ -68,6 +68,23 @@ func (p *Pruner) Start() {
 	}()
 }
 
+func (p *Pruner) doPrune() {
+	nDeleted, nUnReferenced := p.pruneVertices()
+	nReadersPurged, readersLeft := p.PurgeCachedStateReaders()
+
+	var memStats runtime.MemStats
+	runtime.ReadMemStats(&memStats)
+	memStr := fmt.Sprintf("Mem. alloc: %.1f MB, GC: %d, GoRt: %d, ",
+		float32(memStats.Alloc*10/(1024*1024))/10,
+		memStats.NumGC,
+		runtime.NumGoroutine(),
+	)
+	p.Log().Infof("vertices deleted: %d, detached past cones: %d. Vertices left: %d. Cached state readers purged: %d, left: %d. "+memStr,
+		nDeleted, nUnReferenced, p.NumVertices(), nReadersPurged, readersLeft)
+
+	//p.Log().Infof("\n------------------\n%s\n-------------------", p.Info(true))
+}
+
 func (p *Pruner) mainLoop() {
 	p.MarkWorkProcessStarted(Name)
 	defer p.MarkWorkProcessStopped(Name)
@@ -80,20 +97,6 @@ func (p *Pruner) mainLoop() {
 			return
 		case <-time.After(prunerLoopPeriod):
 		}
-		nDeleted, nUnReferenced := p.pruneVertices()
-		nReadersPurged, readersLeft := p.PurgeCachedStateReaders()
-
-		// not discoverable anymore
-		var memStats runtime.MemStats
-		runtime.ReadMemStats(&memStats)
-		memStr := fmt.Sprintf("Mem. alloc: %.1f MB, GC: %d, GoRt: %d, ",
-			float32(memStats.Alloc*10/(1024*1024))/10,
-			memStats.NumGC,
-			runtime.NumGoroutine(),
-		)
-		p.Log().Infof("vertices deleted: %d, detached past cones: %d. Vertices left: %d. Cached state readers purged: %d, left: %d. "+memStr,
-			nDeleted, nUnReferenced, p.NumVertices(), nReadersPurged, readersLeft)
-
-		//p.Log().Infof("\n------------------\n%s\n-------------------", p.Info(true))
+		p.doPrune()
 	}
 }

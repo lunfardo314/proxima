@@ -44,7 +44,7 @@ const chanBufferSize = 10
 
 const (
 	loopPeriod = 1 * time.Second
-	ttlWanted  = 1 * time.Minute
+	ttlWanted  = 5 * time.Minute
 	Name       = "poker"
 	TraceTag   = Name
 )
@@ -86,6 +86,7 @@ func (d *Poker) Consume(inp Input) {
 }
 
 func (d *Poker) addCmd(wanted, whoIsWaiting *vertex.WrappedTx) {
+	d.Tracef(TraceTag, "add: %s wants %s", whoIsWaiting.IDShortString, wanted.IDShortString)
 	lst := d.m[wanted]
 	if len(lst.waiting) == 0 {
 		lst.waiting = []*vertex.WrappedTx{whoIsWaiting}

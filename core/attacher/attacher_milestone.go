@@ -26,8 +26,6 @@ func runMilestoneAttacher(vid *vertex.WrappedTx, metadata *txmetadata.Transactio
 	if err != nil {
 		vid.SetTxStatusBad(err)
 		env.Log().Errorf("-- ATTACH %s -> BAD(%v)", vid.ID.StringShort(), err)
-		//env.Log().Errorf("-- ATTACH %s -> BAD(%v)\n>>>>>>>>>>>>> failed tx <<<<<<<<<<<<<\n%s\n<<<<<<<<<<<<<<<<<<<<<<<<<<",
-		//	vid.ID.StringShort(), err, vid.LinesTx("      ").String())
 	} else {
 		env.Assertf(finals != nil, "finals != nil")
 		msData := env.ParseMilestoneData(vid)
@@ -128,7 +126,7 @@ func (a *milestoneAttacher) lazyRepeat(fun func() vertex.Status) vertex.Status {
 		}
 		select {
 		case <-a.Ctx().Done():
-			a.setError(fmt.Errorf("attacher has been interruped"))
+			a.setError(fmt.Errorf("attacher has been interrupted"))
 			return vertex.Bad
 		case withVID := <-a.pokeChan:
 			if withVID != nil {
@@ -191,6 +189,9 @@ func (a *milestoneAttacher) solidifyBaseline() vertex.Status {
 	return a.lazyRepeat(func() vertex.Status {
 		ok := false
 		success := false
+		util.Assertf(a.vid.FlagsUp(vertex.FlagVertexTxAttachmentStarted), "AttachmentStarted flag must be up")
+		util.Assertf(!a.vid.FlagsUp(vertex.FlagVertexTxAttachmentFinished), "AttachmentFinished flag must be down")
+
 		a.vid.Unwrap(vertex.UnwrapOptions{
 			Vertex: func(v *vertex.Vertex) {
 				ok = a.solidifyBaselineVertex(v)
