@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/core/attacher"
-	"github.com/lunfardo314/proxima/core/dag"
+	"github.com/lunfardo314/proxima/core/memdag"
 	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/core/workflow"
 	"github.com/lunfardo314/proxima/global"
@@ -158,7 +158,7 @@ func initWorkflowTest(t *testing.T, nChains int, startPruner ...bool) *workflowT
 
 func (td *workflowTestData) saveFullDAG(fname string) {
 	branchTxIDS := multistate.FetchLatestBranchTransactionIDs(td.wrk.StateStore())
-	tmpDag := dag.MakeDAGFromTxStore(td.txStore, 0, branchTxIDS...)
+	tmpDag := memdag.MakeDAGFromTxStore(td.txStore, 0, branchTxIDS...)
 	tmpDag.SaveGraph(fname)
 }
 
@@ -500,7 +500,7 @@ func (td *longConflictTestData) spendToChain(o *ledger.OutputWithID, chainID led
 }
 
 func (td *workflowTestData) logDAGInfo(verbose ...bool) {
-	td.t.Logf("DAG INFO:\n%s", td.wrk.Info(verbose...))
+	td.t.Logf("MemDAG INFO:\n%s", td.wrk.Info(verbose...))
 	slot := td.wrk.LatestBranchSlot()
 	td.t.Logf("VERTICES in the latest slot %d\n%s", slot, td.wrk.LinesVerticesInSlotAndAfter(slot).String())
 }

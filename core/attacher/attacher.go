@@ -138,7 +138,7 @@ func (a *attacher) isRootedOutput(wOut vertex.WrappedOutput) bool {
 	return rootedIndices.Contains(wOut.Index)
 }
 
-// solidifyBaselineVertex directs attachment process down the DAG to reach the deterministically known baseline state
+// solidifyBaselineVertex directs attachment process down the MemDAG to reach the deterministically known baseline state
 // for a sequencer milestone. Existence of it is guaranteed by the ledger constraints
 func (a *attacher) solidifyBaselineVertex(v *vertex.Vertex) (ok bool) {
 	a.Assertf(a.baseline == nil, "a.baseline == nil")

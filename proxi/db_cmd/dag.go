@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strconv"
 
-	"github.com/lunfardo314/proxima/core/dag"
+	"github.com/lunfardo314/proxima/core/memdag"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/multistate"
@@ -21,7 +21,7 @@ const defaultMaxSlotsBackDAG = 100
 func initDBDAGCmd() *cobra.Command {
 	dbTreeCmd := &cobra.Command{
 		Use:   fmt.Sprintf("dag [max slots back, default %d]", defaultMaxSlotsBackDAG),
-		Short: "create .DOT file for the DAG of all transactions in the past cone of tip branches",
+		Short: "create .DOT file for the MemDAG of all transactions in the past cone of tip branches",
 		Args:  cobra.MaximumNArgs(1),
 		Run:   runDbDAGCmd,
 	}
@@ -48,7 +48,7 @@ func runDbDAGCmd(_ *cobra.Command, args []string) {
 	branchTxIDS := multistate.FetchLatestBranchTransactionIDs(glb.StateStore())
 	numSlotsBack := defaultMaxSlotsBackDAG
 	if len(args) == 0 {
-		tmpDag := dag.MakeDAGFromTxStore(glb.TxBytesStore(), 0, branchTxIDS...)
+		tmpDag := memdag.MakeDAGFromTxStore(glb.TxBytesStore(), 0, branchTxIDS...)
 		tmpDag.SaveGraph(outputFileDAG)
 	} else {
 		latestSlot := multistate.FetchLatestSlot(glb.StateStore())
@@ -59,8 +59,8 @@ func runDbDAGCmd(_ *cobra.Command, args []string) {
 		if numSlotsBack < int(latestSlot) {
 			oldestSlot = int(latestSlot) - numSlotsBack
 		}
-		tmpDag := dag.MakeDAGFromTxStore(glb.TxBytesStore(), ledger.Slot(oldestSlot), branchTxIDS...)
+		tmpDag := memdag.MakeDAGFromTxStore(glb.TxBytesStore(), ledger.Slot(oldestSlot), branchTxIDS...)
 		tmpDag.SaveGraph(outputFileDAG)
 	}
-	glb.Infof("DAG has been store in .DOT format in the file '%s', %d slots back", outFile, numSlotsBack)
+	glb.Infof("MemDAG has been store in .DOT format in the file '%s', %d slots back", outFile, numSlotsBack)
 }

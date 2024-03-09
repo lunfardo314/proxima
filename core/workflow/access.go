@@ -121,7 +121,7 @@ func (w *Workflow) PeerName(id peer.ID) string {
 }
 
 func (w *Workflow) QueryTxIDStatus(txid *ledger.TransactionID) (ret vertex.TxIDStatus) {
-	ret = w.DAG.QueryTxIDStatus(txid)
+	ret = w.MemDAG.QueryTxIDStatus(txid)
 	ret.InStorage = len(w.TxBytesStore().GetTxBytesWithMetadata(txid)) > 0
 	return
 }

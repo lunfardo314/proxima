@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/core/attacher"
-	"github.com/lunfardo314/proxima/core/dag"
+	"github.com/lunfardo314/proxima/core/memdag"
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/core/workflow"
 	"github.com/lunfardo314/proxima/global"
@@ -1079,7 +1079,7 @@ func TestSeqChains(t *testing.T) {
 		testData.logDAGInfo()
 		require.EqualValues(t, vertex.Good.String(), vidBranch.GetTxStatus().String())
 		//testData.wrk.SaveGraph("utangle")
-		dag.SaveGraphPastCone(vidBranch, "utangle")
+		memdag.SaveGraphPastCone(vidBranch, "utangle")
 	})
 	t.Run("with N branches pull", func(t *testing.T) {
 		//attacher.SetTraceOn()
@@ -1272,7 +1272,7 @@ func TestSeqChains(t *testing.T) {
 
 		testData.stopAndWait()
 		testData.logDAGInfo()
-		dag.SaveGraphPastCone(vidBranch, "utangle")
+		memdag.SaveGraphPastCone(vidBranch, "utangle")
 		require.EqualValues(t, vertex.Good.String(), vidBranch.GetTxStatus().String())
 
 		time.Sleep(500 * time.Millisecond)
@@ -1341,7 +1341,7 @@ func TestSeqChains(t *testing.T) {
 
 		testData.stopAndWait()
 		testData.logDAGInfo()
-		dag.SaveGraphPastCone(vidBranch, "utangle")
+		memdag.SaveGraphPastCone(vidBranch, "utangle")
 		require.EqualValues(t, vertex.Good.String(), vidBranch.GetTxStatus().String())
 
 		time.Sleep(500 * time.Millisecond)

@@ -1,4 +1,4 @@
-package dag
+package memdag
 
 import (
 	"bytes"
@@ -14,16 +14,16 @@ import (
 	"github.com/lunfardo314/proxima/util/set"
 )
 
-func (d *DAG) Info(verbose ...bool) string {
+func (d *MemDAG) Info(verbose ...bool) string {
 	return d.InfoLines(verbose...).String()
 }
 
-func (d *DAG) InfoLines(verbose ...bool) *lines.Lines {
+func (d *MemDAG) InfoLines(verbose ...bool) *lines.Lines {
 	ln := lines.New()
 
 	slots := d._timeSlotsOrdered()
 
-	ln.Add("DAG:: vertices: %d, stateReaders: %d, slots: %d",
+	ln.Add("MemDAG:: vertices: %d, stateReaders: %d, slots: %d",
 		len(d.vertices), len(d.stateReaders), len(slots))
 
 	if len(verbose) > 0 && verbose[0] {
@@ -57,7 +57,7 @@ func (d *DAG) InfoLines(verbose ...bool) *lines.Lines {
 	return ln
 }
 
-func (d *DAG) VerticesInSlotAndAfter(slot ledger.Slot) []*vertex.WrappedTx {
+func (d *MemDAG) VerticesInSlotAndAfter(slot ledger.Slot) []*vertex.WrappedTx {
 	ret := d.Vertices(func(txid *ledger.TransactionID) bool {
 		return txid.Slot() >= slot
 	})
@@ -67,11 +67,11 @@ func (d *DAG) VerticesInSlotAndAfter(slot ledger.Slot) []*vertex.WrappedTx {
 	return ret
 }
 
-func (d *DAG) LinesVerticesInSlotAndAfter(slot ledger.Slot) *lines.Lines {
+func (d *MemDAG) LinesVerticesInSlotAndAfter(slot ledger.Slot) *lines.Lines {
 	return vertex.VerticesLines(d.VerticesInSlotAndAfter(slot))
 }
 
-func (d *DAG) _timeSlotsOrdered(descOrder ...bool) []ledger.Slot {
+func (d *MemDAG) _timeSlotsOrdered(descOrder ...bool) []ledger.Slot {
 	desc := false
 	if len(descOrder) > 0 {
 		desc = descOrder[0]
@@ -90,11 +90,11 @@ func (d *DAG) _timeSlotsOrdered(descOrder ...bool) []ledger.Slot {
 	})
 }
 
-func (d *DAG) FetchSummarySupplyAndInflation(nBack int) *multistate.SummarySupplyAndInflation {
+func (d *MemDAG) FetchSummarySupplyAndInflation(nBack int) *multistate.SummarySupplyAndInflation {
 	return multistate.FetchSummarySupply(d.StateStore(), nBack)
 }
 
 //
-//func (ut *DAG) MustAccountInfoOfHeaviestBranch() *multistate.AccountInfo {
+//func (ut *MemDAG) MustAccountInfoOfHeaviestBranch() *multistate.AccountInfo {
 //	return multistate.MustCollectAccountInfo(ut.stateStore, ut.HeaviestStateRootForLatestTimeSlot())
 //}

@@ -47,7 +47,7 @@ func _newVID(g _genericVertex, txid ledger.TransactionID) *WrappedTx {
 	ret := &WrappedTx{
 		ID:             txid,
 		_genericVertex: g,
-		references:     1, // we always start with 1 reference, which is reference by the DAG itself. 0 references means it is deleted
+		references:     1, // we always start with 1 reference, which is reference by the MemDAG itself. 0 references means it is deleted
 		dontPruneUntil: time.Now().Add(notReferencedVertexTTLSlots * ledger.SlotDuration()),
 	}
 	ret.onPoke.Store(nopFun)
@@ -738,7 +738,7 @@ type _unwrapOptionsTraverse struct {
 	visited set.Set[*WrappedTx]
 }
 
-// TraversePastConeDepthFirst performs depth-first traverse of the DAG. Visiting once each node
+// TraversePastConeDepthFirst performs depth-first traverse of the MemDAG. Visiting once each node
 // and calling vertex-type specific function if provided on each.
 // If function returns false, the traverse is cancelled globally.
 // The traverse stops at terminal dag. The vertex is terminal if it either is not-full vertex

@@ -12,7 +12,7 @@ import (
 	"github.com/lunfardo314/proxima/util"
 )
 
-// AttachTxID ensures the txid is on the DAG
+// AttachTxID ensures the txid is on the MemDAG
 func AttachTxID(txid ledger.TransactionID, env Environment, opts ...Option) (vid *vertex.WrappedTx) {
 	env.TraceTx(&txid, "AttachTxID")
 

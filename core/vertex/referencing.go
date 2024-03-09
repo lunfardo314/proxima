@@ -70,7 +70,7 @@ func (vid *WrappedTx) RefLines() []string {
 
 // DoPruningIfRelevant either marks vertex pruned, or, if it is matured,
 // un-references its past cone this way helping to prune other older vertices
-// Returns true if vertex was marked deleted and should be removed from the DAG
+// Returns true if vertex was marked deleted and should be removed from the MemDAG
 func (vid *WrappedTx) DoPruningIfRelevant(nowis time.Time) (markedForDeletion, unreferencedPastCone bool) {
 	vid.Unwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {

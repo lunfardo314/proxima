@@ -1,4 +1,4 @@
-package dag
+package memdag
 
 import (
 	"fmt"
@@ -153,7 +153,7 @@ func makeGraphEdges(vid *vertex.WrappedTx, gr graph.Graph[string, string]) {
 	}})
 }
 
-func (d *DAG) MakeGraph(additionalVertices ...*vertex.WrappedTx) graph.Graph[string, string] {
+func (d *MemDAG) MakeGraph(additionalVertices ...*vertex.WrappedTx) graph.Graph[string, string] {
 	ret := graph.New(graph.StringHash, graph.Directed(), graph.Acyclic())
 
 	vertices := d.Vertices()
@@ -173,7 +173,7 @@ func (d *DAG) MakeGraph(additionalVertices ...*vertex.WrappedTx) graph.Graph[str
 	return ret
 }
 
-func (d *DAG) SaveGraph(fname string) {
+func (d *MemDAG) SaveGraph(fname string) {
 	gr := d.MakeGraph()
 	dotFile, _ := os.Create(fname + ".gv")
 	err := draw.DOT(gr, dotFile)
@@ -311,7 +311,7 @@ func MakeTree(stateStore global.StateStore, slots ...int) graph.Graph[string, st
 	return ret
 }
 
-func (d *DAG) SaveTree(fname string) {
+func (d *MemDAG) SaveTree(fname string) {
 	SaveBranchTree(d.StateStore(), fname)
 }
 
@@ -323,7 +323,7 @@ func SaveBranchTree(stateStore global.StateStore, fname string, slotsBack ...int
 	_ = dotFile.Close()
 }
 
-func (d *DAG) SaveSequencerGraph(fname string) {
+func (d *MemDAG) SaveSequencerGraph(fname string) {
 	gr := d.MakeSequencerGraph()
 	dotFile, _ := os.Create(fname + ".gv")
 	err := draw.DOT(gr, dotFile)
@@ -331,7 +331,7 @@ func (d *DAG) SaveSequencerGraph(fname string) {
 	_ = dotFile.Close()
 }
 
-func (d *DAG) MakeSequencerGraph() graph.Graph[string, string] {
+func (d *MemDAG) MakeSequencerGraph() graph.Graph[string, string] {
 	ret := graph.New(graph.StringHash, graph.Directed(), graph.Acyclic())
 
 	seqDict := make(map[ledger.ChainID]int)
@@ -395,9 +395,9 @@ func makeSequencerGraphEdges(vid *vertex.WrappedTx, gr graph.Graph[string, strin
 	}})
 }
 
-// MakeDAGFromTxStore creates dummy DAG from past cones of tips. Only uses txBytes from txStore
-// It is used in testing, to visualize real transaction DAG, not the pruned cache kept in the node
-func MakeDAGFromTxStore(txStore global.TxBytesGet, oldestSlot ledger.Slot, tips ...ledger.TransactionID) *DAG {
+// MakeDAGFromTxStore creates dummy MemDAG from past cones of tips. Only uses txBytes from txStore
+// It is used in testing, to visualize real transaction MemDAG, not the pruned cache kept in the node
+func MakeDAGFromTxStore(txStore global.TxBytesGet, oldestSlot ledger.Slot, tips ...ledger.TransactionID) *MemDAG {
 	d := New(nil)
 	for i := range tips {
 		d.loadPastConeFromTxStore(tips[i], txStore, oldestSlot)
@@ -406,7 +406,7 @@ func MakeDAGFromTxStore(txStore global.TxBytesGet, oldestSlot ledger.Slot, tips 
 }
 
 // loadPastConeFromTxStore for generating graph only. Not thread safe
-func (d *DAG) loadPastConeFromTxStore(txid ledger.TransactionID, txStore global.TxBytesGet, oldestSlot ledger.Slot) *vertex.WrappedTx {
+func (d *MemDAG) loadPastConeFromTxStore(txid ledger.TransactionID, txStore global.TxBytesGet, oldestSlot ledger.Slot) *vertex.WrappedTx {
 	if txid.Slot() < oldestSlot {
 		return nil
 	}

@@ -4,7 +4,7 @@ import (
 	"sync"
 
 	"github.com/libp2p/go-libp2p/core/peer"
-	"github.com/lunfardo314/proxima/core/dag"
+	"github.com/lunfardo314/proxima/core/memdag"
 	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/core/work_process/events"
@@ -31,7 +31,7 @@ type (
 	}
 	Workflow struct {
 		Environment
-		*dag.DAG
+		*memdag.MemDAG
 		peers *peering.Peers
 		// daemons
 		pullClient       *pull_client.PullClient
@@ -63,7 +63,7 @@ func New(env Environment, peers *peering.Peers, opts ...ConfigOption) *Workflow 
 
 	ret := &Workflow{
 		Environment:      env,
-		DAG:              dag.New(env),
+		MemDAG:           memdag.New(env),
 		peers:            peers,
 		syncData:         newSyncData(),
 		traceTags:        set.New[string](),

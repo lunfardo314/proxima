@@ -1,4 +1,4 @@
-package dag
+package memdag
 
 import (
 	"github.com/lunfardo314/proxima/core/vertex"
@@ -6,7 +6,7 @@ import (
 )
 
 // QueryTxIDStatus returns vertex mode, tx status and error of the vertex
-func (d *DAG) QueryTxIDStatus(txid *ledger.TransactionID) (ret vertex.TxIDStatus) {
+func (d *MemDAG) QueryTxIDStatus(txid *ledger.TransactionID) (ret vertex.TxIDStatus) {
 	d.mutex.RLock()
 	defer d.mutex.RUnlock()
 
@@ -37,7 +37,7 @@ func (d *DAG) QueryTxIDStatus(txid *ledger.TransactionID) (ret vertex.TxIDStatus
 }
 
 //
-//func (d *DAG) WaitTxIDDefined(txid *ledger.TransactionID, pollPeriod time.Duration, timeout ...time.Duration) (string, error) {
+//func (d *MemDAG) WaitTxIDDefined(txid *ledger.TransactionID, pollPeriod time.Duration, timeout ...time.Duration) (string, error) {
 //	deadline := time.Now().Add(time.Minute)
 //	if len(timeout) > 0 {
 //		deadline = time.Now().Add(timeout[0])

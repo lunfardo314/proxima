@@ -1,4 +1,4 @@
-package dag
+package memdag
 
 import (
 	"fmt"
@@ -19,7 +19,11 @@ type (
 		StateStore() global.StateStore
 	}
 
-	DAG struct {
+	// MemDAG is a synchronized in-memory global map of all vertices of the transaction DAG
+	// Key of the map is transaction ID. Value of the map is *vertex.WrappedTx.
+	// The pointer value *vertex.WrappedTx is used as a unique identified of the transaction while being
+	// loaded into the memory
+	MemDAG struct {
 		Environment
 		mutex            sync.RWMutex
 		vertices         map[ledger.TransactionID]*vertex.WrappedTx
@@ -42,8 +46,8 @@ type (
 	}
 )
 
-func New(env Environment) *DAG {
-	return &DAG{
+func New(env Environment) *MemDAG {
+	return &MemDAG{
 		Environment:  env,
 		vertices:     make(map[ledger.TransactionID]*vertex.WrappedTx),
 		stateReaders: make(map[ledger.TransactionID]*cachedStateReader),
@@ -55,35 +59,35 @@ const (
 	sharedStateReaderCacheSize = 3000
 )
 
-func (d *DAG) PruningTTLSlots() int {
+func (d *MemDAG) PruningTTLSlots() int {
 	return pruningTTLSlots
 }
 
-func (d *DAG) WithGlobalWriteLock(fun func()) {
+func (d *MemDAG) WithGlobalWriteLock(fun func()) {
 	d.mutex.Lock()
 	fun()
 	d.mutex.Unlock()
 }
 
-func (d *DAG) GetVertexNoLock(txid *ledger.TransactionID) *vertex.WrappedTx {
+func (d *MemDAG) GetVertexNoLock(txid *ledger.TransactionID) *vertex.WrappedTx {
 	return d.vertices[*txid]
 }
 
-func (d *DAG) GetVertex(txid *ledger.TransactionID) *vertex.WrappedTx {
+func (d *MemDAG) GetVertex(txid *ledger.TransactionID) *vertex.WrappedTx {
 	d.mutex.RLock()
 	defer d.mutex.RUnlock()
 
 	return d.GetVertexNoLock(txid)
 }
 
-func (d *DAG) NumVertices() int {
+func (d *MemDAG) NumVertices() int {
 	d.mutex.RLock()
 	defer d.mutex.RUnlock()
 
 	return len(d.vertices)
 }
 
-func (d *DAG) AddVertexNoLock(vid *vertex.WrappedTx) {
+func (d *MemDAG) AddVertexNoLock(vid *vertex.WrappedTx) {
 	util.Assertf(d.GetVertexNoLock(&vid.ID) == nil, "d.GetVertexNoLock(vid.ID())==nil")
 	d.vertices[vid.ID] = vid
 	if d.latestTimestamp.Before(vid.ID.Timestamp()) {
@@ -95,7 +99,7 @@ func (d *DAG) AddVertexNoLock(vid *vertex.WrappedTx) {
 }
 
 // PurgeDeletedVertices with global lock
-func (d *DAG) PurgeDeletedVertices(deleted []*vertex.WrappedTx) {
+func (d *MemDAG) PurgeDeletedVertices(deleted []*vertex.WrappedTx) {
 	d.WithGlobalWriteLock(func() {
 		for _, vid := range deleted {
 			delete(d.vertices, vid.ID)
@@ -107,7 +111,7 @@ func _stateReaderCacheTTL() time.Duration {
 	return 3 * ledger.SlotDuration()
 }
 
-func (d *DAG) PurgeCachedStateReaders() (int, int) {
+func (d *MemDAG) PurgeCachedStateReaders() (int, int) {
 	d.stateReadersMutex.Lock()
 	defer d.stateReadersMutex.Unlock()
 
@@ -124,12 +128,12 @@ func (d *DAG) PurgeCachedStateReaders() (int, int) {
 	return len(toDelete), len(d.stateReaders)
 }
 
-func (d *DAG) GetStateReaderForTheBranch(branch *ledger.TransactionID) global.IndexedStateReader {
+func (d *MemDAG) GetStateReaderForTheBranch(branch *ledger.TransactionID) global.IndexedStateReader {
 	ret, _ := d.GetStateReaderForTheBranchExt(branch)
 	return ret
 }
 
-func (d *DAG) GetStateReaderForTheBranchExt(branch *ledger.TransactionID) (global.IndexedStateReader, *multistate.RootRecord) {
+func (d *MemDAG) GetStateReaderForTheBranchExt(branch *ledger.TransactionID) (global.IndexedStateReader, *multistate.RootRecord) {
 	util.Assertf(branch != nil && branch.IsBranchTransaction(), "branch != nil && branch.IsBranchTransaction()")
 
 	d.stateReadersMutex.Lock()
@@ -152,14 +156,14 @@ func (d *DAG) GetStateReaderForTheBranchExt(branch *ledger.TransactionID) (globa
 	return d.stateReaders[*branch], &rootRecord
 }
 
-func (d *DAG) GetStemWrappedOutput(branch *ledger.TransactionID) (ret vertex.WrappedOutput) {
+func (d *MemDAG) GetStemWrappedOutput(branch *ledger.TransactionID) (ret vertex.WrappedOutput) {
 	if vid := d.GetVertex(branch); vid != nil {
 		ret = vid.StemWrappedOutput()
 	}
 	return
 }
 
-func (d *DAG) GetIndexedStateReader(branchTxID *ledger.TransactionID, clearCacheAtSize ...int) (global.IndexedStateReader, error) {
+func (d *MemDAG) GetIndexedStateReader(branchTxID *ledger.TransactionID, clearCacheAtSize ...int) (global.IndexedStateReader, error) {
 	rr, found := multistate.FetchRootRecord(d.StateStore(), *branchTxID)
 	if !found {
 		return nil, fmt.Errorf("root record for %s has not been found", branchTxID.StringShort())
@@ -167,13 +171,13 @@ func (d *DAG) GetIndexedStateReader(branchTxID *ledger.TransactionID, clearCache
 	return multistate.NewReadable(d.StateStore(), rr.Root, clearCacheAtSize...)
 }
 
-func (d *DAG) MustGetIndexedStateReader(branchTxID *ledger.TransactionID, clearCacheAtSize ...int) global.IndexedStateReader {
+func (d *MemDAG) MustGetIndexedStateReader(branchTxID *ledger.TransactionID, clearCacheAtSize ...int) global.IndexedStateReader {
 	ret, err := d.GetIndexedStateReader(branchTxID, clearCacheAtSize...)
 	util.AssertNoError(err)
 	return ret
 }
 
-func (d *DAG) HeaviestStateForLatestTimeSlotWithBaseline() (multistate.SugaredStateReader, *vertex.WrappedTx) {
+func (d *MemDAG) HeaviestStateForLatestTimeSlotWithBaseline() (multistate.SugaredStateReader, *vertex.WrappedTx) {
 	branchRecords := multistate.FetchLatestBranches(d.StateStore())
 	util.Assertf(len(branchRecords) > 0, "len(branchRecords)>0")
 
@@ -181,7 +185,7 @@ func (d *DAG) HeaviestStateForLatestTimeSlotWithBaseline() (multistate.SugaredSt
 		d.GetVertex(branchRecords[0].TxID())
 }
 
-func (d *DAG) HeaviestStateForLatestTimeSlot() multistate.SugaredStateReader {
+func (d *MemDAG) HeaviestStateForLatestTimeSlot() multistate.SugaredStateReader {
 	rootRecords := multistate.FetchLatestRootRecords(d.StateStore())
 	util.Assertf(len(rootRecords) > 0, "len(rootRecords)>0")
 
@@ -189,7 +193,7 @@ func (d *DAG) HeaviestStateForLatestTimeSlot() multistate.SugaredStateReader {
 }
 
 // WaitUntilTransactionInHeaviestState for testing mostly
-func (d *DAG) WaitUntilTransactionInHeaviestState(txid ledger.TransactionID, timeout ...time.Duration) (*vertex.WrappedTx, error) {
+func (d *MemDAG) WaitUntilTransactionInHeaviestState(txid ledger.TransactionID, timeout ...time.Duration) (*vertex.WrappedTx, error) {
 	deadline := time.Now().Add(10 * time.Minute)
 	if len(timeout) > 0 {
 		deadline = time.Now().Add(timeout[0])
@@ -207,7 +211,7 @@ func (d *DAG) WaitUntilTransactionInHeaviestState(txid ledger.TransactionID, tim
 }
 
 // LatestBranchSlot latest time slot with some stateReaders
-func (d *DAG) LatestBranchSlot() (ret ledger.Slot) {
+func (d *MemDAG) LatestBranchSlot() (ret ledger.Slot) {
 	d.mutex.RLock()
 	defer d.mutex.RUnlock()
 
@@ -215,7 +219,7 @@ func (d *DAG) LatestBranchSlot() (ret ledger.Slot) {
 }
 
 // ForEachVertexReadLocked Traversing all vertices. Beware: read-locked!
-func (d *DAG) ForEachVertexReadLocked(fun func(vid *vertex.WrappedTx) bool) {
+func (d *MemDAG) ForEachVertexReadLocked(fun func(vid *vertex.WrappedTx) bool) {
 	d.mutex.RLock()
 	defer d.mutex.RUnlock()
 
@@ -226,7 +230,7 @@ func (d *DAG) ForEachVertexReadLocked(fun func(vid *vertex.WrappedTx) bool) {
 	}
 }
 
-func (d *DAG) ParseMilestoneData(msVID *vertex.WrappedTx) (ret *ledger.MilestoneData) {
+func (d *MemDAG) ParseMilestoneData(msVID *vertex.WrappedTx) (ret *ledger.MilestoneData) {
 	msVID.Unwrap(vertex.UnwrapOptions{
 		Vertex: func(v *vertex.Vertex) {
 			ret = ledger.ParseMilestoneData(v.Tx.SequencerOutput().Output)
@@ -240,7 +244,7 @@ func (d *DAG) ParseMilestoneData(msVID *vertex.WrappedTx) (ret *ledger.Milestone
 }
 
 // Vertices to avoid global lock while traversing all utangle
-func (d *DAG) Vertices(filterByID ...func(txid *ledger.TransactionID) bool) []*vertex.WrappedTx {
+func (d *MemDAG) Vertices(filterByID ...func(txid *ledger.TransactionID) bool) []*vertex.WrappedTx {
 	d.mutex.RLock()
 	defer d.mutex.RUnlock()
 
@@ -252,7 +256,7 @@ func (d *DAG) Vertices(filterByID ...func(txid *ledger.TransactionID) bool) []*v
 	})
 }
 
-func (d *DAG) VerticesDescending() []*vertex.WrappedTx {
+func (d *MemDAG) VerticesDescending() []*vertex.WrappedTx {
 	ret := d.Vertices()
 	sort.Slice(ret, func(i, j int) bool {
 		return ret[i].Timestamp().After(ret[j].Timestamp())
@@ -260,7 +264,7 @@ func (d *DAG) VerticesDescending() []*vertex.WrappedTx {
 	return ret
 }
 
-func (d *DAG) BranchHasTransaction(branchID, txid *ledger.TransactionID) (*multistate.RootRecord, bool) {
+func (d *MemDAG) BranchHasTransaction(branchID, txid *ledger.TransactionID) (*multistate.RootRecord, bool) {
 	rdr, rr := d.GetStateReaderForTheBranchExt(branchID)
 	if util.IsNil(rdr) {
 		return nil, false

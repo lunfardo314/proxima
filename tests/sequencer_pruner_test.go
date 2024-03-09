@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lunfardo314/proxima/core/dag"
+	"github.com/lunfardo314/proxima/core/memdag"
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/multistate"
@@ -163,7 +163,7 @@ func TestNSequencersIdlePruner(t *testing.T) {
 
 		t.Logf("%s", testData.wrk.Info(true))
 		testData.saveFullDAG("utangle_full")
-		dag.SaveBranchTree(testData.wrk.StateStore(), fmt.Sprintf("utangle_tree_%d", nSequencers+1))
+		memdag.SaveBranchTree(testData.wrk.StateStore(), fmt.Sprintf("utangle_tree_%d", nSequencers+1))
 	})
 }
 
@@ -181,7 +181,7 @@ func Test5SequencersIdlePruner(t *testing.T) {
 
 	//t.Logf("--------\n%s", testData.wrk.Info(true))
 	testData.saveFullDAG("utangle_full")
-	dag.SaveBranchTree(testData.wrk.StateStore(), fmt.Sprintf("utangle_tree_%d", nSequencers+1))
+	memdag.SaveBranchTree(testData.wrk.StateStore(), fmt.Sprintf("utangle_tree_%d", nSequencers+1))
 }
 
 func TestNSequencersTransferPruner(t *testing.T) {
@@ -321,7 +321,7 @@ func TestNSequencersTransferPruner(t *testing.T) {
 		}
 
 		testData.saveFullDAG(fmt.Sprintf("utangle_full_%d_2", nSequencers+1))
-		dag.SaveBranchTree(testData.wrk.StateStore(), fmt.Sprintf("utangle_tree_%d_2", nSequencers+1))
+		memdag.SaveBranchTree(testData.wrk.StateStore(), fmt.Sprintf("utangle_tree_%d_2", nSequencers+1))
 
 		targetBalance := rdr.BalanceOf(targetAddr.AccountID())
 		require.EqualValues(t, len(par.spammedTxIDs)*sendAmount, int(targetBalance))
