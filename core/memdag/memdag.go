@@ -20,16 +20,23 @@ type (
 	}
 
 	// MemDAG is a synchronized in-memory global map of all vertices of the transaction DAG
-	// Key of the map is transaction ID. Value of the map is *vertex.WrappedTx.
-	// The pointer value *vertex.WrappedTx is used as a unique identified of the transaction while being
-	// loaded into the memory
 	MemDAG struct {
 		Environment
+
+		// cache of vertices. Key of the map is transaction ID. Value of the map is *vertex.WrappedTx.
+		// The pointer value *vertex.WrappedTx is used as a unique identified of the transaction while being
+		// loaded into the memory.
+		// MemDAG is constantly garbage-collected by the pruner
 		mutex            sync.RWMutex
 		vertices         map[ledger.TransactionID]*vertex.WrappedTx
 		latestTimestamp  ledger.Time
 		latestBranchSlot ledger.Slot
 
+		// cache of state readers. One state (trie) reader for the branch/root. When accessed through the cache,
+		// reading is highly optimized because each state reader keeps its trie cache, so consequent calls to
+		// HasUTXO, GetUTXO and similar does not require database involvement during attachment and solidification
+		// in the same slot.
+		// Inactive cached readers with their trie caches are constantly cleaned up by the pruner
 		stateReadersMutex sync.Mutex
 		stateReaders      map[ledger.TransactionID]*cachedStateReader
 	}

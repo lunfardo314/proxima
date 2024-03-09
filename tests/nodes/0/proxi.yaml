@@ -10,7 +10,7 @@ tag_along:
     sequencer_id: af7bedde1fea222230b82d63d5b665ac75afbe4ad3f75999bb3386cf994a6963
     fee: 500
 spammer:
-    bundle_size: 30
+    bundle_size: 5
     max_duration_minutes: 0
     max_transactions: 0
     output_amount: 1000
