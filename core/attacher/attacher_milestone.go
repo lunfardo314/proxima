@@ -25,7 +25,7 @@ func runMilestoneAttacher(vid *vertex.WrappedTx, metadata *txmetadata.Transactio
 
 	if err != nil {
 		vid.SetTxStatusBad(err)
-		env.Log().Errorf("-- ATTACH %s -> BAD(%v)", vid.ID.StringShort(), err)
+		env.Log().Warnf("-- ATTACH %s -> BAD(%v)", vid.ID.StringShort(), err)
 	} else {
 		env.Assertf(finals != nil, "finals != nil")
 		msData := env.ParseMilestoneData(vid)
@@ -93,12 +93,12 @@ func (a *milestoneAttacher) run() (*attachFinals, error) {
 	status = a.solidifyPastCone()
 	if status != vertex.Good {
 		a.Tracef(TraceTagAttachMilestone, "past cone solidification failed. Reason: %v", a.err)
-		util.AssertMustError(a.err)
+		a.AssertMustError(a.err)
 		return nil, a.err
 	}
 	a.Tracef(TraceTagAttachMilestone, "past cone OK")
-	util.AssertNoError(a.err)
-	util.AssertNoError(a.checkConsistencyBeforeWrapUp())
+	a.AssertNoError(a.err)
+	a.AssertNoError(a.checkConsistencyBeforeWrapUp())
 
 	// finalizing touches
 	a.wrapUpAttacher()

@@ -11,7 +11,7 @@ import (
 func (a *milestoneAttacher) checkConsistencyBeforeWrapUp() error {
 	err := a._checkConsistencyBeforeFinalization()
 	if err != nil {
-		err = fmt.Errorf("checkConsistencyBeforeWrapUp in attacher %s: %w\n%s", a.name, err, a.dumpLines("       "))
+		err = fmt.Errorf("checkConsistencyBeforeWrapUp in attacher %s: %v\n---- attacher lines ----\n%s", a.name, err, a.dumpLines("       "))
 	}
 	return err
 }
@@ -54,6 +54,7 @@ func (a *milestoneAttacher) _checkConsistencyBeforeFinalization() (err error) {
 	if sumRooted != a.coverage.LatestDelta() {
 		err = fmt.Errorf("sum of amounts of rooted outputs %s is not equal to the coverage sumRooted %s",
 			util.GoTh(sumRooted), util.GoTh(a.coverage.LatestDelta()))
+		return
 	}
 
 	for vid, flags := range a.vertices {
@@ -75,13 +76,20 @@ func (a *milestoneAttacher) _checkConsistencyBeforeFinalization() (err error) {
 		}
 		// transaction can be undefined in the past cone (virtual, non-sequencer etc)
 
+		if a.isKnownRooted(vid) {
+			// do not check dependencies if transaction is rooted
+			continue
+		}
 		vid.Unwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
 			missingInputs, missingEndorsements := v.NumMissingInputs()
 			if missingInputs+missingEndorsements > 0 {
-				err = fmt.Errorf("not all dependencies solid. Missing inputs: %d, missing endorsements: %d, missing input tx:\n%s",
-					missingInputs, missingEndorsements, v.MissingInputTxIDString())
+				err = fmt.Errorf("not all dependencies solid in %s\n      missing inputs: %d\n      missing endorsements: %d,\n      missing input txs: [%s]",
+					vid.IDShortString(), missingInputs, missingEndorsements, v.MissingInputTxIDString())
 			}
 		}})
+		if err != nil {
+			return
+		}
 	}
 
 	a.vid.Unwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {

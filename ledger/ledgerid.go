@@ -51,7 +51,7 @@ type (
 		// this limits number of sequencers in the network. Reasonable amount would be few hundreds of sequencers
 		MinimumAmountOnSequencer uint64
 		//
-		MaxToleratedParasiticChainSlots byte
+		MaxToleratedParasiticChainSlots byte // TODo remove from ledger, non-deterministic
 	}
 
 	// IdentityDataYAMLAble structure for canonical YAMLAble marshaling

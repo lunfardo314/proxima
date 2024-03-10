@@ -489,10 +489,17 @@ func _lazyStringSelectedInputs(tx *transaction.Transaction, indices []byte) func
 
 func (a *attacher) attachInput(v *vertex.Vertex, inputIdx byte, vid *vertex.WrappedTx, parasiticChainHorizon ledger.Time) (ok, defined bool) {
 	a.Tracef(TraceTagAttachVertex, "attachInput #%d of %s", inputIdx, vid.IDShortString)
-	if !a.attachInputID(v, vid, inputIdx) {
+	vidInputTx, ok := a.attachInputID(v, vid, inputIdx)
+	if !ok {
 		a.Tracef(TraceTagAttachVertex, "bad input %d", inputIdx)
 		return false, false
 	}
+	// only will become solid if successfully referenced
+	if v.Inputs[inputIdx] == nil {
+		refOk := v.ReferenceInput(inputIdx, vidInputTx)
+		util.Assertf(refOk, "failed to reference input #%d of %s. Input tx: %s", inputIdx, v.Tx.IDShortString, vidInputTx.IDShortString)
+	}
+
 	a.Assertf(v.Inputs[inputIdx] != nil, "v.Inputs[i] != nil")
 
 	if parasiticChainHorizon == ledger.NilLedgerTime {
@@ -618,11 +625,11 @@ func (a *attacher) branchesCompatible(txid1, txid2 *ledger.TransactionID) bool {
 }
 
 // attachInputID links input vertex with the consumer, detects conflicts
-func (a *attacher) attachInputID(consumerVertex *vertex.Vertex, consumerTx *vertex.WrappedTx, inputIdx byte) (ok bool) {
+func (a *attacher) attachInputID(consumerVertex *vertex.Vertex, consumerTx *vertex.WrappedTx, inputIdx byte) (vidInputTx *vertex.WrappedTx, ok bool) {
 	inputOid := consumerVertex.Tx.MustInputAt(inputIdx)
 	a.Tracef(TraceTagAttachOutput, "attachInputID: (oid = %s) #%d in %s", inputOid.StringShort, inputIdx, consumerTx.IDShortString)
 
-	vidInputTx := consumerVertex.Inputs[inputIdx]
+	vidInputTx = consumerVertex.Inputs[inputIdx]
 	if vidInputTx == nil {
 		vidInputTx = AttachTxID(inputOid.TransactionID(), a, OptionInvokedBy(a.name))
 	}
@@ -630,7 +637,7 @@ func (a *attacher) attachInputID(consumerVertex *vertex.Vertex, consumerTx *vert
 
 	if vidInputTx.GetTxStatus() == vertex.Bad {
 		a.setError(vidInputTx.GetError())
-		return false
+		return nil, false
 	}
 
 	if vidInputTx.IsSequencerMilestone() {
@@ -640,7 +647,7 @@ func (a *attacher) attachInputID(consumerVertex *vertex.Vertex, consumerTx *vert
 				err := fmt.Errorf("branches %s and %s not compatible", a.baseline.IDShortString(), inputBaselineBranch.IDShortString())
 				a.setError(err)
 				a.Tracef(TraceTagAttachOutput, "%v", err)
-				return false
+				return nil, false
 			}
 		}
 	}
@@ -654,15 +661,11 @@ func (a *attacher) attachInputID(consumerVertex *vertex.Vertex, consumerTx *vert
 			inputOid.StringShort(), consumerTx.IDShortString(), a.baseline.IDShortString())
 		a.setError(err)
 		a.Tracef(TraceTagAttachOutput, "%v", err)
-		return false
+		return nil, false
 	}
 	a.Tracef(TraceTagAttachOutput, "attached consumer %s of %s", consumerTx.IDShortString, inputOid.StringShort)
 
-	// only will become solid if successfully referenced
-	if consumerVertex.Inputs[inputIdx] == nil {
-		consumerVertex.ReferenceInput(inputIdx, vidInputTx)
-	}
-	return true
+	return vidInputTx, true
 }
 
 func (a *attacher) checkConflictsFunc(consumerTx *vertex.WrappedTx) func(existingConsumers set.Set[*vertex.WrappedTx]) bool {

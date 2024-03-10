@@ -32,7 +32,7 @@ func Init(id *IdentityData, verbose ...bool) {
 		libraryGlobalMutex.Lock()
 		defer libraryGlobalMutex.Unlock()
 
-		util.Assertf(libraryGlobal == nil, "global library already initialized")
+		util.Assertf(libraryGlobal == nil, "ledger is already initialized")
 
 		libraryGlobal = newLibrary()
 

@@ -167,7 +167,7 @@ func (l *Global) AssertNoError(err error, prefix ...string) {
 		if len(prefix) > 0 {
 			pref = strings.Join(prefix, " ") + ": "
 		}
-		l.SugaredLogger.Fatalf(pref+"%w", err)
+		l.SugaredLogger.Fatalf(pref+"%v", err)
 	}
 }
 

@@ -10,49 +10,53 @@ import (
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 )
 
 func initMakeChainCmd() *cobra.Command {
-	getMakeChainCmd := &cobra.Command{
-		Use:   "mkchain [<initial on-chain balance>]",
+	makeChainCmd := &cobra.Command{
+		Use:   "mkchain <initial on-chain balance>",
 		Short: `creates new chain origin (not a sequencer)`,
-		Args:  cobra.MaximumNArgs(1),
+		Args:  cobra.ExactArgs(1),
 		Run:   runMakeChainCmd,
 	}
-	getMakeChainCmd.InitDefaultHelpCmd()
-	return getMakeChainCmd
+	glb.AddFlagTraceTx(makeChainCmd)
+	makeChainCmd.InitDefaultHelpCmd()
+
+	return makeChainCmd
 }
 
-const (
-	defaultOnChainAmount = uint64(1_000_000)
-	defaultTagAlongFee   = 500
-	minimumFee           = defaultTagAlongFee
-)
-
 func runMakeChainCmd(_ *cobra.Command, args []string) {
+	//cmd.DebugFlags()
 	glb.InitLedgerFromNode()
 
-	wallet := glb.GetWalletData()
+	walletData := glb.GetWalletData()
+
+	onChainAmount, err := strconv.ParseUint(args[0], 10, 64)
+	glb.AssertNoError(err)
+
 	target := glb.MustGetTarget()
 
-	tagAlongSeqID := GetTagAlongSequencerID()
-	tagAlongFee := viper.GetUint64("tag-along.fee")
-	if tagAlongFee < minimumFee {
-		tagAlongFee = defaultTagAlongFee
-	}
-	var err error
-	onChainAmount := defaultOnChainAmount
-	if len(args) == 1 {
-		onChainAmount, err = strconv.ParseUint(args[0], 10, 64)
+	var tagAlongSeqID *ledger.ChainID
+	feeAmount := getTagAlongFee()
+	glb.Assertf(feeAmount > 0, "tag-along fee is configured 0. Fee-less option not supported yet")
+	if feeAmount > 0 {
+		tagAlongSeqID = GetTagAlongSequencerID()
+		glb.Assertf(tagAlongSeqID != nil, "tag-along sequencer not specified")
+
+		md, err := glb.GetClient().GetMilestoneDataFromHeaviestState(*tagAlongSeqID)
 		glb.AssertNoError(err)
+
+		if md != nil && md.MinimumFee > feeAmount {
+			feeAmount = md.MinimumFee
+		}
 	}
+	glb.Infof("trace on node: %v", glb.TraceTx())
 
 	glb.Infof("Creating new chain origin:")
 	glb.Infof("   on-chain balance: %s", util.GoTh(onChainAmount))
-	glb.Infof("   tag-along fee %s to the sequencer %s", util.GoTh(tagAlongFee), tagAlongSeqID)
-	glb.Infof("   source account: %s", wallet.Account)
-	glb.Infof("   total cost: %s", util.GoTh(onChainAmount+tagAlongFee))
+	glb.Infof("   tag-along fee %s to the sequencer %s", util.GoTh(feeAmount), tagAlongSeqID)
+	glb.Infof("   source account: %s", walletData.Account.String())
+	glb.Infof("   total cost: %s", util.GoTh(onChainAmount+feeAmount))
 	glb.Infof("   chain controller: %s", target)
 
 	if !glb.YesNoPrompt("proceed?:", false) {
@@ -61,13 +65,13 @@ func runMakeChainCmd(_ *cobra.Command, args []string) {
 	}
 
 	ts := ledger.TimeNow()
-	inps, totalInputs, err := glb.GetClient().GetTransferableOutputs(wallet.Account, ts)
+	inps, totalInputs, err := glb.GetClient().GetTransferableOutputs(walletData.Account, ts)
 	glb.AssertNoError(err)
-	glb.Assertf(totalInputs >= onChainAmount+tagAlongFee, "not enough source balance %s", util.GoTh(totalInputs))
+	glb.Assertf(totalInputs >= onChainAmount+feeAmount, "not enough source balance %s", util.GoTh(totalInputs))
 
 	totalInputs = 0
 	inps = util.PurgeSlice(inps, func(o *ledger.OutputWithID) bool {
-		if totalInputs < onChainAmount+tagAlongFee {
+		if totalInputs < onChainAmount+feeAmount {
 			totalInputs += o.Output.Amount()
 			return true
 		}
@@ -75,14 +79,15 @@ func runMakeChainCmd(_ *cobra.Command, args []string) {
 	})
 
 	txCtx, chainID, err := glb.GetClient().MakeChainOrigin(client.TransferFromED25519WalletParams{
-		WalletPrivateKey: wallet.PrivateKey,
+		WalletPrivateKey: walletData.PrivateKey,
 		TagAlongSeqID:    tagAlongSeqID,
-		TagAlongFee:      tagAlongFee,
+		TagAlongFee:      feeAmount,
 		Amount:           onChainAmount,
 		Target:           target.AsLock(),
 	})
+
 	glb.AssertNoError(err)
-	glb.Infof("new chain ID will be %s", chainID.String())
+	glb.Infof("new chain ID is %s", chainID.String())
 	if !glb.NoWait() {
 		glb.ReportTxStatus(*txCtx.TransactionID(), time.Second)
 	}
