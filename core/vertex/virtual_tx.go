@@ -90,22 +90,3 @@ func (v *VirtualTransaction) SequencerOutputs() (*ledger.Output, *ledger.Output)
 	}
 	return seqOut, stemOut
 }
-
-func (v *VirtualTransaction) mustMergeNewOutputs(vNew *VirtualTransaction) {
-	v.mutex.Lock()
-	defer v.mutex.Unlock()
-
-	if v.sequencerOutputs != nil && vNew.sequencerOutputs != nil {
-		util.Assertf(*v.sequencerOutputs == *vNew.sequencerOutputs, "mustMergeNewOutputs: inconsistent sequencer output data")
-	}
-	if v.sequencerOutputs == nil {
-		v.sequencerOutputs = vNew.sequencerOutputs
-	}
-	for idx, o := range vNew.outputs {
-		if oOld, already := v.outputs[idx]; already {
-			util.Assertf(bytes.Equal(o.Bytes(), oOld.Bytes()), "mustMergeNewOutputs: inconsistent output data")
-		} else {
-			v.outputs[idx] = o
-		}
-	}
-}

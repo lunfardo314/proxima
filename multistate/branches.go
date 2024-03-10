@@ -193,18 +193,6 @@ func FetchRootRecords(store global.StateStore, slots ...ledger.Slot) []RootRecor
 	return ret
 }
 
-func FetchStemOutputID(store global.StateStore, branchTxID ledger.TransactionID) (ledger.OutputID, bool) {
-	rr, ok := FetchRootRecord(store, branchTxID)
-	if !ok {
-		return ledger.OutputID{}, false
-	}
-	rdr, err := NewSugaredReadableState(store, rr.Root, 0)
-	util.AssertNoError(err)
-
-	o := rdr.GetStemOutput()
-	return o.ID, true
-}
-
 func FetchBranchData(store global.StateStore, branchTxID ledger.TransactionID) (BranchData, bool) {
 	if rd, found := FetchRootRecord(store, branchTxID); found {
 		return FetchBranchDataByRoot(store, rd), true

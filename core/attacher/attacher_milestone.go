@@ -47,8 +47,6 @@ func runMilestoneAttacher(vid *vertex.WrappedTx, metadata *txmetadata.Transactio
 	}
 }
 
-const pokeChanBufferSize = 1
-
 func newMilestoneAttacher(vid *vertex.WrappedTx, env Environment, metadata *txmetadata.TransactionMetadata) *milestoneAttacher {
 	env.Assertf(vid.IsSequencerMilestone(), "newMilestoneAttacher: %s not a sequencer milestone", vid.IDShortString)
 
@@ -56,14 +54,14 @@ func newMilestoneAttacher(vid *vertex.WrappedTx, env Environment, metadata *txme
 		attacher: newPastConeAttacher(env, vid.IDShortString()),
 		vid:      vid,
 		metadata: metadata,
-		pokeChan: make(chan *vertex.WrappedTx, pokeChanBufferSize),
+		pokeChan: make(chan struct{}),
 		finals:   &attachFinals{},
 	}
 	ret.attacher.pokeMe = func(vid *vertex.WrappedTx) {
 		ret.pokeMe(vid)
 	}
-	ret.vid.OnPoke(func(withVID *vertex.WrappedTx) {
-		ret._doPoke(withVID)
+	ret.vid.OnPoke(func() {
+		ret._doPoke()
 	})
 	vid.Unwrap(vertex.UnwrapOptions{
 		Vertex: func(v *vertex.Vertex) {
@@ -127,10 +125,8 @@ func (a *milestoneAttacher) lazyRepeat(fun func() vertex.Status) vertex.Status {
 			return status
 		}
 		select {
-		case withVID := <-a.pokeChan:
-			if withVID != nil {
-				a.Tracef(TraceTagAttachMilestone, "poked with %s", withVID.IDShortString)
-			}
+		case <-a.pokeChan:
+			a.Tracef(TraceTagAttachMilestone, "poked")
 		case <-a.Ctx().Done():
 			a.setError(fmt.Errorf("attacher has been interrupted"))
 			return vertex.Bad
@@ -179,11 +175,12 @@ func (a *milestoneAttacher) close() {
 	a.closeOnce.Do(func() {
 		a.unReferenceAllByAttacher()
 
-		a.pokeMutex.Lock()
+		a.pokeClosingMutex.Lock()
+		defer a.pokeClosingMutex.Unlock()
+
 		a.closed = true
 		close(a.pokeChan)
 		a.vid.OnPoke(nil)
-		a.pokeMutex.Unlock()
 	})
 }
 
@@ -246,14 +243,14 @@ func (a *milestoneAttacher) solidifyPastCone() vertex.Status {
 	})
 }
 
-func (a *milestoneAttacher) _doPoke(msg *vertex.WrappedTx) {
-	a.pokeMutex.RLock()
-	defer a.pokeMutex.RUnlock()
+func (a *milestoneAttacher) _doPoke() {
+	a.pokeClosingMutex.RLock()
+	defer a.pokeClosingMutex.RUnlock()
 
 	// must be non-blocking, otherwise deadlocks when syncing or high TPS
 	if !a.closed {
 		select {
-		case a.pokeChan <- msg:
+		case a.pokeChan <- struct{}{}:
 		default:
 			// poke is lost when blocked but that is ok because there's pull from the attacher side
 		}

@@ -92,10 +92,6 @@ func MustNewReadable(store common.KVReader, root common.VCommitment, clearCacheA
 	return ret
 }
 
-func MustNewSugaredStateReader(store common.KVReader, root common.VCommitment, clearCacheAtSize ...int) SugaredStateReader {
-	return MakeSugared(MustNewReadable(store, root, clearCacheAtSize...))
-}
-
 // NewUpdatable creates updatable state with the given root. After updated, the root changes.
 // Suitable for chained updates of the ledger state
 func NewUpdatable(store global.StateStore, root common.VCommitment) (*Updatable, error) {

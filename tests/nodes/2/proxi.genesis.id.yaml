@@ -5,7 +5,7 @@
 # Public key of the controller identifies originator of the ledger for its lifetime.
 # 'genesis_controller_address' is computed from the public key of the controller
 # 'bootstrap_chain_id' is a constant, i.e. same for all ledgers
-genesis_time_unix: 1709479895
+genesis_time_unix: 1709910549
 initial_supply: 1000000000000000
 genesis_controller_public_key: 0530b790e0e7de626f36e20ba656f09e324c68203de899d0daf9f98fcb3cf684
 time_tick_duration_nanosec: 100000000
@@ -14,7 +14,7 @@ branch_bonus_base: 5000000
 slots_per_halving_epoch: 3153600
 vb_cost: 1
 transaction_pace: 10
-transaction_pace_sequencer: 5
+transaction_pace_sequencer: 1
 num_halving_epochs: 5
 chain_inflation_per_tick_fraction_base: 500000000
 chain_inflation_opportunity_slots: 12

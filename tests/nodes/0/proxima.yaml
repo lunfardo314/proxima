@@ -63,7 +63,7 @@ trace_tags:
 #  - global
 #  - backlog
 #  - propose-base
-  - pruner
+#  - pruner
 
 
 

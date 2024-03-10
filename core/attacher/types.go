@@ -80,13 +80,13 @@ type (
 	// milestoneAttacher is used to attach a sequencer transaction
 	milestoneAttacher struct {
 		attacher
-		vid       *vertex.WrappedTx
-		metadata  *txmetadata.TransactionMetadata
-		closeOnce sync.Once
-		pokeChan  chan *vertex.WrappedTx
-		pokeMutex sync.RWMutex
-		finals    *attachFinals
-		closed    bool
+		vid              *vertex.WrappedTx
+		metadata         *txmetadata.TransactionMetadata
+		closeOnce        sync.Once
+		pokeChan         chan struct{}
+		pokeClosingMutex sync.RWMutex
+		finals           *attachFinals
+		closed           bool
 	}
 
 	_attacherOptions struct {

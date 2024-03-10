@@ -47,6 +47,7 @@ sequencers:
 logger:
   level: info
   output: testlog_2.log
+  erase_at_start: true
 
 # Other parameters used for tracing and debugging
 # pprof config

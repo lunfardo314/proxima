@@ -103,7 +103,7 @@ func (d *Poker) pokeAllCmd(wanted *vertex.WrappedTx) {
 	if len(lst.waiting) > 0 {
 		for _, vid := range lst.waiting {
 			d.Tracef(TraceTag, "poke %s with %s", vid.IDShortString, wanted.IDShortString)
-			vid.PokeWith(wanted)
+			vid.Poke()
 		}
 		delete(d.m, wanted)
 	}

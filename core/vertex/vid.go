@@ -14,9 +14,7 @@ import (
 )
 
 // ErrDeletedVertexAccessed exception is raised by PanicAccessDeleted handler of RUnwrap vertex so that could be caught if necessary
-var (
-	ErrDeletedVertexAccessed = errors.New("deleted vertex should not be accessed")
-)
+var ErrDeletedVertexAccessed = errors.New("deleted vertex should not be accessed")
 
 func (v _vertex) _outputAt(idx byte) (*ledger.Output, error) {
 	return v.Tx.ProducedOutputAt(idx)
@@ -41,8 +39,6 @@ func (v _virtualTx) _hasOutputAt(idx byte) (bool, bool) {
 	return hasIt, false
 }
 
-var nopFun = func(_ *WrappedTx) {}
-
 func _newVID(g _genericVertex, txid ledger.TransactionID) *WrappedTx {
 	ret := &WrappedTx{
 		ID:             txid,
@@ -50,7 +46,7 @@ func _newVID(g _genericVertex, txid ledger.TransactionID) *WrappedTx {
 		references:     1, // we always start with 1 reference, which is reference by the MemDAG itself. 0 references means it is deleted
 		dontPruneUntil: time.Now().Add(notReferencedVertexTTLSlots * ledger.SlotDuration()),
 	}
-	ret.onPoke.Store(nopFun)
+	ret.onPoke.Store(func() {})
 	return ret
 }
 
@@ -185,16 +181,16 @@ func (vid *WrappedTx) StatusString() string {
 	}
 }
 
-func (vid *WrappedTx) OnPoke(fun func(vid *WrappedTx)) {
+func (vid *WrappedTx) OnPoke(fun func()) {
 	if fun == nil {
-		vid.onPoke.Store(nopFun)
+		vid.onPoke.Store(func() {})
 	} else {
 		vid.onPoke.Store(fun)
 	}
 }
 
-func (vid *WrappedTx) PokeWith(withVID *WrappedTx) {
-	vid.onPoke.Load().(func(_ *WrappedTx))(withVID)
+func (vid *WrappedTx) Poke() {
+	vid.onPoke.Load().(func())()
 }
 
 func WrapTxID(txid ledger.TransactionID) *WrappedTx {

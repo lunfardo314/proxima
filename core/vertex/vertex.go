@@ -25,13 +25,7 @@ func (v *Vertex) TimeSlot() ledger.Slot {
 	return v.Tx.ID().Slot()
 }
 
-func (v *Vertex) getSequencerPredecessor() *WrappedTx {
-	util.Assertf(v.Tx.IsSequencerMilestone(), "v.Tx.IsSequencerMilestone()")
-	predIdx := v.Tx.SequencerTransactionData().SequencerOutputData.ChainConstraint.PredecessorInputIndex
-	return v.Inputs[predIdx]
-}
-
-// ReferenceInput puts new input and references it. In case referencing fails, no change and return false
+// ReferenceInput puts new input and references it. If referencing fails, no change happens and returns false
 func (v *Vertex) ReferenceInput(i byte, vid *WrappedTx) bool {
 	util.Assertf(int(i) < len(v.Inputs), "PutNewInput: wrong input index")
 	util.Assertf(v.Inputs[i] == nil, "PutNewInput: repetitive")
@@ -97,6 +91,8 @@ func (v *Vertex) GetConsumedOutput(i byte) (ret *ledger.Output) {
 	return
 }
 
+// ValidateConstraints creates full transaction context from the (solid) vertex data
+// and runs validation of all constraints in the context
 func (v *Vertex) ValidateConstraints(traceOption ...int) error {
 	traceOpt := transaction.TraceOptionFailedConstraints
 	if len(traceOption) > 0 {
@@ -184,41 +180,6 @@ func (v *Vertex) SequencerInputIndex() byte {
 	return v.Tx.SequencerTransactionData().SequencerOutputData.ChainConstraint.PredecessorInputIndex
 }
 
-func (v *Vertex) _allInputsSolid() bool {
-	for _, d := range v.Inputs {
-		if d == nil {
-			return false
-		}
-	}
-	return true
-}
-
-func (v *Vertex) _allEndorsementsSolid() bool {
-	for _, d := range v.Endorsements {
-		if d == nil {
-			return false
-		}
-	}
-	return true
-}
-
-func (v *Vertex) MustProducedOutput(idx byte) (*ledger.Output, bool) {
-	odata, ok := v.producedOutputData(idx)
-	if !ok {
-		return nil, false
-	}
-	o, err := ledger.OutputFromBytesReadOnly(odata)
-	util.AssertNoError(err)
-	return o, true
-}
-
-func (v *Vertex) producedOutputData(idx byte) ([]byte, bool) {
-	if int(idx) >= v.Tx.NumProducedOutputs() {
-		return nil, false
-	}
-	return v.Tx.MustOutputDataAt(idx), true
-}
-
 func (v *Vertex) ForEachInputDependency(fun func(i byte, vidInput *WrappedTx) bool) {
 	for i, inp := range v.Inputs {
 		if !fun(byte(i), inp) {
@@ -266,28 +227,6 @@ func (v *Vertex) convertToVirtualTx() *VirtualTransaction {
 
 	v.Tx.ForEachProducedOutput(func(idx byte, o *ledger.Output, _ *ledger.OutputID) bool {
 		ret.outputs[idx] = o
-		return true
-	})
-	return ret
-}
-
-func (v *Vertex) PendingDependenciesLines(prefix ...string) *lines.Lines {
-	ret := lines.New(prefix...)
-
-	ret.Add("not solid inputs:")
-	v.ForEachInputDependency(func(i byte, inp *WrappedTx) bool {
-		if inp == nil {
-			oid := v.Tx.MustInputAt(i)
-			ret.Add("   %d : %s", i, oid.StringShort())
-		}
-		return true
-	})
-	ret.Add("not solid endorsements:")
-	v.ForEachEndorsement(func(i byte, vEnd *WrappedTx) bool {
-		if vEnd == nil {
-			txid := v.Tx.EndorsementAt(i)
-			ret.Add("   %d : %s", i, txid.StringShort())
-		}
 		return true
 	})
 	return ret
