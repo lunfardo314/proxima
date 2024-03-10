@@ -81,7 +81,7 @@ func New(env Environment, peers *peering.Peers, opts ...ConfigOption) *Workflow 
 }
 
 func (w *Workflow) Start() {
-	w.Log().Infof("starting work processes...")
+	w.Log().Infof("starting work processes. Ledger time now is %s", ledger.TimeNow().String())
 
 	w.poker.Start()
 	w.events.Start()

@@ -160,15 +160,23 @@ func FetchAnyLatestRootRecord(store global.StateStore) RootRecord {
 	return recs[0]
 }
 
+// FetchRootRecordsNSlotsBack load root records from N lates slots, present in the store
 func FetchRootRecordsNSlotsBack(store global.StateStore, nBack int) []RootRecord {
-	latestSlot := FetchLatestSlot(store)
-	if ledger.Slot(nBack) >= latestSlot {
-		return FetchAllRootRecords(store)
-	}
-	if latestSlot == 0 {
+	if nBack <= 0 {
 		return nil
 	}
-	return FetchRootRecords(store, util.MakeRange(latestSlot-ledger.Slot(nBack), latestSlot)...)
+	ret := make([]RootRecord, 0)
+	slotCount := 0
+	for s := FetchLatestSlot(store); ; s-- {
+		recs := FetchRootRecords(store, s)
+		if len(recs) > 0 {
+			ret = append(ret, recs...)
+			slotCount++
+		}
+		if slotCount >= nBack || s == 0 {
+			return ret
+		}
+	}
 }
 
 func FetchAllRootRecords(store global.StateStore) []RootRecord {

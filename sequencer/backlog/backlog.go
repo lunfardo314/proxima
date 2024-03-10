@@ -16,7 +16,7 @@ type (
 	Environment interface {
 		global.NodeGlobal
 		ListenToAccount(account ledger.Accountable, fun func(wOut vertex.WrappedOutput))
-		PullSequencerTips(seqID ledger.ChainID) (set.Set[vertex.WrappedOutput], error)
+		LoadSequencerTips(seqID ledger.ChainID) (set.Set[vertex.WrappedOutput], error)
 		SequencerID() ledger.ChainID
 		SequencerName() string
 		GetLatestMilestone(seqID ledger.ChainID) *vertex.WrappedTx
@@ -83,7 +83,7 @@ func New(env Environment) (*InputBacklog, error) {
 
 	// fetch backlog and milestone once
 	var err error
-	outs, err := env.PullSequencerTips(seqID)
+	outs, err := env.LoadSequencerTips(seqID)
 	if err != nil {
 		return nil, err
 	}
@@ -94,7 +94,7 @@ func New(env Environment) (*InputBacklog, error) {
 		}
 	}
 
-	env.Tracef(TraceTag, "PullSequencerTips: loaded %d outputs", len(ret.outputs))
+	env.Tracef(TraceTag, "LoadSequencerTips: loaded %d outputs", len(ret.outputs))
 
 	go ret.purgeLoop()
 

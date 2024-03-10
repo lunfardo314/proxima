@@ -29,9 +29,10 @@ func TestInflation(t *testing.T) {
 
 		amountIn := ledger.L().ID.ChainInflationPerTickFractionBase
 		t.Logf("ChainInflationPerTickFractionBase const: %s", util.GoTh(amountIn))
+		expectedInflation := ledger.L().ID.ChainInflationAmount(tsIn, tsOut, amountIn)
 		src := fmt.Sprintf("chainInflationAmount(%s, %s, u64/%d)", tsIn.Source(), tsOut.Source(), amountIn)
 		ledger.L().MustEqual(src, "u64/50")
-		ledger.L().MustEqual(src, fmt.Sprintf("u64/%d", ledger.L().ID.ChainInflationAmount(tsIn, tsOut, amountIn)))
+		ledger.L().MustEqual(src, fmt.Sprintf("u64/%d", expectedInflation))
 
 		src = fmt.Sprintf("inflationAmount(%s, %s, u64/%d)", tsIn.Source(), tsOut.Source(), amountIn)
 		ledger.L().MustEqual(src, fmt.Sprintf("u64/%d", ledger.L().ID.InflationAmount(tsIn, tsOut, amountIn)))

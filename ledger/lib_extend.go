@@ -328,7 +328,7 @@ func (lib *Library) evalCallLocalLibrary(ctx *easyfl.CallParams) []byte {
 // arg 0 and arg 1 are timestamps (5 bytes each)
 // returns:
 // nil, if ts1 is before ts0
-// number of ticks between ts0 and ts1 otherwise as big-endian uint64
+// number of ticks between ts0 and ts1 otherwise, as big-endian uint64
 func evalTicksBefore64(ctx *easyfl.CallParams) []byte {
 	ts0bin, ts1bin := ctx.Arg(0), ctx.Arg(1)
 	ts0, err := TimeFromBytes(ts0bin)

@@ -42,9 +42,11 @@ func (w *Workflow) ListenToSequencers(fun func(vid *vertex.WrappedTx)) {
 
 const fetchLastNTimeSlotsUponStartup = 5
 
-// PullSequencerTips implements interface
-func (w *Workflow) PullSequencerTips(seqID ledger.ChainID) (set.Set[vertex.WrappedOutput], error) {
+// LoadSequencerTips implements interface
+func (w *Workflow) LoadSequencerTips(seqID ledger.ChainID) (set.Set[vertex.WrappedOutput], error) {
 	roots := multistate.FetchRootRecordsNSlotsBack(w.StateStore(), fetchLastNTimeSlotsUponStartup)
+
+	w.Log().Infof("loading tips for sequencer %s from %d branches", seqID.StringShort(), len(roots))
 
 	addr := seqID.AsChainLock().AccountID()
 	ret := set.New[vertex.WrappedOutput]()
@@ -57,18 +59,20 @@ func (w *Workflow) PullSequencerTips(seqID ledger.ChainID) (set.Set[vertex.Wrapp
 
 		// load sequencer output in each of those branches
 		if oSeq, _ := rdr.GetUTXOForChainID(&seqID); oSeq != nil {
-			attacher.AttachOutputID(oSeq.ID, w, attacher.OptionPullNonBranch, attacher.OptionInvokedBy("PullSequencerTips"))
+			w.Log().Infof("load chain output %s from branch %s", oSeq.ID.StringShort(), vidBranch.IDShortString())
+			attacher.AttachOutputID(oSeq.ID, w, attacher.OptionPullNonBranch, attacher.OptionInvokedBy("LoadSequencerTips"))
 			ownMilestoneLoaded = true
 		}
-		// load all tag along outputs
+		// load all tag-along outputs (i.e. chain-locked in the seqID)
 		oids, err := rdr.GetIDsLockedInAccount(addr)
 		util.AssertNoError(err)
 		for _, oid := range oids {
-			ret.Insert(attacher.AttachOutputID(oid, w, attacher.OptionPullNonBranch, attacher.OptionInvokedBy("PullSequencerTips")))
+			w.Log().Infof("load tag-along output %s from branch %s", oid.StringShort(), vidBranch.IDShortString())
+			ret.Insert(attacher.AttachOutputID(oid, w, attacher.OptionPullNonBranch, attacher.OptionInvokedBy("LoadSequencerTips")))
 		}
 	}
 	if !ownMilestoneLoaded {
-		return nil, fmt.Errorf("PullSequencerTips: failed to load milestone for the sequencer %s", seqID.StringShort())
+		return nil, fmt.Errorf("LoadSequencerTips: failed to load milestone for the sequencer %s", seqID.StringShort())
 	}
 
 	// scan all vertices and post new tx event
