@@ -39,9 +39,10 @@ type (
 	}
 
 	SequencerInfo struct {
-		BeginBalance uint64
-		EndBalance   uint64
-		NumBranches  int
+		BeginBalance      uint64
+		EndBalance        uint64
+		NumBranches       int
+		StemInTheHeaviest ledger.OutputID
 	}
 )
 
@@ -112,11 +113,14 @@ func FetchSummarySupply(stateStore global.StateStore, nBack int) *SummarySupplyA
 	util.Assertf(ret.EndSupply-ret.BeginSupply == ret.TotalInflation, "FetchSummarySupply: ret.EndSupply - ret.BeginSupply == ret.SlotInflation")
 
 	for seqID, seqInfo := range ret.InfoPerSeqID {
-		rdr := MustNewSugaredReadableState(stateStore, branchData[0].Root)
+		rdr := MustNewSugaredReadableState(stateStore, branchData[0].Root) // heaviest
 		o, err := rdr.GetChainOutput(&seqID)
 		if err == nil {
 			seqInfo.EndBalance = o.Output.Amount()
 		}
+		stem, err := rdr.GetChainOutput(&seqID)
+		util.AssertNoError(err)
+		seqInfo.StemInTheHeaviest = stem.ID
 
 		rdr = MustNewSugaredReadableState(stateStore, branchData[len(branchData)-1].Root)
 		o, err = rdr.GetChainOutput(&seqID)
@@ -151,8 +155,10 @@ func (s *SummarySupplyAndInflation) Lines(prefix ...string) *lines.Lines {
 		} else {
 			inflStr = "-" + util.GoTh(seqInfo.BeginBalance-seqInfo.EndBalance)
 		}
-		ret.Add("         %s : branches: %d, balance: %s -> %s (%s)",
-			seqId.StringShort(), seqInfo.NumBranches,
+		ret.Add("         %s : last milestone in the heaviest: %25s, branches: %d, balance: %s -> %s (%s)",
+			seqId.StringShort(),
+			seqInfo.StemInTheHeaviest.StringShort(),
+			seqInfo.NumBranches,
 			util.GoTh(seqInfo.BeginBalance), util.GoTh(seqInfo.EndBalance),
 			inflStr)
 	}

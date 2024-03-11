@@ -36,7 +36,7 @@ func runDbInfoCmd(_ *cobra.Command, _ []string) {
 		glb.Infof("no branches found")
 		return
 	}
-	glb.Infof("Total %d latest branches (slot %d)", len(branchData), branchData[0].Stem.Timestamp().Slot())
+	glb.Infof("Total %d branches in the latest slot %d", len(branchData), branchData[0].Stem.Timestamp().Slot())
 
 	sort.Slice(branchData, func(i, j int) bool {
 		return bytes.Compare(branchData[i].SequencerID[:], branchData[j].SequencerID[:]) < 0
@@ -63,8 +63,8 @@ func DisplayBranchData(branches []*multistate.BranchData) {
 			name = msData.Name
 		}
 		name = fmt.Sprintf("%s (%s)", name, br.SequencerID.StringVeryShort())
-		glb.Infof(" %2d: %s stem: %s, supply: %s, infl: %s, on chain: %s, coverage delta: %s, root: %s",
-			i, name, br.Stem.IDShort(),
+		glb.Infof(" %2d: %s supply: %s, infl: %s, on chain: %s, coverage delta: %s, root: %s",
+			i, name,
 			util.GoTh(br.Supply),
 			util.GoTh(br.SlotInflation),
 			util.GoTh(br.SequencerOutput.Output.Amount()),
