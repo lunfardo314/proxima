@@ -132,7 +132,8 @@ func (cfg *ConfigOptions) lines(seqID ledger.ChainID, controller ledger.AddressE
 		Add("MaxBranches: %d", cfg.MaxBranches).
 		Add("DelayStart: %v", cfg.DelayStart).
 		Add("BacklogTTLSlots: %d", cfg.BacklogTTLSlots).
-		Add("MilestoneTTLSlots: %d", cfg.MilestonesTTLSlots)
+		Add("MilestoneTTLSlots: %d", cfg.MilestonesTTLSlots).
+		Add("LogAttacherStats: %v", cfg.LogAttacherStats)
 }
 
 func (seq *Sequencer) Ctx() context.Context {
@@ -342,7 +343,7 @@ const submitTimeout = 5 * time.Second
 func (seq *Sequencer) submitMilestone(tx *transaction.Transaction, meta *txmetadata.TransactionMetadata) *vertex.WrappedTx {
 	seq.Tracef(TraceTag, "submit new milestone %s, meta: %s", tx.IDShortString, meta.String)
 	deadline := time.Now().Add(submitTimeout)
-	vid, err := seq.SequencerMilestoneAttachWait(tx.Bytes(), meta, submitTimeout)
+	vid, err := seq.SequencerMilestoneAttachWait(tx.Bytes(), meta, submitTimeout, seq.config.LogAttacherStats)
 	if err != nil {
 		seq.Log().Errorf("failed to submit new milestone %s: '%v'", tx.IDShortString(), err)
 		return nil

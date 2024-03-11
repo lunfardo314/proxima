@@ -15,24 +15,26 @@ const (
 	periodicCheckEach       = 1 * time.Second
 )
 
-func runMilestoneAttacher(vid *vertex.WrappedTx, metadata *txmetadata.TransactionMetadata, callback func(vid *vertex.WrappedTx, err error), env Environment) {
+func runMilestoneAttacher(vid *vertex.WrappedTx, metadata *txmetadata.TransactionMetadata, callback func(vid *vertex.WrappedTx, err error), logAttacherStats bool, env Environment) {
 	a := newMilestoneAttacher(vid, env, metadata)
 	defer func() {
 		go a.close()
 	}()
 
-	finals, err := a.run()
+	err := a.run()
 
 	if err != nil {
 		vid.SetTxStatusBad(err)
 		env.Log().Warnf("-- ATTACH %s -> BAD(%v)", vid.ID.StringShort(), err)
 	} else {
-		env.Assertf(finals != nil, "finals != nil")
 		msData := env.ParseMilestoneData(vid)
 		if msData == nil {
 			env.ParseMilestoneData(vid)
 		}
-		env.Log().Info(logFinalStatusString(vid, finals, msData))
+		env.Log().Info(logFinalStatusString(vid, &a.finals, msData))
+		if logAttacherStats {
+			env.Log().Info(logStatsString(vid, &a.finals))
+		}
 		vid.SetSequencerAttachmentFinished()
 	}
 
@@ -55,7 +57,7 @@ func newMilestoneAttacher(vid *vertex.WrappedTx, env Environment, metadata *txme
 		vid:      vid,
 		metadata: metadata,
 		pokeChan: make(chan struct{}),
-		finals:   &attachFinals{},
+		finals:   attachFinals{started: time.Now()},
 	}
 	ret.attacher.pokeMe = func(vid *vertex.WrappedTx) {
 		ret.pokeMe(vid)
@@ -77,13 +79,13 @@ func newMilestoneAttacher(vid *vertex.WrappedTx, env Environment, metadata *txme
 	return ret
 }
 
-func (a *milestoneAttacher) run() (*attachFinals, error) {
+func (a *milestoneAttacher) run() error {
 	// first solidify baseline state
 	status := a.solidifyBaseline()
 	if status != vertex.Good {
 		a.Tracef(TraceTagAttachMilestone, "baseline solidification failed. Reason: %v", a.err)
 		util.AssertMustError(a.err)
-		return nil, a.err
+		return a.err
 	}
 
 	a.Assertf(a.baseline != nil, "a.baseline != nil")
@@ -94,7 +96,7 @@ func (a *milestoneAttacher) run() (*attachFinals, error) {
 	if status != vertex.Good {
 		a.Tracef(TraceTagAttachMilestone, "past cone solidification failed. Reason: %v", a.err)
 		a.AssertMustError(a.err)
-		return nil, a.err
+		return a.err
 	}
 	a.Tracef(TraceTagAttachMilestone, "past cone OK")
 	a.AssertNoError(a.err)
@@ -115,7 +117,7 @@ func (a *milestoneAttacher) run() (*attachFinals, error) {
 	a.PostEventNewGood(a.vid)
 	a.SendToTippool(a.vid)
 
-	return a.finals, nil
+	return nil
 }
 
 func (a *milestoneAttacher) lazyRepeat(fun func() vertex.Status) vertex.Status {
@@ -126,11 +128,13 @@ func (a *milestoneAttacher) lazyRepeat(fun func() vertex.Status) vertex.Status {
 		}
 		select {
 		case <-a.pokeChan:
+			a.finals.numPokes++
 			a.Tracef(TraceTagAttachMilestone, "poked")
 		case <-a.Ctx().Done():
 			a.setError(fmt.Errorf("attacher has been interrupted"))
 			return vertex.Bad
 		case <-time.After(periodicCheckEach):
+			a.finals.numPeriodic++
 			a.Tracef(TraceTagAttachMilestone, "periodic check")
 		}
 	}
@@ -160,15 +164,29 @@ func logFinalStatusString(vid *vertex.WrappedTx, finals *attachFinals, msData *l
 			bl = finals.baseline.StringShort()
 		}
 		if vid.IsBranchTransaction() {
-			msg += fmt.Sprintf(" base: %s, new tx: %d, UTXO mut +%d/-%d, cov: %s, inflation: %s, supply: %s",
-				bl, finals.numTransactions, finals.numCreatedOutputs, finals.numDeletedOutputs, finals.coverage.String(),
-				util.GoTh(finals.slotInflation), util.GoTh(finals.supply))
+			msg += fmt.Sprintf(" base: %s, cov: %s, inflation: %s, supply: %s",
+				bl,
+				finals.coverage.String(),
+				util.GoTh(finals.slotInflation),
+				util.GoTh(finals.supply))
 		} else {
-			msg += fmt.Sprintf(" base: %s, new tx: %d, cov: %s, inflation: %s",
-				bl, finals.numTransactions, finals.coverage.String(), util.GoTh(finals.slotInflation))
+			msg += fmt.Sprintf(" base: %s, cov: %s, inflation: %s",
+				bl, finals.coverage.String(), util.GoTh(finals.slotInflation))
 		}
 	}
 	return msg
+}
+
+func logStatsString(vid *vertex.WrappedTx, finals *attachFinals) string {
+	return fmt.Sprintf("     attacher stats %s: new tx: %d, UTXO mut +%d/-%d, pokes: %d, periodic: %d, duration: %s",
+		vid.IDShortString(),
+		finals.numTransactions,
+		finals.numCreatedOutputs,
+		finals.numDeletedOutputs,
+		finals.numPokes,
+		finals.numPeriodic,
+		time.Since(finals.started),
+	)
 }
 
 func (a *milestoneAttacher) close() {

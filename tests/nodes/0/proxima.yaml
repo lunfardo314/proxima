@@ -42,6 +42,7 @@ sequencers:
     pace: 5
     # maximum fee inputs allowed in the sequencer milestone transaction
     max_tag_along_inputs: 50
+    log_attacher_stats: true
 
 # logger config
 logger:

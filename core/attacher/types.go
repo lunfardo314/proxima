@@ -3,6 +3,7 @@ package attacher
 import (
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/core/vertex"
@@ -85,8 +86,11 @@ type (
 		closeOnce        sync.Once
 		pokeChan         chan struct{}
 		pokeClosingMutex sync.RWMutex
-		finals           *attachFinals
+		finals           attachFinals
 		closed           bool
+	}
+
+	attachStats struct {
 	}
 
 	_attacherOptions struct {
@@ -95,6 +99,7 @@ type (
 		pullNonBranch      bool
 		doNotLoadBranch    bool
 		calledBy           string
+		logAttacherStats   bool
 	}
 	Option func(*_attacherOptions)
 
@@ -106,10 +111,15 @@ type (
 		slotInflation     uint64
 		supply            uint64
 		root              common.VCommitment
+		baseline          *ledger.TransactionID
 		numTransactions   int
 		numCreatedOutputs int
 		numDeletedOutputs int
-		baseline          *ledger.TransactionID
+		started           time.Time
+		numPokes          int
+		numPeriodic       int
+		numVertices       int
+		numRooted         int
 	}
 
 	Flags uint8
@@ -168,5 +178,11 @@ func OptionDoNotLoadBranch(options *_attacherOptions) {
 func OptionInvokedBy(name string) Option {
 	return func(options *_attacherOptions) {
 		options.calledBy = name
+	}
+}
+
+func OptionWithLogAttacherStats(logAttacherStats bool) Option {
+	return func(options *_attacherOptions) {
+		options.logAttacherStats = logAttacherStats
 	}
 }

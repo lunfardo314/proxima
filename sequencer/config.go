@@ -21,6 +21,7 @@ type (
 		DelayStart         time.Duration
 		BacklogTTLSlots    int
 		MilestonesTTLSlots int
+		LogAttacherStats   bool
 	}
 
 	ConfigOption func(options *ConfigOptions)
@@ -71,11 +72,11 @@ func paramsFromConfig(name string) ([]ConfigOption, ledger.ChainID, ed25519.Priv
 	if err != nil {
 		return nil, ledger.ChainID{}, nil, fmt.Errorf("StartFromConfig: can't parse private key: %v", err)
 	}
-	backlogTTLSlots := viper.GetInt("backlog_ttl_slots")
+	backlogTTLSlots := subViper.GetInt("backlog_ttl_slots")
 	if backlogTTLSlots < MinimumBacklogTTLSlots {
 		backlogTTLSlots = MinimumBacklogTTLSlots
 	}
-	milestonesTTLSlots := viper.GetInt("milestones_ttl_slots")
+	milestonesTTLSlots := subViper.GetInt("milestones_ttl_slots")
 	if milestonesTTLSlots < MinimumMilestonesTTLSlots {
 		milestonesTTLSlots = MinimumMilestonesTTLSlots
 	}
@@ -87,6 +88,7 @@ func paramsFromConfig(name string) ([]ConfigOption, ledger.ChainID, ed25519.Priv
 		WithMaxBranches(subViper.GetInt("max_branches")),
 		WithBacklogTTLSlots(backlogTTLSlots),
 		WithMilestonesTTLSlots(milestonesTTLSlots),
+		WithLogAttacherStats(subViper.GetBool("log_attacher_stats")),
 	}
 	return cfg, seqID, controllerKey, nil
 }
@@ -135,5 +137,11 @@ func WithBacklogTTLSlots(slots int) ConfigOption {
 func WithMilestonesTTLSlots(slots int) ConfigOption {
 	return func(o *ConfigOptions) {
 		o.MilestonesTTLSlots = slots
+	}
+}
+
+func WithLogAttacherStats(logAttacherStats bool) ConfigOption {
+	return func(o *ConfigOptions) {
+		o.LogAttacherStats = logAttacherStats
 	}
 }

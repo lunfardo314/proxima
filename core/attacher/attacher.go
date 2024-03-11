@@ -199,8 +199,13 @@ func (a *attacher) solidifySequencerBaseline(v *vertex.Vertex) (ok bool) {
 	switch inputTx.GetTxStatus() {
 	case vertex.Good:
 		v.BaselineBranch = inputTx.BaselineBranch()
-		v.BaselineBranch.Reference("solidifySequencerBaseline")
-		a.Assertf(v.BaselineBranch != nil, "v.BaselineBranchTxID!=nil")
+		if v.BaselineBranch == nil {
+			// baseline branch not solid, pull it
+			a.Pull(inputTx.ID)
+		} else {
+			util.Assertf(v.BaselineBranch.IsBranchTransaction(), "v.BaselineBranch.IsBranchTransaction()")
+			v.BaselineBranch.Reference("solidifySequencerBaseline")
+		}
 		return true
 	case vertex.Undefined:
 		// vertex can be undefined but with correct baseline branch
