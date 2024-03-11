@@ -42,7 +42,7 @@ func (w *Workflow) ListenToSequencers(fun func(vid *vertex.WrappedTx)) {
 
 const fetchLastNTimeSlotsUponStartup = 5
 
-// LoadSequencerTips implements interface
+// LoadSequencerTips pulls tip transactions relevant to the sequencer startup from fixed amount of lates slots
 func (w *Workflow) LoadSequencerTips(seqID ledger.ChainID) error {
 	roots := multistate.FetchRootRecordsNSlotsBack(w.StateStore(), fetchLastNTimeSlotsUponStartup)
 
@@ -75,14 +75,12 @@ func (w *Workflow) LoadSequencerTips(seqID ledger.ChainID) error {
 		}
 	}
 	if !ownMilestoneLoaded {
+		// at least 1 branch must contain output with sequencer chain
 		return fmt.Errorf("LoadSequencerTips: unable to load any milestone for the sequencer %s", seqID.StringShort())
 	}
-
 	// post new tx event for each transaction
 	for vid := range loadedTxs {
-		vid.Unwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
-			w.PostEventNewTransaction(vid)
-		}})
+		w.PostEventNewTransaction(vid)
 	}
 	return nil
 }
