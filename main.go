@@ -20,7 +20,6 @@ func main() {
 	}()
 
 	n.Start()
-
 	n.WaitAllWorkProcessesToStop(5 * time.Second)
 	n.WaitAllDBClosed()
 }

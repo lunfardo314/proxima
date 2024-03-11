@@ -48,10 +48,6 @@ func runBootstrapAccount(_ *cobra.Command, args []string) {
 	glb.FileMustNotExist(global.TxStoreDBName)
 	glb.Infof("Transaction store database name: '%s'", global.TxStoreDBName)
 
-	txStoreDB := badger_adaptor.New(badger_adaptor.MustCreateOrOpenBadgerDB(global.TxStoreDBName, badger.DefaultOptions(global.TxStoreDBName)))
-	txStore := txstore.NewSimpleTxBytesStore(txStoreDB)
-	defer func() { _ = txStoreDB.Close() }()
-
 	bootstrapBalance := defaultBootstrapBalance
 	if len(args) > 0 {
 		b, err := strconv.Atoi(args[0])
@@ -62,10 +58,14 @@ func runBootstrapAccount(_ *cobra.Command, args []string) {
 		glb.Fatalf("bootstrap account balance must be at least %s", util.GoTh(minimumBootstrapBalance))
 	}
 	addr := glb.GetWalletData().Account
-	glb.Infof("%s tokens from the bootstrap chain will be sent to bootstrap address %s", util.GoTh(bootstrapBalance), addr.String())
+	glb.Infof("Transaction store DB will be created. %s tokens from the bootstrap chain will be sent to bootstrap address %s", util.GoTh(bootstrapBalance), addr.String())
 	if !glb.YesNoPrompt("Proceed?", true) {
 		glb.Fatalf("exit: bootstrap account wasn't created")
 	}
+
+	txStoreDB := badger_adaptor.New(badger_adaptor.MustCreateOrOpenBadgerDB(global.TxStoreDBName, badger.DefaultOptions(global.TxStoreDBName)))
+	txStore := txstore.NewSimpleTxBytesStore(txStoreDB)
+	defer func() { _ = txStoreDB.Close() }()
 
 	txBytesBootstrapBalance, txid, err := txbuilder.DistributeInitialSupplyExt(stateStore, privKey, []ledger.LockBalance{
 		{addr, bootstrapBalance},

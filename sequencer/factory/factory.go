@@ -77,10 +77,9 @@ func init() {
 }
 
 const (
-	maxAdditionalOutputs    = 256 - 2 // 1 for chain output, 1 for stem
-	veryMaxTagAlongInputs   = maxAdditionalOutputs
-	cleanupMilestonesPeriod = 1 * time.Second
-	TraceTag                = "factory"
+	maxAdditionalOutputs  = 256 - 2 // 1 for chain output, 1 for stem
+	veryMaxTagAlongInputs = maxAdditionalOutputs
+	TraceTag              = "factory"
 )
 
 func New(env Environment) (*MilestoneFactory, error) {

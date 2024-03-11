@@ -67,13 +67,15 @@ func New(glb *workflow.Workflow, seqID ledger.ChainID, controllerKey ed25519.Pri
 	ret.ctx, ret.stopFun = context.WithCancel(glb.Ctx())
 	var err error
 
+	//ret.Log().Infof("creating sequencer backlog")
 	if ret.backlog, err = backlog.New(ret); err != nil {
 		return nil, err
 	}
+	//ret.Log().Infof("creating milestone factory")
 	if ret.factory, err = factory.New(ret); err != nil {
 		return nil, err
 	}
-	ret.Log().Infof("sequencer started with config:\n%s", cfg.lines(seqID, ledger.AddressED25519FromPrivateKey(controllerKey), "     ").String())
+	ret.Log().Infof("sequencer is starting with config:\n%s", cfg.lines(seqID, ledger.AddressED25519FromPrivateKey(controllerKey), "     ").String())
 	return ret, nil
 }
 

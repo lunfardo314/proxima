@@ -81,7 +81,7 @@ func New(env Environment) (*InputBacklog, error) {
 		env.TraceTx(&wOut.VID.ID, "[%s] output #%d stored in the backlog", ret.SequencerName, wOut.Index)
 	})
 
-	// fetch backlog and milestone once
+	// fetch backlog and milestone once TODO deadlock !!!
 	var err error
 	outs, err := env.LoadSequencerTips(seqID)
 	if err != nil {

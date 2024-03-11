@@ -35,7 +35,7 @@ sequencers:
   seq1:
     enable: true
     # chain ID of the sequencer
-    sequencer_id: a8b14d1f4dc1c5ce03f1035f47b3dcfe510cb3a53a7984fc176ce1ede37770e8
+    sequencer_id: 9cf621eb5f21c7ea06fb859678a37c545dd00e0da22b359a6d8bc93b66a0d6fe
     # chain controller's private key (hex-encoded)
     controller_key: a66f8768224b241fe4dd2e4c00132d029452468846b149f2c2c4d894805964c8e63df08176c9443f0fe015d3582635d3d5a02e33765fbb3a2995db9cf3bbe606
     # sequencer pace
@@ -56,6 +56,9 @@ pprof:
   port: 8080
 
 trace_tags:
+#  - backlog
+#  - sequencer
+#  - factory
 #  - milestone
 #  - attach
 #  - gossip

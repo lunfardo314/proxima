@@ -7,7 +7,7 @@ wallet:
 api:
     endpoint: http://127.0.0.1:8001
 tag_along:
-    sequencer_id: af7bedde1fea222230b82d63d5b665ac75afbe4ad3f75999bb3386cf994a6963
+    sequencer_id: 9cf621eb5f21c7ea06fb859678a37c545dd00e0da22b359a6d8bc93b66a0d6fe
     fee: 500
 spammer:
     bundle_size: 5
@@ -19,6 +19,6 @@ spammer:
     submit_nowait: false
     tag_along:
         fee: 500
-        sequencer: af7bedde1fea222230b82d63d5b665ac75afbe4ad3f75999bb3386cf994a6963
+        sequencer: 9cf621eb5f21c7ea06fb859678a37c545dd00e0da22b359a6d8bc93b66a0d6fe
     # target key 0
     target: addressED25519(0x62c733803a83a26d4db1ce9f22206281f64af69401da6eb26390d34e6a88c5fa)

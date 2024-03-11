@@ -5,7 +5,7 @@
 # Public key of the controller identifies originator of the ledger for its lifetime.
 # 'genesis_controller_address' is computed from the public key of the controller
 # 'bootstrap_chain_id' is a constant, i.e. same for all ledgers
-genesis_time_unix: 1709910549
+genesis_time_unix: 1710140484
 initial_supply: 1000000000000000
 genesis_controller_public_key: 0530b790e0e7de626f36e20ba656f09e324c68203de899d0daf9f98fcb3cf684
 time_tick_duration_nanosec: 100000000
@@ -19,7 +19,6 @@ num_halving_epochs: 5
 chain_inflation_per_tick_fraction_base: 500000000
 chain_inflation_opportunity_slots: 12
 minimum_amount_on_sequencer: 1000000000
-max_tolerated_parasitic_chain_slots: 5
 description: Proxima prototype ledger. Ver 0.0.0
 genesis_controller_address: addressED25519(0x3faf090d38f18ea211936b8bcf19b7b30cdcb8e224394a5c30f9ba644f8bb2fb)
 bootstrap_chain_id: af7bedde1fea222230b82d63d5b665ac75afbe4ad3f75999bb3386cf994a6963
