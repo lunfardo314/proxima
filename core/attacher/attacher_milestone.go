@@ -222,7 +222,7 @@ func (a *milestoneAttacher) solidifyPastCone() vertex.Status {
 		finalSuccess := false
 		a.vid.Unwrap(vertex.UnwrapOptions{
 			Vertex: func(v *vertex.Vertex) {
-				if ok = a.attachVertexUnwrapped(v, a.vid, ledger.NilLedgerTime); !ok {
+				if ok = a.attachVertexUnwrapped(v, a.vid); !ok {
 					util.AssertMustError(a.err)
 					return
 				}

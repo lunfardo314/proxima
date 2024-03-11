@@ -120,7 +120,7 @@ func (a *IncrementalAttacher) insertOutput(wOut vertex.WrappedOutput) error {
 	if a.isKnownConsumed(wOut) {
 		return fmt.Errorf("output %s is already consumed", wOut.IDShortString())
 	}
-	ok, defined := a.attachOutput(wOut, ledger.NilLedgerTime)
+	ok, defined := a.attachOutput(wOut)
 	if !ok {
 		util.AssertMustError(a.err)
 		return a.err
@@ -149,7 +149,7 @@ func (a *IncrementalAttacher) insertEndorsement(endorsement *vertex.WrappedTx) e
 		a.markVertexDefined(endorsement)
 		a.markVertexRooted(endorsement)
 	} else {
-		ok, defined := a.attachVertexNonBranch(endorsement, ledger.NilLedgerTime)
+		ok, defined := a.attachVertexNonBranch(endorsement)
 		a.Assertf(ok || a.err != nil, "ok || a.err != nil")
 		if !ok {
 			a.Assertf(a.err != nil, "a.err != nil")
@@ -183,7 +183,7 @@ func (a *IncrementalAttacher) InsertTagAlongInput(wOut vertex.WrappedOutput) (bo
 	}
 	saveCoverageDelta := a.coverage
 
-	ok, defined := a.attachOutput(wOut, ledger.NilLedgerTime)
+	ok, defined := a.attachOutput(wOut)
 	if !ok || !defined {
 		// it is either conflicting, or not solid yet
 		// in either case rollback

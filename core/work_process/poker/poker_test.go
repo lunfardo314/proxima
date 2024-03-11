@@ -35,7 +35,7 @@ func TestBasic(t *testing.T) {
 	var wg sync.WaitGroup
 
 	for i, vid := range vids {
-		vid.OnPoke(func(vid1 *vertex.WrappedTx) {
+		vid.OnPoke(func() {
 			//t.Logf("poked %s with %s", vid.IDShortString(), vid1.IDShortString())
 			counter.Inc()
 			wg.Done()
