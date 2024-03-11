@@ -56,7 +56,8 @@ pprof:
   port: 8080
 
 trace_tags:
-#  - gossip
+  - gossip
+  - pull_client
 #  - pull_server
 #  - txinput
 #  - txStore
