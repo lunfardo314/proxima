@@ -251,8 +251,10 @@ func (a *milestoneAttacher) _doPoke() {
 	if !a.closed {
 		select {
 		case a.pokeChan <- struct{}{}:
+			a.Log().Warnf(">>>>>> poked ok %s", a.name)
 		default:
-			// poke is lost when blocked but that is ok because there's pull from the attacher side
+			// poke is lost when blocked but that is ok because there's pull from the attacher's side
+			a.Log().Warnf(">>>>>> congested poke in %s", a.name)
 		}
 	}
 }

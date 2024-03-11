@@ -56,7 +56,7 @@ pprof:
   port: 9090
 
 trace_tags:
-  - backlog
+#  - backlog
 #  - gossip
 #  - pull_server
 #  - txinput
