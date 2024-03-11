@@ -43,44 +43,46 @@ func (w *Workflow) ListenToSequencers(fun func(vid *vertex.WrappedTx)) {
 const fetchLastNTimeSlotsUponStartup = 5
 
 // LoadSequencerTips implements interface
-func (w *Workflow) LoadSequencerTips(seqID ledger.ChainID) (set.Set[vertex.WrappedOutput], error) {
+func (w *Workflow) LoadSequencerTips(seqID ledger.ChainID) error {
 	roots := multistate.FetchRootRecordsNSlotsBack(w.StateStore(), fetchLastNTimeSlotsUponStartup)
 
 	w.Log().Infof("loading tips for sequencer %s from %d branches", seqID.StringShort(), len(roots))
 
 	addr := seqID.AsChainLock().AccountID()
-	ret := set.New[vertex.WrappedOutput]()
+	loadedTxs := set.New[*vertex.WrappedTx]()
 	ownMilestoneLoaded := false
 	for _, rr := range roots {
 		rdr := multistate.MustNewSugaredReadableState(w.StateStore(), rr.Root, 0)
 		// load each branch
 		vidBranch := attacher.MustEnsureBranch(rdr.GetStemOutput().ID.TransactionID(), w, 0)
 		w.PostEventNewGood(vidBranch)
+		loadedTxs.Insert(vidBranch)
 
 		// load sequencer output in each of those branches
 		if oSeq, _ := rdr.GetUTXOForChainID(&seqID); oSeq != nil {
-			w.Log().Infof("load chain output %s from branch %s", oSeq.ID.StringShort(), vidBranch.IDShortString())
-			attacher.AttachOutputID(oSeq.ID, w, attacher.OptionPullNonBranch, attacher.OptionInvokedBy("LoadSequencerTips"))
+			w.Log().Infof("loading sequencer output for %s: %s from branch %s", seqID.StringShort(), oSeq.ID.StringShort(), vidBranch.IDShortString())
+			wOut := attacher.AttachOutputID(oSeq.ID, w, attacher.OptionPullNonBranch, attacher.OptionInvokedBy("LoadSequencerTips"))
+			loadedTxs.Insert(wOut.VID)
 			ownMilestoneLoaded = true
 		}
 		// load all tag-along outputs (i.e. chain-locked in the seqID)
 		oids, err := rdr.GetIDsLockedInAccount(addr)
 		util.AssertNoError(err)
 		for _, oid := range oids {
-			w.Log().Infof("load tag-along output %s from branch %s", oid.StringShort(), vidBranch.IDShortString())
-			ret.Insert(attacher.AttachOutputID(oid, w, attacher.OptionPullNonBranch, attacher.OptionInvokedBy("LoadSequencerTips")))
+			w.Log().Infof("loading tag-along input for sequencer %s: %s from branch %s", seqID.StringShort(), oid.StringShort(), vidBranch.IDShortString())
+			wOut := attacher.AttachOutputID(oid, w, attacher.OptionPullNonBranch, attacher.OptionInvokedBy("LoadSequencerTips"))
+			loadedTxs.Insert(wOut.VID)
 		}
 	}
 	if !ownMilestoneLoaded {
-		return nil, fmt.Errorf("LoadSequencerTips: failed to load milestone for the sequencer %s", seqID.StringShort())
+		return fmt.Errorf("LoadSequencerTips: unable to load any milestone for the sequencer %s", seqID.StringShort())
 	}
 
-	// scan all vertices and post new tx event
-	w.ForEachVertexReadLocked(func(vid *vertex.WrappedTx) bool {
+	// post new tx event for each transaction
+	for vid := range loadedTxs {
 		vid.Unwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
 			w.PostEventNewTransaction(vid)
 		}})
-		return true
-	})
-	return ret, nil
+	}
+	return nil
 }

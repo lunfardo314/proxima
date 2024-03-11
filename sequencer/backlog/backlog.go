@@ -9,14 +9,12 @@ import (
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util"
-	"github.com/lunfardo314/proxima/util/set"
 )
 
 type (
 	Environment interface {
 		global.NodeGlobal
 		ListenToAccount(account ledger.Accountable, fun func(wOut vertex.WrappedOutput))
-		LoadSequencerTips(seqID ledger.ChainID) (set.Set[vertex.WrappedOutput], error)
 		SequencerID() ledger.ChainID
 		SequencerName() string
 		GetLatestMilestone(seqID ledger.ChainID) *vertex.WrappedTx
@@ -53,9 +51,6 @@ func New(env Environment) (*InputBacklog, error) {
 	}
 	env.Tracef(TraceTag, "starting input backlog for the sequencer %s..", env.SequencerName)
 
-	ret.mutex.RLock()
-	defer ret.mutex.RUnlock()
-
 	// start listening to chain-locked account
 	env.ListenToAccount(seqID.AsChainLock(), func(wOut vertex.WrappedOutput) {
 		env.Tracef(TraceTag, "[%s] output IN: %s", ret.SequencerName, wOut.IDShortString)
@@ -80,24 +75,7 @@ func New(env Environment) (*InputBacklog, error) {
 		env.Tracef(TraceTag, "output stored in input backlog: %s (total: %d)", wOut.IDShortString, len(ret.outputs))
 		env.TraceTx(&wOut.VID.ID, "[%s] output #%d stored in the backlog", ret.SequencerName, wOut.Index)
 	})
-
-	// fetch backlog and milestone once TODO deadlock !!!
-	var err error
-	outs, err := env.LoadSequencerTips(seqID)
-	if err != nil {
-		return nil, err
-	}
-
-	for wOut := range outs {
-		if wOut.VID.Reference("backlog new") {
-			ret.outputs[wOut] = time.Now()
-		}
-	}
-
-	env.Tracef(TraceTag, "LoadSequencerTips: loaded %d outputs", len(ret.outputs))
-
 	go ret.purgeLoop()
-
 	return ret, nil
 }
 
