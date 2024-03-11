@@ -355,6 +355,8 @@ func (mf *MilestoneFactory) ChooseExtendEndorsePair(proposerName string, targetT
 		}
 		mf.AssertNoError(err)
 		extendRoot := attacher.AttachOutputID(seqOut.ID, mf)
+
+		mf.AddOwnMilestone(extendRoot.VID) // to ensure it is in the pool of own milestones
 		futureConeMilestones := mf.futureConeOwnMilestonesOrdered(extendRoot, targetTs)
 
 		mf.Tracef(TraceTagChooseExtendEndorsePair, ">>>>>>>>>>>>>>> check endorsement candidate %s against future cone of extension candidates {%s}",
