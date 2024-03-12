@@ -28,6 +28,7 @@ type ProximaNode struct {
 	stopOnce              sync.Once
 	workProcessesStopChan chan struct{}
 	dbClosedWG            sync.WaitGroup
+	started               time.Time
 }
 
 func init() {
@@ -47,6 +48,7 @@ func New() *ProximaNode {
 		Global:                global.NewFromConfig(),
 		Sequencers:            make([]*sequencer.Sequencer, 0),
 		workProcessesStopChan: make(chan struct{}),
+		started:               time.Now(),
 	}
 	global.SetGlobalLogger(ret.Global)
 	return ret
@@ -213,4 +215,8 @@ func (p *ProximaNode) startSequencers() {
 		p.Sequencers = append(p.Sequencers, seq)
 		time.Sleep(500 * time.Millisecond)
 	}
+}
+
+func (p *ProximaNode) UpTime() time.Duration {
+	return time.Since(p.started)
 }
