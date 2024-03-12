@@ -19,15 +19,15 @@ import (
 
 type ProximaNode struct {
 	*global.Global
-	multiStateDB         *badger_adaptor.DB
-	txStoreDB            *badger_adaptor.DB
-	txBytesStore         global.TxBytesStore
-	peers                *peering.Peers
-	workflow             *workflow.Workflow
-	Sequencers           []*sequencer.Sequencer
-	stopOnce             sync.Once
-	workProcessesStopped sync.WaitGroup
-	dbClosedWG           sync.WaitGroup
+	multiStateDB          *badger_adaptor.DB
+	txStoreDB             *badger_adaptor.DB
+	txBytesStore          global.TxBytesStore
+	peers                 *peering.Peers
+	workflow              *workflow.Workflow
+	Sequencers            []*sequencer.Sequencer
+	stopOnce              sync.Once
+	workProcessesStopChan chan struct{}
+	dbClosedWG            sync.WaitGroup
 }
 
 func init() {
@@ -44,8 +44,9 @@ func init() {
 
 func New() *ProximaNode {
 	ret := &ProximaNode{
-		Global:     global.NewFromConfig(),
-		Sequencers: make([]*sequencer.Sequencer, 0),
+		Global:                global.NewFromConfig(),
+		Sequencers:            make([]*sequencer.Sequencer, 0),
+		workProcessesStopChan: make(chan struct{}),
 	}
 	global.SetGlobalLogger(ret.Global)
 	return ret
@@ -54,8 +55,9 @@ func New() *ProximaNode {
 // WaitAllWorkProcessesToStop wait everything to stop before closing databases
 func (p *ProximaNode) WaitAllWorkProcessesToStop(timeout ...time.Duration) {
 	<-p.Ctx().Done()
+	p.workProcessesStopChan <- struct{}{}
 	p.Global.MustWaitAllWorkProcessesStop(timeout...)
-	p.workProcessesStopped.Done()
+	close(p.workProcessesStopChan)
 }
 
 // WaitAllDBClosed ensuring databases has been closed
@@ -78,7 +80,6 @@ func (p *ProximaNode) readInTraceTags() {
 func (p *ProximaNode) Start() {
 	p.Log().Info(global.BannerString())
 	p.readInTraceTags()
-	p.workProcessesStopped.Add(1)
 
 	err := util.CatchPanicOrError(func() error {
 		p.initMultiStateLedger()
@@ -118,7 +119,12 @@ func (p *ProximaNode) initMultiStateLedger() {
 
 	go func() {
 		// wait until others will stop
-		p.workProcessesStopped.Wait()
+		<-p.workProcessesStopChan
+		select {
+		case <-p.workProcessesStopChan:
+		case <-time.After(10 * time.Second):
+			p.Log().Warnf("forced close of multi-state DB")
+		}
 		_ = p.multiStateDB.Close()
 		p.Log().Infof("multi-state database has been closed")
 		p.dbClosedWG.Done()
@@ -144,7 +150,12 @@ func (p *ProximaNode) initTxStore() {
 		p.Log().Infof("opened DB '%s' as transaction store", dbname)
 
 		go func() {
-			p.workProcessesStopped.Wait()
+			<-p.workProcessesStopChan
+			select {
+			case <-p.workProcessesStopChan:
+			case <-time.After(10 * time.Second):
+				p.Log().Warnf("forced close of transaction store DB")
+			}
 			_ = p.txStoreDB.Close()
 			p.Log().Infof("transaction store database has been closed")
 			p.dbClosedWG.Done()
