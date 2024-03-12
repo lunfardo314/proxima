@@ -13,7 +13,7 @@ import (
 
 const (
 	TraceTagAttachMilestone = "milestone"
-	periodicCheckEach       = 1 * time.Second
+	periodicCheckEach       = 100 * time.Millisecond
 )
 
 func runMilestoneAttacher(vid *vertex.WrappedTx, metadata *txmetadata.TransactionMetadata, callback func(vid *vertex.WrappedTx, err error), env Environment) {
@@ -215,18 +215,23 @@ func (a *milestoneAttacher) _doPoke() {
 	if !a.closed {
 		select {
 		case a.pokeChan <- struct{}{}:
-			a.Log().Warnf(">>>>>> poked ok %s", a.name)
+			//a.Log().Warnf(">>>>>> poked ok %s", a.name)
 		default:
 			// poke is lost when blocked but that is ok because there's pull from the attacher's side
-			a.Log().Warnf(">>>>>> missed poke in %s", a.name)
+			//a.Log().Warnf(">>>>>> missed poke in %s", a.name)
 			a.finals.numMissedPokes.Add(1)
 		}
 	}
 }
 
 func (a *milestoneAttacher) pokeMe(with *vertex.WrappedTx) {
-	a.Tracef(TraceTagAttachMilestone, "pokeMe with %s", with.IDShortString())
-	a.PokeMe(a.vid, with)
+	flags := a.flags(with)
+	util.Assertf(flags.FlagsUp(FlagAttachedVertexKnown), "must be marked known %s", with.IDShortString)
+	if !flags.FlagsUp(FlagAttachedVertexAskedForPoke) {
+		a.Tracef(TraceTagAttachMilestone, "pokeMe with %s", with.IDShortString())
+		a.PokeMe(a.vid, with)
+		a.setFlagsUp(with, FlagAttachedVertexAskedForPoke)
+	}
 }
 
 func (a *milestoneAttacher) logFinalStatusString(msData *ledger.MilestoneData) string {

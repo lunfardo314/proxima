@@ -147,7 +147,7 @@ func (a *IncrementalAttacher) insertEndorsement(endorsement *vertex.WrappedTx) e
 	if endorsement.IsBranchTransaction() {
 		// branch is compatible with the baseline
 		a.markVertexDefined(endorsement)
-		a.markVertexRooted(endorsement)
+		a.mustMarkVertexRooted(endorsement)
 	} else {
 		ok, defined := a.attachVertexNonBranch(endorsement)
 		a.Assertf(ok || a.err != nil, "ok || a.err != nil")

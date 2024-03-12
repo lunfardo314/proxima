@@ -48,7 +48,7 @@ logger:
   level: debug
   output: testlog_1.log
   erase_at_start: true
-  log_attacher_stats: true
+#  log_attacher_stats: true
 
 # Other parameters used for tracing and debugging
 # pprof config

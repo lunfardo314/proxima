@@ -140,6 +140,7 @@ const (
 	FlagAttachedVertexDefined           = 0b00000010
 	FlagAttachedVertexEndorsementsSolid = 0b00000100
 	FlagAttachedVertexInputsSolid       = 0b00001000
+	FlagAttachedVertexAskedForPoke      = 0b00010000
 )
 
 func (f Flags) FlagsUp(fl Flags) bool {
@@ -147,12 +148,13 @@ func (f Flags) FlagsUp(fl Flags) bool {
 }
 
 func (f Flags) String() string {
-	return fmt.Sprintf("%08b known = %v, defined = %v, endorsementsOk = %v, inputsOk = %v",
+	return fmt.Sprintf("%08b known = %v, defined = %v, endorsementsOk = %v, inputsOk = %v, asked for poke = %s",
 		f,
 		f.FlagsUp(FlagAttachedVertexKnown),
 		f.FlagsUp(FlagAttachedVertexDefined),
 		f.FlagsUp(FlagAttachedVertexEndorsementsSolid),
 		f.FlagsUp(FlagAttachedVertexInputsSolid),
+		f.FlagsUp(FlagAttachedVertexAskedForPoke),
 	)
 }
 

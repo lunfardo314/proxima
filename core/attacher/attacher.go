@@ -86,16 +86,19 @@ func (a *attacher) markVertexDefined(vid *vertex.WrappedTx) {
 	a.Tracef(TraceTagMarkDefUndef, "markVertexDefined in %s: %s is DEFINED", a.name, vid.IDShortString)
 }
 
-func (a *attacher) markVertexUndefined(vid *vertex.WrappedTx) {
-	a.mustMarkReferencedByAttacher(vid)
+func (a *attacher) markVertexUndefined(vid *vertex.WrappedTx) bool {
+	if !a.markReferencedByAttacher(vid) {
+		return false
+	}
 	f := a.flags(vid)
 	a.Assertf(!f.FlagsUp(FlagAttachedVertexDefined), "!f.FlagsUp(FlagDefined)")
 	a.vertices[vid] = f | FlagAttachedVertexKnown
 
 	a.Tracef(TraceTagMarkDefUndef, "markVertexUndefined in %s: %s is UNDEFINED", a.name, vid.IDShortString)
+	return true
 }
 
-func (a *attacher) markVertexRooted(vid *vertex.WrappedTx) {
+func (a *attacher) mustMarkVertexRooted(vid *vertex.WrappedTx) {
 	a.mustMarkReferencedByAttacher(vid)
 	// creates entry in rooted, probably empty
 	a.rooted[vid] = a.rooted[vid]
@@ -154,7 +157,8 @@ func (a *attacher) solidifyStemOfTheVertex(v *vertex.Vertex) (ok bool) {
 	stemInputIdx := v.StemInputIndex()
 	stemInputOid := v.Tx.MustInputAt(stemInputIdx)
 	stemVid := AttachTxID(stemInputOid.TransactionID(), a, OptionInvokedBy(a.name))
-	if !a.markReferencedByAttacher(stemVid) {
+
+	if !a.markVertexUndefined(stemVid) {
 		// failed to reference (pruned), but it is ok (rare event)
 		return true
 	}
@@ -192,7 +196,7 @@ func (a *attacher) solidifySequencerBaseline(v *vertex.Vertex) (ok bool) {
 	} else {
 		inputTx = AttachTxID(predOid.TransactionID(), a, OptionPullNonBranch, OptionInvokedBy(a.name))
 	}
-	if !a.markReferencedByAttacher(inputTx) {
+	if !a.markVertexUndefined(inputTx) {
 		// wasn't able to reference but it is ok
 		return true
 	}
@@ -426,7 +430,7 @@ func (a *attacher) attachEndorsements(v *vertex.Vertex, vid *vertex.WrappedTx) b
 		case vertex.Good:
 			if a.baselineStateReader().KnowsCommittedTransaction(&vidEndorsed.ID) {
 				// all endorsed transactions known to the baseline state are 'defined' and 'rooted'
-				a.markVertexRooted(vidEndorsed)
+				a.mustMarkVertexRooted(vidEndorsed)
 				a.markVertexDefined(vidEndorsed)
 				numUndefined--
 				continue
@@ -563,7 +567,7 @@ func (a *attacher) attachRooted(wOut vertex.WrappedOutput) (ok bool, isRooted bo
 		consumedRooted.Insert(wOut.Index)
 	}
 
-	a.markVertexRooted(wOut.VID)
+	a.mustMarkVertexRooted(wOut.VID)
 	a.rooted[wOut.VID] = consumedRooted
 	a.markVertexDefined(wOut.VID)
 
