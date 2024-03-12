@@ -41,13 +41,13 @@ sequencers:
     pace: 5
     # maximum fee inputs allowed in the sequencer milestone transaction
     max_tag_along_inputs: 50
-    log_attacher_stats: true
 
 # logger config
 logger:
   level: info
   output: testlog_2.log
   erase_at_start: true
+  log_attacher_stats: true
 
 # Other parameters used for tracing and debugging
 # pprof config
@@ -56,6 +56,7 @@ pprof:
   port: 8080
 
 trace_tags:
+  - poker
 #  - gossip
 #  - pull_client
 #  - pull_server

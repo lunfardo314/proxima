@@ -26,16 +26,10 @@ func runMilestoneAttacher(vid *vertex.WrappedTx, metadata *txmetadata.Transactio
 
 	if err != nil {
 		vid.SetTxStatusBad(err)
-		env.Log().Warnf("-- ATTACH %s -> BAD(%v)", vid.ID.StringShort(), err)
+		env.Log().Warnf(a.logErrorStatusString(err))
 	} else {
 		msData := env.ParseMilestoneData(vid)
-		if msData == nil {
-			env.ParseMilestoneData(vid)
-		}
 		env.Log().Info(a.logFinalStatusString(msData))
-		if env.LogAttacherStats() {
-			env.Log().Info(a.logStatsString())
-		}
 		vid.SetSequencerAttachmentFinished()
 	}
 
@@ -265,6 +259,17 @@ func (a *milestoneAttacher) logFinalStatusString(msData *ledger.MilestoneData) s
 				bl, a.finals.coverage.String(), util.GoTh(a.finals.slotInflation))
 		}
 	}
+	if a.LogAttacherStats() {
+		msg += "\n          " + a.logStatsString()
+	}
+	return msg
+}
+
+func (a *milestoneAttacher) logErrorStatusString(err error) string {
+	msg := fmt.Sprintf("-- ATTACH %s -> BAD(%v)", a.vid.ID.StringShort(), err)
+	if a.LogAttacherStats() {
+		msg = msg + "\n          " + a.logStatsString()
+	}
 	return msg
 }
 
@@ -281,7 +286,7 @@ func (a *milestoneAttacher) logStatsString() string {
 	if a.vid.IsBranchTransaction() {
 		utxoInOut = fmt.Sprintf("UTXO mut +%d/-%d, ", a.finals.numCreatedOutputs, a.finals.numDeletedOutputs)
 	}
-	return fmt.Sprintf("     attacher stats %s: new tx: %d, %spokes/missed: %d/%d, periodic: %d, duration: %s. %s",
+	return fmt.Sprintf("stats %s: new tx: %d, %spoked/missed: %d/%d, periodic: %d, duration: %s. %s",
 		a.vid.IDShortString(),
 		a.finals.numTransactions,
 		utxoInOut,
