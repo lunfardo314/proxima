@@ -60,6 +60,7 @@ type (
 		Assertf(cond bool, format string, args ...any)
 		AssertNoError(err error, prefix ...string)
 		AssertMustError(err error)
+		LogAttacherStats() bool
 	}
 
 	// StartStop interface of the global objet\ct which coordinates graceful shutdown

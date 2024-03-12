@@ -99,6 +99,11 @@ func (p *ProximaNode) Start() {
 	}
 	p.Log().Infof("Proxima node has been started successfully")
 	p.Log().Debug("running in debug mode")
+	if p.LogAttacherStats() {
+		p.Log().Infof("will be logging attacher stats")
+	} else {
+		p.Log().Infof("will NOT be logging attacher stats")
+	}
 }
 
 // initMultiStateLedger opens ledger state DB and initializes global ledger object

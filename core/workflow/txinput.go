@@ -19,7 +19,6 @@ type (
 		receivedFromPeer *peer.ID
 		callback         func(vid *vertex.WrappedTx, err error)
 		txTrace          bool
-		logAttacherStats bool
 	}
 
 	TxBytesInOption func(options *txBytesInOptions)
@@ -106,7 +105,6 @@ func (w *Workflow) TxBytesIn(txBytes []byte, opts ...TxBytesInOption) (*ledger.T
 	attachOpts := []attacher.Option{
 		attacher.OptionWithTransactionMetadata(&options.txMetadata),
 		attacher.OptionInvokedBy("txInput"),
-		attacher.OptionWithLogAttacherStats(options.logAttacherStats),
 	}
 	if options.callback != nil {
 		attachOpts = append(attachOpts, attacher.OptionWithAttachmentCallback(options.callback))
@@ -175,7 +173,6 @@ func (w *Workflow) SequencerMilestoneAttachWait(txBytes []byte, meta *txmetadata
 			WithCallback(func(vid *vertex.WrappedTx, err error) {
 				writeResult(result{vid: vid, err: err})
 			}),
-			WithLogAttacherStats(logAttacherStats),
 		)
 		if errParse != nil {
 			writeResult(result{err: errParse})
@@ -224,11 +221,5 @@ func WithPeerMetadata(peerID peer.ID, metadata *txmetadata.TransactionMetadata) 
 func WithTxTraceFlag(trace bool) TxBytesInOption {
 	return func(opts *txBytesInOptions) {
 		opts.txTrace = trace
-	}
-}
-
-func WithLogAttacherStats(logAttacherStats bool) TxBytesInOption {
-	return func(opts *txBytesInOptions) {
-		opts.logAttacherStats = logAttacherStats
 	}
 }

@@ -3,6 +3,7 @@ package attacher
 import (
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/lunfardo314/proxima/core/txmetadata"
@@ -99,7 +100,6 @@ type (
 		pullNonBranch      bool
 		doNotLoadBranch    bool
 		calledBy           string
-		logAttacherStats   bool
 	}
 	Option func(*_attacherOptions)
 
@@ -116,6 +116,7 @@ type (
 		numCreatedOutputs int
 		numDeletedOutputs int
 		started           time.Time
+		numMissedPokes    atomic.Int32
 		numPokes          int
 		numPeriodic       int
 		numVertices       int
@@ -178,11 +179,5 @@ func OptionDoNotLoadBranch(options *_attacherOptions) {
 func OptionInvokedBy(name string) Option {
 	return func(options *_attacherOptions) {
 		options.calledBy = name
-	}
-}
-
-func OptionWithLogAttacherStats(logAttacherStats bool) Option {
-	return func(options *_attacherOptions) {
-		options.logAttacherStats = logAttacherStats
 	}
 }

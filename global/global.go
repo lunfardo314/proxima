@@ -32,9 +32,10 @@ type Global struct {
 	traceTagsMutex sync.RWMutex
 	traceTags      set.Set[string]
 	// dynamic transaction tracing with TTL
-	enabledTraceTx atomic.Bool
-	txTraceMutex   sync.RWMutex
-	txTraceIDs     map[ledger.TransactionID]time.Time
+	enabledTraceTx   atomic.Bool
+	txTraceMutex     sync.RWMutex
+	txTraceIDs       map[ledger.TransactionID]time.Time
+	logAttacherStats bool
 }
 
 const TraceTag = "global"
@@ -58,14 +59,19 @@ func NewFromConfig() *Global {
 			erasedPrev = true
 		}
 	}
-	return _new(lvl, output, erasedPrev)
+	ret := _new(lvl, output)
+	if erasedPrev {
+		ret.SugaredLogger.Warnf("previous logfile may have been erased")
+	}
+	ret.logAttacherStats = viper.GetBool("logger.log_attacher_stats")
+	return ret
 }
 
 func NewDefault() *Global {
-	return _new(zapcore.DebugLevel, []string{"stderr"}, false)
+	return _new(zapcore.DebugLevel, []string{"stderr"})
 }
 
-func _new(logLevel zapcore.Level, outputs []string, erasedPrevious bool) *Global {
+func _new(logLevel zapcore.Level, outputs []string) *Global {
 	ctx, cancelFun := context.WithCancel(context.Background())
 	ret := &Global{
 		ctx:           ctx,
@@ -76,9 +82,6 @@ func _new(logLevel zapcore.Level, outputs []string, erasedPrevious bool) *Global
 		logStopOnce:   &sync.Once{},
 		components:    set.New[string](),
 		txTraceIDs:    make(map[ledger.TransactionID]time.Time),
-	}
-	if erasedPrevious {
-		ret.SugaredLogger.Warnf("previous logfile may have been erased")
 	}
 	go ret.purgeLoop()
 
@@ -278,6 +281,10 @@ func (l *Global) purgeLoop() {
 			l.purge()
 		}
 	}
+}
+
+func (l *Global) LogAttacherStats() bool {
+	return l.logAttacherStats
 }
 
 func (l *Global) purge() {

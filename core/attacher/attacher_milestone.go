@@ -2,6 +2,7 @@ package attacher
 
 import (
 	"fmt"
+	"runtime"
 	"time"
 
 	"github.com/lunfardo314/proxima/core/txmetadata"
@@ -15,7 +16,7 @@ const (
 	periodicCheckEach       = 1 * time.Second
 )
 
-func runMilestoneAttacher(vid *vertex.WrappedTx, metadata *txmetadata.TransactionMetadata, callback func(vid *vertex.WrappedTx, err error), logAttacherStats bool, env Environment) {
+func runMilestoneAttacher(vid *vertex.WrappedTx, metadata *txmetadata.TransactionMetadata, callback func(vid *vertex.WrappedTx, err error), env Environment) {
 	a := newMilestoneAttacher(vid, env, metadata)
 	defer func() {
 		go a.close()
@@ -31,9 +32,9 @@ func runMilestoneAttacher(vid *vertex.WrappedTx, metadata *txmetadata.Transactio
 		if msData == nil {
 			env.ParseMilestoneData(vid)
 		}
-		env.Log().Info(logFinalStatusString(vid, &a.finals, msData))
-		if logAttacherStats {
-			env.Log().Info(logStatsString(vid, &a.finals))
+		env.Log().Info(a.logFinalStatusString(msData))
+		if env.LogAttacherStats() {
+			env.Log().Info(a.logStatsString())
 		}
 		vid.SetSequencerAttachmentFinished()
 	}
@@ -140,55 +141,6 @@ func (a *milestoneAttacher) lazyRepeat(fun func() vertex.Status) vertex.Status {
 	}
 }
 
-func logFinalStatusString(vid *vertex.WrappedTx, finals *attachFinals, msData *ledger.MilestoneData) string {
-	var msg string
-
-	msDataStr := " (n/a)"
-	if msData != nil {
-		msDataStr = fmt.Sprintf(" (%s %d/%d)", msData.Name, msData.BranchHeight, msData.ChainHeight)
-	}
-	if vid.IsBranchTransaction() {
-		msg = fmt.Sprintf("-- ATTACH BRANCH%s %s(in %d/out %d)", msDataStr, vid.IDShortString(), finals.numInputs, finals.numOutputs)
-	} else {
-		nums := ""
-		if finals != nil {
-			nums = fmt.Sprintf("(in %d/out %d)", finals.numInputs, finals.numOutputs)
-		}
-		msg = fmt.Sprintf("-- ATTACH SEQ TX%s %s%s", msDataStr, vid.IDShortString(), nums)
-	}
-	if vid.GetTxStatus() == vertex.Bad {
-		msg += fmt.Sprintf("BAD: err = '%v'", vid.GetError())
-	} else {
-		bl := "<nil>"
-		if finals != nil && finals.baseline != nil {
-			bl = finals.baseline.StringShort()
-		}
-		if vid.IsBranchTransaction() {
-			msg += fmt.Sprintf(" base: %s, cov: %s, inflation: %s, supply: %s",
-				bl,
-				finals.coverage.String(),
-				util.GoTh(finals.slotInflation),
-				util.GoTh(finals.supply))
-		} else {
-			msg += fmt.Sprintf(" base: %s, cov: %s, inflation: %s",
-				bl, finals.coverage.String(), util.GoTh(finals.slotInflation))
-		}
-	}
-	return msg
-}
-
-func logStatsString(vid *vertex.WrappedTx, finals *attachFinals) string {
-	return fmt.Sprintf("     attacher stats %s: new tx: %d, UTXO mut +%d/-%d, pokes: %d, periodic: %d, duration: %s",
-		vid.IDShortString(),
-		finals.numTransactions,
-		finals.numCreatedOutputs,
-		finals.numDeletedOutputs,
-		finals.numPokes,
-		finals.numPeriodic,
-		time.Since(finals.started),
-	)
-}
-
 func (a *milestoneAttacher) close() {
 	a.closeOnce.Do(func() {
 		a.unReferenceAllByAttacher()
@@ -272,7 +224,8 @@ func (a *milestoneAttacher) _doPoke() {
 			a.Log().Warnf(">>>>>> poked ok %s", a.name)
 		default:
 			// poke is lost when blocked but that is ok because there's pull from the attacher's side
-			a.Log().Warnf(">>>>>> congested poke in %s", a.name)
+			a.Log().Warnf(">>>>>> missed poke in %s", a.name)
+			a.finals.numMissedPokes.Add(1)
 		}
 	}
 }
@@ -280,4 +233,62 @@ func (a *milestoneAttacher) _doPoke() {
 func (a *milestoneAttacher) pokeMe(with *vertex.WrappedTx) {
 	a.Tracef(TraceTagAttachMilestone, "pokeMe with %s", with.IDShortString())
 	a.PokeMe(a.vid, with)
+}
+
+func (a *milestoneAttacher) logFinalStatusString(msData *ledger.MilestoneData) string {
+	var msg string
+
+	msDataStr := " (n/a)"
+	if msData != nil {
+		msDataStr = fmt.Sprintf(" (%s %d/%d)", msData.Name, msData.BranchHeight, msData.ChainHeight)
+	}
+	if a.vid.IsBranchTransaction() {
+		msg = fmt.Sprintf("-- ATTACH BRANCH%s %s(in %d/out %d)", msDataStr, a.vid.IDShortString(), a.finals.numInputs, a.finals.numOutputs)
+	} else {
+		msg = fmt.Sprintf("-- ATTACH SEQ TX%s %s(in %d/out %d)", msDataStr, a.vid.IDShortString(), a.finals.numInputs, a.finals.numOutputs)
+	}
+	if a.vid.GetTxStatus() == vertex.Bad {
+		msg += fmt.Sprintf("BAD: err = '%v'", a.vid.GetError())
+	} else {
+		bl := "<nil>"
+		if a.finals.baseline != nil {
+			bl = a.finals.baseline.StringShort()
+		}
+		if a.vid.IsBranchTransaction() {
+			msg += fmt.Sprintf(" base: %s, cov: %s, inflation: %s, supply: %s",
+				bl,
+				a.finals.coverage.String(),
+				util.GoTh(a.finals.slotInflation),
+				util.GoTh(a.finals.supply))
+		} else {
+			msg += fmt.Sprintf(" base: %s, cov: %s, inflation: %s",
+				bl, a.finals.coverage.String(), util.GoTh(a.finals.slotInflation))
+		}
+	}
+	return msg
+}
+
+func (a *milestoneAttacher) logStatsString() string {
+	var memStats runtime.MemStats
+	runtime.ReadMemStats(&memStats)
+	memStr := fmt.Sprintf("Mem. alloc: %.1f MB, GC: %d, GoRt: %d, ",
+		float32(memStats.Alloc*10/(1024*1024))/10,
+		memStats.NumGC,
+		runtime.NumGoroutine(),
+	)
+
+	utxoInOut := ""
+	if a.vid.IsBranchTransaction() {
+		utxoInOut = fmt.Sprintf("UTXO mut +%d/-%d, ", a.finals.numCreatedOutputs, a.finals.numDeletedOutputs)
+	}
+	return fmt.Sprintf("     attacher stats %s: new tx: %d, %spokes/missed: %d/%d, periodic: %d, duration: %s. %s",
+		a.vid.IDShortString(),
+		a.finals.numTransactions,
+		utxoInOut,
+		a.finals.numPokes,
+		a.finals.numMissedPokes.Load(),
+		a.finals.numPeriodic,
+		time.Since(a.finals.started),
+		memStr,
+	)
 }
