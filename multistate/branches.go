@@ -39,9 +39,11 @@ func FetchLatestSlot(store global.StateStore) ledger.Slot {
 	return ret
 }
 
+const numberOfElementsInRootRecord = 6
+
 func (r *RootRecord) Bytes() []byte {
 	util.Assertf(r.LedgerCoverage.LatestDelta() > 0, "r.Coverage.LatestDelta() > 0")
-	arr := lazybytes.EmptyArray(5)
+	arr := lazybytes.EmptyArray(numberOfElementsInRootRecord)
 	arr.Push(r.SequencerID.Bytes())
 	arr.Push(r.Root.Bytes())
 	arr.Push(r.LedgerCoverage.Bytes())
@@ -50,25 +52,19 @@ func (r *RootRecord) Bytes() []byte {
 	arr.Push(slotInflationBin[:])
 	binary.BigEndian.PutUint64(supplyBin[:], r.Supply)
 	arr.Push(supplyBin[:])
+	var nTxBin [4]byte
+	binary.BigEndian.PutUint32(nTxBin[:], r.NumTransactions)
+	arr.Push(nTxBin[:])
+	util.Assertf(arr.NumElements() == numberOfElementsInRootRecord, "arr.NumElements() == 6")
 	return arr.Bytes()
 }
 
 func (r *RootRecord) String() string {
-	return fmt.Sprintf("root record %s, %s, %s", r.SequencerID.StringShort(), r.LedgerCoverage.String(), r.Root.String())
-}
-
-// IsDominating the root is dominating if coverage last delta is mora than half of the supply
-func (r *RootRecord) IsDominating() bool {
-	return r.LedgerCoverage.LatestDelta() > r.Supply/2
-}
-
-func (br *BranchData) TxID() *ledger.TransactionID {
-	ret := br.Stem.ID.TransactionID()
-	return &ret
+	return fmt.Sprintf("root record %s, %s, %s, %d", r.SequencerID.StringShort(), r.LedgerCoverage.String(), r.Root.String(), r.NumTransactions)
 }
 
 func RootRecordFromBytes(data []byte) (RootRecord, error) {
-	arr, err := lazybytes.ParseArrayFromBytesReadOnly(data, 5)
+	arr, err := lazybytes.ParseArrayFromBytesReadOnly(data, numberOfElementsInRootRecord)
 	if err != nil {
 		return RootRecord{}, err
 	}
@@ -87,17 +83,28 @@ func RootRecordFromBytes(data []byte) (RootRecord, error) {
 	if err != nil {
 		return RootRecord{}, err
 	}
-	if len(arr.At(3)) != 8 || len(arr.At(4)) != 8 {
+	if len(arr.At(3)) != 8 || len(arr.At(4)) != 8 || len(arr.At(5)) != 4 {
 		return RootRecord{}, fmt.Errorf("wrong data length")
 	}
 
 	return RootRecord{
-		Root:           root,
-		SequencerID:    chainID,
-		LedgerCoverage: coverage,
-		SlotInflation:  binary.BigEndian.Uint64(arr.At(3)),
-		Supply:         binary.BigEndian.Uint64(arr.At(4)),
+		Root:            root,
+		SequencerID:     chainID,
+		LedgerCoverage:  coverage,
+		SlotInflation:   binary.BigEndian.Uint64(arr.At(3)),
+		Supply:          binary.BigEndian.Uint64(arr.At(4)),
+		NumTransactions: binary.BigEndian.Uint32(arr.At(5)),
 	}, nil
+}
+
+// IsDominating the root is dominating if coverage last delta is mora than half of the supply
+func (r *RootRecord) IsDominating() bool {
+	return r.LedgerCoverage.LatestDelta() > r.Supply/2
+}
+
+func (br *BranchData) TxID() *ledger.TransactionID {
+	ret := br.Stem.ID.TransactionID()
+	return &ret
 }
 
 func iterateAllRootRecords(store global.StateStore, fun func(branchTxID ledger.TransactionID, rootData RootRecord) bool) {

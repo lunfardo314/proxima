@@ -19,6 +19,7 @@ func Init() *cobra.Command {
 		initDBDAGCmd(),
 		initMainChainCmd(),
 		initAccountsCmd(),
+		initBranchesCmd(),
 	)
 	return dbCmd
 }

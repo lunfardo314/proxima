@@ -5,7 +5,7 @@
 # Public key of the controller identifies originator of the ledger for its lifetime.
 # 'genesis_controller_address' is computed from the public key of the controller
 # 'bootstrap_chain_id' is a constant, i.e. same for all ledgers
-genesis_time_unix: 1710140484
+genesis_time_unix: 1710250107
 initial_supply: 1000000000000000
 genesis_controller_public_key: 0530b790e0e7de626f36e20ba656f09e324c68203de899d0daf9f98fcb3cf684
 time_tick_duration_nanosec: 100000000

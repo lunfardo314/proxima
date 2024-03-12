@@ -75,12 +75,15 @@ func (a *milestoneAttacher) commitBranch() {
 		}
 	}
 	// generate ADD TX and ADD OUTPUT mutations
+	newTransactions := uint32(0)
 	allVerticesSet := set.NewFromKeys(a.vertices)
 	for vid := range a.vertices {
 		if a.isKnownRooted(vid) {
 			continue
 		}
 		muts.InsertAddTxMutation(vid.ID, a.vid.Slot(), byte(vid.NumProducedOutputs()-1))
+		newTransactions++
+
 		a.TraceTx(&vid.ID, "commitBranch in attacher %s: added to the baseline state %s", a.name, bsName)
 		// ADD OUTPUT mutations only for not consumed outputs
 		producedOutputIndices := vid.NotConsumedOutputIndices(allVerticesSet)
@@ -94,11 +97,12 @@ func (a *milestoneAttacher) commitBranch() {
 	upd := multistate.MustNewUpdatable(a.StateStore(), a.baselineStateReader().Root())
 	a.finals.supply = a.baselineSupply + a.finals.slotInflation
 	upd.MustUpdate(muts, &multistate.RootRecordParams{
-		StemOutputID:  stemOID,
-		SeqID:         seqID,
-		Coverage:      *a.vid.GetLedgerCoverage(),
-		SlotInflation: a.slotInflation,
-		Supply:        a.baselineSupply + a.finals.slotInflation,
+		StemOutputID:    stemOID,
+		SeqID:           seqID,
+		Coverage:        *a.vid.GetLedgerCoverage(),
+		SlotInflation:   a.slotInflation,
+		Supply:          a.baselineSupply + a.finals.slotInflation,
+		NumTransactions: newTransactions,
 	})
 	a.finals.root = upd.Root()
 	// check consistency with state root provided with metadata

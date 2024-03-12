@@ -42,6 +42,8 @@ type (
 		// Supply: total supply at this root (including the branch itself, excluding prev branch).
 		// It is the sum of the Supply of the previous branch and SlotInflation of the current
 		Supply uint64
+		// Number of new transactions in the slot of the branch
+		NumTransactions uint32
 	}
 
 	RootRecordJSONAble struct {
@@ -354,11 +356,12 @@ func (u *Updatable) Root() common.VCommitment {
 }
 
 type RootRecordParams struct {
-	StemOutputID  ledger.OutputID
-	SeqID         ledger.ChainID
-	Coverage      ledger.Coverage
-	SlotInflation uint64
-	Supply        uint64
+	StemOutputID    ledger.OutputID
+	SeqID           ledger.ChainID
+	Coverage        ledger.Coverage
+	SlotInflation   uint64
+	Supply          uint64
+	NumTransactions uint32
 }
 
 // Update updates trie with mutations
@@ -387,11 +390,12 @@ func (u *Updatable) updateUTXOLedgerDB(updateFun func(updatable *immutable.TrieU
 		}
 		branchID := rootRecordsParams.StemOutputID.TransactionID()
 		writeRootRecord(batch, branchID, RootRecord{
-			Root:           newRoot,
-			SequencerID:    rootRecordsParams.SeqID,
-			LedgerCoverage: rootRecordsParams.Coverage,
-			SlotInflation:  rootRecordsParams.SlotInflation,
-			Supply:         rootRecordsParams.Supply,
+			Root:            newRoot,
+			SequencerID:     rootRecordsParams.SeqID,
+			LedgerCoverage:  rootRecordsParams.Coverage,
+			SlotInflation:   rootRecordsParams.SlotInflation,
+			Supply:          rootRecordsParams.Supply,
+			NumTransactions: rootRecordsParams.NumTransactions,
 		})
 	}
 	var err error
