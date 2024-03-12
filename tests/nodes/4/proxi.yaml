@@ -8,10 +8,10 @@ wallet:
 api:
     endpoint: http://127.0.0.1:8004
 tag_along:
-    sequencer_id:
+    sequencer_id: 0d501e9d2167b1692307822bff9b1334a140435e043805d55933268fdc929c09
     fee: 500
 spammer:
-    bundle_size: 10
+    bundle_size: 5
     max_duration_minutes: 0
     max_transactions: 0
     output_amount: 1000
@@ -20,6 +20,6 @@ spammer:
     submit_nowait: false
     tag_along:
         fee: 500
-        sequencer:
+        sequencer: 0d501e9d2167b1692307822bff9b1334a140435e043805d55933268fdc929c09
     # target key 0
     target: 
