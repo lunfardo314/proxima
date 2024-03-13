@@ -40,6 +40,11 @@ type Global struct {
 
 const TraceTag = "global"
 
+func fileExists(name string) bool {
+	_, err := os.Stat(name)
+	return !os.IsNotExist(err)
+}
+
 func NewFromConfig() *Global {
 	lvlStr := viper.GetString("logger.level")
 	lvl := zapcore.InfoLevel
@@ -51,17 +56,30 @@ func NewFromConfig() *Global {
 
 	output := []string{"stderr"}
 	erasedPrev := false
+	savedPrev := ""
 	out := viper.GetString("logger.output")
 	if out != "" {
 		output = append(output, out)
-		if viper.GetBool("logger.erase_at_start") {
-			_ = os.Remove(out)
-			erasedPrev = true
+		if fileExists(out) {
+			prev := viper.GetString("logger.previous")
+			switch {
+			case strings.HasPrefix(prev, "erase"):
+				err := os.Remove(out)
+				util.AssertNoError(err)
+				erasedPrev = true
+			case strings.HasPrefix(prev, "save"):
+				savedPrev = out + fmt.Sprintf(".%d", uint32(time.Now().Unix()))
+				err := os.Rename(out, savedPrev)
+				util.AssertNoError(err)
+			}
 		}
 	}
 	ret := _new(lvl, output)
 	if erasedPrev {
-		ret.SugaredLogger.Warnf("previous logfile may have been erased")
+		ret.SugaredLogger.Warnf("previous logfile has been erased")
+	}
+	if savedPrev != "" {
+		ret.SugaredLogger.Warnf("previous logfile has been saved as %s", savedPrev)
 	}
 	ret.logAttacherStats = viper.GetBool("logger.log_attacher_stats")
 	return ret

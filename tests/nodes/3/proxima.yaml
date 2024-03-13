@@ -48,7 +48,7 @@ sequencers:
 logger:
   level: info
   output: testlog_3.log
-  erase_at_start: true
+  previous: erase
 #  log_attacher_stats: true
 
 # Other parameters used for tracing and debugging
