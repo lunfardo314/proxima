@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -92,7 +93,12 @@ func (srv *Server) getAccountOutputs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	oData, err := srv.HeaviestStateForLatestTimeSlot().GetUTXOsLockedInAccount(accountable.AccountID())
+	var oData []*ledger.OutputDataWithID
+	err = util.CatchPanicOrError(func() error {
+		var err1 error
+		oData, err1 = srv.HeaviestStateForLatestTimeSlot().GetUTXOsLockedInAccount(accountable.AccountID())
+		return err1
+	})
 	if err != nil {
 		writeErr(w, err.Error())
 		return
@@ -127,15 +133,19 @@ func (srv *Server) getChainOutput(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err.Error())
 		return
 	}
-
-	oData, err := srv.HeaviestStateForLatestTimeSlot().GetChainOutput(&chainID)
+	var out *ledger.OutputWithID
+	err = util.CatchPanicOrError(func() error {
+		var err1 error
+		out, err1 = srv.HeaviestStateForLatestTimeSlot().GetChainOutput(&chainID)
+		return err1
+	})
 	if err != nil {
 		writeErr(w, err.Error())
 		return
 	}
 	resp := &api.ChainOutput{
-		OutputID:   oData.ID.StringHex(),
-		OutputData: hex.EncodeToString(oData.Output.Bytes()),
+		OutputID:   out.ID.StringHex(),
+		OutputData: hex.EncodeToString(out.Output.Bytes()),
 	}
 
 	respBin, err := json.MarshalIndent(resp, "", "  ")
@@ -160,8 +170,16 @@ func (srv *Server) getOutput(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err.Error())
 		return
 	}
-	oData, found := srv.HeaviestStateForLatestTimeSlot().GetUTXO(&oid)
-	if !found {
+	var oData []byte
+	err = util.CatchPanicOrError(func() error {
+		var found bool
+		oData, found = srv.HeaviestStateForLatestTimeSlot().GetUTXO(&oid)
+		if !found {
+			return errors.New(api.ErrGetOutputNotFound)
+		}
+		return nil
+	})
+	if err != nil {
 		writeErr(w, api.ErrGetOutputNotFound)
 		return
 	}
@@ -218,7 +236,12 @@ func (srv *Server) submitTx(w http.ResponseWriter, r *http.Request) {
 	}
 	// tx tracing on server parameter
 	_, trace := r.URL.Query()["trace"]
-	txid, err := srv.SubmitTxBytesFromAPI(slices.Clip(txBytes), trace)
+	var txid *ledger.TransactionID
+	err = util.CatchPanicOrError(func() error {
+		var err1 error
+		txid, err1 = srv.SubmitTxBytesFromAPI(slices.Clip(txBytes), trace)
+		return err1
+	})
 	if err != nil {
 		writeErr(w, fmt.Sprintf("submit_tx: %v", err))
 		srv.Tracef(TraceTag, "submit transaction: '%v'", err)
@@ -232,26 +255,6 @@ func (srv *Server) submitTx(w http.ResponseWriter, r *http.Request) {
 
 func (srv *Server) getSyncInfo(w http.ResponseWriter, r *http.Request) {
 	writeErr(w, "getSyncInfo: not implemented")
-	//syncInfo := ut.SyncData().GetSyncInfo()
-	//resp := api.SyncInfo{
-	//	Synced:       syncInfo.Synced,
-	//	InSyncWindow: syncInfo.InSyncWindow,
-	//	PerSequencer: make(map[string]api.SequencerSyncInfo),
-	//}
-	//for seqID, si := range syncInfo.PerSequencer {
-	//	resp.PerSequencer[seqID.StringHex()] = api.SequencerSyncInfo{
-	//		Synced:           si.Synced,
-	//		LatestBookedSlot: si.LatestBookedSlot,
-	//		LatestSeenSlot:   si.LatestSeenSlot,
-	//	}
-	//}
-	//respBin, err := json.MarshalIndent(resp, "", "  ")
-	//if err != nil {
-	//	writeErr(w, err.Error())
-	//	return
-	//}
-	//_, err = w.Write(respBin)
-	//util.AssertNoError(err)
 }
 
 func (srv *Server) getNodeInfo(w http.ResponseWriter, r *http.Request) {
@@ -283,9 +286,17 @@ func (srv *Server) queryTxStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// query tx ID status
-	resp := api.QueryTxStatus{
-		TxIDStatus: srv.QueryTxIDStatusJSONAble(&txid),
-		Inclusion:  srv.TxInclusionJSONAble(&txid),
+	var resp api.QueryTxStatus
+	err = util.CatchPanicOrError(func() error {
+		resp = api.QueryTxStatus{
+			TxIDStatus: srv.QueryTxIDStatusJSONAble(&txid),
+			Inclusion:  srv.TxInclusionJSONAble(&txid),
+		}
+		return nil
+	})
+	if err != nil {
+		writeErr(w, err.Error())
+		return
 	}
 	respBin, err := json.MarshalIndent(resp, "", "  ")
 	if err != nil {

@@ -41,6 +41,7 @@ type (
 	TxBytesGet interface {
 		// GetTxBytesWithMetadata return empty slice on absence, otherwise returns concatenated metadata bytes and transaction bytes
 		GetTxBytesWithMetadata(id *ledger.TransactionID) []byte
+		HasTxBytes(txid *ledger.TransactionID) bool
 	}
 
 	TxBytesPersist interface {

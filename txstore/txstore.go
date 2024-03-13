@@ -37,6 +37,10 @@ func (s SimpleTxBytesStore) GetTxBytesWithMetadata(txid *ledger.TransactionID) [
 	return s.s.Get(txid[:])
 }
 
+func (s SimpleTxBytesStore) HasTxBytes(txid *ledger.TransactionID) bool {
+	return s.s.Has(txid[:])
+}
+
 func NewDummyTxBytesStore() DummyTxBytesStore {
 	return DummyTxBytesStore{}
 }
@@ -47,4 +51,8 @@ func (d DummyTxBytesStore) PersistTxBytesWithMetadata(txBytes []byte, metadata *
 
 func (d DummyTxBytesStore) GetTxBytesWithMetadata(_ *ledger.TransactionID) []byte {
 	return nil
+}
+
+func (s DummyTxBytesStore) HasTxBytes(txid *ledger.TransactionID) bool {
+	return false
 }
