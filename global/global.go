@@ -310,3 +310,21 @@ func (l *Global) purge() {
 		l.SugaredLogger.Infof("TRACE_TX(%s) stopped tracing", toDelete[i].StringShort())
 	}
 }
+
+func (l *Global) RepeatEvery(period time.Duration, fun func() bool, skipFirst ...bool) {
+	go func() {
+		if len(skipFirst) == 0 || !skipFirst[0] {
+			fun()
+		}
+		for {
+			select {
+			case <-l.Ctx().Done():
+				return
+			case <-time.After(period):
+				if !fun() {
+					return
+				}
+			}
+		}
+	}()
+}

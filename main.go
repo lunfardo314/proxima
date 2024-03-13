@@ -22,6 +22,5 @@ func main() {
 	n.Start()
 	n.WaitAllWorkProcessesToStop(5 * time.Second)
 	n.WaitAllDBClosed()
-	n.Log().Infof("total uptime: %v", n.UpTime())
 	n.Log().Infof("Hasta la vista, baby! I'll be back")
 }

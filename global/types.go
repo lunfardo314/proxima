@@ -2,6 +2,7 @@ package global
 
 import (
 	"context"
+	"time"
 
 	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/ledger"
@@ -69,6 +70,7 @@ type (
 		Stop()
 		MarkWorkProcessStarted(name string)
 		MarkWorkProcessStopped(name string)
+		RepeatEvery(period time.Duration, fun func() bool, skipFirst ...bool) // runs background goroutine
 	}
 
 	TraceTx interface {

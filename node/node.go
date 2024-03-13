@@ -2,6 +2,7 @@ package node
 
 import (
 	"os"
+	"runtime"
 	"sync"
 	"time"
 
@@ -19,16 +20,16 @@ import (
 
 type ProximaNode struct {
 	*global.Global
-	multiStateDB          *badger_adaptor.DB
-	txStoreDB             *badger_adaptor.DB
-	txBytesStore          global.TxBytesStore
-	peers                 *peering.Peers
-	workflow              *workflow.Workflow
-	Sequencers            []*sequencer.Sequencer
-	stopOnce              sync.Once
-	workProcessesStopChan chan struct{}
-	dbClosedWG            sync.WaitGroup
-	started               time.Time
+	multiStateDB              *badger_adaptor.DB
+	txStoreDB                 *badger_adaptor.DB
+	txBytesStore              global.TxBytesStore
+	peers                     *peering.Peers
+	workflow                  *workflow.Workflow
+	Sequencers                []*sequencer.Sequencer
+	stopOnce                  sync.Once
+	workProcessesStopStepChan chan struct{}
+	dbClosedWG                sync.WaitGroup
+	started                   time.Time
 }
 
 func init() {
@@ -45,21 +46,22 @@ func init() {
 
 func New() *ProximaNode {
 	ret := &ProximaNode{
-		Global:                global.NewFromConfig(),
-		Sequencers:            make([]*sequencer.Sequencer, 0),
-		workProcessesStopChan: make(chan struct{}),
-		started:               time.Now(),
+		Global:                    global.NewFromConfig(),
+		Sequencers:                make([]*sequencer.Sequencer, 0),
+		workProcessesStopStepChan: make(chan struct{}),
+		started:                   time.Now(),
 	}
 	global.SetGlobalLogger(ret.Global)
 	return ret
 }
 
 // WaitAllWorkProcessesToStop wait everything to stop before closing databases
-func (p *ProximaNode) WaitAllWorkProcessesToStop(timeout ...time.Duration) {
+func (p *ProximaNode) WaitAllWorkProcessesToStop(timeout time.Duration) {
 	<-p.Ctx().Done()
-	p.workProcessesStopChan <- struct{}{}
-	p.Global.MustWaitAllWorkProcessesStop(timeout...)
-	close(p.workProcessesStopChan)
+	p.workProcessesStopStepChan <- struct{}{} // first step release DB close goroutines
+	p.Log().Infof("waiting all processes to stop for up to %v", timeout)
+	p.Global.MustWaitAllWorkProcessesStop(timeout)
+	close(p.workProcessesStopStepChan) // second step release DB close goroutines
 }
 
 // WaitAllDBClosed ensuring databases has been closed
@@ -91,7 +93,6 @@ func (p *ProximaNode) Start() {
 		p.startWorkProcesses()
 		p.startSequencers()
 		p.startAPIServer()
-		p.startMemoryLogging()
 		p.startPProfIfEnabled()
 		return nil
 	})
@@ -106,6 +107,18 @@ func (p *ProximaNode) Start() {
 	} else {
 		p.Log().Infof("will NOT be logging attacher stats")
 	}
+
+	p.RepeatEvery(5*time.Second, func() bool {
+		var memStats runtime.MemStats
+		runtime.ReadMemStats(&memStats)
+		p.Log().Infof("uptime: %v, allocated memory: %.1f MB, Goroutines: %d, GC counter: %d",
+			time.Since(p.started).Round(time.Second),
+			float32(memStats.Alloc*10/(1024*1024))/10,
+			memStats.NumGC,
+			runtime.NumGoroutine(),
+		)
+		return true
+	})
 }
 
 // initMultiStateLedger opens ledger state DB and initializes global ledger object
@@ -126,9 +139,9 @@ func (p *ProximaNode) initMultiStateLedger() {
 
 	go func() {
 		// wait until others will stop
-		<-p.workProcessesStopChan
+		<-p.workProcessesStopStepChan
 		select {
-		case <-p.workProcessesStopChan:
+		case <-p.workProcessesStopStepChan:
 		case <-time.After(10 * time.Second):
 			p.Log().Warnf("forced close of multi-state DB")
 		}
@@ -157,9 +170,9 @@ func (p *ProximaNode) initTxStore() {
 		p.Log().Infof("opened DB '%s' as transaction store", dbname)
 
 		go func() {
-			<-p.workProcessesStopChan
+			<-p.workProcessesStopStepChan
 			select {
-			case <-p.workProcessesStopChan:
+			case <-p.workProcessesStopStepChan:
 			case <-time.After(10 * time.Second):
 				p.Log().Warnf("forced close of transaction store DB")
 			}
