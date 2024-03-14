@@ -12,6 +12,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/sequencer"
+	"github.com/lunfardo314/proxima/sequencer/factory"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/testutil"
 	"github.com/stretchr/testify/require"
@@ -20,12 +21,11 @@ import (
 
 func Test1SequencerPruner(t *testing.T) {
 	t.Run("idle", func(t *testing.T) {
-		const maxSlots = 20
+		const maxSlots = 5 // 20
 		testData := initWorkflowTest(t, 1, true)
 		t.Logf("%s", testData.wrk.Info())
 
-		//testData.wrk.StartTracingTags("seq,factory,tippool,txinput, proposer, incAttach")
-		//testData.wrk.StartTracingTags(sequencer.TraceTag, factory.TraceTag, tippool.TraceTag, proposer_base.TraceTag)
+		testData.env.StartTracingTags(factory.TraceTag)
 
 		seq, err := sequencer.New(testData.wrk, testData.bootstrapChainID, testData.genesisPrivKey,
 			sequencer.WithMaxBranches(maxSlots))
@@ -45,13 +45,12 @@ func Test1SequencerPruner(t *testing.T) {
 
 		require.EqualValues(t, maxSlots, int(countBr.Load()))
 		t.Logf("%s", testData.wrk.Info())
-		//br := testData.wrk.HeaviestBranchOfLatestTimeSlot()
-		//dag.SaveGraphPastCone(br, "latest_branch")
+		testData.saveFullDAG("full_dag")
 	})
 	t.Run("tag along transfers", func(t *testing.T) {
 		const (
-			maxSlots   = 40
-			batchSize  = 10
+			maxSlots   = 10 // 40
+			batchSize  = 5  // 10
 			maxBatches = 5
 			sendAmount = 2000
 		)
@@ -110,7 +109,7 @@ func Test1SequencerPruner(t *testing.T) {
 		require.EqualValues(t, batchSize*maxBatches, len(par.spammedTxIDs))
 
 		testData.waitStop()
-		t.Logf("%s", testData.wrk.Info(true))
+		t.Logf("%s", testData.wrk.Info(false))
 
 		testData.saveFullDAG("utangle_full")
 		testData.wrk.SaveTree("utangle_tree")

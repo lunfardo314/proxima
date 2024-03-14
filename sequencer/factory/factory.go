@@ -55,10 +55,11 @@ type (
 	}
 
 	proposal struct {
-		tx         *transaction.Transaction
-		txMetadata *txmetadata.TransactionMetadata
-		extended   vertex.WrappedOutput
-		coverage   ledger.Coverage
+		tx           *transaction.Transaction
+		txMetadata   *txmetadata.TransactionMetadata
+		extended     vertex.WrappedOutput
+		coverage     ledger.Coverage
+		attacherName string
 	}
 
 	Stats struct {
@@ -292,7 +293,6 @@ func (mf *MilestoneFactory) Propose(a *attacher.IncrementalAttacher) (forceExit 
 		mf.Log().Warnf("Propose%s: error during transaction generation: '%v'", a.Name(), err)
 		return true
 	}
-
 	mf.addProposal(proposal{
 		tx: tx,
 		txMetadata: &txmetadata.TransactionMetadata{
@@ -302,8 +302,9 @@ func (mf *MilestoneFactory) Propose(a *attacher.IncrementalAttacher) (forceExit 
 			IsResponseToPull:        false,
 			SourceTypeNonPersistent: txmetadata.SourceTypeSequencer,
 		},
-		extended: a.Extending(),
-		coverage: coverage,
+		extended:     a.Extending(),
+		coverage:     coverage,
+		attacherName: a.Name(),
 	})
 	return
 }
@@ -313,15 +314,21 @@ func (mf *MilestoneFactory) addProposal(p proposal) {
 	defer mf.target.mutex.Unlock()
 
 	mf.target.proposals = append(mf.target.proposals, p)
+	mf.Tracef(TraceTag, "added proposal from %s: coverage %s", p.attacherName, p.coverage.String())
 }
 
 func (mf *MilestoneFactory) getBestProposal() (*transaction.Transaction, *txmetadata.TransactionMetadata) {
 	mf.target.mutex.RLock()
 	defer mf.target.mutex.RUnlock()
 
+	// now we are taking into account also transaction ID. This is important for equal coverages
+	bestInSlot := mf.BestMilestoneInTheSlot(mf.target.targetTs.Slot())
 	maxCoverageSum := uint64(0)
 	maxIdx := -1
 	for i := range mf.target.proposals {
+		if bestInSlot != nil && bestInSlot.IsBetterProposal(&mf.target.proposals[i].coverage, mf.target.targetTs) {
+			continue
+		}
 		c := mf.target.proposals[i].coverage.Sum()
 		if c > maxCoverageSum {
 			maxCoverageSum = c
@@ -331,7 +338,9 @@ func (mf *MilestoneFactory) getBestProposal() (*transaction.Transaction, *txmeta
 	if maxIdx < 0 {
 		return nil, nil
 	}
-	return mf.target.proposals[maxIdx].tx, mf.target.proposals[maxIdx].txMetadata
+	p := mf.target.proposals[maxIdx]
+	mf.Tracef(TraceTag, "getBestProposal: %s, attacher %s: coverage %s", p.tx.IDShortString, p.attacherName, p.coverage.String)
+	return p.tx, p.txMetadata
 }
 
 const TraceTagChooseExtendEndorsePair = "ChooseExtendEndorsePair"
