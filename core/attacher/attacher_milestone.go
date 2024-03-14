@@ -38,9 +38,9 @@ func runMilestoneAttacher(vid *vertex.WrappedTx, metadata *txmetadata.Transactio
 	// calling callback with timeout in order to detect wrong callbacks immediately
 	ok := util.CallWithTimeout(func() {
 		callback(vid, err)
-	}, 100*time.Millisecond)
+	}, 200*time.Millisecond)
 	if !ok {
-		env.Log().Fatalf("AttachTransaction: Internal error: 10 milisec timeout exceeded while calling callback")
+		env.Log().Fatalf("AttachTransaction: Internal error: 200 milisec timeout exceeded while calling callback")
 	}
 }
 

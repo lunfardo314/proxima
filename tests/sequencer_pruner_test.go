@@ -6,13 +6,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lunfardo314/proxima/core/attacher"
 	"github.com/lunfardo314/proxima/core/memdag"
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/sequencer"
-	"github.com/lunfardo314/proxima/sequencer/factory"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/testutil"
 	"github.com/stretchr/testify/require"
@@ -25,7 +23,7 @@ func Test1SequencerPruner(t *testing.T) {
 		testData := initWorkflowTest(t, 1, true)
 		t.Logf("%s", testData.wrk.Info())
 
-		testData.env.StartTracingTags(factory.TraceTag)
+		//testData.env.StartTracingTags(factory.TraceTag)
 
 		seq, err := sequencer.New(testData.wrk, testData.bootstrapChainID, testData.genesisPrivKey,
 			sequencer.WithMaxBranches(maxSlots))
@@ -49,8 +47,8 @@ func Test1SequencerPruner(t *testing.T) {
 	})
 	t.Run("tag along transfers", func(t *testing.T) {
 		const (
-			maxSlots   = 10 // 40
-			batchSize  = 5  // 10
+			maxSlots   = 40
+			batchSize  = 10
 			maxBatches = 5
 			sendAmount = 2000
 		)
@@ -261,7 +259,7 @@ func TestNSequencersTransferPruner(t *testing.T) {
 			nSequencers     = 2   // in addition to bootstrap
 			batchSize       = 10  // 10
 			sendAmount      = 2000
-			spammingTimeout = 10 * time.Second // 10
+			spammingTimeout = 20 * time.Second // 10
 			startPruner     = true
 			traceTx         = false
 		)
@@ -270,7 +268,7 @@ func TestNSequencersTransferPruner(t *testing.T) {
 		//testData.env.StartTracingTags(pruner.TraceTag)
 		//testData.env.StartTracingTags(pull_client.TraceTag)
 
-		testData.env.StartTracingTags(attacher.TraceTagCoverageAdjustment)
+		//testData.env.StartTracingTags(attacher.TraceTagCoverageAdjustment)
 
 		rdr := multistate.MakeSugared(testData.wrk.HeaviestStateForLatestTimeSlot())
 		require.EqualValues(t, initBalance*nSequencers, int(rdr.BalanceOf(testData.addrAux.AccountID())))

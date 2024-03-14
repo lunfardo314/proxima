@@ -322,15 +322,11 @@ func (mf *MilestoneFactory) getBestProposal() (*transaction.Transaction, *txmeta
 	mf.target.mutex.RLock()
 	defer mf.target.mutex.RUnlock()
 
-	// now we are taking into account also transaction ID. This is important for equal coverages
 	bestCoverageInSlot := mf.BestCoverageInTheSlot(mf.target.targetTs)
 	mf.Tracef(TraceTag, "best coverage in slot: %s", bestCoverageInSlot.String)
-	maxCoverageSum := uint64(0)
+	maxCoverageSum := bestCoverageInSlot.Sum()
 	maxIdx := -1
 	for i := range mf.target.proposals {
-		if bestCoverageInSlot != nil && !bestCoverageInSlot.IsBetterProposal(&mf.target.proposals[i].coverage, mf.target.targetTs) {
-			continue
-		}
 		c := mf.target.proposals[i].coverage.Sum()
 		if c > maxCoverageSum {
 			maxCoverageSum = c
