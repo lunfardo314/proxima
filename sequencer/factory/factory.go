@@ -35,9 +35,9 @@ type (
 
 	MilestoneFactory struct {
 		Environment
-		mutex                       sync.RWMutex
-		proposal                    latestMilestoneProposal
 		ownMilestones               map[*vertex.WrappedTx]outputsWithTime // map ms -> consumed outputs in the past
+		mutex                       sync.RWMutex
+		target                      target
 		maxTagAlongInputs           int
 		ownMilestoneCount           int
 		removedMilestonesSinceReset int
@@ -48,13 +48,17 @@ type (
 		since    time.Time
 	}
 
-	latestMilestoneProposal struct {
-		mutex             sync.RWMutex
-		current           *transaction.Transaction
-		txMetadata        *txmetadata.TransactionMetadata
-		targetTs          ledger.Time
-		bestSoFarCoverage ledger.Coverage
-		currentExtended   vertex.WrappedOutput
+	target struct {
+		mutex     sync.RWMutex
+		targetTs  ledger.Time
+		proposals []proposal
+	}
+
+	proposal struct {
+		tx         *transaction.Transaction
+		txMetadata *txmetadata.TransactionMetadata
+		extended   vertex.WrappedOutput
+		coverage   ledger.Coverage
 	}
 
 	Stats struct {
@@ -84,8 +88,10 @@ const (
 
 func New(env Environment) (*MilestoneFactory, error) {
 	ret := &MilestoneFactory{
-		Environment:       env,
-		proposal:          latestMilestoneProposal{},
+		Environment: env,
+		target: target{
+			proposals: make([]proposal, 0),
+		},
 		ownMilestones:     make(map[*vertex.WrappedTx]outputsWithTime),
 		maxTagAlongInputs: env.MaxTagAlongOutputs(),
 	}
@@ -188,29 +194,23 @@ func (mf *MilestoneFactory) StartProposingForTargetLogicalTime(targetTs ledger.T
 
 	<-ctx.Done()
 
-	return mf.getLatestProposal() // will return nil if wasn't able to generate transaction
+	return mf.getBestProposal() // will return nil if wasn't able to generate transaction
 }
 
-// setNewTarget signals proposer allMilestoneProposingStrategies about new timestamp,
-// Returns last proposed proposal
+// setNewTarget sets new target for proposers
 func (mf *MilestoneFactory) setNewTarget(ts ledger.Time) {
-	mf.proposal.mutex.Lock()
-	defer mf.proposal.mutex.Unlock()
+	mf.target.mutex.Lock()
+	defer mf.target.mutex.Unlock()
 
-	if mf.proposal.targetTs.IsSlotBoundary() || mf.proposal.targetTs.Slot() != ts.Slot() {
-		// if starting new slot, reset best coverage delta
-		mf.proposal.bestSoFarCoverage = ledger.Coverage{}
-	}
-	mf.proposal.targetTs = ts
-	mf.proposal.current = nil
-	mf.proposal.txMetadata = nil
+	mf.target.targetTs = ts
+	mf.target.proposals = util.ClearSlice(mf.target.proposals)
 }
 
 func (mf *MilestoneFactory) CurrentTargetTs() ledger.Time {
-	mf.proposal.mutex.RLock()
-	defer mf.proposal.mutex.RUnlock()
+	mf.target.mutex.RLock()
+	defer mf.target.mutex.RUnlock()
 
-	return mf.proposal.targetTs
+	return mf.target.targetTs
 }
 
 func (mf *MilestoneFactory) AttachTagAlongInputs(a *attacher.IncrementalAttacher) (numInserted int) {
@@ -285,15 +285,6 @@ func (mf *MilestoneFactory) Propose(a *attacher.IncrementalAttacher) (forceExit 
 	coverage := a.LedgerCoverage()
 	mf.Tracef(TraceTag, "Propose%s: extend: %s, coverage %s", a.Name(), util.Ref(a.Extending()).IDShortString, coverage.String)
 
-	mf.proposal.mutex.Lock()
-	defer mf.proposal.mutex.Unlock()
-
-	if coverage.Sum() <= mf.proposal.bestSoFarCoverage.Sum() {
-		mf.Tracef(TraceTag, "Propose%s: proposal REJECTED due to no increase in coverage (%s vs prev %s)",
-			a.Name(), coverage.String(), mf.proposal.bestSoFarCoverage.String)
-		return
-	}
-
 	commandParser := NewCommandParser(ledger.AddressED25519FromPrivateKey(mf.ControllerPrivateKey()))
 	// inflate whenever possible
 	tx, err := a.MakeSequencerTransaction(mf.Environment.SequencerName(), mf.ControllerPrivateKey(), commandParser)
@@ -302,34 +293,45 @@ func (mf *MilestoneFactory) Propose(a *attacher.IncrementalAttacher) (forceExit 
 		return true
 	}
 
-	// now we are taking into account also transaction ID. This is important for equal coverages
-	if bestInSlot := mf.BestMilestoneInTheSlot(a.TargetTs().Slot()); bestInSlot != nil {
-		if !bestInSlot.IsBetterProposal(&coverage, a.TargetTs()) {
-			mf.Tracef(TraceTag, "Propose%s: proposal REJECTED due to better milestone %s in the same slot %s",
-				a.Name(), mf.proposal.bestSoFarCoverage.String, a.TargetTs().Slot())
-			return false
-		}
-	}
-
-	mf.proposal.current = tx
-	mf.proposal.txMetadata = &txmetadata.TransactionMetadata{
-		StateRoot:               nil,
-		LedgerCoverageDelta:     util.Ref(coverage.LatestDelta()),
-		SlotInflation:           util.Ref(a.SlotInflation()),
-		IsResponseToPull:        false,
-		SourceTypeNonPersistent: txmetadata.SourceTypeSequencer,
-	}
-	mf.proposal.bestSoFarCoverage = coverage
-	mf.proposal.currentExtended = a.Extending()
-	mf.Tracef(TraceTag, "Propose%s: proposal %s ACCEPTED", a.Name(), tx.IDShortString)
+	mf.addProposal(proposal{
+		tx: tx,
+		txMetadata: &txmetadata.TransactionMetadata{
+			StateRoot:               nil,
+			LedgerCoverageDelta:     util.Ref(coverage.LatestDelta()),
+			SlotInflation:           util.Ref(a.SlotInflation()),
+			IsResponseToPull:        false,
+			SourceTypeNonPersistent: txmetadata.SourceTypeSequencer,
+		},
+		extended: a.Extending(),
+		coverage: coverage,
+	})
 	return
 }
 
-func (mf *MilestoneFactory) getLatestProposal() (*transaction.Transaction, *txmetadata.TransactionMetadata) {
-	mf.proposal.mutex.RLock()
-	defer mf.proposal.mutex.RUnlock()
+func (mf *MilestoneFactory) addProposal(p proposal) {
+	mf.target.mutex.Lock()
+	defer mf.target.mutex.Unlock()
 
-	return mf.proposal.current, mf.proposal.txMetadata
+	mf.target.proposals = append(mf.target.proposals, p)
+}
+
+func (mf *MilestoneFactory) getBestProposal() (*transaction.Transaction, *txmetadata.TransactionMetadata) {
+	mf.target.mutex.RLock()
+	defer mf.target.mutex.RUnlock()
+
+	maxCoverageSum := uint64(0)
+	maxIdx := -1
+	for i := range mf.target.proposals {
+		c := mf.target.proposals[i].coverage.Sum()
+		if c > maxCoverageSum {
+			maxCoverageSum = c
+			maxIdx = i
+		}
+	}
+	if maxIdx < 0 {
+		return nil, nil
+	}
+	return mf.target.proposals[maxIdx].tx, mf.target.proposals[maxIdx].txMetadata
 }
 
 const TraceTagChooseExtendEndorsePair = "ChooseExtendEndorsePair"
