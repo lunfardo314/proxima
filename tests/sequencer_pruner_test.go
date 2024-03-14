@@ -265,9 +265,6 @@ func TestNSequencersTransferPruner(t *testing.T) {
 		)
 		testData := initMultiSequencerTest(t, nSequencers, startPruner)
 
-		//testData.env.StartTracingTags(pruner.TraceTag)
-		//testData.env.StartTracingTags(pull_client.TraceTag)
-
 		//testData.env.StartTracingTags(attacher.TraceTagCoverageAdjustment)
 
 		rdr := multistate.MakeSugared(testData.wrk.HeaviestStateForLatestTimeSlot())
