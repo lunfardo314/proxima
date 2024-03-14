@@ -67,7 +67,7 @@ func (b *BaseProposer) propose() (*attacher.IncrementalAttacher, bool) {
 		b.Tracef(TraceTag, "%s making branch, no tag-along, extending %s cov: %s, attacher %s cov: %s",
 			b.Name, extend.IDShortString, extend.VID.GetLedgerCoverage().String(), a.Name(), util.Ref(a.LedgerCoverage()).String)
 	}
-	if bestInSlot := b.BestMilestoneInTheSlot(b.TargetTs.Slot()); bestInSlot != nil {
+	if bestInSlot := b.BestAdjustedCoverageInTheSlot(b.TargetTs.Slot()); bestInSlot != nil {
 		bestLC := bestInSlot.GetLedgerCoverage()
 		lc := a.LedgerCoverage()
 		if bestLC != nil && !bestInSlot.IsBetterProposal(&lc, b.TargetTs) {

@@ -37,7 +37,7 @@ func AlignedCoverages(vid1, vid2 *WrappedTx) (ledger.Coverage, ledger.Coverage) 
 	return lc1Ret, lc2Ret
 }
 
-// IsPreferredMilestoneAgainstTheOther betterMilestone returns if vid1 is strongly better than vid2
+// IsPreferredMilestoneAgainstTheOther returns if vid1 is strongly better than vid2
 func IsPreferredMilestoneAgainstTheOther(vid1, vid2 *WrappedTx, preferYounger bool) bool {
 	util.Assertf(vid1.IsSequencerMilestone() && vid2.IsSequencerMilestone(), "vid1.IsSequencerMilestone() && vid2.IsSequencerMilestone()")
 	if vid1 == vid2 {

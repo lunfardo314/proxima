@@ -19,7 +19,7 @@ type (
 		Propose(a *attacher.IncrementalAttacher) bool
 		AttachTagAlongInputs(a *attacher.IncrementalAttacher) int
 		ChooseExtendEndorsePair(proposerName string, targetTs ledger.Time) *attacher.IncrementalAttacher
-		BestMilestoneInTheSlot(slot ledger.Slot) *vertex.WrappedTx
+		BestAdjustedCoverageInTheSlot(slot ledger.Slot) *vertex.WrappedTx
 		SequencerName() string
 	}
 

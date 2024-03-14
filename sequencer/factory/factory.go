@@ -180,7 +180,8 @@ func (mf *MilestoneFactory) AddOwnMilestone(vid *vertex.WrappedTx) {
 func (mf *MilestoneFactory) StartProposingForTargetLogicalTime(targetTs ledger.Time) (*transaction.Transaction, *txmetadata.TransactionMetadata) {
 	deadline := targetTs.Time()
 	nowis := time.Now()
-	mf.Tracef(TraceTag, "StartProposingForTargetLogicalTime: targetTs: %v, nowis: %v", deadline, nowis)
+	mf.Tracef(TraceTag, "StartProposingForTargetLogicalTime: target: %s, deadline: %s, nowis: %s",
+		targetTs.String, deadline.Format("15:04:05.999"), nowis.Format("15:04:05.999"))
 
 	if deadline.Before(nowis) {
 		mf.Tracef(TraceTag, "target %s is in the past by %v: impossible to generate milestone",
@@ -314,7 +315,7 @@ func (mf *MilestoneFactory) addProposal(p proposal) {
 	defer mf.target.mutex.Unlock()
 
 	mf.target.proposals = append(mf.target.proposals, p)
-	mf.Tracef(TraceTag, "added proposal from %s: coverage %s", p.attacherName, p.coverage.String())
+	mf.Tracef(TraceTag, "added proposal %s from %s: coverage %s", p.tx.IDShortString, p.attacherName, p.coverage.String)
 }
 
 func (mf *MilestoneFactory) getBestProposal() (*transaction.Transaction, *txmetadata.TransactionMetadata) {
@@ -322,11 +323,12 @@ func (mf *MilestoneFactory) getBestProposal() (*transaction.Transaction, *txmeta
 	defer mf.target.mutex.RUnlock()
 
 	// now we are taking into account also transaction ID. This is important for equal coverages
-	bestInSlot := mf.BestMilestoneInTheSlot(mf.target.targetTs.Slot())
+	bestCoverageInSlot := mf.BestCoverageInTheSlot(mf.target.targetTs)
+	mf.Tracef(TraceTag, "best coverage in slot: %s", bestCoverageInSlot.String)
 	maxCoverageSum := uint64(0)
 	maxIdx := -1
 	for i := range mf.target.proposals {
-		if bestInSlot != nil && bestInSlot.IsBetterProposal(&mf.target.proposals[i].coverage, mf.target.targetTs) {
+		if bestCoverageInSlot != nil && !bestCoverageInSlot.IsBetterProposal(&mf.target.proposals[i].coverage, mf.target.targetTs) {
 			continue
 		}
 		c := mf.target.proposals[i].coverage.Sum()
@@ -336,10 +338,12 @@ func (mf *MilestoneFactory) getBestProposal() (*transaction.Transaction, *txmeta
 		}
 	}
 	if maxIdx < 0 {
+		mf.Tracef(TraceTag, "getBestProposal: NONE, target: %s", mf.target.targetTs.String)
 		return nil, nil
 	}
 	p := mf.target.proposals[maxIdx]
-	mf.Tracef(TraceTag, "getBestProposal: %s, attacher %s: coverage %s", p.tx.IDShortString, p.attacherName, p.coverage.String)
+	mf.Tracef(TraceTag, "getBestProposal: %s, target: %s, attacher %s: coverage %s",
+		p.tx.IDShortString, mf.target.targetTs.String, p.attacherName, p.coverage.String)
 	return p.tx, p.txMetadata
 }
 
@@ -448,14 +452,21 @@ func (mf *MilestoneFactory) NumMilestones() int {
 	return mf.NumSequencerTips()
 }
 
-func (mf *MilestoneFactory) BestMilestoneInTheSlot(slot ledger.Slot) *vertex.WrappedTx {
-	all := mf.LatestMilestonesDescending(func(seqID ledger.ChainID, vid *vertex.WrappedTx) bool {
-		return vid.Slot() == slot
-	})
-	if len(all) == 0 {
-		return nil
+func (mf *MilestoneFactory) BestCoverageInTheSlot(targetTs ledger.Time) ledger.Coverage {
+	if targetTs.Tick() == 0 {
+		return ledger.Coverage{}
 	}
-	return all[0]
+	all := mf.LatestMilestonesDescending(func(seqID ledger.ChainID, vid *vertex.WrappedTx) bool {
+		return vid.Slot() == targetTs.Slot()
+	})
+	if len(all) == 0 || all[0].IsBranchTransaction() {
+		return ledger.Coverage{}
+	}
+	ret := all[0].GetLedgerCoverage()
+	if ret == nil {
+		return ledger.Coverage{}
+	}
+	return *ret
 }
 
 func (mf *MilestoneFactory) purge(ttl time.Duration) int {
