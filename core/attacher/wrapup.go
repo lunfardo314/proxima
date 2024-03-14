@@ -12,6 +12,7 @@ func (a *milestoneAttacher) wrapUpAttacher() {
 	a.Tracef(TraceTagAttachMilestone, "wrapUpAttacher")
 
 	a.calculateSlotInflation()
+	a.AdjustCoverageIfNecessary()
 	a.checkConsistencyWithMetadata()
 
 	a.finals.baseline = &a.baseline.ID

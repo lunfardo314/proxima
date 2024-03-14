@@ -339,3 +339,18 @@ func BranchIsDescendantOf(descendant, predecessor *ledger.TransactionID, getStor
 
 	return rdr.KnowsCommittedTransaction(predecessor)
 }
+
+// MustSequencerOutputOfBranch fetches and returns sequencer output of the branch. Panics if fails for any reason
+func MustSequencerOutputOfBranch(store global.StateStore, txid ledger.TransactionID) *ledger.OutputWithChainID {
+	util.Assertf(txid.IsBranchTransaction(), "txid.IsBranchTransaction()")
+	bd, ok := FetchBranchData(store, txid)
+	util.Assertf(ok, "SequencerOutputOfBranch: can't load branch data for %s", txid.StringShort)
+	cc, idx := bd.SequencerOutput.Output.ChainConstraint()
+	util.Assertf(idx != 0xff, "can't find chain constraint in %s", txid.StringShort)
+
+	return &ledger.OutputWithChainID{
+		OutputWithID:               *bd.SequencerOutput,
+		ChainID:                    cc.ID,
+		PredecessorConstraintIndex: cc.PredecessorConstraintIndex,
+	}
+}

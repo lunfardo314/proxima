@@ -25,9 +25,10 @@ func newPastConeAttacher(env Environment, name string) attacher {
 }
 
 const (
-	TraceTagAttach       = "attach"
-	TraceTagAttachOutput = "attachOutput"
-	TraceTagAttachVertex = "attachVertexUnwrapped"
+	TraceTagAttach             = "attach"
+	TraceTagAttachOutput       = "attachOutput"
+	TraceTagAttachVertex       = "attachVertexUnwrapped"
+	TraceTagCoverageAdjustment = "adjust"
 )
 
 func (a *attacher) Name() string {
@@ -712,6 +713,20 @@ func (a *attacher) setBaseline(vid *vertex.WrappedTx, currentTS ledger.Time) boo
 	a.Assertf(a.coverage.LatestDelta() == 0, "a.coverage.LatestDelta() == 0")
 	a.baselineSupply = rr.Supply
 	return true
+}
+
+// adjustCoverageIfNecessary for coverage adjustment details see Proxima WP
+func (a *attacher) adjustCoverageIfNecessary() {
+	baseSeqOut := a.baseline.SequencerWrappedOutput()
+	if a.isRootedOutput(baseSeqOut) {
+		return
+	}
+	// if case sequencer output is not rooted (branch is just endorsed), add its inflation to the coverage delta
+	out, idx := multistate.MustSequencerOutputOfBranch(a.StateStore(), baseSeqOut.VID.ID).Output.ChainConstraint()
+	util.Assertf(idx != 0xff, "adjustCoverageIfNecessary: can't find chain constraint on the branch %s", baseSeqOut.IDShortString)
+
+	a.coverageAdjustment = out.Inflation
+	a.coverage.AddDelta(out.Inflation)
 }
 
 func (a *attacher) dumpLines(prefix ...string) *lines.Lines {

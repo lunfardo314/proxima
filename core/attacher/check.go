@@ -51,8 +51,8 @@ func (a *milestoneAttacher) _checkConsistencyBeforeFinalization() (err error) {
 		err = fmt.Errorf("sum of rooted cannot be 0")
 		return
 	}
-	if sumRooted != a.coverage.LatestDelta() {
-		err = fmt.Errorf("sum of amounts of rooted outputs %s is not equal to the coverage sumRooted %s",
+	if sumRooted+a.coverageAdjustment != a.coverage.LatestDelta() {
+		err = fmt.Errorf("sum of amounts of rooted outputs %s is not equal to the coverage sumRooted+coverageAdjustment %s",
 			util.GoTh(sumRooted), util.GoTh(a.coverage.LatestDelta()))
 		return
 	}

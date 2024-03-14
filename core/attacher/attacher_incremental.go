@@ -281,6 +281,15 @@ func (a *IncrementalAttacher) MakeSequencerTransaction(seqName string, privateKe
 	return tx, nil
 }
 
+func (a *IncrementalAttacher) AdjustCoverageIfNecessary() {
+	a.adjustCoverageIfNecessary()
+	if a.coverageAdjustment > 0 {
+		ext := a.Extending()
+		a.Tracef(TraceTagCoverageAdjustment, " IncrementalAttacher: coverage has been adjusted by %s, extending: %s, baseline: %s",
+			func() string { return util.GoTh(a.coverageAdjustment) }, ext.IDShortString, a.baseline.IDShortString)
+	}
+}
+
 func (a *IncrementalAttacher) LedgerCoverage() ledger.Coverage {
 	return a.coverage
 }

@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/lunfardo314/proxima/core/attacher"
 	"github.com/lunfardo314/proxima/core/memdag"
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/ledger"
@@ -269,6 +270,8 @@ func TestNSequencersTransferPruner(t *testing.T) {
 
 		//testData.env.StartTracingTags(pruner.TraceTag)
 		//testData.env.StartTracingTags(pull_client.TraceTag)
+
+		testData.env.StartTracingTags(attacher.TraceTagCoverageAdjustment)
 
 		rdr := multistate.MakeSugared(testData.wrk.HeaviestStateForLatestTimeSlot())
 		require.EqualValues(t, initBalance*nSequencers, int(rdr.BalanceOf(testData.addrAux.AccountID())))

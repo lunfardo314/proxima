@@ -281,6 +281,7 @@ func (mf *MilestoneFactory) startProposerWorkers(targetTime ledger.Time, ctx con
 func (mf *MilestoneFactory) Propose(a *attacher.IncrementalAttacher) (forceExit bool) {
 	defer a.UnReferenceAll()
 
+	a.AdjustCoverageIfNecessary()
 	coverage := a.LedgerCoverage()
 	mf.Tracef(TraceTag, "Propose%s: extend: %s, coverage %s", a.Name(), util.Ref(a.Extending()).IDShortString, coverage.String)
 

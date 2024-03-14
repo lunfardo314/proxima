@@ -302,3 +302,11 @@ func (a *milestoneAttacher) logStatsString() string {
 		memStr,
 	)
 }
+
+func (a *milestoneAttacher) AdjustCoverageIfNecessary() {
+	a.adjustCoverageIfNecessary()
+	if a.coverageAdjustment > 0 {
+		a.Tracef(TraceTagCoverageAdjustment, " milestoneAttacher: coverage has been adjusted by %s, ms: %s, baseline: %s",
+			func() string { return util.GoTh(a.coverageAdjustment) }, a.vid.IDShortString, a.baseline.IDShortString)
+	}
+}
