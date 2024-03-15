@@ -1,4 +1,4 @@
-package factory
+package commands
 
 import (
 	"encoding/binary"

@@ -19,7 +19,7 @@ import (
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/peering"
 	"github.com/lunfardo314/proxima/sequencer"
-	"github.com/lunfardo314/proxima/sequencer/factory"
+	"github.com/lunfardo314/proxima/sequencer/factory/commands"
 	"github.com/lunfardo314/proxima/txstore"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/testutil"
@@ -735,7 +735,7 @@ type spammerWithdrawCmdParams struct {
 func (td *workflowTestData) spamWithdrawCommands(par spammerWithdrawCmdParams, ctx context.Context) {
 	srcAddr := ledger.AddressED25519FromPrivateKey(par.seqControllerPrivateKey)
 
-	const withdrawAmount = factory.MinimumAmountToRequestFromSequencer
+	const withdrawAmount = commands.MinimumAmountToRequestFromSequencer
 
 	for {
 		select {
@@ -751,7 +751,7 @@ func (td *workflowTestData) spamWithdrawCommands(par spammerWithdrawCmdParams, c
 		})
 		_, err = txb.ProduceOutput(reminder)
 		require.NoError(td.t, err)
-		cmdOut, err := factory.MakeSequencerWithdrawCmdOutput(factory.MakeSequencerWithdrawCmdOutputParams{
+		cmdOut, err := commands.MakeSequencerWithdrawCmdOutput(commands.MakeSequencerWithdrawCmdOutputParams{
 			SeqID:          par.seqID,
 			ControllerAddr: srcAddr,
 			TargetLock:     par.target,
@@ -778,6 +778,8 @@ func (td *workflowTestData) spamWithdrawCommands(par spammerWithdrawCmdParams, c
 	}
 }
 
+const branchMiningSteps = 100
+
 func (td *workflowTestData) startSequencersWithTimeout(maxSlots int, timeout ...time.Duration) {
 	var ctx context.Context
 	if len(timeout) > 0 {
@@ -794,6 +796,7 @@ func (td *workflowTestData) startSequencersWithTimeout(maxSlots int, timeout ...
 			sequencer.WithMaxTagAlongInputs(30),
 			sequencer.WithPace(5),
 			sequencer.WithMaxBranches(maxSlots),
+			sequencer.WithBranchInflationMiningSteps(branchMiningSteps),
 		)
 		require.NoError(td.t, err)
 		td.sequencers[seqNr].Start()

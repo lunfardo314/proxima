@@ -16,6 +16,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/sequencer/backlog"
+	"github.com/lunfardo314/proxima/sequencer/factory/commands"
 	"github.com/lunfardo314/proxima/sequencer/factory/proposer_base"
 	"github.com/lunfardo314/proxima/sequencer/factory/proposer_endorse1"
 	"github.com/lunfardo314/proxima/sequencer/factory/proposer_generic"
@@ -88,6 +89,7 @@ const (
 	maxAdditionalOutputs  = 256 - 2 // 1 for chain output, 1 for stem
 	veryMaxTagAlongInputs = maxAdditionalOutputs
 	TraceTag              = "factory"
+	TraceTagMining        = "mining"
 )
 
 func New(env Environment) (*MilestoneFactory, error) {
@@ -283,60 +285,78 @@ func (mf *MilestoneFactory) startProposerWorkers(targetTime ledger.Time, ctx con
 	}
 }
 
-func (mf *MilestoneFactory) forceExit() bool {
-	select {
-	case <-mf.Ctx().Done():
-		return true
-	default:
-		return false
-	}
+func (mf *MilestoneFactory) makeTxProposal(a *attacher.IncrementalAttacher, branchInflation uint64) (*transaction.Transaction, error) {
+	cmdParser := commands.NewCommandParser(ledger.AddressED25519FromPrivateKey(mf.ControllerPrivateKey()))
+	return a.MakeSequencerTransaction(mf.Environment.SequencerName(), mf.ControllerPrivateKey(), cmdParser, branchInflation)
 }
 
-// TODO pass proposer context and check
-
-func (mf *MilestoneFactory) Propose(a *attacher.IncrementalAttacher) bool {
-	defer a.UnReferenceAll()
-
-	a.AdjustCoverageIfNecessary()
-	coverage := a.LedgerCoverage()
-	mf.Tracef(TraceTag, "Propose%s: extend: %s, coverage %s", a.Name(), util.Ref(a.Extending()).IDShortString, coverage.String)
-
-	commandParser := NewCommandParser(ledger.AddressED25519FromPrivateKey(mf.ControllerPrivateKey()))
-	if err := mf.proposeWithBranchInflation(a, commandParser, 0); err != nil {
-		mf.Log().Warnf("error while generating transaction: %v", err)
-		return true
+func (mf *MilestoneFactory) Propose(a *attacher.IncrementalAttacher, ctx context.Context) error {
+	if a.TargetTs().Tick() == 0 {
+		return mf.proposeBranchTx(a, ctx)
 	}
-	if a.TargetTs().Tick() != 0 {
-		// non-branch transaction
-		return false
-	}
-	if mf.forceExit() {
-		return true
-	}
-	// mine branch
-	maxInflation := ledger.L().ID.BranchBonusBase
-	bestCandidate := uint64(0)
-	for i := 0; i < mf.BranchInflationMiningSteps() && !mf.forceExit(); i++ {
-		candidate := bestCandidate + uint64(rand.Intn(int(maxInflation-bestCandidate))) + 1
-		err := mf.proposeWithBranchInflation(a, commandParser, candidate)
-		if errors.Is(err, txbuilder.ErrBranchInflationAmountInvalid) {
-			continue
-		}
-		if err != nil {
-			mf.Log().Warnf("error while generating transaction: %v", err)
-			return true
-		}
-		bestCandidate = candidate
-	}
-	return false
+	return mf.proposeNonBranchTx(a)
 }
 
-func (mf *MilestoneFactory) proposeWithBranchInflation(a *attacher.IncrementalAttacher, cmdParser CommandParser, branchInflation uint64) error {
-	coverage := a.LedgerCoverage()
-	tx, err := a.MakeSequencerTransaction(mf.Environment.SequencerName(), mf.ControllerPrivateKey(), cmdParser, branchInflation)
+func (mf *MilestoneFactory) proposeNonBranchTx(a *attacher.IncrementalAttacher) error {
+	util.Assertf(a.TargetTs().Tick() != 0, "must be non-branch tx")
+	tx, err := mf.makeTxProposal(a, 0)
 	if err != nil {
 		return err
 	}
+	coverage := a.LedgerCoverage()
+	mf.addProposal(proposal{
+		tx: tx,
+		txMetadata: &txmetadata.TransactionMetadata{
+			StateRoot:               nil,
+			LedgerCoverageDelta:     util.Ref(coverage.LatestDelta()),
+			SlotInflation:           util.Ref(a.SlotInflation()),
+			IsResponseToPull:        false,
+			SourceTypeNonPersistent: txmetadata.SourceTypeSequencer,
+		},
+		extended:     a.Extending(),
+		coverage:     coverage,
+		attacherName: a.Name(),
+	})
+	return nil
+}
+
+func (mf *MilestoneFactory) proposeBranchTx(a *attacher.IncrementalAttacher, ctx context.Context) error {
+	util.Assertf(a.TargetTs().Tick() == 0, "must be branch tx")
+	forceExit := func() bool {
+		select {
+		case <-ctx.Done():
+			return true
+		default:
+			return false
+		}
+	}
+	tx, err := mf.makeTxProposal(a, 0)
+	if err != nil {
+		return err
+	}
+	bestCandidate := uint64(0)
+	maxInflation := ledger.L().ID.BranchBonusBase
+
+	for i := 0; i < mf.BranchInflationMiningSteps(); i++ {
+		if forceExit() {
+			mf.Tracef(TraceTagMining, "step %d: break mining", i)
+			break
+		}
+		candidate := bestCandidate + uint64(rand.Intn(int(maxInflation-bestCandidate))) + 1
+		txCandidate, err := mf.makeTxProposal(a, candidate)
+		if errors.Is(err, txbuilder.ErrBranchInflationAmountInvalid) {
+			mf.Tracef(TraceTagMining, "step %d: failed value = %s", i, util.GoTh(candidate))
+			continue
+		}
+		mf.Tracef(TraceTagMining, "step %d: mined value = %s", i, util.GoTh(candidate))
+		if err != nil {
+			return err
+		}
+		bestCandidate = candidate
+		tx = txCandidate
+	}
+	mf.Tracef(TraceTagMining, "mined branch inflation value: %s", util.GoTh(bestCandidate))
+	coverage := a.LedgerCoverage()
 	mf.addProposal(proposal{
 		tx: tx,
 		txMetadata: &txmetadata.TransactionMetadata{

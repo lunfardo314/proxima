@@ -70,7 +70,7 @@ func (v *VirtualTransaction) OutputAt(idx byte) (*ledger.Output, bool) {
 	return nil, false
 }
 
-// SequencerOutputs returns <seq output>, <branch output> or respective nils
+// SequencerOutputs returns <seq output>, <stem output> or respective nils
 func (v *VirtualTransaction) SequencerOutputs() (*ledger.Output, *ledger.Output) {
 	v.mutex.RLock()
 	defer v.mutex.RUnlock()

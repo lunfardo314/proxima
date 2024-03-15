@@ -1,13 +1,21 @@
-package factory
+package commands
 
 import (
 	"testing"
+	"time"
 
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util/testutil"
 	"github.com/lunfardo314/unitrie/common"
 	"github.com/stretchr/testify/require"
 )
+
+func init() {
+	ledger.InitWithTestingLedgerIDData(
+		ledger.WithTickDuration(10*time.Millisecond),
+		ledger.WithTransactionPace(1),
+		ledger.WithSequencerPace(1))
+}
 
 func TestBase(t *testing.T) {
 	t.Run("ok", func(t *testing.T) {

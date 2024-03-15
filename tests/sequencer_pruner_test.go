@@ -19,14 +19,18 @@ import (
 
 func Test1SequencerPruner(t *testing.T) {
 	t.Run("idle", func(t *testing.T) {
-		const maxSlots = 5 // 20
+		const (
+			maxSlots          = 5 // 20
+			branchMiningSteps = 10
+		)
 		testData := initWorkflowTest(t, 1, true)
 		t.Logf("%s", testData.wrk.Info())
 
 		//testData.env.StartTracingTags(factory.TraceTag)
+		//testData.env.StartTracingTags(factory.TraceTagMining)
 
 		seq, err := sequencer.New(testData.wrk, testData.bootstrapChainID, testData.genesisPrivKey,
-			sequencer.WithMaxBranches(maxSlots))
+			sequencer.WithMaxBranches(maxSlots), sequencer.WithBranchInflationMiningSteps(branchMiningSteps))
 		require.NoError(t, err)
 		var countBr atomic.Int32
 		seq.OnMilestoneSubmitted(func(_ *sequencer.Sequencer, ms *vertex.WrappedTx) {
@@ -47,10 +51,11 @@ func Test1SequencerPruner(t *testing.T) {
 	})
 	t.Run("tag along transfers", func(t *testing.T) {
 		const (
-			maxSlots   = 40
-			batchSize  = 10
-			maxBatches = 5
-			sendAmount = 2000
+			maxSlots          = 40
+			batchSize         = 10
+			maxBatches        = 5
+			sendAmount        = 2000
+			branchMiningSteps = 100
 		)
 		testData := initWorkflowTest(t, 1, true)
 		//t.Logf("%s", testData.wrk.Info())
@@ -59,7 +64,7 @@ func Test1SequencerPruner(t *testing.T) {
 
 		ctx, _ := context.WithCancel(context.Background())
 		seq, err := sequencer.New(testData.wrk, testData.bootstrapChainID, testData.genesisPrivKey,
-			sequencer.WithMaxBranches(maxSlots))
+			sequencer.WithMaxBranches(maxSlots), sequencer.WithBranchInflationMiningSteps(branchMiningSteps))
 		require.NoError(t, err)
 		var countBr, countSeq atomic.Int32
 		seq.OnMilestoneSubmitted(func(_ *sequencer.Sequencer, ms *vertex.WrappedTx) {
@@ -159,7 +164,7 @@ func TestNSequencersIdlePruner(t *testing.T) {
 		time.Sleep(20 * time.Second)
 		testData.stopAndWait()
 
-		t.Logf("%s", testData.wrk.Info(true))
+		t.Logf("%s", testData.wrk.Info(false))
 		testData.saveFullDAG("utangle_full")
 		memdag.SaveBranchTree(testData.wrk.StateStore(), fmt.Sprintf("utangle_tree_%d", nSequencers+1))
 	})

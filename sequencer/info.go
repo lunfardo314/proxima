@@ -19,7 +19,7 @@ func (seq *Sequencer) updateInfo(ms *vertex.WrappedTx) {
 	seq.info = Info{
 		In:                     ms.NumInputs(),
 		Out:                    ms.NumProducedOutputs(),
-		InflationAmount:        ms.InflationAmount(),
+		InflationAmount:        ms.InflationAmountOfSequencerMilestone(),
 		NumConsumedFeeOutputs:  nConsumed,
 		NumFeeOutputsInTippool: seq.factory.NumOutputsInBuffer(),
 		NumOtherMsInTippool:    seq.factory.NumMilestones(),

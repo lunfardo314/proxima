@@ -9,7 +9,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/proxi/glb"
-	"github.com/lunfardo314/proxima/sequencer/factory"
+	"github.com/lunfardo314/proxima/sequencer/factory/commands"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/spf13/cobra"
 )
@@ -62,7 +62,7 @@ func runSeqWithdrawCmd(_ *cobra.Command, args []string) {
 		return
 	}
 
-	cmdConstr, err := factory.MakeSequencerWithdrawCommand(amount, targetLock.AsLock())
+	cmdConstr, err := commands.MakeSequencerWithdrawCommand(amount, targetLock.AsLock())
 	glb.AssertNoError(err)
 
 	transferData := txbuilder.NewTransferData(walletData.PrivateKey, walletData.Account, ledger.TimeNow()).

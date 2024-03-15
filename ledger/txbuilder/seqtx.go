@@ -3,6 +3,7 @@ package txbuilder
 import (
 	"crypto/ed25519"
 	"errors"
+	"fmt"
 
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util"
@@ -68,6 +69,8 @@ func MakeSequencerTransactionWithInputLoader(par MakeSequencerTransactionParams)
 			par.ChainInput.ID.Timestamp(), par.Timestamp)
 	case !par.ChainInput.ID.IsSequencerTransaction() && par.StemInput == nil && len(par.Endorsements) == 0:
 		return nil, nil, errP("chain predecessor is not a sequencer transaction -> endorsement of sequencer transaction is mandatory (unless making a branch)")
+	case par.BranchInflationAmount >= ledger.L().ID.BranchBonusBase:
+		return nil, nil, errP("wrong parameter: BranchInflationAmount cannot be bigger than %s", util.GoTh(ledger.L().ID.BranchBonusBase))
 	}
 
 	chainInConstraint, chainInConstraintIdx := par.ChainInput.Output.ChainConstraint()
@@ -96,6 +99,7 @@ func MakeSequencerTransactionWithInputLoader(par MakeSequencerTransactionParams)
 		// non-branch transaction
 		inflationAmount = ledger.L().ID.InflationAmount(par.ChainInput.Timestamp(), par.Timestamp, par.ChainInput.Output.Amount())
 	} else {
+		// branch transaction
 		inflationAmount = par.BranchInflationAmount
 	}
 
@@ -234,7 +238,7 @@ func MakeSequencerTransactionWithInputLoader(par MakeSequencerTransactionParams)
 	}
 	txBytes := txb.TransactionData.Bytes()
 	if par.Timestamp.Tick() == 0 && !ledger.BranchInflationAmountValid(par.BranchInflationAmount, txBytes) {
-		return nil, nil, ErrBranchInflationAmountInvalid
+		return nil, nil, fmt.Errorf("%w: amount = %d", ErrBranchInflationAmountInvalid, par.BranchInflationAmount)
 	}
 	return txBytes, inputLoader, nil
 }

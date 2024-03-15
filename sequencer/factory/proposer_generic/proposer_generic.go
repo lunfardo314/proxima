@@ -2,6 +2,7 @@ package proposer_generic
 
 import (
 	"context"
+	"crypto/ed25519"
 	"fmt"
 	"time"
 
@@ -14,14 +15,15 @@ import (
 type (
 	Environment interface {
 		attacher.Environment
+		ControllerPrivateKey() ed25519.PrivateKey
 		CurrentTargetTs() ledger.Time
 		OwnLatestMilestoneOutput() vertex.WrappedOutput
-		Propose(a *attacher.IncrementalAttacher) bool
 		AttachTagAlongInputs(a *attacher.IncrementalAttacher) int
 		ChooseExtendEndorsePair(proposerName string, targetTs ledger.Time) *attacher.IncrementalAttacher
 		BestCoverageInTheSlot(targetTs ledger.Time) ledger.Coverage
 		SequencerName() string
 		BranchInflationMiningSteps() int
+		Propose(a *attacher.IncrementalAttacher, ctx context.Context) error
 	}
 
 	Task interface {
@@ -47,7 +49,9 @@ type (
 	}
 )
 
-const TraceTag = "propose-generic"
+const (
+	TraceTag = "propose-generic"
+)
 
 func New(env Environment, strategy *Strategy, targetTs ledger.Time, ctx context.Context) Task {
 	return strategy.Constructor(&TaskGeneric{
@@ -74,32 +78,46 @@ func (t *TaskGeneric) GetName() string {
 func (t *TaskGeneric) Run() {
 	var a *attacher.IncrementalAttacher
 	var forceExit bool
+	var err error
+
+	const loopDelay = 10 * time.Millisecond
+	waitExit := func() bool {
+		select {
+		case <-t.ctx.Done():
+			return true
+		case <-time.After(loopDelay):
+		}
+		if t.CurrentTargetTs() != t.TargetTs {
+			return true
+		}
+		return false
+	}
 
 	for {
 		if a, forceExit = t.generateProposal(); forceExit {
 			return
 		}
 		if a == nil || !a.Completed() {
-			if forceExit = t.waitLoop(); forceExit {
+			if waitExit() {
 				return
 			}
 			continue
 		}
-		if forceExit = t.Propose(a); forceExit {
-			t.Tracef(TraceTag, "Run: generated new proposal")
+		if err = t.Propose(a, t.ctx); err != nil {
+			t.Tracef(TraceTag, "Run: %v", err)
 			return
 		}
-		if forceExit = t.waitLoop(); forceExit {
+		if waitExit() {
 			return
 		}
 	}
 }
 
-func (t *TaskGeneric) waitLoop() bool {
+func (t *TaskGeneric) waitExit(d time.Duration) bool {
 	select {
 	case <-t.ctx.Done():
 		return true
-	case <-time.After(10 * time.Millisecond):
+	case <-time.After(d):
 	}
 	if t.CurrentTargetTs() != t.TargetTs {
 		return true

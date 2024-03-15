@@ -795,7 +795,9 @@ func (a *attacher) calculateSlotInflation() {
 	a.slotInflation = 0
 	for vid := range a.vertices {
 		if _, isRooted := a.rooted[vid]; !isRooted {
-			a.slotInflation += vid.InflationAmount()
+			if vid.IsSequencerMilestone() {
+				a.slotInflation += vid.InflationAmountOfSequencerMilestone()
+			}
 		}
 	}
 }
