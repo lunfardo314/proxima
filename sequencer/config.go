@@ -13,15 +13,16 @@ import (
 
 type (
 	ConfigOptions struct {
-		SequencerName      string
-		Pace               int // pace in ticks
-		MaxTagAlongInputs  int
-		MaxTargetTs        ledger.Time
-		MaxBranches        int
-		DelayStart         time.Duration
-		BacklogTTLSlots    int
-		MilestonesTTLSlots int
-		LogAttacherStats   bool
+		SequencerName              string
+		Pace                       int // pace in ticks
+		MaxTagAlongInputs          int
+		MaxTargetTs                ledger.Time
+		MaxBranches                int
+		DelayStart                 time.Duration
+		BacklogTTLSlots            int
+		MilestonesTTLSlots         int
+		LogAttacherStats           bool
+		BranchInflationMiningSteps int
 	}
 
 	ConfigOption func(options *ConfigOptions)
@@ -89,6 +90,7 @@ func paramsFromConfig(name string) ([]ConfigOption, ledger.ChainID, ed25519.Priv
 		WithBacklogTTLSlots(backlogTTLSlots),
 		WithMilestonesTTLSlots(milestonesTTLSlots),
 		WithLogAttacherStats(subViper.GetBool("log_attacher_stats")),
+		WithBranchInflationMiningSteps(subViper.GetInt("branch_inflation_mining_steps")),
 	}
 	return cfg, seqID, controllerKey, nil
 }
@@ -143,5 +145,11 @@ func WithMilestonesTTLSlots(slots int) ConfigOption {
 func WithLogAttacherStats(logAttacherStats bool) ConfigOption {
 	return func(o *ConfigOptions) {
 		o.LogAttacherStats = logAttacherStats
+	}
+}
+
+func WithBranchInflationMiningSteps(steps int) ConfigOption {
+	return func(o *ConfigOptions) {
+		o.BranchInflationMiningSteps = steps
 	}
 }

@@ -21,6 +21,7 @@ type (
 		ChooseExtendEndorsePair(proposerName string, targetTs ledger.Time) *attacher.IncrementalAttacher
 		BestCoverageInTheSlot(targetTs ledger.Time) ledger.Coverage
 		SequencerName() string
+		BranchInflationMiningSteps() int
 	}
 
 	Task interface {
@@ -103,9 +104,5 @@ func (t *TaskGeneric) waitLoop() bool {
 	if t.CurrentTargetTs() != t.TargetTs {
 		return true
 	}
-	return false
-}
-
-func (t *TaskGeneric) MineBranchInflation() bool {
 	return false
 }

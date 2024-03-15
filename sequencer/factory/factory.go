@@ -13,6 +13,7 @@ import (
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/transaction"
+	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/sequencer/backlog"
 	"github.com/lunfardo314/proxima/sequencer/factory/proposer_base"
@@ -20,6 +21,7 @@ import (
 	"github.com/lunfardo314/proxima/sequencer/factory/proposer_generic"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/set"
+	"golang.org/x/exp/rand"
 )
 
 type (
@@ -31,6 +33,7 @@ type (
 		Backlog() *backlog.InputBacklog
 		MaxTagAlongOutputs() int
 		MilestonesTTLSlots() int
+		BranchInflationMiningSteps() int
 	}
 
 	MilestoneFactory struct {
@@ -280,7 +283,18 @@ func (mf *MilestoneFactory) startProposerWorkers(targetTime ledger.Time, ctx con
 	}
 }
 
-func (mf *MilestoneFactory) Propose(a *attacher.IncrementalAttacher) (forceExit bool) {
+func (mf *MilestoneFactory) forceExit() bool {
+	select {
+	case <-mf.Ctx().Done():
+		return true
+	default:
+		return false
+	}
+}
+
+// TODO pass proposer context and check
+
+func (mf *MilestoneFactory) Propose(a *attacher.IncrementalAttacher) bool {
 	defer a.UnReferenceAll()
 
 	a.AdjustCoverageIfNecessary()
@@ -288,11 +302,40 @@ func (mf *MilestoneFactory) Propose(a *attacher.IncrementalAttacher) (forceExit 
 	mf.Tracef(TraceTag, "Propose%s: extend: %s, coverage %s", a.Name(), util.Ref(a.Extending()).IDShortString, coverage.String)
 
 	commandParser := NewCommandParser(ledger.AddressED25519FromPrivateKey(mf.ControllerPrivateKey()))
-	// inflate whenever possible
-	tx, err := a.MakeSequencerTransaction(mf.Environment.SequencerName(), mf.ControllerPrivateKey(), commandParser)
-	if err != nil {
-		mf.Log().Warnf("Propose%s: error during transaction generation: '%v'", a.Name(), err)
+	if err := mf.proposeWithBranchInflation(a, commandParser, 0); err != nil {
+		mf.Log().Warnf("error while generating transaction: %v", err)
 		return true
+	}
+	if a.TargetTs().Tick() != 0 {
+		// non-branch transaction
+		return false
+	}
+	if mf.forceExit() {
+		return true
+	}
+	// mine branch
+	maxInflation := ledger.L().ID.BranchBonusBase
+	bestCandidate := uint64(0)
+	for i := 0; i < mf.BranchInflationMiningSteps() && !mf.forceExit(); i++ {
+		candidate := bestCandidate + uint64(rand.Intn(int(maxInflation-bestCandidate))) + 1
+		err := mf.proposeWithBranchInflation(a, commandParser, candidate)
+		if errors.Is(err, txbuilder.ErrBranchInflationAmountInvalid) {
+			continue
+		}
+		if err != nil {
+			mf.Log().Warnf("error while generating transaction: %v", err)
+			return true
+		}
+		bestCandidate = candidate
+	}
+	return false
+}
+
+func (mf *MilestoneFactory) proposeWithBranchInflation(a *attacher.IncrementalAttacher, cmdParser CommandParser, branchInflation uint64) error {
+	coverage := a.LedgerCoverage()
+	tx, err := a.MakeSequencerTransaction(mf.Environment.SequencerName(), mf.ControllerPrivateKey(), cmdParser, branchInflation)
+	if err != nil {
+		return err
 	}
 	mf.addProposal(proposal{
 		tx: tx,
@@ -307,7 +350,7 @@ func (mf *MilestoneFactory) Propose(a *attacher.IncrementalAttacher) (forceExit 
 		coverage:     coverage,
 		attacherName: a.Name(),
 	})
-	return
+	return nil
 }
 
 func (mf *MilestoneFactory) addProposal(p proposal) {
