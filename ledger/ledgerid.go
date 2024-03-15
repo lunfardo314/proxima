@@ -368,3 +368,12 @@ func GenesisStemOutputID() (ret OutputID) {
 	ret = NewOutputID(GenesisTransactionID(), GenesisStemOutputIndex)
 	return
 }
+
+// BranchInflationAmountValid checks validity of the branch inflation bonus constraint
+func BranchInflationAmountValid(inflation uint64, txBytes []byte) bool {
+	if inflation == 0 {
+		return true
+	}
+	h := blake2b.Sum256(txBytes)
+	return inflation <= binary.BigEndian.Uint64(h[32-8:])%L().ID.BranchBonusBase+1
+}

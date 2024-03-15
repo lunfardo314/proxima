@@ -78,23 +78,34 @@ func (t *TaskGeneric) Run() {
 		if a, forceExit = t.generateProposal(); forceExit {
 			return
 		}
-		if a != nil {
-			func() {
-				if a.Completed() {
-					t.Tracef(TraceTag, "Run: generated new proposal")
-					if forceExit = t.Propose(a); forceExit {
-						return
-					}
-				}
-			}()
+		if a == nil || !a.Completed() {
+			if forceExit = t.waitLoop(); forceExit {
+				return
+			}
+			continue
 		}
-		select {
-		case <-t.ctx.Done():
+		if forceExit = t.Propose(a); forceExit {
+			t.Tracef(TraceTag, "Run: generated new proposal")
 			return
-		case <-time.After(10 * time.Millisecond):
 		}
-		if t.CurrentTargetTs() != t.TargetTs {
+		if forceExit = t.waitLoop(); forceExit {
 			return
 		}
 	}
+}
+
+func (t *TaskGeneric) waitLoop() bool {
+	select {
+	case <-t.ctx.Done():
+		return true
+	case <-time.After(10 * time.Millisecond):
+	}
+	if t.CurrentTargetTs() != t.TargetTs {
+		return true
+	}
+	return false
+}
+
+func (t *TaskGeneric) MineBranchInflation() bool {
+	return false
 }

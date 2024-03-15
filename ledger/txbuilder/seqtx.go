@@ -2,6 +2,7 @@ package txbuilder
 
 import (
 	"crypto/ed25519"
+	"errors"
 
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util"
@@ -28,19 +29,23 @@ type (
 		Endorsements []*ledger.TransactionID
 		// chain controller
 		PrivateKey ed25519.PrivateKey
-		// by default sequencer output is inflated. This option suppresses it
-		DoNotInflate bool
-		//
-		ReturnInputLoader bool
+		// Inflation of the non-branch transaction is always calculated
+		// Inflation of the branch transaction is set to BranchInflationAmount, if it is valid.
+		// BranchInflationAmount is a subject of transaction validity constraint and normally must be mined.
+		// It is valid only if BranchInflationAmount <= (hash(txBytes) mod ledger.BranchBonusBase) + 1
+		// 0 amount always satisfies it. Other values satisfy with probability which steeply drops when
+		// BranchInflationAmount approaches ledger.BranchBonusBase.
+		BranchInflationAmount uint64
+		ReturnInputLoader     bool
 	}
 )
-
-//func(i byte) (*ledger.Output, error)
 
 func MakeSequencerTransaction(par MakeSequencerTransactionParams) ([]byte, error) {
 	ret, _, err := MakeSequencerTransactionWithInputLoader(par)
 	return ret, err
 }
+
+var ErrBranchInflationAmountInvalid = errors.New("branch inflation amount invalid")
 
 func MakeSequencerTransactionWithInputLoader(par MakeSequencerTransactionParams) ([]byte, func(i byte) (*ledger.Output, error), error) {
 	var consumedOutputs []*ledger.Output
@@ -87,8 +92,11 @@ func MakeSequencerTransactionWithInputLoader(par MakeSequencerTransactionParams)
 	}
 
 	var inflationAmount uint64
-	if !par.DoNotInflate {
+	if par.Timestamp.Tick() != 0 {
+		// non-branch transaction
 		inflationAmount = ledger.L().ID.InflationAmount(par.ChainInput.Timestamp(), par.Timestamp, par.ChainInput.Output.Amount())
+	} else {
+		inflationAmount = par.BranchInflationAmount
 	}
 
 	chainOutAmount := totalInAmount + inflationAmount - additionalOut // >= 0
@@ -224,5 +232,9 @@ func MakeSequencerTransactionWithInputLoader(par MakeSequencerTransactionParams)
 			return consumedOutputs[i], nil
 		}
 	}
-	return txb.TransactionData.Bytes(), inputLoader, nil
+	txBytes := txb.TransactionData.Bytes()
+	if par.Timestamp.Tick() == 0 && !ledger.BranchInflationAmountValid(par.BranchInflationAmount, txBytes) {
+		return nil, nil, ErrBranchInflationAmountInvalid
+	}
+	return txBytes, inputLoader, nil
 }
