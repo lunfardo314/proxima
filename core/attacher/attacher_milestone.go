@@ -45,7 +45,7 @@ func runMilestoneAttacher(vid *vertex.WrappedTx, metadata *txmetadata.Transactio
 }
 
 func newMilestoneAttacher(vid *vertex.WrappedTx, env Environment, metadata *txmetadata.TransactionMetadata) *milestoneAttacher {
-	env.Assertf(vid.IsSequencerMilestone(), "newMilestoneAttacher: %s not a sequencer milestone", vid.IDShortString)
+	env.Assertf(vid.IsSequencerMilestone(), "newMilestoneAttacher: %s is not a sequencer milestone", vid.IDShortString)
 
 	ret := &milestoneAttacher{
 		attacher: newPastConeAttacher(env, vid.IDShortString()),
@@ -54,6 +54,8 @@ func newMilestoneAttacher(vid *vertex.WrappedTx, env Environment, metadata *txme
 		pokeChan: make(chan struct{}),
 		finals:   attachFinals{started: time.Now()},
 	}
+	ret.Tracef(TraceTagCoverageAdjustment, "newMilestoneAttacher: metadata of %s: %s", vid.IDShortString, metadata.String)
+
 	ret.attacher.pokeMe = func(vid *vertex.WrappedTx) {
 		ret.pokeMe(vid)
 	}
@@ -305,8 +307,8 @@ func (a *milestoneAttacher) logStatsString() string {
 	)
 }
 
-func (a *milestoneAttacher) AdjustCoverageIfNecessary() {
-	a.adjustCoverageIfNecessary()
+func (a *milestoneAttacher) AdjustCoverage() {
+	a.adjustCoverage()
 	if a.coverageAdjustment > 0 {
 		a.Tracef(TraceTagCoverageAdjustment, " milestoneAttacher: coverage has been adjusted by %s, ms: %s, baseline: %s",
 			func() string { return util.GoTh(a.coverageAdjustment) }, a.vid.IDShortString, a.baseline.IDShortString)

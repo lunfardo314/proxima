@@ -128,13 +128,14 @@ func (a *milestoneAttacher) checkConsistencyWithMetadata() {
 	var err error
 	switch {
 	case a.metadata.LedgerCoverageDelta != nil && *a.metadata.LedgerCoverageDelta != a.coverage.LatestDelta():
-		err = fmt.Errorf("commitBranch %s: major inconsistency: computed coverage delta (%s) not equal to the coverage delta provided in the metadata (%s)",
-			a.vid.IDShortString(), util.GoTh(a.coverage.LatestDelta()), util.GoTh(*a.metadata.LedgerCoverageDelta))
+		err = fmt.Errorf("checkConsistencyWithMetadata %s: major inconsistency: computed coverage delta (%s) not equal to the coverage delta provided in the metadata (%s). Diff=%s",
+			a.vid.IDShortString(), util.GoTh(a.coverage.LatestDelta()), util.GoTh(*a.metadata.LedgerCoverageDelta),
+			util.GoTh(int64(a.coverage.LatestDelta())-int64(*a.metadata.LedgerCoverageDelta)))
 	case a.metadata.SlotInflation != nil && *a.metadata.SlotInflation != a.slotInflation:
-		err = fmt.Errorf("commitBranch %s: major inconsistency: computed slot inflation (%s) not equal to the slot inflation provided in the metadata (%s)",
+		err = fmt.Errorf("checkConsistencyWithMetadata %s: major inconsistency: computed slot inflation (%s) not equal to the slot inflation provided in the metadata (%s)",
 			a.vid.IDShortString(), util.GoTh(a.slotInflation), util.GoTh(*a.metadata.SlotInflation))
 	case a.metadata.Supply != nil && *a.metadata.Supply != a.baselineSupply+a.slotInflation:
-		err = fmt.Errorf("commitBranch %s: major inconsistency: computed supply (%s) not equal to the supply provided in the metadata (%s)",
+		err = fmt.Errorf("checkConsistencyWithMetadata %s: major inconsistency: computed supply (%s) not equal to the supply provided in the metadata (%s)",
 			a.vid.IDShortString(), util.GoTh(a.baselineSupply+a.slotInflation), util.GoTh(*a.metadata.Supply))
 	}
 	if err == nil {

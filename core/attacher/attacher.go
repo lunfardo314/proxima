@@ -715,18 +715,27 @@ func (a *attacher) setBaseline(vid *vertex.WrappedTx, currentTS ledger.Time) boo
 	return true
 }
 
-// adjustCoverageIfNecessary for coverage adjustment details see Proxima WP
-func (a *attacher) adjustCoverageIfNecessary() {
+// adjustCoverage for coverage adjustment details see Proxima WP
+func (a *attacher) adjustCoverage() {
+	// adjustCoverage must be called exactly once
+	a.Assertf(!a.coverageAdjusted, "adjustCoverage: already adjusted")
+	a.coverageAdjusted = true
+
 	baseSeqOut := a.baseline.SequencerWrappedOutput()
 	if a.isRootedOutput(baseSeqOut) {
 		return
 	}
 	// if case sequencer output is not rooted (branch is just endorsed), add its inflation to the coverage delta
 	out, idx := multistate.MustSequencerOutputOfBranch(a.StateStore(), baseSeqOut.VID.ID).Output.ChainConstraint()
-	util.Assertf(idx != 0xff, "adjustCoverageIfNecessary: can't find chain constraint on the branch %s", baseSeqOut.IDShortString)
+	a.Assertf(idx != 0xff, "adjustCoverage: can't find chain constraint on the branch %s", baseSeqOut.IDShortString)
 
 	a.coverageAdjustment = out.Inflation
 	a.coverage.AddDelta(out.Inflation)
+}
+
+// IsCoverageAdjusted for consistency assertions
+func (a *attacher) IsCoverageAdjusted() bool {
+	return a.coverageAdjusted
 }
 
 func (a *attacher) dumpLines(prefix ...string) *lines.Lines {

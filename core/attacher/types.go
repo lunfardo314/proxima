@@ -64,6 +64,7 @@ type (
 		pokeMe             func(vid *vertex.WrappedTx)
 		coverage           ledger.Coverage
 		coverageAdjustment uint64
+		coverageAdjusted   bool
 		slotInflation      uint64
 		// only supported for branch transactions
 		baselineSupply uint64

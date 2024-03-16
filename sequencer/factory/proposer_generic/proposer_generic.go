@@ -103,6 +103,7 @@ func (t *TaskGeneric) Run() {
 			}
 			continue
 		}
+		t.Assertf(a.IsCoverageAdjusted(), "coverage must be adjusted")
 		if err = t.Propose(a, t.ctx); err != nil {
 			t.Tracef(TraceTag, "Run: %v", err)
 			return

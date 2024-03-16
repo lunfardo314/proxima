@@ -67,6 +67,8 @@ func (b *BaseProposer) propose() (*attacher.IncrementalAttacher, bool) {
 		b.Tracef(TraceTag, "%s making branch, no tag-along, extending %s cov: %s, attacher %s cov: %s",
 			b.Name, extend.IDShortString, extend.VID.GetLedgerCoverage().String(), a.Name(), util.Ref(a.LedgerCoverage()).String)
 	}
+	a.AdjustCoverage()
+
 	bestCoverageInSlot := b.BestCoverageInTheSlot(b.TargetTs)
 	lc := a.LedgerCoverage()
 	if lc.Sum() <= bestCoverageInSlot.Sum() {
@@ -74,7 +76,6 @@ func (b *BaseProposer) propose() (*attacher.IncrementalAttacher, bool) {
 			b.Name, lc.String, bestCoverageInSlot.String)
 		a.UnReferenceAll()
 		return nil, true
-
 	}
 	return a, false
 }

@@ -60,8 +60,6 @@ func Test1SequencerPruner(t *testing.T) {
 		testData := initWorkflowTest(t, 1, true)
 		//t.Logf("%s", testData.wrk.Info())
 
-		//testData.wrk.StartTracingTags(factory.TraceTag)
-
 		ctx, _ := context.WithCancel(context.Background())
 		seq, err := sequencer.New(testData.wrk, testData.bootstrapChainID, testData.genesisPrivKey,
 			sequencer.WithMaxBranches(maxSlots), sequencer.WithBranchInflationMiningSteps(branchMiningSteps))
@@ -115,7 +113,6 @@ func Test1SequencerPruner(t *testing.T) {
 		t.Logf("%s", testData.wrk.Info(false))
 
 		testData.saveFullDAG("utangle_full")
-		testData.wrk.SaveTree("utangle_tree")
 
 		require.EqualValues(t, maxSlots, int(countBr.Load()))
 
@@ -154,11 +151,7 @@ func TestNSequencersIdlePruner(t *testing.T) {
 		)
 		testData := initMultiSequencerTest(t, nSequencers, true)
 
-		//testData.wrk.StartTracingTags(proposer_endorse1.TraceTag)
-		//testData.wrk.StartTracingTags(proposer_base.TraceTag)
-		//testData.wrk.StartTracingTags(factory.TraceTag)
-		//testData.wrk.StartTracingTags(factory.TraceTagChooseExtendEndorsePair)
-		//testData.wrk.StartTracingTags(attacher.TraceTagAttachVertex, attacher.TraceTagAttachOutput)
+		//testData.env.StartTracingTags(attacher.TraceTagCoverageAdjustment)
 
 		testData.startSequencersWithTimeout(maxSlots)
 		time.Sleep(20 * time.Second)
@@ -177,7 +170,6 @@ func Test5SequencersIdlePruner(t *testing.T) {
 	)
 	testData := initMultiSequencerTest(t, nSequencers, true)
 
-	//testData.wrk.StartTracingTags(proposer_base.TraceTag)
 	testData.startSequencersWithTimeout(maxSlots)
 	time.Sleep(20 * time.Second)
 	testData.stopAndWait()

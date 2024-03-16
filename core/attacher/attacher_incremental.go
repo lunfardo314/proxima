@@ -282,8 +282,8 @@ func (a *IncrementalAttacher) MakeSequencerTransaction(seqName string, privateKe
 	return tx, nil
 }
 
-func (a *IncrementalAttacher) AdjustCoverageIfNecessary() {
-	a.adjustCoverageIfNecessary()
+func (a *IncrementalAttacher) AdjustCoverage() {
+	a.adjustCoverage()
 	if a.coverageAdjustment > 0 {
 		ext := a.Extending()
 		a.Tracef(TraceTagCoverageAdjustment, " IncrementalAttacher: coverage has been adjusted by %s, extending: %s, baseline: %s",
