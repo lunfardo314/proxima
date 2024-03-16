@@ -29,7 +29,7 @@ func (v *Vertex) TimeSlot() ledger.Slot {
 func (v *Vertex) ReferenceInput(i byte, vid *WrappedTx) bool {
 	util.Assertf(int(i) < len(v.Inputs), "PutNewInput: wrong input index")
 	util.Assertf(v.Inputs[i] == nil, "PutNewInput: repetitive")
-	referenced := vid.Reference("ReferenceInput")
+	referenced := vid.Reference()
 	if referenced {
 		v.Inputs[i] = vid
 	}
@@ -39,7 +39,7 @@ func (v *Vertex) ReferenceInput(i byte, vid *WrappedTx) bool {
 func (v *Vertex) ReferenceEndorsement(i byte, vid *WrappedTx) bool {
 	util.Assertf(int(i) < len(v.Endorsements), "PutNewEndorsement: wrong endorsement index")
 	util.Assertf(v.Endorsements[i] == nil, "PutNewEndorsement: repetitive")
-	referenced := vid.Reference("ReferenceEndorsement")
+	referenced := vid.Reference()
 	if referenced {
 		v.Endorsements[i] = vid
 	}
@@ -50,18 +50,18 @@ func (v *Vertex) ReferenceEndorsement(i byte, vid *WrappedTx) bool {
 func (v *Vertex) UnReferenceDependencies() {
 	for i, vidInput := range v.Inputs {
 		if vidInput != nil {
-			vidInput.UnReference("UnReferenceDependencies input")
+			vidInput.UnReference()
 			v.Inputs[i] = nil
 		}
 	}
 	for i, vidEndorsement := range v.Endorsements {
 		if vidEndorsement != nil {
-			vidEndorsement.UnReference("UnReferenceDependencies endorsement")
+			vidEndorsement.UnReference()
 			v.Endorsements[i] = nil
 		}
 	}
 	if v.BaselineBranch != nil {
-		v.BaselineBranch.UnReference("UnReferenceDependencies baseline")
+		v.BaselineBranch.UnReference()
 		v.BaselineBranch = nil
 	}
 }

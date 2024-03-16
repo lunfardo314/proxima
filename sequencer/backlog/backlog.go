@@ -65,7 +65,7 @@ func New(env Environment) (*InputBacklog, error) {
 		defer ret.mutex.Unlock()
 
 		if _, already := ret.outputs[wOut]; already {
-			wOut.VID.UnReference("backlog new")
+			wOut.VID.UnReference()
 			env.Tracef(TraceTag, "repeating output %s", wOut.IDShortString)
 			env.TraceTx(&wOut.VID.ID, "[%s] output #%d is already in the backlog", ret.SequencerName, wOut.Index)
 			return
@@ -87,19 +87,19 @@ func (b *InputBacklog) checkAndReferenceCandidate(wOut vertex.WrappedOutput) boo
 		b.TraceTx(&wOut.VID.ID, "[%s] backlog::checkAndReferenceCandidate: is branch", b.SequencerName, wOut.Index)
 		return false
 	}
-	if !wOut.VID.Reference("checkAndReferenceCandidate") {
+	if !wOut.VID.Reference() {
 		b.TraceTx(&wOut.VID.ID, "[%s] backlog::checkAndReferenceCandidate: failed to reference", b.SequencerName, wOut.Index)
 		return false
 	}
 	if wOut.VID.GetTxStatus() == vertex.Bad {
-		wOut.VID.UnReference("checkAndReferenceCandidate 1")
+		wOut.VID.UnReference()
 		b.TraceTx(&wOut.VID.ID, "[%s] backlog::checkAndReferenceCandidate: is BAD", b.SequencerName, wOut.Index)
 		return false
 	}
 	o, err := wOut.VID.OutputAt(wOut.Index)
 	if err != nil {
 		b.TraceTx(&wOut.VID.ID, "[%s] backlog::checkAndReferenceCandidate: OutputAt failed for #%d: %v", b.SequencerName, wOut.Index, err)
-		wOut.VID.UnReference("checkAndReferenceCandidate 2")
+		wOut.VID.UnReference()
 		return false
 	}
 	if o != nil {
@@ -107,7 +107,7 @@ func (b *InputBacklog) checkAndReferenceCandidate(wOut vertex.WrappedOutput) boo
 			// filter out all chain constrained outputs
 			// TODO must be revisited with delegated accounts (delegation-locked on the current sequencer)
 			b.TraceTx(&wOut.VID.ID, "[%s] backlog::checkAndReferenceCandidate: #%d is chain-constrained", b.SequencerName, wOut.Index)
-			wOut.VID.UnReference("checkAndReferenceCandidate 3")
+			wOut.VID.UnReference()
 			return false
 		}
 	}
@@ -197,7 +197,7 @@ func (b *InputBacklog) purge(ttl time.Duration) int {
 	}
 
 	for _, wOut := range toDelete {
-		wOut.VID.UnReference("backlog purge")
+		wOut.VID.UnReference()
 		delete(b.outputs, wOut)
 		b.TraceTx(&wOut.VID.ID, "[%s] output #%d has been deleted from the backlog", b.SequencerName, wOut.Index)
 	}

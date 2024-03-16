@@ -156,7 +156,7 @@ func (mf *MilestoneFactory) AddOwnMilestone(vid *vertex.WrappedTx) {
 		return
 	}
 
-	vid.MustReference("AddOwnMilestone")
+	vid.MustReference()
 
 	withTime := outputsWithTime{
 		consumed: set.New[vertex.WrappedOutput](),
@@ -542,7 +542,7 @@ func (mf *MilestoneFactory) purge(ttl time.Duration) int {
 	}
 
 	for _, vid := range toDelete {
-		vid.UnReference("milestone purge")
+		vid.UnReference()
 		delete(mf.ownMilestones, vid)
 	}
 	return len(toDelete)

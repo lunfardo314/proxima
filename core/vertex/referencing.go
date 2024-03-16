@@ -1,7 +1,6 @@
 package vertex
 
 import (
-	"fmt"
 	"time"
 
 	"github.com/lunfardo314/proxima/ledger"
@@ -13,19 +12,9 @@ const (
 	notReferencedVertexTTLSlots = 5
 )
 
-func (vid *WrappedTx) Reference(by ...string) bool {
+func (vid *WrappedTx) Reference() bool {
 	vid.mutex.Lock()
 	defer vid.mutex.Unlock()
-
-	{
-		if len(by) > 0 {
-			if len(vid.tmpRefBy) == 0 {
-				vid.tmpRefBy = make([]string, 0)
-			}
-			vid.tmpRefBy = append(vid.tmpRefBy, fmt.Sprintf("ref %s (%d)", by[0], vid.references))
-		}
-		//fmt.Printf(">>>>>>>>>>>> reference %s (%d) by %+v\n", vid.ID.StringShort(), vid.references, by)
-	}
 
 	// can't use atomic.Int because of this
 	if vid.references == 0 {
@@ -39,19 +28,9 @@ func (vid *WrappedTx) Reference(by ...string) bool {
 	return true
 }
 
-func (vid *WrappedTx) UnReference(by ...string) {
+func (vid *WrappedTx) UnReference() {
 	vid.mutex.Lock()
 	defer vid.mutex.Unlock()
-
-	{
-		if len(by) > 0 {
-			if len(vid.tmpRefBy) == 0 {
-				vid.tmpRefBy = make([]string, 0)
-			}
-			vid.tmpRefBy = append(vid.tmpRefBy, fmt.Sprintf("UNref %s (%d)", by[0], vid.references))
-		}
-		//fmt.Printf(">>>>>>>>>>>> UNreference %s (%d) by %v\n", vid.ID.StringShort(), vid.references, by)
-	}
 
 	// must be references >= 1. Only pruner can put it to 0
 	vid.references--
@@ -59,13 +38,6 @@ func (vid *WrappedTx) UnReference(by ...string) {
 	if vid.references == 1 {
 		vid.dontPruneUntil = time.Now().Add(notReferencedVertexTTLSlots * ledger.L().ID.SlotDuration())
 	}
-}
-
-func (vid *WrappedTx) RefLines() []string {
-	vid.mutex.RLock()
-	defer vid.mutex.RUnlock()
-
-	return vid.tmpRefBy
 }
 
 // DoPruningIfRelevant either marks vertex pruned, or, if it is matured,
@@ -116,8 +88,8 @@ func (vid *WrappedTx) DoPruningIfRelevant(nowis time.Time) (markedForDeletion, u
 	return
 }
 
-func (vid *WrappedTx) MustReference(by ...string) {
-	util.Assertf(vid.Reference(by...), "MustReference: failed with %s", vid.IDShortString)
+func (vid *WrappedTx) MustReference() {
+	util.Assertf(vid.Reference(), "MustReference: failed with %s", vid.IDShortString)
 }
 
 func (vid *WrappedTx) NumReferences() int {

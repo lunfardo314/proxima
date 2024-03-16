@@ -61,7 +61,7 @@ func (a *attacher) markReferencedByAttacher(vid *vertex.WrappedTx) bool {
 	if a.referenced.Contains(vid) {
 		return true
 	}
-	if vid.Reference("markReferencedByAttacher" + a.Name()) {
+	if vid.Reference() {
 		a.referenced.Insert(vid)
 		return true
 	}
@@ -75,7 +75,7 @@ func (a *attacher) mustMarkReferencedByAttacher(vid *vertex.WrappedTx) {
 // unReferenceAllByAttacher releases all references
 func (a *attacher) unReferenceAllByAttacher() {
 	for vid := range a.referenced {
-		vid.UnReference("unReferenceAllByAttacher " + a.Name())
+		vid.UnReference()
 	}
 	a.referenced = nil // invalidate
 }
@@ -166,7 +166,7 @@ func (a *attacher) solidifyStemOfTheVertex(v *vertex.Vertex) (ok bool) {
 	a.Assertf(stemVid.IsBranchTransaction(), "stemVid.IsBranchTransaction()")
 	switch stemVid.GetTxStatus() {
 	case vertex.Good:
-		stemVid.Reference("solidifyStemOfTheVertex")
+		stemVid.Reference()
 		v.BaselineBranch = stemVid
 		return true
 	case vertex.Bad:
@@ -209,7 +209,7 @@ func (a *attacher) solidifySequencerBaseline(v *vertex.Vertex) (ok bool) {
 			a.Pull(inputTx.ID)
 		} else {
 			util.Assertf(v.BaselineBranch.IsBranchTransaction(), "v.BaselineBranch.IsBranchTransaction()")
-			v.BaselineBranch.Reference("solidifySequencerBaseline")
+			v.BaselineBranch.Reference()
 		}
 		return true
 	case vertex.Undefined:

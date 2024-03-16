@@ -45,7 +45,6 @@ type (
 		// - if references == 0 (deleted) it is not interpreted
 		// valid when references == 1. It is needed to prevent immediate pruning after adding to the MemDAG
 		dontPruneUntil time.Time
-		tmpRefBy       []string // TODO for tracing only, remove
 		// notification callback. Must be func(vid *WrappedTx)
 		onPoke atomic.Value
 
