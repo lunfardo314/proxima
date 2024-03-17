@@ -246,7 +246,7 @@ func _validInflationValue : or(
 	isZero($1),
     lessOrEqualThan(
        $1, 
-       inflationAmount(timestampOfInputByIndex($0), txTimestampBytes, amountValue(consumedOutputByIndex($0)))
+       maxInflationAmount(timestampOfInputByIndex($0), txTimestampBytes, amountValue(consumedOutputByIndex($0)))
     )
 )
 

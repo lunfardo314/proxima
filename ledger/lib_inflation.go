@@ -6,11 +6,6 @@ import (
 	"github.com/lunfardo314/proxima/util"
 )
 
-// TODO randomize branch inflation.
-//  For example <branch inflation value> <= <nonce> mod 5000, where nonce is hash(txBytes), some VDF value or similar
-//  with few ticks delay on a reasonable machine.
-//  Sequencer would need to mine bigger inflation values, which will costs time to issue transactions
-
 // InflationAmount is calculation of inflation amount directly from ledger identity constants
 func (id *IdentityData) InflationAmount(inTs, outTs Time, inAmount uint64) uint64 {
 	if outTs.IsSlotBoundary() {
@@ -107,7 +102,7 @@ and(
 // $1 - timestamp of the transaction (and of the output)
 // $2 - amount on the chain input
 // result: (dt * amount)/inflationFraction
-func chainInflationAmount : 
+func maxChainInflationAmount : 
 if(
     _insideInflationOpportunityWindow(ticksBefore($0, $1), $2),
 	div64(
@@ -123,10 +118,10 @@ if(
 // $0 - timestamp of the chain input
 // $1 - timestamp of the transaction (and of the output)
 // $2 - amount on the chain input
-func inflationAmount : 
+func maxInflationAmount : 
 if(
 	isZero(timeTickFromTimestamp($1)),
-    constInitialBranchBonus,  // fixed amount on branch
-    chainInflationAmount($0, $1, $2)
+    constBranchBonusBase,
+    maxChainInflationAmount($0, $1, $2)
 )
 `

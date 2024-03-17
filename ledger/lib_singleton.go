@@ -41,7 +41,7 @@ func Init(id *IdentityData, verbose ...bool) {
 			libraryGlobal.PrintLibraryStats()
 		}
 
-		libraryGlobal.initNoTxConstraints(id)
+		libraryGlobal.initGeneralFunctions(id)
 		libraryGlobal.extendWithConstraints()
 
 		if printStats {

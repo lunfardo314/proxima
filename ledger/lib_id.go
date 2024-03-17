@@ -74,7 +74,7 @@ func (lib *Library) extendWithBaseConstants(id *IdentityData) {
 	lib.Extendf("constGenesisTimeUnix", "u64/%d", id.GenesisTimeUnix)
 	lib.Extendf("constTickDuration", "u64/%d", int64(id.TickDuration))
 	lib.Extendf("constMaxTickValuePerSlot", "u64/%d", id.MaxTickValueInSlot)
-	lib.Extendf("constInitialBranchBonus", "u64/%d", id.BranchBonusBase)
+	lib.Extendf("constBranchBonusBase", "u64/%d", id.BranchBonusBase)
 	lib.Extendf("constHalvingEpochs", "u64/%d", id.NumHalvingEpochs)
 	lib.Extendf("constChainInflationFractionBase", "u64/%d", id.ChainInflationPerTickFractionBase)
 	lib.Extendf("constChainInflationOpportunitySlots", "u64/%d", id.ChainInflationOpportunitySlots)
@@ -105,7 +105,7 @@ func (lib *Library) extendWithBaseConstants(id *IdentityData) {
 	lib.Extend("timestampPrefix", "bitwiseAND(slice($0, 0, sub8(timestampByteSize,1)), 0x3fffffffff)")
 }
 
-func (lib *Library) initNoTxConstraints(id *IdentityData) *Library {
+func (lib *Library) initGeneralFunctions(id *IdentityData) *Library {
 	lib.extendWithBaseConstants(id)
 	lib.extendWithMainFunctions()
 	lib.MustExtendMany(inflationSource)

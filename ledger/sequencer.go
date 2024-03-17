@@ -35,7 +35,7 @@ and(
 func _sameSlotPredecessorCase : 
 require( 
 	or(sequencerFlagON(inputIDByIndex($0)), not(isZero(numEndorsements))),
-	!!!sequencer_chain_predecessor_on_the_same_time_slot_must_be_either_a_sequencer_tx_too_or_endorse_another_sequencer_tx  
+	!!!sequencer_chain_predecessor_on_the_same_slot_must_be_either_a_sequencer_tx_too_or_endorse_another_sequencer_tx  
 )
 
 // $0 chain predecessor input index
@@ -48,7 +48,7 @@ require(
 		isBranchTransaction, 
 		not(isZero(numEndorsements))
 	), 
-	!!!sequencer_tx_has_incorrect_cross_slot_chain_predecessor_or_don't_have_any_endorsements
+	!!!sequencer_tx_has_incorrect_cross_slot_chain_predecessor_or_does_not_have_any_endorsements
 )
 
 // $0 chain predecessor input index
