@@ -38,8 +38,6 @@ type UTXODB struct {
 const (
 	// for determinism
 	deterministicSeed       = "1234567890987654321"
-	supplyForTesting        = uint64(1_000_000_000_000)
-	initFaucetBalance       = supplyForTesting / 2
 	TokensFromFaucetDefault = uint64(1_000_000)
 )
 
@@ -63,7 +61,7 @@ func NewUTXODB(genesisPrivateKey ed25519.PrivateKey, trace ...bool) *UTXODB {
 	genesisStemOut := rdr.GetStemOutput()
 
 	distributionTxBytes := txbuilder.MustDistributeInitialSupply(stateStore, genesisPrivateKey, []ledger.LockBalance{
-		{faucetAddress, initFaucetBalance},
+		{faucetAddress, ledger.L().ID.InitialSupply / 2},
 	})
 
 	updatable := multistate.MustNewUpdatable(stateStore, genesisRoot)

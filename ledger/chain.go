@@ -239,14 +239,24 @@ func chainSuccessorData :
 		0
 	)
 
+// calculates cap of the inflation. In case of branch transaction, cap depends on the last 8 bytes of the
+// blake2b hash of the transaction bytes. This enforces mining of the inflation amount in the branch
+// $0 - predecessor input index
+func _inflationCapInTransaction :
+if(
+   isBranchTransaction,
+   sum64(modulo(slice(blake2b(txBytes),24,31), constBranchBonusBase), u64/1),  // enforcing branch inflation mining
+   maxInflationAmount(timestampOfInputByIndex($0), txTimestampBytes, amountValue(consumedOutputByIndex($0)))
+)
+
 // $0 - predecessor input index
 // $1 - inflation value
 func _validInflationValue : or(
 	selfIsConsumedOutput,
 	isZero($1),
     lessOrEqualThan(
-       $1, 
-       maxInflationAmount(timestampOfInputByIndex($0), txTimestampBytes, amountValue(consumedOutputByIndex($0)))
+       $1,
+       _inflationCapInTransaction($0)
     )
 )
 
