@@ -19,7 +19,7 @@ spammer:
     submit_nowait: false
     tag_along:
         fee: 500
-        sequencer: d1f6205e94ba6b7871f99daca237a9278610abe178ecc7067028b120afec47e2
+        sequencer: af7bedde1fea222230b82d63d5b665ac75afbe4ad3f75999bb3386cf994a6963
     # target key 1
     target: addressED25519(0xaa401c8c6a9deacf479ab2209c07c01a27bd1eeecf0d7eaa4180b8049c6190d0)
     trace_on_node: false
