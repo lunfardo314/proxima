@@ -690,27 +690,22 @@ func (a *attacher) isKnownConsumed(wOut vertex.WrappedOutput) (isConsumed bool) 
 }
 
 // setBaseline sets baseline, fetches its baselineCoverage and initializes attacher's baselineCoverage according to the currentTS
-func (a *attacher) setBaseline(vid *vertex.WrappedTx, currentTS ledger.Time) bool {
-	a.Assertf(vid.IsBranchTransaction(), "setBaseline: vid.IsBranchTransaction()")
-	a.Assertf(currentTS.Slot() >= vid.Slot(), "currentTS.Slot() >= vid.Slot()")
+func (a *attacher) setBaseline(baselineVID *vertex.WrappedTx, currentTS ledger.Time) bool {
+	a.Assertf(baselineVID.IsBranchTransaction(), "setBaseline: baselineVID.IsBranchTransaction()")
+	a.Assertf(currentTS.Slot() >= baselineVID.Slot(), "currentTS.Slot() >= baselineVID.Slot()")
 
-	if !a.markReferencedByAttacher(vid) {
+	if !a.markReferencedByAttacher(baselineVID) {
 		return false
 	}
-	a.baseline = vid
+	a.baseline = baselineVID
 
 	rr, found := multistate.FetchRootRecord(a.StateStore(), a.baseline.ID)
 	a.Assertf(found, "setBaseline: can't fetch root record for %s", a.baseline.IDShortString)
 
-	// shifting baseline coverage by 1 or more slots. Current delta becomes 0
-	var shiftCoverageBy int
-	if currentTS.Tick() == 0 {
-		shiftCoverageBy = int(currentTS.Slot() - vid.Slot())
-	} else {
-		shiftCoverageBy = int(currentTS.Slot()-vid.Slot()) + 1
+	a.coverage = rr.LedgerCoverage >> int(currentTS.Slot()-baselineVID.Slot())
+	if currentTS.Tick() != 0 {
+		a.coverage >>= 1
 	}
-	a.coverage = rr.LedgerCoverage.Shift(shiftCoverageBy)
-	a.Assertf(a.coverage.LatestDelta() == 0, "a.coverage.LatestDelta() == 0")
 	a.baselineSupply = rr.Supply
 	return true
 }
@@ -730,7 +725,7 @@ func (a *attacher) adjustCoverage() {
 	a.Assertf(idx != 0xff, "adjustCoverage: can't find chain constraint on the branch %s", baseSeqOut.IDShortString)
 
 	a.coverageAdjustment = out.Inflation
-	a.coverage.AddDelta(out.Inflation)
+	a.coverage += out.Inflation
 }
 
 // IsCoverageAdjusted for consistency assertions
@@ -742,7 +737,7 @@ func (a *attacher) dumpLines(prefix ...string) *lines.Lines {
 	ret := lines.New(prefix...)
 	ret.Add("attacher %s", a.name)
 	ret.Add("   baseline: %s", a.baseline.String())
-	ret.Add("   coverage: %s", a.coverage.String())
+	ret.Add("   coverage: %s", util.GoTh(a.coverage))
 	ret.Add("   baselineSupply: %s", util.GoTh(a.baselineSupply))
 	ret.Add("   vertices:")
 	ret.Append(a.linesVertices(prefix...))

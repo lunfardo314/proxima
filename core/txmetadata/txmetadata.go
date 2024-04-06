@@ -17,7 +17,7 @@ import (
 type (
 	TransactionMetadata struct {
 		StateRoot               common.VCommitment // not nil may be for branch transactions
-		LedgerCoverageDelta     *uint64            // not nil may be for sequencer transactions
+		LedgerCoverage          *uint64            // not nil may be for sequencer transactions
 		SlotInflation           *uint64            // not nil may be for sequencer transactions
 		Supply                  *uint64            // not nil may be for branch transactions
 		SourceTypeNonPersistent SourceType         // non-persistent, used for internal workflow
@@ -66,7 +66,7 @@ func (m *TransactionMetadata) flags() (ret byte) {
 	if !util.IsNil(m.StateRoot) {
 		ret |= flagRootProvided
 	}
-	if m.LedgerCoverageDelta != nil {
+	if m.LedgerCoverage != nil {
 		ret |= flagCoverageDeltaProvided
 	}
 	if m.SlotInflation != nil {
@@ -96,9 +96,9 @@ func (m *TransactionMetadata) Bytes() []byte {
 	if !util.IsNil(m.StateRoot) {
 		buf.Write(m.StateRoot.Bytes())
 	}
-	if m.LedgerCoverageDelta != nil {
+	if m.LedgerCoverage != nil {
 		var coverageBin [8]byte
-		binary.BigEndian.PutUint64(coverageBin[:], *m.LedgerCoverageDelta)
+		binary.BigEndian.PutUint64(coverageBin[:], *m.LedgerCoverage)
 		buf.Write(coverageBin[:])
 	}
 	if m.SlotInflation != nil {
@@ -155,8 +155,8 @@ func TransactionMetadataFromBytes(data []byte) (*TransactionMetadata, error) {
 		}
 	}
 	if flags&flagCoverageDeltaProvided != 0 {
-		ret.LedgerCoverageDelta = new(uint64)
-		if *ret.LedgerCoverageDelta, err = _readUint64(rdr); err != nil {
+		ret.LedgerCoverage = new(uint64)
+		if *ret.LedgerCoverage, err = _readUint64(rdr); err != nil {
 			return nil, err
 		}
 	}
@@ -193,8 +193,8 @@ func (m *TransactionMetadata) String() string {
 		return "<empty>"
 	}
 	lcStr := "<nil>"
-	if m.LedgerCoverageDelta != nil {
-		lcStr = util.GoTh(*m.LedgerCoverageDelta)
+	if m.LedgerCoverage != nil {
+		lcStr = util.GoTh(*m.LedgerCoverage)
 	}
 	rootStr := "<nil>"
 	if !util.IsNil(m.StateRoot) {

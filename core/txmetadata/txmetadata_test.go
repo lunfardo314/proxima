@@ -40,7 +40,7 @@ func TestTxMetadata(t *testing.T) {
 		require.EqualValues(t, SourceTypeUndef.String(), mBack.SourceTypeNonPersistent.String())
 		require.EqualValues(t, m.flags(), mBack.flags())
 		require.True(t, ledger.CommitmentModel.EqualCommitments(m.StateRoot, mBack.StateRoot))
-		require.Nil(t, mBack.LedgerCoverageDelta)
+		require.Nil(t, mBack.LedgerCoverage)
 	})
 	t.Run("3", func(t *testing.T) {
 		coverage := uint64(1337)
@@ -48,7 +48,7 @@ func TestTxMetadata(t *testing.T) {
 		supply := uint64(2718281828)
 		m := &TransactionMetadata{
 			SourceTypeNonPersistent: SourceTypeSequencer,
-			LedgerCoverageDelta:     &coverage,
+			LedgerCoverage:          &coverage,
 			SlotInflation:           &inflation,
 			Supply:                  &supply,
 		}
@@ -58,7 +58,7 @@ func TestTxMetadata(t *testing.T) {
 		require.EqualValues(t, SourceTypeUndef.String(), mBack.SourceTypeNonPersistent.String())
 		require.EqualValues(t, m.flags(), mBack.flags())
 		require.Nil(t, mBack.StateRoot)
-		require.EqualValues(t, 1337, *mBack.LedgerCoverageDelta)
+		require.EqualValues(t, 1337, *mBack.LedgerCoverage)
 		require.EqualValues(t, 31415, *mBack.SlotInflation)
 		require.EqualValues(t, 2718281828, *mBack.Supply)
 	})

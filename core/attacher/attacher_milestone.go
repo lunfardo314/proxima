@@ -260,12 +260,12 @@ func (a *milestoneAttacher) logFinalStatusString(msData *ledger.MilestoneData) s
 		if a.vid.IsBranchTransaction() {
 			msg += fmt.Sprintf(", base: %s, cov: %s, slot inflation: %s, supply: %s",
 				bl,
-				a.finals.coverage.String(),
+				util.GoTh(a.finals.coverage),
 				util.GoTh(a.finals.slotInflation),
 				util.GoTh(a.finals.supply))
 		} else {
 			msg += fmt.Sprintf(", base: %s, cov: %s, slot inflation: %s",
-				bl, a.finals.coverage.String(), util.GoTh(a.finals.slotInflation))
+				bl, util.GoTh(a.finals.coverage), util.GoTh(a.finals.slotInflation))
 		}
 	}
 	if a.LogAttacherStats() {

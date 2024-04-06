@@ -6,10 +6,10 @@ import (
 )
 
 // AlignedCoverages shifts one of coverages, if necessary, so that to make them comparable
-func AlignedCoverages(vid1, vid2 *WrappedTx) (ledger.Coverage, ledger.Coverage) {
-	lc1 := vid1.GetLedgerCoverage()
+func AlignedCoverages(vid1, vid2 *WrappedTx) (uint64, uint64) {
+	lc1 := vid1.GetLedgerCoverageP()
 	util.Assertf(lc1 != nil, "coverage not set in %s", vid1.IDShortString)
-	lc2 := vid2.GetLedgerCoverage()
+	lc2 := vid2.GetLedgerCoverageP()
 	util.Assertf(lc2 != nil, "coverage not set in %s", vid2.IDShortString)
 
 	if vid1.Timestamp() == vid2.Timestamp() {
@@ -29,7 +29,7 @@ func AlignedCoverages(vid1, vid2 *WrappedTx) (ledger.Coverage, ledger.Coverage) 
 	lc1Ret := *lc1
 	lc2Ret := *lc2
 	if v1.IsBranchTransaction() || v1.Slot() != v2.Slot() {
-		lc1Ret = lc1Ret.Shift(int(v2.Slot()-v1.Slot()) + 1)
+		lc1Ret >>= int(v2.Slot()-v1.Slot()) + 1 // ??? what about 2 non-branches
 	}
 	if swapped {
 		return lc2Ret, lc1Ret
@@ -44,7 +44,7 @@ func IsPreferredMilestoneAgainstTheOther(vid1, vid2 *WrappedTx, preferYounger bo
 		return false
 	}
 	lc1, lc2 := AlignedCoverages(vid1, vid2)
-	slc1, slc2 := lc1.Sum(), lc2.Sum()
+	slc1, slc2 := lc1, lc2
 	if slc1 != slc2 {
 		return slc1 > slc2
 	}
@@ -53,12 +53,4 @@ func IsPreferredMilestoneAgainstTheOther(vid1, vid2 *WrappedTx, preferYounger bo
 		return preferYounger
 	}
 	return !preferYounger
-}
-
-func (vid *WrappedTx) IsBetterProposal(cov *ledger.Coverage, ts ledger.Time) bool {
-	vidDummy := &WrappedTx{
-		ID:       ledger.NewTransactionID(ts, vid.ID.ShortID(), vid.IsSequencerMilestone()),
-		coverage: cov,
-	}
-	return IsPreferredMilestoneAgainstTheOther(vidDummy, vid, false)
 }

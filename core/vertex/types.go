@@ -36,7 +36,7 @@ type (
 		mutex    sync.RWMutex // protects _genericVertex
 		flags    Flags
 		err      error
-		coverage *ledger.Coverage // nil for non-sequencer or if not set yet
+		coverage *uint64 // nil for non-sequencer or if not set yet
 		// keeping track of references for orphaning/GC
 		references uint32
 		// dontPruneUntil interpreted depending on value of references
@@ -98,20 +98,20 @@ type (
 		Deleted   bool
 		Status    Status
 		Flags     Flags
-		Coverage  *ledger.Coverage
+		Coverage  *uint64
 		Err       error
 	}
 
 	TxIDStatusJSONAble struct {
-		ID        string   `json:"id"`
-		OnDAG     bool     `json:"on_dag"`
-		InStorage bool     `json:"in_storage"`
-		VirtualTx bool     `json:"virtual_tx"`
-		Deleted   bool     `json:"deleted"`
-		Status    string   `json:"status"`
-		Flags     byte     `json:"flags"`
-		Coverage  []uint64 `json:"coverage,omitempty"`
-		Err       error    `json:"err"`
+		ID        string `json:"id"`
+		OnDAG     bool   `json:"on_dag"`
+		InStorage bool   `json:"in_storage"`
+		VirtualTx bool   `json:"virtual_tx"`
+		Deleted   bool   `json:"deleted"`
+		Status    string `json:"status"`
+		Flags     byte   `json:"flags"`
+		Coverage  uint64 `json:"coverage,omitempty"`
+		Err       error  `json:"err"`
 	}
 )
 
@@ -205,7 +205,7 @@ func (s *TxIDStatus) JSONAble() (ret TxIDStatusJSONAble) {
 		Err:       s.Err,
 	}
 	if s.Coverage != nil {
-		ret.Coverage = s.Coverage[:]
+		ret.Coverage = *s.Coverage
 	}
 	return ret
 }
@@ -226,12 +226,9 @@ func TxIDStatusFromJSONAble(s *TxIDStatusJSONAble) (*TxIDStatus, error) {
 	if err != nil {
 		return nil, err
 	}
-	if len(s.Coverage) != 0 {
-		if len(s.Coverage) != ledger.HistoryCoverageDeltas {
-			return nil, fmt.Errorf("wrong array length")
-		}
-		ret.Coverage = new(ledger.Coverage)
-		copy(ret.Coverage[:], s.Coverage)
+	if s.Coverage != 0 {
+		ret.Coverage = new(uint64)
+		*ret.Coverage = s.Coverage
 	}
 	return ret, nil
 }

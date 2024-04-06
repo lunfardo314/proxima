@@ -20,7 +20,7 @@ type (
 		OwnLatestMilestoneOutput() vertex.WrappedOutput
 		AttachTagAlongInputs(a *attacher.IncrementalAttacher) int
 		ChooseExtendEndorsePair(proposerName string, targetTs ledger.Time) *attacher.IncrementalAttacher
-		BestCoverageInTheSlot(targetTs ledger.Time) ledger.Coverage
+		BestCoverageInTheSlot(targetTs ledger.Time) uint64
 		SequencerName() string
 		BranchInflationMiningSteps() int
 		Propose(a *attacher.IncrementalAttacher, ctx context.Context) error

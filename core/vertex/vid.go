@@ -578,27 +578,35 @@ func (vid *WrappedTx) NotConsumedOutputIndices(allConsumers set.Set[*WrappedTx])
 	return ret
 }
 
-func (vid *WrappedTx) GetLedgerCoverageNoLock() *ledger.Coverage {
+func (vid *WrappedTx) GetLedgerCoverageNoLock() *uint64 {
 	return vid.coverage
 }
 
-func (vid *WrappedTx) GetLedgerCoverage() *ledger.Coverage {
+func (vid *WrappedTx) GetLedgerCoverageP() *uint64 {
 	vid.mutex.RLock()
 	defer vid.mutex.RUnlock()
 
 	return vid.coverage
 }
 
-func (vid *WrappedTx) SetLedgerCoverage(coverage ledger.Coverage) {
+func (vid *WrappedTx) GetLedgerCoverage() uint64 {
+	ret := vid.GetLedgerCoverageP()
+	if ret == nil {
+		return 0
+	}
+	return *ret
+}
+
+func (vid *WrappedTx) GetLedgerCoverageString() string {
+	return util.GoTh(vid.GetLedgerCoverage())
+}
+
+func (vid *WrappedTx) SetLedgerCoverage(coverage uint64) {
 	vid.mutex.Lock()
 	defer vid.mutex.Unlock()
 
-	vid.coverage = &coverage
-}
-
-func (vid *WrappedTx) LedgerCoverageSum() uint64 {
-	ret := vid.GetLedgerCoverage()
-	return ret.Sum()
+	vid.coverage = new(uint64)
+	*vid.coverage = coverage
 }
 
 // NumConsumers returns:
@@ -630,6 +638,10 @@ func (vid *WrappedTx) String() (ret string) {
 	reason := vid.GetError()
 	vid.RUnwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
+			cov := uint64(0)
+			if vid.coverage != nil {
+				cov = *vid.coverage
+			}
 			t := "vertex (" + vid.GetTxStatusNoLock().String() + ")"
 			ret = fmt.Sprintf("%20s %s :: in: %d, out: %d, consumed: %d, conflicts: %d, ref: %d, Flags: %08b, err: '%v', cov: %s",
 				t,
@@ -641,7 +653,7 @@ func (vid *WrappedTx) String() (ret string) {
 				vid.references,
 				vid.flags,
 				reason,
-				vid.coverage.String(),
+				util.GoTh(cov),
 			)
 		},
 		VirtualTx: func(v *VirtualTransaction) {

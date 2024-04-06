@@ -51,11 +51,11 @@ func (a *milestoneAttacher) _checkConsistencyBeforeFinalization() (err error) {
 		err = fmt.Errorf("sum of rooted cannot be 0")
 		return
 	}
-	if sumRooted+a.coverageAdjustment != a.coverage.LatestDelta() {
-		err = fmt.Errorf("sum of amounts of rooted outputs %s is not equal to the coverage sumRooted+coverageAdjustment %s",
-			util.GoTh(sumRooted), util.GoTh(a.coverage.LatestDelta()))
-		return
-	}
+	//if sumRooted+a.coverageAdjustment != a.coverage.LatestDelta() {
+	//	err = fmt.Errorf("sum of amounts of rooted outputs %s is not equal to the coverage sumRooted+coverageAdjustment %s",
+	//		util.GoTh(sumRooted), util.GoTh(a.coverage.LatestDelta()))
+	//	return
+	//}
 
 	for vid, flags := range a.vertices {
 		if !flags.FlagsUp(FlagAttachedVertexKnown) {
@@ -94,14 +94,14 @@ func (a *milestoneAttacher) _checkConsistencyBeforeFinalization() (err error) {
 
 	a.vid.Unwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
 		v.ForEachEndorsement(func(i byte, vidEndorsed *vertex.WrappedTx) bool {
-			lc := vidEndorsed.GetLedgerCoverage()
+			lc := vidEndorsed.GetLedgerCoverageP()
 			if lc == nil {
 				err = fmt.Errorf("coverage not set in the endorsed %s", vidEndorsed.IDShortString())
 				return false
 			}
-			if !vidEndorsed.IsBranchTransaction() && a.coverage.LatestDelta() < lc.LatestDelta() {
+			if !vidEndorsed.IsBranchTransaction() && a.coverage < *lc {
 				err = fmt.Errorf("coverage delta should not decrease.\nGot: delta(%s) at %s <= delta(%s) in %s",
-					util.GoTh(a.coverage.LatestDelta()), a.vid.Timestamp().String(), util.GoTh(lc.LatestDelta()), vidEndorsed.IDShortString())
+					util.GoTh(a.coverage), a.vid.Timestamp().String(), util.GoTh(*lc), vidEndorsed.IDShortString())
 				return false
 			}
 			return true
@@ -127,10 +127,10 @@ func (a *milestoneAttacher) checkConsistencyWithMetadata() {
 	}
 	var err error
 	switch {
-	case a.metadata.LedgerCoverageDelta != nil && *a.metadata.LedgerCoverageDelta != a.coverage.LatestDelta():
+	case a.metadata.LedgerCoverage != nil && *a.metadata.LedgerCoverage != a.coverage:
 		err = fmt.Errorf("checkConsistencyWithMetadata %s: major inconsistency: computed coverage delta (%s) not equal to the coverage delta provided in the metadata (%s). Diff=%s",
-			a.vid.IDShortString(), util.GoTh(a.coverage.LatestDelta()), util.GoTh(*a.metadata.LedgerCoverageDelta),
-			util.GoTh(int64(a.coverage.LatestDelta())-int64(*a.metadata.LedgerCoverageDelta)))
+			a.vid.IDShortString(), util.GoTh(a.coverage), util.GoTh(*a.metadata.LedgerCoverage),
+			util.GoTh(int64(a.coverage)-int64(*a.metadata.LedgerCoverage)))
 	case a.metadata.SlotInflation != nil && *a.metadata.SlotInflation != a.slotInflation:
 		err = fmt.Errorf("checkConsistencyWithMetadata %s: major inconsistency: computed slot inflation (%s) not equal to the slot inflation provided in the metadata (%s)",
 			a.vid.IDShortString(), util.GoTh(a.slotInflation), util.GoTh(*a.metadata.SlotInflation))

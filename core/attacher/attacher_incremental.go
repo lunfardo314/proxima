@@ -80,7 +80,8 @@ func (a *IncrementalAttacher) initIncrementalAttacher(baseline *vertex.WrappedTx
 		return fmt.Errorf("NewIncrementalAttacher: failed to set baseline branch of %s", extend.IDShortString())
 	}
 	a.Tracef(TraceTagIncrementalAttacher, "NewIncrementalAttacher(%s). baseline: %s, start with coverage: %s",
-		a.name, baseline.IDShortString, a.coverage.String)
+		a.name, baseline.IDShortString,
+		func() string { return util.GoTh(a.coverage) })
 
 	// attach endorsements
 	for _, endorsement := range endorse {
@@ -291,12 +292,8 @@ func (a *IncrementalAttacher) AdjustCoverage() {
 	}
 }
 
-func (a *IncrementalAttacher) LedgerCoverage() ledger.Coverage {
+func (a *IncrementalAttacher) LedgerCoverage() uint64 {
 	return a.coverage
-}
-
-func (a *IncrementalAttacher) LedgerCoverageSum() uint64 {
-	return a.coverage.Sum()
 }
 
 func (a *IncrementalAttacher) TargetTs() ledger.Time {
@@ -308,12 +305,8 @@ func (a *IncrementalAttacher) NumInputs() int {
 }
 
 // Completed returns true is past cone all solid and consistent (no conflicts)
-func (a *IncrementalAttacher) Completed() (done bool) {
-	done = !a.containsUndefinedExcept(nil) && len(a.rooted) > 0
-	if done {
-		a.Assertf(a.coverage.LatestDelta() > 0, "a.coverage.LatestDelta() > 0")
-	}
-	return
+func (a *IncrementalAttacher) Completed() bool {
+	return !a.containsUndefinedExcept(nil) && len(a.rooted) > 0
 }
 
 func (a *IncrementalAttacher) Extending() vertex.WrappedOutput {

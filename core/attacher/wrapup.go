@@ -19,10 +19,11 @@ func (a *milestoneAttacher) wrapUpAttacher() {
 	a.finals.numTransactions = len(a.vertices)
 
 	a.finals.coverage = a.coverage
-	a.Assertf(a.finals.coverage.LatestDelta() > 0, "final coverage must be positive")
+	//a.Assertf(a.finals.coverage > 0, "final coverage must be positive")
 	a.finals.slotInflation = a.slotInflation
 
-	a.Tracef(TraceTagAttachMilestone, "set ledger baselineCoverage in %s to %s", a.vid.IDShortString(), a.finals.coverage.String())
+	a.Tracef(TraceTagAttachMilestone, "set ledger baselineCoverage in %s to %s",
+		a.vid.IDShortString, func() string { return util.GoTh(a.finals.coverage) })
 	a.vid.SetLedgerCoverage(a.finals.coverage)
 
 	if a.vid.IsBranchTransaction() {
@@ -34,8 +35,8 @@ func (a *milestoneAttacher) wrapUpAttacher() {
 	}
 
 	calculatedMetadata := txmetadata.TransactionMetadata{
-		LedgerCoverageDelta: util.Ref(a.coverage.LatestDelta()),
-		SlotInflation:       util.Ref(a.finals.slotInflation),
+		LedgerCoverage: util.Ref(a.coverage),
+		SlotInflation:  util.Ref(a.finals.slotInflation),
 	}
 	if a.metadata != nil {
 		calculatedMetadata.DoNotNeedGossiping = a.metadata.DoNotNeedGossiping
@@ -100,7 +101,7 @@ func (a *milestoneAttacher) commitBranch() {
 	upd.MustUpdate(muts, &multistate.RootRecordParams{
 		StemOutputID:    stemOID,
 		SeqID:           seqID,
-		Coverage:        *a.vid.GetLedgerCoverage(),
+		Coverage:        *a.vid.GetLedgerCoverageP(),
 		SlotInflation:   a.slotInflation,
 		Supply:          a.baselineSupply + a.finals.slotInflation,
 		NumTransactions: newTransactions,

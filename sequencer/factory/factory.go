@@ -62,7 +62,7 @@ type (
 		tx           *transaction.Transaction
 		txMetadata   *txmetadata.TransactionMetadata
 		extended     vertex.WrappedOutput
-		coverage     ledger.Coverage
+		coverage     uint64
 		attacherName string
 	}
 
@@ -308,7 +308,7 @@ func (mf *MilestoneFactory) proposeNonBranchTx(a *attacher.IncrementalAttacher) 
 		tx: tx,
 		txMetadata: &txmetadata.TransactionMetadata{
 			StateRoot:               nil,
-			LedgerCoverageDelta:     util.Ref(coverage.LatestDelta()),
+			LedgerCoverage:          util.Ref(coverage),
 			SlotInflation:           util.Ref(a.SlotInflation()),
 			IsResponseToPull:        false,
 			SourceTypeNonPersistent: txmetadata.SourceTypeSequencer,
@@ -361,7 +361,7 @@ func (mf *MilestoneFactory) proposeBranchTx(a *attacher.IncrementalAttacher, ctx
 		tx: tx,
 		txMetadata: &txmetadata.TransactionMetadata{
 			StateRoot:               nil,
-			LedgerCoverageDelta:     util.Ref(coverage.LatestDelta()),
+			LedgerCoverage:          util.Ref(coverage),
 			SlotInflation:           util.Ref(a.SlotInflation()),
 			IsResponseToPull:        false,
 			SourceTypeNonPersistent: txmetadata.SourceTypeSequencer,
@@ -378,7 +378,8 @@ func (mf *MilestoneFactory) addProposal(p proposal) {
 	defer mf.target.mutex.Unlock()
 
 	mf.target.proposals = append(mf.target.proposals, p)
-	mf.Tracef(TraceTag, "added proposal %s from %s: coverage %s", p.tx.IDShortString, p.attacherName, p.coverage.String)
+	mf.Tracef(TraceTag, "added proposal %s from %s: coverage %s",
+		p.tx.IDShortString, p.attacherName, func() string { return util.GoTh(p.coverage) })
 }
 
 func (mf *MilestoneFactory) getBestProposal() (*transaction.Transaction, *txmetadata.TransactionMetadata) {
@@ -386,13 +387,12 @@ func (mf *MilestoneFactory) getBestProposal() (*transaction.Transaction, *txmeta
 	defer mf.target.mutex.RUnlock()
 
 	bestCoverageInSlot := mf.BestCoverageInTheSlot(mf.target.targetTs)
-	mf.Tracef(TraceTag, "best coverage in slot: %s", bestCoverageInSlot.String)
-	maxCoverageSum := bestCoverageInSlot.Sum()
+	mf.Tracef(TraceTag, "best coverage in slot: %s", func() string { return util.GoTh(bestCoverageInSlot) })
 	maxIdx := -1
 	for i := range mf.target.proposals {
-		c := mf.target.proposals[i].coverage.Sum()
-		if c > maxCoverageSum {
-			maxCoverageSum = c
+		c := mf.target.proposals[i].coverage
+		if c > bestCoverageInSlot {
+			bestCoverageInSlot = c
 			maxIdx = i
 		}
 	}
@@ -402,7 +402,7 @@ func (mf *MilestoneFactory) getBestProposal() (*transaction.Transaction, *txmeta
 	}
 	p := mf.target.proposals[maxIdx]
 	mf.Tracef(TraceTag, "getBestProposal: %s, target: %s, attacher %s: coverage %s",
-		p.tx.IDShortString, mf.target.targetTs.String, p.attacherName, p.coverage.String)
+		p.tx.IDShortString, mf.target.targetTs.String, p.attacherName, func() string { return util.GoTh(p.coverage) })
 	return p.tx, p.txMetadata
 }
 
@@ -459,7 +459,7 @@ func (mf *MilestoneFactory) chooseEndorseExtendPairAttacher(proposerName string,
 			a.UnReferenceAll()
 		case ret == nil:
 			ret = a
-		case a.LedgerCoverageSum() > ret.LedgerCoverageSum():
+		case a.LedgerCoverage() > ret.LedgerCoverage():
 			ret.UnReferenceAll()
 			ret = a
 		default:
@@ -511,21 +511,17 @@ func (mf *MilestoneFactory) NumMilestones() int {
 	return mf.NumSequencerTips()
 }
 
-func (mf *MilestoneFactory) BestCoverageInTheSlot(targetTs ledger.Time) ledger.Coverage {
+func (mf *MilestoneFactory) BestCoverageInTheSlot(targetTs ledger.Time) uint64 {
 	if targetTs.Tick() == 0 {
-		return ledger.Coverage{}
+		return 0
 	}
 	all := mf.LatestMilestonesDescending(func(seqID ledger.ChainID, vid *vertex.WrappedTx) bool {
 		return vid.Slot() == targetTs.Slot()
 	})
 	if len(all) == 0 || all[0].IsBranchTransaction() {
-		return ledger.Coverage{}
+		return 0
 	}
-	ret := all[0].GetLedgerCoverage()
-	if ret == nil {
-		return ledger.Coverage{}
-	}
-	return *ret
+	return all[0].GetLedgerCoverage()
 }
 
 func (mf *MilestoneFactory) purge(ttl time.Duration) int {

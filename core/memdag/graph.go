@@ -69,11 +69,15 @@ func makeGraphNode(vid *vertex.WrappedTx, gr graph.Graph[string, string], seqDic
 	var err error
 
 	status := vid.GetTxStatus()
-	lcSum := vid.GetLedgerCoverage().Sum()
+	lcp := vid.GetLedgerCoverageP()
+	lc := uint64(0)
+	if lcp != nil {
+		lc = *lcp
+	}
 	vid.RUnwrap(vertex.UnwrapOptions{
 		Vertex: func(v *vertex.Vertex) {
 			if v.Tx.IsSequencerMilestone() {
-				attr = sequencerNodeAttributes(v, lcSum, seqDict)
+				attr = sequencerNodeAttributes(v, lc, seqDict)
 			}
 			switch status {
 			case vertex.Bad:
@@ -291,7 +295,7 @@ func MakeTree(stateStore global.StateStore, slots ...int) graph.Graph[string, st
 		byOid[b.Stem.ID] = b
 		txid := b.Stem.ID.TransactionID()
 		id := txid.StringShort()
-		err := ret.AddVertex(id, branchNodeAttributes(&b.SequencerID, b.LedgerCoverage.Sum(), idDict)...)
+		err := ret.AddVertex(id, branchNodeAttributes(&b.SequencerID, b.LedgerCoverage, idDict)...)
 		util.AssertNoError(err)
 	}
 
