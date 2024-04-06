@@ -11,7 +11,7 @@ func (r *RootRecord) JSONAble() *RootRecordJSONAble {
 	return &RootRecordJSONAble{
 		Root:           r.Root.String(),
 		SequencerID:    r.SequencerID.StringHex(),
-		LedgerCoverage: r.LedgerCoverage[:],
+		LedgerCoverage: r.LedgerCoverage,
 		SlotInflation:  r.SlotInflation,
 		Supply:         r.Supply,
 	}
@@ -35,9 +35,6 @@ func RootRecordFromJSONAble(r *RootRecordJSONAble) (*RootRecord, error) {
 	if err != nil {
 		return nil, err
 	}
-	ret.LedgerCoverage, err = ledger.CoverageFromArray(r.LedgerCoverage)
-	if err != nil {
-		return nil, err
-	}
+	ret.LedgerCoverage = r.LedgerCoverage
 	return ret, nil
 }

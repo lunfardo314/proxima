@@ -573,7 +573,7 @@ func (a *attacher) attachRooted(wOut vertex.WrappedOutput) (ok bool, isRooted bo
 	a.markVertexDefined(wOut.VID)
 
 	// this is new rooted output -> add to the coverage delta
-	a.coverage.AddDelta(out.Amount())
+	a.coverage += out.Amount()
 	return true, true
 }
 

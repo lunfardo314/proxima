@@ -62,7 +62,7 @@ type (
 		rooted             map[*vertex.WrappedTx]set.Set[byte]
 		referenced         set.Set[*vertex.WrappedTx]
 		pokeMe             func(vid *vertex.WrappedTx)
-		coverage           ledger.Coverage
+		coverage           uint64
 		coverageAdjustment uint64
 		coverageAdjusted   bool
 		slotInflation      uint64
@@ -109,7 +109,7 @@ type (
 	attachFinals struct {
 		numInputs         int
 		numOutputs        int
-		coverage          ledger.Coverage
+		coverage          uint64
 		slotInflation     uint64
 		supply            uint64
 		root              common.VCommitment

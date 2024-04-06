@@ -42,25 +42,33 @@ func FetchLatestSlot(store global.StateStore) ledger.Slot {
 const numberOfElementsInRootRecord = 6
 
 func (r *RootRecord) Bytes() []byte {
-	util.Assertf(r.LedgerCoverage.LatestDelta() > 0, "r.Coverage.LatestDelta() > 0")
+	util.Assertf(r.LedgerCoverage > 0, "r.Coverage.LatestDelta() > 0")
 	arr := lazybytes.EmptyArray(numberOfElementsInRootRecord)
 	arr.Push(r.SequencerID.Bytes())
 	arr.Push(r.Root.Bytes())
-	arr.Push(r.LedgerCoverage.Bytes())
+
+	var coverage [8]byte
+	binary.BigEndian.PutUint64(coverage[:], r.LedgerCoverage)
+	arr.Push(coverage[:])
+
 	var slotInflationBin, supplyBin [8]byte
 	binary.BigEndian.PutUint64(slotInflationBin[:], r.SlotInflation)
+
 	arr.Push(slotInflationBin[:])
 	binary.BigEndian.PutUint64(supplyBin[:], r.Supply)
+
 	arr.Push(supplyBin[:])
 	var nTxBin [4]byte
 	binary.BigEndian.PutUint32(nTxBin[:], r.NumTransactions)
+
 	arr.Push(nTxBin[:])
 	util.Assertf(arr.NumElements() == numberOfElementsInRootRecord, "arr.NumElements() == 6")
 	return arr.Bytes()
 }
 
 func (r *RootRecord) String() string {
-	return fmt.Sprintf("root record %s, %s, %s, %d", r.SequencerID.StringShort(), r.LedgerCoverage.String(), r.Root.String(), r.NumTransactions)
+	return fmt.Sprintf("root record %s, %s, %s, %d",
+		r.SequencerID.StringShort(), util.GoTh(r.LedgerCoverage), r.Root.String(), r.NumTransactions)
 }
 
 func RootRecordFromBytes(data []byte) (RootRecord, error) {
@@ -76,21 +84,13 @@ func RootRecordFromBytes(data []byte) (RootRecord, error) {
 	if err != nil {
 		return RootRecord{}, err
 	}
-	if len(arr.At(2)) != 8*ledger.HistoryCoverageDeltas {
-		return RootRecord{}, fmt.Errorf("RootRecordFromBytes: wrong data length")
-	}
-	coverage, err := ledger.CoverageFromBytes(arr.At(2))
-	if err != nil {
-		return RootRecord{}, err
-	}
-	if len(arr.At(3)) != 8 || len(arr.At(4)) != 8 || len(arr.At(5)) != 4 {
+	if len(arr.At(2)) != 8 || len(arr.At(3)) != 8 || len(arr.At(4)) != 8 || len(arr.At(5)) != 4 {
 		return RootRecord{}, fmt.Errorf("wrong data length")
 	}
-
 	return RootRecord{
 		Root:            root,
 		SequencerID:     chainID,
-		LedgerCoverage:  coverage,
+		LedgerCoverage:  binary.BigEndian.Uint64(arr.At(2)),
 		SlotInflation:   binary.BigEndian.Uint64(arr.At(3)),
 		Supply:          binary.BigEndian.Uint64(arr.At(4)),
 		NumTransactions: binary.BigEndian.Uint32(arr.At(5)),
@@ -99,7 +99,7 @@ func RootRecordFromBytes(data []byte) (RootRecord, error) {
 
 // IsDominating the root is dominating if coverage last delta is mora than half of the supply
 func (r *RootRecord) IsDominating() bool {
-	return r.LedgerCoverage.LatestDelta() > r.Supply/2
+	return r.LedgerCoverage > r.Supply/2
 }
 
 func (br *BranchData) TxID() *ledger.TransactionID {
@@ -247,7 +247,7 @@ func FetchLatestBranches(store global.StateStore) []*BranchData {
 func FetchLatestRootRecords(store global.StateStore) []RootRecord {
 	ret := FetchRootRecords(store, FetchLatestSlot(store))
 	sort.Slice(ret, func(i, j int) bool {
-		return ret[i].LedgerCoverage.Sum() > ret[j].LedgerCoverage.Sum()
+		return ret[i].LedgerCoverage > ret[j].LedgerCoverage
 	})
 	return ret
 }
@@ -289,7 +289,7 @@ func FetchHeaviestBranchChainNSlotsBack(store global.StateStore, nBack int) []*B
 	var lastInTheChain *BranchData
 
 	for _, bd := range latestBD {
-		if lastInTheChain == nil || bd.LedgerCoverage.Sum() > lastInTheChain.LedgerCoverage.Sum() {
+		if lastInTheChain == nil || bd.LedgerCoverage > lastInTheChain.LedgerCoverage {
 			lastInTheChain = bd
 		}
 	}
