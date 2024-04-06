@@ -76,7 +76,7 @@ func runBootstrapAccount(_ *cobra.Command, args []string) {
 	glb.Assertf(found, "inconsistency: can't find root record")
 	_, err = txStore.PersistTxBytesWithMetadata(txBytesBootstrapBalance, &txmetadata.TransactionMetadata{
 		StateRoot:      rr.Root,
-		LedgerCoverage: util.Ref(rr.LedgerCoverage.LatestDelta()),
+		LedgerCoverage: util.Ref(rr.LedgerCoverage),
 		SlotInflation:  util.Ref(rr.SlotInflation),
 		Supply:         util.Ref(rr.Supply),
 	})

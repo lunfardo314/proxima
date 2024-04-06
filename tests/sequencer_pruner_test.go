@@ -20,7 +20,7 @@ import (
 func Test1SequencerPruner(t *testing.T) {
 	t.Run("idle", func(t *testing.T) {
 		const (
-			maxSlots          = 5 // 20
+			maxSlots          = 20
 			branchMiningSteps = 10
 		)
 		testData := initWorkflowTest(t, 1, true)
