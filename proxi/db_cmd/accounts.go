@@ -31,7 +31,7 @@ func runAccountsCmd(_ *cobra.Command, _ []string) {
 	}
 
 	brHeaviest := util.Maximum(branchData, func(br1, br2 *multistate.BranchData) bool {
-		return br1.LedgerCoverage.Sum() < br2.LedgerCoverage.Sum()
+		return br1.LedgerCoverage < br2.LedgerCoverage
 	})
 
 	accountInfo := multistate.MustCollectAccountInfo(glb.StateStore(), brHeaviest.Root)

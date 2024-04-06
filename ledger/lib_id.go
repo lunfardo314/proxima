@@ -34,6 +34,9 @@ const (
 	DefaultSlotsPerLedgerEpoch = time.Hour * 24 * 365 / DefaultSlotDuration
 
 	DustPerProxi         = 1_000_000
+	BaseTokenName        = "Proxi"
+	BaseTokenNameTicker  = "PRXI"
+	DustTokenName        = "dust"
 	PRXI                 = DustPerProxi
 	InitialSupplyProxi   = 1_000_000_000
 	DefaultInitialSupply = InitialSupplyProxi * PRXI

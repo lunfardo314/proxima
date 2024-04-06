@@ -63,12 +63,12 @@ func DisplayBranchData(branches []*multistate.BranchData) {
 			name = msData.Name
 		}
 		name = fmt.Sprintf("%s (%s)", name, br.SequencerID.StringVeryShort())
-		glb.Infof(" %2d: %s supply: %s, infl: %s, on chain: %s, coverage delta: %s, root: %s",
+		glb.Infof(" %2d: %s supply: %s, infl: %s, on chain: %s, coverage: %s, root: %s",
 			i, name,
 			util.GoTh(br.Supply),
 			util.GoTh(br.SlotInflation),
 			util.GoTh(br.SequencerOutput.Output.Amount()),
-			util.GoTh(br.LedgerCoverage.LatestDelta()),
+			util.GoTh(br.LedgerCoverage),
 			br.Root.String())
 	}
 }

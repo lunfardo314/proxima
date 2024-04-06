@@ -204,5 +204,5 @@ func (m *TransactionMetadata) String() string {
 	if m.SlotInflation != nil {
 		inflationStr = util.GoTh(*m.SlotInflation)
 	}
-	return fmt.Sprintf("coverage delta: %s, slot inflation: %s, root: %s, source type: '%s'", lcStr, inflationStr, rootStr, m.SourceTypeNonPersistent.String())
+	return fmt.Sprintf("coverage: %s, slot inflation: %s, root: %s, source type: '%s'", lcStr, inflationStr, rootStr, m.SourceTypeNonPersistent.String())
 }

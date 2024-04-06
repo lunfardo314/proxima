@@ -572,7 +572,7 @@ func (a *attacher) attachRooted(wOut vertex.WrappedOutput) (ok bool, isRooted bo
 	a.rooted[wOut.VID] = consumedRooted
 	a.markVertexDefined(wOut.VID)
 
-	// this is new rooted output -> add to the coverage delta
+	// this is new rooted output -> add to the coverage
 	a.coverage += out.Amount()
 	return true, true
 }
@@ -720,7 +720,7 @@ func (a *attacher) adjustCoverage() {
 	if a.isRootedOutput(baseSeqOut) {
 		return
 	}
-	// if case sequencer output is not rooted (branch is just endorsed), add its inflation to the coverage delta
+	// if case sequencer output is not rooted (branch is just endorsed), add its inflation to the coverage
 	out, idx := multistate.MustSequencerOutputOfBranch(a.StateStore(), baseSeqOut.VID.ID).Output.ChainConstraint()
 	a.Assertf(idx != 0xff, "adjustCoverage: can't find chain constraint on the branch %s", baseSeqOut.IDShortString)
 

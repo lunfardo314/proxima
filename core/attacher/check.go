@@ -100,7 +100,7 @@ func (a *milestoneAttacher) _checkConsistencyBeforeFinalization() (err error) {
 				return false
 			}
 			if !vidEndorsed.IsBranchTransaction() && a.coverage < *lc {
-				err = fmt.Errorf("coverage delta should not decrease.\nGot: delta(%s) at %s <= delta(%s) in %s",
+				err = fmt.Errorf("coverage should not decrease.\nGot: delta(%s) at %s <= delta(%s) in %s",
 					util.GoTh(a.coverage), a.vid.Timestamp().String(), util.GoTh(*lc), vidEndorsed.IDShortString())
 				return false
 			}
@@ -128,7 +128,7 @@ func (a *milestoneAttacher) checkConsistencyWithMetadata() {
 	var err error
 	switch {
 	case a.metadata.LedgerCoverage != nil && *a.metadata.LedgerCoverage != a.coverage:
-		err = fmt.Errorf("checkConsistencyWithMetadata %s: major inconsistency: computed coverage delta (%s) not equal to the coverage delta provided in the metadata (%s). Diff=%s",
+		err = fmt.Errorf("checkConsistencyWithMetadata %s: major inconsistency: computed coverage (%s) not equal to the coverage provided in the metadata (%s). Diff=%s",
 			a.vid.IDShortString(), util.GoTh(a.coverage), util.GoTh(*a.metadata.LedgerCoverage),
 			util.GoTh(int64(a.coverage)-int64(*a.metadata.LedgerCoverage)))
 	case a.metadata.SlotInflation != nil && *a.metadata.SlotInflation != a.slotInflation:
