@@ -1,7 +1,6 @@
 package node
 
 import (
-	"os"
 	"runtime"
 	"sync"
 	"time"
@@ -33,10 +32,6 @@ type ProximaNode struct {
 }
 
 func init() {
-	//pflag.Parse()
-	//err := viper.BindPFlags(pflag.CommandLine)
-	//util.AssertNoError(err)
-
 	viper.SetConfigName("proxima")
 	viper.SetConfigType("yaml")
 	viper.AddConfigPath(".")
@@ -55,13 +50,15 @@ func New() *ProximaNode {
 	return ret
 }
 
+const waitAllProcessesStopTimeout = 5 * time.Second
+
 // WaitAllWorkProcessesToStop wait everything to stop before closing databases
-func (p *ProximaNode) WaitAllWorkProcessesToStop(timeout time.Duration) {
+func (p *ProximaNode) WaitAllWorkProcessesToStop() {
 	<-p.Ctx().Done()
 	p.workProcessesStopStepChan <- struct{}{} // first step release DB close goroutines
-	p.Log().Infof("waiting all processes to stop for up to %v", timeout)
-	p.Global.MustWaitAllWorkProcessesStop(timeout)
-	close(p.workProcessesStopStepChan) // second step release DB close goroutines
+	p.Log().Infof("waiting all processes to stop for up to %v", waitAllProcessesStopTimeout)
+	p.Global.MustWaitAllWorkProcessesStop(waitAllProcessesStopTimeout)
+	close(p.workProcessesStopStepChan) // second step signals to release DB close goroutines
 }
 
 // WaitAllDBClosed ensuring databases has been closed
@@ -81,6 +78,7 @@ func (p *ProximaNode) readInTraceTags() {
 	p.Global.StartTracingTags(viper.GetStringSlice("trace_tags")...)
 }
 
+// Start starts the node
 func (p *ProximaNode) Start() {
 	p.Log().Info(global.BannerString())
 	p.readInTraceTags()
@@ -90,15 +88,15 @@ func (p *ProximaNode) Start() {
 		p.initTxStore()
 		p.initPeering()
 
-		p.startWorkProcesses()
+		p.startWorkflow()
 		p.startSequencers()
 		p.startAPIServer()
 		p.startPProfIfEnabled()
 		return nil
 	})
 	if err != nil {
-		p.Log().Errorf("error on startup: %v", err)
-		os.Exit(1)
+		p.Log().Fatalf("error on startup: %v", err)
+		//os.Exit(1)
 	}
 	p.Log().Infof("Proxima node has been started successfully")
 	p.Log().Debug("running in debug mode")
@@ -108,6 +106,7 @@ func (p *ProximaNode) Start() {
 		p.Log().Infof("will NOT be logging attacher stats")
 	}
 
+	// periodic logging of general stats
 	p.RepeatEvery(5*time.Second, func() bool {
 		var memStats runtime.MemStats
 		runtime.ReadMemStats(&memStats)
@@ -196,7 +195,7 @@ func (p *ProximaNode) initPeering() {
 	}()
 }
 
-func (p *ProximaNode) startWorkProcesses() {
+func (p *ProximaNode) startWorkflow() {
 	p.workflow = workflow.New(p, p.peers)
 	p.workflow.Start()
 }
