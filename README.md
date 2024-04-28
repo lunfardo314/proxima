@@ -2,7 +2,7 @@
 Proxima is the node for  _distributed_, _decentralized_ and _permissionless_ UTXO ledger 
 with DAG-based _cooperative_ and _leaderless_ consensus, also known as the _UTXO tangle_.
 
-Please find [technical whitepaper](docs\Proxima_WP.pdf) here. 
+Please find [technical whitepaper](docs/Proxima_WP.pdf) here. 
 The [TODO list](TODO.md) contains a constantly changing list of pending and ongoing development issues with their completion status.  
 
 Proxima presents a novel architecture for a distributed ledger, commonly referred to as a "blockchain". 
