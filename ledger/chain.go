@@ -245,7 +245,7 @@ func chainSuccessorData :
 func _inflationCapInTransaction :
 if(
    isBranchTransaction,
-   sum64(modulo(slice(blake2b(txBytes),24,31), constBranchBonusBase), u64/1),  // enforcing branch inflation mining
+   add(mod(slice(blake2b(txBytes),24,31), constBranchBonusBase), 1),  // enforcing branch inflation mining
    maxInflationAmount(timestampOfInputByIndex($0), txTimestampBytes, amountValue(consumedOutputByIndex($0)))
 )
 

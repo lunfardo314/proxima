@@ -38,8 +38,8 @@ func selfMustAmountAtLeast : if(
 	true
 )
 
-func selfMustStandardAmount: selfMustAmountAtLeast( 
-	concat(u32/0, mul16_32(constVBCost16,len16(selfOutputBytes)))
+func selfMustStandardAmount: selfMustAmountAtLeast(
+	mul(constVBCost16,len16(selfOutputBytes))
 )
 
 `

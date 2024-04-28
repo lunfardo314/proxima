@@ -100,12 +100,12 @@ func (lib *Library) extendWithBaseConstants(id *IdentityData) {
 
 	lib.Extend("mustValidTimeTick", "if(and(mustSize($0,1),lessThan($0,ticksPerSlot)),$0,!!!wrong_timeslot)")
 	lib.Extend("mustValidTimeSlot", "mustSize($0, timeSlotSizeBytes)")
-	lib.Extend("timeSlotPrefix", "slice($0, 0, sub8(timeSlotSizeBytes,1))") // first 4 bytes of any array. It is not time slot yet
+	lib.Extend("timeSlotPrefix", "slice($0, 0, 3)") // first 4 bytes of any array. It is not time slot yet
 	lib.Extend("timeSlotFromTimeSlotPrefix", "bitwiseAND($0, 0x3fffffff)")
-	lib.Extend("timeTickFromTimestamp", "byte($0, timeSlotSizeBytes)")
+	lib.Extend("timeTickFromTimestamp", "byte($0, 4)")
 	lib.Extend("timestamp", "concat(mustValidTimeSlot($0),mustValidTimeTick($1))")
 	// takes first 5 bytes and sets first 2 bit to zero
-	lib.Extend("timestampPrefix", "bitwiseAND(slice($0, 0, sub8(timestampByteSize,1)), 0x3fffffffff)")
+	lib.Extend("timestampPrefix", "bitwiseAND(slice($0, 0, 4), 0x3fffffffff)")
 }
 
 func (lib *Library) initGeneralFunctions(id *IdentityData) *Library {

@@ -60,7 +60,7 @@ func (id *IdentityData) _insideInflationOpportunityWindow(diffTicks int64, inAmo
 // It must be equivalent to the direct calculation. It is covered in tests/inflation_test.go
 const inflationSource = `
 // $0 -  slot of the chain input as u64
-func epochFromGenesis : div64( $0, constSlotsPerLedgerEpoch )
+func epochFromGenesis : div( $0, constSlotsPerLedgerEpoch )
 
 // $0 -  epochFromGenesis
 func halvingEpoch :
@@ -73,9 +73,9 @@ func halvingEpoch :
 // $0 slot of the chain input as u64
 // result - inflation fraction corresponding to that year (taking into account halving) 
 func inflationFractionBySlot :
-    mul64(
+    mul(
         constChainInflationFractionBase, 
-        lshift64(u64/1, halvingEpoch(epochFromGenesis($0)))
+        lshift64(1, halvingEpoch(epochFromGenesis($0)))
     )
 
 // $0 - diff ticks between transaction timestamp and input timestamp
@@ -83,7 +83,7 @@ func inflationFractionBySlot :
 func _insideInflationOpportunityWindow : 
 and(
    lessOrEqualThan(
-	   div64(
+	   div(
 		  $0,
 		  ticksPerSlot64
 	   ),
@@ -91,7 +91,7 @@ and(
    ),
    lessThan(
        $0,
-       div64(
+       div(
            0xffffffffffffffff, // MaxUint64
            $1
        )
@@ -105,8 +105,8 @@ and(
 func maxChainInflationAmount : 
 if(
     _insideInflationOpportunityWindow(ticksBefore($0, $1), $2),
-	div64(
-	   mul64(
+	div(
+	   mul(
 		  ticksBefore($0, $1), 
 		  $2
 	   ), 
