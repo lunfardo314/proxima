@@ -34,7 +34,7 @@ sequencers:
   seq2:
     enable: true
     # chain ID of the sequencer
-    sequencer_id: b68c0758e4bf2e55a7b96c079a7a80a102340af3c483d305d38b940e262c87ad
+    sequencer_id: 2c6405a98e2fbff289d12eafef2bb5dfa842e615203faa02252c62f7dc5c7f7d
     # chain controller's private key (hex-encoded)
     controller_key: 3a2ed3c4f738a06e9543f80e032fd870be5e524585e0144f2499d1a28bc4797902e2a7a85bd158469adae3294a615e17ef49e72642c4eb58ff00d92301b9bb88
     # sequencer pace

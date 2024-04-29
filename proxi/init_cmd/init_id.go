@@ -10,17 +10,13 @@ import (
 	"github.com/spf13/viper"
 )
 
-const (
-	ledgerIDFileName            = "proxi.genesis.id.yaml"
-	genesisDistributionFileName = "proxi.genesis.distribute.yaml"
-	bootstrapAmount             = 1_000_000
-)
+const ledgerIDFileName = "proxi.genesis.id.yaml"
 
 func initIDCmd() *cobra.Command {
 	initLedgerIDCmd := &cobra.Command{
 		Use:   "ledger_id",
 		Args:  cobra.NoArgs,
-		Short: "creates identity data of the ledger in the file 'proxi.genesis.id.yaml'",
+		Short: fmt.Sprintf("creates identity data of the ledger with genesis controller taken from proxi wallet. Saves it to the file '%s'", ledgerIDFileName),
 		PersistentPreRun: func(_ *cobra.Command, _ []string) {
 			glb.ReadInConfig()
 		},

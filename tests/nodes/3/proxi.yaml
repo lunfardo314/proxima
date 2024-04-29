@@ -8,7 +8,7 @@ wallet:
 api:
     endpoint: http://127.0.0.1:8003
 tag_along:
-    sequencer_id: 340015bfd78af5ef9a4acb5c0c25758c32b58c83c265f524c3e858205723dabf
+    sequencer_id: af7bedde1fea222230b82d63d5b665ac75afbe4ad3f75999bb3386cf994a6963
     fee: 500
 spammer:
     bundle_size: 10

@@ -128,7 +128,7 @@ func (c *APIClient) GetChainOutputData(chainID ledger.ChainID) (*ledger.OutputDa
 		return nil, err
 	}
 	if res.Error.Error != "" {
-		return nil, fmt.Errorf("from server: %s", res.Error.Error)
+		return nil, fmt.Errorf("GetChainOutputData for %s: from server: %s", chainID.StringShort(), res.Error.Error)
 	}
 
 	oid, err := ledger.OutputIDFromHexString(res.OutputID)
@@ -157,7 +157,7 @@ func (c *APIClient) GetChainOutputFromHeaviestState(chainID ledger.ChainID) (*le
 func (c *APIClient) GetMilestoneDataFromHeaviestState(chainID ledger.ChainID) (*ledger.MilestoneData, error) {
 	o, _, err := c.GetChainOutputFromHeaviestState(chainID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error while retrieving milestone for sequencer %s: %w", chainID.StringShort(), err)
 	}
 	if !o.ID.IsSequencerTransaction() {
 		return nil, fmt.Errorf("not a sequencer milestone: %s", chainID.StringShort())

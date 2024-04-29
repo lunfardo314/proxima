@@ -1,11 +1,11 @@
-# This is a Proxima ledger identity file.
-# It contains public Proxima ledger constants set at genesis and never changed after. 
+# This is Proxima ledger identity file.
+# It contains public Proxima ledger constants set at genesis. 
 # The ledger identity file is used to create genesis ledger state for Proxima nodes.
 # Private key of the controller should be known only to the creator of the genesis ledger state.
 # Public key of the controller identifies originator of the ledger for its lifetime.
 # 'genesis_controller_address' is computed from the public key of the controller
 # 'bootstrap_chain_id' is a constant, i.e. same for all ledgers
-genesis_time_unix: 1712418801
+genesis_time_unix: 1714406173
 initial_supply: 1000000000000000
 genesis_controller_public_key: 0530b790e0e7de626f36e20ba656f09e324c68203de899d0daf9f98fcb3cf684
 time_tick_duration_nanosec: 100000000

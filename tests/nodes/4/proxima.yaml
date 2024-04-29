@@ -36,7 +36,7 @@ sequencers:
     enable: true
     loglevel: info
     # chain ID of the sequencer
-    sequencer_id: 4bad32bd8acfebe7037d18493c105e1dec83218154658ffadba7bd7c3bf9c522
+    sequencer_id: 013a1f75de7b961eaa872e73c3f53c811c96e39ad23ea7bb3f30f7a5a7efc0df
     # chain controller's private key (hex-encoded)
     controller_key: a8088c55a9827ddcd2207b373d7c01c4efb21a1ffdfd87fe973cccdbb897125a8601428a67a956d625889c264adae2b9e3e74b1f2bf3e3957eb7b1f78c6314aa
     # sequencer pace
