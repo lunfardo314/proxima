@@ -9,10 +9,6 @@ import (
 	"github.com/spf13/viper"
 )
 
-func Printf(format string, args ...any) {
-	fmt.Printf(format, args...)
-}
-
 func Infof(format string, args ...any) {
 	fmt.Printf(format+"\n", args...)
 }

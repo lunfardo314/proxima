@@ -6,8 +6,8 @@ import (
 
 	"github.com/lunfardo314/proxima/core/inclusion"
 	"github.com/lunfardo314/proxima/core/vertex"
-	"github.com/lunfardo314/proxima/core/work_process/tippool"
 	"github.com/lunfardo314/proxima/ledger"
+	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -114,31 +114,32 @@ func NoWait() bool {
 	return viper.GetBool("nowait")
 }
 
-func ReportTxStatus(txid ledger.TransactionID, poll time.Duration, stopFun ...func(status *vertex.TxIDStatus, inclusionData map[ledger.ChainID]tippool.TxInclusion) bool) {
-	stop := func(status *vertex.TxIDStatus, inclusionData map[ledger.ChainID]tippool.TxInclusion) bool {
-		percTotal, _ := inclusion.ScoreLatestSlot(inclusionData)
-		return percTotal == 100
-	}
-	if len(stopFun) > 0 {
-		stop = stopFun[0]
-	}
-
+func ReportTxStatus(txid ledger.TransactionID, poll time.Duration) {
 	Infof("Transaction %s (hex=%s):", txid.String(), txid.StringHex())
+	inclusionThresholdNumerator, inclusionThresholdDenominator := getInclusionThreshold()
+	Infof("Inclusion threshold: %d/%d :", inclusionThresholdNumerator, inclusionThresholdDenominator)
 	for {
 		vertexStatus, inclusionData, err := GetClient().QueryTxIDStatus(&txid)
 		AssertNoError(err)
 		Infof(vertexStatus.Lines().Join(", "))
+		var score int
 		if len(inclusionData) > 0 {
-			_, incl := inclusion.InLatestSlot(inclusionData)
-			percTotal, percDominating := incl.Score()
-			Infof("   total branches: %d, included in total: %d%%, in dominating: %d%%", incl.NumBranchesTotal, percTotal, percDominating)
+			latestSlot, branchesTotal, numDominatingBranches, numIncludedInDominatingBranches := inclusion.InLatestSlot(inclusionData, inclusionThresholdNumerator, inclusionThresholdDenominator)
+			score = (numIncludedInDominatingBranches * 100) / numDominatingBranches
+			Infof("   slot: %d, total branches: %d, dominating branches: %d / %d, score: %d%%",
+				latestSlot, branchesTotal, numIncludedInDominatingBranches, numDominatingBranches, score)
 		}
-		if vertexStatus.Deleted || vertexStatus.Status == vertex.Bad {
-			return
-		}
-		if stop(vertexStatus, inclusionData) {
+		if vertexStatus.Deleted || vertexStatus.Status == vertex.Bad || score == 100 {
 			return
 		}
 		time.Sleep(poll)
 	}
+}
+
+func getInclusionThreshold() (uint64, uint64) {
+	numerator := uint64(viper.GetInt("inclusion_threshold.numerator"))
+	denominator := uint64(viper.GetInt("inclusion_threshold.denominator"))
+
+	Assertf(multistate.ValidInclusionThresholdFraction(numerator, denominator), "wrong or missing inclusion threshold")
+	return numerator, denominator
 }

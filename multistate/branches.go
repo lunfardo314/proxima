@@ -98,9 +98,13 @@ func RootRecordFromBytes(data []byte) (RootRecord, error) {
 	}, nil
 }
 
+func ValidInclusionThresholdFraction(numerator, denominator uint64) bool {
+	return numerator > 0 && denominator > 0 && numerator < denominator && denominator >= 2
+}
+
 // IsCoverageAboveThreshold the root is dominating if coverage last delta is more than numerator/denominator of the supply
 func (r *RootRecord) IsCoverageAboveThreshold(numerator, denominator uint64) bool {
-	util.Assertf(numerator > 0 && denominator > 0 && numerator < denominator && denominator >= 2, "IsCoverageAboveThreshold: fraction is wrong")
+	util.Assertf(ValidInclusionThresholdFraction(numerator, denominator), "IsCoverageAboveThreshold: fraction is wrong")
 	return r.LedgerCoverage > (r.Supply/numerator)*denominator // this order to avoid overflow
 }
 
