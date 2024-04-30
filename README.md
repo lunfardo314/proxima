@@ -21,7 +21,7 @@ Proxima distributed ledger does not require special categories of miners, valida
 In the proposed architecture, participants do not need knowledge of the global state of the system or the total order of ledger updates. 
 The setup allows to achieve high throughput and scalability alongside with low transaction costs, 
 while preserving key aspects of decentralization, open participation, and asynchronicity found in Bitcoin and other proof-of-work blockchains, 
-but without huge energy consumption. 
+but without unreasonable energy consumption. 
 
 Sybil protection is achieved similarly to proof-of-stake blockchains, using tokens native to the ledger, 
 yet the architecture operates in a leaderless manner without block proposers and committee selection.
