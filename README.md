@@ -45,10 +45,12 @@ It also contains some tooling, which includes rudimentary wallet functionality.
 * **No need for a global knowledge** of the system state, such as composition of the committee, assumptions about node weights, stakes, or other registries.
 * **1-tier trust assumptions**. Only token holders are involved in the process, as opposed to the multiple layers of trust required in other blockchain systems such as PoW (which includes users and miners) 
 and PoS (which includes at least users, block proposers, committee selection and committee).
-* **Absence of a deterministic global state**. Due to the non-determinism of the ledger account (a set of outputs), it cannot be used as a single global liquidity pool.
-* **Parallelism at the consensus level**. Assets converge to their final state in parallel.
-* **Parallelism** at the node level. All transactions are validated in parallel at each node.
-* **Simpler than most**, except Bitcoin. The above facilitates clear and relatively simple overall concept and node architecture, much simpler than most PoS systems. It is still pretty complex 
+* **Absence of the deterministic global state**. Due to the non-determinism of the ledger account (a set of outputs), 
+the account cannot be used as a single global liquidity pool in the smart contract.
+* **Parallelism at the distributed consensus level**. Assets converge to their final states in parallel.
+* **Parallelism** at the node level. All transactions are processed in parallel on each node.
+* **Simpler than most**, except Bitcoin. The above facilitates clear and relatively simple overall concept and node architecture, 
+much simpler than most PoS systems, which are usually complex in their consensus layer and due to synchronicity requirements. 
 
 ## Further information
 * The [technical whitepaper](docs/Proxima_WP.pdf) contains detailed description of the *cooperative ledger* concept
