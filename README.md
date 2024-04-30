@@ -34,16 +34,15 @@ Currently, the project is in an **experimental development stage**.
 The repository contains Proxima node prototype intended for experimental research and development. 
 It also contains some tooling, which includes rudimentary wallet functionality.
 
-## Further information
-* The [technical whitepaper](docs/Proxima_WP.pdf) contains detailed description of the *cooperative ledger* concept
-* [TODO list](TODO.md) contains most pressing development topics with their completion status
-* here will be instructions how to run small Proxima testnet **TBD**
-* here will be series of introductory video presentations about Proxima **TBD**
-
-
 ## Highlights of the system's architecture
 
-* **Fully permissionless** writing to the ledger. Token holders, who are the only ones authorized to write to the ledger, can issue ledger updates without requiring any permitting procedures. There is no need for committees or voting processes.
+* **Fully permissionless**, unbounded, and globally unknown set of pseudonymous participants. 
+* **Token holders are the only actors** authorized to write to the ledger (issue transactions). There is no need for any kind of permissions, committees or voting processes.
+* **Liquidity of the token** is the only prerequisite for the system to be fully permissionless
+* **High throughput**, as a result of massive parallelism and no global bottlenecks
+* **High level of decentralization**, probably the highest achievable in distributed ledgers 
+* **Low energy requirements**, unlike PoW. 
+* **Low cost per transaction**
 * **Leaderless determinism**. The system operates without a consensus leader or block proposers, providing a more decentralized approach.
 * **Asynchrony**. The architecture relies on only weak assumptions of synchronicity.
 * **No need for a global knowledge** of the system state, such as composition of the committee, assumptions about node weights, stakes, or other registries.
@@ -51,3 +50,11 @@ It also contains some tooling, which includes rudimentary wallet functionality.
 * **Absence of a deterministic global state**. Due to the non-determinism of the ledger account (a set of outputs), it cannot be used as a single global liquidity pool.
 * **Parallelism at the consensus level**. Assets converge to their final state in parallel.
 * **Parallelism** at the node level. All transactions are validated in parallel at each node.
+* **Simpler than most**, except Bitcoin. The above facilitates clear and relatively simple overall concept and node architecture, much simpler than most PoS systems. It is still pretty complex 
+
+## Further information
+* The [technical whitepaper](docs/Proxima_WP.pdf) contains detailed description of the *cooperative ledger* concept
+* [TODO list](TODO.md) contains most pressing development topics with their completion status
+* here will be instructions how to run small Proxima testnet **TBD**
+* here will be series of introductory video presentations about Proxima **TBD**
+
