@@ -3,9 +3,6 @@
 **Warning! This repository contains an ongoing development. Currently, it is in the experimental (prototype) version. It definitely contains bugs.
 The code should no be used in production!**
 
-A _distributed_, _decentralized_ and _permissionless_ UTXO ledger 
-with DAG-based _cooperative_ and _leaderless_ consensus, also known as the _UTXO tangle_.
-
 Proxima is like Bitcoin/PoW or PoS. Yet it is neither PoW, no PoS system 
 
 ## Introduction
