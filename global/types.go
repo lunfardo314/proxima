@@ -31,11 +31,15 @@ type (
 		StateIndexReader
 	}
 
-	StateStore interface {
+	StateStoreReader interface {
 		common.KVReader
-		common.BatchedUpdatable
 		common.Traversable
 		IsClosed() bool
+	}
+
+	StateStore interface {
+		StateStoreReader
+		common.BatchedUpdatable
 	}
 
 	TxBytesGet interface {

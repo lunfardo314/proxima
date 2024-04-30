@@ -10,6 +10,7 @@ import (
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
 	"github.com/lunfardo314/proxima/util/set"
+	"github.com/lunfardo314/unitrie/common"
 	"golang.org/x/exp/maps"
 )
 
@@ -616,9 +617,9 @@ func (a *attacher) branchesCompatible(txid1, txid2 *ledger.TransactionID) bool {
 		// two different branches on the same slot conflicts
 		return false
 	case txid1.Slot() < txid2.Slot():
-		return multistate.BranchIsDescendantOf(txid2, txid1, a.StateStore)
+		return multistate.BranchIsDescendantOf(txid2, txid1, func() common.KVReader { return a.StateStore() })
 	default:
-		return multistate.BranchIsDescendantOf(txid1, txid2, a.StateStore)
+		return multistate.BranchIsDescendantOf(txid1, txid2, func() common.KVReader { return a.StateStore() })
 	}
 }
 

@@ -22,7 +22,7 @@ func InSlot(inclusionData map[ledger.ChainID]tippool.TxInclusion, slot ledger.Sl
 		if incl.Included {
 			ret.NumIncludedTotal++
 		}
-		if incl.RootRecord.IsDominating() {
+		if incl.RootRecord.IsCoverageAboveThreshold() {
 			ret.NumBranchesDominating++
 			if incl.Included {
 				ret.NumIncludedDominating++

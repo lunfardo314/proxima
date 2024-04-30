@@ -28,6 +28,8 @@ type (
 		trie  *immutable.TrieReader
 	}
 
+	// RootRecord is a persistent data stored in the DB partition with each state root
+	// It contains deterministic values for that state
 	RootRecord struct {
 		Root        common.VCommitment
 		SequencerID ledger.ChainID
@@ -42,6 +44,7 @@ type (
 		Supply uint64
 		// Number of new transactions in the slot of the branch
 		NumTransactions uint32
+		// TODO probably there's a need for other deterministic values, such as total number of outputs, of transactions, of chains
 	}
 
 	RootRecordJSONAble struct {
