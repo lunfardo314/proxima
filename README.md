@@ -43,7 +43,8 @@ It also contains some tooling, which includes rudimentary wallet functionality.
 * **Leaderless determinism**. The system operates without a consensus leader or block proposers, providing a more decentralized approach.
 * **Asynchrony**. The architecture relies on only weak assumptions of synchronicity.
 * **No need for a global knowledge** of the system state, such as composition of the committee, assumptions about node weights, stakes, or other registries.
-* **1-tier trust assumptions**. Only token holders are involved in the process, as opposed to the multiple layers of trust required in other blockchain systems such as PoW (which includes users and miners) and PoS (which includes at least users, block proposers, committee(s)).
+* **1-tier trust assumptions**. Only token holders are involved in the process, as opposed to the multiple layers of trust required in other blockchain systems such as PoW (which includes users and miners) 
+and PoS (which includes at least users, block proposers, committee selection and committee(s)).
 * **Absence of a deterministic global state**. Due to the non-determinism of the ledger account (a set of outputs), it cannot be used as a single global liquidity pool.
 * **Parallelism at the consensus level**. Assets converge to their final state in parallel.
 * **Parallelism** at the node level. All transactions are validated in parallel at each node.
