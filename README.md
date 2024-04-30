@@ -50,7 +50,7 @@ the account cannot be used as a single global liquidity pool in the smart contra
 * **Parallelism at the distributed consensus level**. Assets converge to their final states in parallel.
 * **Parallelism** at the node level. All transactions are processed in parallel on each node.
 * **Simpler than most**, except Bitcoin. The above facilitates clear and relatively simple overall concept and node architecture, 
-much simpler than most PoS systems, which are usually complex in their consensus layer and due to synchronicity requirements. 
+much simpler than most PoS systems, which are usually complex in their consensus layer and due to synchronicity requirements 
 
 ## Further information
 * The [technical whitepaper](docs/Proxima_WP.pdf) contains detailed description of the *cooperative ledger* concept
