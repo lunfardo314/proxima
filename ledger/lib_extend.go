@@ -306,6 +306,7 @@ func evalNumElementsOfArray(ctx *easyfl.CallParams) []byte {
 	return []byte{byte(arr.NumElements())}
 }
 
+// evalVRFVerify: embedded VRF verifier. Dependency on unverified external crypto library
 func evalVRFVerify(glb *easyfl.CallParams) []byte {
 	var ok bool
 	err := util.CatchPanicOrError(func() error {
