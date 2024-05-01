@@ -105,7 +105,7 @@ func ValidInclusionThresholdFraction(numerator, denominator uint64) bool {
 // IsCoverageAboveThreshold the root is dominating if coverage last delta is more than numerator/denominator of the double supply
 func (r *RootRecord) IsCoverageAboveThreshold(numerator, denominator uint64) bool {
 	util.Assertf(ValidInclusionThresholdFraction(numerator, denominator), "IsCoverageAboveThreshold: fraction is wrong")
-	return r.LedgerCoverage > (r.Supply/numerator)*denominator<<1 // this order to avoid overflow
+	return r.LedgerCoverage > ((r.Supply/numerator)*denominator)<<1 // this order to avoid overflow
 }
 
 // TxID transaction ID of the branch, as taken from the stem output ID
