@@ -5,8 +5,10 @@ import (
 	"fmt"
 
 	"github.com/lunfardo314/easyfl"
+	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lazybytes"
 	"github.com/lunfardo314/unitrie/common"
+	"github.com/yoseplee/vrf"
 )
 
 /*self
@@ -103,6 +105,10 @@ func (lib *Library) extendWithMainFunctions() {
 
 	// calls local EasyFL library
 	lib.EmbedLong("callLocalLibrary", -1, lib.evalCallLocalLibrary)
+
+	// Temporary!! VRF implementation in pure Go. Unverified adaptation of Yahoo! implementation.
+	// TODO: replace with verified implementation, for example from Algorand
+	lib.EmbedLong("vrfVerify", 3, evalVRFVerify)
 
 	{
 		// inline tests
@@ -298,6 +304,22 @@ func evalAtArray8(ctx *easyfl.CallParams) []byte {
 func evalNumElementsOfArray(ctx *easyfl.CallParams) []byte {
 	arr := lazybytes.ArrayFromBytesReadOnly(ctx.Arg(0))
 	return []byte{byte(arr.NumElements())}
+}
+
+func evalVRFVerify(glb *easyfl.CallParams) []byte {
+	var ok bool
+	err := util.CatchPanicOrError(func() error {
+		var err1 error
+		ok, err1 = vrf.Verify(glb.Arg(0), glb.Arg(1), glb.Arg(2))
+		return err1
+	})
+	if err != nil {
+		glb.Trace("'vrfVerify embedded' failed with: %v", err)
+	}
+	if err == nil && ok {
+		return []byte{0xff}
+	}
+	return nil
 }
 
 // CompileLocalLibrary compiles local library and serializes it as lazy array
