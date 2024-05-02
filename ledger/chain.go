@@ -269,7 +269,7 @@ func _validInflationValue : or(
 // Transition mode: 
 //     0x00 - state transition
 //     0xff - origin state, can be any other values. 
-// $1 - inflation u64
+// $1 - inflation u64  <<<<<<<<<<<<<<<<<<<<<<< TODO jei branch, 2 parametrai: random value + proof
 // It is enforced by the chain constraint 
 // but it is interpreted by other constraints, linked to the chain 
 // constraint, such as controller locks

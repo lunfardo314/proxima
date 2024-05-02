@@ -247,6 +247,7 @@ func (lib *Library) extendWithConstraints() {
 	addChainConstraint(lib)
 	addStemLockConstraint(lib)
 	addSequencerConstraint(lib)
+	addInflationConstraint(lib)
 	addSenderED25519Constraint(lib)
 	addChainLockConstraint(lib)
 	addRoyaltiesED25519Constraint(lib)
