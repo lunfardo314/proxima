@@ -2,11 +2,12 @@ package txbuilder
 
 import (
 	"crypto/ed25519"
+	"encoding/binary"
 	"errors"
-	"fmt"
 
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util"
+	"github.com/yoseplee/vrf"
 )
 
 type (
@@ -30,14 +31,10 @@ type (
 		Endorsements []*ledger.TransactionID
 		// chain controller
 		PrivateKey ed25519.PrivateKey
-		// Inflation of the non-branch transaction is always calculated
-		// Inflation of the branch transaction is set to BranchInflationAmount, if it is valid.
-		// BranchInflationAmount is a subject of transaction validity constraint and normally must be mined.
-		// It is valid only if BranchInflationAmount <= (hash(txBytes) mod ledger.BranchBonusBase) + 1
-		// 0 amount always satisfies it. Other values satisfy with probability which steeply drops when
-		// BranchInflationAmount approaches ledger.BranchBonusBase.
-		BranchInflationAmount uint64
-		ReturnInputLoader     bool
+		// PutMaximumInflation if true, calculates maximum inflation possible
+		// if false, does not add inflation constraint at all
+		PutMaximumInflation bool
+		ReturnInputLoader   bool
 	}
 )
 
@@ -69,8 +66,6 @@ func MakeSequencerTransactionWithInputLoader(par MakeSequencerTransactionParams)
 			par.ChainInput.ID.Timestamp(), par.Timestamp)
 	case !par.ChainInput.ID.IsSequencerTransaction() && par.StemInput == nil && len(par.Endorsements) == 0:
 		return nil, nil, errP("chain predecessor is not a sequencer transaction -> endorsement of sequencer transaction is mandatory (unless making a branch)")
-	case par.BranchInflationAmount >= ledger.L().ID.BranchBonusBase:
-		return nil, nil, errP("wrong parameter: BranchInflationAmount cannot be bigger than %s", util.GoTh(ledger.L().ID.BranchBonusBase))
 	}
 
 	chainInConstraint, chainInConstraintIdx := par.ChainInput.Output.ChainConstraint()
@@ -94,13 +89,25 @@ func MakeSequencerTransactionWithInputLoader(par MakeSequencerTransactionParams)
 		return nil, nil, errP("not enough tokens in the input")
 	}
 
+	var inflationData []byte
 	var inflationAmount uint64
-	if par.Timestamp.Tick() != 0 {
-		// non-branch transaction
-		inflationAmount = ledger.L().ID.InflationAmount(par.ChainInput.Timestamp(), par.Timestamp, par.ChainInput.Output.Amount())
-	} else {
-		// branch transaction
-		inflationAmount = par.BranchInflationAmount
+
+	if par.PutMaximumInflation {
+		if par.Timestamp.Tick() != 0 {
+			// non-branch transaction
+			inflationAmount = ledger.L().ID.InflationAmount(par.ChainInput.Timestamp(), par.Timestamp, par.ChainInput.Output.Amount())
+			inflationData = make([]byte, 8)
+			binary.BigEndian.PutUint64(inflationData, inflationAmount)
+		} else {
+			// branch transaction
+			pubKey := par.PrivateKey.Public().(ed25519.PublicKey)
+			var err error
+			inflationData, _, err = vrf.Prove(pubKey, par.PrivateKey, par.Timestamp.Slot().Bytes())
+			if err != nil {
+				return nil, nil, errP(err, "while generating VRF randomness proof")
+			}
+			inflationAmount = ledger.BranchInflationBonusFromRandomnessProof(inflationData)
+		}
 	}
 
 	chainOutAmount := totalInAmount + inflationAmount - additionalOut // >= 0
@@ -134,11 +141,17 @@ func MakeSequencerTransactionWithInputLoader(par MakeSequencerTransactionParams)
 		o.PutAmount(chainOutAmount)
 		o.PutLock(par.ChainInput.Output.Lock())
 		// put chain constraint
-		chainOutConstraint := ledger.NewChainConstraint(seqID, chainPredIdx, chainInConstraintIdx, 0, inflationAmount)
+		chainOutConstraint := ledger.NewChainConstraint(seqID, chainPredIdx, chainInConstraintIdx, 0)
 		chainOutConstraintIdx, _ = o.PushConstraint(chainOutConstraint.Bytes())
 		// put sequencer constraint
 		sequencerConstraint := ledger.NewSequencerConstraint(chainOutConstraintIdx, totalOutAmount)
 		_, _ = o.PushConstraint(sequencerConstraint.Bytes())
+
+		if inflationAmount > 0 {
+			// put inflation constraint
+			inflationConstraint := ledger.NewInflationConstraint(chainOutConstraintIdx, inflationData)
+			_, _ = o.PushConstraint(inflationConstraint.Bytes())
+		}
 
 		outData := ledger.ParseMilestoneData(par.ChainInput.Output)
 		if outData == nil {
@@ -236,9 +249,5 @@ func MakeSequencerTransactionWithInputLoader(par MakeSequencerTransactionParams)
 			return consumedOutputs[i], nil
 		}
 	}
-	txBytes := txb.TransactionData.Bytes()
-	if par.Timestamp.Tick() == 0 && !ledger.BranchInflationAmountValid(par.BranchInflationAmount, txBytes) {
-		return nil, nil, fmt.Errorf("%w: amount = %d", ErrBranchInflationAmountInvalid, par.BranchInflationAmount)
-	}
-	return txBytes, inputLoader, nil
+	return txb.TransactionData.Bytes(), inputLoader, nil
 }

@@ -1,4 +1,4 @@
-package vrf
+package tests
 
 import (
 	"crypto/ed25519"
@@ -10,10 +10,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/yoseplee/vrf"
 )
-
-func init() {
-	ledger.InitWithTestingLedgerIDData()
-}
 
 func TestVrfPackage(t *testing.T) {
 	pubKey, privKey, err := ed25519.GenerateKey(nil)

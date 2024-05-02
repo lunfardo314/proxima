@@ -114,8 +114,7 @@ func (i *InflationConstraint) InflationAmount(branch bool) uint64 {
 		return 0
 	}
 	if branch {
-		ret := HashAndWrapToUint64(i.AmountOrRndProof)
-		return ret % (L().ID.BranchBonusBase + 1)
+		return BranchInflationBonusFromRandomnessProof(i.AmountOrRndProof)
 	}
 	if len(i.AmountOrRndProof) != 8 {
 		return 0
@@ -164,11 +163,12 @@ func initTestInflationConstraint() {
 	util.Assertf(bytes.Equal(amountBin, data), "bytes.Equal(amountBin, data)")
 }
 
-func HashAndWrapToUint64(data []byte) uint64 {
+// BranchInflationBonusFromRandomnessProof makes uint64 in the range from 0 to BranchBonusBase (incl)
+func BranchInflationBonusFromRandomnessProof(data []byte) uint64 {
 	h := blake2b.Sum256(data)
 	n0 := binary.BigEndian.Uint64(h[0:8])
 	n1 := binary.BigEndian.Uint64(h[8:16])
 	n2 := binary.BigEndian.Uint64(h[16:24])
 	n3 := binary.BigEndian.Uint64(h[24:32])
-	return n0 + n1 + n2 + n3
+	return (n0 + n1 + n2 + n3) % (L().ID.BranchBonusBase + 1)
 }
