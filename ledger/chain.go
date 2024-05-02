@@ -2,7 +2,6 @@ package ledger
 
 import (
 	"bytes"
-	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 
@@ -21,25 +20,19 @@ type ChainConstraint struct {
 	// Previous index of the consumed chain input with the same ID. Must be 0xFF for the origin
 	PredecessorInputIndex      byte
 	PredecessorConstraintIndex byte
-	Inflation                  uint64
 }
 
 const (
 	ChainConstraintName     = "chain"
-	chainConstraintTemplate = ChainConstraintName + "(0x%s, u64/%d)"
+	chainConstraintTemplate = ChainConstraintName + "(0x%s)"
 )
 
-func NewChainConstraint(id ChainID, prevOut, prevBlock, mode byte, inflation ...uint64) *ChainConstraint {
-	i := uint64(0)
-	if len(inflation) > 0 {
-		i = inflation[0]
-	}
+func NewChainConstraint(id ChainID, prevOut, prevBlock, mode byte) *ChainConstraint {
 	return &ChainConstraint{
 		ID:                         id,
 		TransitionMode:             mode,
 		PredecessorInputIndex:      prevOut,
 		PredecessorConstraintIndex: prevBlock,
-		Inflation:                  i,
 	}
 }
 
@@ -77,11 +70,11 @@ func (ch *ChainConstraint) String() string {
 
 func (ch *ChainConstraint) source() string {
 	return fmt.Sprintf(chainConstraintTemplate,
-		hex.EncodeToString(common.Concat(ch.ID[:], ch.PredecessorInputIndex, ch.PredecessorConstraintIndex, ch.TransitionMode)), ch.Inflation)
+		hex.EncodeToString(common.Concat(ch.ID[:], ch.PredecessorInputIndex, ch.PredecessorConstraintIndex, ch.TransitionMode)))
 }
 
 func ChainConstraintFromBytes(data []byte) (*ChainConstraint, error) {
-	sym, _, args, err := L().ParseBytecodeOneLevel(data, 2)
+	sym, _, args, err := L().ParseBytecodeOneLevel(data, 1)
 	if err != nil {
 		return nil, err
 	}
@@ -98,11 +91,6 @@ func ChainConstraintFromBytes(data []byte) (*ChainConstraint, error) {
 		TransitionMode:             constraintData[ChainIDLength+2],
 	}
 	copy(ret.ID[:], constraintData[:ChainIDLength])
-	iBin := easyfl.StripDataPrefix(args[1])
-	if len(iBin) != 8 {
-		return nil, fmt.Errorf("ChainConstraintFromBytes: wrong data len")
-	}
-	ret.Inflation = binary.BigEndian.Uint64(iBin)
 	return ret, nil
 }
 
@@ -115,7 +103,7 @@ func NewChainUnlockParams(successorOutputIdx, successorConstraintBlockIndex, tra
 }
 
 func addChainConstraint(lib *Library) {
-	lib.extendWithConstraint(ChainConstraintName, chainConstraintSource, 2, func(data []byte) (Constraint, error) {
+	lib.extendWithConstraint(ChainConstraintName, chainConstraintSource, 1, func(data []byte) (Constraint, error) {
 		return ChainConstraintFromBytes(data)
 	}, initTestChainConstraint)
 }
@@ -142,7 +130,7 @@ func chainConstraintInlineTest() {
 		util.Assertf(chainIDBack == chainID, "chainIDBack == chainID")
 	}
 	{
-		chainConstr := NewChainConstraint(chainID, 0, 0, 0xff, 1337)
+		chainConstr := NewChainConstraint(chainID, 0, 0, 0xff)
 		chainConstrBack, err := ChainConstraintFromBytes(chainConstr.Bytes())
 		util.AssertNoError(err)
 		util.Assertf(*chainConstrBack == *chainConstr, "*chainConstrBack == *chainConstr")
@@ -150,13 +138,12 @@ func chainConstraintInlineTest() {
 }
 
 const chainConstraintSource = `
-// chain(<chain constraint data>, <inflation>)
+// chain(<chain constraint data>)
 // <chain constraint data: 35 bytes:
 // - 0-31 bytes chain id 
 // - 32 byte predecessor input index 
 // - 33 byte predecessor block index 
 // - 34 byte transition mode 
-// <inflation> is u64 value with the chain inflation
 
 // reserved value of the chain constraint data at origin
 func originChainData: concat(repeat(0,32), 0xffffff)
@@ -239,27 +226,6 @@ func chainSuccessorData :
 		0
 	)
 
-// calculates cap of the inflation. In case of branch transaction, cap depends on the last 8 bytes of the
-// blake2b hash of the transaction bytes. This enforces mining of the inflation amount in the branch
-// $0 - predecessor input index
-func _inflationCapInTransaction :
-if(
-   isBranchTransaction,
-   add(mod(slice(blake2b(txBytes),24,31), constBranchBonusBase), 1),  // enforcing branch inflation mining
-   maxInflationAmount(timestampOfInputByIndex($0), txTimestampBytes, amountValue(consumedOutputByIndex($0)))
-)
-
-// $0 - predecessor input index
-// $1 - inflation value
-func _validInflationValue : or(
-	selfIsConsumedOutput,
-	isZero($1),
-    lessOrEqualThan(
-       $1,
-       _inflationCapInTransaction($0)
-    )
-)
-
 // Constraint source: chain($0)
 // $0 - 35-bytes data: 
 //     32 bytes chain id
@@ -269,10 +235,6 @@ func _validInflationValue : or(
 // Transition mode: 
 //     0x00 - state transition
 //     0xff - origin state, can be any other values. 
-// $1 - inflation u64  <<<<<<<<<<<<<<<<<<<<<<< TODO jei branch, 2 parametrai: random value + proof
-// It is enforced by the chain constraint 
-// but it is interpreted by other constraints, linked to the chain 
-// constraint, such as controller locks
 // -----
 // unlock parameters for the chain constraint. 3 bytes:
 // 0 - successor output index
@@ -319,7 +281,6 @@ func chain: and(
            )
        ),
        !!!chain_constraint_failed
-   ),
-   _validInflationValue(predecessorInputIndexFromChainData($0), $1)
+   )
 )
 `

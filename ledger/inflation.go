@@ -14,22 +14,54 @@ import (
 // inflation constraint script, when added to the chain-constrained output, adds inflation the transaction
 
 const inflationConstraintSource = `
-// $0 - chain constraint index (sibling)
-// $1 - amount 8 bytes
-func _checkChainInflation : concat($0, $1)  // TODO
 
-// $0 - randomness proof
+// $0 - predecessor input index
+// $1 - inflation value
+// checks if inflation value is below cap, calculated for the chain constrained output
+// from time delta and amount on predecessor
+func _validChainInflationValue : or(
+	isZero($1), // zero always ok
+    lessOrEqualThan(
+       $1,
+       maxInflationAmount(
+			timestampOfInputByIndex($0), 
+			txTimestampBytes, 
+			amountValue(consumedOutputByIndex($0))
+		)
+    )
+)
+
+// $0 - chain constraint index (sibling)
+// $1 - inflation amount 8 bytes
+// checks if inflation is ok for the non-branch transaction
+func _checkChainInflation :
+	_validChainInflationValue(
+		predecessorInputIndexFromChainData(
+			unwrapBytecodeArg( selfSiblingConstraint($0), #chain, 0)
+		),
+		$1
+	)
+
+// $0 - inflation data, interpreted as randomness proof
+// checks inflation data is a randomness proof, valid for the slot (as message) and with public key of the sender
+// randomness proof will be used to calculate branch inflation bonus in the range between 0 and constBranchBonusBase + 1 
 func _checkBranchInflationBonus : vrfVerify(
 	publicKeyED25519(txSignature),
 	$0,
 	txTimeSlot
 )
 
+// inflation(<chain constraint index>, <inflation data>)
 // $0 - chain constraint index (sibling)
-// $1 - either amount, or randomness proof
+// $1 - inflation data, either amount (8 bytes), or randomness proof. If nil, always ok zero inflation
+// 
+// Enforces:
+// - it is chain constrained output
+// - it is correct amount of inflation, if its is non-branch transaction
+// - it is provably random data for the slot and the sender's public key. It will be used to calculate branch inflation bonus
 func inflation : or(
 	selfIsConsumedOutput, // not checked if consumed
-	isZero($1),           // zero inflation
+	isZero($1),           // zero inflation always ok
 	and(
   		selfIsProducedOutput,
 		if(
