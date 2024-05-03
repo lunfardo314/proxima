@@ -37,7 +37,7 @@ It also contains some tooling, which includes rudimentary wallet functionality.
 * **Token holders are the only actors** authorized to write to the ledger (issue transactions). No miners, no validators, no committees.
 * **Influence of the participant** is proportional to the amount of its holdings, i.e. to it's _skin-in-the-game_. 
 * **Liquidity of the token** is the only prerequisite for the system to be fully permissionless
-* **High throughput**, as a result of massive parallelism and no global bottlenecks
+* **High throughput**, as a result of massive parallelism and absence of global bottlenecks
 * **High level of decentralization**, probably the highest achievable in distributed ledgers 
 * **Low energy requirements**, unlike PoW. 
 * **Low cost per transaction**
