@@ -13,7 +13,8 @@ peering:
     # port to connect from other peers
     port: 4000
 
-  # configuration of known peers. Each known peer is specified as a pair <name>: <multiaddr>, where:
+  # configuration of known peers (also known as 'manual peering').
+  # Each known peer is specified as a pair <name>: <multiaddr>, where:
   # - <name> is unique mnemonic name used for convenience locally
   # - <multiaddr> is the libp2p multi-address in the form '/ip4/<IPaddr ir URL>/<port>/tcp/p2p/<hostID>'
   peers:
@@ -28,22 +29,24 @@ api:
     # server port
     port: 8000
 
-
 # map of maps of sequencers <seq name>: <seq config>
 # usually none or 1 sequencer is configured for the node
 sequencers:
   boot:
     enable: true
     # chain ID of the sequencer
+    # chain ID 'af7bedde1fea222230b82d63d5b665ac75afbe4ad3f75999bb3386cf994a6963' is
+    # predefined chain ID of the genesis chain (bootstrap sequencer)
     sequencer_id: af7bedde1fea222230b82d63d5b665ac75afbe4ad3f75999bb3386cf994a6963
     # chain controller's private key (hex-encoded)
     controller_key: 136381bd4dea7b2f0fa6c6ca14ee660dc7929975b47e6cdb85adee9e26032a810530b790e0e7de626f36e20ba656f09e324c68203de899d0daf9f98fcb3cf684
     # sequencer pace
     pace: 5
-    # maximum fee inputs allowed in the sequencer milestone transaction
+    # maximum tag-along inputs allowed in the sequencer transaction (up to 254)
     max_tag_along_inputs: 50
 
 # logger config
+# logger.previous can be 'erase' or 'save'
 logger:
   level: debug
   output: testlog_0.log

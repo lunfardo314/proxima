@@ -6,14 +6,15 @@
 peering:
   # libp2p host data: 
   host:
-    # host ID private key (auto-generated, hex-encoded)
+    # host ID private key (hex-encoded)
     id_private_key: cb91a5e9fee427c7ebdd3f37d8fc35140ca417379863520f1bb4942fa3fd8dc7ff67337b718eec7ad668e5df5e91374f3c53363c41da112c10fe80791019c746
     # host ID is derived from the host ID public key. 
     id: 12D3KooWT1MQM1kXKRaj6j9xjzVzUCWcrzihnVicepn82dTDkNYM
     # port to connect from other peers
     port: 4001
 
-  # configuration of known peers. Each known peer is specified as a pair <name>: <multiaddr>, where:
+  # configuration of known peers (also known as 'manual peering').
+  # Each known peer is specified as a pair <name>: <multiaddr>, where:
   # - <name> is unique mnemonic name used for convenience locally
   # - <multiaddr> is the libp2p multi-address in the form '/ip4/<IPaddr ir URL>/<port>/tcp/p2p/<hostID>'
   peers:
@@ -28,12 +29,11 @@ api:
     # server port
     port: 8001
 
-
 # map of maps of sequencers <seq name>: <seq config>
 # usually none or 1 sequencer is configured for the node
 sequencers:
   seq1:
-    enable: true
+    enable: false
     # chain ID of the sequencer
     sequencer_id:
     # chain controller's private key (hex-encoded)

@@ -140,7 +140,6 @@ func (s *SummarySupplyAndInflation) Lines(prefix ...string) *lines.Lines {
 		Add("Slots from %d to %d inclusive. Total %d slots", s.OldestSlot, s.LatestSlot, nSlots).
 		Add("Number of branches: %d", s.NumberOfBranches).
 		Add("Supply: %s -> %s (+%s, %.6f%%)", util.GoTh(s.BeginSupply), util.GoTh(s.EndSupply), util.GoTh(s.TotalInflation), pInfl).
-		Add("Inflation per halving epoch extrapolated: %.2f%%", (pInfl*float32(ledger.SlotsPerHalvingEpoch()))/float32(nSlots)).
 		Add("Per sequencer along the heaviest chain:")
 
 	sortedSeqIDs := util.KeysSorted(s.InfoPerSeqID, func(k1, k2 ledger.ChainID) bool {

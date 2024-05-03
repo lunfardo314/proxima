@@ -28,12 +28,11 @@ api:
     # server port
     port: 8004
 
-
 # map of maps of sequencers <seq name>: <seq config>
 # usually none or 1 sequencer is configured for the node
 sequencers:
   seq4:
-    enable: true
+    enable: false
     loglevel: info
     # chain ID of the sequencer
     sequencer_id:

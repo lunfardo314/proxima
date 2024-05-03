@@ -121,11 +121,16 @@ func ReportTxStatus(txid ledger.TransactionID, poll time.Duration) {
 	for {
 		vertexStatus, inclusionData, err := GetClient().QueryTxIDStatus(&txid)
 		AssertNoError(err)
-		Infof(vertexStatus.Lines().Join(", "))
+
+		Verbosef(vertexStatus.Lines().Join(", "))
+		Verbosef("%s", inclusion.Lines(inclusionData, inclusionThresholdNumerator, inclusionThresholdDenominator, "    "))
+
 		var score int
 		if len(inclusionData) > 0 {
-			latestSlot, branchesTotal, numDominatingBranches, numIncludedInDominatingBranches := inclusion.InLatestSlot(inclusionData, inclusionThresholdNumerator, inclusionThresholdDenominator)
-			score = (numIncludedInDominatingBranches * 100) / numDominatingBranches
+			latestSlot, branchesTotal, numDominatingBranches, numIncludedInDominatingBranches := inclusion.Totals(inclusionData, inclusionThresholdNumerator, inclusionThresholdDenominator)
+			if numDominatingBranches > 0 {
+				score = (numIncludedInDominatingBranches * 100) / numDominatingBranches
+			}
 			Infof("   slot: %d, total branches: %d, dominating branches: %d / %d, score: %d%%",
 				latestSlot, branchesTotal, numIncludedInDominatingBranches, numDominatingBranches, score)
 		}

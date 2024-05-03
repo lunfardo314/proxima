@@ -32,7 +32,7 @@ api:
 # usually none or 1 sequencer is configured for the node
 sequencers:
   seq2:
-    enable: true
+    enable: false
     # chain ID of the sequencer
     sequencer_id:
     # chain controller's private key (hex-encoded)
