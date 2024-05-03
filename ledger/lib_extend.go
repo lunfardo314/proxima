@@ -108,6 +108,7 @@ func (lib *Library) extendWithMainFunctions() {
 
 	// Temporary!! VRF implementation in pure Go. Unverified adaptation of Yahoo! implementation.
 	// TODO: replace with verified implementation, for example from Algorand
+	// vrfVerify(pubKey, proof, msg)
 	lib.EmbedLong("vrfVerify", 3, evalVRFVerify)
 
 	{

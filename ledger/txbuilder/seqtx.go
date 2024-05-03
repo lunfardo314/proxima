@@ -99,13 +99,17 @@ func MakeSequencerTransactionWithInputLoader(par MakeSequencerTransactionParams)
 			inflationData = make([]byte, 8)
 			binary.BigEndian.PutUint64(inflationData, inflationAmount)
 		} else {
-			// branch transaction
+			// branch transaction. Generate verifiable randomness
 			pubKey := par.PrivateKey.Public().(ed25519.PublicKey)
 			var err error
 			inflationData, _, err = vrf.Prove(pubKey, par.PrivateKey, par.Timestamp.Slot().Bytes())
 			if err != nil {
 				return nil, nil, errP(err, "while generating VRF randomness proof")
 			}
+			ok, err := vrf.Verify(pubKey, inflationData, par.Timestamp.Slot().Bytes())
+			util.AssertNoError(err, "verify VRF proof")
+			util.Assertf(ok, "verify VRF proof")
+
 			inflationAmount = ledger.BranchInflationBonusFromRandomnessProof(inflationData)
 		}
 	}
@@ -147,12 +151,6 @@ func MakeSequencerTransactionWithInputLoader(par MakeSequencerTransactionParams)
 		sequencerConstraint := ledger.NewSequencerConstraint(chainOutConstraintIdx, totalOutAmount)
 		_, _ = o.PushConstraint(sequencerConstraint.Bytes())
 
-		if inflationAmount > 0 {
-			// put inflation constraint
-			inflationConstraint := ledger.NewInflationConstraint(chainOutConstraintIdx, inflationData)
-			_, _ = o.PushConstraint(inflationConstraint.Bytes())
-		}
-
 		outData := ledger.ParseMilestoneData(par.ChainInput.Output)
 		if outData == nil {
 			outData = &ledger.MilestoneData{
@@ -168,8 +166,15 @@ func MakeSequencerTransactionWithInputLoader(par MakeSequencerTransactionParams)
 			}
 			outData.Name = par.SeqName
 		}
+		// milestone data is on fixed index. For some reason
 		idxMsData, _ := o.PushConstraint(outData.AsConstraint().Bytes())
 		util.Assertf(idxMsData == ledger.MilestoneDataFixedIndex, "idxMsData == MilestoneDataFixedIndex")
+
+		if inflationAmount > 0 {
+			// put inflation constraint for non-zero inflation
+			inflationConstraint := ledger.NewInflationConstraint(chainOutConstraintIdx, inflationData)
+			_, _ = o.PushConstraint(inflationConstraint.Bytes())
+		}
 	})
 
 	chainOutIndex, err := txb.ProduceOutput(chainOut)

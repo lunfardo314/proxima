@@ -45,11 +45,11 @@ func _checkChainInflation :
 // $0 - inflation data, interpreted as randomness proof
 // checks inflation data is a randomness proof, valid for the slot (as message) and with public key of the sender
 // randomness proof will be used to calculate branch inflation bonus in the range between 0 and constBranchBonusBase + 1 
-func _checkBranchInflationBonus : vrfVerify(
-	publicKeyED25519(txSignature),
-	$0,
-	txTimeSlot
-)
+func _checkBranchInflationBonus : 
+	require(
+		vrfVerify(publicKeyED25519(txSignature), $0, txTimeSlot),
+		!!!VRF_verification_failed
+	)
 
 // inflation(<chain constraint index>, <inflation data>)
 // $0 - chain constraint index (sibling)
@@ -66,7 +66,7 @@ func inflation : or(
   		selfIsProducedOutput,
 		if(
 			isBranchTransaction,
-			_checkBranchInflationBonus($0),
+			_checkBranchInflationBonus($1),
 			_checkChainInflation($0, $1)
 		)
     )
