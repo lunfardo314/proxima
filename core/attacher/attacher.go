@@ -719,14 +719,14 @@ func (a *attacher) adjustCoverage() {
 
 	baseSeqOut := a.baseline.SequencerWrappedOutput()
 	if a.isRootedOutput(baseSeqOut) {
+		// no need for adjustment
 		return
 	}
-	// if case sequencer output is not rooted (branch is just endorsed), add its inflation to the coverage
-	out, idx := multistate.MustSequencerOutputOfBranch(a.StateStore(), baseSeqOut.VID.ID).Output.ChainConstraint()
-	a.Assertf(idx != 0xff, "adjustCoverage: can't find chain constraint on the branch %s", baseSeqOut.IDShortString)
+	// sequencer output is not rooted (branch is just endorsed) -> add its inflation to the coverage
+	seqOut := multistate.MustSequencerOutputOfBranch(a.StateStore(), baseSeqOut.VID.ID).Output
 
-	a.coverageAdjustment = out.Inflation
-	a.coverage += out.Inflation
+	a.coverageAdjustment = seqOut.Inflation(true)
+	a.coverage += a.coverageAdjustment
 }
 
 // IsCoverageAdjusted for consistency assertions

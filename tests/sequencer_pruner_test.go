@@ -20,8 +20,7 @@ import (
 func Test1SequencerPruner(t *testing.T) {
 	t.Run("idle", func(t *testing.T) {
 		const (
-			maxSlots          = 20
-			branchMiningSteps = 10
+			maxSlots = 20
 		)
 		testData := initWorkflowTest(t, 1, true)
 		t.Logf("%s", testData.wrk.Info())
@@ -30,7 +29,7 @@ func Test1SequencerPruner(t *testing.T) {
 		//testData.env.StartTracingTags(factory.TraceTagMining)
 
 		seq, err := sequencer.New(testData.wrk, testData.bootstrapChainID, testData.genesisPrivKey,
-			sequencer.WithMaxBranches(maxSlots), sequencer.WithBranchInflationMiningSteps(branchMiningSteps))
+			sequencer.WithMaxBranches(maxSlots))
 		require.NoError(t, err)
 		var countBr atomic.Int32
 		seq.OnMilestoneSubmitted(func(_ *sequencer.Sequencer, ms *vertex.WrappedTx) {
@@ -62,7 +61,7 @@ func Test1SequencerPruner(t *testing.T) {
 
 		ctx, _ := context.WithCancel(context.Background())
 		seq, err := sequencer.New(testData.wrk, testData.bootstrapChainID, testData.genesisPrivKey,
-			sequencer.WithMaxBranches(maxSlots), sequencer.WithBranchInflationMiningSteps(branchMiningSteps))
+			sequencer.WithMaxBranches(maxSlots))
 		require.NoError(t, err)
 		var countBr, countSeq atomic.Int32
 		seq.OnMilestoneSubmitted(func(_ *sequencer.Sequencer, ms *vertex.WrappedTx) {

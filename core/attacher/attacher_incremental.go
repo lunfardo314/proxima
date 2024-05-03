@@ -213,7 +213,7 @@ func (a *IncrementalAttacher) InsertTagAlongInput(wOut vertex.WrappedOutput) (bo
 
 // MakeSequencerTransaction creates sequencer transaction from the incremental attacher.
 // Increments slotInflation by the amount inflated in the transaction
-func (a *IncrementalAttacher) MakeSequencerTransaction(seqName string, privateKey ed25519.PrivateKey, cmdParser SequencerCommandParser, branchInflation uint64) (*transaction.Transaction, error) {
+func (a *IncrementalAttacher) MakeSequencerTransaction(seqName string, privateKey ed25519.PrivateKey, cmdParser SequencerCommandParser) (*transaction.Transaction, error) {
 	otherInputs := make([]*ledger.OutputWithID, 0, len(a.inputs))
 
 	var chainIn ledger.OutputWithID
@@ -253,16 +253,16 @@ func (a *IncrementalAttacher) MakeSequencerTransaction(seqName string, privateKe
 		endorsements[i] = &vid.ID
 	}
 	txBytes, inputLoader, err := txbuilder.MakeSequencerTransactionWithInputLoader(txbuilder.MakeSequencerTransactionParams{
-		SeqName:               seqName,
-		ChainInput:            chainIn.MustAsChainOutput(),
-		StemInput:             stemIn,
-		Timestamp:             a.targetTs,
-		AdditionalInputs:      otherInputs,
-		AdditionalOutputs:     additionalOutputs,
-		Endorsements:          endorsements,
-		PrivateKey:            privateKey,
-		BranchInflationAmount: branchInflation,
-		ReturnInputLoader:     true,
+		SeqName:             seqName,
+		ChainInput:          chainIn.MustAsChainOutput(),
+		StemInput:           stemIn,
+		Timestamp:           a.targetTs,
+		AdditionalInputs:    otherInputs,
+		AdditionalOutputs:   additionalOutputs,
+		Endorsements:        endorsements,
+		PrivateKey:          privateKey,
+		PutMaximumInflation: true,
+		ReturnInputLoader:   true,
 	})
 	if err != nil {
 		return nil, err

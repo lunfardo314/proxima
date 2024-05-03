@@ -778,8 +778,6 @@ func (td *workflowTestData) spamWithdrawCommands(par spammerWithdrawCmdParams, c
 	}
 }
 
-const branchMiningSteps = 100
-
 func (td *workflowTestData) startSequencersWithTimeout(maxSlots int, timeout ...time.Duration) {
 	var ctx context.Context
 	if len(timeout) > 0 {
@@ -796,7 +794,6 @@ func (td *workflowTestData) startSequencersWithTimeout(maxSlots int, timeout ...
 			sequencer.WithMaxTagAlongInputs(30),
 			sequencer.WithPace(5),
 			sequencer.WithMaxBranches(maxSlots),
-			sequencer.WithBranchInflationMiningSteps(branchMiningSteps),
 		)
 		require.NoError(td.t, err)
 		td.sequencers[seqNr].Start()

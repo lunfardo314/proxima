@@ -166,9 +166,6 @@ func initTestInflationConstraint() {
 // BranchInflationBonusFromRandomnessProof makes uint64 in the range from 0 to BranchBonusBase (incl)
 func BranchInflationBonusFromRandomnessProof(data []byte) uint64 {
 	h := blake2b.Sum256(data)
-	n0 := binary.BigEndian.Uint64(h[0:8])
-	n1 := binary.BigEndian.Uint64(h[8:16])
-	n2 := binary.BigEndian.Uint64(h[16:24])
-	n3 := binary.BigEndian.Uint64(h[24:32])
-	return (n0 + n1 + n2 + n3) % (L().ID.BranchBonusBase + 1)
+	n := binary.BigEndian.Uint64(h[0:8])
+	return n % (L().ID.BranchBonusBase + 1)
 }

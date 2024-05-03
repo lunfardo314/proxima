@@ -133,8 +133,7 @@ func (cfg *ConfigOptions) lines(seqID ledger.ChainID, controller ledger.AddressE
 		Add("DelayStart: %v", cfg.DelayStart).
 		Add("BacklogTTLSlots: %d", cfg.BacklogTTLSlots).
 		Add("MilestoneTTLSlots: %d", cfg.MilestonesTTLSlots).
-		Add("LogAttacherStats: %v", cfg.LogAttacherStats).
-		Add("BranchInflationMiningSteps: %d", cfg.BranchInflationMiningSteps)
+		Add("LogAttacherStats: %v", cfg.LogAttacherStats)
 }
 
 func (seq *Sequencer) Ctx() context.Context {
@@ -419,8 +418,4 @@ func (seq *Sequencer) BacklogTTLSlots() int {
 
 func (seq *Sequencer) MilestonesTTLSlots() int {
 	return seq.config.MilestonesTTLSlots
-}
-
-func (seq *Sequencer) BranchInflationMiningSteps() int {
-	return seq.config.BranchInflationMiningSteps
 }

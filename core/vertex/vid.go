@@ -821,7 +821,7 @@ func (vid *WrappedTx) InflationAmountOfSequencerMilestone() (ret uint64) {
 		},
 		VirtualTx: func(v *VirtualTransaction) {
 			seqOut, _ := v.SequencerOutputs()
-			ret = seqOut.Inflation()
+			ret = seqOut.Inflation(vid.IsBranchTransaction())
 		},
 		Deleted: vid.PanicAccessDeleted,
 	})
