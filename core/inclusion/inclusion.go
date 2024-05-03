@@ -42,6 +42,24 @@ func Totals(inclusionData map[ledger.ChainID]tippool.TxInclusion, thresholdNumer
 	return
 }
 
+func Score(inclusionData map[ledger.ChainID]tippool.TxInclusion, thresholdNumerator, thresholdDenominator uint64) (slot ledger.Slot, strongScore int, weakScore int) {
+	var branchesTotal, numDominatingBranches, numIncludedInDominatingBranches int
+	slot, branchesTotal, numDominatingBranches, numIncludedInDominatingBranches = Totals(inclusionData, thresholdNumerator, thresholdDenominator)
+	if numDominatingBranches > 0 {
+		strongScore = (numIncludedInDominatingBranches * 100) / numDominatingBranches
+	}
+	var included int
+	for _, i := range inclusionData {
+		if i.Included {
+			included++
+		}
+	}
+	if branchesTotal > 0 {
+		weakScore = (included * 100) / branchesTotal
+	}
+	return
+}
+
 func Lines(inclusionData map[ledger.ChainID]tippool.TxInclusion, thresholdNumerator, thresholdDenominator uint64, prefix ...string) *lines.Lines {
 	ret := lines.New(prefix...)
 	for chainID, incl := range inclusionData {

@@ -114,10 +114,14 @@ func NoWait() bool {
 	return viper.GetBool("nowait")
 }
 
-func ReportTxStatus(txid ledger.TransactionID, poll time.Duration) {
+func ReportTxStatus(txid ledger.TransactionID, poll time.Duration, strongFinalityV ...bool) {
+	strongFinality := len(strongFinalityV) > 0 && strongFinalityV[0]
+
 	Infof("Transaction %s (hex=%s):", txid.String(), txid.StringHex())
 	inclusionThresholdNumerator, inclusionThresholdDenominator := getInclusionThreshold()
 	Infof("Inclusion threshold: %d/%d :", inclusionThresholdNumerator, inclusionThresholdDenominator)
+	latestSlot := ledger.Slot(0)
+	numSlots := 0
 	for {
 		vertexStatus, inclusionData, err := GetClient().QueryTxIDStatus(&txid)
 		AssertNoError(err)
@@ -125,17 +129,28 @@ func ReportTxStatus(txid ledger.TransactionID, poll time.Duration) {
 		Verbosef(vertexStatus.Lines().Join(", "))
 		Verbosef("%s", inclusion.Lines(inclusionData, inclusionThresholdNumerator, inclusionThresholdDenominator, "    "))
 
-		var score int
-		if len(inclusionData) > 0 {
-			latestSlot, branchesTotal, numDominatingBranches, numIncludedInDominatingBranches := inclusion.Totals(inclusionData, inclusionThresholdNumerator, inclusionThresholdDenominator)
-			if numDominatingBranches > 0 {
-				score = (numIncludedInDominatingBranches * 100) / numDominatingBranches
-			}
-			Infof("   slot: %d, total branches: %d, dominating branches: %d / %d, score: %d%%",
-				latestSlot, branchesTotal, numIncludedInDominatingBranches, numDominatingBranches, score)
+		if len(inclusionData) == 0 {
+			time.Sleep(poll)
+			continue
 		}
-		if vertexStatus.Deleted || vertexStatus.Status == vertex.Bad || score == 100 {
+		slot, strongScore, weakScore := inclusion.Score(inclusionData, inclusionThresholdNumerator, inclusionThresholdDenominator)
+		Infof("   slot: %d, strongScore: %d%%, weakScore: %d%%", latestSlot, strongScore, weakScore)
+		if latestSlot != slot {
+			numSlots++
+		}
+		switch {
+		case vertexStatus.Deleted || vertexStatus.Status == vertex.Bad:
 			return
+		case numSlots < 2:
+			continue
+		case strongFinality:
+			if strongScore == 100 {
+				return
+			}
+		default:
+			if weakScore == 100 {
+				return
+			}
 		}
 		time.Sleep(poll)
 	}
