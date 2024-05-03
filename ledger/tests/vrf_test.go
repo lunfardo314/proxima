@@ -11,6 +11,8 @@ import (
 	"github.com/yoseplee/vrf"
 )
 
+// tests for the Verifiable Random Function (VRF). Temporary implementation of vrf.
+
 func TestVrfPackage(t *testing.T) {
 	pubKey, privKey, err := ed25519.GenerateKey(nil)
 	require.NoError(t, err)

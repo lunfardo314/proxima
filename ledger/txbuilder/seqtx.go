@@ -93,22 +93,29 @@ func MakeSequencerTransactionWithInputLoader(par MakeSequencerTransactionParams)
 	var inflationAmount uint64
 
 	if par.PutMaximumInflation {
+		// put inflation script
 		if par.Timestamp.Tick() != 0 {
+			// calculate maximum inflation allowed in the context
 			// non-branch transaction
 			inflationAmount = ledger.L().ID.InflationAmount(par.ChainInput.Timestamp(), par.Timestamp, par.ChainInput.Output.Amount())
 			inflationData = make([]byte, 8)
 			binary.BigEndian.PutUint64(inflationData, inflationAmount)
 		} else {
-			// branch transaction. Generate verifiable randomness
+			// branch transaction. Generate verifiable randomness. It will be used to deterministically calculate inflation amount
 			pubKey := par.PrivateKey.Public().(ed25519.PublicKey)
 			var err error
-			inflationData, _, err = vrf.Prove(pubKey, par.PrivateKey, par.Timestamp.Slot().Bytes())
+			slotBytes := par.Timestamp.Slot().Bytes()
+			inflationData, _, err = vrf.Prove(pubKey, par.PrivateKey, slotBytes)
 			if err != nil {
 				return nil, nil, errP(err, "while generating VRF randomness proof")
 			}
-			ok, err := vrf.Verify(pubKey, inflationData, par.Timestamp.Slot().Bytes())
-			util.AssertNoError(err, "verify VRF proof")
-			util.Assertf(ok, "verify VRF proof")
+
+			{
+				// double check if VRF randomness proof has been generated correctly
+				ok, err := vrf.Verify(pubKey, inflationData, slotBytes)
+				util.AssertNoError(err, "verify VRF proof")
+				util.Assertf(ok, "verify VRF proof")
+			}
 
 			inflationAmount = ledger.BranchInflationBonusFromRandomnessProof(inflationData)
 		}

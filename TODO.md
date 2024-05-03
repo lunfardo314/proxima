@@ -17,6 +17,9 @@ Search and explore UTXO tangle along various links, view each all kinds of trans
 Needs love ant attention. Currently rudimentary only. Also API
 
 ## Node components
+* Auto-peering
+  * Concept: currently only manual peering is implemented. It means node's config mush be changed and node restarted. The goal would be to implement usual auto-peering
+  * Implementation: 0%
 * Metrics subsystem
   * Concept: Prometheus metrics for node, ledger and sequencer. Needs design.
   * Implementation 0%
@@ -52,6 +55,6 @@ All ledger constraint and account indexing logic can be expressed in _EasyFL_ 10
 Then locks will be fully expandable programmable, especially in combination with ledger library upgrade feature
 
 # Docs
-- Whitepaper 80%
+- Whitepaper 80-90%
 - How to run small testnet: 0% 
 - Introductory video series: 0%

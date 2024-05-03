@@ -36,14 +36,13 @@ sequencers:
     enable: true
     loglevel: info
     # chain ID of the sequencer
-    sequencer_id: f4bb8af954b4c63013425aa54ff485500651ad0c857838a44063c816aeec0f72
+    sequencer_id:
     # chain controller's private key (hex-encoded)
     controller_key: 34d39e13811f8cd25d78c0779ca3673e03710f50ecf9d723ea6c775ca88fcfd3b6bc2f88cb000d0fd63121d99bf57ab5c184cefe0ba89cf0f96ee60858696d78
     # sequencer pace
     pace: 5
     # maximum fee inputs allowed in the sequencer milestone transaction
     max_tag_along_inputs: 50
-    branch_inflation_mining_steps: 50
 
 # logger config
 logger:

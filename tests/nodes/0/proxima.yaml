@@ -42,7 +42,6 @@ sequencers:
     pace: 5
     # maximum fee inputs allowed in the sequencer milestone transaction
     max_tag_along_inputs: 50
-    branch_inflation_mining_steps: 100
 
 # logger config
 logger:
