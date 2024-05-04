@@ -408,3 +408,7 @@ func (u *Updatable) updateUTXOLedgerDB(updateFun func(updatable *immutable.TrieU
 	}
 	return nil
 }
+
+func RootHasTransaction(store common.KVReader, root common.VCommitment, txid *ledger.TransactionID) bool {
+	return MustNewSugaredReadableState(store, root, 0).KnowsCommittedTransaction(txid)
+}

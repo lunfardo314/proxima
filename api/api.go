@@ -2,18 +2,19 @@ package api
 
 import (
 	"github.com/lunfardo314/proxima/core/vertex"
-	"github.com/lunfardo314/proxima/core/work_process/tippool"
+	"github.com/lunfardo314/proxima/multistate"
 )
 
 const (
-	PathGetLedgerID       = "/get_ledger_id"
-	PathGetAccountOutputs = "/get_account_outputs"
-	PathGetChainOutput    = "/get_chain_output"
-	PathGetOutput         = "/get_output"
-	PathQueryTxStatus     = "/query_tx_status"
-	PathSubmitTransaction = "/submit_tx"
-	PathGetSyncInfo       = "/sync_info"
-	PathGetNodeInfo       = "/node_info"
+	PathGetLedgerID         = "/get_ledger_id"
+	PathGetAccountOutputs   = "/get_account_outputs"
+	PathGetChainOutput      = "/get_chain_output"
+	PathGetOutput           = "/get_output"
+	PathQueryTxStatus       = "/query_tx_status"
+	PathQueryInclusionScore = "/query_inclusion_score"
+	PathSubmitTransaction   = "/submit_tx"
+	PathGetSyncInfo         = "/sync_info"
+	PathGetNodeInfo         = "/node_info"
 )
 
 type Error struct {
@@ -54,8 +55,18 @@ type OutputData struct {
 
 type QueryTxStatus struct {
 	Error
-	TxIDStatus vertex.TxIDStatusJSONAble              `json:"txid_status"`
-	Inclusion  map[string]tippool.TxInclusionJSONAble `json:"inclusion,omitempty"`
+	TxIDStatus vertex.TxIDStatusJSONAble       `json:"txid_status"`
+	Inclusion  *multistate.TxInclusionJSONAble `json:"inclusion,omitempty"`
+}
+
+type QueryTxInclusionScore struct {
+	Error
+	ThresholdNumerator   int `json:"threshold_numerator"`
+	ThresholdDenominator int `json:"threshold_denominator"`
+	LatestSlot           int `json:"latest_slot"`
+	EarliestSlot         int `json:"earliest_slot"`
+	StrongScore          int `json:"strong_score"`
+	WeakScore            int `json:"weak_score"`
 }
 
 type (

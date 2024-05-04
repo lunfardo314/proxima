@@ -23,6 +23,8 @@ Needs love ant attention. Currently rudimentary only. Also API
 * Metrics subsystem
   * Concept: Prometheus metrics for node, ledger and sequencer. Needs design.
   * Implementation 0%
+* RocksDB database
+  * Currently Badger is used. Replace with RocksDB
 * Spam prevention
   * Concept: in head plus described in WP, 30%. Needs experimental development and design
   * Implementation: 0%

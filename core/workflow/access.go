@@ -12,6 +12,7 @@ import (
 	"github.com/lunfardo314/proxima/core/work_process/tippool"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/transaction"
+	"github.com/lunfardo314/proxima/multistate"
 )
 
 // TODO revisit MaxDurationInTheFuture
@@ -128,8 +129,8 @@ func (w *Workflow) QueryTxIDStatusJSONAble(txid *ledger.TransactionID) vertex.Tx
 	return ret.JSONAble()
 }
 
-func (w *Workflow) TxInclusionJSONAble(txid *ledger.TransactionID) map[string]tippool.TxInclusionJSONAble {
-	return w.tippool.TxInclusionJSONAble(txid)
+func (w *Workflow) GetTxInclusion(txid *ledger.TransactionID, slotsBack int) *multistate.TxInclusion {
+	return multistate.GetTxInclusion(w.StateStore(), txid, slotsBack)
 }
 
 func (w *Workflow) WaitTxIDDefined(txid *ledger.TransactionID, pollPeriod, timeout time.Duration) (vertex.Status, error) {

@@ -6,7 +6,6 @@ import (
 	"github.com/lunfardo314/proxima/api/server"
 	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/core/vertex"
-	"github.com/lunfardo314/proxima/core/work_process/tippool"
 	"github.com/lunfardo314/proxima/core/workflow"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
@@ -31,6 +30,7 @@ func (p *ProximaNode) stopAPIServer() {
 	p.Log().Debugf("API server has been stopped")
 }
 
+// GetNodeInfo TODO not finished
 func (p *ProximaNode) GetNodeInfo() *global.NodeInfo {
 	alivePeers, configuredPeers := p.peers.NumPeers()
 	ret := &global.NodeInfo{
@@ -41,7 +41,6 @@ func (p *ProximaNode) GetNodeInfo() *global.NodeInfo {
 		Sequencers:     make([]ledger.ChainID, len(p.Sequencers)),
 		Branches:       make([]ledger.TransactionID, 0),
 	}
-	// TODO
 	//for i := range p.Sequencers {
 	//	ret.Sequencers[i] = *p.Sequencers[i].ID()
 	//}
@@ -67,6 +66,6 @@ func (p *ProximaNode) QueryTxIDStatusJSONAble(txid *ledger.TransactionID) vertex
 	return p.workflow.QueryTxIDStatusJSONAble(txid)
 }
 
-func (p *ProximaNode) TxInclusionJSONAble(txid *ledger.TransactionID) map[string]tippool.TxInclusionJSONAble {
-	return p.workflow.TxInclusionJSONAble(txid)
+func (p *ProximaNode) GetTxInclusion(txid *ledger.TransactionID, slotsBack int) *multistate.TxInclusion {
+	return p.workflow.GetTxInclusion(txid, slotsBack)
 }

@@ -33,26 +33,6 @@ type (
 		*vertex.WrappedTx
 		BranchID ledger.TransactionID
 	}
-
-	RootData struct {
-		BranchID   ledger.TransactionID
-		RootRecord multistate.RootRecord
-	}
-
-	RootDataJSONAble struct {
-		BranchID   string                        `json:"branch_id"`
-		RootRecord multistate.RootRecordJSONAble `json:"root_record"`
-	}
-
-	TxInclusion struct {
-		RootData
-		Included bool
-	}
-
-	TxInclusionJSONAble struct {
-		RootDataJSONAble `json:"root_data"`
-		Included         bool `json:"included"`
-	}
 )
 
 const (
@@ -168,57 +148,4 @@ func (t *SequencerTips) NumSequencerTips() int {
 	defer t.mutex.RUnlock()
 
 	return len(t.latestMilestones)
-}
-
-func (t *SequencerTips) TxInclusion(txid *ledger.TransactionID) map[ledger.ChainID]TxInclusion {
-	ret := make(map[ledger.ChainID]TxInclusion)
-
-	t.mutex.RLock()
-	defer t.mutex.RUnlock()
-
-	for seqID, msData := range t.latestMilestones {
-		rr, hasIt := t.BranchHasTransaction(&msData.BranchID, txid)
-		t.Assertf(rr != nil, "inconsistency: root record is nil for branch %s", msData.BranchID.StringShort)
-
-		ret[seqID] = TxInclusion{
-			RootData: RootData{
-				BranchID:   msData.BranchID,
-				RootRecord: *rr,
-			},
-			Included: hasIt,
-		}
-	}
-	return ret
-}
-
-func (t *SequencerTips) TxInclusionJSONAble(txid *ledger.TransactionID) map[string]TxInclusionJSONAble {
-	ret := make(map[string]TxInclusionJSONAble)
-	for seqID, incl := range t.TxInclusion(txid) {
-		ret[seqID.StringHex()] = TxInclusionJSONAble{
-			RootDataJSONAble: RootDataJSONAble{
-				BranchID:   incl.BranchID.StringHex(),
-				RootRecord: *incl.RootRecord.JSONAble(),
-			},
-			Included: incl.Included,
-		}
-	}
-	return ret
-}
-
-func RootDataFromJSONAble(r *RootDataJSONAble) (*RootData, error) {
-	ret := &RootData{
-		RootRecord: multistate.RootRecord{},
-	}
-	var err error
-	ret.BranchID, err = ledger.TransactionIDFromHexString(r.BranchID)
-	if err != nil {
-		return nil, err
-	}
-	rr, err := multistate.RootRecordFromJSONAble(&r.RootRecord)
-	if err != nil {
-		return nil, err
-	}
-	ret.RootRecord = *rr
-
-	return ret, nil
 }

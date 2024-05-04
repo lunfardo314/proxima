@@ -8,11 +8,11 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/lunfardo314/proxima/api"
 	"github.com/lunfardo314/proxima/core/vertex"
-	"github.com/lunfardo314/proxima/core/work_process/tippool"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/multistate"
@@ -27,7 +27,7 @@ type (
 		HeaviestStateForLatestTimeSlot() multistate.SugaredStateReader
 		SubmitTxBytesFromAPI(txBytes []byte, trace ...bool) (*ledger.TransactionID, error)
 		QueryTxIDStatusJSONAble(txid *ledger.TransactionID) vertex.TxIDStatusJSONAble
-		TxInclusionJSONAble(txid *ledger.TransactionID) map[string]tippool.TxInclusionJSONAble
+		GetTxInclusion(txid *ledger.TransactionID, slotsBack int) *multistate.TxInclusion
 	}
 
 	Server struct {
@@ -37,7 +37,7 @@ type (
 
 	TxStatus struct {
 		vertex.TxIDStatus
-		Inclusion map[ledger.ChainID]tippool.TxInclusion
+		*multistate.TxInclusion
 	}
 )
 
@@ -58,6 +58,8 @@ func (srv *Server) registerHandlers() {
 	http.HandleFunc(api.PathGetOutput, srv.getOutput)
 	// GET request format: 'query_txid_status?txid=<hex-encoded transaction ID>'
 	http.HandleFunc(api.PathQueryTxStatus, srv.queryTxStatus)
+	// GET request format: 'query_inclusion_score?txid=<hex-encoded transaction ID>[&threshold=N-D][&slots=<num slots back>]'
+	http.HandleFunc(api.PathQueryInclusionScore, srv.queryTxInclusionScore)
 	// POST request format 'submit_nowait'. Feedback only on parsing error, otherwise async posting
 	http.HandleFunc(api.PathSubmitTransaction, srv.submitTx)
 	// GET sync info from the node
@@ -290,7 +292,7 @@ func (srv *Server) queryTxStatus(w http.ResponseWriter, r *http.Request) {
 	err = util.CatchPanicOrError(func() error {
 		resp = api.QueryTxStatus{
 			TxIDStatus: srv.QueryTxIDStatusJSONAble(&txid),
-			Inclusion:  srv.TxInclusionJSONAble(&txid),
+			Inclusion:  srv.GetTxInclusion(&txid, 1).JSONAble(),
 		}
 		return nil
 	})
@@ -298,6 +300,81 @@ func (srv *Server) queryTxStatus(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err.Error())
 		return
 	}
+	respBin, err := json.MarshalIndent(resp, "", "  ")
+	if err != nil {
+		writeErr(w, err.Error())
+		return
+	}
+	_, err = w.Write(respBin)
+	util.AssertNoError(err)
+}
+
+func decodeThreshold(par string) (int, int, error) {
+	thrSplit := strings.Split(par, "-")
+	if len(thrSplit) != 2 {
+		return 0, 0, fmt.Errorf("wrong parameter 'threshold'")
+	}
+	num, err := strconv.Atoi(thrSplit[0])
+	if err != nil {
+		return 0, 0, fmt.Errorf("wrong parameter 'threshold': %v", err)
+	}
+	denom, err := strconv.Atoi(thrSplit[1])
+	if err != nil {
+		return 0, 0, fmt.Errorf("wrong parameter 'threshold': %v", err)
+	}
+	if num < 1 || denom < 1 || num > denom {
+		return 0, 0, fmt.Errorf("wrong parameter 'threshold'")
+	}
+	return num, denom, nil
+}
+
+func (srv *Server) queryTxInclusionScore(w http.ResponseWriter, r *http.Request) {
+	srv.Tracef(TraceTag, "queryTxInclusionScore invoked")
+
+	var txid ledger.TransactionID
+	var err error
+
+	lst, ok := r.URL.Query()["txid"]
+	if !ok || len(lst) != 1 {
+		txid = srv.lastSubmittedTxID
+	} else {
+		txid, err = ledger.TransactionIDFromHexString(lst[0])
+		if err != nil {
+			writeErr(w, err.Error())
+			return
+		}
+	}
+
+	slotsBack := 1
+	lst, ok = r.URL.Query()["slots"]
+	if ok && len(lst) == 1 {
+		slotsBack, err = strconv.Atoi(lst[0])
+
+		const maxSlotsBack = 10
+		if slotsBack < 1 || slotsBack > maxSlotsBack {
+			writeErr(w, fmt.Sprintf("parameter 'slots' must be between 1 and %d", maxSlotsBack))
+			return
+		}
+	}
+	var thresholdNumerator, thresholdDenominator int
+	lst, ok = r.URL.Query()["threshold"]
+	if ok && len(lst) == 1 {
+		thresholdNumerator, thresholdDenominator, err = decodeThreshold(lst[0])
+		if err != nil {
+			writeErr(w, err.Error())
+			return
+		}
+	}
+	var inclusion *multistate.TxInclusion
+	err = util.CatchPanicOrError(func() error {
+		inclusion = srv.GetTxInclusion(&txid, slotsBack)
+		return nil
+	})
+	if err != nil {
+		writeErr(w, err.Error())
+		return
+	}
+	resp := calcTxInclusionScoreResponse(inclusion, thresholdNumerator, thresholdDenominator)
 	respBin, err := json.MarshalIndent(resp, "", "  ")
 	if err != nil {
 		writeErr(w, err.Error())
