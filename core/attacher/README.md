@@ -22,7 +22,7 @@ The _milestone attacher_ handles all main tasks of the sequencer transaction: pu
 The _milestone attacher_ finishes the task and leaves go routine by:
 * marking sequencer transaction as _GOOD_
 * marking sequencer transaction as _BAD_
-* committing the ledger state into the DB for _GOOD_ branch transactions
+* persisting the ledger state into the DB for _GOOD_ branch transactions
 * leaving with _BAD_ in case of solidification timeout or global shutdown
 
 The _incremental attacher_ is a utility for the sequencer. It allows construction of the past cone by 
