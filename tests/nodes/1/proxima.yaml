@@ -57,6 +57,7 @@ pprof:
   port: 8080
 
 trace_tags:
+#  - inclusion
 #  - backlog
 #  - sequencer
 #  - factory

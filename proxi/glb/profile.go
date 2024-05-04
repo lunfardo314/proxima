@@ -123,14 +123,14 @@ func ReportTxInclusion(txid ledger.TransactionID, poll time.Duration) {
 	if weakFinality {
 		fin = "weak"
 	}
-	Infof("  finality criterion: %s, slot span: %d, strong inclusion threshold: %d/%d, :",
+	Infof("  finality criterion: %s, slot span: %d, strong inclusion threshold: %d/%d",
 		fin, waitSlotsBack, inclusionThresholdNumerator, inclusionThresholdDenominator)
 	for {
 		score, err := GetClient().QueryTxInclusionScore(&txid, inclusionThresholdNumerator, inclusionThresholdDenominator, waitSlotsBack)
 		AssertNoError(err)
 
 		Infof("   weak score: %d%%, strong score: %d%%, from slot %d to %d (%d)",
-			score.WeakScore, score.StrongScore, score.EarliestSlot, score.LatestSlot, score.LatestSlot-score.EarliestSlot)
+			score.WeakScore, score.StrongScore, score.EarliestSlot, score.LatestSlot, score.LatestSlot-score.EarliestSlot+1)
 
 		if weakFinality {
 			if score.WeakScore == 100 {

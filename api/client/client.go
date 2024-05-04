@@ -302,7 +302,7 @@ func (c *APIClient) QueryTxIDStatus(txid *ledger.TransactionID) (*vertex.TxIDSta
 }
 
 func (c *APIClient) QueryTxInclusionScore(txid *ledger.TransactionID, thresholdNumerator, thresholdDenominator, slotsBack int) (*api.TxInclusionScore, error) {
-	path := fmt.Sprintf(api.PathQueryInclusionScore+"&txid=%s&threshold%d-%d&slots=%d",
+	path := fmt.Sprintf(api.PathQueryInclusionScore+"?txid=%s&threshold=%d-%d&slots=%d",
 		txid.StringHex(), thresholdNumerator, thresholdDenominator, slotsBack)
 	body, err := c.getBody(path)
 	if err != nil {
@@ -311,7 +311,7 @@ func (c *APIClient) QueryTxInclusionScore(txid *ledger.TransactionID, thresholdN
 	var res api.QueryTxInclusionScore
 	err = json.Unmarshal(body, &res)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("unmarshal returned: %v\nbody: '%s'", err, string(body))
 	}
 	if res.Error.Error != "" {
 		return nil, fmt.Errorf("from server: %s", res.Error.Error)
@@ -438,13 +438,13 @@ func (c *APIClient) getBody(path string) ([]byte, error) {
 	url := c.prefix + path
 	resp, err := c.c.Get(url)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("GET returned: %v", err)
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("io.ReadAll returned: %v", err)
 	}
 	return body, nil
 }

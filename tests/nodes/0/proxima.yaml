@@ -60,6 +60,7 @@ pprof:
   port: 9090
 
 trace_tags:
+  - inclusion
 #  - backlog
 #  - gossip
 #  - pull_server

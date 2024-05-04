@@ -6,7 +6,9 @@ import (
 )
 
 // calcTxInclusionScore calculates inclusion score response from inclusion data
-func calcTxInclusionScore(inclusion *multistate.TxInclusion, thresholdNumerator, thresholdDenominator int) api.TxInclusionScore {
+func (srv *Server) calcTxInclusionScore(inclusion *multistate.TxInclusion, thresholdNumerator, thresholdDenominator int) api.TxInclusionScore {
+	srv.Tracef(TraceTagQueryInclusion, "calcTxInclusionScore: %s, threshold: %d/%d", inclusion.String(), thresholdNumerator, thresholdDenominator)
+
 	ret := api.TxInclusionScore{
 		ThresholdNumerator:   thresholdNumerator,
 		ThresholdDenominator: thresholdDenominator,

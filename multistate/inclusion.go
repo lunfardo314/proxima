@@ -1,6 +1,8 @@
 package multistate
 
 import (
+	"fmt"
+
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 )
@@ -75,6 +77,7 @@ func GetTxInclusion(store global.StateStoreReader, txid *ledger.TransactionID, s
 			ret.EarliestSlot = incl[i].BranchID.Slot()
 		}
 	}
+	ret.Inclusion = incl
 	return ret
 }
 
@@ -116,4 +119,8 @@ func (incl *TxInclusionJSONAble) Parse() (*TxInclusion, error) {
 		}
 	}
 	return ret, nil
+}
+
+func (i *TxInclusion) String() string {
+	return fmt.Sprintf("txid: %s, slot from %d to %d, num roots: %d", i.TxID.StringShort(), i.EarliestSlot, i.LatestSlot, len(i.Inclusion))
 }

@@ -58,7 +58,7 @@ func (srv *Server) registerHandlers() {
 	http.HandleFunc(api.PathGetOutput, srv.getOutput)
 	// GET request format: 'query_txid_status?txid=<hex-encoded transaction ID>'
 	http.HandleFunc(api.PathQueryTxStatus, srv.queryTxStatus)
-	// GET request format: 'query_inclusion_score?txid=<hex-encoded transaction ID>[&threshold=N-D][&slots=<num slots back>]'
+	// GET request format: 'query_inclusion_score?txid=<hex-encoded transaction ID>&threshold=N-D[&slots=<num slots back>]'
 	http.HandleFunc(api.PathQueryInclusionScore, srv.queryTxInclusionScore)
 	// POST request format 'submit_nowait'. Feedback only on parsing error, otherwise async posting
 	http.HandleFunc(api.PathSubmitTransaction, srv.submitTx)
@@ -323,13 +323,15 @@ func decodeThreshold(par string) (int, int, error) {
 		return 0, 0, fmt.Errorf("wrong parameter 'threshold': %v", err)
 	}
 	if !multistate.ValidInclusionThresholdFraction(num, denom) {
-		return 0, 0, fmt.Errorf("wrong parameter 'threshold'")
+		return 0, 0, fmt.Errorf("wrong parameter 'threshold': %s", par)
 	}
 	return num, denom, nil
 }
 
+const TraceTagQueryInclusion = "inclusion"
+
 func (srv *Server) queryTxInclusionScore(w http.ResponseWriter, r *http.Request) {
-	srv.Tracef(TraceTag, "queryTxInclusionScore invoked")
+	srv.Tracef(TraceTagQueryInclusion, "queryTxInclusionScore invoked")
 
 	var txid ledger.TransactionID
 	var err error
@@ -364,6 +366,9 @@ func (srv *Server) queryTxInclusionScore(w http.ResponseWriter, r *http.Request)
 			writeErr(w, err.Error())
 			return
 		}
+	} else {
+		writeErr(w, fmt.Sprintf("wrong or missing parameter 'threshold': %+v", lst))
+		return
 	}
 	var inclusion *multistate.TxInclusion
 	err = util.CatchPanicOrError(func() error {
@@ -375,7 +380,7 @@ func (srv *Server) queryTxInclusionScore(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	resp := api.QueryTxInclusionScore{
-		TxInclusionScore: calcTxInclusionScore(inclusion, thresholdNumerator, thresholdDenominator),
+		TxInclusionScore: srv.calcTxInclusionScore(inclusion, thresholdNumerator, thresholdDenominator),
 	}
 
 	respBin, err := json.MarshalIndent(resp, "", "  ")
