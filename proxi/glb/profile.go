@@ -4,8 +4,6 @@ import (
 	"crypto/ed25519"
 	"time"
 
-	"github.com/lunfardo314/proxima/core/inclusion"
-	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/util"
@@ -114,41 +112,32 @@ func NoWait() bool {
 	return viper.GetBool("nowait")
 }
 
-func ReportTxStatus(txid ledger.TransactionID, poll time.Duration, strongFinalityV ...bool) {
-	strongFinality := len(strongFinalityV) > 0 && strongFinalityV[0]
+const waitSlotsBack = 2
 
-	Infof("Transaction %s (hex=%s):", txid.String(), txid.StringHex())
+func ReportTxInclusion(txid ledger.TransactionID, poll time.Duration) {
+	weakFinality := getIsWeakFinality()
+
+	Infof("Tracking inclusion of %s (hex=%s):", txid.String(), txid.StringHex())
 	inclusionThresholdNumerator, inclusionThresholdDenominator := getInclusionThreshold()
-	Infof("Inclusion threshold: %d/%d :", inclusionThresholdNumerator, inclusionThresholdDenominator)
-	latestSlot := ledger.Slot(0)
-	numSlots := 0
+	fin := "strong"
+	if weakFinality {
+		fin = "weak"
+	}
+	Infof("  finality criterion: %s, slot span: %d, strong inclusion threshold: %d/%d, :",
+		fin, waitSlotsBack, inclusionThresholdNumerator, inclusionThresholdDenominator)
 	for {
-		vertexStatus, inclusionData, err := GetClient().QueryTxIDStatus(&txid)
+		score, err := GetClient().QueryTxInclusionScore(&txid, inclusionThresholdNumerator, inclusionThresholdDenominator, waitSlotsBack)
 		AssertNoError(err)
 
-		Verbosef(vertexStatus.Lines().Join(", "))
-		Verbosef("%s", inclusion.Lines(inclusionData, inclusionThresholdNumerator, inclusionThresholdDenominator, "    "))
+		Infof("   weak score: %d%%, strong score: %d%%, from slot %d to %d (%d)",
+			score.WeakScore, score.StrongScore, score.EarliestSlot, score.LatestSlot, score.LatestSlot-score.EarliestSlot)
 
-		if len(inclusionData) == 0 {
-			time.Sleep(poll)
-			continue
-		}
-		slot, strongScore, weakScore := inclusion.Score(inclusionData, inclusionThresholdNumerator, inclusionThresholdDenominator)
-		Infof("   slot: %d, strongScore: %d%%, weakScore: %d%%", latestSlot, strongScore, weakScore)
-		if latestSlot != slot {
-			numSlots++
-		}
-		switch {
-		case vertexStatus.Deleted || vertexStatus.Status == vertex.Bad:
-			return
-		case numSlots < 2:
-			continue
-		case strongFinality:
-			if strongScore == 100 {
+		if weakFinality {
+			if score.WeakScore == 100 {
 				return
 			}
-		default:
-			if weakScore == 100 {
+		} else {
+			if score.StrongScore == 100 {
 				return
 			}
 		}
@@ -156,10 +145,13 @@ func ReportTxStatus(txid ledger.TransactionID, poll time.Duration, strongFinalit
 	}
 }
 
-func getInclusionThreshold() (uint64, uint64) {
-	numerator := uint64(viper.GetInt("inclusion_threshold.numerator"))
-	denominator := uint64(viper.GetInt("inclusion_threshold.denominator"))
-
+func getInclusionThreshold() (int, int) {
+	numerator := viper.GetInt("inclusion_threshold.numerator")
+	denominator := viper.GetInt("inclusion_threshold.denominator")
 	Assertf(multistate.ValidInclusionThresholdFraction(numerator, denominator), "wrong or missing inclusion threshold")
 	return numerator, denominator
+}
+
+func getIsWeakFinality() bool {
+	return viper.GetBool("weak")
 }

@@ -59,14 +59,18 @@ type QueryTxStatus struct {
 	Inclusion  *multistate.TxInclusionJSONAble `json:"inclusion,omitempty"`
 }
 
-type QueryTxInclusionScore struct {
-	Error
+type TxInclusionScore struct {
 	ThresholdNumerator   int `json:"threshold_numerator"`
 	ThresholdDenominator int `json:"threshold_denominator"`
 	LatestSlot           int `json:"latest_slot"`
 	EarliestSlot         int `json:"earliest_slot"`
 	StrongScore          int `json:"strong_score"`
 	WeakScore            int `json:"weak_score"`
+}
+
+type QueryTxInclusionScore struct {
+	Error
+	TxInclusionScore
 }
 
 type (

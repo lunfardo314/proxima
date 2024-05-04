@@ -17,7 +17,7 @@ func (r *RootRecord) JSONAble() *RootRecordJSONAble {
 	}
 }
 
-func RootRecordFromJSONAble(r *RootRecordJSONAble) (*RootRecord, error) {
+func (r *RootRecordJSONAble) Parse() (*RootRecord, error) {
 	ret := &RootRecord{
 		SlotInflation: r.SlotInflation,
 		Supply:        r.Supply,

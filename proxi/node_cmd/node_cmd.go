@@ -35,6 +35,10 @@ func Init() *cobra.Command {
 	err = viper.BindPFlag("nowait", nodeCmd.PersistentFlags().Lookup("nowait"))
 	glb.AssertNoError(err)
 
+	nodeCmd.PersistentFlags().BoolP("weak", "w", false, "indicates to use weak finality mode")
+	err = viper.BindPFlag("weak", nodeCmd.PersistentFlags().Lookup("weak"))
+	glb.AssertNoError(err)
+
 	nodeCmd.InitDefaultHelpCmd()
 	nodeCmd.AddCommand(
 		initGetOutputsCmd(),

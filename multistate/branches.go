@@ -98,14 +98,14 @@ func RootRecordFromBytes(data []byte) (RootRecord, error) {
 	}, nil
 }
 
-func ValidInclusionThresholdFraction(numerator, denominator uint64) bool {
+func ValidInclusionThresholdFraction(numerator, denominator int) bool {
 	return numerator > 0 && denominator > 0 && numerator < denominator && denominator >= 2
 }
 
 // IsCoverageAboveThreshold the root is dominating if coverage last delta is more than numerator/denominator of the double supply
-func (r *RootRecord) IsCoverageAboveThreshold(numerator, denominator uint64) bool {
+func (r *RootRecord) IsCoverageAboveThreshold(numerator, denominator int) bool {
 	util.Assertf(ValidInclusionThresholdFraction(numerator, denominator), "IsCoverageAboveThreshold: fraction is wrong")
-	return r.LedgerCoverage > ((r.Supply/numerator)*denominator)<<1 // this order to avoid overflow
+	return r.LedgerCoverage > ((r.Supply/uint64(numerator))*uint64(denominator))<<1 // this order to avoid overflow
 }
 
 // TxID transaction ID of the branch, as taken from the stem output ID

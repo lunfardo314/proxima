@@ -13,11 +13,11 @@ import (
 
 	"github.com/lunfardo314/proxima/api"
 	"github.com/lunfardo314/proxima/core/vertex"
-	"github.com/lunfardo314/proxima/core/work_process/tippool"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/ledger/txbuilder"
+	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/txutils"
 	"github.com/lunfardo314/unitrie/common"
@@ -267,7 +267,7 @@ func (c *APIClient) GetAccountOutputs(account ledger.Accountable, filter ...func
 	return outs, nil
 }
 
-func (c *APIClient) QueryTxIDStatus(txid *ledger.TransactionID) (*vertex.TxIDStatus, map[ledger.ChainID]tippool.TxInclusion, error) {
+func (c *APIClient) QueryTxIDStatus(txid *ledger.TransactionID) (*vertex.TxIDStatus, *multistate.TxInclusion, error) {
 	var path string
 	if txid != nil {
 		path = fmt.Sprintf(api.PathQueryTxStatus+"?txid=%s", txid.StringHex())
@@ -293,19 +293,30 @@ func (c *APIClient) QueryTxIDStatus(txid *ledger.TransactionID) (*vertex.TxIDSta
 		return nil, nil, err
 	}
 
-	retInclusion := make(map[ledger.ChainID]tippool.TxInclusion)
-	for seqIDStr, inclJSON := range res.Inclusion {
-		seqID, err := ledger.ChainIDFromHexString(seqIDStr)
-		if err != nil {
-			return nil, nil, err
-		}
-		incl, err := tippool.RootDataFromJSONAble(&inclJSON.RootDataJSONAble)
-		retInclusion[seqID] = tippool.TxInclusion{
-			RootData: *incl,
-			Included: inclJSON.Included,
-		}
+	retInclusion, err := res.Inclusion.Parse()
+	if err != nil {
+		return nil, nil, err
 	}
+
 	return retTxIDStatus, retInclusion, nil
+}
+
+func (c *APIClient) QueryTxInclusionScore(txid *ledger.TransactionID, thresholdNumerator, thresholdDenominator, slotsBack int) (*api.TxInclusionScore, error) {
+	path := fmt.Sprintf(api.PathQueryInclusionScore+"&txid=%s&threshold%d-%d&slots=%d",
+		txid.StringHex(), thresholdNumerator, thresholdDenominator, slotsBack)
+	body, err := c.getBody(path)
+	if err != nil {
+		return nil, err
+	}
+	var res api.QueryTxInclusionScore
+	err = json.Unmarshal(body, &res)
+	if err != nil {
+		return nil, err
+	}
+	if res.Error.Error != "" {
+		return nil, fmt.Errorf("from server: %s", res.Error.Error)
+	}
+	return &res.TxInclusionScore, nil
 }
 
 func (c *APIClient) GetNodeInfo() (*global.NodeInfo, error) {

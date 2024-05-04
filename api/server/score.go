@@ -5,9 +5,9 @@ import (
 	"github.com/lunfardo314/proxima/multistate"
 )
 
-// calcTxInclusionScoreResponse calculates inclusion score response from inclusion data
-func calcTxInclusionScoreResponse(inclusion *multistate.TxInclusion, thresholdNumerator, thresholdDenominator int) *api.QueryTxInclusionScore {
-	ret := &api.QueryTxInclusionScore{
+// calcTxInclusionScore calculates inclusion score response from inclusion data
+func calcTxInclusionScore(inclusion *multistate.TxInclusion, thresholdNumerator, thresholdDenominator int) api.TxInclusionScore {
+	ret := api.TxInclusionScore{
 		ThresholdNumerator:   thresholdNumerator,
 		ThresholdDenominator: thresholdDenominator,
 		LatestSlot:           int(inclusion.LatestSlot),
@@ -23,7 +23,7 @@ func calcTxInclusionScoreResponse(inclusion *multistate.TxInclusion, thresholdNu
 		if inclusion.Inclusion[i].Included {
 			includedInBranches++
 		}
-		if inclusion.Inclusion[i].RootRecord.IsCoverageAboveThreshold(uint64(thresholdNumerator), uint64(thresholdDenominator)) {
+		if inclusion.Inclusion[i].RootRecord.IsCoverageAboveThreshold(thresholdNumerator, thresholdDenominator) {
 			numDominatingBranches++
 			if inclusion.Inclusion[i].Included {
 				numIncludedInDominating++

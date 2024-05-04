@@ -89,6 +89,6 @@ func runMakeChainCmd(_ *cobra.Command, args []string) {
 	glb.AssertNoError(err)
 	glb.Infof("new chain ID is %s", chainID.String())
 	if !glb.NoWait() {
-		glb.ReportTxStatus(*txCtx.TransactionID(), time.Second)
+		glb.ReportTxInclusion(*txCtx.TransactionID(), time.Second)
 	}
 }

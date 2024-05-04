@@ -77,3 +77,43 @@ func GetTxInclusion(store global.StateStoreReader, txid *ledger.TransactionID, s
 	}
 	return ret
 }
+
+func (r *RootInclusionJSONAble) Parse() (*RootInclusion, error) {
+	rr, err := r.RootRecord.Parse()
+	if err != nil {
+		return nil, err
+	}
+	return &RootInclusion{
+		BranchID:   ledger.TransactionID{},
+		RootRecord: *rr,
+		Included:   r.Included,
+	}, nil
+}
+
+func (incl *TxInclusionJSONAble) Parse() (*TxInclusion, error) {
+	ret := &TxInclusion{
+		LatestSlot:   incl.LatestSlot,
+		EarliestSlot: incl.EarliestSlot,
+		Inclusion:    make([]RootInclusion, len(incl.Inclusion)),
+	}
+	var err error
+	if ret.TxID, err = ledger.TransactionIDFromHexString(incl.TxID); err != nil {
+		return nil, err
+	}
+	for i := range ret.Inclusion {
+		rr, err := incl.Inclusion[i].RootRecord.Parse()
+		if err != nil {
+			return nil, err
+		}
+		branchID, err := ledger.TransactionIDFromHexString(incl.Inclusion[i].BranchID)
+		if err != nil {
+			return nil, err
+		}
+		ret.Inclusion[i] = RootInclusion{
+			BranchID:   branchID,
+			RootRecord: *rr,
+			Included:   ret.Inclusion[i].Included,
+		}
+	}
+	return ret, nil
+}

@@ -322,7 +322,7 @@ func decodeThreshold(par string) (int, int, error) {
 	if err != nil {
 		return 0, 0, fmt.Errorf("wrong parameter 'threshold': %v", err)
 	}
-	if num < 1 || denom < 1 || num > denom {
+	if !multistate.ValidInclusionThresholdFraction(num, denom) {
 		return 0, 0, fmt.Errorf("wrong parameter 'threshold'")
 	}
 	return num, denom, nil
@@ -374,7 +374,10 @@ func (srv *Server) queryTxInclusionScore(w http.ResponseWriter, r *http.Request)
 		writeErr(w, err.Error())
 		return
 	}
-	resp := calcTxInclusionScoreResponse(inclusion, thresholdNumerator, thresholdDenominator)
+	resp := api.QueryTxInclusionScore{
+		TxInclusionScore: calcTxInclusionScore(inclusion, thresholdNumerator, thresholdDenominator),
+	}
+
 	respBin, err := json.MarshalIndent(resp, "", "  ")
 	if err != nil {
 		writeErr(w, err.Error())

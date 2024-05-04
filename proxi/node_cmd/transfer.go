@@ -80,5 +80,5 @@ func runTransferCmd(_ *cobra.Command, args []string) {
 	if glb.NoWait() {
 		return
 	}
-	glb.ReportTxStatus(*txCtx.TransactionID(), time.Second)
+	glb.ReportTxInclusion(*txCtx.TransactionID(), time.Second)
 }

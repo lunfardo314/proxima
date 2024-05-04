@@ -176,7 +176,7 @@ func standardScenario(cfg spammerConfig) {
 			}
 		}
 
-		glb.ReportTxStatus(oid.TransactionID(), time.Second)
+		glb.ReportTxInclusion(oid.TransactionID(), time.Second)
 
 		txCounter += len(bundle)
 		timeSinceBeginning := time.Since(beginTime)
