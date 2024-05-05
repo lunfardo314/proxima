@@ -110,20 +110,12 @@ func (incl *TxInclusionJSONAble) Parse() (*TxInclusion, error) {
 	if ret.TxID, err = ledger.TransactionIDFromHexString(incl.TxID); err != nil {
 		return nil, err
 	}
-	for i := range ret.Inclusion {
-		rr, err := incl.Inclusion[i].RootRecord.Parse()
+	for i, ri := range incl.Inclusion {
+		rr, err := ri.Parse()
 		if err != nil {
 			return nil, err
 		}
-		branchID, err := ledger.TransactionIDFromHexString(incl.Inclusion[i].BranchID)
-		if err != nil {
-			return nil, err
-		}
-		ret.Inclusion[i] = RootInclusion{
-			BranchID:   branchID,
-			RootRecord: *rr,
-			Included:   ret.Inclusion[i].Included,
-		}
+		ret.Inclusion[i] = *rr
 	}
 	return ret, nil
 }

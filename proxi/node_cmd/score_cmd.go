@@ -1,7 +1,9 @@
 package node_cmd
 
 import (
+	"github.com/lunfardo314/proxima/api"
 	"github.com/lunfardo314/proxima/ledger"
+	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/spf13/cobra"
@@ -37,7 +39,7 @@ func runScoreCmd(_ *cobra.Command, args []string) {
 	score, err := glb.GetClient().QueryTxInclusionScore(&txid, inclusionThresholdNumerator, inclusionThresholdDenominator, slotSpan)
 	glb.AssertNoError(err)
 
-	glb.Infof("   weak score: %d%%, strong score: %d%%, from slot %d to %d (%d)",
+	glb.Infof("   from server: weak score: %d%%, strong score: %d%%, from slot %d to %d (%d)",
 		score.WeakScore, score.StrongScore, score.EarliestSlot, score.LatestSlot, score.LatestSlot-score.EarliestSlot+1)
 
 	if !glb.IsVerbose() {
@@ -48,13 +50,23 @@ func runScoreCmd(_ *cobra.Command, args []string) {
 	glb.AssertNoError(err)
 
 	glb.Infof("------- inclusion details -------")
-	glb.Infof("   slot span: %d, from: %s to %d", slotSpan, inclusion.EarliestSlot, inclusion.LatestSlot)
+	glb.Infof("   slot span: %d, from: %d to %d", slotSpan, inclusion.EarliestSlot, inclusion.LatestSlot)
+
+	scoreLocal := api.CalcTxInclusionScore(inclusion, inclusionThresholdNumerator, inclusionThresholdDenominator)
+	glb.Infof("    local weak score: %d%%, strong score: %d%%", scoreLocal.WeakScore, scoreLocal.StrongScore)
 
 	for _, incl := range inclusion.Inclusion {
 		in := "-"
 		if incl.Included {
 			in = "+"
 		}
-		glb.Infof(" %s %20s  %s  %s", in, util.GoTh(incl.RootRecord.LedgerCoverage), incl.BranchID.StringShort(), incl.RootRecord.SequencerID.StringShort())
+		dominating := " "
+		if incl.RootRecord.IsCoverageAboveThreshold(inclusionThresholdNumerator, inclusionThresholdDenominator) {
+			dominating = "D"
+		}
+		glb.Infof(" %s%s %20s  %s  %s  (> %s)",
+			in, dominating,
+			util.GoTh(incl.RootRecord.LedgerCoverage), incl.BranchID.StringShort(), incl.RootRecord.SequencerID.StringShort(),
+			util.GoTh(multistate.AbsoluteStrongFinalityCoverageThreshold(incl.RootRecord.Supply, inclusionThresholdNumerator, inclusionThresholdDenominator)))
 	}
 }

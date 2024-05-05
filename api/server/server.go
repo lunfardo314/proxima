@@ -305,7 +305,7 @@ func (srv *Server) queryTxStatus(w http.ResponseWriter, r *http.Request) {
 	err = util.CatchPanicOrError(func() error {
 		resp = api.QueryTxStatus{
 			TxIDStatus: srv.QueryTxIDStatusJSONAble(&txid),
-			Inclusion:  srv.GetTxInclusion(&txid, 1).JSONAble(),
+			Inclusion:  srv.GetTxInclusion(&txid, slotSpan).JSONAble(),
 		}
 		return nil
 	})
@@ -403,6 +403,13 @@ func (srv *Server) queryTxInclusionScore(w http.ResponseWriter, r *http.Request)
 	}
 	_, err = w.Write(respBin)
 	util.AssertNoError(err)
+}
+
+// calcTxInclusionScore calculates inclusion score response from inclusion data
+func (srv *Server) calcTxInclusionScore(inclusion *multistate.TxInclusion, thresholdNumerator, thresholdDenominator int) api.TxInclusionScore {
+	srv.Tracef(TraceTagQueryInclusion, "calcTxInclusionScore: %s, threshold: %d/%d", inclusion.String(), thresholdNumerator, thresholdDenominator)
+
+	return api.CalcTxInclusionScore(inclusion, thresholdNumerator, thresholdDenominator)
 }
 
 func writeErr(w http.ResponseWriter, errStr string) {

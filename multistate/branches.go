@@ -102,10 +102,15 @@ func ValidInclusionThresholdFraction(numerator, denominator int) bool {
 	return numerator > 0 && denominator > 0 && numerator < denominator && denominator >= 2
 }
 
+func AbsoluteStrongFinalityCoverageThreshold(supply uint64, numerator, denominator int) uint64 {
+	// 2 *supply * theta
+	return ((supply / uint64(denominator)) * uint64(numerator)) << 1 // this order to avoid overflow
+}
+
 // IsCoverageAboveThreshold the root is dominating if coverage last delta is more than numerator/denominator of the double supply
 func (r *RootRecord) IsCoverageAboveThreshold(numerator, denominator int) bool {
 	util.Assertf(ValidInclusionThresholdFraction(numerator, denominator), "IsCoverageAboveThreshold: fraction is wrong")
-	return r.LedgerCoverage > ((r.Supply/uint64(numerator))*uint64(denominator))<<1 // this order to avoid overflow
+	return r.LedgerCoverage > AbsoluteStrongFinalityCoverageThreshold(r.Supply, numerator, denominator)
 }
 
 // TxID transaction ID of the branch, as taken from the stem output ID
