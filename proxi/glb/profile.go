@@ -112,21 +112,21 @@ func NoWait() bool {
 	return viper.GetBool("nowait")
 }
 
-const waitSlotsBack = 2
+const slotSpan = 2
 
 func ReportTxInclusion(txid ledger.TransactionID, poll time.Duration) {
-	weakFinality := getIsWeakFinality()
+	weakFinality := GetIsWeakFinality()
 
 	Infof("Tracking inclusion of %s (hex=%s):", txid.String(), txid.StringHex())
-	inclusionThresholdNumerator, inclusionThresholdDenominator := getInclusionThreshold()
+	inclusionThresholdNumerator, inclusionThresholdDenominator := GetInclusionThreshold()
 	fin := "strong"
 	if weakFinality {
 		fin = "weak"
 	}
 	Infof("  finality criterion: %s, slot span: %d, strong inclusion threshold: %d/%d",
-		fin, waitSlotsBack, inclusionThresholdNumerator, inclusionThresholdDenominator)
+		fin, slotSpan, inclusionThresholdNumerator, inclusionThresholdDenominator)
 	for {
-		score, err := GetClient().QueryTxInclusionScore(&txid, inclusionThresholdNumerator, inclusionThresholdDenominator, waitSlotsBack)
+		score, err := GetClient().QueryTxInclusionScore(&txid, inclusionThresholdNumerator, inclusionThresholdDenominator, slotSpan)
 		AssertNoError(err)
 
 		Infof("   weak score: %d%%, strong score: %d%%, from slot %d to %d (%d)",
@@ -145,13 +145,13 @@ func ReportTxInclusion(txid ledger.TransactionID, poll time.Duration) {
 	}
 }
 
-func getInclusionThreshold() (int, int) {
-	numerator := viper.GetInt("inclusion_threshold.numerator")
-	denominator := viper.GetInt("inclusion_threshold.denominator")
+func GetInclusionThreshold() (int, int) {
+	numerator := viper.GetInt("finality.inclusion_threshold.numerator")
+	denominator := viper.GetInt("finality.inclusion_threshold.denominator")
 	Assertf(multistate.ValidInclusionThresholdFraction(numerator, denominator), "wrong or missing inclusion threshold")
 	return numerator, denominator
 }
 
-func getIsWeakFinality() bool {
-	return viper.GetBool("weak")
+func GetIsWeakFinality() bool {
+	return viper.GetBool("finality.weak")
 }

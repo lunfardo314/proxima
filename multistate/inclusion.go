@@ -35,6 +35,13 @@ type (
 	}
 )
 
+func (r *RootInclusion) JSONAble() RootInclusionJSONAble {
+	return RootInclusionJSONAble{
+		BranchID:   r.BranchID.StringHex(),
+		RootRecord: *r.RootRecord.JSONAble(),
+		Included:   r.Included,
+	}
+}
 func (i *TxInclusion) JSONAble() *TxInclusionJSONAble {
 	ret := &TxInclusionJSONAble{
 		TxID:         i.TxID.StringHex(),
@@ -43,11 +50,7 @@ func (i *TxInclusion) JSONAble() *TxInclusionJSONAble {
 		Inclusion:    make([]RootInclusionJSONAble, len(i.Inclusion)),
 	}
 	for j := range i.Inclusion {
-		ret.Inclusion[j] = RootInclusionJSONAble{
-			BranchID:   "",
-			RootRecord: *i.Inclusion[j].RootRecord.JSONAble(),
-			Included:   i.Inclusion[j].Included,
-		}
+		ret.Inclusion[j] = i.Inclusion[j].JSONAble()
 	}
 	return ret
 }
@@ -86,8 +89,12 @@ func (r *RootInclusionJSONAble) Parse() (*RootInclusion, error) {
 	if err != nil {
 		return nil, err
 	}
+	branchID, err := ledger.TransactionIDFromHexString(r.BranchID)
+	if err != nil {
+		return nil, err
+	}
 	return &RootInclusion{
-		BranchID:   ledger.TransactionID{},
+		BranchID:   branchID,
 		RootRecord: *rr,
 		Included:   r.Included,
 	}, nil

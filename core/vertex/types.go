@@ -210,7 +210,7 @@ func (s *TxIDStatus) JSONAble() (ret TxIDStatusJSONAble) {
 	return ret
 }
 
-func TxIDStatusFromJSONAble(s *TxIDStatusJSONAble) (*TxIDStatus, error) {
+func (s *TxIDStatusJSONAble) Parse() (*TxIDStatus, error) {
 	ret := &TxIDStatus{
 		OnDAG:     s.OnDAG,
 		InStorage: s.InStorage,

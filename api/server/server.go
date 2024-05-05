@@ -56,9 +56,9 @@ func (srv *Server) registerHandlers() {
 	http.HandleFunc(api.PathGetChainOutput, srv.getChainOutput)
 	// GET request format: 'get_output?id=<hex-encoded output ID>'
 	http.HandleFunc(api.PathGetOutput, srv.getOutput)
-	// GET request format: 'query_txid_status?txid=<hex-encoded transaction ID>'
+	// GET request format: 'query_txid_status?txid=<hex-encoded transaction ID>[&slots=<slot span>]'
 	http.HandleFunc(api.PathQueryTxStatus, srv.queryTxStatus)
-	// GET request format: 'query_inclusion_score?txid=<hex-encoded transaction ID>&threshold=N-D[&slots=<num slots back>]'
+	// GET request format: 'query_inclusion_score?txid=<hex-encoded transaction ID>&threshold=N-D[&slots=<slot span>]'
 	http.HandleFunc(api.PathQueryInclusionScore, srv.queryTxInclusionScore)
 	// POST request format 'submit_nowait'. Feedback only on parsing error, otherwise async posting
 	http.HandleFunc(api.PathSubmitTransaction, srv.submitTx)
@@ -270,6 +270,8 @@ func (srv *Server) getNodeInfo(w http.ResponseWriter, r *http.Request) {
 	util.AssertNoError(err)
 }
 
+const maxSlotsSpan = 10
+
 func (srv *Server) queryTxStatus(w http.ResponseWriter, r *http.Request) {
 	srv.Tracef(TraceTag, "queryTxStatus invoked")
 
@@ -283,6 +285,17 @@ func (srv *Server) queryTxStatus(w http.ResponseWriter, r *http.Request) {
 		txid, err = ledger.TransactionIDFromHexString(lst[0])
 		if err != nil {
 			writeErr(w, err.Error())
+			return
+		}
+	}
+
+	slotSpan := 1
+	lst, ok = r.URL.Query()["slots"]
+	if ok && len(lst) == 1 {
+		slotSpan, err = strconv.Atoi(lst[0])
+
+		if slotSpan < 1 || slotSpan > maxSlotsSpan {
+			writeErr(w, fmt.Sprintf("parameter 'slots' must be between 1 and %d", maxSlotsSpan))
 			return
 		}
 	}
@@ -347,17 +360,17 @@ func (srv *Server) queryTxInclusionScore(w http.ResponseWriter, r *http.Request)
 		}
 	}
 
-	slotsBack := 1
+	slotSpan := 1
 	lst, ok = r.URL.Query()["slots"]
 	if ok && len(lst) == 1 {
-		slotsBack, err = strconv.Atoi(lst[0])
+		slotSpan, err = strconv.Atoi(lst[0])
 
-		const maxSlotsBack = 10
-		if slotsBack < 1 || slotsBack > maxSlotsBack {
-			writeErr(w, fmt.Sprintf("parameter 'slots' must be between 1 and %d", maxSlotsBack))
+		if slotSpan < 1 || slotSpan > maxSlotsSpan {
+			writeErr(w, fmt.Sprintf("parameter 'slots' must be between 1 and %d", maxSlotsSpan))
 			return
 		}
 	}
+
 	var thresholdNumerator, thresholdDenominator int
 	lst, ok = r.URL.Query()["threshold"]
 	if ok && len(lst) == 1 {
@@ -372,7 +385,7 @@ func (srv *Server) queryTxInclusionScore(w http.ResponseWriter, r *http.Request)
 	}
 	var inclusion *multistate.TxInclusion
 	err = util.CatchPanicOrError(func() error {
-		inclusion = srv.GetTxInclusion(&txid, slotsBack)
+		inclusion = srv.GetTxInclusion(&txid, slotSpan)
 		return nil
 	})
 	if err != nil {

@@ -32,10 +32,10 @@ api:
 # usually none or 1 sequencer is configured for the node
 sequencers:
   seq4:
-    enable: false
+    enable: true
     loglevel: info
     # chain ID of the sequencer
-    sequencer_id:
+    sequencer_id: 0a7c13ba660bf521fd08317cb71beb6d43a49c50c583d19dedd13331248918ac
     # chain controller's private key (hex-encoded)
     controller_key: a8088c55a9827ddcd2207b373d7c01c4efb21a1ffdfd87fe973cccdbb897125a8601428a67a956d625889c264adae2b9e3e74b1f2bf3e3957eb7b1f78c6314aa
     # sequencer pace

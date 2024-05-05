@@ -267,10 +267,10 @@ func (c *APIClient) GetAccountOutputs(account ledger.Accountable, filter ...func
 	return outs, nil
 }
 
-func (c *APIClient) QueryTxIDStatus(txid *ledger.TransactionID) (*vertex.TxIDStatus, *multistate.TxInclusion, error) {
+func (c *APIClient) QueryTxIDStatus(txid *ledger.TransactionID, slotSpan int) (*vertex.TxIDStatus, *multistate.TxInclusion, error) {
 	var path string
 	if txid != nil {
-		path = fmt.Sprintf(api.PathQueryTxStatus+"?txid=%s", txid.StringHex())
+		path = fmt.Sprintf(api.PathQueryTxStatus+"?txid=%s&slots=%d", txid.StringHex(), slotSpan)
 	} else {
 		path = api.PathQueryTxStatus
 	}
@@ -280,15 +280,16 @@ func (c *APIClient) QueryTxIDStatus(txid *ledger.TransactionID) (*vertex.TxIDSta
 	}
 
 	var res api.QueryTxStatus
+
 	err = json.Unmarshal(body, &res)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("unmarshal: %w", err)
 	}
 	if res.Error.Error != "" {
 		return nil, nil, fmt.Errorf("from server: %s", res.Error.Error)
 	}
 
-	retTxIDStatus, err := vertex.TxIDStatusFromJSONAble(&res.TxIDStatus)
+	retTxIDStatus, err := res.TxIDStatus.Parse()
 	if err != nil {
 		return nil, nil, err
 	}
@@ -301,9 +302,9 @@ func (c *APIClient) QueryTxIDStatus(txid *ledger.TransactionID) (*vertex.TxIDSta
 	return retTxIDStatus, retInclusion, nil
 }
 
-func (c *APIClient) QueryTxInclusionScore(txid *ledger.TransactionID, thresholdNumerator, thresholdDenominator, slotsBack int) (*api.TxInclusionScore, error) {
+func (c *APIClient) QueryTxInclusionScore(txid *ledger.TransactionID, thresholdNumerator, thresholdDenominator, slotSpan int) (*api.TxInclusionScore, error) {
 	path := fmt.Sprintf(api.PathQueryInclusionScore+"?txid=%s&threshold=%d-%d&slots=%d",
-		txid.StringHex(), thresholdNumerator, thresholdDenominator, slotsBack)
+		txid.StringHex(), thresholdNumerator, thresholdDenominator, slotSpan)
 	body, err := c.getBody(path)
 	if err != nil {
 		return nil, err

@@ -33,9 +33,9 @@ api:
 # usually none or 1 sequencer is configured for the node
 sequencers:
   seq1:
-    enable: false
+    enable: true
     # chain ID of the sequencer
-    sequencer_id:
+    sequencer_id: f333c41e2b0b500bb1d8d0a0a94bd4eb3eb4de92c906c19b761c7cee0a6d031b
     # chain controller's private key (hex-encoded)
     controller_key: a66f8768224b241fe4dd2e4c00132d029452468846b149f2c2c4d894805964c8e63df08176c9443f0fe015d3582635d3d5a02e33765fbb3a2995db9cf3bbe606
     # sequencer pace
