@@ -3,7 +3,7 @@
 **Warning! This repository contains an ongoing development. Currently, it is an experimental (prototype) version. It definitely contains bugs.
 The code should not be used in production!**
 
-Proxima is like Bitcoin (PoW) and similar to PoS. Yet it is neither PoW, nor a PoS system. 
+Proxima is like Bitcoin (PoW) and similar to PoS. Yet it is neither PoW, nor a PoS system. See [whitepaper](docs/Proxima_WP.pdf).
 
 ## Introduction
 Proxima presents a novel architecture for a distributed ledger, commonly referred to as a "blockchain". 
