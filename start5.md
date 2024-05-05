@@ -1,4 +1,6 @@
-# How to run a testnet with 5 sequencers
+**--  in progress  --**
+
+# Instruction: how to run a testnet with 5 sequencers
 
 ## Initialized genesis DB for the node
 
