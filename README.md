@@ -43,6 +43,8 @@ It also contains some tooling, which includes rudimentary wallet functionality.
 * **Low cost per transaction**
 * **Leaderless determinism**. The system operates without a consensus leader or block proposers, providing a more decentralized approach.
 * **Asynchrony**. The architecture relies only on weak assumptions of synchronicity.
+* **Probabilistic finality**. Depends on subjective assumptions, similar to 6-block rule in Bitcoin. Normally 2-3 slots (20-30 sec) is enough. 
+Due to the determinism, strong finality is not needed to issue follow-up transactions
 * **No need for a global knowledge** of the system state, such as composition of the committee, assumptions about node weights, stakes, or other registries.
 * **1-tier trust assumptions**. Only token holders are involved in the process, as opposed to the multiple layers of trust required in other blockchain systems such as PoW (which includes users and miners) 
 and PoS (which includes at least users, block proposers, committee selection and committee).
@@ -50,6 +52,7 @@ and PoS (which includes at least users, block proposers, committee selection and
 the account cannot be used as a single global liquidity pool in the smart contract.
 * **Parallelism at the distributed consensus level**. Assets converge to their final states in parallel.
 * **Parallelism** at the node level. All transactions are processed in parallel on each node.
+* **Spamming prevention** is based on the transaction rate limits per user: at the ledger level and at the pre-ledger buffer (_memDAG_) level
 * **Simpler than most**, except Bitcoin. The above facilitates clear and relatively simple overall concept and node architecture, 
 much simpler than most PoS systems, which are usually complex in their consensus layer and due to synchronicity requirements 
 

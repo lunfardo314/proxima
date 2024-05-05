@@ -1,6 +1,8 @@
 # TODO list
 
-The list contains main pressing topics not covered yet in the code. **The list is never complete.**
+The list contains main pressing topics not covered yet in the code. 
+
+**The list does not cover full scope of further development, it is never complete.**
 
 ## Tooling
 * UTXO tangle visualizer
@@ -24,13 +26,27 @@ Needs love ant attention. Currently rudimentary only. Also API
   * Concept: Prometheus metrics for node, ledger and sequencer. Needs design.
   * Implementation 0%
 * RocksDB database
-  * Currently Badger is used. Replace with RocksDB
+  * Currently, Badger is used. Replace with RocksDB
 * Spam prevention
   * Concept: in head plus described in WP, 30%. Needs experimental development and design
   * Implementation: 0%
 * TxStore as separate server. 
   * Concept: currently, TxStore is behind very simple interface. The whole txStore can be put into separate 
 server to be shared by several nodes and ledger explorer. In head 60%
+  * Implementation: 0%
+* Multistate snapshots
+  * Concept: saving multi state DB starting from given slot. Restoring it and starting node from it as a baseline. In head 70%
+  * Implementation: %0
+* Multistate pruning
+  * Concept: most of the branch roots quickly become orphaned -> can be deleted from DB. In head 40%
+  * Implementation: 0%
+* Transaction store pruning
+  * Concept: most of the transactions are not present into the final state -> can be deleted . In head 40%
+  * Implementation: %0
+* State pruning
+  * Concept: currently transaction ID of every transaction is stored in the state root. If transaction contains unspent outputs,
+it is OK and not redundant. After all outputs of the transaction are spent in the state, transaction ID is needed for some time to be able to
+detect replay attempts. After some time it can be deleted from the state. It must be deleted deterministically, i.e. the same way in all nodes
   * Implementation: 0%
 
 ## Ledger
@@ -55,8 +71,26 @@ Library upgrades may be in the form of special immutable outputs and/or special 
 This is because the lock concept is not fully abstracted in the node. This is suboptimal not necessary. 
 All ledger constraint and account indexing logic can be expressed in _EasyFL_ 100%. The lock model must be revisited and fully abstracted in the node. 
 Then locks will be fully expandable programmable, especially in combination with ledger library upgrade feature
+* Delegation implementation
+  * Concept: (a) enable token holders delegate capital to sequencer with possibility to revoke it. It would be a lock to the chain-constrained output.
+    (b) implement sequencer part. In head 50%
+  * Implementation: 0%
 
-# Docs
+* Tag-along lock implementation
+  * Concept: modification if the _chain lock_, which conditionally bypass storage deposit constraints. In head: 80%
+  * Implementation: 0%
+
+## Sequencer
+
+* Enhance modularity of the sequencer
+  * Concept: currently sequencer is composed of _porposer_ modules. Needs further improvement of the architecture. In head 20%
+  * Implementation: 0%
+
+* More advanced sequencer strategies with multiple endorsements
+  * Concept: multi-endorsement strategies would contribute to the consensus convergence speed. In head 40%
+  * Implementation: 0%
+
+## Docs
 - Whitepaper 80-90%
 - How to run small testnet: 0% 
 - Introductory video series: 0%
