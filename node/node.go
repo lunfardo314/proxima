@@ -8,6 +8,7 @@ import (
 	"github.com/lunfardo314/proxima/core/workflow"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
+	"github.com/lunfardo314/proxima/metrics"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/peering"
 	"github.com/lunfardo314/proxima/sequencer"
@@ -84,6 +85,7 @@ func (p *ProximaNode) Start() {
 	p.readInTraceTags()
 
 	err := util.CatchPanicOrError(func() error {
+		metrics.Start(p)
 		p.initMultiStateLedger()
 		p.initTxStore()
 		p.initPeering()
@@ -165,7 +167,7 @@ func (p *ProximaNode) initTxStore() {
 		p.Log().Infof("transaction store database dbname is '%s'", dbname)
 		p.txStoreDB = badger_adaptor.New(badger_adaptor.MustCreateOrOpenBadgerDB(dbname))
 		p.dbClosedWG.Add(1)
-		p.txBytesStore = txstore.NewSimpleTxBytesStore(p.txStoreDB)
+		p.txBytesStore = txstore.NewSimpleTxBytesStore(p.txStoreDB, p)
 		p.Log().Infof("opened DB '%s' as transaction store", dbname)
 
 		go func() {

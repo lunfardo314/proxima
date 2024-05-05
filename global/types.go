@@ -7,6 +7,7 @@ import (
 	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/unitrie/common"
+	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/zap"
 )
 
@@ -83,9 +84,14 @@ type (
 		StopTracingTx(txid ledger.TransactionID)
 	}
 
+	Metrics interface {
+		MetricsRegistry() *prometheus.Registry
+	}
+
 	NodeGlobal interface {
 		Logging
 		TraceTx
 		StartStop
+		Metrics
 	}
 )

@@ -11,12 +11,14 @@ import (
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/util"
+	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/exp/maps"
 )
 
 type (
 	Environment interface {
 		StateStore() global.StateStore
+		MetricsRegistry() *prometheus.Registry
 	}
 
 	// MemDAG is a synchronized in-memory global map of all vertices of the transaction DAG

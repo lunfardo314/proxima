@@ -54,6 +54,10 @@ logger:
 #  log_attacher_stats: true
 
 # Other parameters used for tracing and debugging
+# Prometheus metrics exposure
+metrics:
+  port: 14000
+
 # pprof config
 pprof:
   enable: false

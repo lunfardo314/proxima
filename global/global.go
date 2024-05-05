@@ -14,6 +14,7 @@ import (
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
 	"github.com/lunfardo314/proxima/util/set"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -27,6 +28,7 @@ type Global struct {
 	stopOnce    *sync.Once
 	mutex       sync.RWMutex
 	components  set.Set[string]
+	metrics     *prometheus.Registry
 	// statically enabled trace tags
 	enabledTrace   atomic.Bool
 	traceTagsMutex sync.RWMutex
@@ -93,6 +95,7 @@ func _new(logLevel zapcore.Level, outputs []string) *Global {
 	ctx, cancelFun := context.WithCancel(context.Background())
 	ret := &Global{
 		ctx:           ctx,
+		metrics:       prometheus.NewRegistry(),
 		stopFun:       cancelFun,
 		SugaredLogger: NewLogger("", logLevel, outputs, ""),
 		traceTags:     set.New[string](),
@@ -104,6 +107,10 @@ func _new(logLevel zapcore.Level, outputs []string) *Global {
 	go ret.purgeLoop()
 
 	return ret
+}
+
+func (l *Global) MetricsRegistry() *prometheus.Registry {
+	return l.metrics
 }
 
 func (l *Global) MarkWorkProcessStarted(name string) {
