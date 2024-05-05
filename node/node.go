@@ -1,6 +1,8 @@
 package node
 
 import (
+	"fmt"
+	"net/http"
 	"runtime"
 	"sync"
 	"time"
@@ -8,13 +10,14 @@ import (
 	"github.com/lunfardo314/proxima/core/workflow"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
-	"github.com/lunfardo314/proxima/metrics"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/peering"
 	"github.com/lunfardo314/proxima/sequencer"
 	"github.com/lunfardo314/proxima/txstore"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/unitrie/adaptors/badger_adaptor"
+	"github.com/prometheus/client_golang/prometheus/collectors"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/spf13/viper"
 )
 
@@ -85,7 +88,7 @@ func (p *ProximaNode) Start() {
 	p.readInTraceTags()
 
 	err := util.CatchPanicOrError(func() error {
-		metrics.Start(p)
+		p.startMetrics()
 		p.initMultiStateLedger()
 		p.initTxStore()
 		p.initPeering()
@@ -233,4 +236,30 @@ func (p *ProximaNode) startSequencers() {
 
 func (p *ProximaNode) UpTime() time.Duration {
 	return time.Since(p.started)
+}
+
+const defaultMetricsPort = 14000
+
+func (p *ProximaNode) startMetrics() {
+	port := viper.GetInt("metrics.port")
+	if port == 0 {
+		p.Log().Warnf("metrics.port not specified. Will use %d for Prometheus metrics exposure", defaultMetricsPort)
+		port = defaultMetricsPort
+	}
+	reg := p.MetricsRegistry()
+	reg.MustRegister(
+		collectors.NewGoCollector(),
+		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
+		collectors.NewBuildInfoCollector(),
+	)
+	go func() {
+		http.Handle("/metrics", promhttp.HandlerFor(
+			reg,
+			promhttp.HandlerOpts{
+				Registry: reg,
+			},
+		))
+		p.Log().Fatal(http.ListenAndServe(fmt.Sprintf(":%d", port), nil))
+	}()
+	p.Log().Infof("Prometheus metrics exposed on port %d", port)
 }

@@ -20,15 +20,15 @@ type DummyTxBytesStore struct {
 	s common.KVStore
 }
 
-func NewSimpleTxBytesStore(store common.KVStore, metricsRegistry ...global.Metrics) SimpleTxBytesStore {
-	ret := SimpleTxBytesStore{s: store}
+func NewSimpleTxBytesStore(store common.KVStore, metricsRegistry ...global.Metrics) *SimpleTxBytesStore {
+	ret := &SimpleTxBytesStore{s: store}
 	if len(metricsRegistry) > 0 {
 		ret.registerMetrics(metricsRegistry[0].MetricsRegistry())
 	}
 	return ret
 }
 
-func (s SimpleTxBytesStore) registerMetrics(reg *prometheus.Registry) {
+func (s *SimpleTxBytesStore) registerMetrics(reg *prometheus.Registry) {
 	s.metricsEnabled = true
 	s.txCounter = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "txStore_txCounter",
@@ -43,7 +43,7 @@ func (s SimpleTxBytesStore) registerMetrics(reg *prometheus.Registry) {
 	reg.MustRegister(s.txBytesCounter)
 }
 
-func (s SimpleTxBytesStore) PersistTxBytesWithMetadata(txBytes []byte, metadata *txmetadata.TransactionMetadata) (ledger.TransactionID, error) {
+func (s *SimpleTxBytesStore) PersistTxBytesWithMetadata(txBytes []byte, metadata *txmetadata.TransactionMetadata) (ledger.TransactionID, error) {
 	txid, err := transaction.IDFromTransactionBytes(txBytes)
 	if err != nil {
 		return ledger.TransactionID{}, err
@@ -62,11 +62,11 @@ func (s SimpleTxBytesStore) PersistTxBytesWithMetadata(txBytes []byte, metadata 
 	return txid, nil
 }
 
-func (s SimpleTxBytesStore) GetTxBytesWithMetadata(txid *ledger.TransactionID) []byte {
+func (s *SimpleTxBytesStore) GetTxBytesWithMetadata(txid *ledger.TransactionID) []byte {
 	return s.s.Get(txid[:])
 }
 
-func (s SimpleTxBytesStore) HasTxBytes(txid *ledger.TransactionID) bool {
+func (s *SimpleTxBytesStore) HasTxBytes(txid *ledger.TransactionID) bool {
 	return s.s.Has(txid[:])
 }
 
