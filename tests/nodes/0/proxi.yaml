@@ -13,7 +13,8 @@ finality:
     inclusion_threshold:
         numerator: 2
         denominator: 3
-    weak: false
+    weak: true
+
 spammer:
     bundle_size: 5
     max_duration_minutes: 0

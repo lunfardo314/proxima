@@ -18,6 +18,8 @@ Search and explore UTXO tangle along various links, view each all kinds of trans
 * Proxi CLI, wallet
 Needs love ant attention. Currently rudimentary only. Also API
 
+* Docker-ize small testnets
+
 ## Node components
 * Auto-peering
   * Concept: currently only manual peering is implemented. It means node's config mush be changed and node restarted. The goal would be to implement usual auto-peering
