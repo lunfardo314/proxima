@@ -13,7 +13,8 @@ peering:
     # port to connect from other peers
     port: 4003
 
-  # configuration of known peers. Each known peer is specified as a pair <name>: <multiaddr>, where:
+  # configuration of known peers (also known as 'manual peering').
+  # Each known peer is specified as a pair <name>: <multiaddr>, where:
   # - <name> is unique mnemonic name used for convenience locally
   # - <multiaddr> is the libp2p multi-address in the form '/ip4/<IPaddr ir URL>/<port>/tcp/p2p/<hostID>'
   peers:
@@ -33,10 +34,10 @@ api:
 # usually none or 1 sequencer is configured for the node
 sequencers:
   seq3:
-    enable: true
+    enable: false
     loglevel: info
     # chain ID of the sequencer
-    sequencer_id: a12247894411aa4d96faafb7a7d3e9dccc68a4b11c92e63962c81bba6db72d52
+    sequencer_id:
     # chain controller's private key (hex-encoded)
     controller_key: 34d39e13811f8cd25d78c0779ca3673e03710f50ecf9d723ea6c775ca88fcfd3b6bc2f88cb000d0fd63121d99bf57ab5c184cefe0ba89cf0f96ee60858696d78
     # sequencer pace
@@ -52,6 +53,10 @@ logger:
 #  log_attacher_stats: true
 
 # Other parameters used for tracing and debugging
+# Prometheus metrics exposure
+metrics:
+  port: 14003
+
 # pprof config
 pprof:
   enable: false

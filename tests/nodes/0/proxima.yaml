@@ -36,7 +36,7 @@ sequencers:
     enable: true
     # chain ID of the sequencer
     # chain ID 'af7bedde1fea222230b82d63d5b665ac75afbe4ad3f75999bb3386cf994a6963' is
-    # predefined chain ID of the genesis chain (bootstrap sequencer)
+    # predefined chain ID of the genesis chain (the bootstrap sequencer)
     sequencer_id: af7bedde1fea222230b82d63d5b665ac75afbe4ad3f75999bb3386cf994a6963
     # chain controller's private key (hex-encoded)
     controller_key: 136381bd4dea7b2f0fa6c6ca14ee660dc7929975b47e6cdb85adee9e26032a810530b790e0e7de626f36e20ba656f09e324c68203de899d0daf9f98fcb3cf684
@@ -64,7 +64,7 @@ pprof:
   port: 9090
 
 trace_tags:
-  - inclusion
+#  - inclusion
 #  - backlog
 #  - gossip
 #  - pull_server
