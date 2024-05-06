@@ -1,7 +1,7 @@
 **DRAFT**
 
-# Testnet of 5 nodes/sequencers
-The tutorial how to run a testnet follows below. 
+# Network of 5 nodes/sequencers
+The tutorial how to run a small testnet on one computer follows below. 
 
 ## Compile
 Type `go install` in working directories `<your_dir>/proxima` and `<your_dir>/proxima/proxi`. This will create executables 
