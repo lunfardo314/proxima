@@ -1,3 +1,5 @@
+**DRAFT**
+
 # Testnet of 5 nodes/sequencers
 The tutorial how to run a testnet follows below. 
 
