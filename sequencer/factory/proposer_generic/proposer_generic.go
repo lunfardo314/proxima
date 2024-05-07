@@ -9,6 +9,7 @@ import (
 	"github.com/lunfardo314/proxima/core/attacher"
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/ledger"
+	"github.com/lunfardo314/proxima/sequencer/backlog"
 	"github.com/lunfardo314/proxima/util/set"
 )
 
@@ -23,6 +24,7 @@ type (
 		BestCoverageInTheSlot(targetTs ledger.Time) uint64
 		SequencerName() string
 		Propose(a *attacher.IncrementalAttacher, ctx context.Context) error
+		Backlog() *backlog.InputBacklog
 	}
 
 	Task interface {
