@@ -116,7 +116,7 @@ contribute to consensus.
 
 Let's make node running on the directory `myHome/0` as a separate background process for example using `tmux`.
 
-Now let's initialize genesis for the node `myHome/1` as described in the section [Initialize genesis for the node](#initialize_genesis_for_the_node). 
+Now let's initialize genesis for the node `myHome/1` as described in the section [Initialize genesis for the node](#initialize-genesis-for-the-node). 
 Then start the node in the working directory `myHome/1` with command `proxima`.
 
 The node will start and will sync its state with the node on `myHome/0`. It will keep receiving sequencer transactions produced by the 
