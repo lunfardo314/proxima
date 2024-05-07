@@ -10,6 +10,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/proxima/util/set"
 	"golang.org/x/exp/maps"
 )
 
@@ -136,6 +137,46 @@ func (a *IncrementalAttacher) insertOutput(wOut vertex.WrappedOutput) error {
 	return nil
 }
 
+// saving attacher state to be able to restore in case it becomes inconsistent when
+// attempting to adding conflicting outputs or endorsements
+
+type _savedState struct {
+	vertices map[*vertex.WrappedTx]Flags
+	rooted   map[*vertex.WrappedTx]set.Set[byte]
+	coverage uint64
+}
+
+func (a *IncrementalAttacher) _saveState() *_savedState {
+	ret := &_savedState{
+		vertices: maps.Clone(a.attacher.vertices),
+		rooted:   maps.Clone(a.attacher.rooted),
+		coverage: a.coverage,
+	}
+	// deep clone
+	for vid, outputIdxSet := range ret.rooted {
+		ret.rooted[vid] = outputIdxSet.Clone()
+	}
+	return ret
+}
+
+func (a *IncrementalAttacher) _restoreState(saved *_savedState) {
+	a.attacher.vertices = saved.vertices
+	a.attacher.rooted = saved.rooted
+	a.coverage = saved.coverage
+}
+
+// InsertEndorsement preserves consistency in case of failure
+func (a *IncrementalAttacher) InsertEndorsement(endorsement *vertex.WrappedTx) error {
+	saved := a._saveState()
+	if err := a.insertEndorsement(endorsement); err != nil {
+		a._restoreState(saved)
+		a.setError(nil)
+		return err
+	}
+	return nil
+}
+
+// insertEndorsement in case of error, attacher remains inconsistent
 func (a *IncrementalAttacher) insertEndorsement(endorsement *vertex.WrappedTx) error {
 	if endorsement.IsBadOrDeleted() {
 		return fmt.Errorf("NewIncrementalAttacher: can't endorse %s. Reason: '%s'", endorsement.IDShortString(), endorsement.GetError())
@@ -169,28 +210,31 @@ func (a *IncrementalAttacher) insertEndorsement(endorsement *vertex.WrappedTx) e
 }
 
 // InsertTagAlongInput inserts tag along input.
-// In case of failure return false and attacher state consistent
+// In case of failure return false and attacher state remains consistent
 func (a *IncrementalAttacher) InsertTagAlongInput(wOut vertex.WrappedOutput) (bool, error) {
 	util.AssertNoError(a.err)
+
 	// too verbose even for tracing
 	//a.TraceTx(&wOut.VID.ID, "%s::InsertTagAlongInput #%d", a.name, wOut.Index)
 
 	// save state for possible rollback because in case of fail the side effect makes attacher inconsistent
 	// TODO a better way than cloning potentially big maps with each new input?
-	saveVertices := maps.Clone(a.attacher.vertices)
-	saveRooted := maps.Clone(a.attacher.rooted)
-	for vid, outputIdxSet := range saveRooted {
-		saveRooted[vid] = outputIdxSet.Clone()
-	}
-	saveCoverageDelta := a.coverage
+	saved := a._saveState()
+	//saveVertices := maps.Clone(a.attacher.vertices)
+	//saveRooted := maps.Clone(a.attacher.rooted)
+	//for vid, outputIdxSet := range saveRooted {
+	//	saveRooted[vid] = outputIdxSet.Clone()
+	//}
+	//saveCoverageDelta := a.coverage
 
 	ok, defined := a.attachOutput(wOut)
 	if !ok || !defined {
 		// it is either conflicting, or not solid yet
 		// in either case rollback
-		a.attacher.vertices = saveVertices
-		a.attacher.rooted = saveRooted
-		a.coverage = saveCoverageDelta
+		a._restoreState(saved)
+		//a.attacher.vertices = saveVertices
+		//a.attacher.rooted = saveRooted
+		//a.coverage = saveCoverageDelta
 		var retErr error
 		if !ok {
 			retErr = a.err

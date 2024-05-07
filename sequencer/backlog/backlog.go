@@ -116,6 +116,7 @@ func (b *InputBacklog) checkAndReferenceCandidate(wOut vertex.WrappedOutput) boo
 	return true
 }
 
+// CandidatesToEndorseSorted returns list of transactions which can be endorsed from the given timestamp
 func (b *InputBacklog) CandidatesToEndorseSorted(targetTs ledger.Time) []*vertex.WrappedTx {
 	targetSlot := targetTs.Slot()
 	ownSeqID := b.SequencerID()

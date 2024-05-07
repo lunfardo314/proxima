@@ -5,7 +5,8 @@ import (
 	"github.com/lunfardo314/proxima/sequencer/factory/proposer_generic"
 )
 
-// Base proposer generates branches and bootstraps sequencer when no other sequencers are around
+// endorse1 proposer generates sequencer transactions by endorsing one heaviest other sequencer
+// and then extending own milestone to please the endorsement target (to be non-conflicting)
 
 const (
 	Endorse1ProposerName = "endorse1"

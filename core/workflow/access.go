@@ -102,6 +102,7 @@ func (w *Workflow) SendToTippool(vid *vertex.WrappedTx) {
 	w.tippool.Push(tippool.Input{VID: vid})
 }
 
+// LatestMilestonesDescending returns optionally filtered sorted transactions from the sequencer tippool
 func (w *Workflow) LatestMilestonesDescending(filter ...func(seqID ledger.ChainID, vid *vertex.WrappedTx) bool) []*vertex.WrappedTx {
 	return w.tippool.LatestMilestonesDescending(filter...)
 }

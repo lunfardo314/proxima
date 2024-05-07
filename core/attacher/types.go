@@ -93,9 +93,6 @@ type (
 		closed           bool
 	}
 
-	attachStats struct {
-	}
-
 	_attacherOptions struct {
 		metadata           *txmetadata.TransactionMetadata
 		attachmentCallback func(vid *vertex.WrappedTx, err error)

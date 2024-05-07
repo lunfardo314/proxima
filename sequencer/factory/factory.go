@@ -375,16 +375,19 @@ func (mf *MilestoneFactory) getBestProposal() (*transaction.Transaction, *txmeta
 
 const TraceTagChooseExtendEndorsePair = "ChooseExtendEndorsePair"
 
-// ChooseExtendEndorsePair implements one of possible strategies
+// ChooseExtendEndorsePair implements one of possible strategies:
+// finds a pair: milestone to extend and another sequencer transaction to endorse, as heavy as possible
 func (mf *MilestoneFactory) ChooseExtendEndorsePair(proposerName string, targetTs ledger.Time) *attacher.IncrementalAttacher {
 	mf.Assertf(targetTs.Tick() != 0, "targetTs.Tick() != 0")
 	endorseCandidates := mf.Backlog().CandidatesToEndorseSorted(targetTs)
-	mf.Tracef(TraceTagChooseExtendEndorsePair, ">>>>>>>>>>>>>>> target %s {%s}", targetTs.String(), vertex.VerticesShortLines(endorseCandidates).Join(", "))
+	mf.Tracef(TraceTagChooseExtendEndorsePair, ">>>>>>>>>>>>>>> target %s {%s}",
+		targetTs.String, vertex.VerticesShortLines(endorseCandidates).Join(", "))
 
 	seqID := mf.SequencerID()
 	var ret *attacher.IncrementalAttacher
 	for _, endorse := range endorseCandidates {
 		if !ledger.ValidTransactionPace(endorse.Timestamp(), targetTs) {
+			// cannot endorse candidate because of ledger time constraint
 			mf.Tracef(TraceTagChooseExtendEndorsePair, ">>>>>>>>>>>>>>> !ledger.ValidTransactionPace")
 			continue
 		}
@@ -412,6 +415,8 @@ func (mf *MilestoneFactory) ChooseExtendEndorsePair(proposerName string, targetT
 	return nil
 }
 
+// chooseEndorseExtendPairAttacher traverses all known extension options and check each of it with the endorsement target
+// Returns consistent incremental attacher with the biggest ledger coverage
 func (mf *MilestoneFactory) chooseEndorseExtendPairAttacher(proposerName string, targetTs ledger.Time, endorse *vertex.WrappedTx, extendCandidates []vertex.WrappedOutput) *attacher.IncrementalAttacher {
 	var ret *attacher.IncrementalAttacher
 	for _, extend := range extendCandidates {

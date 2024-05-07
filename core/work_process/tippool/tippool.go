@@ -22,6 +22,8 @@ type (
 		VID *vertex.WrappedTx
 	}
 
+	// SequencerTips is a collection with input queue, which keeps all latest sequencer transactions for each sequencer ID
+	// One transaction per sequencer
 	SequencerTips struct {
 		*queue.Queue[Input]
 		Environment
@@ -122,6 +124,8 @@ func (t *SequencerTips) GetLatestMilestone(seqID ledger.ChainID) *vertex.Wrapped
 	return t.latestMilestones[seqID].WrappedTx
 }
 
+// LatestMilestonesDescending returns sequencer transactions from sequencer tippool. Optionally filters
+// Sorts in the descending preference order (essentially by ledger coverage)
 func (t *SequencerTips) LatestMilestonesDescending(filter ...func(seqID ledger.ChainID, vid *vertex.WrappedTx) bool) []*vertex.WrappedTx {
 	flt := func(_ ledger.ChainID, _ *vertex.WrappedTx) bool { return true }
 	if len(filter) > 0 {
