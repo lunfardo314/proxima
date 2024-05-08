@@ -49,6 +49,7 @@ const (
 	DefaultTransactionPace                      = 10
 	DefaultTransactionPaceSequencer             = 1
 	DefaultMinimumAmountOnSequencer             = 1_000 * PRXI
+	DefaultMaxNumberOfEndorsements              = 8
 )
 
 func newLibrary() *Library {
@@ -82,6 +83,7 @@ func (lib *Library) extendWithBaseConstants(id *IdentityData) {
 	lib.Extendf("constChainInflationFractionBase", "u64/%d", id.ChainInflationPerTickFractionBase)
 	lib.Extendf("constChainInflationOpportunitySlots", "u64/%d", id.ChainInflationOpportunitySlots)
 	lib.Extendf("constMinimumAmountOnSequencer", "u64/%d", id.MinimumAmountOnSequencer)
+	lib.Extendf("constMaxNumberOfEndorsements", "u64/%d", id.MaxNumberOfEndorsements)
 
 	lib.Extendf("constSlotsPerLedgerEpoch", "u64/%d", id.SlotsPerHalvingEpoch)
 	lib.Extendf("constTransactionPace", "u64/%d", id.TransactionPace)
@@ -142,6 +144,7 @@ func DefaultIdentityData(privateKey ed25519.PrivateKey) *IdentityData {
 		ChainInflationPerTickFractionBase: DefaultInitialChainInflationFractionPerTick,
 		ChainInflationOpportunitySlots:    DefaultChainInflationOpportunitySlots,
 		MinimumAmountOnSequencer:          DefaultMinimumAmountOnSequencer,
+		MaxNumberOfEndorsements:           DefaultMaxNumberOfEndorsements,
 		Description:                       "Proxima prototype ledger. Ver 0.0.0",
 	}
 }

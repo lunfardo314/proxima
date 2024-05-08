@@ -250,8 +250,8 @@ func CheckNumElements() TxValidationOption {
 			return fmt.Errorf("number of unlock params must be equal to the number of inputs")
 		}
 
-		if tx.tree.NumElements(Path(ledger.TxEndorsements)) > ledger.MaxNumberOfEndorsements {
-			return fmt.Errorf("number of endorsements exceeds limit of %d", ledger.MaxNumberOfEndorsements)
+		if tx.tree.NumElements(Path(ledger.TxEndorsements)) > int(ledger.L().ID.MaxNumberOfEndorsements) {
+			return fmt.Errorf("number of endorsements exceeds limit of %d", ledger.L().ID.MaxNumberOfEndorsements)
 		}
 		return nil
 	}

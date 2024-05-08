@@ -50,6 +50,8 @@ type (
 		TransactionPaceSequencer byte
 		// this limits number of sequencers in the network. Reasonable amount would be few hundreds of sequencers
 		MinimumAmountOnSequencer uint64
+		// limit maximum number of endorsements. For determinism
+		MaxNumberOfEndorsements uint64
 	}
 
 	// IdentityDataYAMLAble structure for canonical YAMLAble marshaling
@@ -68,6 +70,7 @@ type (
 		ChainInflationPerTickFractionBase uint64 `yaml:"chain_inflation_per_tick_fraction_base"`
 		ChainInflationOpportunitySlots    uint64 `yaml:"chain_inflation_opportunity_slots"`
 		MinimumAmountOnSequencer          uint64 `yaml:"minimum_amount_on_sequencer"`
+		MaxNumberOfEndorsements           uint64 `yaml:"max_number_of_endorsements"`
 		Description                       string `yaml:"description"`
 		// non-persistent, for control
 		GenesisControllerAddress string `yaml:"genesis_controller_address"`
@@ -97,6 +100,7 @@ func (id *IdentityData) Bytes() []byte {
 	_ = binary.Write(&buf, binary.BigEndian, id.TransactionPace)
 	_ = binary.Write(&buf, binary.BigEndian, id.TransactionPaceSequencer)
 	_ = binary.Write(&buf, binary.BigEndian, id.MinimumAmountOnSequencer)
+	_ = binary.Write(&buf, binary.BigEndian, id.MaxNumberOfEndorsements)
 	_ = binary.Write(&buf, binary.BigEndian, uint16(len(id.Description)))
 	buf.Write([]byte(id.Description))
 
@@ -155,6 +159,9 @@ func MustLedgerIdentityDataFromBytes(data []byte) *IdentityData {
 	util.AssertNoError(err)
 
 	err = binary.Read(rdr, binary.BigEndian, &ret.MinimumAmountOnSequencer)
+	util.AssertNoError(err)
+
+	err = binary.Read(rdr, binary.BigEndian, &ret.MaxNumberOfEndorsements)
 	util.AssertNoError(err)
 
 	err = binary.Read(rdr, binary.BigEndian, &size16)
@@ -244,6 +251,7 @@ func (id *IdentityData) YAMLAble() *IdentityDataYAMLAble {
 		ChainInflationOpportunitySlots:    id.ChainInflationOpportunitySlots,
 		GenesisControllerAddress:          id.GenesisControlledAddress().String(),
 		MinimumAmountOnSequencer:          id.MinimumAmountOnSequencer,
+		MaxNumberOfEndorsements:           id.MaxNumberOfEndorsements,
 		BootstrapChainID:                  chainID.StringHex(),
 		Description:                       id.Description,
 	}
@@ -331,6 +339,7 @@ func (id *IdentityDataYAMLAble) stateIdentityData() (*IdentityData, error) {
 	ret.ChainInflationOpportunitySlots = id.ChainInflationOpportunitySlots
 	ret.NumHalvingEpochs = id.NumHalvingEpochs
 	ret.MinimumAmountOnSequencer = id.MinimumAmountOnSequencer
+	ret.MaxNumberOfEndorsements = id.MaxNumberOfEndorsements
 	ret.Description = id.Description
 
 	// control

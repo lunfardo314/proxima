@@ -87,10 +87,6 @@ const (
 	ConstraintIndexFirstOptionalConstraint
 )
 
-// MaxNumberOfEndorsements is equivalent to 2 parents in the original UTXOTangle.
-// Here it can be any number from 0 to MaxNumberOfEndorsements inclusive
-const MaxNumberOfEndorsements = 4
-
 func (lib *Library) extendWithMainFunctions() {
 	// data context access
 	// data context is a lazybytes.Tree
