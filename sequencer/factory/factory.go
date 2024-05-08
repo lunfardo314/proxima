@@ -284,21 +284,25 @@ func (mf *MilestoneFactory) startProposerWorkers(targetTime ledger.Time, ctx con
 	}
 }
 
-func (mf *MilestoneFactory) makeTxProposal(a *attacher.IncrementalAttacher) (*transaction.Transaction, error) {
+func (mf *MilestoneFactory) makeTxProposal(a *attacher.IncrementalAttacher, strategyName string) (*transaction.Transaction, error) {
 	cmdParser := commands.NewCommandParser(ledger.AddressED25519FromPrivateKey(mf.ControllerPrivateKey()))
-	return a.MakeSequencerTransaction(mf.Environment.SequencerName(), mf.ControllerPrivateKey(), cmdParser)
-}
-
-func (mf *MilestoneFactory) Propose(a *attacher.IncrementalAttacher, ctx context.Context) error {
-	if a.TargetTs().Tick() == 0 {
-		return mf.proposeBranchTx(a, ctx)
+	nm := mf.Environment.SequencerName()
+	if strategyName != "" {
+		nm += "." + strategyName
 	}
-	return mf.proposeNonBranchTx(a)
+	return a.MakeSequencerTransaction(nm, mf.ControllerPrivateKey(), cmdParser)
 }
 
-func (mf *MilestoneFactory) proposeNonBranchTx(a *attacher.IncrementalAttacher) error {
+func (mf *MilestoneFactory) Propose(a *attacher.IncrementalAttacher, strategyName string) error {
+	if a.TargetTs().Tick() == 0 {
+		return mf.proposeBranchTx(a, strategyName)
+	}
+	return mf.proposeNonBranchTx(a, strategyName)
+}
+
+func (mf *MilestoneFactory) proposeNonBranchTx(a *attacher.IncrementalAttacher, strategyName string) error {
 	util.Assertf(a.TargetTs().Tick() != 0, "must be non-branch tx")
-	tx, err := mf.makeTxProposal(a)
+	tx, err := mf.makeTxProposal(a, strategyName)
 	if err != nil {
 		return err
 	}
@@ -319,9 +323,9 @@ func (mf *MilestoneFactory) proposeNonBranchTx(a *attacher.IncrementalAttacher) 
 	return nil
 }
 
-func (mf *MilestoneFactory) proposeBranchTx(a *attacher.IncrementalAttacher, ctx context.Context) error {
+func (mf *MilestoneFactory) proposeBranchTx(a *attacher.IncrementalAttacher, strategyName string) error {
 	util.Assertf(a.TargetTs().Tick() == 0, "must be branch tx")
-	tx, err := mf.makeTxProposal(a)
+	tx, err := mf.makeTxProposal(a, strategyName)
 	if err != nil {
 		return err
 	}

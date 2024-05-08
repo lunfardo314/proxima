@@ -10,33 +10,32 @@ import (
 	"github.com/yoseplee/vrf"
 )
 
-type (
-	MakeSequencerTransactionParams struct {
-		// sequencer name
-		SeqName string
-		// predecessor
-		ChainInput *ledger.OutputWithChainID
-		//
-		StemInput *ledger.OutputWithID // it is branch tx if != nil
-		// timestamp of the transaction
-		Timestamp ledger.Time
-		// minimum fee
-		MinimumFee uint64
-		// additional inputs to consume. Must be unlockable by chain
-		// can contain sender commands to the sequencer
-		AdditionalInputs []*ledger.OutputWithID
-		// additional outputs to produce
-		AdditionalOutputs []*ledger.Output
-		// Endorsements
-		Endorsements []*ledger.TransactionID
-		// chain controller
-		PrivateKey ed25519.PrivateKey
-		// PutMaximumInflation if true, calculates maximum inflation possible
-		// if false, does not add inflation constraint at all
-		PutMaximumInflation bool
-		ReturnInputLoader   bool
-	}
-)
+// MakeSequencerTransactionParams contains parameters for the sequencer transaction builder
+type MakeSequencerTransactionParams struct {
+	// sequencer name. By convention, can be <sequencer name>.<proposer name>
+	SeqName string
+	// predecessor
+	ChainInput *ledger.OutputWithChainID
+	//
+	StemInput *ledger.OutputWithID // it is branch tx if != nil
+	// timestamp of the transaction
+	Timestamp ledger.Time
+	// minimum fee
+	MinimumFee uint64
+	// additional inputs to consume. Must be unlockable by chain
+	// can contain sender commands to the sequencer
+	AdditionalInputs []*ledger.OutputWithID
+	// additional outputs to produce
+	AdditionalOutputs []*ledger.Output
+	// Endorsements
+	Endorsements []*ledger.TransactionID
+	// chain controller
+	PrivateKey ed25519.PrivateKey
+	// PutMaximumInflation if true, calculates maximum inflation possible
+	// if false, does not add inflation constraint at all
+	PutMaximumInflation bool
+	ReturnInputLoader   bool
+}
 
 func MakeSequencerTransaction(par MakeSequencerTransactionParams) ([]byte, error) {
 	ret, _, err := MakeSequencerTransactionWithInputLoader(par)

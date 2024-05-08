@@ -9,8 +9,9 @@ import (
 // Base proposer generates branches and bootstraps sequencer when no other sequencers are around
 
 const (
-	BaseProposerName = "base"
-	TraceTag         = "propose-base"
+	BaseProposerName      = "base"
+	BaseProposerShortName = "b0"
+	TraceTag              = "propose-base"
 )
 
 type BaseProposer struct {
@@ -19,7 +20,8 @@ type BaseProposer struct {
 
 func Strategy() *proposer_generic.Strategy {
 	return &proposer_generic.Strategy{
-		Name: BaseProposerName,
+		Name:      BaseProposerName,
+		ShortName: BaseProposerShortName,
 		Constructor: func(generic *proposer_generic.TaskGeneric) proposer_generic.Task {
 			ret := &BaseProposer{TaskGeneric: *generic}
 			ret.WithProposalGenerator(func() (*attacher.IncrementalAttacher, bool) {

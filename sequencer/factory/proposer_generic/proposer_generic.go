@@ -23,7 +23,7 @@ type (
 		ChooseExtendEndorsePair(proposerName string, targetTs ledger.Time) *attacher.IncrementalAttacher
 		BestCoverageInTheSlot(targetTs ledger.Time) uint64
 		SequencerName() string
-		Propose(a *attacher.IncrementalAttacher, ctx context.Context) error
+		Propose(a *attacher.IncrementalAttacher, strategyName string) error
 		Backlog() *backlog.InputBacklog
 	}
 
@@ -46,6 +46,7 @@ type (
 
 	Strategy struct {
 		Name        string
+		ShortName   string
 		Constructor TaskConstructor
 	}
 )
@@ -105,7 +106,7 @@ func (t *TaskGeneric) Run() {
 			continue
 		}
 		t.Assertf(a.IsCoverageAdjusted(), "coverage must be adjusted")
-		if err = t.Propose(a, t.ctx); err != nil {
+		if err = t.Propose(a, t.Strategy.ShortName); err != nil {
 			t.Tracef(TraceTag, "Run: %v", err)
 			return
 		}

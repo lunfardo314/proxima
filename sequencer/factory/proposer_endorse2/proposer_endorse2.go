@@ -9,8 +9,9 @@ import (
 // and then extending own milestone to please the endorsement target (to be non-conflicting)
 
 const (
-	Endorse2ProposerName = "endorse2"
-	TraceTag             = "propose-endorse2"
+	Endorse2ProposerName      = "endorse2"
+	Endorse2ProposerShortName = "e2"
+	TraceTag                  = "propose-endorse2"
 )
 
 type Endorse2Proposer struct {
@@ -19,7 +20,8 @@ type Endorse2Proposer struct {
 
 func Strategy() *proposer_generic.Strategy {
 	return &proposer_generic.Strategy{
-		Name: Endorse2ProposerName,
+		Name:      Endorse2ProposerName,
+		ShortName: Endorse2ProposerShortName,
 		Constructor: func(generic *proposer_generic.TaskGeneric) proposer_generic.Task {
 			if generic.TargetTs.Tick() == 0 {
 				// endorse strategy ia not applicable for genereting branches
