@@ -200,7 +200,7 @@ unlimited (it is even possible to run several sequencers on one node).
 We need to split the whole supply, controlled by the bootstrap sequencer on its chain, into 5 pieces. 
 
 The following command withdraws `800000000000000` tokens from sequencer chain directly to its controller's account:
-`proxi node sequencer withdraw 800000000000000`. 
+`proxi node sequencer withdraw --finality.weak 800000000000000 `. 
 
 This command creates a transaction with the `withdraw` command data on the tag-along output. Sequencer, by consuming the 
 tag-along output, will recognize it as a command sent from its own controller. As a result, sequencer will produce additional output 
@@ -223,30 +223,30 @@ TOTAL controlled on 3 outputs: 1_000_003_742_964_766
 ```
 The following commands distribute tokens from bootstrap accounts to other 4 addresses, `200000000000000` tokens each:
 
-`proxi node transfer 200000000000000 -w -t addressED25519(0xaa401c8c6a9deacf479ab2209c07c01a27bd1eeecf0d7eaa4180b8049c6190d0)` to the wallet `1`
+`proxi node transfer 200000000000000 --finality.weak -t addressED25519(0xaa401c8c6a9deacf479ab2209c07c01a27bd1eeecf0d7eaa4180b8049c6190d0)` to the wallet `1`
 
-`proxi node transfer 200000000000000 -w -t addressED25519(0x62c733803a83a26d4db1ce9f22206281f64af69401da6eb26390d34e6a88c5fa)` to the wallet `2`
+`proxi node transfer 200000000000000 --finality.weak -t addressED25519(0x62c733803a83a26d4db1ce9f22206281f64af69401da6eb26390d34e6a88c5fa)` to the wallet `2`
 
-`proxi node transfer 200000000000000 -w -t addressED25519(0x24db3c3d477f29d558fbe6f215b0c9d198dcc878866fb60cba023ba3c3d74a03)` to the wallet `3`
+`proxi node transfer 200000000000000 --finality.weak -t addressED25519(0x24db3c3d477f29d558fbe6f215b0c9d198dcc878866fb60cba023ba3c3d74a03)` to the wallet `3`
 
-`proxi node transfer 200000000000000 -w -t addressED25519(0xaad6a0102e6f51834bf26b6d8367cc424cf78713f59dd3bc6d54eab23ccdee52)` to the wallet `4`
+`proxi node transfer 200000000000000 --finality.weak -t addressED25519(0xaad6a0102e6f51834bf26b6d8367cc424cf78713f59dd3bc6d54eab23ccdee52)` to the wallet `4`
 
 After these command we have 4 additional addresses with `200000000000000` tokens each.
 
 Note that after this command only a bit more than `200000000000000` tokens have left on the only sequencer chain. 
-The rest `800000000000000` stopped contributing to the consensus. In general this means liveness problem: 
+The rest `800000000000000` stops contributing to the consensus. In general this means liveness problem: 
 the user cannot be sure if other `800000000000000` are just passive or hiding with the aim to revert the chain some time later in the _long-range attack_.
 
 This is expected to be rare situation when network is run by many sequencers, however it can happen in the bootstrap phase
 when only 1 or few sequencers are running. 
 
-To override this situation in the command above, we add flag `-w` (shorthand for `--finality.weak`) which makes use of another, 
+To override this situation in the command above, we add flag `--finality.weak` which makes use of another, 
 _weak_ finality criterion, instead of default _strong_.
 For more details see section _Security considerations_ in the whitepaper.
 
 ### Starting new sequencer
 To create chain origin for the new sequencer, controlled by the private key of the wallet `myHome/1`, we make directory `myHome/1`
-the current working directory and run the following command in it: `proxi node mkchain -w 199999999000000`.
+the current working directory and run the following command in it: `proxi node mkchain --finality.weak 199999999000000`.
 
 The command creates new chain origin with specified amount of tokens on the chain. We leave `1.000.000` tokens in the current ED25519 address.
 

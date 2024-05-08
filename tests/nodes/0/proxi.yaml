@@ -13,7 +13,7 @@ finality:
     inclusion_threshold:
         numerator: 2
         denominator: 3
-    weak: true
+    weak: false
 
 spammer:
     bundle_size: 5

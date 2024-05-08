@@ -50,10 +50,10 @@ func runScoreCmd(_ *cobra.Command, args []string) {
 	glb.AssertNoError(err)
 
 	glb.Infof("------- inclusion details -------")
-	glb.Infof("   slot span: %d, from: %d to %d", slotSpan, inclusion.EarliestSlot, inclusion.LatestSlot)
+	glb.Infof("    slot span: %d, from: %d to %d", slotSpan, inclusion.EarliestSlot, inclusion.LatestSlot)
 
 	scoreLocal := api.CalcTxInclusionScore(inclusion, inclusionThresholdNumerator, inclusionThresholdDenominator)
-	glb.Infof("    local weak score: %d%%, strong score: %d%%", scoreLocal.WeakScore, scoreLocal.StrongScore)
+	glb.Infof("    weak score: %d%%, strong score: %d%%", scoreLocal.WeakScore, scoreLocal.StrongScore)
 
 	for _, incl := range inclusion.Inclusion {
 		in := "-"
