@@ -306,8 +306,8 @@ github.com/libp2p/go-yamux/v4 v4.0.1 h1:FfDR4S1wj6Bw2Pqbc8Uz7pCxeRBPbwsBbEdfwiCy
 github.com/libp2p/go-yamux/v4 v4.0.1/go.mod h1:NWjl8ZTLOGlozrXSOZ/HlfG++39iKNnM5wwmtQP1YB4=
 github.com/lunfardo314/easyfl v0.0.0-20240428143641-f9c44be2226e h1:QDGrVBEx4h1+wTxuPzIDG2JnFtmPZVJuUms50wd2SdM=
 github.com/lunfardo314/easyfl v0.0.0-20240428143641-f9c44be2226e/go.mod h1:sbC4lEPEdSVEi0VyMUQa6jz987/MDB+2EM2co4MfMbk=
-github.com/lunfardo314/unitrie v0.0.0-20240508142930-41b21e8aff26 h1:IdXAgRLlReGAX0Q7rFAx3bh0z/aJj+79ppPXpBZ2YV8=
-github.com/lunfardo314/unitrie v0.0.0-20240508142930-41b21e8aff26/go.mod h1:UF0sUDag70c6Jx6vkKbbLqrOirQjTiJfSnuKKOFNRpA=
+github.com/lunfardo314/unitrie v0.0.0-20240508144344-d631fc1d35ff h1:D7BJLJDP6pW5o3FOwTA/DYUHdo9yZb7z+AC3sopQ6CA=
+github.com/lunfardo314/unitrie v0.0.0-20240508144344-d631fc1d35ff/go.mod h1:UF0sUDag70c6Jx6vkKbbLqrOirQjTiJfSnuKKOFNRpA=
 github.com/lunixbochs/vtclean v1.0.0/go.mod h1:pHhQNgMf3btfWnGBVipUOjRYhoOsdGqdm/+2c2E2WMI=
 github.com/magiconair/properties v1.8.0/go.mod h1:PppfXfuXeibc/6YijjN8zIbojt8czPbwD3XqdrwzmxQ=
 github.com/magiconair/properties v1.8.7 h1:IeQXZAiQcpL9mgcAe1Nu6cX9LLw6ExEHKjN0VQdvPDY=
