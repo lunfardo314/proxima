@@ -5,7 +5,7 @@ import (
 	"github.com/lunfardo314/proxima/sequencer/factory/proposer_generic"
 )
 
-// endorse2 proposer generates sequencer transactions by endorsing two heaviest other sequencer
+// endorse2 proposer generates sequencer transactions by endorsing TWO heaviest other sequencer
 // and then extending own milestone to please the endorsement target (to be non-conflicting)
 
 const (
@@ -16,8 +16,6 @@ const (
 type Endorse2Proposer struct {
 	proposer_generic.TaskGeneric
 }
-
-// TODO not finished
 
 func Strategy() *proposer_generic.Strategy {
 	return &proposer_generic.Strategy{
@@ -37,6 +35,7 @@ func Strategy() *proposer_generic.Strategy {
 }
 
 func (b *Endorse2Proposer) propose() *attacher.IncrementalAttacher {
+	// first do the same as endorse1
 	a := b.ChooseExtendEndorsePair(b.Name, b.TargetTs)
 	if a == nil {
 		b.Tracef(TraceTag, "propose: ChooseExtendEndorsePair returned nil")
@@ -49,16 +48,22 @@ func (b *Endorse2Proposer) propose() *attacher.IncrementalAttacher {
 		return nil
 	}
 
+	// then try to add one endorsement more
+	addedSecond := false
 	for _, endorsementCandidate := range b.Backlog().CandidatesToEndorseSorted(b.TargetTs) {
 		if endorsementCandidate == a.Endorsing()[0] {
 			continue
 		}
 		if err := a.InsertEndorsement(endorsementCandidate); err == nil {
+			addedSecond = true
 			break
 		}
 		b.Tracef(TraceTag, "failed to include endorsement target %s", endorsementCandidate.IDShortString)
 	}
-
+	if !addedSecond {
+		// no need to repeat job of endorse1
+		return nil
+	}
 	b.AttachTagAlongInputs(a)
 	b.Assertf(a.Completed(), "incremental attacher %s is not complete", a.Name())
 	a.AdjustCoverage()

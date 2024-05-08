@@ -18,6 +18,7 @@ import (
 	"github.com/lunfardo314/proxima/sequencer/factory/commands"
 	"github.com/lunfardo314/proxima/sequencer/factory/proposer_base"
 	"github.com/lunfardo314/proxima/sequencer/factory/proposer_endorse1"
+	"github.com/lunfardo314/proxima/sequencer/factory/proposer_endorse2"
 	"github.com/lunfardo314/proxima/sequencer/factory/proposer_generic"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/set"
@@ -80,6 +81,7 @@ func registerProposerStrategy(s *proposer_generic.Strategy) {
 func init() {
 	registerProposerStrategy(proposer_base.Strategy())
 	registerProposerStrategy(proposer_endorse1.Strategy())
+	registerProposerStrategy(proposer_endorse2.Strategy())
 }
 
 const (

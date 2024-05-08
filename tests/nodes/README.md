@@ -4,6 +4,8 @@
 The step-by-step tutorial how to run a small testnet on one computer. 
 
 ## Compile
+Clone the repository to `<your_dir>/proxima`.
+
 Type `go install` in working directories `<your_dir>/proxima` and `<your_dir>/proxima/proxi`. 
 This will create executables: `proxima` for the node, and `proxi` for the CLI-wallet program.   
 
@@ -20,7 +22,7 @@ connect each node with 4 others. **Auto-peering of nodes is not available yet.**
   * private keys, which control accounts on the ledger. Each account is represented by address in the form `addressED25519(<hex>)`. 
 Those private keys are used as controlling keys of sequencers and also as normal account keys.
 
-More of those pre-generated private keys can be found in the file [<your_dir>/proxima/testkeys.yaml](../../testkeys.yaml). 
+More of those pre-generated private keys can be found in the file [proxima/testkeys.yaml](../../testkeys.yaml). 
 
 **Do not use any of these private keys in your production environment!!!**
 
@@ -204,7 +206,7 @@ This command creates a transaction with the `withdraw` command data on the tag-a
 tag-along output, will recognize it as a command sent from its own controller. As a result, sequencer will produce additional output 
 in the next sequencer transaction which sends `800000000000000` tokens to own ordinary ED25519 address.
 
-_(for those who knows how IOTA SC chains works, the comamnd above is the same principle how on-ledger requests to the chain works. 
+_(for those who knows how IOTA SC chains works, the command above is the same principle how on-ledger requests to the chain works. 
 The ISC committee may be sequencer on Proxima)_
 
 The balance now looks like this:
@@ -220,6 +222,7 @@ amount controlled on 1 chain outputs: 200_003_741_966_766
 TOTAL controlled on 3 outputs: 1_000_003_742_964_766
 ```
 The following commands distribute tokens from bootstrap accounts to other 4 addresses, `200000000000000` tokens each:
+
 `proxi node transfer 200000000000000 -w -t addressED25519(0xaa401c8c6a9deacf479ab2209c07c01a27bd1eeecf0d7eaa4180b8049c6190d0)` to the wallet `1`
 
 `proxi node transfer 200000000000000 -w -t addressED25519(0x62c733803a83a26d4db1ce9f22206281f64af69401da6eb26390d34e6a88c5fa)` to the wallet `2`

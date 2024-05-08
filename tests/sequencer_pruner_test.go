@@ -164,13 +164,13 @@ func TestNSequencersIdlePruner(t *testing.T) {
 
 func Test5SequencersIdlePruner(t *testing.T) {
 	const (
-		maxSlots    = 40
+		maxSlots    = 100
 		nSequencers = 4 // in addition to bootstrap
 	)
 	testData := initMultiSequencerTest(t, nSequencers, true)
 
 	testData.startSequencersWithTimeout(maxSlots)
-	time.Sleep(20 * time.Second)
+	time.Sleep(30 * time.Second)
 	testData.stopAndWait()
 
 	//t.Logf("--------\n%s", testData.wrk.Info(true))
