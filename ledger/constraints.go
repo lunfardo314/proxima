@@ -129,7 +129,7 @@ var AllLockNames = []string{
 	AddressED25519Name,
 	ChainLockName,
 	StemLockName,
-	DeadlineLockName,
+	//DeadlineLockName,
 }
 
 func LockFromBytes(data []byte) (Lock, error) {
@@ -144,8 +144,8 @@ func LockFromBytes(data []byte) (Lock, error) {
 	switch name {
 	case AddressED25519Name:
 		return AddressED25519FromBytes(data)
-	case DeadlineLockName:
-		return DeadlineLockFromBytes(data)
+	//case DeadlineLockName:
+	//	return DeadlineLockFromBytes(data)
 	case ChainLockName:
 		return ChainLockFromBytes(data)
 	case StemLockName:

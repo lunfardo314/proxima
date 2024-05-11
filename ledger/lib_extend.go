@@ -239,7 +239,7 @@ func (lib *Library) extendWithConstraints() {
 	// extendWithMainFunctions constraints
 	addAmountConstraint(lib)
 	addAddressED25519Constraint(lib)
-	addDeadlineLockConstraint(lib)
+	//addDeadlineLockConstraint(lib)
 	addTimeLockConstraint(lib)
 	addChainConstraint(lib)
 	addStemLockConstraint(lib)
