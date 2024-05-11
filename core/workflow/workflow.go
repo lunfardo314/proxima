@@ -41,7 +41,6 @@ type (
 		poker            *poker.Poker
 		events           *events.Events
 		tippool          *tippool.SequencerTips
-		syncData         *SyncData
 		doNotStartPruner bool
 		//
 		enableTrace    atomic.Bool
@@ -65,7 +64,6 @@ func New(env Environment, peers *peering.Peers, opts ...ConfigOption) *Workflow 
 		Environment:      env,
 		MemDAG:           memdag.New(env),
 		peers:            peers,
-		syncData:         newSyncData(),
 		traceTags:        set.New[string](),
 		doNotStartPruner: cfg.doNotStartPruner,
 	}

@@ -111,10 +111,6 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Opt
 	env.Tracef(TraceTagAttach, "AttachTransaction: %s", tx.IDShortString)
 	env.TraceTx(tx.ID(), "AttachTransaction")
 
-	if tx.IsBranchTransaction() {
-		env.EvidenceIncomingBranch(tx.ID(), tx.SequencerTransactionData().SequencerID)
-	}
-
 	vid = AttachTxID(*tx.ID(), env, OptionDoNotLoadBranch, OptionInvokedBy("addTx"))
 	vid.Unwrap(vertex.UnwrapOptions{
 		// full vertex or with attachment process already invoked will be ignored

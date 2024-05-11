@@ -37,17 +37,11 @@ type (
 		PostEventNewTransaction(vid *vertex.WrappedTx)
 	}
 
-	EvidenceEnvironment interface {
-		EvidenceIncomingBranch(txid *ledger.TransactionID, seqID ledger.ChainID)
-		EvidenceBookedBranch(txid *ledger.TransactionID, seqID ledger.ChainID)
-	}
-
 	Environment interface {
 		global.NodeGlobal
 		DAGAccessEnvironment
 		PullEnvironment
 		PostEventEnvironment
-		EvidenceEnvironment
 		AsyncPersistTxBytesWithMetadata(txBytes []byte, metadata *txmetadata.TransactionMetadata)
 		GossipAttachedTransaction(tx *transaction.Transaction, metadata *txmetadata.TransactionMetadata)
 		ParseMilestoneData(msVID *vertex.WrappedTx) *ledger.MilestoneData

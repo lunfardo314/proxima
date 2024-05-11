@@ -74,18 +74,6 @@ func (w *Workflow) GossipTxBytesToPeers(txBytes []byte, metadata *txmetadata.Tra
 	return w.peers.GossipTxBytesToPeers(txBytes, metadata, except...)
 }
 
-func (w *Workflow) EvidenceIncomingBranch(txid *ledger.TransactionID, seqID ledger.ChainID) {
-	w.syncData.EvidenceIncomingBranch(txid, seqID)
-}
-
-func (w *Workflow) EvidenceBookedBranch(txid *ledger.TransactionID, seqID ledger.ChainID) {
-	w.syncData.EvidenceBookedBranch(txid, seqID)
-}
-
-func (w *Workflow) SyncData() *SyncData {
-	return w.syncData
-}
-
 func (w *Workflow) AsyncPersistTxBytesWithMetadata(txBytes []byte, metadata *txmetadata.TransactionMetadata) {
 	w.Tracef(persist_txbytes.TraceTag, "AsyncPersistTxBytesWithMetadata: %d bytes, meta: %s", len(txBytes), metadata.String())
 	w.persistTxBytes.Push(persist_txbytes.Input{

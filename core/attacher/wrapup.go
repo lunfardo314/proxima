@@ -28,7 +28,6 @@ func (a *milestoneAttacher) wrapUpAttacher() {
 
 	if a.vid.IsBranchTransaction() {
 		a.commitBranch()
-		a.EvidenceBookedBranch(&a.vid.ID, a.vid.MustSequencerID())
 		a.Tracef(TraceTagAttachMilestone, "finalized branch")
 	} else {
 		a.Tracef(TraceTagAttachMilestone, "finalized sequencer milestone")

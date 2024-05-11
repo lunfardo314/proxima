@@ -212,8 +212,8 @@ func (seq *Sequencer) Log() *zap.SugaredLogger {
 }
 
 func (seq *Sequencer) mainLoop() {
-	beginAt := seq.Workflow.SyncData().WhenStarted().Add(seq.config.DelayStart)
-	if beginAt.After(time.Now()) {
+	beginAt := time.Now().Add(seq.config.DelayStart)
+	if seq.config.DelayStart > 0 {
 		seq.log.Infof("wait for %v before starting the main loop", seq.config.DelayStart)
 	}
 	time.Sleep(time.Until(beginAt))
