@@ -148,6 +148,7 @@ func InflationConstraintFromBytes(data []byte) (*InflationConstraint, error) {
 }
 
 func addInflationConstraint(lib *Library) {
+	lib.MustExtendMany(inflationFunctionsSource)
 	lib.extendWithConstraint(InflationConstraintName, inflationConstraintSource, 2, func(data []byte) (Constraint, error) {
 		return InflationConstraintFromBytes(data)
 	}, initTestInflationConstraint)

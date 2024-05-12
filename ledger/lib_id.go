@@ -110,10 +110,10 @@ func (lib *Library) extendWithBaseConstants(id *IdentityData) {
 	lib.Extend("timestampPrefix", "bitwiseAND(slice($0, 0, 4), 0x3fffffffff)")
 }
 
-func (lib *Library) initGeneralFunctions(id *IdentityData) *Library {
+func (lib *Library) extend(id *IdentityData) *Library {
 	lib.extendWithBaseConstants(id)
-	lib.extendWithMainFunctions()
-	lib.MustExtendMany(inflationSource)
+	lib.extendWithGeneralFunctions()
+	lib.extendWithConstraints()
 	return lib
 }
 

@@ -87,7 +87,7 @@ const (
 	ConstraintIndexFirstOptionalConstraint
 )
 
-func (lib *Library) extendWithMainFunctions() {
+func (lib *Library) embed() {
 	// data context access
 	// data context is a lazybytes.Tree
 	lib.EmbedShort("@", 0, evalPath, true)
@@ -106,7 +106,9 @@ func (lib *Library) extendWithMainFunctions() {
 	// TODO: replace with verified implementation, for example from Algorand
 	// vrfVerify(<ED25519 public key>, <randomness proof>, <msg>)
 	lib.EmbedLong("vrfVerify", 3, evalVRFVerify)
+}
 
+func (lib *Library) extendWithGeneralFunctions() {
 	{
 		// inline tests
 		lib.MustEqual("timestamp(u32/255, 21)", MustNewLedgerTime(255, 21).Hex())
@@ -236,7 +238,6 @@ func (lib *Library) extendWithMainFunctions() {
 }
 
 func (lib *Library) extendWithConstraints() {
-	// extendWithMainFunctions constraints
 	addAmountConstraint(lib)
 	addAddressED25519Constraint(lib)
 	addDeadlineLockConstraint(lib)

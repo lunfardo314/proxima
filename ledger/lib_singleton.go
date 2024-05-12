@@ -23,31 +23,30 @@ func L() *Library {
 	return libraryGlobal
 }
 
-func Init(id *IdentityData, verbose ...bool) {
-	printStats := false
+func InitLocally(id *IdentityData, verbose ...bool) *Library {
+	ret := newLibrary()
 	if len(verbose) > 0 && verbose[0] {
-		printStats = true
+		fmt.Printf("------ Base EasyFL library:\n")
+		ret.PrintLibraryStats()
 	}
+
+	ret.embed()
+	ret.extend(id)
+
+	if len(verbose) > 0 && verbose[0] {
+		fmt.Printf("------ Extended EasyFL library:\n")
+		ret.PrintLibraryStats()
+	}
+	return ret
+}
+
+func Init(id *IdentityData, verbose ...bool) {
 	func() {
 		libraryGlobalMutex.Lock()
 		defer libraryGlobalMutex.Unlock()
 
 		util.Assertf(libraryGlobal == nil, "ledger is already initialized")
-
-		libraryGlobal = newLibrary()
-
-		if printStats {
-			fmt.Printf("------ Base EasyFL library:\n")
-			libraryGlobal.PrintLibraryStats()
-		}
-
-		libraryGlobal.initGeneralFunctions(id)
-		libraryGlobal.extendWithConstraints()
-
-		if printStats {
-			fmt.Printf("------ Extended EasyFL library:\n")
-			libraryGlobal.PrintLibraryStats()
-		}
+		libraryGlobal = InitLocally(id, verbose...)
 	}()
 
 	libraryGlobal.runInlineTests()

@@ -6,6 +6,10 @@ import (
 	"github.com/lunfardo314/proxima/util"
 )
 
+// This file contains definitions of the inflation-related functions in EasyFL (on-ledger) and on IdentityData
+// constants. The two must exactly match each other
+// TODO write inline tests for that
+
 // InflationAmount is calculation of inflation amount directly from ledger identity constants
 func (id *IdentityData) InflationAmount(inTs, outTs Time, inAmount uint64) uint64 {
 	if outTs.IsSlotBoundary() {
@@ -56,9 +60,9 @@ func (id *IdentityData) _insideInflationOpportunityWindow(diffTicks int64, inAmo
 		uint64(diffTicks) < math.MaxUint64/inAmount
 }
 
-// inflationSource is a EasyFL source (inflationAmount function) of on-ledger calculation of inflation amount
+// inflationFunctionsSource is a EasyFL source (inflationAmount function) of on-ledger calculation of inflation amount
 // It must be equivalent to the direct calculation. It is covered in tests/inflation_test.go
-const inflationSource = `
+const inflationFunctionsSource = `
 // $0 -  slot of the chain input as u64
 func epochFromGenesis : div( $0, constSlotsPerLedgerEpoch )
 

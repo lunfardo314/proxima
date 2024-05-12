@@ -15,10 +15,11 @@ func TestPrintTimeConstants(t *testing.T) {
 }
 
 func TestLoad(t *testing.T) {
-	t.Logf("---------- loading constraint library extensions -----------")
-	t.Logf("------------------\n%s", ledger.L().ID.String())
-	t.Logf("------------------\n" + string(ledger.L().ID.YAML()))
-	t.Logf("------------------\n" + ledger.L().ID.TimeConstantsToString())
+	id, _ := ledger.GetTestingIdentityData()
+	lib := ledger.InitLocally(id, true)
+	t.Logf("------------------\n%s", lib.ID.String())
+	t.Logf("------------------\n" + string(lib.ID.YAML()))
+	t.Logf("------------------\n" + lib.ID.TimeConstantsToString())
 }
 
 func TestTime(t *testing.T) {
