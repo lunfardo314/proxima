@@ -7,7 +7,7 @@ require (
 	github.com/dominikbraun/graph v0.23.0
 	github.com/gammazero/deque v0.2.1
 	github.com/libp2p/go-libp2p v0.32.1
-	github.com/lunfardo314/easyfl v0.0.0-20240428143641-f9c44be2226e
+	github.com/lunfardo314/easyfl v0.0.0-20240512164030-d3b9b7de520d
 	github.com/lunfardo314/unitrie v0.0.0-20240508144344-d631fc1d35ff
 	github.com/multiformats/go-multiaddr v0.12.0
 	github.com/prometheus/client_golang v1.19.0
@@ -17,10 +17,10 @@ require (
 	github.com/yoseplee/vrf v0.0.0-20210814110709-d1caf509310b
 	go.uber.org/atomic v1.11.0
 	go.uber.org/zap v1.26.0
-	golang.org/x/crypto v0.22.0
+	golang.org/x/crypto v0.23.0
 	golang.org/x/exp v0.0.0-20231110203233-9a3e6036ecaa
 	golang.org/x/net v0.21.0
-	golang.org/x/text v0.14.0
+	golang.org/x/text v0.15.0
 	gopkg.in/yaml.v2 v2.4.0
 )
 
@@ -117,7 +117,7 @@ require (
 	go.uber.org/multierr v1.11.0 // indirect
 	golang.org/x/mod v0.14.0 // indirect
 	golang.org/x/sync v0.5.0 // indirect
-	golang.org/x/sys v0.19.0 // indirect
+	golang.org/x/sys v0.20.0 // indirect
 	golang.org/x/tools v0.15.0 // indirect
 	golang.org/x/xerrors v0.0.0-20220907171357-04be3eba64a2 // indirect
 	google.golang.org/protobuf v1.32.0 // indirect

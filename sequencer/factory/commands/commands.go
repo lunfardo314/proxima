@@ -69,7 +69,7 @@ func parseSenderCommand(myAddr ledger.AddressED25519, input *ledger.OutputWithID
 	// evaluating constraint without context to get the real command data
 	// Usually, data cmd is concat(....)
 	cmdDataConstrBytecode := input.Output.ConstraintAt(commandDataIndex)
-	cmdDataRaw, err := ledger.L().EvalFromBinary(nil, cmdDataConstrBytecode)
+	cmdDataRaw, err := ledger.L().EvalFromBytecode(nil, cmdDataConstrBytecode)
 	if err != nil {
 		// this means constraint cannot be evaluated without context of the transaction
 		// It is valid because output is valid, however it cannot be used as command data
@@ -142,7 +142,7 @@ func MakeSequencerWithdrawCmdOutput(par MakeSequencerWithdrawCmdOutputParams) (*
 		rawData := common.ConcatBytes([]byte{CommandCodeWithdrawAmount}, cmdParamsArr.Bytes())
 		src := fmt.Sprintf("concat(0x%s)", hex.EncodeToString(rawData))
 
-		cmdConstraint, _, err := ledger.L().ExpressionSourceToBinary(src)
+		cmdConstraint, _, err := ledger.L().ExpressionSourceToBytecode(src)
 		util.AssertNoError(err)
 		idx, err = o.PushConstraint(cmdConstraint)
 		util.AssertNoError(err)

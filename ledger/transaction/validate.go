@@ -356,7 +356,7 @@ func (ctx *TxContext) evalConstraint(constr []byte, path lazybytes.TreePath) ([]
 
 	if constr[0] != 0 {
 		// inline constraint. Binary code cannot begin with 0-byte
-		ret, err = ledger.L().EvalFromBinary(evalCtx, constr)
+		ret, err = ledger.L().EvalFromBytecode(evalCtx, constr)
 	} else {
 		// array constraint TODO do we need it?
 		arr := lazybytes.ArrayFromBytesReadOnly(constr[1:], 256)
@@ -368,7 +368,7 @@ func (ctx *TxContext) evalConstraint(constr []byte, path lazybytes.TreePath) ([]
 			for i := 1; i < arr.NumElements(); i++ {
 				args[i] = arr.At(i)
 			}
-			ret, err = ledger.L().EvalFromBinary(evalCtx, binCode, args...)
+			ret, err = ledger.L().EvalFromBytecode(evalCtx, binCode, args...)
 		}
 	}
 

@@ -131,7 +131,7 @@ func chainLock : and(
 	or(
 		and(
 			selfIsProducedOutput, 
-			equal(len8($0),32),
+			equal(len($0),u64/32),
             not(isZero($0))   // to prevent common error
 		),
 		and(

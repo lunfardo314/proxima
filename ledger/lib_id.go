@@ -97,8 +97,7 @@ func (lib *Library) extendWithBaseConstants(id *IdentityData) {
 	lib.EmbedLong("ticksBefore", 2, evalTicksBefore64)
 
 	// base helpers
-	lib.Extend("sizeIs", "equal(len8($0), $1)")
-	lib.Extend("mustSize", "if(sizeIs($0,$1), $0, !!!wrong_data_size)")
+	lib.Extend("mustSize", "if(equalUint(len($0), $1), $0, !!!wrong_data_size)")
 
 	lib.Extend("mustValidTimeTick", "if(and(mustSize($0,1),lessThan($0,ticksPerSlot)),$0,!!!wrong_timeslot)")
 	lib.Extend("mustValidTimeSlot", "mustSize($0, timeSlotSizeBytes)")

@@ -158,7 +158,7 @@ func addressED25519: and(
 	or(
 		and(
 			selfIsProducedOutput, 
-			equal(len8($0), 32) 
+			equal(len($0), u64/32) 
 		),
 		and(
 			selfIsConsumedOutput, 
