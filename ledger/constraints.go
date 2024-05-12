@@ -2,8 +2,6 @@ package ledger
 
 import (
 	"bytes"
-	"crypto/ed25519"
-	"encoding/hex"
 	"fmt"
 
 	"github.com/lunfardo314/easyfl"
@@ -129,7 +127,7 @@ var AllLockNames = []string{
 	AddressED25519Name,
 	ChainLockName,
 	StemLockName,
-	//DeadlineLockName,
+	DeadlineLockName,
 }
 
 func LockFromBytes(data []byte) (Lock, error) {
@@ -144,8 +142,8 @@ func LockFromBytes(data []byte) (Lock, error) {
 	switch name {
 	case AddressED25519Name:
 		return AddressED25519FromBytes(data)
-	//case DeadlineLockName:
-	//	return DeadlineLockFromBytes(data)
+	case DeadlineLockName:
+		return DeadlineLockFromBytes(data)
 	case ChainLockName:
 		return ChainLockFromBytes(data)
 	case StemLockName:
@@ -188,40 +186,4 @@ func AccountableFromSource(src string) (Accountable, error) {
 		return nil, fmt.Errorf("EasyFL compile error: %v", err)
 	}
 	return AccountableFromBytes(data)
-}
-
-func AccountableFromHexString(str string) (Accountable, error) {
-	data, err := hex.DecodeString(str)
-	if err != nil {
-		return nil, err
-	}
-	return AccountableFromBytes(data)
-}
-
-func CloneAccountable(a Accountable) Accountable {
-	ret, err := AccountableFromBytes(common.CloneBytes(a.Bytes())) // TODO suboptimal copying bytes
-	util.AssertNoError(err)
-	return ret
-}
-
-// inline unit test
-func runCommonUnitTests() {
-	pub, _, err := ed25519.GenerateKey(nil)
-	util.AssertNoError(err)
-	addr := AddressED25519FromPublicKey(pub)
-	addrBack := CloneAccountable(addr)
-	util.Assertf(EqualConstraints(addr, addrBack), "inline unit test failed for AddressED25519")
-
-	chainLock := ChainLockFromChainID(NilChainID)
-	chainConstrBack := CloneAccountable(chainLock)
-	util.Assertf(EqualConstraints(chainLock, chainConstrBack), "inline unit test failed for ChainLock")
-}
-
-func LockIsIndexableByAccount(lock Lock, accountable Accountable) bool {
-	for _, account := range lock.Accounts() {
-		if EqualConstraints(account, accountable) {
-			return true
-		}
-	}
-	return false
 }

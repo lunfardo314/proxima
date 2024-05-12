@@ -239,7 +239,7 @@ func (lib *Library) extendWithConstraints() {
 	// extendWithMainFunctions constraints
 	addAmountConstraint(lib)
 	addAddressED25519Constraint(lib)
-	//addDeadlineLockConstraint(lib)
+	addDeadlineLockConstraint(lib)
 	addTimeLockConstraint(lib)
 	addChainConstraint(lib)
 	addStemLockConstraint(lib)
@@ -252,10 +252,6 @@ func (lib *Library) extendWithConstraints() {
 	addCommitToSiblingConstraint(lib)
 	addStateIndexConstraint(lib)
 	addTotalAmountConstraint(lib)
-}
-
-func runInitTests() {
-	runCommonUnitTests()
 }
 
 // DataContext is the data structure passed to the eval call. It contains:
