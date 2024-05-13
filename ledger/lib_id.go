@@ -73,40 +73,42 @@ func (lib *Library) TimeFromRealTime(t time.Time) Time {
 func (lib *Library) extendWithBaseConstants(id *IdentityData) {
 	lib.ID = id
 	// constants
-	lib.Extendf("constInitialSupply", "u64/%d", id.InitialSupply)
-	lib.Extendf("constGenesisControllerPublicKey", "0x%s", hex.EncodeToString(id.GenesisControllerPublicKey))
-	lib.Extendf("constGenesisTimeUnix", "u64/%d", id.GenesisTimeUnix)
-	lib.Extendf("constTickDuration", "u64/%d", int64(id.TickDuration))
-	lib.Extendf("constMaxTickValuePerSlot", "u64/%d", id.MaxTickValueInSlot)
-	lib.Extendf("constBranchBonusBase", "u64/%d", id.BranchBonusBase)
-	lib.Extendf("constHalvingEpochs", "u64/%d", id.NumHalvingEpochs)
-	lib.Extendf("constChainInflationFractionBase", "u64/%d", id.ChainInflationPerTickFractionBase)
-	lib.Extendf("constChainInflationOpportunitySlots", "u64/%d", id.ChainInflationOpportunitySlots)
-	lib.Extendf("constMinimumAmountOnSequencer", "u64/%d", id.MinimumAmountOnSequencer)
-	lib.Extendf("constMaxNumberOfEndorsements", "u64/%d", id.MaxNumberOfEndorsements)
+	extendBaseConstants := []*easyfl.ExtendFunction{
+		{"constInitialSupply", fmt.Sprintf("u64/%d", id.InitialSupply)},
+		{"constGenesisControllerPublicKey", fmt.Sprintf("0x%s", hex.EncodeToString(id.GenesisControllerPublicKey))},
+		{"constGenesisTimeUnix", fmt.Sprintf("u64/%d", id.GenesisTimeUnix)},
+		{"constTickDuration", fmt.Sprintf("u64/%d", int64(id.TickDuration))},
+		{"constMaxTickValuePerSlot", fmt.Sprintf("u64/%d", id.MaxTickValueInSlot)},
+		{"constBranchBonusBase", fmt.Sprintf("u64/%d", id.BranchBonusBase)},
+		{"constHalvingEpochs", fmt.Sprintf("u64/%d", id.NumHalvingEpochs)},
+		{"constChainInflationFractionBase", fmt.Sprintf("u64/%d", id.ChainInflationPerTickFractionBase)},
+		{"constChainInflationOpportunitySlots", fmt.Sprintf("u64/%d", id.ChainInflationOpportunitySlots)},
+		{"constMinimumAmountOnSequencer", fmt.Sprintf("u64/%d", id.MinimumAmountOnSequencer)},
+		{"constMaxNumberOfEndorsements", fmt.Sprintf("u64/%d", id.MaxNumberOfEndorsements)},
 
-	lib.Extendf("constSlotsPerLedgerEpoch", "u64/%d", id.SlotsPerHalvingEpoch)
-	lib.Extendf("constTransactionPace", "u64/%d", id.TransactionPace)
-	lib.Extendf("constTransactionPaceSequencer", "u64/%d", id.TransactionPaceSequencer)
-	lib.Extendf("constVBCost16", "u16/%d", id.VBCost) // change to 64
-	lib.Extendf("ticksPerSlot", "%d", id.TicksPerSlot())
-	lib.Extendf("ticksPerSlot64", "u64/%d", id.TicksPerSlot())
-	lib.Extendf("timeSlotSizeBytes", "%d", SlotByteLength)
-	lib.Extendf("timestampByteSize", "%d", TimeByteLength)
+		{"constSlotsPerLedgerEpoch", fmt.Sprintf("u64/%d", id.SlotsPerHalvingEpoch)},
+		{"constTransactionPace", fmt.Sprintf("u64/%d", id.TransactionPace)},
+		{"constTransactionPaceSequencer", fmt.Sprintf("u64/%d", id.TransactionPaceSequencer)},
+		{"constVBCost16", fmt.Sprintf("u16/%d", id.VBCost)}, // change to 64
+		{"ticksPerSlot", fmt.Sprintf("%d", id.TicksPerSlot())},
+		{"ticksPerSlot64", fmt.Sprintf("u64/%d", id.TicksPerSlot())},
+		{"timeSlotSizeBytes", fmt.Sprintf("%d", SlotByteLength)},
+		{"timestampByteSize", fmt.Sprintf("%d", TimeByteLength)},
+	}
+	lib.Extend(extendBaseConstants...)
 
-	lib.EmbedLong("ticksBefore", 2, evalTicksBefore64)
-
-	// base helpers
-	lib.Extend("mustSize", "if(equalUint(len($0), $1), $0, !!!wrong_data_size)")
-
-	lib.Extend("mustValidTimeTick", "if(and(mustSize($0,1),lessThan($0,ticksPerSlot)),$0,!!!wrong_timeslot)")
-	lib.Extend("mustValidTimeSlot", "mustSize($0, timeSlotSizeBytes)")
-	lib.Extend("timeSlotPrefix", "slice($0, 0, 3)") // first 4 bytes of any array. It is not time slot yet
-	lib.Extend("timeSlotFromTimeSlotPrefix", "bitwiseAND($0, 0x3fffffff)")
-	lib.Extend("timeTickFromTimestamp", "byte($0, 4)")
-	lib.Extend("timestamp", "concat(mustValidTimeSlot($0),mustValidTimeTick($1))")
-	// takes first 5 bytes and sets first 2 bit to zero
-	lib.Extend("timestampPrefix", "bitwiseAND(slice($0, 0, 4), 0x3fffffffff)")
+	extendBaseHelpers := []*easyfl.ExtendFunction{
+		{"mustSize", "if(equalUint(len($0), $1), $0, !!!wrong_data_size)"},
+		{"mustValidTimeTick", "if(and(mustSize($0,1),lessThan($0,ticksPerSlot)),$0,!!!wrong_timeslot)"},
+		{"mustValidTimeSlot", "mustSize($0, timeSlotSizeBytes)"},
+		{"timeSlotPrefix", "slice($0, 0, 3)"}, // first 4 bytes of any array. It is not time slot yet
+		{"timeSlotFromTimeSlotPrefix", "bitwiseAND($0, 0x3fffffff)"},
+		{"timeTickFromTimestamp", "byte($0, 4)"},
+		{"timestamp", "concat(mustValidTimeSlot($0),mustValidTimeTick($1))"},
+		// takes first 5 bytes and sets first 2 bit to zero
+		{"timestampPrefix", "bitwiseAND(slice($0, 0, 4), 0x3fffffffff)"},
+	}
+	lib.Extend(extendBaseHelpers...)
 }
 
 func (lib *Library) extend(id *IdentityData) *Library {

@@ -87,154 +87,142 @@ const (
 	ConstraintIndexFirstOptionalConstraint
 )
 
+var (
+	embedFunctionsShort = []*easyfl.EmbedFunction{
+		// data context access
+		{"@", 0, evalPath},
+		{"@Path", 1, evalAtPath},
+	}
+	embedFunctionsLong = []*easyfl.EmbedFunction{
+		{"@Array8", 2, evalAtArray8},
+		{"ArrayLength8", 1, evalNumElementsOfArray},
+		{"ticksBefore", 2, evalTicksBefore64},
+		// TODO: replace with verified implementation, for example from Algorand
+		{"vrfVerify", 3, evalVRFVerify},
+	}
+)
+
 func (lib *Library) embed() {
-	// data context access
-	// data context is a lazybytes.Tree
-	lib.EmbedShort("@", 0, evalPath, true)
-	// returns data bytes at the given path of the data context (lazy tree)
-	lib.EmbedShort("@Path", 1, evalAtPath)
+	lib.EmbedShort(embedFunctionsShort...)
+	lib.EmbedLong(embedFunctionsLong...)
+	lib.EmbedLong(&easyfl.EmbedFunction{
+		Sym:            "callLocalLibrary",
+		RequiredNumPar: -1,
+		EvalFun:        lib.evalCallLocalLibrary,
+	})
+}
 
-	// @Array8 interprets $0 as serialized LazyArray with max 256 elements. Takes the $1 element of it. $1 is expected 1-byte long
-	lib.EmbedLong("@Array8", 2, evalAtArray8)
-	// ArrayLength8 interprets $0 as serialized LazyArray with max 256 elements. Returns number of elements in the array as 1-byte value
-	lib.EmbedLong("ArrayLength8", 1, evalNumElementsOfArray)
+var extendWithFunctions = []*easyfl.ExtendFunction{
+	{"pathToTransaction", fmt.Sprintf("%d", TransactionBranch)},
+	{"pathToConsumedOutputs", fmt.Sprintf("0x%s", PathToConsumedOutputs.Hex())},
+	{"pathToProducedOutputs", fmt.Sprintf("0x%s", PathToProducedOutputs.Hex())},
+	{"pathToUnlockParams", fmt.Sprintf("0x%s", PathToUnlockParams.Hex())},
+	{"pathToInputIDs", fmt.Sprintf("0x%s", PathToInputIDs.Hex())},
+	{"pathToSignature", fmt.Sprintf("0x%s", PathToSignature.Hex())},
+	{"pathToSeqAndStemOutputIndices", fmt.Sprintf("0x%s", PathToSequencerAndStemOutputIndices.Hex())},
+	{"pathToInputCommitment", fmt.Sprintf("0x%s", PathToInputCommitment.Hex())},
+	{"pathToEndorsements", fmt.Sprintf("0x%s", PathToEndorsements.Hex())},
+	{"pathToLocalLibrary", fmt.Sprintf("0x%s", PathToLocalLibraries.Hex())},
+	{"pathToTimestamp", fmt.Sprintf("0x%s", PathToTimestamp.Hex())},
+	{"pathToTotalProducedAmount", fmt.Sprintf("0x%s", PathToTotalProducedAmount.Hex())},
+	// mandatory block indices in the output
+	{"amountConstraintIndex", fmt.Sprintf("%d", ConstraintIndexAmount)},
+	{"lockConstraintIndex", fmt.Sprintf("%d", ConstraintIndexLock)},
+	// mandatory constraints and values
+	// $0 is output binary as lazy array
+	{"amountConstraint", "@Array8($0, amountConstraintIndex)"},
+	{"lockConstraint", "@Array8($0, lockConstraintIndex)"},
+	// recognize what kind of path is at $0
+	{"isPathToConsumedOutput", "hasPrefix($0, pathToConsumedOutputs)"},
+	{"isPathToProducedOutput", "hasPrefix($0, pathToProducedOutputs)"},
+	// make branch path by index $0
+	{"consumedOutputPathByIndex", "concat(pathToConsumedOutputs,$0)"},
+	{"unlockParamsPathByIndex", "concat(pathToUnlockParams,$0)"},
+	{"producedOutputPathByIndex", "concat(pathToProducedOutputs,$0)"},
+	// takes 1-byte $0 as output index
+	{"consumedOutputByIndex", "@Path(consumedOutputPathByIndex($0))"},
+	{"unlockParamsByIndex", "@Path(unlockParamsPathByIndex($0))"},
+	{"producedOutputByIndex", "@Path(producedOutputPathByIndex($0))"},
+	// takes $0 'constraint index' as 2 bytes: 0 for output index, 1 for block index
+	{"producedConstraintByIndex", "@Array8(producedOutputByIndex(byte($0,0)), byte($0,1))"},
+	{"consumedConstraintByIndex", "@Array8(consumedOutputByIndex(byte($0,0)), byte($0,1))"},
+	{"unlockParamsByConstraintIndex", "@Array8(unlockParamsByIndex(byte($0,0)), byte($0,1))"},
 
-	// calls local EasyFL library
-	lib.EmbedLong("callLocalLibrary", -1, lib.evalCallLocalLibrary)
-
-	// Temporary!! VRF implementation in pure Go. Unverified adaptation of Yahoo! implementation.
-	// TODO: replace with verified implementation, for example from Algorand
-	// vrfVerify(<ED25519 public key>, <randomness proof>, <msg>)
-	lib.EmbedLong("vrfVerify", 3, evalVRFVerify)
+	{"consumedLockByInputIndex", "consumedConstraintByIndex(concat($0, lockConstraintIndex))"},
+	{"inputIDByIndex", "@Path(concat(pathToInputIDs,$0))"},
+	{"timeSlotOfInputByIndex", "timeSlotFromTimeSlotPrefix(timeSlotPrefix(inputIDByIndex($0)))"},
+	{"timestampOfInputByIndex", "timestampPrefix(inputIDByIndex($0))"},
+	// special transaction related
+	{"txBytes", "@Path(pathToTransaction)"},
+	{"txSignature", "@Path(pathToSignature)"},
+	{"txTimestampBytes", "@Path(pathToTimestamp)"},
+	{"txTotalProducedAmount", "@Path(pathToTotalProducedAmount)"},
+	{"txTimeSlot", "timeSlotPrefix(txTimestampBytes)"},
+	{"txTimeTick", "timeTickFromTimestamp(txTimestampBytes)"},
+	{"txSequencerOutputIndex", "byte(@Path(pathToSeqAndStemOutputIndices), 0)"},
+	{"txStemOutputIndex", "byte(@Path(pathToSeqAndStemOutputIndices), 1)"},
+	{"txEssenceBytes", "concat(" +
+		"@Path(pathToInputIDs), " +
+		"@Path(pathToProducedOutputs), " +
+		"@Path(pathToTimestamp), " +
+		"@Path(pathToSeqAndStemOutputIndices), " +
+		"@Path(pathToInputCommitment), " +
+		"@Path(pathToEndorsements))"},
+	{"isSequencerTransaction", "not(equal(txSequencerOutputIndex, 0xff))"},
+	{"isBranchTransaction", "and(isSequencerTransaction, not(equal(txStemOutputIndex, 0xff)))"},
+	// endorsements
+	{"numEndorsements", "ArrayLength8(@Path(pathToEndorsements))"},
+	{"sequencerFlagON", "not(isZero(bitwiseAND(byte($0,0),0x80)))"},
+	// functions with prefix 'self' are invocation context specific, i.e. they use function '@' to calculate
+	// local values which depend on the invoked constraint
+	{"selfOutputPath", "slice(@,0,2)"},
+	{"selfSiblingConstraint", "@Array8(@Path(selfOutputPath), $0)"},
+	{"selfOutputBytes", "@Path(selfOutputPath)"},
+	{"selfNumConstraints", "ArrayLength8(selfOutputBytes)"},
+	// unlock param branch (0 - transaction, 0 unlock params)
+	// invoked output block
+	{"self", "@Path(@)"},
+	// bytecode prefix of the invoked constraint
+	{"selfBytecodePrefix", "parseBytecodePrefix(self)"},
+	{"selfIsConsumedOutput", "isPathToConsumedOutput(@)"},
+	{"selfIsProducedOutput", "isPathToProducedOutput(@)"},
+	// output index of the invocation
+	{"selfOutputIndex", "byte(@, 2)"},
+	// block index of the invocation
+	{"selfBlockIndex", "tail(@, 3)"},
+	// branch (2 bytes) of the constraint invocation
+	{"selfBranch", "slice(@,0,1)"},
+	// output index || block index
+	{"selfConstraintIndex", "slice(@, 2, 3)"},
+	// data of a constraint
+	{"constraintData", "tail($0,1)"},
+	// invocation output data
+	{"selfConstraintData", "constraintData(self)"},
+	// unlock parameters of the invoked consumed constraint
+	{"selfUnlockParameters", "@Path(concat(pathToUnlockParams, selfConstraintIndex))"},
+	// path referenced by the reference unlock params
+	{"selfReferencedPath", "concat(selfBranch, selfUnlockParameters, selfBlockIndex)"},
+	// returns unlock block of the sibling
+	{"selfSiblingUnlockBlock", "@Array8(@Path(concat(pathToUnlockParams, selfOutputIndex)), $0)"},
+	// returns selfUnlockParameters if blake2b hash of it is equal to the given hash, otherwise nil
+	{"selfHashUnlock", "if(equal($0, blake2b(selfUnlockParameters)),selfUnlockParameters,nil)"},
+	// takes ED25519 signature from full signature, first 64 bytes
+	{"signatureED25519", "slice($0, 0, 63)"},
+	// takes ED25519 public key from full signature
+	{"publicKeyED25519", "slice($0, 64, 95)"},
 }
 
 func (lib *Library) extendWithGeneralFunctions() {
-	{
-		// inline tests
-		lib.MustEqual("timestamp(u32/255, 21)", MustNewLedgerTime(255, 21).Hex())
-		lib.MustEqual("ticksBefore(timestamp(u32/100, 5), timestamp(u32/101, 10))", "u64/105")
-		lib.MustError("timestamp(u32/255, 100)", "wrong timeslot")
-		lib.MustError("mustValidTimeSlot(255)", "wrong data size")
-		lib.MustError("mustValidTimeTick(200)", "wrong timeslot")
-		lib.MustEqual("mustValidTimeSlot(u32/255)", Slot(255).Hex())
-		lib.MustEqual("mustValidTimeTick(88)", Tick(88).String())
-	}
+	// inline tests
+	lib.MustEqual("timestamp(u32/255, 21)", MustNewLedgerTime(255, 21).Hex())
+	lib.MustEqual("ticksBefore(timestamp(u32/100, 5), timestamp(u32/101, 10))", "u64/105")
+	lib.MustError("timestamp(u32/255, 100)", "wrong timeslot")
+	lib.MustError("mustValidTimeSlot(255)", "wrong data size")
+	lib.MustError("mustValidTimeTick(200)", "wrong timeslot")
+	lib.MustEqual("mustValidTimeSlot(u32/255)", Slot(255).Hex())
+	lib.MustEqual("mustValidTimeTick(88)", Tick(88).String())
 
-	// path constants
-	lib.Extend("pathToTransaction", fmt.Sprintf("%d", TransactionBranch))
-	lib.Extend("pathToConsumedOutputs", fmt.Sprintf("0x%s", PathToConsumedOutputs.Hex()))
-	lib.Extend("pathToProducedOutputs", fmt.Sprintf("0x%s", PathToProducedOutputs.Hex()))
-	lib.Extend("pathToUnlockParams", fmt.Sprintf("0x%s", PathToUnlockParams.Hex()))
-	lib.Extend("pathToInputIDs", fmt.Sprintf("0x%s", PathToInputIDs.Hex()))
-	lib.Extend("pathToSignature", fmt.Sprintf("0x%s", PathToSignature.Hex()))
-	lib.Extend("pathToSeqAndStemOutputIndices", fmt.Sprintf("0x%s", PathToSequencerAndStemOutputIndices.Hex()))
-	lib.Extend("pathToInputCommitment", fmt.Sprintf("0x%s", PathToInputCommitment.Hex()))
-	lib.Extend("pathToEndorsements", fmt.Sprintf("0x%s", PathToEndorsements.Hex()))
-	lib.Extend("pathToLocalLibrary", fmt.Sprintf("0x%s", PathToLocalLibraries.Hex()))
-	lib.Extend("pathToTimestamp", fmt.Sprintf("0x%s", PathToTimestamp.Hex()))
-	lib.Extend("pathToTotalProducedAmount", fmt.Sprintf("0x%s", PathToTotalProducedAmount.Hex()))
-
-	// mandatory block indices in the output
-	lib.Extend("amountConstraintIndex", fmt.Sprintf("%d", ConstraintIndexAmount))
-	lib.Extend("lockConstraintIndex", fmt.Sprintf("%d", ConstraintIndexLock))
-
-	// mandatory constraints and values
-	// $0 is output binary as lazy array
-	lib.Extend("amountConstraint", "@Array8($0, amountConstraintIndex)")
-	lib.Extend("lockConstraint", "@Array8($0, lockConstraintIndex)")
-
-	// recognize what kind of path is at $0
-	lib.Extend("isPathToConsumedOutput", "hasPrefix($0, pathToConsumedOutputs)")
-	lib.Extend("isPathToProducedOutput", "hasPrefix($0, pathToProducedOutputs)")
-
-	// make branch path by index $0
-	lib.Extend("consumedOutputPathByIndex", "concat(pathToConsumedOutputs,$0)")
-	lib.Extend("unlockParamsPathByIndex", "concat(pathToUnlockParams,$0)")
-	lib.Extend("producedOutputPathByIndex", "concat(pathToProducedOutputs,$0)")
-
-	// takes 1-byte $0 as output index
-	lib.Extend("consumedOutputByIndex", "@Path(consumedOutputPathByIndex($0))")
-	lib.Extend("unlockParamsByIndex", "@Path(unlockParamsPathByIndex($0))")
-	lib.Extend("producedOutputByIndex", "@Path(producedOutputPathByIndex($0))")
-
-	// takes $0 'constraint index' as 2 bytes: 0 for output index, 1 for block index
-	lib.Extend("producedConstraintByIndex", "@Array8(producedOutputByIndex(byte($0,0)), byte($0,1))")
-	lib.Extend("consumedConstraintByIndex", "@Array8(consumedOutputByIndex(byte($0,0)), byte($0,1))")
-	lib.Extend("unlockParamsByConstraintIndex", "@Array8(unlockParamsByIndex(byte($0,0)), byte($0,1))")
-
-	lib.Extend("consumedLockByInputIndex", "consumedConstraintByIndex(concat($0, lockConstraintIndex))")
-
-	lib.Extend("inputIDByIndex", "@Path(concat(pathToInputIDs,$0))")
-	lib.Extend("timeSlotOfInputByIndex", "timeSlotFromTimeSlotPrefix(timeSlotPrefix(inputIDByIndex($0)))")
-	lib.Extend("timestampOfInputByIndex", "timestampPrefix(inputIDByIndex($0))")
-
-	// special transaction related
-
-	lib.Extend("txBytes", "@Path(pathToTransaction)")
-	lib.Extend("txSignature", "@Path(pathToSignature)")
-	lib.Extend("txTimestampBytes", "@Path(pathToTimestamp)")
-	lib.Extend("txTotalProducedAmount", "@Path(pathToTotalProducedAmount)")
-	lib.Extend("txTimeSlot", "timeSlotPrefix(txTimestampBytes)")
-	lib.Extend("txTimeTick", "timeTickFromTimestamp(txTimestampBytes)")
-	lib.Extend("txSequencerOutputIndex", "byte(@Path(pathToSeqAndStemOutputIndices), 0)")
-	lib.Extend("txStemOutputIndex", "byte(@Path(pathToSeqAndStemOutputIndices), 1)")
-	lib.Extend("txEssenceBytes", "concat("+
-		"@Path(pathToInputIDs), "+
-		"@Path(pathToProducedOutputs), "+
-		"@Path(pathToTimestamp), "+
-		"@Path(pathToSeqAndStemOutputIndices), "+
-		"@Path(pathToInputCommitment), "+
-		"@Path(pathToEndorsements))")
-	lib.Extend("isSequencerTransaction", "not(equal(txSequencerOutputIndex, 0xff))")
-	lib.Extend("isBranchTransaction", "and(isSequencerTransaction, not(equal(txStemOutputIndex, 0xff)))")
-
-	// endorsements
-	lib.Extend("numEndorsements", "ArrayLength8(@Path(pathToEndorsements))")
-	lib.Extend("sequencerFlagON", "not(isZero(bitwiseAND(byte($0,0),0x80)))")
-
-	// functions with prefix 'self' are invocation context specific, i.e. they use function '@' to calculate
-	// local values which depend on the invoked constraint
-
-	lib.Extend("selfOutputPath", "slice(@,0,2)")
-	lib.Extend("selfSiblingConstraint", "@Array8(@Path(selfOutputPath), $0)")
-	lib.Extend("selfOutputBytes", "@Path(selfOutputPath)")
-	lib.Extend("selfNumConstraints", "ArrayLength8(selfOutputBytes)")
-
-	// unlock param branch (0 - transaction, 0 unlock params)
-	// invoked output block
-	lib.Extend("self", "@Path(@)")
-	// bytecode prefix of the invoked constraint
-	lib.Extend("selfBytecodePrefix", "parseBytecodePrefix(self)")
-
-	lib.Extend("selfIsConsumedOutput", "isPathToConsumedOutput(@)")
-	lib.Extend("selfIsProducedOutput", "isPathToProducedOutput(@)")
-
-	// output index of the invocation
-	lib.Extend("selfOutputIndex", "byte(@, 2)")
-	// block index of the invocation
-	lib.Extend("selfBlockIndex", "tail(@, 3)")
-	// branch (2 bytes) of the constraint invocation
-	lib.Extend("selfBranch", "slice(@,0,1)")
-	// output index || block index
-	lib.Extend("selfConstraintIndex", "slice(@, 2, 3)")
-	// data of a constraint
-	lib.Extend("constraintData", "tail($0,1)")
-	// invocation output data
-	lib.Extend("selfConstraintData", "constraintData(self)")
-	// unlock parameters of the invoked consumed constraint
-	lib.Extend("selfUnlockParameters", "@Path(concat(pathToUnlockParams, selfConstraintIndex))")
-	// path referenced by the reference unlock params
-	lib.Extend("selfReferencedPath", "concat(selfBranch, selfUnlockParameters, selfBlockIndex)")
-	// returns unlock block of the sibling
-	lib.Extend("selfSiblingUnlockBlock", "@Array8(@Path(concat(pathToUnlockParams, selfOutputIndex)), $0)")
-
-	// returns selfUnlockParameters if blake2b hash of it is equal to the given hash, otherwise nil
-	lib.Extend("selfHashUnlock", "if(equal($0, blake2b(selfUnlockParameters)),selfUnlockParameters,nil)")
-
-	// takes ED25519 signature from full signature, first 64 bytes
-	lib.Extend("signatureED25519", "slice($0, 0, 63)")
-	// takes ED25519 public key from full signature
-	lib.Extend("publicKeyED25519", "slice($0, 64, 95)")
+	lib.Extend(extendWithFunctions...)
 }
 
 func (lib *Library) extendWithConstraints() {
