@@ -2,6 +2,7 @@ package ledger
 
 import (
 	"encoding/binary"
+	"encoding/hex"
 	"fmt"
 
 	"github.com/lunfardo314/easyfl"
@@ -11,9 +12,16 @@ import (
 	"github.com/yoseplee/vrf"
 )
 
-/*self
+// This file contains all upgrade prescriptions to the base ledger provided by the EasyFL. It is the "version 0" of the ledger.
+// Ledger definition can be upgraded by adding new embedded and extended function with new binary codes.
+// That will make ledger upgrades backwards compatible, because all past transactions and EasyFL constraint bytecodes
+// outputs will be interpreted exactly the same way
 
-All integers are treated big-endian. This way lexicographical order coincides with the arithmetic order
+/*
+The following defines Proxima transaction model, library of constraints and other functions
+in addition to the base library provided by EasyFL
+
+All integers are treated big-endian. This way lexicographical order coincides with the arithmetic order.
 
 The validation context is a tree-like data structure which is validated by evaluating all constraints in it
 consumed and produced outputs. The rest of the validation should be done by the logic outside the data itself.
@@ -87,32 +95,206 @@ const (
 	ConstraintIndexFirstOptionalConstraint
 )
 
+func (lib *Library) upgrade0(id *IdentityData) {
+	lib.upgrade0WithEmbedded()
+	lib.upgrade0WithExtensions(id)
+}
+
+//==================================== embedded
+
 var (
-	embedFunctionsShort = []*easyfl.EmbedFunction{
+	upgrade0EmbedFunctionsShort = []*easyfl.EmbedFunction{
 		// data context access
 		{"@", 0, evalPath},
 		{"@Path", 1, evalAtPath},
 	}
-	embedFunctionsLong = []*easyfl.EmbedFunction{
+	upgrade0EmbedFunctionsLong = []*easyfl.EmbedFunction{
 		{"@Array8", 2, evalAtArray8},
 		{"ArrayLength8", 1, evalNumElementsOfArray},
 		{"ticksBefore", 2, evalTicksBefore64},
-		// TODO: replace with verified implementation, for example from Algorand
+		// TODO: replace Verifiable Random Function (VRF) with verified implementation, for example from Algorand
 		{"vrfVerify", 3, evalVRFVerify},
 	}
 )
 
-func (lib *Library) embed() {
-	lib.EmbedShort(embedFunctionsShort...)
-	lib.EmbedLong(embedFunctionsLong...)
-	lib.EmbedLong(&easyfl.EmbedFunction{
+func (lib *Library) upgrade0WithEmbedded() {
+	lib.UpgradeWithEmbeddedShort(upgrade0EmbedFunctionsShort...)
+	lib.UpgradeWthEmbeddedLong(upgrade0EmbedFunctionsLong...)
+	lib.UpgradeWthEmbeddedLong(&easyfl.EmbedFunction{
 		Sym:            "callLocalLibrary",
 		RequiredNumPar: -1,
 		EvalFun:        lib.evalCallLocalLibrary,
 	})
 }
 
-var extendWithFunctions = []*easyfl.ExtendFunction{
+// DataContext is the data structure passed to the eval call. It contains:
+// - tree: all validation context of the transaction, all data which is to be validated
+// - path: a path in the validation context of the constraint being validated in the eval call
+type DataContext struct {
+	tree *lazybytes.Tree
+	path lazybytes.TreePath
+}
+
+func NewDataContext(tree *lazybytes.Tree) *DataContext {
+	return &DataContext{tree: tree}
+}
+
+func (c *DataContext) DataTree() *lazybytes.Tree {
+	return c.tree
+}
+
+func (c *DataContext) Path() lazybytes.TreePath {
+	return c.path
+}
+
+func (c *DataContext) SetPath(path lazybytes.TreePath) {
+	c.path = common.Concat(path.Bytes())
+}
+
+// embedded functions
+
+func evalPath(ctx *easyfl.CallParams) []byte {
+	return ctx.DataContext().(*DataContext).Path()
+}
+
+func evalAtPath(ctx *easyfl.CallParams) []byte {
+	return ctx.DataContext().(*DataContext).DataTree().BytesAtPath(ctx.Arg(0))
+}
+
+func evalAtArray8(ctx *easyfl.CallParams) []byte {
+	arr := lazybytes.ArrayFromBytesReadOnly(ctx.Arg(0))
+	idx := ctx.Arg(1)
+	if len(idx) != 1 {
+		panic("evalAtArray8: 1-byte value expected")
+	}
+	return arr.At(int(idx[0]))
+}
+
+func evalNumElementsOfArray(ctx *easyfl.CallParams) []byte {
+	arr := lazybytes.ArrayFromBytesReadOnly(ctx.Arg(0))
+	return []byte{byte(arr.NumElements())}
+}
+
+// evalVRFVerify: embedded VRF verifier. Dependency on unverified external crypto library
+func evalVRFVerify(glb *easyfl.CallParams) []byte {
+	var ok bool
+	err := util.CatchPanicOrError(func() error {
+		var err1 error
+		ok, err1 = vrf.Verify(glb.Arg(0), glb.Arg(1), glb.Arg(2))
+		return err1
+	})
+	if err != nil {
+		glb.Trace("'vrfVerify embedded' failed with: %v", err)
+	}
+	if err == nil && ok {
+		return []byte{0xff}
+	}
+	return nil
+}
+
+// CompileLocalLibrary compiles local library and serializes it as lazy array
+func (lib *Library) CompileLocalLibrary(source string) ([]byte, error) {
+	libBin, err := lib.Library.CompileLocalLibrary(source)
+	if err != nil {
+		return nil, err
+	}
+	ret := lazybytes.MakeArrayFromDataReadOnly(libBin...)
+	return ret.Bytes(), nil
+}
+
+// arg 0 - local library binary (as lazy array)
+// arg 1 - 1-byte index of then function in the library
+// arg 2 ... arg 15 optional arguments
+func (lib *Library) evalCallLocalLibrary(ctx *easyfl.CallParams) []byte {
+	arr := lazybytes.ArrayFromBytesReadOnly(ctx.Arg(0))
+	libData := arr.Parsed()
+	idx := ctx.Arg(1)
+	if len(idx) != 1 || int(idx[0]) >= len(libData) {
+		ctx.TracePanic("evalCallLocalLibrary: wrong function index")
+	}
+	ret := lib.CallLocalLibrary(ctx.Slice(2, ctx.Arity()), libData, int(idx[0]))
+	ctx.Trace("evalCallLocalLibrary: lib#%d -> %s", idx[0], easyfl.Fmt(ret))
+	return ret
+}
+
+// arg 0 and arg 1 are timestamps (5 bytes each)
+// returns:
+// nil, if ts1 is before ts0
+// number of ticks between ts0 and ts1 otherwise, as big-endian uint64
+func evalTicksBefore64(ctx *easyfl.CallParams) []byte {
+	ts0bin, ts1bin := ctx.Arg(0), ctx.Arg(1)
+	ts0, err := TimeFromBytes(ts0bin)
+	if err != nil {
+		ctx.TracePanic("evalTicksBefore64: %v", err)
+	}
+	ts1, err := TimeFromBytes(ts1bin)
+	if err != nil {
+		ctx.TracePanic("evalTicksBefore64: %v", err)
+	}
+	diff := DiffTicks(ts1, ts0)
+	if diff < 0 {
+		// ts1 is before ts0
+		return nil
+	}
+	var ret [8]byte
+	binary.BigEndian.PutUint64(ret[:], uint64(diff))
+	return ret[:]
+}
+
+//============================================ extensions
+
+// upgrade0BaseConstants extension with base constants from ledger identity
+func upgrade0BaseConstants(id *IdentityData) []*easyfl.ExtendFunction {
+	return []*easyfl.ExtendFunction{
+		{"constInitialSupply", fmt.Sprintf("u64/%d", id.InitialSupply)},
+		{"constGenesisControllerPublicKey", fmt.Sprintf("0x%s", hex.EncodeToString(id.GenesisControllerPublicKey))},
+		{"constGenesisTimeUnix", fmt.Sprintf("u64/%d", id.GenesisTimeUnix)},
+		{"constTickDuration", fmt.Sprintf("u64/%d", int64(id.TickDuration))},
+		{"constMaxTickValuePerSlot", fmt.Sprintf("u64/%d", id.MaxTickValueInSlot)},
+		{"constBranchBonusBase", fmt.Sprintf("u64/%d", id.BranchBonusBase)},
+		{"constHalvingEpochs", fmt.Sprintf("u64/%d", id.NumHalvingEpochs)},
+		{"constChainInflationFractionBase", fmt.Sprintf("u64/%d", id.ChainInflationPerTickFractionBase)},
+		{"constChainInflationOpportunitySlots", fmt.Sprintf("u64/%d", id.ChainInflationOpportunitySlots)},
+		{"constMinimumAmountOnSequencer", fmt.Sprintf("u64/%d", id.MinimumAmountOnSequencer)},
+		{"constMaxNumberOfEndorsements", fmt.Sprintf("u64/%d", id.MaxNumberOfEndorsements)},
+
+		{"constSlotsPerLedgerEpoch", fmt.Sprintf("u64/%d", id.SlotsPerHalvingEpoch)},
+		{"constTransactionPace", fmt.Sprintf("u64/%d", id.TransactionPace)},
+		{"constTransactionPaceSequencer", fmt.Sprintf("u64/%d", id.TransactionPaceSequencer)},
+		{"constVBCost16", fmt.Sprintf("u16/%d", id.VBCost)}, // change to 64
+		{"ticksPerSlot", fmt.Sprintf("%d", id.TicksPerSlot())},
+		{"ticksPerSlot64", fmt.Sprintf("u64/%d", id.TicksPerSlot())},
+		{"timeSlotSizeBytes", fmt.Sprintf("%d", SlotByteLength)},
+		{"timestampByteSize", fmt.Sprintf("%d", TimeByteLength)},
+	}
+}
+
+var upgrade0BaseHelpers = []*easyfl.ExtendFunction{
+	{"mustSize", "if(equalUint(len($0), $1), $0, !!!wrong_data_size)"},
+	{"mustValidTimeTick", "if(and(mustSize($0,1),lessThan($0,ticksPerSlot)),$0,!!!wrong_timeslot)"},
+	{"mustValidTimeSlot", "mustSize($0, timeSlotSizeBytes)"},
+	{"timeSlotPrefix", "slice($0, 0, 3)"}, // first 4 bytes of any array. It is not time slot yet
+	{"timeSlotFromTimeSlotPrefix", "bitwiseAND($0, 0x3fffffff)"},
+	{"timeTickFromTimestamp", "byte($0, 4)"},
+	{"timestamp", "concat(mustValidTimeSlot($0),mustValidTimeTick($1))"},
+	// takes first 5 bytes and sets first 2 bit to zero
+	{"timestampPrefix", "bitwiseAND(slice($0, 0, 4), 0x3fffffffff)"},
+}
+
+func (lib *Library) upgrade0WithBaseConstants(id *IdentityData) {
+	lib.ID = id
+	lib.UpgradeWithExtensions(upgrade0BaseConstants(id)...)
+	lib.UpgradeWithExtensions(upgrade0BaseHelpers...)
+}
+
+func (lib *Library) upgrade0WithExtensions(id *IdentityData) *Library {
+	lib.upgrade0WithBaseConstants(id)
+	lib.upgrade0WithGeneralFunctions()
+	lib.upgrade0WithConstraints()
+	return lib
+}
+
+var upgrade0WithFunctions = []*easyfl.ExtendFunction{
 	{"pathToTransaction", fmt.Sprintf("%d", TransactionBranch)},
 	{"pathToConsumedOutputs", fmt.Sprintf("0x%s", PathToConsumedOutputs.Hex())},
 	{"pathToProducedOutputs", fmt.Sprintf("0x%s", PathToProducedOutputs.Hex())},
@@ -212,7 +394,7 @@ var extendWithFunctions = []*easyfl.ExtendFunction{
 	{"publicKeyED25519", "slice($0, 64, 95)"},
 }
 
-func (lib *Library) extendWithGeneralFunctions() {
+func (lib *Library) upgrade0WithGeneralFunctions() {
 	// inline tests
 	lib.MustEqual("timestamp(u32/255, 21)", MustNewLedgerTime(255, 21).Hex())
 	lib.MustEqual("ticksBefore(timestamp(u32/100, 5), timestamp(u32/101, 10))", "u64/105")
@@ -222,10 +404,10 @@ func (lib *Library) extendWithGeneralFunctions() {
 	lib.MustEqual("mustValidTimeSlot(u32/255)", Slot(255).Hex())
 	lib.MustEqual("mustValidTimeTick(88)", Tick(88).String())
 
-	lib.Extend(extendWithFunctions...)
+	lib.UpgradeWithExtensions(upgrade0WithFunctions...)
 }
 
-func (lib *Library) extendWithConstraints() {
+func (lib *Library) upgrade0WithConstraints() {
 	addAmountConstraint(lib)
 	addAddressED25519Constraint(lib)
 	addDeadlineLockConstraint(lib)
@@ -241,116 +423,4 @@ func (lib *Library) extendWithConstraints() {
 	addCommitToSiblingConstraint(lib)
 	addStateIndexConstraint(lib)
 	addTotalAmountConstraint(lib)
-}
-
-// DataContext is the data structure passed to the eval call. It contains:
-// - tree: all validation context of the transaction, all data which is to be validated
-// - path: a path in the validation context of the constraint being validated in the eval call
-type DataContext struct {
-	tree *lazybytes.Tree
-	path lazybytes.TreePath
-}
-
-func NewDataContext(tree *lazybytes.Tree) *DataContext {
-	return &DataContext{tree: tree}
-}
-
-func (c *DataContext) DataTree() *lazybytes.Tree {
-	return c.tree
-}
-
-func (c *DataContext) Path() lazybytes.TreePath {
-	return c.path
-}
-
-func (c *DataContext) SetPath(path lazybytes.TreePath) {
-	c.path = common.Concat(path.Bytes())
-}
-
-func evalPath(ctx *easyfl.CallParams) []byte {
-	return ctx.DataContext().(*DataContext).Path()
-}
-
-func evalAtPath(ctx *easyfl.CallParams) []byte {
-	return ctx.DataContext().(*DataContext).DataTree().BytesAtPath(ctx.Arg(0))
-}
-
-func evalAtArray8(ctx *easyfl.CallParams) []byte {
-	arr := lazybytes.ArrayFromBytesReadOnly(ctx.Arg(0))
-	idx := ctx.Arg(1)
-	if len(idx) != 1 {
-		panic("evalAtArray8: 1-byte value expected")
-	}
-	return arr.At(int(idx[0]))
-}
-
-func evalNumElementsOfArray(ctx *easyfl.CallParams) []byte {
-	arr := lazybytes.ArrayFromBytesReadOnly(ctx.Arg(0))
-	return []byte{byte(arr.NumElements())}
-}
-
-// evalVRFVerify: embedded VRF verifier. Dependency on unverified external crypto library
-func evalVRFVerify(glb *easyfl.CallParams) []byte {
-	var ok bool
-	err := util.CatchPanicOrError(func() error {
-		var err1 error
-		ok, err1 = vrf.Verify(glb.Arg(0), glb.Arg(1), glb.Arg(2))
-		return err1
-	})
-	if err != nil {
-		glb.Trace("'vrfVerify embedded' failed with: %v", err)
-	}
-	if err == nil && ok {
-		return []byte{0xff}
-	}
-	return nil
-}
-
-// CompileLocalLibrary compiles local library and serializes it as lazy array
-func (lib *Library) CompileLocalLibrary(source string) ([]byte, error) {
-	libBin, err := lib.Library.CompileLocalLibrary(source)
-	if err != nil {
-		return nil, err
-	}
-	ret := lazybytes.MakeArrayFromDataReadOnly(libBin...)
-	return ret.Bytes(), nil
-}
-
-// arg 0 - local library binary (as lazy array)
-// arg 1 - 1-byte index of then function in the library
-// arg 2 ... arg 15 optional arguments
-func (lib *Library) evalCallLocalLibrary(ctx *easyfl.CallParams) []byte {
-	arr := lazybytes.ArrayFromBytesReadOnly(ctx.Arg(0))
-	libData := arr.Parsed()
-	idx := ctx.Arg(1)
-	if len(idx) != 1 || int(idx[0]) >= len(libData) {
-		ctx.TracePanic("evalCallLocalLibrary: wrong function index")
-	}
-	ret := lib.CallLocalLibrary(ctx.Slice(2, ctx.Arity()), libData, int(idx[0]))
-	ctx.Trace("evalCallLocalLibrary: lib#%d -> %s", idx[0], easyfl.Fmt(ret))
-	return ret
-}
-
-// arg 0 and arg 1 are timestamps (5 bytes each)
-// returns:
-// nil, if ts1 is before ts0
-// number of ticks between ts0 and ts1 otherwise, as big-endian uint64
-func evalTicksBefore64(ctx *easyfl.CallParams) []byte {
-	ts0bin, ts1bin := ctx.Arg(0), ctx.Arg(1)
-	ts0, err := TimeFromBytes(ts0bin)
-	if err != nil {
-		ctx.TracePanic("evalTicksBefore64: %v", err)
-	}
-	ts1, err := TimeFromBytes(ts1bin)
-	if err != nil {
-		ctx.TracePanic("evalTicksBefore64: %v", err)
-	}
-	diff := DiffTicks(ts1, ts0)
-	if diff < 0 {
-		// ts1 is before ts0
-		return nil
-	}
-	var ret [8]byte
-	binary.BigEndian.PutUint64(ret[:], uint64(diff))
-	return ret[:]
 }

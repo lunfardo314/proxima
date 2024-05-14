@@ -24,14 +24,13 @@ func L() *Library {
 }
 
 func InitLocally(id *IdentityData, verbose ...bool) *Library {
-	ret := newLibrary()
+	ret := newBaseLibrary()
 	if len(verbose) > 0 && verbose[0] {
 		fmt.Printf("------ Base EasyFL library:\n")
 		ret.PrintLibraryStats()
 	}
 
-	ret.embed()
-	ret.extend(id)
+	ret.upgrade0(id)
 
 	if len(verbose) > 0 && verbose[0] {
 		fmt.Printf("------ Extended EasyFL library:\n")

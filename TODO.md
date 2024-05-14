@@ -26,13 +26,13 @@ Needs love ant attention. Currently rudimentary only. Also API
   * Implementation: 0%
 * Metrics subsystem
   * Concept: Prometheus metrics for node, ledger and sequencer. Needs design.
-  * Implementation 0%
+  * Implementation 10%
 * RocksDB database
-  * Currently, Badger is used. Replace with RocksDB
+  * Currently, Badger is used. Replace it with RocksDB
 * Spam prevention
   * Concept: in head plus described in WP, 30%. Needs experimental development and design
   * Implementation: 0%
-* TxStore as separate server. 
+* TxStore as separate server 
   * Concept: currently, TxStore is behind very simple interface. The whole txStore can be put into separate 
 server to be shared by several nodes and ledger explorer. In head 60%
   * Implementation: 0%
@@ -54,25 +54,17 @@ detect replay attempts. After some time it can be deleted from the state. It mus
 ## Ledger
 General status: the Proxima ledger definitions are based on standard _EasyFL_ script library and its extensions.  
 [EasyFL](https://github.com/lunfardo314/easyfl) itself is essentially completed, however its extension in the Proxima ledger requires improvement in several areas, 
-mostly related to the upgradability of the ledger definitions.
+mostly related to the soft upgradability of the ledger definitions.
 
-* Put full ledger script library into the multi-state database 
-  - Concept: currently sources of the ledger *EasyFL* library extensions are hardcoded in the node. It is not necessary. 
-Better to put it all into the state, as immutable part of the ledger identity. In head 30%
-  - Implementation: 0%
 * Make ledger library upgradable  
   - Concept: currently any library modifications are breaking. The goal would be to make it incrementally extendable 
-with backward compatibility via soft forks.
-Library upgrades may be in the form of special immutable outputs and/or special immutable leafs in the merkle tree. In head maybe 20%.
-  - Implementation: only library components in _EasyFL_. On the node: 0%
+with backward compatibility via soft forks. Must be discussed. In head maybe 20%.
+  - Implementation: only in _EasyFL_. On the node: 0%
+
 * Make ledger library upgradable with stateless computations for new cryptography or similar
   - Concept: explore some fast, deterministic, platform-agnostic VMs (e.g. RISC V, maybe even LLVM). Only vague ideas, some 10% in head
   - Implementation: 0%
-* Make model of output locks fully in _EasyFL_ 
-  - Concept: Currently, only hardcoded list of lock constraint scripts is possible. 
-This is because the lock concept is not fully abstracted in the node. This is suboptimal not necessary. 
-All ledger constraint and account indexing logic can be expressed in _EasyFL_ 100%. The lock model must be revisited and fully abstracted in the node. 
-Then locks will be fully expandable programmable, especially in combination with ledger library upgrade feature
+
 * Delegation implementation
   * Concept: (a) enable token holders delegate capital to sequencer with possibility to revoke it. It would be a lock to the chain-constrained output.
     (b) implement sequencer part. In head 50%

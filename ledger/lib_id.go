@@ -3,7 +3,6 @@ package ledger
 import (
 	"crypto/ed25519"
 	"encoding/binary"
-	"encoding/hex"
 	"fmt"
 	"math"
 	"time"
@@ -52,7 +51,7 @@ const (
 	DefaultMaxNumberOfEndorsements              = 8
 )
 
-func newLibrary() *Library {
+func newBaseLibrary() *Library {
 	ret := &Library{
 		Library:            easyfl.NewBase(),
 		constraintByPrefix: make(map[string]*constraintRecord),
@@ -68,54 +67,6 @@ func (lib *Library) Const() LibraryConst {
 
 func (lib *Library) TimeFromRealTime(t time.Time) Time {
 	return lib.ID.TimeFromRealTime(t)
-}
-
-func (lib *Library) extendWithBaseConstants(id *IdentityData) {
-	lib.ID = id
-	// constants
-	extendBaseConstants := []*easyfl.ExtendFunction{
-		{"constInitialSupply", fmt.Sprintf("u64/%d", id.InitialSupply)},
-		{"constGenesisControllerPublicKey", fmt.Sprintf("0x%s", hex.EncodeToString(id.GenesisControllerPublicKey))},
-		{"constGenesisTimeUnix", fmt.Sprintf("u64/%d", id.GenesisTimeUnix)},
-		{"constTickDuration", fmt.Sprintf("u64/%d", int64(id.TickDuration))},
-		{"constMaxTickValuePerSlot", fmt.Sprintf("u64/%d", id.MaxTickValueInSlot)},
-		{"constBranchBonusBase", fmt.Sprintf("u64/%d", id.BranchBonusBase)},
-		{"constHalvingEpochs", fmt.Sprintf("u64/%d", id.NumHalvingEpochs)},
-		{"constChainInflationFractionBase", fmt.Sprintf("u64/%d", id.ChainInflationPerTickFractionBase)},
-		{"constChainInflationOpportunitySlots", fmt.Sprintf("u64/%d", id.ChainInflationOpportunitySlots)},
-		{"constMinimumAmountOnSequencer", fmt.Sprintf("u64/%d", id.MinimumAmountOnSequencer)},
-		{"constMaxNumberOfEndorsements", fmt.Sprintf("u64/%d", id.MaxNumberOfEndorsements)},
-
-		{"constSlotsPerLedgerEpoch", fmt.Sprintf("u64/%d", id.SlotsPerHalvingEpoch)},
-		{"constTransactionPace", fmt.Sprintf("u64/%d", id.TransactionPace)},
-		{"constTransactionPaceSequencer", fmt.Sprintf("u64/%d", id.TransactionPaceSequencer)},
-		{"constVBCost16", fmt.Sprintf("u16/%d", id.VBCost)}, // change to 64
-		{"ticksPerSlot", fmt.Sprintf("%d", id.TicksPerSlot())},
-		{"ticksPerSlot64", fmt.Sprintf("u64/%d", id.TicksPerSlot())},
-		{"timeSlotSizeBytes", fmt.Sprintf("%d", SlotByteLength)},
-		{"timestampByteSize", fmt.Sprintf("%d", TimeByteLength)},
-	}
-	lib.Extend(extendBaseConstants...)
-
-	extendBaseHelpers := []*easyfl.ExtendFunction{
-		{"mustSize", "if(equalUint(len($0), $1), $0, !!!wrong_data_size)"},
-		{"mustValidTimeTick", "if(and(mustSize($0,1),lessThan($0,ticksPerSlot)),$0,!!!wrong_timeslot)"},
-		{"mustValidTimeSlot", "mustSize($0, timeSlotSizeBytes)"},
-		{"timeSlotPrefix", "slice($0, 0, 3)"}, // first 4 bytes of any array. It is not time slot yet
-		{"timeSlotFromTimeSlotPrefix", "bitwiseAND($0, 0x3fffffff)"},
-		{"timeTickFromTimestamp", "byte($0, 4)"},
-		{"timestamp", "concat(mustValidTimeSlot($0),mustValidTimeTick($1))"},
-		// takes first 5 bytes and sets first 2 bit to zero
-		{"timestampPrefix", "bitwiseAND(slice($0, 0, 4), 0x3fffffffff)"},
-	}
-	lib.Extend(extendBaseHelpers...)
-}
-
-func (lib *Library) extend(id *IdentityData) *Library {
-	lib.extendWithBaseConstants(id)
-	lib.extendWithGeneralFunctions()
-	lib.extendWithConstraints()
-	return lib
 }
 
 func GetTestingIdentityData(seed ...int) (*IdentityData, ed25519.PrivateKey) {

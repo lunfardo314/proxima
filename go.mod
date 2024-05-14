@@ -7,7 +7,7 @@ require (
 	github.com/dominikbraun/graph v0.23.0
 	github.com/gammazero/deque v0.2.1
 	github.com/libp2p/go-libp2p v0.32.1
-	github.com/lunfardo314/easyfl v0.0.0-20240513064306-0410324a2982
+	github.com/lunfardo314/easyfl v0.0.0-20240514173449-399900bf56d7
 	github.com/lunfardo314/unitrie v0.0.0-20240508144344-d631fc1d35ff
 	github.com/multiformats/go-multiaddr v0.12.0
 	github.com/prometheus/client_golang v1.19.0
