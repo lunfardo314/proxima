@@ -25,13 +25,13 @@ Needs love ant attention. Currently rudimentary only. Also API
   * Concept: currently only manual peering is implemented. It means node's config mush be changed and node restarted. The goal would be to implement usual auto-peering
   * Implementation: 0%
 * Metrics subsystem
-  * Concept: Prometheus metrics for node, ledger and sequencer. Needs design.
-  * Implementation 10%
+  * Concept: Prometheus metrics for node, ledger and sequencer. 
+  * Implementation 10% (basic framework)
 * RocksDB database
   * Currently, Badger is used. Replace it with RocksDB
 * Spam prevention
   * Concept: in head plus described in WP, 30%. Needs experimental development and design
-  * Implementation: 0%
+  * Implementation: 0% ( except transaction pace constraints in the ledger which is fully imlemented)
 * TxStore as separate server 
   * Concept: currently, TxStore is behind very simple interface. The whole txStore can be put into separate 
 server to be shared by several nodes and ledger explorer. In head 60%
@@ -59,9 +59,9 @@ mostly related to the soft upgradability of the ledger definitions.
 * Make ledger library upgradable  
   - Concept: currently any library modifications are breaking. The goal would be to make it incrementally extendable 
 with backward compatibility via soft forks. Must be discussed. In head maybe 20%.
-  - Implementation: only in _EasyFL_. On the node: 0%
+  - Implementation: _EasyFL_ part is mostly done. On the node: implemented simple version, which allows soft forks of the network. Maybe 30%-40%
 
-* Make ledger library upgradable with stateless computations for new cryptography or similar
+* Make ledger library upgradable with stateless computations for new cryptography and similar
   - Concept: explore some fast, deterministic, platform-agnostic VMs (e.g. RISC V, maybe even LLVM). Only vague ideas, some 10% in head
   - Implementation: 0%
 
@@ -71,20 +71,24 @@ with backward compatibility via soft forks. Must be discussed. In head maybe 20%
   * Implementation: 0%
 
 * Tag-along lock implementation
-  * Concept: modification if the _chain lock_, which conditionally bypass storage deposit constraints. In head: 80%
+  * Concept: modification of the _chain lock_, which conditionally bypass storage deposit constraints. In head: 80%
   * Implementation: 0%
+
+* Practically reasonable storage deposit constrains and constants: 
+  * Concept: needs simulation
+  * Implementation: rudimentary version, maybe 10%
 
 ## Sequencer
 
 * Enhance modularity of the sequencer
-  * Concept: currently sequencer is composed of _porposer_ modules. Needs further improvement of the architecture. In head 20%
+  * Concept: currently sequencer is composed of _proposer_ modules. Needs further improvement of the architecture. In head 20%
   * Implementation: 0%
 
 * More advanced sequencer strategies with multiple endorsements
   * Concept: multi-endorsement strategies would contribute to the consensus convergence speed. In head 40%
-  * Implementation: 0%
+  * Implementation: 30% (implemented proposer strategy with 2 endorsements)
 
 ## Docs
 - Whitepaper 80-90%
-- How to run small testnet: 0% 
+- How to run small testnet: 80% 
 - Introductory video series: 0%
