@@ -31,7 +31,7 @@ Needs love ant attention. Currently rudimentary only. Also API
   * Currently, Badger is used. Replace it with RocksDB
 * Spam prevention
   * Concept: in head plus described in WP, 30%. Needs experimental development and design
-  * Implementation: 0% ( except transaction pace constraints in the ledger which is fully imlemented)
+  * Implementation: 0% ( except transaction pace constraints in the ledger which is fully implemented)
 * TxStore as separate server 
   * Concept: currently, TxStore is behind very simple interface. The whole txStore can be put into separate 
 server to be shared by several nodes and ledger explorer. In head 60%
