@@ -80,7 +80,7 @@ func (ps *Peers) SendTxBytesWithMetadataToPeer(id peer.ID, txBytes []byte, metad
 		return false
 	}
 
-	stream, err := ps.host.NewStream(ps.Ctx(), id, lppProtocolGossip)
+	stream, err := ps.host.NewStream(ps.Ctx(), id, ps.lppProtocolGossip)
 	if err != nil {
 		ps.Tracef(TraceTag, "SendTxBytesWithMetadataToPeer to %s: %v (host %s)",
 			func() any { return ShortPeerIDString(id) }, err,

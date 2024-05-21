@@ -2,6 +2,7 @@ package peering
 
 import (
 	"crypto/ed25519"
+	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 	"sync"
@@ -12,6 +13,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/peerstore"
+	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
 	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/global"
@@ -38,7 +40,6 @@ type (
 		Environment
 		mutex             sync.RWMutex
 		cfg               *Config
-		ledgerIDHash      [32]byte
 		stopHeartbeatChan chan struct{}
 		stopOnce          sync.Once
 		host              host.Host
@@ -46,6 +47,10 @@ type (
 		onReceiveTx       func(from peer.ID, txBytes []byte, mdata *txmetadata.TransactionMetadata)
 		onReceivePullTx   func(from peer.ID, txids []ledger.TransactionID)
 		onReceivePullTips func(from peer.ID)
+		// lpp protocol names
+		lppProtocolGossip    protocol.ID
+		lppProtocolPull      protocol.ID
+		lppProtocolHeartbeat protocol.ID
 	}
 
 	Peer struct {
@@ -53,7 +58,7 @@ type (
 		name                   string
 		id                     peer.ID
 		lastActivity           time.Time
-		postponeActivityUntil  time.Time
+		blockActivityUntil     time.Time
 		hasTxStore             bool
 		needsLogLostConnection bool
 	}
@@ -65,11 +70,13 @@ const (
 )
 
 const (
-	lppProtocolGossip    = "/proxima/gossip/1.0.0"
-	lppProtocolPull      = "/proxima/pull/1.0.0"
-	lppProtocolHeartbeat = "/proxima/heartbeat/1.0.0"
+	// protocol name templates. Last component is first 8 bytes of ledger constraint library hash, interpreted as bigendian uint64
+	// Peering is only possible between same versions of the ledger
+	lppProtocolGossip    = "/proxima/gossip/%d"
+	lppProtocolPull      = "/proxima/pull/%d"
+	lppProtocolHeartbeat = "/proxima/heartbeat/%d"
 
-	// blocking comms with the peer which violates the protocol
+	// blocking communications with the peer which violates the protocol
 	commBlockDuration = time.Minute
 
 	// clockTolerance is how big the difference between local and remote clocks is tolerated
@@ -100,16 +107,21 @@ func New(env Environment, cfg *Config) (*Peers, error) {
 		return nil, fmt.Errorf("unable create libp2p host: %w", err)
 	}
 
+	ledgerLibraryHash := ledger.L().Library.LibraryHash()
+	ledgerIDUint64 := binary.BigEndian.Uint64(ledgerLibraryHash[:8])
+
 	ret := &Peers{
-		Environment:       env,
-		cfg:               cfg,
-		ledgerIDHash:      ledger.L().ID.Hash(),
-		stopHeartbeatChan: make(chan struct{}),
-		host:              lppHost,
-		peers:             make(map[peer.ID]*Peer),
-		onReceiveTx:       func(_ peer.ID, _ []byte, _ *txmetadata.TransactionMetadata) {},
-		onReceivePullTx:   func(_ peer.ID, _ []ledger.TransactionID) {},
-		onReceivePullTips: func(_ peer.ID) {},
+		Environment:          env,
+		cfg:                  cfg,
+		stopHeartbeatChan:    make(chan struct{}),
+		host:                 lppHost,
+		peers:                make(map[peer.ID]*Peer),
+		onReceiveTx:          func(_ peer.ID, _ []byte, _ *txmetadata.TransactionMetadata) {},
+		onReceivePullTx:      func(_ peer.ID, _ []ledger.TransactionID) {},
+		onReceivePullTips:    func(_ peer.ID) {},
+		lppProtocolGossip:    protocol.ID(fmt.Sprintf(lppProtocolGossip, ledgerIDUint64)),
+		lppProtocolPull:      protocol.ID(fmt.Sprintf(lppProtocolPull, ledgerIDUint64)),
+		lppProtocolHeartbeat: protocol.ID(fmt.Sprintf(lppProtocolHeartbeat, ledgerIDUint64)),
 	}
 
 	for name, maddr := range cfg.KnownPeers {
@@ -181,9 +193,9 @@ func (ps *Peers) SelfID() peer.ID {
 func (ps *Peers) Run() {
 	ps.Environment.MarkWorkProcessStarted(Name)
 
-	ps.host.SetStreamHandler(lppProtocolGossip, ps.gossipStreamHandler)
-	ps.host.SetStreamHandler(lppProtocolPull, ps.pullStreamHandler)
-	ps.host.SetStreamHandler(lppProtocolHeartbeat, ps.heartbeatStreamHandler)
+	ps.host.SetStreamHandler(ps.lppProtocolGossip, ps.gossipStreamHandler)
+	ps.host.SetStreamHandler(ps.lppProtocolPull, ps.pullStreamHandler)
+	ps.host.SetStreamHandler(ps.lppProtocolHeartbeat, ps.heartbeatStreamHandler)
 
 	go ps.heartbeatLoop()
 	go func() {

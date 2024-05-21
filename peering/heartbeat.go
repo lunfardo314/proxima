@@ -14,13 +14,12 @@ import (
 const traceHeartbeat = false
 
 type heartbeatInfo struct {
-	clock        time.Time
-	ledgerIDHash [32]byte // TODO include ledger identity into the hb message. To reject peers with wrong ledger identity
-	hasTxStore   bool
+	clock      time.Time
+	hasTxStore bool
 }
 
 func heartbeatInfoFromBytes(data []byte) (heartbeatInfo, error) {
-	if len(data) != 8+1+32 {
+	if len(data) != 8+1 {
 		return heartbeatInfo{}, fmt.Errorf("heartbeatInfoFromBytes: wrong data len")
 	}
 	nano := int64(binary.BigEndian.Uint64(data[:8]))
@@ -36,7 +35,6 @@ func heartbeatInfoFromBytes(data []byte) (heartbeatInfo, error) {
 		clock:      time.Unix(0, nano),
 		hasTxStore: hasTxStore,
 	}
-	copy(ret.ledgerIDHash[:], data[9:9+32])
 	return ret, nil
 }
 
@@ -51,7 +49,6 @@ func (hi *heartbeatInfo) Bytes() []byte {
 		boolBin = 0xff
 	}
 	buf.WriteByte(boolBin)
-	buf.Write(hi.ledgerIDHash[:])
 	return buf.Bytes()
 }
 
@@ -97,18 +94,18 @@ func (p *Peer) isCommunicationOpen() bool {
 	p.mutex.RLock()
 	defer p.mutex.RUnlock()
 
-	return p.postponeActivityUntil.Before(time.Now())
+	return p.blockActivityUntil.Before(time.Now())
 }
 
-func (p *Peer) blockComms() {
+func (p *Peer) blockCommunications() {
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
 
-	p.postponeActivityUntil = time.Now().Add(commBlockDuration)
+	p.blockActivityUntil = time.Now().Add(commBlockDuration)
 }
 
-func (ps *Peers) blockCommsWithPeer(p *Peer) {
-	p.blockComms()
+func (ps *Peers) blockCommunicationsWithPeer(p *Peer) {
+	p.blockCommunications()
 	ps.Log().Warnf("blocked communications with peer %s (%s) for %v", ShortPeerIDString(p.id), p.name, commBlockDuration)
 }
 
@@ -188,25 +185,18 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 	}
 	if err != nil {
 		ps.Log().Errorf("error while reading message from peer %s: %v", id.String(), err)
-		ps.blockCommsWithPeer(p)
+		ps.blockCommunicationsWithPeer(p)
 		_ = stream.Reset()
 		return
 	}
 
-	if hbInfo.ledgerIDHash != ps.ledgerIDHash {
-		ps.Log().Warnf("incompatible ledger ID hash from %s (%s)", id.String(), p.name)
-		ps.blockCommsWithPeer(p)
-		_ = stream.Reset()
-		return
-
-	}
 	if clockOk, behind := checkRemoteClockTolerance(hbInfo.clock); !clockOk {
 		b := "ahead"
 		if behind {
 			b = "behind"
 		}
 		ps.Log().Warnf("clock of the peer %s is %s of the local clock more than tolerance interval %v", id.String(), b, clockTolerance)
-		ps.blockCommsWithPeer(p)
+		ps.blockCommunicationsWithPeer(p)
 		_ = stream.Reset()
 		return
 	}
@@ -231,16 +221,15 @@ func (ps *Peers) sendHeartbeatToPeer(id peer.ID) {
 		ps.Tracef(TraceTag, "sendHeartbeatToPeer from %s to %s", ps.host.ID().String, id.String)
 	}
 
-	stream, err := ps.host.NewStream(ps.Ctx(), id, lppProtocolHeartbeat)
+	stream, err := ps.host.NewStream(ps.Ctx(), id, ps.lppProtocolHeartbeat)
 	if err != nil {
 		return
 	}
 	defer stream.Close()
 
 	hbInfo := heartbeatInfo{
-		clock:        time.Now(),
-		ledgerIDHash: ps.ledgerIDHash,
-		hasTxStore:   true,
+		clock:      time.Now(),
+		hasTxStore: true,
 	}
 	_ = writeFrame(stream, hbInfo.Bytes())
 }
