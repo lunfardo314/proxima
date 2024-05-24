@@ -95,14 +95,14 @@ func initTestChainLockConstraint() {
 	util.AssertNoError(err)
 	util.Assertf(EqualConstraints(chainLockBack, NilChainLock), "inconsistency "+ChainLockName)
 
-	_, err = L().ParseBytecodePrefix(example.Bytes())
+	_, err = L().ParsePrefixBytecode(example.Bytes())
 	util.AssertNoError(err)
 }
 
 const chainLockConstraintSource = `
 
-func selfReferencedChainData :
-	parseBytecodeArg(
+func selfReferencedChainData : 
+	evalArgumentBytecode(
 		consumedConstraintByIndex(selfUnlockParameters),
 		#chain,
 		0

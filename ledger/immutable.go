@@ -71,7 +71,7 @@ func initTestImmutableConstraint() {
 	util.Assertf(immutableDataBack.DataBlockIndex == 5, "inconsistency "+ImmutableName)
 	util.Assertf(immutableDataBack.ChainBlockIndex == 1, "inconsistency "+ImmutableName)
 
-	_, err = L().ParseBytecodePrefix(example.Bytes())
+	_, err = L().ParsePrefixBytecode(example.Bytes())
 	util.AssertNoError(err)
 }
 
@@ -89,7 +89,7 @@ func immutable : or(
 		selfIsProducedOutput,  // produced side
 		equal(
 			// 1st byte must point to the sibling-chain constraint
-			parseBytecodePrefix(selfSiblingConstraint(byte($0,0))), 
+			parsePrefixBytecode(selfSiblingConstraint(byte($0,0))), 
 			#chain
 		), 
 		selfSiblingConstraint(byte($0,1)) // 2nd byte must point to existing non-empty block
@@ -111,7 +111,7 @@ func immutable : or(
 		),
 		equal(
 			// the 'immutable' constraint must repeat itself on the successor side too
-			parseBytecodeArg(
+			evalArgumentBytecode(
 				producedConstraintByIndex(
 					concat(
 						byte(selfSiblingUnlockBlock(byte($0,0)),0), // successor output index

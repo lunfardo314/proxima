@@ -365,7 +365,7 @@ var upgrade0WithFunctions = []*easyfl.ExtendedFunctionData{
 	// invoked output block
 	{"self", "@Path(@)"},
 	// bytecode prefix of the invoked constraint
-	{"selfBytecodePrefix", "parseBytecodePrefix(self)"},
+	{"selfBytecodePrefix", "parsePrefixBytecode(self)"},
 	{"selfIsConsumedOutput", "isPathToConsumedOutput(@)"},
 	{"selfIsProducedOutput", "isPathToProducedOutput(@)"},
 	// output index of the invocation

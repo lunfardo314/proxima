@@ -108,7 +108,7 @@ func EqualAccountIDs(a1, a2 AccountID) bool {
 }
 
 func ConstraintFromBytes(data []byte) (Constraint, error) {
-	prefix, err := L().ParseBytecodePrefix(data)
+	prefix, err := L().ParsePrefixBytecode(data)
 	if err != nil {
 		return nil, err
 	}
@@ -131,7 +131,7 @@ var AllLockNames = []string{
 }
 
 func LockFromBytes(data []byte) (Lock, error) {
-	prefix, err := L().ParseBytecodePrefix(data)
+	prefix, err := L().ParsePrefixBytecode(data)
 	if err != nil {
 		return nil, err
 	}
@@ -161,7 +161,7 @@ func LockFromSource(src string) (Lock, error) {
 }
 
 func AccountableFromBytes(data []byte) (Accountable, error) {
-	prefix, err := L().ParseBytecodePrefix(data)
+	prefix, err := L().ParsePrefixBytecode(data)
 	if err != nil {
 		return nil, err
 	}

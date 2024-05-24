@@ -79,7 +79,7 @@ func initTestStateIndexConstraint() {
 	util.Assertf(stateIndexBack.StateIndex == 314, "inconsistency "+StateIndexName)
 	util.Assertf(stateIndexBack.ChainBlockIndex == 5, "inconsistency "+StateIndexName)
 
-	_, err = L().ParseBytecodePrefix(example.Bytes())
+	_, err = L().ParsePrefixBytecode(example.Bytes())
 	util.AssertNoError(err)
 }
 

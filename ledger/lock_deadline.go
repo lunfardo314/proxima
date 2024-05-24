@@ -78,7 +78,7 @@ func initTestDeadlineLockConstraint() {
 	util.Assertf(EqualConstraints(lockBack.ConstraintMain, AddressED25519Null()), "inconsistency "+DeadlineLockName)
 	util.Assertf(EqualConstraints(lockBack.ConstraintExpiry, AddressED25519Null()), "inconsistency "+DeadlineLockName)
 
-	_, err = L().ParseBytecodePrefix(example.Bytes())
+	_, err = L().ParsePrefixBytecode(example.Bytes())
 	util.AssertNoError(err)
 }
 

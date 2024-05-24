@@ -330,7 +330,7 @@ func constraintName(binCode []byte) string {
 	if binCode[0] == 0 {
 		return "array_constraint"
 	}
-	prefix, err := ledger.L().ParseBytecodePrefix(binCode)
+	prefix, err := ledger.L().ParsePrefixBytecode(binCode)
 	if err != nil {
 		return fmt.Sprintf("unknown_constraint(%s)", easyfl.Fmt(binCode))
 	}

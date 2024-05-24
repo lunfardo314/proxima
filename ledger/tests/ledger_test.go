@@ -1204,7 +1204,7 @@ func TestGGG(t *testing.T) {
 
 	_, _, bin, err := ledger.L().CompileExpression("amount(u64/1337)")
 	require.NoError(t, err)
-	prefix, err := ledger.L().ParseBytecodePrefix(bin)
+	prefix, err := ledger.L().ParsePrefixBytecode(bin)
 	require.NoError(t, err)
 	t.Logf("bin = %s, prefix = %s", hex.EncodeToString(bin), hex.EncodeToString(prefix))
 }
