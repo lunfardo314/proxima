@@ -105,7 +105,7 @@ func MustDistributeInitialSupplyExt(stateStore global.StateStore, originPrivateK
 	util.AssertNoError(err)
 
 	err = tx.Validate(transaction.ValidateOptionWithFullContext(tx.InputLoaderFromState(rdr)))
-	util.Assertf(err == nil, "%v\n>>>>>>>>>>>>>>>>> %s\n<<<<<<<<<<<<<\n", tx.String)
+	util.Assertf(err == nil, "%v\n>>>>>>>>>>>>>>>>> %s\n<<<<<<<<<<<<<\n", err, tx.String)
 
 	nextStem := tx.FindStemProducedOutput()
 	util.Assertf(nextStem != nil, "nextStem != nil")

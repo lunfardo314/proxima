@@ -103,12 +103,12 @@ func (lib *Library) upgrade0(id *IdentityData) {
 //==================================== embedded
 
 var (
-	upgrade0EmbedFunctionsShort = []*easyfl.EmbedFunction{
+	upgrade0EmbedFunctionsShort = []*easyfl.EmbeddedFunctionData{
 		// data context access
 		{"@", 0, evalPath},
 		{"@Path", 1, evalAtPath},
 	}
-	upgrade0EmbedFunctionsLong = []*easyfl.EmbedFunction{
+	upgrade0EmbedFunctionsLong = []*easyfl.EmbeddedFunctionData{
 		{"@Array8", 2, evalAtArray8},
 		{"ArrayLength8", 1, evalNumElementsOfArray},
 		{"ticksBefore", 2, evalTicksBefore64},
@@ -120,10 +120,10 @@ var (
 func (lib *Library) upgrade0WithEmbedded() {
 	lib.UpgradeWithEmbeddedShort(upgrade0EmbedFunctionsShort...)
 	lib.UpgradeWthEmbeddedLong(upgrade0EmbedFunctionsLong...)
-	lib.UpgradeWthEmbeddedLong(&easyfl.EmbedFunction{
+	lib.UpgradeWthEmbeddedLong(&easyfl.EmbeddedFunctionData{
 		Sym:            "callLocalLibrary",
 		RequiredNumPar: -1,
-		EvalFun:        lib.evalCallLocalLibrary,
+		EmbeddedFun:    lib.evalCallLocalLibrary,
 	})
 }
 
@@ -244,8 +244,8 @@ func evalTicksBefore64(ctx *easyfl.CallParams) []byte {
 //============================================ extensions
 
 // upgrade0BaseConstants extension with base constants from ledger identity
-func upgrade0BaseConstants(id *IdentityData) []*easyfl.ExtendFunction {
-	return []*easyfl.ExtendFunction{
+func upgrade0BaseConstants(id *IdentityData) []*easyfl.ExtendedFunctionData {
+	return []*easyfl.ExtendedFunctionData{
 		{"constInitialSupply", fmt.Sprintf("u64/%d", id.InitialSupply)},
 		{"constGenesisControllerPublicKey", fmt.Sprintf("0x%s", hex.EncodeToString(id.GenesisControllerPublicKey))},
 		{"constGenesisTimeUnix", fmt.Sprintf("u64/%d", id.GenesisTimeUnix)},
@@ -269,7 +269,7 @@ func upgrade0BaseConstants(id *IdentityData) []*easyfl.ExtendFunction {
 	}
 }
 
-var upgrade0BaseHelpers = []*easyfl.ExtendFunction{
+var upgrade0BaseHelpers = []*easyfl.ExtendedFunctionData{
 	{"mustSize", "if(equalUint(len($0), $1), $0, !!!wrong_data_size)"},
 	{"mustValidTimeTick", "if(and(mustSize($0,1),lessThan($0,ticksPerSlot)),$0,!!!wrong_timeslot)"},
 	{"mustValidTimeSlot", "mustSize($0, timeSlotSizeBytes)"},
@@ -294,7 +294,7 @@ func (lib *Library) upgrade0WithExtensions(id *IdentityData) *Library {
 	return lib
 }
 
-var upgrade0WithFunctions = []*easyfl.ExtendFunction{
+var upgrade0WithFunctions = []*easyfl.ExtendedFunctionData{
 	{"pathToTransaction", fmt.Sprintf("%d", TransactionBranch)},
 	{"pathToConsumedOutputs", fmt.Sprintf("0x%s", PathToConsumedOutputs.Hex())},
 	{"pathToProducedOutputs", fmt.Sprintf("0x%s", PathToProducedOutputs.Hex())},

@@ -197,7 +197,7 @@ func validPredecessorData : and(
 
 // $0 - predecessor constraint index
 func chainPredecessorData: 
-	unwrapBytecodeArg(
+	parseBytecodeArg(
 		consumedConstraintByIndex($0),
 		selfBytecodePrefix,
 		0
@@ -220,7 +220,7 @@ func validSuccessorData : and(
 // chain successor data is computed form in the context of the consumed output
 // from the selfUnlock data
 func chainSuccessorData : 
-	unwrapBytecodeArg(
+	parseBytecodeArg(
 		producedConstraintByIndex(slice(selfUnlockParameters,0,1)),
 		selfBytecodePrefix,
 		0

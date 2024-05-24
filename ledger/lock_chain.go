@@ -102,7 +102,7 @@ func initTestChainLockConstraint() {
 const chainLockConstraintSource = `
 
 func selfReferencedChainData :
-	unwrapBytecodeArg(
+	parseBytecodeArg(
 		consumedConstraintByIndex(selfUnlockParameters),
 		#chain,
 		0

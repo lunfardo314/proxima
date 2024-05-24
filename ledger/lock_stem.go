@@ -94,7 +94,7 @@ func StemLockFromBytes(data []byte) (*StemLock, error) {
 
 const stemLockSource = `
 func _producedStem : lockConstraint(producedOutputByIndex(txStemOutputIndex))
-func _predOutputID : unwrapBytecodeArg(_producedStem, selfBytecodePrefix, 0)
+func _predOutputID : parseBytecodeArg(_producedStem, selfBytecodePrefix, 0)
 
 // $0 - predecessor output ID
 // does not require unlock parameters

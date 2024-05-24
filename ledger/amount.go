@@ -27,7 +27,7 @@ func amount: and(
 
 // utility function which extracts amount value from the output by evaluating it
 // $0 - output bytes
-func amountValue : evalBytecodeArg(@Array8($0, amountConstraintIndex), #amount,0)
+func amountValue : eval(parseBytecodeArg(@Array8($0, amountConstraintIndex), #amount,0))
 
 func selfAmountValue: amountValue(selfOutputBytes)
 
