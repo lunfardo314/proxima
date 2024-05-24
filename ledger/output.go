@@ -493,5 +493,6 @@ func (o *Output) MustHaveConstraintAnyOfAt(pos byte, names ...string) {
 // MustValidOutput checks if amount and lock constraints are as expected
 func (o *Output) MustValidOutput() {
 	o.MustHaveConstraintAnyOfAt(0, AmountConstraintName)
-	o.MustHaveConstraintAnyOfAt(1, AllLockNames...)
+	_, err := LockFromBytes(o.ConstraintAt(1))
+	util.AssertNoError(err)
 }

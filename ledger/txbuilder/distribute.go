@@ -9,8 +9,6 @@ import (
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/util"
-	"github.com/lunfardo314/proxima/util/lines"
-	"gopkg.in/yaml.v2"
 )
 
 type LockBalanceYAMLable struct {
@@ -143,31 +141,4 @@ func DistributeInitialSupplyExt(stateStore global.StateStore, originPrivateKey e
 		return nil, ledger.TransactionID{}, fmt.Errorf("DistributeInitialSupply: %v", err)
 	}
 	return ret, txid, nil
-}
-
-func InitialDistributionFromYAMLData(yamlData []byte) ([]ledger.LockBalance, error) {
-	yamlAble := make([]LockBalanceYAMLable, 0)
-	if err := yaml.Unmarshal(yamlData, &yamlAble); err != nil {
-		return nil, err
-	}
-	ret := make([]ledger.LockBalance, 0, len(yamlAble))
-	for i := range yamlAble {
-		lck, err := ledger.LockFromSource(yamlAble[i].LockString)
-		if err != nil {
-			return nil, err
-		}
-		ret = append(ret, ledger.LockBalance{
-			Lock:    lck,
-			Balance: yamlAble[i].Balance,
-		})
-	}
-	return ret, nil
-}
-
-func DistributionListToLines(lst []ledger.LockBalance, prefix ...string) *lines.Lines {
-	ret := lines.New(prefix...)
-	for i := range lst {
-		ret.Add("%s : %s", lst[i].Lock.String(), util.GoTh(lst[i].Balance))
-	}
-	return ret
 }

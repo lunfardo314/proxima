@@ -103,10 +103,6 @@ func EqualConstraints(l1, l2 Constraint) bool {
 	return bytes.Equal(l1.Bytes(), l2.Bytes())
 }
 
-func EqualAccountIDs(a1, a2 AccountID) bool {
-	return bytes.Equal(a1, a2)
-}
-
 func ConstraintFromBytes(data []byte) (Constraint, error) {
 	prefix, err := L().ParsePrefixBytecode(data)
 	if err != nil {
@@ -121,13 +117,6 @@ func ConstraintFromBytes(data []byte) (Constraint, error) {
 
 func (acc AccountID) Bytes() []byte {
 	return acc
-}
-
-var AllLockNames = []string{
-	AddressED25519Name,
-	ChainLockName,
-	StemLockName,
-	DeadlineLockName,
 }
 
 func LockFromBytes(data []byte) (Lock, error) {
@@ -148,16 +137,9 @@ func LockFromBytes(data []byte) (Lock, error) {
 		return ChainLockFromBytes(data)
 	case StemLockName:
 		return StemLockFromBytes(data)
+	default:
+		return GeneralLockFromBytes(data)
 	}
-	return nil, fmt.Errorf("not a lock constraint '%s'", name)
-}
-
-func LockFromSource(src string) (Lock, error) {
-	_, _, bytecode, err := L().CompileExpression(src)
-	if err != nil {
-		return nil, err
-	}
-	return LockFromBytes(bytecode)
 }
 
 func AccountableFromBytes(data []byte) (Accountable, error) {
