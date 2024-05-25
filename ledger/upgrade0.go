@@ -410,7 +410,7 @@ func (lib *Library) upgrade0WithGeneralFunctions() {
 func (lib *Library) upgrade0WithConstraints() {
 	addAmountConstraint(lib)
 	addAddressED25519Constraint(lib)
-	addDeadlineLockConstraint(lib)
+	//addDeadlineLockConstraint(lib)
 	addTimeLockConstraint(lib)
 	addChainConstraint(lib)
 	addStemLockConstraint(lib)
