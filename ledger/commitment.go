@@ -1,9 +1,6 @@
 package ledger
 
 import (
-	"crypto/rand"
-
-	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/unitrie/common"
 	"github.com/lunfardo314/unitrie/models/trie_blake2b"
 )
@@ -12,7 +9,7 @@ import (
 // It will be using blake2b 32-byte hash as a vector commitment method
 // in hexary radix tree, i.e. internal node has up to 16 children (kind of Patricia).
 // This is pretty optimal setup.
-// Other possibilities:
+// Other options:
 // - use 24 hash as commitment method (should be enough -> require storage)
 // - use polynomial vector commitments instead of hash function (verkle tree)
 
@@ -21,15 +18,6 @@ const (
 	TrieHashSize = trie_blake2b.HashSize256
 )
 
-var CommitmentModel = trie_blake2b.New(TrieArity, TrieHashSize)
+// TODO move to 24-byte hash commitments
 
-// RandomVCommitment for testing
-func RandomVCommitment() common.VCommitment {
-	var data [TrieHashSize]byte
-	n, err := rand.Read(data[:])
-	util.AssertNoError(err)
-	util.Assertf(n == 32, "n == 32")
-	ret, err := common.VectorCommitmentFromBytes(CommitmentModel, data[:])
-	util.AssertNoError(err)
-	return ret
-}
+var CommitmentModel = trie_blake2b.New(TrieArity, TrieHashSize)

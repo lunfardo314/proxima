@@ -328,18 +328,9 @@ func (c *APIClient) GetNodeInfo() (*global.NodeInfo, error) {
 	return global.NodeInfoFromBytes(body)
 }
 
-func (c *APIClient) GetTransferableOutputs(account ledger.Accountable, ts ledger.Time, maxOutputs ...int) ([]*ledger.OutputWithID, uint64, error) {
-	ret, err := c.GetAccountOutputs(account, func(o *ledger.Output) bool {
-		// filter out chain outputs controlled by the wallet
-		_, idx := o.ChainConstraint()
-		if idx != 0xff {
-			return false
-		}
-		if !o.Lock().UnlockableWith(account.AccountID(), ts) {
-			return false
-		}
-		return true
-	})
+// GetTransferableOutputs does the same as GetTransferableOutputs but cuts to the maximum outputs provided and returns total
+func (c *APIClient) GetTransferableOutputs(account ledger.Accountable, maxOutputs ...int) ([]*ledger.OutputWithID, uint64, error) {
+	ret, err := c.GetAccountOutputs(account)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -367,7 +358,7 @@ func (c *APIClient) MakeCompactTransaction(walletPrivateKey ed25519.PrivateKey, 
 	nowisTs := ledger.TimeNow()
 	inTotal := uint64(0)
 
-	walletOutputs, inTotal, err := c.GetTransferableOutputs(walletAccount, nowisTs, maxInputs...)
+	walletOutputs, inTotal, err := c.GetTransferableOutputs(walletAccount, maxInputs...)
 	if len(walletOutputs) <= 1 {
 		return nil, nil
 	}
@@ -413,7 +404,7 @@ func (c *APIClient) TransferFromED25519Wallet(par TransferFromED25519WalletParam
 	walletAccount := ledger.AddressED25519FromPrivateKey(par.WalletPrivateKey)
 	nowisTs := ledger.TimeNow()
 
-	walletOutputs, _, err := c.GetTransferableOutputs(walletAccount, nowisTs, par.MaxOutputs)
+	walletOutputs, _, err := c.GetTransferableOutputs(walletAccount, par.MaxOutputs)
 
 	txBytes, err := MakeTransferTransaction(MakeTransferTransactionParams{
 		Inputs:        walletOutputs,
@@ -461,7 +452,7 @@ func (c *APIClient) MakeChainOrigin(par TransferFromED25519WalletParams) (*trans
 	walletAccount := ledger.AddressED25519FromPrivateKey(par.WalletPrivateKey)
 
 	ts := ledger.TimeNow()
-	inps, totalInputs, err := c.GetTransferableOutputs(walletAccount, ts)
+	inps, totalInputs, err := c.GetTransferableOutputs(walletAccount)
 	if err != nil {
 		return nil, [32]byte{}, err
 	}

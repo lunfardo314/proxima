@@ -174,9 +174,10 @@ func (seq *Sequencer) ensureFirstMilestone() bool {
 		seq.log.Errorf("sequencer start output %s is not available: %v", startingMilestoneOutput.IDShortString(), err)
 		return false
 	}
-	if !lock.UnlockableWith(ledger.AddressED25519FromPrivateKey(seq.controllerKey).AccountID()) {
+	if !ledger.BelongsToAccount(lock, ledger.AddressED25519FromPrivateKey(seq.controllerKey)) {
 		seq.log.Errorf("provided private key does match sequencer lock %s", lock.String())
 		return false
+
 	}
 	seq.log.Infof("sequencer will start with the milestone output %s and amount %s (%s%% initial supply)",
 		startingMilestoneOutput.IDShortString(), util.GoTh(amount), util.PercentString(int(amount), int(ledger.L().ID.InitialSupply)))

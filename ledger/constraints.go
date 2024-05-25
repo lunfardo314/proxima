@@ -27,7 +27,6 @@ type (
 	Lock interface {
 		Constraint
 		Accounts() []Accountable
-		UnlockableWith(acc AccountID, ts ...Time) bool
 	}
 
 	Parser func([]byte) (Constraint, error)
@@ -168,4 +167,14 @@ func AccountableFromSource(src string) (Accountable, error) {
 		return nil, fmt.Errorf("EasyFL compile error: %v", err)
 	}
 	return AccountableFromBytes(data)
+}
+
+func BelongsToAccount(lock Lock, acc Accountable) bool {
+	accBytes := acc.Bytes()
+	for _, a := range lock.Accounts() {
+		if bytes.Equal(accBytes, a.Bytes()) {
+			return true
+		}
+	}
+	return false
 }

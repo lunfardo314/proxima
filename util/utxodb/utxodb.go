@@ -306,9 +306,7 @@ func (u *UTXODB) makeTransferInputsED25519(par *txbuilder.TransferData, desc ...
 	if err != nil {
 		return err
 	}
-	outs, err := txutils.ParseAndSortOutputData(outsData, func(o *ledger.Output) bool {
-		return o.Lock().UnlockableWith(par.SourceAccount.AccountID(), par.Timestamp)
-	}, desc...)
+	outs, err := txutils.ParseAndSortOutputData(outsData, nil, desc...)
 	if err != nil {
 		return err
 	}
@@ -358,17 +356,11 @@ func (u *UTXODB) TransferTokens(privKey ed25519.PrivateKey, targetLock ledger.Lo
 	return err
 }
 
-func (u *UTXODB) account(addr ledger.Accountable, ts ...ledger.Time) (uint64, int) {
+func (u *UTXODB) account(addr ledger.Accountable) (uint64, int) {
 	outs, err := u.StateReader().GetUTXOsLockedInAccount(addr.AccountID())
 	util.AssertNoError(err)
 	balance := uint64(0)
-	var filter func(o *ledger.Output) bool
-	if len(ts) > 0 {
-		filter = func(o *ledger.Output) bool {
-			return o.Lock().UnlockableWith(addr.AccountID(), ts[0])
-		}
-	}
-	outs1, err := txutils.ParseAndSortOutputData(outs, filter)
+	outs1, err := txutils.ParseAndSortOutputData(outs, nil)
 	util.AssertNoError(err)
 
 	for _, o := range outs1 {
@@ -379,8 +371,8 @@ func (u *UTXODB) account(addr ledger.Accountable, ts ...ledger.Time) (uint64, in
 
 // Balance returns balance of address unlockable at timestamp ts, if provided. Otherwise, all outputs taken
 // For chains, this does not include te chain-output itself
-func (u *UTXODB) Balance(addr ledger.Accountable, ts ...ledger.Time) uint64 {
-	ret, _ := u.account(addr, ts...)
+func (u *UTXODB) Balance(addr ledger.Accountable) uint64 {
+	ret, _ := u.account(addr)
 	return ret
 }
 
@@ -397,9 +389,9 @@ func (u *UTXODB) BalanceOnChain(chainID ledger.ChainID) (uint64, uint64, error) 
 	return amount, outChain.Output.Amount(), nil
 }
 
-// NumUTXOs returns number of outputs of address unlockable at timestamp ts, if provided. Otherwise, all outputs taken
-func (u *UTXODB) NumUTXOs(addr ledger.Accountable, ts ...ledger.Time) int {
-	_, ret := u.account(addr, ts...)
+// NumUTXOs returns number of outputs in the address
+func (u *UTXODB) NumUTXOs(addr ledger.Accountable) int {
+	_, ret := u.account(addr)
 	return ret
 }
 

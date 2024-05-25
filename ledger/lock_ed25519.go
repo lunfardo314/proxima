@@ -1,7 +1,6 @@
 package ledger
 
 import (
-	"bytes"
 	"crypto/ed25519"
 	"encoding/hex"
 	"fmt"
@@ -81,10 +80,6 @@ func (a AddressED25519) Clone() AddressED25519 {
 
 func (a AddressED25519) Accounts() []Accountable {
 	return []Accountable{a}
-}
-
-func (a AddressED25519) UnlockableWith(acc AccountID, _ ...Time) bool {
-	return bytes.Equal(a.AccountID(), acc)
 }
 
 func (a AddressED25519) AccountID() AccountID {

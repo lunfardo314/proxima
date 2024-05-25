@@ -1,13 +1,14 @@
 package ledger
 
 import (
-	"bytes"
 	"encoding/hex"
 	"fmt"
 
 	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/proxima/util"
 )
+
+// TODO Experimental
 
 type DeadlineLock struct {
 	Deadline         Time
@@ -47,16 +48,6 @@ func (dl *DeadlineLock) String() string {
 
 func (dl *DeadlineLock) Accounts() []Accountable {
 	return []Accountable{dl.ConstraintMain, dl.ConstraintExpiry}
-}
-
-func (dl *DeadlineLock) UnlockableWith(acc AccountID, ts ...Time) bool {
-	if len(ts) == 0 {
-		return bytes.Equal(dl.ConstraintMain.AccountID(), acc) || bytes.Equal(dl.ConstraintExpiry.AccountID(), acc)
-	}
-	if ts[0].Before(dl.Deadline) {
-		return bytes.Equal(dl.ConstraintMain.AccountID(), acc)
-	}
-	return bytes.Equal(dl.ConstraintExpiry.AccountID(), acc)
 }
 
 func (dl *DeadlineLock) Name() string {

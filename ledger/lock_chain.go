@@ -1,7 +1,6 @@
 package ledger
 
 import (
-	"bytes"
 	"encoding/hex"
 	"fmt"
 
@@ -51,10 +50,6 @@ func (cl ChainLock) Bytes() []byte {
 
 func (cl ChainLock) Accounts() []Accountable {
 	return []Accountable{cl}
-}
-
-func (cl ChainLock) UnlockableWith(acc AccountID, _ ...Time) bool {
-	return bytes.Equal(cl.AccountID(), acc)
 }
 
 func (cl ChainLock) AccountID() AccountID {

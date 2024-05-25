@@ -64,8 +64,7 @@ func runMakeChainCmd(_ *cobra.Command, args []string) {
 		os.Exit(0)
 	}
 
-	ts := ledger.TimeNow()
-	inps, totalInputs, err := glb.GetClient().GetTransferableOutputs(walletData.Account, ts)
+	inps, totalInputs, err := glb.GetClient().GetTransferableOutputs(walletData.Account)
 	glb.AssertNoError(err)
 	glb.Assertf(totalInputs >= onChainAmount+feeAmount, "not enough source balance %s", util.GoTh(totalInputs))
 

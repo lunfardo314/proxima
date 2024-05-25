@@ -43,11 +43,6 @@ func (u GeneralLock) Accounts() []Accountable {
 	panic("implement me")
 }
 
-func (u GeneralLock) UnlockableWith(acc AccountID, ts ...Time) bool {
-	//TODO implement me
-	panic("implement me")
-}
-
 func GeneralLockFromBytes(data []byte) (GeneralLock, error) {
 	if _, err := L().DecompileBytecode(data); err != nil {
 		return nil, err
