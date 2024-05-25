@@ -3,6 +3,7 @@ package ledger
 import (
 	"bytes"
 	"fmt"
+	"slices"
 
 	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/proxima/util"
@@ -136,6 +137,8 @@ func LockFromBytes(data []byte) (Lock, error) {
 		return ChainLockFromBytes(data)
 	case StemLockName:
 		return StemLockFromBytes(data)
+	case ConditionalLockName:
+		return ConditionalLockFromBytes(data)
 	default:
 		return nil, fmt.Errorf("GeneralLock not implemented")
 		//return GeneralLockFromBytes(data)
@@ -178,4 +181,24 @@ func BelongsToAccount(lock Lock, acc Accountable) bool {
 		}
 	}
 	return false
+}
+
+func EqualAccountables(a1, a2 Accountable) bool {
+	return bytes.Equal(a1.AccountID(), a2.AccountID())
+}
+
+func NoDuplicatesAccountables(acc []Accountable) []Accountable {
+	ret := make([]Accountable, 0, len(acc))
+	for _, a := range acc {
+		if util.IsNil(a) {
+			continue
+		}
+		if slices.IndexFunc(ret, func(a1 Accountable) bool {
+			return EqualAccountables(a, a1)
+		}) >= 0 {
+			continue
+		}
+		ret = append(ret, a)
+	}
+	return ret
 }
