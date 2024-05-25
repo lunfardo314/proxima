@@ -137,7 +137,8 @@ func LockFromBytes(data []byte) (Lock, error) {
 	case StemLockName:
 		return StemLockFromBytes(data)
 	default:
-		return GeneralLockFromBytes(data)
+		return nil, fmt.Errorf("GeneralLock not implemented")
+		//return GeneralLockFromBytes(data)
 	}
 }
 

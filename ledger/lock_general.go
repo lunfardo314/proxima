@@ -33,7 +33,7 @@ func (u GeneralLock) Bytes() []byte {
 func (u GeneralLock) String() string {
 	src, err := L().DecompileBytecode(u)
 	if err != nil {
-		src = fmt.Sprintf("failed decompile")
+		src = fmt.Sprintf("decompile failed")
 	}
 	return fmt.Sprintf("GeneralLock(%s) (decompile: %s)", easyfl.Fmt(u), src)
 }
