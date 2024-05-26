@@ -53,13 +53,8 @@ func runCompactCmd(_ *cobra.Command, args []string) {
 		}
 	}
 	walletData := glb.GetWalletData()
-	walletOutputs, err := glb.GetClient().GetAccountOutputs(walletData.Account, func(o *ledger.Output) bool {
-		// filter out chain outputs controlled by the wallet
-		_, idx := o.ChainConstraint()
-		if idx != 0xff {
-			return false
-		}
-		return ledger.BelongsToAccount(o.Lock(), walletData.Account)
+	walletOutputs, err := glb.GetClient().GetAccountOutputs(walletData.Account, func(_ *ledger.OutputID, o *ledger.Output) bool {
+		return o.NumConstraints() == 2
 	})
 	glb.AssertNoError(err)
 

@@ -24,7 +24,7 @@ func runChainsCmd(_ *cobra.Command, args []string) {
 	glb.InitLedgerFromNode()
 	wallet := glb.GetWalletData()
 
-	outs, err := glb.GetClient().GetAccountOutputs(wallet.Account, func(o *ledger.Output) bool {
+	outs, err := glb.GetClient().GetAccountOutputs(wallet.Account, func(_ *ledger.OutputID, o *ledger.Output) bool {
 		_, idx := o.ChainConstraint()
 		return idx != 0xff
 	})

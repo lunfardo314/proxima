@@ -330,8 +330,8 @@ func (c *APIClient) GetNodeInfo() (*global.NodeInfo, error) {
 
 // GetTransferableOutputs does the same as GetTransferableOutputs but cuts to the maximum outputs provided and returns total
 func (c *APIClient) GetTransferableOutputs(account ledger.Accountable, maxOutputs ...int) ([]*ledger.OutputWithID, uint64, error) {
-	ret, err := c.GetAccountOutputs(account, func(o *ledger.Output) bool {
-		o.
+	ret, err := c.GetAccountOutputs(account, func(_ *ledger.OutputID, o *ledger.Output) bool {
+		return o.NumConstraints() == 2
 	})
 	if err != nil {
 		return nil, 0, err

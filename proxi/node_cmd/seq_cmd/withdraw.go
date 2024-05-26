@@ -43,10 +43,8 @@ func runSeqWithdrawCmd(_ *cobra.Command, args []string) {
 	glb.Infof("amount: %s", util.GoTh(amount))
 
 	glb.Infof("querying wallet's outputs..")
-	walletOutputs, err := getClient().GetAccountOutputs(walletData.Account, func(o *ledger.Output) bool {
-		// filter out chain outputs controlled by the wallet
-		_, idx := o.ChainConstraint()
-		return idx == 0xff
+	walletOutputs, err := getClient().GetAccountOutputs(walletData.Account, func(_ *ledger.OutputID, o *ledger.Output) bool {
+		return o.NumConstraints() == 2
 	})
 	glb.AssertNoError(err)
 
