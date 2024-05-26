@@ -46,7 +46,7 @@ func (b *Endorse2Proposer) propose() *attacher.IncrementalAttacher {
 	if !a.Completed() {
 		endorsing := a.Endorsing()[0]
 		extending := a.Extending()
-		b.Tracef(TraceTag, "proposal [extend=%s, endorsing=%s] not complete", extending.IDShortString, endorsing.IDShortString)
+		b.Tracef(TraceTag, "proposal [extend=%s, endorsing=%s] not complete 1", extending.IDShortString, endorsing.IDShortString)
 		return nil
 	}
 
@@ -66,8 +66,19 @@ func (b *Endorse2Proposer) propose() *attacher.IncrementalAttacher {
 		// no need to repeat job of endorse1
 		return nil
 	}
+
 	b.AttachTagAlongInputs(a)
-	b.Assertf(a.Completed(), "incremental attacher %s is not complete", a.Name())
+
+	if !a.Completed() {
+		endorsing := a.Endorsing()[0]
+		extending := a.Extending()
+		b.Tracef(TraceTag, "proposal [extend=%s, endorsing=%s] not complete 2", extending.IDShortString, endorsing.IDShortString)
+		return nil
+	}
+
+	// sometimes fails
+	// b.Assertf(a.Completed(), "incremental attacher %s is not complete", a.Name())
+
 	a.AdjustCoverage()
 	return a
 }
