@@ -35,26 +35,29 @@ It also contains some tooling, which includes rudimentary wallet functionality.
 
 ## Highlights of the system's architecture
 
-* **Fully permissionless**, unbounded, and globally unknown set of pseudonymous participants. There is no need for any kind of permissions, registration, committee selection or voting processes.
+* **Fully permissionless**, unbounded, and globally unknown set of pseudonymous participants. Participation in the ledger as a user is equivalent to participation as "validator", it is fully open. 
+There is no need for any kind of permissions, registration, committee selection or voting processes. Nobody tracks existing participants nor a category of it.
 * **Token holders are the only actors** authorized to write to the ledger (issue transactions). No miners, no validators, no committees.
 * **Influence of the participant** is proportional to the amount of its holdings, i.e. to it's _skin-in-the-game_. 
 * **Liquidity of the token** is the only prerequisite for the system to be fully permissionless
-* **High throughput**, as a result of massive parallelism and absence of global bottlenecks
+* **Leaderless determinism**. The system operates without a consensus leader or block proposers, providing a more decentralized approach.
+* **Nash equilibrium** is achieved with the optimal strategy of **bigger ledger coverage rule** (analogous to the _longest chain rule_ in PoW blockchains).
+* Unlike in blockchains, the optimal strategy is **cooperative**, rather than **competitive**. This facilitates broad social consensus among participants
+* **High throughput**, as a result of **massive parallelism** and **absence of global bottlenecks**
 * **High level of decentralization**, probably the highest achievable in distributed ledgers 
 * **Low energy requirements**, unlike PoW. 
-* **Low cost per transaction**
-* **Leaderless determinism**. The system operates without a consensus leader or block proposers, providing a more decentralized approach.
+* **Low cost per transaction**, like PoS
 * **Asynchrony**. The architecture relies only on weak assumptions of synchronicity.
-* **Probabilistic finality**. Depends on subjective assumptions, similar to 6-block rule in Bitcoin. Normally 2-3 slots (20-30 sec) is enough. 
-Due to the determinism, strong finality is not needed to issue follow-up transactions
-* **No need for a global knowledge** of the system state, such as composition of the committee, assumptions about node weights, stakes, or other registries.
+* **Probabilistic finality**. Depends on subjective assumptions, similar to 6-block rule in Bitcoin. Normally 1-3 slots (10-30 sec) is enough. 
+Due to the determinism, strong finality is not needed to issue follow-up transactions, therefore transactions can be issued in deterministically-bundled batches
+* **No need for a global knowledge** of the system state, such as composition of the committee, assumptions about node weights/stakes, or other registries.
 * **1-tier trust assumptions**. Only token holders are involved in the process, as opposed to the multiple layers of trust required in other blockchain systems such as PoW (which includes users and miners) 
 and PoS (which includes at least users, block proposers, committee selection and committee).
 * **Absence of the deterministic global state**. Due to the non-determinism of the ledger account (a set of outputs), 
 the account cannot be used as a single global liquidity pool in the smart contract.
 * **Parallelism at the distributed consensus level**. Assets converge to their final states in parallel.
 * **Parallelism** at the node level. All transactions are processed in parallel on each node.
-* **Spamming prevention** is based on the transaction rate limits per user: at the ledger level and at the pre-ledger buffer (_memDAG_) level
+* **Spamming prevention** is based on the transaction rate limits per user (token holder): at the ledger level and at the pre-ledger buffer (_memDAG_) level
 * **Simpler than most**, except Bitcoin. The above facilitates clear and relatively simple overall concept and node architecture, 
 much simpler than most PoS systems, which are usually complex in their consensus layer and due to synchronicity requirements 
 
