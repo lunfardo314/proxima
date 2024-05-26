@@ -21,7 +21,7 @@ const (
 	MaxNumTransactionID = (MaxPayloadSize - 2) / ledger.TransactionIDLength
 
 	PullRequestTransactions = byte(iota)
-	PullRequestBrancheTips
+	PullRequestBranchTips
 )
 
 func (ps *Peers) pullStreamHandler(stream network.Stream) {
@@ -67,7 +67,7 @@ func (ps *Peers) processPullFrame(msgData []byte, p *Peer) error {
 		p.evidenceActivity(ps, "pullTx")
 		ps.onReceivePullTx(p.id, txLst)
 
-	case PullRequestBrancheTips:
+	case PullRequestBranchTips:
 		if err := decodePullBranchTipsMsg(msgData); err != nil {
 			return err
 		}
@@ -81,7 +81,7 @@ func (ps *Peers) processPullFrame(msgData []byte, p *Peer) error {
 }
 
 func (ps *Peers) sendPullTransactionsToPeer(id peer.ID, txLst ...ledger.TransactionID) {
-	stream, err := ps.host.NewStream(ps.Ctx(), id, lppProtocolPull)
+	stream, err := ps.host.NewStream(ps.Ctx(), id, ps.lppProtocolPull)
 	if err != nil {
 		return
 	}
@@ -160,11 +160,11 @@ func decodePullTransactionsMsg(data []byte) ([]ledger.TransactionID, error) {
 }
 
 func encodePullBranchTipsMsg() []byte {
-	return []byte{PullRequestBrancheTips}
+	return []byte{PullRequestBranchTips}
 }
 
 func decodePullBranchTipsMsg(data []byte) error {
-	if len(data) != 1 || data[0] != PullRequestBrancheTips {
+	if len(data) != 1 || data[0] != PullRequestBranchTips {
 		return fmt.Errorf("not a pull branch tips message")
 	}
 	return nil

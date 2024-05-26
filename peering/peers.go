@@ -71,7 +71,8 @@ const (
 
 const (
 	// protocol name templates. Last component is first 8 bytes of ledger constraint library hash, interpreted as bigendian uint64
-	// Peering is only possible between same versions of the ledger
+	// Peering is only possible between same versions of the ledger.
+	// Nodes with different versions of the ledger constraints will just ignore each other
 	lppProtocolGossip    = "/proxima/gossip/%d"
 	lppProtocolPull      = "/proxima/pull/%d"
 	lppProtocolHeartbeat = "/proxima/heartbeat/%d"
