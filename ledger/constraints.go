@@ -139,9 +139,10 @@ func LockFromBytes(data []byte) (Lock, error) {
 		return StemLockFromBytes(data)
 	case ConditionalLockName:
 		return ConditionalLockFromBytes(data)
+	case DeadlineLockName:
+		return DeadlineLockFromBytes(data)
 	default:
-		return nil, fmt.Errorf("GeneralLock not implemented")
-		//return GeneralLockFromBytes(data)
+		return nil, fmt.Errorf("unknown lock '%s'", name)
 	}
 }
 

@@ -66,6 +66,12 @@ func AddressED25519Null() AddressED25519 {
 	return make([]byte, 32)
 }
 
+func AddressED25519Random() AddressED25519 {
+	_, priv, err := ed25519.GenerateKey(nil)
+	util.AssertNoError(err)
+	return AddressED25519FromPrivateKey(priv)
+}
+
 func (a AddressED25519) source() string {
 	return fmt.Sprintf(addressED25519Template, hex.EncodeToString(a))
 }

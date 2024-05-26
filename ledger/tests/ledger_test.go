@@ -257,52 +257,6 @@ func TestTimelock(t *testing.T) {
 	})
 }
 
-//func TestDeadlineLock(t *testing.T) {
-//	u := utxodb.NewUTXODB(genesisPrivateKey, true)
-//	privKey0, pubKey0, addr0 := u.GenerateAddress(0)
-//	err := u.TokensFromFaucet(addr0, 10000)
-//	require.NoError(t, err)
-//
-//	_, pubKey1, addr1 := u.GenerateAddress(1)
-//	require.EqualValues(t, 0, u.Balance(addr1))
-//	require.EqualValues(t, 0, u.NumUTXOs(addr1))
-//
-//	ts := ledger.TimeNow()
-//
-//	par, err := u.MakeTransferInputData(privKey0, nil, ts)
-//	require.NoError(t, err)
-//	deadlineLock := ledger.NewDeadlineLock(
-//		ts.AddSlots(10),
-//		ledger.AddressED25519FromPublicKey(pubKey1),
-//		ledger.AddressED25519FromPublicKey(pubKey0),
-//	)
-//	t.Logf("deadline lock: %d bytes", len(deadlineLock.Bytes()))
-//	dis, err := ledger.L().DecompileBytecode(deadlineLock.Bytes())
-//	require.NoError(t, err)
-//	t.Logf("disassemble deadlock %s", dis)
-//	_, err = u.DoTransferTx(par.
-//		WithAmount(2000).
-//		WithTargetLock(deadlineLock),
-//	)
-//	require.NoError(t, err)
-//
-//	require.EqualValues(t, 2, u.NumUTXOs(addr0))
-//	require.EqualValues(t, 10000, u.Balance(addr0))
-//
-//	// TODO do proper deadline lock testing
-//
-//	//require.EqualValues(t, 1, u.NumUTXOs(addr0, ts.AddSlots(9)))
-//	//require.EqualValues(t, 2, u.NumUTXOs(addr0, ts.AddSlots(11)))
-//	//require.EqualValues(t, 8000, int(u.Balance(addr0, ts.AddSlots(9))))
-//	//require.EqualValues(t, 10000, int(u.Balance(addr0, ts.AddSlots(11))))
-//	//
-//	//require.EqualValues(t, 1, u.NumUTXOs(addr1))
-//	//require.EqualValues(t, 1, u.NumUTXOs(addr1, ts.AddSlots(9)))
-//	//require.EqualValues(t, 0, u.NumUTXOs(addr1, ts.AddSlots(11)))
-//	//require.EqualValues(t, 2000, int(u.Balance(addr1, ts.AddSlots(9))))
-//	//require.EqualValues(t, 0, int(u.Balance(addr1, ts.AddSlots(11))))
-//}
-
 func TestSenderAddressED25519(t *testing.T) {
 	u := utxodb.NewUTXODB(genesisPrivateKey, true)
 	privKey0, _, addr0 := u.GenerateAddress(0)
@@ -1209,4 +1163,50 @@ func TestGGG(t *testing.T) {
 	prefix, err := ledger.L().ParsePrefixBytecode(bin)
 	require.NoError(t, err)
 	t.Logf("bin = %s, prefix = %s", hex.EncodeToString(bin), hex.EncodeToString(prefix))
+}
+
+func TestDeadlineLock(t *testing.T) {
+	u := utxodb.NewUTXODB(genesisPrivateKey, true)
+	privKey0, pubKey0, addr0 := u.GenerateAddress(0)
+	err := u.TokensFromFaucet(addr0, 10000)
+	require.NoError(t, err)
+
+	_, pubKey1, addr1 := u.GenerateAddress(1)
+	require.EqualValues(t, 0, u.Balance(addr1))
+	require.EqualValues(t, 0, u.NumUTXOs(addr1))
+
+	ts := ledger.TimeNow()
+
+	par, err := u.MakeTransferInputData(privKey0, nil, ts)
+	require.NoError(t, err)
+	deadlineLock := ledger.NewDeadlineLock(
+		ts.Slot()+10,
+		ledger.AddressED25519FromPublicKey(pubKey1),
+		ledger.AddressED25519FromPublicKey(pubKey0),
+	)
+	t.Logf("deadline lock: %d bytes", len(deadlineLock.Bytes()))
+	dis, err := ledger.L().DecompileBytecode(deadlineLock.Bytes())
+	require.NoError(t, err)
+	t.Logf("disassemble deadlock %s", dis)
+	_, err = u.DoTransferTx(par.
+		WithAmount(2000).
+		WithTargetLock(deadlineLock),
+	)
+	require.NoError(t, err)
+
+	require.EqualValues(t, 2, u.NumUTXOs(addr0))
+	require.EqualValues(t, 10000, u.Balance(addr0))
+
+	// TODO proper deadline lock testing
+
+	//require.EqualValues(t, 1, u.NumUTXOs(addr0, ts.AddSlots(9)))
+	//require.EqualValues(t, 2, u.NumUTXOs(addr0, ts.AddSlots(11)))
+	//require.EqualValues(t, 8000, int(u.Balance(addr0, ts.AddSlots(9))))
+	//require.EqualValues(t, 10000, int(u.Balance(addr0, ts.AddSlots(11))))
+	//
+	//require.EqualValues(t, 1, u.NumUTXOs(addr1))
+	//require.EqualValues(t, 1, u.NumUTXOs(addr1, ts.AddSlots(9)))
+	//require.EqualValues(t, 0, u.NumUTXOs(addr1, ts.AddSlots(11)))
+	//require.EqualValues(t, 2000, int(u.Balance(addr1, ts.AddSlots(9))))
+	//require.EqualValues(t, 0, int(u.Balance(addr1, ts.AddSlots(11))))
 }
