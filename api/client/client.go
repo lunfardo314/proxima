@@ -250,8 +250,8 @@ func (c *APIClient) SubmitTransaction(txBytes []byte, trace ...bool) error {
 	return nil
 }
 
-func (c *APIClient) GetAccountOutputs(account ledger.Accountable, filter ...func(o *ledger.Output) bool) ([]*ledger.OutputWithID, error) {
-	filterFun := func(o *ledger.Output) bool { return true }
+func (c *APIClient) GetAccountOutputs(account ledger.Accountable, filter ...func(oid *ledger.OutputID, o *ledger.Output) bool) ([]*ledger.OutputWithID, error) {
+	filterFun := func(oid *ledger.OutputID, o *ledger.Output) bool { return true }
 	if len(filter) > 0 {
 		filterFun = filter[0]
 	}
@@ -330,7 +330,9 @@ func (c *APIClient) GetNodeInfo() (*global.NodeInfo, error) {
 
 // GetTransferableOutputs does the same as GetTransferableOutputs but cuts to the maximum outputs provided and returns total
 func (c *APIClient) GetTransferableOutputs(account ledger.Accountable, maxOutputs ...int) ([]*ledger.OutputWithID, uint64, error) {
-	ret, err := c.GetAccountOutputs(account)
+	ret, err := c.GetAccountOutputs(account, func(o *ledger.Output) bool {
+		o.
+	})
 	if err != nil {
 		return nil, 0, err
 	}
