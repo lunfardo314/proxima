@@ -31,7 +31,7 @@ Needs love ant attention. Currently rudimentary only. Also API
   * Currently, Badger is used. Replace it with RocksDB
 * Spam prevention
   * Concept: in head plus described in WP, 30%. Needs experimental development and design
-  * Implementation: 0% ( except transaction pace constraints in the ledger which is fully implemented)
+  * Implementation: 10% (transaction pace constraints in the ledger is fully implemented)
 * TxStore as separate server 
   * Concept: currently, TxStore is behind very simple interface. The whole txStore can be put into separate 
 server to be shared by several nodes and ledger explorer. In head 60%
@@ -58,8 +58,8 @@ mostly related to the soft upgradability of the ledger definitions.
 
 * Make ledger library upgradable  
   - Concept: currently any library modifications are breaking. The goal would be to make it incrementally extendable 
-with backward compatibility via soft forks. Must be discussed. In head maybe 20%.
-  - Implementation: _EasyFL_ part is mostly done. On the node: implemented simple version, which allows soft forks of the network. Maybe 30%-40%
+with backward compatibility via soft forks. 
+  - Implementation: _EasyFL_ part is mostly done. On the node: implemented simple version, which allows soft forks of the network. Maybe 50%
 
 * Make ledger library upgradable with stateless computations for new cryptography and similar
   - Concept: explore some fast, deterministic, platform-agnostic VMs (e.g. RISC V, maybe even LLVM). Only vague ideas, some 10% in head

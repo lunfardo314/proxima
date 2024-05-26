@@ -82,7 +82,7 @@ func initTestCommitToSiblingConstraint() {
 	util.Assertf(csBack.SiblingIndex == 2, "inconsistency "+CommitToSiblingName)
 	util.Assertf(bytes.Equal(csBack.SiblingHash, h[:]), "inconsistency "+CommitToSiblingName)
 
-	_, err = L().ParseBytecodePrefix(example.Bytes())
+	_, err = L().ParsePrefixBytecode(example.Bytes())
 	util.AssertNoError(err)
 }
 

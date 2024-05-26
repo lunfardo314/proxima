@@ -78,7 +78,7 @@ func initTestRoyaltiesED25519Constraint() {
 	util.Assertf(EqualConstraints(royaltiesBack.Address, addr0), "inconsistency "+RoyaltiesED25519Name)
 	util.Assertf(royaltiesBack.Amount == 1337, "inconsistency "+RoyaltiesED25519Name)
 
-	_, err = L().ParseBytecodePrefix(example.Bytes())
+	_, err = L().ParsePrefixBytecode(example.Bytes())
 	util.AssertNoError(err)
 }
 

@@ -3,6 +3,7 @@ package ledger
 import (
 	"bytes"
 	"fmt"
+	"slices"
 
 	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/proxima/util"
@@ -27,7 +28,6 @@ type (
 	Lock interface {
 		Constraint
 		Accounts() []Accountable
-		UnlockableWith(acc AccountID, ts ...Time) bool
 	}
 
 	Parser func([]byte) (Constraint, error)
@@ -103,12 +103,8 @@ func EqualConstraints(l1, l2 Constraint) bool {
 	return bytes.Equal(l1.Bytes(), l2.Bytes())
 }
 
-func EqualAccountIDs(a1, a2 AccountID) bool {
-	return bytes.Equal(a1, a2)
-}
-
 func ConstraintFromBytes(data []byte) (Constraint, error) {
-	prefix, err := L().ParseBytecodePrefix(data)
+	prefix, err := L().ParsePrefixBytecode(data)
 	if err != nil {
 		return nil, err
 	}
@@ -123,15 +119,8 @@ func (acc AccountID) Bytes() []byte {
 	return acc
 }
 
-var AllLockNames = []string{
-	AddressED25519Name,
-	ChainLockName,
-	StemLockName,
-	DeadlineLockName,
-}
-
 func LockFromBytes(data []byte) (Lock, error) {
-	prefix, err := L().ParseBytecodePrefix(data)
+	prefix, err := L().ParsePrefixBytecode(data)
 	if err != nil {
 		return nil, err
 	}
@@ -142,26 +131,23 @@ func LockFromBytes(data []byte) (Lock, error) {
 	switch name {
 	case AddressED25519Name:
 		return AddressED25519FromBytes(data)
-	case DeadlineLockName:
-		return DeadlineLockFromBytes(data)
+	//case DeadlineLockName:
+	//	return DeadlineLockFromBytes(data)
 	case ChainLockName:
 		return ChainLockFromBytes(data)
 	case StemLockName:
 		return StemLockFromBytes(data)
+	case ConditionalLockName:
+		return ConditionalLockFromBytes(data)
+	case DeadlineLockName:
+		return DeadlineLockFromBytes(data)
+	default:
+		return nil, fmt.Errorf("unknown lock '%s'", name)
 	}
-	return nil, fmt.Errorf("not a lock constraint '%s'", name)
-}
-
-func LockFromSource(src string) (Lock, error) {
-	_, _, bytecode, err := L().CompileExpression(src)
-	if err != nil {
-		return nil, err
-	}
-	return LockFromBytes(bytecode)
 }
 
 func AccountableFromBytes(data []byte) (Accountable, error) {
-	prefix, err := L().ParseBytecodePrefix(data)
+	prefix, err := L().ParsePrefixBytecode(data)
 	if err != nil {
 		return nil, err
 	}
@@ -186,4 +172,34 @@ func AccountableFromSource(src string) (Accountable, error) {
 		return nil, fmt.Errorf("EasyFL compile error: %v", err)
 	}
 	return AccountableFromBytes(data)
+}
+
+func BelongsToAccount(lock Lock, acc Accountable) bool {
+	accBytes := acc.Bytes()
+	for _, a := range lock.Accounts() {
+		if bytes.Equal(accBytes, a.Bytes()) {
+			return true
+		}
+	}
+	return false
+}
+
+func EqualAccountables(a1, a2 Accountable) bool {
+	return bytes.Equal(a1.AccountID(), a2.AccountID())
+}
+
+func NoDuplicatesAccountables(acc []Accountable) []Accountable {
+	ret := make([]Accountable, 0, len(acc))
+	for _, a := range acc {
+		if util.IsNil(a) {
+			continue
+		}
+		if slices.IndexFunc(ret, func(a1 Accountable) bool {
+			return EqualAccountables(a, a1)
+		}) >= 0 {
+			continue
+		}
+		ret = append(ret, a)
+	}
+	return ret
 }

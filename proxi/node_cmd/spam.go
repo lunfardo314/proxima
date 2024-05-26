@@ -145,8 +145,7 @@ func standardScenario(cfg spammerConfig) {
 		glb.Assertf(cfg.maxTransactions == 0 || txCounter < cfg.maxTransactions, "maximum transaction limit %d has been reached", cfg.maxTransactions)
 		glb.Assertf(time.Now().Before(deadline), "spam duration limit has been reached")
 
-		nowisTs := ledger.TimeNow()
-		outs, balance, err := glb.GetClient().GetTransferableOutputs(walletData.Account, nowisTs, cfg.bundleSize)
+		outs, balance, err := glb.GetClient().GetTransferableOutputs(walletData.Account, cfg.bundleSize)
 		glb.AssertNoError(err)
 
 		glb.Verbosef("Fetched inputs from account %s:\n%s", walletData.Account.String(), glb.LinesOutputsWithIDs(outs).String())
@@ -204,7 +203,7 @@ func prepareBundle(walletData glb.WalletData, cfg spammerConfig) ([][]byte, ledg
 		lastOuts = []*ledger.OutputWithID{lastOut}
 		numTx--
 	} else {
-		lastOuts, _, err = glb.GetClient().GetTransferableOutputs(walletData.Account, ledger.TimeNow(), cfg.bundleSize)
+		lastOuts, _, err = glb.GetClient().GetTransferableOutputs(walletData.Account, cfg.bundleSize)
 		glb.AssertNoError(err)
 	}
 

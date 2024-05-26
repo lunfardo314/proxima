@@ -18,7 +18,7 @@ const (
 func initCompactOutputsCmd() *cobra.Command {
 	compactCmd := &cobra.Command{
 		Use:   "compact [<max number of args. Default 100, maximum allowed 256>]",
-		Short: `compacts all non-chain outputs unlockable now into one ED25519 output`,
+		Short: `compacts up to <max number> non-chain outputs in the wallet account into one ED25519 output`,
 		Args:  cobra.MaximumNArgs(1),
 		Run:   runCompactCmd,
 	}
@@ -53,18 +53,17 @@ func runCompactCmd(_ *cobra.Command, args []string) {
 		}
 	}
 	walletData := glb.GetWalletData()
-	nowisTs := ledger.TimeNow()
 	walletOutputs, err := glb.GetClient().GetAccountOutputs(walletData.Account, func(o *ledger.Output) bool {
 		// filter out chain outputs controlled by the wallet
 		_, idx := o.ChainConstraint()
 		if idx != 0xff {
 			return false
 		}
-		return o.Lock().UnlockableWith(walletData.Account.AccountID(), nowisTs)
+		return ledger.BelongsToAccount(o.Lock(), walletData.Account)
 	})
 	glb.AssertNoError(err)
 
-	glb.Infof("%d ED25519 output(s) are unlockable now in the wallet account %s", len(walletOutputs), walletData.Account.String())
+	glb.Infof("%d ED25519 output(s) are in the wallet account %s", len(walletOutputs), walletData.Account.String())
 	if len(walletOutputs) <= 1 {
 		glb.Infof("no need for compacting")
 		os.Exit(0)

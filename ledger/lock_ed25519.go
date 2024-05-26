@@ -1,7 +1,6 @@
 package ledger
 
 import (
-	"bytes"
 	"crypto/ed25519"
 	"encoding/hex"
 	"fmt"
@@ -67,6 +66,12 @@ func AddressED25519Null() AddressED25519 {
 	return make([]byte, 32)
 }
 
+func AddressED25519Random() AddressED25519 {
+	_, priv, err := ed25519.GenerateKey(nil)
+	util.AssertNoError(err)
+	return AddressED25519FromPrivateKey(priv)
+}
+
 func (a AddressED25519) source() string {
 	return fmt.Sprintf(addressED25519Template, hex.EncodeToString(a))
 }
@@ -81,10 +86,6 @@ func (a AddressED25519) Clone() AddressED25519 {
 
 func (a AddressED25519) Accounts() []Accountable {
 	return []Accountable{a}
-}
-
-func (a AddressED25519) UnlockableWith(acc AccountID, _ ...Time) bool {
-	return bytes.Equal(a.AccountID(), acc)
 }
 
 func (a AddressED25519) AccountID() AccountID {
@@ -119,7 +120,7 @@ func initTestAddressED25519Constraint() {
 	util.AssertNoError(err)
 	util.Assertf(EqualConstraints(addrBack, AddressED25519Null()), "inconsistency "+AddressED25519Name)
 
-	_, err = L().ParseBytecodePrefix(example.Bytes())
+	_, err = L().ParsePrefixBytecode(example.Bytes())
 	util.AssertNoError(err)
 }
 

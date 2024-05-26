@@ -41,7 +41,7 @@ func _validChainInflationValue : or(
 func _checkChainInflation :
 	_validChainInflationValue(
 		predecessorInputIndexFromChainData(
-			unwrapBytecodeArg( selfSiblingConstraint($0), #chain, 0)
+			evalArgumentBytecode( selfSiblingConstraint($0), #chain, 0)
 		),
 		$1
 	)

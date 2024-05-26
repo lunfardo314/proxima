@@ -114,7 +114,7 @@ func initTestChainConstraint() {
 	util.AssertNoError(err)
 	util.Assertf(bytes.Equal(back.Bytes(), example.Bytes()), "inconsistency in "+ChainConstraintName)
 
-	_, err = L().ParseBytecodePrefix(example.Bytes())
+	_, err = L().ParsePrefixBytecode(example.Bytes())
 	util.AssertNoError(err)
 
 	chainConstraintInlineTest()
@@ -196,8 +196,8 @@ func validPredecessorData : and(
 )
 
 // $0 - predecessor constraint index
-func chainPredecessorData: 
-	unwrapBytecodeArg(
+func chainPredecessorData:
+	evalArgumentBytecode(
 		consumedConstraintByIndex($0),
 		selfBytecodePrefix,
 		0
@@ -220,7 +220,7 @@ func validSuccessorData : and(
 // chain successor data is computed form in the context of the consumed output
 // from the selfUnlock data
 func chainSuccessorData : 
-	unwrapBytecodeArg(
+	evalArgumentBytecode(
 		producedConstraintByIndex(slice(selfUnlockParameters,0,1)),
 		selfBytecodePrefix,
 		0

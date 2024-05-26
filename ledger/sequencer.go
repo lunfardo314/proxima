@@ -60,7 +60,7 @@ or(
 )
 
 // $0 chain constraint index
-func chainPredecessorInputIndex : byte(unwrapBytecodeArg(selfSiblingConstraint($0), #chain, 0),32)
+func chainPredecessorInputIndex : byte(evalArgumentBytecode(selfSiblingConstraint($0), #chain, 0),32)
 
 func zeroTickOnBranchOnly : or(
 	not(isZero(txTimeTick)),
