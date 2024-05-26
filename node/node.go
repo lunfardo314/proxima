@@ -1,6 +1,7 @@
 package node
 
 import (
+	"encoding/hex"
 	"fmt"
 	"net/http"
 	"runtime"
@@ -140,6 +141,8 @@ func (p *ProximaNode) initMultiStateLedger() {
 	// initialize global ledger object with the ledger ID data from DB
 	multistate.InitLedgerFromStore(p.multiStateDB)
 	p.Log().Infof("Ledger identity:\n%s", ledger.L().ID.Lines("       ").String())
+	h := ledger.L().LibraryHash()
+	p.Log().Infof("Ledger constraint library hash: %s", hex.EncodeToString(h[:]))
 
 	go func() {
 		// wait until others will stop
