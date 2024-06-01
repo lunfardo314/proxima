@@ -66,7 +66,8 @@ much simpler than most PoS systems, which are usually complex in their consensus
 * [TODO list](TODO.md) contains most pressing development topics with their completion status
 * here the [tutorial how to run a small Proxima testnet](tests/nodes/README.md)
 * Introductory videos:
-  * [Introduction. Principles of Nakamoto consensus](https://youtu.be/qDnjnrOJK_g)
-  * [UTXO tangle. Ledger coverage](https://youtu.be/CT0_FlW-ObM)
-  * [Cooperative consensus](https://youtu.be/7N_L6CMyRdo)
-
+  * [1. Introduction. Principles of Nakamoto consensus](https://youtu.be/qDnjnrOJK_g)
+  * [2. UTXO tangle. Ledger coverage](https://youtu.be/CT0_FlW-ObM)
+  * [3. Cooperative consensus](https://youtu.be/7N_L6CMyRdo)
+ 
+ 
