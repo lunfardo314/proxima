@@ -65,5 +65,8 @@ much simpler than most PoS systems, which are usually complex in their consensus
 * The [technical whitepaper](docs/Proxima_WP.pdf) contains detailed description of the *cooperative ledger* concept
 * [TODO list](TODO.md) contains most pressing development topics with their completion status
 * here the [tutorial how to run a small Proxima testnet](tests/nodes/README.md)
-* here will be series of introductory video presentations about Proxima **TBD**
+* Introductory videos:
+  * [Introduction. Principles of Nakamoto consensus](https://youtu.be/qDnjnrOJK_g)
+  * [UTXO tangle. Ledger coverage](https://youtu.be/CT0_FlW-ObM)
+  * [Cooperative consensus](https://youtu.be/7N_L6CMyRdo)
 
