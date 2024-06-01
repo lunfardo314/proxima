@@ -419,9 +419,8 @@ func (lib *Library) upgrade0WithConstraints() {
 	addInflationConstraint(lib)
 	addSenderED25519Constraint(lib)
 	addChainLockConstraint(lib)
-	addRoyaltiesED25519Constraint(lib)
+	//addRoyaltiesED25519Constraint(lib)
 	addImmutableConstraint(lib)
 	addCommitToSiblingConstraint(lib)
-	addStateIndexConstraint(lib)
-	addTotalAmountConstraint(lib)
+	//addTotalAmountConstraint(lib)
 }

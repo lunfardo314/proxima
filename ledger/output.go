@@ -209,9 +209,7 @@ func (o *Output) TimeLock() (uint32, bool) {
 		if idx < ConstraintIndexFirstOptionalConstraint {
 			return true
 		}
-		ret, err = TimelockFromBytes(constr)
-		if err == nil {
-			// TODO optimize parsing
+		if ret, err = TimelockFromBytes(constr); err == nil {
 			found = true
 			return false
 		}

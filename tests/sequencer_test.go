@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/core/attacher"
-	"github.com/lunfardo314/proxima/core/memdag"
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/multistate"
@@ -298,7 +297,7 @@ func Test5SequencersIdle(t *testing.T) {
 	testData.stopAndWait()
 
 	t.Logf("--------\n%s", testData.wrk.Info())
-	memdag.SaveBranchTree(testData.wrk.StateStore(), fmt.Sprintf("utangle_tree_%d", nSequencers+1))
+	multistate.SaveBranchTree(testData.wrk.StateStore(), fmt.Sprintf("utangle_tree_%d", nSequencers+1))
 	testData.saveFullDAG("utangle_full")
 }
 
@@ -439,7 +438,7 @@ func TestNSequencersTransfer(t *testing.T) {
 		}
 
 		testData.saveFullDAG(fmt.Sprintf("utangle_full_%d_1", nSequencers+1))
-		memdag.SaveBranchTree(testData.wrk.StateStore(), fmt.Sprintf("utangle_tree_%d_1", nSequencers+1))
+		multistate.SaveBranchTree(testData.wrk.StateStore(), fmt.Sprintf("utangle_tree_%d_1", nSequencers+1))
 
 		targetBalance := rdr.BalanceOf(targetAddr.AccountID())
 		require.EqualValues(t, len(par.spammedTxIDs)*sendAmount, int(targetBalance))

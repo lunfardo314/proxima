@@ -353,8 +353,6 @@ func ScanOutputs() TxValidationOption {
 		var totalAmount uint64
 		var amount ledger.Amount
 
-		// TODO inflation
-
 		var o *ledger.Output
 		path := []byte{ledger.TxOutputs, 0}
 		for i := 0; i < numOutputs; i++ {

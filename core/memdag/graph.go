@@ -15,7 +15,6 @@ import (
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/util"
-	"github.com/lunfardo314/proxima/util/set"
 )
 
 var (
@@ -233,98 +232,8 @@ func SaveGraphPastCone(vid *vertex.WrappedTx, fname string) {
 	_ = dotFile.Close()
 }
 
-func MakeGraphFromVertexSet(vertices set.Set[*vertex.WrappedTx]) graph.Graph[string, string] {
-	ret := graph.New(graph.StringHash, graph.Directed(), graph.Acyclic())
-	seqDict := make(map[ledger.ChainID]int)
-
-	vertices.ForEach(func(vid *vertex.WrappedTx) bool {
-		makeGraphNode(vid, ret, seqDict, false)
-		return true
-	})
-	vertices.ForEach(func(vid *vertex.WrappedTx) bool {
-		makeGraphEdges(vid, ret)
-		return true
-	})
-	return ret
-}
-
-func SaveGraphFromVertexSet(vertices set.Set[*vertex.WrappedTx], fname string) {
-	gr := MakeGraphFromVertexSet(vertices)
-	dotFile, _ := os.Create(fname + ".gv")
-	err := draw.DOT(gr, dotFile)
-	util.AssertNoError(err)
-	_ = dotFile.Close()
-}
-
-var _branchNodeAttributes = []func(*graph.VertexProperties){
-	fontsizeAttribute,
-	graph.VertexAttribute("colorscheme", "accent8"),
-	graph.VertexAttribute("style", "filled"),
-	graph.VertexAttribute("color", "2"),
-	graph.VertexAttribute("fillcolor", "1"),
-}
-
-func branchNodeAttributes(seqID *ledger.ChainID, coverage uint64, dict map[ledger.ChainID]int) []func(*graph.VertexProperties) {
-	if _, found := dict[*seqID]; !found {
-		dict[*seqID] = (len(dict) % 9) + 1
-	}
-	ret := make([]func(*graph.VertexProperties), len(_branchNodeAttributes))
-	copy(ret, _branchNodeAttributes)
-	ret = append(ret, graph.VertexAttribute("fillcolor", strconv.Itoa(dict[*seqID])))
-	if coverage > 0 {
-		ret = append(ret, graph.VertexAttribute("xlabel", util.GoTh(coverage)))
-	}
-	return ret
-}
-
-// TODO MakeTree and SaveBranchTree move to multistate
-
-func MakeTree(stateStore global.StateStore, slots ...int) graph.Graph[string, string] {
-	ret := graph.New(graph.StringHash, graph.Directed(), graph.Acyclic())
-
-	var branches []*multistate.BranchData
-	if len(slots) == 0 {
-		branches = multistate.FetchBranchDataMulti(stateStore, multistate.FetchAllRootRecords(stateStore)...)
-	} else {
-		branches = multistate.FetchBranchDataMulti(stateStore, multistate.FetchRootRecordsNSlotsBack(stateStore, slots[0])...)
-	}
-
-	byOid := make(map[ledger.OutputID]*multistate.BranchData)
-	idDict := make(map[ledger.ChainID]int)
-	for _, b := range branches {
-		byOid[b.Stem.ID] = b
-		txid := b.Stem.ID.TransactionID()
-		id := txid.StringShort()
-		err := ret.AddVertex(id, branchNodeAttributes(&b.SequencerID, b.LedgerCoverage, idDict)...)
-		util.AssertNoError(err)
-	}
-
-	for _, b := range branches {
-		txid := b.Stem.ID.TransactionID()
-		id := txid.StringShort()
-		stemLock, stemLockFound := b.Stem.Output.StemLock()
-		util.Assertf(stemLockFound, "stem lock not found")
-
-		if pred, ok := byOid[stemLock.PredecessorOutputID]; ok {
-			txid := pred.Stem.ID.TransactionID()
-			predID := txid.StringShort()
-			err := ret.AddEdge(id, predID)
-			util.AssertNoError(err)
-		}
-	}
-	return ret
-}
-
 func (d *MemDAG) SaveTree(fname string) {
-	SaveBranchTree(d.StateStore(), fname)
-}
-
-func SaveBranchTree(stateStore global.StateStore, fname string, slotsBack ...int) {
-	gr := MakeTree(stateStore, slotsBack...)
-	dotFile, _ := os.Create(fname + ".gv")
-	err := draw.DOT(gr, dotFile)
-	util.AssertNoError(err)
-	_ = dotFile.Close()
+	multistate.SaveBranchTree(d.StateStore(), fname)
 }
 
 func (d *MemDAG) SaveSequencerGraph(fname string) {

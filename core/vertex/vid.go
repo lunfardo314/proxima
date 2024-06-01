@@ -199,8 +199,6 @@ func WrapTxID(txid ledger.TransactionID) *WrappedTx {
 	}, txid)
 }
 
-// TODO do we need those functions just accessing vid.ID?
-
 func (vid *WrappedTx) ShortString() string {
 	var mode, status, reason string
 	flagsStr := ""

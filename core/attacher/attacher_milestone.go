@@ -166,7 +166,6 @@ func (a *milestoneAttacher) solidifyBaseline() vertex.Status {
 				}
 			},
 			VirtualTx: func(_ *vertex.VirtualTransaction) {
-				// TODO not needed.
 				a.Log().Fatalf("solidifyBaseline: unexpected virtual tx %s", a.vid.IDShortString())
 			},
 		})

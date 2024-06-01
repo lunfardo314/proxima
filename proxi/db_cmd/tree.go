@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"strconv"
 
-	"github.com/lunfardo314/proxima/core/memdag"
 	"github.com/lunfardo314/proxima/global"
+	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/spf13/cobra"
 )
@@ -44,12 +44,12 @@ func runDbTreeCmd(_ *cobra.Command, args []string) {
 
 	numSlotsBack := defaultMaxSlotsBack
 	if len(args) == 0 {
-		memdag.SaveBranchTree(glb.StateStore(), outFile, numSlotsBack)
+		multistate.SaveBranchTree(glb.StateStore(), outFile, numSlotsBack)
 	} else {
 		var err error
 		numSlotsBack, err = strconv.Atoi(args[0])
 		glb.AssertNoError(err)
-		memdag.SaveBranchTree(glb.StateStore(), outFile, numSlotsBack)
+		multistate.SaveBranchTree(glb.StateStore(), outFile, numSlotsBack)
 	}
 	glb.Infof("branch tree has been store in .DOT format in the file '%s', %d slots back", outFile, numSlotsBack)
 }

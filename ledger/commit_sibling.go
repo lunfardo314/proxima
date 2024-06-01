@@ -14,7 +14,9 @@ import (
 // referenced by $0
 // This is the way to ensure trust-less Proof Of Possession in the same transaction. When provided
 // some other output can be checked if it was committed by this constraint
+//
 // NOTE: cross-commit between two produced outputs is not possible
+// The constraint may be useful for L2 implementations
 
 type CommitToSibling struct {
 	SiblingIndex byte
