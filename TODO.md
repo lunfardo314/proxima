@@ -2,7 +2,7 @@
 
 The list contains main pressing topics not covered yet in the code. 
 
-**The list does not cover full scope of further development, it is never complete.**
+**The list does not cover full scope of further development. It is by no means complete.**
 
 ## Tooling
 * UTXO tangle visualizer
@@ -16,39 +16,41 @@ Search and explore UTXO tangle along various links, view each all kinds of trans
   - Implementation: 0%
 
 * Proxi CLI, wallet
-Needs love ant attention. Currently rudimentary only. Also API
+Needs love ant attention. Currently basic only. Also API
 
-* Docker-ize small testnets
+* Docker-ize
 
 ## Node components
 * Auto-peering
-  * Concept: currently only manual peering is implemented. It means node's config mush be changed and node restarted. The goal would be to implement usual auto-peering
+  * Concept: currently only manual peering is implemented. To adding/remove a peer, the node's config must be changed and node restarted. 
+The goal would be to implement usual auto-peering
   * Implementation: 0%
 * Metrics subsystem
   * Concept: Prometheus metrics for node, ledger and sequencer. 
   * Implementation 10% (basic framework)
 * RocksDB database
-  * Currently, Badger is used. Replace it with RocksDB
+  * Currently, Badger is used. Suboptimal. Replace it with RocksDB
 * Spam prevention
   * Concept: in head plus described in WP, 30%. Needs experimental development and design
-  * Implementation: 10% (transaction pace constraints in the ledger is fully implemented)
+  * Implementation: 10-20% (transaction pace constraints in the ledger is fully implemented)
 * TxStore as separate server 
-  * Concept: currently, TxStore is behind very simple interface. The whole txStore can be put into separate 
+  * Concept: currently, TxStore is behind a very simple interface. The whole txStore can be put into separate 
 server to be shared by several nodes and ledger explorer. In head 60%
   * Implementation: 0%
-* Multistate snapshots
+* Multi-state snapshots
   * Concept: saving multi state DB starting from given slot. Restoring it and starting node from it as a baseline. In head 70%
   * Implementation: %0
-* Multistate pruning
-  * Concept: most of the branch roots quickly become orphaned -> can be deleted from DB. In head 40%
+* Multi-state pruning
+  * Concept: most of the branch roots quickly become orphaned -> can be deleted from DB. In head 50%
   * Implementation: 0%
 * Transaction store pruning
-  * Concept: most of the transactions are not present into the final state -> can be deleted . In head 40%
+  * Concept: most of the transactions are not present into the final state -> can be deleted . In head 50%
   * Implementation: %0
 * State pruning
   * Concept: currently transaction ID of every transaction is stored in the state root. If transaction contains unspent outputs,
-it is OK and not redundant. After all outputs of the transaction are spent in the state, transaction ID is needed for some time to be able to
-detect replay attempts. After some time it can be deleted from the state. It must be deleted deterministically, i.e. the same way in all nodes
+it is OK and it is not redundant. After all outputs of the transaction are spent in the state, transaction ID is still needed for some time to be able to
+quickly detect replay attempts. After some time it becomes redundant and can be deleted from the state (trie). 
+It must be deleted deterministically, i.e. the same way in all nodes
   * Implementation: 0%
 
 ## Ledger
