@@ -26,12 +26,12 @@ More of those pre-generated private keys can be found in the file [proxima/testk
 
 **Do not use any of these private keys in your production environment!!!**
 
-To start a testnet on your computer, copy `<your_dir>/proxima/nodes/*` with subdirectories and config files to your preferred location, say `myHome/*`.
+To start a testnet on your computer, copy `<your_dir>/proxima/tests/nodes/*` with subdirectories and config files to your preferred location, say `myHome/*`.
 
 ## Create ledger identity
 To create ledger identity file make `myHome/nodes/0` the working directory and run the command: `proxi init ledger_id`.
 
-It will create a file `proxi.genesis.id` with all constants needed for the genesis ledger state, which includes the absolute
+It will create a file `proxi.genesis.id.yaml` with all constants needed for the genesis ledger state, which includes the absolute
 genesis time for the slot `0`.
 
 Copy `proxi.genesis.id` from directory `myHome/0` to the rest of node directories `myHome/1`, `myHome/2`... 
@@ -223,13 +223,13 @@ TOTAL controlled on 3 outputs: 1_000_003_742_964_766
 ```
 The following commands distribute tokens from bootstrap accounts to other 4 addresses, `200000000000000` tokens each:
 
-`proxi node transfer 200000000000000 --finality.weak -t addressED25519(0xaa401c8c6a9deacf479ab2209c07c01a27bd1eeecf0d7eaa4180b8049c6190d0)` to the wallet `1`
+`proxi node transfer 200000000000000 --finality.weak -t "addressED25519(0xaa401c8c6a9deacf479ab2209c07c01a27bd1eeecf0d7eaa4180b8049c6190d0)"` to the wallet `1`
 
-`proxi node transfer 200000000000000 --finality.weak -t addressED25519(0x62c733803a83a26d4db1ce9f22206281f64af69401da6eb26390d34e6a88c5fa)` to the wallet `2`
+`proxi node transfer 200000000000000 --finality.weak -t "addressED25519(0x62c733803a83a26d4db1ce9f22206281f64af69401da6eb26390d34e6a88c5fa)"` to the wallet `2`
 
-`proxi node transfer 200000000000000 --finality.weak -t addressED25519(0x24db3c3d477f29d558fbe6f215b0c9d198dcc878866fb60cba023ba3c3d74a03)` to the wallet `3`
+`proxi node transfer 200000000000000 --finality.weak -t "addressED25519(0x24db3c3d477f29d558fbe6f215b0c9d198dcc878866fb60cba023ba3c3d74a03)"` to the wallet `3`
 
-`proxi node transfer 200000000000000 --finality.weak -t addressED25519(0xaad6a0102e6f51834bf26b6d8367cc424cf78713f59dd3bc6d54eab23ccdee52)` to the wallet `4`
+`proxi node transfer 200000000000000 --finality.weak -t "addressED25519(0xaad6a0102e6f51834bf26b6d8367cc424cf78713f59dd3bc6d54eab23ccdee52)"` to the wallet `4`
 
 After these command we have 4 additional addresses with `200000000000000` tokens each.
 
