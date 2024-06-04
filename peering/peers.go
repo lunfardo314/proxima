@@ -46,7 +46,6 @@ type (
 		Environment
 		mutex             sync.RWMutex
 		cfg               *Config
-		stopHeartbeatChan chan struct{}
 		stopOnce          sync.Once
 		host              host.Host
 		kademliaDHT       *dht.IpfsDHT // not nil if autopeering is enabled
@@ -66,7 +65,7 @@ type (
 		mutex                  sync.RWMutex
 		name                   string
 		id                     peer.ID
-		preConfigured          bool // statically pre-configured (manual peering)
+		isPreConfigured        bool // statically pre-configured (manual peering)
 		lastActivity           time.Time
 		blockActivityUntil     time.Time
 		hasTxStore             bool
@@ -127,7 +126,6 @@ func New(env Environment, cfg *Config) (*Peers, error) {
 	ret := &Peers{
 		Environment:          env,
 		cfg:                  cfg,
-		stopHeartbeatChan:    make(chan struct{}),
 		host:                 lppHost,
 		peers:                make(map[peer.ID]*Peer),
 		onReceiveTx:          func(_ peer.ID, _ []byte, _ *txmetadata.TransactionMetadata) {},
@@ -140,13 +138,13 @@ func New(env Environment, cfg *Config) (*Peers, error) {
 	}
 
 	for name, maddr := range cfg.PreConfiguredPeers {
-		if err = ret.AddStaticPeer(maddr, name); err != nil {
+		if err = ret.addStaticPeer(maddr, name, true); err != nil {
 			return nil, err
 		}
 	}
 	env.Log().Infof("peering: number of statically pre-configured peers (manual peering): %d", len(cfg.PreConfiguredPeers))
 
-	if len(cfg.PreConfiguredPeers) < cfg.MaxPeers {
+	if ret.isAutopeeringEnabled() {
 		// autopeering enabled. The node also acts as a bootstrap node
 		if ret.kademliaDHT, err = dht.New(env.Ctx(), lppHost); err != nil {
 			return nil, err
@@ -210,7 +208,7 @@ func readPeeringConfig() (*Config, error) {
 	}
 
 	cfg.MaxPeers = viper.GetInt("peering.max_peers")
-	if cfg.MaxPeers == 0 {
+	if cfg.MaxPeers <= 0 {
 		cfg.MaxPeers = maxPeersDefault
 	}
 	return cfg, nil
@@ -237,46 +235,73 @@ func (ps *Peers) Run() {
 	ps.host.SetStreamHandler(ps.lppProtocolHeartbeat, ps.heartbeatStreamHandler)
 
 	go ps.heartbeatLoop()
-	go func() {
-		<-ps.Environment.Ctx().Done()
-		ps.Stop()
-	}()
+	if ps.isAutopeeringEnabled() {
+		go ps.autopeeringLoop()
+	}
 
-	ps.Log().Infof("libp2p host %s (self) started on %v with %d configured known peers", ShortPeerIDString(ps.host.ID()), ps.host.Addrs(), len(ps.cfg.PreConfiguredPeers))
+	ps.Log().Infof("peering: libp2p host %s (self) started on %v with %d pre-configured peers, maximum peers: %d, autopeering enbled: %v",
+		ShortPeerIDString(ps.host.ID()), ps.host.Addrs(), len(ps.cfg.PreConfiguredPeers), ps.cfg.MaxPeers, ps.isAutopeeringEnabled())
 	_ = ps.Log().Sync()
+}
+
+func (ps *Peers) isAutopeeringEnabled() bool {
+	return len(ps.cfg.PreConfiguredPeers) < ps.cfg.MaxPeers
 }
 
 func (ps *Peers) Stop() {
 	ps.stopOnce.Do(func() {
 		ps.Environment.MarkWorkProcessStopped(Name)
 
-		ps.Log().Infof("stopping libp2p host %s (self)..", ShortPeerIDString(ps.host.ID()))
+		ps.Log().Infof("peering: stopping libp2p host %s (self)..", ShortPeerIDString(ps.host.ID()))
 		_ = ps.Log().Sync()
-		close(ps.stopHeartbeatChan)
 		_ = ps.host.Close()
-		ps.Log().Infof("libp2p host %s (self) has been stopped", ShortPeerIDString(ps.host.ID()))
+		ps.Log().Infof("peering: libp2p host %s (self) has been stopped", ShortPeerIDString(ps.host.ID()))
 	})
 }
 
-// AddStaticPeer adds preconfigured peer to the list. It will never be deleted
-func (ps *Peers) AddStaticPeer(maddr multiaddr.Multiaddr, name string) error {
+// addStaticPeer adds preconfigured peer to the list. It will never be deleted
+func (ps *Peers) addStaticPeer(maddr multiaddr.Multiaddr, name string, preConfigured bool) error {
 	info, err := peer.AddrInfoFromP2pAddr(maddr)
 	if err != nil {
 		return fmt.Errorf("can't get multiaddress info: %v", err)
 	}
 
+	ps.mutex.RLock()
+	ps.host.Peerstore().AddAddr(info.ID, maddr, peerstore.PermanentAddrTTL)
+	ps.mutex.RUnlock()
+
+	ps.addPeer(info.ID, name, preConfigured)
+	return nil
+}
+
+func (ps *Peers) addPeer(id peer.ID, name string, preConfigured bool) {
 	ps.mutex.Lock()
 	defer ps.mutex.Unlock()
 
-	ps.host.Peerstore().AddAddr(info.ID, maddr, peerstore.PermanentAddrTTL)
-	if _, already := ps.peers[info.ID]; !already {
-		ps.peers[info.ID] = &Peer{
-			name:          name,
-			id:            info.ID,
-			preConfigured: true,
+	if _, already := ps.peers[id]; !already {
+		ps.peers[id] = &Peer{
+			name:            name,
+			id:              id,
+			isPreConfigured: preConfigured,
+		}
+		if preConfigured {
+			ps.Log().Infof("peering: added pre-configured peer %s ('%s')", id.String(), name)
+		} else {
+			ps.Log().Infof("peering: added dynamic peer %s", id.String())
 		}
 	}
-	return nil
+}
+
+func (ps *Peers) removeDynamicPeer(p *Peer) {
+	util.Assertf(!p.isPreConfigured, "removeDynamicPeer: must not be pre-configured")
+
+	ps.mutex.Lock()
+	defer ps.mutex.Unlock()
+
+	ps.host.Peerstore().RemovePeer(p.id)
+	delete(ps.peers, p.id)
+
+	ps.Log().Infof("peering: dropped dynamic peer %s", p.id.String())
 }
 
 func (ps *Peers) OnReceiveTxBytes(fun func(from peer.ID, txBytes []byte, metadata *txmetadata.TransactionMetadata)) {

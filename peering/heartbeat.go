@@ -109,7 +109,7 @@ func (ps *Peers) blockCommunicationsWithPeer(p *Peer) {
 	ps.Log().Warnf("blocked communications with peer %s (%s) for %v", ShortPeerIDString(p.id), p.name, commBlockDuration)
 }
 
-func (ps *Peers) NumPeers() (alive, configured int) {
+func (ps *Peers) NumPeersExt() (alive, total int) {
 	ps.mutex.RLock()
 	defer ps.mutex.RUnlock()
 
@@ -118,8 +118,15 @@ func (ps *Peers) NumPeers() (alive, configured int) {
 			alive++
 		}
 	}
-	configured = len(ps.peers)
+	total = len(ps.peers)
 	return
+}
+
+func (ps *Peers) NumPeers() int {
+	ps.mutex.RLock()
+	defer ps.mutex.RUnlock()
+
+	return len(ps.peers)
 }
 
 func (ps *Peers) logInactivityIfNeeded(id peer.ID) {
@@ -185,7 +192,7 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 	}
 	if err != nil {
 		ps.Log().Errorf("error while reading message from peer %s: %v", id.String(), err)
-		ps.blockCommunicationsWithPeer(p)
+		ps.dropPeer(p)
 		_ = stream.Reset()
 		return
 	}
@@ -196,7 +203,7 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 			b = "behind"
 		}
 		ps.Log().Warnf("clock of the peer %s is %s of the local clock more than tolerance interval %v", id.String(), b, clockTolerance)
-		ps.blockCommunicationsWithPeer(p)
+		ps.dropPeer(p)
 		_ = stream.Reset()
 		return
 	}
@@ -214,6 +221,14 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 	p.evidenceTxStore(hbInfo.hasTxStore)
 
 	util.Assertf(p.isAlive(), "isAlive")
+}
+
+func (ps *Peers) dropPeer(p *Peer) {
+	if p.isPreConfigured {
+		ps.blockCommunicationsWithPeer(p)
+	} else {
+		ps.removeDynamicPeer(p)
+	}
 }
 
 func (ps *Peers) sendHeartbeatToPeer(id peer.ID) {
@@ -247,7 +262,7 @@ func (ps *Peers) heartbeatLoop() {
 	for {
 		nowis := time.Now()
 		if nowis.After(logNumPeersDeadline) {
-			alive, configured := ps.NumPeers()
+			alive, configured := ps.NumPeersExt()
 			ps.Log().Infof("node is connected to %d peer(s) out of %d configured", alive, configured)
 			logNumPeersDeadline = nowis.Add(logNumPeersPeriod)
 		}
@@ -256,7 +271,8 @@ func (ps *Peers) heartbeatLoop() {
 			ps.sendHeartbeatToPeer(id)
 		}
 		select {
-		case <-ps.stopHeartbeatChan:
+		case <-ps.Environment.Ctx().Done():
+			ps.Log().Infof("peering: heartbeet loop stopped")
 			return
 		case <-time.After(heartbeatRate):
 		}

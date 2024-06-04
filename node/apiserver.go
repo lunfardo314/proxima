@@ -32,7 +32,7 @@ func (p *ProximaNode) stopAPIServer() {
 
 // GetNodeInfo TODO not finished
 func (p *ProximaNode) GetNodeInfo() *global.NodeInfo {
-	alivePeers, configuredPeers := p.peers.NumPeers()
+	alivePeers, configuredPeers := p.peers.NumPeersExt()
 	ret := &global.NodeInfo{
 		Name:           "a Proxima node",
 		ID:             p.peers.SelfID(),

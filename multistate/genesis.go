@@ -42,7 +42,7 @@ func genesisUpdateMutations(genesisOut, genesisStemOut *ledger.OutputWithID) *Mu
 	return ret
 }
 
-// ScanGenesisState TODO more checks
+// ScanGenesisState TODO more chebcks
 func ScanGenesisState(stateStore global.StateStore) (*ledger.IdentityData, common.VCommitment, error) {
 	var genesisRootRecord RootRecord
 
