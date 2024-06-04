@@ -225,7 +225,7 @@ func (ps *Peers) sendHeartbeatToPeer(id peer.ID) {
 	if err != nil {
 		return
 	}
-	defer stream.Close()
+	defer func() { _ = stream.Close() }()
 
 	hbInfo := heartbeatInfo{
 		clock:      time.Now(),

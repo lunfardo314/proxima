@@ -47,7 +47,7 @@ func TestBasic(t *testing.T) {
 		const hostIndex = 2
 		cfg := MakeConfigFor(5, hostIndex)
 		t.Logf("host index: %d, host port: %d", hostIndex, BeginPort+hostIndex)
-		for name, ma := range cfg.KnownPeers {
+		for name, ma := range cfg.PreConfiguredPeers {
 			t.Logf("%s : %s", name, ma.String())
 		}
 		env := global.NewDefault()

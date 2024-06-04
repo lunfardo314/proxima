@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/libp2p/go-libp2p"
-	"github.com/libp2p/go-libp2p/core/crypto"
+	libp2pcrypto "github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/peerstore"
@@ -30,10 +30,10 @@ type (
 	}
 
 	Config struct {
-		HostIDPrivateKey ed25519.PrivateKey
-		HostID           peer.ID
-		HostPort         int
-		KnownPeers       map[string]multiaddr.Multiaddr // name -> PeerAddr
+		HostIDPrivateKey   ed25519.PrivateKey
+		HostID             peer.ID
+		HostPort           int
+		PreConfiguredPeers map[string]multiaddr.Multiaddr // name -> PeerAddr. Static peers used also for bootstrap
 	}
 
 	Peers struct {
@@ -43,7 +43,7 @@ type (
 		stopHeartbeatChan chan struct{}
 		stopOnce          sync.Once
 		host              host.Host
-		peers             map[peer.ID]*Peer // except self
+		peers             map[peer.ID]*Peer // except self/host
 		onReceiveTx       func(from peer.ID, txBytes []byte, mdata *txmetadata.TransactionMetadata)
 		onReceivePullTx   func(from peer.ID, txids []ledger.TransactionID)
 		onReceivePullTips func(from peer.ID)
@@ -57,6 +57,7 @@ type (
 		mutex                  sync.RWMutex
 		name                   string
 		id                     peer.ID
+		preConfigured          bool // statically pre-configured (manual peering)
 		lastActivity           time.Time
 		blockActivityUntil     time.Time
 		hasTxStore             bool
@@ -94,7 +95,7 @@ func NewPeersDummy() *Peers {
 }
 
 func New(env Environment, cfg *Config) (*Peers, error) {
-	hostIDPrivateKey, err := crypto.UnmarshalEd25519PrivateKey(cfg.HostIDPrivateKey)
+	hostIDPrivateKey, err := libp2pcrypto.UnmarshalEd25519PrivateKey(cfg.HostIDPrivateKey)
 	if err != nil {
 		return nil, fmt.Errorf("wrong private key: %w", err)
 	}
@@ -125,17 +126,18 @@ func New(env Environment, cfg *Config) (*Peers, error) {
 		lppProtocolHeartbeat: protocol.ID(fmt.Sprintf(lppProtocolHeartbeat, ledgerIDUint64)),
 	}
 
-	for name, maddr := range cfg.KnownPeers {
+	for name, maddr := range cfg.PreConfiguredPeers {
 		if err = ret.AddPeer(maddr, name); err != nil {
 			return nil, err
 		}
 	}
+	env.Log().Infof("peering: number of statically pre-configured peers (manual peering): %d", len(cfg.PreConfiguredPeers))
 	return ret, nil
 }
 
 func readPeeringConfig() (*Config, error) {
 	cfg := &Config{
-		KnownPeers: make(map[string]multiaddr.Multiaddr),
+		PreConfiguredPeers: make(map[string]multiaddr.Multiaddr),
 	}
 	cfg.HostPort = viper.GetInt("peering.host.port")
 	if cfg.HostPort == 0 {
@@ -156,7 +158,7 @@ func readPeeringConfig() (*Config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("can't decode host ID: %v", err)
 	}
-	privKey, err := crypto.UnmarshalEd25519PrivateKey(cfg.HostIDPrivateKey)
+	privKey, err := libp2pcrypto.UnmarshalEd25519PrivateKey(cfg.HostIDPrivateKey)
 	if err != nil {
 		return nil, fmt.Errorf("UnmarshalEd25519PrivateKey: %v", err)
 	}
@@ -169,9 +171,12 @@ func readPeeringConfig() (*Config, error) {
 		return k1 < k2
 	})
 
+	if len(peerNames) == 0 {
+		return nil, fmt.Errorf("at least one peer must be pre-configured for bootstrap")
+	}
 	for _, peerName := range peerNames {
 		addrString := viper.GetString("peering.peers." + peerName)
-		if cfg.KnownPeers[peerName], err = multiaddr.NewMultiaddr(addrString); err != nil {
+		if cfg.PreConfiguredPeers[peerName], err = multiaddr.NewMultiaddr(addrString); err != nil {
 			return nil, fmt.Errorf("can't parse multiaddress: %w", err)
 		}
 	}
@@ -204,7 +209,7 @@ func (ps *Peers) Run() {
 		ps.Stop()
 	}()
 
-	ps.Log().Infof("libp2p host %s (self) started on %v with %d configured known peers", ShortPeerIDString(ps.host.ID()), ps.host.Addrs(), len(ps.cfg.KnownPeers))
+	ps.Log().Infof("libp2p host %s (self) started on %v with %d configured known peers", ShortPeerIDString(ps.host.ID()), ps.host.Addrs(), len(ps.cfg.PreConfiguredPeers))
 	_ = ps.Log().Sync()
 }
 
@@ -231,8 +236,9 @@ func (ps *Peers) AddPeer(maddr multiaddr.Multiaddr, name string) error {
 	ps.host.Peerstore().AddAddr(info.ID, maddr, peerstore.PermanentAddrTTL)
 	if _, already := ps.peers[info.ID]; !already {
 		ps.peers[info.ID] = &Peer{
-			name: name,
-			id:   info.ID,
+			name:          name,
+			id:            info.ID,
+			preConfigured: true,
 		}
 	}
 	return nil
