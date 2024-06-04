@@ -9,11 +9,14 @@ import (
 	"time"
 
 	"github.com/libp2p/go-libp2p"
-	libp2pcrypto "github.com/libp2p/go-libp2p/core/crypto"
+	dht "github.com/libp2p/go-libp2p-kad-dht"
+	p2pcrypto "github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/peerstore"
 	"github.com/libp2p/go-libp2p/core/protocol"
+	"github.com/libp2p/go-libp2p/p2p/discovery/routing"
+	p2putil "github.com/libp2p/go-libp2p/p2p/discovery/util"
 	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
 	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/global"
@@ -34,6 +37,9 @@ type (
 		HostID             peer.ID
 		HostPort           int
 		PreConfiguredPeers map[string]multiaddr.Multiaddr // name -> PeerAddr. Static peers used also for bootstrap
+		// MaxPeers if MaxPeers <= len(PreConfiguredPeers), autopeering is disabled, otherwise up to
+		// MaxPeers - len(PreConfiguredPeers) will be auto-peered
+		MaxPeers int
 	}
 
 	Peers struct {
@@ -43,6 +49,8 @@ type (
 		stopHeartbeatChan chan struct{}
 		stopOnce          sync.Once
 		host              host.Host
+		kademliaDHT       *dht.IpfsDHT // not nil if autopeering is enabled
+		routingDiscovery  *routing.RoutingDiscovery
 		peers             map[peer.ID]*Peer // except self/host
 		onReceiveTx       func(from peer.ID, txBytes []byte, mdata *txmetadata.TransactionMetadata)
 		onReceivePullTx   func(from peer.ID, txids []ledger.TransactionID)
@@ -51,6 +59,7 @@ type (
 		lppProtocolGossip    protocol.ID
 		lppProtocolPull      protocol.ID
 		lppProtocolHeartbeat protocol.ID
+		rendezvousString     string
 	}
 
 	Peer struct {
@@ -83,6 +92,9 @@ const (
 
 	// clockTolerance is how big the difference between local and remote clocks is tolerated
 	clockTolerance = 5 * time.Second // for testing only
+
+	// maxPeersDefault default value for MaxPeers
+	maxPeersDefault = 5
 )
 
 func NewPeersDummy() *Peers {
@@ -95,7 +107,7 @@ func NewPeersDummy() *Peers {
 }
 
 func New(env Environment, cfg *Config) (*Peers, error) {
-	hostIDPrivateKey, err := libp2pcrypto.UnmarshalEd25519PrivateKey(cfg.HostIDPrivateKey)
+	hostIDPrivateKey, err := p2pcrypto.UnmarshalEd25519PrivateKey(cfg.HostIDPrivateKey)
 	if err != nil {
 		return nil, fmt.Errorf("wrong private key: %w", err)
 	}
@@ -124,14 +136,30 @@ func New(env Environment, cfg *Config) (*Peers, error) {
 		lppProtocolGossip:    protocol.ID(fmt.Sprintf(lppProtocolGossip, ledgerIDUint64)),
 		lppProtocolPull:      protocol.ID(fmt.Sprintf(lppProtocolPull, ledgerIDUint64)),
 		lppProtocolHeartbeat: protocol.ID(fmt.Sprintf(lppProtocolHeartbeat, ledgerIDUint64)),
+		rendezvousString:     fmt.Sprintf("%d", ledgerIDUint64),
 	}
 
 	for name, maddr := range cfg.PreConfiguredPeers {
-		if err = ret.AddPeer(maddr, name); err != nil {
+		if err = ret.AddStaticPeer(maddr, name); err != nil {
 			return nil, err
 		}
 	}
 	env.Log().Infof("peering: number of statically pre-configured peers (manual peering): %d", len(cfg.PreConfiguredPeers))
+
+	if len(cfg.PreConfiguredPeers) < cfg.MaxPeers {
+		// autopeering enabled. The node also acts as a bootstrap node
+		if ret.kademliaDHT, err = dht.New(env.Ctx(), lppHost); err != nil {
+			return nil, err
+		}
+		if err = ret.kademliaDHT.Bootstrap(env.Ctx()); err != nil {
+			return nil, err
+		}
+		ret.routingDiscovery = routing.NewRoutingDiscovery(ret.kademliaDHT)
+		p2putil.Advertise(env.Ctx(), ret.routingDiscovery, ret.rendezvousString)
+
+		env.Log().Infof("peering: autopeering enabled with max peers = %d", cfg.MaxPeers)
+	}
+	env.Log().Infof("peering: initialized successfully")
 	return ret, nil
 }
 
@@ -158,7 +186,7 @@ func readPeeringConfig() (*Config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("can't decode host ID: %v", err)
 	}
-	privKey, err := libp2pcrypto.UnmarshalEd25519PrivateKey(cfg.HostIDPrivateKey)
+	privKey, err := p2pcrypto.UnmarshalEd25519PrivateKey(cfg.HostIDPrivateKey)
 	if err != nil {
 		return nil, fmt.Errorf("UnmarshalEd25519PrivateKey: %v", err)
 	}
@@ -179,6 +207,11 @@ func readPeeringConfig() (*Config, error) {
 		if cfg.PreConfiguredPeers[peerName], err = multiaddr.NewMultiaddr(addrString); err != nil {
 			return nil, fmt.Errorf("can't parse multiaddress: %w", err)
 		}
+	}
+
+	cfg.MaxPeers = viper.GetInt("peering.max_peers")
+	if cfg.MaxPeers == 0 {
+		cfg.MaxPeers = maxPeersDefault
 	}
 	return cfg, nil
 }
@@ -225,14 +258,16 @@ func (ps *Peers) Stop() {
 	})
 }
 
-func (ps *Peers) AddPeer(maddr multiaddr.Multiaddr, name string) error {
-	ps.mutex.Lock()
-	defer ps.mutex.Unlock()
-
+// AddStaticPeer adds preconfigured peer to the list. It will never be deleted
+func (ps *Peers) AddStaticPeer(maddr multiaddr.Multiaddr, name string) error {
 	info, err := peer.AddrInfoFromP2pAddr(maddr)
 	if err != nil {
 		return fmt.Errorf("can't get multiaddress info: %v", err)
 	}
+
+	ps.mutex.Lock()
+	defer ps.mutex.Unlock()
+
 	ps.host.Peerstore().AddAddr(info.ID, maddr, peerstore.PermanentAddrTTL)
 	if _, already := ps.peers[info.ID]; !already {
 		ps.peers[info.ID] = &Peer{
