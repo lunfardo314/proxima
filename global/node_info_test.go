@@ -39,10 +39,10 @@ func randomPeerID() peer.ID {
 func TestPeerInfo(t *testing.T) {
 	t.Run("1", func(t *testing.T) {
 		pi := &NodeInfo{
-			Name:           "peerName",
-			ID:             randomPeerID(),
-			NumStaticAlive: 5,
-			NumActivePeers: 3,
+			Name:            "peerName",
+			ID:              randomPeerID(),
+			NumStaticAlive:  5,
+			NumDynamicAlive: 3,
 		}
 		jsonData, err := json.MarshalIndent(pi, "", "  ")
 		require.NoError(t, err)
@@ -54,21 +54,25 @@ func TestPeerInfo(t *testing.T) {
 		require.EqualValues(t, pi.Name, piBack.Name)
 		require.EqualValues(t, pi.ID, piBack.ID)
 		require.EqualValues(t, pi.NumStaticAlive, piBack.NumStaticAlive)
-		require.EqualValues(t, pi.NumActivePeers, piBack.NumActivePeers)
+		require.EqualValues(t, pi.NumDynamicAlive, piBack.NumDynamicAlive)
 
 		require.True(t, util.EqualSlices(pi.Sequencers, piBack.Sequencers))
 		require.True(t, util.EqualSlices(pi.Branches, piBack.Branches))
 	})
 	t.Run("2", func(t *testing.T) {
-		branches := []ledger.TransactionID{ledger.RandomTransactionID(true, true), ledger.RandomTransactionID(true, true), ledger.RandomTransactionID(true, true)}
+		branches := []ledger.TransactionID{
+			ledger.RandomTransactionID(true),
+			ledger.RandomTransactionID(true),
+			ledger.RandomTransactionID(true),
+		}
 		sequencers := []ledger.ChainID{ledger.RandomChainID()}
 		pi := &NodeInfo{
-			Name:           "peerName",
-			ID:             randomPeerID(),
-			NumStaticAlive: 5,
-			NumActivePeers: 3,
-			Sequencers:     sequencers,
-			Branches:       branches,
+			Name:            "peerName",
+			ID:              randomPeerID(),
+			NumStaticAlive:  5,
+			NumDynamicAlive: 3,
+			Sequencers:      sequencers,
+			Branches:        branches,
 		}
 		jsonData, err := json.MarshalIndent(pi, "", "  ")
 		require.NoError(t, err)
@@ -80,7 +84,7 @@ func TestPeerInfo(t *testing.T) {
 		require.EqualValues(t, pi.Name, piBack.Name)
 		require.EqualValues(t, pi.ID, piBack.ID)
 		require.EqualValues(t, pi.NumStaticAlive, piBack.NumStaticAlive)
-		require.EqualValues(t, pi.NumActivePeers, piBack.NumActivePeers)
+		require.EqualValues(t, pi.NumDynamicAlive, piBack.NumDynamicAlive)
 
 		require.True(t, util.EqualSlices(pi.Sequencers, piBack.Sequencers))
 		require.True(t, util.EqualSlices(pi.Branches, piBack.Branches))
