@@ -4,6 +4,7 @@ import (
 	"math/rand"
 	"time"
 
+	"github.com/libp2p/go-libp2p/core/discovery"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/lunfardo314/proxima/util"
 )
@@ -25,25 +26,47 @@ func (ps *Peers) autopeeringLoop() {
 	}
 }
 
-func (ps *Peers) checkPeers() {
-	if ps.NumPeers() == ps.cfg.MaxPeers {
+func (ps *Peers) removeNotAliveDynamicPeers() {
+	ps.mutex.RLock()
+	toRemove := make([]*Peer, 0)
+	for _, p := range ps.peers {
+		if !p.isPreConfigured && p.isAlive() {
+			toRemove = append(toRemove, p)
+		}
+	}
+	ps.mutex.RUnlock()
+
+	if len(toRemove) == 0 {
 		return
 	}
-	util.Assertf(ps.NumPeers() < ps.cfg.MaxPeers, "len(ps.peers) <= ps.cfg.MaxPeers")
 
-	peerChan, err := ps.routingDiscovery.FindPeers(ps.Ctx(), ps.rendezvousString)
+	for _, p := range toRemove {
+		ps.removeDynamicPeer(p)
+	}
+}
+
+func (ps *Peers) checkPeers() {
+	ps.removeNotAliveDynamicPeers()
+	_, total := ps.NumDynamicPeers()
+
+	maxToAdd := ps.cfg.MaxDynamicPeers - total
+	if maxToAdd == 0 {
+		return
+	}
+	util.Assertf(maxToAdd > 0, "maxToAdd > 0")
+
+	peerChan, err := ps.routingDiscovery.FindPeers(ps.Ctx(), ps.rendezvousString, discovery.Limit(10))
 	if err != nil {
 		ps.Log().Errorf("peering: unexpected error while trying to discover peers")
 		return
 	}
 
-	candidates := make([]peer.AddrInfo, 0, ps.NumPeers())
+	candidates := make([]peer.AddrInfo, 0)
 	for addrInfo := range peerChan {
 		if ps.getPeer(addrInfo.ID) != nil {
 			continue
 		}
 		candidates = append(candidates, addrInfo)
-		// TODO filter out candidates just recently dropped
 	}
 	if len(candidates) == 0 {
 		return
@@ -51,8 +74,10 @@ func (ps *Peers) checkPeers() {
 	rand.Shuffle(len(candidates), func(i, j int) {
 		candidates[i], candidates[j] = candidates[j], candidates[i]
 	})
-
-	for i := range candidates {
-		ps.addPeer(candidates[i].ID, "", false)
+	if len(candidates) > maxToAdd {
+		candidates = candidates[:maxToAdd]
+	}
+	for _, a := range candidates {
+		ps.addPeer(&a, "", false)
 	}
 }

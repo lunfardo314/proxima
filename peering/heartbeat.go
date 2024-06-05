@@ -97,19 +97,17 @@ func (p *Peer) isCommunicationOpen() bool {
 	return p.blockActivityUntil.Before(time.Now())
 }
 
-func (p *Peer) blockCommunications() {
+func (ps *Peers) blockCommunicationsWithStaticPeer(p *Peer) {
+	util.Assertf(p.isPreConfigured, "p.isPreConfigured")
+
 	p.mutex.Lock()
-	defer p.mutex.Unlock()
-
 	p.blockActivityUntil = time.Now().Add(commBlockDuration)
-}
+	p.mutex.Unlock()
 
-func (ps *Peers) blockCommunicationsWithPeer(p *Peer) {
-	p.blockCommunications()
 	ps.Log().Warnf("blocked communications with peer %s (%s) for %v", ShortPeerIDString(p.id), p.name, commBlockDuration)
 }
 
-func (ps *Peers) NumPeersExt() (alive, total int) {
+func (ps *Peers) NumPeers() (alive, total int) {
 	ps.mutex.RLock()
 	defer ps.mutex.RUnlock()
 
@@ -122,11 +120,20 @@ func (ps *Peers) NumPeersExt() (alive, total int) {
 	return
 }
 
-func (ps *Peers) NumPeers() int {
+func (ps *Peers) NumDynamicPeers() (alive, total int) {
 	ps.mutex.RLock()
 	defer ps.mutex.RUnlock()
 
-	return len(ps.peers)
+	for _, p := range ps.peers {
+		if p.isPreConfigured {
+			continue
+		}
+		if p.isAlive() {
+			alive++
+		}
+	}
+	total = len(ps.peers)
+	return
 }
 
 func (ps *Peers) logInactivityIfNeeded(id peer.ID) {
@@ -225,7 +232,7 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 
 func (ps *Peers) dropPeer(p *Peer) {
 	if p.isPreConfigured {
-		ps.blockCommunicationsWithPeer(p)
+		ps.blockCommunicationsWithStaticPeer(p)
 	} else {
 		ps.removeDynamicPeer(p)
 	}
@@ -262,7 +269,7 @@ func (ps *Peers) heartbeatLoop() {
 	for {
 		nowis := time.Now()
 		if nowis.After(logNumPeersDeadline) {
-			alive, configured := ps.NumPeersExt()
+			alive, configured := ps.NumPeers()
 			ps.Log().Infof("node is connected to %d peer(s) out of %d configured", alive, configured)
 			logNumPeersDeadline = nowis.Add(logNumPeersPeriod)
 		}

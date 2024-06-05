@@ -37,9 +37,9 @@ type (
 		HostID             peer.ID
 		HostPort           int
 		PreConfiguredPeers map[string]multiaddr.Multiaddr // name -> PeerAddr. Static peers used also for bootstrap
-		// MaxPeers if MaxPeers <= len(PreConfiguredPeers), autopeering is disabled, otherwise up to
-		// MaxPeers - len(PreConfiguredPeers) will be auto-peered
-		MaxPeers int
+		// MaxDynamicPeers if MaxDynamicPeers <= len(PreConfiguredPeers), autopeering is disabled, otherwise up to
+		// MaxDynamicPeers - len(PreConfiguredPeers) will be auto-peered
+		MaxDynamicPeers int
 	}
 
 	Peers struct {
@@ -91,9 +91,6 @@ const (
 
 	// clockTolerance is how big the difference between local and remote clocks is tolerated
 	clockTolerance = 5 * time.Second // for testing only
-
-	// maxPeersDefault default value for MaxPeers
-	maxPeersDefault = 5
 )
 
 func NewPeersDummy() *Peers {
@@ -138,7 +135,7 @@ func New(env Environment, cfg *Config) (*Peers, error) {
 	}
 
 	for name, maddr := range cfg.PreConfiguredPeers {
-		if err = ret.addStaticPeer(maddr, name, true); err != nil {
+		if err = ret.addStaticPeer(maddr, name); err != nil {
 			return nil, err
 		}
 	}
@@ -155,7 +152,9 @@ func New(env Environment, cfg *Config) (*Peers, error) {
 		ret.routingDiscovery = routing.NewRoutingDiscovery(ret.kademliaDHT)
 		p2putil.Advertise(env.Ctx(), ret.routingDiscovery, ret.rendezvousString)
 
-		env.Log().Infof("peering: autopeering enabled with max peers = %d", cfg.MaxPeers)
+		env.Log().Infof("peering: autopeering is enabled with max dynamic peers = %d", cfg.MaxDynamicPeers)
+	} else {
+		env.Log().Infof("peering: autopeering is disabled")
 	}
 	env.Log().Infof("peering: initialized successfully")
 	return ret, nil
@@ -207,9 +206,9 @@ func readPeeringConfig() (*Config, error) {
 		}
 	}
 
-	cfg.MaxPeers = viper.GetInt("peering.max_peers")
-	if cfg.MaxPeers <= 0 {
-		cfg.MaxPeers = maxPeersDefault
+	cfg.MaxDynamicPeers = viper.GetInt("peering.max_dynamic_peers")
+	if cfg.MaxDynamicPeers < 0 {
+		cfg.MaxDynamicPeers = 0
 	}
 	return cfg, nil
 }
@@ -240,12 +239,12 @@ func (ps *Peers) Run() {
 	}
 
 	ps.Log().Infof("peering: libp2p host %s (self) started on %v with %d pre-configured peers, maximum peers: %d, autopeering enbled: %v",
-		ShortPeerIDString(ps.host.ID()), ps.host.Addrs(), len(ps.cfg.PreConfiguredPeers), ps.cfg.MaxPeers, ps.isAutopeeringEnabled())
+		ShortPeerIDString(ps.host.ID()), ps.host.Addrs(), len(ps.cfg.PreConfiguredPeers), ps.cfg.MaxDynamicPeers, ps.isAutopeeringEnabled())
 	_ = ps.Log().Sync()
 }
 
 func (ps *Peers) isAutopeeringEnabled() bool {
-	return len(ps.cfg.PreConfiguredPeers) < ps.cfg.MaxPeers
+	return ps.cfg.MaxDynamicPeers > 0
 }
 
 func (ps *Peers) Stop() {
@@ -260,35 +259,35 @@ func (ps *Peers) Stop() {
 }
 
 // addStaticPeer adds preconfigured peer to the list. It will never be deleted
-func (ps *Peers) addStaticPeer(maddr multiaddr.Multiaddr, name string, preConfigured bool) error {
+func (ps *Peers) addStaticPeer(maddr multiaddr.Multiaddr, name string) error {
 	info, err := peer.AddrInfoFromP2pAddr(maddr)
 	if err != nil {
 		return fmt.Errorf("can't get multiaddress info: %v", err)
 	}
 
-	ps.mutex.RLock()
-	ps.host.Peerstore().AddAddr(info.ID, maddr, peerstore.PermanentAddrTTL)
-	ps.mutex.RUnlock()
-
-	ps.addPeer(info.ID, name, preConfigured)
+	ps.addPeer(info, name, true)
 	return nil
 }
 
-func (ps *Peers) addPeer(id peer.ID, name string, preConfigured bool) {
+func (ps *Peers) addPeer(addrInfo *peer.AddrInfo, name string, preConfigured bool) {
 	ps.mutex.Lock()
 	defer ps.mutex.Unlock()
 
-	if _, already := ps.peers[id]; !already {
-		ps.peers[id] = &Peer{
-			name:            name,
-			id:              id,
-			isPreConfigured: preConfigured,
-		}
-		if preConfigured {
-			ps.Log().Infof("peering: added pre-configured peer %s ('%s')", id.String(), name)
-		} else {
-			ps.Log().Infof("peering: added dynamic peer %s", id.String())
-		}
+	if _, already := ps.peers[addrInfo.ID]; already {
+		return
+	}
+	ps.peers[addrInfo.ID] = &Peer{
+		name:            name,
+		id:              addrInfo.ID,
+		isPreConfigured: preConfigured,
+	}
+	for _, a := range addrInfo.Addrs {
+		ps.host.Peerstore().AddAddr(addrInfo.ID, a, peerstore.PermanentAddrTTL)
+	}
+	if preConfigured {
+		ps.Log().Infof("peering: added pre-configured peer %s ('%s')", addrInfo.ID.String(), name)
+	} else {
+		ps.Log().Infof("peering: added dynamic peer %s", addrInfo.ID.String())
 	}
 }
 
