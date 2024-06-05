@@ -63,7 +63,7 @@ func (ps *Peers) checkPeers() {
 
 	candidates := make([]peer.AddrInfo, 0)
 	for addrInfo := range peerChan {
-		if ps.getPeer(addrInfo.ID) != nil {
+		if addrInfo.ID == ps.host.ID() || ps.getPeer(addrInfo.ID) != nil {
 			continue
 		}
 		candidates = append(candidates, addrInfo)

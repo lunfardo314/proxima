@@ -131,8 +131,8 @@ func (ps *Peers) NumDynamicPeers() (alive, total int) {
 		if p.isAlive() {
 			alive++
 		}
+		total++
 	}
-	total = len(ps.peers)
 	return
 }
 

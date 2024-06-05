@@ -118,7 +118,7 @@ func New(env Environment, cfg *Config) (*Peers, error) {
 	}
 
 	ledgerLibraryHash := ledger.L().Library.LibraryHash()
-	ledgerIDUint64 := binary.BigEndian.Uint64(ledgerLibraryHash[:8])
+	rendezvousNumber := binary.BigEndian.Uint64(ledgerLibraryHash[:8])
 
 	ret := &Peers{
 		Environment:          env,
@@ -128,12 +128,13 @@ func New(env Environment, cfg *Config) (*Peers, error) {
 		onReceiveTx:          func(_ peer.ID, _ []byte, _ *txmetadata.TransactionMetadata) {},
 		onReceivePullTx:      func(_ peer.ID, _ []ledger.TransactionID) {},
 		onReceivePullTips:    func(_ peer.ID) {},
-		lppProtocolGossip:    protocol.ID(fmt.Sprintf(lppProtocolGossip, ledgerIDUint64)),
-		lppProtocolPull:      protocol.ID(fmt.Sprintf(lppProtocolPull, ledgerIDUint64)),
-		lppProtocolHeartbeat: protocol.ID(fmt.Sprintf(lppProtocolHeartbeat, ledgerIDUint64)),
-		rendezvousString:     fmt.Sprintf("%d", ledgerIDUint64),
+		lppProtocolGossip:    protocol.ID(fmt.Sprintf(lppProtocolGossip, rendezvousNumber)),
+		lppProtocolPull:      protocol.ID(fmt.Sprintf(lppProtocolPull, rendezvousNumber)),
+		lppProtocolHeartbeat: protocol.ID(fmt.Sprintf(lppProtocolHeartbeat, rendezvousNumber)),
+		rendezvousString:     fmt.Sprintf("%d", rendezvousNumber),
 	}
 
+	env.Log().Infof("peering: rendezvous number is %d", rendezvousNumber)
 	for name, maddr := range cfg.PreConfiguredPeers {
 		if err = ret.addStaticPeer(maddr, name); err != nil {
 			return nil, err
@@ -238,7 +239,7 @@ func (ps *Peers) Run() {
 		go ps.autopeeringLoop()
 	}
 
-	ps.Log().Infof("peering: libp2p host %s (self) started on %v with %d pre-configured peers, maximum peers: %d, autopeering enbled: %v",
+	ps.Log().Infof("peering: libp2p host %s (self) started on %v with %d pre-configured peers, maximum dynamic peers: %d, autopeering enbled: %v",
 		ShortPeerIDString(ps.host.ID()), ps.host.Addrs(), len(ps.cfg.PreConfiguredPeers), ps.cfg.MaxDynamicPeers, ps.isAutopeeringEnabled())
 	_ = ps.Log().Sync()
 }

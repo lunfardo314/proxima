@@ -136,13 +136,13 @@ func (p *ProximaNode) initMultiStateLedger() {
 	}
 	p.dbClosedWG.Add(1)
 	p.multiStateDB = badger_adaptor.New(bdb)
-	p.Log().Infof("opened multi-state DB '%s", dbname)
+	p.Log().Infof("opened multi-state DB '%s'", dbname)
 
 	// initialize global ledger object with the ledger ID data from DB
 	multistate.InitLedgerFromStore(p.multiStateDB)
-	p.Log().Infof("Ledger identity:\n%s", ledger.L().ID.Lines("       ").String())
+	p.Log().Infof("ledger identity:\n%s", ledger.L().ID.Lines("       ").String())
 	h := ledger.L().LibraryHash()
-	p.Log().Infof("Ledger constraint library hash: %s", hex.EncodeToString(h[:]))
+	p.Log().Infof("ledger constraint library hash: %s", hex.EncodeToString(h[:]))
 
 	go func() {
 		// wait until others will stop
