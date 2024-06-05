@@ -223,7 +223,9 @@ func (ps *Peers) sendHeartbeatToPeer(id peer.ID) {
 
 	stream, err := ps.host.NewStream(ps.Ctx(), id, ps.lppProtocolHeartbeat)
 	if err != nil {
-		ps.Log().Errorf("sendHeartbeatToPeer err1 %s", err)
+		if traceHeartbeat {
+			ps.Log().Errorf("sendHeartbeatToPeer err1 %s", err)
+		}
 		return
 	}
 	defer func() { _ = stream.Close() }()
@@ -234,7 +236,9 @@ func (ps *Peers) sendHeartbeatToPeer(id peer.ID) {
 	}
 	err = writeFrame(stream, hbInfo.Bytes())
 	if err != nil {
-		ps.Log().Errorf("sendHeartbeatToPeer err2 %s", err)
+		if traceHeartbeat {
+			ps.Log().Errorf("sendHeartbeatToPeer err2 %s", err)
+		}
 		return
 	}
 }
