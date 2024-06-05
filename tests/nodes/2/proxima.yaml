@@ -11,17 +11,17 @@ peering:
     # host ID is derived from the host ID public key. 
     id: 12D3KooWGpPKLTg4srCokDmdRZefCUQtVnzuaRzcJxZtBxUAkmy2
     # port to connect from other peers
-    port: 4002
+    port: 4000
 
   # configuration of known peers (also known as 'manual peering').
   # Each known peer is specified as a pair <name>: <multiaddr>, where:
   # - <name> is unique mnemonic name used for convenience locally
   # - <multiaddr> is the libp2p multi-address in the form '/ip4/<IPaddr ir URL>/<port>/tcp/p2p/<hostID>'
   peers:
-    peer0: /ip4/127.0.0.1/tcp/4000/p2p/12D3KooWL32QkXc8ZuraMJkLaoZjRXBkJVjRz7sxGWYwmzBFig3M
-    peer1: /ip4/127.0.0.1/tcp/4001/p2p/12D3KooWT1MQM1kXKRaj6j9xjzVzUCWcrzihnVicepn82dTDkNYM
-    peer3: /ip4/127.0.0.1/tcp/4003/p2p/12D3KooWA6UDkW8kNfSxXRT8uy2uyA27HdH4rwBdWN51JNhJEGGu
-    peer4: /ip4/127.0.0.1/tcp/4004/p2p/12D3KooWNEq1PFnwWLLwVSbHRrqzBav2QVkGhrbVoo4LXnxokGY2	
+    peer0: /ip4/172.16.238.10/tcp/4000/p2p/12D3KooWL32QkXc8ZuraMJkLaoZjRXBkJVjRz7sxGWYwmzBFig3M
+    peer1: /ip4/172.16.238.11/tcp/4000/p2p/12D3KooWT1MQM1kXKRaj6j9xjzVzUCWcrzihnVicepn82dTDkNYM
+    peer3: /ip4/172.16.238.13/tcp/4000/p2p/12D3KooWA6UDkW8kNfSxXRT8uy2uyA27HdH4rwBdWN51JNhJEGGu
+    peer4: /ip4/172.16.238.14/tcp/4000/p2p/12D3KooWNEq1PFnwWLLwVSbHRrqzBav2QVkGhrbVoo4LXnxokGY2	
 
 # Node's API config
 api:
