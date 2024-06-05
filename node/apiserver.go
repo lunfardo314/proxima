@@ -32,18 +32,17 @@ func (p *ProximaNode) stopAPIServer() {
 
 // GetNodeInfo TODO not finished
 func (p *ProximaNode) GetNodeInfo() *global.NodeInfo {
-	alivePeers, configuredPeers := p.peers.NumPeers()
+	aliveStaticPeers, aliveDynamicPeers := p.peers.NumAlive()
+
 	ret := &global.NodeInfo{
-		Name:           "a Proxima node",
-		ID:             p.peers.SelfID(),
-		NumStaticPeers: uint16(configuredPeers),
-		NumActivePeers: uint16(alivePeers),
-		Sequencers:     make([]ledger.ChainID, len(p.Sequencers)),
-		Branches:       make([]ledger.TransactionID, 0),
+		Name:            "a Proxima node",
+		ID:              p.peers.SelfID(),
+		NumStaticAlive:  uint16(aliveStaticPeers),
+		NumDynamicAlive: uint16(aliveDynamicPeers),
+		Sequencers:      make([]ledger.ChainID, len(p.Sequencers)),
+		Branches:        make([]ledger.TransactionID, 0),
 	}
-	//for i := range p.Sequencers {
-	//	ret.Sequencers[i] = *p.Sequencers[i].ID()
-	//}
+
 	return ret
 }
 

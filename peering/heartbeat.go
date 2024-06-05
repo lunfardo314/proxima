@@ -76,8 +76,7 @@ func (p *Peer) evidenceActivity(ps *Peers, srcMsg string) {
 	defer p.mutex.Unlock()
 
 	if !p._isAlive() {
-		ps.Log().Infof("libp2p host %s (self) connected to peer %s (%s) (%s)",
-			ShortPeerIDString(ps.host.ID()), ShortPeerIDString(p.id), p.name, srcMsg)
+		ps.Log().Infof("peering: connected to peer %s (%s) (%s)", ShortPeerIDString(p.id), p.name, srcMsg)
 	}
 	p.lastActivity = time.Now()
 	p.needsLogLostConnection = true
@@ -107,31 +106,24 @@ func (ps *Peers) blockCommunicationsWithStaticPeer(p *Peer) {
 	ps.Log().Warnf("blocked communications with peer %s (%s) for %v", ShortPeerIDString(p.id), p.name, commBlockDuration)
 }
 
-func (ps *Peers) NumPeers() (alive, total int) {
-	ps.mutex.RLock()
-	defer ps.mutex.RUnlock()
-
-	for _, p := range ps.peers {
-		if p.isAlive() {
-			alive++
-		}
-	}
-	total = len(ps.peers)
-	return
+func (ps *Peers) MaxPeers() (preConfigured int, maxDynamicPeers int) {
+	return len(ps.cfg.PreConfiguredPeers), ps.cfg.MaxDynamicPeers
 }
 
-func (ps *Peers) NumDynamicPeers() (alive, total int) {
+func (ps *Peers) NumAlive() (aliveStatic, aliveDynamic int) {
 	ps.mutex.RLock()
 	defer ps.mutex.RUnlock()
 
 	for _, p := range ps.peers {
 		if p.isPreConfigured {
-			continue
+			if p.isAlive() {
+				aliveStatic++
+			}
+		} else {
+			if p.isAlive() {
+				aliveDynamic++
+			}
 		}
-		if p.isAlive() {
-			alive++
-		}
-		total++
 	}
 	return
 }
@@ -180,7 +172,7 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 	p := ps.getPeer(id)
 	if p == nil {
 		// peer not found
-		ps.Log().Warnf("unknown peer %s", id.String())
+		ps.Tracef(TraceTag, "unknown peer %s", id.String())
 		_ = stream.Reset()
 		return
 	}
@@ -269,8 +261,10 @@ func (ps *Peers) heartbeatLoop() {
 	for {
 		nowis := time.Now()
 		if nowis.After(logNumPeersDeadline) {
-			alive, configured := ps.NumPeers()
-			ps.Log().Infof("node is connected to %d peer(s) out of %d configured", alive, configured)
+			aliveStatic, aliveDynamic := ps.NumAlive()
+			ps.Log().Infof("peering: node is connected to %d peer(s). Static: %d, dynamic: %d, pre-configured: %d, max dynamic: %d",
+				aliveStatic+aliveDynamic, aliveStatic, aliveDynamic, len(ps.cfg.PreConfiguredPeers), ps.cfg.MaxDynamicPeers)
+
 			logNumPeersDeadline = nowis.Add(logNumPeersPeriod)
 		}
 		for _, id := range ps.getPeerIDsWithOpenComms() {

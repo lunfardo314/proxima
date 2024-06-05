@@ -29,7 +29,7 @@ func (ps *Peers) pullStreamHandler(stream network.Stream) {
 	p := ps.getPeer(id)
 	if p == nil {
 		// peer not found
-		ps.Log().Warnf("unknown peer %s", id.String())
+		ps.Tracef(TraceTag, "unknown peer %s", id.String())
 		_ = stream.Reset()
 		return
 	}

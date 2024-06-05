@@ -33,7 +33,7 @@ func (ps *Peers) removeNotAliveDynamicPeers() {
 	ps.mutex.RLock()
 	toRemove := make([]*Peer, 0)
 	for _, p := range ps.peers {
-		if !p.isPreConfigured && p.isAlive() {
+		if !p.isPreConfigured && !p.isAlive() {
 			toRemove = append(toRemove, p)
 		}
 	}
@@ -46,19 +46,26 @@ func (ps *Peers) removeNotAliveDynamicPeers() {
 	for _, p := range toRemove {
 		ps.removeDynamicPeer(p)
 	}
+	for err := range ps.kademliaDHT.ForceRefresh() {
+		if err != nil {
+			ps.Tracef(TraceTagAutopeering, "kademlia ForceRefresh: %v", err)
+		}
+		break
+	}
 }
 
 func (ps *Peers) checkPeers() {
 	ps.removeNotAliveDynamicPeers()
-	_, total := ps.NumDynamicPeers()
+	_, aliveDynamic := ps.NumAlive()
 
-	maxToAdd := ps.cfg.MaxDynamicPeers - total
+	maxToAdd := ps.cfg.MaxDynamicPeers - aliveDynamic
 	if maxToAdd == 0 {
 		return
 	}
 	util.Assertf(maxToAdd > 0, "maxToAdd > 0")
 
-	peerChan, err := ps.routingDiscovery.FindPeers(ps.Ctx(), ps.rendezvousString, discovery.Limit(10))
+	const peerDiscoveryLimit = 10
+	peerChan, err := ps.routingDiscovery.FindPeers(ps.Ctx(), ps.rendezvousString, discovery.Limit(peerDiscoveryLimit))
 	if err != nil {
 		ps.Log().Errorf("peering: unexpected error while trying to discover peers")
 		return

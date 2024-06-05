@@ -41,7 +41,7 @@ func TestPeerInfo(t *testing.T) {
 		pi := &NodeInfo{
 			Name:           "peerName",
 			ID:             randomPeerID(),
-			NumStaticPeers: 5,
+			NumStaticAlive: 5,
 			NumActivePeers: 3,
 		}
 		jsonData, err := json.MarshalIndent(pi, "", "  ")
@@ -53,7 +53,7 @@ func TestPeerInfo(t *testing.T) {
 		require.NoError(t, err)
 		require.EqualValues(t, pi.Name, piBack.Name)
 		require.EqualValues(t, pi.ID, piBack.ID)
-		require.EqualValues(t, pi.NumStaticPeers, piBack.NumStaticPeers)
+		require.EqualValues(t, pi.NumStaticAlive, piBack.NumStaticAlive)
 		require.EqualValues(t, pi.NumActivePeers, piBack.NumActivePeers)
 
 		require.True(t, util.EqualSlices(pi.Sequencers, piBack.Sequencers))
@@ -65,7 +65,7 @@ func TestPeerInfo(t *testing.T) {
 		pi := &NodeInfo{
 			Name:           "peerName",
 			ID:             randomPeerID(),
-			NumStaticPeers: 5,
+			NumStaticAlive: 5,
 			NumActivePeers: 3,
 			Sequencers:     sequencers,
 			Branches:       branches,
@@ -79,7 +79,7 @@ func TestPeerInfo(t *testing.T) {
 		require.NoError(t, err)
 		require.EqualValues(t, pi.Name, piBack.Name)
 		require.EqualValues(t, pi.ID, piBack.ID)
-		require.EqualValues(t, pi.NumStaticPeers, piBack.NumStaticPeers)
+		require.EqualValues(t, pi.NumStaticAlive, piBack.NumStaticAlive)
 		require.EqualValues(t, pi.NumActivePeers, piBack.NumActivePeers)
 
 		require.True(t, util.EqualSlices(pi.Sequencers, piBack.Sequencers))
