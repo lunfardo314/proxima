@@ -144,9 +144,16 @@ func New(env Environment, cfg *Config) (*Peers, error) {
 
 	if ret.isAutopeeringEnabled() {
 		// autopeering enabled. The node also acts as a bootstrap node
-		if ret.kademliaDHT, err = dht.New(env.Ctx(), lppHost); err != nil {
+		bootstrapPeers := peerstore.AddrInfos(ret.host.Peerstore(), maps.Keys(ret.peers))
+		ret.kademliaDHT, err = dht.New(env.Ctx(), lppHost,
+			dht.Mode(dht.ModeAutoServer),
+			dht.RoutingTableRefreshPeriod(10*time.Second),
+			dht.BootstrapPeers(bootstrapPeers...),
+		)
+		if err != nil {
 			return nil, err
 		}
+
 		if err = ret.kademliaDHT.Bootstrap(env.Ctx()); err != nil {
 			return nil, err
 		}

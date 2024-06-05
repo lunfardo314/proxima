@@ -9,7 +9,10 @@ import (
 	"github.com/lunfardo314/proxima/util"
 )
 
-const checkPeersEvery = 3 * time.Second
+const (
+	TraceTagAutopeering = "autopeering"
+	checkPeersEvery     = 3 * time.Second
+)
 
 func (ps *Peers) autopeeringLoop() {
 	util.Assertf(ps.isAutopeeringEnabled(), "ps.isAutopeeringEnabled()")
@@ -68,6 +71,8 @@ func (ps *Peers) checkPeers() {
 		}
 		candidates = append(candidates, addrInfo)
 	}
+	ps.Tracef(TraceTagAutopeering, "FindPeers: len(candidates) = %d", len(candidates))
+
 	if len(candidates) == 0 {
 		return
 	}
