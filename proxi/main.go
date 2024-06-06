@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/lunfardo314/proxima/proxi/db_cmd"
+	"github.com/lunfardo314/proxima/proxi/gen_cmd"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/proxi/init_cmd"
 	"github.com/lunfardo314/proxima/proxi/node_cmd"
@@ -41,6 +42,7 @@ and withdraw funds from the sequencer chain
 		init_cmd.CmdInit(),
 		db_cmd.Init(),
 		node_cmd.Init(),
+		gen_cmd.Init(),
 	)
 	rootCmd.InitDefaultHelpCmd()
 	if err = rootCmd.Execute(); err != nil {

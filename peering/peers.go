@@ -36,6 +36,7 @@ type (
 		HostIDPrivateKey   ed25519.PrivateKey
 		HostID             peer.ID
 		HostPort           int
+		BootstrapNode      bool
 		PreConfiguredPeers map[string]multiaddr.Multiaddr // name -> PeerAddr. Static peers used also for bootstrap
 		// MaxDynamicPeers if MaxDynamicPeers <= len(PreConfiguredPeers), autopeering is disabled, otherwise up to
 		// MaxDynamicPeers - len(PreConfiguredPeers) will be auto-peered
@@ -140,9 +141,10 @@ func New(env Environment, cfg *Config) (*Peers, error) {
 			return nil, err
 		}
 	}
+	env.Log().Infof("peering: bootstrap node = %v", ret.isBootstrapNode())
 	env.Log().Infof("peering: number of statically pre-configured peers (manual peering): %d", len(cfg.PreConfiguredPeers))
 
-	if ret.isAutopeeringEnabled() {
+	if ret.isBootstrapNode() || ret.isAutopeeringEnabled() {
 		// autopeering enabled. The node also acts as a bootstrap node
 		bootstrapPeers := peerstore.AddrInfos(ret.host.Peerstore(), maps.Keys(ret.peers))
 		ret.kademliaDHT, err = dht.New(env.Ctx(), lppHost,
@@ -200,11 +202,12 @@ func readPeeringConfig() (*Config, error) {
 		return nil, fmt.Errorf("config: host private key does not match hostID")
 	}
 
+	cfg.BootstrapNode = viper.GetBool("peering.host.bootstrap")
 	peerNames := util.KeysSorted(viper.GetStringMap("peering.peers"), func(k1, k2 string) bool {
 		return k1 < k2
 	})
 
-	if len(peerNames) == 0 {
+	if !cfg.BootstrapNode && len(peerNames) == 0 {
 		return nil, fmt.Errorf("at least one peer must be pre-configured for bootstrap")
 	}
 	for _, peerName := range peerNames {
@@ -249,6 +252,10 @@ func (ps *Peers) Run() {
 	ps.Log().Infof("peering: libp2p host %s (self) started on %v with %d pre-configured peers, maximum dynamic peers: %d, autopeering enbled: %v",
 		ShortPeerIDString(ps.host.ID()), ps.host.Addrs(), len(ps.cfg.PreConfiguredPeers), ps.cfg.MaxDynamicPeers, ps.isAutopeeringEnabled())
 	_ = ps.Log().Sync()
+}
+
+func (ps *Peers) isBootstrapNode() bool {
+	return ps.cfg.BootstrapNode
 }
 
 func (ps *Peers) isAutopeeringEnabled() bool {
