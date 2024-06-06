@@ -25,9 +25,8 @@ peering:
 
 # Node's API config
 api:
-  server:
-    # server port
-    port: 8003
+  # server port
+  port: 8003
 
 
 # map of maps of sequencers <seq name>: <seq config>

@@ -222,7 +222,7 @@ func (id *IdentityData) String() string {
 func (id *IdentityData) Lines(prefix ...string) *lines.Lines {
 	originChainID := id.OriginChainID()
 	return lines.New(prefix...).
-		Add("Genesis time: %s (Unix %d)", id.GenesisTime().Format(time.RFC3339), id.GenesisTimeUnix).
+		Add("Genesis Unix time: %d (%s)", id.GenesisTimeUnix, id.GenesisTime().Format(time.RFC3339)).
 		Add("Time tick duration: %v", id.TickDuration).
 		Add("Time ticks per time slot: %d", id.TicksPerSlot()).
 		Add("Transaction pace: %d", id.TransactionPace).

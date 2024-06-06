@@ -1,5 +1,4 @@
-# FOR TESTING ONLY!!! PRIVATE KEYS AND DERIVED DATA SHOULD NOT BE USED IN PRODUCTION
-# Testing configuration of the testnet Proxima node (example
+# Configuration of the testnet Proxima node template
 #
 # Peering configuration
 peering:
@@ -7,17 +6,19 @@ peering:
   host:
     # host ID private key (hex-encoded)
     # Placeholder private key. SHOULD BE REPLACED WITH REAL HOST PRIVATE KEY
-    id_private_key: cb91a5e9fee427c7ebdd3f37d8fc35140ca417379863520f1bb4942fa3fd8dc7ff67337b718eec7ad668e5df5e91374f3c53363c41da112c10fe80791019c746
+    id_private_key: <host id private key goes here>
     # host ID is derived from the host ID public key. 
     # Placeholder ID. SHOULD BE REPLACED WITH REAL HOST ID WHICH MATCHES PRIVATE KEY
-    id: 12D3KooWT1MQM1kXKRaj6j9xjzVzUCWcrzihnVicepn82dTDkNYM
-    # port to connect from other peers
+    id: <host ID goes here>
+    # port to connect from other peers. Unique on each machine
     port: 4001
 
-  # Statically pre-configured peers. Also used for dynamic peer discovery (bootstrap)
-  # Each known peer is specified as a pair <name>: <multiaddr>, where:
+  # Statically pre-configured peers, also known as manual peering.
+  # Used also for dynamic peer discovery (bootstrap)
+  # Each static peer is specified as a pair <name>: <multiaddr>, where:
   # - <name> is unique mnemonic name used for convenience locally
   # - <multiaddr> is the libp2p multi-address in the form '/ip4/<IPaddr ir URL>/<port>/tcp/p2p/<hostID>'
+  # for more info see https://docs.libp2p.io/concepts/fundamentals/addressing/
   peers:
     # example bootstrap node
     boot: /ip4/127.0.0.1/tcp/4000/p2p/12D3KooWL32QkXc8ZuraMJkLaoZjRXBkJVjRz7sxGWYwmzBFig3M
@@ -27,19 +28,20 @@ peering:
 
 # Node's API config
 api:
-  server:
-    # server port
-    port: 8001
+  # server port. Unique on each machine
+  port: 8001
 
-# map of maps of sequencers <seq name>: <seq config>
+# map of maps of sequencers <sequencer name>: <sequencer config>
 # usually none or 1 sequencer is configured for the node
+# Also local sequencer name is stored in each sequencer transaction for readability
 sequencers:
-  seq1:
+  mySeq:
+    # must be 'true' to run sequencer at startup
     enable: false
     # chain ID of the sequencer
-    sequencer_id:
+    sequencer_id: <sequencer ID (hex encoded) goes here>
     # chain controller's private key (hex-encoded)
-    controller_key: a66f8768224b241fe4dd2e4c00132d029452468846b149f2c2c4d894805964c8e63df08176c9443f0fe015d3582635d3d5a02e33765fbb3a2995db9cf3bbe606
+    controller_key: <private key (hex encoded) of the sequencer controller goes here>
     # sequencer pace
     pace: 5
     # maximum fee inputs allowed in the sequencer milestone transaction
@@ -47,8 +49,10 @@ sequencers:
 
 # logger config
 logger:
-  level: debug
-  output: testlog_1.log
+  level: info
+  output: proxima.log
+  # options: 'erase' (previous will be erased), 'save' (previous will be saved and then deleted)
+  # Otherwise or when absent: log will be appended in the same existing file
   previous: erase
 #  log_attacher_stats: true
 
@@ -62,6 +66,7 @@ pprof:
   enable: false
   port: 8080
 
+# trace tags when enabled forces tracing of specified module
 trace_tags:
 #  - inclusion
 #  - backlog
@@ -77,4 +82,4 @@ trace_tags:
 #  - apiServer
 #  - txStore
 #  - global
-
+# .. and others, see code

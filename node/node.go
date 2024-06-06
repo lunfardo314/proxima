@@ -244,6 +244,10 @@ func (p *ProximaNode) UpTime() time.Duration {
 const defaultMetricsPort = 14000
 
 func (p *ProximaNode) startMetrics() {
+	if !viper.GetBool("metrics.enable") {
+		p.Log().Infof("Prometheus metrics disabled")
+		return
+	}
 	port := viper.GetInt("metrics.port")
 	if port == 0 {
 		p.Log().Warnf("metrics.port not specified. Will use %d for Prometheus metrics exposure", defaultMetricsPort)

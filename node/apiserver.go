@@ -14,7 +14,7 @@ import (
 )
 
 func (p *ProximaNode) startAPIServer() {
-	port := viper.GetInt("api.server.port")
+	port := viper.GetInt("api.port")
 	addr := fmt.Sprintf(":%d", port)
 	p.Log().Infof("starting API server on %s", addr)
 

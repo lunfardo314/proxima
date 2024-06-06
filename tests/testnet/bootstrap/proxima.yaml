@@ -11,22 +11,22 @@ peering:
     id: 12D3KooWL32QkXc8ZuraMJkLaoZjRXBkJVjRz7sxGWYwmzBFig3M
     # port to connect from other peers
     port: 4000
-    # if false or absent, require at least one statically configured peer
+    # if false or absent, it requires at least one statically configured peer
     bootstrap: true
 
   # Statically pre-configured peers. Also used for dynamic peer discovery (bootstrap)
   # Each known peer is specified as a pair <name>: <multiaddr>, where:
   # - <name> is unique mnemonic name used for convenience locally
   # - <multiaddr> is the libp2p multi-address in the form '/ip4/<IPaddr ir URL>/<port>/tcp/p2p/<hostID>'
+  # for more info see https://docs.libp2p.io/concepts/fundamentals/addressing/
   peers:
   # max_dynamic_peers > 0 means automatic peer discovery (autopeering) is enabled
   max_dynamic_peers: 3
 
 # Node's API config
 api:
-  server:
     # server port
-    port: 8000
+  port: 8000
 
 # map of maps of sequencers <seq name>: <seq config>
 # usually none or 1 sequencer is configured for the node
@@ -42,13 +42,13 @@ sequencers:
     # sequencer pace
     pace: 5
     # maximum tag-along inputs allowed in the sequencer transaction (up to 254)
-    max_tag_along_inputs: 50
+    max_tag_along_inputs: 100
 
 # logger config
 # logger.previous can be 'erase' or 'save'
 logger:
-  level: debug
-  output: testlog_0.log
+  level: info
+  output: proxima.log
   previous: erase
 #  log_attacher_stats: true
 

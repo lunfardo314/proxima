@@ -22,7 +22,7 @@ type DummyTxBytesStore struct {
 
 func NewSimpleTxBytesStore(store common.KVStore, metricsRegistry ...global.Metrics) *SimpleTxBytesStore {
 	ret := &SimpleTxBytesStore{s: store}
-	if len(metricsRegistry) > 0 {
+	if len(metricsRegistry) > 0 && metricsRegistry[0] != nil {
 		ret.registerMetrics(metricsRegistry[0].MetricsRegistry())
 	}
 	return ret

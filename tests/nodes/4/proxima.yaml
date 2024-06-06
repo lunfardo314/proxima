@@ -25,9 +25,8 @@ peering:
 
 # Node's API config
 api:
-  server:
-    # server port
-    port: 8004
+  # server port
+  port: 8004
 
 # map of maps of sequencers <seq name>: <seq config>
 # usually none or 1 sequencer is configured for the node
