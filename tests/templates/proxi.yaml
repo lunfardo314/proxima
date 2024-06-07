@@ -1,0 +1,52 @@
+# Template of the proxi profile
+wallet:
+    private_key: <ED25519 private key of the genesis controller. Hex encoded>
+    account: <ED25519 address of the genesis controller. In EasyFL format>
+    # own sequencer (controlled by the private key).
+    # For the genesis owner it is bootstrap sequencer ID: af7bedde1fea222230b82d63d5b665ac75afbe4ad3f75999bb3386cf994a6963
+    # The controller wallet can withdraw tokens from the sequencer chain with command
+    # 'proxi node seq withdraw'
+    sequencer_id: <own sequencer ID>
+api:
+    # node API endpoint
+    endpoint: http://127.0.0.1:8000
+
+tag_along:
+    # ID of the tag-along sequencer. Currently only one
+    # In the bootstrap phase it normally is bootstrap chain ID: af7bedde1fea222230b82d63d5b665ac75afbe4ad3f75999bb3386cf994a6963
+    sequencer_id: <ID of the chosen tag-along sequencer>
+    fee: 500
+finality:
+    # finality rule used by the wallet. It has no effect on the way transaction is treated by the network
+    inclusion_threshold:
+        # numerator / denominator is the 'theta' in the WP.
+        # with strong finality, the wallet waits until all branches in last 2 slots with coverage > numerator / denominator
+        # contains the transaction
+        # With weak finality inclusion_threshold has no effect
+        numerator: 2
+        denominator: 3
+        # strong: based on ledger coverage and inclusion_threshold (see above)
+        # weak: wait until all branches in last 2 slots contains the transaction.
+        # The weak finality may be used when less than totalSupply/2 of sequencers are active,
+        # for example during bootstrap
+    weak: false
+
+# provides parameters for 'proxi node spam' command
+# The spammer in a loop sends bundles of transactions to the target address by using specified tag-along sequencer
+# Before sending next bundle, the spammer waits for the finality of the previous according to the provided criterion
+spammer:
+    bundle_size: 5
+    max_duration_minutes: 0
+    max_transactions: 0
+    output_amount: 1000
+    pace: 10
+    scenario: standard
+    submit_nowait: false
+    tag_along:
+        fee: 500
+        # rag-along sequencer for the tip transaction in the bundle
+        # For example the bootstrap sequencer af7bedde1fea222230b82d63d5b665ac75afbe4ad3f75999bb3386cf994a6963
+        sequencer: <sequencer ID hex encoded>
+    # target address
+    target: <target address in EasyFL format>
+    trace_on_node: false
