@@ -18,14 +18,13 @@ import (
 )
 
 func initNodeConfigCmd() *cobra.Command {
-	initLedgerIDCmd := &cobra.Command{
-		Use:   "node_config [<test nodes index 0-4>]",
+	initNodeConfig := &cobra.Command{
+		Use:   "node_config",
 		Args:  cobra.MaximumNArgs(1),
-		Short: "creates initial config file for the Proxima node",
-		Long:  `if parameter <test nodes index> is provided, generates 4 deterministic peers and peers with it`,
+		Short: "creates config file for the Proxima node",
 		Run:   runNodeConfigCommand,
 	}
-	return initLedgerIDCmd
+	return initNodeConfig
 }
 
 const (
@@ -106,50 +105,92 @@ func runNodeConfigCommand(_ *cobra.Command, args []string) {
 	glb.Infof("initial Proxima node configuration file has been saved as 'proxima.yaml'")
 }
 
-const configFileTemplate = `# FOR TESTING ONLY!!! PRIVATE KEYS AND DERIVED DATA SHOULD NOT BE USED IN PRODUCTION
-%s
+const configFileTemplate = `# Configuration file for the Proxima node
 #
 # Peering configuration
 peering:
-  # libp2p host data: 
+  # libp2p host data:
   host:
-    # host ID private key (auto-generated, hex-encoded)
-    id_private_key: %s
-    # host ID is derived from the host ID public key. 
-    id: %s
+    # host ID private key
+    id_private_key: {{.HostPrivateKey}}
+    # host ID is derived from the host ID public key.
+    id: {{HostID}}
     # port to connect from other peers
-    port: %d
+    port: {{.HostPort}}
+    # For the first bootstrap node this must be true
+    # If false or absent, it will require at least one statically configured peer
+    bootstrap: {{.Bootstrap}}
 
-  # configuration of known peers. Each known peer is specified as a pair <name>: <multiaddr>, where:
-  # - <name> is unique mnemonic name used for convenience locally
-  # - <multiaddr> is the libp2p multi-address in the form '/ip4/<IPaddr ir URL>/<port>/tcp/p2p/<hostID>'
+  # YAML dictionary (map) of statically pre-configured peers. Also used in the peering boostrap phase by Kademlia DHT
+  # It will be empty for the first bootstrap node in the network. In that case must be peering.host.bootstrap = true
+  # Must be at least 1 static for non-bootstrap node
+  # Each static peer is specified as a pair <name>: <multiaddr>, where:
+  # -- <name> is unique mnemonic name used for convenience locally
+  # -- <multiaddr> is the libp2p multi-address in the form '/ip4/<IPaddr ir URL>/<port>/tcp/p2p/<hostID>'
+  # for more info see https://docs.libp2p.io/concepts/fundamentals/addressing/
   peers:
-%s	
+    # Example -> boot: /ip4/127.0.0.1/tcp/4000/p2p/12D3KooWL32QkXc8ZuraMJkLaoZjRXBkJVjRz7sxGWYwmzBFig3M
+  # Maximum number of peers which may be connected to via the automatic peer discovery
+  # max_dynamic_peers > 0 means automatic peer discovery (autopeering) is enabled, otherwise disabled
+  max_dynamic_peers: 3
 
 # Node's API config
 api:
-  server:
     # server port
-    port: %d
-
+  port: {{.APIPort}}
 
 # map of maps of sequencers <seq name>: <seq config>
 # usually none or 1 sequencer is configured for the node
+# 0 enabled sequencers means node is a pure access node
+# If sequencer is enabled, it is working as a separate and independent process inside the node
 sequencers:
   boot:
-    enable: false # will not start if false 
+    # start sequencer if true
+    enable: true
     # chain ID of the sequencer
-    sequencer_id: 
-    # chain controller's private key (hex-encoded)
-    controller_key: 
-    # sequencer pace
+    # chain ID af7bedde1fea222230b82d63d5b665ac75afbe4ad3f75999bb3386cf994a6963 is
+    # predefined chain ID of the genesis chain (the bootstrap sequencer)
+    # Sequencer chain is created by 'proxi node mkchain' command
+    # All chains controlled by the wallet can be displayed by 'proxi node chains'
+    sequencer_id: <sequencer ID hex encoded>
+    # sequencer chain controller's private key (hex-encoded)
+    controller_key: <ED25519 private key of the controller>
+    # sequencer pace. Distance in ticks between two subsequent sequencer transactions
+    # cannot be less than the sequencer pace value set by the ledger
     pace: 5
-    # maximum tag-along inputs allowed in the sequencer milestone transaction
-    max_fee_inputs: 50
+    # maximum tag-along inputs allowed in the sequencer transaction (maximum value is 254)
+    max_tag_along_inputs: 100
+
+# logger config
+# logger.previous can be 'erase' or 'save'
+logger:
+  level: info
+  output: proxima.log
+  # options: 'erase' (previous will be erased), 'save' (previous will be saved and then deleted)
+  # Otherwise or when absent: log will be appended in the same existing file
+  previous: erase
+#  log_attacher_stats: true
 
 # Other parameters used for tracing and debugging
-# pprof config
-pprof:
+# Prometheus metrics exposure
+metrics:
+  # if false or absent Prometheus metrics are not exposed
   enable: false
-  port: 8080
-`
+  port: 14000
+
+# list of enabled trace tags.
+# When enabled, it forces tracing of the specified module.
+# It may be very verbose
+# Search the code for "TraceTag"
+trace_tags:
+#  - autopeering
+#  - inclusion
+#  - backlog
+#  - gossip
+#  - pull_server
+#  - txinput
+#  - txStore
+#  - global
+#  - backlog
+#  - propose-base
+#  - pruner`

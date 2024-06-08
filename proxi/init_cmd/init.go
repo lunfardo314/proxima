@@ -13,7 +13,7 @@ func CmdInit() *cobra.Command {
 		},
 	}
 	initCmd.AddCommand(
-		initProfileCmd(),
+		initWalletCmd(),
 		initIDCmd(),
 		initGenesisDBCmd(),
 		initBootstrapAccountCmd(),

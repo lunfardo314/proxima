@@ -26,7 +26,7 @@ func genHostIDCmd() *cobra.Command {
 
 func runGenHostIdCmd(_ *cobra.Command, _ []string) {
 	glb.Infof("DISCLAIMER: USE AT YOUR OWN RISK!!. This program generates private key based on system randomness and on the entropy entered by the user")
-	privateKey := askEntropyGenEd25519PrivateKey()
+	privateKey := glb.AskEntropyGenEd25519PrivateKey("please enter 10 or more random seed symbols: ")
 
 	pklpp, err := p2pcrypto.UnmarshalEd25519PrivateKey(privateKey)
 	util.AssertNoError(err)
