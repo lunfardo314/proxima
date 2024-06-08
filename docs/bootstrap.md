@@ -1,4 +1,4 @@
-## Starting first node in the network
+## Running first node in the network
 
 The following a steps to initialize and start Proxima node with the genesis ledger state and bootstrap sequencer on it.
 
