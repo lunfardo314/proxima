@@ -11,6 +11,8 @@ import (
 	"github.com/spf13/viper"
 )
 
+const LedgerIDFileName = "proxima.genesis.id.yaml"
+
 type WalletData struct {
 	PrivateKey ed25519.PrivateKey
 	Account    ledger.AddressED25519

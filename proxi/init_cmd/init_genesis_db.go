@@ -26,7 +26,7 @@ func runGenesis(_ *cobra.Command, _ []string) {
 	glb.FileMustNotExist(global.MultiStateDBName)
 	//glb.FileMustNotExist(global.TxStoreDBName)
 
-	idDataYAML, err := os.ReadFile(ledgerIDFileName)
+	idDataYAML, err := os.ReadFile(glb.LedgerIDFileName)
 	glb.AssertNoError(err)
 	idData, err := ledger.StateIdentityDataFromYAML(idDataYAML)
 	glb.AssertNoError(err)

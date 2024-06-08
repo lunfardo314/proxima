@@ -10,13 +10,11 @@ import (
 	"github.com/spf13/viper"
 )
 
-const ledgerIDFileName = "proxi.genesis.id.yaml"
-
 func initIDCmd() *cobra.Command {
 	initLedgerIDCmd := &cobra.Command{
 		Use:   "ledger_id",
 		Args:  cobra.NoArgs,
-		Short: fmt.Sprintf("creates identity data of the ledger with genesis controller taken from proxi wallet. Saves it to the file '%s'", ledgerIDFileName),
+		Short: fmt.Sprintf("creates identity data of the ledger with genesis controller taken from proxi wallet. Saves it to the file '%s'", glb.LedgerIDFileName),
 		PersistentPreRun: func(_ *cobra.Command, _ []string) {
 			glb.ReadInConfig()
 		},
@@ -30,8 +28,8 @@ func initIDCmd() *cobra.Command {
 }
 
 func runInitLedgerIDCommand(_ *cobra.Command, _ []string) {
-	if glb.FileExists(ledgerIDFileName) {
-		if !glb.YesNoPrompt(fmt.Sprintf("file '%s' already exists. Overwrite?", ledgerIDFileName), false) {
+	if glb.FileExists(glb.LedgerIDFileName) {
+		if !glb.YesNoPrompt(fmt.Sprintf("file '%s' already exists. Overwrite?", glb.LedgerIDFileName), false) {
 			os.Exit(0)
 		}
 	}
@@ -42,8 +40,8 @@ func runInitLedgerIDCommand(_ *cobra.Command, _ []string) {
 	ledger.Init(id)
 
 	yamlData := id.YAML()
-	err := os.WriteFile(ledgerIDFileName, yamlData, 0666)
+	err := os.WriteFile(glb.LedgerIDFileName, yamlData, 0666)
 	glb.AssertNoError(err)
-	glb.Infof("new ledger identity data has been stored in the file '%s':", ledgerIDFileName)
+	glb.Infof("new ledger identity data has been stored in the file '%s':", glb.LedgerIDFileName)
 	glb.Infof("--------------\n%s--------------\n", string(yamlData))
 }

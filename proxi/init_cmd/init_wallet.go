@@ -59,13 +59,13 @@ wallet:
     # 'proxi node seq withdraw'
     sequencer_id: <own sequencer ID>
 api:
-    # node API endpoint  
+    # API endpoint  
     endpoint: http://127.0.0.1:8000
 
 tag_along:
     # ID of the tag-along sequencer. Currently only one
     # In the bootstrap phase it normally is bootstrap chain ID: af7bedde1fea222230b82d63d5b665ac75afbe4ad3f75999bb3386cf994a6963
-    # Later it is up to the wallet owner
+    # Later it is up to the wallet owner to set the preferred tag-along sequencer
     sequencer_id: af7bedde1fea222230b82d63d5b665ac75afbe4ad3f75999bb3386cf994a6963
     fee: 500
 finality:
