@@ -15,8 +15,8 @@ all types of transactions, highlighting chains, stems, branches, orphanage, etc
 Search and explore UTXO tangle along various links, view each all kinds of transactions down to individual decompiled _EasyFL constraint source level_
   - Implementation: 0%
 
-* Proxi CLI, wallet
-Needs love ant attention. Currently basic only. Also API
+* Proxi CLI, wallet, API
+Needs love ant attention. Currently basic only. API is limited to Proxi needs, unprotected etc. 
 
 * Docker-ize
 
@@ -24,7 +24,7 @@ Needs love ant attention. Currently basic only. Also API
 * Auto-peering
   * Concept: currently only manual peering is implemented. To adding/remove a peer, the node's config must be changed and node restarted. 
 The goal would be to implement usual auto-peering
-  * Implementation: 0%
+  * Implementation: 90% (mostly done, base version)
 * Metrics subsystem
   * Concept: Prometheus metrics for node, ledger and sequencer. 
   * Implementation 10% (basic framework)
@@ -94,3 +94,11 @@ with backward compatibility via soft forks.
 - Whitepaper 80-90%
 - How to run small testnet: 80% 
 - Introductory video series: 0%
+
+## Priorities
+1. Tooling
+2. Delegation
+3. Storage deposit
+4. Spam prevention
+5. Tag-along lock
+
