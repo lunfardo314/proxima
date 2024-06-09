@@ -70,8 +70,10 @@ much simpler than most PoS systems, which are usually complex in their consensus
   * [2. UTXO tangle. Ledger coverage](https://youtu.be/CT0_FlW-ObM)
   * [3. Cooperative consensus](https://youtu.be/7N_L6CMyRdo)
 * Tutorials:
-  * [Running first node in the network](docs/bootstrap.md)
-  * [Running access node](docs/access.md)
-  * [Running node with sequencer](docs/sequencer.md)
- 
+  * [Configure and use `proxi` wallet](docs/proxi.md)
+  * [Running first node in the network](docs/run_boot.md)
+  * [Running access node](docs/run_access.md)
+  * [Running node with sequencer](docs/run_sequencer.md)
+
+
  

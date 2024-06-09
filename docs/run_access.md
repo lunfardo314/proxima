@@ -1,31 +1,33 @@
-# Running access node
+## Running access node
 
-The following a step-by-step instruction how start a Proxima access node and sync it with the network.
+The following are step-by-step instructions how start Proxima access node and sync it with the network.
 
-The **access node** is the simplest configuration of the node. It does not run sequencer as a part of it.
-Its main functions are:
+The **access node** is the simplest configuration of the node. It does not run sequencer as part of it.
+Its main functions of the access node are:
+- keep connections with peers
 - keep valid multi-ledger state in sync with the network
 - provide API access to the network for the Proxi wallet and other programs
+- gossip new transaction coming to the node from other peers and from the API to the network
+- submit new transactions to the transaction store database
 
-Running the node do not require to be a token holder. 
+Running of access node does not require to be a token holder. 
 
 ### 0. Compile
 Clone the repository to `<your_dir>/proxima`.
 
-Type `go install` in working directories `<your_dir>/proxima` and `<your_dir>/proxima/proxi`.
-This will create executables: `proxima` for the node, and `proxi` for the CLI program for simple wallet and tools.
+Run `go install` in working directories `<your_dir>/proxima` and `<your_dir>/proxima/proxi`.
+This will create executables: `proxima` for the node, and `proxi` for the CLI program with simple wallet functionality and tools.
 
-Run `proxi -h`, `proxi init -h`, `proxi db -h` to check if its is working.
+Run `proxi -h`, `proxi init -h`, `proxi db -h` to check if it works.
 
 Below we assume we use same working directory for all configuration profiles and databases.
 
 ### 2. Copy ledger ID file
-To start the node, the ledger ID file `proxima.genesis.id.yaml` used to create genesis is a prerequisite.
-Copy it from the bootstrap directory [Running first node in the network](bootstrap.md) to you node's location
+Prerequisite to start the node is ledger ID file `proxima.genesis.id.yaml` used to create genesis.
+Copy it from the bootstrap directory (see [Running first node in the network](run_boot.md)) to your node's location
 or obtain it any other way. The YAML data in the file must be **exactly** the same as the one used for genesis.
 
 ### 3. Create genesis database
-
 The database with the genesis state will be created from the ledger ID file `proxima.genesis.id.yaml`
 by running the following command in the same directory: `proxi init genesis_db`
 
@@ -34,7 +36,6 @@ The directory named `proximadb` will appear in the working directory.
 Run commands `proxi db info` and `proxi db accounts` to check if everything is ok. 
 
 ### 4. Prepare node configuration profile
-
 Run the command `proxi init node`
 
 It will create node config profile `proxima.yaml` in the working directory. The node libp2p private key and ID 

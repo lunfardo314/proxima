@@ -1,6 +1,6 @@
 ## Running first node in the network
 
-The following a step-by-step instruction how to initialize and start Proxima node with the genesis ledger state and bootstrap sequencer on it.
+The following are step-by-step instructions how to initialize and start Proxima node with the genesis ledger state and bootstrap sequencer on it.
 
 ### 0. Compile
 Clone the repository to `<your_dir>/proxima`.
@@ -8,7 +8,7 @@ Clone the repository to `<your_dir>/proxima`.
 Type `go install` in working directories `<your_dir>/proxima` and `<your_dir>/proxima/proxi`.
 This will create executables: `proxima` for the node, and `proxi` for the CLI program for simple wallet and tools.
 
-Run `proxi -h`, `proxi init -h`, `proxi db -h` to check if its is working.
+Run `proxi -h`, `proxi init -h`, `proxi db -h` to check if it works.
 
 Below we assume we use same working directory for all configuration profiles and databases.
 
