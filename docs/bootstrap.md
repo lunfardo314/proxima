@@ -1,6 +1,6 @@
 ## Running first node in the network
 
-The following a steps to initialize and start Proxima node with the genesis ledger state and bootstrap sequencer on it.
+The following a step-by-step instruction how to initialize and start Proxima node with the genesis ledger state and bootstrap sequencer on it.
 
 ### 0. Compile
 Clone the repository to `<your_dir>/proxima`.
@@ -47,9 +47,7 @@ Ledger constants will remain immutable for the lifetime of the ledger.
 ### 3. Create genesis database
 
 The database with the genesis state will be created from the ledger ID file `proxima.genesis.id.yaml` 
-created in the previous step by running the following command n the same directory:
-
-`proxi init genesis_db`
+created in the previous step by running the following command in the same directory: `proxi init genesis_db`
 
 The database directory `proximadb` will be created as a result.
 
