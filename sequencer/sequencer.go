@@ -96,6 +96,10 @@ func (seq *Sequencer) Start() {
 		seq.MarkWorkProcessStarted(seq.config.SequencerName)
 		defer seq.MarkWorkProcessStopped(seq.config.SequencerName)
 
+		if !seq.checkSyncIfNecessary() {
+			return
+		}
+
 		if !seq.ensureFirstMilestone() {
 			seq.log.Warnf("can't start sequencer. EXIT..")
 			return
@@ -110,7 +114,8 @@ func (seq *Sequencer) Start() {
 		}
 	}
 
-	const debuggerFriendly = true
+	const debuggerFriendly = false
+
 	if debuggerFriendly {
 		go runFun()
 	} else {
@@ -119,6 +124,25 @@ func (seq *Sequencer) Start() {
 			return false
 		})
 	}
+}
+
+func (seq *Sequencer) checkSyncIfNecessary() bool {
+	if seq.IsBootstrapNode() {
+		return true
+	}
+
+	const checkSyncEvery = 3 * time.Second
+
+	for !seq.AreOtherSequencersActive() {
+		select {
+		case <-seq.Ctx().Done():
+			return false
+		case <-time.After(checkSyncEvery):
+			seq.log.Warnf("node not synced")
+		}
+	}
+
+	return true
 }
 
 func (cfg *ConfigOptions) lines(seqID ledger.ChainID, controller ledger.AddressED25519, prefix ...string) *lines.Lines {

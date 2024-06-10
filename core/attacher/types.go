@@ -16,7 +16,7 @@ import (
 )
 
 type (
-	DAGAccessEnvironment interface {
+	memDAGAccessEnvironment interface {
 		WithGlobalWriteLock(fun func())
 		GetVertexNoLock(txid *ledger.TransactionID) *vertex.WrappedTx
 		AddVertexNoLock(vid *vertex.WrappedTx)
@@ -24,24 +24,25 @@ type (
 		GetStateReaderForTheBranch(branch *ledger.TransactionID) global.IndexedStateReader
 		GetStemWrappedOutput(branch *ledger.TransactionID) vertex.WrappedOutput
 		SendToTippool(vid *vertex.WrappedTx)
+		EvidenceBranchSlot(s ledger.Slot)
 	}
 
-	PullEnvironment interface {
+	pullEnvironment interface {
 		Pull(txid ledger.TransactionID)
 		PokeMe(me, with *vertex.WrappedTx)
 		PokeAllWith(wanted *vertex.WrappedTx)
 	}
 
-	PostEventEnvironment interface {
+	postEventEnvironment interface {
 		PostEventNewGood(vid *vertex.WrappedTx)
 		PostEventNewTransaction(vid *vertex.WrappedTx)
 	}
 
 	Environment interface {
 		global.NodeGlobal
-		DAGAccessEnvironment
-		PullEnvironment
-		PostEventEnvironment
+		memDAGAccessEnvironment
+		pullEnvironment
+		postEventEnvironment
 		AsyncPersistTxBytesWithMetadata(txBytes []byte, metadata *txmetadata.TransactionMetadata)
 		GossipAttachedTransaction(tx *transaction.Transaction, metadata *txmetadata.TransactionMetadata)
 		ParseMilestoneData(msVID *vertex.WrappedTx) *ledger.MilestoneData

@@ -38,6 +38,8 @@ type Global struct {
 	txTraceMutex     sync.RWMutex
 	txTraceIDs       map[ledger.TransactionID]time.Time
 	logAttacherStats bool
+	// is it the first node in the network
+	bootstrap bool
 }
 
 const TraceTag = "global"
@@ -84,6 +86,8 @@ func NewFromConfig() *Global {
 		ret.SugaredLogger.Warnf("previous logfile has been saved as %s", savedPrev)
 	}
 	ret.logAttacherStats = viper.GetBool("logger.log_attacher_stats")
+	ret.bootstrap = viper.GetBool("bootstrap")
+
 	return ret
 }
 
@@ -107,6 +111,10 @@ func _new(logLevel zapcore.Level, outputs []string) *Global {
 	go ret.purgeLoop()
 
 	return ret
+}
+
+func (l *Global) IsBootstrapNode() bool {
+	return l.bootstrap
 }
 
 func (l *Global) MetricsRegistry() *prometheus.Registry {

@@ -87,7 +87,11 @@ func runNodeConfigCommand(_ *cobra.Command, _ []string) {
 }
 
 const configFileTemplate = `# Configuration file for the Proxima node
-#
+# For the first bootstrap node this must be true
+# If false or absent, it will require at least one statically configured peer 
+# and will not wait for syncing when starting sequencer  
+bootstrap: {{.Bootstrap}}
+
 # Peering configuration
 peering:
   # libp2p host data:
@@ -98,9 +102,6 @@ peering:
     id: {{.HostID}}
     # port to connect from other peers
     port: {{.HostPort}}
-    # For the first bootstrap node this must be true
-    # If false or absent, it will require at least one statically configured peer
-    bootstrap: {{.Bootstrap}}
 
   # YAML dictionary (map) of statically pre-configured peers. Also used in the peering boostrap phase by Kademlia DHT
   # It will be empty for the first bootstrap node in the network. In that case must be peering.host.bootstrap = true

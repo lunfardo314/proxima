@@ -31,7 +31,6 @@ type (
 		// MemDAG is constantly garbage-collected by the pruner
 		mutex            sync.RWMutex
 		vertices         map[ledger.TransactionID]*vertex.WrappedTx
-		latestTimestamp  ledger.Time
 		latestBranchSlot ledger.Slot
 
 		// cache of state readers. One state (trie) reader for the branch/root. When accessed through the cache,
@@ -99,12 +98,6 @@ func (d *MemDAG) NumVertices() int {
 func (d *MemDAG) AddVertexNoLock(vid *vertex.WrappedTx) {
 	util.Assertf(d.GetVertexNoLock(&vid.ID) == nil, "d.GetVertexNoLock(vid.ID())==nil")
 	d.vertices[vid.ID] = vid
-	if d.latestTimestamp.Before(vid.ID.Timestamp()) {
-		d.latestTimestamp = vid.ID.Timestamp()
-		if vid.IsBranchTransaction() {
-			d.latestBranchSlot = vid.ID.Slot()
-		}
-	}
 }
 
 // PurgeDeletedVertices with global lock
@@ -217,6 +210,27 @@ func (d *MemDAG) WaitUntilTransactionInHeaviestState(txid ledger.TransactionID, 
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
+}
+
+func (d *MemDAG) EvidenceBranchSlot(s ledger.Slot) {
+	d.mutex.Lock()
+	defer d.mutex.Unlock()
+
+	if d.latestBranchSlot < s {
+		d.latestBranchSlot = s
+
+		util.Assertf(ledger.TimeNow().Slot() >= s, "EvidenceBranchSlot: time related inconsistency")
+	}
+}
+
+// AreOtherSequencersActive measuring latest committed branch timestamp with current time.
+// It indicates network activity.
+// Network is considered active if latest branch was committed up to 2 slots (not inclusive) from now
+func (d *MemDAG) AreOtherSequencersActive() bool {
+	d.mutex.RLock()
+	defer d.mutex.RUnlock()
+
+	return d.latestBranchSlot+1 >= ledger.TimeNow().Slot()
 }
 
 // LatestBranchSlot latest time slot with some stateReaders

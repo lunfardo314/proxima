@@ -93,5 +93,6 @@ type (
 		TraceTx
 		StartStop
 		Metrics
+		IsBootstrapNode() bool
 	}
 )

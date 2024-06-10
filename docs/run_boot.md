@@ -71,7 +71,7 @@ It will create node config profile `proxima.yaml` in the working directory. Flag
 into the profile, otherwise optional.
 
 To finish the config file for the first bootstrap node, it must be adjusted the following way:
-* key `peering.host.bootstrap` set to `true`
+* key `bootstrap` set to `true`
 * ports adjusted to the environment, if needed
 * placeholder `<local_seq_name>` in sequencer configuration must be replaced with `boot`
 * placeholder `<sequencer id hex encoded>` in the key `sequencers.boot.sequencer_id` must be replaced with the bootstrap 

@@ -217,8 +217,9 @@ func (t Time) Hex() string {
 // > 0 if t2 is before t1
 // (i.e. t1 - t2)
 func DiffTicks(t1, t2 Time) int64 {
-	slots1 := int64(t1.Slot())*DefaultTicksPerSlot + int64(t1.Tick())
-	slots2 := int64(t2.Slot())*DefaultTicksPerSlot + int64(t2.Tick())
+	ticksPerSlot := L().ID.TicksPerSlot()
+	slots1 := int64(t1.Slot())*int64(ticksPerSlot) + int64(t1.Tick())
+	slots2 := int64(t2.Slot())*int64(ticksPerSlot) + int64(t2.Tick())
 	return slots1 - slots2
 }
 
