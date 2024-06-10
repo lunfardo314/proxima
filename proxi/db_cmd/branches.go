@@ -12,7 +12,7 @@ import (
 func initBranchesCmd() *cobra.Command {
 	branchesCmd := &cobra.Command{
 		Use:   "branches [<n slots back>]",
-		Short: "displays lates branch records",
+		Short: "displays latest branch records",
 		Args:  cobra.MaximumNArgs(1),
 		Run:   runBranchesCmd,
 	}

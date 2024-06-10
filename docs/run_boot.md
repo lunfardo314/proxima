@@ -14,26 +14,16 @@ Below we assume we use same working directory for all configuration profiles and
 
 ### 1. Create genesis owner's wallet
 
-The following command generates private key from the provided seed and system randomness. 
-It creates configuration profile file `proxi.yaml` for the `proxi` program:
+Create `proxi` wallet profile as described in [CLI wallet program](proxi.md). 
 
-`proxi init wallet`
+Set placeholder `<own sequencer ID>` in the YAML key `wallet.sequencer_id` to the 
+bootstrap sequencer ID constant `af7bedde1fea222230b82d63d5b665ac75afbe4ad3f75999bb3386cf994a6963`. 
 
-The file `proxi.yaml` will be used as a wallet profile which will control genesis.
-It contains genesis private key and corresponding controller address.
-
-The wallet profile must be adjusted by replacing placeholder `<own sequencer ID>` with the predefined bootstrap
-sequencer ID `af7bedde1fea222230b82d63d5b665ac75afbe4ad3f75999bb3386cf994a6963`.
-
-Please note that key `api.endpoint` must contain valid API endpoint. In the generated file it contains
-default value for the single node running on the local machine. 
-It may require adjustment when running several nodes on the same machine
+This will enable access to the bootstrap sequencer chain by this wallet. 
 
 ### 2. Create ledger ID file
 
-The following command will create ledger ID file `proxima.genesis.id.yaml` with all ledger constants:
-
-`proxi init ledger_id`
+The command `proxi init ledger_id` will create ledger ID file `proxima.genesis.id.yaml` with all ledger constants:
 
 The constant `genesis_controller_public_key` is the public key which corresponds to the private key 
 taken from the wallet profile. 
