@@ -230,7 +230,7 @@ func (d *MemDAG) AreOtherSequencersActive() bool {
 	d.mutex.RLock()
 	defer d.mutex.RUnlock()
 
-	return d.latestBranchSlot+1 >= ledger.TimeNow().Slot()
+	return d.latestBranchSlot != 0 && d.latestBranchSlot+1 >= ledger.TimeNow().Slot()
 }
 
 // LatestBranchSlot latest time slot with some stateReaders

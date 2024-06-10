@@ -59,7 +59,11 @@ func (lib *Library) extendWithConstraint(name, source string, nArgs byte, parser
 		parser: parser,
 	}
 	lib.constraintNames[name] = struct{}{}
-	lib.inlineTests = append(lib.inlineTests, inlineTests...)
+	lib.appendInlineTests(inlineTests...)
+}
+
+func (lib *Library) appendInlineTests(fun ...func()) {
+	lib.inlineTests = append(lib.inlineTests, fun...)
 }
 
 func (lib *Library) runInlineTests() {

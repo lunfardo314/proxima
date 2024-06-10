@@ -40,13 +40,12 @@ func InitLocally(id *IdentityData, verbose ...bool) *Library {
 }
 
 func Init(id *IdentityData, verbose ...bool) {
-	func() {
-		libraryGlobalMutex.Lock()
-		defer libraryGlobalMutex.Unlock()
+	libraryGlobalMutex.Lock()
 
-		util.Assertf(libraryGlobal == nil, "ledger is already initialized")
-		libraryGlobal = InitLocally(id, verbose...)
-	}()
+	util.Assertf(libraryGlobal == nil, "ledger is already initialized")
+	libraryGlobal = InitLocally(id, verbose...)
+
+	libraryGlobalMutex.Unlock()
 
 	libraryGlobal.runInlineTests()
 }

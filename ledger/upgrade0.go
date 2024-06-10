@@ -98,6 +98,7 @@ const (
 func (lib *Library) upgrade0(id *IdentityData) {
 	lib.upgrade0WithEmbedded()
 	lib.upgrade0WithExtensions(id)
+
 }
 
 //==================================== embedded
@@ -285,12 +286,24 @@ func (lib *Library) upgrade0WithBaseConstants(id *IdentityData) {
 	lib.ID = id
 	lib.UpgradeWithExtensions(upgrade0BaseConstants(id)...)
 	lib.UpgradeWithExtensions(upgrade0BaseHelpers...)
+
+	lib.appendInlineTests(func() {
+		// inline tests
+		libraryGlobal.MustEqual("timestamp(u32/255, 21)", MustNewLedgerTime(255, 21).Hex())
+		libraryGlobal.MustEqual("ticksBefore(timestamp(u32/100, 5), timestamp(u32/101, 10))", "u64/105")
+		libraryGlobal.MustError("timestamp(u32/255, 100)", "wrong timeslot")
+		libraryGlobal.MustError("mustValidTimeSlot(255)", "wrong data size")
+		libraryGlobal.MustError("mustValidTimeTick(200)", "wrong timeslot")
+		libraryGlobal.MustEqual("mustValidTimeSlot(u32/255)", Slot(255).Hex())
+		libraryGlobal.MustEqual("mustValidTimeTick(88)", Tick(88).String())
+	})
 }
 
 func (lib *Library) upgrade0WithExtensions(id *IdentityData) *Library {
 	lib.upgrade0WithBaseConstants(id)
 	lib.upgrade0WithGeneralFunctions()
 	lib.upgrade0WithConstraints()
+
 	return lib
 }
 
@@ -395,15 +408,6 @@ var upgrade0WithFunctions = []*easyfl.ExtendedFunctionData{
 }
 
 func (lib *Library) upgrade0WithGeneralFunctions() {
-	// inline tests
-	lib.MustEqual("timestamp(u32/255, 21)", MustNewLedgerTime(255, 21).Hex())
-	lib.MustEqual("ticksBefore(timestamp(u32/100, 5), timestamp(u32/101, 10))", "u64/105")
-	lib.MustError("timestamp(u32/255, 100)", "wrong timeslot")
-	lib.MustError("mustValidTimeSlot(255)", "wrong data size")
-	lib.MustError("mustValidTimeTick(200)", "wrong timeslot")
-	lib.MustEqual("mustValidTimeSlot(u32/255)", Slot(255).Hex())
-	lib.MustEqual("mustValidTimeTick(88)", Tick(88).String())
-
 	lib.UpgradeWithExtensions(upgrade0WithFunctions...)
 }
 

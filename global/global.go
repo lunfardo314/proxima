@@ -78,7 +78,7 @@ func NewFromConfig() *Global {
 			}
 		}
 	}
-	ret := _new(lvl, output)
+	ret := _new(lvl, output, viper.GetBool("bootstrap"))
 	if erasedPrev {
 		ret.SugaredLogger.Warnf("previous logfile has been erased")
 	}
@@ -86,16 +86,15 @@ func NewFromConfig() *Global {
 		ret.SugaredLogger.Warnf("previous logfile has been saved as %s", savedPrev)
 	}
 	ret.logAttacherStats = viper.GetBool("logger.log_attacher_stats")
-	ret.bootstrap = viper.GetBool("bootstrap")
 
 	return ret
 }
 
 func NewDefault() *Global {
-	return _new(zapcore.DebugLevel, []string{"stderr"})
+	return _new(zapcore.DebugLevel, []string{"stderr"}, true)
 }
 
-func _new(logLevel zapcore.Level, outputs []string) *Global {
+func _new(logLevel zapcore.Level, outputs []string, bootstrap bool) *Global {
 	ctx, cancelFun := context.WithCancel(context.Background())
 	ret := &Global{
 		ctx:           ctx,
@@ -107,6 +106,7 @@ func _new(logLevel zapcore.Level, outputs []string) *Global {
 		logStopOnce:   &sync.Once{},
 		components:    set.New[string](),
 		txTraceIDs:    make(map[ledger.TransactionID]time.Time),
+		bootstrap:     bootstrap,
 	}
 	go ret.purgeLoop()
 
