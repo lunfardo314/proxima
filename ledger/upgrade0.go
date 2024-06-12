@@ -114,6 +114,7 @@ var (
 		{"ArrayLength8", 1, evalNumElementsOfArray},
 		{"ticksBefore", 2, evalTicksBefore64},
 		// TODO: replace Verifiable Random Function (VRF) with verified implementation, for example from Algorand
+		// Parameters; publicKey, proof, message
 		{"vrfVerify", 3, evalVRFVerify},
 	}
 )
