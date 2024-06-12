@@ -5,6 +5,7 @@ import (
 	"crypto/ed25519"
 	"encoding/binary"
 	"fmt"
+	"math"
 	"math/rand"
 	"testing"
 	"time"
@@ -85,5 +86,19 @@ func TestRandomInflation2(t *testing.T) {
 		if cycles%500_000 == 0 {
 			fmt.Printf("                   %.1f mln cycles, %dus/cycle\n", float32(cycles)/1_000_000, int(since/time.Microsecond)/cycles)
 		}
+	}
+}
+
+func TestConstantInflation(t *testing.T) {
+	const (
+		initialSupply           = ledger.DefaultInitialSupply / 1000
+		annualInflationRatePerc = 10
+	)
+	rate := 1 + float64(annualInflationRatePerc)/100
+	infl := float64(initialSupply)
+	for i := 0; infl < float64(math.MaxUint64) && rate > 0; i++ {
+		fmt.Printf("%3d : %20s      %2f\n", i, util.GoTh(uint64(infl)), rate)
+		infl = infl * rate
+		rate = rate - 0.001
 	}
 }
