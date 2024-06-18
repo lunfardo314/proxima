@@ -37,14 +37,18 @@ const (
 	InitialSupplyProxi   = 1_000_000_000
 	DefaultInitialSupply = InitialSupplyProxi * PRXI
 
+	// begin inflation-related
+
 	DefaultMaxBranchInflationBonus        = 12_000_000
 	DefaultChainInflationFractionPerTick  = 2_500_000_000
 	DefaultChainInflationOpportunitySlots = 12
-	DefaultVBCost                         = 1
-	DefaultTransactionPace                = 10
-	DefaultTransactionPaceSequencer       = 1
-	DefaultMinimumAmountOnSequencer       = 1_000 * PRXI
-	DefaultMaxNumberOfEndorsements        = 8
+	// end inflation-related
+
+	DefaultVBCost                   = 1
+	DefaultTransactionPace          = 10
+	DefaultTransactionPaceSequencer = 1
+	DefaultMinimumAmountOnSequencer = 1_000 * PRXI
+	DefaultMaxNumberOfEndorsements  = 8
 )
 
 func newBaseLibrary() *Library {
