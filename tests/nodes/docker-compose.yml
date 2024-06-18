@@ -13,7 +13,7 @@ services:
     networks:
       proxima_network:
         ipv4_address: 172.16.238.10
-    command: ["./start.sh", "0"]
+    command: ["./start.sh", "0", "0"]
 
   node1:
     container_name: node1
@@ -27,7 +27,7 @@ services:
     networks:
       proxima_network:
         ipv4_address: 172.16.238.11
-    command: ["./start.sh", "1"]
+    command: ["./start.sh", "1", "0"]
 
   node2:
     container_name: node2
@@ -41,7 +41,7 @@ services:
     networks:
       proxima_network:
         ipv4_address: 172.16.238.12
-    command: ["./start.sh", "2"]
+    command: ["./start.sh", "2", "0"]
 
   node3:
     container_name: node3
@@ -55,7 +55,7 @@ services:
     networks:
       proxima_network:
         ipv4_address: 172.16.238.13
-    command: ["./start.sh", "3"]
+    command: ["./start.sh", "3", "0"]
 
   node4:
     container_name: node4
@@ -69,7 +69,7 @@ services:
     networks:
       proxima_network:
         ipv4_address: 172.16.238.14
-    command: ["./start.sh", "4"]
+    command: ["./start.sh", "4", "0"]
 
 networks:
   proxima_network:

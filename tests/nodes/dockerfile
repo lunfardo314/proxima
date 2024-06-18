@@ -1,6 +1,7 @@
 # Use the official Golang image as the base image
 FROM golang:1.22-bookworm AS build
 
+#RUN go install github.com/go-delve/delve/cmd/dlv@latest
 
 # Set the current Working Directory inside the container
 RUN mkdir /scratch
@@ -37,6 +38,9 @@ RUN cp ./proxi /app
 
 WORKDIR /app
 RUN ./proxi init ledger_id
+
+# Expose the port Delve will listen on
+#EXPOSE 40000
 
 # Start a new stage from scratch
 #FROM gcr.io/distroless/cc-debian12
