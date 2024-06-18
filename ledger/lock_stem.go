@@ -89,8 +89,8 @@ func StemLockFromBytes(data []byte) (*StemLock, error) {
 }
 
 const stemLockSource = `
-func _producedStem : lockConstraint(producedOutputByIndex(txStemOutputIndex))
-func _predOutputID : evalArgumentBytecode(_producedStem, selfBytecodePrefix, 0)
+func producedStemLockOfSelfTx : lockConstraint(producedOutputByIndex(txStemOutputIndex))
+func _predOutputID : evalArgumentBytecode(producedStemLockOfSelfTx, selfBytecodePrefix, 0)
 
 // $0 - predecessor output ID
 // does not require unlock parameters
@@ -107,4 +107,7 @@ func stemLock: and(
 		equal(selfOutputIndex, txStemOutputIndex),
     )
 )
+
+// utility function to get stem predecessor. Does not use 'selfBytecodePrefix''
+func predStemOutputIDOfSelf : evalArgumentBytecode(producedStemLockOfSelfTx, #stemLock, 0)
 `

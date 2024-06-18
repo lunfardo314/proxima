@@ -8,7 +8,6 @@ import (
 
 	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/proxima/util"
-	"golang.org/x/crypto/blake2b"
 )
 
 // Inflation constraint script, when added to the chain-constrained output, adds inflation the transaction
@@ -30,7 +29,7 @@ func _validChainInflationValue : or(
 	isZero($1), // zero always ok
     lessOrEqualThan(
        $1,
-       maxInflationAmount(
+       maxChainInflationAmount(
 			timestampOfInputByIndex($0), 
 			txTimestampBytes, 
 			amountValue(consumedOutputByIndex($0))
@@ -41,6 +40,7 @@ func _validChainInflationValue : or(
 // $0 - chain constraint index (sibling)
 // $1 - inflation amount 8 bytes
 // checks if inflation is ok for the non-branch transaction
+
 func _checkChainInflation :
 	_validChainInflationValue(
 		predecessorInputIndexFromChainData(
@@ -50,11 +50,16 @@ func _checkChainInflation :
 	)
 
 // $0 - inflation data, interpreted as randomness proof
-// checks inflation data is a randomness proof, valid for the slot (as message) and with public key of the sender
-// randomness proof will be used to calculate branch inflation bonus in the range between 0 and constBranchBonusBase + 1 
+// checks inflation data is a randomness proof, valid for the stem predecessor (as message) and with public key of the sender
+// randomness proof will be used to calculate branch inflation bonus in the range between 0 and constBranchBonusBase + 1
+// 
+// Stem predecessor is used as a message to make same sequencer have different random inflation on different forks.
+// Using slot as a message makes some inflation of same slot for different branches. This may lead to 'nothing-at-stake'
+// situation
+
 func _checkBranchInflationBonus : 
 	require(
-		vrfVerify(publicKeyED25519(txSignature), $0, txTimeSlot),
+		vrfVerify(publicKeyED25519(txSignature), $0, predStemOutputIDOfSelf),
 		!!!VRF_verification_failed
 	)
 
@@ -122,7 +127,7 @@ func (i *InflationConstraint) InflationAmount(branch bool) uint64 {
 		return 0
 	}
 	if branch {
-		return BranchInflationBonusFromRandomnessProof(i.AmountOrRndProof)
+		return L().ID.BranchInflationBonusFromRandomnessProof(i.AmountOrRndProof)
 	}
 	if len(i.AmountOrRndProof) != 8 {
 		return 0
@@ -170,11 +175,4 @@ func initTestInflationConstraint() {
 
 	amountBin := easyfl.StripDataPrefix(args[1])
 	util.Assertf(bytes.Equal(amountBin, data), "bytes.Equal(amountBin, data)")
-}
-
-// BranchInflationBonusFromRandomnessProof makes uint64 in the range from 0 to BranchBonusBase (incl)
-func BranchInflationBonusFromRandomnessProof(data []byte) uint64 {
-	h := blake2b.Sum256(data)
-	n := binary.BigEndian.Uint64(h[0:8])
-	return n % (L().ID.BranchBonusBase + 1)
 }

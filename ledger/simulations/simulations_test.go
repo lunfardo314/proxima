@@ -211,7 +211,7 @@ func TestInflationProjections(t *testing.T) {
 		years[y] = year
 	}
 
-	t.Logf("ASSUMpTION: 100%% of ledger capital is inflated every year. More realistic assumtion would be 60%% - 70%%")
+	t.Logf("ASSUMPTION: 100%% of ledger capital is inflated every year. More realistic assumtion would be 60%% - 70%%")
 	for y, year := range years {
 		slot := ledger.Slot(y * int(slotsPerEpoch))
 		initSupply := year.supplyInSlot[0]

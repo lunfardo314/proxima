@@ -34,7 +34,7 @@ func TestInflation(t *testing.T) {
 		ledger.L().MustEqual(src, "u64/50")
 		ledger.L().MustEqual(src, fmt.Sprintf("u64/%d", expectedInflation))
 
-		src = fmt.Sprintf("maxInflationAmount(%s, %s, u64/%d)", tsIn.Source(), tsOut.Source(), amountIn)
+		src = fmt.Sprintf("maxChainInflationAmount(%s, %s, u64/%d)", tsIn.Source(), tsOut.Source(), amountIn)
 		ledger.L().MustEqual(src, fmt.Sprintf("u64/%d", ledger.L().ID.InflationAmount(tsIn, tsOut, amountIn)))
 		t.Logf("inflationAmount: %s", util.GoTh(ledger.L().ID.InflationAmount(tsIn, tsOut, amountIn)))
 
@@ -52,7 +52,7 @@ func TestInflation(t *testing.T) {
 		for i := 0; i < 10; i++ {
 			tsIn := tsStart.AddSlots(int(ledger.L().ID.SlotsPerHalvingEpoch) * i)
 			tsOut1 := tsIn.AddSlots(3)
-			src := fmt.Sprintf("maxInflationAmount(%s, %s, u64/%d)", tsIn.Source(), tsOut1.Source(), amountIn)
+			src := fmt.Sprintf("maxChainInflationAmount(%s, %s, u64/%d)", tsIn.Source(), tsOut1.Source(), amountIn)
 			ledger.L().MustEqual(src, fmt.Sprintf("u64/%d", ledger.L().ID.InflationAmount(tsIn, tsOut1, amountIn)))
 			t.Logf("year %d: tsIn: %s, tsOut: %s, ledger epoch: %d, chainInflationDirect: %s, inflation: %s",
 				i, tsIn.String(), tsOut1.String(), ledger.L().Const().HalvingEpoch(tsOut1),
@@ -61,7 +61,7 @@ func TestInflation(t *testing.T) {
 			)
 			tsOut2 := tsIn.AddSlots(4)
 			tsOut2 = ledger.MustNewLedgerTime(tsOut2.Slot(), 0)
-			src = fmt.Sprintf("maxInflationAmount(%s, %s, u64/%d)", tsIn.Source(), tsOut2.Source(), amountIn)
+			src = fmt.Sprintf("maxChainInflationAmount(%s, %s, u64/%d)", tsIn.Source(), tsOut2.Source(), amountIn)
 			ledger.L().MustEqual(src, fmt.Sprintf("u64/%d", ledger.L().ID.InflationAmount(tsIn, tsOut2, amountIn)))
 			t.Logf("year %d: tsIn: %s, tsOut: %s, ledger epoch: %d, chainInflationDirect: %s, inflation: %s",
 				i, tsIn.String(), tsOut2.String(), ledger.L().Const().HalvingEpoch(tsOut2),

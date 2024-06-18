@@ -253,7 +253,7 @@ func upgrade0BaseConstants(id *IdentityData) []*easyfl.ExtendedFunctionData {
 		{"constGenesisTimeUnix", fmt.Sprintf("u64/%d", id.GenesisTimeUnix)},
 		{"constTickDuration", fmt.Sprintf("u64/%d", int64(id.TickDuration))},
 		{"constMaxTickValuePerSlot", fmt.Sprintf("u64/%d", id.MaxTickValueInSlot)},
-		{"constBranchBonusBase", fmt.Sprintf("u64/%d", id.BranchBonusBase)},
+		{"constBranchInflationBonusBase", fmt.Sprintf("u64/%d", id.BranchBonusBase)},
 		{"constHalvingEpochs", fmt.Sprintf("u64/%d", id.NumHalvingEpochs)},
 		{"constChainInflationFractionBase", fmt.Sprintf("u64/%d", id.ChainInflationPerTickFractionBase)},
 		{"constChainInflationOpportunitySlots", fmt.Sprintf("u64/%d", id.ChainInflationOpportunitySlots)},
