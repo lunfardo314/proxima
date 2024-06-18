@@ -98,7 +98,7 @@ func MakeSequencerTransactionWithInputLoader(par MakeSequencerTransactionParams)
 		if par.Timestamp.Tick() != 0 {
 			// calculate maximum inflation allowed in the context
 			// non-branch transaction
-			inflationAmount = ledger.L().ID.InflationAmount(par.ChainInput.Timestamp(), par.Timestamp, par.ChainInput.Output.Amount())
+			inflationAmount = ledger.L().ID.ChainInflationAmount(par.ChainInput.Timestamp(), par.Timestamp, par.ChainInput.Output.Amount())
 			inflationData = make([]byte, 8)
 			binary.BigEndian.PutUint64(inflationData, inflationAmount)
 		} else {

@@ -6,7 +6,6 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
-	"math"
 	"time"
 
 	"github.com/lunfardo314/proxima/util"
@@ -29,17 +28,13 @@ type (
 		GenesisControllerPublicKey ed25519.PublicKey
 		// time tick duration in nanoseconds
 		TickDuration time.Duration
-		// max time tick value in the slot. Up to 256 time ticks per time slot, default 100
+		// max time tick value in the slot. Default 99
 		MaxTickValueInSlot uint8
 		// ----------- inflation-related
-		// NumHalvingEpochs number of halving epochs
-		NumHalvingEpochs byte
-		// Default 2_289_600. approx one year in slots.
-		SlotsPerHalvingEpoch uint32
-		// IBranchBonusBase inflation bonus
-		BranchBonusBase uint64
-		// ChainInflationPerTickFractionBase and HalvingYears
-		ChainInflationPerTickFractionBase uint64
+		// BranchInflationBonusBase inflation bonus
+		BranchInflationBonusBase uint64
+		// ChainInflationPerTickFraction max inflation during 1 tick = amount / ChainInflationPerTickFraction
+		ChainInflationPerTickFraction uint64
 		// ChainInflationOpportunitySlots maximum gap between chain outputs for the non-zero inflation
 		ChainInflationOpportunitySlots uint64
 		// VBCost
@@ -62,11 +57,9 @@ type (
 		TimeTickDurationNanosec           int64  `yaml:"time_tick_duration_nanosec"`
 		MaxTimeTickValueInTimeSlot        uint8  `yaml:"max_time_tick_value_in_time_slot"`
 		BranchBonusBase                   uint64 `yaml:"branch_bonus_base"`
-		SlotsPerHalvingEpoch              uint32 `yaml:"slots_per_halving_epoch"`
 		VBCost                            uint64 `yaml:"vb_cost"`
 		TransactionPace                   byte   `yaml:"transaction_pace"`
 		TransactionPaceSequencer          byte   `yaml:"transaction_pace_sequencer"`
-		NumHalvingEpochs                  byte   `yaml:"num_halving_epochs"`
 		ChainInflationPerTickFractionBase uint64 `yaml:"chain_inflation_per_tick_fraction_base"`
 		ChainInflationOpportunitySlots    uint64 `yaml:"chain_inflation_opportunity_slots"`
 		MinimumAmountOnSequencer          uint64 `yaml:"minimum_amount_on_sequencer"`
@@ -91,10 +84,8 @@ func (id *IdentityData) Bytes() []byte {
 	_ = binary.Write(&buf, binary.BigEndian, id.InitialSupply)
 	_ = binary.Write(&buf, binary.BigEndian, id.TickDuration.Nanoseconds())
 	_ = binary.Write(&buf, binary.BigEndian, id.MaxTickValueInSlot)
-	_ = binary.Write(&buf, binary.BigEndian, id.SlotsPerHalvingEpoch)
-	_ = binary.Write(&buf, binary.BigEndian, id.BranchBonusBase)
-	_ = binary.Write(&buf, binary.BigEndian, id.NumHalvingEpochs)
-	_ = binary.Write(&buf, binary.BigEndian, id.ChainInflationPerTickFractionBase)
+	_ = binary.Write(&buf, binary.BigEndian, id.BranchInflationBonusBase)
+	_ = binary.Write(&buf, binary.BigEndian, id.ChainInflationPerTickFraction)
 	_ = binary.Write(&buf, binary.BigEndian, id.ChainInflationOpportunitySlots)
 	_ = binary.Write(&buf, binary.BigEndian, id.VBCost)
 	_ = binary.Write(&buf, binary.BigEndian, id.TransactionPace)
@@ -134,16 +125,10 @@ func MustLedgerIdentityDataFromBytes(data []byte) *IdentityData {
 	err = binary.Read(rdr, binary.BigEndian, &ret.MaxTickValueInSlot)
 	util.AssertNoError(err)
 
-	err = binary.Read(rdr, binary.BigEndian, &ret.SlotsPerHalvingEpoch)
+	err = binary.Read(rdr, binary.BigEndian, &ret.BranchInflationBonusBase)
 	util.AssertNoError(err)
 
-	err = binary.Read(rdr, binary.BigEndian, &ret.BranchBonusBase)
-	util.AssertNoError(err)
-
-	err = binary.Read(rdr, binary.BigEndian, &ret.NumHalvingEpochs)
-	util.AssertNoError(err)
-
-	err = binary.Read(rdr, binary.BigEndian, &ret.ChainInflationPerTickFractionBase)
+	err = binary.Read(rdr, binary.BigEndian, &ret.ChainInflationPerTickFraction)
 	util.AssertNoError(err)
 
 	err = binary.Read(rdr, binary.BigEndian, &ret.ChainInflationOpportunitySlots)
@@ -242,13 +227,11 @@ func (id *IdentityData) YAMLAble() *IdentityDataYAMLAble {
 		InitialSupply:                     id.InitialSupply,
 		TimeTickDurationNanosec:           id.TickDuration.Nanoseconds(),
 		MaxTimeTickValueInTimeSlot:        id.MaxTickValueInSlot,
-		BranchBonusBase:                   id.BranchBonusBase,
+		BranchBonusBase:                   id.BranchInflationBonusBase,
 		VBCost:                            id.VBCost,
 		TransactionPace:                   id.TransactionPace,
 		TransactionPaceSequencer:          id.TransactionPaceSequencer,
-		SlotsPerHalvingEpoch:              id.SlotsPerHalvingEpoch,
-		NumHalvingEpochs:                  id.NumHalvingEpochs,
-		ChainInflationPerTickFractionBase: id.ChainInflationPerTickFractionBase,
+		ChainInflationPerTickFractionBase: id.ChainInflationPerTickFraction,
 		ChainInflationOpportunitySlots:    id.ChainInflationOpportunitySlots,
 		GenesisControllerAddress:          id.GenesisControlledAddress().String(),
 		MinimumAmountOnSequencer:          id.MinimumAmountOnSequencer,
@@ -256,10 +239,6 @@ func (id *IdentityData) YAMLAble() *IdentityDataYAMLAble {
 		BootstrapChainID:                  chainID.StringHex(),
 		Description:                       id.Description,
 	}
-}
-
-func (id *IdentityData) TimeHorizonYears() int {
-	return math.MaxUint32 / int(id.SlotsPerHalvingEpoch)
 }
 
 func (id *IdentityData) SlotsPerDay() int {
@@ -282,8 +261,6 @@ func (id *IdentityData) TimeConstantsToString() string {
 		Add("SlotDuration = %v", id.SlotDuration()).
 		Add("SlotsPerDay = %d", id.SlotsPerDay()).
 		Add("MaxYears = %d", maxYears).
-		Add("TimeHorizonYears = %d", id.TimeHorizonYears()).
-		Add("SlotsPerHalvingEpoch = %d", id.SlotsPerHalvingEpoch).
 		Add("seconds per year = %d", 60*60*24*365).
 		Add("timestamp GenesisTime = %v", id.GenesisTime()).
 		Add("nowis %v", nowis).
@@ -335,14 +312,12 @@ func (id *IdentityDataYAMLAble) stateIdentityData() (*IdentityData, error) {
 	}
 	ret.TickDuration = time.Duration(id.TimeTickDurationNanosec)
 	ret.MaxTickValueInSlot = id.MaxTimeTickValueInTimeSlot
-	ret.BranchBonusBase = id.BranchBonusBase
+	ret.BranchInflationBonusBase = id.BranchBonusBase
 	ret.VBCost = id.VBCost
 	ret.TransactionPace = id.TransactionPace
 	ret.TransactionPaceSequencer = id.TransactionPaceSequencer
-	ret.SlotsPerHalvingEpoch = id.SlotsPerHalvingEpoch
-	ret.ChainInflationPerTickFractionBase = id.ChainInflationPerTickFractionBase
+	ret.ChainInflationPerTickFraction = id.ChainInflationPerTickFractionBase
 	ret.ChainInflationOpportunitySlots = id.ChainInflationOpportunitySlots
-	ret.NumHalvingEpochs = id.NumHalvingEpochs
 	ret.MinimumAmountOnSequencer = id.MinimumAmountOnSequencer
 	ret.MaxNumberOfEndorsements = id.MaxNumberOfEndorsements
 	ret.Description = id.Description

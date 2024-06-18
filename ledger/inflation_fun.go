@@ -12,33 +12,12 @@ import (
 // constants. The two must exactly match each other
 // TODO write inline tests for that
 
-// InflationAmount is calculation of inflation amount directly from ledger identity constants
-func (id *IdentityData) InflationAmount(inTs, outTs Time, inAmount uint64) uint64 {
-	if outTs.IsSlotBoundary() {
-		// for branch transactions fixed inflation
-		return id.BranchBonusBase
-	}
-	return id.ChainInflationAmount(inTs, outTs, inAmount)
-}
-
-func (id *IdentityData) _epochFromGenesis(slot Slot) uint64 {
-	return uint64(slot) / uint64(id.SlotsPerHalvingEpoch)
-}
-
-func (id *IdentityData) _halvingEpoch(epochFromGenesis uint64) uint64 {
-	if epochFromGenesis < uint64(id.NumHalvingEpochs) {
-		return epochFromGenesis
-	}
-	return uint64(id.NumHalvingEpochs)
-}
-
-func (id *IdentityData) InflationFractionBySlot(slotIn Slot) uint64 {
-	return id.ChainInflationPerTickFractionBase * (1 << id._halvingEpoch(id._epochFromGenesis(slotIn)))
-}
-
 // ChainInflationAmount mocks inflation amount formula from the constraint library
 // Safe arithmetics!
 func (id *IdentityData) ChainInflationAmount(inTs, outTs Time, inAmount uint64) uint64 {
+	if outTs.IsSlotBoundary() {
+		return 0
+	}
 	diffTicks := DiffTicks(outTs, inTs)
 	util.Assertf(diffTicks > 0, "ChainInflationAmount: wrong timestamps")
 	util.Assertf(inAmount > 0, "ChainInflationAmount: inAmount > 0")
@@ -46,9 +25,9 @@ func (id *IdentityData) ChainInflationAmount(inTs, outTs Time, inAmount uint64) 
 	if id._insideInflationOpportunityWindow(diffTicks, inAmount) {
 		util.Assertf(uint64(diffTicks) <= math.MaxUint64/inAmount, "ChainInflationAmount: arithmetic overflow: diffTicks: %d, inAmount: %d",
 			diffTicks, inAmount)
-		return uint64(diffTicks) * inAmount / id.InflationFractionBySlot(inTs.Slot())
+		return (uint64(diffTicks) * inAmount) / id.ChainInflationPerTickFraction
 	}
-	// non-zero inflation is only within the window of opportunity to disincentivize "lazy whales" or very big amounts
+	// non-zero inflation is only within the window of opportunity to disincentive-ize "lazy whales"
 	return 0
 }
 
@@ -62,11 +41,11 @@ func (id *IdentityData) _insideInflationOpportunityWindow(diffTicks int64, inAmo
 		uint64(diffTicks) < math.MaxUint64/inAmount
 }
 
-// BranchInflationBonusFromRandomnessProof makes uint64 in the range from 0 to BranchBonusBase (incl)
+// BranchInflationBonusFromRandomnessProof makes uint64 in the range from 0 to BranchInflationBonusBase (incl)
 func (id *IdentityData) BranchInflationBonusFromRandomnessProof(data []byte) uint64 {
 	h := blake2b.Sum256(data)
 	n := binary.BigEndian.Uint64(h[0:8])
-	return n % (id.BranchBonusBase + 1)
+	return n % (id.BranchInflationBonusBase + 1)
 }
 
 // inflationFunctionsSource is a EasyFL source (inflationAmount function) of on-ledger calculation of inflation amount
@@ -87,7 +66,7 @@ func halvingEpoch :
 // result - inflation fraction corresponding to that year (taking into account halving) 
 func inflationFractionBySlot :
     mul(
-        constChainInflationFractionBase, 
+        constChainInflationPerTickFraction, 
         lshift64(1, halvingEpoch(epochFromGenesis($0)))
     )
 

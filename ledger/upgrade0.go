@@ -253,14 +253,14 @@ func upgrade0BaseConstants(id *IdentityData) []*easyfl.ExtendedFunctionData {
 		{"constGenesisTimeUnix", fmt.Sprintf("u64/%d", id.GenesisTimeUnix)},
 		{"constTickDuration", fmt.Sprintf("u64/%d", int64(id.TickDuration))},
 		{"constMaxTickValuePerSlot", fmt.Sprintf("u64/%d", id.MaxTickValueInSlot)},
-		{"constBranchInflationBonusBase", fmt.Sprintf("u64/%d", id.BranchBonusBase)},
-		{"constHalvingEpochs", fmt.Sprintf("u64/%d", id.NumHalvingEpochs)},
-		{"constChainInflationFractionBase", fmt.Sprintf("u64/%d", id.ChainInflationPerTickFractionBase)},
+		// begin inflation-related
+		{"constBranchInflationBonusBase", fmt.Sprintf("u64/%d", id.BranchInflationBonusBase)},
+		{"constChainInflationPerTickFraction", fmt.Sprintf("u64/%d", id.ChainInflationPerTickFraction)},
 		{"constChainInflationOpportunitySlots", fmt.Sprintf("u64/%d", id.ChainInflationOpportunitySlots)},
+		// end inflation-related
 		{"constMinimumAmountOnSequencer", fmt.Sprintf("u64/%d", id.MinimumAmountOnSequencer)},
 		{"constMaxNumberOfEndorsements", fmt.Sprintf("u64/%d", id.MaxNumberOfEndorsements)},
 
-		{"constSlotsPerLedgerEpoch", fmt.Sprintf("u64/%d", id.SlotsPerHalvingEpoch)},
 		{"constTransactionPace", fmt.Sprintf("u64/%d", id.TransactionPace)},
 		{"constTransactionPaceSequencer", fmt.Sprintf("u64/%d", id.TransactionPaceSequencer)},
 		{"constVBCost16", fmt.Sprintf("u16/%d", id.VBCost)}, // change to 64
