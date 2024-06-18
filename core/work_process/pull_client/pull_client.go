@@ -54,6 +54,7 @@ func (p *PullClient) Start() {
 		p.MarkWorkProcessStopped(Name)
 	})
 	p.Queue.Start(p, p.Ctx())
+	go p.backgroundLoop()
 }
 
 func (p *PullClient) Consume(inp *Input) {
