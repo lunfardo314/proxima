@@ -11,6 +11,7 @@ import (
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/transaction"
+	"github.com/lunfardo314/proxima/util"
 )
 
 type (
@@ -105,6 +106,7 @@ func (w *Workflow) TxBytesIn(txBytes []byte, opts ...TxBytesInOption) (*ledger.T
 	attachOpts := []attacher.Option{
 		attacher.OptionWithTransactionMetadata(&options.txMetadata),
 		attacher.OptionInvokedBy("txInput"),
+		attacher.OptionEnforceTimestampBeforeRealTime,
 	}
 	if options.callback != nil {
 		attachOpts = append(attachOpts, attacher.OptionWithAttachmentCallback(options.callback))
@@ -132,6 +134,8 @@ func (w *Workflow) TxBytesIn(txBytes []byte, opts ...TxBytesInOption) (*ledger.T
 }
 
 func (w *Workflow) _attach(tx *transaction.Transaction, opts ...attacher.Option) {
+	util.Assertf(!time.Now().Before(tx.TimestampTime()), "!time.Now().Before(tx.TimestampTime())")
+
 	w.TraceTx(tx.ID(), "TxBytesIn: send to attach")
 	w.Tracef(TraceTagTxInput, "-> attach tx %s", tx.IDShortString)
 	if vid := attacher.AttachTransaction(tx, w, opts...); vid.IsBadOrDeleted() {

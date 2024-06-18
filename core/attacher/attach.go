@@ -108,6 +108,13 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Opt
 	for _, opt := range opts {
 		opt(options)
 	}
+	if options.enforceTimestamp {
+		now := ledger.TimeNow()
+		util.Assertf(!now.Before(tx.Timestamp()),
+			"!ledger.TimeNow().Before(tx.Timestamp()) %s -- %s",
+			now.String(), tx.Timestamp().String())
+	}
+
 	env.Tracef(TraceTagAttach, "AttachTransaction: %s", tx.IDShortString)
 	env.TraceTx(tx.ID(), "AttachTransaction")
 

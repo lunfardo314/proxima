@@ -218,8 +218,6 @@ func (d *MemDAG) EvidenceBranchSlot(s ledger.Slot) {
 
 	if d.latestBranchSlot < s {
 		d.latestBranchSlot = s
-
-		util.Assertf(ledger.TimeNow().Slot() >= s, "EvidenceBranchSlot: time related inconsistency")
 	}
 }
 

@@ -94,6 +94,7 @@ type (
 		pullNonBranch      bool
 		doNotLoadBranch    bool
 		calledBy           string
+		enforceTimestamp   bool
 	}
 	Option func(*_attacherOptions)
 
@@ -170,6 +171,10 @@ func OptionPullNonBranch(options *_attacherOptions) {
 
 func OptionDoNotLoadBranch(options *_attacherOptions) {
 	options.doNotLoadBranch = true
+}
+
+func OptionEnforceTimestampBeforeRealTime(options *_attacherOptions) {
+	options.enforceTimestamp = true
 }
 
 func OptionInvokedBy(name string) Option {
