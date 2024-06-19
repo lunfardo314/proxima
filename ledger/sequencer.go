@@ -67,6 +67,23 @@ func zeroTickOnBranchOnly : or(
 	isBranchTransaction
 )
 
+// enforces the sequencer transaction with more than 1 input not is in the pre branch consolidation ticks zone
+// Checks: txTimeTick <= constMaxTickValuePerSlot - constPreBranchConsolidationTicks
+func checkPreBranchConsolidationTicks :
+or(
+   equal(numInputs, 1),
+   require(
+		lessOrEqualThan(
+			uint64Bytes(txTimeTick),
+			sub(
+				constMaxTickValuePerSlot,
+				constPreBranchConsolidationTicks
+			)
+        ),
+        !!!sequencer_transaction_violates_pre_branch_consolidation_ticks_constraint
+   )
+)
+
 // $0 is chain constraint sibling index. 0xff value means it is genesis output. 
 // $1 is total produced amount by transaction, 8 bytes big-endian
 func sequencer: and(
@@ -81,6 +98,7 @@ func sequencer: and(
 			require(not(equal($0, 0xff)), !!!chain_constraint_index_0xff_is_not_alowed),
             require(zeroTickOnBranchOnly, !!!non-branch_sequencer_transaction_cant_be_on_slot_boundary), 
             require(equal($1, txTotalProducedAmount), !!!wrong_total_amount_on_sequencer_output),
+			checkPreBranchConsolidationTicks,
                 // check chain's past'
 			_sequencer( chainPredecessorInputIndex($0) )
 		)

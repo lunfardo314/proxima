@@ -260,6 +260,7 @@ func upgrade0BaseConstants(id *IdentityData) []*easyfl.ExtendedFunctionData {
 		// end inflation-related
 		{"constMinimumAmountOnSequencer", fmt.Sprintf("u64/%d", id.MinimumAmountOnSequencer)},
 		{"constMaxNumberOfEndorsements", fmt.Sprintf("u64/%d", id.MaxNumberOfEndorsements)},
+		{"constPreBranchConsolidationTicks", fmt.Sprintf("u64/%d", id.PreBranchConsolidationTicks)},
 
 		{"constTransactionPace", fmt.Sprintf("u64/%d", id.TransactionPace)},
 		{"constTransactionPaceSequencer", fmt.Sprintf("u64/%d", id.TransactionPaceSequencer)},
@@ -368,6 +369,7 @@ var upgrade0WithFunctions = []*easyfl.ExtendedFunctionData{
 	{"isBranchTransaction", "and(isSequencerTransaction, not(equal(txStemOutputIndex, 0xff)))"},
 	// endorsements
 	{"numEndorsements", "ArrayLength8(@Path(pathToEndorsements))"},
+	{"numInputs", "ArrayLength8(@Path(pathToInputIDs))"},
 	{"sequencerFlagON", "not(isZero(bitwiseAND(byte($0,0),0x80)))"},
 	// functions with prefix 'self' are invocation context specific, i.e. they use function '@' to calculate
 	// local values which depend on the invoked constraint

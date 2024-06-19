@@ -48,11 +48,12 @@ const (
 	DefaultChainInflationOpportunitySlots = 12
 	// end inflation-related
 
-	DefaultVBCost                   = 1
-	DefaultTransactionPace          = 10
-	DefaultTransactionPaceSequencer = 1
-	DefaultMinimumAmountOnSequencer = 1_000 * PRXI
-	DefaultMaxNumberOfEndorsements  = 8
+	DefaultVBCost                      = 1
+	DefaultTransactionPace             = 10
+	DefaultTransactionPaceSequencer    = 1
+	DefaultMinimumAmountOnSequencer    = 1_000 * PRXI
+	DefaultMaxNumberOfEndorsements     = 8
+	DefaultPreBranchConsolidationTicks = 20
 )
 
 func newBaseLibrary() *Library {
@@ -99,6 +100,7 @@ func DefaultIdentityData(privateKey ed25519.PrivateKey) *IdentityData {
 		ChainInflationOpportunitySlots: DefaultChainInflationOpportunitySlots,
 		MinimumAmountOnSequencer:       DefaultMinimumAmountOnSequencer,
 		MaxNumberOfEndorsements:        DefaultMaxNumberOfEndorsements,
+		PreBranchConsolidationTicks:    DefaultPreBranchConsolidationTicks,
 		Description:                    "Proxima prototype ledger. Ver 0.0.0",
 	}
 }

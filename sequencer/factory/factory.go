@@ -221,6 +221,13 @@ func (mf *MilestoneFactory) CurrentTargetTs() ledger.Time {
 
 func (mf *MilestoneFactory) AttachTagAlongInputs(a *attacher.IncrementalAttacher) (numInserted int) {
 	mf.Tracef(TraceTag, "AttachTagAlongInputs: %s", a.Name())
+
+	if ledger.L().ID.IsPreBranchConsolidationTimestamp(a.TargetTs()) {
+		// skipping tagging-along in pre-branch consolidation zone
+		mf.Tracef(TraceTag, "AttachTagAlongInputs: %s. No tag-along in the pre-branch consolidation zone of ticks", a.Name())
+		return 0
+	}
+
 	preSelected := mf.Backlog().FilterAndSortOutputs(func(wOut vertex.WrappedOutput) bool {
 		if !ledger.ValidSequencerPace(wOut.Timestamp(), a.TargetTs()) {
 			mf.TraceTx(&wOut.VID.ID, "AttachTagAlongInputs:#%d  not valid pace -> not pre-selected (target %s)", wOut.Index, a.TargetTs().String)

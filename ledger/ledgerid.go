@@ -47,6 +47,11 @@ type (
 		MinimumAmountOnSequencer uint64
 		// limit maximum number of endorsements. For determinism
 		MaxNumberOfEndorsements uint64
+		// PreBranchConsolidationTicks enforces endorsement-only constraint for specified amount of ticks
+		// before the slot boundary. It means, sequencer transaction can have only one input, its own predecessor
+		// for any transaction with timestamp ticks > MaxTickValueInSlot - PreBranchConsolidationTicks
+		// value 0 of PreBranchConsolidationTicks effectively means no constraint
+		PreBranchConsolidationTicks uint8
 	}
 
 	// IdentityDataYAMLAble structure for canonical YAMLAble marshaling
@@ -64,6 +69,7 @@ type (
 		ChainInflationOpportunitySlots    uint64 `yaml:"chain_inflation_opportunity_slots"`
 		MinimumAmountOnSequencer          uint64 `yaml:"minimum_amount_on_sequencer"`
 		MaxNumberOfEndorsements           uint64 `yaml:"max_number_of_endorsements"`
+		PreBranchConsolidationTicks       uint8  `yaml:"pre_branch_consolidation_ticks"`
 		Description                       string `yaml:"description"`
 		// non-persistent, for control
 		GenesisControllerAddress string `yaml:"genesis_controller_address"`
@@ -92,6 +98,7 @@ func (id *IdentityData) Bytes() []byte {
 	_ = binary.Write(&buf, binary.BigEndian, id.TransactionPaceSequencer)
 	_ = binary.Write(&buf, binary.BigEndian, id.MinimumAmountOnSequencer)
 	_ = binary.Write(&buf, binary.BigEndian, id.MaxNumberOfEndorsements)
+	_ = binary.Write(&buf, binary.BigEndian, id.PreBranchConsolidationTicks)
 	_ = binary.Write(&buf, binary.BigEndian, uint16(len(id.Description)))
 	buf.Write([]byte(id.Description))
 
@@ -148,6 +155,11 @@ func MustLedgerIdentityDataFromBytes(data []byte) *IdentityData {
 
 	err = binary.Read(rdr, binary.BigEndian, &ret.MaxNumberOfEndorsements)
 	util.AssertNoError(err)
+
+	err = binary.Read(rdr, binary.BigEndian, &ret.PreBranchConsolidationTicks)
+	util.AssertNoError(err)
+
+	util.Assertf(ret.PreBranchConsolidationTicks < ret.MaxTickValueInSlot, "wrong ledger constants: ret.PreBranchConsolidationTicks < ret.MaxTickValueInSlot")
 
 	err = binary.Read(rdr, binary.BigEndian, &size16)
 	util.AssertNoError(err)
@@ -212,6 +224,10 @@ func (id *IdentityData) OriginChainID() ChainID {
 	return MakeOriginChainID(&oid)
 }
 
+func (id *IdentityData) IsPreBranchConsolidationTimestamp(ts Time) bool {
+	return ts.Tick() > Tick(id.MaxTickValueInSlot-id.PreBranchConsolidationTicks)
+}
+
 func (id *IdentityData) String() string {
 	return string(id.YAMLAble().YAML())
 }
@@ -248,6 +264,7 @@ func (id *IdentityData) YAMLAble() *IdentityDataYAMLAble {
 		GenesisControllerAddress:          id.GenesisControlledAddress().String(),
 		MinimumAmountOnSequencer:          id.MinimumAmountOnSequencer,
 		MaxNumberOfEndorsements:           id.MaxNumberOfEndorsements,
+		PreBranchConsolidationTicks:       id.PreBranchConsolidationTicks,
 		BootstrapChainID:                  chainID.StringHex(),
 		Description:                       id.Description,
 	}
@@ -330,6 +347,7 @@ func (id *IdentityDataYAMLAble) stateIdentityData() (*IdentityData, error) {
 	ret.ChainInflationOpportunitySlots = id.ChainInflationOpportunitySlots
 	ret.MinimumAmountOnSequencer = id.MinimumAmountOnSequencer
 	ret.MaxNumberOfEndorsements = id.MaxNumberOfEndorsements
+	ret.PreBranchConsolidationTicks = id.PreBranchConsolidationTicks
 	ret.Description = id.Description
 
 	// control
