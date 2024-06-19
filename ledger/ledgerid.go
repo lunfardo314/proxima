@@ -195,6 +195,18 @@ func (id *IdentityData) TicksPerSlot() int {
 	return int(id.MaxTickValueInSlot) + 1
 }
 
+func (id *IdentityData) SlotsPerDay() int {
+	return int(24 * time.Hour / id.SlotDuration())
+}
+
+func (id *IdentityData) SlotsPerYear() int {
+	return 365 * id.SlotsPerDay()
+}
+
+func (id *IdentityData) TicksPerYear() int {
+	return id.SlotsPerYear() * id.TicksPerSlot()
+}
+
 func (id *IdentityData) OriginChainID() ChainID {
 	oid := GenesisOutputID()
 	return MakeOriginChainID(&oid)
@@ -239,10 +251,6 @@ func (id *IdentityData) YAMLAble() *IdentityDataYAMLAble {
 		BootstrapChainID:                  chainID.StringHex(),
 		Description:                       id.Description,
 	}
-}
-
-func (id *IdentityData) SlotsPerDay() int {
-	return int(24 * time.Hour / id.SlotDuration())
 }
 
 func (id *IdentityData) TimeConstantsToString() string {

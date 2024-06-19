@@ -11,29 +11,18 @@ import (
 
 // Validating and making sense of inflation-related constants
 
-func TestFinalConst(t *testing.T) {
-	const (
-		inflationChainPerTick         = 400_000
-		chainInflationFractionPerTick = ledger.DefaultInitialSupply / inflationChainPerTick
-		inflationBranchPerSlot        = 12_000_000
-		maxChainInflationPerTick      = ledger.DefaultInitialSupply / chainInflationFractionPerTick
-		maxChainInflationPerSlot      = maxChainInflationPerTick * 100
-
-		annualInflationChainReverse      = maxChainInflationPerSlot * 6 * 60 * 24 * 365
-		annualInflationChainReversePerc  = float64((annualInflationChainReverse * 100) / ledger.DefaultInitialSupply)
-		annualInflationBranchReverse     = inflationBranchPerSlot * 6 * 60 * 24 * 365
-		annualInflationBranchReversePerc = float64(annualInflationBranchReverse*100) / ledger.DefaultInitialSupply
-	)
-	t.Logf("Final constants:")
+func TestFinalConst1Year(t *testing.T) {
 	t.Logf("init supply: %s", util.GoTh(ledger.DefaultInitialSupply))
-	t.Logf(">>> chain inflation fraction per tick: %s", util.GoTh(chainInflationFractionPerTick))
-	t.Logf("chain inflation fraction per slot: %s", util.GoTh(chainInflationFractionPerTick/100))
-	t.Logf("max chain inflation per slot: %s", util.GoTh(maxChainInflationPerSlot))
-	t.Logf(">>> branch inflation per slot: %s", util.GoTh(inflationBranchPerSlot))
-	t.Logf("annual chain inflation: %s", util.GoTh(annualInflationChainReverse))
-	t.Logf("annual chain inflation: %0.2f%%", annualInflationChainReversePerc)
-	t.Logf("annual branch inflation: %s", util.GoTh(annualInflationBranchReverse))
-	t.Logf("annual branch inflation : %0.2f%%", annualInflationBranchReversePerc)
+	t.Logf("chain inflation fraction per tick: %s", util.GoTh(ledger.DefaultChainInflationFractionPerTick))
+	t.Logf("branch inflation per slot: %s", util.GoTh(ledger.DefaultMaxBranchInflationBonus))
+	t.Logf("chain inflation fraction per slot: %s", util.GoTh(ledger.DefaultChainInflationFractionPerTick/ledger.DefaultTicksPerSlot))
+	t.Logf("slots per year: %s", util.GoTh(ledger.L().ID.SlotsPerYear()))
+	t.Logf("ticks per year: %s", util.GoTh(ledger.L().ID.TicksPerYear()))
+	branchInflationAnnual := ledger.L().ID.BranchInflationBonusBase * uint64(ledger.L().ID.SlotsPerYear())
+	t.Logf("branch inflation per year: %s", util.GoTh(branchInflationAnnual))
+	branchInflationAnnualPerc := float64(branchInflationAnnual*100) / float64(ledger.DefaultInitialSupply)
+	t.Logf("branch inflation per year %%: %.2f%%", branchInflationAnnualPerc)
+
 }
 
 func TestInflation(t *testing.T) {
