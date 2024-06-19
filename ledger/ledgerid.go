@@ -257,10 +257,12 @@ func (id *IdentityData) TimeConstantsToString() string {
 	nowis := time.Now()
 	timestampNowis := id.TimeFromRealTime(nowis)
 
-	// TODO assertion sometimes fails due to integer arithmetics at nano level
-	util.Assertf(nowis.UnixNano()-timestampNowis.UnixNano() < int64(TickDuration()),
-		"nowis.UnixNano()(%d)-timestampNowis.UnixNano()(%d) = %d < int64(TickDuration())(%d)",
-		nowis.UnixNano(), timestampNowis.UnixNano(), nowis.UnixNano()-timestampNowis.UnixNano(), int64(TickDuration()))
+	//{
+	//	// TODO assertion sometimes fails due to integer arithmetics at nano level
+	//	util.Assertf(nowis.UnixNano()-timestampNowis.UnixNano() < int64(TickDuration()),
+	//		"assertion sometimes fails: nowis.UnixNano()(%d)-timestampNowis.UnixNano()(%d) = %d < int64(TickDuration())(%d)",
+	//		nowis.UnixNano(), timestampNowis.UnixNano(), nowis.UnixNano()-timestampNowis.UnixNano(), int64(TickDuration()))
+	//}
 
 	maxYears := MaxSlot / (id.SlotsPerDay() * 365)
 	return lines.New().

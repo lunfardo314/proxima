@@ -25,6 +25,8 @@ type (
 	}
 )
 
+// default ledger constants
+
 const (
 	DefaultTickDuration = 100 * time.Millisecond
 	DefaultTicksPerSlot = 100
@@ -38,6 +40,8 @@ const (
 	DefaultInitialSupply = InitialSupplyProxi * PRXI
 
 	// begin inflation-related
+	// TODO inflation constants and inflation rate scheduler are temporary. For testnet only !!!!
+	//  First year it is 3.78% branch + 13.44% chain = 17.2% annual
 
 	DefaultMaxBranchInflationBonus        = 12_000_000
 	DefaultChainInflationFractionPerTick  = 2_500_000_000
