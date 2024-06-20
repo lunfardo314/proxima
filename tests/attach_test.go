@@ -828,7 +828,7 @@ func TestConflictsNAttachersOneForkBranchesConflict(t *testing.T) {
 	testData.stopAndWait()
 	testData.logDAGInfo()
 
-	testData.wrk.SaveGraph("utangle")
+	//testData.wrk.SaveGraph("utangle")
 
 	require.EqualValues(t, vid.GetTxStatus(), vertex.Bad)
 	t.Logf("expected error: %v", vid.GetError())
