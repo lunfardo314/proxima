@@ -54,6 +54,7 @@ func (p *PullClient) Start() {
 		p.MarkWorkProcessStopped(Name)
 	})
 	p.Queue.Start(p, p.Ctx())
+	go p.backgroundLoop()
 }
 
 func (p *PullClient) Consume(inp *Input) {
@@ -122,20 +123,20 @@ const pullLoopPeriod = 50 * time.Millisecond
 func (p *PullClient) backgroundLoop() {
 	defer p.Environment.Log().Infof("background loop stopped")
 
-	buffer := make([]ledger.TransactionID, 0) // minimize heap use
+	buffer := make([]ledger.TransactionID, 0) // reuse buffer -> minimize heap use
 	for {
 		select {
 		case <-p.Ctx().Done():
 			return
 		case <-time.After(pullLoopPeriod):
 		}
+		buffer = buffer[:0]
 		p.pullAllMatured(buffer)
 	}
 }
 
 func (p *PullClient) pullAllMatured(buf []ledger.TransactionID) {
 	p.mutex.Lock()
-	defer p.mutex.Unlock()
 
 	nowis := time.Now()
 	nextDeadline := nowis.Add(pullPeriod)
@@ -145,6 +146,9 @@ func (p *PullClient) pullAllMatured(buf []ledger.TransactionID) {
 			p.pullList[txid] = nextDeadline
 		}
 	}
+
+	p.mutex.Unlock()
+
 	if len(buf) > 0 {
 		p.QueryTransactionsFromRandomPeer(buf...)
 	}
