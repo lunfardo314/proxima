@@ -22,8 +22,6 @@ connect each node with 4 others. **Auto-peering of nodes is not available yet.**
   * private keys, which control accounts on the ledger. Each account is represented by address in the form `addressED25519(<hex>)`. 
 Those private keys are used as controlling keys of sequencers and also as normal account keys.
 
-More of those pre-generated private keys can be found in the file [proxima/testkeys.yaml](../../testkeys.yaml). 
-
 **Do not use any of these private keys in your production environment!!!**
 
 To start a testnet on your computer, copy `<your_dir>/proxima/tests/nodes/*` with subdirectories and config files to your preferred location, say `myHome/*`.
