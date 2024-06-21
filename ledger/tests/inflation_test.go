@@ -22,6 +22,9 @@ func TestInflationConst1Year(t *testing.T) {
 	branchInflationAnnualPerc := float64(branchInflationAnnual*100) / float64(ledger.DefaultInitialSupply)
 	t.Logf("branch inflation per year %% of initial supply: %.2f%%", branchInflationAnnualPerc)
 	t.Logf("chain inflation fraction per slot: %s", util.GoTh(ledger.DefaultChainInflationFractionPerTick/ledger.DefaultTicksPerSlot))
+	inTs := ledger.MustNewLedgerTime(0, 1)
+	outTs := ledger.MustNewLedgerTime(1, 1)
+	t.Logf("chain inflation per initial slot: %s", util.GoTh(ledger.L().ID.ChainInflationAmount(inTs, outTs, ledger.DefaultInitialSupply)))
 
 	supply := ledger.DefaultInitialSupply
 	for i := 0; i < ledger.L().ID.SlotsPerYear(); i++ {

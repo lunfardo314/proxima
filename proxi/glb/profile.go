@@ -86,7 +86,9 @@ func GetOwnSequencerID() *ledger.ChainID {
 		return nil
 	}
 	ret, err := ledger.ChainIDFromHexString(seqIDStr)
-	AssertNoError(err)
+	if err != nil {
+		return nil
+	}
 	return &ret
 }
 
