@@ -11,7 +11,6 @@ import (
 
 // This file contains definitions of the inflation-related functions in EasyFL (on-ledger) and on IdentityData
 // constants. The two must exactly match each other
-// TODO write inline tests for that
 
 // ChainInflationAmount interprets EasyFl formula
 func (id *IdentityData) ChainInflationAmount(inTs, outTs Time, inAmount uint64) uint64 {
@@ -22,7 +21,7 @@ func (id *IdentityData) ChainInflationAmount(inTs, outTs Time, inAmount uint64) 
 }
 
 // ChainInflationAmountOld mocks inflation amount formula from the constraint library
-// Deprecated
+// Deprecated: use interpreted version
 func (id *IdentityData) ChainInflationAmountOld(inTs, outTs Time, inAmount uint64) uint64 {
 	if outTs.IsSlotBoundary() {
 		return 0
