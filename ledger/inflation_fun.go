@@ -2,11 +2,11 @@ package ledger
 
 import (
 	"encoding/binary"
+	"encoding/hex"
 	"fmt"
 	"math"
 
 	"github.com/lunfardo314/proxima/util"
-	"golang.org/x/crypto/blake2b"
 )
 
 // This file contains definitions of the inflation-related functions in EasyFL (on-ledger) and on IdentityData
@@ -55,9 +55,10 @@ func (id *IdentityData) _insideInflationOpportunityWindow(diffTicks int64, inAmo
 
 // BranchInflationBonusFromRandomnessProof makes uint64 in the range from 0 to BranchInflationBonusBase (incl)
 func (id *IdentityData) BranchInflationBonusFromRandomnessProof(proof []byte) uint64 {
-	h := blake2b.Sum256(proof)
-	n := binary.BigEndian.Uint64(h[0:8])
-	return n % (id.BranchInflationBonusBase + 1)
+	src := fmt.Sprintf("maxBranchInflationAmountFromVRFProof(0x%s)", hex.EncodeToString(proof))
+	res, err := L().EvalFromSource(nil, src)
+	util.AssertNoError(err)
+	return binary.BigEndian.Uint64(res)
 }
 
 // inflationFunctionsSource is a EasyFL source (inflationAmount function) of on-ledger calculation of inflation amount
@@ -83,7 +84,7 @@ and(
    )
 )
 
-// $0 - timestamp of the chain input
+// $0 - timestamp of the previous chain output (not necessarily a predecessor)
 // $1 - timestamp of the transaction (and of the output)
 // $2 - amount on the chain input
 // result: (dtInTicks * amountAtTheBeginning) / inflationFractionPerTick
