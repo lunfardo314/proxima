@@ -142,21 +142,9 @@ func delayedInflationValue : if(
 		selfBytecodePrefix,
 		0
 	),
-	// previous in not branch -> nothing is delayed
+	// previous is not a branch -> nothing is delayed
 	u64/0
 )
-
-// $1 - chain constraint index
-// $2 - delayed inflation index
-func validChainInflationValue : 
-	add(
-		calcChainInflationAmount(
-			timestampOfInputByIndex($0), 
-			txTimestampBytes, 
-			amountValue(consumedOutputByIndex(chainPredecessorInputIndex($1)))
-		),
-		delayedInflationValue($0, $1)
-	)
 
 // inflation(<inflation amount>, <VRF proof>, <chain constraint index>, <delayed inflation index>)
 // $0 - chain inflation amount (8 bytes or isZero). On slot boundary interpreted as delayed inflation 
@@ -171,10 +159,15 @@ func inflation : or(
   		selfIsProducedOutput,
 		require(
 			equalUint(
-				validChainInflationValue($2, $3),
+				calcChainInflationAmount(
+					timestampOfInputByIndex(chainPredecessorInputIndex($2)), 
+					txTimestampBytes, 
+					amountValue(consumedOutputByIndex(chainPredecessorInputIndex($2))),
+					delayedInflationValue($2, $3)
+				),				
 				$0
 			),
-			!!!Invalid_chain_inflation_value
+			!!!invalid_chain_inflation_amount
 		),
 		require(
 			or(

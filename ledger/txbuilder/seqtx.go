@@ -92,11 +92,11 @@ func MakeSequencerTransactionWithInputLoader(par MakeSequencerTransactionParams)
 
 	if par.PutInflation {
 		inflationConstraint = &ledger.InflationConstraint{}
-		// put inflation script
-		if par.Timestamp.Tick() != 0 {
+		inflationConstraint.ChainInflation, inflationConstraint.DelayedInflationIndex = calcChainInflationAmount(par.ChainInput, par.Timestamp)
+
+		if par.StemInput == nil {
 			// calculate inflation value allowed in the context
 			// non-branch transaction
-			inflationConstraint.ChainInflation, inflationConstraint.DelayedInflationIndex = calcChainInflationAmount(par.ChainInput, par.Timestamp)
 			inflationAmount = inflationConstraint.ChainInflation
 		} else {
 			// branch transaction. Generate verifiable randomness. It will be used to deterministically calculate inflation amount
@@ -274,6 +274,5 @@ func calcChainInflationAmount(pred *ledger.OutputWithChainID, ts ledger.Time) (u
 			delayedInflation = inflationConstraint.ChainInflation
 		}
 	}
-	return ledger.L().ID.CalcChainInflationAmount(pred.Timestamp(), ts, pred.Output.Amount()) + delayedInflation, delayedInflationIdx
-
+	return ledger.L().ID.CalcChainInflationAmount(pred.Timestamp(), ts, pred.Output.Amount(), delayedInflation), delayedInflationIdx
 }

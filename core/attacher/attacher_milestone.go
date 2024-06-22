@@ -245,12 +245,19 @@ func (a *milestoneAttacher) logFinalStatusString(msData *ledger.MilestoneData) s
 	if msData != nil {
 		msDataStr = fmt.Sprintf(" (%s %d/%d)", msData.Name, msData.BranchHeight, msData.ChainHeight)
 	}
+	inflChainStr := "-"
+	inflBranchStr := "-"
+	if inflationConstraint := a.vid.InflationConstraintOnSequencerOutput(); inflationConstraint != nil {
+		inflChainStr = util.GoTh(inflationConstraint.ChainInflation)
+		inflBranchStr = util.GoTh(ledger.L().ID.BranchInflationBonusFromRandomnessProof(inflationConstraint.VRFProof))
+	}
+
 	if a.vid.IsBranchTransaction() {
-		msg = fmt.Sprintf("-- ATTACH BRANCH%s %s(in %d/out %d), infl: %s",
-			msDataStr, a.vid.IDShortString(), a.finals.numInputs, a.finals.numOutputs, util.GoTh(a.vid.InflationAmountOfSequencerMilestone()))
+		msg = fmt.Sprintf("-- ATTACH BRANCH%s %s(in %d/out %d), infl: %s/%s",
+			msDataStr, a.vid.IDShortString(), a.finals.numInputs, a.finals.numOutputs, inflChainStr, inflBranchStr)
 	} else {
-		msg = fmt.Sprintf("-- ATTACH SEQ TX%s %s(in %d/out %d), infl: %s",
-			msDataStr, a.vid.IDShortString(), a.finals.numInputs, a.finals.numOutputs, util.GoTh(a.vid.InflationAmountOfSequencerMilestone()))
+		msg = fmt.Sprintf("-- ATTACH SEQ TX%s %s(in %d/out %d), infl: %s/%s",
+			msDataStr, a.vid.IDShortString(), a.finals.numInputs, a.finals.numOutputs, inflChainStr, inflBranchStr)
 	}
 	if a.vid.GetTxStatus() == vertex.Bad {
 		msg += fmt.Sprintf("BAD: err = '%v'", a.vid.GetError())

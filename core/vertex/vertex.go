@@ -103,8 +103,16 @@ func (v *Vertex) ValidateConstraints(traceOption ...int) error {
 		return err
 	}
 	err = ctx.Validate()
+
+	const validateConstraintsVerbose = false
+
 	if err != nil {
-		return fmt.Errorf("ValidateConstraints: %s: %w", v.Tx.IDShortString(), err)
+		if validateConstraintsVerbose {
+			err = fmt.Errorf("ValidateConstraints: %w \n>>>>>>>>>>>>>>>>>>>>>\n%s", err, ctx.String())
+		} else {
+			err = fmt.Errorf("ValidateConstraints: %s: %w", v.Tx.IDShortString(), err)
+		}
+		return err
 	}
 	return nil
 }

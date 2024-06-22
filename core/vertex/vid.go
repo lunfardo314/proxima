@@ -825,3 +825,19 @@ func (vid *WrappedTx) InflationAmountOfSequencerMilestone() (ret uint64) {
 	})
 	return
 }
+
+func (vid *WrappedTx) InflationConstraintOnSequencerOutput() (ret *ledger.InflationConstraint) {
+	util.Assertf(vid.IsSequencerMilestone(), "InflationAmountOfSequencerOutput: not a sequencer milestone: %s", vid.IDShortString)
+
+	vid.Unwrap(UnwrapOptions{
+		Vertex: func(v *Vertex) {
+			ret, _ = v.Tx.SequencerOutput().Output.InflationConstraint()
+		},
+		VirtualTx: func(v *VirtualTransaction) {
+			seqOut, _ := v.SequencerOutputs()
+			ret, _ = seqOut.InflationConstraint()
+		},
+		Deleted: vid.PanicAccessDeleted,
+	})
+	return
+}
