@@ -16,8 +16,8 @@ WORKDIR /scratch
 COPY proxima/ .
 
 # copy the config files
-RUN cp ./tests/nodes/0/* /app
-RUN cp -r ./tests/nodes/* /app
+RUN cp ./tests/docker/boot/* /app
+RUN cp -r ./tests/docker/* /app
 
 # Download go modules
 RUN go mod download

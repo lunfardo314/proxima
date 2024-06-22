@@ -3,7 +3,7 @@ services:
   node0:
     build:
       context: ../../..
-      dockerfile: proxima/tests/nodes/dockerfile
+      dockerfile: proxima/tests/docker/dockerfile
     container_name: node0
     image: proxima:latest    
     ports:
@@ -13,7 +13,7 @@ services:
     networks:
       proxima_network:
         ipv4_address: 172.16.238.10
-    command: ["./start.sh", "0"]
+    command: ["./start.sh", "boot"]
 
   node1:
     container_name: node1
@@ -70,6 +70,7 @@ services:
       proxima_network:
         ipv4_address: 172.16.238.14
     command: ["./start.sh", "4"]
+
 
 networks:
   proxima_network:

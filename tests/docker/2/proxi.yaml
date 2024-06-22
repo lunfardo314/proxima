@@ -1,0 +1,30 @@
+# proxi profile 
+wallet:
+    # key 2
+    private_key: 3a2ed3c4f738a06e9543f80e032fd870be5e524585e0144f2499d1a28bc4797902e2a7a85bd158469adae3294a615e17ef49e72642c4eb58ff00d92301b9bb88
+    account: addressED25519(0x62c733803a83a26d4db1ce9f22206281f64af69401da6eb26390d34e6a88c5fa)
+    # own sequencer (controlled by the private key)
+    sequencer:
+api:
+    endpoint: http://127.0.0.1:8000
+tag_along:
+    sequencer_id: af7bedde1fea222230b82d63d5b665ac75afbe4ad3f75999bb3386cf994a6963
+    fee: 500
+finality:
+    inclusion_threshold:
+        numerator: 2
+        denominator: 3
+    weak: false
+spammer:
+    bundle_size: 10
+    max_duration_minutes: 0
+    max_transactions: 0
+    output_amount: 1000
+    pace: 3
+    scenario: standard
+    submit_nowait: false
+    tag_along:
+        fee: 500
+        sequencer:
+    # target key 0
+    target: addressED25519(0x3faf090d38f18ea211936b8bcf19b7b30cdcb8e224394a5c30f9ba644f8bb2fb)

@@ -7,7 +7,7 @@ SOURCE_PARAM=$1
 
 
 
-# Copy files from selected source directory to target directory
+# Copy files from selected node directory to target directory
 cp -r ./"$SOURCE_PARAM"/*.yaml .
 
 if [ ! -f "$INITIALIZED_FILE" ]; then
@@ -15,14 +15,14 @@ if [ ! -f "$INITIALIZED_FILE" ]; then
 
     ./proxi init genesis_db
 
-    if [ "$SOURCE_PARAM" == "0" ]; then
+    if [ "$SOURCE_PARAM" == "boot" ]; then
         ./proxi init bootstrap_account
     fi
 fi
 
 
 if [ ! -f "$INITIALIZED_FILE" ]; then
-    if [ "$SOURCE_PARAM" == "0" ]; then
+    if [ "$SOURCE_PARAM" == "boot" ]; then
         ./proxima &
         sleep 10
         ./proxi -f node sequencer withdraw --finality.weak 800000000000000
