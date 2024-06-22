@@ -230,7 +230,7 @@ func TestNSequencersTransferPruner(t *testing.T) {
 		testData.stopAndWait(3 * time.Second)
 
 		t.Logf("%s", testData.wrk.Info())
-		testData.saveFullDAG("utangle_full_3")
+		//testData.saveFullDAG("utangle_full_3")
 
 		rdr = testData.wrk.HeaviestStateForLatestTimeSlot()
 		for _, txid := range par.spammedTxIDs {
@@ -312,7 +312,7 @@ func TestNSequencersTransferPruner(t *testing.T) {
 			//t.Logf("    %s: in the heaviest state: %v", txid.StringShort(), rdr.KnowsCommittedTransaction(&txid))
 		}
 
-		testData.saveFullDAG(fmt.Sprintf("utangle_full_%d_2", nSequencers+1))
+		//testData.saveFullDAG(fmt.Sprintf("utangle_full_%d_2", nSequencers+1))
 		multistate.SaveBranchTree(testData.wrk.StateStore(), fmt.Sprintf("utangle_tree_%d_2", nSequencers+1))
 
 		targetBalance := rdr.BalanceOf(targetAddr.AccountID())

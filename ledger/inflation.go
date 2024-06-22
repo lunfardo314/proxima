@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/lunfardo314/easyfl"
+	"github.com/lunfardo314/proxima/util"
 )
 
 // Inflation constraint script, when added to the chain-constrained output, adds inflation the transaction
@@ -44,7 +45,13 @@ func (i *InflationConstraint) Bytes() []byte {
 }
 
 func (i *InflationConstraint) String() string {
-	return i.source()
+	return fmt.Sprintf("%s(%s, 0x%s, %d, %d)",
+		InflationConstraintName,
+		util.GoTh(i.ChainInflation),
+		hex.EncodeToString(i.VRFProof),
+		i.ChainConstraintIndex,
+		i.DelayedInflationIndex,
+	)
 }
 
 func (i *InflationConstraint) source() string {
@@ -53,7 +60,7 @@ func (i *InflationConstraint) source() string {
 	chainInflationStr := "0x" + hex.EncodeToString(chainInflationBin[:])
 
 	vrfProofStr := "0x" + hex.EncodeToString(i.VRFProof)
-	delayedInflationIndexStr := "0x"
+	delayedInflationIndexStr := "0xff"
 	if i.DelayedInflationIndex != 0xff {
 		delayedInflationIndexStr = fmt.Sprintf("%d", i.DelayedInflationIndex)
 	}
@@ -94,6 +101,7 @@ func InflationConstraintFromBytes(data []byte) (*InflationConstraint, error) {
 
 	delayedInflationIndex := byte(0xff)
 	idxBin := easyfl.StripDataPrefix(args[3])
+
 	switch {
 	case len(idxBin) == 1:
 		delayedInflationIndex = idxBin[0]
@@ -133,30 +141,35 @@ func initTestInflationConstraint() {
 const inflationConstraintSource = `
 // $0 - chain constraint index
 // $1 - delayed inflation index
-// predecessor is assumed to by on a branch
-func delayedInflationValue : if(
-	isBranchOutputID(chainPredecessorInputIndex($0)),
-	// previous is branch -> parse first argument from the inflation constraint there 
-	evalArgumentBytecode(
-		consumedConstraintByIndex(concat(chainPredecessorInputIndex($0), $1)),
-		selfBytecodePrefix,
-		0
-	),
-	// previous is not a branch -> nothing is delayed
-	u64/0
+func delayedInflationValue : 
+if(
+	equal($1, 0xff),  
+	u64/0,  // delayed inflation index on predecessor is not specified ->  not delayed inflation is zero.
+	if(
+		isBranchOutputID(inputIDByIndex(chainPredecessorInputIndex($0))),
+		// previous is branch -> parse first argument from the inflation constraint there 
+		evalArgumentBytecode(
+			consumedConstraintByIndex(concat(chainPredecessorInputIndex($0), $1)),
+			selfBytecodePrefix,
+			0
+		),
+		// previous is not a branch -> nothing is delayed
+		u64/0
+	)
 )
 
 // inflation(<inflation amount>, <VRF proof>, <chain constraint index>, <delayed inflation index>)
 // $0 - chain inflation amount (8 bytes or isZero). On slot boundary interpreted as delayed inflation 
 // $1 - vrf proof. Interpreted only on branch transactions
 // $2 - chain constraint index (sibling)
-// $3 - delayed inflation index. Inflation constraint index in the predecessor, only checked on branch successor
+// $3 - delayed inflation index. Inflation constraint index in the predecessor, 0xff means not specified
 //
 func inflation : or(
 	selfIsConsumedOutput, // not checked if consumed
 	isZero($0),           // zero inflation always ok
 	and(
   		selfIsProducedOutput,
+		require(equalUint(len($3), 1), !!!delayed_inflation_index_must_be_1_byte),
 		require(
 			equalUint(
 				calcChainInflationAmount(
