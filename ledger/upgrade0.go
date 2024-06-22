@@ -368,7 +368,7 @@ var upgrade0WithFunctions = []*easyfl.ExtendedFunctionData{
 	{"sequencerFlagON", "not(isZero(bitwiseAND(byte($0,0),0x80)))"},
 	{"isSequencerTransaction", "not(equal(txSequencerOutputIndex, 0xff))"},
 	{"isBranchTransaction", "and(isSequencerTransaction, not(equal(txStemOutputIndex, 0xff)))"},
-	{"isBranchOutputID", "and(isSequencerFlagOn($0), equal(timeTickFromTimestamp(timestampPrefix($0)),0))"},
+	{"isBranchOutputID", "and(sequencerFlagON($0), equal(timeTickFromTimestamp(timestampPrefix($0)),0))"},
 	// endorsements
 	{"numEndorsements", "ArrayLength8(@Path(pathToEndorsements))"},
 	{"numInputs", "ArrayLength8(@Path(pathToInputIDs))"},

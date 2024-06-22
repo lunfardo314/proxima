@@ -88,7 +88,6 @@ func MakeSequencerTransactionWithInputLoader(par MakeSequencerTransactionParams)
 	}
 
 	var inflationAmount uint64
-
 	var inflationConstraint *ledger.InflationConstraint
 
 	if par.PutInflation {
@@ -178,9 +177,8 @@ func MakeSequencerTransactionWithInputLoader(par MakeSequencerTransactionParams)
 		idxMsData, _ := o.PushConstraint(outData.AsConstraint().Bytes())
 		util.Assertf(idxMsData == ledger.MilestoneDataFixedIndex, "idxMsData == MilestoneDataFixedIndex")
 
-		if chainInflationAmount > 0 {
-			// put inflation constraint for non-zero inflation
-			inflationConstraint := ledger.NewInflationConstraint(chainOutConstraintIdx, inflationData)
+		if inflationConstraint != nil {
+			inflationConstraint.ChainConstraintIndex = chainOutConstraintIdx
 			_, _ = o.PushConstraint(inflationConstraint.Bytes())
 		}
 	})

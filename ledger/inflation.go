@@ -156,8 +156,7 @@ func validChainInflationValue :
 			amountValue(consumedOutputByIndex(chainPredecessorInputIndex($1)))
 		),
 		delayedInflationValue($0, $1)
-	),
-)
+	)
 
 // inflation(<inflation amount>, <VRF proof>, <chain constraint index>, <delayed inflation index>)
 // $0 - chain inflation amount (8 bytes or isZero). On slot boundary interpreted as delayed inflation 
