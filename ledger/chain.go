@@ -152,7 +152,10 @@ func destroyUnlockParams : 0xffffff
 // parsing chain constraint data
 // $0 - chain constraint data
 func chainID : slice($0, 0, 31)
-func predecessorInputIndexFromChainData : byte($0, 32)
+
+// $0 - chain constraint index in the produced output
+func chainPredecessorInputIndex : byte(evalArgumentBytecode(selfSiblingConstraint($0), #chain, 0),32)
+
 func requireChainTransition : require(
     and(
        not(equal(chainID($0), repeat(0,32))),

@@ -17,40 +17,22 @@ import (
 const (
 	InflationConstraintName = "inflation"
 	// (0) chain constraint index, (1) inflation amount or randomness proof
-	inflationConstraintTemplate = InflationConstraintName + "(%d, %s, %s, %s)"
+	inflationConstraintTemplate = InflationConstraintName + "(%s, %s, %d, %s)"
 )
 
 type InflationConstraint struct {
-	// ChainConstraintIndex must point to the sibling chain constraint
-	ChainConstraintIndex byte
 	// ChainInflation inflation amount calculated according to chain inflation rule. It is used inside slot and delayed on slot boundary
 	// and can be added to the inflation of the next transaction in the chain
 	ChainInflation uint64
 	// VRFProof VRF randomness proof, used to proof VRF and calculate inflation amount on branch
 	// nil for non-branch transactions
 	VRFProof []byte
+	// ChainConstraintIndex must point to the sibling chain constraint
+	ChainConstraintIndex byte
 	// DelayedInflationIndex
 	// Used only if branch successor to enforce correct ChainInflation which will sum of delayed inflation and current inflation
 	// If not used, must be 0xff
 	DelayedInflationIndex byte
-}
-
-// NewInflationConstraintInsideSlot inflation constraint for chain output inside slot
-func NewInflationConstraintInsideSlot(chainConstraintIndex byte, chainInflation uint64, delayedInflationIndex byte) *InflationConstraint {
-	return &InflationConstraint{
-		ChainConstraintIndex:  chainConstraintIndex,
-		ChainInflation:        chainInflation,
-		DelayedInflationIndex: delayedInflationIndex,
-	}
-}
-
-// NewInflationConstraintOnSlotBoundary inflation constraint for chain output on the slot boundary
-func NewInflationConstraintOnSlotBoundary(chainConstraintIndex byte, chainInflation uint64, vrfProof []byte) *InflationConstraint {
-	return &InflationConstraint{
-		ChainConstraintIndex: chainConstraintIndex,
-		ChainInflation:       chainInflation,
-		VRFProof:             vrfProof,
-	}
 }
 
 func (i *InflationConstraint) Name() string {
@@ -75,7 +57,7 @@ func (i *InflationConstraint) source() string {
 	if i.DelayedInflationIndex != 0xff {
 		delayedInflationIndexStr = fmt.Sprintf("%d", i.DelayedInflationIndex)
 	}
-	return fmt.Sprintf(inflationConstraintTemplate, i.ChainConstraintIndex, chainInflationStr, vrfProofStr, delayedInflationIndexStr)
+	return fmt.Sprintf(inflationConstraintTemplate, chainInflationStr, vrfProofStr, i.ChainConstraintIndex, delayedInflationIndexStr)
 }
 
 // InflationAmount calculates inflation amount either inside slot, or on the slot boundary
@@ -95,18 +77,20 @@ func InflationConstraintFromBytes(data []byte) (*InflationConstraint, error) {
 	if sym != InflationConstraintName {
 		return nil, fmt.Errorf("InflationConstraintFromBytes: not a inflation constraint script")
 	}
-	cciBin := easyfl.StripDataPrefix(args[0])
-	if len(cciBin) != 1 {
-		return nil, fmt.Errorf("InflationConstraintFromBytes: wrong chainConstraintIndex parameter")
-	}
-	cci := cciBin[0]
-
 	var amount uint64
-	amountBin := easyfl.StripDataPrefix(args[1])
+	amountBin := easyfl.StripDataPrefix(args[0])
 	if len(amountBin) != 8 {
 		return nil, fmt.Errorf("InflationConstraintFromBytes: wrong chainInflation parameter")
 	}
 	amount = binary.BigEndian.Uint64(amountBin)
+
+	vrfProof := easyfl.StripDataPrefix(args[1])
+
+	cciBin := easyfl.StripDataPrefix(args[2])
+	if len(cciBin) != 1 {
+		return nil, fmt.Errorf("InflationConstraintFromBytes: wrong chainConstraintIndex parameter")
+	}
+	cci := cciBin[0]
 
 	delayedInflationIndex := byte(0xff)
 	idxBin := easyfl.StripDataPrefix(args[3])
@@ -116,11 +100,10 @@ func InflationConstraintFromBytes(data []byte) (*InflationConstraint, error) {
 	case len(idxBin) > 1:
 		return nil, fmt.Errorf("InflationConstraintFromBytes: wrong delayed inflation index parameter")
 	}
-
 	return &InflationConstraint{
 		ChainConstraintIndex:  cci,
 		ChainInflation:        amount,
-		VRFProof:              easyfl.StripDataPrefix(args[3]),
+		VRFProof:              vrfProof,
 		DelayedInflationIndex: delayedInflationIndex,
 	}, nil
 }
@@ -148,73 +131,58 @@ func initTestInflationConstraint() {
 }
 
 const inflationConstraintSource = `
-
-// $0 - predecessor input index
-// $1 - inflation value
-// checks if inflation value is below cap, calculated for the chain constrained output
-// from time delta and amount on predecessor
-func _validChainInflationValue : or(
-	isZero($1), // zero always ok
-    lessOrEqualThan(
-       $1,
-       maxChainInflationAmount(
-			timestampOfInputByIndex($0), 
-			txTimestampBytes, 
-			amountValue(consumedOutputByIndex($0))
-		)
-    )
+// $0 - chain constraint index
+// $1 - delayed inflation index
+// predecessor is assumed to by on a branch
+func delayedInflationValue : if(
+	isBranchOutputID(chainPredecessorInputIndex($0)),
+	// previous is branch -> parse first argument from the inflation constraint there 
+	evalArgumentBytecode(
+		consumedConstraintByIndex(concat(chainPredecessorInputIndex($0), $1)),
+		selfBytecodePrefix,
+		0
+	),
+	// previous in not branch -> nothing is delayed
+	u64/0
 )
 
-// $0 - chain constraint index (sibling)
-// $1 - inflation amount 8 bytes
+// $1 - chain constraint index
 // $2 - delayed inflation index
-// checks if inflation amount is valid for non-branch transaction
-
-func _checkChainInflation :
-
-TODO 
-	_validChainInflationValue(
-		predecessorInputIndexFromChainData(
-			evalArgumentBytecode( selfSiblingConstraint($0), #chain, 0)
+func validChainInflationValue : 
+	add(
+		calcChainInflationAmount(
+			timestampOfInputByIndex($0), 
+			txTimestampBytes, 
+			amountValue(consumedOutputByIndex(chainPredecessorInputIndex($1)))
 		),
-		$1
-	)
+		delayedInflationValue($0, $1)
+	),
+)
 
-// $0 - randomness proof
-// checks inflation data is a randomness proof, valid for the stem predecessor (as message) and with public key of the sender
-// randomness proof will be used to calculate branch inflation bonus in the range between 0 and constBranchBonusBase + 1
-// 
-// Stem predecessor is used as a message to make same sequencer have different random inflation on different forks.
-// Using slot as a message makes some inflation of same slot for different branches. This may lead to 'nothing-at-stake'
-// situation
-
-func _checkBranchInflationBonus :
-	require(
-		vrfVerify(publicKeyED25519(txSignature), $0, predStemOutputIDOfSelf),
-		!!!VRF_verification_failed
-	)
-
-
-// inflation(<chain constraint index>, <inflation amount>, <VRF proof>, <delayed inflation index>)
-// $0 - chain constraint index (sibling)
-// $1 - chain inflation amount (8 bytes). On slot boundary interpreted as delayed inflation 
-// $2 - on slot boundary interpreted as vrf proof. Interpreted only on branch transactions
-// $3 - inflation constraint index in the predecessor, only checked on branch successor
+// inflation(<inflation amount>, <VRF proof>, <chain constraint index>, <delayed inflation index>)
+// $0 - chain inflation amount (8 bytes or isZero). On slot boundary interpreted as delayed inflation 
+// $1 - vrf proof. Interpreted only on branch transactions
+// $2 - chain constraint index (sibling)
+// $3 - delayed inflation index. Inflation constraint index in the predecessor, only checked on branch successor
 //
-// Enforces:
-// - the output is chain-constrained
-// - if $1 is nil, always ok zero inflation
-// - correct amount of inflation inside slot (non-branch) for all chains
-// - correct branch inflation bonus. It must be provably random data for the slot and the sender's public key 
 func inflation : or(
 	selfIsConsumedOutput, // not checked if consumed
-	isZero($1),           // zero inflation always ok
+	isZero($0),           // zero inflation always ok
 	and(
   		selfIsProducedOutput,
-		_checkChainInflation($0, $1, $3),
-		if(
-			isBranchTransaction,
-			_checkBranchInflationBonus($2),
+		require(
+			equalUint(
+				validChainInflationValue($2, $3),
+				$0
+			),
+			!!!Invalid_chain_inflation_value
+		),
+		require(
+			or(
+				not(isBranchTransaction),
+				vrfVerify(publicKeyED25519(txSignature), $1, predStemOutputIDOfSelf)
+			),
+			!!!VRF_verification_failed
 		)
     )
 )

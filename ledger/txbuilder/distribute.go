@@ -74,14 +74,14 @@ func MakeDistributionTransaction(stateStore global.StateStore, originPrivateKey 
 			OutputWithID: *initSupplyOutput,
 			ChainID:      bootstrapChainID,
 		},
-		StemInput:           genesisStem,
-		Timestamp:           ledger.MustNewLedgerTime(genesisStem.Timestamp().Slot()+1, 0),
-		MinimumFee:          0,
-		AdditionalInputs:    nil,
-		AdditionalOutputs:   genesisDistributionOutputs,
-		Endorsements:        nil,
-		PrivateKey:          originPrivateKey,
-		PutMaximumInflation: false,
+		StemInput:         genesisStem,
+		Timestamp:         ledger.MustNewLedgerTime(genesisStem.Timestamp().Slot()+1, 0),
+		MinimumFee:        0,
+		AdditionalInputs:  nil,
+		AdditionalOutputs: genesisDistributionOutputs,
+		Endorsements:      nil,
+		PrivateKey:        originPrivateKey,
+		PutInflation:      false,
 	})
 	if err != nil {
 		return nil, err

@@ -2,7 +2,6 @@ package txbuilder
 
 import (
 	"crypto/ed25519"
-	"encoding/binary"
 	"errors"
 
 	"github.com/lunfardo314/proxima/ledger"
@@ -31,10 +30,10 @@ type MakeSequencerTransactionParams struct {
 	Endorsements []*ledger.TransactionID
 	// chain controller
 	PrivateKey ed25519.PrivateKey
-	// PutMaximumInflation if true, calculates maximum inflation possible
+	// PutInflation if true, calculates maximum inflation possible
 	// if false, does not add inflation constraint at all
-	PutMaximumInflation bool
-	ReturnInputLoader   bool
+	PutInflation      bool
+	ReturnInputLoader bool
 }
 
 func MakeSequencerTransaction(par MakeSequencerTransactionParams) ([]byte, error) {
@@ -88,19 +87,18 @@ func MakeSequencerTransactionWithInputLoader(par MakeSequencerTransactionParams)
 		return nil, nil, errP("not enough tokens in the input")
 	}
 
-	// raw data of the inflation (uint64 big endian bytes or VRF proof)
-	var inflationData []byte
-	// inflation amount:  uint64 or value returned by ledger.BranchInflationBonusFromRandomnessProof
 	var inflationAmount uint64
 
-	if par.PutMaximumInflation {
+	var inflationConstraint *ledger.InflationConstraint
+
+	if par.PutInflation {
+		inflationConstraint = &ledger.InflationConstraint{}
 		// put inflation script
 		if par.Timestamp.Tick() != 0 {
-			// calculate maximum inflation allowed in the context
+			// calculate inflation value allowed in the context
 			// non-branch transaction
-			inflationAmount = ledger.L().ID.ChainInflationAmount(par.ChainInput.Timestamp(), par.Timestamp, par.ChainInput.Output.Amount())
-			inflationData = make([]byte, 8)
-			binary.BigEndian.PutUint64(inflationData, inflationAmount)
+			inflationConstraint.ChainInflation, inflationConstraint.DelayedInflationIndex = calcChainInflationAmount(par.ChainInput, par.Timestamp)
+			inflationAmount = inflationConstraint.ChainInflation
 		} else {
 			// branch transaction. Generate verifiable randomness. It will be used to deterministically calculate inflation amount
 			pubKey := par.PrivateKey.Public().(ed25519.PublicKey)
@@ -108,7 +106,7 @@ func MakeSequencerTransactionWithInputLoader(par MakeSequencerTransactionParams)
 
 			util.AssertNotNil(par.StemInput)
 			// using stem predecessor ID as msg for VRF to randomize branch inflation for the same sequencer even on the same slot
-			inflationData, _, err = vrf.Prove(pubKey, par.PrivateKey, par.StemInput.ID[:])
+			inflationConstraint.VRFProof, _, err = vrf.Prove(pubKey, par.PrivateKey, par.StemInput.ID[:])
 			if err != nil {
 				return nil, nil, errP(err, "while generating VRF randomness proof")
 			}
@@ -116,12 +114,11 @@ func MakeSequencerTransactionWithInputLoader(par MakeSequencerTransactionParams)
 			{
 				var ok bool
 				// double check if VRF randomness proof has been generated correctly
-				ok, err = vrf.Verify(pubKey, inflationData, par.StemInput.ID[:])
+				ok, err = vrf.Verify(pubKey, inflationConstraint.VRFProof, par.StemInput.ID[:])
 				util.AssertNoError(err, "MakeSequencerTransactionWithInputLoader: verify VRF proof")
 				util.Assertf(ok, "MakeSequencerTransactionWithInputLoader: verify VRF proof")
 			}
-
-			inflationAmount = ledger.L().ID.BranchInflationBonusFromRandomnessProof(inflationData)
+			inflationAmount = ledger.L().ID.BranchInflationBonusFromRandomnessProof(inflationConstraint.VRFProof)
 		}
 	}
 
@@ -181,7 +178,7 @@ func MakeSequencerTransactionWithInputLoader(par MakeSequencerTransactionParams)
 		idxMsData, _ := o.PushConstraint(outData.AsConstraint().Bytes())
 		util.Assertf(idxMsData == ledger.MilestoneDataFixedIndex, "idxMsData == MilestoneDataFixedIndex")
 
-		if inflationAmount > 0 {
+		if chainInflationAmount > 0 {
 			// put inflation constraint for non-zero inflation
 			inflationConstraint := ledger.NewInflationConstraint(chainOutConstraintIdx, inflationData)
 			_, _ = o.PushConstraint(inflationConstraint.Bytes())
@@ -266,4 +263,19 @@ func MakeSequencerTransactionWithInputLoader(par MakeSequencerTransactionParams)
 		}
 	}
 	return txb.TransactionData.Bytes(), inputLoader, nil
+}
+
+func calcChainInflationAmount(pred *ledger.OutputWithChainID, ts ledger.Time) (uint64, byte) {
+	delayedInflation := uint64(0)
+	delayedInflationIdx := byte(0xff)
+	if pred.ID.IsBranchTransaction() {
+		// take delayed inflation from predecessor
+		var inflationConstraint *ledger.InflationConstraint
+		inflationConstraint, delayedInflationIdx = pred.Output.InflationConstraint()
+		if delayedInflationIdx != 0xff {
+			delayedInflation = inflationConstraint.ChainInflation
+		}
+	}
+	return ledger.L().ID.CalcChainInflationAmount(pred.Timestamp(), ts, pred.Output.Amount()) + delayedInflation, delayedInflationIdx
+
 }

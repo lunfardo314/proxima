@@ -297,16 +297,16 @@ func (a *IncrementalAttacher) MakeSequencerTransaction(seqName string, privateKe
 		endorsements[i] = &vid.ID
 	}
 	txBytes, inputLoader, err := txbuilder.MakeSequencerTransactionWithInputLoader(txbuilder.MakeSequencerTransactionParams{
-		SeqName:             seqName,
-		ChainInput:          chainIn.MustAsChainOutput(),
-		StemInput:           stemIn,
-		Timestamp:           a.targetTs,
-		AdditionalInputs:    otherInputs,
-		AdditionalOutputs:   additionalOutputs,
-		Endorsements:        endorsements,
-		PrivateKey:          privateKey,
-		PutMaximumInflation: true,
-		ReturnInputLoader:   true,
+		SeqName:           seqName,
+		ChainInput:        chainIn.MustAsChainOutput(),
+		StemInput:         stemIn,
+		Timestamp:         a.targetTs,
+		AdditionalInputs:  otherInputs,
+		AdditionalOutputs: additionalOutputs,
+		Endorsements:      endorsements,
+		PrivateKey:        privateKey,
+		PutInflation:      true,
+		ReturnInputLoader: true,
 	})
 	if err != nil {
 		return nil, err

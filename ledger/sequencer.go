@@ -59,9 +59,6 @@ or(
 	and( not(_inputSameSlot($0)), _crossSlotPredecessorCase)
 )
 
-// $0 chain constraint index
-func chainPredecessorInputIndex : byte(evalArgumentBytecode(selfSiblingConstraint($0), #chain, 0),32)
-
 func zeroTickOnBranchOnly : or(
 	not(isZero(txTimeTick)),
 	isBranchTransaction

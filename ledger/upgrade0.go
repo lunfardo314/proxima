@@ -347,8 +347,8 @@ var upgrade0WithFunctions = []*easyfl.ExtendedFunctionData{
 
 	{"consumedLockByInputIndex", "consumedConstraintByIndex(concat($0, lockConstraintIndex))"},
 	{"inputIDByIndex", "@Path(concat(pathToInputIDs,$0))"},
-	{"timeSlotOfInputByIndex", "timeSlotFromTimeSlotPrefix(timeSlotPrefix(inputIDByIndex($0)))"},
 	{"timestampOfInputByIndex", "timestampPrefix(inputIDByIndex($0))"},
+	{"timeSlotOfInputByIndex", "timeSlotFromTimeSlotPrefix(timeSlotPrefix(inputIDByIndex($0)))"},
 	// special transaction related
 	{"txBytes", "@Path(pathToTransaction)"},
 	{"txSignature", "@Path(pathToSignature)"},
@@ -365,12 +365,13 @@ var upgrade0WithFunctions = []*easyfl.ExtendedFunctionData{
 		"@Path(pathToSeqAndStemOutputIndices), " +
 		"@Path(pathToInputCommitment), " +
 		"@Path(pathToEndorsements))"},
+	{"sequencerFlagON", "not(isZero(bitwiseAND(byte($0,0),0x80)))"},
 	{"isSequencerTransaction", "not(equal(txSequencerOutputIndex, 0xff))"},
 	{"isBranchTransaction", "and(isSequencerTransaction, not(equal(txStemOutputIndex, 0xff)))"},
+	{"isBranchOutputID", "and(isSequencerFlagOn($0), equal(timeTickFromTimestamp(timestampPrefix($0)),0))"},
 	// endorsements
 	{"numEndorsements", "ArrayLength8(@Path(pathToEndorsements))"},
 	{"numInputs", "ArrayLength8(@Path(pathToInputIDs))"},
-	{"sequencerFlagON", "not(isZero(bitwiseAND(byte($0,0),0x80)))"},
 	// functions with prefix 'self' are invocation context specific, i.e. they use function '@' to calculate
 	// local values which depend on the invoked constraint
 	{"selfOutputPath", "slice(@,0,2)"},
@@ -380,7 +381,7 @@ var upgrade0WithFunctions = []*easyfl.ExtendedFunctionData{
 	// unlock param branch (0 - transaction, 0 unlock params)
 	// invoked output block
 	{"self", "@Path(@)"},
-	// bytecode prefix of the invoked constraint
+	// bytecode prefix of the invoked constraint. It is needed to avoid forward references in the EasyFL code
 	{"selfBytecodePrefix", "parsePrefixBytecode(self)"},
 	{"selfIsConsumedOutput", "isPathToConsumedOutput(@)"},
 	{"selfIsProducedOutput", "isPathToProducedOutput(@)"},
