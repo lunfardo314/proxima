@@ -33,8 +33,8 @@ type (
 		// ----------- inflation-related
 		// BranchInflationBonusBase inflation bonus
 		BranchInflationBonusBase uint64
-		// ChainInflationPerTickFraction max inflation during 1 tick = amount / ChainInflationPerTickFraction
-		ChainInflationPerTickFraction uint64
+		// ChainInflationFractionPerTick max inflation during 1 tick = amount / ChainInflationFractionPerTick
+		ChainInflationFractionPerTick uint64
 		// ChainInflationOpportunitySlots maximum gap between chain outputs for the non-zero inflation
 		ChainInflationOpportunitySlots uint64
 		// VBCost
@@ -91,7 +91,7 @@ func (id *IdentityData) Bytes() []byte {
 	_ = binary.Write(&buf, binary.BigEndian, id.TickDuration.Nanoseconds())
 	_ = binary.Write(&buf, binary.BigEndian, id.MaxTickValueInSlot)
 	_ = binary.Write(&buf, binary.BigEndian, id.BranchInflationBonusBase)
-	_ = binary.Write(&buf, binary.BigEndian, id.ChainInflationPerTickFraction)
+	_ = binary.Write(&buf, binary.BigEndian, id.ChainInflationFractionPerTick)
 	_ = binary.Write(&buf, binary.BigEndian, id.ChainInflationOpportunitySlots)
 	_ = binary.Write(&buf, binary.BigEndian, id.VBCost)
 	_ = binary.Write(&buf, binary.BigEndian, id.TransactionPace)
@@ -135,7 +135,7 @@ func MustLedgerIdentityDataFromBytes(data []byte) *IdentityData {
 	err = binary.Read(rdr, binary.BigEndian, &ret.BranchInflationBonusBase)
 	util.AssertNoError(err)
 
-	err = binary.Read(rdr, binary.BigEndian, &ret.ChainInflationPerTickFraction)
+	err = binary.Read(rdr, binary.BigEndian, &ret.ChainInflationFractionPerTick)
 	util.AssertNoError(err)
 
 	err = binary.Read(rdr, binary.BigEndian, &ret.ChainInflationOpportunitySlots)
@@ -219,6 +219,10 @@ func (id *IdentityData) TicksPerYear() int {
 	return id.SlotsPerYear() * id.TicksPerSlot()
 }
 
+func (id *IdentityData) ChainInflationFractionPerSlot() uint64 {
+	return id.ChainInflationFractionPerTick / uint64(id.TicksPerSlot())
+}
+
 func (id *IdentityData) OriginChainID() ChainID {
 	oid := GenesisOutputID()
 	return MakeOriginChainID(&oid)
@@ -259,7 +263,7 @@ func (id *IdentityData) YAMLAble() *IdentityDataYAMLAble {
 		VBCost:                            id.VBCost,
 		TransactionPace:                   id.TransactionPace,
 		TransactionPaceSequencer:          id.TransactionPaceSequencer,
-		ChainInflationPerTickFractionBase: id.ChainInflationPerTickFraction,
+		ChainInflationPerTickFractionBase: id.ChainInflationFractionPerTick,
 		ChainInflationOpportunitySlots:    id.ChainInflationOpportunitySlots,
 		GenesisControllerAddress:          id.GenesisControlledAddress().String(),
 		MinimumAmountOnSequencer:          id.MinimumAmountOnSequencer,
@@ -343,7 +347,7 @@ func (id *IdentityDataYAMLAble) stateIdentityData() (*IdentityData, error) {
 	ret.VBCost = id.VBCost
 	ret.TransactionPace = id.TransactionPace
 	ret.TransactionPaceSequencer = id.TransactionPaceSequencer
-	ret.ChainInflationPerTickFraction = id.ChainInflationPerTickFractionBase
+	ret.ChainInflationFractionPerTick = id.ChainInflationPerTickFractionBase
 	ret.ChainInflationOpportunitySlots = id.ChainInflationOpportunitySlots
 	ret.MinimumAmountOnSequencer = id.MinimumAmountOnSequencer
 	ret.MaxNumberOfEndorsements = id.MaxNumberOfEndorsements

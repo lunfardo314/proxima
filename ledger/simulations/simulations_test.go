@@ -66,7 +66,7 @@ func TestInflationCalculations1(t *testing.T) {
 }
 
 func ChainInitialInflationFractionPerSlot() int64 {
-	return int64(ledger.L().ID.ChainInflationPerTickFraction) / int64(ledger.TicksPerSlot())
+	return int64(ledger.L().ID.ChainInflationFractionPerTick) / int64(ledger.TicksPerSlot())
 }
 
 func MinInflatableAmountPerTick() int64 {
@@ -102,7 +102,7 @@ func InitialSlotInflationChain() int64 {
 //		util.GoTh(ledger.L().ID.BranchInflationBonusBase), util.GoTh(ledger.L().ID.BranchInflationBonusBase/ledger.DustPerProxi),
 //		util.GoTh(BranchInflationAnnual()), util.GoTh(BranchInflationAnnual()/ledger.DustPerProxi),
 //		percent(int(BranchInflationAnnual()), int(ledger.L().ID.InitialSupply)),
-//		util.GoTh(ledger.L().ID.ChainInflationPerTickFraction),
+//		util.GoTh(ledger.L().ID.ChainInflationFractionPerTick),
 //		util.GoTh(MinInflatableAmountPerTick()), util.GoTh(MinInflatableAmountPerTick()/ledger.PRXI),
 //		util.GoTh(MinInflatableAmountPerSlot()), util.GoTh(MinInflatableAmountPerSlot()/ledger.DustPerProxi),
 //		util.GoTh(InitialSlotInflationChain()), util.GoTh(InitialSlotInflationChain()/ledger.DustPerProxi),

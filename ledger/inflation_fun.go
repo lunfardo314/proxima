@@ -2,36 +2,45 @@ package ledger
 
 import (
 	"encoding/binary"
-	"encoding/hex"
 	"fmt"
 
 	"github.com/lunfardo314/proxima/util"
+	"golang.org/x/crypto/blake2b"
 )
 
 // This file contains definitions of the inflation-related functions in EasyFL (on-ledger) and on IdentityData
 // constants. The two must exactly match each other
 
-// CalcChainInflationAmount interprets EasyFl formula
-func (id *IdentityData) CalcChainInflationAmount(inTs, outTs Time, inAmount, delayed uint64) uint64 {
+// CalcChainInflationAmount interprets EasyFl formula. Return chain inflation amount for given in and out ledger times,
+// input amount of tokens and delayed
+func (lib *Library) CalcChainInflationAmount(inTs, outTs Time, inAmount, delayed uint64) uint64 {
 	src := fmt.Sprintf("calcChainInflationAmount(%s,%s,u64/%d, u64/%d)", inTs.Source(), outTs.Source(), inAmount, delayed)
-	res, err := L().EvalFromSource(nil, src)
+	res, err := lib.EvalFromSource(nil, src)
 	util.AssertNoError(err)
 	return binary.BigEndian.Uint64(res)
 }
 
 // BranchInflationBonusFromRandomnessProof makes uint64 in the range from 0 to BranchInflationBonusBase (incl)
-func (id *IdentityData) BranchInflationBonusFromRandomnessProof(proof []byte) uint64 {
-	src := fmt.Sprintf("maxBranchInflationAmountFromVRFProof(0x%s)", hex.EncodeToString(proof))
-	res, err := L().EvalFromSource(nil, src)
+func (lib *Library) BranchInflationBonusFromRandomnessProof(proof []byte) uint64 {
+	if len(proof) == 0 {
+		return 0
+	}
+	h := blake2b.Sum256(proof)
+	return binary.BigEndian.Uint64(h[:7]) % (lib.ID.BranchInflationBonusBase + 1)
+}
+
+// InsideInflationOpportunityWindow returns if ticks and amount are inside inflation window
+func (lib *Library) InsideInflationOpportunityWindow(diffTicks int, inAmount uint64) bool {
+	src := fmt.Sprintf("_insideInflationOpportunityWindow(u64/%d, u64/%d)", diffTicks, inAmount)
+	res, err := lib.EvalFromSource(nil, src)
 	util.AssertNoError(err)
-	return binary.BigEndian.Uint64(res)
+	return len(res) > 0
 }
 
 // inflationFunctionsSource is a EasyFL source (inflationAmount function) of on-ledger calculation of inflation amount
-// It must be equivalent to the direct calculation. It is covered in tests/inflation_test.go
 const inflationFunctionsSource = `
 // $0 - diff ticks between transaction timestamp and input timestamp
-// $1 - amount on the chain input (no branch bonus)
+// $1 - amount on the chain input (no branch bonus). If it is too big, no inflation
 func _insideInflationOpportunityWindow : 
 and(
    lessOrEqualThan(
@@ -69,16 +78,5 @@ if(
 	   $3
 	),
    u64/0
-)
-
-// $0 - VRF proof taken from the inflation constraint
-func maxBranchInflationAmountFromVRFProof :
-if(
-	isZero(len($0)),
-	u64/0,
-	mod(
-	   slice(blake2b($0), 0, 7),
-	   add(constBranchInflationBonusBase, u64/1)
-	)	
 )
 `

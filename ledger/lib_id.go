@@ -48,9 +48,10 @@ const (
 	DefaultChainInflationOpportunitySlots = 12
 	// end inflation-related
 
-	DefaultVBCost                      = 1
-	DefaultTransactionPace             = 10
-	DefaultTransactionPaceSequencer    = 1
+	DefaultVBCost                   = 1
+	DefaultTransactionPace          = 10
+	DefaultTransactionPaceSequencer = 1
+	// DefaultMinimumAmountOnSequencer Reasonable limit could be say 1/1000 of initial supply
 	DefaultMinimumAmountOnSequencer    = 1_000 * PRXI
 	DefaultMaxNumberOfEndorsements     = 8
 	DefaultPreBranchConsolidationTicks = 20
@@ -96,7 +97,7 @@ func DefaultIdentityData(privateKey ed25519.PrivateKey) *IdentityData {
 		TransactionPace:                DefaultTransactionPace,
 		TransactionPaceSequencer:       DefaultTransactionPaceSequencer,
 		BranchInflationBonusBase:       DefaultMaxBranchInflationBonus,
-		ChainInflationPerTickFraction:  DefaultChainInflationFractionPerTick,
+		ChainInflationFractionPerTick:  DefaultChainInflationFractionPerTick,
 		ChainInflationOpportunitySlots: DefaultChainInflationOpportunitySlots,
 		MinimumAmountOnSequencer:       DefaultMinimumAmountOnSequencer,
 		MaxNumberOfEndorsements:        DefaultMaxNumberOfEndorsements,

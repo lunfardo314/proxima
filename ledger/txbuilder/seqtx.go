@@ -117,7 +117,7 @@ func MakeSequencerTransactionWithInputLoader(par MakeSequencerTransactionParams)
 				util.AssertNoError(err, "MakeSequencerTransactionWithInputLoader: verify VRF proof")
 				util.Assertf(ok, "MakeSequencerTransactionWithInputLoader: verify VRF proof")
 			}
-			inflationAmount = ledger.L().ID.BranchInflationBonusFromRandomnessProof(inflationConstraint.VRFProof)
+			inflationAmount = ledger.L().BranchInflationBonusFromRandomnessProof(inflationConstraint.VRFProof)
 		}
 	}
 
@@ -275,7 +275,7 @@ func calcChainInflationAmount(pred *ledger.OutputWithChainID, ts ledger.Time) (u
 			delayedInflation = inflationConstraint.ChainInflation
 		}
 	}
-	ret, idx := ledger.L().ID.CalcChainInflationAmount(pred.Timestamp(), ts, pred.Output.Amount(), delayedInflation), delayedInflationIdx
+	ret, idx := ledger.L().CalcChainInflationAmount(pred.Timestamp(), ts, pred.Output.Amount(), delayedInflation), delayedInflationIdx
 
 	//fmt.Printf(">>>>>>>>>>>>>>> calcChainInflationAmount: pred ts: %s, ts: %s, pred amount: %s, delayed amount: %s, diff: %s, return: %s\n",
 	//	pred.Timestamp().String(), ts.String(), util.GoTh(pred.Output.Amount()), util.GoTh(delayedInflation),

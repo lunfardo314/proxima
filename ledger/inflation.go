@@ -71,7 +71,7 @@ func (i *InflationConstraint) source() string {
 func (i *InflationConstraint) InflationAmount(slotBoundary bool) uint64 {
 	if slotBoundary {
 		// the ChainInflation is interpreted as delayed inflation
-		return L().ID.BranchInflationBonusFromRandomnessProof(i.VRFProof)
+		return L().BranchInflationBonusFromRandomnessProof(i.VRFProof)
 	}
 	return i.ChainInflation
 }
