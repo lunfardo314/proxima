@@ -82,7 +82,7 @@ func TestInflationOpportunityWindow(t *testing.T) {
 func TestInflation(t *testing.T) {
 	testFun := func(inTs, outTs ledger.Time, inAmount, delayed uint64, expect uint64) {
 		inflation := ledger.L().CalcChainInflationAmount(inTs, outTs, inAmount, delayed)
-		t.Logf("inTs: %s, outTs: %s, diffTicks: %d, in: %s, delayd: %s -> inflation %s",
+		t.Logf("inTs: %s, outTs: %s, diffTicks: %d, in: %s, delayed: %s -> inflation %s",
 			inTs.String(), outTs.String(), ledger.DiffTicks(outTs, inTs), util.GoTh(inAmount), util.GoTh(delayed), util.GoTh(inflation))
 		require.EqualValues(t, int(expect), int(inflation))
 	}
@@ -108,28 +108,30 @@ func TestInflation(t *testing.T) {
 
 		diff = 5
 		tsOut = tsIn.AddTicks(diff)
-		testFun(tsIn, tsOut, frac/uint64(diff)-1, 0, 0)
-		testFun(tsIn, tsOut, frac/uint64(diff), 0, 1)
-		t.Logf("-------- minimum amount which can be inflated in %d ticks: %s dust = %s PRXI", diff, util.GoTh(frac), util.GoTh(frac/ledger.PRXI))
+		amount := frac / uint64(diff)
+		testFun(tsIn, tsOut, amount-1, 0, 0)
+		testFun(tsIn, tsOut, amount, 0, 1)
+		t.Logf("-------- minimum amount which can be inflated in %d ticks: %s dust = %s PRXI", diff, util.GoTh(amount), util.GoTh(amount/ledger.PRXI))
 		testFun(tsIn, tsOut, ledger.DefaultInitialSupply, 0, uint64(diff*400_000))
 		t.Logf("-------- inflation amount of default initial supply in %d ticks(s): %s dust", diff, util.GoTh(diff*400_000))
 
 		diff = ledger.L().ID.TicksPerSlot()
 		tsOut = tsIn.AddTicks(diff)
-		testFun(tsIn, tsOut, frac/uint64(diff)-1, 0, 0)
-		testFun(tsIn, tsOut, frac/uint64(diff), 0, 1)
-		t.Logf("-------- minimum amount which can be inflated in %d ticks: %s dust = %s PRXI", diff, util.GoTh(frac), util.GoTh(frac/ledger.PRXI))
+		amount = frac / uint64(diff)
+		testFun(tsIn, tsOut, amount-1, 0, 0)
+		testFun(tsIn, tsOut, amount, 0, 1)
+		t.Logf("-------- minimum amount which can be inflated in %d ticks: %s dust = %s PRXI", diff, util.GoTh(amount), util.GoTh(amount/ledger.PRXI))
 		testFun(tsIn, tsOut, ledger.DefaultInitialSupply, 0, uint64(diff*400_000))
 		t.Logf("-------- inflation amount of default initial supply in %d ticks(s): %s dust", diff, util.GoTh(diff*400_000))
 
-		// TODO
 		diff = maxInflationTicks
-		diff = 1200
 		tsOut = tsIn.AddTicks(diff)
-		testFun(tsIn, tsOut, frac/uint64(diff)-1, 0, 0)
-		testFun(tsIn, tsOut, frac/uint64(diff), 0, 1)
-		t.Logf("-------- minimum amount which can be inflated in %d ticks: %s dust = %s PRXI", diff, util.GoTh(frac), util.GoTh(frac/ledger.PRXI))
-		testFun(tsIn, tsOut, ledger.DefaultInitialSupply, 0, uint64(diff*400_000))
-		t.Logf("-------- inflation amount of default initial supply in %d ticks(s): %s dust", diff, util.GoTh(diff*400_000))
+		testFun(tsIn, tsOut, 10_000_000, 0, 5)
+		testFun(tsIn, tsOut, 10_000_000, 1_000, 1_005)
+
+		diff = maxInflationTicks + 1
+		tsOut = tsIn.AddTicks(diff)
+		testFun(tsIn, tsOut, 10_000_000, 0, 0)
+		testFun(tsIn, tsOut, 10_000_000, 1_000, 0)
 	})
 }

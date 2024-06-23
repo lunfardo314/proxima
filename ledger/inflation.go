@@ -120,22 +120,7 @@ func addInflationConstraint(lib *Library) {
 	lib.MustExtendMany(inflationFunctionsSource)
 	lib.extendWithConstraint(InflationConstraintName, inflationConstraintSource, 4, func(data []byte) (Constraint, error) {
 		return InflationConstraintFromBytes(data)
-	}, initTestInflationConstraint)
-}
-
-func initTestInflationConstraint() {
-	//data := []byte("123")
-	//example := NewInflationConstraint(4, data)
-	//sym, _, args, err := L().ParseBytecodeOneLevel(example.Bytes(), 2)
-	//util.AssertNoError(err)
-	//util.Assertf(sym == InflationConstraintName, "sym == InflationConstraintName")
-	//
-	//cciBin := easyfl.StripDataPrefix(args[0])
-	//util.Assertf(len(cciBin) == 1, "len(cciBin) == 1")
-	//util.Assertf(cciBin[0] == 4, "cciBin[0] == 4")
-	//
-	//amountBin := easyfl.StripDataPrefix(args[1])
-	//util.Assertf(bytes.Equal(amountBin, data), "bytes.Equal(amountBin, data)")
+	})
 }
 
 const inflationConstraintSource = `

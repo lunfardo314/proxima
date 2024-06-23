@@ -114,7 +114,7 @@ func (seq *Sequencer) Start() {
 		}
 	}
 
-	const debuggerFriendly = false
+	const debuggerFriendly = true
 
 	if debuggerFriendly {
 		go runFun()

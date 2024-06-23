@@ -92,7 +92,7 @@ func MakeSequencerTransactionWithInputLoader(par MakeSequencerTransactionParams)
 
 	if par.PutInflation {
 		inflationConstraint = &ledger.InflationConstraint{}
-		inflationConstraint.ChainInflation, inflationConstraint.DelayedInflationIndex = calcChainInflationAmount(par.ChainInput, par.Timestamp)
+		inflationConstraint.ChainInflation, inflationConstraint.DelayedInflationIndex = calcChainInflationAmount(&par)
 
 		if par.StemInput == nil {
 			// calculate inflation value allowed in the context
@@ -264,22 +264,29 @@ func MakeSequencerTransactionWithInputLoader(par MakeSequencerTransactionParams)
 	return txb.TransactionData.Bytes(), inputLoader, nil
 }
 
-func calcChainInflationAmount(pred *ledger.OutputWithChainID, ts ledger.Time) (uint64, byte) {
+func calcChainInflationAmount(par *MakeSequencerTransactionParams) (uint64, byte) {
 	delayedInflation := uint64(0)
 	delayedInflationIdx := byte(0xff)
-	if pred.ID.IsBranchTransaction() {
+	if par.ChainInput.ID.IsBranchTransaction() {
 		// take delayed inflation from predecessor
 		var inflationConstraint *ledger.InflationConstraint
-		inflationConstraint, delayedInflationIdx = pred.Output.InflationConstraint()
+		inflationConstraint, delayedInflationIdx = par.ChainInput.Output.InflationConstraint()
 		if delayedInflationIdx != 0xff {
 			delayedInflation = inflationConstraint.ChainInflation
 		}
 	}
-	ret, idx := ledger.L().CalcChainInflationAmount(pred.Timestamp(), ts, pred.Output.Amount(), delayedInflation), delayedInflationIdx
+	ret, idx := ledger.L().CalcChainInflationAmount(par.ChainInput.Timestamp(), par.Timestamp, par.ChainInput.Output.Amount(), delayedInflation), delayedInflationIdx
 
-	//fmt.Printf(">>>>>>>>>>>>>>> calcChainInflationAmount: pred ts: %s, ts: %s, pred amount: %s, delayed amount: %s, diff: %s, return: %s\n",
-	//	pred.Timestamp().String(), ts.String(), util.GoTh(pred.Output.Amount()), util.GoTh(delayedInflation),
-	//	util.GoTh(ret-delayedInflation), util.GoTh(ret))
+	//fmt.Printf(">>>>>>>> [%s]: pred: %s, target: %s (ticks: %d), pred amount: %s, delayed amount: %s, less delayed: %s, return: %s\n",
+	//	par.SeqName,
+	//	par.ChainInput.IDShort(),
+	//	par.Timestamp.String(),
+	//	ledger.DiffTicks(par.Timestamp, par.ChainInput.Timestamp()),
+	//	util.GoTh(par.ChainInput.Output.Amount()),
+	//	util.GoTh(delayedInflation),
+	//	util.GoTh(ret-delayedInflation),
+	//	util.GoTh(ret),
+	//)
 
 	return ret, idx
 }

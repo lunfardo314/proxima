@@ -26,7 +26,7 @@ func (lib *Library) BranchInflationBonusFromRandomnessProof(proof []byte) uint64
 		return 0
 	}
 	h := blake2b.Sum256(proof)
-	return binary.BigEndian.Uint64(h[:7]) % (lib.ID.BranchInflationBonusBase + 1)
+	return binary.BigEndian.Uint64(h[:8]) % (lib.ID.BranchInflationBonusBase + 1)
 }
 
 // InsideInflationOpportunityWindow returns if ticks and amount are inside inflation window

@@ -27,7 +27,7 @@ func GoTh[T Integer](v T) string {
 	return strings.Replace(prn.Sprintf("%d", v), ",", "_", -1)
 }
 
-func GoThousandsLazy[T Integer](v T) func() string {
+func GoThLazy[T Integer](v T) func() string {
 	return func() string {
 		return GoTh(v)
 	}

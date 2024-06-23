@@ -252,14 +252,14 @@ func (a *milestoneAttacher) logFinalStatusString(msData *ledger.MilestoneData) s
 	inflBranchStr := "-"
 	if inflationConstraint := a.vid.InflationConstraintOnSequencerOutput(); inflationConstraint != nil {
 		inflChainStr = util.GoTh(inflationConstraint.ChainInflation)
-		inflBranchStr = util.GoTh(ledger.L().ID.BranchInflationBonusFromRandomnessProof(inflationConstraint.VRFProof))
+		inflBranchStr = util.GoTh(ledger.L().BranchInflationBonusFromRandomnessProof(inflationConstraint.VRFProof))
 	}
 
 	if a.vid.IsBranchTransaction() {
-		msg = fmt.Sprintf("-- ATTACH BRANCH%s %s(in %d/out %d), infl: %s/%s",
+		msg = fmt.Sprintf("-- ATTACH BRANCH%s %s(in %d/out %d), ci=%s/bi=%s",
 			msDataStr, a.vid.IDShortString(), a.finals.numInputs, a.finals.numOutputs, inflChainStr, inflBranchStr)
 	} else {
-		msg = fmt.Sprintf("-- ATTACH SEQ TX%s %s(in %d/out %d), infl: %s/%s",
+		msg = fmt.Sprintf("-- ATTACH SEQ TX%s %s(in %d/out %d), ci=%s/bi=%s",
 			msDataStr, a.vid.IDShortString(), a.finals.numInputs, a.finals.numOutputs, inflChainStr, inflBranchStr)
 	}
 	if a.vid.GetTxStatus() == vertex.Bad {
