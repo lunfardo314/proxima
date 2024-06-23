@@ -38,6 +38,7 @@ type (
 		parser Parser
 	}
 
+	// LockBalance is an amount/target pair used in distribution list
 	LockBalance struct {
 		Lock    Lock
 		Balance uint64

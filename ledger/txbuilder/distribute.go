@@ -16,11 +16,8 @@ type LockBalanceYAMLable struct {
 	Balance    uint64 `yaml:"balance"`
 }
 
-func MustDistributeInitialSupply(stateStore global.StateStore, originPrivateKey ed25519.PrivateKey, genesisDistribution []ledger.LockBalance) []byte {
-	ret, _ := MustDistributeInitialSupplyExt(stateStore, originPrivateKey, genesisDistribution)
-	return ret
-}
-
+// MakeDistributionTransaction creates initial distribution transaction according to distribution list.
+// It is a branch transaction. Remainder goes to the genesis chain
 func MakeDistributionTransaction(stateStore global.StateStore, originPrivateKey ed25519.PrivateKey, genesisDistribution []ledger.LockBalance) ([]byte, error) {
 	stateID, genesisRoot, err := multistate.ScanGenesisState(stateStore)
 	if err != nil {
@@ -89,6 +86,35 @@ func MakeDistributionTransaction(stateStore global.StateStore, originPrivateKey 
 	return txBytes, nil
 }
 
+// DistributeInitialSupply updates genesis state and branch records according to initial supply distribution parameters by
+// adding initial distribution transaction.
+// Distribution transaction is a branch transaction in the slot next after the genesis.
+// Distribution parameter is added to the transaction store
+func DistributeInitialSupply(stateStore global.StateStore, originPrivateKey ed25519.PrivateKey, genesisDistribution []ledger.LockBalance) ([]byte, error) {
+	txBytes, _, err := DistributeInitialSupplyExt(stateStore, originPrivateKey, genesisDistribution)
+	return txBytes, err
+}
+
+func DistributeInitialSupplyExt(stateStore global.StateStore, originPrivateKey ed25519.PrivateKey, genesisDistribution []ledger.LockBalance) ([]byte, ledger.TransactionID, error) {
+	var ret []byte
+	var txid ledger.TransactionID
+	err := util.CatchPanicOrError(func() error {
+		ret, txid = MustDistributeInitialSupplyExt(stateStore, originPrivateKey, genesisDistribution)
+		return nil
+	})
+	if err != nil {
+		return nil, ledger.TransactionID{}, fmt.Errorf("DistributeInitialSupply: %v", err)
+	}
+	return ret, txid, nil
+}
+
+// MustDistributeInitialSupply makes distribution transaction and commits it into the multi-ledger state with branch record
+func MustDistributeInitialSupply(stateStore global.StateStore, originPrivateKey ed25519.PrivateKey, genesisDistribution []ledger.LockBalance) []byte {
+	ret, _ := MustDistributeInitialSupplyExt(stateStore, originPrivateKey, genesisDistribution)
+	return ret
+}
+
+// MustDistributeInitialSupplyExt makes distribution transaction and commits it into the multi-ledger state with branch record
 func MustDistributeInitialSupplyExt(stateStore global.StateStore, originPrivateKey ed25519.PrivateKey, genesisDistribution []ledger.LockBalance) ([]byte, ledger.TransactionID) {
 	txBytes, err := MakeDistributionTransaction(stateStore, originPrivateKey, genesisDistribution)
 	util.AssertNoError(err)
@@ -119,26 +145,4 @@ func MustDistributeInitialSupplyExt(stateStore global.StateStore, originPrivateK
 		NumTransactions: 1,
 	})
 	return txBytes, *tx.ID()
-}
-
-// DistributeInitialSupply updates genesis state and branch records according to initial supply distribution parameters by
-// adding initial distribution transaction.
-// Distribution transaction is a branch transaction in the slot next after the genesis.
-// Distribution parameter is added to the transaction store
-func DistributeInitialSupply(stateStore global.StateStore, originPrivateKey ed25519.PrivateKey, genesisDistribution []ledger.LockBalance) ([]byte, error) {
-	txBytes, _, err := DistributeInitialSupplyExt(stateStore, originPrivateKey, genesisDistribution)
-	return txBytes, err
-}
-
-func DistributeInitialSupplyExt(stateStore global.StateStore, originPrivateKey ed25519.PrivateKey, genesisDistribution []ledger.LockBalance) ([]byte, ledger.TransactionID, error) {
-	var ret []byte
-	var txid ledger.TransactionID
-	err := util.CatchPanicOrError(func() error {
-		ret, txid = MustDistributeInitialSupplyExt(stateStore, originPrivateKey, genesisDistribution)
-		return nil
-	})
-	if err != nil {
-		return nil, ledger.TransactionID{}, fmt.Errorf("DistributeInitialSupply: %v", err)
-	}
-	return ret, txid, nil
 }

@@ -67,13 +67,19 @@ func runBootstrapAccount(_ *cobra.Command, args []string) {
 	txStore := txstore.NewSimpleTxBytesStore(txStoreDB)
 	defer func() { _ = txStoreDB.Close() }()
 
+	// distributed genesis balance by sending bootstrapBalance to the same address, which controls bootstrap chain
+	// Remainder stays in genesis
+	// It commits right to the database.
 	txBytesBootstrapBalance, txid, err := txbuilder.DistributeInitialSupplyExt(stateStore, privKey, []ledger.LockBalance{
 		{addr, bootstrapBalance},
 	})
 	glb.AssertNoError(err)
 
+	// store distribution transaction in the ts store so that other nodes
+	// could sync the state right from the genesis state at slot 0
 	rr, found := multistate.FetchRootRecord(stateStore, txid)
 	glb.Assertf(found, "inconsistency: can't find root record")
+
 	_, err = txStore.PersistTxBytesWithMetadata(txBytesBootstrapBalance, &txmetadata.TransactionMetadata{
 		StateRoot:      rr.Root,
 		LedgerCoverage: util.Ref(rr.LedgerCoverage),
