@@ -16,18 +16,16 @@ Search and explore UTXO tangle along various links, view each all kinds of trans
   - Implementation: 0%
 
 * Proxi CLI, wallet, API
-Needs love ant attention. Currently basic only. API is limited to Proxi needs, unprotected etc. 
+Needs love and attention. Currently basic only. API is limited to Proxi needs, unprotected etc. 
 
 * Docker-ize
 
 ## Node components
 * Auto-peering
-  * Concept: currently only manual peering is implemented. To adding/remove a peer, the node's config must be changed and node restarted. 
-The goal would be to implement usual auto-peering
   * Implementation: 90% (mostly done, base version)
 * Metrics subsystem
   * Concept: Prometheus metrics for node, ledger and sequencer. 
-  * Implementation 10% (basic framework)
+  * Implementation: basic framework implemented, only few basic metrics
 * RocksDB database
   * Currently, Badger is used. Suboptimal. Replace it with RocksDB
 * Spam prevention
@@ -92,7 +90,7 @@ with backward compatibility via soft forks.
 
 ## Docs
 - Whitepaper 80-90%
-- How to run small testnet: 80% 
+- How to run small testnet with outopeering: 80% 
 - Introductory video series: 0%
 
 ## Priorities
