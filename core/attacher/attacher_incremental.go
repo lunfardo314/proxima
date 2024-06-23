@@ -82,7 +82,7 @@ func (a *IncrementalAttacher) initIncrementalAttacher(baseline *vertex.WrappedTx
 	}
 	a.Tracef(TraceTagIncrementalAttacher, "NewIncrementalAttacher(%s). baseline: %s, start with coverage: %s",
 		a.name, baseline.IDShortString,
-		func() string { return util.GoTh(a.coverage) })
+		func() string { return util.Th(a.coverage) })
 
 	// attach endorsements
 	for _, endorsement := range endorse {
@@ -332,7 +332,7 @@ func (a *IncrementalAttacher) AdjustCoverage() {
 	if a.coverageAdjustment > 0 {
 		ext := a.Extending()
 		a.Tracef(TraceTagCoverageAdjustment, " IncrementalAttacher: coverage has been adjusted by %s, extending: %s, baseline: %s",
-			func() string { return util.GoTh(a.coverageAdjustment) }, ext.IDShortString, a.baseline.IDShortString)
+			func() string { return util.Th(a.coverageAdjustment) }, ext.IDShortString, a.baseline.IDShortString)
 	}
 }
 

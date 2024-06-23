@@ -8,8 +8,8 @@ import (
 	"golang.org/x/crypto/blake2b"
 )
 
-// This file contains definitions of the inflation-related functions in EasyFL (on-ledger) and on IdentityData
-// constants. The two must exactly match each other
+// This file contains definitions of the inflation calculation functions in EasyFL (on-ledger)
+// The Go functions interprets EasyFL function to guarantee consistent values
 
 // CalcChainInflationAmount interprets EasyFl formula. Return chain inflation amount for given in and out ledger times,
 // input amount of tokens and delayed
@@ -29,7 +29,8 @@ func (lib *Library) BranchInflationBonusFromRandomnessProof(proof []byte) uint64
 	return binary.BigEndian.Uint64(h[:8]) % (lib.ID.BranchInflationBonusBase + 1)
 }
 
-// InsideInflationOpportunityWindow returns if ticks and amount are inside inflation window
+// InsideInflationOpportunityWindow returns if ticks and amount are inside inflation opportunity window
+// Outside inflation opportunity window mean 0 inflation
 func (lib *Library) InsideInflationOpportunityWindow(diffTicks int, inAmount uint64) bool {
 	src := fmt.Sprintf("_insideInflationOpportunityWindow(u64/%d, u64/%d)", diffTicks, inAmount)
 	res, err := lib.EvalFromSource(nil, src)
@@ -37,10 +38,11 @@ func (lib *Library) InsideInflationOpportunityWindow(diffTicks int, inAmount uin
 	return len(res) > 0
 }
 
-// inflationFunctionsSource is a EasyFL source (inflationAmount function) of on-ledger calculation of inflation amount
 const inflationFunctionsSource = `
 // $0 - diff ticks between transaction timestamp and input timestamp
 // $1 - amount on the chain input (no branch bonus). If it is too big, no inflation
+//
+// Determines if diff ticks and amount fall inside inflation opportunity window
 func _insideInflationOpportunityWindow : 
 and(
    lessOrEqualThan(
@@ -63,7 +65,12 @@ and(
 // $1 - timestamp of the transaction (and of the output)
 // $2 - amount on the chain input
 // $3 - delayed inflation amount
-// result: (dtInTicks * amountAtTheBeginning) / inflationFractionPerTick
+//
+// Returns chain inflation amount. In the inflation opportunity window it is equal to: 
+//   (diffInTicks * <amount on the chain input>) / inflationFractionPerTick
+//
+// 	 diffInTicks = $1 - $0 (ticksBefore($0, $1)
+//
 func calcChainInflationAmount : 
 if(
 	_insideInflationOpportunityWindow(ticksBefore($0, $1), $2),

@@ -245,7 +245,7 @@ func (id *IdentityData) Lines(prefix ...string) *lines.Lines {
 		Add("Transaction pace: %d", id.TransactionPace).
 		Add("Sequencer pace: %d", id.TransactionPaceSequencer).
 		Add("Description: '%s'", id.Description).
-		Add("Initial supply: %s", util.GoTh(id.InitialSupply)).
+		Add("Initial supply: %s", util.Th(id.InitialSupply)).
 		Add("Genesis controller public key: %s", hex.EncodeToString(id.GenesisControllerPublicKey)).
 		Add("Genesis controller address: %s", id.GenesisControlledAddress().String()).
 		Add("Origin chain ID: %s", originChainID.String())

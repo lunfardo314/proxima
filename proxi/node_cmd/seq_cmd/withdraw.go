@@ -40,7 +40,7 @@ func runSeqWithdrawCmd(_ *cobra.Command, args []string) {
 	amount, err := strconv.ParseUint(args[0], 10, 64)
 	glb.AssertNoError(err)
 
-	glb.Infof("amount: %s", util.GoTh(amount))
+	glb.Infof("amount: %s", util.Th(amount))
 
 	glb.Infof("querying wallet's outputs..")
 	walletOutputs, err := getClient().GetAccountOutputs(walletData.Account, func(_ *ledger.OutputID, o *ledger.Output) bool {
@@ -50,11 +50,11 @@ func runSeqWithdrawCmd(_ *cobra.Command, args []string) {
 
 	glb.Infof("will be using %d tokens as tag-along fee. Outputs in the wallet:", ownSequencerCmdFee)
 	for i, o := range walletOutputs {
-		glb.Infof("%d : %s : %s", i, o.ID.StringShort(), util.GoTh(o.Output.Amount()))
+		glb.Infof("%d : %s : %s", i, o.ID.StringShort(), util.Th(o.Output.Amount()))
 	}
 
 	prompt := fmt.Sprintf("withdraw %s from %s to the target %s?",
-		util.GoTh(amount), walletData.Sequencer.StringShort(), targetLock.String())
+		util.Th(amount), walletData.Sequencer.StringShort(), targetLock.String())
 	if !glb.YesNoPrompt(prompt, false) {
 		glb.Infof("exit")
 		return

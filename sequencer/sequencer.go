@@ -204,7 +204,7 @@ func (seq *Sequencer) ensureFirstMilestone() bool {
 
 	}
 	seq.log.Infof("sequencer will start with the milestone output %s and amount %s (%s%% initial supply)",
-		startingMilestoneOutput.IDShortString(), util.GoTh(amount), util.PercentString(int(amount), int(ledger.L().ID.InitialSupply)))
+		startingMilestoneOutput.IDShortString(), util.Th(amount), util.PercentString(int(amount), int(ledger.L().ID.InitialSupply)))
 
 	seq.factory.AddOwnMilestone(startingMilestoneOutput.VID)
 

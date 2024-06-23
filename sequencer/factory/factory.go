@@ -359,7 +359,7 @@ func (mf *MilestoneFactory) addProposal(p proposal) {
 
 	mf.target.proposals = append(mf.target.proposals, p)
 	mf.Tracef(TraceTag, "added proposal %s from %s: coverage %s",
-		p.tx.IDShortString, p.attacherName, func() string { return util.GoTh(p.coverage) })
+		p.tx.IDShortString, p.attacherName, func() string { return util.Th(p.coverage) })
 }
 
 func (mf *MilestoneFactory) getBestProposal() (*transaction.Transaction, *txmetadata.TransactionMetadata) {
@@ -367,7 +367,7 @@ func (mf *MilestoneFactory) getBestProposal() (*transaction.Transaction, *txmeta
 	defer mf.target.mutex.RUnlock()
 
 	bestCoverageInSlot := mf.BestCoverageInTheSlot(mf.target.targetTs)
-	mf.Tracef(TraceTag, "best coverage in slot: %s", func() string { return util.GoTh(bestCoverageInSlot) })
+	mf.Tracef(TraceTag, "best coverage in slot: %s", func() string { return util.Th(bestCoverageInSlot) })
 	maxIdx := -1
 	for i := range mf.target.proposals {
 		c := mf.target.proposals[i].coverage
@@ -382,7 +382,7 @@ func (mf *MilestoneFactory) getBestProposal() (*transaction.Transaction, *txmeta
 	}
 	p := mf.target.proposals[maxIdx]
 	mf.Tracef(TraceTag, "getBestProposal: %s, target: %s, attacher %s: coverage %s",
-		p.tx.IDShortString, mf.target.targetTs.String, p.attacherName, func() string { return util.GoTh(p.coverage) })
+		p.tx.IDShortString, mf.target.targetTs.String, p.attacherName, func() string { return util.Th(p.coverage) })
 	return p.tx, p.txMetadata
 }
 

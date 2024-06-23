@@ -125,7 +125,7 @@ func MakeSequencerTransactionWithInputLoader(par MakeSequencerTransactionParams)
 
 	if chainOutAmount < ledger.L().Const().MinimumAmountOnSequencer() {
 		return nil, nil, errP("amount on the chain output is below minimum required for the sequencer: %s",
-			util.GoTh(ledger.L().Const().MinimumAmountOnSequencer()))
+			util.Th(ledger.L().Const().MinimumAmountOnSequencer()))
 	}
 
 	totalOutAmount := chainOutAmount + additionalOut
@@ -282,10 +282,10 @@ func calcChainInflationAmount(par *MakeSequencerTransactionParams) (uint64, byte
 	//	par.ChainInput.IDShort(),
 	//	par.Timestamp.String(),
 	//	ledger.DiffTicks(par.Timestamp, par.ChainInput.Timestamp()),
-	//	util.GoTh(par.ChainInput.Output.Amount()),
-	//	util.GoTh(delayedInflation),
-	//	util.GoTh(ret-delayedInflation),
-	//	util.GoTh(ret),
+	//	util.Th(par.ChainInput.Output.Amount()),
+	//	util.Th(delayedInflation),
+	//	util.Th(ret-delayedInflation),
+	//	util.Th(ret),
 	//)
 
 	return ret, idx

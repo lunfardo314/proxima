@@ -9,6 +9,6 @@ import (
 
 func TestHelper(t *testing.T) {
 	ledger.InitWithTestingLedgerIDData()
-	t.Logf("init supply: %s", util.GoTh(ledger.L().ID.InitialSupply))
-	t.Logf("1/5 of init supply: %s", util.GoTh(ledger.L().ID.InitialSupply/5))
+	t.Logf("init supply: %s", util.Th(ledger.L().ID.InitialSupply))
+	t.Logf("1/5 of init supply: %s", util.Th(ledger.L().ID.InitialSupply/5))
 }

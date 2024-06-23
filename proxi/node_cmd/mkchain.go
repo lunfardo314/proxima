@@ -53,10 +53,10 @@ func runMakeChainCmd(_ *cobra.Command, args []string) {
 	glb.Infof("trace on node: %v", glb.TraceTx())
 
 	glb.Infof("Creating new chain origin:")
-	glb.Infof("   on-chain balance: %s", util.GoTh(onChainAmount))
-	glb.Infof("   tag-along fee %s to the sequencer %s", util.GoTh(feeAmount), tagAlongSeqID)
+	glb.Infof("   on-chain balance: %s", util.Th(onChainAmount))
+	glb.Infof("   tag-along fee %s to the sequencer %s", util.Th(feeAmount), tagAlongSeqID)
 	glb.Infof("   source account: %s", walletData.Account.String())
-	glb.Infof("   total cost: %s", util.GoTh(onChainAmount+feeAmount))
+	glb.Infof("   total cost: %s", util.Th(onChainAmount+feeAmount))
 	glb.Infof("   chain controller: %s", target)
 
 	if !glb.YesNoPrompt("proceed?:", false) {
@@ -66,7 +66,7 @@ func runMakeChainCmd(_ *cobra.Command, args []string) {
 
 	inps, totalInputs, err := glb.GetClient().GetTransferableOutputs(walletData.Account)
 	glb.AssertNoError(err)
-	glb.Assertf(totalInputs >= onChainAmount+feeAmount, "not enough source balance %s", util.GoTh(totalInputs))
+	glb.Assertf(totalInputs >= onChainAmount+feeAmount, "not enough source balance %s", util.Th(totalInputs))
 
 	totalInputs = 0
 	inps = util.PurgeSlice(inps, func(o *ledger.OutputWithID) bool {

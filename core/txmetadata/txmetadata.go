@@ -194,7 +194,7 @@ func (m *TransactionMetadata) String() string {
 	}
 	lcStr := "<nil>"
 	if m.LedgerCoverage != nil {
-		lcStr = util.GoTh(*m.LedgerCoverage)
+		lcStr = util.Th(*m.LedgerCoverage)
 	}
 	rootStr := "<nil>"
 	if !util.IsNil(m.StateRoot) {
@@ -202,7 +202,7 @@ func (m *TransactionMetadata) String() string {
 	}
 	inflationStr := "<nil>"
 	if m.SlotInflation != nil {
-		inflationStr = util.GoTh(*m.SlotInflation)
+		inflationStr = util.Th(*m.SlotInflation)
 	}
 	return fmt.Sprintf("coverage: %s, slot inflation: %s, root: %s, source type: '%s'", lcStr, inflationStr, rootStr, m.SourceTypeNonPersistent.String())
 }

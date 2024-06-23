@@ -23,13 +23,19 @@ type Integer interface {
 
 var prn = message.NewPrinter(language.English)
 
-func GoTh[T Integer](v T) string {
-	return strings.Replace(prn.Sprintf("%d", v), ",", "_", -1)
+// Th makes string representation of the integer with thousands separator
+// Default separator is "_"
+func Th[T Integer](v T, separator ...string) string {
+	sep := "_"
+	if len(separator) > 0 {
+		sep = separator[0]
+	}
+	return strings.Replace(prn.Sprintf("%d", v), ",", sep, -1)
 }
 
-func GoThLazy[T Integer](v T) func() string {
+func ThLazy[T Integer](v T, separator ...string) func() string {
 	return func() string {
-		return GoTh(v)
+		return Th(v, separator...)
 	}
 }
 

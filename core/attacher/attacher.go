@@ -738,8 +738,8 @@ func (a *attacher) dumpLines(prefix ...string) *lines.Lines {
 	ret := lines.New(prefix...)
 	ret.Add("attacher %s", a.name)
 	ret.Add("   baseline: %s", a.baseline.String())
-	ret.Add("   coverage: %s", util.GoTh(a.coverage))
-	ret.Add("   baselineSupply: %s", util.GoTh(a.baselineSupply))
+	ret.Add("   coverage: %s", util.Th(a.coverage))
+	ret.Add("   baselineSupply: %s", util.Th(a.baselineSupply))
 	ret.Add("   vertices:")
 	ret.Append(a.linesVertices(prefix...))
 	ret.Add("   rooted:")
@@ -750,7 +750,7 @@ func (a *attacher) dumpLines(prefix ...string) *lines.Lines {
 			consStr := vertex.VerticesIDLines(maps.Keys(consumers)).Join(", ")
 			if err == nil {
 				oid := vid.OutputID(idx)
-				ret.Add("         %s : amount: %s, consumers: {%s}", oid.StringShort(), util.GoTh(o.Amount()), consStr)
+				ret.Add("         %s : amount: %s, consumers: {%s}", oid.StringShort(), util.Th(o.Amount()), consStr)
 				ret.Append(o.Lines("                    "))
 			}
 		}

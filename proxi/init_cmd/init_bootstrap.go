@@ -55,10 +55,10 @@ func runBootstrapAccount(_ *cobra.Command, args []string) {
 		bootstrapBalance = uint64(b)
 	}
 	if bootstrapBalance < minimumBootstrapBalance {
-		glb.Fatalf("bootstrap account balance must be at least %s", util.GoTh(minimumBootstrapBalance))
+		glb.Fatalf("bootstrap account balance must be at least %s", util.Th(minimumBootstrapBalance))
 	}
 	addr := glb.GetWalletData().Account
-	glb.Infof("Transaction store DB will be created. %s tokens from the bootstrap chain will be sent to bootstrap address %s", util.GoTh(bootstrapBalance), addr.String())
+	glb.Infof("Transaction store DB will be created. %s tokens from the bootstrap chain will be sent to bootstrap address %s", util.Th(bootstrapBalance), addr.String())
 	if !glb.YesNoPrompt("Proceed?", true) {
 		glb.Fatalf("exit: bootstrap account wasn't created")
 	}

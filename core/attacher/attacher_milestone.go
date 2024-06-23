@@ -251,8 +251,8 @@ func (a *milestoneAttacher) logFinalStatusString(msData *ledger.MilestoneData) s
 	inflChainStr := "-"
 	inflBranchStr := "-"
 	if inflationConstraint := a.vid.InflationConstraintOnSequencerOutput(); inflationConstraint != nil {
-		inflChainStr = util.GoTh(inflationConstraint.ChainInflation)
-		inflBranchStr = util.GoTh(ledger.L().BranchInflationBonusFromRandomnessProof(inflationConstraint.VRFProof))
+		inflChainStr = util.Th(inflationConstraint.ChainInflation)
+		inflBranchStr = util.Th(ledger.L().BranchInflationBonusFromRandomnessProof(inflationConstraint.VRFProof))
 	}
 
 	if a.vid.IsBranchTransaction() {
@@ -272,12 +272,12 @@ func (a *milestoneAttacher) logFinalStatusString(msData *ledger.MilestoneData) s
 		if a.vid.IsBranchTransaction() {
 			msg += fmt.Sprintf(", base: %s, cov: %s, slot inflation: %s, supply: %s",
 				bl,
-				util.GoTh(a.finals.coverage),
-				util.GoTh(a.finals.slotInflation),
-				util.GoTh(a.finals.supply))
+				util.Th(a.finals.coverage),
+				util.Th(a.finals.slotInflation),
+				util.Th(a.finals.supply))
 		} else {
 			msg += fmt.Sprintf(", base: %s, cov: %s, slot inflation: %s",
-				bl, util.GoTh(a.finals.coverage), util.GoTh(a.finals.slotInflation))
+				bl, util.Th(a.finals.coverage), util.Th(a.finals.slotInflation))
 		}
 	}
 	if a.LogAttacherStats() {
@@ -323,6 +323,6 @@ func (a *milestoneAttacher) AdjustCoverage() {
 	a.adjustCoverage()
 	if a.coverageAdjustment > 0 {
 		a.Tracef(TraceTagCoverageAdjustment, " milestoneAttacher: coverage has been adjusted by %s, ms: %s, baseline: %s",
-			func() string { return util.GoTh(a.coverageAdjustment) }, a.vid.IDShortString, a.baseline.IDShortString)
+			func() string { return util.Th(a.coverageAdjustment) }, a.vid.IDShortString, a.baseline.IDShortString)
 	}
 }

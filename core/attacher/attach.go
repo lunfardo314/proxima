@@ -67,7 +67,7 @@ func AttachTxID(txid ledger.TransactionID, env Environment, opts ...Option) (vid
 			env.PostEventNewGood(vid)
 			env.SendToTippool(vid)
 			env.Tracef(TraceTagAttach, "AttachTxID: branch fetched from the state: %s%s, coverage: %s",
-				txid.StringShort, by, func() string { return util.GoTh(vid.GetLedgerCoverage()) })
+				txid.StringShort, by, func() string { return util.Th(vid.GetLedgerCoverage()) })
 			env.TraceTx(&txid, "AttachTxID: branch fetched from the state")
 
 		} else {

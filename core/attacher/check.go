@@ -53,7 +53,7 @@ func (a *milestoneAttacher) _checkConsistencyBeforeFinalization() (err error) {
 	}
 	//if sumRooted+a.coverageAdjustment != a.coverage.LatestDelta() {
 	//	err = fmt.Errorf("sum of amounts of rooted outputs %s is not equal to the coverage sumRooted+coverageAdjustment %s",
-	//		util.GoTh(sumRooted), util.GoTh(a.coverage.LatestDelta()))
+	//		util.Th(sumRooted), util.Th(a.coverage.LatestDelta()))
 	//	return
 	//}
 
@@ -101,7 +101,7 @@ func (a *milestoneAttacher) _checkConsistencyBeforeFinalization() (err error) {
 			}
 			if !vidEndorsed.IsBranchTransaction() && a.coverage < *lc {
 				err = fmt.Errorf("coverage should not decrease.\nGot: delta(%s) at %s <= delta(%s) in %s",
-					util.GoTh(a.coverage), a.vid.Timestamp().String(), util.GoTh(*lc), vidEndorsed.IDShortString())
+					util.Th(a.coverage), a.vid.Timestamp().String(), util.Th(*lc), vidEndorsed.IDShortString())
 				return false
 			}
 			return true
@@ -129,14 +129,14 @@ func (a *milestoneAttacher) checkConsistencyWithMetadata() {
 	switch {
 	case a.metadata.LedgerCoverage != nil && *a.metadata.LedgerCoverage != a.coverage:
 		err = fmt.Errorf("checkConsistencyWithMetadata %s: major inconsistency: computed coverage (%s) not equal to the coverage provided in the metadata (%s). Diff=%s",
-			a.vid.IDShortString(), util.GoTh(a.coverage), util.GoTh(*a.metadata.LedgerCoverage),
-			util.GoTh(int64(a.coverage)-int64(*a.metadata.LedgerCoverage)))
+			a.vid.IDShortString(), util.Th(a.coverage), util.Th(*a.metadata.LedgerCoverage),
+			util.Th(int64(a.coverage)-int64(*a.metadata.LedgerCoverage)))
 	case a.metadata.SlotInflation != nil && *a.metadata.SlotInflation != a.slotInflation:
 		err = fmt.Errorf("checkConsistencyWithMetadata %s: major inconsistency: computed slot inflation (%s) not equal to the slot inflation provided in the metadata (%s)",
-			a.vid.IDShortString(), util.GoTh(a.slotInflation), util.GoTh(*a.metadata.SlotInflation))
+			a.vid.IDShortString(), util.Th(a.slotInflation), util.Th(*a.metadata.SlotInflation))
 	case a.metadata.Supply != nil && *a.metadata.Supply != a.baselineSupply+a.slotInflation:
 		err = fmt.Errorf("checkConsistencyWithMetadata %s: major inconsistency: computed supply (%s) not equal to the supply provided in the metadata (%s)",
-			a.vid.IDShortString(), util.GoTh(a.baselineSupply+a.slotInflation), util.GoTh(*a.metadata.Supply))
+			a.vid.IDShortString(), util.Th(a.baselineSupply+a.slotInflation), util.Th(*a.metadata.Supply))
 	}
 	if err == nil {
 		return

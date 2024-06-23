@@ -596,7 +596,7 @@ func (vid *WrappedTx) GetLedgerCoverage() uint64 {
 }
 
 func (vid *WrappedTx) GetLedgerCoverageString() string {
-	return util.GoTh(vid.GetLedgerCoverage())
+	return util.Th(vid.GetLedgerCoverage())
 }
 
 func (vid *WrappedTx) SetLedgerCoverage(coverage uint64) {
@@ -651,7 +651,7 @@ func (vid *WrappedTx) String() (ret string) {
 				vid.references,
 				vid.flags,
 				reason,
-				util.GoTh(cov),
+				util.Th(cov),
 			)
 		},
 		VirtualTx: func(v *VirtualTransaction) {

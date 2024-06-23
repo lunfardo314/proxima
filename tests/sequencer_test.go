@@ -116,9 +116,9 @@ func Test1Sequencer(t *testing.T) {
 
 		balanceOnChain := rdr.BalanceOnChain(&testData.bootstrapChainID)
 		inflation := int(balanceOnChain) - int(initialBalanceOnChain) + len(par.spammedTxIDs)*tagAlongFee
-		t.Logf("initialBalanceOnChain: %s", util.GoTh(initialBalanceOnChain))
-		t.Logf("earned: %s", util.GoTh(len(par.spammedTxIDs)*tagAlongFee))
-		t.Logf("inflation: %s", util.GoTh(inflation))
+		t.Logf("initialBalanceOnChain: %s", util.Th(initialBalanceOnChain))
+		t.Logf("earned: %s", util.Th(len(par.spammedTxIDs)*tagAlongFee))
+		t.Logf("inflation: %s", util.Th(inflation))
 
 		//require.EqualValues(t, int(initialBalanceOnChain)+len(par.spammedTxIDs)*tagAlongFee, int(balanceOnChain))
 	})
@@ -216,7 +216,7 @@ func Test1Sequencer(t *testing.T) {
 		finalSupply := rr[0].Supply
 
 		totalInflation := finalSupply - initialSupply
-		t.Logf("total inflation: %s", util.GoTh(totalInflation))
+		t.Logf("total inflation: %s", util.Th(totalInflation))
 		require.EqualValues(t, int(initialBalanceOnChain)+len(par.spammedTxIDs)*tagAlongFee+int(totalInflation), int(balanceOnChain))
 	})
 }
@@ -448,7 +448,7 @@ func TestNSequencersTransfer(t *testing.T) {
 
 		for seqID, initBal := range tagAlongInitBalances {
 			balanceOnChain := rdr.BalanceOnChain(&seqID)
-			t.Logf("%s tx: %d, init: %s, final: %s", seqID.StringShort(), par.perChainID[seqID], util.GoTh(initBal), util.GoTh(balanceOnChain))
+			t.Logf("%s tx: %d, init: %s, final: %s", seqID.StringShort(), par.perChainID[seqID], util.Th(initBal), util.Th(balanceOnChain))
 			//require.EqualValues(t, int(initBal)+par.perChainID[seqID]*tagAlongFee, int(balanceOnChain))
 		}
 	})

@@ -323,7 +323,7 @@ func TestNSequencersTransferPruner(t *testing.T) {
 
 		for seqID, initBal := range tagAlongInitBalances {
 			balanceOnChain := rdr.BalanceOnChain(&seqID)
-			t.Logf("%s tx: %d, init: %s, final: %s", seqID.StringShort(), par.perChainID[seqID], util.GoTh(initBal), util.GoTh(balanceOnChain))
+			t.Logf("%s tx: %d, init: %s, final: %s", seqID.StringShort(), par.perChainID[seqID], util.Th(initBal), util.Th(balanceOnChain))
 			// inflation etc...
 			//require.EqualValues(t, int(initBal)+par.perChainID[seqID]*tagAlongFee, int(balanceOnChain))
 		}

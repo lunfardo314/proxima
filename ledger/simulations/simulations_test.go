@@ -24,15 +24,15 @@ const (
 )
 
 func TestInflationCalculations1(t *testing.T) {
-	t.Logf("MaxUint64: %s, require bits: %d", util.GoTh(uint64(math.MaxUint64)), requireBits(uint64(math.MaxUint64)))
+	t.Logf("MaxUint64: %s, require bits: %d", util.Th(uint64(math.MaxUint64)), requireBits(uint64(math.MaxUint64)))
 	t.Logf("Proxima default initial supply: %s (%s PRXI), require bits: %d",
-		util.GoTh(ledger.L().ID.InitialSupply), util.GoTh(ledger.L().ID.InitialSupply/ledger.PRXI), requireBits(ledger.L().ID.InitialSupply))
+		util.Th(ledger.L().ID.InitialSupply), util.Th(ledger.L().ID.InitialSupply/ledger.PRXI), requireBits(ledger.L().ID.InitialSupply))
 	const (
 		SatoshiInBTC = 100_000_000
 		MaxBTCApprox = 21_000_000
 	)
-	t.Logf("Max Bitcoin supply. BTC: %s", util.GoTh(MaxBTCApprox))
-	t.Logf("Max Bitcoin supply. Satoshi: %s, , require bits: %d", util.GoTh(MaxBTCApprox*SatoshiInBTC), requireBits(MaxBTCApprox*SatoshiInBTC))
+	t.Logf("Max Bitcoin supply. BTC: %s", util.Th(MaxBTCApprox))
+	t.Logf("Max Bitcoin supply. Satoshi: %s, , require bits: %d", util.Th(MaxBTCApprox*SatoshiInBTC), requireBits(MaxBTCApprox*SatoshiInBTC))
 
 	const template1 = `
 		DustPerProxi (dust/PRXI) 	: %s (%d bits)
@@ -48,20 +48,20 @@ func TestInflationCalculations1(t *testing.T) {
 		TicksPerHour				: %s
 `
 	t.Logf(template1,
-		util.GoTh(ledger.DustPerProxi),
+		util.Th(ledger.DustPerProxi),
 		requireBits(ledger.DustPerProxi),
-		util.GoTh(ledger.L().ID.InitialSupply/ledger.PRXI),
+		util.Th(ledger.L().ID.InitialSupply/ledger.PRXI),
 		requireBits(ledger.L().ID.InitialSupply/ledger.PRXI),
-		util.GoTh(ledger.L().ID.InitialSupply),
+		util.Th(ledger.L().ID.InitialSupply),
 		requireBits(ledger.L().ID.InitialSupply),
 		PricePRXI,
-		util.GoTh(int(PricePRXI*ledger.L().ID.InitialSupply)),
+		util.Th(int(PricePRXI*ledger.L().ID.InitialSupply)),
 		ledger.SlotDuration(),
 		ledger.TicksPerSlot(),
 		ledger.TickDuration(),
-		util.GoTh(int64(ledger.SlotsPerDay())),
-		util.GoTh(ledger.SlotsPerHour()),
-		util.GoTh(ledger.TicksPerHour()),
+		util.Th(int64(ledger.SlotsPerDay())),
+		util.Th(ledger.SlotsPerHour()),
+		util.Th(ledger.TicksPerHour()),
 	)
 }
 
@@ -98,15 +98,15 @@ func InitialSlotInflationChain() int64 {
 //`
 //
 //	t.Logf(template2,
-//		util.GoTh(ledger.L().ID.InitialSupply), util.GoTh(ledger.L().ID.InitialSupply/ledger.PRXI),
-//		util.GoTh(ledger.L().ID.BranchInflationBonusBase), util.GoTh(ledger.L().ID.BranchInflationBonusBase/ledger.DustPerProxi),
-//		util.GoTh(BranchInflationAnnual()), util.GoTh(BranchInflationAnnual()/ledger.DustPerProxi),
+//		util.Th(ledger.L().ID.InitialSupply), util.Th(ledger.L().ID.InitialSupply/ledger.PRXI),
+//		util.Th(ledger.L().ID.BranchInflationBonusBase), util.Th(ledger.L().ID.BranchInflationBonusBase/ledger.DustPerProxi),
+//		util.Th(BranchInflationAnnual()), util.Th(BranchInflationAnnual()/ledger.DustPerProxi),
 //		percent(int(BranchInflationAnnual()), int(ledger.L().ID.InitialSupply)),
-//		util.GoTh(ledger.L().ID.ChainInflationFractionPerTick),
-//		util.GoTh(MinInflatableAmountPerTick()), util.GoTh(MinInflatableAmountPerTick()/ledger.PRXI),
-//		util.GoTh(MinInflatableAmountPerSlot()), util.GoTh(MinInflatableAmountPerSlot()/ledger.DustPerProxi),
-//		util.GoTh(InitialSlotInflationChain()), util.GoTh(InitialSlotInflationChain()/ledger.DustPerProxi),
-//		util.GoTh(MaxInflationChainEpoch()), util.GoTh(MaxInflationChainEpoch()/ledger.DustPerProxi),
+//		util.Th(ledger.L().ID.ChainInflationFractionPerTick),
+//		util.Th(MinInflatableAmountPerTick()), util.Th(MinInflatableAmountPerTick()/ledger.PRXI),
+//		util.Th(MinInflatableAmountPerSlot()), util.Th(MinInflatableAmountPerSlot()/ledger.DustPerProxi),
+//		util.Th(InitialSlotInflationChain()), util.Th(InitialSlotInflationChain()/ledger.DustPerProxi),
+//		util.Th(MaxInflationChainEpoch()), util.Th(MaxInflationChainEpoch()/ledger.DustPerProxi),
 //		percent(int(MaxInflationChainEpoch()), int(ledger.L().ID.InitialSupply)),
 //		percent(int(MaxInflationChainEpoch()+BranchInflationAnnual()), int(ledger.L().ID.InitialSupply)),
 //	)

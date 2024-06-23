@@ -70,11 +70,11 @@ func (a *AccountInfo) Lines(prefix ...string) *lines.Lines {
 	sum := uint64(0)
 	for _, k := range lockedAccountsSorted {
 		ai := a.LockedAccounts[k]
-		ret.Add("   %s :: balance: %s, outputs: %d", k, util.GoTh(ai.Balance), ai.NumOutputs)
+		ret.Add("   %s :: balance: %s, outputs: %d", k, util.Th(ai.Balance), ai.NumOutputs)
 		sum += ai.Balance
 	}
 	ret.Add("--------------------------------")
-	ret.Add("   Total in locked accounts: %s", util.GoTh(sum))
+	ret.Add("   Total in locked accounts: %s", util.Th(sum))
 
 	ret.Add("Chains: %d", len(a.ChainRecords))
 	chainIDSSorted := util.KeysSorted(a.ChainRecords, func(k1, k2 ledger.ChainID) bool {
@@ -83,11 +83,11 @@ func (a *AccountInfo) Lines(prefix ...string) *lines.Lines {
 	sum = 0
 	for _, chainID := range chainIDSSorted {
 		ci := a.ChainRecords[chainID]
-		ret.Add("   %s :: %s   seq=%v branch=%v", chainID.String(), util.GoTh(ci.Balance), ci.IsSequencer, ci.IsBranch)
+		ret.Add("   %s :: %s   seq=%v branch=%v", chainID.String(), util.Th(ci.Balance), ci.IsSequencer, ci.IsBranch)
 		sum += ci.Balance
 	}
 	ret.Add("--------------------------------")
-	ret.Add("   Total on chains: %s", util.GoTh(sum))
+	ret.Add("   Total on chains: %s", util.Th(sum))
 	return ret
 }
 
@@ -139,7 +139,7 @@ func (s *SummarySupplyAndInflation) Lines(prefix ...string) *lines.Lines {
 	ret := lines.New(prefix...).
 		Add("Slots from %d to %d inclusive. Total %d slots", s.OldestSlot, s.LatestSlot, nSlots).
 		Add("Number of branches: %d", s.NumberOfBranches).
-		Add("Supply: %s -> %s (+%s, %.6f%%)", util.GoTh(s.BeginSupply), util.GoTh(s.EndSupply), util.GoTh(s.TotalInflation), pInfl).
+		Add("Supply: %s -> %s (+%s, %.6f%%)", util.Th(s.BeginSupply), util.Th(s.EndSupply), util.Th(s.TotalInflation), pInfl).
 		Add("Per sequencer along the heaviest chain:")
 
 	sortedSeqIDs := util.KeysSorted(s.InfoPerSeqID, func(k1, k2 ledger.ChainID) bool {
@@ -150,15 +150,15 @@ func (s *SummarySupplyAndInflation) Lines(prefix ...string) *lines.Lines {
 		seqInfo := s.InfoPerSeqID[seqId]
 		var inflStr string
 		if seqInfo.EndBalance >= seqInfo.BeginBalance {
-			inflStr = "+" + util.GoTh(seqInfo.EndBalance-seqInfo.BeginBalance)
+			inflStr = "+" + util.Th(seqInfo.EndBalance-seqInfo.BeginBalance)
 		} else {
-			inflStr = "-" + util.GoTh(seqInfo.BeginBalance-seqInfo.EndBalance)
+			inflStr = "-" + util.Th(seqInfo.BeginBalance-seqInfo.EndBalance)
 		}
 		ret.Add("         %s : last milestone in the heaviest: %25s, branches: %d, balance: %s -> %s (%s)",
 			seqId.StringShort(),
 			seqInfo.StemInTheHeaviest.StringShort(),
 			seqInfo.NumBranches,
-			util.GoTh(seqInfo.BeginBalance), util.GoTh(seqInfo.EndBalance),
+			util.Th(seqInfo.BeginBalance), util.Th(seqInfo.EndBalance),
 			inflStr)
 	}
 	return ret

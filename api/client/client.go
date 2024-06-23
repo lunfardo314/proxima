@@ -459,7 +459,7 @@ func (c *APIClient) MakeChainOrigin(par TransferFromED25519WalletParams) (*trans
 		return nil, [32]byte{}, err
 	}
 	if totalInputs < par.Amount+par.TagAlongFee {
-		return nil, [32]byte{}, fmt.Errorf("not enough source balance %s", util.GoTh(totalInputs))
+		return nil, [32]byte{}, fmt.Errorf("not enough source balance %s", util.Th(totalInputs))
 	}
 
 	totalInputs = 0

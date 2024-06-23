@@ -39,6 +39,6 @@ func runChainsCmd(_ *cobra.Command, args []string) {
 	for _, o := range outs {
 		chainID, _, ok := o.ExtractChainID()
 		glb.Assertf(ok, "can't extract chainID")
-		glb.Infof("   %s with balance %s on %s", chainID.String(), util.GoTh(o.Output.Amount()), o.IDShort())
+		glb.Infof("   %s with balance %s on %s", chainID.String(), util.Th(o.Output.Amount()), o.IDShort())
 	}
 }

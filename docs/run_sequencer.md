@@ -39,6 +39,8 @@ The remaining `999500` tokens will stay in the `addressED25519(<address data>)`.
 You can check your balances with `proxi node balance`. It will show the balance of the chain output controlled
 by the private key of the wallet.
 
+You can list all chains controlled by your wallet by `proxi node chains`. There you can find respective chain IDs. 
+
 ### 4. Adjust wallet profile
 Set `wallet.sequencer_id` to the `chain ID` of the newly created chain. 
 

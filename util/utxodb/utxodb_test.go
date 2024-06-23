@@ -22,14 +22,14 @@ func TestUTXODB(t *testing.T) {
 	initFaucetBalance := ledger.L().ID.InitialSupply / 2
 	t.Run("origin", func(t *testing.T) {
 		u := NewUTXODB(genesisPrivateKey)
-		t.Logf("genesis addr: %s, balance: %s", u.GenesisControllerAddress().String(), util.GoTh(u.Balance(u.GenesisControllerAddress())))
-		t.Logf("faucet addr: %s, balance: %s", u.FaucetAddress().String(), util.GoTh(u.Balance(u.FaucetAddress())))
+		t.Logf("genesis addr: %s, balance: %s", u.GenesisControllerAddress().String(), util.Th(u.Balance(u.GenesisControllerAddress())))
+		t.Logf("faucet addr: %s, balance: %s", u.FaucetAddress().String(), util.Th(u.Balance(u.FaucetAddress())))
 		controlledByChain, onChain, err := u.BalanceOnChain(*u.GenesisChainID())
 		require.NoError(t, err)
 
 		genesisOutputID := ledger.GenesisOutputID()
 		genesisStemOutputID := ledger.GenesisStemOutputID()
-		t.Logf("bootstrap chainID: %s, on-chain balance: %s, controlled by chain: %s", u.GenesisChainID().String(), util.GoTh(onChain), util.GoTh(controlledByChain))
+		t.Logf("bootstrap chainID: %s, on-chain balance: %s, controlled by chain: %s", u.GenesisChainID().String(), util.Th(onChain), util.Th(controlledByChain))
 		t.Logf("origin output: %s\n%s", genesisOutputID.String(), u.genesisOutput.ToString("   "))
 		t.Logf("origin stem output: %s\n%s", genesisStemOutputID.String(), u.genesisStemOutput.ToString("   "))
 

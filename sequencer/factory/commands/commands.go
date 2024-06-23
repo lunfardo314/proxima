@@ -128,7 +128,7 @@ type MakeSequencerWithdrawCmdOutputParams struct {
 func MakeSequencerWithdrawCmdOutput(par MakeSequencerWithdrawCmdOutputParams) (*ledger.Output, error) {
 	if par.Amount < MinimumAmountToRequestFromSequencer {
 		return nil, fmt.Errorf("the reqested amount (%s) is less than required minimum (%s) if the sequencer command",
-			util.GoTh(par.Amount), util.GoTh(MinimumAmountToRequestFromSequencer))
+			util.Th(par.Amount), util.Th(MinimumAmountToRequestFromSequencer))
 	}
 	ret := ledger.NewOutput(func(o *ledger.Output) {
 		o.WithAmount(par.TagAlongFee).WithLock(ledger.ChainLockFromChainID(par.SeqID))
@@ -163,7 +163,7 @@ const minimumWithdrawAmountFromSequencer = 1_000_000
 
 func MakeSequencerWithdrawCommand(amount uint64, targetLock ledger.Lock) (ledger.GeneralScript, error) {
 	if amount < minimumWithdrawAmountFromSequencer {
-		return nil, fmt.Errorf("withdraw from sequencer amount must be ar least %s", util.GoTh(minimumWithdrawAmountFromSequencer))
+		return nil, fmt.Errorf("withdraw from sequencer amount must be ar least %s", util.Th(minimumWithdrawAmountFromSequencer))
 	}
 	var amountBin [8]byte
 	binary.BigEndian.PutUint64(amountBin[:], amount)

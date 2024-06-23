@@ -150,11 +150,11 @@ func standardScenario(cfg spammerConfig) {
 
 		glb.Verbosef("Fetched inputs from account %s:\n%s", walletData.Account.String(), glb.LinesOutputsWithIDs(outs).String())
 
-		glb.Infof("transferable balance: %s, number of outputs: %d", util.GoTh(balance), len(outs))
+		glb.Infof("transferable balance: %s, number of outputs: %d", util.Th(balance), len(outs))
 		requiredBalance := minimumBalance + cfg.outputAmount*uint64(cfg.bundleSize) + cfg.tagAlongFee
 		if balance < requiredBalance {
 			glb.Infof("transferable balance (%s) is too small for the bundle (required is %s). Waiting for more..",
-				util.GoTh(balance), util.GoTh(requiredBalance))
+				util.Th(balance), util.Th(requiredBalance))
 			continue
 		}
 

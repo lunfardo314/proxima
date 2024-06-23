@@ -59,7 +59,7 @@ func (b *BaseProposer) propose() (*attacher.IncrementalAttacher, bool) {
 		return nil, true
 	}
 	b.Tracef(TraceTag, "%s created attacher with baseline %s, cov: %s",
-		b.Name, a.BaselineBranch().IDShortString, func() string { return util.GoTh(a.LedgerCoverage()) },
+		b.Name, a.BaselineBranch().IDShortString, func() string { return util.Th(a.LedgerCoverage()) },
 	)
 	if b.TargetTs.Tick() != 0 {
 		b.Tracef(TraceTag, "%s making non-branch, extending %s, collecting and inserting tag-along inputs", b.Name, extend.IDShortString)
@@ -68,8 +68,8 @@ func (b *BaseProposer) propose() (*attacher.IncrementalAttacher, bool) {
 	} else {
 		b.Tracef(TraceTag, "%s making branch, no tag-along, extending %s cov: %s, attacher %s cov: %s",
 			b.Name,
-			extend.IDShortString, func() string { return util.GoTh(extend.VID.GetLedgerCoverage()) },
-			a.Name(), func() string { return util.GoTh(a.LedgerCoverage()) },
+			extend.IDShortString, func() string { return util.Th(extend.VID.GetLedgerCoverage()) },
+			a.Name(), func() string { return util.Th(a.LedgerCoverage()) },
 		)
 	}
 	a.AdjustCoverage()
@@ -78,7 +78,7 @@ func (b *BaseProposer) propose() (*attacher.IncrementalAttacher, bool) {
 	lc := a.LedgerCoverage()
 	if lc <= bestCoverageInSlot {
 		b.Tracef(TraceTag, "%s abandoning milestone proposal with coverage %s: best milestone in slot has bigger coverage %s",
-			b.Name, func() string { return util.GoTh(lc) }, func() string { return util.GoTh(bestCoverageInSlot) },
+			b.Name, func() string { return util.Th(lc) }, func() string { return util.Th(bestCoverageInSlot) },
 		)
 		a.UnReferenceAll()
 		return nil, true

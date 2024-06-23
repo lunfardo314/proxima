@@ -22,6 +22,6 @@ func TestInflationFixedRate(t *testing.T) {
 	for year := 0; float64(supply) < float64(math.MaxUint64>>2); year++ {
 		prevSupply = supply
 		supply += annualInflationChainFixed + annualInflationBranchFixed
-		t.Logf("%3d : %s PRXI   %0.2f%%", year, util.GoTh(prevSupply/ledger.PRXI), float64((supply-prevSupply)*100)/float64(prevSupply))
+		t.Logf("%3d : %s PRXI   %0.2f%%", year, util.Th(prevSupply/ledger.PRXI), float64((supply-prevSupply)*100)/float64(prevSupply))
 	}
 }

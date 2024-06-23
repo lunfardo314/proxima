@@ -898,8 +898,8 @@ func (tx *Transaction) LinesShort(prefix ...string) *lines.Lines {
 	ret := lines.New(prefix...)
 	ret.Add("ID: %s", tx.ID().String())
 	ret.Add("Sender address: %s", tx.SenderAddress().String())
-	ret.Add("Total: %s", util.GoTh(tx.TotalAmount()))
-	ret.Add("Inflation: %s", util.GoTh(tx.InflationAmount()))
+	ret.Add("Total: %s", util.Th(tx.TotalAmount()))
+	ret.Add("Inflation: %s", util.Th(tx.InflationAmount()))
 	if tx.IsSequencerMilestone() {
 		ret.Add("Sequencer output index: %d, Stem output index: %d", tx.sequencerTransactionData.SequencerOutputIndex, tx.sequencerTransactionData.StemOutputIndex)
 	}

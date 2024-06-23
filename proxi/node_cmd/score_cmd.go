@@ -66,7 +66,7 @@ func runScoreCmd(_ *cobra.Command, args []string) {
 		}
 		glb.Infof(" %s%s %20s  %s  %s  (> %s)",
 			in, dominating,
-			util.GoTh(incl.RootRecord.LedgerCoverage), incl.BranchID.StringShort(), incl.RootRecord.SequencerID.StringShort(),
-			util.GoTh(multistate.AbsoluteStrongFinalityCoverageThreshold(incl.RootRecord.Supply, inclusionThresholdNumerator, inclusionThresholdDenominator)))
+			util.Th(incl.RootRecord.LedgerCoverage), incl.BranchID.StringShort(), incl.RootRecord.SequencerID.StringShort(),
+			util.Th(multistate.AbsoluteStrongFinalityCoverageThreshold(incl.RootRecord.Supply, inclusionThresholdNumerator, inclusionThresholdDenominator)))
 	}
 }

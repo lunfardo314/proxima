@@ -49,7 +49,7 @@ func TestRandomInflation1(t *testing.T) {
 		fmt.Printf("-------------- %d\n", i)
 		for target := from; target <= maxInflationValue; target += step {
 			steps := mineConstraint(rndData[:], uint64(target))
-			fmt.Printf("inflation target: %s, steps: %d\n", util.GoTh(target), steps)
+			fmt.Printf("inflation target: %s, steps: %d\n", util.Th(target), steps)
 		}
 	}
 }
@@ -81,7 +81,7 @@ func TestRandomInflation2(t *testing.T) {
 		since := time.Since(start)
 		if uint64(candidate) <= binary.BigEndian.Uint64(h[:8])%maxInflationValue+1 {
 			best = candidate
-			fmt.Printf("%s cycles %d, %v, %dus/cycle\n", util.GoTh(best), cycles, since, int(since/time.Microsecond)/cycles)
+			fmt.Printf("%s cycles %d, %v, %dus/cycle\n", util.Th(best), cycles, since, int(since/time.Microsecond)/cycles)
 		}
 		if cycles%500_000 == 0 {
 			fmt.Printf("                   %.1f mln cycles, %dus/cycle\n", float32(cycles)/1_000_000, int(since/time.Microsecond)/cycles)
@@ -97,7 +97,7 @@ func TestConstantInflation(t *testing.T) {
 	rate := 1 + float64(annualInflationRatePerc)/100
 	infl := float64(initialSupply)
 	for i := 0; infl < float64(math.MaxUint64) && rate > 0; i++ {
-		fmt.Printf("%3d : %20s      %2f\n", i, util.GoTh(uint64(infl)), rate)
+		fmt.Printf("%3d : %20s      %2f\n", i, util.Th(uint64(infl)), rate)
 		infl = infl * rate
 		rate = rate - 0.001
 	}

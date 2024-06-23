@@ -13,25 +13,25 @@ import (
 // Validating and making sense of inflation-related constants
 
 func TestInflationConst1Year(t *testing.T) {
-	t.Logf("init supply: %s", util.GoTh(ledger.DefaultInitialSupply))
-	t.Logf("chain inflation fraction per tick: %s", util.GoTh(ledger.DefaultChainInflationFractionPerTick))
-	t.Logf("branch inflation per slot: %s", util.GoTh(ledger.DefaultMaxBranchInflationBonus))
-	t.Logf("slots per year: %s", util.GoTh(ledger.L().ID.SlotsPerYear()))
-	t.Logf("ticks per year: %s", util.GoTh(ledger.L().ID.TicksPerYear()))
+	t.Logf("init supply: %s", util.Th(ledger.DefaultInitialSupply))
+	t.Logf("chain inflation fraction per tick: %s", util.Th(ledger.DefaultChainInflationFractionPerTick))
+	t.Logf("branch inflation per slot: %s", util.Th(ledger.DefaultMaxBranchInflationBonus))
+	t.Logf("slots per year: %s", util.Th(ledger.L().ID.SlotsPerYear()))
+	t.Logf("ticks per year: %s", util.Th(ledger.L().ID.TicksPerYear()))
 	branchInflationAnnual := ledger.L().ID.BranchInflationBonusBase * uint64(ledger.L().ID.SlotsPerYear())
-	t.Logf("branch inflation per year: %s", util.GoTh(branchInflationAnnual))
+	t.Logf("branch inflation per year: %s", util.Th(branchInflationAnnual))
 	branchInflationAnnualPerc := float64(branchInflationAnnual*100) / float64(ledger.DefaultInitialSupply)
 	t.Logf("branch inflation per year %% of initial supply: %.2f%%", branchInflationAnnualPerc)
-	t.Logf("chain inflation fraction per slot: %s", util.GoTh(ledger.DefaultChainInflationFractionPerTick/ledger.DefaultTicksPerSlot))
+	t.Logf("chain inflation fraction per slot: %s", util.Th(ledger.DefaultChainInflationFractionPerTick/ledger.DefaultTicksPerSlot))
 	inTs := ledger.MustNewLedgerTime(0, 1)
 	outTs := ledger.MustNewLedgerTime(1, 1)
-	t.Logf("chain inflation per initial slot: %s", util.GoTh(ledger.L().CalcChainInflationAmount(inTs, outTs, ledger.DefaultInitialSupply, 0)))
+	t.Logf("chain inflation per initial slot: %s", util.Th(ledger.L().CalcChainInflationAmount(inTs, outTs, ledger.DefaultInitialSupply, 0)))
 
 	supply := ledger.DefaultInitialSupply
 	for i := 0; i < ledger.L().ID.SlotsPerYear(); i++ {
 		supply += supply / (ledger.DefaultChainInflationFractionPerTick / ledger.DefaultTicksPerSlot)
 	}
-	t.Logf("annual chain inflation: %s", util.GoTh(supply))
+	t.Logf("annual chain inflation: %s", util.Th(supply))
 	t.Logf("annual chain inflation %% of initial supply: %.2f%%", (float64(supply-ledger.DefaultInitialSupply)*100)/float64(ledger.DefaultInitialSupply))
 
 }
@@ -39,7 +39,7 @@ func TestInflationConst1Year(t *testing.T) {
 func TestInflationOpportunityWindow(t *testing.T) {
 	testFun := func(ticks int, amount uint64, expect bool) {
 		res := ledger.L().InsideInflationOpportunityWindow(ticks, amount)
-		t.Logf("inside inflation is '%v' window for %d ticks, %s input amount", res, ticks, util.GoTh(amount))
+		t.Logf("inside inflation is '%v' window for %d ticks, %s input amount", res, ticks, util.Th(amount))
 		require.EqualValues(t, expect, res)
 	}
 
@@ -83,7 +83,7 @@ func TestInflation(t *testing.T) {
 	testFun := func(inTs, outTs ledger.Time, inAmount, delayed uint64, expect uint64) {
 		inflation := ledger.L().CalcChainInflationAmount(inTs, outTs, inAmount, delayed)
 		t.Logf("inTs: %s, outTs: %s, diffTicks: %d, in: %s, delayed: %s -> inflation %s",
-			inTs.String(), outTs.String(), ledger.DiffTicks(outTs, inTs), util.GoTh(inAmount), util.GoTh(delayed), util.GoTh(inflation))
+			inTs.String(), outTs.String(), ledger.DiffTicks(outTs, inTs), util.Th(inAmount), util.Th(delayed), util.Th(inflation))
 		require.EqualValues(t, int(expect), int(inflation))
 	}
 	t.Run("1", func(t *testing.T) {
@@ -94,7 +94,7 @@ func TestInflation(t *testing.T) {
 		frac := ledger.L().ID.ChainInflationFractionPerTick
 		maxInflationTicks := int(ledger.L().ID.ChainInflationOpportunitySlots)*ledger.L().ID.TicksPerSlot() + int(ledger.L().ID.MaxTickValueInSlot)
 
-		t.Logf("chain inflation fraction per tick: %s", util.GoTh(frac))
+		t.Logf("chain inflation fraction per tick: %s", util.Th(frac))
 
 		tsIn := ledger.MustNewLedgerTime(0, 0)
 
@@ -102,27 +102,27 @@ func TestInflation(t *testing.T) {
 		tsOut := tsIn.AddTicks(diff)
 		testFun(tsIn, tsOut, frac-1, 0, 0)
 		testFun(tsIn, tsOut, frac, 0, 1)
-		t.Logf("-------  minimum amount which can be inflated in %d tick(s): %s dust = %s PRXI", diff, util.GoTh(frac), util.GoTh(frac/ledger.PRXI))
+		t.Logf("-------  minimum amount which can be inflated in %d tick(s): %s dust = %s PRXI", diff, util.Th(frac), util.Th(frac/ledger.PRXI))
 		testFun(tsIn, tsOut, ledger.DefaultInitialSupply, 0, 400_000)
-		t.Logf("-------- inflation amount of default initial supply in %d tick(s): %s dust", diff, util.GoTh(400_000))
+		t.Logf("-------- inflation amount of default initial supply in %d tick(s): %s dust", diff, util.Th(400_000))
 
 		diff = 5
 		tsOut = tsIn.AddTicks(diff)
 		amount := frac / uint64(diff)
 		testFun(tsIn, tsOut, amount-1, 0, 0)
 		testFun(tsIn, tsOut, amount, 0, 1)
-		t.Logf("-------- minimum amount which can be inflated in %d ticks: %s dust = %s PRXI", diff, util.GoTh(amount), util.GoTh(amount/ledger.PRXI))
+		t.Logf("-------- minimum amount which can be inflated in %d ticks: %s dust = %s PRXI", diff, util.Th(amount), util.Th(amount/ledger.PRXI))
 		testFun(tsIn, tsOut, ledger.DefaultInitialSupply, 0, uint64(diff*400_000))
-		t.Logf("-------- inflation amount of default initial supply in %d ticks(s): %s dust", diff, util.GoTh(diff*400_000))
+		t.Logf("-------- inflation amount of default initial supply in %d ticks(s): %s dust", diff, util.Th(diff*400_000))
 
 		diff = ledger.L().ID.TicksPerSlot()
 		tsOut = tsIn.AddTicks(diff)
 		amount = frac / uint64(diff)
 		testFun(tsIn, tsOut, amount-1, 0, 0)
 		testFun(tsIn, tsOut, amount, 0, 1)
-		t.Logf("-------- minimum amount which can be inflated in %d ticks: %s dust = %s PRXI", diff, util.GoTh(amount), util.GoTh(amount/ledger.PRXI))
+		t.Logf("-------- minimum amount which can be inflated in %d ticks: %s dust = %s PRXI", diff, util.Th(amount), util.Th(amount/ledger.PRXI))
 		testFun(tsIn, tsOut, ledger.DefaultInitialSupply, 0, uint64(diff*400_000))
-		t.Logf("-------- inflation amount of default initial supply in %d ticks(s): %s dust", diff, util.GoTh(diff*400_000))
+		t.Logf("-------- inflation amount of default initial supply in %d ticks(s): %s dust", diff, util.Th(diff*400_000))
 
 		diff = maxInflationTicks
 		tsOut = tsIn.AddTicks(diff)
