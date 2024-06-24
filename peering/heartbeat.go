@@ -262,7 +262,7 @@ func (ps *Peers) heartbeatLoop() {
 		nowis := time.Now()
 		if nowis.After(logNumPeersDeadline) {
 			aliveStatic, aliveDynamic := ps.NumAlive()
-			ps.Log().Infof("peering: node is connected to %d peer(s). Static: %d, dynamic: %d, pre-configured: %d, max dynamic: %d",
+			ps.Log().Infof("peering: node is connected to %d (%d + %d) peer(s). Pre-configured static: %d, max dynamic: %d",
 				aliveStatic+aliveDynamic, aliveStatic, aliveDynamic, len(ps.cfg.PreConfiguredPeers), ps.cfg.MaxDynamicPeers)
 
 			logNumPeersDeadline = nowis.Add(logNumPeersPeriod)

@@ -308,7 +308,7 @@ func (ps *Peers) removeDynamicPeer(p *Peer) {
 	ps.host.Peerstore().RemovePeer(p.id)
 	delete(ps.peers, p.id)
 
-	ps.Log().Infof("peering: dropped dynamic peer %s", p.id.String())
+	ps.Log().Infof("peering: dropped dynamic peer %s - %s", p.name, p.id.String())
 }
 
 func (ps *Peers) OnReceiveTxBytes(fun func(from peer.ID, txBytes []byte, metadata *txmetadata.TransactionMetadata)) {

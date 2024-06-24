@@ -509,6 +509,8 @@ func (vid *WrappedTx) PanicAccessDeleted() {
 	util.Panicf("%w: %s", ErrDeletedVertexAccessed, vid.ID.StringShort())
 }
 
+// BaselineBranch baseline branch of the vertex
+// Will return nil for virtual transaction
 func (vid *WrappedTx) BaselineBranch() (baselineBranch *WrappedTx) {
 	if vid.ID.IsBranchTransaction() {
 		return vid

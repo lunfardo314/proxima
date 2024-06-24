@@ -273,7 +273,7 @@ func (mf *MilestoneFactory) startProposerWorkers(targetTime ledger.Time, ctx con
 			task.Run()
 			mf.Tracef(TraceTag, " END proposer %s", task.GetName())
 		}
-		const debuggerFriendly = true
+		const debuggerFriendly = false
 		if debuggerFriendly {
 			runFun()
 		} else {
