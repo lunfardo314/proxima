@@ -1,12 +1,15 @@
 #!/bin/bash
 
+# start script for all nodes
+# 
+
 INITIALIZED_FILE="/initialized"
 
 # Parameters
-SOURCE_PARAM=$1
+NODE_NAME=$1
 
 # Copy files from selected node directory to target directory
-cp -r ./"$SOURCE_PARAM"/*.yaml .
+cp -r ./"$NODE_NAME"/*.yaml .
 
 kill_proxima() {
     # Find the PID of proxima
@@ -28,7 +31,7 @@ if [ ! -f "$INITIALIZED_FILE" ]; then
     echo "init genesis_db"
     ./proxi init genesis_db
 
-    if [ "$SOURCE_PARAM" == "boot" ]; then
+    if [ "$NODE_NAME" == "boot" ]; then
         # 
         echo "init bootstrap_account"
         ./proxi init bootstrap_account
@@ -50,7 +53,7 @@ if [ ! -f "$INITIALIZED_FILE" ]; then
             sleep 5
         done
     fi
-    if [ "$SOURCE_PARAM" == "1" ] || [ "$SOURCE_PARAM" == "4" ]; then
+    if [ "$NODE_NAME" == "1" ] || [ "$NODE_NAME" == "4" ]; then
         echo "setup sequencer"
 
         ./proxima &
@@ -65,5 +68,6 @@ if [ ! -f "$INITIALIZED_FILE" ]; then
     # Create the initialized file to mark the container as initialized
     touch "$INITIALIZED_FILE"
 fi
+
 
 ./proxima
