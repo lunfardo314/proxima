@@ -29,6 +29,13 @@ func (ps *Peers) autopeeringLoop() {
 			ps.removeNotAliveDynamicPeers()
 			ps.discoverPeersIfNeeded()
 			ps.dropExcessPeersIfNeeded()
+
+			for err := range ps.kademliaDHT.ForceRefresh() {
+				if err != nil {
+					ps.Tracef(TraceTagAutopeering, "kademlia ForceRefresh: %v", err)
+				}
+				break
+			}
 		}
 	}
 }
@@ -89,27 +96,21 @@ func (ps *Peers) removeNotAliveDynamicPeers() {
 	for _, p := range toRemove {
 		ps.removeDynamicPeer(p)
 	}
-	for err := range ps.kademliaDHT.ForceRefresh() {
-		if err != nil {
-			ps.Tracef(TraceTagAutopeering, "kademlia ForceRefresh: %v", err)
-		}
-		break
-	}
 }
 
 func (ps *Peers) dropExcessPeersIfNeeded() {
-	_, aliveDynamic := ps.NumAlive()
-	if aliveDynamic <= ps.cfg.MaxDynamicPeers {
+	if _, aliveDynamic := ps.NumAlive(); aliveDynamic <= ps.cfg.MaxDynamicPeers {
 		return
 	}
-
 	ranks := ps.calcDynamicPeerRanks()
 	sortedByRanks := maps.Keys(ranks)
 	sort.Slice(sortedByRanks, func(i, j int) bool {
 		return ranks[sortedByRanks[i]] > ranks[sortedByRanks[j]]
 	})
-	util.Assertf(len(sortedByRanks) >= ps.cfg.MaxDynamicPeers, "len(sortedByRanks) >= ps.cfg.MaxDynamicPeers")
 
+	if len(sortedByRanks) <= ps.cfg.MaxDynamicPeers {
+		return
+	}
 	for _, p := range sortedByRanks[:ps.cfg.MaxDynamicPeers] {
 		ps.removeDynamicPeer(p)
 	}
@@ -118,25 +119,23 @@ func (ps *Peers) dropExcessPeersIfNeeded() {
 // calcDynamicPeerRanks uses very simple peer ranking strategy. It sorts peers according to different criteria
 // The rank according to that criterion is index in the sorted array.
 // Final rank is sum of ranks of different criteria without any weights.
+// Bigger the rank, bigger priority of removal
 func (ps *Peers) calcDynamicPeerRanks() map[*Peer]int {
 	ps.mutex.RLock()
 	defer ps.mutex.RUnlock()
 
 	peers := make([]*Peer, 0, len(ps.peers))
 	for _, p := range ps.peers {
-		if p.isPreConfigured {
-			continue
+		if !p.isPreConfigured {
+			peers = append(peers, p)
 		}
-		peers = append(peers, p)
 	}
+	ranks := make(map[*Peer]int, len(peers))
 
-	// bigger the rank, bigger priority of removal
-	ranks := make(map[*Peer]int)
-
-	// sort by peering start time descending
+	// sort by begin peering time, descending
 	sort.Slice(peers, func(i, j int) bool {
 		// older it is, bigger the rank
-		return peers[i].whenAdded.Before(peers[j].whenAdded)
+		return peers[i].whenAdded.After(peers[j].whenAdded)
 	})
 	for i, p := range peers {
 		ranks[p] = ranks[p] + i
