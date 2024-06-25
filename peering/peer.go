@@ -75,3 +75,12 @@ func (p *Peer) isCommunicationOpen() bool {
 
 	return p.blockActivityUntil.Before(time.Now())
 }
+
+func (p *Peer) avgClockDifference() time.Duration {
+	var ret time.Duration
+
+	for _, d := range p.clockDifferences {
+		ret += d
+	}
+	return ret / time.Duration(len(p.clockDifferences))
+}

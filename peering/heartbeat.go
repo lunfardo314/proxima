@@ -128,9 +128,9 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 
 	p := ps.getPeer(id)
 	if p == nil {
-		if ps.IsBootstrapNode() {
-			// bootstrap node does not take any incoming dynamic peers
-			ps.Tracef(TraceTag, "unknown peer %s", id.String())
+		if !ps.isAutopeeringEnabled() {
+			// node does not take any incoming dynamic peers
+			ps.Tracef(TraceTag, "autopeering disabled: unknown peer %s", id.String())
 			_ = stream.Reset()
 			return
 		}

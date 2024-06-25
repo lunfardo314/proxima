@@ -77,6 +77,8 @@ func KeysSorted[K comparable, V any](m map[K]V, less func(k1, k2 K) bool) []K {
 	return ret
 }
 
+// SortKeys
+// Deprecated: change to KeysSorted
 func SortKeys[K comparable, V any](m map[K]V, less func(k1, k2 K) bool) []K {
 	ret := maps.Keys(m)
 	sort.Slice(ret, func(i, j int) bool {

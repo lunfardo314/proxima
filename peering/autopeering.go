@@ -2,11 +2,13 @@ package peering
 
 import (
 	"math/rand"
+	"sort"
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/discovery"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/lunfardo314/proxima/util"
+	"golang.org/x/exp/maps"
 )
 
 const (
@@ -24,38 +26,14 @@ func (ps *Peers) autopeeringLoop() {
 			return
 
 		case <-time.After(checkPeersEvery):
-			ps.checkPeers()
+			ps.removeNotAliveDynamicPeers()
+			ps.discoverPeersIfNeeded()
+			ps.dropExcessPeersIfNeeded()
 		}
 	}
 }
 
-func (ps *Peers) removeNotAliveDynamicPeers() {
-	ps.mutex.RLock()
-	toRemove := make([]*Peer, 0)
-	for _, p := range ps.peers {
-		if !p.isPreConfigured && !p.isAlive() {
-			toRemove = append(toRemove, p)
-		}
-	}
-	ps.mutex.RUnlock()
-
-	if len(toRemove) == 0 {
-		return
-	}
-
-	for _, p := range toRemove {
-		ps.removeDynamicPeer(p)
-	}
-	for err := range ps.kademliaDHT.ForceRefresh() {
-		if err != nil {
-			ps.Tracef(TraceTagAutopeering, "kademlia ForceRefresh: %v", err)
-		}
-		break
-	}
-}
-
-func (ps *Peers) checkPeers() {
-	ps.removeNotAliveDynamicPeers()
+func (ps *Peers) discoverPeersIfNeeded() {
 	_, aliveDynamic := ps.NumAlive()
 
 	maxToAdd := ps.cfg.MaxDynamicPeers - aliveDynamic
@@ -92,4 +70,113 @@ func (ps *Peers) checkPeers() {
 	for _, a := range candidates {
 		ps.addPeer(&a, "", false)
 	}
+}
+
+func (ps *Peers) removeNotAliveDynamicPeers() {
+	ps.mutex.RLock()
+	toRemove := make([]*Peer, 0)
+	for _, p := range ps.peers {
+		if !p.isPreConfigured && !p.isAlive() {
+			toRemove = append(toRemove, p)
+		}
+	}
+	ps.mutex.RUnlock()
+
+	if len(toRemove) == 0 {
+		return
+	}
+
+	for _, p := range toRemove {
+		ps.removeDynamicPeer(p)
+	}
+	for err := range ps.kademliaDHT.ForceRefresh() {
+		if err != nil {
+			ps.Tracef(TraceTagAutopeering, "kademlia ForceRefresh: %v", err)
+		}
+		break
+	}
+}
+
+func (ps *Peers) dropExcessPeersIfNeeded() {
+	_, aliveDynamic := ps.NumAlive()
+	if aliveDynamic <= ps.cfg.MaxDynamicPeers {
+		return
+	}
+
+	ranks := ps.calcDynamicPeerRanks()
+	sortedByRanks := maps.Keys(ranks)
+	sort.Slice(sortedByRanks, func(i, j int) bool {
+		return ranks[sortedByRanks[i]] > ranks[sortedByRanks[j]]
+	})
+	util.Assertf(len(sortedByRanks) >= ps.cfg.MaxDynamicPeers, "len(sortedByRanks) >= ps.cfg.MaxDynamicPeers")
+
+	for _, p := range sortedByRanks[:ps.cfg.MaxDynamicPeers] {
+		ps.removeDynamicPeer(p)
+	}
+}
+
+// calcDynamicPeerRanks uses very simple peer ranking strategy. It sorts peers according to different criteria
+// The rank according to that criterion is index in the sorted array.
+// Final rank is sum of ranks of different criteria without any weights.
+func (ps *Peers) calcDynamicPeerRanks() map[*Peer]int {
+	ps.mutex.RLock()
+	defer ps.mutex.RUnlock()
+
+	peers := make([]*Peer, 0, len(ps.peers))
+	for _, p := range ps.peers {
+		if p.isPreConfigured {
+			continue
+		}
+		peers = append(peers, p)
+	}
+
+	// bigger the rank, bigger priority of removal
+	ranks := make(map[*Peer]int)
+
+	// sort by peering start time descending
+	sort.Slice(peers, func(i, j int) bool {
+		// older it is, bigger the rank
+		return peers[i].whenAdded.Before(peers[j].whenAdded)
+	})
+	for i, p := range peers {
+		ranks[p] = ranks[p] + i
+	}
+
+	// sort by last activity
+	sort.Slice(peers, func(i, j int) bool {
+		// most recent activity means bigger rank
+		return peers[i].lastActivity.After(peers[j].lastActivity)
+	})
+	for i, p := range peers {
+		ranks[p] = ranks[p] + i
+	}
+
+	// sort by clock difference
+	sort.Slice(peers, func(i, j int) bool {
+		// bigger clock difference means bigger priority of removal
+		// >>>> may be slow with many peers and many clock differences stored
+		return peers[i].avgClockDifference() < peers[j].avgClockDifference()
+	})
+	for i, p := range peers {
+		ranks[p] = ranks[p] + i
+	}
+
+	// sort by good transactions
+	sort.Slice(peers, func(i, j int) bool {
+		// more good transaction, less priority of removal
+		return peers[i].incomingGood > peers[j].incomingGood
+	})
+	for i, p := range peers {
+		ranks[p] = ranks[p] + i
+	}
+
+	// sort by bad transactions
+	sort.Slice(peers, func(i, j int) bool {
+		// more bad transaction, more priority of removal
+		return peers[i].incomingBad < peers[j].incomingGood
+	})
+	for i, p := range peers {
+		ranks[p] = ranks[p] + i
+	}
+	return ranks
 }
