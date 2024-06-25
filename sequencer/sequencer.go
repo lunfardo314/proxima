@@ -133,7 +133,7 @@ func (seq *Sequencer) checkSyncIfNecessary() bool {
 
 	const checkSyncEvery = 3 * time.Second
 
-	for !seq.AreOtherSequencersActive() {
+	for !seq.IsNetworkActive() {
 		select {
 		case <-seq.Ctx().Done():
 			return false

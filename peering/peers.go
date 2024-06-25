@@ -252,7 +252,7 @@ func (ps *Peers) Run() {
 		go ps.autopeeringLoop()
 	}
 
-	ps.Log().Infof("peering: libp2p host %s (self) started on %v with %d pre-configured peers, maximum dynamic peers: %d, autopeering enbled: %v",
+	ps.Log().Infof("peering: libp2p host %s (self) started on %v with %d pre-configured peers, maximum dynamic peers: %d, autopeering enabled: %v",
 		ShortPeerIDString(ps.host.ID()), ps.host.Addrs(), len(ps.cfg.PreConfiguredPeers), ps.cfg.MaxDynamicPeers, ps.isAutopeeringEnabled())
 	_ = ps.Log().Sync()
 }

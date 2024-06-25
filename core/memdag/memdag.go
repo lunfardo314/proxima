@@ -221,10 +221,10 @@ func (d *MemDAG) EvidenceBranchSlot(s ledger.Slot) {
 	}
 }
 
-// AreOtherSequencersActive measuring latest committed branch timestamp with current time.
+// IsNetworkActive measuring latest committed branch timestamp with current time.
 // It indicates network activity.
 // Network is considered active if latest branch was committed up to 2 slots (not inclusive) from now
-func (d *MemDAG) AreOtherSequencersActive() bool {
+func (d *MemDAG) IsNetworkActive() bool {
 	d.mutex.RLock()
 	defer d.mutex.RUnlock()
 

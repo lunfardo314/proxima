@@ -42,11 +42,10 @@ func (ps *Peers) autopeeringLoop() {
 
 func (ps *Peers) discoverPeersIfNeeded() {
 	_, aliveDynamic := ps.NumAlive()
-
-	maxToAdd := ps.cfg.MaxDynamicPeers - aliveDynamic
-	if maxToAdd == 0 {
+	if aliveDynamic >= ps.cfg.MaxDynamicPeers {
 		return
 	}
+	maxToAdd := ps.cfg.MaxDynamicPeers - aliveDynamic
 	util.Assertf(maxToAdd > 0, "maxToAdd > 0")
 
 	const peerDiscoveryLimit = 10

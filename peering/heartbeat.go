@@ -9,6 +9,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/lunfardo314/proxima/util"
+	"github.com/multiformats/go-multiaddr"
 )
 
 const traceHeartbeat = false
@@ -135,13 +136,26 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 			return
 		}
 		// peer not found. Add new incoming dynamic peer and then let the autopeering handle if too many
-		ps.Tracef(TraceTag, "unknown peer %s. Add new dynamic peer", id.String())
-		addrInfo, err := peer.AddrInfoFromP2pAddr(stream.Conn().RemoteMultiaddr())
-		if err != nil {
-			ps.Log().Error(err)
-			_ = stream.Reset()
-			return
+		remote := stream.Conn().RemoteMultiaddr()
+		addrInfo := &peer.AddrInfo{
+			ID:    id,
+			Addrs: []multiaddr.Multiaddr{remote},
 		}
+		// for some reason peer.AddrInfoFromP2pAddr does not work
+
+		//remoteStr := "<nil>"
+		//if remote != nil {
+		//	remoteStr = remote.String()
+		//}
+		//addrInfo, err := peer.AddrInfoFromP2pAddr(remote)
+		//if err != nil {
+		//	ps.Log().Errorf("peering: AddrInfoFromP2pAddr: '%v'. Multiaddr remote: %s, peer id: %s", err, remoteStr, id.String())
+		//	_ = stream.Reset()
+		//	return
+		//} else {
+		//	ps.Log().Infof("peering: AddrInfoFromP2pAddr: OK. Remote multiaddr: %s", remoteStr)
+		//}
+		ps.Log().Infof("incoming peer request from %s. Add new dynamic peer", id.String())
 		p = ps.addPeer(addrInfo, "", false)
 	}
 
