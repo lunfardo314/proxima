@@ -52,50 +52,6 @@ func (hi *heartbeatInfo) Bytes() []byte {
 	return buf.Bytes()
 }
 
-func (p *Peer) isAlive() bool {
-	p.mutex.RLock()
-	defer p.mutex.RUnlock()
-
-	return p._isAlive()
-}
-
-func (p *Peer) _isAlive() bool {
-	// peer is alive if its last activity is at least some heartbeats old
-	return time.Now().Sub(p.lastActivity) < aliveDuration
-}
-
-func (p *Peer) HasTxStore() bool {
-	p.mutex.RLock()
-	defer p.mutex.RUnlock()
-
-	return p.hasTxStore
-}
-
-func (p *Peer) evidenceActivity(ps *Peers, srcMsg string) {
-	p.mutex.Lock()
-	defer p.mutex.Unlock()
-
-	if !p._isAlive() {
-		ps.Log().Infof("peering: connected to peer %s (%s) (%s)", ShortPeerIDString(p.id), p.name, srcMsg)
-	}
-	p.lastActivity = time.Now()
-	p.needsLogLostConnection = true
-}
-
-func (p *Peer) evidenceTxStore(hasTxStore bool) {
-	p.mutex.Lock()
-	defer p.mutex.Unlock()
-
-	p.hasTxStore = hasTxStore
-}
-
-func (p *Peer) isCommunicationOpen() bool {
-	p.mutex.RLock()
-	defer p.mutex.RUnlock()
-
-	return p.blockActivityUntil.Before(time.Now())
-}
-
 func (ps *Peers) blockCommunicationsWithStaticPeer(p *Peer) {
 	util.Assertf(p.isPreConfigured, "p.isPreConfigured")
 
@@ -143,19 +99,19 @@ func (ps *Peers) logInactivityIfNeeded(id peer.ID) {
 	}
 }
 
-func checkRemoteClockTolerance(remoteTime time.Time) (bool, bool) {
+func checkRemoteClockTolerance(remoteTime time.Time) (time.Duration, bool, bool) {
 	nowis := time.Now() // local clock
-	var diff time.Duration
+	var clockDiff time.Duration
 
 	var behind bool
 	if nowis.After(remoteTime) {
-		diff = nowis.Sub(remoteTime)
+		clockDiff = nowis.Sub(remoteTime)
 		behind = true
 	} else {
-		diff = remoteTime.Sub(nowis)
+		clockDiff = remoteTime.Sub(nowis)
 		behind = false
 	}
-	return diff < clockTolerance, behind
+	return clockDiff, clockDiff < clockTolerance, behind
 }
 
 // heartbeat protocol is used to monitor
@@ -165,16 +121,22 @@ func checkRemoteClockTolerance(remoteTime time.Time) (bool, bool) {
 
 func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 	id := stream.Conn().RemotePeer()
+
 	if traceHeartbeat {
 		ps.Tracef(TraceTag, "heartbeatStreamHandler invoked in %s from %s", ps.host.ID().String, id.String)
 	}
 
 	p := ps.getPeer(id)
 	if p == nil {
-		// peer not found
-		ps.Tracef(TraceTag, "unknown peer %s", id.String())
-		_ = stream.Reset()
-		return
+		// peer not found. Add new dynamic peer and then let the autopeering handle it
+		ps.Tracef(TraceTag, "unknown peer %s. Add new dynamic peer", id.String())
+		addrInfo, err := peer.AddrInfoFromP2pAddr(stream.Conn().RemoteMultiaddr())
+		if err != nil {
+			ps.Log().Error(err)
+			_ = stream.Reset()
+			return
+		}
+		p = ps.addPeer(addrInfo, "", false)
 	}
 
 	if !p.isCommunicationOpen() {
@@ -196,12 +158,14 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 		return
 	}
 
-	if clockOk, behind := checkRemoteClockTolerance(hbInfo.clock); !clockOk {
+	clockDiff, clockOk, behind := checkRemoteClockTolerance(hbInfo.clock)
+	if !clockOk {
 		b := "ahead"
 		if behind {
 			b = "behind"
 		}
-		ps.Log().Warnf("clock of the peer %s is %s of the local clock more than tolerance interval %v", id.String(), b, clockTolerance)
+		ps.Log().Warnf("clock of the peer %s is %s of the local clock for %v > tolerance interval %v",
+			id.String(), b, clockDiff, clockTolerance)
 		ps.dropPeer(p)
 		_ = stream.Reset()
 		return
@@ -216,9 +180,11 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 		)
 	}
 
-	p.evidenceActivity(ps, "heartbeat")
-	p.evidenceTxStore(hbInfo.hasTxStore)
-
+	p.evidence(
+		evidenceAndLogActivity(ps, "heartbeat"),
+		evidenceTxStore(hbInfo.hasTxStore),
+		evidenceClockDifference(clockDiff),
+	)
 	util.Assertf(p.isAlive(), "isAlive")
 }
 

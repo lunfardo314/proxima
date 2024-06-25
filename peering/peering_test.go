@@ -19,6 +19,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// TODO tests fails when started all together due to timing problems and deadlocks
+//  Usually pass when started one-by-one
+
 // initializes ledger.Library singleton for all tests and creates testing genesis private key
 
 func init() {

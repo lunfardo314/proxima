@@ -29,7 +29,7 @@ func (ps *Peers) pullStreamHandler(stream network.Stream) {
 	p := ps.getPeer(id)
 	if p == nil {
 		// peer not found
-		ps.Tracef(TraceTag, "unknown peer %s", id.String())
+		ps.Tracef(TraceTag, "pull: unknown peer %s", id.String())
 		_ = stream.Reset()
 		return
 	}
@@ -66,14 +66,14 @@ func (ps *Peers) processPullFrame(msgData []byte, p *Peer) error {
 		if err != nil {
 			return err
 		}
-		p.evidenceActivity(ps, "pullTx")
+		p.evidence(evidenceAndLogActivity(ps, "pullTx"))
 		ps.onReceivePullTx(p.id, txLst)
 
 	case PullRequestBranchTips:
 		if err := decodePullBranchTipsMsg(msgData); err != nil {
 			return err
 		}
-		p.evidenceActivity(ps, "pullTips")
+		p.evidence(evidenceAndLogActivity(ps, "pullTips"))
 		ps.onReceivePullTips(p.id)
 
 	default:

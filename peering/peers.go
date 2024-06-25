@@ -66,10 +66,14 @@ type (
 		name                   string
 		id                     peer.ID
 		isPreConfigured        bool // statically pre-configured (manual peering)
+		needsLogLostConnection bool
+		hasTxStore             bool
+		whenAdded              time.Time
 		lastActivity           time.Time
 		blockActivityUntil     time.Time
-		hasTxStore             bool
-		needsLogLostConnection bool
+		// ring buffer with last clock differences
+		clockDifferences    [10]time.Duration
+		clockDifferencesIdx int
 	}
 )
 
@@ -277,18 +281,21 @@ func (ps *Peers) addStaticPeer(maddr multiaddr.Multiaddr, name string) error {
 	return nil
 }
 
-func (ps *Peers) addPeer(addrInfo *peer.AddrInfo, name string, preConfigured bool) {
+func (ps *Peers) addPeer(addrInfo *peer.AddrInfo, name string, preConfigured bool) *Peer {
 	ps.mutex.Lock()
 	defer ps.mutex.Unlock()
 
-	if _, already := ps.peers[addrInfo.ID]; already {
-		return
+	p, already := ps.peers[addrInfo.ID]
+	if already {
+		return p
 	}
-	ps.peers[addrInfo.ID] = &Peer{
+	p = &Peer{
 		name:            name,
 		id:              addrInfo.ID,
 		isPreConfigured: preConfigured,
+		whenAdded:       time.Now(),
 	}
+	ps.peers[addrInfo.ID] = p
 	for _, a := range addrInfo.Addrs {
 		ps.host.Peerstore().AddAddr(addrInfo.ID, a, peerstore.PermanentAddrTTL)
 	}
@@ -297,6 +304,7 @@ func (ps *Peers) addPeer(addrInfo *peer.AddrInfo, name string, preConfigured boo
 	} else {
 		ps.Log().Infof("peering: added dynamic peer %s", addrInfo.ID.String())
 	}
+	return p
 }
 
 func (ps *Peers) removeDynamicPeer(p *Peer) {

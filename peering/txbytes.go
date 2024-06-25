@@ -12,7 +12,7 @@ func (ps *Peers) gossipStreamHandler(stream network.Stream) {
 	p := ps.getPeer(id)
 	if p == nil {
 		// peer not found
-		ps.Tracef(TraceTag, "unknown peer %s", id.String())
+		ps.Tracef(TraceTag, "txBytes: unknown peer %s", id.String())
 		_ = stream.Reset()
 		return
 	}
@@ -46,7 +46,7 @@ func (ps *Peers) gossipStreamHandler(stream network.Stream) {
 
 	defer stream.Close()
 
-	p.evidenceActivity(ps, "gossip")
+	p.evidence(evidenceAndLogActivity(ps, "gossip"))
 	ps.onReceiveTx(id, txBytes, metadata)
 }
 
