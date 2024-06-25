@@ -3,6 +3,7 @@ package tippool
 import (
 	"sort"
 	"sync"
+	"time"
 
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/global"
@@ -57,6 +58,7 @@ func (t *SequencerTips) Start() {
 		t.MarkWorkProcessStopped(Name)
 	})
 	t.Queue.Start(t, t.Environment.Ctx())
+	go t.purgeLoop()
 }
 
 func (t *SequencerTips) Consume(inp Input) {
@@ -152,4 +154,38 @@ func (t *SequencerTips) NumSequencerTips() int {
 	defer t.mutex.RUnlock()
 
 	return len(t.latestMilestones)
+}
+
+const purgeLoopPeriod = time.Second
+
+// purgeLoop periodically removes all vertices which cannot be endorsed
+func (t *SequencerTips) purgeLoop() {
+	for {
+		select {
+		case <-t.Ctx().Done():
+			return
+		case <-time.After(purgeLoopPeriod):
+			t.purge()
+		}
+	}
+}
+
+// purge removes all transactions with baseline == nil, i.e. all non-branch sequencers which are virtualTx
+func (t *SequencerTips) purge() {
+	t.mutex.Lock()
+	defer t.mutex.Unlock()
+
+	toDelete := make([]ledger.ChainID, 0)
+
+	for chainID, md := range t.latestMilestones {
+		if md.BaselineBranch() == nil {
+			toDelete = append(toDelete, chainID)
+		}
+	}
+
+	for _, chainID := range toDelete {
+		t.latestMilestones[chainID].UnReference()
+		delete(t.latestMilestones, chainID)
+		t.Environment.Log().Infof("chainID %s has been removed from the sequencer tip pool", chainID.StringShort())
+	}
 }
