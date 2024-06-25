@@ -128,7 +128,13 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 
 	p := ps.getPeer(id)
 	if p == nil {
-		// peer not found. Add new dynamic peer and then let the autopeering handle it
+		if ps.IsBootstrapNode() {
+			// bootstrap node does not take any incoming dynamic peers
+			ps.Tracef(TraceTag, "unknown peer %s", id.String())
+			_ = stream.Reset()
+			return
+		}
+		// peer not found. Add new incoming dynamic peer and then let the autopeering handle if too many
 		ps.Tracef(TraceTag, "unknown peer %s. Add new dynamic peer", id.String())
 		addrInfo, err := peer.AddrInfoFromP2pAddr(stream.Conn().RemoteMultiaddr())
 		if err != nil {

@@ -29,19 +29,26 @@ const (
 	TraceTagTxInput = "txinput"
 )
 
-func (w *Workflow) TxBytesIn(txBytes []byte, opts ...TxBytesInOption) (*ledger.TransactionID, error) {
-	// base validation
-	tx, err := transaction.FromBytes(txBytes)
-	if err != nil {
-		// any malformed data chunk will be rejected immediately before all the advanced validations
-		return nil, err
+func (w *Workflow) _evidenceIncomingTxIfNeeded(good bool, opt *txBytesInOptions) {
+	if opt.receivedFromPeer != nil {
+		w.peers.EvidenceIncomingTx(good, *opt.receivedFromPeer)
 	}
-	txid := tx.ID()
+}
 
+func (w *Workflow) TxBytesIn(txBytes []byte, opts ...TxBytesInOption) (*ledger.TransactionID, error) {
 	options := &txBytesInOptions{}
 	for _, opt := range opts {
 		opt(options)
 	}
+	// base validation
+	tx, err := transaction.FromBytes(txBytes)
+	if err != nil {
+		// any malformed data chunk will be rejected immediately before all the advanced validations
+		w._evidenceIncomingTxIfNeeded(false, options)
+		return nil, err
+	}
+	txid := tx.ID()
+
 	if options.txTrace {
 		w.StartTracingTx(*txid)
 	}
@@ -73,6 +80,7 @@ func (w *Workflow) TxBytesIn(txBytes []byte, opts ...TxBytesInOption) (*ledger.T
 			err = fmt.Errorf("upper timestamp bound exceeded (MaxDurationInTheFuture = %v)", w.MaxDurationInTheFuture())
 			attacher.InvalidateTxID(*txid, w, err)
 
+			w._evidenceIncomingTxIfNeeded(false, options)
 			return txid, err
 		}
 		w.Log().Warnf("checking time bounds of %s: '%v'", txid.StringShort(), err)
@@ -85,8 +93,12 @@ func (w *Workflow) TxBytesIn(txBytes []byte, opts ...TxBytesInOption) (*ledger.T
 		w.Tracef(TraceTagTxInput, "%v", err)
 		w.TraceTx(txid, "TxBytesIn: %v", err)
 		attacher.InvalidateTxID(*txid, w, err)
+		w._evidenceIncomingTxIfNeeded(false, options)
 		return txid, err
 	}
+
+	// considered good incoming
+	w._evidenceIncomingTxIfNeeded(true, options)
 
 	if options.txMetadata.SourceTypeNonPersistent == txmetadata.SourceTypePeer ||
 		options.txMetadata.SourceTypeNonPersistent == txmetadata.SourceTypeAPI {

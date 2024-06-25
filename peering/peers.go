@@ -71,6 +71,8 @@ type (
 		whenAdded              time.Time
 		lastActivity           time.Time
 		blockActivityUntil     time.Time
+		incomingGood           int
+		incomingBad            int
 		// ring buffer with last clock differences
 		clockDifferences    [10]time.Duration
 		clockDifferencesIdx int
@@ -377,4 +379,10 @@ func (ps *Peers) PeerName(id peer.ID) string {
 		return "(unknown peer)"
 	}
 	return p.name
+}
+
+func (ps *Peers) EvidenceIncomingTx(good bool, from peer.ID) {
+	if p := ps.getPeer(from); p != nil {
+		p.evidence(evidenceIncoming(good))
+	}
 }

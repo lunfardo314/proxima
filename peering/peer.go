@@ -58,6 +58,17 @@ func evidenceClockDifference(diff time.Duration) evidenceFun {
 	}
 }
 
+func evidenceIncoming(good bool) evidenceFun {
+	if good {
+		return func(p *Peer) {
+			p.incomingGood++
+		}
+	}
+	return func(p *Peer) {
+		p.incomingBad++
+	}
+}
+
 func (p *Peer) isCommunicationOpen() bool {
 	p.mutex.RLock()
 	defer p.mutex.RUnlock()
