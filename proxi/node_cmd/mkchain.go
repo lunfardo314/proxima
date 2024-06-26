@@ -7,6 +7,7 @@ import (
 
 	"github.com/lunfardo314/proxima/api/client"
 	"github.com/lunfardo314/proxima/ledger"
+	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/spf13/cobra"
@@ -25,14 +26,10 @@ func initMakeChainCmd() *cobra.Command {
 	return makeChainCmd
 }
 
-func runMakeChainCmd(_ *cobra.Command, args []string) {
+func MakeChain(onChainAmount uint64) (*transaction.TxContext, ledger.ChainID, error) {
 	//cmd.DebugFlags()
-	glb.InitLedgerFromNode()
 
 	walletData := glb.GetWalletData()
-
-	onChainAmount, err := strconv.ParseUint(args[0], 10, 64)
-	glb.AssertNoError(err)
 
 	target := glb.MustGetTarget()
 
@@ -59,7 +56,7 @@ func runMakeChainCmd(_ *cobra.Command, args []string) {
 	glb.Infof("   total cost: %s", util.Th(onChainAmount+feeAmount))
 	glb.Infof("   chain controller: %s", target)
 
-	if !glb.YesNoPrompt("proceed?:", false) {
+	if !glb.YesNoPrompt("proceed?:", true, glb.BypassYesNoPrompt()) {
 		glb.Infof("exit")
 		os.Exit(0)
 	}
@@ -77,13 +74,23 @@ func runMakeChainCmd(_ *cobra.Command, args []string) {
 		return false
 	})
 
-	txCtx, chainID, err := glb.GetClient().MakeChainOrigin(client.TransferFromED25519WalletParams{
+	return glb.GetClient().MakeChainOrigin(client.TransferFromED25519WalletParams{
 		WalletPrivateKey: walletData.PrivateKey,
 		TagAlongSeqID:    tagAlongSeqID,
 		TagAlongFee:      feeAmount,
 		Amount:           onChainAmount,
 		Target:           target.AsLock(),
 	})
+}
+
+func runMakeChainCmd(_ *cobra.Command, args []string) {
+	//cmd.DebugFlags()
+	glb.InitLedgerFromNode()
+
+	onChainAmount, err := strconv.ParseUint(args[0], 10, 64)
+	glb.AssertNoError(err)
+
+	txCtx, chainID, err := MakeChain(onChainAmount)
 
 	glb.AssertNoError(err)
 	glb.Infof("new chain ID is %s", chainID.String())
