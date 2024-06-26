@@ -2,6 +2,7 @@ package workflow
 
 import (
 	"sync"
+	"time"
 
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/lunfardo314/proxima/core/memdag"
@@ -115,4 +116,23 @@ func (w *Workflow) Start() {
 			})
 		}
 	})
+
+	go w.logSyncStatusLoop()
+}
+
+const logSyncStatusEach = 2 * time.Second
+
+func (w *Workflow) logSyncStatusLoop() {
+	for {
+		select {
+		case <-w.Ctx().Done():
+			return
+		case <-time.After(logSyncStatusEach):
+			synced, lastSlot := w.SyncedStatus()
+			if !synced {
+				w.Log().Warnf("node is NOT SYNCED with the network. Last committed slot is %d (%d slots back)",
+					lastSlot, ledger.TimeNow().Slot()-lastSlot)
+			}
+		}
+	}
 }

@@ -214,7 +214,7 @@ func (p *ProximaNode) startWorkflow() {
 func (p *ProximaNode) startSequencers() {
 	sequencers := viper.GetStringMap("sequencers")
 	if len(sequencers) == 0 {
-		p.Log().Infof("No Sequencers will be started")
+		p.Log().Infof("no Sequencers will be started")
 		return
 	}
 	p.Log().Infof("%d sequencer config profile(s) has been found", len(sequencers))
@@ -234,7 +234,6 @@ func (p *ProximaNode) startSequencers() {
 		}
 		seq.Start()
 
-		p.Log().Infof("started sequencer '%s', seqID: %s", name, util.Ref(seq.SequencerID()).String())
 		p.Sequencers = append(p.Sequencers, seq)
 		time.Sleep(500 * time.Millisecond)
 	}

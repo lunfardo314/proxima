@@ -221,14 +221,20 @@ func (d *MemDAG) EvidenceBranchSlot(s ledger.Slot) {
 	}
 }
 
-// IsNetworkActive measuring latest committed branch timestamp with current time.
-// It indicates network activity.
-// Network is considered active if latest branch was committed up to 2 slots (not inclusive) from now
-func (d *MemDAG) IsNetworkActive() bool {
+func (d *MemDAG) SyncedStatus() (bool, ledger.Slot) {
 	d.mutex.RLock()
 	defer d.mutex.RUnlock()
 
-	return d.latestBranchSlot != 0 && d.latestBranchSlot+1 >= ledger.TimeNow().Slot()
+	return d.latestBranchSlot != 0 && d.latestBranchSlot+1 >= ledger.TimeNow().Slot(), d.latestBranchSlot
+}
+
+// IsSyncedWithNetwork measuring latest committed branch timestamp with current time.
+// It indicates if current node is in sync with network activity.
+// If network is unreachable or nobody else is active it will return false
+// Node is considered in sync if latest branch was committed up to 2 slots (not inclusive) from now
+func (d *MemDAG) IsSyncedWithNetwork() bool {
+	synced, _ := d.SyncedStatus()
+	return synced
 }
 
 // LatestBranchSlot latest time slot with some stateReaders

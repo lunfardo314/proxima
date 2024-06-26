@@ -11,6 +11,8 @@ import (
 	"github.com/lunfardo314/proxima/util"
 )
 
+// TODO handle attaching timeout otherwise attackable
+
 const (
 	TraceTagAttachMilestone = "milestone"
 	periodicCheckEach       = 100 * time.Millisecond

@@ -35,7 +35,12 @@ type (
 		Environment
 		// set of wanted transactions
 		mutex    sync.RWMutex
-		pullList map[ledger.TransactionID]time.Time
+		pullList map[ledger.TransactionID]pullRecord
+	}
+
+	pullRecord struct {
+		start        time.Time
+		nextDeadline time.Time
 	}
 )
 
@@ -49,7 +54,7 @@ func New(env Environment) *PullClient {
 	return &PullClient{
 		Queue:       queue.NewQueueWithBufferSize[*Input](Name, chanBufferSize, env.Log().Level(), nil),
 		Environment: env,
-		pullList:    make(map[ledger.TransactionID]time.Time),
+		pullList:    make(map[ledger.TransactionID]pullRecord),
 	}
 }
 
@@ -87,7 +92,10 @@ func (p *PullClient) startPulling(txid ledger.TransactionID) {
 		go p.transactionIn(txBytesWithMetadata)
 	} else {
 		// transaction is not in the tx store -> query from random peer and put txid into the pull list
-		p.pullList[txid] = time.Now().Add(pullPeriod)
+		p.pullList[txid] = pullRecord{
+			start:        time.Now(),
+			nextDeadline: time.Now().Add(pullPeriod),
+		}
 		p.Tracef(TraceTag, "%s added to the pull list. Pull list size: %d", txid.StringShort, len(p.pullList))
 		p.TraceTx(&txid, TraceTag+": added to the pull list")
 
@@ -139,6 +147,8 @@ func (p *PullClient) backgroundPullLoop() {
 		if buffer = p.maturedPullList(buffer); len(buffer) > 0 {
 			p.QueryTransactionsFromRandomPeer(buffer...)
 		}
+
+		//p.printStuckList(3 * time.Second)
 	}
 }
 
@@ -152,13 +162,39 @@ func (p *PullClient) maturedPullList(buf []ledger.TransactionID) []ledger.Transa
 
 	nowis := time.Now()
 	nextDeadline := nowis.Add(pullPeriod)
-	for txid, deadline := range p.pullList {
-		if nowis.After(deadline) {
+	for txid, rec := range p.pullList {
+		if nowis.After(rec.nextDeadline) {
 			buf = append(buf, txid)
-			p.pullList[txid] = nextDeadline
+			p.pullList[txid] = pullRecord{
+				start:        rec.start,
+				nextDeadline: nextDeadline,
+			}
 		}
 	}
 	return buf
+}
+
+// stuckList for debugging
+func (p *PullClient) stuckList(forHowLong time.Duration) map[ledger.TransactionID]time.Duration {
+	ret := make(map[ledger.TransactionID]time.Duration)
+
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
+
+	nowis := time.Now()
+	deadline := nowis.Add(-forHowLong)
+	for txid, rec := range p.pullList {
+		if rec.start.Before(deadline) {
+			ret[txid] = time.Since(rec.start)
+		}
+	}
+	return ret
+}
+
+func (p *PullClient) printStuckList(forHowLong time.Duration) {
+	for txid, howLong := range p.stuckList(forHowLong) {
+		p.Environment.Log().Infof(">>>>>>>> pull_client %s stuck for %v", txid.StringShort(), howLong)
+	}
 }
 
 // Pull starts pulling txID

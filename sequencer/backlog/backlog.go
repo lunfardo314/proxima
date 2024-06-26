@@ -122,7 +122,7 @@ func (b *InputBacklog) CandidatesToEndorseSorted(targetTs ledger.Time) []*vertex
 	ownSeqID := b.SequencerID()
 	return b.LatestMilestonesDescending(func(seqID ledger.ChainID, vid *vertex.WrappedTx) bool {
 		if vid.BaselineBranch() == nil {
-			b.Log().Warnf("InputBacklog: milestone %s has BaselineBranch == nil", vid.IDShortString())
+			//b.Log().Warnf("InputBacklog: milestone %s has BaselineBranch == nil", vid.IDShortString())
 			return false
 		}
 		return vid.Slot() == targetSlot && seqID != ownSeqID

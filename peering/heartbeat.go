@@ -141,7 +141,7 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 			ID:    id,
 			Addrs: []multiaddr.Multiaddr{remote},
 		}
-		// for some reason peer.AddrInfoFromP2pAddr does not work
+		// for some reason peer.AddrInfoFromP2pAddr does not work -> compose AddrInfo from parts
 
 		//remoteStr := "<nil>"
 		//if remote != nil {

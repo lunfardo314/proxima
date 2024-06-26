@@ -96,7 +96,8 @@ func (seq *Sequencer) Start() {
 		seq.MarkWorkProcessStarted(seq.config.SequencerName)
 		defer seq.MarkWorkProcessStopped(seq.config.SequencerName)
 
-		if !seq.checkSyncIfNecessary() {
+		if !seq.waitForSyncIfNecessary() {
+			seq.log.Warnf("sequencer wasn't started. EXIT..")
 			return
 		}
 
@@ -104,6 +105,7 @@ func (seq *Sequencer) Start() {
 			seq.log.Warnf("can't start sequencer. EXIT..")
 			return
 		}
+		seq.Log().Infof("started sequencer '%s', seqID: %s", seq.SequencerName(), util.Ref(seq.SequencerID()).String())
 		seq.mainLoop()
 
 		seq.onCallbackMutex.RLock()
@@ -126,19 +128,19 @@ func (seq *Sequencer) Start() {
 	}
 }
 
-func (seq *Sequencer) checkSyncIfNecessary() bool {
+func (seq *Sequencer) waitForSyncIfNecessary() bool {
 	if seq.IsBootstrapNode() {
 		return true
 	}
 
 	const checkSyncEvery = 3 * time.Second
 
-	for !seq.IsNetworkActive() {
+	for !seq.IsSyncedWithNetwork() {
 		select {
 		case <-seq.Ctx().Done():
 			return false
 		case <-time.After(checkSyncEvery):
-			seq.log.Warnf("node not synced")
+			seq.log.Warnf("waiting for sync with the network")
 		}
 	}
 
