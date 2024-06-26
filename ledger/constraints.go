@@ -40,8 +40,9 @@ type (
 
 	// LockBalance is an amount/target pair used in distribution list
 	LockBalance struct {
-		Lock    Lock
-		Balance uint64
+		Lock         Lock
+		Balance      uint64
+		ChainBalance uint64 // balance on chain, if 0 zero no chain output
 	}
 )
 

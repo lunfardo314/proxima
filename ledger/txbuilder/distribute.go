@@ -45,12 +45,29 @@ func MakeDistributionTransaction(stateStore global.StateStore, originPrivateKey 
 			return nil, err
 		}
 	}
-	genesisDistributionOutputs := make([]*ledger.Output, len(genesisDistribution))
+	nOutputs := 0
 	for i := range genesisDistribution {
-		genesisDistributionOutputs[i] = ledger.NewOutput(func(o *ledger.Output) {
-			o.WithAmount(genesisDistribution[i].Balance).
+		nOutputs++
+		if genesisDistribution[i].ChainBalance != 0 {
+			nOutputs++
+		}
+	}
+	genesisDistributionOutputs := make([]*ledger.Output, nOutputs)
+	idx := 0
+	for i := range genesisDistribution {
+		genesisDistributionOutputs[idx] = ledger.NewOutput(func(o *ledger.Output) {
+			o.WithAmount(genesisDistribution[i].Balance - genesisDistribution[i].ChainBalance).
 				WithLock(genesisDistribution[i].Lock)
 		})
+		idx++
+		if genesisDistribution[i].ChainBalance != 0 {
+			genesisDistributionOutputs[idx] = ledger.NewOutput(func(o *ledger.Output) {
+				_, _ = o.WithAmount(genesisDistribution[i].ChainBalance).
+					WithLock(genesisDistribution[i].Lock).
+					PushConstraint(ledger.NewChainOrigin().Bytes())
+			})
+			idx++
+		}
 	}
 
 	rdr, err := multistate.NewSugaredReadableState(stateStore, genesisRoot)
