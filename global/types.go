@@ -82,6 +82,8 @@ type (
 	TraceTx interface {
 		StartTracingTx(txid ledger.TransactionID)
 		StopTracingTx(txid ledger.TransactionID)
+		StartTracingTags(tags ...string)
+		StopTracingTag(string)
 	}
 
 	Metrics interface {

@@ -125,7 +125,10 @@ func (a *milestoneAttacher) run() error {
 	return nil
 }
 
+const expectedAttachmentTime = 5 * time.Second
+
 func (a *milestoneAttacher) lazyRepeat(fun func() vertex.Status) vertex.Status {
+	counter := 0
 	for {
 		// repeat until becomes defined
 		if status := fun(); status != vertex.Undefined {
@@ -142,6 +145,11 @@ func (a *milestoneAttacher) lazyRepeat(fun func() vertex.Status) vertex.Status {
 			a.finals.numPeriodic++
 			a.Tracef(TraceTagAttachMilestone, "periodic check")
 		}
+		if time.Since(a.finals.started) > expectedAttachmentTime && counter%20 == 0 {
+			a.StartTracingTags(TraceTagAttach, TraceTagAttachMilestone)
+			// a.Log().Warnf(">>>>>> attachment %s taking already  %v", a.Name(), time.Since(a.finals.started))
+		}
+		counter++
 	}
 }
 
