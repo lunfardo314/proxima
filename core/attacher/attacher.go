@@ -308,7 +308,7 @@ func (a *attacher) attachVertexUnwrapped(v *vertex.Vertex, vid *vertex.WrappedTx
 
 		a.Tracef(TraceTagAttachVertex, "attacher %s: endorsements (%d) are all solid in %s", a.name, v.Tx.NumEndorsements(), v.Tx.IDShortString)
 	} else {
-		a.Tracef(TraceTagAttachVertex, "attacher %s: endorsements (%d) NOT solid in %s", a.name, v.Tx.NumEndorsements(), v.Tx.IDShortString)
+		a.Tracef(TraceTagAttachVertex, "attacher %s: endorsements (%d) NOT marked solid in %s", a.name, v.Tx.NumEndorsements(), v.Tx.IDShortString)
 	}
 
 	inputsOk := a.attachInputsOfTheVertex(v, vid) // deep recursion
@@ -411,6 +411,8 @@ func (a *attacher) attachEndorsements(v *vertex.Vertex, vid *vertex.WrappedTx) b
 		if baselineBranch == nil {
 			// baseline branch not solid yet, abandon traverse. No need for any pull because
 			// endorsed sequencer milestones are solidified proactively by attachers
+			a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s): baseline branch of endorsement %s in nil", a.name, vidEndorsed.IDShortString)
+			// TODO this may cause a problem
 			return true
 		}
 		a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s): baseline branch %s", a.name, baselineBranch.IDShortString)
@@ -430,15 +432,18 @@ func (a *attacher) attachEndorsements(v *vertex.Vertex, vid *vertex.WrappedTx) b
 			a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s): %s is BAD", a.name, vidEndorsed.IDShortString)
 			return false
 		case vertex.Good:
+			a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s): %s is GOOD", a.name, vidEndorsed.IDShortString)
 			if a.baselineStateReader().KnowsCommittedTransaction(&vidEndorsed.ID) {
 				// all endorsed transactions known to the baseline state are 'defined' and 'rooted'
 				a.mustMarkVertexRooted(vidEndorsed)
 				a.markVertexDefined(vidEndorsed)
 				numUndefined--
+				a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s): %s is rooted", a.name, vidEndorsed.IDShortString)
 				continue
 			}
+			a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s): %s is NOT rooted", a.name, vidEndorsed.IDShortString)
 		}
-		// non-branch undefined milestone. Go deep recursively
+		// non-branch undefined or GOOD but not rooted milestone. Go deep recursively
 		a.Assertf(!vidEndorsed.IsBranchTransaction(), "attachEndorsements(%s): !vidEndorsed.IsBranchTransaction(): %s", a.name, vidEndorsed.IDShortString)
 
 		ok, defined := a.attachVertexNonBranch(vidEndorsed)
