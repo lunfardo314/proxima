@@ -3,6 +3,7 @@ package attacher
 import (
 	"fmt"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/lunfardo314/proxima/core/txmetadata"
@@ -97,7 +98,17 @@ func (a *milestoneAttacher) run() error {
 	// then continue with the rest
 	a.Tracef(TraceTagAttachMilestone, "baseline is OK <- %s", a.baseline.IDShortString)
 
+	if strings.Contains(a.vid.IDShortString(), "3777f8") {
+		a.Log().Infof(">>>>>>>>>>>>>>>> 3777f8 before solidifyPastCone:\n%s", a.linesVertices().String())
+		a.setTraceLocal("3777f8")
+	}
+
 	status = a.solidifyPastCone()
+
+	if strings.Contains(a.vid.IDShortString(), "3777f8") {
+		a.Log().Infof(">>>>>>>>>>>>>>>> 3777f8 after solidifyPastCone: %s", status.String())
+	}
+
 	if status != vertex.Good {
 		a.Tracef(TraceTagAttachMilestone, "past cone solidification failed. Reason: %v", a.err)
 		a.AssertMustError(a.err)
@@ -129,13 +140,28 @@ const startWorryingAfter = 5 * time.Second
 
 func (a *milestoneAttacher) lazyRepeat(fun func() vertex.Status) vertex.Status {
 	counter := 0
+	prnLines := false
 	for {
 		// repeat until becomes defined
+		if prnLines {
+			a.Log().Infof(">>>>>>> 1111 %s:\n%s\n<<<<<<<<<<<", a.vid.IDShortString(), a.linesVertices().String())
+		}
 		if status := fun(); status != vertex.Undefined {
+			if prnLines {
+				a.Log().Infof(">>>>>>> 3333 %s:\nEXIT: %s\n<<<<<<<<<<<", a.vid.IDShortString(), status.String())
+			}
 			return status
+		}
+		if prnLines {
+			a.Log().Infof(">>>>>>> 2222 %s:\n%s\n<<<<<<<<<<<", a.vid.IDShortString(), a.linesVertices().String())
+			prnLines = false
 		}
 		select {
 		case <-a.pokeChan:
+			if strings.Contains(a.vid.IDVeryShort(), "3777f8") {
+				a.Log().Info(">>>>>>>>>>>>>>>>>> POKED 3777f8 <<<<<<<<<<<<<<<<<<<<<")
+				prnLines = true
+			}
 			a.finals.numPokes++
 			a.Tracef(TraceTagAttachMilestone, "poked")
 		case <-a.Ctx().Done():

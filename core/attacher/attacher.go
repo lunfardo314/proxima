@@ -807,7 +807,15 @@ func (a *attacher) calculateSlotInflation() {
 	}
 }
 
+func (a *attacher) setTraceLocal(name string) {
+	a.forceTrace = name
+}
+
 func (a *attacher) Tracef(traceLabel string, format string, args ...any) {
+	if a.forceTrace != "" {
+		a.Log().Info("LOCAL TRACE(" + a.forceTrace + "): " + fmt.Sprintf(format, util.EvalLazyArgs(args...)...))
+		return
+	}
 	a.Environment.Tracef(traceLabel, a.name+format+" ", args...)
 }
 

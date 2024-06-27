@@ -63,6 +63,8 @@ type (
 		slotInflation      uint64
 		// only supported for branch transactions
 		baselineSupply uint64
+		// trace this local attacher with all tags
+		forceTrace string
 	}
 
 	// IncrementalAttacher is used by the sequencer to build a sequencer milestone

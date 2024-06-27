@@ -6,6 +6,7 @@ import (
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/proxima/util/depdag"
 	"github.com/lunfardo314/proxima/util/queue"
 )
 
@@ -43,10 +44,10 @@ const (
 const chanBufferSize = 10
 
 const (
-	loopPeriod = 1 * time.Second
-	ttlWanted  = 5 * time.Minute
-	Name       = "poker"
-	TraceTag   = Name
+	cleanupLoopPeriod = 1 * time.Second
+	ttlWanted         = 5 * time.Minute
+	Name              = "poker"
+	TraceTag          = Name
 )
 
 func New(env Environment) *Poker {
@@ -63,7 +64,7 @@ func (d *Poker) Start() {
 		d.MarkWorkProcessStopped(Name)
 	})
 	d.Queue.Start(d, d.Ctx())
-	go d.periodicLoop()
+	go d.cleanupLoop()
 }
 
 func (d *Poker) Consume(inp Input) {
@@ -123,14 +124,16 @@ func (d *Poker) periodicCleanup() {
 	if len(toDelete) > 0 {
 		d.Tracef(TraceTag, "purged %d entries", len(toDelete))
 	}
+	d.Tracef(TraceTag, "wanted list size: %d", len(d.m))
 }
 
-func (d *Poker) periodicLoop() {
+func (d *Poker) cleanupLoop() {
 	for {
 		select {
 		case <-d.Ctx().Done():
+			d.saveDependencyDAG("poker_dependencies")
 			return
-		case <-time.After(loopPeriod):
+		case <-time.After(cleanupLoopPeriod):
 		}
 		d.Push(Input{Cmd: CommandPeriodicCleanup})
 	}
@@ -149,4 +152,19 @@ func (d *Poker) PokeAllWith(vid *vertex.WrappedTx) {
 		Wanted: vid,
 		Cmd:    CommandPokeAll,
 	})
+}
+
+func (d *Poker) saveDependencyDAG(fname string) {
+	nodes := make([]depdag.Node, 0, len(d.m))
+	for vid, lst := range d.m {
+		n := depdag.Node{
+			ID:           vid.IDVeryShort(),
+			Dependencies: make([]string, 0, len(lst.waiting)),
+		}
+		for _, vidWaiting := range lst.waiting {
+			n.Dependencies = append(n.Dependencies, vidWaiting.IDVeryShort())
+		}
+		nodes = append(nodes, n)
+	}
+	depdag.SaveDAG(nodes, fname)
 }
