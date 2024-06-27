@@ -19,7 +19,7 @@ services:
     container_name: node1
     image: proxima:latest    
     ports:
-      - "8001:8001"
+      - "8001:8000"
     environment:
       - DEBUG=true
     depends_on:
@@ -33,7 +33,7 @@ services:
     container_name: node2
     image: proxima:latest    
     ports:
-      - "8002:8002"
+      - "8002:8000"
     environment:
       - DEBUG=true
     depends_on:
@@ -47,7 +47,7 @@ services:
     container_name: node3
     image: proxima:latest    
     ports:
-      - "8003:8003"
+      - "8003:8000"
     environment:
       - DEBUG=true
     depends_on:
@@ -61,7 +61,7 @@ services:
     container_name: node4
     image: proxima:latest    
     ports:
-      - "8004:8004"
+      - "8004:8000"
     environment:
       - DEBUG=true
     depends_on:

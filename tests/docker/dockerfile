@@ -1,8 +1,6 @@
 # Use the official Golang image as the base image
 FROM golang:1.22-bookworm AS build
 
-#RUN go install github.com/go-delve/delve/cmd/dlv@latest
-
 # Set the current Working Directory inside the container
 RUN mkdir /scratch
 WORKDIR /scratch
@@ -21,7 +19,7 @@ RUN cp -r ./tests/docker/* /app
 
 # Download go modules
 RUN go mod download
-RUN go mod verify
+#RUN go mod verify
 
 # Build the Go server program
 RUN go build
@@ -30,7 +28,7 @@ RUN cp ./proxima /app
 WORKDIR /scratch/proxi
 # Download go modules
 RUN go mod download
-RUN go mod verify
+#RUN go mod verify
 
 RUN go build
 RUN cp ./proxi /app
@@ -39,23 +37,16 @@ RUN cp ./proxi /app
 WORKDIR /app
 RUN ./proxi init ledger_id
 
-# Expose the port Delve will listen on
-#EXPOSE 40000
-
 # Start a new stage from scratch
-#FROM gcr.io/distroless/cc-debian12
+FROM busybox:latest
 
+RUN mkdir /app
 
 # Set the Current Working Directory inside the container
-#WORKDIR /root/
+WORKDIR /app/
 
 # Copy the Pre-built binary file from the previous stage
-#COPY --from=build /app /root
-
-#RUN ./proxi init genesis_db
-
-#RUN ./proxi init bootstrap_account
-
+COPY --from=build /app /app
 
 # Command to run the executable
-#CMD ["./proxima"]
+#CMD ["bash"]
