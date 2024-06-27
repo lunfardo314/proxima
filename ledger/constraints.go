@@ -42,7 +42,7 @@ type (
 	LockBalance struct {
 		Lock         Lock
 		Balance      uint64
-		ChainBalance uint64 // balance on chain, if 0 zero no chain output
+		ChainBalance bool // true if a chain balance, false for account balance
 	}
 )
 

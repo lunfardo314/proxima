@@ -45,28 +45,19 @@ func MakeDistributionTransaction(stateStore global.StateStore, originPrivateKey 
 			return nil, err
 		}
 	}
-	nOutputs := 0
+	genesisDistributionOutputs := make([]*ledger.Output, len(genesisDistribution))
 	for i := range genesisDistribution {
-		nOutputs++
-		if genesisDistribution[i].ChainBalance != 0 {
-			nOutputs++
-		}
-	}
-	genesisDistributionOutputs := make([]*ledger.Output, nOutputs)
-	idx := 0
-	for i := range genesisDistribution {
-		genesisDistributionOutputs[idx] = ledger.NewOutput(func(o *ledger.Output) {
-			o.WithAmount(genesisDistribution[i].Balance - genesisDistribution[i].ChainBalance).
-				WithLock(genesisDistribution[i].Lock)
-		})
-		idx++
-		if genesisDistribution[i].ChainBalance != 0 {
-			genesisDistributionOutputs[idx] = ledger.NewOutput(func(o *ledger.Output) {
-				_, _ = o.WithAmount(genesisDistribution[i].ChainBalance).
+		if !genesisDistribution[i].ChainBalance {
+			genesisDistributionOutputs[i] = ledger.NewOutput(func(o *ledger.Output) {
+				o.WithAmount(genesisDistribution[i].Balance).
+					WithLock(genesisDistribution[i].Lock)
+			})
+		} else {
+			genesisDistributionOutputs[i] = ledger.NewOutput(func(o *ledger.Output) {
+				_, _ = o.WithAmount(genesisDistribution[i].Balance).
 					WithLock(genesisDistribution[i].Lock).
 					PushConstraint(ledger.NewChainOrigin().Bytes())
 			})
-			idx++
 		}
 	}
 

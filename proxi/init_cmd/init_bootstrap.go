@@ -74,7 +74,7 @@ func runBootstrapAccount(_ *cobra.Command, args []string) {
 	// It commits right to the database.
 	txBytesBootstrapBalance, txid, err := txbuilder.DistributeInitialSupplyExt(stateStore, privKey,
 		getAdditionalDistribution([]ledger.LockBalance{
-			{Lock: addr, Balance: bootstrapBalance, ChainBalance: 0},
+			{Lock: addr, Balance: bootstrapBalance, ChainBalance: false},
 		}))
 	glb.AssertNoError(err)
 
@@ -99,11 +99,11 @@ func runBootstrapAccount(_ *cobra.Command, args []string) {
 // Format of distribution.yaml:
 // distribution:
 //   - account: "addressED25519(0xaa401c8c6a9deacf479ab2209c07c01a27bd1eeecf0d7eaa4180b8049c6190d0)"
-//     amount: 200000000000000
-//     chain:  100000000000000
+//     amount: 100000000000000
+//     chain:  false
 //   - account: "addressED25519(0x62c733803a83a26d4db1ce9f22206281f64af69401da6eb26390d34e6a88c5fa)"
 //     amount: 200000000000000
-//     chain:  0
+//     chain:  false
 func getAdditionalDistribution(genesisDistribution []ledger.LockBalance) []ledger.LockBalance {
 
 	type (
@@ -111,7 +111,7 @@ func getAdditionalDistribution(genesisDistribution []ledger.LockBalance) []ledge
 		DistItem struct {
 			Account string `yaml:"account"`
 			Amount  uint64 `yaml:"amount"`
-			Chain   uint64 `yaml:"chain"`
+			Chain   bool   `yaml:"chain"`
 		}
 
 		// Data represents the structure of the YAML file

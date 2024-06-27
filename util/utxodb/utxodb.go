@@ -61,7 +61,7 @@ func NewUTXODB(genesisPrivateKey ed25519.PrivateKey, trace ...bool) *UTXODB {
 	genesisStemOut := rdr.GetStemOutput()
 
 	distributionTxBytes := txbuilder.MustDistributeInitialSupply(stateStore, genesisPrivateKey, []ledger.LockBalance{
-		{faucetAddress, ledger.L().ID.InitialSupply / 2, 0},
+		{Lock: faucetAddress, Balance: ledger.L().ID.InitialSupply / 2, ChainBalance: false},
 	})
 
 	updatable := multistate.MustNewUpdatable(stateStore, genesisRoot)
