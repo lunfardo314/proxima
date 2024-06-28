@@ -1,6 +1,7 @@
 package init_cmd
 
 import (
+	"os"
 	"strconv"
 
 	"github.com/dgraph-io/badger/v4"
@@ -14,6 +15,7 @@ import (
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/unitrie/adaptors/badger_adaptor"
 	"github.com/spf13/cobra"
+	"gopkg.in/yaml.v2"
 )
 
 func initBootstrapAccountCmd() *cobra.Command {
@@ -70,9 +72,10 @@ func runBootstrapAccount(_ *cobra.Command, args []string) {
 	// distributed genesis balance by sending bootstrapBalance to the same address, which controls bootstrap chain
 	// Remainder stays in genesis
 	// It commits right to the database.
-	txBytesBootstrapBalance, txid, err := txbuilder.DistributeInitialSupplyExt(stateStore, privKey, []ledger.LockBalance{
-		{addr, bootstrapBalance},
-	})
+	txBytesBootstrapBalance, txid, err := txbuilder.DistributeInitialSupplyExt(stateStore, privKey,
+		getAdditionalDistribution([]ledger.LockBalance{
+			{Lock: addr, Balance: bootstrapBalance, ChainOrigin: false},
+		}))
 	glb.AssertNoError(err)
 
 	// store distribution transaction in the ts store so that other nodes
@@ -90,4 +93,48 @@ func runBootstrapAccount(_ *cobra.Command, args []string) {
 	util.Assertf(len(txStore.GetTxBytesWithMetadata(&txid)) > 0, "inconsistency: just stored transaction has not been found")
 
 	glb.Infof("Success. Bootstrap account has been created in the transaction %s", txid.String())
+}
+
+// this function tries to open distribution.yaml and if found parses the content and adds additional found account balances to the genesisDistribution
+// Format of distribution.yaml:
+// distribution:
+//   - account: "addressED25519(0xaa401c8c6a9deacf479ab2209c07c01a27bd1eeecf0d7eaa4180b8049c6190d0)"
+//     amount: 100000000000000
+//     chain:  false
+//   - account: "addressED25519(0x62c733803a83a26d4db1ce9f22206281f64af69401da6eb26390d34e6a88c5fa)"
+//     amount: 200000000000000
+//     chain:  false
+func getAdditionalDistribution(genesisDistribution []ledger.LockBalance) []ledger.LockBalance {
+
+	type (
+		// Item represents a single item with an account and an amount
+		DistItem struct {
+			Account string `yaml:"account"`
+			Amount  uint64 `yaml:"amount"`
+			Chain   bool   `yaml:"chain"`
+		}
+
+		// Data represents the structure of the YAML file
+		Data struct {
+			Distribution []DistItem `yaml:"distribution"`
+		} // Read the YAML file
+	)
+
+	data, err := os.ReadFile("distribution.yaml")
+	if err != nil {
+		// no error, distribution.yaml is optional
+		return genesisDistribution
+	}
+
+	// Parse the YAML file
+	var parsedData Data
+	err = yaml.Unmarshal(data, &parsedData)
+	glb.AssertNoError(err)
+
+	for _, item := range parsedData.Distribution {
+		account, err := ledger.AddressED25519FromSource(item.Account)
+		glb.AssertNoError(err)
+		genesisDistribution = append(genesisDistribution, ledger.LockBalance{Lock: account, Balance: item.Amount, ChainOrigin: item.Chain})
+	}
+	return genesisDistribution
 }

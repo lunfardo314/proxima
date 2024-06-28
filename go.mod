@@ -8,7 +8,7 @@ require (
 	github.com/gammazero/deque v0.2.1
 	github.com/libp2p/go-libp2p v0.35.1
 	github.com/libp2p/go-libp2p-kad-dht v0.25.2
-	github.com/lunfardo314/easyfl v0.0.0-20240526062637-0c2a61c24b31
+	github.com/lunfardo314/easyfl v0.0.0-20240628054917-745acac57687
 	github.com/lunfardo314/unitrie v0.0.0-20240508144344-d631fc1d35ff
 	github.com/multiformats/go-multiaddr v0.12.4
 	github.com/prometheus/client_golang v1.19.1
@@ -130,7 +130,6 @@ require (
 	github.com/prometheus/common v0.48.0 // indirect
 	github.com/prometheus/procfs v0.12.0 // indirect
 	github.com/quic-go/qpack v0.4.0 // indirect
-	github.com/quic-go/qtls-go1-20 v0.3.4 // indirect
 	github.com/quic-go/quic-go v0.44.0 // indirect
 	github.com/quic-go/webtransport-go v0.8.0 // indirect
 	github.com/raulk/go-watchdog v1.3.0 // indirect

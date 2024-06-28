@@ -39,9 +39,15 @@ type (
 	}
 
 	// LockBalance is an amount/target pair used in distribution list
+	// One LockBalance results in one produced output on the transaction
 	LockBalance struct {
-		Lock    Lock
+		// Lock of the output
+		Lock Lock
+		// Balance amount of tokens on the output
 		Balance uint64
+		// ChainOrigin true if start a chain on this output by adding chain constrain (origin)
+		//	 false for simple ED25519 account balance (no chain origin added)
+		ChainOrigin bool
 	}
 )
 
