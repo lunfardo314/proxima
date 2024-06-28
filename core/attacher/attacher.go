@@ -412,8 +412,10 @@ func (a *attacher) attachEndorsements(v *vertex.Vertex, vid *vertex.WrappedTx) b
 			// baseline branch not solid yet, abandon traverse. No need for any pull because
 			// endorsed sequencer milestones are solidified proactively by attachers
 			a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s): baseline branch of endorsement %s in nil", a.name, vidEndorsed.IDShortString)
-			// TODO this may cause a problem
-			return true
+
+			a.PokeMe(vid, vidEndorsed)
+			//return true
+			continue
 		}
 		a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s): baseline branch %s", a.name, baselineBranch.IDShortString)
 
