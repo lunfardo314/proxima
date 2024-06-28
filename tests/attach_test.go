@@ -66,8 +66,9 @@ func TestBasic(t *testing.T) {
 		addr1 := ledger.AddressED25519FromPrivateKey(testutil.GetTestingPrivateKey(1))
 		addr2 := ledger.AddressED25519FromPrivateKey(testutil.GetTestingPrivateKey(2))
 		distrib := []ledger.LockBalance{
-			{Lock: addr1, Balance: 1_000_000},
-			{Lock: addr2, Balance: 2_000_000},
+			{Lock: addr1, Balance: 1_000_000, ChainBalance: false},
+			{Lock: addr2, Balance: 1_000_000, ChainBalance: false},
+			{Lock: addr2, Balance: 1_000_000, ChainBalance: true},
 		}
 
 		stateStore := common.NewInMemoryKVStore()
@@ -114,7 +115,7 @@ func TestBasic(t *testing.T) {
 
 		bal2, n2 := multistate.BalanceOnLock(rdr, addr2)
 		require.EqualValues(t, 2_000_000, int(bal2))
-		require.EqualValues(t, 1, n2)
+		require.EqualValues(t, 2, n2)
 
 		balChain, nChain := multistate.BalanceOnLock(rdr, bootstrapChainID.AsChainLock())
 		require.EqualValues(t, 0, balChain)
