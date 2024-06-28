@@ -131,7 +131,7 @@ func (d *Poker) cleanupLoop() {
 	for {
 		select {
 		case <-d.Ctx().Done():
-			d.saveDependencyDAG("poker_dependencies")
+			// d.saveDependencyDAG("poker_dependencies", 100)
 			return
 		case <-time.After(cleanupLoopPeriod):
 		}
@@ -154,17 +154,26 @@ func (d *Poker) PokeAllWith(vid *vertex.WrappedTx) {
 	})
 }
 
-func (d *Poker) saveDependencyDAG(fname string) {
+func (d *Poker) saveDependencyDAG(fname string, max int) {
 	nodes := make([]depdag.Node, 0, len(d.m))
-	for vid, lst := range d.m {
+
+	vids := util.KeysSorted(d.m, func(vid1, vid2 *vertex.WrappedTx) bool {
+		return vid1.ID.Timestamp().Before(vid2.ID.Timestamp())
+	})
+
+	for _, vid := range vids {
+		lst := d.m[vid].waiting
 		n := depdag.Node{
 			ID:           vid.IDVeryShort(),
-			Dependencies: make([]string, 0, len(lst.waiting)),
+			Dependencies: make([]string, 0, len(lst)),
 		}
-		for _, vidWaiting := range lst.waiting {
+		for _, vidWaiting := range lst {
 			n.Dependencies = append(n.Dependencies, vidWaiting.IDVeryShort())
 		}
 		nodes = append(nodes, n)
+		if len(nodes) >= max {
+			break
+		}
 	}
 	depdag.SaveDAG(nodes, fname)
 }

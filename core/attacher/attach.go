@@ -31,8 +31,8 @@ func AttachTxID(txid ledger.TransactionID, env Environment, opts ...Option) (vid
 		vid = env.GetVertexNoLock(&txid)
 		if vid != nil {
 			// found existing -> return it
-			env.Tracef(TraceTagAttach, "AttachTxID: found existing %s%s", txid.StringShort, by)
-			env.TraceTx(&txid, "AttachTxID: found existing")
+			env.Tracef(TraceTagAttach, "AttachTxID: found existing %s%s. VirtualTx = %v", txid.StringShort, by, vid.IsVirtualTx)
+			env.TraceTx(&txid, "AttachTxID: found existing. VirtualTx = %v", vid.IsVirtualTx)
 			return
 		}
 		env.Tracef(TraceTagAttach, "AttachTxID: new ID %s%s", txid.StringShort, by)
