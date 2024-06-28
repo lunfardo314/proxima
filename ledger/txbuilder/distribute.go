@@ -51,7 +51,7 @@ func MakeDistributionTransaction(stateStore global.StateStore, originPrivateKey 
 		genesisDistributionOutputs[i] = ledger.NewOutput(func(o *ledger.Output) {
 			o.WithAmount(genesisDistribution[i].Balance).
 				WithLock(genesisDistribution[i].Lock)
-			if genesisDistribution[i].ChainBalance {
+			if genesisDistribution[i].ChainOrigin {
 				_, _ = o.PushConstraint(ledger.NewChainOrigin().Bytes())
 			}
 		})

@@ -66,9 +66,9 @@ func TestBasic(t *testing.T) {
 		addr1 := ledger.AddressED25519FromPrivateKey(testutil.GetTestingPrivateKey(1))
 		addr2 := ledger.AddressED25519FromPrivateKey(testutil.GetTestingPrivateKey(2))
 		distrib := []ledger.LockBalance{
-			{Lock: addr1, Balance: 1_000_000, ChainBalance: false},
-			{Lock: addr2, Balance: 1_000_000, ChainBalance: false},
-			{Lock: addr2, Balance: 1_000_000, ChainBalance: true},
+			{Lock: addr1, Balance: 1_000_000, ChainOrigin: false},
+			{Lock: addr2, Balance: 1_000_000, ChainOrigin: false},
+			{Lock: addr2, Balance: 1_000_000, ChainOrigin: true},
 		}
 
 		stateStore := common.NewInMemoryKVStore()

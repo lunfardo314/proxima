@@ -74,7 +74,7 @@ func runBootstrapAccount(_ *cobra.Command, args []string) {
 	// It commits right to the database.
 	txBytesBootstrapBalance, txid, err := txbuilder.DistributeInitialSupplyExt(stateStore, privKey,
 		getAdditionalDistribution([]ledger.LockBalance{
-			{Lock: addr, Balance: bootstrapBalance, ChainBalance: false},
+			{Lock: addr, Balance: bootstrapBalance, ChainOrigin: false},
 		}))
 	glb.AssertNoError(err)
 
@@ -134,7 +134,7 @@ func getAdditionalDistribution(genesisDistribution []ledger.LockBalance) []ledge
 	for _, item := range parsedData.Distribution {
 		account, err := ledger.AddressED25519FromSource(item.Account)
 		glb.AssertNoError(err)
-		genesisDistribution = append(genesisDistribution, ledger.LockBalance{Lock: account, Balance: item.Amount, ChainBalance: item.Chain})
+		genesisDistribution = append(genesisDistribution, ledger.LockBalance{Lock: account, Balance: item.Amount, ChainOrigin: item.Chain})
 	}
 	return genesisDistribution
 }
