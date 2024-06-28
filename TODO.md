@@ -34,7 +34,7 @@ Needs love and attention. Currently basic only. API is limited to Proxi needs, u
 * TxStore as separate server 
   * Concept: currently, TxStore is behind a very simple interface. The whole txStore can be put into separate 
 server to be shared by several nodes and ledger explorer. In head 60%
-  * Implementation: 0%
+  * Implementation: 0%. <-- low priority
 * Multi-state snapshots
   * Concept: saving multi state DB starting from given slot. Restoring it and starting node from it as a baseline. In head 70%
   * Implementation: %0
@@ -68,7 +68,7 @@ with backward compatibility via soft forks.
 * Delegation implementation
   * Concept: (a) enable token holders delegate capital to sequencer with possibility to revoke it. It would be a lock to the chain-constrained output.
     (b) implement sequencer part. In head 50%
-  * Implementation: 0%
+  * Implementation: 0% <- high priority
 
 * Tag-along lock implementation
   * Concept: modification of the _chain lock_, which conditionally bypass storage deposit constraints. In head: 80%
@@ -89,7 +89,7 @@ with backward compatibility via soft forks.
   * Implementation: 30% (implemented proposer strategy with 2 endorsements)
 
 ## Docs
-- Whitepaper 80-90%
+- Whitepaper 90%
 - How to run small testnet with outopeering: 80% 
 - Introductory video series: 0%
 

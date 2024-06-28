@@ -40,7 +40,8 @@ Participation in the ledger as a user is equivalent to participation as "validat
 There is no need for any kind of permissions, registration, committee selection or voting processes. Nobody tracks existing participants nor a category of it.
 * **Token holders are the only actors** authorized to write to the ledger (issue transactions). No miners, no validators, no committees.
 * **Influence of the participant** is proportional to the amount of its holdings, i.e. to it's _skin-in-the-game_. Being a _malicious token holder_ becomes an oxymoron.
-* **Liquidity of the token** is the only prerequisite for the system to be fully permissionless
+* **Liquidity of the token** is the only condition for the system to be fully permissionless. Ownership of tokens is the only prerequisite for participation in any role. 
+**No ASICs, no GPUs, no mining rigs**
 * **Leaderless determinism**. The system operates without a consensus leader or block proposers, providing a more decentralized approach.
 * **Nash equilibrium**. It is achieved with the optimal strategy of **biggest ledger coverage rule**, which is analogous to the _longest chain rule_ in PoW blockchains.
 * Unlike in blockchains, the optimal strategy is **cooperative**, rather than **competitive**. This facilitates social consensus among participants

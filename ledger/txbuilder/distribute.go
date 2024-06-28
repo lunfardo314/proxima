@@ -11,12 +11,6 @@ import (
 	"github.com/lunfardo314/proxima/util"
 )
 
-type LockBalanceYAMLable struct {
-	LockString string `yaml:"lock"`
-	Balance    uint64 `yaml:"balance"`
-	// TODO with chain balance
-}
-
 // MakeDistributionTransaction creates initial distribution transaction according to distribution list.
 // It is a branch transaction. Remainder goes to the genesis chain
 func MakeDistributionTransaction(stateStore global.StateStore, originPrivateKey ed25519.PrivateKey, genesisDistribution []ledger.LockBalance) ([]byte, error) {
