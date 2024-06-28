@@ -14,6 +14,7 @@ import (
 type LockBalanceYAMLable struct {
 	LockString string `yaml:"lock"`
 	Balance    uint64 `yaml:"balance"`
+	// TODO with chain balance
 }
 
 // MakeDistributionTransaction creates initial distribution transaction according to distribution list.
@@ -47,18 +48,13 @@ func MakeDistributionTransaction(stateStore global.StateStore, originPrivateKey 
 	}
 	genesisDistributionOutputs := make([]*ledger.Output, len(genesisDistribution))
 	for i := range genesisDistribution {
-		if !genesisDistribution[i].ChainBalance {
-			genesisDistributionOutputs[i] = ledger.NewOutput(func(o *ledger.Output) {
-				o.WithAmount(genesisDistribution[i].Balance).
-					WithLock(genesisDistribution[i].Lock)
-			})
-		} else {
-			genesisDistributionOutputs[i] = ledger.NewOutput(func(o *ledger.Output) {
-				_, _ = o.WithAmount(genesisDistribution[i].Balance).
-					WithLock(genesisDistribution[i].Lock).
-					PushConstraint(ledger.NewChainOrigin().Bytes())
-			})
-		}
+		genesisDistributionOutputs[i] = ledger.NewOutput(func(o *ledger.Output) {
+			o.WithAmount(genesisDistribution[i].Balance).
+				WithLock(genesisDistribution[i].Lock)
+			if genesisDistribution[i].ChainBalance {
+				_, _ = o.PushConstraint(ledger.NewChainOrigin().Bytes())
+			}
+		})
 	}
 
 	rdr, err := multistate.NewSugaredReadableState(stateStore, genesisRoot)
