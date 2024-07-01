@@ -39,16 +39,17 @@ if [ ! -f "$INITIALIZED_FILE" ]; then
         echo "init bootstrap_account"
         ./proxi init bootstrap_account
     fi
-    if [ "$NODE_NAME" == "1" ] || [ "$NODE_NAME" == "4" ]; then
+    if [ "$NODE_NAME" == "1" ] || [ "$NODE_NAME" == "4" ] || [ "$NODE_NAME" == "2" ]; then
         echo "setup sequencer"
 
         ./proxima &
         sleep 5  # let process start
 
+        echo "node init sequencer"
         ./proxi node setup_seq --finality.weak mySeq 100000000000000
 
         kill_proxima
-
+        sleep 2  # let process die
     fi 
 
     # Create the initialized file to mark the container as initialized

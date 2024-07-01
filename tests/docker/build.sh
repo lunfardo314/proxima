@@ -1,3 +1,3 @@
 #!/bin/bash
 
-docker compose build
+DOCKER_BUILDKIT=1 docker compose build
