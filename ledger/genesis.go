@@ -9,20 +9,20 @@ import (
 
 const (
 	BootstrapSequencerName = "boot"
+	// BoostrapSequencerIDHex is a constant
 	BoostrapSequencerIDHex = "af7bedde1fea222230b82d63d5b665ac75afbe4ad3f75999bb3386cf994a6963"
 )
 
+// BoostrapSequencerID is a constant
 var BoostrapSequencerID ChainID
 
+// init BoostrapSequencerID constant and check consistency
+
 func init() {
-	oid := GenesisOutputID()
-	id := MakeOriginChainID(&oid)
 	data, err := hex.DecodeString(BoostrapSequencerIDHex)
 	util.AssertNoError(err)
 	BoostrapSequencerID, err = ChainIDFromBytes(data)
 	util.AssertNoError(err)
-	util.Assertf(BoostrapSequencerID == id, "inconsistency: bootstrap sequencer ID ")
-
 	// calculate directly and check
 	var zero33 [33]byte
 	zero33[0] = 0b10000000

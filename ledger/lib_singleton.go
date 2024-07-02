@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/util"
-	"github.com/lunfardo314/unitrie/common"
 )
 
 var (
@@ -19,7 +18,7 @@ func L() *Library {
 	libraryGlobalMutex.RLock()
 	defer libraryGlobalMutex.RUnlock()
 
-	common.Assert(libraryGlobal != nil, "ledger constraint library not initialized")
+	util.Assertf(libraryGlobal != nil, "ledger constraint library not initialized")
 	return libraryGlobal
 }
 

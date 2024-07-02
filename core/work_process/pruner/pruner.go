@@ -15,7 +15,6 @@ type (
 		global.NodeGlobal
 		WithGlobalWriteLock(func())
 		Vertices(filterByID ...func(txid *ledger.TransactionID) bool) []*vertex.WrappedTx
-		PruningTTLSlots() int
 		PurgeDeletedVertices(deleted []*vertex.WrappedTx)
 		PurgeCachedStateReaders() (int, int)
 		NumVertices() int

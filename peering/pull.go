@@ -11,7 +11,6 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util"
-	"github.com/lunfardo314/unitrie/common"
 	"golang.org/x/exp/maps"
 )
 
@@ -156,7 +155,7 @@ func decodePullTransactionsMsg(data []byte) ([]ledger.TransactionID, error) {
 			return nil, fmt.Errorf("DecodePeerMessageQueryTransactions: wrong msg data")
 		}
 		ret[i], err = ledger.TransactionIDFromBytes(txid[:])
-		common.AssertNoError(err)
+		util.AssertNoError(err)
 	}
 	return ret, nil
 }

@@ -12,6 +12,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestGenesisIDs(t *testing.T) {
+	oid := ledger.GenesisOutputID()
+	id := ledger.MakeOriginChainID(&oid)
+	require.EqualValues(t, ledger.BoostrapSequencerID, id)
+}
+
 func TestOriginBase(t *testing.T) {
 	const supply = 10_000_000_000
 	addr := ledger.AddressED25519FromPrivateKey(testutil.GetTestingPrivateKey())

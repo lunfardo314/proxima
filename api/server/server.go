@@ -48,19 +48,19 @@ func New(env Environment) *Server {
 }
 
 func (srv *Server) registerHandlers() {
-	// GET request format: 'get_account_outputs?accountable=<EasyFL source form of the accountable lock constraint>'
+	// GET request format: '/get_ledger_id'
 	http.HandleFunc(api.PathGetLedgerID, getLedgerID)
-	// GET request format: 'get_account_outputs?accountable=<EasyFL source form of the accountable lock constraint>'
+	// GET request format: '/get_account_outputs?accountable=<EasyFL source form of the accountable lock constraint>'
 	http.HandleFunc(api.PathGetAccountOutputs, srv.getAccountOutputs)
-	// GET request format: 'get_chain_output?chainid=<hex-encoded chain ID>'
+	// GET request format: '/get_chain_output?chainid=<hex-encoded chain ID>'
 	http.HandleFunc(api.PathGetChainOutput, srv.getChainOutput)
-	// GET request format: 'get_output?id=<hex-encoded output ID>'
+	// GET request format: '/get_output?id=<hex-encoded output ID>'
 	http.HandleFunc(api.PathGetOutput, srv.getOutput)
-	// GET request format: 'query_txid_status?txid=<hex-encoded transaction ID>[&slots=<slot span>]'
+	// GET request format: '/query_txid_status?txid=<hex-encoded transaction ID>[&slots=<slot span>]'
 	http.HandleFunc(api.PathQueryTxStatus, srv.queryTxStatus)
-	// GET request format: 'query_inclusion_score?txid=<hex-encoded transaction ID>&threshold=N-D[&slots=<slot span>]'
+	// GET request format: '/query_inclusion_score?txid=<hex-encoded transaction ID>&threshold=N-D[&slots=<slot span>]'
 	http.HandleFunc(api.PathQueryInclusionScore, srv.queryTxInclusionScore)
-	// POST request format 'submit_nowait'. Feedback only on parsing error, otherwise async posting
+	// POST request format '/submit_nowait'. Feedback only on parsing error, otherwise async posting
 	http.HandleFunc(api.PathSubmitTransaction, srv.submitTx)
 	// GET sync info from the node
 	http.HandleFunc(api.PathGetSyncInfo, srv.getSyncInfo)

@@ -36,7 +36,7 @@ func FetchLatestSlot(store common.KVReader) ledger.Slot {
 		return 0
 	}
 	ret, err := ledger.SlotFromBytes(bin)
-	common.AssertNoError(err)
+	util.AssertNoError(err)
 	return ret
 }
 

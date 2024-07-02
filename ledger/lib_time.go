@@ -25,7 +25,7 @@ func SlotsPerHour() int {
 }
 
 func TicksPerHour() int {
-	return SlotsPerHour() * DefaultTicksPerSlot
+	return L().ID.TicksPerSlot() * SlotsPerHour()
 }
 
 func TickDuration() time.Duration {
@@ -33,7 +33,7 @@ func TickDuration() time.Duration {
 }
 
 func SlotDuration() time.Duration {
-	return DefaultTicksPerSlot * TickDuration()
+	return time.Duration(L().ID.TicksPerSlot()) * TickDuration()
 }
 
 type (
@@ -116,7 +116,7 @@ func TimeFromBytes(data []byte) (ret Time, err error) {
 }
 
 func (s Tick) Valid() bool {
-	return byte(s) < DefaultTicksPerSlot
+	return int(s) < L().ID.TicksPerSlot()
 }
 
 func (s Tick) String() string {

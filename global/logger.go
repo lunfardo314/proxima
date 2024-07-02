@@ -1,7 +1,7 @@
 package global
 
 import (
-	"github.com/lunfardo314/unitrie/common"
+	"github.com/lunfardo314/proxima/util"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
@@ -31,7 +31,7 @@ func NewLogger(name string, level zapcore.Level, outputs []string, timeLayout st
 	}
 
 	log, err := cfg.Build()
-	common.AssertNoError(err)
+	util.AssertNoError(err)
 	log.Core()
 	log = log.WithOptions(zap.IncreaseLevel(level), zap.AddStacktrace(zapcore.FatalLevel))
 

@@ -21,16 +21,20 @@ type (
 		MetricsRegistry() *prometheus.Registry
 	}
 
-	// MemDAG is a synchronized in-memory global map of all vertices of the transaction DAG
+	// MemDAG is a global map of all in-memory vertices of the transaction DAG
 	MemDAG struct {
 		Environment
 
 		// cache of vertices. Key of the map is transaction ID. Value of the map is *vertex.WrappedTx.
 		// The pointer value *vertex.WrappedTx is used as a unique identified of the transaction while being
 		// loaded into the memory.
+		// The vertices map may be seen as encoding table between transaction ID and
+		// more economic (memory-wise) yet transient in-memory ID *vertex.WrappedTx
+		// in most other data structure, such as attacher, transactions are represented as *vertex.WrappedTx
 		// MemDAG is constantly garbage-collected by the pruner
-		mutex            sync.RWMutex
-		vertices         map[ledger.TransactionID]*vertex.WrappedTx
+		mutex    sync.RWMutex
+		vertices map[ledger.TransactionID]*vertex.WrappedTx
+		// latestBranchSlot maintained by EvidenceBranchSlot
 		latestBranchSlot ledger.Slot
 
 		// cache of state readers. One state (trie) reader for the branch/root. When accessed through the cache,
@@ -47,11 +51,6 @@ type (
 		rootRecord   *multistate.RootRecord
 		lastActivity time.Time
 	}
-
-	TxFinalityInTheBranch struct {
-		RootRecord multistate.RootRecord
-		Rooted     bool
-	}
 )
 
 func New(env Environment) *MemDAG {
@@ -62,19 +61,13 @@ func New(env Environment) *MemDAG {
 	}
 }
 
-const (
-	pruningTTLSlots            = 5
-	sharedStateReaderCacheSize = 3000
-)
-
-func (d *MemDAG) PruningTTLSlots() int {
-	return pruningTTLSlots
-}
+const sharedStateReaderCacheSize = 3000
 
 func (d *MemDAG) WithGlobalWriteLock(fun func()) {
 	d.mutex.Lock()
+	defer d.mutex.Unlock()
+
 	fun()
-	d.mutex.Unlock()
 }
 
 func (d *MemDAG) GetVertexNoLock(txid *ledger.TransactionID) *vertex.WrappedTx {
@@ -88,6 +81,7 @@ func (d *MemDAG) GetVertex(txid *ledger.TransactionID) *vertex.WrappedTx {
 	return d.GetVertexNoLock(txid)
 }
 
+// NumVertices number of vertices
 func (d *MemDAG) NumVertices() int {
 	d.mutex.RLock()
 	defer d.mutex.RUnlock()
