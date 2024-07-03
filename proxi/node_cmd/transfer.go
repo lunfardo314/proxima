@@ -56,7 +56,7 @@ func runTransferCmd(_ *cobra.Command, args []string) {
 	glb.Infof("trace on node: %v", glb.TraceTx())
 	prompt := fmt.Sprintf("transfer will cost %d of fees paid to the tag-along sequencer %s. Proceed?", feeAmount, tagAlongSeqID.StringShort())
 
-	if !glb.YesNoPrompt(prompt, true, glb.BypassYesNoPrompt()) {
+	if !glb.YesNoPrompt(prompt, true) {
 		glb.Infof("exit")
 		os.Exit(0)
 	}
