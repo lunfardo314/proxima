@@ -24,7 +24,6 @@ func initGenesisDBCmd() *cobra.Command {
 
 func runGenesis(_ *cobra.Command, _ []string) {
 	glb.FileMustNotExist(global.MultiStateDBName)
-	//glb.FileMustNotExist(global.TxStoreDBName)
 
 	idDataYAML, err := os.ReadFile(glb.LedgerIDFileName)
 	glb.AssertNoError(err)
@@ -36,7 +35,6 @@ func runGenesis(_ *cobra.Command, _ []string) {
 	glb.Infof("Will be creating genesis from the ledger identity data:")
 	glb.Infof(idData.Lines("      ").String())
 	glb.Infof("Multi-state database name: '%s'", global.MultiStateDBName)
-	//glb.Infof("Transaction store database name: '%s'", global.TxStoreDBName)
 
 	if !glb.YesNoPrompt("Proceed?", true) {
 		glb.Fatalf("exit: genesis database wasn't created")
@@ -49,8 +47,4 @@ func runGenesis(_ *cobra.Command, _ []string) {
 
 	bootstrapChainID, _ := multistate.InitStateStore(*idData, stateStore)
 	glb.Infof("Genesis state DB '%s' has been created successfully.\nBootstrap sequencer chainID: %s", global.MultiStateDBName, bootstrapChainID.String())
-
-	//txStore := badger_adaptor.NewDefault(badger_adaptor.MustCreateOrOpenBadgerDB(global.TxStoreDBName, badger.DefaultOptions(global.TxStoreDBName)))
-	//glb.Infof("Transaction store DB '%s' has been created successfully", global.TxStoreDBName)
-	//defer func() { _ = txStore.Close() }()
 }

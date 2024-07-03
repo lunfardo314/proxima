@@ -37,8 +37,6 @@ type (
 	ChainID [ChainIDLength]byte
 )
 
-var All0TransactionHash = TransactionIDShort{}
-
 func HashTransactionBytes(txBytes []byte) (ret TransactionIDShort) {
 	h := blake2b.Sum256(txBytes)
 	copy(ret[:], h[:TransactionIDShortLength])

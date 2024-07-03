@@ -373,11 +373,13 @@ func StateIdentityDataFromYAML(yamlData []byte) (*IdentityData, error) {
 	return yamlAble.stateIdentityData()
 }
 
+// GenesisTransactionID independent on any ledger constants
 func GenesisTransactionID() *TransactionID {
-	ret := NewTransactionID(MustNewLedgerTime(0, 0), All0TransactionHash, true)
+	ret := NewTransactionID(Time{}, TransactionIDShort{}, true)
 	return &ret
 }
 
+// GenesisOutputID independent on ledger constants, except GenesisOutputIndex which is byte(0)
 func GenesisOutputID() (ret OutputID) {
 	// we are placing sequencer flag = true into the genesis tx ID to please sequencer constraint
 	// of the origin branch transaction. It is the only exception
@@ -385,6 +387,7 @@ func GenesisOutputID() (ret OutputID) {
 	return
 }
 
+// GenesisStemOutputID independent on ledger constants, except GenesisStemOutputIndex which is byte(1)
 func GenesisStemOutputID() (ret OutputID) {
 	ret = NewOutputID(GenesisTransactionID(), GenesisStemOutputIndex)
 	return
