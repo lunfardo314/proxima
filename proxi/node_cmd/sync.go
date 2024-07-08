@@ -1,6 +1,7 @@
 package node_cmd
 
 import (
+	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/spf13/cobra"
 )
 
@@ -17,11 +18,11 @@ func initSyncInfoCmd() *cobra.Command {
 }
 
 func runSyncInfoCmd(_ *cobra.Command, _ []string) {
-	//InitLedgerFromNode()
+	glb.InitLedgerFromNode()
 	//
-	//syncInfo, err := getClient().GetSyncInfo()
-	//glb.AssertNoError(err)
-	//glb.Infof("  node synced: %v", syncInfo.Synced)
+	syncInfo, err := glb.GetClient().GetSyncInfo()
+	glb.AssertNoError(err)
+	glb.Infof("  node synced: %v", syncInfo.Synced)
 	//glb.Infof("  in the sync window: %v", syncInfo.InSyncWindow)
 	//glb.Infof("  activity by sequencer:")
 	//sorted := util.KeysSorted(syncInfo.PerSequencer, func(k1, k2 ledger.ChainID) bool {
