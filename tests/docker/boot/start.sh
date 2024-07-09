@@ -39,7 +39,7 @@ if [ ! -f "$INITIALIZED_FILE" ]; then
         echo "init bootstrap_account"
         ./proxi init bootstrap_account
     fi
-    if [ "$NODE_NAME" == "1" ] || [ "$NODE_NAME" == "4" ] || [ "$NODE_NAME" == "2" ]; then
+    if [ "$NODE_NAME" == "1" ] || [ "$NODE_NAME" == "2" ] || [ "$NODE_NAME" == "4" ]; then
         echo "setup sequencer"
 
         ./proxima &

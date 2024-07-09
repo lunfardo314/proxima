@@ -48,5 +48,8 @@ WORKDIR /app/
 # Copy the Pre-built binary file from the previous stage
 COPY --from=build /app /app
 
+# delete unneccessary files
+RUN rm /app/build.sh /app/docker-compose.yml /app/dockerfile /app/run.sh /app/stop.sh
+
 # Command to run the executable
 #CMD ["bash"]
