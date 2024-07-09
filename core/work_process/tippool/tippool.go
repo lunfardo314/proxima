@@ -29,12 +29,7 @@ type (
 		*queue.Queue[Input]
 		Environment
 		mutex            sync.RWMutex
-		latestMilestones map[ledger.ChainID]milestoneData
-	}
-
-	milestoneData struct {
-		*vertex.WrappedTx
-		BranchID ledger.TransactionID
+		latestMilestones map[ledger.ChainID]*vertex.WrappedTx
 	}
 )
 
@@ -48,7 +43,7 @@ func New(env Environment) *SequencerTips {
 	return &SequencerTips{
 		Queue:            queue.NewQueueWithBufferSize[Input](Name, chanBufferSize, env.Log().Level(), nil),
 		Environment:      env,
-		latestMilestones: make(map[ledger.ChainID]milestoneData),
+		latestMilestones: make(map[ledger.ChainID]*vertex.WrappedTx),
 	}
 }
 
@@ -72,17 +67,17 @@ func (t *SequencerTips) Consume(inp Input) {
 	storedNew := false
 	old, prevExists := t.latestMilestones[seqIDIncoming]
 	if prevExists {
-		if old.WrappedTx == inp.VID {
+		if old == inp.VID {
 			// repeating, ignore
 			return
 		}
 		if ledger.TooCloseOnTimeAxis(&old.ID, &inp.VID.ID) {
 			t.Environment.Log().Warnf("tippool: %s and %s: too close on time axis", old.IDShortString(), inp.VID.IDShortString())
 		}
-		if t.oldReplaceWithNew(old.WrappedTx, inp.VID) {
+		if t.oldReplaceWithNew(old, inp.VID) {
 			if inp.VID.Reference() {
 				old.UnReference()
-				t.latestMilestones[seqIDIncoming] = milestoneData{WrappedTx: inp.VID, BranchID: inp.VID.BaselineBranch().ID}
+				t.latestMilestones[seqIDIncoming] = inp.VID
 				storedNew = true
 			}
 		} else {
@@ -90,7 +85,7 @@ func (t *SequencerTips) Consume(inp Input) {
 		}
 	} else {
 		if inp.VID.Reference() {
-			t.latestMilestones[seqIDIncoming] = milestoneData{WrappedTx: inp.VID, BranchID: inp.VID.BaselineBranch().ID}
+			t.latestMilestones[seqIDIncoming] = inp.VID
 			storedNew = true
 		}
 	}
@@ -119,11 +114,12 @@ func (t *SequencerTips) oldReplaceWithNew(old, new *vertex.WrappedTx) bool {
 	return vertex.IsPreferredMilestoneAgainstTheOther(new, old, false)
 }
 
+// GetLatestMilestone will return nil if sequencer is not in the list
 func (t *SequencerTips) GetLatestMilestone(seqID ledger.ChainID) *vertex.WrappedTx {
 	t.mutex.RLock()
 	defer t.mutex.RUnlock()
 
-	return t.latestMilestones[seqID].WrappedTx
+	return t.latestMilestones[seqID]
 }
 
 // LatestMilestonesDescending returns sequencer transactions from sequencer tippool. Optionally filters
@@ -139,8 +135,8 @@ func (t *SequencerTips) LatestMilestonesDescending(filter ...func(seqID ledger.C
 
 	ret := make([]*vertex.WrappedTx, 0, len(t.latestMilestones))
 	for seqID, ms := range t.latestMilestones {
-		if flt(seqID, ms.WrappedTx) {
-			ret = append(ret, ms.WrappedTx)
+		if flt(seqID, ms) {
+			ret = append(ret, ms)
 		}
 	}
 	sort.Slice(ret, func(i, j int) bool {
