@@ -21,3 +21,4 @@
 go.work
 /proximadb/
 /proximadb.txstore/
+.vscode/launch.json

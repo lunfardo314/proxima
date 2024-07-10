@@ -1,0 +1,55 @@
+# Use the official Golang image as the base image
+FROM golang:1.22-bookworm AS build
+
+# Set the current Working Directory inside the container
+RUN mkdir /scratch
+WORKDIR /scratch
+
+# Prepare the folder where we are putting all the files
+RUN mkdir /app
+
+WORKDIR /scratch
+
+# Copy everything from the current directory to the PWD(Present Working Directory) inside the container
+COPY proxima/ .
+
+# copy the config files
+RUN cp ./tests/docker/boot/* /app
+RUN cp -r ./tests/docker/* /app
+
+# Download go modules
+RUN go mod download
+#RUN go mod verify
+
+# Build the Go server program
+RUN go build
+RUN cp ./proxima /app
+
+WORKDIR /scratch/proxi
+# Download go modules
+RUN go mod download
+#RUN go mod verify
+
+RUN go build
+RUN cp ./proxi /app
+
+
+WORKDIR /app
+RUN ./proxi init ledger_id
+
+# Start a new stage from scratch
+FROM busybox:latest
+
+RUN mkdir /app
+
+# Set the Current Working Directory inside the container
+WORKDIR /app/
+
+# Copy the Pre-built binary file from the previous stage
+COPY --from=build /app /app
+
+# delete unneccessary files
+RUN rm /app/build.sh /app/docker-compose.yml /app/dockerfile /app/run.sh /app/stop.sh
+
+# Command to run the executable
+#CMD ["bash"]
