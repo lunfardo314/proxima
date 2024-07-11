@@ -2,7 +2,6 @@
 The code should not be used in production!*
 
 # Proxima: a DAG-based cooperative distributed ledger
-
 Proxima is as decentralized and permissionless as Bitcoin (*proof-of-work*, PoW). 
 <br>It is similar to *proof-of stake* (PoS), especially because of its energy-efficiency and throughput.
 <br>Yet it is neither PoW, nor a PoS system. It is based on **cooperative consensus**. See [whitepaper](docs/Proxima_WP.pdf).
@@ -34,7 +33,6 @@ The repository contains Proxima node prototype intended for experimental researc
 It also contains some tools, which includes basic wallet functionality.
 
 ## Highlights of the system's architecture
-
 * **Fully permissionless**, unbounded, and globally unknown set of pseudonymous participants. 
 Participation in the ledger as a user is equivalent to participation as "validator", it is fully open. 
 There is no need for any kind of permissions, registration, committee selection or voting processes. Nobody tracks existing participants nor a category of it.
@@ -66,17 +64,16 @@ it cannot be used as a single global liquidity pool in the smart contract.
 much simpler than most PoS systems, which are usually complex in their consensus layer and due to synchronicity requirements 
 
 ## Further information
-* The [technical whitepaper](docs/Proxima_WP.pdf) contains detailed description of the *cooperative ledger* concept
-* [TODO list](TODO.md) contains most pressing development topics with their completion status
-* Introductory videos:
-  * [1. Introduction. Principles of Nakamoto consensus](https://youtu.be/qDnjnrOJK_g)
-  * [2. UTXO tangle. Ledger coverage](https://youtu.be/CT0_FlW-ObM)
-  * [3. Cooperative consensus](https://youtu.be/7N_L6CMyRdo)
-* Tutorials:
+* [Technical whitepaper (pdf)](docs/Proxima_WP.pdf) contains detailed description of the *cooperative ledger* concept
+* [Simplified presentation of Proxima concepts](https://hackmd.io/@Evaldas/Sy4Gka1DC) skips many technical details and adds more pictures
+* Tutorials and instructions:
   * [CLI wallet program `proxi`](docs/proxi.md)
   * [Running first node in the network](docs/run_boot.md)
   * [Running access node](docs/run_access.md)
   * [Running node with sequencer](docs/run_sequencer.md)
-
-
- 
+  * [Running small testnet in Docker](docs/docker-network.md)
+* Introductory videos:
+  * [1. Introduction. Principles of Nakamoto consensus](https://youtu.be/qDnjnrOJK_g)
+  * [2. UTXO tangle. Ledger coverage](https://youtu.be/CT0_FlW-ObM)
+  * [3. Cooperative consensus](https://youtu.be/7N_L6CMyRdo)
+* [TODO list](TODO.md) contains most pressing development topics with their completion status
