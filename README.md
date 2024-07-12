@@ -71,7 +71,7 @@ much simpler than most PoS systems, which are usually complex in their consensus
   * [Running first node in the network](docs/run_boot.md)
   * [Running access node](docs/run_access.md)
   * [Running node with sequencer](docs/run_sequencer.md)
-  * [Running small testnet in Docker](docs/docker-network.md)
+  * [Running small testnet in Docker](tests/docker/docker-network.md)
 * Introductory videos:
   * [1. Introduction. Principles of Nakamoto consensus](https://youtu.be/qDnjnrOJK_g)
   * [2. UTXO tangle. Ledger coverage](https://youtu.be/CT0_FlW-ObM)
