@@ -39,7 +39,7 @@ The directory ./boot for the bootstrap node also contains
 ### Configuration of the network
 
 #### Funds distribution
-The amount of initial funds for an account can be adjusted in the file ./boot/distribution,yaml in the directory.
+The amount of initial funds for an account can be adjusted in the file ./boot/distribution.yaml in the directory.
 
 #### Sequencer setup
 The sequencers on the nodes are installed in ./boot/start.sh:
