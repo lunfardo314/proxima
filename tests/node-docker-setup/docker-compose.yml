@@ -1,0 +1,14 @@
+services:
+  node0:
+    build:
+      context: ../../..
+      dockerfile: proxima/tests/node-docker-setup/dockerfile
+    container_name: Proxima-Node
+    image: proxima-node:latest    
+    ports:
+      - "8000:8000"
+      - "4000:4000"
+    environment:
+      - DEBUG=true
+    working_dir: /app     
+    command: ["./start.sh"]
