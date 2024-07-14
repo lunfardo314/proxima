@@ -2,6 +2,7 @@ package proposer_base
 
 import (
 	"github.com/lunfardo314/proxima/core/attacher"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/sequencer/factory/proposer_generic"
 	"github.com/lunfardo314/proxima/util"
 )
@@ -34,6 +35,11 @@ func Strategy() *proposer_generic.Strategy {
 
 func (b *BaseProposer) propose() (*attacher.IncrementalAttacher, bool) {
 	extend := b.OwnLatestMilestoneOutput()
+	if !ledger.ValidSequencerPace(extend.Timestamp(), b.TargetTs) {
+		// it means proposer is obsolete, abandon it
+		b.Tracef(TraceTag, "%s force exit: own lates milestone and target ts does not make valid pace %s", b.Name, extend.IDShortString)
+		return nil, true
+	}
 
 	b.Tracef(TraceTag, "%s extending %s", b.Name, extend.IDShortString)
 	// own latest milestone exists

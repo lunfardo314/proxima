@@ -215,37 +215,29 @@ func DiffTicks(t1, t2 Time) int64 {
 	return slots1 - slots2
 }
 
-// ValidTransactionPace checks if 2 timestamps have at least time pace slots in between
+// ValidTransactionPace return true is subsequent input and target non-sequencer tx timestamps make a valid pace
 func ValidTransactionPace(t1, t2 Time) bool {
 	return DiffTicks(t2, t1) >= int64(TransactionPace())
 }
 
+// ValidSequencerPace return true is subsequent input and target sequencer tx timestamps make a valid pace
 func ValidSequencerPace(t1, t2 Time) bool {
 	return DiffTicks(t2, t1) >= int64(TransactionPaceSequencer())
 }
 
-func (t Time) AddTicks(s int) Time {
-	util.Assertf(s >= 0, "AddTicks: can't be negative argument")
-	s1 := int(t.Tick()) + int(s)
+// AddTicks adds ticks to timestamp. ticks can be negative
+func (t Time) AddTicks(ticks int) Time {
+	util.Assertf(ticks >= 0, "AddTicks: can't be negative argument")
+	s1 := int(t.Tick()) + ticks
 	ticksPerSlot := L().ID.TicksPerSlot()
-	eRet := s1 / ticksPerSlot // DefaultTicksPerSlot
-	sRet := s1 % ticksPerSlot // DefaultTicksPerSlot
+	eRet := s1 / ticksPerSlot
+	sRet := s1 % ticksPerSlot
 	return MustNewLedgerTime(t.Slot()+Slot(eRet), Tick(sRet))
 }
 
+// AddSlots adds slots to timestamp
 func (t Time) AddSlots(e int) Time {
 	return MustNewLedgerTime(t.Slot()+Slot(e), t.Tick())
-}
-
-func (t Time) SubtractSlotsSafe(s Slot) Time {
-	if t.Slot() < s {
-		return MustNewLedgerTime(0, t.Tick())
-	}
-	return MustNewLedgerTime(t.Slot()-s, t.Tick())
-}
-
-func (t Time) AddDuration(d time.Duration) Time {
-	return TimeFromRealTime(t.Time().Add(d))
 }
 
 func MaxTime(ts ...Time) Time {
