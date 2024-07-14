@@ -2,6 +2,7 @@ package glb
 
 import (
 	"sync"
+	"time"
 
 	"github.com/lunfardo314/proxima/api/client"
 	"github.com/lunfardo314/proxima/ledger"
@@ -13,10 +14,18 @@ var displayEndpointOnce sync.Once
 func GetClient() *client.APIClient {
 	endpoint := viper.GetString("api.endpoint")
 	Assertf(endpoint != "", "node API endpoint not specified")
+	var timeout []time.Duration
+	if timeoutSec := viper.GetInt("api.timeout_sec"); timeoutSec > 0 {
+		timeout = []time.Duration{time.Duration(timeoutSec) * time.Second}
+	}
 	displayEndpointOnce.Do(func() {
-		Infof("using API endpoint: %s", endpoint)
+		if len(timeout) == 0 {
+			Infof("using API endpoint: %s, default timeout", endpoint)
+		} else {
+			Infof("using API endpoint: %s, timeout: %v", endpoint, timeout[0])
+		}
 	})
-	return client.New(endpoint)
+	return client.New(endpoint, timeout...)
 }
 
 func InitLedgerFromNode() {

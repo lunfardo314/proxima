@@ -49,7 +49,7 @@ func New(env Environment) *Server {
 
 func (srv *Server) registerHandlers() {
 	// GET request format: '/get_ledger_id'
-	http.HandleFunc(api.PathGetLedgerID, getLedgerID)
+	http.HandleFunc(api.PathGetLedgerID, srv.getLedgerID)
 	// GET request format: '/get_account_outputs?accountable=<EasyFL source form of the accountable lock constraint>'
 	http.HandleFunc(api.PathGetAccountOutputs, srv.getAccountOutputs)
 	// GET request format: '/get_chain_output?chainid=<hex-encoded chain ID>'
@@ -68,7 +68,9 @@ func (srv *Server) registerHandlers() {
 	http.HandleFunc(api.PathGetNodeInfo, srv.getNodeInfo)
 }
 
-func getLedgerID(w http.ResponseWriter, r *http.Request) {
+func (srv *Server) getLedgerID(w http.ResponseWriter, r *http.Request) {
+	srv.Tracef(TraceTag, "getLedgerID invoked")
+
 	resp := &api.LedgerID{
 		LedgerIDBytes: hex.EncodeToString(ledger.L().ID.Bytes()),
 	}
