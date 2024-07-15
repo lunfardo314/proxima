@@ -143,7 +143,7 @@ func initWorkflowTest(t *testing.T, nChains int, startPruner ...bool) *workflowT
 	if len(startPruner) > 0 && startPruner[0] {
 		ret.wrk = workflow.New(ret.env, peering.NewPeersDummy())
 	} else {
-		ret.wrk = workflow.New(ret.env, peering.NewPeersDummy(), workflow.OptionDoNotStartPruner)
+		ret.wrk = workflow.New(ret.env, peering.NewPeersDummy(), workflow.OptionDoNotStartPruner, workflow.OptionDoNotStartSyncManager)
 	}
 	ret.wrk.Start()
 

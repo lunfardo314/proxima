@@ -13,6 +13,10 @@ const (
 
 	// MaxSyncPortionInSlots max number of slots in the sync portion
 	MaxSyncPortionInSlots = 100
+
+	// PullSyncPortionThresholdSlots specifies threshold of diff between current slot and latest slot in DB
+	// when start pulling sync portions
+	PullSyncPortionThresholdSlots = 10
 )
 
 func init() {

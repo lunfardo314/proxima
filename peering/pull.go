@@ -119,6 +119,37 @@ func (ps *Peers) PullTransactionsFromRandomPeer(txids ...ledger.TransactionID) b
 	return false
 }
 
+func (ps *Peers) sendPullSyncPortionToPeer(id peer.ID, startingFrom ledger.Slot, maxSlots int) {
+	stream, err := ps.host.NewStream(ps.Ctx(), id, ps.lppProtocolPull)
+	if err != nil {
+		return
+	}
+	defer stream.Close()
+
+	_ = writeFrame(stream, encodeSyncPortionMsg(startingFrom, maxSlots))
+}
+
+func (ps *Peers) PullSyncPortionFromRandomPeer(startingFrom ledger.Slot, maxSlots int) bool {
+	ps.mutex.RLock()
+	defer ps.mutex.RUnlock()
+
+	all := maps.Keys(ps.peers)
+	for _, idx := range rand.Perm(len(all)) {
+		rndID := all[idx]
+		p := ps.peers[rndID]
+		if p.isCommunicationOpen() && p.isAlive() && p.HasTxStore() {
+			ps.Tracef(TraceTag, "pull sync portion from random peer %s. From slot: %d, up to slots: %d",
+				func() any { return ShortPeerIDString(rndID) },
+				int(startingFrom),
+				maxSlots,
+			)
+			ps.sendPullSyncPortionToPeer(rndID, startingFrom, maxSlots)
+			return true
+		}
+	}
+	return false
+}
+
 func _txidLst(txids ...ledger.TransactionID) string {
 	ret := make([]string, len(txids))
 	for i := range ret {

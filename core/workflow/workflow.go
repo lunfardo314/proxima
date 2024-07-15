@@ -6,6 +6,7 @@ import (
 
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/lunfardo314/proxima/core/memdag"
+	"github.com/lunfardo314/proxima/core/syncmgr"
 	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/core/work_process/events"
@@ -36,15 +37,17 @@ type (
 		*memdag.MemDAG
 		peers *peering.Peers
 		// daemons
-		pullClient       *pull_client.PullClient
-		pullTxServer     *pull_tx_server.PullTxServer
-		pullSyncServer   *pull_sync_server.PullSyncServer
-		gossip           *gossip.Gossip
-		persistTxBytes   *persist_txbytes.PersistTxBytes
-		poker            *poker.Poker
-		events           *events.Events
-		tippool          *tippool.SequencerTips
-		doNotStartPruner bool
+		pullClient            *pull_client.PullClient
+		pullTxServer          *pull_tx_server.PullTxServer
+		pullSyncServer        *pull_sync_server.PullSyncServer
+		gossip                *gossip.Gossip
+		persistTxBytes        *persist_txbytes.PersistTxBytes
+		poker                 *poker.Poker
+		events                *events.Events
+		tippool               *tippool.SequencerTips
+		doNotStartPruner      bool
+		doNotStartSyncManager bool
+		syncManager           *syncmgr.SyncManager
 		//
 		enableTrace    atomic.Bool
 		traceTagsMutex sync.RWMutex
@@ -64,11 +67,12 @@ func New(env Environment, peers *peering.Peers, opts ...ConfigOption) *Workflow 
 	}
 
 	ret := &Workflow{
-		Environment:      env,
-		MemDAG:           memdag.New(env),
-		peers:            peers,
-		traceTags:        set.New[string](),
-		doNotStartPruner: cfg.doNotStartPruner,
+		Environment:           env,
+		MemDAG:                memdag.New(env),
+		peers:                 peers,
+		traceTags:             set.New[string](),
+		doNotStartPruner:      cfg.doNotStartPruner,
+		doNotStartSyncManager: cfg.doNotStartSyncManager,
 	}
 	ret.poker = poker.New(ret)
 	ret.events = events.New(ret)
@@ -97,6 +101,9 @@ func (w *Workflow) Start() {
 		prune := pruner.New(w) // refactor
 		prune.Start()
 	}
+	if !w.doNotStartSyncManager {
+		w.syncManager = syncmgr.StartSyncManager(w)
+	}
 
 	w.peers.OnReceiveTxBytes(func(from peer.ID, txBytes []byte, metadata *txmetadata.TransactionMetadata) {
 		txid, err := w.TxBytesIn(txBytes, WithPeerMetadata(from, metadata))
@@ -107,7 +114,10 @@ func (w *Workflow) Start() {
 			}
 			w.Tracef(gossip.TraceTag, "tx-input from peer %s. Parse error: %s -> %v", from.String, txidStr, err)
 		} else {
-			w.Tracef(gossip.TraceTag, "tx-input from peer %s: %s", from.String, txid.StringShort)
+			if txid != nil {
+				w.Tracef(gossip.TraceTag, "tx-input from peer %s: %s", from.String, txid.StringShort)
+			}
+			// txid == nil -> transaction ignored because it is still syncing and lost
 		}
 	})
 

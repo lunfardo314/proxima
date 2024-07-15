@@ -135,3 +135,7 @@ func (w *Workflow) WaitTxIDDefined(txid *ledger.TransactionID, pollPeriod, timeo
 		}
 	}
 }
+
+func (w *Workflow) PullSyncPortion(startingFrom ledger.Slot, maxSlots int) {
+	w.peers.PullSyncPortionFromRandomPeer(startingFrom, maxSlots)
+}

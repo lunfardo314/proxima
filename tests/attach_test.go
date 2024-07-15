@@ -38,7 +38,7 @@ func TestBasic(t *testing.T) {
 
 		env.StartTracingTags(global.TraceTag)
 
-		wrk := workflow.New(env, peering.NewPeersDummy(), workflow.OptionDoNotStartPruner)
+		wrk := workflow.New(env, peering.NewPeersDummy(), workflow.OptionDoNotStartPruner, workflow.OptionDoNotStartSyncManager)
 		wrk.Start()
 
 		_, _, err := multistate.ScanGenesisState(stateStore)
@@ -76,7 +76,7 @@ func TestBasic(t *testing.T) {
 		txBytesStore := txstore.NewSimpleTxBytesStore(common.NewInMemoryKVStore())
 
 		env := newWorkflowDummyEnvironment(stateStore, txBytesStore)
-		wrk := workflow.New(env, peering.NewPeersDummy(), workflow.OptionDoNotStartPruner)
+		wrk := workflow.New(env, peering.NewPeersDummy(), workflow.OptionDoNotStartPruner, workflow.OptionDoNotStartSyncManager)
 		wrk.Start()
 
 		txBytes, err := txbuilder.DistributeInitialSupply(stateStore, privKey, distrib)
@@ -140,7 +140,7 @@ func TestBasic(t *testing.T) {
 		txBytesStore := txstore.NewSimpleTxBytesStore(common.NewInMemoryKVStore())
 
 		env := newWorkflowDummyEnvironment(stateStore, txBytesStore)
-		wrk := workflow.New(env, peering.NewPeersDummy(), workflow.OptionDoNotStartPruner)
+		wrk := workflow.New(env, peering.NewPeersDummy(), workflow.OptionDoNotStartPruner, workflow.OptionDoNotStartSyncManager)
 
 		//wrk.StartTracingTags(attacher.TraceTagAttach, attacher.TraceTagAttachMilestone, attacher.TraceTagAttachVertex)
 		//wrk.StartTracingTags(attacher.TraceTagAttachEndorsements, attacher.TraceTagAttachOutput)
@@ -211,7 +211,7 @@ func TestBasic(t *testing.T) {
 		txBytesStore := txstore.NewSimpleTxBytesStore(common.NewInMemoryKVStore())
 
 		env := newWorkflowDummyEnvironment(stateStore, txBytesStore)
-		wrk := workflow.New(env, peering.NewPeersDummy(), workflow.OptionDoNotStartPruner)
+		wrk := workflow.New(env, peering.NewPeersDummy(), workflow.OptionDoNotStartPruner, workflow.OptionDoNotStartSyncManager)
 		wrk.Start()
 
 		txBytes, err := txbuilder.DistributeInitialSupply(stateStore, privKey, distrib)

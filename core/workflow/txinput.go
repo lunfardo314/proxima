@@ -49,6 +49,11 @@ func (w *Workflow) TxBytesIn(txBytes []byte, opts ...TxBytesInOption) (*ledger.T
 	}
 	txid := tx.ID()
 
+	if w.syncManager != nil && w.syncManager.IgnoreFutureTxID(txid) {
+		// still syncing. Ignore transaction
+		return nil, nil
+	}
+
 	if options.txTrace {
 		w.StartTracingTx(*txid)
 	}
