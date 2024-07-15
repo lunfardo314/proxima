@@ -33,18 +33,19 @@ type APIClient struct {
 	prefix string
 }
 
-func New(serverURL string, timeout ...time.Duration) *APIClient {
-	var to time.Duration
-	if len(timeout) > 0 {
-		to = timeout[0]
-	} else {
-		to = apiDefaultClientTimeout
-	}
-	return &APIClient{
-		c:      http.Client{Timeout: to},
-		prefix: serverURL,
-	}
-}
+// not useful, too big delays with DNS names
+//func New(serverURL string, timeout ...time.Duration) *APIClient {
+//	var to time.Duration
+//	if len(timeout) > 0 {
+//		to = timeout[0]
+//	} else {
+//		to = apiDefaultClientTimeout
+//	}
+//	return &APIClient{
+//		c:      http.Client{Timeout: to},
+//		prefix: serverURL,
+//	}
+//}
 
 // NewWithGoogleDNS following ChatGPT suggestion to use GoogleDNS to speed up DNS name resolution
 // Otherwise it takes too long in Proxi

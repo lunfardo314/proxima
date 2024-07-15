@@ -25,7 +25,7 @@ func initNodeConfigCmd() *cobra.Command {
 	}
 
 	initNodeConfig.PersistentFlags().BoolVarP(&includeSeq, "sequencer", "s", false, "include sequencer config template")
-	err := viper.BindPFlag("trace", initNodeConfig.PersistentFlags().Lookup("sequencer"))
+	err := viper.BindPFlag("sequencer", initNodeConfig.PersistentFlags().Lookup("sequencer"))
 	glb.AssertNoError(err)
 
 	return initNodeConfig
