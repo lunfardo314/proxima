@@ -275,7 +275,7 @@ func TestSendMsg(t *testing.T) {
 
 		for _, h := range hosts {
 			h1 := h
-			h1.OnReceivePullRequest(func(from peer.ID, txids []ledger.TransactionID) {
+			h1.OnReceivePullTxRequest(func(from peer.ID, txids []ledger.TransactionID) {
 				//t.Logf("pull %d", len(txids))
 				txSetMutex.Lock()
 				defer txSetMutex.Unlock()

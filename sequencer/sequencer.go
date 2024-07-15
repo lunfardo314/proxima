@@ -155,7 +155,7 @@ func (cfg *ConfigOptions) lines(seqID ledger.ChainID, controller ledger.AddressE
 		Add("Pace: %d ticks", cfg.Pace).
 		Add("MaxTagAlongInputs: %d", cfg.MaxTagAlongInputs).
 		Add("MaxTargetTs: %s", cfg.MaxTargetTs.String()).
-		Add("MaxBranches: %d", cfg.MaxBranches).
+		Add("MaxSlots: %d", cfg.MaxBranches).
 		Add("DelayStart: %v", cfg.DelayStart).
 		Add("BacklogTTLSlots: %d", cfg.BacklogTTLSlots).
 		Add("MilestoneTTLSlots: %d", cfg.MilestonesTTLSlots).

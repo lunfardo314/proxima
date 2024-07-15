@@ -1,4 +1,4 @@
-package pull_server
+package pull_tx_server
 
 import (
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -22,26 +22,26 @@ type (
 		PeerID peer.ID
 	}
 
-	PullServer struct {
+	PullTxServer struct {
 		*queue.Queue[*Input]
 		Environment
 	}
 )
 
 const (
-	Name           = "pull_server"
+	Name           = "pullTxServer"
 	TraceTag       = Name
 	chanBufferSize = 10
 )
 
-func New(env Environment) *PullServer {
-	return &PullServer{
-		Queue:       queue.NewQueueWithBufferSize[*Input]("pullServer", chanBufferSize, env.Log().Level(), nil),
+func New(env Environment) *PullTxServer {
+	return &PullTxServer{
+		Queue:       queue.NewQueueWithBufferSize[*Input](Name, chanBufferSize, env.Log().Level(), nil),
 		Environment: env,
 	}
 }
 
-func (d *PullServer) Start() {
+func (d *PullTxServer) Start() {
 	d.MarkWorkProcessStarted(Name)
 	d.AddOnClosed(func() {
 		d.MarkWorkProcessStopped(Name)
@@ -49,7 +49,7 @@ func (d *PullServer) Start() {
 	d.Queue.Start(d, d.Ctx())
 }
 
-func (d *PullServer) Consume(inp *Input) {
+func (d *PullTxServer) Consume(inp *Input) {
 	if txBytesWithMetadata := d.TxBytesStore().GetTxBytesWithMetadata(&inp.TxID); len(txBytesWithMetadata) > 0 {
 		metadataBytes, txBytes, err := txmetadata.SplitTxBytesWithMetadata(txBytesWithMetadata)
 		util.AssertNoError(err)

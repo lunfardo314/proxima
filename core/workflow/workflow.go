@@ -14,7 +14,8 @@ import (
 	"github.com/lunfardo314/proxima/core/work_process/poker"
 	"github.com/lunfardo314/proxima/core/work_process/pruner"
 	"github.com/lunfardo314/proxima/core/work_process/pull_client"
-	"github.com/lunfardo314/proxima/core/work_process/pull_server"
+	"github.com/lunfardo314/proxima/core/work_process/pull_sync_server"
+	"github.com/lunfardo314/proxima/core/work_process/pull_tx_server"
 	"github.com/lunfardo314/proxima/core/work_process/tippool"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
@@ -36,7 +37,8 @@ type (
 		peers *peering.Peers
 		// daemons
 		pullClient       *pull_client.PullClient
-		pullServer       *pull_server.PullServer
+		pullTxServer     *pull_tx_server.PullTxServer
+		pullSyncServer   *pull_sync_server.PullSyncServer
 		gossip           *gossip.Gossip
 		persistTxBytes   *persist_txbytes.PersistTxBytes
 		poker            *poker.Poker
@@ -71,7 +73,8 @@ func New(env Environment, peers *peering.Peers, opts ...ConfigOption) *Workflow 
 	ret.poker = poker.New(ret)
 	ret.events = events.New(ret)
 	ret.pullClient = pull_client.New(ret)
-	ret.pullServer = pull_server.New(ret)
+	ret.pullTxServer = pull_tx_server.New(ret)
+	ret.pullSyncServer = pull_sync_server.New(ret)
 	ret.gossip = gossip.New(ret)
 	ret.persistTxBytes = persist_txbytes.New(ret)
 	ret.tippool = tippool.New(ret)
@@ -85,7 +88,8 @@ func (w *Workflow) Start() {
 	w.poker.Start()
 	w.events.Start()
 	w.pullClient.Start()
-	w.pullServer.Start()
+	w.pullTxServer.Start()
+	w.pullSyncServer.Start()
 	w.gossip.Start()
 	w.persistTxBytes.Start()
 	w.tippool.Start()
@@ -107,17 +111,29 @@ func (w *Workflow) Start() {
 		}
 	})
 
-	w.peers.OnReceivePullRequest(func(from peer.ID, txids []ledger.TransactionID) {
-		for i := range txids {
-			w.Tracef(pull_server.TraceTag, "received pull request for %s", txids[i].StringShort)
-			w.pullServer.Push(&pull_server.Input{
-				TxID:   txids[i],
-				PeerID: from,
-			})
-		}
+	w.peers.OnReceivePullTxRequest(func(from peer.ID, txids []ledger.TransactionID) {
+		w.SendTransactions(from, txids)
+	})
+
+	w.peers.OnReceivePullSyncPortion(func(from peer.ID, startingFrom ledger.Slot, maxSlots int) {
+		w.pullSyncServer.Push(&pull_sync_server.Input{
+			StartFrom: startingFrom,
+			MaxSlots:  maxSlots,
+			PeerID:    from,
+		})
 	})
 
 	go w.logSyncStatusLoop()
+}
+
+func (w *Workflow) SendTransactions(sendTo peer.ID, txids []ledger.TransactionID) {
+	for i := range txids {
+		w.Tracef(pull_tx_server.TraceTag, "received pull request for %s", txids[i].StringShort)
+		w.pullTxServer.Push(&pull_tx_server.Input{
+			TxID:   txids[i],
+			PeerID: sendTo,
+		})
+	}
 }
 
 const logSyncStatusEach = 2 * time.Second

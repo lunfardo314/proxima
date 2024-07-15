@@ -8,7 +8,6 @@ import (
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
-	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/util/queue"
 )
 
@@ -16,7 +15,6 @@ type (
 	Environment interface {
 		global.NodeGlobal
 		GetStateReaderForTheBranch(branch *ledger.TransactionID) global.IndexedStateReader
-		BranchHasTransaction(branchID, txid *ledger.TransactionID) (*multistate.RootRecord, bool)
 	}
 
 	Input struct {

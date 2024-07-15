@@ -44,16 +44,17 @@ type (
 
 	Peers struct {
 		Environment
-		mutex             sync.RWMutex
-		cfg               *Config
-		stopOnce          sync.Once
-		host              host.Host
-		kademliaDHT       *dht.IpfsDHT // not nil if autopeering is enabled
-		routingDiscovery  *routing.RoutingDiscovery
-		peers             map[peer.ID]*Peer // except self/host
-		onReceiveTx       func(from peer.ID, txBytes []byte, mdata *txmetadata.TransactionMetadata)
-		onReceivePullTx   func(from peer.ID, txids []ledger.TransactionID)
-		onReceivePullTips func(from peer.ID)
+		mutex            sync.RWMutex
+		cfg              *Config
+		stopOnce         sync.Once
+		host             host.Host
+		kademliaDHT      *dht.IpfsDHT // not nil if autopeering is enabled
+		routingDiscovery *routing.RoutingDiscovery
+		peers            map[peer.ID]*Peer // except self/host
+		// on receive handlers
+		onReceiveTx              func(from peer.ID, txBytes []byte, mdata *txmetadata.TransactionMetadata)
+		onReceivePullTx          func(from peer.ID, txids []ledger.TransactionID)
+		onReceivePullSyncPortion func(from peer.ID, startingFrom ledger.Slot, maxBranches int)
 		// lpp protocol names
 		lppProtocolGossip    protocol.ID
 		lppProtocolPull      protocol.ID
@@ -101,10 +102,10 @@ const (
 
 func NewPeersDummy() *Peers {
 	return &Peers{
-		peers:             make(map[peer.ID]*Peer),
-		onReceiveTx:       func(_ peer.ID, _ []byte, _ *txmetadata.TransactionMetadata) {},
-		onReceivePullTx:   func(_ peer.ID, _ []ledger.TransactionID) {},
-		onReceivePullTips: func(_ peer.ID) {},
+		peers:                    make(map[peer.ID]*Peer),
+		onReceiveTx:              func(_ peer.ID, _ []byte, _ *txmetadata.TransactionMetadata) {},
+		onReceivePullTx:          func(_ peer.ID, _ []ledger.TransactionID) {},
+		onReceivePullSyncPortion: func(_ peer.ID, _ ledger.Slot, _ int) {},
 	}
 }
 
@@ -127,17 +128,17 @@ func New(env Environment, cfg *Config) (*Peers, error) {
 	rendezvousNumber := binary.BigEndian.Uint64(ledgerLibraryHash[:8])
 
 	ret := &Peers{
-		Environment:          env,
-		cfg:                  cfg,
-		host:                 lppHost,
-		peers:                make(map[peer.ID]*Peer),
-		onReceiveTx:          func(_ peer.ID, _ []byte, _ *txmetadata.TransactionMetadata) {},
-		onReceivePullTx:      func(_ peer.ID, _ []ledger.TransactionID) {},
-		onReceivePullTips:    func(_ peer.ID) {},
-		lppProtocolGossip:    protocol.ID(fmt.Sprintf(lppProtocolGossip, rendezvousNumber)),
-		lppProtocolPull:      protocol.ID(fmt.Sprintf(lppProtocolPull, rendezvousNumber)),
-		lppProtocolHeartbeat: protocol.ID(fmt.Sprintf(lppProtocolHeartbeat, rendezvousNumber)),
-		rendezvousString:     fmt.Sprintf("%d", rendezvousNumber),
+		Environment:              env,
+		cfg:                      cfg,
+		host:                     lppHost,
+		peers:                    make(map[peer.ID]*Peer),
+		onReceiveTx:              func(_ peer.ID, _ []byte, _ *txmetadata.TransactionMetadata) {},
+		onReceivePullTx:          func(_ peer.ID, _ []ledger.TransactionID) {},
+		onReceivePullSyncPortion: func(_ peer.ID, _ ledger.Slot, _ int) {},
+		lppProtocolGossip:        protocol.ID(fmt.Sprintf(lppProtocolGossip, rendezvousNumber)),
+		lppProtocolPull:          protocol.ID(fmt.Sprintf(lppProtocolPull, rendezvousNumber)),
+		lppProtocolHeartbeat:     protocol.ID(fmt.Sprintf(lppProtocolHeartbeat, rendezvousNumber)),
+		rendezvousString:         fmt.Sprintf("%d", rendezvousNumber),
 	}
 
 	env.Log().Infof("peering: rendezvous number is %d", rendezvousNumber)
@@ -328,11 +329,18 @@ func (ps *Peers) OnReceiveTxBytes(fun func(from peer.ID, txBytes []byte, metadat
 	ps.onReceiveTx = fun
 }
 
-func (ps *Peers) OnReceivePullRequest(fun func(from peer.ID, txids []ledger.TransactionID)) {
+func (ps *Peers) OnReceivePullTxRequest(fun func(from peer.ID, txids []ledger.TransactionID)) {
 	ps.mutex.Lock()
 	defer ps.mutex.Unlock()
 
 	ps.onReceivePullTx = fun
+}
+
+func (ps *Peers) OnReceivePullSyncPortion(fun func(from peer.ID, startingFrom ledger.Slot, maxSlots int)) {
+	ps.mutex.Lock()
+	defer ps.mutex.Unlock()
+
+	ps.onReceivePullSyncPortion = fun
 }
 
 func (ps *Peers) getPeer(id peer.ID) *Peer {

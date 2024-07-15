@@ -285,10 +285,9 @@ func (d *MemDAG) VerticesDescending() []*vertex.WrappedTx {
 	return ret
 }
 
-func (d *MemDAG) BranchHasTransaction(branchID, txid *ledger.TransactionID) (*multistate.RootRecord, bool) {
-	rdr, rr := d.GetStateReaderForTheBranchExt(branchID)
-	if util.IsNil(rdr) {
-		return nil, false
+func (d *MemDAG) TipBranchHasTransaction(branchID, txid *ledger.TransactionID) bool {
+	if rdr, _ := d.GetStateReaderForTheBranchExt(branchID); !util.IsNil(rdr) {
+		return rdr.KnowsCommittedTransaction(txid)
 	}
-	return rr, rdr.KnowsCommittedTransaction(txid)
+	return false
 }

@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"math"
 	"math/rand"
 	"strings"
 
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util"
 	"golang.org/x/exp/maps"
@@ -20,7 +22,7 @@ const (
 	MaxNumTransactionID = (MaxPayloadSize - 2) / ledger.TransactionIDLength
 
 	PullRequestTransactions = byte(iota)
-	PullRequestBranchTips
+	PullSyncPortion
 )
 
 func (ps *Peers) pullStreamHandler(stream network.Stream) {
@@ -68,12 +70,13 @@ func (ps *Peers) processPullFrame(msgData []byte, p *Peer) error {
 		p.evidence(evidenceAndLogActivity(ps, "pullTx"))
 		ps.onReceivePullTx(p.id, txLst)
 
-	case PullRequestBranchTips:
-		if err := decodePullBranchTipsMsg(msgData); err != nil {
+	case PullSyncPortion:
+		startingFromSlot, maxBranches, err := decodeSyncPortionMsg(msgData)
+		if err != nil {
 			return err
 		}
-		p.evidence(evidenceAndLogActivity(ps, "pullTips"))
-		ps.onReceivePullTips(p.id)
+		p.evidence(evidenceAndLogActivity(ps, "pullTx"))
+		ps.onReceivePullSyncPortion(p.id, startingFromSlot, maxBranches)
 
 	default:
 		return fmt.Errorf("unsupported type of the pull message %d", msgData[0])
@@ -160,13 +163,28 @@ func decodePullTransactionsMsg(data []byte) ([]ledger.TransactionID, error) {
 	return ret, nil
 }
 
-func encodePullBranchTipsMsg() []byte {
-	return []byte{PullRequestBranchTips}
+func encodeSyncPortionMsg(startingFrom ledger.Slot, maxSlots int) []byte {
+	if maxSlots > global.MaxSyncPortionInSlots {
+		maxSlots = global.MaxSyncPortionInSlots
+	}
+	util.Assertf(maxSlots < math.MaxUint16, "maxSlots < math.MaxUint16")
+
+	var buf bytes.Buffer
+	// write request type byte
+	buf.WriteByte(PullSyncPortion)
+	err := binary.Write(&buf, binary.BigEndian, uint16(startingFrom))
+	util.AssertNoError(err)
+	err = binary.Write(&buf, binary.BigEndian, uint16(maxSlots))
+	util.AssertNoError(err)
+
+	return buf.Bytes()
 }
 
-func decodePullBranchTipsMsg(data []byte) error {
-	if len(data) != 1 || data[0] != PullRequestBranchTips {
-		return fmt.Errorf("not a pull branch tips message")
+func decodeSyncPortionMsg(data []byte) (startingFrom ledger.Slot, maxSlots int, err error) {
+	if len(data) != 1+2+2 || data[0] != PullSyncPortion {
+		return 0, 0, fmt.Errorf("not a pull sync portion message")
 	}
-	return nil
+	startingFrom = ledger.Slot(binary.BigEndian.Uint16(data[1:3]))
+	maxSlots = int(binary.BigEndian.Uint16(data[3:5]))
+	return
 }
