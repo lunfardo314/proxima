@@ -2,11 +2,13 @@ package client
 
 import (
 	"bytes"
+	"context"
 	"crypto/ed25519"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"sort"
 	"time"
@@ -40,6 +42,46 @@ func New(serverURL string, timeout ...time.Duration) *APIClient {
 	}
 	return &APIClient{
 		c:      http.Client{Timeout: to},
+		prefix: serverURL,
+	}
+}
+
+// NewWithGoogleDNS following ChatGPT suggestion to use GoogleDNS to speed up DNS name resolution
+// Otherwise it takes too long in Proxi
+func NewWithGoogleDNS(serverURL string, timeout ...time.Duration) *APIClient {
+	const (
+		dnsResolverTimeout = time.Millisecond * 500
+		googleDNSAddr      = "8.8.8.8:53"
+	)
+
+	resolver := &net.Resolver{
+		PreferGo: true,
+		Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
+			d := net.Dialer{
+				Timeout: dnsResolverTimeout,
+			}
+			return d.DialContext(ctx, network, googleDNSAddr)
+		},
+	}
+	// Create a custom HTTP transport with the custom resolver
+	dialer := &net.Dialer{
+		Resolver: resolver,
+	}
+	transport := &http.Transport{
+		DialContext: dialer.DialContext,
+	}
+
+	var to time.Duration
+	if len(timeout) > 0 {
+		to = timeout[0]
+	} else {
+		to = apiDefaultClientTimeout
+	}
+	return &APIClient{
+		c: http.Client{
+			Transport: transport,
+			Timeout:   to,
+		},
 		prefix: serverURL,
 	}
 }

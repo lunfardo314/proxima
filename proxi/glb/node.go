@@ -25,7 +25,7 @@ func GetClient() *client.APIClient {
 			Infof("using API endpoint: %s, timeout: %v", endpoint, timeout[0])
 		}
 	})
-	return client.New(endpoint, timeout...)
+	return client.NewWithGoogleDNS(endpoint, timeout...)
 }
 
 func InitLedgerFromNode() {

@@ -32,5 +32,5 @@ func Init() *cobra.Command {
 }
 
 func getClient() *client.APIClient {
-	return client.New(viper.GetString("api.endpoint"))
+	return client.NewWithGoogleDNS(viper.GetString("api.endpoint"))
 }
