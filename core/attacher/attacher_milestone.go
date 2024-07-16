@@ -130,21 +130,10 @@ const startWorryingAfter = 5 * time.Second
 
 func (a *milestoneAttacher) lazyRepeat(fun func() vertex.Status) vertex.Status {
 	counter := 0
-	prnLines := false
 	for {
 		// repeat until becomes defined
-		if prnLines {
-			a.Log().Infof(">>>>>>> 1111 %s:\n%s\n<<<<<<<<<<<", a.vid.IDShortString(), a.linesVertices().String())
-		}
 		if status := fun(); status != vertex.Undefined {
-			if prnLines {
-				a.Log().Infof(">>>>>>> 3333 %s:\nEXIT: %s\n<<<<<<<<<<<", a.vid.IDShortString(), status.String())
-			}
 			return status
-		}
-		if prnLines {
-			a.Log().Infof(">>>>>>> 2222 %s:\n%s\n<<<<<<<<<<<", a.vid.IDShortString(), a.linesVertices().String())
-			prnLines = false
 		}
 		select {
 		case <-a.pokeChan:
@@ -219,7 +208,7 @@ func (a *milestoneAttacher) solidifyPastCone() vertex.Status {
 					util.AssertMustError(a.err)
 					return
 				}
-				if ok, finalSuccess = a.validateSequencerTx(v, a.vid); !ok {
+				if ok, finalSuccess = a.validateSequencerTxUnwrapped(v); !ok {
 					util.AssertMustError(a.err)
 					v.UnReferenceDependencies()
 				}
@@ -234,6 +223,25 @@ func (a *milestoneAttacher) solidifyPastCone() vertex.Status {
 			return vertex.Undefined
 		}
 	})
+}
+
+func (a *milestoneAttacher) validateSequencerTxUnwrapped(v *vertex.Vertex) (ok, finalSuccess bool) {
+	flags := a.flags(a.vid)
+	if !flags.FlagsUp(FlagAttachedVertexEndorsementsSolid) || !flags.FlagsUp(FlagAttachedVertexInputsSolid) {
+		return true, false
+	}
+	// inputs solid
+	glbFlags := a.vid.FlagsNoLock()
+	a.Assertf(!glbFlags.FlagsUp(vertex.FlagVertexConstraintsValid), "%s: !glbFlags.FlagsUp(vertex.FlagConstraintsValid) in %s", a.name, a.vid.IDShortString)
+
+	if err := v.ValidateConstraints(); err != nil {
+		a.setError(err)
+		a.Tracef(TraceTagAttachVertex, "constraint validation failed in %s: '%v'", a.vid.IDShortString, err)
+		return false, false
+	}
+	a.vid.SetFlagsUpNoLock(vertex.FlagVertexConstraintsValid)
+	a.Tracef(TraceTagAttachVertex, "constraints has been validated OK: %s", v.Tx.IDShortString)
+	return true, true
 }
 
 func (a *milestoneAttacher) _doPoke() {

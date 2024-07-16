@@ -359,25 +359,6 @@ func (a *attacher) finalTouchNonSequencer(v *vertex.Vertex, vid *vertex.WrappedT
 	return true
 }
 
-func (a *attacher) validateSequencerTx(v *vertex.Vertex, vid *vertex.WrappedTx) (ok, finalSuccess bool) {
-	flags := a.flags(vid)
-	if !flags.FlagsUp(FlagAttachedVertexEndorsementsSolid) || !flags.FlagsUp(FlagAttachedVertexInputsSolid) {
-		return true, false
-	}
-	// inputs solid
-	glbFlags := vid.FlagsNoLock()
-	a.Assertf(!glbFlags.FlagsUp(vertex.FlagVertexConstraintsValid), "%s: !glbFlags.FlagsUp(vertex.FlagConstraintsValid) in %s", a.name, vid.IDShortString)
-
-	if err := v.ValidateConstraints(); err != nil {
-		a.setError(err)
-		a.Tracef(TraceTagAttachVertex, "constraint validation failed in %s: '%v'", vid.IDShortString, err)
-		return false, false
-	}
-	vid.SetFlagsUpNoLock(vertex.FlagVertexConstraintsValid)
-	a.Tracef(TraceTagAttachVertex, "constraints has been validated OK: %s", v.Tx.IDShortString)
-	return true, true
-}
-
 const TraceTagAttachEndorsements = "attachEndorsements"
 
 // Attaches endorsements of the vertex
