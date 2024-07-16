@@ -126,8 +126,6 @@ func (a *milestoneAttacher) run() error {
 	return nil
 }
 
-const startWorryingAfter = 5 * time.Second
-
 func (a *milestoneAttacher) lazyRepeat(fun func() vertex.Status) vertex.Status {
 	for {
 		// repeat until becomes defined
