@@ -60,6 +60,10 @@ func (w *Workflow) PokeMe(me, with *vertex.WrappedTx) {
 
 func (w *Workflow) PokeAllWith(wanted *vertex.WrappedTx) {
 	w.poker.PokeAllWith(wanted)
+	if w.syncManager != nil && wanted.IsBranchTransaction() {
+		// pike sync manager to check if sync portion is here
+		w.syncManager.Poke()
+	}
 }
 
 func (w *Workflow) QueryTransactionsFromRandomPeer(lst ...ledger.TransactionID) bool {

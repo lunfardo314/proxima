@@ -138,11 +138,8 @@ func (ps *Peers) PullSyncPortionFromRandomPeer(startingFrom ledger.Slot, maxSlot
 		rndID := all[idx]
 		p := ps.peers[rndID]
 		if p.isCommunicationOpen() && p.isAlive() && p.HasTxStore() {
-			ps.Tracef(TraceTag, "pull sync portion from random peer %s. From slot: %d, up to slots: %d",
-				func() any { return ShortPeerIDString(rndID) },
-				int(startingFrom),
-				maxSlots,
-			)
+			ps.Log().Infof("[peering] pull sync portion from random peer %s. From slot: %d, up to slots: %d",
+				ShortPeerIDString(rndID), int(startingFrom), maxSlots)
 			ps.sendPullSyncPortionToPeer(rndID, startingFrom, maxSlots)
 			return true
 		}
@@ -195,8 +192,8 @@ func decodePullTransactionsMsg(data []byte) ([]ledger.TransactionID, error) {
 }
 
 func encodeSyncPortionMsg(startingFrom ledger.Slot, maxSlots int) []byte {
-	if maxSlots > global.MaxSyncPortionInSlots {
-		maxSlots = global.MaxSyncPortionInSlots
+	if maxSlots > global.MaxSyncPortionSlots {
+		maxSlots = global.MaxSyncPortionSlots
 	}
 	util.Assertf(maxSlots < math.MaxUint16, "maxSlots < math.MaxUint16")
 

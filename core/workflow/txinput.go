@@ -35,6 +35,11 @@ func (w *Workflow) _evidenceIncomingTxIfNeeded(good bool, opt *txBytesInOptions)
 	}
 }
 
+// ignoreTxID always false if sync manager is not enabled
+func (w *Workflow) ignoreTxID(txid *ledger.TransactionID) bool {
+	return w.syncManager != nil && w.syncManager.IgnoreFutureTxID(txid)
+}
+
 func (w *Workflow) TxBytesIn(txBytes []byte, opts ...TxBytesInOption) (*ledger.TransactionID, error) {
 	options := &txBytesInOptions{}
 	for _, opt := range opts {
@@ -49,8 +54,8 @@ func (w *Workflow) TxBytesIn(txBytes []byte, opts ...TxBytesInOption) (*ledger.T
 	}
 	txid := tx.ID()
 
-	if w.syncManager != nil && w.syncManager.IgnoreFutureTxID(txid) {
-		// still syncing. Ignore transaction
+	if w.ignoreTxID(txid) {
+		// sync manager is still syncing. Ignore transaction
 		return nil, nil
 	}
 

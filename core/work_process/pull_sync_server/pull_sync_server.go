@@ -22,7 +22,7 @@ type (
 	Environment interface {
 		global.NodeGlobal
 		StateStore() global.StateStore
-		SendTransactions(sendTo peer.ID, txids []ledger.TransactionID)
+		SendTx(sendTo peer.ID, txids ...ledger.TransactionID)
 		IsSyncedWithNetwork() bool
 		TipBranchHasTransaction(branchID, txid *ledger.TransactionID) bool
 	}
@@ -61,13 +61,15 @@ func (d *PullSyncServer) Start() {
 }
 
 func (d *PullSyncServer) Consume(inp *Input) {
+	d.Environment.Log().Infof("[PullSyncServer] pull sync portion request starting from slot %d", inp.StartFrom)
+
 	if !d.IsSyncedWithNetwork() && !d.IsBootstrapNode() {
 		d.Environment.Log().Warnf("PullSyncServer: can't respond to sync request: node itself is out of sync and is not a bootstrap node")
 		return
 	}
 	maxSlots := inp.MaxSlots
-	if maxSlots > global.MaxSyncPortionInSlots {
-		maxSlots = global.MaxSyncPortionInSlots
+	if maxSlots > global.MaxSyncPortionSlots {
+		maxSlots = global.MaxSyncPortionSlots
 	}
 
 	latestSlot := multistate.FetchLatestSlot(d.StateStore())
@@ -76,9 +78,9 @@ func (d *PullSyncServer) Consume(inp *Input) {
 	branchIDs := make([]ledger.TransactionID, 0)
 
 	// collect tips
-	latestRoots := multistate.FetchRootRecordsNSlotsBack(d.StateStore(), 1)
-	util.Assertf(len(latestRoots) > 0, "len(latestRoots)>0")
-	tipBranches := multistate.FetchBranchDataMulti(d.StateStore(), latestRoots...)
+	tipRoots := multistate.FetchRootRecordsNSlotsBack(d.StateStore(), 1)
+	util.Assertf(len(tipRoots) > 0, "len(tipRoots)>0")
+	tipBranches := multistate.FetchBranchDataMulti(d.StateStore(), tipRoots...)
 	tipIDs := make([]ledger.TransactionID, len(tipBranches))
 	for i, tipBranchData := range tipBranches {
 		tipIDs[i] = tipBranchData.Stem.ID.TransactionID()
@@ -88,13 +90,15 @@ func (d *PullSyncServer) Consume(inp *Input) {
 	var lastSlot ledger.Slot
 	store := d.StateStore()
 
-	for slot := inp.StartFrom; nslots < maxSlots || slot < latestSlot || slot < slotNow; slot++ {
+	for slot := inp.StartFrom; nslots < maxSlots && slot < latestSlot && slot < slotNow; slot++ {
+		// fetch branches of the slot
 		branches := multistate.FetchBranchDataMulti(store, multistate.FetchRootRecords(store, slot)...)
-		// collect those branches from the slot which is included into any of the tips
-		// In most cases it will be exactly one branch
+		// collect branches from the slot which are included into any of the tips
+		// In most cases it will be exactly one branch. It will be zero if slot is skipped
 		slotContainsBranch := false
 		for _, branchData := range branches {
 			txid := branchData.Stem.ID.TransactionID()
+			// check every tip if it has transaction in the state
 			for i := range tipIDs {
 				if d.TipBranchHasTransaction(&tipIDs[i], &txid) {
 					branchIDs = append(branchIDs, txid)
@@ -110,7 +114,7 @@ func (d *PullSyncServer) Consume(inp *Input) {
 	}
 	if len(branchIDs) > 0 {
 		// branches already sorted ascending by slot number
-		d.SendTransactions(inp.PeerID, branchIDs)
+		d.SendTx(inp.PeerID, branchIDs...)
 
 		d.Environment.Log().Infof("PullSyncServer: sync portion of %d branches -> %s. Slots from %d to %d",
 			len(branchIDs), inp.PeerID.String(), inp.StartFrom, lastSlot)

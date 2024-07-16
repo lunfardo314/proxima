@@ -4,8 +4,8 @@ import "go.uber.org/zap"
 
 type (
 	ConfigParams struct {
-		doNotStartPruner      bool
-		doNotStartSyncManager bool
+		doNotStartPruner  bool
+		enableSyncManager bool
 	}
 
 	ConfigOption func(c *ConfigParams)
@@ -21,17 +21,17 @@ func OptionDoNotStartPruner(c *ConfigParams) {
 	c.doNotStartPruner = true
 }
 
-// OptionDoNotStartSyncManager used to disable sync manager which is optional if sync is not long
+// OptionEnableSyncManager used to disable sync manager which is optional if sync is not long
 // Config key: 'workflow.do_not_start_sync_manager: true'
-func OptionDoNotStartSyncManager(c *ConfigParams) {
-	c.doNotStartSyncManager = true
+func OptionEnableSyncManager(c *ConfigParams) {
+	c.enableSyncManager = true
 }
 
 func (cfg *ConfigParams) log(log *zap.SugaredLogger) {
 	if cfg.doNotStartPruner {
 		log.Info("[workflow config] do not start pruner")
 	}
-	if cfg.doNotStartSyncManager {
+	if cfg.enableSyncManager {
 		log.Info("[workflow config] do not start sync manager")
 	}
 }

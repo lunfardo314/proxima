@@ -91,8 +91,8 @@ func NewFromConfig(env Environment, peers *peering.Peers) *Workflow {
 	if viper.GetBool("workflow.do_not_start_pruner") {
 		opts = append(opts, OptionDoNotStartPruner)
 	}
-	if viper.GetBool("workflow.do_not_start_sync_manager") {
-		opts = append(opts, OptionDoNotStartSyncManager)
+	if viper.GetBool("workflow.sync_manager.enable") {
+		opts = append(opts, OptionEnableSyncManager)
 	}
 	return New(env, peers, opts...)
 }
@@ -112,9 +112,7 @@ func (w *Workflow) Start() {
 		prune := pruner.New(w) // refactor
 		prune.Start()
 	}
-	if !w.cfg.doNotStartSyncManager {
-		w.syncManager = syncmgr.StartSyncManager(w)
-	}
+	w.syncManager = syncmgr.StartSyncManagerFromConfig(w) // nil if disabled
 
 	w.peers.OnReceiveTxBytes(func(from peer.ID, txBytes []byte, metadata *txmetadata.TransactionMetadata) {
 		txid, err := w.TxBytesIn(txBytes, WithPeerMetadata(from, metadata))
@@ -133,7 +131,7 @@ func (w *Workflow) Start() {
 	})
 
 	w.peers.OnReceivePullTxRequest(func(from peer.ID, txids []ledger.TransactionID) {
-		w.SendTransactions(from, txids)
+		w.SendTx(from, txids...)
 	})
 
 	w.peers.OnReceivePullSyncPortion(func(from peer.ID, startingFrom ledger.Slot, maxSlots int) {
@@ -147,7 +145,7 @@ func (w *Workflow) Start() {
 	go w.logSyncStatusLoop()
 }
 
-func (w *Workflow) SendTransactions(sendTo peer.ID, txids []ledger.TransactionID) {
+func (w *Workflow) SendTx(sendTo peer.ID, txids ...ledger.TransactionID) {
 	for i := range txids {
 		w.Tracef(pull_tx_server.TraceTag, "received pull request for %s", txids[i].StringShort)
 		w.pullTxServer.Push(&pull_tx_server.Input{
