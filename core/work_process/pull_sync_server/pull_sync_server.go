@@ -61,16 +61,16 @@ func (d *PullSyncServer) Start() {
 }
 
 func (d *PullSyncServer) Consume(inp *Input) {
-	d.Environment.Log().Infof("[PullSyncServer] pull sync portion request starting from slot %d", inp.StartFrom)
-
 	if !d.IsSyncedWithNetwork() && !d.IsBootstrapNode() {
-		d.Environment.Log().Warnf("PullSyncServer: can't respond to sync request: node itself is out of sync and is not a bootstrap node")
+		d.Environment.Log().Warnf("[PullSyncServer]: can't respond to sync request: node itself is out of sync and is not a bootstrap node")
 		return
 	}
 	maxSlots := inp.MaxSlots
 	if maxSlots > global.MaxSyncPortionSlots {
 		maxSlots = global.MaxSyncPortionSlots
 	}
+	d.Environment.Log().Infof("[PullSyncServer] pull sync portion request starting from slot %d, max slots %s",
+		inp.StartFrom, maxSlots)
 
 	latestSlot := multistate.FetchLatestSlot(d.StateStore())
 	slotNow := ledger.TimeNow().Slot()
@@ -116,9 +116,9 @@ func (d *PullSyncServer) Consume(inp *Input) {
 		// branches already sorted ascending by slot number
 		d.SendTx(inp.PeerID, branchIDs...)
 
-		d.Environment.Log().Infof("PullSyncServer: sync portion of %d branches -> %s. Slots from %d to %d",
+		d.Environment.Log().Infof("[PullSyncServer]: sync portion of %d branches -> %s. Slots from %d to %d",
 			len(branchIDs), inp.PeerID.String(), inp.StartFrom, lastSlot)
 	} else {
-		d.Environment.Log().Warnf("PullSyncServer: empty sync portion from slot %d", inp.StartFrom)
+		d.Environment.Log().Warnf("[PullSyncServer]: empty sync portion from slot %d", inp.StartFrom)
 	}
 }

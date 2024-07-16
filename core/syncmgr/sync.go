@@ -65,12 +65,13 @@ const (
 )
 
 func (d *SyncManager) syncManagerLoop() {
-	d.Log().Infof("sync manager started. Sync portion %d slots", d.syncPortionSlots)
+	d.Log().Infof("[sync manager] has been started. Sync portion: %d slots. Sync tolerance: %d slots",
+		d.syncPortionSlots, d.syncToleranceThresholdSlots)
 
 	for {
 		select {
 		case <-d.Ctx().Done():
-			d.Log().Infof("sync manager stopped ")
+			d.Log().Infof("[sync manager] stopped ")
 			return
 
 		case <-d.pokeCh:
@@ -133,5 +134,5 @@ func (d *SyncManager) Poke() {
 func (d *SyncManager) IgnoreFutureTxID(txid *ledger.TransactionID) bool {
 	latestSlotInDB := ledger.Slot(d.latestSlotInDB.Load())
 	txSlot := txid.Slot()
-	return txSlot > latestSlotInDB && txSlot-latestSlotInDB > global.DefaultSyncToleranceThresholdSlots
+	return txSlot > latestSlotInDB && int(txSlot-latestSlotInDB) > d.syncToleranceThresholdSlots
 }
