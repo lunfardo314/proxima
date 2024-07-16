@@ -45,7 +45,7 @@ type (
 )
 
 const (
-	Name           = "pull_client"
+	Name           = "pullClient"
 	TraceTag       = Name
 	chanBufferSize = 10
 )

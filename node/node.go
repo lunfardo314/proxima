@@ -207,7 +207,7 @@ func (p *ProximaNode) initPeering() {
 }
 
 func (p *ProximaNode) startWorkflow() {
-	p.workflow = workflow.New(p, p.peers)
+	p.workflow = workflow.NewFromConfig(p, p.peers)
 	p.workflow.Start()
 }
 
@@ -219,7 +219,7 @@ func (p *ProximaNode) startSequencers() {
 	}
 	p.Log().Infof("%d sequencer config profile(s) has been found", len(sequencers))
 
-	seqNames := util.SortKeys(sequencers, func(k1, k2 string) bool {
+	seqNames := util.KeysSorted(sequencers, func(k1, k2 string) bool {
 		return k1 < k2
 	})
 	for _, name := range seqNames {

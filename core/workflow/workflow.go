@@ -23,6 +23,7 @@ import (
 	"github.com/lunfardo314/proxima/peering"
 	"github.com/lunfardo314/proxima/util/eventtype"
 	"github.com/lunfardo314/proxima/util/set"
+	"github.com/spf13/viper"
 	"go.uber.org/atomic"
 )
 
@@ -35,19 +36,18 @@ type (
 	Workflow struct {
 		Environment
 		*memdag.MemDAG
+		cfg   *ConfigParams
 		peers *peering.Peers
 		// daemons
-		pullClient            *pull_client.PullClient
-		pullTxServer          *pull_tx_server.PullTxServer
-		pullSyncServer        *pull_sync_server.PullSyncServer
-		gossip                *gossip.Gossip
-		persistTxBytes        *persist_txbytes.PersistTxBytes
-		poker                 *poker.Poker
-		events                *events.Events
-		tippool               *tippool.SequencerTips
-		doNotStartPruner      bool
-		doNotStartSyncManager bool
-		syncManager           *syncmgr.SyncManager
+		pullClient     *pull_client.PullClient
+		pullTxServer   *pull_tx_server.PullTxServer
+		pullSyncServer *pull_sync_server.PullSyncServer
+		gossip         *gossip.Gossip
+		persistTxBytes *persist_txbytes.PersistTxBytes
+		poker          *poker.Poker
+		events         *events.Events
+		tippool        *tippool.SequencerTips
+		syncManager    *syncmgr.SyncManager
 		//
 		enableTrace    atomic.Bool
 		traceTagsMutex sync.RWMutex
@@ -65,14 +65,14 @@ func New(env Environment, peers *peering.Peers, opts ...ConfigOption) *Workflow 
 	for _, opt := range opts {
 		opt(&cfg)
 	}
+	cfg.log(env.Log())
 
 	ret := &Workflow{
-		Environment:           env,
-		MemDAG:                memdag.New(env),
-		peers:                 peers,
-		traceTags:             set.New[string](),
-		doNotStartPruner:      cfg.doNotStartPruner,
-		doNotStartSyncManager: cfg.doNotStartSyncManager,
+		Environment: env,
+		MemDAG:      memdag.New(env),
+		cfg:         &cfg,
+		peers:       peers,
+		traceTags:   set.New[string](),
 	}
 	ret.poker = poker.New(ret)
 	ret.events = events.New(ret)
@@ -86,6 +86,17 @@ func New(env Environment, peers *peering.Peers, opts ...ConfigOption) *Workflow 
 	return ret
 }
 
+func NewFromConfig(env Environment, peers *peering.Peers) *Workflow {
+	opts := make([]ConfigOption, 0)
+	if viper.GetBool("workflow.do_not_start_pruner") {
+		opts = append(opts, OptionDoNotStartPruner)
+	}
+	if viper.GetBool("workflow.do_not_start_sync_manager") {
+		opts = append(opts, OptionDoNotStartSyncManager)
+	}
+	return New(env, peers, opts...)
+}
+
 func (w *Workflow) Start() {
 	w.Log().Infof("starting work processes. Ledger time now is %s", ledger.TimeNow().String())
 
@@ -97,11 +108,11 @@ func (w *Workflow) Start() {
 	w.gossip.Start()
 	w.persistTxBytes.Start()
 	w.tippool.Start()
-	if !w.doNotStartPruner {
+	if !w.cfg.doNotStartPruner {
 		prune := pruner.New(w) // refactor
 		prune.Start()
 	}
-	if !w.doNotStartSyncManager {
+	if !w.cfg.doNotStartSyncManager {
 		w.syncManager = syncmgr.StartSyncManager(w)
 	}
 
