@@ -25,5 +25,5 @@ func main() {
 	// only now close databases
 	n.WaitAllDBClosed()
 
-	n.Log().Infof("Hasta la vista, baby! I'll be back")
+	n.Log().Infof("Hasta la proxima, baby! I'll be back")
 }

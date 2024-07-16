@@ -105,7 +105,7 @@ func (seq *Sequencer) Start() {
 			seq.log.Warnf("can't start sequencer. EXIT..")
 			return
 		}
-		seq.Log().Infof("started sequencer '%s', seqID: %s", seq.SequencerName(), util.Ref(seq.SequencerID()).String())
+		seq.log.Infof("started sequencer '%s', seqID: %s", seq.SequencerName(), util.Ref(seq.SequencerID()).String())
 		seq.mainLoop()
 
 		seq.onCallbackMutex.RLock()
