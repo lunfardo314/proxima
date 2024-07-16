@@ -70,9 +70,9 @@ type (
 		LogAttacherStats() bool
 	}
 
-	// StartStop interface of the global objet\ct which coordinates graceful shutdown
+	// StartStop interface of the global objects which coordinates graceful shutdown
 	StartStop interface {
-		Ctx() context.Context
+		Ctx() context.Context // global context of the node. Canceling means stopping the node
 		Stop()
 		MarkWorkProcessStarted(name string)
 		MarkWorkProcessStopped(name string)
