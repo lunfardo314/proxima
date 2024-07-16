@@ -40,7 +40,7 @@ func AttachTxID(txid ledger.TransactionID, env Environment, opts ...Option) (vid
 
 		// it is new
 		if !txid.IsBranchTransaction() {
-			// if not branch -> just place the empty virtualTx on the utangle_old, no further action
+			// if not branch -> just place the empty virtualTx on the utangle, no further action
 			vid = vertex.WrapTxID(txid)
 			env.AddVertexNoLock(vid)
 			if options.pullNonBranch {

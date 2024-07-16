@@ -119,7 +119,7 @@ func (p *ProximaNode) Start() {
 	p.RepeatEvery(5*time.Second, func() bool {
 		var memStats runtime.MemStats
 		runtime.ReadMemStats(&memStats)
-		p.Log().Infof("uptime: %v, allocated memory: %.1f MB, Goroutines: %d, GC counter: %d",
+		p.Log().Infof("uptime: %v, allocated memory: %.1f MB, GC counter: %d, Goroutines: %d",
 			time.Since(p.started).Round(time.Second),
 			float32(memStats.Alloc*10/(1024*1024))/10,
 			memStats.NumGC,
