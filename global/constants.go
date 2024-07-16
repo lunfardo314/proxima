@@ -16,7 +16,7 @@ const (
 
 	// DefaultSyncToleranceThresholdSlots specifies threshold of diff between current slot and latest slot in DB
 	// when start pulling sync portions
-	DefaultSyncToleranceThresholdSlots = 5
+	DefaultSyncToleranceThresholdSlots = 50
 )
 
 func init() {

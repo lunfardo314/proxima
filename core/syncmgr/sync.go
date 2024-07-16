@@ -50,7 +50,7 @@ func StartSyncManagerFromConfig(env Environment) *SyncManager {
 	if d.syncPortionSlots < 1 || d.syncPortionSlots > global.MaxSyncPortionSlots {
 		d.syncPortionSlots = global.MaxSyncPortionSlots
 	}
-	if d.syncToleranceThresholdSlots <= 1 || d.syncToleranceThresholdSlots > d.syncPortionSlots/5 {
+	if d.syncToleranceThresholdSlots <= 5 || d.syncToleranceThresholdSlots > d.syncPortionSlots/2 {
 		d.syncToleranceThresholdSlots = global.DefaultSyncToleranceThresholdSlots
 	}
 
@@ -98,7 +98,7 @@ func (d *SyncManager) checkSync() {
 		return
 	}
 	if time.Since(d.loggedWhen) > 1*time.Second {
-		d.Log().Infof("[sync manager] lastest synced slot %d is behind current slot %d by %d",
+		d.Log().Infof("[sync manager] latest synced slot %d is behind current slot %d by %d",
 			latestSlotInDB, slotNow, behind)
 		d.loggedWhen = time.Now()
 	}
@@ -132,7 +132,12 @@ func (d *SyncManager) Poke() {
 // We want to ignore all the current flow of transactions while syncing the state with sync manager
 // After the state become synced, the tx flow will be accepted
 func (d *SyncManager) IgnoreFutureTxID(txid *ledger.TransactionID) bool {
-	latestSlotInDB := ledger.Slot(d.latestSlotInDB.Load())
-	txSlot := txid.Slot()
-	return txSlot > latestSlotInDB && int(txSlot-latestSlotInDB) > d.syncToleranceThresholdSlots
+	slotNow := int(ledger.TimeNow().Slot())
+	latestSlot := int(d.latestSlotInDB.Load())
+	util.Assertf(latestSlot <= slotNow, "latestSlot <= slotNow")
+	if slotNow-latestSlot < d.syncToleranceThresholdSlots {
+		return false // accept all if not very unsynced
+	}
+	// not synced. Ignore all too close to the present time
+	return int(txid.Slot()) >= slotNow-2
 }
