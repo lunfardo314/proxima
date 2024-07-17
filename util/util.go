@@ -300,8 +300,9 @@ func Abs[T constraints.Integer](n T) T {
 	return n
 }
 
-func CallWithTimeout(fun func(), timeout time.Duration) bool {
-	ctx, cancel := context.WithTimeoutCause(context.Background(), timeout, errors.New("timeout"))
+// CallWithTimeout returns true on success, false on timeout
+func CallWithTimeout(ctx context.Context, fun func(), timeout time.Duration) bool {
+	ctx, cancel := context.WithTimeoutCause(ctx, timeout, errors.New("timeout"))
 	go func() {
 		fun()
 		cancel()

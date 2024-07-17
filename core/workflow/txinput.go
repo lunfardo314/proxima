@@ -1,8 +1,8 @@
 package workflow
 
 import (
+	"context"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -140,8 +140,8 @@ func (w *Workflow) TxBytesIn(txBytes []byte, opts ...TxBytesInOption) (*ledger.T
 		return txid, nil
 	}
 
-	// timestamp is in the future. Put it on wait
-	delayFor := txTime.Sub(nowis)
+	// timestamp is in the future. Put it on wait. Adding some milliseconds to avoid rounding errors in assertions
+	delayFor := txTime.Sub(nowis) + 2*time.Millisecond
 	w.Tracef(TraceTagTxInput, "%s -> delay for %v", txid.StringShort, delayFor)
 	w.TraceTx(txid, "TxBytesIn: delay for %v", delayFor)
 
@@ -156,7 +156,10 @@ func (w *Workflow) TxBytesIn(txBytes []byte, opts ...TxBytesInOption) (*ledger.T
 }
 
 func (w *Workflow) _attach(tx *transaction.Transaction, opts ...attacher.Option) {
-	util.Assertf(!time.Now().Before(tx.TimestampTime()), "!time.Now().Before(tx.TimestampTime())")
+	// enforcing ledger time of the transaction cannot be ahead of the clock
+	nowis := time.Now()
+	tsTime := tx.TimestampTime()
+	util.Assertf(nowis.After(tsTime), "nowis(%d).After(tsTime(%d))", nowis.UnixNano(), tsTime.UnixNano())
 
 	w.TraceTx(tx.ID(), "TxBytesIn: send to attach")
 	w.Tracef(TraceTagTxInput, "-> attach tx %s", tx.IDShortString)
@@ -168,50 +171,84 @@ func (w *Workflow) _attach(tx *transaction.Transaction, opts ...attacher.Option)
 	}
 }
 
-func (w *Workflow) SequencerMilestoneAttachWait(txBytes []byte, meta *txmetadata.TransactionMetadata, timeout time.Duration, logAttacherStats bool) (*vertex.WrappedTx, error) {
-	type result struct {
-		vid *vertex.WrappedTx
-		err error
-	}
+func (w *Workflow) SequencerMilestoneAttachWait(txBytes []byte, meta *txmetadata.TransactionMetadata, timeout time.Duration) (*vertex.WrappedTx, error) {
+	var vid *vertex.WrappedTx
+	var err error
+	var txid *ledger.TransactionID
 
-	closed := false
-	var closedMutex sync.Mutex
-	resCh := make(chan result)
-	defer func() {
-		closedMutex.Lock()
-		defer closedMutex.Unlock()
-		closed = true
-		close(resCh)
-	}()
-
+	ctx, cancel := context.WithTimeout(w.Ctx(), timeout)
 	go func() {
-		writeResult := func(res result) {
-			closedMutex.Lock()
-			defer closedMutex.Unlock()
-			if closed {
-				return
-			}
-			resCh <- res
-		}
-
-		_, errParse := w.TxBytesIn(txBytes,
+		var errParse error
+		txid, errParse = w.TxBytesIn(txBytes,
 			WithMetadata(meta),
-			WithCallback(func(vid *vertex.WrappedTx, err error) {
-				writeResult(result{vid: vid, err: err})
+			WithCallback(func(vidSubmit *vertex.WrappedTx, errSubmit error) {
+				vid = vidSubmit
+				err = errSubmit
+				cancel()
 			}),
 		)
 		if errParse != nil {
-			writeResult(result{err: errParse})
+			err = errParse
+			cancel()
 		}
 	}()
-	select {
-	case res := <-resCh:
-		return res.vid, res.err
-	case <-w.Ctx().Done():
-		return nil, fmt.Errorf("cancelled")
-	case <-time.After(timeout):
-		return nil, fmt.Errorf("timeout %v", timeout)
+	<-ctx.Done()
+
+	if err != nil {
+		return nil, err
 	}
+	if vid == nil {
+		txidStr := "txid=???"
+		if txid != nil {
+			txidStr = txid.StringShort()
+		}
+		return nil, fmt.Errorf("SequencerMilestoneAttachWait: timeout %v exceeded while submitting transaction %s", timeout, txidStr)
+	}
+	return vid, nil
+
+	//type result struct {
+	//	vid *vertex.WrappedTx
+	//	err error
+	//}
+	//
+	//closed := false
+	//var closedMutex sync.Mutex
+	//resCh := make(chan result)
+	//defer func() {
+	//	closedMutex.Lock()
+	//	defer closedMutex.Unlock()
+	//	closed = true
+	//	close(resCh)
+	//}()
+	//
+	//go func() {
+	//	writeResult := func(res result) {
+	//		closedMutex.Lock()
+	//		defer closedMutex.Unlock()
+	//		if closed {
+	//			return
+	//		}
+	//		resCh <- res
+	//	}
+	//
+	//	_, errParse := w.TxBytesIn(txBytes,
+	//		WithMetadata(meta),
+	//		WithCallback(func(vid *vertex.WrappedTx, err error) {
+	//			writeResult(result{vid: vid, err: err})
+	//		}),
+	//	)
+	//	if errParse != nil {
+	//		writeResult(result{err: errParse})
+	//	}
+	//}()
+	//select {
+	//case res := <-resCh:
+	//	return res.vid, res.err
+	//case <-w.Ctx().Done():
+	//	return nil, fmt.Errorf("cancelled")
+	//case <-time.After(timeout):
+	//	return nil, fmt.Errorf("timeout %v", timeout)
+	//}
 }
 
 func WithCallback(fun func(vid *vertex.WrappedTx, err error)) TxBytesInOption {

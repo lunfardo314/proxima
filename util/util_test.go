@@ -1,6 +1,7 @@
 package util
 
 import (
+	"context"
 	"fmt"
 	"testing"
 	"time"
@@ -46,12 +47,12 @@ func TestForEachUniquePair(t *testing.T) {
 }
 
 func TestCallWithTimeout(t *testing.T) {
-	success := CallWithTimeout(func() {
+	success := CallWithTimeout(context.Background(), func() {
 		time.Sleep(1 * time.Millisecond)
 	}, 2*time.Second)
 	require.True(t, success)
 
-	success = CallWithTimeout(func() {
+	success = CallWithTimeout(context.Background(), func() {
 		time.Sleep(100 * time.Millisecond)
 	}, time.Millisecond)
 	require.False(t, success)
