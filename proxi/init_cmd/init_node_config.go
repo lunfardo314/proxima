@@ -117,6 +117,13 @@ peering:
   # max_dynamic_peers > 0 means automatic peer discovery (autopeering) is enabled, otherwise disabled
   max_dynamic_peers: {{.MaxDynamicPeers}}
 
+workflow:
+  # enabling sync manager is optional. It is needed when node starts syncing long behind the network,
+  # for example when syncing from genesis
+  sync_manager: 
+    enable: true
+    sync_portion_slots: 100
+
 # Node's API config
 api:
     # server port
