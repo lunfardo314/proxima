@@ -84,7 +84,9 @@ func (ps *Peers) discoverPeersIfNeeded() {
 		candidates = candidates[:maxToAdd]
 	}
 	for _, a := range candidates {
-		ps.addPeer(&a, "", false)
+		if !ps.isInBlacklist(a.ID) {
+			ps.addPeer(&a, "", false)
+		}
 	}
 }
 

@@ -116,7 +116,10 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 	if traceHeartbeat {
 		ps.Tracef(TraceTag, "heartbeatStreamHandler invoked in %s from %s", ps.host.ID().String, id.String)
 	}
-
+	if ps.isInBlacklist(id) {
+		ps.Tracef(TraceTag, "heartbeatStreamHandler %s: %s is in blacklist", ps.host.ID().String, id.String)
+		return
+	}
 	p := ps.getPeer(id)
 	if p == nil {
 		if !ps.isAutopeeringEnabled() {
