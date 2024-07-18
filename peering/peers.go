@@ -303,11 +303,13 @@ func (ps *Peers) addPeer(addrInfo *peer.AddrInfo, name string, preConfigured boo
 	if already {
 		return p
 	}
+	nowis := time.Now()
 	p = &Peer{
 		name:            name,
 		id:              addrInfo.ID,
 		isPreConfigured: preConfigured,
-		whenAdded:       time.Now(),
+		whenAdded:       nowis,
+		lastActivity:    nowis, // grace period in order not to drop immediately
 	}
 	ps.peers[addrInfo.ID] = p
 	for _, a := range addrInfo.Addrs {
