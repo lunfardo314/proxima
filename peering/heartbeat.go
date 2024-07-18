@@ -131,7 +131,7 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 	if p == nil {
 		if !ps.isAutopeeringEnabled() {
 			// node does not take any incoming dynamic peers
-			ps.Tracef(TraceTag, "autopeering disabled: unknown peer %s", id.String())
+			ps.Tracef(TraceTag, "autopeering disabled: unknown peer %s", id.String)
 			_ = stream.Reset()
 			return
 		}
@@ -155,7 +155,7 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 		//} else {
 		//	ps.Log().Infof("peering: AddrInfoFromP2pAddr: OK. Remote multiaddr: %s", remoteStr)
 		//}
-		ps.Log().Infof("incoming peer request from %s. Add new dynamic peer", id.String())
+		ps.Log().Infof("incoming peer request from %s. Add new dynamic peer", ShortPeerIDString(id))
 		p = ps.addPeer(addrInfo, "", false)
 	}
 
@@ -172,7 +172,7 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 		hbInfo, err = heartbeatInfoFromBytes(msgData)
 	}
 	if err != nil {
-		ps.Log().Errorf("error while reading message from peer %s: %v", id.String(), err)
+		ps.Log().Errorf("error while reading message from peer %s: %v", ShortPeerIDString(id), err)
 		ps.dropPeer(p, "read error")
 		_ = stream.Reset()
 		return
@@ -185,7 +185,7 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 			b = "behind"
 		}
 		ps.Log().Warnf("clock of the peer %s is %s of the local clock for %v > tolerance interval %v",
-			id.String(), b, clockDiff, clockTolerance)
+			ShortPeerIDString(id), b, clockDiff, clockTolerance)
 		ps.dropPeer(p, "over clock tolerance")
 		_ = stream.Reset()
 		return

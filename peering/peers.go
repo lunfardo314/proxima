@@ -310,9 +310,9 @@ func (ps *Peers) addPeer(addrInfo *peer.AddrInfo, name string, preConfigured boo
 		ps.host.Peerstore().AddAddr(addrInfo.ID, a, peerstore.PermanentAddrTTL)
 	}
 	if preConfigured {
-		ps.Log().Infof("peering: added pre-configured peer %s ('%s')", addrInfo.ID.String(), name)
+		ps.Log().Infof("peering: added pre-configured peer %s ('%s')", ShortPeerIDString(addrInfo.ID), name)
 	} else {
-		ps.Log().Infof("peering: added dynamic peer %s", addrInfo.ID.String())
+		ps.Log().Infof("peering: added dynamic peer %s", ShortPeerIDString(addrInfo.ID))
 	}
 	return p
 }
@@ -330,7 +330,7 @@ func (ps *Peers) removeDynamicPeer(p *Peer, reason ...string) {
 	if len(reason) > 0 {
 		why = fmt.Sprintf(". Reason: '%s'", reason[0])
 	}
-	ps.Log().Infof("peering: dropped dynamic peer %s - %s%s", p.name, p.id.String(), why)
+	ps.Log().Infof("peering: dropped dynamic peer %s - %s%s", p.name, ShortPeerIDString(p.id), why)
 }
 
 func (ps *Peers) OnReceiveTxBytes(fun func(from peer.ID, txBytes []byte, metadata *txmetadata.TransactionMetadata)) {

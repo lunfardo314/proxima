@@ -31,8 +31,6 @@ func (ps *Peers) autopeeringLoop() {
 			ps.discoverPeersIfNeeded()
 			ps.dropExcessPeersIfNeeded()
 
-			ps.kademliaDHT.RoutingTable()
-
 			for err := range ps.kademliaDHT.ForceRefresh() {
 				if err != nil {
 					ps.Tracef(TraceTagAutopeering, "kademlia ForceRefresh: %v", err)
