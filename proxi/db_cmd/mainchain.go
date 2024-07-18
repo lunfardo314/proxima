@@ -63,7 +63,7 @@ func runMainChainCmd(_ *cobra.Command, args []string) {
 		}
 		bySeqID[bd.SequencerID] = sd
 	}
-	sorted := util.SortKeys(bySeqID, func(k1, k2 ledger.ChainID) bool {
+	sorted := util.KeysSorted(bySeqID, func(k1, k2 ledger.ChainID) bool {
 		return bySeqID[k1].onChainBalance > bySeqID[k2].onChainBalance
 	})
 	glb.Infof("stats by sequencer ID:")

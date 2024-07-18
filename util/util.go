@@ -77,16 +77,6 @@ func KeysSorted[K comparable, V any](m map[K]V, less func(k1, k2 K) bool) []K {
 	return ret
 }
 
-// SortKeys
-// Deprecated: change to KeysSorted
-func SortKeys[K comparable, V any](m map[K]V, less func(k1, k2 K) bool) []K {
-	ret := maps.Keys(m)
-	sort.Slice(ret, func(i, j int) bool {
-		return less(ret[i], ret[j])
-	})
-	return ret
-}
-
 func List[T any](elems ...T) []T {
 	return elems
 }
@@ -300,15 +290,17 @@ func Abs[T constraints.Integer](n T) T {
 	return n
 }
 
-// CallWithTimeout returns true on success, false on timeout
-func CallWithTimeout(ctx context.Context, fun func(), timeout time.Duration) bool {
+// CallWithTimeout calls fun. If it does not finish in timeout period, calls onTimeout
+func CallWithTimeout(ctx context.Context, timeout time.Duration, fun, onTimeout func()) {
 	ctx, cancel := context.WithTimeoutCause(ctx, timeout, errors.New("timeout"))
 	go func() {
-		fun()
-		cancel()
+		<-ctx.Done()
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			onTimeout()
+		}
 	}()
-	<-ctx.Done()
-	return !errors.Is(ctx.Err(), context.DeadlineExceeded)
+	fun()
+	cancel()
 }
 
 func Percent(n, d int) float32 {

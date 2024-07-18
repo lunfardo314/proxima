@@ -464,7 +464,7 @@ func (mf *MilestoneFactory) futureConeOwnMilestonesOrdered(rootOutput vertex.Wra
 	mf.Assertf(ok, "futureConeOwnMilestonesOrdered: milestone output %s of chain %s is expected to be among set of own milestones (%d)",
 		rootOutput.IDShortString, util.Ref(mf.SequencerID()).StringShort, len(mf.ownMilestones))
 
-	ordered := util.SortKeys(mf.ownMilestones, func(vid1, vid2 *vertex.WrappedTx) bool {
+	ordered := util.KeysSorted(mf.ownMilestones, func(vid1, vid2 *vertex.WrappedTx) bool {
 		// by timestamp -> equivalent to topological order, ascending, i.e. older first
 		return vid1.Timestamp().Before(vid2.Timestamp())
 	})

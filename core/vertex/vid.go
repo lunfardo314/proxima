@@ -465,7 +465,7 @@ func (vid *WrappedTx) Lines(prefix ...string) *lines.Lines {
 		},
 		VirtualTx: func(v *VirtualTransaction) {
 			ret.Add("== virtual tx %s", vid.IDShortString())
-			idxs := util.SortKeys(v.outputs, func(k1, k2 byte) bool {
+			idxs := util.KeysSorted(v.outputs, func(k1, k2 byte) bool {
 				return k1 < k2
 			})
 			for _, i := range idxs {

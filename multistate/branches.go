@@ -298,7 +298,7 @@ func FetchHeaviestBranchChainNSlotsBack(store global.StateStoreReader, nBack int
 		}, util.MakeRange(latestSlot-ledger.Slot(nBack), latestSlot)...)
 	}
 
-	sortedTxIDs := util.SortKeys(rootData, func(k1, k2 ledger.TransactionID) bool {
+	sortedTxIDs := util.KeysSorted(rootData, func(k1, k2 ledger.TransactionID) bool {
 		// descending by epoch
 		return k1.Slot() > k2.Slot()
 	})

@@ -171,6 +171,8 @@ func (w *Workflow) _attach(tx *transaction.Transaction, opts ...attacher.Option)
 	}
 }
 
+// SequencerMilestoneAttachWait attaches sequencer transaction synchronously.
+// Waits up to timeout until attacher finishes
 func (w *Workflow) SequencerMilestoneAttachWait(txBytes []byte, meta *txmetadata.TransactionMetadata, timeout time.Duration) (*vertex.WrappedTx, error) {
 	var vid *vertex.WrappedTx
 	var err error
@@ -181,13 +183,14 @@ func (w *Workflow) SequencerMilestoneAttachWait(txBytes []byte, meta *txmetadata
 		var errParse error
 		txid, errParse = w.TxBytesIn(txBytes,
 			WithMetadata(meta),
-			WithCallback(func(vidSubmit *vertex.WrappedTx, errSubmit error) {
+			WithAttachmentCallback(func(vidSubmit *vertex.WrappedTx, errSubmit error) {
 				vid = vidSubmit
 				err = errSubmit
 				cancel()
 			}),
 		)
 		if errParse != nil {
+			// parse error means attacher won't be started and callback won't be called
 			err = errParse
 			cancel()
 		}
@@ -205,53 +208,9 @@ func (w *Workflow) SequencerMilestoneAttachWait(txBytes []byte, meta *txmetadata
 		return nil, fmt.Errorf("SequencerMilestoneAttachWait: timeout %v exceeded while submitting transaction %s", timeout, txidStr)
 	}
 	return vid, nil
-
-	//type result struct {
-	//	vid *vertex.WrappedTx
-	//	err error
-	//}
-	//
-	//closed := false
-	//var closedMutex sync.Mutex
-	//resCh := make(chan result)
-	//defer func() {
-	//	closedMutex.Lock()
-	//	defer closedMutex.Unlock()
-	//	closed = true
-	//	close(resCh)
-	//}()
-	//
-	//go func() {
-	//	writeResult := func(res result) {
-	//		closedMutex.Lock()
-	//		defer closedMutex.Unlock()
-	//		if closed {
-	//			return
-	//		}
-	//		resCh <- res
-	//	}
-	//
-	//	_, errParse := w.TxBytesIn(txBytes,
-	//		WithMetadata(meta),
-	//		WithCallback(func(vid *vertex.WrappedTx, err error) {
-	//			writeResult(result{vid: vid, err: err})
-	//		}),
-	//	)
-	//	if errParse != nil {
-	//		writeResult(result{err: errParse})
-	//	}
-	//}()
-	//select {
-	//case res := <-resCh:
-	//	return res.vid, res.err
-	//case <-w.Ctx().Done():
-	//	return nil, fmt.Errorf("cancelled")
-	//case <-time.After(timeout):
-	//	return nil, fmt.Errorf("timeout %v", timeout)
-	//}
 }
 
-func WithCallback(fun func(vid *vertex.WrappedTx, err error)) TxBytesInOption {
+func WithAttachmentCallback(fun func(vid *vertex.WrappedTx, err error)) TxBytesInOption {
 	return func(opts *txBytesInOptions) {
 		opts.callback = fun
 	}

@@ -3,6 +3,7 @@ package util
 import (
 	"context"
 	"fmt"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -47,13 +48,24 @@ func TestForEachUniquePair(t *testing.T) {
 }
 
 func TestCallWithTimeout(t *testing.T) {
-	success := CallWithTimeout(context.Background(), func() {
-		time.Sleep(1 * time.Millisecond)
-	}, 2*time.Second)
-	require.True(t, success)
+	CallWithTimeout(context.Background(), 2*time.Second,
+		func() {
+			time.Sleep(1 * time.Millisecond)
+		},
+		func() {
+			t.FailNow()
+		},
+	)
+	timeoutExceeded := new(atomic.Bool)
+	require.False(t, timeoutExceeded.Load())
 
-	success = CallWithTimeout(context.Background(), func() {
-		time.Sleep(100 * time.Millisecond)
-	}, time.Millisecond)
-	require.False(t, success)
+	CallWithTimeout(context.Background(), 100*time.Millisecond,
+		func() {
+			time.Sleep(200 * time.Millisecond)
+		}, func() {
+			timeoutExceeded.Store(true)
+		},
+	)
+	time.Sleep(200 * time.Millisecond)
+	require.True(t, timeoutExceeded.Load())
 }

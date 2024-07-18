@@ -76,11 +76,11 @@ func (d *MemDAG) _timeSlotsOrdered(descOrder ...bool) []ledger.Slot {
 		slots.Insert(br.Slot())
 	}
 	if desc {
-		return util.SortKeys(slots, func(e1, e2 ledger.Slot) bool {
+		return util.KeysSorted(slots, func(e1, e2 ledger.Slot) bool {
 			return e1 > e2
 		})
 	}
-	return util.SortKeys(slots, func(e1, e2 ledger.Slot) bool {
+	return util.KeysSorted(slots, func(e1, e2 ledger.Slot) bool {
 		return e1 < e2
 	})
 }
