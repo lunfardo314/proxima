@@ -15,7 +15,7 @@ func (p *Peer) isAlive() bool {
 
 func (p *Peer) _isAlive() bool {
 	// peer is alive if its last activity is at least some heartbeats old
-	return time.Since(p.lastActivity) > aliveDuration
+	return time.Since(p.lastActivity) < aliveDuration
 }
 
 func (p *Peer) HasTxStore() bool {

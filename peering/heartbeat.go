@@ -118,8 +118,10 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 	}
 	if ps.isInBlacklist(id) {
 		ps.Tracef(TraceTag, "heartbeatStreamHandler %s: %s is in blacklist", ps.host.ID().String, id.String)
+		_ = stream.Reset()
 		return
 	}
+
 	p := ps.getPeer(id)
 	if p == nil {
 		if !ps.isAutopeeringEnabled() {
@@ -150,11 +152,6 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 		//}
 		ps.Log().Infof("incoming peer request from %s. Add new dynamic peer", ShortPeerIDString(id))
 		p = ps.addPeer(addrInfo, "", false)
-	}
-
-	if ps.isInBlacklist(p.id) {
-		_ = stream.Reset()
-		return
 	}
 
 	var hbInfo heartbeatInfo
