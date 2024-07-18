@@ -122,7 +122,7 @@ workflow:
   # for example when syncing from genesis
   sync_manager: 
     enable: true
-    sync_portion_slots: 100
+    sync_portion_slots: 300
 
 # Node's API config
 api:
