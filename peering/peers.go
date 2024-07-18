@@ -136,6 +136,7 @@ func New(env Environment, cfg *Config) (*Peers, error) {
 		cfg:                      cfg,
 		host:                     lppHost,
 		peers:                    make(map[peer.ID]*Peer),
+		blacklist:                make(map[peer.ID]time.Time),
 		onReceiveTx:              func(_ peer.ID, _ []byte, _ *txmetadata.TransactionMetadata) {},
 		onReceivePullTx:          func(_ peer.ID, _ []ledger.TransactionID) {},
 		onReceivePullSyncPortion: func(_ peer.ID, _ ledger.Slot, _ int) {},
