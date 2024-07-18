@@ -1,6 +1,8 @@
 package peering
 
 import (
+	"time"
+
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/lunfardo314/proxima/core/txmetadata"
@@ -17,28 +19,28 @@ func (ps *Peers) gossipStreamHandler(stream network.Stream) {
 		return
 	}
 
-	if !p.isCommunicationOpen() {
+	if ps.isInBlacklist(p.id) {
 		_ = stream.Reset()
 		return
 	}
 
 	txBytesWithMetadata, err := readFrame(stream)
 	if err != nil {
-		ps.dropPeer(p, "read error")
+		ps.dropPeer(p, time.Minute, "read error")
 		ps.Log().Errorf("error while reading message from peer %s: %v", id.String(), err)
 		_ = stream.Reset()
 		return
 	}
 	metadataBytes, txBytes, err := txmetadata.SplitTxBytesWithMetadata(txBytesWithMetadata)
 	if err != nil {
-		ps.dropPeer(p, "error while parsing tx metadata")
+		ps.dropPeer(p, time.Minute, "error while parsing tx metadata")
 		ps.Log().Errorf("error while parsing tx message from peer %s: %v", id.String(), err)
 		_ = stream.Reset()
 		return
 	}
 	metadata, err := txmetadata.TransactionMetadataFromBytes(metadataBytes)
 	if err != nil {
-		ps.dropPeer(p, "error while parsing tx metadata")
+		ps.dropPeer(p, time.Minute, "error while parsing tx metadata")
 		ps.Log().Errorf("error while parsing tx message metadata from peer %s: %v", id.String(), err)
 		_ = stream.Reset()
 		return
@@ -56,7 +58,8 @@ func (ps *Peers) GossipTxBytesToPeers(txBytes []byte, metadata *txmetadata.Trans
 
 	countSent := 0
 	for id, p := range ps.peers {
-		if !p.isCommunicationOpen() {
+
+		if _, inBlacklist := ps.blacklist[id]; inBlacklist {
 			continue
 		}
 		if len(except) > 0 && id == except[0] {
@@ -79,7 +82,10 @@ func (ps *Peers) SendTxBytesWithMetadataToPeer(id peer.ID, txBytes []byte, metad
 		func() any { return ShortPeerIDString(ps.host.ID()) },
 	)
 
-	if p := ps.getPeer(id); p == nil || !p.isCommunicationOpen() {
+	if ps.isInBlacklist(id) {
+		return false
+	}
+	if p := ps.getPeer(id); p == nil {
 		return false
 	}
 

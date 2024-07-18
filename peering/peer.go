@@ -69,13 +69,6 @@ func evidenceIncoming(good bool) evidenceFun {
 	}
 }
 
-func (p *Peer) isCommunicationOpen() bool {
-	p.mutex.RLock()
-	defer p.mutex.RUnlock()
-
-	return p.blockActivityUntil.Before(time.Now())
-}
-
 func (p *Peer) avgClockDifference() time.Duration {
 	var ret time.Duration
 

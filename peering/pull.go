@@ -7,6 +7,7 @@ import (
 	"math"
 	"math/rand"
 	"strings"
+	"time"
 
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -35,20 +36,20 @@ func (ps *Peers) pullStreamHandler(stream network.Stream) {
 		return
 	}
 
-	if !p.isCommunicationOpen() {
+	if ps.isInBlacklist(p.id) {
 		_ = stream.Reset()
 		return
 	}
 
 	msgData, err := readFrame(stream)
 	if err != nil {
-		ps.dropPeer(p, "read error")
+		ps.dropPeer(p, time.Minute, "read error")
 		ps.Log().Errorf("error while reading message from peer %s: %v", id.String(), err)
 		_ = stream.Reset()
 		return
 	}
 	if err = ps.processPullFrame(msgData, p); err != nil {
-		ps.dropPeer(p, "error while parsing pull message")
+		ps.dropPeer(p, time.Minute, "error while parsing pull message")
 		ps.Log().Errorf("error while decoding message from peer %s: %v", id.String(), err)
 		_ = stream.Reset()
 		return
@@ -106,7 +107,7 @@ func (ps *Peers) PullTransactionsFromRandomPeer(txids ...ledger.TransactionID) b
 	for _, idx := range rand.Perm(len(all)) {
 		rndID := all[idx]
 		p := ps.peers[rndID]
-		if p.isCommunicationOpen() && p.isAlive() && p.HasTxStore() {
+		if !ps.isInBlacklist(p.id) && p.isAlive() && p.HasTxStore() {
 			ps.Tracef(TraceTag, "pull from random peer %s: %s",
 				func() any { return ShortPeerIDString(rndID) },
 				func() any { return _txidLst(txids...) },
@@ -137,7 +138,8 @@ func (ps *Peers) PullSyncPortionFromRandomPeer(startingFrom ledger.Slot, maxSlot
 	for _, idx := range rand.Perm(len(all)) {
 		rndID := all[idx]
 		p := ps.peers[rndID]
-		if p.isCommunicationOpen() && p.isAlive() && p.HasTxStore() {
+		_, inBlacklist := ps.blacklist[rndID]
+		if !inBlacklist && p.isAlive() && p.HasTxStore() {
 			ps.Log().Infof("[peering] pull sync portion from random peer %s. From slot: %d, up to slots: %d",
 				ShortPeerIDString(rndID), int(startingFrom), maxSlots)
 			ps.sendPullSyncPortionToPeer(rndID, startingFrom, maxSlots)

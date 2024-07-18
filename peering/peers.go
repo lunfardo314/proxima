@@ -51,6 +51,7 @@ type (
 		kademliaDHT      *dht.IpfsDHT // not nil if autopeering is enabled
 		routingDiscovery *routing.RoutingDiscovery
 		peers            map[peer.ID]*Peer // except self/host
+		blacklist        map[peer.ID]time.Time
 		// on receive handlers
 		onReceiveTx              func(from peer.ID, txBytes []byte, mdata *txmetadata.TransactionMetadata)
 		onReceivePullTx          func(from peer.ID, txids []ledger.TransactionID)
@@ -71,7 +72,6 @@ type (
 		hasTxStore             bool
 		whenAdded              time.Time
 		lastActivity           time.Time
-		blockActivityUntil     time.Time
 		incomingGood           int
 		incomingBad            int
 		// ring buffer with last clock differences
@@ -93,8 +93,8 @@ const (
 	lppProtocolPull      = "/proxima/pull/%d"
 	lppProtocolHeartbeat = "/proxima/heartbeat/%d"
 
-	// blocking communications with the peer which violates the protocol
-	commBlockDuration = time.Minute
+	// TTL in the blacklist, util removed
+	blacklistTTL = time.Minute
 
 	// clockTolerance is how big the difference between local and remote clocks is tolerated
 	clockTolerance = 5 * time.Second // for testing only
@@ -175,6 +175,9 @@ func New(env Environment, cfg *Config) (*Peers, error) {
 	} else {
 		env.Log().Infof("peering: autopeering is disabled")
 	}
+
+	go ret.blacklistCleanupLoop()
+
 	env.Log().Infof("peering: initialized successfully")
 	return ret, nil
 }
@@ -335,6 +338,21 @@ func (ps *Peers) removeDynamicPeer(p *Peer, reason ...string) {
 	ps.Log().Infof("peering: dropped dynamic peer %s - %s%s", p.name, ShortPeerIDString(p.id), why)
 }
 
+func (ps *Peers) addToBlacklist(id peer.ID, ttl time.Duration) {
+	ps.mutex.Lock()
+	defer ps.mutex.Unlock()
+
+	ps.blacklist[id] = time.Now().Add(ttl)
+}
+
+func (ps *Peers) isInBlacklist(id peer.ID) bool {
+	ps.mutex.RLock()
+	defer ps.mutex.RUnlock()
+
+	_, yes := ps.blacklist[id]
+	return yes
+}
+
 func (ps *Peers) OnReceiveTxBytes(fun func(from peer.ID, txBytes []byte, metadata *txmetadata.TransactionMetadata)) {
 	ps.mutex.Lock()
 	defer ps.mutex.Unlock()
@@ -379,7 +397,7 @@ func (ps *Peers) getPeerIDsWithOpenComms() []peer.ID {
 
 	ret := make([]peer.ID, 0)
 	for id, p := range ps.peers {
-		if p.isCommunicationOpen() {
+		if !ps.isInBlacklist(p.id) {
 			ret = append(ret, id)
 		}
 	}
@@ -405,5 +423,32 @@ func (ps *Peers) PeerName(id peer.ID) string {
 func (ps *Peers) EvidenceIncomingTx(good bool, from peer.ID) {
 	if p := ps.getPeer(from); p != nil {
 		p.evidence(evidenceIncoming(good))
+	}
+}
+
+func (ps *Peers) blacklistCleanupLoop() {
+	for {
+		select {
+		case <-ps.Ctx().Done():
+			return
+		case <-time.After(time.Second):
+			ps.cleanBlacklist()
+		}
+	}
+}
+
+func (ps *Peers) cleanBlacklist() {
+	ps.mutex.Lock()
+	defer ps.mutex.Unlock()
+
+	toDelete := make([]peer.ID, 0, len(ps.blacklist))
+	nowis := time.Now()
+	for id, deadline := range ps.blacklist {
+		if deadline.Before(nowis) {
+			toDelete = append(toDelete, id)
+		}
+	}
+	for _, id := range toDelete {
+		delete(ps.blacklist, id)
 	}
 }

@@ -100,6 +100,7 @@ func (ps *Peers) removeNotAliveDynamicPeers() {
 
 	for _, p := range toRemove {
 		ps.removeDynamicPeer(p, "not alive")
+		ps.addToBlacklist(p.id, time.Minute)
 	}
 }
 
@@ -118,6 +119,7 @@ func (ps *Peers) dropExcessPeersIfNeeded() {
 	}
 	for _, p := range sortedByRanks[:ps.cfg.MaxDynamicPeers] {
 		ps.removeDynamicPeer(p, fmt.Sprintf("excess over maximum dynamic peers configured: %d", ps.cfg.MaxDynamicPeers))
+		ps.addToBlacklist(p.id, 30*time.Second)
 	}
 }
 

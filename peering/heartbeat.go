@@ -53,16 +53,6 @@ func (hi *heartbeatInfo) Bytes() []byte {
 	return buf.Bytes()
 }
 
-func (ps *Peers) blockCommunicationsWithStaticPeer(p *Peer) {
-	util.Assertf(p.isPreConfigured, "p.isPreConfigured")
-
-	p.mutex.Lock()
-	p.blockActivityUntil = time.Now().Add(commBlockDuration)
-	p.mutex.Unlock()
-
-	ps.Log().Warnf("blocked communications with peer %s (%s) for %v", ShortPeerIDString(p.id), p.name, commBlockDuration)
-}
-
 func (ps *Peers) MaxPeers() (preConfigured int, maxDynamicPeers int) {
 	return len(ps.cfg.PreConfiguredPeers), ps.cfg.MaxDynamicPeers
 }
@@ -159,7 +149,7 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 		p = ps.addPeer(addrInfo, "", false)
 	}
 
-	if !p.isCommunicationOpen() {
+	if ps.isInBlacklist(p.id) {
 		_ = stream.Reset()
 		return
 	}
@@ -173,7 +163,7 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 	}
 	if err != nil {
 		ps.Log().Errorf("error while reading message from peer %s: %v", ShortPeerIDString(id), err)
-		ps.dropPeer(p, "read error")
+		ps.dropPeer(p, time.Minute, "read error")
 		_ = stream.Reset()
 		return
 	}
@@ -186,7 +176,7 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 		}
 		ps.Log().Warnf("clock of the peer %s is %s of the local clock for %v > tolerance interval %v",
 			ShortPeerIDString(id), b, clockDiff, clockTolerance)
-		ps.dropPeer(p, "over clock tolerance")
+		ps.dropPeer(p, time.Minute, "over clock tolerance")
 		_ = stream.Reset()
 		return
 	}
@@ -208,12 +198,11 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 	util.Assertf(p.isAlive(), "isAlive")
 }
 
-func (ps *Peers) dropPeer(p *Peer, reason ...string) {
-	if p.isPreConfigured {
-		ps.blockCommunicationsWithStaticPeer(p)
-	} else {
+func (ps *Peers) dropPeer(p *Peer, forTTL time.Duration, reason ...string) {
+	if !p.isPreConfigured {
 		ps.removeDynamicPeer(p, reason...)
 	}
+	ps.addToBlacklist(p.id, forTTL)
 }
 
 func (ps *Peers) sendHeartbeatToPeer(id peer.ID) {
