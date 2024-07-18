@@ -324,6 +324,8 @@ func (ps *Peers) removeDynamicPeer(p *Peer, reason ...string) {
 	defer ps.mutex.Unlock()
 
 	ps.host.Peerstore().RemovePeer(p.id)
+	ps.kademliaDHT.RoutingTable().RemovePeer(p.id)
+	_ = ps.host.Network().ClosePeer(p.id)
 	delete(ps.peers, p.id)
 
 	why := ""

@@ -28,6 +28,13 @@ func (ps *Peers) autopeeringLoop() {
 
 		case <-time.After(checkPeersEvery):
 			ps.removeNotAliveDynamicPeers()
+			for err := range ps.kademliaDHT.RefreshRoutingTable() {
+				if err != nil {
+					ps.Tracef(TraceTagAutopeering, "kademlia RefreshRoutingTable: %v", err)
+				}
+				break
+			}
+
 			ps.discoverPeersIfNeeded()
 			ps.dropExcessPeersIfNeeded()
 
@@ -43,6 +50,8 @@ func (ps *Peers) autopeeringLoop() {
 
 func (ps *Peers) discoverPeersIfNeeded() {
 	_, aliveDynamic := ps.NumAlive()
+	ps.Tracef(TraceTagAutopeering, "FindPeers: num alive dynamic = %d", aliveDynamic)
+
 	if aliveDynamic >= ps.cfg.MaxDynamicPeers {
 		return
 	}
@@ -91,7 +100,6 @@ func (ps *Peers) removeNotAliveDynamicPeers() {
 
 	for _, p := range toRemove {
 		ps.removeDynamicPeer(p, "not alive")
-		ps.kademliaDHT.RoutingTable().RemovePeer(p.id)
 	}
 }
 
