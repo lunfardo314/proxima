@@ -98,6 +98,10 @@ const (
 
 	// clockTolerance is how big the difference between local and remote clocks is tolerated
 	clockTolerance = 5 * time.Second // for testing only
+
+	// if the node is bootstrap, and it has configured less than numMaxDynamicPeersForBootNodeAtLeast
+	// of dynamic peer cap, use this instead
+	numMaxDynamicPeersForBootNodeAtLeast = 3
 )
 
 func NewPeersDummy() *Peers {
@@ -225,6 +229,9 @@ func readPeeringConfig(boot bool) (*Config, error) {
 	if cfg.MaxDynamicPeers < 0 {
 		cfg.MaxDynamicPeers = 0
 	}
+	if boot && cfg.MaxDynamicPeers < numMaxDynamicPeersForBootNodeAtLeast {
+		cfg.MaxDynamicPeers = numMaxDynamicPeersForBootNodeAtLeast
+	}
 	return cfg, nil
 }
 
@@ -310,7 +317,7 @@ func (ps *Peers) addPeer(addrInfo *peer.AddrInfo, name string, preConfigured boo
 	return p
 }
 
-func (ps *Peers) removeDynamicPeer(p *Peer) {
+func (ps *Peers) removeDynamicPeer(p *Peer, reason ...string) {
 	util.Assertf(!p.isPreConfigured, "removeDynamicPeer: must not be pre-configured")
 
 	ps.mutex.Lock()
@@ -319,7 +326,11 @@ func (ps *Peers) removeDynamicPeer(p *Peer) {
 	ps.host.Peerstore().RemovePeer(p.id)
 	delete(ps.peers, p.id)
 
-	ps.Log().Infof("peering: dropped dynamic peer %s - %s", p.name, p.id.String())
+	why := ""
+	if len(reason) > 0 {
+		why = fmt.Sprintf(". Reason: '%s'", reason[0])
+	}
+	ps.Log().Infof("peering: dropped dynamic peer %s - %s%s", p.name, p.id.String(), why)
 }
 
 func (ps *Peers) OnReceiveTxBytes(fun func(from peer.ID, txBytes []byte, metadata *txmetadata.TransactionMetadata)) {

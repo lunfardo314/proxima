@@ -1,6 +1,7 @@
 package peering
 
 import (
+	"fmt"
 	"math/rand"
 	"sort"
 	"time"
@@ -29,6 +30,8 @@ func (ps *Peers) autopeeringLoop() {
 			ps.removeNotAliveDynamicPeers()
 			ps.discoverPeersIfNeeded()
 			ps.dropExcessPeersIfNeeded()
+
+			ps.kademliaDHT.RoutingTable()
 
 			for err := range ps.kademliaDHT.ForceRefresh() {
 				if err != nil {
@@ -88,12 +91,9 @@ func (ps *Peers) removeNotAliveDynamicPeers() {
 	}
 	ps.mutex.RUnlock()
 
-	if len(toRemove) == 0 {
-		return
-	}
-
 	for _, p := range toRemove {
-		ps.removeDynamicPeer(p)
+		ps.removeDynamicPeer(p, "not alive")
+		ps.kademliaDHT.RoutingTable().RemovePeer(p.id)
 	}
 }
 
@@ -111,7 +111,7 @@ func (ps *Peers) dropExcessPeersIfNeeded() {
 		return
 	}
 	for _, p := range sortedByRanks[:ps.cfg.MaxDynamicPeers] {
-		ps.removeDynamicPeer(p)
+		ps.removeDynamicPeer(p, fmt.Sprintf("excess over maximum dynamic peers configured: %d", ps.cfg.MaxDynamicPeers))
 	}
 }
 

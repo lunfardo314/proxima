@@ -173,7 +173,7 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 	}
 	if err != nil {
 		ps.Log().Errorf("error while reading message from peer %s: %v", id.String(), err)
-		ps.dropPeer(p)
+		ps.dropPeer(p, "read error")
 		_ = stream.Reset()
 		return
 	}
@@ -186,7 +186,7 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 		}
 		ps.Log().Warnf("clock of the peer %s is %s of the local clock for %v > tolerance interval %v",
 			id.String(), b, clockDiff, clockTolerance)
-		ps.dropPeer(p)
+		ps.dropPeer(p, "over clock tolerance")
 		_ = stream.Reset()
 		return
 	}
@@ -208,11 +208,11 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 	util.Assertf(p.isAlive(), "isAlive")
 }
 
-func (ps *Peers) dropPeer(p *Peer) {
+func (ps *Peers) dropPeer(p *Peer, reason ...string) {
 	if p.isPreConfigured {
 		ps.blockCommunicationsWithStaticPeer(p)
 	} else {
-		ps.removeDynamicPeer(p)
+		ps.removeDynamicPeer(p, reason...)
 	}
 }
 
