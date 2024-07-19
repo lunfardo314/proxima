@@ -77,15 +77,19 @@ func (ps *Peers) discoverPeersIfNeeded() {
 }
 
 func (ps *Peers) deadDynamicPeers() []*Peer {
+	ps.Tracef(TraceTag, "deadDynamicPeers")
+
 	ps.mutex.RLock()
 	defer ps.mutex.RUnlock()
 
+	ps.Tracef(TraceTag, "deadDynamicPeers 2")
 	ret := make([]*Peer, 0)
 	for _, p := range ps.peers {
 		if !p.isPreConfigured && p.isDead() {
 			ret = append(ret, p)
 		}
 	}
+	ps.Tracef(TraceTag, "deadDynamicPeers 3")
 	return ret
 }
 
