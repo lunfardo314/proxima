@@ -140,7 +140,7 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 			ID:    id,
 			Addrs: []multiaddr.Multiaddr{remote},
 		}
-		ps.Log().Infof("incoming peer request from %s. Add new dynamic peer", ShortPeerIDString(id))
+		ps.Log().Infof("[peering] incoming peer request from %s. Add new dynamic peer", ShortPeerIDString(id))
 		p = ps.addPeer(addrInfo, "", false)
 	}
 
@@ -152,7 +152,7 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 		hbInfo, err = heartbeatInfoFromBytes(msgData)
 	}
 	if err != nil {
-		ps.Log().Errorf("error while reading message from peer %s: %v", ShortPeerIDString(id), err)
+		ps.Log().Errorf("[peering] error while reading message from peer %s: %v", ShortPeerIDString(id), err)
 		ps.dropPeer(p, "read error")
 		_ = stream.Reset()
 		return
@@ -164,7 +164,7 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 		if behind {
 			b = "behind"
 		}
-		ps.Log().Warnf("clock of the peer %s is %s of the local clock for %v > tolerance interval %v",
+		ps.Log().Warnf("[peering] clock of the peer %s is %s of the local clock for %v > tolerance interval %v",
 			ShortPeerIDString(id), b, clockDiff, clockTolerance)
 		ps.dropPeer(p, "over clock tolerance")
 		_ = stream.Reset()
@@ -223,7 +223,7 @@ func (ps *Peers) heartbeatLoop() {
 		nowis := time.Now()
 		if nowis.After(logNumPeersDeadline) {
 			aliveStatic, aliveDynamic := ps.NumAlive()
-			ps.Log().Infof("peering: node is connected to %d (%d + %d) peer(s). Pre-configured static: %d, max dynamic: %d",
+			ps.Log().Infof("[peering] node is connected to %d (%d + %d) peer(s). Pre-configured static: %d, max dynamic: %d",
 				aliveStatic+aliveDynamic, aliveStatic, aliveDynamic, len(ps.cfg.PreConfiguredPeers), ps.cfg.MaxDynamicPeers)
 
 			logNumPeersDeadline = nowis.Add(logNumPeersPeriod)
@@ -234,7 +234,7 @@ func (ps *Peers) heartbeatLoop() {
 		}
 		select {
 		case <-ps.Environment.Ctx().Done():
-			ps.Log().Infof("peering: heartbeet loop stopped")
+			ps.Log().Infof("[peering] heartbeet loop stopped")
 			return
 		case <-time.After(heartbeatRate):
 		}

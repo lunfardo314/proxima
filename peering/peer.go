@@ -25,6 +25,13 @@ func (p *Peer) _isAlive() bool {
 	return time.Since(p.lastActivity) < aliveDuration
 }
 
+func (p *Peer) staticOrDynamic() string {
+	if p.isPreConfigured {
+		return "static"
+	}
+	return "dynamic"
+}
+
 func (p *Peer) HasTxStore() bool {
 	p.mutex.RLock()
 	defer p.mutex.RUnlock()
@@ -44,7 +51,8 @@ func (p *Peer) evidence(evidences ...evidenceFun) {
 func evidenceAndLogActivity(env Environment, evidenceSource string) evidenceFun {
 	return func(p *Peer) {
 		if !p._isAlive() {
-			env.Log().Infof("peering: connected to peer %s (%s) (%s). Clock offset: %v", ShortPeerIDString(p.id), p.name, evidenceSource, p.avgClockDifference())
+			env.Log().Infof("[peering]: connected to %s peer %s (%s) (%s). Clock offset: %v",
+				p.staticOrDynamic(), ShortPeerIDString(p.id), p.name, evidenceSource, p.avgClockDifference())
 		}
 		p.lastActivity = time.Now()
 		p.needsLogLostConnection = true

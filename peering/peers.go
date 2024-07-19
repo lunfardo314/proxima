@@ -104,7 +104,7 @@ const (
 	heartbeatRate         = time.Second
 	aliveNumHeartbeats    = 3
 	aliveDuration         = time.Duration(aliveNumHeartbeats) * heartbeatRate
-	gracePeriodAfterAdded = 3 * heartbeatRate
+	gracePeriodAfterAdded = 10 * heartbeatRate
 	logNumPeersPeriod     = 10 * time.Second
 )
 
@@ -318,11 +318,7 @@ func (ps *Peers) addPeer(addrInfo *peer.AddrInfo, name string, preConfigured boo
 	for _, a := range addrInfo.Addrs {
 		ps.host.Peerstore().AddAddr(addrInfo.ID, a, peerstore.PermanentAddrTTL)
 	}
-	if preConfigured {
-		ps.Log().Infof("[peering] added pre-configured peer %s ('%s')", ShortPeerIDString(addrInfo.ID), name)
-	} else {
-		ps.Log().Infof("[peering] added dynamic peer %s", ShortPeerIDString(addrInfo.ID))
-	}
+	ps.Log().Infof("[peering] added %s peer %s (name='%s')", p.staticOrDynamic(), ShortPeerIDString(addrInfo.ID), name)
 	return p
 }
 
