@@ -19,7 +19,7 @@ type (
 	Environment interface {
 		global.NodeGlobal
 		TxBytesStore() global.TxBytesStore
-		QueryTransactionsFromRandomPeer(lst ...ledger.TransactionID) bool
+		// QueryTransactionsFromRandomPeer(lst ...ledger.TransactionID) bool
 		QueryTransactionsFromAllPeers(lst ...ledger.TransactionID)
 		TxBytesWithMetadataIn(txBytes []byte, metadata *txmetadata.TransactionMetadata) (*ledger.TransactionID, error)
 	}
