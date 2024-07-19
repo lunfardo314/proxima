@@ -217,8 +217,23 @@ func (ps *Peers) sendHeartbeatToPeer(id peer.ID) {
 	_ = writeFrame(stream, hbInfo.Bytes())
 }
 
+func (ps *Peers) getPeerIDsNotInBlacklist() []peer.ID {
+	ps.mutex.RLock()
+	defer ps.mutex.RUnlock()
+
+	ret := make([]peer.ID, 0)
+	for id, p := range ps.peers {
+		if _, inBlacklist := ps.blacklist[p.id]; !inBlacklist {
+			ret = append(ret, id)
+		}
+	}
+	return ret
+}
+
 func (ps *Peers) heartbeatLoop() {
 	var logNumPeersDeadline time.Time
+
+	ps.Log().Infof("[peering] start heartbeat loop")
 
 	for {
 		nowis := time.Now()
@@ -229,13 +244,13 @@ func (ps *Peers) heartbeatLoop() {
 
 			logNumPeersDeadline = nowis.Add(logNumPeersPeriod)
 		}
-		for _, id := range ps.getPeerIDsWithOpenComms() {
+		for _, id := range ps.getPeerIDsNotInBlacklist() {
 			ps.logInactivityIfNeeded(id)
 			ps.sendHeartbeatToPeer(id)
 		}
 		select {
 		case <-ps.Environment.Ctx().Done():
-			ps.Log().Infof("[peering] heartbeet loop stopped")
+			ps.Log().Infof("[peering] heartbeat loop stopped")
 			return
 		case <-time.After(heartbeatRate):
 		}

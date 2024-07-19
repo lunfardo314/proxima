@@ -403,19 +403,6 @@ func (ps *Peers) getPeerIDs() []peer.ID {
 	return maps.Keys(ps.peers)
 }
 
-func (ps *Peers) getPeerIDsWithOpenComms() []peer.ID {
-	ps.mutex.RLock()
-	defer ps.mutex.RUnlock()
-
-	ret := make([]peer.ID, 0)
-	for id, p := range ps.peers {
-		if !ps.isInBlacklist(p.id) {
-			ret = append(ret, id)
-		}
-	}
-	return ret
-}
-
 func (ps *Peers) PeerIsAlive(id peer.ID) bool {
 	p := ps.getPeer(id)
 	if p == nil {
