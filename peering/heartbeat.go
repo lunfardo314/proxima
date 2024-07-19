@@ -86,7 +86,7 @@ func (ps *Peers) logInactivityIfNeeded(id peer.ID) {
 
 	if p.isDead() && p.needsLogLostConnection {
 		ps.Log().Infof("host %s (self) lost connection with %s peer %s (%s)",
-			ShortPeerIDString(ps.host.ID()), p.staticOrDynamic(), ShortPeerIDString(id), ps.PeerName(id))
+			ShortPeerIDString(ps.host.ID()), p.staticOrDynamic(), ShortPeerIDString(id), p.name)
 		p.needsLogLostConnection = false
 	}
 }
