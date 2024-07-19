@@ -190,12 +190,12 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 }
 
 func (ps *Peers) dropPeer(p *Peer, reason ...string) {
-	if !p.isPreConfigured {
-		ps.removeDynamicPeer(p, reason...)
-		ps.addToBlacklist(p.id, time.Minute)
-	} else {
+	if p.isPreConfigured {
 		ps.lostConnWithStaticPeer(p, reason...)
 		ps.addToBlacklist(p.id, 5*time.Second)
+	} else {
+		ps.removeDynamicPeer(p, reason...)
+		ps.addToBlacklist(p.id, time.Minute)
 	}
 }
 

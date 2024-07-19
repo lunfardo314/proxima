@@ -19,10 +19,12 @@ const (
 func (ps *Peers) autopeeringLoop() {
 	util.Assertf(ps.isAutopeeringEnabled(), "ps.isAutopeeringEnabled()")
 
+	ps.Log().Infof("[peering]: start autopeering loop")
+
 	for {
 		select {
 		case <-ps.Ctx().Done():
-			ps.Log().Infof("peering: autopeering loop stopped")
+			ps.Log().Infof("[peering]: autopeering loop stopped")
 			return
 
 		case <-time.After(checkPeersEvery):

@@ -39,6 +39,7 @@ type (
 
 func StartSyncManagerFromConfig(env Environment) *SyncManager {
 	if !viper.GetBool("workflow.sync_manager.enable") {
+		env.Log().Infof("[sync manager] is DISABLED")
 		return nil
 	}
 	d := &SyncManager{
