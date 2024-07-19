@@ -44,7 +44,7 @@ func (p *Peer) evidence(evidences ...evidenceFun) {
 func evidenceAndLogActivity(env Environment, evidenceSource string) evidenceFun {
 	return func(p *Peer) {
 		if !p._isAlive() {
-			env.Log().Infof("peering: connected to peer %s (%s) (%s)", ShortPeerIDString(p.id), p.name, evidenceSource)
+			env.Log().Infof("peering: connected to peer %s (%s) (%s). Clock offset: %v", ShortPeerIDString(p.id), p.name, evidenceSource, p.avgClockDifference())
 		}
 		p.lastActivity = time.Now()
 		p.needsLogLostConnection = true

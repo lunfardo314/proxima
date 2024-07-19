@@ -32,6 +32,6 @@ func (cfg *ConfigParams) log(log *zap.SugaredLogger) {
 		log.Info("[workflow config] do not start pruner")
 	}
 	if cfg.enableSyncManager {
-		log.Info("[workflow config] do not start sync manager")
+		log.Info("[workflow config] start sync manager")
 	}
 }
