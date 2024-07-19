@@ -21,7 +21,7 @@ func (p *Peer) isAlive() bool {
 }
 
 func (p *Peer) _isAlive() bool {
-	// peer is alive if its last activity is at least some heartbeats old
+	// peer is alive if its last activity is no more than some heartbeats old
 	return time.Since(p.lastActivity) < aliveDuration
 }
 

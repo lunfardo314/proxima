@@ -75,7 +75,7 @@ func (ps *Peers) processPullFrame(msgData []byte, p *Peer) error {
 		if err != nil {
 			return err
 		}
-		p.evidence(evidenceAndLogActivity(ps, "pullTx"))
+		p.evidence(evidenceAndLogActivity(ps, "pullSync"))
 		ps.onReceivePullSyncPortion(p.id, startingFromSlot, maxBranches)
 
 	default:
