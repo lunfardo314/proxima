@@ -130,11 +130,8 @@ func (ps *Peers) PullTransactionsFromAllPeers(txids ...ledger.TransactionID) {
 	}
 	msg := encodePullTransactionsMsg(txids...)
 
-	ps.Tracef(TraceTag, "PullTransactionsFromAllPeers 1")
-
 	ps.mutex.RLock()
 	defer ps.mutex.RUnlock()
-	ps.Tracef(TraceTag, "PullTransactionsFromAllPeers 2")
 
 	for _, p := range ps.peers {
 		_, inBlackList := ps.blacklist[p.id]
@@ -142,7 +139,6 @@ func (ps *Peers) PullTransactionsFromAllPeers(txids ...ledger.TransactionID) {
 			ps.sendMsgToPeer(p.id, msg)
 		}
 	}
-	ps.Tracef(TraceTag, "PullTransactionsFromAllPeers 3")
 }
 
 func (ps *Peers) sendPullSyncPortionToPeer(id peer.ID, startingFrom ledger.Slot, maxSlots int) {

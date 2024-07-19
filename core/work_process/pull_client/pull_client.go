@@ -20,7 +20,7 @@ type (
 		global.NodeGlobal
 		TxBytesStore() global.TxBytesStore
 		// QueryTransactionsFromRandomPeer(lst ...ledger.TransactionID) bool
-		QueryTransactionsFromAllPeers(lst ...ledger.TransactionID)
+		PullTransactionsFromAllPeers(lst ...ledger.TransactionID)
 		TxBytesWithMetadataIn(txBytes []byte, metadata *txmetadata.TransactionMetadata) (*ledger.TransactionID, error)
 	}
 
@@ -100,7 +100,7 @@ func (p *PullClient) startPulling(txid ledger.TransactionID) {
 
 		// query from random peer
 		//go p.QueryTransactionsFromRandomPeer(txid)
-		go p.QueryTransactionsFromAllPeers(txid)
+		go p.PullTransactionsFromAllPeers(txid)
 	}
 }
 
@@ -146,7 +146,7 @@ func (p *PullClient) backgroundPullLoop() {
 
 		if buffer = p.maturedPullList(buffer); len(buffer) > 0 {
 			//p.QueryTransactionsFromRandomPeer(buffer...)
-			p.QueryTransactionsFromAllPeers(buffer...)
+			p.PullTransactionsFromAllPeers(buffer...)
 		}
 	}
 }

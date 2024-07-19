@@ -70,7 +70,7 @@ func (w *Workflow) PokeAllWith(wanted *vertex.WrappedTx) {
 //	return w.peers.PullTransactionsFromRandomPeer(lst...)
 //}
 
-func (w *Workflow) QueryTransactionsFromAllPeers(lst ...ledger.TransactionID) {
+func (w *Workflow) PullTransactionsFromAllPeers(lst ...ledger.TransactionID) {
 	w.peers.PullTransactionsFromAllPeers(lst...)
 }
 

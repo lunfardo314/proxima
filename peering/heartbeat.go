@@ -84,7 +84,7 @@ func (ps *Peers) logInactivityIfNeeded(id peer.ID) {
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
 
-	if p.isDead() && p.needsLogLostConnection {
+	if p._isDead() && p.needsLogLostConnection {
 		ps.Log().Infof("host %s (self) lost connection with %s peer %s (%s)",
 			ShortPeerIDString(ps.host.ID()), p.staticOrDynamic(), ShortPeerIDString(id), p.name)
 		p.needsLogLostConnection = false

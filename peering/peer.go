@@ -6,11 +6,15 @@ import (
 
 type evidenceFun func(p *Peer)
 
+func (p *Peer) _isDead() bool {
+	return !p._isAlive() && time.Since(p.whenAdded) > gracePeriodAfterAdded
+}
+
 func (p *Peer) isDead() bool {
 	p.mutex.RLock()
 	defer p.mutex.RUnlock()
 
-	return !p._isAlive() && time.Since(p.whenAdded) > gracePeriodAfterAdded
+	return p._isDead()
 }
 
 func (p *Peer) isAlive() bool {
