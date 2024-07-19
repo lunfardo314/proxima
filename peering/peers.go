@@ -104,7 +104,7 @@ const (
 	heartbeatRate         = time.Second
 	aliveNumHeartbeats    = 3
 	aliveDuration         = time.Duration(aliveNumHeartbeats) * heartbeatRate
-	gracePeriodAfterAdded = 10 * heartbeatRate
+	gracePeriodAfterAdded = 30 * heartbeatRate
 	logNumPeersPeriod     = 10 * time.Second
 )
 
