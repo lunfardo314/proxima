@@ -82,14 +82,14 @@ func (ps *Peers) deadDynamicPeers() []*Peer {
 	ps.mutex.RLock()
 	defer ps.mutex.RUnlock()
 
-	ps.Tracef(TraceTag, "deadDynamicPeers 2")
+	ps.Tracef(TraceTag, "deadDynamicPeers 2, len peers: %d", len(ps.peers))
 	ret := make([]*Peer, 0)
 	for _, p := range ps.peers {
 		if !p.isPreConfigured && p.isDead() {
 			ret = append(ret, p)
 		}
 	}
-	ps.Tracef(TraceTag, "deadDynamicPeers 3")
+	ps.Tracef(TraceTag, "deadDynamicPeers 3. lend ret: %d", len(ret))
 	return ret
 }
 
