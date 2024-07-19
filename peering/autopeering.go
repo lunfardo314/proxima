@@ -36,7 +36,6 @@ func (ps *Peers) autopeeringLoop() {
 }
 
 func (ps *Peers) discoverPeersIfNeeded() {
-	ps.Tracef(TraceTag, "discoverPeersIfNeeded")
 	_, aliveDynamic := ps.NumAlive()
 	ps.Tracef(TraceTagAutopeering, "FindPeers: num alive dynamic = %d", aliveDynamic)
 
@@ -49,7 +48,7 @@ func (ps *Peers) discoverPeersIfNeeded() {
 	const peerDiscoveryLimit = 10
 	peerChan, err := ps.routingDiscovery.FindPeers(ps.Ctx(), ps.rendezvousString, discovery.Limit(peerDiscoveryLimit))
 	if err != nil {
-		ps.Log().Errorf("peering: unexpected error while trying to discover peers")
+		ps.Log().Errorf("[peering] unexpected error while trying to discover peers")
 		return
 	}
 
@@ -94,16 +93,13 @@ func (ps *Peers) deadDynamicPeers() []*Peer {
 }
 
 func (ps *Peers) removeDeadDynamicPeers() {
-	ps.Tracef(TraceTag, "removeDeadDynamicPeers")
 	toRemove := ps.deadDynamicPeers()
-	ps.Tracef(TraceTag, "removeDeadDynamicPeers: %d", len(toRemove))
 	for _, p := range toRemove {
 		ps.dropPeer(p, "dead")
 	}
 }
 
 func (ps *Peers) dropExcessPeersIfNeeded() {
-	ps.Tracef(TraceTag, "dropExcessPeersIfNeeded")
 	if _, aliveDynamic := ps.NumAlive(); aliveDynamic <= ps.cfg.MaxDynamicPeers {
 		return
 	}

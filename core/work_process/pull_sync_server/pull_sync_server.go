@@ -75,6 +75,18 @@ func (d *PullSyncServer) Consume(inp *Input) {
 	latestSlot := multistate.FetchLatestSlot(d.StateStore())
 	slotNow := ledger.TimeNow().Slot()
 
+	startFromSlot := inp.StartFrom
+	if latestSlot <= startFromSlot {
+		// it seems this node knows less than the requester
+		if latestSlot < 5 {
+			startFromSlot = 0
+		} else {
+			startFromSlot = latestSlot - 5
+		}
+		d.Environment.Log().Infof("[PullSyncServer] pull sync portion adjusted to start from slot %d. latestSlot: %d",
+			startFromSlot, latestSlot)
+	}
+
 	branchIDs := make([]ledger.TransactionID, 0)
 
 	// collect tips
@@ -90,7 +102,9 @@ func (d *PullSyncServer) Consume(inp *Input) {
 	var lastSlot ledger.Slot
 	store := d.StateStore()
 
-	for slot := inp.StartFrom; nslots < maxSlots && slot < latestSlot && slot < slotNow; slot++ {
+	util.Assertf(startFromSlot < latestSlot, "startFromSlot < latestSlot")
+
+	for slot := startFromSlot; nslots < maxSlots && slot < latestSlot && slot < slotNow; slot++ {
 		// fetch branches of the slot
 		branches := multistate.FetchBranchDataMulti(store, multistate.FetchRootRecords(store, slot)...)
 		// collect branches from the slot which are included into any of the tips

@@ -105,7 +105,7 @@ const (
 	aliveNumHeartbeats    = 3
 	aliveDuration         = time.Duration(aliveNumHeartbeats) * heartbeatRate
 	gracePeriodAfterAdded = 30 * heartbeatRate
-	logNumPeersPeriod     = 10 * time.Second
+	logNumPeersPeriod     = 5 * time.Second
 )
 
 func NewPeersDummy() *Peers {
