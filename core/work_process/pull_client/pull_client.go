@@ -14,14 +14,13 @@ const pullPeriod = 500 * time.Millisecond
 
 // pull_client is a queued work process which sends pull requests for a specified transaction
 // to a random peer. It repeats pull requests for the transaction periodically until stopped
-// TODO in the future tx pulls in the peering network probably will be replaced
-//   with direct calls (sync or async) to TxBytesStore server
 
 type (
 	Environment interface {
 		global.NodeGlobal
 		TxBytesStore() global.TxBytesStore
 		QueryTransactionsFromRandomPeer(lst ...ledger.TransactionID) bool
+		QueryTransactionsFromAllPeers(lst ...ledger.TransactionID)
 		TxBytesWithMetadataIn(txBytes []byte, metadata *txmetadata.TransactionMetadata) (*ledger.TransactionID, error)
 	}
 
@@ -100,7 +99,8 @@ func (p *PullClient) startPulling(txid ledger.TransactionID) {
 		p.TraceTx(&txid, TraceTag+": added to the pull list")
 
 		// query from random peer
-		go p.QueryTransactionsFromRandomPeer(txid)
+		//go p.QueryTransactionsFromRandomPeer(txid)
+		go p.QueryTransactionsFromAllPeers(txid)
 	}
 }
 
@@ -145,10 +145,9 @@ func (p *PullClient) backgroundPullLoop() {
 		}
 
 		if buffer = p.maturedPullList(buffer); len(buffer) > 0 {
-			p.QueryTransactionsFromRandomPeer(buffer...)
+			//p.QueryTransactionsFromRandomPeer(buffer...)
+			p.QueryTransactionsFromAllPeers(buffer...)
 		}
-
-		//p.printStuckList(3 * time.Second)
 	}
 }
 

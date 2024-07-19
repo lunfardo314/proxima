@@ -84,14 +84,18 @@ func (ps *Peers) processPullFrame(msgData []byte, p *Peer) error {
 	return nil
 }
 
-func (ps *Peers) sendPullTransactionsToPeer(id peer.ID, txLst ...ledger.TransactionID) {
+func (ps *Peers) sendMsgToPeer(id peer.ID, msg []byte) {
 	stream, err := ps.host.NewStream(ps.Ctx(), id, ps.lppProtocolPull)
 	if err != nil {
 		return
 	}
 	defer stream.Close()
 
-	_ = writeFrame(stream, encodePullTransactionsMsg(txLst...))
+	_ = writeFrame(stream, msg)
+}
+
+func (ps *Peers) sendPullTransactionsToPeer(id peer.ID, txLst ...ledger.TransactionID) {
+	ps.sendMsgToPeer(id, encodePullTransactionsMsg(txLst...))
 }
 
 // PullTransactionsFromRandomPeer sends pull request to the random peer which has txStore
@@ -106,7 +110,8 @@ func (ps *Peers) PullTransactionsFromRandomPeer(txids ...ledger.TransactionID) b
 	for _, idx := range rand.Perm(len(all)) {
 		rndID := all[idx]
 		p := ps.peers[rndID]
-		if !ps.isInBlacklist(p.id) && p.isAlive() && p.HasTxStore() {
+		_, inBlackList := ps.blacklist[p.id]
+		if !inBlackList && !p.isDead() && p.HasTxStore() {
 			ps.Tracef(TraceTag, "pull from random peer %s: %s",
 				func() any { return ShortPeerIDString(rndID) },
 				func() any { return _txidLst(txids...) },
@@ -119,14 +124,26 @@ func (ps *Peers) PullTransactionsFromRandomPeer(txids ...ledger.TransactionID) b
 	return false
 }
 
-func (ps *Peers) sendPullSyncPortionToPeer(id peer.ID, startingFrom ledger.Slot, maxSlots int) {
-	stream, err := ps.host.NewStream(ps.Ctx(), id, ps.lppProtocolPull)
-	if err != nil {
+func (ps *Peers) PullTransactionsFromAllPeers(txids ...ledger.TransactionID) {
+	if len(txids) == 0 {
 		return
 	}
-	defer stream.Close()
+	msg := encodePullTransactionsMsg(txids...)
 
-	_ = writeFrame(stream, encodeSyncPortionMsg(startingFrom, maxSlots))
+	ps.mutex.RLock()
+	defer ps.mutex.RUnlock()
+
+	for _, id := range maps.Keys(ps.peers) {
+		p := ps.peers[id]
+		_, inBlackList := ps.blacklist[p.id]
+		if !inBlackList && !p.isDead() && p.HasTxStore() {
+			ps.sendMsgToPeer(id, msg)
+		}
+	}
+}
+
+func (ps *Peers) sendPullSyncPortionToPeer(id peer.ID, startingFrom ledger.Slot, maxSlots int) {
+	ps.sendMsgToPeer(id, encodeSyncPortionMsg(startingFrom, maxSlots))
 }
 
 func (ps *Peers) PullSyncPortionFromRandomPeer(startingFrom ledger.Slot, maxSlots int) bool {

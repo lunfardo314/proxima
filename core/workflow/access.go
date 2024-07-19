@@ -70,6 +70,10 @@ func (w *Workflow) QueryTransactionsFromRandomPeer(lst ...ledger.TransactionID) 
 	return w.peers.PullTransactionsFromRandomPeer(lst...)
 }
 
+func (w *Workflow) QueryTransactionsFromAllPeers(lst ...ledger.TransactionID) {
+	w.peers.PullTransactionsFromAllPeers(lst...)
+}
+
 func (w *Workflow) SendTxBytesWithMetadataToPeer(id peer.ID, txBytes []byte, metadata *txmetadata.TransactionMetadata) bool {
 	return w.peers.SendTxBytesWithMetadataToPeer(id, txBytes, metadata)
 }
