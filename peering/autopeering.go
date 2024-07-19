@@ -19,12 +19,12 @@ const (
 func (ps *Peers) autopeeringLoop() {
 	util.Assertf(ps.isAutopeeringEnabled(), "ps.isAutopeeringEnabled()")
 
-	ps.Log().Infof("[peering]: start autopeering loop")
+	ps.Log().Infof("[peering] start autopeering loop")
 
 	for {
 		select {
 		case <-ps.Ctx().Done():
-			ps.Log().Infof("[peering]: autopeering loop stopped")
+			ps.Log().Infof("[peering] autopeering loop stopped")
 			return
 
 		case <-time.After(checkPeersEvery):
@@ -91,7 +91,9 @@ func (ps *Peers) deadDynamicPeers() []*Peer {
 
 func (ps *Peers) removeDeadDynamicPeers() {
 	ps.Tracef(TraceTag, "removeDeadDynamicPeers")
-	for _, p := range ps.deadDynamicPeers() {
+	toRemove := ps.deadDynamicPeers()
+	ps.Tracef(TraceTag, "removeDeadDynamicPeers: %d", len(toRemove))
+	for _, p := range toRemove {
 		ps.dropPeer(p, "dead")
 	}
 }
