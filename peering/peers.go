@@ -93,15 +93,19 @@ const (
 	lppProtocolPull      = "/proxima/pull/%d"
 	lppProtocolHeartbeat = "/proxima/heartbeat/%d"
 
-	// TTL in the blacklist, util removed
-	blacklistTTL = time.Minute
-
 	// clockTolerance is how big the difference between local and remote clocks is tolerated
 	clockTolerance = 5 * time.Second // for testing only
 
 	// if the node is bootstrap, and it has configured less than numMaxDynamicPeersForBootNodeAtLeast
 	// of dynamic peer cap, use this instead
 	numMaxDynamicPeersForBootNodeAtLeast = 3
+
+	// heartbeatRate heartbeat issued every period
+	heartbeatRate         = time.Second
+	aliveNumHeartbeats    = 3
+	aliveDuration         = time.Duration(aliveNumHeartbeats) * heartbeatRate
+	gracePeriodAfterAdded = 3 * heartbeatRate
+	logNumPeersPeriod     = 10 * time.Second
 )
 
 func NewPeersDummy() *Peers {
@@ -159,7 +163,7 @@ func New(env Environment, cfg *Config) (*Peers, error) {
 		bootstrapPeers := peerstore.AddrInfos(ret.host.Peerstore(), maps.Keys(ret.peers))
 		ret.kademliaDHT, err = dht.New(env.Ctx(), lppHost,
 			dht.Mode(dht.ModeAutoServer),
-			dht.RoutingTableRefreshPeriod(10*time.Second),
+			dht.RoutingTableRefreshPeriod(5*time.Second),
 			dht.BootstrapPeers(bootstrapPeers...),
 		)
 		if err != nil {
@@ -309,7 +313,6 @@ func (ps *Peers) addPeer(addrInfo *peer.AddrInfo, name string, preConfigured boo
 		id:              addrInfo.ID,
 		isPreConfigured: preConfigured,
 		whenAdded:       nowis,
-		lastActivity:    nowis, // grace period in order not to drop immediately
 	}
 	ps.peers[addrInfo.ID] = p
 	for _, a := range addrInfo.Addrs {

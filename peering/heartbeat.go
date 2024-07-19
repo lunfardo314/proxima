@@ -131,25 +131,15 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 			return
 		}
 		// peer not found. Add new incoming dynamic peer and then let the autopeering handle if too many
+
+		// does not work -> addrInfo, err := peer.AddrInfoFromP2pAddr(remote)
+		// for some reason peer.AddrInfoFromP2pAddr does not work -> compose AddrInfo from parts
+
 		remote := stream.Conn().RemoteMultiaddr()
 		addrInfo := &peer.AddrInfo{
 			ID:    id,
 			Addrs: []multiaddr.Multiaddr{remote},
 		}
-		// for some reason peer.AddrInfoFromP2pAddr does not work -> compose AddrInfo from parts
-
-		//remoteStr := "<nil>"
-		//if remote != nil {
-		//	remoteStr = remote.String()
-		//}
-		//addrInfo, err := peer.AddrInfoFromP2pAddr(remote)
-		//if err != nil {
-		//	ps.Log().Errorf("peering: AddrInfoFromP2pAddr: '%v'. Multiaddr remote: %s, peer id: %s", err, remoteStr, id.String())
-		//	_ = stream.Reset()
-		//	return
-		//} else {
-		//	ps.Log().Infof("peering: AddrInfoFromP2pAddr: OK. Remote multiaddr: %s", remoteStr)
-		//}
 		ps.Log().Infof("incoming peer request from %s. Add new dynamic peer", ShortPeerIDString(id))
 		p = ps.addPeer(addrInfo, "", false)
 	}
@@ -222,13 +212,6 @@ func (ps *Peers) sendHeartbeatToPeer(id peer.ID) {
 	}
 	_ = writeFrame(stream, hbInfo.Bytes())
 }
-
-const (
-	heartbeatRate      = time.Second
-	aliveNumHeartbeats = 2
-	aliveDuration      = time.Duration(aliveNumHeartbeats) * heartbeatRate
-	logNumPeersPeriod  = 10 * time.Second
-)
 
 func (ps *Peers) heartbeatLoop() {
 	var logNumPeersDeadline time.Time
