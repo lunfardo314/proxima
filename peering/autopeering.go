@@ -36,6 +36,7 @@ func (ps *Peers) autopeeringLoop() {
 }
 
 func (ps *Peers) discoverPeersIfNeeded() {
+	ps.Tracef(TraceTag, "discoverPeersIfNeeded")
 	_, aliveDynamic := ps.NumAlive()
 	ps.Tracef(TraceTagAutopeering, "FindPeers: num alive dynamic = %d", aliveDynamic)
 
@@ -89,12 +90,14 @@ func (ps *Peers) deadDynamicPeers() []*Peer {
 }
 
 func (ps *Peers) removeDeadDynamicPeers() {
+	ps.Tracef(TraceTag, "removeDeadDynamicPeers")
 	for _, p := range ps.deadDynamicPeers() {
 		ps.dropPeer(p, "dead")
 	}
 }
 
 func (ps *Peers) dropExcessPeersIfNeeded() {
+	ps.Tracef(TraceTag, "dropExcessPeersIfNeeded")
 	if _, aliveDynamic := ps.NumAlive(); aliveDynamic <= ps.cfg.MaxDynamicPeers {
 		return
 	}
