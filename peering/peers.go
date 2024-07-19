@@ -150,13 +150,13 @@ func New(env Environment, cfg *Config) (*Peers, error) {
 		rendezvousString:         fmt.Sprintf("%d", rendezvousNumber),
 	}
 
-	env.Log().Infof("peering: rendezvous number is %d", rendezvousNumber)
+	env.Log().Infof("[peering] rendezvous number is %d", rendezvousNumber)
 	for name, maddr := range cfg.PreConfiguredPeers {
 		if err = ret.addStaticPeer(maddr, name); err != nil {
 			return nil, err
 		}
 	}
-	env.Log().Infof("peering: number of statically pre-configured peers (manual peering): %d", len(cfg.PreConfiguredPeers))
+	env.Log().Infof("[peering] number of statically pre-configured peers (manual peering): %d", len(cfg.PreConfiguredPeers))
 
 	if env.IsBootstrapNode() || ret.isAutopeeringEnabled() {
 		// autopeering enabled. The node also acts as a bootstrap node
@@ -176,14 +176,14 @@ func New(env Environment, cfg *Config) (*Peers, error) {
 		ret.routingDiscovery = routing.NewRoutingDiscovery(ret.kademliaDHT)
 		p2putil.Advertise(env.Ctx(), ret.routingDiscovery, ret.rendezvousString)
 
-		env.Log().Infof("peering: autopeering is enabled with max dynamic peers = %d", cfg.MaxDynamicPeers)
+		env.Log().Infof("[peering] autopeering is enabled with max dynamic peers = %d", cfg.MaxDynamicPeers)
 	} else {
-		env.Log().Infof("peering: autopeering is disabled")
+		env.Log().Infof("[peering] autopeering is disabled")
 	}
 
 	go ret.blacklistCleanupLoop()
 
-	env.Log().Infof("peering: initialized successfully")
+	env.Log().Infof("[peering] initialized successfully")
 	return ret, nil
 }
 
@@ -268,7 +268,7 @@ func (ps *Peers) Run() {
 		go ps.autopeeringLoop()
 	}
 
-	ps.Log().Infof("peering: libp2p host %s (self) started on %v with %d pre-configured peers, maximum dynamic peers: %d, autopeering enabled: %v",
+	ps.Log().Infof("[peering] libp2p host %s (self) started on %v with %d pre-configured peers, maximum dynamic peers: %d, autopeering enabled: %v",
 		ShortPeerIDString(ps.host.ID()), ps.host.Addrs(), len(ps.cfg.PreConfiguredPeers), ps.cfg.MaxDynamicPeers, ps.isAutopeeringEnabled())
 	_ = ps.Log().Sync()
 }
@@ -281,10 +281,10 @@ func (ps *Peers) Stop() {
 	ps.stopOnce.Do(func() {
 		ps.Environment.MarkWorkProcessStopped(Name)
 
-		ps.Log().Infof("peering: stopping libp2p host %s (self)..", ShortPeerIDString(ps.host.ID()))
+		ps.Log().Infof("[peering] stopping libp2p host %s (self)..", ShortPeerIDString(ps.host.ID()))
 		_ = ps.Log().Sync()
 		_ = ps.host.Close()
-		ps.Log().Infof("peering: libp2p host %s (self) has been stopped", ShortPeerIDString(ps.host.ID()))
+		ps.Log().Infof("[peering] libp2p host %s (self) has been stopped", ShortPeerIDString(ps.host.ID()))
 	})
 }
 
@@ -319,9 +319,9 @@ func (ps *Peers) addPeer(addrInfo *peer.AddrInfo, name string, preConfigured boo
 		ps.host.Peerstore().AddAddr(addrInfo.ID, a, peerstore.PermanentAddrTTL)
 	}
 	if preConfigured {
-		ps.Log().Infof("peering: added pre-configured peer %s ('%s')", ShortPeerIDString(addrInfo.ID), name)
+		ps.Log().Infof("[peering] added pre-configured peer %s ('%s')", ShortPeerIDString(addrInfo.ID), name)
 	} else {
-		ps.Log().Infof("peering: added dynamic peer %s", ShortPeerIDString(addrInfo.ID))
+		ps.Log().Infof("[peering] added dynamic peer %s", ShortPeerIDString(addrInfo.ID))
 	}
 	return p
 }
@@ -341,7 +341,17 @@ func (ps *Peers) removeDynamicPeer(p *Peer, reason ...string) {
 	if len(reason) > 0 {
 		why = fmt.Sprintf(". Reason: '%s'", reason[0])
 	}
-	ps.Log().Infof("peering: dropped dynamic peer %s - %s%s", p.name, ShortPeerIDString(p.id), why)
+	ps.Log().Infof("[peering] dropped dynamic peer %s - %s%s", p.name, ShortPeerIDString(p.id), why)
+}
+
+func (ps *Peers) lostConnWithStaticPeer(p *Peer, reason ...string) {
+	util.Assertf(p.isPreConfigured, "lostConnWithStaticPeer: must be pre-configured")
+
+	why := ""
+	if len(reason) > 0 {
+		why = fmt.Sprintf(". Reason: '%s'", reason[0])
+	}
+	ps.Log().Infof("[peering] lost connection with static peer %s - %s%s", p.name, ShortPeerIDString(p.id), why)
 }
 
 func (ps *Peers) addToBlacklist(id peer.ID, ttl time.Duration) {

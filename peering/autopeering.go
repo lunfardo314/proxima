@@ -88,7 +88,7 @@ func (ps *Peers) deadDynamicPeers() []*Peer {
 
 func (ps *Peers) removeDeadDynamicPeers() {
 	for _, p := range ps.deadDynamicPeers() {
-		ps.dropPeer(p, time.Minute, "dead")
+		ps.dropPeer(p, "dead")
 	}
 }
 
@@ -103,7 +103,8 @@ func (ps *Peers) dropExcessPeersIfNeeded() {
 		return
 	}
 	for _, p := range sortedByRanks[:ps.cfg.MaxDynamicPeers] {
-		ps.dropPeer(p, 10*time.Second, fmt.Sprintf("excess over maximum dynamic peers configured: %d", ps.cfg.MaxDynamicPeers))
+		ps.removeDynamicPeer(p, fmt.Sprintf("excess over maximum dynamic peers configured: %d", ps.cfg.MaxDynamicPeers))
+		ps.addToBlacklist(p.id, 10*time.Second)
 	}
 }
 

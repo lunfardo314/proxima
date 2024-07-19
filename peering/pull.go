@@ -7,7 +7,6 @@ import (
 	"math"
 	"math/rand"
 	"strings"
-	"time"
 
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -43,13 +42,13 @@ func (ps *Peers) pullStreamHandler(stream network.Stream) {
 
 	msgData, err := readFrame(stream)
 	if err != nil {
-		ps.dropPeer(p, time.Minute, "read error")
+		ps.dropPeer(p, "read error")
 		ps.Log().Errorf("error while reading message from peer %s: %v", id.String(), err)
 		_ = stream.Reset()
 		return
 	}
 	if err = ps.processPullFrame(msgData, p); err != nil {
-		ps.dropPeer(p, time.Minute, "error while parsing pull message")
+		ps.dropPeer(p, "error while parsing pull message")
 		ps.Log().Errorf("error while decoding message from peer %s: %v", id.String(), err)
 		_ = stream.Reset()
 		return

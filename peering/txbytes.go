@@ -1,8 +1,6 @@
 package peering
 
 import (
-	"time"
-
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/lunfardo314/proxima/core/txmetadata"
@@ -26,21 +24,21 @@ func (ps *Peers) gossipStreamHandler(stream network.Stream) {
 
 	txBytesWithMetadata, err := readFrame(stream)
 	if err != nil {
-		ps.dropPeer(p, time.Minute, "read error")
+		ps.dropPeer(p, "read error")
 		ps.Log().Errorf("error while reading message from peer %s: %v", id.String(), err)
 		_ = stream.Reset()
 		return
 	}
 	metadataBytes, txBytes, err := txmetadata.SplitTxBytesWithMetadata(txBytesWithMetadata)
 	if err != nil {
-		ps.dropPeer(p, time.Minute, "error while parsing tx metadata")
+		ps.dropPeer(p, "error while parsing tx metadata")
 		ps.Log().Errorf("error while parsing tx message from peer %s: %v", id.String(), err)
 		_ = stream.Reset()
 		return
 	}
 	metadata, err := txmetadata.TransactionMetadataFromBytes(metadataBytes)
 	if err != nil {
-		ps.dropPeer(p, time.Minute, "error while parsing tx metadata")
+		ps.dropPeer(p, "error while parsing tx metadata")
 		ps.Log().Errorf("error while parsing tx message metadata from peer %s: %v", id.String(), err)
 		_ = stream.Reset()
 		return
