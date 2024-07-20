@@ -151,6 +151,10 @@ func (w *Workflow) SendTx(sendTo peer.ID, txids ...ledger.TransactionID) {
 		w.pullTxServer.Push(&pull_tx_server.Input{
 			TxID:   txids[i],
 			PeerID: sendTo,
+			PortionInfo: txmetadata.PortionInfo{
+				LastIndex: uint16(len(txids) - 1),
+				Index:     uint16(i),
+			},
 		})
 	}
 }

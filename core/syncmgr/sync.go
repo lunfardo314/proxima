@@ -28,7 +28,7 @@ type (
 		syncPortionSlots            int
 		syncToleranceThresholdSlots int
 
-		pokeCh                               chan struct{}
+		endOfPortionCh                       chan struct{}
 		syncPortionRequestedAtLeastUntilSlot ledger.Slot
 		syncPortionDeadline                  time.Time
 		latestSlotInDB                       atomic.Uint32 // cache for IgnoreFutureTxID
@@ -46,7 +46,7 @@ func StartSyncManagerFromConfig(env Environment) *SyncManager {
 		Environment:                 env,
 		syncPortionSlots:            viper.GetInt("workflow.sync_manager.sync_portion_slots"),
 		syncToleranceThresholdSlots: viper.GetInt("workflow.sync_manager.sync_tolerance_threshold_slots"),
-		pokeCh:                      make(chan struct{}, 1),
+		endOfPortionCh:              make(chan struct{}, 1),
 	}
 	if d.syncPortionSlots < 1 || d.syncPortionSlots > global.MaxSyncPortionSlots {
 		d.syncPortionSlots = global.MaxSyncPortionSlots
@@ -75,16 +75,16 @@ func (d *SyncManager) syncManagerLoop() {
 			d.Log().Infof("[sync manager] stopped ")
 			return
 
-		case <-d.pokeCh:
-			d.checkSync()
+		case <-d.endOfPortionCh:
+			d.checkSync(true)
 
 		case <-time.After(checkSyncEvery):
-			d.checkSync()
+			d.checkSync(false)
 		}
 	}
 }
 
-func (d *SyncManager) checkSync() {
+func (d *SyncManager) checkSync(endOfPortion bool) {
 	latestSlotInDB := multistate.FetchLatestSlot(d.StateStore())
 	d.latestSlotInDB.Store(uint32(latestSlotInDB)) // cache
 
@@ -107,7 +107,7 @@ func (d *SyncManager) checkSync() {
 	// above threshold, not synced
 	if latestSlotInDB < d.syncPortionRequestedAtLeastUntilSlot {
 		// we already pulled portion, but it is not here yet, it seems
-		if time.Now().Before(d.syncPortionDeadline) {
+		if !endOfPortion && time.Now().Before(d.syncPortionDeadline) {
 			// still waiting for the portion, do nothing
 			return
 		}
@@ -122,9 +122,9 @@ func (d *SyncManager) checkSync() {
 	d.PullSyncPortion(latestSlotInDB, d.syncPortionSlots)
 }
 
-func (d *SyncManager) Poke() {
+func (d *SyncManager) NotifyEndOfPortion() {
 	select {
-	case d.pokeCh <- struct{}{}:
+	case d.endOfPortionCh <- struct{}{}:
 	default:
 	}
 }

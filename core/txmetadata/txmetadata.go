@@ -23,8 +23,13 @@ type (
 		SourceTypeNonPersistent SourceType         // non-persistent, used for internal workflow
 		DoNotNeedGossiping      bool               // non-persistent flag, to prevent redundant gossiping
 		IsResponseToPull        bool               // only used as a persistent flag in tx gossip
+		PortionInfo             *PortionInfo       // persistent. May be not nil when transaction is part of the portion
 	}
 
+	PortionInfo struct {
+		LastIndex uint16
+		Index     uint16
+	}
 	SourceType byte
 )
 
@@ -51,6 +56,7 @@ const (
 	flagCoverageDeltaProvided = 0b00000100
 	flagSlotInflationProvided = 0b00001000
 	flagSupplyProvided        = 0b00010000
+	flagPortionInfo           = 0b00100000
 )
 
 func (s SourceType) String() string {
@@ -74,6 +80,9 @@ func (m *TransactionMetadata) flags() (ret byte) {
 	}
 	if m.Supply != nil {
 		ret |= flagSupplyProvided
+	}
+	if m.PortionInfo != nil {
+		ret |= flagPortionInfo
 	}
 	return
 }
@@ -111,22 +120,27 @@ func (m *TransactionMetadata) Bytes() []byte {
 		binary.BigEndian.PutUint64(supplyBin[:], *m.Supply)
 		buf.Write(supplyBin[:])
 	}
+	if m.PortionInfo != nil {
+		var u16bin [2]byte
+		binary.BigEndian.PutUint16(u16bin[:], m.PortionInfo.LastIndex)
+		buf.Write(u16bin[:])
+		binary.BigEndian.PutUint16(u16bin[:], m.PortionInfo.Index)
+		buf.Write(u16bin[:])
+	}
 	ret := buf.Bytes()
 	util.Assertf(len(ret) <= 256, "too big TransactionMetadata")
 	ret[0] = byte(len(ret) - 1)
 	return ret
 }
 
-func _readUint64(r io.Reader) (uint64, error) {
-	var uint64Bin [8]byte
-	n, err := r.Read(uint64Bin[:])
-	if err != nil {
-		return 0, fmt.Errorf("TransactionMetadataFromBytes: %w", err)
-	}
-	if n != 8 {
-		return 0, fmt.Errorf("TransactionMetadataFromBytes: unexpected EOF")
-	}
-	return binary.BigEndian.Uint64(uint64Bin[:]), nil
+func _readUint64(r io.Reader) (ret uint64, err error) {
+	err = binary.Read(r, binary.BigEndian, &ret)
+	return
+}
+
+func _readUint16(r io.Reader) (ret uint16, err error) {
+	err = binary.Read(r, binary.BigEndian, &ret)
+	return
 }
 
 func TransactionMetadataFromBytes(data []byte) (*TransactionMetadata, error) {
@@ -172,6 +186,15 @@ func TransactionMetadataFromBytes(data []byte) (*TransactionMetadata, error) {
 			return nil, err
 		}
 	}
+	if flags&flagPortionInfo != 0 {
+		ret.PortionInfo = new(PortionInfo)
+		if ret.PortionInfo.LastIndex, err = _readUint16(rdr); err != nil {
+			return nil, err
+		}
+		if ret.PortionInfo.Index, err = _readUint16(rdr); err != nil {
+			return nil, err
+		}
+	}
 	return ret, nil
 }
 
@@ -204,5 +227,10 @@ func (m *TransactionMetadata) String() string {
 	if m.SlotInflation != nil {
 		inflationStr = util.Th(*m.SlotInflation)
 	}
-	return fmt.Sprintf("coverage: %s, slot inflation: %s, root: %s, source type: '%s'", lcStr, inflationStr, rootStr, m.SourceTypeNonPersistent.String())
+	portionStr := "<nil>"
+	if m.PortionInfo != nil {
+		portionStr = fmt.Sprintf("%d/%d", m.PortionInfo.Index, m.PortionInfo.LastIndex)
+	}
+	return fmt.Sprintf("coverage: %s, slot inflation: %s, root: %s, source type: '%s', portion: %s",
+		lcStr, inflationStr, rootStr, m.SourceTypeNonPersistent.String(), portionStr)
 }

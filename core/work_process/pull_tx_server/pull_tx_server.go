@@ -18,8 +18,9 @@ type (
 	}
 
 	Input struct {
-		TxID   ledger.TransactionID
-		PeerID peer.ID
+		TxID        ledger.TransactionID
+		PeerID      peer.ID
+		PortionInfo txmetadata.PortionInfo
 	}
 
 	PullTxServer struct {
@@ -60,6 +61,7 @@ func (d *PullTxServer) Consume(inp *Input) {
 		}
 		// setting persistent 'response to pull' flag in metadata
 		metadata.IsResponseToPull = true
+		metadata.PortionInfo = &inp.PortionInfo
 
 		d.SendTxBytesWithMetadataToPeer(inp.PeerID, txBytes, metadata)
 		d.Tracef(TraceTag, "-> FOUND %s, meta: %s", inp.TxID.StringShort, metadata.String())

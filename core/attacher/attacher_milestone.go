@@ -42,6 +42,13 @@ func runMilestoneAttacher(vid *vertex.WrappedTx, metadata *txmetadata.Transactio
 	}
 
 	env.PokeAllWith(vid)
+	if metadata != nil &&
+		vid.IsBranchTransaction() &&
+		metadata.PortionInfo != nil &&
+		metadata.PortionInfo.LastIndex > 0 &&
+		metadata.PortionInfo.Index == metadata.PortionInfo.LastIndex {
+		env.NotifyEndOfPortion()
+	}
 
 	// calling callback with timeout in order to detect wrong callbacks immediately
 	const callbackMustFinishIn = 200 * time.Millisecond

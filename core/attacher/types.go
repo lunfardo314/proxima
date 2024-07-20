@@ -31,6 +31,7 @@ type (
 		Pull(txid ledger.TransactionID)
 		PokeMe(me, with *vertex.WrappedTx)
 		PokeAllWith(wanted *vertex.WrappedTx)
+		NotifyEndOfPortion()
 	}
 
 	postEventEnvironment interface {
