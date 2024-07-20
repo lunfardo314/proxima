@@ -80,15 +80,15 @@ func (ps *Peers) logConnectionStatusIfNeeded(id peer.ID) {
 	defer p.mutex.Unlock()
 
 	if p._isDead() && p.lastLoggedConnected {
-		ps.Log().Infof("[peering] LOST CONNECTION with %s peer %s (%s). Host (self): %s",
+		ps.Log().Infof("[peering] LOST CONNECTION with %s peer %s ('%s'). Host (self): %s",
 			p.staticOrDynamic(), ShortPeerIDString(id), p.name, ShortPeerIDString(ps.host.ID()))
 		p.lastLoggedConnected = false
 		return
 	}
 
 	if p._isAlive() && !p.lastLoggedConnected {
-		ps.Log().Infof("[peering] CONNECTED to %s peer %s (%s), msg from '%s'. Host (self): %s",
-			p.staticOrDynamic(), ShortPeerIDString(id), p.lastMsgReceivedFrom, p.name, ShortPeerIDString(ps.host.ID()))
+		ps.Log().Infof("[peering] CONNECTED to %s peer %s ('%s'), msg src '%s'. Host (self): %s",
+			p.staticOrDynamic(), ShortPeerIDString(id), p.name, p.lastMsgReceivedFrom, ShortPeerIDString(ps.host.ID()))
 		p.lastLoggedConnected = true
 	}
 }

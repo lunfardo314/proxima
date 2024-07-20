@@ -5,6 +5,7 @@ import (
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/multistate"
+	"github.com/lunfardo314/proxima/peering"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/queue"
 )
@@ -131,7 +132,7 @@ func (d *PullSyncServer) Consume(inp *Input) {
 		d.SendTx(inp.PeerID, branchIDs...)
 
 		d.Environment.Log().Infof("[PullSyncServer]: sync portion of %d branches -> %s. Slots from %d to %d",
-			len(branchIDs), inp.PeerID.String(), inp.StartFrom, lastSlot)
+			len(branchIDs), peering.ShortPeerIDString(inp.PeerID), startFromSlot, lastSlot)
 	} else {
 		d.Environment.Log().Warnf("[PullSyncServer]: empty sync portion from slot %d", inp.StartFrom)
 	}
