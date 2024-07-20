@@ -217,7 +217,7 @@ func encodeSyncPortionMsg(startingFrom ledger.Slot, maxSlots int) []byte {
 	var buf bytes.Buffer
 	// write request type byte
 	buf.WriteByte(PullSyncPortion)
-	err := binary.Write(&buf, binary.BigEndian, uint16(startingFrom))
+	err := binary.Write(&buf, binary.BigEndian, uint32(startingFrom))
 	util.AssertNoError(err)
 	err = binary.Write(&buf, binary.BigEndian, uint16(maxSlots))
 	util.AssertNoError(err)
@@ -226,10 +226,10 @@ func encodeSyncPortionMsg(startingFrom ledger.Slot, maxSlots int) []byte {
 }
 
 func decodeSyncPortionMsg(data []byte) (startingFrom ledger.Slot, maxSlots int, err error) {
-	if len(data) != 1+2+2 || data[0] != PullSyncPortion {
+	if len(data) != 1+4+2 || data[0] != PullSyncPortion {
 		return 0, 0, fmt.Errorf("not a pull sync portion message")
 	}
-	startingFrom = ledger.Slot(binary.BigEndian.Uint16(data[1:3]))
-	maxSlots = int(binary.BigEndian.Uint16(data[3:5]))
+	startingFrom = ledger.Slot(binary.BigEndian.Uint32(data[1:5]))
+	maxSlots = int(binary.BigEndian.Uint16(data[5:7]))
 	return
 }

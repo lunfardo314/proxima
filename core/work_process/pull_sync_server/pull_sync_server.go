@@ -70,7 +70,7 @@ func (d *PullSyncServer) Consume(inp *Input) {
 	if maxSlots > global.MaxSyncPortionSlots {
 		maxSlots = global.MaxSyncPortionSlots
 	}
-	d.Environment.Log().Infof("[PullSyncServer] pull sync portion request starting from slot %d, max slots %d",
+	d.Environment.Log().Infof("[PullSyncServer] pull sync portion request for slots from slot %d, up to %d slots ",
 		inp.StartFrom, maxSlots)
 
 	latestSlot := multistate.FetchLatestSlot(d.StateStore())

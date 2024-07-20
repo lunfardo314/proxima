@@ -137,7 +137,7 @@ func (vid *WrappedTx) SetTxStatusBad(reason error) {
 
 func (vid *WrappedTx) SetTxStatusBadNoLock(reason error) {
 	util.Assertf(reason != nil, "SetTxStatusBadNoLock: reason must be not nil")
-	util.Assertf(vid.GetTxStatusNoLock() != Good, "vid.GetTxStatusNoLock() != Good")
+	util.Assertf(vid.GetTxStatusNoLock() != Good, "vid.GetTxStatusNoLock() != Good. SetTxStatusBadNoLock err = %v", reason)
 	vid.flags.SetFlagsUp(FlagVertexDefined)
 	vid.err = reason
 }
