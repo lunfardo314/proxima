@@ -141,5 +141,9 @@ func (d *SyncManager) IgnoreFutureTxID(txid *ledger.TransactionID) bool {
 		return false // accept all if not very unsynced
 	}
 	// not synced. Ignore all too close to the present time
-	return int(txid.Slot()) >= slotNow-2
+	ignore := int(txid.Slot()) >= slotNow-2
+	if ignore && txid.IsBranchTransaction() {
+		d.Log().Infof("[sync manager] ignore transaction while syncing %s", txid.StringShort())
+	}
+	return ignore
 }
