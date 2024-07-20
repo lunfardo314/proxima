@@ -290,6 +290,14 @@ func Abs[T constraints.Integer](n T) T {
 	return n
 }
 
+func Percent(n, d int) float32 {
+	return (float32(n) * 100) / float32(d)
+}
+
+func PercentString(n, d int) string {
+	return fmt.Sprintf("%.2f", Percent(n, d))
+}
+
 // CallWithTimeout calls fun. If it does not finish in timeout period, calls onTimeout
 func CallWithTimeout(ctx context.Context, timeout time.Duration, fun, onTimeout func()) {
 	ctx, cancel := context.WithTimeoutCause(ctx, timeout, errors.New("timeout"))
@@ -301,12 +309,4 @@ func CallWithTimeout(ctx context.Context, timeout time.Duration, fun, onTimeout 
 	}()
 	fun()
 	cancel()
-}
-
-func Percent(n, d int) float32 {
-	return (float32(n) * 100) / float32(d)
-}
-
-func PercentString(n, d int) string {
-	return fmt.Sprintf("%.2f", Percent(n, d))
 }

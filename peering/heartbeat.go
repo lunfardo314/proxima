@@ -9,6 +9,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/proxima/util/checkpoints"
 	"github.com/multiformats/go-multiaddr"
 	"golang.org/x/exp/maps"
 )
@@ -192,7 +193,10 @@ func (ps *Peers) sendHeartbeatToPeer(id peer.ID) {
 		clock:      time.Now(),
 		hasTxStore: true,
 	}
-	_ = writeFrame(stream, hbInfo.Bytes())
+	err = writeFrame(stream, hbInfo.Bytes())
+	if err != nil {
+		ps.Log().Errorf("[peering] sendHeartbeatToPeer: %w", err)
+	}
 }
 
 func (ps *Peers) peerIDs() []peer.ID {
@@ -208,18 +212,35 @@ func (ps *Peers) heartbeatLoop() {
 
 	ps.Log().Infof("[peering] start heartbeat loop")
 
+	// TODO debugging loop stop
+
+	check := checkpoints.New(ps.Ctx(), ps.Log())
+
 	for {
 		nowis := time.Now()
 		if nowis.After(logNumPeersDeadline) {
+			check.Check("NumAlive", heartbeatRate*5)
 			aliveStatic, aliveDynamic := ps.NumAlive()
+			check.Check("NumAlive")
+
 			ps.Log().Infof("[peering] node is connected to %d (%d + %d) peer(s). Pre-configured static: %d, max dynamic: %d",
 				aliveStatic+aliveDynamic, aliveStatic, aliveDynamic, len(ps.cfg.PreConfiguredPeers), ps.cfg.MaxDynamicPeers)
 
 			logNumPeersDeadline = nowis.Add(logPeersEvery)
 		}
-		for _, id := range ps.peerIDs() {
+
+		check.Check("peerIDs", heartbeatRate*5)
+		peerIDs := ps.peerIDs()
+		check.Check("peerIDs")
+
+		for _, id := range peerIDs {
+			check.Check("logConnectionStatusIfNeeded", heartbeatRate*5)
 			ps.logConnectionStatusIfNeeded(id)
+			check.Check("logConnectionStatusIfNeeded")
+
+			check.Check("sendHeartbeatToPeer", heartbeatRate*5)
 			ps.sendHeartbeatToPeer(id)
+			check.Check("sendHeartbeatToPeer")
 		}
 		select {
 		case <-ps.Environment.Ctx().Done():

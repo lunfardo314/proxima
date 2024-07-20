@@ -2,7 +2,6 @@ package peering
 
 import (
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -17,15 +16,11 @@ const (
 )
 
 func readFrame(stream network.Stream) ([]byte, error) {
-	var sizeBuf [4]byte
+	var size uint32
 
-	if n, err := io.ReadFull(stream, sizeBuf[:]); err != nil || n != 4 {
-		if err == nil {
-			err = errors.New("exactly 4 bytes expected")
-		}
-		return nil, fmt.Errorf("failed to read frame size prefix: %v", err)
+	if err := binary.Read(stream, binary.BigEndian, &size); err != nil {
+		return nil, fmt.Errorf("readFrame: failed to read frame size prefix: %w", err)
 	}
-	size := binary.BigEndian.Uint32(sizeBuf[:])
 	if size > MaxPayloadSize {
 		return nil, fmt.Errorf("payload size %d exceeds maximum %d bytes", size, MaxPayloadSize)
 	}
@@ -47,14 +42,8 @@ func writeFrame(stream network.Stream, payload []byte) error {
 	if len(payload) > MaxPayloadSize {
 		return fmt.Errorf("payload size %d exceeds maximum %d bytes", len(payload), MaxPayloadSize)
 	}
-	var sizeBuf [4]byte
-
-	binary.BigEndian.PutUint32(sizeBuf[:], uint32(len(payload)))
-	if n, err := stream.Write(sizeBuf[:]); err != nil || n != 4 {
-		if err == nil {
-			err = errors.New("expected 4 bytes written")
-		}
-		return fmt.Errorf("failed to write size prefix: %v", err)
+	if err := binary.Write(stream, binary.BigEndian, uint32(len(payload))); err != nil {
+		return fmt.Errorf("writeFrame: failed to write size prefix: %v", err)
 	}
 	if len(payload) == 0 {
 		return nil
