@@ -133,6 +133,7 @@ api:
 # logger.previous can be 'erase' or 'save'
 logger:
   level: info
+  verbosity: 1
   output: proxima.log
   # options: 'erase' (previous will be erased), 'save' (previous will be saved and then deleted)
   # Otherwise or when absent: log will be appended in the same existing file
