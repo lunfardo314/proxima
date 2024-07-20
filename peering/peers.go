@@ -103,10 +103,10 @@ const (
 
 	// heartbeatRate heartbeat issued every period
 	heartbeatRate         = time.Second
-	aliveNumHeartbeats    = 3
+	aliveNumHeartbeats    = 10 // if no hb over this period, it means not-alive -> dynamic peer will be dropped
 	aliveDuration         = time.Duration(aliveNumHeartbeats) * heartbeatRate
-	gracePeriodAfterAdded = 10 * heartbeatRate
-	logNumPeersPeriod     = 5 * time.Second
+	gracePeriodAfterAdded = 30 * heartbeatRate
+	logPeersEvery         = 5 * time.Second
 )
 
 func NewPeersDummy() *Peers {
