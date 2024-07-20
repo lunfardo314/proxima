@@ -39,7 +39,7 @@ type (
 
 func StartSyncManagerFromConfig(env Environment) *SyncManager {
 	if !viper.GetBool("workflow.sync_manager.enable") {
-		env.Log().Infof("[sync manager] is DISABLED")
+		env.Infof0("[sync manager] is DISABLED")
 		return nil
 	}
 	d := &SyncManager{
@@ -66,17 +66,17 @@ const (
 )
 
 func (d *SyncManager) syncManagerLoop() {
-	d.Log().Infof("[sync manager] has been started. Sync portion: %d slots. Sync tolerance: %d slots",
+	d.Infof0("[sync manager] has been started. Sync portion: %d slots. Sync tolerance: %d slots",
 		d.syncPortionSlots, d.syncToleranceThresholdSlots)
 
 	for {
 		select {
 		case <-d.Ctx().Done():
-			d.Log().Infof("[sync manager] stopped ")
+			d.Infof0("[sync manager] stopped ")
 			return
 
 		case <-d.endOfPortionCh:
-			d.Log().Infof("[sync manager] end of sync portion")
+			d.Infof1("[sync manager] end of sync portion")
 			d.checkSync(true)
 
 		case <-time.After(checkSyncEvery):
@@ -100,7 +100,7 @@ func (d *SyncManager) checkSync(endOfPortion bool) {
 		return
 	}
 	if time.Since(d.loggedWhen) > 1*time.Second {
-		d.Log().Infof("[sync manager] latest synced slot %d is behind current slot %d by %d",
+		d.Infof1("[sync manager] latest synced slot %d is behind current slot %d by %d",
 			latestSlotInDB, slotNow, behind)
 		d.loggedWhen = time.Now()
 	}
@@ -143,7 +143,7 @@ func (d *SyncManager) IgnoreFutureTxID(txid *ledger.TransactionID) bool {
 	// not synced. Ignore all too close to the present time
 	ignore := int(txid.Slot()) >= slotNow-2
 	if ignore && txid.IsBranchTransaction() {
-		d.Log().Infof("[sync manager] ignore transaction while syncing %s", txid.StringShort())
+		d.Infof1("[sync manager] ignore transaction while syncing %s", txid.StringShort())
 	}
 	return ignore
 }

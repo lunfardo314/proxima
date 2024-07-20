@@ -37,7 +37,11 @@ func runMilestoneAttacher(vid *vertex.WrappedTx, metadata *txmetadata.Transactio
 			env.EvidenceBranchSlot(vid.Slot())
 		}
 		msData := env.ParseMilestoneData(vid)
-		env.Log().Info(a.logFinalStatusString(msData))
+		if vid.IsBranchTransaction() {
+			env.Infof0(a.logFinalStatusString(msData))
+		} else {
+			env.Infof1(a.logFinalStatusString(msData))
+		}
 		vid.SetSequencerAttachmentFinished()
 	}
 

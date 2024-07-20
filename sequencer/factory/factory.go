@@ -539,7 +539,7 @@ func (mf *MilestoneFactory) purgeLoop() {
 
 		case <-time.After(time.Second):
 			if n := mf.purge(ttl); n > 0 {
-				mf.Log().Infof("purged %d own milestones", n)
+				mf.Infof1("purged %d own milestones", n)
 			}
 		}
 	}

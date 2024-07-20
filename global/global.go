@@ -22,13 +22,14 @@ import (
 
 type Global struct {
 	*zap.SugaredLogger
-	ctx         context.Context
-	stopFun     context.CancelFunc
-	logStopOnce *sync.Once
-	stopOnce    *sync.Once
-	mutex       sync.RWMutex
-	components  set.Set[string]
-	metrics     *prometheus.Registry
+	logVerbosity int
+	ctx          context.Context
+	stopFun      context.CancelFunc
+	logStopOnce  *sync.Once
+	stopOnce     *sync.Once
+	mutex        sync.RWMutex
+	components   set.Set[string]
+	metrics      *prometheus.Registry
 	// statically enabled trace tags
 	enabledTrace   atomic.Bool
 	traceTagsMutex sync.RWMutex
@@ -86,7 +87,8 @@ func NewFromConfig() *Global {
 		ret.SugaredLogger.Warnf("previous logfile has been saved as %s", savedPrev)
 	}
 	ret.logAttacherStats = viper.GetBool("logger.log_attacher_stats")
-
+	ret.logVerbosity = viper.GetInt("logger.verbosity")
+	ret.SugaredLogger.Infof("logger verbosity level is %d", ret.logVerbosity)
 	return ret
 }
 
@@ -360,4 +362,22 @@ func (l *Global) RepeatEvery(period time.Duration, fun func() bool, skipFirst ..
 			}
 		}
 	}()
+}
+
+func (l *Global) InfofAtLevel(level int, template string, args ...any) {
+	if level <= l.logVerbosity {
+		l.Infof(template, args...)
+	}
+}
+
+func (l *Global) Infof0(template string, args ...any) {
+	l.InfofAtLevel(0, template, args...)
+}
+
+func (l *Global) Infof1(template string, args ...any) {
+	l.InfofAtLevel(1, template, args...)
+}
+
+func (l *Global) Infof2(template string, args ...any) {
+	l.InfofAtLevel(2, template, args...)
 }

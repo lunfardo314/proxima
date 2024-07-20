@@ -78,10 +78,8 @@ func (p *Pruner) doPrune() {
 		memStats.NumGC,
 		runtime.NumGoroutine(),
 	)
-	p.Log().Infof("vertices deleted: %d, detached past cones: %d. Vertices left: %d. Cached state readers purged: %d, left: %d. "+memStr,
+	p.Infof1("vertices deleted: %d, detached past cones: %d. Vertices left: %d. Cached state readers purged: %d, left: %d. "+memStr,
 		nDeleted, nUnReferenced, p.NumVertices(), nReadersPurged, readersLeft)
-
-	//p.Log().Infof("\n------------------\n%s\n-------------------", p.Info(true))
 }
 
 func (p *Pruner) mainLoop() {

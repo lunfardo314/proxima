@@ -68,6 +68,9 @@ type (
 		AssertNoError(err error, prefix ...string)
 		AssertMustError(err error)
 		LogAttacherStats() bool
+		Infof0(template string, args ...any)
+		Infof1(template string, args ...any)
+		Infof2(template string, args ...any)
 	}
 
 	// StartStop interface of the global objects which coordinates graceful shutdown
