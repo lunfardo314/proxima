@@ -64,16 +64,17 @@ type (
 	}
 
 	Peer struct {
-		mutex                  sync.RWMutex
-		name                   string
-		id                     peer.ID
-		isPreConfigured        bool // statically pre-configured (manual peering)
-		needsLogLostConnection bool
-		hasTxStore             bool
-		whenAdded              time.Time
-		lastActivity           time.Time
-		incomingGood           int
-		incomingBad            int
+		mutex               sync.RWMutex
+		name                string
+		id                  peer.ID
+		isStatic            bool // statically pre-configured (manual peering)
+		hasTxStore          bool
+		whenAdded           time.Time
+		lastMsgReceived     time.Time
+		lastMsgReceivedFrom string
+		lastLoggedConnected bool // toggle
+		incomingGood        int
+		incomingBad         int
 		// ring buffer with last clock differences
 		clockDifferences    [10]time.Duration
 		clockDifferencesIdx int
@@ -94,23 +95,24 @@ const (
 	lppProtocolHeartbeat = "/proxima/heartbeat/%d"
 
 	// clockTolerance is how big the difference between local and remote clocks is tolerated
-	clockTolerance = 5 * time.Second // for testing only
+	clockTolerance = 5 * time.Second
 
 	// if the node is bootstrap, and it has configured less than numMaxDynamicPeersForBootNodeAtLeast
 	// of dynamic peer cap, use this instead
-	numMaxDynamicPeersForBootNodeAtLeast = 3
+	numMaxDynamicPeersForBootNodeAtLeast = 10
 
 	// heartbeatRate heartbeat issued every period
 	heartbeatRate         = time.Second
 	aliveNumHeartbeats    = 3
 	aliveDuration         = time.Duration(aliveNumHeartbeats) * heartbeatRate
-	gracePeriodAfterAdded = 30 * heartbeatRate
+	gracePeriodAfterAdded = 10 * heartbeatRate
 	logNumPeersPeriod     = 5 * time.Second
 )
 
 func NewPeersDummy() *Peers {
 	return &Peers{
 		peers:                    make(map[peer.ID]*Peer),
+		blacklist:                make(map[peer.ID]time.Time),
 		onReceiveTx:              func(_ peer.ID, _ []byte, _ *txmetadata.TransactionMetadata) {},
 		onReceivePullTx:          func(_ peer.ID, _ []ledger.TransactionID) {},
 		onReceivePullSyncPortion: func(_ peer.ID, _ ledger.Slot, _ int) {},
@@ -299,7 +301,7 @@ func (ps *Peers) addStaticPeer(maddr multiaddr.Multiaddr, name string) error {
 	return nil
 }
 
-func (ps *Peers) addPeer(addrInfo *peer.AddrInfo, name string, preConfigured bool) *Peer {
+func (ps *Peers) addPeer(addrInfo *peer.AddrInfo, name string, static bool) *Peer {
 	ps.mutex.Lock()
 	defer ps.mutex.Unlock()
 
@@ -309,10 +311,10 @@ func (ps *Peers) addPeer(addrInfo *peer.AddrInfo, name string, preConfigured boo
 	}
 	nowis := time.Now()
 	p = &Peer{
-		name:            name,
-		id:              addrInfo.ID,
-		isPreConfigured: preConfigured,
-		whenAdded:       nowis,
+		name:      name,
+		id:        addrInfo.ID,
+		isStatic:  static,
+		whenAdded: nowis,
 	}
 	ps.peers[addrInfo.ID] = p
 	for _, a := range addrInfo.Addrs {
@@ -322,32 +324,30 @@ func (ps *Peers) addPeer(addrInfo *peer.AddrInfo, name string, preConfigured boo
 	return p
 }
 
-func (ps *Peers) removeDynamicPeer(p *Peer, reason ...string) {
-	util.Assertf(!p.isPreConfigured, "removeDynamicPeer: must not be pre-configured")
-
+// dropPeer removes dynamic peer and blacklists for 1 min. Ignores otherwise
+func (ps *Peers) dropPeer(id peer.ID, reason ...string) {
 	ps.mutex.Lock()
 	defer ps.mutex.Unlock()
 
-	ps.host.Peerstore().RemovePeer(p.id)
-	ps.kademliaDHT.RoutingTable().RemovePeer(p.id)
-	_ = ps.host.Network().ClosePeer(p.id)
-	delete(ps.peers, p.id)
+	p, ok := ps.peers[id]
+	if !ok || p.isStatic {
+		// ignore static
+		return
+	}
+	util.Assertf(!p.isStatic, "removeDynamicPeer: must not be pre-configured")
+
+	ps.host.Peerstore().RemovePeer(id)
+	ps.kademliaDHT.RoutingTable().RemovePeer(id)
+	_ = ps.host.Network().ClosePeer(id)
+	delete(ps.peers, id)
+
+	ps.blacklist[id] = time.Now()
 
 	why := ""
 	if len(reason) > 0 {
 		why = fmt.Sprintf(". Reason: '%s'", reason[0])
 	}
 	ps.Log().Infof("[peering] dropped dynamic peer %s - %s%s", p.name, ShortPeerIDString(p.id), why)
-}
-
-func (ps *Peers) lostConnWithStaticPeer(p *Peer, reason ...string) {
-	util.Assertf(p.isPreConfigured, "lostConnWithStaticPeer: must be pre-configured")
-
-	why := ""
-	if len(reason) > 0 {
-		why = fmt.Sprintf(". Reason: '%s'", reason[0])
-	}
-	ps.Log().Infof("[peering] lost connection with static peer %s - %s%s", p.name, ShortPeerIDString(p.id), why)
 }
 
 func (ps *Peers) addToBlacklist(id peer.ID, ttl time.Duration) {
@@ -357,12 +357,16 @@ func (ps *Peers) addToBlacklist(id peer.ID, ttl time.Duration) {
 	ps.blacklist[id] = time.Now().Add(ttl)
 }
 
+func (ps *Peers) _isInBlacklist(id peer.ID) bool {
+	_, yes := ps.blacklist[id]
+	return yes
+}
+
 func (ps *Peers) isInBlacklist(id peer.ID) bool {
 	ps.mutex.RLock()
 	defer ps.mutex.RUnlock()
 
-	_, yes := ps.blacklist[id]
-	return yes
+	return ps._isInBlacklist(id)
 }
 
 func (ps *Peers) OnReceiveTxBytes(fun func(from peer.ID, txBytes []byte, metadata *txmetadata.TransactionMetadata)) {

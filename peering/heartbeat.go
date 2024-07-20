@@ -10,9 +10,8 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/multiformats/go-multiaddr"
+	"golang.org/x/exp/maps"
 )
-
-const traceHeartbeat = false
 
 type heartbeatInfo struct {
 	clock      time.Time
@@ -53,16 +52,12 @@ func (hi *heartbeatInfo) Bytes() []byte {
 	return buf.Bytes()
 }
 
-func (ps *Peers) MaxPeers() (preConfigured int, maxDynamicPeers int) {
-	return len(ps.cfg.PreConfiguredPeers), ps.cfg.MaxDynamicPeers
-}
-
 func (ps *Peers) NumAlive() (aliveStatic, aliveDynamic int) {
 	ps.mutex.RLock()
 	defer ps.mutex.RUnlock()
 
 	for _, p := range ps.peers {
-		if p.isPreConfigured {
+		if p.isStatic {
 			if p.isAlive() {
 				aliveStatic++
 			}
@@ -75,7 +70,7 @@ func (ps *Peers) NumAlive() (aliveStatic, aliveDynamic int) {
 	return
 }
 
-func (ps *Peers) logInactivityIfNeeded(id peer.ID) {
+func (ps *Peers) logConnectionStatusIfNeeded(id peer.ID) {
 	p := ps.getPeer(id)
 	if p == nil {
 		return
@@ -84,10 +79,17 @@ func (ps *Peers) logInactivityIfNeeded(id peer.ID) {
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
 
-	if p._isDead() && p.needsLogLostConnection {
-		ps.Log().Infof("host %s (self) lost connection with %s peer %s (%s)",
-			ShortPeerIDString(ps.host.ID()), p.staticOrDynamic(), ShortPeerIDString(id), p.name)
-		p.needsLogLostConnection = false
+	if p._isDead() && p.lastLoggedConnected {
+		ps.Log().Infof("[peering] LOST CONNECTION with %s peer %s (%s). Host (self): %s",
+			p.staticOrDynamic(), ShortPeerIDString(id), p.name, ShortPeerIDString(ps.host.ID()))
+		p.lastLoggedConnected = false
+		return
+	}
+
+	if p._isAlive() && !p.lastLoggedConnected {
+		ps.Log().Infof("[peering] CONNECTED to %s peer %s (%s), msg from '%s'. Host (self): %s",
+			p.staticOrDynamic(), ShortPeerIDString(id), p.lastMsgReceivedFrom, p.name, ShortPeerIDString(ps.host.ID()))
+		p.lastLoggedConnected = true
 	}
 }
 
@@ -114,9 +116,6 @@ func checkRemoteClockTolerance(remoteTime time.Time) (time.Duration, bool, bool)
 func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 	id := stream.Conn().RemotePeer()
 
-	if traceHeartbeat {
-		ps.Tracef(TraceTag, "heartbeatStreamHandler invoked in %s from %s", ps.host.ID().String, id.String)
-	}
 	if ps.isInBlacklist(id) {
 		ps.Tracef(TraceTag, "heartbeatStreamHandler %s: %s is in blacklist", ps.host.ID().String, id.String)
 		_ = stream.Reset()
@@ -153,8 +152,9 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 		hbInfo, err = heartbeatInfoFromBytes(msgData)
 	}
 	if err != nil {
+		// protocol violation
 		ps.Log().Errorf("[peering] error while reading message from peer %s: %v", ShortPeerIDString(id), err)
-		ps.dropPeer(p, "read error")
+		ps.dropPeer(id, "read error")
 		_ = stream.Reset()
 		return
 	}
@@ -167,43 +167,21 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 		}
 		ps.Log().Warnf("[peering] clock of the peer %s is %s of the local clock for %v > tolerance interval %v",
 			ShortPeerIDString(id), b, clockDiff, clockTolerance)
-		ps.dropPeer(p, "over clock tolerance")
+		ps.dropPeer(id, "over clock tolerance")
 		_ = stream.Reset()
 		return
 	}
-	defer stream.Close()
-
-	if traceHeartbeat {
-		ps.Tracef(TraceTag, "peer %s is alive: %v, has txStore: %v",
-			func() string { return ShortPeerIDString(id) },
-			func() any { return p.isAlive() },
-			hbInfo.hasTxStore,
-		)
-	}
+	defer func() { _ = stream.Close() }()
 
 	p.evidence(
-		evidenceAndLogActivity(ps, "heartbeat"),
-		evidenceTxStore(hbInfo.hasTxStore),
-		evidenceClockDifference(clockDiff),
+		_evidenceActivity("hb"),
+		_evidenceTxStore(hbInfo.hasTxStore),
+		_evidenceClockDifference(clockDiff),
 	)
 	util.Assertf(p.isAlive(), "isAlive")
 }
 
-func (ps *Peers) dropPeer(p *Peer, reason ...string) {
-	if p.isPreConfigured {
-		ps.lostConnWithStaticPeer(p, reason...)
-		ps.addToBlacklist(p.id, 5*time.Second)
-	} else {
-		ps.removeDynamicPeer(p, reason...)
-		ps.addToBlacklist(p.id, time.Minute)
-	}
-}
-
 func (ps *Peers) sendHeartbeatToPeer(id peer.ID) {
-	if traceHeartbeat {
-		ps.Tracef(TraceTag, "sendHeartbeatToPeer from %s to %s", ps.host.ID().String, id.String)
-	}
-
 	stream, err := ps.host.NewStream(ps.Ctx(), id, ps.lppProtocolHeartbeat)
 	if err != nil {
 		return
@@ -217,19 +195,14 @@ func (ps *Peers) sendHeartbeatToPeer(id peer.ID) {
 	_ = writeFrame(stream, hbInfo.Bytes())
 }
 
-func (ps *Peers) getPeerIDsNotInBlacklist() []peer.ID {
+func (ps *Peers) peerIDs() []peer.ID {
 	ps.mutex.RLock()
 	defer ps.mutex.RUnlock()
 
-	ret := make([]peer.ID, 0)
-	for id, p := range ps.peers {
-		if _, inBlacklist := ps.blacklist[p.id]; !inBlacklist {
-			ret = append(ret, id)
-		}
-	}
-	return ret
+	return maps.Keys(ps.peers)
 }
 
+// heartbeatLoop periodically sends HB message to each known peer
 func (ps *Peers) heartbeatLoop() {
 	var logNumPeersDeadline time.Time
 
@@ -244,8 +217,8 @@ func (ps *Peers) heartbeatLoop() {
 
 			logNumPeersDeadline = nowis.Add(logNumPeersPeriod)
 		}
-		for _, id := range ps.getPeerIDsNotInBlacklist() {
-			ps.logInactivityIfNeeded(id)
+		for _, id := range ps.peerIDs() {
+			ps.logConnectionStatusIfNeeded(id)
 			ps.sendHeartbeatToPeer(id)
 		}
 		select {

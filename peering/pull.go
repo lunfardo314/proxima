@@ -27,6 +27,11 @@ const (
 
 func (ps *Peers) pullStreamHandler(stream network.Stream) {
 	id := stream.Conn().RemotePeer()
+	if ps.isInBlacklist(id) {
+		_ = stream.Reset()
+		return
+	}
+
 	p := ps.getPeer(id)
 	if p == nil {
 		// peer not found
@@ -35,20 +40,15 @@ func (ps *Peers) pullStreamHandler(stream network.Stream) {
 		return
 	}
 
-	if ps.isInBlacklist(p.id) {
-		_ = stream.Reset()
-		return
-	}
-
 	msgData, err := readFrame(stream)
 	if err != nil {
-		ps.dropPeer(p, "read error")
+		ps.dropPeer(p.id, "read error")
 		ps.Log().Errorf("error while reading message from peer %s: %v", id.String(), err)
 		_ = stream.Reset()
 		return
 	}
 	if err = ps.processPullFrame(msgData, p); err != nil {
-		ps.dropPeer(p, "error while parsing pull message")
+		ps.dropPeer(p.id, "error while parsing pull message")
 		ps.Log().Errorf("error while decoding message from peer %s: %v", id.String(), err)
 		_ = stream.Reset()
 		return
@@ -67,7 +67,7 @@ func (ps *Peers) processPullFrame(msgData []byte, p *Peer) error {
 		if err != nil {
 			return err
 		}
-		p.evidence(evidenceAndLogActivity(ps, "pullTx"))
+		p.evidence(_evidenceActivity("pullTx"))
 		ps.onReceivePullTx(p.id, txLst)
 
 	case PullSyncPortion:
@@ -75,7 +75,7 @@ func (ps *Peers) processPullFrame(msgData []byte, p *Peer) error {
 		if err != nil {
 			return err
 		}
-		p.evidence(evidenceAndLogActivity(ps, "pullSync"))
+		p.evidence(_evidenceActivity("pullSync"))
 		ps.onReceivePullSyncPortion(p.id, startingFromSlot, maxBranches)
 
 	default:

@@ -75,27 +75,24 @@ func (ps *Peers) discoverPeersIfNeeded() {
 	}
 }
 
-func (ps *Peers) deadDynamicPeers() []*Peer {
-	ps.Tracef(TraceTag, "deadDynamicPeers")
-
+func (ps *Peers) deadDynamicPeers() []peer.ID {
 	ps.mutex.RLock()
 	defer ps.mutex.RUnlock()
 
-	ps.Tracef(TraceTag, "deadDynamicPeers 2, len peers: %d", len(ps.peers))
-	ret := make([]*Peer, 0)
-	for _, p := range ps.peers {
-		if !p.isPreConfigured && p.isDead() {
-			ret = append(ret, p)
+	ret := make([]peer.ID, 0)
+	for id, p := range ps.peers {
+		if !p.isStatic && p.isDead() {
+			ret = append(ret, id)
 		}
 	}
-	ps.Tracef(TraceTag, "deadDynamicPeers 3. lend ret: %d", len(ret))
 	return ret
 }
 
 func (ps *Peers) removeDeadDynamicPeers() {
 	toRemove := ps.deadDynamicPeers()
-	for _, p := range toRemove {
-		ps.dropPeer(p, "dead")
+	for _, id := range toRemove {
+		ps.logConnectionStatusIfNeeded(id)
+		ps.dropPeer(id, "dead")
 	}
 }
 
@@ -110,7 +107,7 @@ func (ps *Peers) dropExcessPeersIfNeeded() {
 		return
 	}
 	for _, p := range sortedByRanks[:ps.cfg.MaxDynamicPeers] {
-		ps.removeDynamicPeer(p, fmt.Sprintf("excess over maximum dynamic peers configured: %d", ps.cfg.MaxDynamicPeers))
+		ps.dropPeer(p.id, fmt.Sprintf("excess over maximum dynamic peers configured: %d", ps.cfg.MaxDynamicPeers))
 		ps.addToBlacklist(p.id, 10*time.Second)
 	}
 }
@@ -120,9 +117,12 @@ func (ps *Peers) sortPeersByAgeDesc() []*Peer {
 	defer ps.mutex.RUnlock()
 
 	peers := util.ValuesFiltered(ps.peers, func(p *Peer) bool {
-		return !p.isPreConfigured
+		return !p.isStatic
 	})
 	sort.Slice(peers, func(i, j int) bool {
+		if peers[i].lastMsgReceived.Before(peers[j].lastMsgReceived) {
+			return true
+		}
 		return peers[i].whenAdded.Before(peers[j].whenAdded)
 	})
 	return peers
@@ -138,7 +138,7 @@ func (ps *Peers) sortPeersByAgeDesc() []*Peer {
 //
 //	peers := make([]*Peer, 0, len(ps.peers))
 //	for _, p := range ps.peers {
-//		if !p.isPreConfigured {
+//		if !p.isStatic {
 //			peers = append(peers, p)
 //		}
 //	}
@@ -156,7 +156,7 @@ func (ps *Peers) sortPeersByAgeDesc() []*Peer {
 //	// sort by last activity
 //	sort.Slice(peers, func(i, j int) bool {
 //		// most recent activity means bigger rank
-//		return peers[i].lastActivity.After(peers[j].lastActivity)
+//		return peers[i].lastMsgReceived.After(peers[j].lastMsgReceived)
 //	})
 //	for i, p := range peers {
 //		ranks[p] = ranks[p] + i

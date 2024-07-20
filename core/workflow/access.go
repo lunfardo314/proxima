@@ -66,9 +66,9 @@ func (w *Workflow) PokeAllWith(wanted *vertex.WrappedTx) {
 	}
 }
 
-//func (w *Workflow) QueryTransactionsFromRandomPeer(lst ...ledger.TransactionID) bool {
-//	return w.peers.PullTransactionsFromRandomPeer(lst...)
-//}
+func (w *Workflow) PullTransactionsFromRandomPeer(lst ...ledger.TransactionID) bool {
+	return w.peers.PullTransactionsFromRandomPeer(lst...)
+}
 
 func (w *Workflow) PullTransactionsFromAllPeers(lst ...ledger.TransactionID) {
 	w.peers.PullTransactionsFromAllPeers(lst...)

@@ -26,11 +26,11 @@ func (p *Peer) isAlive() bool {
 
 func (p *Peer) _isAlive() bool {
 	// peer is alive if its last activity is no more than some heartbeats old
-	return time.Since(p.lastActivity) < aliveDuration
+	return time.Since(p.lastMsgReceived) < aliveDuration
 }
 
 func (p *Peer) staticOrDynamic() string {
-	if p.isPreConfigured {
+	if p.isStatic {
 		return "static"
 	}
 	return "dynamic"
@@ -52,24 +52,20 @@ func (p *Peer) evidence(evidences ...evidenceFun) {
 	}
 }
 
-func evidenceAndLogActivity(env Environment, evidenceSource string) evidenceFun {
+func _evidenceActivity(src string) evidenceFun {
 	return func(p *Peer) {
-		if !p._isAlive() {
-			env.Log().Infof("[peering] connected to %s peer %s (%s) (%s). Clock offset: %v",
-				p.staticOrDynamic(), ShortPeerIDString(p.id), p.name, evidenceSource, p.avgClockDifference())
-		}
-		p.lastActivity = time.Now()
-		p.needsLogLostConnection = true
+		p.lastMsgReceived = time.Now()
+		p.lastMsgReceivedFrom = src
 	}
 }
 
-func evidenceTxStore(hasTxStore bool) evidenceFun {
+func _evidenceTxStore(hasTxStore bool) evidenceFun {
 	return func(p *Peer) {
 		p.hasTxStore = hasTxStore
 	}
 }
 
-func evidenceClockDifference(diff time.Duration) evidenceFun {
+func _evidenceClockDifference(diff time.Duration) evidenceFun {
 	return func(p *Peer) {
 		// store in the ring buffer
 		p.clockDifferences[p.clockDifferencesIdx] = diff

@@ -9,6 +9,12 @@ import (
 
 func (ps *Peers) gossipStreamHandler(stream network.Stream) {
 	id := stream.Conn().RemotePeer()
+
+	if ps.isInBlacklist(id) {
+		_ = stream.Reset()
+		return
+	}
+
 	p := ps.getPeer(id)
 	if p == nil {
 		// peer not found
@@ -17,28 +23,23 @@ func (ps *Peers) gossipStreamHandler(stream network.Stream) {
 		return
 	}
 
-	if ps.isInBlacklist(p.id) {
-		_ = stream.Reset()
-		return
-	}
-
 	txBytesWithMetadata, err := readFrame(stream)
 	if err != nil {
-		ps.dropPeer(p, "read error")
+		ps.dropPeer(p.id, "read error")
 		ps.Log().Errorf("error while reading message from peer %s: %v", id.String(), err)
 		_ = stream.Reset()
 		return
 	}
 	metadataBytes, txBytes, err := txmetadata.SplitTxBytesWithMetadata(txBytesWithMetadata)
 	if err != nil {
-		ps.dropPeer(p, "error while parsing tx metadata")
+		ps.dropPeer(p.id, "error while parsing tx metadata")
 		ps.Log().Errorf("error while parsing tx message from peer %s: %v", id.String(), err)
 		_ = stream.Reset()
 		return
 	}
 	metadata, err := txmetadata.TransactionMetadataFromBytes(metadataBytes)
 	if err != nil {
-		ps.dropPeer(p, "error while parsing tx metadata")
+		ps.dropPeer(p.id, "error while parsing tx metadata")
 		ps.Log().Errorf("error while parsing tx message metadata from peer %s: %v", id.String(), err)
 		_ = stream.Reset()
 		return
@@ -46,7 +47,7 @@ func (ps *Peers) gossipStreamHandler(stream network.Stream) {
 
 	defer stream.Close()
 
-	p.evidence(evidenceAndLogActivity(ps, "gossip"))
+	p.evidence(_evidenceActivity("gossip"))
 	ps.onReceiveTx(id, txBytes, metadata)
 }
 

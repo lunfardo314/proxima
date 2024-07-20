@@ -10,8 +10,6 @@ import (
 	"github.com/lunfardo314/proxima/util/queue"
 )
 
-const pullPeriod = 500 * time.Millisecond
-
 // pull_client is a queued work process which sends pull requests for a specified transaction
 // to a random peer. It repeats pull requests for the transaction periodically until stopped
 
@@ -19,7 +17,7 @@ type (
 	Environment interface {
 		global.NodeGlobal
 		TxBytesStore() global.TxBytesStore
-		// QueryTransactionsFromRandomPeer(lst ...ledger.TransactionID) bool
+		PullTransactionsFromRandomPeer(lst ...ledger.TransactionID) bool
 		PullTransactionsFromAllPeers(lst ...ledger.TransactionID)
 		TxBytesWithMetadataIn(txBytes []byte, metadata *txmetadata.TransactionMetadata) (*ledger.TransactionID, error)
 	}
@@ -44,9 +42,11 @@ type (
 )
 
 const (
-	Name           = "pullClient"
-	TraceTag       = Name
-	chanBufferSize = 10
+	Name                                   = "pullClient"
+	TraceTag                               = Name
+	chanBufferSize                         = 10
+	pullPeriod                             = 500 * time.Millisecond
+	startPullingFromAllAfterNumRandomPulls = 10
 )
 
 func New(env Environment) *PullClient {
@@ -98,9 +98,8 @@ func (p *PullClient) startPulling(txid ledger.TransactionID) {
 		p.Tracef(TraceTag, "%s added to the pull list. Pull list size: %d", txid.StringShort, len(p.pullList))
 		p.TraceTx(&txid, TraceTag+": added to the pull list")
 
-		// query from random peer
-		//go p.QueryTransactionsFromRandomPeer(txid)
-		go p.PullTransactionsFromAllPeers(txid)
+		// query from 1 random peer
+		go p.PullTransactionsFromRandomPeer(txid)
 	}
 }
 
@@ -136,6 +135,7 @@ func (p *PullClient) backgroundPullLoop() {
 	defer p.Environment.Log().Infof("background loop stopped")
 
 	buffer := make([]ledger.TransactionID, 0) // reuse buffer -> minimize heap use
+	var stuck bool
 
 	for {
 		select {
@@ -143,19 +143,25 @@ func (p *PullClient) backgroundPullLoop() {
 			return
 		case <-time.After(pullLoopPeriod):
 		}
-
-		if buffer = p.maturedPullList(buffer); len(buffer) > 0 {
-			//p.QueryTransactionsFromRandomPeer(buffer...)
-			p.PullTransactionsFromAllPeers(buffer...)
+		if buffer, stuck = p.maturedPullList(buffer); len(buffer) > 0 {
+			if stuck {
+				// some are stuck, pull from all
+				p.PullTransactionsFromAllPeers(buffer...)
+			} else {
+				// pull from one random
+				p.PullTransactionsFromRandomPeer(buffer...)
+			}
 		}
 	}
 }
 
 // maturedPullList returns list of transaction IDs which should be pulled again.
 // reuses the provided buffer and returns new slice
-func (p *PullClient) maturedPullList(buf []ledger.TransactionID) []ledger.TransactionID {
+// Returns true if at least one transaction is stuck for longer than number of periods
+func (p *PullClient) maturedPullList(buf []ledger.TransactionID) ([]ledger.TransactionID, bool) {
 	buf = buf[:0]
 
+	atLeastOneIsStuck := false
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
 
@@ -163,6 +169,9 @@ func (p *PullClient) maturedPullList(buf []ledger.TransactionID) []ledger.Transa
 	nextDeadline := nowis.Add(pullPeriod)
 	for txid, rec := range p.pullList {
 		if nowis.After(rec.nextDeadline) {
+			if !atLeastOneIsStuck && time.Since(rec.start) > pullPeriod*startPullingFromAllAfterNumRandomPulls {
+				atLeastOneIsStuck = true
+			}
 			buf = append(buf, txid)
 			p.pullList[txid] = pullRecord{
 				start:        rec.start,
@@ -170,7 +179,7 @@ func (p *PullClient) maturedPullList(buf []ledger.TransactionID) []ledger.Transa
 			}
 		}
 	}
-	return buf
+	return buf, atLeastOneIsStuck
 }
 
 // stuckList for debugging
