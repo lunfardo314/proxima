@@ -216,10 +216,12 @@ func (ps *Peers) heartbeatLoop() {
 
 	check := checkpoints.New(ps.Ctx(), ps.Log())
 
+	const checkPeriod = heartbeatRate * 10
+
 	for {
 		nowis := time.Now()
 		if nowis.After(logNumPeersDeadline) {
-			check.Check("NumAlive", heartbeatRate*5)
+			check.Check("NumAlive", checkPeriod)
 			aliveStatic, aliveDynamic := ps.NumAlive()
 			check.Check("NumAlive")
 
@@ -229,16 +231,16 @@ func (ps *Peers) heartbeatLoop() {
 			logNumPeersDeadline = nowis.Add(logPeersEvery)
 		}
 
-		check.Check("peerIDs", heartbeatRate*5)
+		check.Check("peerIDs", checkPeriod)
 		peerIDs := ps.peerIDs()
 		check.Check("peerIDs")
 
 		for _, id := range peerIDs {
-			check.Check("logConnectionStatusIfNeeded", heartbeatRate*5)
+			check.Check("logConnectionStatusIfNeeded", checkPeriod)
 			ps.logConnectionStatusIfNeeded(id)
 			check.Check("logConnectionStatusIfNeeded")
 
-			check.Check("sendHeartbeatToPeer", heartbeatRate*5)
+			check.Check("sendHeartbeatToPeer", checkPeriod)
 			ps.sendHeartbeatToPeer(id)
 			check.Check("sendHeartbeatToPeer")
 		}
