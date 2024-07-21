@@ -70,6 +70,7 @@ func (t *SequencerTips) Consume(inp Input) {
 			return
 		}
 		if ledger.TooCloseOnTimeAxis(&old.ID, &inp.VID.ID) {
+			// this means there's a bug in the sequencer because it submits transactions too close in the ledger time window
 			t.Environment.Log().Warnf("tippool: %s and %s: too close on time axis", old.IDShortString(), inp.VID.IDShortString())
 		}
 		if t.oldReplaceWithNew(old, inp.VID) {
