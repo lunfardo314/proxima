@@ -24,9 +24,6 @@ func Test1SequencerPruner(t *testing.T) {
 		testData := initWorkflowTest(t, 1, true)
 		t.Logf("%s", testData.wrk.Info())
 
-		//testData.env.StartTracingTags(factory.TraceTag)
-		//testData.env.StartTracingTags(factory.TraceTagMining)
-
 		seq, err := sequencer.New(testData.wrk, testData.bootstrapChainID, testData.genesisPrivKey,
 			sequencer.WithMaxBranches(maxSlots))
 		require.NoError(t, err)
