@@ -218,8 +218,13 @@ func (ps *Peers) heartbeatLoop() {
 
 	const checkPeriod = heartbeatRate * 10
 
+	prevTime := time.Now()
+	count := 0
 	for {
 		nowis := time.Now()
+		ps.Infof0(">>>> HB %d. Nowis: %s, diff: %v", count, nowis.Format("15:04:05,000"), nowis.Sub(prevTime))
+		prevTime = nowis
+
 		if nowis.After(logNumPeersDeadline) {
 			check.Check("NumAlive", checkPeriod)
 			aliveStatic, aliveDynamic := ps.NumAlive()
