@@ -35,6 +35,19 @@ func (ps *Peers) autopeeringLoop() {
 	}
 }
 
+func (ps *Peers) isCandidateToConnect(id peer.ID) bool {
+	if id == ps.host.ID() {
+		return false
+	}
+	if ps.isInBlacklist(id) {
+		return false
+	}
+	if ps.getPeer(id) != nil {
+		return false
+	}
+	return true
+}
+
 func (ps *Peers) discoverPeersIfNeeded() {
 	_, aliveDynamic := ps.NumAlive()
 	ps.Tracef(TraceTagAutopeering, "FindPeers: num alive dynamic = %d", aliveDynamic)
@@ -54,10 +67,9 @@ func (ps *Peers) discoverPeersIfNeeded() {
 
 	candidates := make([]peer.AddrInfo, 0)
 	for addrInfo := range peerChan {
-		if addrInfo.ID == ps.host.ID() || ps.isInBlacklist(addrInfo.ID) || ps.getPeer(addrInfo.ID) != nil {
-			continue
+		if ps.isCandidateToConnect(addrInfo.ID) {
+			candidates = append(candidates, addrInfo)
 		}
-		candidates = append(candidates, addrInfo)
 	}
 	ps.Tracef(TraceTagAutopeering, "FindPeers: len(candidates) = %d", len(candidates))
 
@@ -108,7 +120,7 @@ func (ps *Peers) dropExcessPeersIfNeeded() {
 	}
 	for _, p := range sortedByRanks[:ps.cfg.MaxDynamicPeers] {
 		ps.dropPeer(p.id, fmt.Sprintf("excess over maximum dynamic peers configured: %d", ps.cfg.MaxDynamicPeers))
-		ps.addToBlacklist(p.id, 10*time.Second)
+		ps.addToBlacklist(p.id, time.Minute)
 	}
 }
 

@@ -102,8 +102,8 @@ const (
 	numMaxDynamicPeersForBootNodeAtLeast = 10
 
 	// heartbeatRate heartbeat issued every period
-	heartbeatRate         = time.Second
-	aliveNumHeartbeats    = 10 // if no hb over this period, it means not-alive -> dynamic peer will be dropped
+	heartbeatRate         = 2 * time.Second
+	aliveNumHeartbeats    = 15 // if no hb over this period, it means not-alive -> dynamic peer will be dropped
 	aliveDuration         = time.Duration(aliveNumHeartbeats) * heartbeatRate
 	gracePeriodAfterAdded = 30 * heartbeatRate
 	logPeersEvery         = 5 * time.Second
@@ -341,20 +341,24 @@ func (ps *Peers) dropPeer(id peer.ID, reason ...string) {
 	_ = ps.host.Network().ClosePeer(id)
 	delete(ps.peers, id)
 
-	ps.blacklist[id] = time.Now()
+	ps._addToBlacklist(id, time.Minute)
 
 	why := ""
 	if len(reason) > 0 {
 		why = fmt.Sprintf(". Reason: '%s'", reason[0])
 	}
-	ps.Log().Infof("[peering] dropped dynamic peer %s - %s%s", p.name, ShortPeerIDString(p.id), why)
+	ps.Log().Infof("[peering] dropped dynamic peer %s - %s%s", ShortPeerIDString(id), p.name, why)
+}
+
+func (ps *Peers) _addToBlacklist(id peer.ID, ttl time.Duration) {
+	ps.blacklist[id] = time.Now().Add(ttl)
 }
 
 func (ps *Peers) addToBlacklist(id peer.ID, ttl time.Duration) {
 	ps.mutex.Lock()
 	defer ps.mutex.Unlock()
 
-	ps.blacklist[id] = time.Now().Add(ttl)
+	ps._addToBlacklist(id, ttl)
 }
 
 func (ps *Peers) _isInBlacklist(id peer.ID) bool {
