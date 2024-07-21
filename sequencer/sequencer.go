@@ -22,19 +22,19 @@ import (
 type (
 	Sequencer struct {
 		*workflow.Workflow
-		ctx            context.Context    // local context
-		stopFun        context.CancelFunc // local stop function
-		sequencerID    ledger.ChainID
-		controllerKey  ed25519.PrivateKey
-		config         *ConfigOptions
-		log            *zap.SugaredLogger
-		backlog        *backlog.InputBacklog
-		factory        *factory.MilestoneFactory
-		milestoneCount int
-		branchCount    int
-		prevTimeTarget ledger.Time
-		infoMutex      sync.RWMutex
-		info           Info
+		ctx             context.Context    // local context
+		stopFun         context.CancelFunc // local stop function
+		sequencerID     ledger.ChainID
+		controllerKey   ed25519.PrivateKey
+		config          *ConfigOptions
+		log             *zap.SugaredLogger
+		backlog         *backlog.InputBacklog
+		factory         *factory.MilestoneFactory
+		milestoneCount  int
+		branchCount     int
+		lastSubmittedTs ledger.Time
+		infoMutex       sync.RWMutex
+		info            Info
 		//
 		onCallbackMutex      sync.RWMutex
 		onMilestoneSubmitted func(seq *Sequencer, vid *vertex.WrappedTx)
@@ -274,15 +274,13 @@ func (seq *Sequencer) doSequencerStep() bool {
 
 	timerStart := time.Now()
 
-	targetTs, prevMsTs := seq.getNextTargetTime()
+	targetTs := seq.getNextTargetTime()
 
-	seq.Assertf(ledger.ValidSequencerPace(prevMsTs, targetTs), "target is closer than allowed pace (%d): %s -> %s",
-		ledger.TransactionPaceSequencer(), prevMsTs.String, targetTs.String)
+	seq.Assertf(ledger.ValidSequencerPace(seq.lastSubmittedTs, targetTs), "target is closer than allowed pace (%d): %s -> %s",
+		ledger.TransactionPaceSequencer(), seq.lastSubmittedTs.String, targetTs.String)
 
-	seq.Assertf(!targetTs.Before(seq.prevTimeTarget), "wrong target ts %s: must not be before previous target %s",
-		targetTs.String(), seq.prevTimeTarget.String())
-
-	seq.prevTimeTarget = targetTs
+	seq.Assertf(seq.lastSubmittedTs.After(targetTs), "wrong target ts %s: should be after previous submitted %s",
+		targetTs.String(), seq.lastSubmittedTs.String)
 
 	if seq.config.MaxTargetTs != ledger.NilLedgerTime && targetTs.After(seq.config.MaxTargetTs) {
 		seq.log.Infof("next target ts %s is after maximum ts %s -> stopping", targetTs, seq.config.MaxTargetTs)
@@ -317,57 +315,49 @@ func (seq *Sequencer) doSequencerStep() bool {
 
 const sleepWaitingCurrentMilestoneTime = 10 * time.Millisecond
 
-func (seq *Sequencer) getNextTargetTime() (ledger.Time, ledger.Time) {
-	var prevMilestoneTs ledger.Time
-
-	currentMsOutput := seq.factory.OwnLatestMilestoneOutput()
-	seq.Assertf(currentMsOutput.VID != nil, "currentMsOutput.VID != nil")
-	prevMilestoneTs = currentMsOutput.Timestamp()
-
+func (seq *Sequencer) getNextTargetTime() ledger.Time {
 	// synchronize clock
 	nowis := ledger.TimeNow()
-	if nowis.Before(prevMilestoneTs) {
-		waitDuration := time.Duration(ledger.DiffTicks(prevMilestoneTs, nowis)) * ledger.TickDuration()
-		seq.log.Warnf("nowis (%s) is before last milestone ts (%s). Sleep %v",
-			nowis.String(), prevMilestoneTs.String(), waitDuration)
+	if nowis.Before(seq.lastSubmittedTs) {
+		waitDuration := time.Duration(ledger.DiffTicks(seq.lastSubmittedTs, nowis)) * ledger.TickDuration()
+		seq.log.Warnf("nowis (%s) is before last submitted ts (%s). Sleep %v",
+			nowis.String(), seq.lastSubmittedTs.String(), waitDuration)
 		time.Sleep(waitDuration)
 	}
 	nowis = ledger.TimeNow()
-	for ; nowis.Before(prevMilestoneTs); nowis = ledger.TimeNow() {
+	for ; nowis.Before(seq.lastSubmittedTs); nowis = ledger.TimeNow() {
 		seq.log.Warnf("nowis (%s) is before last milestone ts (%s). Sleep %v",
-			nowis.String(), prevMilestoneTs.String(), sleepWaitingCurrentMilestoneTime)
+			nowis.String(), seq.lastSubmittedTs.String(), sleepWaitingCurrentMilestoneTime)
 		time.Sleep(sleepWaitingCurrentMilestoneTime)
 	}
 	// ledger time now is approximately equal to the clock time
 	nowis = ledger.TimeNow()
-	seq.Assertf(!nowis.Before(prevMilestoneTs), "!core.TimeNow().Before(prevMilestoneTs)")
-
-	// TODO take into account average speed of proposal generation
+	seq.Assertf(!nowis.Before(seq.lastSubmittedTs), "!core.TimeNow().Before(prevMilestoneTs)")
 
 	targetAbsoluteMinimum := ledger.MaxTime(
-		prevMilestoneTs.AddTicks(seq.config.Pace),
+		seq.lastSubmittedTs.AddTicks(seq.config.Pace),
 		nowis.AddTicks(1),
 	)
 	nextSlotBoundary := nowis.NextSlotBoundary()
 
 	if !targetAbsoluteMinimum.Before(nextSlotBoundary) {
-		return targetAbsoluteMinimum, prevMilestoneTs
+		return targetAbsoluteMinimum
 	}
 	// absolute minimum is before the next slot boundary, take the time now as a baseline
 	minimumTicksAheadFromNow := (seq.config.Pace * 2) / 3 // seq.config.Pace
 	targetAbsoluteMinimum = ledger.MaxTime(targetAbsoluteMinimum, nowis.AddTicks(minimumTicksAheadFromNow))
 	if !targetAbsoluteMinimum.Before(nextSlotBoundary) {
-		return targetAbsoluteMinimum, prevMilestoneTs
+		return targetAbsoluteMinimum
 	}
 
 	if targetAbsoluteMinimum.TicksToNextSlotBoundary() <= seq.config.Pace {
-		return nextSlotBoundary, prevMilestoneTs
+		return nextSlotBoundary
 	}
 
-	return targetAbsoluteMinimum, prevMilestoneTs
+	return targetAbsoluteMinimum
 }
 
-const submitTimeout = 5 * time.Second
+const submitTimeout = 10 * time.Second
 
 func (seq *Sequencer) submitMilestone(tx *transaction.Transaction, meta *txmetadata.TransactionMetadata) *vertex.WrappedTx {
 	seq.Infof1("SUBMIT milestone %s, meta: %s", tx.IDShortString(), meta.String())
@@ -383,6 +373,7 @@ func (seq *Sequencer) submitMilestone(tx *transaction.Transaction, meta *txmetad
 		seq.Log().Errorf("timed out while waiting %v for submitted milestone %s in the tippool", submitTimeout, vid.IDShortString())
 		return nil
 	}
+	seq.lastSubmittedTs = vid.Timestamp()
 	return vid
 }
 
