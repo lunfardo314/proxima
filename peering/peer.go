@@ -56,8 +56,8 @@ func (p *Peer) evidence(evidences ...evidenceFun) {
 
 func _logHB(log *zap.SugaredLogger) evidenceFun {
 	return func(p *Peer) {
-		log.Infof(">>>>>> hb received from %s. Diff with previous: %v",
-			ShortPeerIDString(p.id), time.Now().Sub(p.lastMsgReceived))
+		log.Infof(">>>>>> hb received from %s. Diff since previous: %v",
+			ShortPeerIDString(p.id), time.Since(p.lastMsgReceived))
 	}
 }
 
