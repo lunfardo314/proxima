@@ -2,6 +2,8 @@ package peering
 
 import (
 	"time"
+
+	"go.uber.org/zap"
 )
 
 type evidenceFun func(p *Peer)
@@ -49,6 +51,13 @@ func (p *Peer) evidence(evidences ...evidenceFun) {
 
 	for _, fun := range evidences {
 		fun(p)
+	}
+}
+
+func _logHB(log *zap.SugaredLogger) evidenceFun {
+	return func(p *Peer) {
+		log.Infof(">>>>>> hb received from %s. Diff with previous: %v",
+			ShortPeerIDString(p.id), time.Now().Sub(p.lastMsgReceived))
 	}
 }
 

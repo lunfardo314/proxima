@@ -175,6 +175,7 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 	defer func() { _ = stream.Close() }()
 
 	p.evidence(
+		_logHB(ps.Log()),
 		_evidenceActivity("hb"),
 		_evidenceTxStore(hbInfo.hasTxStore),
 		_evidenceClockDifference(clockDiff),
@@ -222,8 +223,9 @@ func (ps *Peers) heartbeatLoop() {
 	count := 0
 	for {
 		nowis := time.Now()
-		ps.Infof0(">>>> HB %d. Nowis: %s, diff: %v", count, nowis.Format("15:04:05,000"), nowis.Sub(prevTime))
+		ps.Infof0(">>>> HB %d. Diff: %v", count, nowis.Sub(prevTime))
 		prevTime = nowis
+		count++
 
 		if nowis.After(logNumPeersDeadline) {
 			check.Check("NumAlive", checkPeriod)
