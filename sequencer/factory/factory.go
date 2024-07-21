@@ -270,7 +270,11 @@ func (mf *MilestoneFactory) startProposerWorkers(targetTime ledger.Time, ctx con
 
 		runFun := func() {
 			mf.Tracef(TraceTag, " START proposer %s", task.GetName())
+
+			mf.MarkWorkProcessStarted(task.GetName())
 			task.Run()
+			mf.MarkWorkProcessStopped(task.GetName())
+
 			mf.Tracef(TraceTag, " END proposer %s", task.GetName())
 		}
 		const debuggerFriendly = false
