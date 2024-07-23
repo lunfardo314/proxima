@@ -62,10 +62,15 @@ func NewIncrementalAttacher(name string, env Environment, targetTs ledger.Time, 
 	}
 
 	ret := &IncrementalAttacher{
-		attacher: newPastConeAttacher(env, name),
-		endorse:  make([]*vertex.WrappedTx, 0),
-		inputs:   make([]vertex.WrappedOutput, 0),
-		targetTs: targetTs,
+		attacher:           newPastConeAttacher(env, name),
+		endorse:            make([]*vertex.WrappedTx, 0),
+		endorsedSequencers: set.New[ledger.ChainID](),
+		inputs:             make([]vertex.WrappedOutput, 0),
+		targetTs:           targetTs,
+	}
+	if extend.VID.IsSequencerMilestone() {
+		// to prevent endorsement of the same sequencer
+		ret.endorsedSequencers.Insert(extend.VID.MustSequencerID())
 	}
 	if err := ret.initIncrementalAttacher(baseline.BaselineBranch(), targetTs, extend, endorse...); err != nil {
 		ret.unReferenceAllByAttacher()
@@ -184,6 +189,13 @@ func (a *IncrementalAttacher) insertEndorsement(endorsement *vertex.WrappedTx) e
 	if endorsement.IsBadOrDeleted() {
 		return fmt.Errorf("NewIncrementalAttacher: can't endorse %s. Reason: '%s'", endorsement.IDShortString(), endorsement.GetError())
 	}
+	seqID := endorsement.MustSequencerID()
+	if a.endorsedSequencers.Contains(seqID) {
+		// we enforce endorsement of different sequencer chains in one transaction. Endorsing same chain several times is suboptimal
+		return fmt.Errorf("repeating endorsed sequencer ID: %s", seqID.StringShort())
+	}
+	a.endorsedSequencers.Insert(seqID)
+
 	endBaseline := endorsement.BaselineBranch()
 	if !a.branchesCompatible(&a.baseline.ID, &endBaseline.ID) {
 		return fmt.Errorf("baseline branch %s of the endorsement branch %s is incompatible with the baseline %s",
@@ -217,37 +229,21 @@ func (a *IncrementalAttacher) insertEndorsement(endorsement *vertex.WrappedTx) e
 func (a *IncrementalAttacher) InsertTagAlongInput(wOut vertex.WrappedOutput) (bool, error) {
 	util.AssertNoError(a.err)
 
-	// too verbose even for tracing
-	//a.TraceTx(&wOut.VID.ID, "%s::InsertTagAlongInput #%d", a.name, wOut.Index)
-
 	// save state for possible rollback because in case of fail the side effect makes attacher inconsistent
 	// TODO a better way than cloning potentially big maps with each new input?
 	saved := a._saveState()
-	//saveVertices := maps.Clone(a.attacher.vertices)
-	//saveRooted := maps.Clone(a.attacher.rooted)
-	//for vid, outputIdxSet := range saveRooted {
-	//	saveRooted[vid] = outputIdxSet.Clone()
-	//}
-	//saveCoverageDelta := a.coverage
 
 	ok, defined := a.attachOutput(wOut)
 	if !ok || !defined {
 		// it is either conflicting, or not solid yet
 		// in either case rollback
 		a._restoreState(saved)
-		//a.attacher.vertices = saveVertices
-		//a.attacher.rooted = saveRooted
-		//a.coverage = saveCoverageDelta
 		var retErr error
 		if !ok {
 			retErr = a.err
 		} else if !defined {
 			retErr = fmt.Errorf("InsertTagAlongInput: %w", ErrPastConeNotSolidYet)
 		}
-
-		//{ // very verbose even for tracing
-		//	a.TraceTx(&wOut.VID.ID, "%s::InsertTagAlongInput failed to insert #%d: %v", a.name, wOut.Index, retErr)
-		//}
 
 		a.setError(nil)
 		return false, retErr
