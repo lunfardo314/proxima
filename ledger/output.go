@@ -40,6 +40,7 @@ type (
 		ChainConstraint          *ChainConstraint
 		AmountOnChain            uint64
 		SequencerConstraintIndex byte
+		MilestoneData            *MilestoneData
 	}
 )
 
@@ -320,11 +321,13 @@ func (o *Output) SequencerOutputData() (*SequencerOutputData, bool) {
 	if seqConstraint.ChainConstraintIndex != chainConstraintIndex {
 		return nil, false
 	}
+
 	return &SequencerOutputData{
 		SequencerConstraintIndex: seqConstraintIndex,
 		SequencerConstraint:      seqConstraint,
 		ChainConstraint:          chainConstraint,
 		AmountOnChain:            o.Amount(),
+		MilestoneData:            ParseMilestoneData(o),
 	}, true
 }
 

@@ -434,20 +434,6 @@ func (tx *Transaction) IsSequencerMilestone() bool {
 	return tx.sequencerMilestoneFlag
 }
 
-func (tx *Transaction) SequencerInfoString() string {
-	if !tx.IsSequencerMilestone() {
-		return "(not a sequencer ms)"
-	}
-	seqMeta := tx.SequencerTransactionData()
-	return fmt.Sprintf("SEQ(%s), in: %d, out:%d, amount on chain: %d, stem output: %v",
-		seqMeta.SequencerID.StringVeryShort(),
-		tx.NumInputs(),
-		tx.NumProducedOutputs(),
-		seqMeta.SequencerOutputData.AmountOnChain,
-		seqMeta.StemOutputData != nil,
-	)
-}
-
 func (tx *Transaction) IsBranchTransaction() bool {
 	return tx.sequencerMilestoneFlag && tx.timestamp.Tick() == 0
 }

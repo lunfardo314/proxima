@@ -52,8 +52,9 @@ func (b *Endorse2Proposer) propose() *attacher.IncrementalAttacher {
 
 	// then try to add one endorsement more
 	addedSecond := false
+	endorsing0 := a.Endorsing()[0]
 	for _, endorsementCandidate := range b.Backlog().CandidatesToEndorseSorted(b.TargetTs) {
-		if endorsementCandidate == a.Endorsing()[0] {
+		if endorsementCandidate == endorsing0 {
 			continue
 		}
 		if err := a.InsertEndorsement(endorsementCandidate); err == nil {
