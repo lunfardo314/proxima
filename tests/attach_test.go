@@ -342,7 +342,7 @@ func TestConflicts1Attacher(t *testing.T) {
 		if nConflicts > 1 {
 			require.True(t, vertex.Bad == vid.GetTxStatus())
 			t.Logf("reason: %v", vid.GetError())
-			util.RequireErrorWith(t, vid.GetError(), "conflicts with existing consumers in the baseline state", testData.forkOutput.IDShort())
+			util.RequireErrorWith(t, vid.GetError(), "conflicts with another consumer", testData.forkOutput.IDShort())
 		} else {
 			require.True(t, vertex.Good == vid.GetTxStatus())
 		}
@@ -405,7 +405,7 @@ func TestConflicts1Attacher(t *testing.T) {
 
 		require.True(t, vertex.Bad == vid.GetTxStatus())
 		t.Logf("reason: %v", vid.GetError())
-		util.RequireErrorWith(t, vid.GetError(), "conflicts with existing consumers in the baseline state", testData.forkOutput.IDShort())
+		util.RequireErrorWith(t, vid.GetError(), "conflicts with another consumer", testData.forkOutput.IDShort())
 	})
 	t.Run("long", func(t *testing.T) {
 		//attacher.SetTraceOn()
@@ -459,7 +459,7 @@ func TestConflicts1Attacher(t *testing.T) {
 
 		require.True(t, vertex.Bad == vid.GetTxStatus())
 		t.Logf("expected reason: %v", vid.GetError())
-		util.RequireErrorWith(t, vid.GetError(), "conflicts with existing consumers in the baseline state", testData.forkOutput.IDShort())
+		util.RequireErrorWith(t, vid.GetError(), "conflicts with another consumer", testData.forkOutput.IDShort())
 	})
 	t.Run("long with sync", func(t *testing.T) {
 		//attacher.SetTraceOn()
@@ -520,7 +520,7 @@ func TestConflicts1Attacher(t *testing.T) {
 
 		require.True(t, vertex.Bad == vid.GetTxStatus())
 		t.Logf("expected reason: %v", vid.GetError())
-		util.RequireErrorWith(t, vid.GetError(), "conflicts with existing consumers in the baseline state", testData.forkOutput.IDShort())
+		util.RequireErrorWith(t, vid.GetError(), "conflicts with another consumer", testData.forkOutput.IDShort())
 	})
 }
 
@@ -674,7 +674,7 @@ func TestConflictsNAttachersOneFork(t *testing.T) {
 	testData.logDAGInfo()
 
 	require.EqualValues(t, vertex.Bad.String(), vidSeq.GetTxStatus().String())
-	util.RequireErrorWith(t, vidSeq.GetError(), "conflicts with existing consumers in the baseline state", "(double spend)", testData.forkOutput.IDShort())
+	util.RequireErrorWith(t, vidSeq.GetError(), "conflicts with another consumer", "(double spend)", testData.forkOutput.IDShort())
 	//testData.wrk.SaveGraph("utangle")
 }
 

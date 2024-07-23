@@ -27,6 +27,7 @@ type (
 		sequencerID     ledger.ChainID
 		controllerKey   ed25519.PrivateKey
 		config          *ConfigOptions
+		logName         string
 		log             *zap.SugaredLogger
 		backlog         *backlog.InputBacklog
 		factory         *factory.MilestoneFactory
@@ -57,12 +58,14 @@ const TraceTag = "sequencer"
 
 func New(glb *workflow.Workflow, seqID ledger.ChainID, controllerKey ed25519.PrivateKey, opts ...ConfigOption) (*Sequencer, error) {
 	cfg := configOptions(opts...)
+	logName := fmt.Sprintf("[%s-%s]", cfg.SequencerName, seqID.StringVeryShort())
 	ret := &Sequencer{
 		Workflow:      glb,
 		sequencerID:   seqID,
 		controllerKey: controllerKey,
 		config:        cfg,
-		log:           glb.Log().Named(fmt.Sprintf("[%s-%s]", cfg.SequencerName, seqID.StringVeryShort())),
+		logName:       logName,
+		log:           glb.Log().Named(logName),
 	}
 	ret.ctx, ret.stopFun = context.WithCancel(glb.Ctx())
 	var err error
@@ -360,7 +363,8 @@ func (seq *Sequencer) getNextTargetTime() ledger.Time {
 const submitTimeout = 10 * time.Second
 
 func (seq *Sequencer) submitMilestone(tx *transaction.Transaction, meta *txmetadata.TransactionMetadata) *vertex.WrappedTx {
-	seq.Infof1("SUBMIT milestone %s, meta: %s", tx.IDShortString(), meta.String())
+	seq.Infof1("%s SUBMIT milestone %s, meta: %s", seq.logName, tx.IDShortString(), meta.String())
+
 	deadline := time.Now().Add(submitTimeout)
 	vid, err := seq.SequencerMilestoneAttachWait(tx.Bytes(), meta, submitTimeout)
 	if err != nil {

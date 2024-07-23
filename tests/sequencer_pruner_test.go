@@ -160,7 +160,7 @@ func TestNSequencersIdlePruner(t *testing.T) {
 
 func Test5SequencersIdlePruner(t *testing.T) {
 	const (
-		maxSlots    = 100
+		maxSlots    = 300
 		nSequencers = 4 // in addition to bootstrap
 	)
 	testData := initMultiSequencerTest(t, nSequencers, true)

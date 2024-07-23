@@ -553,7 +553,7 @@ func (vid *WrappedTx) EnsureOutput(idx byte, o *ledger.Output) bool {
 	return ok
 }
 
-func (vid *WrappedTx) AttachConsumer(outputIndex byte, consumer *WrappedTx, checkConflicts func(existingConsumers set.Set[*WrappedTx]) (conflict bool)) bool {
+func (vid *WrappedTx) AttachConsumer(outputIndex byte, consumer *WrappedTx, checkConflicts func(existingConsumers set.Set[*WrappedTx]) (conflict *WrappedTx)) (conflict *WrappedTx) {
 	vid.mutexDescendants.Lock()
 	defer vid.mutexDescendants.Unlock()
 
@@ -567,8 +567,7 @@ func (vid *WrappedTx) AttachConsumer(outputIndex byte, consumer *WrappedTx, chec
 		outputConsumers.Insert(consumer)
 	}
 	vid.consumed[outputIndex] = outputConsumers
-	conflict := checkConflicts(outputConsumers)
-	return !conflict
+	return checkConflicts(outputConsumers)
 }
 
 func (vid *WrappedTx) NotConsumedOutputIndices(allConsumers set.Set[*WrappedTx]) []byte {

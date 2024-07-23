@@ -644,9 +644,9 @@ func (a *attacher) attachInputID(consumerVertex *vertex.Vertex, consumerTx *vert
 	// LEDGER CONFLICT (DOUBLE-SPEND) DETECTION
 	a.Assertf(a.isKnownNotRooted(consumerTx), "attachInputID: a.isKnownNotRooted(consumerTx)")
 
-	if !vidInputTx.AttachConsumer(inputOid.Index(), consumerTx, a.checkConflictsFunc(consumerTx)) {
-		err := fmt.Errorf("input %s of consumer %s conflicts with existing consumers in the baseline state %s (double spend)",
-			inputOid.StringShort(), consumerTx.IDShortString(), a.baseline.IDShortString())
+	if conflict := vidInputTx.AttachConsumer(inputOid.Index(), consumerTx, a.checkConflictsFunc(consumerTx)); conflict != nil {
+		err := fmt.Errorf("input %s of consumer %s conflicts with another consumer %s in the baseline state %s (double spend)",
+			inputOid.StringShort(), consumerTx.IDShortString(), conflict.IDShortString(), a.baseline.IDShortString())
 		a.setError(err)
 		a.Tracef(TraceTagAttachOutput, "%v", err)
 		return nil, false
@@ -656,16 +656,16 @@ func (a *attacher) attachInputID(consumerVertex *vertex.Vertex, consumerTx *vert
 	return vidInputTx, true
 }
 
-func (a *attacher) checkConflictsFunc(consumerTx *vertex.WrappedTx) func(existingConsumers set.Set[*vertex.WrappedTx]) bool {
-	return func(existingConsumers set.Set[*vertex.WrappedTx]) (conflict bool) {
+func (a *attacher) checkConflictsFunc(consumerTx *vertex.WrappedTx) func(existingConsumers set.Set[*vertex.WrappedTx]) (conflict *vertex.WrappedTx) {
+	return func(existingConsumers set.Set[*vertex.WrappedTx]) (conflict *vertex.WrappedTx) {
 		existingConsumers.ForEach(func(existingConsumer *vertex.WrappedTx) bool {
 			if existingConsumer == consumerTx {
 				return true
 			}
 			if _, found := a.vertices[existingConsumer]; found {
-				conflict = true
+				conflict = existingConsumer
 			}
-			return !conflict
+			return conflict == nil
 		})
 		return
 	}
