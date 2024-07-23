@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/lunfardo314/proxima/core/memdag"
 	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/core/workflow"
@@ -370,6 +371,7 @@ func (seq *Sequencer) submitMilestone(tx *transaction.Transaction, meta *txmetad
 	vid, err := seq.SequencerMilestoneAttachWait(tx.Bytes(), meta, submitTimeout)
 	if err != nil {
 		seq.Log().Errorf("failed to submit new milestone %s: '%v'", tx.IDShortString(), err)
+		seq.savePastConeOfFailedTx(tx, 3)
 		return nil
 	}
 
@@ -380,6 +382,12 @@ func (seq *Sequencer) submitMilestone(tx *transaction.Transaction, meta *txmetad
 	}
 	seq.lastSubmittedTs = vid.Timestamp()
 	return vid
+}
+
+func (seq *Sequencer) savePastConeOfFailedTx(tx *transaction.Transaction, slotsBack int) {
+	_, err := seq.TxBytesStore().PersistTxBytesWithMetadata(tx.Bytes(), nil)
+	util.AssertNoError(err)
+	memdag.SavePastConeFromTxStore(*tx.ID(), seq.TxBytesStore(), tx.Slot()-ledger.Slot(slotsBack), "cone-"+tx.ID().AsFileName())
 }
 
 func (seq *Sequencer) waitMilestoneInTippool(vid *vertex.WrappedTx, deadline time.Time) bool {

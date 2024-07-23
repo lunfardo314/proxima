@@ -66,6 +66,8 @@ type (
 		baselineSupply uint64
 		// trace this local attacher with all tags
 		forceTrace string
+		// for incremental attacher we need slightly extended conflic checker
+		makeCheckConflictsFunction func(consumerTx *vertex.WrappedTx) checkConflictsFunction
 	}
 
 	// IncrementalAttacher is used by the sequencer to build a sequencer milestone
@@ -123,6 +125,8 @@ type (
 	}
 
 	Flags uint8
+
+	checkConflictsFunction func(existingConsumers set.Set[*vertex.WrappedTx]) (conflict *vertex.WrappedTx)
 
 	SequencerCommandParser interface {
 		// ParseSequencerCommandToOutput analyzes consumed output for sequencer command and produces

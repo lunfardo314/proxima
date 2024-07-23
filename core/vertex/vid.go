@@ -553,6 +553,8 @@ func (vid *WrappedTx) EnsureOutput(idx byte, o *ledger.Output) bool {
 	return ok
 }
 
+// AttachConsumer stores consumer of the vid[outputIndex] consumed output.
+// Function checkConflicts checks if new consumer conflicts with already existing ones
 func (vid *WrappedTx) AttachConsumer(outputIndex byte, consumer *WrappedTx, checkConflicts func(existingConsumers set.Set[*WrappedTx]) (conflict *WrappedTx)) (conflict *WrappedTx) {
 	vid.mutexDescendants.Lock()
 	defer vid.mutexDescendants.Unlock()

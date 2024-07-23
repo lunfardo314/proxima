@@ -68,6 +68,10 @@ func NewIncrementalAttacher(name string, env Environment, targetTs ledger.Time, 
 		inputs:             make([]vertex.WrappedOutput, 0),
 		targetTs:           targetTs,
 	}
+	// replacing standard conflict checker with extended.
+	// The extended one also checks inputs of the transaction being constructed
+	ret.makeCheckConflictsFunction = ret.extendedConflictChecker
+
 	if extend.VID.IsSequencerMilestone() {
 		// to prevent endorsement of the same sequencer
 		ret.endorsedSequencers.Insert(extend.VID.MustSequencerID())
@@ -77,6 +81,14 @@ func NewIncrementalAttacher(name string, env Environment, targetTs ledger.Time, 
 		return nil, err
 	}
 	return ret, nil
+}
+
+func (a *IncrementalAttacher) extendedConflictChecker(consumerTx *vertex.WrappedTx) checkConflictsFunction {
+	// TODO
+	stdFun := a._checkConflictsFunc(consumerTx)
+	return func(existingConsumers set.Set[*vertex.WrappedTx]) (conflict *vertex.WrappedTx) {
+		return stdFun(existingConsumers)
+	}
 }
 
 func (a *IncrementalAttacher) UnReferenceAll() {

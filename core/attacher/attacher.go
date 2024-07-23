@@ -15,7 +15,7 @@ import (
 )
 
 func newPastConeAttacher(env Environment, name string) attacher {
-	return attacher{
+	ret := attacher{
 		Environment: env,
 		name:        name,
 		rooted:      make(map[*vertex.WrappedTx]set.Set[byte]),
@@ -23,6 +23,9 @@ func newPastConeAttacher(env Environment, name string) attacher {
 		referenced:  set.New[*vertex.WrappedTx](),
 		pokeMe:      func(_ *vertex.WrappedTx) {},
 	}
+	// standard conflict checker
+	ret.makeCheckConflictsFunction = ret._checkConflictsFunc
+	return ret
 }
 
 const (
@@ -656,7 +659,9 @@ func (a *attacher) attachInputID(consumerVertex *vertex.Vertex, consumerTx *vert
 	return vidInputTx, true
 }
 
-func (a *attacher) checkConflictsFunc(consumerTx *vertex.WrappedTx) func(existingConsumers set.Set[*vertex.WrappedTx]) (conflict *vertex.WrappedTx) {
+// _checkConflictsFunc standard conflict checker. For the milestone attacher
+// In incremental attacher is replaced with the extended one
+func (a *attacher) _checkConflictsFunc(consumerTx *vertex.WrappedTx) checkConflictsFunction {
 	return func(existingConsumers set.Set[*vertex.WrappedTx]) (conflict *vertex.WrappedTx) {
 		existingConsumers.ForEach(func(existingConsumer *vertex.WrappedTx) bool {
 			if existingConsumer == consumerTx {
@@ -669,6 +674,23 @@ func (a *attacher) checkConflictsFunc(consumerTx *vertex.WrappedTx) func(existin
 		})
 		return
 	}
+}
+
+func (a *attacher) checkConflictsFunc(consumerTx *vertex.WrappedTx) checkConflictsFunction {
+	return a.makeCheckConflictsFunction(consumerTx)
+
+	//return func(existingConsumers set.Set[*vertex.WrappedTx]) (conflict *vertex.WrappedTx) {
+	//	existingConsumers.ForEach(func(existingConsumer *vertex.WrappedTx) bool {
+	//		if existingConsumer == consumerTx {
+	//			return true
+	//		}
+	//		if _, found := a.vertices[existingConsumer]; found {
+	//			conflict = existingConsumer
+	//		}
+	//		return conflict == nil
+	//	})
+	//	return
+	//}
 }
 
 func (a *attacher) isKnownConsumed(wOut vertex.WrappedOutput) (isConsumed bool) {

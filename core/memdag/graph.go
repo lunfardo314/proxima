@@ -349,3 +349,8 @@ func (d *MemDAG) loadPastConeFromTxStore(txid ledger.TransactionID, txStore glob
 	d.AddVertexNoLock(vid)
 	return vid
 }
+
+func SavePastConeFromTxStore(tip ledger.TransactionID, txStore global.TxBytesGet, oldestSlot ledger.Slot, fname string) {
+	tmpDag := MakeDAGFromTxStore(txStore, oldestSlot, tip)
+	tmpDag.SaveGraph(fname)
+}
