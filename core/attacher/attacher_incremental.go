@@ -194,7 +194,6 @@ func (a *IncrementalAttacher) insertEndorsement(endorsement *vertex.WrappedTx) e
 		// we enforce endorsement of different sequencer chains in one transaction. Endorsing same chain several times is suboptimal
 		return fmt.Errorf("repeating endorsed sequencer ID: %s", seqID.StringShort())
 	}
-	a.endorsedSequencers.Insert(seqID)
 
 	endBaseline := endorsement.BaselineBranch()
 	if !a.branchesCompatible(&a.baseline.ID, &endBaseline.ID) {
@@ -221,6 +220,7 @@ func (a *IncrementalAttacher) insertEndorsement(endorsement *vertex.WrappedTx) e
 		return fmt.Errorf("insertEndorsement: failed to reference endorsement %s", endorsement.IDShortString())
 	}
 	a.endorse = append(a.endorse, endorsement)
+	a.endorsedSequencers.Insert(seqID)
 	return nil
 }
 
