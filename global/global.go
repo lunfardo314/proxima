@@ -100,6 +100,7 @@ func _new(logLevel zapcore.Level, outputs []string, bootstrap bool) *Global {
 	ctx, cancelFun := context.WithCancel(context.Background())
 	ret := &Global{
 		ctx:           ctx,
+		logVerbosity:  1,
 		metrics:       prometheus.NewRegistry(),
 		stopFun:       cancelFun,
 		SugaredLogger: NewLogger("", logLevel, outputs, ""),

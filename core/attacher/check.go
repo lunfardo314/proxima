@@ -26,7 +26,7 @@ func (a *milestoneAttacher) _checkConsistencyBeforeFinalization() (err error) {
 	}
 	for vid := range a.rooted {
 		if !a.isKnownDefined(vid) {
-			return fmt.Errorf("all rooted must be defined. This is not: %s", vid.IDShortString())
+			return fmt.Errorf("all rooted must be defined. This one is not: %s", vid.IDShortString())
 		}
 	}
 	if len(a.vertices) == 0 {
@@ -93,20 +93,57 @@ func (a *milestoneAttacher) _checkConsistencyBeforeFinalization() (err error) {
 	}
 
 	a.vid.Unwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
-		v.ForEachEndorsement(func(i byte, vidEndorsed *vertex.WrappedTx) bool {
-			lc := vidEndorsed.GetLedgerCoverageP()
-			if lc == nil {
-				err = fmt.Errorf("coverage not set in the endorsed %s", vidEndorsed.IDShortString())
-				return false
-			}
-			if !vidEndorsed.IsBranchTransaction() && a.coverage < *lc {
-				err = fmt.Errorf("coverage should not decrease.\nGot: delta(%s) at %s <= delta(%s) in %s",
-					util.Th(a.coverage), a.vid.Timestamp().String(), util.Th(*lc), vidEndorsed.IDShortString())
-				return false
-			}
-			return true
-		})
+		if err = a._checkMonotonicityOfInputTransactions(v); err != nil {
+			return
+		}
+		err = a._checkMonotonicityOfEndorsements(v)
 	}})
+	return
+}
+
+func (a *milestoneAttacher) _checkMonotonicityOfEndorsements(v *vertex.Vertex) (err error) {
+	v.ForEachEndorsement(func(i byte, vidEndorsed *vertex.WrappedTx) bool {
+		if vidEndorsed.IsBranchTransaction() {
+			return true
+		}
+		lc := vidEndorsed.GetLedgerCoverageP()
+		if lc == nil {
+			err = fmt.Errorf("coverage not set in the endorsed %s", vidEndorsed.IDShortString())
+			return false
+		}
+		if a.coverage < *lc {
+			diff := *lc - a.coverage
+			err = fmt.Errorf("coverage should not decrease along endorsement.\nGot: delta(%s) at %s <= delta(%s) in %s. diff: %s",
+				util.Th(a.coverage), a.vid.Timestamp().String(), util.Th(*lc), vidEndorsed.IDShortString(), util.Th(diff))
+			return false
+		}
+		return true
+	})
+	return
+}
+
+func (a *milestoneAttacher) _checkMonotonicityOfInputTransactions(v *vertex.Vertex) (err error) {
+	setOfInputTransactions := v.SetOfInputTransactions()
+	util.Assertf(len(setOfInputTransactions) > 0, "len(setOfInputTransactions)>0")
+
+	setOfInputTransactions.ForEach(func(vidInp *vertex.WrappedTx) bool {
+		if !vidInp.IsSequencerMilestone() || vidInp.IsBranchTransaction() || v.Tx.Slot() != vidInp.Slot() {
+			// checking sequencer, non-branch inputs on the same slot
+			return true
+		}
+		lc := vidInp.GetLedgerCoverageP()
+		if lc == nil {
+			err = fmt.Errorf("coverage not set in the input tx %s", vidInp.IDShortString())
+			return false
+		}
+		if a.coverage < *lc {
+			diff := *lc - a.coverage
+			err = fmt.Errorf("coverage should not decrease along consumed transactions on the same slot.\nGot: delta(%s) at %s <= delta(%s) in %s. diff: %s",
+				util.Th(a.coverage), a.vid.Timestamp().String(), util.Th(*lc), vidInp.IDShortString(), util.Th(diff))
+			return false
+		}
+		return true
+	})
 	return
 }
 

@@ -420,6 +420,15 @@ func (vid *WrappedTx) IsVirtualTx() (ret bool) {
 	return
 }
 
+func (vid *WrappedTx) OfKindString() (ret string) {
+	vid.RUnwrap(UnwrapOptions{
+		Vertex:    func(_ *Vertex) { ret = "vertex" },
+		VirtualTx: func(_ *VirtualTransaction) { ret = "virtualTx" },
+		Deleted:   func() { ret = "deleted" },
+	})
+	return
+}
+
 func (vid *WrappedTx) OutputID(idx byte) (ret ledger.OutputID) {
 	ret = ledger.NewOutputID(&vid.ID, idx)
 	return

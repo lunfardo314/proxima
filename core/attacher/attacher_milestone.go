@@ -118,6 +118,9 @@ func (a *milestoneAttacher) run() error {
 	}
 	a.Tracef(TraceTagAttachMilestone, "past cone OK")
 	a.AssertNoError(a.err)
+
+	a.AdjustCoverage()
+
 	a.AssertNoError(a.checkConsistencyBeforeWrapUp())
 
 	// finalizing touches

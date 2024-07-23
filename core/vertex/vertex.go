@@ -204,6 +204,15 @@ func (v *Vertex) ForEachEndorsement(fun func(i byte, vidEndorsed *WrappedTx) boo
 	}
 }
 
+func (v *Vertex) SetOfInputTransactions() set.Set[*WrappedTx] {
+	ret := set.New[*WrappedTx]()
+	v.ForEachInputDependency(func(_ byte, vidInput *WrappedTx) bool {
+		ret.Insert(vidInput)
+		return true
+	})
+	return ret
+}
+
 func (v *Vertex) Lines(prefix ...string) *lines.Lines {
 	return v.Tx.Lines(func(i byte) (*ledger.Output, error) {
 		if v.Inputs[i] == nil {
