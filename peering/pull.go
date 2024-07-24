@@ -35,22 +35,22 @@ func (ps *Peers) pullStreamHandler(stream network.Stream) {
 	p := ps.getPeer(id)
 	if p == nil {
 		// peer not found
-		ps.Tracef(TraceTag, "pull: unknown peer %s", id.String())
 		_ = stream.Reset()
+		ps.Tracef(TraceTag, "pull: unknown peer %s", id.String())
 		return
 	}
 
 	msgData, err := readFrame(stream)
 	if err != nil {
+		_ = stream.Reset()
 		ps.dropPeer(p.id, "read error")
 		ps.Log().Errorf("error while reading message from peer %s: %v", id.String(), err)
-		_ = stream.Reset()
 		return
 	}
 	if err = ps.processPullFrame(msgData, p); err != nil {
-		ps.dropPeer(p.id, "error while parsing pull message")
-		ps.Log().Errorf("error while decoding message from peer %s: %v", id.String(), err)
 		_ = stream.Reset()
+		ps.Log().Errorf("error while decoding message from peer %s: %v", id.String(), err)
+		ps.dropPeer(p.id, "error while parsing pull message")
 		return
 
 	}

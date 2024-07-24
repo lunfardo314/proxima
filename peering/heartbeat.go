@@ -154,22 +154,22 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 	}
 	if err != nil {
 		// protocol violation
+		_ = stream.Reset()
 		ps.Log().Errorf("[peering] error while reading message from peer %s: %v", ShortPeerIDString(id), err)
 		ps.dropPeer(id, "read error")
-		_ = stream.Reset()
 		return
 	}
 
 	clockDiff, clockOk, behind := checkRemoteClockTolerance(hbInfo.clock)
 	if !clockOk {
+		_ = stream.Reset()
 		b := "ahead"
 		if behind {
 			b = "behind"
 		}
 		ps.Log().Warnf("[peering] clock of the peer %s is %s of the local clock for %v > tolerance interval %v",
 			ShortPeerIDString(id), b, clockDiff, clockTolerance)
-		ps.dropPeer(id, "over clock tolerance")
-		_ = stream.Reset()
+		ps.dropPeer(id, "clock sync tolerance")
 		return
 	}
 	defer func() { _ = stream.Close() }()

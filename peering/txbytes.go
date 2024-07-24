@@ -18,30 +18,30 @@ func (ps *Peers) gossipStreamHandler(stream network.Stream) {
 	p := ps.getPeer(id)
 	if p == nil {
 		// peer not found
-		ps.Tracef(TraceTag, "txBytes: unknown peer %s", id.String())
 		_ = stream.Reset()
+		ps.Tracef(TraceTag, "txBytes: unknown peer %s", id.String())
 		return
 	}
 
 	txBytesWithMetadata, err := readFrame(stream)
 	if err != nil {
+		_ = stream.Reset()
 		ps.dropPeer(p.id, "read error")
 		ps.Log().Errorf("error while reading message from peer %s: %v", id.String(), err)
-		_ = stream.Reset()
 		return
 	}
 	metadataBytes, txBytes, err := txmetadata.SplitTxBytesWithMetadata(txBytesWithMetadata)
 	if err != nil {
+		_ = stream.Reset()
 		ps.dropPeer(p.id, "error while parsing tx metadata")
 		ps.Log().Errorf("error while parsing tx message from peer %s: %v", id.String(), err)
-		_ = stream.Reset()
 		return
 	}
 	metadata, err := txmetadata.TransactionMetadataFromBytes(metadataBytes)
 	if err != nil {
+		_ = stream.Reset()
 		ps.dropPeer(p.id, "error while parsing tx metadata")
 		ps.Log().Errorf("error while parsing tx message metadata from peer %s: %v", id.String(), err)
-		_ = stream.Reset()
 		return
 	}
 

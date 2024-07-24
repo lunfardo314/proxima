@@ -44,7 +44,7 @@ type (
 
 	Peers struct {
 		Environment
-		mutex            sync.RWMutex
+		mutex            *sync.RWMutex
 		cfg              *Config
 		stopOnce         sync.Once
 		host             host.Host
@@ -64,7 +64,7 @@ type (
 	}
 
 	Peer struct {
-		mutex               sync.RWMutex
+		mutex               *sync.RWMutex
 		name                string
 		id                  peer.ID
 		isStatic            bool // statically pre-configured (manual peering)
@@ -111,6 +111,7 @@ const (
 
 func NewPeersDummy() *Peers {
 	return &Peers{
+		mutex:                    &sync.RWMutex{},
 		peers:                    make(map[peer.ID]*Peer),
 		blacklist:                make(map[peer.ID]time.Time),
 		onReceiveTx:              func(_ peer.ID, _ []byte, _ *txmetadata.TransactionMetadata) {},
@@ -309,12 +310,12 @@ func (ps *Peers) addPeer(addrInfo *peer.AddrInfo, name string, static bool) *Pee
 	if already {
 		return p
 	}
-	nowis := time.Now()
 	p = &Peer{
+		mutex:     &sync.RWMutex{},
 		name:      name,
 		id:        addrInfo.ID,
 		isStatic:  static,
-		whenAdded: nowis,
+		whenAdded: time.Now(),
 	}
 	ps.peers[addrInfo.ID] = p
 	for _, a := range addrInfo.Addrs {
@@ -352,13 +353,6 @@ func (ps *Peers) dropPeer(id peer.ID, reason ...string) {
 
 func (ps *Peers) _addToBlacklist(id peer.ID, ttl time.Duration) {
 	ps.blacklist[id] = time.Now().Add(ttl)
-}
-
-func (ps *Peers) addToBlacklist(id peer.ID, ttl time.Duration) {
-	ps.mutex.Lock()
-	defer ps.mutex.Unlock()
-
-	ps._addToBlacklist(id, ttl)
 }
 
 func (ps *Peers) _isInBlacklist(id peer.ID) bool {

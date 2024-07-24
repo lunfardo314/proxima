@@ -112,19 +112,17 @@ func (ps *Peers) dropExcessPeersIfNeeded() {
 	if _, aliveDynamic := ps.NumAlive(); aliveDynamic <= ps.cfg.MaxDynamicPeers {
 		return
 	}
-
 	// dropping
-	sortedByRanks := ps.sortPeersByAgeDesc()
-	if len(sortedByRanks) <= ps.cfg.MaxDynamicPeers {
+	sortedPeers := ps.sortPeersByActivityDesc()
+	if len(sortedPeers) <= ps.cfg.MaxDynamicPeers {
 		return
 	}
-	for _, p := range sortedByRanks[:ps.cfg.MaxDynamicPeers] {
+	for _, p := range sortedPeers[:ps.cfg.MaxDynamicPeers] {
 		ps.dropPeer(p.id, fmt.Sprintf("excess over maximum dynamic peers configured: %d", ps.cfg.MaxDynamicPeers))
-		ps.addToBlacklist(p.id, time.Minute)
 	}
 }
 
-func (ps *Peers) sortPeersByAgeDesc() []*Peer {
+func (ps *Peers) sortPeersByActivityDesc() []*Peer {
 	ps.mutex.RLock()
 	defer ps.mutex.RUnlock()
 
@@ -132,74 +130,7 @@ func (ps *Peers) sortPeersByAgeDesc() []*Peer {
 		return !p.isStatic
 	})
 	sort.Slice(peers, func(i, j int) bool {
-		if peers[i].lastMsgReceived.Before(peers[j].lastMsgReceived) {
-			return true
-		}
-		return peers[i].whenAdded.Before(peers[j].whenAdded)
+		return peers[i].lastMsgReceived.Before(peers[j].lastMsgReceived)
 	})
 	return peers
 }
-
-// calcDynamicPeerRanks uses very simple peer ranking strategy. It sorts peers according to different criteria
-// The rank according to that criterion is index in the sorted array.
-// Final rank is sum of ranks of different criteria without any weights.
-// Bigger the rank, bigger priority of removal
-//func (ps *Peers) calcDynamicPeerRanks() map[*Peer]int {
-//	ps.mutex.RLock()
-//	defer ps.mutex.RUnlock()
-//
-//	peers := make([]*Peer, 0, len(ps.peers))
-//	for _, p := range ps.peers {
-//		if !p.isStatic {
-//			peers = append(peers, p)
-//		}
-//	}
-//	ranks := make(map[*Peer]int, len(peers))
-//
-//	// sort by begin peering time, descending
-//	sort.Slice(peers, func(i, j int) bool {
-//		// older it is, bigger the rank
-//		return peers[i].whenAdded.After(peers[j].whenAdded)
-//	})
-//	for i, p := range peers {
-//		ranks[p] = ranks[p] + i
-//	}
-//
-//	// sort by last activity
-//	sort.Slice(peers, func(i, j int) bool {
-//		// most recent activity means bigger rank
-//		return peers[i].lastMsgReceived.After(peers[j].lastMsgReceived)
-//	})
-//	for i, p := range peers {
-//		ranks[p] = ranks[p] + i
-//	}
-//
-//	// sort by clock difference
-//	sort.Slice(peers, func(i, j int) bool {
-//		// bigger clock difference means bigger priority of removal
-//		// >>>> may be slow with many peers and many clock differences stored
-//		return peers[i].avgClockDifference() < peers[j].avgClockDifference()
-//	})
-//	for i, p := range peers {
-//		ranks[p] = ranks[p] + i
-//	}
-//
-//	// sort by good transactions
-//	sort.Slice(peers, func(i, j int) bool {
-//		// more good transaction, less priority of removal
-//		return peers[i].incomingGood > peers[j].incomingGood
-//	})
-//	for i, p := range peers {
-//		ranks[p] = ranks[p] + i
-//	}
-//
-//	// sort by bad transactions
-//	sort.Slice(peers, func(i, j int) bool {
-//		// more bad transaction, more priority of removal
-//		return peers[i].incomingBad < peers[j].incomingGood
-//	})
-//	for i, p := range peers {
-//		ranks[p] = ranks[p] + i
-//	}
-//	return ranks
-//}
