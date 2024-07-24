@@ -95,7 +95,7 @@ func (a *IncrementalAttacher) checkConflictsWithInputs(consumerVertex *vertex.Ve
 		consumed := vertex.WrappedOutput{VID: vidInput, Index: i}
 		for _, wOut := range a.inputs {
 			if wOut == consumed {
-				conflict = &vertex.WrappedTx{} // not nil, the non-name transaction being constructed
+				conflict = &vertex.WrappedTx{} // not nil, the no-name transaction being constructed is conflicting
 				return false
 			}
 		}
