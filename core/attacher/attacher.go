@@ -24,7 +24,9 @@ func newPastConeAttacher(env Environment, name string) attacher {
 		pokeMe:      func(_ *vertex.WrappedTx) {},
 	}
 	// standard conflict checker
-	ret.makeCheckConflictsFunction = ret._checkConflictsFunc
+	ret.checkConflictsFunc = func(_ *vertex.Vertex, consumerTx *vertex.WrappedTx) checkConflictingConsumersFunc {
+		return ret.stdCheckConflictsFunc(consumerTx)
+	}
 	return ret
 }
 
@@ -647,7 +649,7 @@ func (a *attacher) attachInputID(consumerVertex *vertex.Vertex, consumerTx *vert
 	// LEDGER CONFLICT (DOUBLE-SPEND) DETECTION
 	a.Assertf(a.isKnownNotRooted(consumerTx), "attachInputID: a.isKnownNotRooted(consumerTx)")
 
-	if conflict := vidInputTx.AttachConsumer(inputOid.Index(), consumerTx, a.checkConflictsFunc(consumerTx)); conflict != nil {
+	if conflict := vidInputTx.AttachConsumer(inputOid.Index(), consumerTx, a.checkConflictsFunc(consumerVertex, consumerTx)); conflict != nil {
 		err := fmt.Errorf("input %s of consumer %s conflicts with another consumer %s in the baseline state %s (double spend)",
 			inputOid.StringShort(), consumerTx.IDShortString(), conflict.IDShortString(), a.baseline.IDShortString())
 		a.setError(err)
@@ -659,38 +661,21 @@ func (a *attacher) attachInputID(consumerVertex *vertex.Vertex, consumerTx *vert
 	return vidInputTx, true
 }
 
-// _checkConflictsFunc standard conflict checker. For the milestone attacher
+// stdCheckConflictsFunc standard conflict checker. For the milestone attacher
 // In incremental attacher is replaced with the extended one
-func (a *attacher) _checkConflictsFunc(consumerTx *vertex.WrappedTx) checkConflictsFunction {
+func (a *attacher) stdCheckConflictsFunc(consumerTx *vertex.WrappedTx) checkConflictingConsumersFunc {
 	return func(existingConsumers set.Set[*vertex.WrappedTx]) (conflict *vertex.WrappedTx) {
-		existingConsumers.ForEach(func(existingConsumer *vertex.WrappedTx) bool {
-			if existingConsumer == consumerTx {
+		existingConsumers.ForEach(func(potentialConflicts *vertex.WrappedTx) bool {
+			if potentialConflicts == consumerTx {
 				return true
 			}
-			if _, found := a.vertices[existingConsumer]; found {
-				conflict = existingConsumer
+			if _, found := a.vertices[potentialConflicts]; found {
+				conflict = potentialConflicts
 			}
 			return conflict == nil
 		})
 		return
 	}
-}
-
-func (a *attacher) checkConflictsFunc(consumerTx *vertex.WrappedTx) checkConflictsFunction {
-	return a.makeCheckConflictsFunction(consumerTx)
-
-	//return func(existingConsumers set.Set[*vertex.WrappedTx]) (conflict *vertex.WrappedTx) {
-	//	existingConsumers.ForEach(func(existingConsumer *vertex.WrappedTx) bool {
-	//		if existingConsumer == consumerTx {
-	//			return true
-	//		}
-	//		if _, found := a.vertices[existingConsumer]; found {
-	//			conflict = existingConsumer
-	//		}
-	//		return conflict == nil
-	//	})
-	//	return
-	//}
 }
 
 func (a *attacher) isKnownConsumed(wOut vertex.WrappedOutput) (isConsumed bool) {

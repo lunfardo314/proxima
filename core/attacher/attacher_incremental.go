@@ -62,20 +62,15 @@ func NewIncrementalAttacher(name string, env Environment, targetTs ledger.Time, 
 	}
 
 	ret := &IncrementalAttacher{
-		attacher:           newPastConeAttacher(env, name),
-		endorse:            make([]*vertex.WrappedTx, 0),
-		endorsedSequencers: set.New[ledger.ChainID](),
-		inputs:             make([]vertex.WrappedOutput, 0),
-		targetTs:           targetTs,
+		attacher: newPastConeAttacher(env, name),
+		endorse:  make([]*vertex.WrappedTx, 0),
+		inputs:   make([]vertex.WrappedOutput, 0),
+		targetTs: targetTs,
 	}
 	// replacing standard conflict checker with extended.
 	// The extended one also checks inputs of the transaction being constructed
-	ret.makeCheckConflictsFunction = ret.extendedConflictChecker
+	ret.checkConflictsFunc = ret.extendedConflictChecker
 
-	if extend.VID.IsSequencerMilestone() {
-		// to prevent endorsement of the same sequencer
-		ret.endorsedSequencers.Insert(extend.VID.MustSequencerID())
-	}
 	if err := ret.initIncrementalAttacher(baseline.BaselineBranch(), targetTs, extend, endorse...); err != nil {
 		ret.unReferenceAllByAttacher()
 		return nil, err
@@ -83,12 +78,30 @@ func NewIncrementalAttacher(name string, env Environment, targetTs ledger.Time, 
 	return ret, nil
 }
 
-func (a *IncrementalAttacher) extendedConflictChecker(consumerTx *vertex.WrappedTx) checkConflictsFunction {
-	// TODO
-	stdFun := a._checkConflictsFunc(consumerTx)
-	return func(existingConsumers set.Set[*vertex.WrappedTx]) (conflict *vertex.WrappedTx) {
-		return stdFun(existingConsumers)
+// extendedConflictChecker is used in the incremental attacher to check is new vertex does not conflict with the inputs
+// of the new transaction (which does not exist yet). For the milestone attacher it is not needed because all
+// potentially conflicting consumers are already in the past cone
+func (a *IncrementalAttacher) extendedConflictChecker(consumerVertex *vertex.Vertex, consumerTx *vertex.WrappedTx) checkConflictingConsumersFunc {
+	return func(potentialPastConeConflicts set.Set[*vertex.WrappedTx]) (conflict *vertex.WrappedTx) {
+		if conflict = a.checkConflictsWithInputs(consumerVertex); conflict != nil {
+			return
+		}
+		return a.stdCheckConflictsFunc(consumerTx)(potentialPastConeConflicts)
 	}
+}
+
+func (a *IncrementalAttacher) checkConflictsWithInputs(consumerVertex *vertex.Vertex) (conflict *vertex.WrappedTx) {
+	consumerVertex.ForEachInputDependency(func(i byte, vidInput *vertex.WrappedTx) bool {
+		consumed := vertex.WrappedOutput{VID: vidInput, Index: i}
+		for _, wOut := range a.inputs {
+			if wOut == consumed {
+				conflict = &vertex.WrappedTx{} // not nil, the non-name transaction being constructed
+				return false
+			}
+		}
+		return true
+	})
+	return
 }
 
 func (a *IncrementalAttacher) UnReferenceAll() {
@@ -187,6 +200,10 @@ func (a *IncrementalAttacher) _restoreState(saved *_savedState) {
 
 // InsertEndorsement preserves consistency in case of failure
 func (a *IncrementalAttacher) InsertEndorsement(endorsement *vertex.WrappedTx) error {
+	if a.isKnown(endorsement) {
+		return fmt.Errorf("endorsing makes no sense: %s is already in the past cone", endorsement.IDShortString())
+	}
+
 	saved := a._saveState()
 	if err := a.insertEndorsement(endorsement); err != nil {
 		a._restoreState(saved)
@@ -201,12 +218,6 @@ func (a *IncrementalAttacher) insertEndorsement(endorsement *vertex.WrappedTx) e
 	if endorsement.IsBadOrDeleted() {
 		return fmt.Errorf("NewIncrementalAttacher: can't endorse %s. Reason: '%s'", endorsement.IDShortString(), endorsement.GetError())
 	}
-	seqID := endorsement.MustSequencerID()
-	if a.endorsedSequencers.Contains(seqID) {
-		// we enforce endorsement of different sequencer chains in one transaction. Endorsing same chain several times is suboptimal
-		return fmt.Errorf("repeating endorsed sequencer ID: %s", seqID.StringShort())
-	}
-
 	endBaseline := endorsement.BaselineBranch()
 	if !a.branchesCompatible(&a.baseline.ID, &endBaseline.ID) {
 		return fmt.Errorf("baseline branch %s of the endorsement branch %s is incompatible with the baseline %s",
@@ -232,7 +243,6 @@ func (a *IncrementalAttacher) insertEndorsement(endorsement *vertex.WrappedTx) e
 		return fmt.Errorf("insertEndorsement: failed to reference endorsement %s", endorsement.IDShortString())
 	}
 	a.endorse = append(a.endorse, endorsement)
-	a.endorsedSequencers.Insert(seqID)
 	return nil
 }
 

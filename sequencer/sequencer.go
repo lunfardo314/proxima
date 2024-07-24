@@ -371,7 +371,9 @@ func (seq *Sequencer) submitMilestone(tx *transaction.Transaction, meta *txmetad
 	vid, err := seq.SequencerMilestoneAttachWait(tx.Bytes(), meta, submitTimeout)
 	if err != nil {
 		seq.Log().Errorf("failed to submit new milestone %s: '%v'", tx.IDShortString(), err)
-		seq.savePastConeOfFailedTx(tx, 3)
+
+		//seq.savePastConeOfFailedTx(tx, 3)
+
 		return nil
 	}
 

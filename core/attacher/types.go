@@ -66,8 +66,8 @@ type (
 		baselineSupply uint64
 		// trace this local attacher with all tags
 		forceTrace string
-		// for incremental attacher we need slightly extended conflic checker
-		makeCheckConflictsFunction func(consumerTx *vertex.WrappedTx) checkConflictsFunction
+		// for incremental attacher we need slightly extended conflict checker
+		checkConflictsFunc func(consumerVertex *vertex.Vertex, consumerTx *vertex.WrappedTx) checkConflictingConsumersFunc
 	}
 
 	// IncrementalAttacher is used by the sequencer to build a sequencer milestone
@@ -75,11 +75,10 @@ type (
 	// It is used to generate the transaction and after that it is discarded
 	IncrementalAttacher struct {
 		attacher
-		endorse            []*vertex.WrappedTx
-		endorsedSequencers set.Set[ledger.ChainID]
-		inputs             []vertex.WrappedOutput
-		targetTs           ledger.Time
-		stemOutput         vertex.WrappedOutput
+		endorse    []*vertex.WrappedTx
+		inputs     []vertex.WrappedOutput
+		targetTs   ledger.Time
+		stemOutput vertex.WrappedOutput
 	}
 
 	// milestoneAttacher is used to attach a sequencer transaction
@@ -126,7 +125,7 @@ type (
 
 	Flags uint8
 
-	checkConflictsFunction func(existingConsumers set.Set[*vertex.WrappedTx]) (conflict *vertex.WrappedTx)
+	checkConflictingConsumersFunc func(existingConsumers set.Set[*vertex.WrappedTx]) (conflict *vertex.WrappedTx)
 
 	SequencerCommandParser interface {
 		// ParseSequencerCommandToOutput analyzes consumed output for sequencer command and produces
