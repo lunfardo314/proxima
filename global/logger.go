@@ -6,7 +6,7 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
-const TimeLayoutDefault = "01-02 15:04:05.000Z"
+const TimeLayoutDefault = "01-02 15:04:05.000"
 
 func NewLogger(name string, level zapcore.Level, outputs []string, timeLayout string) *zap.SugaredLogger {
 	if len(outputs) == 0 {
