@@ -130,7 +130,7 @@ func (ps *Peers) sortPeersByActivityDesc() []*Peer {
 		return !p.isStatic
 	})
 	sort.Slice(peers, func(i, j int) bool {
-		return peers[i].lastMsgReceived.Before(peers[j].lastMsgReceived)
+		return peers[i].whenAdded.Before(peers[j].whenAdded)
 	})
 	return peers
 }
