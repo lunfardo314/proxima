@@ -64,9 +64,8 @@ type (
 	}
 
 	Peer struct {
-		mutex               sync.RWMutex
-		name                string
 		id                  peer.ID
+		name                string
 		isStatic            bool // statically pre-configured (manual peering)
 		hasTxStore          bool
 		whenAdded           time.Time
@@ -301,17 +300,19 @@ func (ps *Peers) addStaticPeer(maddr multiaddr.Multiaddr, name string) error {
 	return nil
 }
 
-func (ps *Peers) addPeer(addrInfo *peer.AddrInfo, name string, static bool) *Peer {
-	ps.mutex.Lock()
-	defer ps.mutex.Unlock()
+func (ps *Peers) addPeer(addrInfo *peer.AddrInfo, name string, static bool) {
+	ps.withPeer(addrInfo.ID, func(p *Peer) {
+		if p != nil {
+			return
+		}
+		ps._addPeer(addrInfo, name, static)
+	})
+}
 
-	p, already := ps.peers[addrInfo.ID]
-	if already {
-		return p
-	}
-	p = &Peer{
-		name:      name,
+func (ps *Peers) _addPeer(addrInfo *peer.AddrInfo, name string, static bool) {
+	p := &Peer{
 		id:        addrInfo.ID,
+		name:      name,
 		isStatic:  static,
 		whenAdded: time.Now(),
 	}
@@ -320,33 +321,34 @@ func (ps *Peers) addPeer(addrInfo *peer.AddrInfo, name string, static bool) *Pee
 		ps.host.Peerstore().AddAddr(addrInfo.ID, a, peerstore.PermanentAddrTTL)
 	}
 	ps.Log().Infof("[peering] added %s peer %s (name='%s')", p.staticOrDynamic(), ShortPeerIDString(addrInfo.ID), name)
-	return p
 }
 
 // dropPeer removes dynamic peer and blacklists for 1 min. Ignores otherwise
 func (ps *Peers) dropPeer(id peer.ID, reason ...string) {
-	ps.mutex.Lock()
-	defer ps.mutex.Unlock()
+	ps.withPeer(id, func(p *Peer) {
+		if p == nil || p.isStatic {
+			// ignore static
+			return
+		}
+		ps._dropPeer(p, reason...)
+	})
+}
 
-	p, ok := ps.peers[id]
-	if !ok || p.isStatic {
-		// ignore static
-		return
-	}
+func (ps *Peers) _dropPeer(p *Peer, reason ...string) {
 	util.Assertf(!p.isStatic, "removeDynamicPeer: must not be pre-configured")
 
-	ps.host.Peerstore().RemovePeer(id)
-	ps.kademliaDHT.RoutingTable().RemovePeer(id)
-	_ = ps.host.Network().ClosePeer(id)
-	delete(ps.peers, id)
+	ps.host.Peerstore().RemovePeer(p.id)
+	ps.kademliaDHT.RoutingTable().RemovePeer(p.id)
+	_ = ps.host.Network().ClosePeer(p.id)
+	delete(ps.peers, p.id)
 
-	ps._addToBlacklist(id, time.Minute)
+	ps._addToBlacklist(p.id, time.Minute)
 
 	why := ""
 	if len(reason) > 0 {
 		why = fmt.Sprintf(". Reason: '%s'", reason[0])
 	}
-	ps.Log().Infof("[peering] dropped dynamic peer %s - %s%s", ShortPeerIDString(id), p.name, why)
+	ps.Log().Infof("[peering] dropped dynamic peer %s - %s%s", ShortPeerIDString(p.id), p.name, why)
 }
 
 func (ps *Peers) _addToBlacklist(id peer.ID, ttl time.Duration) {
@@ -386,14 +388,36 @@ func (ps *Peers) OnReceivePullSyncPortion(fun func(from peer.ID, startingFrom le
 	ps.onReceivePullSyncPortion = fun
 }
 
-func (ps *Peers) getPeer(id peer.ID) *Peer {
-	ps.mutex.RLock()
-	defer ps.mutex.RUnlock()
-
+func (ps *Peers) _getPeer(id peer.ID) *Peer {
 	if ret, ok := ps.peers[id]; ok {
 		return ret
 	}
 	return nil
+}
+
+func (ps *Peers) getPeer(id peer.ID) *Peer {
+	ps.mutex.RLock()
+	defer ps.mutex.RUnlock()
+
+	return ps._getPeer(id)
+}
+
+func (ps *Peers) withPeer(id peer.ID, fun func(p *Peer)) {
+	ps.mutex.Lock()
+	defer ps.mutex.Unlock()
+
+	fun(ps._getPeer(id))
+}
+
+func (ps *Peers) forAllPeers(fun func(p *Peer) bool) {
+	ps.mutex.RLock()
+	defer ps.mutex.RUnlock()
+
+	for _, p := range ps.peers {
+		if !fun(p) {
+			return
+		}
+	}
 }
 
 func (ps *Peers) getPeerIDs() []peer.ID {
@@ -401,14 +425,6 @@ func (ps *Peers) getPeerIDs() []peer.ID {
 	defer ps.mutex.RUnlock()
 
 	return maps.Keys(ps.peers)
-}
-
-func (ps *Peers) PeerIsAlive(id peer.ID) bool {
-	p := ps.getPeer(id)
-	if p == nil {
-		return false
-	}
-	return p.isAlive()
 }
 
 func (ps *Peers) PeerName(id peer.ID) string {
@@ -420,9 +436,7 @@ func (ps *Peers) PeerName(id peer.ID) string {
 }
 
 func (ps *Peers) EvidenceIncomingTx(good bool, from peer.ID) {
-	if p := ps.getPeer(from); p != nil {
-		p.evidence(evidenceIncoming(good))
-	}
+	ps.evidence(from, evidenceIncoming(good))
 }
 
 func (ps *Peers) blacklistCleanupLoop() {
@@ -450,4 +464,100 @@ func (ps *Peers) cleanBlacklist() {
 	for _, id := range toDelete {
 		delete(ps.blacklist, id)
 	}
+}
+
+type evidenceFun func(p *Peer)
+
+func (ps *Peers) _isDead(id peer.ID) bool {
+	p := ps._getPeer(id)
+	util.Assertf(p != nil, "_isDead: peer %s bot found", func() string { return ShortPeerIDString(id) })
+	return p._isDead()
+}
+
+func (p *Peer) _isDead() bool {
+	return !p._isAlive() && time.Since(p.whenAdded) > gracePeriodAfterAdded
+}
+
+func (ps *Peers) isDead(id peer.ID) bool {
+	ps.mutex.RLock()
+	defer ps.mutex.RUnlock()
+
+	return ps._isDead(id)
+}
+
+func (ps *Peers) IsAlive(id peer.ID) bool {
+	ps.mutex.RLock()
+	defer ps.mutex.RUnlock()
+
+	return ps._isAlive(id)
+}
+
+func (ps *Peers) _isAlive(id peer.ID) bool {
+	p := ps._getPeer(id)
+	util.Assertf(p != nil, "_isAlive: peer %s bot found", func() string { return ShortPeerIDString(id) })
+	// peer is alive if its last activity is no more than some heartbeats old
+	return p._isAlive()
+}
+
+func (p *Peer) _isAlive() bool {
+	return time.Since(p.lastMsgReceived) < aliveDuration
+}
+
+func (p *Peer) staticOrDynamic() string {
+	if p.isStatic {
+		return "static"
+	}
+	return "dynamic"
+}
+
+func (ps *Peers) HasTxStore(id peer.ID) bool {
+	ps.mutex.RLock()
+	defer ps.mutex.RUnlock()
+
+	p := ps._getPeer(id)
+	util.Assertf(p != nil, "HasTxStore: peer %s not found", func() string { return ShortPeerIDString(id) })
+	return p.hasTxStore
+}
+
+func (ps *Peers) evidence(id peer.ID, evidences ...evidenceFun) {
+	ps.mutex.Lock()
+	defer ps.mutex.Unlock()
+
+	p := ps._getPeer(id)
+	if p == nil {
+		return
+	}
+	for _, fun := range evidences {
+		fun(p)
+	}
+}
+
+func (p *Peer) _evidenceActivity(src string) {
+	p.lastMsgReceived = time.Now()
+	p.lastMsgReceivedFrom = src
+}
+
+func (p *Peer) _evidenceClockDifference(diff time.Duration) {
+	p.clockDifferences[p.clockDifferencesIdx] = diff
+	p.clockDifferencesIdx = (p.clockDifferencesIdx + 1) % len(p.clockDifferences)
+}
+
+func evidenceIncoming(good bool) evidenceFun {
+	if good {
+		return func(p *Peer) {
+			p.incomingGood++
+		}
+	}
+	return func(p *Peer) {
+		p.incomingBad++
+	}
+}
+
+func (p *Peer) avgClockDifference() time.Duration {
+	var ret time.Duration
+
+	for _, d := range p.clockDifferences {
+		ret += d
+	}
+	return ret / time.Duration(len(p.clockDifferences))
 }

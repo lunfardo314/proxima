@@ -15,62 +15,63 @@ func (ps *Peers) gossipStreamHandler(stream network.Stream) {
 		return
 	}
 
-	p := ps.getPeer(id)
-	if p == nil {
-		// peer not found
-		_ = stream.Reset()
-		ps.Tracef(TraceTag, "txBytes: unknown peer %s", id.String())
-		return
-	}
+	callAfter := func() {}
 
-	txBytesWithMetadata, err := readFrame(stream)
-	if err != nil {
-		_ = stream.Reset()
-		ps.dropPeer(p.id, "read error")
-		ps.Log().Errorf("error while reading message from peer %s: %v", id.String(), err)
-		return
-	}
-	metadataBytes, txBytes, err := txmetadata.SplitTxBytesWithMetadata(txBytesWithMetadata)
-	if err != nil {
-		_ = stream.Reset()
-		ps.dropPeer(p.id, "error while parsing tx metadata")
-		ps.Log().Errorf("error while parsing tx message from peer %s: %v", id.String(), err)
-		return
-	}
-	metadata, err := txmetadata.TransactionMetadataFromBytes(metadataBytes)
-	if err != nil {
-		_ = stream.Reset()
-		ps.dropPeer(p.id, "error while parsing tx metadata")
-		ps.Log().Errorf("error while parsing tx message metadata from peer %s: %v", id.String(), err)
-		return
-	}
+	ps.withPeer(id, func(p *Peer) {
+		if p == nil {
+			// from unknown peer
+			_ = stream.Reset()
+			ps.Tracef(TraceTag, "txBytes: unknown peer %s", id.String())
+			return
+		}
+		txBytesWithMetadata, err := readFrame(stream)
+		if err != nil {
+			_ = stream.Reset()
+			ps._dropPeer(p, "read error")
+			ps.Log().Errorf("error while reading message from peer %s: %v", id.String(), err)
+			return
+		}
+		metadataBytes, txBytes, err := txmetadata.SplitTxBytesWithMetadata(txBytesWithMetadata)
+		if err != nil {
+			_ = stream.Reset()
+			ps._dropPeer(p, "error while parsing tx metadata")
+			ps.Log().Errorf("error while parsing tx message from peer %s: %v", id.String(), err)
+			return
+		}
+		metadata, err := txmetadata.TransactionMetadataFromBytes(metadataBytes)
+		if err != nil {
+			_ = stream.Reset()
+			ps.dropPeer(p.id, "error while parsing tx metadata")
+			ps.Log().Errorf("error while parsing tx message metadata from peer %s: %v", id.String(), err)
+			return
+		}
 
-	defer stream.Close()
+		defer stream.Close()
 
-	p.evidence(_evidenceActivity("gossip"))
-	ps.onReceiveTx(id, txBytes, metadata)
+		p._evidenceActivity("gossip")
+		callAfter = func() { ps.onReceiveTx(id, txBytes, metadata) }
+	})
+
+	callAfter()
 }
 
 func (ps *Peers) GossipTxBytesToPeers(txBytes []byte, metadata *txmetadata.TransactionMetadata, except ...peer.ID) int {
-	ps.mutex.RLock()
-	defer ps.mutex.RUnlock()
-
 	countSent := 0
-	for id, p := range ps.peers {
-
-		if _, inBlacklist := ps.blacklist[id]; inBlacklist {
-			continue
+	ps.forAllPeers(func(p *Peer) bool {
+		if _, inBlacklist := ps.blacklist[p.id]; inBlacklist {
+			return true
 		}
-		if len(except) > 0 && id == except[0] {
-			continue
+		if len(except) > 0 && p.id == except[0] {
+			return true
 		}
-		if !p.isAlive() {
-			continue
+		if !p._isAlive() {
+			return true
 		}
-		if ps.SendTxBytesWithMetadataToPeer(id, txBytes, metadata) {
+		if ps.SendTxBytesWithMetadataToPeer(p.id, txBytes, metadata) {
 			countSent++
 		}
-	}
+		return true
+	})
 	return countSent
 }
 

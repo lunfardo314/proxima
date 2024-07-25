@@ -88,15 +88,13 @@ func (ps *Peers) discoverPeersIfNeeded() {
 }
 
 func (ps *Peers) deadDynamicPeers() []peer.ID {
-	ps.mutex.RLock()
-	defer ps.mutex.RUnlock()
-
 	ret := make([]peer.ID, 0)
-	for id, p := range ps.peers {
-		if !p.isStatic && p.isDead() {
-			ret = append(ret, id)
+	ps.forAllPeers(func(p *Peer) bool {
+		if !p.isStatic && p._isDead() {
+			ret = append(ret, p.id)
 		}
-	}
+		return true
+	})
 	return ret
 }
 
@@ -113,18 +111,19 @@ func (ps *Peers) dropExcessPeersIfNeeded() {
 		return
 	}
 	// dropping
-	sortedPeers := ps.sortPeersByActivityDesc()
+	ps.mutex.Lock()
+	defer ps.mutex.Unlock()
+
+	sortedPeers := ps._sortPeersByActivityDesc()
 	if len(sortedPeers) <= ps.cfg.MaxDynamicPeers {
 		return
 	}
 	for _, p := range sortedPeers[:ps.cfg.MaxDynamicPeers] {
-		ps.dropPeer(p.id, fmt.Sprintf("excess over maximum dynamic peers configured: %d", ps.cfg.MaxDynamicPeers))
+		ps._dropPeer(p, fmt.Sprintf("excess over maximum dynamic peers configured: %d", ps.cfg.MaxDynamicPeers))
 	}
 }
 
-func (ps *Peers) sortPeersByActivityDesc() []*Peer {
-	ps.mutex.RLock()
-	defer ps.mutex.RUnlock()
+func (ps *Peers) _sortPeersByActivityDesc() []*Peer {
 
 	peers := util.ValuesFiltered(ps.peers, func(p *Peer) bool {
 		return !p.isStatic

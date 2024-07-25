@@ -31,57 +31,65 @@ func (ps *Peers) pullStreamHandler(stream network.Stream) {
 		_ = stream.Reset()
 		return
 	}
+	var err error
+	callAfter := func() {}
 
-	p := ps.getPeer(id)
-	if p == nil {
-		// peer not found
-		_ = stream.Reset()
-		ps.Tracef(TraceTag, "pull: unknown peer %s", id.String())
-		return
-	}
+	ps.withPeer(id, func(p *Peer) {
+		if p == nil {
+			_ = stream.Reset()
+			ps.Tracef(TraceTag, "pull: unknown peer %s", id.String())
+			return
+		}
+		var msgData []byte
+		msgData, err = readFrame(stream)
+		if err != nil {
+			_ = stream.Reset()
+			ps.Log().Errorf("error while reading message from peer %s: %v", id.String(), err)
 
-	msgData, err := readFrame(stream)
-	if err != nil {
-		_ = stream.Reset()
-		ps.dropPeer(p.id, "read error")
-		ps.Log().Errorf("error while reading message from peer %s: %v", id.String(), err)
-		return
-	}
-	if err = ps.processPullFrame(msgData, p); err != nil {
-		_ = stream.Reset()
-		ps.Log().Errorf("error while decoding message from peer %s: %v", id.String(), err)
-		ps.dropPeer(p.id, "error while parsing pull message")
-		return
+			ps._dropPeer(p, "read error")
+			return
+		}
+		callAfter, err = ps.processPullFrame(msgData, p)
+		if err != nil {
+			_ = stream.Reset()
+			ps.Log().Errorf("error while decoding message from peer %s: %v", id.String(), err)
 
-	}
-	_ = stream.Close()
+			ps._dropPeer(p, "error while parsing pull message")
+			callAfter = func() {}
+			return
+		}
+		_ = stream.Close()
+	})
+
+	callAfter()
 }
 
-func (ps *Peers) processPullFrame(msgData []byte, p *Peer) error {
+func (ps *Peers) processPullFrame(msgData []byte, p *Peer) (func(), error) {
+	callAfter := func() {}
 	if len(msgData) == 0 {
-		return fmt.Errorf("expected pull message, got empty frame")
+		return nil, fmt.Errorf("expected pull message, got empty frame")
 	}
 	switch msgData[0] {
 	case PullRequestTransactions:
 		txLst, err := decodePullTransactionsMsg(msgData)
 		if err != nil {
-			return err
+			return nil, err
 		}
-		p.evidence(_evidenceActivity("pullTx"))
-		ps.onReceivePullTx(p.id, txLst)
+		p._evidenceActivity("pullTx")
+		callAfter = func() { ps.onReceivePullTx(p.id, txLst) }
 
 	case PullSyncPortion:
 		startingFromSlot, maxBranches, err := decodeSyncPortionMsg(msgData)
 		if err != nil {
-			return err
+			return nil, err
 		}
-		p.evidence(_evidenceActivity("pullSync"))
-		ps.onReceivePullSyncPortion(p.id, startingFromSlot, maxBranches)
+		p._evidenceActivity("pullSync")
+		callAfter = func() { ps.onReceivePullSyncPortion(p.id, startingFromSlot, maxBranches) }
 
 	default:
-		return fmt.Errorf("unsupported type of the pull message %d", msgData[0])
+		return nil, fmt.Errorf("unsupported type of the pull message %d", msgData[0])
 	}
-	return nil
+	return callAfter, nil
 }
 
 func (ps *Peers) sendMsgToPeer(id peer.ID, msg []byte) {
@@ -111,7 +119,7 @@ func (ps *Peers) PullTransactionsFromRandomPeer(txids ...ledger.TransactionID) b
 		rndID := all[idx]
 		p := ps.peers[rndID]
 		_, inBlackList := ps.blacklist[p.id]
-		if !inBlackList && !p.isDead() && p.HasTxStore() {
+		if !inBlackList && !p._isDead() && p.hasTxStore {
 			ps.Tracef(TraceTag, "pull from random peer %s: %s",
 				func() any { return ShortPeerIDString(rndID) },
 				func() any { return _txidLst(txids...) },
@@ -130,15 +138,13 @@ func (ps *Peers) PullTransactionsFromAllPeers(txids ...ledger.TransactionID) {
 	}
 	msg := encodePullTransactionsMsg(txids...)
 
-	ps.mutex.RLock()
-	defer ps.mutex.RUnlock()
-
-	for _, p := range ps.peers {
+	ps.forAllPeers(func(p *Peer) bool {
 		_, inBlackList := ps.blacklist[p.id]
-		if !inBlackList && !p.isDead() && p.HasTxStore() {
+		if !inBlackList && !p._isDead() && p.hasTxStore {
 			ps.sendMsgToPeer(p.id, msg)
 		}
-	}
+		return true
+	})
 }
 
 func (ps *Peers) sendPullSyncPortionToPeer(id peer.ID, startingFrom ledger.Slot, maxSlots int) {
@@ -154,7 +160,7 @@ func (ps *Peers) PullSyncPortionFromRandomPeer(startingFrom ledger.Slot, maxSlot
 		rndID := all[idx]
 		p := ps.peers[rndID]
 		_, inBlacklist := ps.blacklist[rndID]
-		if !inBlacklist && !p.isDead() && p.HasTxStore() {
+		if !inBlacklist && !p._isDead() && p.hasTxStore {
 			ps.Log().Infof("[peering] pull sync portion from random peer %s. From slot: %d, up to slots: %d",
 				ShortPeerIDString(rndID), int(startingFrom), maxSlots)
 			ps.sendPullSyncPortionToPeer(rndID, startingFrom, maxSlots)

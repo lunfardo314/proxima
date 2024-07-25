@@ -95,7 +95,7 @@ func TestHeartbeat(t *testing.T) {
 	time.Sleep(3 * time.Second)
 	for _, ps := range hosts {
 		for _, id := range ps.getPeerIDs() {
-			require.True(t, ps.PeerIsAlive(id))
+			require.True(t, ps.IsAlive(id))
 		}
 	}
 
@@ -103,7 +103,7 @@ func TestHeartbeat(t *testing.T) {
 	time.Sleep(3 * time.Second)
 	for i, ps := range hosts {
 		if i != 0 {
-			require.True(t, !ps.PeerIsAlive(hosts[0].host.ID()))
+			require.True(t, !ps.IsAlive(hosts[0].host.ID()))
 			ps.Stop()
 		}
 	}

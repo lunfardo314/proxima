@@ -8,7 +8,6 @@ import (
 
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
-	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/checkpoints"
 	"github.com/multiformats/go-multiaddr"
 	"golang.org/x/exp/maps"
@@ -54,44 +53,40 @@ func (hi *heartbeatInfo) Bytes() []byte {
 }
 
 func (ps *Peers) NumAlive() (aliveStatic, aliveDynamic int) {
-	ps.mutex.RLock()
-	defer ps.mutex.RUnlock()
-
-	for _, p := range ps.peers {
+	ps.forAllPeers(func(p *Peer) bool {
 		if p.isStatic {
-			if p.isAlive() {
+			if p._isAlive() {
 				aliveStatic++
 			}
 		} else {
-			if p.isAlive() {
+			if p._isAlive() {
 				aliveDynamic++
 			}
 		}
-	}
+		return true
+	})
 	return
 }
 
 func (ps *Peers) logConnectionStatusIfNeeded(id peer.ID) {
-	p := ps.getPeer(id)
-	if p == nil {
-		return
-	}
+	ps.withPeer(id, func(p *Peer) {
+		if p == nil {
+			return
+		}
+		if p._isDead() && p.lastLoggedConnected {
+			ps.Log().Infof("[peering] LOST CONNECTION with %s peer %s ('%s'). Host (self): %s",
+				p.staticOrDynamic(), ShortPeerIDString(id), p.name, ShortPeerIDString(ps.host.ID()))
+			p.lastLoggedConnected = false
+			return
+		}
 
-	p.mutex.Lock()
-	defer p.mutex.Unlock()
+		if p._isAlive() && !p.lastLoggedConnected {
+			ps.Log().Infof("[peering] CONNECTED to %s peer %s ('%s'), msg src '%s'. Host (self): %s",
+				p.staticOrDynamic(), ShortPeerIDString(id), p.name, p.lastMsgReceivedFrom, ShortPeerIDString(ps.host.ID()))
+			p.lastLoggedConnected = true
+		}
 
-	if p._isDead() && p.lastLoggedConnected {
-		ps.Log().Infof("[peering] LOST CONNECTION with %s peer %s ('%s'). Host (self): %s",
-			p.staticOrDynamic(), ShortPeerIDString(id), p.name, ShortPeerIDString(ps.host.ID()))
-		p.lastLoggedConnected = false
-		return
-	}
-
-	if p._isAlive() && !p.lastLoggedConnected {
-		ps.Log().Infof("[peering] CONNECTED to %s peer %s ('%s'), msg src '%s'. Host (self): %s",
-			p.staticOrDynamic(), ShortPeerIDString(id), p.name, p.lastMsgReceivedFrom, ShortPeerIDString(ps.host.ID()))
-		p.lastLoggedConnected = true
-	}
+	})
 }
 
 func checkRemoteClockTolerance(remoteTime time.Time) (time.Duration, bool, bool) {
@@ -123,12 +118,18 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 		return
 	}
 
-	p := ps.getPeer(id)
-	if p == nil {
+	exit := false
+
+	ps.withPeer(id, func(p *Peer) {
+		if p != nil {
+			return
+		}
+		// peer not found
 		if !ps.isAutopeeringEnabled() {
 			// node does not take any incoming dynamic peers
 			ps.Tracef(TraceTag, "autopeering disabled: unknown peer %s", id.String)
 			_ = stream.Reset()
+			exit = true
 			return
 		}
 		// peer not found. Add new incoming dynamic peer and then let the autopeering handle if too many
@@ -142,7 +143,10 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 			Addrs: []multiaddr.Multiaddr{remote},
 		}
 		ps.Log().Infof("[peering] incoming peer request from %s. Add new dynamic peer", ShortPeerIDString(id))
-		p = ps.addPeer(addrInfo, "", false)
+		ps._addPeer(addrInfo, "", false)
+	})
+	if exit {
+		return
 	}
 
 	var hbInfo heartbeatInfo
@@ -174,13 +178,16 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 	}
 	defer func() { _ = stream.Close() }()
 
-	p.evidence(
-		_logHB(ps.Log()),
-		_evidenceActivity("hb"),
-		_evidenceTxStore(hbInfo.hasTxStore),
-		_evidenceClockDifference(clockDiff),
-	)
-	util.Assertf(p.isAlive(), "isAlive")
+	ps.withPeer(id, func(p *Peer) {
+		if p == nil {
+			return
+		}
+		ps.Log().Infof(">>>>>> hb received from %s. Diff since previous message: %v",
+			ShortPeerIDString(id), time.Since(p.lastMsgReceived))
+		p._evidenceActivity("gb")
+		p.hasTxStore = hbInfo.hasTxStore
+		p._evidenceClockDifference(clockDiff)
+	})
 }
 
 func (ps *Peers) sendHeartbeatToPeer(id peer.ID) {
