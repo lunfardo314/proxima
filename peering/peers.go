@@ -44,7 +44,7 @@ type (
 
 	Peers struct {
 		Environment
-		mutex            *sync.RWMutex
+		mutex            sync.RWMutex
 		cfg              *Config
 		stopOnce         sync.Once
 		host             host.Host
@@ -64,7 +64,7 @@ type (
 	}
 
 	Peer struct {
-		mutex               *sync.RWMutex
+		mutex               sync.RWMutex
 		name                string
 		id                  peer.ID
 		isStatic            bool // statically pre-configured (manual peering)
@@ -111,7 +111,6 @@ const (
 
 func NewPeersDummy() *Peers {
 	return &Peers{
-		mutex:                    &sync.RWMutex{},
 		peers:                    make(map[peer.ID]*Peer),
 		blacklist:                make(map[peer.ID]time.Time),
 		onReceiveTx:              func(_ peer.ID, _ []byte, _ *txmetadata.TransactionMetadata) {},
@@ -311,7 +310,6 @@ func (ps *Peers) addPeer(addrInfo *peer.AddrInfo, name string, static bool) *Pee
 		return p
 	}
 	p = &Peer{
-		mutex:     &sync.RWMutex{},
 		name:      name,
 		id:        addrInfo.ID,
 		isStatic:  static,

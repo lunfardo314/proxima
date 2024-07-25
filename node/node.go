@@ -91,21 +91,30 @@ func (p *ProximaNode) Start() {
 	}
 	p.readInTraceTags()
 
+	var initStep string
+
 	err := util.CatchPanicOrError(func() error {
+		initStep = "startMetrics"
 		p.startMetrics()
+		initStep = "initMultiStateLedger"
 		p.initMultiStateLedger()
+		initStep = "initTxStore"
 		p.initTxStore()
+		initStep = "initPeering"
 		p.initPeering()
 
+		initStep = "startWorkflow"
 		p.startWorkflow()
+		initStep = "startSequencers"
 		p.startSequencers()
+		initStep = "startAPIServer"
 		p.startAPIServer()
+		initStep = "startPProfIfEnabled"
 		p.startPProfIfEnabled()
 		return nil
 	})
 	if err != nil {
-		p.Log().Fatalf("error on startup: %v", err)
-		//os.Exit(1)
+		p.Log().Fatalf("error during startup step '%s': %v", initStep, err)
 	}
 	p.Log().Infof("Proxima node has been started successfully")
 	p.Log().Debug("running in debug mode")
