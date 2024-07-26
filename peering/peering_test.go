@@ -263,7 +263,7 @@ func TestSendMsg(t *testing.T) {
 	t.Run("pull", func(t *testing.T) {
 		// TODO fails with timeout. Most likely related to the deadlocks in the same process
 		const (
-			numHosts = 2
+			numHosts = 5
 			trace    = false
 			numMsg   = 100
 		)
