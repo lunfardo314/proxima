@@ -54,9 +54,11 @@ func (hi *heartbeatInfo) Bytes() []byte {
 func (ps *Peers) NumAlive() (aliveStatic, aliveDynamic int) {
 	ps.forEachPeer(func(p *Peer) bool {
 		if p._isAlive() {
-			aliveStatic++
-		} else {
-			aliveDynamic++
+			if p.isStatic {
+				aliveStatic++
+			} else {
+				aliveDynamic++
+			}
 		}
 		return true
 	})
