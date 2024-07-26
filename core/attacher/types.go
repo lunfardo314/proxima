@@ -105,22 +105,22 @@ type (
 
 	// final values of attacher run. Ugly -> TODO refactor
 	attachFinals struct {
-		numInputs         int
-		numOutputs        int
-		coverage          uint64
-		slotInflation     uint64
-		supply            uint64
-		root              common.VCommitment
-		baseline          *ledger.TransactionID
-		numTransactions   int
-		numCreatedOutputs int
-		numDeletedOutputs int
-		started           time.Time
-		numMissedPokes    atomic.Int32
-		numPokes          int
-		numPeriodic       int
-		numVertices       int
-		numRooted         int
+		numInputs          int
+		numOutputs         int
+		coverage           uint64
+		slotInflation      uint64
+		supply             uint64
+		root               common.VCommitment
+		baseline           *ledger.TransactionID
+		numVertices        int
+		numNewTransactions uint32
+		numCreatedOutputs  int
+		numDeletedOutputs  int
+		started            time.Time
+		numMissedPokes     atomic.Int32
+		numPokes           int
+		numPeriodic        int
+		numRooted          int
 	}
 
 	Flags uint8

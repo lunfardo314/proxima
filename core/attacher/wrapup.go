@@ -15,7 +15,7 @@ func (a *milestoneAttacher) wrapUpAttacher() {
 	a.checkConsistencyWithMetadata()
 
 	a.finals.baseline = &a.baseline.ID
-	a.finals.numTransactions = len(a.vertices)
+	a.finals.numVertices = len(a.vertices)
 
 	a.finals.coverage = a.coverage
 	//a.Assertf(a.finals.coverage > 0, "final coverage must be positive")
@@ -75,14 +75,14 @@ func (a *milestoneAttacher) commitBranch() {
 		}
 	}
 	// generate ADD TX and ADD OUTPUT mutations
-	newTransactions := uint32(0)
+	a.finals.numNewTransactions = uint32(0)
 	allVerticesSet := set.NewFromKeys(a.vertices)
 	for vid := range a.vertices {
 		if a.isKnownRooted(vid) {
 			continue
 		}
 		muts.InsertAddTxMutation(vid.ID, a.vid.Slot(), byte(vid.NumProducedOutputs()-1))
-		newTransactions++
+		a.finals.numNewTransactions++
 
 		a.TraceTx(&vid.ID, "commitBranch in attacher %s: added to the baseline state %s", a.name, bsName)
 		// ADD OUTPUT mutations only for not consumed outputs
@@ -102,7 +102,7 @@ func (a *milestoneAttacher) commitBranch() {
 		Coverage:        *a.vid.GetLedgerCoverageP(),
 		SlotInflation:   a.slotInflation,
 		Supply:          a.baselineSupply + a.finals.slotInflation,
-		NumTransactions: newTransactions,
+		NumTransactions: a.finals.numNewTransactions,
 	})
 	a.finals.root = upd.Root()
 	// check consistency with state root provided with metadata

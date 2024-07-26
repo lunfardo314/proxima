@@ -293,11 +293,11 @@ func (a *milestoneAttacher) logFinalStatusString(msData *ledger.MilestoneData) s
 	}
 
 	if a.vid.IsBranchTransaction() {
-		msg = fmt.Sprintf("-- ATTACH BRANCH%s %s(in %d/out %d), ci=%s/bi=%s",
-			msDataStr, a.vid.IDShortString(), a.finals.numInputs, a.finals.numOutputs, inflChainStr, inflBranchStr)
+		msg = fmt.Sprintf("-- ATTACH BRANCH%s %s(in %d/out %d, new tx: %d), ci=%s/bi=%s",
+			msDataStr, a.vid.IDShortString(), a.finals.numInputs, a.finals.numOutputs, a.finals.numNewTransactions, inflChainStr, inflBranchStr)
 	} else {
-		msg = fmt.Sprintf("-- ATTACH SEQ TX%s %s(in %d/out %d), ci=%s/bi=%s",
-			msDataStr, a.vid.IDShortString(), a.finals.numInputs, a.finals.numOutputs, inflChainStr, inflBranchStr)
+		msg = fmt.Sprintf("-- ATTACH SEQ TX%s %s(in %d/out %d, new tx: %d), ci=%s/bi=%s",
+			msDataStr, a.vid.IDShortString(), a.finals.numInputs, a.finals.numOutputs, a.finals.numNewTransactions, inflChainStr, inflBranchStr)
 	}
 	if a.vid.GetTxStatus() == vertex.Bad {
 		msg += fmt.Sprintf("BAD: err = '%v'", a.vid.GetError())
@@ -344,7 +344,7 @@ func (a *milestoneAttacher) logStatsString() string {
 	}
 	return fmt.Sprintf("stats %s: new tx: %d, %spoked/missed: %d/%d, periodic: %d, duration: %s. %s",
 		a.vid.IDShortString(),
-		a.finals.numTransactions,
+		a.finals.numVertices,
 		utxoInOut,
 		a.finals.numPokes,
 		a.finals.numMissedPokes.Load(),
