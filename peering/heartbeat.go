@@ -181,7 +181,7 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 		if p == nil {
 			return
 		}
-		p._evidenceActivity("gb")
+		p._evidenceActivity("hb")
 		p.hasTxStore = hbInfo.hasTxStore
 		p._evidenceClockDifference(clockDiff)
 	})

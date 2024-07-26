@@ -2,6 +2,7 @@ package attacher
 
 import (
 	"fmt"
+	"sort"
 
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/ledger"
@@ -125,6 +126,27 @@ func (a *attacher) isKnownUndefined(vid *vertex.WrappedTx) bool {
 		return false
 	}
 	return !f.FlagsUp(FlagAttachedVertexDefined)
+}
+
+func (a *attacher) undefinedList() []*vertex.WrappedTx {
+	ret := make([]*vertex.WrappedTx, 0)
+	for vid, flags := range a.vertices {
+		if !flags.FlagsUp(FlagAttachedVertexDefined) {
+			ret = append(ret, vid)
+		}
+	}
+	sort.Slice(ret, func(i, j int) bool {
+		return ret[i].Timestamp().Before(ret[j].Timestamp())
+	})
+	return ret
+}
+
+func (a *attacher) undefinedListLines(prefix ...string) *lines.Lines {
+	ret := lines.New(prefix...)
+	for _, vid := range a.undefinedList() {
+		ret.Add(vid.ShortString())
+	}
+	return ret
 }
 
 func (a *attacher) isKnownNotRooted(vid *vertex.WrappedTx) bool {
