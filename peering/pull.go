@@ -32,7 +32,7 @@ func (ps *Peers) pullStreamHandler(stream network.Stream) {
 		return
 	}
 	var err error
-	callAfter := func() {}
+	var callAfter func()
 
 	ps.withPeer(id, func(p *Peer) {
 		if p == nil {
@@ -55,13 +55,15 @@ func (ps *Peers) pullStreamHandler(stream network.Stream) {
 			ps.Log().Errorf("error while decoding message from peer %s: %v", id.String(), err)
 
 			ps._dropPeer(p, "error while parsing pull message")
-			callAfter = func() {}
 			return
 		}
 		_ = stream.Close()
 	})
 
-	callAfter()
+	if callAfter != nil {
+		// call outside lock
+		callAfter()
+	}
 }
 
 func (ps *Peers) processPullFrame(msgData []byte, p *Peer) (func(), error) {
@@ -76,7 +78,8 @@ func (ps *Peers) processPullFrame(msgData []byte, p *Peer) (func(), error) {
 			return nil, err
 		}
 		p._evidenceActivity("pullTx")
-		callAfter = func() { ps.onReceivePullTx(p.id, txLst) }
+		fun := ps.onReceivePullTx
+		callAfter = func() { fun(p.id, txLst) }
 
 	case PullSyncPortion:
 		startingFromSlot, maxBranches, err := decodeSyncPortionMsg(msgData)
@@ -84,7 +87,8 @@ func (ps *Peers) processPullFrame(msgData []byte, p *Peer) (func(), error) {
 			return nil, err
 		}
 		p._evidenceActivity("pullSync")
-		callAfter = func() { ps.onReceivePullSyncPortion(p.id, startingFromSlot, maxBranches) }
+		fun := ps.onReceivePullSyncPortion
+		callAfter = func() { fun(p.id, startingFromSlot, maxBranches) }
 
 	default:
 		return nil, fmt.Errorf("unsupported type of the pull message %d", msgData[0])
@@ -138,7 +142,7 @@ func (ps *Peers) PullTransactionsFromAllPeers(txids ...ledger.TransactionID) {
 	}
 	msg := encodePullTransactionsMsg(txids...)
 
-	ps.forAllPeers(func(p *Peer) bool {
+	ps.forEachPeer(func(p *Peer) bool {
 		_, inBlackList := ps.blacklist[p.id]
 		if !inBlackList && !p._isDead() && p.hasTxStore {
 			ps.sendMsgToPeer(p.id, msg)

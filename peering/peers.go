@@ -72,8 +72,6 @@ type (
 		lastMsgReceived     time.Time
 		lastMsgReceivedFrom string
 		lastLoggedConnected bool // toggle
-		incomingGood        int
-		incomingBad         int
 		// ring buffer with last clock differences
 		clockDifferences    [10]time.Duration
 		clockDifferencesIdx int
@@ -101,10 +99,11 @@ const (
 	numMaxDynamicPeersForBootNodeAtLeast = 10
 
 	// heartbeatRate heartbeat issued every period
-	heartbeatRate         = 2 * time.Second
-	aliveNumHeartbeats    = 15 // if no hb over this period, it means not-alive -> dynamic peer will be dropped
-	aliveDuration         = time.Duration(aliveNumHeartbeats) * heartbeatRate
-	gracePeriodAfterAdded = 30 * heartbeatRate
+	heartbeatRate      = 2 * time.Second
+	aliveNumHeartbeats = 3 // if no hb over this period, it means not-alive -> dynamic peer will be dropped
+	aliveDuration      = time.Duration(aliveNumHeartbeats) * heartbeatRate
+	// gracePeriodAfterAdded period of time peer is considered not dead after added even if messages are not coming
+	gracePeriodAfterAdded = 10 * heartbeatRate
 	logPeersEvery         = 5 * time.Second
 )
 
@@ -326,15 +325,15 @@ func (ps *Peers) _addPeer(addrInfo *peer.AddrInfo, name string, static bool) {
 // dropPeer removes dynamic peer and blacklists for 1 min. Ignores otherwise
 func (ps *Peers) dropPeer(id peer.ID, reason ...string) {
 	ps.withPeer(id, func(p *Peer) {
-		if p == nil || p.isStatic {
+		if p != nil && !p.isStatic {
 			// ignore static
-			return
+			ps._dropPeer(p, reason...)
 		}
-		ps._dropPeer(p, reason...)
 	})
 }
 
 func (ps *Peers) _dropPeer(p *Peer, reason ...string) {
+	util.Assertf(p != nil, "removeDynamicPeer: p!=nil")
 	util.Assertf(!p.isStatic, "removeDynamicPeer: must not be pre-configured")
 
 	ps.host.Peerstore().RemovePeer(p.id)
@@ -355,16 +354,12 @@ func (ps *Peers) _addToBlacklist(id peer.ID, ttl time.Duration) {
 	ps.blacklist[id] = time.Now().Add(ttl)
 }
 
-func (ps *Peers) _isInBlacklist(id peer.ID) bool {
-	_, yes := ps.blacklist[id]
-	return yes
-}
-
 func (ps *Peers) isInBlacklist(id peer.ID) bool {
 	ps.mutex.RLock()
 	defer ps.mutex.RUnlock()
 
-	return ps._isInBlacklist(id)
+	_, yes := ps.blacklist[id]
+	return yes
 }
 
 func (ps *Peers) OnReceiveTxBytes(fun func(from peer.ID, txBytes []byte, metadata *txmetadata.TransactionMetadata)) {
@@ -409,7 +404,7 @@ func (ps *Peers) withPeer(id peer.ID, fun func(p *Peer)) {
 	fun(ps._getPeer(id))
 }
 
-func (ps *Peers) forAllPeers(fun func(p *Peer) bool) {
+func (ps *Peers) forEachPeer(fun func(p *Peer) bool) {
 	ps.mutex.RLock()
 	defer ps.mutex.RUnlock()
 
@@ -436,7 +431,7 @@ func (ps *Peers) PeerName(id peer.ID) string {
 }
 
 func (ps *Peers) EvidenceIncomingTx(good bool, from peer.ID) {
-	ps.evidence(from, evidenceIncoming(good))
+	// TODO metrics
 }
 
 func (ps *Peers) blacklistCleanupLoop() {
@@ -466,8 +461,6 @@ func (ps *Peers) cleanBlacklist() {
 	}
 }
 
-type evidenceFun func(p *Peer)
-
 func (ps *Peers) _isDead(id peer.ID) bool {
 	p := ps._getPeer(id)
 	util.Assertf(p != nil, "_isDead: peer %s bot found", func() string { return ShortPeerIDString(id) })
@@ -478,25 +471,11 @@ func (p *Peer) _isDead() bool {
 	return !p._isAlive() && time.Since(p.whenAdded) > gracePeriodAfterAdded
 }
 
-func (ps *Peers) isDead(id peer.ID) bool {
-	ps.mutex.RLock()
-	defer ps.mutex.RUnlock()
-
-	return ps._isDead(id)
-}
-
-func (ps *Peers) IsAlive(id peer.ID) bool {
-	ps.mutex.RLock()
-	defer ps.mutex.RUnlock()
-
-	return ps._isAlive(id)
-}
-
-func (ps *Peers) _isAlive(id peer.ID) bool {
-	p := ps._getPeer(id)
-	util.Assertf(p != nil, "_isAlive: peer %s bot found", func() string { return ShortPeerIDString(id) })
-	// peer is alive if its last activity is no more than some heartbeats old
-	return p._isAlive()
+func (ps *Peers) IsAlive(id peer.ID) (isAlive bool) {
+	ps.withPeer(id, func(p *Peer) {
+		isAlive = p._isAlive()
+	})
+	return
 }
 
 func (p *Peer) _isAlive() bool {
@@ -519,19 +498,6 @@ func (ps *Peers) HasTxStore(id peer.ID) bool {
 	return p.hasTxStore
 }
 
-func (ps *Peers) evidence(id peer.ID, evidences ...evidenceFun) {
-	ps.mutex.Lock()
-	defer ps.mutex.Unlock()
-
-	p := ps._getPeer(id)
-	if p == nil {
-		return
-	}
-	for _, fun := range evidences {
-		fun(p)
-	}
-}
-
 func (p *Peer) _evidenceActivity(src string) {
 	p.lastMsgReceived = time.Now()
 	p.lastMsgReceivedFrom = src
@@ -542,22 +508,19 @@ func (p *Peer) _evidenceClockDifference(diff time.Duration) {
 	p.clockDifferencesIdx = (p.clockDifferencesIdx + 1) % len(p.clockDifferences)
 }
 
-func evidenceIncoming(good bool) evidenceFun {
-	if good {
-		return func(p *Peer) {
-			p.incomingGood++
-		}
-	}
-	return func(p *Peer) {
-		p.incomingBad++
-	}
-}
-
+// avgClockDifference calculates average over lates clock differences
 func (p *Peer) avgClockDifference() time.Duration {
 	var ret time.Duration
 
+	nNonZero := 0
 	for _, d := range p.clockDifferences {
 		ret += d
+		if d != 0 {
+			nNonZero++
+		}
 	}
-	return ret / time.Duration(len(p.clockDifferences))
+	if nNonZero == 0 {
+		return 0
+	}
+	return ret / time.Duration(nNonZero)
 }

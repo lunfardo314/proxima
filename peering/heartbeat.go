@@ -53,15 +53,11 @@ func (hi *heartbeatInfo) Bytes() []byte {
 }
 
 func (ps *Peers) NumAlive() (aliveStatic, aliveDynamic int) {
-	ps.forAllPeers(func(p *Peer) bool {
-		if p.isStatic {
-			if p._isAlive() {
-				aliveStatic++
-			}
+	ps.forEachPeer(func(p *Peer) bool {
+		if p._isAlive() {
+			aliveStatic++
 		} else {
-			if p._isAlive() {
-				aliveDynamic++
-			}
+			aliveDynamic++
 		}
 		return true
 	})
@@ -106,8 +102,10 @@ func checkRemoteClockTolerance(remoteTime time.Time) (time.Duration, bool, bool)
 
 // heartbeat protocol is used to monitor
 // - if peer is alive and
-// - to ensure clocks are synced within tolerance interval
-// - to ensure that ledger genesis is the same
+// - to ensure clocks difference is within tolerance interval. Clock difference is
+// sum of difference between local clocks plus communication delay
+// Clock difference is perceived differently by two connected peers. If one of them
+// goes out of tolerance interval, connection is dropped from one, then from the other side
 
 func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 	id := stream.Conn().RemotePeer()
@@ -124,7 +122,7 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 		if p != nil {
 			return
 		}
-		// peer not found
+		// incoming heartbeat from new peer
 		if !ps.isAutopeeringEnabled() {
 			// node does not take any incoming dynamic peers
 			ps.Tracef(TraceTag, "autopeering disabled: unknown peer %s", id.String)
@@ -132,7 +130,7 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 			exit = true
 			return
 		}
-		// peer not found. Add new incoming dynamic peer and then let the autopeering handle if too many
+		// Add new incoming dynamic peer and then let the autopeering handle if too many
 
 		// does not work -> addrInfo, err := peer.AddrInfoFromP2pAddr(remote)
 		// for some reason peer.AddrInfoFromP2pAddr does not work -> compose AddrInfo from parts
@@ -173,7 +171,7 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 		}
 		ps.Log().Warnf("[peering] clock of the peer %s is %s of the local clock for %v > tolerance interval %v",
 			ShortPeerIDString(id), b, clockDiff, clockTolerance)
-		ps.dropPeer(id, "clock sync tolerance")
+		ps.dropPeer(id, "exceeded clock sync tolerance")
 		return
 	}
 	defer func() { _ = stream.Close() }()
@@ -205,6 +203,17 @@ func (ps *Peers) sendHeartbeatToPeer(id peer.ID) {
 	if err != nil {
 		ps.Log().Errorf("[peering] sendHeartbeatToPeer: %w", err)
 	}
+}
+
+func (ps *Peers) peerIDsAlive() []peer.ID {
+	ret := make([]peer.ID, 0)
+	ps.forEachPeer(func(p *Peer) bool {
+		if p._isAlive() {
+			ret = append(ret, p.id)
+		}
+		return true
+	})
+	return ret
 }
 
 func (ps *Peers) peerIDs() []peer.ID {

@@ -46,7 +46,7 @@ func (ps *Peers) gossipStreamHandler(stream network.Stream) {
 			return
 		}
 
-		defer stream.Close()
+		_ = stream.Close()
 
 		p._evidenceActivity("gossip")
 		callAfter = func() { ps.onReceiveTx(id, txBytes, metadata) }
@@ -57,21 +57,14 @@ func (ps *Peers) gossipStreamHandler(stream network.Stream) {
 
 func (ps *Peers) GossipTxBytesToPeers(txBytes []byte, metadata *txmetadata.TransactionMetadata, except ...peer.ID) int {
 	countSent := 0
-	ps.forAllPeers(func(p *Peer) bool {
-		if _, inBlacklist := ps.blacklist[p.id]; inBlacklist {
-			return true
+	for _, id := range ps.peerIDsAlive() {
+		if len(except) > 0 && id == except[0] {
+			continue
 		}
-		if len(except) > 0 && p.id == except[0] {
-			return true
-		}
-		if !p._isAlive() {
-			return true
-		}
-		if ps.SendTxBytesWithMetadataToPeer(p.id, txBytes, metadata) {
+		if ps.SendTxBytesWithMetadataToPeer(id, txBytes, metadata) {
 			countSent++
 		}
-		return true
-	})
+	}
 	return countSent
 }
 

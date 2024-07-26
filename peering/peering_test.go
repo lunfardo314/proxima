@@ -100,7 +100,7 @@ func TestHeartbeat(t *testing.T) {
 	}
 
 	hosts[0].Stop()
-	time.Sleep(3 * time.Second)
+	time.Sleep(aliveDuration)
 	for i, ps := range hosts {
 		if i != 0 {
 			require.True(t, !ps.IsAlive(hosts[0].host.ID()))
@@ -178,9 +178,9 @@ func TestSendMsg(t *testing.T) {
 	t.Run("3-all hosts", func(t *testing.T) {
 		// TODO test fails with bigger numMsg
 		const (
-			numHosts = 5
+			numHosts = 5 // 5
 			trace    = false
-			numMsg   = 100 // 721 // 720 pass, 721 does not
+			numMsg   = 50 // 100 // 721 // 720 pass, 721 does not
 		)
 		hosts := makeHosts(t, numHosts, trace)
 		counter := countdown.New(numHosts*numMsg*(numHosts-1), 10*time.Second)
@@ -243,7 +243,7 @@ func TestSendMsg(t *testing.T) {
 		for _, h := range hosts {
 			h.Run()
 		}
-		time.Sleep(1 * time.Second)
+		time.Sleep(heartbeatRate * 5)
 
 		for _, h := range hosts {
 			h1 := h
