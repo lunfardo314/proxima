@@ -295,6 +295,9 @@ func (seq *Sequencer) doSequencerStep() bool {
 
 	msTx, meta := seq.factory.StartProposingForTargetLogicalTime(targetTs)
 	if msTx == nil {
+		if targetTs.IsSlotBoundary() {
+			seq.log.Infof("SKIPPED BRANCH on slot %d", targetTs.Slot())
+		}
 		seq.Tracef(TraceTag, "failed to generate msTx for target %s. Now is %s", targetTs, ledger.TimeNow())
 		return true
 	}
