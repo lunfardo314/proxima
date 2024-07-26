@@ -276,7 +276,6 @@ func TestSendMsg(t *testing.T) {
 		for _, h := range hosts {
 			h1 := h
 			h1.OnReceivePullTxRequest(func(from peer.ID, txids []ledger.TransactionID) {
-				//t.Logf("pull %d", len(txids))
 				txSetMutex.Lock()
 				defer txSetMutex.Unlock()
 
@@ -292,7 +291,6 @@ func TestSendMsg(t *testing.T) {
 				require.True(t, len(txBytes) == 32)
 				var txid ledger.TransactionID
 				copy(txid[:], txBytes)
-				//t.Logf("response %s", txid.StringShort())
 
 				txSetMutex.Lock()
 				defer txSetMutex.Unlock()

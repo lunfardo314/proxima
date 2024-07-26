@@ -314,7 +314,7 @@ func (l *Global) purgeLoop() {
 		case <-l.ctx.Done():
 			return
 		case <-time.After(purgeLoopPeriod):
-			l.purge()
+			l.purgeTraceTxIDs()
 		}
 	}
 }
@@ -323,7 +323,7 @@ func (l *Global) LogAttacherStats() bool {
 	return l.logAttacherStats
 }
 
-func (l *Global) purge() {
+func (l *Global) purgeTraceTxIDs() {
 	l.txTraceMutex.Lock()
 	defer l.txTraceMutex.Unlock()
 
@@ -363,6 +363,10 @@ func (l *Global) RepeatEvery(period time.Duration, fun func() bool, skipFirst ..
 			}
 		}
 	}()
+}
+
+func (l *Global) VerbosityLevel() int {
+	return l.logVerbosity
 }
 
 func (l *Global) InfofAtLevel(level int, template string, args ...any) {
