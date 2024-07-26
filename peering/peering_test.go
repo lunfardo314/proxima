@@ -138,7 +138,7 @@ func TestSendMsg(t *testing.T) {
 	})
 	t.Run("2-from one host", func(t *testing.T) {
 		const (
-			numHosts = 2
+			numHosts = 5
 			trace    = false
 			numMsg   = 1000
 		)
@@ -178,9 +178,9 @@ func TestSendMsg(t *testing.T) {
 	t.Run("3-all hosts", func(t *testing.T) {
 		// TODO test fails with bigger numMsg
 		const (
-			numHosts = 5 // 5
+			numHosts = 5
 			trace    = false
-			numMsg   = 50 // 100 // 721 // 720 pass, 721 does not
+			numMsg   = 100 // 721 // 720 pass, 721 does not
 		)
 		hosts := makeHosts(t, numHosts, trace)
 		counter := countdown.New(numHosts*numMsg*(numHosts-1), 10*time.Second)

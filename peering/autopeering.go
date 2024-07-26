@@ -99,8 +99,7 @@ func (ps *Peers) deadDynamicPeers() []peer.ID {
 }
 
 func (ps *Peers) removeDeadDynamicPeers() {
-	toRemove := ps.deadDynamicPeers()
-	for _, id := range toRemove {
+	for _, id := range ps.deadDynamicPeers() {
 		ps.logConnectionStatusIfNeeded(id)
 		ps.dropPeer(id, "dead")
 	}
