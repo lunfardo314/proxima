@@ -144,7 +144,7 @@ func (a *attacher) undefinedList() []*vertex.WrappedTx {
 func (a *attacher) undefinedListLines(prefix ...string) *lines.Lines {
 	ret := lines.New(prefix...)
 	for _, vid := range a.undefinedList() {
-		ret.Add(vid.ShortString())
+		ret.Add(vid.IDVeryShort())
 	}
 	return ret
 }
