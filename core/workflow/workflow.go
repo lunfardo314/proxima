@@ -167,10 +167,12 @@ func (w *Workflow) logSyncStatusLoop() {
 		case <-w.Ctx().Done():
 			return
 		case <-time.After(logSyncStatusEach):
-			synced, lastSlot := w.SyncedStatus()
+
+			latestSlot, latestHealthySlot, synced := w.LatestBranchSlots()
 			if !synced {
-				w.Log().Warnf("node is NOT SYNCED with the network. Last committed slot is %d (%d slots back)",
-					lastSlot, ledger.TimeNow().Slot()-lastSlot)
+				nowSlot := ledger.TimeNow().Slot()
+				w.Log().Warnf("node is NOT SYNCED with the network. Last committed slot is %d (%d slots back). Last heathy slot is %d (%d slots back)",
+					latestSlot, nowSlot-latestSlot, latestHealthySlot, nowSlot-latestHealthySlot)
 			}
 		}
 	}

@@ -410,5 +410,5 @@ func FindLatestHealthySlot(store global.StateStoreReader, fraction global.Fracti
 }
 
 func (br *BranchData) IsHealthy(fraction global.Fraction) bool {
-	return br.LedgerCoverage > (uint64(fraction.Numerator)*br.Supply)/uint64(fraction.Denominator)
+	return global.IsHealthyCoverage(br.LedgerCoverage, br.Supply, fraction)
 }

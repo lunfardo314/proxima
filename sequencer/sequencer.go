@@ -136,6 +136,7 @@ func (seq *Sequencer) Start() {
 
 func (seq *Sequencer) waitForSyncIfNecessary() bool {
 	if seq.IsBootstrapNode() {
+		// bootstrap node does not wait for synced status
 		return true
 	}
 

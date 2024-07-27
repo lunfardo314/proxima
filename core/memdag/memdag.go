@@ -35,7 +35,8 @@ type (
 		mutex    sync.RWMutex
 		vertices map[ledger.TransactionID]*vertex.WrappedTx
 		// latestBranchSlot maintained by EvidenceBranchSlot
-		latestBranchSlot ledger.Slot
+		latestBranchSlot        ledger.Slot
+		latestHealthyBranchSlot ledger.Slot
 
 		// cache of state readers. One state (trie) reader for the branch/root. When accessed through the cache,
 		// reading is highly optimized because each state reader keeps its trie cache, so consequent calls to
@@ -206,37 +207,51 @@ func (d *MemDAG) WaitUntilTransactionInHeaviestState(txid ledger.TransactionID, 
 	}
 }
 
-func (d *MemDAG) EvidenceBranchSlot(s ledger.Slot) {
+// EvidenceBranchSlot maintains cached values
+func (d *MemDAG) EvidenceBranchSlot(s ledger.Slot, isHealthy bool) {
 	d.mutex.Lock()
 	defer d.mutex.Unlock()
 
 	if d.latestBranchSlot < s {
 		d.latestBranchSlot = s
 	}
+	if isHealthy {
+		if d.latestHealthyBranchSlot < s {
+			d.latestHealthyBranchSlot = s
+		}
+	}
 }
 
-func (d *MemDAG) SyncedStatus() (bool, ledger.Slot) {
-	d.mutex.RLock()
-	defer d.mutex.RUnlock()
-
-	return d.latestBranchSlot != 0 && d.latestBranchSlot+1 >= ledger.TimeNow().Slot(), d.latestBranchSlot
-}
-
-// IsSyncedWithNetwork measuring latest committed branch timestamp with current time.
-// It indicates if current node is in sync with network activity.
-// If network is unreachable or nobody else is active it will return false
-// Node is considered in sync if latest branch was committed up to 2 slots (not inclusive) from now
 func (d *MemDAG) IsSyncedWithNetwork() bool {
-	synced, _ := d.SyncedStatus()
+	_, _, synced := d.LatestBranchSlots()
 	return synced
 }
 
-// LatestBranchSlot latest time slot with some stateReaders
-func (d *MemDAG) LatestBranchSlot() (ret ledger.Slot) {
+// LatestBranchSlots return latest committed slots and the sync flag.
+// The latter indicates if current node is in sync with the network.
+// If network is unreachable or nobody else is active it will return false
+// Node is out of sync if current slots are behind from now
+// Being sync or not is subjective
+func (d *MemDAG) LatestBranchSlots() (slot, healthySlot ledger.Slot, synced bool) {
 	d.mutex.RLock()
 	defer d.mutex.RUnlock()
 
-	return d.latestBranchSlot
+	if d.latestBranchSlot == 0 {
+		d.latestBranchSlot = multistate.FetchLatestSlot(d.StateStore())
+	}
+	if d.latestHealthyBranchSlot == 0 {
+		d.latestHealthyBranchSlot = multistate.FindLatestHealthySlot(d.StateStore(), global.FractionHealthyBranch)
+	}
+	nowSlot := ledger.TimeNow().Slot()
+	// synced criterion. latest slot max 2 behind, latest healthy max 5 behind
+	synced = d.latestBranchSlot+1 > nowSlot && d.latestHealthyBranchSlot+5 > nowSlot
+	slot, healthySlot = d.latestBranchSlot, d.latestHealthyBranchSlot
+	return
+}
+
+func (d *MemDAG) LatestHealthySlot() ledger.Slot {
+	_, ret, _ := d.LatestBranchSlots()
+	return ret
 }
 
 // ForEachVertexReadLocked Traversing all vertices. Beware: read-locked!

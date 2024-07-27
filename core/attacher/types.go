@@ -24,7 +24,7 @@ type (
 		GetStateReaderForTheBranch(branch *ledger.TransactionID) global.IndexedStateReader
 		GetStemWrappedOutput(branch *ledger.TransactionID) vertex.WrappedOutput
 		SendToTippool(vid *vertex.WrappedTx)
-		EvidenceBranchSlot(s ledger.Slot)
+		EvidenceBranchSlot(s ledger.Slot, healthy bool)
 	}
 
 	pullEnvironment interface {

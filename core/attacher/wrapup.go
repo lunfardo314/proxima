@@ -3,6 +3,7 @@ package attacher
 import (
 	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/core/vertex"
+	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/set"
@@ -96,15 +97,21 @@ func (a *milestoneAttacher) commitBranch() {
 	seqID, stemOID := a.vid.MustSequencerIDAndStemID()
 	upd := multistate.MustNewUpdatable(a.StateStore(), a.baselineStateReader().Root())
 	a.finals.supply = a.baselineSupply + a.finals.slotInflation
+	coverage := a.vid.GetLedgerCoverage()
+	supply := a.baselineSupply + a.finals.slotInflation
+
 	upd.MustUpdate(muts, &multistate.RootRecordParams{
 		StemOutputID:    stemOID,
 		SeqID:           seqID,
-		Coverage:        *a.vid.GetLedgerCoverageP(),
+		Coverage:        coverage,
 		SlotInflation:   a.slotInflation,
-		Supply:          a.baselineSupply + a.finals.slotInflation,
+		Supply:          supply,
 		NumTransactions: a.finals.numNewTransactions,
 	})
 	a.finals.root = upd.Root()
+
+	a.EvidenceBranchSlot(a.vid.Slot(), global.IsHealthyCoverage(coverage, supply, global.FractionHealthyBranch))
+
 	// check consistency with state root provided with metadata
 	a.checkStateRootConsistentWithMetadata()
 }

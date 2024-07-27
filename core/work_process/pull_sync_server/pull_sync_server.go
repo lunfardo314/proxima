@@ -27,6 +27,7 @@ type (
 		SendTx(sendTo peer.ID, txids ...ledger.TransactionID)
 		IsSyncedWithNetwork() bool
 		TipBranchHasTransaction(branchID, txid *ledger.TransactionID) bool
+		LatestHealthySlot() ledger.Slot
 	}
 
 	Input struct {
@@ -74,7 +75,7 @@ func (d *PullSyncServer) Consume(inp *Input) {
 	d.Environment.Log().Infof("[PullSyncServer] pull sync portion request for slots from slot %d, up to %d slots ",
 		inp.StartFrom, maxSlots)
 
-	latestHealthySlot := multistate.FindLatestHealthySlot(d.StateStore(), syncmgr.FractionHealthyBranchCriterion)
+	latestHealthySlot := d.LatestHealthySlot()
 	slotNow := ledger.TimeNow().Slot()
 
 	startFromSlot := inp.StartFrom

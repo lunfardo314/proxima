@@ -118,4 +118,10 @@ var (
 		Numerator:   2,
 		Denominator: 3,
 	}
+
+	FractionHealthyBranch = FractionHalf
 )
+
+func IsHealthyCoverage(coverage, supply uint64, fraction Fraction) bool {
+	return coverage > (uint64(fraction.Numerator)*supply)/uint64(fraction.Denominator)
+}

@@ -33,9 +33,6 @@ func runMilestoneAttacher(vid *vertex.WrappedTx, metadata *txmetadata.Transactio
 		// panic("fail fast")
 
 	} else {
-		if vid.IsBranchTransaction() {
-			env.EvidenceBranchSlot(vid.Slot())
-		}
 		msData := env.ParseMilestoneData(vid)
 		if vid.IsBranchTransaction() {
 			env.Infof0(a.logFinalStatusString(msData))
