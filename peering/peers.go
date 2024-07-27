@@ -91,7 +91,9 @@ const (
 	lppProtocolPull      = "/proxima/pull/%d"
 	lppProtocolHeartbeat = "/proxima/heartbeat/%d"
 
-	// clockTolerance is how big the difference between local and remote clocks is tolerated
+	// clockTolerance is how big the difference between local and remote clocks is tolerated.
+	// The difference includes difference between local clocks (positive or negative) plus
+	// positive heartbeat message latency between peers
 	clockTolerance = 5 * time.Second
 
 	// if the node is bootstrap, and it has configured less than numMaxDynamicPeersForBootNodeAtLeast
@@ -100,7 +102,7 @@ const (
 
 	// heartbeatRate heartbeat issued every period
 	heartbeatRate      = 2 * time.Second
-	aliveNumHeartbeats = 3 // if no hb over this period, it means not-alive -> dynamic peer will be dropped
+	aliveNumHeartbeats = 5 // if no hb over this period, it means not-alive -> dynamic peer will be dropped
 	aliveDuration      = time.Duration(aliveNumHeartbeats) * heartbeatRate
 	// gracePeriodAfterAdded period of time peer is considered not dead after added even if messages are not coming
 	gracePeriodAfterAdded = 10 * heartbeatRate
