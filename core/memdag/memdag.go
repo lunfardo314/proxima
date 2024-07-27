@@ -243,9 +243,13 @@ func (d *MemDAG) LatestBranchSlots() (slot, healthySlot ledger.Slot, synced bool
 		d.latestHealthyBranchSlot = multistate.FindLatestHealthySlot(d.StateStore(), global.FractionHealthyBranch)
 	}
 	nowSlot := ledger.TimeNow().Slot()
-	// synced criterion. latest slot max 2 behind, latest healthy max 5 behind
-	synced = d.latestBranchSlot+1 > nowSlot && d.latestHealthyBranchSlot+5 > nowSlot
+	// synced criterion. latest slot max 3 behind, latest healthy max 6 behind
 	slot, healthySlot = d.latestBranchSlot, d.latestHealthyBranchSlot
+	const (
+		latestSlotBehindMax        = 2
+		latestHealthySlotBehindMax = 6
+	)
+	synced = slot+latestSlotBehindMax > nowSlot && healthySlot+latestHealthySlotBehindMax > nowSlot
 	return
 }
 
