@@ -2,6 +2,7 @@ package pull_sync_server
 
 import (
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/lunfardo314/proxima/core/syncmgr"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/multistate"
@@ -73,19 +74,19 @@ func (d *PullSyncServer) Consume(inp *Input) {
 	d.Environment.Log().Infof("[PullSyncServer] pull sync portion request for slots from slot %d, up to %d slots ",
 		inp.StartFrom, maxSlots)
 
-	latestSlot := multistate.FetchLatestSlot(d.StateStore())
+	latestHealthySlot := multistate.FindLatestHealthySlot(d.StateStore(), syncmgr.FractionHealthyBranchCriterion)
 	slotNow := ledger.TimeNow().Slot()
 
 	startFromSlot := inp.StartFrom
-	if latestSlot <= startFromSlot {
+	if latestHealthySlot <= startFromSlot {
 		// it seems this node knows less than the requester
-		if latestSlot < 5 {
+		if latestHealthySlot < 5 {
 			startFromSlot = 0
 		} else {
-			startFromSlot = latestSlot - 5
+			startFromSlot = latestHealthySlot - 5
 		}
-		d.Environment.Log().Infof("[PullSyncServer] pull sync portion adjusted to start from slot %d. latestSlot: %d",
-			startFromSlot, latestSlot)
+		d.Environment.Log().Infof("[PullSyncServer] pull sync portion adjusted to start from slot %d. latestHealthySlot: %d",
+			startFromSlot, latestHealthySlot)
 	}
 
 	branchIDs := make([]ledger.TransactionID, 0)
@@ -96,16 +97,18 @@ func (d *PullSyncServer) Consume(inp *Input) {
 	tipBranches := multistate.FetchBranchDataMulti(d.StateStore(), tipRoots...)
 	tipIDs := make([]ledger.TransactionID, len(tipBranches))
 	for i, tipBranchData := range tipBranches {
-		tipIDs[i] = tipBranchData.Stem.ID.TransactionID()
+		if tipBranchData.IsHealthy(syncmgr.FractionHealthyBranchCriterion) {
+			tipIDs[i] = tipBranchData.Stem.ID.TransactionID()
+		}
 	}
 
 	nslots := 0
 	var lastSlot ledger.Slot
 	store := d.StateStore()
 
-	util.Assertf(startFromSlot < latestSlot, "startFromSlot < latestSlot")
+	util.Assertf(startFromSlot < latestHealthySlot, "startFromSlot < latestHealthySlot")
 
-	for slot := startFromSlot; nslots < maxSlots && slot < latestSlot && slot < slotNow; slot++ {
+	for slot := startFromSlot; nslots < maxSlots && slot < latestHealthySlot && slot < slotNow; slot++ {
 		// fetch branches of the slot
 		branches := multistate.FetchBranchDataMulti(store, multistate.FetchRootRecords(store, slot)...)
 		// collect branches from the slot which are included into any of the tips

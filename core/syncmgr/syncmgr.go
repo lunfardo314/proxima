@@ -11,8 +11,9 @@ import (
 	"github.com/spf13/viper"
 )
 
-// SyncManager is a daemon which monitors how far is the latest slot in the state DB from the
-// current time. If difference becomes bigger than threshold, it starts pulling sync portions of
+// SyncManager is a daemon which monitors how far is the latest slot with coverage > totalSupply (1/2 of max possible coverage)
+// in the state DB from the current time.
+// If number of slots back becomes bigger than threshold, it starts pulling sync portions of
 // branches from other nodes, while ignoring current flow of transactions
 // SyncManager is optional optimization of the sync process. It can be enabled/disabled in the config
 
@@ -31,11 +32,13 @@ type (
 		endOfPortionCh                       chan struct{}
 		syncPortionRequestedAtLeastUntilSlot ledger.Slot
 		syncPortionDeadline                  time.Time
-		latestSlotInDB                       atomic.Uint32 // cache for IgnoreFutureTxID
+		latestHealthySlotInDB                atomic.Uint32 // cache for IgnoreFutureTxID
 
 		loggedWhen time.Time
 	}
 )
+
+var FractionHealthyBranchCriterion = global.FractionHalf
 
 func StartSyncManagerFromConfig(env Environment) *SyncManager {
 	if !viper.GetBool("workflow.sync_manager.enable") {
@@ -86,27 +89,27 @@ func (d *SyncManager) syncManagerLoop() {
 }
 
 func (d *SyncManager) checkSync(endOfPortion bool) {
-	latestSlotInDB := multistate.FetchLatestSlot(d.StateStore())
-	d.latestSlotInDB.Store(uint32(latestSlotInDB)) // cache
+	latestHealthySlotInDB := multistate.FindLatestHealthySlot(d.StateStore(), FractionHealthyBranchCriterion)
+	d.latestHealthySlotInDB.Store(uint32(latestHealthySlotInDB)) // cache
 
 	slotNow := ledger.TimeNow().Slot()
-	util.Assertf(latestSlotInDB <= slotNow, "latestSlot (%d) <= slotNow (%d)", latestSlotInDB, slotNow)
+	util.Assertf(latestHealthySlotInDB <= slotNow, "latestSlot (%d) <= slotNow (%d)", latestHealthySlotInDB, slotNow)
 
-	behind := slotNow - latestSlotInDB
+	behind := slotNow - latestHealthySlotInDB
 	if int(behind) <= d.syncToleranceThresholdSlots {
 		// synced or almost synced. Do not need to pull portions
 		d.syncPortionRequestedAtLeastUntilSlot = 0
 		d.syncPortionDeadline = time.Time{}
 		return
 	}
-	if time.Since(d.loggedWhen) > 1*time.Second {
+	if time.Since(d.loggedWhen) > time.Second {
 		d.Infof1("[sync manager] latest synced slot %d is behind current slot %d by %d",
-			latestSlotInDB, slotNow, behind)
+			latestHealthySlotInDB, slotNow, behind)
 		d.loggedWhen = time.Now()
 	}
 
 	// above threshold, not synced
-	if latestSlotInDB < d.syncPortionRequestedAtLeastUntilSlot {
+	if latestHealthySlotInDB < d.syncPortionRequestedAtLeastUntilSlot {
 		// we already pulled portion, but it is not here yet, it seems
 		if !endOfPortion && time.Now().Before(d.syncPortionDeadline) {
 			// still waiting for the portion, do nothing
@@ -115,12 +118,12 @@ func (d *SyncManager) checkSync(endOfPortion bool) {
 		// repeat pull portion
 	}
 
-	d.syncPortionRequestedAtLeastUntilSlot = latestSlotInDB + ledger.Slot(d.syncPortionSlots)
+	d.syncPortionRequestedAtLeastUntilSlot = latestHealthySlotInDB + ledger.Slot(d.syncPortionSlots)
 	if d.syncPortionRequestedAtLeastUntilSlot > slotNow {
 		d.syncPortionRequestedAtLeastUntilSlot = slotNow
 	}
 	d.syncPortionDeadline = time.Now().Add(portionExpectedIn)
-	d.PullSyncPortion(latestSlotInDB, d.syncPortionSlots)
+	d.PullSyncPortion(latestHealthySlotInDB, d.syncPortionSlots)
 }
 
 func (d *SyncManager) NotifyEndOfPortion() {
@@ -135,7 +138,7 @@ func (d *SyncManager) NotifyEndOfPortion() {
 // After the state become synced, the tx flow will be accepted
 func (d *SyncManager) IgnoreFutureTxID(txid *ledger.TransactionID) bool {
 	slotNow := int(ledger.TimeNow().Slot())
-	latestSlot := int(d.latestSlotInDB.Load())
+	latestSlot := int(d.latestHealthySlotInDB.Load())
 	util.Assertf(latestSlot <= slotNow, "latestSlot <= slotNow")
 	if slotNow-latestSlot < d.syncToleranceThresholdSlots {
 		return false // accept all if not very unsynced

@@ -372,3 +372,43 @@ func MustSequencerOutputOfBranch(store common.KVReader, txid ledger.TransactionI
 		PredecessorConstraintIndex: cc.PredecessorConstraintIndex,
 	}
 }
+
+func IterateSlotsBack(store global.StateStoreReader, fun func(slot ledger.Slot, roots []RootRecord) bool) {
+	for slot := FetchLatestSlot(store); slot > 0; slot-- {
+		if !fun(slot, FetchRootRecords(store, slot)) {
+			return
+		}
+	}
+}
+
+func FindFirstBranch(store global.StateStoreReader, filter func(branch *BranchData) bool) *BranchData {
+	var ret BranchData
+	found := false
+	IterateSlotsBack(store, func(slot ledger.Slot, roots []RootRecord) bool {
+		for _, rootRecord := range roots {
+			ret = FetchBranchDataByRoot(store, rootRecord)
+			if found = filter(&ret); found {
+				return false
+			}
+		}
+		return true
+	})
+	if found {
+		return &ret
+	}
+	return nil
+}
+
+// FindLatestHealthySlot finds latest slot, which contains branch with coverage > numerator/denominator * totalSupply
+func FindLatestHealthySlot(store global.StateStoreReader, fraction global.Fraction) ledger.Slot {
+	ret := FindFirstBranch(store, func(branch *BranchData) bool {
+		return branch.IsHealthy(fraction)
+	})
+	// healthy branch always exist
+	util.Assertf(ret != nil, "inconsistency: cannot find healthy branch")
+	return ret.Stem.ID.Slot()
+}
+
+func (br *BranchData) IsHealthy(fraction global.Fraction) bool {
+	return br.LedgerCoverage > (uint64(fraction.Numerator)*br.Supply)/uint64(fraction.Denominator)
+}

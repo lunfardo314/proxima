@@ -101,4 +101,21 @@ type (
 		Metrics
 		IsBootstrapNode() bool
 	}
+
+	Fraction struct {
+		Numerator   int
+		Denominator int
+	}
+)
+
+var (
+	FractionHalf = Fraction{
+		Numerator:   1,
+		Denominator: 2,
+	}
+
+	Fraction23 = Fraction{
+		Numerator:   2,
+		Denominator: 3,
+	}
 )
