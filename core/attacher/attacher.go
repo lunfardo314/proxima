@@ -24,9 +24,6 @@ func newPastConeAttacher(env Environment, name string) attacher {
 		referenced:  set.New[*vertex.WrappedTx](),
 		pokeMe:      func(_ *vertex.WrappedTx) {},
 	}
-	if eventLogEnabled {
-		ret.eventLog = make([]string, 0)
-	}
 	// standard conflict checker
 	ret.checkConflictsFunc = func(_ *vertex.Vertex, consumerTx *vertex.WrappedTx) checkConflictingConsumersFunc {
 		return ret.stdCheckConflictsFunc(consumerTx)
@@ -43,13 +40,6 @@ const (
 
 func (a *attacher) Name() string {
 	return a.name
-}
-
-func (a *attacher) logEvent(format string, args ...any) {
-	if !eventLogEnabled {
-		return
-	}
-	a.eventLog = append(a.eventLog, fmt.Sprintf(format, util.EvalLazyArgs(args...)))
 }
 
 func (a *attacher) baselineStateReader() multistate.SugaredStateReader {
@@ -101,8 +91,7 @@ func (a *attacher) markVertexDefined(vid *vertex.WrappedTx) {
 	a.mustMarkReferencedByAttacher(vid)
 	a.vertices[vid] = a.flags(vid) | FlagAttachedVertexKnown | FlagAttachedVertexDefined
 
-	//a.logEvent("markVertexDefined: %s", vid.IDShortString)
-	//a.Tracef(TraceTagMarkDefUndef, "markVertexDefined in %s: %s is DEFINED", a.name, vid.IDShortString)
+	a.Tracef(TraceTagMarkDefUndef, "markVertexDefined in %s: %s is DEFINED", a.name, vid.IDShortString)
 }
 
 func (a *attacher) markVertexUndefined(vid *vertex.WrappedTx) bool {
@@ -775,12 +764,6 @@ func (a *attacher) dumpLines(prefix ...string) *lines.Lines {
 	ret.Add("   rooted tx (%d):", len(a.rooted))
 	for vid, consumed := range a.rooted {
 		ret.Add("           tx: %s, outputs: %v", vid.IDShortString(), maps.Keys(consumed))
-	}
-	if eventLogEnabled {
-		ret.Add("   event log:")
-		for _, e := range a.eventLog {
-			ret.Add("         %s", e)
-		}
 	}
 	return ret
 }

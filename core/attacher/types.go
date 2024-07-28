@@ -68,8 +68,6 @@ type (
 		forceTrace string
 		// for incremental attacher we need slightly extended conflict checker
 		checkConflictsFunc func(consumerVertex *vertex.Vertex, consumerTx *vertex.WrappedTx) checkConflictingConsumersFunc
-		// event log for debugging
-		eventLog []string
 	}
 
 	// IncrementalAttacher is used by the sequencer to build a sequencer milestone
@@ -138,8 +136,6 @@ type (
 		ParseSequencerCommandToOutput(input *ledger.OutputWithID) ([]*ledger.Output, error)
 	}
 )
-
-const eventLogEnabled = false
 
 const (
 	FlagAttachedVertexKnown             = 0b00000001
