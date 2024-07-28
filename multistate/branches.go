@@ -374,8 +374,8 @@ func MustSequencerOutputOfBranch(store common.KVReader, txid ledger.TransactionI
 }
 
 func IterateSlotsBack(store global.StateStoreReader, fun func(slot ledger.Slot, roots []RootRecord) bool) {
-	for slot := FetchLatestSlot(store); slot > 0; slot-- {
-		if !fun(slot, FetchRootRecords(store, slot)) {
+	for slot := FetchLatestSlot(store); ; slot-- {
+		if !fun(slot, FetchRootRecords(store, slot)) || slot == 0 {
 			return
 		}
 	}

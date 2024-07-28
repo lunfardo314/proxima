@@ -24,6 +24,9 @@ func newPastConeAttacher(env Environment, name string) attacher {
 		referenced:  set.New[*vertex.WrappedTx](),
 		pokeMe:      func(_ *vertex.WrappedTx) {},
 	}
+	if eventLogEnabled {
+		ret.eventLog = make([]string, 0)
+	}
 	// standard conflict checker
 	ret.checkConflictsFunc = func(_ *vertex.Vertex, consumerTx *vertex.WrappedTx) checkConflictingConsumersFunc {
 		return ret.stdCheckConflictsFunc(consumerTx)
@@ -40,6 +43,13 @@ const (
 
 func (a *attacher) Name() string {
 	return a.name
+}
+
+func (a *attacher) logEvent(format string, args ...any) {
+	if !eventLogEnabled {
+		return
+	}
+	a.eventLog = append(a.eventLog, fmt.Sprintf(format, util.EvalLazyArgs(args...)))
 }
 
 func (a *attacher) baselineStateReader() multistate.SugaredStateReader {
@@ -91,7 +101,8 @@ func (a *attacher) markVertexDefined(vid *vertex.WrappedTx) {
 	a.mustMarkReferencedByAttacher(vid)
 	a.vertices[vid] = a.flags(vid) | FlagAttachedVertexKnown | FlagAttachedVertexDefined
 
-	a.Tracef(TraceTagMarkDefUndef, "markVertexDefined in %s: %s is DEFINED", a.name, vid.IDShortString)
+	//a.logEvent("markVertexDefined: %s", vid.IDShortString)
+	//a.Tracef(TraceTagMarkDefUndef, "markVertexDefined in %s: %s is DEFINED", a.name, vid.IDShortString)
 }
 
 func (a *attacher) markVertexUndefined(vid *vertex.WrappedTx) bool {
@@ -538,6 +549,7 @@ func (a *attacher) attachInput(v *vertex.Vertex, inputIdx byte, vid *vertex.Wrap
 	if !ok {
 		return ok, false
 	}
+	// TODO ???
 	defined = a.isKnownDefined(v.Inputs[inputIdx]) || a.isRootedOutput(wOut)
 	if defined {
 		a.Tracef(TraceTagAttachVertex, "attacher %s: input #%d (%s) has been solidified", a.name, inputIdx, wOut.IDShortString)
@@ -760,17 +772,14 @@ func (a *attacher) dumpLines(prefix ...string) *lines.Lines {
 	ret.Add("   baselineSupply: %s", util.Th(a.baselineSupply))
 	ret.Add("   vertices:")
 	ret.Append(a.linesVertices(prefix...))
-	ret.Add("   rooted:")
+	ret.Add("   rooted tx (%d):", len(a.rooted))
 	for vid, consumed := range a.rooted {
-		for idx := range consumed {
-			o, err := vid.OutputAt(idx)
-			consumers := vid.ConsumersOf(idx)
-			consStr := vertex.VerticesIDLines(maps.Keys(consumers)).Join(", ")
-			if err == nil {
-				oid := vid.OutputID(idx)
-				ret.Add("         %s : amount: %s, consumers: {%s}", oid.StringShort(), util.Th(o.Amount()), consStr)
-				ret.Append(o.Lines("                    "))
-			}
+		ret.Add("           tx: %s, outputs: %v", vid.IDShortString(), maps.Keys(consumed))
+	}
+	if eventLogEnabled {
+		ret.Add("   event log:")
+		for _, e := range a.eventLog {
+			ret.Add("         %s", e)
 		}
 	}
 	return ret
@@ -779,8 +788,13 @@ func (a *attacher) dumpLines(prefix ...string) *lines.Lines {
 func (a *attacher) linesVertices(prefix ...string) *lines.Lines {
 	ret := lines.New(prefix...)
 	for vid, flags := range a.vertices {
-		//ret.Add("%s (%s) local flags: %s", vid.OfKindString(), vid.IDShortString(), flags.String())
-		ret.Add("%s local flags: %s", vid.IDShortString(), flags.String())
+		_, rooted := a.rooted[vid]
+		seqIDStr := "?"
+		if seqID, ok := vid.SequencerIDIfAvailable(); ok {
+			seqIDStr = seqID.StringVeryShort()
+		}
+
+		ret.Add("%s (rooted = %v, seq: %s) local flags: %s", vid.IDShortString(), rooted, seqIDStr, flags.String())
 	}
 	return ret
 }

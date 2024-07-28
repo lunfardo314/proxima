@@ -157,7 +157,7 @@ func TestBasic(t *testing.T) {
 		require.NoError(t, err)
 		require.True(t, len(txBytesStore.GetTxBytesWithMetadata(&distribTxID)) > 0)
 
-		vidDistrib, err := attacher.EnsureBranch(distribTxID, wrk)
+		vidDistrib, err := attacher.EnsureBranch(distribTxID, wrk, 3*time.Second)
 		require.NoError(t, err)
 
 		t.Logf("bootstrap chain id: %s", bootstrapChainID.String())

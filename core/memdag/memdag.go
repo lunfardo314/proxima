@@ -231,13 +231,16 @@ func (d *MemDAG) IsSyncedWithNetwork() bool {
 // The latter indicates if current node is in sync with the network.
 // If network is unreachable or nobody else is active it will return false
 // Node is out of sync if current slots are behind from now
-// Being sync or not is subjective
+// Being synced or not is subjective
 func (d *MemDAG) LatestBranchSlots() (slot, healthySlot ledger.Slot, synced bool) {
 	d.mutex.RLock()
 	defer d.mutex.RUnlock()
 
 	if d.latestBranchSlot == 0 {
 		d.latestBranchSlot = multistate.FetchLatestSlot(d.StateStore())
+		if d.latestBranchSlot == 0 {
+			synced = true
+		}
 	}
 	if d.latestHealthyBranchSlot == 0 {
 		d.latestHealthyBranchSlot = multistate.FindLatestHealthySlot(d.StateStore(), global.FractionHealthyBranch)
@@ -249,7 +252,7 @@ func (d *MemDAG) LatestBranchSlots() (slot, healthySlot ledger.Slot, synced bool
 		latestSlotBehindMax        = 2
 		latestHealthySlotBehindMax = 6
 	)
-	synced = slot+latestSlotBehindMax > nowSlot && healthySlot+latestHealthySlotBehindMax > nowSlot
+	synced = synced || (slot+latestSlotBehindMax > nowSlot && healthySlot+latestHealthySlotBehindMax > nowSlot)
 	return
 }
 

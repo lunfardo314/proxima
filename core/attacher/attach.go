@@ -190,9 +190,9 @@ func EnsureBranch(txid ledger.TransactionID, env Environment, timeout ...time.Du
 	if len(timeout) > 0 {
 		to = timeout[0]
 	}
-	deadline := time.Now().Add(to)
+	start := time.Now()
 	for vid.GetTxStatus() == vertex.Undefined {
-		if time.Now().After(deadline) {
+		if time.Since(start) > to {
 			return nil, fmt.Errorf("failed to fetch branch %s in %v", txid.StringShort(), to)
 		}
 		time.Sleep(10 * time.Millisecond)
