@@ -32,11 +32,13 @@ type (
 	// Behind this identity can be wrapped usual vertex or virtual transactions
 	WrappedTx struct {
 		// immutable ID. It does not change with the change of the underlying wrapped vertex type
-		ID       ledger.TransactionID
-		mutex    sync.RWMutex // protects _genericVertex
-		flags    Flags
-		err      error
-		coverage *uint64 // nil for non-sequencer or if not set yet
+		ID ledger.TransactionID
+		// not nil for sequencer transactions only. Immutable
+		SequencerID *ledger.ChainID
+		mutex       sync.RWMutex // protects _genericVertex
+		flags       Flags
+		err         error
+		coverage    *uint64 // nil for non-sequencer or if not set yet
 		// keeping track of references for orphaning/GC
 		references uint32
 		// dontPruneUntil interpreted depending on value of references

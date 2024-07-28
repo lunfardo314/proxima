@@ -227,10 +227,14 @@ func (v *Vertex) Lines(prefix ...string) *lines.Lines {
 }
 
 func (v *Vertex) Wrap() *WrappedTx {
+	var seqID *ledger.ChainID
+	if v.Tx.IsSequencerMilestone() {
+		seqID = util.Ref(v.Tx.SequencerTransactionData().SequencerID)
+	}
 	return _newVID(_vertex{
 		Vertex:      v,
 		whenWrapped: time.Now(),
-	}, *v.Tx.ID())
+	}, *v.Tx.ID(), seqID)
 }
 
 func (v *Vertex) convertToVirtualTx() *VirtualTransaction {

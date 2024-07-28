@@ -39,9 +39,10 @@ func (v _virtualTx) _hasOutputAt(idx byte) (bool, bool) {
 	return hasIt, false
 }
 
-func _newVID(g _genericVertex, txid ledger.TransactionID) *WrappedTx {
+func _newVID(g _genericVertex, txid ledger.TransactionID, seqID *ledger.ChainID) *WrappedTx {
 	ret := &WrappedTx{
 		ID:             txid,
+		SequencerID:    seqID,
 		_genericVertex: g,
 		references:     1, // we always start with 1 reference, which is reference by the MemDAG itself. 0 references means it is deleted
 		dontPruneUntil: time.Now().Add(notReferencedVertexTTLSlots * ledger.SlotDuration()),
@@ -78,6 +79,9 @@ func (vid *WrappedTx) ConvertVirtualTxToVertexNoLock(v *Vertex) {
 	_, isVirtualTx := vid._genericVertex.(_virtualTx)
 	util.Assertf(isVirtualTx, "ConvertVirtualTxToVertexNoLock: virtual tx target expected %s", vid.ID.StringShort)
 	vid._put(_vertex{Vertex: v})
+	if v.Tx.IsSequencerMilestone() {
+		vid.SequencerID = util.Ref(v.Tx.SequencerTransactionData().SequencerID)
+	}
 }
 
 // ConvertVertexToVirtualTx detaches past cone and leaves only a collection of produced outputs
@@ -199,7 +203,7 @@ func (vid *WrappedTx) Poke() {
 func WrapTxID(txid ledger.TransactionID) *WrappedTx {
 	return _newVID(_virtualTx{
 		VirtualTransaction: newVirtualTx(),
-	}, txid)
+	}, txid, nil)
 }
 
 func (vid *WrappedTx) ShortString() string {
@@ -239,12 +243,7 @@ func (vid *WrappedTx) IDShortStringExt() string {
 	if !vid.IsSequencerMilestone() {
 		return ret
 	}
-	chainID, ok := vid.SequencerIDIfAvailable()
-	if !ok {
-		return ret + "/$??"
-	} else {
-		return ret + "/" + chainID.StringShort()
-	}
+	return ret + vid.SequencerIDStringShort()
 }
 
 func (vid *WrappedTx) IsBranchTransaction() bool {
@@ -304,58 +303,26 @@ func (vid *WrappedTx) HasOutputAt(idx byte) (bool, bool) {
 	return vid._hasOutputAt(idx)
 }
 
-func (vid *WrappedTx) SequencerIDIfAvailable() (ledger.ChainID, bool) {
-	var isAvailable bool
-	var ret ledger.ChainID
-	vid.RUnwrap(UnwrapOptions{
-		Vertex: func(v *Vertex) {
-			isAvailable = v.Tx.IsSequencerMilestone()
-			if isAvailable {
-				ret = v.Tx.SequencerTransactionData().SequencerID
-			}
-		},
-		VirtualTx: func(v *VirtualTransaction) {
-			if v.sequencerOutputs != nil {
-				seqOData, ok := v.outputs[v.sequencerOutputs[0]].SequencerOutputData()
-				util.Assertf(ok, "sequencer output data unavailable for the output #%d", v.sequencerOutputs[0])
-				ret = seqOData.ChainConstraint.ID
-				if ret == ledger.NilChainID {
-					oid := vid.OutputID(v.sequencerOutputs[0])
-					ret = ledger.MakeOriginChainID(&oid)
-				}
-				isAvailable = true
-			}
-		},
-	})
-	return ret, isAvailable
+func (vid *WrappedTx) SequencerIDStringShort() string {
+	if vid.SequencerID == nil {
+		return "/$??"
+	}
+	return vid.SequencerID.StringShort()
 }
 
 func (vid *WrappedTx) MustSequencerIDAndStemID() (seqID ledger.ChainID, stemID ledger.OutputID) {
 	util.Assertf(vid.IsBranchTransaction(), "vid.IsBranchTransaction()")
+	seqID = *vid.SequencerID
 	vid.RUnwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
-			seqID = v.Tx.SequencerTransactionData().SequencerID
 			stemID = vid.OutputID(v.Tx.SequencerTransactionData().StemOutputIndex)
 		},
 		VirtualTx: func(v *VirtualTransaction) {
 			util.Assertf(v.sequencerOutputs != nil, "v.sequencerOutputs != nil")
-			seqOData, ok := v.outputs[v.sequencerOutputs[0]].SequencerOutputData()
-			util.Assertf(ok, "sequencer output data unavailable for the output #%d", v.sequencerOutputs[0])
-			seqID = seqOData.ChainConstraint.ID
-			if seqID == ledger.NilChainID {
-				oid := vid.OutputID(v.sequencerOutputs[0])
-				seqID = ledger.MakeOriginChainID(&oid)
-			}
 			stemID = vid.OutputID(v.sequencerOutputs[1])
 		},
 	})
 	return
-}
-
-func (vid *WrappedTx) MustSequencerID() ledger.ChainID {
-	ret, ok := vid.SequencerIDIfAvailable()
-	util.Assertf(ok, "not a sequencer milestone")
-	return ret
 }
 
 func (vid *WrappedTx) SequencerWrappedOutput() (ret WrappedOutput) {

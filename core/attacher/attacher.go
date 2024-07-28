@@ -331,7 +331,7 @@ func (a *attacher) attachVertexUnwrapped(v *vertex.Vertex, vid *vertex.WrappedTx
 	// check consistency
 	if a.flags(vid).FlagsUp(FlagAttachedVertexEndorsementsSolid) {
 		err := a.allEndorsementsDefined(v)
-		a.Assertf(err == nil, "%w:\nvertices: %s", err, a.linesVertices("       ").String)
+		a.Assertf(err == nil, "%w:\nvertices: %s", err, func() string { return a.linesVertices("       ").String() })
 
 		a.Tracef(TraceTagAttachVertex, "attacher %s: endorsements (%d) are all solid in %s", a.name, v.Tx.NumEndorsements(), v.Tx.IDShortString)
 	} else {
@@ -753,6 +753,7 @@ func (a *attacher) IsCoverageAdjusted() bool {
 	return a.coverageAdjusted
 }
 
+// dumpLines lock every vid!!!
 func (a *attacher) dumpLines(prefix ...string) *lines.Lines {
 	ret := lines.New(prefix...)
 	ret.Add("attacher %s", a.name)
@@ -772,12 +773,7 @@ func (a *attacher) linesVertices(prefix ...string) *lines.Lines {
 	ret := lines.New(prefix...)
 	for vid, flags := range a.vertices {
 		_, rooted := a.rooted[vid]
-		seqIDStr := "?"
-		if seqID, ok := vid.SequencerIDIfAvailable(); ok {
-			seqIDStr = seqID.StringVeryShort()
-		}
-
-		ret.Add("%s (rooted = %v, seq: %s) local flags: %s", vid.IDShortString(), rooted, seqIDStr, flags.String())
+		ret.Add("%s (rooted = %v, seq: %s) local flags: %s", vid.IDShortString(), rooted, vid.SequencerIDStringShort(), flags.String())
 	}
 	return ret
 }

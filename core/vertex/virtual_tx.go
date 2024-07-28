@@ -39,7 +39,8 @@ func VirtualTxFromTx(tx *transaction.Transaction) *VirtualTransaction {
 }
 
 func (v *VirtualTransaction) WrapWithID(txid ledger.TransactionID) *WrappedTx {
-	return _newVID(_virtualTx{VirtualTransaction: v}, txid)
+	v.SequencerOutputs()
+	return _newVID(_virtualTx{VirtualTransaction: v}, txid, v.sequencerID(&txid))
 }
 
 func (v *VirtualTransaction) addOutput(idx byte, o *ledger.Output) {
@@ -89,4 +90,20 @@ func (v *VirtualTransaction) SequencerOutputs() (*ledger.Output, *ledger.Output)
 		util.Assertf(ok, "inconsistency 2 in virtual tx")
 	}
 	return seqOut, stemOut
+}
+
+// sequencerID returns nil if not available
+func (v *VirtualTransaction) sequencerID(txid *ledger.TransactionID) (ret *ledger.ChainID) {
+	if v.sequencerOutputs != nil {
+		seqOData, ok := v.outputs[v.sequencerOutputs[0]].SequencerOutputData()
+		util.Assertf(ok, "sequencer output data unavailable for the output #%d", v.sequencerOutputs[0])
+		idData := seqOData.ChainConstraint.ID
+		if idData == ledger.NilChainID {
+			oid := ledger.NewOutputID(txid, v.sequencerOutputs[0])
+			ret = util.Ref(ledger.MakeOriginChainID(&oid))
+		} else {
+			ret = util.Ref(idData)
+		}
+	}
+	return
 }
