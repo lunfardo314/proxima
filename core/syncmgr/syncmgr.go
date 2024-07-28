@@ -1,6 +1,7 @@
 package syncmgr
 
 import (
+	"context"
 	"sync/atomic"
 	"time"
 
@@ -26,6 +27,9 @@ type (
 
 	SyncManager struct {
 		Environment
+		ctx                         context.Context
+		cancel                      context.CancelFunc
+		cancelled                   atomic.Bool
 		syncPortionSlots            int
 		syncToleranceThresholdSlots int
 
@@ -58,8 +62,16 @@ func StartSyncManagerFromConfig(env Environment) *SyncManager {
 		d.syncToleranceThresholdSlots = global.DefaultSyncToleranceThresholdSlots
 	}
 
+	d.ctx, d.cancel = context.WithCancel(env.Ctx())
+
 	go d.syncManagerLoop()
 	return d
+}
+
+func (d *SyncManager) _cancel() {
+	d.cancelled.Store(true)
+	d.cancel()
+	d.Infof0("[sync manager] auto-cancelled")
 }
 
 const (
@@ -74,7 +86,7 @@ func (d *SyncManager) syncManagerLoop() {
 
 	for {
 		select {
-		case <-d.Ctx().Done():
+		case <-d.ctx.Done():
 			d.Infof0("[sync manager] stopped ")
 			return
 
@@ -137,11 +149,17 @@ func (d *SyncManager) NotifyEndOfPortion() {
 // We want to ignore all the current flow of transactions while syncing the state with sync manager
 // After the state become synced, the tx flow will be accepted
 func (d *SyncManager) IgnoreFutureTxID(txid *ledger.TransactionID) bool {
+	if d.cancelled.Load() {
+		// all transactions pass
+		return false
+	}
 	slotNow := int(ledger.TimeNow().Slot())
 	latestSlot := int(d.latestHealthySlotInDB.Load())
 	util.Assertf(latestSlot <= slotNow, "latestSlot <= slotNow")
 	if slotNow-latestSlot < d.syncToleranceThresholdSlots {
-		return false // accept all if not very unsynced
+		// auto-cancel sync manager. From now on node will be synced by attacher pull
+		go d._cancel()
+		return false
 	}
 	// not synced. Ignore all too close to the present time
 	ignore := int(txid.Slot()) >= slotNow-2
