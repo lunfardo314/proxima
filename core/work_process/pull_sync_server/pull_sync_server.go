@@ -96,10 +96,10 @@ func (d *PullSyncServer) Consume(inp *Input) {
 	tipRoots := multistate.FetchRootRecordsNSlotsBack(d.StateStore(), 1)
 	util.Assertf(len(tipRoots) > 0, "len(tipRoots)>0")
 	tipBranches := multistate.FetchBranchDataMulti(d.StateStore(), tipRoots...)
-	tipIDs := make([]ledger.TransactionID, len(tipBranches))
-	for i, tipBranchData := range tipBranches {
+	tipIDs := make([]ledger.TransactionID, 0, len(tipBranches))
+	for _, tipBranchData := range tipBranches {
 		if tipBranchData.IsHealthy(syncmgr.FractionHealthyBranchCriterion) {
-			tipIDs[i] = tipBranchData.Stem.ID.TransactionID()
+			tipIDs = append(tipIDs, tipBranchData.Stem.ID.TransactionID())
 		}
 	}
 

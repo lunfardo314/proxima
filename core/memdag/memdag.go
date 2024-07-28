@@ -131,7 +131,8 @@ func (d *MemDAG) GetStateReaderForTheBranch(branch *ledger.TransactionID) global
 }
 
 func (d *MemDAG) GetStateReaderForTheBranchExt(branch *ledger.TransactionID) (global.IndexedStateReader, *multistate.RootRecord) {
-	util.Assertf(branch != nil && branch.IsBranchTransaction(), "branch != nil && branch.IsBranchTransaction()")
+	util.Assertf(branch != nil, "branch != nil")
+	util.Assertf(branch.IsBranchTransaction(), "GetStateReaderForTheBranchExt: branch tx expected. Got: %s", branch.StringShort())
 
 	d.stateReadersMutex.Lock()
 	defer d.stateReadersMutex.Unlock()
