@@ -55,14 +55,15 @@ func (t *SequencerTips) Start() {
 }
 
 func (t *SequencerTips) Consume(inp Input) {
-	t.Assertf(inp.VID.SequencerID != nil, "inp.VID.SequencerID != nil")
-	t.Environment.Tracef(TraceTag, "seq milestone IN: %s of %s", inp.VID.IDShortString, inp.VID.SequencerID.StringShort)
+	seqID := inp.VID.SequencerID.Load()
+	t.Assertf(seqID != nil, "inp.VID.SequencerID != nil")
+	t.Environment.Tracef(TraceTag, "seq milestone IN: %s of %s", inp.VID.IDShortString, seqID.StringShort)
 
 	t.mutex.Lock()
 	defer t.mutex.Unlock()
 
 	storedNew := false
-	old, prevExists := t.latestMilestones[*inp.VID.SequencerID]
+	old, prevExists := t.latestMilestones[*seqID]
 	if prevExists {
 		if old == inp.VID {
 			// repeating, ignore
@@ -75,7 +76,7 @@ func (t *SequencerTips) Consume(inp Input) {
 		if t.oldReplaceWithNew(old, inp.VID) {
 			if inp.VID.Reference() {
 				old.UnReference()
-				t.latestMilestones[*inp.VID.SequencerID] = inp.VID
+				t.latestMilestones[*seqID] = inp.VID
 				storedNew = true
 			}
 		} else {
@@ -83,7 +84,7 @@ func (t *SequencerTips) Consume(inp Input) {
 		}
 	} else {
 		if inp.VID.Reference() {
-			t.latestMilestones[*inp.VID.SequencerID] = inp.VID
+			t.latestMilestones[*seqID] = inp.VID
 			storedNew = true
 		}
 	}

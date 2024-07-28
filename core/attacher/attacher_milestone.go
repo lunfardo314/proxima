@@ -222,8 +222,8 @@ func (a *milestoneAttacher) solidifyPastCone() vertex.Status {
 		case !ok:
 			return vertex.Bad
 		case finalSuccess:
-			//util.Assertf(a.containsUndefinedExcept(a.vid),
-			//	"inconsistency: attacher %s is 'finalSuccess' but still contains undefined vertices. Lines:\n%s", a.name, a.dumpLines())
+			util.Assertf(!a.containsUndefinedExcept(a.vid),
+				"inconsistency: attacher %s is 'finalSuccess' but still contains undefined vertices. Lines:\n%s", a.name, a.dumpLines())
 			return vertex.Good
 		default:
 			return vertex.Undefined
@@ -232,9 +232,9 @@ func (a *milestoneAttacher) solidifyPastCone() vertex.Status {
 }
 
 func (a *milestoneAttacher) validateSequencerTxUnwrapped(v *vertex.Vertex) (ok, finalSuccess bool) {
-	//if a.containsUndefinedExcept(a.vid) {
-	//	return true, false
-	//}
+	if a.containsUndefinedExcept(a.vid) {
+		return true, false
+	}
 	flags := a.flags(a.vid)
 	if !flags.FlagsUp(FlagAttachedVertexEndorsementsSolid) || !flags.FlagsUp(FlagAttachedVertexInputsSolid) {
 		return true, false

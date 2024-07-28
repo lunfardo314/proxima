@@ -33,8 +33,9 @@ type (
 	WrappedTx struct {
 		// immutable ID. It does not change with the change of the underlying wrapped vertex type
 		ID ledger.TransactionID
-		// not nil for sequencer transactions only. Immutable
-		SequencerID *ledger.ChainID
+		// sequencer ID not nil for sequencer transactions only. Once it is set not nil, it is immutable since.
+		// It is set whenever transaction becomes available
+		SequencerID atomic.Pointer[ledger.ChainID]
 		mutex       sync.RWMutex // protects _genericVertex
 		flags       Flags
 		err         error

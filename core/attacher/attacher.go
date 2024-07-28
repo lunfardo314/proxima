@@ -538,8 +538,9 @@ func (a *attacher) attachInput(v *vertex.Vertex, inputIdx byte, vid *vertex.Wrap
 	if !ok {
 		return ok, false
 	}
-	// TODO ???
-	defined = a.isKnownDefined(v.Inputs[inputIdx]) || a.isRootedOutput(wOut)
+	// TODO ??? bug: if inout tx is known defined, the output itself may not be rooted
+	//defined = a.isKnownDefined(v.Inputs[inputIdx]) || a.isRootedOutput(wOut)
+
 	if defined {
 		a.Tracef(TraceTagAttachVertex, "attacher %s: input #%d (%s) has been solidified", a.name, inputIdx, wOut.IDShortString)
 	}
@@ -773,7 +774,7 @@ func (a *attacher) linesVertices(prefix ...string) *lines.Lines {
 	ret := lines.New(prefix...)
 	for vid, flags := range a.vertices {
 		_, rooted := a.rooted[vid]
-		ret.Add("%s (rooted = %v, seq: %s) local flags: %s", vid.IDShortString(), rooted, vid.SequencerIDStringShort(), flags.String())
+		ret.Add("%s (rooted = %v, seq: %s) local flags: %s", vid.IDShortString(), rooted, vid.SequencerIDStringVeryShort(), flags.String())
 	}
 	return ret
 }

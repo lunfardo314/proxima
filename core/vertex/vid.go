@@ -42,11 +42,11 @@ func (v _virtualTx) _hasOutputAt(idx byte) (bool, bool) {
 func _newVID(g _genericVertex, txid ledger.TransactionID, seqID *ledger.ChainID) *WrappedTx {
 	ret := &WrappedTx{
 		ID:             txid,
-		SequencerID:    seqID,
 		_genericVertex: g,
 		references:     1, // we always start with 1 reference, which is reference by the MemDAG itself. 0 references means it is deleted
 		dontPruneUntil: time.Now().Add(notReferencedVertexTTLSlots * ledger.SlotDuration()),
 	}
+	ret.SequencerID.Store(seqID)
 	ret.onPoke.Store(func() {})
 	return ret
 }
@@ -80,7 +80,7 @@ func (vid *WrappedTx) ConvertVirtualTxToVertexNoLock(v *Vertex) {
 	util.Assertf(isVirtualTx, "ConvertVirtualTxToVertexNoLock: virtual tx target expected %s", vid.ID.StringShort)
 	vid._put(_vertex{Vertex: v})
 	if v.Tx.IsSequencerMilestone() {
-		vid.SequencerID = util.Ref(v.Tx.SequencerTransactionData().SequencerID)
+		vid.SequencerID.Store(util.Ref(v.Tx.SequencerTransactionData().SequencerID))
 	}
 }
 
@@ -304,15 +304,26 @@ func (vid *WrappedTx) HasOutputAt(idx byte) (bool, bool) {
 }
 
 func (vid *WrappedTx) SequencerIDStringShort() string {
-	if vid.SequencerID == nil {
+	cid := vid.SequencerID.Load()
+	if cid == nil {
 		return "/$??"
 	}
-	return vid.SequencerID.StringShort()
+	return cid.StringShort()
+}
+
+func (vid *WrappedTx) SequencerIDStringVeryShort() string {
+	cid := vid.SequencerID.Load()
+	if cid == nil {
+		return "/$??"
+	}
+	return cid.StringVeryShort()
 }
 
 func (vid *WrappedTx) MustSequencerIDAndStemID() (seqID ledger.ChainID, stemID ledger.OutputID) {
 	util.Assertf(vid.IsBranchTransaction(), "vid.IsBranchTransaction()")
-	seqID = *vid.SequencerID
+	p := vid.SequencerID.Load()
+	util.Assertf(p != nil, "sequencerID is must be not nil")
+	seqID = *p
 	vid.RUnwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
 			stemID = vid.OutputID(v.Tx.SequencerTransactionData().StemOutputIndex)
