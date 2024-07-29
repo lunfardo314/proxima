@@ -139,7 +139,7 @@ logger:
   #   1 - logging branches, sequencer transaction + sync manager activity
   #   2 - not implemented
   # for tracing configure trace_tags
-  verbosity: 1
+  verbosity: 0
   output: proxima.log
   # options: 'erase' (previous will be erased), 'save' (previous will be saved and then deleted)
   # Otherwise or when absent: log will be appended in the same existing file

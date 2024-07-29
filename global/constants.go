@@ -12,7 +12,7 @@ const (
 	ConfigKeyTxStoreType = "txstore.type"
 
 	// MaxSyncPortionSlots max number of slots in the sync portion
-	MaxSyncPortionSlots = 500
+	MaxSyncPortionSlots = 100
 
 	// DefaultSyncToleranceThresholdSlots specifies threshold of diff between current slot and latest slot in DB
 	// when start pulling sync portions

@@ -77,7 +77,7 @@ func (d *SyncManager) _cancel() {
 const (
 	checkSyncEvery = 500 * time.Millisecond
 	// portionExpectedIn when repeat portion pull
-	portionExpectedIn = 5 * time.Second
+	portionExpectedIn = 10 * time.Second
 )
 
 func (d *SyncManager) syncManagerLoop() {

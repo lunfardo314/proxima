@@ -60,7 +60,7 @@ func (p *Pruner) pruneVertices() (int, int) {
 }
 
 func (p *Pruner) Start() {
-	p.Log().Infof("STARTING.. [%s]", p.Log().Level().String())
+	p.Infof0("STARTING MemDAG pruner.. [%s]", p.Log().Level().String())
 	go func() {
 		p.mainLoop()
 		p.Log().Debugf("MemDAG pruner STOPPED")
@@ -78,7 +78,7 @@ func (p *Pruner) doPrune() {
 		memStats.NumGC,
 		runtime.NumGoroutine(),
 	)
-	p.Infof1("vertices deleted: %d, detached past cones: %d. Vertices left: %d. Cached state readers purged: %d, left: %d. "+memStr,
+	p.Infof0("vertices deleted: %d, detached past cones: %d. Vertices left: %d. Cached state readers purged: %d, left: %d. "+memStr,
 		nDeleted, nUnReferenced, p.NumVertices(), nReadersPurged, readersLeft)
 }
 

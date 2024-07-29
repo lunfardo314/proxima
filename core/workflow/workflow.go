@@ -171,7 +171,7 @@ func (w *Workflow) logSyncStatusLoop() {
 			latestSlot, latestHealthySlot, synced := w.LatestBranchSlots()
 			if !synced {
 				nowSlot := ledger.TimeNow().Slot()
-				w.Log().Warnf("node is NOT SYNCED with the network. Last committed slot is %d (%d slots back). Last heathy slot is %d (%d slots back)",
+				w.Log().Warnf("node is NOT SYNCED with the network. Last committed slot is %d (%d slots back). Last healthy slot is %d (%d slots back)",
 					latestSlot, nowSlot-latestSlot, latestHealthySlot, nowSlot-latestHealthySlot)
 			}
 		}
