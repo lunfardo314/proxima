@@ -102,7 +102,9 @@ func NewFromConfig(env Environment, peers *peering.Peers) *Workflow {
 
 func (w *Workflow) Start() {
 	w.Log().Infof("starting work processes. Ledger time now is %s", ledger.TimeNow().String())
-
+	if w.SyncServerDisabled() {
+		w.Log().Infof("sync server has been disabled")
+	}
 	w.poker.Start()
 	w.events.Start()
 	w.pullClient.Start()
