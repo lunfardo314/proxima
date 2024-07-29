@@ -281,3 +281,7 @@ func (p *ProximaNode) startMetrics() {
 	}()
 	p.Log().Infof("Prometheus metrics exposed on port %d", port)
 }
+
+func (p *ProximaNode) SyncServerDisabled() bool {
+	return viper.GetBool("workflow.sync_server.disable")
+}

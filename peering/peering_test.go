@@ -45,6 +45,18 @@ func TestGenData(t *testing.T) {
 	})
 }
 
+type peeringEnvForTesting struct {
+	*global.Global
+}
+
+func (e *peeringEnvForTesting) SyncServerDisabled() bool {
+	return false
+}
+
+func newEnvironment() Environment {
+	return &peeringEnvForTesting{global.NewDefault()}
+}
+
 func TestBasic(t *testing.T) {
 	t.Run("1", func(t *testing.T) {
 		const hostIndex = 2
@@ -53,14 +65,14 @@ func TestBasic(t *testing.T) {
 		for name, ma := range cfg.PreConfiguredPeers {
 			t.Logf("%s : %s", name, ma.String())
 		}
-		env := global.NewDefault()
+		env := newEnvironment()
 		_, err := New(env, cfg)
 		require.NoError(t, err)
 	})
 	t.Run("2", func(t *testing.T) {
 		const hostIndex = 2
 		cfg := MakeConfigFor(5, hostIndex)
-		env := global.NewDefault()
+		env := newEnvironment()
 		peers, err := New(env, cfg)
 		require.NoError(t, err)
 		peers.Run()
@@ -73,7 +85,7 @@ func makeHosts(t *testing.T, nHosts int, trace bool) []*Peers {
 	var err error
 	for i := 0; i < nHosts; i++ {
 		cfg := MakeConfigFor(nHosts, i)
-		env := global.NewDefault()
+		env := newEnvironment()
 		hosts[i], err = New(env, cfg)
 		require.NoError(t, err)
 		if trace {

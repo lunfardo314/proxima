@@ -13,28 +13,40 @@ import (
 )
 
 type heartbeatInfo struct {
-	clock      time.Time
-	hasTxStore bool
+	clock                   time.Time
+	hasTxStore              bool
+	acceptsPullSyncRequests bool
 }
+
+const (
+	flagHasTxStore              = byte(0b00000001)
+	flagAcceptsPullSyncRequests = byte(0x00000010)
+)
 
 func heartbeatInfoFromBytes(data []byte) (heartbeatInfo, error) {
 	if len(data) != 8+1 {
 		return heartbeatInfo{}, fmt.Errorf("heartbeatInfoFromBytes: wrong data len")
 	}
-	nano := int64(binary.BigEndian.Uint64(data[:8]))
-	var hasTxStore bool
-	if data[8] != 0 {
-		if data[8] == 0xff {
-			hasTxStore = true
-		} else {
-			return heartbeatInfo{}, fmt.Errorf("heartbeatInfoFromBytes: wrong data")
-		}
-	}
 	ret := heartbeatInfo{
-		clock:      time.Unix(0, nano),
-		hasTxStore: hasTxStore,
+		clock: time.Unix(0, int64(binary.BigEndian.Uint64(data[:8]))),
 	}
+	ret.setFromFlags(data[8])
 	return ret, nil
+}
+
+func (hi *heartbeatInfo) flags() (ret byte) {
+	if hi.hasTxStore {
+		ret |= flagHasTxStore
+	}
+	if hi.acceptsPullSyncRequests {
+		ret |= flagAcceptsPullSyncRequests
+	}
+	return
+}
+
+func (hi *heartbeatInfo) setFromFlags(fl byte) {
+	hi.hasTxStore = (fl | flagHasTxStore) != 0
+	hi.acceptsPullSyncRequests = (fl | flagAcceptsPullSyncRequests) != 0
 }
 
 func (hi *heartbeatInfo) Bytes() []byte {
@@ -43,11 +55,7 @@ func (hi *heartbeatInfo) Bytes() []byte {
 
 	binary.BigEndian.PutUint64(timeNanoBin[:], uint64(hi.clock.UnixNano()))
 	buf.Write(timeNanoBin[:])
-	var boolBin byte
-	if hi.hasTxStore {
-		boolBin = 0xff
-	}
-	buf.WriteByte(boolBin)
+	buf.WriteByte(hi.flags())
 	return buf.Bytes()
 }
 
@@ -183,6 +191,7 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 		}
 		p._evidenceActivity("hb")
 		p.hasTxStore = hbInfo.hasTxStore
+		p.acceptsPullSyncRequests = hbInfo.acceptsPullSyncRequests
 		p._evidenceClockDifference(clockDiff)
 	})
 }
@@ -195,8 +204,9 @@ func (ps *Peers) sendHeartbeatToPeer(id peer.ID) {
 	defer func() { _ = stream.Close() }()
 
 	hbInfo := heartbeatInfo{
-		clock:      time.Now(),
-		hasTxStore: true,
+		clock:                   time.Now(),
+		hasTxStore:              true, // at the moment txStore always is part of the node
+		acceptsPullSyncRequests: ps.acceptsPullSyncRequests,
 	}
 	err = writeFrame(stream, hbInfo.Bytes())
 	if err != nil {

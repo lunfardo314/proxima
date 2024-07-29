@@ -30,6 +30,7 @@ import (
 type (
 	Environment interface {
 		global.NodeGlobal
+		SyncServerDisabled() bool
 	}
 
 	Config struct {
@@ -39,19 +40,21 @@ type (
 		PreConfiguredPeers map[string]multiaddr.Multiaddr // name -> PeerAddr. Static peers used also for bootstrap
 		// MaxDynamicPeers if MaxDynamicPeers <= len(PreConfiguredPeers), autopeering is disabled, otherwise up to
 		// MaxDynamicPeers - len(PreConfiguredPeers) will be auto-peered
-		MaxDynamicPeers int
+		MaxDynamicPeers        int
+		AcceptPullSyncRequests bool
 	}
 
 	Peers struct {
 		Environment
-		mutex            sync.RWMutex
-		cfg              *Config
-		stopOnce         sync.Once
-		host             host.Host
-		kademliaDHT      *dht.IpfsDHT // not nil if autopeering is enabled
-		routingDiscovery *routing.RoutingDiscovery
-		peers            map[peer.ID]*Peer // except self/host
-		blacklist        map[peer.ID]time.Time
+		mutex                   sync.RWMutex
+		cfg                     *Config
+		stopOnce                sync.Once
+		host                    host.Host
+		kademliaDHT             *dht.IpfsDHT // not nil if autopeering is enabled
+		routingDiscovery        *routing.RoutingDiscovery
+		peers                   map[peer.ID]*Peer // except self/host
+		blacklist               map[peer.ID]time.Time
+		acceptsPullSyncRequests bool
 		// on receive handlers
 		onReceiveTx              func(from peer.ID, txBytes []byte, mdata *txmetadata.TransactionMetadata)
 		onReceivePullTx          func(from peer.ID, txids []ledger.TransactionID)
@@ -64,14 +67,15 @@ type (
 	}
 
 	Peer struct {
-		id                  peer.ID
-		name                string
-		isStatic            bool // statically pre-configured (manual peering)
-		hasTxStore          bool
-		whenAdded           time.Time
-		lastMsgReceived     time.Time
-		lastMsgReceivedFrom string
-		lastLoggedConnected bool // toggle
+		id                      peer.ID
+		name                    string
+		isStatic                bool // statically pre-configured (manual peering)
+		hasTxStore              bool
+		acceptsPullSyncRequests bool
+		whenAdded               time.Time
+		lastMsgReceived         time.Time
+		lastMsgReceivedFrom     string
+		lastLoggedConnected     bool // toggle
 		// ring buffer with last clock differences
 		clockDifferences    [10]time.Duration
 		clockDifferencesIdx int
@@ -189,9 +193,10 @@ func New(env Environment, cfg *Config) (*Peers, error) {
 	return ret, nil
 }
 
-func readPeeringConfig(boot bool) (*Config, error) {
+func readPeeringConfig(env Environment) (*Config, error) {
 	cfg := &Config{
-		PreConfiguredPeers: make(map[string]multiaddr.Multiaddr),
+		PreConfiguredPeers:     make(map[string]multiaddr.Multiaddr),
+		AcceptPullSyncRequests: !env.SyncServerDisabled(),
 	}
 	cfg.HostPort = viper.GetInt("peering.host.port")
 	if cfg.HostPort == 0 {
@@ -225,7 +230,7 @@ func readPeeringConfig(boot bool) (*Config, error) {
 		return k1 < k2
 	})
 
-	if !boot && len(peerNames) == 0 {
+	if !env.IsBootstrapNode() && len(peerNames) == 0 {
 		return nil, fmt.Errorf("at least one peer must be pre-configured for bootstrap")
 	}
 	for _, peerName := range peerNames {
@@ -239,14 +244,14 @@ func readPeeringConfig(boot bool) (*Config, error) {
 	if cfg.MaxDynamicPeers < 0 {
 		cfg.MaxDynamicPeers = 0
 	}
-	if boot && cfg.MaxDynamicPeers < numMaxDynamicPeersForBootNodeAtLeast {
+	if env.IsBootstrapNode() && cfg.MaxDynamicPeers < numMaxDynamicPeersForBootNodeAtLeast {
 		cfg.MaxDynamicPeers = numMaxDynamicPeersForBootNodeAtLeast
 	}
 	return cfg, nil
 }
 
 func NewPeersFromConfig(env Environment) (*Peers, error) {
-	cfg, err := readPeeringConfig(env.IsBootstrapNode())
+	cfg, err := readPeeringConfig(env)
 	if err != nil {
 		return nil, err
 	}

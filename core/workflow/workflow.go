@@ -32,6 +32,7 @@ type (
 		global.NodeGlobal
 		StateStore() global.StateStore
 		TxBytesStore() global.TxBytesStore
+		SyncServerDisabled() bool
 	}
 	Workflow struct {
 		Environment
@@ -78,7 +79,9 @@ func New(env Environment, peers *peering.Peers, opts ...ConfigOption) *Workflow 
 	ret.events = events.New(ret)
 	ret.pullClient = pull_client.New(ret)
 	ret.pullTxServer = pull_tx_server.New(ret)
-	ret.pullSyncServer = pull_sync_server.New(ret)
+	if !env.SyncServerDisabled() {
+		ret.pullSyncServer = pull_sync_server.New(ret)
+	}
 	ret.gossip = gossip.New(ret)
 	ret.persistTxBytes = persist_txbytes.New(ret)
 	ret.tippool = tippool.New(ret)
@@ -104,7 +107,9 @@ func (w *Workflow) Start() {
 	w.events.Start()
 	w.pullClient.Start()
 	w.pullTxServer.Start()
-	w.pullSyncServer.Start()
+	if !w.SyncServerDisabled() {
+		w.pullSyncServer.Start()
+	}
 	w.gossip.Start()
 	w.persistTxBytes.Start()
 	w.tippool.Start()
@@ -134,13 +139,15 @@ func (w *Workflow) Start() {
 		w.SendTx(from, txids...)
 	})
 
-	w.peers.OnReceivePullSyncPortion(func(from peer.ID, startingFrom ledger.Slot, maxSlots int) {
-		w.pullSyncServer.Push(&pull_sync_server.Input{
-			StartFrom: startingFrom,
-			MaxSlots:  maxSlots,
-			PeerID:    from,
+	if !w.SyncServerDisabled() {
+		w.peers.OnReceivePullSyncPortion(func(from peer.ID, startingFrom ledger.Slot, maxSlots int) {
+			w.pullSyncServer.Push(&pull_sync_server.Input{
+				StartFrom: startingFrom,
+				MaxSlots:  maxSlots,
+				PeerID:    from,
+			})
 		})
-	})
+	}
 
 	go w.logSyncStatusLoop()
 }

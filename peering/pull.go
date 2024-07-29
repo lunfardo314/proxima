@@ -164,7 +164,7 @@ func (ps *Peers) PullSyncPortionFromRandomPeer(startingFrom ledger.Slot, maxSlot
 		rndID := all[idx]
 		p := ps.peers[rndID]
 		_, inBlacklist := ps.blacklist[rndID]
-		if !inBlacklist && !p._isDead() && p.hasTxStore {
+		if !inBlacklist && !p._isDead() && p.hasTxStore && p.acceptsPullSyncRequests {
 			ps.Log().Infof("[peering] pull sync portion from random peer %s. From slot: %d, up to slots: %d",
 				ShortPeerIDString(rndID), int(startingFrom), maxSlots)
 			ps.sendPullSyncPortionToPeer(rndID, startingFrom, maxSlots)
