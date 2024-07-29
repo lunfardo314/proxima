@@ -132,13 +132,13 @@ api:
 # logger config
 # logger.previous can be 'erase' or 'save'
 logger:
-  // debug level almost not used
+  # debug level almost not used
   level: info
-  // verbosity:
-  //   0 - logging branches
-  //   1 - logging branches, sequencer transaction + sync manager activity
-  //   2 - not implemented
-  // for tracing configure trace_tags
+  # verbosity:
+  #   0 - logging branches
+  #   1 - logging branches, sequencer transaction + sync manager activity
+  #   2 - not implemented
+  # for tracing configure trace_tags
   verbosity: 1
   output: proxima.log
   # options: 'erase' (previous will be erased), 'save' (previous will be saved and then deleted)
