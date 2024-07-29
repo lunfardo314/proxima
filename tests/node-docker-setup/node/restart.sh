@@ -21,4 +21,8 @@ kill_proxima() {
 kill_proxima
 sleep 2  # let process die
 
+# save config files
+cp ./proxi.yaml ./config/proxi.yaml
+cp ./proxima.yaml ./config/proxima.yaml
+
 ./proxima &

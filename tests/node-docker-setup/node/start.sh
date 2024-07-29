@@ -1,11 +1,23 @@
 #!/bin/sh
 
+# first try to fetch from local harddrive
+if [ -f "./config/proxi.yaml" ]; then
+    cp ./config/proxi.yaml ./proxi.yaml
+fi
+
 if [ ! -f "./proxi.yaml" ]; then
     ./proxi init wallet    
+    cp ./proxi.yaml ./config/proxi.yaml
+fi
+
+# first try to fetch from local harddrive
+if [ -f "./config/proxima.yaml" ]; then
+    cp ./config/proxima.yaml ./proxima.yaml
 fi
 
 if [ ! -f "./proxima.yaml" ]; then
     ./proxi init node -s
+    cp ./proxima.yaml ./config/proxima.yaml
 fi
 
 if [ ! -d "./proximadb" ]; then

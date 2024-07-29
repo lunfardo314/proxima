@@ -35,7 +35,7 @@ const (
 	proximaNodeProfile     = "proxima.yaml"
 	peeringPort            = 4000
 	apiPort                = 8000
-	defaultMaxDynamicPeers = 3
+	defaultMaxDynamicPeers = 5
 )
 
 type configFileData struct {
