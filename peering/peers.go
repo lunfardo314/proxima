@@ -341,6 +341,15 @@ func (ps *Peers) dropPeer(id peer.ID, reason ...string) {
 
 func (ps *Peers) _dropPeer(p *Peer, reason ...string) {
 	util.Assertf(p != nil, "removeDynamicPeer: p!=nil")
+	why := ""
+	if len(reason) > 0 {
+		why = fmt.Sprintf(". Reason: '%s'", reason[0])
+	}
+
+	if p.isStatic {
+		ps.Log().Warnf("[peering] cannot drop static peer %s - %s%s", ShortPeerIDString(p.id), p.name, why)
+		return
+	}
 	util.Assertf(!p.isStatic, "removeDynamicPeer: must not be pre-configured")
 
 	ps.host.Peerstore().RemovePeer(p.id)
@@ -350,10 +359,6 @@ func (ps *Peers) _dropPeer(p *Peer, reason ...string) {
 
 	ps._addToBlacklist(p.id, time.Minute)
 
-	why := ""
-	if len(reason) > 0 {
-		why = fmt.Sprintf(". Reason: '%s'", reason[0])
-	}
 	ps.Log().Infof("[peering] dropped dynamic peer %s - %s%s", ShortPeerIDString(p.id), p.name, why)
 }
 
