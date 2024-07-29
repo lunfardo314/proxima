@@ -359,7 +359,7 @@ func (seq *Sequencer) getNextTargetTime() ledger.Time {
 	}
 
 	if targetAbsoluteMinimum.TicksToNextSlotBoundary() <= seq.config.Pace {
-		return nextSlotBoundary
+		return ledger.MaxTime(nextSlotBoundary, targetAbsoluteMinimum)
 	}
 
 	return targetAbsoluteMinimum
