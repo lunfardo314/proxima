@@ -10,5 +10,8 @@ services:
       - "4000:4000"
     environment:
       - DEBUG=true
+    volumes:
+      - ./data/proximadb:/app/proximadb
+      - ./data/proximadb.txstore:/app/proximadb.txstore
     working_dir: /app     
     command: ["./start.sh"]

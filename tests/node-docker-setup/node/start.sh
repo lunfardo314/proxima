@@ -12,6 +12,11 @@ if [ ! -d "./proximadb" ]; then
     ./proxi init genesis_db
 fi
 
+if [ -z "$(ls -A "./proximadb" 2>/dev/null)" ]; then
+    # dir is empty
+    ./proxi init genesis_db
+fi
+
 ./proxima &
 
 # do not let the script end
