@@ -10,10 +10,12 @@ import (
 )
 
 type SimpleTxBytesStore struct {
-	s              common.KVStore
-	metricsEnabled bool
-	txCounter      prometheus.Counter
-	txBytesCounter prometheus.Counter
+	s                                common.KVStore
+	metricsEnabled                   bool
+	txCounter                        prometheus.Counter
+	txBytesCounter                   prometheus.Counter
+	txBytesSizeHistogram             prometheus.Histogram
+	txBytesSeqNonBranchSizeHistogram prometheus.Histogram
 }
 
 type DummyTxBytesStore struct {
@@ -41,8 +43,31 @@ func (s *SimpleTxBytesStore) registerMetrics(reg *prometheus.Registry) {
 		Help: "new transaction bytes (cumulative size) counter in SimpleTxBytesStore",
 	})
 	reg.MustRegister(s.txBytesCounter)
+
+	const lastSizeBucket = 2000
+
+	s.txBytesSizeHistogram = prometheus.NewHistogram(prometheus.HistogramOpts{
+		Name:    "txStore_txBytesSizeHistogram",
+		Help:    "collects data about size of raw transaction bytes",
+		Buckets: _makeBuckets(lastSizeBucket),
+	})
+	reg.MustRegister(s.txBytesSizeHistogram)
+
+	s.txBytesSeqNonBranchSizeHistogram = prometheus.NewHistogram(prometheus.HistogramOpts{
+		Name:    "txStore_txBytesSeqNonBranchSizeHistogram",
+		Help:    "collects data about size of raw sequencer non-branch transaction bytes",
+		Buckets: _makeBuckets(lastSizeBucket),
+	})
+	reg.MustRegister(s.txBytesSeqNonBranchSizeHistogram)
 }
 
+func _makeBuckets(lastSize int) []float64 {
+	ret := make([]float64, 0)
+	for b := 0; b <= lastSize; b += 50 {
+		ret = append(ret, float64(b))
+	}
+	return ret
+}
 func (s *SimpleTxBytesStore) PersistTxBytesWithMetadata(txBytes []byte, metadata *txmetadata.TransactionMetadata) (ledger.TransactionID, error) {
 	txid, err := transaction.IDFromTransactionBytes(txBytes)
 	if err != nil {
@@ -56,8 +81,13 @@ func (s *SimpleTxBytesStore) PersistTxBytesWithMetadata(txBytes []byte, metadata
 	s.s.Set(txid[:], common.ConcatBytes(metadata.Bytes(), txBytes))
 
 	if s.metricsEnabled {
+		size := float64(len(txBytes))
 		s.txCounter.Inc()
-		s.txBytesCounter.Add(float64(len(txBytes)))
+		s.txBytesCounter.Add(size)
+		s.txBytesSizeHistogram.Observe(size)
+		if txid.IsSequencerMilestone() && !txid.IsBranchTransaction() {
+			s.txBytesSeqNonBranchSizeHistogram.Observe(size)
+		}
 	}
 	return txid, nil
 }
