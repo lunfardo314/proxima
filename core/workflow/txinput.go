@@ -137,12 +137,20 @@ func (w *Workflow) TxBytesIn(txBytes []byte, opts ...TxBytesInOption) (*ledger.T
 
 	go func() {
 		time.Sleep(delayFor)
+		_ensureNowIsAfter(txTime) // to avoid time rounding errors
+
 		w.Tracef(TraceTagTxInput, "%s -> release", txid.StringShort)
 		w.TraceTx(txid, "TxBytesIn: -> release")
 
 		w._attach(tx, attachOpts...)
 	}()
 	return txid, nil
+}
+
+func _ensureNowIsAfter(targetTime time.Time) {
+	for !time.Now().After(targetTime) {
+		time.Sleep(time.Millisecond)
+	}
 }
 
 func (w *Workflow) _attach(tx *transaction.Transaction, opts ...attacher.Option) {
