@@ -29,6 +29,10 @@ func (d *workflowDummyEnvironment) TxBytesStore() global.TxBytesStore {
 	return d.txBytesStore
 }
 
+func (d *workflowDummyEnvironment) SyncServerDisabled() bool {
+	return true
+}
+
 func newWorkflowDummyEnvironment() *workflowDummyEnvironment {
 	return &workflowDummyEnvironment{
 		Global:       global.NewDefault(),

@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/ed25519"
 	"errors"
-	"runtime/debug"
 	"sync"
 	"time"
 
@@ -288,7 +287,7 @@ func (mf *MilestoneFactory) startProposerWorkers(targetTime ledger.Time, ctx con
 						mf.Log().Warnf("startProposerWorkers: %v", err)
 						return false
 					}
-					mf.Log().Fatalf("startProposerWorkers: %v\n%s", err, string(debug.Stack()))
+					mf.Log().Fatalf("startProposerWorkers: %v", err)
 					return true
 				})
 		}

@@ -8,14 +8,14 @@ import (
 func CatchPanicOrError(f func() error, includeStack ...bool) error {
 	var err error
 	var stack string
-	takeStack := len(includeStack) > 0 && includeStack[0]
+	addStack := len(includeStack) > 0 && includeStack[0]
 	func() {
 		defer func() {
 			r := recover()
 			if r == nil {
 				return
 			}
-			if takeStack {
+			if addStack {
 				stack = string(debug.Stack())
 			}
 			var ok bool
@@ -25,7 +25,7 @@ func CatchPanicOrError(f func() error, includeStack ...bool) error {
 		}()
 		err = f()
 	}()
-	if err != nil && takeStack {
+	if err != nil && addStack {
 		err = fmt.Errorf("%w\n%s", err, stack) // %w is essential, otherwise does not catch the error
 	}
 	return err
@@ -36,13 +36,13 @@ func RunWrappedRoutine(name string, fun func(), onPanic func(err error) bool) {
 		err := CatchPanicOrError(func() error {
 			fun()
 			return nil
-		}, false)
+		}, true)
 		if err == nil {
 			return
 		}
-		if onPanic(err) {
+		if onPanic == nil || onPanic(err) {
 			// if not suppressed, rise panic
-			panic(fmt.Errorf("panic in '%s': %v (err type = %T)\n%s", name, err, err, string(debug.Stack())))
+			panic(fmt.Errorf("panic in '%s': %v (err type = %T)", name, err, err))
 		}
 	}()
 }

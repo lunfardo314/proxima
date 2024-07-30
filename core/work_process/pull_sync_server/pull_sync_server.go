@@ -92,7 +92,7 @@ func (d *PullSyncServer) Consume(inp *Input) {
 
 	branchIDs := make([]ledger.TransactionID, 0)
 
-	// collect tips
+	// collect healthy tips
 	tipRoots := multistate.FetchRootRecordsNSlotsBack(d.StateStore(), 1)
 	util.Assertf(len(tipRoots) > 0, "len(tipRoots)>0")
 	tipBranches := multistate.FetchBranchDataMulti(d.StateStore(), tipRoots...)
@@ -109,6 +109,7 @@ func (d *PullSyncServer) Consume(inp *Input) {
 
 	util.Assertf(startFromSlot < latestHealthySlot, "startFromSlot < latestHealthySlot")
 
+	// iterating slots
 	for slot := startFromSlot; nslots < maxSlots && slot < latestHealthySlot && slot < slotNow; slot++ {
 		// fetch branches of the slot
 		branches := multistate.FetchBranchDataMulti(store, multistate.FetchRootRecords(store, slot)...)

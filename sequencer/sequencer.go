@@ -126,8 +126,6 @@ func (seq *Sequencer) Start() {
 		go runFun()
 	} else {
 		util.RunWrappedRoutine(seq.config.SequencerName+"[mainLoop]", runFun, func(err error) bool {
-			util.Assertf(seq != nil, "seq != nil")
-			util.Assertf(seq.log != nil, "seq.log != nil")
 			seq.log.Fatal(err)
 			return false
 		})
