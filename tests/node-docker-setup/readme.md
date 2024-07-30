@@ -45,7 +45,7 @@ TOTAL controlled on 1 outputs: 2_000_000_000_000
 
 This also shows that currently no funds are on a chain.
 
-Now you can setup a sequencer with the command
+Now you can setup a sequencer with the command. The minimum amount required for a sequencer is 1000000000.
 
 ```bash
 ./proxi node setup_seq --finality.weak mySeq 1000000000000
