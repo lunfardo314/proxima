@@ -38,20 +38,15 @@ func (w *Workflow) GossipTransactionIfNeeded(tx *transaction.Transaction, metada
 	if metadata.DoNotNeedGossiping {
 		return
 	}
+	metadata.DoNotNeedGossiping = true
 	if metadata.IsResponseToPull {
-		metadata.DoNotNeedGossiping = true
 		return
 	}
-	inp := &gossip.Input{
+	w.gossip.Push(&gossip.Input{
 		Tx:           tx,
 		ReceivedFrom: receivedFromPeer,
-	}
-	if metadata != nil {
-		w.Assertf(!metadata.IsResponseToPull, "!metadata.IsResponseToPull")
-		inp.Metadata = *metadata
-	}
-	metadata.DoNotNeedGossiping = true
-	w.gossip.Push(inp)
+		Metadata:     *metadata,
+	})
 }
 
 func (w *Workflow) PokeMe(me, with *vertex.WrappedTx) {

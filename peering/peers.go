@@ -442,10 +442,6 @@ func (ps *Peers) PeerName(id peer.ID) string {
 	return p.name
 }
 
-func (ps *Peers) EvidenceIncomingTx(good bool, from peer.ID) {
-	// TODO metrics
-}
-
 func (ps *Peers) blacklistCleanupLoop() {
 	for {
 		select {

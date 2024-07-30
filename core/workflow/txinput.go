@@ -29,17 +29,12 @@ const (
 	TraceTagTxInput = "txinput"
 )
 
-func (w *Workflow) _evidenceIncomingTxIfNeeded(good bool, opt *txBytesInOptions) {
-	if opt.receivedFromPeer != nil {
-		w.peers.EvidenceIncomingTx(good, *opt.receivedFromPeer)
-	}
-}
-
 // ignoreTxID always false if sync manager is not enabled
 func (w *Workflow) ignoreTxID(txid *ledger.TransactionID) bool {
 	return w.syncManager != nil && w.syncManager.IgnoreFutureTxID(txid)
 }
 
+// TxBytesIn main entry point of the transaction into the workflow
 func (w *Workflow) TxBytesIn(txBytes []byte, opts ...TxBytesInOption) (*ledger.TransactionID, error) {
 	options := &txBytesInOptions{}
 	for _, opt := range opts {
@@ -49,7 +44,6 @@ func (w *Workflow) TxBytesIn(txBytes []byte, opts ...TxBytesInOption) (*ledger.T
 	tx, err := transaction.FromBytes(txBytes)
 	if err != nil {
 		// any malformed data chunk will be rejected immediately before all the advanced validations
-		w._evidenceIncomingTxIfNeeded(false, options)
 		return nil, err
 	}
 	txid := tx.ID()
@@ -90,7 +84,6 @@ func (w *Workflow) TxBytesIn(txBytes []byte, opts ...TxBytesInOption) (*ledger.T
 			err = fmt.Errorf("upper timestamp bound exceeded (MaxDurationInTheFuture = %v)", w.MaxDurationInTheFuture())
 			attacher.InvalidateTxID(*txid, w, err)
 
-			w._evidenceIncomingTxIfNeeded(false, options)
 			return txid, err
 		}
 		w.Log().Warnf("checking time bounds of %s: '%v'", txid.StringShort(), err)
@@ -103,13 +96,10 @@ func (w *Workflow) TxBytesIn(txBytes []byte, opts ...TxBytesInOption) (*ledger.T
 		w.Tracef(TraceTagTxInput, "%v", err)
 		w.TraceTx(txid, "TxBytesIn: %v", err)
 		attacher.InvalidateTxID(*txid, w, err)
-		w._evidenceIncomingTxIfNeeded(false, options)
 		return txid, err
 	}
 
 	// considered good incoming
-	w._evidenceIncomingTxIfNeeded(true, options)
-
 	if options.txMetadata.SourceTypeNonPersistent == txmetadata.SourceTypePeer ||
 		options.txMetadata.SourceTypeNonPersistent == txmetadata.SourceTypeAPI {
 		// always gossip pre-validated (parsed) transaction received from peer or from API, even if it needs delay.
