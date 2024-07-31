@@ -96,18 +96,8 @@ func (ps *Peers) processPullFrame(msgData []byte, p *Peer) (func(), error) {
 	return callAfter, nil
 }
 
-func (ps *Peers) sendMsgToPeer(id peer.ID, msg []byte) {
-	stream, err := ps.host.NewStream(ps.Ctx(), id, ps.lppProtocolPull)
-	if err != nil {
-		return
-	}
-	defer stream.Close()
-
-	_ = writeFrame(stream, msg)
-}
-
 func (ps *Peers) sendPullTransactionsToPeer(id peer.ID, txLst ...ledger.TransactionID) {
-	ps.sendMsgToPeer(id, encodePullTransactionsMsg(txLst...))
+	ps.sendMsgAsync(encodePullTransactionsMsg(txLst...), id, ps.lppProtocolPull)
 }
 
 // PullTransactionsFromRandomPeer sends pull request to the random peer which has txStore
@@ -145,14 +135,14 @@ func (ps *Peers) PullTransactionsFromAllPeers(txids ...ledger.TransactionID) {
 	ps.forEachPeer(func(p *Peer) bool {
 		_, inBlackList := ps.blacklist[p.id]
 		if !inBlackList && !p._isDead() && p.hasTxStore {
-			ps.sendMsgToPeer(p.id, msg)
+			ps.sendMsgAsync(msg, p.id, ps.lppProtocolPull)
 		}
 		return true
 	})
 }
 
 func (ps *Peers) sendPullSyncPortionToPeer(id peer.ID, startingFrom ledger.Slot, maxSlots int) {
-	ps.sendMsgToPeer(id, encodeSyncPortionMsg(startingFrom, maxSlots))
+	ps.sendMsgAsync(encodeSyncPortionMsg(startingFrom, maxSlots), id, ps.lppProtocolPull)
 }
 
 func (ps *Peers) PullSyncPortionFromRandomPeer(startingFrom ledger.Slot, maxSlots int) bool {

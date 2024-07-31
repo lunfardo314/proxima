@@ -22,8 +22,10 @@ import (
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/proxima/util/queue"
 	"github.com/multiformats/go-multiaddr"
 	"github.com/spf13/viper"
+	"go.uber.org/zap/zapcore"
 	"golang.org/x/exp/maps"
 )
 
@@ -64,6 +66,8 @@ type (
 		lppProtocolPull      protocol.ID
 		lppProtocolHeartbeat protocol.ID
 		rendezvousString     string
+		// queued message sender to peers
+		outQueue *queue.Queue[outMsgData]
 	}
 
 	Peer struct {
@@ -80,11 +84,18 @@ type (
 		clockDifferences    [10]time.Duration
 		clockDifferencesIdx int
 	}
+
+	outMsgData struct {
+		msg      []byte
+		peerID   peer.ID
+		protocol protocol.ID
+	}
 )
 
 const (
-	Name     = "peers"
-	TraceTag = Name
+	Name         = "peers"
+	TraceTag     = Name
+	NameOutQueue = Name + "-outQueue"
 )
 
 const (
@@ -111,6 +122,8 @@ const (
 	// gracePeriodAfterAdded period of time peer is considered not dead after added even if messages are not coming
 	gracePeriodAfterAdded = 10 * heartbeatRate
 	logPeersEvery         = 5 * time.Second
+
+	outQueueChanBufferSize = 10
 )
 
 func NewPeersDummy() *Peers {
@@ -120,6 +133,7 @@ func NewPeersDummy() *Peers {
 		onReceiveTx:              func(_ peer.ID, _ []byte, _ *txmetadata.TransactionMetadata) {},
 		onReceivePullTx:          func(_ peer.ID, _ []ledger.TransactionID) {},
 		onReceivePullSyncPortion: func(_ peer.ID, _ ledger.Slot, _ int) {},
+		outQueue:                 queue.NewQueueWithBufferSize[outMsgData](NameOutQueue, outQueueChanBufferSize, zapcore.DebugLevel, nil),
 	}
 }
 
@@ -154,6 +168,7 @@ func New(env Environment, cfg *Config) (*Peers, error) {
 		lppProtocolPull:          protocol.ID(fmt.Sprintf(lppProtocolPull, rendezvousNumber)),
 		lppProtocolHeartbeat:     protocol.ID(fmt.Sprintf(lppProtocolHeartbeat, rendezvousNumber)),
 		rendezvousString:         fmt.Sprintf("%d", rendezvousNumber),
+		outQueue:                 queue.NewQueueWithBufferSize[outMsgData](NameOutQueue, outQueueChanBufferSize, env.Log().Level(), nil),
 	}
 
 	env.Log().Infof("[peering] rendezvous number is %d", rendezvousNumber)
@@ -269,6 +284,8 @@ func (ps *Peers) Run() {
 	ps.host.SetStreamHandler(ps.lppProtocolGossip, ps.gossipStreamHandler)
 	ps.host.SetStreamHandler(ps.lppProtocolPull, ps.pullStreamHandler)
 	ps.host.SetStreamHandler(ps.lppProtocolHeartbeat, ps.heartbeatStreamHandler)
+
+	ps.outQueue.Start(ps, ps.Ctx())
 
 	go ps.heartbeatLoop()
 	if ps.isAutopeeringEnabled() {

@@ -82,18 +82,6 @@ func (ps *Peers) SendTxBytesWithMetadataToPeer(id peer.ID, txBytes []byte, metad
 		return false
 	}
 
-	stream, err := ps.host.NewStream(ps.Ctx(), id, ps.lppProtocolGossip)
-	if err != nil {
-		ps.Tracef(TraceTag, "SendTxBytesWithMetadataToPeer to %s: %v (host %s)",
-			func() any { return ShortPeerIDString(id) }, err,
-			func() any { return ShortPeerIDString(ps.host.ID()) },
-		)
-		return false
-	}
-	defer stream.Close()
-
-	if err = writeFrame(stream, common.ConcatBytes(metadata.Bytes(), txBytes)); err != nil {
-		ps.Tracef("SendTxBytesWithMetadataToPeer.writeFrame to %s: %v (host %s)", ShortPeerIDString(id), err, ShortPeerIDString(ps.host.ID()))
-	}
-	return err == nil
+	ps.sendMsgAsync(common.ConcatBytes(metadata.Bytes(), txBytes), id, ps.lppProtocolGossip)
+	return true
 }

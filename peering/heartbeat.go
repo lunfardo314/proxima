@@ -197,21 +197,12 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 }
 
 func (ps *Peers) sendHeartbeatToPeer(id peer.ID) {
-	stream, err := ps.host.NewStream(ps.Ctx(), id, ps.lppProtocolHeartbeat)
-	if err != nil {
-		return
-	}
-	defer func() { _ = stream.Close() }()
-
 	hbInfo := heartbeatInfo{
 		clock:                   time.Now(),
 		hasTxStore:              true, // at the moment txStore always is part of the node
 		acceptsPullSyncRequests: ps.acceptsPullSyncRequests,
 	}
-	err = writeFrame(stream, hbInfo.Bytes())
-	if err != nil {
-		ps.Log().Errorf("[peering] sendHeartbeatToPeer: %w", err)
-	}
+	ps.sendMsgAsync(hbInfo.Bytes(), id, ps.lppProtocolHeartbeat)
 }
 
 func (ps *Peers) peerIDsAlive() []peer.ID {
