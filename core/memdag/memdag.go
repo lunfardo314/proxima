@@ -141,8 +141,8 @@ func (d *MemDAG) GetStateReaderForTheBranchExt(branch *ledger.TransactionID) (gl
 	util.Assertf(branch != nil, "branch != nil")
 	util.Assertf(branch.IsBranchTransaction(), "GetStateReaderForTheBranchExt: branch tx expected. Got: %s", branch.StringShort())
 
-	d.stateReadersMutex.RLock()
-	defer d.stateReadersMutex.RUnlock()
+	d.stateReadersMutex.Lock()
+	defer d.stateReadersMutex.Unlock()
 
 	ret := d.stateReaders[*branch]
 	if ret != nil {

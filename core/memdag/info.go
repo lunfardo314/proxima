@@ -37,8 +37,8 @@ func (d *MemDAG) InfoLines(verbose ...bool) *lines.Lines {
 
 		ln.Add("---- cached state readers (verbose)")
 		func() {
-			d.stateReadersMutex.Lock()
-			defer d.stateReadersMutex.Unlock()
+			d.stateReadersMutex.RLock()
+			defer d.stateReadersMutex.RUnlock()
 
 			branches := util.KeysSorted(d.stateReaders, func(id1, id2 ledger.TransactionID) bool {
 				return bytes.Compare(id1[:], id2[:]) < 0
