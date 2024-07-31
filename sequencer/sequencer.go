@@ -385,8 +385,12 @@ func (seq *Sequencer) getNextTargetTime() ledger.Time {
 const submitTimeout = 10 * time.Second
 
 func (seq *Sequencer) submitMilestone(tx *transaction.Transaction, meta *txmetadata.TransactionMetadata) *vertex.WrappedTx {
-	seq.Infof0("%s SUBMIT milestone %s, meta: %s, proposer: %s",
-		seq.logName, tx.IDShortString(), meta.String(), tx.SequencerTransactionData().SequencerOutputData.MilestoneData.Name)
+	logMsg := fmt.Sprintf("%s SUBMIT milestone %s, proposer: %s",
+		seq.logName, tx.IDShortString(), tx.SequencerTransactionData().SequencerOutputData.MilestoneData.Name)
+	if seq.VerbosityLevel() > 0 {
+		logMsg += ", " + meta.String()
+	}
+	seq.Log().Info(logMsg)
 
 	deadline := time.Now().Add(submitTimeout)
 	vid, err := seq.SequencerMilestoneAttachWait(tx.Bytes(), meta, submitTimeout)
