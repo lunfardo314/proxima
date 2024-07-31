@@ -20,23 +20,11 @@ func (v _vertex) _outputAt(idx byte) (*ledger.Output, error) {
 	return v.Tx.ProducedOutputAt(idx)
 }
 
-func (v _vertex) _hasOutputAt(idx byte) (bool, bool) {
-	if int(idx) >= v.Tx.NumProducedOutputs() {
-		return false, true
-	}
-	return true, false
-}
-
 func (v _virtualTx) _outputAt(idx byte) (*ledger.Output, error) {
 	if o, available := v.OutputAt(idx); available {
 		return o, nil
 	}
 	return nil, nil
-}
-
-func (v _virtualTx) _hasOutputAt(idx byte) (bool, bool) {
-	_, hasIt := v.OutputAt(idx)
-	return hasIt, false
 }
 
 func _newVID(g _genericVertex, txid ledger.TransactionID, seqID *ledger.ChainID) *WrappedTx {
@@ -294,13 +282,6 @@ func (vid *WrappedTx) MustOutputAt(idx byte) *ledger.Output {
 	ret, err := vid.OutputAt(idx)
 	util.AssertNoError(err)
 	return ret
-}
-
-func (vid *WrappedTx) HasOutputAt(idx byte) (bool, bool) {
-	vid.mutex.RLock()
-	defer vid.mutex.RUnlock()
-
-	return vid._hasOutputAt(idx)
 }
 
 func (vid *WrappedTx) SequencerIDStringShort() string {

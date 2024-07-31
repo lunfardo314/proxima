@@ -29,12 +29,16 @@ func (o *WrappedOutput) Slot() ledger.Slot {
 	return o.VID.Slot()
 }
 
-func (o *WrappedOutput) AmountAndLock() (uint64, ledger.Lock, error) {
-	oReal, err := o.VID.OutputAt(o.Index)
-	if err != nil {
-		return 0, nil, err
-	}
-	return oReal.Amount(), oReal.Lock(), nil
+func (o *WrappedOutput) IsAvailable() (available bool) {
+	o.VID.Unwrap(UnwrapOptions{
+		Vertex: func(v *Vertex) {
+			available = int(o.Index) < v.Tx.NumProducedOutputs()
+		},
+		VirtualTx: func(v *VirtualTransaction) {
+			_, available = v.OutputAt(o.Index)
+		},
+	})
+	return
 }
 
 func WrappedOutputsShortLines(wOuts []WrappedOutput) *lines.Lines {

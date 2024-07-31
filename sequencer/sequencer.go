@@ -179,7 +179,7 @@ const ensureStartingMilestoneTimeout = time.Second
 
 func (seq *Sequencer) ensureFirstMilestone() bool {
 	ctx, cancel := context.WithTimeout(seq.Ctx(), ensureStartingMilestoneTimeout)
-	var startingMilestoneOutput vertex.WrappedOutput
+	var startOutput vertex.WrappedOutput
 
 	go func() {
 		for {
@@ -187,8 +187,8 @@ func (seq *Sequencer) ensureFirstMilestone() bool {
 			case <-ctx.Done():
 				return
 			case <-time.After(10 * time.Millisecond):
-				startingMilestoneOutput = seq.factory.OwnLatestMilestoneOutput()
-				if startingMilestoneOutput.VID != nil {
+				startOutput = seq.factory.OwnLatestMilestoneOutput()
+				if startOutput.VID != nil && startOutput.IsAvailable() {
 					cancel()
 					return
 				}
@@ -196,30 +196,49 @@ func (seq *Sequencer) ensureFirstMilestone() bool {
 		}
 	}()
 	<-ctx.Done()
-	if startingMilestoneOutput.VID == nil {
-		seq.log.Errorf("failed to find a milestone to start")
+
+	if startOutput.VID == nil || !startOutput.IsAvailable() {
+		seq.log.Errorf("failed to find a chain output to start")
 		return false
 	}
-	amount, lock, err := startingMilestoneOutput.AmountAndLock()
-	if err != nil {
-		seq.log.Errorf("sequencer start output %s is not available: %v", startingMilestoneOutput.IDShortString(), err)
+	if !seq.checkSequencerStartOutput(startOutput) {
 		return false
 	}
-	if !ledger.BelongsToAccount(lock, ledger.AddressED25519FromPrivateKey(seq.controllerKey)) {
-		seq.log.Errorf("provided private key does match sequencer lock %s", lock.String())
-		return false
+	seq.factory.AddOwnMilestone(startOutput.VID)
 
-	}
-	seq.log.Infof("sequencer will start with the milestone output %s and amount %s (%s%% initial supply)",
-		startingMilestoneOutput.IDShortString(), util.Th(amount), util.PercentString(int(amount), int(ledger.L().ID.InitialSupply)))
-
-	seq.factory.AddOwnMilestone(startingMilestoneOutput.VID)
-
-	sleepDuration := ledger.SleepDurationUntilFutureLedgerTime(startingMilestoneOutput.Timestamp())
+	sleepDuration := ledger.SleepDurationUntilFutureLedgerTime(startOutput.Timestamp())
 	if sleepDuration > 0 {
 		seq.log.Infof("will delay start for %v to sync starting milestone with the real clock", sleepDuration)
 		time.Sleep(sleepDuration)
 	}
+	return true
+}
+
+func (seq *Sequencer) checkSequencerStartOutput(wOut vertex.WrappedOutput) bool {
+	util.Assertf(wOut.VID != nil, "wOut.VID != nil")
+	if !wOut.VID.ID.IsSequencerMilestone() {
+		seq.log.Warnf("checkSequencerStartOutput: start output %s is not a sequencer output", wOut.IDShortString())
+	}
+	oReal, err := wOut.VID.OutputAt(wOut.Index)
+	if oReal == nil || err != nil {
+		seq.log.Errorf("checkSequencerStartOutput: failed to fetch start output %s: %s", wOut.IDShortString(), err)
+		return false
+	}
+	lock := oReal.Lock()
+	if !ledger.BelongsToAccount(lock, ledger.AddressED25519FromPrivateKey(seq.controllerKey)) {
+		seq.log.Errorf("checkSequencerStartOutput: provided private key does match sequencer lock %s", lock.String())
+		return false
+	}
+	seq.log.Infof("checkSequencerStartOutput: sequencer controller is %s", lock.String())
+
+	amount := oReal.Amount()
+	if amount < ledger.L().ID.MinimumAmountOnSequencer {
+		seq.log.Errorf("checkSequencerStartOutput: amount %s on output is less than minimum %s required on sequencer",
+			util.Th(amount), util.Th(ledger.L().ID.MinimumAmountOnSequencer))
+		return false
+	}
+	seq.log.Infof("sequencer start output %s has amount %s (%s%% of the initial supply)",
+		wOut.IDShortString(), util.Th(amount), util.PercentString(int(amount), int(ledger.L().ID.InitialSupply)))
 	return true
 }
 

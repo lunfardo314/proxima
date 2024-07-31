@@ -65,7 +65,6 @@ type (
 	// _genericVertex generic types of vertex hiding behind WrappedTx identity
 	_genericVertex interface {
 		_outputAt(idx byte) (*ledger.Output, error)
-		_hasOutputAt(idx byte) (bool, bool)
 	}
 
 	_vertex struct {

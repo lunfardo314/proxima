@@ -131,7 +131,7 @@ func (w *Workflow) TxBytesIn(txBytes []byte, opts ...TxBytesInOption) (*ledger.T
 	}
 
 	// timestamp is in the future. Put it on wait. Adding some milliseconds to avoid rounding errors in assertions
-	delayFor := txTime.Sub(nowis) + 2*time.Millisecond
+	delayFor := txTime.Sub(nowis)
 	w.Tracef(TraceTagTxInput, "%s -> delay for %v", txid.StringShort, delayFor)
 	w.TraceTx(txid, "TxBytesIn: delay for %v", delayFor)
 
