@@ -8,6 +8,7 @@ import (
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 type (
@@ -18,9 +19,15 @@ type (
 		PurgeDeletedVertices(deleted []*vertex.WrappedTx)
 		PurgeCachedStateReaders() (int, int)
 		NumVertices() int
+		NumStateReaders() int
 	}
 	Pruner struct {
 		Environment
+
+		// metrics
+		metricsEnabled       bool
+		numVerticesGauge     prometheus.Gauge
+		numStateReadersGauge prometheus.Gauge
 	}
 )
 
@@ -30,9 +37,11 @@ const (
 )
 
 func New(env Environment) *Pruner {
-	return &Pruner{
+	ret := &Pruner{
 		Environment: env,
 	}
+	ret.registerMetrics()
+	return ret
 }
 
 // pruneVertices returns how many marked for deletion and how many past cones unreferenced
@@ -95,5 +104,25 @@ func (p *Pruner) mainLoop() {
 		case <-time.After(prunerLoopPeriod):
 		}
 		p.doPrune()
+		p.updateMetrics()
 	}
+}
+
+func (p *Pruner) registerMetrics() {
+	p.numVerticesGauge = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "memDAG_numVerticesGauge",
+		Help: "number of vertices in the memDAG",
+	})
+	p.MetricsRegistry().MustRegister(p.numVerticesGauge)
+
+	p.numStateReadersGauge = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "memDAG_numStateReadersGauge",
+		Help: "number of cached state readers in the memDAG",
+	})
+	p.MetricsRegistry().MustRegister(p.numStateReadersGauge)
+}
+
+func (p *Pruner) updateMetrics() {
+	p.numVerticesGauge.Set(float64(p.NumVertices()))
+	p.numStateReadersGauge.Set(float64(p.NumStateReaders()))
 }

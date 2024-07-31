@@ -107,12 +107,12 @@ func (p *PullClient) startPulling(txid ledger.TransactionID) {
 func (p *PullClient) transactionIn(txBytesWithMetadata []byte) {
 	metadataBytes, txBytes, err := txmetadata.SplitTxBytesWithMetadata(txBytesWithMetadata)
 	if err != nil {
-		p.Environment.Log().Errorf("pull_client: error while parsing tx metadata: '%v'", err)
+		p.Environment.Log().Errorf("[pull_client]: error while parsing tx metadata: '%v'", err)
 		return
 	}
 	metadata, err := txmetadata.TransactionMetadataFromBytes(metadataBytes)
 	if err != nil {
-		p.Environment.Log().Errorf("pull_client: error while parsing tx metadata: '%v'", err)
+		p.Environment.Log().Errorf("[pull_client]: error while parsing tx metadata: '%v'", err)
 		return
 	}
 	if metadata == nil {
@@ -124,7 +124,7 @@ func (p *PullClient) transactionIn(txBytesWithMetadata []byte) {
 		if txid != nil {
 			txidStr = txid.StringShort()
 		}
-		p.Environment.Log().Errorf("pull_client: tx parse error while pull, txid: %s: '%v'", txidStr, err)
+		p.Environment.Log().Errorf("[pull_client]: tx parse error while pull, txid: %s: '%v'", txidStr, err)
 	}
 }
 
@@ -201,7 +201,7 @@ func (p *PullClient) stuckList(forHowLong time.Duration) map[ledger.TransactionI
 
 func (p *PullClient) printStuckList(forHowLong time.Duration) {
 	for txid, howLong := range p.stuckList(forHowLong) {
-		p.Environment.Log().Infof(">>>>>>>> pull_client %s stuck for %v", txid.StringShort(), howLong)
+		p.Environment.Log().Infof(">>>>>>>> [pull_client] %s stuck for %v", txid.StringShort(), howLong)
 	}
 }
 

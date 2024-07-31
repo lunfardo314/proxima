@@ -43,7 +43,7 @@ type (
 		// HasUTXO, GetUTXO and similar does not require database involvement during attachment and solidification
 		// in the same slot.
 		// Inactive cached readers with their trie caches are constantly cleaned up by the pruner
-		stateReadersMutex sync.Mutex
+		stateReadersMutex sync.RWMutex
 		stateReaders      map[ledger.TransactionID]*cachedStateReader
 	}
 
@@ -90,6 +90,13 @@ func (d *MemDAG) NumVertices() int {
 	return len(d.vertices)
 }
 
+func (d *MemDAG) NumStateReaders() int {
+	d.stateReadersMutex.RLock()
+	defer d.stateReadersMutex.RUnlock()
+
+	return len(d.stateReaders)
+}
+
 func (d *MemDAG) AddVertexNoLock(vid *vertex.WrappedTx) {
 	util.Assertf(d.GetVertexNoLock(&vid.ID) == nil, "d.GetVertexNoLock(vid.ID())==nil")
 	d.vertices[vid.ID] = vid
@@ -134,8 +141,8 @@ func (d *MemDAG) GetStateReaderForTheBranchExt(branch *ledger.TransactionID) (gl
 	util.Assertf(branch != nil, "branch != nil")
 	util.Assertf(branch.IsBranchTransaction(), "GetStateReaderForTheBranchExt: branch tx expected. Got: %s", branch.StringShort())
 
-	d.stateReadersMutex.Lock()
-	defer d.stateReadersMutex.Unlock()
+	d.stateReadersMutex.RLock()
+	defer d.stateReadersMutex.RUnlock()
 
 	ret := d.stateReaders[*branch]
 	if ret != nil {
