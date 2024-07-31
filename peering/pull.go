@@ -5,15 +5,12 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math"
-	"math/rand"
-	"strings"
 
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util"
-	"golang.org/x/exp/maps"
 )
 
 // pull request message 1st byte is the type of the message. The rest is message body
@@ -105,23 +102,9 @@ func (ps *Peers) PullTransactionsFromRandomPeer(txids ...ledger.TransactionID) b
 	if len(txids) == 0 {
 		return false
 	}
-	ps.mutex.RLock()
-	defer ps.mutex.RUnlock()
-
-	all := maps.Keys(ps.peers)
-	for _, idx := range rand.Perm(len(all)) {
-		rndID := all[idx]
-		p := ps.peers[rndID]
-		_, inBlackList := ps.blacklist[p.id]
-		if !inBlackList && !p._isDead() && p.hasTxStore {
-			ps.Tracef(TraceTag, "pull from random peer %s: %s",
-				func() any { return ShortPeerIDString(rndID) },
-				func() any { return _txidLst(txids...) },
-			)
-
-			ps.sendPullTransactionsToPeer(rndID, txids...)
-			return true
-		}
+	if rndPeerID, ok := ps.randomPeer(); ok {
+		ps.sendPullTransactionsToPeer(rndPeerID, txids...)
+		return true
 	}
 	return false
 }
@@ -146,30 +129,13 @@ func (ps *Peers) sendPullSyncPortionToPeer(id peer.ID, startingFrom ledger.Slot,
 }
 
 func (ps *Peers) PullSyncPortionFromRandomPeer(startingFrom ledger.Slot, maxSlots int) bool {
-	ps.mutex.RLock()
-	defer ps.mutex.RUnlock()
-
-	all := maps.Keys(ps.peers)
-	for _, idx := range rand.Perm(len(all)) {
-		rndID := all[idx]
-		p := ps.peers[rndID]
-		_, inBlacklist := ps.blacklist[rndID]
-		if !inBlacklist && !p._isDead() && p.hasTxStore && p.acceptsPullSyncRequests {
-			ps.Log().Infof("[peering] pull sync portion from random peer %s. From slot: %d, up to slots: %d",
-				ShortPeerIDString(rndID), int(startingFrom), maxSlots)
-			ps.sendPullSyncPortionToPeer(rndID, startingFrom, maxSlots)
-			return true
-		}
+	if rndPeerID, ok := ps.randomPeer(); ok {
+		ps.sendPullSyncPortionToPeer(rndPeerID, startingFrom, maxSlots)
+		ps.Log().Infof("[peering] pull sync portion from random peer %s. From slot: %d, up to slots: %d",
+			ShortPeerIDString(rndPeerID), int(startingFrom), maxSlots)
+		return true
 	}
 	return false
-}
-
-func _txidLst(txids ...ledger.TransactionID) string {
-	ret := make([]string, len(txids))
-	for i := range ret {
-		ret[i] = txids[i].StringShort()
-	}
-	return strings.Join(ret, ",")
 }
 
 func encodePullTransactionsMsg(txids ...ledger.TransactionID) []byte {

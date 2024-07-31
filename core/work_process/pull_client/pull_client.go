@@ -99,7 +99,7 @@ func (p *PullClient) startPulling(txid ledger.TransactionID) {
 		p.TraceTx(&txid, TraceTag+": added to the pull list")
 
 		// query from 1 random peer
-		go p.PullTransactionsFromRandomPeer(txid)
+		p.PullTransactionsFromRandomPeer(txid)
 	}
 }
 

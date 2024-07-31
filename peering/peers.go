@@ -549,3 +549,19 @@ func (p *Peer) avgClockDifference() time.Duration {
 	}
 	return ret / time.Duration(nNonZero)
 }
+
+func (ps *Peers) randomPeer() (peer.ID, bool) {
+	ps.mutex.RLock()
+	defer ps.mutex.RUnlock()
+
+	peerIDs := make([]peer.ID, 0, len(ps.peers))
+	for id, p := range ps.peers {
+		if _, inBlackList := ps.blacklist[id]; !inBlackList && !p._isDead() && p.hasTxStore {
+			peerIDs = append(peerIDs, id)
+		}
+	}
+	if len(peerIDs) == 0 {
+		return "", false
+	}
+	return util.RandomElement(peerIDs...), true
+}

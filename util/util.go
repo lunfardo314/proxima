@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"math/rand"
 	"slices"
 	"sort"
 	"strings"
@@ -170,6 +171,13 @@ func AppendUnique[T comparable](slice []T, elems ...T) []T {
 		}
 	}
 	return slice
+}
+
+func RandomElement[T comparable](elems ...T) (ret T) {
+	if len(elems) > 0 {
+		ret = elems[rand.Intn(len(elems))]
+	}
+	return
 }
 
 func MustLastElement[T any](sl []T) T {
