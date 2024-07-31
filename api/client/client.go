@@ -575,6 +575,102 @@ func (c *APIClient) MakeChainOrigin(par TransferFromED25519WalletParams) (*trans
 	return txCtx, chainID, err
 }
 
+type RemoveChainOriginParams struct {
+	WalletPrivateKey ed25519.PrivateKey
+	TagAlongSeqID    *ledger.ChainID
+	TagAlongFee      uint64 // 0 means no fee output will be produced
+	ChainID          *ledger.ChainID
+	TraceTx          bool
+}
+
+func (c *APIClient) RemoveChainOrigin(par RemoveChainOriginParams) (*transaction.TxContext, error) {
+	if par.TagAlongFee > 0 && par.TagAlongSeqID == nil {
+		return nil, fmt.Errorf("tag-along sequencer not specified")
+	}
+
+	walletAccount := ledger.AddressED25519FromPrivateKey(par.WalletPrivateKey)
+
+	// find chain output by chain ID
+	outs, err := c.GetAccountOutputs(walletAccount, func(_ *ledger.OutputID, o *ledger.Output) bool {
+		_, idx := o.ChainConstraint()
+		return idx != 0xff
+	})
+	util.AssertNoError(err)
+
+	if len(outs) == 0 {
+		return nil, fmt.Errorf("no chains have been found controlled by %s", walletAccount.String())
+	}
+
+	chainId := *par.ChainID
+	var chainIN *ledger.OutputWithID
+	chainIN = nil
+	for _, o := range outs {
+		chID, _, ok := o.ExtractChainID()
+		util.Assertf(ok, "can't extract chainID")
+		if chID == chainId {
+			//util.Infof("found chain %s with balance %s on %s", chainId.String(), util.Th(o.Output.Amount()), o.IDShort())
+			chainIN = o
+			break
+		}
+	}
+	if chainIN == nil {
+		return nil, fmt.Errorf("chain id %s not found", chainId.String())
+	}
+
+	ts := ledger.TimeNow()
+
+	_, predecessorConstraintIndex := chainIN.Output.ChainConstraint()
+
+	txb := txbuilder.NewTransactionBuilder()
+
+	ts1 := chainIN.Timestamp()
+	consumedIndex, err := txb.ConsumeOutput(chainIN.Output, chainIN.ID)
+	util.AssertNoError(err)
+	ts = ledger.MaxTime(ts1.AddTicks(ledger.TransactionPace()), ts)
+
+	feeAmount := par.TagAlongFee
+
+	outNonChain := ledger.NewOutput(func(o *ledger.Output) {
+		o.WithAmount(chainIN.Output.Amount() - feeAmount).
+			WithLock(chainIN.Output.Lock())
+	})
+	_, err = txb.ProduceOutput(outNonChain)
+	util.AssertNoError(err)
+
+	if feeAmount > 0 {
+		tagAlongFeeOut := ledger.NewOutput(func(o *ledger.Output) {
+			o.WithAmount(feeAmount).
+				WithLock(ledger.ChainLockFromChainID(*par.TagAlongSeqID))
+		})
+		if _, err = txb.ProduceOutput(tagAlongFeeOut); err != nil {
+			return nil, err
+		}
+	}
+
+	txb.PutUnlockParams(consumedIndex, predecessorConstraintIndex, []byte{0xff, 0xff, 0xff})
+
+	txb.PutSignatureUnlock(consumedIndex)
+
+	// finalize the transaction
+	txb.TransactionData.Timestamp = ts
+	txb.TransactionData.InputCommitment = txb.InputCommitment()
+	txb.SignED25519(par.WalletPrivateKey)
+
+	txBytes := txb.TransactionData.Bytes()
+
+	inps := make([]*ledger.OutputWithID, 1)
+	inps[0] = chainIN
+	txCtx, err := transaction.TxContextFromTransferableBytes(txBytes, transaction.PickOutputFromListFunc(inps))
+	if err != nil {
+		return nil, err
+	}
+	if err = c.SubmitTransaction(txBytes, par.TraceTx); err != nil {
+		return nil, err
+	}
+
+	return txCtx, err
+}
+
 type MakeTransferTransactionParams struct {
 	Inputs        []*ledger.OutputWithID
 	Target        ledger.Lock
