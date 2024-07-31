@@ -5,9 +5,11 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math"
+	"time"
 
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util"
@@ -18,7 +20,7 @@ import (
 const (
 	MaxNumTransactionID = (MaxPayloadSize - 2) / ledger.TransactionIDLength
 
-	PullRequestTransactions = byte(iota)
+	PullTransactions = byte(iota)
 	PullSyncPortion
 )
 
@@ -69,7 +71,7 @@ func (ps *Peers) processPullFrame(msgData []byte, p *Peer) (func(), error) {
 		return nil, fmt.Errorf("expected pull message, got empty frame")
 	}
 	switch msgData[0] {
-	case PullRequestTransactions:
+	case PullTransactions:
 		txLst, err := decodePullTransactionsMsg(msgData)
 		if err != nil {
 			return nil, err
@@ -94,7 +96,10 @@ func (ps *Peers) processPullFrame(msgData []byte, p *Peer) (func(), error) {
 }
 
 func (ps *Peers) sendPullTransactionsToPeer(id peer.ID, txLst ...ledger.TransactionID) {
-	ps.sendMsgAsync(encodePullTransactionsMsg(txLst...), id, ps.lppProtocolPull)
+	ps.sendMsgOutQueued(&_pullTransactions{
+		txids:      txLst,
+		protocolID: ps.lppProtocolPull,
+	}, id, false)
 }
 
 // PullTransactionsFromRandomPeer sends pull request to the random peer which has txStore
@@ -113,19 +118,25 @@ func (ps *Peers) PullTransactionsFromAllPeers(txids ...ledger.TransactionID) {
 	if len(txids) == 0 {
 		return
 	}
-	msg := encodePullTransactionsMsg(txids...)
-
+	msg := &_pullTransactions{
+		txids:      txids,
+		protocolID: ps.lppProtocolPull,
+	}
 	ps.forEachPeer(func(p *Peer) bool {
 		_, inBlackList := ps.blacklist[p.id]
 		if !inBlackList && !p._isDead() && p.hasTxStore {
-			ps.sendMsgAsync(msg, p.id, ps.lppProtocolPull)
+			ps.sendMsgOutQueued(msg, p.id, false)
 		}
 		return true
 	})
 }
 
 func (ps *Peers) sendPullSyncPortionToPeer(id peer.ID, startingFrom ledger.Slot, maxSlots int) {
-	ps.sendMsgAsync(encodeSyncPortionMsg(startingFrom, maxSlots), id, ps.lppProtocolPull)
+	ps.sendMsgOutQueued(&_pullSyncPortion{
+		startingFrom: startingFrom,
+		maxSlots:     maxSlots,
+		protocolID:   ps.lppProtocolPull,
+	}, id, false)
 }
 
 func (ps *Peers) PullSyncPortionFromRandomPeer(startingFrom ledger.Slot, maxSlots int) bool {
@@ -143,7 +154,7 @@ func encodePullTransactionsMsg(txids ...ledger.TransactionID) []byte {
 
 	var buf bytes.Buffer
 	// write request type byte
-	buf.WriteByte(PullRequestTransactions)
+	buf.WriteByte(PullTransactions)
 	// write number of transactions
 	var size [2]byte
 	binary.BigEndian.PutUint16(size[:], uint16(len(txids)))
@@ -156,7 +167,7 @@ func encodePullTransactionsMsg(txids ...ledger.TransactionID) []byte {
 }
 
 func decodePullTransactionsMsg(data []byte) ([]ledger.TransactionID, error) {
-	if len(data) < 3 || data[0] != PullRequestTransactions {
+	if len(data) < 3 || data[0] != PullTransactions {
 		return nil, fmt.Errorf("not a pull txransactions message")
 	}
 	// read size of array
@@ -198,4 +209,43 @@ func decodeSyncPortionMsg(data []byte) (startingFrom ledger.Slot, maxSlots int, 
 	startingFrom = ledger.Slot(binary.BigEndian.Uint32(data[1:5]))
 	maxSlots = int(binary.BigEndian.Uint16(data[5:7]))
 	return
+}
+
+// message wrappers
+type (
+	_pullTransactions struct {
+		txids      []ledger.TransactionID
+		protocolID protocol.ID
+	}
+
+	_pullSyncPortion struct {
+		startingFrom ledger.Slot
+		maxSlots     int
+		protocolID   protocol.ID
+	}
+)
+
+func (pt *_pullTransactions) Bytes() []byte {
+	return encodePullTransactionsMsg(pt.txids...)
+}
+
+func (pt *_pullTransactions) SetTime(_ time.Time) {
+}
+
+func (pt *_pullTransactions) ProtocolID() protocol.ID {
+	return pt.protocolID
+}
+
+func (pt *_pullTransactions) Priority() bool {
+	return false
+}
+
+func (sp _pullSyncPortion) Bytes() []byte {
+	return encodeSyncPortionMsg(sp.startingFrom, sp.maxSlots)
+}
+
+func (sp _pullSyncPortion) SetTime(t time.Time) {}
+
+func (sp _pullSyncPortion) ProtocolID() protocol.ID {
+	return sp.protocolID
 }

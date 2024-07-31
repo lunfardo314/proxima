@@ -8,6 +8,7 @@ import (
 
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/multiformats/go-multiaddr"
 	"golang.org/x/exp/maps"
 )
@@ -16,6 +17,7 @@ type heartbeatInfo struct {
 	clock                   time.Time
 	hasTxStore              bool
 	acceptsPullSyncRequests bool
+	protocolID              protocol.ID
 }
 
 const (
@@ -32,31 +34,6 @@ func heartbeatInfoFromBytes(data []byte) (heartbeatInfo, error) {
 	}
 	ret.setFromFlags(data[8])
 	return ret, nil
-}
-
-func (hi *heartbeatInfo) flags() (ret byte) {
-	if hi.hasTxStore {
-		ret |= flagHasTxStore
-	}
-	if hi.acceptsPullSyncRequests {
-		ret |= flagAcceptsPullSyncRequests
-	}
-	return
-}
-
-func (hi *heartbeatInfo) setFromFlags(fl byte) {
-	hi.hasTxStore = (fl | flagHasTxStore) != 0
-	hi.acceptsPullSyncRequests = (fl | flagAcceptsPullSyncRequests) != 0
-}
-
-func (hi *heartbeatInfo) Bytes() []byte {
-	var buf bytes.Buffer
-	var timeNanoBin [8]byte
-
-	binary.BigEndian.PutUint64(timeNanoBin[:], uint64(hi.clock.UnixNano()))
-	buf.Write(timeNanoBin[:])
-	buf.WriteByte(hi.flags())
-	return buf.Bytes()
 }
 
 func (ps *Peers) NumAlive() (aliveStatic, aliveDynamic int) {
@@ -170,12 +147,12 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 }
 
 func (ps *Peers) sendHeartbeatToPeer(id peer.ID) {
-	hbInfo := heartbeatInfo{
+	ps.sendMsgOutQueued(&heartbeatInfo{
 		clock:                   time.Now(),
 		hasTxStore:              true, // at the moment txStore always is part of the node
 		acceptsPullSyncRequests: ps.acceptsPullSyncRequests,
-	}
-	ps.sendMsgAsync(hbInfo.Bytes(), id, ps.lppProtocolHeartbeat)
+		protocolID:              ps.lppProtocolHeartbeat,
+	}, id, true)
 }
 
 func (ps *Peers) peerIDsAlive() []peer.ID {
@@ -250,4 +227,37 @@ func (ps *Peers) _dropPeersWithTooBigClockDiffs() {
 			ps._dropPeer(p, "clock tolerance")
 		}
 	}
+}
+
+func (hi *heartbeatInfo) flags() (ret byte) {
+	if hi.hasTxStore {
+		ret |= flagHasTxStore
+	}
+	if hi.acceptsPullSyncRequests {
+		ret |= flagAcceptsPullSyncRequests
+	}
+	return
+}
+
+func (hi *heartbeatInfo) setFromFlags(fl byte) {
+	hi.hasTxStore = (fl | flagHasTxStore) != 0
+	hi.acceptsPullSyncRequests = (fl | flagAcceptsPullSyncRequests) != 0
+}
+
+func (hi *heartbeatInfo) Bytes() []byte {
+	var buf bytes.Buffer
+	var timeNanoBin [8]byte
+
+	binary.BigEndian.PutUint64(timeNanoBin[:], uint64(hi.clock.UnixNano()))
+	buf.Write(timeNanoBin[:])
+	buf.WriteByte(hi.flags())
+	return buf.Bytes()
+}
+
+func (hi *heartbeatInfo) SetTime(t time.Time) {
+	hi.clock = t
+}
+
+func (hi *heartbeatInfo) ProtocolID() protocol.ID {
+	return hi.protocolID
 }

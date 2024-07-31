@@ -86,9 +86,15 @@ type (
 	}
 
 	outMsgData struct {
-		msg      []byte
-		peerID   peer.ID
-		protocol protocol.ID
+		msg    outMessageWrapper
+		peerID peer.ID
+	}
+
+	// outMessageWrapper is needed for the outQueue. In order to avoid timing problems
+	outMessageWrapper interface {
+		Bytes() []byte
+		SetTime(t time.Time) // specifically for heartbeat
+		ProtocolID() protocol.ID
 	}
 )
 
