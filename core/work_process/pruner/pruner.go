@@ -69,7 +69,7 @@ func (p *Pruner) pruneVertices() (int, int) {
 }
 
 func (p *Pruner) Start() {
-	p.Infof0("STARTING MemDAG pruner.. [%s]", p.Log().Level().String())
+	p.Infof0("STARTING MemDAG pruner..")
 	go func() {
 		p.mainLoop()
 		p.Log().Debugf("MemDAG pruner STOPPED")
