@@ -392,24 +392,36 @@ func TestChain1(t *testing.T) {
 		t.Logf("chain created: %s", easyfl.Fmt(chains[0].ChainID[:]))
 	})
 	t.Run("create-destroy", func(t *testing.T) {
+		// creates and immediately destroys chain output
 		chains := initTest2()
 		require.EqualValues(t, 1, len(chains))
 		chainID := chains[0].ChainID
+		// find chain output by chain ID. It must be exactly one in the state
+		// chs is unparsed data
 		chs, err := u.StateReader().GetUTXOForChainID(&chainID)
 		require.NoError(t, err)
 
+		// parse raw output data
 		chainIN, err := chs.Parse()
 		require.NoError(t, err)
+		// get chain constraint from the output
+		// It is expected to be origin
 		ch, predecessorConstraintIndex := chainIN.Output.ChainConstraint()
 		require.True(t, predecessorConstraintIndex != 0xff)
 		require.True(t, ch.IsOrigin())
 		t.Logf("chain created: %s", easyfl.Fmt(chains[0].ChainID[:]))
 
+		// add ticks to output timestamp to have valid timestamp of the next transaction
 		ts := chainIN.Timestamp().AddTicks(ledger.TransactionPace())
 
+		// create transaction builder
 		txb := txbuilder.NewTransactionBuilder()
+		// consume predecessor chain output. It will be the only input to the transaction
 		consumedIndex, err := txb.ConsumeOutput(chainIN.Output, chainIN.ID)
 		require.NoError(t, err)
+
+		// produce new output with same amount but without chain constraint
+		// it will be the only produced output of the transaction
 		outNonChain := ledger.NewOutput(func(o *ledger.Output) {
 			o.WithAmount(chainIN.Output.Amount()).
 				WithLock(chainIN.Output.Lock())
@@ -417,11 +429,23 @@ func TestChain1(t *testing.T) {
 		_, err = txb.ProduceOutput(outNonChain)
 		require.NoError(t, err)
 
+		// we put 'destroy' unlock parameters 3xffffff for the chain constraint in the predecessor output
+		// It makes the chain constraint script of the consumed output not to enforce produced successor,
+		// as in the usual chain transition from predecessor to successor. With this chain is discontinued.
+		// We explicitly specify input index and the index of the chain constraint in the output.
+		// This is because we assume chain constraint do not have pre-defined index in the output,
+		// it can be any except 0xff, therefore must always be explicit.
+		txb.PutUnlockParams(consumedIndex, predecessorConstraintIndex, []byte{0xff, 0xff, 0xff})
+
+		// put unlock parameters for the chain controller lock. It is locked with usual sig lock
+		// The signature unlock of the address25519 constraint just refers to the signature at the
+		// transaction level, which is always valid. The address25519 script check if address data
+		// is equal to the blake2b hash of the public key in the signature
+		txb.PutSignatureUnlock(consumedIndex) // it knows the lock is always at index 1
+
+		// finalize the transaction
 		txb.TransactionData.Timestamp = ts
 		txb.TransactionData.InputCommitment = txb.InputCommitment()
-
-		txb.PutUnlockParams(consumedIndex, predecessorConstraintIndex, []byte{0xff, 0xff, 0xff})
-		txb.PutSignatureUnlock(consumedIndex)
 		txb.SignED25519(privKey0)
 
 		txbytes := txb.TransactionData.Bytes()
@@ -435,6 +459,11 @@ func TestChain1(t *testing.T) {
 		require.EqualValues(t, u.Supply()-u.FaucetBalance()-10000, u.Balance(u.GenesisControllerAddress()))
 		require.EqualValues(t, 10000, u.Balance(addr0))
 		require.EqualValues(t, 2, u.NumUTXOs(addr0))
+
+		// it does not matter that chainID in the consumed output is all 0.
+		// Here we create chain origin and immediately destroy it
+		t.Logf("---- single consumed output (input #0):\n%s", chainIN.Output.Lines("   ").String())
+		t.Logf("---- single produced output #0:\n%s", outNonChain.Lines("   ").String())
 	})
 }
 
