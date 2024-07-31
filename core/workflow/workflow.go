@@ -119,7 +119,10 @@ func (w *Workflow) Start() {
 		prune := pruner.New(w) // refactor
 		prune.Start()
 	}
-	w.syncManager = syncmgr.StartSyncManagerFromConfig(w) // nil if disabled
+	if !w.IsBootstrapNode() {
+		// bootstrap node does not need sync manager
+		w.syncManager = syncmgr.StartSyncManagerFromConfig(w) // nil if disabled
+	}
 
 	w.peers.OnReceiveTxBytes(func(from peer.ID, txBytes []byte, metadata *txmetadata.TransactionMetadata) {
 		txid, err := w.TxBytesIn(txBytes, WithPeerMetadata(from, metadata))
