@@ -109,6 +109,8 @@ const (
 	// clockTolerance is how big the difference between local and remote clocks is tolerated.
 	// The difference includes difference between local clocks (positive or negative) plus
 	// positive heartbeat message latency between peers
+	// In any case nodes has interest to sync their clocks with global reference.
+	// This constant indicates when to drop the peer
 	clockTolerance = 5 * time.Second
 
 	// if the node is bootstrap, and it has configured less than numMaxDynamicPeersForBootNodeAtLeast
@@ -288,6 +290,7 @@ func (ps *Peers) Run() {
 	ps.outQueue.Start(ps, ps.Ctx())
 
 	go ps.heartbeatLoop()
+	go ps.clockToleranceLoop()
 	if ps.isAutopeeringEnabled() {
 		go ps.autopeeringLoop()
 	}
@@ -533,21 +536,15 @@ func (p *Peer) _evidenceClockDifference(diff time.Duration) {
 	p.clockDifferencesIdx = (p.clockDifferencesIdx + 1) % len(p.clockDifferences)
 }
 
-// avgClockDifference calculates average over lates clock differences
+// avgClockDifference calculates average over latest clock differences
+// In the beginning it is 0
 func (p *Peer) avgClockDifference() time.Duration {
 	var ret time.Duration
 
-	nNonZero := 0
 	for _, d := range p.clockDifferences {
 		ret += d
-		if d != 0 {
-			nNonZero++
-		}
 	}
-	if nNonZero == 0 {
-		return 0
-	}
-	return ret / time.Duration(nNonZero)
+	return ret / time.Duration(len(p.clockDifferences))
 }
 
 func (ps *Peers) randomPeer() (peer.ID, bool) {

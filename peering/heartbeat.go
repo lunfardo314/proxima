@@ -94,21 +94,6 @@ func (ps *Peers) logConnectionStatusIfNeeded(id peer.ID) {
 	})
 }
 
-func checkRemoteClockTolerance(remoteTime time.Time) (time.Duration, bool, bool) {
-	nowis := time.Now() // local clock
-	var clockDiff time.Duration
-
-	var behind bool
-	if nowis.After(remoteTime) {
-		clockDiff = nowis.Sub(remoteTime)
-		behind = true
-	} else {
-		clockDiff = remoteTime.Sub(nowis)
-		behind = false
-	}
-	return clockDiff, clockDiff < clockTolerance, behind
-}
-
 // heartbeat protocol is used to monitor
 // - if peer is alive and
 // - to ensure clocks difference is within tolerance interval. Clock difference is
@@ -171,19 +156,7 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 		return
 	}
 
-	clockDiff, clockOk, behind := checkRemoteClockTolerance(hbInfo.clock)
-	if !clockOk {
-		_ = stream.Reset()
-		b := "ahead"
-		if behind {
-			b = "behind"
-		}
-		ps.Log().Warnf("[peering] clock of the peer %s is %s of the local clock for %v > tolerance interval %v",
-			ShortPeerIDString(id), b, clockDiff, clockTolerance)
-		ps.dropPeer(id, "exceeded clock sync tolerance")
-		return
-	}
-	defer func() { _ = stream.Close() }()
+	_ = stream.Close()
 
 	ps.withPeer(id, func(p *Peer) {
 		if p == nil {
@@ -192,7 +165,7 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 		p._evidenceActivity("hb")
 		p.hasTxStore = hbInfo.hasTxStore
 		p.acceptsPullSyncRequests = hbInfo.acceptsPullSyncRequests
-		p._evidenceClockDifference(clockDiff)
+		p._evidenceClockDifference(time.Now().Sub(hbInfo.clock))
 	})
 }
 
@@ -252,6 +225,29 @@ func (ps *Peers) heartbeatLoop() {
 			ps.Log().Infof("[peering] heartbeat loop stopped")
 			return
 		case <-time.After(heartbeatRate):
+		}
+	}
+}
+
+func (ps *Peers) clockToleranceLoop() {
+	for {
+		select {
+		case <-ps.Ctx().Done():
+			return
+		case <-time.After(clockTolerance):
+			ps._dropPeersWithTooBigClockDiffs()
+		}
+	}
+}
+
+// _dropPeersWithTooBigClockDiffs drops all peers which average clock diff exceeds tolerance threshold
+func (ps *Peers) _dropPeersWithTooBigClockDiffs() {
+	ps.mutex.Lock()
+	defer ps.mutex.Unlock()
+
+	for _, p := range ps.peers {
+		if p.avgClockDifference() > clockTolerance {
+			ps._dropPeer(p, "clock tolerance")
 		}
 	}
 }
