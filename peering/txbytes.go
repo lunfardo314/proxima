@@ -1,11 +1,8 @@
 package peering
 
 import (
-	"time"
-
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
-	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/unitrie/common"
 )
@@ -86,25 +83,19 @@ func (ps *Peers) SendTxBytesWithMetadataToPeer(id peer.ID, txBytes []byte, metad
 	}
 
 	ps.sendMsgOutQueued(&_gossipMsgWrapper{
-		metadata:   metadata,
-		txBytes:    txBytes,
-		protocolID: ps.lppProtocolGossip,
-	}, id, false)
+		metadata: metadata,
+		txBytes:  txBytes,
+	}, id, ps.lppProtocolGossip)
 	return true
 }
 
+// message wrapper
 type _gossipMsgWrapper struct {
-	metadata   *txmetadata.TransactionMetadata
-	txBytes    []byte
-	protocolID protocol.ID
+	metadata *txmetadata.TransactionMetadata
+	txBytes  []byte
 }
 
 func (gm _gossipMsgWrapper) Bytes() []byte {
 	return common.ConcatBytes(gm.metadata.Bytes(), gm.txBytes)
 }
-
-func (gm _gossipMsgWrapper) SetTime(_ time.Time) {}
-
-func (gm _gossipMsgWrapper) ProtocolID() protocol.ID {
-	return gm.protocolID
-}
+func (gm _gossipMsgWrapper) SetNow() {}

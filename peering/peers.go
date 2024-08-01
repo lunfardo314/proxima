@@ -86,15 +86,15 @@ type (
 	}
 
 	outMsgData struct {
-		msg    outMessageWrapper
-		peerID peer.ID
+		msg      outMessageWrapper
+		peerID   peer.ID
+		protocol protocol.ID
 	}
 
 	// outMessageWrapper is needed for the outQueue. In order to avoid timing problems
 	outMessageWrapper interface {
 		Bytes() []byte
-		SetTime(t time.Time) // specifically for heartbeat
-		ProtocolID() protocol.ID
+		SetNow() // specifically for heartbeat
 	}
 )
 
@@ -551,20 +551,4 @@ func (p *Peer) avgClockDifference() time.Duration {
 		ret += d
 	}
 	return ret / time.Duration(len(p.clockDifferences))
-}
-
-func (ps *Peers) randomPeer() (peer.ID, bool) {
-	ps.mutex.RLock()
-	defer ps.mutex.RUnlock()
-
-	peerIDs := make([]peer.ID, 0, len(ps.peers))
-	for id, p := range ps.peers {
-		if _, inBlackList := ps.blacklist[id]; !inBlackList && !p._isDead() && p.hasTxStore {
-			peerIDs = append(peerIDs, id)
-		}
-	}
-	if len(peerIDs) == 0 {
-		return "", false
-	}
-	return util.RandomElement(peerIDs...), true
 }

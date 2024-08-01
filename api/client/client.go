@@ -189,6 +189,7 @@ func (c *APIClient) GetChainOutputData(chainID ledger.ChainID) (*ledger.OutputDa
 	}, nil
 }
 
+// GetChainOutputFromHeaviestState returns parsed output for the chain ID and index of the chain constraint in it
 func (c *APIClient) GetChainOutputFromHeaviestState(chainID ledger.ChainID) (*ledger.OutputWithChainID, byte, error) {
 	oData, err := c.GetChainOutputData(chainID)
 	if err != nil {

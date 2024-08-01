@@ -364,6 +364,7 @@ func (o *OutputDataWithID) Parse(validOpt ...func(o *Output) error) (*OutputWith
 	}, nil
 }
 
+// ParseAsChainOutput parses raw output data expecting chain output. Returns parsed output and index of the chain constraint in it
 func (o *OutputDataWithID) ParseAsChainOutput() (*OutputWithChainID, byte, error) {
 	var chainConstr *ChainConstraint
 	var idx byte

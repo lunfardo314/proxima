@@ -8,7 +8,6 @@ import (
 
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
-	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/multiformats/go-multiaddr"
 	"golang.org/x/exp/maps"
 )
@@ -17,7 +16,6 @@ type heartbeatInfo struct {
 	clock                   time.Time
 	hasTxStore              bool
 	acceptsPullSyncRequests bool
-	protocolID              protocol.ID
 }
 
 const (
@@ -148,11 +146,10 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 
 func (ps *Peers) sendHeartbeatToPeer(id peer.ID) {
 	ps.sendMsgOutQueued(&heartbeatInfo{
-		clock:                   time.Now(),
+		// time now will be set in the queue consumer
 		hasTxStore:              true, // at the moment txStore always is part of the node
 		acceptsPullSyncRequests: ps.acceptsPullSyncRequests,
-		protocolID:              ps.lppProtocolHeartbeat,
-	}, id, true)
+	}, id, ps.lppProtocolHeartbeat)
 }
 
 func (ps *Peers) peerIDsAlive() []peer.ID {
@@ -254,10 +251,6 @@ func (hi *heartbeatInfo) Bytes() []byte {
 	return buf.Bytes()
 }
 
-func (hi *heartbeatInfo) SetTime(t time.Time) {
-	hi.clock = t
-}
-
-func (hi *heartbeatInfo) ProtocolID() protocol.ID {
-	return hi.protocolID
+func (hi *heartbeatInfo) SetNow() {
+	hi.clock = time.Now()
 }
