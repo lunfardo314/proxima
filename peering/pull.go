@@ -203,8 +203,7 @@ func decodeSyncPortionMsg(data []byte) (startingFrom ledger.Slot, maxSlots int, 
 func (ps *Peers) _pullTargets() []peer.ID {
 	ret := make([]peer.ID, 0)
 	ps.forEachPeer(func(p *Peer) bool {
-		_, inBlackList := ps.blacklist[p.id]
-		if !inBlackList && p._isDead() && p.hasTxStore {
+		if _, inBlackList := ps.blacklist[p.id]; !inBlackList && !p._isDead() && p.hasTxStore {
 			ret = append(ret, p.id)
 		}
 		return true
