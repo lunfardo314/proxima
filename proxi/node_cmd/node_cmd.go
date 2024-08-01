@@ -48,7 +48,7 @@ func Init() *cobra.Command {
 		initTransferCmd(),
 		initSpamCmd(),
 		initMakeChainCmd(),
-		initRemoveChainCmd(),
+		initDeleteChainCmd(),
 		initChainsCmd(),
 		initNodeInfoCmd(),
 		seq_cmd.Init(),

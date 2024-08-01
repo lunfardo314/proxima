@@ -12,20 +12,20 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func initRemoveChainCmd() *cobra.Command {
-	removeChainCmd := &cobra.Command{
-		Use:   "rmchain <chain id>",
-		Short: `removes a chain origin (not a sequencer)`,
+func initDeleteChainCmd() *cobra.Command {
+	deleteChainCmd := &cobra.Command{
+		Use:   "delchain <chain id>",
+		Short: `deletes a chain origin (not a sequencer)`,
 		Args:  cobra.ExactArgs(1),
-		Run:   runRemoveChainCmd,
+		Run:   runDeleteChainCmd,
 	}
-	glb.AddFlagTraceTx(removeChainCmd)
-	removeChainCmd.InitDefaultHelpCmd()
+	glb.AddFlagTraceTx(deleteChainCmd)
+	deleteChainCmd.InitDefaultHelpCmd()
 
-	return removeChainCmd
+	return deleteChainCmd
 }
 
-func RemoveChain(chainId *ledger.ChainID) (*transaction.TxContext, error) {
+func DeleteChain(chainId *ledger.ChainID) (*transaction.TxContext, error) {
 	//cmd.DebugFlags()
 
 	walletData := glb.GetWalletData()
@@ -48,7 +48,7 @@ func RemoveChain(chainId *ledger.ChainID) (*transaction.TxContext, error) {
 	}
 	glb.Infof("trace on node: %v", glb.TraceTx())
 
-	glb.Infof("Removing chain origin:")
+	glb.Infof("Deleting chain origin:")
 	glb.Infof("   chain id: %s", chainId.String())
 	glb.Infof("   tag-along fee %s to the sequencer %s", util.Th(feeAmount), tagAlongSeqID)
 	glb.Infof("   source account: %s", walletData.Account.String())
@@ -59,7 +59,7 @@ func RemoveChain(chainId *ledger.ChainID) (*transaction.TxContext, error) {
 		os.Exit(0)
 	}
 
-	return glb.GetClient().RemoveChainOrigin(client.RemoveChainOriginParams{
+	return glb.GetClient().DeleteChainOrigin(client.DeleteChainOriginParams{
 		WalletPrivateKey: walletData.PrivateKey,
 		TagAlongSeqID:    tagAlongSeqID,
 		TagAlongFee:      feeAmount,
@@ -67,14 +67,14 @@ func RemoveChain(chainId *ledger.ChainID) (*transaction.TxContext, error) {
 	})
 }
 
-func runRemoveChainCmd(_ *cobra.Command, args []string) {
+func runDeleteChainCmd(_ *cobra.Command, args []string) {
 	//cmd.DebugFlags()
 	glb.InitLedgerFromNode()
 
 	chainId, err := ledger.ChainIDFromHexString(args[0])
 	glb.AssertNoError(err)
 
-	txCtx, err := RemoveChain(&chainId)
+	txCtx, err := DeleteChain(&chainId)
 
 	glb.AssertNoError(err)
 	if !glb.NoWait() {

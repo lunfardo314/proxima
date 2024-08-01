@@ -575,7 +575,7 @@ func (c *APIClient) MakeChainOrigin(par TransferFromED25519WalletParams) (*trans
 	return txCtx, chainID, err
 }
 
-type RemoveChainOriginParams struct {
+type DeleteChainOriginParams struct {
 	WalletPrivateKey ed25519.PrivateKey
 	TagAlongSeqID    *ledger.ChainID
 	TagAlongFee      uint64 // 0 means no fee output will be produced
@@ -583,39 +583,14 @@ type RemoveChainOriginParams struct {
 	TraceTx          bool
 }
 
-func (c *APIClient) RemoveChainOrigin(par RemoveChainOriginParams) (*transaction.TxContext, error) {
+func (c *APIClient) DeleteChainOrigin(par DeleteChainOriginParams) (*transaction.TxContext, error) {
 	if par.TagAlongFee > 0 && par.TagAlongSeqID == nil {
 		return nil, fmt.Errorf("tag-along sequencer not specified")
 	}
 
-	walletAccount := ledger.AddressED25519FromPrivateKey(par.WalletPrivateKey)
-
-	// find chain output by chain ID
-	outs, err := c.GetAccountOutputs(walletAccount, func(_ *ledger.OutputID, o *ledger.Output) bool {
-		_, idx := o.ChainConstraint()
-		return idx != 0xff
-	})
-	util.AssertNoError(err)
-
-	if len(outs) == 0 {
-		return nil, fmt.Errorf("no chains have been found controlled by %s", walletAccount.String())
-	}
-
 	chainId := *par.ChainID
-	var chainIN *ledger.OutputWithID
-	chainIN = nil
-	for _, o := range outs {
-		chID, _, ok := o.ExtractChainID()
-		util.Assertf(ok, "can't extract chainID")
-		if chID == chainId {
-			//util.Infof("found chain %s with balance %s on %s", chainId.String(), util.Th(o.Output.Amount()), o.IDShort())
-			chainIN = o
-			break
-		}
-	}
-	if chainIN == nil {
-		return nil, fmt.Errorf("chain id %s not found", chainId.String())
-	}
+	chainIN, _, err := c.GetChainOutputFromHeaviestState(chainId)
+	util.AssertNoError(err)
 
 	ts := ledger.TimeNow()
 
@@ -659,7 +634,7 @@ func (c *APIClient) RemoveChainOrigin(par RemoveChainOriginParams) (*transaction
 	txBytes := txb.TransactionData.Bytes()
 
 	inps := make([]*ledger.OutputWithID, 1)
-	inps[0] = chainIN
+	inps[0] = &chainIN.OutputWithID
 	txCtx, err := transaction.TxContextFromTransferableBytes(txBytes, transaction.PickOutputFromListFunc(inps))
 	if err != nil {
 		return nil, err
