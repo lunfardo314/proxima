@@ -22,3 +22,4 @@ go.work
 /proximadb/
 /proximadb.txstore/
 .vscode/launch.json
+tests/node-docker-setup/data

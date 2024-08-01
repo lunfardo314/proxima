@@ -35,7 +35,7 @@ const (
 	proximaNodeProfile     = "proxima.yaml"
 	peeringPort            = 4000
 	apiPort                = 8000
-	defaultMaxDynamicPeers = 3
+	defaultMaxDynamicPeers = 5
 )
 
 type configFileData struct {
@@ -112,6 +112,8 @@ peering:
   # for more info see https://docs.libp2p.io/concepts/fundamentals/addressing/
   peers:
     # Example -> boot: /ip4/127.0.0.1/tcp/4000/p2p/12D3KooWL32QkXc8ZuraMJkLaoZjRXBkJVjRz7sxGWYwmzBFig3M
+    boot: /ip4/185.139.228.149/tcp/4000/p2p/12D3KooWQDhjcm6b6rKseiYuggsceisiM8corcuaZVoGhV8kqgPv
+    friendlyPeer: /ip4/185.139.228.149/tcp/4000/p2p/12D3KooWQDhjcm6b6rKseiYuggsceisiM8corcuaZVoGhV8kqgPv
 
   # Maximum number of peers which may be connected to via the automatic peer discovery
   # max_dynamic_peers > 0 means automatic peer discovery (autopeering) is enabled, otherwise disabled

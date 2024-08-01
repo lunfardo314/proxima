@@ -41,6 +41,10 @@ func runSeqSetupCmd(_ *cobra.Command, args []string) {
 	glb.AssertNoError(err)
 
 	glb.Infof("amount: %s", util.Th(amount))
+	if amount < ledger.L().Const().MinimumAmountOnSequencer() {
+		glb.Infof("minimum amout required: %d", ledger.L().Const().MinimumAmountOnSequencer())
+		return
+	}
 
 	// wait for available funds
 	waitForFunds(accountable, amount)

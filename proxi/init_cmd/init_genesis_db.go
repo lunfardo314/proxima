@@ -30,7 +30,7 @@ func initGenesisDBCmd() *cobra.Command {
 }
 
 func runGenesis(_ *cobra.Command, _ []string) {
-	glb.FileMustNotExist(global.MultiStateDBName)
+	glb.DirMustNotExistOrBeEmpty(global.MultiStateDBName)
 
 	var idData *ledger.IdentityData
 	if fetchLedgerID {
