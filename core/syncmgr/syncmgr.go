@@ -91,7 +91,7 @@ func (d *SyncManager) syncManagerLoop() {
 			return
 
 		case <-d.endOfPortionCh:
-			d.Infof1("[sync manager] end of sync portion")
+			d.Infof0("[sync manager] end of sync portion")
 			d.checkSync(true)
 
 		case <-time.After(checkSyncEvery):

@@ -124,7 +124,7 @@ const (
 	numMaxDynamicPeersForBootNodeAtLeast = 10
 
 	// heartbeatRate heartbeat issued every period
-	heartbeatRate      = 3 * time.Second
+	heartbeatRate      = 2 * time.Second
 	aliveNumHeartbeats = 10 // if no hb over this period, it means not-alive -> dynamic peer will be dropped
 	aliveDuration      = time.Duration(aliveNumHeartbeats) * heartbeatRate
 	// gracePeriodAfterAdded period of time peer is considered not dead after added even if messages are not coming
