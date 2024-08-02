@@ -1,4 +1,4 @@
-package pull_sync_server
+package sync_server
 
 import (
 	"time"
@@ -38,7 +38,7 @@ type (
 		PeerID    peer.ID
 	}
 
-	PullSyncServer struct {
+	SyncServer struct {
 		*queue.Queue[*Input]
 		Environment
 	}
@@ -50,14 +50,14 @@ const (
 	chanBufferSize = 10
 )
 
-func New(env Environment) *PullSyncServer {
-	return &PullSyncServer{
+func New(env Environment) *SyncServer {
+	return &SyncServer{
 		Queue:       queue.NewQueueWithBufferSize[*Input](Name, chanBufferSize, env.Log().Level(), nil),
 		Environment: env,
 	}
 }
 
-func (d *PullSyncServer) Start() {
+func (d *SyncServer) Start() {
 	d.MarkWorkProcessStarted(Name)
 	d.AddOnClosed(func() {
 		d.MarkWorkProcessStopped(Name)
@@ -65,16 +65,16 @@ func (d *PullSyncServer) Start() {
 	d.Queue.Start(d, d.Ctx())
 }
 
-func (d *PullSyncServer) Consume(inp *Input) {
+func (d *SyncServer) Consume(inp *Input) {
 	if synced, _ := d.SyncStatus(); !synced && !d.IsBootstrapNode() {
-		d.Environment.Log().Warnf("[pullSyncServer]: can't respond to sync request: node itself is out of sync and is not a bootstrap node")
+		d.Environment.Log().Warnf("[syncServer]: can't respond to sync request: node itself is out of sync and is not a bootstrap node")
 		return
 	}
 	maxSlots := inp.MaxSlots
 	if maxSlots > global.MaxSyncPortionSlots {
 		maxSlots = global.MaxSyncPortionSlots
 	}
-	d.Environment.Log().Infof("[pullSyncServer] pull sync portion request for slots from slot %d, up to %d slots ",
+	d.Environment.Log().Infof("[syncServer] pull sync portion request for slots from slot %d, up to %d slots ",
 		inp.StartFrom, maxSlots)
 
 	startTime := time.Now()
@@ -90,7 +90,7 @@ func (d *PullSyncServer) Consume(inp *Input) {
 		} else {
 			startFromSlot = latestHealthySlot - 5
 		}
-		d.Environment.Log().Infof("[pullSyncServer] pull sync portion adjusted to start from slot %d. latestHealthySlot: %d",
+		d.Environment.Log().Infof("[syncServer] pull sync portion adjusted to start from slot %d. latestHealthySlot: %d",
 			startFromSlot, latestHealthySlot)
 	}
 
@@ -141,9 +141,9 @@ func (d *PullSyncServer) Consume(inp *Input) {
 		// branches already sorted ascending by slot number
 		d.SendTx(inp.PeerID, branchIDs...)
 
-		d.Environment.Log().Infof("[PullSyncServer]: sync portion of %d branches -> %s. Slots from %d to %d. It took: %v",
+		d.Environment.Log().Infof("[syncServer]: sync portion of %d branches -> %s. Slots from %d to %d. It took: %v",
 			len(branchIDs), peering.ShortPeerIDString(inp.PeerID), startFromSlot, lastSlot, itTook)
 	} else {
-		d.Environment.Log().Warnf("[PullSyncServer]: empty sync portion from slot %d. It took: %v", inp.StartFrom, itTook)
+		d.Environment.Log().Warnf("[syncServer]: empty sync portion from slot %d. It took: %v", inp.StartFrom, itTook)
 	}
 }

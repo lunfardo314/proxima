@@ -15,8 +15,8 @@ import (
 	"github.com/lunfardo314/proxima/core/work_process/poker"
 	"github.com/lunfardo314/proxima/core/work_process/pruner"
 	"github.com/lunfardo314/proxima/core/work_process/pull_client"
-	"github.com/lunfardo314/proxima/core/work_process/pull_sync_server"
 	"github.com/lunfardo314/proxima/core/work_process/pull_tx_server"
+	"github.com/lunfardo314/proxima/core/work_process/sync_server"
 	"github.com/lunfardo314/proxima/core/work_process/tippool"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
@@ -42,7 +42,7 @@ type (
 		// daemons
 		pullClient     *pull_client.PullClient
 		pullTxServer   *pull_tx_server.PullTxServer
-		pullSyncServer *pull_sync_server.PullSyncServer
+		syncServer     *sync_server.SyncServer
 		gossip         *gossip.Gossip
 		persistTxBytes *persist_txbytes.PersistTxBytes
 		poker          *poker.Poker
@@ -80,7 +80,7 @@ func New(env Environment, peers *peering.Peers, opts ...ConfigOption) *Workflow 
 	ret.pullClient = pull_client.New(ret)
 	ret.pullTxServer = pull_tx_server.New(ret)
 	if !env.SyncServerDisabled() {
-		ret.pullSyncServer = pull_sync_server.New(ret)
+		ret.syncServer = sync_server.New(ret)
 	}
 	ret.gossip = gossip.New(ret)
 	ret.persistTxBytes = persist_txbytes.New(ret)
@@ -110,7 +110,7 @@ func (w *Workflow) Start() {
 	w.pullClient.Start()
 	w.pullTxServer.Start()
 	if !w.SyncServerDisabled() {
-		w.pullSyncServer.Start()
+		w.syncServer.Start()
 	}
 	w.gossip.Start()
 	w.persistTxBytes.Start()
@@ -146,7 +146,7 @@ func (w *Workflow) Start() {
 
 	if !w.SyncServerDisabled() {
 		w.peers.OnReceivePullSyncPortion(func(from peer.ID, startingFrom ledger.Slot, maxSlots int) {
-			w.pullSyncServer.Push(&pull_sync_server.Input{
+			w.syncServer.Push(&sync_server.Input{
 				StartFrom: startingFrom,
 				MaxSlots:  maxSlots,
 				PeerID:    from,
