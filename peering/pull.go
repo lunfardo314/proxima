@@ -104,7 +104,7 @@ func (ps *Peers) PullTransactionsFromRandomPeer(txids ...ledger.TransactionID) b
 	if len(txids) == 0 {
 		return false
 	}
-	if rndPeerID, ok := ps._randomPullPeer(); ok {
+	if rndPeerID, ok := ps._randomPullPeer(false); ok {
 		ps.sendPullTransactionsToPeer(rndPeerID, txids...)
 		return true
 	}
@@ -116,7 +116,7 @@ func (ps *Peers) PullTransactionsFromAllPeers(txids ...ledger.TransactionID) {
 		return
 	}
 	msg := &_pullTransactions{txids: txids}
-	for _, id := range ps._pullTargets() {
+	for _, id := range ps._pullTxTargets() {
 		ps.sendMsgOutQueued(msg, id, ps.lppProtocolPull)
 	}
 }
@@ -129,7 +129,7 @@ func (ps *Peers) sendPullSyncPortionToPeer(id peer.ID, startingFrom ledger.Slot,
 }
 
 func (ps *Peers) PullSyncPortionFromRandomPeer(startingFrom ledger.Slot, maxSlots int) bool {
-	if rndPeerID, ok := ps._randomPullPeer(); ok {
+	if rndPeerID, ok := ps._randomPullPeer(true); ok {
 		ps.sendPullSyncPortionToPeer(rndPeerID, startingFrom, maxSlots)
 		ps.Log().Infof("[peering] pull sync portion from random peer %s. From slot: %d, up to slots: %d",
 			ShortPeerIDString(rndPeerID), int(startingFrom), maxSlots)
@@ -200,7 +200,7 @@ func decodeSyncPortionMsg(data []byte) (startingFrom ledger.Slot, maxSlots int, 
 	return
 }
 
-func (ps *Peers) _pullTargets() []peer.ID {
+func (ps *Peers) _pullTxTargets() []peer.ID {
 	ret := make([]peer.ID, 0)
 	ps.forEachPeer(func(p *Peer) bool {
 		if _, inBlackList := ps.blacklist[p.id]; !inBlackList && !p._isDead() && p.hasTxStore {
@@ -211,8 +211,24 @@ func (ps *Peers) _pullTargets() []peer.ID {
 	return ret
 }
 
-func (ps *Peers) _randomPullPeer() (peer.ID, bool) {
-	targets := ps._pullTargets()
+func (ps *Peers) _pullSyncPortionTargets() []peer.ID {
+	ret := make([]peer.ID, 0)
+	ps.forEachPeer(func(p *Peer) bool {
+		if _, inBlackList := ps.blacklist[p.id]; !inBlackList && !p._isDead() && p.acceptsPullSyncRequests {
+			ret = append(ret, p.id)
+		}
+		return true
+	})
+	return ret
+}
+
+func (ps *Peers) _randomPullPeer(forSync bool) (peer.ID, bool) {
+	var targets []peer.ID
+	if forSync {
+		targets = ps._pullSyncPortionTargets()
+	} else {
+		targets = ps._pullTxTargets()
+	}
 	if len(targets) == 0 {
 		return "", false
 	}
