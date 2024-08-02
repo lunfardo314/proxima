@@ -1,6 +1,7 @@
 package attacher
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -84,13 +85,15 @@ type (
 	// milestoneAttacher is used to attach a sequencer transaction
 	milestoneAttacher struct {
 		attacher
-		vid              *vertex.WrappedTx
-		metadata         *txmetadata.TransactionMetadata
-		closeOnce        sync.Once
-		pokeChan         chan struct{}
-		pokeClosingMutex sync.RWMutex
-		finals           attachFinals
-		closed           bool
+		vid                  *vertex.WrappedTx
+		metadata             *txmetadata.TransactionMetadata
+		timeoutContext       context.Context
+		cancelTimeoutContext context.CancelFunc
+		closeOnce            sync.Once
+		pokeChan             chan struct{}
+		pokeClosingMutex     sync.RWMutex
+		finals               attachFinals
+		closed               bool
 	}
 
 	_attacherOptions struct {
@@ -100,8 +103,9 @@ type (
 		doNotLoadBranch    bool
 		calledBy           string
 		enforceTimestamp   bool
+		timeout            time.Duration
 	}
-	Option func(*_attacherOptions)
+	AttachTxOption func(*_attacherOptions)
 
 	// final values of attacher run. Ugly -> TODO refactor
 	attachFinals struct {
@@ -160,15 +164,22 @@ func (f Flags) String() string {
 	)
 }
 
-func OptionWithTransactionMetadata(metadata *txmetadata.TransactionMetadata) Option {
+func AttachTxOptionWithTransactionMetadata(metadata *txmetadata.TransactionMetadata) AttachTxOption {
 	return func(options *_attacherOptions) {
 		options.metadata = metadata
 	}
 }
 
-func OptionWithAttachmentCallback(fun func(vid *vertex.WrappedTx, err error)) Option {
+func AttachTxOptionWithAttachmentCallback(fun func(vid *vertex.WrappedTx, err error)) AttachTxOption {
 	return func(options *_attacherOptions) {
 		options.attachmentCallback = fun
+	}
+}
+
+// AttachTxOptionWithTimeout default is infinite
+func AttachTxOptionWithTimeout(t time.Duration) AttachTxOption {
+	return func(options *_attacherOptions) {
+		options.timeout = t
 	}
 }
 
@@ -184,7 +195,7 @@ func OptionEnforceTimestampBeforeRealTime(options *_attacherOptions) {
 	options.enforceTimestamp = true
 }
 
-func OptionInvokedBy(name string) Option {
+func OptionInvokedBy(name string) AttachTxOption {
 	return func(options *_attacherOptions) {
 		options.calledBy = name
 	}

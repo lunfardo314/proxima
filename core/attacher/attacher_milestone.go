@@ -1,6 +1,8 @@
 package attacher
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"runtime"
 	"time"
@@ -18,8 +20,14 @@ const (
 	periodicCheckEach       = 100 * time.Millisecond
 )
 
-func runMilestoneAttacher(vid *vertex.WrappedTx, metadata *txmetadata.TransactionMetadata, callback func(vid *vertex.WrappedTx, err error), env Environment) {
-	a := newMilestoneAttacher(vid, env, metadata)
+func runMilestoneAttacher(
+	vid *vertex.WrappedTx,
+	metadata *txmetadata.TransactionMetadata,
+	callback func(vid *vertex.WrappedTx, err error),
+	env Environment,
+	timeout time.Duration,
+) {
+	a := newMilestoneAttacher(vid, env, metadata, timeout)
 	defer func() {
 		go a.close()
 	}()
@@ -61,7 +69,9 @@ func runMilestoneAttacher(vid *vertex.WrappedTx, metadata *txmetadata.Transactio
 		})
 }
 
-func newMilestoneAttacher(vid *vertex.WrappedTx, env Environment, metadata *txmetadata.TransactionMetadata) *milestoneAttacher {
+var errTimeoutCause = errors.New("attacher timeout")
+
+func newMilestoneAttacher(vid *vertex.WrappedTx, env Environment, metadata *txmetadata.TransactionMetadata, timeout time.Duration) *milestoneAttacher {
 	env.Assertf(vid.IsSequencerMilestone(), "newMilestoneAttacher: %s is not a sequencer milestone", vid.IDShortString)
 
 	ret := &milestoneAttacher{
@@ -70,6 +80,9 @@ func newMilestoneAttacher(vid *vertex.WrappedTx, env Environment, metadata *txme
 		metadata: metadata,
 		pokeChan: make(chan struct{}),
 		finals:   attachFinals{started: time.Now()},
+	}
+	if timeout > 0 {
+		ret.timeoutContext, ret.cancelTimeoutContext = context.WithTimeoutCause(env.Ctx(), timeout, errTimeoutCause)
 	}
 	ret.Tracef(TraceTagCoverageAdjustment, "newMilestoneAttacher: metadata of %s: %s", vid.IDShortString, metadata.String)
 
@@ -91,6 +104,14 @@ func newMilestoneAttacher(vid *vertex.WrappedTx, env Environment, metadata *txme
 	})
 	ret.markVertexUndefined(vid)
 	return ret
+}
+
+// Ctx overloading global context
+func (a *milestoneAttacher) Ctx() context.Context {
+	if a.timeoutContext == nil {
+		return a.Environment.Ctx()
+	}
+	return a.timeoutContext
 }
 
 func (a *milestoneAttacher) run() error {
@@ -149,7 +170,11 @@ func (a *milestoneAttacher) lazyRepeat(fun func() vertex.Status) vertex.Status {
 			a.finals.numPokes++
 			a.Tracef(TraceTagAttachMilestone, "poked")
 		case <-a.Ctx().Done():
-			a.setError(fmt.Errorf("attacher has been interrupted. Undefined: %s", a.undefinedListLines().Join(", ")))
+			if a.timeoutContext != nil && errors.Is(context.Cause(a.timeoutContext), errTimeoutCause) {
+				a.setError(fmt.Errorf("attacher has been interrupted due to timeout. Undefined: %s", a.undefinedListLines().Join(", ")))
+			} else {
+				a.setError(fmt.Errorf("attacher has been interrupted by global context. Undefined: %s", a.undefinedListLines().Join(", ")))
+			}
 			return vertex.Bad
 		case <-time.After(periodicCheckEach):
 			a.finals.numPeriodic++
@@ -160,6 +185,9 @@ func (a *milestoneAttacher) lazyRepeat(fun func() vertex.Status) vertex.Status {
 
 func (a *milestoneAttacher) close() {
 	a.closeOnce.Do(func() {
+		if a.timeoutContext != nil {
+			a.cancelTimeoutContext()
+		}
 		a.unReferenceAllByAttacher()
 
 		a.pokeClosingMutex.Lock()

@@ -13,7 +13,7 @@ import (
 )
 
 // AttachTxID ensures the txid is on the MemDAG
-func AttachTxID(txid ledger.TransactionID, env Environment, opts ...Option) (vid *vertex.WrappedTx) {
+func AttachTxID(txid ledger.TransactionID, env Environment, opts ...AttachTxOption) (vid *vertex.WrappedTx) {
 	env.TraceTx(&txid, "AttachTxID")
 
 	options := &_attacherOptions{}
@@ -93,7 +93,7 @@ func InvalidateTxID(txid ledger.TransactionID, env Environment, reason error) *v
 	return vid
 }
 
-func AttachOutputID(oid ledger.OutputID, env Environment, opts ...Option) vertex.WrappedOutput {
+func AttachOutputID(oid ledger.OutputID, env Environment, opts ...AttachTxOption) vertex.WrappedOutput {
 	env.TraceTx(util.Ref(oid.TransactionID()), "AttachOutputID: #%d", oid.Index())
 	return vertex.WrappedOutput{
 		VID:   AttachTxID(oid.TransactionID(), env, opts...),
@@ -103,16 +103,14 @@ func AttachOutputID(oid ledger.OutputID, env Environment, opts ...Option) vertex
 
 // AttachTransaction attaches new incoming transaction. For sequencer transaction it starts milestoneAttacher routine
 // which manages solidification pulling until transaction becomes solid or stopped by the context
-func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Option) (vid *vertex.WrappedTx) {
+func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...AttachTxOption) (vid *vertex.WrappedTx) {
 	options := &_attacherOptions{}
 	for _, opt := range opts {
 		opt(options)
 	}
 	if options.enforceTimestamp {
 		now := ledger.TimeNow()
-		util.Assertf(!now.Before(tx.Timestamp()),
-			"!ledger.TimeNow().Before(tx.Timestamp()) %s -- %s",
-			now.String(), tx.Timestamp().String())
+		util.Assertf(!now.Before(tx.Timestamp()), "!now(%s).Before(tx.Timestamp())(%s)", now.String, tx.Timestamp().String)
 	}
 
 	env.Tracef(TraceTagAttach, "AttachTransaction: %s", tx.IDShortString)
@@ -145,11 +143,12 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Opt
 				}
 				metadata := options.metadata
 
+				// start attacher routine
 				go func() {
 					env.MarkWorkProcessStarted(vid.IDShortString())
 					env.TraceTx(&vid.ID, "runMilestoneAttacher: start")
 
-					runMilestoneAttacher(vid, metadata, callback, env)
+					runMilestoneAttacher(vid, metadata, callback, env, options.timeout)
 
 					env.TraceTx(&vid.ID, "runMilestoneAttacher: exit")
 					env.MarkWorkProcessStopped(vid.IDShortString())
@@ -176,7 +175,7 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Opt
 }
 
 // AttachTransactionFromBytes used for testing
-func AttachTransactionFromBytes(txBytes []byte, env Environment, opts ...Option) (*vertex.WrappedTx, error) {
+func AttachTransactionFromBytes(txBytes []byte, env Environment, opts ...AttachTxOption) (*vertex.WrappedTx, error) {
 	tx, err := transaction.FromBytes(txBytes, transaction.MainTxValidationOptions...)
 	if err != nil {
 		return nil, err

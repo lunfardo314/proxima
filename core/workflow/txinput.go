@@ -115,13 +115,13 @@ func (w *Workflow) TxBytesIn(txBytes []byte, opts ...TxBytesInOption) (*ledger.T
 	// - with delay if timestamp is in the future
 	txTime := txid.Timestamp().Time()
 
-	attachOpts := []attacher.Option{
-		attacher.OptionWithTransactionMetadata(&options.txMetadata),
+	attachOpts := []attacher.AttachTxOption{
+		attacher.AttachTxOptionWithTransactionMetadata(&options.txMetadata),
 		attacher.OptionInvokedBy("txInput"),
 		attacher.OptionEnforceTimestampBeforeRealTime,
 	}
 	if options.callback != nil {
-		attachOpts = append(attachOpts, attacher.OptionWithAttachmentCallback(options.callback))
+		attachOpts = append(attachOpts, attacher.AttachTxOptionWithAttachmentCallback(options.callback))
 	}
 
 	if txTime.Before(nowis) {
@@ -153,7 +153,7 @@ func _ensureNowIsAfter(targetTime time.Time) {
 	}
 }
 
-func (w *Workflow) _attach(tx *transaction.Transaction, opts ...attacher.Option) {
+func (w *Workflow) _attach(tx *transaction.Transaction, opts ...attacher.AttachTxOption) {
 	// enforcing ledger time of the transaction cannot be ahead of the clock
 	nowis := time.Now()
 	tsTime := tx.TimestampTime()
