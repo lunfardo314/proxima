@@ -1,6 +1,8 @@
 package pull_sync_server
 
 import (
+	"time"
+
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/lunfardo314/proxima/core/syncmgr"
 	"github.com/lunfardo314/proxima/global"
@@ -75,6 +77,8 @@ func (d *PullSyncServer) Consume(inp *Input) {
 	d.Environment.Log().Infof("[pullSyncServer] pull sync portion request for slots from slot %d, up to %d slots ",
 		inp.StartFrom, maxSlots)
 
+	startTime := time.Now()
+
 	latestHealthySlot := d.LatestHealthySlot()
 	slotNow := ledger.TimeNow().Slot()
 
@@ -132,13 +136,14 @@ func (d *PullSyncServer) Consume(inp *Input) {
 			}
 		}
 	}
+	itTook := time.Since(startTime)
 	if len(branchIDs) > 0 {
 		// branches already sorted ascending by slot number
 		d.SendTx(inp.PeerID, branchIDs...)
 
-		d.Environment.Log().Infof("[PullSyncServer]: sync portion of %d branches -> %s. Slots from %d to %d",
-			len(branchIDs), peering.ShortPeerIDString(inp.PeerID), startFromSlot, lastSlot)
+		d.Environment.Log().Infof("[PullSyncServer]: sync portion of %d branches -> %s. Slots from %d to %d. It took: %v",
+			len(branchIDs), peering.ShortPeerIDString(inp.PeerID), startFromSlot, lastSlot, itTook)
 	} else {
-		d.Environment.Log().Warnf("[PullSyncServer]: empty sync portion from slot %d", inp.StartFrom)
+		d.Environment.Log().Warnf("[PullSyncServer]: empty sync portion from slot %d. It took: %v", inp.StartFrom, itTook)
 	}
 }
