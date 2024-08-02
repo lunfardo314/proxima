@@ -171,9 +171,8 @@ func (w *Workflow) SendTx(sendTo peer.ID, txids ...ledger.TransactionID) {
 	}
 }
 
-const logSyncStatusEach = 2 * time.Second
-
 func (w *Workflow) logSyncStatusLoop() {
+	logSyncStatusEach := ledger.L().ID.SlotDuration() / 2
 	for {
 		select {
 		case <-w.Ctx().Done():

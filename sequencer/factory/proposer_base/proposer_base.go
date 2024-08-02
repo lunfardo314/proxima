@@ -35,6 +35,10 @@ func Strategy() *proposer_generic.Strategy {
 
 func (b *BaseProposer) propose() (*attacher.IncrementalAttacher, bool) {
 	extend := b.OwnLatestMilestoneOutput()
+	if extend.VID == nil {
+		b.Log().Warnf("proposer %s: can't find own milestone output", b.Name)
+		return nil, true
+	}
 	if !ledger.ValidSequencerPace(extend.Timestamp(), b.TargetTs) {
 		// it means proposer is obsolete, abandon it
 		b.Tracef(TraceTag, "%s force exit: own lates milestone and target ts does not make valid pace %s", b.Name, extend.IDShortString)

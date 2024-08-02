@@ -25,7 +25,7 @@ type (
 		global.NodeGlobal
 		StateStore() global.StateStore
 		SendTx(sendTo peer.ID, txids ...ledger.TransactionID)
-		IsSyncedWithNetwork() bool
+		SyncStatus() (bool, int)
 		TipBranchHasTransaction(branchID, txid *ledger.TransactionID) bool
 		LatestHealthySlot() ledger.Slot
 	}
@@ -64,15 +64,15 @@ func (d *PullSyncServer) Start() {
 }
 
 func (d *PullSyncServer) Consume(inp *Input) {
-	if !d.IsSyncedWithNetwork() && !d.IsBootstrapNode() {
-		d.Environment.Log().Warnf("[PullSyncServer]: can't respond to sync request: node itself is out of sync and is not a bootstrap node")
+	if synced, _ := d.SyncStatus(); !synced && !d.IsBootstrapNode() {
+		d.Environment.Log().Warnf("[pullSyncServer]: can't respond to sync request: node itself is out of sync and is not a bootstrap node")
 		return
 	}
 	maxSlots := inp.MaxSlots
 	if maxSlots > global.MaxSyncPortionSlots {
 		maxSlots = global.MaxSyncPortionSlots
 	}
-	d.Environment.Log().Infof("[PullSyncServer] pull sync portion request for slots from slot %d, up to %d slots ",
+	d.Environment.Log().Infof("[pullSyncServer] pull sync portion request for slots from slot %d, up to %d slots ",
 		inp.StartFrom, maxSlots)
 
 	latestHealthySlot := d.LatestHealthySlot()
@@ -86,7 +86,7 @@ func (d *PullSyncServer) Consume(inp *Input) {
 		} else {
 			startFromSlot = latestHealthySlot - 5
 		}
-		d.Environment.Log().Infof("[PullSyncServer] pull sync portion adjusted to start from slot %d. latestHealthySlot: %d",
+		d.Environment.Log().Infof("[pullSyncServer] pull sync portion adjusted to start from slot %d. latestHealthySlot: %d",
 			startFromSlot, latestHealthySlot)
 	}
 

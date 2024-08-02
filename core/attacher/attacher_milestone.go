@@ -52,12 +52,12 @@ func runMilestoneAttacher(vid *vertex.WrappedTx, metadata *txmetadata.Transactio
 	}
 
 	// calling callback with timeout in order to detect wrong callbacks immediately
-	const callbackMustFinishIn = 200 * time.Millisecond
-	util.CallWithTimeout(env.Ctx(), 200*time.Millisecond,
+	const callbackMustFinishIn = time.Second
+	util.CallWithTimeout(env.Ctx(), callbackMustFinishIn,
 		func() {
 			callback(vid, err)
 		}, func() {
-			env.Log().Fatalf("AttachTransaction: internal error: %v second timeout exceeded while calling callback", callbackMustFinishIn)
+			env.Log().Fatalf("AttachTransaction: internal error: %v timeout exceeded while calling callback", callbackMustFinishIn)
 		})
 }
 
@@ -149,7 +149,7 @@ func (a *milestoneAttacher) lazyRepeat(fun func() vertex.Status) vertex.Status {
 			a.finals.numPokes++
 			a.Tracef(TraceTagAttachMilestone, "poked")
 		case <-a.Ctx().Done():
-			a.setError(fmt.Errorf("attacher has been interrupted. Undefined: {%s}", a.undefinedListLines().Join(", ")))
+			a.setError(fmt.Errorf("attacher has been interrupted. Undefined: %s", a.undefinedListLines().Join(", ")))
 			return vertex.Bad
 		case <-time.After(periodicCheckEach):
 			a.finals.numPeriodic++

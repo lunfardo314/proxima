@@ -110,7 +110,7 @@ func (seq *Sequencer) Start() {
 			return
 		}
 		seq.log.Infof("started sequencer '%s', seqID: %s", seq.SequencerName(), util.Ref(seq.SequencerID()).String())
-		seq.mainLoop()
+		seq.sequencerLoop()
 
 		seq.onCallbackMutex.RLock()
 		defer seq.onCallbackMutex.RUnlock()
@@ -125,7 +125,7 @@ func (seq *Sequencer) Start() {
 	if debuggerFriendly {
 		go runFun()
 	} else {
-		util.RunWrappedRoutine(seq.config.SequencerName+"[mainLoop]", runFun, func(err error) bool {
+		util.RunWrappedRoutine(seq.config.SequencerName+"[sequencerLoop]", runFun, func(err error) bool {
 			seq.log.Fatal(err)
 			return false
 		})
@@ -140,7 +140,10 @@ func (seq *Sequencer) waitForSyncIfNecessary() bool {
 
 	const checkSyncEvery = 3 * time.Second
 
-	for !seq.IsSyncedWithNetwork() {
+	for {
+		if synced, _ := seq.SyncStatus(); synced {
+			break
+		}
 		select {
 		case <-seq.Ctx().Done():
 			return false
@@ -262,7 +265,7 @@ func (seq *Sequencer) Log() *zap.SugaredLogger {
 	return seq.log
 }
 
-func (seq *Sequencer) mainLoop() {
+func (seq *Sequencer) sequencerLoop() {
 	beginAt := time.Now().Add(seq.config.DelayStart)
 	if seq.config.DelayStart > 0 {
 		seq.log.Infof("wait for %v before starting the main loop", seq.config.DelayStart)
@@ -280,6 +283,20 @@ func (seq *Sequencer) mainLoop() {
 		case <-seq.Ctx().Done():
 			return
 		default:
+			// checking condition if even makes sense to do a sequencer step. For bootstrap node is always makes sense
+			// For non-bootstrap node it only makes sense if tippool is up-to-date
+			if !seq.IsBootstrapNode() {
+				if synced, behind := seq.SyncStatus(); !synced {
+					if behind > 0 {
+						seq.Log().Warnf("will not issue milestone: tippool is behind now by %d slots and it is not a bootstrap node", behind)
+					} else {
+						seq.Log().Warnf("will not issue milestone: tippool is empty and it is not a bootstrap node")
+					}
+					time.Sleep(ledger.L().ID.SlotDuration() / 2)
+					continue
+				}
+			}
+
 			if !seq.doSequencerStep() {
 				return
 			}

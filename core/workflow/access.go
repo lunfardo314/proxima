@@ -95,6 +95,11 @@ func (w *Workflow) SendToTippool(vid *vertex.WrappedTx) {
 	w.tippool.Push(tippool.Input{VID: vid})
 }
 
+// SyncStatus checks if tippool is up-to-date
+func (w *Workflow) SyncStatus() (bool, int) {
+	return w.tippool.IsUpToDate()
+}
+
 // LatestMilestonesDescending returns optionally filtered sorted transactions from the sequencer tippool
 func (w *Workflow) LatestMilestonesDescending(filter ...func(seqID ledger.ChainID, vid *vertex.WrappedTx) bool) []*vertex.WrappedTx {
 	return w.tippool.LatestMilestonesDescending(filter...)

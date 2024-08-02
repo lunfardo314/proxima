@@ -230,11 +230,6 @@ func (d *MemDAG) EvidenceBranchSlot(s ledger.Slot, isHealthy bool) {
 	}
 }
 
-func (d *MemDAG) IsSyncedWithNetwork() bool {
-	_, _, synced := d.LatestBranchSlots()
-	return synced
-}
-
 // LatestBranchSlots return latest committed slots and the sync flag.
 // The latter indicates if current node is in sync with the network.
 // If network is unreachable or nobody else is active it will return false
@@ -267,18 +262,6 @@ func (d *MemDAG) LatestBranchSlots() (slot, healthySlot ledger.Slot, synced bool
 func (d *MemDAG) LatestHealthySlot() ledger.Slot {
 	_, ret, _ := d.LatestBranchSlots()
 	return ret
-}
-
-// ForEachVertexReadLocked Traversing all vertices. Beware: read-locked!
-func (d *MemDAG) ForEachVertexReadLocked(fun func(vid *vertex.WrappedTx) bool) {
-	d.mutex.RLock()
-	defer d.mutex.RUnlock()
-
-	for _, vid := range d.vertices {
-		if !fun(vid) {
-			return
-		}
-	}
 }
 
 func (d *MemDAG) ParseMilestoneData(msVID *vertex.WrappedTx) (ret *ledger.MilestoneData) {
