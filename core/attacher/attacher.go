@@ -194,7 +194,8 @@ func (a *attacher) solidifyStemOfTheVertex(v *vertex.Vertex) (ok bool) {
 	a.Assertf(stemVid.IsBranchTransaction(), "stemVid.IsBranchTransaction()")
 	switch stemVid.GetTxStatus() {
 	case vertex.Good:
-		stemVid.Reference()
+		a.markReferencedByAttacher(stemVid)
+		//stemVid.Reference()
 		v.BaselineBranch = stemVid
 		return true
 	case vertex.Bad:
@@ -237,7 +238,8 @@ func (a *attacher) solidifySequencerBaseline(v *vertex.Vertex) (ok bool) {
 			a.Pull(inputTx.ID)
 		} else {
 			util.Assertf(v.BaselineBranch.IsBranchTransaction(), "v.BaselineBranch.IsBranchTransaction()")
-			v.BaselineBranch.Reference()
+			a.markReferencedByAttacher(v.BaselineBranch)
+			//v.BaselineBranch.Reference()
 		}
 		return true
 	case vertex.Undefined:
