@@ -85,15 +85,14 @@ type (
 	// milestoneAttacher is used to attach a sequencer transaction
 	milestoneAttacher struct {
 		attacher
-		vid                  *vertex.WrappedTx
-		metadata             *txmetadata.TransactionMetadata
-		timeoutContext       context.Context
-		cancelTimeoutContext context.CancelFunc
-		closeOnce            sync.Once
-		pokeChan             chan struct{}
-		pokeClosingMutex     sync.RWMutex
-		finals               attachFinals
-		closed               bool
+		vid              *vertex.WrappedTx
+		metadata         *txmetadata.TransactionMetadata
+		ctx              context.Context // override global one if not nil
+		closeOnce        sync.Once
+		pokeChan         chan struct{}
+		pokeClosingMutex sync.RWMutex
+		finals           attachFinals
+		closed           bool
 	}
 
 	_attacherOptions struct {
@@ -103,7 +102,7 @@ type (
 		doNotLoadBranch    bool
 		calledBy           string
 		enforceTimestamp   bool
-		timeout            time.Duration
+		ctx                context.Context
 	}
 	AttachTxOption func(*_attacherOptions)
 
@@ -176,10 +175,9 @@ func AttachTxOptionWithAttachmentCallback(fun func(vid *vertex.WrappedTx, err er
 	}
 }
 
-// AttachTxOptionWithTimeout default is infinite
-func AttachTxOptionWithTimeout(t time.Duration) AttachTxOption {
+func AttachTxOptionWithContext(ctx context.Context) AttachTxOption {
 	return func(options *_attacherOptions) {
-		options.timeout = t
+		options.ctx = ctx
 	}
 }
 

@@ -137,10 +137,6 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Att
 
 			if vid.IsSequencerMilestone() {
 				// for sequencer milestones start attacher
-				callback := options.attachmentCallback
-				if callback == nil {
-					callback = func(_ *vertex.WrappedTx, _ error) {}
-				}
 				metadata := options.metadata
 
 				// start attacher routine
@@ -148,7 +144,7 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Att
 					env.MarkWorkProcessStarted(vid.IDShortString())
 					env.TraceTx(&vid.ID, "runMilestoneAttacher: start")
 
-					runMilestoneAttacher(vid, metadata, callback, env, options.timeout)
+					runMilestoneAttacher(vid, metadata, options.attachmentCallback, env, options.ctx)
 
 					env.TraceTx(&vid.ID, "runMilestoneAttacher: exit")
 					env.MarkWorkProcessStopped(vid.IDShortString())

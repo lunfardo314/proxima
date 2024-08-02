@@ -2,6 +2,7 @@ package workflow
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -20,6 +21,7 @@ type (
 		receivedFromPeer *peer.ID
 		callback         func(vid *vertex.WrappedTx, err error)
 		txTrace          bool
+		ctx              context.Context
 	}
 
 	TxBytesInOption func(options *txBytesInOptions)
@@ -99,7 +101,6 @@ func (w *Workflow) TxBytesIn(txBytes []byte, opts ...TxBytesInOption) (*ledger.T
 		return txid, err
 	}
 
-	// considered good incoming
 	if options.txMetadata.SourceTypeNonPersistent == txmetadata.SourceTypePeer ||
 		options.txMetadata.SourceTypeNonPersistent == txmetadata.SourceTypeAPI {
 		// always gossip pre-validated (parsed) transaction received from peer or from API, even if it needs delay.
@@ -116,6 +117,7 @@ func (w *Workflow) TxBytesIn(txBytes []byte, opts ...TxBytesInOption) (*ledger.T
 	txTime := txid.Timestamp().Time()
 
 	attachOpts := []attacher.AttachTxOption{
+		attacher.AttachTxOptionWithContext(options.ctx),
 		attacher.AttachTxOptionWithTransactionMetadata(&options.txMetadata),
 		attacher.OptionInvokedBy("txInput"),
 		attacher.OptionEnforceTimestampBeforeRealTime,
@@ -174,36 +176,57 @@ func (w *Workflow) _attach(tx *transaction.Transaction, opts ...attacher.AttachT
 func (w *Workflow) SequencerMilestoneAttachWait(txBytes []byte, meta *txmetadata.TransactionMetadata, timeout time.Duration) (*vertex.WrappedTx, error) {
 	var vid *vertex.WrappedTx
 	var err error
-	var txid *ledger.TransactionID
 
-	ctx, cancel := context.WithTimeout(w.Ctx(), timeout)
-	go func() {
-		var errParse error
-		txid, errParse = w.TxBytesIn(txBytes,
-			WithMetadata(meta),
-			WithAttachmentCallback(func(vidSubmit *vertex.WrappedTx, errSubmit error) {
-				vid = vidSubmit
-				err = errSubmit
-				cancel()
-			}),
-		)
-		if errParse != nil {
-			// parse error means attacher won't be started and callback won't be called
-			err = errParse
-			cancel()
-		}
-	}()
+	const defaultTimeout = 5 * time.Second
+	if timeout == 0 {
+		timeout = defaultTimeout
+	}
+	errTimeoutCause := fmt.Errorf("exceeded timeout %v", timeout)
+	ctx, cancelFun := context.WithTimeoutCause(w.Ctx(), timeout, errTimeoutCause)
+
+	txid, errParse := w.TxBytesIn(txBytes,
+		WithMetadata(meta),
+		WithContext(ctx),
+		WithAttachmentCallback(func(vidSubmit *vertex.WrappedTx, errSubmit error) {
+			vid = vidSubmit
+			err = errSubmit
+			cancelFun()
+		}),
+	)
+	if errParse != nil {
+		err = errParse
+	}
+
 	<-ctx.Done()
+	if errors.Is(context.Cause(ctx), errTimeoutCause) {
+		err = errTimeoutCause
+	}
+
+	//ctx, cancel := context.WithTimeout(w.Ctx(), timeout)
+	//go func() {
+	//	var errParse error
+	//	txid, errParse = w.TxBytesIn(txBytes,
+	//		WithMetadata(meta),
+	//		WithAttachmentCallback(func(vidSubmit *vertex.WrappedTx, errSubmit error) {
+	//			vid = vidSubmit
+	//			err = errSubmit
+	//			cancel()
+	//		}),
+	//	)
+	//	if errParse != nil {
+	//		// parse error means attacher won't be started and callback won't be called
+	//		err = errParse
+	//		cancel()
+	//	}
+	//}()
+	//<-ctx.Done()
 
 	if err != nil {
-		return nil, err
-	}
-	if vid == nil {
 		txidStr := "txid=???"
 		if txid != nil {
 			txidStr = txid.StringShort()
 		}
-		return nil, fmt.Errorf("SequencerMilestoneAttachWait: timeout %v exceeded while submitting transaction %s", timeout, txidStr)
+		return nil, fmt.Errorf("SequencerMilestoneAttachWait: %w, txid=%s", err, txidStr)
 	}
 	return vid, nil
 }
@@ -241,5 +264,11 @@ func WithPeerMetadata(peerID peer.ID, metadata *txmetadata.TransactionMetadata) 
 func WithTxTraceFlag(trace bool) TxBytesInOption {
 	return func(opts *txBytesInOptions) {
 		opts.txTrace = trace
+	}
+}
+
+func WithContext(ctx context.Context) TxBytesInOption {
+	return func(opts *txBytesInOptions) {
+		opts.ctx = ctx
 	}
 }

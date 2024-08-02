@@ -132,7 +132,7 @@ const pullLoopPeriod = 50 * time.Millisecond
 
 // backgroundPullLoop repeats pull requests txids from random peer periodically
 func (p *PullClient) backgroundPullLoop() {
-	defer p.Environment.Log().Infof("background loop stopped")
+	defer p.Environment.Log().Infof("[pull_client] background loop stopped")
 
 	buffer := make([]ledger.TransactionID, 0) // reuse buffer -> minimize heap use
 	var stuck bool
