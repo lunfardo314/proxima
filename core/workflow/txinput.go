@@ -184,42 +184,31 @@ func (w *Workflow) SequencerMilestoneAttachWait(txBytes []byte, meta *txmetadata
 	errTimeoutCause := fmt.Errorf("exceeded timeout %v", timeout)
 	ctx, cancelFun := context.WithTimeoutCause(w.Ctx(), timeout, errTimeoutCause)
 
+	// we need end channel so that to be sure callback has been called before we use err and vid
+	endCh := make(chan struct{})
 	txid, errParse := w.TxBytesIn(txBytes,
-		WithMetadata(meta),
 		WithContext(ctx),
+		WithMetadata(meta),
 		WithAttachmentCallback(func(vidSubmit *vertex.WrappedTx, errSubmit error) {
+			// it is guaranteed the callback will always be called, unless parse error
 			vid = vidSubmit
 			err = errSubmit
 			cancelFun()
+			close(endCh)
 		}),
 	)
-	if errParse != nil {
+	if errParse == nil {
+		<-ctx.Done()
+		<-endCh
+
+		if errors.Is(context.Cause(ctx), errTimeoutCause) {
+			err = errTimeoutCause
+		}
+	} else {
 		err = errParse
+		cancelFun()
+		close(endCh)
 	}
-
-	<-ctx.Done()
-	if errors.Is(context.Cause(ctx), errTimeoutCause) {
-		err = errTimeoutCause
-	}
-
-	//ctx, cancel := context.WithTimeout(w.Ctx(), timeout)
-	//go func() {
-	//	var errParse error
-	//	txid, errParse = w.TxBytesIn(txBytes,
-	//		WithMetadata(meta),
-	//		WithAttachmentCallback(func(vidSubmit *vertex.WrappedTx, errSubmit error) {
-	//			vid = vidSubmit
-	//			err = errSubmit
-	//			cancel()
-	//		}),
-	//	)
-	//	if errParse != nil {
-	//		// parse error means attacher won't be started and callback won't be called
-	//		err = errParse
-	//		cancel()
-	//	}
-	//}()
-	//<-ctx.Done()
 
 	if err != nil {
 		txidStr := "txid=???"

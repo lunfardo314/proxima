@@ -420,8 +420,8 @@ func (seq *Sequencer) submitMilestone(tx *transaction.Transaction, meta *txmetad
 	util.Assertf(vid != nil, "submitMilestone: vid != nil")
 
 	seq.Tracef(TraceTag, "new milestone %s submitted successfully", tx.IDShortString)
-	if !seq.waitMilestoneInTippool(vid, deadline) {
-		seq.Log().Errorf("timed out while waiting %v for submitted milestone %s in the tippool", submitTimeout, vid.IDShortString())
+	if err = seq.waitMilestoneInTippool(vid, deadline); err != nil {
+		seq.Log().Error(err)
 		return nil
 	}
 	seq.lastSubmittedTs = vid.Timestamp()
@@ -434,15 +434,20 @@ func (seq *Sequencer) savePastConeOfFailedTx(tx *transaction.Transaction, slotsB
 	memdag.SavePastConeFromTxStore(*tx.ID(), seq.TxBytesStore(), tx.Slot()-ledger.Slot(slotsBack), "cone-"+tx.ID().AsFileName())
 }
 
-func (seq *Sequencer) waitMilestoneInTippool(vid *vertex.WrappedTx, deadline time.Time) bool {
+func (seq *Sequencer) waitMilestoneInTippool(vid *vertex.WrappedTx, deadline time.Time) error {
 	for {
-		if time.Now().After(deadline) {
-			return false
+		select {
+		case <-seq.Ctx().Done():
+			return fmt.Errorf("waitMilestoneInTippool: %s has been cancelled", vid.IDShortString())
+		case <-time.After(10 * time.Millisecond):
+			if time.Now().After(deadline) {
+				return fmt.Errorf("waitMilestoneInTippool: deadline has been missed while waiting for %s in the tippool", vid.IDShortString())
+			}
+		default:
+			if seq.GetLatestMilestone(seq.sequencerID) == vid {
+				return nil
+			}
 		}
-		if seq.GetLatestMilestone(seq.sequencerID) == vid {
-			return true
-		}
-		time.Sleep(10 * time.Millisecond)
 	}
 }
 

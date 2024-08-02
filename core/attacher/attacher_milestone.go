@@ -27,18 +27,20 @@ func runMilestoneAttacher(
 	ctx context.Context,
 ) {
 	a := newMilestoneAttacher(vid, env, metadata, ctx)
+	var err error
+
 	defer func() {
 		go a.close()
+		// it is guaranteed callback will always be called, if any
+		if callback != nil {
+			callback(vid, err)
+		}
 	}()
 
-	err := a.run()
-
-	if err != nil {
+	if err = a.run(); err != nil {
 		vid.SetTxStatusBad(err)
 		env.Log().Warnf(a.logErrorStatusString(err))
-
 		// panic("fail fast")
-
 	} else {
 		msData := env.ParseMilestoneData(vid)
 		if vid.IsBranchTransaction() {
@@ -56,11 +58,6 @@ func runMilestoneAttacher(
 		metadata.PortionInfo.LastIndex > 0 &&
 		metadata.PortionInfo.Index == metadata.PortionInfo.LastIndex {
 		env.NotifyEndOfPortion()
-	}
-
-	if callback != nil {
-		callback(vid, err)
-		return
 	}
 }
 
