@@ -6,7 +6,6 @@ import (
 
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/lunfardo314/proxima/core/memdag"
-	"github.com/lunfardo314/proxima/core/syncmgr"
 	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/core/work_process/events"
@@ -16,6 +15,7 @@ import (
 	"github.com/lunfardo314/proxima/core/work_process/pruner"
 	"github.com/lunfardo314/proxima/core/work_process/pull_client"
 	"github.com/lunfardo314/proxima/core/work_process/pull_tx_server"
+	"github.com/lunfardo314/proxima/core/work_process/sync_client"
 	"github.com/lunfardo314/proxima/core/work_process/sync_server"
 	"github.com/lunfardo314/proxima/core/work_process/tippool"
 	"github.com/lunfardo314/proxima/global"
@@ -48,7 +48,7 @@ type (
 		poker          *poker.Poker
 		events         *events.Events
 		tippool        *tippool.SequencerTips
-		syncManager    *syncmgr.SyncManager
+		syncManager    *sync_client.SyncClient
 		//
 		enableTrace    atomic.Bool
 		traceTagsMutex sync.RWMutex
@@ -121,7 +121,7 @@ func (w *Workflow) Start() {
 	}
 	if !w.IsBootstrapNode() {
 		// bootstrap node does not need sync manager
-		w.syncManager = syncmgr.StartSyncManagerFromConfig(w) // nil if disabled
+		w.syncManager = sync_client.StartSyncClientFromConfig(w) // nil if disabled
 	}
 
 	w.peers.OnReceiveTxBytes(func(from peer.ID, txBytes []byte, metadata *txmetadata.TransactionMetadata) {

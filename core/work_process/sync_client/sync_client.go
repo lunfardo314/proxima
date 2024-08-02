@@ -1,4 +1,4 @@
-package syncmgr
+package sync_client
 
 import (
 	"context"
@@ -12,11 +12,11 @@ import (
 	"github.com/spf13/viper"
 )
 
-// SyncManager is a daemon which monitors how far is the latest slot with coverage > totalSupply (1/2 of max possible coverage)
+// SyncClient is a daemon which monitors how far is the latest slot with coverage
 // in the state DB from the current time.
 // If number of slots back becomes bigger than threshold, it starts pulling sync portions of
-// branches from other nodes, while ignoring current flow of transactions
-// SyncManager is optional optimization of the sync process. It can be enabled/disabled in the config
+// branches from other nodes with SynServer enabled (not-disabled), while ignoring current flow of transactions
+// SyncClient is optional optimization of the sync process. It can be enabled/disabled in the config
 
 type (
 	Environment interface {
@@ -25,7 +25,7 @@ type (
 		PullSyncPortion(startingFrom ledger.Slot, maxSlots int)
 	}
 
-	SyncManager struct {
+	SyncClient struct {
 		Environment
 		ctx                         context.Context
 		cancel                      context.CancelFunc
@@ -44,15 +44,20 @@ type (
 
 var FractionHealthyBranchCriterion = global.FractionHalf
 
-func StartSyncManagerFromConfig(env Environment) *SyncManager {
-	if !viper.GetBool("workflow.sync_manager.enable") {
-		env.Infof0("[sync manager] is DISABLED")
+func StartSyncClientFromConfig(env Environment) *SyncClient {
+	if !viper.GetBool("workflow.sync_client.enable") {
+		env.Infof0("[sync client] is DISABLED")
 		return nil
 	}
-	d := &SyncManager{
+	// for backwards compatibility only TODO
+	if !viper.GetBool("workflow.sync_manager.enable") {
+		env.Infof0("[sync client] is DISABLED")
+		return nil
+	}
+	d := &SyncClient{
 		Environment:                 env,
-		syncPortionSlots:            viper.GetInt("workflow.sync_manager.sync_portion_slots"),
-		syncToleranceThresholdSlots: viper.GetInt("workflow.sync_manager.sync_tolerance_threshold_slots"),
+		syncPortionSlots:            viper.GetInt("workflow.sync_client.sync_portion_slots"),
+		syncToleranceThresholdSlots: viper.GetInt("workflow.sync_client.sync_tolerance_threshold_slots"),
 		endOfPortionCh:              make(chan struct{}, 1),
 	}
 	if d.syncPortionSlots < 1 || d.syncPortionSlots > global.MaxSyncPortionSlots {
@@ -68,10 +73,10 @@ func StartSyncManagerFromConfig(env Environment) *SyncManager {
 	return d
 }
 
-func (d *SyncManager) _cancel() {
+func (d *SyncClient) _cancel() {
 	d.cancelled.Store(true)
 	d.cancel()
-	d.Infof0("[sync manager] auto-cancelled")
+	d.Infof0("[sync client] auto-cancelled")
 }
 
 const (
@@ -80,18 +85,18 @@ const (
 	portionExpectedIn = 10 * time.Second
 )
 
-func (d *SyncManager) syncManagerLoop() {
-	d.Infof0("[sync manager] has been started. Sync portion: %d slots. Sync tolerance: %d slots",
+func (d *SyncClient) syncManagerLoop() {
+	d.Infof0("[sync client] has been started. Sync portion: %d slots. Sync tolerance: %d slots",
 		d.syncPortionSlots, d.syncToleranceThresholdSlots)
 
 	for {
 		select {
 		case <-d.ctx.Done():
-			d.Infof0("[sync manager] stopped ")
+			d.Infof0("[sync client] stopped ")
 			return
 
 		case <-d.endOfPortionCh:
-			d.Infof0("[sync manager] end of sync portion")
+			d.Infof0("[sync client] end of sync portion")
 			d.checkSync(true)
 
 		case <-time.After(checkSyncEvery):
@@ -100,7 +105,7 @@ func (d *SyncManager) syncManagerLoop() {
 	}
 }
 
-func (d *SyncManager) checkSync(endOfPortion bool) {
+func (d *SyncClient) checkSync(endOfPortion bool) {
 	latestHealthySlotInDB := multistate.FindLatestHealthySlot(d.StateStore(), FractionHealthyBranchCriterion)
 	d.latestHealthySlotInDB.Store(uint32(latestHealthySlotInDB)) // cache
 
@@ -115,7 +120,7 @@ func (d *SyncManager) checkSync(endOfPortion bool) {
 		return
 	}
 	if time.Since(d.loggedWhen) > time.Second {
-		d.Infof1("[sync manager] latest synced slot %d is behind current slot %d by %d",
+		d.Infof1("[sync client] latest synced slot %d is behind current slot %d by %d",
 			latestHealthySlotInDB, slotNow, behind)
 		d.loggedWhen = time.Now()
 	}
@@ -138,7 +143,7 @@ func (d *SyncManager) checkSync(endOfPortion bool) {
 	d.PullSyncPortion(latestHealthySlotInDB, d.syncPortionSlots)
 }
 
-func (d *SyncManager) NotifyEndOfPortion() {
+func (d *SyncClient) NotifyEndOfPortion() {
 	select {
 	case d.endOfPortionCh <- struct{}{}:
 	default:
@@ -148,7 +153,7 @@ func (d *SyncManager) NotifyEndOfPortion() {
 // IgnoreFutureTxID returns true if transaction is too far in the future from the latest synced branch in DB
 // We want to ignore all the current flow of transactions while syncing the state with sync manager
 // After the state become synced, the tx flow will be accepted
-func (d *SyncManager) IgnoreFutureTxID(txid *ledger.TransactionID) bool {
+func (d *SyncClient) IgnoreFutureTxID(txid *ledger.TransactionID) bool {
 	if d.cancelled.Load() {
 		// all transactions pass
 		return false
@@ -164,7 +169,7 @@ func (d *SyncManager) IgnoreFutureTxID(txid *ledger.TransactionID) bool {
 	// not synced. Ignore all too close to the present time
 	ignore := int(txid.Slot()) >= slotNow-2
 	if ignore && txid.IsBranchTransaction() {
-		d.Infof1("[sync manager] ignore transaction while syncing %s", txid.StringShort())
+		d.Infof1("[sync client] ignore transaction while syncing %s", txid.StringShort())
 	}
 	return ignore
 }

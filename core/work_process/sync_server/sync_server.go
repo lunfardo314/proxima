@@ -4,7 +4,7 @@ import (
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/peer"
-	"github.com/lunfardo314/proxima/core/syncmgr"
+	"github.com/lunfardo314/proxima/core/work_process/sync_client"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/multistate"
@@ -102,7 +102,7 @@ func (d *SyncServer) Consume(inp *Input) {
 	tipBranches := multistate.FetchBranchDataMulti(d.StateStore(), tipRoots...)
 	tipIDs := make([]ledger.TransactionID, 0, len(tipBranches))
 	for _, tipBranchData := range tipBranches {
-		if tipBranchData.IsHealthy(syncmgr.FractionHealthyBranchCriterion) {
+		if tipBranchData.IsHealthy(sync_client.FractionHealthyBranchCriterion) {
 			tipIDs = append(tipIDs, tipBranchData.Stem.ID.TransactionID())
 		}
 	}
