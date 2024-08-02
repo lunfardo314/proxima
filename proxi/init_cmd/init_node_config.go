@@ -122,7 +122,7 @@ peering:
 workflow:
   # enabling sync manager is optional. It is needed when node starts syncing long behind the network,
   # for example when syncing from genesis
-  sync_manager: 
+  sync_client: 
     enable: true
     sync_portion_slots: 300
 
