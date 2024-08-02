@@ -55,7 +55,7 @@ func New() *ProximaNode {
 	return ret
 }
 
-const waitAllProcessesStopTimeout = 5 * time.Second
+const waitAllProcessesStopTimeout = 10 * time.Second
 
 // WaitAllWorkProcessesToStop wait everything to stop before closing databases
 func (p *ProximaNode) WaitAllWorkProcessesToStop() {

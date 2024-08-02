@@ -148,7 +148,9 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Opt
 				go func() {
 					env.MarkWorkProcessStarted(vid.IDShortString())
 					env.TraceTx(&vid.ID, "runMilestoneAttacher: start")
+
 					runMilestoneAttacher(vid, metadata, callback, env)
+
 					env.TraceTx(&vid.ID, "runMilestoneAttacher: exit")
 					env.MarkWorkProcessStopped(vid.IDShortString())
 				}()
