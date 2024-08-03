@@ -141,7 +141,7 @@ func (seq *Sequencer) waitForSyncIfNecessary() bool {
 	const checkSyncEvery = 3 * time.Second
 
 	for {
-		if synced, _ := seq.SyncStatus(); synced {
+		if seq.IsSynced() {
 			break
 		}
 		select {
@@ -286,12 +286,8 @@ func (seq *Sequencer) sequencerLoop() {
 			// checking condition if even makes sense to do a sequencer step. For bootstrap node is always makes sense
 			// For non-bootstrap node it only makes sense if tippool is up-to-date
 			if !seq.IsBootstrapNode() {
-				if synced, behind := seq.SyncStatus(); !synced {
-					if behind > 0 {
-						seq.Log().Warnf("will not issue milestone: tippool is behind now by %d slots and it is not a bootstrap node", behind)
-					} else {
-						seq.Log().Warnf("will not issue milestone: tippool is empty and it is not a bootstrap node")
-					}
+				if !seq.IsSynced() {
+					seq.Log().Warnf("will not issue milestone: node is out of sync and it is not a bootstrap node")
 					time.Sleep(ledger.L().ID.SlotDuration() / 2)
 					continue
 				}
