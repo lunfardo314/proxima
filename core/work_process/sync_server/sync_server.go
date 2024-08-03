@@ -27,7 +27,7 @@ type (
 		global.NodeGlobal
 		StateStore() global.StateStore
 		SendTx(sendTo peer.ID, txids ...ledger.TransactionID)
-		SyncStatus() (bool, int)
+		IsSynced() bool
 		TipBranchHasTransaction(branchID, txid *ledger.TransactionID) bool
 		LatestHealthySlot() ledger.Slot
 	}
@@ -66,7 +66,7 @@ func (d *SyncServer) Start() {
 }
 
 func (d *SyncServer) Consume(inp *Input) {
-	if synced, _ := d.SyncStatus(); !synced && !d.IsBootstrapNode() {
+	if !d.IsSynced() && !d.IsBootstrapNode() {
 		d.Environment.Log().Warnf("[syncServer]: can't respond to sync request: node itself is out of sync and is not a bootstrap node")
 		return
 	}

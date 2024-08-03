@@ -10,9 +10,11 @@ import (
 	"github.com/lunfardo314/proxima/core/work_process/gossip"
 	"github.com/lunfardo314/proxima/core/work_process/persist_txbytes"
 	"github.com/lunfardo314/proxima/core/work_process/tippool"
+	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/multistate"
+	"github.com/lunfardo314/proxima/util"
 )
 
 // TODO revisit MaxDurationInTheFuture
@@ -95,9 +97,10 @@ func (w *Workflow) SendToTippool(vid *vertex.WrappedTx) {
 	w.tippool.Push(tippool.Input{VID: vid})
 }
 
-// SyncStatus checks if tippool is up-to-date
-func (w *Workflow) SyncStatus() (bool, int) {
-	return w.tippool.IsUpToDate()
+func (w *Workflow) IsSynced() bool {
+	slotNow := ledger.TimeNow().Slot()
+	util.Assertf(slotNow > 0, "slotNow > 0")
+	return multistate.FirstHealthySlotIsNotBefore(w.StateStore(), slotNow-1, global.FractionHealthyBranch)
 }
 
 // LatestMilestonesDescending returns optionally filtered sorted transactions from the sequencer tippool

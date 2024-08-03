@@ -9,7 +9,6 @@ import (
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util/queue"
-	"github.com/lunfardo314/unitrie/common"
 )
 
 type (
@@ -190,26 +189,26 @@ func (t *SequencerTips) purge() {
 // - (true, diff) if it contains tips with diff = 0 or 1 from the current slot
 // - (false, diff) is the latest tip is some slots behind and number of slots behind
 // It is used as criterion for the non-bootstrap sequencer to issue milestones or not
-func (t *SequencerTips) IsUpToDate() (bool, int) {
-	t.mutex.RLock()
-	defer t.mutex.RUnlock()
-
-	if len(t.latestMilestones) == 0 {
-		return false, 0
-	}
-
-	maxSlot := ledger.Slot(0)
-	for _, vid := range t.latestMilestones {
-		if s := vid.Slot(); s > maxSlot {
-			maxSlot = s
-		}
-	}
-	slotNow := ledger.TimeNow().Slot()
-	common.Assert(slotNow >= maxSlot, "slotNow >= maxSlot")
-
-	diff := int(slotNow - maxSlot)
-	if diff > 1 {
-		return false, diff
-	}
-	return true, diff
-}
+//func (t *SequencerTips) IsUpToDate() (bool, int) {
+//	t.mutex.RLock()
+//	defer t.mutex.RUnlock()
+//
+//	if len(t.latestMilestones) == 0 {
+//		return false, 0
+//	}
+//
+//	maxSlot := ledger.Slot(0)
+//	for _, vid := range t.latestMilestones {
+//		if s := vid.Slot(); s > maxSlot {
+//			maxSlot = s
+//		}
+//	}
+//	slotNow := ledger.TimeNow().Slot()
+//	common.Assert(slotNow >= maxSlot, "slotNow >= maxSlot")
+//
+//	diff := int(slotNow - maxSlot)
+//	if diff > 1 {
+//		return false, diff
+//	}
+//	return true, diff
+//}
