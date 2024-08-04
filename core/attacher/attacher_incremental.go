@@ -72,7 +72,7 @@ func NewIncrementalAttacher(name string, env Environment, targetTs ledger.Time, 
 	ret.checkConflictsFunc = ret.extendedConflictChecker
 
 	if err := ret.initIncrementalAttacher(baseline.BaselineBranch(), targetTs, extend, endorse...); err != nil {
-		ret.unReferenceAllByAttacher()
+		ret.Close()
 		return nil, err
 	}
 	return ret, nil
@@ -104,8 +104,15 @@ func (a *IncrementalAttacher) checkConflictsWithInputs(consumerVertex *vertex.Ve
 	return
 }
 
-func (a *IncrementalAttacher) UnReferenceAll() {
-	a.unReferenceAllByAttacher()
+func (a *IncrementalAttacher) Close() {
+	if a != nil && !a.IsClosed() {
+		a.referenced.unReferenceAll()
+		a.disposed = true
+	}
+}
+
+func (a *IncrementalAttacher) IsClosed() bool {
+	return a.disposed
 }
 
 func (a *IncrementalAttacher) initIncrementalAttacher(baseline *vertex.WrappedTx, targetTs ledger.Time, extend vertex.WrappedOutput, endorse ...*vertex.WrappedTx) error {
@@ -137,7 +144,7 @@ func (a *IncrementalAttacher) initIncrementalAttacher(baseline *vertex.WrappedTx
 		if a.stemOutput.VID == nil {
 			return fmt.Errorf("NewIncrementalAttacher: stem output is not available for baseline %s", baseline.IDShortString())
 		}
-		if !a.markReferencedByAttacher(a.stemOutput.VID) {
+		if !a.referenced.reference(a.stemOutput.VID) {
 			return fmt.Errorf("NewIncrementalAttacher: failed to reference stem output %s", a.stemOutput.IDShortString())
 		}
 		if err := a.insertOutput(a.stemOutput); err != nil {
@@ -163,7 +170,7 @@ func (a *IncrementalAttacher) insertOutput(wOut vertex.WrappedOutput) error {
 	if !defined {
 		return fmt.Errorf("insertOutput: %w", ErrPastConeNotSolidYet)
 	}
-	if !a.markReferencedByAttacher(wOut.VID) {
+	if !a.referenced.reference(wOut.VID) {
 		return fmt.Errorf("insertOutput: failed to reference output %s", wOut.IDShortString())
 	}
 	a.inputs = append(a.inputs, wOut)
@@ -173,14 +180,14 @@ func (a *IncrementalAttacher) insertOutput(wOut vertex.WrappedOutput) error {
 // saving attacher state to be able to restore in case it becomes inconsistent when
 // attempting to adding conflicting outputs or endorsements
 
-type _savedState struct {
+type _stateSnapshot struct {
 	vertices map[*vertex.WrappedTx]Flags
 	rooted   map[*vertex.WrappedTx]set.Set[byte]
 	coverage uint64
 }
 
-func (a *IncrementalAttacher) _saveState() *_savedState {
-	ret := &_savedState{
+func (a *IncrementalAttacher) beginStateDelta() *_stateSnapshot {
+	ret := &_stateSnapshot{
 		vertices: maps.Clone(a.attacher.vertices),
 		rooted:   maps.Clone(a.attacher.rooted),
 		coverage: a.coverage,
@@ -189,27 +196,35 @@ func (a *IncrementalAttacher) _saveState() *_savedState {
 	for vid, outputIdxSet := range ret.rooted {
 		ret.rooted[vid] = outputIdxSet.Clone()
 	}
+	a.referenced.beginDelta()
 	return ret
 }
 
-func (a *IncrementalAttacher) _restoreState(saved *_savedState) {
+func (a *IncrementalAttacher) rollbackStateDelta(saved *_stateSnapshot) {
 	a.attacher.vertices = saved.vertices
 	a.attacher.rooted = saved.rooted
 	a.coverage = saved.coverage
+	a.referenced.rollbackDelta()
+}
+
+func (a *IncrementalAttacher) commitStateDelta() {
+	a.referenced.commitDelta()
 }
 
 // InsertEndorsement preserves consistency in case of failure
 func (a *IncrementalAttacher) InsertEndorsement(endorsement *vertex.WrappedTx) error {
+	util.Assertf(!a.IsClosed(), "a.IsClosed()")
 	if a.isKnown(endorsement) {
 		return fmt.Errorf("endorsing makes no sense: %s is already in the past cone", endorsement.IDShortString())
 	}
 
-	saved := a._saveState()
+	saved := a.beginStateDelta()
 	if err := a.insertEndorsement(endorsement); err != nil {
-		a._restoreState(saved)
+		a.rollbackStateDelta(saved)
 		a.setError(nil)
 		return err
 	}
+	a.commitStateDelta()
 	return nil
 }
 
@@ -239,7 +254,7 @@ func (a *IncrementalAttacher) insertEndorsement(endorsement *vertex.WrappedTx) e
 			return fmt.Errorf("insertEndorsement: %w", ErrPastConeNotSolidYet)
 		}
 	}
-	if !a.markReferencedByAttacher(endorsement) {
+	if !a.referenced.reference(endorsement) {
 		return fmt.Errorf("insertEndorsement: failed to reference endorsement %s", endorsement.IDShortString())
 	}
 	a.endorse = append(a.endorse, endorsement)
@@ -247,19 +262,20 @@ func (a *IncrementalAttacher) insertEndorsement(endorsement *vertex.WrappedTx) e
 }
 
 // InsertTagAlongInput inserts tag along input.
-// In case of failure return false and attacher state remains consistent
+// In case of failure return false and attacher state with vertex references remains consistent
 func (a *IncrementalAttacher) InsertTagAlongInput(wOut vertex.WrappedOutput) (bool, error) {
+	util.Assertf(!a.IsClosed(), "a.IsClosed()")
 	util.AssertNoError(a.err)
 
 	// save state for possible rollback because in case of fail the side effect makes attacher inconsistent
 	// TODO a better way than cloning potentially big maps with each new input?
-	saved := a._saveState()
+	saved := a.beginStateDelta()
 
 	ok, defined := a.attachOutput(wOut)
 	if !ok || !defined {
 		// it is either conflicting, or not solid yet
 		// in either case rollback
-		a._restoreState(saved)
+		a.rollbackStateDelta(saved)
 		var retErr error
 		if !ok {
 			retErr = a.err
@@ -272,13 +288,15 @@ func (a *IncrementalAttacher) InsertTagAlongInput(wOut vertex.WrappedOutput) (bo
 	}
 	a.inputs = append(a.inputs, wOut)
 	util.AssertNoError(a.err)
-	//a.TraceTx(&wOut.VID.ID, "%s::InsertTagAlongInput #%d: success", a.name, wOut.Index)
+
+	a.commitStateDelta()
 	return true, nil
 }
 
 // MakeSequencerTransaction creates sequencer transaction from the incremental attacher.
 // Increments slotInflation by the amount inflated in the transaction
 func (a *IncrementalAttacher) MakeSequencerTransaction(seqName string, privateKey ed25519.PrivateKey, cmdParser SequencerCommandParser) (*transaction.Transaction, error) {
+	util.Assertf(!a.IsClosed(), "!a.IsDisposed()")
 	otherInputs := make([]*ledger.OutputWithID, 0, len(a.inputs))
 
 	var chainIn ledger.OutputWithID

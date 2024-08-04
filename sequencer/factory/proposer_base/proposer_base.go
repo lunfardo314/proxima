@@ -90,7 +90,7 @@ func (b *BaseProposer) propose() (*attacher.IncrementalAttacher, bool) {
 		b.Tracef(TraceTag, "%s abandoning milestone proposal with coverage %s: best milestone in slot has bigger coverage %s",
 			b.Name, func() string { return util.Th(lc) }, func() string { return util.Th(bestCoverageInSlot) },
 		)
-		a.UnReferenceAll()
+		a.Close()
 		return nil, true
 	}
 	return a, false

@@ -166,7 +166,7 @@ func (a *milestoneAttacher) lazyRepeat(fun func() vertex.Status) vertex.Status {
 
 func (a *milestoneAttacher) close() {
 	a.closeOnce.Do(func() {
-		a.unReferenceAllByAttacher()
+		a.referenced.unReferenceAll()
 
 		a.pokeClosingMutex.Lock()
 		defer a.pokeClosingMutex.Unlock()

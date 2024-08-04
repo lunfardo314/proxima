@@ -94,8 +94,11 @@ func (t *TaskGeneric) Run() {
 		}
 		return false
 	}
+	defer a.Close()
 
 	for {
+		a.Close()
+
 		if a, forceExit = t.generateProposal(); forceExit {
 			return
 		}

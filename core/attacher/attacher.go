@@ -21,7 +21,7 @@ func newPastConeAttacher(env Environment, name string) attacher {
 		name:        name,
 		rooted:      make(map[*vertex.WrappedTx]set.Set[byte]),
 		vertices:    make(map[*vertex.WrappedTx]Flags),
-		referenced:  set.New[*vertex.WrappedTx](),
+		referenced:  newReferencedSet(),
 		pokeMe:      func(_ *vertex.WrappedTx) {},
 	}
 	// standard conflict checker
@@ -63,39 +63,39 @@ func (a *attacher) setFlagsUp(vid *vertex.WrappedTx, f Flags) {
 	a.vertices[vid] = flags | f
 }
 
-// markReferencedByAttacher maintains a set of vertices referenced by the attacher
-func (a *attacher) markReferencedByAttacher(vid *vertex.WrappedTx) bool {
-	if a.referenced.Contains(vid) {
-		return true
-	}
-	if vid.Reference() {
-		a.referenced.Insert(vid)
-		return true
-	}
-	return false
-}
-
-func (a *attacher) mustMarkReferencedByAttacher(vid *vertex.WrappedTx) {
-	a.Assertf(a.markReferencedByAttacher(vid), "attacher %s: failed to reference %s", a.name, vid.IDShortString)
-}
-
-// unReferenceAllByAttacher releases all references
-func (a *attacher) unReferenceAllByAttacher() {
-	for vid := range a.referenced {
-		vid.UnReference()
-	}
-	a.referenced = nil // invalidate
-}
+// markReferencedByAttacher maintains a set of vertices referencedSet by the attacher
+//func (a *attacher) markReferencedByAttacher(vid *vertex.WrappedTx) bool {
+//	if a.referenced.Contains(vid) {
+//		return true
+//	}
+//	if vid.Reference() {
+//		a.referenced.Insert(vid)
+//		return true
+//	}
+//	return false
+//}
+//
+//func (a *attacher) mustMarkReferencedByAttacher(vid *vertex.WrappedTx) {
+//	a.Assertf(a.markReferencedByAttacher(vid), "attacher %s: failed to reference %s", a.name, vid.IDShortString)
+//}
+//
+//// unReferenceAllByAttacher releases all references
+//func (a *attacher) unReferenceAllByAttacher() {
+//	for vid := range a.referenced {
+//		vid.UnReference()
+//	}
+//	a.referenced = nil // invalidate
+//}
 
 func (a *attacher) markVertexDefined(vid *vertex.WrappedTx) {
-	a.mustMarkReferencedByAttacher(vid)
+	a.referenced.mustReference(vid)
 	a.vertices[vid] = a.flags(vid) | FlagAttachedVertexKnown | FlagAttachedVertexDefined
 
 	a.Tracef(TraceTagMarkDefUndef, "markVertexDefined in %s: %s is DEFINED", a.name, vid.IDShortString)
 }
 
 func (a *attacher) markVertexUndefined(vid *vertex.WrappedTx) bool {
-	if !a.markReferencedByAttacher(vid) {
+	if !a.referenced.reference(vid) {
 		return false
 	}
 	f := a.flags(vid)
@@ -107,7 +107,7 @@ func (a *attacher) markVertexUndefined(vid *vertex.WrappedTx) bool {
 }
 
 func (a *attacher) mustMarkVertexRooted(vid *vertex.WrappedTx) {
-	a.mustMarkReferencedByAttacher(vid)
+	a.referenced.mustReference(vid)
 	// creates entry in rooted, probably empty
 	a.rooted[vid] = a.rooted[vid]
 }
@@ -194,7 +194,7 @@ func (a *attacher) solidifyStemOfTheVertex(v *vertex.Vertex) (ok bool) {
 	a.Assertf(stemVid.IsBranchTransaction(), "stemVid.IsBranchTransaction()")
 	switch stemVid.GetTxStatus() {
 	case vertex.Good:
-		a.markReferencedByAttacher(stemVid)
+		a.referenced.reference(stemVid)
 		stemVid.Reference() // will be unreferenced with the whole vertex
 		v.BaselineBranch = stemVid
 		return true
@@ -238,7 +238,7 @@ func (a *attacher) solidifySequencerBaseline(v *vertex.Vertex) (ok bool) {
 			a.Pull(inputTx.ID)
 		} else {
 			util.Assertf(v.BaselineBranch.IsBranchTransaction(), "v.BaselineBranch.IsBranchTransaction()")
-			a.markReferencedByAttacher(v.BaselineBranch)
+			a.referenced.reference(v.BaselineBranch)
 			v.BaselineBranch.Reference() // will be unreferenced with the whole vertex
 		}
 		return true
@@ -523,7 +523,7 @@ func (a *attacher) attachInput(v *vertex.Vertex, inputIdx byte, vid *vertex.Wrap
 		a.Tracef(TraceTagAttachVertex, "bad input %d", inputIdx)
 		return false, false
 	}
-	// only will become solid if successfully referenced
+	// only will become solid if successfully referencedSet
 	if v.Inputs[inputIdx] == nil {
 		refOk := v.ReferenceInput(inputIdx, vidInputTx)
 		util.Assertf(refOk, "failed to reference input #%d of %s. Input tx: %s", inputIdx, v.Tx.IDShortString, vidInputTx.IDShortString)
@@ -717,7 +717,7 @@ func (a *attacher) setBaseline(baselineVID *vertex.WrappedTx, currentTS ledger.T
 	a.Assertf(baselineVID.IsBranchTransaction(), "setBaseline: baselineVID.IsBranchTransaction()")
 	a.Assertf(currentTS.Slot() >= baselineVID.Slot(), "currentTS.Slot() >= baselineVID.Slot()")
 
-	if !a.markReferencedByAttacher(baselineVID) {
+	if !a.referenced.reference(baselineVID) {
 		return false
 	}
 	a.baseline = baselineVID

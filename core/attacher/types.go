@@ -57,7 +57,8 @@ type (
 		baseline           *vertex.WrappedTx
 		vertices           map[*vertex.WrappedTx]Flags
 		rooted             map[*vertex.WrappedTx]set.Set[byte]
-		referenced         set.Set[*vertex.WrappedTx]
+		referenced         referencedSet
+		disposed           bool
 		pokeMe             func(vid *vertex.WrappedTx)
 		coverage           uint64
 		coverageAdjustment uint64

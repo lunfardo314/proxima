@@ -300,7 +300,10 @@ func (mf *MilestoneFactory) makeTxProposal(a *attacher.IncrementalAttacher, stra
 	if strategyName != "" {
 		nm += "." + strategyName
 	}
-	return a.MakeSequencerTransaction(nm, mf.ControllerPrivateKey(), cmdParser)
+	tx, err := a.MakeSequencerTransaction(nm, mf.ControllerPrivateKey(), cmdParser)
+	// attacher and references not needed anymore, should be released
+	a.Close()
+	return tx, err
 }
 
 func (mf *MilestoneFactory) Propose(a *attacher.IncrementalAttacher, strategyName string) error {
@@ -312,10 +315,14 @@ func (mf *MilestoneFactory) Propose(a *attacher.IncrementalAttacher, strategyNam
 
 func (mf *MilestoneFactory) proposeNonBranchTx(a *attacher.IncrementalAttacher, strategyName string) error {
 	util.Assertf(a.TargetTs().Tick() != 0, "must be non-branch tx")
+
 	tx, err := mf.makeTxProposal(a, strategyName)
+	util.Assertf(a.IsClosed(), "a.IsDisposed()")
+
 	if err != nil {
 		return err
 	}
+
 	coverage := a.LedgerCoverage()
 	mf.addProposal(proposal{
 		tx: tx,
@@ -335,7 +342,10 @@ func (mf *MilestoneFactory) proposeNonBranchTx(a *attacher.IncrementalAttacher, 
 
 func (mf *MilestoneFactory) proposeBranchTx(a *attacher.IncrementalAttacher, strategyName string) error {
 	util.Assertf(a.TargetTs().Tick() == 0, "must be branch tx")
+
 	tx, err := mf.makeTxProposal(a, strategyName)
+	util.Assertf(a.IsClosed(), "a.IsDisposed()")
+
 	if err != nil {
 		return err
 	}
@@ -434,24 +444,26 @@ func (mf *MilestoneFactory) ChooseExtendEndorsePair(proposerName string, targetT
 // chooseEndorseExtendPairAttacher traverses all known extension options and check each of it with the endorsement target
 // Returns consistent incremental attacher with the biggest ledger coverage
 func (mf *MilestoneFactory) chooseEndorseExtendPairAttacher(proposerName string, targetTs ledger.Time, endorse *vertex.WrappedTx, extendCandidates []vertex.WrappedOutput) *attacher.IncrementalAttacher {
-	var ret *attacher.IncrementalAttacher
+	var ret, a *attacher.IncrementalAttacher
+	var err error
 	for _, extend := range extendCandidates {
-		a, err := attacher.NewIncrementalAttacher(proposerName, mf, targetTs, extend, endorse)
+		a, err = attacher.NewIncrementalAttacher(proposerName, mf, targetTs, extend, endorse)
 		if err != nil {
 			mf.Tracef(TraceTagChooseExtendEndorsePair, "%s can't extend %s and endorse %s: %v", targetTs.String, extend.IDShortString, endorse.IDShortString, err)
 			continue
 		}
 		// we must carefully dispose unused references, otherwise pruning does not work
+		// we dispose all attachers with their references, except the one with the biggest coverage
 		switch {
 		case !a.Completed():
-			a.UnReferenceAll()
+			a.Close()
 		case ret == nil:
 			ret = a
 		case a.LedgerCoverage() > ret.LedgerCoverage():
-			ret.UnReferenceAll()
+			ret.Close()
 			ret = a
 		default:
-			a.UnReferenceAll()
+			a.Close()
 		}
 	}
 	return ret
