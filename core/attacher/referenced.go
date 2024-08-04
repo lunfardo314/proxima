@@ -41,6 +41,9 @@ func (r *referencedSet) reference(vid *vertex.WrappedTx) bool {
 	if r.committed.Contains(vid) {
 		return true
 	}
+	if r.delta != nil && r.delta.Contains(vid) {
+		return true
+	}
 	if !vid.Reference() {
 		return false
 	}
