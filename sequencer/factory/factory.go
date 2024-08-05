@@ -75,7 +75,7 @@ type (
 var allProposingStrategies = make(map[string]*proposer_generic.Strategy)
 
 func registerProposerStrategy(s *proposer_generic.Strategy) {
-	if !viper.GetBool("sequencer.disable_proposer." + s.Name) {
+	if !viper.GetBool("sequencer.disable_proposer." + s.ShortName) {
 		allProposingStrategies[s.Name] = s
 	}
 }
