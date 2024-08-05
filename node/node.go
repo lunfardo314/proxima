@@ -226,8 +226,10 @@ func (p *ProximaNode) startSequencers() {
 			p.Log().Errorf("can't start sequencer '%s': '%v'", name, err)
 			continue
 		}
-		if seq == nil && name != "disable_proposer" { // TODO ugly, fix config formats
-			p.Log().Infof("skipping disabled sequencer '%s'", name)
+		if seq == nil {
+			if name != "disable_proposer" { // TODO ugly, fix config formats
+				p.Log().Infof("skipping disabled sequencer '%s'", name)
+			}
 			continue
 		}
 		seq.Start()
