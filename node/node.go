@@ -112,7 +112,7 @@ func (p *ProximaNode) Start() {
 		initStep = "startPProfIfEnabled"
 		p.startPProfIfEnabled()
 		return nil
-	})
+	}, true)
 	if err != nil {
 		p.Log().Fatalf("error during startup step '%s': %v", initStep, err)
 	}
