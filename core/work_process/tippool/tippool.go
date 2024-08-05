@@ -8,6 +8,7 @@ import (
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
+	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/queue"
 )
 
@@ -26,8 +27,16 @@ type (
 	SequencerTips struct {
 		*queue.Queue[Input]
 		Environment
-		mutex            sync.RWMutex
-		latestMilestones map[ledger.ChainID]*vertex.WrappedTx
+		mutex                           sync.RWMutex
+		latestMilestones                map[ledger.ChainID]_milestoneData
+		expectedSequencerActivityPeriod time.Duration
+	}
+
+	_milestoneData struct {
+		*vertex.WrappedTx
+		lastActivity   time.Time
+		loggedActive   bool
+		loggedInactive bool
 	}
 )
 
@@ -39,9 +48,10 @@ const (
 
 func New(env Environment) *SequencerTips {
 	return &SequencerTips{
-		Queue:            queue.NewQueueWithBufferSize[Input](Name, chanBufferSize, env.Log().Level(), nil),
-		Environment:      env,
-		latestMilestones: make(map[ledger.ChainID]*vertex.WrappedTx),
+		Queue:                           queue.NewQueueWithBufferSize[Input](Name, chanBufferSize, env.Log().Level(), nil),
+		Environment:                     env,
+		latestMilestones:                make(map[ledger.ChainID]_milestoneData),
+		expectedSequencerActivityPeriod: 2 * ledger.L().ID.SlotDuration(),
 	}
 }
 
@@ -51,7 +61,7 @@ func (t *SequencerTips) Start() {
 		t.MarkWorkProcessStopped(Name)
 	})
 	t.Queue.Start(t, t.Environment.Ctx())
-	go t.purgeLoop()
+	go t.purgeAndLogLoop()
 }
 
 func (t *SequencerTips) Consume(inp Input) {
@@ -65,27 +75,32 @@ func (t *SequencerTips) Consume(inp Input) {
 	storedNew := false
 	old, prevExists := t.latestMilestones[*seqID]
 	if prevExists {
-		if old == inp.VID {
+		if old.WrappedTx == inp.VID {
 			// repeating, ignore
 			return
 		}
 		if ledger.TooCloseOnTimeAxis(&old.ID, &inp.VID.ID) {
 			// this means there's a bug in the sequencer because it submits transactions too close in the ledger time window
-			t.Environment.Log().Warnf("tippool: %s and %s: too close on time axis. seqID: %s",
+			t.Environment.Log().Warnf("[tippool] %s and %s: too close on time axis. seqID: %s",
 				old.IDShortString(), inp.VID.IDShortString(), seqID.StringShort())
 		}
-		if t.oldReplaceWithNew(old, inp.VID) {
+		if t.oldReplaceWithNew(old.WrappedTx, inp.VID) {
 			if inp.VID.Reference() {
 				old.UnReference()
-				t.latestMilestones[*seqID] = inp.VID
+				old.WrappedTx = inp.VID
+				old.lastActivity = time.Now()
+				t.latestMilestones[*seqID] = old
 				storedNew = true
 			}
 		} else {
-			t.Tracef(TraceTag, "tippool: incoming milestone %s didn't replace existing %s", inp.VID.IDShortString, old.IDShortString)
+			t.Tracef(TraceTag, "incoming milestone %s didn't replace existing %s", inp.VID.IDShortString, old.IDShortString)
 		}
 	} else {
 		if inp.VID.Reference() {
-			t.latestMilestones[*seqID] = inp.VID
+			t.latestMilestones[*seqID] = _milestoneData{
+				WrappedTx:    inp.VID,
+				lastActivity: time.Now(),
+			}
 			storedNew = true
 		}
 	}
@@ -96,6 +111,10 @@ func (t *SequencerTips) Consume(inp Input) {
 	if storedNew {
 		t.Tracef(TraceTag, "new milestone stored in sequencer tippool: %s (prev: %s)", inp.VID.IDShortString, prevStr)
 	}
+}
+
+func (t *SequencerTips) isActive(m *_milestoneData) bool {
+	return time.Since(m.lastActivity) < t.expectedSequencerActivityPeriod
 }
 
 // oldReplaceWithNew compares timestamps, chooses the younger one.
@@ -118,8 +137,11 @@ func (t *SequencerTips) oldReplaceWithNew(old, new *vertex.WrappedTx) bool {
 func (t *SequencerTips) GetLatestMilestone(seqID ledger.ChainID) *vertex.WrappedTx {
 	t.mutex.RLock()
 	defer t.mutex.RUnlock()
-
-	return t.latestMilestones[seqID]
+	ret, ok := t.latestMilestones[seqID]
+	if !ok {
+		return nil
+	}
+	return ret.WrappedTx
 }
 
 // LatestMilestonesDescending returns sequencer transactions from sequencer tippool. Optionally filters
@@ -135,8 +157,8 @@ func (t *SequencerTips) LatestMilestonesDescending(filter ...func(seqID ledger.C
 
 	ret := make([]*vertex.WrappedTx, 0, len(t.latestMilestones))
 	for seqID, ms := range t.latestMilestones {
-		if flt(seqID, ms) {
-			ret = append(ret, ms)
+		if flt(seqID, ms.WrappedTx) {
+			ret = append(ret, ms.WrappedTx)
 		}
 	}
 	sort.Slice(ret, func(i, j int) bool {
@@ -152,28 +174,45 @@ func (t *SequencerTips) NumSequencerTips() int {
 	return len(t.latestMilestones)
 }
 
-const purgeLoopPeriod = time.Second
+const purgeLoopPeriod = 5 * time.Second
 
-// purgeLoop periodically removes all vertices which cannot be endorsed
-func (t *SequencerTips) purgeLoop() {
+// purgeAndLogLoop periodically removes all vertices which cannot be endorsed
+func (t *SequencerTips) purgeAndLogLoop() {
 	for {
 		select {
 		case <-t.Ctx().Done():
 			return
 		case <-time.After(purgeLoopPeriod):
-			t.purge()
+			t.purgeAndLog()
 		}
 	}
 }
 
-// purge removes all transactions with baseline == nil, i.e. all non-branch sequencers which are virtualTx
-func (t *SequencerTips) purge() {
+// purgeAndLog removes all transactions with baseline == nil, i.e. all non-branch sequencers which are virtualTx
+func (t *SequencerTips) purgeAndLog() {
 	t.mutex.Lock()
 	defer t.mutex.Unlock()
 
 	toDelete := make([]ledger.ChainID, 0)
-
 	for chainID, md := range t.latestMilestones {
+		nothingLogged := !md.loggedActive && !md.loggedInactive
+		util.Assertf(!md.loggedActive || !md.loggedInactive, "!md.loggedActive || !md.loggedInactive")
+
+		if t.isActive(&md) {
+			if md.loggedInactive || nothingLogged {
+				t.Environment.Log().Infof("sequencer %s is ACTIVE", chainID.StringShort())
+				md.loggedInactive = false
+				md.loggedActive = true
+				t.latestMilestones[chainID] = md
+			}
+		} else {
+			if md.loggedActive || nothingLogged {
+				t.Environment.Log().Infof("sequencer %s is INACTIVE", chainID.StringShort())
+				md.loggedInactive = true
+				md.loggedActive = false
+				t.latestMilestones[chainID] = md
+			}
+		}
 		if md.BaselineBranch() == nil {
 			toDelete = append(toDelete, chainID)
 		}

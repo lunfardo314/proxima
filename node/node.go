@@ -112,7 +112,7 @@ func (p *ProximaNode) Start() {
 		initStep = "startPProfIfEnabled"
 		p.startPProfIfEnabled()
 		return nil
-	})
+	}, true)
 	if err != nil {
 		p.Log().Fatalf("error during startup step '%s': %v", initStep, err)
 	}
@@ -227,7 +227,9 @@ func (p *ProximaNode) startSequencers() {
 			continue
 		}
 		if seq == nil {
-			p.Log().Infof("skipping disabled sequencer '%s'", name)
+			if name != "disable_proposer" { // TODO ugly, fix config formats
+				p.Log().Infof("skipping disabled sequencer '%s'", name)
+			}
 			continue
 		}
 		seq.Start()
