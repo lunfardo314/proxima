@@ -44,6 +44,7 @@ func (b *Endorse2Proposer) propose() *attacher.IncrementalAttacher {
 		return nil
 	}
 	if !a.Completed() {
+		a.Close()
 		endorsing := a.Endorsing()[0]
 		extending := a.Extending()
 		b.Tracef(TraceTag, "proposal [extend=%s, endorsing=%s] not complete 1", extending.IDShortString, endorsing.IDShortString)
@@ -65,12 +66,14 @@ func (b *Endorse2Proposer) propose() *attacher.IncrementalAttacher {
 	}
 	if !addedSecond {
 		// no need to repeat job of endorse1
+		a.Close()
 		return nil
 	}
 
 	b.AttachTagAlongInputs(a)
 
 	if !a.Completed() {
+		a.Close()
 		endorsing := a.Endorsing()[0]
 		extending := a.Extending()
 		b.Tracef(TraceTag, "proposal [extend=%s, endorsing=%s] not complete 2", extending.IDShortString, endorsing.IDShortString)
