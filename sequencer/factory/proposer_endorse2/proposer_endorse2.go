@@ -80,9 +80,6 @@ func (b *Endorse2Proposer) propose() *attacher.IncrementalAttacher {
 		return nil
 	}
 
-	// sometimes fails
-	// b.Assertf(a.Completed(), "incremental attacher %s is not complete", a.Name())
-
 	a.AdjustCoverage()
 	return a
 }
