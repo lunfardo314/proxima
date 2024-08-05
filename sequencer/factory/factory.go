@@ -72,18 +72,26 @@ type (
 	}
 )
 
-var allProposingStrategies = make(map[string]*proposer_generic.Strategy)
+var _allProposingStrategies = make(map[string]*proposer_generic.Strategy)
 
 func registerProposerStrategy(s *proposer_generic.Strategy) {
-	if !viper.GetBool("sequencers.disable_proposer." + s.ShortName) {
-		allProposingStrategies[s.Name] = s
-	}
+	_allProposingStrategies[s.Name] = s
 }
 
 func init() {
 	registerProposerStrategy(proposer_base.Strategy())
 	registerProposerStrategy(proposer_endorse1.Strategy())
 	registerProposerStrategy(proposer_endorse2.Strategy())
+}
+
+func allProposingStrategies() []*proposer_generic.Strategy {
+	ret := make([]*proposer_generic.Strategy, 0)
+	for _, s := range _allProposingStrategies {
+		if !viper.GetBool("strategies.disable_proposer." + s.ShortName) {
+			ret = append(ret, s)
+		}
+	}
+	return ret
 }
 
 const (
@@ -262,13 +270,13 @@ func (mf *MilestoneFactory) AttachTagAlongInputs(a *attacher.IncrementalAttacher
 }
 
 func (mf *MilestoneFactory) startProposerWorkers(targetTime ledger.Time, ctx context.Context) {
-	for strategyName, s := range allProposingStrategies {
+	for _, s := range allProposingStrategies() {
 		task := proposer_generic.New(mf, s, targetTime, ctx)
 		if task == nil {
-			mf.Tracef(TraceTag, "SKIP '%s' proposer for the target %s", strategyName, targetTime.String)
+			mf.Tracef(TraceTag, "SKIP '%s' proposer for the target %s", s.Name, targetTime.String)
 			continue
 		}
-		mf.Tracef(TraceTag, "RUN '%s' proposer for the target %s", strategyName, targetTime.String)
+		mf.Tracef(TraceTag, "RUN '%s' proposer for the target %s", s.Name, targetTime.String)
 
 		runFun := func() {
 			mf.Tracef(TraceTag, " START proposer %s", task.GetName())
