@@ -1,8 +1,6 @@
 package pruner
 
 import (
-	"fmt"
-	"runtime"
 	"time"
 
 	"github.com/lunfardo314/proxima/core/vertex"
@@ -45,12 +43,11 @@ func New(env Environment) *Pruner {
 }
 
 // pruneVertices returns how many marked for deletion and how many past cones unreferenced
-func (p *Pruner) pruneVertices() (int, int) {
+func (p *Pruner) pruneVertices() (markedForDeletionCount, unreferencedPastConeCount int, refStats [4]uint32) {
 	toDelete := make([]*vertex.WrappedTx, 0)
 	nowis := time.Now()
-	var markedForDeletionCount, unreferencedPastConeCount int
 	for _, vid := range p.Vertices() {
-		markedForDeletion, unreferencedPastCone := vid.DoPruningIfRelevant(nowis)
+		markedForDeletion, unreferencedPastCone, nReferences := vid.DoPruningIfRelevant(nowis)
 		if markedForDeletion {
 			toDelete = append(toDelete, vid)
 			markedForDeletionCount++
@@ -60,12 +57,17 @@ func (p *Pruner) pruneVertices() (int, int) {
 			unreferencedPastConeCount++
 			p.Tracef(TraceTag, "past cone of %s has been unreferenced", vid.IDShortString)
 		}
+		if int(nReferences) < len(refStats)-1 {
+			refStats[nReferences]++
+		} else {
+			refStats[len(refStats)-1]++
+		}
 	}
 	p.PurgeDeletedVertices(toDelete)
 	for _, deleted := range toDelete {
 		p.StopTracingTx(deleted.ID)
 	}
-	return markedForDeletionCount, unreferencedPastConeCount
+	return
 }
 
 func (p *Pruner) Start() {
@@ -77,18 +79,11 @@ func (p *Pruner) Start() {
 }
 
 func (p *Pruner) doPrune() {
-	nDeleted, nUnReferenced := p.pruneVertices()
+	nDeleted, nUnReferenced, refStats := p.pruneVertices()
 	nReadersPurged, readersLeft := p.PurgeCachedStateReaders()
 
-	var memStats runtime.MemStats
-	runtime.ReadMemStats(&memStats)
-	memStr := fmt.Sprintf("Mem. alloc: %.1f MB, GC: %d, GoRt: %d, ",
-		float32(memStats.Alloc*10/(1024*1024))/10,
-		memStats.NumGC,
-		runtime.NumGoroutine(),
-	)
-	p.Infof0("[memDAG pruner] vertices deleted: %d, detached past cones: %d. Vertices left: %d. Cached state readers purged: %d, left: %d. "+memStr,
-		nDeleted, nUnReferenced, p.NumVertices(), nReadersPurged, readersLeft)
+	p.Infof0("[memDAG pruner] vertices: %d, deleted: %d, detached past cones: %d. state readers purged: %d, left: %d. Ref stats: 0:%d, 1:%d, 2:%d, >2: %d",
+		p.NumVertices(), nDeleted, nUnReferenced, nReadersPurged, readersLeft, refStats[0], refStats[1], refStats[2], refStats[3])
 }
 
 func (p *Pruner) mainLoop() {

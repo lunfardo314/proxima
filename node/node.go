@@ -124,18 +124,7 @@ func (p *ProximaNode) Start() {
 		p.Log().Infof("will NOT be logging attacher stats")
 	}
 
-	// periodic logging of general stats
-	p.RepeatEvery(5*time.Second, func() bool {
-		var memStats runtime.MemStats
-		runtime.ReadMemStats(&memStats)
-		p.Log().Infof("uptime: %v, allocated memory: %.1f MB, GC counter: %d, Goroutines: %d",
-			time.Since(p.started).Round(time.Second),
-			float32(memStats.Alloc*10/(1024*1024))/10,
-			memStats.NumGC,
-			runtime.NumGoroutine(),
-		)
-		return true
-	})
+	p.goLoggingMemStats()
 }
 
 // initMultiStateLedger opens ledger state DB and initializes global ledger object
@@ -284,4 +273,26 @@ func (p *ProximaNode) startMetrics() {
 
 func (p *ProximaNode) SyncServerDisabled() bool {
 	return viper.GetBool("workflow.sync_server.disable")
+}
+
+func (p *ProximaNode) goLoggingMemStats() {
+	const memstatsLogPeriodDefault = 10 * time.Second
+
+	memstatsPeriod := time.Duration(viper.GetInt("logger.memstats_period_sec")) * time.Second
+	if memstatsPeriod == 0 {
+		memstatsPeriod = memstatsLogPeriodDefault
+	}
+
+	p.RepeatEvery(memstatsLogPeriodDefault, func() bool {
+		var memStats runtime.MemStats
+
+		runtime.ReadMemStats(&memStats)
+		p.Log().Infof("[memstats] uptime: %v, allocated memory: %.1f MB, GC counter: %d, Goroutines: %d",
+			time.Since(p.started).Round(time.Second),
+			float32(memStats.Alloc*10/(1024*1024))/10,
+			memStats.NumGC,
+			runtime.NumGoroutine(),
+		)
+		return true
+	})
 }

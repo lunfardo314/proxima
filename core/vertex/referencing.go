@@ -47,10 +47,11 @@ func (vid *WrappedTx) UnReference() {
 // DoPruningIfRelevant either marks vertex deleted (counter = 0), or, if it already deleted (counter=0)
 // with TTL matured, un-references its past cone this way helping to prune other older vertices
 // Returns true if vertex was marked deleted and should be removed from the MemDAG
-func (vid *WrappedTx) DoPruningIfRelevant(nowis time.Time) (markedForDeletion, unreferencedPastCone bool) {
+func (vid *WrappedTx) DoPruningIfRelevant(nowis time.Time) (markedForDeletion, unreferencedPastCone bool, references uint32) {
 	vid.Unwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
-			switch vid.references {
+			references = vid.references
+			switch references {
 			case 0:
 				util.Assertf(vid.FlagsUpNoLock(FlagVertexTxAttachmentStarted|FlagVertexTxAttachmentFinished), "attachment expected to be over 1")
 				markedForDeletion = true
@@ -77,7 +78,8 @@ func (vid *WrappedTx) DoPruningIfRelevant(nowis time.Time) (markedForDeletion, u
 			}
 		},
 		VirtualTx: func(_ *VirtualTransaction) {
-			switch vid.references {
+			references = vid.references
+			switch references {
 			case 0:
 				util.Assertf(vid.FlagsUpNoLock(FlagVertexTxAttachmentStarted|FlagVertexTxAttachmentFinished), "attachment expected to be over 2")
 				markedForDeletion = true
