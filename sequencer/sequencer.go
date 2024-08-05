@@ -3,6 +3,7 @@ package sequencer
 import (
 	"context"
 	"crypto/ed25519"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -326,8 +327,15 @@ func (seq *Sequencer) doSequencerStep() bool {
 
 	msTx, meta, err := seq.factory.StartProposingForTargetLogicalTime(targetTs)
 	if msTx == nil {
-		seq.Infof0("FAILED to generate transaction for target %s. Now is %s. Reason: %v",
-			targetTs, ledger.TimeNow(), err)
+		if targetTs.IsSlotBoundary() {
+			seq.Infof0("FAILED to generate transaction for target %s. Now is %s. Reason: '%v'",
+				targetTs, ledger.TimeNow(), err)
+		} else {
+			if !errors.Is(err, factory.ErrNoProposals) {
+				seq.Log().Warnf("FAILED to generate transaction for target %s. Now is %s. Reason: %v",
+					targetTs, ledger.TimeNow(), err)
+			}
+		}
 		return true
 	}
 
