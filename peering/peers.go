@@ -127,6 +127,7 @@ const (
 	heartbeatRate      = 2 * time.Second
 	aliveNumHeartbeats = 10 // if no hb over this period, it means not-alive -> dynamic peer will be dropped
 	aliveDuration      = time.Duration(aliveNumHeartbeats) * heartbeatRate
+	blacklistTTL       = 2 * time.Minute
 	// gracePeriodAfterAdded period of time peer is considered not dead after added even if messages are not coming
 	gracePeriodAfterAdded = 15 * heartbeatRate
 	logPeersEvery         = 5 * time.Second
@@ -356,17 +357,16 @@ func (ps *Peers) _addPeer(addrInfo *peer.AddrInfo, name string, static bool) {
 }
 
 // dropPeer removes dynamic peer and blacklists for 1 min. Ignores otherwise
-func (ps *Peers) dropPeer(id peer.ID, reason ...string) {
+func (ps *Peers) dropPeer(id peer.ID, reason string) {
 	ps.withPeer(id, func(p *Peer) {
 		if p != nil && !p.isStatic {
 			// ignore static
-			ps._dropPeer(p, reason...)
+			ps._dropPeer(p, reason)
 		}
 	})
 }
 
-func (ps *Peers) _dropPeer(p *Peer, reason ...string) {
-	util.Assertf(p != nil, "removeDynamicPeer: p!=nil")
+func (ps *Peers) _dropPeer(p *Peer, reason string) {
 	why := ""
 	if len(reason) > 0 {
 		why = fmt.Sprintf(". Reason: '%s'", reason[0])
@@ -376,20 +376,20 @@ func (ps *Peers) _dropPeer(p *Peer, reason ...string) {
 		ps.Log().Warnf("[peering] cannot drop static peer %s - %s%s", ShortPeerIDString(p.id), p.name, why)
 		return
 	}
-	util.Assertf(!p.isStatic, "removeDynamicPeer: must not be pre-configured")
+	util.Assertf(!p.isStatic, "_dropPeer: must not be pre-configured")
 
 	ps.host.Peerstore().RemovePeer(p.id)
 	ps.kademliaDHT.RoutingTable().RemovePeer(p.id)
 	_ = ps.host.Network().ClosePeer(p.id)
 	delete(ps.peers, p.id)
 
-	ps._addToBlacklist(p.id, time.Minute)
+	ps._addToBlacklist(p.id)
 
 	ps.Log().Infof("[peering] dropped dynamic peer %s - %s%s", ShortPeerIDString(p.id), p.name, why)
 }
 
-func (ps *Peers) _addToBlacklist(id peer.ID, ttl time.Duration) {
-	ps.blacklist[id] = time.Now().Add(ttl)
+func (ps *Peers) _addToBlacklist(id peer.ID) {
+	ps.blacklist[id] = time.Now().Add(blacklistTTL)
 }
 
 func (ps *Peers) isInBlacklist(id peer.ID) bool {
