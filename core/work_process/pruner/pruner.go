@@ -43,7 +43,7 @@ func New(env Environment) *Pruner {
 }
 
 // pruneVertices returns how many marked for deletion and how many past cones unreferenced
-func (p *Pruner) pruneVertices() (markedForDeletionCount, unreferencedPastConeCount int, refStats [4]uint32) {
+func (p *Pruner) pruneVertices() (markedForDeletionCount, unreferencedPastConeCount int, refStats [6]uint32) {
 	toDelete := make([]*vertex.WrappedTx, 0)
 	nowis := time.Now()
 	for _, vid := range p.Vertices() {
@@ -82,8 +82,8 @@ func (p *Pruner) doPrune() {
 	nDeleted, nUnReferenced, refStats := p.pruneVertices()
 	nReadersPurged, readersLeft := p.PurgeCachedStateReaders()
 
-	p.Infof0("[memDAG pruner] vertices: %d, deleted: %d, detached past cones: %d. state readers purged: %d, left: %d. Ref stats: 0:%d, 1:%d, 2:%d, >2: %d",
-		p.NumVertices(), nDeleted, nUnReferenced, nReadersPurged, readersLeft, refStats[0], refStats[1], refStats[2], refStats[3])
+	p.Infof0("[memDAG pruner] vertices: %d, deleted: %d, detached past cones: %d. state readers purged: %d, left: %d. Ref stats: 0:%d, 1:%d, 2:%d, 3:%d, 4:%d, >4:%d",
+		p.NumVertices(), nDeleted, nUnReferenced, nReadersPurged, readersLeft, refStats[0], refStats[1], refStats[2], refStats[3], refStats[4], refStats[4])
 }
 
 func (p *Pruner) mainLoop() {
