@@ -21,6 +21,7 @@ import (
 	"github.com/lunfardo314/proxima/sequencer/factory/proposer_generic"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/set"
+	"github.com/spf13/viper"
 )
 
 type (
@@ -74,7 +75,9 @@ type (
 var allProposingStrategies = make(map[string]*proposer_generic.Strategy)
 
 func registerProposerStrategy(s *proposer_generic.Strategy) {
-	allProposingStrategies[s.Name] = s
+	if !viper.GetBool("sequencer.disable_proposer." + s.Name) {
+		allProposingStrategies[s.Name] = s
+	}
 }
 
 func init() {
