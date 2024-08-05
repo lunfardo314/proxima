@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 
@@ -191,16 +192,15 @@ func (mf *MilestoneFactory) AddOwnMilestone(vid *vertex.WrappedTx) {
 	mf.ownMilestoneCount++
 }
 
-func (mf *MilestoneFactory) StartProposingForTargetLogicalTime(targetTs ledger.Time) (*transaction.Transaction, *txmetadata.TransactionMetadata) {
+func (mf *MilestoneFactory) StartProposingForTargetLogicalTime(targetTs ledger.Time) (*transaction.Transaction, *txmetadata.TransactionMetadata, error) {
 	deadline := targetTs.Time()
 	nowis := time.Now()
 	mf.Tracef(TraceTag, "StartProposingForTargetLogicalTime: target: %s, deadline: %s, nowis: %s",
 		targetTs.String, deadline.Format("15:04:05.999"), nowis.Format("15:04:05.999"))
 
 	if deadline.Before(nowis) {
-		mf.Tracef(TraceTag, "target %s is in the past by %v: impossible to generate milestone",
-			targetTs.String, nowis.Sub(deadline))
-		return nil, nil
+		return nil, nil, fmt.Errorf("target %s is in the past by %v: impossible to generate milestone",
+			targetTs.String(), nowis.Sub(deadline))
 	}
 	// start worker(s)
 	mf.setNewTarget(targetTs)
@@ -386,7 +386,7 @@ func (mf *MilestoneFactory) addProposal(p proposal) {
 		p.tx.IDShortString, p.attacherName, func() string { return util.Th(p.coverage) })
 }
 
-func (mf *MilestoneFactory) getBestProposal() (*transaction.Transaction, *txmetadata.TransactionMetadata) {
+func (mf *MilestoneFactory) getBestProposal() (*transaction.Transaction, *txmetadata.TransactionMetadata, error) {
 	mf.target.mutex.RLock()
 	defer mf.target.mutex.RUnlock()
 
@@ -402,12 +402,12 @@ func (mf *MilestoneFactory) getBestProposal() (*transaction.Transaction, *txmeta
 	}
 	if maxIdx < 0 {
 		mf.Tracef(TraceTag, "getBestProposal: NONE, target: %s", mf.target.targetTs.String)
-		return nil, nil
+		return nil, nil, fmt.Errorf("getBestProposal: no proposal was generated")
 	}
 	p := mf.target.proposals[maxIdx]
 	mf.Tracef(TraceTag, "getBestProposal: %s, target: %s, attacher %s: coverage %s",
 		p.tx.IDShortString, mf.target.targetTs.String, p.attacherName, func() string { return util.Th(p.coverage) })
-	return p.tx, p.txMetadata
+	return p.tx, p.txMetadata, nil
 }
 
 const TraceTagChooseExtendEndorsePair = "ChooseExtendEndorsePair"

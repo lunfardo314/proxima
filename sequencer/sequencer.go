@@ -324,12 +324,10 @@ func (seq *Sequencer) doSequencerStep() bool {
 
 	seq.Tracef(TraceTag, "target ts: %s. Now is: %s", targetTs, ledger.TimeNow())
 
-	msTx, meta := seq.factory.StartProposingForTargetLogicalTime(targetTs)
+	msTx, meta, err := seq.factory.StartProposingForTargetLogicalTime(targetTs)
 	if msTx == nil {
-		if targetTs.IsSlotBoundary() {
-			seq.log.Infof("SKIPPED BRANCH on slot %d", targetTs.Slot())
-		}
-		seq.Tracef(TraceTag, "failed to generate msTx for target %s. Now is %s", targetTs, ledger.TimeNow())
+		seq.Infof0("FAILED to generate transaction for target %s. Now is %s. Reason: %v",
+			targetTs, ledger.TimeNow(), err)
 		return true
 	}
 
