@@ -51,7 +51,7 @@ func New(env Environment) *SequencerTips {
 		Queue:                           queue.NewQueueWithBufferSize[Input](Name, chanBufferSize, env.Log().Level(), nil),
 		Environment:                     env,
 		latestMilestones:                make(map[ledger.ChainID]_milestoneData),
-		expectedSequencerActivityPeriod: ledger.L().ID.SlotDuration(),
+		expectedSequencerActivityPeriod: 2 * ledger.L().ID.SlotDuration(),
 	}
 }
 
@@ -174,7 +174,7 @@ func (t *SequencerTips) NumSequencerTips() int {
 	return len(t.latestMilestones)
 }
 
-const purgeLoopPeriod = time.Second
+const purgeLoopPeriod = 5 * time.Second
 
 // purgeAndLogLoop periodically removes all vertices which cannot be endorsed
 func (t *SequencerTips) purgeAndLogLoop() {
