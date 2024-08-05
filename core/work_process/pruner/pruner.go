@@ -87,7 +87,7 @@ func (p *Pruner) doPrune() {
 		memStats.NumGC,
 		runtime.NumGoroutine(),
 	)
-	p.Infof0("vertices deleted: %d, detached past cones: %d. Vertices left: %d. Cached state readers purged: %d, left: %d. "+memStr,
+	p.Infof0("[memDAG pruner] vertices deleted: %d, detached past cones: %d. Vertices left: %d. Cached state readers purged: %d, left: %d. "+memStr,
 		nDeleted, nUnReferenced, p.NumVertices(), nReadersPurged, readersLeft)
 }
 

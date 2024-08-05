@@ -104,15 +104,17 @@ func (a *IncrementalAttacher) checkConflictsWithInputs(consumerVertex *vertex.Ve
 	return
 }
 
+// Close releases all references of vertices. Incremental attacher must be closed before disposing it,
+// otherwise memDAG starts leaking vertices. Repetitive closing has no effect
 func (a *IncrementalAttacher) Close() {
 	if a != nil && !a.IsClosed() {
 		a.referenced.unReferenceAll()
-		a.disposed = true
+		a.closed = true
 	}
 }
 
 func (a *IncrementalAttacher) IsClosed() bool {
-	return a.disposed
+	return a.closed
 }
 
 func (a *IncrementalAttacher) initIncrementalAttacher(baseline *vertex.WrappedTx, targetTs ledger.Time, extend vertex.WrappedOutput, endorse ...*vertex.WrappedTx) error {

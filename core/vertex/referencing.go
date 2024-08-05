@@ -12,11 +12,13 @@ const (
 	notReferencedVertexTTLSlots = 5
 )
 
+// Reference increments reference counter for the vertex which is not deleted yet (counter > 0).
+// It also sets TTL for vertex if it has noo references (counter == 1)
 func (vid *WrappedTx) Reference() bool {
 	vid.mutex.Lock()
 	defer vid.mutex.Unlock()
 
-	// can't use atomic.Int because of this
+	// can't use atomic.Int because of this. It must be atomic with the next check
 	if vid.references == 0 {
 		return false
 	}
@@ -28,6 +30,8 @@ func (vid *WrappedTx) Reference() bool {
 	return true
 }
 
+// UnReference decrements reference counter down to 1. It panics if counter value 1 is decremented because
+// the value 0 is reserved for the deleted vertices (handled by DoPruningIfRelevant)
 func (vid *WrappedTx) UnReference() {
 	vid.mutex.Lock()
 	defer vid.mutex.Unlock()
@@ -40,8 +44,8 @@ func (vid *WrappedTx) UnReference() {
 	}
 }
 
-// DoPruningIfRelevant either marks vertex pruned, or, if it is matured,
-// un-references its past cone this way helping to prune other older vertices
+// DoPruningIfRelevant either marks vertex deleted (counter = 0), or, if it already deleted (counter=0)
+// with TTL matured, un-references its past cone this way helping to prune other older vertices
 // Returns true if vertex was marked deleted and should be removed from the MemDAG
 func (vid *WrappedTx) DoPruningIfRelevant(nowis time.Time) (markedForDeletion, unreferencedPastCone bool) {
 	vid.Unwrap(UnwrapOptions{
