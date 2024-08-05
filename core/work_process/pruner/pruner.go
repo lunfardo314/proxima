@@ -82,8 +82,8 @@ func (p *Pruner) doPrune() {
 	nDeleted, nUnReferenced, refStats := p.pruneVertices()
 	nReadersPurged, readersLeft := p.PurgeCachedStateReaders()
 
-	p.Infof0("[memDAG pruner] vertices: %d, deleted: %d, detached past cones: %d. state readers purged: %d, left: %d. Ref stats: 0:%d, 1:%d, 2:%d, 3:%d, 4:%d, >4:%d",
-		p.NumVertices(), nDeleted, nUnReferenced, nReadersPurged, readersLeft, refStats[0], refStats[1], refStats[2], refStats[3], refStats[4], refStats[4])
+	p.Infof0("[memDAG pruner] vertices: %d, deleted: %d, detached past cones: %d. state readers purged: %d, left: %d. Ref stats: %v",
+		p.NumVertices(), nDeleted, nUnReferenced, nReadersPurged, readersLeft, refStats)
 }
 
 func (p *Pruner) mainLoop() {
