@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math"
+	"slices"
 
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -128,8 +129,8 @@ func (ps *Peers) sendPullSyncPortionToPeer(id peer.ID, startingFrom ledger.Slot,
 	}, id, ps.lppProtocolPull)
 }
 
-func (ps *Peers) PullSyncPortionFromRandomPeer(startingFrom ledger.Slot, maxSlots int) bool {
-	if rndPeerID, ok := ps._randomPullPeer(true); ok {
+func (ps *Peers) PullSyncPortionFromRandomPeer(startingFrom ledger.Slot, maxSlots int, servers ...string) bool {
+	if rndPeerID, ok := ps._randomPullPeer(true, servers...); ok {
 		ps.sendPullSyncPortionToPeer(rndPeerID, startingFrom, maxSlots)
 		ps.Log().Infof("[peering] pull sync portion from random peer %s. From slot: %d, up to slots: %d",
 			ShortPeerIDString(rndPeerID), int(startingFrom), maxSlots)
@@ -200,34 +201,38 @@ func decodeSyncPortionMsg(data []byte) (startingFrom ledger.Slot, maxSlots int, 
 	return
 }
 
-func (ps *Peers) _pullTxTargets() []peer.ID {
+func (ps *Peers) _pullTxTargets(restrictedTargets ...string) []peer.ID {
 	ret := make([]peer.ID, 0)
 	ps.forEachPeer(func(p *Peer) bool {
-		if _, inBlackList := ps.blacklist[p.id]; !inBlackList && !p._isDead() && p.hasTxStore {
-			ret = append(ret, p.id)
+		if len(restrictedTargets) == 0 || slices.Contains(restrictedTargets, p.name) {
+			if _, inBlackList := ps.blacklist[p.id]; !inBlackList && !p._isDead() && p.hasTxStore {
+				ret = append(ret, p.id)
+			}
 		}
 		return true
 	})
 	return ret
 }
 
-func (ps *Peers) _pullSyncPortionTargets() []peer.ID {
+func (ps *Peers) _pullSyncPortionTargets(restrictedTargets ...string) []peer.ID {
 	ret := make([]peer.ID, 0)
 	ps.forEachPeer(func(p *Peer) bool {
-		if _, inBlackList := ps.blacklist[p.id]; !inBlackList && !p._isDead() && p.acceptsPullSyncRequests {
-			ret = append(ret, p.id)
+		if len(restrictedTargets) == 0 || slices.Contains(restrictedTargets, p.name) {
+			if _, inBlackList := ps.blacklist[p.id]; !inBlackList && !p._isDead() && p.acceptsPullSyncRequests {
+				ret = append(ret, p.id)
+			}
 		}
 		return true
 	})
 	return ret
 }
 
-func (ps *Peers) _randomPullPeer(forSync bool) (peer.ID, bool) {
+func (ps *Peers) _randomPullPeer(forSync bool, restrictedTargets ...string) (peer.ID, bool) {
 	var targets []peer.ID
 	if forSync {
-		targets = ps._pullSyncPortionTargets()
+		targets = ps._pullSyncPortionTargets(restrictedTargets...)
 	} else {
-		targets = ps._pullTxTargets()
+		targets = ps._pullTxTargets(restrictedTargets...)
 	}
 	if len(targets) == 0 {
 		return "", false

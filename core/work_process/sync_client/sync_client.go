@@ -22,7 +22,7 @@ type (
 	Environment interface {
 		global.NodeGlobal
 		StateStore() global.StateStore
-		PullSyncPortion(startingFrom ledger.Slot, maxSlots int)
+		PullSyncPortion(startingFrom ledger.Slot, maxSlots int, servers ...string)
 	}
 
 	SyncClient struct {
@@ -32,6 +32,7 @@ type (
 		cancelled                   atomic.Bool
 		syncPortionSlots            int
 		syncToleranceThresholdSlots int
+		servers                     []string
 
 		endOfPortionCh                       chan struct{}
 		syncPortionRequestedAtLeastUntilSlot ledger.Slot
@@ -58,6 +59,7 @@ func StartSyncClientFromConfig(env Environment) *SyncClient {
 		syncPortionSlots:            viper.GetInt("workflow.sync_client.sync_portion_slots"),
 		syncToleranceThresholdSlots: viper.GetInt("workflow.sync_client.sync_tolerance_threshold_slots"),
 		endOfPortionCh:              make(chan struct{}, 1),
+		servers:                     viper.GetStringSlice("workflow.sync_client.servers"),
 	}
 	if d.syncPortionSlots < 1 || d.syncPortionSlots > global.MaxSyncPortionSlots {
 		d.syncPortionSlots = global.MaxSyncPortionSlots
@@ -139,7 +141,7 @@ func (d *SyncClient) checkSync(endOfPortion bool) {
 		d.syncPortionRequestedAtLeastUntilSlot = slotNow
 	}
 	d.syncPortionDeadline = time.Now().Add(portionExpectedIn)
-	d.PullSyncPortion(latestHealthySlotInDB, d.syncPortionSlots)
+	d.PullSyncPortion(latestHealthySlotInDB, d.syncPortionSlots, d.servers...)
 }
 
 func (d *SyncClient) NotifyEndOfPortion() {
