@@ -52,11 +52,8 @@ func (p *ProximaNode) GetNodeInfo() *global.NodeInfo {
 func (p *ProximaNode) GetSyncInfo() *api.SyncInfo {
 
 	latestSlot, latestHealthySlot, synced := p.workflow.LatestBranchSlots()
-	//synced, _ := p.workflow.SyncedStatus()
 	ret := &api.SyncInfo{
-		Synced: synced,
-		//InSyncWindow bool                         `json:"in_sync_window,omitempty"`
-		//PerSequencer map[string]SequencerSyncInfo `json:"per_sequencer,omitempty"`
+		Synced:       synced,
 		PerSequencer: make(map[string]api.SequencerSyncInfo),
 	}
 	for seq := range p.Sequencers {
