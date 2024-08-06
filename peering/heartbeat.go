@@ -89,21 +89,6 @@ func (ps *Peers) GetPeers() (ids []peer.ID, ipaddrs []string) {
 	return
 }
 
-func checkRemoteClockTolerance(remoteTime time.Time) (time.Duration, bool, bool) {
-	nowis := time.Now() // local clock
-	var clockDiff time.Duration
-
-	var behind bool
-	if nowis.After(remoteTime) {
-		clockDiff = nowis.Sub(remoteTime)
-		behind = true
-	} else {
-		clockDiff = remoteTime.Sub(nowis)
-		behind = false
-	}
-	return clockDiff, clockDiff < clockTolerance, behind
-}
-
 // heartbeat protocol is used to monitor
 // - if peer is alive and
 // - to ensure clocks difference is within tolerance interval. Clock difference is
