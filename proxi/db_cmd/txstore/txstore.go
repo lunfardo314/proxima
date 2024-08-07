@@ -14,6 +14,7 @@ func Init() *cobra.Command {
 	dbCmd.AddCommand(
 		initCrossCheckCmd(),
 		initGetCmd(),
+		initListCmd(),
 	)
 	return dbCmd
 }
