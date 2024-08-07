@@ -240,7 +240,7 @@ func (d *MemDAG) LatestBranchSlots() (slot, healthySlot ledger.Slot, synced bool
 	defer d.mutex.RUnlock()
 
 	if d.latestBranchSlot == 0 {
-		d.latestBranchSlot = multistate.FetchLatestSlot(d.StateStore())
+		d.latestBranchSlot = multistate.FetchLatestCommittedSlot(d.StateStore())
 		if d.latestBranchSlot == 0 {
 			synced = true
 		}

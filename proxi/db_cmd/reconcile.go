@@ -2,7 +2,10 @@ package db_cmd
 
 import (
 	"fmt"
+	"strconv"
 
+	"github.com/lunfardo314/proxima/ledger"
+	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/spf13/cobra"
 )
@@ -26,10 +29,30 @@ func initReconcileCmd() *cobra.Command {
 func runReconcileCmd(_ *cobra.Command, args []string) {
 	glb.InitLedger()
 	glb.InitTxStoreDB()
-
 	defer glb.CloseDatabases()
 
-	glb.Infof("NOT IMPLEMENTED")
+	slotsBack := defaultReconcileSlotsBack
+	var err error
+	if len(args) >= 1 {
+		slotsBack, err = strconv.Atoi(args[0])
+		glb.AssertNoError(err)
+	}
 
-	// TODO not implemented
+	slot := multistate.FetchLatestCommittedSlot(glb.StateStore())
+	var downToSlot ledger.Slot
+	if int(slot) > slotsBack {
+		downToSlot = slot - ledger.Slot(slotsBack)
+	}
+
+	branches := multistate.FetchLatestBranches(glb.StateStore())
+	rdr := multistate.MustNewReadable(glb.StateStore(), branches[0].Root)
+
+	for ; slot >= downToSlot; slot-- {
+		n := 0
+		rdr.IterateKnownCommittedTransactions(func(txid *ledger.TransactionID, slot ledger.Slot) bool {
+			n++
+			return true
+		}, slot)
+		glb.Infof("slot %d: num transactions: %d", slot, n)
+	}
 }

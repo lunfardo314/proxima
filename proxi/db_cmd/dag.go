@@ -51,7 +51,7 @@ func runDbDAGCmd(_ *cobra.Command, args []string) {
 		tmpDag := memdag.MakeDAGFromTxStore(glb.TxBytesStore(), 0, branchTxIDS...)
 		tmpDag.SaveGraph(outputFileDAG)
 	} else {
-		latestSlot := multistate.FetchLatestSlot(glb.StateStore())
+		latestSlot := multistate.FetchLatestCommittedSlot(glb.StateStore())
 		var err error
 		numSlotsBack, err = strconv.Atoi(args[0])
 		glb.AssertNoError(err)

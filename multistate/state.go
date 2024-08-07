@@ -263,11 +263,16 @@ func (r *Readable) MustLedgerIdentityBytes() []byte {
 
 // IterateKnownCommittedTransactions utility function to collect old transaction IDs which may be purged from the state
 // Those txid serve no purpose after corresponding branches become committed and may appear only as virtual transactions
-func (r *Readable) IterateKnownCommittedTransactions(fun func(txid *ledger.TransactionID, slot ledger.Slot) bool) {
+// Optionally, iteration can be limited for specific slot, as txid prefix
+func (r *Readable) IterateKnownCommittedTransactions(fun func(txid *ledger.TransactionID, slot ledger.Slot) bool, txidSlot ...ledger.Slot) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
-	iter := common.MakeTraversableReaderPartition(r.trie, PartitionCommittedTransactionID).Iterator(nil)
+	var prefix []byte
+	if len(txidSlot) > 0 {
+		prefix = txidSlot[0].Bytes()
+	}
+	iter := common.MakeTraversableReaderPartition(r.trie, PartitionCommittedTransactionID).Iterator(prefix)
 	var slot ledger.Slot
 	iter.Iterate(func(k, v []byte) bool {
 		txid, err := ledger.TransactionIDFromBytes(k)
@@ -385,7 +390,7 @@ func (u *Updatable) updateUTXOLedgerDB(updateFun func(updatable *immutable.TrieU
 	batch := u.store.BatchedWriter()
 	newRoot := u.trie.Commit(batch)
 	if rootRecordsParams != nil {
-		latestSlot := FetchLatestSlot(u.store)
+		latestSlot := FetchLatestCommittedSlot(u.store)
 		if latestSlot < rootRecordsParams.StemOutputID.Slot() {
 			writeLatestSlot(batch, rootRecordsParams.StemOutputID.Slot())
 		}

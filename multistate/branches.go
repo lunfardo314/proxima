@@ -29,8 +29,8 @@ func writeLatestSlot(w common.KVWriter, slot ledger.Slot) {
 	w.Set([]byte{latestSlotDBPartition}, slot.Bytes())
 }
 
-// FetchLatestSlot fetches latest recorded slot
-func FetchLatestSlot(store common.KVReader) ledger.Slot {
+// FetchLatestCommittedSlot fetches latest recorded slot
+func FetchLatestCommittedSlot(store common.KVReader) ledger.Slot {
 	bin := store.Get([]byte{latestSlotDBPartition})
 	if len(bin) == 0 {
 		return 0
@@ -175,7 +175,7 @@ func FetchRootRecord(store common.KVReader, branchTxID ledger.TransactionID) (re
 
 // FetchAnyLatestRootRecord return first root record for the latest slot
 func FetchAnyLatestRootRecord(store global.StateStoreReader) RootRecord {
-	recs := FetchRootRecords(store, FetchLatestSlot(store))
+	recs := FetchRootRecords(store, FetchLatestCommittedSlot(store))
 	util.Assertf(len(recs) > 0, "len(recs)>0")
 	return recs[0]
 }
@@ -187,7 +187,7 @@ func FetchRootRecordsNSlotsBack(store global.StateStoreReader, nBack int) []Root
 	}
 	ret := make([]RootRecord, 0)
 	slotCount := 0
-	for s := FetchLatestSlot(store); ; s-- {
+	for s := FetchLatestCommittedSlot(store); ; s-- {
 		recs := FetchRootRecords(store, s)
 		if len(recs) > 0 {
 			ret = append(ret, recs...)
@@ -263,7 +263,7 @@ func FetchLatestBranches(store global.StateStoreReader) []*BranchData {
 
 // FetchLatestRootRecords sorted descending by coverage
 func FetchLatestRootRecords(store global.StateStoreReader) []RootRecord {
-	ret := FetchRootRecords(store, FetchLatestSlot(store))
+	ret := FetchRootRecords(store, FetchLatestCommittedSlot(store))
 	sort.Slice(ret, func(i, j int) bool {
 		return ret[i].LedgerCoverage > ret[j].LedgerCoverage
 	})
@@ -284,7 +284,7 @@ func FetchLatestBranchTransactionIDs(store global.StateStoreReader) []ledger.Tra
 // FetchHeaviestBranchChainNSlotsBack descending by epoch
 func FetchHeaviestBranchChainNSlotsBack(store global.StateStoreReader, nBack int) []*BranchData {
 	rootData := make(map[ledger.TransactionID]RootRecord)
-	latestSlot := FetchLatestSlot(store)
+	latestSlot := FetchLatestCommittedSlot(store)
 
 	if nBack < 0 {
 		IterateRootRecords(store, func(branchTxID ledger.TransactionID, rd RootRecord) bool {
@@ -374,7 +374,7 @@ func MustSequencerOutputOfBranch(store common.KVReader, txid ledger.TransactionI
 }
 
 func IterateSlotsBack(store global.StateStoreReader, fun func(slot ledger.Slot, roots []RootRecord) bool) {
-	for slot := FetchLatestSlot(store); ; slot-- {
+	for slot := FetchLatestCommittedSlot(store); ; slot-- {
 		if !fun(slot, FetchRootRecords(store, slot)) || slot == 0 {
 			return
 		}
