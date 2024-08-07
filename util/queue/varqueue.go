@@ -9,6 +9,8 @@ import (
 	"go.uber.org/atomic"
 )
 
+// FIXME panics on closing
+
 // VarBuffered implements variable size synchronized FIFO queue
 type VarBuffered[T any] struct {
 	d                 *deque.Deque[T]

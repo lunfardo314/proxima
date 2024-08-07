@@ -5,6 +5,7 @@ import (
 	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
+	"github.com/lunfardo314/proxima/peering"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/queue"
 )
@@ -51,22 +52,22 @@ func (d *PullTxServer) Start() {
 }
 
 func (d *PullTxServer) Consume(inp *Input) {
-	if txBytesWithMetadata := d.TxBytesStore().GetTxBytesWithMetadata(&inp.TxID); len(txBytesWithMetadata) > 0 {
-		metadataBytes, txBytes, err := txmetadata.SplitTxBytesWithMetadata(txBytesWithMetadata)
-		util.AssertNoError(err)
-		metadata, err := txmetadata.TransactionMetadataFromBytes(metadataBytes)
-		util.AssertNoError(err)
-		if metadata == nil {
-			metadata = &txmetadata.TransactionMetadata{}
-		}
-		// setting persistent 'response to pull' flag in metadata
-		metadata.IsResponseToPull = true
-		metadata.PortionInfo = &inp.PortionInfo
-
-		d.SendTxBytesWithMetadataToPeer(inp.PeerID, txBytes, metadata)
-		d.Tracef(TraceTag, "-> FOUND %s, meta: %s", inp.TxID.StringShort, metadata.String())
-	} else {
-		// not found -> ignore
-		d.Tracef(TraceTag, "-> NOT FOUND %s", inp.TxID.StringShort)
+	txBytesWithMetadata := d.TxBytesStore().GetTxBytesWithMetadata(&inp.TxID)
+	if len(txBytesWithMetadata) == 0 {
+		d.Tracef(TraceTag, "NOT FOUND %s, request from %s", inp.TxID.StringShort, peering.ShortPeerIDString(inp.PeerID))
+		return
 	}
+	metadataBytes, txBytes, err := txmetadata.SplitTxBytesWithMetadata(txBytesWithMetadata)
+	util.AssertNoError(err)
+	metadata, err := txmetadata.TransactionMetadataFromBytes(metadataBytes)
+	util.AssertNoError(err)
+	if metadata == nil {
+		metadata = &txmetadata.TransactionMetadata{}
+	}
+	// setting persistent 'response to pull' flag in metadata
+	metadata.IsResponseToPull = true
+	metadata.PortionInfo = &inp.PortionInfo
+
+	d.SendTxBytesWithMetadataToPeer(inp.PeerID, txBytes, metadata)
+	d.Tracef(TraceTag, "FOUND %s -> %s", inp.TxID.StringShort, peering.ShortPeerIDString(inp.PeerID))
 }
