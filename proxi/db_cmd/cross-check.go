@@ -3,6 +3,7 @@ package db_cmd
 import (
 	"fmt"
 	"strconv"
+	"time"
 
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/multistate"
@@ -50,12 +51,18 @@ func runReconcileCmd(_ *cobra.Command, args []string) {
 	branches := multistate.FetchLatestBranches(glb.StateStore())
 	rdr := multistate.MustNewReadable(glb.StateStore(), branches[0].Root)
 
+	nTx := 0
+	nSlots := 0
+	start := time.Now()
 	for ; slot >= downToSlot; slot-- {
 		rdr.IterateKnownCommittedTransactions(func(txid *ledger.TransactionID, slot ledger.Slot) bool {
 			if !glb.TxBytesStore().HasTxBytes(txid) {
 				glb.Infof("transaction %s not in the txStore", txid.StringShort())
 			}
+			nTx++
 			return true
 		}, slot)
+		nSlots++
 	}
+	glb.Infof("it took %v to check %d transaction IDs and %d slots", time.Since(start), nTx, nSlots)
 }
