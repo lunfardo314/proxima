@@ -276,6 +276,7 @@ func (r *Readable) IterateKnownCommittedTransactions(fun func(txid *ledger.Trans
 	exit := false
 
 	iter.Iterate(func(k, v []byte) bool {
+		util.Assertf(len(k) == ledger.TransactionIDLength, "wrong length %d", len(k))
 		txid, err := ledger.TransactionIDFromBytes(k)
 		util.AssertNoError(err)
 		slot, err = ledger.SlotFromBytes(v)
