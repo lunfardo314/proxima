@@ -2,6 +2,7 @@ package global
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/lunfardo314/proxima/core/txmetadata"
@@ -124,4 +125,11 @@ var (
 
 func IsHealthyCoverage(coverage, supply uint64, fraction Fraction) bool {
 	return coverage > (uint64(fraction.Numerator)*supply)/uint64(fraction.Denominator)
+}
+
+func IsHealthyCoverageString(coverage, supply uint64, fraction Fraction) string {
+	if IsHealthyCoverage(coverage, supply, fraction) {
+		return fmt.Sprintf("healthy > %d/%d supply", fraction.Numerator, fraction.Denominator)
+	}
+	return fmt.Sprintf("not-healthy <= %d/%d supply", fraction.Numerator, fraction.Denominator)
 }

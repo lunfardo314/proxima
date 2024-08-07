@@ -8,6 +8,7 @@ import (
 
 	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/core/vertex"
+	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util"
 )
@@ -301,8 +302,9 @@ func (a *milestoneAttacher) logFinalStatusString(msData *ledger.MilestoneData) s
 	}
 
 	if a.vid.IsBranchTransaction() {
-		msg = fmt.Sprintf("-- ATTACH BRANCH%s %s(in %d/out %d, new tx: %d), ci=%s/bi=%s",
-			msDataStr, a.vid.IDShortString(), a.finals.numInputs, a.finals.numOutputs, a.finals.numNewTransactions, inflChainStr, inflBranchStr)
+		msg = fmt.Sprintf("-- ATTACH BRANCH%s %s(in %d/out %d, new tx: %d), ci=%s/bi=%s, %s",
+			msDataStr, a.vid.IDShortString(), a.finals.numInputs, a.finals.numOutputs, a.finals.numNewTransactions,
+			inflChainStr, inflBranchStr, global.IsHealthyCoverageString(a.finals.coverage, a.finals.supply, global.FractionHealthyBranch))
 	} else {
 		msg = fmt.Sprintf("-- ATTACH SEQ TX%s %s(in %d/out %d, new tx: %d), ci=%s/bi=%s",
 			msDataStr, a.vid.IDShortString(), a.finals.numInputs, a.finals.numOutputs, a.finals.numNewTransactions, inflChainStr, inflBranchStr)
