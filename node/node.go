@@ -289,7 +289,8 @@ func (p *ProximaNode) goLoggingMemStats() {
 		var memStats runtime.MemStats
 
 		runtime.ReadMemStats(&memStats)
-		p.Log().Infof("[memstats] uptime: %v, allocated memory: %.1f MB, GC counter: %d, Goroutines: %d",
+		p.Log().Infof("[memstats] current slot: %d, uptime: %v, allocated memory: %.1f MB, GC counter: %d, Goroutines: %d",
+			ledger.TimeNow().Slot(),
 			time.Since(p.started).Round(time.Second),
 			float32(memStats.Alloc*10/(1024*1024))/10,
 			memStats.NumGC,
