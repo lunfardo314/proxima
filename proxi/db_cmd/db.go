@@ -20,7 +20,7 @@ func Init() *cobra.Command {
 		initMainChainCmd(),
 		initAccountsCmd(),
 		initBranchesCmd(),
-		initReconcileCmd(),
+		initCrossCheckCmd(),
 	)
 	return dbCmd
 }

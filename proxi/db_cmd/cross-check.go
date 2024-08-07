@@ -12,18 +12,18 @@ import (
 
 var outputFileReconcile string
 
-const defaultReconcileSlotsBack = 100
+const defaultCrossCheckSlotsBack = 100
 
-func initReconcileCmd() *cobra.Command {
-	reconcileCmd := &cobra.Command{
-		Use:   fmt.Sprintf("reconcile [max slots back, default %d]", defaultReconcileSlotsBack),
+func initCrossCheckCmd() *cobra.Command {
+	crossCheckCmd := &cobra.Command{
+		Use:   fmt.Sprintf("crosscheck [max slots back, default %d]", defaultCrossCheckSlotsBack),
 		Short: "report transactionIDs from the heaviest state without transaction bytes in the txStore",
 		Args:  cobra.MaximumNArgs(1),
 		Run:   runReconcileCmd,
 	}
-	reconcileCmd.PersistentFlags().StringVarP(&outputFileReconcile, "output", "o", "", "output file")
-	reconcileCmd.InitDefaultHelpCmd()
-	return reconcileCmd
+	crossCheckCmd.PersistentFlags().StringVarP(&outputFileReconcile, "output", "o", "", "output file")
+	crossCheckCmd.InitDefaultHelpCmd()
+	return crossCheckCmd
 }
 
 func runReconcileCmd(_ *cobra.Command, args []string) {
@@ -31,7 +31,7 @@ func runReconcileCmd(_ *cobra.Command, args []string) {
 	glb.InitTxStoreDB()
 	defer glb.CloseDatabases()
 
-	slotsBack := defaultReconcileSlotsBack
+	slotsBack := defaultCrossCheckSlotsBack
 	var err error
 	if len(args) >= 1 {
 		slotsBack, err = strconv.Atoi(args[0])
