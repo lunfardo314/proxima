@@ -46,7 +46,7 @@ func AttachTxID(txid ledger.TransactionID, env Environment, opts ...AttachTxOpti
 			if options.pullNonBranch {
 				env.Tracef(TraceTagAttach, "AttachTxID: pull new ID %s%s", txid.StringShort, by)
 				env.TraceTx(&txid, "AttachTxID: pull new ID")
-				env.Pull(txid)
+				env.Pull(txid, "AttachTxID-1")
 			}
 			return
 		}
@@ -75,7 +75,7 @@ func AttachTxID(txid ledger.TransactionID, env Environment, opts ...AttachTxOpti
 			// the puller will trigger further solidification
 			vid = vertex.WrapTxID(txid)
 			env.AddVertexNoLock(vid)
-			env.Pull(txid) // always pull new branch. This will spin off sync process on the node
+			env.Pull(txid, "AttachTxID-2") // always pull new branch. This will spin off sync process on the node
 			env.Tracef(TraceTagAttach, "AttachTxID: added new branch vertex and pulled %s%s", txid.StringShort(), by)
 			env.TraceTx(&txid, "AttachTxID: added new branch vertex and pulled")
 		}

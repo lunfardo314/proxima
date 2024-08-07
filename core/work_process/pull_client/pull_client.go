@@ -25,6 +25,7 @@ type (
 	Input struct {
 		TxID ledger.TransactionID
 		Stop bool
+		By   string
 	}
 
 	PullClient struct {
@@ -70,11 +71,11 @@ func (p *PullClient) Consume(inp *Input) {
 	if inp.Stop {
 		p.stopPulling(inp.TxID)
 	} else {
-		p.startPulling(inp.TxID)
+		p.startPulling(inp.TxID, inp.By)
 	}
 }
 
-func (p *PullClient) startPulling(txid ledger.TransactionID) {
+func (p *PullClient) startPulling(txid ledger.TransactionID, by string) {
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
 
@@ -95,7 +96,7 @@ func (p *PullClient) startPulling(txid ledger.TransactionID) {
 			start:        time.Now(),
 			nextDeadline: time.Now().Add(pullPeriod),
 		}
-		p.Tracef(TraceTag, "%s added to the pull list. Pull list size: %d", txid.StringShort, len(p.pullList))
+		p.Tracef(TraceTag, "%s added to the pull list by %s. Pull list size: %d", txid.StringShort, by, len(p.pullList))
 		p.TraceTx(&txid, TraceTag+": added to the pull list")
 
 		// query from 1 random peer
@@ -206,9 +207,10 @@ func (p *PullClient) printStuckList(forHowLong time.Duration) {
 }
 
 // Pull starts pulling txID
-func (p *PullClient) Pull(txid *ledger.TransactionID) {
+func (p *PullClient) Pull(txid ledger.TransactionID, by string) {
 	p.Queue.Push(&Input{
-		TxID: *txid,
+		TxID: txid,
+		By:   by,
 	})
 }
 

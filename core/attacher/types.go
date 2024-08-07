@@ -29,7 +29,7 @@ type (
 	}
 
 	pullEnvironment interface {
-		Pull(txid ledger.TransactionID)
+		Pull(txid ledger.TransactionID, by string)
 		PokeMe(me, with *vertex.WrappedTx)
 		PokeAllWith(wanted *vertex.WrappedTx)
 		NotifyEndOfPortion()

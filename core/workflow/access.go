@@ -23,8 +23,8 @@ func (w *Workflow) MaxDurationInTheFuture() time.Duration {
 	return ledger.SlotDuration() * 5
 }
 
-func (w *Workflow) Pull(txid ledger.TransactionID) {
-	w.pullClient.Pull(&txid)
+func (w *Workflow) Pull(txid ledger.TransactionID, by string) {
+	w.pullClient.Pull(txid, by)
 }
 
 func (w *Workflow) StopPulling(txid *ledger.TransactionID) {

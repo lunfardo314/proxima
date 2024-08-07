@@ -235,7 +235,7 @@ func (a *attacher) solidifySequencerBaseline(v *vertex.Vertex) (ok bool) {
 		v.BaselineBranch = inputTx.BaselineBranch()
 		if v.BaselineBranch == nil {
 			// baseline branch not solid, pull it
-			a.Pull(inputTx.ID)
+			a.Pull(inputTx.ID, a.Name()+".solidifySequencerBaseline")
 		} else {
 			util.Assertf(v.BaselineBranch.IsBranchTransaction(), "v.BaselineBranch.IsBranchTransaction()")
 			a.referenced.reference(v.BaselineBranch)
@@ -292,7 +292,7 @@ func (a *attacher) attachVertexNonBranch(vid *vertex.WrappedTx) (ok, defined boo
 		},
 		VirtualTx: func(v *vertex.VirtualTransaction) {
 			ok = true
-			a.Pull(vid.ID)
+			a.Pull(vid.ID, a.Name()+".attachVertexNonBranch")
 		},
 	})
 	if !defined {
@@ -424,7 +424,7 @@ func (a *attacher) attachEndorsements(v *vertex.Vertex, vid *vertex.WrappedTx) b
 
 			a.PokeMe(vid, vidEndorsed)
 			// requires pull during sync
-			a.Pull(vidEndorsed.ID)
+			a.Pull(vidEndorsed.ID, a.Name()+".attachEndorsements")
 			//return true
 			continue
 		}
