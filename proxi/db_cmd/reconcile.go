@@ -51,13 +51,11 @@ func runReconcileCmd(_ *cobra.Command, args []string) {
 	rdr := multistate.MustNewReadable(glb.StateStore(), branches[0].Root)
 
 	for ; slot >= downToSlot; slot-- {
-		n := 0
 		rdr.IterateKnownCommittedTransactions(func(txid *ledger.TransactionID, slot ledger.Slot) bool {
-			n++
+			if !glb.TxBytesStore().HasTxBytes(txid) {
+				glb.Infof("transaction %s not in the txStore", txid.StringShort())
+			}
 			return true
 		}, slot)
-		if n > 0 {
-			glb.Infof("slot %d: num transactions: %d", slot, n)
-		}
 	}
 }
