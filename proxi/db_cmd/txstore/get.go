@@ -38,11 +38,11 @@ func runGetCmd(_ *cobra.Command, args []string) {
 
 	txBytesWithMetadata := glb.TxBytesStore().GetTxBytesWithMetadata(&txid)
 	if len(txBytesWithMetadata) == 0 {
-		glb.Infof("transaction %s has not been found in the txStore", txid.String())
+		glb.Infof("NOT FOUND transaction %s in the txStore", txid.String())
 		os.Exit(1)
 	}
 
-	glb.Infof("transaction %s has been found in the txStore: %d bytes including metadata", txid.String(), len(txBytesWithMetadata))
+	glb.Infof("FOUND transaction %s in the txStore: %d bytes including metadata", txid.String(), len(txBytesWithMetadata))
 	if txStoreParse {
 		parseTx(txBytesWithMetadata)
 	}
