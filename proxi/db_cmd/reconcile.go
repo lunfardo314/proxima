@@ -56,6 +56,8 @@ func runReconcileCmd(_ *cobra.Command, args []string) {
 			n++
 			return true
 		}, slot)
-		glb.Infof("slot %d: num transactions: %d", slot, n)
+		if n > 0 {
+			glb.Infof("slot %d: num transactions: %d", slot, n)
+		}
 	}
 }
