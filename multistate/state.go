@@ -276,8 +276,7 @@ func (r *Readable) IterateKnownCommittedTransactions(fun func(txid *ledger.Trans
 	exit := false
 
 	iter.Iterate(func(k, v []byte) bool {
-		util.Assertf(len(k) == ledger.TransactionIDLength, "wrong length %d", len(k))
-		txid, err := ledger.TransactionIDFromBytes(k)
+		txid, err := ledger.TransactionIDFromBytes(k[1:])
 		util.AssertNoError(err)
 		slot, err = ledger.SlotFromBytes(v)
 		util.AssertNoError(err)
@@ -291,8 +290,7 @@ func (r *Readable) IterateKnownCommittedTransactions(fun func(txid *ledger.Trans
 
 	iter = common.MakeTraversableReaderPartition(r.trie, PartitionCommittedTransactionID).Iterator(prefixSeq)
 	iter.Iterate(func(k, v []byte) bool {
-		util.Assertf(len(k) == ledger.TransactionIDLength, "wrong length %d", len(k))
-		txid, err := ledger.TransactionIDFromBytes(k)
+		txid, err := ledger.TransactionIDFromBytes(k[1:])
 		util.AssertNoError(err)
 		slot, err = ledger.SlotFromBytes(v)
 		util.AssertNoError(err)
