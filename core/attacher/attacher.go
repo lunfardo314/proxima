@@ -378,6 +378,7 @@ func (a *attacher) finalTouchNonSequencer(v *vertex.Vertex, vid *vertex.WrappedT
 	// non-sequencer transaction always have empty persistent metadata
 	// (sequencer transactions will be persisted upon finalization of the attacher)
 	if !glbFlags.FlagsUp(vertex.FlagVertexTxBytesPersisted) {
+		// TODO move it immediately after parsing bytes
 		a.AsyncPersistTxBytesWithMetadata(v.Tx.Bytes(), nil)
 		vid.SetFlagsUpNoLock(vertex.FlagVertexTxBytesPersisted)
 
