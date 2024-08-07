@@ -109,7 +109,7 @@ func (t *SequencerTips) Consume(inp Input) {
 		prevStr = old.IDShortString()
 	}
 	if storedNew {
-		t.Tracef(TraceTag, "new milestone stored in sequencer tippool: %s (prev: %s)", inp.VID.IDShortString, prevStr)
+		t.Tracef(TraceTag, "new milestone: seqID: %s,  %s (replaced: %s)", seqID.StringShort, inp.VID.IDShortString, prevStr)
 	}
 }
 
