@@ -261,19 +261,34 @@ func (r *Readable) MustLedgerIdentityBytes() []byte {
 	return r.trie.Get(nil)
 }
 
-// IterateKnownCommittedTransactions utility function to collect old transaction IDs which may be purged from the state
-// Those txid serve no purpose after corresponding branches become committed and may appear only as virtual transactions
-// Optionally, iteration can be limited for specific slot, as txid prefix
+// IterateKnownCommittedTransactions iterates transaction IDs in the state. Optionally, iteration is restricted
+// for a slot. In that case first iterates non-sequencer transactions, the sequencer transactions
 func (r *Readable) IterateKnownCommittedTransactions(fun func(txid *ledger.TransactionID, slot ledger.Slot) bool, txidSlot ...ledger.Slot) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
-	var prefix []byte
+	var prefixSeq, prefixNoSeq []byte
 	if len(txidSlot) > 0 {
-		prefix = txidSlot[0].Bytes()
+		prefixSeq, prefixNoSeq = txidSlot[0].TransactionIDPrefixes()
 	}
-	iter := common.MakeTraversableReaderPartition(r.trie, PartitionCommittedTransactionID).Iterator(prefix)
+	iter := common.MakeTraversableReaderPartition(r.trie, PartitionCommittedTransactionID).Iterator(prefixNoSeq)
 	var slot ledger.Slot
+	exit := false
+
+	iter.Iterate(func(k, v []byte) bool {
+		txid, err := ledger.TransactionIDFromBytes(k)
+		util.AssertNoError(err)
+		slot, err = ledger.SlotFromBytes(v)
+		util.AssertNoError(err)
+
+		exit = !fun(&txid, slot)
+		return !exit
+	})
+	if exit || len(txidSlot) == 0 {
+		return
+	}
+
+	iter = common.MakeTraversableReaderPartition(r.trie, PartitionCommittedTransactionID).Iterator(prefixSeq)
 	iter.Iterate(func(k, v []byte) bool {
 		txid, err := ledger.TransactionIDFromBytes(k)
 		util.AssertNoError(err)

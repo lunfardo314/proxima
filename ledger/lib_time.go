@@ -133,6 +133,13 @@ func (e Slot) Hex() string {
 	return fmt.Sprintf("0x%s", hex.EncodeToString(e.Bytes()))
 }
 
+func (e Slot) TransactionIDPrefixes() (withSequencerFlag, withoutSequencerFlag []byte) {
+	withSequencerFlag = e.Bytes()
+	withoutSequencerFlag = e.Bytes()
+	withSequencerFlag[0] |= SequencerTxFlagHigherByte
+	return
+}
+
 func (t Time) Slot() Slot {
 	return Slot(binary.BigEndian.Uint32(t[:4]))
 }
