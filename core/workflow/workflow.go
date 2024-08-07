@@ -159,7 +159,6 @@ func (w *Workflow) Start() {
 
 func (w *Workflow) SendTx(sendTo peer.ID, txids ...ledger.TransactionID) {
 	for i := range txids {
-		w.Tracef(pull_tx_server.TraceTag, "received pull request for %s", txids[i].StringShort)
 		w.pullTxServer.Push(&pull_tx_server.Input{
 			TxID:   txids[i],
 			PeerID: sendTo,
