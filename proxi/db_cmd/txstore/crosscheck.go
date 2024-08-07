@@ -1,4 +1,4 @@
-package db_cmd
+package txstore
 
 import (
 	"fmt"
@@ -57,7 +57,7 @@ func runReconcileCmd(_ *cobra.Command, args []string) {
 	for ; slot >= downToSlot; slot-- {
 		rdr.IterateKnownCommittedTransactions(func(txid *ledger.TransactionID, slot ledger.Slot) bool {
 			if !glb.TxBytesStore().HasTxBytes(txid) {
-				glb.Infof("transaction %s not in the txStore", txid.StringShort())
+				glb.Infof("transaction %s not in the txStore: haxID = %s", txid.StringShort(), txid.StringHex())
 			}
 			nTx++
 			return true
