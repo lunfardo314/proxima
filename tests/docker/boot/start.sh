@@ -46,7 +46,7 @@ if [ ! -f "$INITIALIZED_FILE" ]; then
         sleep 5  # let process start
 
         echo "node init sequencer"
-        ./proxi node setup_seq --finality.weak mySeq 100000000000000
+        ./proxi node setup_seq --finality.weak seq$NODE_NAME 190000000000000
 
         kill_proxima
         sleep 2  # let process die
