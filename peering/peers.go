@@ -83,7 +83,6 @@ type (
 		// ring buffer with last clock differences
 		clockDifferences    [10]time.Duration
 		clockDifferencesIdx int
-		peerAddresses       []multiaddr.Multiaddr
 	}
 
 	outMsgData struct {
@@ -288,6 +287,10 @@ func (ps *Peers) SelfID() peer.ID {
 	return ps.host.ID()
 }
 
+func (ps *Peers) Host() host.Host {
+	return ps.host
+}
+
 func (ps *Peers) Run() {
 	ps.Environment.MarkWorkProcessStarted(Name)
 
@@ -345,11 +348,10 @@ func (ps *Peers) addPeer(addrInfo *peer.AddrInfo, name string, static bool) {
 
 func (ps *Peers) _addPeer(addrInfo *peer.AddrInfo, name string, static bool) {
 	p := &Peer{
-		id:            addrInfo.ID,
-		name:          name,
-		isStatic:      static,
-		whenAdded:     time.Now(),
-		peerAddresses: addrInfo.Addrs,
+		id:        addrInfo.ID,
+		name:      name,
+		isStatic:  static,
+		whenAdded: time.Now(),
 	}
 	ps.peers[addrInfo.ID] = p
 	for _, a := range addrInfo.Addrs {

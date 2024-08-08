@@ -69,26 +69,6 @@ func (ps *Peers) logConnectionStatusIfNeeded(id peer.ID) {
 	})
 }
 
-func (ps *Peers) GetPeers() (ids []peer.ID, ipaddrs []string) {
-	ps.mutex.RLock()
-	defer ps.mutex.RUnlock()
-
-	ids = make([]peer.ID, len(ps.peers))
-	ipaddrs = make([]string, len(ps.peers))
-
-	i := 0
-	for _, p := range ps.peers {
-		ids[i] = p.id
-		if len(p.peerAddresses) > 0 {
-			ipaddrs[i] = p.peerAddresses[0].String()
-		} else {
-			ipaddrs[i] = ""
-		}
-		i++
-	}
-	return
-}
-
 // heartbeat protocol is used to monitor
 // - if peer is alive and
 // - to ensure clocks difference is within tolerance interval. Clock difference is

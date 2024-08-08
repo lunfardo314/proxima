@@ -59,10 +59,10 @@ func (p *ProximaNode) GetSyncInfo() *api.SyncInfo {
 	for seq := range p.Sequencers {
 		seqInfo := p.Sequencers[seq].Info()
 		ssi := api.SequencerSyncInfo{
-			Synced:           synced,
-			LatestBookedSlot: uint32(latestHealthySlot),
-			LatestSeenSlot:   uint32(latestSlot),
-			LedgerCoverage:   seqInfo.LedgerCoverage,
+			Synced:              synced,
+			LatestHealthySlot:   uint32(latestHealthySlot),
+			LatestCommittedSlot: uint32(latestSlot),
+			LedgerCoverage:      seqInfo.LedgerCoverage,
 		}
 		chainId := p.Sequencers[seq].SequencerID()
 		ret.PerSequencer[chainId.StringHex()] = ssi
@@ -73,13 +73,16 @@ func (p *ProximaNode) GetSyncInfo() *api.SyncInfo {
 
 // GetPeersInfo TODO not finished
 func (p *ProximaNode) GetPeersInfo() *api.PeersInfo {
-
-	ids, addrs := p.peers.GetPeers()
+	ps := p.peers
+	ids := ps.Host().Peerstore().PeersWithAddrs()
+	addrs := ps.Host().Peerstore().Addrs(ps.SelfID())
 	peers := make([]api.PeerInfo, len(ids))
 	for i := 0; i < len(ids); i++ {
 		peers[i].ID = ids[i].String()
 		peers[i].MultiAddresses = make([]string, 1)
-		peers[i].MultiAddresses[0] = addrs[i]
+		if len(addrs[i].String()) > 0 {
+			peers[i].MultiAddresses[0] = addrs[i].String()
+		}
 	}
 	ret := &api.PeersInfo{
 		Peers: peers,

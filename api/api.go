@@ -82,10 +82,10 @@ type (
 		PerSequencer map[string]SequencerSyncInfo `json:"per_sequencer,omitempty"`
 	}
 	SequencerSyncInfo struct {
-		Synced           bool   `json:"synced"`
-		LatestBookedSlot uint32 `json:"latest_booked_slot"`
-		LatestSeenSlot   uint32 `json:"latest_seen_slot"`
-		LedgerCoverage   uint64 `json:"ledger_coverage"`
+		Synced              bool   `json:"synced"`
+		LatestHealthySlot   uint32 `json:"latest_healthy_slot"`
+		LatestCommittedSlot uint32 `json:"latest_committed_slot"`
+		LedgerCoverage      uint64 `json:"ledger_coverage"`
 	}
 )
 
