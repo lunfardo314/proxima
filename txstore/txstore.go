@@ -73,14 +73,14 @@ func (s *SimpleTxBytesStore) PersistTxBytesWithMetadata(txBytes []byte, metadata
 	if err != nil {
 		return ledger.TransactionID{}, err
 	}
+	if s.s.Has(txid[:]) {
+		return txid, nil
+	}
 	if metadata != nil {
 		mdTmp := *metadata
 		mdTmp.IsResponseToPull = false // saving without the irrelevant metadata flag
 		mdTmp.PortionInfo = nil
 		metadata = &mdTmp
-	}
-	if s.s.Has(txid[:]) {
-		return txid, nil
 	}
 
 	s.s.Set(txid[:], common.ConcatBytes(metadata.Bytes(), txBytes))

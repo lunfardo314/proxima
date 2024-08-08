@@ -101,8 +101,10 @@ func (w *Workflow) TxBytesIn(txBytes []byte, opts ...TxBytesInOption) (*ledger.T
 		return txid, err
 	}
 
-	// persisting all raw transactions which pass pre-validation
-	w.MustPersistTxBytesWithMetadata(txBytes, &options.txMetadata)
+	if options.txMetadata.SourceTypeNonPersistent != txmetadata.SourceTypeTxStore {
+		// persisting all raw transactions which pass pre-validation
+		w.MustPersistTxBytesWithMetadata(txBytes, &options.txMetadata)
+	}
 
 	if options.txMetadata.SourceTypeNonPersistent == txmetadata.SourceTypePeer ||
 		options.txMetadata.SourceTypeNonPersistent == txmetadata.SourceTypeAPI {
