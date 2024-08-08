@@ -374,16 +374,6 @@ func (a *attacher) finalTouchNonSequencer(v *vertex.Vertex, vid *vertex.WrappedT
 	glbFlags = vid.FlagsNoLock()
 	a.Assertf(glbFlags.FlagsUp(vertex.FlagVertexConstraintsValid), "glbFlags.FlagsUp(vertex.FlagConstraintsValid)")
 
-	// persist bytes of the valid non-sequencer transaction, if not yet persisted
-	// non-sequencer transaction always have empty persistent metadata
-	// (sequencer transactions will be persisted upon finalization of the attacher)
-	if !glbFlags.FlagsUp(vertex.FlagVertexTxBytesPersisted) {
-		// TODO move it immediately after parsing bytes
-		a.AsyncPersistTxBytesWithMetadata(v.Tx.Bytes(), nil)
-		vid.SetFlagsUpNoLock(vertex.FlagVertexTxBytesPersisted)
-
-		a.Tracef(TraceTagAttachVertex, "tx bytes persisted: %s", v.Tx.IDShortString)
-	}
 	// non-sequencer, all inputs solid, constraints valid -> we can mark it 'defined' in the attacher
 	a.markVertexDefined(vid)
 	return true

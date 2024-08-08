@@ -76,8 +76,13 @@ func (s *SimpleTxBytesStore) PersistTxBytesWithMetadata(txBytes []byte, metadata
 	if metadata != nil {
 		mdTmp := *metadata
 		mdTmp.IsResponseToPull = false // saving without the irrelevant metadata flag
+		mdTmp.PortionInfo = nil
 		metadata = &mdTmp
 	}
+	if s.s.Has(txid[:]) {
+		return txid, nil
+	}
+
 	s.s.Set(txid[:], common.ConcatBytes(metadata.Bytes(), txBytes))
 
 	if s.metricsEnabled {

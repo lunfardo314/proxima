@@ -8,7 +8,6 @@ import (
 	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/core/work_process/gossip"
-	"github.com/lunfardo314/proxima/core/work_process/persist_txbytes"
 	"github.com/lunfardo314/proxima/core/work_process/tippool"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
@@ -81,12 +80,9 @@ func (w *Workflow) GossipTxBytesToPeers(txBytes []byte, metadata *txmetadata.Tra
 	return w.peers.GossipTxBytesToPeers(txBytes, metadata, except...)
 }
 
-func (w *Workflow) AsyncPersistTxBytesWithMetadata(txBytes []byte, metadata *txmetadata.TransactionMetadata) {
-	w.Tracef(persist_txbytes.TraceTag, "AsyncPersistTxBytesWithMetadata: %d bytes, meta: %s", len(txBytes), metadata.String())
-	w.persistTxBytes.Push(persist_txbytes.Input{
-		TxBytes:  txBytes,
-		Metadata: metadata,
-	})
+func (w *Workflow) MustPersistTxBytesWithMetadata(txBytes []byte, metadata *txmetadata.TransactionMetadata) {
+	_, err := w.TxBytesStore().PersistTxBytesWithMetadata(txBytes, metadata)
+	util.AssertNoError(err)
 }
 
 func (w *Workflow) TxBytesWithMetadataIn(txBytes []byte, metadata *txmetadata.TransactionMetadata) (*ledger.TransactionID, error) {
@@ -99,8 +95,7 @@ func (w *Workflow) SendToTippool(vid *vertex.WrappedTx) {
 
 func (w *Workflow) IsSynced() bool {
 	slotNow := ledger.TimeNow().Slot()
-	util.Assertf(slotNow > 0, "slotNow > 0")
-	return multistate.FirstHealthySlotIsNotBefore(w.StateStore(), slotNow-1, global.FractionHealthyBranch)
+	return slotNow == 0 || multistate.FirstHealthySlotIsNotBefore(w.StateStore(), slotNow-1, global.FractionHealthyBranch)
 }
 
 // LatestMilestonesDescending returns optionally filtered sorted transactions from the sequencer tippool

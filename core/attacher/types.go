@@ -45,7 +45,6 @@ type (
 		memDAGAccessEnvironment
 		pullEnvironment
 		postEventEnvironment
-		AsyncPersistTxBytesWithMetadata(txBytes []byte, metadata *txmetadata.TransactionMetadata)
 		GossipAttachedTransaction(tx *transaction.Transaction, metadata *txmetadata.TransactionMetadata)
 		ParseMilestoneData(msVID *vertex.WrappedTx) *ledger.MilestoneData
 	}

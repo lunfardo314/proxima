@@ -120,9 +120,8 @@ type (
 const (
 	FlagVertexDefined              = Flags(0b00000001)
 	FlagVertexConstraintsValid     = Flags(0b00000010)
-	FlagVertexTxBytesPersisted     = Flags(0b00000100)
-	FlagVertexTxAttachmentStarted  = Flags(0b00001000)
-	FlagVertexTxAttachmentFinished = Flags(0b00010000)
+	FlagVertexTxAttachmentStarted  = Flags(0b00000100)
+	FlagVertexTxAttachmentFinished = Flags(0b00001000)
 )
 
 const (
@@ -163,10 +162,9 @@ func (f *Flags) SetFlagsUp(fl Flags) {
 }
 
 func (f *Flags) String() string {
-	return fmt.Sprintf("defined=%v, validated=%v, persisted=%v, attachStarted=%v, attachFinished=%v",
+	return fmt.Sprintf("defined=%v, validated=%v, attachStarted=%v, attachFinished=%v",
 		f.FlagsUp(FlagVertexDefined),
 		f.FlagsUp(FlagVertexConstraintsValid),
-		f.FlagsUp(FlagVertexTxBytesPersisted),
 		f.FlagsUp(FlagVertexTxAttachmentStarted),
 		f.FlagsUp(FlagVertexTxAttachmentFinished),
 	)

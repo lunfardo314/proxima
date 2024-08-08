@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/transaction"
@@ -125,11 +124,6 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Att
 			}
 			// mark the vertex in order to prevent repetitive attachment
 			vid.SetFlagsUpNoLock(vertex.FlagVertexTxAttachmentStarted)
-
-			if options.metadata != nil && options.metadata.SourceTypeNonPersistent == txmetadata.SourceTypeTxStore {
-				// prevent persisting transaction bytes twice
-				vid.SetFlagsUpNoLock(vertex.FlagVertexTxBytesPersisted)
-			}
 
 			// virtual tx is converted into full vertex with the full transaction
 			env.Tracef(TraceTagAttach, ">>>>>>>>>>>>>>>>>>>>>>> ConvertVirtualTxToVertexNoLock: %s", tx.IDShortString())

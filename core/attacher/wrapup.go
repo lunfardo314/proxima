@@ -47,15 +47,6 @@ func (a *milestoneAttacher) wrapUpAttacher() {
 	a.Tracef(TraceTagAttachMilestone, "%s: calculated metadata: %s", a.name, calculatedMetadata.String)
 
 	a.vid.Unwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
-		// persist transaction bytes, if needed
-		if a.metadata == nil || a.metadata.SourceTypeNonPersistent != txmetadata.SourceTypeTxStore {
-			flags := a.vid.FlagsNoLock()
-			if !flags.FlagsUp(vertex.FlagVertexTxBytesPersisted) {
-				// TODO move it immediately after parsing bytes
-				a.AsyncPersistTxBytesWithMetadata(v.Tx.Bytes(), &calculatedMetadata)
-				a.vid.SetFlagsUpNoLock(vertex.FlagVertexTxBytesPersisted)
-			}
-		}
 		// gossip tx if needed
 		a.GossipAttachedTransaction(v.Tx, &calculatedMetadata)
 	}})

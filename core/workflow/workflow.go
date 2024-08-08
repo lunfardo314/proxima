@@ -10,7 +10,6 @@ import (
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/core/work_process/events"
 	"github.com/lunfardo314/proxima/core/work_process/gossip"
-	"github.com/lunfardo314/proxima/core/work_process/persist_txbytes"
 	"github.com/lunfardo314/proxima/core/work_process/poker"
 	"github.com/lunfardo314/proxima/core/work_process/pruner"
 	"github.com/lunfardo314/proxima/core/work_process/pull_client"
@@ -40,15 +39,14 @@ type (
 		cfg   *ConfigParams
 		peers *peering.Peers
 		// daemons
-		pullClient     *pull_client.PullClient
-		pullTxServer   *pull_tx_server.PullTxServer
-		syncServer     *sync_server.SyncServer
-		gossip         *gossip.Gossip
-		persistTxBytes *persist_txbytes.PersistTxBytes
-		poker          *poker.Poker
-		events         *events.Events
-		tippool        *tippool.SequencerTips
-		syncManager    *sync_client.SyncClient
+		pullClient   *pull_client.PullClient
+		pullTxServer *pull_tx_server.PullTxServer
+		syncServer   *sync_server.SyncServer
+		gossip       *gossip.Gossip
+		poker        *poker.Poker
+		events       *events.Events
+		tippool      *tippool.SequencerTips
+		syncManager  *sync_client.SyncClient
 		//
 		enableTrace    atomic.Bool
 		traceTagsMutex sync.RWMutex
@@ -83,7 +81,6 @@ func New(env Environment, peers *peering.Peers, opts ...ConfigOption) *Workflow 
 		ret.syncServer = sync_server.New(ret)
 	}
 	ret.gossip = gossip.New(ret)
-	ret.persistTxBytes = persist_txbytes.New(ret)
 	ret.tippool = tippool.New(ret)
 
 	return ret
@@ -113,7 +110,6 @@ func (w *Workflow) Start() {
 		w.syncServer.Start()
 	}
 	w.gossip.Start()
-	w.persistTxBytes.Start()
 	w.tippool.Start()
 	if !w.cfg.doNotStartPruner {
 		prune := pruner.New(w) // refactor
