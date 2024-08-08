@@ -255,7 +255,7 @@ func upgrade0BaseConstants(id *IdentityData) []*easyfl.ExtendedFunctionData {
 		{"constMaxTickValuePerSlot", fmt.Sprintf("u64/%d", id.MaxTickValueInSlot)},
 		// begin inflation-related
 		{"constBranchInflationBonusBase", fmt.Sprintf("u64/%d", id.BranchInflationBonusBase)},
-		{"constChainInflationPerEpochBase", fmt.Sprintf("u64/%d", id.ChainInflationPerEpochBase)},
+		{"constChainInflationPerTickBase", fmt.Sprintf("u64/%d", id.ChainInflationPerTickBase)},
 		{"constChainInflationOpportunitySlots", fmt.Sprintf("u64/%d", id.ChainInflationOpportunitySlots)},
 		{"constTicksPerInflationEpoch", fmt.Sprintf("u64/%d", id.TicksPerInflationEpoch)},
 		// end inflation-related
@@ -283,6 +283,8 @@ var upgrade0BaseHelpers = []*easyfl.ExtendedFunctionData{
 	{"timestamp", "concat(mustValidTimeSlot($0),mustValidTimeTick($1))"},
 	// takes first 5 bytes and sets first 2 bit to zero
 	{"timestampPrefix", "bitwiseAND(slice($0, 0, 4), 0x3fffffffff)"},
+	{"slotsSinceOrigin", "timeSlotFromTimeSlotPrefix(timeSlotPrefix($0)"},
+	{"ticksSinceOrigin", "add(mul(slotsSinceOrigin, ticksPerSlot64), timeTickFromTimestamp($0))"},
 }
 
 func (lib *Library) upgrade0WithBaseConstants(id *IdentityData) {

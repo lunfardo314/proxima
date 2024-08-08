@@ -43,11 +43,9 @@ const (
 	DefaultInitialSupply = InitialSupplyProxi * PRXI
 
 	// begin inflation-related
-	// TODO inflation constants and inflation rate scheduler are temporary. For testnet only !!!!
-	//  First year it is 3.78% branch + 13.44% chain = 17.2% annual
 
 	DefaultMaxBranchInflationBonus        = 5_000_000
-	DefaultChainAnnualInflationBase       = 100_000_000_000_000
+	DefaultChainInflationPerTickBase      = 317_098
 	DefaultChainInflationOpportunitySlots = 12
 	DefaultTicksPerInflationEpoch         = DefaultSlotsPerInflationEpoch * DefaultTicksPerSlot
 	// end inflation-related
@@ -55,17 +53,19 @@ const (
 	DefaultVBCost                   = 1
 	DefaultTransactionPace          = 10
 	DefaultTransactionPaceSequencer = 1
-	// DefaultMinimumAmountOnSequencer Reasonable limit could be say 1/1000 of initial supply
+	// DefaultMinimumAmountOnSequencer Reasonable limit could be 1/1000 of initial supply
 	DefaultMinimumAmountOnSequencer    = 1_000 * PRXI
 	DefaultMaxNumberOfEndorsements     = 8
 	DefaultPreBranchConsolidationTicks = 20
 
-	DaysPerYear = 365
+	DaysPerYear                    = 365
+	TargetAnnualChainInflationRate = 10
 )
 
 func init() {
 	// enforce validity of defaults
-	util.Assertf(DefaultInitialSupply/10 == DefaultChainAnnualInflationBase, "DefaultInitialSupply/10==DefaultChainAnnualInflationBase")
+	util.Assertf(DefaultInitialSupply*TargetAnnualChainInflationRate/100 == DefaultChainInflationPerTickBase*DefaultTicksPerInflationEpoch,
+		"DefaultInitialSupply*TargetAnnualChainInflationRate/100 == DefaultChainInflationPerTickBase*DefaultTicksPerInflationEpoch")
 }
 
 func newBaseLibrary() *Library {
@@ -108,7 +108,7 @@ func DefaultIdentityData(privateKey ed25519.PrivateKey) *IdentityData {
 		TransactionPace:                DefaultTransactionPace,
 		TransactionPaceSequencer:       DefaultTransactionPaceSequencer,
 		BranchInflationBonusBase:       DefaultMaxBranchInflationBonus,
-		ChainInflationPerEpochBase:     DefaultChainAnnualInflationBase,
+		ChainInflationPerTickBase:      DefaultChainInflationPerTickBase,
 		ChainInflationOpportunitySlots: DefaultChainInflationOpportunitySlots,
 		TicksPerInflationEpoch:         DefaultTicksPerInflationEpoch,
 		MinimumAmountOnSequencer:       DefaultMinimumAmountOnSequencer,

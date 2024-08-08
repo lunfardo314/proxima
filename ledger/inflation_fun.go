@@ -63,36 +63,52 @@ and(
    )
 )
 
-// $0 - timestamp of the previous chain output (not necessarily a predecessor, may be before the branch)
-// $1 - timestamp of the transaction (and of the output)
-// $2 - amount on the chain input
-// $3 - delayed inflation amount
+// upperSupplyBound returns theoretical maximum of the total supply for the moment $0
+// Real supply will be less. 
+// The key point the upperSupplyBound is linear function of the ledger time 
+// and does no depend on the real supply
 //
+// $0 ledger time (timestamp)
+func upperSupplyBound :
+  add(
+    constInitialSupply,
+	mul(
+       slotsSinceOrigin($0),
+       constBranchInflationBonusBase
+    ),
+    mul(
+       constChainInflationPerTickBase,
+       ticksSinceOrigin($0)
+    )
+  )
+
+// $0 ledger time (timestamp)
+// $1 amount 
+func _amountFactor:
+  div(
+    upperSupplyBound($0),
+    $1
+  )
+
+
 // Returns chain inflation amount. In the inflation opportunity window it is equal to:
-//   (chainInflationPerEpochBase * diffInTicks / ticksPerInflationEpoch) * (<amount on the chain input>/totalSupply) 
+//   upperSupplyBound = initialSupply + constChainInflationPerTickBase * delta
+//   amountFactor = upperSupplyBound / amount on predecessor
+//   delta - in ticks between chain outputs
+//   inflation = (constChainInflationPerTickBase * delta) / amountFactor
 // 
+// division and amountFactor are needed for safe arithmetic without possibility of overflow
 
-
-// TODO
-
-
-//   (diffInTicks * <amount on the chain input>) / (ticksPerInflationEpoch * chainInflationPerEpochBase)
-//
-// 	 diffInTicks = $1 - $0 (ticksBefore($0, $1)
-//
+// $0 - ledger time (timestamp) of the predecessor
+// $1 - delta in ticks
+// $2 - amount on predecessor
 func calcChainInflationAmount : 
 if(
-	_insideInflationOpportunityWindow(ticksBefore($0, $1), $2),
-	add(
-		div(
-		   mul(
-			  ticksBefore($0, $1), 
-			  $2
-		   ), 
-		   constChainInflationPerTickFraction
-	   ),
-	   $3
-	),
+   _insideInflationOpportunityWindow($1, $2),
+   div(
+      mul( constChainInflationPerTickBase, $1 ),
+      _amountFactor( $0, $2 )
+   ),
    u64/0
 )
 `

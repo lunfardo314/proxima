@@ -14,7 +14,7 @@ import (
 
 func TestInflationConst1Year(t *testing.T) {
 	t.Logf("init supply: %s", util.Th(ledger.DefaultInitialSupply))
-	t.Logf("max annual chain inflation: %s", util.Th(ledger.DefaultChainAnnualInflationBase))
+	t.Logf("max annual chain inflation: %s", util.Th(ledger.DefaultChainInflationPerTickBase))
 	t.Logf("branch inflation per slot: %s", util.Th(ledger.DefaultMaxBranchInflationBonus))
 	t.Logf("slots per year: %s", util.Th(ledger.L().ID.SlotsPerYear()))
 	t.Logf("ticks per year: %s", util.Th(ledger.L().ID.TicksPerYear()))
@@ -22,14 +22,14 @@ func TestInflationConst1Year(t *testing.T) {
 	t.Logf("branch inflation per year: %s", util.Th(branchInflationAnnual))
 	branchInflationAnnualPerc := float64(branchInflationAnnual*100) / float64(ledger.DefaultInitialSupply)
 	t.Logf("branch inflation per year %% of initial supply: %.2f%%", branchInflationAnnualPerc)
-	t.Logf("max chain inflation per slot: %s", util.Th(ledger.DefaultChainAnnualInflationBase/ledger.De))
+	t.Logf("max chain inflation per slot: %s", util.Th(ledger.DefaultChainInflationPerTickBase/ledger.De))
 	inTs := ledger.MustNewLedgerTime(0, 1)
 	outTs := ledger.MustNewLedgerTime(1, 1)
 	t.Logf("chain inflation per initial slot: %s", util.Th(ledger.L().CalcChainInflationAmount(inTs, outTs, ledger.DefaultInitialSupply, 0)))
 
 	supply := ledger.DefaultInitialSupply
 	for i := 0; i < ledger.L().ID.SlotsPerYear(); i++ {
-		supply += supply / (ledger.DefaultChainAnnualInflationBase / ledger.DefaultTicksPerSlot)
+		supply += supply / (ledger.DefaultChainInflationPerTickBase / ledger.DefaultTicksPerSlot)
 	}
 	t.Logf("annual chain inflation: %s", util.Th(supply))
 	t.Logf("annual chain inflation %% of initial supply: %.2f%%", (float64(supply-ledger.DefaultInitialSupply)*100)/float64(ledger.DefaultInitialSupply))

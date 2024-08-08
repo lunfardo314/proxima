@@ -33,12 +33,13 @@ type (
 		// ----------- begin inflation-related
 		// BranchInflationBonusBase inflation bonus
 		BranchInflationBonusBase uint64
-		// ChainInflationPerEpochBase is maximum total inflation per inflation epoch. Inflation epoch is usually 1 year. It is fixed amount for the ledger
-		ChainInflationPerEpochBase uint64
-		// ChainInflationOpportunitySlots maximum gap between chain outputs for the non-zero inflation
-		ChainInflationOpportunitySlots uint64
+		// ChainInflationPerTickBase is maximum total inflation per one tick. It is fixed amount for the ledger
+		// It is equal to the inflation which generates the whole supply per one tick
+		ChainInflationPerTickBase uint64
 		// TicksPerInflationEpoch usually equal to 1 standard year with 365 days
 		TicksPerInflationEpoch uint64
+		// ChainInflationOpportunitySlots maximum gap between chain outputs for the non-zero inflation
+		ChainInflationOpportunitySlots uint64
 		// ----------- end inflation-related
 		// VBCost
 		VBCost uint64
@@ -68,7 +69,7 @@ type (
 		TransactionPace                byte   `yaml:"transaction_pace"`
 		TransactionPaceSequencer       byte   `yaml:"transaction_pace_sequencer"`
 		BranchBonusBase                uint64 `yaml:"branch_bonus_base"`
-		ChainAnnualInflationBase       uint64 `yaml:"chain_annual_inflation_base"`
+		ChainInflationPerTickBase      uint64 `yaml:"chain_inflation_per_tick_base"`
 		ChainInflationOpportunitySlots uint64 `yaml:"chain_inflation_opportunity_slots"`
 		TicksPerInflationEpoch         uint64 `yaml:"ticks_per_inflation_epoch"`
 		MinimumAmountOnSequencer       uint64 `yaml:"minimum_amount_on_sequencer"`
@@ -95,7 +96,7 @@ func (id *IdentityData) Bytes() []byte {
 	_ = binary.Write(&buf, binary.BigEndian, id.TickDuration.Nanoseconds())
 	_ = binary.Write(&buf, binary.BigEndian, id.MaxTickValueInSlot)
 	_ = binary.Write(&buf, binary.BigEndian, id.BranchInflationBonusBase)
-	_ = binary.Write(&buf, binary.BigEndian, id.ChainInflationPerEpochBase)
+	_ = binary.Write(&buf, binary.BigEndian, id.ChainInflationPerTickBase)
 	_ = binary.Write(&buf, binary.BigEndian, id.ChainInflationOpportunitySlots)
 	_ = binary.Write(&buf, binary.BigEndian, id.TicksPerInflationEpoch)
 	_ = binary.Write(&buf, binary.BigEndian, id.VBCost)
@@ -140,7 +141,7 @@ func MustLedgerIdentityDataFromBytes(data []byte) *IdentityData {
 	err = binary.Read(rdr, binary.BigEndian, &ret.BranchInflationBonusBase)
 	util.AssertNoError(err)
 
-	err = binary.Read(rdr, binary.BigEndian, &ret.ChainInflationPerEpochBase)
+	err = binary.Read(rdr, binary.BigEndian, &ret.ChainInflationPerTickBase)
 	util.AssertNoError(err)
 
 	err = binary.Read(rdr, binary.BigEndian, &ret.TicksPerInflationEpoch)
@@ -267,7 +268,7 @@ func (id *IdentityData) YAMLAble() *IdentityDataYAMLAble {
 		VBCost:                         id.VBCost,
 		TransactionPace:                id.TransactionPace,
 		TransactionPaceSequencer:       id.TransactionPaceSequencer,
-		ChainAnnualInflationBase:       id.ChainInflationPerEpochBase,
+		ChainInflationPerTickBase:      id.ChainInflationPerTickBase,
 		ChainInflationOpportunitySlots: id.ChainInflationOpportunitySlots,
 		TicksPerInflationEpoch:         id.TicksPerInflationEpoch,
 		GenesisControllerAddress:       id.GenesisControlledAddress().String(),
@@ -352,7 +353,7 @@ func (id *IdentityDataYAMLAble) stateIdentityData() (*IdentityData, error) {
 	ret.VBCost = id.VBCost
 	ret.TransactionPace = id.TransactionPace
 	ret.TransactionPaceSequencer = id.TransactionPaceSequencer
-	ret.ChainInflationPerEpochBase = id.ChainAnnualInflationBase
+	ret.ChainInflationPerTickBase = id.ChainInflationPerTickBase
 	ret.ChainInflationOpportunitySlots = id.ChainInflationOpportunitySlots
 	ret.TicksPerInflationEpoch = id.TicksPerInflationEpoch
 	ret.MinimumAmountOnSequencer = id.MinimumAmountOnSequencer
