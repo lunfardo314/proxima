@@ -3,6 +3,7 @@ package node
 import (
 	"fmt"
 
+	"github.com/lunfardo314/proxima/api"
 	"github.com/lunfardo314/proxima/api/server"
 	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/core/vertex"
@@ -37,10 +38,54 @@ func (p *ProximaNode) GetNodeInfo() *global.NodeInfo {
 	ret := &global.NodeInfo{
 		Name:            "a Proxima node",
 		ID:              p.peers.SelfID(),
+		Version:         global.Version,
 		NumStaticAlive:  uint16(aliveStaticPeers),
 		NumDynamicAlive: uint16(aliveDynamicPeers),
 		Sequencers:      make([]ledger.ChainID, len(p.Sequencers)),
 		Branches:        make([]ledger.TransactionID, 0),
+	}
+
+	return ret
+}
+
+// GetSyncInfo TODO not finished
+func (p *ProximaNode) GetSyncInfo() *api.SyncInfo {
+
+	latestSlot, latestHealthySlot, synced := p.workflow.LatestBranchSlots()
+	ret := &api.SyncInfo{
+		Synced:       synced,
+		PerSequencer: make(map[string]api.SequencerSyncInfo),
+	}
+	for seq := range p.Sequencers {
+		seqInfo := p.Sequencers[seq].Info()
+		ssi := api.SequencerSyncInfo{
+			Synced:              synced,
+			LatestHealthySlot:   uint32(latestHealthySlot),
+			LatestCommittedSlot: uint32(latestSlot),
+			LedgerCoverage:      seqInfo.LedgerCoverage,
+		}
+		chainId := p.Sequencers[seq].SequencerID()
+		ret.PerSequencer[chainId.StringHex()] = ssi
+	}
+
+	return ret
+}
+
+// GetPeersInfo TODO not finished
+func (p *ProximaNode) GetPeersInfo() *api.PeersInfo {
+	ps := p.peers
+	ids := ps.Host().Peerstore().PeersWithAddrs()
+	addrs := ps.Host().Peerstore().Addrs(ps.SelfID())
+	peers := make([]api.PeerInfo, len(ids))
+	for i := 0; i < len(ids); i++ {
+		peers[i].ID = ids[i].String()
+		peers[i].MultiAddresses = make([]string, 1)
+		if len(addrs[i].String()) > 0 {
+			peers[i].MultiAddresses[0] = addrs[i].String()
+		}
+	}
+	ret := &api.PeersInfo{
+		Peers: peers,
 	}
 
 	return ret
