@@ -12,6 +12,7 @@ import (
 type NodeInfo struct {
 	Name            string                 `json:"name"`
 	ID              peer.ID                `json:"id"`
+	Version         string                 `json:"version"`
 	NumStaticAlive  uint16                 `json:"num_static_peers"`
 	NumDynamicAlive uint16                 `json:"num_dynamic_alive"`
 	Sequencers      []ledger.ChainID       `json:"sequencers,omitempty"`

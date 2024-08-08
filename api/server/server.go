@@ -24,6 +24,8 @@ type (
 	Environment interface {
 		global.Logging
 		GetNodeInfo() *global.NodeInfo
+		GetSyncInfo() *api.SyncInfo
+		GetPeersInfo() *api.PeersInfo
 		HeaviestStateForLatestTimeSlot() multistate.SugaredStateReader
 		SubmitTxBytesFromAPI(txBytes []byte, trace ...bool) (*ledger.TransactionID, error)
 		QueryTxIDStatusJSONAble(txid *ledger.TransactionID) vertex.TxIDStatusJSONAble
@@ -66,6 +68,8 @@ func (srv *Server) registerHandlers() {
 	http.HandleFunc(api.PathGetSyncInfo, srv.getSyncInfo)
 	// GET sync info from the node
 	http.HandleFunc(api.PathGetNodeInfo, srv.getNodeInfo)
+	// GET peers info from the node
+	http.HandleFunc(api.PathGetPeersInfo, srv.getPeersInfo)
 }
 
 func (srv *Server) getLedgerID(w http.ResponseWriter, r *http.Request) {
@@ -258,7 +262,25 @@ func (srv *Server) submitTx(w http.ResponseWriter, r *http.Request) {
 }
 
 func (srv *Server) getSyncInfo(w http.ResponseWriter, r *http.Request) {
-	writeErr(w, "getSyncInfo: not implemented")
+	syncInfo := srv.GetSyncInfo()
+	respBin, err := json.MarshalIndent(syncInfo, "", "  ")
+	if err != nil {
+		writeErr(w, err.Error())
+		return
+	}
+	_, err = w.Write(respBin)
+	util.AssertNoError(err)
+}
+
+func (srv *Server) getPeersInfo(w http.ResponseWriter, r *http.Request) {
+	peersInfo := srv.GetPeersInfo()
+	respBin, err := json.MarshalIndent(peersInfo, "", "  ")
+	if err != nil {
+		writeErr(w, err.Error())
+		return
+	}
+	_, err = w.Write(respBin)
+	util.AssertNoError(err)
 }
 
 func (srv *Server) getNodeInfo(w http.ResponseWriter, r *http.Request) {

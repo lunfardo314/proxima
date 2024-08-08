@@ -15,6 +15,7 @@ const (
 	PathSubmitTransaction   = "/submit_tx"
 	PathGetSyncInfo         = "/sync_info"
 	PathGetNodeInfo         = "/node_info"
+	PathGetPeersInfo        = "/peers_info"
 )
 
 type Error struct {
@@ -81,9 +82,23 @@ type (
 		PerSequencer map[string]SequencerSyncInfo `json:"per_sequencer,omitempty"`
 	}
 	SequencerSyncInfo struct {
-		Synced           bool   `json:"synced"`
-		LatestBookedSlot uint32 `json:"latest_booked_slot"`
-		LatestSeenSlot   uint32 `json:"latest_seen_slot"`
+		Synced              bool   `json:"synced"`
+		LatestHealthySlot   uint32 `json:"latest_healthy_slot"`
+		LatestCommittedSlot uint32 `json:"latest_committed_slot"`
+		LedgerCoverage      uint64 `json:"ledger_coverage"`
+	}
+)
+
+type (
+	PeersInfo struct {
+		Error
+		Peers []PeerInfo `json:"peers,omitempty"`
+	}
+	PeerInfo struct {
+		// The libp2p identifier of the peer.
+		ID string `json:"id"`
+		// The libp2p multi addresses of the peer.
+		MultiAddresses []string `json:"multiAddresses,omitempty"`
 	}
 )
 
