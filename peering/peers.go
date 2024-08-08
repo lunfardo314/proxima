@@ -287,6 +287,10 @@ func (ps *Peers) SelfID() peer.ID {
 	return ps.host.ID()
 }
 
+func (ps *Peers) Host() host.Host {
+	return ps.host
+}
+
 func (ps *Peers) Run() {
 	ps.Environment.MarkWorkProcessStarted(Name)
 
@@ -369,7 +373,7 @@ func (ps *Peers) dropPeer(id peer.ID, reason string) {
 func (ps *Peers) _dropPeer(p *Peer, reason string) {
 	why := ""
 	if len(reason) > 0 {
-		why = fmt.Sprintf(". Reason: '%s'", reason[0])
+		why = fmt.Sprintf(". Reason: '%s'", reason)
 	}
 
 	if p.isStatic {

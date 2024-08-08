@@ -54,6 +54,8 @@ func Init() *cobra.Command {
 		seq_cmd.Init(),
 		initScoreCmd(),
 		initSeqSetupCmd(),
+		initSyncInfoCmd(),
+		initPeersInfoCmd(),
 	)
 
 	//node_cmd.Init(nodeCmd) ????

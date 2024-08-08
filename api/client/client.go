@@ -372,6 +372,40 @@ func (c *APIClient) GetNodeInfo() (*global.NodeInfo, error) {
 	return global.NodeInfoFromBytes(body)
 }
 
+func (c *APIClient) GetSyncInfo() (*api.SyncInfo, error) {
+	body, err := c.getBody(api.PathGetSyncInfo)
+	if err != nil {
+		return nil, err
+	}
+
+	var res api.SyncInfo
+	err = json.Unmarshal(body, &res)
+	if err != nil {
+		return nil, fmt.Errorf("unmarshal returned: %v\nbody: '%s'", err, string(body))
+	}
+	if res.Error.Error != "" {
+		return nil, fmt.Errorf("from server: %s", res.Error.Error)
+	}
+	return &res, nil
+}
+
+func (c *APIClient) GetPeersInfo() (*api.PeersInfo, error) {
+	body, err := c.getBody(api.PathGetPeersInfo)
+	if err != nil {
+		return nil, err
+	}
+
+	var res api.PeersInfo
+	err = json.Unmarshal(body, &res)
+	if err != nil {
+		return nil, fmt.Errorf("unmarshal returned: %v\nbody: '%s'", err, string(body))
+	}
+	if res.Error.Error != "" {
+		return nil, fmt.Errorf("from server: %s", res.Error.Error)
+	}
+	return &res, nil
+}
+
 // GetTransferableOutputs does the same as GetTransferableOutputs but cuts to the maximum outputs provided and returns total
 func (c *APIClient) GetTransferableOutputs(account ledger.Accountable, maxOutputs ...int) ([]*ledger.OutputWithID, uint64, error) {
 	ret, err := c.GetAccountOutputs(account, func(_ *ledger.OutputID, o *ledger.Output) bool {
