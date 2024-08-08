@@ -8,6 +8,8 @@ import (
 	"golang.org/x/crypto/blake2b"
 )
 
+const ()
+
 // This file contains definitions of the inflation calculation functions in EasyFL (on-ledger)
 // The Go functions interprets EasyFL function to guarantee consistent values
 
@@ -61,13 +63,20 @@ and(
    )
 )
 
-// $0 - timestamp of the previous chain output (not necessarily a predecessor)
+// $0 - timestamp of the previous chain output (not necessarily a predecessor, may be before the branch)
 // $1 - timestamp of the transaction (and of the output)
 // $2 - amount on the chain input
 // $3 - delayed inflation amount
 //
-// Returns chain inflation amount. In the inflation opportunity window it is equal to: 
-//   (diffInTicks * <amount on the chain input>) / inflationFractionPerTick
+// Returns chain inflation amount. In the inflation opportunity window it is equal to:
+//   (chainInflationPerEpochBase * diffInTicks / ticksPerInflationEpoch) * (<amount on the chain input>/totalSupply) 
+// 
+
+
+// TODO
+
+
+//   (diffInTicks * <amount on the chain input>) / (ticksPerInflationEpoch * chainInflationPerEpochBase)
 //
 // 	 diffInTicks = $1 - $0 (ticksBefore($0, $1)
 //

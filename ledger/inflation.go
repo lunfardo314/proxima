@@ -11,16 +11,17 @@ import (
 
 // Inflation constraint script, when added to the chain-constrained output, adds inflation the transaction.
 // It enforces
-// - valid chain inflation value (proportional capital and time)
+// - valid chain inflation value (proportional to capital and time)
 // - valid branch inflation randomness proof (as per VRF) for branches
-// The real inflation value is enforced at the transaction level.
+// The total inflation value is enforced at the transaction level.
 // Inflation on the output equals to:
 // - 0 if 'inflation' constraint script is not present
 // - for branches, it is calculated from the branch inflation randomness proof. See BranchInflationBonusFromRandomnessProof
-// - for non-branches which has branch as a predecessor sums up delayed chain inflation on the branch plus owns chain inflation
-// - for other non-branches it is equal to the chainInflation
+// - for non-branches:
+//   -- which has branch as a predecessor sums up delayed chain inflation on the branch plus own chain inflation
+//   -- for other non-branches it is equal to the chainInflation
 //
-// This trick is necessary to:
+// This trick with delayed inflation is necessary to:
 // 1. make inflation on the branch random in order to enforce fair selection of branches by the biggest coverage rule
 // 2. not to lose chain inflation when passing to another slot with the winning branch. For that, the chain inflation
 // is calculated for the branch but used in the next, successor, transaction by adding delayed inflation

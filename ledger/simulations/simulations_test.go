@@ -80,34 +80,3 @@ func MinInflatableAmountPerSlot() int64 {
 func InitialSlotInflationChain() int64 {
 	return int64(ledger.L().ID.InitialSupply) / ChainInitialInflationFractionPerSlot()
 }
-
-//
-//func TestInflationCalculations2(t *testing.T) {
-//	const template2 = `
-//		InitialSupply						: %s (%s PRXI)
-//		DefaultMaxBranchInflationBonus	: %s (%s PRXI)
-//		BranchInflationAnnual				: %s (%s PRXI)
-//		BranchInflationAnnual %%				: %.2f%%
-//		InitialChainInflationFractionPerTick: %s
-//		MinInflatableAmountPerTick			: %s (%s PRXI)
-//		MinInflatableAmountPerSlot			: %s (%s PRXI)
-//		InitialSlotInflationChain				: %s (%s PRXI)
-//		MaxInflationChainEpoch				: %s (%s PRXI)
-//		MaxInflationChainEpoch %%			: %.2f%%
-//		MaxAnnualInflationTotal %%			: %.2f%%
-//`
-//
-//	t.Logf(template2,
-//		util.Th(ledger.L().ID.InitialSupply), util.Th(ledger.L().ID.InitialSupply/ledger.PRXI),
-//		util.Th(ledger.L().ID.BranchInflationBonusBase), util.Th(ledger.L().ID.BranchInflationBonusBase/ledger.DustPerProxi),
-//		util.Th(BranchInflationAnnual()), util.Th(BranchInflationAnnual()/ledger.DustPerProxi),
-//		percent(int(BranchInflationAnnual()), int(ledger.L().ID.InitialSupply)),
-//		util.Th(ledger.L().ID.ChainInflationFractionPerTick),
-//		util.Th(MinInflatableAmountPerTick()), util.Th(MinInflatableAmountPerTick()/ledger.PRXI),
-//		util.Th(MinInflatableAmountPerSlot()), util.Th(MinInflatableAmountPerSlot()/ledger.DustPerProxi),
-//		util.Th(InitialSlotInflationChain()), util.Th(InitialSlotInflationChain()/ledger.DustPerProxi),
-//		util.Th(MaxInflationChainEpoch()), util.Th(MaxInflationChainEpoch()/ledger.DustPerProxi),
-//		percent(int(MaxInflationChainEpoch()), int(ledger.L().ID.InitialSupply)),
-//		percent(int(MaxInflationChainEpoch()+BranchInflationAnnual()), int(ledger.L().ID.InitialSupply)),
-//	)
-//}

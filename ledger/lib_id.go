@@ -28,8 +28,11 @@ type (
 // default ledger constants
 
 const (
-	DefaultTickDuration = 100 * time.Millisecond
-	DefaultTicksPerSlot = 100
+	DefaultTickDuration           = 100 * time.Millisecond
+	DefaultTicksPerSlot           = 100
+	DefaultSlotDuration           = DefaultTickDuration * DefaultTicksPerSlot
+	DefaultInflationEpochDuration = 365 * 24 * time.Hour // standard inflation epoch is 365 days
+	DefaultSlotsPerInflationEpoch = uint64(DefaultInflationEpochDuration / DefaultSlotDuration)
 
 	DustPerProxi         = 1_000_000
 	BaseTokenName        = "Proxi"
@@ -43,9 +46,10 @@ const (
 	// TODO inflation constants and inflation rate scheduler are temporary. For testnet only !!!!
 	//  First year it is 3.78% branch + 13.44% chain = 17.2% annual
 
-	DefaultMaxBranchInflationBonus        = 12_000_000
-	DefaultChainInflationFractionPerTick  = 2_500_000_000
+	DefaultMaxBranchInflationBonus        = 5_000_000
+	DefaultChainAnnualInflationBase       = 100_000_000_000_000
 	DefaultChainInflationOpportunitySlots = 12
+	DefaultTicksPerInflationEpoch         = DefaultSlotsPerInflationEpoch * DefaultTicksPerSlot
 	// end inflation-related
 
 	DefaultVBCost                   = 1
@@ -55,7 +59,14 @@ const (
 	DefaultMinimumAmountOnSequencer    = 1_000 * PRXI
 	DefaultMaxNumberOfEndorsements     = 8
 	DefaultPreBranchConsolidationTicks = 20
+
+	DaysPerYear = 365
 )
+
+func init() {
+	// enforce validity of defaults
+	util.Assertf(DefaultInitialSupply/10 == DefaultChainAnnualInflationBase, "DefaultInitialSupply/10==DefaultChainAnnualInflationBase")
+}
 
 func newBaseLibrary() *Library {
 	ret := &Library{
@@ -97,12 +108,13 @@ func DefaultIdentityData(privateKey ed25519.PrivateKey) *IdentityData {
 		TransactionPace:                DefaultTransactionPace,
 		TransactionPaceSequencer:       DefaultTransactionPaceSequencer,
 		BranchInflationBonusBase:       DefaultMaxBranchInflationBonus,
-		ChainInflationFractionPerTick:  DefaultChainInflationFractionPerTick,
+		ChainInflationPerEpochBase:     DefaultChainAnnualInflationBase,
 		ChainInflationOpportunitySlots: DefaultChainInflationOpportunitySlots,
+		TicksPerInflationEpoch:         DefaultTicksPerInflationEpoch,
 		MinimumAmountOnSequencer:       DefaultMinimumAmountOnSequencer,
 		MaxNumberOfEndorsements:        DefaultMaxNumberOfEndorsements,
 		PreBranchConsolidationTicks:    DefaultPreBranchConsolidationTicks,
-		Description:                    "Proxima prototype ledger. Ver 0.0.0",
+		Description:                    "Proxima prototype ledger. Ver 0.1",
 	}
 }
 
@@ -118,33 +130,16 @@ func (lib LibraryConst) TicksPerSlot() byte {
 	return bin[0]
 }
 
-func (lib LibraryConst) ChainInflationPerTickFractionBase() uint64 {
-	bin, err := lib.EvalFromSource(nil, "constChainInflationPerTickFraction")
-	util.AssertNoError(err)
-	return binary.BigEndian.Uint64(bin)
-}
-
-func (lib LibraryConst) HalvingEpochs() byte {
-	bin, err := lib.EvalFromSource(nil, "constHalvingEpochs")
-	util.AssertNoError(err)
-	ret := binary.BigEndian.Uint64(bin)
-	util.Assertf(ret < 256, "ret<256")
-	return byte(ret)
-}
-
-func (lib LibraryConst) SlotsPerEpoch() uint32 {
-	bin, err := lib.EvalFromSource(nil, "constSlotsPerLedgerEpoch")
-	util.AssertNoError(err)
-	ret := binary.BigEndian.Uint64(bin)
-	util.Assertf(ret < math.MaxUint32, "ret < math.MaxUint32")
-	return uint32(ret)
-}
-
 func (lib LibraryConst) MinimumAmountOnSequencer() uint64 {
 	bin, err := lib.EvalFromSource(nil, "constMinimumAmountOnSequencer")
 	util.AssertNoError(err)
 	ret := binary.BigEndian.Uint64(bin)
 	util.Assertf(ret < math.MaxUint32, "ret < math.MaxUint32")
 	return ret
+}
 
+func (lib LibraryConst) TicksPerInflationEpoch() uint64 {
+	bin, err := lib.EvalFromSource(nil, "ticksPerInflationEpoch")
+	util.AssertNoError(err)
+	return binary.BigEndian.Uint64(bin)
 }

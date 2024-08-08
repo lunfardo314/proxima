@@ -16,8 +16,8 @@ const (
 	MaxSlot        = 0xffffffff >> 1                 // 1 most significant bit must be 0
 )
 
-func SlotsPerDay() time.Duration {
-	return 24 * time.Hour / SlotDuration()
+func SlotsPerDay() int {
+	return int(24 * time.Hour / SlotDuration())
 }
 
 func SlotsPerHour() int {
