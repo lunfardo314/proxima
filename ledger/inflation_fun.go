@@ -46,7 +46,7 @@ func (lib *Library) BranchInflationBonusFromRandomnessProof(proof []byte) uint64
 
 // InsideInflationOpportunityWindow returns if ticks and amount are inside inflation opportunity window
 // Outside inflation opportunity window mean 0 inflation
-func (lib *Library) InsideInflationOpportunityWindow(diffTicks int) bool {
+func (lib *Library) InsideInflationOpportunityWindow(diffTicks int64) bool {
 	src := fmt.Sprintf("_insideInflationOpportunityWindow(u64/%d)", diffTicks)
 	res, err := lib.EvalFromSource(nil, src)
 	util.AssertNoError(err)

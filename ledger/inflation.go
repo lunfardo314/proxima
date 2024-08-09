@@ -175,7 +175,10 @@ func inflation : or(
 			equalUint(
 				calcChainInflationAmount(
 					timestampOfInputByIndex(chainPredecessorInputIndex($2)), 
-					txTimestampBytes, 
+					ticksBefore(
+                       timestampOfInputByIndex(chainPredecessorInputIndex($2)),
+                       txTimestampBytes
+                    ), 
 					amountValue(consumedOutputByIndex(chainPredecessorInputIndex($2))),
 					delayedInflationValue($2, $3)
 				),				
