@@ -101,7 +101,7 @@ max(
   u64/10
 )
 
-
+// Implements quasi-linear inflation
 // Returns chain inflation amount. In the inflation opportunity window it is equal to:
 //   upperSupplyBound = initialSupply + constChainInflationPerTickBase * delta
 //   amountFactor = max(10, upperSupplyBound / amount on predecessor)

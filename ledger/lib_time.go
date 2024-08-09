@@ -9,6 +9,9 @@ import (
 	"github.com/lunfardo314/proxima/util"
 )
 
+// TODO refactor to 256 ticks per slot
+// TODO implement equal 32 bytes transaction and output IDs
+
 const (
 	SlotByteLength = 4
 	TickByteLength = 1
