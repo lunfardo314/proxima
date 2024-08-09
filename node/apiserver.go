@@ -75,13 +75,13 @@ func (p *ProximaNode) GetSyncInfo() *api.SyncInfo {
 func (p *ProximaNode) GetPeersInfo() *api.PeersInfo {
 	ps := p.peers
 	ids := ps.Host().Peerstore().PeersWithAddrs()
-	addrs := ps.Host().Peerstore().Addrs(ps.SelfID())
 	peers := make([]api.PeerInfo, len(ids))
 	for i := 0; i < len(ids); i++ {
 		peers[i].ID = ids[i].String()
-		peers[i].MultiAddresses = make([]string, 1)
-		if len(addrs[i].String()) > 0 {
-			peers[i].MultiAddresses[0] = addrs[i].String()
+		addrs := ps.Host().Peerstore().Addrs(ids[i])
+		peers[i].MultiAddresses = make([]string, len(addrs))
+		for a := 0; a < len(addrs); a++ {
+			peers[i].MultiAddresses[a] = addrs[a].String()
 		}
 	}
 	ret := &api.PeersInfo{
