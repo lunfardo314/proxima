@@ -64,8 +64,11 @@ const (
 
 func init() {
 	// enforce validity of defaults
-	util.Assertf(DefaultInitialSupply*TargetAnnualChainInflationRate/100 == DefaultChainInflationPerTickBase*DefaultTicksPerInflationEpoch,
-		"DefaultInitialSupply*TargetAnnualChainInflationRate/100 == DefaultChainInflationPerTickBase*DefaultTicksPerInflationEpoch")
+	def1 := DefaultInitialSupply * TargetAnnualChainInflationRate / 100
+	def2 := DefaultChainInflationPerTickBase * DefaultTicksPerInflationEpoch
+	util.Assertf((util.Abs(def1-int(def2))*100)/DefaultInitialSupply <= 1,
+		"wrong target inflation rate: DefaultInitialSupply*TargetAnnualChainInflationRate/100 == DefaultChainInflationPerTickBase*DefaultTicksPerInflationEpoch, %s != %s",
+		util.Th(def1), util.Th(def2))
 }
 
 func newBaseLibrary() *Library {

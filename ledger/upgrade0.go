@@ -275,16 +275,16 @@ func upgrade0BaseConstants(id *IdentityData) []*easyfl.ExtendedFunctionData {
 
 var upgrade0BaseHelpers = []*easyfl.ExtendedFunctionData{
 	{"mustSize", "if(equalUint(len($0), $1), $0, !!!wrong_data_size)"},
-	{"mustValidTimeTick", "if(and(mustSize($0,1),lessThan($0,ticksPerSlot)),$0,!!!wrong_timeslot)"},
+	{"mustValidTimeTick", "if(and(mustSize($0,1),lessThan($0,ticksPerSlot)),$0,!!!wrong_ticks_value)"},
 	{"mustValidTimeSlot", "mustSize($0, timeSlotSizeBytes)"},
 	{"timeSlotPrefix", "slice($0, 0, 3)"}, // first 4 bytes of any array. It is not time slot yet
-	{"timeSlotFromTimeSlotPrefix", "bitwiseAND($0, 0x3fffffff)"},
+	{"timeSlotFromTimeSlotPrefix", "bitwiseAND($0, 0x7fffffff)"},
 	{"timeTickFromTimestamp", "byte($0, 4)"},
 	{"timestamp", "concat(mustValidTimeSlot($0),mustValidTimeTick($1))"},
-	// takes first 5 bytes and sets first 2 bit to zero
-	{"timestampPrefix", "bitwiseAND(slice($0, 0, 4), 0x3fffffffff)"},
-	{"slotsSinceOrigin", "timeSlotFromTimeSlotPrefix(timeSlotPrefix($0)"},
-	{"ticksSinceOrigin", "add(mul(slotsSinceOrigin, ticksPerSlot64), timeTickFromTimestamp($0))"},
+	// takes first 5 bytes and sets first bit to zero
+	{"timestampPrefix", "bitwiseAND(slice($0, 0, 4), 0x7fffffffff)"},
+	{"slotsSinceOrigin", "timeSlotFromTimeSlotPrefix(timeSlotPrefix($0))"},
+	{"ticksSinceOrigin", "add(mul(slotsSinceOrigin($0), ticksPerSlot64), timeTickFromTimestamp($0))"},
 }
 
 func (lib *Library) upgrade0WithBaseConstants(id *IdentityData) {
@@ -296,9 +296,9 @@ func (lib *Library) upgrade0WithBaseConstants(id *IdentityData) {
 		// inline tests
 		libraryGlobal.MustEqual("timestamp(u32/255, 21)", MustNewLedgerTime(255, 21).Hex())
 		libraryGlobal.MustEqual("ticksBefore(timestamp(u32/100, 5), timestamp(u32/101, 10))", "u64/105")
-		libraryGlobal.MustError("timestamp(u32/255, 100)", "wrong timeslot")
+		libraryGlobal.MustError("timestamp(u32/255, 100)", "wrong ticks value")
 		libraryGlobal.MustError("mustValidTimeSlot(255)", "wrong data size")
-		libraryGlobal.MustError("mustValidTimeTick(200)", "wrong timeslot")
+		libraryGlobal.MustError("mustValidTimeTick(200)", "wrong ticks value")
 		libraryGlobal.MustEqual("mustValidTimeSlot(u32/255)", Slot(255).Hex())
 		libraryGlobal.MustEqual("mustValidTimeTick(88)", Tick(88).String())
 	})
