@@ -180,7 +180,7 @@ func TransactionIDStringVeryShort(ts Time, txHash TransactionIDShort, sequencerF
 }
 
 func TransactionIDAsFileName(ts Time, txHash TransactionIDShort, sequencerFlag, branchFlag bool) string {
-	return fmt.Sprintf("%s_%s.tx", timestampPrefixStringAsFileName(ts, sequencerFlag, branchFlag), hex.EncodeToString(txHash[:]))
+	return fmt.Sprintf("%s_%s", timestampPrefixStringAsFileName(ts, sequencerFlag, branchFlag), hex.EncodeToString(txHash[:]))
 }
 
 func (txid *TransactionID) String() string {

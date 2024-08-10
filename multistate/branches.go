@@ -67,7 +67,7 @@ func (r *RootRecord) Bytes() []byte {
 	return arr.Bytes()
 }
 
-func (r *RootRecord) String() string {
+func (r *RootRecord) StringShort() string {
 	return fmt.Sprintf("root record %s, %s, %s, %d",
 		r.SequencerID.StringShort(), util.Th(r.LedgerCoverage), r.Root.String(), r.NumTransactions)
 }
