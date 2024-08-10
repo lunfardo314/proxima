@@ -19,7 +19,7 @@ func initAccountsCmd() *cobra.Command {
 }
 
 func runAccountsCmd(_ *cobra.Command, _ []string) {
-	glb.InitLedger()
+	glb.InitLedgerFromDB()
 	defer glb.CloseDatabases()
 
 	glb.Infof("---------------- account totals at the heaviest branch ------------------")

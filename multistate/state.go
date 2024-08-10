@@ -261,6 +261,10 @@ func (r *Readable) MustLedgerIdentityBytes() []byte {
 	return r.trie.Get(nil)
 }
 
+func (r *Readable) Iterator(prefix []byte) common.KVIterator {
+	return r.trie.Iterator(prefix)
+}
+
 // IterateKnownCommittedTransactions iterates transaction IDs in the state. Optionally, iteration is restricted
 // for a slot. In that case first iterates non-sequencer transactions, the sequencer transactions
 func (r *Readable) IterateKnownCommittedTransactions(fun func(txid *ledger.TransactionID, slot ledger.Slot) bool, txidSlot ...ledger.Slot) {
@@ -271,6 +275,7 @@ func (r *Readable) IterateKnownCommittedTransactions(fun func(txid *ledger.Trans
 	if len(txidSlot) > 0 {
 		prefixSeq, prefixNoSeq = txidSlot[0].TransactionIDPrefixes()
 	}
+	// TODO refactor with Iterator()
 	iter := common.MakeTraversableReaderPartition(r.trie, PartitionCommittedTransactionID).Iterator(prefixNoSeq)
 	var slot ledger.Slot
 	exit := false

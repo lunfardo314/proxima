@@ -21,7 +21,7 @@ func initBranchesCmd() *cobra.Command {
 }
 
 func runBranchesCmd(_ *cobra.Command, args []string) {
-	glb.InitLedger()
+	glb.InitLedgerFromDB()
 	defer glb.CloseDatabases()
 
 	const defaultLastNSlots = 5

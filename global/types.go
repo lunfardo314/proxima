@@ -127,9 +127,13 @@ func IsHealthyCoverage(coverage, supply uint64, fraction Fraction) bool {
 	return coverage > (uint64(fraction.Numerator)*supply)/uint64(fraction.Denominator)
 }
 
+func (f *Fraction) String() string {
+	return fmt.Sprintf("%d/%d", f.Numerator, f.Denominator)
+}
+
 func IsHealthyCoverageString(coverage, supply uint64, fraction Fraction) string {
 	if IsHealthyCoverage(coverage, supply, fraction) {
-		return fmt.Sprintf("healthy > %d/%d supply", fraction.Numerator, fraction.Denominator)
+		return fmt.Sprintf("healthy > %s supply", fraction.String())
 	}
-	return fmt.Sprintf("not-healthy <= %d/%d supply", fraction.Numerator, fraction.Denominator)
+	return fmt.Sprintf("not-healthy <= %s supply", fraction.String())
 }

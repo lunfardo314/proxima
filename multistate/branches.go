@@ -400,13 +400,15 @@ func FindFirstBranch(store global.StateStoreReader, filter func(branch *BranchDa
 }
 
 // FindLatestHealthySlot finds latest slot, which contains branch with coverage > numerator/denominator * totalSupply
-func FindLatestHealthySlot(store global.StateStoreReader, fraction global.Fraction) ledger.Slot {
+// Return false flag if not found
+func FindLatestHealthySlot(store global.StateStoreReader, fraction global.Fraction) (ledger.Slot, bool) {
 	ret := FindFirstBranch(store, func(branch *BranchData) bool {
 		return branch.IsHealthy(fraction)
 	})
-	// healthy branch always exist
-	util.Assertf(ret != nil, "inconsistency: cannot find healthy branch")
-	return ret.Stem.ID.Slot()
+	if ret == nil {
+		return 0, false
+	}
+	return ret.Stem.ID.Slot(), true
 }
 
 func (br *BranchData) IsHealthy(fraction global.Fraction) bool {

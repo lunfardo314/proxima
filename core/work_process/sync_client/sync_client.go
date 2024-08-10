@@ -107,7 +107,9 @@ func (d *SyncClient) syncManagerLoop() {
 }
 
 func (d *SyncClient) checkSync(endOfPortion bool) {
-	latestHealthySlotInDB := multistate.FindLatestHealthySlot(d.StateStore(), FractionHealthyBranchCriterion)
+	latestHealthySlotInDB, healthySloExists := multistate.FindLatestHealthySlot(d.StateStore(), FractionHealthyBranchCriterion)
+	// TODO assuming healthy slot
+	util.Assertf(healthySloExists, "assuming healthy slot exists FIX IT")
 	d.latestHealthySlotInDB.Store(uint32(latestHealthySlotInDB)) // cache
 
 	slotNow := ledger.TimeNow().Slot()

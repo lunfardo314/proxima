@@ -15,9 +15,9 @@ var (
 	txBytesStore global.TxBytesStore
 )
 
-func InitLedger(verbose ...bool) {
+func InitLedgerFromDB(verbose ...bool) {
 	dbName := global.MultiStateDBName
-	Infof("Multi-state store database: %s", dbName)
+	Infof("Multi-state database: %s", dbName)
 	FileMustExist(dbName)
 	stateDB = badger_adaptor.MustCreateOrOpenBadgerDB(dbName)
 	stateStore = badger_adaptor.New(stateDB)

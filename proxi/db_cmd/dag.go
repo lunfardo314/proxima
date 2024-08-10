@@ -31,7 +31,7 @@ func initDBDAGCmd() *cobra.Command {
 }
 
 func runDbDAGCmd(_ *cobra.Command, args []string) {
-	glb.InitLedger()
+	glb.InitLedgerFromDB()
 	glb.InitTxStoreDB()
 
 	defer glb.CloseDatabases()

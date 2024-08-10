@@ -20,7 +20,7 @@ func initListCmd() *cobra.Command {
 }
 
 func runListCmd(_ *cobra.Command, args []string) {
-	glb.InitLedger()
+	glb.InitLedgerFromDB()
 	glb.InitTxStoreDB()
 	defer glb.CloseDatabases()
 

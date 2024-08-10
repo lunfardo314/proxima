@@ -246,7 +246,10 @@ func (d *MemDAG) LatestBranchSlots() (slot, healthySlot ledger.Slot, synced bool
 		}
 	}
 	if d.latestHealthyBranchSlot == 0 {
-		d.latestHealthyBranchSlot = multistate.FindLatestHealthySlot(d.StateStore(), global.FractionHealthyBranch)
+		// TODO take into account
+		healthyExists := false
+		d.latestHealthyBranchSlot, healthyExists = multistate.FindLatestHealthySlot(d.StateStore(), global.FractionHealthyBranch)
+		util.Assertf(healthyExists, "assume healthy slot exists: FIX IT")
 	}
 	nowSlot := ledger.TimeNow().Slot()
 	// synced criterion. latest slot max 3 behind, latest healthy max 6 behind
