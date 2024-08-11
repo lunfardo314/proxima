@@ -9,6 +9,7 @@ import (
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/proxi/init_cmd"
 	"github.com/lunfardo314/proxima/proxi/node_cmd"
+	"github.com/lunfardo314/proxima/proxi/snapshot_cmd"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -43,6 +44,7 @@ and withdraw funds from the sequencer chain
 		db_cmd.Init(),
 		node_cmd.Init(),
 		gen_cmd.Init(),
+		snapshot_cmd.Init(),
 	)
 	rootCmd.InitDefaultHelpCmd()
 	if err = rootCmd.Execute(); err != nil {

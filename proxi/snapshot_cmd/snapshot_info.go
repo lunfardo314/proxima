@@ -1,4 +1,4 @@
-package db_cmd
+package snapshot_cmd
 
 import (
 	"encoding/json"
@@ -12,8 +12,8 @@ import (
 
 func initSnapshotInfoCmd() *cobra.Command {
 	snapshotInfoCmd := &cobra.Command{
-		Use:   "snapshot_info",
-		Short: "writes state snapshot to file",
+		Use:   "info",
+		Short: "reads snapshot file and displays main info",
 		Args:  cobra.ExactArgs(1),
 		Run:   runSnapshotInfoCmd,
 	}

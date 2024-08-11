@@ -1,11 +1,10 @@
-package db_cmd
+package snapshot_cmd
 
 import (
 	"encoding/json"
 	"time"
 
 	"github.com/lunfardo314/proxima/global"
-	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/util"
@@ -18,9 +17,9 @@ type snapshotHeader struct {
 	Version     string `json:"version"`
 }
 
-func initSnapshotCmd() *cobra.Command {
+func initSnapshotDBCmd() *cobra.Command {
 	snapshotCmd := &cobra.Command{
-		Use:   "snapshot",
+		Use:   "db",
 		Short: "writes state snapshot to file",
 		Args:  cobra.NoArgs,
 		Run:   runSnapshotCmd,
@@ -35,19 +34,8 @@ const versionString = "ver 0"
 func runSnapshotCmd(_ *cobra.Command, _ []string) {
 	glb.InitLedgerFromDB()
 
-	fraction := global.Fraction23
-	latestHealthySlot, exists := multistate.FindLatestHealthySlot(glb.StateStore(), fraction)
-	glb.Assertf(exists, "healthy slot (%s) does not exist. Can't proceed", fraction.String())
-
-	glb.Infof("latest healthy (%s) slot is %d\nNow is slot %d", fraction.String(), latestHealthySlot, ledger.TimeNow().Slot())
-
-	roots := multistate.FetchRootRecords(glb.StateStore(), latestHealthySlot)
-	root := util.Maximum(roots, func(r1, r2 multistate.RootRecord) bool {
-		return r1.LedgerCoverage < r2.LedgerCoverage
-	})
-
-	branch := multistate.FetchBranchDataByRoot(glb.StateStore(), root)
-	glb.Infof("using:\n     branch: %s\n     root:   %s", util.Ref(branch.Stem.ID.TransactionID()).String(), branch.Root.String())
+	latestReliableBranch, found := multistate.FindLatestReliableBranch(glb.StateStore(), global.FractionHealthyBranch)
+	glb.Assertf(found, "the reliable branch has not been found: cannot proceed with snapshot")
 
 	header := snapshotHeader{
 		Description: "Proxima snapshot file",
@@ -58,7 +46,7 @@ func runSnapshotCmd(_ *cobra.Command, _ []string) {
 	headerBin, err := json.Marshal(&header)
 	glb.AssertNoError(err)
 
-	fname := snapshotFileName(branch)
+	fname := snapshotFileName(latestReliableBranch)
 	glb.Infof("writing state snapshot to file %s", fname)
 
 	target, err := common.CreateKVStreamFile(fname)
@@ -69,10 +57,10 @@ func runSnapshotCmd(_ *cobra.Command, _ []string) {
 	glb.AssertNoError(err)
 
 	// write root record
-	err = target.Write(nil, root.Bytes())
+	err = target.Write(nil, latestReliableBranch.Root.Bytes())
 	glb.AssertNoError(err)
 
-	err = multistate.WriteSnapshot(glb.StateStore(), target, root.Root)
+	err = multistate.WriteSnapshot(glb.StateStore(), target, latestReliableBranch.Root)
 	glb.AssertNoError(err)
 
 	_ = target.Close()
@@ -81,6 +69,6 @@ func runSnapshotCmd(_ *cobra.Command, _ []string) {
 	glb.Infof("success")
 }
 
-func snapshotFileName(branch multistate.BranchData) string {
+func snapshotFileName(branch *multistate.BranchData) string {
 	return util.Ref(branch.Stem.ID.TransactionID()).AsFileName() + ".snapshot"
 }

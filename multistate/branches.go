@@ -373,14 +373,6 @@ func MustSequencerOutputOfBranch(store common.KVReader, txid ledger.TransactionI
 	}
 }
 
-func IterateSlotsBack(store global.StateStoreReader, fun func(slot ledger.Slot, roots []RootRecord) bool) {
-	for slot := FetchLatestCommittedSlot(store); ; slot-- {
-		if !fun(slot, FetchRootRecords(store, slot)) || slot == 0 {
-			return
-		}
-	}
-}
-
 func FindFirstBranch(store global.StateStoreReader, filter func(branch *BranchData) bool) *BranchData {
 	var ret BranchData
 	found := false
@@ -432,16 +424,30 @@ func FirstHealthySlotIsNotBefore(store global.StateStoreReader, refSlot ledger.S
 	return
 }
 
-// FindRootsFromLatestHealthySlot return all roots from
-// the latest slot which contains healthy root
+// IterateSlotsBack iterates slots form latest committed slot descending
+// TODO may be very inefficient when only slots from snapshot exists in the DB
+//
+//	solution may be additional index information in DB about existing slots
+func IterateSlotsBack(store global.StateStoreReader, fun func(slot ledger.Slot, roots []RootRecord) bool) {
+	for slot := FetchLatestCommittedSlot(store); ; slot-- {
+		if !fun(slot, FetchRootRecords(store, slot)) || slot == 0 {
+			return
+		}
+	}
+}
+
+// FindRootsFromLatestHealthySlot return all roots from the latest slot which contains at least one healthy root
+// Note that in theory it may not exist at all. Normally it will exist tho, because:
+// - either database contain branches down to genesis
+// - or it was started from snapshot which (normally) represents healthy state
 func FindRootsFromLatestHealthySlot(store global.StateStoreReader, fraction global.Fraction) ([]RootRecord, bool) {
 	var rootsFound []RootRecord
 
 	IterateSlotsBack(store, func(slot ledger.Slot, roots []RootRecord) bool {
-		rMax := util.Maximum(roots, func(r1, r2 RootRecord) bool {
-			return r1.LedgerCoverage < r2.LedgerCoverage
+		maxElemIdx := util.MaximumElementIndex(roots, func(i, j int) bool {
+			return roots[i].LedgerCoverage < roots[j].LedgerCoverage
 		})
-		if global.IsHealthyCoverage(rMax.LedgerCoverage, rMax.Supply, fraction) {
+		if global.IsHealthyCoverage(roots[maxElemIdx].LedgerCoverage, roots[maxElemIdx].Supply, fraction) {
 			rootsFound = roots
 			return false
 		}
@@ -450,64 +456,81 @@ func FindRootsFromLatestHealthySlot(store global.StateStoreReader, fraction glob
 	return rootsFound, len(rootsFound) > 0
 }
 
-func FindLatestReliableBranch(store global.StateStoreReader, fraction global.Fraction) (*BranchData, bool) {
-	tipRoots, ok := FindRootsFromLatestHealthySlot(store, fraction)
-	if !ok {
-		return nil, false
-	}
-	if len(tipRoots) == 1 {
-		ret := FetchBranchDataByRoot(store, tipRoots[0])
-		return &ret, true
-	}
-	util.Assertf(len(tipRoots) > 0, "len(tipRoots)>1")
-	rootMax := util.Maximum(tipRoots, func(r1, r2 RootRecord) bool {
-		return r1.LedgerCoverage < r2.LedgerCoverage
-	})
-	util.Assertf(global.IsHealthyCoverage(rootMax.LedgerCoverage, rootMax.Supply, fraction),
-		"global.IsHealthyCoverage(rootMax.LedgerCoverage, rootMax.Supply, fraction)")
-
-	readers := make([]*Readable, 0, len(tipRoots)-1)
-	for i := range tipRoots {
-		if ledger.CommitmentModel.EqualCommitments(tipRoots[i].Root, rootMax.Root) {
-			continue
-		}
-		if global.IsHealthyCoverage(tipRoots[i].LedgerCoverage, tipRoots[i].Supply, global.FractionHalf) {
-			readers = append(readers, MustNewReadable(store, tipRoots[i].Root))
-		}
-	}
-	util.Assertf(len(readers) > 0, "len(readers)>0")
-
-	branchTip := FetchBranchDataByRoot(store, rootMax)
-	var branchFound *BranchData
-
-	IterateBranchPastChain(store, &branchTip, func(branchID *ledger.TransactionID, branch *BranchData) bool {
-		for _, rdr := range readers {
-			if !rdr.KnowsCommittedTransaction(branchID) {
-				return true
-			}
-		}
-		// branchID is known in all tip states
-		branchFound = branch
-		return false
-	})
-	return branchFound, branchFound != nil
-}
-
-// IterateBranchPastChain iterates past chain of the tip branch (not including the tip)
-func IterateBranchPastChain(store global.StateStoreReader, tip *BranchData, fun func(branchID *ledger.TransactionID, branch *BranchData) bool) {
-	branch := tip
+// IterateBranchChainBack iterates past chain of the tip branch (including the tip)
+// Stops when current branch have no predecessor
+func IterateBranchChainBack(store global.StateStoreReader, branch *BranchData, fun func(branchID *ledger.TransactionID, branch *BranchData) bool) {
+	branchID := branch.Stem.ID.TransactionID()
 	for {
+		if !fun(&branchID, branch) {
+			return
+		}
 		stemLock, ok := branch.Stem.Output.StemLock()
 		util.Assertf(ok, "inconsistency: can't find stem lock")
 
-		branchID := stemLock.PredecessorOutputID.TransactionID()
+		branchID = stemLock.PredecessorOutputID.TransactionID()
 		root, found := FetchRootRecord(store, branchID)
 		if !found {
 			return
 		}
 		branch = util.Ref(FetchBranchDataByRoot(store, root))
-		if !fun(&branchID, branch) {
-			return
+	}
+}
+
+// FindLatestReliableBranch reliable branch is the latest branch, which is contained in any
+// tip from the latest healthy branch with ledger coverage bigger than total supply
+// Reliable branch is the latest global consensus state with big probability
+func FindLatestReliableBranch(store global.StateStoreReader, fraction global.Fraction) (*BranchData, bool) {
+	tipRoots, ok := FindRootsFromLatestHealthySlot(store, fraction)
+	if !ok {
+		// if healthy slot does not exist, reliable branch does not exist too
+		return nil, false
+	}
+	if len(tipRoots) == 1 {
+		// if only one branch is in the latest healthy slot, it is the one reliable
+		return util.Ref(FetchBranchDataByRoot(store, tipRoots[0])), true
+	}
+	// there are several roots. We start traversing back from the heaviest one
+	util.Assertf(len(tipRoots) > 0, "len(tipRoots)>1")
+	rootMaxIdx := util.MaximumElementIndex(tipRoots, func(i, j int) bool {
+		return tipRoots[i].LedgerCoverage < tipRoots[j].LedgerCoverage
+	})
+	util.Assertf(global.IsHealthyCoverage(tipRoots[rootMaxIdx].LedgerCoverage, tipRoots[rootMaxIdx].Supply, fraction),
+		"global.IsHealthyCoverage(rootMax.LedgerCoverage, rootMax.Supply, fraction)")
+
+	// we will be checking if transaction is contained in all roots from the latest healthy slot
+	// For this we are creating a collection of state readers
+	readers := make([]*Readable, 0, len(tipRoots)-1)
+	for i := range tipRoots {
+		if ledger.CommitmentModel.EqualCommitments(tipRoots[i].Root, tipRoots[rootMaxIdx].Root) {
+			// no need to check for the heaviest one
+			continue
+		}
+		if global.IsHealthyCoverage(tipRoots[i].LedgerCoverage, tipRoots[i].Supply, global.FractionHalf) {
+			// we will only check those tips which has coverage at least the supply
+			readers = append(readers, MustNewReadable(store, tipRoots[i].Root))
 		}
 	}
+	util.Assertf(len(readers) > 0, "len(readers)>0")
+
+	branchTip := FetchBranchDataByRoot(store, tipRoots[rootMaxIdx])
+	var branchFound *BranchData
+
+	first := true
+	IterateBranchChainBack(store, &branchTip, func(branchID *ledger.TransactionID, branch *BranchData) bool {
+		if first {
+			first = false
+			return true
+		}
+		for _, rdr := range readers {
+			if !rdr.KnowsCommittedTransaction(branchID) {
+				// the transaction is not known by at least one of selected states, it is not a reliable branch
+				// keep traversing
+				return true
+			}
+		}
+		// branchID is known in all tip states. It is the reliable  one
+		branchFound = branch
+		return false
+	})
+	return branchFound, branchFound != nil
 }

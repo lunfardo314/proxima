@@ -98,6 +98,23 @@ func Maximum[T any](lst []T, less func(el1, el2 T) bool) T {
 	return ret
 }
 
+func MaximumElementIndex[T any](lst []T, less func(i1, i2 int) bool) int {
+	Assertf(len(lst) > 0, "len(lst)>0")
+	var ret int
+	first := true
+	for i := range lst {
+		if first {
+			ret = i
+			first = false
+			continue
+		}
+		if less(ret, i) {
+			ret = i
+		}
+	}
+	return ret
+}
+
 func Minimum[T any](lst []T, less func(el1, el2 T) bool) T {
 	var ret T
 	first := true
