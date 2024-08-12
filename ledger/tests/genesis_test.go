@@ -56,6 +56,9 @@ func TestInitOrigin(t *testing.T) {
 	require.EqualValues(t, ledger.GenesisOutputID(), initSupplyOut.ID)
 
 	require.EqualValues(t, id.Bytes(), rdr.MustLedgerIdentityBytes())
+
+	require.EqualValues(t, 0, multistate.FetchLatestCommittedSlot(store))
+	require.EqualValues(t, 0, multistate.FetchEarliestSlot(store))
 }
 
 func TestBoostrapSequencerID(t *testing.T) {

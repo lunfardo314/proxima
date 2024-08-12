@@ -16,8 +16,9 @@ import (
 // two additional partitions of the k/v store
 const (
 	// rootRecordDBPartition
-	rootRecordDBPartition = immutable.PartitionOther
-	latestSlotDBPartition = rootRecordDBPartition + 1
+	rootRecordDBPartition   = immutable.PartitionOther
+	latestSlotDBPartition   = rootRecordDBPartition + 1
+	earliestSlotDBPartition = latestSlotDBPartition + 1
 )
 
 func writeRootRecord(w common.KVWriter, branchTxID ledger.TransactionID, rootData RootRecord) {
@@ -29,12 +30,27 @@ func writeLatestSlot(w common.KVWriter, slot ledger.Slot) {
 	w.Set([]byte{latestSlotDBPartition}, slot.Bytes())
 }
 
+func writeEarliestSlot(w common.KVWriter, slot ledger.Slot) {
+	w.Set([]byte{earliestSlotDBPartition}, slot.Bytes())
+}
+
 // FetchLatestCommittedSlot fetches latest recorded slot
 func FetchLatestCommittedSlot(store common.KVReader) ledger.Slot {
 	bin := store.Get([]byte{latestSlotDBPartition})
 	if len(bin) == 0 {
 		return 0
 	}
+	ret, err := ledger.SlotFromBytes(bin)
+	util.AssertNoError(err)
+	return ret
+}
+
+// FetchEarliestSlot return earliest slot among roots in the multi-state DB.
+// It is set when multi-state DB is initialized and then remains immutable. For genesis databse it is 0,
+// For DB created from snapshot it is slot of the snapshot
+func FetchEarliestSlot(store common.KVReader) ledger.Slot {
+	bin := store.Get([]byte{earliestSlotDBPartition})
+	util.Assertf(len(bin) > 0, "internal error: earliest state is not set")
 	ret, err := ledger.SlotFromBytes(bin)
 	util.AssertNoError(err)
 	return ret
@@ -424,15 +440,15 @@ func FirstHealthySlotIsNotBefore(store global.StateStoreReader, refSlot ledger.S
 	return
 }
 
-// IterateSlotsBack iterates slots form latest committed slot descending
-// TODO may be very inefficient when only slots from snapshot exists in the DB
-//
-//	solution may be additional index information in DB about existing slots
+// IterateSlotsBack iterates  descending slots from latest committed slot down to the earliest available
 func IterateSlotsBack(store global.StateStoreReader, fun func(slot ledger.Slot, roots []RootRecord) bool) {
-	for slot := FetchLatestCommittedSlot(store); ; slot-- {
-		if !fun(slot, FetchRootRecords(store, slot)) || slot == 0 {
+	earliest := FetchEarliestSlot(store)
+	slot := FetchLatestCommittedSlot(store)
+	for {
+		if !fun(slot, FetchRootRecords(store, slot)) || slot == earliest {
 			return
 		}
+		slot--
 	}
 }
 

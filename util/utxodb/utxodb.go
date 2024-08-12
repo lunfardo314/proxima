@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 
+	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/ledger/txbuilder"
@@ -20,6 +21,7 @@ import (
 // It is always final, does not have finality gadget nor the milestone chain
 // It is mainly used for testing of constraints
 type UTXODB struct {
+	store             global.StateStore
 	state             *multistate.Updatable
 	genesisChainID    ledger.ChainID
 	supply            uint64
@@ -69,6 +71,7 @@ func NewUTXODB(genesisPrivateKey ed25519.PrivateKey, trace ...bool) *UTXODB {
 	util.AssertNoError(err)
 
 	ret := &UTXODB{
+		store:                     stateStore,
 		state:                     updatable,
 		genesisChainID:            originChainID,
 		supply:                    initLedgerParams.InitialSupply,
@@ -121,14 +124,17 @@ func (u *UTXODB) FaucetAddress() ledger.AddressED25519 {
 // succeed while indexer fails. In that case indexer can be updated from ledger state
 func (u *UTXODB) AddTransaction(txBytes []byte, onValidationError ...func(ctx *transaction.TxContext, err error) error) error {
 	var err error
+	var tx *transaction.Transaction
 	if u.trace {
-		_, err = updateValidateDebug(u.state, txBytes, onValidationError...)
+		tx, err = updateValidateDebug(u.state, txBytes, onValidationError...)
 	} else {
-		_, err = updateValidateNoDebug(u.state, txBytes)
+		tx, err = updateValidateNoDebug(u.state, txBytes)
 	}
 	if err != nil {
 		return err
 	}
+	util.Assertf(!tx.IsBranchTransaction() || multistate.FetchLatestCommittedSlot(u.store) == tx.Slot(), "latestSlot == prevLatestSlot || latestSlot == tx.Slot()")
+	util.Assertf(multistate.FetchEarliestSlot(u.store) == 0, "earliest slot in the UTXODB is expected to be 0")
 	return nil
 }
 

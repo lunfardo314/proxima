@@ -25,11 +25,12 @@ func InitStateStore(par ledger.IdentityData, store global.StateStore) (ledger.Ch
 
 	updatable := MustNewUpdatable(store, emptyRoot)
 	updatable.MustUpdate(genesisUpdateMutations(&gout.OutputWithID, gStemOut), &RootRecordParams{
-		StemOutputID:  gStemOut.ID,
-		SeqID:         gout.ChainID,
-		Coverage:      par.InitialSupply,
-		SlotInflation: par.InitialSupply,
-		Supply:        par.InitialSupply,
+		StemOutputID:      gStemOut.ID,
+		SeqID:             gout.ChainID,
+		Coverage:          par.InitialSupply,
+		SlotInflation:     par.InitialSupply,
+		Supply:            par.InitialSupply,
+		WriteEarliestSlot: true,
 	})
 	return gout.ChainID, updatable.Root()
 }

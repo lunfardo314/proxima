@@ -382,12 +382,13 @@ func (u *Updatable) Root() common.VCommitment {
 }
 
 type RootRecordParams struct {
-	StemOutputID    ledger.OutputID
-	SeqID           ledger.ChainID
-	Coverage        uint64
-	SlotInflation   uint64
-	Supply          uint64
-	NumTransactions uint32
+	StemOutputID      ledger.OutputID
+	SeqID             ledger.ChainID
+	Coverage          uint64
+	SlotInflation     uint64
+	Supply            uint64
+	NumTransactions   uint32
+	WriteEarliestSlot bool
 }
 
 // Update updates trie with mutations
@@ -413,6 +414,9 @@ func (u *Updatable) updateUTXOLedgerDB(updateFun func(updatable *immutable.TrieU
 		latestSlot := FetchLatestCommittedSlot(u.store)
 		if latestSlot < rootRecordsParams.StemOutputID.Slot() {
 			writeLatestSlot(batch, rootRecordsParams.StemOutputID.Slot())
+		}
+		if rootRecordsParams.WriteEarliestSlot {
+			writeEarliestSlot(batch, rootRecordsParams.StemOutputID.Slot())
 		}
 		branchID := rootRecordsParams.StemOutputID.TransactionID()
 		writeRootRecord(batch, branchID, RootRecord{
