@@ -112,6 +112,12 @@ func (id *IdentityData) Bytes() []byte {
 }
 
 func MustLedgerIdentityDataFromBytes(data []byte) *IdentityData {
+	ret, err := IdentityDataFromBytes(data)
+	util.AssertNoError(err)
+	return ret
+}
+
+func IdentityDataFromBytes(data []byte) (*IdentityData, error) {
 	ret := &IdentityData{}
 	rdr := bytes.NewReader(data)
 
@@ -119,67 +125,109 @@ func MustLedgerIdentityDataFromBytes(data []byte) *IdentityData {
 	var n int
 
 	err := binary.Read(rdr, binary.BigEndian, &ret.GenesisTimeUnix)
-	util.AssertNoError(err)
+	if err != nil {
+		return nil, fmt.Errorf("IdentityDataFromBytes: %v", err)
+	}
 
 	buf := make([]byte, ed25519.PublicKeySize)
 	n, err = rdr.Read(buf)
-	util.AssertNoError(err)
-	util.Assertf(n == ed25519.PublicKeySize, "wrong data size")
+	if err != nil {
+		return nil, fmt.Errorf("IdentityDataFromBytes: %v", err)
+	}
+	if n != ed25519.PublicKeySize {
+		return nil, fmt.Errorf("IdentityDataFromBytes: wrong data size")
+	}
 	ret.GenesisControllerPublicKey = buf
 
 	err = binary.Read(rdr, binary.BigEndian, &ret.InitialSupply)
-	util.AssertNoError(err)
+	if err != nil {
+		return nil, fmt.Errorf("IdentityDataFromBytes: %v", err)
+	}
 
 	var bufNano int64
 	err = binary.Read(rdr, binary.BigEndian, &bufNano)
-	util.AssertNoError(err)
+	if err != nil {
+		return nil, fmt.Errorf("IdentityDataFromBytes: %v", err)
+	}
 	ret.TickDuration = time.Duration(bufNano)
 
 	err = binary.Read(rdr, binary.BigEndian, &ret.MaxTickValueInSlot)
-	util.AssertNoError(err)
+	if err != nil {
+		return nil, fmt.Errorf("IdentityDataFromBytes: %v", err)
+	}
 
 	err = binary.Read(rdr, binary.BigEndian, &ret.BranchInflationBonusBase)
-	util.AssertNoError(err)
+	if err != nil {
+		return nil, fmt.Errorf("IdentityDataFromBytes: %v", err)
+	}
 
 	err = binary.Read(rdr, binary.BigEndian, &ret.ChainInflationPerTickBase)
-	util.AssertNoError(err)
+	if err != nil {
+		return nil, fmt.Errorf("IdentityDataFromBytes: %v", err)
+	}
 
 	err = binary.Read(rdr, binary.BigEndian, &ret.TicksPerInflationEpoch)
-	util.AssertNoError(err)
+	if err != nil {
+		return nil, fmt.Errorf("IdentityDataFromBytes: %v", err)
+	}
 
 	err = binary.Read(rdr, binary.BigEndian, &ret.ChainInflationOpportunitySlots)
-	util.AssertNoError(err)
+	if err != nil {
+		return nil, fmt.Errorf("IdentityDataFromBytes: %v", err)
+	}
 
 	err = binary.Read(rdr, binary.BigEndian, &ret.VBCost)
-	util.AssertNoError(err)
+	if err != nil {
+		return nil, fmt.Errorf("IdentityDataFromBytes: %v", err)
+	}
 
 	err = binary.Read(rdr, binary.BigEndian, &ret.TransactionPace)
-	util.AssertNoError(err)
+	if err != nil {
+		return nil, fmt.Errorf("IdentityDataFromBytes: %v", err)
+	}
 
 	err = binary.Read(rdr, binary.BigEndian, &ret.TransactionPaceSequencer)
-	util.AssertNoError(err)
+	if err != nil {
+		return nil, fmt.Errorf("IdentityDataFromBytes: %v", err)
+	}
 
 	err = binary.Read(rdr, binary.BigEndian, &ret.MinimumAmountOnSequencer)
-	util.AssertNoError(err)
+	if err != nil {
+		return nil, fmt.Errorf("IdentityDataFromBytes: %v", err)
+	}
 
 	err = binary.Read(rdr, binary.BigEndian, &ret.MaxNumberOfEndorsements)
-	util.AssertNoError(err)
+	if err != nil {
+		return nil, fmt.Errorf("IdentityDataFromBytes: %v", err)
+	}
 
 	err = binary.Read(rdr, binary.BigEndian, &ret.PreBranchConsolidationTicks)
-	util.AssertNoError(err)
+	if err != nil {
+		return nil, fmt.Errorf("IdentityDataFromBytes: %v", err)
+	}
 
-	util.Assertf(ret.PreBranchConsolidationTicks < ret.MaxTickValueInSlot, "wrong ledger constants: ret.PreBranchConsolidationTicks < ret.MaxTickValueInSlot")
+	if ret.PreBranchConsolidationTicks >= ret.MaxTickValueInSlot {
+		return nil, fmt.Errorf("wrong ledger constants: ret.PreBranchConsolidationTicks < ret.MaxTickValueInSlot")
+	}
 
 	err = binary.Read(rdr, binary.BigEndian, &size16)
-	util.AssertNoError(err)
+	if err != nil {
+		return nil, fmt.Errorf("IdentityDataFromBytes: %v", err)
+	}
 	buf = make([]byte, size16)
 	n, err = rdr.Read(buf)
-	util.AssertNoError(err)
-	util.Assertf(n == int(size16), "wrong data size")
+	if err != nil {
+		return nil, fmt.Errorf("IdentityDataFromBytes: %v", err)
+	}
+	if n != int(size16) {
+		return nil, fmt.Errorf("IdentityDataFromBytes: wrong data size")
+	}
 	ret.Description = string(buf)
 
-	util.Assertf(rdr.Len() == 0, "not all bytes has been read")
-	return ret
+	if rdr.Len() > 0 {
+		return nil, fmt.Errorf("IdentityDataFromBytes: not all bytes have been read")
+	}
+	return ret, nil
 }
 
 func (id *IdentityData) GenesisTime() time.Time {

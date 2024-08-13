@@ -10,13 +10,23 @@ import (
 	"github.com/lunfardo314/unitrie/immutable"
 )
 
+// CommitEmptyRootWithLedgerIdentity writes ledger identity data as value of the empty key nil.
+// Return root of the empty trie
+func CommitEmptyRootWithLedgerIdentity(par ledger.IdentityData, store global.StateStore) (common.VCommitment, error) {
+	batch := store.BatchedWriter()
+	emptyRoot := immutable.MustInitRoot(batch, ledger.CommitmentModel, par.Bytes())
+	err := batch.Commit()
+	if err != nil {
+		return nil, err
+	}
+	return emptyRoot, nil
+}
+
 // InitStateStore initializes origin ledger state in the empty store
 // Writes initial supply and origin stem outputs. Plus writes root record into the DB
 // Returns root commitment to the genesis ledger state and genesis chainID
 func InitStateStore(par ledger.IdentityData, store global.StateStore) (ledger.ChainID, common.VCommitment) {
-	batch := store.BatchedWriter()
-	emptyRoot := immutable.MustInitRoot(batch, ledger.CommitmentModel, par.Bytes())
-	err := batch.Commit()
+	emptyRoot, err := CommitEmptyRootWithLedgerIdentity(par, store)
 	util.AssertNoError(err)
 
 	genesisAddr := ledger.AddressED25519FromPublicKey(par.GenesisControllerPublicKey)

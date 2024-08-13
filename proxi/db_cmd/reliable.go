@@ -13,7 +13,7 @@ import (
 func initReliableBranchCmd() *cobra.Command {
 	snapshotCmd := &cobra.Command{
 		Use:   "reliable_branch",
-		Short: "finds and displays lates reliable branch in the multistate DB",
+		Short: "finds and displays lates reliable branch in the multi-state DB",
 		Args:  cobra.NoArgs,
 		Run:   runReliableBranchCmd,
 	}

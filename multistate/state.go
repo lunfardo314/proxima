@@ -72,7 +72,11 @@ const (
 
 func LedgerIdentityBytesFromStore(store global.StateStore) []byte {
 	rr := FetchAnyLatestRootRecord(store)
-	trie, err := immutable.NewTrieReader(ledger.CommitmentModel, store, rr.Root, 0)
+	return LedgerIdentityBytesFromRoot(store, rr.Root)
+}
+
+func LedgerIdentityBytesFromRoot(store global.StateStore, root common.VCommitment) []byte {
+	trie, err := immutable.NewTrieReader(ledger.CommitmentModel, store, root, 0)
 	util.AssertNoError(err)
 	return trie.Get(nil)
 }

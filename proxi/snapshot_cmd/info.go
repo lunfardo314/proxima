@@ -3,6 +3,7 @@ package snapshot_cmd
 import (
 	"encoding/json"
 
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/util"
@@ -23,12 +24,7 @@ func initSnapshotInfoCmd() *cobra.Command {
 }
 
 func runSnapshotInfoCmd(_ *cobra.Command, args []string) {
-
-	ReadSnapshotInfo(args[0])
-}
-
-func ReadSnapshotInfo(fname string) {
-	iter, err := common.OpenKVStreamFile(fname)
+	iter, err := common.OpenKVStreamFile(args[0])
 	glb.AssertNoError(err)
 
 	n := 0
@@ -43,10 +39,17 @@ func ReadSnapshotInfo(fname string) {
 			glb.Infof("%s", string(v))
 		case 1:
 			util.Assertf(len(k) == 0, "wrong second key/value pair")
-			root, err := multistate.RootRecordFromBytes(v)
+			var rr multistate.RootRecord
+			rr, err = multistate.RootRecordFromBytes(v)
 			glb.AssertNoError(err)
 
-			glb.Infof("%s", root.StringShort())
+			glb.Infof("%s", rr.StringShort())
+		case 2:
+			util.Assertf(len(k) == 0, "wrong second key/value pair")
+			var id *ledger.IdentityData
+			id, err = ledger.IdentityDataFromBytes(v)
+			glb.AssertNoError(err)
+			glb.Infof("Ledger identity:\n%s", id.String())
 		default:
 		}
 		n++

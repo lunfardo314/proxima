@@ -57,10 +57,14 @@ func runSnapshotCmd(_ *cobra.Command, _ []string) {
 	glb.AssertNoError(err)
 
 	// write root record
-	err = target.Write(nil, latestReliableBranch.Root.Bytes())
+	err = target.Write(nil, latestReliableBranch.RootRecord.Bytes())
 	glb.AssertNoError(err)
 
-	err = multistate.WriteSnapshot(glb.StateStore(), target, latestReliableBranch.Root)
+	// write ledger identity record
+	err = target.Write(nil, multistate.LedgerIdentityBytesFromRoot(glb.StateStore(), latestReliableBranch.Root))
+	glb.AssertNoError(err)
+
+	err = multistate.WriteState(glb.StateStore(), target, latestReliableBranch.Root)
 	glb.AssertNoError(err)
 
 	_ = target.Close()
