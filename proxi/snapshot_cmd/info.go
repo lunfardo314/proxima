@@ -1,13 +1,8 @@
 package snapshot_cmd
 
 import (
-	"encoding/json"
-
-	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/proxi/glb"
-	"github.com/lunfardo314/proxima/util"
-	"github.com/lunfardo314/unitrie/common"
 	"github.com/spf13/cobra"
 )
 
@@ -24,38 +19,12 @@ func initSnapshotInfoCmd() *cobra.Command {
 }
 
 func runSnapshotInfoCmd(_ *cobra.Command, args []string) {
-	iter, err := common.OpenKVStreamFile(args[0])
+	header, id, branchID, rootRecord, kvStream, err := multistate.OpenSnapshotFileStream(args[0])
 	glb.AssertNoError(err)
-
-	n := 0
-	err = iter.Iterate(func(k []byte, v []byte) bool {
-		switch n {
-		case 0:
-			util.Assertf(len(k) == 0, "wrong first key/value pair")
-			var header snapshotHeader
-			err = json.Unmarshal(v, &header)
-			glb.AssertNoError(err)
-
-			glb.Infof("%s", string(v))
-		case 1:
-			util.Assertf(len(k) == 0, "wrong second key/value pair")
-			var rr multistate.RootRecord
-			rr, err = multistate.RootRecordFromBytes(v)
-			glb.AssertNoError(err)
-
-			glb.Infof("%s", rr.StringShort())
-		case 2:
-			util.Assertf(len(k) == 0, "wrong second key/value pair")
-			var id *ledger.IdentityData
-			id, err = ledger.IdentityDataFromBytes(v)
-			glb.AssertNoError(err)
-			glb.Infof("Ledger identity:\n%s", id.String())
-		default:
-		}
-		n++
-		return true
-	})
+	glb.Infof("snapshot file ok. Format version: %s", header.Version)
+	glb.Infof("branch ID: %s", branchID.String())
+	glb.Infof("root record: %s", rootRecord.StringShort())
+	glb.Infof("ledger id:\n%s", id.String())
+	err = kvStream.Close()
 	glb.AssertNoError(err)
-
-	glb.Infof("total %d records", n)
 }

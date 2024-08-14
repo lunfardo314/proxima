@@ -75,7 +75,7 @@ func LedgerIdentityBytesFromStore(store global.StateStore) []byte {
 	return LedgerIdentityBytesFromRoot(store, rr.Root)
 }
 
-func LedgerIdentityBytesFromRoot(store global.StateStore, root common.VCommitment) []byte {
+func LedgerIdentityBytesFromRoot(store global.StateStoreReader, root common.VCommitment) []byte {
 	trie, err := immutable.NewTrieReader(ledger.CommitmentModel, store, root, 0)
 	util.AssertNoError(err)
 	return trie.Get(nil)
@@ -417,13 +417,13 @@ func (u *Updatable) updateUTXOLedgerDB(updateFun func(updatable *immutable.TrieU
 	if rootRecordsParams != nil {
 		latestSlot := FetchLatestCommittedSlot(u.store)
 		if latestSlot < rootRecordsParams.StemOutputID.Slot() {
-			writeLatestSlot(batch, rootRecordsParams.StemOutputID.Slot())
+			WriteLatestSlotRecord(batch, rootRecordsParams.StemOutputID.Slot())
 		}
 		if rootRecordsParams.WriteEarliestSlot {
-			writeEarliestSlot(batch, rootRecordsParams.StemOutputID.Slot())
+			WriteEarliestSlotRecord(batch, rootRecordsParams.StemOutputID.Slot())
 		}
 		branchID := rootRecordsParams.StemOutputID.TransactionID()
-		writeRootRecord(batch, branchID, RootRecord{
+		WriteRootRecord(batch, branchID, RootRecord{
 			Root:            newRoot,
 			SequencerID:     rootRecordsParams.SeqID,
 			LedgerCoverage:  rootRecordsParams.Coverage,

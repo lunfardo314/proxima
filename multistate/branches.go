@@ -21,16 +21,16 @@ const (
 	earliestSlotDBPartition = latestSlotDBPartition + 1
 )
 
-func writeRootRecord(w common.KVWriter, branchTxID ledger.TransactionID, rootData RootRecord) {
+func WriteRootRecord(w common.KVWriter, branchTxID ledger.TransactionID, rootData RootRecord) {
 	key := common.ConcatBytes([]byte{rootRecordDBPartition}, branchTxID[:])
 	w.Set(key, rootData.Bytes())
 }
 
-func writeLatestSlot(w common.KVWriter, slot ledger.Slot) {
+func WriteLatestSlotRecord(w common.KVWriter, slot ledger.Slot) {
 	w.Set([]byte{latestSlotDBPartition}, slot.Bytes())
 }
 
-func writeEarliestSlot(w common.KVWriter, slot ledger.Slot) {
+func WriteEarliestSlotRecord(w common.KVWriter, slot ledger.Slot) {
 	w.Set([]byte{earliestSlotDBPartition}, slot.Bytes())
 }
 

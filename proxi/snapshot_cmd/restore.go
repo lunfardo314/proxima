@@ -2,7 +2,6 @@ package snapshot_cmd
 
 import (
 	"encoding/hex"
-	"encoding/json"
 
 	"github.com/dgraph-io/badger/v4"
 	"github.com/lunfardo314/proxima/global"
@@ -28,70 +27,49 @@ func initRestoreCmd() *cobra.Command {
 	return restoreCmd
 }
 
+const (
+	cacheSize = 5000
+	batchSize = 10000
+)
+
 func runRestoreCmd(_ *cobra.Command, args []string) {
-	iter, err := common.OpenKVStreamFile(args[0])
+	header, id, branchID, rootRecord, kvStream, err := multistate.OpenSnapshotFileStream(args[0])
 	glb.AssertNoError(err)
+	glb.Infof("snapshot file ok. Format version: %s", header.Version)
+	glb.Infof("root record: %s", rootRecord.StringShort())
+	glb.Infof("ledger id:\n%s", id.String())
+	defer func() { _ = kvStream.Close() }()
 
 	stateDb := badger_adaptor.MustCreateOrOpenBadgerDB(global.MultiStateDBName, badger.DefaultOptions(global.MultiStateDBName))
 	stateStore := badger_adaptor.New(stateDb)
 	defer func() { _ = stateStore.Close() }()
 
-	var rootRecord multistate.RootRecord
-	var header snapshotHeader
-	var emptyRoot, lastRoot common.VCommitment
-	var trieUpdatable *immutable.TrieUpdatable
+	emptyRoot, err := multistate.CommitEmptyRootWithLedgerIdentity(*id, stateStore)
+	glb.AssertNoError(err)
+
+	trieUpdatable, err := immutable.NewTrieUpdatable(ledger.CommitmentModel, stateStore, emptyRoot, cacheSize)
+	glb.AssertNoError(err)
+
 	var batch common.KVBatchedWriter
 	var inBatch int
+	var lastRoot common.VCommitment
 
 	n := 0
-	err = iter.Iterate(func(k []byte, v []byte) bool {
-		switch n {
-		case 0:
-			util.Assertf(len(k) == 0, "wrong first key/value pair")
-			err = json.Unmarshal(v, &header)
-			glb.AssertNoError(err)
+	err = kvStream.Iterate(func(k []byte, v []byte) bool {
+		if util.IsNil(batch) {
+			batch = stateStore.BatchedWriter()
+		}
 
-			glb.Infof("%s", string(v))
-		case 1:
-			util.Assertf(len(k) == 0, "wrong second key/value pair")
-			rootRecord, err = multistate.RootRecordFromBytes(v)
-			glb.AssertNoError(err)
+		already := trieUpdatable.Update(k, v)
+		glb.Assertf(!already, "repeating key %s", hex.EncodeToString(k))
+		inBatch++
 
-			glb.Infof("%s", rootRecord.StringShort())
-		case 2:
-			util.Assertf(len(k) == 0, "wrong second key/value pair")
-			var id *ledger.IdentityData
-			id, err = ledger.IdentityDataFromBytes(v)
-			glb.AssertNoError(err)
-			glb.Infof("Ledger identity:\n%s", id.String())
-
-			emptyRoot, err = multistate.CommitEmptyRootWithLedgerIdentity(*id, stateStore)
-			glb.AssertNoError(err)
-
-		default:
-			const (
-				cacheSize = 5000
-				batchSize = 5000
-			)
-			if trieUpdatable == nil {
-				trieUpdatable, err = immutable.NewTrieUpdatable(ledger.CommitmentModel, stateStore, emptyRoot, cacheSize)
-				glb.AssertNoError(err)
-			}
-			if util.IsNil(batch) {
-				batch = stateStore.BatchedWriter()
-			}
-
-			already := trieUpdatable.Update(k, v)
-			glb.Assertf(!already, "repeating key %s", hex.EncodeToString(k))
-			inBatch++
-
-			if inBatch == batchSize {
-				lastRoot = trieUpdatable.Commit(batch)
-				err = batch.Commit()
-				util.AssertNoError(err)
-				inBatch = 0
-				batch = nil
-			}
+		if inBatch == batchSize {
+			lastRoot = trieUpdatable.Commit(batch)
+			err = batch.Commit()
+			util.AssertNoError(err)
+			inBatch = 0
+			batch = nil
 		}
 		n++
 		return true
@@ -106,5 +84,10 @@ func runRestoreCmd(_ *cobra.Command, args []string) {
 	glb.Assertf(ledger.CommitmentModel.EqualCommitments(lastRoot, rootRecord.Root), ""+
 		"inconsistency: final root is not equal to the root record")
 
-	// TODO not finished. Write root record and slot records
+	batch = stateStore.BatchedWriter()
+	multistate.WriteLatestSlotRecord(batch, branchID.Slot())
+	multistate.WriteEarliestSlotRecord(batch, branchID.Slot())
+	multistate.WriteRootRecord(batch, *branchID, *rootRecord)
+	err = batch.Commit()
+	glb.AssertNoError(err)
 }
