@@ -19,12 +19,13 @@ func initSnapshotInfoCmd() *cobra.Command {
 }
 
 func runSnapshotInfoCmd(_ *cobra.Command, args []string) {
-	header, id, branchID, rootRecord, kvStream, err := multistate.OpenSnapshotFileStream(args[0])
+	kvStream, err := multistate.OpenSnapshotFileStream(args[0])
 	glb.AssertNoError(err)
-	glb.Infof("snapshot file ok. Format version: %s", header.Version)
-	glb.Infof("branch ID: %s", branchID.String())
-	glb.Infof("root record: %s", rootRecord.StringShort())
-	glb.Infof("ledger id:\n%s", id.String())
-	err = kvStream.Close()
+	defer kvStream.Close()
+
+	glb.Infof("snapshot file ok. Format version: %s", kvStream.Header.Version)
+	glb.Infof("branch ID: %s", kvStream.BranchID.String())
+	glb.Infof("root record: %s", kvStream.RootRecord.StringShort())
+	glb.Infof("ledger id:\n%s", kvStream.LedgerID.String())
 	glb.AssertNoError(err)
 }

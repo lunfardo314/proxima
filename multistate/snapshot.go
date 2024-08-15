@@ -21,7 +21,7 @@ func WriteState(state global.StateStoreReader, target common.KVStreamWriter, roo
 	rdr.Iterator(nil).Iterate(func(k, v []byte) bool {
 		select {
 		case <-ctx.Done():
-			err = fmt.Errorf("WriteState: state writing interrupted")
+			err = fmt.Errorf("WriteState: state writing has been interrupted")
 		default:
 			if len(k) > 0 {
 				// skip ledger identity record
@@ -110,61 +110,62 @@ func SaveSnapshot(state global.StateStoreReader, ctx context.Context) (*RootReco
 	return &latestReliableBranch.RootRecord, fname, nil
 }
 
+type SnapshotFileStream struct {
+	Header     *SnapshotHeader
+	LedgerID   *ledger.IdentityData
+	BranchID   ledger.TransactionID
+	RootRecord RootRecord
+	InChan     chan common.KVPairOrError
+	Close      func()
+}
+
 // OpenSnapshotFileStream reads first 3 records in the snapshot file and returns
-// iterator of remaining key/value pairs
-func OpenSnapshotFileStream(fname string) (
-	*SnapshotHeader,
-	*ledger.IdentityData,
-	*ledger.TransactionID,
-	*RootRecord,
-	*common.BinaryStreamFileIterator,
-	error) {
+// channel for remaining key/value pairs
+func OpenSnapshotFileStream(fname string) (*SnapshotFileStream, error) {
 	iter, err := common.OpenKVStreamFile(fname)
 	if err != nil {
-		return nil, nil, nil, nil, nil, err
+		return nil, err
 	}
-	var header SnapshotHeader
-	var id *ledger.IdentityData
-	var rootRecord RootRecord
-	var branchID ledger.TransactionID
+	ret := &SnapshotFileStream{}
+	ctx, cancel := context.WithCancel(context.Background())
+	ret.Close = cancel
+	ret.InChan = common.KVStreamIteratorToChan(iter, ctx)
 
-	n := 0
-	err1 := iter.Iterate(func(k []byte, v []byte) bool {
-		switch n {
-		case 0:
-			if len(k) != 0 {
-				err = fmt.Errorf("wrong first key/value pair")
-				return false
-			}
-			if err = json.Unmarshal(v, &header); err != nil {
-				return false
-			}
-		case 1:
-			if branchID, err = ledger.TransactionIDFromBytes(k); err != nil {
-				return false
-			}
-			if rootRecord, err = RootRecordFromBytes(v); err != nil {
-				return false
-			}
-		case 2:
-			if len(k) != 0 {
-				err = fmt.Errorf("wrong second key/value pair")
-				return false
-			}
-			if id, err = ledger.IdentityDataFromBytes(v); err != nil {
-				return false
-			}
-			// stop reading
-			return false
-		}
-		n++
-		return true
-	})
-	if err1 != nil {
-		return nil, nil, nil, nil, nil, err1
+	// read header
+	pair := <-ret.InChan
+	if pair.IsNil() || pair.Err != nil {
+		return nil, fmt.Errorf("OpenSnapshotFileStream: wrong first key/value pair 1")
 	}
-	if n != 2 {
-		return nil, nil, nil, nil, nil, fmt.Errorf("wrong snapshot file format")
+	if len(pair.Key) > 0 {
+		cancel()
+		return nil, fmt.Errorf("OpenSnapshotFileStream: wrong first key/value pair 2")
 	}
-	return &header, id, &branchID, &rootRecord, iter, nil
+	if err = json.Unmarshal(pair.Value, &ret.Header); err != nil {
+		cancel()
+		return nil, fmt.Errorf("OpenSnapshotFileStream: wrong first key/value pair 3")
+	}
+	// read root record
+	pair = <-ret.InChan
+	if pair.IsNil() || pair.Err != nil {
+		return nil, fmt.Errorf("OpenSnapshotFileStream: wrong ssecond key/value pair 1")
+	}
+	if ret.BranchID, err = ledger.TransactionIDFromBytes(pair.Key); err != nil {
+		cancel()
+		return nil, fmt.Errorf("OpenSnapshotFileStream: wrong second key/value pair 2")
+	}
+	if ret.RootRecord, err = RootRecordFromBytes(pair.Value); err != nil {
+		cancel()
+		return nil, fmt.Errorf("OpenSnapshotFileStream: wrong second key/value pair 3")
+	}
+	// read ledger identity
+	pair = <-ret.InChan
+	if pair.IsNil() || pair.Err != nil {
+		return nil, fmt.Errorf("OpenSnapshotFileStream: wrong third key/value pair 1")
+	}
+	ret.LedgerID, err = ledger.IdentityDataFromBytes(pair.Value)
+	if err != nil {
+		cancel()
+		return nil, fmt.Errorf("OpenSnapshotFileStream: wrong third key/value pair 2")
+	}
+	return ret, nil
 }

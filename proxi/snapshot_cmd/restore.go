@@ -33,18 +33,19 @@ const (
 )
 
 func runRestoreCmd(_ *cobra.Command, args []string) {
-	header, id, branchID, rootRecord, kvStream, err := multistate.OpenSnapshotFileStream(args[0])
+	kvStream, err := multistate.OpenSnapshotFileStream(args[0])
 	glb.AssertNoError(err)
-	glb.Infof("snapshot file ok. Format version: %s", header.Version)
-	glb.Infof("root record: %s", rootRecord.StringShort())
-	glb.Infof("ledger id:\n%s", id.String())
-	defer func() { _ = kvStream.Close() }()
+	defer kvStream.Close()
+
+	glb.Infof("snapshot file ok. Format version: %s", kvStream.Header.Version)
+	glb.Infof("root record: %s", kvStream.RootRecord.StringShort())
+	glb.Infof("ledger id:\n%s", kvStream.LedgerID.String())
 
 	stateDb := badger_adaptor.MustCreateOrOpenBadgerDB(global.MultiStateDBName, badger.DefaultOptions(global.MultiStateDBName))
 	stateStore := badger_adaptor.New(stateDb)
 	defer func() { _ = stateStore.Close() }()
 
-	emptyRoot, err := multistate.CommitEmptyRootWithLedgerIdentity(*id, stateStore)
+	emptyRoot, err := multistate.CommitEmptyRootWithLedgerIdentity(*kvStream.LedgerID, stateStore)
 	glb.AssertNoError(err)
 
 	trieUpdatable, err := immutable.NewTrieUpdatable(ledger.CommitmentModel, stateStore, emptyRoot, cacheSize)
@@ -54,14 +55,13 @@ func runRestoreCmd(_ *cobra.Command, args []string) {
 	var inBatch int
 	var lastRoot common.VCommitment
 
-	n := 0
-	err = kvStream.Iterate(func(k []byte, v []byte) bool {
+	for pair := range kvStream.InChan {
 		if util.IsNil(batch) {
 			batch = stateStore.BatchedWriter()
 		}
 
-		already := trieUpdatable.Update(k, v)
-		glb.Assertf(!already, "repeating key %s", hex.EncodeToString(k))
+		already := trieUpdatable.Update(pair.Key, pair.Value)
+		glb.Assertf(!already, "repeating key %s", hex.EncodeToString(pair.Key))
 		inBatch++
 
 		if inBatch == batchSize {
@@ -71,23 +71,20 @@ func runRestoreCmd(_ *cobra.Command, args []string) {
 			inBatch = 0
 			batch = nil
 		}
-		n++
-		return true
-	})
-	glb.AssertNoError(err)
+	}
 	if !util.IsNil(batch) {
 		lastRoot = trieUpdatable.Commit(batch)
 		err = batch.Commit()
 		util.AssertNoError(err)
 	}
 
-	glb.Assertf(ledger.CommitmentModel.EqualCommitments(lastRoot, rootRecord.Root), ""+
+	glb.Assertf(ledger.CommitmentModel.EqualCommitments(lastRoot, kvStream.RootRecord.Root), ""+
 		"inconsistency: final root is not equal to the root record")
 
 	batch = stateStore.BatchedWriter()
-	multistate.WriteLatestSlotRecord(batch, branchID.Slot())
-	multistate.WriteEarliestSlotRecord(batch, branchID.Slot())
-	multistate.WriteRootRecord(batch, *branchID, *rootRecord)
+	multistate.WriteLatestSlotRecord(batch, kvStream.BranchID.Slot())
+	multistate.WriteEarliestSlotRecord(batch, kvStream.BranchID.Slot())
+	multistate.WriteRootRecord(batch, kvStream.BranchID, kvStream.RootRecord)
 	err = batch.Commit()
 	glb.AssertNoError(err)
 }
