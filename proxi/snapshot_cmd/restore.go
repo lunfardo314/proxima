@@ -28,8 +28,8 @@ func initRestoreCmd() *cobra.Command {
 }
 
 const (
-	cacheSize = 5000
-	batchSize = 10000
+	trieCacheSize = 100_000
+	batchSize     = 100_000
 )
 
 func runRestoreCmd(_ *cobra.Command, args []string) {
@@ -48,7 +48,7 @@ func runRestoreCmd(_ *cobra.Command, args []string) {
 	emptyRoot, err := multistate.CommitEmptyRootWithLedgerIdentity(*kvStream.LedgerID, stateStore)
 	glb.AssertNoError(err)
 
-	trieUpdatable, err := immutable.NewTrieUpdatable(ledger.CommitmentModel, stateStore, emptyRoot, cacheSize)
+	trieUpdatable, err := immutable.NewTrieUpdatable(ledger.CommitmentModel, stateStore, emptyRoot, trieCacheSize)
 	glb.AssertNoError(err)
 
 	var batch common.KVBatchedWriter
@@ -79,12 +79,14 @@ func runRestoreCmd(_ *cobra.Command, args []string) {
 	}
 
 	glb.Assertf(ledger.CommitmentModel.EqualCommitments(lastRoot, kvStream.RootRecord.Root), ""+
-		"inconsistency: final root is not equal to the root record")
+		"inconsistency: final root in snapshot is not equal to the root record")
 
+	// write meta-records
 	batch = stateStore.BatchedWriter()
 	multistate.WriteLatestSlotRecord(batch, kvStream.BranchID.Slot())
 	multistate.WriteEarliestSlotRecord(batch, kvStream.BranchID.Slot())
 	multistate.WriteRootRecord(batch, kvStream.BranchID, kvStream.RootRecord)
+
 	err = batch.Commit()
 	glb.AssertNoError(err)
 }
