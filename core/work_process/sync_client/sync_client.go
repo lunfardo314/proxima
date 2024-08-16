@@ -45,7 +45,12 @@ type (
 
 var FractionHealthyBranchCriterion = global.FractionHalf
 
+const disableSyncClient = true
+
 func StartSyncClientFromConfig(env Environment) *SyncClient {
+	if disableSyncClient {
+		return nil // TODO temporary
+	}
 	if !viper.GetBool("workflow.sync_client.enable") {
 		if !viper.GetBool("workflow.sync_manager.enable") {
 			// TODO only for backwards compatibility
@@ -70,7 +75,7 @@ func StartSyncClientFromConfig(env Environment) *SyncClient {
 
 	d.ctx, d.cancel = context.WithCancel(env.Ctx())
 
-	go d.syncManagerLoop()
+	go d.syncClientLoop()
 	return d
 }
 
@@ -86,7 +91,7 @@ const (
 	portionExpectedIn = 10 * time.Second
 )
 
-func (d *SyncClient) syncManagerLoop() {
+func (d *SyncClient) syncClientLoop() {
 	d.Infof0("[sync client] has been started. Sync portion: %d slots. Sync tolerance: %d slots",
 		d.syncPortionSlots, d.syncToleranceThresholdSlots)
 

@@ -274,7 +274,9 @@ func (p *ProximaNode) startMetrics() {
 }
 
 func (p *ProximaNode) SyncServerDisabled() bool {
-	return viper.GetBool("workflow.sync_server.disable")
+	return true // TODO temporary disable
+
+	// return viper.GetBool("workflow.sync_server.disable")
 }
 
 func (p *ProximaNode) goLoggingMemStats() {
