@@ -206,7 +206,7 @@ func (mf *MilestoneFactory) StartProposingForTargetLogicalTime(targetTs ledger.T
 	mf.setNewTarget(targetTs)
 	ctx, cancel := context.WithDeadline(mf.Ctx(), deadline)
 	defer cancel() // to prevent context leak
-	mf.startProposerWorkers(targetTs, ctx)
+	mf.startProposerWorkersOld(targetTs, ctx)
 
 	<-ctx.Done()
 
@@ -269,7 +269,7 @@ func (mf *MilestoneFactory) AttachTagAlongInputs(a *attacher.IncrementalAttacher
 	return
 }
 
-func (mf *MilestoneFactory) startProposerWorkers(targetTime ledger.Time, ctx context.Context) {
+func (mf *MilestoneFactory) startProposerWorkersOld(targetTime ledger.Time, ctx context.Context) {
 	for _, s := range allProposingStrategies() {
 		task := proposer_generic.New(mf, s, targetTime, ctx)
 		if task == nil {
