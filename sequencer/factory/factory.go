@@ -20,6 +20,7 @@ import (
 	"github.com/lunfardo314/proxima/sequencer/factory/proposer_endorse1"
 	"github.com/lunfardo314/proxima/sequencer/factory/proposer_endorse2"
 	"github.com/lunfardo314/proxima/sequencer/factory/proposer_generic"
+	"github.com/lunfardo314/proxima/sequencer/factory/task"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/set"
 	"github.com/spf13/viper"
@@ -54,15 +55,7 @@ type (
 	target struct {
 		mutex     sync.RWMutex
 		targetTs  ledger.Time
-		proposals []proposal
-	}
-
-	proposal struct {
-		tx           *transaction.Transaction
-		txMetadata   *txmetadata.TransactionMetadata
-		extended     vertex.WrappedOutput
-		coverage     uint64
-		attacherName string
+		proposals []task.proposal
 	}
 
 	Stats struct {
@@ -106,7 +99,7 @@ func New(env Environment) (*MilestoneFactory, error) {
 	ret := &MilestoneFactory{
 		Environment: env,
 		target: target{
-			proposals: make([]proposal, 0),
+			proposals: make([]task.proposal, 0),
 		},
 		ownMilestones:     make(map[*vertex.WrappedTx]outputsWithTime),
 		maxTagAlongInputs: env.MaxTagAlongOutputs(),
@@ -295,10 +288,10 @@ func (mf *MilestoneFactory) startProposerWorkersOld(targetTime ledger.Time, ctx 
 				func(err error) bool {
 					if errors.Is(err, vertex.ErrDeletedVertexAccessed) {
 						// do not panic, just abandon
-						mf.Log().Warnf("startProposerWorkers: %v", err)
+						mf.Log().Warnf("startProposers: %v", err)
 						return false
 					}
-					mf.Log().Fatalf("startProposerWorkers: %v", err)
+					mf.Log().Fatalf("startProposers: %v", err)
 					return true
 				})
 		}
@@ -335,7 +328,7 @@ func (mf *MilestoneFactory) proposeNonBranchTx(a *attacher.IncrementalAttacher, 
 	}
 
 	coverage := a.LedgerCoverage()
-	mf.addProposal(proposal{
+	mf.addProposal(task.proposal{
 		tx: tx,
 		txMetadata: &txmetadata.TransactionMetadata{
 			StateRoot:               nil,
@@ -361,7 +354,7 @@ func (mf *MilestoneFactory) proposeBranchTx(a *attacher.IncrementalAttacher, str
 		return err
 	}
 	coverage := a.LedgerCoverage()
-	mf.addProposal(proposal{
+	mf.addProposal(task.proposal{
 		tx: tx,
 		txMetadata: &txmetadata.TransactionMetadata{
 			StateRoot:               nil,
@@ -377,7 +370,7 @@ func (mf *MilestoneFactory) proposeBranchTx(a *attacher.IncrementalAttacher, str
 	return nil
 }
 
-func (mf *MilestoneFactory) addProposal(p proposal) {
+func (mf *MilestoneFactory) addProposal(p task.proposal) {
 	mf.target.mutex.Lock()
 	defer mf.target.mutex.Unlock()
 
