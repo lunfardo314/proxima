@@ -1,0 +1,160 @@
+package task
+
+import (
+	"errors"
+	"time"
+
+	"github.com/lunfardo314/proxima/core/attacher"
+	"github.com/lunfardo314/proxima/core/txmetadata"
+	"github.com/lunfardo314/proxima/core/vertex"
+	"github.com/lunfardo314/proxima/ledger"
+	"github.com/lunfardo314/proxima/ledger/transaction"
+	"github.com/lunfardo314/proxima/multistate"
+	"github.com/lunfardo314/proxima/sequencer/factory/commands"
+	"github.com/lunfardo314/proxima/util"
+)
+
+func (p *Proposer) Run() {
+	defer p.proposersWG.Done()
+
+	var a *attacher.IncrementalAttacher
+	var forceExit bool
+	var err error
+
+	const loopDelay = 10 * time.Millisecond
+	waitExit := func() bool {
+		select {
+		case <-p.ctx.Done():
+			return true
+		case <-time.After(loopDelay):
+		}
+		return false
+	}
+	defer a.Close()
+
+	for {
+		// closing incremental attacher releases all referenced vertices.
+		// it is necessary for correct purging of memDAG vertices, otherwise
+		// it leaks vertices
+		a.Close()
+
+		if a, forceExit = p.strategy.GenerateProposal(p); forceExit {
+			return
+		}
+		if a == nil || !a.Completed() {
+			if waitExit() {
+				return
+			}
+			continue
+		}
+		p.Assertf(a.IsCoverageAdjusted(), "coverage must be adjusted")
+		if err = p.propose(a); err != nil {
+			p.Log().Warnf("%v", err)
+			return
+		}
+		if waitExit() {
+			return
+		}
+	}
+}
+
+func (p *Proposer) propose(a *attacher.IncrementalAttacher) error {
+	util.Assertf(a.TargetTs() == p.targetTs, "a.targetTs() == p.task.targetTs")
+
+	tx, err := p.makeTxProposal(a)
+	util.Assertf(a.IsClosed(), "a.IsClosed()")
+
+	if err != nil {
+		return err
+	}
+	coverage := a.LedgerCoverage()
+	p.proposalChan <- &proposal{
+		tx: tx,
+		txMetadata: &txmetadata.TransactionMetadata{
+			StateRoot:               nil,
+			LedgerCoverage:          util.Ref(coverage),
+			SlotInflation:           util.Ref(a.SlotInflation()),
+			IsResponseToPull:        false,
+			SourceTypeNonPersistent: txmetadata.SourceTypeSequencer,
+		},
+		extended:     a.Extending(),
+		coverage:     coverage,
+		attacherName: a.Name(),
+	}
+	return nil
+}
+
+func (p *Proposer) makeTxProposal(a *attacher.IncrementalAttacher) (*transaction.Transaction, error) {
+	cmdParser := commands.NewCommandParser(ledger.AddressED25519FromPrivateKey(p.ControllerPrivateKey()))
+	nm := p.strategy.ShortName + "." + p.Environment.SequencerName()
+	tx, err := a.MakeSequencerTransaction(nm, p.ControllerPrivateKey(), cmdParser)
+	// attacher and references not needed anymore, should be released
+	a.Close()
+	return tx, err
+}
+
+func (p *Proposer) ChooseExtendEndorsePair() *attacher.IncrementalAttacher {
+	p.Assertf(p.targetTs.Tick() != 0, "targetTs.Tick() != 0")
+	endorseCandidates := p.Backlog().CandidatesToEndorseSorted(p.targetTs)
+	p.Tracef(TraceTagTask, ">>>>>>>>>>>>>>> target %s {%s}",
+		p.targetTs.String, vertex.VerticesShortLines(endorseCandidates).Join(", "))
+
+	seqID := p.SequencerID()
+	var ret *attacher.IncrementalAttacher
+	for _, endorse := range endorseCandidates {
+		if !ledger.ValidTransactionPace(endorse.Timestamp(), p.targetTs) {
+			// cannot endorse candidate because of ledger time constraint
+			p.Tracef(TraceTagTask, ">>>>>>>>>>>>>>> !ledger.ValidTransactionPace")
+			continue
+		}
+		rdr := multistate.MakeSugared(p.GetStateReaderForTheBranch(&endorse.BaselineBranch().ID))
+		seqOut, err := rdr.GetChainOutput(&seqID)
+		if errors.Is(err, multistate.ErrNotFound) {
+			p.Tracef(TraceTagTask, ">>>>>>>>>>>>>>> GetChainOutput not found")
+			continue
+		}
+		p.AssertNoError(err)
+		extendRoot := attacher.AttachOutputID(seqOut.ID, p.Task)
+
+		p.AddOwnMilestone(extendRoot.VID) // to ensure it is in the pool of own milestones
+		futureConeMilestones := p.FutureConeOwnMilestonesOrdered(extendRoot, p.targetTs)
+
+		p.Tracef(TraceTagTask, ">>>>>>>>>>>>>>> check endorsement candidate %s against future cone of extension candidates {%s}",
+			endorse.IDShortString, func() string { return vertex.WrappedOutputsShortLines(futureConeMilestones).Join(", ") })
+
+		if ret = p.chooseEndorseExtendPairAttacher(endorse, futureConeMilestones); ret != nil {
+			p.Tracef(TraceTagTask, ">>>>>>>>>>>>>>> chooseEndorseExtendPairAttacher return %s", ret.Name())
+			return ret
+		}
+	}
+	p.Tracef(TraceTagTask, ">>>>>>>>>>>>>>> chooseEndorseExtendPairAttacher nil")
+	return nil
+}
+
+// ChooseEndorseExtendPairAttacher traverses all known extension options and check each of it with the endorsement target
+// Returns consistent incremental attacher with the biggest ledger coverage
+func (p *Proposer) chooseEndorseExtendPairAttacher(endorse *vertex.WrappedTx, extendCandidates []vertex.WrappedOutput) *attacher.IncrementalAttacher {
+	var ret, a *attacher.IncrementalAttacher
+	var err error
+	for _, extend := range extendCandidates {
+		a, err = attacher.NewIncrementalAttacher(p.Name(), p, p.targetTs, extend, endorse)
+		if err != nil {
+			p.Tracef(TraceTagTask, "%s can't extend %s and endorse %s: %v", p.targetTs.String, extend.IDShortString, endorse.IDShortString, err)
+			continue
+		}
+		// we must carefully dispose unused references, otherwise pruning does not work
+		// we dispose all attachers with their references, except the one with the biggest coverage
+		switch {
+		case !a.Completed():
+			a.Close()
+		case ret == nil:
+			ret = a
+		case a.LedgerCoverage() > ret.LedgerCoverage():
+			ret.Close()
+			ret = a
+		default:
+			a.Close()
+		}
+	}
+	return ret
+}

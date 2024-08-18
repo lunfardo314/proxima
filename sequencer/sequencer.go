@@ -16,6 +16,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/sequencer/backlog"
 	"github.com/lunfardo314/proxima/sequencer/factory"
+	"github.com/lunfardo314/proxima/sequencer/factory/task"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
 	"go.uber.org/zap"
@@ -331,7 +332,7 @@ func (seq *Sequencer) doSequencerStep() bool {
 			seq.Infof0("FAILED to generate transaction for target %s. Now is %s. Reason: '%v'",
 				targetTs, ledger.TimeNow(), err)
 		} else {
-			if !errors.Is(err, factory.ErrNoProposals) {
+			if !errors.Is(err, task.ErrNoProposals) {
 				seq.Log().Warnf("FAILED to generate transaction for target %s. Now is %s. Reason: %v",
 					targetTs, ledger.TimeNow(), err)
 			}

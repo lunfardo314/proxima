@@ -1,7 +1,6 @@
 package factory
 
 import (
-	"context"
 	"crypto/ed25519"
 	"errors"
 	"fmt"
@@ -15,15 +14,9 @@ import (
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/sequencer/backlog"
-	"github.com/lunfardo314/proxima/sequencer/factory/commands"
-	"github.com/lunfardo314/proxima/sequencer/factory/proposer_base"
-	"github.com/lunfardo314/proxima/sequencer/factory/proposer_endorse1"
-	"github.com/lunfardo314/proxima/sequencer/factory/proposer_endorse2"
-	"github.com/lunfardo314/proxima/sequencer/factory/proposer_generic"
 	"github.com/lunfardo314/proxima/sequencer/factory/task"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/set"
-	"github.com/spf13/viper"
 )
 
 type (
@@ -41,7 +34,6 @@ type (
 		Environment
 		ownMilestones               map[*vertex.WrappedTx]outputsWithTime // map ms -> consumed outputs in the past
 		mutex                       sync.RWMutex
-		target                      target
 		maxTagAlongInputs           int
 		ownMilestoneCount           int
 		removedMilestonesSinceReset int
@@ -52,12 +44,6 @@ type (
 		since    time.Time
 	}
 
-	target struct {
-		mutex     sync.RWMutex
-		targetTs  ledger.Time
-		proposals []task.proposal
-	}
-
 	Stats struct {
 		NumOwnMilestones            int
 		OwnMilestoneCount           int
@@ -66,41 +52,15 @@ type (
 	}
 )
 
-var _allProposingStrategies = make(map[string]*proposer_generic.Strategy)
-
-func registerProposerStrategy(s *proposer_generic.Strategy) {
-	_allProposingStrategies[s.Name] = s
-}
-
-func init() {
-	registerProposerStrategy(proposer_base.Strategy())
-	registerProposerStrategy(proposer_endorse1.Strategy())
-	registerProposerStrategy(proposer_endorse2.Strategy())
-}
-
-func allProposingStrategies() []*proposer_generic.Strategy {
-	ret := make([]*proposer_generic.Strategy, 0)
-	for _, s := range _allProposingStrategies {
-		if !viper.GetBool("sequencers.disable_proposer." + s.ShortName) {
-			ret = append(ret, s)
-		}
-	}
-	return ret
-}
-
 const (
 	maxAdditionalOutputs  = 256 - 2 // 1 for chain output, 1 for stem
 	veryMaxTagAlongInputs = maxAdditionalOutputs
 	TraceTag              = "factory"
-	TraceTagMining        = "mining"
 )
 
 func New(env Environment) (*MilestoneFactory, error) {
 	ret := &MilestoneFactory{
-		Environment: env,
-		target: target{
-			proposals: make([]task.proposal, 0),
-		},
+		Environment:       env,
 		ownMilestones:     make(map[*vertex.WrappedTx]outputsWithTime),
 		maxTagAlongInputs: env.MaxTagAlongOutputs(),
 	}
@@ -195,31 +155,7 @@ func (mf *MilestoneFactory) StartProposingForTargetLogicalTime(targetTs ledger.T
 		return nil, nil, fmt.Errorf("target %s is in the past by %v: impossible to generate milestone",
 			targetTs.String(), nowis.Sub(deadline))
 	}
-	// start worker(s)
-	mf.setNewTarget(targetTs)
-	ctx, cancel := context.WithDeadline(mf.Ctx(), deadline)
-	defer cancel() // to prevent context leak
-	mf.startProposerWorkersOld(targetTs, ctx)
-
-	<-ctx.Done()
-
-	return mf.getBestProposal() // will return nil if wasn't able to generate transaction
-}
-
-// setNewTarget sets new target for proposers
-func (mf *MilestoneFactory) setNewTarget(ts ledger.Time) {
-	mf.target.mutex.Lock()
-	defer mf.target.mutex.Unlock()
-
-	mf.target.targetTs = ts
-	mf.target.proposals = util.ClearSlice(mf.target.proposals)
-}
-
-func (mf *MilestoneFactory) CurrentTargetTs() ledger.Time {
-	mf.target.mutex.RLock()
-	defer mf.target.mutex.RUnlock()
-
-	return mf.target.targetTs
+	return task.Run(mf, targetTs)
 }
 
 func (mf *MilestoneFactory) AttachTagAlongInputs(a *attacher.IncrementalAttacher) (numInserted int) {
@@ -262,227 +198,14 @@ func (mf *MilestoneFactory) AttachTagAlongInputs(a *attacher.IncrementalAttacher
 	return
 }
 
-func (mf *MilestoneFactory) startProposerWorkersOld(targetTime ledger.Time, ctx context.Context) {
-	for _, s := range allProposingStrategies() {
-		task := proposer_generic.New(mf, s, targetTime, ctx)
-		if task == nil {
-			mf.Tracef(TraceTag, "SKIP '%s' proposer for the target %s", s.Name, targetTime.String)
-			continue
-		}
-		mf.Tracef(TraceTag, "RUN '%s' proposer for the target %s", s.Name, targetTime.String)
-
-		runFun := func() {
-			mf.Tracef(TraceTag, " START proposer %s", task.GetName())
-
-			mf.MarkWorkProcessStarted(task.GetName())
-			task.Run()
-			mf.MarkWorkProcessStopped(task.GetName())
-
-			mf.Tracef(TraceTag, " END proposer %s", task.GetName())
-		}
-		const debuggerFriendly = false
-		if debuggerFriendly {
-			runFun()
-		} else {
-			util.RunWrappedRoutine(mf.Environment.SequencerName()+"::"+task.GetName(), runFun,
-				func(err error) bool {
-					if errors.Is(err, vertex.ErrDeletedVertexAccessed) {
-						// do not panic, just abandon
-						mf.Log().Warnf("startProposers: %v", err)
-						return false
-					}
-					mf.Log().Fatalf("startProposers: %v", err)
-					return true
-				})
-		}
-	}
-}
-
-func (mf *MilestoneFactory) makeTxProposal(a *attacher.IncrementalAttacher, strategyName string) (*transaction.Transaction, error) {
-	cmdParser := commands.NewCommandParser(ledger.AddressED25519FromPrivateKey(mf.ControllerPrivateKey()))
-	nm := mf.Environment.SequencerName()
-	if strategyName != "" {
-		nm += "." + strategyName
-	}
-	tx, err := a.MakeSequencerTransaction(nm, mf.ControllerPrivateKey(), cmdParser)
-	// attacher and references not needed anymore, should be released
-	a.Close()
-	return tx, err
-}
-
-func (mf *MilestoneFactory) Propose(a *attacher.IncrementalAttacher, strategyName string) error {
-	if a.TargetTs().Tick() == 0 {
-		return mf.proposeBranchTx(a, strategyName)
-	}
-	return mf.proposeNonBranchTx(a, strategyName)
-}
-
-func (mf *MilestoneFactory) proposeNonBranchTx(a *attacher.IncrementalAttacher, strategyName string) error {
-	util.Assertf(a.TargetTs().Tick() != 0, "must be non-branch tx")
-
-	tx, err := mf.makeTxProposal(a, strategyName)
-	util.Assertf(a.IsClosed(), "a.IsDisposed()")
-
-	if err != nil {
-		return err
-	}
-
-	coverage := a.LedgerCoverage()
-	mf.addProposal(task.proposal{
-		tx: tx,
-		txMetadata: &txmetadata.TransactionMetadata{
-			StateRoot:               nil,
-			LedgerCoverage:          util.Ref(coverage),
-			SlotInflation:           util.Ref(a.SlotInflation()),
-			IsResponseToPull:        false,
-			SourceTypeNonPersistent: txmetadata.SourceTypeSequencer,
-		},
-		extended:     a.Extending(),
-		coverage:     coverage,
-		attacherName: a.Name(),
-	})
-	return nil
-}
-
-func (mf *MilestoneFactory) proposeBranchTx(a *attacher.IncrementalAttacher, strategyName string) error {
-	util.Assertf(a.TargetTs().Tick() == 0, "must be branch tx")
-
-	tx, err := mf.makeTxProposal(a, strategyName)
-	util.Assertf(a.IsClosed(), "a.IsDisposed()")
-
-	if err != nil {
-		return err
-	}
-	coverage := a.LedgerCoverage()
-	mf.addProposal(task.proposal{
-		tx: tx,
-		txMetadata: &txmetadata.TransactionMetadata{
-			StateRoot:               nil,
-			LedgerCoverage:          util.Ref(coverage),
-			SlotInflation:           util.Ref(a.SlotInflation()),
-			IsResponseToPull:        false,
-			SourceTypeNonPersistent: txmetadata.SourceTypeSequencer,
-		},
-		extended:     a.Extending(),
-		coverage:     coverage,
-		attacherName: a.Name(),
-	})
-	return nil
-}
-
-func (mf *MilestoneFactory) addProposal(p task.proposal) {
-	mf.target.mutex.Lock()
-	defer mf.target.mutex.Unlock()
-
-	mf.target.proposals = append(mf.target.proposals, p)
-	mf.Tracef(TraceTag, "added proposal %s from %s: coverage %s",
-		p.tx.IDShortString, p.attacherName, func() string { return util.Th(p.coverage) })
-}
-
-var ErrNoProposals = errors.New("no proposals was generated")
-
-func (mf *MilestoneFactory) getBestProposal() (*transaction.Transaction, *txmetadata.TransactionMetadata, error) {
-	mf.target.mutex.RLock()
-	defer mf.target.mutex.RUnlock()
-
-	bestCoverageInSlot := mf.BestCoverageInTheSlot(mf.target.targetTs)
-	mf.Tracef(TraceTag, "best coverage in slot: %s", func() string { return util.Th(bestCoverageInSlot) })
-	maxIdx := -1
-	for i := range mf.target.proposals {
-		c := mf.target.proposals[i].coverage
-		if c > bestCoverageInSlot {
-			bestCoverageInSlot = c
-			maxIdx = i
-		}
-	}
-	if maxIdx < 0 {
-		mf.Tracef(TraceTag, "getBestProposal: NONE, target: %s", mf.target.targetTs.String)
-		return nil, nil, ErrNoProposals
-	}
-	p := mf.target.proposals[maxIdx]
-	mf.Tracef(TraceTag, "getBestProposal: %s, target: %s, attacher %s: coverage %s",
-		p.tx.IDShortString, mf.target.targetTs.String, p.attacherName, func() string { return util.Th(p.coverage) })
-	return p.tx, p.txMetadata, nil
-}
-
-const TraceTagChooseExtendEndorsePair = "ChooseExtendEndorsePair"
-
-// ChooseExtendEndorsePair implements one of possible strategies:
-// finds a pair: milestone to extend and another sequencer transaction to endorse, as heavy as possible
-func (mf *MilestoneFactory) ChooseExtendEndorsePair(proposerName string, targetTs ledger.Time) *attacher.IncrementalAttacher {
-	mf.Assertf(targetTs.Tick() != 0, "targetTs.Tick() != 0")
-	endorseCandidates := mf.Backlog().CandidatesToEndorseSorted(targetTs)
-	mf.Tracef(TraceTagChooseExtendEndorsePair, ">>>>>>>>>>>>>>> target %s {%s}",
-		targetTs.String, vertex.VerticesShortLines(endorseCandidates).Join(", "))
-
-	seqID := mf.SequencerID()
-	var ret *attacher.IncrementalAttacher
-	for _, endorse := range endorseCandidates {
-		if !ledger.ValidTransactionPace(endorse.Timestamp(), targetTs) {
-			// cannot endorse candidate because of ledger time constraint
-			mf.Tracef(TraceTagChooseExtendEndorsePair, ">>>>>>>>>>>>>>> !ledger.ValidTransactionPace")
-			continue
-		}
-		rdr := multistate.MakeSugared(mf.GetStateReaderForTheBranch(&endorse.BaselineBranch().ID))
-		seqOut, err := rdr.GetChainOutput(&seqID)
-		if errors.Is(err, multistate.ErrNotFound) {
-			mf.Tracef(TraceTagChooseExtendEndorsePair, ">>>>>>>>>>>>>>> GetChainOutput not found")
-			continue
-		}
-		mf.AssertNoError(err)
-		extendRoot := attacher.AttachOutputID(seqOut.ID, mf)
-
-		mf.AddOwnMilestone(extendRoot.VID) // to ensure it is in the pool of own milestones
-		futureConeMilestones := mf.futureConeOwnMilestonesOrdered(extendRoot, targetTs)
-
-		mf.Tracef(TraceTagChooseExtendEndorsePair, ">>>>>>>>>>>>>>> check endorsement candidate %s against future cone of extension candidates {%s}",
-			endorse.IDShortString, func() string { return vertex.WrappedOutputsShortLines(futureConeMilestones).Join(", ") })
-
-		if ret = mf.chooseEndorseExtendPairAttacher(proposerName, targetTs, endorse, futureConeMilestones); ret != nil {
-			mf.Tracef(TraceTagChooseExtendEndorsePair, ">>>>>>>>>>>>>>> chooseEndorseExtendPairAttacher return %s", ret.Name())
-			return ret
-		}
-	}
-	mf.Tracef(TraceTagChooseExtendEndorsePair, ">>>>>>>>>>>>>>> chooseEndorseExtendPairAttacher nil")
-	return nil
-}
-
-// chooseEndorseExtendPairAttacher traverses all known extension options and check each of it with the endorsement target
-// Returns consistent incremental attacher with the biggest ledger coverage
-func (mf *MilestoneFactory) chooseEndorseExtendPairAttacher(proposerName string, targetTs ledger.Time, endorse *vertex.WrappedTx, extendCandidates []vertex.WrappedOutput) *attacher.IncrementalAttacher {
-	var ret, a *attacher.IncrementalAttacher
-	var err error
-	for _, extend := range extendCandidates {
-		a, err = attacher.NewIncrementalAttacher(proposerName, mf, targetTs, extend, endorse)
-		if err != nil {
-			mf.Tracef(TraceTagChooseExtendEndorsePair, "%s can't extend %s and endorse %s: %v", targetTs.String, extend.IDShortString, endorse.IDShortString, err)
-			continue
-		}
-		// we must carefully dispose unused references, otherwise pruning does not work
-		// we dispose all attachers with their references, except the one with the biggest coverage
-		switch {
-		case !a.Completed():
-			a.Close()
-		case ret == nil:
-			ret = a
-		case a.LedgerCoverage() > ret.LedgerCoverage():
-			ret.Close()
-			ret = a
-		default:
-			a.Close()
-		}
-	}
-	return ret
-}
-
-func (mf *MilestoneFactory) futureConeOwnMilestonesOrdered(rootOutput vertex.WrappedOutput, targetTs ledger.Time) []vertex.WrappedOutput {
+func (mf *MilestoneFactory) FutureConeOwnMilestonesOrdered(rootOutput vertex.WrappedOutput, targetTs ledger.Time) []vertex.WrappedOutput {
 	mf.mutex.RLock()
 	defer mf.mutex.RUnlock()
 
-	mf.Tracef(TraceTag, "futureConeOwnMilestonesOrdered for root output %s. Total %d own milestones", rootOutput.IDShortString, len(mf.ownMilestones))
+	mf.Tracef(TraceTag, "FutureConeOwnMilestonesOrdered for root output %s. Total %d own milestones", rootOutput.IDShortString, len(mf.ownMilestones))
 
 	_, ok := mf.ownMilestones[rootOutput.VID]
-	mf.Assertf(ok, "futureConeOwnMilestonesOrdered: milestone output %s of chain %s is expected to be among set of own milestones (%d)",
+	mf.Assertf(ok, "FutureConeOwnMilestonesOrdered: milestone output %s of chain %s is expected to be among set of own milestones (%d)",
 		rootOutput.IDShortString, util.Ref(mf.SequencerID()).StringShort, len(mf.ownMilestones))
 
 	ordered := util.KeysSorted(mf.ownMilestones, func(vid1, vid2 *vertex.WrappedTx) bool {
