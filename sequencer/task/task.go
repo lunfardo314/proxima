@@ -26,8 +26,8 @@ type (
 	Environment interface {
 		global.NodeGlobal
 		attacher.Environment
-		backlog.Environment
-		BestCoverageInTheSlot(targetTs ledger.Time) uint64
+		SequencerName() string
+		SequencerID() ledger.ChainID
 		ControllerPrivateKey() ed25519.PrivateKey
 		OwnLatestMilestoneOutput() vertex.WrappedOutput
 		Backlog() *backlog.InputBacklog
@@ -226,4 +226,17 @@ func (t *Task) InsertTagAlongInputs(a *attacher.IncrementalAttacher) (numInserte
 		}
 	}
 	return
+}
+
+func (t *Task) BestCoverageInTheSlot(targetTs ledger.Time) uint64 {
+	if targetTs.Tick() == 0 {
+		return 0
+	}
+	all := t.Backlog().LatestMilestonesDescending(func(seqID ledger.ChainID, vid *vertex.WrappedTx) bool {
+		return vid.Slot() == targetTs.Slot()
+	})
+	if len(all) == 0 || all[0].IsBranchTransaction() {
+		return 0
+	}
+	return all[0].GetLedgerCoverage()
 }

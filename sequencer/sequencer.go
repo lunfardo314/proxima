@@ -13,6 +13,7 @@ import (
 	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/core/workflow"
+	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/multistate"
@@ -25,16 +26,29 @@ import (
 )
 
 type (
+	Environment interface {
+		global.NodeGlobal
+		attacher.Environment
+		LoadSequencerTips(seqID ledger.ChainID) error
+		IsSynced() bool
+		TxBytesStore() global.TxBytesStore
+		SequencerMilestoneAttachWait(txBytes []byte, meta *txmetadata.TransactionMetadata, timeout time.Duration) (*vertex.WrappedTx, error)
+		GetLatestMilestone(seqID ledger.ChainID) *vertex.WrappedTx
+		LatestMilestonesDescending(filter ...func(seqID ledger.ChainID, vid *vertex.WrappedTx) bool) []*vertex.WrappedTx
+		NumSequencerTips() int
+		ListenToAccount(account ledger.Accountable, fun func(wOut vertex.WrappedOutput))
+	}
+
 	Sequencer struct {
-		*workflow.Workflow
+		Environment
 		ctx                context.Context    // local context
 		stopFun            context.CancelFunc // local stop function
 		sequencerID        ledger.ChainID
 		controllerKey      ed25519.PrivateKey
+		backlog            *backlog.InputBacklog
 		config             *ConfigOptions
 		logName            string
 		log                *zap.SugaredLogger
-		backlog            *backlog.InputBacklog
 		ownMilestonesMutex sync.RWMutex
 		ownMilestones      map[*vertex.WrappedTx]outputsWithTime // map ms -> consumed outputs in the past
 
@@ -68,19 +82,19 @@ type (
 
 const TraceTag = "sequencer"
 
-func New(glb *workflow.Workflow, seqID ledger.ChainID, controllerKey ed25519.PrivateKey, opts ...ConfigOption) (*Sequencer, error) {
+func New(env Environment, seqID ledger.ChainID, controllerKey ed25519.PrivateKey, opts ...ConfigOption) (*Sequencer, error) {
 	cfg := configOptions(opts...)
 	logName := fmt.Sprintf("[%s-%s]", cfg.SequencerName, seqID.StringVeryShort())
 	ret := &Sequencer{
-		Workflow:      glb,
+		Environment:   env,
 		sequencerID:   seqID,
 		controllerKey: controllerKey,
 		ownMilestones: make(map[*vertex.WrappedTx]outputsWithTime),
 		config:        cfg,
 		logName:       logName,
-		log:           glb.Log().Named(logName),
+		log:           env.Log().Named(logName),
 	}
-	ret.ctx, ret.stopFun = context.WithCancel(glb.Ctx())
+	ret.ctx, ret.stopFun = context.WithCancel(env.Ctx())
 	var err error
 
 	if ret.backlog, err = backlog.New(ret); err != nil {
@@ -550,17 +564,4 @@ func (seq *Sequencer) NumOutputsInBuffer() int {
 
 func (seq *Sequencer) NumMilestones() int {
 	return seq.NumSequencerTips()
-}
-
-func (seq *Sequencer) BestCoverageInTheSlot(targetTs ledger.Time) uint64 {
-	if targetTs.Tick() == 0 {
-		return 0
-	}
-	all := seq.LatestMilestonesDescending(func(seqID ledger.ChainID, vid *vertex.WrappedTx) bool {
-		return vid.Slot() == targetTs.Slot()
-	})
-	if len(all) == 0 || all[0].IsBranchTransaction() {
-		return 0
-	}
-	return all[0].GetLedgerCoverage()
 }
