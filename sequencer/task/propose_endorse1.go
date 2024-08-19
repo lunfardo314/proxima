@@ -25,7 +25,7 @@ func endorse1ProposeGenerator(p *Proposer) (*attacher.IncrementalAttacher, bool)
 		return nil, false
 	}
 
-	p.AttachTagAlongInputs(a)
+	p.InsertTagAlongInputs(a)
 
 	if !a.Completed() {
 		endorsing := a.Endorsing()[0]

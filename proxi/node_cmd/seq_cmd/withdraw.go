@@ -9,7 +9,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/proxi/glb"
-	"github.com/lunfardo314/proxima/sequencer/factory/commands"
+	"github.com/lunfardo314/proxima/sequencer/commands"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/spf13/cobra"
 )

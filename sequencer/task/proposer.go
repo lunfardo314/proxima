@@ -10,7 +10,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/multistate"
-	"github.com/lunfardo314/proxima/sequencer/factory/commands"
+	"github.com/lunfardo314/proxima/sequencer/commands"
 	"github.com/lunfardo314/proxima/util"
 )
 
@@ -102,6 +102,11 @@ func (p *Proposer) ChooseExtendEndorsePair() *attacher.IncrementalAttacher {
 	seqID := p.SequencerID()
 	var ret *attacher.IncrementalAttacher
 	for _, endorse := range endorseCandidates {
+		select {
+		case <-p.ctx.Done():
+			return nil
+		default:
+		}
 		if !ledger.ValidTransactionPace(endorse.Timestamp(), p.targetTs) {
 			// cannot endorse candidate because of ledger time constraint
 			p.Tracef(TraceTagTask, ">>>>>>>>>>>>>>> !ledger.ValidTransactionPace")

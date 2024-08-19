@@ -31,6 +31,12 @@ func endorse2ProposeGenerator(p *Proposer) (*attacher.IncrementalAttacher, bool)
 	addedSecond := false
 	endorsing0 := a.Endorsing()[0]
 	for _, endorsementCandidate := range p.Backlog().CandidatesToEndorseSorted(p.targetTs) {
+		select {
+		case <-p.ctx.Done():
+			a.Close()
+			return nil, true
+		default:
+		}
 		if endorsementCandidate == endorsing0 {
 			continue
 		}
@@ -46,7 +52,7 @@ func endorse2ProposeGenerator(p *Proposer) (*attacher.IncrementalAttacher, bool)
 		return nil, false
 	}
 
-	p.AttachTagAlongInputs(a)
+	p.InsertTagAlongInputs(a)
 
 	if !a.Completed() {
 		a.Close()

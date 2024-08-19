@@ -19,7 +19,7 @@ import (
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/peering"
 	"github.com/lunfardo314/proxima/sequencer"
-	"github.com/lunfardo314/proxima/sequencer/factory/commands"
+	"github.com/lunfardo314/proxima/sequencer/commands"
 	"github.com/lunfardo314/proxima/txstore"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/testutil"

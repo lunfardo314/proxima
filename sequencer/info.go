@@ -21,8 +21,8 @@ func (seq *Sequencer) updateInfo(ms *vertex.WrappedTx) {
 		Out:                    ms.NumProducedOutputs(),
 		InflationAmount:        ms.InflationAmountOfSequencerMilestone(),
 		NumConsumedFeeOutputs:  nConsumed,
-		NumFeeOutputsInTippool: seq.factory.NumOutputsInBuffer(),
-		NumOtherMsInTippool:    seq.factory.NumMilestones(),
+		NumFeeOutputsInTippool: seq.NumOutputsInBuffer(),
+		NumOtherMsInTippool:    seq.NumMilestones(),
 		LedgerCoverage:         ms.GetLedgerCoverage(),
 		PrevLedgerCoverage:     seq.info.LedgerCoverage,
 	}

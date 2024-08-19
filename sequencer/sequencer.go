@@ -8,32 +8,36 @@ import (
 	"sync"
 	"time"
 
+	"github.com/lunfardo314/proxima/core/attacher"
 	"github.com/lunfardo314/proxima/core/memdag"
 	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/core/workflow"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/transaction"
+	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/sequencer/backlog"
-	"github.com/lunfardo314/proxima/sequencer/factory"
-	"github.com/lunfardo314/proxima/sequencer/factory/task"
+	"github.com/lunfardo314/proxima/sequencer/task"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
+	"github.com/lunfardo314/proxima/util/set"
 	"go.uber.org/zap"
 )
 
 type (
 	Sequencer struct {
 		*workflow.Workflow
-		ctx             context.Context    // local context
-		stopFun         context.CancelFunc // local stop function
-		sequencerID     ledger.ChainID
-		controllerKey   ed25519.PrivateKey
-		config          *ConfigOptions
-		logName         string
-		log             *zap.SugaredLogger
-		backlog         *backlog.InputBacklog
-		factory         *factory.MilestoneFactory
+		ctx                context.Context    // local context
+		stopFun            context.CancelFunc // local stop function
+		sequencerID        ledger.ChainID
+		controllerKey      ed25519.PrivateKey
+		config             *ConfigOptions
+		logName            string
+		log                *zap.SugaredLogger
+		backlog            *backlog.InputBacklog
+		ownMilestonesMutex sync.RWMutex
+		ownMilestones      map[*vertex.WrappedTx]outputsWithTime // map ms -> consumed outputs in the past
+
 		milestoneCount  int
 		branchCount     int
 		lastSubmittedTs ledger.Time
@@ -43,6 +47,11 @@ type (
 		onCallbackMutex      sync.RWMutex
 		onMilestoneSubmitted func(seq *Sequencer, vid *vertex.WrappedTx)
 		onExit               func()
+	}
+
+	outputsWithTime struct {
+		consumed set.Set[vertex.WrappedOutput]
+		since    time.Time
 	}
 
 	Info struct {
@@ -66,6 +75,7 @@ func New(glb *workflow.Workflow, seqID ledger.ChainID, controllerKey ed25519.Pri
 		Workflow:      glb,
 		sequencerID:   seqID,
 		controllerKey: controllerKey,
+		ownMilestones: make(map[*vertex.WrappedTx]outputsWithTime),
 		config:        cfg,
 		logName:       logName,
 		log:           glb.Log().Named(logName),
@@ -74,9 +84,6 @@ func New(glb *workflow.Workflow, seqID ledger.ChainID, controllerKey ed25519.Pri
 	var err error
 
 	if ret.backlog, err = backlog.New(ret); err != nil {
-		return nil, err
-	}
-	if ret.factory, err = factory.New(ret); err != nil {
 		return nil, err
 	}
 	if err = ret.LoadSequencerTips(seqID); err != nil {
@@ -192,7 +199,7 @@ func (seq *Sequencer) ensureFirstMilestone() bool {
 			case <-ctx.Done():
 				return
 			case <-time.After(10 * time.Millisecond):
-				startOutput = seq.factory.OwnLatestMilestoneOutput()
+				startOutput = seq.OwnLatestMilestoneOutput()
 				if startOutput.VID != nil && startOutput.IsAvailable() {
 					cancel()
 					return
@@ -209,7 +216,7 @@ func (seq *Sequencer) ensureFirstMilestone() bool {
 	if !seq.checkSequencerStartOutput(startOutput) {
 		return false
 	}
-	seq.factory.AddOwnMilestone(startOutput.VID)
+	seq.AddOwnMilestone(startOutput.VID)
 
 	sleepDuration := ledger.SleepDurationUntilFutureLedgerTime(startOutput.Timestamp())
 	if sleepDuration > 0 {
@@ -326,7 +333,7 @@ func (seq *Sequencer) doSequencerStep() bool {
 
 	seq.Tracef(TraceTag, "target ts: %s. Now is: %s", targetTs, ledger.TimeNow())
 
-	msTx, meta, err := seq.factory.StartProposingForTargetLogicalTime(targetTs)
+	msTx, meta, err := seq.StartProposingForTargetLogicalTime(targetTs)
 	if msTx == nil {
 		if targetTs.IsSlotBoundary() {
 			seq.Infof0("FAILED to generate transaction for target %s. Now is %s. Reason: '%v'",
@@ -348,7 +355,7 @@ func (seq *Sequencer) doSequencerStep() bool {
 		return true
 	}
 
-	seq.factory.AddOwnMilestone(msVID)
+	seq.AddOwnMilestone(msVID)
 	seq.milestoneCount++
 	if msVID.IsBranchTransaction() {
 		seq.branchCount++
@@ -493,7 +500,7 @@ func (seq *Sequencer) runOnMilestoneSubmitted(ms *vertex.WrappedTx) {
 	}
 }
 
-func (seq *Sequencer) MaxTagAlongOutputs() int {
+func (seq *Sequencer) MaxTagAlongInputs() int {
 	return seq.config.MaxTagAlongInputs
 }
 
@@ -503,4 +510,57 @@ func (seq *Sequencer) BacklogTTLSlots() int {
 
 func (seq *Sequencer) MilestonesTTLSlots() int {
 	return seq.config.MilestonesTTLSlots
+}
+
+func (seq *Sequencer) bootstrapOwnMilestoneOutput() vertex.WrappedOutput {
+	milestones := seq.LatestMilestonesDescending()
+	for _, ms := range milestones {
+		baseline := ms.BaselineBranch()
+		if baseline == nil {
+			continue
+		}
+		rdr := seq.GetStateReaderForTheBranch(&baseline.ID)
+		o, err := rdr.GetUTXOForChainID(&seq.sequencerID)
+		if errors.Is(err, multistate.ErrNotFound) {
+			continue
+		}
+		seq.AssertNoError(err)
+		ret := attacher.AttachOutputID(o.ID, seq, attacher.OptionInvokedBy("tippool"))
+		return ret
+	}
+	return vertex.WrappedOutput{}
+}
+
+func (seq *Sequencer) StartProposingForTargetLogicalTime(targetTs ledger.Time) (*transaction.Transaction, *txmetadata.TransactionMetadata, error) {
+	deadline := targetTs.Time()
+	nowis := time.Now()
+	seq.Tracef(TraceTag, "StartProposingForTargetLogicalTime: target: %s, deadline: %s, nowis: %s",
+		targetTs.String, deadline.Format("15:04:05.999"), nowis.Format("15:04:05.999"))
+
+	if deadline.Before(nowis) {
+		return nil, nil, fmt.Errorf("target %s is in the past by %v: impossible to generate milestone",
+			targetTs.String(), nowis.Sub(deadline))
+	}
+	return task.Run(seq, targetTs)
+}
+
+func (seq *Sequencer) NumOutputsInBuffer() int {
+	return seq.Backlog().NumOutputsInBuffer()
+}
+
+func (seq *Sequencer) NumMilestones() int {
+	return seq.NumSequencerTips()
+}
+
+func (seq *Sequencer) BestCoverageInTheSlot(targetTs ledger.Time) uint64 {
+	if targetTs.Tick() == 0 {
+		return 0
+	}
+	all := seq.LatestMilestonesDescending(func(seqID ledger.ChainID, vid *vertex.WrappedTx) bool {
+		return vid.Slot() == targetTs.Slot()
+	})
+	if len(all) == 0 || all[0].IsBranchTransaction() {
+		return 0
+	}
+	return all[0].GetLedgerCoverage()
 }

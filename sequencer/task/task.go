@@ -30,10 +30,11 @@ type (
 		BestCoverageInTheSlot(targetTs ledger.Time) uint64
 		ControllerPrivateKey() ed25519.PrivateKey
 		OwnLatestMilestoneOutput() vertex.WrappedOutput
-		AttachTagAlongInputs(a *attacher.IncrementalAttacher) int
 		Backlog() *backlog.InputBacklog
+		IsConsumedInThePastPath(wOut vertex.WrappedOutput, ms *vertex.WrappedTx) bool
 		AddOwnMilestone(vid *vertex.WrappedTx)
 		FutureConeOwnMilestonesOrdered(rootOutput vertex.WrappedOutput, targetTs ledger.Time) []vertex.WrappedOutput
+		MaxTagAlongInputs() int
 	}
 
 	Task struct {
@@ -179,4 +180,50 @@ func (t *Task) startProposers() {
 
 func (t *Task) Name() string {
 	return fmt.Sprintf("[%s]", t.targetTs.String())
+}
+
+// InsertTagAlongInputs includes tag-along outputs from the backlog into attacher
+func (t *Task) InsertTagAlongInputs(a *attacher.IncrementalAttacher) (numInserted int) {
+	t.Tracef(TraceTagTask, "InsertTagAlongInputs: %s", a.Name())
+
+	if ledger.L().ID.IsPreBranchConsolidationTimestamp(a.TargetTs()) {
+		// skipping tagging-along in pre-branch consolidation zone
+		t.Tracef(TraceTagTask, "InsertTagAlongInputs: %s. No tag-along in the pre-branch consolidation zone of ticks", a.Name())
+		return 0
+	}
+
+	preSelected := t.Backlog().FilterAndSortOutputs(func(wOut vertex.WrappedOutput) bool {
+		if !ledger.ValidSequencerPace(wOut.Timestamp(), a.TargetTs()) {
+			t.TraceTx(&wOut.VID.ID, "InsertTagAlongInputs:#%d  not valid pace -> not pre-selected (target %s)", wOut.Index, a.TargetTs().String)
+			return false
+		}
+		// fast filtering out already consumed outputs in the predecessor milestone context
+		already := t.IsConsumedInThePastPath(wOut, a.Extending().VID)
+		if already {
+			t.TraceTx(&wOut.VID.ID, "InsertTagAlongInputs: #%d already consumed in the past path -> not pre-selected", wOut.Index)
+		}
+		return !already
+	})
+	t.Tracef(TraceTagTask, "InsertTagAlongInputs %s. Pre-selected: %d", a.Name(), len(preSelected))
+
+	for _, wOut := range preSelected {
+		select {
+		case <-t.ctx.Done():
+			return
+		default:
+		}
+		t.TraceTx(&wOut.VID.ID, "InsertTagAlongInputs: pre-selected #%d", wOut.Index)
+		if success, err := a.InsertTagAlongInput(wOut); success {
+			numInserted++
+			t.Tracef(TraceTagTask, "InsertTagAlongInputs %s. Inserted %s", a.Name(), wOut.IDShortString)
+			t.TraceTx(&wOut.VID.ID, "InsertTagAlongInputs %s. Inserted #%d", a.Name(), wOut.Index)
+		} else {
+			t.Tracef(TraceTagTask, "InsertTagAlongInputs %s. Failed to insert %s: '%v'", a.Name(), wOut.IDShortString, err)
+			t.TraceTx(&wOut.VID.ID, "InsertTagAlongInputs %s. Failed to insert #%d: '%v'", a.Name(), wOut.Index, err)
+		}
+		if a.NumInputs() >= t.MaxTagAlongInputs() {
+			return
+		}
+	}
+	return
 }
