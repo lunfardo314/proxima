@@ -33,5 +33,5 @@ func TestEvents(t *testing.T) {
 	e.PostEvent(EventTypeTestInt, 31415)
 	wg.Wait()
 	glb.Stop()
-	glb.MustWaitAllWorkProcessesStop()
+	glb.WaitAllWorkProcessesStop()
 }

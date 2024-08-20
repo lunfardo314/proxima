@@ -132,14 +132,19 @@ func Run(env Environment, targetTs ledger.Time) (*transaction.Transaction, *txme
 	// reads all proposals from proposers into the slice
 	// stops reading when all goroutines exit
 	// Proposer will always exist because of deadline or because of global cancel
+
+	// channel is needed to make sure reading loop has ended
+	readStop := make(chan struct{})
 	go func() {
 		for p := range task.proposalChan {
 			task.proposals = append(task.proposals, p)
 		}
+		close(readStop)
 	}()
 
 	task.proposersWG.Wait()
 	close(task.proposalChan)
+	<-readStop
 
 	// will return nil if wasn't able to generate transaction
 	return task.getBestProposal()

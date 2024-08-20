@@ -62,7 +62,7 @@ func (p *ProximaNode) WaitAllWorkProcessesToStop() {
 	<-p.Ctx().Done()
 	p.workProcessesStopStepChan <- struct{}{} // first step release DB close goroutines
 	p.Log().Infof("waiting all processes to stop for up to %v", waitAllProcessesStopTimeout)
-	p.Global.MustWaitAllWorkProcessesStop(waitAllProcessesStopTimeout)
+	p.Global.WaitAllWorkProcessesStop(waitAllProcessesStopTimeout)
 	close(p.workProcessesStopStepChan) // second step signals to release DB close goroutines
 }
 

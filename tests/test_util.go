@@ -294,12 +294,12 @@ func (td *workflowTestData) stop() {
 }
 
 func (td *workflowTestData) waitStop(timeout ...time.Duration) {
-	td.env.MustWaitAllWorkProcessesStop(timeout...)
+	td.env.WaitAllWorkProcessesStop(timeout...)
 }
 
-func (td *workflowTestData) stopAndWait(timeout ...time.Duration) {
+func (td *workflowTestData) stopAndWait(timeout ...time.Duration) bool {
 	td.env.Stop()
-	td.env.MustWaitAllWorkProcessesStop(timeout...)
+	return td.env.WaitAllWorkProcessesStop(timeout...)
 }
 
 func (td *longConflictTestData) makeSeqBeginnings(withConflictingFees bool) {

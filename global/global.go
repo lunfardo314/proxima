@@ -160,8 +160,8 @@ func (l *Global) _withRLock(fun func()) {
 	l.mutex.RUnlock()
 }
 
-func (l *Global) MustWaitAllWorkProcessesStop(timeout ...time.Duration) {
-	l.Tracef(TraceTag, "MustWaitAllWorkProcessesStop")
+func (l *Global) WaitAllWorkProcessesStop(timeout ...time.Duration) bool {
+	l.Tracef(TraceTag, "WaitAllWorkProcessesStop")
 
 	deadline := time.Now().Add(math.MaxInt)
 	if len(timeout) > 0 {
@@ -178,7 +178,7 @@ func (l *Global) MustWaitAllWorkProcessesStop(timeout ...time.Duration) {
 			}
 		})
 		if exit {
-			return
+			return true
 		}
 		time.Sleep(5 * time.Millisecond)
 		if time.Now().After(deadline) {
@@ -187,9 +187,9 @@ func (l *Global) MustWaitAllWorkProcessesStop(timeout ...time.Duration) {
 				for s := range l.components {
 					ln.Add(s)
 				}
-				l.Log().Errorf("MustWaitAllWorkProcessesStop: exceeded timeout. Still running components: %s", ln.Join(","))
+				l.Log().Errorf("WaitAllWorkProcessesStop: exceeded timeout. Still running components: %s", ln.Join(","))
 			})
-			return
+			return false
 		}
 	}
 }
