@@ -24,7 +24,7 @@ func Test1Sequencer(t *testing.T) {
 		t.Logf("%s", testData.wrk.Info())
 		//testData.env.StartTracingTags(proposer_base.TraceTag)
 		//testData.env.StartTracingTags(attacher.TraceTagAttach)
-		//testData.env.StartTracingTags(sequencer.TraceTag)
+		testData.env.StartTracingTags(sequencer.TraceTag)
 		//testData.env.StartTracingTags(proposer_base.TraceTag)
 
 		seq, err := sequencer.New(testData.wrk, testData.bootstrapChainID, testData.genesisPrivKey,
