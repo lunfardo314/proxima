@@ -106,7 +106,7 @@ func (a *IncrementalAttacher) checkConflictsWithInputs(consumerVertex *vertex.Ve
 
 // Close releases all references of vertices. Incremental attacher must be closed before disposing it,
 // otherwise memDAG starts leaking vertices. Repetitive closing has no effect
-// TODO some kind of auto-closing after some time. Otherwise it may be a source of leaks
+// TODO some kind of checking if it is closed after some time
 func (a *IncrementalAttacher) Close() {
 	if a != nil && !a.IsClosed() {
 		a.referenced.unReferenceAll()
@@ -390,7 +390,10 @@ func (a *IncrementalAttacher) NumInputs() int {
 	return len(a.inputs) + 2
 }
 
-// Completed returns true is past cone all solid and consistent (no conflicts)
+// Completed returns true is past cone is all solid and consistent (no conflicts)
+// For incremental attacher it may happen (in theory) that some outputs need re-pull,
+// if unlucky. The owner of the attacher will have to dismiss the attacher
+// and try again later
 func (a *IncrementalAttacher) Completed() bool {
 	return !a.containsUndefinedExcept(nil) && len(a.rooted) > 0
 }

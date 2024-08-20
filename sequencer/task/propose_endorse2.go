@@ -13,6 +13,10 @@ func init() {
 }
 
 func endorse2ProposeGenerator(p *Proposer) (*attacher.IncrementalAttacher, bool) {
+	if p.targetTs.IsSlotBoundary() {
+		// the proposer does not generate branch transactions
+		return nil, true
+	}
 	// first do the same as endorse1
 	a := p.ChooseExtendEndorsePair()
 	if a == nil {

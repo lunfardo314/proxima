@@ -30,23 +30,27 @@ func (p *Proposer) Run() {
 		}
 		return false
 	}
+	// closing incremental attacher releases all referenced vertices.
+	// it is necessary for correct purging of memDAG vertices, otherwise
+	// it leaks vertices. Close nil is ok
 	defer a.Close()
 
 	for {
-		// closing incremental attacher releases all referenced vertices.
-		// it is necessary for correct purging of memDAG vertices, otherwise
-		// it leaks vertices
 		a.Close()
 
 		if a, forceExit = p.strategy.GenerateProposal(p); forceExit {
+			// forced exit be decision of the proposer
 			return
 		}
 		if a == nil || !a.Completed() {
 			if waitExit() {
+				// leave if its time
 				return
 			}
+			// attempt may be no luck. Keep trying if it is not the end yet
 			continue
 		}
+		// attacher has been created and it is complete. Propose it
 		p.Assertf(a.IsCoverageAdjusted(), "coverage must be adjusted")
 		if err = p.propose(a); err != nil {
 			p.Log().Warnf("%v", err)
@@ -94,7 +98,7 @@ func (p *Proposer) makeTxProposal(a *attacher.IncrementalAttacher) (*transaction
 }
 
 func (p *Proposer) ChooseExtendEndorsePair() *attacher.IncrementalAttacher {
-	p.Assertf(p.targetTs.Tick() != 0, "targetTs.Tick() != 0")
+	p.Assertf(!p.targetTs.IsSlotBoundary(), "!p.targetTs.IsSlotBoundary()")
 	endorseCandidates := p.Backlog().CandidatesToEndorseSorted(p.targetTs)
 	p.Tracef(TraceTagTask, ">>>>>>>>>>>>>>> target %s {%s}",
 		p.targetTs.String, vertex.VerticesShortLines(endorseCandidates).Join(", "))

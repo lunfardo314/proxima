@@ -174,6 +174,7 @@ func (t *Task) startProposers() {
 			strategy:        s,
 			alreadyProposed: set.New[[32]byte](),
 		}
+		t.proposersWG.Add(1)
 		go p.Run()
 	}
 }
