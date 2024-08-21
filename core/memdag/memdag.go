@@ -11,6 +11,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/proxima/util/sema"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/exp/maps"
 )
@@ -32,7 +33,7 @@ type (
 		// more economic (memory-wise) yet transient in-memory ID *vertex.WrappedTx
 		// in most other data structure, such as attacher, transactions are represented as *vertex.WrappedTx
 		// MemDAG is constantly garbage-collected by the pruner
-		mutex    sync.RWMutex
+		mutex    *sema.Sema
 		vertices map[ledger.TransactionID]*vertex.WrappedTx
 		// latestBranchSlot maintained by EvidenceBranchSlot
 		latestBranchSlot        ledger.Slot
@@ -57,6 +58,7 @@ type (
 func New(env Environment) *MemDAG {
 	return &MemDAG{
 		Environment:  env,
+		mutex:        sema.New(1 * time.Second),
 		vertices:     make(map[ledger.TransactionID]*vertex.WrappedTx),
 		stateReaders: make(map[ledger.TransactionID]*cachedStateReader),
 	}

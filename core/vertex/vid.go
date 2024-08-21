@@ -10,6 +10,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
+	"github.com/lunfardo314/proxima/util/sema"
 	"github.com/lunfardo314/proxima/util/set"
 )
 
@@ -29,6 +30,7 @@ func (v _virtualTx) _outputAt(idx byte) (*ledger.Output, error) {
 
 func _newVID(g _genericVertex, txid ledger.TransactionID, seqID *ledger.ChainID) *WrappedTx {
 	ret := &WrappedTx{
+		mutex:          sema.New(),
 		ID:             txid,
 		_genericVertex: g,
 		references:     1, // we always start with 1 reference, which is reference by the MemDAG itself. 0 references means it is deleted
