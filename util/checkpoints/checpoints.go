@@ -1,12 +1,7 @@
 package checkpoints
 
 import (
-	"context"
-	"fmt"
-	"log"
 	"time"
-
-	"go.uber.org/zap"
 )
 
 // utility for debugging hanging loops
@@ -18,33 +13,26 @@ type (
 		nowis             time.Time
 	}
 	Checkpoints struct {
-		ch  chan *check
-		m   map[string]time.Time
-		ctx context.Context
-		log *zap.SugaredLogger
+		ch       chan *check
+		m        map[string]time.Time
+		callback func(name string)
 	}
 )
 
-func New(ctx context.Context, log ...*zap.SugaredLogger) *Checkpoints {
+func New(callback func(name string)) *Checkpoints {
 	ret := &Checkpoints{
-		ch:  make(chan *check),
-		m:   make(map[string]time.Time),
-		ctx: ctx,
-	}
-	if len(log) > 0 {
-		ret.log = log[0]
+		ch:       make(chan *check),
+		m:        make(map[string]time.Time),
+		callback: callback,
 	}
 	go ret.loop()
 	return ret
 }
 
-func (c *Checkpoints) Check(name string, nextExpectedAfter ...time.Duration) {
-	var next time.Duration
-	if len(nextExpectedAfter) > 0 {
-		next = nextExpectedAfter[0]
-	}
+// Check is nextExpectedAfter == 0 cancels checkpoint
+func (c *Checkpoints) Check(name string, nextExpectedAfter time.Duration) {
 	c.ch <- &check{
-		nextExpectedAfter: next,
+		nextExpectedAfter: nextExpectedAfter,
 		name:              name,
 		nowis:             time.Now(),
 	}
@@ -57,9 +45,6 @@ func (c *Checkpoints) Close() {
 func (c *Checkpoints) loop() {
 	for {
 		select {
-		case <-c.ctx.Done():
-			return
-
 		case checkData := <-c.ch:
 			if checkData == nil {
 				return
@@ -71,7 +56,7 @@ func (c *Checkpoints) loop() {
 			deadline, ok := c.m[checkData.name]
 			if ok {
 				if deadline.Before(checkData.nowis) {
-					c.fail(checkData.name)
+					c.callback(checkData.name)
 				}
 			}
 			c.m[checkData.name] = checkData.nowis.Add(checkData.nextExpectedAfter)
@@ -79,18 +64,9 @@ func (c *Checkpoints) loop() {
 		case <-time.After(100 * time.Millisecond):
 			for name, d := range c.m {
 				if d.Before(time.Now()) {
-					c.fail(name)
+					c.callback(name)
 				}
 			}
 		}
-	}
-}
-
-func (c *Checkpoints) fail(name string) {
-	msg := fmt.Sprintf("checkpoint '%s' failed", name)
-	if c.log != nil {
-		log.Fatal(msg)
-	} else {
-		panic(msg)
 	}
 }

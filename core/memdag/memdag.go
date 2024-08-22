@@ -118,11 +118,12 @@ func _stateReaderCacheTTL() time.Duration {
 }
 
 func (d *MemDAG) PurgeCachedStateReaders() (int, int) {
+	toDelete := make([]ledger.TransactionID, 0)
+	ttl := _stateReaderCacheTTL()
+
 	d.stateReadersMutex.Lock()
 	defer d.stateReadersMutex.Unlock()
 
-	toDelete := make([]ledger.TransactionID, 0)
-	ttl := _stateReaderCacheTTL()
 	for txid, b := range d.stateReaders {
 		if time.Since(b.lastActivity) > ttl {
 			toDelete = append(toDelete, txid)
@@ -168,20 +169,6 @@ func (d *MemDAG) GetStemWrappedOutput(branch *ledger.TransactionID) (ret vertex.
 		ret = vid.StemWrappedOutput()
 	}
 	return
-}
-
-func (d *MemDAG) GetIndexedStateReader(branchTxID *ledger.TransactionID, clearCacheAtSize ...int) (global.IndexedStateReader, error) {
-	rr, found := multistate.FetchRootRecord(d.StateStore(), *branchTxID)
-	if !found {
-		return nil, fmt.Errorf("root record for %s has not been found", branchTxID.StringShort())
-	}
-	return multistate.NewReadable(d.StateStore(), rr.Root, clearCacheAtSize...)
-}
-
-func (d *MemDAG) MustGetIndexedStateReader(branchTxID *ledger.TransactionID, clearCacheAtSize ...int) global.IndexedStateReader {
-	ret, err := d.GetIndexedStateReader(branchTxID, clearCacheAtSize...)
-	util.AssertNoError(err)
-	return ret
 }
 
 func (d *MemDAG) HeaviestStateForLatestTimeSlotWithBaseline() (multistate.SugaredStateReader, *vertex.WrappedTx) {
