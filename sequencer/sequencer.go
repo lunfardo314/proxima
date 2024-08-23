@@ -301,17 +301,7 @@ func (seq *Sequencer) sequencerLoop() {
 		_ = seq.Log().Sync()
 	}()
 
-	//checkpoint := checkpoints.New(func(name string) {
-	//	buf := make([]byte, 64000)
-	//	runtime.Stack(buf, true)
-	//
-	//	seq.log.Fatalf(">>>>>>>>>>>>>>>> checkpoint %s failed. NumGoroutines: %d >>>>>> \n%s",
-	//		name, runtime.NumGoroutine(), string(buf))
-	//})
-	//checkpointName := fmt.Sprintf("sequencer %s loop", seq.SequencerName())
-
 	for {
-		//checkpoint.Check(checkpointName, 3*time.Second)
 
 		select {
 		case <-seq.Ctx().Done():

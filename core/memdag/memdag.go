@@ -32,7 +32,7 @@ type (
 		// more economic (memory-wise) yet transient in-memory ID *vertex.WrappedTx
 		// in most other data structure, such as attacher, transactions are represented as *vertex.WrappedTx
 		// MemDAG is constantly garbage-collected by the pruner
-		mutex    sync.RWMutex //*sema.Sema
+		mutex    sync.RWMutex
 		vertices map[ledger.TransactionID]*vertex.WrappedTx
 		// latestBranchSlot maintained by EvidenceBranchSlot
 		latestBranchSlot        ledger.Slot
@@ -56,8 +56,7 @@ type (
 
 func New(env Environment) *MemDAG {
 	return &MemDAG{
-		Environment: env,
-		// mutex:        sema.New(1 * time.Second),
+		Environment:  env,
 		vertices:     make(map[ledger.TransactionID]*vertex.WrappedTx),
 		stateReaders: make(map[ledger.TransactionID]*cachedStateReader),
 	}

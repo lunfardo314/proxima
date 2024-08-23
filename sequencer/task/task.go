@@ -190,7 +190,7 @@ func (t *Task) Name() string {
 
 // InsertTagAlongInputs includes tag-along outputs from the backlog into attacher
 func (t *Task) InsertTagAlongInputs(a *attacher.IncrementalAttacher) (numInserted int) {
-	t.Tracef(TraceTagTask, "InsertTagAlongInputs: %s", a.Name())
+	t.Tracef(TraceTagTask, "InsertTagAlongInputs: %s", a.Name)
 
 	if ledger.L().ID.IsPreBranchConsolidationTimestamp(a.TargetTs()) {
 		// skipping tagging-along in pre-branch consolidation zone
@@ -210,7 +210,7 @@ func (t *Task) InsertTagAlongInputs(a *attacher.IncrementalAttacher) (numInserte
 		}
 		return !already
 	})
-	t.Tracef(TraceTagTask, "InsertTagAlongInputs %s. Pre-selected: %d", a.Name(), len(preSelected))
+	t.Tracef(TraceTagTask, "InsertTagAlongInputs %s. Pre-selected: %d", a.Name, len(preSelected))
 
 	for _, wOut := range preSelected {
 		select {
@@ -221,11 +221,11 @@ func (t *Task) InsertTagAlongInputs(a *attacher.IncrementalAttacher) (numInserte
 		t.TraceTx(&wOut.VID.ID, "InsertTagAlongInputs: pre-selected #%d", wOut.Index)
 		if success, err := a.InsertTagAlongInput(wOut); success {
 			numInserted++
-			t.Tracef(TraceTagTask, "InsertTagAlongInputs %s. Inserted %s", a.Name(), wOut.IDShortString)
-			t.TraceTx(&wOut.VID.ID, "InsertTagAlongInputs %s. Inserted #%d", a.Name(), wOut.Index)
+			t.Tracef(TraceTagTask, "InsertTagAlongInputs %s. Inserted %s", a.Name, wOut.IDShortString)
+			t.TraceTx(&wOut.VID.ID, "InsertTagAlongInputs %s. Inserted #%d", a.Name, wOut.Index)
 		} else {
-			t.Tracef(TraceTagTask, "InsertTagAlongInputs %s. Failed to insert %s: '%v'", a.Name(), wOut.IDShortString, err)
-			t.TraceTx(&wOut.VID.ID, "InsertTagAlongInputs %s. Failed to insert #%d: '%v'", a.Name(), wOut.Index, err)
+			t.Tracef(TraceTagTask, "InsertTagAlongInputs %s. Failed to insert %s: '%v'", a.Name, wOut.IDShortString, err)
+			t.TraceTx(&wOut.VID.ID, "InsertTagAlongInputs %s. Failed to insert #%d: '%v'", a.Name, wOut.Index, err)
 		}
 		if a.NumInputs() >= t.MaxTagAlongInputs() {
 			return

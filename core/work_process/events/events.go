@@ -62,9 +62,9 @@ func (d *Events) Consume(inp Input) {
 			handlers = append(handlers, inp.arg.(func(any)))
 		}
 		d.eventHandlers[inp.eventCode] = handlers
-		d.Tracef(TraceTag, "added event handler for event code '%s'", inp.eventCode.String())
+		d.Tracef(TraceTag, "added event handler for event code '%s'", inp.eventCode.String)
 	case cmdCodePostEvent:
-		d.Tracef(TraceTag, "posted event '%s'", inp.eventCode.String())
+		d.Tracef(TraceTag, "posted event '%s'", inp.eventCode.String)
 		for _, fun := range d.eventHandlers[inp.eventCode] {
 			fun(inp.arg)
 		}

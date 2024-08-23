@@ -35,7 +35,7 @@ func (ps *Peers) pullStreamHandler(stream network.Stream) {
 	ps.withPeer(id, func(p *Peer) {
 		if p == nil {
 			_ = stream.Reset()
-			ps.Tracef(TraceTag, "pull: unknown peer %s", id.String())
+			ps.Tracef(TraceTag, "pull: unknown peer %s", id.String)
 			return
 		}
 		var msgData []byte

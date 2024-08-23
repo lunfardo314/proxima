@@ -1,14 +1,15 @@
 package checkpoints
 
 import (
-	"context"
 	"fmt"
 	"testing"
 	"time"
 )
 
 func TestBasic(t *testing.T) {
-	c := New(context.Background())
+	c := New(func(name string) {
+		t.Logf("checkpoint %s failed", name)
+	})
 	for i := 0; i < 5; i++ {
 		fmt.Printf("i = %d\n", i)
 		c.Check("c1", time.Second)

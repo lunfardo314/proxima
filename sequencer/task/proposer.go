@@ -132,7 +132,7 @@ func (p *Proposer) ChooseExtendEndorsePair() *attacher.IncrementalAttacher {
 			endorse.IDShortString, func() string { return vertex.WrappedOutputsShortLines(futureConeMilestones).Join(", ") })
 
 		if ret = p.chooseEndorseExtendPairAttacher(endorse, futureConeMilestones); ret != nil {
-			p.Tracef(TraceTagTask, ">>>>>>>>>>>>>>> chooseEndorseExtendPairAttacher return %s", ret.Name())
+			p.Tracef(TraceTagTask, ">>>>>>>>>>>>>>> chooseEndorseExtendPairAttacher return %s", ret.Name)
 			return ret
 		}
 	}
