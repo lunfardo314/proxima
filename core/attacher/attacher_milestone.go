@@ -230,7 +230,8 @@ func (a *milestoneAttacher) solidifyPastCone() vertex.Status {
 			return vertex.Bad
 		case finalSuccess:
 			util.Assertf(!a.containsUndefinedExcept(a.vid),
-				"inconsistency: attacher %s is 'finalSuccess' but still contains undefined vertices. Lines:\n%s", a.name, a.dumpLines())
+				"inconsistency: attacher %s is 'finalSuccess' but still contains undefined vertices. Lines:\n%s",
+				a.name, a.dumpLinesString)
 			return vertex.Good
 		default:
 			return vertex.Undefined

@@ -9,7 +9,6 @@ import (
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/util/lines"
-	"github.com/lunfardo314/proxima/util/sema"
 	"github.com/lunfardo314/proxima/util/set"
 )
 
@@ -37,7 +36,7 @@ type (
 		// sequencer ID not nil for sequencer transactions only. Once it is set not nil, it is immutable since.
 		// It is set whenever transaction becomes available
 		SequencerID atomic.Pointer[ledger.ChainID]
-		mutex       *sema.Sema // sync.RWMutex // protects _genericVertex
+		mutex       sync.RWMutex // *sema.Sema // sync.RWMutex // protects _genericVertex
 		flags       Flags
 		err         error
 		coverage    *uint64 // nil for non-sequencer or if not set yet

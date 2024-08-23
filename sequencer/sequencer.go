@@ -5,7 +5,6 @@ import (
 	"crypto/ed25519"
 	"errors"
 	"fmt"
-	"runtime"
 	"sync"
 	"time"
 
@@ -21,7 +20,6 @@ import (
 	"github.com/lunfardo314/proxima/sequencer/backlog"
 	"github.com/lunfardo314/proxima/sequencer/task"
 	"github.com/lunfardo314/proxima/util"
-	"github.com/lunfardo314/proxima/util/checkpoints"
 	"github.com/lunfardo314/proxima/util/lines"
 	"github.com/lunfardo314/proxima/util/set"
 	"go.uber.org/zap"
@@ -303,17 +301,17 @@ func (seq *Sequencer) sequencerLoop() {
 		_ = seq.Log().Sync()
 	}()
 
-	checkpoint := checkpoints.New(func(name string) {
-		buf := make([]byte, 64000)
-		runtime.Stack(buf, true)
-
-		seq.log.Fatalf(">>>>>>>>>>>>>>>> checkpoint %s failed. NumGoroutines: %d >>>>>> \n%s",
-			name, runtime.NumGoroutine(), string(buf))
-	})
-	checkpointName := fmt.Sprintf("sequencer %s loop", seq.SequencerName())
+	//checkpoint := checkpoints.New(func(name string) {
+	//	buf := make([]byte, 64000)
+	//	runtime.Stack(buf, true)
+	//
+	//	seq.log.Fatalf(">>>>>>>>>>>>>>>> checkpoint %s failed. NumGoroutines: %d >>>>>> \n%s",
+	//		name, runtime.NumGoroutine(), string(buf))
+	//})
+	//checkpointName := fmt.Sprintf("sequencer %s loop", seq.SequencerName())
 
 	for {
-		checkpoint.Check(checkpointName, 3*time.Second)
+		//checkpoint.Check(checkpointName, 3*time.Second)
 
 		select {
 		case <-seq.Ctx().Done():

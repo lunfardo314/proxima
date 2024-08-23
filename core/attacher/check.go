@@ -11,7 +11,7 @@ import (
 func (a *milestoneAttacher) checkConsistencyBeforeWrapUp() error {
 	err := a._checkConsistencyBeforeFinalization()
 	if err != nil {
-		err = fmt.Errorf("checkConsistencyBeforeWrapUp in attacher %s: %v\n---- attacher lines ----\n%s", a.name, err, a.dumpLines("       "))
+		err = fmt.Errorf("checkConsistencyBeforeWrapUp in attacher %s: %v\n---- attacher lines ----\n%s", a.name, err, a.dumpLinesString("       "))
 	}
 	return err
 }

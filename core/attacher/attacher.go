@@ -747,11 +747,11 @@ func (a *attacher) IsCoverageAdjusted() bool {
 	return a.coverageAdjusted
 }
 
-// dumpLines lock every vid!!!
+// dumpLines beware deadlocks
 func (a *attacher) dumpLines(prefix ...string) *lines.Lines {
 	ret := lines.New(prefix...)
 	ret.Add("attacher %s", a.name)
-	ret.Add("   baseline: %s", a.baseline.String())
+	ret.Add("   baseline: %s", a.baseline.IDShortString())
 	ret.Add("   coverage: %s", util.Th(a.coverage))
 	ret.Add("   baselineSupply: %s", util.Th(a.baselineSupply))
 	ret.Add("   vertices:")
@@ -761,6 +761,10 @@ func (a *attacher) dumpLines(prefix ...string) *lines.Lines {
 		ret.Add("           tx: %s, outputs: %v", vid.IDShortString(), maps.Keys(consumed))
 	}
 	return ret
+}
+
+func (a *attacher) dumpLinesString(prefix ...string) string {
+	return a.dumpLines(prefix...).String()
 }
 
 func (a *attacher) linesVertices(prefix ...string) *lines.Lines {
