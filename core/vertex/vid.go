@@ -31,8 +31,8 @@ func _newVID(g _genericVertex, txid ledger.TransactionID, seqID *ledger.ChainID)
 	ret := &WrappedTx{
 		ID:             txid,
 		_genericVertex: g,
-		references:     1, // we always start with 1 reference, which is reference by the MemDAG itself. 0 references means it is deleted
-		dontPruneUntil: time.Now().Add(notReferencedVertexTTLSlots * ledger.SlotDuration()),
+		numReferences:  1, // we always start with 1 reference, which is reference by the MemDAG itself. 0 references means it is deleted
+		dontPruneUntil: time.Now().Add(vertexTTLSlots * ledger.SlotDuration()),
 	}
 	ret.SequencerID.Store(seqID)
 	ret.onPoke.Store(func() {})
@@ -116,7 +116,7 @@ func (vid *WrappedTx) SetSequencerAttachmentFinished() {
 	defer vid.mutex.Unlock()
 
 	vid.flags.SetFlagsUp(FlagVertexTxAttachmentFinished)
-	vid.dontPruneUntil = time.Now().Add(referencedVertexTTLSlots * ledger.L().ID.SlotDuration())
+	vid.dontPruneUntil = time.Now().Add(vertexTTLSlots * ledger.L().ID.SlotDuration())
 }
 
 func (vid *WrappedTx) SetTxStatusBad(reason error) {
@@ -155,14 +155,14 @@ func (vid *WrappedTx) IsBadOrDeleted() bool {
 	vid.mutex.RLock()
 	defer vid.mutex.RUnlock()
 
-	return vid.GetTxStatusNoLock() == Bad || vid.references == 0
+	return vid.GetTxStatusNoLock() == Bad || vid.numReferences == 0
 }
 
 func (vid *WrappedTx) IsDeleted() bool {
 	vid.mutex.RLock()
 	defer vid.mutex.RUnlock()
 
-	return vid.references == 0
+	return vid.numReferences == 0
 }
 
 func (vid *WrappedTx) StatusString() string {
@@ -418,7 +418,7 @@ func (vid *WrappedTx) _unwrap(opt UnwrapOptions) {
 			opt.VirtualTx(v.VirtualTransaction)
 		}
 	default:
-		if vid.references == 0 && opt.Deleted != nil {
+		if vid.numReferences == 0 && opt.Deleted != nil {
 			opt.Deleted()
 		}
 	}
@@ -468,7 +468,7 @@ func (vid *WrappedTx) ConvertToVirtualTx() {
 	vid.mutex.Lock()
 	defer vid.mutex.Unlock()
 
-	util.Assertf(vid.references > 0, "access deleted tx")
+	util.Assertf(vid.numReferences > 0, "access deleted tx")
 	switch v := vid._genericVertex.(type) {
 	case _vertex:
 		vid._put(_virtualTx{VirtualTransaction: v.convertToVirtualTx()})
@@ -622,7 +622,7 @@ func (vid *WrappedTx) String() (ret string) {
 				v.Tx.NumProducedOutputs(),
 				consumed,
 				doubleSpent,
-				vid.references,
+				vid.numReferences,
 				vid.flags,
 				reason,
 				util.Th(cov),
