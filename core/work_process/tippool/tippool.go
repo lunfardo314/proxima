@@ -9,7 +9,7 @@ import (
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util"
-	"github.com/lunfardo314/proxima/util/queue"
+	"github.com/lunfardo314/proxima/util/queue_old"
 )
 
 type (
@@ -25,7 +25,7 @@ type (
 	// SequencerTips is a collection with input queue, which keeps all latest sequencer transactions for each sequencer ID
 	// One transaction per sequencer
 	SequencerTips struct {
-		*queue.Queue[Input]
+		*queue_old.Queue[Input]
 		Environment
 		mutex                           sync.RWMutex
 		latestMilestones                map[ledger.ChainID]_milestoneData
@@ -48,7 +48,7 @@ const (
 
 func New(env Environment) *SequencerTips {
 	return &SequencerTips{
-		Queue:                           queue.NewQueueWithBufferSize[Input](Name, chanBufferSize, env.Log().Level(), nil),
+		Queue:                           queue_old.NewQueueWithBufferSize[Input](Name, chanBufferSize, env.Log().Level(), nil),
 		Environment:                     env,
 		latestMilestones:                make(map[ledger.ChainID]_milestoneData),
 		expectedSequencerActivityPeriod: 2 * ledger.L().ID.SlotDuration(),

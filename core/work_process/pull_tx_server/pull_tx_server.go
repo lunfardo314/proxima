@@ -7,7 +7,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/peering"
 	"github.com/lunfardo314/proxima/util"
-	"github.com/lunfardo314/proxima/util/queue"
+	"github.com/lunfardo314/proxima/util/queue_old"
 )
 
 type (
@@ -25,7 +25,7 @@ type (
 	}
 
 	PullTxServer struct {
-		*queue.Queue[*Input]
+		*queue_old.Queue[*Input]
 		Environment
 	}
 )
@@ -38,7 +38,7 @@ const (
 
 func New(env Environment) *PullTxServer {
 	return &PullTxServer{
-		Queue:       queue.NewQueueWithBufferSize[*Input](Name, chanBufferSize, env.Log().Level(), nil),
+		Queue:       queue_old.NewQueueWithBufferSize[*Input](Name, chanBufferSize, env.Log().Level(), nil),
 		Environment: env,
 	}
 }

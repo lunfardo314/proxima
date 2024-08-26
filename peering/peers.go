@@ -22,7 +22,7 @@ import (
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util"
-	"github.com/lunfardo314/proxima/util/queue"
+	"github.com/lunfardo314/proxima/util/queue_old"
 	"github.com/multiformats/go-multiaddr"
 	"github.com/spf13/viper"
 	"go.uber.org/zap/zapcore"
@@ -67,7 +67,7 @@ type (
 		lppProtocolHeartbeat protocol.ID
 		rendezvousString     string
 		// queued message sender to peers
-		outQueue *queue.Queue[outMsgData]
+		outQueue *queue_old.Queue[outMsgData]
 	}
 
 	Peer struct {
@@ -142,7 +142,7 @@ func NewPeersDummy() *Peers {
 		onReceiveTx:              func(_ peer.ID, _ []byte, _ *txmetadata.TransactionMetadata) {},
 		onReceivePullTx:          func(_ peer.ID, _ []ledger.TransactionID) {},
 		onReceivePullSyncPortion: func(_ peer.ID, _ ledger.Slot, _ int) {},
-		outQueue:                 queue.NewQueueWithBufferSize[outMsgData](NameOutQueue, outQueueChanBufferSize, zapcore.DebugLevel, nil),
+		outQueue:                 queue_old.NewQueueWithBufferSize[outMsgData](NameOutQueue, outQueueChanBufferSize, zapcore.DebugLevel, nil),
 	}
 }
 
@@ -177,7 +177,7 @@ func New(env Environment, cfg *Config) (*Peers, error) {
 		lppProtocolPull:          protocol.ID(fmt.Sprintf(lppProtocolPull, rendezvousNumber)),
 		lppProtocolHeartbeat:     protocol.ID(fmt.Sprintf(lppProtocolHeartbeat, rendezvousNumber)),
 		rendezvousString:         fmt.Sprintf("%d", rendezvousNumber),
-		outQueue:                 queue.NewQueueWithBufferSize[outMsgData](NameOutQueue, outQueueChanBufferSize, env.Log().Level(), nil),
+		outQueue:                 queue_old.NewQueueWithBufferSize[outMsgData](NameOutQueue, outQueueChanBufferSize, env.Log().Level(), nil),
 	}
 
 	env.Log().Infof("[peering] rendezvous number is %d", rendezvousNumber)

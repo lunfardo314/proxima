@@ -4,7 +4,7 @@ import (
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/eventtype"
-	"github.com/lunfardo314/proxima/util/queue"
+	"github.com/lunfardo314/proxima/util/queue_old"
 )
 
 type (
@@ -20,7 +20,7 @@ type (
 
 	Events struct {
 		Environment
-		*queue.Queue[Input]
+		*queue_old.Queue[Input]
 		eventHandlers map[eventtype.EventCode][]func(any)
 	}
 )
@@ -39,7 +39,7 @@ const (
 func New(env Environment) *Events {
 	return &Events{
 		Environment:   env,
-		Queue:         queue.NewQueueWithBufferSize[Input](Name, chanBufferSize, env.Log().Level(), nil),
+		Queue:         queue_old.NewQueueWithBufferSize[Input](Name, chanBufferSize, env.Log().Level(), nil),
 		eventHandlers: make(map[eventtype.EventCode][]func(any)),
 	}
 }

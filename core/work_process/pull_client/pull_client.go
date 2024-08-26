@@ -7,7 +7,7 @@ import (
 	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
-	"github.com/lunfardo314/proxima/util/queue"
+	"github.com/lunfardo314/proxima/util/queue_old"
 )
 
 // pull_client is a queued work process which sends pull requests for a specified transaction
@@ -29,7 +29,7 @@ type (
 	}
 
 	PullClient struct {
-		*queue.Queue[*Input]
+		*queue_old.Queue[*Input]
 		Environment
 		// set of wanted transactions
 		mutex    sync.RWMutex
@@ -52,7 +52,7 @@ const (
 
 func New(env Environment) *PullClient {
 	return &PullClient{
-		Queue:       queue.NewQueueWithBufferSize[*Input](Name, chanBufferSize, env.Log().Level(), nil),
+		Queue:       queue_old.NewQueueWithBufferSize[*Input](Name, chanBufferSize, env.Log().Level(), nil),
 		Environment: env,
 		pullList:    make(map[ledger.TransactionID]pullRecord),
 	}

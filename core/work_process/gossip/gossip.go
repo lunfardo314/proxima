@@ -8,7 +8,7 @@ import (
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/transaction"
-	"github.com/lunfardo314/proxima/util/queue"
+	"github.com/lunfardo314/proxima/util/queue_old"
 )
 
 type (
@@ -25,7 +25,7 @@ type (
 	}
 
 	Gossip struct {
-		*queue.Queue[*Input]
+		*queue_old.Queue[*Input]
 		Environment
 		// bloom filter to avoid most of the repeating gossips
 		gossipedFilter    map[ledger.TransactionIDVeryShort4]time.Time
@@ -43,7 +43,7 @@ const (
 
 func New(env Environment) *Gossip {
 	return &Gossip{
-		Queue:             queue.NewQueueWithBufferSize[*Input](Name, chanBufferSize, env.Log().Level(), nil),
+		Queue:             queue_old.NewQueueWithBufferSize[*Input](Name, chanBufferSize, env.Log().Level(), nil),
 		Environment:       env,
 		gossipedFilter:    make(map[ledger.TransactionIDVeryShort4]time.Time),
 		gossipedFilterTTL: gossipedFilterTTLSlots * ledger.L().ID.SlotDuration(),

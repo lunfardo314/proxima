@@ -7,7 +7,7 @@ import (
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/depdag"
-	"github.com/lunfardo314/proxima/util/queue"
+	"github.com/lunfardo314/proxima/util/queue_old"
 )
 
 type (
@@ -22,7 +22,7 @@ type (
 	}
 
 	Poker struct {
-		*queue.Queue[Input]
+		*queue_old.Queue[Input]
 		Environment
 		m map[*vertex.WrappedTx]waitingList
 	}
@@ -52,7 +52,7 @@ const (
 
 func New(env Environment) *Poker {
 	return &Poker{
-		Queue:       queue.NewQueueWithBufferSize[Input](Name, chanBufferSize, env.Log().Level(), nil),
+		Queue:       queue_old.NewQueueWithBufferSize[Input](Name, chanBufferSize, env.Log().Level(), nil),
 		Environment: env,
 		m:           make(map[*vertex.WrappedTx]waitingList),
 	}
