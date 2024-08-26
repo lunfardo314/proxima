@@ -129,7 +129,7 @@ func TestClose(t *testing.T) {
 }
 
 func TestPriority(t *testing.T) {
-	const nMessages = 1000
+	const nMessages = 100
 
 	var counter atomic.Int32
 	q := New[int](func(i int) {

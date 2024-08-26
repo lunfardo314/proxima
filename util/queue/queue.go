@@ -97,15 +97,16 @@ func (q *Queue[T]) inputLoop() {
 			// tries to read incoming element but does not block because buffer has data to be consumed
 			select {
 			case e, ok := <-q.inCh:
-				if !ok && !q.processRemainingOnClose {
-					// close only no need to process remaining element in the buffer
-					return
-				}
 				if ok {
 					if e.priority {
 						q.d.PushFront(e.elem)
 					} else {
 						q.d.PushBack(e.elem)
+					}
+				} else {
+					if !q.processRemainingOnClose {
+						// close only no need to process remaining element in the buffer
+						return
 					}
 				}
 			default:
