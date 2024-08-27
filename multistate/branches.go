@@ -84,7 +84,7 @@ func (r *RootRecord) Bytes() []byte {
 }
 
 func (r *RootRecord) StringShort() string {
-	return fmt.Sprintf("root record %s, %s, %s, %d",
+	return fmt.Sprintf("%s, %s, %s, %d",
 		r.SequencerID.StringShort(), util.Th(r.LedgerCoverage), r.Root.String(), r.NumTransactions)
 }
 

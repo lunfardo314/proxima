@@ -112,19 +112,10 @@ peering:
   # for more info see https://docs.libp2p.io/concepts/fundamentals/addressing/
   peers:
     # Example -> boot: /ip4/127.0.0.1/tcp/4000/p2p/12D3KooWL32QkXc8ZuraMJkLaoZjRXBkJVjRz7sxGWYwmzBFig3M
-    boot: /ip4/185.139.228.149/tcp/4000/p2p/12D3KooWQDhjcm6b6rKseiYuggsceisiM8corcuaZVoGhV8kqgPv
-    friendlyPeer: /ip4/185.139.228.149/tcp/4000/p2p/12D3KooWQDhjcm6b6rKseiYuggsceisiM8corcuaZVoGhV8kqgPv
 
   # Maximum number of peers which may be connected to via the automatic peer discovery
   # max_dynamic_peers > 0 means automatic peer discovery (autopeering) is enabled, otherwise disabled
   max_dynamic_peers: {{.MaxDynamicPeers}}
-
-workflow:
-  # enabling sync manager is optional. It is needed when node starts syncing long behind the network,
-  # for example when syncing from genesis
-  sync_client: 
-    enable: true
-    sync_portion_slots: 300
 
 # Node's API config
 api:
@@ -195,7 +186,7 @@ sequencers:
     controller_key: <ED25519 private key of the controller>
     # sequencer pace. Distance in ticks between two subsequent sequencer transactions
     # cannot be less than the sequencer pace value set by the ledger
-    pace: 5
+    pace: 12
     # maximum tag-along inputs allowed in the sequencer transaction (maximum value is 254)
     max_tag_along_inputs: 100
 `
