@@ -22,14 +22,14 @@ func TestInflationConst1Year(t *testing.T) {
 	t.Logf("branch inflation per year: %s", util.Th(branchInflationAnnual))
 	branchInflationAnnualPerc := float64(branchInflationAnnual*100) / float64(ledger.DefaultInitialSupply)
 	t.Logf("branch inflation per year %% of initial supply: %.2f%%", branchInflationAnnualPerc)
-	t.Logf("max chain inflation per slot: %s", util.Th(ledger.DefaultChainInflationPerTickBase*int(ledger.TicksPerSlot())))
-	inTs := ledger.MustNewLedgerTime(0, 1)
-	outTs := ledger.MustNewLedgerTime(1, 1)
+	t.Logf("max chain inflation per slot: %s", util.Th(ledger.DefaultChainInflationPerTickBase*int(ledger.TicksPerSlot)))
+	inTs := ledger.NewLedgerTime(0, 1)
+	outTs := ledger.NewLedgerTime(1, 1)
 	t.Logf("chain inflation per initial slot: %s", util.Th(ledger.L().CalcChainInflationAmount(inTs, outTs, ledger.DefaultInitialSupply, 0)))
 
 	supply := ledger.DefaultInitialSupply
 	for i := 0; i < ledger.L().ID.SlotsPerYear(); i++ {
-		supply += supply / (ledger.DefaultChainInflationPerTickBase / ledger.DefaultTicksPerSlot)
+		supply += supply / (ledger.DefaultChainInflationPerTickBase / ledger.TicksPerSlot)
 	}
 	t.Logf("annual chain inflation: %s", util.Th(supply))
 	t.Logf("annual chain inflation %% of initial supply: %.2f%%", (float64(supply-ledger.DefaultInitialSupply)*100)/float64(ledger.DefaultInitialSupply))
@@ -39,10 +39,9 @@ func TestInflationConst1Year(t *testing.T) {
 func TestInflation(t *testing.T) {
 	t.Run("1", func(t *testing.T) {
 		ledger.L().MustEqual("constGenesisTimeUnix", fmt.Sprintf("u64/%d", ledger.L().ID.GenesisTimeUnix))
-		require.EqualValues(t, ledger.L().ID.TicksPerSlot(), ledger.TicksPerSlot())
 	})
 	t.Run("upper supply bound", func(t *testing.T) {
-		tsIn := ledger.MustNewLedgerTime(0, 0)
+		tsIn := ledger.NewLedgerTime(0, 0)
 
 		run := func(ts ledger.Time) {
 			u := ledger.L().UpperSupplyBound(tsIn)
@@ -55,12 +54,12 @@ func TestInflation(t *testing.T) {
 		run(tsIn)
 		tsIn = tsIn.AddTicks(1_000_000)
 		run(tsIn)
-		slotsPerInflationEpoch := int(ledger.L().ID.TicksPerInflationEpoch) / ledger.L().ID.TicksPerSlot()
-		tsIn = ledger.MustNewLedgerTime(ledger.Slot(slotsPerInflationEpoch), 0)
+		slotsPerInflationEpoch := int(ledger.L().ID.TicksPerInflationEpoch) / ledger.TicksPerSlot
+		tsIn = ledger.NewLedgerTime(ledger.Slot(slotsPerInflationEpoch), 0)
 		run(tsIn)
-		tsIn = ledger.MustNewLedgerTime(ledger.Slot(10*slotsPerInflationEpoch), 0)
+		tsIn = ledger.NewLedgerTime(ledger.Slot(10*slotsPerInflationEpoch), 0)
 		run(tsIn)
-		tsIn = ledger.MustNewLedgerTime(ledger.Slot(100*slotsPerInflationEpoch), 0)
+		tsIn = ledger.NewLedgerTime(ledger.Slot(100*slotsPerInflationEpoch), 0)
 		run(tsIn)
 		t.Logf("max uint64: %s", util.Th(uint64(math.MaxUint64)))
 	})
@@ -70,7 +69,7 @@ func TestInflation(t *testing.T) {
 			t.Logf("amountFactor(%s, %s) = %s", ts.String(), util.Th(amount), util.Th(af))
 			return af
 		}
-		tsIn := ledger.MustNewLedgerTime(0, 0)
+		tsIn := ledger.NewLedgerTime(0, 0)
 		af := run(tsIn, 1)
 		require.EqualValues(t, ledger.DefaultInitialSupply, af)
 		af = run(tsIn, ledger.DefaultInitialSupply)
@@ -95,14 +94,14 @@ func TestInflation(t *testing.T) {
 				tsIn.String(), tsOut.String(), yn)
 			return yn
 		}
-		tsIn := ledger.MustNewLedgerTime(0, 0)
+		tsIn := ledger.NewLedgerTime(0, 0)
 		require.True(t, run(tsIn, tsIn.AddTicks(1)))
 		require.True(t, run(tsIn, tsIn.AddTicks(100)))
 		require.True(t, run(tsIn, tsIn.AddTicks(1199)))
 		require.True(t, run(tsIn, tsIn.AddTicks(1200)))
-		require.True(t, run(tsIn, tsIn.AddTicks(1299)))
-		require.False(t, run(tsIn, tsIn.AddTicks(1300)))
-		require.False(t, run(tsIn, tsIn.AddTicks(2000)))
+		require.True(t, run(tsIn, tsIn.AddTicks(ledger.DefaultChainInflationOpportunitySlots*ledger.TicksPerSlot+ledger.MaxTickValue)))
+		require.False(t, run(tsIn, tsIn.AddTicks(ledger.DefaultChainInflationOpportunitySlots*ledger.TicksPerSlot+ledger.MaxTickValue+1)))
+		require.False(t, run(tsIn, tsIn.AddTicks(5000)))
 	})
 	t.Run("chain inflation", func(t *testing.T) {
 		run := func(tsIn, tsOut ledger.Time, amount, delayed uint64) uint64 {
@@ -112,7 +111,7 @@ func TestInflation(t *testing.T) {
 			return inflation
 		}
 		t.Logf("chain inflation per tick base: %s", util.Th(ledger.L().ID.ChainInflationPerTickBase))
-		tsIn := ledger.MustNewLedgerTime(0, 0)
+		tsIn := ledger.NewLedgerTime(0, 0)
 		tsOut := tsIn.AddTicks(1)
 		run(tsIn, tsOut, 1, 0)
 		run(tsIn, tsOut, ledger.DefaultInitialSupply, 0)
@@ -127,7 +126,7 @@ func TestInflation(t *testing.T) {
 		run(tsIn, tsOut, uint64(ledger.DefaultInitialSupply/(150000+8550)), 0)
 		run(tsIn, tsOut, uint64(ledger.DefaultInitialSupply/(150000+8550)), 1336)
 
-		tsIn = ledger.MustNewLedgerTime(0, 0)
+		tsIn = ledger.NewLedgerTime(0, 0)
 		tsOut = tsIn.AddTicks(1199)
 		run(tsIn, tsOut, 1, 0)
 		run(tsIn, tsOut, ledger.DefaultInitialSupply, 0)
@@ -142,7 +141,7 @@ func TestInflation(t *testing.T) {
 		run(tsIn, tsOut, uint64(ledger.DefaultInitialSupply/(150000+8550)), 0)
 
 		t.Logf("----- inflation opportunity window %d slots", ledger.L().ID.ChainInflationOpportunitySlots)
-		tsIn = ledger.MustNewLedgerTime(0, 0)
+		tsIn = ledger.NewLedgerTime(0, 0)
 		tsOut = tsIn.AddTicks(1300)
 		run(tsIn, tsOut, 1, 0)
 		run(tsIn, tsOut, ledger.DefaultInitialSupply, 0)

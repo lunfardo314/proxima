@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/ledger"
-	"github.com/lunfardo314/proxima/util"
 	"github.com/stretchr/testify/require"
 )
 
@@ -37,8 +36,8 @@ func TestTime(t *testing.T) {
 		t.Logf("%s", ts1)
 	})
 	t.Run("2", func(t *testing.T) {
-		ts0 := ledger.MustNewLedgerTime(100, 33)
-		ts1 := ledger.MustNewLedgerTime(120, 55)
+		ts0 := ledger.NewLedgerTime(100, 33)
+		ts1 := ledger.NewLedgerTime(120, 55)
 		t.Logf("%s", ts0)
 		t.Logf("%s", ts1)
 		require.EqualValues(t, 100, ts0.Slot())
@@ -47,20 +46,19 @@ func TestTime(t *testing.T) {
 		require.EqualValues(t, 55, ts1.Tick())
 
 		diff := ledger.DiffTicks(ts0, ts1)
-		require.EqualValues(t, -(20*ledger.L().ID.TicksPerSlot() + 22), diff)
+		require.EqualValues(t, -(20*ledger.TicksPerSlot + 22), diff)
 		diff = ledger.DiffTicks(ts1, ts0)
-		require.EqualValues(t, 20*ledger.L().ID.TicksPerSlot()+22, diff)
+		require.EqualValues(t, 20*ledger.TicksPerSlot+22, diff)
 		diff = ledger.DiffTicks(ts1, ts1)
 		require.EqualValues(t, 0, diff)
 	})
 	t.Run("3", func(t *testing.T) {
-		util.RequirePanicOrErrorWith(t, func() error {
-			ledger.MustNewLedgerTime(100, 120)
-			return nil
-		}, "assertion failed:: s.Valid()")
+		ts := ledger.NewLedgerTime(100, 120)
+		require.EqualValues(t, 100, int(ts.Slot()))
+		require.EqualValues(t, 120, int(ts.Tick()))
 	})
 	t.Run("4", func(t *testing.T) {
-		ts0 := ledger.MustNewLedgerTime(100, 33)
+		ts0 := ledger.NewLedgerTime(100, 33)
 		t.Logf("%s", ts0)
 		b := ts0.Bytes()
 		tsBack, err := ledger.TimeFromBytes(b)
@@ -95,11 +93,11 @@ func TestTime(t *testing.T) {
 		require.EqualValues(t, nowisTs.AddTicks(rnd), nowisRndTickLaterTs)
 	})
 	t.Run("7", func(t *testing.T) {
-		ts := ledger.MustNewLedgerTime(100, 99)
+		ts := ledger.NewLedgerTime(100, 99)
 		t.Logf("ts = %s", ts)
-		ts1 := ts.AddTicks(20)
+		ts1 := ts.AddTicks(200)
 		t.Logf("ts1 = %s", ts1)
-		tsExpect := ledger.MustNewLedgerTime(101, 19)
+		tsExpect := ledger.NewLedgerTime(101, 43)
 		t.Logf("tsExpect = %s", tsExpect)
 		require.EqualValues(t, tsExpect, ts1)
 	})

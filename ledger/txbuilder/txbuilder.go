@@ -468,7 +468,7 @@ func MakeSimpleTransferTransactionWithRemainder(par *TransferData, disableEndors
 		}
 		if par.Endorsements[i].Slot() > adjustedTs.Slot() {
 			// adjust timestamp to the endorsed slot
-			adjustedTs = ledger.MustNewLedgerTime(par.Endorsements[i].Slot(), 0)
+			adjustedTs = ledger.NewLedgerTime(par.Endorsements[i].Slot(), 0)
 		}
 	}
 
@@ -593,7 +593,7 @@ func MakeChainTransferTransaction(par *TransferData, disableEndorsementChecking 
 		}
 		if par.Endorsements[i].Slot() > adjustedTs.Slot() {
 			// adjust timestamp to the endorsed slot
-			adjustedTs = ledger.MustNewLedgerTime(par.Endorsements[i].Slot(), 0)
+			adjustedTs = ledger.NewLedgerTime(par.Endorsements[i].Slot(), 0)
 		}
 	}
 

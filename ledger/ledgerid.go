@@ -28,8 +28,6 @@ type (
 		GenesisControllerPublicKey ed25519.PublicKey
 		// time tick duration in nanoseconds
 		TickDuration time.Duration
-		// max time tick value in the slot. Default 99
-		MaxTickValueInSlot uint8
 		// ----------- begin inflation-related
 		// BranchInflationBonusBase inflation bonus
 		BranchInflationBonusBase uint64
@@ -64,7 +62,6 @@ type (
 		InitialSupply                  uint64 `yaml:"initial_supply"`
 		GenesisControllerPublicKey     string `yaml:"genesis_controller_public_key"`
 		TimeTickDurationNanosec        int64  `yaml:"time_tick_duration_nanosec"`
-		MaxTimeTickValueInTimeSlot     uint8  `yaml:"max_time_tick_value_in_time_slot"`
 		VBCost                         uint64 `yaml:"vb_cost"`
 		TransactionPace                byte   `yaml:"transaction_pace"`
 		TransactionPaceSequencer       byte   `yaml:"transaction_pace_sequencer"`
@@ -85,6 +82,9 @@ type (
 const (
 	GenesisOutputIndex     = byte(0)
 	GenesisStemOutputIndex = byte(1)
+
+	TicksPerSlot = 256
+	MaxTickValue = TicksPerSlot - 1
 )
 
 func (id *IdentityData) Bytes() []byte {
@@ -94,7 +94,6 @@ func (id *IdentityData) Bytes() []byte {
 	buf.Write(id.GenesisControllerPublicKey)
 	_ = binary.Write(&buf, binary.BigEndian, id.InitialSupply)
 	_ = binary.Write(&buf, binary.BigEndian, id.TickDuration.Nanoseconds())
-	_ = binary.Write(&buf, binary.BigEndian, id.MaxTickValueInSlot)
 	_ = binary.Write(&buf, binary.BigEndian, id.BranchInflationBonusBase)
 	_ = binary.Write(&buf, binary.BigEndian, id.ChainInflationPerTickBase)
 	_ = binary.Write(&buf, binary.BigEndian, id.ChainInflationOpportunitySlots)
@@ -151,11 +150,6 @@ func IdentityDataFromBytes(data []byte) (*IdentityData, error) {
 	}
 	ret.TickDuration = time.Duration(bufNano)
 
-	err = binary.Read(rdr, binary.BigEndian, &ret.MaxTickValueInSlot)
-	if err != nil {
-		return nil, fmt.Errorf("IdentityDataFromBytes: %v", err)
-	}
-
 	err = binary.Read(rdr, binary.BigEndian, &ret.BranchInflationBonusBase)
 	if err != nil {
 		return nil, fmt.Errorf("IdentityDataFromBytes: %v", err)
@@ -206,10 +200,6 @@ func IdentityDataFromBytes(data []byte) (*IdentityData, error) {
 		return nil, fmt.Errorf("IdentityDataFromBytes: %v", err)
 	}
 
-	if ret.PreBranchConsolidationTicks >= ret.MaxTickValueInSlot {
-		return nil, fmt.Errorf("wrong ledger constants: ret.PreBranchConsolidationTicks < ret.MaxTickValueInSlot")
-	}
-
 	err = binary.Read(rdr, binary.BigEndian, &size16)
 	if err != nil {
 		return nil, fmt.Errorf("IdentityDataFromBytes: %v", err)
@@ -249,19 +239,14 @@ func (id *IdentityData) GenesisControlledAddress() AddressED25519 {
 func (id *IdentityData) TimeFromRealTime(nowis time.Time) Time {
 	util.Assertf(!nowis.Before(id.GenesisTime()), "!nowis.Before(id.GenesisTimeUnix)")
 	sinceGenesisNano := nowis.UnixNano() - id.GenesisTimeUnixNano()
-	totalTicks := sinceGenesisNano / int64(id.TickDuration)
-	tps := int64(id.TicksPerSlot())
-	slot := totalTicks / tps
-	ticks := totalTicks % tps
-	return MustNewLedgerTime(Slot(uint32(slot)), Tick(byte(ticks)))
+
+	ret, err := TimeFromTicksSinceGenesis(sinceGenesisNano / int64(id.TickDuration))
+	util.AssertNoError(err)
+	return ret
 }
 
 func (id *IdentityData) SlotDuration() time.Duration {
-	return id.TickDuration * time.Duration(id.TicksPerSlot())
-}
-
-func (id *IdentityData) TicksPerSlot() int {
-	return int(id.MaxTickValueInSlot) + 1
+	return id.TickDuration * time.Duration(TicksPerSlot)
 }
 
 func (id *IdentityData) SlotsPerDay() int {
@@ -273,7 +258,7 @@ func (id *IdentityData) SlotsPerYear() int {
 }
 
 func (id *IdentityData) TicksPerYear() int {
-	return id.SlotsPerYear() * id.TicksPerSlot()
+	return id.SlotsPerYear() * TicksPerSlot
 }
 
 func (id *IdentityData) OriginChainID() ChainID {
@@ -282,7 +267,7 @@ func (id *IdentityData) OriginChainID() ChainID {
 }
 
 func (id *IdentityData) IsPreBranchConsolidationTimestamp(ts Time) bool {
-	return ts.Tick() > Tick(id.MaxTickValueInSlot-id.PreBranchConsolidationTicks)
+	return ts.Tick() > MaxTickValue-id.PreBranchConsolidationTicks
 }
 
 func (id *IdentityData) String() string {
@@ -294,7 +279,6 @@ func (id *IdentityData) Lines(prefix ...string) *lines.Lines {
 	return lines.New(prefix...).
 		Add("Genesis Unix time: %d (%s)", id.GenesisTimeUnix, id.GenesisTime().Format(time.RFC3339)).
 		Add("Time tick duration: %v", id.TickDuration).
-		Add("Time ticks per time slot: %d", id.TicksPerSlot()).
 		Add("Transaction pace: %d", id.TransactionPace).
 		Add("Sequencer pace: %d", id.TransactionPaceSequencer).
 		Add("Description: '%s'", id.Description).
@@ -311,7 +295,6 @@ func (id *IdentityData) YAMLAble() *IdentityDataYAMLAble {
 		GenesisControllerPublicKey:     hex.EncodeToString(id.GenesisControllerPublicKey),
 		InitialSupply:                  id.InitialSupply,
 		TimeTickDurationNanosec:        id.TickDuration.Nanoseconds(),
-		MaxTimeTickValueInTimeSlot:     id.MaxTickValueInSlot,
 		BranchInflationBonusBase:       id.BranchInflationBonusBase,
 		VBCost:                         id.VBCost,
 		TransactionPace:                id.TransactionPace,
@@ -342,7 +325,6 @@ func (id *IdentityData) TimeConstantsToString() string {
 	maxYears := MaxSlot / (id.SlotsPerDay() * 365)
 	return lines.New().
 		Add("TickDuration = %v", id.TickDuration).
-		Add("TicksPerSlot = %d", id.TicksPerSlot()).
 		Add("SlotDuration = %v", id.SlotDuration()).
 		Add("SlotsPerDay = %d", id.SlotsPerDay()).
 		Add("MaxYears = %d", maxYears).
@@ -396,7 +378,6 @@ func (id *IdentityDataYAMLAble) stateIdentityData() (*IdentityData, error) {
 		return nil, fmt.Errorf("wrong public key")
 	}
 	ret.TickDuration = time.Duration(id.TimeTickDurationNanosec)
-	ret.MaxTickValueInSlot = id.MaxTimeTickValueInTimeSlot
 	ret.BranchInflationBonusBase = id.BranchInflationBonusBase
 	ret.VBCost = id.VBCost
 	ret.TransactionPace = id.TransactionPace

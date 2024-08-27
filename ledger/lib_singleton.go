@@ -77,10 +77,6 @@ func WithSequencerPace(ticks byte) func(id *IdentityData) {
 	}
 }
 
-func TicksPerSlot() byte {
-	return L().Const().TicksPerSlot()
-}
-
 func TransactionPace() int {
 	return int(L().ID.TransactionPace)
 }

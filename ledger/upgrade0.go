@@ -252,7 +252,8 @@ func upgrade0BaseConstants(id *IdentityData) []*easyfl.ExtendedFunctionData {
 		{"constGenesisControllerPublicKey", fmt.Sprintf("0x%s", hex.EncodeToString(id.GenesisControllerPublicKey))},
 		{"constGenesisTimeUnix", fmt.Sprintf("u64/%d", id.GenesisTimeUnix)},
 		{"constTickDuration", fmt.Sprintf("u64/%d", int64(id.TickDuration))},
-		{"constMaxTickValuePerSlot", fmt.Sprintf("u64/%d", id.MaxTickValueInSlot)},
+		{"constMaxTickValuePerSlot", "u64/255"},
+		{"ticksPerSlot64", "u64/256"},
 		// begin inflation-related
 		{"constBranchInflationBonusBase", fmt.Sprintf("u64/%d", id.BranchInflationBonusBase)},
 		{"constChainInflationPerTickBase", fmt.Sprintf("u64/%d", id.ChainInflationPerTickBase)},
@@ -266,8 +267,6 @@ func upgrade0BaseConstants(id *IdentityData) []*easyfl.ExtendedFunctionData {
 		{"constTransactionPace", fmt.Sprintf("u64/%d", id.TransactionPace)},
 		{"constTransactionPaceSequencer", fmt.Sprintf("u64/%d", id.TransactionPaceSequencer)},
 		{"constVBCost16", fmt.Sprintf("u16/%d", id.VBCost)}, // change to 64
-		{"ticksPerSlot", fmt.Sprintf("%d", id.TicksPerSlot())},
-		{"ticksPerSlot64", fmt.Sprintf("u64/%d", id.TicksPerSlot())},
 		{"timeSlotSizeBytes", fmt.Sprintf("%d", SlotByteLength)},
 		{"timestampByteSize", fmt.Sprintf("%d", TimeByteLength)},
 	}
@@ -275,7 +274,7 @@ func upgrade0BaseConstants(id *IdentityData) []*easyfl.ExtendedFunctionData {
 
 var upgrade0BaseHelpers = []*easyfl.ExtendedFunctionData{
 	{"mustSize", "if(equalUint(len($0), $1), $0, !!!wrong_data_size)"},
-	{"mustValidTimeTick", "if(and(mustSize($0,1),lessThan($0,ticksPerSlot)),$0,!!!wrong_ticks_value)"},
+	{"mustValidTimeTick", "if(mustSize($0,1),$0,!!!wrong_ticks_value)"},
 	{"mustValidTimeSlot", "mustSize($0, timeSlotSizeBytes)"},
 	{"timeSlotPrefix", "slice($0, 0, 3)"}, // first 4 bytes of any array. It is not time slot yet
 	{"timeSlotFromTimeSlotPrefix", "bitwiseAND($0, 0x7fffffff)"},
@@ -294,13 +293,11 @@ func (lib *Library) upgrade0WithBaseConstants(id *IdentityData) {
 
 	lib.appendInlineTests(func() {
 		// inline tests
-		libraryGlobal.MustEqual("timestamp(u32/255, 21)", MustNewLedgerTime(255, 21).Hex())
-		libraryGlobal.MustEqual("ticksBefore(timestamp(u32/100, 5), timestamp(u32/101, 10))", "u64/105")
-		libraryGlobal.MustError("timestamp(u32/255, 100)", "wrong ticks value")
+		libraryGlobal.MustEqual("timestamp(u32/255, 21)", NewLedgerTime(255, 21).Hex())
+		libraryGlobal.MustEqual("ticksBefore(timestamp(u32/100, 5), timestamp(u32/101, 10))", "u64/261")
 		libraryGlobal.MustError("mustValidTimeSlot(255)", "wrong data size")
-		libraryGlobal.MustError("mustValidTimeTick(200)", "wrong ticks value")
 		libraryGlobal.MustEqual("mustValidTimeSlot(u32/255)", Slot(255).Hex())
-		libraryGlobal.MustEqual("mustValidTimeTick(88)", Tick(88).String())
+		libraryGlobal.MustEqual("mustValidTimeTick(88)", "88")
 	})
 }
 

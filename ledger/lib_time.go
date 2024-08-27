@@ -14,39 +14,22 @@ import (
 
 const (
 	SlotByteLength = 4
-	TickByteLength = 1
-	TimeByteLength = SlotByteLength + TickByteLength // bytes
-	MaxSlot        = 0xffffffff >> 1                 // 1 most significant bit must be 0
+	TimeByteLength = SlotByteLength + 1 // bytes
+	MaxSlot        = 0xffffffff >> 1    // 1 most significant bit must be 0
 )
-
-func SlotsPerDay() int {
-	return int(24 * time.Hour / SlotDuration())
-}
-
-func SlotsPerHour() int {
-	return int(time.Hour / SlotDuration())
-}
-
-func TicksPerHour() int {
-	return L().ID.TicksPerSlot() * SlotsPerHour()
-}
 
 func TickDuration() time.Duration {
 	return L().ID.TickDuration
 }
 
 func SlotDuration() time.Duration {
-	return time.Duration(L().ID.TicksPerSlot()) * TickDuration()
+	return L().ID.SlotDuration()
 }
 
 type (
 	// Slot represents a particular time slot.
 	// Starting slot 0 at genesis
 	Slot uint32
-
-	// Tick is enforced to be <= MaxTickValueInSlot of the ledger identity
-	// Usually it is 100, can be up to 255
-	Tick byte
 
 	// Time (ledger time) is 5 bytes:
 	// - bytes [0:3] is slot (big endian). Most significant of the byte 0 in the slot must be 0
@@ -71,18 +54,9 @@ func SlotFromBytes(data []byte) (ret Slot, err error) {
 	return Slot(binary.BigEndian.Uint32(data)), nil
 }
 
-func TickFromByte(d byte) (ret Tick, err error) {
-	if ret = Tick(d); ret.Valid() {
-		return
-	}
-	err = fmt.Errorf("wrong tick value")
-	return
-}
-
-func MustNewLedgerTime(e Slot, s Tick) (ret Time) {
-	util.Assertf(s.Valid(), "s.Valid()")
-	binary.BigEndian.PutUint32(ret[:4], uint32(e))
-	ret[4] = byte(s)
+func NewLedgerTime(slot Slot, t uint8) (ret Time) {
+	binary.BigEndian.PutUint32(ret[:4], uint32(slot))
+	ret[4] = t
 	return
 }
 
@@ -104,41 +78,35 @@ func TimeFromBytes(data []byte) (ret Time, err error) {
 		err = errWrongDataLength
 		return
 	}
-	var e Slot
-	e, err = SlotFromBytes(data[:4])
+	var slot Slot
+	slot, err = SlotFromBytes(data[:4])
 	if err != nil {
 		return
 	}
-	var s Tick
-	s, err = TickFromByte(data[4])
-	if err != nil {
-		return
-	}
-	ret = MustNewLedgerTime(e, s)
+	ret = NewLedgerTime(slot, data[TimeByteLength-1])
 	return
 }
 
-func (s Tick) Valid() bool {
-	return int(s) < L().ID.TicksPerSlot()
+func TimeFromTicksSinceGenesis(i int64) (Time, error) {
+	if i > (int64(MaxSlot) << 8) {
+		return Time{}, fmt.Errorf("TimeFromTicksSinceGenesis: wrong int64")
+	}
+	return NewLedgerTime(Slot(i>>8), uint8(i%TicksPerSlot)), nil
 }
 
-func (s Tick) String() string {
-	return fmt.Sprintf("%d", s)
-}
-
-func (e Slot) Bytes() []byte {
+func (s Slot) Bytes() []byte {
 	ret := make([]byte, SlotByteLength)
-	binary.BigEndian.PutUint32(ret, uint32(e))
+	binary.BigEndian.PutUint32(ret, uint32(s))
 	return ret
 }
 
-func (e Slot) Hex() string {
-	return fmt.Sprintf("0x%s", hex.EncodeToString(e.Bytes()))
+func (s Slot) Hex() string {
+	return fmt.Sprintf("0x%s", hex.EncodeToString(s.Bytes()))
 }
 
-func (e Slot) TransactionIDPrefixes() (withSequencerFlag, withoutSequencerFlag []byte) {
-	withSequencerFlag = e.Bytes()
-	withoutSequencerFlag = e.Bytes()
+func (s Slot) TransactionIDPrefixes() (withSequencerFlag, withoutSequencerFlag []byte) {
+	withSequencerFlag = s.Bytes()
+	withoutSequencerFlag = s.Bytes()
 	withSequencerFlag[0] |= SequencerTxFlagHigherByte
 	return
 }
@@ -147,10 +115,8 @@ func (t Time) Slot() Slot {
 	return Slot(binary.BigEndian.Uint32(t[:4]))
 }
 
-func (t Time) Tick() Tick {
-	ret := Tick(t[4])
-	util.Assertf(ret.Valid(), "invalid slot value")
-	return ret
+func (t Time) Tick() uint8 {
+	return t[TimeByteLength-1]
 }
 
 func (t Time) IsSlotBoundary() bool {
@@ -170,14 +136,14 @@ func (t Time) NextSlotBoundary() Time {
 	if t.Tick() == 0 {
 		return t
 	}
-	return MustNewLedgerTime(t.Slot()+1, 0)
+	return NewLedgerTime(t.Slot()+1, 0)
 }
 
 func (t Time) TicksToNextSlotBoundary() int {
 	if t.Tick() == 0 {
 		return 0
 	}
-	return L().ID.TicksPerSlot() - int(t.Tick())
+	return TicksPerSlot - int(t.Tick())
 }
 
 func (t Time) Bytes() []byte {
@@ -214,15 +180,16 @@ func (t Time) Hex() string {
 	return fmt.Sprintf("0x%s", hex.EncodeToString(t[:]))
 }
 
+func (t Time) TicksSinceGenesis() int64 {
+	return int64(t.Slot())<<8 + int64(t.Tick())
+}
+
 // DiffTicks returns difference in ticks between two timestamps:
 // < 0 is t1 is before t2
 // > 0 if t2 is before t1
 // (i.e. t1 - t2)
 func DiffTicks(t1, t2 Time) int64 {
-	ticksPerSlot := L().ID.TicksPerSlot()
-	slots1 := int64(t1.Slot())*int64(ticksPerSlot) + int64(t1.Tick())
-	slots2 := int64(t2.Slot())*int64(ticksPerSlot) + int64(t2.Tick())
-	return slots1 - slots2
+	return t1.TicksSinceGenesis() - t2.TicksSinceGenesis()
 }
 
 // ValidTransactionPace return true is subsequent input and target non-sequencer tx timestamps make a valid pace
@@ -235,19 +202,17 @@ func ValidSequencerPace(t1, t2 Time) bool {
 	return DiffTicks(t2, t1) >= int64(TransactionPaceSequencer())
 }
 
-// AddTicks adds ticks to timestamp. ticks can be negative
+// AddTicks adds ticks to timestamp. ticks can't be negative
 func (t Time) AddTicks(ticks int) Time {
 	util.Assertf(ticks >= 0, "AddTicks: can't be negative argument")
-	s1 := int(t.Tick()) + ticks
-	ticksPerSlot := L().ID.TicksPerSlot()
-	eRet := s1 / ticksPerSlot
-	sRet := s1 % ticksPerSlot
-	return MustNewLedgerTime(t.Slot()+Slot(eRet), Tick(sRet))
+	ret, err := TimeFromTicksSinceGenesis(t.TicksSinceGenesis() + int64(ticks))
+	util.AssertNoError(err)
+	return ret
 }
 
 // AddSlots adds slots to timestamp
-func (t Time) AddSlots(e int) Time {
-	return MustNewLedgerTime(t.Slot()+Slot(e), t.Tick())
+func (t Time) AddSlots(slot int) Time {
+	return t.AddTicks(slot << 8)
 }
 
 func MaxTime(ts ...Time) Time {

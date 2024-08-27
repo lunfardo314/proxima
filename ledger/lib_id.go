@@ -28,9 +28,8 @@ type (
 // default ledger constants
 
 const (
-	DefaultTickDuration           = 100 * time.Millisecond
-	DefaultTicksPerSlot           = 100
-	DefaultSlotDuration           = DefaultTickDuration * DefaultTicksPerSlot
+	DefaultTickDuration           = 40 * time.Millisecond
+	DefaultSlotDuration           = DefaultTickDuration * TicksPerSlot // ~10.24 sec
 	DaysPerYear                   = 365
 	DefaultInflationEpochDuration = DaysPerYear * 24 * time.Hour // standard inflation epoch is 365 days
 	DefaultSlotsPerInflationEpoch = uint64(DefaultInflationEpochDuration / DefaultSlotDuration)
@@ -47,9 +46,9 @@ const (
 	// default inflation constants adjusted to the annual inflation cap of approx 12-13% first year
 
 	DefaultBranchInflationBonusBase       = 5_000_000
-	DefaultChainInflationPerTickBase      = 400_000 // 317_098 approximately corresponds to 10% annual
+	DefaultChainInflationPerTickBase      = 160_000
 	DefaultChainInflationOpportunitySlots = 12
-	DefaultTicksPerInflationEpoch         = DefaultSlotsPerInflationEpoch * DefaultTicksPerSlot
+	DefaultTicksPerInflationEpoch         = DefaultSlotsPerInflationEpoch * TicksPerSlot
 
 	// used to enforce approx validity of defaults
 
@@ -58,12 +57,12 @@ const (
 	// -------------- end inflation-related
 
 	DefaultVBCost                   = 1
-	DefaultTransactionPace          = 10
-	DefaultTransactionPaceSequencer = 1
+	DefaultTransactionPace          = 25
+	DefaultTransactionPaceSequencer = 3
 	// DefaultMinimumAmountOnSequencer Reasonable limit could be 1/1000 of initial supply
 	DefaultMinimumAmountOnSequencer    = 1_000 * PRXI
 	DefaultMaxNumberOfEndorsements     = 8
-	DefaultPreBranchConsolidationTicks = 20
+	DefaultPreBranchConsolidationTicks = 50
 )
 
 func init() {
@@ -112,7 +111,6 @@ func DefaultIdentityData(privateKey ed25519.PrivateKey) *IdentityData {
 		GenesisControllerPublicKey:     privateKey.Public().(ed25519.PublicKey),
 		InitialSupply:                  DefaultInitialSupply,
 		TickDuration:                   DefaultTickDuration,
-		MaxTickValueInSlot:             DefaultTicksPerSlot - 1,
 		VBCost:                         DefaultVBCost,
 		TransactionPace:                DefaultTransactionPace,
 		TransactionPaceSequencer:       DefaultTransactionPaceSequencer,
