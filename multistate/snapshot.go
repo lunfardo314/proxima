@@ -2,8 +2,10 @@ package multistate
 
 import (
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/lunfardo314/proxima/global"
@@ -11,26 +13,37 @@ import (
 	"github.com/lunfardo314/unitrie/common"
 )
 
-// WriteState writes state with the root as a sequence of key/value pairs.
+// writeState writes state with the root as a sequence of key/value pairs.
 // Does not write ledger identity record
-func WriteState(state global.StateStoreReader, target common.KVStreamWriter, root common.VCommitment, ctx context.Context) error {
+func writeState(state global.StateStoreReader, target common.KVStreamWriter, root common.VCommitment, ctx context.Context, out io.Writer) error {
 	rdr, err := NewReadable(state, root)
 	if err != nil {
-		return fmt.Errorf("WriteState: %w", err)
+		return fmt.Errorf("writeState: %w", err)
 	}
+	counter := 0
 	rdr.Iterator(nil).Iterate(func(k, v []byte) bool {
 		select {
 		case <-ctx.Done():
-			err = fmt.Errorf("WriteState: state writing has been interrupted")
+			err = fmt.Errorf("writeState: state writing has been interrupted")
 		default:
 			if len(k) > 0 {
 				// skip ledger identity record
 				err = target.Write(k, v)
+				_outKVPair(k, v, counter, out)
+				counter++
 			}
 		}
 		return err == nil
 	})
 	return err
+}
+
+func _outKVPair(k, v []byte, counter int, out io.Writer) {
+	common.Assert(len(k) > 0, "len(k)>0")
+
+	_, _ = fmt.Fprintf(out, "[SaveSnapshot] rec #%d: %s %s, value len: %d\n",
+		counter, PartitionToString(k[0]), hex.EncodeToString(k[1:]), len(v))
+
 }
 
 type SnapshotHeader struct {
@@ -45,15 +58,25 @@ func snapshotFileName(branchID ledger.TransactionID) string {
 }
 
 // SaveSnapshot writes latest reliable state into snapshot. Returns snapshot file name
-func SaveSnapshot(state global.StateStoreReader, ctx context.Context) (*RootRecord, string, error) {
+func SaveSnapshot(state global.StateStoreReader, ctx context.Context, out ...io.Writer) (*RootRecord, string, error) {
 	makeErr := func(errStr string) (*RootRecord, string, error) {
 		return nil, "", fmt.Errorf("SaveSnapshot: %s", errStr)
 	}
 
+	console := io.Discard
+	if len(out) > 0 {
+		console = out[0]
+	}
 	latestReliableBranch, found := FindLatestReliableBranch(state, global.FractionHealthyBranch)
 	if !found {
 		return makeErr("the reliable branch has not been found: cannot proceed with snapshot")
 	}
+	_, _ = fmt.Fprintf(console, "[SaveSnapshot] latest reliable branch: %s\n", latestReliableBranch.Stem.IDShort())
+
+	fname := snapshotFileName(latestReliableBranch.Stem.ID.TransactionID())
+	_, _ = fmt.Fprintf(console, "[SaveSnapshot] target file:  %s\n", fname)
+	tmpfname := "__tmp__" + fname
+	_, _ = fmt.Fprintf(console, "[SaveSnapshot] tmp file:  %s\n", tmpfname)
 
 	header := SnapshotHeader{
 		Description: "Proxima snapshot file",
@@ -65,9 +88,6 @@ func SaveSnapshot(state global.StateStoreReader, ctx context.Context) (*RootReco
 		return makeErr(err.Error())
 	}
 
-	fname := snapshotFileName(latestReliableBranch.Stem.ID.TransactionID())
-	tmpfname := "__tmp__" + fname
-
 	outFileStream, err := common.CreateKVStreamFile(tmpfname)
 	if err != nil {
 		return makeErr(err.Error())
@@ -78,6 +98,7 @@ func SaveSnapshot(state global.StateStoreReader, ctx context.Context) (*RootReco
 	if err != nil {
 		return makeErr(err.Error())
 	}
+	_, _ = fmt.Fprintf(console, "[SaveSnapshot] header: %s\n", string(headerBin))
 
 	// write root record
 	branchID := latestReliableBranch.Stem.ID.TransactionID()
@@ -85,15 +106,22 @@ func SaveSnapshot(state global.StateStoreReader, ctx context.Context) (*RootReco
 	if err != nil {
 		return makeErr(err.Error())
 	}
+	_, _ = fmt.Fprintf(console, "[SaveSnapshot] root record:\n%s\n", latestReliableBranch.RootRecord.Lines("     ").String())
 
 	// write ledger identity record
-	err = outFileStream.Write(nil, LedgerIdentityBytesFromRoot(state, latestReliableBranch.Root))
+	ledgerIDBytes := LedgerIdentityBytesFromRoot(state, latestReliableBranch.Root)
+	err = outFileStream.Write(nil, ledgerIDBytes)
 	if err != nil {
 		return makeErr(err.Error())
 	}
+	ledgerID, err := ledger.IdentityDataFromBytes(ledgerIDBytes)
+	if err != nil {
+		return makeErr(err.Error())
+	}
+	_, _ = fmt.Fprintf(console, "[SaveSnapshot] ledger ID:\n%s\n", ledgerID.Lines("     ").String())
 
 	// write trie
-	err = WriteState(state, outFileStream, latestReliableBranch.Root, ctx)
+	err = writeState(state, outFileStream, latestReliableBranch.Root, ctx, console)
 	if err != nil {
 		return makeErr(err.Error())
 	}

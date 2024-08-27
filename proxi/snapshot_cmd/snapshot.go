@@ -16,6 +16,7 @@ func Init() *cobra.Command {
 	dbCmd.AddCommand(
 		initSnapshotDBCmd(),
 		initSnapshotInfoCmd(),
+		initRestoreCmd(),
 	)
 	return dbCmd
 }

@@ -9,6 +9,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lazybytes"
+	"github.com/lunfardo314/proxima/util/lines"
 	"github.com/lunfardo314/unitrie/common"
 	"github.com/lunfardo314/unitrie/immutable"
 )
@@ -86,6 +87,17 @@ func (r *RootRecord) Bytes() []byte {
 func (r *RootRecord) StringShort() string {
 	return fmt.Sprintf("%s, %s, %s, %d",
 		r.SequencerID.StringShort(), util.Th(r.LedgerCoverage), r.Root.String(), r.NumTransactions)
+}
+
+func (r *RootRecord) Lines(prefix ...string) *lines.Lines {
+	ret := lines.New(prefix...)
+	ret.Add("sequencer ID : %s", r.SequencerID.String()).
+		Add("supply : %s", util.Th(r.Supply)).
+		Add("coverage : %s", util.Th(r.LedgerCoverage)).
+		Add("slot inflation : %s", util.Th(r.SlotInflation)).
+		Add("root : %s", r.Root.String()).
+		Add("num transactions : %d", r.NumTransactions)
+	return ret
 }
 
 func RootRecordFromBytes(data []byte) (RootRecord, error) {

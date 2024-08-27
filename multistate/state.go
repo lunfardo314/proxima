@@ -70,6 +70,21 @@ const (
 	PartitionCommittedTransactionID
 )
 
+func PartitionToString(p byte) string {
+	switch p {
+	case PartitionLedgerState:
+		return "UTXO"
+	case PartitionAccounts:
+		return "ACCN"
+	case PartitionChainID:
+		return "CHID"
+	case PartitionCommittedTransactionID:
+		return "TXID"
+	default:
+		return "????"
+	}
+}
+
 func LedgerIdentityBytesFromStore(store global.StateStore) []byte {
 	rr := FetchAnyLatestRootRecord(store)
 	return LedgerIdentityBytesFromRoot(store, rr.Root)

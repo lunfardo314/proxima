@@ -2,6 +2,9 @@ package snapshot_cmd
 
 import (
 	"encoding/hex"
+	"fmt"
+	"io"
+	"os"
 
 	"github.com/dgraph-io/badger/v4"
 	"github.com/lunfardo314/proxima/global"
@@ -17,7 +20,7 @@ import (
 
 func initRestoreCmd() *cobra.Command {
 	restoreCmd := &cobra.Command{
-		Use:   "restore",
+		Use:   "restore <snapshot file>",
 		Short: "creates multi-state db from snapshot",
 		Args:  cobra.ExactArgs(1),
 		Run:   runRestoreCmd,
@@ -38,8 +41,8 @@ func runRestoreCmd(_ *cobra.Command, args []string) {
 	defer kvStream.Close()
 
 	glb.Infof("snapshot file ok. Format version: %s", kvStream.Header.Version)
-	glb.Infof("root record: %s", kvStream.RootRecord.StringShort())
-	glb.Infof("ledger id:\n%s", kvStream.LedgerID.String())
+	glb.Infof("root record: %s", kvStream.RootRecord.Lines("    ").String())
+	glb.Infof("ledger id:\n%s", kvStream.LedgerID.Lines("    ").String())
 
 	stateDb := badger_adaptor.MustCreateOrOpenBadgerDB(global.MultiStateDBName, badger.DefaultOptions(global.MultiStateDBName))
 	stateStore := badger_adaptor.New(stateDb)
@@ -55,14 +58,21 @@ func runRestoreCmd(_ *cobra.Command, args []string) {
 	var inBatch int
 	var lastRoot common.VCommitment
 
+	console := io.Discard
+	if glb.IsVerbose() {
+		console = os.Stdout
+	}
+	counter := 0
 	for pair := range kvStream.InChan {
 		if util.IsNil(batch) {
 			batch = stateStore.BatchedWriter()
 		}
-
 		already := trieUpdatable.Update(pair.Key, pair.Value)
 		glb.Assertf(!already, "repeating key %s", hex.EncodeToString(pair.Key))
 		inBatch++
+
+		_outKVPair(pair.Key, pair.Value, counter, console)
+		counter++
 
 		if inBatch == batchSize {
 			lastRoot = trieUpdatable.Commit(batch)
@@ -70,6 +80,7 @@ func runRestoreCmd(_ *cobra.Command, args []string) {
 			util.AssertNoError(err)
 			inBatch = 0
 			batch = nil
+			_, _ = fmt.Fprintf(console, "--- commit ---\n")
 		}
 	}
 	if !util.IsNil(batch) {
@@ -77,10 +88,6 @@ func runRestoreCmd(_ *cobra.Command, args []string) {
 		err = batch.Commit()
 		util.AssertNoError(err)
 	}
-
-	glb.Assertf(ledger.CommitmentModel.EqualCommitments(lastRoot, kvStream.RootRecord.Root), ""+
-		"inconsistency: final root in snapshot is not equal to the root record")
-
 	// write meta-records
 	batch = stateStore.BatchedWriter()
 	multistate.WriteLatestSlotRecord(batch, kvStream.BranchID.Slot())
@@ -89,4 +96,8 @@ func runRestoreCmd(_ *cobra.Command, args []string) {
 
 	err = batch.Commit()
 	glb.AssertNoError(err)
+
+	glb.Assertf(ledger.CommitmentModel.EqualCommitments(lastRoot, kvStream.RootRecord.Root),
+		"inconsistency: final root %s is not equal to the root in the root record %s",
+		lastRoot.String(), kvStream.RootRecord.Root.String())
 }
