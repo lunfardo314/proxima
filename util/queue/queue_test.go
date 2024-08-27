@@ -1,7 +1,6 @@
 package queue
 
 import (
-	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -132,12 +131,11 @@ func TestPriority(t *testing.T) {
 	const nMessages = 100
 
 	var counter atomic.Int32
+	all := make(map[int]int)
 	q := New[int](func(i int) {
 		counter.Inc()
-		if i%3 == 0 {
-			fmt.Printf("%d <-- prio\n", i)
-		} else {
-			fmt.Printf("%d\n", i)
+		all[i] = all[i] + 1
+		if i%3 != 0 {
 			time.Sleep(1 * time.Millisecond)
 		}
 	})
@@ -147,4 +145,9 @@ func TestPriority(t *testing.T) {
 	}
 	time.Sleep(1000 * time.Millisecond)
 	require.EqualValues(t, nMessages, int(counter.Load()))
+
+	require.EqualValues(t, nMessages, len(all))
+	for _, v := range all {
+		require.EqualValues(t, 1, v)
+	}
 }
