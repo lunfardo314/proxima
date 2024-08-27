@@ -68,7 +68,7 @@ type (
 		VBCost                         uint64 `yaml:"vb_cost"`
 		TransactionPace                byte   `yaml:"transaction_pace"`
 		TransactionPaceSequencer       byte   `yaml:"transaction_pace_sequencer"`
-		BranchBonusBase                uint64 `yaml:"branch_bonus_base"`
+		BranchInflationBonusBase       uint64 `yaml:"branch_inflation_bonus_base"`
 		ChainInflationPerTickBase      uint64 `yaml:"chain_inflation_per_tick_base"`
 		ChainInflationOpportunitySlots uint64 `yaml:"chain_inflation_opportunity_slots"`
 		TicksPerInflationEpoch         uint64 `yaml:"ticks_per_inflation_epoch"`
@@ -312,7 +312,7 @@ func (id *IdentityData) YAMLAble() *IdentityDataYAMLAble {
 		InitialSupply:                  id.InitialSupply,
 		TimeTickDurationNanosec:        id.TickDuration.Nanoseconds(),
 		MaxTimeTickValueInTimeSlot:     id.MaxTickValueInSlot,
-		BranchBonusBase:                id.BranchInflationBonusBase,
+		BranchInflationBonusBase:       id.BranchInflationBonusBase,
 		VBCost:                         id.VBCost,
 		TransactionPace:                id.TransactionPace,
 		TransactionPaceSequencer:       id.TransactionPaceSequencer,
@@ -397,7 +397,7 @@ func (id *IdentityDataYAMLAble) stateIdentityData() (*IdentityData, error) {
 	}
 	ret.TickDuration = time.Duration(id.TimeTickDurationNanosec)
 	ret.MaxTickValueInSlot = id.MaxTimeTickValueInTimeSlot
-	ret.BranchInflationBonusBase = id.BranchBonusBase
+	ret.BranchInflationBonusBase = id.BranchInflationBonusBase
 	ret.VBCost = id.VBCost
 	ret.TransactionPace = id.TransactionPace
 	ret.TransactionPaceSequencer = id.TransactionPaceSequencer

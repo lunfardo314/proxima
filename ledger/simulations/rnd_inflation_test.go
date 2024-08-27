@@ -17,7 +17,7 @@ import (
 	"golang.org/x/crypto/blake2b"
 )
 
-const maxInflationValue = ledger.DefaultMaxBranchInflationBonus
+const maxInflationValue = ledger.DefaultBranchInflationBonusBase
 
 // I is the inflation, 0 <= I <= maxInflationValue
 // data = some data with I

@@ -31,7 +31,8 @@ const (
 	DefaultTickDuration           = 100 * time.Millisecond
 	DefaultTicksPerSlot           = 100
 	DefaultSlotDuration           = DefaultTickDuration * DefaultTicksPerSlot
-	DefaultInflationEpochDuration = 365 * 24 * time.Hour // standard inflation epoch is 365 days
+	DaysPerYear                   = 365
+	DefaultInflationEpochDuration = DaysPerYear * 24 * time.Hour // standard inflation epoch is 365 days
 	DefaultSlotsPerInflationEpoch = uint64(DefaultInflationEpochDuration / DefaultSlotDuration)
 
 	DustPerProxi         = 1_000_000
@@ -42,13 +43,19 @@ const (
 	InitialSupplyProxi   = 1_000_000_000
 	DefaultInitialSupply = InitialSupplyProxi * PRXI
 
-	// begin inflation-related
+	// -------------- begin inflation-related
+	// default inflation constants adjusted to the annual inflation cap of approx 12-13% first year
 
-	DefaultMaxBranchInflationBonus        = 5_000_000
-	DefaultChainInflationPerTickBase      = 317_098
+	DefaultBranchInflationBonusBase       = 5_000_000
+	DefaultChainInflationPerTickBase      = 400_000 // 317_098 approximately corresponds to 10% annual
 	DefaultChainInflationOpportunitySlots = 12
 	DefaultTicksPerInflationEpoch         = DefaultSlotsPerInflationEpoch * DefaultTicksPerSlot
-	// end inflation-related
+
+	// used to enforce approx validity of defaults
+
+	TargetAnnualChainInflationRateUpper = 13
+	TargetAnnualChainInflationRateLower = 12
+	// -------------- end inflation-related
 
 	DefaultVBCost                   = 1
 	DefaultTransactionPace          = 10
@@ -57,18 +64,17 @@ const (
 	DefaultMinimumAmountOnSequencer    = 1_000 * PRXI
 	DefaultMaxNumberOfEndorsements     = 8
 	DefaultPreBranchConsolidationTicks = 20
-
-	DaysPerYear                    = 365
-	TargetAnnualChainInflationRate = 10
 )
 
 func init() {
 	// enforce validity of defaults
-	def1 := DefaultInitialSupply * TargetAnnualChainInflationRate / 100
-	def2 := DefaultChainInflationPerTickBase * DefaultTicksPerInflationEpoch
-	util.Assertf((util.Abs(def1-int(def2))*100)/DefaultInitialSupply <= 1,
-		"wrong target inflation rate: DefaultInitialSupply*TargetAnnualChainInflationRate/100 == DefaultChainInflationPerTickBase*DefaultTicksPerInflationEpoch, %s != %s",
-		util.Th(def1), util.Th(def2))
+	targetChainInflationFirstYearLower := int64(DefaultInitialSupply*TargetAnnualChainInflationRateLower/100 + DefaultSlotsPerInflationEpoch*DefaultBranchInflationBonusBase)
+	targetChainInflationFirstYearUpper := int64(DefaultInitialSupply*TargetAnnualChainInflationRateUpper/100 + DefaultSlotsPerInflationEpoch*DefaultBranchInflationBonusBase)
+	inflationCapFirstYear := int64(DefaultChainInflationPerTickBase*DefaultTicksPerInflationEpoch) + int64(DefaultSlotsPerInflationEpoch*DefaultBranchInflationBonusBase)
+	util.Assertf(targetChainInflationFirstYearLower <= inflationCapFirstYear && inflationCapFirstYear <= targetChainInflationFirstYearUpper,
+		"wrong constants: first year inflation cap %s does not satisfy lower (%s) and upper (%s) bound conditions for target inflation from %d%% to %d%%",
+		util.Th(inflationCapFirstYear), util.Th(targetChainInflationFirstYearLower), util.Th(targetChainInflationFirstYearUpper),
+		TargetAnnualChainInflationRateLower, TargetAnnualChainInflationRateUpper)
 }
 
 func newBaseLibrary() *Library {
@@ -110,14 +116,14 @@ func DefaultIdentityData(privateKey ed25519.PrivateKey) *IdentityData {
 		VBCost:                         DefaultVBCost,
 		TransactionPace:                DefaultTransactionPace,
 		TransactionPaceSequencer:       DefaultTransactionPaceSequencer,
-		BranchInflationBonusBase:       DefaultMaxBranchInflationBonus,
+		BranchInflationBonusBase:       DefaultBranchInflationBonusBase,
 		ChainInflationPerTickBase:      DefaultChainInflationPerTickBase,
 		ChainInflationOpportunitySlots: DefaultChainInflationOpportunitySlots,
 		TicksPerInflationEpoch:         DefaultTicksPerInflationEpoch,
 		MinimumAmountOnSequencer:       DefaultMinimumAmountOnSequencer,
 		MaxNumberOfEndorsements:        DefaultMaxNumberOfEndorsements,
 		PreBranchConsolidationTicks:    DefaultPreBranchConsolidationTicks,
-		Description:                    "Proxima prototype ledger. Ver 0.1",
+		Description:                    "Proxima test ledger. Ver 0.1",
 	}
 }
 

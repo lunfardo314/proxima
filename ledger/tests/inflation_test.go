@@ -15,7 +15,7 @@ import (
 func TestInflationConst1Year(t *testing.T) {
 	t.Logf("init supply: %s", util.Th(ledger.DefaultInitialSupply))
 	t.Logf("max annual chain inflation: %s", util.Th(ledger.DefaultChainInflationPerTickBase))
-	t.Logf("branch inflation per slot: %s", util.Th(ledger.DefaultMaxBranchInflationBonus))
+	t.Logf("branch inflation per slot: %s", util.Th(ledger.DefaultBranchInflationBonusBase))
 	t.Logf("slots per year: %s", util.Th(ledger.L().ID.SlotsPerYear()))
 	t.Logf("ticks per year: %s", util.Th(ledger.L().ID.TicksPerYear()))
 	branchInflationAnnual := ledger.L().ID.BranchInflationBonusBase * uint64(ledger.L().ID.SlotsPerYear())
