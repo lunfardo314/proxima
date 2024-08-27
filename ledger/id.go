@@ -122,8 +122,6 @@ func (txid *TransactionID) IsSequencerMilestone() bool {
 
 func (txid *TransactionID) IsBranchTransaction() bool {
 	return txid[0]&SequencerTxFlagHigherByte != 0 && txid[4] == 0
-	//ts := txid.Timestamp()
-	//return txid.IsSequencerMilestone() && ts.Tick() == 0
 }
 
 func (txid *TransactionID) Bytes() []byte {

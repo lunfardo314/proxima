@@ -12,9 +12,9 @@ import (
 
 func init() {
 	ledger.InitWithTestingLedgerIDData(
-		ledger.WithTickDuration(10*time.Millisecond),
-		ledger.WithTransactionPace(1),
-		ledger.WithSequencerPace(1))
+		ledger.WithTickDuration(4*time.Millisecond),
+		ledger.WithTransactionPace(3),
+		ledger.WithSequencerPace(3))
 }
 
 func TestBase(t *testing.T) {
