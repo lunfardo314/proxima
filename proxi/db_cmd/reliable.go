@@ -35,5 +35,5 @@ func runReliableBranchCmd(_ *cobra.Command, _ []string) {
 	branchID := latestReliableBranch.Stem.ID.TransactionID()
 	glb.Infof("latest reliable branch is %s (hex = %s)",
 		branchID.String(), branchID.StringHex())
-	glb.Infof("%s slots back", nowSlot-branchID.Slot())
+	glb.Infof("%d slots back", nowSlot-branchID.Slot())
 }
