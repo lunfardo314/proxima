@@ -10,7 +10,7 @@ import (
 )
 
 type (
-	Environment interface {
+	environment interface {
 		global.NodeGlobal
 		WithGlobalWriteLock(func())
 		Vertices(filterByID ...func(txid *ledger.TransactionID) bool) []*vertex.WrappedTx
@@ -20,7 +20,7 @@ type (
 		NumStateReaders() int
 	}
 	Pruner struct {
-		Environment
+		environment
 
 		// metrics
 		metricsEnabled       bool
@@ -34,9 +34,9 @@ const (
 	TraceTag = Name
 )
 
-func New(env Environment) *Pruner {
+func New(env environment) *Pruner {
 	ret := &Pruner{
-		Environment: env,
+		environment: env,
 	}
 	ret.registerMetrics()
 	return ret

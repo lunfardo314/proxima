@@ -4,10 +4,10 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/core/vertex"
+	"github.com/lunfardo314/proxima/core/work_process"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/depdag"
-	"github.com/lunfardo314/proxima/util/queue_old"
 )
 
 type (
@@ -17,13 +17,13 @@ type (
 		Cmd          Command
 	}
 
-	Environment interface {
+	environment interface {
 		global.NodeGlobal
 	}
 
 	Poker struct {
-		*queue_old.Queue[Input]
-		Environment
+		*work_process.WorkProcess[Input]
+		environment
 		m map[*vertex.WrappedTx]waitingList
 	}
 
@@ -50,24 +50,16 @@ const (
 	TraceTag          = Name
 )
 
-func New(env Environment) *Poker {
-	return &Poker{
-		Queue:       queue_old.NewQueueWithBufferSize[Input](Name, chanBufferSize, env.Log().Level(), nil),
-		Environment: env,
+func New(env environment) *Poker {
+	ret := &Poker{
+		environment: env,
 		m:           make(map[*vertex.WrappedTx]waitingList),
 	}
+	ret.WorkProcess = work_process.New[Input](env, Name, ret.consume)
+	return ret
 }
 
-func (d *Poker) Start() {
-	d.MarkWorkProcessStarted(Name)
-	d.AddOnClosed(func() {
-		d.MarkWorkProcessStopped(Name)
-	})
-	d.Queue.Start(d, d.Ctx())
-	go d.cleanupLoop()
-}
-
-func (d *Poker) Consume(inp Input) {
+func (d *Poker) consume(inp Input) {
 	switch inp.Cmd {
 	case CommandAdd:
 		d.Assertf(inp.Wanted != nil, "inp.Wanted != nil")

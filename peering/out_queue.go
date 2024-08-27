@@ -5,7 +5,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/protocol"
 )
 
-func (ps *Peers) Consume(inp outMsgData) {
+func (ps *Peers) sendMsgOut(inp outMsgData) {
 	// message is wrapped into the interface specifically to set right time in heartbeat messages
 	inp.msg.SetNow()
 
@@ -21,6 +21,7 @@ func (ps *Peers) Consume(inp outMsgData) {
 }
 
 func (ps *Peers) sendMsgOutQueued(msg outMessageWrapper, id peer.ID, prot protocol.ID) {
+	// heartbeat messages goes with priority
 	ps.outQueue.Push(outMsgData{
 		msg:      msg,
 		peerID:   id,

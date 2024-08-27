@@ -3,15 +3,15 @@ package pull_tx_server
 import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/lunfardo314/proxima/core/txmetadata"
+	"github.com/lunfardo314/proxima/core/work_process"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/peering"
 	"github.com/lunfardo314/proxima/util"
-	"github.com/lunfardo314/proxima/util/queue_old"
 )
 
 type (
-	Environment interface {
+	environment interface {
 		global.NodeGlobal
 		TxBytesStore() global.TxBytesStore
 		StateStore() global.StateStore
@@ -25,8 +25,8 @@ type (
 	}
 
 	PullTxServer struct {
-		*queue_old.Queue[*Input]
-		Environment
+		environment
+		*work_process.WorkProcess[*Input]
 	}
 )
 
@@ -36,22 +36,15 @@ const (
 	chanBufferSize = 10
 )
 
-func New(env Environment) *PullTxServer {
-	return &PullTxServer{
-		Queue:       queue_old.NewQueueWithBufferSize[*Input](Name, chanBufferSize, env.Log().Level(), nil),
-		Environment: env,
+func New(env environment) *PullTxServer {
+	ret := &PullTxServer{
+		environment: env,
 	}
+	ret.WorkProcess = work_process.New[*Input](env, Name, ret.consume)
+	return ret
 }
 
-func (d *PullTxServer) Start() {
-	d.MarkWorkProcessStarted(Name)
-	d.AddOnClosed(func() {
-		d.MarkWorkProcessStopped(Name)
-	})
-	d.Queue.Start(d, d.Ctx())
-}
-
-func (d *PullTxServer) Consume(inp *Input) {
+func (d *PullTxServer) consume(inp *Input) {
 	txBytesWithMetadata := d.TxBytesStore().GetTxBytesWithMetadata(&inp.TxID)
 	if len(txBytesWithMetadata) == 0 {
 		d.Tracef(TraceTag, "NOT FOUND %s, request from %s", inp.TxID.StringShort, peering.ShortPeerIDString(inp.PeerID))

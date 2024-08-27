@@ -6,14 +6,14 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/core/vertex"
+	"github.com/lunfardo314/proxima/core/work_process"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util"
-	"github.com/lunfardo314/proxima/util/queue_old"
 )
 
 type (
-	Environment interface {
+	environment interface {
 		global.NodeGlobal
 		GetStateReaderForTheBranch(branch *ledger.TransactionID) global.IndexedStateReader
 	}
@@ -25,8 +25,7 @@ type (
 	// SequencerTips is a collection with input queue, which keeps all latest sequencer transactions for each sequencer ID
 	// One transaction per sequencer
 	SequencerTips struct {
-		*queue_old.Queue[Input]
-		Environment
+		*work_process.WorkProcess[Input]
 		mutex                           sync.RWMutex
 		latestMilestones                map[ledger.ChainID]_milestoneData
 		expectedSequencerActivityPeriod time.Duration
@@ -41,33 +40,23 @@ type (
 )
 
 const (
-	Name           = "tippool"
-	TraceTag       = Name
-	chanBufferSize = 10
+	Name     = "tippool"
+	TraceTag = Name
 )
 
-func New(env Environment) *SequencerTips {
-	return &SequencerTips{
-		Queue:                           queue_old.NewQueueWithBufferSize[Input](Name, chanBufferSize, env.Log().Level(), nil),
-		Environment:                     env,
+func New(env environment) *SequencerTips {
+	ret := &SequencerTips{
 		latestMilestones:                make(map[ledger.ChainID]_milestoneData),
 		expectedSequencerActivityPeriod: 2 * ledger.L().ID.SlotDuration(),
 	}
+	ret.WorkProcess = work_process.New[Input](env, Name, ret.consume)
+	return ret
 }
 
-func (t *SequencerTips) Start() {
-	t.MarkWorkProcessStarted(Name)
-	t.AddOnClosed(func() {
-		t.MarkWorkProcessStopped(Name)
-	})
-	t.Queue.Start(t, t.Environment.Ctx())
-	go t.purgeAndLogLoop()
-}
-
-func (t *SequencerTips) Consume(inp Input) {
+func (t *SequencerTips) consume(inp Input) {
 	seqID := inp.VID.SequencerID.Load()
 	t.Assertf(seqID != nil, "inp.VID.SequencerID != nil")
-	t.Environment.Tracef(TraceTag, "seq milestone IN: %s of %s", inp.VID.IDShortString, seqID.StringShort)
+	t.Tracef(TraceTag, "seq milestone IN: %s of %s", inp.VID.IDShortString, seqID.StringShort)
 
 	t.mutex.Lock()
 	defer t.mutex.Unlock()
@@ -221,6 +210,6 @@ func (t *SequencerTips) purgeAndLog() {
 	for _, chainID := range toDelete {
 		t.latestMilestones[chainID].UnReference()
 		delete(t.latestMilestones, chainID)
-		t.Environment.Log().Infof("chainID %s has been removed from the sequencer tip pool", chainID.StringShort())
+		t.Log().Infof("chainID %s has been removed from the sequencer tip pool", chainID.StringShort())
 	}
 }

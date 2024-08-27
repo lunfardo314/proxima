@@ -4,13 +4,13 @@ import (
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/lunfardo314/proxima/core/work_process"
 	"github.com/lunfardo314/proxima/core/work_process/sync_client"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/peering"
 	"github.com/lunfardo314/proxima/util"
-	"github.com/lunfardo314/proxima/util/queue_old"
 )
 
 // This consumer responds to 'pull sync portion' requests from other nodes by sending back branch transactions
@@ -39,8 +39,8 @@ type (
 	}
 
 	SyncServer struct {
-		*queue_old.Queue[*Input]
 		Environment
+		*work_process.WorkProcess[*Input]
 	}
 )
 
@@ -51,21 +51,12 @@ const (
 )
 
 func New(env Environment) *SyncServer {
-	return &SyncServer{
-		Queue:       queue_old.NewQueueWithBufferSize[*Input](Name, chanBufferSize, env.Log().Level(), nil),
-		Environment: env,
-	}
+	ret := &SyncServer{Environment: env}
+	ret.WorkProcess = work_process.New[*Input](env, Name, ret.consume)
+	return ret
 }
 
-func (d *SyncServer) Start() {
-	d.MarkWorkProcessStarted(Name)
-	d.AddOnClosed(func() {
-		d.MarkWorkProcessStopped(Name)
-	})
-	d.Queue.Start(d, d.Ctx())
-}
-
-func (d *SyncServer) Consume(inp *Input) {
+func (d *SyncServer) consume(inp *Input) {
 	if !d.IsSynced() && !d.IsBootstrapNode() {
 		d.Environment.Log().Warnf("[syncServer]: can't respond to sync request: node itself is out of sync and is not a bootstrap node")
 		return

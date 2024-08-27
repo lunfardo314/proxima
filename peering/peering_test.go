@@ -53,7 +53,7 @@ func (e *peeringEnvForTesting) SyncServerDisabled() bool {
 	return false
 }
 
-func newEnvironment() Environment {
+func newEnvironment() environment {
 	return &peeringEnvForTesting{global.NewDefault()}
 }
 

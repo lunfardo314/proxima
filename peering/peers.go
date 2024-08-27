@@ -22,15 +22,14 @@ import (
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util"
-	"github.com/lunfardo314/proxima/util/queue_old"
+	"github.com/lunfardo314/proxima/util/queue"
 	"github.com/multiformats/go-multiaddr"
 	"github.com/spf13/viper"
-	"go.uber.org/zap/zapcore"
 	"golang.org/x/exp/maps"
 )
 
 type (
-	Environment interface {
+	environment interface {
 		global.NodeGlobal
 		SyncServerDisabled() bool
 	}
@@ -47,7 +46,8 @@ type (
 	}
 
 	Peers struct {
-		Environment
+		environment
+
 		mutex                   sync.RWMutex
 		cfg                     *Config
 		stopOnce                sync.Once
@@ -67,7 +67,7 @@ type (
 		lppProtocolHeartbeat protocol.ID
 		rendezvousString     string
 		// queued message sender to peers
-		outQueue *queue_old.Queue[outMsgData]
+		outQueue *queue.Queue[outMsgData]
 	}
 
 	Peer struct {
@@ -136,17 +136,18 @@ const (
 )
 
 func NewPeersDummy() *Peers {
-	return &Peers{
+	ret := &Peers{
 		peers:                    make(map[peer.ID]*Peer),
 		blacklist:                make(map[peer.ID]time.Time),
 		onReceiveTx:              func(_ peer.ID, _ []byte, _ *txmetadata.TransactionMetadata) {},
 		onReceivePullTx:          func(_ peer.ID, _ []ledger.TransactionID) {},
 		onReceivePullSyncPortion: func(_ peer.ID, _ ledger.Slot, _ int) {},
-		outQueue:                 queue_old.NewQueueWithBufferSize[outMsgData](NameOutQueue, outQueueChanBufferSize, zapcore.DebugLevel, nil),
 	}
+	ret.outQueue = queue.New[outMsgData](ret.sendMsgOut)
+	return ret
 }
 
-func New(env Environment, cfg *Config) (*Peers, error) {
+func New(env environment, cfg *Config) (*Peers, error) {
 	hostIDPrivateKey, err := p2pcrypto.UnmarshalEd25519PrivateKey(cfg.HostIDPrivateKey)
 	if err != nil {
 		return nil, fmt.Errorf("wrong private key: %w", err)
@@ -165,7 +166,7 @@ func New(env Environment, cfg *Config) (*Peers, error) {
 	rendezvousNumber := binary.BigEndian.Uint64(ledgerLibraryHash[:8])
 
 	ret := &Peers{
-		Environment:              env,
+		environment:              env,
 		cfg:                      cfg,
 		host:                     lppHost,
 		peers:                    make(map[peer.ID]*Peer),
@@ -177,8 +178,8 @@ func New(env Environment, cfg *Config) (*Peers, error) {
 		lppProtocolPull:          protocol.ID(fmt.Sprintf(lppProtocolPull, rendezvousNumber)),
 		lppProtocolHeartbeat:     protocol.ID(fmt.Sprintf(lppProtocolHeartbeat, rendezvousNumber)),
 		rendezvousString:         fmt.Sprintf("%d", rendezvousNumber),
-		outQueue:                 queue_old.NewQueueWithBufferSize[outMsgData](NameOutQueue, outQueueChanBufferSize, env.Log().Level(), nil),
 	}
+	ret.outQueue = queue.New[outMsgData](ret.sendMsgOut)
 
 	env.Log().Infof("[peering] rendezvous number is %d", rendezvousNumber)
 	for name, maddr := range cfg.PreConfiguredPeers {
@@ -217,7 +218,7 @@ func New(env Environment, cfg *Config) (*Peers, error) {
 	return ret, nil
 }
 
-func readPeeringConfig(env Environment) (*Config, error) {
+func readPeeringConfig(env environment) (*Config, error) {
 	cfg := &Config{
 		PreConfiguredPeers:     make(map[string]multiaddr.Multiaddr),
 		AcceptPullSyncRequests: !env.SyncServerDisabled(),
@@ -274,7 +275,7 @@ func readPeeringConfig(env Environment) (*Config, error) {
 	return cfg, nil
 }
 
-func NewPeersFromConfig(env Environment) (*Peers, error) {
+func NewPeersFromConfig(env environment) (*Peers, error) {
 	cfg, err := readPeeringConfig(env)
 	if err != nil {
 		return nil, err
@@ -292,13 +293,11 @@ func (ps *Peers) Host() host.Host {
 }
 
 func (ps *Peers) Run() {
-	ps.Environment.MarkWorkProcessStarted(Name)
+	ps.environment.MarkWorkProcessStarted(Name)
 
 	ps.host.SetStreamHandler(ps.lppProtocolGossip, ps.gossipStreamHandler)
 	ps.host.SetStreamHandler(ps.lppProtocolPull, ps.pullStreamHandler)
 	ps.host.SetStreamHandler(ps.lppProtocolHeartbeat, ps.heartbeatStreamHandler)
-
-	ps.outQueue.Start(ps, ps.Ctx())
 
 	go ps.heartbeatLoop()
 	go ps.clockToleranceLoop()
@@ -317,9 +316,10 @@ func (ps *Peers) isAutopeeringEnabled() bool {
 
 func (ps *Peers) Stop() {
 	ps.stopOnce.Do(func() {
-		ps.Environment.MarkWorkProcessStopped(Name)
+		ps.environment.MarkWorkProcessStopped(Name)
 
 		ps.Log().Infof("[peering] stopping libp2p host %s (self)..", ShortPeerIDString(ps.host.ID()))
+		ps.outQueue.Close(false)
 		_ = ps.Log().Sync()
 		_ = ps.host.Close()
 		ps.Log().Infof("[peering] libp2p host %s (self) has been stopped", ShortPeerIDString(ps.host.ID()))

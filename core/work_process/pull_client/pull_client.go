@@ -5,16 +5,16 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/core/txmetadata"
+	"github.com/lunfardo314/proxima/core/work_process"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
-	"github.com/lunfardo314/proxima/util/queue_old"
 )
 
 // pull_client is a queued work process which sends pull requests for a specified transaction
 // to a random peer. It repeats pull requests for the transaction periodically until stopped
 
 type (
-	Environment interface {
+	environment interface {
 		global.NodeGlobal
 		TxBytesStore() global.TxBytesStore
 		PullTransactionsFromRandomPeer(lst ...ledger.TransactionID) bool
@@ -29,8 +29,8 @@ type (
 	}
 
 	PullClient struct {
-		*queue_old.Queue[*Input]
-		Environment
+		environment
+		*work_process.WorkProcess[*Input]
 		// set of wanted transactions
 		mutex    sync.RWMutex
 		pullList map[ledger.TransactionID]pullRecord
@@ -45,29 +45,20 @@ type (
 const (
 	Name                                   = "pullClient"
 	TraceTag                               = Name
-	chanBufferSize                         = 10
 	pullPeriod                             = 500 * time.Millisecond
 	startPullingFromAllAfterNumRandomPulls = 10
 )
 
-func New(env Environment) *PullClient {
-	return &PullClient{
-		Queue:       queue_old.NewQueueWithBufferSize[*Input](Name, chanBufferSize, env.Log().Level(), nil),
-		Environment: env,
+func New(env environment) *PullClient {
+	ret := &PullClient{
+		environment: env,
 		pullList:    make(map[ledger.TransactionID]pullRecord),
 	}
+	ret.WorkProcess = work_process.New[*Input](env, Name, ret.consume)
+	return ret
 }
 
-func (p *PullClient) Start() {
-	p.MarkWorkProcessStarted(Name)
-	p.AddOnClosed(func() {
-		p.MarkWorkProcessStopped(Name)
-	})
-	p.Queue.Start(p, p.Ctx())
-	go p.backgroundPullLoop()
-}
-
-func (p *PullClient) Consume(inp *Input) {
+func (p *PullClient) consume(inp *Input) {
 	if inp.Stop {
 		p.stopPulling(inp.TxID)
 	} else {
@@ -108,12 +99,12 @@ func (p *PullClient) startPulling(txid ledger.TransactionID, by string) {
 func (p *PullClient) transactionIn(txBytesWithMetadata []byte) {
 	metadataBytes, txBytes, err := txmetadata.SplitTxBytesWithMetadata(txBytesWithMetadata)
 	if err != nil {
-		p.Environment.Log().Errorf("[pull_client]: error while parsing tx metadata: '%v'", err)
+		p.environment.Log().Errorf("[pull_client]: error while parsing tx metadata: '%v'", err)
 		return
 	}
 	metadata, err := txmetadata.TransactionMetadataFromBytes(metadataBytes)
 	if err != nil {
-		p.Environment.Log().Errorf("[pull_client]: error while parsing tx metadata: '%v'", err)
+		p.environment.Log().Errorf("[pull_client]: error while parsing tx metadata: '%v'", err)
 		return
 	}
 	if metadata == nil {
@@ -125,7 +116,7 @@ func (p *PullClient) transactionIn(txBytesWithMetadata []byte) {
 		if txid != nil {
 			txidStr = txid.StringShort()
 		}
-		p.Environment.Log().Errorf("[pull_client]: tx parse error while pull, txid: %s: '%v'", txidStr, err)
+		p.environment.Log().Errorf("[pull_client]: tx parse error while pull, txid: %s: '%v'", txidStr, err)
 	}
 }
 
@@ -133,7 +124,7 @@ const pullLoopPeriod = 50 * time.Millisecond
 
 // backgroundPullLoop repeats pull requests txids from random peer periodically
 func (p *PullClient) backgroundPullLoop() {
-	defer p.Environment.Log().Infof("[pull_client] background loop stopped")
+	defer p.environment.Log().Infof("[pull_client] background loop stopped")
 
 	buffer := make([]ledger.TransactionID, 0) // reuse buffer -> minimize heap use
 	var stuck bool
@@ -202,7 +193,7 @@ func (p *PullClient) stuckList(forHowLong time.Duration) map[ledger.TransactionI
 
 func (p *PullClient) printStuckList(forHowLong time.Duration) {
 	for txid, howLong := range p.stuckList(forHowLong) {
-		p.Environment.Log().Infof(">>>>>>>> [pull_client] %s stuck for %v", txid.StringShort(), howLong)
+		p.environment.Log().Infof(">>>>>>>> [pull_client] %s stuck for %v", txid.StringShort(), howLong)
 	}
 }
 

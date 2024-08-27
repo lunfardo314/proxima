@@ -1,10 +1,10 @@
 package events
 
 import (
+	"github.com/lunfardo314/proxima/core/work_process"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/eventtype"
-	"github.com/lunfardo314/proxima/util/queue_old"
 )
 
 type (
@@ -14,13 +14,12 @@ type (
 		arg       any
 	}
 
-	Environment interface {
+	environment interface {
 		global.NodeGlobal
 	}
 
 	Events struct {
-		Environment
-		*queue_old.Queue[Input]
+		*work_process.WorkProcess[Input]
 		eventHandlers map[eventtype.EventCode][]func(any)
 	}
 )
@@ -29,30 +28,21 @@ const (
 	cmdCodeAddHandler = byte(iota)
 	cmdCodePostEvent
 )
-const chanBufferSize = 10
 
 const (
 	Name     = "events"
 	TraceTag = Name
 )
 
-func New(env Environment) *Events {
-	return &Events{
-		Environment:   env,
-		Queue:         queue_old.NewQueueWithBufferSize[Input](Name, chanBufferSize, env.Log().Level(), nil),
+func New(env environment) *Events {
+	ret := &Events{
 		eventHandlers: make(map[eventtype.EventCode][]func(any)),
 	}
+	ret.WorkProcess = work_process.New[Input](env, Name, ret.consume)
+	return ret
 }
 
-func (d *Events) Start() {
-	d.MarkWorkProcessStarted(Name)
-	d.AddOnClosed(func() {
-		d.MarkWorkProcessStopped(Name)
-	})
-	d.Queue.Start(d, d.Environment.Ctx())
-}
-
-func (d *Events) Consume(inp Input) {
+func (d *Events) consume(inp Input) {
 	switch inp.cmdCode {
 	case cmdCodeAddHandler:
 		handlers := d.eventHandlers[inp.eventCode]

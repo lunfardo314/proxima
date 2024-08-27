@@ -19,14 +19,14 @@ import (
 // SyncClient is optional optimization of the sync process. It can be enabled/disabled in the config
 
 type (
-	Environment interface {
+	environment interface {
 		global.NodeGlobal
 		StateStore() global.StateStore
 		PullSyncPortion(startingFrom ledger.Slot, maxSlots int, servers ...string)
 	}
 
 	SyncClient struct {
-		Environment
+		environment
 		ctx                         context.Context
 		cancel                      context.CancelFunc
 		cancelled                   atomic.Bool
@@ -47,7 +47,7 @@ var FractionHealthyBranchCriterion = global.FractionHalf
 
 const disableSyncClient = true
 
-func StartSyncClientFromConfig(env Environment) *SyncClient {
+func StartSyncClientFromConfig(env environment) *SyncClient {
 	if disableSyncClient {
 		return nil // TODO temporary
 	}
@@ -60,7 +60,7 @@ func StartSyncClientFromConfig(env Environment) *SyncClient {
 	}
 	// for backwards compatibility only TODO
 	d := &SyncClient{
-		Environment:                 env,
+		environment:                 env,
 		syncPortionSlots:            viper.GetInt("workflow.sync_client.sync_portion_slots"),
 		syncToleranceThresholdSlots: viper.GetInt("workflow.sync_client.sync_tolerance_threshold_slots"),
 		endOfPortionCh:              make(chan struct{}, 1),

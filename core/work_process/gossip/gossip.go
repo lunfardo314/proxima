@@ -5,14 +5,14 @@ import (
 
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/lunfardo314/proxima/core/txmetadata"
+	"github.com/lunfardo314/proxima/core/work_process"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/transaction"
-	"github.com/lunfardo314/proxima/util/queue_old"
 )
 
 type (
-	Environment interface {
+	environment interface {
 		global.NodeGlobal
 		PeerName(id peer.ID) string
 		GossipTxBytesToPeers(txBytes []byte, metadata *txmetadata.TransactionMetadata, except ...peer.ID) int
@@ -25,8 +25,8 @@ type (
 	}
 
 	Gossip struct {
-		*queue_old.Queue[*Input]
-		Environment
+		environment
+		*work_process.WorkProcess[*Input]
 		// bloom filter to avoid most of the repeating gossips
 		gossipedFilter    map[ledger.TransactionIDVeryShort4]time.Time
 		gossipedFilterTTL time.Duration
@@ -36,30 +36,21 @@ type (
 const (
 	Name                   = "gossip"
 	TraceTag               = Name
-	chanBufferSize         = 10
 	gossipedFilterTTLSlots = 6
 	purgePeriod            = 5 * time.Second
 )
 
-func New(env Environment) *Gossip {
-	return &Gossip{
-		Queue:             queue_old.NewQueueWithBufferSize[*Input](Name, chanBufferSize, env.Log().Level(), nil),
-		Environment:       env,
+func New(env environment) *Gossip {
+	ret := &Gossip{
+		environment:       env,
 		gossipedFilter:    make(map[ledger.TransactionIDVeryShort4]time.Time),
 		gossipedFilterTTL: gossipedFilterTTLSlots * ledger.L().ID.SlotDuration(),
 	}
+	ret.WorkProcess = work_process.New[*Input](env, Name, ret.consume)
+	return ret
 }
 
-func (d *Gossip) Start() {
-	d.MarkWorkProcessStarted(Name)
-	d.AddOnClosed(func() {
-		d.MarkWorkProcessStopped(Name)
-	})
-	d.Queue.Start(d, d.Environment.Ctx())
-	go d.purgeLoop()
-}
-
-func (d *Gossip) Consume(inp *Input) {
+func (d *Gossip) consume(inp *Input) {
 	if inp == nil {
 		// purge filter command
 		d.Tracef(TraceTag, "purge gossiped tx filter")

@@ -195,7 +195,7 @@ func (ps *Peers) heartbeatLoop() {
 			ps.sendHeartbeatToPeer(id)
 		}
 		select {
-		case <-ps.Environment.Ctx().Done():
+		case <-ps.environment.Ctx().Done():
 			ps.Log().Infof("[peering] heartbeat loop stopped")
 			return
 		case <-time.After(heartbeatRate):
