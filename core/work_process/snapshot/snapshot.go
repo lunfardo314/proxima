@@ -76,24 +76,27 @@ func directoryExists(dir string) bool {
 }
 
 func (s *Snapshot) snapshotLoop() {
-	s.Log().Infof("[snapshot] loop STARTED")
-	defer s.Log().Infof("[snapshot] loop STOPPED")
+	period := time.Duration(s.periodInSlots) * ledger.L().ID.SlotDuration()
+	s.Log().Infof("[snapshot] work process STARTED\n    target directory: %s\n    period: %v (%d slots)",
+		s.directory, period, s.periodInSlots)
+	defer s.Log().Infof("[snapshot] work process STOPPED")
 
 	for {
 		select {
 		case <-s.Ctx().Done():
 			return
-		case <-time.After(time.Duration(s.periodInSlots) * ledger.L().ID.SlotDuration()):
+		case <-time.After(period):
 			s.doSnapshot()
 		}
 	}
 }
 
 func (s *Snapshot) doSnapshot() {
+	start := time.Now()
 	_, fname, err := multistate.SaveSnapshot(s.StateStore(), s.Ctx(), s.directory, io.Discard)
 	if err != nil {
 		s.Log().Errorf("[snapshot] failed to save snapshot: %v", err)
 	} else {
-		s.Log().Infof("[snapshot] snapshot has been saved to %s", fname)
+		s.Log().Infof("[snapshot] snapshot has been saved to %s. It took %v", fname, time.Since(start))
 	}
 }
