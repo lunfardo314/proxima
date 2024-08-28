@@ -30,7 +30,7 @@ func initSnapshotInfoCmd() *cobra.Command {
 func runSnapshotInfoCmd(_ *cobra.Command, args []string) {
 	var fname string
 	if len(args) == 0 {
-		entries, err := os.ReadDir("")
+		entries, err := os.ReadDir(".")
 		glb.AssertNoError(err)
 
 		entries = util.PurgeSlice(entries, func(entry os.DirEntry) bool {
