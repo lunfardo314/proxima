@@ -57,7 +57,7 @@ func Start(env environment) *Snapshot {
 	util.Assertf(directoryExists(ret.directory), "snapshot directory '%s' is wrong or does not exist", ret.directory)
 
 	ret.periodInSlots = viper.GetInt("snapshot.period_in_slots")
-	if ret.periodInSlots <= defaultSnapshotPeriodInSlots {
+	if ret.periodInSlots <= 0 {
 		ret.periodInSlots = defaultSnapshotPeriodInSlots
 	}
 	ret.registerMetrics()
