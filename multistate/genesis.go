@@ -15,8 +15,7 @@ import (
 func CommitEmptyRootWithLedgerIdentity(par ledger.IdentityData, store global.StateStore) (common.VCommitment, error) {
 	batch := store.BatchedWriter()
 	emptyRoot := immutable.MustInitRoot(batch, ledger.CommitmentModel, par.Bytes())
-	err := batch.Commit()
-	if err != nil {
+	if err := batch.Commit(); err != nil {
 		return nil, err
 	}
 	return emptyRoot, nil
@@ -74,7 +73,7 @@ func ScanGenesisState(stateStore global.StateStore) (*ledger.IdentityData, commo
 
 	branchData := FetchBranchDataByRoot(stateStore, genesisRootRecord)
 	rdr := MustNewSugaredReadableState(stateStore, branchData.Root)
-	stateID := ledger.MustLedgerIdentityDataFromBytes(rdr.MustLedgerIdentityBytes())
+	stateID := ledger.MustIdentityDataFromBytes(rdr.MustLedgerIdentityBytes())
 
 	genesisOid := ledger.GenesisOutputID()
 	out, err := rdr.GetOutputErr(&genesisOid)
@@ -88,5 +87,5 @@ func ScanGenesisState(stateStore global.StateStore) (*ledger.IdentityData, commo
 }
 
 func InitLedgerFromStore(stateStore global.StateStore, verbose ...bool) {
-	ledger.Init(ledger.MustLedgerIdentityDataFromBytes(LedgerIdentityBytesFromStore(stateStore)), verbose...)
+	ledger.Init(ledger.MustIdentityDataFromBytes(LedgerIdentityBytesFromStore(stateStore)), verbose...)
 }

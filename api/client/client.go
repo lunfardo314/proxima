@@ -109,7 +109,7 @@ func (c *APIClient) GetLedgerID() (*ledger.IdentityData, error) {
 	}
 	var ret *ledger.IdentityData
 	err = common.CatchPanicOrError(func() error {
-		ret = ledger.MustLedgerIdentityDataFromBytes(idBin)
+		ret = ledger.MustIdentityDataFromBytes(idBin)
 		return nil
 	})
 	if err != nil {

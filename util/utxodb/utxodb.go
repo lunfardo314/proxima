@@ -93,7 +93,7 @@ func (u *UTXODB) Supply() uint64 {
 }
 
 func (u *UTXODB) StateIdentityData() *ledger.IdentityData {
-	return ledger.MustLedgerIdentityDataFromBytes(u.StateReader().MustLedgerIdentityBytes())
+	return ledger.MustIdentityDataFromBytes(u.StateReader().MustLedgerIdentityBytes())
 }
 
 func (u *UTXODB) GenesisChainID() *ledger.ChainID {

@@ -5,6 +5,7 @@ import (
 	"crypto/ed25519"
 	"encoding/binary"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"time"
 
@@ -89,28 +90,29 @@ const (
 
 func (id *IdentityData) Bytes() []byte {
 	var buf bytes.Buffer
+	// order of fields in struct definition
+	_ = binary.Write(&buf, binary.BigEndian, uint16(len(id.Description)))
+	buf.Write([]byte(id.Description))
 	_ = binary.Write(&buf, binary.BigEndian, id.GenesisTimeUnix)
+	_ = binary.Write(&buf, binary.BigEndian, id.InitialSupply)
 	util.Assertf(len(id.GenesisControllerPublicKey) == ed25519.PublicKeySize, "id.GenesisControllerPublicKey)==ed25519.PublicKeySize")
 	buf.Write(id.GenesisControllerPublicKey)
-	_ = binary.Write(&buf, binary.BigEndian, id.InitialSupply)
 	_ = binary.Write(&buf, binary.BigEndian, id.TickDuration.Nanoseconds())
 	_ = binary.Write(&buf, binary.BigEndian, id.BranchInflationBonusBase)
 	_ = binary.Write(&buf, binary.BigEndian, id.ChainInflationPerTickBase)
-	_ = binary.Write(&buf, binary.BigEndian, id.ChainInflationOpportunitySlots)
 	_ = binary.Write(&buf, binary.BigEndian, id.TicksPerInflationEpoch)
+	_ = binary.Write(&buf, binary.BigEndian, id.ChainInflationOpportunitySlots)
 	_ = binary.Write(&buf, binary.BigEndian, id.VBCost)
 	_ = binary.Write(&buf, binary.BigEndian, id.TransactionPace)
 	_ = binary.Write(&buf, binary.BigEndian, id.TransactionPaceSequencer)
 	_ = binary.Write(&buf, binary.BigEndian, id.MinimumAmountOnSequencer)
 	_ = binary.Write(&buf, binary.BigEndian, id.MaxNumberOfEndorsements)
 	_ = binary.Write(&buf, binary.BigEndian, id.PreBranchConsolidationTicks)
-	_ = binary.Write(&buf, binary.BigEndian, uint16(len(id.Description)))
-	buf.Write([]byte(id.Description))
 
 	return buf.Bytes()
 }
 
-func MustLedgerIdentityDataFromBytes(data []byte) *IdentityData {
+func MustIdentityDataFromBytes(data []byte) *IdentityData {
 	ret, err := IdentityDataFromBytes(data)
 	util.AssertNoError(err)
 	return ret
@@ -122,100 +124,107 @@ func IdentityDataFromBytes(data []byte) (*IdentityData, error) {
 
 	var size16 uint16
 	var n int
+	var err error
+	var buf []byte
 
-	err := binary.Read(rdr, binary.BigEndian, &ret.GenesisTimeUnix)
-	if err != nil {
-		return nil, fmt.Errorf("IdentityDataFromBytes: %v", err)
+	mkerr := func(err error) error {
+		return fmt.Errorf("IdentityDataFromBytes: %w", err)
 	}
+	// order of fields in struct definition
 
-	buf := make([]byte, ed25519.PublicKeySize)
+	err = binary.Read(rdr, binary.BigEndian, &size16)
+	if err != nil {
+		return nil, mkerr(err)
+	}
+	buf = make([]byte, size16)
 	n, err = rdr.Read(buf)
 	if err != nil {
-		return nil, fmt.Errorf("IdentityDataFromBytes: %v", err)
+		return nil, mkerr(err)
 	}
-	if n != ed25519.PublicKeySize {
-		return nil, fmt.Errorf("IdentityDataFromBytes: wrong data size")
+	if n != int(size16) {
+		return nil, mkerr(errors.New("wrong data size"))
 	}
-	ret.GenesisControllerPublicKey = buf
+	ret.Description = string(buf)
+
+	err = binary.Read(rdr, binary.BigEndian, &ret.GenesisTimeUnix)
+	if err != nil {
+		return nil, mkerr(err)
+	}
 
 	err = binary.Read(rdr, binary.BigEndian, &ret.InitialSupply)
 	if err != nil {
-		return nil, fmt.Errorf("IdentityDataFromBytes: %v", err)
+		return nil, mkerr(err)
 	}
+
+	buf = make([]byte, ed25519.PublicKeySize)
+	n, err = rdr.Read(buf)
+	if err != nil {
+		return nil, mkerr(err)
+	}
+	if n != ed25519.PublicKeySize {
+		return nil, mkerr(errors.New("wrong data size"))
+	}
+	ret.GenesisControllerPublicKey = buf
 
 	var bufNano int64
 	err = binary.Read(rdr, binary.BigEndian, &bufNano)
 	if err != nil {
-		return nil, fmt.Errorf("IdentityDataFromBytes: %v", err)
+		return nil, mkerr(err)
 	}
 	ret.TickDuration = time.Duration(bufNano)
 
 	err = binary.Read(rdr, binary.BigEndian, &ret.BranchInflationBonusBase)
 	if err != nil {
-		return nil, fmt.Errorf("IdentityDataFromBytes: %v", err)
+		return nil, mkerr(err)
 	}
 
 	err = binary.Read(rdr, binary.BigEndian, &ret.ChainInflationPerTickBase)
 	if err != nil {
-		return nil, fmt.Errorf("IdentityDataFromBytes: %v", err)
+		return nil, mkerr(err)
 	}
 
 	err = binary.Read(rdr, binary.BigEndian, &ret.TicksPerInflationEpoch)
 	if err != nil {
-		return nil, fmt.Errorf("IdentityDataFromBytes: %v", err)
+		return nil, mkerr(err)
 	}
 
 	err = binary.Read(rdr, binary.BigEndian, &ret.ChainInflationOpportunitySlots)
 	if err != nil {
-		return nil, fmt.Errorf("IdentityDataFromBytes: %v", err)
+		return nil, mkerr(err)
 	}
 
 	err = binary.Read(rdr, binary.BigEndian, &ret.VBCost)
 	if err != nil {
-		return nil, fmt.Errorf("IdentityDataFromBytes: %v", err)
+		return nil, mkerr(err)
 	}
 
 	err = binary.Read(rdr, binary.BigEndian, &ret.TransactionPace)
 	if err != nil {
-		return nil, fmt.Errorf("IdentityDataFromBytes: %v", err)
+		return nil, mkerr(err)
 	}
 
 	err = binary.Read(rdr, binary.BigEndian, &ret.TransactionPaceSequencer)
 	if err != nil {
-		return nil, fmt.Errorf("IdentityDataFromBytes: %v", err)
+		return nil, mkerr(err)
 	}
 
 	err = binary.Read(rdr, binary.BigEndian, &ret.MinimumAmountOnSequencer)
 	if err != nil {
-		return nil, fmt.Errorf("IdentityDataFromBytes: %v", err)
+		return nil, mkerr(err)
 	}
 
 	err = binary.Read(rdr, binary.BigEndian, &ret.MaxNumberOfEndorsements)
 	if err != nil {
-		return nil, fmt.Errorf("IdentityDataFromBytes: %v", err)
+		return nil, mkerr(err)
 	}
 
 	err = binary.Read(rdr, binary.BigEndian, &ret.PreBranchConsolidationTicks)
 	if err != nil {
-		return nil, fmt.Errorf("IdentityDataFromBytes: %v", err)
+		return nil, mkerr(err)
 	}
-
-	err = binary.Read(rdr, binary.BigEndian, &size16)
-	if err != nil {
-		return nil, fmt.Errorf("IdentityDataFromBytes: %v", err)
-	}
-	buf = make([]byte, size16)
-	n, err = rdr.Read(buf)
-	if err != nil {
-		return nil, fmt.Errorf("IdentityDataFromBytes: %v", err)
-	}
-	if n != int(size16) {
-		return nil, fmt.Errorf("IdentityDataFromBytes: wrong data size")
-	}
-	ret.Description = string(buf)
 
 	if rdr.Len() > 0 {
-		return nil, fmt.Errorf("IdentityDataFromBytes: not all bytes have been read")
+		return nil, mkerr(errors.New("not all bytes have been read"))
 	}
 	return ret, nil
 }
@@ -292,6 +301,7 @@ func (id *IdentityData) Lines(prefix ...string) *lines.Lines {
 		Add("Transaction pace: %d", id.TransactionPace).
 		Add("Sequencer pace: %d", id.TransactionPaceSequencer).
 		Add("VB cost: %d", id.VBCost).
+		Add("Max number of endorsements: %d", id.MaxNumberOfEndorsements).
 		Add("Origin chain ID (calculated): %s", originChainID.String())
 }
 

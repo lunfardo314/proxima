@@ -75,3 +75,13 @@ func TestRealTime(t *testing.T) {
 	}
 
 }
+
+func TestLedgerIDSerDe(t *testing.T) {
+	privKey := testutil.GetTestingPrivateKey()
+	id := ledger.DefaultIdentityData(privKey)
+	idBytes := id.Bytes()
+	idBack := ledger.MustIdentityDataFromBytes(idBytes)
+	//t.Logf(hex.EncodeToString(idBytes))
+	//t.Logf(hex.EncodeToString(idBack.Bytes()))
+	require.EqualValues(t, idBytes, idBack.Bytes())
+}

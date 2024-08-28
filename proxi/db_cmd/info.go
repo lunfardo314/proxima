@@ -45,7 +45,7 @@ func runDbInfoCmd(_ *cobra.Command, _ []string) {
 	reader, err := multistate.NewSugaredReadableState(glb.StateStore(), branchData[0].Root)
 	glb.AssertNoError(err)
 
-	id := ledger.MustLedgerIdentityDataFromBytes(reader.MustLedgerIdentityBytes())
+	id := ledger.MustIdentityDataFromBytes(reader.MustLedgerIdentityBytes())
 
 	glb.Verbosef("\n----------------- Ledger state identity ----------------")
 	glb.Verbosef("%s", id.String())
