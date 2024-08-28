@@ -30,7 +30,7 @@ func runSnapshotCmd(_ *cobra.Command, _ []string) {
 	if glb.IsVerbose() {
 		console = os.Stdout
 	}
-	rootRecord, fname, err := multistate.SaveSnapshot(glb.StateStore(), context.Background(), console)
+	rootRecord, fname, err := multistate.SaveSnapshot(glb.StateStore(), context.Background(), "", console)
 	glb.AssertNoError(err)
 
 	glb.Infof("latest reliable state has been saved to the snapshot file %s", fname)

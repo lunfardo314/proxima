@@ -14,6 +14,7 @@ import (
 	"github.com/lunfardo314/proxima/core/work_process/pruner"
 	"github.com/lunfardo314/proxima/core/work_process/pull_client"
 	"github.com/lunfardo314/proxima/core/work_process/pull_tx_server"
+	"github.com/lunfardo314/proxima/core/work_process/snapshot"
 	"github.com/lunfardo314/proxima/core/work_process/sync_client"
 	"github.com/lunfardo314/proxima/core/work_process/sync_server"
 	"github.com/lunfardo314/proxima/core/work_process/tippool"
@@ -119,6 +120,7 @@ func (w *Workflow) Start() {
 		// bootstrap node does not need sync manager
 		w.syncManager = sync_client.StartSyncClientFromConfig(w) // nil if disabled
 	}
+	snapshot.Start(w)
 
 	w.peers.OnReceiveTxBytes(func(from peer.ID, txBytes []byte, metadata *txmetadata.TransactionMetadata) {
 		txid, err := w.TxBytesIn(txBytes, WithPeerMetadata(from, metadata))

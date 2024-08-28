@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
@@ -58,7 +59,7 @@ func snapshotFileName(branchID ledger.TransactionID) string {
 }
 
 // SaveSnapshot writes latest reliable state into snapshot. Returns snapshot file name
-func SaveSnapshot(state global.StateStoreReader, ctx context.Context, out ...io.Writer) (*RootRecord, string, error) {
+func SaveSnapshot(state global.StateStoreReader, ctx context.Context, dir string, out ...io.Writer) (*RootRecord, string, error) {
 	makeErr := func(errStr string) (*RootRecord, string, error) {
 		return nil, "", fmt.Errorf("SaveSnapshot: %s", errStr)
 	}
@@ -74,9 +75,13 @@ func SaveSnapshot(state global.StateStoreReader, ctx context.Context, out ...io.
 	_, _ = fmt.Fprintf(console, "[SaveSnapshot] latest reliable branch: %s\n", latestReliableBranch.Stem.IDShort())
 
 	fname := snapshotFileName(latestReliableBranch.Stem.ID.TransactionID())
-	_, _ = fmt.Fprintf(console, "[SaveSnapshot] target file:  %s\n", fname)
 	tmpfname := "__tmp__" + fname
-	_, _ = fmt.Fprintf(console, "[SaveSnapshot] tmp file:  %s\n", tmpfname)
+
+	fpath := filepath.Join(dir, fname)
+	fpathtmp := filepath.Join(dir, tmpfname)
+
+	_, _ = fmt.Fprintf(console, "[SaveSnapshot] target file:  %s\n", fpath)
+	_, _ = fmt.Fprintf(console, "[SaveSnapshot] tmp file:  %s\n", fpathtmp)
 
 	header := SnapshotHeader{
 		Description: "Proxima snapshot file",
@@ -88,7 +93,7 @@ func SaveSnapshot(state global.StateStoreReader, ctx context.Context, out ...io.
 		return makeErr(err.Error())
 	}
 
-	outFileStream, err := common.CreateKVStreamFile(tmpfname)
+	outFileStream, err := common.CreateKVStreamFile(filepath.Join(dir, fpathtmp))
 	if err != nil {
 		return makeErr(err.Error())
 	}
@@ -131,11 +136,11 @@ func SaveSnapshot(state global.StateStoreReader, ctx context.Context, out ...io.
 		return makeErr(err.Error())
 	}
 
-	err = os.Rename(tmpfname, fname)
+	err = os.Rename(fpathtmp, fpath)
 	if err != nil {
 		return makeErr(err.Error())
 	}
-	return &latestReliableBranch.RootRecord, fname, nil
+	return &latestReliableBranch.RootRecord, fpath, nil
 }
 
 type SnapshotFileStream struct {
