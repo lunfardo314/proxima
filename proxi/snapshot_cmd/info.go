@@ -17,7 +17,7 @@ import (
 
 func initSnapshotInfoCmd() *cobra.Command {
 	snapshotInfoCmd := &cobra.Command{
-		Use:   "info",
+		Use:   "info [<snapshot file name>]",
 		Short: "reads snapshot file and displays main info",
 		Args:  cobra.MaximumNArgs(1),
 		Run:   runSnapshotInfoCmd,
