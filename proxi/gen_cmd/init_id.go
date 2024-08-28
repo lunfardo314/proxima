@@ -1,4 +1,4 @@
-package init_cmd
+package gen_cmd
 
 import (
 	"fmt"
@@ -10,7 +10,7 @@ import (
 	"github.com/spf13/viper"
 )
 
-func initIDCmd() *cobra.Command {
+func genIDCmd() *cobra.Command {
 	initLedgerIDCmd := &cobra.Command{
 		Use:   "ledger_id",
 		Args:  cobra.NoArgs,

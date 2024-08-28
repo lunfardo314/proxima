@@ -15,6 +15,7 @@ func Init() *cobra.Command {
 	genCmd.AddCommand(
 		genEd25519Cmd(),
 		genHostIDCmd(),
+		genIDCmd(),
 	)
 	genCmd.InitDefaultHelpCmd()
 	return genCmd
