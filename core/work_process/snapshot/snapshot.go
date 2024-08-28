@@ -77,7 +77,7 @@ func directoryExists(dir string) bool {
 
 func (s *Snapshot) snapshotLoop() {
 	period := time.Duration(s.periodInSlots) * ledger.L().ID.SlotDuration()
-	s.Log().Infof("[snapshot] work process STARTED\n    target directory: %s\n    period: %v (%d slots)",
+	s.Log().Infof("[snapshot] work process STARTED\n        target directory: %s\n        period: %v (%d slots)",
 		s.directory, period, s.periodInSlots)
 	defer s.Log().Infof("[snapshot] work process STOPPED")
 

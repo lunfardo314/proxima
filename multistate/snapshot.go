@@ -93,7 +93,7 @@ func SaveSnapshot(state global.StateStoreReader, ctx context.Context, dir string
 		return makeErr(err.Error())
 	}
 
-	outFileStream, err := common.CreateKVStreamFile(filepath.Join(dir, fpathtmp))
+	outFileStream, err := common.CreateKVStreamFile(fpathtmp)
 	if err != nil {
 		return makeErr(err.Error())
 	}
