@@ -3,6 +3,8 @@ package snapshot
 import (
 	"io"
 	"os"
+	"path/filepath"
+	"sort"
 	"time"
 
 	"github.com/lunfardo314/proxima/global"
@@ -23,6 +25,7 @@ type (
 
 		directory     string
 		periodInSlots int
+		keepLatest    int
 
 		// metrics
 		metricsEnabled bool
@@ -34,6 +37,7 @@ const (
 
 	defaultSnapshotDirectory     = "snapshot"
 	defaultSnapshotPeriodInSlots = 30
+	defaultKeepLatest            = 3
 )
 
 // TODO directory cleanup
@@ -60,6 +64,12 @@ func Start(env environment) *Snapshot {
 	if ret.periodInSlots <= 0 {
 		ret.periodInSlots = defaultSnapshotPeriodInSlots
 	}
+
+	ret.keepLatest = viper.GetInt("snapshot.keep_latest")
+	if ret.keepLatest <= 0 {
+		ret.keepLatest = defaultKeepLatest
+	}
+
 	ret.registerMetrics()
 	go ret.snapshotLoop()
 
@@ -76,9 +86,12 @@ func directoryExists(dir string) bool {
 }
 
 func (s *Snapshot) snapshotLoop() {
+	s.purgeOldSnapshots()
+
 	period := time.Duration(s.periodInSlots) * ledger.L().ID.SlotDuration()
-	s.Log().Infof("[snapshot] work process STARTED\n        target directory: %s\n        period: %v (%d slots)",
-		s.directory, period, s.periodInSlots)
+	s.Log().Infof("[snapshot] work process STARTED\n        target directory: %s\n        period: %v (%d slots)\n        : keep latest: %d",
+		s.directory, period, s.periodInSlots, s.keepLatest)
+
 	defer s.Log().Infof("[snapshot] work process STOPPED")
 
 	for {
@@ -87,6 +100,7 @@ func (s *Snapshot) snapshotLoop() {
 			return
 		case <-time.After(period):
 			s.doSnapshot()
+			s.purgeOldSnapshots()
 		}
 	}
 }
@@ -98,5 +112,38 @@ func (s *Snapshot) doSnapshot() {
 		s.Log().Errorf("[snapshot] failed to save snapshot: %v", err)
 	} else {
 		s.Log().Infof("[snapshot] snapshot has been saved to %s. It took %v", fname, time.Since(start))
+	}
+}
+
+func (s *Snapshot) purgeOldSnapshots() {
+	entries, err := os.ReadDir(s.directory)
+	if err != nil {
+		s.Log().Errorf("[snapshot] purgeOldSnapshots: %v", err)
+		return
+	}
+
+	entries = util.PurgeSlice(entries, func(entry os.DirEntry) bool {
+		// remain only regular files
+		if _, err := entry.Info(); err != nil {
+			return false
+		}
+		return entry.Type()&os.ModeType == 0
+	})
+
+	if len(entries) <= s.keepLatest {
+		return
+	}
+
+	sort.Slice(entries, func(i, j int) bool {
+		fii, _ := entries[i].Info()
+		fij, _ := entries[j].Info()
+		return fii.ModTime().Before(fij.ModTime())
+	})
+
+	for _, entry := range entries[:len(entries)-s.keepLatest] {
+		fpath := filepath.Join(s.directory, entry.Name())
+		if err = os.Remove(fpath); err != nil {
+			s.Log().Errorf("[snapshot] failed to remove file %s", fpath)
+		}
 	}
 }

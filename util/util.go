@@ -140,6 +140,7 @@ func RangeReverse[T any](slice []T, fun func(i int, elem T) bool) {
 }
 
 // PurgeSlice filters elements on the same underlying array
+// Element remains in the array only if 'filter' function return true
 func PurgeSlice[T any](slice []T, filter func(el T) bool, maxElems ...int) []T {
 	if len(slice) == 0 {
 		return slice
