@@ -277,15 +277,22 @@ func (id *IdentityData) String() string {
 func (id *IdentityData) Lines(prefix ...string) *lines.Lines {
 	originChainID := id.OriginChainID()
 	return lines.New(prefix...).
-		Add("Genesis Unix time: %d (%s)", id.GenesisTimeUnix, id.GenesisTime().Format(time.RFC3339)).
-		Add("Time tick duration: %v", id.TickDuration).
-		Add("Transaction pace: %d", id.TransactionPace).
-		Add("Sequencer pace: %d", id.TransactionPaceSequencer).
 		Add("Description: '%s'", id.Description).
 		Add("Initial supply: %s", util.Th(id.InitialSupply)).
 		Add("Genesis controller public key: %s", hex.EncodeToString(id.GenesisControllerPublicKey)).
 		Add("Genesis controller address: %s", id.GenesisControlledAddress().String()).
-		Add("Origin chain ID: %s", originChainID.String())
+		Add("Genesis Unix time: %d (%s)", id.GenesisTimeUnix, id.GenesisTime().Format(time.RFC3339)).
+		Add("Time tick duration: %v", id.TickDuration).
+		Add("Chain inflation per tick base: %s", util.Th(id.ChainInflationPerTickBase)).
+		Add("Branch inflation bonus base: %s", util.Th(id.BranchInflationBonusBase)).
+		Add("Chain inflation opportunity slots: %v", id.ChainInflationOpportunitySlots).
+		Add("Ticks per inflation epoch: %s", util.Th(id.TicksPerInflationEpoch)).
+		Add("Pre-branch consolidation ticks: %v", id.PreBranchConsolidationTicks).
+		Add("Minimum amount on sequencer: %s", util.Th(id.MinimumAmountOnSequencer)).
+		Add("Transaction pace: %d", id.TransactionPace).
+		Add("Sequencer pace: %d", id.TransactionPaceSequencer).
+		Add("VB cost: %d", id.VBCost).
+		Add("Origin chain ID (calculated): %s", originChainID.String())
 }
 
 func (id *IdentityData) YAMLAble() *IdentityDataYAMLAble {
