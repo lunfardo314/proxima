@@ -135,7 +135,7 @@ func (mut *Mutations) Lines(prefix ...string) *lines.Lines {
 
 func deleteOutputFromTrie(trie *immutable.TrieUpdatable, oid *ledger.OutputID) error {
 	var stateKey [1 + ledger.OutputIDLength]byte
-	stateKey[0] = PartitionLedgerState
+	stateKey[0] = TriePartitionLedgerState
 	copy(stateKey[1:], oid[:])
 
 	oData := trie.Get(stateKey[:])
@@ -160,7 +160,7 @@ func deleteOutputFromTrie(trie *immutable.TrieUpdatable, oid *ledger.OutputID) e
 
 func addOutputToTrie(trie *immutable.TrieUpdatable, oid *ledger.OutputID, out *ledger.Output) error {
 	var stateKey [1 + ledger.OutputIDLength]byte
-	stateKey[0] = PartitionLedgerState
+	stateKey[0] = TriePartitionLedgerState
 	copy(stateKey[1:], oid[:])
 	if trie.Update(stateKey[:], out.Bytes()) {
 		// key should not exist
@@ -217,7 +217,7 @@ func addOutputToTrie(trie *immutable.TrieUpdatable, oid *ledger.OutputID, out *l
 
 func addTxToTrie(trie *immutable.TrieUpdatable, txid *ledger.TransactionID, slot ledger.Slot, lastOutputIndex byte) error {
 	var stateKey [1 + ledger.TransactionIDLength]byte
-	stateKey[0] = PartitionCommittedTransactionID
+	stateKey[0] = TriePartitionCommittedTransactionID
 	copy(stateKey[1:], txid[:])
 
 	if trie.Update(stateKey[:], slot.Bytes()) {
@@ -228,11 +228,11 @@ func addTxToTrie(trie *immutable.TrieUpdatable, txid *ledger.TransactionID, slot
 }
 
 func makeAccountKey(id ledger.AccountID, oid *ledger.OutputID) []byte {
-	return common.ConcatBytes([]byte{PartitionAccounts, byte(len(id))}, id[:], oid[:])
+	return common.ConcatBytes([]byte{TriePartitionAccounts, byte(len(id))}, id[:], oid[:])
 }
 
 func makeChainIDKey(chainID *ledger.ChainID) []byte {
-	return common.ConcatBytes([]byte{PartitionChainID}, chainID[:])
+	return common.ConcatBytes([]byte{TriePartitionChainID}, chainID[:])
 }
 
 func UpdateTrie(trie *immutable.TrieUpdatable, mut *Mutations) (err error) {

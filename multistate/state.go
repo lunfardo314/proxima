@@ -64,21 +64,21 @@ type (
 
 // partitions of the state store on the trie
 const (
-	PartitionLedgerState = byte(iota)
-	PartitionAccounts
-	PartitionChainID
-	PartitionCommittedTransactionID
+	TriePartitionLedgerState = byte(iota)
+	TriePartitionAccounts
+	TriePartitionChainID
+	TriePartitionCommittedTransactionID
 )
 
 func PartitionToString(p byte) string {
 	switch p {
-	case PartitionLedgerState:
+	case TriePartitionLedgerState:
 		return "UTXO"
-	case PartitionAccounts:
+	case TriePartitionAccounts:
 		return "ACCN"
-	case PartitionChainID:
+	case TriePartitionChainID:
 		return "CHID"
-	case PartitionCommittedTransactionID:
+	case TriePartitionCommittedTransactionID:
 		return "TXID"
 	default:
 		return "????"
@@ -141,7 +141,7 @@ func (r *Readable) GetUTXO(oid *ledger.OutputID) ([]byte, bool) {
 }
 
 func (r *Readable) _getUTXO(oid *ledger.OutputID) ([]byte, bool) {
-	ret := common.MakeReaderPartition(r.trie, PartitionLedgerState).Get(oid[:])
+	ret := common.MakeReaderPartition(r.trie, TriePartitionLedgerState).Get(oid[:])
 	if len(ret) == 0 {
 		return nil, false
 	}
@@ -152,12 +152,12 @@ func (r *Readable) HasUTXO(oid *ledger.OutputID) bool {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
-	return common.MakeReaderPartition(r.trie, PartitionLedgerState).Has(oid[:])
+	return common.MakeReaderPartition(r.trie, TriePartitionLedgerState).Has(oid[:])
 }
 
 // KnowsCommittedTransaction transaction IDs are purged after some time, so the result may be
 func (r *Readable) KnowsCommittedTransaction(txid *ledger.TransactionID) bool {
-	return common.MakeReaderPartition(r.trie, PartitionCommittedTransactionID).Has(txid[:])
+	return common.MakeReaderPartition(r.trie, TriePartitionCommittedTransactionID).Has(txid[:])
 }
 
 func (r *Readable) GetIDsLockedInAccount(addr ledger.AccountID) ([]ledger.OutputID, error) {
@@ -171,7 +171,7 @@ func (r *Readable) GetIDsLockedInAccount(addr ledger.AccountID) ([]ledger.Output
 	var oid ledger.OutputID
 	var err error
 
-	accountPrefix := common.Concat(PartitionAccounts, byte(len(addr)), addr)
+	accountPrefix := common.Concat(TriePartitionAccounts, byte(len(addr)), addr)
 	r.trie.Iterator(accountPrefix).IterateKeys(func(k []byte) bool {
 		oid, err = ledger.OutputIDFromBytes(k[len(accountPrefix):])
 		if err != nil {
@@ -194,7 +194,7 @@ func (r *Readable) GetUTXOsLockedInAccount(addr ledger.AccountID) ([]*ledger.Out
 	if len(addr) > 255 {
 		return nil, fmt.Errorf("accountID length should be <= 255")
 	}
-	accountPrefix := common.Concat(PartitionAccounts, byte(len(addr)), addr)
+	accountPrefix := common.Concat(TriePartitionAccounts, byte(len(addr)), addr)
 
 	ret := make([]*ledger.OutputDataWithID, 0)
 	var err error
@@ -230,7 +230,7 @@ func (r *Readable) _getUTXOForChainID(id *ledger.ChainID) (*ledger.OutputDataWit
 	if len(id) != ledger.ChainIDLength {
 		return nil, fmt.Errorf("GetUTXOForChainID: chainID length must be %d-bytes long", ledger.ChainIDLength)
 	}
-	outID := common.MakeReaderPartition(r.trie, PartitionChainID).Get(id[:])
+	outID := common.MakeReaderPartition(r.trie, TriePartitionChainID).Get(id[:])
 	if len(outID) == 0 {
 		return nil, ErrNotFound
 	}
@@ -252,7 +252,7 @@ func (r *Readable) GetStem() (ledger.Slot, []byte) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
-	accountPrefix := common.Concat(PartitionAccounts, byte(len(ledger.StemAccountID)), ledger.StemAccountID)
+	accountPrefix := common.Concat(TriePartitionAccounts, byte(len(ledger.StemAccountID)), ledger.StemAccountID)
 
 	var found bool
 	var retSlot ledger.Slot
@@ -295,7 +295,7 @@ func (r *Readable) IterateKnownCommittedTransactions(fun func(txid *ledger.Trans
 		prefixSeq, prefixNoSeq = txidSlot[0].TransactionIDPrefixes()
 	}
 	// TODO refactor with Iterator()
-	iter := common.MakeTraversableReaderPartition(r.trie, PartitionCommittedTransactionID).Iterator(prefixNoSeq)
+	iter := common.MakeTraversableReaderPartition(r.trie, TriePartitionCommittedTransactionID).Iterator(prefixNoSeq)
 	var slot ledger.Slot
 	exit := false
 
@@ -312,7 +312,7 @@ func (r *Readable) IterateKnownCommittedTransactions(fun func(txid *ledger.Trans
 		return
 	}
 
-	iter = common.MakeTraversableReaderPartition(r.trie, PartitionCommittedTransactionID).Iterator(prefixSeq)
+	iter = common.MakeTraversableReaderPartition(r.trie, TriePartitionCommittedTransactionID).Iterator(prefixSeq)
 	iter.Iterate(func(k, v []byte) bool {
 		txid, err := ledger.TransactionIDFromBytes(k[1:])
 		util.AssertNoError(err)
@@ -332,7 +332,7 @@ func (r *Readable) AccountsByLocks() map[string]LockedAccountInfo {
 
 	ret := make(map[string]LockedAccountInfo)
 
-	r.trie.Iterator([]byte{PartitionAccounts}).IterateKeys(func(k []byte) bool {
+	r.trie.Iterator([]byte{TriePartitionAccounts}).IterateKeys(func(k []byte) bool {
 		oid, err = ledger.OutputIDFromBytes(k[2+k[1]:])
 		util.AssertNoError(err)
 
@@ -363,7 +363,7 @@ func (r *Readable) ChainInfo() map[ledger.ChainID]ChainRecordInfo {
 	var oData *ledger.OutputDataWithID
 	var amount ledger.Amount
 
-	r.trie.Iterator([]byte{PartitionChainID}).Iterate(func(k, v []byte) bool {
+	r.trie.Iterator([]byte{TriePartitionChainID}).Iterate(func(k, v []byte) bool {
 		chainID, err = ledger.ChainIDFromBytes(k[1:])
 		util.AssertNoError(err)
 		oData, err = r._getUTXOForChainID(&chainID)

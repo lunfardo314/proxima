@@ -87,6 +87,7 @@ func runRestoreCmd(_ *cobra.Command, args []string) {
 		lastRoot = trieUpdatable.Commit(batch)
 		err = batch.Commit()
 		util.AssertNoError(err)
+		_, _ = fmt.Fprintf(console, "--- commit ---\n")
 	}
 	// write meta-records
 	batch = stateStore.BatchedWriter()
