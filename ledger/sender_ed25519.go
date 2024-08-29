@@ -16,7 +16,7 @@ type SenderED25519 struct {
 const senderED25519Source = `
 // Enforces valid sender check in the output. It means, the ledger guarantees that the ED25511 address
 // data in the output is the one which signed the transaction which produced it.
-// $0 - address bytes without constraint prefix, i.e. blake2b hash of the public key 
+// $0 - blake2b hash of the signature's public key 
 func senderED25519: or(
     // always valid on consumed output
 	selfIsConsumedOutput,

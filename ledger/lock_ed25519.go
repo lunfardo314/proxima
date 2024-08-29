@@ -14,7 +14,8 @@ import (
 type AddressED25519 []byte
 
 const (
-	AddressED25519Name     = "addressED25519"
+	//AddressED25519Name     = "addressED25519"
+	AddressED25519Name     = "a"
 	addressED25519Template = AddressED25519Name + "(0x%s)"
 )
 
@@ -173,4 +174,9 @@ func addressED25519: and(
 		!!!addressED25519_unlock_failed
 	)
 )
+
+// short form of lock a(<hex bytes>)
+// $0 - ED25519 address, 32 byte blake2b hash of the public key
+func a : addressED25519($0)
+
 `
