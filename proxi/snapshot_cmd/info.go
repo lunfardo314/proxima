@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/proxi/glb"
@@ -29,25 +30,10 @@ func initSnapshotInfoCmd() *cobra.Command {
 
 func runSnapshotInfoCmd(_ *cobra.Command, args []string) {
 	var fname string
+	var ok bool
 	if len(args) == 0 {
-		entries, err := os.ReadDir(".")
-		glb.AssertNoError(err)
-
-		entries = util.PurgeSlice(entries, func(entry os.DirEntry) bool {
-			ok, err := filepath.Match("*.snapshot", entry.Name())
-			if err == nil {
-				_, err = entry.Info()
-			}
-			return err == nil && ok
-		})
-
-		glb.Assertf(len(entries) > 0, "no snapshot files found")
-		sort.Slice(entries, func(i, j int) bool {
-			fii, _ := entries[i].Info()
-			fij, _ := entries[j].Info()
-			return fii.ModTime().After(fij.ModTime())
-		})
-		fname = entries[0].Name()
+		fname, ok = findLatestSnapshotFile()
+		glb.Assertf(ok, "can't find snapshot file")
 	} else {
 		fname = args[0]
 	}
@@ -56,21 +42,59 @@ func runSnapshotInfoCmd(_ *cobra.Command, args []string) {
 	glb.AssertNoError(err)
 	defer kvStream.Close()
 
+	glb.Infof("Verbosity level: %d", glb.VerbosityLevel())
 	glb.Infof("snapshot file: %s", fname)
 	glb.Infof("format version: %s", kvStream.Header.Version)
 	glb.Infof("branch ID: %s", kvStream.BranchID.String())
 	glb.Infof("root record:\n%s", kvStream.RootRecord.Lines("    ").String())
 	glb.Infof("ledger id:\n%s", kvStream.LedgerID.Lines("    ").String())
 
-	if !glb.IsVerbose() {
-		return
-	}
+	switch glb.VerbosityLevel() {
+	case 1:
+		counters := make(map[byte]int)
+		total := 0
+		for pair := range kvStream.InChan {
+			counters[pair.Key[0]] = counters[pair.Key[0]] + 1
+			total++
+		}
+		glb.Infof("Total %d records. By type:", total)
+		for _, k := range util.KeysSorted(counters, func(k1, k2 byte) bool { return k1 < k2 }) {
+			glb.Infof("    %s: %d", multistate.PartitionToString(k), counters[k])
+		}
 
-	counter := 0
-	for pair := range kvStream.InChan {
-		_outKVPair(pair.Key, pair.Value, counter, os.Stdout)
-		counter++
+	case 2:
+		counter := 0
+		for pair := range kvStream.InChan {
+			_outKVPair(pair.Key, pair.Value, counter, os.Stdout)
+			counter++
+		}
 	}
+}
+
+func findLatestSnapshotFile() (string, bool) {
+	entries, err := os.ReadDir(".")
+	glb.AssertNoError(err)
+
+	var ok bool
+	var fi os.FileInfo
+
+	entries = util.PurgeSlice(entries, func(entry os.DirEntry) bool {
+		fi, err = entry.Info()
+		if err != nil || strings.HasPrefix(entry.Name(), multistate.TmpSnapshotFileNamePrefix) || fi.Mode()&os.ModeType != 0 {
+			return false
+		}
+		ok, err = filepath.Match("*.snapshot", entry.Name())
+		return err == nil && ok
+	})
+	if len(entries) == 0 {
+		return "", false
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		fii, _ := entries[i].Info()
+		fij, _ := entries[j].Info()
+		return fii.ModTime().After(fij.ModTime())
+	})
+	return entries[0].Name(), true
 }
 
 func _outKVPair(k, v []byte, counter int, out io.Writer) {

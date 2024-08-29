@@ -14,7 +14,17 @@ func Infof(format string, args ...any) {
 }
 
 func IsVerbose() bool {
-	return viper.GetBool("verbose")
+	return viper.GetBool("verbose") || viper.GetBool("v2")
+}
+
+func VerbosityLevel() int {
+	if !IsVerbose() {
+		return 0
+	}
+	if viper.GetBool("v2") {
+		return 2
+	}
+	return 1
 }
 
 func Verbosef(format string, args ...any) {

@@ -31,8 +31,12 @@ and withdraw funds from the sequencer chain
 		},
 	}
 
-	rootCmd.PersistentFlags().BoolP("verbose", "v", false, "verbose")
+	rootCmd.PersistentFlags().BoolP("verbose", "v", false, "verbosity level 1")
 	err := viper.BindPFlag("verbose", rootCmd.PersistentFlags().Lookup("verbose"))
+	glb.AssertNoError(err)
+
+	rootCmd.PersistentFlags().BoolP("v2", "2", false, "verbosity level 2")
+	err = viper.BindPFlag("v2", rootCmd.PersistentFlags().Lookup("v2"))
 	glb.AssertNoError(err)
 
 	rootCmd.PersistentFlags().BoolP("force", "f", false, "override yes/no prompt")

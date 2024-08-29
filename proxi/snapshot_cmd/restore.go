@@ -22,7 +22,7 @@ func initRestoreCmd() *cobra.Command {
 	restoreCmd := &cobra.Command{
 		Use:   "restore <snapshot file>",
 		Short: "creates multi-state db from snapshot",
-		Args:  cobra.ExactArgs(1),
+		Args:  cobra.MaximumNArgs(1),
 		Run:   runRestoreCmd,
 	}
 
@@ -36,12 +36,24 @@ const (
 )
 
 func runRestoreCmd(_ *cobra.Command, args []string) {
-	kvStream, err := multistate.OpenSnapshotFileStream(args[0])
+	var fname string
+	var ok bool
+	if len(args) == 0 {
+		fname, ok = findLatestSnapshotFile()
+		glb.Assertf(ok, "can't find snapshot file")
+	} else {
+		fname = args[0]
+	}
+
+	kvStream, err := multistate.OpenSnapshotFileStream(fname)
 	glb.AssertNoError(err)
 	defer kvStream.Close()
 
-	glb.Infof("snapshot file ok. Format version: %s", kvStream.Header.Version)
-	glb.Infof("root record: %s", kvStream.RootRecord.Lines("    ").String())
+	glb.Infof("Verbosity level: %d", glb.VerbosityLevel())
+	glb.Infof("snapshot file: %s", fname)
+	glb.Infof("format version: %s", kvStream.Header.Version)
+	glb.Infof("branch ID: %s", kvStream.BranchID.String())
+	glb.Infof("root record:\n%s", kvStream.RootRecord.Lines("    ").String())
 	glb.Infof("ledger id:\n%s", kvStream.LedgerID.Lines("    ").String())
 
 	stateDb := badger_adaptor.MustCreateOrOpenBadgerDB(global.MultiStateDBName, badger.DefaultOptions(global.MultiStateDBName))
@@ -62,7 +74,9 @@ func runRestoreCmd(_ *cobra.Command, args []string) {
 	if glb.IsVerbose() {
 		console = os.Stdout
 	}
-	counter := 0
+	total := 0
+	verbosityLevel := glb.VerbosityLevel()
+	counters := make(map[byte]int)
 	for pair := range kvStream.InChan {
 		if util.IsNil(batch) {
 			batch = stateStore.BatchedWriter()
@@ -71,8 +85,11 @@ func runRestoreCmd(_ *cobra.Command, args []string) {
 		glb.Assertf(!already, "repeating key %s", hex.EncodeToString(pair.Key))
 		inBatch++
 
-		_outKVPair(pair.Key, pair.Value, counter, console)
-		counter++
+		if verbosityLevel > 1 {
+			_outKVPair(pair.Key, pair.Value, total, console)
+		}
+		total++
+		counters[pair.Key[0]] = counters[pair.Key[0]] + 1
 
 		if inBatch == batchSize {
 			lastRoot = trieUpdatable.Commit(batch)
@@ -101,4 +118,10 @@ func runRestoreCmd(_ *cobra.Command, args []string) {
 	glb.Assertf(ledger.CommitmentModel.EqualCommitments(lastRoot, kvStream.RootRecord.Root),
 		"inconsistency: final root %s is not equal to the root in the root record %s",
 		lastRoot.String(), kvStream.RootRecord.Root.String())
+
+	glb.Infof("Success\nTotal %d records. By type:", total)
+	for _, k := range util.KeysSorted(counters, func(k1, k2 byte) bool { return k1 < k2 }) {
+		glb.Infof("    %s: %d", multistate.PartitionToString(k), counters[k])
+	}
+
 }

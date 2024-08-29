@@ -52,7 +52,10 @@ type SnapshotHeader struct {
 	Version     string `json:"version"`
 }
 
-const snapshotFormatVersionString = "ver 0"
+const (
+	snapshotFormatVersionString = "ver 0"
+	TmpSnapshotFileNamePrefix   = "__tmp__"
+)
 
 func snapshotFileName(branchID ledger.TransactionID) string {
 	return branchID.AsFileName() + ".snapshot"
@@ -75,7 +78,7 @@ func SaveSnapshot(state global.StateStoreReader, ctx context.Context, dir string
 	_, _ = fmt.Fprintf(console, "[SaveSnapshot] latest reliable branch: %s\n", latestReliableBranch.Stem.IDShort())
 
 	fname := snapshotFileName(latestReliableBranch.Stem.ID.TransactionID())
-	tmpfname := "__tmp__" + fname
+	tmpfname := TmpSnapshotFileNamePrefix + fname
 
 	fpath := filepath.Join(dir, fname)
 	fpathtmp := filepath.Join(dir, tmpfname)
