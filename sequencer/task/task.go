@@ -44,6 +44,7 @@ type (
 		proposersWG  sync.WaitGroup
 		proposalChan chan *proposal
 		proposals    []*proposal
+		Name         string
 	}
 
 	proposal struct {
@@ -58,6 +59,7 @@ type (
 		*Task
 		strategy        *Strategy
 		alreadyProposed set.Set[[32]byte]
+		Name            string
 	}
 
 	// ProposalGenerator returns incremental attacher as draft transaction or
@@ -79,12 +81,6 @@ var ErrNoProposals = errors.New("no proposals was generated")
 
 func registerProposerStrategy(s *Strategy) {
 	_allProposingStrategies[s.Name] = s
-}
-
-func init() {
-	//registerProposerStrategy(proposer_base.Strategy())
-	//registerProposerStrategy(proposer_endorse1.Strategy())
-	//registerProposerStrategy(proposer_endorse2.Strategy())
 }
 
 func allProposingStrategies() []*Strategy {
@@ -119,6 +115,7 @@ func Run(env Environment, targetTs ledger.Time) (*transaction.Transaction, *txme
 		ctx:          nil,
 		proposalChan: make(chan *proposal),
 		proposals:    make([]*proposal, 0),
+		Name:         fmt.Sprintf("%s[%s]", env.SequencerName(), targetTs.String()),
 	}
 
 	// start proposers
@@ -178,14 +175,11 @@ func (t *Task) startProposers() {
 			Task:            t,
 			strategy:        s,
 			alreadyProposed: set.New[[32]byte](),
+			Name:            t.Name + "-" + s.Name,
 		}
 		t.proposersWG.Add(1)
 		go p.Run()
 	}
-}
-
-func (t *Task) Name() string {
-	return fmt.Sprintf("[%s]", t.targetTs.String())
 }
 
 // InsertTagAlongInputs includes tag-along outputs from the backlog into attacher

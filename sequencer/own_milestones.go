@@ -95,7 +95,7 @@ func (seq *Sequencer) AddOwnMilestone(vid *vertex.WrappedTx) {
 	seq.ownMilestones[vid] = withTime
 }
 
-func (seq *Sequencer) purgeOwnMilestones(ttl time.Duration) int {
+func (seq *Sequencer) purgeOwnMilestones(ttl time.Duration) (int, int) {
 	horizon := time.Now().Add(-ttl)
 
 	seq.ownMilestonesMutex.Lock()
@@ -112,11 +112,16 @@ func (seq *Sequencer) purgeOwnMilestones(ttl time.Duration) int {
 		vid.UnReference()
 		delete(seq.ownMilestones, vid)
 	}
-	return len(toDelete)
+	return len(toDelete), len(seq.ownMilestones)
 }
 
-func (seq *Sequencer) purgeLoop() {
+func (seq *Sequencer) ownMilestonePurgeLoop() {
 	ttl := time.Duration(seq.MilestonesTTLSlots()) * ledger.L().ID.SlotDuration()
+
+	if seq.VerbosityLevel() > 0 {
+		seq.Log().Infof("starting own milestones purge loop with TTL = %v", ttl)
+		defer seq.Log().Infof("stopped own milestones purge loop")
+	}
 
 	for {
 		select {
@@ -124,8 +129,10 @@ func (seq *Sequencer) purgeLoop() {
 			return
 
 		case <-time.After(time.Second):
-			if n := seq.purgeOwnMilestones(ttl); n > 0 {
-				seq.Infof1("purged %d own milestones", n)
+			if n, remain := seq.purgeOwnMilestones(ttl); n > 0 {
+				if seq.VerbosityLevel() > 0 {
+					seq.Log().Infof("purged %d own milestones, %d remain", n, remain)
+				}
 			}
 		}
 	}

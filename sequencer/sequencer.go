@@ -133,6 +133,8 @@ func (seq *Sequencer) Start() {
 			return
 		}
 		seq.log.Infof("started sequencer '%s', seqID: %s", seq.SequencerName(), util.Ref(seq.SequencerID()).String())
+
+		go seq.ownMilestonePurgeLoop()
 		seq.sequencerLoop()
 
 		seq.onCallbackMutex.RLock()

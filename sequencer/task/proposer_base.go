@@ -49,7 +49,7 @@ func baseProposeGenerator(p *Proposer) (*attacher.IncrementalAttacher, bool) {
 	p.Tracef(TraceTagBaseProposer, "%s predecessor %s is sequencer milestone with coverage %s",
 		p.Name, extend.IDShortString, extend.VID.GetLedgerCoverageString)
 
-	a, err := attacher.NewIncrementalAttacher(p.Name(), p.Environment, p.targetTs, extend)
+	a, err := attacher.NewIncrementalAttacher(p.Name, p.Environment, p.targetTs, extend)
 	if err != nil {
 		p.Tracef(TraceTagBaseProposer, "%s can't create attacher: '%v'", p.Name, err)
 		return nil, true

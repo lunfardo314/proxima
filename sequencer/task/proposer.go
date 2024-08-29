@@ -146,7 +146,7 @@ func (p *Proposer) chooseEndorseExtendPairAttacher(endorse *vertex.WrappedTx, ex
 	var ret, a *attacher.IncrementalAttacher
 	var err error
 	for _, extend := range extendCandidates {
-		a, err = attacher.NewIncrementalAttacher(p.Name(), p, p.targetTs, extend, endorse)
+		a, err = attacher.NewIncrementalAttacher(p.Name, p, p.targetTs, extend, endorse)
 		if err != nil {
 			p.Tracef(TraceTagTask, "%s can't extend %s and endorse %s: %v", p.targetTs.String, extend.IDShortString, endorse.IDShortString, err)
 			continue
