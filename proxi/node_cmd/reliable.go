@@ -27,5 +27,5 @@ func runReliableBranchCmd(_ *cobra.Command, _ []string) {
 	nowis := ledger.TimeNow()
 	glb.Infof("---\nlatest reliable branch is %d slots back from now:", nowis.Slot()-branchID.Slot())
 	glb.Infof("   branch ID: %s", branchID.String())
-	glb.Infof("   root record: %s", rootRecord.Lines("     ").String())
+	glb.Infof("   root record:\n%s", rootRecord.Lines("     ").String())
 }
