@@ -298,6 +298,7 @@ func (a *attacher) attachVertexNonBranch(vid *vertex.WrappedTx) (ok, defined boo
 	if !defined {
 		a.pokeMe(vid)
 	}
+	// FIXME sometimes fails at global cancel
 	a.Assertf(ok || a.err != nil, "ok || a.err != nil")
 	return
 }
@@ -517,6 +518,7 @@ func (a *attacher) attachInput(v *vertex.Vertex, inputIdx byte, vid *vertex.Wrap
 	// only will become solid if successfully referencedSet
 	if v.Inputs[inputIdx] == nil {
 		refOk := v.ReferenceInput(inputIdx, vidInputTx)
+		// FIXME sometimes fails at global cancel
 		util.Assertf(refOk, "failed to reference input #%d of %s. Input tx: %s", inputIdx, v.Tx.IDShortString, vidInputTx.IDShortString)
 	}
 
