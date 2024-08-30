@@ -533,9 +533,6 @@ func (a *attacher) attachInput(v *vertex.Vertex, inputIdx byte, vid *vertex.Wrap
 	if !ok {
 		return ok, false
 	}
-	// TODO ??? bug: if inout tx is known defined, the output itself may not be rooted
-	//defined = a.isKnownDefined(v.Inputs[inputIdx]) || a.isRootedOutput(wOut)
-
 	if defined {
 		a.Tracef(TraceTagAttachVertex, "attacher %s: input #%d (%s) has been solidified", a.name, inputIdx, wOut.IDShortString)
 	}
