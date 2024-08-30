@@ -3,7 +3,6 @@ package attacher
 import (
 	"context"
 	"fmt"
-	"runtime"
 	"time"
 
 	"github.com/lunfardo314/proxima/core/txmetadata"
@@ -326,43 +325,11 @@ func (a *milestoneAttacher) logFinalStatusString(msData *ledger.MilestoneData) s
 			}
 		}
 	}
-	if a.LogAttacherStats() {
-		msg += "\n          " + a.logStatsString()
-	}
 	return msg
 }
 
 func (a *milestoneAttacher) logErrorStatusString(err error) string {
-	msg := fmt.Sprintf("-- ATTACH %s -> BAD(%v)", a.vid.ID.StringShort(), err)
-	if a.LogAttacherStats() {
-		msg = msg + "\n          " + a.logStatsString()
-	}
-	return msg
-}
-
-func (a *milestoneAttacher) logStatsString() string {
-	var memStats runtime.MemStats
-	runtime.ReadMemStats(&memStats)
-	memStr := fmt.Sprintf("Mem. alloc: %.1f MB, GC: %d, GoRt: %d, ",
-		float32(memStats.Alloc*10/(1024*1024))/10,
-		memStats.NumGC,
-		runtime.NumGoroutine(),
-	)
-
-	utxoInOut := ""
-	if a.vid.IsBranchTransaction() {
-		utxoInOut = fmt.Sprintf("UTXO mut +%d/-%d, ", a.finals.numCreatedOutputs, a.finals.numDeletedOutputs)
-	}
-	return fmt.Sprintf("stats %s: new tx: %d, %spoked/missed: %d/%d, periodic: %d, duration: %s. %s",
-		a.vid.IDShortString(),
-		a.finals.numVertices,
-		utxoInOut,
-		a.finals.numPokes,
-		a.finals.numMissedPokes.Load(),
-		a.finals.numPeriodic,
-		time.Since(a.finals.started),
-		memStr,
-	)
+	return fmt.Sprintf("-- ATTACH %s -> BAD(%v)", a.vid.ID.StringShort(), err)
 }
 
 func (a *milestoneAttacher) AdjustCoverage() {

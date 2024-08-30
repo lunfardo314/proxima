@@ -191,8 +191,7 @@ func (cfg *ConfigOptions) lines(seqID ledger.ChainID, controller ledger.AddressE
 		Add("MaxSlots: %d", cfg.MaxBranches).
 		Add("DelayStart: %v", cfg.DelayStart).
 		Add("BacklogTTLSlots: %d", cfg.BacklogTTLSlots).
-		Add("MilestoneTTLSlots: %d", cfg.MilestonesTTLSlots).
-		Add("LogAttacherStats: %v", cfg.LogAttacherStats)
+		Add("MilestoneTTLSlots: %d", cfg.MilestonesTTLSlots)
 }
 
 func (seq *Sequencer) Ctx() context.Context {

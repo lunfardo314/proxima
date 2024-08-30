@@ -122,6 +122,15 @@ api:
     # server port
   port: {{.APIPort}}
 
+snapshot:
+  enable: false
+    # where to put snapshot files. Directory must exist at startup
+  directory: snapshot
+    # 30 slots means ~ snapshot is every 5 min
+  period_in_slots: 30
+    # keep latest up to 3 snapshots, older ones will be purged
+  keep_latest: 3
+
 # logger config
 # logger.previous can be 'erase' or 'save'
 logger:
@@ -137,7 +146,6 @@ logger:
   # options: 'erase' (previous will be erased), 'save' (previous will be saved and then deleted)
   # Otherwise or when absent: log will be appended in the same existing file
   previous: erase
-#  log_attacher_stats: true
 
 # Other parameters used for tracing and debugging
 # Prometheus metrics exposure
@@ -146,10 +154,8 @@ metrics:
   enable: false
   port: 14000
 
-# list of enabled trace tags.
-# When enabled, it forces tracing of the specified module.
-# It may be very verbose
-# Search for available trace tags the code for "TraceTag"
+# list of enabled trace tags. When enabled, it forces tracing of the specified module.
+# It may be very verbose. For debugging. Search for available trace tags the code for "TraceTag"
 trace_tags:
 #  - autopeering
 #  - inclusion

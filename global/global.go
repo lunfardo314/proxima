@@ -35,10 +35,9 @@ type Global struct {
 	traceTagsMutex sync.RWMutex
 	traceTags      set.Set[string]
 	// dynamic transaction tracing with TTL
-	enabledTraceTx   atomic.Bool
-	txTraceMutex     sync.RWMutex
-	txTraceIDs       map[ledger.TransactionID]time.Time
-	logAttacherStats bool
+	enabledTraceTx atomic.Bool
+	txTraceMutex   sync.RWMutex
+	txTraceIDs     map[ledger.TransactionID]time.Time
 	// is it the first node in the network
 	bootstrap bool
 }
@@ -86,7 +85,6 @@ func NewFromConfig() *Global {
 	if savedPrev != "" {
 		ret.SugaredLogger.Warnf("previous logfile has been saved as %s", savedPrev)
 	}
-	ret.logAttacherStats = viper.GetBool("logger.log_attacher_stats")
 	ret.logVerbosity = viper.GetInt("logger.verbosity")
 	ret.SugaredLogger.Infof("logger verbosity level is %d", ret.logVerbosity)
 	return ret
@@ -317,10 +315,6 @@ func (l *Global) purgeLoop() {
 			l.purgeTraceTxIDs()
 		}
 	}
-}
-
-func (l *Global) LogAttacherStats() bool {
-	return l.logAttacherStats
 }
 
 func (l *Global) purgeTraceTxIDs() {

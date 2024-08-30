@@ -21,7 +21,6 @@ type (
 		DelayStart         time.Duration
 		BacklogTTLSlots    int
 		MilestonesTTLSlots int
-		LogAttacherStats   bool
 	}
 
 	ConfigOption func(options *ConfigOptions)
@@ -88,7 +87,6 @@ func paramsFromConfig(name string) ([]ConfigOption, ledger.ChainID, ed25519.Priv
 		WithMaxBranches(subViper.GetInt("max_branches")),
 		WithBacklogTTLSlots(backlogTTLSlots),
 		WithMilestonesTTLSlots(milestonesTTLSlots),
-		WithLogAttacherStats(subViper.GetBool("log_attacher_stats")),
 	}
 	return cfg, seqID, controllerKey, nil
 }
@@ -137,11 +135,5 @@ func WithBacklogTTLSlots(slots int) ConfigOption {
 func WithMilestonesTTLSlots(slots int) ConfigOption {
 	return func(o *ConfigOptions) {
 		o.MilestonesTTLSlots = slots
-	}
-}
-
-func WithLogAttacherStats(logAttacherStats bool) ConfigOption {
-	return func(o *ConfigOptions) {
-		o.LogAttacherStats = logAttacherStats
 	}
 }

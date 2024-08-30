@@ -68,7 +68,6 @@ type (
 		Assertf(cond bool, format string, args ...any)
 		AssertNoError(err error, prefix ...string)
 		AssertMustError(err error)
-		LogAttacherStats() bool
 		VerbosityLevel() int
 		Infof0(template string, args ...any)
 		Infof1(template string, args ...any)
