@@ -154,7 +154,7 @@ func (a *milestoneAttacher) lazyRepeat(fun func() vertex.Status) vertex.Status {
 			a.Tracef(TraceTagAttachMilestone, "poked")
 
 		case <-a.ctx.Done():
-			a.setError(fmt.Errorf("attacher has been interrupted. Undefined past cone: %s", a.undefinedListLines().Join(", ")))
+			a.setError(fmt.Errorf("%w. Undefined past cone: %s", global.ErrInterrupted, a.undefinedListLines().Join(", ")))
 			return vertex.Bad
 
 		case <-time.After(periodicCheckEach):

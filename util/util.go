@@ -98,6 +98,7 @@ func Maximum[T any](lst []T, less func(el1, el2 T) bool) T {
 	return ret
 }
 
+// MaximumElementIndex slice cannot be empty
 func MaximumElementIndex[T any](lst []T, less func(i1, i2 int) bool) int {
 	Assertf(len(lst) > 0, "len(lst)>0")
 	var ret int

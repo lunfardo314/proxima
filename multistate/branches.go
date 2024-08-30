@@ -472,6 +472,9 @@ func FindRootsFromLatestHealthySlot(store global.StateStoreReader, fraction glob
 	var rootsFound []RootRecord
 
 	IterateSlotsBack(store, func(slot ledger.Slot, roots []RootRecord) bool {
+		if len(roots) == 0 {
+			return true
+		}
 		maxElemIdx := util.MaximumElementIndex(roots, func(i, j int) bool {
 			return roots[i].LedgerCoverage < roots[j].LedgerCoverage
 		})

@@ -2,6 +2,7 @@ package global
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -120,6 +121,8 @@ var (
 	}
 
 	FractionHealthyBranch = FractionHalf
+
+	ErrInterrupted = errors.New("interrupted by global stop")
 )
 
 func IsHealthyCoverage(coverage, supply uint64, fraction Fraction) bool {

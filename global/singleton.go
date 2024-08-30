@@ -6,7 +6,3 @@ var globalLogger = NewDefault()
 func SetGlobalLogger(l *Global) {
 	globalLogger = l
 }
-
-func Logger() Logging {
-	return globalLogger
-}
