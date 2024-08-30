@@ -120,6 +120,7 @@ func (p *ProximaNode) Start() {
 	p.Log().Debug("running in debug mode")
 
 	p.goLoggingMemStats()
+	p.goLoggingSync()
 }
 
 // initMultiStateLedger opens ledger state DB and initializes global ledger object
@@ -282,7 +283,7 @@ func (p *ProximaNode) goLoggingMemStats() {
 		memstatsPeriod = memstatsLogPeriodDefault
 	}
 
-	p.RepeatEvery(memstatsLogPeriodDefault, func() bool {
+	p.RepeatEvery(memstatsPeriod, func() bool {
 		var memStats runtime.MemStats
 
 		runtime.ReadMemStats(&memStats)
@@ -293,6 +294,36 @@ func (p *ProximaNode) goLoggingMemStats() {
 			memStats.NumGC,
 			runtime.NumGoroutine(),
 		)
+		return true
+	})
+}
+
+func (p *ProximaNode) goLoggingSync() {
+	const (
+		syncLogPeriodDefault = 5 * time.Second
+		slotSyncThreshold    = 5
+	)
+
+	memstatsPeriod := time.Duration(viper.GetInt("logger.syncstate_period_sec")) * time.Second
+	if memstatsPeriod == 0 {
+		memstatsPeriod = syncLogPeriodDefault
+	}
+
+	p.RepeatEvery(memstatsPeriod, func() bool {
+		lrb, ok := p.GetLatestReliableBranch()
+		if !ok {
+			p.Log().Warnf("[sync] can't find latest reliable branch")
+		} else {
+			curSlot := ledger.TimeNow().Slot()
+			slotsBack := curSlot - lrb.Stem.ID.Slot()
+			msg := fmt.Sprintf("[sync] latest reliable branch is %d slots back, current slot: %d, coverage: %s",
+				slotsBack, curSlot, util.Th(lrb.LedgerCoverage))
+			if slotsBack <= slotSyncThreshold {
+				p.Log().Info(msg)
+			} else {
+				p.Log().Warn(msg)
+			}
+		}
 		return true
 	})
 }
