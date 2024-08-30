@@ -30,6 +30,7 @@ type (
 		SubmitTxBytesFromAPI(txBytes []byte, trace ...bool) (*ledger.TransactionID, error)
 		QueryTxIDStatusJSONAble(txid *ledger.TransactionID) vertex.TxIDStatusJSONAble
 		GetTxInclusion(txid *ledger.TransactionID, slotsBack int) *multistate.TxInclusion
+		GetLatestReliableBranch() (*multistate.BranchData, bool)
 	}
 
 	Server struct {
@@ -70,6 +71,8 @@ func (srv *Server) registerHandlers() {
 	http.HandleFunc(api.PathGetNodeInfo, srv.getNodeInfo)
 	// GET peers info from the node
 	http.HandleFunc(api.PathGetPeersInfo, srv.getPeersInfo)
+	// GET latest reliable branch '/get_latest_reliable_branch'
+	http.HandleFunc(api.PathGetLatestReliableBranch, srv.getLatestReliableBranch)
 }
 
 func (srv *Server) getLedgerID(w http.ResponseWriter, r *http.Request) {
@@ -420,6 +423,28 @@ func (srv *Server) queryTxInclusionScore(w http.ResponseWriter, r *http.Request)
 		TxInclusionScore: srv.calcTxInclusionScore(inclusion, thresholdNumerator, thresholdDenominator),
 	}
 
+	respBin, err := json.MarshalIndent(resp, "", "  ")
+	if err != nil {
+		writeErr(w, err.Error())
+		return
+	}
+	_, err = w.Write(respBin)
+	util.AssertNoError(err)
+}
+
+func (srv *Server) getLatestReliableBranch(w http.ResponseWriter, r *http.Request) {
+	srv.Tracef(TraceTag, "getLatestReliableBranch invoked")
+
+	bd, found := srv.GetLatestReliableBranch()
+	if !found {
+		writeErr(w, "latest reliable branch has not been found")
+		return
+	}
+
+	resp := &api.LatestReliableBranch{
+		RootData: *bd.RootRecord.JSONAble(),
+		BranchID: bd.Stem.ID.TransactionID(),
+	}
 	respBin, err := json.MarshalIndent(resp, "", "  ")
 	if err != nil {
 		writeErr(w, err.Error())

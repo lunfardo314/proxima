@@ -113,3 +113,7 @@ func (p *ProximaNode) QueryTxIDStatusJSONAble(txid *ledger.TransactionID) vertex
 func (p *ProximaNode) GetTxInclusion(txid *ledger.TransactionID, slotsBack int) *multistate.TxInclusion {
 	return p.workflow.GetTxInclusion(txid, slotsBack)
 }
+
+func (p *ProximaNode) GetLatestReliableBranch() (*multistate.BranchData, bool) {
+	return multistate.FindLatestReliableBranch(p.StateStore(), global.FractionHealthyBranch)
+}
