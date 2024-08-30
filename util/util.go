@@ -98,19 +98,16 @@ func Maximum[T any](lst []T, less func(el1, el2 T) bool) T {
 	return ret
 }
 
-// MaximumElementIndex slice cannot be empty
-func MaximumElementIndex[T any](lst []T, less func(i1, i2 int) bool) int {
+// IndexOfMaximum slice cannot be empty
+func IndexOfMaximum[T any](lst []T, less func(i1, i2 int) bool) int {
 	Assertf(len(lst) > 0, "len(lst)>0")
-	var ret int
-	first := true
+
+	ret := 0
 	for i := range lst {
-		if first {
-			ret = i
-			first = false
-			continue
-		}
-		if less(ret, i) {
-			ret = i
+		if i != 0 {
+			if less(ret, i) {
+				ret = i
+			}
 		}
 	}
 	return ret
