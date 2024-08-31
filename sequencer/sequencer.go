@@ -137,7 +137,7 @@ func (seq *Sequencer) Start() {
 		seq.log.Infof("sequencer has been STARTED %s", util.Ref(seq.SequencerID()).String())
 
 		ttl := time.Duration(seq.MilestonesTTLSlots()) * ledger.L().ID.SlotDuration()
-		seq.RepeatInBackground(seq.SequencerName()+"own_milestone_purge", ownMilestonePurgePeriod, func() bool {
+		seq.RepeatInBackground(seq.SequencerName()+"_own_milestone_purge", ownMilestonePurgePeriod, func() bool {
 			if n, remain := seq.purgeOwnMilestones(ttl); n > 0 {
 				if seq.VerbosityLevel() > 0 {
 					seq.Log().Infof("purged %d own milestones, %d remain", n, remain)

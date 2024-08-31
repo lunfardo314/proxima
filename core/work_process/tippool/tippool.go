@@ -79,11 +79,12 @@ func (t *SequencerTips) consume(inp Input) {
 			t.Environment.Log().Warnf("[tippool] %s and %s: too close on time axis. seqID: %s",
 				old.IDShortString(), inp.VID.IDShortString(), seqID.StringShort())
 		}
-		if t.oldReplaceWithNew(old.WrappedTx, inp.VID) {
+		if t.replaceOldWithNew(old.WrappedTx, inp.VID) {
 			if inp.VID.Reference() {
 				old.UnReference()
 				old.WrappedTx = inp.VID
 				old.lastActivity = time.Now()
+				old.loggedInactive = true
 				t.latestMilestones[*seqID] = old
 				storedNew = true
 			}
@@ -112,9 +113,9 @@ func (t *SequencerTips) isActive(m *_milestoneData) bool {
 	return time.Since(m.lastActivity) < t.expectedSequencerActivityPeriod
 }
 
-// oldReplaceWithNew compares timestamps, chooses the younger one.
+// replaceOldWithNew compares timestamps, chooses the younger one.
 // If timestamps equal, chooses the preferred one, older is preferred
-func (t *SequencerTips) oldReplaceWithNew(old, new *vertex.WrappedTx) bool {
+func (t *SequencerTips) replaceOldWithNew(old, new *vertex.WrappedTx) bool {
 	t.Assertf(old != new, "old != new")
 	tsOld := old.Timestamp()
 	tsNew := new.Timestamp()
