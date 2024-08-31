@@ -36,6 +36,7 @@ type (
 		FutureConeOwnMilestonesOrdered(rootOutput vertex.WrappedOutput, targetTs ledger.Time) []vertex.WrappedOutput
 		MaxTagAlongInputs() int
 		AllowNonHealthyBranches() bool
+		LatestMilestonesDescending(filter ...func(seqID ledger.ChainID, vid *vertex.WrappedTx) bool) []*vertex.WrappedTx
 	}
 
 	Task struct {
@@ -76,11 +77,9 @@ type (
 
 const TraceTagTask = "task"
 
-var _allProposingStrategies = make(map[string]*Strategy)
-
 var (
-	ErrNoProposals      = errors.New("no proposals was generated")
-	ErrNotHealthyBranch = errors.New("skipped non-healthy branch")
+	_allProposingStrategies = make(map[string]*Strategy)
+	ErrNoProposals          = errors.New("no proposals was generated")
 )
 
 func registerProposerStrategy(s *Strategy) {
@@ -148,34 +147,50 @@ func Run(env environment, targetTs ledger.Time) (*transaction.Transaction, *txme
 	<-readStop
 
 	// will return nil if wasn't able to generate transaction
-	return task.getBestProposal()
+	return task.chooseTheBestProposal()
 }
 
-func (t *Task) getBestProposal() (*transaction.Transaction, *txmetadata.TransactionMetadata, error) {
-	bestCoverageInSlot := t.BestCoverageInTheSlot(t.targetTs)
-	t.Tracef(TraceTagTask, "best coverage in slot: %s", func() string { return util.Th(bestCoverageInSlot) })
-	maxIdx := -1
-	for i := range t.proposals {
-		c := t.proposals[i].coverage
-		if c > bestCoverageInSlot {
-			bestCoverageInSlot = c
-			maxIdx = i
-		}
+func (t *Task) bestCoverageInTheSlot(slot ledger.Slot) uint64 {
+	all := t.LatestMilestonesDescending(func(seqID ledger.ChainID, vid *vertex.WrappedTx) bool {
+		return vid.Slot() == slot
+	})
+	if len(all) == 0 {
+		return 0
 	}
-	if maxIdx < 0 {
-		t.Tracef(TraceTagTask, "getBestProposal: NONE, target: %s", t.targetTs.String)
+	return all[0].GetLedgerCoverage()
+}
+
+// chooseTheBestProposal may return nil if no suitable proposal was generated
+func (t *Task) chooseTheBestProposal() (*transaction.Transaction, *txmetadata.TransactionMetadata, error) {
+	pMax := util.Maximum(t.proposals, func(p1, p2 *proposal) bool {
+		return p1.coverage < p2.coverage
+	})
+	if pMax == nil {
 		return nil, nil, ErrNoProposals
 	}
-	p := t.proposals[maxIdx]
-	t.Tracef(TraceTagTask, "getBestProposal: %s, target: %s, attacher %s: coverage %s",
-		p.tx.IDShortString, t.targetTs.String, p.attacherName, func() string { return util.Th(p.coverage) })
-
-	if t.targetTs.IsSlotBoundary() && !t.AllowNonHealthyBranches() {
-		if !global.IsHealthyCoverage(*p.txMetadata.LedgerCoverage, *p.txMetadata.Supply, global.FractionHealthyBranch) {
-			return nil, nil, ErrNotHealthyBranch
+	best := t.bestCoverageInTheSlot(t.targetTs.Slot())
+	if !t.targetTs.IsSlotBoundary() {
+		// not branch
+		if pMax.coverage > best {
+			return pMax.tx, pMax.txMetadata, nil
+		}
+		// there are better, makes no sense to issue a new one with smaller coverage
+		return nil, nil, nil
+	}
+	// branch is issued if it is healthy and the biggest in the slot, OR
+	// it is not healthy but previous slot has no branches. The latter is needed for bootstrap when
+	// it is just starting and no branches are issued in the network yet
+	if global.IsHealthyCoverage(*pMax.txMetadata.LedgerCoverage, *pMax.txMetadata.Supply, global.FractionHealthyBranch) {
+		if pMax.coverage > best {
+			return pMax.tx, pMax.txMetadata, nil
+		}
+	} else {
+		// not healthy is issued only when previous slot has no branches
+		if t.bestCoverageInTheSlot(t.targetTs.Slot()-1) == 0 {
+			return pMax.tx, pMax.txMetadata, nil
 		}
 	}
-	return p.tx, p.txMetadata, nil
+	return nil, nil, nil
 }
 
 func (t *Task) startProposers() {
@@ -235,17 +250,4 @@ func (t *Task) InsertTagAlongInputs(a *attacher.IncrementalAttacher) (numInserte
 		}
 	}
 	return
-}
-
-func (t *Task) BestCoverageInTheSlot(targetTs ledger.Time) uint64 {
-	if targetTs.Tick() == 0 {
-		return 0
-	}
-	all := t.Backlog().LatestMilestonesDescending(func(seqID ledger.ChainID, vid *vertex.WrappedTx) bool {
-		return vid.Slot() == targetTs.Slot()
-	})
-	if len(all) == 0 || all[0].IsBranchTransaction() {
-		return 0
-	}
-	return all[0].GetLedgerCoverage()
 }

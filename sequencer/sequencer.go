@@ -361,14 +361,7 @@ func (seq *Sequencer) doSequencerStep() bool {
 	msTx, meta, err := seq.StartProposingForTargetLogicalTime(targetTs)
 	if msTx == nil {
 		if targetTs.IsSlotBoundary() {
-			if errors.Is(err, task.ErrNotHealthyBranch) {
-				seq.Log().Warnf("SKIPPED branch for slot %d: failed to generate healthy one", targetTs.Slot())
-			} else {
-				if err != nil {
-					seq.Infof0("FAILED to generate branch for target %s. Now is %s. Reason: '%v'",
-						targetTs, ledger.TimeNow(), err)
-				}
-			}
+			seq.Log().Warnf("SKIPPED branch for slot %d: err = %v", targetTs.Slot(), err)
 		} else {
 			if !errors.Is(err, task.ErrNoProposals) {
 				seq.Log().Warnf("FAILED to generate transaction for target %s. Now is %s. Reason: %v",
