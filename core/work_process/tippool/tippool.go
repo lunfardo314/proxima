@@ -42,12 +42,14 @@ const (
 	Name            = "tippool"
 	TraceTag        = Name
 	purgeLoopPeriod = 5 * time.Second
+
+	expectedSequencerActivityPeriodInSlots = 5
 )
 
 func New(env environment) *SequencerTips {
 	ret := &SequencerTips{
 		latestMilestones:                make(map[ledger.ChainID]_milestoneData),
-		expectedSequencerActivityPeriod: 2 * ledger.L().ID.SlotDuration(),
+		expectedSequencerActivityPeriod: time.Duration(expectedSequencerActivityPeriodInSlots) * ledger.L().ID.SlotDuration(),
 	}
 	ret.WorkProcess = work_process.New[Input](env, Name, ret.consume)
 
