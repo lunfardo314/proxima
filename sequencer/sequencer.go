@@ -20,7 +20,6 @@ import (
 	"github.com/lunfardo314/proxima/sequencer/backlog"
 	"github.com/lunfardo314/proxima/sequencer/task"
 	"github.com/lunfardo314/proxima/util"
-	"github.com/lunfardo314/proxima/util/lines"
 	"github.com/lunfardo314/proxima/util/set"
 	"go.uber.org/zap"
 )
@@ -184,26 +183,8 @@ func (seq *Sequencer) Start() {
 //	return true
 //}
 
-func (cfg *ConfigOptions) lines(seqID ledger.ChainID, controller ledger.AddressED25519, prefix ...string) *lines.Lines {
-	return lines.New(prefix...).
-		Add("ID: %s", seqID.String()).
-		Add("Controller: %s", controller.String()).
-		Add("Name: %s", cfg.SequencerName).
-		Add("Pace: %d ticks", cfg.Pace).
-		Add("MaxTagAlongInputs: %d", cfg.MaxTagAlongInputs).
-		Add("MaxTargetTs: %s", cfg.MaxTargetTs.String()).
-		Add("MaxSlots: %d", cfg.MaxBranches).
-		Add("DelayStart: %v", cfg.DelayStart).
-		Add("BacklogTTLSlots: %d", cfg.BacklogTTLSlots).
-		Add("MilestoneTTLSlots: %d", cfg.MilestonesTTLSlots)
-}
-
 func (seq *Sequencer) Ctx() context.Context {
 	return seq.ctx
-}
-
-func (seq *Sequencer) AllowNonHealthyBranches() bool {
-	return seq.config.AllowNonHealthyBranches
 }
 
 func (seq *Sequencer) Stop() {
@@ -363,7 +344,7 @@ func (seq *Sequencer) doSequencerStep() bool {
 		if targetTs.IsSlotBoundary() {
 			seq.Log().Warnf("SKIPPED branch for slot %d: err = %v", targetTs.Slot(), err)
 		} else {
-			if !errors.Is(err, task.ErrNoProposals) {
+			if err != nil && !errors.Is(err, task.ErrNoProposals) {
 				seq.Log().Warnf("FAILED to generate transaction for target %s. Now is %s. Reason: %v",
 					targetTs, ledger.TimeNow(), err)
 			}

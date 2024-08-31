@@ -8,20 +8,20 @@ import (
 
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/proxima/util/lines"
 	"github.com/spf13/viper"
 )
 
 type (
 	ConfigOptions struct {
-		SequencerName           string
-		Pace                    int // pace in ticks
-		MaxTagAlongInputs       int
-		MaxTargetTs             ledger.Time
-		MaxBranches             int
-		DelayStart              time.Duration
-		BacklogTTLSlots         int
-		MilestonesTTLSlots      int
-		AllowNonHealthyBranches bool
+		SequencerName      string
+		Pace               int // pace in ticks
+		MaxTagAlongInputs  int
+		MaxTargetTs        ledger.Time
+		MaxBranches        int
+		DelayStart         time.Duration
+		BacklogTTLSlots    int
+		MilestonesTTLSlots int
 	}
 
 	ConfigOption func(options *ConfigOptions)
@@ -139,6 +139,16 @@ func WithMilestonesTTLSlots(slots int) ConfigOption {
 	}
 }
 
-func AllowNonHealthyBranches(o *ConfigOptions) {
-	o.AllowNonHealthyBranches = true
+func (cfg *ConfigOptions) lines(seqID ledger.ChainID, controller ledger.AddressED25519, prefix ...string) *lines.Lines {
+	return lines.New(prefix...).
+		Add("ID: %s", seqID.String()).
+		Add("Controller: %s", controller.String()).
+		Add("Name: %s", cfg.SequencerName).
+		Add("Pace: %d ticks", cfg.Pace).
+		Add("MaxTagAlongInputs: %d", cfg.MaxTagAlongInputs).
+		Add("MaxTargetTs: %s", cfg.MaxTargetTs.String()).
+		Add("MaxSlots: %d", cfg.MaxBranches).
+		Add("DelayStart: %v", cfg.DelayStart).
+		Add("BacklogTTLSlots: %d", cfg.BacklogTTLSlots).
+		Add("MilestoneTTLSlots: %d", cfg.MilestonesTTLSlots)
 }
