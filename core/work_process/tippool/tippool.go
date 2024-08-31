@@ -9,7 +9,6 @@ import (
 	"github.com/lunfardo314/proxima/core/work_process"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
-	"github.com/lunfardo314/proxima/util"
 )
 
 type (
@@ -178,7 +177,6 @@ func (t *SequencerTips) purgeAndLog() {
 	toDelete := make([]ledger.ChainID, 0)
 	for chainID, md := range t.latestMilestones {
 		nothingLogged := !md.loggedActive && !md.loggedInactive
-		util.Assertf(!md.loggedActive || !md.loggedInactive, "!md.loggedActive || !md.loggedInactive")
 
 		if t.isActive(&md) {
 			if md.loggedInactive || nothingLogged {
