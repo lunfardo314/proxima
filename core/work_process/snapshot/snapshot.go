@@ -22,13 +22,8 @@ type (
 
 	Snapshot struct {
 		environment
-
-		directory     string
-		periodInSlots int
-		keepLatest    int
-
-		// metrics
-		metricsEnabled bool
+		directory  string
+		keepLatest int
 	}
 )
 
@@ -39,8 +34,6 @@ const (
 	defaultSnapshotPeriodInSlots = 30
 	defaultKeepLatest            = 3
 )
-
-// TODO directory cleanup
 
 func Start(env environment) *Snapshot {
 	ret := &Snapshot{
@@ -57,13 +50,14 @@ func Start(env environment) *Snapshot {
 	if ret.directory == "" {
 		ret.directory = defaultSnapshotDirectory
 	}
-	env.Log().Infof("[snapshot] directory is '%s'", ret.directory)
+	env.Log().Infof("%s directory is '%s'", Name, ret.directory)
 	util.Assertf(directoryExists(ret.directory), "snapshot directory '%s' is wrong or does not exist", ret.directory)
 
-	ret.periodInSlots = viper.GetInt("snapshot.period_in_slots")
-	if ret.periodInSlots <= 0 {
-		ret.periodInSlots = defaultSnapshotPeriodInSlots
+	periodInSlots := viper.GetInt("snapshot.period_in_slots")
+	if periodInSlots <= 0 {
+		periodInSlots = defaultSnapshotPeriodInSlots
 	}
+	period := time.Duration(periodInSlots) * ledger.L().ID.SlotDuration()
 
 	ret.keepLatest = viper.GetInt("snapshot.keep_latest")
 	if ret.keepLatest <= 0 {
@@ -71,7 +65,15 @@ func Start(env environment) *Snapshot {
 	}
 
 	ret.registerMetrics()
-	go ret.snapshotLoop()
+
+	env.RepeatInBackground(Name, period, func() bool {
+		ret.doSnapshot()
+		ret.purgeOldSnapshots()
+		return true
+	}, true)
+
+	ret.Log().Infof("[snapshot] work process STARTED\n        target directory: %s\n        period: %v (%d slots)\n        : keep latest: %d",
+		ret.directory, period, periodInSlots, ret.keepLatest)
 
 	return ret
 }
@@ -83,26 +85,6 @@ func (s *Snapshot) registerMetrics() {
 func directoryExists(dir string) bool {
 	fileInfo, err := os.Stat(dir)
 	return err == nil && fileInfo.IsDir()
-}
-
-func (s *Snapshot) snapshotLoop() {
-	s.purgeOldSnapshots()
-
-	period := time.Duration(s.periodInSlots) * ledger.L().ID.SlotDuration()
-	s.Log().Infof("[snapshot] work process STARTED\n        target directory: %s\n        period: %v (%d slots)\n        : keep latest: %d",
-		s.directory, period, s.periodInSlots, s.keepLatest)
-
-	defer s.Log().Infof("[snapshot] work process STOPPED")
-
-	for {
-		select {
-		case <-s.Ctx().Done():
-			return
-		case <-time.After(period):
-			s.doSnapshot()
-			s.purgeOldSnapshots()
-		}
-	}
 }
 
 func (s *Snapshot) doSnapshot() {

@@ -71,11 +71,11 @@ func (p *Pruner) pruneVertices() (markedForDeletionCount, unreferencedPastConeCo
 }
 
 func (p *Pruner) Start() {
-	p.Infof0("STARTING MemDAG pruner..")
-	go func() {
-		p.mainLoop()
-		p.Log().Debugf("MemDAG pruner STOPPED")
-	}()
+	p.RepeatInBackground(Name, ledger.SlotDuration()/2, func() bool {
+		p.doPrune()
+		p.updateMetrics()
+		return true
+	}, true)
 }
 
 func (p *Pruner) doPrune() {
@@ -84,23 +84,6 @@ func (p *Pruner) doPrune() {
 
 	p.Infof0("[memDAG pruner] vertices: %d, deleted: %d, detached past cones: %d. state readers purged: %d, left: %d. Ref stats: %v",
 		p.NumVertices(), nDeleted, nUnReferenced, nReadersPurged, readersLeft, refStats)
-}
-
-func (p *Pruner) mainLoop() {
-	p.MarkWorkProcessStarted(Name)
-	defer p.MarkWorkProcessStopped(Name)
-
-	prunerLoopPeriod := ledger.SlotDuration() / 2
-
-	for {
-		select {
-		case <-p.Ctx().Done():
-			return
-		case <-time.After(prunerLoopPeriod):
-		}
-		p.doPrune()
-		p.updateMetrics()
-	}
 }
 
 func (p *Pruner) registerMetrics() {

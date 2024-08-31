@@ -56,6 +56,11 @@ func New(env environment) *Poker {
 		m:           make(map[*vertex.WrappedTx]waitingList),
 	}
 	ret.WorkProcess = work_process.New[Input](env, Name, ret.consume)
+
+	env.RepeatInBackground(Name+"_cleanup_loop", cleanupLoopPeriod, func() bool {
+		ret.Push(Input{Cmd: CommandPeriodicCleanup}, true)
+		return true
+	}, true)
 	return ret
 }
 
@@ -114,21 +119,9 @@ func (d *Poker) periodicCleanup() {
 		delete(d.m, vid)
 	}
 	if len(toDelete) > 0 {
-		d.Tracef(TraceTag, "purged %d entries", len(toDelete))
+		d.Infof1("[poker] purged %d entries", len(toDelete))
 	}
 	d.Tracef(TraceTag, "wanted list size: %d", len(d.m))
-}
-
-func (d *Poker) cleanupLoop() {
-	for {
-		select {
-		case <-d.Ctx().Done():
-			// d.saveDependencyDAG("poker_dependencies", 100)
-			return
-		case <-time.After(cleanupLoopPeriod):
-		}
-		d.Push(Input{Cmd: CommandPeriodicCleanup})
-	}
 }
 
 func (d *Poker) PokeMe(me, waitingFor *vertex.WrappedTx) {

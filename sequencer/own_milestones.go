@@ -9,6 +9,8 @@ import (
 	"github.com/lunfardo314/proxima/util/set"
 )
 
+const ownMilestonePurgePeriod = time.Second
+
 func (seq *Sequencer) FutureConeOwnMilestonesOrdered(rootOutput vertex.WrappedOutput, targetTs ledger.Time) []vertex.WrappedOutput {
 	seq.ownMilestonesMutex.RLock()
 	defer seq.ownMilestonesMutex.RUnlock()
@@ -113,27 +115,4 @@ func (seq *Sequencer) purgeOwnMilestones(ttl time.Duration) (int, int) {
 		delete(seq.ownMilestones, vid)
 	}
 	return len(toDelete), len(seq.ownMilestones)
-}
-
-func (seq *Sequencer) ownMilestonePurgeLoop() {
-	ttl := time.Duration(seq.MilestonesTTLSlots()) * ledger.L().ID.SlotDuration()
-
-	if seq.VerbosityLevel() > 0 {
-		seq.Log().Infof("starting own milestones purge loop with TTL = %v", ttl)
-		defer seq.Log().Infof("stopped own milestones purge loop")
-	}
-
-	for {
-		select {
-		case <-seq.Ctx().Done():
-			return
-
-		case <-time.After(time.Second):
-			if n, remain := seq.purgeOwnMilestones(ttl); n > 0 {
-				if seq.VerbosityLevel() > 0 {
-					seq.Log().Infof("purged %d own milestones, %d remain", n, remain)
-				}
-			}
-		}
-	}
 }

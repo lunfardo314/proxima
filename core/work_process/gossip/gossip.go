@@ -37,7 +37,7 @@ const (
 	Name                   = "gossip"
 	TraceTag               = Name
 	gossipedFilterTTLSlots = 6
-	purgePeriod            = 5 * time.Second
+	gossipedPurgePeriod    = 5 * time.Second
 )
 
 func New(env environment) *Gossip {
@@ -47,6 +47,12 @@ func New(env environment) *Gossip {
 		gossipedFilterTTL: gossipedFilterTTLSlots * ledger.L().ID.SlotDuration(),
 	}
 	ret.WorkProcess = work_process.New[*Input](env, Name, ret.consume)
+
+	env.RepeatInBackground("gossipFilterPurge", gossipedPurgePeriod, func() bool {
+		ret.Push(nil, true)
+		return true
+	}, true)
+
 	return ret
 }
 
@@ -89,16 +95,5 @@ func (d *Gossip) purgeFilter() {
 	}
 	for _, vsID := range toDelete {
 		delete(d.gossipedFilter, vsID)
-	}
-}
-
-func (d *Gossip) purgeLoop() {
-	for {
-		select {
-		case <-d.Ctx().Done():
-			return
-		case <-time.After(purgePeriod):
-			d.Push(nil, true)
-		}
 	}
 }

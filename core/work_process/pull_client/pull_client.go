@@ -62,6 +62,15 @@ func New(env environment) *PullClient {
 	}
 	ret.WorkProcess = work_process.New[*Input](env, Name, ret.consume)
 	ret.registerMetrics()
+
+	ret.RepeatInBackground(Name+"_background_loop", pullLoopPeriod, func() bool {
+		txIDs, nStuck := ret.maturedPullList()
+		if len(txIDs) > 0 {
+			ret.numStuckPulls.Set(float64(nStuck))
+			ret.PullTransactionsFromAllPeers(txIDs...)
+		}
+		return true
+	}, true)
 	return ret
 }
 
@@ -134,31 +143,11 @@ func (p *PullClient) transactionIn(txBytesWithMetadata []byte) {
 
 const pullLoopPeriod = 50 * time.Millisecond
 
-// backgroundPullLoop repeats pull requests txids from random peer periodically
-func (p *PullClient) backgroundPullLoop() {
-	defer p.environment.Log().Infof("[pull_client] background loop stopped")
-
-	buffer := make([]ledger.TransactionID, 0) // reuse buffer -> minimize heap use
-	var nStuck int
-
-	for {
-		select {
-		case <-p.Ctx().Done():
-			return
-		case <-time.After(pullLoopPeriod):
-		}
-		if buffer, nStuck = p.maturedPullList(buffer); len(buffer) > 0 {
-			p.numStuckPulls.Set(float64(nStuck))
-			p.PullTransactionsFromAllPeers(buffer...)
-		}
-	}
-}
-
 // maturedPullList returns list of transaction IDs which should be pulled again.
 // reuses the provided buffer and returns new slice
 // Returns also number of transactions which are stuck
-func (p *PullClient) maturedPullList(buf []ledger.TransactionID) ([]ledger.TransactionID, int) {
-	buf = buf[:0]
+func (p *PullClient) maturedPullList() ([]ledger.TransactionID, int) {
+	ret := make([]ledger.TransactionID, 0)
 
 	numStuck := 0
 	p.mutex.Lock()
@@ -171,14 +160,14 @@ func (p *PullClient) maturedPullList(buf []ledger.TransactionID) ([]ledger.Trans
 			if time.Since(rec.start) > stuckThreshold {
 				numStuck++
 			}
-			buf = append(buf, txid)
+			ret = append(ret, txid)
 			p.pullList[txid] = pullRecord{
 				start:        rec.start,
 				nextDeadline: nextDeadline,
 			}
 		}
 	}
-	return buf, numStuck
+	return ret, numStuck
 }
 
 // Pull starts pulling txID

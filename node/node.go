@@ -280,14 +280,13 @@ func (p *ProximaNode) SyncServerDisabled() bool {
 func (p *ProximaNode) goLoggingMemStats() {
 	const memstatsLogPeriodDefault = 10 * time.Second
 
-	memstatsPeriod := time.Duration(viper.GetInt("logger.memstats_period_sec")) * time.Second
-	if memstatsPeriod == 0 {
-		memstatsPeriod = memstatsLogPeriodDefault
+	memStatsPeriod := time.Duration(viper.GetInt("logger.memstats_period_sec")) * time.Second
+	if memStatsPeriod == 0 {
+		memStatsPeriod = memstatsLogPeriodDefault
 	}
 
-	p.RepeatEvery(memstatsPeriod, func() bool {
-		var memStats runtime.MemStats
-
+	var memStats runtime.MemStats
+	p.RepeatInBackground("logging_memStats", memStatsPeriod, func() bool {
 		runtime.ReadMemStats(&memStats)
 		p.Log().Infof("[memstats] current slot: %d, uptime: %v, allocated memory: %.1f MB, GC counter: %d, Goroutines: %d",
 			ledger.TimeNow().Slot(),
@@ -306,12 +305,12 @@ func (p *ProximaNode) goLoggingSync() {
 		slotSyncThreshold    = 5
 	)
 
-	memstatsPeriod := time.Duration(viper.GetInt("logger.syncstate_period_sec")) * time.Second
-	if memstatsPeriod == 0 {
-		memstatsPeriod = syncLogPeriodDefault
+	logSyncPeriod := time.Duration(viper.GetInt("logger.syncstate_period_sec")) * time.Second
+	if logSyncPeriod == 0 {
+		logSyncPeriod = syncLogPeriodDefault
 	}
 
-	p.RepeatEvery(memstatsPeriod, func() bool {
+	p.RepeatInBackground("logging_sync", logSyncPeriod, func() bool {
 		lrb, ok := p.GetLatestReliableBranch()
 		if !ok {
 			p.Log().Warnf("[sync] can't find latest reliable branch")

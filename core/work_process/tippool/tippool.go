@@ -40,8 +40,9 @@ type (
 )
 
 const (
-	Name     = "tippool"
-	TraceTag = Name
+	Name            = "tippool"
+	TraceTag        = Name
+	purgeLoopPeriod = 5 * time.Second
 )
 
 func New(env environment) *SequencerTips {
@@ -50,6 +51,11 @@ func New(env environment) *SequencerTips {
 		expectedSequencerActivityPeriod: 2 * ledger.L().ID.SlotDuration(),
 	}
 	ret.WorkProcess = work_process.New[Input](env, Name, ret.consume)
+
+	ret.RepeatInBackground(Name+"_purge_and_log_loop", purgeLoopPeriod, func() bool {
+		ret.purgeAndLog()
+		return true
+	}, true)
 	return ret
 }
 
@@ -163,20 +169,6 @@ func (t *SequencerTips) NumSequencerTips() int {
 	return len(t.latestMilestones)
 }
 
-const purgeLoopPeriod = 5 * time.Second
-
-// purgeAndLogLoop periodically removes all vertices which cannot be endorsed
-func (t *SequencerTips) purgeAndLogLoop() {
-	for {
-		select {
-		case <-t.Ctx().Done():
-			return
-		case <-time.After(purgeLoopPeriod):
-			t.purgeAndLog()
-		}
-	}
-}
-
 // purgeAndLog removes all transactions with baseline == nil, i.e. all non-branch sequencers which are virtualTx
 func (t *SequencerTips) purgeAndLog() {
 	t.mutex.Lock()
@@ -210,6 +202,6 @@ func (t *SequencerTips) purgeAndLog() {
 	for _, chainID := range toDelete {
 		t.latestMilestones[chainID].UnReference()
 		delete(t.latestMilestones, chainID)
-		t.Log().Infof("chainID %s has been removed from the sequencer tip pool", chainID.StringShort())
+		t.Log().Infof("chainID %s has been removed from the sequencer tippool", chainID.StringShort())
 	}
 }

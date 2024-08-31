@@ -81,7 +81,7 @@ type (
 		Stop()
 		MarkWorkProcessStarted(name string)
 		MarkWorkProcessStopped(name string)
-		RepeatEvery(period time.Duration, fun func() bool, skipFirst ...bool) // runs background goroutine
+		RepeatInBackground(name string, period time.Duration, fun func() bool, skipFirst ...bool) // runs background goroutine
 	}
 
 	TraceTx interface {

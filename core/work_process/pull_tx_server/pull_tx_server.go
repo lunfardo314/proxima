@@ -31,9 +31,8 @@ type (
 )
 
 const (
-	Name           = "pullTxServer"
-	TraceTag       = Name
-	chanBufferSize = 10
+	Name     = "pullTxServer"
+	TraceTag = Name
 )
 
 func New(env environment) *PullTxServer {
