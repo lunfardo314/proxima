@@ -83,7 +83,6 @@ func (t *SequencerTips) consume(inp Input) {
 				old.UnReference()
 				old.WrappedTx = inp.VID
 				old.lastActivity = time.Now()
-				old.loggedInactive = true
 				t.latestMilestones[*seqID] = old
 				storedNew = true
 			}
