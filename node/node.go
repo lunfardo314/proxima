@@ -205,6 +205,8 @@ func (p *ProximaNode) startWorkflow() {
 	p.workflow.Start()
 }
 
+// TODO refactor to one single sequencer per node. No need for several
+
 func (p *ProximaNode) startSequencers() {
 	sequencers := viper.GetStringMap("sequencers")
 	if len(sequencers) == 0 {

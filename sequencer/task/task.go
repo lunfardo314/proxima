@@ -77,7 +77,10 @@ const TraceTagTask = "task"
 
 var _allProposingStrategies = make(map[string]*Strategy)
 
-var ErrNoProposals = errors.New("no proposals was generated")
+var (
+	ErrNoProposals      = errors.New("no proposals was generated")
+	ErrNotHealthyBranch = errors.New("skipped non-healthy branch")
+)
 
 func registerProposerStrategy(s *Strategy) {
 	_allProposingStrategies[s.Name] = s
@@ -166,6 +169,9 @@ func (t *Task) getBestProposal() (*transaction.Transaction, *txmetadata.Transact
 	t.Tracef(TraceTagTask, "getBestProposal: %s, target: %s, attacher %s: coverage %s",
 		p.tx.IDShortString, t.targetTs.String, p.attacherName, func() string { return util.Th(p.coverage) })
 
+	if t.targetTs.IsSlotBoundary() && !global.IsHealthyCoverage(*p.txMetadata.LedgerCoverage, *p.txMetadata.Supply, global.FractionHealthyBranch) {
+		return nil, nil, ErrNotHealthyBranch
+	}
 	return p.tx, p.txMetadata, nil
 }
 

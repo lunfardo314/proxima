@@ -831,3 +831,7 @@ func (a *attacher) Tracef(traceLabel string, format string, args ...any) {
 func (a *attacher) SlotInflation() uint64 {
 	return a.slotInflation
 }
+
+func (a *attacher) FinalSupply() uint64 {
+	return a.baselineSupply + a.slotInflation
+}

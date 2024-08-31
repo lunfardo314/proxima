@@ -90,7 +90,9 @@ func (a *milestoneAttacher) commitBranch() {
 	upd := multistate.MustNewUpdatable(a.StateStore(), a.baselineStateReader().Root())
 	a.finals.supply = a.baselineSupply + a.finals.slotInflation
 	coverage := a.vid.GetLedgerCoverage()
-	supply := a.baselineSupply + a.finals.slotInflation
+
+	util.Assertf(a.slotInflation == a.finals.slotInflation, "a.slotInflation == a.finals.slotInflation")
+	supply := a.FinalSupply()
 
 	upd.MustUpdate(muts, &multistate.RootRecordParams{
 		StemOutputID:    stemOID,

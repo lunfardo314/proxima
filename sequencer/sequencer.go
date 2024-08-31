@@ -123,18 +123,22 @@ func (seq *Sequencer) Start() {
 		seq.MarkWorkProcessStarted(seq.config.SequencerName)
 		defer seq.MarkWorkProcessStopped(seq.config.SequencerName)
 
-		if !seq.waitForSyncIfNecessary() {
-			seq.log.Warnf("sequencer wasn't started. EXIT..")
-			return
-		}
+		//if !seq.waitForSyncIfNecessary() {
+		//	seq.log.Warnf("sequencer wasn't started. EXIT..")
+		//	return
+		//}
 
 		if !seq.ensureFirstMilestone() {
 			seq.log.Warnf("can't start sequencer. EXIT..")
 			return
 		}
-		seq.log.Infof("started sequencer '%s', seqID: %s", seq.SequencerName(), util.Ref(seq.SequencerID()).String())
+		seq.log.Infof("waiting for %v (1 slot) before starting sequencer", ledger.L().ID.SlotDuration())
+		time.Sleep(ledger.L().ID.SlotDuration())
+
+		seq.log.Infof("sequencer has been STARTED %s", util.Ref(seq.SequencerID()).String())
 
 		go seq.ownMilestonePurgeLoop()
+
 		seq.sequencerLoop()
 
 		seq.onCallbackMutex.RLock()
@@ -157,28 +161,28 @@ func (seq *Sequencer) Start() {
 	}
 }
 
-func (seq *Sequencer) waitForSyncIfNecessary() bool {
-	if seq.IsBootstrapNode() {
-		// bootstrap node does not wait for synced status
-		return true
-	}
-
-	const checkSyncEvery = 3 * time.Second
-
-	for {
-		if seq.IsSynced() {
-			break
-		}
-		select {
-		case <-seq.Ctx().Done():
-			return false
-		case <-time.After(checkSyncEvery):
-			seq.log.Warnf("waiting for sync with the network")
-		}
-	}
-
-	return true
-}
+//func (seq *Sequencer) waitForSyncIfNecessary() bool {
+//	if seq.IsBootstrapNode() {
+//		// bootstrap node does not wait for synced status
+//		return true
+//	}
+//
+//	const checkSyncEvery = 3 * time.Second
+//
+//	for {
+//		if seq.IsSynced() {
+//			break
+//		}
+//		select {
+//		case <-seq.Ctx().Done():
+//			return false
+//		case <-time.After(checkSyncEvery):
+//			seq.log.Warnf("waiting for sync with the network")
+//		}
+//	}
+//
+//	return true
+//}
 
 func (cfg *ConfigOptions) lines(seqID ledger.ChainID, controller ledger.AddressED25519, prefix ...string) *lines.Lines {
 	return lines.New(prefix...).
@@ -204,6 +208,7 @@ func (seq *Sequencer) Stop() {
 
 const ensureStartingMilestoneTimeout = time.Second
 
+// ensureFirstMilestone waiting for the first sequencer milestone arrive
 func (seq *Sequencer) ensureFirstMilestone() bool {
 	ctx, cancel := context.WithTimeout(seq.Ctx(), ensureStartingMilestoneTimeout)
 	var startOutput vertex.WrappedOutput
@@ -248,7 +253,7 @@ func (seq *Sequencer) checkSequencerStartOutput(wOut vertex.WrappedOutput) bool 
 	}
 	oReal, err := wOut.VID.OutputAt(wOut.Index)
 	if oReal == nil || err != nil {
-		seq.log.Errorf("checkSequencerStartOutput: failed to fetch start output %s: %s", wOut.IDShortString(), err)
+		seq.log.Errorf("checkSequencerStartOutput: failed to load start output %s: %s", wOut.IDShortString(), err)
 		return false
 	}
 	lock := oReal.Lock()
@@ -352,8 +357,14 @@ func (seq *Sequencer) doSequencerStep() bool {
 	msTx, meta, err := seq.StartProposingForTargetLogicalTime(targetTs)
 	if msTx == nil {
 		if targetTs.IsSlotBoundary() {
-			seq.Infof0("FAILED to generate transaction for target %s. Now is %s. Reason: '%v'",
-				targetTs, ledger.TimeNow(), err)
+			if errors.Is(err, task.ErrNotHealthyBranch) {
+				seq.Log().Warnf("SKIPPED branch for slot %d: failed to generate healthy one", targetTs.Slot())
+			} else {
+				if err != nil {
+					seq.Infof0("FAILED to generate branch for target %s. Now is %s. Reason: '%v'",
+						targetTs, ledger.TimeNow(), err)
+				}
+			}
 		} else {
 			if !errors.Is(err, task.ErrNoProposals) {
 				seq.Log().Warnf("FAILED to generate transaction for target %s. Now is %s. Reason: %v",

@@ -78,6 +78,7 @@ func (p *Proposer) propose(a *attacher.IncrementalAttacher) error {
 			StateRoot:               nil,
 			LedgerCoverage:          util.Ref(coverage),
 			SlotInflation:           util.Ref(a.SlotInflation()),
+			Supply:                  util.Ref(a.FinalSupply()),
 			IsResponseToPull:        false,
 			SourceTypeNonPersistent: txmetadata.SourceTypeSequencer,
 		},
