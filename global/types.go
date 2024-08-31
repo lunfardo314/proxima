@@ -138,5 +138,5 @@ func IsHealthyCoverageString(coverage, supply uint64, fraction Fraction) string 
 	if IsHealthyCoverage(coverage, supply, fraction) {
 		return fmt.Sprintf("> 2 x %s supply", fraction.String())
 	}
-	return fmt.Sprintf("not-healthy <= %s supply", fraction.String())
+	return fmt.Sprintf("not-healthy <= 2 x %s supply", fraction.String())
 }
