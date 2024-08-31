@@ -8,6 +8,7 @@ import (
 	"github.com/lunfardo314/proxima/core/work_process"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 // pull_client is a queued work process which sends pull requests for a specified transaction
@@ -17,7 +18,7 @@ type (
 	environment interface {
 		global.NodeGlobal
 		TxBytesStore() global.TxBytesStore
-		PullTransactionsFromRandomPeer(lst ...ledger.TransactionID) bool
+		//PullTransactionsFromRandomPeer(lst ...ledger.TransactionID) bool
 		PullTransactionsFromAllPeers(lst ...ledger.TransactionID)
 		TxBytesWithMetadataIn(txBytes []byte, metadata *txmetadata.TransactionMetadata) (*ledger.TransactionID, error)
 	}
@@ -34,6 +35,11 @@ type (
 		// set of wanted transactions
 		mutex    sync.RWMutex
 		pullList map[ledger.TransactionID]pullRecord
+		// metrics
+		txPullRequestsTotal prometheus.Counter
+		txPullRequestsPeers prometheus.Counter
+		pullTimeFromPeer    prometheus.Gauge
+		numStuckPulls       prometheus.Gauge
 	}
 
 	pullRecord struct {
@@ -43,10 +49,10 @@ type (
 )
 
 const (
-	Name                                   = "pullClient"
-	TraceTag                               = Name
-	pullPeriod                             = 500 * time.Millisecond
-	startPullingFromAllAfterNumRandomPulls = 10
+	Name             = "pullClient"
+	TraceTag         = Name
+	repeatPullPeriod = 1 * time.Second
+	stuckThreshold   = 10 * time.Second
 )
 
 func New(env environment) *PullClient {
@@ -55,6 +61,7 @@ func New(env environment) *PullClient {
 		pullList:    make(map[ledger.TransactionID]pullRecord),
 	}
 	ret.WorkProcess = work_process.New[*Input](env, Name, ret.consume)
+	ret.registerMetrics()
 	return ret
 }
 
@@ -73,6 +80,8 @@ func (p *PullClient) startPulling(txid ledger.TransactionID, by string) {
 	if _, already := p.pullList[txid]; already {
 		return
 	}
+	p.txPullRequestsTotal.Inc()
+
 	txBytesWithMetadata := p.TxBytesStore().GetTxBytesWithMetadata(&txid)
 	if len(txBytesWithMetadata) > 0 {
 		// found transaction bytes in tx store
@@ -85,13 +94,16 @@ func (p *PullClient) startPulling(txid ledger.TransactionID, by string) {
 		// transaction is not in the tx store -> query from random peer and put txid into the pull list
 		p.pullList[txid] = pullRecord{
 			start:        time.Now(),
-			nextDeadline: time.Now().Add(pullPeriod),
+			nextDeadline: time.Now().Add(repeatPullPeriod),
 		}
+		p.txPullRequestsPeers.Inc()
+
 		p.Tracef(TraceTag, "%s added to the pull list by %s. Pull list size: %d", txid.StringShort, by, len(p.pullList))
 		p.TraceTx(&txid, TraceTag+": added to the pull list")
 
 		// query from 1 random peer
-		p.PullTransactionsFromRandomPeer(txid)
+		p.PullTransactionsFromAllPeers(txid)
+		//p.PullTransactionsFromRandomPeer(txid)
 	}
 }
 
@@ -127,7 +139,7 @@ func (p *PullClient) backgroundPullLoop() {
 	defer p.environment.Log().Infof("[pull_client] background loop stopped")
 
 	buffer := make([]ledger.TransactionID, 0) // reuse buffer -> minimize heap use
-	var stuck bool
+	var nStuck int
 
 	for {
 		select {
@@ -135,34 +147,29 @@ func (p *PullClient) backgroundPullLoop() {
 			return
 		case <-time.After(pullLoopPeriod):
 		}
-		if buffer, stuck = p.maturedPullList(buffer); len(buffer) > 0 {
-			if stuck {
-				// some are stuck, pull from all
-				p.PullTransactionsFromAllPeers(buffer...)
-			} else {
-				// pull from one random
-				p.PullTransactionsFromRandomPeer(buffer...)
-			}
+		if buffer, nStuck = p.maturedPullList(buffer); len(buffer) > 0 {
+			p.numStuckPulls.Set(float64(nStuck))
+			p.PullTransactionsFromAllPeers(buffer...)
 		}
 	}
 }
 
 // maturedPullList returns list of transaction IDs which should be pulled again.
 // reuses the provided buffer and returns new slice
-// Returns true if at least one transaction is stuck for longer than number of periods
-func (p *PullClient) maturedPullList(buf []ledger.TransactionID) ([]ledger.TransactionID, bool) {
+// Returns also number of transactions which are stuck
+func (p *PullClient) maturedPullList(buf []ledger.TransactionID) ([]ledger.TransactionID, int) {
 	buf = buf[:0]
 
-	atLeastOneIsStuck := false
+	numStuck := 0
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
 
 	nowis := time.Now()
-	nextDeadline := nowis.Add(pullPeriod)
+	nextDeadline := nowis.Add(repeatPullPeriod)
 	for txid, rec := range p.pullList {
 		if nowis.After(rec.nextDeadline) {
-			if !atLeastOneIsStuck && time.Since(rec.start) > pullPeriod*startPullingFromAllAfterNumRandomPulls {
-				atLeastOneIsStuck = true
+			if time.Since(rec.start) > stuckThreshold {
+				numStuck++
 			}
 			buf = append(buf, txid)
 			p.pullList[txid] = pullRecord{
@@ -171,30 +178,7 @@ func (p *PullClient) maturedPullList(buf []ledger.TransactionID) ([]ledger.Trans
 			}
 		}
 	}
-	return buf, atLeastOneIsStuck
-}
-
-// stuckList for debugging
-func (p *PullClient) stuckList(forHowLong time.Duration) map[ledger.TransactionID]time.Duration {
-	ret := make(map[ledger.TransactionID]time.Duration)
-
-	p.mutex.Lock()
-	defer p.mutex.Unlock()
-
-	nowis := time.Now()
-	deadline := nowis.Add(-forHowLong)
-	for txid, rec := range p.pullList {
-		if rec.start.Before(deadline) {
-			ret[txid] = time.Since(rec.start)
-		}
-	}
-	return ret
-}
-
-func (p *PullClient) printStuckList(forHowLong time.Duration) {
-	for txid, howLong := range p.stuckList(forHowLong) {
-		p.environment.Log().Infof(">>>>>>>> [pull_client] %s stuck for %v", txid.StringShort(), howLong)
-	}
+	return buf, numStuck
 }
 
 // Pull starts pulling txID
@@ -218,9 +202,36 @@ func (p *PullClient) stopPulling(txid ledger.TransactionID) {
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
 
-	if _, found := p.pullList[txid]; found {
+	if rec, found := p.pullList[txid]; found {
 		delete(p.pullList, txid)
+
+		p.pullTimeFromPeer.Set(float64(time.Since(rec.start) / time.Millisecond))
+
 		p.Tracef(TraceTag, "stop pulling %s", txid.StringShort)
 		p.TraceTx(&txid, "stop pulling")
 	}
+}
+
+func (p *PullClient) registerMetrics() {
+	p.txPullRequestsTotal = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "proxima_txPullRequests_Total_counter",
+		Help: "total number of tx pull requests",
+	})
+
+	p.txPullRequestsPeers = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "proxima_txPullRequestsPeers_counter",
+		Help: "number of tx pull requests from peers",
+	})
+
+	p.pullTimeFromPeer = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "proxima_pullTime_gauge",
+		Help: "milliseconds between start and stop pull transaction",
+	})
+
+	p.numStuckPulls = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "proxima_pullFailed_gauge",
+		Help: "number of tx pull requests which are stuck (after timeout)",
+	})
+
+	p.MetricsRegistry().MustRegister(p.txPullRequestsTotal, p.txPullRequestsPeers, p.pullTimeFromPeer, p.numStuckPulls)
 }

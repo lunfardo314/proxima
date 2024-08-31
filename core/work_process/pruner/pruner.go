@@ -105,13 +105,13 @@ func (p *Pruner) mainLoop() {
 
 func (p *Pruner) registerMetrics() {
 	p.numVerticesGauge = prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "memDAG_numVerticesGauge",
+		Name: "proxima_memDAG_numVerticesGauge",
 		Help: "number of vertices in the memDAG",
 	})
 	p.MetricsRegistry().MustRegister(p.numVerticesGauge)
 
 	p.numStateReadersGauge = prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "memDAG_numStateReadersGauge",
+		Name: "proxima_memDAG_numStateReadersGauge",
 		Help: "number of cached state readers in the memDAG",
 	})
 	p.MetricsRegistry().MustRegister(p.numStateReadersGauge)

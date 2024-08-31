@@ -33,13 +33,13 @@ func NewSimpleTxBytesStore(store common.KVStore, metricsRegistry ...global.Metri
 func (s *SimpleTxBytesStore) registerMetrics(reg *prometheus.Registry) {
 	s.metricsEnabled = true
 	s.txCounter = prometheus.NewCounter(prometheus.CounterOpts{
-		Name: "txStore_txCounter",
+		Name: "proxima_txStore_txCounter",
 		Help: "new transaction counter in SimpleTxBytesStore",
 	})
 	reg.MustRegister(s.txCounter)
 
 	s.txBytesCounter = prometheus.NewCounter(prometheus.CounterOpts{
-		Name: "txStore_txBytesCounter",
+		Name: "proxima_txStore_txBytesCounter",
 		Help: "new transaction bytes (cumulative size) counter in SimpleTxBytesStore",
 	})
 	reg.MustRegister(s.txBytesCounter)
@@ -47,14 +47,14 @@ func (s *SimpleTxBytesStore) registerMetrics(reg *prometheus.Registry) {
 	const lastSizeBucket = 2000
 
 	s.txBytesSizeHistogram = prometheus.NewHistogram(prometheus.HistogramOpts{
-		Name:    "txStore_txBytesSizeHistogram",
+		Name:    "proxima_txStore_txBytesSizeHistogram",
 		Help:    "collects data about size of raw transaction bytes",
 		Buckets: _makeBuckets(lastSizeBucket),
 	})
 	reg.MustRegister(s.txBytesSizeHistogram)
 
 	s.txBytesSeqNonBranchSizeHistogram = prometheus.NewHistogram(prometheus.HistogramOpts{
-		Name:    "txStore_txBytesSeqNonBranchSizeHistogram",
+		Name:    "proxima_txStore_txBytesSeqNonBranchSizeHistogram",
 		Help:    "collects data about size of raw sequencer non-branch transaction bytes",
 		Buckets: _makeBuckets(lastSizeBucket),
 	})
