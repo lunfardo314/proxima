@@ -83,7 +83,7 @@ func (w *Workflow) TxBytesIn(txBytes []byte, opts ...TxBytesInOption) (*ledger.T
 	if err != nil {
 		if enforceTimeBounds {
 			w.Tracef(TraceTagTxInput, "invalidate %s: time bounds validation failed", txid.StringShort)
-			err = fmt.Errorf("upper timestamp bound exceeded (MaxDurationInTheFuture = %v)", w.MaxDurationInTheFuture())
+			err = fmt.Errorf("%w (MaxDurationInTheFuture = %v)", err, w.MaxDurationInTheFuture())
 			attacher.InvalidateTxID(*txid, w, err)
 
 			return txid, err

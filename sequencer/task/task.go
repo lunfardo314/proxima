@@ -23,7 +23,7 @@ import (
 // Task to generate proposals for the target ledger time. The task is interrupted
 // by the context with deadline
 type (
-	Environment interface {
+	environment interface {
 		global.NodeGlobal
 		attacher.Environment
 		SequencerName() string
@@ -35,10 +35,11 @@ type (
 		AddOwnMilestone(vid *vertex.WrappedTx)
 		FutureConeOwnMilestonesOrdered(rootOutput vertex.WrappedOutput, targetTs ledger.Time) []vertex.WrappedOutput
 		MaxTagAlongInputs() int
+		AllowNonHealthyBranches() bool
 	}
 
 	Task struct {
-		Environment
+		environment
 		targetTs     ledger.Time
 		ctx          context.Context
 		proposersWG  sync.WaitGroup
@@ -101,7 +102,7 @@ func allProposingStrategies() []*Strategy {
 // Each proposer generates proposals and writes it to the channel of the task.
 // The best proposal is selected and returned. Function only returns transaction which is better
 // than others in the tippool for the current slot. Otherwise, returns nil
-func Run(env Environment, targetTs ledger.Time) (*transaction.Transaction, *txmetadata.TransactionMetadata, error) {
+func Run(env environment, targetTs ledger.Time) (*transaction.Transaction, *txmetadata.TransactionMetadata, error) {
 	deadline := targetTs.Time()
 	nowis := time.Now()
 	env.Tracef(TraceTagTask, "RunTask: target: %s, deadline: %s, nowis: %s",
@@ -113,7 +114,7 @@ func Run(env Environment, targetTs ledger.Time) (*transaction.Transaction, *txme
 	}
 
 	task := &Task{
-		Environment:  env,
+		environment:  env,
 		targetTs:     targetTs,
 		ctx:          nil,
 		proposalChan: make(chan *proposal),
@@ -169,8 +170,10 @@ func (t *Task) getBestProposal() (*transaction.Transaction, *txmetadata.Transact
 	t.Tracef(TraceTagTask, "getBestProposal: %s, target: %s, attacher %s: coverage %s",
 		p.tx.IDShortString, t.targetTs.String, p.attacherName, func() string { return util.Th(p.coverage) })
 
-	if t.targetTs.IsSlotBoundary() && !global.IsHealthyCoverage(*p.txMetadata.LedgerCoverage, *p.txMetadata.Supply, global.FractionHealthyBranch) {
-		return nil, nil, ErrNotHealthyBranch
+	if t.targetTs.IsSlotBoundary() && !t.AllowNonHealthyBranches() {
+		if !global.IsHealthyCoverage(*p.txMetadata.LedgerCoverage, *p.txMetadata.Supply, global.FractionHealthyBranch) {
+			return nil, nil, ErrNotHealthyBranch
+		}
 	}
 	return p.tx, p.txMetadata, nil
 }

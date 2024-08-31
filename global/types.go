@@ -125,8 +125,9 @@ var (
 	ErrInterrupted = errors.New("interrupted by global stop")
 )
 
+// IsHealthyCoverage coverage is healthy if it is bigger than 2 times the fraction of supply
 func IsHealthyCoverage(coverage, supply uint64, fraction Fraction) bool {
-	return coverage > (uint64(fraction.Numerator)*supply)/uint64(fraction.Denominator)
+	return coverage > (2*uint64(fraction.Numerator)*supply)/uint64(fraction.Denominator)
 }
 
 func (f *Fraction) String() string {
@@ -135,7 +136,7 @@ func (f *Fraction) String() string {
 
 func IsHealthyCoverageString(coverage, supply uint64, fraction Fraction) string {
 	if IsHealthyCoverage(coverage, supply, fraction) {
-		return fmt.Sprintf("healthy > %s supply", fraction.String())
+		return fmt.Sprintf("> 2 x %s supply", fraction.String())
 	}
 	return fmt.Sprintf("not-healthy <= %s supply", fraction.String())
 }

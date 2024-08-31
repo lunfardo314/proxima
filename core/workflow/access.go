@@ -19,7 +19,7 @@ import (
 // TODO revisit MaxDurationInTheFuture
 
 func (w *Workflow) MaxDurationInTheFuture() time.Duration {
-	return ledger.SlotDuration() * 5
+	return 10 * ledger.SlotDuration()
 }
 
 func (w *Workflow) Pull(txid ledger.TransactionID, by string) {

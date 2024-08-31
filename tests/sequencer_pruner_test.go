@@ -254,7 +254,7 @@ func TestNSequencersTransferPruner(t *testing.T) {
 			nSequencers     = 2   // in addition to bootstrap
 			batchSize       = 10  // 10
 			sendAmount      = 2000
-			spammingTimeout = 60 * time.Second // 10
+			spammingTimeout = 30 * time.Second // 10
 			startPruner     = true
 			traceTx         = false
 		)

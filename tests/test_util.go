@@ -798,6 +798,7 @@ func (td *workflowTestData) startSequencersWithTimeout(maxSlots int, timeout ...
 			sequencer.WithMaxTagAlongInputs(30),
 			sequencer.WithPace(5),
 			sequencer.WithMaxBranches(maxSlots),
+			sequencer.AllowNonHealthyBranches,
 		)
 		require.NoError(td.t, err)
 		td.sequencers[seqNr].Start()

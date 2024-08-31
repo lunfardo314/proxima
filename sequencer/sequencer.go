@@ -202,6 +202,10 @@ func (seq *Sequencer) Ctx() context.Context {
 	return seq.ctx
 }
 
+func (seq *Sequencer) AllowNonHealthyBranches() bool {
+	return seq.config.AllowNonHealthyBranches
+}
+
 func (seq *Sequencer) Stop() {
 	seq.stopFun()
 }

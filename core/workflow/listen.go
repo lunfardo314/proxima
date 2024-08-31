@@ -49,8 +49,8 @@ func (w *Workflow) LoadSequencerTips(seqID ledger.ChainID) error {
 	}
 	loadedTxs := set.New[*vertex.WrappedTx]()
 	nowSlot := ledger.TimeNow().Slot()
-	w.Log().Infof("loading sequencer tips from LRB %s, %d slots back from (current slot is %d)",
-		branchData.TxID().StringShort(), nowSlot-branchData.TxID().Slot(), nowSlot)
+	w.Log().Infof("loading sequencer tips for %s from LRB %s, %d slots back from (current slot is %d)",
+		seqID.StringShort(), branchData.TxID().StringShort(), nowSlot-branchData.TxID().Slot(), nowSlot)
 
 	rdr := multistate.MustNewSugaredReadableState(w.StateStore(), branchData.Root, 0)
 	vidBranch := attacher.MustEnsureBranch(branchData.Stem.ID.TransactionID(), w, 0)
@@ -62,8 +62,8 @@ func (w *Workflow) LoadSequencerTips(seqID ledger.ChainID) error {
 	if oSeq == nil {
 		return fmt.Errorf("LoadSequencerTips: unable to load any milestone for the sequencer %s", seqID.StringShort())
 	}
-	w.Log().Infof("loaded sequencer output %s:\n%s",
-		oSeq.ID.StringShort(), oSeq.MustParse().Output.Lines("        ").String())
+	w.Log().Infof("loaded sequencer output %s for %s:\n%s",
+		oSeq.ID.StringShort(), seqID.String(), oSeq.MustParse().Output.Lines("        ").String())
 	wOut := attacher.AttachOutputID(oSeq.ID, w, attacher.OptionPullNonBranch, attacher.OptionInvokedBy("LoadSequencerTips"))
 	loadedTxs.Insert(wOut.VID)
 

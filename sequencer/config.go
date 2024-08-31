@@ -13,14 +13,15 @@ import (
 
 type (
 	ConfigOptions struct {
-		SequencerName      string
-		Pace               int // pace in ticks
-		MaxTagAlongInputs  int
-		MaxTargetTs        ledger.Time
-		MaxBranches        int
-		DelayStart         time.Duration
-		BacklogTTLSlots    int
-		MilestonesTTLSlots int
+		SequencerName           string
+		Pace                    int // pace in ticks
+		MaxTagAlongInputs       int
+		MaxTargetTs             ledger.Time
+		MaxBranches             int
+		DelayStart              time.Duration
+		BacklogTTLSlots         int
+		MilestonesTTLSlots      int
+		AllowNonHealthyBranches bool
 	}
 
 	ConfigOption func(options *ConfigOptions)
@@ -136,4 +137,8 @@ func WithMilestonesTTLSlots(slots int) ConfigOption {
 	return func(o *ConfigOptions) {
 		o.MilestonesTTLSlots = slots
 	}
+}
+
+func AllowNonHealthyBranches(o *ConfigOptions) {
+	o.AllowNonHealthyBranches = true
 }
