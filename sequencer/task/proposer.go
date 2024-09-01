@@ -38,10 +38,7 @@ func (p *Proposer) run() {
 	for {
 		a.Close()
 
-		if a, forceExit = p.strategy.GenerateProposal(p); forceExit {
-			// forced exit be decision of the proposer
-			return
-		}
+		a, forceExit = p.strategy.GenerateProposal(p)
 		if a == nil || !a.Completed() {
 			if waitExit() {
 				// leave if its time
@@ -54,6 +51,9 @@ func (p *Proposer) run() {
 		p.Assertf(a.IsCoverageAdjusted(), "coverage must be adjusted")
 		if err = p.propose(a); err != nil {
 			p.Log().Warnf("%v", err)
+			return
+		}
+		if forceExit {
 			return
 		}
 		if waitExit() {
@@ -78,6 +78,7 @@ func (p *Proposer) propose(a *attacher.IncrementalAttacher) error {
 			SourceTypeNonPersistent: txmetadata.SourceTypeSequencer,
 		},
 		extended:     a.Extending(),
+		endorsing:    a.Endorsing(),
 		coverage:     coverage,
 		attacherName: a.Name(),
 		strategyName: p.strategy.ShortName,
@@ -104,8 +105,8 @@ func (p *Proposer) makeTxProposal(a *attacher.IncrementalAttacher) (*transaction
 func (p *Proposer) ChooseExtendEndorsePair() *attacher.IncrementalAttacher {
 	p.Assertf(!p.targetTs.IsSlotBoundary(), "!p.targetTs.IsSlotBoundary()")
 	endorseCandidates := p.Backlog().CandidatesToEndorseSorted(p.targetTs)
-	p.Tracef(TraceTagTask, ">>>>>>>>>>>>>>> target %s {%s}",
-		p.targetTs.String, vertex.VerticesShortLines(endorseCandidates).Join(", "))
+	//p.Tracef(TraceTagTask, ">>>>>>>>>>>>>>> target %s {%s}",
+	//	p.targetTs.String, vertex.VerticesShortLines(endorseCandidates).Join(", "))
 
 	seqID := p.SequencerID()
 	var ret *attacher.IncrementalAttacher

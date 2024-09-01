@@ -5,6 +5,7 @@ import (
 	"crypto/ed25519"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -16,8 +17,8 @@ import (
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/sequencer/backlog"
 	"github.com/lunfardo314/proxima/util"
-	"github.com/lunfardo314/proxima/util/lines"
 	"github.com/spf13/viper"
+	"golang.org/x/exp/maps"
 )
 
 // Task to generate proposals for the target ledger time. The task is interrupted
@@ -52,6 +53,7 @@ type (
 		tx           *transaction.Transaction
 		txMetadata   *txmetadata.TransactionMetadata
 		extended     vertex.WrappedOutput
+		endorsing    []*vertex.WrappedTx
 		coverage     uint64
 		attacherName string
 		strategyName string
@@ -61,6 +63,7 @@ type (
 		*Task
 		strategy *Strategy
 		Name     string
+		Msg      string // how proposer ended. For debugging
 	}
 
 	// ProposalGenerator returns incremental attacher as draft transaction or
@@ -134,11 +137,11 @@ func Run(env environment, targetTs ledger.Time) (*transaction.Transaction, *txme
 	// channel is needed to make sure reading loop has ended
 	readStop := make(chan struct{})
 
-	proposals := make([]*proposal, 0)
+	proposals := make(map[ledger.TransactionID]*proposal)
 
 	go func() {
 		for p := range task.proposalChan {
-			proposals = append(proposals, p)
+			proposals[*p.tx.ID()] = p
 		}
 		close(readStop)
 	}()
@@ -151,7 +154,8 @@ func Run(env environment, targetTs ledger.Time) (*transaction.Transaction, *txme
 		return nil, nil, ErrNoProposals
 	}
 
-	best := util.Maximum(proposals, func(p1, p2 *proposal) bool {
+	proposalsSlice := maps.Values(proposals)
+	best := util.Maximum(proposalsSlice, func(p1, p2 *proposal) bool {
 		return p1.coverage < p2.coverage
 	})
 
@@ -161,14 +165,13 @@ func Run(env environment, targetTs ledger.Time) (*transaction.Transaction, *txme
 		return nil, nil, ErrNoProposals
 	}
 
-	if ownLatest.IsBranchTransaction() {
-		env.Log().Infof(">>>>>>>>>>>> task %s selected from: {%s}",
-			task.Name, lines.SliceToLines(proposals).Join(", "))
-	}
+	//trace := best.extended.VID.IsBranchTransaction() || len(best.endorsing) > 0 && best.endorsing[0].IsBranchTransaction()
+	//if trace {
+	//	env.Log().Infof(">>>>>>>>>>>> task %s selected from: {%s}",
+	//		task.Name, lines.SliceToLines(proposalsSlice).Join(", "))
+	//}
 
 	return best.tx, best.txMetadata, nil
-	// will return nil if wasn't able to generate transaction
-	//return task.chooseTheBestProposal()
 }
 
 func (t *Task) bestCoverageInTheSlot(slot ledger.Slot) uint64 {
@@ -182,7 +185,12 @@ func (t *Task) bestCoverageInTheSlot(slot ledger.Slot) uint64 {
 }
 
 func (p *proposal) String() string {
-	return fmt.Sprintf("%s[%s -- %s]", p.strategyName, p.extended.IDShortString(), util.Th(p.coverage))
+	endorse := make([]string, 0, len(p.endorsing))
+	for _, vid := range p.endorsing {
+		endorse = append(endorse, vid.IDShortString())
+	}
+	return fmt.Sprintf("%s(%s -- %s -> [%s])",
+		p.strategyName, p.extended.IDShortString(), util.Th(p.coverage), strings.Join(endorse, ", "))
 }
 
 // chooseTheBestProposal may return nil if no suitable proposal was generated

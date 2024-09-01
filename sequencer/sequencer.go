@@ -305,16 +305,6 @@ func (seq *Sequencer) sequencerLoop() {
 		case <-seq.Ctx().Done():
 			return
 		default:
-			// checking condition if even makes sense to do a sequencer step. For bootstrap node is always makes sense
-			// For non-bootstrap node it only makes sense if tippool is up-to-date
-			//if !seq.IsBootstrapNode() {
-			//	if !seq.IsSynced() {
-			//		seq.Log().Warnf("will not issue milestone: node is out of sync and it is not a bootstrap node")
-			//		time.Sleep(ledger.L().ID.SlotDuration() / 2)
-			//		continue
-			//	}
-			//}
-
 			if !seq.doSequencerStep() {
 				return
 			}
@@ -342,6 +332,11 @@ func (seq *Sequencer) doSequencerStep() bool {
 	if seq.config.MaxTargetTs != ledger.NilLedgerTime && targetTs.After(seq.config.MaxTargetTs) {
 		seq.log.Infof("next target ts %s is after maximum ts %s -> stopping", targetTs, seq.config.MaxTargetTs)
 		return false
+	}
+
+	if seq.lastSubmittedTs.IsSlotBoundary() && targetTs.IsSlotBoundary() {
+		seq.Log().Warnf("target timestamp jumps over the slot: %s -> %s",
+			seq.lastSubmittedTs.String(), targetTs.String())
 	}
 
 	seq.Tracef(TraceTag, "target ts: %s. Now is: %s", targetTs, ledger.TimeNow())
@@ -398,10 +393,13 @@ func (seq *Sequencer) getNextTargetTime() ledger.Time {
 	nowis = ledger.TimeNow()
 	seq.Assertf(!nowis.Before(seq.lastSubmittedTs), "!core.TimeNow().Before(prevMilestoneTs)")
 
-	targetAbsoluteMinimum := ledger.MaxTime(
+	var targetAbsoluteMinimum ledger.Time
+
+	targetAbsoluteMinimum = ledger.MaxTime(
 		seq.lastSubmittedTs.AddTicks(seq.config.Pace),
 		nowis.AddTicks(1),
 	)
+
 	nextSlotBoundary := nowis.NextSlotBoundary()
 
 	if !targetAbsoluteMinimum.Before(nextSlotBoundary) {

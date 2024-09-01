@@ -46,6 +46,7 @@ func baseProposeGenerator(p *Proposer) (*attacher.IncrementalAttacher, bool) {
 			return nil, true
 		}
 	}
+	// non-branch
 	p.Tracef(TraceTagBaseProposer, "%s predecessor %s is sequencer milestone with coverage %s",
 		p.Name, extend.IDShortString, extend.VID.GetLedgerCoverageString)
 
@@ -69,5 +70,8 @@ func baseProposeGenerator(p *Proposer) (*attacher.IncrementalAttacher, bool) {
 		p.Tracef(TraceTagBaseProposer, "%s inserted %d tag-along inputs", p.Name, numInserted)
 	}
 	a.AdjustCoverage()
-	return a, false
+
+	// only need one proposal when extending a branch
+	stopProposing := extend.VID.IsBranchTransaction()
+	return a, stopProposing
 }
