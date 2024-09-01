@@ -16,7 +16,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/sequencer/backlog"
 	"github.com/lunfardo314/proxima/util"
-	"github.com/lunfardo314/proxima/util/set"
+	"github.com/lunfardo314/proxima/util/lines"
 	"github.com/spf13/viper"
 )
 
@@ -44,8 +44,8 @@ type (
 		ctx          context.Context
 		proposersWG  sync.WaitGroup
 		proposalChan chan *proposal
-		proposals    []*proposal
-		Name         string
+		// proposals    []*proposal
+		Name string
 	}
 
 	proposal struct {
@@ -54,13 +54,13 @@ type (
 		extended     vertex.WrappedOutput
 		coverage     uint64
 		attacherName string
+		strategyName string
 	}
 
 	Proposer struct {
 		*Task
-		strategy        *Strategy
-		alreadyProposed set.Set[[32]byte]
-		Name            string
+		strategy *Strategy
+		Name     string
 	}
 
 	// ProposalGenerator returns incremental attacher as draft transaction or
@@ -116,8 +116,8 @@ func Run(env environment, targetTs ledger.Time) (*transaction.Transaction, *txme
 		targetTs:     targetTs,
 		ctx:          nil,
 		proposalChan: make(chan *proposal),
-		proposals:    make([]*proposal, 0),
-		Name:         fmt.Sprintf("%s[%s]", env.SequencerName(), targetTs.String()),
+		// proposals:    make([]*proposal, 0),
+		Name: fmt.Sprintf("%s[%s]", env.SequencerName(), targetTs.String()),
 	}
 
 	// start proposers
@@ -130,13 +130,15 @@ func Run(env environment, targetTs ledger.Time) (*transaction.Transaction, *txme
 
 	// reads all proposals from proposers into the slice
 	// stops reading when all goroutines exit
-	// Proposer will always exist because of deadline or because of global cancel
 
 	// channel is needed to make sure reading loop has ended
 	readStop := make(chan struct{})
+
+	proposals := make([]*proposal, 0)
+
 	go func() {
 		for p := range task.proposalChan {
-			task.proposals = append(task.proposals, p)
+			proposals = append(proposals, p)
 		}
 		close(readStop)
 	}()
@@ -145,8 +147,28 @@ func Run(env environment, targetTs ledger.Time) (*transaction.Transaction, *txme
 	close(task.proposalChan)
 	<-readStop
 
+	if len(proposals) == 0 {
+		return nil, nil, ErrNoProposals
+	}
+
+	best := util.Maximum(proposals, func(p1, p2 *proposal) bool {
+		return p1.coverage < p2.coverage
+	})
+
+	ownLatest := env.OwnLatestMilestoneOutput().VID
+
+	if !targetTs.IsSlotBoundary() && best.coverage <= ownLatest.GetLedgerCoverage() {
+		return nil, nil, ErrNoProposals
+	}
+
+	if ownLatest.IsBranchTransaction() {
+		env.Log().Infof(">>>>>>>>>>>> task %s selected from: {%s}",
+			task.Name, lines.SliceToLines(proposals).Join(", "))
+	}
+
+	return best.tx, best.txMetadata, nil
 	// will return nil if wasn't able to generate transaction
-	return task.chooseTheBestProposal()
+	//return task.chooseTheBestProposal()
 }
 
 func (t *Task) bestCoverageInTheSlot(slot ledger.Slot) uint64 {
@@ -159,49 +181,52 @@ func (t *Task) bestCoverageInTheSlot(slot ledger.Slot) uint64 {
 	return all[0].GetLedgerCoverage()
 }
 
-// chooseTheBestProposal may return nil if no suitable proposal was generated
-func (t *Task) chooseTheBestProposal() (*transaction.Transaction, *txmetadata.TransactionMetadata, error) {
-	pMax := util.Maximum(t.proposals, func(p1, p2 *proposal) bool {
-		return p1.coverage < p2.coverage
-	})
-	if pMax == nil {
-		return nil, nil, ErrNoProposals
-	}
-	best := t.bestCoverageInTheSlot(t.targetTs.Slot())
-	if !t.targetTs.IsSlotBoundary() {
-		// not branch
-		if pMax.coverage > best {
-			return pMax.tx, pMax.txMetadata, nil
-		}
-		// there are better, makes no sense to issue a new one with smaller coverage
-		return nil, nil, nil
-	}
-	// branch is issued if it is healthy and the biggest in the slot, OR
-	// it is not healthy but previous slot has no branches. The latter is needed for bootstrap when
-	// it is just starting and no branches are issued in the network yet
-	if global.IsHealthyCoverage(*pMax.txMetadata.LedgerCoverage, *pMax.txMetadata.Supply, global.FractionHealthyBranch) {
-		if pMax.coverage > best {
-			return pMax.tx, pMax.txMetadata, nil
-		}
-	} else {
-		// not healthy is issued only when previous slot has no branches
-		if t.bestCoverageInTheSlot(t.targetTs.Slot()-1) == 0 {
-			return pMax.tx, pMax.txMetadata, nil
-		}
-	}
-	return nil, nil, nil
+func (p *proposal) String() string {
+	return fmt.Sprintf("%s[%s -- %s]", p.strategyName, p.extended.IDShortString(), util.Th(p.coverage))
 }
+
+// chooseTheBestProposal may return nil if no suitable proposal was generated
+//func (t *Task) chooseTheBestProposal() (*transaction.Transaction, *txmetadata.TransactionMetadata, error) {
+//	pMax := util.Maximum(t.proposals, func(p1, p2 *proposal) bool {
+//		return p1.coverage < p2.coverage
+//	})
+//	if pMax == nil {
+//		return nil, nil, ErrNoProposals
+//	}
+//	best := t.bestCoverageInTheSlot(t.targetTs.Slot())
+//	if !t.targetTs.IsSlotBoundary() {
+//		// not branch
+//		if pMax.coverage > best {
+//			return pMax.tx, pMax.txMetadata, nil
+//		}
+//		// there are better, makes no sense to issue a new one with smaller coverage
+//		return nil, nil, nil
+//	}
+//	// branch is issued if it is healthy and the biggest in the slot, OR
+//	// it is not healthy but previous slot has no branches. The latter is needed for bootstrap when
+//	// it is just starting and no branches are issued in the network yet
+//	if global.IsHealthyCoverage(*pMax.txMetadata.LedgerCoverage, *pMax.txMetadata.Supply, global.FractionHealthyBranch) {
+//		if pMax.coverage > best {
+//			return pMax.tx, pMax.txMetadata, nil
+//		}
+//	} else {
+//		// not healthy is issued only when previous slot has no branches
+//		if t.bestCoverageInTheSlot(t.targetTs.Slot()-1) == 0 {
+//			return pMax.tx, pMax.txMetadata, nil
+//		}
+//	}
+//	return nil, nil, nil
+//}
 
 func (t *Task) startProposers() {
 	for _, s := range allProposingStrategies() {
 		p := &Proposer{
-			Task:            t,
-			strategy:        s,
-			alreadyProposed: set.New[[32]byte](),
-			Name:            t.Name + "-" + s.Name,
+			Task:     t,
+			strategy: s,
+			Name:     t.Name + "-" + s.Name,
 		}
 		t.proposersWG.Add(1)
-		go p.Run()
+		go p.run()
 	}
 }
 

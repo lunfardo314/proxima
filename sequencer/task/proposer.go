@@ -14,7 +14,7 @@ import (
 	"github.com/lunfardo314/proxima/util"
 )
 
-func (p *Proposer) Run() {
+func (p *Proposer) run() {
 	defer p.proposersWG.Done()
 
 	var a *attacher.IncrementalAttacher
@@ -72,20 +72,23 @@ func (p *Proposer) propose(a *attacher.IncrementalAttacher) error {
 		return err
 	}
 	coverage := a.LedgerCoverage()
-	p.proposalChan <- &proposal{
+	_proposal := &proposal{
 		tx: tx,
 		txMetadata: &txmetadata.TransactionMetadata{
-			StateRoot:               nil,
-			LedgerCoverage:          util.Ref(coverage),
-			SlotInflation:           util.Ref(a.SlotInflation()),
-			Supply:                  util.Ref(a.FinalSupply()),
-			IsResponseToPull:        false,
 			SourceTypeNonPersistent: txmetadata.SourceTypeSequencer,
 		},
 		extended:     a.Extending(),
 		coverage:     coverage,
 		attacherName: a.Name(),
+		strategyName: p.strategy.ShortName,
 	}
+
+	if p.targetTs.IsSlotBoundary() {
+		_proposal.txMetadata.LedgerCoverage = util.Ref(coverage)
+		_proposal.txMetadata.Supply = util.Ref(a.FinalSupply())
+		_proposal.txMetadata.SlotInflation = util.Ref(a.SlotInflation())
+	}
+	p.proposalChan <- _proposal
 	return nil
 }
 
