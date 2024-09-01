@@ -55,6 +55,7 @@ func SlotFromBytes(data []byte) (ret Slot, err error) {
 }
 
 func NewLedgerTime(slot Slot, t uint8) (ret Time) {
+	util.Assertf(slot <= MaxSlot, "NewLedgerTime: slot <= MaxSlot")
 	binary.BigEndian.PutUint32(ret[:4], uint32(slot))
 	ret[4] = t
 	return
@@ -87,11 +88,15 @@ func TimeFromBytes(data []byte) (ret Time, err error) {
 	return
 }
 
-func TimeFromTicksSinceGenesis(i int64) (Time, error) {
+func TimeFromTicksSinceGenesis(i int64) (ret Time, err error) {
 	if i > (int64(MaxSlot) << 8) {
-		return Time{}, fmt.Errorf("TimeFromTicksSinceGenesis: wrong int64")
+		err = fmt.Errorf("TimeFromTicksSinceGenesis: wrong int64")
+		return
 	}
-	return NewLedgerTime(Slot(i>>8), uint8(i%TicksPerSlot)), nil
+	var buf [8]byte
+	binary.BigEndian.PutUint64(buf[:], uint64(i))
+	copy(ret[:], buf[4:])
+	return
 }
 
 func (s Slot) Bytes() []byte {
@@ -120,7 +125,7 @@ func (t Time) Tick() uint8 {
 }
 
 func (t Time) IsSlotBoundary() bool {
-	return t != NilLedgerTime && t.Tick() == 0
+	return t.Tick() == 0 && t != NilLedgerTime
 }
 
 func (t Time) UnixNano() int64 {
@@ -133,14 +138,14 @@ func (t Time) Time() time.Time {
 }
 
 func (t Time) NextSlotBoundary() Time {
-	if t.Tick() == 0 {
+	if t.IsSlotBoundary() {
 		return t
 	}
 	return NewLedgerTime(t.Slot()+1, 0)
 }
 
 func (t Time) TicksToNextSlotBoundary() int {
-	if t.Tick() == 0 {
+	if t.IsSlotBoundary() {
 		return 0
 	}
 	return TicksPerSlot - int(t.Tick())

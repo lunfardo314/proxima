@@ -335,8 +335,8 @@ func (seq *Sequencer) doSequencerStep() bool {
 	}
 
 	if seq.lastSubmittedTs.IsSlotBoundary() && targetTs.IsSlotBoundary() {
-		seq.Log().Warnf("target timestamp jumps over the slot: %s -> %s",
-			seq.lastSubmittedTs.String(), targetTs.String())
+		seq.Log().Warnf("target timestamp jumps over the slot: %s -> %s. Nowis: %s",
+			seq.lastSubmittedTs.String(), targetTs.String(), ledger.TimeNow().String())
 	}
 
 	seq.Tracef(TraceTag, "target ts: %s. Now is: %s", targetTs, ledger.TimeNow())

@@ -226,6 +226,7 @@ func IdentityDataFromBytes(data []byte) (*IdentityData, error) {
 	if rdr.Len() > 0 {
 		return nil, mkerr(errors.New("not all bytes have been read"))
 	}
+
 	return ret, nil
 }
 
@@ -346,11 +347,11 @@ func (id *IdentityData) TimeConstantsToString() string {
 		Add("SlotsPerDay = %d", id.SlotsPerDay()).
 		Add("MaxYears = %d", maxYears).
 		Add("seconds per year = %d", 60*60*24*365).
-		Add("timestamp GenesisTime = %v", id.GenesisTime()).
+		Add("timestamp GenesisTime = %v", id.GenesisTime).
 		Add("nowis %v", nowis).
 		Add("nowis nano %d", nowis.UnixNano()).
 		Add("GenesisTimeUnix = %d", id.GenesisTimeUnix).
-		Add("GenesisTimeUnixNano = %d", id.GenesisTimeUnixNano()).
+		Add("GenesisTimeUnixNano = %d", id.GenesisTimeUnixNano).
 		Add("timestampNowis = %s ", timestampNowis.String()).
 		Add("timestampNowis.Time() = %v ", timestampNowis.Time()).
 		Add("timestampNowis.Time().UnixNano() = %v ", timestampNowis.Time().UnixNano()).

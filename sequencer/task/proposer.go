@@ -105,8 +105,6 @@ func (p *Proposer) makeTxProposal(a *attacher.IncrementalAttacher) (*transaction
 func (p *Proposer) ChooseExtendEndorsePair() *attacher.IncrementalAttacher {
 	p.Assertf(!p.targetTs.IsSlotBoundary(), "!p.targetTs.IsSlotBoundary()")
 	endorseCandidates := p.Backlog().CandidatesToEndorseSorted(p.targetTs)
-	//p.Tracef(TraceTagTask, ">>>>>>>>>>>>>>> target %s {%s}",
-	//	p.targetTs.String, vertex.VerticesShortLines(endorseCandidates).Join(", "))
 
 	seqID := p.SequencerID()
 	var ret *attacher.IncrementalAttacher

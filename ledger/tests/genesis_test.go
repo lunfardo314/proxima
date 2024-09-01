@@ -66,6 +66,14 @@ func TestBoostrapSequencerID(t *testing.T) {
 	t.Logf("bootstrap sequencer ID hex: %s", ledger.BoostrapSequencerIDHex)
 }
 
+func TestLedgerVsRealTime(t *testing.T) {
+	nowis := time.Now()
+	ts := ledger.TimeFromRealTime(nowis)
+	nowisBack := ts.Time()
+	t.Logf("now nano: %d, nowBack nano: %d, diff nano: %d, diff: %v",
+		nowis.UnixNano(), nowisBack.UnixNano(), nowis.UnixNano()-nowisBack.UnixNano(), nowis.Sub(nowisBack))
+}
+
 func TestRealTime(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		ts := ledger.TimeNow()
