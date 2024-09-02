@@ -422,10 +422,11 @@ const submitTimeout = 5 * time.Second
 
 func (seq *Sequencer) submitMilestone(tx *transaction.Transaction, meta *txmetadata.TransactionMetadata) *vertex.WrappedTx {
 	start := time.Now()
+	saveLast := seq.lastSubmittedTs
 	if seq.lastSubmittedTs.IsSlotBoundary() && tx.Timestamp().IsSlotBoundary() {
 		defer func() {
 			seq.Log().Infof(">>>>>>>>>>>> submitMilestone %s -> %s took %v",
-				seq.lastSubmittedTs.String(), tx.Timestamp().String(), time.Since(start))
+				saveLast.String(), tx.Timestamp().String(), time.Since(start))
 		}()
 	}
 
