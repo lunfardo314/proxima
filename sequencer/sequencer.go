@@ -375,6 +375,10 @@ func (seq *Sequencer) doSequencerStep() bool {
 	}
 	seq.updateInfo(msVID)
 	seq.runOnMilestoneSubmitted(msVID)
+
+	seq.Log().Warnf(">>>>>>>>>>>>>>>>>>>>>> step started: %s, %d (%s), %v ago, nowis: %s",
+		timerStart.Format(time.StampNano), timerStart.UnixNano(), ledger.TimeFromClockTime(timerStart).String(), time.Since(timerStart),
+		ledger.TimeNow().String())
 	return true
 }
 
