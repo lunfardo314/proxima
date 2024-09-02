@@ -302,11 +302,11 @@ func (a *milestoneAttacher) logFinalStatusString(msData *ledger.MilestoneData) s
 	}
 
 	if a.vid.IsBranchTransaction() {
-		msg = fmt.Sprintf("-- ATTACH BRANCH%s %s(in %d/out %d, new tx: %d), ci=%s/bi=%s, %s, ledger time now: %s",
+		msg = fmt.Sprintf("ATTACH BRANCH%s %s(in %d/out %d, new tx: %d), ci=%s/bi=%s, %s, lnow: %s",
 			msDataStr, a.vid.IDShortString(), a.finals.numInputs, a.finals.numOutputs, a.finals.numNewTransactions,
 			inflChainStr, inflBranchStr, global.IsHealthyCoverageString(a.finals.coverage, a.finals.supply, global.FractionHealthyBranch), ledger.TimeNow().String())
 	} else {
-		msg = fmt.Sprintf("-- ATTACH SEQ TX%s %s(in %d/out %d, new tx: %d), ci=%s/bi=%s, ledger time now: %s",
+		msg = fmt.Sprintf("ATTACH SEQ TX%s %s(in %d/out %d, new tx: %d), ci=%s/bi=%s, lnow: %s",
 			msDataStr, a.vid.IDShortString(), a.finals.numInputs, a.finals.numOutputs, a.finals.numNewTransactions, inflChainStr, inflBranchStr, ledger.TimeNow().String())
 	}
 	if a.vid.GetTxStatus() == vertex.Bad {
@@ -329,7 +329,7 @@ func (a *milestoneAttacher) logFinalStatusString(msData *ledger.MilestoneData) s
 }
 
 func (a *milestoneAttacher) logErrorStatusString(err error) string {
-	return fmt.Sprintf("-- ATTACH %s -> BAD(%v)", a.vid.ID.StringShort(), err)
+	return fmt.Sprintf("ATTACH %s -> BAD(%v)", a.vid.ID.StringShort(), err)
 }
 
 func (a *milestoneAttacher) AdjustCoverage() {
