@@ -323,7 +323,7 @@ func TestConflicts1Attacher(t *testing.T) {
 		txBytes, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
 			SeqName:          "test",
 			ChainInput:       chainOut,
-			Timestamp:        ledger.MaxTime(inTS...).AddTicks(ledger.TransactionPaceSequencer()),
+			Timestamp:        ledger.MaximumTime(inTS...).AddTicks(ledger.TransactionPaceSequencer()),
 			AdditionalInputs: testData.conflictingOutputs,
 			PrivateKey:       testData.privKey,
 		})
@@ -368,7 +368,7 @@ func TestConflicts1Attacher(t *testing.T) {
 			inTS = append(inTS, o.Timestamp())
 		}
 
-		td := txbuilder.NewTransferData(testData.privKey, testData.addr, ledger.MaxTime(inTS...).AddTicks(ledger.TransactionPace()))
+		td := txbuilder.NewTransferData(testData.privKey, testData.addr, ledger.MaximumTime(inTS...).AddTicks(ledger.TransactionPace()))
 		td.WithAmount(amount).
 			WithTargetLock(ledger.ChainLockFromChainID(testData.bootstrapChainID)).
 			MustWithInputs(testData.conflictingOutputs...)
@@ -440,7 +440,7 @@ func TestConflicts1Attacher(t *testing.T) {
 		txBytes, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
 			SeqName:          "test",
 			ChainInput:       chainOut,
-			Timestamp:        ledger.MaxTime(inTS...).AddTicks(ledger.TransactionPaceSequencer()),
+			Timestamp:        ledger.MaximumTime(inTS...).AddTicks(ledger.TransactionPaceSequencer()),
 			AdditionalInputs: testData.terminalOutputs,
 			PrivateKey:       testData.privKey,
 		})
@@ -497,7 +497,7 @@ func TestConflicts1Attacher(t *testing.T) {
 		txBytes, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
 			SeqName:          "test",
 			ChainInput:       chainOut,
-			Timestamp:        ledger.MaxTime(inTS...).AddTicks(ledger.TransactionPaceSequencer()),
+			Timestamp:        ledger.MaximumTime(inTS...).AddTicks(ledger.TransactionPaceSequencer()),
 			AdditionalInputs: testData.terminalOutputs,
 			PrivateKey:       testData.privKey,
 		})
@@ -647,7 +647,7 @@ func TestConflictsNAttachersOneFork(t *testing.T) {
 		tx := testData.seqChain[seqNr][0]
 		o := tx.MustProducedOutputWithIDAt(tx.SequencerTransactionData().SequencerOutputIndex)
 		chainIn[seqNr] = o.MustAsChainOutput()
-		ts = ledger.MaxTime(ts, o.Timestamp())
+		ts = ledger.MaximumTime(ts, o.Timestamp())
 	}
 	ts = ts.AddTicks(ledger.TransactionPaceSequencer())
 	txBytesSeq, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
@@ -711,7 +711,7 @@ func TestConflictsNAttachersOneForkBranches(t *testing.T) {
 		tx := testData.seqChain[seqNr][0]
 		o := tx.MustProducedOutputWithIDAt(tx.SequencerTransactionData().SequencerOutputIndex)
 		chainIn[seqNr] = o.MustAsChainOutput()
-		ts = ledger.MaxTime(ts, o.Timestamp())
+		ts = ledger.MaximumTime(ts, o.Timestamp())
 	}
 	ts = ts.NextSlotBoundary()
 
@@ -776,7 +776,7 @@ func TestConflictsNAttachersOneForkBranchesConflict(t *testing.T) {
 		tx := testData.seqChain[seqNr][0]
 		o := tx.MustProducedOutputWithIDAt(tx.SequencerTransactionData().SequencerOutputIndex)
 		chainIn[seqNr] = o.MustAsChainOutput()
-		ts = ledger.MaxTime(ts, o.Timestamp())
+		ts = ledger.MaximumTime(ts, o.Timestamp())
 	}
 	ts = ts.NextSlotBoundary()
 

@@ -395,7 +395,7 @@ func (seq *Sequencer) getNextTargetTime() ledger.Time {
 
 	var targetAbsoluteMinimum ledger.Time
 
-	targetAbsoluteMinimum = ledger.MaxTime(
+	targetAbsoluteMinimum = ledger.MaximumTime(
 		seq.lastSubmittedTs.AddTicks(seq.config.Pace),
 		nowis.AddTicks(1),
 	)
@@ -407,13 +407,13 @@ func (seq *Sequencer) getNextTargetTime() ledger.Time {
 	}
 	// absolute minimum is before the next slot boundary, take the time now as a baseline
 	minimumTicksAheadFromNow := (seq.config.Pace * 2) / 3 // seq.config.Pace
-	targetAbsoluteMinimum = ledger.MaxTime(targetAbsoluteMinimum, nowis.AddTicks(minimumTicksAheadFromNow))
+	targetAbsoluteMinimum = ledger.MaximumTime(targetAbsoluteMinimum, nowis.AddTicks(minimumTicksAheadFromNow))
 	if !targetAbsoluteMinimum.Before(nextSlotBoundary) {
 		return targetAbsoluteMinimum
 	}
 
 	if targetAbsoluteMinimum.TicksToNextSlotBoundary() <= seq.config.Pace {
-		return ledger.MaxTime(nextSlotBoundary, targetAbsoluteMinimum)
+		return ledger.MaximumTime(nextSlotBoundary, targetAbsoluteMinimum)
 	}
 
 	return targetAbsoluteMinimum

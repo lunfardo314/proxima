@@ -310,7 +310,7 @@ func (td *longConflictTestData) makeSeqBeginnings(withConflictingFees bool) {
 		var ts ledger.Time
 		if withConflictingFees {
 			additionalIn = []*ledger.OutputWithID{td.terminalOutputs[i]}
-			ts = ledger.MaxTime(chainOrigin.Timestamp(), td.terminalOutputs[i].Timestamp())
+			ts = ledger.MaximumTime(chainOrigin.Timestamp(), td.terminalOutputs[i].Timestamp())
 		} else {
 			additionalIn = nil
 			ts = chainOrigin.Timestamp()
@@ -371,7 +371,7 @@ func (td *longConflictTestData) makeSlotTransactions(howLongChain int, extendBeg
 				endorseIdx := (seqNr + 1) % len(extendBegin)
 				endorse = ret[endorseIdx][i-1].ID()
 			}
-			ts = ledger.MaxTime(endorse.Timestamp(), extend.Timestamp()).AddTicks(ledger.TransactionPaceSequencer())
+			ts = ledger.MaximumTime(endorse.Timestamp(), extend.Timestamp()).AddTicks(ledger.TransactionPaceSequencer())
 
 			txBytes, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
 				SeqName:      fmt.Sprintf("seq%d", i),
@@ -422,7 +422,7 @@ func (td *longConflictTestData) makeSlotTransactionsWithTagAlong(howLongChain in
 				endorseIdx := (seqNr + 1) % len(extendBegin)
 				endorse = ret[endorseIdx][i-1].ID()
 			}
-			ts = ledger.MaxTime(endorse.Timestamp(), extend.Timestamp(), transferOut.Timestamp()).AddTicks(ledger.TransactionPaceSequencer())
+			ts = ledger.MaximumTime(endorse.Timestamp(), extend.Timestamp(), transferOut.Timestamp()).AddTicks(ledger.TransactionPaceSequencer())
 
 			txBytes, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
 				SeqName:          fmt.Sprintf("seq%d", i),
@@ -688,7 +688,7 @@ func makeTransfers(par *spammerParams) [][]byte {
 	ret := make([][]byte, par.batchSize)
 
 	for i := 0; i < par.batchSize; i++ {
-		ts := ledger.MaxTime(ledger.TimeNow(), par.remainder.Timestamp().AddTicks(par.pace))
+		ts := ledger.MaximumTime(ledger.TimeNow(), par.remainder.Timestamp().AddTicks(par.pace))
 		if ts.IsSlotBoundary() {
 			ts.AddTicks(1)
 		}
