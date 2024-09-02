@@ -82,6 +82,7 @@ const TraceTagTask = "task"
 var (
 	_allProposingStrategies = make(map[string]*Strategy)
 	ErrNoProposals          = errors.New("no proposals was generated")
+	ErrNotGoodEnough        = errors.New("proposals aren't good enough")
 )
 
 func registerProposerStrategy(s *Strategy) {
@@ -162,7 +163,7 @@ func Run(env environment, targetTs ledger.Time) (*transaction.Transaction, *txme
 	ownLatest := env.OwnLatestMilestoneOutput().VID
 
 	if !targetTs.IsSlotBoundary() && best.coverage <= ownLatest.GetLedgerCoverage() {
-		return nil, nil, ErrNoProposals
+		return nil, nil, fmt.Errorf("%w: out of %d options", ErrNotGoodEnough, len(proposalsSlice))
 	}
 
 	//trace := best.extended.VID.IsBranchTransaction() || len(best.endorsing) > 0 && best.endorsing[0].IsBranchTransaction()
@@ -192,39 +193,6 @@ func (p *proposal) String() string {
 	return fmt.Sprintf("%s(%s -- %s -> [%s])",
 		p.strategyName, p.extended.IDShortString(), util.Th(p.coverage), strings.Join(endorse, ", "))
 }
-
-// chooseTheBestProposal may return nil if no suitable proposal was generated
-//func (t *Task) chooseTheBestProposal() (*transaction.Transaction, *txmetadata.TransactionMetadata, error) {
-//	pMax := util.Maximum(t.proposals, func(p1, p2 *proposal) bool {
-//		return p1.coverage < p2.coverage
-//	})
-//	if pMax == nil {
-//		return nil, nil, ErrNoProposals
-//	}
-//	best := t.bestCoverageInTheSlot(t.targetTs.Slot())
-//	if !t.targetTs.IsSlotBoundary() {
-//		// not branch
-//		if pMax.coverage > best {
-//			return pMax.tx, pMax.txMetadata, nil
-//		}
-//		// there are better, makes no sense to issue a new one with smaller coverage
-//		return nil, nil, nil
-//	}
-//	// branch is issued if it is healthy and the biggest in the slot, OR
-//	// it is not healthy but previous slot has no branches. The latter is needed for bootstrap when
-//	// it is just starting and no branches are issued in the network yet
-//	if global.IsHealthyCoverage(*pMax.txMetadata.LedgerCoverage, *pMax.txMetadata.Supply, global.FractionHealthyBranch) {
-//		if pMax.coverage > best {
-//			return pMax.tx, pMax.txMetadata, nil
-//		}
-//	} else {
-//		// not healthy is issued only when previous slot has no branches
-//		if t.bestCoverageInTheSlot(t.targetTs.Slot()-1) == 0 {
-//			return pMax.tx, pMax.txMetadata, nil
-//		}
-//	}
-//	return nil, nil, nil
-//}
 
 func (t *Task) startProposers() {
 	for _, s := range allProposingStrategies() {
