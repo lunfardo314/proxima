@@ -176,22 +176,23 @@ func (ps *Peers) startHeartbeat() {
 
 	ps.RepeatInBackground("peering_heartbeat_loop", heartbeatRate, func() bool {
 		nowis := time.Now()
-
-		if nowis.After(logNumPeersDeadline) {
-			aliveStatic, aliveDynamic := ps.NumAlive()
-
-			ps.Log().Infof("[peering] node is connected to %d peer(s). Static: %d/%d, dynamic %d/%d)",
-				aliveStatic+aliveDynamic, aliveStatic, len(ps.cfg.PreConfiguredPeers), aliveDynamic, ps.cfg.MaxDynamicPeers)
-
-			logNumPeersDeadline = nowis.Add(logPeersEvery)
-		}
-
 		peerIDs := ps.peerIDs()
 
 		for _, id := range peerIDs {
 			ps.logConnectionStatusIfNeeded(id)
 			ps.sendHeartbeatToPeer(id)
 		}
+
+		if nowis.After(logNumPeersDeadline) {
+			aliveStatic, aliveDynamic := ps.NumAlive()
+
+			ps.Log().Infof("[peering] node is connected to %d peer(s). Static: %d/%d, dynamic %d/%d) (took %v)",
+				aliveStatic+aliveDynamic, aliveStatic, len(ps.cfg.PreConfiguredPeers),
+				aliveDynamic, ps.cfg.MaxDynamicPeers, time.Since(nowis))
+
+			logNumPeersDeadline = nowis.Add(logPeersEvery)
+		}
+
 		return true
 	}, true)
 }
