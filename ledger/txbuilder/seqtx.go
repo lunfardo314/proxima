@@ -235,7 +235,7 @@ func MakeSequencerTransactionWithInputLoader(par MakeSequencerTransactionParams)
 		default:
 			return nil, nil, errP("unsupported type of additional input: %s", lockName)
 		}
-		tsIn = ledger.MaxTime(tsIn, o.Timestamp())
+		tsIn = ledger.MaximumTime(tsIn, o.Timestamp())
 	}
 
 	if !ledger.ValidSequencerPace(tsIn, par.Timestamp) {

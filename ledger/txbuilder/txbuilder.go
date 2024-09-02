@@ -100,7 +100,7 @@ func (txb *TransactionBuilder) ConsumeOutputs(outs ...*ledger.OutputWithID) (uin
 			return 0, ledger.NilLedgerTime, fmt.Errorf("arithmetic overflow when calculating total ")
 		}
 		retTotal += o.Output.Amount()
-		retTs = ledger.MaxTime(retTs, o.Timestamp())
+		retTs = ledger.MaximumTime(retTs, o.Timestamp())
 	}
 	return retTotal, retTs, nil
 }
@@ -455,7 +455,7 @@ func MakeSimpleTransferTransactionWithRemainder(par *TransferData, disableEndors
 	}
 	util.Assertf(availableTokens == checkTotal, "availableTokens == checkTotal")
 
-	adjustedTs := ledger.MaxTime(inputTs, par.Timestamp).
+	adjustedTs := ledger.MaximumTime(inputTs, par.Timestamp).
 		AddTicks(ledger.TransactionPace())
 
 	util.Assertf(ledger.ValidTime(adjustedTs), "ledger.ValidTime(adjustedTs): ts bytes 0x%s", hex.EncodeToString(adjustedTs[:]))
@@ -582,7 +582,7 @@ func MakeChainTransferTransaction(par *TransferData, disableEndorsementChecking 
 		return nil, err
 	}
 	util.Assertf(availableTokens == checkAmount+par.ChainOutput.Output.Amount(), "availableTokens == checkAmount")
-	adjustedTs := ledger.MaxTime(inputTs, par.ChainOutput.Timestamp()).
+	adjustedTs := ledger.MaximumTime(inputTs, par.ChainOutput.Timestamp()).
 		AddTicks(ledger.TransactionPace())
 
 	for i := range par.Endorsements {

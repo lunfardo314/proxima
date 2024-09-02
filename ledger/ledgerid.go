@@ -83,9 +83,6 @@ type (
 const (
 	GenesisOutputIndex     = byte(0)
 	GenesisStemOutputIndex = byte(1)
-
-	TicksPerSlot = 256
-	MaxTickValue = TicksPerSlot - 1
 )
 
 func (id *IdentityData) Bytes() []byte {
@@ -246,11 +243,14 @@ func (id *IdentityData) GenesisControlledAddress() AddressED25519 {
 	return AddressED25519FromPublicKey(id.GenesisControllerPublicKey)
 }
 
-func (id *IdentityData) TimeFromRealTime(nowis time.Time) Time {
-	util.Assertf(!nowis.Before(id.GenesisTime()), "!nowis.Before(id.GenesisTimeUnix)")
-	sinceGenesisNano := nowis.UnixNano() - id.GenesisTimeUnixNano()
+// TimeToTicksSinceGenesis converts time value into ticks since genesis
+func (id *IdentityData) TimeToTicksSinceGenesis(nowis time.Time) int64 {
+	timeSinceGenesis := nowis.Sub(id.GenesisTime())
+	return int64(timeSinceGenesis / id.TickDuration)
+}
 
-	ret, err := TimeFromTicksSinceGenesis(sinceGenesisNano / int64(id.TickDuration))
+func (id *IdentityData) TimeFromRealTime(nowis time.Time) Time {
+	ret, err := TimeFromTicksSinceGenesis(id.TimeToTicksSinceGenesis(nowis))
 	util.AssertNoError(err)
 	return ret
 }
@@ -277,7 +277,7 @@ func (id *IdentityData) OriginChainID() ChainID {
 }
 
 func (id *IdentityData) IsPreBranchConsolidationTimestamp(ts Time) bool {
-	return ts.Tick() > MaxTickValue-id.PreBranchConsolidationTicks
+	return ts.Tick() > MaxTick-id.PreBranchConsolidationTicks
 }
 
 func (id *IdentityData) String() string {
@@ -347,11 +347,12 @@ func (id *IdentityData) TimeConstantsToString() string {
 		Add("SlotsPerDay = %d", id.SlotsPerDay()).
 		Add("MaxYears = %d", maxYears).
 		Add("seconds per year = %d", 60*60*24*365).
-		Add("timestamp GenesisTime = %v", id.GenesisTime).
-		Add("nowis %v", nowis).
+		Add("GenesisTime = %v", id.GenesisTime().Format(time.StampNano)).
+		Add("nowis %v", nowis.Format(time.StampNano)).
 		Add("nowis nano %d", nowis.UnixNano()).
 		Add("GenesisTimeUnix = %d", id.GenesisTimeUnix).
-		Add("GenesisTimeUnixNano = %d", id.GenesisTimeUnixNano).
+		Add("GenesisTimeUnixNano = %d", id.GenesisTimeUnixNano()).
+		Add("ticks since genesis: %d", id.TimeToTicksSinceGenesis(nowis)).
 		Add("timestampNowis = %s ", timestampNowis.String()).
 		Add("timestampNowis.Time() = %v ", timestampNowis.Time()).
 		Add("timestampNowis.Time().UnixNano() = %v ", timestampNowis.Time().UnixNano()).

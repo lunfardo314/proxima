@@ -65,7 +65,7 @@ func ParseAndSortOutputDataUpToAmount(outs []*ledger.OutputDataWithID, amount ui
 	retOuts := make([]*ledger.OutputWithID, 0, len(outs))
 	for _, o := range outsWitID {
 		retSum += o.Output.Amount()
-		retTs = ledger.MaxTime(retTs, o.Timestamp())
+		retTs = ledger.MaximumTime(retTs, o.Timestamp())
 		retOuts = append(retOuts, o)
 		if retSum >= amount {
 			break

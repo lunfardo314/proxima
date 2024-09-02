@@ -7,6 +7,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// this test is in 'ledger' package because ledger.ID singleton is not initialized here
+
 func TestTimeConstSet(t *testing.T) {
 	const d = 10 * time.Millisecond
 	id, _ := GetTestingIdentityData()

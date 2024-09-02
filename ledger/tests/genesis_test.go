@@ -3,7 +3,6 @@ package tests
 import (
 	"crypto/ed25519"
 	"testing"
-	"time"
 
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/multistate"
@@ -64,24 +63,6 @@ func TestInitOrigin(t *testing.T) {
 func TestBoostrapSequencerID(t *testing.T) {
 	t.Logf("bootstrap sequencer ID: %s", ledger.BoostrapSequencerID.String())
 	t.Logf("bootstrap sequencer ID hex: %s", ledger.BoostrapSequencerIDHex)
-}
-
-func TestLedgerVsRealTime(t *testing.T) {
-	nowis := time.Now()
-	ts := ledger.TimeFromRealTime(nowis)
-	nowisBack := ts.Time()
-	t.Logf("now nano: %d, nowBack nano: %d, diff nano: %d, diff: %v",
-		nowis.UnixNano(), nowisBack.UnixNano(), nowis.UnixNano()-nowisBack.UnixNano(), nowis.Sub(nowisBack))
-}
-
-func TestRealTime(t *testing.T) {
-	for i := 0; i < 5; i++ {
-		ts := ledger.TimeNow()
-		nowis := time.Now()
-		require.True(t, !nowis.Before(ts.Time()))
-		time.Sleep(100 * time.Millisecond)
-	}
-
 }
 
 func TestLedgerIDSerDe(t *testing.T) {

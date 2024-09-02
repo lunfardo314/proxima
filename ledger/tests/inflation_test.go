@@ -99,8 +99,8 @@ func TestInflation(t *testing.T) {
 		require.True(t, run(tsIn, tsIn.AddTicks(100)))
 		require.True(t, run(tsIn, tsIn.AddTicks(1199)))
 		require.True(t, run(tsIn, tsIn.AddTicks(1200)))
-		require.True(t, run(tsIn, tsIn.AddTicks(ledger.DefaultChainInflationOpportunitySlots*ledger.TicksPerSlot+ledger.MaxTickValue)))
-		require.False(t, run(tsIn, tsIn.AddTicks(ledger.DefaultChainInflationOpportunitySlots*ledger.TicksPerSlot+ledger.MaxTickValue+1)))
+		require.True(t, run(tsIn, tsIn.AddTicks(ledger.DefaultChainInflationOpportunitySlots*ledger.TicksPerSlot+ledger.MaxTick)))
+		require.False(t, run(tsIn, tsIn.AddTicks(ledger.DefaultChainInflationOpportunitySlots*ledger.TicksPerSlot+ledger.MaxTick+1)))
 		require.False(t, run(tsIn, tsIn.AddTicks(5000)))
 	})
 	t.Run("chain inflation", func(t *testing.T) {

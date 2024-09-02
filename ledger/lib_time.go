@@ -9,13 +9,13 @@ import (
 	"github.com/lunfardo314/proxima/util"
 )
 
-// TODO refactor to 256 ticks per slot
-// TODO implement equal 32 bytes transaction and output IDs
-
 const (
 	SlotByteLength = 4
 	TimeByteLength = SlotByteLength + 1 // bytes
 	MaxSlot        = 0xffffffff >> 1    // 1 most significant bit must be 0
+	MaxTick        = 0xff
+	MaxTime        = (MaxSlot << 8) | MaxTick
+	TicksPerSlot   = MaxTick + 1
 )
 
 func TickDuration() time.Duration {
@@ -88,14 +88,15 @@ func TimeFromBytes(data []byte) (ret Time, err error) {
 	return
 }
 
-func TimeFromTicksSinceGenesis(i int64) (ret Time, err error) {
-	if i > (int64(MaxSlot) << 8) {
+// TimeFromTicksSinceGenesis converts absolute value of ticks since genesis into the time value
+func TimeFromTicksSinceGenesis(ticks int64) (ret Time, err error) {
+	if ticks < 0 || ticks > MaxTime {
 		err = fmt.Errorf("TimeFromTicksSinceGenesis: wrong int64")
 		return
 	}
 	var buf [8]byte
-	binary.BigEndian.PutUint64(buf[:], uint64(i))
-	copy(ret[:], buf[4:])
+	binary.BigEndian.PutUint64(buf[:], uint64(ticks))
+	copy(ret[:], buf[3:])
 	return
 }
 
@@ -220,7 +221,7 @@ func (t Time) AddSlots(slot int) Time {
 	return t.AddTicks(slot << 8)
 }
 
-func MaxTime(ts ...Time) Time {
+func MaximumTime(ts ...Time) Time {
 	return util.Maximum(ts, func(ts1, ts2 Time) bool {
 		return ts1.Before(ts2)
 	})

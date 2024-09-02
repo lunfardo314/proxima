@@ -90,10 +90,6 @@ func (lib *Library) Const() LibraryConst {
 	return LibraryConst{lib}
 }
 
-func (lib *Library) TimeFromRealTime(t time.Time) Time {
-	return lib.ID.TimeFromRealTime(t)
-}
-
 func GetTestingIdentityData(seed ...int) (*IdentityData, ed25519.PrivateKey) {
 	s := 10000
 	if len(seed) > 0 {
