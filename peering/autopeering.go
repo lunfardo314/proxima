@@ -15,24 +15,14 @@ const (
 	checkPeersEvery     = 3 * time.Second
 )
 
-func (ps *Peers) autopeeringLoop() {
+func (ps *Peers) startAutopeering() {
 	util.Assertf(ps.isAutopeeringEnabled(), "ps.isAutopeeringEnabled()")
 
-	ps.Log().Infof("[peering] start autopeering loop")
-
-	for {
-		select {
-		case <-ps.Ctx().Done():
-			ps.Log().Infof("[peering] autopeering loop stopped")
-			return
-
-		case <-time.After(checkPeersEvery):
-			// ps.removeDeadDynamicPeers()
-			ps.discoverPeersIfNeeded()
-			ps.drop1ExcessPeerIfNeeded() // dropping excess dynamic peers one-by-one
-			//ps.dropExcessPeersIfNeeded()
-		}
-	}
+	ps.RepeatInBackground("autopeering_loop", checkPeersEvery, func() bool {
+		ps.discoverPeersIfNeeded()
+		ps.drop1ExcessPeerIfNeeded() // dropping excess dynamic peers one-by-one
+		return true
+	}, true)
 }
 
 func (ps *Peers) isCandidateToConnect(id peer.ID) bool {

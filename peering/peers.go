@@ -99,9 +99,8 @@ type (
 )
 
 const (
-	Name         = "peers"
-	TraceTag     = Name
-	NameOutQueue = Name + "-outQueue"
+	Name     = "peers"
+	TraceTag = Name
 )
 
 const (
@@ -112,12 +111,12 @@ const (
 	lppProtocolPull      = "/proxima/pull/%d"
 	lppProtocolHeartbeat = "/proxima/heartbeat/%d"
 
-	// clockTolerance is how big the difference between local and remote clocks is tolerated.
+	// clockToleranceLoopPeriod is how big the difference between local and remote clocks is tolerated.
 	// The difference includes difference between local clocks (positive or negative) plus
 	// positive heartbeat message latency between peers
 	// In any case nodes has interest to sync their clocks with global reference.
 	// This constant indicates when to drop the peer
-	clockTolerance = 5 * time.Second
+	clockToleranceLoopPeriod = 7 * time.Second
 
 	// if the node is bootstrap, and it has configured less than numMaxDynamicPeersForBootNodeAtLeast
 	// of dynamic peer cap, use this instead
@@ -299,10 +298,15 @@ func (ps *Peers) Run() {
 	ps.host.SetStreamHandler(ps.lppProtocolPull, ps.pullStreamHandler)
 	ps.host.SetStreamHandler(ps.lppProtocolHeartbeat, ps.heartbeatStreamHandler)
 
-	go ps.heartbeatLoop()
-	go ps.clockToleranceLoop()
+	ps.startHeartbeat()
+
+	ps.RepeatInBackground("peering_clock_tolerance_loop", clockToleranceLoopPeriod, func() bool {
+		ps.dropPeersWithTooBigClockDiffs()
+		return true
+	}, true)
+
 	if ps.isAutopeeringEnabled() {
-		go ps.autopeeringLoop()
+		ps.startAutopeering()
 	}
 
 	ps.Log().Infof("[peering] libp2p host %s (self) started on %v with %d pre-configured peers, maximum dynamic peers: %d, autopeering enabled: %v",

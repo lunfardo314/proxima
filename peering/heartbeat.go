@@ -170,13 +170,11 @@ func (ps *Peers) peerIDs() []peer.ID {
 	return maps.Keys(ps.peers)
 }
 
-// heartbeatLoop periodically sends HB message to each known peer
-func (ps *Peers) heartbeatLoop() {
+// startHeartbeat periodically sends HB message to each known peer
+func (ps *Peers) startHeartbeat() {
 	var logNumPeersDeadline time.Time
 
-	ps.Log().Infof("[peering] start heartbeat loop")
-
-	for {
+	ps.RepeatInBackground("peering_heartbeat_loop", heartbeatRate, func() bool {
 		nowis := time.Now()
 
 		if nowis.After(logNumPeersDeadline) {
@@ -194,33 +192,17 @@ func (ps *Peers) heartbeatLoop() {
 			ps.logConnectionStatusIfNeeded(id)
 			ps.sendHeartbeatToPeer(id)
 		}
-		select {
-		case <-ps.environment.Ctx().Done():
-			ps.Log().Infof("[peering] heartbeat loop stopped")
-			return
-		case <-time.After(heartbeatRate):
-		}
-	}
+		return true
+	}, true)
 }
 
-func (ps *Peers) clockToleranceLoop() {
-	for {
-		select {
-		case <-ps.Ctx().Done():
-			return
-		case <-time.After(clockTolerance):
-			ps._dropPeersWithTooBigClockDiffs()
-		}
-	}
-}
-
-// _dropPeersWithTooBigClockDiffs drops all peers which average clock diff exceeds tolerance threshold
-func (ps *Peers) _dropPeersWithTooBigClockDiffs() {
+// dropPeersWithTooBigClockDiffs drops all peers which average clock diff exceeds tolerance threshold
+func (ps *Peers) dropPeersWithTooBigClockDiffs() {
 	ps.mutex.Lock()
 	defer ps.mutex.Unlock()
 
 	for _, p := range ps.peers {
-		if p.avgClockDifference() > clockTolerance {
+		if p.avgClockDifference() > clockToleranceLoopPeriod {
 			ps._dropPeer(p, "clock tolerance")
 		}
 	}
