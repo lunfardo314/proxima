@@ -357,6 +357,9 @@ func (seq *Sequencer) doSequencerStep() bool {
 					targetTs, ledger.TimeNow(), err)
 			}
 		}
+		seq.Log().Infof(">>>>>>>>>>>>>>>>>>>>>> END doSequencerStep 000. step started: %s, %d (%s), %v ago, nowis: %s",
+			timerStart.Format(time.StampNano), timerStart.UnixNano(), ledger.TimeFromClockTime(timerStart).String(), time.Since(timerStart),
+			ledger.TimeNow().String())
 		return true
 	}
 
@@ -365,6 +368,9 @@ func (seq *Sequencer) doSequencerStep() bool {
 
 	msVID := seq.submitMilestone(msTx, meta)
 	if msVID == nil {
+		seq.Log().Infof(">>>>>>>>>>>>>>>>>>>>>> END doSequencerStep 111. step started: %s, %d (%s), %v ago, nowis: %s",
+			timerStart.Format(time.StampNano), timerStart.UnixNano(), ledger.TimeFromClockTime(timerStart).String(), time.Since(timerStart),
+			ledger.TimeNow().String())
 		return true
 	}
 
@@ -376,7 +382,7 @@ func (seq *Sequencer) doSequencerStep() bool {
 	seq.updateInfo(msVID)
 	seq.runOnMilestoneSubmitted(msVID)
 
-	seq.Log().Warnf(">>>>>>>>>>>>>>>>>>>>>> step started: %s, %d (%s), %v ago, nowis: %s",
+	seq.Log().Infof(">>>>>>>>>>>>>>>>>>>>>> END doSequencerStep 222. step started: %s, %d (%s), %v ago, nowis: %s",
 		timerStart.Format(time.StampNano), timerStart.UnixNano(), ledger.TimeFromClockTime(timerStart).String(), time.Since(timerStart),
 		ledger.TimeNow().String())
 	return true
