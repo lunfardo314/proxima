@@ -422,14 +422,15 @@ func (seq *Sequencer) getNextTargetTime() ledger.Time {
 const submitTimeout = 5 * time.Second
 
 func (seq *Sequencer) submitMilestone(tx *transaction.Transaction, meta *txmetadata.TransactionMetadata) *vertex.WrappedTx {
-	logMsg := fmt.Sprintf("SUBMIT milestone %s, proposer: %s",
-		tx.IDShortString(), tx.SequencerTransactionData().SequencerOutputData.MilestoneData.Name)
+	logMsg := fmt.Sprintf("SUBMIT milestone %s, ledger now is: %s, proposer: %s",
+		tx.IDShortString(), ledger.TimeNow().String(), tx.SequencerTransactionData().SequencerOutputData.MilestoneData.Name)
 	if seq.VerbosityLevel() > 0 {
 		logMsg += ", " + meta.String()
 	}
 	seq.Log().Info(logMsg)
 
-	deadline := time.Now().Add(submitTimeout)
+	start := time.Now()
+	deadline := start.Add(submitTimeout)
 	vid, err := seq.SequencerMilestoneAttachWait(tx.Bytes(), meta, submitTimeout)
 	if err != nil {
 		seq.Log().Errorf("failed to submit new milestone %s: '%v'", tx.IDShortString(), err)
@@ -439,12 +440,14 @@ func (seq *Sequencer) submitMilestone(tx *transaction.Transaction, meta *txmetad
 	}
 	util.Assertf(vid != nil, "submitMilestone: vid != nil")
 
+	seq.Log().Infof(">>>>>>>>>>>> SequencerMilestoneAttachWait it took: %v", time.Since(start))
 	seq.Tracef(TraceTag, "new milestone %s submitted successfully", tx.IDShortString)
 
 	if err = seq.waitMilestoneInTippool(vid, deadline); err != nil {
 		seq.Log().Error(err)
 		return nil
 	}
+	seq.Log().Infof(">>>>>>>>>>>> submitMilestone it took: %v", time.Since(start))
 	seq.lastSubmittedTs = vid.Timestamp()
 	return vid
 }
