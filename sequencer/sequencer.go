@@ -233,8 +233,8 @@ func (seq *Sequencer) ensureFirstMilestone() bool {
 
 	sleepDuration := ledger.SleepDurationUntilFutureLedgerTime(startOutput.Timestamp())
 	if sleepDuration > 0 {
-		seq.log.Infof("will delay start for %v to sync starting milestone with the real clock", sleepDuration)
-		time.Sleep(sleepDuration)
+		seq.log.Warnf("will delay start for %v to sync ledger time with the clock", sleepDuration)
+		seq.ClockCatchUpWithLedgerTime(startOutput.Timestamp())
 	}
 	return true
 }
@@ -339,8 +339,10 @@ func (seq *Sequencer) doSequencerStep() bool {
 	}
 
 	if seq.lastSubmittedTs.IsSlotBoundary() && targetTs.IsSlotBoundary() {
-		seq.Log().Warnf("target timestamp jumps over the slot: %s -> %s. Step started: %s, nowis: %s, get target time took: %v",
-			seq.lastSubmittedTs.String(), targetTs.String(), ledger.TimeFromClockTime(timerStart).String(), ledger.TimeNow().String(), time.Since(timerStart))
+		seq.Log().Warnf("target timestamp jumps over the slot: %s -> %s. Step started: %s, %d (%s), %v ago, nowis: %s",
+			seq.lastSubmittedTs.String(), targetTs.String(),
+			timerStart.Format(time.StampNano), timerStart.UnixNano(), ledger.TimeFromClockTime(timerStart).String(), time.Since(timerStart),
+			ledger.TimeNow().String())
 	}
 
 	seq.Tracef(TraceTag, "target ts: %s. Now is: %s", targetTs, ledger.TimeNow())
@@ -376,27 +378,11 @@ func (seq *Sequencer) doSequencerStep() bool {
 	return true
 }
 
-const sleepWaitingCurrentMilestoneTime = 10 * time.Millisecond
-
 func (seq *Sequencer) getNextTargetTime() ledger.Time {
-	// synchronize clock
-	nowis := ledger.TimeNow()
-	if nowis.Before(seq.lastSubmittedTs) {
-		waitDuration := time.Duration(ledger.DiffTicks(seq.lastSubmittedTs, nowis)) * ledger.TickDuration()
-		seq.log.Warnf("nowis (%s) is before last submitted ts (%s). Sleep %v",
-			nowis.String(), seq.lastSubmittedTs.String(), waitDuration)
-		time.Sleep(waitDuration)
-	}
-	nowis = ledger.TimeNow()
-	for ; nowis.Before(seq.lastSubmittedTs); nowis = ledger.TimeNow() {
-		seq.log.Warnf("nowis (%s) is before last milestone ts (%s). Sleep %v",
-			nowis.String(), seq.lastSubmittedTs.String(), sleepWaitingCurrentMilestoneTime)
-		time.Sleep(sleepWaitingCurrentMilestoneTime)
-	}
-	// ledger time now is approximately equal to the clock time
-	nowis = ledger.TimeNow()
-	seq.Assertf(!nowis.Before(seq.lastSubmittedTs), "!core.TimeNow().Before(prevMilestoneTs)")
+	// wait to catch up with ledger time
+	seq.ClockCatchUpWithLedgerTime(seq.lastSubmittedTs)
 
+	nowis := ledger.TimeNow()
 	var targetAbsoluteMinimum ledger.Time
 
 	targetAbsoluteMinimum = ledger.MaximumTime(

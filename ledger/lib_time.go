@@ -1,6 +1,7 @@
 package ledger
 
 import (
+	"bytes"
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
@@ -62,7 +63,7 @@ func NewLedgerTime(slot Slot, t uint8) (ret Time) {
 }
 
 func TimeFromClockTime(nowis time.Time) Time {
-	return L().ID.TimeFromRealTime(nowis)
+	return L().ID.LedgerTimeFromClockTime(nowis)
 }
 
 func TimeNow() Time {
@@ -72,6 +73,10 @@ func TimeNow() Time {
 func ValidTime(ts Time) bool {
 	_, err := TimeFromBytes(ts[:])
 	return err == nil
+}
+
+func ValidSlot(slot Slot) bool {
+	return slot <= MaxSlot
 }
 
 func TimeFromBytes(data []byte) (ret Time, err error) {
@@ -175,11 +180,21 @@ func (t Time) Short() string {
 }
 
 func (t Time) After(t1 Time) bool {
-	return DiffTicks(t, t1) > 0
+	return bytes.Compare(t[:], t1[:]) > 0
+	//return DiffTicks(t, t1) > 0
+}
+
+func (t Time) AfterOrEqual(t1 Time) bool {
+	return !t.Before(t1)
 }
 
 func (t Time) Before(t1 Time) bool {
-	return DiffTicks(t, t1) < 0
+	return bytes.Compare(t[:], t1[:]) < 0
+	//return DiffTicks(t, t1) < 0
+}
+
+func (t Time) BeforeOrEqual(t1 Time) bool {
+	return !t.After(t1)
 }
 
 func (t Time) Hex() string {
@@ -208,17 +223,17 @@ func ValidSequencerPace(t1, t2 Time) bool {
 	return DiffTicks(t2, t1) >= int64(TransactionPaceSequencer())
 }
 
-// AddTicks adds ticks to timestamp. ticks can't be negative
+// AddTicks adds ticks to timestamp. Ticks can be negative
 func (t Time) AddTicks(ticks int) Time {
-	util.Assertf(ticks >= 0, "AddTicks: can't be negative argument")
 	ret, err := TimeFromTicksSinceGenesis(t.TicksSinceGenesis() + int64(ticks))
 	util.AssertNoError(err)
 	return ret
 }
 
 // AddSlots adds slots to timestamp
-func (t Time) AddSlots(slot int) Time {
-	return t.AddTicks(slot << 8)
+func (t Time) AddSlots(slot Slot) Time {
+	util.Assertf(ValidSlot(slot), "ValidSlot(slot)")
+	return t.AddTicks(int(slot << 8))
 }
 
 func MaximumTime(ts ...Time) Time {
@@ -229,10 +244,10 @@ func MaximumTime(ts ...Time) Time {
 
 // SleepDurationUntilFutureLedgerTime returns duration to sleep until the clock becomes to ts.Time()
 func SleepDurationUntilFutureLedgerTime(ts Time) (ret time.Duration) {
-	realTs := ts.Time()
+	clockTs := ts.Time()
 	nowis := time.Now()
-	if realTs.After(nowis) {
-		ret = realTs.Sub(nowis)
+	if clockTs.After(nowis) {
+		ret = clockTs.Sub(nowis)
 	}
 	return
 }

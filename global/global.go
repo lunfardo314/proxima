@@ -388,3 +388,15 @@ func (l *Global) Infof1(template string, args ...any) {
 func (l *Global) Infof2(template string, args ...any) {
 	l.InfofAtLevel(2, template, args...)
 }
+
+func (l *Global) ClockCatchUpWithLedgerTime(ts ledger.Time) {
+	sleepDuration := ledger.SleepDurationUntilFutureLedgerTime(ts)
+	if sleepDuration <= 0 {
+		return
+	}
+	time.Sleep(sleepDuration)
+
+	for ledger.TimeNow().BeforeOrEqual(ts) {
+		time.Sleep(5 * time.Millisecond)
+	}
+}

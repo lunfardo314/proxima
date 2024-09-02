@@ -249,7 +249,7 @@ func (id *IdentityData) TimeToTicksSinceGenesis(nowis time.Time) int64 {
 	return int64(timeSinceGenesis / id.TickDuration)
 }
 
-func (id *IdentityData) TimeFromRealTime(nowis time.Time) Time {
+func (id *IdentityData) LedgerTimeFromClockTime(nowis time.Time) Time {
 	ret, err := TimeFromTicksSinceGenesis(id.TimeToTicksSinceGenesis(nowis))
 	util.AssertNoError(err)
 	return ret
@@ -331,7 +331,7 @@ func (id *IdentityData) YAMLAble() *IdentityDataYAMLAble {
 
 func (id *IdentityData) TimeConstantsToString() string {
 	nowis := time.Now()
-	timestampNowis := id.TimeFromRealTime(nowis)
+	timestampNowis := id.LedgerTimeFromClockTime(nowis)
 
 	//{
 	//	// TODO assertion sometimes fails due to integer arithmetics at nano level

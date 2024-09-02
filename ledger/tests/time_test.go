@@ -143,3 +143,26 @@ func TestRealTimeValues(t *testing.T) {
 	})
 
 }
+
+func TestArithmetics(t *testing.T) {
+	b := byte(0xff)
+	t.Logf("int64(byte(255)): %d", b)
+}
+
+//09-02 18:43:49.425	WARN	[seq1-$/cab8f1..]	target timestamp jumps over the slot: 18|0 -> 19|0. Step started: Sep  2 18:43:49.425303053, 1725291829425303053 (18|248), 17.737µs ago, nowis: 18|248
+//09-02 18:43:49.425	WARN	[boot-$/af7bed..]	target timestamp jumps over the slot: 18|0 -> 19|0. Step started: Sep  2 18:43:49.425438225, 1725291829425438225 (18|248), 13.555µs ago, nowis: 18|248
+//09-02 18:43:49.425	WARN	[seq2-$/3536de..]	target timestamp jumps over the slot: 18|0 -> 19|0. Step started: Sep  2 18:43:49.425576832, 1725291829425576832 (18|248), 12.414µs ago, nowis: 18|248
+//09-02 18:43:49.428	WARN	[seq0-$/3ad5d8..]	target timestamp jumps over the slot: 18|0 -> 19|0. Step started: Sep  2 18:43:49.428317091, 1725291829428317091 (18|249), 20.235µs ago, nowis: 18|249
+//09-02 18:43:49.428	WARN	[seq3-$/9a89f4..]	target timestamp jumps over the slot: 18|0 -> 19|0. Step started: Sep  2 18:43:49.428317104, 1725291829428317104 (18|249), 29.729µs ago, nowis: 18|249
+
+func TestTmp(t *testing.T) {
+	//un := int64(1725291829425303053)
+	un := ledger.L().ID.GenesisTimeUnixNano()
+	t1 := time.Unix(0, un)
+	for i := 0; i < 1000; i++ {
+		//t.Logf("unix nano: %d", un)
+		//t.Logf("clock time: %s", t1.Format(time.StampNano))
+		t.Logf("ledger time: %s", ledger.TimeFromClockTime(t1).String())
+		t1 = t1.Add(ledger.TickDuration())
+	}
+}
