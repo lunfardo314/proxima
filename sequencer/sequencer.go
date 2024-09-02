@@ -321,6 +321,7 @@ func (seq *Sequencer) doSequencerStep() bool {
 
 	timerStart := time.Now()
 
+	seq.Log().Infof(">>>>>>>>> BEFORE getNextTargetTime. %v, %s", timerStart, ledger.TimeFromRealTime(timerStart))
 	targetTs := seq.getNextTargetTime()
 
 	seq.Assertf(ledger.ValidSequencerPace(seq.lastSubmittedTs, targetTs), "target is closer than allowed pace (%d): %s -> %s",
@@ -335,8 +336,8 @@ func (seq *Sequencer) doSequencerStep() bool {
 	}
 
 	if seq.lastSubmittedTs.IsSlotBoundary() && targetTs.IsSlotBoundary() {
-		seq.Log().Warnf("target timestamp jumps over the slot: %s -> %s. Nowis: %s",
-			seq.lastSubmittedTs.String(), targetTs.String(), ledger.TimeNow().String())
+		seq.Log().Warnf("target timestamp jumps over the slot: %s -> %s. Nowis: %s, get target time took: %v",
+			seq.lastSubmittedTs.String(), targetTs.String(), ledger.TimeNow().String(), time.Since(timerStart))
 	}
 
 	seq.Tracef(TraceTag, "target ts: %s. Now is: %s", targetTs, ledger.TimeNow())
