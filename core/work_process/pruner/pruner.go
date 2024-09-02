@@ -71,7 +71,7 @@ func (p *Pruner) pruneVertices() (markedForDeletionCount, unreferencedPastConeCo
 }
 
 func (p *Pruner) Start() {
-	p.RepeatInBackground(Name, ledger.SlotDuration()/2, func() bool {
+	p.RepeatInBackground(Name, ledger.SlotDuration(), func() bool {
 		p.doPrune()
 		p.updateMetrics()
 		return true

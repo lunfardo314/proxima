@@ -311,14 +311,15 @@ func (p *ProximaNode) goLoggingSync() {
 	}
 
 	p.RepeatInBackground("logging_sync", logSyncPeriod, func() bool {
+		start := time.Now()
 		lrb, ok := p.GetLatestReliableBranch()
 		if !ok {
 			p.Log().Warnf("[sync] can't find latest reliable branch")
 		} else {
 			curSlot := ledger.TimeNow().Slot()
 			slotsBack := curSlot - lrb.Stem.ID.Slot()
-			msg := fmt.Sprintf("[sync] latest reliable branch is %d slots back, current slot: %d, coverage: %s",
-				slotsBack, curSlot, util.Th(lrb.LedgerCoverage))
+			msg := fmt.Sprintf("[sync] latest reliable branch is %d slots back, current slot: %d, coverage: %s (took: %v)",
+				slotsBack, curSlot, util.Th(lrb.LedgerCoverage), time.Since(start))
 			if slotsBack <= slotSyncThreshold {
 				p.Log().Info(msg)
 			} else {
