@@ -23,8 +23,8 @@ func TestTime(t *testing.T) {
 	})
 	t.Run("1", func(t *testing.T) {
 		nowis := time.Now()
-		ts0 := ledger.TimeFromRealTime(nowis)
-		ts1 := ledger.TimeFromRealTime(nowis.Add(1 * time.Second))
+		ts0 := ledger.TimeFromClockTime(nowis)
+		ts1 := ledger.TimeFromClockTime(nowis.Add(1 * time.Second))
 		t.Logf("%s", ts0)
 		t.Logf("%s", ts1)
 	})
@@ -59,29 +59,29 @@ func TestTime(t *testing.T) {
 		require.EqualValues(t, ts0, tsBack)
 	})
 	t.Run("5", func(t *testing.T) {
-		ts := ledger.TimeFromRealTime(time.Now())
+		ts := ledger.TimeFromClockTime(time.Now())
 		t.Logf("ts: %s", ts)
-		tsBack := ledger.TimeFromRealTime(ts.Time())
+		tsBack := ledger.TimeFromClockTime(ts.Time())
 		t.Logf("tsBack: %s", tsBack)
 		require.EqualValues(t, ts, tsBack)
 	})
 	t.Run("ts add diff", func(t *testing.T) {
 		nowis := time.Now()
-		nowisTs := ledger.TimeFromRealTime(nowis)
+		nowisTs := ledger.TimeFromClockTime(nowis)
 
 		nowis1TickLater := nowis.Add(ledger.TickDuration())
-		nowis1TickLaterTs := ledger.TimeFromRealTime(nowis1TickLater)
+		nowis1TickLaterTs := ledger.TimeFromClockTime(nowis1TickLater)
 		require.EqualValues(t, 1, ledger.DiffTicks(nowis1TickLaterTs, nowisTs))
 		require.EqualValues(t, nowisTs.AddTicks(1), nowis1TickLaterTs)
 
 		nowis99TicksLater := nowis.Add(99 * ledger.TickDuration())
-		nowis99TickLaterTs := ledger.TimeFromRealTime(nowis99TicksLater)
+		nowis99TickLaterTs := ledger.TimeFromClockTime(nowis99TicksLater)
 		require.EqualValues(t, 99, ledger.DiffTicks(nowis99TickLaterTs, nowisTs))
 		require.EqualValues(t, nowisTs.AddTicks(99), nowis99TickLaterTs)
 
 		rnd := rand.Intn(1_000_000)
 		nowisRndTicksLater := nowis.Add(time.Duration(rnd) * ledger.TickDuration())
-		nowisRndTickLaterTs := ledger.TimeFromRealTime(nowisRndTicksLater)
+		nowisRndTickLaterTs := ledger.TimeFromClockTime(nowisRndTicksLater)
 		require.EqualValues(t, rnd, ledger.DiffTicks(nowisRndTickLaterTs, nowisTs))
 		require.EqualValues(t, nowisTs.AddTicks(rnd), nowisRndTickLaterTs)
 	})
@@ -98,7 +98,7 @@ func TestTime(t *testing.T) {
 
 func TestLedgerVsRealTime(t *testing.T) {
 	nowis := time.Now()
-	ts := ledger.TimeFromRealTime(nowis)
+	ts := ledger.TimeFromClockTime(nowis)
 	nowisBack := ts.Time()
 	diffNano := nowis.UnixNano() - nowisBack.UnixNano()
 	diffTime := nowis.Sub(nowisBack)
@@ -118,5 +118,28 @@ func TestRealTime(t *testing.T) {
 		require.True(t, !nowis.Before(ts.Time()))
 		time.Sleep(100 * time.Millisecond)
 	}
+}
+
+func TestRealTimeValues(t *testing.T) {
+	nowis := time.Now()
+	ledgerTimeNow := ledger.TimeFromClockTime(nowis)
+	slotNow := ledgerTimeNow.Slot()
+	t.Logf("nowis: %s, ledger time now: %s", nowis.Format(time.StampNano), ledgerTimeNow.String())
+
+	t.Run("1", func(t *testing.T) {
+		for i := 0; i < 256; i++ {
+			ts := ledger.NewLedgerTime(slotNow, byte(i))
+			t.Logf("   %s -> %s", ts.String(), ts.Time().Format(time.StampNano))
+		}
+	})
+
+	t.Run("2", func(t *testing.T) {
+		now := nowis
+		for i := 0; i < 256; i++ {
+			ts := ledger.TimeFromClockTime(now)
+			t.Logf("   %s -> %s", now.Format(time.StampNano), ts.String())
+			now = now.Add(ledger.DefaultTickDuration)
+		}
+	})
 
 }

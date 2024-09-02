@@ -61,12 +61,12 @@ func NewLedgerTime(slot Slot, t uint8) (ret Time) {
 	return
 }
 
-func TimeFromRealTime(nowis time.Time) Time {
+func TimeFromClockTime(nowis time.Time) Time {
 	return L().ID.TimeFromRealTime(nowis)
 }
 
 func TimeNow() Time {
-	return TimeFromRealTime(time.Now())
+	return TimeFromClockTime(time.Now())
 }
 
 func ValidTime(ts Time) bool {

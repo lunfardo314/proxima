@@ -305,8 +305,13 @@ func (seq *Sequencer) sequencerLoop() {
 		case <-seq.Ctx().Done():
 			return
 		default:
+			start := time.Now()
 			if !seq.doSequencerStep() {
 				return
+			}
+			duration := time.Since(start)
+			if duration > 3*time.Second {
+				seq.Log().Warnf(">>>>>>>>>>>>> sequncer step took %v", duration)
 			}
 		}
 	}
@@ -335,7 +340,7 @@ func (seq *Sequencer) doSequencerStep() bool {
 
 	if seq.lastSubmittedTs.IsSlotBoundary() && targetTs.IsSlotBoundary() {
 		seq.Log().Warnf("target timestamp jumps over the slot: %s -> %s. Step started: %s, nowis: %s, get target time took: %v",
-			seq.lastSubmittedTs.String(), targetTs.String(), ledger.TimeFromRealTime(timerStart).String(), ledger.TimeNow().String(), time.Since(timerStart))
+			seq.lastSubmittedTs.String(), targetTs.String(), ledger.TimeFromClockTime(timerStart).String(), ledger.TimeNow().String(), time.Since(timerStart))
 	}
 
 	seq.Tracef(TraceTag, "target ts: %s. Now is: %s", targetTs, ledger.TimeNow())
