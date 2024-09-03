@@ -335,7 +335,7 @@ func (a *milestoneAttacher) logErrorStatusString(err error) string {
 func (a *milestoneAttacher) AdjustCoverage() {
 	a.adjustCoverage()
 	if a.coverageAdjustment > 0 {
-		a.Tracef(TraceTagCoverageAdjustment, " milestoneAttacher: coverage has been adjusted by %s, ms: %s, baseline: %s",
+		a.Tracef(TraceTagCoverageAdjustment, " milestoneAttacher: accumulatedCoverage has been adjusted by %s, ms: %s, baseline: %s",
 			func() string { return util.Th(a.coverageAdjustment) }, a.vid.IDShortString, a.baseline.IDShortString)
 	}
 }

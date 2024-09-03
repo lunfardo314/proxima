@@ -119,13 +119,13 @@ func (a *IncrementalAttacher) IsClosed() bool {
 }
 
 func (a *IncrementalAttacher) initIncrementalAttacher(baseline *vertex.WrappedTx, targetTs ledger.Time, extend vertex.WrappedOutput, endorse ...*vertex.WrappedTx) error {
-	// also fetches baseline coverage
+	// also fetches baseline accumulatedCoverage
 	if !a.setBaseline(baseline, targetTs) {
 		return fmt.Errorf("NewIncrementalAttacher: failed to set baseline branch of %s", extend.IDShortString())
 	}
-	a.Tracef(TraceTagIncrementalAttacher, "NewIncrementalAttacher(%s). baseline: %s, start with coverage: %s",
+	a.Tracef(TraceTagIncrementalAttacher, "NewIncrementalAttacher(%s). baseline: %s, start with accumulatedCoverage: %s",
 		a.name, baseline.IDShortString,
-		func() string { return util.Th(a.coverage) })
+		func() string { return util.Th(a.accumulatedCoverage) })
 
 	// attach endorsements
 	for _, endorsement := range endorse {
@@ -193,7 +193,7 @@ func (a *IncrementalAttacher) beginStateDelta() *_stateSnapshot {
 	ret := &_stateSnapshot{
 		vertices: maps.Clone(a.attacher.vertices),
 		rooted:   maps.Clone(a.attacher.rooted),
-		coverage: a.coverage,
+		coverage: a.accumulatedCoverage,
 	}
 	// deep clone
 	for vid, outputIdxSet := range ret.rooted {
@@ -206,7 +206,7 @@ func (a *IncrementalAttacher) beginStateDelta() *_stateSnapshot {
 func (a *IncrementalAttacher) rollbackStateDelta(saved *_stateSnapshot) {
 	a.attacher.vertices = saved.vertices
 	a.attacher.rooted = saved.rooted
-	a.coverage = saved.coverage
+	a.accumulatedCoverage = saved.coverage
 	a.referenced.rollbackDelta()
 }
 
@@ -373,13 +373,13 @@ func (a *IncrementalAttacher) AdjustCoverage() {
 	a.adjustCoverage()
 	if a.coverageAdjustment > 0 {
 		ext := a.Extending()
-		a.Tracef(TraceTagCoverageAdjustment, " IncrementalAttacher: coverage has been adjusted by %s, extending: %s, baseline: %s",
+		a.Tracef(TraceTagCoverageAdjustment, " IncrementalAttacher: accumulatedCoverage has been adjusted by %s, extending: %s, baseline: %s",
 			func() string { return util.Th(a.coverageAdjustment) }, ext.IDShortString, a.baseline.IDShortString)
 	}
 }
 
-func (a *IncrementalAttacher) LedgerCoverage() uint64 {
-	return a.coverage
+func (a *IncrementalAttacher) AccumulatedCoverage() uint64 {
+	return a.accumulatedCoverage
 }
 
 func (a *IncrementalAttacher) TargetTs() ledger.Time {

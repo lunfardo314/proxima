@@ -51,18 +51,18 @@ type (
 
 	attacher struct {
 		Environment
-		name               string
-		err                error
-		baseline           *vertex.WrappedTx
-		vertices           map[*vertex.WrappedTx]Flags
-		rooted             map[*vertex.WrappedTx]set.Set[byte]
-		referenced         referencedSet
-		closed             bool
-		pokeMe             func(vid *vertex.WrappedTx)
-		coverage           uint64
-		coverageAdjustment uint64
-		coverageAdjusted   bool
-		slotInflation      uint64
+		name                string
+		err                 error
+		baseline            *vertex.WrappedTx
+		vertices            map[*vertex.WrappedTx]Flags
+		rooted              map[*vertex.WrappedTx]set.Set[byte]
+		referenced          referencedSet
+		closed              bool
+		pokeMe              func(vid *vertex.WrappedTx)
+		accumulatedCoverage uint64 // accumulated accumulatedCoverage
+		coverageAdjustment  uint64
+		coverageAdjusted    bool
+		slotInflation       uint64
 		// only supported for branch transactions
 		baselineSupply uint64
 		// trace this local attacher with all tags

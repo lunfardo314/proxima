@@ -241,13 +241,3 @@ func MaximumTime(ts ...Time) Time {
 		return ts1.Before(ts2)
 	})
 }
-
-// SleepDurationUntilFutureLedgerTime returns duration to sleep until the clock becomes to ts.Time()
-func SleepDurationUntilFutureLedgerTime(ts Time) (ret time.Duration) {
-	clockTs := ts.Time()
-	nowis := time.Now()
-	if clockTs.After(nowis) {
-		ret = clockTs.Sub(nowis)
-	}
-	return
-}

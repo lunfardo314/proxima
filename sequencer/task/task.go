@@ -81,7 +81,7 @@ const TraceTagTask = "task"
 
 var (
 	_allProposingStrategies = make(map[string]*Strategy)
-	ErrNoProposals          = errors.New("no proposals was generated")
+	ErrNoProposals          = errors.New("no proposals were generated")
 	ErrNotGoodEnough        = errors.New("proposals aren't good enough")
 )
 
@@ -160,25 +160,16 @@ func Run(env environment, targetTs ledger.Time) (*transaction.Transaction, *txme
 		return p1.coverage < p2.coverage
 	})
 
+	// check if newly generated non-branch transaction has coverage strongly bigger than previously generated
+	// non-branch transaction on the same slot
 	ownLatest := env.OwnLatestMilestoneOutput().VID
-
-	if ownLatest.Slot() == targetTs.Slot() && best.coverage <= ownLatest.GetLedgerCoverage() {
+	if !ownLatest.IsBranchTransaction() && ownLatest.Slot() == targetTs.Slot() && best.coverage <= ownLatest.GetLedgerCoverage() {
 		return nil, nil, fmt.Errorf("%w (res: %s, best: %s, %s)",
 			ErrNotGoodEnough, util.Th(best.coverage), ownLatest.IDShortString(), util.Th(ownLatest.GetLedgerCoverage()))
 	}
 
 	return best.tx, best.txMetadata, nil
 }
-
-//func (t *Task) bestCoverageInTheSlot(slot ledger.Slot) uint64 {
-//	all := t.LatestMilestonesDescending(func(seqID ledger.ChainID, vid *vertex.WrappedTx) bool {
-//		return vid.Slot() == slot
-//	})
-//	if len(all) == 0 {
-//		return 0
-//	}
-//	return all[0].GetLedgerCoverage()
-//}
 
 func (p *proposal) String() string {
 	endorse := make([]string, 0, len(p.endorsing))

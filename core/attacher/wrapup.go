@@ -18,8 +18,8 @@ func (a *milestoneAttacher) wrapUpAttacher() {
 	a.finals.baseline = &a.baseline.ID
 	a.finals.numVertices = len(a.vertices)
 
-	a.finals.coverage = a.coverage
-	//a.Assertf(a.finals.coverage > 0, "final coverage must be positive")
+	a.finals.coverage = a.accumulatedCoverage
+	//a.Assertf(a.finals.accumulatedCoverage > 0, "final accumulatedCoverage must be positive")
 	a.finals.slotInflation = a.slotInflation
 
 	a.Tracef(TraceTagAttachMilestone, "set ledger baselineCoverage in %s to %s",
@@ -35,7 +35,7 @@ func (a *milestoneAttacher) wrapUpAttacher() {
 	}
 
 	calculatedMetadata := txmetadata.TransactionMetadata{
-		LedgerCoverage: util.Ref(a.coverage),
+		LedgerCoverage: util.Ref(a.accumulatedCoverage),
 		SlotInflation:  util.Ref(a.finals.slotInflation),
 	}
 	if a.metadata != nil {

@@ -390,11 +390,7 @@ func (l *Global) Infof2(template string, args ...any) {
 }
 
 func (l *Global) ClockCatchUpWithLedgerTime(ts ledger.Time) {
-	sleepDuration := ledger.SleepDurationUntilFutureLedgerTime(ts)
-	if sleepDuration <= 0 {
-		return
-	}
-	time.Sleep(sleepDuration)
+	time.Sleep(time.Until(ts.Time()))
 
 	for ledger.TimeNow().BeforeOrEqual(ts) {
 		time.Sleep(5 * time.Millisecond)

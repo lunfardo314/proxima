@@ -583,8 +583,8 @@ func (a *attacher) attachRooted(wOut vertex.WrappedOutput) (ok bool, isRooted bo
 	a.rooted[wOut.VID] = consumedRooted
 	a.markVertexDefined(wOut.VID)
 
-	// this is new rooted output -> add to the coverage
-	a.coverage += out.Amount()
+	// this is new rooted output -> add to the accumulatedCoverage
+	a.accumulatedCoverage += out.Amount()
 	return true, true
 }
 
@@ -702,7 +702,7 @@ func (a *attacher) isKnownConsumed(wOut vertex.WrappedOutput) (isConsumed bool) 
 	return
 }
 
-// setBaseline sets baseline, fetches its baseline coverage and initializes attacher's coverage according to the currentTS
+// setBaseline sets baseline, fetches its baseline accumulatedCoverage and initializes attacher's accumulatedCoverage according to the currentTS
 // For sequencer transaction baseline will be on the same slot, for branch transactions it can be further in the past
 func (a *attacher) setBaseline(baselineVID *vertex.WrappedTx, currentTS ledger.Time) bool {
 	a.Assertf(baselineVID.IsBranchTransaction(), "setBaseline: baselineVID.IsBranchTransaction()")
@@ -716,18 +716,20 @@ func (a *attacher) setBaseline(baselineVID *vertex.WrappedTx, currentTS ledger.T
 
 	a.baseline = baselineVID
 	a.baselineSupply = rr.Supply
-	a.coverage = rr.LedgerCoverage >> (int(currentTS.Slot() - baselineVID.Slot()))
+	a.accumulatedCoverage = rr.LedgerCoverage >> (int(currentTS.Slot() - baselineVID.Slot()))
 
 	if currentTS.IsSlotBoundary() {
 		a.Assertf(baselineVID.Slot() < currentTS.Slot(), "baselineVID.Slot() < currentTS.Slot()")
 	} else {
 		a.Assertf(baselineVID.Slot() == currentTS.Slot(), "baselineVID.Slot() == currentTS.Slot()")
-		a.coverage >>= 1
+		a.accumulatedCoverage >>= 1
 	}
 	return true
 }
 
-// adjustCoverage for coverage adjustment details see Proxima WP
+// adjustCoverage for accumulatedCoverage. Adjustment ensures that branch inflation bonus on the chain output
+// of the baseline branch is always included into the coverage exactly once.
+// Details and motivation see Proxima WP
 func (a *attacher) adjustCoverage() {
 	// adjustCoverage must be called exactly once
 	a.Assertf(!a.coverageAdjusted, "adjustCoverage: already adjusted")
@@ -735,14 +737,14 @@ func (a *attacher) adjustCoverage() {
 
 	baseSeqOut := a.baseline.SequencerWrappedOutput()
 	if a.isRootedOutput(baseSeqOut) {
-		// no need for adjustment
+		// the baseline branch sequencer output is rooted -> it is already included -> no need for adjustment
 		return
 	}
-	// sequencer output is not rooted (branch is just endorsed) -> add its inflation to the coverage
+	// sequencer output is not rooted (branch is just endorsed) -> add its inflation to the accumulatedCoverage
 	seqOut := multistate.MustSequencerOutputOfBranch(a.StateStore(), baseSeqOut.VID.ID).Output
 
 	a.coverageAdjustment = seqOut.Inflation(true)
-	a.coverage += a.coverageAdjustment
+	a.accumulatedCoverage += a.coverageAdjustment
 }
 
 // IsCoverageAdjusted for consistency assertions
@@ -755,7 +757,7 @@ func (a *attacher) dumpLines(prefix ...string) *lines.Lines {
 	ret := lines.New(prefix...)
 	ret.Add("attacher %s", a.name)
 	ret.Add("   baseline: %s", a.baseline.IDShortString())
-	ret.Add("   coverage: %s", util.Th(a.coverage))
+	ret.Add("   accumulatedCoverage: %s", util.Th(a.accumulatedCoverage))
 	ret.Add("   baselineSupply: %s", util.Th(a.baselineSupply))
 	ret.Add("   vertices:")
 	ret.Append(a.linesVertices(prefix...))

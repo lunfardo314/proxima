@@ -51,9 +51,9 @@ func (a *milestoneAttacher) _checkConsistencyBeforeFinalization() (err error) {
 		err = fmt.Errorf("sum of rooted cannot be 0")
 		return
 	}
-	//if sumRooted+a.coverageAdjustment != a.coverage.LatestDelta() {
-	//	err = fmt.Errorf("sum of amounts of rooted outputs %s is not equal to the coverage sumRooted+coverageAdjustment %s",
-	//		util.Th(sumRooted), util.Th(a.coverage.LatestDelta()))
+	//if sumRooted+a.coverageAdjustment != a.accumulatedCoverage.LatestDelta() {
+	//	err = fmt.Errorf("sum of amounts of rooted outputs %s is not equal to the accumulatedCoverage sumRooted+coverageAdjustment %s",
+	//		util.Th(sumRooted), util.Th(a.accumulatedCoverage.LatestDelta()))
 	//	return
 	//}
 
@@ -108,13 +108,13 @@ func (a *milestoneAttacher) _checkMonotonicityOfEndorsements(v *vertex.Vertex) (
 		}
 		lc := vidEndorsed.GetLedgerCoverageP()
 		if lc == nil {
-			err = fmt.Errorf("coverage not set in the endorsed %s", vidEndorsed.IDShortString())
+			err = fmt.Errorf("accumulatedCoverage not set in the endorsed %s", vidEndorsed.IDShortString())
 			return false
 		}
-		if a.coverage < *lc {
-			diff := *lc - a.coverage
-			err = fmt.Errorf("coverage should not decrease along endorsement.\nGot: delta(%s) at %s <= delta(%s) in %s. diff: %s",
-				util.Th(a.coverage), a.vid.Timestamp().String(), util.Th(*lc), vidEndorsed.IDShortString(), util.Th(diff))
+		if a.accumulatedCoverage < *lc {
+			diff := *lc - a.accumulatedCoverage
+			err = fmt.Errorf("accumulatedCoverage should not decrease along endorsement.\nGot: delta(%s) at %s <= delta(%s) in %s. diff: %s",
+				util.Th(a.accumulatedCoverage), a.vid.Timestamp().String(), util.Th(*lc), vidEndorsed.IDShortString(), util.Th(diff))
 			return false
 		}
 		return true
@@ -133,13 +133,13 @@ func (a *milestoneAttacher) _checkMonotonicityOfInputTransactions(v *vertex.Vert
 		}
 		lc := vidInp.GetLedgerCoverageP()
 		if lc == nil {
-			err = fmt.Errorf("coverage not set in the input tx %s", vidInp.IDShortString())
+			err = fmt.Errorf("accumulatedCoverage not set in the input tx %s", vidInp.IDShortString())
 			return false
 		}
-		if a.coverage < *lc {
-			diff := *lc - a.coverage
-			err = fmt.Errorf("coverage should not decrease along consumed transactions on the same slot.\nGot: delta(%s) at %s <= delta(%s) in %s. diff: %s",
-				util.Th(a.coverage), a.vid.Timestamp().String(), util.Th(*lc), vidInp.IDShortString(), util.Th(diff))
+		if a.accumulatedCoverage < *lc {
+			diff := *lc - a.accumulatedCoverage
+			err = fmt.Errorf("accumulatedCoverage should not decrease along consumed transactions on the same slot.\nGot: delta(%s) at %s <= delta(%s) in %s. diff: %s",
+				util.Th(a.accumulatedCoverage), a.vid.Timestamp().String(), util.Th(*lc), vidInp.IDShortString(), util.Th(diff))
 			return false
 		}
 		return true
@@ -164,10 +164,10 @@ func (a *milestoneAttacher) checkConsistencyWithMetadata() {
 	}
 	var err error
 	switch {
-	case a.metadata.LedgerCoverage != nil && *a.metadata.LedgerCoverage != a.coverage:
-		err = fmt.Errorf("checkConsistencyWithMetadata %s: major inconsistency: computed coverage (%s) not equal to the coverage provided in the metadata (%s). Diff=%s",
-			a.vid.IDShortString(), util.Th(a.coverage), util.Th(*a.metadata.LedgerCoverage),
-			util.Th(int64(a.coverage)-int64(*a.metadata.LedgerCoverage)))
+	case a.metadata.LedgerCoverage != nil && *a.metadata.LedgerCoverage != a.accumulatedCoverage:
+		err = fmt.Errorf("checkConsistencyWithMetadata %s: major inconsistency: computed accumulatedCoverage (%s) not equal to the accumulatedCoverage provided in the metadata (%s). Diff=%s",
+			a.vid.IDShortString(), util.Th(a.accumulatedCoverage), util.Th(*a.metadata.LedgerCoverage),
+			util.Th(int64(a.accumulatedCoverage)-int64(*a.metadata.LedgerCoverage)))
 	case a.metadata.SlotInflation != nil && *a.metadata.SlotInflation != a.slotInflation:
 		err = fmt.Errorf("checkConsistencyWithMetadata %s: major inconsistency: computed slot inflation (%s) not equal to the slot inflation provided in the metadata (%s)",
 			a.vid.IDShortString(), util.Th(a.slotInflation), util.Th(*a.metadata.SlotInflation))

@@ -531,7 +531,7 @@ func FindLatestReliableBranch(store global.StateStoreReader, fraction global.Fra
 		return tipRoots[i].LedgerCoverage < tipRoots[j].LedgerCoverage
 	})
 	util.Assertf(global.IsHealthyCoverage(tipRoots[rootMaxIdx].LedgerCoverage, tipRoots[rootMaxIdx].Supply, fraction),
-		"global.IsHealthyCoverage(rootMax.LedgerCoverage, rootMax.Supply, fraction)")
+		"global.IsHealthyCoverage(rootMax.AccumulatedCoverage, rootMax.Supply, fraction)")
 
 	// we will be checking if transaction is contained in all roots from the latest healthy slot
 	// For this we are creating a collection of state readers

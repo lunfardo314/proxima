@@ -168,29 +168,6 @@ func (seq *Sequencer) Start() {
 	}
 }
 
-//func (seq *Sequencer) waitForSyncIfNecessary() bool {
-//	if seq.IsBootstrapNode() {
-//		// bootstrap node does not wait for synced status
-//		return true
-//	}
-//
-//	const checkSyncEvery = 3 * time.Second
-//
-//	for {
-//		if seq.IsSynced() {
-//			break
-//		}
-//		select {
-//		case <-seq.Ctx().Done():
-//			return false
-//		case <-time.After(checkSyncEvery):
-//			seq.log.Warnf("waiting for sync with the network")
-//		}
-//	}
-//
-//	return true
-//}
-
 func (seq *Sequencer) Ctx() context.Context {
 	return seq.ctx
 }
@@ -231,8 +208,7 @@ func (seq *Sequencer) ensureFirstMilestone() bool {
 	}
 	seq.AddOwnMilestone(startOutput.VID)
 
-	sleepDuration := ledger.SleepDurationUntilFutureLedgerTime(startOutput.Timestamp())
-	if sleepDuration > 0 {
+	if sleepDuration := time.Until(startOutput.Timestamp().Time()); sleepDuration > 0 {
 		seq.log.Warnf("will delay start for %v to sync ledger time with the clock", sleepDuration)
 		seq.ClockCatchUpWithLedgerTime(startOutput.Timestamp())
 	}
@@ -342,8 +318,10 @@ func (seq *Sequencer) doSequencerStep() bool {
 
 	msTx, meta, err := seq.GenerateMilestoneForTarget(targetTs)
 	if err != nil {
-		seq.Log().Warnf("FAILED to generate transaction for target %s. Now is %s. Reason: %v",
-			targetTs, ledger.TimeNow(), err)
+		if !errors.Is(err, task.ErrNotGoodEnough) && seq.milestoneCount > 0 {
+			seq.Log().Warnf("FAILED to generate transaction for target %s. Now is %s. Reason: %v",
+				targetTs, ledger.TimeNow(), err)
+		}
 		return true
 	}
 	util.Assertf(msTx != nil, "msTx != nil")

@@ -131,33 +131,21 @@ func (w *Workflow) TxBytesIn(txBytes []byte, opts ...TxBytesInOption) (*ledger.T
 		attachOpts = append(attachOpts, attacher.AttachTxOptionWithAttachmentCallback(options.callback))
 	}
 
-	if txTime.Before(nowis) {
+	if time.Until(txTime) <= 0 {
 		// timestamp is in the past -> attach immediately
 		w._attach(tx, attachOpts...)
-		return txid, nil
+	} else {
+		// timestamp is in the future: let clock catch up before attaching
+		go func() {
+			w.ClockCatchUpWithLedgerTime(txid.Timestamp())
+
+			w.Tracef(TraceTagTxInput, "%s -> release", txid.StringShort)
+			w.TraceTx(txid, "TxBytesIn: -> release")
+
+			w._attach(tx, attachOpts...)
+		}()
 	}
-
-	// timestamp is in the future. Put it on wait. Adding some milliseconds to avoid rounding errors in assertions
-	delayFor := txTime.Sub(nowis)
-	w.Tracef(TraceTagTxInput, "%s -> delay for %v", txid.StringShort, delayFor)
-	w.TraceTx(txid, "TxBytesIn: delay for %v", delayFor)
-
-	go func() {
-		time.Sleep(delayFor)
-		_ensureNowIsAfter(txTime) // to avoid time rounding errors
-
-		w.Tracef(TraceTagTxInput, "%s -> release", txid.StringShort)
-		w.TraceTx(txid, "TxBytesIn: -> release")
-
-		w._attach(tx, attachOpts...)
-	}()
 	return txid, nil
-}
-
-func _ensureNowIsAfter(targetTime time.Time) {
-	for !time.Now().After(targetTime) {
-		time.Sleep(time.Millisecond)
-	}
 }
 
 func (w *Workflow) _attach(tx *transaction.Transaction, opts ...attacher.AttachTxOption) {

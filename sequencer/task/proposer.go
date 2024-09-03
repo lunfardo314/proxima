@@ -71,7 +71,7 @@ func (p *Proposer) propose(a *attacher.IncrementalAttacher) error {
 	if err != nil {
 		return err
 	}
-	coverage := a.LedgerCoverage()
+	coverage := a.AccumulatedCoverage()
 	_proposal := &proposal{
 		tx: tx,
 		txMetadata: &txmetadata.TransactionMetadata{
@@ -161,7 +161,7 @@ func (p *Proposer) chooseEndorseExtendPairAttacher(endorse *vertex.WrappedTx, ex
 			a.Close()
 		case ret == nil:
 			ret = a
-		case a.LedgerCoverage() > ret.LedgerCoverage():
+		case a.AccumulatedCoverage() > ret.AccumulatedCoverage():
 			ret.Close()
 			ret = a
 		default:
