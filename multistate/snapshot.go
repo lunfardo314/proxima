@@ -8,20 +8,53 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
+	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/proxima/util/lines"
 	"github.com/lunfardo314/unitrie/common"
+)
+
+type (
+	SnapshotHeader struct {
+		Description string `json:"description"`
+		Version     string `json:"version"`
+	}
+
+	SnapshotFileStream struct {
+		Header     *SnapshotHeader
+		LedgerID   *ledger.IdentityData
+		BranchID   ledger.TransactionID
+		RootRecord RootRecord
+		InChan     chan common.KVPairOrError
+		Close      func()
+	}
+
+	SnapshotStats struct {
+		ByPartition      map[byte]int
+		DurationTraverse time.Duration
+	}
+)
+
+const (
+	snapshotFormatVersionString = "ver 0"
+	TmpSnapshotFileNamePrefix   = "__tmp__"
 )
 
 // writeState writes state with the root as a sequence of key/value pairs.
 // Does not write ledger identity record
-func writeState(state global.StateStoreReader, target common.KVStreamWriter, root common.VCommitment, ctx context.Context, out io.Writer) error {
+func writeState(state global.StateStoreReader, target common.KVStreamWriter, root common.VCommitment, ctx context.Context, out io.Writer) (*SnapshotStats, error) {
 	rdr, err := NewReadable(state, root)
 	if err != nil {
-		return fmt.Errorf("writeState: %w", err)
+		return nil, fmt.Errorf("writeState: %w", err)
 	}
 	counter := 0
+	stats := &SnapshotStats{
+		ByPartition: make(map[byte]int),
+	}
+	start := time.Now()
 	rdr.Iterator(nil).Iterate(func(k, v []byte) bool {
 		select {
 		case <-ctx.Done():
@@ -32,11 +65,17 @@ func writeState(state global.StateStoreReader, target common.KVStreamWriter, roo
 				err = target.Write(k, v)
 				_outKVPair(k, v, counter, out)
 				counter++
+
+				stats.ByPartition[k[0]] = stats.ByPartition[k[0]] + 1
 			}
 		}
 		return err == nil
 	})
-	return err
+	if err != nil {
+		return nil, err
+	}
+	stats.DurationTraverse = time.Since(start)
+	return stats, nil
 }
 
 func _outKVPair(k, v []byte, counter int, out io.Writer) {
@@ -47,24 +86,14 @@ func _outKVPair(k, v []byte, counter int, out io.Writer) {
 
 }
 
-type SnapshotHeader struct {
-	Description string `json:"description"`
-	Version     string `json:"version"`
-}
-
-const (
-	snapshotFormatVersionString = "ver 0"
-	TmpSnapshotFileNamePrefix   = "__tmp__"
-)
-
 func snapshotFileName(branchID ledger.TransactionID) string {
 	return branchID.AsFileName() + ".snapshot"
 }
 
 // SaveSnapshot writes latest reliable state into snapshot. Returns snapshot file name
-func SaveSnapshot(state global.StateStoreReader, ctx context.Context, dir string, out ...io.Writer) (*RootRecord, string, error) {
-	makeErr := func(errStr string) (*RootRecord, string, error) {
-		return nil, "", fmt.Errorf("SaveSnapshot: %s", errStr)
+func SaveSnapshot(state global.StateStoreReader, ctx context.Context, dir string, out ...io.Writer) (*RootRecord, string, *SnapshotStats, error) {
+	makeErr := func(errStr string) (*RootRecord, string, *SnapshotStats, error) {
+		return nil, "", nil, fmt.Errorf("SaveSnapshot: %s", errStr)
 	}
 
 	console := io.Discard
@@ -129,7 +158,8 @@ func SaveSnapshot(state global.StateStoreReader, ctx context.Context, dir string
 	_, _ = fmt.Fprintf(console, "[SaveSnapshot] ledger ID:\n%s\n", ledgerID.Lines("     ").String())
 
 	// write trie
-	err = writeState(state, outFileStream, latestReliableBranch.Root, ctx, console)
+	var stats *SnapshotStats
+	stats, err = writeState(state, outFileStream, latestReliableBranch.Root, ctx, console)
 	if err != nil {
 		return makeErr(err.Error())
 	}
@@ -143,16 +173,7 @@ func SaveSnapshot(state global.StateStoreReader, ctx context.Context, dir string
 	if err != nil {
 		return makeErr(err.Error())
 	}
-	return &latestReliableBranch.RootRecord, fpath, nil
-}
-
-type SnapshotFileStream struct {
-	Header     *SnapshotHeader
-	LedgerID   *ledger.IdentityData
-	BranchID   ledger.TransactionID
-	RootRecord RootRecord
-	InChan     chan common.KVPairOrError
-	Close      func()
+	return &latestReliableBranch.RootRecord, fpath, stats, nil
 }
 
 // OpenSnapshotFileStream reads first 3 records in the snapshot file and returns
@@ -204,4 +225,21 @@ func OpenSnapshotFileStream(fname string) (*SnapshotFileStream, error) {
 		return nil, fmt.Errorf("OpenSnapshotFileStream: wrong third key/value pair 2")
 	}
 	return ret, nil
+}
+
+func (s *SnapshotStats) Lines(prefix ...string) *lines.Lines {
+	ret := lines.New(prefix...)
+	ret.Add("Took to traverse: %v", s.DurationTraverse)
+	partitions := util.KeysSorted(s.ByPartition, func(k1, k2 byte) bool {
+		return k1 < k2
+	})
+
+	total := 0
+	for _, p := range partitions {
+		ret.Add("%s: %d", PartitionToString(p), s.ByPartition[p])
+		total += s.ByPartition[p]
+	}
+
+	ret.Add("Total records: %d", total)
+	return ret
 }

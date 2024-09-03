@@ -88,12 +88,11 @@ func directoryExists(dir string) bool {
 }
 
 func (s *Snapshot) doSnapshot() {
-	start := time.Now()
-	_, fname, err := multistate.SaveSnapshot(s.StateStore(), s.Ctx(), s.directory, io.Discard)
+	_, fname, stats, err := multistate.SaveSnapshot(s.StateStore(), s.Ctx(), s.directory, io.Discard)
 	if err != nil {
 		s.Log().Errorf("[snapshot] failed to save snapshot: %v", err)
 	} else {
-		s.Log().Infof("[snapshot] snapshot has been saved to %s. It took %v", fname, time.Since(start))
+		s.Log().Infof("[snapshot] snapshot has been saved to %s.\n%s", fname, stats.Lines("             ").String())
 	}
 }
 
