@@ -702,24 +702,28 @@ func (a *attacher) isKnownConsumed(wOut vertex.WrappedOutput) (isConsumed bool) 
 	return
 }
 
-// setBaseline sets baseline, fetches its baselineCoverage and initializes attacher's baselineCoverage according to the currentTS
+// setBaseline sets baseline, fetches its baseline coverage and initializes attacher's coverage according to the currentTS
+// For sequencer transaction baseline will be on the same slot, for branch transactions it can be further in the past
 func (a *attacher) setBaseline(baselineVID *vertex.WrappedTx, currentTS ledger.Time) bool {
 	a.Assertf(baselineVID.IsBranchTransaction(), "setBaseline: baselineVID.IsBranchTransaction()")
-	a.Assertf(currentTS.Slot() >= baselineVID.Slot(), "currentTS.Slot() >= baselineVID.Slot()")
 
 	if !a.referenced.reference(baselineVID) {
 		return false
 	}
+
+	rr, found := multistate.FetchRootRecord(a.StateStore(), baselineVID.ID)
+	a.Assertf(found, "setBaseline: can't fetch root record for %s", baselineVID.IDShortString)
+
 	a.baseline = baselineVID
+	a.baselineSupply = rr.Supply
+	a.coverage = rr.LedgerCoverage >> (int(currentTS.Slot() - baselineVID.Slot()))
 
-	rr, found := multistate.FetchRootRecord(a.StateStore(), a.baseline.ID)
-	a.Assertf(found, "setBaseline: can't fetch root record for %s", a.baseline.IDShortString)
-
-	a.coverage = rr.LedgerCoverage >> int(currentTS.Slot()-baselineVID.Slot())
-	if currentTS.Tick() != 0 {
+	if currentTS.IsSlotBoundary() {
+		a.Assertf(baselineVID.Slot() < currentTS.Slot(), "baselineVID.Slot() < currentTS.Slot()")
+	} else {
+		a.Assertf(baselineVID.Slot() == currentTS.Slot(), "baselineVID.Slot() == currentTS.Slot()")
 		a.coverage >>= 1
 	}
-	a.baselineSupply = rr.Supply
 	return true
 }
 

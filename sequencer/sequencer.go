@@ -338,42 +338,31 @@ func (seq *Sequencer) doSequencerStep() bool {
 		return false
 	}
 
-	if seq.lastSubmittedTs.IsSlotBoundary() && targetTs.IsSlotBoundary() {
-		seq.Log().Warnf("target timestamp jumps over the slot: %s -> %s. Step started: %s, %d (%s), %v ago, nowis: %s",
-			seq.lastSubmittedTs.String(), targetTs.String(),
-			timerStart.Format(time.StampNano), timerStart.UnixNano(), ledger.TimeFromClockTime(timerStart).String(), time.Since(timerStart),
-			ledger.TimeNow().String())
-	}
-
 	seq.Tracef(TraceTag, "target ts: %s. Now is: %s", targetTs, ledger.TimeNow())
 
-	msTx, meta, err := seq.StartProposingForTargetLogicalTime(targetTs)
-	if msTx == nil {
-		if targetTs.IsSlotBoundary() {
-			seq.Log().Warnf("SKIPPED branch for slot %d: err = %v", targetTs.Slot(), err)
-		} else {
-			if err != nil && !errors.Is(err, task.ErrNoProposals) {
-				seq.Log().Warnf("FAILED to generate transaction for target %s. Now is %s. Reason: %v",
-					targetTs, ledger.TimeNow(), err)
-			}
-		}
-		seq.Log().Infof(">>>>>>>>>>>>>>>>>>>>>> END doSequencerStep 000 %s -> %s. step started: %s, %d (%s), %v ago, nowis: %s",
-			seq.lastSubmittedTs.String(), targetTs.String(),
-			timerStart.Format(time.StampNano), timerStart.UnixNano(), ledger.TimeFromClockTime(timerStart).String(), time.Since(timerStart),
-			ledger.TimeNow().String())
+	msTx, meta, err := seq.GenerateMilestoneForTarget(targetTs)
+	if err != nil {
+		seq.Log().Warnf("FAILED to generate transaction for target %s. Now is %s. Reason: %v",
+			targetTs, ledger.TimeNow(), err)
 		return true
 	}
+	util.Assertf(msTx != nil, "msTx != nil")
 
 	seq.Tracef(TraceTag, "produced milestone %s for the target logical time %s in %v. Meta: %s",
 		msTx.IDShortString, targetTs, time.Since(timerStart), meta.String)
 
+	saveLastSubmittedTs := seq.lastSubmittedTs
+
 	msVID := seq.submitMilestone(msTx, meta)
 	if msVID == nil {
-		seq.Log().Infof(">>>>>>>>>>>>>>>>>>>>>> END doSequencerStep 111 %s -> %s. step started: %s, %d (%s), %v ago, nowis: %s",
-			seq.lastSubmittedTs.String(), targetTs.String(),
+		return true
+	}
+
+	if saveLastSubmittedTs.IsSlotBoundary() && msVID.ID.Timestamp().IsSlotBoundary() {
+		seq.Log().Warnf("branch jumped over the slot: %s -> %s. Step started: %s, %d (%s), %v ago, nowis: %s",
+			saveLastSubmittedTs.String(), targetTs.String(),
 			timerStart.Format(time.StampNano), timerStart.UnixNano(), ledger.TimeFromClockTime(timerStart).String(), time.Since(timerStart),
 			ledger.TimeNow().String())
-		return true
 	}
 
 	seq.AddOwnMilestone(msVID)
@@ -384,10 +373,6 @@ func (seq *Sequencer) doSequencerStep() bool {
 	seq.updateInfo(msVID)
 	seq.runOnMilestoneSubmitted(msVID)
 
-	seq.Log().Infof(">>>>>>>>>>>>>>>>>>>>>> END doSequencerStep 222 %s -> %s. step started: %s, %d (%s), %v ago, nowis: %s",
-		seq.lastSubmittedTs.String(), targetTs.String(),
-		timerStart.Format(time.StampNano), timerStart.UnixNano(), ledger.TimeFromClockTime(timerStart).String(), time.Since(timerStart),
-		ledger.TimeNow().String())
 	return true
 }
 
@@ -422,18 +407,7 @@ func (seq *Sequencer) getNextTargetTime() ledger.Time {
 	return targetAbsoluteMinimum
 }
 
-const submitTimeout = 5 * time.Second
-
 func (seq *Sequencer) submitMilestone(tx *transaction.Transaction, meta *txmetadata.TransactionMetadata) *vertex.WrappedTx {
-	start := time.Now()
-	saveLast := seq.lastSubmittedTs
-	if seq.lastSubmittedTs.IsSlotBoundary() && tx.Timestamp().IsSlotBoundary() {
-		defer func() {
-			seq.Log().Infof(">>>>>>>>>>>> submitMilestone %s -> %s took %v",
-				saveLast.String(), tx.Timestamp().String(), time.Since(start))
-		}()
-	}
-
 	logMsg := fmt.Sprintf("SUBMIT milestone %s, ledger now is: %s, proposer: %s",
 		tx.IDShortString(), ledger.TimeNow().String(), tx.SequencerTransactionData().SequencerOutputData.MilestoneData.Name)
 	if seq.VerbosityLevel() > 0 {
@@ -441,7 +415,9 @@ func (seq *Sequencer) submitMilestone(tx *transaction.Transaction, meta *txmetad
 	}
 	seq.Log().Info(logMsg)
 
-	deadline := start.Add(submitTimeout)
+	const submitTimeout = 5 * time.Second
+
+	deadline := time.Now().Add(submitTimeout)
 	vid, err := seq.SequencerMilestoneAttachWait(tx.Bytes(), meta, submitTimeout)
 	if err != nil {
 		seq.Log().Errorf("failed to submit new milestone %s: '%v'", tx.IDShortString(), err)
@@ -554,10 +530,10 @@ func (seq *Sequencer) bootstrapOwnMilestoneOutput() vertex.WrappedOutput {
 	return vertex.WrappedOutput{}
 }
 
-func (seq *Sequencer) StartProposingForTargetLogicalTime(targetTs ledger.Time) (*transaction.Transaction, *txmetadata.TransactionMetadata, error) {
+func (seq *Sequencer) GenerateMilestoneForTarget(targetTs ledger.Time) (*transaction.Transaction, *txmetadata.TransactionMetadata, error) {
 	deadline := targetTs.Time()
 	nowis := time.Now()
-	seq.Tracef(TraceTag, "StartProposingForTargetLogicalTime: target: %s, deadline: %s, nowis: %s",
+	seq.Tracef(TraceTag, "GenerateMilestoneForTarget: target: %s, deadline: %s, nowis: %s",
 		targetTs.String, deadline.Format("15:04:05.999"), nowis.Format("15:04:05.999"))
 
 	if deadline.Before(nowis) {

@@ -162,28 +162,23 @@ func Run(env environment, targetTs ledger.Time) (*transaction.Transaction, *txme
 
 	ownLatest := env.OwnLatestMilestoneOutput().VID
 
-	if !targetTs.IsSlotBoundary() && best.coverage <= ownLatest.GetLedgerCoverage() {
-		return nil, nil, fmt.Errorf("%w: out of %d options", ErrNotGoodEnough, len(proposalsSlice))
+	if ownLatest.Slot() == targetTs.Slot() && best.coverage <= ownLatest.GetLedgerCoverage() {
+		return nil, nil, fmt.Errorf("%w (res: %s, best: %s, %s)",
+			ErrNotGoodEnough, util.Th(best.coverage), ownLatest.IDShortString(), util.Th(ownLatest.GetLedgerCoverage()))
 	}
-
-	//trace := best.extended.VID.IsBranchTransaction() || len(best.endorsing) > 0 && best.endorsing[0].IsBranchTransaction()
-	//if trace {
-	//	env.Log().Infof(">>>>>>>>>>>> task %s selected from: {%s}",
-	//		task.Name, lines.SliceToLines(proposalsSlice).Join(", "))
-	//}
 
 	return best.tx, best.txMetadata, nil
 }
 
-func (t *Task) bestCoverageInTheSlot(slot ledger.Slot) uint64 {
-	all := t.LatestMilestonesDescending(func(seqID ledger.ChainID, vid *vertex.WrappedTx) bool {
-		return vid.Slot() == slot
-	})
-	if len(all) == 0 {
-		return 0
-	}
-	return all[0].GetLedgerCoverage()
-}
+//func (t *Task) bestCoverageInTheSlot(slot ledger.Slot) uint64 {
+//	all := t.LatestMilestonesDescending(func(seqID ledger.ChainID, vid *vertex.WrappedTx) bool {
+//		return vid.Slot() == slot
+//	})
+//	if len(all) == 0 {
+//		return 0
+//	}
+//	return all[0].GetLedgerCoverage()
+//}
 
 func (p *proposal) String() string {
 	endorse := make([]string, 0, len(p.endorsing))
