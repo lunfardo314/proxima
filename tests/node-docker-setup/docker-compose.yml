@@ -14,5 +14,6 @@ services:
       - ./data/proximadb:/app/proximadb
       - ./data/proximadb.txstore:/app/proximadb.txstore
       - ./data/config:/app/config
+      - ./data/snapshot:/app/snapshot
     working_dir: /app     
     command: ["./start.sh"]
