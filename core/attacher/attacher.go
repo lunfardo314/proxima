@@ -481,7 +481,7 @@ func (a *attacher) attachInputsOfTheVertex(v *vertex.Vertex, vid *vertex.Wrapped
 	for i := range v.Inputs {
 		ok, success = a.attachInput(v, byte(i), vid)
 		if !ok {
-			a.Assertf(a.err != nil, "a.err != nil")
+			a.Assertf(a.err != nil || a.IsShuttingDown(), "a.err != nil || a.IsShuttingDown()")
 			return false
 		}
 		if success {
