@@ -22,14 +22,15 @@ import (
 
 type Global struct {
 	*zap.SugaredLogger
-	logVerbosity int
-	ctx          context.Context
-	stopFun      context.CancelFunc
-	logStopOnce  *sync.Once
-	stopOnce     *sync.Once
-	mutex        sync.RWMutex
-	components   set.Set[string]
-	metrics      *prometheus.Registry
+	logVerbosity   int
+	ctx            context.Context
+	stopFun        context.CancelFunc
+	logStopOnce    *sync.Once
+	isShuttingDown atomic.Bool
+	stopOnce       *sync.Once
+	mutex          sync.RWMutex
+	components     set.Set[string]
+	metrics        *prometheus.Registry
 	// statically enabled trace tags
 	enabledTrace   atomic.Bool
 	traceTagsMutex sync.RWMutex
@@ -143,9 +144,14 @@ func (l *Global) MarkWorkProcessStopped(name string) {
 func (l *Global) Stop() {
 	l.Tracef(TraceTag, "Stop")
 	l.stopOnce.Do(func() {
+		l.isShuttingDown.Store(true)
 		l.Log().Info("global STOP invoked..")
 		l.stopFun()
 	})
+}
+
+func (l *Global) IsShuttingDown() bool {
+	return l.isShuttingDown.Load()
 }
 
 func (l *Global) Ctx() context.Context {

@@ -299,7 +299,7 @@ func (a *attacher) attachVertexNonBranch(vid *vertex.WrappedTx) (ok, defined boo
 		a.pokeMe(vid)
 	}
 	// FIXME sometimes fails at global cancel
-	a.Assertf(ok || a.err != nil, "ok || a.err != nil")
+	a.Assertf(a.IsShuttingDown() || ok || a.err != nil, "a.IsShuttingDown() || ok || a.err != nil")
 	return
 }
 

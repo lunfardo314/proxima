@@ -79,6 +79,7 @@ type (
 	StartStop interface {
 		Ctx() context.Context // global context of the node. Canceling means stopping the node
 		Stop()
+		IsShuttingDown() bool
 		ClockCatchUpWithLedgerTime(ts ledger.Time)
 		MarkWorkProcessStarted(name string)
 		MarkWorkProcessStopped(name string)
