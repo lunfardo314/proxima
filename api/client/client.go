@@ -554,7 +554,7 @@ func (c *APIClient) MakeChainOrigin(par TransferFromED25519WalletParams) (*trans
 	if err != nil {
 		return nil, [32]byte{}, err
 	}
-	ts = ledger.MaxTime(ts1.AddTicks(ledger.TransactionPace()), ts)
+	ts = ledger.MaximumTime(ts1.AddTicks(ledger.TransactionPace()), ts)
 
 	err = txb.PutStandardInputUnlocks(len(inps))
 	util.AssertNoError(err)
@@ -635,7 +635,7 @@ func (c *APIClient) DeleteChainOrigin(par DeleteChainOriginParams) (*transaction
 	ts1 := chainIN.Timestamp()
 	consumedIndex, err := txb.ConsumeOutput(chainIN.Output, chainIN.ID)
 	util.AssertNoError(err)
-	ts = ledger.MaxTime(ts1.AddTicks(ledger.TransactionPace()), ts)
+	ts = ledger.MaximumTime(ts1.AddTicks(ledger.TransactionPace()), ts)
 
 	feeAmount := par.TagAlongFee
 

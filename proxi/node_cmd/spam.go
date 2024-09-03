@@ -185,7 +185,7 @@ func standardScenario(cfg spammerConfig) {
 
 func maxTimestamp(outs []*ledger.OutputWithID) (ret ledger.Time) {
 	for _, o := range outs {
-		ret = ledger.MaxTime(ret, o.Timestamp())
+		ret = ledger.MaximumTime(ret, o.Timestamp())
 	}
 	return
 }
@@ -212,7 +212,7 @@ func prepareBundle(walletData glb.WalletData, cfg spammerConfig) ([][]byte, ledg
 		if i == numTx-1 {
 			fee = cfg.tagAlongFee
 		}
-		ts := ledger.MaxTime(maxTimestamp(lastOuts).AddTicks(cfg.pace), ledger.TimeNow())
+		ts := ledger.MaximumTime(maxTimestamp(lastOuts).AddTicks(cfg.pace), ledger.TimeNow())
 		txBytes, err := client.MakeTransferTransaction(client.MakeTransferTransactionParams{
 			Inputs:        lastOuts,
 			Target:        cfg.target.AsLock(),
