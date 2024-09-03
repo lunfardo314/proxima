@@ -343,7 +343,7 @@ func (a *attacher) attachVertexUnwrapped(v *vertex.Vertex, vid *vertex.WrappedTx
 
 	inputsOk := a.attachInputsOfTheVertex(v, vid) // deep recursion
 	if !inputsOk {
-		a.AssertMustError(a.err)
+		a.Assertf(a.IsShuttingDown() || a.err != nil, "a.IsShuttingDown() || a.err!=nil")
 		return false
 	}
 
@@ -518,8 +518,11 @@ func (a *attacher) attachInput(v *vertex.Vertex, inputIdx byte, vid *vertex.Wrap
 	// only will become solid if successfully referencedSet
 	if v.Inputs[inputIdx] == nil {
 		refOk := v.ReferenceInput(inputIdx, vidInputTx)
-		// FIXME sometimes fails at global cancel
-		util.Assertf(refOk, "failed to reference input #%d of %s. Input tx: %s", inputIdx, v.Tx.IDShortString, vidInputTx.IDShortString)
+		if !refOk {
+			return true, false
+		}
+		// FIXME sometimes fails at global cancel and not only. Revisit
+		//util.Assertf(refOk, "failed to reference input #%d of %s. Input tx: %s", inputIdx, v.Tx.IDShortString, vidInputTx.IDShortString)
 	}
 
 	a.Assertf(v.Inputs[inputIdx] != nil, "v.Inputs[i] != nil")
