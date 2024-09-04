@@ -4,7 +4,8 @@ The code should not be used in production!*
 # Proxima: a DAG-based cooperative distributed ledger
 Proxima is as decentralized and permissionless as Bitcoin (*proof-of-work*, PoW). 
 <br>It is similar to *proof-of stake* (PoS), especially because of its energy-efficiency and throughput.
-<br>Yet it is neither PoW, nor a PoS system. It is based on **cooperative consensus**. See [whitepaper](docs/Proxima_WP.pdf).
+<br>Yet it is neither PoW, nor a PoS system. It is based on **cooperative consensus**. See [whitepaper](docs/Proxima_WP.pdf) and 
+[simplified presentation of Proxima concepts](https://hackmd.io/@Evaldas/Sy4Gka1DC).
 
 ## Introduction
 Proxima presents a novel architecture for a distributed ledger, commonly referred to as a "blockchain". 
