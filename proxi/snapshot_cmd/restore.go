@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"time"
 
 	"github.com/dgraph-io/badger/v4"
 	"github.com/lunfardo314/proxima/global"
@@ -31,7 +32,7 @@ func initRestoreCmd() *cobra.Command {
 }
 
 const (
-	trieCacheSize = 10_000
+	trieCacheSize = 5_000
 	batchSize     = 5_000
 )
 
@@ -55,6 +56,8 @@ func runRestoreCmd(_ *cobra.Command, args []string) {
 	glb.Infof("branch ID: %s", kvStream.BranchID.String())
 	glb.Infof("root record:\n%s", kvStream.RootRecord.Lines("    ").String())
 	glb.Infof("ledger id:\n%s", kvStream.LedgerID.Lines("    ").String())
+
+	start := time.Now()
 
 	stateDb := badger_adaptor.MustCreateOrOpenBadgerDB(global.MultiStateDBName, badger.DefaultOptions(global.MultiStateDBName))
 	stateStore := badger_adaptor.New(stateDb)
@@ -98,6 +101,8 @@ func runRestoreCmd(_ *cobra.Command, args []string) {
 			inBatch = 0
 			batch = nil
 			_, _ = fmt.Fprintf(console, "--- commit %d records---\n", batchSize)
+			trieUpdatable, err = immutable.NewTrieUpdatable(ledger.CommitmentModel, stateStore, lastRoot, trieCacheSize)
+			util.AssertNoError(err)
 		}
 	}
 	if !util.IsNil(batch) {
@@ -123,5 +128,5 @@ func runRestoreCmd(_ *cobra.Command, args []string) {
 	for _, k := range util.KeysSorted(counters, func(k1, k2 byte) bool { return k1 < k2 }) {
 		glb.Infof("    %s: %d", multistate.PartitionToString(k), counters[k])
 	}
-
+	glb.Infof("it took %v, %d records/sec", time.Since(start), time.Duration(total)*time.Second/time.Since(start))
 }
