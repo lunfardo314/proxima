@@ -31,8 +31,7 @@ func initRestoreCmd() *cobra.Command {
 }
 
 const (
-	trieCacheSize = 100_000
-	batchSize     = 100_000
+	batchSize = 50_000
 )
 
 func runRestoreCmd(_ *cobra.Command, args []string) {
