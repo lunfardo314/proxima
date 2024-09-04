@@ -464,6 +464,35 @@ func (a *attacher) attachEndorsements(v *vertex.Vertex, vid *vertex.WrappedTx) b
 	}
 	if numUndefined == 0 {
 		a.AssertNoError(a.allEndorsementsDefined(v))
+		// FIXME sometimes leads to inconsistency of flags
+		/*
+			 assertion failed:: flags.FlagsUp(FlagKnown) && !flags.FlagsUp(FlagDefined)
+			github.com/lunfardo314/proxima/global.(*Global).Assertf
+			        /home/lunfardo/go/src/github.com/lunfardo314/proxima/global/global.go:207
+			github.com/lunfardo314/proxima/core/attacher.(*attacher).setFlagsUp
+			        /home/lunfardo/go/src/github.com/lunfardo314/proxima/core/attacher/attacher.go:62
+			github.com/lunfardo314/proxima/core/attacher.(*attacher).attachEndorsements
+			        /home/lunfardo/go/src/github.com/lunfardo314/proxima/core/attacher/attacher.go:467
+			github.com/lunfardo314/proxima/core/attacher.(*attacher).attachVertexUnwrapped
+			        /home/lunfardo/go/src/github.com/lunfardo314/proxima/core/attacher/attacher.go:327
+			github.com/lunfardo314/proxima/core/attacher.(*milestoneAttacher).run.(*milestoneAttacher).solidifyPastCone.func2.1
+			        /home/lunfardo/go/src/github.com/lunfardo314/proxima/core/attacher/attacher_milestone.go:217
+			github.com/lunfardo314/proxima/core/vertex.(*WrappedTx)._unwrap
+			        /home/lunfardo/go/src/github.com/lunfardo314/proxima/core/vertex/vid.go:416
+			github.com/lunfardo314/proxima/core/vertex.(*WrappedTx).Unwrap
+			        /home/lunfardo/go/src/github.com/lunfardo314/proxima/core/vertex/vid.go:402
+			github.com/lunfardo314/proxima/core/attacher.(*milestoneAttacher).run.(*milestoneAttacher).solidifyPastCone.func2
+			        /home/lunfardo/go/src/github.com/lunfardo314/proxima/core/attacher/attacher_milestone.go:215
+			github.com/lunfardo314/proxima/core/attacher.(*milestoneAttacher).lazyRepeat
+			        /home/lunfardo/go/src/github.com/lunfardo314/proxima/core/attacher/attacher_milestone.go:148
+			github.com/lunfardo314/proxima/core/attacher.(*milestoneAttacher).solidifyPastCone
+			        /home/lunfardo/go/src/github.com/lunfardo314/proxima/core/attacher/attacher_milestone.go:212
+			github.com/lunfardo314/proxima/core/attacher.(*milestoneAttacher).run
+			        /home/lunfardo/go/src/github.com/lunfardo314/proxima/core/attacher/attacher_milestone.go:113
+			github.com/lunfardo314/proxima/core/attacher.runMilestoneAttacher
+			        /home/lunfardo/go/src/github.com/lunfardo314/proxima/core/attacher/attacher_milestone.go:40
+			github.com/lunfardo314/proxima/core/attacher.AttachTransaction.func1.1
+			        /home/lunfardo/go/src/github.com/lunfardo314/proxima/core/attacher/attach.go:141		 */
 		a.setFlagsUp(vid, FlagAttachedVertexEndorsementsSolid)
 		a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s): endorsements are all good in %s", a.name, v.Tx.IDShortString)
 	} else {
@@ -665,6 +694,38 @@ func (a *attacher) attachInputID(consumerVertex *vertex.Vertex, consumerTx *vert
 
 	// attach consumer and check for conflicts
 	// LEDGER CONFLICT (DOUBLE-SPEND) DETECTION
+	// FIXME
+	/*
+		assertion failed:: attachInputID: a.isKnownNotRooted(consumerTx)
+		Proxima-Node  | github.com/lunfardo314/proxima/global.(*Global).Assertf
+		Proxima-Node  |         /scratch/global/global.go:207
+		Proxima-Node  | github.com/lunfardo314/proxima/core/attacher.(*attacher).attachInputID
+		Proxima-Node  |         /scratch/core/attacher/attacher.go:668
+		Proxima-Node  | github.com/lunfardo314/proxima/core/attacher.(*attacher).attachInput
+		Proxima-Node  |         /scratch/core/attacher/attacher.go:512
+		Proxima-Node  | github.com/lunfardo314/proxima/core/attacher.(*attacher).attachInputsOfTheVertex
+		Proxima-Node  |         /scratch/core/attacher/attacher.go:481
+		Proxima-Node  | github.com/lunfardo314/proxima/core/attacher.(*attacher).attachVertexUnwrapped
+		Proxima-Node  |         /scratch/core/attacher/attacher.go:343
+		Proxima-Node  | github.com/lunfardo314/proxima/core/attacher.(*milestoneAttacher).solidifyPastCone.func1.1
+		Proxima-Node  |         /scratch/core/attacher/attacher_milestone.go:217
+		Proxima-Node  | github.com/lunfardo314/proxima/core/vertex.(*WrappedTx)._unwrap
+		Proxima-Node  |         /scratch/core/vertex/vid.go:416
+		Proxima-Node  | github.com/lunfardo314/proxima/core/vertex.(*WrappedTx).Unwrap
+		Proxima-Node  |         /scratch/core/vertex/vid.go:402
+		Proxima-Node  | github.com/lunfardo314/proxima/core/attacher.(*milestoneAttacher).solidifyPastCone.func1
+		Proxima-Node  |         /scratch/core/attacher/attacher_milestone.go:215
+		Proxima-Node  | github.com/lunfardo314/proxima/core/attacher.(*milestoneAttacher).lazyRepeat
+		Proxima-Node  |         /scratch/core/attacher/attacher_milestone.go:148
+		Proxima-Node  | github.com/lunfardo314/proxima/core/attacher.(*milestoneAttacher).solidifyPastCone
+		Proxima-Node  |         /scratch/core/attacher/attacher_milestone.go:212
+		Proxima-Node  | github.com/lunfardo314/proxima/core/attacher.(*milestoneAttacher).run
+		Proxima-Node  |         /scratch/core/attacher/attacher_milestone.go:113
+		Proxima-Node  | github.com/lunfardo314/proxima/core/attacher.runMilestoneAttacher
+		Proxima-Node  |         /scratch/core/attacher/attacher_milestone.go:40
+		Proxima-Node  | github.com/lunfardo314/proxima/core/attacher.AttachTransaction.func1.1
+		Proxima-Node  |         /scratch/core/attacher/attach.go:141
+	*/
 	a.Assertf(a.isKnownNotRooted(consumerTx), "attachInputID: a.isKnownNotRooted(consumerTx)")
 
 	if conflict := vidInputTx.AttachConsumer(inputOid.Index(), consumerTx, a.checkConflictsFunc(consumerVertex, consumerTx)); conflict != nil {
