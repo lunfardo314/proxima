@@ -3,8 +3,6 @@ package snapshot
 import (
 	"io"
 	"os"
-	"path/filepath"
-	"sort"
 	"time"
 
 	"github.com/lunfardo314/proxima/global"
@@ -97,34 +95,9 @@ func (s *Snapshot) doSnapshot() {
 }
 
 func (s *Snapshot) purgeOldSnapshots() {
-	entries, err := os.ReadDir(s.directory)
+	err := util.PurgeFilesInDirectory(s.directory, "*.snapshot", s.keepLatest)
 	if err != nil {
 		s.Log().Errorf("[snapshot] purgeOldSnapshots: %v", err)
 		return
-	}
-
-	entries = util.PurgeSlice(entries, func(entry os.DirEntry) bool {
-		// remain only regular files
-		if _, err := entry.Info(); err != nil {
-			return false
-		}
-		return entry.Type()&os.ModeType == 0
-	})
-
-	if len(entries) <= s.keepLatest {
-		return
-	}
-
-	sort.Slice(entries, func(i, j int) bool {
-		fii, _ := entries[i].Info()
-		fij, _ := entries[j].Info()
-		return fii.ModTime().Before(fij.ModTime())
-	})
-
-	for _, entry := range entries[:len(entries)-s.keepLatest] {
-		fpath := filepath.Join(s.directory, entry.Name())
-		if err = os.Remove(fpath); err != nil {
-			s.Log().Errorf("[snapshot] failed to remove file %s", fpath)
-		}
 	}
 }

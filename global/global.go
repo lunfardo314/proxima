@@ -76,6 +76,10 @@ func NewFromConfig() *Global {
 				savedPrev = out + fmt.Sprintf(".%d", uint32(time.Now().Unix()))
 				err := os.Rename(out, savedPrev)
 				util.AssertNoError(err)
+
+				keepLatest := viper.GetInt("logger.keep_latest_logs")
+				err = util.PurgeFilesInDirectory(".", out+"*", keepLatest)
+				util.AssertNoError(err)
 			}
 		}
 	}
