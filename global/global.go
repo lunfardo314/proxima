@@ -203,7 +203,7 @@ func (l *Global) WaitAllWorkProcessesStop(timeout ...time.Duration) bool {
 }
 
 func (l *Global) Assertf(cond bool, format string, args ...any) {
-	if !cond {
+	if !l.isShuttingDown.Load() && !cond {
 		l.SugaredLogger.Fatalf("assertion failed:: "+format, util.EvalLazyArgs(args...)...)
 	}
 }

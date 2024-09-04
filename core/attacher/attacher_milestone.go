@@ -215,12 +215,16 @@ func (a *milestoneAttacher) solidifyPastCone() vertex.Status {
 		a.vid.Unwrap(vertex.UnwrapOptions{
 			Vertex: func(v *vertex.Vertex) {
 				if ok = a.attachVertexUnwrapped(v, a.vid); !ok {
-					util.AssertMustError(a.err)
+					if !a.IsShuttingDown() {
+						util.AssertMustError(a.err)
+					}
 					return
 				}
 				if ok, finalSuccess = a.validateSequencerTxUnwrapped(v); !ok {
-					util.AssertMustError(a.err)
-					v.UnReferenceDependencies()
+					if !a.IsShuttingDown() {
+						util.AssertMustError(a.err)
+						v.UnReferenceDependencies()
+					}
 				}
 			},
 		})
