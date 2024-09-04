@@ -1,5 +1,7 @@
-*Warning! This repository contains an ongoing development. Currently, it is in an experimental (prototype) version. It definitely contains bugs.
+*Warning! This repository contains an ongoing development. Currently, it is in an early alpha version. It definitely contains bugs.
 The code should not be used in production!*
+
+*For up-to-date information see `develop` branch*
 
 # Proxima: a DAG-based cooperative distributed ledger
 Proxima is as decentralized and permissionless as Bitcoin (*proof-of-work*, PoW). 
