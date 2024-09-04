@@ -114,7 +114,7 @@ func (a *milestoneAttacher) run() error {
 
 	if status != vertex.Good {
 		a.Tracef(TraceTagAttachMilestone, "past cone solidification failed. Reason: %v", a.err)
-		a.AssertMustError(a.err)
+		a.Assertf(a.err != nil, "a.err!=nil")
 		return a.err
 	}
 	a.Tracef(TraceTagAttachMilestone, "past cone OK")
@@ -215,16 +215,12 @@ func (a *milestoneAttacher) solidifyPastCone() vertex.Status {
 		a.vid.Unwrap(vertex.UnwrapOptions{
 			Vertex: func(v *vertex.Vertex) {
 				if ok = a.attachVertexUnwrapped(v, a.vid); !ok {
-					if !a.IsShuttingDown() {
-						util.AssertMustError(a.err)
-					}
+					a.Assertf(a.err != nil, "a.err != nil")
 					return
 				}
 				if ok, finalSuccess = a.validateSequencerTxUnwrapped(v); !ok {
-					if !a.IsShuttingDown() {
-						util.AssertMustError(a.err)
-						v.UnReferenceDependencies()
-					}
+					a.Assertf(a.err != nil, "a.err != nil")
+					v.UnReferenceDependencies()
 				}
 			},
 		})

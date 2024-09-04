@@ -200,7 +200,7 @@ func (a *attacher) solidifyStemOfTheVertex(v *vertex.Vertex) (ok bool) {
 		return true
 	case vertex.Bad:
 		err := stemVid.GetError()
-		a.AssertMustError(err)
+		a.Assertf(err != nil, "err!=nil")
 		a.setError(err)
 		return false
 	case vertex.Undefined:
@@ -248,7 +248,7 @@ func (a *attacher) solidifySequencerBaseline(v *vertex.Vertex) (ok bool) {
 		return true
 	case vertex.Bad:
 		err := inputTx.GetError()
-		a.AssertMustError(err)
+		a.Assertf(err != nil, "err!=nil")
 		a.setError(err)
 		return false
 	default:
@@ -298,8 +298,7 @@ func (a *attacher) attachVertexNonBranch(vid *vertex.WrappedTx) (ok, defined boo
 	if !defined {
 		a.pokeMe(vid)
 	}
-	// FIXME sometimes fails at global cancel
-	a.Assertf(a.IsShuttingDown() || ok || a.err != nil, "a.IsShuttingDown() || ok || a.err != nil")
+	a.Assertf(ok || a.err != nil, "ok || a.err != nil")
 	return
 }
 
@@ -343,13 +342,13 @@ func (a *attacher) attachVertexUnwrapped(v *vertex.Vertex, vid *vertex.WrappedTx
 
 	inputsOk := a.attachInputsOfTheVertex(v, vid) // deep recursion
 	if !inputsOk {
-		a.Assertf(a.IsShuttingDown() || a.err != nil, "a.IsShuttingDown() || a.err!=nil")
+		a.Assertf(a.err != nil, "a.err!=nil")
 		return false
 	}
 
 	if !v.Tx.IsSequencerMilestone() && a.flags(vid).FlagsUp(FlagAttachedVertexInputsSolid) {
 		if !a.finalTouchNonSequencer(v, vid) {
-			a.AssertMustError(a.err)
+			a.Assertf(a.err != nil, "a.err!=nil")
 			return false
 		}
 	}
@@ -455,7 +454,7 @@ func (a *attacher) attachEndorsements(v *vertex.Vertex, vid *vertex.WrappedTx) b
 		if !ok {
 			a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s): attachVertexNonBranch returned: endorsement %s -> %s NOT OK",
 				a.name, vid.IDShortString, vidEndorsed.IDShortString)
-			a.AssertMustError(a.err)
+			a.Assertf(a.err != nil, "a.err!=nil")
 			return false
 		}
 		a.AssertNoError(a.err)
@@ -481,7 +480,7 @@ func (a *attacher) attachInputsOfTheVertex(v *vertex.Vertex, vid *vertex.Wrapped
 	for i := range v.Inputs {
 		ok, success = a.attachInput(v, byte(i), vid)
 		if !ok {
-			a.Assertf(a.err != nil || a.IsShuttingDown(), "a.err != nil || a.IsShuttingDown()")
+			a.Assertf(a.err != nil, "a.err != nil")
 			return false
 		}
 		if success {

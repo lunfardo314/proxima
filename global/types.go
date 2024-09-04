@@ -66,9 +66,9 @@ type (
 		Log() *zap.SugaredLogger
 		Tracef(tag string, format string, args ...any)
 		TraceTx(txid *ledger.TransactionID, format string, args ...any)
+		// Assertf asserts only if global shutdown wasn't issued
 		Assertf(cond bool, format string, args ...any)
 		AssertNoError(err error, prefix ...string)
-		AssertMustError(err error)
 		VerbosityLevel() int
 		Infof0(template string, args ...any)
 		Infof1(template string, args ...any)
