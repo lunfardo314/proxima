@@ -142,11 +142,11 @@ type (
 )
 
 const (
-	FlagAttachedVertexKnown             = 0b00000001
-	FlagAttachedVertexDefined           = 0b00000010
-	FlagAttachedVertexEndorsementsSolid = 0b00000100
-	FlagAttachedVertexInputsSolid       = 0b00001000
-	FlagAttachedVertexAskedForPoke      = 0b00010000
+	flagAttachedVertexKnown             = Flags(0b00000001)
+	flagAttachedVertexDefined           = Flags(0b00000010)
+	flagAttachedVertexEndorsementsSolid = Flags(0b00000100)
+	flagAttachedVertexInputsSolid       = Flags(0b00001000)
+	flagAttachedVertexAskedForPoke      = Flags(0b00010000)
 )
 
 // PullTimeout maximum time allowed for the virtual txid become transaction (full vertex)
@@ -161,11 +161,11 @@ func (f Flags) FlagsUp(fl Flags) bool {
 func (f Flags) String() string {
 	return fmt.Sprintf("%08b known = %v, defined = %v, endorsementsOk = %v, inputsOk = %v, asked for poke = %v",
 		f,
-		f.FlagsUp(FlagAttachedVertexKnown),
-		f.FlagsUp(FlagAttachedVertexDefined),
-		f.FlagsUp(FlagAttachedVertexEndorsementsSolid),
-		f.FlagsUp(FlagAttachedVertexInputsSolid),
-		f.FlagsUp(FlagAttachedVertexAskedForPoke),
+		f.FlagsUp(flagAttachedVertexKnown),
+		f.FlagsUp(flagAttachedVertexDefined),
+		f.FlagsUp(flagAttachedVertexEndorsementsSolid),
+		f.FlagsUp(flagAttachedVertexInputsSolid),
+		f.FlagsUp(flagAttachedVertexAskedForPoke),
 	)
 }
 

@@ -52,10 +52,10 @@ func (a *milestoneAttacher) _checkConsistencyBeforeFinalization() (err error) {
 		return
 	}
 	for vid, flags := range a.vertices {
-		if !flags.FlagsUp(FlagAttachedVertexKnown) {
+		if !flags.FlagsUp(flagAttachedVertexKnown) {
 			return fmt.Errorf("wrong flags 1 %08b in %s", flags, vid.IDShortString())
 		}
-		if !flags.FlagsUp(FlagAttachedVertexDefined) && vid != a.vid {
+		if !flags.FlagsUp(flagAttachedVertexDefined) && vid != a.vid {
 			return fmt.Errorf("wrong flags 2 %08b in %s", flags, vid.IDShortString())
 		}
 		if vid == a.vid {

@@ -105,10 +105,8 @@ func (vid *WrappedTx) SetTxStatusGood() {
 	vid.mutex.Lock()
 	defer vid.mutex.Unlock()
 
-	util.Assertf(vid.GetTxStatusNoLock() != Bad, "vid.GetTxStatusNoLock() != Bad (%s)", vid.IDShortString)
+	util.Assertf(vid.GetTxStatusNoLock() != Bad, "vid.GetTxStatusNoLock() != Bad (%s)", vid.StringNoLock)
 
-	//util.Assertf(vid.GetTxStatusNoLock() == Undefined, "vid.GetTxStatusNoLock() == Undefined (%s, %s)",
-	//	vid.IDShortString, vid.GetTxStatusNoLock().String)
 	vid.flags.SetFlagsUp(FlagVertexDefined)
 }
 
