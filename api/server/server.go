@@ -73,6 +73,8 @@ func (srv *Server) registerHandlers() {
 }
 
 func (srv *Server) getLedgerID(w http.ResponseWriter, r *http.Request) {
+	setHeader(w)
+
 	srv.Tracef(TraceTag, "getLedgerID invoked")
 
 	resp := &api.LedgerID{
@@ -89,6 +91,7 @@ func (srv *Server) getLedgerID(w http.ResponseWriter, r *http.Request) {
 
 func (srv *Server) getAccountOutputs(w http.ResponseWriter, r *http.Request) {
 	srv.Tracef(TraceTag, "getAccountOutputs invoked")
+	setHeader(w)
 
 	lst, ok := r.URL.Query()["accountable"]
 	if !ok || len(lst) != 1 {
@@ -130,6 +133,7 @@ func (srv *Server) getAccountOutputs(w http.ResponseWriter, r *http.Request) {
 
 func (srv *Server) getChainOutput(w http.ResponseWriter, r *http.Request) {
 	srv.Tracef(TraceTag, "getChainOutput invoked")
+	setHeader(w)
 
 	lst, ok := r.URL.Query()["chainid"]
 	if !ok || len(lst) != 1 {
@@ -167,6 +171,7 @@ func (srv *Server) getChainOutput(w http.ResponseWriter, r *http.Request) {
 
 func (srv *Server) getOutput(w http.ResponseWriter, r *http.Request) {
 	srv.Tracef(TraceTag, "getOutput invoked")
+	setHeader(w)
 
 	lst, ok := r.URL.Query()["id"]
 	if !ok || len(lst) != 1 {
@@ -212,6 +217,7 @@ const (
 
 func (srv *Server) submitTx(w http.ResponseWriter, r *http.Request) {
 	srv.Tracef(TraceTag, "submitTx invoked")
+	setHeader(w)
 
 	if r.Method != "POST" {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -262,6 +268,8 @@ func (srv *Server) submitTx(w http.ResponseWriter, r *http.Request) {
 }
 
 func (srv *Server) getSyncInfo(w http.ResponseWriter, r *http.Request) {
+	setHeader(w)
+
 	syncInfo := srv.GetSyncInfo()
 	respBin, err := json.MarshalIndent(syncInfo, "", "  ")
 	if err != nil {
@@ -273,6 +281,8 @@ func (srv *Server) getSyncInfo(w http.ResponseWriter, r *http.Request) {
 }
 
 func (srv *Server) getPeersInfo(w http.ResponseWriter, r *http.Request) {
+	setHeader(w)
+
 	peersInfo := srv.GetPeersInfo()
 	respBin, err := json.MarshalIndent(peersInfo, "", "  ")
 	if err != nil {
@@ -284,6 +294,8 @@ func (srv *Server) getPeersInfo(w http.ResponseWriter, r *http.Request) {
 }
 
 func (srv *Server) getNodeInfo(w http.ResponseWriter, r *http.Request) {
+	setHeader(w)
+
 	nodeInfo := srv.GetNodeInfo()
 	respBin, err := json.MarshalIndent(nodeInfo, "", "  ")
 	if err != nil {
@@ -298,6 +310,7 @@ const maxSlotsSpan = 10
 
 func (srv *Server) queryTxStatus(w http.ResponseWriter, r *http.Request) {
 	srv.Tracef(TraceTag, "queryTxStatus invoked")
+	setHeader(w)
 
 	var txid ledger.TransactionID
 	var err error
@@ -369,6 +382,7 @@ const TraceTagQueryInclusion = "inclusion"
 
 func (srv *Server) queryTxInclusionScore(w http.ResponseWriter, r *http.Request) {
 	srv.Tracef(TraceTagQueryInclusion, "queryTxInclusionScore invoked")
+	setHeader(w)
 
 	var txid ledger.TransactionID
 	var err error
@@ -461,4 +475,9 @@ func RunOn(addr string, env Environment) {
 	srv.registerHandlers()
 	err := http.ListenAndServe(addr, nil)
 	util.AssertNoError(err)
+}
+
+func setHeader(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 }
