@@ -71,6 +71,7 @@ func (vid *WrappedTx) ConvertVirtualTxToVertexNoLock(v *Vertex) {
 	if v.Tx.IsSequencerMilestone() {
 		vid.SequencerID.Store(util.Ref(v.Tx.SequencerTransactionData().SequencerID))
 	}
+	vid.pullDeadline.Store(nil)
 }
 
 // ConvertVertexToVirtualTx detaches past cone and leaves only a collection of produced outputs
@@ -160,11 +161,17 @@ func (vid *WrappedTx) IsBadOrDeleted() bool {
 	return vid.GetTxStatusNoLock() == Bad || vid.numReferences == 0
 }
 
-func (vid *WrappedTx) IsDeleted() bool {
-	vid.mutex.RLock()
-	defer vid.mutex.RUnlock()
+func (vid *WrappedTx) setPullDeadline(deadline time.Time) {
+	dl := new(time.Time)
+	*dl = deadline
+	vid.pullDeadline.Store(dl)
+}
 
-	return vid.numReferences == 0
+func (vid *WrappedTx) IsPullDeadlineDue() bool {
+	if dl := vid.pullDeadline.Load(); dl != nil {
+		return dl.Before(time.Now())
+	}
+	return false
 }
 
 func (vid *WrappedTx) StatusString() string {
@@ -190,10 +197,18 @@ func (vid *WrappedTx) Poke() {
 	vid.onPoke.Load().(func())()
 }
 
-func WrapTxID(txid ledger.TransactionID) *WrappedTx {
-	return _newVID(_virtualTx{
+// WrapTxID creates VID with virtualTx which only contains txid.
+// Also sets solidification deadline, after which IsPullDeadlineDue will start returning true
+// The pull deadline will be dropped after transaction will become available and virtualTx will be converted
+// to full vertex
+func WrapTxID(txid ledger.TransactionID, pullTimeout ...time.Duration) *WrappedTx {
+	ret := _newVID(_virtualTx{
 		VirtualTransaction: newVirtualTx(),
 	}, txid, nil)
+	if len(pullTimeout) > 0 {
+		ret.setPullDeadline(time.Now().Add(pullTimeout[0]))
+	}
+	return ret
 }
 
 func (vid *WrappedTx) ShortString() string {

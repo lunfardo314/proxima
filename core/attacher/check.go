@@ -51,12 +51,6 @@ func (a *milestoneAttacher) _checkConsistencyBeforeFinalization() (err error) {
 		err = fmt.Errorf("sum of rooted cannot be 0")
 		return
 	}
-	//if sumRooted+a.coverageAdjustment != a.accumulatedCoverage.LatestDelta() {
-	//	err = fmt.Errorf("sum of amounts of rooted outputs %s is not equal to the accumulatedCoverage sumRooted+coverageAdjustment %s",
-	//		util.Th(sumRooted), util.Th(a.accumulatedCoverage.LatestDelta()))
-	//	return
-	//}
-
 	for vid, flags := range a.vertices {
 		if !flags.FlagsUp(FlagAttachedVertexKnown) {
 			return fmt.Errorf("wrong flags 1 %08b in %s", flags, vid.IDShortString())

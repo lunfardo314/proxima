@@ -2,6 +2,7 @@ package attacher
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -147,6 +148,11 @@ const (
 	FlagAttachedVertexInputsSolid       = 0b00001000
 	FlagAttachedVertexAskedForPoke      = 0b00010000
 )
+
+// PullTimeout maximum time allowed for the virtual txid become transaction (full vertex)
+const PullTimeout = 5 * time.Second
+
+var ErrSolidificationDeadline = errors.New("solidification deadline")
 
 func (f Flags) FlagsUp(fl Flags) bool {
 	return f&fl == fl

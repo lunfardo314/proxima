@@ -40,7 +40,7 @@ func AttachTxID(txid ledger.TransactionID, env Environment, opts ...AttachTxOpti
 		// it is new
 		if !txid.IsBranchTransaction() {
 			// if not branch -> just place the empty virtualTx on the utangle, no further action
-			vid = vertex.WrapTxID(txid)
+			vid = vertex.WrapTxID(txid, PullTimeout)
 			env.AddVertexNoLock(vid)
 			if options.pullNonBranch {
 				env.Tracef(TraceTagAttach, "AttachTxID: pull new ID %s%s", txid.StringShort, by)
@@ -52,7 +52,7 @@ func AttachTxID(txid ledger.TransactionID, env Environment, opts ...AttachTxOpti
 		// it is a branch transaction
 		if options.doNotLoadBranch {
 			// only needed ID (for call from the AttachTransaction)
-			vid = vertex.WrapTxID(txid)
+			vid = vertex.WrapTxID(txid, PullTimeout)
 			env.AddVertexNoLock(vid)
 			return
 		}
@@ -70,9 +70,9 @@ func AttachTxID(txid ledger.TransactionID, env Environment, opts ...AttachTxOpti
 			env.TraceTx(&txid, "AttachTxID: branch fetched from the state")
 
 		} else {
-			// the corresponding state is not in the multistate DB -> put virtualTx to the utangle_old -> pull it
+			// the corresponding state is not in the multistate DB -> put virtualTx to the utangle -> pull it
 			// the puller will trigger further solidification
-			vid = vertex.WrapTxID(txid)
+			vid = vertex.WrapTxID(txid, PullTimeout)
 			env.AddVertexNoLock(vid)
 			env.Pull(txid, "AttachTxID-2") // always pull new branch. This will spin off sync process on the node
 			env.Tracef(TraceTagAttach, "AttachTxID: added new branch vertex and pulled %s%s", txid.StringShort(), by)
