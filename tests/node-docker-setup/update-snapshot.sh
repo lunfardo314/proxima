@@ -1,47 +1,18 @@
 #!/bin/bash
 
-# Variables
-REMOTE_USER="hd"                # Remote username
-REMOTE_HOST="185.139.228.149"   # Remote host IP or domain
-REMOTE_DIR="/home/hd"           # Remote directory to search
-LOCAL_SAVE_PATH="./data"  # Local path where the file will be saved
-PASSWORD=""        # Password for SSH (use with caution)
+# URL of the directory (without the trailing slash)
+URL="http://83.229.84.197/shared"
 
-# Check if local save directory exists
-if [ ! -d "$(dirname "$LOCAL_SAVE_PATH")" ]; then
-    echo "Error: Local save directory does not exist."
-    exit 1
-fi
+# Fetch the directory listing, sort by modification date, and extract the most recent file
+#RECENT_FILE=$(curl -s $URL | grep -Eo 'href="[^"]+"' | sed 's/href="//g' | sed 's/"//g' | grep -v "/$" | grep -v "index.html" | sort | tail -n 1)
+RECENT_FILE=$(curl -s $URL | grep -Eo 'href="[^"]+"' | sed 's/href="//g' | sed 's/"//g' | grep -v "/$" | tail -n 1)
 
-read -p "Enter the password: " PASSWORD
-
-
-if [ ! -d "${LOCAL_SAVE_PATH}" ]; then
-    mkdir "${LOCAL_SAVE_PATH}"
-fi
-
-# Find the most recent file in the remote directory
-RECENT_FILE=$(sshpass -p "$PASSWORD" ssh "${REMOTE_USER}@${REMOTE_HOST}" "ls -t ${REMOTE_DIR} | head -n 1")
-
-if [ -z "$RECENT_FILE" ]; then
-    echo "No files found in the remote directory."
-    exit 1
-fi
-
-# Full remote file path
-REMOTE_FILE_PATH="${REMOTE_DIR}/${RECENT_FILE}"
-
-echo "Most recent file found: ${REMOTE_FILE_PATH}"
-
-# Download the most recent file
-sshpass -p "$PASSWORD" scp "${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_FILE_PATH}" "${LOCAL_SAVE_PATH}"
-
-# Check if the scp command was successful
-if [ $? -eq 0 ]; then
-    echo "File downloaded successfully to ${LOCAL_SAVE_PATH}"
+# If a file is found, download it
+if [ -n "$RECENT_FILE" ]; then
+    echo "Downloading the most recent file: $RECENT_FILE"
+    wget "${URL}/${RECENT_FILE}" -P ./data/${RECENT_FILE}
 else
-    echo "Failed to download file from ${REMOTE_HOST}"
-    exit 1
+    echo "No files found in the directory."
 fi
 
 sudo rm -rf "${LOCAL_SAVE_PATH}/proximadb.txstore"
