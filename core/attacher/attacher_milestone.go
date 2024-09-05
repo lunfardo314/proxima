@@ -203,8 +203,7 @@ func (a *milestoneAttacher) solidifyBaseline() vertex.Status {
 
 		a.vid.Unwrap(vertex.UnwrapOptions{
 			Vertex: func(v *vertex.Vertex) {
-				flags := a.vid.FlagsNoLock()
-				a.Assertf(a.vid.GetTxStatusNoLock() == vertex.Undefined, "a.vid.GetTxStatusNoLock() == vertex.Undefined:\nflags: %s", flags.String)
+				a.Assertf(a.vid.GetTxStatusNoLock() == vertex.Undefined, "a.vid.GetTxStatusNoLock() == vertex.Undefined:\n%s", a.vid.StringNoLock)
 
 				if err := checkSolidificationDeadline(v); err != nil {
 					a.setError(err)

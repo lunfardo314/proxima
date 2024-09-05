@@ -461,6 +461,32 @@ func (vid *WrappedTx) Lines(prefix ...string) *lines.Lines {
 	return ret
 }
 
+func (vid *WrappedTx) LinesNoLock(prefix ...string) *lines.Lines {
+	ret := lines.New(prefix...)
+	_, isVertex := vid._genericVertex.(*_vertex)
+	ret.Add("ID: %s", vid.ID.StringShort()).
+		Add("Vertex: %v", isVertex).
+		Add("Flags: %s", vid.flags.String()).
+		Add("Err: %v", vid.err).
+		Add("Refs: %d", vid.numReferences)
+	if seqID := vid.SequencerID.Load(); seqID == nil {
+		ret.Add("Seq ID: <nil>")
+	} else {
+		ret.Add("Seq ID: %s", seqID.StringShort())
+	}
+	if seqID := vid.SequencerID.Load(); seqID == nil {
+		ret.Add("Seq ID: <nil>")
+	} else {
+		ret.Add("Seq ID: %s", seqID.StringShort())
+	}
+	ret.Add("IsPullDeadlineDue: %v", vid.IsPullDeadlineDue())
+	return ret
+}
+
+func (vid *WrappedTx) StringNoLock() string {
+	return vid.Lines("   ").String()
+}
+
 func (vid *WrappedTx) NumInputs() int {
 	ret := 0
 	vid.RUnwrap(UnwrapOptions{Vertex: func(v *Vertex) {
