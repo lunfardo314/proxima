@@ -484,7 +484,7 @@ func (vid *WrappedTx) LinesNoLock(prefix ...string) *lines.Lines {
 }
 
 func (vid *WrappedTx) StringNoLock() string {
-	return vid.Lines("   ").String()
+	return vid.LinesNoLock("   ").String()
 }
 
 func (vid *WrappedTx) NumInputs() int {
