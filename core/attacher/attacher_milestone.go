@@ -188,6 +188,7 @@ func (a *milestoneAttacher) solidifyBaseline() vertex.Status {
 			Vertex: func(v *vertex.Vertex) {
 				if err := checkSolidificationDeadline(v); err != nil {
 					a.setError(err)
+					ok = false
 					return
 				}
 				ok = a.solidifyBaselineVertex(v)
@@ -214,7 +215,7 @@ func (a *milestoneAttacher) solidifyBaseline() vertex.Status {
 // solidifyPastCone solidifies and validates sequencer transaction in the context of known baseline state
 func (a *milestoneAttacher) solidifyPastCone() vertex.Status {
 	return a.lazyRepeat(func() (status vertex.Status) {
-		ok := true
+		ok := false
 		finalSuccess := false
 		a.vid.Unwrap(vertex.UnwrapOptions{
 			Vertex: func(v *vertex.Vertex) {
