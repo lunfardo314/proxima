@@ -79,6 +79,7 @@ func (vid *WrappedTx) ConvertVertexToVirtualTx() {
 	vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
 		vid._put(_virtualTx{VirtualTxFromTx(v.Tx)})
 		v.UnReferenceDependencies()
+		vid.pullDeadline.Store(nil)
 	}})
 }
 

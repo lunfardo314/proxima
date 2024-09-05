@@ -115,24 +115,24 @@ func newMilestoneAttacher(vid *vertex.WrappedTx, env Environment, metadata *txme
 
 func (a *milestoneAttacher) run() error {
 	// first solidify baseline state
-	status := a.solidifyBaseline()
-	if status != vertex.Good {
+
+	if status := a.solidifyBaseline(); status != vertex.Good {
 		a.Tracef(TraceTagAttachMilestone, "baseline solidification failed. Reason: %v", a.err)
 		util.AssertMustError(a.err)
 		return a.err
 	}
 
 	a.Assertf(a.baseline != nil, "a.baseline != nil")
-	// then continue with the rest
 	a.Tracef(TraceTagAttachMilestone, "baseline is OK <- %s", a.baseline.IDShortString)
 
-	status = a.solidifyPastCone()
+	// then solidify past cone
 
-	if status != vertex.Good {
+	if status := a.solidifyPastCone(); status != vertex.Good {
 		a.Tracef(TraceTagAttachMilestone, "past cone solidification failed. Reason: %v", a.err)
 		a.Assertf(a.err != nil, "a.err!=nil")
 		return a.err
 	}
+
 	a.Tracef(TraceTagAttachMilestone, "past cone OK")
 	a.AssertNoError(a.err)
 
@@ -158,6 +158,7 @@ func (a *milestoneAttacher) run() error {
 	return nil
 }
 
+// lazyRepeat repeats closure until it returns Good or Bad
 func (a *milestoneAttacher) lazyRepeat(fun func() vertex.Status) vertex.Status {
 	for {
 		// repeat until becomes defined or interrupted
@@ -196,31 +197,35 @@ func (a *milestoneAttacher) close() {
 func (a *milestoneAttacher) solidifyBaseline() vertex.Status {
 	return a.lazyRepeat(func() vertex.Status {
 		ok := false
-		success := false
+		finalSuccess := false
 		util.Assertf(a.vid.FlagsUp(vertex.FlagVertexTxAttachmentStarted), "AttachmentStarted flag must be up")
 		util.Assertf(!a.vid.FlagsUp(vertex.FlagVertexTxAttachmentFinished), "AttachmentFinished flag must be down")
 
 		a.vid.Unwrap(vertex.UnwrapOptions{
 			Vertex: func(v *vertex.Vertex) {
+				a.Assertf(a.vid.GetTxStatusNoLock() == vertex.Undefined, "a.vid.GetTxStatusNoLock() == vertex.Undefined")
+
 				if err := checkSolidificationDeadline(v); err != nil {
 					a.setError(err)
 					ok = false
 					return
 				}
+
 				ok = a.solidifyBaselineVertex(v)
 				if ok && v.BaselineBranch != nil {
-					success = a.setBaseline(v.BaselineBranch, a.vid.Timestamp())
-					a.Assertf(success, "solidifyBaseline %s: failed to set baseline", a.name)
+					finalSuccess = a.setBaseline(v.BaselineBranch, a.vid.Timestamp())
+					a.Assertf(finalSuccess, "solidifyBaseline %s: failed to set baseline", a.name)
 				}
 			},
 			VirtualTx: func(_ *vertex.VirtualTransaction) {
 				a.Log().Fatalf("solidifyBaseline: unexpected virtual tx %s", a.vid.IDShortString())
 			},
 		})
+
 		switch {
 		case !ok:
 			return vertex.Bad
-		case success:
+		case finalSuccess:
 			return vertex.Good
 		default:
 			return vertex.Undefined
@@ -235,6 +240,8 @@ func (a *milestoneAttacher) solidifyPastCone() vertex.Status {
 		finalSuccess := false
 		a.vid.Unwrap(vertex.UnwrapOptions{
 			Vertex: func(v *vertex.Vertex) {
+				a.Assertf(a.vid.GetTxStatusNoLock() == vertex.Undefined, "a.vid.GetTxStatusNoLock() == vertex.Undefined")
+
 				if err := checkSolidificationDeadline(v); err != nil {
 					a.setError(err)
 					ok = false
@@ -246,6 +253,7 @@ func (a *milestoneAttacher) solidifyPastCone() vertex.Status {
 				}
 				if ok, finalSuccess = a.validateSequencerTxUnwrapped(v); !ok {
 					a.Assertf(a.err != nil, "a.err != nil")
+					// dispose vertex
 					v.UnReferenceDependencies()
 				}
 			},
