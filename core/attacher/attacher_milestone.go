@@ -10,6 +10,7 @@ import (
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/proxima/util/checkpoints"
 )
 
 // TODO handle attaching timeout otherwise attackable
@@ -159,7 +160,13 @@ func (a *milestoneAttacher) run() error {
 }
 
 // lazyRepeat repeats closure until it returns Good or Bad
-func (a *milestoneAttacher) lazyRepeat(fun func() vertex.Status) vertex.Status {
+func (a *milestoneAttacher) lazyRepeat(loopName string, fun func() vertex.Status) vertex.Status {
+	checkName := a.Name() + "_" + loopName
+	checkpoint := checkpoints.New(func(name string) {
+		a.Log().Warnf(">>>>>>>> STUCK loop '%s'")
+	})
+	defer checkpoint.Close()
+
 	for {
 		// repeat until becomes defined or interrupted
 		if status := fun(); status != vertex.Undefined {
@@ -178,6 +185,7 @@ func (a *milestoneAttacher) lazyRepeat(fun func() vertex.Status) vertex.Status {
 			a.finals.numPeriodic++
 			a.Tracef(TraceTagAttachMilestone, "periodic check")
 		}
+		checkpoint.Check(checkName, 5*time.Second)
 	}
 }
 
@@ -195,7 +203,7 @@ func (a *milestoneAttacher) close() {
 }
 
 func (a *milestoneAttacher) solidifyBaseline() vertex.Status {
-	return a.lazyRepeat(func() vertex.Status {
+	return a.lazyRepeat("baseline solidification", func() vertex.Status {
 		ok := false
 		finalSuccess := false
 		util.Assertf(a.vid.FlagsUp(vertex.FlagVertexTxAttachmentStarted), "AttachmentStarted flag must be up")
@@ -235,7 +243,7 @@ func (a *milestoneAttacher) solidifyBaseline() vertex.Status {
 
 // solidifyPastCone solidifies and validates sequencer transaction in the context of known baseline state
 func (a *milestoneAttacher) solidifyPastCone() vertex.Status {
-	return a.lazyRepeat(func() (status vertex.Status) {
+	return a.lazyRepeat("past cone solidification", func() (status vertex.Status) {
 		ok := false
 		finalSuccess := false
 		a.vid.Unwrap(vertex.UnwrapOptions{

@@ -19,13 +19,19 @@ type (
 	}
 )
 
-func New(callback func(name string)) *Checkpoints {
+const checkEveryDefault = time.Second
+
+func New(callback func(name string), checkPeriod ...time.Duration) *Checkpoints {
 	ret := &Checkpoints{
 		ch:       make(chan *check),
 		m:        make(map[string]time.Time),
 		callback: callback,
 	}
-	go ret.loop()
+	checkEvery := checkEveryDefault
+	if len(checkPeriod) > 0 {
+		checkEvery = checkPeriod[0]
+	}
+	go ret.loop(checkEvery)
 	return ret
 }
 
@@ -42,7 +48,7 @@ func (c *Checkpoints) Close() {
 	close(c.ch)
 }
 
-func (c *Checkpoints) loop() {
+func (c *Checkpoints) loop(checkEvery time.Duration) {
 	for {
 		select {
 		case checkData := <-c.ch:
@@ -61,7 +67,7 @@ func (c *Checkpoints) loop() {
 			}
 			c.m[checkData.name] = checkData.nowis.Add(checkData.nextExpectedAfter)
 
-		case <-time.After(100 * time.Millisecond):
+		case <-time.After(checkEvery):
 			for name, d := range c.m {
 				if d.Before(time.Now()) {
 					c.callback(name)
