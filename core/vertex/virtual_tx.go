@@ -39,8 +39,15 @@ func VirtualTxFromTx(tx *transaction.Transaction) *VirtualTransaction {
 }
 
 func (v *VirtualTransaction) WrapWithID(txid ledger.TransactionID) *WrappedTx {
-	v.SequencerOutputs()
 	return _newVID(_virtualTx{VirtualTransaction: v}, txid, v.sequencerID(&txid))
+}
+
+func WrapBranchDataAsVirtualTx(branchData *multistate.BranchData) *WrappedTx {
+	ret := NewVirtualBranchTx(branchData).WrapWithID(branchData.Stem.ID.TransactionID())
+	cov := branchData.LedgerCoverage
+	ret.coverage = &cov
+	ret.flags.SetFlagsUp(FlagVertexDefined | FlagVertexTxAttachmentStarted | FlagVertexTxAttachmentStarted)
+	return ret
 }
 
 func (v *VirtualTransaction) addOutput(idx byte, o *ledger.Output) {

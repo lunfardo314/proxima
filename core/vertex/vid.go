@@ -116,6 +116,7 @@ func (vid *WrappedTx) SetSequencerAttachmentFinished() {
 	vid.mutex.Lock()
 	defer vid.mutex.Unlock()
 
+	util.Assertf(vid.flags.FlagsUp(FlagVertexTxAttachmentStarted), "vid.flags.FlagsUp(FlagVertexTxAttachmentStarted)")
 	vid.flags.SetFlagsUp(FlagVertexTxAttachmentFinished)
 	vid.dontPruneUntil = time.Now().Add(vertexTTLSlots * ledger.L().ID.SlotDuration())
 }
@@ -376,13 +377,6 @@ func (vid *WrappedTx) StemWrappedOutput() (ret WrappedOutput) {
 	return
 }
 
-func (vid *WrappedTx) IsVertex() (ret bool) {
-	vid.RUnwrap(UnwrapOptions{Vertex: func(_ *Vertex) {
-		ret = true
-	}})
-	return
-}
-
 func (vid *WrappedTx) IsVirtualTx() (ret bool) {
 	vid.RUnwrap(UnwrapOptions{VirtualTx: func(_ *VirtualTransaction) {
 		ret = true
@@ -390,9 +384,9 @@ func (vid *WrappedTx) IsVirtualTx() (ret bool) {
 	return
 }
 
-func (vid *WrappedTx) OfKindString() (ret string) {
-	vid.RUnwrap(UnwrapOptions{
-		Vertex:    func(_ *Vertex) { ret = "vertex" },
+func (vid *WrappedTx) _ofKindString() (ret string) {
+	vid._unwrap(UnwrapOptions{
+		Vertex:    func(_ *Vertex) { ret = "full vertex" },
 		VirtualTx: func(_ *VirtualTransaction) { ret = "virtualTx" },
 		Deleted:   func() { ret = "deleted" },
 	})
@@ -461,9 +455,8 @@ func (vid *WrappedTx) Lines(prefix ...string) *lines.Lines {
 
 func (vid *WrappedTx) LinesNoLock(prefix ...string) *lines.Lines {
 	ret := lines.New(prefix...)
-	_, isVertex := vid._genericVertex.(*_vertex)
 	ret.Add("ID: %s", vid.ID.StringShort()).
-		Add("Vertex: %v", isVertex).
+		Add("Kind: %s", vid._ofKindString()).
 		Add("Flags: %s", vid.flags.String()).
 		Add("Err: %v", vid.err).
 		Add("Refs: %d", vid.numReferences)
@@ -472,12 +465,10 @@ func (vid *WrappedTx) LinesNoLock(prefix ...string) *lines.Lines {
 	} else {
 		ret.Add("Seq ID: %s", seqID.StringShort())
 	}
-	if seqID := vid.SequencerID.Load(); seqID == nil {
-		ret.Add("Seq ID: <nil>")
-	} else {
-		ret.Add("Seq ID: %s", seqID.StringShort())
-	}
 	ret.Add("IsPullDeadlineDue: %v", vid.IsPullDeadlineDue())
+	if v, isFullVertex := vid._genericVertex.(_vertex); isFullVertex {
+		ret.Add("Transaction:\n" + v.Tx.LinesShort(prefix...).String())
+	}
 	return ret
 }
 

@@ -64,7 +64,8 @@ func (vid *WrappedTx) DoPruningIfRelevant(nowis time.Time) (markedForDeletion, u
 			references = vid.numReferences
 			switch references {
 			case 0:
-				util.Assertf(vid.FlagsUpNoLock(FlagVertexTxAttachmentStarted|FlagVertexTxAttachmentFinished), "attachment expected to be over 1: %s", vid.StringNoLock)
+				util.Assertf(vid.FlagsUpNoLock(FlagVertexTxAttachmentStarted|FlagVertexTxAttachmentFinished),
+					"attachment expected to be over 1: %s", vid.StringNoLock)
 				markedForDeletion = true
 			case 1:
 				// do not prune those with not-started or not finished attachers
@@ -92,7 +93,8 @@ func (vid *WrappedTx) DoPruningIfRelevant(nowis time.Time) (markedForDeletion, u
 			references = vid.numReferences
 			switch references {
 			case 0:
-				util.Assertf(vid.FlagsUpNoLock(FlagVertexTxAttachmentStarted|FlagVertexTxAttachmentFinished), "attachment expected to be over 2: %s", vid.StringNoLock)
+				util.Assertf(vid.FlagsUpNoLock(FlagVertexTxAttachmentStarted|FlagVertexTxAttachmentFinished),
+					"attachment expected to be over 2: %s", vid.StringNoLock)
 				markedForDeletion = true
 			case 1:
 				if nowis.After(vid.dontPruneUntil) {

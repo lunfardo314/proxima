@@ -57,14 +57,13 @@ func AttachTxID(txid ledger.TransactionID, env Environment, opts ...AttachTxOpti
 			return
 		}
 		// look up for the corresponding state
-		if bd, branchAvailable := multistate.FetchBranchData(env.StateStore(), txid); branchAvailable {
-			// corresponding state has been found, it is solid -> put virtual branch tx with the state reader
-			vid = vertex.NewVirtualBranchTx(&bd).WrapWithID(txid)
-			vid.SetTxStatusGood()
-			vid.SetLedgerCoverage(bd.LedgerCoverage)
+		if branchData, branchAvailable := multistate.FetchBranchData(env.StateStore(), txid); branchAvailable {
+			// corresponding state has been found, it is solid -> put virtual branch tx to the memDAG
+			vid = vertex.WrapBranchDataAsVirtualTx(&branchData)
 			env.AddVertexNoLock(vid)
 			env.PostEventNewGood(vid)
 			env.SendToTippool(vid)
+
 			env.Tracef(TraceTagAttach, "AttachTxID: branch fetched from the state: %s%s, accumulatedCoverage: %s",
 				txid.StringShort, by, func() string { return util.Th(vid.GetLedgerCoverage()) })
 			env.TraceTx(&txid, "AttachTxID: branch fetched from the state")
@@ -75,29 +74,12 @@ func AttachTxID(txid ledger.TransactionID, env Environment, opts ...AttachTxOpti
 			vid = vertex.WrapTxID(txid, PullTimeout)
 			env.AddVertexNoLock(vid)
 			env.Pull(txid, "AttachTxID-2") // always pull new branch. This will spin off sync process on the node
+
 			env.Tracef(TraceTagAttach, "AttachTxID: added new branch vertex and pulled %s%s", txid.StringShort(), by)
 			env.TraceTx(&txid, "AttachTxID: added new branch vertex and pulled")
 		}
 	})
 	return
-}
-
-// InvalidateTxID marks existing vertex as BAD or creates new BAD
-func InvalidateTxID(txid ledger.TransactionID, env Environment, reason error) *vertex.WrappedTx {
-	env.Tracef(TraceTagAttach, "InvalidateTxID: %s", txid.StringShort())
-	env.TraceTx(&txid, "InvalidateTxID")
-
-	vid := AttachTxID(txid, env, OptionDoNotLoadBranch, OptionInvokedBy("InvalidateTxID"))
-	vid.SetTxStatusBad(reason)
-	return vid
-}
-
-func AttachOutputID(oid ledger.OutputID, env Environment, opts ...AttachTxOption) vertex.WrappedOutput {
-	env.TraceTx(util.Ref(oid.TransactionID()), "AttachOutputID: #%d", oid.Index())
-	return vertex.WrappedOutput{
-		VID:   AttachTxID(oid.TransactionID(), env, opts...),
-		Index: oid.Index(),
-	}
 }
 
 // AttachTransaction attaches new incoming transaction. For sequencer transaction it starts milestoneAttacher routine
@@ -120,8 +102,10 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Att
 		// full vertex or with attachment process already invoked will be ignored
 		VirtualTx: func(v *vertex.VirtualTransaction) {
 			if vid.FlagsUpNoLock(vertex.FlagVertexTxAttachmentStarted) {
+				// to prevent already attached virtual txs (branches) from repetitive attachment
 				return
 			}
+
 			// mark the vertex in order to prevent repetitive attachment
 			vid.SetFlagsUpNoLock(vertex.FlagVertexTxAttachmentStarted)
 
@@ -171,6 +155,24 @@ func AttachTransactionFromBytes(txBytes []byte, env Environment, opts ...AttachT
 		return nil, err
 	}
 	return AttachTransaction(tx, env, opts...), nil
+}
+
+// InvalidateTxID marks existing vertex as BAD or creates new BAD
+func InvalidateTxID(txid ledger.TransactionID, env Environment, reason error) *vertex.WrappedTx {
+	env.Tracef(TraceTagAttach, "InvalidateTxID: %s", txid.StringShort())
+	env.TraceTx(&txid, "InvalidateTxID")
+
+	vid := AttachTxID(txid, env, OptionDoNotLoadBranch, OptionInvokedBy("InvalidateTxID"))
+	vid.SetTxStatusBad(reason)
+	return vid
+}
+
+func AttachOutputID(oid ledger.OutputID, env Environment, opts ...AttachTxOption) vertex.WrappedOutput {
+	env.TraceTx(util.Ref(oid.TransactionID()), "AttachOutputID: #%d", oid.Index())
+	return vertex.WrappedOutput{
+		VID:   AttachTxID(oid.TransactionID(), env, opts...),
+		Index: oid.Index(),
+	}
 }
 
 const maxTimeout = 10 * time.Minute

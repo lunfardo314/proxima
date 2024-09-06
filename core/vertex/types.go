@@ -73,7 +73,6 @@ type (
 
 	_vertex struct {
 		*Vertex
-		whenWrapped time.Time
 	}
 
 	_virtualTx struct {

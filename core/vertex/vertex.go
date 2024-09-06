@@ -3,7 +3,6 @@ package vertex
 import (
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/transaction"
@@ -231,10 +230,7 @@ func (v *Vertex) Wrap() *WrappedTx {
 	if v.Tx.IsSequencerMilestone() {
 		seqID = util.Ref(v.Tx.SequencerTransactionData().SequencerID)
 	}
-	return _newVID(_vertex{
-		Vertex:      v,
-		whenWrapped: time.Now(),
-	}, *v.Tx.ID(), seqID)
+	return _newVID(_vertex{Vertex: v}, *v.Tx.ID(), seqID)
 }
 
 func (v *Vertex) convertToVirtualTx() *VirtualTransaction {
