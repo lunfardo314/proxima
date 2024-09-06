@@ -3,7 +3,8 @@ package attacher
 import (
 	"context"
 	"fmt"
-	"sync/atomic"
+	"math"
+	"runtime"
 	"time"
 
 	"github.com/lunfardo314/proxima/core/txmetadata"
@@ -163,12 +164,10 @@ func (a *milestoneAttacher) run() error {
 // lazyRepeat repeats closure until it returns Good or Bad
 func (a *milestoneAttacher) lazyRepeat(loopName string, fun func() vertex.Status) vertex.Status {
 	checkName := a.Name() + "_" + loopName
-	var counter atomic.Int64
 	checkpoint := checkpoints.New(func(name string) {
-		if counter.Load()%1000 == 0 {
-			a.Log().Warnf(">>>>>>>> STUCK loop '%s', counter = %d", checkName, counter.Load())
-		}
-		counter.Add(1)
+		buf := make([]byte, math.MaxUint16)
+		runtime.Stack(buf, true)
+		a.Log().Fatalf(">>>>>>>> STUCK loop '%s':\n%s", string(buf))
 	})
 	defer checkpoint.Close()
 
