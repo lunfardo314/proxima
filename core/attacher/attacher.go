@@ -161,7 +161,8 @@ func (a *attacher) solidifyStemOfTheVertex(v *vertex.Vertex) (ok bool) {
 
 	stemInputIdx := v.StemInputIndex()
 	stemInputOid := v.Tx.MustInputAt(stemInputIdx)
-	stemVid := AttachTxID(stemInputOid.TransactionID(), a, OptionInvokedBy(a.name))
+	stemTxID := stemInputOid.TransactionID()
+	stemVid := AttachTxID(stemTxID, a, OptionInvokedBy(a.name))
 
 	if !a.markVertexUndefined(stemVid) {
 		// failed to reference (pruned), but it is ok (rare event)
@@ -174,14 +175,15 @@ func (a *attacher) solidifyStemOfTheVertex(v *vertex.Vertex) (ok bool) {
 		stemVid.Reference() // will be unreferenced with the whole vertex
 		v.BaselineBranch = stemVid
 		return true
+
 	case vertex.Bad:
 		err := stemVid.GetError()
 		a.Assertf(err != nil, "err!=nil")
 		a.setError(err)
 		return false
+
 	case vertex.Undefined:
-		a.pokeMe(stemVid)
-		return true
+		return a.handleDependencySolidification(stemVid)
 	default:
 		panic("wrong vertex state")
 	}
@@ -209,19 +211,26 @@ func (a *attacher) solidifySequencerBaseline(v *vertex.Vertex) (ok bool) {
 	switch inputTx.GetTxStatus() {
 	case vertex.Good:
 		v.BaselineBranch = inputTx.BaselineBranch()
-		if v.BaselineBranch == nil {
-			// baseline branch not solid, pull it
-			a.Pull(inputTx.ID, a.Name()+".solidifySequencerBaseline")
-		} else {
-			util.Assertf(v.BaselineBranch.IsBranchTransaction(), "v.BaselineBranch.IsBranchTransaction()")
-			a.referenced.reference(v.BaselineBranch)
-			v.BaselineBranch.Reference() // will be unreferenced with the whole vertex
-		}
+		util.Assertf(v.BaselineBranch != nil, "v.BaselineBranch != nil")
+		util.Assertf(v.BaselineBranch.IsBranchTransaction(), "v.BaselineBranch.IsBranchTransaction()")
+		a.referenced.reference(v.BaselineBranch)
+		v.BaselineBranch.Reference() // will be unreferenced with the whole vertex
+
+		// older version
+		//if v.BaselineBranch == nil {
+		//	// baseline branch not solid, pull it. Not sure why we need it, maybe because inputTx can be virtual?
+		//	a.Pull(inputTx.ID, a.Name()+".solidifySequencerBaseline")
+		//} else {
+		//	util.Assertf(v.BaselineBranch.IsBranchTransaction(), "v.BaselineBranch.IsBranchTransaction()")
+		//	a.referenced.reference(v.BaselineBranch)
+		//	v.BaselineBranch.Reference() // will be unreferenced with the whole vertex
+		//}
 		return true
 	case vertex.Undefined:
-		// vertex can be undefined but with correct baseline branch
-		a.pokeMe(inputTx)
-		return true
+		return a.handleDependencySolidification(inputTx)
+		//// vertex can be undefined but with correct baseline branch
+		//a.pokeMe(inputTx)
+		//return true
 	case vertex.Bad:
 		err := inputTx.GetError()
 		a.Assertf(err != nil, "err!=nil")
@@ -230,6 +239,28 @@ func (a *attacher) solidifySequencerBaseline(v *vertex.Vertex) (ok bool) {
 	default:
 		panic("wrong vertex state")
 	}
+}
+
+func (a *attacher) handleDependencySolidification(deptVID *vertex.WrappedTx) bool {
+	ok := true
+	deptVID.UnwrapVirtualTx(func(virtualTx *vertex.VirtualTransaction) {
+		ok = a.handleDependencySolidificationUnwrapped(virtualTx, deptVID)
+	})
+	return ok
+}
+
+func (a *attacher) handleDependencySolidificationUnwrapped(virtualTx *vertex.VirtualTransaction, deptVID *vertex.WrappedTx) bool {
+	if virtualTx.PullDeadlineExpired() {
+		// deadline expired
+		a.setError(fmt.Errorf("%w(%v): can't solidify dependency %s", ErrSolidificationDeadline, PullTimeout, deptVID.IDShortString()))
+		return false
+	}
+	if virtualTx.PullNeeded(PullRepeatPeriod) {
+		a.Pull(deptVID.ID, a.Name())
+		virtualTx.SetLastPullNow()
+		a.pokeMe(deptVID)
+	}
+	return true
 }
 
 func (a *attacher) attachVertexNonBranch(vid *vertex.WrappedTx) (ok, defined bool) {
@@ -267,8 +298,9 @@ func (a *attacher) attachVertexNonBranch(vid *vertex.WrappedTx) (ok, defined boo
 			}
 		},
 		VirtualTx: func(v *vertex.VirtualTransaction) {
-			ok = true
-			a.Pull(vid.ID, a.Name()+".attachVertexNonBranch")
+			ok = a.handleDependencySolidificationUnwrapped(v, vid)
+			//ok = true
+			//a.Pull(vid.ID, a.Name()+".attachVertexNonBranch")
 		},
 	})
 	if !defined {
@@ -366,115 +398,235 @@ func (a *attacher) attachEndorsements(v *vertex.Vertex, vid *vertex.WrappedTx) b
 	a.Assertf(!a.flags(vid).FlagsUp(flagAttachedVertexEndorsementsSolid), "!v.FlagsUp(vertex.FlagAttachedvertexEndorsementsSolid)")
 
 	numUndefined := len(v.Endorsements)
-	for i, vidEndorsed := range v.Endorsements {
-		if vidEndorsed == nil {
-			vidEndorsed = AttachTxID(v.Tx.EndorsementAt(byte(i)), a, OptionPullNonBranch, OptionInvokedBy(a.name))
-			if !v.ReferenceEndorsement(byte(i), vidEndorsed) {
-				// if failed to reference, remains nil
-				a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s): failed to reference endorsement %s", a.name, vidEndorsed.IDShortString)
-				continue
-			}
-		}
-		a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s): endorsement %s", a.name, vidEndorsed.IDShortString)
-
-		if a.isKnownDefined(vidEndorsed) {
-			a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s): is known 'defined' %s", a.name, vidEndorsed.IDShortString)
-			numUndefined--
-			continue
-		}
-		a.markVertexUndefined(vidEndorsed)
-
-		baselineBranch := vidEndorsed.BaselineBranch()
-		if baselineBranch == nil {
-			// baseline branch not solid yet
-			a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s): baseline branch of endorsement %s in nil", a.name, vidEndorsed.IDShortString)
-
-			a.PokeMe(vid, vidEndorsed)
-			// requires pull during sync
-			a.Pull(vidEndorsed.ID, a.Name()+".attachEndorsements")
-			//return true
-			continue
-		}
-		a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s): baseline branch %s", a.name, baselineBranch.IDShortString)
-
-		// baseline must be compatible with baseline of the attacher
-		if !a.branchesCompatible(&a.baseline.ID, &baselineBranch.ID) {
-			a.setError(fmt.Errorf("attachEndorsements: baseline %s of endorsement %s is incompatible with the baseline branch %s",
-				baselineBranch.IDShortString(), vidEndorsed.IDShortString(), a.baseline.IDShortString()))
-			a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s): not compatible with baselines", a.name)
-			return false
-		}
-
-		switch vidEndorsed.GetTxStatus() {
-		case vertex.Bad:
-			a.Assertf(!a.isKnownDefined(vidEndorsed), "attachEndorsements: !a.isKnownDefined(vidEndorsed)")
-			a.setError(vidEndorsed.GetError())
-			a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s): %s is BAD", a.name, vidEndorsed.IDShortString)
-			return false
-		case vertex.Good:
-			a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s): %s is GOOD", a.name, vidEndorsed.IDShortString)
-			if a.baselineStateReader().KnowsCommittedTransaction(&vidEndorsed.ID) {
-				// all endorsed transactions known to the baseline state are 'defined' and 'rooted'
-				a.mustMarkVertexRooted(vidEndorsed)
-				a.markVertexDefined(vidEndorsed)
-				numUndefined--
-				a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s): %s is rooted", a.name, vidEndorsed.IDShortString)
-				continue
-			}
-			a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s): %s is NOT rooted", a.name, vidEndorsed.IDShortString)
-		}
-		// non-branch undefined or GOOD but not rooted milestone. Go deep recursively
-		a.Assertf(!vidEndorsed.IsBranchTransaction(), "attachEndorsements(%s): !vidEndorsed.IsBranchTransaction(): %s", a.name, vidEndorsed.IDShortString)
-
-		ok, defined := a.attachVertexNonBranch(vidEndorsed)
+	for i := range v.Endorsements {
+		ok, defined := a.attachEndorsement(v, vid, i)
 		if !ok {
-			a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s): attachVertexNonBranch returned: endorsement %s -> %s NOT OK",
-				a.name, vid.IDShortString, vidEndorsed.IDShortString)
 			a.Assertf(a.err != nil, "a.err!=nil")
 			return false
 		}
-		a.AssertNoError(a.err)
 		if defined {
 			numUndefined--
 		}
 	}
+
 	if numUndefined == 0 {
 		a.AssertNoError(a.allEndorsementsDefined(v))
-		// FIXME sometimes leads to inconsistency of flags
-		/*
-			 assertion failed:: flags.FlagsUp(FlagKnown) && !flags.FlagsUp(FlagDefined)
-			github.com/lunfardo314/proxima/global.(*Global).Assertf
-			        /home/lunfardo/go/src/github.com/lunfardo314/proxima/global/global.go:207
-			github.com/lunfardo314/proxima/core/attacher.(*attacher).setFlagsUp
-			        /home/lunfardo/go/src/github.com/lunfardo314/proxima/core/attacher/attacher.go:62
-			github.com/lunfardo314/proxima/core/attacher.(*attacher).attachEndorsements
-			        /home/lunfardo/go/src/github.com/lunfardo314/proxima/core/attacher/attacher.go:467
-			github.com/lunfardo314/proxima/core/attacher.(*attacher).attachVertexUnwrapped
-			        /home/lunfardo/go/src/github.com/lunfardo314/proxima/core/attacher/attacher.go:327
-			github.com/lunfardo314/proxima/core/attacher.(*milestoneAttacher).run.(*milestoneAttacher).solidifyPastCone.func2.1
-			        /home/lunfardo/go/src/github.com/lunfardo314/proxima/core/attacher/attacher_milestone.go:217
-			github.com/lunfardo314/proxima/core/vertex.(*WrappedTx)._unwrap
-			        /home/lunfardo/go/src/github.com/lunfardo314/proxima/core/vertex/vid.go:416
-			github.com/lunfardo314/proxima/core/vertex.(*WrappedTx).Unwrap
-			        /home/lunfardo/go/src/github.com/lunfardo314/proxima/core/vertex/vid.go:402
-			github.com/lunfardo314/proxima/core/attacher.(*milestoneAttacher).run.(*milestoneAttacher).solidifyPastCone.func2
-			        /home/lunfardo/go/src/github.com/lunfardo314/proxima/core/attacher/attacher_milestone.go:215
-			github.com/lunfardo314/proxima/core/attacher.(*milestoneAttacher).lazyRepeat
-			        /home/lunfardo/go/src/github.com/lunfardo314/proxima/core/attacher/attacher_milestone.go:148
-			github.com/lunfardo314/proxima/core/attacher.(*milestoneAttacher).solidifyPastCone
-			        /home/lunfardo/go/src/github.com/lunfardo314/proxima/core/attacher/attacher_milestone.go:212
-			github.com/lunfardo314/proxima/core/attacher.(*milestoneAttacher).run
-			        /home/lunfardo/go/src/github.com/lunfardo314/proxima/core/attacher/attacher_milestone.go:113
-			github.com/lunfardo314/proxima/core/attacher.runMilestoneAttacher
-			        /home/lunfardo/go/src/github.com/lunfardo314/proxima/core/attacher/attacher_milestone.go:40
-			github.com/lunfardo314/proxima/core/attacher.AttachTransaction.func1.1
-			        /home/lunfardo/go/src/github.com/lunfardo314/proxima/core/attacher/attach.go:141		 */
 		a.setFlagsUp(vid, flagAttachedVertexEndorsementsSolid)
 		a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s): endorsements are all good in %s", a.name, v.Tx.IDShortString)
 	} else {
 		a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s): endorsements are NOT all good in %s", a.name, v.Tx.IDShortString)
 	}
 	return true
+}
+
+//func (a *attacher) attachEndorsementsOld(v *vertex.Vertex, vid *vertex.WrappedTx) bool {
+//	a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s) IN of %s", a.name, v.Tx.IDShortString)
+//	defer a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s) OUT of %s return", a.name, v.Tx.IDShortString)
+//
+//	a.Assertf(!a.flags(vid).FlagsUp(flagAttachedVertexEndorsementsSolid), "!v.FlagsUp(vertex.FlagAttachedvertexEndorsementsSolid)")
+//
+//	numUndefined := len(v.Endorsements)
+//	for i, vidEndorsed := range v.Endorsements {
+//		if vidEndorsed == nil {
+//			vidEndorsed = AttachTxID(v.Tx.EndorsementAt(byte(i)), a, OptionPullNonBranch, OptionInvokedBy(a.name))
+//			if !v.ReferenceEndorsement(byte(i), vidEndorsed) {
+//				// if failed to reference, remains nil
+//				a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s): failed to reference endorsement %s", a.name, vidEndorsed.IDShortString)
+//				continue
+//			}
+//		}
+//		a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s): endorsement %s", a.name, vidEndorsed.IDShortString)
+//
+//		if a.isKnownDefined(vidEndorsed) {
+//			a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s): is known 'defined' %s", a.name, vidEndorsed.IDShortString)
+//			numUndefined--
+//			continue
+//		}
+//		a.markVertexUndefined(vidEndorsed)
+//
+//		baselineBranch := vidEndorsed.BaselineBranch()
+//		if baselineBranch == nil {
+//			//// baseline branch not solid yet
+//			//a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s): baseline branch of endorsement %s in nil", a.name, vidEndorsed.IDShortString)
+//			//
+//			//a.PokeMe(vid, vidEndorsed)
+//			//// requires pull during sync
+//			//a.Pull(vidEndorsed.ID, a.Name()+".attachEndorsements")
+//			////return true
+//			continue
+//		}
+//		a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s): baseline branch %s", a.name, baselineBranch.IDShortString)
+//
+//		state := vidEndorsed.GetTxStatus()
+//		switch state {
+//		case vertex.Bad:
+//			a.setError(vidEndorsed.GetError())
+//			return false
+//
+//		case vertex.Good:
+//			if a.baselineStateReader().KnowsCommittedTransaction(&vidEndorsed.ID) {
+//				// all endorsed transactions known to the baseline state are 'defined' and 'rooted'
+//				a.mustMarkVertexRooted(vidEndorsed)
+//				a.markVertexDefined(vidEndorsed)
+//				numUndefined--
+//				a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s): %s is rooted", a.name, vidEndorsed.IDShortString)
+//				continue
+//			}
+//		}
+//		util.Assertf(state == vertex.Good || state == vertex.Undefined, "state==vertex.Good || state==vertex.Undefined")
+//
+//		if !a.handleDependencySolidification(vidEndorsed) {
+//			return false
+//		}
+//
+//		// baseline must be compatible with baseline of the attacher
+//		if !a.branchesCompatible(&a.baseline.ID, &baselineBranch.ID) {
+//			a.setError(fmt.Errorf("attachEndorsements: baseline %s of endorsement %s is incompatible with the baseline branch %s",
+//				baselineBranch.IDShortString(), vidEndorsed.IDShortString(), a.baseline.IDShortString()))
+//			a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s): not compatible with baselines", a.name)
+//			return false
+//		}
+//
+//		//switch vidEndorsed.GetTxStatus() {
+//		//case vertex.Bad:
+//		//	a.Assertf(!a.isKnownDefined(vidEndorsed), "attachEndorsements: !a.isKnownDefined(vidEndorsed)")
+//		//	a.setError(vidEndorsed.GetError())
+//		//	a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s): %s is BAD", a.name, vidEndorsed.IDShortString)
+//		//	return false
+//		//case vertex.Good:
+//		//	a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s): %s is GOOD", a.name, vidEndorsed.IDShortString)
+//		//	if a.baselineStateReader().KnowsCommittedTransaction(&vidEndorsed.ID) {
+//		//		// all endorsed transactions known to the baseline state are 'defined' and 'rooted'
+//		//		a.mustMarkVertexRooted(vidEndorsed)
+//		//		a.markVertexDefined(vidEndorsed)
+//		//		numUndefined--
+//		//		a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s): %s is rooted", a.name, vidEndorsed.IDShortString)
+//		//		continue
+//		//	}
+//		//	a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s): %s is NOT rooted", a.name, vidEndorsed.IDShortString)
+//		//}
+//
+//		// non-branch undefined or GOOD but not rooted milestone. Go deep recursively
+//		a.Assertf(!vidEndorsed.IsBranchTransaction(), "attachEndorsements(%s): !vidEndorsed.IsBranchTransaction(): %s", a.name, vidEndorsed.IDShortString)
+//
+//		ok, defined := a.attachVertexNonBranch(vidEndorsed)
+//		if !ok {
+//			a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s): attachVertexNonBranch returned: endorsement %s -> %s NOT OK",
+//				a.name, vid.IDShortString, vidEndorsed.IDShortString)
+//			a.Assertf(a.err != nil, "a.err!=nil")
+//			return false
+//		}
+//		a.AssertNoError(a.err)
+//		if defined {
+//			numUndefined--
+//		}
+//	}
+//	if numUndefined == 0 {
+//		a.AssertNoError(a.allEndorsementsDefined(v))
+//		// FIXME sometimes leads to inconsistency of flags
+//		/*
+//			 assertion failed:: flags.FlagsUp(FlagKnown) && !flags.FlagsUp(FlagDefined)
+//			github.com/lunfardo314/proxima/global.(*Global).Assertf
+//			        /home/lunfardo/go/src/github.com/lunfardo314/proxima/global/global.go:207
+//			github.com/lunfardo314/proxima/core/attacher.(*attacher).setFlagsUp
+//			        /home/lunfardo/go/src/github.com/lunfardo314/proxima/core/attacher/attacher.go:62
+//			github.com/lunfardo314/proxima/core/attacher.(*attacher).attachEndorsements
+//			        /home/lunfardo/go/src/github.com/lunfardo314/proxima/core/attacher/attacher.go:467
+//			github.com/lunfardo314/proxima/core/attacher.(*attacher).attachVertexUnwrapped
+//			        /home/lunfardo/go/src/github.com/lunfardo314/proxima/core/attacher/attacher.go:327
+//			github.com/lunfardo314/proxima/core/attacher.(*milestoneAttacher).run.(*milestoneAttacher).solidifyPastCone.func2.1
+//			        /home/lunfardo/go/src/github.com/lunfardo314/proxima/core/attacher/attacher_milestone.go:217
+//			github.com/lunfardo314/proxima/core/vertex.(*WrappedTx)._unwrap
+//			        /home/lunfardo/go/src/github.com/lunfardo314/proxima/core/vertex/vid.go:416
+//			github.com/lunfardo314/proxima/core/vertex.(*WrappedTx).Unwrap
+//			        /home/lunfardo/go/src/github.com/lunfardo314/proxima/core/vertex/vid.go:402
+//			github.com/lunfardo314/proxima/core/attacher.(*milestoneAttacher).run.(*milestoneAttacher).solidifyPastCone.func2
+//			        /home/lunfardo/go/src/github.com/lunfardo314/proxima/core/attacher/attacher_milestone.go:215
+//			github.com/lunfardo314/proxima/core/attacher.(*milestoneAttacher).lazyRepeat
+//			        /home/lunfardo/go/src/github.com/lunfardo314/proxima/core/attacher/attacher_milestone.go:148
+//			github.com/lunfardo314/proxima/core/attacher.(*milestoneAttacher).solidifyPastCone
+//			        /home/lunfardo/go/src/github.com/lunfardo314/proxima/core/attacher/attacher_milestone.go:212
+//			github.com/lunfardo314/proxima/core/attacher.(*milestoneAttacher).run
+//			        /home/lunfardo/go/src/github.com/lunfardo314/proxima/core/attacher/attacher_milestone.go:113
+//			github.com/lunfardo314/proxima/core/attacher.runMilestoneAttacher
+//			        /home/lunfardo/go/src/github.com/lunfardo314/proxima/core/attacher/attacher_milestone.go:40
+//			github.com/lunfardo314/proxima/core/attacher.AttachTransaction.func1.1
+//			        /home/lunfardo/go/src/github.com/lunfardo314/proxima/core/attacher/attach.go:141		 */
+//		a.setFlagsUp(vid, flagAttachedVertexEndorsementsSolid)
+//		a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s): endorsements are all good in %s", a.name, v.Tx.IDShortString)
+//	} else {
+//		a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s): endorsements are NOT all good in %s", a.name, v.Tx.IDShortString)
+//	}
+//	return true
+//}
+
+func (a *attacher) attachEndorsement(v *vertex.Vertex, vid *vertex.WrappedTx, index int) (ok, defined bool) {
+	vidEndorsed := v.Endorsements[index]
+	if vidEndorsed == nil {
+		vidEndorsed = AttachTxID(v.Tx.EndorsementAt(byte(index)), a, OptionPullNonBranch, OptionInvokedBy(a.name))
+		if !v.ReferenceEndorsement(byte(index), vidEndorsed) {
+			// if failed to reference, remains nil
+			a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s): failed to reference endorsement %s", a.name, vidEndorsed.IDShortString)
+			return true, false
+		}
+	}
+	a.Assertf(vidEndorsed != nil, "vidEndorsed != nil")
+	a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s): endorsement %s", a.name, vidEndorsed.IDShortString)
+
+	if a.isKnownDefined(vidEndorsed) {
+		a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s): is known 'defined' %s", a.name, vidEndorsed.IDShortString)
+		return true, true
+	}
+	a.markVertexUndefined(vidEndorsed)
+
+	if !a.handleDependencySolidification(vidEndorsed) {
+		return false, false
+	}
+
+	baselineBranch := vidEndorsed.BaselineBranch()
+	if baselineBranch == nil {
+		return true, false
+	}
+	a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s): baseline branch %s", a.name, baselineBranch.IDShortString)
+
+	state := vidEndorsed.GetTxStatus()
+	switch state {
+	case vertex.Bad:
+		a.setError(vidEndorsed.GetError())
+		return false, false
+
+	case vertex.Good:
+		if a.baselineStateReader().KnowsCommittedTransaction(&vidEndorsed.ID) {
+			// all endorsed transactions known to the baseline state are 'defined' and 'rooted'
+			a.mustMarkVertexRooted(vidEndorsed)
+			a.markVertexDefined(vidEndorsed)
+			a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s): %s is rooted", a.name, vidEndorsed.IDShortString)
+			return true, true
+		}
+	}
+	util.Assertf(state != vertex.Bad, "state != vertex.Bad")
+
+	// baseline must be compatible with baseline of the attacher
+	if !a.branchesCompatible(&a.baseline.ID, &baselineBranch.ID) {
+		a.setError(fmt.Errorf("attachEndorsements: baseline %s of endorsement %s is incompatible with the baseline branch %s",
+			baselineBranch.IDShortString(), vidEndorsed.IDShortString(), a.baseline.IDShortString()))
+		a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s): not compatible with baselines", a.name)
+		return false, false
+	}
+
+	// non-branch undefined or GOOD but not rooted milestone. Go deep recursively
+	a.Assertf(!vidEndorsed.IsBranchTransaction(), "attachEndorsements(%s): !vidEndorsed.IsBranchTransaction(): %s", a.name, vidEndorsed.IDShortString)
+
+	ok, defined = a.attachVertexNonBranch(vidEndorsed)
+	if !ok {
+		a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s): attachVertexNonBranch returned: endorsement %s -> %s NOT OK",
+			a.name, vid.IDShortString, vidEndorsed.IDShortString)
+		a.Assertf(a.err != nil, "a.err!=nil")
+		return false, false
+	}
+	a.AssertNoError(a.err)
+
+	return true, defined
 }
 
 func (a *attacher) attachInputsOfTheVertex(v *vertex.Vertex, vid *vertex.WrappedTx) (ok bool) {

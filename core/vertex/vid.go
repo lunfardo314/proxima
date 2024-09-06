@@ -71,7 +71,6 @@ func (vid *WrappedTx) ConvertVirtualTxToVertexNoLock(v *Vertex) {
 	if v.Tx.IsSequencerMilestone() {
 		vid.SequencerID.Store(util.Ref(v.Tx.SequencerTransactionData().SequencerID))
 	}
-	vid.pullDeadline.Store(nil)
 }
 
 // ConvertVertexToVirtualTx detaches past cone and leaves only a collection of produced outputs
@@ -79,7 +78,6 @@ func (vid *WrappedTx) ConvertVertexToVirtualTx() {
 	vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
 		vid._put(_virtualTx{VirtualTxFromTx(v.Tx)})
 		v.UnReferenceDependencies()
-		vid.pullDeadline.Store(nil)
 	}})
 }
 
@@ -156,19 +154,6 @@ func (vid *WrappedTx) IsBadOrDeleted() bool {
 	return vid.GetTxStatusNoLock() == Bad || vid.numReferences == 0
 }
 
-func (vid *WrappedTx) setPullDeadline(deadline time.Time) {
-	dl := new(time.Time)
-	*dl = deadline
-	vid.pullDeadline.Store(dl)
-}
-
-func (vid *WrappedTx) IsPullDeadlineDue() bool {
-	if dl := vid.pullDeadline.Load(); dl != nil {
-		return dl.Before(time.Now())
-	}
-	return false
-}
-
 func (vid *WrappedTx) StatusString() string {
 	r := vid.GetError()
 
@@ -197,12 +182,11 @@ func (vid *WrappedTx) Poke() {
 // The pull deadline will be dropped after transaction will become available and virtualTx will be converted
 // to full vertex
 func WrapTxID(txid ledger.TransactionID, pullTimeout ...time.Duration) *WrappedTx {
-	ret := _newVID(_virtualTx{
-		VirtualTransaction: newVirtualTx(),
-	}, txid, nil)
+	virtualTx := newVirtualTx()
 	if len(pullTimeout) > 0 {
-		ret.setPullDeadline(time.Now().Add(pullTimeout[0]))
+		virtualTx.pullDeadline = util.Ref(time.Now().Add(pullTimeout[0]))
 	}
+	ret := _newVID(_virtualTx{virtualTx}, txid, nil)
 	return ret
 }
 
@@ -465,9 +449,16 @@ func (vid *WrappedTx) LinesNoLock(prefix ...string) *lines.Lines {
 	} else {
 		ret.Add("Seq ID: %s", seqID.StringShort())
 	}
-	ret.Add("IsPullDeadlineDue: %v", vid.IsPullDeadlineDue())
-	if v, isFullVertex := vid._genericVertex.(_vertex); isFullVertex {
+	switch v := vid._genericVertex.(type) {
+	case _vertex:
 		ret.Add("Transaction:\n" + v.Tx.LinesShort(prefix...).String())
+	case _virtualTx:
+		pullDeadlineStr := "<nil>"
+		if v.pullDeadline != nil {
+			pullDeadlineStr = (*v.pullDeadline).Format(time.StampNano)
+		}
+		ret.Add("PullDeadline: %s", pullDeadlineStr)
+		ret.Add("Last pull: %v", v.lastPull.Format(time.StampNano))
 	}
 	return ret
 }
@@ -725,22 +716,6 @@ func VerticesLines(vertices []*WrappedTx, prefix ...string) *lines.Lines {
 	return ret
 }
 
-func VerticesShortLines(vertices []*WrappedTx, prefix ...string) *lines.Lines {
-	ret := lines.New(prefix...)
-	for _, vid := range vertices {
-		ret.Add(vid.IDShortStringExt())
-	}
-	return ret
-}
-
-func VerticesIDLines(vertices []*WrappedTx, prefix ...string) *lines.Lines {
-	ret := lines.New(prefix...)
-	for _, vid := range vertices {
-		ret.Add(vid.IDShortString())
-	}
-	return ret
-}
-
 type _unwrapOptionsTraverse struct {
 	UnwrapOptionsForTraverse
 	visited set.Set[*WrappedTx]
@@ -842,4 +817,13 @@ func (vid *WrappedTx) InflationConstraintOnSequencerOutput() (ret *ledger.Inflat
 		Deleted: vid.PanicAccessDeleted,
 	})
 	return
+}
+
+// UnwrapVirtualTx calls callback only if it is virtualTx
+func (vid *WrappedTx) UnwrapVirtualTx(unwrapFun func(v *VirtualTransaction)) {
+	vid.Unwrap(UnwrapOptions{
+		VirtualTx: func(v *VirtualTransaction) {
+			unwrapFun(v)
+		},
+	})
 }

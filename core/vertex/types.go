@@ -25,7 +25,9 @@ type (
 	VirtualTransaction struct {
 		mutex            sync.RWMutex
 		outputs          map[byte]*ledger.Output
-		sequencerOutputs *[2]byte // if nil, it is unknown
+		sequencerOutputs *[2]byte   // if nil, it is unknown
+		pullDeadline     *time.Time // if nil, does not need pull
+		lastPull         time.Time
 	}
 
 	// WrappedTx value of *WrappedTx is used as transaction identity on the UTXO tangle, a vertex
@@ -36,12 +38,10 @@ type (
 		// sequencer ID not nil for sequencer transactions only. Once it is set not nil, it is immutable since.
 		// It is set whenever transaction becomes available
 		SequencerID atomic.Pointer[ledger.ChainID]
-		// If not nil, pull deadline is set, otherwise it is not
-		pullDeadline atomic.Pointer[time.Time]
-		mutex        sync.RWMutex // *sema.Sema // sync.RWMutex // protects _genericVertex
-		flags        Flags
-		err          error
-		coverage     *uint64 // nil for non-sequencer or if not set yet
+		mutex       sync.RWMutex // *sema.Sema // sync.RWMutex // protects _genericVertex
+		flags       Flags
+		err         error
+		coverage    *uint64 // nil for non-sequencer or if not set yet
 
 		// keeping track of references for orphaning/GC
 		numReferences uint32

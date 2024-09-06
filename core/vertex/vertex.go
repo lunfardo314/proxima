@@ -248,29 +248,3 @@ func (v *Vertex) convertToVirtualTx() *VirtualTransaction {
 	})
 	return ret
 }
-
-// DependencySolidificationDeadlineIsDue returns txid of first not nil dependency which has solidification deadline due
-// Returns nil if it is all fine
-func (v *Vertex) DependencySolidificationDeadlineIsDue() (notSolid *ledger.TransactionID, baseline bool) {
-	if v.BaselineBranch != nil && v.BaselineBranch.IsPullDeadlineDue() {
-		return &v.BaselineBranch.ID, true
-	}
-	v.ForEachInputDependency(func(_ byte, vidInput *WrappedTx) bool {
-		if vidInput != nil && vidInput.IsPullDeadlineDue() {
-			notSolid = &vidInput.ID
-			return false
-		}
-		return true
-	})
-	if notSolid != nil {
-		return
-	}
-	v.ForEachEndorsement(func(_ byte, vidEndorsed *WrappedTx) bool {
-		if vidEndorsed != nil && vidEndorsed.IsPullDeadlineDue() {
-			notSolid = &vidEndorsed.ID
-			return false
-		}
-		return true
-	})
-	return
-}

@@ -2,6 +2,7 @@ package vertex
 
 import (
 	"bytes"
+	"time"
 
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/transaction"
@@ -113,4 +114,26 @@ func (v *VirtualTransaction) sequencerID(txid *ledger.TransactionID) (ret *ledge
 		}
 	}
 	return
+}
+
+func (v *VirtualTransaction) SetPullDeadline(deadline time.Time) {
+	v.pullDeadline = util.Ref(deadline)
+}
+
+func (v *VirtualTransaction) SetLastPullNow() {
+	v.lastPull = time.Now()
+}
+
+func (v *VirtualTransaction) PullDeadlineExpired() bool {
+	if v.pullDeadline == nil {
+		return false
+	}
+	return time.Now().After(*v.pullDeadline)
+}
+
+func (v *VirtualTransaction) PullNeeded(repeatPeriod time.Duration) bool {
+	if v.pullDeadline == nil {
+		return false
+	}
+	return v.lastPull.Add(repeatPeriod).Before(time.Now())
 }

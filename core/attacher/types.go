@@ -150,7 +150,10 @@ const (
 )
 
 // PullTimeout maximum time allowed for the virtual txid become transaction (full vertex)
-const PullTimeout = 5 * time.Second
+const (
+	PullTimeout      = 5 * time.Second
+	PullRepeatPeriod = 1 * time.Second
+)
 
 var ErrSolidificationDeadline = errors.New("solidification deadline")
 

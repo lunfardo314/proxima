@@ -217,12 +217,6 @@ func (a *milestoneAttacher) solidifyBaseline() vertex.Status {
 			Vertex: func(v *vertex.Vertex) {
 				a.Assertf(a.vid.GetTxStatusNoLock() == vertex.Undefined, "a.vid.GetTxStatusNoLock() == vertex.Undefined:\n%s", a.vid.StringNoLock)
 
-				if err := checkSolidificationDeadline(v); err != nil {
-					a.setError(err)
-					ok = false
-					return
-				}
-
 				ok = a.solidifyBaselineVertex(v)
 				if ok && v.BaselineBranch != nil {
 					finalSuccess = a.setBaseline(v.BaselineBranch, a.vid.Timestamp())
@@ -254,11 +248,6 @@ func (a *milestoneAttacher) solidifyPastCone() vertex.Status {
 			Vertex: func(v *vertex.Vertex) {
 				a.Assertf(a.vid.GetTxStatusNoLock() == vertex.Undefined, "a.vid.GetTxStatusNoLock() == vertex.Undefined")
 
-				if err := checkSolidificationDeadline(v); err != nil {
-					a.setError(err)
-					ok = false
-					return
-				}
 				if ok = a.attachVertexUnwrapped(v, a.vid); !ok {
 					a.Assertf(a.err != nil, "a.err != nil")
 					return
@@ -384,16 +373,4 @@ func (a *milestoneAttacher) AdjustCoverage() {
 		a.Tracef(TraceTagCoverageAdjustment, " milestoneAttacher: accumulatedCoverage has been adjusted by %s, ms: %s, baseline: %s",
 			func() string { return util.Th(a.coverageAdjustment) }, a.vid.IDShortString, a.baseline.IDShortString)
 	}
-}
-
-func checkSolidificationDeadline(v *vertex.Vertex) error {
-	if notSolid, baselineNotSolid := v.DependencySolidificationDeadlineIsDue(); notSolid != nil {
-		depStr := "dependency"
-		if baselineNotSolid {
-			depStr = "baseline"
-		}
-		return fmt.Errorf("%w (%v) in %s: %s %s is not solid",
-			ErrSolidificationDeadline, PullTimeout, v.Tx.IDShortString(), depStr, notSolid.StringShort())
-	}
-	return nil
 }
