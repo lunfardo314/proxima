@@ -167,7 +167,7 @@ func (a *milestoneAttacher) lazyRepeat(loopName string, fun func() vertex.Status
 	checkpoint := checkpoints.New(func(name string) {
 		buf := make([]byte, math.MaxUint16)
 		runtime.Stack(buf, true)
-		a.Log().Fatalf(">>>>>>>> STUCK loop '%s':\n%s", string(buf))
+		a.Log().Fatalf(">>>>>>>> STUCK loop '%s':\n%s", checkName, string(buf))
 	})
 	defer checkpoint.Close()
 

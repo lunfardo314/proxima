@@ -114,7 +114,11 @@ func _new(logLevel zapcore.Level, outputs []string, bootstrap bool) *Global {
 		txTraceIDs:    make(map[ledger.TransactionID]time.Time),
 		bootstrap:     bootstrap,
 	}
-	go ret.purgeLoop()
+
+	ret.RepeatInBackground("traceID_purge", purgeLoopPeriod, func() bool {
+		ret.purgeTraceTxIDs()
+		return true
+	})
 
 	return ret
 }
@@ -314,17 +318,6 @@ func (l *Global) TraceTx(txid *ledger.TransactionID, format string, args ...any)
 	}
 
 	l.SugaredLogger.Infof("TRACE_TX(%s) %s", txid.StringShort(), fmt.Sprintf(format, util.EvalLazyArgs(args...)...))
-}
-
-func (l *Global) purgeLoop() {
-	for {
-		select {
-		case <-l.ctx.Done():
-			return
-		case <-time.After(purgeLoopPeriod):
-			l.purgeTraceTxIDs()
-		}
-	}
 }
 
 func (l *Global) purgeTraceTxIDs() {
