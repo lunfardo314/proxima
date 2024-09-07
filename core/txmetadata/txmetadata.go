@@ -210,6 +210,15 @@ func SplitTxBytesWithMetadata(txBytesWithMetadata []byte) ([]byte, []byte, error
 	return txBytesWithMetadata[:txBytesWithMetadata[0]+1], txBytesWithMetadata[txBytesWithMetadata[0]+1:], nil
 }
 
+func ParseTxMetadata(txBytesWithMetadata []byte) ([]byte, *TransactionMetadata, error) {
+	metaBytes, txBytes, err := SplitTxBytesWithMetadata(txBytesWithMetadata)
+	if err != nil {
+		return nil, nil, err
+	}
+	txMetadata, err := TransactionMetadataFromBytes(metaBytes)
+	return txBytes, txMetadata, err
+}
+
 // String returns info of the persistent part
 func (m *TransactionMetadata) String() string {
 	if m == nil || m.flags() == 0 {

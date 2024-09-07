@@ -1,9 +1,9 @@
 package attacher
 
 import (
-	"fmt"
 	"time"
 
+	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/transaction"
@@ -151,25 +151,16 @@ func AttachOutputID(oid ledger.OutputID, env Environment, opts ...AttachTxOption
 
 const maxTimeout = 10 * time.Minute
 
-func EnsureBranch(txid ledger.TransactionID, env Environment, timeout ...time.Duration) (*vertex.WrappedTx, error) {
-	vid := AttachTxID(txid, env)
-	to := maxTimeout
-	if len(timeout) > 0 {
-		to = timeout[0]
+func EnsureBranch(txid ledger.TransactionID, env Environment) (*vertex.WrappedTx, error) {
+	txBytes, txMetadata, err := txmetadata.ParseTxMetadata(env.TxBytesStore().GetTxBytesWithMetadata(&txid))
+	if err != nil {
+		return nil, err
 	}
-	start := time.Now()
-	for vid.GetTxStatus() == vertex.Undefined {
-		if time.Since(start) > to {
-			return nil, fmt.Errorf("failed to fetch branch %s in %v", txid.StringShort(), to)
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	env.Tracef(TraceTagEnsureLatestBranches, "ensure branch %s", txid.StringShort())
-	return vid, nil
+	return AttachTransactionFromBytes(txBytes, env, AttachTxOptionWithTransactionMetadata(txMetadata))
 }
 
-func MustEnsureBranch(txid ledger.TransactionID, env Environment, timeout ...time.Duration) *vertex.WrappedTx {
-	ret, err := EnsureBranch(txid, env, timeout...)
+func MustEnsureBranch(txid ledger.TransactionID, env Environment) *vertex.WrappedTx {
+	ret, err := EnsureBranch(txid, env)
 	env.AssertNoError(err)
 	return ret
 }

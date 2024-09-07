@@ -22,14 +22,6 @@ func (w *Workflow) MaxDurationInTheFuture() time.Duration {
 	return 10 * ledger.SlotDuration()
 }
 
-func (w *Workflow) Pull(txid ledger.TransactionID, by string) {
-	w.pullClient.Pull(txid, by)
-}
-
-func (w *Workflow) StopPulling(txid *ledger.TransactionID) {
-	w.pullClient.StopPulling(txid)
-}
-
 func (w *Workflow) GossipAttachedTransaction(tx *transaction.Transaction, metadata *txmetadata.TransactionMetadata) {
 	w.GossipTransactionIfNeeded(tx, metadata, nil)
 }

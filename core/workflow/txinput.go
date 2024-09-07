@@ -37,15 +37,12 @@ func (w *Workflow) ignoreTxID(txid *ledger.TransactionID) bool {
 }
 
 func (w *Workflow) TxBytesFromStoreIn(txBytesWithMetadata []byte) (*ledger.TransactionID, error) {
-	txBytes, metaBytes, err := txmetadata.SplitTxBytesWithMetadata(txBytesWithMetadata)
+	txBytes, meta, err := txmetadata.ParseTxMetadata(txBytesWithMetadata)
 	if err != nil {
 		return nil, err
 	}
-	txMeta, err := txmetadata.TransactionMetadataFromBytes(metaBytes)
-	if err != nil {
-		return nil, err
-	}
-	return w.TxBytesIn(txBytes, WithMetadata(txMeta), WithSourceType(txmetadata.SourceTypeTxStore))
+
+	return w.TxBytesIn(txBytes, WithMetadata(meta), WithSourceType(txmetadata.SourceTypeTxStore))
 }
 
 // TxBytesIn main entry point of the transaction into the workflow
@@ -74,9 +71,6 @@ func (w *Workflow) TxBytesIn(txBytes []byte, opts ...TxBytesInOption) (*ledger.T
 	// bytes are identifiable as transaction
 	w.Assertf(!options.txMetadata.IsResponseToPull || options.txMetadata.SourceTypeNonPersistent == txmetadata.SourceTypePeer,
 		"inData.TxMetadata.IsResponseToPull || inData.TxMetadata.SourceTypeNonPersistent == txmetadata.SourceTypePeer")
-
-	// transaction is here, stop pulling, if pulled before
-	w.StopPulling(tx.ID())
 
 	if !tx.IsSequencerMilestone() {
 		// callback is only possible when tx is sequencer milestone

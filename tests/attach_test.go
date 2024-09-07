@@ -157,7 +157,7 @@ func TestBasic(t *testing.T) {
 		require.NoError(t, err)
 		require.True(t, len(txBytesStore.GetTxBytesWithMetadata(&distribTxID)) > 0)
 
-		vidDistrib, err := attacher.EnsureBranch(distribTxID, wrk, 3*time.Second)
+		vidDistrib, err := attacher.EnsureBranch(distribTxID, wrk)
 		require.NoError(t, err)
 
 		t.Logf("bootstrap chain id: %s", bootstrapChainID.String())
@@ -217,19 +217,12 @@ func TestBasic(t *testing.T) {
 		txBytes, err := txbuilder.DistributeInitialSupply(stateStore, privKey, distrib)
 		require.NoError(t, err)
 
-		var wg sync.WaitGroup
-		wg.Add(1)
-		vidDistrib, err := attacher.AttachTransactionFromBytes(txBytes, wrk, attacher.AttachTxOptionWithAttachmentCallback(func(vid *vertex.WrappedTx, err error) {
-			status := vid.GetTxStatus()
-			if status == vertex.Good {
-				_, err := txBytesStore.PersistTxBytesWithMetadata(txBytes, nil)
-				util.AssertNoError(err)
-			}
-			t.Logf("distribution tx finalized. Status: %s", vid.StatusString())
-			wg.Done()
-		}))
+		vidDistrib, err := attacher.AttachTransactionFromBytes(txBytes, wrk)
 		require.NoError(t, err)
-		wg.Wait()
+
+		require.EqualValues(t, vertex.Good, vidDistrib.GetTxStatus())
+		_, err = txBytesStore.PersistTxBytesWithMetadata(txBytes, nil)
+		util.AssertNoError(err)
 
 		t.Logf("bootstrap chain id: %s", bootstrapChainID.String())
 
@@ -508,6 +501,7 @@ func TestConflicts1Attacher(t *testing.T) {
 		testData.env.StartTracingTags("delay")
 
 		wg.Add(1)
+		// FIXME no more callback
 		vid, err := attacher.AttachTransactionFromBytes(txBytes, testData.wrk, attacher.AttachTxOptionWithAttachmentCallback(func(_ *vertex.WrappedTx, _ error) {
 			wg.Done()
 		}))

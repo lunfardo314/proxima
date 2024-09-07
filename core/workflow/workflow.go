@@ -2,7 +2,6 @@ package workflow
 
 import (
 	"sync"
-	"time"
 
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/lunfardo314/proxima/core/memdag"
@@ -12,7 +11,6 @@ import (
 	"github.com/lunfardo314/proxima/core/work_process/gossip"
 	"github.com/lunfardo314/proxima/core/work_process/poker"
 	"github.com/lunfardo314/proxima/core/work_process/pruner"
-	"github.com/lunfardo314/proxima/core/work_process/pull_client"
 	"github.com/lunfardo314/proxima/core/work_process/pull_tx_server"
 	"github.com/lunfardo314/proxima/core/work_process/snapshot"
 	"github.com/lunfardo314/proxima/core/work_process/sync_client"
@@ -41,7 +39,6 @@ type (
 		cfg   *ConfigParams
 		peers *peering.Peers
 		// daemons
-		pullClient   *pull_client.PullClient
 		pullTxServer *pull_tx_server.PullTxServer
 		syncServer   *sync_server.SyncServer
 		gossip       *gossip.Gossip
@@ -77,7 +74,6 @@ func New(env Environment, peers *peering.Peers, opts ...ConfigOption) *Workflow 
 	}
 	ret.poker = poker.New(ret)
 	ret.events = events.New(ret)
-	ret.pullClient = pull_client.New(ret)
 	ret.pullTxServer = pull_tx_server.New(ret)
 	if !env.SyncServerDisabled() {
 		ret.syncServer = sync_server.New(ret)
@@ -106,7 +102,6 @@ func (w *Workflow) Start() {
 	}
 	w.poker.Start()
 	w.events.Start()
-	w.pullClient.Start()
 	w.pullTxServer.Start()
 	if !w.SyncServerDisabled() {
 		w.syncServer.Start()
@@ -152,8 +147,6 @@ func (w *Workflow) Start() {
 			})
 		})
 	}
-
-	go w.logSyncStatusLoop()
 }
 
 func (w *Workflow) SendTx(sendTo peer.ID, txids ...ledger.TransactionID) {
@@ -169,20 +162,21 @@ func (w *Workflow) SendTx(sendTo peer.ID, txids ...ledger.TransactionID) {
 	}
 }
 
-func (w *Workflow) logSyncStatusLoop() {
-	logSyncStatusEach := ledger.L().ID.SlotDuration() / 2
-	for {
-		select {
-		case <-w.Ctx().Done():
-			return
-		case <-time.After(logSyncStatusEach):
-
-			if !w.IsSynced() {
-				latestSlot, latestHealthySlot, _ := w.LatestBranchSlots()
-				nowSlot := ledger.TimeNow().Slot()
-				w.Log().Warnf("node is NOT SYNCED with the network. Last committed slot is %d (%d slots back). Last healthy slot is %d (%d slots back)",
-					latestSlot, nowSlot-latestSlot, latestHealthySlot, nowSlot-latestHealthySlot)
-			}
-		}
-	}
-}
+//
+//func (w *Workflow) logSyncStatusLoop() {
+//	logSyncStatusEach := ledger.L().ID.SlotDuration() / 2
+//	for {
+//		select {
+//		case <-w.Ctx().Done():
+//			return
+//		case <-time.After(logSyncStatusEach):
+//
+//			if !w.IsSynced() {
+//				latestSlot, latestHealthySlot, _ := w.LatestBranchSlots()
+//				nowSlot := ledger.TimeNow().Slot()
+//				w.Log().Warnf("node is NOT SYNCED with the network. Last committed slot is %d (%d slots back). Last healthy slot is %d (%d slots back)",
+//					latestSlot, nowSlot-latestSlot, latestHealthySlot, nowSlot-latestHealthySlot)
+//			}
+//		}
+//	}
+//}
