@@ -392,19 +392,16 @@ const TraceTagAttachEndorsements = "attachEndorsements"
 // Attaches endorsements of the vertex
 // Return OK (== not bad)
 func (a *attacher) attachEndorsements(v *vertex.Vertex, vid *vertex.WrappedTx) bool {
-	a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s) IN of %s", a.name, v.Tx.IDShortString)
-	defer a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s) OUT of %s return", a.name, v.Tx.IDShortString)
-
 	a.Assertf(!a.flags(vid).FlagsUp(flagAttachedVertexEndorsementsSolid), "!v.FlagsUp(vertex.FlagAttachedvertexEndorsementsSolid)")
 
 	numUndefined := len(v.Endorsements)
 	for i := range v.Endorsements {
-		ok, defined := a.attachEndorsement(v, vid, i)
+		ok, success := a.attachEndorsement(v, vid, byte(i))
 		if !ok {
 			a.Assertf(a.err != nil, "a.err!=nil")
 			return false
 		}
-		if defined {
+		if success {
 			numUndefined--
 		}
 	}
@@ -419,7 +416,7 @@ func (a *attacher) attachEndorsements(v *vertex.Vertex, vid *vertex.WrappedTx) b
 	return true
 }
 
-func (a *attacher) attachEndorsement(v *vertex.Vertex, vid *vertex.WrappedTx, index int) (ok, defined bool) {
+func (a *attacher) attachEndorsement(v *vertex.Vertex, vid *vertex.WrappedTx, index byte) (ok, defined bool) {
 	vidEndorsed := v.Endorsements[index]
 	if vidEndorsed == nil {
 		vidEndorsed = AttachTxID(v.Tx.EndorsementAt(byte(index)), a, OptionPullNonBranch, OptionInvokedBy(a.name))
@@ -488,9 +485,7 @@ func (a *attacher) attachEndorsement(v *vertex.Vertex, vid *vertex.WrappedTx, in
 }
 
 func (a *attacher) attachInputsOfTheVertex(v *vertex.Vertex, vid *vertex.WrappedTx) (ok bool) {
-	a.Tracef(TraceTagAttachVertex, "attachInputsOfTheVertex in %s", vid.IDShortString)
 	numUndefined := v.Tx.NumInputs()
-	notSolid := make([]byte, 0, v.Tx.NumInputs())
 	var success bool
 	for i := range v.Inputs {
 		ok, success = a.attachInput(v, byte(i), vid)
@@ -500,14 +495,10 @@ func (a *attacher) attachInputsOfTheVertex(v *vertex.Vertex, vid *vertex.Wrapped
 		}
 		if success {
 			numUndefined--
-		} else {
-			notSolid = append(notSolid, byte(i))
 		}
 	}
 	if numUndefined == 0 {
 		a.setFlagsUp(vid, flagAttachedVertexInputsSolid)
-	} else {
-		a.Tracef(TraceTagAttachVertex, "attachInputsOfTheVertex: not solid: in %s:\n%s", v.Tx.IDShortString(), _lazyStringSelectedInputs(v.Tx, notSolid))
 	}
 	return true
 }
@@ -523,7 +514,6 @@ func _lazyStringSelectedInputs(tx *transaction.Transaction, indices []byte) func
 }
 
 func (a *attacher) attachInput(v *vertex.Vertex, inputIdx byte, vid *vertex.WrappedTx) (ok, defined bool) {
-	a.Tracef(TraceTagAttachVertex, "attachInput #%d of %s", inputIdx, vid.IDShortString)
 	vidInputTx, ok := a.attachInputID(v, vid, inputIdx)
 	if !ok {
 		a.Tracef(TraceTagAttachVertex, "bad input %d", inputIdx)

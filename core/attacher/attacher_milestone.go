@@ -32,12 +32,15 @@ func runMilestoneAttacher(
 	a := newMilestoneAttacher(vid, env, metadata, ctx)
 	var err error
 
+	env.IncAttacherCounter()
+
 	defer func() {
 		go a.close()
 		// it is guaranteed callback will always be called, if any
 		if callback != nil {
 			callback(vid, err)
 		}
+		env.DecAttacherCounter()
 	}()
 
 	if err = a.run(); err != nil {

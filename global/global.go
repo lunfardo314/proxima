@@ -22,15 +22,16 @@ import (
 
 type Global struct {
 	*zap.SugaredLogger
-	logVerbosity   int
-	ctx            context.Context
-	stopFun        context.CancelFunc
-	logStopOnce    *sync.Once
-	isShuttingDown atomic.Bool
-	stopOnce       *sync.Once
-	mutex          sync.RWMutex
-	components     set.Set[string]
-	metrics        *prometheus.Registry
+	logVerbosity    int
+	ctx             context.Context
+	stopFun         context.CancelFunc
+	logStopOnce     *sync.Once
+	isShuttingDown  atomic.Bool
+	stopOnce        *sync.Once
+	mutex           sync.RWMutex
+	components      set.Set[string]
+	metrics         *prometheus.Registry
+	attacherCounter atomic.Int32
 	// statically enabled trace tags
 	enabledTrace   atomic.Bool
 	traceTagsMutex sync.RWMutex
@@ -398,4 +399,17 @@ func (l *Global) ClockCatchUpWithLedgerTime(ts ledger.Time) {
 	for ledger.TimeNow().BeforeOrEqual(ts) {
 		time.Sleep(5 * time.Millisecond)
 	}
+}
+
+func (l *Global) IncAttacherCounter() {
+	l.attacherCounter.Add(1)
+}
+
+func (l *Global) DecAttacherCounter() {
+	l.attacherCounter.Add(-1)
+	l.Assertf(l.attacherCounter.Load() >= 0, "l.attacherCounter.Load() >= 0")
+}
+
+func (l *Global) AttacherCounter() int {
+	return int(l.attacherCounter.Load())
 }

@@ -73,6 +73,9 @@ type (
 		Infof0(template string, args ...any)
 		Infof1(template string, args ...any)
 		Infof2(template string, args ...any)
+		IncAttacherCounter()
+		DecAttacherCounter()
+		AttacherCounter() int
 	}
 
 	// StartStop interface of the global objects which coordinates graceful shutdown
