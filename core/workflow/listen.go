@@ -64,7 +64,7 @@ func (w *Workflow) LoadSequencerTips(seqID ledger.ChainID) error {
 	}
 	w.Log().Infof("loaded sequencer output %s for %s:\n%s",
 		oSeq.ID.StringShort(), seqID.String(), oSeq.MustParse().Output.Lines("        ").String())
-	wOut := attacher.AttachOutputID(oSeq.ID, w, attacher.OptionPullNonBranch, attacher.OptionInvokedBy("LoadSequencerTips"))
+	wOut := attacher.AttachOutputID(oSeq.ID, w, attacher.OptionInvokedBy("LoadSequencerTips"))
 	loadedTxs.Insert(wOut.VID)
 
 	// load pending tag-along outputs
@@ -72,7 +72,7 @@ func (w *Workflow) LoadSequencerTips(seqID ledger.ChainID) error {
 	util.AssertNoError(err)
 	for _, oid := range oids {
 		w.Log().Infof("loading tag-along input for sequencer %s: %s from branch %s", seqID.StringShort(), oid.StringShort(), vidBranch.IDShortString())
-		wOut := attacher.AttachOutputID(oid, w, attacher.OptionPullNonBranch, attacher.OptionInvokedBy("LoadSequencerTips"))
+		wOut := attacher.AttachOutputID(oid, w, attacher.OptionInvokedBy("LoadSequencerTips"))
 		loadedTxs.Insert(wOut.VID)
 	}
 	// post new tx event for each transaction

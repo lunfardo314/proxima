@@ -27,13 +27,15 @@ type (
 		GetStemWrappedOutput(branch *ledger.TransactionID) vertex.WrappedOutput
 		SendToTippool(vid *vertex.WrappedTx)
 		EvidenceBranchSlot(s ledger.Slot, healthy bool)
+		TxBytesStore() global.TxBytesStore
+		TxBytesFromStoreIn(txBytes []byte) (*ledger.TransactionID, error)
 	}
 
 	pullEnvironment interface {
-		Pull(txid ledger.TransactionID, by string)
 		PokeMe(me, with *vertex.WrappedTx)
 		PokeAllWith(wanted *vertex.WrappedTx)
 		NotifyEndOfPortion()
+		PullFromPeers(txid *ledger.TransactionID)
 	}
 
 	postEventEnvironment interface {
@@ -99,8 +101,6 @@ type (
 	_attacherOptions struct {
 		metadata           *txmetadata.TransactionMetadata
 		attachmentCallback func(vid *vertex.WrappedTx, err error)
-		pullNonBranch      bool
-		doNotLoadBranch    bool
 		calledBy           string
 		enforceTimestamp   bool
 		ctx                context.Context
@@ -188,14 +188,6 @@ func AttachTxOptionWithContext(ctx context.Context) AttachTxOption {
 	return func(options *_attacherOptions) {
 		options.ctx = ctx
 	}
-}
-
-func OptionPullNonBranch(options *_attacherOptions) {
-	options.pullNonBranch = true
-}
-
-func OptionDoNotLoadBranch(options *_attacherOptions) {
-	options.doNotLoadBranch = true
 }
 
 func OptionEnforceTimestampBeforeRealTime(options *_attacherOptions) {

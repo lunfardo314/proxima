@@ -79,6 +79,10 @@ func (p *ProximaNode) TxBytesStore() global.TxBytesStore {
 	return p.txBytesStore
 }
 
+func (p *ProximaNode) PullFromPeers(txid *ledger.TransactionID) {
+	p.peers.PullTransactionsFromAllPeers(*txid)
+}
+
 func (p *ProximaNode) readInTraceTags() {
 	p.Global.StartTracingTags(viper.GetStringSlice("trace_tags")...)
 }

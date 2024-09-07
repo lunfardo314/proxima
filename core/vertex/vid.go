@@ -181,13 +181,8 @@ func (vid *WrappedTx) Poke() {
 // Also sets solidification deadline, after which IsPullDeadlineDue will start returning true
 // The pull deadline will be dropped after transaction will become available and virtualTx will be converted
 // to full vertex
-func WrapTxID(txid ledger.TransactionID, pullTimeout ...time.Duration) *WrappedTx {
-	virtualTx := newVirtualTx()
-	if len(pullTimeout) > 0 {
-		virtualTx.pullDeadline = util.Ref(time.Now().Add(pullTimeout[0]))
-	}
-	ret := _newVID(_virtualTx{virtualTx}, txid, nil)
-	return ret
+func WrapTxID(txid ledger.TransactionID) *WrappedTx {
+	return _newVID(_virtualTx{newVirtualTx()}, txid, nil)
 }
 
 func (vid *WrappedTx) ShortString() string {
@@ -453,12 +448,11 @@ func (vid *WrappedTx) LinesNoLock(prefix ...string) *lines.Lines {
 	case _vertex:
 		ret.Add("Transaction:\n" + v.Tx.LinesShort(prefix...).String())
 	case _virtualTx:
-		pullDeadlineStr := "<nil>"
-		if v.pullDeadline != nil {
-			pullDeadlineStr = (*v.pullDeadline).Format(time.StampNano)
+		if v.needsPull {
+			ret.Add("Pull: deadline %s, last pul %s", v.pullDeadline.Format(time.StampNano), v.lastPull.Format(time.StampNano))
+		} else {
+			ret.Add("Pull: not needed")
 		}
-		ret.Add("PullDeadline: %s", pullDeadlineStr)
-		ret.Add("Last pull: %v", v.lastPull.Format(time.StampNano))
 	}
 	return ret
 }

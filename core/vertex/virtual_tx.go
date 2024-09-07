@@ -16,11 +16,12 @@ func newVirtualTx() *VirtualTransaction {
 	}
 }
 
-func NewVirtualBranchTx(br *multistate.BranchData) *VirtualTransaction {
+func newVirtualBranchTx(br *multistate.BranchData) *VirtualTransaction {
 	v := newVirtualTx()
 	v.addSequencerIndices(br.SequencerOutput.ID.Index(), br.Stem.ID.Index())
 	v.addOutput(br.SequencerOutput.ID.Index(), br.SequencerOutput.Output)
 	v.addOutput(br.Stem.ID.Index(), br.Stem.Output)
+	v.SetPullNotNeeded()
 	return v
 }
 
@@ -39,12 +40,12 @@ func VirtualTxFromTx(tx *transaction.Transaction) *VirtualTransaction {
 	return ret
 }
 
-func (v *VirtualTransaction) WrapWithID(txid ledger.TransactionID) *WrappedTx {
+func (v *VirtualTransaction) wrapWithID(txid ledger.TransactionID) *WrappedTx {
 	return _newVID(_virtualTx{VirtualTransaction: v}, txid, v.sequencerID(&txid))
 }
 
 func WrapBranchDataAsVirtualTx(branchData *multistate.BranchData) *WrappedTx {
-	ret := NewVirtualBranchTx(branchData).WrapWithID(branchData.Stem.ID.TransactionID())
+	ret := newVirtualBranchTx(branchData).wrapWithID(branchData.Stem.ID.TransactionID())
 	cov := branchData.LedgerCoverage
 	ret.coverage = &cov
 	ret.flags.SetFlagsUp(FlagVertexDefined | FlagVertexTxAttachmentStarted | FlagVertexTxAttachmentStarted)
@@ -116,24 +117,33 @@ func (v *VirtualTransaction) sequencerID(txid *ledger.TransactionID) (ret *ledge
 	return
 }
 
+// functions to manipulate pull information in the virtual transaction
+// Real transactions (full vertices) do not need pull
+
+func (v *VirtualTransaction) PullRulesDefined() bool {
+	return v.pullRulesDefined
+}
+
 func (v *VirtualTransaction) SetPullDeadline(deadline time.Time) {
-	v.pullDeadline = util.Ref(deadline)
+	v.pullRulesDefined = true
+	v.needsPull = true
+	v.pullDeadline = deadline
+}
+
+func (v *VirtualTransaction) SetPullNotNeeded() {
+	v.pullRulesDefined = true
+	v.needsPull = false
 }
 
 func (v *VirtualTransaction) SetLastPullNow() {
+	util.Assertf(v.pullRulesDefined, "v.pullRulesDefined")
 	v.lastPull = time.Now()
 }
 
 func (v *VirtualTransaction) PullDeadlineExpired() bool {
-	if v.pullDeadline == nil {
-		return false
-	}
-	return time.Now().After(*v.pullDeadline)
+	return v.pullRulesDefined && v.needsPull && time.Now().After(v.pullDeadline)
 }
 
 func (v *VirtualTransaction) PullNeeded(repeatPeriod time.Duration) bool {
-	if v.pullDeadline == nil {
-		return false
-	}
-	return v.lastPull.Add(repeatPeriod).Before(time.Now())
+	return v.pullRulesDefined && v.needsPull && v.lastPull.Add(repeatPeriod).Before(time.Now())
 }

@@ -25,8 +25,11 @@ type (
 	VirtualTransaction struct {
 		mutex            sync.RWMutex
 		outputs          map[byte]*ledger.Output
-		sequencerOutputs *[2]byte   // if nil, it is unknown
-		pullDeadline     *time.Time // if nil, does not need pull
+		sequencerOutputs *[2]byte // if nil, it is unknown
+		// pull rules
+		pullRulesDefined bool
+		needsPull        bool
+		pullDeadline     time.Time // if nil, does not need pull
 		lastPull         time.Time
 	}
 

@@ -33,6 +33,7 @@ type (
 		StateStore() global.StateStore
 		TxBytesStore() global.TxBytesStore
 		SyncServerDisabled() bool
+		PullFromPeers(txid *ledger.TransactionID)
 	}
 	Workflow struct {
 		Environment

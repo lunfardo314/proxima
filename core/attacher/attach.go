@@ -12,6 +12,7 @@ import (
 )
 
 // AttachTxID ensures the txid is on the MemDAG
+// It load existing branches but does not pull anything
 func AttachTxID(txid ledger.TransactionID, env Environment, opts ...AttachTxOption) (vid *vertex.WrappedTx) {
 	env.TraceTx(&txid, "AttachTxID")
 
@@ -40,22 +41,11 @@ func AttachTxID(txid ledger.TransactionID, env Environment, opts ...AttachTxOpti
 		// it is new
 		if !txid.IsBranchTransaction() {
 			// if not branch -> just place the empty virtualTx on the utangle, no further action
-			vid = vertex.WrapTxID(txid, PullTimeout)
+			vid = vertex.WrapTxID(txid)
 			env.AddVertexNoLock(vid)
-			if options.pullNonBranch {
-				env.Tracef(TraceTagAttach, "AttachTxID: pull new ID %s%s", txid.StringShort, by)
-				env.TraceTx(&txid, "AttachTxID: pull new ID")
-				env.Pull(txid, "AttachTxID-1")
-			}
 			return
 		}
 		// it is a branch transaction
-		if options.doNotLoadBranch {
-			// only needed ID (for call from the AttachTransaction)
-			vid = vertex.WrapTxID(txid, PullTimeout)
-			env.AddVertexNoLock(vid)
-			return
-		}
 		// look up for the corresponding state
 		if branchData, branchAvailable := multistate.FetchBranchData(env.StateStore(), txid); branchAvailable {
 			// corresponding state has been found, it is solid -> put virtual branch tx to the memDAG
@@ -69,11 +59,9 @@ func AttachTxID(txid ledger.TransactionID, env Environment, opts ...AttachTxOpti
 			env.TraceTx(&txid, "AttachTxID: branch fetched from the state")
 
 		} else {
-			// the corresponding state is not in the multistate DB -> put virtualTx to the utangle -> pull it
-			// the puller will trigger further solidification
-			vid = vertex.WrapTxID(txid, PullTimeout)
+			// the corresponding state is not in the multistate DB -> put virtualTx to the utangle -> pull is up to attacher
+			vid = vertex.WrapTxID(txid)
 			env.AddVertexNoLock(vid)
-			env.Pull(txid, "AttachTxID-2") // always pull new branch. This will spin off sync process on the node
 
 			env.Tracef(TraceTagAttach, "AttachTxID: added new branch vertex and pulled %s%s", txid.StringShort(), by)
 			env.TraceTx(&txid, "AttachTxID: added new branch vertex and pulled")
@@ -97,53 +85,39 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Att
 	env.Tracef(TraceTagAttach, "AttachTransaction: %s", tx.IDShortString)
 	env.TraceTx(tx.ID(), "AttachTransaction")
 
-	vid = AttachTxID(*tx.ID(), env, OptionDoNotLoadBranch, OptionInvokedBy("addTx"))
-	vid.Unwrap(vertex.UnwrapOptions{
-		// full vertex or with attachment process already invoked will be ignored
-		VirtualTx: func(v *vertex.VirtualTransaction) {
-			if vid.FlagsUpNoLock(vertex.FlagVertexTxAttachmentStarted) {
-				// to prevent already attached virtual txs (branches) from repetitive attachment
-				return
-			}
+	vid = AttachTxID(*tx.ID(), env, OptionInvokedBy("addTx"))
+	vid.UnwrapVirtualTx(func(v *vertex.VirtualTransaction) {
+		if vid.FlagsUpNoLock(vertex.FlagVertexTxAttachmentStarted) {
+			// to prevent already attached virtual txs (branches) from repetitive attachment
+			return
+		}
 
-			// mark the vertex in order to prevent repetitive attachment
-			vid.SetFlagsUpNoLock(vertex.FlagVertexTxAttachmentStarted)
+		// mark the vertex in order to prevent repetitive attachment
+		vid.SetFlagsUpNoLock(vertex.FlagVertexTxAttachmentStarted)
 
-			// virtual tx is converted into full vertex with the full transaction
-			env.Tracef(TraceTagAttach, ">>>>>>>>>>>>>>>>>>>>>>> ConvertVirtualTxToVertexNoLock: %s", tx.IDShortString())
-			vid.ConvertVirtualTxToVertexNoLock(vertex.New(tx))
+		// virtual tx is converted into full vertex with the full transaction
+		env.Tracef(TraceTagAttach, ">>>>>>>>>>>>>>>>>>>>>>> ConvertVirtualTxToVertexNoLock: %s", tx.IDShortString())
+		vid.ConvertVirtualTxToVertexNoLock(vertex.New(tx))
 
-			if vid.IsSequencerMilestone() {
-				// for sequencer milestones start attacher
-				metadata := options.metadata
+		if vid.IsSequencerMilestone() {
+			// for sequencer milestones start attacher
+			metadata := options.metadata
 
-				// start attacher routine
-				go func() {
-					env.MarkWorkProcessStarted(vid.IDShortString())
-					env.TraceTx(&vid.ID, "runMilestoneAttacher: start")
+			// start attacher routine
+			go func() {
+				env.MarkWorkProcessStarted(vid.IDShortString())
+				env.TraceTx(&vid.ID, "runMilestoneAttacher: start")
+				env.IncAttacherCounter()
 
-					runMilestoneAttacher(vid, metadata, options.attachmentCallback, env, options.ctx)
+				runMilestoneAttacher(vid, metadata, options.attachmentCallback, env, options.ctx)
 
-					env.TraceTx(&vid.ID, "runMilestoneAttacher: exit")
-					env.MarkWorkProcessStopped(vid.IDShortString())
-				}()
-			} else {
-				// pull predecessors of non-sequencer transactions which are on the same slot.
-				// We limit pull to the same slot so that not to fall into the endless pull cycle
-				slot := vid.Slot()
-				tx.PredecessorTransactionIDs().ForEach(func(txid ledger.TransactionID) bool {
-					if txid.Slot() == slot {
-						AttachTxID(txid, env, OptionPullNonBranch)
-					}
-					return true
-				})
-				vid.SetFlagsUpNoLock(vertex.FlagVertexTxAttachmentFinished)
-				// notify others who are waiting for the vid
-				env.PokeAllWith(vid)
-			}
+				env.TraceTx(&vid.ID, "runMilestoneAttacher: exit")
+				env.MarkWorkProcessStopped(vid.IDShortString())
+				env.DecAttacherCounter()
+			}()
+		}
 
-			env.PostEventNewTransaction(vid)
-		},
+		env.PostEventNewTransaction(vid)
 	})
 	return
 }
@@ -162,7 +136,7 @@ func InvalidateTxID(txid ledger.TransactionID, env Environment, reason error) *v
 	env.Tracef(TraceTagAttach, "InvalidateTxID: %s", txid.StringShort())
 	env.TraceTx(&txid, "InvalidateTxID")
 
-	vid := AttachTxID(txid, env, OptionDoNotLoadBranch, OptionInvokedBy("InvalidateTxID"))
+	vid := AttachTxID(txid, env, OptionInvokedBy("InvalidateTxID"))
 	vid.SetTxStatusBad(reason)
 	return vid
 }

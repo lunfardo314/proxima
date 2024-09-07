@@ -47,6 +47,10 @@ func (w *workflowDummyEnvironment) SyncServerDisabled() bool {
 	return true
 }
 
+func (w *workflowDummyEnvironment) PullFromPeers(txid *ledger.TransactionID) {
+	panic("not implemented")
+}
+
 func newWorkflowDummyEnvironment(stateStore global.StateStore, txStore global.TxBytesStore) *workflowDummyEnvironment {
 	return &workflowDummyEnvironment{
 		Global:       global.NewDefault(),
