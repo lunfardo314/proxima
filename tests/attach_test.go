@@ -142,9 +142,6 @@ func TestBasic(t *testing.T) {
 		env := newWorkflowDummyEnvironment(stateStore, txBytesStore)
 		wrk := workflow.New(env, peering.NewPeersDummy(), workflow.OptionDoNotStartPruner)
 
-		//wrk.StartTracingTags(attacher.TraceTagAttach, attacher.TraceTagAttachMilestone, attacher.TraceTagAttachVertex)
-		//wrk.StartTracingTags(attacher.TraceTagAttachEndorsements, attacher.TraceTagAttachOutput)
-		//wrk.StartTracingTags(attacher.TraceTagMarkDefUndef)
 		wrk.Start()
 
 		txBytes, err := txbuilder.MakeDistributionTransaction(stateStore, privKey, distrib)
@@ -157,7 +154,7 @@ func TestBasic(t *testing.T) {
 		require.NoError(t, err)
 		require.True(t, len(txBytesStore.GetTxBytesWithMetadata(&distribTxID)) > 0)
 
-		vidDistrib, err := attacher.EnsureBranch(distribTxID, wrk)
+		vidDistrib, err := attacher.EnsureBranch(distribTxID, wrk, time.Second)
 		require.NoError(t, err)
 
 		t.Logf("bootstrap chain id: %s", bootstrapChainID.String())
@@ -217,12 +214,13 @@ func TestBasic(t *testing.T) {
 		txBytes, err := txbuilder.DistributeInitialSupply(stateStore, privKey, distrib)
 		require.NoError(t, err)
 
-		vidDistrib, err := attacher.AttachTransactionFromBytes(txBytes, wrk)
-		require.NoError(t, err)
+		vidDistrib, err := attacher.AttachTransactionFromBytes(txBytes, wrk, attacher.AttachTxOptionWithAttachmentCallback(func(vid *vertex.WrappedTx, err error) {
+			require.EqualValues(t, vertex.Good, vid.GetTxStatus())
+			_, err = txBytesStore.PersistTxBytesWithMetadata(txBytes, nil)
+			util.AssertNoError(err)
+		}))
 
-		require.EqualValues(t, vertex.Good, vidDistrib.GetTxStatus())
-		_, err = txBytesStore.PersistTxBytesWithMetadata(txBytes, nil)
-		util.AssertNoError(err)
+		require.NoError(t, err)
 
 		t.Logf("bootstrap chain id: %s", bootstrapChainID.String())
 

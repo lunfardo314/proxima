@@ -1,9 +1,9 @@
 package attacher
 
 import (
+	"fmt"
 	"time"
 
-	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/transaction"
@@ -87,8 +87,11 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Att
 
 	vid = AttachTxID(*tx.ID(), env, OptionInvokedBy("addTx"))
 	vid.UnwrapVirtualTx(func(v *vertex.VirtualTransaction) {
-		if vid.FlagsUpNoLock(vertex.FlagVertexTxAttachmentStarted) {
-			// to prevent already attached virtual txs (branches) from repetitive attachment
+		if vid.FlagsUpNoLock(vertex.FlagVertexTxAttachmentStarted | vertex.FlagVertexTxAttachmentFinished) {
+			// case with already attached transaction
+			if options.attachmentCallback != nil {
+				go options.attachmentCallback(vid, vid.GetErrorNoLock())
+			}
 			return
 		}
 
@@ -149,14 +152,31 @@ func AttachOutputID(oid ledger.OutputID, env Environment, opts ...AttachTxOption
 	}
 }
 
-const maxTimeout = 10 * time.Minute
+const maxTimeout = time.Minute
 
-func EnsureBranch(txid ledger.TransactionID, env Environment) (*vertex.WrappedTx, error) {
-	txBytes, txMetadata, err := txmetadata.ParseTxMetadata(env.TxBytesStore().GetTxBytesWithMetadata(&txid))
-	if err != nil {
+func EnsureBranch(txid ledger.TransactionID, env Environment, timeout ...time.Duration) (*vertex.WrappedTx, error) {
+	env.Assertf(txid.IsBranchTransaction(), "txid.IsSequencerMilestone()")
+	deadline := time.Now().Add(maxTimeout)
+	if len(timeout) > 0 {
+		deadline = time.Now().Add(timeout[0])
+	}
+
+	vid := AttachTxID(txid, env)
+	if vid.GetTxStatus() == vertex.Good {
+		return vid, nil
+	}
+
+	if err := env.TxFromStoreIn(&txid); err != nil {
 		return nil, err
 	}
-	return AttachTransactionFromBytes(txBytes, env, AttachTxOptionWithTransactionMetadata(txMetadata))
+
+	for vid.GetTxStatus() != vertex.Good {
+		time.Sleep(10 * time.Millisecond)
+		if time.Now().After(deadline) {
+			return nil, fmt.Errorf("timeout: branch %s is not in the state", txid.StringShort())
+		}
+	}
+	return vid, nil
 }
 
 func MustEnsureBranch(txid ledger.TransactionID, env Environment) *vertex.WrappedTx {

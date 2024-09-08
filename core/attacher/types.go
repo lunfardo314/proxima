@@ -28,7 +28,7 @@ type (
 		SendToTippool(vid *vertex.WrappedTx)
 		EvidenceBranchSlot(s ledger.Slot, healthy bool)
 		TxBytesStore() global.TxBytesStore
-		TxBytesFromStoreIn(txBytes []byte) (*ledger.TransactionID, error)
+		TxFromStoreIn(txid *ledger.TransactionID) error
 	}
 
 	pullEnvironment interface {

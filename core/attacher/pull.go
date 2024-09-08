@@ -49,18 +49,11 @@ func (a *attacher) pullIfNeededUnwrapped(virtualTx *vertex.VirtualTransaction, d
 }
 
 func (a *attacher) pull(virtualTx *vertex.VirtualTransaction, deptVID *vertex.WrappedTx) bool {
-	txBytesWithMetadata := a.TxBytesStore().GetTxBytesWithMetadata(&deptVID.ID)
-	if len(txBytesWithMetadata) > 0 {
+	if err := a.TxFromStoreIn(&deptVID.ID); err == nil {
 		virtualTx.SetPullNotNeeded()
-		// loaded from txStore
-		txid, err := a.TxBytesFromStoreIn(txBytesWithMetadata)
-		if err != nil {
-			a.setError(fmt.Errorf("pull(from txstore): %w", err))
-			return false
-		}
-		a.Assertf(*txid == deptVID.ID, "*txid == deptVID.ID")
 		return true
 	}
+	// failed to load txBytes from store -> pull it from peers
 	a.PullFromPeers(&deptVID.ID)
 	virtualTx.SetLastPullNow()
 	return true
