@@ -64,6 +64,14 @@ func (a *attacher) setFlagsUp(vid *vertex.WrappedTx, f Flags) {
 }
 
 func (a *attacher) markVertexDefined(vid *vertex.WrappedTx) {
+	flags := a.flags(vid)
+	if a.isKnownRooted(vid) {
+		a.Assertf(!flags.FlagsUp(flagAttachedVertexInputsSolid), "!flags.FlagsUp(flagAttachedVertexInputsSolid)")
+		a.Assertf(!flags.FlagsUp(flagAttachedVertexEndorsementsSolid), "!flags.FlagsUp(flagAttachedVertexInputsSolid)")
+	} else {
+		a.Assertf(flags.FlagsUp(flagAttachedVertexInputsSolid), "flags.FlagsUp(flagAttachedVertexInputsSolid)")
+		a.Assertf(flags.FlagsUp(flagAttachedVertexEndorsementsSolid), "flags.FlagsUp(flagAttachedVertexInputsSolid)")
+	}
 	a.referenced.mustReference(vid)
 	a.vertices[vid] = a.flags(vid) | flagAttachedVertexKnown | flagAttachedVertexDefined
 
@@ -417,22 +425,15 @@ func (a *attacher) attachEndorsement(v *vertex.Vertex, vid *vertex.WrappedTx, in
 			vidEndorsed.IDShortString, vid.IDShortString)
 		return true, true
 	}
-	a.markVertexUndefined(vidEndorsed)
 
-	switch vidEndorsed.GetTxStatus() {
-	case vertex.Good:
-		a.Tracef(TraceTagAttachEndorsements, "attachEndorsement: attaching endorsement %s of %s: its is GOOD. Mark 'defined'",
-			vidEndorsed.IDShortString, vid.IDShortString)
-		a.markVertexDefined(vidEndorsed)
-		return true, true
-
-	case vertex.Bad:
+	if vidEndorsed.GetTxStatus() == vertex.Bad {
 		a.setError(vidEndorsed.GetError())
 		a.Tracef(TraceTagAttachEndorsements, "attachEndorsement: attaching endorsement %s of %s: its is BAD",
 			vidEndorsed.IDShortString, vid.IDShortString)
 		return false, false
 	}
-	util.Assertf(vidEndorsed.GetTxStatus() == vertex.Undefined, "vidEndorsed.GetTxStatus() == vertex.Undefined")
+
+	a.markVertexUndefined(vidEndorsed)
 
 	if !a.pullIfNeeded(vidEndorsed) {
 		return false, false
@@ -454,7 +455,7 @@ func (a *attacher) attachEndorsement(v *vertex.Vertex, vid *vertex.WrappedTx, in
 	}
 
 	// non-branch undefined or GOOD but not rooted milestone. Go deep recursively
-	a.Assertf(!vidEndorsed.IsBranchTransaction(), "attachEndorsements(%s): !vidEndorsed.IsBranchTransaction(): %s", a.name, vidEndorsed.IDShortString)
+	a.Assertf(!vidEndorsed.IsBranchTransaction(), "attachEndorsements: !vidEndorsed.IsBranchTransaction(): %s", vidEndorsed.IDShortString)
 
 	ok, defined = a.attachVertexNonBranch(vidEndorsed)
 	if !ok {
@@ -517,7 +518,7 @@ func (a *attacher) attachInput(v *vertex.Vertex, inputIdx byte, vid *vertex.Wrap
 
 	ok, defined = a.attachOutput(wOut)
 	if !ok {
-		return ok, false
+		return false, false
 	}
 	if defined {
 		a.Tracef(TraceTagAttachVertex, "input #%d (%s) has been solidified", inputIdx, wOut.IDShortString)

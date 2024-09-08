@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/lunfardo314/proxima/core/txmetadata"
@@ -41,22 +42,10 @@ func runMilestoneAttacher(
 	}()
 
 	if err = a.run(); err != nil {
-		// FIXME
-		/*
-			assertion failed:: vid.GetTxStatusNoLock() != Good. SetTxStatusBadNoLock err = solidification deadline (5s) in [54265|0br]aea1f2..: dependency [54264|58sq]118998.. is not solid
-				github.com/lunfardo314/proxima/util.Assertf(0xc0?, {0x146a6ae, 0x3e}, {0xc01063fe48?, 0x141f750?, 0x1455264?})
-				        /home/lunfardo/go/src/github.com/lunfardo314/proxima/util/util_assert.go:33 +0x99
-				github.com/lunfardo314/proxima/core/vertex.(*WrappedTx).SetTxStatusBadNoLock(0xc004fcd450, {0x1839cc0, 0xc01c2ecf80})
-				        /home/lunfardo/go/src/github.com/lunfardo314/proxima/core/vertex/vid.go:134 +0xc5
-				github.com/lunfardo314/proxima/core/vertex.(*WrappedTx).SetTxStatusBad(0xc004fcd450, {0x1839cc0, 0xc01c2ecf80})
-				        /home/lunfardo/go/src/github.com/lunfardo314/proxima/core/vertex/vid.go:128 +0x85
-				github.com/lunfardo314/proxima/core/attacher.runMilestoneAttacher(0xc004fcd450, 0xc0043fe120, 0x0, {0x1863160, 0xc0000d19e0}, {0x0?, 0x0?})
-				        /home/lunfardo/go/src/github.com/lunfardo314/proxima/core/attacher/attacher_milestone.go:41 +0x118
-				github.com/lunfardo314/proxima/core/attacher.AttachTransaction.func1.1()
-				        /home/lunfardo/go/src/github.com/lunfardo314/proxima/core/attacher/attach.go:141 +0xcf
-				created by github.com/lunfardo314/proxima/core/attacher.AttachTransaction.func1 in goroutine 17056
-				        /home/lunfardo/go/src/github.com/lunfardo314/proxima/core/attacher/attach.go:137 +0x35e
-		*/
+		if strings.Contains(a.vid.ID.StringShort(), "7f79") { // "7f79"
+			fmt.Printf(">>>>>>>>>>> BAD \n%s\n", a.dumpLinesString("       "))
+		}
+
 		vid.SetTxStatusBad(err)
 		env.Log().Warnf(a.logErrorStatusString(err))
 		// panic("fail fast")
@@ -152,6 +141,10 @@ func (a *milestoneAttacher) run() error {
 		a.Tracef(TraceTagAttachMilestone, ">>>>>>>>>>>>>>> ConvertVertexToVirtualTx: %s", a.vid.IDShortString())
 
 		a.vid.ConvertVertexToVirtualTx()
+	}
+
+	if strings.Contains(a.vid.ID.StringShort(), "7f79") {
+		fmt.Printf(">>>>>>>>>>> GOOD \n%s\n", a.dumpLinesString("       "))
 	}
 
 	a.vid.SetTxStatusGood()

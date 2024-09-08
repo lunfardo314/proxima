@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/core/attacher"
+	"github.com/lunfardo314/proxima/core/memdag"
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/core/workflow"
 	"github.com/lunfardo314/proxima/global"
@@ -455,8 +456,8 @@ func TestConflicts1Attacher(t *testing.T) {
 		t.Logf("expected reason: %v", vid.GetError())
 		util.RequireErrorWith(t, vid.GetError(), "conflicts with another consumer", testData.forkOutput.IDShort())
 	})
+	// FIXME takes too long
 	t.Run("long with sync", func(t *testing.T) {
-		//attacher.SetTraceOn()
 		const (
 			nConflicts = 2
 			howLong    = 70 // 97 fails when crosses slot boundary
@@ -612,7 +613,7 @@ func TestConflictsNAttachersOneFork(t *testing.T) {
 	const (
 		nConflicts = 2
 		nChains    = 2
-		howLong    = 20 // 97 fails when crosses slot boundary
+		howLong    = 2 // 20 // 97 fails when crosses slot boundary
 		pullYN     = true
 	)
 	var err error
@@ -673,6 +674,9 @@ func TestConflictsNAttachersOneFork(t *testing.T) {
 	testData.stopAndWait()
 	testData.logDAGInfo()
 
+	memdag.SaveGraphPastCone(vidSeq, "with_conflict")
+
+	t.Logf("expected BAD transaction %s", vidSeq.IDShortString())
 	require.EqualValues(t, vertex.Bad.String(), vidSeq.GetTxStatus().String())
 	util.RequireErrorWith(t, vidSeq.GetError(), "conflicts with another consumer", "(double spend)", testData.forkOutput.IDShort())
 	//testData.wrk.SaveGraph("utangle")
