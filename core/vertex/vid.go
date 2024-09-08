@@ -426,7 +426,7 @@ func (vid *WrappedTx) Lines(prefix ...string) *lines.Lines {
 			}
 		},
 		Deleted: func() {
-			ret.Add("== orphaned vertex")
+			ret.Add("== deleted vertex")
 		},
 	})
 	return ret
@@ -436,6 +436,7 @@ func (vid *WrappedTx) LinesNoLock(prefix ...string) *lines.Lines {
 	ret := lines.New(prefix...)
 	ret.Add("ID: %s", vid.ID.StringShort()).
 		Add("Kind: %s", vid._ofKindString()).
+		Add("Status: %s", vid.GetTxStatusNoLock().String()).
 		Add("Flags: %s", vid.flags.String()).
 		Add("Err: %v", vid.err).
 		Add("Refs: %d", vid.numReferences)
@@ -446,7 +447,7 @@ func (vid *WrappedTx) LinesNoLock(prefix ...string) *lines.Lines {
 	}
 	switch v := vid._genericVertex.(type) {
 	case _vertex:
-		ret.Add("Transaction:\n" + v.Tx.LinesShort(prefix...).String())
+		ret.Add("---- transaction ----\n" + v.Tx.LinesShort(prefix...).String())
 	case _virtualTx:
 		if v.needsPull {
 			ret.Add("Pull: deadline %s, last pul %s", v.pullDeadline.Format(time.StampNano), v.lastPull.Format(time.StampNano))

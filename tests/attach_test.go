@@ -214,13 +214,16 @@ func TestBasic(t *testing.T) {
 		txBytes, err := txbuilder.DistributeInitialSupply(stateStore, privKey, distrib)
 		require.NoError(t, err)
 
+		waitCh := make(chan struct{})
 		vidDistrib, err := attacher.AttachTransactionFromBytes(txBytes, wrk, attacher.AttachTxOptionWithAttachmentCallback(func(vid *vertex.WrappedTx, err error) {
 			require.EqualValues(t, vertex.Good, vid.GetTxStatus())
 			_, err = txBytesStore.PersistTxBytesWithMetadata(txBytes, nil)
 			util.AssertNoError(err)
+			close(waitCh)
 		}))
-
 		require.NoError(t, err)
+
+		<-waitCh
 
 		t.Logf("bootstrap chain id: %s", bootstrapChainID.String())
 
@@ -605,6 +608,7 @@ func TestConflictsNAttachersSeqStartTxFee(t *testing.T) {
 	//testData.wrk.SaveGraph("utangle")
 }
 
+// FIXME
 func TestConflictsNAttachersOneFork(t *testing.T) {
 	const (
 		nConflicts = 2

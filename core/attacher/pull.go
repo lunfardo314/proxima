@@ -36,7 +36,7 @@ func (a *attacher) pullIfNeededUnwrapped(virtualTx *vertex.VirtualTransaction, d
 		return true
 	}
 
-	if a.baselineStateReader().KnowsCommittedTransaction(&deptVID.ID) {
+	if a.baseline != nil && a.baselineStateReader().KnowsCommittedTransaction(&deptVID.ID) {
 		virtualTx.SetPullNotNeeded()
 		a.mustMarkVertexRooted(deptVID)
 		return true

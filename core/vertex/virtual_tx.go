@@ -48,7 +48,7 @@ func WrapBranchDataAsVirtualTx(branchData *multistate.BranchData) *WrappedTx {
 	ret := newVirtualBranchTx(branchData).wrapWithID(branchData.Stem.ID.TransactionID())
 	cov := branchData.LedgerCoverage
 	ret.coverage = &cov
-	ret.flags.SetFlagsUp(FlagVertexDefined | FlagVertexTxAttachmentStarted | FlagVertexTxAttachmentStarted)
+	ret.flags.SetFlagsUp(FlagVertexDefined | FlagVertexTxAttachmentStarted | FlagVertexTxAttachmentFinished)
 	return ret
 }
 

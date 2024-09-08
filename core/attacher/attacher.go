@@ -412,6 +412,7 @@ func (a *attacher) attachEndorsement(v *vertex.Vertex, vid *vertex.WrappedTx, in
 		return false, false
 
 	case vertex.Good:
+		a.markVertexDefined(vidEndorsed)
 		return true, true
 		//if a.baselineStateReader().KnowsCommittedTransaction(&vidEndorsed.ID) {
 		//	// all endorsed transactions known to the baseline state are 'defined' and 'rooted'
