@@ -53,7 +53,7 @@ func (w *Workflow) LoadSequencerTips(seqID ledger.ChainID) error {
 		seqID.StringShort(), branchData.TxID().StringShort(), nowSlot-branchData.TxID().Slot(), nowSlot)
 
 	rdr := multistate.MustNewSugaredReadableState(w.StateStore(), branchData.Root, 0)
-	vidBranch := attacher.MustEnsureBranch(branchData.Stem.ID.TransactionID(), w)
+	vidBranch := w.MustEnsureBranch(branchData.Stem.ID.TransactionID())
 	w.PostEventNewGood(vidBranch)
 	loadedTxs.Insert(vidBranch)
 

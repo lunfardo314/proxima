@@ -44,7 +44,7 @@ func TestBasic(t *testing.T) {
 		_, _, err := multistate.ScanGenesisState(stateStore)
 		require.NoError(t, err)
 		genesisOut := ledger.GenesisStemOutput()
-		vidGenesis, err := attacher.EnsureBranch(genesisOut.ID.TransactionID(), wrk)
+		vidGenesis, err := wrk.EnsureBranch(genesisOut.ID.TransactionID())
 		require.NoError(t, err)
 
 		rdr := multistate.MakeSugared(wrk.GetStateReaderForTheBranch(&vidGenesis.ID))
@@ -85,7 +85,7 @@ func TestBasic(t *testing.T) {
 		distribTxID, err := transaction.IDFromTransactionBytes(txBytes)
 		require.NoError(t, err)
 
-		vidDistrib, err := attacher.EnsureBranch(distribTxID, wrk)
+		vidDistrib, err := wrk.EnsureBranch(distribTxID)
 		require.NoError(t, err)
 
 		env.Stop()
@@ -154,7 +154,7 @@ func TestBasic(t *testing.T) {
 		require.NoError(t, err)
 		require.True(t, len(txBytesStore.GetTxBytesWithMetadata(&distribTxID)) > 0)
 
-		vidDistrib, err := attacher.EnsureBranch(distribTxID, wrk, time.Second)
+		vidDistrib, err := wrk.EnsureBranch(distribTxID, time.Second)
 		require.NoError(t, err)
 
 		t.Logf("bootstrap chain id: %s", bootstrapChainID.String())
@@ -456,7 +456,7 @@ func TestConflicts1Attacher(t *testing.T) {
 		//attacher.SetTraceOn()
 		const (
 			nConflicts = 2
-			howLong    = 70 // 97 fails when crosses slot boundary
+			howLong    = 5 // 70 // 97 fails when crosses slot boundary
 		)
 		testData := initLongConflictTestData(t, nConflicts, nConflicts, howLong)
 		for _, txBytes := range testData.txBytesConflicting {

@@ -36,9 +36,9 @@ func (w *Workflow) ignoreTxID(txid *ledger.TransactionID) bool {
 	return w.syncManager != nil && w.syncManager.IgnoreFutureTxID(txid)
 }
 
-func (w *Workflow) TxFromStoreIn(txid *ledger.TransactionID) error {
-	_, err := w.TxBytesFromStoreIn(w.TxBytesStore().GetTxBytesWithMetadata(txid))
-	return err
+func (w *Workflow) TxFromStoreIn(txid *ledger.TransactionID) (err error) {
+	_, err = w.TxBytesFromStoreIn(w.TxBytesStore().GetTxBytesWithMetadata(txid))
+	return
 }
 
 func (w *Workflow) TxBytesFromStoreIn(txBytesWithMetadata []byte) (*ledger.TransactionID, error) {

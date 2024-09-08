@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lunfardo314/proxima/core/attacher"
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/multistate"
@@ -227,7 +226,7 @@ func initMultiSequencerTest(t *testing.T, nSequencers int, startPruner ...bool) 
 	//testData.wrk.StartTracingTags(factory.TraceTag)
 	//testData.wrk.StartTracingTags(attacher.TraceTagEnsureLatestBranches)
 
-	err := attacher.EnsureLatestBranches(testData.wrk)
+	err := testData.wrk.EnsureLatestBranches()
 	require.NoError(t, err)
 
 	testData.makeChainOrigins(nSequencers)

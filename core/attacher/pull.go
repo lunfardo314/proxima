@@ -49,8 +49,14 @@ func (a *attacher) pullIfNeededUnwrapped(virtualTx *vertex.VirtualTransaction, d
 }
 
 func (a *attacher) pull(virtualTx *vertex.VirtualTransaction, deptVID *vertex.WrappedTx) bool {
-	if err := a.TxFromStoreIn(&deptVID.ID); err == nil {
+	txBytesWithMetadata := a.TxBytesStore().GetTxBytesWithMetadata(&deptVID.ID)
+	if len(txBytesWithMetadata) > 0 {
 		virtualTx.SetPullNotNeeded()
+		go func() {
+			if _, err := a.TxBytesFromStoreIn(txBytesWithMetadata); err != nil {
+				a.Log().Errorf("TxBytesFromStoreIn %s returned '%v'", deptVID.IDShortString(), err)
+			}
+		}()
 		return true
 	}
 	// failed to load txBytes from store -> pull it from peers

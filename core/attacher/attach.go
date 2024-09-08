@@ -1,9 +1,6 @@
 package attacher
 
 import (
-	"fmt"
-	"time"
-
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/transaction"
@@ -150,49 +147,4 @@ func AttachOutputID(oid ledger.OutputID, env Environment, opts ...AttachTxOption
 		VID:   AttachTxID(oid.TransactionID(), env, opts...),
 		Index: oid.Index(),
 	}
-}
-
-const maxTimeout = time.Minute
-
-func EnsureBranch(txid ledger.TransactionID, env Environment, timeout ...time.Duration) (*vertex.WrappedTx, error) {
-	env.Assertf(txid.IsBranchTransaction(), "txid.IsSequencerMilestone()")
-	deadline := time.Now().Add(maxTimeout)
-	if len(timeout) > 0 {
-		deadline = time.Now().Add(timeout[0])
-	}
-
-	vid := AttachTxID(txid, env)
-	if vid.GetTxStatus() == vertex.Good {
-		return vid, nil
-	}
-
-	if err := env.TxFromStoreIn(&txid); err != nil {
-		return nil, err
-	}
-
-	for vid.GetTxStatus() != vertex.Good {
-		time.Sleep(10 * time.Millisecond)
-		if time.Now().After(deadline) {
-			return nil, fmt.Errorf("timeout: branch %s is not in the state", txid.StringShort())
-		}
-	}
-	return vid, nil
-}
-
-func MustEnsureBranch(txid ledger.TransactionID, env Environment) *vertex.WrappedTx {
-	ret, err := EnsureBranch(txid, env)
-	env.AssertNoError(err)
-	return ret
-}
-
-const TraceTagEnsureLatestBranches = "latest"
-
-func EnsureLatestBranches(env Environment) error {
-	branchTxIDs := multistate.FetchLatestBranchTransactionIDs(env.StateStore())
-	for _, branchID := range branchTxIDs {
-		if _, err := EnsureBranch(branchID, env); err != nil {
-			return err
-		}
-	}
-	return nil
 }

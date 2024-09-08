@@ -236,7 +236,7 @@ func initWorkflowTestWithConflicts(t *testing.T, nConflicts int, nChains int, ta
 		ret.pkController[i] = ret.privKey
 	}
 
-	err := attacher.EnsureLatestBranches(ret.wrk)
+	err := ret.wrk.EnsureLatestBranches()
 	require.NoError(t, err)
 	t.Logf("%s", ret.wrk.Info())
 
