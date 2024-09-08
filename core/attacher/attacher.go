@@ -66,11 +66,11 @@ func (a *attacher) setFlagsUp(vid *vertex.WrappedTx, f Flags) {
 func (a *attacher) markVertexDefined(vid *vertex.WrappedTx) {
 	flags := a.flags(vid)
 	if a.isKnownRooted(vid) {
-		a.Assertf(!flags.FlagsUp(flagAttachedVertexInputsSolid), "!flags.FlagsUp(flagAttachedVertexInputsSolid)")
-		a.Assertf(!flags.FlagsUp(flagAttachedVertexEndorsementsSolid), "!flags.FlagsUp(flagAttachedVertexInputsSolid)")
+		a.Assertf(!flags.FlagsUp(flagAttachedVertexInputsSolid), "!flags.FlagsUp(flagAttachedVertexInputsSolid): %s", vid.IDShortString)
+		a.Assertf(!flags.FlagsUp(flagAttachedVertexEndorsementsSolid), "!flags.FlagsUp(flagAttachedVertexInputsSolid): %s", vid.IDShortString)
 	} else {
-		a.Assertf(flags.FlagsUp(flagAttachedVertexInputsSolid), "flags.FlagsUp(flagAttachedVertexInputsSolid)")
-		a.Assertf(flags.FlagsUp(flagAttachedVertexEndorsementsSolid), "flags.FlagsUp(flagAttachedVertexInputsSolid)")
+		a.Assertf(flags.FlagsUp(flagAttachedVertexInputsSolid), "flags.FlagsUp(flagAttachedVertexInputsSolid): %s", vid.IDShortString)
+		a.Assertf(flags.FlagsUp(flagAttachedVertexEndorsementsSolid), "flags.FlagsUp(flagAttachedVertexInputsSolid)L %s", vid.IDShortString)
 	}
 	a.referenced.mustReference(vid)
 	a.vertices[vid] = a.flags(vid) | flagAttachedVertexKnown | flagAttachedVertexDefined
@@ -439,6 +439,11 @@ func (a *attacher) attachEndorsement(v *vertex.Vertex, vid *vertex.WrappedTx, in
 		return false, false
 	}
 
+	if a.isKnownRooted(vidEndorsed) {
+		// that includes branches <- should have been marked rooted by pullIfNeeded
+		return true, true
+	}
+
 	baselineBranch := vidEndorsed.BaselineBranch()
 	if baselineBranch == nil {
 		a.Tracef(TraceTagAttachEndorsements, "attachEndorsement: attaching endorsement %s of %s: baseline of the endorsement is nil",
@@ -446,7 +451,7 @@ func (a *attacher) attachEndorsement(v *vertex.Vertex, vid *vertex.WrappedTx, in
 		return true, false
 	}
 
-	// baseline must be compatible with baseline of the attacher
+	// baseline of the endorsement must be compatible with baseline of the attacher
 	if !a.branchesCompatible(&a.baseline.ID, &baselineBranch.ID) {
 		a.setError(fmt.Errorf("attachEndorsements: baseline %s of endorsement %s is incompatible with the baseline branch %s",
 			baselineBranch.IDShortString(), vidEndorsed.IDShortString(), a.baseline.IDShortString()))
@@ -454,7 +459,11 @@ func (a *attacher) attachEndorsement(v *vertex.Vertex, vid *vertex.WrappedTx, in
 		return false, false
 	}
 
-	// non-branch undefined or GOOD but not rooted milestone. Go deep recursively
+	if vidEndorsed.IsBranchTransaction() {
+		a.Assertf(a.baseline == vidEndorsed, "a.baseline == vidEndorsed")
+		return true, true
+	}
+
 	a.Assertf(!vidEndorsed.IsBranchTransaction(), "attachEndorsements: !vidEndorsed.IsBranchTransaction(): %s", vidEndorsed.IDShortString)
 
 	ok, defined = a.attachVertexNonBranch(vidEndorsed)
