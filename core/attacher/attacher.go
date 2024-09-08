@@ -189,7 +189,12 @@ func (a *attacher) solidifyStemOfTheVertex(v *vertex.Vertex) (ok bool) {
 	panic("wrong vertex state")
 }
 
+const TraceTagSolidifySequencerBaseline = "seqBase"
+
 func (a *attacher) solidifySequencerBaseline(v *vertex.Vertex) (ok bool) {
+	a.Tracef(TraceTagSolidifySequencerBaseline, "IN for %s", v.Tx.IDShortString)
+	defer a.Tracef(TraceTagSolidifySequencerBaseline, "OUT for %s", v.Tx.IDShortString)
+
 	// regular sequencer tx. Go to the direction of the baseline branch
 	predOid, _ := v.Tx.SequencerChainPredecessor()
 	a.Assertf(predOid != nil, "inconsistency: sequencer milestone cannot be a chain origin")
@@ -201,8 +206,10 @@ func (a *attacher) solidifySequencerBaseline(v *vertex.Vertex) (ok bool) {
 		// predecessor is on the earlier slot -> follow the first endorsement (guaranteed by the ledger constraint layer)
 		a.Assertf(v.Tx.NumEndorsements() > 0, "v.Tx.NumEndorsements()>0")
 		inputTx = AttachTxID(v.Tx.EndorsementAt(0), a, OptionInvokedBy(a.name))
+		a.Tracef(TraceTagSolidifySequencerBaseline, "follow the endorsement %s", inputTx.IDShortString)
 	} else {
 		inputTx = AttachTxID(predOid.TransactionID(), a, OptionInvokedBy(a.name))
+		a.Tracef(TraceTagSolidifySequencerBaseline, "follow the predecessor %s", inputTx.IDShortString)
 	}
 	if !a.markVertexUndefined(inputTx) {
 		// wasn't able to reference but it is ok
@@ -210,6 +217,8 @@ func (a *attacher) solidifySequencerBaseline(v *vertex.Vertex) (ok bool) {
 	}
 	switch inputTx.GetTxStatus() {
 	case vertex.Good:
+		a.Tracef(TraceTagSolidifySequencerBaseline, "inputTx %s is GOOD", inputTx.IDShortString)
+
 		v.BaselineBranch = inputTx.BaselineBranch()
 		util.Assertf(v.BaselineBranch != nil, "v.BaselineBranch != nil")
 		util.Assertf(v.BaselineBranch.IsBranchTransaction(), "v.BaselineBranch.IsBranchTransaction()")
@@ -218,12 +227,16 @@ func (a *attacher) solidifySequencerBaseline(v *vertex.Vertex) (ok bool) {
 		return true
 
 	case vertex.Bad:
+		a.Tracef(TraceTagSolidifySequencerBaseline, "inputTx %s is BAD", inputTx.IDShortString)
+
 		err := inputTx.GetError()
 		a.Assertf(err != nil, "err!=nil")
 		a.setError(err)
 		return false
 
 	case vertex.Undefined:
+		a.Tracef(TraceTagSolidifySequencerBaseline, "inputTx %s is UNDEF -> pullIfNeeded", inputTx.IDShortString)
+
 		return a.pullIfNeeded(inputTx)
 	}
 	panic("wrong vertex state")
@@ -294,7 +307,7 @@ func (a *attacher) attachVertexUnwrapped(v *vertex.Vertex, vid *vertex.WrappedTx
 	a.Assertf(!util.IsNil(a.baselineStateReader), "!util.IsNil(a.baselineStateReader)")
 
 	if !a.flags(vid).FlagsUp(flagAttachedVertexEndorsementsSolid) {
-		a.Tracef(TraceTagAttachVertex, "attacher %s: endorsements not solid in %s", a.name, v.Tx.IDShortString())
+		a.Tracef(TraceTagAttachVertex, "endorsements not all solidified in %s -> attachEndorsements", v.Tx.IDShortString)
 		// depth-first along endorsements
 		if !a.attachEndorsements(v, vid) { // <<< recursive
 			// not ok -> leave attacher
@@ -307,9 +320,9 @@ func (a *attacher) attachVertexUnwrapped(v *vertex.Vertex, vid *vertex.WrappedTx
 		err := a.allEndorsementsDefined(v)
 		a.Assertf(err == nil, "%w:\nvertices: %s", err, func() string { return a.linesVertices("       ").String() })
 
-		a.Tracef(TraceTagAttachVertex, "attacher %s: endorsements (%d) are all solid in %s", a.name, v.Tx.NumEndorsements(), v.Tx.IDShortString)
+		a.Tracef(TraceTagAttachVertex, "endorsements are all solid in %s", v.Tx.IDShortString)
 	} else {
-		a.Tracef(TraceTagAttachVertex, "attacher %s: endorsements (%d) NOT marked solid in %s", a.name, v.Tx.NumEndorsements(), v.Tx.IDShortString)
+		a.Tracef(TraceTagAttachVertex, "endorsements NOT marked solid in %s", v.Tx.IDShortString)
 	}
 
 	inputsOk := a.attachInputsOfTheVertex(v, vid) // deep recursion
@@ -324,7 +337,7 @@ func (a *attacher) attachVertexUnwrapped(v *vertex.Vertex, vid *vertex.WrappedTx
 			return false
 		}
 	}
-	a.Tracef(TraceTagAttachVertex, "attacher %s: return OK: %s", a.name, v.Tx.IDShortString)
+	a.Tracef(TraceTagAttachVertex, "return OK: %s", v.Tx.IDShortString)
 	return true
 }
 
@@ -356,6 +369,9 @@ const TraceTagAttachEndorsements = "attachEndorsements"
 // Attaches endorsements of the vertex
 // Return OK (== not bad)
 func (a *attacher) attachEndorsements(v *vertex.Vertex, vid *vertex.WrappedTx) bool {
+	a.Tracef(TraceTagAttachEndorsements, "attachEndorsements IN: of %s, num endorsements %d", vid.IDShortString, v.Tx.NumEndorsements)
+	defer a.Tracef(TraceTagAttachEndorsements, "attachEndorsements OUT: of %s, num endorsements %d", vid.IDShortString, v.Tx.NumEndorsements)
+
 	a.Assertf(!a.flags(vid).FlagsUp(flagAttachedVertexEndorsementsSolid), "!v.FlagsUp(vertex.FlagAttachedvertexEndorsementsSolid)")
 
 	numUndefined := len(v.Endorsements)
@@ -368,6 +384,8 @@ func (a *attacher) attachEndorsements(v *vertex.Vertex, vid *vertex.WrappedTx) b
 		if success {
 			numUndefined--
 		}
+		a.Tracef(TraceTagAttachEndorsements, "attachEndorsement(%s) returned ok=%v, defined=%v",
+			util.Ref(v.Tx.EndorsementAt(byte(i))).StringShort(), ok, success)
 	}
 
 	if numUndefined == 0 {
@@ -382,52 +400,50 @@ func (a *attacher) attachEndorsements(v *vertex.Vertex, vid *vertex.WrappedTx) b
 
 func (a *attacher) attachEndorsement(v *vertex.Vertex, vid *vertex.WrappedTx, index byte) (ok, defined bool) {
 	vidEndorsed := v.Endorsements[index]
+
 	if vidEndorsed == nil {
 		vidEndorsed = AttachTxID(v.Tx.EndorsementAt(index), a, OptionInvokedBy(a.name))
-		if !v.ReferenceEndorsement(byte(index), vidEndorsed) {
+		if !v.ReferenceEndorsement(index, vidEndorsed) {
 			// if failed to reference, remains nil
-			a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s): failed to reference endorsement %s", a.name, vidEndorsed.IDShortString)
+			a.Tracef(TraceTagAttachEndorsements, "attachEndorsement: attaching endorsement %s of %s: failed to reference", vidEndorsed.IDShortString, vid.IDShortString)
 			return true, false
 		}
 	}
 	a.Assertf(vidEndorsed != nil, "vidEndorsed != nil")
-	a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s): endorsement %s", a.name, vidEndorsed.IDShortString)
+	a.Tracef(TraceTagAttachEndorsements, "attachEndorsement: attaching endorsement %s of %s", vidEndorsed.IDShortString, vid.IDShortString)
 
 	if a.isKnownDefined(vidEndorsed) {
-		a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s): is known 'defined' %s", a.name, vidEndorsed.IDShortString)
+		a.Tracef(TraceTagAttachEndorsements, "attachEndorsement: attaching endorsement %s of %s: is already known 'defined'",
+			vidEndorsed.IDShortString, vid.IDShortString)
 		return true, true
 	}
 	a.markVertexUndefined(vidEndorsed)
 
-	baselineBranch := vidEndorsed.BaselineBranch()
-	if baselineBranch == nil {
-		return true, false
-	}
-	a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s): baseline branch %s", a.name, baselineBranch.IDShortString)
-
-	state := vidEndorsed.GetTxStatus()
-	switch state {
-	case vertex.Bad:
-		a.setError(vidEndorsed.GetError())
-		return false, false
-
+	switch vidEndorsed.GetTxStatus() {
 	case vertex.Good:
+		a.Tracef(TraceTagAttachEndorsements, "attachEndorsement: attaching endorsement %s of %s: its is GOOD. Mark 'defined'",
+			vidEndorsed.IDShortString, vid.IDShortString)
 		a.markVertexDefined(vidEndorsed)
 		return true, true
-		//if a.baselineStateReader().KnowsCommittedTransaction(&vidEndorsed.ID) {
-		//	// all endorsed transactions known to the baseline state are 'defined' and 'rooted'
-		//	a.mustMarkVertexRooted(vidEndorsed)
-		//	a.markVertexDefined(vidEndorsed)
-		//	a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s): %s is rooted", a.name, vidEndorsed.IDShortString)
-		//	return true, true
-		//}
 
-	case vertex.Undefined:
-		if !a.pullIfNeeded(vidEndorsed) {
-			return false, false
-		}
+	case vertex.Bad:
+		a.setError(vidEndorsed.GetError())
+		a.Tracef(TraceTagAttachEndorsements, "attachEndorsement: attaching endorsement %s of %s: its is BAD",
+			vidEndorsed.IDShortString, vid.IDShortString)
+		return false, false
 	}
-	util.Assertf(state != vertex.Bad, "state != vertex.Bad")
+	util.Assertf(vidEndorsed.GetTxStatus() == vertex.Undefined, "vidEndorsed.GetTxStatus() == vertex.Undefined")
+
+	if !a.pullIfNeeded(vidEndorsed) {
+		return false, false
+	}
+
+	baselineBranch := vidEndorsed.BaselineBranch()
+	if baselineBranch == nil {
+		a.Tracef(TraceTagAttachEndorsements, "attachEndorsement: attaching endorsement %s of %s: baseline of the endorsement is nil",
+			vidEndorsed.IDShortString, vid.IDShortString)
+		return true, false
+	}
 
 	// baseline must be compatible with baseline of the attacher
 	if !a.branchesCompatible(&a.baseline.ID, &baselineBranch.ID) {
@@ -504,7 +520,7 @@ func (a *attacher) attachInput(v *vertex.Vertex, inputIdx byte, vid *vertex.Wrap
 		return ok, false
 	}
 	if defined {
-		a.Tracef(TraceTagAttachVertex, "attacher %s: input #%d (%s) has been solidified", a.name, inputIdx, wOut.IDShortString)
+		a.Tracef(TraceTagAttachVertex, "input #%d (%s) has been solidified", inputIdx, wOut.IDShortString)
 	}
 	return true, defined
 }

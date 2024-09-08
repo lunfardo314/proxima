@@ -20,6 +20,10 @@ func EvalLazyArgs(args ...any) []any {
 			ret[i] = funArg()
 		case func() bool:
 			ret[i] = funArg()
+		case func() int:
+			ret[i] = funArg()
+		case func() byte:
+			ret[i] = funArg()
 		default:
 			ret[i] = arg
 		}

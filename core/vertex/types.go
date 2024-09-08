@@ -23,6 +23,7 @@ type (
 
 	// VirtualTransaction is a collection of produced outputs
 	VirtualTransaction struct {
+		Created          time.Time
 		mutex            sync.RWMutex
 		outputs          map[byte]*ledger.Output
 		sequencerOutputs *[2]byte // if nil, it is unknown

@@ -459,7 +459,7 @@ func TestConflicts1Attacher(t *testing.T) {
 		//attacher.SetTraceOn()
 		const (
 			nConflicts = 2
-			howLong    = 5 // 70 // 97 fails when crosses slot boundary
+			howLong    = 70 // 97 fails when crosses slot boundary
 		)
 		testData := initLongConflictTestData(t, nConflicts, nConflicts, howLong)
 		for _, txBytes := range testData.txBytesConflicting {
@@ -499,10 +499,9 @@ func TestConflicts1Attacher(t *testing.T) {
 
 		var wg sync.WaitGroup
 
-		testData.env.StartTracingTags("delay")
+		//testData.env.StartTracingTags(attacher.TraceTagPull)
 
 		wg.Add(1)
-		// FIXME no more callback
 		vid, err := attacher.AttachTransactionFromBytes(txBytes, testData.wrk, attacher.AttachTxOptionWithAttachmentCallback(func(_ *vertex.WrappedTx, _ error) {
 			wg.Done()
 		}))
@@ -616,7 +615,6 @@ func TestConflictsNAttachersOneFork(t *testing.T) {
 		howLong    = 20 // 97 fails when crosses slot boundary
 		pullYN     = true
 	)
-	var wg sync.WaitGroup
 	var err error
 
 	testData := initLongConflictTestData(t, nConflicts, nChains, howLong)
@@ -659,12 +657,18 @@ func TestConflictsNAttachersOneFork(t *testing.T) {
 	t.Logf("   chain input: %s", chainIn[0].ID.StringShort())
 	t.Logf("   endrosement: %s", chainIn[1].ID.StringShort())
 
-	wg.Add(1)
+	//testData.env.StartTracingTags(attacher.TraceTagAttach)
+	//testData.env.StartTracingTags(attacher.TraceTagPull)
+	//testData.env.StartTracingTags(attacher.TraceTagAttachEndorsements)
+	//testData.env.StartTracingTags(attacher.TraceTagAttachVertex)
+	//testData.env.StartTracingTags(attacher.TraceTagSolidifySequencerBaseline)
+
+	waitCh := make(chan struct{})
 	vidSeq, err := attacher.AttachTransactionFromBytes(txBytesSeq, testData.wrk, attacher.AttachTxOptionWithAttachmentCallback(func(_ *vertex.WrappedTx, _ error) {
-		wg.Done()
+		close(waitCh)
 	}))
 	require.NoError(t, err)
-	wg.Wait()
+	<-waitCh
 
 	testData.stopAndWait()
 	testData.logDAGInfo()

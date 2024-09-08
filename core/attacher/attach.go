@@ -1,6 +1,8 @@
 package attacher
 
 import (
+	"time"
+
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/transaction"
@@ -28,8 +30,8 @@ func AttachTxID(txid ledger.TransactionID, env Environment, opts ...AttachTxOpti
 		vid = env.GetVertexNoLock(&txid)
 		if vid != nil {
 			// found existing -> return it
-			env.Tracef(TraceTagAttach, "AttachTxID: found existing %s%s. VirtualTx = %v", txid.StringShort, by, vid.IsVirtualTx)
-			env.TraceTx(&txid, "AttachTxID: found existing. VirtualTx = %v", vid.IsVirtualTx)
+			env.Tracef(TraceTagAttach, "AttachTxID: found existing %s%s", txid.StringShort, by)
+			env.TraceTx(&txid, "AttachTxID: found existing")
 			return
 		}
 		env.Tracef(TraceTagAttach, "AttachTxID: new ID %s%s", txid.StringShort, by)
@@ -91,6 +93,8 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Att
 			}
 			return
 		}
+
+		env.Tracef(TraceTagPull, "AttachTransaction %s. Since attachID: %v", tx.IDShortString, time.Since(v.Created))
 
 		// mark the vertex in order to prevent repetitive attachment
 		vid.SetFlagsUpNoLock(vertex.FlagVertexTxAttachmentStarted)

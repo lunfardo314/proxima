@@ -12,6 +12,7 @@ import (
 
 func newVirtualTx() *VirtualTransaction {
 	return &VirtualTransaction{
+		Created: time.Now(),
 		outputs: make(map[byte]*ledger.Output),
 	}
 }
