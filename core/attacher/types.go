@@ -141,14 +141,6 @@ type (
 	}
 )
 
-const (
-	flagAttachedVertexKnown             = Flags(0b00000001)
-	flagAttachedVertexDefined           = Flags(0b00000010)
-	flagAttachedVertexEndorsementsSolid = Flags(0b00000100)
-	flagAttachedVertexInputsSolid       = Flags(0b00001000)
-	flagAttachedVertexAskedForPoke      = Flags(0b00010000)
-)
-
 // PullTimeout maximum time allowed for the virtual txid become transaction (full vertex)
 const (
 	PullTimeout      = 5 * time.Second

@@ -155,7 +155,11 @@ func TestBasic(t *testing.T) {
 		require.NoError(t, err)
 		require.True(t, len(txBytesStore.GetTxBytesWithMetadata(&distribTxID)) > 0)
 
-		vidDistrib, err := wrk.EnsureBranch(distribTxID, time.Second)
+		//wrk.StartTracingTags(attacher.TraceTagAttach)
+		//wrk.StartTracingTags(attacher.TraceTagAttachVertex)
+		//wrk.StartTracingTags(attacher.TraceTagAttachEndorsements)
+
+		vidDistrib, err := wrk.EnsureBranch(distribTxID, 3*time.Second)
 		require.NoError(t, err)
 
 		t.Logf("bootstrap chain id: %s", bootstrapChainID.String())

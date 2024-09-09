@@ -14,10 +14,12 @@ const maxTimeout = time.Minute
 
 func (w *Workflow) EnsureBranch(txid ledger.TransactionID, timeout ...time.Duration) (*vertex.WrappedTx, error) {
 	w.Assertf(txid.IsBranchTransaction(), "txid.IsSequencerMilestone()")
-	deadline := time.Now().Add(maxTimeout)
+	to := maxTimeout
 	if len(timeout) > 0 {
-		deadline = time.Now().Add(timeout[0])
+		to = timeout[0]
 	}
+
+	deadline := time.Now().Add(to)
 
 	vid := attacher.AttachTxID(txid, w)
 	if vid.GetTxStatus() == vertex.Good {
@@ -31,7 +33,7 @@ func (w *Workflow) EnsureBranch(txid ledger.TransactionID, timeout ...time.Durat
 	for vid.GetTxStatus() != vertex.Good {
 		time.Sleep(10 * time.Millisecond)
 		if time.Now().After(deadline) {
-			return nil, fmt.Errorf("timeout: branch %s is not in the state", txid.StringShort())
+			return nil, fmt.Errorf("timeout(%v): branch %s is not in the state", to, txid.StringShort())
 		}
 	}
 	return vid, nil

@@ -40,22 +40,17 @@ func (a *attacher) pullIfNeededUnwrapped(virtualTx *vertex.VirtualTransaction, d
 		a.Tracef(TraceTagPull, "pullIfNeededUnwrapped: %s. Pull rules defined. Pull NOT NEEDED", deptVID.IDShortString)
 		return true
 	}
+	// pull rules have not been defined yet
+	a.checkRootedStatus(deptVID)
 
-	// pull rules not defined
 	a.Tracef(TraceTagPull, "pullIfNeededUnwrapped: %s. Pull rules not defined", deptVID.IDShortString)
 	if a.isKnownRooted(deptVID) {
 		virtualTx.SetPullNotNeeded()
 		return true
 	}
 
-	if a.baseline != nil && a.baselineStateReader().KnowsCommittedTransaction(&deptVID.ID) {
-		a.Tracef(TraceTagPull, "pullIfNeededUnwrapped: %s. Known in the state", deptVID.IDShortString)
-		virtualTx.SetPullNotNeeded()
-		a.mustMarkVertexRooted(deptVID)
-		return true
-	}
-
-	// not rooted transaction with rules not defined
+	// wasn't checked root status yet or not rooted transaction
+	// define pull rules by setting pull deadline and pull
 	a.Tracef(TraceTagPull, "pullIfNeededUnwrapped: %s. Set pull timeout and pull", deptVID.IDShortString)
 	virtualTx.SetPullDeadline(time.Now().Add(PullTimeout))
 	return a.pull(virtualTx, deptVID)

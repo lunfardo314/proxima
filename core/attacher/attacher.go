@@ -3,6 +3,7 @@ package attacher
 import (
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/ledger"
@@ -53,65 +54,6 @@ func (a *attacher) setError(err error) {
 
 const TraceTagMarkDefUndef = "markDefUndef"
 
-func (a *attacher) flags(vid *vertex.WrappedTx) Flags {
-	return a.vertices[vid]
-}
-
-func (a *attacher) setFlagsUp(vid *vertex.WrappedTx, f Flags) {
-	flags := a.flags(vid)
-	a.Assertf(flags.FlagsUp(flagAttachedVertexKnown) && !flags.FlagsUp(flagAttachedVertexDefined), "flags.FlagsUp(FlagKnown) && !flags.FlagsUp(FlagDefined)")
-	a.vertices[vid] = flags | f
-}
-
-func (a *attacher) markVertexDefined(vid *vertex.WrappedTx) {
-	flags := a.flags(vid)
-	if a.isKnownRooted(vid) {
-		a.Assertf(!flags.FlagsUp(flagAttachedVertexInputsSolid), "!flags.FlagsUp(flagAttachedVertexInputsSolid): %s", vid.IDShortString)
-		a.Assertf(!flags.FlagsUp(flagAttachedVertexEndorsementsSolid), "!flags.FlagsUp(flagAttachedVertexInputsSolid): %s", vid.IDShortString)
-	} else {
-		a.Assertf(flags.FlagsUp(flagAttachedVertexInputsSolid), "flags.FlagsUp(flagAttachedVertexInputsSolid): %s", vid.IDShortString)
-		a.Assertf(flags.FlagsUp(flagAttachedVertexEndorsementsSolid), "flags.FlagsUp(flagAttachedVertexInputsSolid)L %s", vid.IDShortString)
-	}
-	a.referenced.mustReference(vid)
-	a.vertices[vid] = a.flags(vid) | flagAttachedVertexKnown | flagAttachedVertexDefined
-
-	a.Tracef(TraceTagMarkDefUndef, "markVertexDefined in %s: %s is DEFINED", a.name, vid.IDShortString)
-}
-
-func (a *attacher) markVertexUndefined(vid *vertex.WrappedTx) bool {
-	if !a.referenced.reference(vid) {
-		return false
-	}
-	f := a.flags(vid)
-	a.Assertf(!f.FlagsUp(flagAttachedVertexDefined), "!f.FlagsUp(FlagDefined)")
-	a.vertices[vid] = f | flagAttachedVertexKnown
-
-	a.Tracef(TraceTagMarkDefUndef, "markVertexUndefined in %s: %s is UNDEFINED", a.name, vid.IDShortString)
-	return true
-}
-
-func (a *attacher) mustMarkVertexRooted(vid *vertex.WrappedTx) {
-	a.referenced.mustReference(vid)
-	// creates entry in rooted, probably empty
-	a.rooted[vid] = a.rooted[vid]
-}
-
-func (a *attacher) isKnown(vid *vertex.WrappedTx) bool {
-	return a.flags(vid).FlagsUp(flagAttachedVertexKnown)
-}
-
-func (a *attacher) isKnownDefined(vid *vertex.WrappedTx) bool {
-	return a.flags(vid).FlagsUp(flagAttachedVertexKnown | flagAttachedVertexDefined)
-}
-
-func (a *attacher) isKnownUndefined(vid *vertex.WrappedTx) bool {
-	f := a.flags(vid)
-	if !f.FlagsUp(flagAttachedVertexKnown) {
-		return false
-	}
-	return !f.FlagsUp(flagAttachedVertexDefined)
-}
-
 func (a *attacher) undefinedList() []*vertex.WrappedTx {
 	ret := make([]*vertex.WrappedTx, 0)
 	for vid, flags := range a.vertices {
@@ -131,19 +73,6 @@ func (a *attacher) undefinedListLines(prefix ...string) *lines.Lines {
 		ret.Add(vid.IDVeryShort())
 	}
 	return ret
-}
-
-// isKnownNotRooted is marked known but not in the 'rooted' set
-func (a *attacher) isKnownNotRooted(vid *vertex.WrappedTx) bool {
-	known := a.isKnownDefined(vid) || a.isKnownUndefined(vid)
-	_, rooted := a.rooted[vid]
-	return known && !rooted
-}
-
-func (a *attacher) isKnownRooted(vid *vertex.WrappedTx) (yes bool) {
-	_, yes = a.rooted[vid]
-	a.Assertf(!yes || a.isKnownDefined(vid) || a.isKnownUndefined(vid), "!yes || a.isKnownDefined(vid) || a.isKnownUndefined(vid)")
-	return
 }
 
 func (a *attacher) isRootedOutput(wOut vertex.WrappedOutput) bool {
@@ -435,13 +364,21 @@ func (a *attacher) attachEndorsement(v *vertex.Vertex, vid *vertex.WrappedTx, in
 
 	a.markVertexUndefined(vidEndorsed)
 
-	if !a.pullIfNeeded(vidEndorsed) {
-		return false, false
+	if strings.Contains(vidEndorsed.IDShortString(), "7fcce") {
+		fmt.Printf(">>>>\n")
+		a.setTraceLocal("<<7fcee>>")
 	}
 
+	a.checkRootedStatus(vidEndorsed)
+
 	if a.isKnownRooted(vidEndorsed) {
-		// that includes branches <- should have been marked rooted by pullIfNeeded
+		// definitely in the state -> fully defined
+		a.markVertexDefined(vidEndorsed)
 		return true, true
+	}
+
+	if !a.pullIfNeeded(vidEndorsed) {
+		return false, false
 	}
 
 	baselineBranch := vidEndorsed.BaselineBranch()
@@ -460,6 +397,7 @@ func (a *attacher) attachEndorsement(v *vertex.Vertex, vid *vertex.WrappedTx, in
 	}
 
 	if vidEndorsed.IsBranchTransaction() {
+		// consistently endorsing branch makes it defined
 		a.Assertf(a.baseline == vidEndorsed, "a.baseline == vidEndorsed")
 		return true, true
 	}
@@ -475,6 +413,24 @@ func (a *attacher) attachEndorsement(v *vertex.Vertex, vid *vertex.WrappedTx, in
 	}
 	a.AssertNoError(a.err)
 	return true, defined
+}
+
+// checkRootedStatus checks if dependency is rooted and marks it rooted when defined
+func (a *attacher) checkRootedStatus(vidDep *vertex.WrappedTx) (defined bool) {
+	if a.flags(vidDep).FlagsUp(flagAttachedVertexCheckedIfRooted) {
+		// already checked
+		return true
+	}
+	if a.baseline == nil {
+		return false
+	}
+
+	if defined = a.baselineStateReader().KnowsCommittedTransaction(&vidDep.ID); defined {
+		a.mustMarkVertexRooted(vidDep)
+	} else {
+		a.mustMarkVertexNotRooted(vidDep)
+	}
+	return
 }
 
 func (a *attacher) attachInputsOfTheVertex(v *vertex.Vertex, vid *vertex.WrappedTx) (ok bool) {
@@ -542,21 +498,23 @@ func (a *attacher) attachRooted(wOut vertex.WrappedOutput) (ok bool, isRooted bo
 		return true, false
 	}
 
+	definedRootedStatus := a.checkRootedStatus(wOut.VID)
+	a.Assertf(definedRootedStatus, "rooted status undefined (baseline unknown")
+
+	if a.isKnownNotRooted(wOut.VID) {
+		// it is definitely not rooted bt it is fine
+		return true, false
+	}
+	// transaction is known in the state
 	consumedRooted := a.rooted[wOut.VID]
 	if consumedRooted.Contains(wOut.Index) {
 		// it means it is already covered. The double-spend checks are done by attachInputID
 		return true, true
 	}
-	stateReader := a.baselineStateReader()
 
-	oid := wOut.DecodeID()
-	txid := oid.TransactionID()
-	if len(consumedRooted) == 0 && !stateReader.KnowsCommittedTransaction(&txid) {
-		// it is not rooted in the baseline state, but it is fine
-		return true, false
-	}
 	// transaction is known in the state -> check if output is in the state (i.e. not consumed yet)
-	out := stateReader.GetOutput(oid)
+	stateReader := a.baselineStateReader()
+	out := stateReader.GetOutput(wOut.DecodeID())
 	if out == nil {
 		// output has not been found in the state -> Bad (already consumed)
 		err := fmt.Errorf("output %s is already consumed in the baseline state %s", wOut.IDShortString(), a.baseline.IDShortString())
@@ -575,9 +533,8 @@ func (a *attacher) attachRooted(wOut vertex.WrappedOutput) (ok bool, isRooted bo
 		consumedRooted.Insert(wOut.Index)
 	}
 
-	a.mustMarkVertexRooted(wOut.VID)
+	a.mustMarkVertexRooted(wOut.VID) // also marks it 'defined'
 	a.rooted[wOut.VID] = consumedRooted
-	a.markVertexDefined(wOut.VID)
 
 	// this is new rooted output -> add to the accumulatedCoverage
 	a.accumulatedCoverage += out.Amount()
@@ -600,17 +557,23 @@ func (a *attacher) attachOutput(wOut vertex.WrappedOutput) (ok, defined bool) {
 
 	if wOut.VID.IsBranchTransaction() {
 		// not rooted branch output -> BAD
-		err := fmt.Errorf("attachOutput: branch output %s is expected to be rooted in the baseline %s", wOut.VID.IDShortString(), a.baseline.IDShortString())
+		err := fmt.Errorf("attachOutput: branch output %s is expected to be rooted in the baseline %s", wOut.IDShortString(), a.baseline.IDShortString())
 		a.setError(err)
-		a.Tracef(TraceTagAttachOutput, "%v", err)
 		return false, false
 	}
 
 	a.Assertf(!wOut.VID.IsBranchTransaction(), "attachOutput: !wOut.VID.IsBranchTransaction(): %s", wOut.IDShortString)
 
-	// input is not rooted
-	// check if output index is correct??
-	return a.attachVertexNonBranch(wOut.VID)
+	// input is not rooted, attach input transaction
+	ok, defined = a.attachVertexNonBranch(wOut.VID)
+	if defined {
+		o, err := wOut.VID.OutputAt(wOut.Index)
+		if err != nil || o == nil {
+			a.setError(fmt.Errorf("attachOutput: output %s not available", wOut.IDShortString()))
+			return false, false
+		}
+	}
+	return
 }
 
 func (a *attacher) branchesCompatible(txid1, txid2 *ledger.TransactionID) bool {
