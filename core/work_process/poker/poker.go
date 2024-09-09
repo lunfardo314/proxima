@@ -41,8 +41,6 @@ const (
 	CommandPeriodicCleanup
 )
 
-const chanBufferSize = 10
-
 const (
 	cleanupLoopPeriod = 1 * time.Second
 	ttlWanted         = 5 * time.Minute

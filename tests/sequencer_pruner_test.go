@@ -46,11 +46,10 @@ func Test1SequencerPruner(t *testing.T) {
 	})
 	t.Run("tag along transfers", func(t *testing.T) {
 		const (
-			maxSlots          = 40
-			batchSize         = 10
-			maxBatches        = 5
-			sendAmount        = 2000
-			branchMiningSteps = 100
+			maxSlots   = 40
+			batchSize  = 10
+			maxBatches = 5
+			sendAmount = 2000
 		)
 		testData := initWorkflowTest(t, 1, true)
 		//t.Logf("%s", testData.wrk.Info())
