@@ -65,8 +65,8 @@ func (a *attacher) pull(virtualTx *vertex.VirtualTransaction, deptVID *vertex.Wr
 		a.Tracef(TraceTagPull, "pull found in store %s", deptVID.IDShortString)
 
 		virtualTx.SetPullNotNeeded()
+		a.pokeMe(deptVID)
 
-		// TODO maybe input queue would faster ??
 		go func() {
 			if _, err := a.TxBytesFromStoreIn(txBytesWithMetadata); err != nil {
 				a.Log().Errorf("TxBytesFromStoreIn %s returned '%v'", deptVID.IDShortString(), err)
@@ -76,8 +76,8 @@ func (a *attacher) pull(virtualTx *vertex.VirtualTransaction, deptVID *vertex.Wr
 	}
 	a.Tracef(TraceTagPull, "pull NOT found in store %s", deptVID.IDShortString)
 	// failed to load txBytes from store -> pull it from peers
+	a.pokeMe(deptVID)
 	a.PullFromPeers(&deptVID.ID)
 	virtualTx.SetLastPullNow()
-	a.pokeMe(deptVID)
 	return true
 }

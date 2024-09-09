@@ -20,7 +20,7 @@ import (
 
 const (
 	TraceTagAttachMilestone = "milestone"
-	periodicCheckEach       = 100 * time.Millisecond
+	periodicCheckEach       = 50 * time.Millisecond
 )
 
 func runMilestoneAttacher(

@@ -459,7 +459,6 @@ func TestConflicts1Attacher(t *testing.T) {
 		t.Logf("expected reason: %v", vid.GetError())
 		util.RequireErrorWith(t, vid.GetError(), "conflicts with another consumer", testData.forkOutput.IDShort())
 	})
-	// FIXME takes too long
 	t.Run("long with sync", func(t *testing.T) {
 		const (
 			nConflicts = 2
