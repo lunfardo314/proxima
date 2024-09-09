@@ -3,7 +3,6 @@ package attacher
 import (
 	"fmt"
 	"sort"
-	"strings"
 
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/ledger"
@@ -196,19 +195,24 @@ func (a *attacher) attachVertexNonBranch(vid *vertex.WrappedTx) (ok, defined boo
 					ok = true
 					return
 				}
+				// non-sequencer transaction
 				ok = a.attachVertexUnwrapped(v, vid)
-				if ok && vid.FlagsUpNoLock(vertex.FlagVertexConstraintsValid) {
-					a.markVertexDefined(vid)
+				if ok && vid.FlagsUpNoLock(vertex.FlagVertexConstraintsValid) && a.flags(vid).FlagsUp(flagAttachedVertexInputsSolid|flagAttachedVertexEndorsementsSolid) {
+					a.markVertexDefinedDoNotEnforceRootedCheck(vid)
 					defined = true
 				}
 			case vertex.Good:
 				a.Assertf(vid.IsSequencerMilestone(), "vid.IsSequencerMilestone()")
 				ok = a.attachVertexUnwrapped(v, vid)
 				if ok {
-					a.markVertexDefined(vid)
-					defined = true
+					if a.flags(vid).FlagsUp(flagAttachedVertexInputsSolid | flagAttachedVertexEndorsementsSolid) {
+						a.markVertexDefinedDoNotEnforceRootedCheck(vid)
+						defined = true
+					}
 				}
 			case vertex.Bad:
+				a.setError(vid.GetErrorNoLock())
+
 			default:
 				a.Log().Fatalf("inconsistency: wrong tx status")
 			}
@@ -217,7 +221,7 @@ func (a *attacher) attachVertexNonBranch(vid *vertex.WrappedTx) (ok, defined boo
 			ok = a.pullIfNeededUnwrapped(v, vid)
 		},
 	})
-	if !defined {
+	if ok && !defined {
 		a.pokeMe(vid)
 	}
 	a.Assertf(ok || a.err != nil, "ok || a.err != nil")
@@ -297,7 +301,7 @@ func (a *attacher) finalTouchNonSequencer(v *vertex.Vertex, vid *vertex.WrappedT
 	a.Assertf(glbFlags.FlagsUp(vertex.FlagVertexConstraintsValid), "glbFlags.FlagsUp(vertex.FlagConstraintsValid)")
 
 	// non-sequencer, all inputs solid, constraints valid -> we can mark it 'defined' in the attacher
-	a.markVertexDefined(vid)
+	a.markVertexDefinedDoNotEnforceRootedCheck(vid)
 	return true
 }
 
@@ -363,11 +367,6 @@ func (a *attacher) attachEndorsement(v *vertex.Vertex, vid *vertex.WrappedTx, in
 	}
 
 	a.markVertexUndefined(vidEndorsed)
-
-	if strings.Contains(vidEndorsed.IDShortString(), "7fcce") {
-		fmt.Printf(">>>>\n")
-		a.setTraceLocal("<<7fcee>>")
-	}
 
 	a.checkRootedStatus(vidEndorsed)
 
@@ -491,25 +490,27 @@ func (a *attacher) attachInput(v *vertex.Vertex, inputIdx byte, vid *vertex.Wrap
 	return true, defined
 }
 
-func (a *attacher) attachRooted(wOut vertex.WrappedOutput) (ok bool, isRooted bool) {
+func (a *attacher) attachRooted(wOut vertex.WrappedOutput) (ok bool, isRooted bool, defined bool) {
 	a.Tracef(TraceTagAttachOutput, "attachRooted %s", wOut.IDShortString)
 	if wOut.Timestamp().After(a.baseline.Timestamp()) {
 		// output is later than baseline -> can't be rooted in it
-		return true, false
+		return true, false, true
 	}
 
-	definedRootedStatus := a.checkRootedStatus(wOut.VID)
-	a.Assertf(definedRootedStatus, "rooted status undefined (baseline unknown")
+	defined = a.checkRootedStatus(wOut.VID)
+	if !defined {
+		return true, false, false
+	}
 
 	if a.isKnownNotRooted(wOut.VID) {
 		// it is definitely not rooted bt it is fine
-		return true, false
+		return true, false, true
 	}
 	// transaction is known in the state
 	consumedRooted := a.rooted[wOut.VID]
 	if consumedRooted.Contains(wOut.Index) {
 		// it means it is already covered. The double-spend checks are done by attachInputID
-		return true, true
+		return true, true, true
 	}
 
 	// transaction is known in the state -> check if output is in the state (i.e. not consumed yet)
@@ -520,7 +521,7 @@ func (a *attacher) attachRooted(wOut vertex.WrappedOutput) (ok bool, isRooted bo
 		err := fmt.Errorf("output %s is already consumed in the baseline state %s", wOut.IDShortString(), a.baseline.IDShortString())
 		a.setError(err)
 		a.Tracef(TraceTagAttachOutput, "%v", err)
-		return false, false
+		return false, false, true
 	}
 
 	// output has been found in the state -> Good
@@ -538,13 +539,16 @@ func (a *attacher) attachRooted(wOut vertex.WrappedOutput) (ok bool, isRooted bo
 
 	// this is new rooted output -> add to the accumulatedCoverage
 	a.accumulatedCoverage += out.Amount()
-	return true, true
+	return true, true, true
 }
 
 func (a *attacher) attachOutput(wOut vertex.WrappedOutput) (ok, defined bool) {
 	a.Tracef(TraceTagAttachOutput, "%s", wOut.IDShortString)
 
-	ok, isRooted := a.attachRooted(wOut)
+	ok, isRooted, definedRootedStatus := a.attachRooted(wOut)
+	if !definedRootedStatus {
+		return true, false
+	}
 	if !ok {
 		return false, false
 	}

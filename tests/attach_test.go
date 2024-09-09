@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/core/attacher"
-	"github.com/lunfardo314/proxima/core/memdag"
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/core/workflow"
 	"github.com/lunfardo314/proxima/global"
@@ -612,7 +611,6 @@ func TestConflictsNAttachersSeqStartTxFee(t *testing.T) {
 	//testData.wrk.SaveGraph("utangle")
 }
 
-// FIXME
 func TestConflictsNAttachersOneFork(t *testing.T) {
 	const (
 		nConflicts = 2
@@ -678,7 +676,7 @@ func TestConflictsNAttachersOneFork(t *testing.T) {
 	testData.stopAndWait()
 	testData.logDAGInfo()
 
-	memdag.SaveGraphPastCone(vidSeq, "with_conflict")
+	// memdag.SaveGraphPastCone(vidSeq, "with_conflict")
 
 	t.Logf("expected BAD transaction %s", vidSeq.IDShortString())
 	require.EqualValues(t, vertex.Bad.String(), vidSeq.GetTxStatus().String())
@@ -1158,77 +1156,7 @@ func TestSeqChains(t *testing.T) {
 			runtime.NumGoroutine(),
 		)
 	})
-	// TODO hangs on tracing tx
-	//t.Run("with N branches pull with TraceTx", func(t *testing.T) {
-	//	const (
-	//		nConflicts            = 5 // 5
-	//		nChains               = 5
-	//		howLongConflictChains = 5  // 97 fails when crosses slot boundary
-	//		howLongSeqChains      = 10 // 10 // 95 fails
-	//		nSlots                = 5
-	//	)
-	//
-	//	testData := initLongConflictTestData(t, nConflicts, nChains, howLongConflictChains)
-	//	testData.makeSeqBeginnings(false)
-	//
-	//	slotTransactions := make([][][]*transaction.Transaction, nSlots)
-	//	branches := make([]*transaction.Transaction, nSlots)
-	//
-	//	testData.txBytesAttach()
-	//	extend := make([]*transaction.Transaction, nChains)
-	//	for i := range extend {
-	//		extend[i] = testData.seqChain[i][0]
-	//	}
-	//	testData.storeTransactions(extend...)
-	//	prevBranch := testData.distributionBranchTx
-	//
-	//	for branchNr := range branches {
-	//		slotTransactions[branchNr] = testData.makeSlotTransactions(howLongSeqChains, extend)
-	//		for _, txSeq := range slotTransactions[branchNr] {
-	//			testData.storeTransactions(txSeq...)
-	//		}
-	//
-	//		extendSeqIdx := branchNr % nChains
-	//		lastInChainIdx := len(slotTransactions[branchNr][extendSeqIdx]) - 1
-	//		extendOut := slotTransactions[branchNr][extendSeqIdx][lastInChainIdx].SequencerOutput().MustAsChainOutput()
-	//		branches[branchNr] = testData.makeBranch(extendOut, prevBranch)
-	//		prevBranch = branches[branchNr]
-	//		t.Logf("makeBranch: %s", prevBranch.IDShortString())
-	//		beginExtension := make([]*transaction.Transaction, len(slotTransactions[branchNr]))
-	//		for i := range beginExtension {
-	//			beginExtension[i] = util.MustLastElement(slotTransactions[branchNr][i])
-	//		}
-	//		extend = testData.extendToNextSlot(slotTransactions[branchNr], prevBranch)
-	//
-	//		testData.storeTransactions(extend...)
-	//		testData.startTraceTx(extend...)
-	//	}
-	//
-	//	testData.storeTransactions(branches...)
-	//	testData.startTraceTx(branches...)
-	//
-	//	var wg sync.WaitGroup
-	//	wg.Add(1)
-	//	vidBranch := attacher.AttachTransaction(branches[len(branches)-1], testData.wrk, attacher.OptionWithAttachmentCallback(func(_ *vertex.WrappedTx, _ error) {
-	//		wg.Done()
-	//	}))
-	//	wg.Wait()
-	//
-	//	testData.stopAndWait()
-	//	testData.logDAGInfo()
-	//	//testData.wrk.SaveGraph("utangle")
-	//	//dag.SaveGraphPastCone(vidBranch, "utangle")
-	//	require.EqualValues(t, vertex.Good.String(), vidBranch.GetTxStatus().String())
-	//
-	//	time.Sleep(500 * time.Millisecond)
-	//	var memStats runtime.MemStats
-	//	runtime.ReadMemStats(&memStats)
-	//	t.Logf("Memory stats: allocated %.1f MB, Num GC: %d, Goroutines: %d, ",
-	//		float32(memStats.Alloc*10/(1024*1024))/10,
-	//		memStats.NumGC,
-	//		runtime.NumGoroutine(),
-	//	)
-	//})
+
 	t.Run("with N branches and transfers", func(t *testing.T) {
 		const (
 			nConflicts            = 3

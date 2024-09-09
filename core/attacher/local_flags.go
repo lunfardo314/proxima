@@ -29,21 +29,27 @@ func (a *attacher) setFlagsUp(vid *vertex.WrappedTx, f Flags) {
 	a.Assertf(flags.FlagsUp(flagAttachedVertexKnown) && !flags.FlagsUp(flagAttachedVertexDefined), "flags.FlagsUp(FlagKnown) && !flags.FlagsUp(FlagDefined)")
 }
 
-func (a *attacher) markVertexDefined(vid *vertex.WrappedTx) {
+// markVertexDefined marks 'defined' without enforcing rooting has been checked
+func (a *attacher) markVertexDefinedDoNotEnforceRootedCheck(vid *vertex.WrappedTx) {
 	flags := a.flags(vid)
-	a.Assertf(flags.FlagsUp(flagAttachedVertexCheckedIfRooted), "flags.FlagsUp(flagAttachedVertexCheckedIfRooted): %s", vid.IDShortString)
-
 	if a.isKnownRooted(vid) {
-		a.Assertf(!flags.FlagsUp(flagAttachedVertexInputsSolid), "!flags.FlagsUp(flagAttachedVertexInputsSolid): %s", vid.IDShortString)
-		a.Assertf(!flags.FlagsUp(flagAttachedVertexEndorsementsSolid), "!flags.FlagsUp(flagAttachedVertexInputsSolid): %s", vid.IDShortString)
-	} else {
-		a.Assertf(flags.FlagsUp(flagAttachedVertexInputsSolid), "flags.FlagsUp(flagAttachedVertexInputsSolid): %s", vid.IDShortString)
-		a.Assertf(flags.FlagsUp(flagAttachedVertexEndorsementsSolid), "flags.FlagsUp(flagAttachedVertexInputsSolid)L %s", vid.IDShortString)
+		a.Assertf(!flags.FlagsUp(flagAttachedVertexInputsSolid), "!flags.FlagsUp(flagAttachedVertexInputsSolid): %s\n     %s", vid.IDShortString, flags.String)
+		a.Assertf(!flags.FlagsUp(flagAttachedVertexEndorsementsSolid), "!flags.FlagsUp(flagAttachedVertexInputsSolid): %s\n     %s", vid.IDShortString, flags.String)
+	}
+	if a.isKnownNotRooted(vid) {
+		a.Assertf(flags.FlagsUp(flagAttachedVertexInputsSolid), "flags.FlagsUp(flagAttachedVertexInputsSolid): %s\n     %s", vid.IDShortString, flags.String)
+		a.Assertf(flags.FlagsUp(flagAttachedVertexEndorsementsSolid), "flags.FlagsUp(flagAttachedVertexInputsSolid): %s\n     %s", vid.IDShortString, flags.String)
 	}
 	a.referenced.mustReference(vid)
 	a.vertices[vid] = a.flags(vid) | flagAttachedVertexKnown | flagAttachedVertexDefined
 
-	a.Tracef(TraceTagMarkDefUndef, "markVertexDefined in %s: %s is DEFINED", a.name, vid.IDShortString)
+	a.Tracef(TraceTagMarkDefUndef, "markVertexDefinedDoNotEnforceRootedCheck in %s: %s is DEFINED", a.name, vid.IDShortString)
+}
+
+// markVertexDefined marks 'defined' and enforces rooting has been checked
+func (a *attacher) markVertexDefined(vid *vertex.WrappedTx) {
+	a.Assertf(a.flags(vid).FlagsUp(flagAttachedVertexCheckedIfRooted), "flags.FlagsUp(flagAttachedVertexCheckedIfRooted): %s", vid.IDShortString)
+	a.markVertexDefinedDoNotEnforceRootedCheck(vid)
 }
 
 // markVertexUndefined vertex becomes 'known' but undefined
