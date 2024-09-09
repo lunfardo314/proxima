@@ -424,12 +424,12 @@ func (a *attacher) checkRootedStatus(vidDep *vertex.WrappedTx) (defined bool) {
 		return false
 	}
 
-	if defined = a.baselineStateReader().KnowsCommittedTransaction(&vidDep.ID); defined {
+	if a.baselineStateReader().KnowsCommittedTransaction(&vidDep.ID) {
 		a.mustMarkVertexRooted(vidDep)
 	} else {
 		a.mustMarkVertexNotRooted(vidDep)
 	}
-	return
+	return true
 }
 
 func (a *attacher) attachInputsOfTheVertex(v *vertex.Vertex, vid *vertex.WrappedTx) (ok bool) {
@@ -491,7 +491,7 @@ func (a *attacher) attachInput(v *vertex.Vertex, inputIdx byte, vid *vertex.Wrap
 }
 
 func (a *attacher) attachRooted(wOut vertex.WrappedOutput) (ok bool, isRooted bool, defined bool) {
-	a.Tracef(TraceTagAttachOutput, "attachRooted %s", wOut.IDShortString)
+	a.Tracef(TraceTagAttachOutput, "attachRooted %s IN", wOut.IDShortString)
 	if wOut.Timestamp().After(a.baseline.Timestamp()) {
 		// output is later than baseline -> can't be rooted in it
 		return true, false, true
@@ -499,6 +499,7 @@ func (a *attacher) attachRooted(wOut vertex.WrappedOutput) (ok bool, isRooted bo
 
 	defined = a.checkRootedStatus(wOut.VID)
 	if !defined {
+		a.Tracef(TraceTagAttachOutput, "attachRooted %s rooted status undefined", wOut.IDShortString)
 		return true, false, false
 	}
 
@@ -543,7 +544,7 @@ func (a *attacher) attachRooted(wOut vertex.WrappedOutput) (ok bool, isRooted bo
 }
 
 func (a *attacher) attachOutput(wOut vertex.WrappedOutput) (ok, defined bool) {
-	a.Tracef(TraceTagAttachOutput, "%s", wOut.IDShortString)
+	a.Tracef(TraceTagAttachOutput, "IN %s", wOut.IDShortString)
 
 	ok, isRooted, definedRootedStatus := a.attachRooted(wOut)
 	if !definedRootedStatus {
@@ -779,13 +780,14 @@ func (a *attacher) calculateSlotInflation() {
 	}
 }
 
-func (a *attacher) setTraceLocal(name string) {
+func (a *attacher) SetTraceAttacher(name string) {
 	a.forceTrace = name
 }
 
 func (a *attacher) Tracef(traceLabel string, format string, args ...any) {
 	if a.forceTrace != "" {
-		a.Log().Info("LOCAL TRACE(" + a.forceTrace + "): " + fmt.Sprintf(format, util.EvalLazyArgs(args...)...))
+		lazyArgs := fmt.Sprintf(format, util.EvalLazyArgs(args...)...)
+		a.Log().Infof("LOCAL TRACE(%s//%s) %s", traceLabel, a.forceTrace, lazyArgs)
 		return
 	}
 	a.Environment.Tracef(traceLabel, a.name+format+" ", args...)

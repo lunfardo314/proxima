@@ -7,15 +7,12 @@ import (
 
 // QueryTxIDStatus returns vertex mode, tx status and error of the vertex
 func (d *MemDAG) QueryTxIDStatus(txid *ledger.TransactionID) (ret vertex.TxIDStatus) {
-	d.mutex.RLock()
-	defer d.mutex.RUnlock()
-
 	ret.ID = *txid
-	var vid *vertex.WrappedTx
-	vid, ret.OnDAG = d.vertices[*txid]
-	if !ret.OnDAG {
+	vid := d.GetVertex(txid)
+	if vid == nil {
 		return
 	}
+
 	vid.Unwrap(vertex.UnwrapOptions{
 		Vertex: func(v *vertex.Vertex) {
 			ret.Status = vid.GetTxStatusNoLock()

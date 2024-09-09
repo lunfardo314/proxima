@@ -75,7 +75,15 @@ func New(env Environment) (*InputBacklog, error) {
 		env.Tracef(TraceTag, "output stored in input backlog: %s (total: %d)", wOut.IDShortString, len(ret.outputs))
 		env.TraceTx(&wOut.VID.ID, "[%s] output #%d stored in the backlog", ret.SequencerName, wOut.Index)
 	})
-	go ret.purgeLoop()
+
+	ttlInBacklog := time.Duration(env.BacklogTTLSlots()) * ledger.L().ID.SlotDuration()
+	env.RepeatInBackground(env.SequencerName()+"_backlogPurge", time.Second, func() bool {
+		if n := ret.purgeBacklog(ttlInBacklog); n > 0 {
+			ret.Log().Infof("purged %d outputs from the backlog", n)
+		}
+		return true
+	})
+
 	return ret, nil
 }
 
@@ -172,23 +180,7 @@ func (b *InputBacklog) numOutputs() int {
 	return len(b.outputs)
 }
 
-func (b *InputBacklog) purgeLoop() {
-	ttl := time.Duration(b.BacklogTTLSlots()) * ledger.L().ID.SlotDuration()
-
-	for {
-		select {
-		case <-b.Ctx().Done():
-			return
-
-		case <-time.After(time.Second):
-			if n := b.purge(ttl); n > 0 {
-				b.Log().Infof("purged %d outputs from the backlog", n)
-			}
-		}
-	}
-}
-
-func (b *InputBacklog) purge(ttl time.Duration) int {
+func (b *InputBacklog) purgeBacklog(ttl time.Duration) int {
 	horizon := time.Now().Add(-ttl)
 
 	b.mutex.Lock()

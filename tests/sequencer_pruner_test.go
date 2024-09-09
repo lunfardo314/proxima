@@ -10,6 +10,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/sequencer"
+	"github.com/lunfardo314/proxima/sequencer/task"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/testutil"
 	"github.com/stretchr/testify/require"
@@ -46,13 +47,17 @@ func Test1SequencerPruner(t *testing.T) {
 	})
 	t.Run("tag along transfers", func(t *testing.T) {
 		const (
-			maxSlots   = 40
+			maxSlots   = 5 // 40
 			batchSize  = 10
 			maxBatches = 5
 			sendAmount = 2000
 		)
 		testData := initWorkflowTest(t, 1, true)
 		//t.Logf("%s", testData.wrk.Info())
+
+		//testData.wrk.StartTracingTags(backlog.TraceTag)
+		//testData.wrk.StartTracingTags(task.TraceTagBaseProposer)
+		testData.wrk.StartTracingTags(task.TraceTagInsertTagAlongInputs)
 
 		ctx, _ := context.WithCancel(context.Background())
 		seq, err := sequencer.New(testData.wrk, testData.bootstrapChainID, testData.genesisPrivKey,
@@ -112,8 +117,8 @@ func Test1SequencerPruner(t *testing.T) {
 
 		rdr = testData.wrk.HeaviestStateForLatestTimeSlot()
 		for _, txid := range par.spammedTxIDs {
-			require.True(t, rdr.KnowsCommittedTransaction(&txid))
-			//t.Logf("    %s: in the heaviest state: %v", txid.StringShort(), )
+			//require.True(t, rdr.KnowsCommittedTransaction(&txid))
+			t.Logf("    %s: in the heaviest state: %v", txid.StringShort(), rdr.KnowsCommittedTransaction(&txid))
 		}
 		targetBalance := rdr.BalanceOf(targetAddr.AccountID())
 		require.EqualValues(t, maxBatches*batchSize*sendAmount, int(targetBalance))

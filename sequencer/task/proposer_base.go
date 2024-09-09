@@ -66,6 +66,9 @@ func baseProposeGenerator(p *Proposer) (*attacher.IncrementalAttacher, bool) {
 		)
 	} else {
 		p.Tracef(TraceTagBaseProposer, "%s making non-branch, extending %s, collecting and inserting tag-along inputs", p.Name, extend.IDShortString)
+
+		a.SetTraceAttacher(p.Name)
+
 		numInserted := p.InsertTagAlongInputs(a)
 		p.Tracef(TraceTagBaseProposer, "%s inserted %d tag-along inputs", p.Name, numInserted)
 	}
