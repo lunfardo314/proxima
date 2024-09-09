@@ -243,7 +243,6 @@ func (a *IncrementalAttacher) insertEndorsement(endorsement *vertex.WrappedTx) e
 	}
 	if endorsement.IsBranchTransaction() {
 		// branch is compatible with the baseline
-		a.markVertexDefined(endorsement)
 		a.mustMarkVertexRooted(endorsement)
 	} else {
 		ok, defined := a.attachVertexNonBranch(endorsement)

@@ -10,7 +10,6 @@ import (
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/sequencer"
-	"github.com/lunfardo314/proxima/sequencer/task"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/testutil"
 	"github.com/stretchr/testify/require"
@@ -47,7 +46,7 @@ func Test1SequencerPruner(t *testing.T) {
 	})
 	t.Run("tag along transfers", func(t *testing.T) {
 		const (
-			maxSlots   = 5 // 40
+			maxSlots   = 30
 			batchSize  = 10
 			maxBatches = 5
 			sendAmount = 2000
@@ -57,7 +56,7 @@ func Test1SequencerPruner(t *testing.T) {
 
 		//testData.wrk.StartTracingTags(backlog.TraceTag)
 		//testData.wrk.StartTracingTags(task.TraceTagBaseProposer)
-		testData.wrk.StartTracingTags(task.TraceTagInsertTagAlongInputs)
+		//testData.wrk.StartTracingTags(task.TraceTagInsertTagAlongInputs)
 
 		ctx, _ := context.WithCancel(context.Background())
 		seq, err := sequencer.New(testData.wrk, testData.bootstrapChainID, testData.genesisPrivKey,
