@@ -88,7 +88,7 @@ func NewFromConfig() *Global {
 	ret := _new(lvl, output, bootMode)
 
 	if bootMode {
-		ret.SugaredLogger.Infof("nodes is starting in BOOT mode")
+		ret.SugaredLogger.Infof("node is starting in BOOT mode")
 	}
 	if erasedPrev {
 		ret.SugaredLogger.Warnf("previous logfile has been erased")
