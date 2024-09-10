@@ -21,8 +21,9 @@ type (
 		VID *vertex.WrappedTx
 	}
 
-	// SequencerTips is a collection with input queue, which keeps all latest sequencer transactions for each sequencer ID
-	// One transaction per sequencer
+	// SequencerTips is a collection with input queue, which keeps all latest sequencer
+	// transactions for each sequencer ID. One transaction per sequencer
+	// TODO input queue is not very much needed because TPS of sequencer transactions is low
 	SequencerTips struct {
 		*work_process.WorkProcess[Input]
 		mutex                           sync.RWMutex
@@ -77,7 +78,7 @@ func (t *SequencerTips) consume(inp Input) {
 		}
 		if ledger.TooCloseOnTimeAxis(&old.ID, &inp.VID.ID) {
 			// this means there's a bug in the sequencer because it submits transactions too close in the ledger time window
-			t.Environment.Log().Warnf("[tippool] %s and %s: too close on time axis. seqID: %s",
+			t.Log().Warnf("[tippool] %s and %s: too close on time axis. seqID: %s",
 				old.IDShortString(), inp.VID.IDShortString(), seqID.StringShort())
 		}
 		if t.replaceOldWithNew(old.WrappedTx, inp.VID) {
@@ -181,14 +182,14 @@ func (t *SequencerTips) purgeAndLog() {
 
 		if t.isActive(&md) {
 			if md.loggedInactive || nothingLogged {
-				t.Environment.Log().Infof("sequencer %s is ACTIVE", chainID.StringShort())
+				t.Log().Infof("sequencer %s is ACTIVE", chainID.StringShort())
 				md.loggedInactive = false
 				md.loggedActive = true
 				t.latestMilestones[chainID] = md
 			}
 		} else {
 			if md.loggedActive || nothingLogged {
-				t.Environment.Log().Infof("sequencer %s is INACTIVE", chainID.StringShort())
+				t.Log().Infof("sequencer %s is INACTIVE", chainID.StringShort())
 				md.loggedInactive = true
 				md.loggedActive = false
 				t.latestMilestones[chainID] = md

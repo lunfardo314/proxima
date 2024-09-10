@@ -11,6 +11,9 @@ import (
 	"github.com/lunfardo314/proxima/ledger/transaction"
 )
 
+// gossip 'send' thread with bloom filter (4 bytes) to prevent repeating transactions
+// Rare false positives will not be gossiped and therefore lost. The nodes will have to pull it
+
 type (
 	environment interface {
 		global.NodeGlobal
@@ -36,7 +39,7 @@ type (
 const (
 	Name                   = "gossip"
 	TraceTag               = Name
-	gossipedFilterTTLSlots = 6
+	gossipedFilterTTLSlots = 12
 	gossipedPurgePeriod    = 5 * time.Second
 )
 
@@ -73,8 +76,7 @@ func (d *Gossip) consume(inp *Input) {
 	d.gossipedFilter[vsID] = time.Now().Add(d.gossipedFilterTTL)
 
 	if inp.ReceivedFrom == nil {
-		d.Tracef(TraceTag, "send %s to all peers, meta: %s",
-			inp.Tx.IDShortString, inp.Metadata.String)
+		d.Tracef(TraceTag, "send %s to all peers, meta: %s", inp.Tx.IDShortString, inp.Metadata.String)
 		d.TraceTx(inp.Tx.ID(), TraceTag+": send to all peers")
 		d.GossipTxBytesToPeers(inp.Tx.Bytes(), &inp.Metadata)
 	} else {

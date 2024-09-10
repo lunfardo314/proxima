@@ -16,6 +16,7 @@ import (
 	"github.com/lunfardo314/proxima/core/work_process/sync_client"
 	"github.com/lunfardo314/proxima/core/work_process/sync_server"
 	"github.com/lunfardo314/proxima/core/work_process/tippool"
+	"github.com/lunfardo314/proxima/core/work_process/txinput_queue"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/peering"
@@ -44,6 +45,7 @@ type (
 		gossip       *gossip.Gossip
 		poker        *poker.Poker
 		events       *events.Events
+		txInputQueue *txinput_queue.TxInputQueue
 		tippool      *tippool.SequencerTips
 		syncManager  *sync_client.SyncClient
 		//
@@ -80,6 +82,7 @@ func New(env Environment, peers *peering.Peers, opts ...ConfigOption) *Workflow 
 	}
 	ret.gossip = gossip.New(ret)
 	ret.tippool = tippool.New(ret)
+	ret.txInputQueue = txinput_queue.New(ret)
 
 	return ret
 }
@@ -108,6 +111,7 @@ func (w *Workflow) Start() {
 	}
 	w.gossip.Start()
 	w.tippool.Start()
+	w.txInputQueue.Start()
 	if !w.cfg.doNotStartPruner {
 		prune := pruner.New(w) // refactor
 		prune.Start()

@@ -6,21 +6,21 @@ import (
 )
 
 type (
-	Environment interface {
+	environment interface {
 		global.NodeGlobal
 	}
 
 	WorkProcess[T any] struct {
-		Environment
+		environment
 		*queue.Queue[T]
 		Name     string
 		consumer func(inp T)
 	}
 )
 
-func New[T any](env Environment, name string, consumer func(inp T)) *WorkProcess[T] {
+func New[T any](env environment, name string, consumer func(inp T)) *WorkProcess[T] {
 	return &WorkProcess[T]{
-		Environment: env,
+		environment: env,
 		Name:        name,
 		consumer:    consumer,
 	}

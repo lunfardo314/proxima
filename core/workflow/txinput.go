@@ -10,6 +10,7 @@ import (
 	"github.com/lunfardo314/proxima/core/attacher"
 	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/core/vertex"
+	"github.com/lunfardo314/proxima/core/work_process/txinput_queue"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/util"
@@ -50,23 +51,47 @@ func (w *Workflow) TxBytesFromStoreIn(txBytesWithMetadata []byte) (*ledger.Trans
 	return w.TxBytesIn(txBytes, WithMetadata(meta), WithSourceType(txmetadata.SourceTypeTxStore))
 }
 
-// TxBytesIn main entry point of the transaction into the workflow
 func (w *Workflow) TxBytesIn(txBytes []byte, opts ...TxBytesInOption) (*ledger.TransactionID, error) {
-	options := &txBytesInOptions{}
-	for _, opt := range opts {
-		opt(options)
-	}
 	// base validation
 	tx, err := transaction.FromBytes(txBytes)
 	if err != nil {
 		// any malformed data chunk will be rejected immediately before all the advanced validations
 		return nil, err
 	}
+	return tx.ID(), w.TxIn(tx, opts...)
+}
+
+func (w *Workflow) TxBytesInFromAPI(txBytes []byte, trace bool) (*ledger.TransactionID, error) {
+	return w.TxBytesIn(txBytes, WithSourceType(txmetadata.SourceTypeAPI), WithTxTraceFlag(trace))
+}
+
+func (w *Workflow) TxBytesInFromAPIQueued(txBytes []byte, trace bool) {
+	w.txInputQueue.Push(txinput_queue.Input{
+		Cmd:       txinput_queue.TxInputCmdFromPeer,
+		TxBytes:   txBytes,
+		TraceFlag: trace,
+	})
+}
+
+func (w *Workflow) TxBytesInFromPeersQueued(txBytes []byte, trace bool) {
+
+}
+
+func (w *Workflow) TxInFromPeer(tx *transaction.Transaction, metaData *txmetadata.TransactionMetadata, from peer.ID) error {
+	return w.TxIn(tx, WithPeerMetadata(from, metaData))
+}
+
+func (w *Workflow) TxIn(tx *transaction.Transaction, opts ...TxBytesInOption) error {
+	options := &txBytesInOptions{}
+	for _, opt := range opts {
+		opt(options)
+	}
+	// base validation
 	txid := tx.ID()
 
 	if w.ignoreTxID(txid) {
 		// sync manager is still syncing. Ignore transaction
-		return nil, nil
+		return nil
 	}
 
 	if options.txTrace {
@@ -90,14 +115,14 @@ func (w *Workflow) TxBytesIn(txBytes []byte, opts ...TxBytesInOption) (*ledger.T
 	nowis := time.Now()
 
 	timeUpperBound := nowis.Add(w.MaxDurationInTheFuture())
-	err = tx.Validate(transaction.CheckTimestampUpperBound(timeUpperBound))
+	err := tx.Validate(transaction.CheckTimestampUpperBound(timeUpperBound))
 	if err != nil {
 		if enforceTimeBounds {
 			w.Tracef(TraceTagTxInput, "invalidate %s: time bounds validation failed", txid.StringShort)
 			err = fmt.Errorf("%w (MaxDurationInTheFuture = %v)", err, w.MaxDurationInTheFuture())
 			attacher.InvalidateTxID(*txid, w, err)
 
-			return txid, err
+			return err
 		}
 		w.Log().Warnf("checking time bounds of %s: '%v'", txid.StringShort(), err)
 		w.TraceTx(txid, "TxBytesIn: checking time bounds: '%v'", err)
@@ -109,12 +134,12 @@ func (w *Workflow) TxBytesIn(txBytes []byte, opts ...TxBytesInOption) (*ledger.T
 		w.Tracef(TraceTagTxInput, "%v", err)
 		w.TraceTx(txid, "TxBytesIn: %v", err)
 		attacher.InvalidateTxID(*txid, w, err)
-		return txid, err
+		return err
 	}
 
 	if options.txMetadata.SourceTypeNonPersistent != txmetadata.SourceTypeTxStore {
 		// persisting all raw transactions which pass pre-validation
-		w.MustPersistTxBytesWithMetadata(txBytes, &options.txMetadata)
+		w.MustPersistTxBytesWithMetadata(tx.Bytes(), &options.txMetadata)
 	}
 
 	if options.txMetadata.SourceTypeNonPersistent == txmetadata.SourceTypePeer ||
@@ -156,7 +181,7 @@ func (w *Workflow) TxBytesIn(txBytes []byte, opts ...TxBytesInOption) (*ledger.T
 			w._attach(tx, attachOpts...)
 		}()
 	}
-	return txid, nil
+	return nil
 }
 
 func (w *Workflow) _attach(tx *transaction.Transaction, opts ...attacher.AttachTxOption) {

@@ -60,6 +60,16 @@ func KeysFiltered[K comparable, V any](m map[K]V, filter func(k K) bool) []K {
 	return ret
 }
 
+func KeysFilteredByValues[K comparable, V any](m map[K]V, filter func(k K, v V) bool) []K {
+	ret := make([]K, 0, len(m))
+	for k, v := range m {
+		if filter(k, v) {
+			ret = append(ret, k)
+		}
+	}
+	return ret
+}
+
 func ValuesFiltered[K comparable, V any](m map[K]V, filter func(v V) bool) []V {
 	ret := make([]V, 0, len(m))
 	for _, v := range m {

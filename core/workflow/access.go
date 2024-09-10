@@ -77,10 +77,6 @@ func (w *Workflow) MustPersistTxBytesWithMetadata(txBytes []byte, metadata *txme
 	util.AssertNoError(err)
 }
 
-func (w *Workflow) TxBytesWithMetadataIn(txBytes []byte, metadata *txmetadata.TransactionMetadata) (*ledger.TransactionID, error) {
-	return w.TxBytesIn(txBytes, WithMetadata(metadata))
-}
-
 func (w *Workflow) SendToTippool(vid *vertex.WrappedTx) {
 	w.tippool.Push(tippool.Input{VID: vid})
 }
