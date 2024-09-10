@@ -73,18 +73,21 @@ func Start(env Environment, peers *peering.Peers, opts ...ConfigOption) *Workflo
 	ret.poker = poker.New(ret)
 	ret.events = events.New(ret)
 	ret.pullTxServer = pull_tx_server.New(ret)
-	if !env.SyncServerDisabled() {
-		ret.syncServer = sync_server.New(ret)
-	}
+
+	//if !env.SyncServerDisabled() {
+	//	ret.syncServer = sync_server.New(ret)
+	//}
+
 	ret.tippool = tippool.New(ret)
 	ret.txInputQueue = txinput_queue.New(ret)
-	if env.SyncServerDisabled() {
-		env.Log().Infof("sync server has been disabled")
-	}
-	if !env.IsBootstrapNode() {
-		// bootstrap node does not need sync manager
-		ret.syncManager = sync_client.StartSyncClientFromConfig(ret) // nil if disabled
-	}
+
+	//if env.SyncServerDisabled() {
+	//	env.Log().Infof("sync server has been disabled")
+	//}
+	//if !env.IsBootstrapMode() {
+	//	// bootstrap node does not need sync manager
+	//	ret.syncManager = sync_client.StartSyncClientFromConfig(ret) // nil if disabled
+	//}
 
 	ret.peers.OnReceiveTxBytes(func(from peer.ID, txBytes []byte, metadata *txmetadata.TransactionMetadata) {
 		ret.TxBytesInFromPeerQueued(txBytes, metadata, from)

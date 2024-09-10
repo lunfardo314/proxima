@@ -120,7 +120,7 @@ const (
 
 	// if the node is bootstrap, and it has configured less than numMaxDynamicPeersForBootNodeAtLeast
 	// of dynamic peer cap, use this instead
-	numMaxDynamicPeersForBootNodeAtLeast = 10
+	//numMaxDynamicPeersForBootNodeAtLeast = 10
 
 	// heartbeatRate heartbeat issued every period
 	heartbeatRate      = 2 * time.Second
@@ -130,8 +130,6 @@ const (
 	// gracePeriodAfterAdded period of time peer is considered not dead after added even if messages are not coming
 	gracePeriodAfterAdded = 15 * heartbeatRate
 	logPeersEvery         = 5 * time.Second
-
-	outQueueChanBufferSize = 10
 )
 
 func NewPeersDummy() *Peers {
@@ -188,7 +186,8 @@ func New(env environment, cfg *Config) (*Peers, error) {
 	}
 	env.Log().Infof("[peering] number of statically pre-configured peers (manual peering): %d", len(cfg.PreConfiguredPeers))
 
-	if env.IsBootstrapNode() || ret.isAutopeeringEnabled() {
+	//if env.IsBootstrapMode() || ret.isAutopeeringEnabled() {
+	if ret.isAutopeeringEnabled() {
 		// autopeering enabled. The node also acts as a bootstrap node
 		bootstrapPeers := peerstore.AddrInfos(ret.host.Peerstore(), maps.Keys(ret.peers))
 		ret.kademliaDHT, err = dht.New(env.Ctx(), lppHost,
@@ -211,7 +210,10 @@ func New(env environment, cfg *Config) (*Peers, error) {
 		env.Log().Infof("[peering] autopeering is disabled")
 	}
 
-	go ret.blacklistCleanupLoop()
+	env.RepeatInBackground(Name+"_blacklist_cleanup", time.Second, func() bool {
+		ret.cleanBlacklist()
+		return true
+	})
 
 	env.Log().Infof("[peering] initialized successfully")
 	return ret, nil
@@ -254,9 +256,9 @@ func readPeeringConfig(env environment) (*Config, error) {
 		return k1 < k2
 	})
 
-	if !env.IsBootstrapNode() && len(peerNames) == 0 {
-		return nil, fmt.Errorf("at least one peer must be pre-configured for bootstrap")
-	}
+	//if !env.IsBootstrapMode() && len(peerNames) == 0 {
+	//	return nil, fmt.Errorf("at least one peer must be pre-configured for bootstrap")
+	//}
 	for _, peerName := range peerNames {
 		addrString := viper.GetString("peering.peers." + peerName)
 		if cfg.PreConfiguredPeers[peerName], err = multiaddr.NewMultiaddr(addrString); err != nil {
@@ -268,9 +270,9 @@ func readPeeringConfig(env environment) (*Config, error) {
 	if cfg.MaxDynamicPeers < 0 {
 		cfg.MaxDynamicPeers = 0
 	}
-	if env.IsBootstrapNode() && cfg.MaxDynamicPeers < numMaxDynamicPeersForBootNodeAtLeast {
-		cfg.MaxDynamicPeers = numMaxDynamicPeersForBootNodeAtLeast
-	}
+	//if env.IsBootstrapMode() && cfg.MaxDynamicPeers < numMaxDynamicPeersForBootNodeAtLeast {
+	//	cfg.MaxDynamicPeers = numMaxDynamicPeersForBootNodeAtLeast
+	//}
 	return cfg, nil
 }
 
@@ -474,17 +476,6 @@ func (ps *Peers) PeerName(id peer.ID) string {
 		return "(unknown peer)"
 	}
 	return p.name
-}
-
-func (ps *Peers) blacklistCleanupLoop() {
-	for {
-		select {
-		case <-ps.Ctx().Done():
-			return
-		case <-time.After(time.Second):
-			ps.cleanBlacklist()
-		}
-	}
 }
 
 func (ps *Peers) cleanBlacklist() {

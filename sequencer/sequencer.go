@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/core/attacher"
-	"github.com/lunfardo314/proxima/core/memdag"
 	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/core/workflow"
@@ -136,7 +135,7 @@ func (seq *Sequencer) Start() {
 
 		seq.log.Infof("sequencer has been STARTED %s", util.Ref(seq.SequencerID()).String())
 
-		ttl := time.Duration(seq.MilestonesTTLSlots()) * ledger.L().ID.SlotDuration()
+		ttl := time.Duration(seq.config.MilestonesTTLSlots) * ledger.L().ID.SlotDuration()
 		seq.RepeatInBackground(seq.SequencerName()+"_own_milestone_purge", ownMilestonePurgePeriod, func() bool {
 			if n, remain := seq.purgeOwnMilestones(ttl); n > 0 {
 				if seq.VerbosityLevel() > 0 {
@@ -316,7 +315,7 @@ func (seq *Sequencer) doSequencerStep() bool {
 
 	seq.Tracef(TraceTag, "target ts: %s. Now is: %s", targetTs, ledger.TimeNow())
 
-	msTx, meta, err := seq.GenerateMilestoneForTarget(targetTs)
+	msTx, meta, err := seq.generateMilestoneForTarget(targetTs)
 	if err != nil {
 		if !errors.Is(err, task.ErrNotGoodEnough) && seq.milestoneCount > 0 {
 			seq.Log().Warnf("FAILED to generate transaction for target %s. Now is %s. Reason: %v",
@@ -385,13 +384,33 @@ func (seq *Sequencer) getNextTargetTime() ledger.Time {
 	return targetAbsoluteMinimum
 }
 
-func (seq *Sequencer) submitMilestone(tx *transaction.Transaction, meta *txmetadata.TransactionMetadata) *vertex.WrappedTx {
-	logMsg := fmt.Sprintf("SUBMIT milestone %s, ledger now is: %s, proposer: %s",
-		tx.IDShortString(), ledger.TimeNow().String(), tx.SequencerTransactionData().SequencerOutputData.MilestoneData.Name)
-	if seq.VerbosityLevel() > 0 {
-		logMsg += ", " + meta.String()
+// decideSubmitMilestone branch transactions are issued only if healthy, or bootstrap mode enabled
+func (seq *Sequencer) decideSubmitMilestone(tx *transaction.Transaction, meta *txmetadata.TransactionMetadata) bool {
+	if tx.IsBranchTransaction() {
+		healthy := global.IsHealthyCoverage(*meta.LedgerCoverage, *meta.Supply, global.FractionHealthyBranch)
+		bootstrapMode := seq.IsBootstrapMode()
+		if healthy || bootstrapMode {
+			seq.Log().Infof("SUBMIT BRANCH %s. Ledger time now: %s, proposer: %s, healthy: %v, bootstrap mode: %v, coverage: %s",
+				tx.IDShortString(), ledger.TimeNow().String(), tx.SequencerTransactionData().SequencerOutputData.MilestoneData.Name,
+				healthy, bootstrapMode, util.Th(*meta.LedgerCoverage))
+			return true
+		}
+		seq.Log().Infof("WON'T SUBMIT BRANCH %s. Ledger time now: %s, proposer: %s, healthy: %v, bootstrap mode: %v, coverage: %s",
+			tx.IDShortString(), ledger.TimeNow().String(), tx.SequencerTransactionData().SequencerOutputData.MilestoneData.Name,
+			healthy, bootstrapMode, util.Th(*meta.LedgerCoverage))
+		return false
 	}
-	seq.Log().Info(logMsg)
+
+	seq.Log().Infof("SUBMIT SEQ TX %s. Ledger time now: %s, proposer: %s, coverage: %s",
+		tx.IDShortString(), ledger.TimeNow().String(), tx.SequencerTransactionData().SequencerOutputData.MilestoneData.Name,
+		util.Th(*meta.LedgerCoverage))
+	return true
+}
+
+func (seq *Sequencer) submitMilestone(tx *transaction.Transaction, meta *txmetadata.TransactionMetadata) *vertex.WrappedTx {
+	if !seq.decideSubmitMilestone(tx, meta) {
+		return nil
+	}
 
 	const submitTimeout = 5 * time.Second
 
@@ -413,12 +432,6 @@ func (seq *Sequencer) submitMilestone(tx *transaction.Transaction, meta *txmetad
 	}
 	seq.lastSubmittedTs = vid.Timestamp()
 	return vid
-}
-
-func (seq *Sequencer) savePastConeOfFailedTx(tx *transaction.Transaction, slotsBack int) {
-	_, err := seq.TxBytesStore().PersistTxBytesWithMetadata(tx.Bytes(), nil)
-	util.AssertNoError(err)
-	memdag.SavePastConeFromTxStore(*tx.ID(), seq.TxBytesStore(), tx.Slot()-ledger.Slot(slotsBack), "cone-"+tx.ID().AsFileName())
 }
 
 func (seq *Sequencer) waitMilestoneInTippool(vid *vertex.WrappedTx, deadline time.Time) error {
@@ -485,10 +498,6 @@ func (seq *Sequencer) BacklogTTLSlots() int {
 	return seq.config.BacklogTTLSlots
 }
 
-func (seq *Sequencer) MilestonesTTLSlots() int {
-	return seq.config.MilestonesTTLSlots
-}
-
 func (seq *Sequencer) bootstrapOwnMilestoneOutput() vertex.WrappedOutput {
 	milestones := seq.LatestMilestonesDescending()
 	for _, ms := range milestones {
@@ -508,10 +517,10 @@ func (seq *Sequencer) bootstrapOwnMilestoneOutput() vertex.WrappedOutput {
 	return vertex.WrappedOutput{}
 }
 
-func (seq *Sequencer) GenerateMilestoneForTarget(targetTs ledger.Time) (*transaction.Transaction, *txmetadata.TransactionMetadata, error) {
+func (seq *Sequencer) generateMilestoneForTarget(targetTs ledger.Time) (*transaction.Transaction, *txmetadata.TransactionMetadata, error) {
 	deadline := targetTs.Time()
 	nowis := time.Now()
-	seq.Tracef(TraceTag, "GenerateMilestoneForTarget: target: %s, deadline: %s, nowis: %s",
+	seq.Tracef(TraceTag, "generateMilestoneForTarget: target: %s, deadline: %s, nowis: %s",
 		targetTs.String, deadline.Format("15:04:05.999"), nowis.Format("15:04:05.999"))
 
 	if deadline.Before(nowis) {

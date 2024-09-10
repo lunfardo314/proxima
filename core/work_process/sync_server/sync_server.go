@@ -58,7 +58,7 @@ func New(env Environment) *SyncServer {
 }
 
 func (d *SyncServer) consume(inp *Input) {
-	if !d.IsSynced() && !d.IsBootstrapNode() {
+	if !d.IsSynced() && !d.IsBootstrapMode() {
 		d.Environment.Log().Warnf("[syncServer]: can't respond to sync request: node itself is out of sync and is not a bootstrap node")
 		return
 	}

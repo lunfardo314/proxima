@@ -105,7 +105,7 @@ type (
 		TraceTx
 		StartStop
 		Metrics
-		IsBootstrapNode() bool
+		IsBootstrapMode() bool
 	}
 
 	Fraction struct {

@@ -76,6 +76,7 @@ func (p *Proposer) propose(a *attacher.IncrementalAttacher) error {
 		tx: tx,
 		txMetadata: &txmetadata.TransactionMetadata{
 			SourceTypeNonPersistent: txmetadata.SourceTypeSequencer,
+			LedgerCoverage:          util.Ref(coverage),
 		},
 		extended:     a.Extending(),
 		endorsing:    a.Endorsing(),

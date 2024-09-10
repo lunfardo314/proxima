@@ -36,7 +36,7 @@ func runScoreCmd(_ *cobra.Command, args []string) {
 	}
 	glb.Infof("Inclusion threshold: %d/%d, finality criterion: %s", inclusionThresholdNumerator, inclusionThresholdDenominator, fin)
 
-	score, err := glb.GetClient().QueryTxInclusionScore(&txid, inclusionThresholdNumerator, inclusionThresholdDenominator, slotSpan)
+	score, err := glb.GetClient().QueryTxInclusionScore(txid, inclusionThresholdNumerator, inclusionThresholdDenominator, slotSpan)
 	glb.AssertNoError(err)
 
 	glb.Infof("   from server: weak score: %d%%, strong score: %d%%, from slot %d to %d (%d)",
@@ -46,7 +46,7 @@ func runScoreCmd(_ *cobra.Command, args []string) {
 		return
 	}
 
-	_, inclusion, err := glb.GetClient().QueryTxIDStatus(&txid, slotSpan)
+	_, inclusion, err := glb.GetClient().QueryTxIDStatus(txid, slotSpan)
 	glb.AssertNoError(err)
 
 	glb.Infof("------- inclusion details -------")

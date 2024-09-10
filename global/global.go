@@ -41,7 +41,7 @@ type Global struct {
 	txTraceMutex   sync.RWMutex
 	txTraceIDs     map[ledger.TransactionID]time.Time
 	// is it the first node in the network
-	bootstrap bool
+	bootstrapMode bool
 }
 
 const TraceTag = "global"
@@ -84,7 +84,12 @@ func NewFromConfig() *Global {
 			}
 		}
 	}
-	ret := _new(lvl, output, viper.GetBool("bootstrap"))
+	bootMode := len(os.Args) >= 2 && os.Args[1] == "boot"
+	ret := _new(lvl, output, bootMode)
+
+	if bootMode {
+		ret.SugaredLogger.Infof("nodes is starting in BOOT mode")
+	}
 	if erasedPrev {
 		ret.SugaredLogger.Warnf("previous logfile has been erased")
 	}
@@ -113,7 +118,7 @@ func _new(logLevel zapcore.Level, outputs []string, bootstrap bool) *Global {
 		logStopOnce:   &sync.Once{},
 		components:    set.New[string](),
 		txTraceIDs:    make(map[ledger.TransactionID]time.Time),
-		bootstrap:     bootstrap,
+		bootstrapMode: bootstrap,
 	}
 
 	ret.RepeatInBackground("traceID_purge", purgeLoopPeriod, func() bool {
@@ -124,8 +129,8 @@ func _new(logLevel zapcore.Level, outputs []string, bootstrap bool) *Global {
 	return ret
 }
 
-func (l *Global) IsBootstrapNode() bool {
-	return l.bootstrap
+func (l *Global) IsBootstrapMode() bool {
+	return l.bootstrapMode
 }
 
 func (l *Global) MetricsRegistry() *prometheus.Registry {
