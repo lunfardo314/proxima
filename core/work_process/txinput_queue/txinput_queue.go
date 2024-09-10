@@ -20,6 +20,7 @@ type (
 		global.NodeGlobal
 		TxInFromPeer(tx *transaction.Transaction, metaData *txmetadata.TransactionMetadata, from peer.ID) error
 		TxInFromAPI(tx *transaction.Transaction, trace bool) error
+		GossipTxBytesToPeers(txBytes []byte, metadata *txmetadata.TransactionMetadata, except ...peer.ID) int
 	}
 
 	Input struct {
@@ -107,7 +108,10 @@ func (q *TxInputQueue) fromPeer(inp *Input) {
 
 	if err = q.TxInFromPeer(tx, metaData, inp.FromPeer); err != nil {
 		q.Log().Warn("TxInputQueue from peer %s: %v", inp.FromPeer.String(), err)
+		return
 	}
+	// gossiping all new pre-validated and not pulled transactions from peers
+	q.GossipTxBytesToPeers(inp.TxBytes, inp.TxMetaData, inp.FromPeer)
 }
 
 func (q *TxInputQueue) fromAPI(inp *Input) {
@@ -118,7 +122,10 @@ func (q *TxInputQueue) fromAPI(inp *Input) {
 	}
 	if err = q.TxInFromAPI(tx, inp.TraceFlag); err != nil {
 		q.Log().Warn("TxInputQueue from API: %v", err)
+		return
 	}
+	// gossiping all pre-validated transactions from API
+	q.GossipTxBytesToPeers(inp.TxBytes, inp.TxMetaData, inp.FromPeer)
 }
 
 func (q *TxInputQueue) purge() {

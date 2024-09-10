@@ -7,7 +7,6 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/core/vertex"
-	"github.com/lunfardo314/proxima/core/work_process/gossip"
 	"github.com/lunfardo314/proxima/core/work_process/tippool"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
@@ -23,23 +22,10 @@ func (w *Workflow) MaxDurationInTheFuture() time.Duration {
 }
 
 func (w *Workflow) GossipAttachedTransaction(tx *transaction.Transaction, metadata *txmetadata.TransactionMetadata) {
-	w.GossipTransactionIfNeeded(tx, metadata, nil)
-}
-
-func (w *Workflow) GossipTransactionIfNeeded(tx *transaction.Transaction, metadata *txmetadata.TransactionMetadata, receivedFromPeer *peer.ID) {
-	w.Assertf(metadata != nil, "metadata!=nil")
-	if metadata.DoNotNeedGossiping {
+	if metadata != nil && metadata.SourceTypeNonPersistent == txmetadata.SourceTypeTxStore {
 		return
 	}
-	metadata.DoNotNeedGossiping = true
-	if metadata.IsResponseToPull {
-		return
-	}
-	w.gossip.Push(&gossip.Input{
-		Tx:           tx,
-		ReceivedFrom: receivedFromPeer,
-		Metadata:     *metadata,
-	})
+	w.peers.GossipTxBytesToPeers(tx.Bytes(), metadata)
 }
 
 func (w *Workflow) PokeMe(me, with *vertex.WrappedTx) {

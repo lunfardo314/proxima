@@ -21,7 +21,6 @@ type (
 		SlotInflation           *uint64            // not nil may be for sequencer transactions
 		Supply                  *uint64            // not nil may be for branch transactions
 		SourceTypeNonPersistent SourceType         // non-persistent, used for internal workflow
-		DoNotNeedGossiping      bool               // non-persistent flag, to prevent redundant gossiping
 		IsResponseToPull        bool               // only used as a persistent flag in tx gossip
 		PortionInfo             *PortionInfo       // persistent. May be not nil when transaction is part of the portion
 	}

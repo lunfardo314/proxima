@@ -21,7 +21,7 @@ import (
 )
 
 type (
-	Environment interface {
+	environment interface {
 		global.Logging
 		GetNodeInfo() *global.NodeInfo
 		GetSyncInfo() *api.SyncInfo
@@ -34,7 +34,7 @@ type (
 	}
 
 	Server struct {
-		Environment
+		environment
 	}
 
 	TxStatus struct {
@@ -45,8 +45,8 @@ type (
 
 const TraceTag = "apiServer"
 
-func New(env Environment) *Server {
-	return &Server{Environment: env}
+func New(env environment) *Server {
+	return &Server{environment: env}
 }
 
 func (srv *Server) registerHandlers() {
@@ -493,7 +493,7 @@ func writeOk(w http.ResponseWriter) {
 	util.AssertNoError(err)
 }
 
-func RunOn(addr string, env Environment) {
+func RunOn(addr string, env environment) {
 	srv := New(env)
 	srv.registerHandlers()
 	err := http.ListenAndServe(addr, nil)

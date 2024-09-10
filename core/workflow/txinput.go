@@ -147,16 +147,6 @@ func (w *Workflow) TxIn(tx *transaction.Transaction, opts ...TxBytesInOption) er
 		w.MustPersistTxBytesWithMetadata(tx.Bytes(), &options.txMetadata)
 	}
 
-	if options.txMetadata.SourceTypeNonPersistent == txmetadata.SourceTypePeer ||
-		options.txMetadata.SourceTypeNonPersistent == txmetadata.SourceTypeAPI {
-		// always gossip pre-validated (parsed) transaction received from peer or from API, even if it needs delay.
-		// Reason: other nodes might have slightly different clocks, let them handle delay themselves
-		// Sequencer transactions not from outside will be gossiped by attacher
-		w.Tracef(TraceTagTxInput, "send to GossipTransactionIfNeeded %s", txid.StringShort)
-		w.TraceTx(txid, "TxBytesIn: send to GossipTransactionIfNeeded")
-		w.GossipTransactionIfNeeded(tx, &options.txMetadata, options.receivedFromPeer)
-	}
-
 	// passes transaction to attacher
 	// - immediately if timestamp is in the past
 	// - with delay if timestamp is in the future

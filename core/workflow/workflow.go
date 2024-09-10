@@ -8,7 +8,6 @@ import (
 	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/core/work_process/events"
-	"github.com/lunfardo314/proxima/core/work_process/gossip"
 	"github.com/lunfardo314/proxima/core/work_process/poker"
 	"github.com/lunfardo314/proxima/core/work_process/pull_tx_server"
 	"github.com/lunfardo314/proxima/core/work_process/sync_client"
@@ -40,7 +39,6 @@ type (
 		// daemons
 		pullTxServer *pull_tx_server.PullTxServer
 		syncServer   *sync_server.SyncServer
-		gossip       *gossip.Gossip
 		poker        *poker.Poker
 		events       *events.Events
 		txInputQueue *txinput_queue.TxInputQueue
@@ -78,7 +76,6 @@ func Start(env Environment, peers *peering.Peers, opts ...ConfigOption) *Workflo
 	if !env.SyncServerDisabled() {
 		ret.syncServer = sync_server.New(ret)
 	}
-	ret.gossip = gossip.New(ret)
 	ret.tippool = tippool.New(ret)
 	ret.txInputQueue = txinput_queue.New(ret)
 	if env.SyncServerDisabled() {
@@ -121,49 +118,6 @@ func StartFromConfig(env Environment, peers *peering.Peers) *Workflow {
 	return Start(env, peers, opts...)
 }
 
-//
-//func (w *Workflow) Start_() {
-//	if w.SyncServerDisabled() {
-//		w.Log().Infof("sync server has been disabled")
-//	}
-//	w.poker.Start()
-//	w.events.Start()
-//	w.pullTxServer.Start()
-//	if !w.SyncServerDisabled() {
-//		w.syncServer.Start()
-//	}
-//	w.gossip.Start()
-//	w.tippool.Start()
-//	w.txInputQueue.Start()
-//	if !w.cfg.doNotStartPruner {
-//		prune := pruner.New(w) // refactor
-//		prune.Start()
-//	}
-//	if !w.IsBootstrapNode() {
-//		// bootstrap node does not need sync manager
-//		w.syncManager = sync_client.StartSyncClientFromConfig(w) // nil if disabled
-//	}
-//	snapshot.Start(w)
-//
-//	w.peers.OnReceiveTxBytes(func(from peer.ID, txBytes []byte, metadata *txmetadata.TransactionMetadata) {
-//		w.TxBytesInFromPeerQueued(txBytes, metadata, from)
-//	})
-//
-//	w.peers.OnReceivePullTxRequest(func(from peer.ID, txids []ledger.TransactionID) {
-//		w.SendTx(from, txids...)
-//	})
-//
-//	if !w.SyncServerDisabled() {
-//		w.peers.OnReceivePullSyncPortion(func(from peer.ID, startingFrom ledger.Slot, maxSlots int) {
-//			w.syncServer.Push(&sync_server.Input{
-//				StartFrom: startingFrom,
-//				MaxSlots:  maxSlots,
-//				PeerID:    from,
-//			})
-//		})
-//	}
-//}
-
 func (w *Workflow) SendTx(sendTo peer.ID, txids ...ledger.TransactionID) {
 	for i := range txids {
 		w.pullTxServer.Push(&pull_tx_server.Input{
@@ -176,22 +130,3 @@ func (w *Workflow) SendTx(sendTo peer.ID, txids ...ledger.TransactionID) {
 		})
 	}
 }
-
-//
-//func (w *Workflow) logSyncStatusLoop() {
-//	logSyncStatusEach := ledger.L().ID.SlotDuration() / 2
-//	for {
-//		select {
-//		case <-w.Ctx().Done():
-//			return
-//		case <-time.After(logSyncStatusEach):
-//
-//			if !w.IsSynced() {
-//				latestSlot, latestHealthySlot, _ := w.LatestBranchSlots()
-//				nowSlot := ledger.TimeNow().Slot()
-//				w.Log().Warnf("node is NOT SYNCED with the network. Last committed slot is %d (%d slots back). Last healthy slot is %d (%d slots back)",
-//					latestSlot, nowSlot-latestSlot, latestHealthySlot, nowSlot-latestHealthySlot)
-//			}
-//		}
-//	}
-//}

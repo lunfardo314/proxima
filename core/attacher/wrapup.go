@@ -39,7 +39,7 @@ func (a *milestoneAttacher) wrapUpAttacher() {
 		SlotInflation:  util.Ref(a.finals.slotInflation),
 	}
 	if a.metadata != nil {
-		calculatedMetadata.DoNotNeedGossiping = a.metadata.DoNotNeedGossiping
+		calculatedMetadata.SourceTypeNonPersistent = a.metadata.SourceTypeNonPersistent
 	}
 	if a.vid.IsBranchTransaction() {
 		calculatedMetadata.StateRoot = a.finals.root
