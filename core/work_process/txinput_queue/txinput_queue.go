@@ -12,11 +12,14 @@ import (
 	"github.com/lunfardo314/proxima/util"
 )
 
+// transaction input queue to bugger incoming transactions from peers and from API
+// Maintains bloom filter and check repeating transactions (with small probability of false positives)
+
 type (
 	environment interface {
 		global.NodeGlobal
 		TxInFromPeer(tx *transaction.Transaction, metaData *txmetadata.TransactionMetadata, from peer.ID) error
-		TxBytesInFromAPI(txBytes []byte, trace bool) (*ledger.TransactionID, error)
+		TxInFromAPI(tx *transaction.Transaction, trace bool) error
 	}
 
 	Input struct {
@@ -36,9 +39,9 @@ type (
 )
 
 const (
-	TxInputCmdFromPeer = byte(iota)
-	TxInputCmdFromAPI
-	TxInputCmdPurge
+	CmdFromPeer = byte(iota)
+	CmdFromAPI
+	CmdPurge
 )
 
 const (
@@ -54,9 +57,10 @@ func New(env environment) *TxInputQueue {
 		bloomFilterTTL: bloomFilterTTLInSlots * ledger.L().ID.SlotDuration(),
 	}
 	ret.WorkProcess = work_process.New[Input](env, Name, ret.consume)
+	ret.WorkProcess.Start()
 
 	ret.RepeatInBackground(Name+"_purge", purgePeriod, func() bool {
-		ret.Push(Input{Cmd: TxInputCmdPurge}, true)
+		ret.Push(Input{Cmd: CmdPurge}, true)
 		return true
 	})
 	return ret
@@ -64,11 +68,11 @@ func New(env environment) *TxInputQueue {
 
 func (q *TxInputQueue) consume(inp Input) {
 	switch inp.Cmd {
-	case TxInputCmdFromPeer:
+	case CmdFromPeer:
 		q.fromPeer(&inp)
-	case TxInputCmdFromAPI:
+	case CmdFromAPI:
 		q.fromAPI(&inp)
-	case TxInputCmdPurge:
+	case CmdPurge:
 		q.purge()
 	default:
 		q.Log().Fatalf("TxInputQueue: wrong cmd")
@@ -81,29 +85,38 @@ func (q *TxInputQueue) fromPeer(inp *Input) {
 		q.Log().Warn("TxInputQueue: %v", err)
 		return
 	}
-	q.Assertf(inp.TxMetaData != nil, "TxInputQueue: inp.TxMetaData != nil")
+	metaData := inp.TxMetaData
+	if metaData == nil {
+		metaData = &txmetadata.TransactionMetadata{}
+	}
 
 	if inp.TxMetaData.IsResponseToPull {
 		// do not check bloom filter if transaction was pulled
-		if err = q.TxInFromPeer(tx, inp.TxMetaData, inp.FromPeer); err != nil {
+		if err = q.TxInFromPeer(tx, metaData, inp.FromPeer); err != nil {
 			q.Log().Warn("TxInputQueue from peer %s: %v", inp.FromPeer.String(), err)
 		}
 		return
 	}
+	// check bloom filter
 	if _, hit := q.bloomFilter[tx.ID().VeryShortID4()]; hit {
-		// filter hit, ignore transaction. May be false positive (rare) !!
+		// filter hit, ignore transaction. May be rate false positive!!
 		return
 	}
 	// not in filter -> definitely new transaction
 	q.bloomFilter[tx.ID().VeryShortID4()] = time.Now().Add(q.bloomFilterTTL)
 
-	if err = q.TxInFromPeer(tx, inp.TxMetaData, inp.FromPeer); err != nil {
+	if err = q.TxInFromPeer(tx, metaData, inp.FromPeer); err != nil {
 		q.Log().Warn("TxInputQueue from peer %s: %v", inp.FromPeer.String(), err)
 	}
 }
 
 func (q *TxInputQueue) fromAPI(inp *Input) {
-	if _, err := q.TxBytesInFromAPI(inp.TxBytes, inp.TraceFlag); err != nil {
+	tx, err := transaction.FromBytes(inp.TxBytes)
+	if err != nil {
+		q.Log().Warn("TxInputQueue from API: %v", err)
+		return
+	}
+	if err = q.TxInFromAPI(tx, inp.TraceFlag); err != nil {
 		q.Log().Warn("TxInputQueue from API: %v", err)
 	}
 }

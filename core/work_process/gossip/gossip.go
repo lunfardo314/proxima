@@ -50,6 +50,7 @@ func New(env environment) *Gossip {
 		gossipedFilterTTL: gossipedFilterTTLSlots * ledger.L().ID.SlotDuration(),
 	}
 	ret.WorkProcess = work_process.New[*Input](env, Name, ret.consume)
+	ret.WorkProcess.Start()
 
 	env.RepeatInBackground("gossipFilterPurge", gossipedPurgePeriod, func() bool {
 		ret.Push(nil, true)

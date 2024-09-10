@@ -5,9 +5,7 @@ import (
 
 	"github.com/lunfardo314/proxima/api"
 	"github.com/lunfardo314/proxima/api/server"
-	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/core/vertex"
-	"github.com/lunfardo314/proxima/core/workflow"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/multistate"
@@ -95,15 +93,8 @@ func (p *ProximaNode) HeaviestStateForLatestTimeSlot() multistate.SugaredStateRe
 	return p.workflow.HeaviestStateForLatestTimeSlot()
 }
 
-func (p *ProximaNode) SubmitTxBytesFromAPI(txBytes []byte, trace ...bool) (*ledger.TransactionID, error) {
-	traceFlag := false
-	if len(trace) > 0 {
-		traceFlag = trace[0]
-	}
-	return p.workflow.TxBytesIn(txBytes,
-		workflow.WithSourceType(txmetadata.SourceTypeAPI),
-		workflow.WithTxTraceFlag(traceFlag),
-	)
+func (p *ProximaNode) SubmitTxBytesFromAPI(txBytes []byte, trace bool) {
+	p.workflow.TxBytesInFromAPIQueued(txBytes, trace)
 }
 
 func (p *ProximaNode) QueryTxIDStatusJSONAble(txid *ledger.TransactionID) vertex.TxIDStatusJSONAble {

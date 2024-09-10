@@ -39,6 +39,7 @@ func New(env environment) *Events {
 		eventHandlers: make(map[eventtype.EventCode][]func(any)),
 	}
 	ret.WorkProcess = work_process.New[Input](env, Name, ret.consume)
+	ret.WorkProcess.Start()
 	return ret
 }
 

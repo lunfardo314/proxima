@@ -27,7 +27,7 @@ type (
 		GetSyncInfo() *api.SyncInfo
 		GetPeersInfo() *api.PeersInfo
 		HeaviestStateForLatestTimeSlot() multistate.SugaredStateReader
-		SubmitTxBytesFromAPI(txBytes []byte, trace ...bool) (*ledger.TransactionID, error)
+		SubmitTxBytesFromAPI(txBytes []byte, trace bool)
 		QueryTxIDStatusJSONAble(txid *ledger.TransactionID) vertex.TxIDStatusJSONAble
 		GetTxInclusion(txid *ledger.TransactionID, slotsBack int) *multistate.TxInclusion
 		GetLatestReliableBranch() (*multistate.BranchData, bool)
@@ -35,7 +35,6 @@ type (
 
 	Server struct {
 		Environment
-		lastSubmittedTxID ledger.TransactionID
 	}
 
 	TxStatus struct {
@@ -255,16 +254,14 @@ func (srv *Server) submitTx(w http.ResponseWriter, r *http.Request) {
 	_, trace := r.URL.Query()["trace"]
 	var txid *ledger.TransactionID
 	err = util.CatchPanicOrError(func() error {
-		var err1 error
-		txid, err1 = srv.SubmitTxBytesFromAPI(slices.Clip(txBytes), trace)
-		return err1
+		srv.SubmitTxBytesFromAPI(slices.Clip(txBytes), trace)
+		return nil
 	})
 	if err != nil {
 		writeErr(w, fmt.Sprintf("submit_tx: %v", err))
 		srv.Tracef(TraceTag, "submit transaction: '%v'", err)
 		return
 	}
-	srv.lastSubmittedTxID = *txid
 	srv.Tracef(TraceTag, "submitted transaction %s, trace = %v", txid.StringShort, trace)
 
 	writeOk(w)
@@ -319,14 +316,14 @@ func (srv *Server) queryTxStatus(w http.ResponseWriter, r *http.Request) {
 	var err error
 
 	lst, ok := r.URL.Query()["txid"]
-	if !ok || len(lst) != 1 {
-		txid = srv.lastSubmittedTxID
-	} else {
-		txid, err = ledger.TransactionIDFromHexString(lst[0])
-		if err != nil {
-			writeErr(w, err.Error())
-			return
-		}
+	if len(lst) != 1 {
+		writeErr(w, "txid expected")
+		return
+	}
+	txid, err = ledger.TransactionIDFromHexString(lst[0])
+	if err != nil {
+		writeErr(w, err.Error())
+		return
 	}
 
 	slotSpan := 1
@@ -391,14 +388,15 @@ func (srv *Server) queryTxInclusionScore(w http.ResponseWriter, r *http.Request)
 	var err error
 
 	lst, ok := r.URL.Query()["txid"]
-	if !ok || len(lst) != 1 {
-		txid = srv.lastSubmittedTxID
-	} else {
-		txid, err = ledger.TransactionIDFromHexString(lst[0])
-		if err != nil {
-			writeErr(w, err.Error())
-			return
-		}
+	if len(lst) != 1 {
+		writeErr(w, "txid expected")
+		return
+	}
+
+	txid, err = ledger.TransactionIDFromHexString(lst[0])
+	if err != nil {
+		writeErr(w, err.Error())
+		return
 	}
 
 	slotSpan := 1

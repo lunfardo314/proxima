@@ -53,6 +53,7 @@ const (
 func New(env Environment) *SyncServer {
 	ret := &SyncServer{Environment: env}
 	ret.WorkProcess = work_process.New[*Input](env, Name, ret.consume)
+	ret.WorkProcess.Start()
 	return ret
 }
 

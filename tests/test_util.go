@@ -149,11 +149,10 @@ func initWorkflowTest(t *testing.T, nChains int, startPruner ...bool) *workflowT
 
 	ret.env = newWorkflowDummyEnvironment(stateStore, ret.txStore)
 	if len(startPruner) > 0 && startPruner[0] {
-		ret.wrk = workflow.New(ret.env, peering.NewPeersDummy())
+		ret.wrk = workflow.Start(ret.env, peering.NewPeersDummy())
 	} else {
-		ret.wrk = workflow.New(ret.env, peering.NewPeersDummy(), workflow.OptionDoNotStartPruner)
+		ret.wrk = workflow.Start(ret.env, peering.NewPeersDummy(), workflow.OptionDoNotStartPruner)
 	}
-	ret.wrk.Start()
 
 	t.Logf("bootstrap chain id: %s", ret.bootstrapChainID.String())
 	t.Logf("origing branch txid: %s", ret.originBranchTxid.StringShort())

@@ -49,8 +49,7 @@ func TestBasic(t *testing.T) {
 	env := newWorkflowDummyEnvironment()
 	peers := peering.NewPeersDummy()
 
-	w := New(env, peers, OptionDoNotStartPruner)
-	w.Start()
+	w := Start(env, peers, OptionDoNotStartPruner)
 
 	_, err := w.TxBytesIn(nil)
 	require.Error(t, err)

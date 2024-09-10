@@ -53,6 +53,7 @@ func New(env environment) *SequencerTips {
 		expectedSequencerActivityPeriod: time.Duration(expectedSequencerActivityPeriodInSlots) * ledger.L().ID.SlotDuration(),
 	}
 	ret.WorkProcess = work_process.New[Input](env, Name, ret.consume)
+	ret.WorkProcess.Start()
 
 	ret.RepeatInBackground(Name+"_purge_and_log_loop", purgeLoopPeriod, func() bool {
 		ret.purgeAndLog()

@@ -205,8 +205,7 @@ func (p *ProximaNode) initPeering() {
 }
 
 func (p *ProximaNode) startWorkflow() {
-	p.workflow = workflow.NewFromConfig(p, p.peers)
-	p.workflow.Start()
+	p.workflow = workflow.StartFromConfig(p, p.peers)
 }
 
 // TODO refactor to one single sequencer per node. No need for several

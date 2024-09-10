@@ -54,6 +54,7 @@ func New(env environment) *Poker {
 		m:           make(map[*vertex.WrappedTx]waitingList),
 	}
 	ret.WorkProcess = work_process.New[Input](env, Name, ret.consume)
+	ret.WorkProcess.Start()
 
 	env.RepeatInBackground(Name+"_cleanup_loop", cleanupLoopPeriod, func() bool {
 		ret.Push(Input{Cmd: CommandPeriodicCleanup}, true)

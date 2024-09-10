@@ -61,20 +61,25 @@ func (w *Workflow) TxBytesIn(txBytes []byte, opts ...TxBytesInOption) (*ledger.T
 	return tx.ID(), w.TxIn(tx, opts...)
 }
 
-func (w *Workflow) TxBytesInFromAPI(txBytes []byte, trace bool) (*ledger.TransactionID, error) {
-	return w.TxBytesIn(txBytes, WithSourceType(txmetadata.SourceTypeAPI), WithTxTraceFlag(trace))
+func (w *Workflow) TxInFromAPI(tx *transaction.Transaction, trace bool) error {
+	return w.TxIn(tx, WithSourceType(txmetadata.SourceTypeAPI), WithTxTraceFlag(trace))
 }
 
 func (w *Workflow) TxBytesInFromAPIQueued(txBytes []byte, trace bool) {
 	w.txInputQueue.Push(txinput_queue.Input{
-		Cmd:       txinput_queue.TxInputCmdFromPeer,
+		Cmd:       txinput_queue.CmdFromAPI,
 		TxBytes:   txBytes,
 		TraceFlag: trace,
 	})
 }
 
-func (w *Workflow) TxBytesInFromPeersQueued(txBytes []byte, trace bool) {
-
+func (w *Workflow) TxBytesInFromPeerQueued(txBytes []byte, metaData *txmetadata.TransactionMetadata, from peer.ID) {
+	w.txInputQueue.Push(txinput_queue.Input{
+		Cmd:        txinput_queue.CmdFromPeer,
+		TxBytes:    txBytes,
+		TxMetaData: metaData,
+		FromPeer:   from,
+	})
 }
 
 func (w *Workflow) TxInFromPeer(tx *transaction.Transaction, metaData *txmetadata.TransactionMetadata, from peer.ID) error {
