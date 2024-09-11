@@ -60,6 +60,10 @@ func (v *VirtualTransaction) addOutput(idx byte, o *ledger.Output) error {
 	v.mutex.Lock()
 	defer v.mutex.Unlock()
 
+	return v._addOutput(idx, o)
+}
+
+func (v *VirtualTransaction) _addOutput(idx byte, o *ledger.Output) error {
 	oOld, already := v.outputs[idx]
 	if already {
 		if !bytes.Equal(oOld.Bytes(), o.Bytes()) {
@@ -92,11 +96,11 @@ func (v *VirtualTransaction) addSequencerOutputs(seqOut, stemOut *ledger.OutputW
 	}
 	v._addSequencerIndices(seqIdx, stemIdx)
 
-	if err := v.addOutput(seqOut.ID.Index(), seqOut.Output); err != nil {
+	if err := v._addOutput(seqOut.ID.Index(), seqOut.Output); err != nil {
 		return err
 	}
 	if stemOut != nil {
-		if err := v.addOutput(stemOut.ID.Index(), stemOut.Output); err != nil {
+		if err := v._addOutput(stemOut.ID.Index(), stemOut.Output); err != nil {
 			return err
 		}
 	}

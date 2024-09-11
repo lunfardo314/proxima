@@ -508,19 +508,20 @@ func (vid *WrappedTx) BaselineBranch() (baselineBranch *WrappedTx) {
 	return
 }
 
-func (vid *WrappedTx) EnsureOutput(idx byte, o *ledger.Output) (err error) {
+func (vid *WrappedTx) EnsureOutputWithID(o *ledger.OutputWithID) (err error) {
 	vid.Unwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
+			idx := o.ID.Index()
 			if idx >= byte(v.Tx.NumProducedOutputs()) {
-				err = fmt.Errorf("EnsureOutput: wrong output index in %s", util.Ref(v.Tx.OutputID(idx)).StringShort())
+				err = fmt.Errorf("EnsureOutputWithID: wrong output index in %s", util.Ref(v.Tx.OutputID(idx)).StringShort())
 				return
 			}
-			if !bytes.Equal(o.Bytes(), v.Tx.MustProducedOutputAt(idx).Bytes()) {
-				err = fmt.Errorf("EnsureOutput: inconsistent output data in %s", util.Ref(v.Tx.OutputID(idx)).StringShort())
+			if !bytes.Equal(o.Output.Bytes(), v.Tx.MustProducedOutputAt(idx).Bytes()) {
+				err = fmt.Errorf("EnsureOutputWithID: inconsistent output data in %s", util.Ref(v.Tx.OutputID(idx)).StringShort())
 			}
 		},
 		VirtualTx: func(v *VirtualTransaction) {
-			err = v.addOutput(idx, o)
+			err = v.addOutput(o.ID.Index(), o.Output)
 		},
 		Deleted: vid.PanicAccessDeleted,
 	})

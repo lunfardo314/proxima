@@ -96,15 +96,15 @@ func (q *TxInputQueue) fromPeer(inp *Input) {
 		if err = q.TxInFromPeer(tx, metaData, inp.FromPeer); err != nil {
 			q.Log().Warn("TxInputQueue from peer %s: %v", inp.FromPeer.String(), err)
 		}
+		// yet put it into the bloom filter
+		q.bloomFilter[tx.ID().VeryShortID4()] = time.Now().Add(q.bloomFilterTTL)
 		return
 	}
 	// check bloom filter
 	if _, hit := q.bloomFilter[tx.ID().VeryShortID4()]; hit {
 		// filter hit, ignore transaction. May be rare false positive!!
-		q.Log().Infof(">>>>>>>>>>>>>>>>>>>>>>>>>>> REPEATING input filter hit %s", tx.IDShortString())
 		return
 	}
-	q.Log().Infof(">>>>>>>>>>>>>>>>>>>>>>>>>>> NEW TX %s", tx.IDShortString())
 
 	// not in filter -> definitely new transaction
 	q.bloomFilter[tx.ID().VeryShortID4()] = time.Now().Add(q.bloomFilterTTL)

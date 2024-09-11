@@ -57,36 +57,25 @@ func (w *Workflow) LoadSequencerTips(seqID ledger.ChainID) error {
 	w.PostEventNewGood(vidBranch)
 	loadedTxs.Insert(vidBranch)
 
-	// load sequencer outputs for the chain
+	// load sequencer output for the chain
 	seqOut, stemOut, err := rdr.GetSequencerOutputs(&seqID)
 	if err != nil {
 		return fmt.Errorf("LoadSequencerTips: %w", err)
 	}
-	// TODO
-	attacher.AttachSequencerOutputs(seqOut, stemOut, w, attacher.OptionInvokedBy("LoadSequencerTips"))
-
-	oSeq, _ := rdr.GetUTXOForChainID(&seqID)
-	if oSeq == nil {
-		return fmt.Errorf("LoadSequencerTips: unable to load any milestone for the sequencer %s", seqID.StringShort())
-	}
-	out, err := oSeq.Parse()
-	if err != nil {
-		return err
-	}
-	w.Log().Infof("loaded sequencer output %s for %s:\n%s",
-		oSeq.ID.StringShort(), seqID.String(), out.Output.Lines("        ").String())
-	wOut, err := attacher.AttachOutput(oSeq.ID, out.Output, w, attacher.OptionInvokedBy("LoadSequencerTips"))
+	wOut, _, err := attacher.AttachSequencerOutputs(seqOut, stemOut, w, attacher.OptionInvokedBy("LoadSequencerTips"))
 	if err != nil {
 		return err
 	}
 	loadedTxs.Insert(wOut.VID)
 
+	w.Log().Infof("loaded starting output for sequencer %s: %s. From branch %s", seqID.StringShort(), seqOut.ID.StringShort(), vidBranch.IDShortString())
+
 	// load pending tag-along outputs
 	oids, err := rdr.GetIDsLockedInAccount(seqID.AsChainLock().AccountID())
 	util.AssertNoError(err)
 	for _, oid := range oids {
-		o := rdr.GetOutput(&oid)
-		wOut, err = attacher.AttachOutput(oid, o, w, attacher.OptionInvokedBy("LoadSequencerTips"))
+		o := rdr.MustGetOutputWithID(&oid)
+		wOut, err = attacher.AttachOutputWithID(o, w, attacher.OptionInvokedBy("LoadSequencerTips"))
 		if err != nil {
 			return err
 		}
@@ -99,47 +88,3 @@ func (w *Workflow) LoadSequencerTips(seqID ledger.ChainID) error {
 	}
 	return nil
 }
-
-//const fetchLastNTimeSlotsUponStartup = 5
-// LoadSequencerTipsOld pulls tip transactions relevant to the sequencer startup from fixed amount of latest slots
-//func (w *Workflow) LoadSequencerTipsOld(seqID ledger.ChainID) error {
-//	roots := multistate.FetchRootRecordsNSlotsBack(w.StateStore(), fetchLastNTimeSlotsUponStartup)
-//
-//	w.Log().Infof("loading tips for sequencer %s from %d branches", seqID.StringShort(), len(roots))
-//
-//	addr := seqID.AsChainLock().AccountID()
-//	loadedTxs := set.New[*vertex.WrappedTx]()
-//	ownMilestoneLoaded := false
-//	for _, rr := range roots {
-//		rdr := multistate.MustNewSugaredReadableState(w.StateStore(), rr.Root, 0)
-//		// load each branch
-//		vidBranch := attacher.MustEnsureBranch(rdr.GetStemOutput().ID.TransactionID(), w, 0)
-//		w.PostEventNewGood(vidBranch)
-//		loadedTxs.Insert(vidBranch)
-//
-//		// load sequencer output in each of those branches
-//		if oSeq, _ := rdr.GetUTXOForChainID(&seqID); oSeq != nil {
-//			w.Log().Infof("loading sequencer output for %s: %s from branch %s", seqID.StringShort(), oSeq.ID.StringShort(), vidBranch.IDShortString())
-//			wOut := attacher.AttachOutputID(oSeq.ID, w, attacher.OptionPullNonBranch, attacher.OptionInvokedBy("LoadSequencerTips"))
-//			loadedTxs.Insert(wOut.VID)
-//			ownMilestoneLoaded = true
-//		}
-//		// load all tag-along outputs (i.e. chain-locked in the seqID)
-//		oids, err := rdr.GetIDsLockedInAccount(addr)
-//		util.AssertNoError(err)
-//		for _, oid := range oids {
-//			w.Log().Infof("loading tag-along input for sequencer %s: %s from branch %s", seqID.StringShort(), oid.StringShort(), vidBranch.IDShortString())
-//			wOut := attacher.AttachOutputID(oid, w, attacher.OptionPullNonBranch, attacher.OptionInvokedBy("LoadSequencerTips"))
-//			loadedTxs.Insert(wOut.VID)
-//		}
-//	}
-//	if !ownMilestoneLoaded {
-//		// at least 1 branch must contain output with sequencer chain
-//		return fmt.Errorf("LoadSequencerTips: unable to load any milestone for the sequencer %s", seqID.StringShort())
-//	}
-//	// post new tx event for each transaction
-//	for vid := range loadedTxs {
-//		w.PostEventNewTransaction(vid)
-//	}
-//	return nil
-//}

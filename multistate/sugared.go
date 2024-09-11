@@ -113,6 +113,8 @@ func (s SugaredStateReader) GetChainOutput(chainID *ledger.ChainID) (*ledger.Out
 	}, nil
 }
 
+// GetSequencerOutputs return sequencer and stem outputs for the chain ID.
+// The stem output is nil if sequencer output is not in the branch
 func (s SugaredStateReader) GetSequencerOutputs(chainID *ledger.ChainID) (*ledger.OutputWithID, *ledger.OutputWithID, error) {
 	oData, err := s.IndexedStateReader.GetUTXOForChainID(chainID)
 	if err != nil {
@@ -130,9 +132,11 @@ func (s SugaredStateReader) GetSequencerOutputs(chainID *ledger.ChainID) (*ledge
 		// no stem on branch
 		return retSeq, nil, nil
 	}
+	// sequencer output is on the branch
 	stemOut := s.GetStemOutput()
 	if retSeq.ID.TransactionID() != stemOut.ID.TransactionID() {
-		// stem is from different branch
+		// if sequencer output is on the branch, stem must be on the same transaction
+		// Here stem and sequencer transactions are from different branches
 		return retSeq, nil, nil
 	}
 	// stem and sequencer outputs are from the same transaction

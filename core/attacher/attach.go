@@ -158,19 +158,20 @@ func AttachOutputID(oid ledger.OutputID, env Environment, opts ...AttachTxOption
 	}
 }
 
-func AttachOutput(oid ledger.OutputID, o *ledger.Output, env Environment, opts ...AttachTxOption) (vertex.WrappedOutput, error) {
-	wOut := AttachOutputID(oid, env, opts...)
-	if err := wOut.VID.EnsureOutput(oid.Index(), o); err != nil {
-		return vertex.WrappedOutput{}, fmt.Errorf("cannot attach output %s: '%w'", oid.StringShort(), err)
+func AttachOutputWithID(o *ledger.OutputWithID, env Environment, opts ...AttachTxOption) (vertex.WrappedOutput, error) {
+	wOut := AttachOutputID(o.ID, env, opts...)
+	if err := wOut.VID.EnsureOutputWithID(o); err != nil {
+		return vertex.WrappedOutput{}, fmt.Errorf("cannot attach output %s: '%w'", o.ID.StringShort(), err)
 	}
 	return wOut, nil
 }
 
 func AttachSequencerOutputs(seqOut, stemOut *ledger.OutputWithID, env Environment, opts ...AttachTxOption) (vertex.WrappedOutput, vertex.WrappedOutput, error) {
-	util.Assertf(stemOut == nil || seqOut.ID.TransactionID() == stemOut.ID.TransactionID(), "stemOut == nil || seqOut.ID.TransactionID() == stemOut.ID.TransactionID()")
+	txid := seqOut.ID.TransactionID()
+	util.Assertf(stemOut == nil || txid == stemOut.ID.TransactionID(), "stemOut == nil || seqOut.ID.TransactionID() == stemOut.ID.TransactionID()")
 
-	vid := AttachTxID(seqOut.ID.TransactionID(), env, opts...)
-	if err := vid.EnsureSequencerOutputs(stemOut, stemOut); err != nil {
+	vid := AttachTxID(txid, env, opts...)
+	if err := vid.EnsureSequencerOutputs(seqOut, stemOut); err != nil {
 		return vertex.WrappedOutput{}, vertex.WrappedOutput{}, err
 	}
 	seqWOut := vertex.WrappedOutput{

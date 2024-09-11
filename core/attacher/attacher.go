@@ -1,6 +1,7 @@
 package attacher
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 
@@ -516,17 +517,21 @@ func (a *attacher) attachRooted(wOut vertex.WrappedOutput) (ok bool, isRooted bo
 
 	// transaction is known in the state -> check if output is in the state (i.e. not consumed yet)
 	stateReader := a.baselineStateReader()
-	out := stateReader.GetOutput(wOut.DecodeID())
-	if out == nil {
+	out, err := stateReader.GetOutputWithID(wOut.DecodeID())
+	if errors.Is(err, multistate.ErrNotFound) {
 		// output has not been found in the state -> Bad (already consumed)
-		err := fmt.Errorf("output %s is already consumed in the baseline state %s", wOut.IDShortString(), a.baseline.IDShortString())
+		err = fmt.Errorf("output %s is already consumed in the baseline state %s", wOut.IDShortString(), a.baseline.IDShortString())
 		a.setError(err)
 		a.Tracef(TraceTagAttachOutput, "%v", err)
 		return false, false, true
 	}
-
+	if err != nil {
+		a.setError(err)
+		a.Tracef(TraceTagAttachOutput, "%v", err)
+		return false, false, false
+	}
 	// output has been found in the state -> Good
-	if err := wOut.VID.EnsureOutput(wOut.Index, out); err != nil {
+	if err = wOut.VID.EnsureOutputWithID(out); err != nil {
 		a.setError(err)
 		a.Tracef(TraceTagAttachOutput, "%v", err)
 		return false, false, true
@@ -542,7 +547,7 @@ func (a *attacher) attachRooted(wOut vertex.WrappedOutput) (ok bool, isRooted bo
 	a.rooted[wOut.VID] = consumedRooted
 
 	// this is new rooted output -> add to the accumulatedCoverage
-	a.accumulatedCoverage += out.Amount()
+	a.accumulatedCoverage += out.Output.Amount()
 	return true, true, true
 }
 
