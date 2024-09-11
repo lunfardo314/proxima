@@ -104,7 +104,7 @@ func (q *TxInputQueue) fromPeer(inp *Input) {
 		q.Log().Infof(">>>>>>>>>>>>>>>>>>>>>>>>>>> REPEATING input filter hit %s", tx.IDShortString())
 		return
 	}
-	q.Log().Infof(">>>>>>>>>>>>>>>>>>>>>>>>>>> BEW TX %s", tx.IDShortString())
+	q.Log().Infof(">>>>>>>>>>>>>>>>>>>>>>>>>>> NEW TX %s", tx.IDShortString())
 
 	// not in filter -> definitely new transaction
 	q.bloomFilter[tx.ID().VeryShortID4()] = time.Now().Add(q.bloomFilterTTL)
