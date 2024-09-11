@@ -25,6 +25,7 @@ func baseProposeGenerator(p *Proposer) (*attacher.IncrementalAttacher, bool) {
 		return nil, true
 	}
 	if p.targetTs.IsSlotBoundary() && extend.VID.Slot()+1 != p.targetTs.Slot() {
+		// TODO if in boot mode, find first branch of the sequencer
 		// latest output is beyond reach for the branch as next transaction
 		p.Log().Warnf("BaseProposer-%s: can't propose branch for target %s because chain predecessor %s is older than 1 slot",
 			p.Name, p.targetTs.String(), extend.VID.IDShortString())

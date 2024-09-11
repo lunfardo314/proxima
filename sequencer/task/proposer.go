@@ -39,9 +39,6 @@ func (p *Proposer) run() {
 		a.Close()
 
 		a, forceExit = p.strategy.GenerateProposal(p)
-		if p.strategy.ShortName == "b0" {
-			p.Log().Warnf(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> a==nil: %v, force exit: %v", a == nil, forceExit)
-		}
 		if a == nil && forceExit {
 			return
 		}
