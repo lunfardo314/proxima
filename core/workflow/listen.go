@@ -73,7 +73,8 @@ func (w *Workflow) LoadSequencerTips(seqID ledger.ChainID) error {
 	}
 	loadedTxs.Insert(wOut.VID)
 
-	w.Log().Infof("loaded starting output for sequencer %s: %s. From branch %s", seqID.StringShort(), chainOut.ID.StringShort(), vidBranch.IDShortString())
+	w.Log().Infof("loaded sequncer start output from branch %s\n%s",
+		vidBranch.IDShortString(), chainOut.Lines("         ").String())
 
 	// load pending tag-along outputs
 	oids, err := rdr.GetIDsLockedInAccount(seqID.AsChainLock().AccountID())

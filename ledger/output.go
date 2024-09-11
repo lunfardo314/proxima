@@ -440,19 +440,24 @@ func (o *OutputWithID) Clone() *OutputWithID {
 	}
 }
 
-func (o *OutputWithID) String() string {
-	chainIDStr := ""
+func (o *OutputWithID) Lines(prefix ...string) *lines.Lines {
+	ret := lines.New(prefix...)
+	ret.Add("ID: %s", o.ID.String())
 	if cc, idx := o.Output.ChainConstraint(); idx != 0xff {
 		var chainID ChainID
 		if cc.IsOrigin() {
-			chainID = ChainID(blake2b.Sum256(o.ID[:]))
+			chainID = blake2b.Sum256(o.ID[:])
 		} else {
 			chainID = cc.ID
 		}
-		chainIDStr = fmt.Sprintf("\nChainID: %s", chainID.String())
+		ret.Add("ChainID: %s", chainID.String())
 	}
-	ret := fmt.Sprintf("     ID: %s\n Hex ID: %s%s\n%s", o.ID.String(), o.ID.StringHex(), chainIDStr, o.Output.ToString("     "))
+	ret.Append(o.Output.Lines(prefix...))
 	return ret
+}
+
+func (o *OutputWithID) String() string {
+	return o.Lines().String()
 }
 
 func (o *OutputWithID) Short() string {
