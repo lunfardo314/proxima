@@ -505,13 +505,15 @@ func (seq *Sequencer) bootstrapOwnMilestoneOutput() vertex.WrappedOutput {
 		if baseline == nil {
 			continue
 		}
-		rdr := seq.GetStateReaderForTheBranch(&baseline.ID)
-		o, err := rdr.GetUTXOForChainID(&seq.sequencerID)
+		rdr := multistate.MakeSugared(seq.GetStateReaderForTheBranch(&baseline.ID))
+		chainOut, _, err := rdr.GetChainTips(&seq.sequencerID)
 		if errors.Is(err, multistate.ErrNotFound) {
 			continue
 		}
 		seq.AssertNoError(err)
-		ret := attacher.AttachOutputID(o.ID, seq, attacher.OptionInvokedBy("tippool"))
+
+		ret, err := attacher.AttachOutputWithID(chainOut, seq, attacher.OptionInvokedBy("tippool"))
+		seq.AssertNoError(err)
 		return ret
 	}
 	return vertex.WrappedOutput{}

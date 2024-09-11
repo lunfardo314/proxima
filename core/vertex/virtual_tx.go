@@ -189,3 +189,18 @@ func (v *VirtualTransaction) PullDeadlineExpired() bool {
 func (v *VirtualTransaction) PullNeeded(repeatPeriod time.Duration) bool {
 	return v.pullRulesDefined && v.needsPull && v.lastPull.Add(repeatPeriod).Before(time.Now())
 }
+
+func (v *VirtualTransaction) findChainOutput(txid *ledger.TransactionID, chainID *ledger.ChainID) *ledger.OutputWithID {
+	v.mutex.RLock()
+	defer v.mutex.RUnlock()
+
+	for outIdx, o := range v.outputs {
+		if c, cIdx := o.ChainConstraint(); cIdx != 0xff && c.ID == *chainID {
+			return &ledger.OutputWithID{
+				ID:     ledger.NewOutputID(txid, outIdx),
+				Output: o,
+			}
+		}
+	}
+	return nil
+}

@@ -3,6 +3,7 @@ package sequencer
 import (
 	"time"
 
+	"github.com/lunfardo314/proxima/core/attacher"
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util"
@@ -56,11 +57,18 @@ func (seq *Sequencer) IsConsumedInThePastPath(wOut vertex.WrappedOutput, ms *ver
 func (seq *Sequencer) OwnLatestMilestoneOutput() vertex.WrappedOutput {
 	ret := seq.GetLatestMilestone(seq.sequencerID)
 	if ret != nil {
-		seq.Log().Infof(">>>>>>>>>>>>>>>> GetLatestMilestone returned nil")
 		seq.AddOwnMilestone(ret)
-		return ret.SequencerWrappedOutput()
+		chainOut := ret.FindChainOutput(&seq.sequencerID)
+		if chainOut == nil {
+			return vertex.WrappedOutput{}
+		}
+		wOut, err := attacher.AttachOutputWithID(chainOut, seq, attacher.OptionInvokedBy("OwnLatestMilestoneOutput"))
+		if err == nil {
+			return wOut
+		}
+		seq.Log().Errorf("OwnLatestMilestoneOutput: %v", err)
+		return vertex.WrappedOutput{}
 	}
-	seq.Log().Infof(">>>>>>>>>>>>>>>> will bootstrap own milestone output")
 	// there's no own milestone in the tippool (startup)
 	// find in one of baseline states of other sequencers
 	return seq.bootstrapOwnMilestoneOutput()

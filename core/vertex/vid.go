@@ -332,6 +332,18 @@ func (vid *WrappedTx) SequencerWrappedOutput() (ret WrappedOutput) {
 	return
 }
 
+func (vid *WrappedTx) FindChainOutput(chainID *ledger.ChainID) (ret *ledger.OutputWithID) {
+	vid.RUnwrap(UnwrapOptions{
+		Vertex: func(v *Vertex) {
+			ret = v.Tx.FindChainOutput(*chainID)
+		},
+		VirtualTx: func(v *VirtualTransaction) {
+			ret = v.findChainOutput(&vid.ID, chainID)
+		},
+	})
+	return
+}
+
 func (vid *WrappedTx) StemWrappedOutput() (ret WrappedOutput) {
 	util.Assertf(vid.IsBranchTransaction(), "vid.IsBranchTransaction()")
 

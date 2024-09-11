@@ -58,17 +58,22 @@ func (w *Workflow) LoadSequencerTips(seqID ledger.ChainID) error {
 	loadedTxs.Insert(vidBranch)
 
 	// load sequencer output for the chain
-	seqOut, stemOut, err := rdr.GetSequencerOutputs(&seqID)
+	chainOut, stemOut, err := rdr.GetChainTips(&seqID)
 	if err != nil {
 		return fmt.Errorf("LoadSequencerTips: %w", err)
 	}
-	wOut, _, err := attacher.AttachSequencerOutputs(seqOut, stemOut, w, attacher.OptionInvokedBy("LoadSequencerTips"))
+	var wOut vertex.WrappedOutput
+	if chainOut.ID.IsSequencerTransaction() {
+		wOut, _, err = attacher.AttachSequencerOutputs(chainOut, stemOut, w, attacher.OptionInvokedBy("LoadSequencerTips"))
+	} else {
+		wOut, err = attacher.AttachOutputWithID(chainOut, w, attacher.OptionInvokedBy("LoadSequencerTips"))
+	}
 	if err != nil {
 		return err
 	}
 	loadedTxs.Insert(wOut.VID)
 
-	w.Log().Infof("loaded starting output for sequencer %s: %s. From branch %s", seqID.StringShort(), seqOut.ID.StringShort(), vidBranch.IDShortString())
+	w.Log().Infof("loaded starting output for sequencer %s: %s. From branch %s", seqID.StringShort(), chainOut.ID.StringShort(), vidBranch.IDShortString())
 
 	// load pending tag-along outputs
 	oids, err := rdr.GetIDsLockedInAccount(seqID.AsChainLock().AccountID())
