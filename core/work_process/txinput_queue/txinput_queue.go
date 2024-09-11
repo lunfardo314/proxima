@@ -100,9 +100,12 @@ func (q *TxInputQueue) fromPeer(inp *Input) {
 	}
 	// check bloom filter
 	if _, hit := q.bloomFilter[tx.ID().VeryShortID4()]; hit {
-		// filter hit, ignore transaction. May be rate false positive!!
+		// filter hit, ignore transaction. May be rare false positive!!
+		q.Log().Infof(">>>>>>>>>>>>>>>>>>>>>>>>>>> REPEATING input filter hit %s", tx.IDShortString())
 		return
 	}
+	q.Log().Infof(">>>>>>>>>>>>>>>>>>>>>>>>>>> BEW TX %s", tx.IDShortString())
+
 	// not in filter -> definitely new transaction
 	q.bloomFilter[tx.ID().VeryShortID4()] = time.Now().Add(q.bloomFilterTTL)
 

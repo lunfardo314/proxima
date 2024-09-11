@@ -86,7 +86,7 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Att
 
 	vid = AttachTxID(*tx.ID(), env, OptionInvokedBy("addTx"))
 	vid.UnwrapVirtualTx(func(v *vertex.VirtualTransaction) {
-		if vid.FlagsUpNoLock(vertex.FlagVertexTxAttachmentStarted | vertex.FlagVertexTxAttachmentFinished) {
+		if vid.FlagsUpNoLock(vertex.FlagVertexTxAttachmentStarted) {
 			// case with already attached transaction
 			if options.attachmentCallback != nil {
 				go options.attachmentCallback(vid, vid.GetErrorNoLock())
