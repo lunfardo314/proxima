@@ -72,7 +72,7 @@ func (w *Workflow) LoadSequencerTips(seqID ledger.ChainID) error {
 	util.AssertNoError(err)
 	for _, oid := range oids {
 		w.Log().Infof("loading tag-along input for sequencer %s: %s from branch %s", seqID.StringShort(), oid.StringShort(), vidBranch.IDShortString())
-		wOut := attacher.AttachOutputID(oid, w, attacher.OptionInvokedBy("LoadSequencerTips"))
+		wOut = attacher.AttachOutputID(oid, w, attacher.OptionInvokedBy("LoadSequencerTips"))
 		loadedTxs.Insert(wOut.VID)
 	}
 	// post new tx event for each transaction

@@ -56,9 +56,11 @@ func (seq *Sequencer) IsConsumedInThePastPath(wOut vertex.WrappedOutput, ms *ver
 func (seq *Sequencer) OwnLatestMilestoneOutput() vertex.WrappedOutput {
 	ret := seq.GetLatestMilestone(seq.sequencerID)
 	if ret != nil {
+		seq.Log().Infof(">>>>>>>>>>>>>>>> GetLatestMilestone returned nil")
 		seq.AddOwnMilestone(ret)
 		return ret.SequencerWrappedOutput()
 	}
+	seq.Log().Infof(">>>>>>>>>>>>>>>> will bootstrap own milestone output")
 	// there's no own milestone in the tippool (startup)
 	// find in one of baseline states of other sequencers
 	return seq.bootstrapOwnMilestoneOutput()

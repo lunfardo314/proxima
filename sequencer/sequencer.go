@@ -175,7 +175,7 @@ func (seq *Sequencer) Stop() {
 	seq.stopFun()
 }
 
-const ensureStartingMilestoneTimeout = time.Second
+const ensureStartingMilestoneTimeout = 2 * time.Second
 
 // ensureFirstMilestone waiting for the first sequencer milestone arrive
 func (seq *Sequencer) ensureFirstMilestone() bool {
