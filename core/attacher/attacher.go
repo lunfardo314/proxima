@@ -526,8 +526,11 @@ func (a *attacher) attachRooted(wOut vertex.WrappedOutput) (ok bool, isRooted bo
 	}
 
 	// output has been found in the state -> Good
-	ensured := wOut.VID.EnsureOutput(wOut.Index, out)
-	a.Assertf(ensured, "ensureOutput: internal inconsistency")
+	if err := wOut.VID.EnsureOutput(wOut.Index, out); err != nil {
+		a.setError(err)
+		a.Tracef(TraceTagAttachOutput, "%v", err)
+		return false, false, true
+	}
 
 	if len(consumedRooted) == 0 {
 		consumedRooted = set.New[byte](wOut.Index)

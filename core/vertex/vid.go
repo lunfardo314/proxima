@@ -301,8 +301,8 @@ func (vid *WrappedTx) MustSequencerIDAndStemID() (seqID ledger.ChainID, stemID l
 			stemID = vid.OutputID(v.Tx.SequencerTransactionData().StemOutputIndex)
 		},
 		VirtualTx: func(v *VirtualTransaction) {
-			util.Assertf(v.sequencerOutputs != nil, "v.sequencerOutputs != nil")
-			stemID = vid.OutputID(v.sequencerOutputs[1])
+			util.Assertf(v.sequencerOutputIndices != nil, "v.sequencerOutputs != nil")
+			stemID = vid.OutputID(v.sequencerOutputIndices[1])
 		},
 	})
 	return
@@ -321,10 +321,10 @@ func (vid *WrappedTx) SequencerWrappedOutput() (ret WrappedOutput) {
 			}
 		},
 		VirtualTx: func(v *VirtualTransaction) {
-			if v.sequencerOutputs != nil {
+			if v.sequencerOutputIndices != nil {
 				ret = WrappedOutput{
 					VID:   vid,
-					Index: v.sequencerOutputs[0],
+					Index: v.sequencerOutputIndices[0],
 				}
 			}
 		},
@@ -345,10 +345,10 @@ func (vid *WrappedTx) StemWrappedOutput() (ret WrappedOutput) {
 			}
 		},
 		VirtualTx: func(v *VirtualTransaction) {
-			if v.sequencerOutputs != nil {
+			if v.sequencerOutputIndices != nil {
 				ret = WrappedOutput{
 					VID:   vid,
-					Index: v.sequencerOutputs[1],
+					Index: v.sequencerOutputIndices[1],
 				}
 			}
 		},
@@ -508,22 +508,59 @@ func (vid *WrappedTx) BaselineBranch() (baselineBranch *WrappedTx) {
 	return
 }
 
-func (vid *WrappedTx) EnsureOutput(idx byte, o *ledger.Output) bool {
-	ok := true
-	vid.RUnwrap(UnwrapOptions{
+func (vid *WrappedTx) EnsureOutput(idx byte, o *ledger.Output) (err error) {
+	vid.Unwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
 			if idx >= byte(v.Tx.NumProducedOutputs()) {
-				ok = false
+				err = fmt.Errorf("EnsureOutput: wrong output index in %s", util.Ref(v.Tx.OutputID(idx)).StringShort())
 				return
 			}
-			util.Assertf(bytes.Equal(o.Bytes(), v.Tx.MustProducedOutputAt(idx).Bytes()), "EnsureOutput: inconsistent output data")
+			if !bytes.Equal(o.Bytes(), v.Tx.MustProducedOutputAt(idx).Bytes()) {
+				err = fmt.Errorf("EnsureOutput: inconsistent output data in %s", util.Ref(v.Tx.OutputID(idx)).StringShort())
+			}
 		},
 		VirtualTx: func(v *VirtualTransaction) {
-			v.addOutput(idx, o)
+			err = v.addOutput(idx, o)
 		},
 		Deleted: vid.PanicAccessDeleted,
 	})
-	return ok
+	return err
+}
+
+func (vid *WrappedTx) EnsureSequencerOutputs(seqOut, stemOut *ledger.OutputWithID) (err error) {
+	if !vid.IsSequencerMilestone() {
+		return fmt.Errorf("not sequencer transaction: %s", vid.IDShortString())
+	}
+	util.Assertf(seqOut != nil, "seqOut != nil")
+	util.Assertf(!vid.IsBranchTransaction() || stemOut != nil, "!vid.IsBranchTransaction() || stemOut != nil")
+	util.Assertf(!vid.IsBranchTransaction() || seqOut.ID.TransactionID() == stemOut.ID.TransactionID(),
+		"!vid.IsBranchTransaction() || seqOut.ID.TransactionID() == stemOut.ID.TransactionID()")
+
+	vid.Unwrap(UnwrapOptions{
+		Vertex: func(v *Vertex) {
+			// just enforcing consistency
+			if *v.Tx.ID() != seqOut.ID.TransactionID() {
+				err = fmt.Errorf("EnsureSequencerOutputs: wrong sequencer output %s", seqOut.String())
+				return
+			}
+			existingSeqOut := v.Tx.SequencerOutput()
+			if !ledger.EqualOutputs(seqOut, existingSeqOut) {
+				err = fmt.Errorf("EnsureSequencerOutputs: wrong sequencer output %s", seqOut.String())
+				return
+			}
+			if v.Tx.IsBranchTransaction() {
+				existingStemOut := v.Tx.StemOutput()
+				if !ledger.EqualOutputs(stemOut, existingStemOut) {
+					err = fmt.Errorf("EnsureSequencerOutputs: wrong stem output %s", seqOut.String())
+				}
+			}
+		},
+		VirtualTx: func(v *VirtualTransaction) {
+			err = v.addSequencerOutputs(seqOut, stemOut)
+		},
+		Deleted: vid.PanicAccessDeleted,
+	})
+	return err
 }
 
 // AttachConsumer stores consumer of the vid[outputIndex] consumed output.

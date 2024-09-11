@@ -113,6 +113,32 @@ func (s SugaredStateReader) GetChainOutput(chainID *ledger.ChainID) (*ledger.Out
 	}, nil
 }
 
+func (s SugaredStateReader) GetSequencerOutputs(chainID *ledger.ChainID) (*ledger.OutputWithID, *ledger.OutputWithID, error) {
+	oData, err := s.IndexedStateReader.GetUTXOForChainID(chainID)
+	if err != nil {
+		return nil, nil, err
+	}
+	outSeq, err := ledger.OutputFromBytesReadOnly(oData.OutputData)
+	if err != nil {
+		return nil, nil, err
+	}
+	retSeq := &ledger.OutputWithID{
+		ID:     oData.ID,
+		Output: outSeq,
+	}
+	if !retSeq.ID.IsBranchTransaction() {
+		// no stem on branch
+		return retSeq, nil, nil
+	}
+	stemOut := s.GetStemOutput()
+	if retSeq.ID.TransactionID() != stemOut.ID.TransactionID() {
+		// stem is from different branch
+		return retSeq, nil, nil
+	}
+	// stem and sequencer outputs are from the same transaction
+	return retSeq, stemOut, nil
+}
+
 func (s SugaredStateReader) BalanceOf(addr ledger.AccountID) uint64 {
 	outs, err := s.GetOutputsForAccount(addr)
 	util.AssertNoError(err)

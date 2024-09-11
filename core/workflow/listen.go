@@ -57,22 +57,40 @@ func (w *Workflow) LoadSequencerTips(seqID ledger.ChainID) error {
 	w.PostEventNewGood(vidBranch)
 	loadedTxs.Insert(vidBranch)
 
-	// load chain output
+	// load sequencer outputs for the chain
+	seqOut, stemOut, err := rdr.GetSequencerOutputs(&seqID)
+	if err != nil {
+		return fmt.Errorf("LoadSequencerTips: %w", err)
+	}
+	// TODO
+	attacher.AttachSequencerOutputs(seqOut, stemOut, w, attacher.OptionInvokedBy("LoadSequencerTips"))
+
 	oSeq, _ := rdr.GetUTXOForChainID(&seqID)
 	if oSeq == nil {
 		return fmt.Errorf("LoadSequencerTips: unable to load any milestone for the sequencer %s", seqID.StringShort())
 	}
+	out, err := oSeq.Parse()
+	if err != nil {
+		return err
+	}
 	w.Log().Infof("loaded sequencer output %s for %s:\n%s",
-		oSeq.ID.StringShort(), seqID.String(), oSeq.MustParse().Output.Lines("        ").String())
-	wOut := attacher.AttachOutputID(oSeq.ID, w, attacher.OptionInvokedBy("LoadSequencerTips"))
+		oSeq.ID.StringShort(), seqID.String(), out.Output.Lines("        ").String())
+	wOut, err := attacher.AttachOutput(oSeq.ID, out.Output, w, attacher.OptionInvokedBy("LoadSequencerTips"))
+	if err != nil {
+		return err
+	}
 	loadedTxs.Insert(wOut.VID)
 
 	// load pending tag-along outputs
 	oids, err := rdr.GetIDsLockedInAccount(seqID.AsChainLock().AccountID())
 	util.AssertNoError(err)
 	for _, oid := range oids {
-		w.Log().Infof("loading tag-along input for sequencer %s: %s from branch %s", seqID.StringShort(), oid.StringShort(), vidBranch.IDShortString())
-		wOut = attacher.AttachOutputID(oid, w, attacher.OptionInvokedBy("LoadSequencerTips"))
+		o := rdr.GetOutput(&oid)
+		wOut, err = attacher.AttachOutput(oid, o, w, attacher.OptionInvokedBy("LoadSequencerTips"))
+		if err != nil {
+			return err
+		}
+		w.Log().Infof("loaded tag-along input for sequencer %s: %s from branch %s", seqID.StringShort(), oid.StringShort(), vidBranch.IDShortString())
 		loadedTxs.Insert(wOut.VID)
 	}
 	// post new tx event for each transaction

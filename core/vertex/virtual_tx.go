@@ -2,6 +2,7 @@ package vertex
 
 import (
 	"bytes"
+	"fmt"
 	"time"
 
 	"github.com/lunfardo314/proxima/ledger"
@@ -19,9 +20,11 @@ func newVirtualTx() *VirtualTransaction {
 
 func newVirtualBranchTx(br *multistate.BranchData) *VirtualTransaction {
 	v := newVirtualTx()
-	v.addSequencerIndices(br.SequencerOutput.ID.Index(), br.Stem.ID.Index())
-	v.addOutput(br.SequencerOutput.ID.Index(), br.SequencerOutput.Output)
-	v.addOutput(br.Stem.ID.Index(), br.Stem.Output)
+	v._addSequencerIndices(br.SequencerOutput.ID.Index(), br.Stem.ID.Index())
+	err := v.addOutput(br.SequencerOutput.ID.Index(), br.SequencerOutput.Output)
+	util.AssertNoError(err)
+	err = v.addOutput(br.Stem.ID.Index(), br.Stem.Output)
+	util.AssertNoError(err)
 	v.SetPullNotNeeded()
 	return v
 }
@@ -36,7 +39,7 @@ func VirtualTxFromTx(tx *transaction.Transaction) *VirtualTransaction {
 	}
 	if tx.IsSequencerMilestone() {
 		seqIdx, stemIdx := tx.SequencerAndStemOutputIndices()
-		ret.addSequencerIndices(seqIdx, stemIdx)
+		ret._addSequencerIndices(seqIdx, stemIdx)
 	}
 	return ret
 }
@@ -53,21 +56,51 @@ func WrapBranchDataAsVirtualTx(branchData *multistate.BranchData) *WrappedTx {
 	return ret
 }
 
-func (v *VirtualTransaction) addOutput(idx byte, o *ledger.Output) {
+func (v *VirtualTransaction) addOutput(idx byte, o *ledger.Output) error {
 	v.mutex.Lock()
 	defer v.mutex.Unlock()
 
 	oOld, already := v.outputs[idx]
 	if already {
-		util.Assertf(bytes.Equal(oOld.Bytes(), o.Bytes()), "addOutput: inconsistent output %d data in virtual tx", idx)
-		return
+		if !bytes.Equal(oOld.Bytes(), o.Bytes()) {
+			return fmt.Errorf("VirtualTransaction.addOutput: inconsistent input data at index %d", idx)
+		}
+		return nil
 	}
 	v.outputs[idx] = o
+	return nil
 }
 
-func (v *VirtualTransaction) addSequencerIndices(seqIdx, stemIdx byte) {
+func (v *VirtualTransaction) _addSequencerIndices(seqIdx, stemIdx byte) {
+	indices := &[2]byte{seqIdx, stemIdx}
 	util.Assertf(seqIdx != 0xff, "seqIdx != 0xff")
-	v.sequencerOutputs = &[2]byte{seqIdx, stemIdx}
+	if v.sequencerOutputIndices != nil {
+		util.Assertf(*v.sequencerOutputIndices == *indices, "_addSequencerIndices: inconsistent indices")
+		return
+	}
+	v.sequencerOutputIndices = indices
+}
+
+func (v *VirtualTransaction) addSequencerOutputs(seqOut, stemOut *ledger.OutputWithID) error {
+	v.mutex.Lock()
+	defer v.mutex.Unlock()
+
+	seqIdx := seqOut.ID.Index()
+	stemIdx := byte(0xff)
+	if stemOut != nil {
+		stemIdx = stemOut.ID.Index()
+	}
+	v._addSequencerIndices(seqIdx, stemIdx)
+
+	if err := v.addOutput(seqOut.ID.Index(), seqOut.Output); err != nil {
+		return err
+	}
+	if stemOut != nil {
+		if err := v.addOutput(stemOut.ID.Index(), stemOut.Output); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // OutputAt return output at the index and true, or nil, false if output is not available in the virtual tx
@@ -81,35 +114,39 @@ func (v *VirtualTransaction) OutputAt(idx byte) (*ledger.Output, bool) {
 	return nil, false
 }
 
-// SequencerOutputs returns <seq output>, <stem output> or respective nils
-func (v *VirtualTransaction) SequencerOutputs() (*ledger.Output, *ledger.Output) {
-	v.mutex.RLock()
-	defer v.mutex.RUnlock()
-
-	if v.sequencerOutputs == nil {
+func (v *VirtualTransaction) sequencerOutputs() (*ledger.Output, *ledger.Output) {
+	if v.sequencerOutputIndices == nil {
 		return nil, nil
 	}
 	var seqOut, stemOut *ledger.Output
 	var ok bool
 
-	seqOut, ok = v.outputs[v.sequencerOutputs[0]]
+	seqOut, ok = v.outputs[v.sequencerOutputIndices[0]]
 	util.Assertf(ok, "inconsistency 1 in virtual tx")
 
-	if v.sequencerOutputs[1] != 0xff {
-		stemOut, ok = v.outputs[v.sequencerOutputs[1]]
+	if v.sequencerOutputIndices[1] != 0xff {
+		stemOut, ok = v.outputs[v.sequencerOutputIndices[1]]
 		util.Assertf(ok, "inconsistency 2 in virtual tx")
 	}
 	return seqOut, stemOut
 }
 
+// SequencerOutputs returns <seq output>, <stem output> or respective nils
+func (v *VirtualTransaction) SequencerOutputs() (*ledger.Output, *ledger.Output) {
+	v.mutex.RLock()
+	defer v.mutex.RUnlock()
+
+	return v.sequencerOutputs()
+}
+
 // sequencerID returns nil if not available
 func (v *VirtualTransaction) sequencerID(txid *ledger.TransactionID) (ret *ledger.ChainID) {
-	if v.sequencerOutputs != nil {
-		seqOData, ok := v.outputs[v.sequencerOutputs[0]].SequencerOutputData()
-		util.Assertf(ok, "sequencer output data unavailable for the output #%d", v.sequencerOutputs[0])
+	if v.sequencerOutputIndices != nil {
+		seqOData, ok := v.outputs[v.sequencerOutputIndices[0]].SequencerOutputData()
+		util.Assertf(ok, "sequencer output data unavailable for the output #%d", v.sequencerOutputIndices[0])
 		idData := seqOData.ChainConstraint.ID
 		if idData == ledger.NilChainID {
-			oid := ledger.NewOutputID(txid, v.sequencerOutputs[0])
+			oid := ledger.NewOutputID(txid, v.sequencerOutputIndices[0])
 			ret = util.Ref(ledger.MakeOriginChainID(&oid))
 		} else {
 			ret = util.Ref(idData)

@@ -239,7 +239,7 @@ func (v *Vertex) convertToVirtualTx() *VirtualTransaction {
 	}
 	if v.Tx.IsSequencerMilestone() {
 		seqIdx, stemIdx := v.Tx.SequencerAndStemOutputIndices()
-		ret.sequencerOutputs = &[2]byte{seqIdx, stemIdx}
+		ret.sequencerOutputIndices = &[2]byte{seqIdx, stemIdx}
 	}
 
 	v.Tx.ForEachProducedOutput(func(idx byte, o *ledger.Output, _ *ledger.OutputID) bool {
