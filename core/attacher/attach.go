@@ -180,7 +180,7 @@ func AttachSequencerOutputs(seqOut, stemOut *ledger.OutputWithID, env Environmen
 	}
 
 	var stemWOut vertex.WrappedOutput
-	if seqOut != nil {
+	if stemOut != nil {
 		stemWOut = vertex.WrappedOutput{
 			VID:   vid,
 			Index: stemOut.ID.Index(),
