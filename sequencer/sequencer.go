@@ -27,7 +27,7 @@ type (
 	Environment interface {
 		global.NodeGlobal
 		attacher.Environment
-		LoadSequencerTips(seqID ledger.ChainID) error
+		LoadSequencerStartTips(seqID ledger.ChainID) error
 		IsSynced() bool
 		TxBytesStore() global.TxBytesStore
 		SequencerMilestoneAttachWait(txBytes []byte, meta *txmetadata.TransactionMetadata, timeout time.Duration) (*vertex.WrappedTx, error)
@@ -98,7 +98,7 @@ func New(env Environment, seqID ledger.ChainID, controllerKey ed25519.PrivateKey
 	if ret.backlog, err = backlog.New(ret); err != nil {
 		return nil, err
 	}
-	if err = ret.LoadSequencerTips(seqID); err != nil {
+	if err = ret.LoadSequencerStartTips(seqID); err != nil {
 		return nil, err
 	}
 	ret.Log().Infof("sequencer is starting with config:\n%s", cfg.lines(seqID, ledger.AddressED25519FromPrivateKey(controllerKey), "     ").String())

@@ -40,12 +40,12 @@ func (w *Workflow) ListenToSequencers(fun func(vid *vertex.WrappedTx)) {
 	})
 }
 
-// LoadSequencerTips loads tip transactions relevant to the sequencer startup from persistent state to the memDAG
+// LoadSequencerStartTips loads tip transactions relevant to the sequencer startup from persistent state to the memDAG
 // The only chain output is loaded from the LRB
-func (w *Workflow) LoadSequencerTips(seqID ledger.ChainID) error {
+func (w *Workflow) LoadSequencerStartTips(seqID ledger.ChainID) error {
 	branchData, found := multistate.FindLatestReliableBranch(w.StateStore(), global.FractionHealthyBranch)
 	if !found {
-		return fmt.Errorf("LoadSequencerTips: can't find latest reliable branch (LRB) with franction %s", global.FractionHealthyBranch.String())
+		return fmt.Errorf("LoadSequencerStartTips: can't find latest reliable branch (LRB) with franction %s", global.FractionHealthyBranch.String())
 	}
 	loadedTxs := set.New[*vertex.WrappedTx]()
 	nowSlot := ledger.TimeNow().Slot()
@@ -60,13 +60,13 @@ func (w *Workflow) LoadSequencerTips(seqID ledger.ChainID) error {
 	// load sequencer output for the chain
 	chainOut, stemOut, err := rdr.GetChainTips(&seqID)
 	if err != nil {
-		return fmt.Errorf("LoadSequencerTips: %w", err)
+		return fmt.Errorf("LoadSequencerStartTips: %w", err)
 	}
 	var wOut vertex.WrappedOutput
 	if chainOut.ID.IsSequencerTransaction() {
-		wOut, _, err = attacher.AttachSequencerOutputs(chainOut, stemOut, w, attacher.OptionInvokedBy("LoadSequencerTips"))
+		wOut, _, err = attacher.AttachSequencerOutputs(chainOut, stemOut, w, attacher.OptionInvokedBy("LoadSequencerStartTips"))
 	} else {
-		wOut, err = attacher.AttachOutputWithID(chainOut, w, attacher.OptionInvokedBy("LoadSequencerTips"))
+		wOut, err = attacher.AttachOutputWithID(chainOut, w, attacher.OptionInvokedBy("LoadSequencerStartTips"))
 	}
 	if err != nil {
 		return err
@@ -81,7 +81,7 @@ func (w *Workflow) LoadSequencerTips(seqID ledger.ChainID) error {
 	util.AssertNoError(err)
 	for _, oid := range oids {
 		o := rdr.MustGetOutputWithID(&oid)
-		wOut, err = attacher.AttachOutputWithID(o, w, attacher.OptionInvokedBy("LoadSequencerTips"))
+		wOut, err = attacher.AttachOutputWithID(o, w, attacher.OptionInvokedBy("LoadSequencerStartTips"))
 		if err != nil {
 			return err
 		}

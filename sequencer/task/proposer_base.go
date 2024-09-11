@@ -24,6 +24,13 @@ func baseProposeGenerator(p *Proposer) (*attacher.IncrementalAttacher, bool) {
 		p.Log().Warnf("BaseProposer-%s: can't find own milestone output", p.Name)
 		return nil, true
 	}
+	if p.targetTs.IsSlotBoundary() && extend.VID.Slot()+1 != p.targetTs.Slot() {
+		// latest output is beyond reach for the branch as next transaction
+		p.Log().Warnf("BaseProposer-%s: can't propose branch for %s because chain predecessor %s is too old",
+			p.Name, p.targetTs.String(), extend.VID.IDShortString())
+		return nil, true
+	}
+
 	if !ledger.ValidSequencerPace(extend.Timestamp(), p.targetTs) {
 		// it means proposer is obsolete, abandon it
 		p.Tracef(TraceTagBaseProposer, "force exit in %s: own latest milestone and target ledger time does not make valid pace %s",
