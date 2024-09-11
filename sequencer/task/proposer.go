@@ -39,7 +39,7 @@ func (p *Proposer) run() {
 		a.Close()
 
 		a, forceExit = p.strategy.GenerateProposal(p)
-		a.Log().Warnf(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> a==nil: %v, force exit: %v", a == nil, forceExit)
+		p.Log().Warnf(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> a==nil: %v, force exit: %v", a == nil, forceExit)
 		if a == nil && forceExit {
 			return
 		}
