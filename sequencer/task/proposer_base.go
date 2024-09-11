@@ -26,7 +26,7 @@ func baseProposeGenerator(p *Proposer) (*attacher.IncrementalAttacher, bool) {
 	}
 	if p.targetTs.IsSlotBoundary() && extend.VID.Slot()+1 != p.targetTs.Slot() {
 		// latest output is beyond reach for the branch as next transaction
-		p.Log().Warnf("BaseProposer-%s: can't propose branch for %s because chain predecessor %s is too old",
+		p.Log().Warnf("BaseProposer-%s: can't propose branch for target %s because chain predecessor %s is too older than 1 slot",
 			p.Name, p.targetTs.String(), extend.VID.IDShortString())
 		return nil, true
 	}
