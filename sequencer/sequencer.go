@@ -286,7 +286,7 @@ func (seq *Sequencer) sequencerLoop() {
 			}
 			duration := time.Since(start)
 			if duration > 3*time.Second {
-				seq.Log().Warnf(">>>>>>>>>>>>> sequncer step took %v", duration)
+				seq.Log().Warnf(">>>>>>>>>>>>> sequencer step took %v", duration)
 			}
 		}
 	}

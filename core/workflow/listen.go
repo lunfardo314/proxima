@@ -73,7 +73,7 @@ func (w *Workflow) LoadSequencerTips(seqID ledger.ChainID) error {
 	}
 	loadedTxs.Insert(wOut.VID)
 
-	w.Log().Infof("loaded sequncer start output from branch %s\n%s",
+	w.Log().Infof("loaded sequencer start output from branch %s\n%s",
 		vidBranch.IDShortString(), chainOut.Lines("         ").String())
 
 	// load pending tag-along outputs
