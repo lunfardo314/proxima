@@ -39,6 +39,9 @@ func (p *Proposer) run() {
 		a.Close()
 
 		a, forceExit = p.strategy.GenerateProposal(p)
+		if a == nil && forceExit {
+			return
+		}
 		if a == nil || !a.Completed() {
 			if waitExit() {
 				// leave if its time
