@@ -94,7 +94,7 @@ func (r *RootRecord) Lines(prefix ...string) *lines.Lines {
 	ret.Add("sequencer ID : %s", r.SequencerID.String()).
 		Add("supply : %s", util.Th(r.Supply)).
 		Add("coverage : %s", util.Th(r.LedgerCoverage)).
-		Add("healthy(%s) : %v", global.FractionHealthyBranch, global.IsHealthyCoverage(r.LedgerCoverage, r.Supply, global.FractionHealthyBranch))
+		Add("healthy(%s) : %v", global.FractionHealthyBranch.String(), global.IsHealthyCoverage(r.LedgerCoverage, r.Supply, global.FractionHealthyBranch))
 	return ret
 }
 
