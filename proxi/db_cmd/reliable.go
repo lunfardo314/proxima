@@ -43,6 +43,7 @@ func runReliableBranchCmd(_ *cobra.Command, _ []string) {
 	counter := 0
 
 	multistate.IterateBranchChainBack(glb.StateStore(), latestReliableBranch, func(branchID *ledger.TransactionID, branch *multistate.BranchData) bool {
+		counter++
 		if byChainID.Contains(branch.SequencerID) {
 			return true
 		}
@@ -54,8 +55,7 @@ func runReliableBranchCmd(_ *cobra.Command, _ []string) {
 			glb.Infof("     (%d) %s %s", slotsBackFromLatest, branchID.String(), latestReliableBranch.Lines().Join(" "))
 		}
 		slotsBackFromLatest--
-		counter++
 		return true
 	})
-	glb.Infof("--------------------\nTotal branches before the LRB scanned: %d", counter)
+	glb.Infof("--------------------\nTotal branches before the LRB scanned: %d", counter-1)
 }
