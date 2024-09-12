@@ -50,9 +50,9 @@ func runReliableBranchCmd(_ *cobra.Command, _ []string) {
 		byChainID.Insert(branch.SequencerID)
 
 		if glb.IsVerbose() {
-			glb.Infof("     (%d) %s %s", slotsBackFromLatest, branchID.String(), latestReliableBranch.LinesVerbose().Join(" "))
+			glb.Infof("     (%d) %s %s", slotsBackFromLatest, branchID.String(), branch.LinesVerbose().Join("  "))
 		} else {
-			glb.Infof("     (%d) %s %s", slotsBackFromLatest, branchID.String(), latestReliableBranch.Lines().Join(" "))
+			glb.Infof("     (%d) %s %s", slotsBackFromLatest, branchID.String(), branch.Lines().Join("  "))
 		}
 		slotsBackFromLatest--
 		return true

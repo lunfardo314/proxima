@@ -91,18 +91,18 @@ func (r *RootRecord) StringShort() string {
 
 func (r *RootRecord) Lines(prefix ...string) *lines.Lines {
 	ret := lines.New(prefix...)
-	ret.Add("sequencer ID : %s", r.SequencerID.String()).
-		Add("supply : %s", util.Th(r.Supply)).
-		Add("coverage : %s", util.Th(r.LedgerCoverage)).
-		Add("healthy(%s) : %v", global.FractionHealthyBranch.String(), global.IsHealthyCoverage(r.LedgerCoverage, r.Supply, global.FractionHealthyBranch))
+	ret.Add("sequencer ID: %s", r.SequencerID.String()).
+		Add("supply: %s", util.Th(r.Supply)).
+		Add("coverage: %s", util.Th(r.LedgerCoverage)).
+		Add("healthy(%s): %v", global.FractionHealthyBranch.String(), global.IsHealthyCoverage(r.LedgerCoverage, r.Supply, global.FractionHealthyBranch))
 	return ret
 }
 
 func (r *RootRecord) LinesVerbose(prefix ...string) *lines.Lines {
 	ret := r.Lines(prefix...)
-	ret.Add("root : %s", r.Root.String()).
-		Add("slot inflation : %s", util.Th(r.SlotInflation)).
-		Add("num transactions : %d", r.NumTransactions)
+	ret.Add("root: %s", r.Root.String()).
+		Add("slot inflation: %s", util.Th(r.SlotInflation)).
+		Add("num transactions: %d", r.NumTransactions)
 	return ret
 }
 
