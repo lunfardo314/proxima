@@ -10,6 +10,7 @@ import (
 	"github.com/lunfardo314/proxima/core/work_process/events"
 	"github.com/lunfardo314/proxima/core/work_process/poker"
 	"github.com/lunfardo314/proxima/core/work_process/pull_tx_server"
+	"github.com/lunfardo314/proxima/core/work_process/snapshot"
 	"github.com/lunfardo314/proxima/core/work_process/sync_client"
 	"github.com/lunfardo314/proxima/core/work_process/sync_server"
 	"github.com/lunfardo314/proxima/core/work_process/tippool"
@@ -73,21 +74,9 @@ func Start(env Environment, peers *peering.Peers, opts ...ConfigOption) *Workflo
 	ret.poker = poker.New(ret)
 	ret.events = events.New(ret)
 	ret.pullTxServer = pull_tx_server.New(ret)
-
-	//if !env.SyncServerDisabled() {
-	//	ret.syncServer = sync_server.New(ret)
-	//}
-
 	ret.tippool = tippool.New(ret)
 	ret.txInputQueue = txinput_queue.New(ret)
-
-	//if env.SyncServerDisabled() {
-	//	env.Log().Infof("sync server has been disabled")
-	//}
-	//if !env.IsBootstrapMode() {
-	//	// bootstrap node does not need sync manager
-	//	ret.syncManager = sync_client.StartSyncClientFromConfig(ret) // nil if disabled
-	//}
+	snapshot.Start(ret)
 
 	ret.peers.OnReceiveTxBytes(func(from peer.ID, txBytes []byte, metadata *txmetadata.TransactionMetadata) {
 		ret.TxBytesInFromPeerQueued(txBytes, metadata, from)
