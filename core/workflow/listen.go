@@ -1,15 +1,8 @@
 package workflow
 
 import (
-	"fmt"
-
-	"github.com/lunfardo314/proxima/core/attacher"
 	"github.com/lunfardo314/proxima/core/vertex"
-	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
-	"github.com/lunfardo314/proxima/multistate"
-	"github.com/lunfardo314/proxima/util"
-	"github.com/lunfardo314/proxima/util/set"
 )
 
 // ListenToAccount listens to all outputs which belongs to the account (except stem-locked outputs)
@@ -38,59 +31,4 @@ func (w *Workflow) ListenToSequencers(fun func(vid *vertex.WrappedTx)) {
 	w.events.OnEvent(EventNewGoodTx, func(vid *vertex.WrappedTx) {
 		fun(vid)
 	})
-}
-
-// LoadSequencerStartTips loads tip transactions relevant to the sequencer startup from persistent state to the memDAG
-// The only chain output is loaded from the LRB
-func (w *Workflow) LoadSequencerStartTips(seqID ledger.ChainID) error {
-	branchData, found := multistate.FindLatestReliableBranch(w.StateStore(), global.FractionHealthyBranch)
-	if !found {
-		return fmt.Errorf("LoadSequencerStartTips: can't find latest reliable branch (LRB) with franction %s", global.FractionHealthyBranch.String())
-	}
-	loadedTxs := set.New[*vertex.WrappedTx]()
-	nowSlot := ledger.TimeNow().Slot()
-	w.Log().Infof("loading sequencer tips for %s from LRB %s, %d slots back from (current slot is %d)",
-		seqID.StringShort(), branchData.TxID().StringShort(), nowSlot-branchData.TxID().Slot(), nowSlot)
-
-	rdr := multistate.MustNewSugaredReadableState(w.StateStore(), branchData.Root, 0)
-	vidBranch := w.MustEnsureBranch(branchData.Stem.ID.TransactionID())
-	w.PostEventNewGood(vidBranch)
-	loadedTxs.Insert(vidBranch)
-
-	// load sequencer output for the chain
-	chainOut, stemOut, err := rdr.GetChainTips(&seqID)
-	if err != nil {
-		return fmt.Errorf("LoadSequencerStartTips: %w", err)
-	}
-	var wOut vertex.WrappedOutput
-	if chainOut.ID.IsSequencerTransaction() {
-		wOut, _, err = attacher.AttachSequencerOutputs(chainOut, stemOut, w, attacher.OptionInvokedBy("LoadSequencerStartTips"))
-	} else {
-		wOut, err = attacher.AttachOutputWithID(chainOut, w, attacher.OptionInvokedBy("LoadSequencerStartTips"))
-	}
-	if err != nil {
-		return err
-	}
-	loadedTxs.Insert(wOut.VID)
-
-	w.Log().Infof("loaded sequencer start output from branch %s\n%s",
-		vidBranch.IDShortString(), chainOut.Lines("         ").String())
-
-	// load pending tag-along outputs
-	oids, err := rdr.GetIDsLockedInAccount(seqID.AsChainLock().AccountID())
-	util.AssertNoError(err)
-	for _, oid := range oids {
-		o := rdr.MustGetOutputWithID(&oid)
-		wOut, err = attacher.AttachOutputWithID(o, w, attacher.OptionInvokedBy("LoadSequencerStartTips"))
-		if err != nil {
-			return err
-		}
-		w.Log().Infof("loaded tag-along input for sequencer %s: %s from branch %s", seqID.StringShort(), oid.StringShort(), vidBranch.IDShortString())
-		loadedTxs.Insert(wOut.VID)
-	}
-	// post new tx event for each transaction
-	for vid := range loadedTxs {
-		w.PostEventNewTransaction(vid)
-	}
-	return nil
 }

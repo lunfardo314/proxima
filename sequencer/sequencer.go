@@ -27,7 +27,6 @@ type (
 	Environment interface {
 		global.NodeGlobal
 		attacher.Environment
-		LoadSequencerStartTips(seqID ledger.ChainID) error
 		IsSynced() bool
 		TxBytesStore() global.TxBytesStore
 		SequencerMilestoneAttachWait(txBytes []byte, meta *txmetadata.TransactionMetadata, timeout time.Duration) (*vertex.WrappedTx, error)
@@ -35,6 +34,7 @@ type (
 		LatestMilestonesDescending(filter ...func(seqID ledger.ChainID, vid *vertex.WrappedTx) bool) []*vertex.WrappedTx
 		NumSequencerTips() int
 		ListenToAccount(account ledger.Accountable, fun func(wOut vertex.WrappedOutput))
+		MustEnsureBranch(txid ledger.TransactionID) *vertex.WrappedTx
 	}
 
 	Sequencer struct {
@@ -98,7 +98,7 @@ func New(env Environment, seqID ledger.ChainID, controllerKey ed25519.PrivateKey
 	if ret.backlog, err = backlog.New(ret); err != nil {
 		return nil, err
 	}
-	if err = ret.LoadSequencerStartTips(seqID); err != nil {
+	if err = ret.backlog.LoadSequencerStartTips(seqID); err != nil {
 		return nil, err
 	}
 	ret.Log().Infof("sequencer is starting with config:\n%s", cfg.lines(seqID, ledger.AddressED25519FromPrivateKey(controllerKey), "     ").String())

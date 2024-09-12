@@ -24,10 +24,9 @@ func baseProposeGenerator(p *Proposer) (*attacher.IncrementalAttacher, bool) {
 		p.Log().Warnf("BaseProposer-%s: can't find own milestone output", p.Name)
 		return nil, true
 	}
-	if p.targetTs.IsSlotBoundary() && extend.VID.Slot()+1 != p.targetTs.Slot() {
-		// TODO if in boot mode, find first branch of the sequencer
+	if p.targetTs.IsSlotBoundary() && !extend.VID.IsBranchTransaction() && extend.VID.Slot()+1 != p.targetTs.Slot() {
 		// latest output is beyond reach for the branch as next transaction
-		p.Log().Warnf("BaseProposer-%s: can't propose branch for target %s because chain predecessor %s is older than 1 slot",
+		p.Log().Warnf("BaseProposer-%s: can't propose branch for target %s because non-branch chain predecessor %s is older than 1 slot",
 			p.Name, p.targetTs.String(), extend.VID.IDShortString())
 		return nil, true
 	}

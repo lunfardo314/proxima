@@ -1,19 +1,24 @@
 package backlog
 
 import (
+	"fmt"
 	"sort"
 	"sync"
 	"time"
 
+	"github.com/lunfardo314/proxima/core/attacher"
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
+	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/proxima/util/set"
 )
 
 type (
 	Environment interface {
 		global.NodeGlobal
+		attacher.Environment
 		ListenToAccount(account ledger.Accountable, fun func(wOut vertex.WrappedOutput))
 		SequencerID() ledger.ChainID
 		SequencerName() string
@@ -21,6 +26,7 @@ type (
 		LatestMilestonesDescending(filter ...func(seqID ledger.ChainID, vid *vertex.WrappedTx) bool) []*vertex.WrappedTx
 		NumSequencerTips() int
 		BacklogTTLSlots() int
+		MustEnsureBranch(txid ledger.TransactionID) *vertex.WrappedTx
 	}
 
 	InputBacklog struct {
@@ -199,4 +205,58 @@ func (b *InputBacklog) purgeBacklog(ttl time.Duration) int {
 		b.TraceTx(&wOut.VID.ID, "[%s] output #%d has been deleted from the backlog", b.SequencerName, wOut.Index)
 	}
 	return len(toDelete)
+}
+
+// LoadSequencerStartTips loads tip transactions relevant to the sequencer startup from persistent state to the memDAG
+func (b *InputBacklog) LoadSequencerStartTips(seqID ledger.ChainID) error {
+	branchData, found := multistate.FindLatestReliableBranch(b.StateStore(), global.FractionHealthyBranch)
+	if !found {
+		return fmt.Errorf("LoadSequencerStartTips: can't find latest reliable branch (LRB) with franction %s", global.FractionHealthyBranch.String())
+	}
+	loadedTxs := set.New[*vertex.WrappedTx]()
+	nowSlot := ledger.TimeNow().Slot()
+	b.Log().Infof("loading sequencer tips for %s from LRB %s, %d slots back from (current slot is %d)",
+		seqID.StringShort(), branchData.TxID().StringShort(), nowSlot-branchData.TxID().Slot(), nowSlot)
+
+	rdr := multistate.MustNewSugaredReadableState(b.StateStore(), branchData.Root, 0)
+	vidBranch := b.MustEnsureBranch(branchData.Stem.ID.TransactionID())
+	b.PostEventNewGood(vidBranch)
+	loadedTxs.Insert(vidBranch)
+
+	// load sequencer output for the chain
+	chainOut, stemOut, err := rdr.GetChainTips(&seqID)
+	if err != nil {
+		return fmt.Errorf("LoadSequencerStartTips: %w", err)
+	}
+	var wOut vertex.WrappedOutput
+	if chainOut.ID.IsSequencerTransaction() {
+		wOut, _, err = attacher.AttachSequencerOutputs(chainOut, stemOut, b, attacher.OptionInvokedBy("LoadSequencerStartTips"))
+	} else {
+		wOut, err = attacher.AttachOutputWithID(chainOut, b, attacher.OptionInvokedBy("LoadSequencerStartTips"))
+	}
+	if err != nil {
+		return err
+	}
+	loadedTxs.Insert(wOut.VID)
+
+	b.Log().Infof("loaded sequencer start output from branch %s\n%s",
+		vidBranch.IDShortString(), chainOut.Lines("         ").String())
+
+	// load pending tag-along outputs
+	oids, err := rdr.GetIDsLockedInAccount(seqID.AsChainLock().AccountID())
+	util.AssertNoError(err)
+	for _, oid := range oids {
+		o := rdr.MustGetOutputWithID(&oid)
+		wOut, err = attacher.AttachOutputWithID(o, b, attacher.OptionInvokedBy("LoadSequencerStartTips"))
+		if err != nil {
+			return err
+		}
+		b.Log().Infof("loaded tag-along input for sequencer %s: %s from branch %s", seqID.StringShort(), oid.StringShort(), vidBranch.IDShortString())
+		loadedTxs.Insert(wOut.VID)
+	}
+	// post new tx event for each transaction
+	for vid := range loadedTxs {
+		b.PostEventNewTransaction(vid)
+	}
+	return nil
 }
