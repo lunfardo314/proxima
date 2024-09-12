@@ -2,6 +2,7 @@ package db_cmd
 
 import (
 	"os"
+	"time"
 
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
@@ -26,36 +27,36 @@ func initReliableBranchCmd() *cobra.Command {
 func runReliableBranchCmd(_ *cobra.Command, _ []string) {
 	glb.InitLedgerFromDB()
 
-	latestReliableBranch, found := multistate.FindLatestReliableBranch(glb.StateStore(), global.FractionHealthyBranch)
+	lrb, found := multistate.FindLatestReliableBranch(glb.StateStore(), global.FractionHealthyBranch)
 	if !found {
 		glb.Infof("reliable branch has not been found")
 		os.Exit(1)
 	}
 	nowSlot := ledger.TimeNow().Slot()
 	glb.Infof("current slot is %d", nowSlot)
-	branchID := latestReliableBranch.Stem.ID.TransactionID()
+	lrbID := lrb.Stem.ID.TransactionID()
 	glb.Infof("latest reliable branch (LRB) is %s (hex = %s)",
-		branchID.String(), branchID.StringHex())
-	glb.Infof("%d slots back from now", nowSlot-branchID.Slot())
+		lrbID.String(), lrbID.StringHex())
+	glb.Infof("%d slots back from now", nowSlot-lrbID.Slot())
 
 	byChainID := set.New[ledger.ChainID]()
-	slotsBackFromLatest := 0
 	counter := 0
 
-	multistate.IterateBranchChainBack(glb.StateStore(), latestReliableBranch, func(branchID *ledger.TransactionID, branch *multistate.BranchData) bool {
+	start := time.Now()
+	multistate.IterateBranchChainBack(glb.StateStore(), lrb, func(branchID *ledger.TransactionID, branch *multistate.BranchData) bool {
 		counter++
 		if byChainID.Contains(branch.SequencerID) {
 			return true
 		}
 		byChainID.Insert(branch.SequencerID)
 
+		slotsBefore := int(branchID.Slot()) - int(lrbID.Slot())
 		if glb.IsVerbose() {
-			glb.Infof("     (%d) %s %s", slotsBackFromLatest, branchID.String(), branch.LinesVerbose().Join("  "))
+			glb.Infof("     (%d branches, %d slots) %s %s", 1-counter, slotsBefore, branchID.String(), branch.LinesVerbose().Join("  "))
 		} else {
-			glb.Infof("     (%d) %s %s", slotsBackFromLatest, branchID.String(), branch.Lines().Join("  "))
+			glb.Infof("     (%d branches, %d slots) %s %s", 1-counter, slotsBefore, branchID.String(), branch.Lines().Join("  "))
 		}
-		slotsBackFromLatest--
 		return true
 	})
-	glb.Infof("--------------------\nTotal branches before the LRB scanned: %d", counter-1)
+	glb.Infof("--------------------\nTotal %d branches before the LRB have been scanned in %v", counter-1, time.Since(start))
 }
