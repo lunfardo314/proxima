@@ -516,11 +516,12 @@ func IterateBranchChainBack(store global.StateStoreReader, branch *BranchData, f
 // FindLatestReliableBranch reliable branch is the latest branch, which is contained in any
 // tip from the latest healthy branch with ledger coverage bigger than total supply
 // Reliable branch is the latest global consensus state with big probability
-func FindLatestReliableBranch(store global.StateStoreReader, fraction global.Fraction) (*BranchData, bool) {
+// Returns nil if not found
+func FindLatestReliableBranch(store global.StateStoreReader, fraction global.Fraction) *BranchData {
 	tipRoots, ok := FindRootsFromLatestHealthySlot(store, fraction)
 	if !ok {
 		// if healthy slot does not exist, reliable branch does not exist too
-		return nil, false
+		return nil
 	}
 	// filter out not healthy
 	tipRoots = util.PurgeSlice(tipRoots, func(rr RootRecord) bool {
@@ -529,7 +530,7 @@ func FindLatestReliableBranch(store global.StateStoreReader, fraction global.Fra
 	util.Assertf(len(tipRoots) > 0, "len(tipRoots)>0")
 	if len(tipRoots) == 1 {
 		// if only one branch is in the latest healthy slot, it is the one reliable
-		return util.Ref(FetchBranchDataByRoot(store, tipRoots[0])), true
+		return util.Ref(FetchBranchDataByRoot(store, tipRoots[0]))
 	}
 	// there are several roots. We start traversing back from the heaviest one
 	util.Assertf(len(tipRoots) > 1, "len(tipRoots)>1")
@@ -572,5 +573,21 @@ func FindLatestReliableBranch(store global.StateStoreReader, fraction global.Fra
 		branchFound = branch
 		return false
 	})
-	return branchFound, branchFound != nil
+	return branchFound
+}
+
+// FindLatestReliableBranchWithSequencerID finds first branch with the given sequencerID in the main LRB chain
+func FindLatestReliableBranchWithSequencerID(store global.StateStoreReader, seqID ledger.ChainID, fraction global.Fraction) (ret *BranchData) {
+	lrb := FindLatestReliableBranch(store, fraction)
+	if lrb == nil {
+		return nil
+	}
+	IterateBranchChainBack(store, lrb, func(_ *ledger.TransactionID, branch *BranchData) bool {
+		if branch.SequencerID == seqID {
+			ret = branch
+			return false
+		}
+		return true
+	})
+	return
 }

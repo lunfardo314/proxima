@@ -105,6 +105,6 @@ func (p *ProximaNode) GetTxInclusion(txid *ledger.TransactionID, slotsBack int) 
 	return p.workflow.GetTxInclusion(txid, slotsBack)
 }
 
-func (p *ProximaNode) GetLatestReliableBranch() (*multistate.BranchData, bool) {
+func (p *ProximaNode) GetLatestReliableBranch() *multistate.BranchData {
 	return multistate.FindLatestReliableBranch(p.StateStore(), global.FractionHealthyBranch)
 }

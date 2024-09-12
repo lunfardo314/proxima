@@ -316,8 +316,8 @@ func (p *ProximaNode) goLoggingSync() {
 
 	p.RepeatInBackground("logging_sync", logSyncPeriod, func() bool {
 		start := time.Now()
-		lrb, ok := p.GetLatestReliableBranch()
-		if !ok {
+		lrb := p.GetLatestReliableBranch()
+		if lrb == nil {
 			p.Log().Warnf("[sync] can't find latest reliable branch")
 		} else {
 			curSlot := ledger.TimeNow().Slot()

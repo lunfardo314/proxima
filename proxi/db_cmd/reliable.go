@@ -27,8 +27,8 @@ func initReliableBranchCmd() *cobra.Command {
 func runReliableBranchCmd(_ *cobra.Command, _ []string) {
 	glb.InitLedgerFromDB()
 
-	lrb, found := multistate.FindLatestReliableBranch(glb.StateStore(), global.FractionHealthyBranch)
-	if !found {
+	lrb := multistate.FindLatestReliableBranch(glb.StateStore(), global.FractionHealthyBranch)
+	if lrb == nil {
 		glb.Infof("reliable branch has not been found")
 		os.Exit(1)
 	}

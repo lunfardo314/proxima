@@ -178,8 +178,8 @@ func (d *MemDAG) HeaviestStateForLatestTimeSlotWithBaseline() (multistate.Sugare
 }
 
 func (d *MemDAG) LatestReliableState() (multistate.SugaredStateReader, error) {
-	branchRecord, ok := multistate.FindLatestReliableBranch(d.StateStore(), global.FractionHealthyBranch)
-	if !ok {
+	branchRecord := multistate.FindLatestReliableBranch(d.StateStore(), global.FractionHealthyBranch)
+	if branchRecord == nil {
 		return multistate.SugaredStateReader{}, fmt.Errorf("LatestReliableState: can't find latest reliable branch")
 	}
 	return multistate.MakeSugared(multistate.MustNewReadable(d.StateStore(), branchRecord.Root, 0)), nil

@@ -30,7 +30,7 @@ type (
 		SubmitTxBytesFromAPI(txBytes []byte, trace bool)
 		QueryTxIDStatusJSONAble(txid *ledger.TransactionID) vertex.TxIDStatusJSONAble
 		GetTxInclusion(txid *ledger.TransactionID, slotsBack int) *multistate.TxInclusion
-		GetLatestReliableBranch() (*multistate.BranchData, bool)
+		GetLatestReliableBranch() *multistate.BranchData
 	}
 
 	Server struct {
@@ -447,8 +447,8 @@ func (srv *Server) queryTxInclusionScore(w http.ResponseWriter, r *http.Request)
 func (srv *Server) getLatestReliableBranch(w http.ResponseWriter, r *http.Request) {
 	srv.Tracef(TraceTag, "getLatestReliableBranch invoked")
 
-	bd, found := srv.GetLatestReliableBranch()
-	if !found {
+	bd := srv.GetLatestReliableBranch()
+	if bd == nil {
 		writeErr(w, "latest reliable branch has not been found")
 		return
 	}
