@@ -7,6 +7,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/proxi/glb"
+	"github.com/lunfardo314/proxima/util/set"
 	"github.com/spf13/cobra"
 )
 
@@ -33,7 +34,28 @@ func runReliableBranchCmd(_ *cobra.Command, _ []string) {
 	nowSlot := ledger.TimeNow().Slot()
 	glb.Infof("current slot is %d", nowSlot)
 	branchID := latestReliableBranch.Stem.ID.TransactionID()
-	glb.Infof("latest reliable branch is %s (hex = %s)",
+	glb.Infof("latest reliable branch (LRB) is %s (hex = %s)",
 		branchID.String(), branchID.StringHex())
-	glb.Infof("%d slots back", nowSlot-branchID.Slot())
+	glb.Infof("%d slots back from now", nowSlot-branchID.Slot())
+
+	byChainID := set.New[ledger.ChainID]()
+	slotsBackFromLatest := 0
+	counter := 0
+
+	multistate.IterateBranchChainBack(glb.StateStore(), latestReliableBranch, func(branchID *ledger.TransactionID, branch *multistate.BranchData) bool {
+		if byChainID.Contains(branch.SequencerID) {
+			return true
+		}
+		byChainID.Insert(branch.SequencerID)
+
+		if glb.IsVerbose() {
+			glb.Infof("     (%d) %s %s", slotsBackFromLatest, branchID.String(), latestReliableBranch.LinesVerbose().Join(" "))
+		} else {
+			glb.Infof("     (%d) %s %s", slotsBackFromLatest, branchID.String(), latestReliableBranch.Lines().Join(" "))
+		}
+		slotsBackFromLatest--
+		counter++
+		return true
+	})
+	glb.Infof("--------------------\nTotal branches before the LRB scanned: %d", counter)
 }

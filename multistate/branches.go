@@ -94,8 +94,14 @@ func (r *RootRecord) Lines(prefix ...string) *lines.Lines {
 	ret.Add("sequencer ID : %s", r.SequencerID.String()).
 		Add("supply : %s", util.Th(r.Supply)).
 		Add("coverage : %s", util.Th(r.LedgerCoverage)).
+		Add("healthy(%s) : %v", global.FractionHealthyBranch, global.IsHealthyCoverage(r.LedgerCoverage, r.Supply, global.FractionHealthyBranch))
+	return ret
+}
+
+func (r *RootRecord) LinesVerbose(prefix ...string) *lines.Lines {
+	ret := r.Lines(prefix...)
+	ret.Add("root : %s", r.Root.String()).
 		Add("slot inflation : %s", util.Th(r.SlotInflation)).
-		Add("root : %s", r.Root.String()).
 		Add("num transactions : %d", r.NumTransactions)
 	return ret
 }
