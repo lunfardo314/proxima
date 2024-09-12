@@ -87,10 +87,6 @@ func runNodeConfigCommand(_ *cobra.Command, _ []string) {
 }
 
 const configFileTemplate = `# Configuration file for the Proxima node
-# For the first bootstrap node this must be true
-# If false or absent, it will require at least one statically configured peer 
-# and will not wait for syncing when starting sequencer  
-bootstrap: {{.Bootstrap}}
 
 # Peering configuration
 peering:
