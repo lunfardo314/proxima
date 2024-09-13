@@ -384,6 +384,8 @@ func (seq *Sequencer) getNextTargetTime() ledger.Time {
 	return targetAbsoluteMinimum
 }
 
+// TODO optimize very verbose logging when not able to issue branch. decideSubmitMilestone and base proposer
+
 // decideSubmitMilestone branch transactions are issued only if healthy, or bootstrap mode enabled
 func (seq *Sequencer) decideSubmitMilestone(tx *transaction.Transaction, meta *txmetadata.TransactionMetadata) bool {
 	if tx.IsBranchTransaction() {
