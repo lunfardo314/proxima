@@ -183,14 +183,14 @@ func (t *SequencerTips) purgeAndLog() {
 
 		if t.isActive(&md) {
 			if md.loggedInactive || nothingLogged {
-				t.Log().Infof("sequencer %s is ACTIVE", chainID.StringShort())
+				t.Log().Infof("[tippool] sequencer %s is ACTIVE", chainID.StringShort())
 				md.loggedInactive = false
 				md.loggedActive = true
 				t.latestMilestones[chainID] = md
 			}
 		} else {
 			if md.loggedActive || nothingLogged {
-				t.Log().Infof("sequencer %s is INACTIVE", chainID.StringShort())
+				t.Log().Infof("[tippool] sequencer %s is INACTIVE", chainID.StringShort())
 				md.loggedInactive = true
 				md.loggedActive = false
 				t.latestMilestones[chainID] = md
@@ -204,6 +204,6 @@ func (t *SequencerTips) purgeAndLog() {
 	for _, chainID := range toDelete {
 		t.latestMilestones[chainID].UnReference()
 		delete(t.latestMilestones, chainID)
-		t.Log().Infof("chainID %s has been removed from the sequencer tippool", chainID.StringShort())
+		t.Log().Infof("[tippool] chainID %s has been removed from the sequencer tippool", chainID.StringShort())
 	}
 }

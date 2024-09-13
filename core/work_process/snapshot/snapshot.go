@@ -70,7 +70,7 @@ func Start(env environment) *Snapshot {
 		return true
 	}, true)
 
-	ret.Log().Infof("[snapshot] work process STARTED\n        target directory: %s\n        period: %v (%d slots)\n        : keep latest: %d",
+	ret.Log().Infof("[snapshot] work process STARTED\n        target directory: %s\n        period: %v (%d slots)\n        keep latest: %d",
 		ret.directory, period, periodInSlots, ret.keepLatest)
 
 	return ret

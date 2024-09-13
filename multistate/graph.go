@@ -75,7 +75,8 @@ func branchNodeAttributes(seqID *ledger.ChainID, coverage uint64, dict map[ledge
 	copy(ret, _branchNodeAttributes)
 	ret = append(ret, graph.VertexAttribute("fillcolor", strconv.Itoa(dict[*seqID])))
 	if coverage > 0 {
-		ret = append(ret, graph.VertexAttribute("xlabel", util.Th(coverage)))
+		seqIDPref := seqID.StringHex()[:4]
+		ret = append(ret, graph.VertexAttribute("xlabel", util.Th(coverage)+"-"+seqIDPref))
 	}
 	return ret
 }
