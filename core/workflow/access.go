@@ -36,12 +36,6 @@ func (w *Workflow) PokeAllWith(wanted *vertex.WrappedTx) {
 	w.poker.PokeAllWith(wanted)
 }
 
-func (w *Workflow) NotifyEndOfPortion() {
-	if w.syncManager != nil {
-		w.syncManager.NotifyEndOfPortion()
-	}
-}
-
 func (w *Workflow) PullTransactionsFromRandomPeer(lst ...ledger.TransactionID) bool {
 	return w.peers.PullTransactionsFromRandomPeer(lst...)
 }
@@ -116,8 +110,4 @@ func (w *Workflow) WaitTxIDDefined(txid *ledger.TransactionID, pollPeriod, timeo
 			return vertex.Undefined, fmt.Errorf("timeout")
 		}
 	}
-}
-
-func (w *Workflow) PullSyncPortion(startingFrom ledger.Slot, maxSlots int, servers ...string) {
-	w.peers.PullSyncPortionFromRandomPeer(startingFrom, maxSlots, servers...)
 }

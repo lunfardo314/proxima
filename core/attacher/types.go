@@ -34,7 +34,6 @@ type (
 	pullEnvironment interface {
 		PokeMe(me, with *vertex.WrappedTx)
 		PokeAllWith(wanted *vertex.WrappedTx)
-		NotifyEndOfPortion()
 		PullFromPeers(txid *ledger.TransactionID)
 	}
 

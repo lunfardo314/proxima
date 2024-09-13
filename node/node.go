@@ -274,12 +274,6 @@ func (p *ProximaNode) startMetrics() {
 	p.Log().Infof("Prometheus metrics exposed on port %d", port)
 }
 
-func (p *ProximaNode) SyncServerDisabled() bool {
-	return true // TODO temporary disable
-
-	// return viper.GetBool("workflow.sync_server.disable")
-}
-
 func (p *ProximaNode) goLoggingMemStats() {
 	const memstatsLogPeriodDefault = 10 * time.Second
 

@@ -11,8 +11,6 @@ import (
 	"github.com/lunfardo314/proxima/core/work_process/poker"
 	"github.com/lunfardo314/proxima/core/work_process/pull_tx_server"
 	"github.com/lunfardo314/proxima/core/work_process/snapshot"
-	"github.com/lunfardo314/proxima/core/work_process/sync_client"
-	"github.com/lunfardo314/proxima/core/work_process/sync_server"
 	"github.com/lunfardo314/proxima/core/work_process/tippool"
 	"github.com/lunfardo314/proxima/core/work_process/txinput_queue"
 	"github.com/lunfardo314/proxima/global"
@@ -29,7 +27,6 @@ type (
 		global.NodeGlobal
 		StateStore() global.StateStore
 		TxBytesStore() global.TxBytesStore
-		SyncServerDisabled() bool
 		PullFromPeers(txid *ledger.TransactionID)
 	}
 	Workflow struct {
@@ -37,14 +34,12 @@ type (
 		*memdag.MemDAG
 		cfg   *ConfigParams
 		peers *peering.Peers
-		// daemons
+		// queues and daemons
 		pullTxServer *pull_tx_server.PullTxServer
-		syncServer   *sync_server.SyncServer
 		poker        *poker.Poker
 		events       *events.Events
 		txInputQueue *txinput_queue.TxInputQueue
 		tippool      *tippool.SequencerTips
-		syncManager  *sync_client.SyncClient
 		//
 		enableTrace    atomic.Bool
 		traceTagsMutex sync.RWMutex
@@ -85,16 +80,6 @@ func Start(env Environment, peers *peering.Peers, opts ...ConfigOption) *Workflo
 	ret.peers.OnReceivePullTxRequest(func(from peer.ID, txids []ledger.TransactionID) {
 		ret.SendTx(from, txids...)
 	})
-
-	if !ret.SyncServerDisabled() {
-		ret.peers.OnReceivePullSyncPortion(func(from peer.ID, startingFrom ledger.Slot, maxSlots int) {
-			ret.syncServer.Push(&sync_server.Input{
-				StartFrom: startingFrom,
-				MaxSlots:  maxSlots,
-				PeerID:    from,
-			})
-		})
-	}
 
 	return ret
 }

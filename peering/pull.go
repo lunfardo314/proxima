@@ -4,24 +4,19 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
-	"math"
 	"slices"
 
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
-	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util"
 )
 
 // pull request message 1st byte is the type of the message. The rest is message body
 
-const (
-	MaxNumTransactionID = (MaxPayloadSize - 2) / ledger.TransactionIDLength
+const MaxNumTransactionID = (MaxPayloadSize - 2) / ledger.TransactionIDLength
 
-	PullTransactions = byte(iota)
-	PullSyncPortion
-)
+const PullTransactions = byte(iota)
 
 func (ps *Peers) pullStreamHandler(stream network.Stream) {
 	id := stream.Conn().RemotePeer()
@@ -79,15 +74,6 @@ func (ps *Peers) processPullFrame(msgData []byte, p *Peer) (func(), error) {
 		fun := ps.onReceivePullTx
 		callAfter = func() { fun(p.id, txLst) }
 
-	case PullSyncPortion:
-		startingFromSlot, maxBranches, err := decodeSyncPortionMsg(msgData)
-		if err != nil {
-			return nil, err
-		}
-		p._evidenceActivity("pullSync")
-		fun := ps.onReceivePullSyncPortion
-		callAfter = func() { fun(p.id, startingFromSlot, maxBranches) }
-
 	default:
 		return nil, fmt.Errorf("unsupported type of the pull message %d", msgData[0])
 	}
@@ -120,23 +106,6 @@ func (ps *Peers) PullTransactionsFromAllPeers(txids ...ledger.TransactionID) {
 	for _, id := range ps._pullTxTargets() {
 		ps.sendMsgOutQueued(msg, id, ps.lppProtocolPull)
 	}
-}
-
-func (ps *Peers) sendPullSyncPortionToPeer(id peer.ID, startingFrom ledger.Slot, maxSlots int) {
-	ps.sendMsgOutQueued(&_pullSyncPortion{
-		startingFrom: startingFrom,
-		maxSlots:     maxSlots,
-	}, id, ps.lppProtocolPull)
-}
-
-func (ps *Peers) PullSyncPortionFromRandomPeer(startingFrom ledger.Slot, maxSlots int, servers ...string) bool {
-	if rndPeerID, ok := ps._randomPullPeer(true, servers...); ok {
-		ps.sendPullSyncPortionToPeer(rndPeerID, startingFrom, maxSlots)
-		ps.Log().Infof("[peering] pull sync portion from random peer %s. From slot: %d, up to slots: %d",
-			ShortPeerIDString(rndPeerID), int(startingFrom), maxSlots)
-		return true
-	}
-	return false
 }
 
 func encodePullTransactionsMsg(txids ...ledger.TransactionID) []byte {
@@ -173,32 +142,6 @@ func decodePullTransactionsMsg(data []byte) ([]ledger.TransactionID, error) {
 		util.AssertNoError(err)
 	}
 	return ret, nil
-}
-
-func encodeSyncPortionMsg(startingFrom ledger.Slot, maxSlots int) []byte {
-	if maxSlots > global.MaxSyncPortionSlots {
-		maxSlots = global.MaxSyncPortionSlots
-	}
-	util.Assertf(maxSlots < math.MaxUint16, "maxSlots < math.MaxUint16")
-
-	var buf bytes.Buffer
-	// write request type byte
-	buf.WriteByte(PullSyncPortion)
-	err := binary.Write(&buf, binary.BigEndian, uint32(startingFrom))
-	util.AssertNoError(err)
-	err = binary.Write(&buf, binary.BigEndian, uint16(maxSlots))
-	util.AssertNoError(err)
-
-	return buf.Bytes()
-}
-
-func decodeSyncPortionMsg(data []byte) (startingFrom ledger.Slot, maxSlots int, err error) {
-	if len(data) != 1+4+2 || data[0] != PullSyncPortion {
-		return 0, 0, fmt.Errorf("not a pull sync portion message")
-	}
-	startingFrom = ledger.Slot(binary.BigEndian.Uint32(data[1:5]))
-	maxSlots = int(binary.BigEndian.Uint16(data[5:7]))
-	return
 }
 
 func (ps *Peers) _pullTxTargets(restrictedTargets ...string) []peer.ID {
@@ -245,15 +188,7 @@ type (
 	_pullTransactions struct {
 		txids []ledger.TransactionID
 	}
-
-	_pullSyncPortion struct {
-		startingFrom ledger.Slot
-		maxSlots     int
-	}
 )
 
 func (pt *_pullTransactions) Bytes() []byte { return encodePullTransactionsMsg(pt.txids...) }
 func (pt *_pullTransactions) SetNow()       {}
-
-func (sp _pullSyncPortion) Bytes() []byte { return encodeSyncPortionMsg(sp.startingFrom, sp.maxSlots) }
-func (sp _pullSyncPortion) SetNow()       {}

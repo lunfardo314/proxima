@@ -32,11 +32,6 @@ const (
 	TraceTagTxInput = "txinput"
 )
 
-// ignoreTxID always false if sync manager is not enabled
-func (w *Workflow) ignoreTxID(txid *ledger.TransactionID) bool {
-	return w.syncManager != nil && w.syncManager.IgnoreFutureTxID(txid)
-}
-
 func (w *Workflow) TxFromStoreIn(txid *ledger.TransactionID) (err error) {
 	_, err = w.TxBytesFromStoreIn(w.TxBytesStore().GetTxBytesWithMetadata(txid))
 	return
@@ -93,11 +88,6 @@ func (w *Workflow) TxIn(tx *transaction.Transaction, opts ...TxBytesInOption) er
 	}
 	// base validation
 	txid := tx.ID()
-
-	if w.ignoreTxID(txid) {
-		// sync manager is still syncing. Ignore transaction
-		return nil
-	}
 
 	if options.txTrace {
 		w.StartTracingTx(*txid)

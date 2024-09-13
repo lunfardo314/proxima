@@ -147,8 +147,7 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 func (ps *Peers) sendHeartbeatToPeer(id peer.ID) {
 	ps.sendMsgOutQueued(&heartbeatInfo{
 		// time now will be set in the queue consumer
-		hasTxStore:              true, // at the moment txStore always is part of the node
-		acceptsPullSyncRequests: ps.acceptsPullSyncRequests,
+		hasTxStore: true, // at the moment txStore always is part of the node
 	}, id, ps.lppProtocolHeartbeat)
 }
 

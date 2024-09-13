@@ -43,10 +43,6 @@ func (w *workflowDummyEnvironment) TxBytesStore() global.TxBytesStore {
 	return w.txBytesStore
 }
 
-func (w *workflowDummyEnvironment) SyncServerDisabled() bool {
-	return true
-}
-
 func (w *workflowDummyEnvironment) PullFromPeers(txid *ledger.TransactionID) {
 	w.Log().Warnf(">>>>>> PullFromPeers not implemented: %s", txid.StringShort())
 }

@@ -65,7 +65,6 @@ func runMilestoneAttacher(
 		metadata.PortionInfo != nil &&
 		metadata.PortionInfo.LastIndex > 0 &&
 		metadata.PortionInfo.Index == metadata.PortionInfo.LastIndex {
-		env.NotifyEndOfPortion()
 	}
 }
 

@@ -31,7 +31,6 @@ import (
 type (
 	environment interface {
 		global.NodeGlobal
-		SyncServerDisabled() bool
 	}
 
 	Config struct {
@@ -48,19 +47,17 @@ type (
 	Peers struct {
 		environment
 
-		mutex                   sync.RWMutex
-		cfg                     *Config
-		stopOnce                sync.Once
-		host                    host.Host
-		kademliaDHT             *dht.IpfsDHT // not nil if autopeering is enabled
-		routingDiscovery        *routing.RoutingDiscovery
-		peers                   map[peer.ID]*Peer // except self/host
-		blacklist               map[peer.ID]time.Time
-		acceptsPullSyncRequests bool
+		mutex            sync.RWMutex
+		cfg              *Config
+		stopOnce         sync.Once
+		host             host.Host
+		kademliaDHT      *dht.IpfsDHT // not nil if autopeering is enabled
+		routingDiscovery *routing.RoutingDiscovery
+		peers            map[peer.ID]*Peer // except self/host
+		blacklist        map[peer.ID]time.Time
 		// on receive handlers
-		onReceiveTx              func(from peer.ID, txBytes []byte, mdata *txmetadata.TransactionMetadata)
-		onReceivePullTx          func(from peer.ID, txids []ledger.TransactionID)
-		onReceivePullSyncPortion func(from peer.ID, startingFrom ledger.Slot, maxBranches int)
+		onReceiveTx     func(from peer.ID, txBytes []byte, mdata *txmetadata.TransactionMetadata)
+		onReceivePullTx func(from peer.ID, txids []ledger.TransactionID)
 		// lpp protocol names
 		lppProtocolGossip    protocol.ID
 		lppProtocolPull      protocol.ID
@@ -134,11 +131,10 @@ const (
 
 func NewPeersDummy() *Peers {
 	ret := &Peers{
-		peers:                    make(map[peer.ID]*Peer),
-		blacklist:                make(map[peer.ID]time.Time),
-		onReceiveTx:              func(_ peer.ID, _ []byte, _ *txmetadata.TransactionMetadata) {},
-		onReceivePullTx:          func(_ peer.ID, _ []ledger.TransactionID) {},
-		onReceivePullSyncPortion: func(_ peer.ID, _ ledger.Slot, _ int) {},
+		peers:           make(map[peer.ID]*Peer),
+		blacklist:       make(map[peer.ID]time.Time),
+		onReceiveTx:     func(_ peer.ID, _ []byte, _ *txmetadata.TransactionMetadata) {},
+		onReceivePullTx: func(_ peer.ID, _ []ledger.TransactionID) {},
 	}
 	ret.outQueue = queue.New[outMsgData](ret.sendMsgOut)
 	return ret
@@ -163,18 +159,17 @@ func New(env environment, cfg *Config) (*Peers, error) {
 	rendezvousNumber := binary.BigEndian.Uint64(ledgerLibraryHash[:8])
 
 	ret := &Peers{
-		environment:              env,
-		cfg:                      cfg,
-		host:                     lppHost,
-		peers:                    make(map[peer.ID]*Peer),
-		blacklist:                make(map[peer.ID]time.Time),
-		onReceiveTx:              func(_ peer.ID, _ []byte, _ *txmetadata.TransactionMetadata) {},
-		onReceivePullTx:          func(_ peer.ID, _ []ledger.TransactionID) {},
-		onReceivePullSyncPortion: func(_ peer.ID, _ ledger.Slot, _ int) {},
-		lppProtocolGossip:        protocol.ID(fmt.Sprintf(lppProtocolGossip, rendezvousNumber)),
-		lppProtocolPull:          protocol.ID(fmt.Sprintf(lppProtocolPull, rendezvousNumber)),
-		lppProtocolHeartbeat:     protocol.ID(fmt.Sprintf(lppProtocolHeartbeat, rendezvousNumber)),
-		rendezvousString:         fmt.Sprintf("%d", rendezvousNumber),
+		environment:          env,
+		cfg:                  cfg,
+		host:                 lppHost,
+		peers:                make(map[peer.ID]*Peer),
+		blacklist:            make(map[peer.ID]time.Time),
+		onReceiveTx:          func(_ peer.ID, _ []byte, _ *txmetadata.TransactionMetadata) {},
+		onReceivePullTx:      func(_ peer.ID, _ []ledger.TransactionID) {},
+		lppProtocolGossip:    protocol.ID(fmt.Sprintf(lppProtocolGossip, rendezvousNumber)),
+		lppProtocolPull:      protocol.ID(fmt.Sprintf(lppProtocolPull, rendezvousNumber)),
+		lppProtocolHeartbeat: protocol.ID(fmt.Sprintf(lppProtocolHeartbeat, rendezvousNumber)),
+		rendezvousString:     fmt.Sprintf("%d", rendezvousNumber),
 	}
 	ret.outQueue = queue.New[outMsgData](ret.sendMsgOut)
 
@@ -221,8 +216,7 @@ func New(env environment, cfg *Config) (*Peers, error) {
 
 func readPeeringConfig(env environment) (*Config, error) {
 	cfg := &Config{
-		PreConfiguredPeers:     make(map[string]multiaddr.Multiaddr),
-		AcceptPullSyncRequests: !env.SyncServerDisabled(),
+		PreConfiguredPeers: make(map[string]multiaddr.Multiaddr),
 	}
 	cfg.HostPort = viper.GetInt("peering.host.port")
 	if cfg.HostPort == 0 {
@@ -422,13 +416,6 @@ func (ps *Peers) OnReceivePullTxRequest(fun func(from peer.ID, txids []ledger.Tr
 	defer ps.mutex.Unlock()
 
 	ps.onReceivePullTx = fun
-}
-
-func (ps *Peers) OnReceivePullSyncPortion(fun func(from peer.ID, startingFrom ledger.Slot, maxSlots int)) {
-	ps.mutex.Lock()
-	defer ps.mutex.Unlock()
-
-	ps.onReceivePullSyncPortion = fun
 }
 
 func (ps *Peers) _getPeer(id peer.ID) *Peer {
