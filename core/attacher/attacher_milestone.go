@@ -142,10 +142,6 @@ func (a *milestoneAttacher) run() error {
 		a.vid.ConvertVertexToVirtualTx()
 	}
 
-	if strings.Contains(a.vid.ID.StringShort(), "7f79") {
-		fmt.Printf(">>>>>>>>>>> GOOD \n%s\n", a.dumpLinesString("       "))
-	}
-
 	a.vid.SetTxStatusGood()
 	a.PostEventNewGood(a.vid)
 	a.SendToTippool(a.vid)

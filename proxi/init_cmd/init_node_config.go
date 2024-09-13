@@ -122,7 +122,7 @@ snapshot:
   enable: false
     # where to put snapshot files. Directory must exist at startup
   directory: snapshot
-    # 30 slots means ~ snapshot is every 5 min
+    # 30 slots means snapshot is every ~5 min
   period_in_slots: 30
     # keep latest up to 3 snapshots, older ones will be purged
   keep_latest: 3
@@ -130,11 +130,9 @@ snapshot:
 # logger config
 # logger.previous can be 'erase' or 'save'
 logger:
-  # debug level almost not used
-  level: info
   # verbosity:
   #   0 - logging branches
-  #   1 - logging branches, sequencer transaction + sync manager activity
+  #   1 - logging branches, sequencer transaction
   #   2 - not implemented
   # for tracing configure trace_tags
   verbosity: 0
@@ -151,44 +149,35 @@ metrics:
   port: 14000
 
 # list of enabled trace tags. When enabled, it forces tracing of the specified module.
-# It may be very verbose. For debugging. Search for available trace tags the code for "TraceTag"
+# It may be very verbose, so it is only used For debugging. 
+# For more available trace tags search the code for "TraceTag"
 trace_tags:
 #  - autopeering
-#  - inclusion
-#  - backlog
-#  - gossip
 #  - pull_server
 #  - txinput
 #  - txStore
-#  - global
-#  - backlog
-#  - propose-base
-#  - pruner
 
 {{.SequencerConfig}}
 `
 
 const sequencerConfigTemplate = `
-# map of maps of sequencer configuration <local seq name>: <seq config>
-# <local seq name> is stored into each sequencer transaction, so better keep it short 
-# usually none or 1 sequencer is enabled for the node
-# 0 enabled sequencers means node is a pure access node
-# If sequencer is enabled, it is working as a separate and independent process inside the node
-sequencers:
-  <local seq name>:
+# Sequencer configuration (optional) 
+sequencer:
+    # sequencer name usually is 4 or so symbols. It is put into every sequencer transaction for tracking purposes  
+  name: <mandatory name>
     # start sequencer yes/no
-    enable: false
+  enable: false
     # chain ID of the sequencer
     # chain ID af7bedde1fea222230b82d63d5b665ac75afbe4ad3f75999bb3386cf994a6963 is
     # predefined chain ID of the genesis chain (the bootstrap sequencer)
     # Sequencer chain is created by 'proxi node mkchain' command
     # All chains controlled by the wallet can be displayed by 'proxi node chains'
-    sequencer_id: <sequencer ID hex encoded>
-    # sequencer chain controller's private key (hex-encoded)
-    controller_key: <ED25519 private key of the controller>
-    # sequencer pace. Distance in ticks between two subsequent sequencer transactions
-    # cannot be less than the sequencer pace value set by the ledger
-    pace: 12
-    # maximum tag-along inputs allowed in the sequencer transaction (maximum value is 254)
-    max_tag_along_inputs: 100
+  chain_id: <sequencer ID hex encoded>
+  # sequencer chain controller's private key (hex-encoded)
+  controller_key: <ED25519 private key of the controller>
+  # sequencer pace. Distance in ticks between two subsequent sequencer transactions
+  # cannot be less than the sequencer pace value set by the ledger
+  pace: 12
+  # maximum tag-along inputs allowed in the sequencer transaction (maximum value is 254)
+  max_tag_along_inputs: 100
 `

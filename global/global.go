@@ -52,13 +52,16 @@ func fileExists(name string) bool {
 }
 
 func NewFromConfig() *Global {
-	lvlStr := viper.GetString("logger.level")
+	//lvlStr := viper.GetString("logger.level")
+	//lvl := zapcore.InfoLevel
+	//if lvlStr != "" {
+	//	var err error
+	//	lvl, err = zapcore.ParseLevel(lvlStr)
+	//	util.AssertNoError(err)
+	//}
+
+	// always assume INFO level
 	lvl := zapcore.InfoLevel
-	if lvlStr != "" {
-		var err error
-		lvl, err = zapcore.ParseLevel(lvlStr)
-		util.AssertNoError(err)
-	}
 
 	output := []string{"stderr"}
 	erasedPrev := false
