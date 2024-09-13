@@ -28,8 +28,8 @@ type ProximaNode struct {
 	txStoreDB                 *badger_adaptor.DB
 	txBytesStore              global.TxBytesStore
 	peers                     *peering.Peers
+	sequencer                 *sequencer.Sequencer
 	workflow                  *workflow.Workflow
-	Sequencers                []*sequencer.Sequencer
 	stopOnce                  sync.Once
 	workProcessesStopStepChan chan struct{}
 	dbClosedWG                sync.WaitGroup
@@ -47,7 +47,6 @@ func init() {
 func New() *ProximaNode {
 	ret := &ProximaNode{
 		Global:                    global.NewFromConfig(),
-		Sequencers:                make([]*sequencer.Sequencer, 0),
 		workProcessesStopStepChan: make(chan struct{}),
 		started:                   time.Now(),
 	}
@@ -109,8 +108,8 @@ func (p *ProximaNode) Start() {
 
 		initStep = "startWorkflow"
 		p.startWorkflow()
-		initStep = "startSequencers"
-		p.startSequencers()
+		initStep = "startSequencer"
+		p.startSequencer()
 		initStep = "startAPIServer"
 		p.startAPIServer()
 		initStep = "startPProfIfEnabled"
@@ -208,36 +207,18 @@ func (p *ProximaNode) startWorkflow() {
 	p.workflow = workflow.StartFromConfig(p, p.peers)
 }
 
-// TODO refactor to one single sequencer per node. No need for several
-
-func (p *ProximaNode) startSequencers() {
-	sequencers := viper.GetStringMap("sequencers")
-	if len(sequencers) == 0 {
-		p.Log().Infof("no Sequencers will be started")
+func (p *ProximaNode) startSequencer() {
+	var err error
+	p.sequencer, err = sequencer.NewFromConfig(p.workflow)
+	if err != nil {
+		p.Log().Errorf("can't start sequencer: '%v'", err)
 		return
 	}
-	p.Log().Infof("%d sequencer config profile(s) has been found", len(sequencers))
-
-	seqNames := util.KeysSorted(sequencers, func(k1, k2 string) bool {
-		return k1 < k2
-	})
-	for _, name := range seqNames {
-		seq, err := sequencer.NewFromConfig(name, p.workflow)
-		if err != nil {
-			p.Log().Errorf("can't start sequencer '%s': '%v'", name, err)
-			continue
-		}
-		if seq == nil {
-			if name != "disable_proposer" { // TODO ugly, fix config formats
-				p.Log().Infof("skipping disabled sequencer '%s'", name)
-			}
-			continue
-		}
-		seq.Start()
-
-		p.Sequencers = append(p.Sequencers, seq)
-		time.Sleep(500 * time.Millisecond)
+	if p.sequencer == nil {
+		p.Log().Infof("sequencer is not configured or disabled")
+		return
 	}
+	p.sequencer.Start()
 }
 
 func (p *ProximaNode) UpTime() time.Duration {

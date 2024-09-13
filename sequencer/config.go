@@ -54,19 +54,23 @@ func configOptions(opts ...ConfigOption) *ConfigOptions {
 	return cfg
 }
 
-func paramsFromConfig(name string) ([]ConfigOption, ledger.ChainID, ed25519.PrivateKey, error) {
-	subViper := viper.Sub("sequencers." + name)
+func paramsFromConfig() ([]ConfigOption, ledger.ChainID, ed25519.PrivateKey, error) {
+	subViper := viper.Sub("sequencer")
 	if subViper == nil {
-		return nil, ledger.ChainID{}, nil, fmt.Errorf("can't read config")
+		return nil, ledger.ChainID{}, nil, nil
+	}
+	name := subViper.GetString("name")
+	if name == "" {
+		return nil, ledger.ChainID{}, nil, fmt.Errorf("StartFromConfig: sequencer must have a name")
 	}
 
 	if !subViper.GetBool("enable") {
 		// will skip
 		return nil, ledger.ChainID{}, nil, nil
 	}
-	seqID, err := ledger.ChainIDFromHexString(subViper.GetString("sequencer_id"))
+	seqID, err := ledger.ChainIDFromHexString(subViper.GetString("chain_id"))
 	if err != nil {
-		return nil, ledger.ChainID{}, nil, fmt.Errorf("StartFromConfig: can't parse sequencer ID: %v", err)
+		return nil, ledger.ChainID{}, nil, fmt.Errorf("StartFromConfig: can't parse sequencer chain ID: %v", err)
 	}
 	controllerKey, err := util.ED25519PrivateKeyFromHexString(subViper.GetString("controller_key"))
 	if err != nil {

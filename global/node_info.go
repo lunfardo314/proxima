@@ -15,7 +15,7 @@ type NodeInfo struct {
 	Version         string                 `json:"version"`
 	NumStaticAlive  uint16                 `json:"num_static_peers"`
 	NumDynamicAlive uint16                 `json:"num_dynamic_alive"`
-	Sequencers      []ledger.ChainID       `json:"sequencers,omitempty"`
+	Sequencer       *ledger.ChainID        `json:"sequencers,omitempty"`
 	Branches        []ledger.TransactionID `json:"branches,omitempty"`
 }
 
@@ -38,12 +38,16 @@ func NodeInfoFromBytes(data []byte) (*NodeInfo, error) {
 
 func (ni *NodeInfo) Lines(prefix ...string) *lines.Lines {
 	ret := lines.New(prefix...)
+	seqStr := "<none>"
+	if ni.Sequencer != nil {
+		seqStr = ni.Sequencer.String()
+	}
 	ret.Add("Node info:").
 		Add("   name: '%s'", ni.Name).
 		Add("   lpp host ID: %s", ni.ID.String()).
 		Add("   static peers alive: %d", ni.NumStaticAlive).
 		Add("   dynamic peers alive: %d", ni.NumDynamicAlive).
-		Add("   sequencers: %d", len(ni.Sequencers)).
+		Add("   sequencer: %s", seqStr).
 		Add("   branches: %d", len(ni.Branches))
 	return ret
 }

@@ -9,6 +9,7 @@ import (
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/multistate"
+	"github.com/lunfardo314/proxima/util"
 	"github.com/spf13/viper"
 )
 
@@ -33,13 +34,17 @@ func (p *ProximaNode) stopAPIServer() {
 func (p *ProximaNode) GetNodeInfo() *global.NodeInfo {
 	aliveStaticPeers, aliveDynamicPeers := p.peers.NumAlive()
 
+	var seqID *ledger.ChainID
+	if p.sequencer != nil {
+		seqID = util.Ref(p.sequencer.SequencerID())
+	}
 	ret := &global.NodeInfo{
 		Name:            "a Proxima node",
 		ID:              p.peers.SelfID(),
 		Version:         global.Version,
 		NumStaticAlive:  uint16(aliveStaticPeers),
 		NumDynamicAlive: uint16(aliveDynamicPeers),
-		Sequencers:      make([]ledger.ChainID, len(p.Sequencers)),
+		Sequencer:       seqID,
 		Branches:        make([]ledger.TransactionID, 0),
 	}
 
@@ -48,24 +53,22 @@ func (p *ProximaNode) GetNodeInfo() *global.NodeInfo {
 
 // GetSyncInfo TODO not finished
 func (p *ProximaNode) GetSyncInfo() *api.SyncInfo {
-
 	latestSlot, latestHealthySlot, synced := p.workflow.LatestBranchSlots()
 	ret := &api.SyncInfo{
 		Synced:       synced,
 		PerSequencer: make(map[string]api.SequencerSyncInfo),
 	}
-	for seq := range p.Sequencers {
-		seqInfo := p.Sequencers[seq].Info()
+	if p.sequencer != nil {
+		seqInfo := p.sequencer.Info()
 		ssi := api.SequencerSyncInfo{
 			Synced:              synced,
 			LatestHealthySlot:   uint32(latestHealthySlot),
 			LatestCommittedSlot: uint32(latestSlot),
 			LedgerCoverage:      seqInfo.LedgerCoverage,
 		}
-		chainId := p.Sequencers[seq].SequencerID()
+		chainId := p.sequencer.SequencerID()
 		ret.PerSequencer[chainId.StringHex()] = ssi
 	}
-
 	return ret
 }
 

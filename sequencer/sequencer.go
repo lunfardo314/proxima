@@ -105,8 +105,8 @@ func New(env Environment, seqID ledger.ChainID, controllerKey ed25519.PrivateKey
 	return ret, nil
 }
 
-func NewFromConfig(name string, glb *workflow.Workflow) (*Sequencer, error) {
-	cfg, seqID, controllerKey, err := paramsFromConfig(name)
+func NewFromConfig(glb *workflow.Workflow) (*Sequencer, error) {
+	cfg, seqID, controllerKey, err := paramsFromConfig()
 	if err != nil {
 		return nil, err
 	}
@@ -120,11 +120,6 @@ func (seq *Sequencer) Start() {
 	runFun := func() {
 		seq.MarkWorkProcessStarted(seq.config.SequencerName)
 		defer seq.MarkWorkProcessStopped(seq.config.SequencerName)
-
-		//if !seq.waitForSyncIfNecessary() {
-		//	seq.log.Warnf("sequencer wasn't started. EXIT..")
-		//	return
-		//}
 
 		if !seq.ensureFirstMilestone() {
 			seq.log.Warnf("can't start sequencer. EXIT..")

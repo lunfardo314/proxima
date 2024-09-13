@@ -92,7 +92,7 @@ func registerProposerStrategy(s *Strategy) {
 func allProposingStrategies() []*Strategy {
 	ret := make([]*Strategy, 0)
 	for _, s := range _allProposingStrategies {
-		if !viper.GetBool("sequencers.disable_proposer." + s.ShortName) {
+		if !viper.GetBool("sequencer.disable_proposer." + s.ShortName) {
 			ret = append(ret, s)
 		}
 	}
