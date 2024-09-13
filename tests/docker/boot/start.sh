@@ -27,6 +27,7 @@ kill_proxima() {
     fi
 }
 
+boot_param=""
 if [ ! -f "$INITIALIZED_FILE" ]; then
     # node not initialized
     echo "image not initialized"
@@ -35,6 +36,8 @@ if [ ! -f "$INITIALIZED_FILE" ]; then
     ./proxi init genesis_db
 
     if [ "$NODE_NAME" == "boot" ]; then
+        boot_param="boot"
+
         # 
         echo "init bootstrap_account"
         ./proxi init bootstrap_account
@@ -46,7 +49,7 @@ if [ ! -f "$INITIALIZED_FILE" ]; then
         sleep 5  # let process start
 
         echo "node init sequencer"
-        ./proxi node setup_seq --finality.weak seq$NODE_NAME 190000000000000
+        ./proxi node setup_seq --finality.weak seq$NODE_NAME 140000000000000
 
         kill_proxima
         sleep 2  # let process die
@@ -56,6 +59,4 @@ if [ ! -f "$INITIALIZED_FILE" ]; then
     touch "$INITIALIZED_FILE"
 fi
 
-./proxima
-
-
+./proxima $boot_param

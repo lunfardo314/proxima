@@ -91,7 +91,7 @@ func (q *TxInputQueue) fromPeer(inp *Input) {
 		metaData = &txmetadata.TransactionMetadata{}
 	}
 
-	if inp.TxMetaData.IsResponseToPull {
+	if metaData.IsResponseToPull {
 		// do not check bloom filter if transaction was pulled
 		if err = q.TxInFromPeer(tx, metaData, inp.FromPeer); err != nil {
 			q.Log().Warn("TxInputQueue from peer %s: %v", inp.FromPeer.String(), err)
