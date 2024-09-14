@@ -189,8 +189,8 @@ func (t *Task) startProposers() {
 		}
 		t.proposersWG.Add(1)
 		go func() {
-			p.IncCounter(s.ShortName)
-			defer p.DecCounter(s.ShortName)
+			p.IncCounter(p.strategy.ShortName)
+			defer p.DecCounter(p.strategy.ShortName)
 
 			p.run()
 		}()
