@@ -90,7 +90,11 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Att
 		if vid.FlagsUpNoLock(vertex.FlagVertexTxAttachmentStarted) {
 			// case with already attached transaction
 			if options.attachmentCallback != nil {
-				go options.attachmentCallback(vid, vid.GetErrorNoLock())
+				go func() {
+					env.IncCounter("call")
+					options.attachmentCallback(vid, vid.GetErrorNoLock())
+					env.DecCounter("call")
+				}()
 			}
 			return
 		}
@@ -110,15 +114,16 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Att
 
 			// start attacher routine
 			go func() {
+				env.IncCounter("att")
+				defer env.DecCounter("att")
+
 				env.MarkWorkProcessStarted(vid.IDShortString())
 				env.TraceTx(&vid.ID, "runMilestoneAttacher: start")
-				env.IncAttacherCounter()
 
 				runMilestoneAttacher(vid, metadata, options.attachmentCallback, env, options.ctx)
 
 				env.TraceTx(&vid.ID, "runMilestoneAttacher: exit")
 				env.MarkWorkProcessStopped(vid.IDShortString())
-				env.DecAttacherCounter()
 			}()
 		}
 		// significantly speeds up non-sequencer transactions

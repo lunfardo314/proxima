@@ -8,6 +8,7 @@ import (
 
 	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/ledger"
+	"github.com/lunfardo314/proxima/util/lines"
 	"github.com/lunfardo314/unitrie/common"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/zap"
@@ -74,9 +75,13 @@ type (
 		Infof0(template string, args ...any)
 		Infof1(template string, args ...any)
 		Infof2(template string, args ...any)
-		IncAttacherCounter()
-		DecAttacherCounter()
-		AttacherCounter() int
+
+		// counting
+
+		IncCounter(name string)
+		DecCounter(nane string)
+		Counter(name string) int
+		CounterLines(prefix ...string) *lines.Lines
 	}
 
 	// StartStop interface of the global objects which coordinates graceful shutdown

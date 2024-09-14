@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"math"
 	"runtime"
-	"strings"
 	"time"
 
 	"github.com/lunfardo314/proxima/core/txmetadata"
@@ -42,10 +41,6 @@ func runMilestoneAttacher(
 	}()
 
 	if err = a.run(); err != nil {
-		if strings.Contains(a.vid.ID.StringShort(), "7f79") { // "7f79"
-			fmt.Printf(">>>>>>>>>>> BAD \n%s\n", a.dumpLinesString("       "))
-		}
-
 		vid.SetTxStatusBad(err)
 		env.Log().Warnf(a.logErrorStatusString(err))
 		// panic("fail fast")

@@ -158,6 +158,9 @@ func (w *Workflow) TxIn(tx *transaction.Transaction, opts ...TxBytesInOption) er
 	} else {
 		// timestamp is in the future: let clock catch up before attaching
 		go func() {
+			w.IncCounter("wait")
+			defer w.DecCounter("wait")
+
 			w.ClockCatchUpWithLedgerTime(txid.Timestamp())
 
 			w.Tracef(TraceTagTxInput, "%s -> release", txid.StringShort)

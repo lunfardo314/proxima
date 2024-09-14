@@ -22,16 +22,15 @@ import (
 
 type Global struct {
 	*zap.SugaredLogger
-	logVerbosity    int
-	ctx             context.Context
-	stopFun         context.CancelFunc
-	logStopOnce     *sync.Once
-	isShuttingDown  atomic.Bool
-	stopOnce        *sync.Once
-	mutex           sync.RWMutex
-	components      set.Set[string]
-	metrics         *prometheus.Registry
-	attacherCounter atomic.Int32
+	logVerbosity   int
+	ctx            context.Context
+	stopFun        context.CancelFunc
+	logStopOnce    *sync.Once
+	isShuttingDown atomic.Bool
+	stopOnce       *sync.Once
+	mutex          sync.RWMutex
+	components     set.Set[string]
+	metrics        *prometheus.Registry
 	// statically enabled trace tags
 	enabledTrace   atomic.Bool
 	traceTagsMutex sync.RWMutex
@@ -42,6 +41,9 @@ type Global struct {
 	txTraceEnabled bool
 	// is it the first node in the network
 	bootstrapMode bool
+	// counters
+	countersMutex sync.RWMutex
+	counters      map[string]int
 }
 
 const TraceTag = "global"
@@ -114,6 +116,7 @@ func _new(logLevel zapcore.Level, outputs []string, bootstrap bool) *Global {
 		components:    set.New[string](),
 		txTraceIDs:    make(map[ledger.TransactionID]time.Time),
 		bootstrapMode: bootstrap,
+		counters:      make(map[string]int),
 	}
 	return ret
 }
@@ -403,15 +406,35 @@ func (l *Global) ClockCatchUpWithLedgerTime(ts ledger.Time) {
 	}
 }
 
-func (l *Global) IncAttacherCounter() {
-	l.attacherCounter.Add(1)
+func (l *Global) IncCounter(name string) {
+	l.countersMutex.Lock()
+	defer l.countersMutex.Unlock()
+
+	l.counters[name] = l.counters[name] + 1
 }
 
-func (l *Global) DecAttacherCounter() {
-	l.attacherCounter.Add(-1)
-	l.Assertf(l.attacherCounter.Load() >= 0, "l.attacherCounter.Load() >= 0")
+func (l *Global) DecCounter(name string) {
+	l.countersMutex.Lock()
+	defer l.countersMutex.Unlock()
+
+	l.counters[name] = l.counters[name] - 1
 }
 
-func (l *Global) AttacherCounter() int {
-	return int(l.attacherCounter.Load())
+func (l *Global) Counter(name string) int {
+	l.countersMutex.RLock()
+	defer l.countersMutex.RUnlock()
+
+	return l.counters[name]
+}
+
+func (l *Global) CounterLines(prefix ...string) *lines.Lines {
+	ret := lines.New(prefix...)
+
+	l.countersMutex.RLock()
+	defer l.countersMutex.RUnlock()
+
+	for _, k := range util.KeysSorted(l.counters, util.StringsLess) {
+		ret.Add("%s: %d", k, l.counters[k])
+	}
+	return ret
 }

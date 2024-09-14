@@ -88,6 +88,10 @@ func KeysSorted[K comparable, V any](m map[K]V, less func(k1, k2 K) bool) []K {
 	return ret
 }
 
+func StringsLess(s1, s2 string) bool {
+	return s1 < s2
+}
+
 func List[T any](elems ...T) []T {
 	return elems
 }

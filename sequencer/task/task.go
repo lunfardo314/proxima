@@ -188,7 +188,12 @@ func (t *Task) startProposers() {
 			Name:     t.Name + "-" + s.Name,
 		}
 		t.proposersWG.Add(1)
-		go p.run()
+		go func() {
+			p.IncCounter(s.ShortName)
+			defer p.DecCounter(s.ShortName)
+
+			p.run()
+		}()
 	}
 }
 

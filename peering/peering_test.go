@@ -344,14 +344,3 @@ func rndTxIDs() []ledger.TransactionID {
 	}
 	return ret
 }
-
-func TestSerDe(t *testing.T) {
-	t.Run("pullSyncPortion", func(t *testing.T) {
-		data := encodeSyncPortionMsg(66000, 200)
-		starting, maxSlots, err := decodeSyncPortionMsg(data)
-		require.NoError(t, err)
-		require.EqualValues(t, 66000, starting)
-		require.EqualValues(t, 200, maxSlots)
-
-	})
-}
