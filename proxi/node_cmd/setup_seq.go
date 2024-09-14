@@ -116,17 +116,14 @@ func updateNodeConfig(name string, key ed25519.PrivateKey, chainId ledger.ChainI
 	err = yaml.Unmarshal(data, &config)
 	glb.AssertNoError(err)
 
-	// Navigate to the specific field and modify it
-	if sequ, ok := config["sequencers"].(map[interface{}]interface{}); ok {
-		if cfg, ok := sequ["<local seq name>"]; ok {
-			sequ[name] = cfg
-			delete(sequ, "<local seq name>")
-		}
-		if cfg, ok := sequ[name].(map[interface{}]interface{}); ok {
-			cfg["enable"] = "true"
-			cfg["sequencer_id"] = chainId.StringHex()
-			cfg["controller_key"] = hex.EncodeToString(key)
-		}
+	// Access the "sequencer" section and update its fields
+	if sequencer, ok := config["sequencer"].(map[interface{}]interface{}); ok {
+		sequencer["name"] = name
+		sequencer["enable"] = true // Enable the sequencer
+		sequencer["chain_id"] = chainId.StringHex()
+		sequencer["controller_key"] = hex.EncodeToString(key)
+	} else {
+		glb.Infof("!!! Error sequencer key not found")
 	}
 
 	// Marshal the modified config back to YAML

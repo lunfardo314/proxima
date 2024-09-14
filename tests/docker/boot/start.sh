@@ -8,8 +8,6 @@ INITIALIZED_FILE="/initialized"
 # Parameters
 NODE_NAME=$1
 
-# Copy files from selected node directory to target directory
-cp -r ./"$NODE_NAME"/*.yaml .
 
 kill_proxima() {
     # Find the PID of proxima
@@ -27,9 +25,16 @@ kill_proxima() {
     fi
 }
 
+boot_param=""
+if [ "$NODE_NAME" == "boot" ]; then
+boot_param="boot"
+fi
 if [ ! -f "$INITIALIZED_FILE" ]; then
     # node not initialized
     echo "image not initialized"
+    
+    # Copy files from selected node directory to target directory
+    cp -r ./"$NODE_NAME"/*.yaml .
 
     echo "init genesis_db"
     ./proxi init genesis_db
@@ -46,7 +51,7 @@ if [ ! -f "$INITIALIZED_FILE" ]; then
         sleep 5  # let process start
 
         echo "node init sequencer"
-        ./proxi node setup_seq --finality.weak mySeq 100000000000000
+        ./proxi node setup_seq --finality.weak seq$NODE_NAME 140000000000000
 
         kill_proxima
         sleep 2  # let process die
@@ -56,6 +61,4 @@ if [ ! -f "$INITIALIZED_FILE" ]; then
     touch "$INITIALIZED_FILE"
 fi
 
-./proxima
-
-
+./proxima $boot_param

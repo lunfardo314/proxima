@@ -35,7 +35,7 @@ RUN cp ./proxi /app
 
 
 WORKDIR /app
-RUN ./proxi init ledger_id
+RUN ./proxi gen ledger_id
 
 # Start a new stage from scratch
 FROM busybox:latest
