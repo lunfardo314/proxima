@@ -74,21 +74,21 @@ trace_tags:
 # usually none or 1 sequencer is enabled for the node
 # 0 enabled sequencers means node is a pure access node
 # If sequencer is enabled, it is working as a separate and independent process inside the node
-sequencers:
-    boot:
-        # start sequencer yes/no
-        enable: true
-        # chain ID of the sequencer
-        # chain ID af7bedde1fea222230b82d63d5b665ac75afbe4ad3f75999bb3386cf994a6963 is
-        # predefined chain ID of the genesis chain (the bootstrap sequencer)
-        # Sequencer chain is created by 'proxi node mkchain' command
-        # All chains controlled by the wallet can be displayed by 'proxi node chains'
-        sequencer_id: af7bedde1fea222230b82d63d5b665ac75afbe4ad3f75999bb3386cf994a6963
-        # sequencer chain controller's private key (hex-encoded)
-        controller_key: cd9e2cbfccff43c55f6127869762814431203203f359e86b57d804ff50a1b36dc07e104fcbec1daf388ffe50a6fd3ddf006d1e24a384ff81277fee6eff808738
-        # sequencer pace. Distance in ticks between two subsequent sequencer transactions
-        # cannot be less than the sequencer pace value set by the ledger
-        pace: 5
-        # maximum tag-along inputs allowed in the sequencer transaction (maximum value is 254)
-        max_tag_along_inputs: 100
+sequencer:
+    name: "boot"
+    # start sequencer yes/no
+    enable: true
+    # chain ID of the sequencer
+    # chain ID af7bedde1fea222230b82d63d5b665ac75afbe4ad3f75999bb3386cf994a6963 is
+    # predefined chain ID of the genesis chain (the bootstrap sequencer)
+    # Sequencer chain is created by 'proxi node mkchain' command
+    # All chains controlled by the wallet can be displayed by 'proxi node chains'
+    chain_id: af7bedde1fea222230b82d63d5b665ac75afbe4ad3f75999bb3386cf994a6963
+    # sequencer chain controller's private key (hex-encoded)
+    controller_key: cd9e2cbfccff43c55f6127869762814431203203f359e86b57d804ff50a1b36dc07e104fcbec1daf388ffe50a6fd3ddf006d1e24a384ff81277fee6eff808738
+    # sequencer pace. Distance in ticks between two subsequent sequencer transactions
+    # cannot be less than the sequencer pace value set by the ledger
+    pace: 5
+    # maximum tag-along inputs allowed in the sequencer transaction (maximum value is 254)
+    max_tag_along_inputs: 100
 
