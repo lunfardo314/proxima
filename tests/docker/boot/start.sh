@@ -8,8 +8,6 @@ INITIALIZED_FILE="/initialized"
 # Parameters
 NODE_NAME=$1
 
-# Copy files from selected node directory to target directory
-cp -r ./"$NODE_NAME"/*.yaml .
 
 kill_proxima() {
     # Find the PID of proxima
@@ -28,16 +26,20 @@ kill_proxima() {
 }
 
 boot_param=""
+if [ "$NODE_NAME" == "boot" ]; then
+boot_param="boot"
+fi
 if [ ! -f "$INITIALIZED_FILE" ]; then
     # node not initialized
     echo "image not initialized"
+    
+    # Copy files from selected node directory to target directory
+    cp -r ./"$NODE_NAME"/*.yaml .
 
     echo "init genesis_db"
     ./proxi init genesis_db
 
     if [ "$NODE_NAME" == "boot" ]; then
-        boot_param="boot"
-
         # 
         echo "init bootstrap_account"
         ./proxi init bootstrap_account
