@@ -37,9 +37,9 @@ type Global struct {
 	traceTagsMutex sync.RWMutex
 	traceTags      set.Set[string]
 	// dynamic transaction tracing with TTL
-	enabledTraceTx atomic.Bool
 	txTraceMutex   sync.RWMutex
 	txTraceIDs     map[ledger.TransactionID]time.Time
+	txTraceEnabled bool
 	// is it the first node in the network
 	bootstrapMode bool
 }
@@ -52,14 +52,6 @@ func fileExists(name string) bool {
 }
 
 func NewFromConfig() *Global {
-	//lvlStr := viper.GetString("logger.level")
-	//lvl := zapcore.InfoLevel
-	//if lvlStr != "" {
-	//	var err error
-	//	lvl, err = zapcore.ParseLevel(lvlStr)
-	//	util.AssertNoError(err)
-	//}
-
 	// always assume INFO level
 	lvl := zapcore.InfoLevel
 
@@ -123,12 +115,6 @@ func _new(logLevel zapcore.Level, outputs []string, bootstrap bool) *Global {
 		txTraceIDs:    make(map[ledger.TransactionID]time.Time),
 		bootstrapMode: bootstrap,
 	}
-
-	ret.RepeatInBackground("traceID_purge", purgeLoopPeriod, func() bool {
-		ret.purgeTraceTxIDs()
-		return true
-	})
-
 	return ret
 }
 
@@ -288,7 +274,6 @@ func (l *Global) Tracef(tag string, format string, args ...any) {
 
 const (
 	defaultTxTracingTTL = time.Minute
-	purgeLoopPeriod     = time.Second
 )
 
 func (l *Global) StartTracingTx(txid ledger.TransactionID) {
@@ -296,7 +281,6 @@ func (l *Global) StartTracingTx(txid ledger.TransactionID) {
 	defer l.txTraceMutex.Unlock()
 
 	l.txTraceIDs[txid] = time.Now().Add(defaultTxTracingTTL)
-	l.enabledTraceTx.Store(true)
 	l.SugaredLogger.Infof("TRACE_TX(%s) started tracing", txid.StringShort())
 }
 
@@ -309,24 +293,34 @@ func (l *Global) StopTracingTx(txid ledger.TransactionID) {
 	}
 	delete(l.txTraceIDs, txid)
 
-	if len(l.txTraceIDs) == 0 {
-		l.enabledTraceTx.Store(false)
-	}
 }
 
 func (l *Global) TraceTx(txid *ledger.TransactionID, format string, args ...any) {
-	if !l.enabledTraceTx.Load() {
-		return
-	}
-
 	l.txTraceMutex.RLock()
 	defer l.txTraceMutex.RUnlock()
 
+	if !l.txTraceEnabled {
+		return
+	}
 	if _, found := l.txTraceIDs[*txid]; !found {
 		return
 	}
 
 	l.SugaredLogger.Infof("TRACE_TX(%s) %s", txid.StringShort(), fmt.Sprintf(format, util.EvalLazyArgs(args...)...))
+}
+
+const txIDPurgeLoopPeriod = time.Second
+
+func (l *Global) TraceTxEnable() {
+	l.txTraceMutex.Lock()
+	l.txTraceEnabled = true
+	l.txTraceMutex.Unlock()
+
+	l.RepeatInBackground("traceID_purge", txIDPurgeLoopPeriod, func() bool {
+		l.purgeTraceTxIDs()
+		return true
+	})
+	l.SugaredLogger.Infof("TRACE_TX enabled")
 }
 
 func (l *Global) purgeTraceTxIDs() {
