@@ -59,6 +59,8 @@ type (
 		onCallbackMutex      sync.RWMutex
 		onMilestoneSubmitted func(seq *Sequencer, vid *vertex.WrappedTx)
 		onExit               func()
+
+		*slotStats
 	}
 
 	outputsWithTime struct {
@@ -91,6 +93,7 @@ func New(env Environment, seqID ledger.ChainID, controllerKey ed25519.PrivateKey
 		config:        cfg,
 		logName:       logName,
 		log:           env.Log().Named(logName),
+		slotStats:     util.Ref(_newSlotStats(0)),
 	}
 	ret.ctx, ret.stopFun = context.WithCancel(env.Ctx())
 	var err error
@@ -296,6 +299,7 @@ func (seq *Sequencer) doSequencerStep() bool {
 
 	timerStart := time.Now()
 	targetTs := seq.getNextTargetTime()
+	seq.StatsNewTarget()
 
 	seq.Assertf(ledger.ValidSequencerPace(seq.lastSubmittedTs, targetTs), "target is closer than allowed pace (%d): %s -> %s",
 		ledger.TransactionPaceSequencer(), seq.lastSubmittedTs.String, targetTs.String)
@@ -312,7 +316,7 @@ func (seq *Sequencer) doSequencerStep() bool {
 
 	msTx, meta, err := seq.generateMilestoneForTarget(targetTs)
 	if err != nil {
-		if !errors.Is(err, task.ErrNotGoodEnough) && seq.milestoneCount > 0 {
+		if !errors.Is(err, task.ErrNotGoodEnough) && !errors.Is(err, task.ErrNoProposals) && seq.milestoneCount > 0 {
 			seq.Log().Warnf("FAILED to generate transaction for target %s. Now is %s. Reason: %v",
 				targetTs, ledger.TimeNow(), err)
 		}
@@ -326,25 +330,30 @@ func (seq *Sequencer) doSequencerStep() bool {
 	saveLastSubmittedTs := seq.lastSubmittedTs
 
 	msVID := seq.submitMilestone(msTx, meta)
-	if msVID == nil {
-		return true
+	if msVID != nil {
+		if saveLastSubmittedTs.IsSlotBoundary() && msVID.ID.Timestamp().IsSlotBoundary() {
+			seq.Log().Warnf("branch jumped over the slot: %s -> %s. Step started: %s, %d (%s), %v ago, nowis: %s",
+				saveLastSubmittedTs.String(), targetTs.String(),
+				timerStart.Format(time.StampNano), timerStart.UnixNano(), ledger.TimeFromClockTime(timerStart).String(), time.Since(timerStart),
+				ledger.TimeNow().String())
+		}
+
+		seq.AddOwnMilestone(msVID)
+		seq.milestoneCount++
+		if msVID.IsBranchTransaction() {
+			seq.branchCount++
+			seq.StatsBranchTxSubmitted(&msVID.ID)
+		} else {
+			seq.StatsSequencerTxSubmitted(&msVID.ID)
+		}
+		seq.updateInfo(msVID)
+		seq.runOnMilestoneSubmitted(msVID)
 	}
 
-	if saveLastSubmittedTs.IsSlotBoundary() && msVID.ID.Timestamp().IsSlotBoundary() {
-		seq.Log().Warnf("branch jumped over the slot: %s -> %s. Step started: %s, %d (%s), %v ago, nowis: %s",
-			saveLastSubmittedTs.String(), targetTs.String(),
-			timerStart.Format(time.StampNano), timerStart.UnixNano(), ledger.TimeFromClockTime(timerStart).String(), time.Since(timerStart),
-			ledger.TimeNow().String())
+	if targetTs.IsSlotBoundary() {
+		seq.Log().Infof("SLOT STATS: %s", seq.slotStats.Lines().Join(", "))
+		seq.StatsReset(targetTs.Slot())
 	}
-
-	seq.AddOwnMilestone(msVID)
-	seq.milestoneCount++
-	if msVID.IsBranchTransaction() {
-		seq.branchCount++
-	}
-	seq.updateInfo(msVID)
-	seq.runOnMilestoneSubmitted(msVID)
-
 	return true
 }
 

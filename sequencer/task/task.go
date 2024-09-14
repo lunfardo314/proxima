@@ -37,6 +37,7 @@ type (
 		FutureConeOwnMilestonesOrdered(rootOutput vertex.WrappedOutput, targetTs ledger.Time) []vertex.WrappedOutput
 		MaxTagAlongInputs() int
 		LatestMilestonesDescending(filter ...func(seqID ledger.ChainID, vid *vertex.WrappedTx) bool) []*vertex.WrappedTx
+		StatsProposalSubmitted(strategyName string)
 	}
 
 	Task struct {
@@ -143,6 +144,7 @@ func Run(env environment, targetTs ledger.Time) (*transaction.Transaction, *txme
 	go func() {
 		for p := range task.proposalChan {
 			proposals[*p.tx.ID()] = p
+			task.StatsProposalSubmitted(p.strategyName)
 		}
 		close(readStop)
 	}()
