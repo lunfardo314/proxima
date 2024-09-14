@@ -16,6 +16,8 @@ type slotStats struct {
 	seqTxSubmitted      []ledger.TransactionID
 	branchSubmitted     *ledger.TransactionID
 	proposalsByProposer map[string]int
+	numNoProposals      int
+	numNotGoodEnough    int
 }
 
 func _newSlotStats(slot ledger.Slot) slotStats {
@@ -34,6 +36,8 @@ func (s *slotStats) StatsReset(slot ledger.Slot) {
 	s.branchSubmitted = nil
 	s.proposalsByProposer = make(map[string]int)
 	s.seqTxSubmitted = s.seqTxSubmitted[:0]
+	s.numNoProposals = 0
+	s.numNotGoodEnough = 0
 }
 
 func (s *slotStats) StatsNewTarget() {
@@ -65,6 +69,20 @@ func (s *slotStats) StatsProposalSubmitted(strategyName string) {
 	s.proposalsByProposer[strategyName] = s.proposalsByProposer[strategyName] + 1
 }
 
+func (s *slotStats) StatsNoProposals() {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	s.numNoProposals++
+}
+
+func (s *slotStats) StatsNotGoodEnough() {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	s.numNotGoodEnough++
+}
+
 func (s *slotStats) Lines(prefix ...string) *lines.Lines {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
@@ -72,7 +90,9 @@ func (s *slotStats) Lines(prefix ...string) *lines.Lines {
 	ret := lines.New(prefix...)
 	ret.Add("slot: %d", s.slot).
 		Add("targets: %d", s.numTargets).
-		Add("seq tx submitted: %d", len(s.seqTxSubmitted))
+		Add("seq tx submitted: %d", len(s.seqTxSubmitted)).
+		Add("no proposals: %d", s.numNoProposals).
+		Add("not good enough: %d", s.numNotGoodEnough)
 	if s.branchSubmitted == nil {
 		ret.Add("branch: NONE")
 	} else {

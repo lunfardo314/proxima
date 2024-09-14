@@ -315,11 +315,16 @@ func (seq *Sequencer) doSequencerStep() bool {
 	seq.Tracef(TraceTag, "target ts: %s. Now is: %s", targetTs, ledger.TimeNow())
 
 	msTx, meta, err := seq.generateMilestoneForTarget(targetTs)
-	if err != nil {
-		if !errors.Is(err, task.ErrNotGoodEnough) && !errors.Is(err, task.ErrNoProposals) && seq.milestoneCount > 0 {
-			seq.Log().Warnf("FAILED to generate transaction for target %s. Now is %s. Reason: %v",
-				targetTs, ledger.TimeNow(), err)
-		}
+	switch {
+	case errors.Is(err, task.ErrNotGoodEnough):
+		seq.StatsNotGoodEnough()
+		return true
+	case errors.Is(err, task.ErrNoProposals):
+		seq.StatsNoProposals()
+		return true
+	case err != nil:
+		seq.Log().Warnf("FAILED to generate transaction for target %s. Now is %s. Reason: %v",
+			targetTs, ledger.TimeNow(), err)
 		return true
 	}
 	util.Assertf(msTx != nil, "msTx != nil")
