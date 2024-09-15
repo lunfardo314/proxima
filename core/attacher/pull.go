@@ -2,7 +2,6 @@ package attacher
 
 import (
 	"fmt"
-	"time"
 
 	"github.com/lunfardo314/proxima/core/vertex"
 )
@@ -29,12 +28,13 @@ func (a *attacher) pullIfNeededUnwrapped(virtualTx *vertex.VirtualTransaction, d
 	if virtualTx.PullRulesDefined() {
 		a.Tracef(TraceTagPull, "pullIfNeededUnwrapped: %s. Pull rules defined", deptVID.IDShortString)
 
-		if virtualTx.PullDeadlineExpired() {
+		if virtualTx.PullPatienceExpired(PullMaxTimesToRepeat) {
 			// deadline expired
-			a.setError(fmt.Errorf("%w(%v): can't solidify dependency %s", ErrSolidificationDeadline, PullTimeout, deptVID.IDShortString()))
+			a.setError(fmt.Errorf("%w(%d x %v): can't solidify dependency %s",
+				ErrSolidificationDeadline, PullMaxTimesToRepeat, PullRepeatPeriod, deptVID.IDShortString()))
 			return false
 		}
-		if virtualTx.PullNeeded(PullRepeatPeriod) {
+		if virtualTx.PullNeeded() {
 			return a.pull(virtualTx, deptVID)
 		}
 		a.Tracef(TraceTagPull, "pullIfNeededUnwrapped: %s. Pull rules defined. Pull NOT NEEDED", deptVID.IDShortString)
@@ -52,7 +52,7 @@ func (a *attacher) pullIfNeededUnwrapped(virtualTx *vertex.VirtualTransaction, d
 	// wasn't checked root status yet or not rooted transaction
 	// define pull rules by setting pull deadline and pull
 	a.Tracef(TraceTagPull, "pullIfNeededUnwrapped: %s. Set pull timeout and pull", deptVID.IDShortString)
-	virtualTx.SetPullDeadline(time.Now().Add(PullTimeout))
+	virtualTx.SetPullNeeded()
 	return a.pull(virtualTx, deptVID)
 }
 
@@ -81,6 +81,6 @@ func (a *attacher) pull(virtualTx *vertex.VirtualTransaction, deptVID *vertex.Wr
 	// failed to load txBytes from store -> pull it from peers
 	a.pokeMe(deptVID)
 	a.PullFromPeers(&deptVID.ID)
-	virtualTx.SetLastPullNow()
+	virtualTx.SetPullHappened(PullRepeatPeriod)
 	return true
 }

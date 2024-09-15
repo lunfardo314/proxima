@@ -166,10 +166,11 @@ func (v *VirtualTransaction) PullRulesDefined() bool {
 	return v.pullRulesDefined
 }
 
-func (v *VirtualTransaction) SetPullDeadline(deadline time.Time) {
+func (v *VirtualTransaction) SetPullNeeded() {
 	v.pullRulesDefined = true
 	v.needsPull = true
-	v.pullDeadline = deadline
+	v.timesPulled = 0
+	v.nextPull = time.Now()
 }
 
 func (v *VirtualTransaction) SetPullNotNeeded() {
@@ -177,17 +178,19 @@ func (v *VirtualTransaction) SetPullNotNeeded() {
 	v.needsPull = false
 }
 
-func (v *VirtualTransaction) SetLastPullNow() {
+// SetPullHappened increases pull counter and sets nex pull deadline
+func (v *VirtualTransaction) SetPullHappened(pullPeriod time.Duration) {
 	util.Assertf(v.pullRulesDefined, "v.pullRulesDefined")
-	v.lastPull = time.Now()
+	v.timesPulled++
+	v.nextPull = time.Now().Add(pullPeriod)
 }
 
-func (v *VirtualTransaction) PullDeadlineExpired() bool {
-	return v.pullRulesDefined && v.needsPull && time.Now().After(v.pullDeadline)
+func (v *VirtualTransaction) PullPatienceExpired(maxPullTimes int) bool {
+	return v.PullNeeded() && v.timesPulled >= maxPullTimes
 }
 
-func (v *VirtualTransaction) PullNeeded(repeatPeriod time.Duration) bool {
-	return v.pullRulesDefined && v.needsPull && v.lastPull.Add(repeatPeriod).Before(time.Now())
+func (v *VirtualTransaction) PullNeeded() bool {
+	return v.pullRulesDefined && v.needsPull && !v.nextPull.After(time.Now())
 }
 
 func (v *VirtualTransaction) findChainOutput(txid *ledger.TransactionID, chainID *ledger.ChainID) *ledger.OutputWithID {

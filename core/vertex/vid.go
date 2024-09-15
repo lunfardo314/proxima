@@ -462,7 +462,7 @@ func (vid *WrappedTx) LinesNoLock(prefix ...string) *lines.Lines {
 		ret.Add("---- transaction ----\n" + v.Tx.LinesShort(prefix...).String())
 	case _virtualTx:
 		if v.needsPull {
-			ret.Add("Pull: deadline %s, last pul %s", v.pullDeadline.Format(time.StampNano), v.lastPull.Format(time.StampNano))
+			ret.Add("Pull: number of pulls: %d, next pull in %v", v.timesPulled, time.Until(v.nextPull))
 		} else {
 			ret.Add("Pull: not needed")
 		}

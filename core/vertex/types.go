@@ -30,8 +30,8 @@ type (
 		// pull rules
 		pullRulesDefined bool
 		needsPull        bool
-		pullDeadline     time.Time // if nil, does not need pull
-		lastPull         time.Time
+		nextPull         time.Time
+		timesPulled      int
 	}
 
 	// WrappedTx value of *WrappedTx is used as transaction identity on the UTXO tangle, a vertex
