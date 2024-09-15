@@ -214,7 +214,7 @@ func New(env environment, cfg *Config) (*Peers, error) {
 	return ret, nil
 }
 
-func readPeeringConfig(env environment) (*Config, error) {
+func readPeeringConfig() (*Config, error) {
 	cfg := &Config{
 		PreConfiguredPeers: make(map[string]multiaddr.Multiaddr),
 	}
@@ -264,14 +264,11 @@ func readPeeringConfig(env environment) (*Config, error) {
 	if cfg.MaxDynamicPeers < 0 {
 		cfg.MaxDynamicPeers = 0
 	}
-	//if env.IsBootstrapMode() && cfg.MaxDynamicPeers < numMaxDynamicPeersForBootNodeAtLeast {
-	//	cfg.MaxDynamicPeers = numMaxDynamicPeersForBootNodeAtLeast
-	//}
 	return cfg, nil
 }
 
 func NewPeersFromConfig(env environment) (*Peers, error) {
-	cfg, err := readPeeringConfig(env)
+	cfg, err := readPeeringConfig()
 	if err != nil {
 		return nil, err
 	}

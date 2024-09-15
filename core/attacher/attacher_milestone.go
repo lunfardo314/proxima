@@ -144,23 +144,27 @@ func (a *milestoneAttacher) run() error {
 	return nil
 }
 
-const enableDeadlockCaching = true
+const (
+	enableDeadlockCatching      = true
+	deadlockIndicationThreshold = 10 * time.Second
+)
 
 // lazyRepeat repeats closure until it returns Good or Bad
 func (a *milestoneAttacher) lazyRepeat(loopName string, fun func() vertex.Status) vertex.Status {
 
-	// ===== deadlock caching ====
+	// ===== deadlock catching ====
 	var checkpoint *checkpoints.Checkpoints
 	checkName := a.Name() + "_" + loopName
-	if enableDeadlockCaching {
+	if enableDeadlockCatching {
 		checkpoint = checkpoints.New(func(name string) {
 			buf := make([]byte, math.MaxUint16)
 			runtime.Stack(buf, true)
-			a.Log().Fatalf(">>>>>>>> DEADLOCK suspected. Stuck loop '%s':\n%s", checkName, string(buf))
+			a.Log().Fatalf(">>>>>>>> DEADLOCK suspected in the loop '%s' (stuck for %v):\n%s",
+				checkName, deadlockIndicationThreshold, string(buf))
 		})
 		defer checkpoint.Close()
 	}
-	// ===== deadlock caching ====
+	// ===== deadlock catching ====
 
 	for {
 		// repeat until becomes defined or interrupted
@@ -180,8 +184,9 @@ func (a *milestoneAttacher) lazyRepeat(loopName string, fun func() vertex.Status
 			a.finals.numPeriodic++
 			a.Tracef(TraceTagAttachMilestone, "periodic check")
 		}
-		if enableDeadlockCaching {
-			checkpoint.Check(checkName, 5*time.Second)
+
+		if enableDeadlockCatching {
+			checkpoint.Check(checkName, deadlockIndicationThreshold)
 		}
 	}
 }
