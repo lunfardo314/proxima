@@ -100,6 +100,8 @@ func (v *VirtualTransaction) addSequencerOutputs(seqOut, stemOut *ledger.OutputW
 		return err
 	}
 	if stemOut != nil {
+		util.Assertf(stemOut.ID.IsBranchTransaction(), "stemOut.ID.IsBranchTransaction()")
+		util.Assertf(stemOut.ID.TransactionID() == seqOut.ID.TransactionID(), "stemOut.ID.TransactionID() == seqOut.ID.TransactionID()")
 		if err := v._addOutput(stemOut.ID.Index(), stemOut.Output); err != nil {
 			return err
 		}

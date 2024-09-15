@@ -544,10 +544,6 @@ func (vid *WrappedTx) EnsureSequencerOutputs(seqOut, stemOut *ledger.OutputWithI
 	if !vid.IsSequencerMilestone() {
 		return fmt.Errorf("not sequencer transaction: %s", vid.IDShortString())
 	}
-	util.Assertf(seqOut != nil, "seqOut != nil")
-	util.Assertf(!vid.IsBranchTransaction() || stemOut != nil, "!vid.IsBranchTransaction() || stemOut != nil")
-	util.Assertf(!vid.IsBranchTransaction() || seqOut.ID.TransactionID() == stemOut.ID.TransactionID(),
-		"!vid.IsBranchTransaction() || seqOut.ID.TransactionID() == stemOut.ID.TransactionID()")
 
 	vid.Unwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
@@ -561,7 +557,10 @@ func (vid *WrappedTx) EnsureSequencerOutputs(seqOut, stemOut *ledger.OutputWithI
 				err = fmt.Errorf("EnsureSequencerOutputs: wrong sequencer output %s", seqOut.String())
 				return
 			}
-			if v.Tx.IsBranchTransaction() {
+			if stemOut != nil {
+				util.Assertf(vid.IsBranchTransaction(), "vid.IsBranchTransaction()")
+				util.Assertf(seqOut.ID.TransactionID() == stemOut.ID.TransactionID(), "seqOut.ID.TransactionID() == stemOut.ID.TransactionID()")
+
 				existingStemOut := v.Tx.StemOutput()
 				if !ledger.EqualOutputs(stemOut, existingStemOut) {
 					err = fmt.Errorf("EnsureSequencerOutputs: wrong stem output %s", seqOut.String())
