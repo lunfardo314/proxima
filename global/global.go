@@ -457,11 +457,11 @@ func (l *Global) CounterLines(prefix ...string) *lines.Lines {
 
 func (l *Global) registerMetrics() {
 	l.numAttachersMetrics = prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "prometheus_glb_numAttacher",
+		Name: "proxima_glb_numAttacher",
 		Help: "number of attachers running",
 	})
 	l.numWaitingMetrics = prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "prometheus_glb_numWaiting",
+		Name: "proxima_glb_numWaiting",
 		Help: "number of transaction waiting the clock",
 	})
 	l.MetricsRegistry().MustRegister(l.numAttachersMetrics, l.numWaitingMetrics)
