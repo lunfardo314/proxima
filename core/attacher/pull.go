@@ -60,6 +60,8 @@ func (a *attacher) pull(virtualTx *vertex.VirtualTransaction, deptVID *vertex.Wr
 	a.Tracef(TraceTagPull, "pull IN %s", deptVID.IDShortString)
 	defer a.Tracef(TraceTagPull, "pull OUT %s", deptVID.IDShortString)
 
+	// TODO prevent repetitive reading from DB every pull
+
 	txBytesWithMetadata := a.TxBytesStore().GetTxBytesWithMetadata(&deptVID.ID)
 	if len(txBytesWithMetadata) > 0 {
 		a.Tracef(TraceTagPull, "pull found in store %s", deptVID.IDShortString)
