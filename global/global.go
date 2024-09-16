@@ -42,8 +42,11 @@ type Global struct {
 	// is it the first node in the network
 	bootstrapMode bool
 	// counters
-	countersMutex sync.RWMutex
-	counters      map[string]int
+	gaugesMutex sync.RWMutex
+	counters    map[string]int
+	// metrics
+	numAttachersMetrics prometheus.Gauge
+	numWaitingMetrics   prometheus.Gauge
 }
 
 const TraceTag = "global"
@@ -118,6 +121,7 @@ func _new(logLevel zapcore.Level, outputs []string, bootstrap bool) *Global {
 		bootstrapMode: bootstrap,
 		counters:      make(map[string]int),
 	}
+	ret.registerMetrics()
 	return ret
 }
 
@@ -407,22 +411,34 @@ func (l *Global) ClockCatchUpWithLedgerTime(ts ledger.Time) {
 }
 
 func (l *Global) IncCounter(name string) {
-	l.countersMutex.Lock()
-	defer l.countersMutex.Unlock()
+	l.gaugesMutex.Lock()
+	defer l.gaugesMutex.Unlock()
 
+	switch name {
+	case "att":
+		l.numAttachersMetrics.Inc()
+	case "wait":
+		l.numWaitingMetrics.Inc()
+	}
 	l.counters[name] = l.counters[name] + 1
 }
 
 func (l *Global) DecCounter(name string) {
-	l.countersMutex.Lock()
-	defer l.countersMutex.Unlock()
+	l.gaugesMutex.Lock()
+	defer l.gaugesMutex.Unlock()
 
+	switch name {
+	case "att":
+		l.numAttachersMetrics.Dec()
+	case "wait":
+		l.numWaitingMetrics.Dec()
+	}
 	l.counters[name] = l.counters[name] - 1
 }
 
 func (l *Global) Counter(name string) int {
-	l.countersMutex.RLock()
-	defer l.countersMutex.RUnlock()
+	l.gaugesMutex.RLock()
+	defer l.gaugesMutex.RUnlock()
 
 	return l.counters[name]
 }
@@ -430,11 +446,23 @@ func (l *Global) Counter(name string) int {
 func (l *Global) CounterLines(prefix ...string) *lines.Lines {
 	ret := lines.New(prefix...)
 
-	l.countersMutex.RLock()
-	defer l.countersMutex.RUnlock()
+	l.gaugesMutex.RLock()
+	defer l.gaugesMutex.RUnlock()
 
 	for _, k := range util.KeysSorted(l.counters, util.StringsLess) {
 		ret.Add("%s: %d", k, l.counters[k])
 	}
 	return ret
+}
+
+func (l *Global) registerMetrics() {
+	l.numAttachersMetrics = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "prometheus_glb_numAttacher",
+		Help: "number of attachers running",
+	})
+	l.numWaitingMetrics = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "prometheus_glb_numWaiting",
+		Help: "number of transaction waiting the clock",
+	})
+	l.MetricsRegistry().MustRegister(l.numAttachersMetrics, l.numWaitingMetrics)
 }

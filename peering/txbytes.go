@@ -8,6 +8,8 @@ import (
 )
 
 func (ps *Peers) gossipStreamHandler(stream network.Stream) {
+	ps.inMsgCounter.Inc()
+
 	id := stream.Conn().RemotePeer()
 
 	if ps.isInBlacklist(id) {

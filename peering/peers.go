@@ -24,6 +24,7 @@ import (
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/queue"
 	"github.com/multiformats/go-multiaddr"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/spf13/viper"
 	"golang.org/x/exp/maps"
 )
@@ -65,6 +66,11 @@ type (
 		rendezvousString     string
 		// queued message sender to peers
 		outQueue *queue.Queue[outMsgData]
+		// metrics
+		inMsgCounter    prometheus.Counter
+		outMsgCounter   prometheus.Counter
+		pullRequestsIn  prometheus.Counter
+		pullRequestsOut prometheus.Counter
 	}
 
 	Peer struct {
@@ -137,6 +143,7 @@ func NewPeersDummy() *Peers {
 		onReceivePullTx: func(_ peer.ID, _ []ledger.TransactionID) {},
 	}
 	ret.outQueue = queue.New[outMsgData](ret.sendMsgOut)
+	ret.registerMetrics()
 	return ret
 }
 
@@ -204,6 +211,7 @@ func New(env environment, cfg *Config) (*Peers, error) {
 	} else {
 		env.Log().Infof("[peering] autopeering is disabled")
 	}
+	ret.registerMetrics()
 
 	env.RepeatInBackground(Name+"_blacklist_cleanup", time.Second, func() bool {
 		ret.cleanBlacklist()
@@ -534,4 +542,24 @@ func (p *Peer) avgClockDifference() time.Duration {
 		ret += d
 	}
 	return ret / time.Duration(len(p.clockDifferences))
+}
+
+func (ps *Peers) registerMetrics() {
+	ps.inMsgCounter = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "proxima_peering_inMsgCounter",
+		Help: "counts number of incoming messages",
+	})
+	ps.outMsgCounter = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "proxima_peering_outMsgCounter",
+		Help: "counts number of messages coming out",
+	})
+	ps.pullRequestsIn = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "proxima_peering_pullRequestsIn",
+		Help: "counts number of received pull request messages",
+	})
+	ps.pullRequestsOut = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "proxima_peering_pullRequestsOut",
+		Help: "counts number of sent pull request messages",
+	})
+	ps.MetricsRegistry().MustRegister(ps.inMsgCounter, ps.outMsgCounter, ps.pullRequestsIn, ps.pullRequestsOut)
 }

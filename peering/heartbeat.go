@@ -77,6 +77,8 @@ func (ps *Peers) logConnectionStatusIfNeeded(id peer.ID) {
 // goes out of tolerance interval, connection is dropped from one, then from the other side
 
 func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
+	ps.inMsgCounter.Inc()
+
 	id := stream.Conn().RemotePeer()
 
 	if ps.isInBlacklist(id) {

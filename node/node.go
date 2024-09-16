@@ -17,6 +17,7 @@ import (
 	"github.com/lunfardo314/proxima/txstore"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/unitrie/adaptors/badger_adaptor"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/spf13/viper"
@@ -34,6 +35,10 @@ type ProximaNode struct {
 	workProcessesStopStepChan chan struct{}
 	dbClosedWG                sync.WaitGroup
 	started                   time.Time
+	// metrics
+	lrbSlotsBehind prometheus.Gauge
+	lrbCoverage    prometheus.Gauge
+	lrbSupply      prometheus.Gauge
 }
 
 func init() {
@@ -50,6 +55,7 @@ func New() *ProximaNode {
 		workProcessesStopStepChan: make(chan struct{}),
 		started:                   time.Now(),
 	}
+	ret.registerMetrics()
 	global.SetGlobalLogger(ret.Global)
 	return ret
 }
@@ -296,15 +302,34 @@ func (p *ProximaNode) goLoggingSync() {
 			p.Log().Warnf("[sync] can't find latest reliable branch")
 		} else {
 			curSlot := ledger.TimeNow().Slot()
-			slotsBack := curSlot - lrb.Stem.ID.Slot()
-			msg := fmt.Sprintf("[sync] latest reliable branch is %d slots back, current slot: %d, coverage: %s (took: %v)",
-				slotsBack, curSlot, util.Th(lrb.LedgerCoverage), time.Since(start))
-			if slotsBack <= slotSyncThreshold {
+			slotsBehind := curSlot - lrb.Stem.ID.Slot()
+			p.lrbSlotsBehind.Set(float64(slotsBehind))
+			msg := fmt.Sprintf("[sync] latest reliable branch is %d slots behind from now, current slot: %d, coverage: %s (took: %v)",
+				slotsBehind, curSlot, util.Th(lrb.LedgerCoverage), time.Since(start))
+			if slotsBehind <= slotSyncThreshold {
 				p.Log().Info(msg)
 			} else {
 				p.Log().Warn(msg)
 			}
+			p.lrbCoverage.Set(float64(lrb.LedgerCoverage))
+			p.lrbCoverage.Set(float64(lrb.Supply))
 		}
 		return true
 	})
+}
+
+func (p *ProximaNode) registerMetrics() {
+	p.lrbCoverage = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "proxima_lrb_coverage",
+		Help: "ledger coverage of the latest reliable branch (LRB)",
+	})
+	p.lrbSlotsBehind = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "proxima_lrb_slots_behind",
+		Help: "latest reliable branch (LRB) slots behind the current slot",
+	})
+	p.lrbSupply = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "proxima_lrb_supply",
+		Help: "total supply on the latest reliable branch (LRB)",
+	})
+	p.MetricsRegistry().MustRegister(p.lrbCoverage, p.lrbSlotsBehind, p.lrbSupply)
 }

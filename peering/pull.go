@@ -19,6 +19,8 @@ const MaxNumTransactionID = (MaxPayloadSize - 2) / ledger.TransactionIDLength
 const PullTransactions = byte(iota)
 
 func (ps *Peers) pullStreamHandler(stream network.Stream) {
+	ps.inMsgCounter.Inc()
+
 	id := stream.Conn().RemotePeer()
 	if ps.isInBlacklist(id) {
 		_ = stream.Reset()
@@ -72,7 +74,10 @@ func (ps *Peers) processPullFrame(msgData []byte, p *Peer) (func(), error) {
 		}
 		p._evidenceActivity("pullTx")
 		fun := ps.onReceivePullTx
-		callAfter = func() { fun(p.id, txLst) }
+		callAfter = func() {
+			fun(p.id, txLst)
+			ps.pullRequestsIn.Inc()
+		}
 
 	default:
 		return nil, fmt.Errorf("unsupported type of the pull message %d", msgData[0])
@@ -103,9 +108,11 @@ func (ps *Peers) PullTransactionsFromAllPeers(txids ...ledger.TransactionID) {
 		return
 	}
 	msg := &_pullTransactions{txids: txids}
-	for _, id := range ps._pullTxTargets() {
+	pullTargets := ps._pullTxTargets()
+	for _, id := range pullTargets {
 		ps.sendMsgOutQueued(msg, id, ps.lppProtocolPull)
 	}
+	ps.pullRequestsOut.Add(float64(len(pullTargets)))
 }
 
 func encodePullTransactionsMsg(txids ...ledger.TransactionID) []byte {

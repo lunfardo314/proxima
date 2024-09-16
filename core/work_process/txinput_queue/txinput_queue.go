@@ -105,12 +105,12 @@ func (q *TxInputQueue) fromPeer(inp *Input) {
 	}
 
 	if metaData.IsResponseToPull {
+		q.pulledTxCounter.Inc()
 		// do not check bloom filter if transaction was pulled
 		if err = q.TxInFromPeer(tx, metaData, inp.FromPeer); err != nil {
 			q.badTxCounter.Inc()
 			q.Log().Warn("TxInputQueue from peer %s: %v", inp.FromPeer.String(), err)
 		}
-		q.pulledTxCounter.Inc()
 		// yet put it into the bloom filter
 		q.bloomFilter[tx.ID().VeryShortID4()] = time.Now().Add(q.bloomFilterTTL)
 		return
