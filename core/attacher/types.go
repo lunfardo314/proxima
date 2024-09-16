@@ -142,7 +142,7 @@ type (
 
 // PullTimeout maximum time allowed for the virtual txid become transaction (full vertex)
 const (
-	PullRepeatPeriod     = 2 * time.Second
+	PullRepeatPeriod     = 3 * time.Second
 	PullMaxTimesToRepeat = 5
 )
 
