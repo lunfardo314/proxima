@@ -80,7 +80,10 @@ func (a *attacher) pull(virtualTx *vertex.VirtualTransaction, deptVID *vertex.Wr
 	a.Tracef(TraceTagPull, "pull NOT found in store %s", deptVID.IDShortString)
 	// failed to load txBytes from store -> pull it from peers
 	a.pokeMe(deptVID)
-	a.PullFromPeers(&deptVID.ID)
+
+	//a.PullFromPeers(&deptVID.ID)
+	a.PullFromRandomPeer(&deptVID.ID)
+
 	virtualTx.SetPullHappened(PullRepeatPeriod)
 	return true
 }

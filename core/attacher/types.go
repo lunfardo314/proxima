@@ -35,6 +35,7 @@ type (
 		PokeMe(me, with *vertex.WrappedTx)
 		PokeAllWith(wanted *vertex.WrappedTx)
 		PullFromPeers(txid *ledger.TransactionID)
+		PullFromRandomPeer(txid *ledger.TransactionID)
 	}
 
 	postEventEnvironment interface {

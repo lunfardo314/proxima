@@ -88,6 +88,10 @@ func (p *ProximaNode) PullFromPeers(txid *ledger.TransactionID) {
 	p.peers.PullTransactionsFromAllPeers(*txid)
 }
 
+func (p *ProximaNode) PullFromRandomPeer(txid *ledger.TransactionID) {
+	p.peers.PullTransactionsFromRandomPeer(*txid)
+}
+
 func (p *ProximaNode) readInTraceTags() {
 	p.Global.StartTracingTags(viper.GetStringSlice("trace_tags")...)
 }

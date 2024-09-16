@@ -28,6 +28,7 @@ type (
 		StateStore() global.StateStore
 		TxBytesStore() global.TxBytesStore
 		PullFromPeers(txid *ledger.TransactionID)
+		PullFromRandomPeer(txid *ledger.TransactionID)
 	}
 	Workflow struct {
 		Environment
