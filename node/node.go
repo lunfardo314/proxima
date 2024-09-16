@@ -312,7 +312,7 @@ func (p *ProximaNode) goLoggingSync() {
 				p.Log().Warn(msg)
 			}
 			p.lrbCoverage.Set(float64(lrb.LedgerCoverage))
-			p.lrbCoverage.Set(float64(lrb.Supply))
+			p.lrbSupply.Set(float64(lrb.Supply))
 		}
 		return true
 	})
