@@ -82,6 +82,7 @@ type (
 		DecCounter(nane string)
 		Counter(name string) int
 		CounterLines(prefix ...string) *lines.Lines
+		AttachmentFinished(started time.Time)
 	}
 
 	// StartStop interface of the global objects which coordinates graceful shutdown

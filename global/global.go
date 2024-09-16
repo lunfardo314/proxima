@@ -42,11 +42,13 @@ type Global struct {
 	// is it the first node in the network
 	bootstrapMode bool
 	// counters
-	gaugesMutex sync.RWMutex
-	counters    map[string]int
+	countersMutex sync.RWMutex
+	counters      map[string]int
 	// metrics
-	numAttachersMetrics prometheus.Gauge
-	numWaitingMetrics   prometheus.Gauge
+	numAttachersMetrics        prometheus.Gauge
+	numWaitingMetrics          prometheus.Gauge
+	attachmentTimeMilliseconds prometheus.Gauge
+	attachmentsCounter         prometheus.Counter
 }
 
 const TraceTag = "global"
@@ -411,8 +413,8 @@ func (l *Global) ClockCatchUpWithLedgerTime(ts ledger.Time) {
 }
 
 func (l *Global) IncCounter(name string) {
-	l.gaugesMutex.Lock()
-	defer l.gaugesMutex.Unlock()
+	l.countersMutex.Lock()
+	defer l.countersMutex.Unlock()
 
 	switch name {
 	case "att":
@@ -424,8 +426,8 @@ func (l *Global) IncCounter(name string) {
 }
 
 func (l *Global) DecCounter(name string) {
-	l.gaugesMutex.Lock()
-	defer l.gaugesMutex.Unlock()
+	l.countersMutex.Lock()
+	defer l.countersMutex.Unlock()
 
 	switch name {
 	case "att":
@@ -437,8 +439,8 @@ func (l *Global) DecCounter(name string) {
 }
 
 func (l *Global) Counter(name string) int {
-	l.gaugesMutex.RLock()
-	defer l.gaugesMutex.RUnlock()
+	l.countersMutex.RLock()
+	defer l.countersMutex.RUnlock()
 
 	return l.counters[name]
 }
@@ -446,8 +448,8 @@ func (l *Global) Counter(name string) int {
 func (l *Global) CounterLines(prefix ...string) *lines.Lines {
 	ret := lines.New(prefix...)
 
-	l.gaugesMutex.RLock()
-	defer l.gaugesMutex.RUnlock()
+	l.countersMutex.RLock()
+	defer l.countersMutex.RUnlock()
 
 	for _, k := range util.KeysSorted(l.counters, util.StringsLess) {
 		ret.Add("%s: %d", k, l.counters[k])
@@ -464,5 +466,19 @@ func (l *Global) registerMetrics() {
 		Name: "proxima_glb_numWaiting",
 		Help: "number of transaction waiting the clock",
 	})
-	l.MetricsRegistry().MustRegister(l.numAttachersMetrics, l.numWaitingMetrics)
+	l.attachmentTimeMilliseconds = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "proxima_glb_attachmentDurationMs",
+		Help: "attachment time in milliseconds",
+	})
+	l.attachmentsCounter = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "proxima_glb_attachments_counter",
+		Help: "total number of attachments",
+	})
+
+	l.MetricsRegistry().MustRegister(l.numAttachersMetrics, l.numWaitingMetrics, l.attachmentsCounter, l.attachmentTimeMilliseconds)
+}
+
+func (l *Global) AttachmentFinished(started time.Time) {
+	l.attachmentsCounter.Inc()
+	l.attachmentTimeMilliseconds.Set(float64(time.Since(started) / time.Millisecond))
 }
