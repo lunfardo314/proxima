@@ -34,6 +34,6 @@ func runSnapshotCmd(_ *cobra.Command, _ []string) {
 	glb.AssertNoError(err)
 
 	glb.Infof("latest reliable state has been saved to the snapshot file %s", fname)
-	glb.Infof("branch data:\n%s", branchData.Lines("   ").String())
+	glb.Infof("branch data:\n%s", branchData.LinesVerbose("   ").String())
 	glb.Infof("%s", stats.Lines("     ").String())
 }

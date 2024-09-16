@@ -98,13 +98,19 @@ func (r *RootRecord) Lines(prefix ...string) *lines.Lines {
 	return ret
 }
 
-func (br *BranchData) Lines(prefix ...string) *lines.Lines {
+func (br *BranchData) LinesVerbose(prefix ...string) *lines.Lines {
 	ret := br.RootRecord.Lines(prefix...)
 	ret.Add("Stem:").
 		Append(br.Stem.Lines("  ")).
 		Add("Sequencer output:").
 		Append(br.SequencerOutput.Lines("  "))
 	return ret
+}
+
+func (br *BranchData) Lines(prefix ...string) *lines.Lines {
+	return br.RootRecord.Lines(prefix...).
+		Add("Stem output ID: %s", br.Stem.ID.String()).
+		Add("Sequencer output ID: %s", br.SequencerOutput.ID.String())
 }
 
 func (r *RootRecord) LinesVerbose(prefix ...string) *lines.Lines {
