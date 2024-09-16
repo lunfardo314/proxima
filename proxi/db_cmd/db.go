@@ -23,6 +23,7 @@ func Init() *cobra.Command {
 		initBranchesCmd(),
 		initReliableBranchCmd(),
 		txstore.Init(),
+		initChainsCmd(),
 	)
 	return dbCmd
 }
