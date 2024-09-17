@@ -72,7 +72,6 @@ func (a *attacher) pull(virtualTx *vertex.VirtualTransaction, deptVID *vertex.Wr
 		a.Tracef(TraceTagPull, "pull found in store %s", deptVID.IDShortString)
 
 		virtualTx.SetPullNotNeeded()
-		a.pokeMe(deptVID)
 
 		go func() {
 			a.IncCounter("store")
