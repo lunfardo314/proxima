@@ -61,11 +61,12 @@ func (vid *WrappedTx) UnReference() {
 func (vid *WrappedTx) DoPruningIfRelevant(nowis time.Time) (markedForDeletion, unreferencedPastCone bool, references uint32) {
 	vid.Unwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
+			// FIXME reverted - causes inconsistency
+			//if vid.GetTxStatusNoLock() == Bad {
+			//	v.UnReferenceDependencies()
+			//	unreferencedPastCone = true
+			//}
 			references = vid.numReferences
-			if vid.GetTxStatusNoLock() == Bad {
-				v.UnReferenceDependencies()
-				unreferencedPastCone = true
-			}
 			switch references {
 			case 0:
 				util.Assertf(vid.FlagsUpNoLock(FlagVertexTxAttachmentStarted|FlagVertexTxAttachmentFinished),

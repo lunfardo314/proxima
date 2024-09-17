@@ -166,6 +166,7 @@ func (a *attacher) solidifySequencerBaseline(v *vertex.Vertex, vidUnwrapped *ver
 		a.Tracef(TraceTagSolidifySequencerBaseline, "inputTx %s is GOOD", inputTx.IDShortString)
 
 		v.BaselineBranch = inputTx.BaselineBranch()
+		// FIXME sometimes panics
 		util.Assertf(v.BaselineBranch != nil, "v.BaselineBranch != nil")
 		util.Assertf(v.BaselineBranch.IsBranchTransaction(), "v.BaselineBranch.IsBranchTransaction()")
 		a.referenced.reference(v.BaselineBranch)
