@@ -55,8 +55,8 @@ const (
 
 const (
 	Name                  = "txInputQueue"
-	bloomFilterTTLInSlots = 12
-	purgePeriod           = 5 * time.Second
+	bloomFilterTTLInSlots = 120 // 20 min
+	purgePeriod           = 10 * time.Second
 )
 
 func New(env environment) *TxInputQueue {

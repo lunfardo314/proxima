@@ -143,7 +143,7 @@ func NewPeersDummy() *Peers {
 		onReceivePullTx: func(_ peer.ID, _ []ledger.TransactionID) {},
 	}
 	ret.outQueue = queue.New[outMsgData](ret.sendMsgOut)
-	ret.registerMetrics()
+	//ret.registerMetrics()
 	return ret
 }
 
