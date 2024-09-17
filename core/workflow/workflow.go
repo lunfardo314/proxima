@@ -9,6 +9,7 @@ import (
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/core/work_process/events"
 	"github.com/lunfardo314/proxima/core/work_process/poker"
+	"github.com/lunfardo314/proxima/core/work_process/pruner"
 	"github.com/lunfardo314/proxima/core/work_process/pull_tx_server"
 	"github.com/lunfardo314/proxima/core/work_process/snapshot"
 	"github.com/lunfardo314/proxima/core/work_process/tippool"
@@ -40,6 +41,7 @@ type (
 		events       *events.Events
 		txInputQueue *txinput_queue.TxInputQueue
 		tippool      *tippool.SequencerTips
+		pruner       *pruner.Pruner
 		//
 		enableTrace    atomic.Bool
 		traceTagsMutex sync.RWMutex
@@ -71,6 +73,7 @@ func Start(env Environment, peers *peering.Peers, opts ...ConfigOption) *Workflo
 	ret.pullTxServer = pull_tx_server.New(ret)
 	ret.tippool = tippool.New(ret)
 	ret.txInputQueue = txinput_queue.New(ret)
+	ret.pruner = pruner.New(ret)
 	snapshot.Start(ret)
 
 	ret.peers.OnReceiveTxBytes(func(from peer.ID, txBytes []byte, metadata *txmetadata.TransactionMetadata) {
