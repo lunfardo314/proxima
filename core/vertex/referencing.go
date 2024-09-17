@@ -62,6 +62,10 @@ func (vid *WrappedTx) DoPruningIfRelevant(nowis time.Time) (markedForDeletion, u
 	vid.Unwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
 			references = vid.numReferences
+			if vid.GetTxStatusNoLock() == Bad {
+				v.UnReferenceDependencies()
+				unreferencedPastCone = true
+			}
 			switch references {
 			case 0:
 				util.Assertf(vid.FlagsUpNoLock(FlagVertexTxAttachmentStarted|FlagVertexTxAttachmentFinished),
@@ -73,8 +77,10 @@ func (vid *WrappedTx) DoPruningIfRelevant(nowis time.Time) (markedForDeletion, u
 					if nowis.After(vid.dontPruneUntil) {
 						vid.numReferences = 0
 						markedForDeletion = true
-						v.UnReferenceDependencies()
-						unreferencedPastCone = true
+						if !unreferencedPastCone {
+							v.UnReferenceDependencies()
+							unreferencedPastCone = true
+						}
 					}
 				}
 			default:
@@ -83,8 +89,10 @@ func (vid *WrappedTx) DoPruningIfRelevant(nowis time.Time) (markedForDeletion, u
 					if nowis.After(vid.dontPruneUntil) {
 						// vertex is old enough, un-reference its past cone by converting vertex to virtual tx
 						vid._put(_virtualTx{VirtualTxFromTx(v.Tx)})
-						v.UnReferenceDependencies()
-						unreferencedPastCone = true
+						if !unreferencedPastCone {
+							v.UnReferenceDependencies()
+							unreferencedPastCone = true
+						}
 					}
 				}
 			}
