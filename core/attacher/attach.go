@@ -39,11 +39,11 @@ func AttachTxID(txid ledger.TransactionID, env Environment, opts ...AttachTxOpti
 		env.TraceTx(&txid, "AttachTxID: new ID")
 
 		// it is new
-		vid.SetAttachmentDepthNoLock(options.depth)
 
 		if !txid.IsBranchTransaction() {
 			// if not branch -> just place the empty virtualTx on the utangle, no further action
 			vid = vertex.WrapTxID(txid)
+			vid.SetAttachmentDepthNoLock(options.depth)
 			env.AddVertexNoLock(vid)
 			return
 		}
@@ -64,6 +64,7 @@ func AttachTxID(txid ledger.TransactionID, env Environment, opts ...AttachTxOpti
 			// the corresponding state is not in the multistate DB -> put virtualTx to the utangle -> pull is up to attacher
 			vid = vertex.WrapTxID(txid)
 			env.AddVertexNoLock(vid)
+			vid.SetAttachmentDepthNoLock(options.depth)
 
 			env.Tracef(TraceTagAttach, "AttachTxID: added new branch vertex and pulled %s%s", txid.StringShort(), by)
 			env.TraceTx(&txid, "AttachTxID: added new branch vertex and pulled")
