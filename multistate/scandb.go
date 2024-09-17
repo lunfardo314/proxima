@@ -19,6 +19,7 @@ type (
 
 	ChainRecordInfo struct {
 		Balance     uint64
+		Output      *ledger.OutputDataWithID
 		IsSequencer bool
 		IsBranch    bool
 	}

@@ -378,6 +378,7 @@ func (r *Readable) ChainInfo() map[ledger.ChainID]ChainRecordInfo {
 			Balance:     uint64(amount),
 			IsSequencer: oData.ID.IsSequencerTransaction(),
 			IsBranch:    oData.ID.IsBranchTransaction(),
+			Output:      oData,
 		}
 		return true
 	})

@@ -13,7 +13,7 @@ func TestEvents(t *testing.T) {
 	glb := global.NewDefault()
 	glb.StartTracingTags("events")
 	e := New(glb)
-	e.Start()
+	//e.Start()  already called in New()
 
 	EventTypeTestString := eventtype.RegisterNew[string]("a string event")
 	EventTypeTestInt := eventtype.RegisterNew[int]("an int event")
