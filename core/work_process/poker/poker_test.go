@@ -23,7 +23,7 @@ func TestBasic(t *testing.T) {
 	glb := global.NewDefault()
 	p := New(glb)
 
-	p.Start()
+	//p.Start() already called in New()
 
 	vids := make([]*vertex.WrappedTx, howManyTx)
 	for i := range vids {
