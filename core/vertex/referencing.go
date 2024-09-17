@@ -85,6 +85,7 @@ func (vid *WrappedTx) DoPruningIfRelevant(nowis time.Time) (markedForDeletion, u
 					}
 				}
 			default:
+				// FIXME wrong. Baseline may be necessary. Converting it to virtualtx makes vid.baseline() == nil
 				// vid.references > 1
 				if vid.FlagsUpNoLock(FlagVertexTxAttachmentStarted | FlagVertexTxAttachmentFinished) {
 					if nowis.After(vid.dontPruneUntil) {
