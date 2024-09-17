@@ -322,8 +322,8 @@ func TestSendMsg(t *testing.T) {
 			txSet.Insert(txids...)
 			txSetMutex.Unlock()
 
-			succ := hosts[i%numHosts].PullTransactionsFromRandomPeers(txids...)
-			require.True(t, succ)
+			n := hosts[i%numHosts].PullTransactionsFromRandomPeers(1, txids...)
+			require.EqualValues(t, 1, n)
 		}
 		err := counter.Wait()
 		require.NoError(t, err)

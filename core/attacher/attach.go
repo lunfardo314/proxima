@@ -85,7 +85,7 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Att
 	env.Tracef(TraceTagAttach, "AttachTransaction: %s", tx.IDShortString)
 	env.TraceTx(tx.ID(), "AttachTransaction")
 
-	vid = AttachTxID(*tx.ID(), env, OptionInvokedBy("addTx"))
+	vid = AttachTxID(*tx.ID(), env, WithInvokedBy("addTx"))
 	vid.UnwrapVirtualTx(func(v *vertex.VirtualTransaction) {
 		if vid.FlagsUpNoLock(vertex.FlagVertexTxAttachmentStarted) {
 			// case with already attached transaction
@@ -153,7 +153,7 @@ func InvalidateTxID(txid ledger.TransactionID, env Environment, reason error) *v
 	env.Tracef(TraceTagAttach, "InvalidateTxID: %s", txid.StringShort())
 	env.TraceTx(&txid, "InvalidateTxID")
 
-	vid := AttachTxID(txid, env, OptionInvokedBy("InvalidateTxID"))
+	vid := AttachTxID(txid, env, WithInvokedBy("InvalidateTxID"))
 	vid.SetTxStatusBad(reason)
 	return vid
 }

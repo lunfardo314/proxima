@@ -143,13 +143,13 @@ func (w *Workflow) TxIn(tx *transaction.Transaction, opts ...TxBytesInOption) er
 	txTime := txid.Timestamp().Time()
 
 	attachOpts := []attacher.AttachTxOption{
-		attacher.AttachTxOptionWithContext(options.ctx),
-		attacher.AttachTxOptionWithTransactionMetadata(&options.txMetadata),
-		attacher.OptionInvokedBy("txInput"),
-		attacher.OptionEnforceTimestampBeforeRealTime,
+		attacher.WithContext(options.ctx),
+		attacher.WithTransactionMetadata(&options.txMetadata),
+		attacher.WithInvokedBy("txInput"),
+		attacher.WithEnforceTimestampBeforeRealTime,
 	}
 	if options.callback != nil {
-		attachOpts = append(attachOpts, attacher.AttachTxOptionWithAttachmentCallback(options.callback))
+		attachOpts = append(attachOpts, attacher.WithAttachmentCallback(options.callback))
 	}
 
 	if time.Until(txTime) <= 0 {

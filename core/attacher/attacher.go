@@ -100,7 +100,7 @@ func (a *attacher) solidifyStemOfTheVertex(v *vertex.Vertex) (ok bool) {
 	stemInputIdx := v.StemInputIndex()
 	stemInputOid := v.Tx.MustInputAt(stemInputIdx)
 	stemTxID := stemInputOid.TransactionID()
-	stemVid := AttachTxID(stemTxID, a, OptionInvokedBy(a.name))
+	stemVid := AttachTxID(stemTxID, a, WithInvokedBy(a.name))
 
 	if !a.markVertexUndefined(stemVid) {
 		// failed to reference (pruned), but it is ok (rare event)
@@ -142,10 +142,10 @@ func (a *attacher) solidifySequencerBaseline(v *vertex.Vertex) (ok bool) {
 	if followTheEndorsement {
 		// predecessor is on the earlier slot -> follow the first endorsement (guaranteed by the ledger constraint layer)
 		a.Assertf(v.Tx.NumEndorsements() > 0, "v.Tx.NumEndorsements()>0")
-		inputTx = AttachTxID(v.Tx.EndorsementAt(0), a, OptionInvokedBy(a.name))
+		inputTx = AttachTxID(v.Tx.EndorsementAt(0), a, WithInvokedBy(a.name))
 		a.Tracef(TraceTagSolidifySequencerBaseline, "follow the endorsement %s", inputTx.IDShortString)
 	} else {
-		inputTx = AttachTxID(predOid.TransactionID(), a, OptionInvokedBy(a.name))
+		inputTx = AttachTxID(predOid.TransactionID(), a, WithInvokedBy(a.name))
 		a.Tracef(TraceTagSolidifySequencerBaseline, "follow the predecessor %s", inputTx.IDShortString)
 	}
 	if !a.markVertexUndefined(inputTx) {
@@ -344,7 +344,7 @@ func (a *attacher) attachEndorsement(v *vertex.Vertex, vid *vertex.WrappedTx, in
 	vidEndorsed := v.Endorsements[index]
 
 	if vidEndorsed == nil {
-		vidEndorsed = AttachTxID(v.Tx.EndorsementAt(index), a, OptionInvokedBy(a.name))
+		vidEndorsed = AttachTxID(v.Tx.EndorsementAt(index), a, WithInvokedBy(a.name))
 		if !v.ReferenceEndorsement(index, vidEndorsed) {
 			// if failed to reference, remains nil
 			a.Tracef(TraceTagAttachEndorsements, "attachEndorsement: attaching endorsement %s of %s: failed to reference", vidEndorsed.IDShortString, vid.IDShortString)
@@ -611,7 +611,7 @@ func (a *attacher) attachInputID(consumerVertex *vertex.Vertex, consumerTx *vert
 
 	vidInputTx = consumerVertex.Inputs[inputIdx]
 	if vidInputTx == nil {
-		vidInputTx = AttachTxID(inputOid.TransactionID(), a, OptionInvokedBy(a.name))
+		vidInputTx = AttachTxID(inputOid.TransactionID(), a, WithInvokedBy(a.name))
 	}
 	a.Assertf(vidInputTx != nil, "vidInputTx != nil")
 

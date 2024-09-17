@@ -63,6 +63,7 @@ type (
 
 		mutexDescendants sync.RWMutex
 		consumed         map[byte]set.Set[*WrappedTx]
+		attachmentDepth  int
 	}
 
 	WrappedOutput struct {

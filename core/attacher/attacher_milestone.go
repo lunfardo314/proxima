@@ -2,6 +2,7 @@ package attacher
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"runtime"
@@ -42,8 +43,10 @@ func runMilestoneAttacher(
 
 	if err = a.run(); err != nil {
 		vid.SetTxStatusBad(err)
-		env.Log().Warnf(a.logErrorStatusString(err))
-		// panic("fail fast")
+		if !errors.Is(err, ErrSolidificationDeadline) {
+			// solidification errors with big attachment depth are too verbose
+			env.Log().Warnf(a.logErrorStatusString(err))
+		}
 	} else {
 		msData := env.ParseMilestoneData(vid)
 		if vid.IsBranchTransaction() {

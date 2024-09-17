@@ -529,7 +529,7 @@ func (seq *Sequencer) bootstrapOwnMilestoneOutput() vertex.WrappedOutput {
 		}
 		seq.AssertNoError(err)
 
-		ret, err := attacher.AttachOutputWithID(chainOut, seq, attacher.OptionInvokedBy("tippool"))
+		ret, err := attacher.AttachOutputWithID(chainOut, seq, attacher.WithInvokedBy("tippool"))
 		seq.AssertNoError(err)
 		return ret
 	}

@@ -871,3 +871,11 @@ func (vid *WrappedTx) UnwrapVirtualTx(unwrapFun func(v *VirtualTransaction)) {
 		},
 	})
 }
+
+func (vid *WrappedTx) SetAttachmentDepthNoLock(depth int) {
+	vid.attachmentDepth = depth
+}
+
+func (vid *WrappedTx) GetAttachmentDepthNoLock() int {
+	return vid.attachmentDepth
+}

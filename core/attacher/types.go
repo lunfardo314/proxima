@@ -103,6 +103,7 @@ type (
 		calledBy           string
 		enforceTimestamp   bool
 		ctx                context.Context
+		depth              int
 	}
 	AttachTxOption func(*_attacherOptions)
 
@@ -158,30 +159,36 @@ func (f Flags) String() string {
 	)
 }
 
-func AttachTxOptionWithTransactionMetadata(metadata *txmetadata.TransactionMetadata) AttachTxOption {
+func WithTransactionMetadata(metadata *txmetadata.TransactionMetadata) AttachTxOption {
 	return func(options *_attacherOptions) {
 		options.metadata = metadata
 	}
 }
 
-func AttachTxOptionWithAttachmentCallback(fun func(vid *vertex.WrappedTx, err error)) AttachTxOption {
+func WithAttachmentCallback(fun func(vid *vertex.WrappedTx, err error)) AttachTxOption {
 	return func(options *_attacherOptions) {
 		options.attachmentCallback = fun
 	}
 }
 
-func AttachTxOptionWithContext(ctx context.Context) AttachTxOption {
+func WithContext(ctx context.Context) AttachTxOption {
 	return func(options *_attacherOptions) {
 		options.ctx = ctx
 	}
 }
 
-func OptionEnforceTimestampBeforeRealTime(options *_attacherOptions) {
+func WithEnforceTimestampBeforeRealTime(options *_attacherOptions) {
 	options.enforceTimestamp = true
 }
 
-func OptionInvokedBy(name string) AttachTxOption {
+func WithInvokedBy(name string) AttachTxOption {
 	return func(options *_attacherOptions) {
 		options.calledBy = name
+	}
+}
+
+func WithAttachmentDepth(depth int) AttachTxOption {
+	return func(options *_attacherOptions) {
+		options.depth = depth
 	}
 }

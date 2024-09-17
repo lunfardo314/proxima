@@ -32,7 +32,8 @@ func (a *attacher) pullIfNeededUnwrapped(virtualTx *vertex.VirtualTransaction, d
 		a.Tracef(TraceTagPull, "pullIfNeededUnwrapped: %s. Pull rules defined", deptVID.IDShortString)
 
 		if virtualTx.PullPatienceExpired(maxPullAttempts) {
-			// deadline expired
+			// solidification deadline
+			a.Log().Errorf("SOLIDIFICATION FAILED %s, hex: %s attacher: %s ", deptVID.IDShortString(), deptVID.ID.StringHex(), a.Name())
 			a.setError(fmt.Errorf("%w(%d x %v): can't solidify dependency %s",
 				ErrSolidificationDeadline, maxPullAttempts, repeatPullAfter, deptVID.IDShortString()))
 			return false

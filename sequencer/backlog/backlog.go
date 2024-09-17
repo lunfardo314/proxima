@@ -235,9 +235,9 @@ func (b *InputBacklog) LoadSequencerStartTips(seqID ledger.ChainID) error {
 	}
 	var wOut vertex.WrappedOutput
 	if chainOut.ID.IsSequencerTransaction() {
-		wOut, _, err = attacher.AttachSequencerOutputs(chainOut, stemOut, b, attacher.OptionInvokedBy("LoadSequencerStartTips"))
+		wOut, _, err = attacher.AttachSequencerOutputs(chainOut, stemOut, b, attacher.WithInvokedBy("LoadSequencerStartTips"))
 	} else {
-		wOut, err = attacher.AttachOutputWithID(chainOut, b, attacher.OptionInvokedBy("LoadSequencerStartTips"))
+		wOut, err = attacher.AttachOutputWithID(chainOut, b, attacher.WithInvokedBy("LoadSequencerStartTips"))
 	}
 	if err != nil {
 		return err
@@ -252,7 +252,7 @@ func (b *InputBacklog) LoadSequencerStartTips(seqID ledger.ChainID) error {
 	util.AssertNoError(err)
 	for _, oid := range oids {
 		o := rdr.MustGetOutputWithID(&oid)
-		wOut, err = attacher.AttachOutputWithID(o, b, attacher.OptionInvokedBy("LoadSequencerStartTips"))
+		wOut, err = attacher.AttachOutputWithID(o, b, attacher.WithInvokedBy("LoadSequencerStartTips"))
 		if err != nil {
 			return err
 		}
