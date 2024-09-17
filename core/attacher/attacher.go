@@ -167,8 +167,8 @@ func (a *attacher) solidifySequencerBaseline(v *vertex.Vertex, vidUnwrapped *ver
 
 		v.BaselineBranch = inputTx.BaselineBranch()
 		// FIXME sometimes panics
-		util.Assertf(v.BaselineBranch != nil, "v.BaselineBranch != nil")
-		util.Assertf(v.BaselineBranch.IsBranchTransaction(), "v.BaselineBranch.IsBranchTransaction()")
+		a.Assertf(v.BaselineBranch != nil, "v.BaselineBranch != nil\n%s", func() string { return inputTx.Lines("    ").String() })
+		a.Assertf(v.BaselineBranch.IsBranchTransaction(), "v.BaselineBranch.IsBranchTransaction()")
 		a.referenced.reference(v.BaselineBranch)
 		v.BaselineBranch.Reference() // will be unreferenced with the whole vertex
 		return true
