@@ -83,6 +83,9 @@ type (
 		Counter(name string) int
 		CounterLines(prefix ...string) *lines.Lines
 		AttachmentFinished(started time.Time)
+
+		// TxPullParameters repeat after period, max attempts, num random peers
+		TxPullParameters() (time.Duration, int, int)
 	}
 
 	// StartStop interface of the global objects which coordinates graceful shutdown

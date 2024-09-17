@@ -91,16 +91,19 @@ func (ps *Peers) sendPullTransactionsToPeer(id peer.ID, txLst ...ledger.Transact
 	}, id, ps.lppProtocolPull)
 }
 
-// PullTransactionsFromRandomPeer sends pull request to the random peer which has txStore
-func (ps *Peers) PullTransactionsFromRandomPeer(txids ...ledger.TransactionID) bool {
+// PullTransactionsFromRandomPeers sends pull request to the random peer which has txStore
+// Return number of peer pull request was sent to
+func (ps *Peers) PullTransactionsFromRandomPeers(nPeers int, txids ...ledger.TransactionID) int {
 	if len(txids) == 0 {
-		return false
+		return 0
 	}
-	if rndPeerID, ok := ps._randomPullPeer(false); ok {
+	util.Assertf(nPeers >= 1, "nPeers")
+
+	targets := ps._randomPullPeers(nPeers)
+	for _, rndPeerID := range targets {
 		ps.sendPullTransactionsToPeer(rndPeerID, txids...)
-		return true
 	}
-	return false
+	return len(targets)
 }
 
 func (ps *Peers) PullTransactionsFromAllPeers(txids ...ledger.TransactionID) {
@@ -164,30 +167,10 @@ func (ps *Peers) _pullTxTargets(restrictedTargets ...string) []peer.ID {
 	return ret
 }
 
-func (ps *Peers) _pullSyncPortionTargets(restrictedTargets ...string) []peer.ID {
-	ret := make([]peer.ID, 0)
-	ps.forEachPeer(func(p *Peer) bool {
-		if len(restrictedTargets) == 0 || slices.Contains(restrictedTargets, p.name) {
-			if _, inBlackList := ps.blacklist[p.id]; !inBlackList && !p._isDead() && p.acceptsPullSyncRequests {
-				ret = append(ret, p.id)
-			}
-		}
-		return true
-	})
-	return ret
-}
-
-func (ps *Peers) _randomPullPeer(forSync bool, restrictedTargets ...string) (peer.ID, bool) {
-	var targets []peer.ID
-	if forSync {
-		targets = ps._pullSyncPortionTargets(restrictedTargets...)
-	} else {
-		targets = ps._pullTxTargets(restrictedTargets...)
-	}
-	if len(targets) == 0 {
-		return "", false
-	}
-	return util.RandomElement(targets...), true
+func (ps *Peers) _randomPullPeers(nPeers int, restrictedTargets ...string) []peer.ID {
+	util.Assertf(nPeers >= 1, "nPeers >= 1")
+	targets := ps._pullTxTargets(restrictedTargets...)
+	return util.RandomElements(nPeers, targets...)
 }
 
 // out message wrappers

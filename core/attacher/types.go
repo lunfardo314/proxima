@@ -34,8 +34,7 @@ type (
 	pullEnvironment interface {
 		PokeMe(me, with *vertex.WrappedTx)
 		PokeAllWith(wanted *vertex.WrappedTx)
-		PullFromPeers(txid *ledger.TransactionID)
-		PullFromRandomPeer(txid *ledger.TransactionID)
+		PullFromRandomPeers(nPeers int, txid *ledger.TransactionID) int
 	}
 
 	postEventEnvironment interface {
@@ -139,12 +138,6 @@ type (
 		// - list of outputs, nil if it is a success
 		ParseSequencerCommandToOutput(input *ledger.OutputWithID) ([]*ledger.Output, error)
 	}
-)
-
-// PullTimeout maximum time allowed for the virtual txid become transaction (full vertex)
-const (
-	PullRepeatPeriod     = 3 * time.Second
-	PullMaxTimesToRepeat = 5
 )
 
 var ErrSolidificationDeadline = errors.New("solidification deadline")

@@ -27,8 +27,7 @@ type (
 		global.NodeGlobal
 		StateStore() global.StateStore
 		TxBytesStore() global.TxBytesStore
-		PullFromPeers(txid *ledger.TransactionID)
-		PullFromRandomPeer(txid *ledger.TransactionID)
+		PullFromRandomPeers(nPeers int, txid *ledger.TransactionID) int
 	}
 	Workflow struct {
 		Environment

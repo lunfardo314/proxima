@@ -322,7 +322,7 @@ func TestSendMsg(t *testing.T) {
 			txSet.Insert(txids...)
 			txSetMutex.Unlock()
 
-			succ := hosts[i%numHosts].PullTransactionsFromRandomPeer(txids...)
+			succ := hosts[i%numHosts].PullTransactionsFromRandomPeers(txids...)
 			require.True(t, succ)
 		}
 		err := counter.Wait()

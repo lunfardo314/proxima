@@ -2,6 +2,7 @@ package attacher
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/lunfardo314/proxima/core/vertex"
 )
@@ -25,17 +26,19 @@ func (a *attacher) pullIfNeededUnwrapped(virtualTx *vertex.VirtualTransaction, d
 
 	a.Assertf(a.isKnown(deptVID), "a.isKnown(deptVID): %s", deptVID.IDShortString)
 
+	repeatPullAfter, maxPullAttempts, numRandomPeers := a.TxPullParameters()
+
 	if virtualTx.PullRulesDefined() {
 		a.Tracef(TraceTagPull, "pullIfNeededUnwrapped: %s. Pull rules defined", deptVID.IDShortString)
 
-		if virtualTx.PullPatienceExpired(PullMaxTimesToRepeat) {
+		if virtualTx.PullPatienceExpired(maxPullAttempts) {
 			// deadline expired
 			a.setError(fmt.Errorf("%w(%d x %v): can't solidify dependency %s",
-				ErrSolidificationDeadline, PullMaxTimesToRepeat, PullRepeatPeriod, deptVID.IDShortString()))
+				ErrSolidificationDeadline, maxPullAttempts, repeatPullAfter, deptVID.IDShortString()))
 			return false
 		}
 		if virtualTx.PullNeeded() {
-			return a.pull(virtualTx, deptVID)
+			return a.pull(virtualTx, deptVID, repeatPullAfter, numRandomPeers)
 		}
 		a.Tracef(TraceTagPull, "pullIfNeededUnwrapped: %s. Pull rules defined. Pull NOT NEEDED", deptVID.IDShortString)
 		return true
@@ -53,10 +56,10 @@ func (a *attacher) pullIfNeededUnwrapped(virtualTx *vertex.VirtualTransaction, d
 	// define pull rules by setting pull deadline and pull
 	a.Tracef(TraceTagPull, "pullIfNeededUnwrapped: %s. Set pull timeout and pull", deptVID.IDShortString)
 	virtualTx.SetPullNeeded()
-	return a.pull(virtualTx, deptVID)
+	return a.pull(virtualTx, deptVID, repeatPullAfter, numRandomPeers)
 }
 
-func (a *attacher) pull(virtualTx *vertex.VirtualTransaction, deptVID *vertex.WrappedTx) bool {
+func (a *attacher) pull(virtualTx *vertex.VirtualTransaction, deptVID *vertex.WrappedTx, repeatPullAfter time.Duration, nRandomPeers int) bool {
 	a.Tracef(TraceTagPull, "pull IN %s", deptVID.IDShortString)
 	defer a.Tracef(TraceTagPull, "pull OUT %s", deptVID.IDShortString)
 
@@ -83,9 +86,7 @@ func (a *attacher) pull(virtualTx *vertex.VirtualTransaction, deptVID *vertex.Wr
 	// failed to load txBytes from store -> pull it from peers
 	a.pokeMe(deptVID)
 
-	a.PullFromPeers(&deptVID.ID)
-	//a.PullFromRandomPeer(&deptVID.ID)
-
-	virtualTx.SetPullHappened(PullRepeatPeriod)
+	nPulls := a.PullFromRandomPeers(nRandomPeers, &deptVID.ID)
+	virtualTx.SetPullHappened(nPulls, repeatPullAfter)
 	return true
 }

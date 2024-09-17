@@ -36,14 +36,6 @@ func (w *Workflow) PokeAllWith(wanted *vertex.WrappedTx) {
 	w.poker.PokeAllWith(wanted)
 }
 
-func (w *Workflow) PullTransactionsFromRandomPeer(lst ...ledger.TransactionID) bool {
-	return w.peers.PullTransactionsFromRandomPeer(lst...)
-}
-
-func (w *Workflow) PullTransactionsFromAllPeers(lst ...ledger.TransactionID) {
-	w.peers.PullTransactionsFromAllPeers(lst...)
-}
-
 func (w *Workflow) SendTxBytesWithMetadataToPeer(id peer.ID, txBytes []byte, metadata *txmetadata.TransactionMetadata) bool {
 	return w.peers.SendTxBytesWithMetadataToPeer(id, txBytes, metadata)
 }
