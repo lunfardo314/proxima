@@ -62,3 +62,8 @@ if [ ! -f "$INITIALIZED_FILE" ]; then
 fi
 
 ./proxima $boot_param
+
+# do not let the script end
+while true; do
+    sleep 1
+done
