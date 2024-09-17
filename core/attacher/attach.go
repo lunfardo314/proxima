@@ -39,6 +39,8 @@ func AttachTxID(txid ledger.TransactionID, env Environment, opts ...AttachTxOpti
 		env.TraceTx(&txid, "AttachTxID: new ID")
 
 		// it is new
+		vid.SetAttachmentDepthNoLock(options.depth)
+
 		if !txid.IsBranchTransaction() {
 			// if not branch -> just place the empty virtualTx on the utangle, no further action
 			vid = vertex.WrapTxID(txid)

@@ -218,7 +218,7 @@ func (a *milestoneAttacher) solidifyBaseline() vertex.Status {
 			Vertex: func(v *vertex.Vertex) {
 				a.Assertf(a.vid.GetTxStatusNoLock() == vertex.Undefined, "a.vid.GetTxStatusNoLock() == vertex.Undefined:\n%s", a.vid.StringNoLock)
 
-				ok = a.solidifyBaselineVertex(v)
+				ok = a.solidifyBaselineVertex(v, a.vid)
 				if ok && v.BaselineBranch != nil {
 					finalSuccess = a.setBaseline(v.BaselineBranch, a.vid.Timestamp())
 					a.Assertf(finalSuccess, "solidifyBaseline %s: failed to set baseline", a.name)
