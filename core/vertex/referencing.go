@@ -57,11 +57,12 @@ func (vid *WrappedTx) UnReference() {
 
 // DoPruningIfRelevant either marks vertex deleted (counter = 0), or, if it already deleted (counter=0)
 // with TTL matured, un-references its past cone this way helping to prune other older vertices
-// Returns true if vertex was marked deleted and should be removed from the MemDAG
+// This trick is necessary in order to avoid deadlock between global state of the memeDAG and the local state
+// of the wrappedTx. When trying to modify both atomically will lead to deadlock
 func (vid *WrappedTx) DoPruningIfRelevant(nowis time.Time) (markedForDeletion, unreferencedPastCone bool, references uint32) {
 	vid.Unwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
-			// FIXME reverted - pruner causes inconsistency, first fix that
+			// TODO speed up deletion of 'bad' vertices, for example the ones with failed solidification
 			//if vid.GetTxStatusNoLock() == Bad {
 			//	v.UnReferenceDependencies()
 			//	unreferencedPastCone = true
@@ -69,12 +70,19 @@ func (vid *WrappedTx) DoPruningIfRelevant(nowis time.Time) (markedForDeletion, u
 			references = vid.numReferences
 			switch references {
 			case 0:
+				// the vertex is already marked for deletion and will not be referenced by any part of the system
+				// do nothing
 				util.Assertf(vid.FlagsUpNoLock(FlagVertexTxAttachmentStarted|FlagVertexTxAttachmentFinished),
 					"attachment expected to be over 1: %s", vid.StringNoLock)
 				markedForDeletion = true
 			case 1:
+				// the vertex is not referenced by any part of the system. It will be marked for deletion now,
+				// in this locked section and will never be referenced again by other parts of the system
 				// do not prune those with not-started or not finished attachers
+				// checking if vertex is fully attached. Probably it is not necessary, because
+				// in that case references would be > 1
 				if vid.FlagsUpNoLock(FlagVertexTxAttachmentStarted | FlagVertexTxAttachmentFinished) {
+					// do not mark for deletion vertices which just have been added to the memDAG
 					if nowis.After(vid.dontPruneUntil) {
 						vid.numReferences = 0
 						markedForDeletion = true
@@ -86,7 +94,10 @@ func (vid *WrappedTx) DoPruningIfRelevant(nowis time.Time) (markedForDeletion, u
 				}
 			default:
 				// FIXME wrong. Baseline may be necessary. Converting it to virtualtx makes vid.baseline() == nil
+				//  which is bad
 				// vid.references > 1
+				// those fully attached and old enough vertices we convert to virtual txes.
+				// Note, that vertex will be referenced by others and will not be deleted
 				if vid.FlagsUpNoLock(FlagVertexTxAttachmentStarted | FlagVertexTxAttachmentFinished) {
 					if nowis.After(vid.dontPruneUntil) {
 						// vertex is old enough, un-reference its past cone by converting vertex to virtual tx
