@@ -49,11 +49,12 @@ var allSourceTypes = map[SourceType]string{
 
 // persistent flags for (de)serialization
 const (
-	flagRootProvided          = 0b00000001
-	flagCoverageDeltaProvided = 0b00000010
-	flagSlotInflationProvided = 0b00000100
-	flagSupplyProvided        = 0b00001000
-	flagPortionInfo           = 0b00010000
+	flagReserved              = 0b00000001 // for compatibility
+	flagRootProvided          = 0b00000010
+	flagCoverageDeltaProvided = 0b00000100
+	flagSlotInflationProvided = 0b00001000
+	flagSupplyProvided        = 0b00010000
+	flagPortionInfo           = 0b00100000
 )
 
 func (s SourceType) String() string {
