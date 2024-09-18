@@ -21,13 +21,6 @@ func (w *Workflow) MaxDurationInTheFuture() time.Duration {
 	return 10 * ledger.SlotDuration()
 }
 
-func (w *Workflow) GossipAttachedTransaction(tx *transaction.Transaction, metadata *txmetadata.TransactionMetadata) {
-	if metadata != nil && metadata.SourceTypeNonPersistent == txmetadata.SourceTypeTxStore {
-		return
-	}
-	w.peers.GossipTxBytesToPeers(tx.Bytes(), metadata)
-}
-
 func (w *Workflow) PokeMe(me, with *vertex.WrappedTx) {
 	w.poker.PokeMe(me, with)
 }
@@ -38,6 +31,13 @@ func (w *Workflow) PokeAllWith(wanted *vertex.WrappedTx) {
 
 func (w *Workflow) SendTxBytesWithMetadataToPeer(id peer.ID, txBytes []byte, metadata *txmetadata.TransactionMetadata) bool {
 	return w.peers.SendTxBytesWithMetadataToPeer(id, txBytes, metadata)
+}
+
+func (w *Workflow) GossipAttachedTransaction(tx *transaction.Transaction, metadata *txmetadata.TransactionMetadata) {
+	if metadata != nil && metadata.SourceTypeNonPersistent == txmetadata.SourceTypeTxStore {
+		return
+	}
+	w.peers.GossipTxBytesToPeers(tx.Bytes(), metadata)
 }
 
 func (w *Workflow) GossipTxBytesToPeers(txBytes []byte, metadata *txmetadata.TransactionMetadata, except ...peer.ID) int {
