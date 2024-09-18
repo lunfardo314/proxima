@@ -94,8 +94,6 @@ func (w *Workflow) TxIn(tx *transaction.Transaction, opts ...TxBytesInOption) er
 	}
 	w.Tracef(TraceTagTxInput, "-> %s, meta: %s", txid.StringShort, options.txMetadata.String())
 	// bytes are identifiable as transaction
-	w.Assertf(!options.txMetadata.IsResponseToPull || options.txMetadata.SourceTypeNonPersistent == txmetadata.SourceTypePeer,
-		"inData.TxMetadata.IsResponseToPull || inData.TxMetadata.SourceTypeNonPersistent == txmetadata.SourceTypePeer")
 
 	if !tx.IsSequencerMilestone() {
 		// callback is only possible when tx is sequencer milestone
