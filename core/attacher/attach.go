@@ -39,7 +39,7 @@ func AttachTxID(txid ledger.TransactionID, env Environment, opts ...AttachTxOpti
 		env.TraceTx(&txid, "AttachTxID: new ID")
 
 		if options.depth > 0 && options.depth%100 == 0 {
-			env.Log().Warnf("AttachTxID: reached depth %d with %s", options.depth, txid.StringShort())
+			env.Log().Warnf("AttachTxID: solidification reached depth %d with %s", options.depth, txid.StringShort())
 		}
 		// it is new
 
