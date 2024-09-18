@@ -87,6 +87,7 @@ func (a *attacher) pull(virtualTx *vertex.VirtualTransaction, deptVID *vertex.Wr
 	// failed to load txBytes from store -> pull it from peers
 	a.pokeMe(deptVID)
 
+	a.AddPulledTransaction(&deptVID.ID)
 	nPulls := a.PullFromRandomPeers(nRandomPeers, &deptVID.ID)
 	virtualTx.SetPullHappened(nPulls, repeatPullAfter)
 	return true

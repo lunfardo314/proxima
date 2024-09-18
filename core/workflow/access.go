@@ -103,3 +103,7 @@ func (w *Workflow) WaitTxIDDefined(txid *ledger.TransactionID, pollPeriod, timeo
 		}
 	}
 }
+
+func (w *Workflow) AddPulledTransaction(txid *ledger.TransactionID) {
+	w.txInputQueue.AddPulledTransaction(txid)
+}

@@ -9,7 +9,7 @@ import (
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/transaction"
-	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/proxima/util/bloomfilter"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -35,8 +35,8 @@ type (
 	TxInputQueue struct {
 		environment
 		*work_process.WorkProcess[Input]
-		bloomFilter    map[ledger.TransactionIDVeryShort4]time.Time
-		bloomFilterTTL time.Duration
+		bloomFilterIncoming  *bloomfilter.Filter[ledger.TransactionIDVeryShort4]
+		bloomFilterRequested *bloomfilter.Filter[ledger.TransactionIDVeryShort4]
 		// metrics
 		inputTxCounter   prometheus.Counter
 		pulledTxCounter  prometheus.Counter
@@ -50,28 +50,23 @@ type (
 const (
 	CmdFromPeer = byte(iota)
 	CmdFromAPI
-	CmdPurge
 )
 
 const (
-	Name                  = "txInputQueue"
-	bloomFilterTTLInSlots = 120 // 20 min
-	purgePeriod           = 10 * time.Second
+	Name                           = "txInputQueue"
+	bloomFilterIncomingTTLInSlots  = 120 // 20 min
+	bloomFilterRequestedTTLInSlots = 12  // 2 min
+	purgePeriod                    = 10 * time.Second
 )
 
 func New(env environment) *TxInputQueue {
 	ret := &TxInputQueue{
-		environment:    env,
-		bloomFilter:    make(map[ledger.TransactionIDVeryShort4]time.Time),
-		bloomFilterTTL: bloomFilterTTLInSlots * ledger.L().ID.SlotDuration(),
+		environment:          env,
+		bloomFilterIncoming:  bloomfilter.New[ledger.TransactionIDVeryShort4](env.Ctx(), bloomFilterIncomingTTLInSlots*ledger.L().ID.SlotDuration(), purgePeriod),
+		bloomFilterRequested: bloomfilter.New[ledger.TransactionIDVeryShort4](env.Ctx(), bloomFilterRequestedTTLInSlots*ledger.L().ID.SlotDuration(), purgePeriod),
 	}
 	ret.WorkProcess = work_process.New[Input](env, Name, ret.consume)
 	ret.WorkProcess.Start()
-
-	ret.RepeatInBackground(Name+"_purge", purgePeriod, func() bool {
-		ret.Push(Input{Cmd: CmdPurge}, true)
-		return true
-	})
 
 	ret.registerMetrics()
 	return ret
@@ -85,8 +80,6 @@ func (q *TxInputQueue) consume(inp Input) {
 		q.fromPeer(&inp)
 	case CmdFromAPI:
 		q.fromAPI(&inp)
-	case CmdPurge:
-		q.purge()
 	default:
 		q.Log().Fatalf("TxInputQueue: wrong cmd")
 	}
@@ -104,26 +97,24 @@ func (q *TxInputQueue) fromPeer(inp *Input) {
 		metaData = &txmetadata.TransactionMetadata{}
 	}
 
-	if metaData.IsResponseToPull {
-		q.pulledTxCounter.Inc()
-		// do not check bloom filter if transaction was pulled
+	if hit := q.bloomFilterRequested.CheckAndDelete(tx.ID().VeryShortID4()); hit {
+		// pulled transaction arrived
+		q.bloomFilterIncoming.Add(tx.ID().VeryShortID4())
 		if err = q.TxInFromPeer(tx, metaData, inp.FromPeer); err != nil {
 			q.badTxCounter.Inc()
 			q.Log().Warn("TxInputQueue from peer %s: %v", inp.FromPeer.String(), err)
 		}
-		// yet put it into the bloom filter
-		q.bloomFilter[tx.ID().VeryShortID4()] = time.Now().Add(q.bloomFilterTTL)
 		return
 	}
-	// check bloom filter
-	if _, hit := q.bloomFilter[tx.ID().VeryShortID4()]; hit {
+
+	// check and update bloom filter
+	if hit := q.bloomFilterIncoming.CheckAndUpdate(tx.ID().VeryShortID4()); hit {
 		// filter hit, ignore transaction. May be rare false positive!!
 		q.filterHitCounter.Inc()
 		return
 	}
 
 	// not in filter -> definitely new transaction
-	q.bloomFilter[tx.ID().VeryShortID4()] = time.Now().Add(q.bloomFilterTTL)
 
 	if err = q.TxInFromPeer(tx, metaData, inp.FromPeer); err != nil {
 		q.badTxCounter.Inc()
@@ -150,16 +141,6 @@ func (q *TxInputQueue) fromAPI(inp *Input) {
 	// gossiping all pre-validated transactions from API
 	q.GossipTxBytesToPeers(inp.TxBytes, inp.TxMetaData)
 	q.gossipedCounter.Inc()
-}
-
-func (q *TxInputQueue) purge() {
-	nowis := time.Now()
-	toDelete := util.KeysFilteredByValues(q.bloomFilter, func(_ ledger.TransactionIDVeryShort4, deadline time.Time) bool {
-		return deadline.After(nowis)
-	})
-	for _, k := range toDelete {
-		delete(q.bloomFilter, k)
-	}
 }
 
 func (q *TxInputQueue) registerMetrics() {
@@ -189,4 +170,8 @@ func (q *TxInputQueue) registerMetrics() {
 	})
 
 	q.MetricsRegistry().MustRegister(q.inputTxCounter, q.pulledTxCounter, q.badTxCounter, q.filterHitCounter, q.gossipedCounter, q.queueSize)
+}
+
+func (q *TxInputQueue) AddPulledTransaction(txid *ledger.TransactionID) {
+	q.bloomFilterRequested.Add(txid.VeryShortID4())
 }
