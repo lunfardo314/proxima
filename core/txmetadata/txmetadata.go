@@ -21,7 +21,6 @@ type (
 		SlotInflation           *uint64            // not nil may be for sequencer transactions
 		Supply                  *uint64            // not nil may be for branch transactions
 		SourceTypeNonPersistent SourceType         // non-persistent, used for internal workflow
-		IsResponseToPull        bool               // only used as a persistent flag in tx gossip
 		PortionInfo             *PortionInfo       // persistent. May be not nil when transaction is part of the portion
 	}
 
@@ -50,12 +49,11 @@ var allSourceTypes = map[SourceType]string{
 
 // persistent flags for (de)serialization
 const (
-	flagIsResponseToPull      = 0b00000001
-	flagRootProvided          = 0b00000010
-	flagCoverageDeltaProvided = 0b00000100
-	flagSlotInflationProvided = 0b00001000
-	flagSupplyProvided        = 0b00010000
-	flagPortionInfo           = 0b00100000
+	flagRootProvided          = 0b00000001
+	flagCoverageDeltaProvided = 0b00000010
+	flagSlotInflationProvided = 0b00000100
+	flagSupplyProvided        = 0b00001000
+	flagPortionInfo           = 0b00010000
 )
 
 func (s SourceType) String() string {
@@ -65,9 +63,6 @@ func (s SourceType) String() string {
 }
 
 func (m *TransactionMetadata) flags() (ret byte) {
-	if m.IsResponseToPull {
-		ret |= flagIsResponseToPull
-	}
 	if !util.IsNil(m.StateRoot) {
 		ret |= flagRootProvided
 	}
@@ -160,7 +155,6 @@ func TransactionMetadataFromBytes(data []byte) (*TransactionMetadata, error) {
 	if err != nil {
 		return nil, fmt.Errorf("TransactionMetadataFromBytes: %w", err)
 	}
-	ret.IsResponseToPull = flags&flagIsResponseToPull != 0
 	if flags&flagRootProvided != 0 {
 		ret.StateRoot = ledger.CommitmentModel.NewVectorCommitment()
 		if err = ret.StateRoot.Read(rdr); err != nil {

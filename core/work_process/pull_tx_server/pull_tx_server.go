@@ -61,7 +61,6 @@ func (d *PullTxServer) consume(inp *Input) {
 		metadata = &txmetadata.TransactionMetadata{}
 	}
 	// setting persistent 'response to pull' flag in metadata
-	metadata.IsResponseToPull = true
 	metadata.PortionInfo = &inp.PortionInfo
 
 	d.SendTxBytesWithMetadataToPeer(inp.PeerID, txBytes, metadata)

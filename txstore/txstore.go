@@ -81,7 +81,6 @@ func (s *SimpleTxBytesStore) PersistTxBytesWithMetadata(txBytes []byte, metadata
 	}
 	if metadata != nil {
 		mdTmp := *metadata
-		mdTmp.IsResponseToPull = false // saving without the irrelevant metadata flag
 		mdTmp.PortionInfo = nil
 		metadata = &mdTmp
 	}
