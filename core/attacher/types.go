@@ -29,7 +29,7 @@ type (
 		EvidenceBranchSlot(s ledger.Slot, healthy bool)
 		TxBytesStore() global.TxBytesStore
 		TxBytesFromStoreIn(txBytesWithMetadata []byte) (*ledger.TransactionID, error)
-		AddPulledTransaction(txid *ledger.TransactionID)
+		AddWantedTransaction(txid *ledger.TransactionID)
 	}
 
 	pullEnvironment interface {

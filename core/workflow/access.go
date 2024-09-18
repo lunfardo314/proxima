@@ -34,10 +34,12 @@ func (w *Workflow) SendTxBytesWithMetadataToPeer(id peer.ID, txBytes []byte, met
 }
 
 func (w *Workflow) GossipAttachedTransaction(tx *transaction.Transaction, metadata *txmetadata.TransactionMetadata) {
-	if metadata != nil && metadata.SourceTypeNonPersistent == txmetadata.SourceTypeTxStore {
-		return
+	if metadata != nil {
+		if metadata.SourceTypeNonPersistent == txmetadata.SourceTypeTxStore || metadata.SourceTypeNonPersistent == txmetadata.SourceTypePulled {
+			return
+		}
 	}
-	w.peers.GossipTxBytesToPeers(tx.Bytes(), metadata)
+	w.GossipTxBytesToPeers(tx.Bytes(), metadata)
 }
 
 func (w *Workflow) GossipTxBytesToPeers(txBytes []byte, metadata *txmetadata.TransactionMetadata, except ...peer.ID) int {
@@ -104,6 +106,6 @@ func (w *Workflow) WaitTxIDDefined(txid *ledger.TransactionID, pollPeriod, timeo
 	}
 }
 
-func (w *Workflow) AddPulledTransaction(txid *ledger.TransactionID) {
-	w.txInputQueue.AddPulledTransaction(txid)
+func (w *Workflow) AddWantedTransaction(txid *ledger.TransactionID) {
+	w.txInputQueue.AddWantedTransaction(txid)
 }

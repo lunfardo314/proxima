@@ -35,8 +35,14 @@ type (
 	TxInputQueue struct {
 		environment
 		*work_process.WorkProcess[Input]
-		bloomFilterIncoming  *bloomfilter.Filter[ledger.TransactionIDVeryShort4]
-		bloomFilterRequested *bloomfilter.Filter[ledger.TransactionIDVeryShort4]
+		// bloomFilterIncoming filters repeating transactions (with some probability of false positives)
+		bloomFilterIncoming *bloomfilter.Filter[ledger.TransactionIDVeryShort4]
+		// bloomFilterWanted is needed to prevent pulled transactions from being gossiped.
+		// It also prevents attack vector of defining wanted transaction by the pulling side,
+		// not by responding one
+		// Has small probability of false positives. In that case transaction will not be gossiped,
+		// so it will have to be pulled by nodes
+		bloomFilterWanted *bloomfilter.Filter[ledger.TransactionIDVeryShort4]
 		// metrics
 		inputTxCounter   prometheus.Counter
 		pulledTxCounter  prometheus.Counter
@@ -61,9 +67,9 @@ const (
 
 func New(env environment) *TxInputQueue {
 	ret := &TxInputQueue{
-		environment:          env,
-		bloomFilterIncoming:  bloomfilter.New[ledger.TransactionIDVeryShort4](env.Ctx(), bloomFilterIncomingTTLInSlots*ledger.L().ID.SlotDuration(), purgePeriod),
-		bloomFilterRequested: bloomfilter.New[ledger.TransactionIDVeryShort4](env.Ctx(), bloomFilterRequestedTTLInSlots*ledger.L().ID.SlotDuration(), purgePeriod),
+		environment:         env,
+		bloomFilterIncoming: bloomfilter.New[ledger.TransactionIDVeryShort4](env.Ctx(), bloomFilterIncomingTTLInSlots*ledger.L().ID.SlotDuration(), purgePeriod),
+		bloomFilterWanted:   bloomfilter.New[ledger.TransactionIDVeryShort4](env.Ctx(), bloomFilterRequestedTTLInSlots*ledger.L().ID.SlotDuration(), purgePeriod),
 	}
 	ret.WorkProcess = work_process.New[Input](env, Name, ret.consume)
 	ret.WorkProcess.Start()
@@ -97,9 +103,12 @@ func (q *TxInputQueue) fromPeer(inp *Input) {
 		metaData = &txmetadata.TransactionMetadata{}
 	}
 
-	if hit := q.bloomFilterRequested.CheckAndDelete(tx.ID().VeryShortID4()); hit {
+	if hit := q.bloomFilterWanted.CheckAndDelete(tx.ID().VeryShortID4()); hit {
 		// pulled transaction arrived
 		q.bloomFilterIncoming.Add(tx.ID().VeryShortID4())
+		metaData.SourceTypeNonPersistent = txmetadata.SourceTypePulled
+		q.pulledTxCounter.Inc()
+
 		if err = q.TxInFromPeer(tx, metaData, inp.FromPeer); err != nil {
 			q.badTxCounter.Inc()
 			q.Log().Warn("TxInputQueue from peer %s: %v", inp.FromPeer.String(), err)
@@ -172,6 +181,8 @@ func (q *TxInputQueue) registerMetrics() {
 	q.MetricsRegistry().MustRegister(q.inputTxCounter, q.pulledTxCounter, q.badTxCounter, q.filterHitCounter, q.gossipedCounter, q.queueSize)
 }
 
-func (q *TxInputQueue) AddPulledTransaction(txid *ledger.TransactionID) {
-	q.bloomFilterRequested.Add(txid.VeryShortID4())
+// AddWantedTransaction adds transaction short id to the wanted filter.
+// It makes the transaction go directly for attachment without checking other filters and without gossiping
+func (q *TxInputQueue) AddWantedTransaction(txid *ledger.TransactionID) {
+	q.bloomFilterWanted.Add(txid.VeryShortID4())
 }

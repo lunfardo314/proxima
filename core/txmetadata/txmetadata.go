@@ -37,6 +37,7 @@ const (
 	SourceTypePeer
 	SourceTypeAPI
 	SourceTypeTxStore
+	SourceTypePulled
 )
 
 var allSourceTypes = map[SourceType]string{
@@ -45,6 +46,7 @@ var allSourceTypes = map[SourceType]string{
 	SourceTypePeer:      "peer",
 	SourceTypeAPI:       "API",
 	SourceTypeTxStore:   "txStore",
+	SourceTypePulled:    "pulled",
 }
 
 // persistent flags for (de)serialization
