@@ -38,6 +38,9 @@ func AttachTxID(txid ledger.TransactionID, env Environment, opts ...AttachTxOpti
 		env.Tracef(TraceTagAttach, "AttachTxID: new ID %s%s", txid.StringShort, by)
 		env.TraceTx(&txid, "AttachTxID: new ID")
 
+		if options.depth > 0 && options.depth%100 == 0 {
+			env.Log().Warnf("AttachTxID: reached depth %d with %s", options.depth, txid.StringShort())
+		}
 		// it is new
 
 		if !txid.IsBranchTransaction() {
