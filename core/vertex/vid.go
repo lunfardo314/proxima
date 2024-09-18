@@ -490,15 +490,12 @@ func (vid *WrappedTx) NumProducedOutputs() int {
 	return ret
 }
 
-func (vid *WrappedTx) ConvertToVirtualTx() {
-	vid.mutex.Lock()
-	defer vid.mutex.Unlock()
+func (vid *WrappedTx) convertToVirtualTxNoLock() {
+	util.Assertf(vid.numReferences > 0, "convertToVirtualTxNoLock: access deleted tx in %s", vid.IDShortString)
+	v, isVertex := vid._genericVertex.(_vertex)
+	util.Assertf(isVertex, "convertToVirtualTxNoLock: must be full vertex %s", vid.IDShortString)
 
-	util.Assertf(vid.numReferences > 0, "access deleted tx")
-	switch v := vid._genericVertex.(type) {
-	case _vertex:
-		vid._put(_virtualTx{VirtualTransaction: v.convertToVirtualTx()})
-	}
+	vid._put(_virtualTx{VirtualTransaction: v.toVirtualTx()})
 }
 
 func (vid *WrappedTx) PanicAccessDeleted() {
@@ -515,6 +512,9 @@ func (vid *WrappedTx) BaselineBranch() (baselineBranch *WrappedTx) {
 	vid.RUnwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
 			baselineBranch = v.BaselineBranch
+		},
+		VirtualTx: func(v *VirtualTransaction) {
+			baselineBranch = v.baselineBranch
 		},
 	})
 	return

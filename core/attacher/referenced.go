@@ -37,6 +37,7 @@ func (r *referencedSet) rollbackDelta() {
 	r.delta = nil
 }
 
+// reference references transaction and ensures it is referenced once or none
 func (r *referencedSet) reference(vid *vertex.WrappedTx) bool {
 	if r.committed.Contains(vid) {
 		return true
@@ -45,6 +46,7 @@ func (r *referencedSet) reference(vid *vertex.WrappedTx) bool {
 		return true
 	}
 	if !vid.Reference() {
+		// failed to reference
 		return false
 	}
 	if r.delta != nil {

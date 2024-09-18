@@ -62,11 +62,6 @@ func (vid *WrappedTx) UnReference() {
 func (vid *WrappedTx) DoPruningIfRelevant(nowis time.Time) (markedForDeletion, unreferencedPastCone bool, references uint32) {
 	vid.Unwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
-			// TODO speed up deletion of 'bad' vertices, for example the ones with failed solidification
-			//if vid.GetTxStatusNoLock() == Bad {
-			//	v.UnReferenceDependencies()
-			//	unreferencedPastCone = true
-			//}
 			references = vid.numReferences
 			switch references {
 			case 0:
@@ -81,36 +76,31 @@ func (vid *WrappedTx) DoPruningIfRelevant(nowis time.Time) (markedForDeletion, u
 				// do not prune those with not-started or not finished attachers
 				// checking if vertex is fully attached. Probably it is not necessary, because
 				// in that case references would be > 1
-				if vid.FlagsUpNoLock(FlagVertexTxAttachmentStarted | FlagVertexTxAttachmentFinished) {
-					// do not mark for deletion vertices which just have been added to the memDAG
-					if nowis.After(vid.dontPruneUntil) {
-						vid.numReferences = 0
-						markedForDeletion = true
-						if !unreferencedPastCone {
-							v.UnReferenceDependencies()
-							unreferencedPastCone = true
-						}
-					}
+				// do not mark for deletion vertices which just have been added to the memDAG
+				// the state of the vertex should never be accessed again
+				if vid.FlagsUpNoLock(FlagVertexTxAttachmentStarted|FlagVertexTxAttachmentFinished) && nowis.After(vid.dontPruneUntil) {
+					vid.numReferences = 0
+					v.UnReferenceDependencies()
+					unreferencedPastCone = true
+					markedForDeletion = true
 				}
 			default:
-				// FIXME wrong. Baseline may be necessary. Converting it to virtualtx makes vid.baseline() == nil
-				//  which is bad
 				// vid.references > 1
 				// those fully attached and old enough vertices we convert to virtual txes.
 				// Note, that vertex will be referenced by others and will not be deleted
 				if vid.FlagsUpNoLock(FlagVertexTxAttachmentStarted | FlagVertexTxAttachmentFinished) {
-					if nowis.After(vid.dontPruneUntil) {
-						// vertex is old enough, un-reference its past cone by converting vertex to virtual tx
-						vid._put(_virtualTx{VirtualTxFromTx(v.Tx)})
-						if !unreferencedPastCone {
-							v.UnReferenceDependencies()
-							unreferencedPastCone = true
-						}
+					if nowis.After(vid.dontPruneUntil) || vid.GetTxStatusNoLock() == Bad {
+						// vertex is old enough or bad, un-reference its past cone by converting vertex to virtual tx
+						// baseline remains available in the virtual tx
+						vid.convertToVirtualTxNoLock()
+						//vid._put(_virtualTx{VirtualTxFromTx(v.Tx)})
+						v.UnReferenceDependencies() // to help GC and pruner
+						unreferencedPastCone = true
 					}
 				}
 			}
 		},
-		VirtualTx: func(_ *VirtualTransaction) {
+		VirtualTx: func(v *VirtualTransaction) {
 			references = vid.numReferences
 			switch references {
 			case 0:
@@ -118,8 +108,9 @@ func (vid *WrappedTx) DoPruningIfRelevant(nowis time.Time) (markedForDeletion, u
 					"attachment expected to be over 2: %s", vid.StringNoLock)
 				markedForDeletion = true
 			case 1:
-				if nowis.After(vid.dontPruneUntil) {
+				if nowis.After(vid.dontPruneUntil) || vid.GetTxStatusNoLock() == Bad {
 					vid.numReferences = 0
+					v.baselineBranch = nil // to help GC
 					markedForDeletion = true
 				}
 			}

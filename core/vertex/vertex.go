@@ -45,7 +45,7 @@ func (v *Vertex) ReferenceEndorsement(i byte, vid *WrappedTx) bool {
 	return referenced
 }
 
-// UnReferenceDependencies un-references all not nil inputs
+// UnReferenceDependencies un-references all not nil inputs and endorsements and invalidates vertex structure
 func (v *Vertex) UnReferenceDependencies() {
 	for i, vidInput := range v.Inputs {
 		if vidInput != nil {
@@ -59,10 +59,8 @@ func (v *Vertex) UnReferenceDependencies() {
 			v.Endorsements[i] = nil
 		}
 	}
-	if v.BaselineBranch != nil {
-		v.BaselineBranch.UnReference()
-		v.BaselineBranch = nil
-	}
+	v.BaselineBranch = nil
+	v.Tx = nil
 }
 
 // InputLoaderByIndex returns consumed output at index i or nil (if input is orphaned or inaccessible in the virtualTx)
@@ -233,7 +231,8 @@ func (v *Vertex) Wrap() *WrappedTx {
 	return _newVID(_vertex{Vertex: v}, *v.Tx.ID(), seqID)
 }
 
-func (v *Vertex) convertToVirtualTx() *VirtualTransaction {
+// toVirtualTx preserves information about all outputs and baseline in the virtualTx
+func (v *Vertex) toVirtualTx() *VirtualTransaction {
 	ret := &VirtualTransaction{
 		outputs: make(map[byte]*ledger.Output, v.Tx.NumProducedOutputs()),
 	}
@@ -243,8 +242,9 @@ func (v *Vertex) convertToVirtualTx() *VirtualTransaction {
 	}
 
 	v.Tx.ForEachProducedOutput(func(idx byte, o *ledger.Output, _ *ledger.OutputID) bool {
-		ret.outputs[idx] = o
+		ret.outputs[idx] = o.Clone()
 		return true
 	})
+	ret.baselineBranch = v.BaselineBranch
 	return ret
 }
