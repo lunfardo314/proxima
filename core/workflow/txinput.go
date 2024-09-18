@@ -260,7 +260,6 @@ func WithPeerMetadata(peerID peer.ID, metadata *txmetadata.TransactionMetadata) 
 		if metadata != nil {
 			opts.txMetadata = *metadata
 		}
-		opts.txMetadata.SourceTypeNonPersistent = txmetadata.SourceTypePeer
 		opts.receivedFromPeer = &peerID
 	}
 }
