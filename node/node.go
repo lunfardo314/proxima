@@ -93,6 +93,13 @@ func (p *ProximaNode) PullFromRandomPeers(nPeers int, txid *ledger.TransactionID
 	return p.peers.PullTransactionsFromRandomPeers(nPeers, *txid)
 }
 
+func (p *ProximaNode) GetOwnSequencerID() *ledger.ChainID {
+	if p.sequencer == nil {
+		return nil
+	}
+	return util.Ref(p.sequencer.SequencerID())
+}
+
 func (p *ProximaNode) readInTraceTags() {
 	p.Global.StartTracingTags(viper.GetStringSlice("trace_tags")...)
 }

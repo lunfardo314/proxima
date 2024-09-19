@@ -16,6 +16,7 @@ type (
 	environment interface {
 		global.NodeGlobal
 		StateStore() global.StateStore
+		GetOwnSequencerID() *ledger.ChainID
 	}
 
 	Snapshot struct {
@@ -87,7 +88,14 @@ func directoryExists(dir string) bool {
 }
 
 func (s *Snapshot) doSnapshot() {
-	lrb := multistate.FindLatestReliableBranch(s.StateStore(), global.FractionHealthyBranch)
+	var lrb *multistate.BranchData
+
+	// if node has own sequencer running,
+	if ownSeqID := s.GetOwnSequencerID(); ownSeqID != nil {
+		lrb = multistate.FindLatestReliableBranchWithSequencerID(s.StateStore(), *ownSeqID, global.FractionHealthyBranch)
+	} else {
+		lrb = multistate.FindLatestReliableBranch(s.StateStore(), global.FractionHealthyBranch)
+	}
 	if lrb.Stem.ID.TransactionID() == s.lastSnapshotBranchID {
 		// no need to repeat snapshots
 		s.Log().Infof("[snapshot] skip repeating branch %s. Snapshot has not been saved", s.lastSnapshotBranchID.StringShort())

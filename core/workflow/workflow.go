@@ -31,6 +31,7 @@ type (
 		TxBytesStore() global.TxBytesStore
 		PullFromRandomPeers(nPeers int, txid *ledger.TransactionID) int
 		EvidenceAttachmentDuration(took time.Duration)
+		GetOwnSequencerID() *ledger.ChainID
 	}
 	Workflow struct {
 		Environment
