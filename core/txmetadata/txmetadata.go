@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"time"
 
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util"
@@ -16,12 +17,16 @@ import (
 // When present, metadata is used for consistency checking and workflow optimization
 type (
 	TransactionMetadata struct {
-		StateRoot               common.VCommitment // not nil may be for branch transactions
-		LedgerCoverage          *uint64            // not nil may be for sequencer transactions
-		SlotInflation           *uint64            // not nil may be for sequencer transactions
-		Supply                  *uint64            // not nil may be for branch transactions
-		SourceTypeNonPersistent SourceType         // non-persistent, used for internal workflow
-		PortionInfo             *PortionInfo       // persistent. May be not nil when transaction is part of the portion
+		// persistent
+		StateRoot      common.VCommitment // not nil may be for branch transactions
+		LedgerCoverage *uint64            // not nil may be for sequencer transactions
+		SlotInflation  *uint64            // not nil may be for sequencer transactions
+		Supply         *uint64            // not nil may be for branch transactions
+		// Deprecated: TODO remove
+		PortionInfo *PortionInfo // persistent. May be not nil when transaction is part of the portion
+		// non-persistent
+		SourceTypeNonPersistent SourceType // non-persistent, used for internal workflow
+		TxBytesReceived         *time.Time // not-persistent, used for metrics
 	}
 
 	PortionInfo struct {
