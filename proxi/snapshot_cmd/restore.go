@@ -17,34 +17,47 @@ import (
 	"github.com/lunfardo314/unitrie/common"
 	"github.com/lunfardo314/unitrie/immutable"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
+)
+
+var (
+	fname     string
+	batchSize int
 )
 
 func initRestoreCmd() *cobra.Command {
 	restoreCmd := &cobra.Command{
-		Use:   "restore <snapshot file>",
+		Use:   "restore [<batch size>]",
 		Short: "creates multi-state db from snapshot",
 		Args:  cobra.MaximumNArgs(1),
 		Run:   runRestoreCmd,
 	}
+
+	restoreCmd.PersistentFlags().StringVarP(&fname, "snapshot_file", "s", "", "snapshot file")
+	err := viper.BindPFlag("snapshot_file", restoreCmd.PersistentFlags().Lookup("snapshot_file"))
+	glb.AssertNoError(err)
+
+	restoreCmd.PersistentFlags().IntVarP(&batchSize, "batch_size", "b", defaultBatchSize, "commit batch size (records)")
+	err = viper.BindPFlag("batch_size", restoreCmd.PersistentFlags().Lookup("batch_size"))
+	glb.AssertNoError(err)
 
 	restoreCmd.InitDefaultHelpCmd()
 	return restoreCmd
 }
 
 const (
-	trieCacheSize = 5_000
-	batchSize     = 5_000
+	trieCacheSize    = 10_000
+	defaultBatchSize = 4_000
 )
 
 func runRestoreCmd(_ *cobra.Command, args []string) {
-	var fname string
-	var ok bool
-	if len(args) == 0 {
+	if fname == "" {
+		var ok bool
 		fname, ok = findLatestSnapshotFile()
 		glb.Assertf(ok, "can't find snapshot file")
-	} else {
-		fname = args[0]
 	}
+	glb.Infof("snapshot file: %s", fname)
+	glb.Infof("batch size is %d", batchSize)
 
 	kvStream, err := multistate.OpenSnapshotFileStream(fname)
 	glb.AssertNoError(err)
@@ -80,6 +93,9 @@ func runRestoreCmd(_ *cobra.Command, args []string) {
 	total := 0
 	verbosityLevel := glb.VerbosityLevel()
 	counters := make(map[byte]int)
+
+	begin := time.Now()
+
 	for pair := range kvStream.InChan {
 		if util.IsNil(batch) {
 			batch = stateStore.BatchedWriter()
@@ -100,9 +116,10 @@ func runRestoreCmd(_ *cobra.Command, args []string) {
 			util.AssertNoError(err)
 			inBatch = 0
 			batch = nil
-			_, _ = fmt.Fprintf(console, "--- commit %d records---\n", batchSize)
 			trieUpdatable, err = immutable.NewTrieUpdatable(ledger.CommitmentModel, stateStore, lastRoot, trieCacheSize)
 			util.AssertNoError(err)
+			_, _ = fmt.Fprintf(console, "--- committed %d (+%d) records in %v, %.0f records/sec\n",
+				total, batchSize, time.Since(begin), float64(total)/(float64(time.Since(begin))/float64(time.Second)))
 		}
 	}
 	if !util.IsNil(batch) {

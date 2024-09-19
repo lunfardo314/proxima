@@ -9,15 +9,20 @@ import (
 	"github.com/spf13/viper"
 )
 
+const defaultPprofPort = 8080
+
 func (p *ProximaNode) startPProfIfEnabled() {
 	if !viper.GetBool("pprof.enable") {
 		return
 	}
 	port := viper.GetInt("pprof.port")
+	if port == 0 {
+		port = defaultPprofPort
+	}
 	url := fmt.Sprintf("localhost:%d", port)
 	p.Log().Infof("starting pprof on '%s'", url)
 
 	go func() {
-		util.AssertNoError(http.ListenAndServe("localhost:8080", nil))
+		util.AssertNoError(http.ListenAndServe(url, nil))
 	}()
 }
