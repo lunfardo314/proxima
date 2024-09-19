@@ -97,7 +97,9 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 		if !ps.isAutopeeringEnabled() {
 			// node does not take any incoming dynamic peers
 			ps.Tracef(TraceTag, "autopeering disabled: unknown peer %s", id.String)
-			_ = stream.Reset()
+
+			//  do not be harsh, just ignore
+			//_ = stream.Reset()
 			exit = true
 			return
 		}
@@ -122,14 +124,18 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 	var err error
 	var msgData []byte
 
-	if msgData, err = readFrame(stream); err == nil {
-		hbInfo, err = heartbeatInfoFromBytes(msgData)
+	if msgData, err = readFrame(stream); err != nil {
+		ps.Log().Errorf("[peering] hb: error while reading message from peer %s: %v, Ignore", ShortPeerIDString(id), err)
+		// ignore
+		return
 	}
-	if err != nil {
+
+	if hbInfo, err = heartbeatInfoFromBytes(msgData); err != nil {
 		// protocol violation
 		_ = stream.Reset()
-		ps.Log().Errorf("[peering] error while reading message from peer %s: %v", ShortPeerIDString(id), err)
-		ps.dropPeer(id, "read error")
+		err = fmt.Errorf("[peering] hb: error while serializing message from peer %s: %v. Reset stream", ShortPeerIDString(id), err)
+		ps.Log().Error(err)
+		ps.dropPeer(id, err.Error())
 		return
 	}
 

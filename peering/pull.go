@@ -23,7 +23,8 @@ func (ps *Peers) pullStreamHandler(stream network.Stream) {
 
 	id := stream.Conn().RemotePeer()
 	if ps.isInBlacklist(id) {
-		_ = stream.Reset()
+		// just ignore
+		//_ = stream.Reset()
 		return
 	}
 	var err error
@@ -31,25 +32,27 @@ func (ps *Peers) pullStreamHandler(stream network.Stream) {
 
 	ps.withPeer(id, func(p *Peer) {
 		if p == nil {
-			_ = stream.Reset()
+			// just ignore
+			//_ = stream.Reset()
 			ps.Tracef(TraceTag, "pull: unknown peer %s", id.String)
 			return
 		}
 		var msgData []byte
 		msgData, err = readFrame(stream)
 		if err != nil {
-			_ = stream.Reset()
-			ps.Log().Errorf("error while reading message from peer %s: %v", id.String(), err)
-
-			ps._dropPeer(p, "read error")
+			//_ = stream.Reset()
+			err = fmt.Errorf("pull: error while reading message from peer %s: %v", id.String(), err)
+			ps.Log().Error(err)
+			ps._dropPeer(p, err.Error())
 			return
 		}
 		callAfter, err = ps.processPullFrame(msgData, p)
 		if err != nil {
+			// protocol violation
 			_ = stream.Reset()
-			ps.Log().Errorf("error while decoding message from peer %s: %v", id.String(), err)
-
-			ps._dropPeer(p, "error while parsing pull message")
+			err = fmt.Errorf("pull: error while decoding message from peer %s: %v", id.String(), err)
+			ps.Log().Error(err)
+			ps._dropPeer(p, err.Error())
 			return
 		}
 		_ = stream.Close()

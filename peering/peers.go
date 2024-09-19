@@ -378,7 +378,7 @@ func (ps *Peers) dropPeer(id peer.ID, reason string) {
 func (ps *Peers) _dropPeer(p *Peer, reason string) {
 	why := ""
 	if len(reason) > 0 {
-		why = fmt.Sprintf(". Reason: '%s'", reason)
+		why = fmt.Sprintf(". Drop reason: '%s'", reason)
 	}
 
 	if p.isStatic {

@@ -1,6 +1,8 @@
 package peering
 
 import (
+	"fmt"
+
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/lunfardo314/proxima/core/txmetadata"
@@ -13,7 +15,7 @@ func (ps *Peers) gossipStreamHandler(stream network.Stream) {
 	id := stream.Conn().RemotePeer()
 
 	if ps.isInBlacklist(id) {
-		_ = stream.Reset()
+		//_ = stream.Reset()
 		return
 	}
 
@@ -22,29 +24,34 @@ func (ps *Peers) gossipStreamHandler(stream network.Stream) {
 	ps.withPeer(id, func(p *Peer) {
 		if p == nil {
 			// from unknown peer
-			_ = stream.Reset()
+			//_ = stream.Reset()
 			ps.Tracef(TraceTag, "txBytes: unknown peer %s", id.String())
 			return
 		}
 		txBytesWithMetadata, err := readFrame(stream)
 		if err != nil {
-			_ = stream.Reset()
-			ps._dropPeer(p, "read error")
-			ps.Log().Errorf("error while reading message from peer %s: %v", id.String(), err)
+			//_ = stream.Reset()
+			err = fmt.Errorf("gossip: error while reading message from peer %s: %v", id.String(), err)
+			ps.Log().Error(err)
+			ps._dropPeer(p, err.Error())
 			return
 		}
 		metadataBytes, txBytes, err := txmetadata.SplitTxBytesWithMetadata(txBytesWithMetadata)
 		if err != nil {
+			// protocol violation
 			_ = stream.Reset()
-			ps._dropPeer(p, "error while parsing tx metadata")
-			ps.Log().Errorf("error while parsing tx message from peer %s: %v", id.String(), err)
+			err = fmt.Errorf("gossip: error while parsing tx message from peer %s: %v", id.String(), err)
+			ps.Log().Error(err)
+			ps._dropPeer(p, err.Error())
 			return
 		}
 		metadata, err := txmetadata.TransactionMetadataFromBytes(metadataBytes)
 		if err != nil {
+			// protocol violation
 			_ = stream.Reset()
-			ps.dropPeer(p.id, "error while parsing tx metadata")
-			ps.Log().Errorf("error while parsing tx message metadata from peer %s: %v", id.String(), err)
+			err = fmt.Errorf("gossip: error while parsing tx message metadata from peer %s: %v", id.String(), err)
+			ps.Log().Error(err)
+			ps.dropPeer(p.id, err.Error())
 			return
 		}
 
