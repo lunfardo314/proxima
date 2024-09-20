@@ -83,6 +83,6 @@ func (p *ProximaNode) initTxStore() {
 
 func (p *ProximaNode) databaseGC() {
 	start := time.Now()
-	err := p.txStoreDB.RunValueLogGC(0.5)
+	err := p.multiStateDB.RunValueLogGC(0.5)
 	p.Log().Infof("----- Badger DB GC (%v): %v", time.Since(start), err)
 }
