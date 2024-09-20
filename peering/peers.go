@@ -83,6 +83,8 @@ type (
 		lastMsgReceived         time.Time
 		lastMsgReceivedFrom     string
 		lastLoggedConnected     bool // toggle
+		//
+		errorCounter int
 		// ring buffer with last clock differences
 		clockDifferences    [10]time.Duration
 		clockDifferencesIdx int
@@ -372,6 +374,12 @@ func (ps *Peers) dropPeer(id peer.ID, reason string) {
 			// ignore static
 			ps._dropPeer(p, reason)
 		}
+	})
+}
+
+func (ps *Peers) incErrorCounter(id peer.ID) {
+	ps.withPeer(id, func(p *Peer) {
+		p.errorCounter++
 	})
 }
 

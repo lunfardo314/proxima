@@ -82,8 +82,9 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 	id := stream.Conn().RemotePeer()
 
 	if ps.isInBlacklist(id) {
-		ps.Tracef(TraceTag, "heartbeatStreamHandler %s: %s is in blacklist", ps.host.ID().String, id.String)
-		_ = stream.Reset()
+		// ignore
+		//_ = stream.Reset()
+		_ = stream.Close()
 		return
 	}
 
@@ -91,6 +92,7 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 
 	ps.withPeer(id, func(p *Peer) {
 		if p != nil {
+			// known peer, static or dynamic
 			return
 		}
 		// incoming heartbeat from new peer
@@ -100,6 +102,7 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 
 			//  do not be harsh, just ignore
 			//_ = stream.Reset()
+			_ = stream.Close()
 			exit = true
 			return
 		}
@@ -127,15 +130,17 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 	if msgData, err = readFrame(stream); err != nil {
 		ps.Log().Errorf("[peering] hb: error while reading message from peer %s: %v, Ignore", ShortPeerIDString(id), err)
 		// ignore
+		ps.incErrorCounter(id)
+		_ = stream.Close()
 		return
 	}
 
 	if hbInfo, err = heartbeatInfoFromBytes(msgData); err != nil {
 		// protocol violation
-		_ = stream.Reset()
 		err = fmt.Errorf("[peering] hb: error while serializing message from peer %s: %v. Reset stream", ShortPeerIDString(id), err)
 		ps.Log().Error(err)
 		ps.dropPeer(id, err.Error())
+		_ = stream.Reset()
 		return
 	}
 
