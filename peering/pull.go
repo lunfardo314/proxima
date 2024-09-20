@@ -196,7 +196,6 @@ func (ps *Peers) _pullTxTargets() []peer.ID {
 func (ps *Peers) _randomPullPeers(nPeers int) []peer.ID {
 	util.Assertf(nPeers >= 1, "nPeers >= 1")
 	targets := ps._pullTxTargets()
-	//fmt.Printf(">>>>>>>>>>>>>> pull targets: %s\n", lines.SliceToLines(targets).Join(", "))
 	return util.RandomElements(nPeers, targets...)
 }
 
