@@ -43,6 +43,9 @@ func (w *Workflow) TxBytesFromStoreIn(txBytesWithMetadata []byte) (*ledger.Trans
 	if err != nil {
 		return nil, err
 	}
+	if meta == nil {
+		meta = &txmetadata.TransactionMetadata{}
+	}
 	meta.TxBytesReceived = &nowis
 	return w.TxBytesIn(txBytes,
 		WithMetadata(meta),
