@@ -2,7 +2,7 @@
 wallet:
     # key 4
     private_key: a8088c55a9827ddcd2207b373d7c01c4efb21a1ffdfd87fe973cccdbb897125a8601428a67a956d625889c264adae2b9e3e74b1f2bf3e3957eb7b1f78c6314aa
-    account: addressED25519(0xaad6a0102e6f51834bf26b6d8367cc424cf78713f59dd3bc6d54eab23ccdee52)
+    account: a(0xaad6a0102e6f51834bf26b6d8367cc424cf78713f59dd3bc6d54eab23ccdee52)
     # own sequencer (controlled by the private key). Defaults to bootstrap sequencer ID
     sequencer_id:
 api:
@@ -24,7 +24,7 @@ spammer:
     max_duration_minutes: 0
     max_transactions: 0
     output_amount: 1000
-    pace: 10
+    pace: 25
     scenario: standard
     submit_nowait: false
     tag_along:
@@ -33,5 +33,5 @@ spammer:
         # For example the bootstrap sequencer af7bedde1fea222230b82d63d5b665ac75afbe4ad3f75999bb3386cf994a6963
         sequencer: af7bedde1fea222230b82d63d5b665ac75afbe4ad3f75999bb3386cf994a6963
     # target address
-    target: addressED25519(0x3faf090d38f18ea211936b8bcf19b7b30cdcb8e224394a5c30f9ba644f8bb2fb)
+    target: a(0x3faf090d38f18ea211936b8bcf19b7b30cdcb8e224394a5c30f9ba644f8bb2fb)
     trace_on_node: false
