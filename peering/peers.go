@@ -41,8 +41,10 @@ type (
 		PreConfiguredPeers map[string]multiaddr.Multiaddr // name -> PeerAddr. Static peers used also for bootstrap
 		// MaxDynamicPeers if MaxDynamicPeers <= len(PreConfiguredPeers), autopeering is disabled, otherwise up to
 		// MaxDynamicPeers - len(PreConfiguredPeers) will be auto-peered
-		MaxDynamicPeers        int
-		AcceptPullSyncRequests bool
+		MaxDynamicPeers int
+		// Node info
+		IgnoreAllPullRequests                 bool
+		AcceptPullRequestsFromStaticPeersOnly bool
 	}
 
 	Peers struct {
@@ -74,15 +76,15 @@ type (
 	}
 
 	Peer struct {
-		id                      peer.ID
-		name                    string
-		isStatic                bool // statically pre-configured (manual peering)
-		hasTxStore              bool
-		acceptsPullSyncRequests bool
-		whenAdded               time.Time
-		lastMsgReceived         time.Time
-		lastMsgReceivedFrom     string
-		lastLoggedConnected     bool // toggle
+		id                                     peer.ID
+		name                                   string
+		isStatic                               bool // statically pre-configured (manual peering)
+		ignoresAllPullRequests                 bool // from hb info
+		acceptsPullRequestsFromStaticPeersOnly bool // from hb info
+		whenAdded                              time.Time
+		lastMsgReceived                        time.Time
+		lastMsgReceivedFrom                    string
+		lastLoggedConnected                    bool // toggle
 		//
 		errorCounter int
 		// ring buffer with last clock differences
@@ -260,9 +262,6 @@ func readPeeringConfig() (*Config, error) {
 		return k1 < k2
 	})
 
-	//if !env.IsBootstrapMode() && len(peerNames) == 0 {
-	//	return nil, fmt.Errorf("at least one peer must be pre-configured for bootstrap")
-	//}
 	for _, peerName := range peerNames {
 		addrString := viper.GetString("peering.peers." + peerName)
 		if cfg.PreConfiguredPeers[peerName], err = multiaddr.NewMultiaddr(addrString); err != nil {
@@ -274,6 +273,9 @@ func readPeeringConfig() (*Config, error) {
 	if cfg.MaxDynamicPeers < 0 {
 		cfg.MaxDynamicPeers = 0
 	}
+
+	cfg.IgnoreAllPullRequests = viper.GetBool("peering.ignore_pull_requests")
+	cfg.AcceptPullRequestsFromStaticPeersOnly = viper.GetBool("peering.pull_requests_from_static_peers_only")
 	return cfg, nil
 }
 
@@ -520,15 +522,6 @@ func (p *Peer) staticOrDynamic() string {
 		return "static"
 	}
 	return "dynamic"
-}
-
-func (ps *Peers) HasTxStore(id peer.ID) bool {
-	ps.mutex.RLock()
-	defer ps.mutex.RUnlock()
-
-	p := ps._getPeer(id)
-	util.Assertf(p != nil, "HasTxStore: peer %s not found", func() string { return ShortPeerIDString(id) })
-	return p.hasTxStore
 }
 
 func (p *Peer) _evidenceActivity(src string) {

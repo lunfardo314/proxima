@@ -21,6 +21,12 @@ const PullTransactions = byte(iota)
 func (ps *Peers) pullStreamHandler(stream network.Stream) {
 	ps.inMsgCounter.Inc()
 
+	if ps.cfg.IgnoreAllPullRequests {
+		// ignore all pull requests
+		_ = stream.Close()
+		return
+	}
+
 	id := stream.Conn().RemotePeer()
 	if ps.isInBlacklist(id) {
 		// just ignore
@@ -36,6 +42,11 @@ func (ps *Peers) pullStreamHandler(stream network.Stream) {
 		if p == nil {
 			// just ignore
 			//_ = stream.Reset()
+			_ = stream.Close()
+			return
+		}
+		if !p.isStatic && ps.cfg.AcceptPullRequestsFromStaticPeersOnly {
+			// ignore pull requests from automatic peers
 			_ = stream.Close()
 			return
 		}
@@ -164,7 +175,7 @@ func (ps *Peers) _pullTxTargets(restrictedTargets ...string) []peer.ID {
 	ret := make([]peer.ID, 0)
 	ps.forEachPeer(func(p *Peer) bool {
 		if len(restrictedTargets) == 0 || slices.Contains(restrictedTargets, p.name) {
-			if _, inBlackList := ps.blacklist[p.id]; !inBlackList && !p._isDead() && p.hasTxStore {
+			if _, inBlackList := ps.blacklist[p.id]; !inBlackList && !p._isDead() && !p.ignoresAllPullRequests {
 				ret = append(ret, p.id)
 			}
 		}

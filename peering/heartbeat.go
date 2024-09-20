@@ -13,14 +13,19 @@ import (
 )
 
 type heartbeatInfo struct {
-	clock                   time.Time
-	hasTxStore              bool
-	acceptsPullSyncRequests bool
+	clock                                  time.Time
+	ignoresAllPullRequests                 bool
+	acceptsPullRequestsFromStaticPeersOnly bool
 }
 
+// flags of the heartbeat message. Information for the peer about the node
+
 const (
-	flagHasTxStore              = byte(0b00000001)
-	flagAcceptsPullSyncRequests = byte(0x00000010)
+	// flagIgnoresAllPullRequests node ignores all pull requests
+	flagIgnoresAllPullRequests = byte(0b00000001)
+	// flagAcceptsPullRequestsFromStaticPeersOnly node ignores pull requests from automatic peers
+	// only effective if flagIgnoresAllPullRequests is false
+	flagAcceptsPullRequestsFromStaticPeersOnly = byte(0x00000010)
 )
 
 func heartbeatInfoFromBytes(data []byte) (heartbeatInfo, error) {
@@ -151,8 +156,8 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 			return
 		}
 		p._evidenceActivity("hb")
-		p.hasTxStore = hbInfo.hasTxStore
-		p.acceptsPullSyncRequests = hbInfo.acceptsPullSyncRequests
+		p.ignoresAllPullRequests = hbInfo.ignoresAllPullRequests
+		p.acceptsPullRequestsFromStaticPeersOnly = hbInfo.acceptsPullRequestsFromStaticPeersOnly
 		p._evidenceClockDifference(time.Now().Sub(hbInfo.clock))
 	})
 }
@@ -160,7 +165,8 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 func (ps *Peers) sendHeartbeatToPeer(id peer.ID) {
 	ps.sendMsgOutQueued(&heartbeatInfo{
 		// time now will be set in the queue consumer
-		hasTxStore: true, // at the moment txStore always is part of the node
+		ignoresAllPullRequests:                 ps.cfg.IgnoreAllPullRequests,
+		acceptsPullRequestsFromStaticPeersOnly: ps.cfg.AcceptPullRequestsFromStaticPeersOnly,
 	}, id, ps.lppProtocolHeartbeat)
 }
 
@@ -222,18 +228,18 @@ func (ps *Peers) dropPeersWithTooBigClockDiffs() {
 }
 
 func (hi *heartbeatInfo) flags() (ret byte) {
-	if hi.hasTxStore {
-		ret |= flagHasTxStore
+	if hi.ignoresAllPullRequests {
+		ret |= flagIgnoresAllPullRequests
 	}
-	if hi.acceptsPullSyncRequests {
-		ret |= flagAcceptsPullSyncRequests
+	if hi.acceptsPullRequestsFromStaticPeersOnly {
+		ret |= flagAcceptsPullRequestsFromStaticPeersOnly
 	}
 	return
 }
 
 func (hi *heartbeatInfo) setFromFlags(fl byte) {
-	hi.hasTxStore = (fl | flagHasTxStore) != 0
-	hi.acceptsPullSyncRequests = (fl | flagAcceptsPullSyncRequests) != 0
+	hi.ignoresAllPullRequests = (fl | flagIgnoresAllPullRequests) != 0
+	hi.acceptsPullRequestsFromStaticPeersOnly = (fl | flagAcceptsPullRequestsFromStaticPeersOnly) != 0
 }
 
 func (hi *heartbeatInfo) Bytes() []byte {
