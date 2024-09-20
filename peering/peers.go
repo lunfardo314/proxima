@@ -215,6 +215,9 @@ func New(env environment, cfg *Config) (*Peers, error) {
 	} else {
 		env.Log().Infof("[peering] autopeering is disabled")
 	}
+	env.Log().Infof("[peering] ignore all pull requests: %v", cfg.IgnoreAllPullRequests)
+	env.Log().Infof("[peering] only pull requests from static peers are accepted: %v", cfg.AcceptPullRequestsFromStaticPeersOnly)
+
 	ret.registerMetrics()
 
 	env.RepeatInBackground(Name+"_blacklist_cleanup", time.Second, func() bool {
