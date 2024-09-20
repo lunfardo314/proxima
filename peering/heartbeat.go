@@ -158,6 +158,10 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 		p._evidenceActivity("hb")
 		p.ignoresAllPullRequests = hbInfo.ignoresAllPullRequests
 		p.acceptsPullRequestsFromStaticPeersOnly = hbInfo.acceptsPullRequestsFromStaticPeersOnly
+
+		if p.ignoresAllPullRequests || p.acceptsPullRequestsFromStaticPeersOnly {
+			fmt.Printf(">>>>>>>>>>>>>> suspicious %v %v id = %s\n", p.ignoresAllPullRequests, p.acceptsPullRequestsFromStaticPeersOnly, id.String())
+		}
 		p._evidenceClockDifference(time.Now().Sub(hbInfo.clock))
 	})
 }
