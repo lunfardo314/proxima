@@ -9,7 +9,6 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util"
-	"github.com/lunfardo314/proxima/util/lines"
 )
 
 // pull request message 1st byte is the type of the message. The rest is message body
@@ -197,7 +196,7 @@ func (ps *Peers) _pullTxTargets() []peer.ID {
 func (ps *Peers) _randomPullPeers(nPeers int) []peer.ID {
 	util.Assertf(nPeers >= 1, "nPeers >= 1")
 	targets := ps._pullTxTargets()
-	fmt.Printf(">>>>>>>>>>>>>> pull targets: %s\n", lines.SliceToLines(targets).Join(", "))
+	//fmt.Printf(">>>>>>>>>>>>>> pull targets: %s\n", lines.SliceToLines(targets).Join(", "))
 	return util.RandomElements(nPeers, targets...)
 }
 
