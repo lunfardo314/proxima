@@ -24,6 +24,7 @@ import (
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/queue"
 	"github.com/multiformats/go-multiaddr"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/spf13/viper"
 	"golang.org/x/exp/maps"
 )
@@ -40,8 +41,10 @@ type (
 		PreConfiguredPeers map[string]multiaddr.Multiaddr // name -> PeerAddr. Static peers used also for bootstrap
 		// MaxDynamicPeers if MaxDynamicPeers <= len(PreConfiguredPeers), autopeering is disabled, otherwise up to
 		// MaxDynamicPeers - len(PreConfiguredPeers) will be auto-peered
-		MaxDynamicPeers        int
-		AcceptPullSyncRequests bool
+		MaxDynamicPeers int
+		// Node info
+		IgnoreAllPullRequests                 bool
+		AcceptPullRequestsFromStaticPeersOnly bool
 	}
 
 	Peers struct {
@@ -65,18 +68,25 @@ type (
 		rendezvousString     string
 		// queued message sender to peers
 		outQueue *queue.Queue[outMsgData]
+		// metrics
+		inMsgCounter    prometheus.Counter
+		outMsgCounter   prometheus.Counter
+		pullRequestsIn  prometheus.Counter
+		pullRequestsOut prometheus.Counter
 	}
 
 	Peer struct {
-		id                      peer.ID
-		name                    string
-		isStatic                bool // statically pre-configured (manual peering)
-		hasTxStore              bool
-		acceptsPullSyncRequests bool
-		whenAdded               time.Time
-		lastMsgReceived         time.Time
-		lastMsgReceivedFrom     string
-		lastLoggedConnected     bool // toggle
+		id                                     peer.ID
+		name                                   string
+		isStatic                               bool // statically pre-configured (manual peering)
+		ignoresAllPullRequests                 bool // from hb info
+		acceptsPullRequestsFromStaticPeersOnly bool // from hb info
+		whenAdded                              time.Time
+		lastMsgReceived                        time.Time
+		lastMsgReceivedFrom                    string
+		lastLoggedConnected                    bool // toggle
+		//
+		errorCounter int
 		// ring buffer with last clock differences
 		clockDifferences    [10]time.Duration
 		clockDifferencesIdx int
@@ -137,6 +147,7 @@ func NewPeersDummy() *Peers {
 		onReceivePullTx: func(_ peer.ID, _ []ledger.TransactionID) {},
 	}
 	ret.outQueue = queue.New[outMsgData](ret.sendMsgOut)
+	//ret.registerMetrics()
 	return ret
 }
 
@@ -204,6 +215,7 @@ func New(env environment, cfg *Config) (*Peers, error) {
 	} else {
 		env.Log().Infof("[peering] autopeering is disabled")
 	}
+	ret.registerMetrics()
 
 	env.RepeatInBackground(Name+"_blacklist_cleanup", time.Second, func() bool {
 		ret.cleanBlacklist()
@@ -214,7 +226,7 @@ func New(env environment, cfg *Config) (*Peers, error) {
 	return ret, nil
 }
 
-func readPeeringConfig(env environment) (*Config, error) {
+func readPeeringConfig() (*Config, error) {
 	cfg := &Config{
 		PreConfiguredPeers: make(map[string]multiaddr.Multiaddr),
 	}
@@ -250,9 +262,6 @@ func readPeeringConfig(env environment) (*Config, error) {
 		return k1 < k2
 	})
 
-	//if !env.IsBootstrapMode() && len(peerNames) == 0 {
-	//	return nil, fmt.Errorf("at least one peer must be pre-configured for bootstrap")
-	//}
 	for _, peerName := range peerNames {
 		addrString := viper.GetString("peering.peers." + peerName)
 		if cfg.PreConfiguredPeers[peerName], err = multiaddr.NewMultiaddr(addrString); err != nil {
@@ -264,14 +273,14 @@ func readPeeringConfig(env environment) (*Config, error) {
 	if cfg.MaxDynamicPeers < 0 {
 		cfg.MaxDynamicPeers = 0
 	}
-	//if env.IsBootstrapMode() && cfg.MaxDynamicPeers < numMaxDynamicPeersForBootNodeAtLeast {
-	//	cfg.MaxDynamicPeers = numMaxDynamicPeersForBootNodeAtLeast
-	//}
+
+	cfg.IgnoreAllPullRequests = viper.GetBool("peering.ignore_pull_requests")
+	cfg.AcceptPullRequestsFromStaticPeersOnly = viper.GetBool("peering.pull_requests_from_static_peers_only")
 	return cfg, nil
 }
 
 func NewPeersFromConfig(env environment) (*Peers, error) {
-	cfg, err := readPeeringConfig(env)
+	cfg, err := readPeeringConfig()
 	if err != nil {
 		return nil, err
 	}
@@ -370,10 +379,16 @@ func (ps *Peers) dropPeer(id peer.ID, reason string) {
 	})
 }
 
+func (ps *Peers) incErrorCounter(id peer.ID) {
+	ps.withPeer(id, func(p *Peer) {
+		p.errorCounter++
+	})
+}
+
 func (ps *Peers) _dropPeer(p *Peer, reason string) {
 	why := ""
 	if len(reason) > 0 {
-		why = fmt.Sprintf(". Reason: '%s'", reason)
+		why = fmt.Sprintf(". Drop reason: '%s'", reason)
 	}
 
 	if p.isStatic {
@@ -509,15 +524,6 @@ func (p *Peer) staticOrDynamic() string {
 	return "dynamic"
 }
 
-func (ps *Peers) HasTxStore(id peer.ID) bool {
-	ps.mutex.RLock()
-	defer ps.mutex.RUnlock()
-
-	p := ps._getPeer(id)
-	util.Assertf(p != nil, "HasTxStore: peer %s not found", func() string { return ShortPeerIDString(id) })
-	return p.hasTxStore
-}
-
 func (p *Peer) _evidenceActivity(src string) {
 	p.lastMsgReceived = time.Now()
 	p.lastMsgReceivedFrom = src
@@ -537,4 +543,24 @@ func (p *Peer) avgClockDifference() time.Duration {
 		ret += d
 	}
 	return ret / time.Duration(len(p.clockDifferences))
+}
+
+func (ps *Peers) registerMetrics() {
+	ps.inMsgCounter = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "proxima_peering_inMsgCounter",
+		Help: "counts number of incoming messages",
+	})
+	ps.outMsgCounter = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "proxima_peering_outMsgCounter",
+		Help: "counts number of messages coming out",
+	})
+	ps.pullRequestsIn = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "proxima_peering_pullRequestsIn",
+		Help: "counts number of received pull request messages",
+	})
+	ps.pullRequestsOut = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "proxima_peering_pullRequestsOut",
+		Help: "counts number of sent pull request messages",
+	})
+	ps.MetricsRegistry().MustRegister(ps.inMsgCounter, ps.outMsgCounter, ps.pullRequestsIn, ps.pullRequestsOut)
 }

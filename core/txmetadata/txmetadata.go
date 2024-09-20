@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"time"
 
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util"
@@ -16,13 +17,16 @@ import (
 // When present, metadata is used for consistency checking and workflow optimization
 type (
 	TransactionMetadata struct {
-		StateRoot               common.VCommitment // not nil may be for branch transactions
-		LedgerCoverage          *uint64            // not nil may be for sequencer transactions
-		SlotInflation           *uint64            // not nil may be for sequencer transactions
-		Supply                  *uint64            // not nil may be for branch transactions
-		SourceTypeNonPersistent SourceType         // non-persistent, used for internal workflow
-		IsResponseToPull        bool               // only used as a persistent flag in tx gossip
-		PortionInfo             *PortionInfo       // persistent. May be not nil when transaction is part of the portion
+		// persistent
+		StateRoot      common.VCommitment // not nil may be for branch transactions
+		LedgerCoverage *uint64            // not nil may be for sequencer transactions
+		SlotInflation  *uint64            // not nil may be for sequencer transactions
+		Supply         *uint64            // not nil may be for branch transactions
+		// Deprecated: TODO remove
+		PortionInfo *PortionInfo // persistent. May be not nil when transaction is part of the portion
+		// non-persistent
+		SourceTypeNonPersistent SourceType // non-persistent, used for internal workflow
+		TxBytesReceived         *time.Time // not-persistent, used for metrics
 	}
 
 	PortionInfo struct {
@@ -38,6 +42,7 @@ const (
 	SourceTypePeer
 	SourceTypeAPI
 	SourceTypeTxStore
+	SourceTypePulled
 )
 
 var allSourceTypes = map[SourceType]string{
@@ -46,11 +51,12 @@ var allSourceTypes = map[SourceType]string{
 	SourceTypePeer:      "peer",
 	SourceTypeAPI:       "API",
 	SourceTypeTxStore:   "txStore",
+	SourceTypePulled:    "pulled",
 }
 
 // persistent flags for (de)serialization
 const (
-	flagIsResponseToPull      = 0b00000001
+	flagReserved              = 0b00000001 // for compatibility
 	flagRootProvided          = 0b00000010
 	flagCoverageDeltaProvided = 0b00000100
 	flagSlotInflationProvided = 0b00001000
@@ -65,9 +71,6 @@ func (s SourceType) String() string {
 }
 
 func (m *TransactionMetadata) flags() (ret byte) {
-	if m.IsResponseToPull {
-		ret |= flagIsResponseToPull
-	}
 	if !util.IsNil(m.StateRoot) {
 		ret |= flagRootProvided
 	}
@@ -160,7 +163,6 @@ func TransactionMetadataFromBytes(data []byte) (*TransactionMetadata, error) {
 	if err != nil {
 		return nil, fmt.Errorf("TransactionMetadataFromBytes: %w", err)
 	}
-	ret.IsResponseToPull = flags&flagIsResponseToPull != 0
 	if flags&flagRootProvided != 0 {
 		ret.StateRoot = ledger.CommitmentModel.NewVectorCommitment()
 		if err = ret.StateRoot.Read(rdr); err != nil {

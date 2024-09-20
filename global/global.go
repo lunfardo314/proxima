@@ -44,7 +44,23 @@ type Global struct {
 	// counters
 	countersMutex sync.RWMutex
 	counters      map[string]int
+	// metrics
+	numAttachersMetrics        prometheus.Gauge
+	numWaitingMetrics          prometheus.Gauge
+	attachmentTimeMilliseconds prometheus.Gauge
+	attachmentsCounter         prometheus.Counter
+	// transaction pull parameters
+	txPullRepeatPeriod    time.Duration
+	txPullMaxAttempts     int
+	txPullFromRandomPeers int
 }
+
+// PullTimeout maximum time allowed for the virtual txid become transaction (full vertex)
+const (
+	PullRepeatPeriodDefault       = 2 * time.Second
+	PullMaxAttemptsDefault        = 60
+	PullFromNumRandomPeersDefault = 2
+)
 
 const TraceTag = "global"
 
@@ -95,6 +111,16 @@ func NewFromConfig() *Global {
 	}
 	ret.logVerbosity = viper.GetInt("logger.verbosity")
 	ret.SugaredLogger.Infof("logger verbosity level is %d", ret.logVerbosity)
+
+	if v := viper.GetInt("transaction_pull.repeat_after_sec"); v > 0 {
+		ret.txPullRepeatPeriod = time.Duration(v) * time.Second
+	}
+	if v := viper.GetInt("transaction_pull.max_attempts"); v > 0 {
+		ret.txPullMaxAttempts = v
+	}
+	if v := viper.GetInt("transaction_pull.from_random_peers"); v > 0 {
+		ret.txPullFromRandomPeers = v
+	}
 	return ret
 }
 
@@ -105,19 +131,23 @@ func NewDefault() *Global {
 func _new(logLevel zapcore.Level, outputs []string, bootstrap bool) *Global {
 	ctx, cancelFun := context.WithCancel(context.Background())
 	ret := &Global{
-		ctx:           ctx,
-		logVerbosity:  1,
-		metrics:       prometheus.NewRegistry(),
-		stopFun:       cancelFun,
-		SugaredLogger: NewLogger("", logLevel, outputs, ""),
-		traceTags:     set.New[string](),
-		stopOnce:      &sync.Once{},
-		logStopOnce:   &sync.Once{},
-		components:    set.New[string](),
-		txTraceIDs:    make(map[ledger.TransactionID]time.Time),
-		bootstrapMode: bootstrap,
-		counters:      make(map[string]int),
+		ctx:                   ctx,
+		logVerbosity:          1,
+		metrics:               prometheus.NewRegistry(),
+		stopFun:               cancelFun,
+		SugaredLogger:         NewLogger("", logLevel, outputs, ""),
+		traceTags:             set.New[string](),
+		stopOnce:              &sync.Once{},
+		logStopOnce:           &sync.Once{},
+		components:            set.New[string](),
+		txTraceIDs:            make(map[ledger.TransactionID]time.Time),
+		bootstrapMode:         bootstrap,
+		counters:              make(map[string]int),
+		txPullRepeatPeriod:    PullRepeatPeriodDefault,
+		txPullMaxAttempts:     PullMaxAttemptsDefault,
+		txPullFromRandomPeers: PullFromNumRandomPeersDefault,
 	}
+	ret.registerMetrics()
 	return ret
 }
 
@@ -410,6 +440,12 @@ func (l *Global) IncCounter(name string) {
 	l.countersMutex.Lock()
 	defer l.countersMutex.Unlock()
 
+	switch name {
+	case "att":
+		l.numAttachersMetrics.Inc()
+	case "wait":
+		l.numWaitingMetrics.Inc()
+	}
 	l.counters[name] = l.counters[name] + 1
 }
 
@@ -417,6 +453,12 @@ func (l *Global) DecCounter(name string) {
 	l.countersMutex.Lock()
 	defer l.countersMutex.Unlock()
 
+	switch name {
+	case "att":
+		l.numAttachersMetrics.Dec()
+	case "wait":
+		l.numWaitingMetrics.Dec()
+	}
 	l.counters[name] = l.counters[name] - 1
 }
 
@@ -437,4 +479,36 @@ func (l *Global) CounterLines(prefix ...string) *lines.Lines {
 		ret.Add("%s: %d", k, l.counters[k])
 	}
 	return ret
+}
+
+func (l *Global) registerMetrics() {
+	l.numAttachersMetrics = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "proxima_glb_numAttacher",
+		Help: "number of attachers running",
+	})
+	l.numWaitingMetrics = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "proxima_glb_numWaiting",
+		Help: "number of transaction waiting the clock",
+	})
+	l.attachmentTimeMilliseconds = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "proxima_glb_attachmentDurationMs",
+		Help: "attachment time in milliseconds",
+	})
+	l.attachmentsCounter = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "proxima_glb_attachments_counter",
+		Help: "total number of attachments",
+	})
+
+	l.MetricsRegistry().MustRegister(l.numAttachersMetrics, l.numWaitingMetrics, l.attachmentsCounter, l.attachmentTimeMilliseconds)
+}
+
+func (l *Global) AttachmentFinished(started ...time.Time) {
+	l.attachmentsCounter.Inc()
+	if len(started) > 0 {
+		l.attachmentTimeMilliseconds.Set(float64(time.Since(started[0]) / time.Millisecond))
+	}
+}
+
+func (l *Global) TxPullParameters() (time.Duration, int, int) {
+	return l.txPullRepeatPeriod, l.txPullMaxAttempts, l.txPullFromRandomPeers
 }

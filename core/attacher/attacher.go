@@ -7,7 +7,6 @@ import (
 
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/ledger"
-	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
@@ -86,22 +85,27 @@ func (a *attacher) isRootedOutput(wOut vertex.WrappedOutput) bool {
 
 // solidifyBaselineVertex directs attachment process down the MemDAG to reach the deterministically known baseline state
 // for a sequencer milestone. Existence of it is guaranteed by the ledger constraints
-func (a *attacher) solidifyBaselineVertex(v *vertex.Vertex) (ok bool) {
+// Success of the baseline solidification is when function returns true and v.BaselineBranch != nil
+func (a *attacher) solidifyBaselineVertex(v *vertex.Vertex, vidUnwrapped *vertex.WrappedTx) (ok bool) {
 	a.Assertf(a.baseline == nil, "a.baseline == nil")
 	if v.Tx.IsBranchTransaction() {
-		return a.solidifyStemOfTheVertex(v)
+		return a.solidifyStemOfTheVertex(v, vidUnwrapped)
 	}
-	return a.solidifySequencerBaseline(v)
+	return a.solidifySequencerBaseline(v, vidUnwrapped)
 }
 
-func (a *attacher) solidifyStemOfTheVertex(v *vertex.Vertex) (ok bool) {
+func (a *attacher) solidifyStemOfTheVertex(v *vertex.Vertex, vidUnwrapped *vertex.WrappedTx) (ok bool) {
 	a.Assertf(v.BaselineBranch == nil, "v.BaselineBranchTxID == nil")
 
 	stemInputIdx := v.StemInputIndex()
 	stemInputOid := v.Tx.MustInputAt(stemInputIdx)
 	stemTxID := stemInputOid.TransactionID()
-	stemVid := AttachTxID(stemTxID, a, OptionInvokedBy(a.name))
+	stemVid := AttachTxID(stemTxID, a,
+		WithInvokedBy(a.name),
+		WithAttachmentDepth(vidUnwrapped.GetAttachmentDepthNoLock()+1),
+	)
 
+	// here it is referenced from the attacher
 	if !a.markVertexUndefined(stemVid) {
 		// failed to reference (pruned), but it is ok (rare event)
 		return true
@@ -109,8 +113,7 @@ func (a *attacher) solidifyStemOfTheVertex(v *vertex.Vertex) (ok bool) {
 	a.Assertf(stemVid.IsBranchTransaction(), "stemVid.IsBranchTransaction()")
 	switch stemVid.GetTxStatus() {
 	case vertex.Good:
-		a.referenced.reference(stemVid)
-		stemVid.Reference() // baseline will be unreferenced with the whole vertex
+		// it is 'good' and referenced branch -> make it baseline
 		v.BaselineBranch = stemVid
 		return true
 
@@ -128,53 +131,68 @@ func (a *attacher) solidifyStemOfTheVertex(v *vertex.Vertex) (ok bool) {
 
 const TraceTagSolidifySequencerBaseline = "seqBase"
 
-func (a *attacher) solidifySequencerBaseline(v *vertex.Vertex) (ok bool) {
+func (a *attacher) solidifySequencerBaseline(v *vertex.Vertex, vidUnwrapped *vertex.WrappedTx) (ok bool) {
 	a.Tracef(TraceTagSolidifySequencerBaseline, "IN for %s", v.Tx.IDShortString)
 	defer a.Tracef(TraceTagSolidifySequencerBaseline, "OUT for %s", v.Tx.IDShortString)
 
 	// regular sequencer tx. Go to the direction of the baseline branch
 	predOid, _ := v.Tx.SequencerChainPredecessor()
 	a.Assertf(predOid != nil, "inconsistency: sequencer milestone cannot be a chain origin")
-	var inputTx *vertex.WrappedTx
+
+	var baselineDirection *vertex.WrappedTx
 
 	// follow the endorsement if it is cross-slot or predecessor is not sequencer tx
 	followTheEndorsement := predOid.Slot() != v.Tx.Slot() || !predOid.IsSequencerTransaction()
 	if followTheEndorsement {
 		// predecessor is on the earlier slot -> follow the first endorsement (guaranteed by the ledger constraint layer)
 		a.Assertf(v.Tx.NumEndorsements() > 0, "v.Tx.NumEndorsements()>0")
-		inputTx = AttachTxID(v.Tx.EndorsementAt(0), a, OptionInvokedBy(a.name))
-		a.Tracef(TraceTagSolidifySequencerBaseline, "follow the endorsement %s", inputTx.IDShortString)
+		baselineDirection = AttachTxID(v.Tx.EndorsementAt(0), a,
+			WithInvokedBy(a.name),
+			WithAttachmentDepth(vidUnwrapped.GetAttachmentDepthNoLock()+1),
+		)
+		a.Tracef(TraceTagSolidifySequencerBaseline, "follow the endorsement %s", baselineDirection.IDShortString)
 	} else {
-		inputTx = AttachTxID(predOid.TransactionID(), a, OptionInvokedBy(a.name))
-		a.Tracef(TraceTagSolidifySequencerBaseline, "follow the predecessor %s", inputTx.IDShortString)
+		baselineDirection = AttachTxID(predOid.TransactionID(), a,
+			WithInvokedBy(a.name),
+			WithAttachmentDepth(vidUnwrapped.GetAttachmentDepthNoLock()+1),
+		)
+		a.Tracef(TraceTagSolidifySequencerBaseline, "follow the predecessor %s", baselineDirection.IDShortString)
 	}
-	if !a.markVertexUndefined(inputTx) {
-		// wasn't able to reference but it is ok
+	// here we reference baseline direction
+	if !a.markVertexUndefined(baselineDirection) {
+		// wasn't able to reference baseline direction (pruned) but it is ok
 		return true
 	}
-	switch inputTx.GetTxStatus() {
-	case vertex.Good:
-		a.Tracef(TraceTagSolidifySequencerBaseline, "inputTx %s is GOOD", inputTx.IDShortString)
 
-		v.BaselineBranch = inputTx.BaselineBranch()
-		util.Assertf(v.BaselineBranch != nil, "v.BaselineBranch != nil")
-		util.Assertf(v.BaselineBranch.IsBranchTransaction(), "v.BaselineBranch.IsBranchTransaction()")
-		a.referenced.reference(v.BaselineBranch)
-		v.BaselineBranch.Reference() // will be unreferenced with the whole vertex
+	switch baselineDirection.GetTxStatus() {
+	case vertex.Good:
+		a.Tracef(TraceTagSolidifySequencerBaseline, "baselineDirection %s is GOOD", baselineDirection.IDShortString)
+
+		baseline := baselineDirection.BaselineBranch()
+		// 'good' and referenced baseline direction must have not-nil baseline
+		a.Assertf(baseline != nil, "baseline != nil\n%s", func() string { return baselineDirection.Lines("    ").String() })
+		a.Assertf(baseline.IsBranchTransaction(), "baseline.IsBranchTransaction()")
+
+		// referencing the baseline from the attacher
+		if !a.referenced.reference(baseline) {
+			// means it is pruned, it is fine, will come later. v.BaselineBranch remains nil
+			return true
+		}
+		v.BaselineBranch = baseline
 		return true
 
 	case vertex.Bad:
-		a.Tracef(TraceTagSolidifySequencerBaseline, "inputTx %s is BAD", inputTx.IDShortString)
+		a.Tracef(TraceTagSolidifySequencerBaseline, "baselineDirection %s is BAD", baselineDirection.IDShortString)
 
-		err := inputTx.GetError()
+		err := baselineDirection.GetError()
 		a.Assertf(err != nil, "err!=nil")
 		a.setError(err)
 		return false
 
 	case vertex.Undefined:
-		a.Tracef(TraceTagSolidifySequencerBaseline, "inputTx %s is UNDEF -> pullIfNeeded", inputTx.IDShortString)
+		a.Tracef(TraceTagSolidifySequencerBaseline, "baselineDirection %s is UNDEF -> pullIfNeeded", baselineDirection.IDShortString)
 
-		return a.pullIfNeeded(inputTx)
+		return a.pullIfNeeded(baselineDirection)
 	}
 	panic("wrong vertex state")
 }
@@ -236,29 +254,29 @@ func (a *attacher) attachVertexNonBranch(vid *vertex.WrappedTx) (ok, defined boo
 // It results in all vertices are vertex.Good
 // Otherwise, repetition reaches conflict (double spend) or vertex.Bad vertex and exits
 // Returns OK (= not bad)
-func (a *attacher) attachVertexUnwrapped(v *vertex.Vertex, vid *vertex.WrappedTx) (ok bool) {
+func (a *attacher) attachVertexUnwrapped(v *vertex.Vertex, vidUnwrapped *vertex.WrappedTx) (ok bool) {
 	a.Assertf(!v.Tx.IsSequencerMilestone() || a.baseline != nil, "!v.Tx.IsSequencerMilestone() || a.baseline != nil in %s", v.Tx.IDShortString)
 
-	if vid.GetTxStatusNoLock() == vertex.Bad {
-		a.setError(vid.GetErrorNoLock())
+	if vidUnwrapped.GetTxStatusNoLock() == vertex.Bad {
+		a.setError(vidUnwrapped.GetErrorNoLock())
 		a.Assertf(a.err != nil, "a.err != nil")
 		return false
 	}
 
-	a.Tracef(TraceTagAttachVertex, " %s IN: %s", a.name, vid.IDShortString)
+	a.Tracef(TraceTagAttachVertex, " %s IN: %s", a.name, vidUnwrapped.IDShortString)
 	a.Assertf(!util.IsNil(a.baselineStateReader), "!util.IsNil(a.baselineStateReader)")
 
-	if !a.flags(vid).FlagsUp(flagAttachedVertexEndorsementsSolid) {
+	if !a.flags(vidUnwrapped).FlagsUp(flagAttachedVertexEndorsementsSolid) {
 		a.Tracef(TraceTagAttachVertex, "endorsements not all solidified in %s -> attachEndorsements", v.Tx.IDShortString)
 		// depth-first along endorsements
-		if !a.attachEndorsements(v, vid) { // <<< recursive
+		if !a.attachEndorsements(v, vidUnwrapped) { // <<< recursive
 			// not ok -> leave attacher
 			a.Assertf(a.err != nil, "a.err != nil")
 			return false
 		}
 	}
 	// check consistency
-	if a.flags(vid).FlagsUp(flagAttachedVertexEndorsementsSolid) {
+	if a.flags(vidUnwrapped).FlagsUp(flagAttachedVertexEndorsementsSolid) {
 		err := a.allEndorsementsDefined(v)
 		a.Assertf(err == nil, "%w:\nvertices: %s", err, func() string { return a.linesVertices("       ").String() })
 
@@ -267,14 +285,14 @@ func (a *attacher) attachVertexUnwrapped(v *vertex.Vertex, vid *vertex.WrappedTx
 		a.Tracef(TraceTagAttachVertex, "endorsements NOT marked solid in %s", v.Tx.IDShortString)
 	}
 
-	inputsOk := a.attachInputsOfTheVertex(v, vid) // deep recursion
+	inputsOk := a.attachInputsOfTheVertex(v, vidUnwrapped) // deep recursion
 	if !inputsOk {
 		a.Assertf(a.err != nil, "a.err!=nil")
 		return false
 	}
 
-	if !v.Tx.IsSequencerMilestone() && a.flags(vid).FlagsUp(flagAttachedVertexInputsSolid) {
-		if !a.finalTouchNonSequencer(v, vid) {
+	if !v.Tx.IsSequencerMilestone() && a.flags(vidUnwrapped).FlagsUp(flagAttachedVertexInputsSolid) {
+		if !a.finalTouchNonSequencer(v, vidUnwrapped) {
 			a.Assertf(a.err != nil, "a.err!=nil")
 			return false
 		}
@@ -340,30 +358,33 @@ func (a *attacher) attachEndorsements(v *vertex.Vertex, vid *vertex.WrappedTx) b
 	return true
 }
 
-func (a *attacher) attachEndorsement(v *vertex.Vertex, vid *vertex.WrappedTx, index byte) (ok, defined bool) {
+func (a *attacher) attachEndorsement(v *vertex.Vertex, vidUnwrapped *vertex.WrappedTx, index byte) (ok, defined bool) {
 	vidEndorsed := v.Endorsements[index]
 
 	if vidEndorsed == nil {
-		vidEndorsed = AttachTxID(v.Tx.EndorsementAt(index), a, OptionInvokedBy(a.name))
+		vidEndorsed = AttachTxID(v.Tx.EndorsementAt(index), a,
+			WithInvokedBy(a.name),
+			WithAttachmentDepth(vidUnwrapped.GetAttachmentDepthNoLock()+1),
+		)
 		if !v.ReferenceEndorsement(index, vidEndorsed) {
 			// if failed to reference, remains nil
-			a.Tracef(TraceTagAttachEndorsements, "attachEndorsement: attaching endorsement %s of %s: failed to reference", vidEndorsed.IDShortString, vid.IDShortString)
+			a.Tracef(TraceTagAttachEndorsements, "attachEndorsement: attaching endorsement %s of %s: failed to reference", vidEndorsed.IDShortString, vidUnwrapped.IDShortString)
 			return true, false
 		}
 	}
 	a.Assertf(vidEndorsed != nil, "vidEndorsed != nil")
-	a.Tracef(TraceTagAttachEndorsements, "attachEndorsement: attaching endorsement %s of %s", vidEndorsed.IDShortString, vid.IDShortString)
+	a.Tracef(TraceTagAttachEndorsements, "attachEndorsement: attaching endorsement %s of %s", vidEndorsed.IDShortString, vidUnwrapped.IDShortString)
 
 	if a.isKnownDefined(vidEndorsed) {
 		a.Tracef(TraceTagAttachEndorsements, "attachEndorsement: attaching endorsement %s of %s: is already known 'defined'",
-			vidEndorsed.IDShortString, vid.IDShortString)
+			vidEndorsed.IDShortString, vidUnwrapped.IDShortString)
 		return true, true
 	}
 
 	if vidEndorsed.GetTxStatus() == vertex.Bad {
 		a.setError(vidEndorsed.GetError())
 		a.Tracef(TraceTagAttachEndorsements, "attachEndorsement: attaching endorsement %s of %s: its is BAD",
-			vidEndorsed.IDShortString, vid.IDShortString)
+			vidEndorsed.IDShortString, vidUnwrapped.IDShortString)
 		return false, false
 	}
 
@@ -384,7 +405,7 @@ func (a *attacher) attachEndorsement(v *vertex.Vertex, vid *vertex.WrappedTx, in
 	baselineBranch := vidEndorsed.BaselineBranch()
 	if baselineBranch == nil {
 		a.Tracef(TraceTagAttachEndorsements, "attachEndorsement: attaching endorsement %s of %s: baseline of the endorsement is nil",
-			vidEndorsed.IDShortString, vid.IDShortString)
+			vidEndorsed.IDShortString, vidUnwrapped.IDShortString)
 		return true, false
 	}
 
@@ -407,7 +428,7 @@ func (a *attacher) attachEndorsement(v *vertex.Vertex, vid *vertex.WrappedTx, in
 	ok, defined = a.attachVertexNonBranch(vidEndorsed)
 	if !ok {
 		a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s): attachVertexNonBranch returned: endorsement %s -> %s NOT OK",
-			a.name, vid.IDShortString, vidEndorsed.IDShortString)
+			a.name, vidUnwrapped.IDShortString, vidEndorsed.IDShortString)
 		a.Assertf(a.err != nil, "a.err!=nil")
 		return false, false
 	}
@@ -433,11 +454,11 @@ func (a *attacher) checkRootedStatus(vidDep *vertex.WrappedTx) (defined bool) {
 	return true
 }
 
-func (a *attacher) attachInputsOfTheVertex(v *vertex.Vertex, vid *vertex.WrappedTx) (ok bool) {
+func (a *attacher) attachInputsOfTheVertex(v *vertex.Vertex, vidUnwrapped *vertex.WrappedTx) (ok bool) {
 	numUndefined := v.Tx.NumInputs()
 	var success bool
 	for i := range v.Inputs {
-		ok, success = a.attachInput(v, byte(i), vid)
+		ok, success = a.attachInput(v, byte(i), vidUnwrapped)
 		if !ok {
 			a.Assertf(a.err != nil, "a.err != nil")
 			return false
@@ -447,23 +468,13 @@ func (a *attacher) attachInputsOfTheVertex(v *vertex.Vertex, vid *vertex.Wrapped
 		}
 	}
 	if numUndefined == 0 {
-		a.setFlagsUp(vid, flagAttachedVertexInputsSolid)
+		a.setFlagsUp(vidUnwrapped, flagAttachedVertexInputsSolid)
 	}
 	return true
 }
 
-func _lazyStringSelectedInputs(tx *transaction.Transaction, indices []byte) func() string {
-	return func() string {
-		ret := lines.New("      ")
-		for _, i := range indices {
-			ret.Add("#%d %s", i, util.Ref(tx.MustInputAt(i)).StringShort())
-		}
-		return ret.String()
-	}
-}
-
-func (a *attacher) attachInput(v *vertex.Vertex, inputIdx byte, vid *vertex.WrappedTx) (ok, defined bool) {
-	vidInputTx, ok := a.attachInputID(v, vid, inputIdx)
+func (a *attacher) attachInput(v *vertex.Vertex, inputIdx byte, vidUnwrapped *vertex.WrappedTx) (ok, defined bool) {
+	vidInputTx, ok := a.attachInputID(v, vidUnwrapped, inputIdx)
 	if !ok {
 		a.Tracef(TraceTagAttachVertex, "bad input %d", inputIdx)
 		return false, false
@@ -606,12 +617,15 @@ func (a *attacher) branchesCompatible(txid1, txid2 *ledger.TransactionID) bool {
 }
 
 // attachInputID links input vertex with the consumer, detects conflicts in the scope of the attacher
-func (a *attacher) attachInputID(consumerVertex *vertex.Vertex, consumerTx *vertex.WrappedTx, inputIdx byte) (vidInputTx *vertex.WrappedTx, ok bool) {
+func (a *attacher) attachInputID(consumerVertex *vertex.Vertex, consumerTxUnwrapped *vertex.WrappedTx, inputIdx byte) (vidInputTx *vertex.WrappedTx, ok bool) {
 	inputOid := consumerVertex.Tx.MustInputAt(inputIdx)
 
 	vidInputTx = consumerVertex.Inputs[inputIdx]
 	if vidInputTx == nil {
-		vidInputTx = AttachTxID(inputOid.TransactionID(), a, OptionInvokedBy(a.name))
+		vidInputTx = AttachTxID(inputOid.TransactionID(), a,
+			WithInvokedBy(a.name),
+			WithAttachmentDepth(consumerTxUnwrapped.GetAttachmentDepthNoLock()+1),
+		)
 	}
 	a.Assertf(vidInputTx != nil, "vidInputTx != nil")
 
@@ -634,9 +648,9 @@ func (a *attacher) attachInputID(consumerVertex *vertex.Vertex, consumerTx *vert
 	// not pulling, no need for the transaction to check double-spends of its outputs
 
 	// conflict detection. We check if input is not consumed by some known transaction in the attacher scope
-	if conflict := vidInputTx.AttachConsumer(inputOid.Index(), consumerTx, a.checkConflictsFunc(consumerVertex, consumerTx)); conflict != nil {
+	if conflict := vidInputTx.AttachConsumer(inputOid.Index(), consumerTxUnwrapped, a.checkConflictsFunc(consumerVertex, consumerTxUnwrapped)); conflict != nil {
 		err := fmt.Errorf("input %s of consumer %s conflicts with another consumer %s in the baseline state %s (double spend)",
-			inputOid.StringShort(), consumerTx.IDShortString(), conflict.IDShortString(), a.baseline.IDShortString())
+			inputOid.StringShort(), consumerTxUnwrapped.IDShortString(), conflict.IDShortString(), a.baseline.IDShortString())
 		a.setError(err)
 		return nil, false
 	}
@@ -668,11 +682,13 @@ func (a *attacher) isKnownConsumed(wOut vertex.WrappedOutput) (isConsumed bool) 
 	return
 }
 
-// setBaseline sets baseline, fetches its baseline accumulatedCoverage and initializes attacher's accumulatedCoverage according to the currentTS
+// setBaseline sets baseline, references it from the attacher, fetches its baseline accumulatedCoverage
+// and initializes attacher's accumulatedCoverage according to the currentTS
 // For sequencer transaction baseline will be on the same slot, for branch transactions it can be further in the past
 func (a *attacher) setBaseline(baselineVID *vertex.WrappedTx, currentTS ledger.Time) bool {
 	a.Assertf(baselineVID.IsBranchTransaction(), "setBaseline: baselineVID.IsBranchTransaction()")
 
+	// it may already be referenced but this ensures it is done only once
 	if !a.referenced.reference(baselineVID) {
 		return false
 	}

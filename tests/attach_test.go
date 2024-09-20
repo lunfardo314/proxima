@@ -214,7 +214,7 @@ func TestBasic(t *testing.T) {
 		require.NoError(t, err)
 
 		waitCh := make(chan struct{})
-		vidDistrib, err := attacher.AttachTransactionFromBytes(txBytes, wrk, attacher.AttachTxOptionWithAttachmentCallback(func(vid *vertex.WrappedTx, err error) {
+		vidDistrib, err := attacher.AttachTransactionFromBytes(txBytes, wrk, attacher.WithAttachmentCallback(func(vid *vertex.WrappedTx, err error) {
 			require.EqualValues(t, vertex.Good, vid.GetTxStatus())
 			_, err = txBytesStore.PersistTxBytesWithMetadata(txBytes, nil)
 			util.AssertNoError(err)
@@ -325,7 +325,7 @@ func TestConflicts1Attacher(t *testing.T) {
 		var wg sync.WaitGroup
 
 		wg.Add(1)
-		vid, err := attacher.AttachTransactionFromBytes(txBytes, testData.wrk, attacher.AttachTxOptionWithAttachmentCallback(func(_ *vertex.WrappedTx, _ error) {
+		vid, err := attacher.AttachTransactionFromBytes(txBytes, testData.wrk, attacher.WithAttachmentCallback(func(_ *vertex.WrappedTx, _ error) {
 			wg.Done()
 		}))
 		require.NoError(t, err)
@@ -389,7 +389,7 @@ func TestConflicts1Attacher(t *testing.T) {
 
 		var wg sync.WaitGroup
 		wg.Add(1)
-		vid, err := attacher.AttachTransactionFromBytes(txBytes, testData.wrk, attacher.AttachTxOptionWithAttachmentCallback(func(_ *vertex.WrappedTx, _ error) {
+		vid, err := attacher.AttachTransactionFromBytes(txBytes, testData.wrk, attacher.WithAttachmentCallback(func(_ *vertex.WrappedTx, _ error) {
 			wg.Done()
 		}))
 		wg.Wait()
@@ -442,7 +442,7 @@ func TestConflicts1Attacher(t *testing.T) {
 		var wg sync.WaitGroup
 
 		wg.Add(1)
-		vid, err := attacher.AttachTransactionFromBytes(txBytes, testData.wrk, attacher.AttachTxOptionWithAttachmentCallback(func(_ *vertex.WrappedTx, _ error) {
+		vid, err := attacher.AttachTransactionFromBytes(txBytes, testData.wrk, attacher.WithAttachmentCallback(func(_ *vertex.WrappedTx, _ error) {
 			wg.Done()
 		}))
 		require.NoError(t, err)
@@ -500,7 +500,7 @@ func TestConflicts1Attacher(t *testing.T) {
 		//testData.env.StartTracingTags(attacher.TraceTagPull)
 
 		wg.Add(1)
-		vid, err := attacher.AttachTransactionFromBytes(txBytes, testData.wrk, attacher.AttachTxOptionWithAttachmentCallback(func(_ *vertex.WrappedTx, _ error) {
+		vid, err := attacher.AttachTransactionFromBytes(txBytes, testData.wrk, attacher.WithAttachmentCallback(func(_ *vertex.WrappedTx, _ error) {
 			wg.Done()
 		}))
 		require.NoError(t, err)
@@ -533,7 +533,7 @@ func TestConflictsNAttachersSeqStartTx(t *testing.T) {
 	submitted := make([]*vertex.WrappedTx, nChains)
 	wg.Add(len(testData.seqChain))
 	for i, seqChain := range testData.seqChain {
-		submitted[i], err = attacher.AttachTransactionFromBytes(seqChain[0].Bytes(), testData.wrk, attacher.AttachTxOptionWithAttachmentCallback(func(_ *vertex.WrappedTx, _ error) {
+		submitted[i], err = attacher.AttachTransactionFromBytes(seqChain[0].Bytes(), testData.wrk, attacher.WithAttachmentCallback(func(_ *vertex.WrappedTx, _ error) {
 			wg.Done()
 		}))
 		require.NoError(t, err)
@@ -572,7 +572,7 @@ func TestConflictsNAttachersSeqStartTxFee(t *testing.T) {
 	submittedSeq := make([]*vertex.WrappedTx, nChains)
 	wg.Add(len(testData.seqChain))
 	for i, seqChain := range testData.seqChain {
-		submittedSeq[i], err = attacher.AttachTransactionFromBytes(seqChain[0].Bytes(), testData.wrk, attacher.AttachTxOptionWithAttachmentCallback(func(_ *vertex.WrappedTx, _ error) {
+		submittedSeq[i], err = attacher.AttachTransactionFromBytes(seqChain[0].Bytes(), testData.wrk, attacher.WithAttachmentCallback(func(_ *vertex.WrappedTx, _ error) {
 			wg.Done()
 		}))
 		require.NoError(t, err)
@@ -661,7 +661,7 @@ func TestConflictsNAttachersOneFork(t *testing.T) {
 	//testData.env.StartTracingTags(attacher.TraceTagSolidifySequencerBaseline)
 
 	waitCh := make(chan struct{})
-	vidSeq, err := attacher.AttachTransactionFromBytes(txBytesSeq, testData.wrk, attacher.AttachTxOptionWithAttachmentCallback(func(_ *vertex.WrappedTx, _ error) {
+	vidSeq, err := attacher.AttachTransactionFromBytes(txBytesSeq, testData.wrk, attacher.WithAttachmentCallback(func(_ *vertex.WrappedTx, _ error) {
 		close(waitCh)
 	}))
 	require.NoError(t, err)
@@ -730,7 +730,7 @@ func TestConflictsNAttachersOneForkBranches(t *testing.T) {
 		})
 		require.NoError(t, err)
 		wg.Add(1)
-		branches[i], err = attacher.AttachTransactionFromBytes(txBytes, testData.wrk, attacher.AttachTxOptionWithAttachmentCallback(func(_ *vertex.WrappedTx, _ error) {
+		branches[i], err = attacher.AttachTransactionFromBytes(txBytes, testData.wrk, attacher.WithAttachmentCallback(func(_ *vertex.WrappedTx, _ error) {
 			wg.Done()
 		}))
 		require.NoError(t, err)
@@ -860,7 +860,7 @@ func TestSeqChains(t *testing.T) {
 			vids[seqNr] = make([]*vertex.WrappedTx, len(txSequence))
 			for i, tx := range txSequence {
 				wg.Add(1)
-				vids[seqNr][i] = attacher.AttachTransaction(tx, testData.wrk, attacher.AttachTxOptionWithAttachmentCallback(func(_ *vertex.WrappedTx, _ error) {
+				vids[seqNr][i] = attacher.AttachTransaction(tx, testData.wrk, attacher.WithAttachmentCallback(func(_ *vertex.WrappedTx, _ error) {
 					wg.Done()
 				}))
 			}
@@ -901,7 +901,7 @@ func TestSeqChains(t *testing.T) {
 		for i := 0; i < seqlen; i++ {
 			for seqNr, txSequence := range testData.seqChain {
 				wg.Add(1)
-				vids[seqNr][i] = attacher.AttachTransaction(txSequence[i], testData.wrk, attacher.AttachTxOptionWithAttachmentCallback(func(_ *vertex.WrappedTx, _ error) {
+				vids[seqNr][i] = attacher.AttachTransaction(txSequence[i], testData.wrk, attacher.WithAttachmentCallback(func(_ *vertex.WrappedTx, _ error) {
 					wg.Done()
 				}))
 			}
@@ -936,7 +936,7 @@ func TestSeqChains(t *testing.T) {
 			vids[seqNr] = make([]*vertex.WrappedTx, len(txSequence))
 			for i := len(txSequence) - 1; i >= 0; i-- {
 				wg.Add(1)
-				vids[seqNr][i] = attacher.AttachTransaction(txSequence[i], testData.wrk, attacher.AttachTxOptionWithAttachmentCallback(func(_ *vertex.WrappedTx, _ error) {
+				vids[seqNr][i] = attacher.AttachTransaction(txSequence[i], testData.wrk, attacher.WithAttachmentCallback(func(_ *vertex.WrappedTx, _ error) {
 					wg.Done()
 				}))
 			}
@@ -975,7 +975,7 @@ func TestSeqChains(t *testing.T) {
 					require.NoError(t, err)
 				} else {
 					wg.Add(1)
-					vids[seqNr] = attacher.AttachTransaction(tx, testData.wrk, attacher.AttachTxOptionWithAttachmentCallback(func(_ *vertex.WrappedTx, _ error) {
+					vids[seqNr] = attacher.AttachTransaction(tx, testData.wrk, attacher.WithAttachmentCallback(func(_ *vertex.WrappedTx, _ error) {
 						wg.Done()
 					}))
 				}
@@ -1015,7 +1015,7 @@ func TestSeqChains(t *testing.T) {
 				} else {
 					wg.Add(1)
 					testData.env.StartTracingTx(*tx.ID())
-					vids[seqNr] = attacher.AttachTransaction(tx, testData.wrk, attacher.AttachTxOptionWithAttachmentCallback(func(_ *vertex.WrappedTx, _ error) {
+					vids[seqNr] = attacher.AttachTransaction(tx, testData.wrk, attacher.WithAttachmentCallback(func(_ *vertex.WrappedTx, _ error) {
 						wg.Done()
 					}))
 				}
@@ -1071,7 +1071,7 @@ func TestSeqChains(t *testing.T) {
 		//testData.wrk.StartTracingTags(poker.TraceTag, pull_client.TraceTag, pull_server.TraceTag)
 
 		wg.Add(1)
-		vidBranch, err := attacher.AttachTransactionFromBytes(txBytesBranch, testData.wrk, attacher.AttachTxOptionWithAttachmentCallback(func(_ *vertex.WrappedTx, _ error) {
+		vidBranch, err := attacher.AttachTransactionFromBytes(txBytesBranch, testData.wrk, attacher.WithAttachmentCallback(func(_ *vertex.WrappedTx, _ error) {
 			wg.Done()
 		}))
 		wg.Wait()
@@ -1130,7 +1130,7 @@ func TestSeqChains(t *testing.T) {
 		testData.storeTransactions(branches...)
 		var wg sync.WaitGroup
 		wg.Add(1)
-		vidBranch := attacher.AttachTransaction(branches[len(branches)-1], testData.wrk, attacher.AttachTxOptionWithAttachmentCallback(func(_ *vertex.WrappedTx, _ error) {
+		vidBranch := attacher.AttachTransaction(branches[len(branches)-1], testData.wrk, attacher.WithAttachmentCallback(func(_ *vertex.WrappedTx, _ error) {
 			wg.Done()
 		}))
 		wg.Wait()
@@ -1197,7 +1197,7 @@ func TestSeqChains(t *testing.T) {
 
 		var wg sync.WaitGroup
 		wg.Add(1)
-		vidBranch := attacher.AttachTransaction(branches[len(branches)-1], testData.wrk, attacher.AttachTxOptionWithAttachmentCallback(func(_ *vertex.WrappedTx, _ error) {
+		vidBranch := attacher.AttachTransaction(branches[len(branches)-1], testData.wrk, attacher.WithAttachmentCallback(func(_ *vertex.WrappedTx, _ error) {
 			wg.Done()
 		}))
 		wg.Wait()
@@ -1266,7 +1266,7 @@ func TestSeqChains(t *testing.T) {
 
 		var wg sync.WaitGroup
 		wg.Add(1)
-		vidBranch := attacher.AttachTransaction(branches[len(branches)-1], testData.wrk, attacher.AttachTxOptionWithAttachmentCallback(func(_ *vertex.WrappedTx, _ error) {
+		vidBranch := attacher.AttachTransaction(branches[len(branches)-1], testData.wrk, attacher.WithAttachmentCallback(func(_ *vertex.WrappedTx, _ error) {
 			wg.Done()
 		}))
 		wg.Wait()

@@ -29,12 +29,13 @@ type (
 		EvidenceBranchSlot(s ledger.Slot, healthy bool)
 		TxBytesStore() global.TxBytesStore
 		TxBytesFromStoreIn(txBytesWithMetadata []byte) (*ledger.TransactionID, error)
+		AddWantedTransaction(txid *ledger.TransactionID)
 	}
 
 	pullEnvironment interface {
 		PokeMe(me, with *vertex.WrappedTx)
 		PokeAllWith(wanted *vertex.WrappedTx)
-		PullFromPeers(txid *ledger.TransactionID)
+		PullFromRandomPeers(nPeers int, txid *ledger.TransactionID) int
 	}
 
 	postEventEnvironment interface {
@@ -103,6 +104,7 @@ type (
 		calledBy           string
 		enforceTimestamp   bool
 		ctx                context.Context
+		depth              int
 	}
 	AttachTxOption func(*_attacherOptions)
 
@@ -140,12 +142,6 @@ type (
 	}
 )
 
-// PullTimeout maximum time allowed for the virtual txid become transaction (full vertex)
-const (
-	PullRepeatPeriod     = 2 * time.Second
-	PullMaxTimesToRepeat = 5
-)
-
 var ErrSolidificationDeadline = errors.New("solidification deadline")
 
 func (f Flags) FlagsUp(fl Flags) bool {
@@ -164,30 +160,36 @@ func (f Flags) String() string {
 	)
 }
 
-func AttachTxOptionWithTransactionMetadata(metadata *txmetadata.TransactionMetadata) AttachTxOption {
+func WithTransactionMetadata(metadata *txmetadata.TransactionMetadata) AttachTxOption {
 	return func(options *_attacherOptions) {
 		options.metadata = metadata
 	}
 }
 
-func AttachTxOptionWithAttachmentCallback(fun func(vid *vertex.WrappedTx, err error)) AttachTxOption {
+func WithAttachmentCallback(fun func(vid *vertex.WrappedTx, err error)) AttachTxOption {
 	return func(options *_attacherOptions) {
 		options.attachmentCallback = fun
 	}
 }
 
-func AttachTxOptionWithContext(ctx context.Context) AttachTxOption {
+func WithContext(ctx context.Context) AttachTxOption {
 	return func(options *_attacherOptions) {
 		options.ctx = ctx
 	}
 }
 
-func OptionEnforceTimestampBeforeRealTime(options *_attacherOptions) {
+func WithEnforceTimestampBeforeRealTime(options *_attacherOptions) {
 	options.enforceTimestamp = true
 }
 
-func OptionInvokedBy(name string) AttachTxOption {
+func WithInvokedBy(name string) AttachTxOption {
 	return func(options *_attacherOptions) {
 		options.calledBy = name
+	}
+}
+
+func WithAttachmentDepth(depth int) AttachTxOption {
+	return func(options *_attacherOptions) {
+		options.depth = depth
 	}
 }

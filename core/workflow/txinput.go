@@ -17,7 +17,7 @@ import (
 )
 
 type (
-	txBytesInOptions struct {
+	txInOptions struct {
 		txMetadata       txmetadata.TransactionMetadata
 		receivedFromPeer *peer.ID
 		callback         func(vid *vertex.WrappedTx, err error)
@@ -25,7 +25,7 @@ type (
 		ctx              context.Context
 	}
 
-	TxBytesInOption func(options *txBytesInOptions)
+	TxInOption func(options *txInOptions)
 )
 
 const (
@@ -38,15 +38,19 @@ func (w *Workflow) TxFromStoreIn(txid *ledger.TransactionID) (err error) {
 }
 
 func (w *Workflow) TxBytesFromStoreIn(txBytesWithMetadata []byte) (*ledger.TransactionID, error) {
+	nowis := time.Now()
 	txBytes, meta, err := txmetadata.ParseTxMetadata(txBytesWithMetadata)
 	if err != nil {
 		return nil, err
 	}
-
-	return w.TxBytesIn(txBytes, WithMetadata(meta), WithSourceType(txmetadata.SourceTypeTxStore))
+	meta.TxBytesReceived = &nowis
+	return w.TxBytesIn(txBytes,
+		WithMetadata(meta),
+		WithSourceType(txmetadata.SourceTypeTxStore),
+	)
 }
 
-func (w *Workflow) TxBytesIn(txBytes []byte, opts ...TxBytesInOption) (*ledger.TransactionID, error) {
+func (w *Workflow) TxBytesIn(txBytes []byte, opts ...TxInOption) (*ledger.TransactionID, error) {
 	// base validation
 	tx, err := transaction.FromBytes(txBytes)
 	if err != nil {
@@ -57,18 +61,26 @@ func (w *Workflow) TxBytesIn(txBytes []byte, opts ...TxBytesInOption) (*ledger.T
 }
 
 func (w *Workflow) TxInFromAPI(tx *transaction.Transaction, trace bool) error {
-	return w.TxIn(tx, WithSourceType(txmetadata.SourceTypeAPI), WithTxTraceFlag(trace))
+	return w.TxIn(tx,
+		WithSourceType(txmetadata.SourceTypeAPI),
+		WithTxTraceFlag(trace),
+	)
 }
 
 func (w *Workflow) TxBytesInFromAPIQueued(txBytes []byte, trace bool) {
 	w.txInputQueue.Push(txinput_queue.Input{
-		Cmd:       txinput_queue.CmdFromAPI,
-		TxBytes:   txBytes,
-		TraceFlag: trace,
+		Cmd:        txinput_queue.CmdFromAPI,
+		TxBytes:    txBytes,
+		TraceFlag:  trace,
+		TxMetaData: &txmetadata.TransactionMetadata{TxBytesReceived: util.Ref(time.Now())},
 	})
 }
 
 func (w *Workflow) TxBytesInFromPeerQueued(txBytes []byte, metaData *txmetadata.TransactionMetadata, from peer.ID) {
+	if metaData == nil {
+		metaData = &txmetadata.TransactionMetadata{}
+	}
+	metaData.TxBytesReceived = util.Ref(time.Now())
 	w.txInputQueue.Push(txinput_queue.Input{
 		Cmd:        txinput_queue.CmdFromPeer,
 		TxBytes:    txBytes,
@@ -81,8 +93,8 @@ func (w *Workflow) TxInFromPeer(tx *transaction.Transaction, metaData *txmetadat
 	return w.TxIn(tx, WithPeerMetadata(from, metaData))
 }
 
-func (w *Workflow) TxIn(tx *transaction.Transaction, opts ...TxBytesInOption) error {
-	options := &txBytesInOptions{}
+func (w *Workflow) TxIn(tx *transaction.Transaction, opts ...TxInOption) error {
+	options := &txInOptions{}
 	for _, opt := range opts {
 		opt(options)
 	}
@@ -94,8 +106,6 @@ func (w *Workflow) TxIn(tx *transaction.Transaction, opts ...TxBytesInOption) er
 	}
 	w.Tracef(TraceTagTxInput, "-> %s, meta: %s", txid.StringShort, options.txMetadata.String())
 	// bytes are identifiable as transaction
-	w.Assertf(!options.txMetadata.IsResponseToPull || options.txMetadata.SourceTypeNonPersistent == txmetadata.SourceTypePeer,
-		"inData.TxMetadata.IsResponseToPull || inData.TxMetadata.SourceTypeNonPersistent == txmetadata.SourceTypePeer")
 
 	if !tx.IsSequencerMilestone() {
 		// callback is only possible when tx is sequencer milestone
@@ -143,13 +153,13 @@ func (w *Workflow) TxIn(tx *transaction.Transaction, opts ...TxBytesInOption) er
 	txTime := txid.Timestamp().Time()
 
 	attachOpts := []attacher.AttachTxOption{
-		attacher.AttachTxOptionWithContext(options.ctx),
-		attacher.AttachTxOptionWithTransactionMetadata(&options.txMetadata),
-		attacher.OptionInvokedBy("txInput"),
-		attacher.OptionEnforceTimestampBeforeRealTime,
+		attacher.WithContext(options.ctx),
+		attacher.WithTransactionMetadata(&options.txMetadata),
+		attacher.WithInvokedBy("txInput"),
+		attacher.WithEnforceTimestampBeforeRealTime,
 	}
 	if options.callback != nil {
-		attachOpts = append(attachOpts, attacher.AttachTxOptionWithAttachmentCallback(options.callback))
+		attachOpts = append(attachOpts, attacher.WithAttachmentCallback(options.callback))
 	}
 
 	if time.Until(txTime) <= 0 {
@@ -237,44 +247,43 @@ func (w *Workflow) SequencerMilestoneAttachWait(txBytes []byte, meta *txmetadata
 	return vid, nil
 }
 
-func WithAttachmentCallback(fun func(vid *vertex.WrappedTx, err error)) TxBytesInOption {
-	return func(opts *txBytesInOptions) {
+func WithAttachmentCallback(fun func(vid *vertex.WrappedTx, err error)) TxInOption {
+	return func(opts *txInOptions) {
 		opts.callback = fun
 	}
 }
 
-func WithMetadata(metadata *txmetadata.TransactionMetadata) TxBytesInOption {
-	return func(opts *txBytesInOptions) {
+func WithMetadata(metadata *txmetadata.TransactionMetadata) TxInOption {
+	return func(opts *txInOptions) {
 		if metadata != nil {
 			opts.txMetadata = *metadata
 		}
 	}
 }
 
-func WithSourceType(sourceType txmetadata.SourceType) TxBytesInOption {
-	return func(opts *txBytesInOptions) {
+func WithSourceType(sourceType txmetadata.SourceType) TxInOption {
+	return func(opts *txInOptions) {
 		opts.txMetadata.SourceTypeNonPersistent = sourceType
 	}
 }
 
-func WithPeerMetadata(peerID peer.ID, metadata *txmetadata.TransactionMetadata) TxBytesInOption {
-	return func(opts *txBytesInOptions) {
+func WithPeerMetadata(peerID peer.ID, metadata *txmetadata.TransactionMetadata) TxInOption {
+	return func(opts *txInOptions) {
 		if metadata != nil {
 			opts.txMetadata = *metadata
 		}
-		opts.txMetadata.SourceTypeNonPersistent = txmetadata.SourceTypePeer
 		opts.receivedFromPeer = &peerID
 	}
 }
 
-func WithTxTraceFlag(trace bool) TxBytesInOption {
-	return func(opts *txBytesInOptions) {
+func WithTxTraceFlag(trace bool) TxInOption {
+	return func(opts *txInOptions) {
 		opts.txTrace = trace
 	}
 }
 
-func WithContext(ctx context.Context) TxBytesInOption {
-	return func(opts *txBytesInOptions) {
+func WithContext(ctx context.Context) TxInOption {
+	return func(opts *txInOptions) {
 		opts.ctx = ctx
 	}
 }

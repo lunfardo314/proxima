@@ -30,7 +30,7 @@ func NewIncrementalAttacher(name string, env Environment, targetTs ledger.Time, 
 	env.Tracef(TraceTagIncrementalAttacher, "NewIncrementalAttacher(%s). extend: %s, endorse: {%s}",
 		name, extend.IDShortString, func() string { return vertex.VerticesLines(endorse).Join(",") })
 
-	var baseline *vertex.WrappedTx
+	var baselineDirection *vertex.WrappedTx
 	if targetTs.Tick() == 0 {
 		// target is branch
 		env.Assertf(len(endorse) == 0, "NewIncrementalAttacher: len(endorse)==0")
@@ -38,27 +38,28 @@ func NewIncrementalAttacher(name string, env Environment, targetTs ledger.Time, 
 			return nil, fmt.Errorf("NewIncrementalAttacher %s: cannot extend non-sequencer transaction %s into a branch",
 				name, extend.VID)
 		}
-		baseline = extend.VID
+		baselineDirection = extend.VID
 	} else {
 		// target is not branch
 		if extend.Slot() != targetTs.Slot() {
 			// cross-slot, must have endorsement
 			if len(endorse) > 0 {
-				baseline = endorse[0]
+				baselineDirection = endorse[0]
 			}
 		} else {
 			// same slot
-			baseline = extend.VID
+			baselineDirection = extend.VID
 		}
 	}
-	if baseline == nil {
-		return nil, fmt.Errorf("NewIncrementalAttacher %s: failed to determine baseline branch of %s",
+	if baselineDirection == nil {
+		return nil, fmt.Errorf("NewIncrementalAttacher %s: failed to determine baseline direction in %s",
 			name, extend.IDShortString())
 	}
-	if baseline.BaselineBranch() == nil {
-		// may happen when baseline is virtualTx
-		return nil, fmt.Errorf("NewIncrementalAttacher %s: failed to determine valid baseline branch of %s. BaselineBranch(%s) == nil",
-			name, extend.IDShortString(), baseline.IDShortString())
+	baseline := baselineDirection.BaselineBranch()
+	if baseline == nil {
+		// may happen when baselineDirection is virtualTx
+		return nil, fmt.Errorf("NewIncrementalAttacher %s: failed to determine valid baselineDirection branch of %s. baseline direction: %s",
+			name, extend.IDShortString(), baselineDirection.IDShortString())
 	}
 
 	ret := &IncrementalAttacher{
@@ -71,7 +72,7 @@ func NewIncrementalAttacher(name string, env Environment, targetTs ledger.Time, 
 	// The extended one also checks inputs of the transaction being constructed
 	ret.checkConflictsFunc = ret.extendedConflictChecker
 
-	if err := ret.initIncrementalAttacher(baseline.BaselineBranch(), targetTs, extend, endorse...); err != nil {
+	if err := ret.initIncrementalAttacher(baseline, targetTs, extend, endorse...); err != nil {
 		ret.Close()
 		return nil, err
 	}

@@ -16,6 +16,7 @@ type SimpleTxBytesStore struct {
 	txBytesCounter                   prometheus.Counter
 	txBytesSizeHistogram             prometheus.Histogram
 	txBytesSeqNonBranchSizeHistogram prometheus.Histogram
+	txStoreHit                       prometheus.Counter
 }
 
 type DummyTxBytesStore struct {
@@ -36,13 +37,16 @@ func (s *SimpleTxBytesStore) registerMetrics(reg *prometheus.Registry) {
 		Name: "proxima_txStore_txCounter",
 		Help: "new transaction counter in SimpleTxBytesStore",
 	})
-	reg.MustRegister(s.txCounter)
 
 	s.txBytesCounter = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "proxima_txStore_txBytesCounter",
 		Help: "new transaction bytes (cumulative size) counter in SimpleTxBytesStore",
 	})
-	reg.MustRegister(s.txBytesCounter)
+
+	s.txStoreHit = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "proxima_txStore_hit",
+		Help: "number of times transaction has been found in the store",
+	})
 
 	const lastSizeBucket = 2000
 
@@ -51,14 +55,13 @@ func (s *SimpleTxBytesStore) registerMetrics(reg *prometheus.Registry) {
 		Help:    "collects data about size of raw transaction bytes",
 		Buckets: _makeBuckets(lastSizeBucket),
 	})
-	reg.MustRegister(s.txBytesSizeHistogram)
 
 	s.txBytesSeqNonBranchSizeHistogram = prometheus.NewHistogram(prometheus.HistogramOpts{
 		Name:    "proxima_txStore_txBytesSeqNonBranchSizeHistogram",
 		Help:    "collects data about size of raw sequencer non-branch transaction bytes",
 		Buckets: _makeBuckets(lastSizeBucket),
 	})
-	reg.MustRegister(s.txBytesSeqNonBranchSizeHistogram)
+	reg.MustRegister(s.txCounter, s.txBytesCounter, s.txBytesSizeHistogram, s.txBytesSeqNonBranchSizeHistogram, s.txStoreHit)
 }
 
 func _makeBuckets(lastSize int) []float64 {
@@ -78,7 +81,6 @@ func (s *SimpleTxBytesStore) PersistTxBytesWithMetadata(txBytes []byte, metadata
 	}
 	if metadata != nil {
 		mdTmp := *metadata
-		mdTmp.IsResponseToPull = false // saving without the irrelevant metadata flag
 		mdTmp.PortionInfo = nil
 		metadata = &mdTmp
 	}
@@ -98,7 +100,11 @@ func (s *SimpleTxBytesStore) PersistTxBytesWithMetadata(txBytes []byte, metadata
 }
 
 func (s *SimpleTxBytesStore) GetTxBytesWithMetadata(txid *ledger.TransactionID) []byte {
-	return s.s.Get(txid[:])
+	ret := s.s.Get(txid[:])
+	if s.metricsEnabled && ret != nil {
+		s.txStoreHit.Inc()
+	}
+	return ret
 }
 
 func (s *SimpleTxBytesStore) HasTxBytes(txid *ledger.TransactionID) bool {
@@ -109,7 +115,7 @@ func NewDummyTxBytesStore() DummyTxBytesStore {
 	return DummyTxBytesStore{}
 }
 
-func (d DummyTxBytesStore) PersistTxBytesWithMetadata(txBytes []byte, metadata *txmetadata.TransactionMetadata) (ledger.TransactionID, error) {
+func (d DummyTxBytesStore) PersistTxBytesWithMetadata(_ []byte, _ *txmetadata.TransactionMetadata) (ledger.TransactionID, error) {
 	return ledger.TransactionID{}, nil
 }
 
@@ -117,6 +123,6 @@ func (d DummyTxBytesStore) GetTxBytesWithMetadata(_ *ledger.TransactionID) []byt
 	return nil
 }
 
-func (s DummyTxBytesStore) HasTxBytes(txid *ledger.TransactionID) bool {
+func (s DummyTxBytesStore) HasTxBytes(_ *ledger.TransactionID) bool {
 	return false
 }

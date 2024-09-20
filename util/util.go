@@ -203,11 +203,31 @@ func AppendUnique[T comparable](slice []T, elems ...T) []T {
 	return slice
 }
 
-func RandomElement[T comparable](elems ...T) (ret T) {
+func RandomElement[T any](elems ...T) (ret T) {
 	if len(elems) > 0 {
 		ret = elems[rand.Intn(len(elems))]
 	}
 	return
+}
+
+// RandomElements selects n random elements from a slice, which has more elements than n
+func RandomElements[T any](n int, elems ...T) []T {
+	Assertf(n > 0, "n>0")
+
+	switch {
+	case n >= len(elems):
+		return elems
+	case n == 0:
+		return nil
+	case n == 1:
+		return []T{elems[rand.Intn(len(elems))]}
+	}
+	perm := slices.Clone(elems)
+	rand.Shuffle(len(perm), func(i, j int) {
+		perm[i], perm[j] = perm[j], perm[i]
+	})
+
+	return slices.Clone(perm[:n])
 }
 
 func MustLastElement[T any](sl []T) T {

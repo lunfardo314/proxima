@@ -136,7 +136,7 @@ func (s SugaredStateReader) GetChainTips(chainID *ledger.ChainID) (*ledger.Outpu
 	stemOut := s.GetStemOutput()
 	if retSeq.ID.TransactionID() != stemOut.ID.TransactionID() {
 		// if sequencer output is on the branch, stem must be on the same transaction
-		// Here stem and sequencer transactions are from different branches
+		// Here stem and sequencer transactions are from different branches (yet on the same chain of branches)
 		return retSeq, nil, nil
 	}
 	// stem and sequencer outputs are from the same transaction

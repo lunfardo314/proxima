@@ -490,15 +490,12 @@ func (vid *WrappedTx) NumProducedOutputs() int {
 	return ret
 }
 
-func (vid *WrappedTx) ConvertToVirtualTx() {
-	vid.mutex.Lock()
-	defer vid.mutex.Unlock()
+func (vid *WrappedTx) convertToVirtualTxNoLock() {
+	util.Assertf(vid.numReferences > 0, "convertToVirtualTxNoLock: access deleted tx in %s", vid.IDShortString)
+	v, isVertex := vid._genericVertex.(_vertex)
+	util.Assertf(isVertex, "convertToVirtualTxNoLock: must be full vertex %s", vid.IDShortString)
 
-	util.Assertf(vid.numReferences > 0, "access deleted tx")
-	switch v := vid._genericVertex.(type) {
-	case _vertex:
-		vid._put(_virtualTx{VirtualTransaction: v.convertToVirtualTx()})
-	}
+	vid._put(_virtualTx{VirtualTransaction: v.toVirtualTx()})
 }
 
 func (vid *WrappedTx) PanicAccessDeleted() {
@@ -515,6 +512,9 @@ func (vid *WrappedTx) BaselineBranch() (baselineBranch *WrappedTx) {
 	vid.RUnwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
 			baselineBranch = v.BaselineBranch
+		},
+		VirtualTx: func(v *VirtualTransaction) {
+			baselineBranch = v.baselineBranch
 		},
 	})
 	return
@@ -544,10 +544,6 @@ func (vid *WrappedTx) EnsureSequencerOutputs(seqOut, stemOut *ledger.OutputWithI
 	if !vid.IsSequencerMilestone() {
 		return fmt.Errorf("not sequencer transaction: %s", vid.IDShortString())
 	}
-	util.Assertf(seqOut != nil, "seqOut != nil")
-	util.Assertf(!vid.IsBranchTransaction() || stemOut != nil, "!vid.IsBranchTransaction() || stemOut != nil")
-	util.Assertf(!vid.IsBranchTransaction() || seqOut.ID.TransactionID() == stemOut.ID.TransactionID(),
-		"!vid.IsBranchTransaction() || seqOut.ID.TransactionID() == stemOut.ID.TransactionID()")
 
 	vid.Unwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
@@ -561,7 +557,10 @@ func (vid *WrappedTx) EnsureSequencerOutputs(seqOut, stemOut *ledger.OutputWithI
 				err = fmt.Errorf("EnsureSequencerOutputs: wrong sequencer output %s", seqOut.String())
 				return
 			}
-			if v.Tx.IsBranchTransaction() {
+			if stemOut != nil {
+				util.Assertf(vid.IsBranchTransaction(), "vid.IsBranchTransaction()")
+				util.Assertf(seqOut.ID.TransactionID() == stemOut.ID.TransactionID(), "seqOut.ID.TransactionID() == stemOut.ID.TransactionID()")
+
 				existingStemOut := v.Tx.StemOutput()
 				if !ledger.EqualOutputs(stemOut, existingStemOut) {
 					err = fmt.Errorf("EnsureSequencerOutputs: wrong stem output %s", seqOut.String())
@@ -871,4 +870,12 @@ func (vid *WrappedTx) UnwrapVirtualTx(unwrapFun func(v *VirtualTransaction)) {
 			unwrapFun(v)
 		},
 	})
+}
+
+func (vid *WrappedTx) SetAttachmentDepthNoLock(depth int) {
+	vid.attachmentDepth = depth
+}
+
+func (vid *WrappedTx) GetAttachmentDepthNoLock() int {
+	return vid.attachmentDepth
 }

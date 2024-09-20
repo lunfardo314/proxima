@@ -16,7 +16,7 @@ func initReliableBranchCmd() *cobra.Command {
 	snapshotCmd := &cobra.Command{
 		Use:     "reliable_branch",
 		Aliases: []string{"lrb"},
-		Short:   "finds and displays latest reliable branch in the multi-state DB",
+		Short:   "finds and displays lates reliable branch in the multi-state DB",
 		Args:    cobra.NoArgs,
 		Run:     runReliableBranchCmd,
 	}
@@ -53,9 +53,9 @@ func runReliableBranchCmd(_ *cobra.Command, _ []string) {
 
 		slotsBefore := int(branchID.Slot()) - int(lrbID.Slot())
 		if glb.IsVerbose() {
-			glb.Infof("     (%d branches, %d slots) %s\n%s", 1-counter, slotsBefore, branchID.String(), branch.LinesVerbose("               ").String())
+			glb.Infof("     (%d branches, %d slots) %s %s", 1-counter, slotsBefore, branchID.String(), branch.LinesVerbose().Join("  "))
 		} else {
-			glb.Infof("     (%d branches, %d slots) %s\n%s", 1-counter, slotsBefore, branchID.String(), branch.Lines("               ").String())
+			glb.Infof("     (%d branches, %d slots) %s %s", 1-counter, slotsBefore, branchID.String(), branch.Lines().Join("  "))
 		}
 		return true
 	})

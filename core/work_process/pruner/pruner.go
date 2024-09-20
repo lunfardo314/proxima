@@ -35,10 +35,15 @@ const (
 )
 
 func New(env environment) *Pruner {
-	ret := &Pruner{
-		environment: env,
-	}
+	ret := &Pruner{environment: env}
 	ret.registerMetrics()
+
+	ret.RepeatInBackground(Name, ledger.SlotDuration(), func() bool {
+		ret.doPrune()
+		ret.updateMetrics()
+		return true
+	}, true)
+
 	return ret
 }
 
@@ -70,21 +75,13 @@ func (p *Pruner) pruneVertices() (markedForDeletionCount, unreferencedPastConeCo
 	return
 }
 
-func (p *Pruner) Start() {
-	p.RepeatInBackground(Name, ledger.SlotDuration(), func() bool {
-		p.doPrune()
-		p.updateMetrics()
-		return true
-	}, true)
-}
-
 func (p *Pruner) doPrune() {
 	start := time.Now()
 
 	nDeleted, nUnReferenced, refStats := p.pruneVertices()
 	nReadersPurged, readersLeft := p.PurgeCachedStateReaders()
 
-	p.Infof0("[memDAG pruner] vertices: %d, deleted: %d, detached past cones: %d. state readers purged: %d, left: %d. Ref stats: %v (took %v)",
+	p.Log().Infof("[memDAG pruner] vertices: %d, deleted: %d, detached past cones: %d. state readers purged: %d, left: %d. Ref stats: %v (took %v)",
 		p.NumVertices(), nDeleted, nUnReferenced, nReadersPurged, readersLeft, refStats, time.Since(start))
 }
 
@@ -93,13 +90,11 @@ func (p *Pruner) registerMetrics() {
 		Name: "proxima_memDAG_numVerticesGauge",
 		Help: "number of vertices in the memDAG",
 	})
-	p.MetricsRegistry().MustRegister(p.numVerticesGauge)
-
 	p.numStateReadersGauge = prometheus.NewGauge(prometheus.GaugeOpts{
 		Name: "proxima_memDAG_numStateReadersGauge",
 		Help: "number of cached state readers in the memDAG",
 	})
-	p.MetricsRegistry().MustRegister(p.numStateReadersGauge)
+	p.MetricsRegistry().MustRegister(p.numStateReadersGauge, p.numVerticesGauge)
 }
 
 func (p *Pruner) updateMetrics() {

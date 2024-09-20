@@ -106,7 +106,7 @@ func (ps *Peers) drop1ExcessPeerIfNeeded() {
 	}
 	if len(sortedPeers) > 0 {
 		// just drop the oldest
-		ps._dropPeer(sortedPeers[0], "excess peer (oldest)")
+		ps._dropPeer(sortedPeers[0], "excess peer (errors/oldest)")
 	}
 }
 
@@ -115,31 +115,7 @@ func (ps *Peers) _sortedDynamicPeersByActivityAsc() []*Peer {
 		return !p.isStatic
 	})
 	sort.Slice(peers, func(i, j int) bool {
-		return peers[i].whenAdded.Before(peers[j].whenAdded)
+		return peers[i].errorCounter > peers[j].errorCounter || peers[i].whenAdded.Before(peers[j].whenAdded)
 	})
 	return peers
 }
-
-//func (ps *Peers) removeDeadDynamicPeers() {
-//	for _, id := range ps.deadDynamicPeers() {
-//		ps.logConnectionStatusIfNeeded(id)
-//		ps.dropPeer(id, "dead")
-//	}
-//}
-//
-//func (ps *Peers) dropExcessPeersIfNeeded() {
-//	if _, aliveDynamic := ps.NumAlive(); aliveDynamic <= ps.cfg.MaxDynamicPeers {
-//		return
-//	}
-//	// dropping
-//	ps.mutex.Lock()
-//	defer ps.mutex.Unlock()
-//
-//	sortedPeers := ps._sortPeersByActivityDesc()
-//	if len(sortedPeers) <= ps.cfg.MaxDynamicPeers {
-//		return
-//	}
-//	for _, p := range sortedPeers[:ps.cfg.MaxDynamicPeers] {
-//		ps._dropPeer(p, fmt.Sprintf("excess over maximum dynamic peers configured: %d", ps.cfg.MaxDynamicPeers))
-//	}
-//}

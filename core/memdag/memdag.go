@@ -16,21 +16,21 @@ import (
 )
 
 type (
-	Environment interface {
+	environment interface {
 		StateStore() global.StateStore
 		MetricsRegistry() *prometheus.Registry
 	}
 
 	// MemDAG is a global map of all in-memory vertices of the transaction DAG
 	MemDAG struct {
-		Environment
+		environment
 
 		// cache of vertices. Key of the map is transaction ID. Value of the map is *vertex.WrappedTx.
-		// The pointer value *vertex.WrappedTx is used as a unique identified of the transaction while being
+		// The pointer value *vertex.WrappedTx is used as a unique identifier of the transaction while being
 		// loaded into the memory.
 		// The vertices map may be seen as encoding table between transaction ID and
 		// more economic (memory-wise) yet transient in-memory ID *vertex.WrappedTx
-		// in most other data structure, such as attacher, transactions are represented as *vertex.WrappedTx
+		// in most other data structures, such as attachers, transactions are represented as *vertex.WrappedTx
 		// MemDAG is constantly garbage-collected by the pruner
 		mutex    sync.RWMutex
 		vertices map[ledger.TransactionID]*vertex.WrappedTx
@@ -54,9 +54,9 @@ type (
 	}
 )
 
-func New(env Environment) *MemDAG {
+func New(env environment) *MemDAG {
 	return &MemDAG{
-		Environment:  env,
+		environment:  env,
 		vertices:     make(map[ledger.TransactionID]*vertex.WrappedTx),
 		stateReaders: make(map[ledger.TransactionID]*cachedStateReader),
 	}

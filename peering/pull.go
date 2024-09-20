@@ -19,35 +19,54 @@ const MaxNumTransactionID = (MaxPayloadSize - 2) / ledger.TransactionIDLength
 const PullTransactions = byte(iota)
 
 func (ps *Peers) pullStreamHandler(stream network.Stream) {
+	ps.inMsgCounter.Inc()
+
+	if ps.cfg.IgnoreAllPullRequests {
+		// ignore all pull requests
+		_ = stream.Close()
+		return
+	}
+
 	id := stream.Conn().RemotePeer()
 	if ps.isInBlacklist(id) {
-		_ = stream.Reset()
+		// just ignore
+		//_ = stream.Reset()
+		_ = stream.Close()
 		return
 	}
 	var err error
 	var callAfter func()
+	var msgData []byte
 
 	ps.withPeer(id, func(p *Peer) {
 		if p == nil {
-			_ = stream.Reset()
-			ps.Tracef(TraceTag, "pull: unknown peer %s", id.String)
+			// just ignore
+			//_ = stream.Reset()
+			_ = stream.Close()
 			return
 		}
-		var msgData []byte
+		if !p.isStatic && ps.cfg.AcceptPullRequestsFromStaticPeersOnly {
+			// ignore pull requests from automatic peers
+			_ = stream.Close()
+			return
+		}
 		msgData, err = readFrame(stream)
 		if err != nil {
-			_ = stream.Reset()
-			ps.Log().Errorf("error while reading message from peer %s: %v", id.String(), err)
-
-			ps._dropPeer(p, "read error")
+			//_ = stream.Reset()
+			err = fmt.Errorf("pull: error while reading message from peer %s: %v", id.String(), err)
+			ps.Log().Error(err)
+			p.errorCounter++
+			//ps._dropPeer(p, err.Error())
+			_ = stream.Close()
 			return
 		}
 		callAfter, err = ps.processPullFrame(msgData, p)
 		if err != nil {
+			// protocol violation
+			err = fmt.Errorf("pull: error while decoding message from peer %s: %v", id.String(), err)
+			ps.Log().Error(err)
+			ps._dropPeer(p, err.Error())
 			_ = stream.Reset()
-			ps.Log().Errorf("error while decoding message from peer %s: %v", id.String(), err)
-
-			ps._dropPeer(p, "error while parsing pull message")
 			return
 		}
 		_ = stream.Close()
@@ -72,7 +91,10 @@ func (ps *Peers) processPullFrame(msgData []byte, p *Peer) (func(), error) {
 		}
 		p._evidenceActivity("pullTx")
 		fun := ps.onReceivePullTx
-		callAfter = func() { fun(p.id, txLst) }
+		callAfter = func() {
+			fun(p.id, txLst)
+			ps.pullRequestsIn.Inc()
+		}
 
 	default:
 		return nil, fmt.Errorf("unsupported type of the pull message %d", msgData[0])
@@ -86,16 +108,19 @@ func (ps *Peers) sendPullTransactionsToPeer(id peer.ID, txLst ...ledger.Transact
 	}, id, ps.lppProtocolPull)
 }
 
-// PullTransactionsFromRandomPeer sends pull request to the random peer which has txStore
-func (ps *Peers) PullTransactionsFromRandomPeer(txids ...ledger.TransactionID) bool {
+// PullTransactionsFromRandomPeers sends pull request to the random peer which has txStore
+// Return number of peer pull request was sent to
+func (ps *Peers) PullTransactionsFromRandomPeers(nPeers int, txids ...ledger.TransactionID) int {
 	if len(txids) == 0 {
-		return false
+		return 0
 	}
-	if rndPeerID, ok := ps._randomPullPeer(false); ok {
+	util.Assertf(nPeers >= 1, "nPeers")
+
+	targets := ps._randomPullPeers(nPeers)
+	for _, rndPeerID := range targets {
 		ps.sendPullTransactionsToPeer(rndPeerID, txids...)
-		return true
 	}
-	return false
+	return len(targets)
 }
 
 func (ps *Peers) PullTransactionsFromAllPeers(txids ...ledger.TransactionID) {
@@ -103,9 +128,11 @@ func (ps *Peers) PullTransactionsFromAllPeers(txids ...ledger.TransactionID) {
 		return
 	}
 	msg := &_pullTransactions{txids: txids}
-	for _, id := range ps._pullTxTargets() {
+	pullTargets := ps._pullTxTargets()
+	for _, id := range pullTargets {
 		ps.sendMsgOutQueued(msg, id, ps.lppProtocolPull)
 	}
+	ps.pullRequestsOut.Add(float64(len(pullTargets)))
 }
 
 func encodePullTransactionsMsg(txids ...ledger.TransactionID) []byte {
@@ -148,39 +175,25 @@ func (ps *Peers) _pullTxTargets(restrictedTargets ...string) []peer.ID {
 	ret := make([]peer.ID, 0)
 	ps.forEachPeer(func(p *Peer) bool {
 		if len(restrictedTargets) == 0 || slices.Contains(restrictedTargets, p.name) {
-			if _, inBlackList := ps.blacklist[p.id]; !inBlackList && !p._isDead() && p.hasTxStore {
-				ret = append(ret, p.id)
+			if _, inBlackList := ps.blacklist[p.id]; inBlackList || p.ignoresAllPullRequests || p._isDead() {
+				return true
 			}
+			if p.acceptsPullRequestsFromStaticPeersOnly && !p.isStatic {
+				// not completely correct because the peer may list current node as static
+				// here we assume that static peering must be mutual
+				return true
+			}
+			ret = append(ret, p.id)
 		}
 		return true
 	})
 	return ret
 }
 
-func (ps *Peers) _pullSyncPortionTargets(restrictedTargets ...string) []peer.ID {
-	ret := make([]peer.ID, 0)
-	ps.forEachPeer(func(p *Peer) bool {
-		if len(restrictedTargets) == 0 || slices.Contains(restrictedTargets, p.name) {
-			if _, inBlackList := ps.blacklist[p.id]; !inBlackList && !p._isDead() && p.acceptsPullSyncRequests {
-				ret = append(ret, p.id)
-			}
-		}
-		return true
-	})
-	return ret
-}
-
-func (ps *Peers) _randomPullPeer(forSync bool, restrictedTargets ...string) (peer.ID, bool) {
-	var targets []peer.ID
-	if forSync {
-		targets = ps._pullSyncPortionTargets(restrictedTargets...)
-	} else {
-		targets = ps._pullTxTargets(restrictedTargets...)
-	}
-	if len(targets) == 0 {
-		return "", false
-	}
-	return util.RandomElement(targets...), true
+func (ps *Peers) _randomPullPeers(nPeers int, restrictedTargets ...string) []peer.ID {
+	util.Assertf(nPeers >= 1, "nPeers >= 1")
+	targets := ps._pullTxTargets(restrictedTargets...)
+	return util.RandomElements(nPeers, targets...)
 }
 
 // out message wrappers

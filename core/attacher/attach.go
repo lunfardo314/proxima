@@ -38,10 +38,15 @@ func AttachTxID(txid ledger.TransactionID, env Environment, opts ...AttachTxOpti
 		env.Tracef(TraceTagAttach, "AttachTxID: new ID %s%s", txid.StringShort, by)
 		env.TraceTx(&txid, "AttachTxID: new ID")
 
+		if options.depth > 0 && options.depth%100 == 0 {
+			env.Log().Warnf("AttachTxID: solidification reached depth %d with %s", options.depth, txid.StringShort())
+		}
 		// it is new
+
 		if !txid.IsBranchTransaction() {
 			// if not branch -> just place the empty virtualTx on the utangle, no further action
 			vid = vertex.WrapTxID(txid)
+			vid.SetAttachmentDepthNoLock(options.depth)
 			env.AddVertexNoLock(vid)
 			return
 		}
@@ -62,6 +67,7 @@ func AttachTxID(txid ledger.TransactionID, env Environment, opts ...AttachTxOpti
 			// the corresponding state is not in the multistate DB -> put virtualTx to the utangle -> pull is up to attacher
 			vid = vertex.WrapTxID(txid)
 			env.AddVertexNoLock(vid)
+			vid.SetAttachmentDepthNoLock(options.depth)
 
 			env.Tracef(TraceTagAttach, "AttachTxID: added new branch vertex and pulled %s%s", txid.StringShort(), by)
 			env.TraceTx(&txid, "AttachTxID: added new branch vertex and pulled")
@@ -85,7 +91,7 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Att
 	env.Tracef(TraceTagAttach, "AttachTransaction: %s", tx.IDShortString)
 	env.TraceTx(tx.ID(), "AttachTransaction")
 
-	vid = AttachTxID(*tx.ID(), env, OptionInvokedBy("addTx"))
+	vid = AttachTxID(*tx.ID(), env, WithInvokedBy("addTx"))
 	vid.UnwrapVirtualTx(func(v *vertex.VirtualTransaction) {
 		if vid.FlagsUpNoLock(vertex.FlagVertexTxAttachmentStarted) {
 			// case with already attached transaction
@@ -124,6 +130,12 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Att
 
 				env.TraceTx(&vid.ID, "runMilestoneAttacher: exit")
 				env.MarkWorkProcessStopped(vid.IDShortString())
+
+				if metadata != nil && metadata.TxBytesReceived != nil {
+					env.AttachmentFinished(*metadata.TxBytesReceived)
+				} else {
+					env.AttachmentFinished()
+				}
 			}()
 		}
 		// significantly speeds up non-sequencer transactions
@@ -150,7 +162,7 @@ func InvalidateTxID(txid ledger.TransactionID, env Environment, reason error) *v
 	env.Tracef(TraceTagAttach, "InvalidateTxID: %s", txid.StringShort())
 	env.TraceTx(&txid, "InvalidateTxID")
 
-	vid := AttachTxID(txid, env, OptionInvokedBy("InvalidateTxID"))
+	vid := AttachTxID(txid, env, WithInvokedBy("InvalidateTxID"))
 	vid.SetTxStatusBad(reason)
 	return vid
 }

@@ -13,14 +13,19 @@ import (
 )
 
 type heartbeatInfo struct {
-	clock                   time.Time
-	hasTxStore              bool
-	acceptsPullSyncRequests bool
+	clock                                  time.Time
+	ignoresAllPullRequests                 bool
+	acceptsPullRequestsFromStaticPeersOnly bool
 }
 
+// flags of the heartbeat message. Information for the peer about the node
+
 const (
-	flagHasTxStore              = byte(0b00000001)
-	flagAcceptsPullSyncRequests = byte(0x00000010)
+	// flagIgnoresAllPullRequests node ignores all pull requests
+	flagIgnoresAllPullRequests = byte(0b00000001)
+	// flagAcceptsPullRequestsFromStaticPeersOnly node ignores pull requests from automatic peers
+	// only effective if flagIgnoresAllPullRequests is false
+	flagAcceptsPullRequestsFromStaticPeersOnly = byte(0x00000010)
 )
 
 func heartbeatInfoFromBytes(data []byte) (heartbeatInfo, error) {
@@ -77,11 +82,14 @@ func (ps *Peers) logConnectionStatusIfNeeded(id peer.ID) {
 // goes out of tolerance interval, connection is dropped from one, then from the other side
 
 func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
+	ps.inMsgCounter.Inc()
+
 	id := stream.Conn().RemotePeer()
 
 	if ps.isInBlacklist(id) {
-		ps.Tracef(TraceTag, "heartbeatStreamHandler %s: %s is in blacklist", ps.host.ID().String, id.String)
-		_ = stream.Reset()
+		// ignore
+		//_ = stream.Reset()
+		_ = stream.Close()
 		return
 	}
 
@@ -89,13 +97,17 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 
 	ps.withPeer(id, func(p *Peer) {
 		if p != nil {
+			// known peer, static or dynamic
 			return
 		}
 		// incoming heartbeat from new peer
 		if !ps.isAutopeeringEnabled() {
 			// node does not take any incoming dynamic peers
 			ps.Tracef(TraceTag, "autopeering disabled: unknown peer %s", id.String)
-			_ = stream.Reset()
+
+			//  do not be harsh, just ignore
+			//_ = stream.Reset()
+			_ = stream.Close()
 			exit = true
 			return
 		}
@@ -120,14 +132,20 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 	var err error
 	var msgData []byte
 
-	if msgData, err = readFrame(stream); err == nil {
-		hbInfo, err = heartbeatInfoFromBytes(msgData)
+	if msgData, err = readFrame(stream); err != nil {
+		ps.Log().Errorf("[peering] hb: error while reading message from peer %s: %v, Ignore", ShortPeerIDString(id), err)
+		// ignore
+		ps.incErrorCounter(id)
+		_ = stream.Close()
+		return
 	}
-	if err != nil {
+
+	if hbInfo, err = heartbeatInfoFromBytes(msgData); err != nil {
 		// protocol violation
+		err = fmt.Errorf("[peering] hb: error while serializing message from peer %s: %v. Reset stream", ShortPeerIDString(id), err)
+		ps.Log().Error(err)
+		ps.dropPeer(id, err.Error())
 		_ = stream.Reset()
-		ps.Log().Errorf("[peering] error while reading message from peer %s: %v", ShortPeerIDString(id), err)
-		ps.dropPeer(id, "read error")
 		return
 	}
 
@@ -138,8 +156,8 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 			return
 		}
 		p._evidenceActivity("hb")
-		p.hasTxStore = hbInfo.hasTxStore
-		p.acceptsPullSyncRequests = hbInfo.acceptsPullSyncRequests
+		p.ignoresAllPullRequests = hbInfo.ignoresAllPullRequests
+		p.acceptsPullRequestsFromStaticPeersOnly = hbInfo.acceptsPullRequestsFromStaticPeersOnly
 		p._evidenceClockDifference(time.Now().Sub(hbInfo.clock))
 	})
 }
@@ -147,7 +165,8 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 func (ps *Peers) sendHeartbeatToPeer(id peer.ID) {
 	ps.sendMsgOutQueued(&heartbeatInfo{
 		// time now will be set in the queue consumer
-		hasTxStore: true, // at the moment txStore always is part of the node
+		ignoresAllPullRequests:                 ps.cfg.IgnoreAllPullRequests,
+		acceptsPullRequestsFromStaticPeersOnly: ps.cfg.AcceptPullRequestsFromStaticPeersOnly,
 	}, id, ps.lppProtocolHeartbeat)
 }
 
@@ -209,18 +228,18 @@ func (ps *Peers) dropPeersWithTooBigClockDiffs() {
 }
 
 func (hi *heartbeatInfo) flags() (ret byte) {
-	if hi.hasTxStore {
-		ret |= flagHasTxStore
+	if hi.ignoresAllPullRequests {
+		ret |= flagIgnoresAllPullRequests
 	}
-	if hi.acceptsPullSyncRequests {
-		ret |= flagAcceptsPullSyncRequests
+	if hi.acceptsPullRequestsFromStaticPeersOnly {
+		ret |= flagAcceptsPullRequestsFromStaticPeersOnly
 	}
 	return
 }
 
 func (hi *heartbeatInfo) setFromFlags(fl byte) {
-	hi.hasTxStore = (fl | flagHasTxStore) != 0
-	hi.acceptsPullSyncRequests = (fl | flagAcceptsPullSyncRequests) != 0
+	hi.ignoresAllPullRequests = (fl | flagIgnoresAllPullRequests) != 0
+	hi.acceptsPullRequestsFromStaticPeersOnly = (fl | flagAcceptsPullRequestsFromStaticPeersOnly) != 0
 }
 
 func (hi *heartbeatInfo) Bytes() []byte {

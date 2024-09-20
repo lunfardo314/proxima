@@ -18,6 +18,7 @@ func (ps *Peers) sendMsgOut(inp outMsgData) {
 	if err = writeFrame(stream, inp.msg.Bytes()); err != nil {
 		ps.Log().Errorf("[peering] error while sending message to peer %s", ShortPeerIDString(inp.peerID))
 	}
+	ps.outMsgCounter.Inc()
 }
 
 func (ps *Peers) sendMsgOutQueued(msg outMessageWrapper, id peer.ID, prot protocol.ID) {

@@ -88,4 +88,12 @@ func TestTxMetadata(t *testing.T) {
 		require.EqualValues(t, 100, mBack.PortionInfo.LastIndex)
 		require.EqualValues(t, 5, mBack.PortionInfo.Index)
 	})
+	t.Run("isResponseToPull", func(t *testing.T) {
+		m := &TransactionMetadata{IsResponseToPull: true}
+		mb := m.Bytes()
+		require.EqualValues(t, []byte{1, flagIsResponseToPull}, mb)
+		mBack, err := TransactionMetadataFromBytes(mb)
+		require.NoError(t, err)
+		require.True(t, mBack.IsResponseToPull)
+	})
 }

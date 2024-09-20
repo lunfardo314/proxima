@@ -8,6 +8,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/peering"
 	"github.com/lunfardo314/proxima/util"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 type (
@@ -27,6 +28,7 @@ type (
 	PullTxServer struct {
 		environment
 		*work_process.WorkProcess[*Input]
+		responseToPullCounter prometheus.Counter
 	}
 )
 
@@ -41,6 +43,7 @@ func New(env environment) *PullTxServer {
 	}
 	ret.WorkProcess = work_process.New[*Input](env, Name, ret.consume)
 	ret.WorkProcess.Start()
+	ret.registerMetrics()
 	return ret
 }
 
@@ -58,9 +61,18 @@ func (d *PullTxServer) consume(inp *Input) {
 		metadata = &txmetadata.TransactionMetadata{}
 	}
 	// setting persistent 'response to pull' flag in metadata
-	metadata.IsResponseToPull = true
 	metadata.PortionInfo = &inp.PortionInfo
 
 	d.SendTxBytesWithMetadataToPeer(inp.PeerID, txBytes, metadata)
+	d.responseToPullCounter.Inc()
+
 	d.Tracef(TraceTag, "FOUND %s -> %s", inp.TxID.StringShort, peering.ShortPeerIDString(inp.PeerID))
+}
+
+func (d *PullTxServer) registerMetrics() {
+	d.responseToPullCounter = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "proxima_response_to_pull_counter",
+		Help: "counts responses to pull requests",
+	})
+	d.MetricsRegistry().MustRegister(d.responseToPullCounter)
 }

@@ -17,6 +17,7 @@ import (
 	"github.com/lunfardo314/proxima/util/countdown"
 	"github.com/lunfardo314/proxima/util/set"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/atomic"
 )
 
 // TODO tests fails when started all together due to timing problems and deadlocks
@@ -156,11 +157,11 @@ func TestSendMsg(t *testing.T) {
 		)
 		hosts := makeHosts(t, numHosts, trace)
 		counter := countdown.New(numMsg*(numHosts-1), 2*time.Second)
-		counter1 := 0
+		var counter1 atomic.Int64
 		for _, h := range hosts {
 			h1 := h
 			h1.OnReceiveTxBytes(func(from peer.ID, txBytes []byte, _ *txmetadata.TransactionMetadata) {
-				counter1++
+				counter1.Inc()
 				counter.Tick()
 			})
 		}
@@ -181,7 +182,7 @@ func TestSendMsg(t *testing.T) {
 		}
 		t.Logf("count = %d", count)
 		err := counter.Wait()
-		t.Logf("counter1 = %d", counter1)
+		t.Logf("counter1 = %d", counter1.Load())
 		for _, h := range hosts {
 			h.Stop()
 		}
@@ -196,11 +197,11 @@ func TestSendMsg(t *testing.T) {
 		)
 		hosts := makeHosts(t, numHosts, trace)
 		counter := countdown.New(numHosts*numMsg*(numHosts-1), 20*time.Second)
-		counter1 := 0
+		var counter1 atomic.Int64
 		for _, h := range hosts {
 			h1 := h
 			h1.OnReceiveTxBytes(func(from peer.ID, txBytes []byte, _ *txmetadata.TransactionMetadata) {
-				counter1++
+				counter1.Inc()
 				counter.Tick()
 			})
 		}
@@ -227,7 +228,7 @@ func TestSendMsg(t *testing.T) {
 			}()
 		}
 		err := counter.Wait()
-		t.Logf("counter1 = %d", counter1)
+		t.Logf("counter1 = %d", counter1.Load())
 		for _, h := range hosts {
 			h.Stop()
 		}
@@ -244,11 +245,11 @@ func TestSendMsg(t *testing.T) {
 		counter := countdown.New(numHosts*(numHosts-1)*numMsg, 10*time.Second)
 		t.Logf("sending %d messages", numHosts*(numHosts-1)*numMsg)
 
-		counter1 := 0
+		var counter1 atomic.Int64
 		for _, h := range hosts {
 			h1 := h
 			h1.OnReceiveTxBytes(func(from peer.ID, txBytes []byte, _ *txmetadata.TransactionMetadata) {
-				counter1++
+				counter1.Inc()
 				counter.Tick()
 			})
 		}
@@ -266,7 +267,7 @@ func TestSendMsg(t *testing.T) {
 			}()
 		}
 		err := counter.Wait()
-		t.Logf("counter1 = %d", counter1)
+		t.Logf("counter1 = %d", counter1.Load())
 		for _, h := range hosts {
 			h.Stop()
 		}
@@ -321,8 +322,8 @@ func TestSendMsg(t *testing.T) {
 			txSet.Insert(txids...)
 			txSetMutex.Unlock()
 
-			succ := hosts[i%numHosts].PullTransactionsFromRandomPeer(txids...)
-			require.True(t, succ)
+			n := hosts[i%numHosts].PullTransactionsFromRandomPeers(1, txids...)
+			require.EqualValues(t, 1, n)
 		}
 		err := counter.Wait()
 		require.NoError(t, err)

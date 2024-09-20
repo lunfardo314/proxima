@@ -100,6 +100,8 @@ func (v *VirtualTransaction) addSequencerOutputs(seqOut, stemOut *ledger.OutputW
 		return err
 	}
 	if stemOut != nil {
+		util.Assertf(stemOut.ID.IsBranchTransaction(), "stemOut.ID.IsBranchTransaction()")
+		util.Assertf(stemOut.ID.TransactionID() == seqOut.ID.TransactionID(), "stemOut.ID.TransactionID() == seqOut.ID.TransactionID()")
 		if err := v._addOutput(stemOut.ID.Index(), stemOut.Output); err != nil {
 			return err
 		}
@@ -179,14 +181,18 @@ func (v *VirtualTransaction) SetPullNotNeeded() {
 }
 
 // SetPullHappened increases pull counter and sets nex pull deadline
-func (v *VirtualTransaction) SetPullHappened(pullPeriod time.Duration) {
+func (v *VirtualTransaction) SetPullHappened(nTimes int, repeatAfter time.Duration) {
 	util.Assertf(v.pullRulesDefined, "v.pullRulesDefined")
-	v.timesPulled++
-	v.nextPull = time.Now().Add(pullPeriod)
+	if nTimes <= 0 {
+		// not happened
+		return
+	}
+	v.timesPulled += nTimes
+	v.nextPull = time.Now().Add(repeatAfter)
 }
 
-func (v *VirtualTransaction) PullPatienceExpired(maxPullTimes int) bool {
-	return v.PullNeeded() && v.timesPulled >= maxPullTimes
+func (v *VirtualTransaction) PullPatienceExpired(maxPullAttempts int) bool {
+	return v.PullNeeded() && v.timesPulled >= maxPullAttempts
 }
 
 func (v *VirtualTransaction) PullNeeded() bool {

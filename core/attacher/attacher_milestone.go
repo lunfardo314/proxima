@@ -2,6 +2,7 @@ package attacher
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"runtime"
@@ -42,8 +43,10 @@ func runMilestoneAttacher(
 
 	if err = a.run(); err != nil {
 		vid.SetTxStatusBad(err)
-		env.Log().Warnf(a.logErrorStatusString(err))
-		// panic("fail fast")
+		if !errors.Is(err, ErrSolidificationDeadline) {
+			// solidification errors with big attachment depth are too verbose
+			env.Log().Warnf(a.logErrorStatusString(err))
+		}
 	} else {
 		msData := env.ParseMilestoneData(vid)
 		if vid.IsBranchTransaction() {
@@ -144,23 +147,27 @@ func (a *milestoneAttacher) run() error {
 	return nil
 }
 
-const enableDeadlockCaching = true
+const (
+	enableDeadlockCatching      = true
+	deadlockIndicationThreshold = 10 * time.Second
+)
 
 // lazyRepeat repeats closure until it returns Good or Bad
 func (a *milestoneAttacher) lazyRepeat(loopName string, fun func() vertex.Status) vertex.Status {
 
-	// ===== deadlock caching ====
+	// ===== deadlock catching ====
 	var checkpoint *checkpoints.Checkpoints
 	checkName := a.Name() + "_" + loopName
-	if enableDeadlockCaching {
+	if enableDeadlockCatching {
 		checkpoint = checkpoints.New(func(name string) {
 			buf := make([]byte, math.MaxUint16)
 			runtime.Stack(buf, true)
-			a.Log().Fatalf(">>>>>>>> DEADLOCK suspected. Stuck loop '%s':\n%s", checkName, string(buf))
+			a.Log().Fatalf(">>>>>>>> DEADLOCK suspected in the loop '%s' (stuck for %v):\n%s",
+				checkName, deadlockIndicationThreshold, string(buf))
 		})
 		defer checkpoint.Close()
 	}
-	// ===== deadlock caching ====
+	// ===== deadlock catching ====
 
 	for {
 		// repeat until becomes defined or interrupted
@@ -180,8 +187,9 @@ func (a *milestoneAttacher) lazyRepeat(loopName string, fun func() vertex.Status
 			a.finals.numPeriodic++
 			a.Tracef(TraceTagAttachMilestone, "periodic check")
 		}
-		if enableDeadlockCaching {
-			checkpoint.Check(checkName, 5*time.Second)
+
+		if enableDeadlockCatching {
+			checkpoint.Check(checkName, deadlockIndicationThreshold)
 		}
 	}
 }
@@ -210,7 +218,7 @@ func (a *milestoneAttacher) solidifyBaseline() vertex.Status {
 			Vertex: func(v *vertex.Vertex) {
 				a.Assertf(a.vid.GetTxStatusNoLock() == vertex.Undefined, "a.vid.GetTxStatusNoLock() == vertex.Undefined:\n%s", a.vid.StringNoLock)
 
-				ok = a.solidifyBaselineVertex(v)
+				ok = a.solidifyBaselineVertex(v, a.vid)
 				if ok && v.BaselineBranch != nil {
 					finalSuccess = a.setBaseline(v.BaselineBranch, a.vid.Timestamp())
 					a.Assertf(finalSuccess, "solidifyBaseline %s: failed to set baseline", a.name)
@@ -260,7 +268,7 @@ func (a *milestoneAttacher) solidifyPastCone() vertex.Status {
 			return vertex.Bad
 		case finalSuccess:
 			util.Assertf(!a.containsUndefinedExcept(a.vid),
-				"inconsistency: attacher %s is 'finalSuccess' but still contains undefined vertices. Lines:\n%s",
+				"inconsistency: attacher %s is 'finalSuccess' but still contains undefined vertices. LinesVerbose:\n%s",
 				a.name, a.dumpLinesString)
 			return vertex.Good
 		default:

@@ -91,8 +91,8 @@ func snapshotFileName(branchID ledger.TransactionID) string {
 }
 
 // SaveSnapshot writes latest reliable state into snapshot. Returns snapshot file name
-func SaveSnapshot(state global.StateStoreReader, ctx context.Context, dir string, out ...io.Writer) (*RootRecord, string, *SnapshotStats, error) {
-	makeErr := func(errStr string) (*RootRecord, string, *SnapshotStats, error) {
+func SaveSnapshot(state global.StateStoreReader, ctx context.Context, dir string, out ...io.Writer) (*BranchData, string, *SnapshotStats, error) {
+	makeErr := func(errStr string) (*BranchData, string, *SnapshotStats, error) {
 		return nil, "", nil, fmt.Errorf("SaveSnapshot: %s", errStr)
 	}
 
@@ -173,7 +173,7 @@ func SaveSnapshot(state global.StateStoreReader, ctx context.Context, dir string
 	if err != nil {
 		return makeErr(err.Error())
 	}
-	return &lrb.RootRecord, fpath, stats, nil
+	return lrb, fpath, stats, nil
 }
 
 // OpenSnapshotFileStream reads first 3 records in the snapshot file and returns

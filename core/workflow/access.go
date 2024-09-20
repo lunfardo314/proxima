@@ -21,13 +21,6 @@ func (w *Workflow) MaxDurationInTheFuture() time.Duration {
 	return 10 * ledger.SlotDuration()
 }
 
-func (w *Workflow) GossipAttachedTransaction(tx *transaction.Transaction, metadata *txmetadata.TransactionMetadata) {
-	if metadata != nil && metadata.SourceTypeNonPersistent == txmetadata.SourceTypeTxStore {
-		return
-	}
-	w.peers.GossipTxBytesToPeers(tx.Bytes(), metadata)
-}
-
 func (w *Workflow) PokeMe(me, with *vertex.WrappedTx) {
 	w.poker.PokeMe(me, with)
 }
@@ -36,16 +29,17 @@ func (w *Workflow) PokeAllWith(wanted *vertex.WrappedTx) {
 	w.poker.PokeAllWith(wanted)
 }
 
-func (w *Workflow) PullTransactionsFromRandomPeer(lst ...ledger.TransactionID) bool {
-	return w.peers.PullTransactionsFromRandomPeer(lst...)
-}
-
-func (w *Workflow) PullTransactionsFromAllPeers(lst ...ledger.TransactionID) {
-	w.peers.PullTransactionsFromAllPeers(lst...)
-}
-
 func (w *Workflow) SendTxBytesWithMetadataToPeer(id peer.ID, txBytes []byte, metadata *txmetadata.TransactionMetadata) bool {
 	return w.peers.SendTxBytesWithMetadataToPeer(id, txBytes, metadata)
+}
+
+func (w *Workflow) GossipAttachedTransaction(tx *transaction.Transaction, metadata *txmetadata.TransactionMetadata) {
+	if metadata != nil {
+		if metadata.SourceTypeNonPersistent == txmetadata.SourceTypeTxStore || metadata.SourceTypeNonPersistent == txmetadata.SourceTypePulled {
+			return
+		}
+	}
+	w.GossipTxBytesToPeers(tx.Bytes(), metadata)
 }
 
 func (w *Workflow) GossipTxBytesToPeers(txBytes []byte, metadata *txmetadata.TransactionMetadata, except ...peer.ID) int {
@@ -110,4 +104,8 @@ func (w *Workflow) WaitTxIDDefined(txid *ledger.TransactionID, pollPeriod, timeo
 			return vertex.Undefined, fmt.Errorf("timeout")
 		}
 	}
+}
+
+func (w *Workflow) AddWantedTransaction(txid *ledger.TransactionID) {
+	w.txInputQueue.AddWantedTransaction(txid)
 }

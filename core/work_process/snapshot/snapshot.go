@@ -16,12 +16,14 @@ type (
 	environment interface {
 		global.NodeGlobal
 		StateStore() global.StateStore
+		GetOwnSequencerID() *ledger.ChainID
 	}
 
 	Snapshot struct {
 		environment
-		directory  string
-		keepLatest int
+		directory            string
+		keepLatest           int
+		lastSnapshotBranchID ledger.TransactionID
 	}
 )
 
@@ -86,11 +88,27 @@ func directoryExists(dir string) bool {
 }
 
 func (s *Snapshot) doSnapshot() {
-	_, fname, stats, err := multistate.SaveSnapshot(s.StateStore(), s.Ctx(), s.directory, io.Discard)
+	var lrb *multistate.BranchData
+
+	// if node has own sequencer running,
+	if ownSeqID := s.GetOwnSequencerID(); ownSeqID != nil {
+		lrb = multistate.FindLatestReliableBranchWithSequencerID(s.StateStore(), *ownSeqID, global.FractionHealthyBranch)
+	} else {
+		lrb = multistate.FindLatestReliableBranch(s.StateStore(), global.FractionHealthyBranch)
+	}
+	if lrb.Stem.ID.TransactionID() == s.lastSnapshotBranchID {
+		// no need to repeat snapshots
+		s.Log().Infof("[snapshot] skip repeating branch %s. Snapshot has not been saved", s.lastSnapshotBranchID.StringShort())
+		return
+	}
+
+	snapshotBranch, fname, stats, err := multistate.SaveSnapshot(s.StateStore(), s.Ctx(), s.directory, io.Discard)
 	if err != nil {
 		s.Log().Errorf("[snapshot] failed to save snapshot: %v", err)
 	} else {
-		s.Log().Infof("[snapshot] snapshot has been saved to %s.\n%s", fname, stats.Lines("             ").String())
+		s.Log().Infof("[snapshot] snapshot has been saved to %s.\n%s\nBranch data: %s",
+			fname, stats.Lines("             ").String(), snapshotBranch.Lines("             ").String())
+		s.lastSnapshotBranchID = snapshotBranch.Stem.ID.TransactionID()
 	}
 }
 

@@ -62,7 +62,7 @@ func (seq *Sequencer) OwnLatestMilestoneOutput() vertex.WrappedOutput {
 		if chainOut == nil {
 			return vertex.WrappedOutput{}
 		}
-		wOut, err := attacher.AttachOutputWithID(chainOut, seq, attacher.OptionInvokedBy("OwnLatestMilestoneOutput"))
+		wOut, err := attacher.AttachOutputWithID(chainOut, seq, attacher.WithInvokedBy("OwnLatestMilestoneOutput"))
 		if err == nil {
 			return wOut
 		}
