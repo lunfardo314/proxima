@@ -175,9 +175,15 @@ func (ps *Peers) _pullTxTargets(restrictedTargets ...string) []peer.ID {
 	ret := make([]peer.ID, 0)
 	ps.forEachPeer(func(p *Peer) bool {
 		if len(restrictedTargets) == 0 || slices.Contains(restrictedTargets, p.name) {
-			if _, inBlackList := ps.blacklist[p.id]; !inBlackList && !p._isDead() && !p.ignoresAllPullRequests {
-				ret = append(ret, p.id)
+			if _, inBlackList := ps.blacklist[p.id]; inBlackList || p.ignoresAllPullRequests || p._isDead() {
+				return true
 			}
+			if p.acceptsPullRequestsFromStaticPeersOnly && !p.isStatic {
+				// not completely correct because the peer may list current node as static
+				// here we assume that static peering must be mutual
+				return true
+			}
+			ret = append(ret, p.id)
 		}
 		return true
 	})
