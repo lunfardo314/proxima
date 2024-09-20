@@ -36,10 +36,9 @@ type ProximaNode struct {
 	dbClosedWG                sync.WaitGroup
 	started                   time.Time
 	// metrics
-	lrbSlotsBehind     prometheus.Gauge
-	lrbCoverage        prometheus.Gauge
-	lrbSupply          prometheus.Gauge
-	attachmentDuration prometheus.Gauge
+	lrbSlotsBehind prometheus.Gauge
+	lrbCoverage    prometheus.Gauge
+	lrbSupply      prometheus.Gauge
 }
 
 func init() {
@@ -326,10 +325,6 @@ func (p *ProximaNode) goLoggingSync() {
 	})
 }
 
-func (p *ProximaNode) EvidenceAttachmentDuration(took time.Duration) {
-	p.attachmentDuration.Set(float64(took))
-}
-
 func (p *ProximaNode) registerMetrics() {
 	p.lrbCoverage = prometheus.NewGauge(prometheus.GaugeOpts{
 		Name: "proxima_lrb_coverage",
@@ -343,10 +338,6 @@ func (p *ProximaNode) registerMetrics() {
 		Name: "proxima_lrb_supply",
 		Help: "total supply on the latest reliable branch (LRB)",
 	})
-	p.attachmentDuration = prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "proxima_attachment_duration",
-		Help: "number of nanoseconds it took from receiving txBytes to final attachment",
-	})
 
-	p.MetricsRegistry().MustRegister(p.lrbCoverage, p.lrbSlotsBehind, p.lrbSupply, p.attachmentDuration)
+	p.MetricsRegistry().MustRegister(p.lrbCoverage, p.lrbSlotsBehind, p.lrbSupply)
 }

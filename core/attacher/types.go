@@ -30,7 +30,6 @@ type (
 		TxBytesStore() global.TxBytesStore
 		TxBytesFromStoreIn(txBytesWithMetadata []byte) (*ledger.TransactionID, error)
 		AddWantedTransaction(txid *ledger.TransactionID)
-		EvidenceAttachmentDuration(took time.Duration)
 	}
 
 	pullEnvironment interface {

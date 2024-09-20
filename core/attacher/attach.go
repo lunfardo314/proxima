@@ -120,7 +120,6 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Att
 
 			// start attacher routine
 			go func() {
-				start := time.Now()
 				env.IncCounter("att")
 				defer env.DecCounter("att")
 
@@ -132,7 +131,11 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Att
 				env.TraceTx(&vid.ID, "runMilestoneAttacher: exit")
 				env.MarkWorkProcessStopped(vid.IDShortString())
 
-				env.AttachmentFinished(start)
+				if metadata != nil && metadata.TxBytesReceived != nil {
+					env.AttachmentFinished(*metadata.TxBytesReceived)
+				} else {
+					env.AttachmentFinished()
+				}
 			}()
 		}
 		// significantly speeds up non-sequencer transactions

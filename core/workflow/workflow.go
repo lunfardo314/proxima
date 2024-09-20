@@ -2,7 +2,6 @@ package workflow
 
 import (
 	"sync"
-	"time"
 
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/lunfardo314/proxima/core/memdag"
@@ -30,7 +29,6 @@ type (
 		StateStore() global.StateStore
 		TxBytesStore() global.TxBytesStore
 		PullFromRandomPeers(nPeers int, txid *ledger.TransactionID) int
-		EvidenceAttachmentDuration(took time.Duration)
 		GetOwnSequencerID() *ledger.ChainID
 	}
 	Workflow struct {

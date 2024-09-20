@@ -55,9 +55,6 @@ func runMilestoneAttacher(
 			env.Infof1(a.logFinalStatusString(msData))
 		}
 		vid.SetSequencerAttachmentFinished()
-		if metadata != nil && metadata.TxBytesReceived != nil {
-			env.EvidenceAttachmentDuration(time.Since(*metadata.TxBytesReceived))
-		}
 	}
 
 	env.PokeAllWith(vid)

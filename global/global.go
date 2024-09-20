@@ -502,9 +502,11 @@ func (l *Global) registerMetrics() {
 	l.MetricsRegistry().MustRegister(l.numAttachersMetrics, l.numWaitingMetrics, l.attachmentsCounter, l.attachmentTimeMilliseconds)
 }
 
-func (l *Global) AttachmentFinished(started time.Time) {
+func (l *Global) AttachmentFinished(started ...time.Time) {
 	l.attachmentsCounter.Inc()
-	l.attachmentTimeMilliseconds.Set(float64(time.Since(started) / time.Millisecond))
+	if len(started) > 0 {
+		l.attachmentTimeMilliseconds.Set(float64(time.Since(started[0]) / time.Millisecond))
+	}
 }
 
 func (l *Global) TxPullParameters() (time.Duration, int, int) {
