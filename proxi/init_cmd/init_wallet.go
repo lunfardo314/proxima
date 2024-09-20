@@ -91,7 +91,7 @@ spammer:
     max_duration_minutes: 0
     max_transactions: 0
     output_amount: 1000
-    pace: 10
+    pace: 25
     scenario: standard
     submit_nowait: false
     tag_along:
