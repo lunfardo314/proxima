@@ -1,7 +1,7 @@
 # Proxi wallet profile
 wallet:
     private_key: cd9e2cbfccff43c55f6127869762814431203203f359e86b57d804ff50a1b36dc07e104fcbec1daf388ffe50a6fd3ddf006d1e24a384ff81277fee6eff808738
-    account: addressED25519(0x033d48aa6f02b3f37811ae82d9c383855d3d23373cbd28ab94639fdd94a4f02d)
+    account: a(0x033d48aa6f02b3f37811ae82d9c383855d3d23373cbd28ab94639fdd94a4f02d)
     # <own sequencer ID> must be own sequencer ID, i.e. controlled by the private key of the wallet.
     # The controller wallet can withdraw tokens from the sequencer chain with command
     # 'proxi node seq withdraw'
@@ -39,7 +39,7 @@ spammer:
     max_duration_minutes: 0
     max_transactions: 0
     output_amount: 1000
-    pace: 10
+    pace: 25
     scenario: standard
     submit_nowait: false
     tag_along:
@@ -48,5 +48,5 @@ spammer:
         # For example the bootstrap sequencer af7bedde1fea222230b82d63d5b665ac75afbe4ad3f75999bb3386cf994a6963
         sequencer: af7bedde1fea222230b82d63d5b665ac75afbe4ad3f75999bb3386cf994a6963
     # target address
-    target: addressED25519(0x3faf090d38f18ea211936b8bcf19b7b30cdcb8e224394a5c30f9ba644f8bb2fb)
+    target: a(0x3faf090d38f18ea211936b8bcf19b7b30cdcb8e224394a5c30f9ba644f8bb2fb)
     trace_on_node: false
