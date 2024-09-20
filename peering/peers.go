@@ -68,11 +68,25 @@ type (
 		rendezvousString     string
 		// queued message sender to peers
 		outQueue *queue.Queue[outMsgData]
-		// metrics
+		// msg metrics
 		inMsgCounter    prometheus.Counter
 		outMsgCounter   prometheus.Counter
 		pullRequestsIn  prometheus.Counter
 		pullRequestsOut prometheus.Counter
+		// peers metrics
+		peersAll         prometheus.Gauge
+		peersStatic      prometheus.Gauge
+		peersDead        prometheus.Gauge
+		peersAlive       prometheus.Gauge
+		peersPullTargets prometheus.Gauge
+	}
+
+	peersStats struct {
+		peersAll         int
+		peersStatic      int
+		peersDead        int
+		peersAlive       int
+		peersPullTargets int
 	}
 
 	Peer struct {
@@ -222,6 +236,11 @@ func New(env environment, cfg *Config) (*Peers, error) {
 
 	env.RepeatInBackground(Name+"_blacklist_cleanup", time.Second, func() bool {
 		ret.cleanBlacklist()
+		return true
+	})
+
+	env.RepeatInBackground(Name+"_update_peer_metrics", 2*time.Second, func() bool {
+		ret.updatePeerMetrics(ret.peerStats())
 		return true
 	})
 
@@ -546,24 +565,4 @@ func (p *Peer) avgClockDifference() time.Duration {
 		ret += d
 	}
 	return ret / time.Duration(len(p.clockDifferences))
-}
-
-func (ps *Peers) registerMetrics() {
-	ps.inMsgCounter = prometheus.NewCounter(prometheus.CounterOpts{
-		Name: "proxima_peering_inMsgCounter",
-		Help: "counts number of incoming messages",
-	})
-	ps.outMsgCounter = prometheus.NewCounter(prometheus.CounterOpts{
-		Name: "proxima_peering_outMsgCounter",
-		Help: "counts number of messages coming out",
-	})
-	ps.pullRequestsIn = prometheus.NewCounter(prometheus.CounterOpts{
-		Name: "proxima_peering_pullRequestsIn",
-		Help: "counts number of received pull request messages",
-	})
-	ps.pullRequestsOut = prometheus.NewCounter(prometheus.CounterOpts{
-		Name: "proxima_peering_pullRequestsOut",
-		Help: "counts number of sent pull request messages",
-	})
-	ps.MetricsRegistry().MustRegister(ps.inMsgCounter, ps.outMsgCounter, ps.pullRequestsIn, ps.pullRequestsOut)
 }

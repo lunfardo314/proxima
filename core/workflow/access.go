@@ -109,3 +109,7 @@ func (w *Workflow) WaitTxIDDefined(txid *ledger.TransactionID, pollPeriod, timeo
 func (w *Workflow) AddWantedTransaction(txid *ledger.TransactionID) {
 	w.txInputQueue.AddWantedTransaction(txid)
 }
+
+func (w *Workflow) EvidenceNonSequencerTx() {
+	w.txInputQueue.EvidenceNonSequencerTx()
+}

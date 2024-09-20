@@ -44,12 +44,13 @@ type (
 		// so it will have to be pulled by nodes
 		bloomFilterWanted *bloomfilter.Filter[ledger.TransactionIDVeryShort4]
 		// metrics
-		inputTxCounter   prometheus.Counter
-		pulledTxCounter  prometheus.Counter
-		badTxCounter     prometheus.Counter
-		filterHitCounter prometheus.Counter
-		gossipedCounter  prometheus.Counter
-		queueSize        prometheus.Gauge
+		inputTxCounter        prometheus.Counter
+		pulledTxCounter       prometheus.Counter
+		badTxCounter          prometheus.Counter
+		filterHitCounter      prometheus.Counter
+		gossipedCounter       prometheus.Counter
+		queueSize             prometheus.Gauge
+		nonSequencerTxCounter prometheus.Counter
 	}
 )
 
@@ -177,12 +178,20 @@ func (q *TxInputQueue) registerMetrics() {
 		Name: "proxima_txInputQueue_queueSize",
 		Help: "size of the input queue",
 	})
+	q.nonSequencerTxCounter = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "proxima_txInputQueue_nonSequencer",
+		Help: "number of non-sequencer transactions",
+	})
 
-	q.MetricsRegistry().MustRegister(q.inputTxCounter, q.pulledTxCounter, q.badTxCounter, q.filterHitCounter, q.gossipedCounter, q.queueSize)
+	q.MetricsRegistry().MustRegister(q.inputTxCounter, q.pulledTxCounter, q.badTxCounter, q.filterHitCounter, q.gossipedCounter, q.queueSize, q.nonSequencerTxCounter)
 }
 
 // AddWantedTransaction adds transaction short id to the wanted filter.
 // It makes the transaction go directly for attachment without checking other filters and without gossiping
 func (q *TxInputQueue) AddWantedTransaction(txid *ledger.TransactionID) {
 	q.bloomFilterWanted.Add(txid.VeryShortID4())
+}
+
+func (q *TxInputQueue) EvidenceNonSequencerTx() {
+	q.nonSequencerTxCounter.Inc()
 }

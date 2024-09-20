@@ -104,6 +104,10 @@ func (w *Workflow) TxIn(tx *transaction.Transaction, opts ...TxInOption) error {
 	// base validation
 	txid := tx.ID()
 
+	if !txid.IsSequencerMilestone() {
+		w.EvidenceNonSequencerTx()
+	}
+
 	if options.txTrace {
 		w.StartTracingTx(*txid)
 	}

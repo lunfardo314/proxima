@@ -115,7 +115,7 @@ func (ps *Peers) PullTransactionsFromRandomPeers(nPeers int, txids ...ledger.Tra
 	}
 	util.Assertf(nPeers >= 1, "nPeers")
 
-	targets := ps._randomPullPeers(nPeers)
+	targets := ps.randomPullPeers(nPeers)
 	for _, rndPeerID := range targets {
 		ps.sendPullTransactionsToPeer(rndPeerID, txids...)
 	}
@@ -127,7 +127,7 @@ func (ps *Peers) PullTransactionsFromAllPeers(txids ...ledger.TransactionID) {
 		return
 	}
 	msg := &_pullTransactions{txids: txids}
-	pullTargets := ps._pullTxTargets()
+	pullTargets := ps.pullTxTargets()
 	for _, id := range pullTargets {
 		ps.sendMsgOutQueued(msg, id, ps.lppProtocolPull)
 	}
@@ -170,32 +170,38 @@ func decodePullTransactionsMsg(data []byte) ([]ledger.TransactionID, error) {
 	return ret, nil
 }
 
-func (ps *Peers) _pullTxTargets() []peer.ID {
+func (ps *Peers) _isPullTarget(p *Peer) bool {
+	if _, inBlackList := ps.blacklist[p.id]; inBlackList {
+		return false
+	}
+	if p.ignoresAllPullRequests {
+		return false
+	}
+	if p._isDead() {
+		return false
+	}
+	if p.acceptsPullRequestsFromStaticPeersOnly && !p.isStatic {
+		// not completely correct because the peer may list current node as static
+		// here we assume that static peering must be mutual
+		return false
+	}
+	return true
+}
+
+func (ps *Peers) pullTxTargets() []peer.ID {
 	ret := make([]peer.ID, 0)
 	ps.forEachPeer(func(p *Peer) bool {
-		if _, inBlackList := ps.blacklist[p.id]; inBlackList {
-			return true
+		if ps._isPullTarget(p) {
+			ret = append(ret, p.id)
 		}
-		if p.ignoresAllPullRequests {
-			return true
-		}
-		if p._isDead() {
-			return true
-		}
-		if p.acceptsPullRequestsFromStaticPeersOnly && !p.isStatic {
-			// not completely correct because the peer may list current node as static
-			// here we assume that static peering must be mutual
-			return true
-		}
-		ret = append(ret, p.id)
 		return true
 	})
 	return ret
 }
 
-func (ps *Peers) _randomPullPeers(nPeers int) []peer.ID {
+func (ps *Peers) randomPullPeers(nPeers int) []peer.ID {
 	util.Assertf(nPeers >= 1, "nPeers >= 1")
-	targets := ps._pullTxTargets()
+	targets := ps.pullTxTargets()
 	return util.RandomElements(nPeers, targets...)
 }
 
