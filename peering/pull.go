@@ -29,7 +29,6 @@ func (ps *Peers) pullStreamHandler(stream network.Stream) {
 	id := stream.Conn().RemotePeer()
 	if ps.isInBlacklist(id) {
 		// just ignore
-		//_ = stream.Reset()
 		_ = stream.Close()
 		return
 	}
@@ -40,7 +39,6 @@ func (ps *Peers) pullStreamHandler(stream network.Stream) {
 	ps.withPeer(id, func(p *Peer) {
 		if p == nil {
 			// just ignore
-			//_ = stream.Reset()
 			_ = stream.Close()
 			return
 		}
@@ -51,11 +49,9 @@ func (ps *Peers) pullStreamHandler(stream network.Stream) {
 		}
 		msgData, err = readFrame(stream)
 		if err != nil {
-			//_ = stream.Reset()
 			err = fmt.Errorf("pull: error while reading message from peer %s: %v", id.String(), err)
 			ps.Log().Error(err)
 			p.errorCounter++
-			//ps._dropPeer(p, err.Error())
 			_ = stream.Close()
 			return
 		}
@@ -190,7 +186,7 @@ func (ps *Peers) _isPullTarget(p *Peer) bool {
 
 func (ps *Peers) pullTxTargets() []peer.ID {
 	ret := make([]peer.ID, 0)
-	ps.forEachPeer(func(p *Peer) bool {
+	ps.forEachPeerRLock(func(p *Peer) bool {
 		if ps._isPullTarget(p) {
 			ret = append(ret, p.id)
 		}

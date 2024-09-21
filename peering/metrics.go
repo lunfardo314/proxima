@@ -46,7 +46,7 @@ func (ps *Peers) registerMetrics() {
 }
 
 func (ps *Peers) peerStats() (ret peersStats) {
-	ps.forEachPeer(func(p *Peer) bool {
+	ps.forEachPeerRLock(func(p *Peer) bool {
 		ret.peersAll++
 		if p._isAlive() {
 			ret.peersAlive++

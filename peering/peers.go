@@ -132,12 +132,12 @@ const (
 	lppProtocolPull      = "/proxima/pull/%d"
 	lppProtocolHeartbeat = "/proxima/heartbeat/%d"
 
-	// clockToleranceLoopPeriod is how big the difference between local and remote clocks is tolerated.
+	// clockTolerance is how big the difference between local and remote clocks is tolerated.
 	// The difference includes difference between local clocks (positive or negative) plus
 	// positive heartbeat message latency between peers
 	// In any case nodes has interest to sync their clocks with global reference.
 	// This constant indicates when to drop the peer
-	clockToleranceLoopPeriod = 7 * time.Second
+	clockTolerance = 8 * time.Second
 
 	// if the node is bootstrap, and it has configured less than numMaxDynamicPeersForBootNodeAtLeast
 	// of dynamic peer cap, use this instead
@@ -327,7 +327,7 @@ func (ps *Peers) Run() {
 
 	ps.startHeartbeat()
 
-	ps.RepeatInBackground("peering_clock_tolerance_loop", clockToleranceLoopPeriod, func() bool {
+	ps.RepeatInBackground("peering_clock_tolerance_loop", 2*clockTolerance, func() bool {
 		ps.dropPeersWithTooBigClockDiffs()
 		return true
 	}, true)
@@ -401,12 +401,6 @@ func (ps *Peers) dropPeer(id peer.ID, reason string) {
 	})
 }
 
-func (ps *Peers) incErrorCounter(id peer.ID) {
-	ps.withPeer(id, func(p *Peer) {
-		p.errorCounter++
-	})
-}
-
 func (ps *Peers) _dropPeer(p *Peer, reason string) {
 	why := ""
 	if len(reason) > 0 {
@@ -476,7 +470,7 @@ func (ps *Peers) withPeer(id peer.ID, fun func(p *Peer)) {
 	fun(ps._getPeer(id))
 }
 
-func (ps *Peers) forEachPeer(fun func(p *Peer) bool) {
+func (ps *Peers) forEachPeerRLock(fun func(p *Peer) bool) {
 	ps.mutex.RLock()
 	defer ps.mutex.RUnlock()
 
