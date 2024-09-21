@@ -18,10 +18,14 @@ func initSeqWithdrawCmd() *cobra.Command {
 	seqSendCmd := &cobra.Command{
 		Use:     "withdraw <amount>",
 		Aliases: util.List("send"),
-		Short:   `withdraw tokens from sequencer to the target lock`,
+		Short:   `withdraw tokens from sequencer to controller's account or to the the target lock`,
 		Args:    cobra.ExactArgs(1),
 		Run:     runSeqWithdrawCmd,
 	}
+
+	glb.AddFlagTarget(seqSendCmd)
+	glb.AddFlagTraceTx(seqSendCmd)
+
 	seqSendCmd.InitDefaultHelpCmd()
 	return seqSendCmd
 }

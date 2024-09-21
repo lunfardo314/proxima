@@ -54,9 +54,6 @@ func MustGetTarget() ledger.Accountable {
 	var ret ledger.Accountable
 	var err error
 
-	//if str := viper.GetString("target"); str != "" {
-	// viper.GetString does not work for some reason
-
 	if targetStr != "" {
 		ret, err = ledger.AccountableFromSource(targetStr)
 		AssertNoError(err)
