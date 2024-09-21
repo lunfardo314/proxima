@@ -1,4 +1,4 @@
-package sequencer
+package task
 
 import (
 	"sync"
@@ -8,8 +8,9 @@ import (
 	"github.com/lunfardo314/proxima/util/lines"
 )
 
-// slotStats collect values of sequencer performance. Usually per slot, the resets
-type slotStats struct {
+// SlotData collect values of sequencer during one slot
+// Proposers may keep theirs state there from target to target
+type SlotData struct {
 	mutex               sync.RWMutex
 	slot                ledger.Slot
 	numTargets          int
@@ -20,41 +21,29 @@ type slotStats struct {
 	numNotGoodEnough    int
 }
 
-func _newSlotStats(slot ledger.Slot) slotStats {
-	return slotStats{
+func NewSlotData(slot ledger.Slot) *SlotData {
+	return &SlotData{
 		slot:                slot,
 		seqTxSubmitted:      make([]ledger.TransactionID, 0),
 		proposalsByProposer: make(map[string]int),
 	}
 }
-func (s *slotStats) StatsReset(slot ledger.Slot) {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
 
-	s.slot = slot
-	s.numTargets = 0
-	s.branchSubmitted = nil
-	s.proposalsByProposer = make(map[string]int)
-	s.seqTxSubmitted = s.seqTxSubmitted[:0]
-	s.numNoProposals = 0
-	s.numNotGoodEnough = 0
-}
-
-func (s *slotStats) StatsNewTarget() {
+func (s *SlotData) NewTarget() {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
 	s.numTargets++
 }
 
-func (s *slotStats) StatsSequencerTxSubmitted(txid *ledger.TransactionID) {
+func (s *SlotData) SequencerTxSubmitted(txid *ledger.TransactionID) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
 	s.seqTxSubmitted = append(s.seqTxSubmitted, *txid)
 }
 
-func (s *slotStats) StatsBranchTxSubmitted(txid *ledger.TransactionID) {
+func (s *SlotData) BranchTxSubmitted(txid *ledger.TransactionID) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
@@ -62,28 +51,28 @@ func (s *slotStats) StatsBranchTxSubmitted(txid *ledger.TransactionID) {
 	s.branchSubmitted = &txidCopy
 }
 
-func (s *slotStats) StatsProposalSubmitted(strategyName string) {
+func (s *SlotData) ProposalSubmitted(strategyName string) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
 	s.proposalsByProposer[strategyName] = s.proposalsByProposer[strategyName] + 1
 }
 
-func (s *slotStats) StatsNoProposals() {
+func (s *SlotData) NoProposals() {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
 	s.numNoProposals++
 }
 
-func (s *slotStats) StatsNotGoodEnough() {
+func (s *SlotData) NotGoodEnough() {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
 	s.numNotGoodEnough++
 }
 
-func (s *slotStats) Lines(prefix ...string) *lines.Lines {
+func (s *SlotData) Lines(prefix ...string) *lines.Lines {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
 

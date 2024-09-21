@@ -60,7 +60,7 @@ type (
 		onMilestoneSubmitted func(seq *Sequencer, vid *vertex.WrappedTx)
 		onExit               func()
 
-		*slotStats
+		slotData *task.SlotData
 	}
 
 	outputsWithTime struct {
@@ -93,7 +93,6 @@ func New(env Environment, seqID ledger.ChainID, controllerKey ed25519.PrivateKey
 		config:        cfg,
 		logName:       logName,
 		log:           env.Log().Named(logName),
-		slotStats:     util.Ref(_newSlotStats(0)),
 	}
 	ret.ctx, ret.stopFun = context.WithCancel(env.Ctx())
 	var err error
@@ -299,7 +298,10 @@ func (seq *Sequencer) doSequencerStep() bool {
 
 	timerStart := time.Now()
 	targetTs := seq.getNextTargetTime()
-	seq.StatsNewTarget()
+
+	if seq.slotData == nil {
+		seq.slotData = task.NewSlotData(targetTs.Slot())
+	}
 
 	seq.Assertf(ledger.ValidSequencerPace(seq.lastSubmittedTs, targetTs), "target is closer than allowed pace (%d): %s -> %s",
 		ledger.TransactionPaceSequencer(), seq.lastSubmittedTs.String, targetTs.String)
@@ -317,10 +319,10 @@ func (seq *Sequencer) doSequencerStep() bool {
 	msTx, meta, err := seq.generateMilestoneForTarget(targetTs)
 	switch {
 	case errors.Is(err, task.ErrNotGoodEnough):
-		seq.StatsNotGoodEnough()
+		seq.slotData.NotGoodEnough()
 		return true
 	case errors.Is(err, task.ErrNoProposals):
-		seq.StatsNoProposals()
+		seq.slotData.NoProposals()
 		return true
 	case err != nil:
 		seq.Log().Warnf("FAILED to generate transaction for target %s. Now is %s. Reason: %v",
@@ -348,17 +350,17 @@ func (seq *Sequencer) doSequencerStep() bool {
 		seq.milestoneCount++
 		if msVID.IsBranchTransaction() {
 			seq.branchCount++
-			seq.StatsBranchTxSubmitted(&msVID.ID)
+			seq.slotData.BranchTxSubmitted(&msVID.ID)
 		} else {
-			seq.StatsSequencerTxSubmitted(&msVID.ID)
+			seq.slotData.SequencerTxSubmitted(&msVID.ID)
 		}
 		seq.updateInfo(msVID)
 		seq.runOnMilestoneSubmitted(msVID)
 	}
 
 	if targetTs.IsSlotBoundary() {
-		seq.Log().Infof("SLOT STATS: %s", seq.slotStats.Lines().Join(", "))
-		seq.StatsReset(targetTs.Slot())
+		seq.Log().Infof("SLOT STATS: %s", seq.slotData.Lines().Join(", "))
+		seq.slotData = nil
 	}
 	return true
 }
@@ -547,7 +549,7 @@ func (seq *Sequencer) generateMilestoneForTarget(targetTs ledger.Time) (*transac
 		return nil, nil, fmt.Errorf("target %s is in the past by %v: impossible to generate milestone",
 			targetTs.String(), nowis.Sub(deadline))
 	}
-	return task.Run(seq, targetTs)
+	return task.Run(seq, targetTs, seq.slotData)
 }
 
 func (seq *Sequencer) NumOutputsInBuffer() int {

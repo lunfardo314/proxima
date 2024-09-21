@@ -37,7 +37,6 @@ type (
 		FutureConeOwnMilestonesOrdered(rootOutput vertex.WrappedOutput, targetTs ledger.Time) []vertex.WrappedOutput
 		MaxTagAlongInputs() int
 		LatestMilestonesDescending(filter ...func(seqID ledger.ChainID, vid *vertex.WrappedTx) bool) []*vertex.WrappedTx
-		StatsProposalSubmitted(strategyName string)
 	}
 
 	Task struct {
@@ -46,6 +45,7 @@ type (
 		ctx          context.Context
 		proposersWG  sync.WaitGroup
 		proposalChan chan *proposal
+		slotData     *SlotData
 		// proposals    []*proposal
 		Name string
 	}
@@ -105,7 +105,7 @@ func allProposingStrategies() []*Strategy {
 // Each proposer generates proposals and writes it to the channel of the task.
 // The best proposal is selected and returned. Function only returns transaction which is better
 // than others in the tippool for the current slot. Otherwise, returns nil
-func Run(env environment, targetTs ledger.Time) (*transaction.Transaction, *txmetadata.TransactionMetadata, error) {
+func Run(env environment, targetTs ledger.Time, slotData *SlotData) (*transaction.Transaction, *txmetadata.TransactionMetadata, error) {
 	deadline := targetTs.Time()
 	nowis := time.Now()
 	env.Tracef(TraceTagTask, "RunTask: target: %s, deadline: %s, nowis: %s",
@@ -121,6 +121,7 @@ func Run(env environment, targetTs ledger.Time) (*transaction.Transaction, *txme
 		targetTs:     targetTs,
 		ctx:          nil,
 		proposalChan: make(chan *proposal),
+		slotData:     slotData,
 		// proposals:    make([]*proposal, 0),
 		Name: fmt.Sprintf("%s[%s]", env.SequencerName(), targetTs.String()),
 	}
@@ -144,7 +145,7 @@ func Run(env environment, targetTs ledger.Time) (*transaction.Transaction, *txme
 	go func() {
 		for p := range task.proposalChan {
 			proposals[*p.tx.ID()] = p
-			task.StatsProposalSubmitted(p.strategyName)
+			task.slotData.ProposalSubmitted(p.strategyName)
 		}
 		close(readStop)
 	}()
