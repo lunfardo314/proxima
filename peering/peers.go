@@ -524,7 +524,9 @@ func (p *Peer) _isDead() bool {
 
 func (ps *Peers) IsAlive(id peer.ID) (isAlive bool) {
 	ps.withPeer(id, func(p *Peer) {
-		isAlive = p._isAlive()
+		if p != nil {
+			isAlive = p._isAlive()
+		}
 	})
 	return
 }
