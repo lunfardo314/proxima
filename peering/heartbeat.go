@@ -40,7 +40,7 @@ func heartbeatInfoFromBytes(data []byte) (heartbeatInfo, error) {
 }
 
 func (ps *Peers) NumAlive() (aliveStatic, aliveDynamic int) {
-	ps.forEachPeer(func(p *Peer) bool {
+	ps.forEachPeerRLock(func(p *Peer) bool {
 		if p._isAlive() {
 			if p.isStatic {
 				aliveStatic++
@@ -133,9 +133,13 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 	var msgData []byte
 
 	if msgData, err = readFrame(stream); err != nil {
-		ps.Log().Errorf("[peering] hb: error while reading message from peer %s: %v, Ignore", ShortPeerIDString(id), err)
+		ps.Log().Errorf("[peering] hb: error while reading message from peer %s: err='%v'. Ignore", ShortPeerIDString(id), err)
 		// ignore
-		ps.incErrorCounter(id)
+		ps.withPeer(id, func(p *Peer) {
+			if p != nil {
+				p.errorCounter++
+			}
+		})
 		_ = stream.Close()
 		return
 	}
@@ -173,7 +177,7 @@ func (ps *Peers) sendHeartbeatToPeer(id peer.ID) {
 
 func (ps *Peers) peerIDsAlive() []peer.ID {
 	ret := make([]peer.ID, 0)
-	ps.forEachPeer(func(p *Peer) bool {
+	ps.forEachPeerRLock(func(p *Peer) bool {
 		if p._isAlive() {
 			ret = append(ret, p.id)
 		}
@@ -222,7 +226,12 @@ func (ps *Peers) dropPeersWithTooBigClockDiffs() {
 	defer ps.mutex.Unlock()
 
 	for _, p := range ps.peers {
-		if p.avgClockDifference() > clockToleranceLoopPeriod {
+		d := p.avgClockDifference()
+		if d > clockTolerance/2 {
+			ps.Log().Warnf("clock difference with peer %s is %v (average over %d instances). Tolerance is %v",
+				ShortPeerIDString(p.id), d, len(p.clockDifferences), clockTolerance)
+		}
+		if p.avgClockDifference() > clockTolerance {
 			ps._dropPeer(p, "clock tolerance")
 		}
 	}

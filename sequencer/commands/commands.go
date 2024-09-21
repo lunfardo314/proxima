@@ -42,13 +42,14 @@ func (p CommandParser) ParseSequencerCommandToOutput(input *ledger.OutputWithID)
 
 // parseSenderCommand analyzes the input and parses out raw sequencer command data, if any
 // Command is recognized by:
-//   - finding SenderED25519 constraint inn the output. If not found, output is not a command output
+//   - finding mandatory SenderED25519 constraint in the output. If not found, output is not a command output
 //   - taking constraint next after the SenderED25519. If it does not exist, parse fails
 //   - evaluating the constraint (as EasyFL bytecode). It will not fail, because the whole output is valid. The value of
 //     evaluation is non-empty byte slice D
 //   - the element D[0] is interpreted as command code
 //   - the remaining bytes D[1:] are parsed as lazy array of command parameters.
 //   - if operations are successful, cmd code and array of parameters represents syntactically correct sequencer command
+//     concat(D), where D = <cmd code byte>|<lazy array of command parameters>
 func parseSenderCommand(myAddr ledger.AddressED25519, input *ledger.OutputWithID) (byte, *lazybytes.Array) {
 	senderAddr, senderConstraintIdx := input.Output.SenderED25519()
 	if senderConstraintIdx == 0xff {

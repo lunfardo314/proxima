@@ -79,7 +79,7 @@ func (ps *Peers) discoverPeersIfNeeded() {
 
 func (ps *Peers) deadDynamicPeers() []peer.ID {
 	ret := make([]peer.ID, 0)
-	ps.forEachPeer(func(p *Peer) bool {
+	ps.forEachPeerRLock(func(p *Peer) bool {
 		if !p.isStatic && p._isDead() {
 			ret = append(ret, p.id)
 		}
