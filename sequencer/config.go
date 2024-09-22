@@ -14,14 +14,15 @@ import (
 
 type (
 	ConfigOptions struct {
-		SequencerName      string
-		Pace               int // pace in ticks
-		MaxTagAlongInputs  int
-		MaxTargetTs        ledger.Time
-		MaxBranches        int
-		DelayStart         time.Duration
-		BacklogTTLSlots    int
-		MilestonesTTLSlots int
+		SequencerName           string
+		Pace                    int // pace in ticks
+		MaxTagAlongInputs       int
+		MaxTargetTs             ledger.Time
+		MaxBranches             int
+		DelayStart              time.Duration
+		BacklogTTLSlots         int
+		MilestonesTTLSlots      int
+		SingleSequencerEnforced bool
 	}
 
 	ConfigOption func(options *ConfigOptions)
@@ -92,6 +93,7 @@ func paramsFromConfig() ([]ConfigOption, ledger.ChainID, ed25519.PrivateKey, err
 		WithMaxBranches(subViper.GetInt("max_branches")),
 		WithBacklogTTLSlots(backlogTTLSlots),
 		WithMilestonesTTLSlots(milestonesTTLSlots),
+		WithSingleSequencerEnforced,
 	}
 	return cfg, seqID, controllerKey, nil
 }
@@ -141,6 +143,10 @@ func WithMilestonesTTLSlots(slots int) ConfigOption {
 	return func(o *ConfigOptions) {
 		o.MilestonesTTLSlots = slots
 	}
+}
+
+func WithSingleSequencerEnforced(o *ConfigOptions) {
+	o.SingleSequencerEnforced = true
 }
 
 func (cfg *ConfigOptions) lines(seqID ledger.ChainID, controller ledger.AddressED25519, prefix ...string) *lines.Lines {

@@ -61,6 +61,8 @@ type (
 		onExit               func()
 
 		slotData *task.SlotData
+
+		metrics *sequencerMetrics
 	}
 
 	outputsWithTime struct {
@@ -94,6 +96,11 @@ func New(env Environment, seqID ledger.ChainID, controllerKey ed25519.PrivateKey
 		logName:       logName,
 		log:           env.Log().Named(logName),
 	}
+	if cfg.SingleSequencerEnforced {
+		ret.metrics = &sequencerMetrics{}
+		ret.registerMetrics()
+	}
+
 	ret.ctx, ret.stopFun = context.WithCancel(env.Ctx())
 	var err error
 
@@ -451,6 +458,13 @@ func (seq *Sequencer) submitMilestone(tx *transaction.Transaction, meta *txmetad
 		return nil
 	}
 	seq.lastSubmittedTs = vid.Timestamp()
+
+	if seq.metrics != nil {
+		seq.metrics.seqMilestoneCounter.Inc()
+		if vid.IsBranchTransaction() {
+			seq.metrics.branchCounter.Inc()
+		}
+	}
 	return vid
 }
 

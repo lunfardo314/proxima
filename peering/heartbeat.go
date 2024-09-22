@@ -165,7 +165,7 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 		p.ignoresAllPullRequests = hbInfo.ignoresAllPullRequests
 		p.acceptsPullRequestsFromStaticPeersOnly = hbInfo.acceptsPullRequestsFromStaticPeersOnly
 
-		p._evidenceClockDifference(time.Now().Sub(hbInfo.clock))
+		p._evidenceClockDifference(time.Since(hbInfo.clock))
 	})
 }
 
