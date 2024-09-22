@@ -8,6 +8,8 @@ import (
 
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/proxima/util/lines"
 	"github.com/multiformats/go-multiaddr"
 	"golang.org/x/exp/maps"
 )
@@ -220,20 +222,29 @@ func (ps *Peers) startHeartbeat() {
 	}, true)
 }
 
-// dropPeersWithTooBigClockDiffs drops all peers which average clock diff exceeds tolerance threshold
-func (ps *Peers) dropPeersWithTooBigClockDiffs() {
+// checkClockDiffs drops all peers which average clock diff exceeds tolerance threshold
+func (ps *Peers) checkClockDiffs() {
 	ps.mutex.Lock()
 	defer ps.mutex.Unlock()
 
+	logLines := lines.New()
+	warn := false
 	for _, p := range ps.peers {
-		d := p.avgClockDifference()
-		if d > clockTolerance/2 {
-			ps.Log().Warnf("clock difference with peer %s is %v (average over %d instances). Tolerance is %v",
-				ShortPeerIDString(p.id), d, len(p.clockDifferences), clockTolerance)
+		d := util.Median(p.clockDifferences[:])
+		a := "static"
+		if !p.isStatic {
+			a = "dynamic"
 		}
-		if p.avgClockDifference() > clockTolerance {
+		if d > clockTolerance/2 {
+			logLines.Add("%s(%s): %v", ShortPeerIDString(p.id), a, d)
+			warn = true
+		}
+		if d > clockTolerance {
 			ps._dropPeer(p, "clock tolerance")
 		}
+	}
+	if warn {
+		ps.Log().Warnf("peers with clock difference median > 1/2 tolerance (%d): {%s}", clockTolerance, logLines.Join(", "))
 	}
 }
 

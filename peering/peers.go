@@ -328,7 +328,7 @@ func (ps *Peers) Run() {
 	ps.startHeartbeat()
 
 	ps.RepeatInBackground("peering_clock_tolerance_loop", 2*clockTolerance, func() bool {
-		ps.dropPeersWithTooBigClockDiffs()
+		ps.checkClockDiffs()
 		return true
 	}, true)
 
