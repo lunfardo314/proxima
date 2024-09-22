@@ -9,11 +9,12 @@ import (
 )
 
 type sequencerMetrics struct {
-	branchCounter       prometheus.Counter
-	seqMilestoneCounter prometheus.Counter
-	targets             prometheus.Counter
-	proposals           map[string]prometheus.Counter
-	bestProposals       map[string]prometheus.Counter
+	branchCounter            prometheus.Counter
+	seqMilestoneCounter      prometheus.Counter
+	targets                  prometheus.Counter
+	proposalsByStrategy      map[string]prometheus.Counter
+	bestProposalsByStrategy  map[string]prometheus.Counter
+	bestCoverageForTheTarget prometheus.Gauge
 }
 
 func (seq *Sequencer) registerMetrics() {
@@ -39,29 +40,34 @@ func (seq *Sequencer) registerMetrics() {
 	)
 
 	// all proposal counters per strategy
-	seq.metrics.proposals = make(map[string]prometheus.Counter)
+	seq.metrics.proposalsByStrategy = make(map[string]prometheus.Counter)
 	for _, s := range task.AllProposingStrategies {
-		seq.metrics.proposals[s.ShortName] = prometheus.NewCounter(prometheus.CounterOpts{
+		seq.metrics.proposalsByStrategy[s.ShortName] = prometheus.NewCounter(prometheus.CounterOpts{
 			Name: "proxima_seq_proposals_" + s.ShortName,
 			Help: fmt.Sprintf("number of proposals submitted by proposer %s(%s)", s.Name, s.ShortName),
 		})
 	}
-	for _, m := range seq.metrics.proposals {
+	for _, m := range seq.metrics.proposalsByStrategy {
 		seq.MetricsRegistry().MustRegister(m)
 	}
 
 	// best proposal counters per strategy
-	seq.metrics.bestProposals = make(map[string]prometheus.Counter)
+	seq.metrics.bestProposalsByStrategy = make(map[string]prometheus.Counter)
 	for _, s := range task.AllProposingStrategies {
-		seq.metrics.bestProposals[s.ShortName] = prometheus.NewCounter(prometheus.CounterOpts{
+		seq.metrics.bestProposalsByStrategy[s.ShortName] = prometheus.NewCounter(prometheus.CounterOpts{
 			Name: "proxima_seq_best_proposals_" + s.ShortName,
 			Help: fmt.Sprintf("number of best proposals for the target %s(%s)", s.Name, s.ShortName),
 		})
 	}
-	for _, m := range seq.metrics.bestProposals {
+	for _, m := range seq.metrics.bestProposalsByStrategy {
 		seq.MetricsRegistry().MustRegister(m)
 	}
 
+	seq.metrics.bestCoverageForTheTarget = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "proxima_seq_best_coverage",
+		Help: "best coverage for the target",
+	})
+	seq.MetricsRegistry().MustRegister(seq.metrics.bestCoverageForTheTarget)
 }
 
 func (seq *Sequencer) onMilestoneSubmittedMetrics(vid *vertex.WrappedTx) {
@@ -85,12 +91,13 @@ func (seq *Sequencer) EvidenceProposal(strategyShortName string) {
 	if seq.metrics == nil {
 		return
 	}
-	seq.metrics.proposals[strategyShortName].Inc()
+	seq.metrics.proposalsByStrategy[strategyShortName].Inc()
 }
 
-func (seq *Sequencer) EvidenceBestProposal(strategyShortName string) {
+func (seq *Sequencer) EvidenceBestProposalForTheTarget(strategyShortName string, coverage uint64) {
 	if seq.metrics == nil {
 		return
 	}
-	seq.metrics.bestProposals[strategyShortName].Inc()
+	seq.metrics.bestProposalsByStrategy[strategyShortName].Inc()
+	seq.metrics.bestCoverageForTheTarget.Set(float64(coverage))
 }
