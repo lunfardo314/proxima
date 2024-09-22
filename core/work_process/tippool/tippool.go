@@ -29,6 +29,7 @@ type (
 		mutex                           sync.RWMutex
 		latestMilestones                map[ledger.ChainID]_milestoneData
 		expectedSequencerActivityPeriod time.Duration
+		latestMilestoneAddedWhen        time.Time
 	}
 
 	_milestoneData struct {
@@ -88,6 +89,7 @@ func (t *SequencerTips) consume(inp Input) {
 				old.WrappedTx = inp.VID
 				old.lastActivity = time.Now()
 				t.latestMilestones[*seqID] = old
+				t.latestMilestoneAddedWhen = time.Now()
 				storedNew = true
 			}
 		} else {
@@ -99,6 +101,7 @@ func (t *SequencerTips) consume(inp Input) {
 				WrappedTx:    inp.VID,
 				lastActivity: time.Now(),
 			}
+			t.latestMilestoneAddedWhen = time.Now()
 			storedNew = true
 		}
 	}
@@ -206,4 +209,11 @@ func (t *SequencerTips) purgeAndLog() {
 		delete(t.latestMilestones, chainID)
 		t.Log().Infof("[tippool] chainID %s has been removed from the sequencer tippool", chainID.StringShort())
 	}
+}
+
+func (t *SequencerTips) MilestoneArrivedSince(when time.Time) bool {
+	t.mutex.RLock()
+	defer t.mutex.RUnlock()
+
+	return when.Before(t.latestMilestoneAddedWhen)
 }

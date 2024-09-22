@@ -35,6 +35,7 @@ type (
 		NumSequencerTips() int
 		ListenToAccount(account ledger.Accountable, fun func(wOut vertex.WrappedOutput))
 		MustEnsureBranch(txid ledger.TransactionID) *vertex.WrappedTx
+		MilestoneArrivedSince(when time.Time) bool
 	}
 
 	Sequencer struct {

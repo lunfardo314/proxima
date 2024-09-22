@@ -113,3 +113,7 @@ func (w *Workflow) AddWantedTransaction(txid *ledger.TransactionID) {
 func (w *Workflow) EvidenceNonSequencerTx() {
 	w.txInputQueue.EvidenceNonSequencerTx()
 }
+
+func (w *Workflow) MilestoneArrivedSince(when time.Time) bool {
+	return w.tippool.MilestoneArrivedSince(when)
+}

@@ -35,6 +35,7 @@ type (
 		outputs                  map[vertex.WrappedOutput]time.Time
 		outputCount              int
 		removedOutputsSinceReset int
+		lastOutputArrived        time.Time
 	}
 
 	Stats struct {
@@ -76,7 +77,9 @@ func New(env Environment) (*InputBacklog, error) {
 			env.TraceTx(&wOut.VID.ID, "[%s] output #%d is already in the backlog", ret.SequencerName, wOut.Index)
 			return
 		}
-		ret.outputs[wOut] = time.Now()
+		nowis := time.Now()
+		ret.outputs[wOut] = nowis
+		ret.lastOutputArrived = nowis
 		ret.outputCount++
 		env.Tracef(TraceTag, "output stored in input backlog: %s (total: %d)", wOut.IDShortString, len(ret.outputs))
 		env.TraceTx(&wOut.VID.ID, "[%s] output #%d stored in the backlog", ret.SequencerName, wOut.Index)
@@ -91,6 +94,13 @@ func New(env Environment) (*InputBacklog, error) {
 	})
 
 	return ret, nil
+}
+
+func (b *InputBacklog) ArrivedOutputsSince(t time.Time) bool {
+	b.mutex.RLock()
+	defer b.mutex.RUnlock()
+
+	return b.lastOutputArrived.After(t)
 }
 
 // checkAndReferenceCandidate if returns false, it is unreferenced, otherwise referenced

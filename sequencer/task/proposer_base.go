@@ -1,6 +1,8 @@
 package task
 
 import (
+	"time"
+
 	"github.com/lunfardo314/proxima/core/attacher"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util"
@@ -26,8 +28,6 @@ func baseProposeGenerator(p *Proposer) (*attacher.IncrementalAttacher, bool) {
 	}
 	if p.targetTs.IsSlotBoundary() && !extend.VID.IsBranchTransaction() && extend.VID.Slot()+1 != p.targetTs.Slot() {
 		// latest output is beyond reach for the branch as next transaction
-		//p.Log().Warnf("BaseProposer-%s: can't propose branch for target %s because non-branch chain predecessor %s is older than 1 slot",
-		//	p.Name, p.targetTs.String(), extend.VID.IDShortString())
 		return nil, true
 	}
 
@@ -53,9 +53,22 @@ func baseProposeGenerator(p *Proposer) (*attacher.IncrementalAttacher, bool) {
 			return nil, true
 		}
 	}
-	// non-branch
 	p.Tracef(TraceTagBaseProposer, "%s predecessor %s is sequencer milestone with coverage %s",
 		p.Name, extend.IDShortString, extend.VID.GetLedgerCoverageString)
+
+	if !p.targetTs.IsSlotBoundary() {
+		// proposer optimization: if backlog and extended output didn't change since last target,
+		// makes no sense to continue with proposals.
+		noChanges := false
+		p.Task.slotData.withWriteLock(func() {
+			noChanges = p.Task.slotData.lastExtendedOutput == *extend.DecodeID() &&
+				!p.Backlog().ArrivedOutputsSince(p.Task.slotData.lastTimeBacklogChecked)
+			p.Task.slotData.lastTimeBacklogChecked = time.Now()
+		})
+		if noChanges {
+			return nil, true
+		}
+	}
 
 	a, err := attacher.NewIncrementalAttacher(p.Name, p.environment, p.targetTs, extend)
 	if err != nil {
@@ -79,6 +92,9 @@ func baseProposeGenerator(p *Proposer) (*attacher.IncrementalAttacher, bool) {
 	}
 	a.AdjustCoverage()
 
+	p.Task.slotData.withWriteLock(func() {
+		p.Task.slotData.lastExtendedOutput = *extend.DecodeID()
+	})
 	// only need one proposal when extending a branch
 	stopProposing := extend.VID.IsBranchTransaction()
 	return a, stopProposing

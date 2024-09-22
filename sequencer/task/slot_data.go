@@ -2,6 +2,7 @@ package task
 
 import (
 	"sync"
+	"time"
 
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util"
@@ -19,6 +20,9 @@ type SlotData struct {
 	proposalsByProposer map[string]int
 	numNoProposals      int
 	numNotGoodEnough    int
+	// base proposer
+	lastExtendedOutput     ledger.OutputID
+	lastTimeBacklogChecked time.Time
 }
 
 func NewSlotData(slot ledger.Slot) *SlotData {
@@ -30,46 +34,41 @@ func NewSlotData(slot ledger.Slot) *SlotData {
 }
 
 func (s *SlotData) NewTarget() {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
+	s.withWriteLock(func() {
+		s.numTargets++
+	})
 
-	s.numTargets++
 }
 
 func (s *SlotData) SequencerTxSubmitted(txid *ledger.TransactionID) {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-
-	s.seqTxSubmitted = append(s.seqTxSubmitted, *txid)
+	s.withWriteLock(func() {
+		s.seqTxSubmitted = append(s.seqTxSubmitted, *txid)
+	})
 }
 
 func (s *SlotData) BranchTxSubmitted(txid *ledger.TransactionID) {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-
-	txidCopy := *txid
-	s.branchSubmitted = &txidCopy
+	s.withWriteLock(func() {
+		txidCopy := *txid
+		s.branchSubmitted = &txidCopy
+	})
 }
 
 func (s *SlotData) ProposalSubmitted(strategyName string) {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-
-	s.proposalsByProposer[strategyName] = s.proposalsByProposer[strategyName] + 1
+	s.withWriteLock(func() {
+		s.proposalsByProposer[strategyName] = s.proposalsByProposer[strategyName] + 1
+	})
 }
 
 func (s *SlotData) NoProposals() {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-
-	s.numNoProposals++
+	s.withWriteLock(func() {
+		s.numNoProposals++
+	})
 }
 
 func (s *SlotData) NotGoodEnough() {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-
-	s.numNotGoodEnough++
+	s.withWriteLock(func() {
+		s.numNotGoodEnough++
+	})
 }
 
 func (s *SlotData) Lines(prefix ...string) *lines.Lines {
@@ -92,4 +91,10 @@ func (s *SlotData) Lines(prefix ...string) *lines.Lines {
 	}
 
 	return ret
+}
+
+func (s *SlotData) withWriteLock(fun func()) {
+	s.mutex.Lock()
+	fun()
+	s.mutex.Unlock()
 }
