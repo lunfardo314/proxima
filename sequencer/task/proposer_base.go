@@ -21,18 +21,6 @@ func init() {
 }
 
 func baseProposeGenerator(p *Proposer) (*attacher.IncrementalAttacher, bool) {
-	if !p.targetTs.IsSlotBoundary() {
-		// b0 proposer optimizations: if backlog didn't change, no reason to generate another proposal
-		noChanges := false
-		p.Task.slotData.withWriteLock(func() {
-			noChanges = !p.Backlog().ChangedSince(p.Task.slotData.lastTimeBacklogCheckedB0)
-			p.Task.slotData.lastTimeBacklogCheckedB0 = time.Now()
-		})
-		if noChanges {
-			return nil, true
-		}
-	}
-
 	extend := p.OwnLatestMilestoneOutput()
 	if extend.VID == nil {
 		p.Log().Warnf("BaseProposer-%s: can't find own milestone output", p.Name)
@@ -68,6 +56,20 @@ func baseProposeGenerator(p *Proposer) (*attacher.IncrementalAttacher, bool) {
 	p.Tracef(TraceTagBaseProposer, "%s predecessor %s is sequencer milestone with coverage %s",
 		p.Name, extend.IDShortString, extend.VID.GetLedgerCoverageString)
 
+	if !p.targetTs.IsSlotBoundary() {
+		// proposer optimization: if backlog and extended output didn't change since last target,
+		// makes no sense to continue with proposals.
+		noChanges := false
+		p.Task.slotData.withWriteLock(func() {
+			noChanges = p.Task.slotData.lastExtendedOutputB0 == *extend.DecodeID() &&
+				!p.Backlog().ArrivedOutputsSince(p.Task.slotData.lastTimeBacklogCheckedB0)
+			p.Task.slotData.lastTimeBacklogCheckedB0 = time.Now()
+		})
+		if noChanges {
+			return nil, true
+		}
+	}
+
 	a, err := attacher.NewIncrementalAttacher(p.Name, p.environment, p.targetTs, extend)
 	if err != nil {
 		p.Tracef(TraceTagBaseProposer, "%s can't create attacher: '%v'", p.Name, err)
@@ -90,6 +92,9 @@ func baseProposeGenerator(p *Proposer) (*attacher.IncrementalAttacher, bool) {
 	}
 	a.AdjustCoverage()
 
+	p.Task.slotData.withWriteLock(func() {
+		p.Task.slotData.lastExtendedOutputB0 = *extend.DecodeID()
+	})
 	// only need one proposal when extending a branch
 	stopProposing := extend.VID.IsBranchTransaction()
 	return a, stopProposing
