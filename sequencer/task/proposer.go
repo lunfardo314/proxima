@@ -81,11 +81,11 @@ func (p *Proposer) propose(a *attacher.IncrementalAttacher) error {
 			SourceTypeNonPersistent: txmetadata.SourceTypeSequencer,
 			LedgerCoverage:          util.Ref(coverage),
 		},
-		extended:     a.Extending(),
-		endorsing:    a.Endorsing(),
-		coverage:     coverage,
-		attacherName: a.Name(),
-		strategyName: p.strategy.ShortName,
+		extended:          a.Extending(),
+		endorsing:         a.Endorsing(),
+		coverage:          coverage,
+		attacherName:      a.Name(),
+		strategyShortName: p.strategy.ShortName,
 	}
 
 	if p.targetTs.IsSlotBoundary() {

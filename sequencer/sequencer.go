@@ -305,6 +305,7 @@ func (seq *Sequencer) doSequencerStep() bool {
 
 	timerStart := time.Now()
 	targetTs := seq.getNextTargetTime()
+	seq.newTargetSet()
 
 	if seq.slotData == nil {
 		seq.slotData = task.NewSlotData(targetTs.Slot())
@@ -363,6 +364,7 @@ func (seq *Sequencer) doSequencerStep() bool {
 		}
 		seq.updateInfo(msVID)
 		seq.runOnMilestoneSubmitted(msVID)
+		seq.onMilestoneSubmittedMetrics(msVID)
 	}
 
 	if targetTs.IsSlotBoundary() {
@@ -445,8 +447,6 @@ func (seq *Sequencer) submitMilestone(tx *transaction.Transaction, meta *txmetad
 	vid, err := seq.SequencerMilestoneAttachWait(tx.Bytes(), meta, submitTimeout)
 	if err != nil {
 		seq.Log().Errorf("failed to submit new milestone %s: '%v'", tx.IDShortString(), err)
-
-		//seq.savePastConeOfFailedTx(tx, 3)
 		return nil
 	}
 	util.Assertf(vid != nil, "submitMilestone: vid != nil")
@@ -458,13 +458,6 @@ func (seq *Sequencer) submitMilestone(tx *transaction.Transaction, meta *txmetad
 		return nil
 	}
 	seq.lastSubmittedTs = vid.Timestamp()
-
-	if seq.metrics != nil {
-		seq.metrics.seqMilestoneCounter.Inc()
-		if vid.IsBranchTransaction() {
-			seq.metrics.branchCounter.Inc()
-		}
-	}
 	return vid
 }
 

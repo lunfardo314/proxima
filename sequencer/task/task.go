@@ -37,6 +37,8 @@ type (
 		FutureConeOwnMilestonesOrdered(rootOutput vertex.WrappedOutput, targetTs ledger.Time) []vertex.WrappedOutput
 		MaxTagAlongInputs() int
 		LatestMilestonesDescending(filter ...func(seqID ledger.ChainID, vid *vertex.WrappedTx) bool) []*vertex.WrappedTx
+		EvidenceProposal(strategyShortName string)
+		EvidenceBestProposal(strategyShortName string)
 	}
 
 	Task struct {
@@ -51,13 +53,13 @@ type (
 	}
 
 	proposal struct {
-		tx           *transaction.Transaction
-		txMetadata   *txmetadata.TransactionMetadata
-		extended     vertex.WrappedOutput
-		endorsing    []*vertex.WrappedTx
-		coverage     uint64
-		attacherName string
-		strategyName string
+		tx                *transaction.Transaction
+		txMetadata        *txmetadata.TransactionMetadata
+		extended          vertex.WrappedOutput
+		endorsing         []*vertex.WrappedTx
+		coverage          uint64
+		attacherName      string
+		strategyShortName string
 	}
 
 	Proposer struct {
@@ -81,18 +83,18 @@ type (
 const TraceTagTask = "task"
 
 var (
-	_allProposingStrategies = make(map[string]*Strategy)
-	ErrNoProposals          = errors.New("no proposals were generated")
-	ErrNotGoodEnough        = errors.New("proposals aren't good enough")
+	AllProposingStrategies = make(map[string]*Strategy)
+	ErrNoProposals         = errors.New("no proposals were generated")
+	ErrNotGoodEnough       = errors.New("proposals aren't good enough")
 )
 
 func registerProposerStrategy(s *Strategy) {
-	_allProposingStrategies[s.Name] = s
+	AllProposingStrategies[s.Name] = s
 }
 
 func allProposingStrategies() []*Strategy {
 	ret := make([]*Strategy, 0)
-	for _, s := range _allProposingStrategies {
+	for _, s := range AllProposingStrategies {
 		if !viper.GetBool("sequencer.disable_proposer." + s.ShortName) {
 			ret = append(ret, s)
 		}
@@ -145,7 +147,8 @@ func Run(env environment, targetTs ledger.Time, slotData *SlotData) (*transactio
 	go func() {
 		for p := range task.proposalChan {
 			proposals[*p.tx.ID()] = p
-			task.slotData.ProposalSubmitted(p.strategyName)
+			task.slotData.ProposalSubmitted(p.strategyShortName)
+			task.EvidenceProposal(p.strategyShortName)
 		}
 		close(readStop)
 	}()
@@ -170,7 +173,7 @@ func Run(env environment, targetTs ledger.Time, slotData *SlotData) (*transactio
 		return nil, nil, fmt.Errorf("%w (res: %s, best: %s, %s)",
 			ErrNotGoodEnough, util.Th(best.coverage), ownLatest.IDShortString(), util.Th(ownLatest.GetLedgerCoverage()))
 	}
-
+	task.EvidenceBestProposal(best.strategyShortName)
 	return best.tx, best.txMetadata, nil
 }
 
@@ -180,7 +183,7 @@ func (p *proposal) String() string {
 		endorse = append(endorse, vid.IDShortString())
 	}
 	return fmt.Sprintf("%s(%s -- %s -> [%s])",
-		p.strategyName, p.extended.IDShortString(), util.Th(p.coverage), strings.Join(endorse, ", "))
+		p.strategyShortName, p.extended.IDShortString(), util.Th(p.coverage), strings.Join(endorse, ", "))
 }
 
 func (t *Task) startProposers() {

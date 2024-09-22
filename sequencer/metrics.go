@@ -1,10 +1,19 @@
 package sequencer
 
-import "github.com/prometheus/client_golang/prometheus"
+import (
+	"fmt"
+
+	"github.com/lunfardo314/proxima/core/vertex"
+	"github.com/lunfardo314/proxima/sequencer/task"
+	"github.com/prometheus/client_golang/prometheus"
+)
 
 type sequencerMetrics struct {
 	branchCounter       prometheus.Counter
 	seqMilestoneCounter prometheus.Counter
+	targets             prometheus.Counter
+	proposals           map[string]prometheus.Counter
+	bestProposals       map[string]prometheus.Counter
 }
 
 func (seq *Sequencer) registerMetrics() {
@@ -18,5 +27,70 @@ func (seq *Sequencer) registerMetrics() {
 		Name: "proxima_seq_branches",
 		Help: "branches submitted",
 	})
-	seq.MetricsRegistry().MustRegister(seq.metrics.branchCounter, seq.metrics.seqMilestoneCounter)
+	seq.metrics.targets = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "proxima_seq_targets",
+		Help: "number of sequencer targets",
+	})
+
+	seq.MetricsRegistry().MustRegister(
+		seq.metrics.branchCounter,
+		seq.metrics.seqMilestoneCounter,
+		seq.metrics.targets,
+	)
+
+	// all proposal counters per strategy
+	seq.metrics.proposals = make(map[string]prometheus.Counter)
+	for _, s := range task.AllProposingStrategies {
+		seq.metrics.proposals[s.ShortName] = prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "proxima_seq_proposals_" + s.ShortName,
+			Help: fmt.Sprintf("number of proposals submitted by proposer %s(%s)", s.Name, s.ShortName),
+		})
+	}
+	for _, m := range seq.metrics.proposals {
+		seq.MetricsRegistry().MustRegister(m)
+	}
+
+	// best proposal counters per strategy
+	seq.metrics.bestProposals = make(map[string]prometheus.Counter)
+	for _, s := range task.AllProposingStrategies {
+		seq.metrics.bestProposals[s.ShortName] = prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "proxima_seq_best_proposals_" + s.ShortName,
+			Help: fmt.Sprintf("number of best proposals for the target %s(%s)", s.Name, s.ShortName),
+		})
+	}
+	for _, m := range seq.metrics.bestProposals {
+		seq.MetricsRegistry().MustRegister(m)
+	}
+
+}
+
+func (seq *Sequencer) onMilestoneSubmittedMetrics(vid *vertex.WrappedTx) {
+	if seq.metrics == nil {
+		return
+	}
+	seq.metrics.seqMilestoneCounter.Inc()
+	if vid.IsBranchTransaction() {
+		seq.metrics.branchCounter.Inc()
+	}
+}
+
+func (seq *Sequencer) newTargetSet() {
+	if seq.metrics == nil {
+		return
+	}
+	seq.metrics.targets.Inc()
+}
+
+func (seq *Sequencer) EvidenceProposal(strategyShortName string) {
+	if seq.metrics == nil {
+		return
+	}
+	seq.metrics.proposals[strategyShortName].Inc()
+}
+
+func (seq *Sequencer) EvidenceBestProposal(strategyShortName string) {
+	if seq.metrics == nil {
+		return
+	}
+	seq.metrics.bestProposals[strategyShortName].Inc()
 }
