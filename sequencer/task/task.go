@@ -38,7 +38,7 @@ type (
 		MaxTagAlongInputs() int
 		LatestMilestonesDescending(filter ...func(seqID ledger.ChainID, vid *vertex.WrappedTx) bool) []*vertex.WrappedTx
 		EvidenceProposal(strategyShortName string)
-		EvidenceBestProposalForTheTarget(strategyShortName string, coverage uint64)
+		EvidenceBestProposalForTheTarget(strategyShortName string)
 	}
 
 	Task struct {
@@ -173,7 +173,7 @@ func Run(env environment, targetTs ledger.Time, slotData *SlotData) (*transactio
 		return nil, nil, fmt.Errorf("%w (res: %s, best: %s, %s)",
 			ErrNotGoodEnough, util.Th(best.coverage), ownLatest.IDShortString(), util.Th(ownLatest.GetLedgerCoverage()))
 	}
-	task.EvidenceBestProposalForTheTarget(best.strategyShortName, best.coverage)
+	task.EvidenceBestProposalForTheTarget(best.strategyShortName)
 	return best.tx, best.txMetadata, nil
 }
 
