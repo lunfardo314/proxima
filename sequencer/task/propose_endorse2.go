@@ -1,6 +1,10 @@
 package task
 
-import "github.com/lunfardo314/proxima/core/attacher"
+import (
+	"time"
+
+	"github.com/lunfardo314/proxima/core/attacher"
+)
 
 const TraceTagEndorse2Proposer = "propose-endorse2"
 
@@ -15,6 +19,15 @@ func init() {
 func endorse2ProposeGenerator(p *Proposer) (*attacher.IncrementalAttacher, bool) {
 	if p.targetTs.IsSlotBoundary() {
 		// the proposer does not generate branch transactions
+		return nil, true
+	}
+	// e2 proposer optimizations: if backlog didn't change, no reason to generate another proposal
+	noChanges := false
+	p.Task.slotData.withWriteLock(func() {
+		noChanges = !p.Backlog().ChangedSince(p.Task.slotData.lastTimeBacklogCheckedE2)
+		p.Task.slotData.lastTimeBacklogCheckedE2 = time.Now()
+	})
+	if noChanges {
 		return nil, true
 	}
 	// first do the same as endorse1

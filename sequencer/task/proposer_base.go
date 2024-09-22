@@ -61,9 +61,9 @@ func baseProposeGenerator(p *Proposer) (*attacher.IncrementalAttacher, bool) {
 		// makes no sense to continue with proposals.
 		noChanges := false
 		p.Task.slotData.withWriteLock(func() {
-			noChanges = p.Task.slotData.lastExtendedOutput == *extend.DecodeID() &&
-				!p.Backlog().ArrivedOutputsSince(p.Task.slotData.lastTimeBacklogChecked)
-			p.Task.slotData.lastTimeBacklogChecked = time.Now()
+			noChanges = p.Task.slotData.lastExtendedOutputB0 == *extend.DecodeID() &&
+				!p.Backlog().ArrivedOutputsSince(p.Task.slotData.lastTimeBacklogCheckedB0)
+			p.Task.slotData.lastTimeBacklogCheckedB0 = time.Now()
 		})
 		if noChanges {
 			return nil, true
@@ -93,7 +93,7 @@ func baseProposeGenerator(p *Proposer) (*attacher.IncrementalAttacher, bool) {
 	a.AdjustCoverage()
 
 	p.Task.slotData.withWriteLock(func() {
-		p.Task.slotData.lastExtendedOutput = *extend.DecodeID()
+		p.Task.slotData.lastExtendedOutputB0 = *extend.DecodeID()
 	})
 	// only need one proposal when extending a branch
 	stopProposing := extend.VID.IsBranchTransaction()

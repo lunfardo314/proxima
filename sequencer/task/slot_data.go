@@ -21,8 +21,12 @@ type SlotData struct {
 	numNoProposals      int
 	numNotGoodEnough    int
 	// base proposer
-	lastExtendedOutput     ledger.OutputID
-	lastTimeBacklogChecked time.Time
+	lastExtendedOutputB0     ledger.OutputID
+	lastTimeBacklogCheckedB0 time.Time
+	// e1 proposer
+	lastTimeBacklogCheckedE1 time.Time
+	// e2 proposer
+	lastTimeBacklogCheckedE2 time.Time
 }
 
 func NewSlotData(slot ledger.Slot) *SlotData {
