@@ -21,7 +21,6 @@ type SlotData struct {
 	numNoProposals      int
 	numNotGoodEnough    int
 	// base proposer
-	lastExtendedOutputB0     ledger.OutputID
 	lastTimeBacklogCheckedB0 time.Time
 	// e1 proposer
 	lastTimeBacklogCheckedE1 time.Time
