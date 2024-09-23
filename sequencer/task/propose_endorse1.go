@@ -1,8 +1,6 @@
 package task
 
 import (
-	"time"
-
 	"github.com/lunfardo314/proxima/core/attacher"
 )
 
@@ -21,16 +19,17 @@ func endorse1ProposeGenerator(p *Proposer) (*attacher.IncrementalAttacher, bool)
 		// the proposer does not generate branch transactions
 		return nil, true
 	}
-	// e1 proposer optimizations: if backlog didn't change, no reason to generate another proposal
-	noChanges := false
-	p.Task.slotData.withWriteLock(func() {
-		noChanges = !p.Backlog().ChangedSince(p.Task.slotData.lastTimeBacklogCheckedE1)
-		p.Task.slotData.lastTimeBacklogCheckedE1 = time.Now()
-	})
-	if noChanges {
-		return nil, false
+	{
+		// e1 proposer optimizations: if backlog didn't change, no reason to generate another proposal
+		//noChanges := false
+		//p.Task.slotData.withWriteLock(func() {
+		//	noChanges = !p.Backlog().ChangedSince(p.Task.slotData.lastTimeBacklogCheckedE1)
+		//	p.Task.slotData.lastTimeBacklogCheckedE1 = time.Now()
+		//})
+		//if noChanges {
+		//	return nil, false
+		//}
 	}
-
 	a := p.ChooseExtendEndorsePair()
 	if a == nil {
 		p.Tracef(TraceTagEndorse1Proposer, "propose: ChooseExtendEndorsePair returned nil")
