@@ -29,11 +29,20 @@ type (
 		// e1 proposer optimization
 		lastTimeBacklogCheckedE1 time.Time
 		alreadyCheckedE1         set.Set[extendEndorsePair]
+		// e2 proposer optimization
+		lastTimeBacklogCheckedE2 time.Time
+		alreadyCheckedE2         set.Set[extendEndorseTriplet]
 	}
 
 	extendEndorsePair struct {
 		extend  vertex.WrappedOutput
 		endorse *vertex.WrappedTx
+	}
+
+	extendEndorseTriplet struct {
+		extend   vertex.WrappedOutput
+		endorse1 *vertex.WrappedTx
+		endorse2 *vertex.WrappedTx
 	}
 )
 
@@ -43,6 +52,7 @@ func NewSlotData(slot ledger.Slot) *SlotData {
 		seqTxSubmitted:      make([]ledger.TransactionID, 0),
 		proposalsByProposer: make(map[string]int),
 		alreadyCheckedE1:    set.New[extendEndorsePair](),
+		alreadyCheckedE2:    set.New[extendEndorseTriplet](),
 	}
 }
 

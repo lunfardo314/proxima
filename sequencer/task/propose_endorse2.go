@@ -1,6 +1,8 @@
 package task
 
 import (
+	"time"
+
 	"github.com/lunfardo314/proxima/core/attacher"
 )
 
@@ -26,13 +28,16 @@ func endorse2ProposeGenerator(p *Proposer) (*attacher.IncrementalAttacher, bool)
 		p.Tracef(TraceTagEndorse2Proposer, "propose: ChooseFirstExtendEndorsePair returned nil")
 		return nil, false
 	}
+	endorsing := a.Endorsing()[0]
+	extending := a.Extending()
 	if !a.Completed() {
 		a.Close()
-		endorsing := a.Endorsing()[0]
-		extending := a.Extending()
 		p.Tracef(TraceTagEndorse2Proposer, "proposal [extend=%s, endorsing=%s] not complete 1", extending.IDShortString, endorsing.IDShortString)
 		return nil, false
 	}
+
+	newOutputArrived := p.Backlog().ArrivedOutputsSince(p.slotData.lastTimeBacklogCheckedE2)
+	p.slotData.lastTimeBacklogCheckedE2 = time.Now()
 
 	// then try to add one endorsement more
 	addedSecond := false
@@ -48,9 +53,33 @@ func endorse2ProposeGenerator(p *Proposer) (*attacher.IncrementalAttacher, bool)
 			continue
 		}
 
+		triplet := extendEndorseTriplet{
+			extend:   extending,
+			endorse1: endorsing,
+			endorse2: endorsementCandidate,
+		}
+		if !newOutputArrived {
+			// optimization: skipping repeating triplets if new outputs didn't arrive meanwhile
+			checkedInThePast := p.slotData.alreadyCheckedE2.Contains(triplet)
+			if !checkedInThePast {
+				// assume invariance wrt order of endorsements
+				// check triplet with swapped endorsements
+				checkedInThePast = p.slotData.alreadyCheckedE2.Contains(extendEndorseTriplet{
+					extend:   extending,
+					endorse1: endorsementCandidate,
+					endorse2: endorsing,
+				})
+			}
+			if checkedInThePast {
+				continue
+			}
+		}
+
 		if err := a.InsertEndorsement(endorsementCandidate); err == nil {
+			// remember triplet for the next check
+			p.slotData.alreadyCheckedE2.Insert(triplet)
 			addedSecond = true
-			break
+			break //>>>> return attacher
 		}
 		p.Tracef(TraceTagEndorse2Proposer, "failed to include endorsement target %s", endorsementCandidate.IDShortString)
 	}
@@ -64,8 +93,8 @@ func endorse2ProposeGenerator(p *Proposer) (*attacher.IncrementalAttacher, bool)
 
 	if !a.Completed() {
 		a.Close()
-		endorsing := a.Endorsing()[0]
-		extending := a.Extending()
+		endorsing = a.Endorsing()[0]
+		extending = a.Extending()
 		p.Tracef(TraceTagEndorse2Proposer, "proposal [extend=%s, endorsing=%s] not complete 2", extending.IDShortString, endorsing.IDShortString)
 		return nil, false
 	}
