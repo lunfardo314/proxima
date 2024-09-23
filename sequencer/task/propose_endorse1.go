@@ -1,7 +1,10 @@
 package task
 
 import (
+	"time"
+
 	"github.com/lunfardo314/proxima/core/attacher"
+	"github.com/lunfardo314/proxima/core/vertex"
 )
 
 const TraceTagEndorse1Proposer = "propose-endorse1"
@@ -19,20 +22,29 @@ func endorse1ProposeGenerator(p *Proposer) (*attacher.IncrementalAttacher, bool)
 		// the proposer does not generate branch transactions
 		return nil, true
 	}
-	{
-		// e1 proposer optimizations: if backlog didn't change, no reason to generate another proposal
-		//noChanges := false
-		//p.Task.slotData.withWriteLock(func() {
-		//	noChanges = !p.Backlog().ChangedSince(p.Task.slotData.lastTimeBacklogCheckedE1)
-		//	p.Task.slotData.lastTimeBacklogCheckedE1 = time.Now()
-		//})
-		//if noChanges {
-		//	return nil, false
-		//}
-	}
-	a := p.ChooseExtendEndorsePair(false)
+	// choose extend-endorse pair with optimization. If that pair was chosen in the past and newOutputs didn't arrive
+	// since last check, use that pair to create new attacher (if not conflicting)
+	newOutputsArrived := p.Backlog().ArrivedOutputsSince(p.Task.slotData.lastTimeBacklogCheckedE1)
+	p.Task.slotData.lastTimeBacklogCheckedE1 = time.Now()
+	a := p.ChooseFirstExtendEndorsePair(false, func(extend vertex.WrappedOutput, endorse *vertex.WrappedTx) bool {
+		if newOutputsArrived {
+			// use pair with new outputs
+			return true
+		}
+		pair := extendEndorsePair{
+			extend:  extend,
+			endorse: endorse,
+		}
+		if !p.Task.slotData.alreadyCheckedE1.Contains(pair) {
+			// it is new pair. Use it and save it as already checked -> next time will be filtered out
+			p.Task.slotData.alreadyCheckedE1.Insert(pair)
+			return true
+		}
+		return false
+	})
+
 	if a == nil {
-		p.Tracef(TraceTagEndorse1Proposer, "propose: ChooseExtendEndorsePair returned nil")
+		p.Tracef(TraceTagEndorse1Proposer, "propose: ChooseFirstExtendEndorsePair returned nil")
 		return nil, false
 	}
 	if !a.Completed() {

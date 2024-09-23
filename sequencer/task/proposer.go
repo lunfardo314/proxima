@@ -106,10 +106,11 @@ func (p *Proposer) makeTxProposal(a *attacher.IncrementalAttacher) (*transaction
 	return tx, err
 }
 
-// ChooseExtendEndorsePair returns incremental attacher which corresponds to the first
+// ChooseFirstExtendEndorsePair returns incremental attacher which corresponds to the first
 // extend-endorse pair encountered while traversing endorse candidates.
 // Endorse candidates are either sorted descending by coverage, or randomly shuffled
-func (p *Proposer) ChooseExtendEndorsePair(shuffleEndorseCandidates bool) *attacher.IncrementalAttacher {
+// Pairs are filtered before checking. It allows to exclude repeating pairs
+func (p *Proposer) ChooseFirstExtendEndorsePair(shuffleEndorseCandidates bool, pairFilter func(extend vertex.WrappedOutput, endorse *vertex.WrappedTx) bool) *attacher.IncrementalAttacher {
 	p.Assertf(!p.targetTs.IsSlotBoundary(), "!p.targetTs.IsSlotBoundary()")
 	var endorseCandidates []*vertex.WrappedTx
 	if shuffleEndorseCandidates {
@@ -146,7 +147,7 @@ func (p *Proposer) ChooseExtendEndorsePair(shuffleEndorseCandidates bool) *attac
 		p.Tracef(TraceTagTask, ">>>>>>>>>>>>>>> check endorsement candidate %s against future cone of extension candidates {%s}",
 			endorse.IDShortString, func() string { return vertex.WrappedOutputsShortLines(futureConeMilestones).Join(", ") })
 
-		if ret = p.chooseEndorseExtendPairAttacher(endorse, futureConeMilestones); ret != nil {
+		if ret = p.chooseEndorseExtendPairAttacher(endorse, futureConeMilestones, pairFilter); ret != nil {
 			p.Tracef(TraceTagTask, ">>>>>>>>>>>>>>> chooseEndorseExtendPairAttacher return %s", ret.Name)
 			return ret
 		}
@@ -157,10 +158,16 @@ func (p *Proposer) ChooseExtendEndorsePair(shuffleEndorseCandidates bool) *attac
 
 // ChooseEndorseExtendPairAttacher traverses all known extension options and check each of it with the endorsement target
 // Returns consistent incremental attacher with the biggest ledger coverage
-func (p *Proposer) chooseEndorseExtendPairAttacher(endorse *vertex.WrappedTx, extendCandidates []vertex.WrappedOutput) *attacher.IncrementalAttacher {
+func (p *Proposer) chooseEndorseExtendPairAttacher(endorse *vertex.WrappedTx, extendCandidates []vertex.WrappedOutput, pairFilter func(extend vertex.WrappedOutput, endorse *vertex.WrappedTx) bool) *attacher.IncrementalAttacher {
+	if pairFilter == nil {
+		pairFilter = func(_ vertex.WrappedOutput, _ *vertex.WrappedTx) bool { return true }
+	}
 	var ret, a *attacher.IncrementalAttacher
 	var err error
 	for _, extend := range extendCandidates {
+		if !pairFilter(extend, endorse) {
+			continue
+		}
 		a, err = attacher.NewIncrementalAttacher(p.Name, p, p.targetTs, extend, endorse)
 		if err != nil {
 			p.Tracef(TraceTagTask, "%s can't extend %s and endorse %s: %v", p.targetTs.String, extend.IDShortString, endorse.IDShortString, err)

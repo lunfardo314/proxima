@@ -4,36 +4,45 @@ import (
 	"sync"
 	"time"
 
+	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
+	"github.com/lunfardo314/proxima/util/set"
 )
 
 // SlotData collect values of sequencer during one slot
 // Proposers may keep theirs state there from target to target
-type SlotData struct {
-	mutex               sync.RWMutex
-	slot                ledger.Slot
-	numTargets          int
-	seqTxSubmitted      []ledger.TransactionID
-	branchSubmitted     *ledger.TransactionID
-	proposalsByProposer map[string]int
-	numNoProposals      int
-	numNotGoodEnough    int
-	// base proposer
-	lastExtendedOutputB0     ledger.OutputID
-	lastTimeBacklogCheckedB0 time.Time
-	// e1 proposer
-	lastTimeBacklogCheckedE1 time.Time
-	// e2 proposer
-	lastTimeBacklogCheckedE2 time.Time
-}
+type (
+	SlotData struct {
+		mutex               sync.RWMutex
+		slot                ledger.Slot
+		numTargets          int
+		seqTxSubmitted      []ledger.TransactionID
+		branchSubmitted     *ledger.TransactionID
+		proposalsByProposer map[string]int
+		numNoProposals      int
+		numNotGoodEnough    int
+		// base proposer
+		lastExtendedOutputB0     ledger.OutputID
+		lastTimeBacklogCheckedB0 time.Time
+		// e1 proposer optimization
+		lastTimeBacklogCheckedE1 time.Time
+		alreadyCheckedE1         set.Set[extendEndorsePair]
+	}
+
+	extendEndorsePair struct {
+		extend  vertex.WrappedOutput
+		endorse *vertex.WrappedTx
+	}
+)
 
 func NewSlotData(slot ledger.Slot) *SlotData {
 	return &SlotData{
 		slot:                slot,
 		seqTxSubmitted:      make([]ledger.TransactionID, 0),
 		proposalsByProposer: make(map[string]int),
+		alreadyCheckedE1:    set.New[extendEndorsePair](),
 	}
 }
 

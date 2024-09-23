@@ -19,22 +19,11 @@ func endorse2ProposeGenerator(p *Proposer) (*attacher.IncrementalAttacher, bool)
 		// the proposer does not generate branch transactions
 		return nil, true
 	}
-	{
-		// TODO take into account target, otherwise it does not work
-		// e2 proposer optimizations: if backlog didn't change, no reason to generate another proposal
-		//noChanges := false
-		//p.Task.slotData.withWriteLock(func() {
-		//	noChanges = !p.Backlog().ChangedSince(p.Task.slotData.lastTimeBacklogCheckedE2)
-		//	p.Task.slotData.lastTimeBacklogCheckedE2 = time.Now()
-		//})
-		//if noChanges {
-		//	return nil, false
-		//}
-	}
-	// first do the same as endorse1
-	a := p.ChooseExtendEndorsePair(false)
+
+	// E2 not optimizing. Check all pairs
+	a := p.ChooseFirstExtendEndorsePair(false, nil)
 	if a == nil {
-		p.Tracef(TraceTagEndorse2Proposer, "propose: ChooseExtendEndorsePair returned nil")
+		p.Tracef(TraceTagEndorse2Proposer, "propose: ChooseFirstExtendEndorsePair returned nil")
 		return nil, false
 	}
 	if !a.Completed() {
@@ -58,6 +47,7 @@ func endorse2ProposeGenerator(p *Proposer) (*attacher.IncrementalAttacher, bool)
 		if endorsementCandidate == endorsing0 {
 			continue
 		}
+
 		if err := a.InsertEndorsement(endorsementCandidate); err == nil {
 			addedSecond = true
 			break
