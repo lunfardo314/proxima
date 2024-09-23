@@ -28,7 +28,7 @@ func endorse2ProposeGenerator(p *Proposer) (*attacher.IncrementalAttacher, bool)
 		p.Task.slotData.lastTimeBacklogCheckedE2 = time.Now()
 	})
 	if noChanges {
-		return nil, true
+		return nil, false
 	}
 	// first do the same as endorse1
 	a := p.ChooseExtendEndorsePair()
