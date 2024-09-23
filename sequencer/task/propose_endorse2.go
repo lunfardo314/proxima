@@ -19,7 +19,9 @@ func endorse2ProposeGenerator(p *Proposer) (*attacher.IncrementalAttacher, bool)
 		// the proposer does not generate branch transactions
 		return nil, true
 	}
-	{ // e2 proposer optimizations: if backlog didn't change, no reason to generate another proposal
+	{
+		// TODO take into account target
+		// e2 proposer optimizations: if backlog didn't change, no reason to generate another proposal
 		//noChanges := false
 		//p.Task.slotData.withWriteLock(func() {
 		//	noChanges = !p.Backlog().ChangedSince(p.Task.slotData.lastTimeBacklogCheckedE2)
