@@ -1,3 +1,4 @@
+// Package sema implements semaphore with timeout
 package sema
 
 import (

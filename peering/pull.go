@@ -17,6 +17,8 @@ const MaxNumTransactionID = (MaxPayloadSize - 2) / ledger.TransactionIDLength
 
 const PullTransactions = byte(iota)
 
+// TODO breaking change refactor to 1 transaction for pull request
+
 func (ps *Peers) pullStreamHandler(stream network.Stream) {
 	ps.inMsgCounter.Inc()
 
@@ -117,7 +119,6 @@ func (ps *Peers) PullTransactionsFromRandomPeers(nPeers int, txids ...ledger.Tra
 	}
 	return len(targets)
 }
-
 func (ps *Peers) PullTransactionsFromAllPeers(txids ...ledger.TransactionID) {
 	if len(txids) == 0 {
 		return

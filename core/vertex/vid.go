@@ -154,17 +154,6 @@ func (vid *WrappedTx) IsBadOrDeleted() bool {
 	return vid.GetTxStatusNoLock() == Bad || vid.numReferences == 0
 }
 
-func (vid *WrappedTx) StatusString() string {
-	r := vid.GetError()
-
-	switch s := vid.GetTxStatus(); s {
-	case Good, Undefined:
-		return s.String()
-	default:
-		return fmt.Sprintf("%s('%v')", s.String(), r)
-	}
-}
-
 func (vid *WrappedTx) OnPoke(fun func()) {
 	if fun == nil {
 		vid.onPoke.Store(func() {})
@@ -217,14 +206,6 @@ func (vid *WrappedTx) IDVeryShort() string {
 	return vid.ID.StringVeryShort()
 }
 
-func (vid *WrappedTx) IDShortStringExt() string {
-	ret := vid.ID.StringShort()
-	if !vid.IsSequencerMilestone() {
-		return ret
-	}
-	return ret + vid.SequencerIDStringShort()
-}
-
 func (vid *WrappedTx) IsBranchTransaction() bool {
 	return vid.ID.IsBranchTransaction()
 }
@@ -273,14 +254,6 @@ func (vid *WrappedTx) MustOutputAt(idx byte) *ledger.Output {
 	ret, err := vid.OutputAt(idx)
 	util.AssertNoError(err)
 	return ret
-}
-
-func (vid *WrappedTx) SequencerIDStringShort() string {
-	cid := vid.SequencerID.Load()
-	if cid == nil {
-		return "/$??"
-	}
-	return cid.StringShort()
 }
 
 func (vid *WrappedTx) SequencerIDStringVeryShort() string {

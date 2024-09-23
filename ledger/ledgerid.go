@@ -55,6 +55,8 @@ type (
 		// for any transaction with timestamp ticks > MaxTickValueInSlot - PreBranchConsolidationTicks
 		// value 0 of PreBranchConsolidationTicks effectively means no constraint
 		PreBranchConsolidationTicks uint8
+		// TODO breaking: add PostBranchConsolidationTicks, search also 'afterBranchPaceMultiplier'
+		// PostBranchConsolidationTicks uint8
 	}
 
 	// IdentityDataYAMLAble structure for canonical YAMLAble marshaling

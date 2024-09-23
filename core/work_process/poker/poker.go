@@ -7,7 +7,6 @@ import (
 	"github.com/lunfardo314/proxima/core/work_process"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/util"
-	"github.com/lunfardo314/proxima/util/depdag"
 )
 
 type (
@@ -138,26 +137,26 @@ func (d *Poker) PokeAllWith(vid *vertex.WrappedTx) {
 	})
 }
 
-func (d *Poker) saveDependencyDAG(fname string, max int) {
-	nodes := make([]depdag.Node, 0, len(d.m))
-
-	vids := util.KeysSorted(d.m, func(vid1, vid2 *vertex.WrappedTx) bool {
-		return vid1.ID.Timestamp().Before(vid2.ID.Timestamp())
-	})
-
-	for _, vid := range vids {
-		lst := d.m[vid].waiting
-		n := depdag.Node{
-			ID:           vid.IDVeryShort(),
-			Dependencies: make([]string, 0, len(lst)),
-		}
-		for _, vidWaiting := range lst {
-			n.Dependencies = append(n.Dependencies, vidWaiting.IDVeryShort())
-		}
-		nodes = append(nodes, n)
-		if len(nodes) >= max {
-			break
-		}
-	}
-	depdag.SaveDAG(nodes, fname)
-}
+//func (d *Poker) saveDependencyDAG(fname string, max int) {
+//	nodes := make([]depdag.Node, 0, len(d.m))
+//
+//	vids := util.KeysSorted(d.m, func(vid1, vid2 *vertex.WrappedTx) bool {
+//		return vid1.ID.Timestamp().Before(vid2.ID.Timestamp())
+//	})
+//
+//	for _, vid := range vids {
+//		lst := d.m[vid].waiting
+//		n := depdag.Node{
+//			ID:           vid.IDVeryShort(),
+//			Dependencies: make([]string, 0, len(lst)),
+//		}
+//		for _, vidWaiting := range lst {
+//			n.Dependencies = append(n.Dependencies, vidWaiting.IDVeryShort())
+//		}
+//		nodes = append(nodes, n)
+//		if len(nodes) >= max {
+//			break
+//		}
+//	}
+//	depdag.SaveDAG(nodes, fname)
+//}

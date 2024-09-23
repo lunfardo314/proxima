@@ -8,6 +8,8 @@ import (
 	"github.com/lunfardo314/proxima/util"
 )
 
+// TODO breaking: add constraint of 'constPostBranchConsolidationTicks' to sequencer constraint
+
 const sequencerConstraintSource = `
 func mustMinimumAmountOnSequencer : 
 	require(

@@ -88,35 +88,6 @@ func (v *VirtualTransaction) _addSequencerIndices(seqIdx, stemIdx byte) error {
 	return nil
 }
 
-// addSequencerOutputs must add both outputs consistently
-func (v *VirtualTransaction) addSequencerOutputs(seqOut, stemOut *ledger.OutputWithID) error {
-	util.Assertf(seqOut != nil, "seqOut!=nil")
-	util.Assertf(stemOut.ID.IsBranchTransaction() == (stemOut != nil), "stemOut.ID.IsBranchTransaction()==(stemOut!=nil)")
-
-	v.mutex.Lock()
-	defer v.mutex.Unlock()
-
-	seqIdx := seqOut.ID.Index()
-	stemIdx := byte(0xff)
-	if stemOut != nil {
-		stemIdx = stemOut.ID.Index()
-	}
-	if err := v._addSequencerIndices(seqIdx, stemIdx); err != nil {
-		return err
-	}
-
-	if err := v._addOutput(seqOut.ID.Index(), seqOut.Output); err != nil {
-		return err
-	}
-	if stemOut != nil {
-		util.Assertf(stemOut.ID.TransactionID() == seqOut.ID.TransactionID(), "stemOut.ID.TransactionID() == seqOut.ID.TransactionID()")
-		if err := v._addOutput(stemOut.ID.Index(), stemOut.Output); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 // OutputAt return output at the index and true, or nil, false if output is not available in the virtual tx
 func (v *VirtualTransaction) OutputAt(idx byte) (*ledger.Output, bool) {
 	v.mutex.RLock()

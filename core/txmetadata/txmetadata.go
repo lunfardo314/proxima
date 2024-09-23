@@ -12,6 +12,10 @@ import (
 	"github.com/lunfardo314/unitrie/common"
 )
 
+// TODO breaking:
+//  -- remove PortionInfo
+//  -- remove flagReserved
+
 // TransactionMetadata optional data which may be attached to the transaction
 // Wrong metadata or absence of it entirely or in parts cannot damage the network
 // When present, metadata is used for consistency checking and workflow optimization
@@ -22,7 +26,7 @@ type (
 		LedgerCoverage *uint64            // not nil may be for sequencer transactions
 		SlotInflation  *uint64            // not nil may be for sequencer transactions
 		Supply         *uint64            // not nil may be for branch transactions
-		// Deprecated: TODO remove
+		// Deprecated:
 		PortionInfo *PortionInfo // persistent. May be not nil when transaction is part of the portion
 		// non-persistent
 		SourceTypeNonPersistent SourceType // non-persistent, used for internal workflow
