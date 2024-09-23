@@ -9,6 +9,7 @@ import (
 	"github.com/lunfardo314/proxima/core/work_process"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
+	"golang.org/x/exp/rand"
 )
 
 type (
@@ -145,9 +146,9 @@ func (t *SequencerTips) GetLatestMilestone(seqID ledger.ChainID) *vertex.Wrapped
 	return ret.WrappedTx
 }
 
-// LatestMilestonesDescending returns sequencer transactions from sequencer tippool. Optionally filters
-// Sorts in the descending preference order (essentially by ledger coverage)
-func (t *SequencerTips) LatestMilestonesDescending(filter ...func(seqID ledger.ChainID, vid *vertex.WrappedTx) bool) []*vertex.WrappedTx {
+// filterLatestMilestones returns sequencer transactions from sequencer tippool. Optionally filters
+// Not sorted, random order
+func (t *SequencerTips) filterLatestMilestones(filter ...func(seqID ledger.ChainID, vid *vertex.WrappedTx) bool) []*vertex.WrappedTx {
 	flt := func(_ ledger.ChainID, _ *vertex.WrappedTx) bool { return true }
 	if len(filter) > 0 {
 		flt = filter[0]
@@ -162,8 +163,25 @@ func (t *SequencerTips) LatestMilestonesDescending(filter ...func(seqID ledger.C
 			ret = append(ret, ms.WrappedTx)
 		}
 	}
+	return ret
+}
+
+// LatestMilestonesDescending returns sequencer transactions from sequencer tippool. Optionally filters
+// Sorts in the descending preference order (essentially by ledger coverage)
+func (t *SequencerTips) LatestMilestonesDescending(filter ...func(seqID ledger.ChainID, vid *vertex.WrappedTx) bool) []*vertex.WrappedTx {
+	ret := t.filterLatestMilestones(filter...)
 	sort.Slice(ret, func(i, j int) bool {
 		return vertex.IsPreferredMilestoneAgainstTheOther(ret[i], ret[j], false)
+	})
+	return ret
+}
+
+// LatestMilestonesShuffled returns sequencer transactions from sequencer tippool. Optionally filters.
+// Randomizes order
+func (t *SequencerTips) LatestMilestonesShuffled(filter ...func(seqID ledger.ChainID, vid *vertex.WrappedTx) bool) []*vertex.WrappedTx {
+	ret := t.filterLatestMilestones(filter...)
+	rand.Shuffle(len(ret), func(i, j int) {
+		ret[i], ret[j] = ret[j], ret[i]
 	})
 	return ret
 }

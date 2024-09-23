@@ -32,6 +32,7 @@ type (
 		SequencerMilestoneAttachWait(txBytes []byte, meta *txmetadata.TransactionMetadata, timeout time.Duration) (*vertex.WrappedTx, error)
 		GetLatestMilestone(seqID ledger.ChainID) *vertex.WrappedTx
 		LatestMilestonesDescending(filter ...func(seqID ledger.ChainID, vid *vertex.WrappedTx) bool) []*vertex.WrappedTx
+		LatestMilestonesShuffled(filter ...func(seqID ledger.ChainID, vid *vertex.WrappedTx) bool) []*vertex.WrappedTx
 		NumSequencerTips() int
 		ListenToAccount(account ledger.Accountable, fun func(wOut vertex.WrappedOutput))
 		MustEnsureBranch(txid ledger.TransactionID) *vertex.WrappedTx

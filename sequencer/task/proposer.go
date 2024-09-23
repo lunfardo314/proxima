@@ -106,9 +106,17 @@ func (p *Proposer) makeTxProposal(a *attacher.IncrementalAttacher) (*transaction
 	return tx, err
 }
 
-func (p *Proposer) ChooseExtendEndorsePair() *attacher.IncrementalAttacher {
+// ChooseExtendEndorsePair returns incremental attacher which corresponds to the first
+// extend-endorse pair encountered while traversing endorse candidates.
+// Endorse candidates are either sorted descending by coverage, or randomly shuffled
+func (p *Proposer) ChooseExtendEndorsePair(shuffleEndorseCandidates bool) *attacher.IncrementalAttacher {
 	p.Assertf(!p.targetTs.IsSlotBoundary(), "!p.targetTs.IsSlotBoundary()")
-	endorseCandidates := p.Backlog().CandidatesToEndorseSorted(p.targetTs)
+	var endorseCandidates []*vertex.WrappedTx
+	if shuffleEndorseCandidates {
+		endorseCandidates = p.Backlog().CandidatesToEndorseShuffled(p.targetTs)
+	} else {
+		endorseCandidates = p.Backlog().CandidatesToEndorseSorted(p.targetTs)
+	}
 
 	seqID := p.SequencerID()
 	var ret *attacher.IncrementalAttacher

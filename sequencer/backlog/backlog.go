@@ -24,6 +24,7 @@ type (
 		SequencerName() string
 		GetLatestMilestone(seqID ledger.ChainID) *vertex.WrappedTx
 		LatestMilestonesDescending(filter ...func(seqID ledger.ChainID, vid *vertex.WrappedTx) bool) []*vertex.WrappedTx
+		LatestMilestonesShuffled(filter ...func(seqID ledger.ChainID, vid *vertex.WrappedTx) bool) []*vertex.WrappedTx
 		NumSequencerTips() int
 		BacklogTTLSlots() int
 		MustEnsureBranch(txid ledger.TransactionID) *vertex.WrappedTx
@@ -145,13 +146,24 @@ func (b *InputBacklog) checkAndReferenceCandidate(wOut vertex.WrappedOutput) boo
 	return true
 }
 
-// CandidatesToEndorseSorted returns list of transactions which can be endorsed from the given timestamp
+// CandidatesToEndorseSorted returns descending (by coverage) list of transactions which can be endorsed from the given timestamp
 func (b *InputBacklog) CandidatesToEndorseSorted(targetTs ledger.Time) []*vertex.WrappedTx {
 	targetSlot := targetTs.Slot()
 	ownSeqID := b.SequencerID()
 	return b.LatestMilestonesDescending(func(seqID ledger.ChainID, vid *vertex.WrappedTx) bool {
 		if vid.BaselineBranch() == nil {
-			//b.Log().Warnf("InputBacklog: milestone %s has BaselineBranch == nil", vid.IDShortString())
+			return false
+		}
+		return vid.Slot() == targetSlot && seqID != ownSeqID
+	})
+}
+
+// CandidatesToEndorseShuffled returns randomly ordered list of transactions which can be endorsed from the given timestamp
+func (b *InputBacklog) CandidatesToEndorseShuffled(targetTs ledger.Time) []*vertex.WrappedTx {
+	targetSlot := targetTs.Slot()
+	ownSeqID := b.SequencerID()
+	return b.LatestMilestonesShuffled(func(seqID ledger.ChainID, vid *vertex.WrappedTx) bool {
+		if vid.BaselineBranch() == nil {
 			return false
 		}
 		return vid.Slot() == targetSlot && seqID != ownSeqID

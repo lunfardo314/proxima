@@ -30,7 +30,7 @@ func endorse1ProposeGenerator(p *Proposer) (*attacher.IncrementalAttacher, bool)
 		//	return nil, false
 		//}
 	}
-	a := p.ChooseExtendEndorsePair()
+	a := p.ChooseExtendEndorsePair(false)
 	if a == nil {
 		p.Tracef(TraceTagEndorse1Proposer, "propose: ChooseExtendEndorsePair returned nil")
 		return nil, false
