@@ -20,7 +20,7 @@ func endorse2ProposeGenerator(p *Proposer) (*attacher.IncrementalAttacher, bool)
 		return nil, true
 	}
 	{
-		// TODO take into account target
+		// TODO take into account target, otherwise it does not work
 		// e2 proposer optimizations: if backlog didn't change, no reason to generate another proposal
 		//noChanges := false
 		//p.Task.slotData.withWriteLock(func() {

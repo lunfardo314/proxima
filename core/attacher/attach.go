@@ -2,7 +2,6 @@ package attacher
 
 import (
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/lunfardo314/proxima/core/vertex"
@@ -184,26 +183,28 @@ func AttachOutputWithID(o *ledger.OutputWithID, env Environment, opts ...AttachT
 	return wOut, nil
 }
 
+// AttachSequencerOutputs
+// Deprecated:
 func AttachSequencerOutputs(seqOut, stemOut *ledger.OutputWithID, env Environment, opts ...AttachTxOption) (vertex.WrappedOutput, vertex.WrappedOutput, error) {
 	txid := seqOut.ID.TransactionID()
 	util.Assertf(stemOut == nil || txid == stemOut.ID.TransactionID(), "stemOut == nil || seqOut.ID.TransactionID() == stemOut.ID.TransactionID()")
 
 	vid := AttachTxID(txid, env, opts...)
 
-	{
-		if strings.Contains(vid.IDShortString(), "4f8349") {
-			seqOutStr := "<nil>"
-			if seqOut != nil {
-				seqOutStr = seqOut.String()
-			}
-			stemOutStr := "<nil>"
-			if stemOut != nil {
-				stemOutStr = stemOut.String()
-			}
-			fmt.Printf(">>>>>>>>>>>>>>>>>>>>\n%s\n>>>>>>>>>>>>>>\n%s\n>>>>>>>>>>>>>>>>\n%s\n",
-				vid.Lines("        ").String(), seqOutStr, stemOutStr)
-		}
-	}
+	//{
+	//	if strings.Contains(vid.IDShortString(), "4f8349") {
+	//		seqOutStr := "<nil>"
+	//		if seqOut != nil {
+	//			seqOutStr = seqOut.String()
+	//		}
+	//		stemOutStr := "<nil>"
+	//		if stemOut != nil {
+	//			stemOutStr = stemOut.String()
+	//		}
+	//		fmt.Printf(">>>>>>>>>>>>>>>>>>>>\n%s\n>>>>>>>>>>>>>>\n%s\n>>>>>>>>>>>>>>>>\n%s\n",
+	//			vid.Lines("        ").String(), seqOutStr, stemOutStr)
+	//	}
+	//}
 
 	if err := vid.EnsureSequencerOutputs(seqOut, stemOut); err != nil {
 		return vertex.WrappedOutput{}, vertex.WrappedOutput{}, err

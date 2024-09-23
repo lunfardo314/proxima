@@ -545,6 +545,8 @@ func (vid *WrappedTx) EnsureOutputWithID(o *ledger.OutputWithID) (err error) {
 	return err
 }
 
+// EnsureSequencerOutputs
+// Deprecated:
 func (vid *WrappedTx) EnsureSequencerOutputs(seqOut, stemOut *ledger.OutputWithID) (err error) {
 	if !vid.IsSequencerMilestone() {
 		return fmt.Errorf("not sequencer transaction: %s", vid.IDShortString())
