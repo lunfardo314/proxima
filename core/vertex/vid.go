@@ -568,7 +568,10 @@ func (vid *WrappedTx) EnsureSequencerOutputs(seqOut, stemOut *ledger.OutputWithI
 			}
 		},
 		VirtualTx: func(v *VirtualTransaction) {
-			err = v.addSequencerOutputs(seqOut, stemOut)
+			if err = v.addSequencerOutputs(seqOut, stemOut); err != nil {
+				err = fmt.Errorf("EnsureSequencerOutputs in %s: %w", vid.IDShortString(), err)
+			}
+
 		},
 		Deleted: vid.PanicAccessDeleted,
 	})

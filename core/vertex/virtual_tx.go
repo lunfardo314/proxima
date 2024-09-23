@@ -20,8 +20,9 @@ func newVirtualTx() *VirtualTransaction {
 
 func newVirtualBranchTx(br *multistate.BranchData) *VirtualTransaction {
 	v := newVirtualTx()
-	v._addSequencerIndices(br.SequencerOutput.ID.Index(), br.Stem.ID.Index())
-	err := v.addOutput(br.SequencerOutput.ID.Index(), br.SequencerOutput.Output)
+	err := v._addSequencerIndices(br.SequencerOutput.ID.Index(), br.Stem.ID.Index())
+	util.AssertNoError(err)
+	err = v.addOutput(br.SequencerOutput.ID.Index(), br.SequencerOutput.Output)
 	util.AssertNoError(err)
 	err = v.addOutput(br.Stem.ID.Index(), br.Stem.Output)
 	util.AssertNoError(err)
@@ -39,7 +40,8 @@ func VirtualTxFromTx(tx *transaction.Transaction) *VirtualTransaction {
 	}
 	if tx.IsSequencerMilestone() {
 		seqIdx, stemIdx := tx.SequencerAndStemOutputIndices()
-		ret._addSequencerIndices(seqIdx, stemIdx)
+		err := ret._addSequencerIndices(seqIdx, stemIdx)
+		util.AssertNoError(err)
 	}
 	return ret
 }
@@ -75,15 +77,15 @@ func (v *VirtualTransaction) _addOutput(idx byte, o *ledger.Output) error {
 	return nil
 }
 
-func (v *VirtualTransaction) _addSequencerIndices(seqIdx, stemIdx byte) {
+func (v *VirtualTransaction) _addSequencerIndices(seqIdx, stemIdx byte) error {
 	indices := &[2]byte{seqIdx, stemIdx}
 	util.Assertf(seqIdx != 0xff, "seqIdx != 0xff")
-	if v.sequencerOutputIndices != nil {
-		util.Assertf(*v.sequencerOutputIndices == *indices, "_addSequencerIndices: inconsistent indices: expected (%d,%d), got (%d,%d)",
+	if v.sequencerOutputIndices != nil && *v.sequencerOutputIndices != *indices {
+		return fmt.Errorf("_addSequencerIndices: inconsistent indices: expected (%d,%d), got (%d,%d)",
 			seqIdx, stemIdx, (*v.sequencerOutputIndices)[0], (*v.sequencerOutputIndices)[1])
-		return
 	}
 	v.sequencerOutputIndices = indices
+	return nil
 }
 
 func (v *VirtualTransaction) addSequencerOutputs(seqOut, stemOut *ledger.OutputWithID) error {
@@ -95,7 +97,9 @@ func (v *VirtualTransaction) addSequencerOutputs(seqOut, stemOut *ledger.OutputW
 	if stemOut != nil {
 		stemIdx = stemOut.ID.Index()
 	}
-	v._addSequencerIndices(seqIdx, stemIdx)
+	if err := v._addSequencerIndices(seqIdx, stemIdx); err != nil {
+		return err
+	}
 
 	if err := v._addOutput(seqOut.ID.Index(), seqOut.Output); err != nil {
 		return err
