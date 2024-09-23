@@ -52,23 +52,18 @@ func baseProposeGenerator(p *Proposer) (*attacher.IncrementalAttacher, bool) {
 			p.Tracef(TraceTagBaseProposer, "%s force exit: not-sequencer %s", p.Name, extend.IDShortString)
 			return nil, true
 		}
-	}
-	p.Tracef(TraceTagBaseProposer, "%s predecessor %s is sequencer milestone with coverage %s",
-		p.Name, extend.IDShortString, extend.VID.GetLedgerCoverageString)
-
-	if !p.targetTs.IsSlotBoundary() {
 		// proposer optimization: if backlog and extended output didn't change since last target,
 		// makes no sense to continue with proposals.
-		noChanges := false
-		p.Task.slotData.withWriteLock(func() {
-			noChanges = p.Task.slotData.lastExtendedOutputB0 == *extend.DecodeID() &&
-				!p.Backlog().ArrivedOutputsSince(p.Task.slotData.lastTimeBacklogCheckedB0)
-			p.Task.slotData.lastTimeBacklogCheckedB0 = time.Now()
-		})
+		noChanges := p.slotData.lastExtendedOutputB0 == extend &&
+			!p.Backlog().ArrivedOutputsSince(p.slotData.lastTimeBacklogCheckedB0)
+		p.slotData.lastTimeBacklogCheckedB0 = time.Now()
 		if noChanges {
 			return nil, true
 		}
 	}
+
+	p.Tracef(TraceTagBaseProposer, "%s predecessor %s is sequencer milestone with coverage %s",
+		p.Name, extend.IDShortString, extend.VID.GetLedgerCoverageString)
 
 	a, err := attacher.NewIncrementalAttacher(p.Name, p.environment, p.targetTs, extend)
 	if err != nil {
@@ -92,9 +87,7 @@ func baseProposeGenerator(p *Proposer) (*attacher.IncrementalAttacher, bool) {
 	}
 	a.AdjustCoverage()
 
-	p.Task.slotData.withWriteLock(func() {
-		p.Task.slotData.lastExtendedOutputB0 = *extend.DecodeID()
-	})
+	p.slotData.lastExtendedOutputB0 = extend
 	// only need one proposal when extending a branch
 	stopProposing := extend.VID.IsBranchTransaction()
 	return a, stopProposing
