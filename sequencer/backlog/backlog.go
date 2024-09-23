@@ -244,19 +244,29 @@ func (b *InputBacklog) LoadSequencerStartTips(seqID ledger.ChainID) error {
 	loadedTxs.Insert(vidBranch)
 
 	// load sequencer output for the chain
-	chainOut, stemOut, err := rdr.GetChainTips(&seqID)
+	chainOut, err := rdr.GetChainOutput(&seqID)
 	if err != nil {
-		return fmt.Errorf("LoadSequencerStartTips: %w", err)
+		return fmt.Errorf("LoadSequencerStartTips: can't load chain output for %s: %w", seqID.StringShort(), err)
 	}
-	var wOut vertex.WrappedOutput
-	if chainOut.ID.IsSequencerTransaction() {
-		wOut, _, err = attacher.AttachSequencerOutputs(chainOut, stemOut, b, attacher.WithInvokedBy("LoadSequencerStartTips"))
-	} else {
-		wOut, err = attacher.AttachOutputWithID(chainOut, b, attacher.WithInvokedBy("LoadSequencerStartTips"))
-	}
+	wOut, err := attacher.AttachOutputWithID(chainOut, b, attacher.WithInvokedBy("LoadSequencerStartTips"))
 	if err != nil {
-		return err
+		return fmt.Errorf("LoadSequencerStartTips: can't attach chain output: %w\n%s", err, chainOut.Lines("     ").String())
 	}
+
+	//chainOut, stemOut, err := rdr.GetChainTips(&seqID)
+	//if err != nil {
+	//	return fmt.Errorf("LoadSequencerStartTips: %w", err)
+	//}
+	//var wOut vertex.WrappedOutput
+	//if chainOut.ID.IsSequencerTransaction() {
+	//	wOut, _, err = attacher.AttachSequencerOutputs(chainOut, stemOut, b, attacher.WithInvokedBy("LoadSequencerStartTips"))
+	//} else {
+	//	wOut, err = attacher.AttachOutputWithID(chainOut, b, attacher.WithInvokedBy("LoadSequencerStartTips"))
+	//}
+	//if err != nil {
+	//	return err
+	//}
+
 	loadedTxs.Insert(wOut.VID)
 
 	b.Log().Infof("loaded sequencer start output from branch %s\n%s",

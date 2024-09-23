@@ -88,7 +88,11 @@ func (v *VirtualTransaction) _addSequencerIndices(seqIdx, stemIdx byte) error {
 	return nil
 }
 
+// addSequencerOutputs must add both outputs consistently
 func (v *VirtualTransaction) addSequencerOutputs(seqOut, stemOut *ledger.OutputWithID) error {
+	util.Assertf(seqOut != nil, "seqOut!=nil")
+	util.Assertf(stemOut.ID.IsBranchTransaction() == (stemOut != nil), "stemOut.ID.IsBranchTransaction()==(stemOut!=nil)")
+
 	v.mutex.Lock()
 	defer v.mutex.Unlock()
 
@@ -105,7 +109,6 @@ func (v *VirtualTransaction) addSequencerOutputs(seqOut, stemOut *ledger.OutputW
 		return err
 	}
 	if stemOut != nil {
-		util.Assertf(stemOut.ID.IsBranchTransaction(), "stemOut.ID.IsBranchTransaction()")
 		util.Assertf(stemOut.ID.TransactionID() == seqOut.ID.TransactionID(), "stemOut.ID.TransactionID() == seqOut.ID.TransactionID()")
 		if err := v._addOutput(stemOut.ID.Index(), stemOut.Output); err != nil {
 			return err
