@@ -2,6 +2,7 @@ package attacher
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/lunfardo314/proxima/core/vertex"
@@ -188,6 +189,9 @@ func AttachSequencerOutputs(seqOut, stemOut *ledger.OutputWithID, env Environmen
 	util.Assertf(stemOut == nil || txid == stemOut.ID.TransactionID(), "stemOut == nil || seqOut.ID.TransactionID() == stemOut.ID.TransactionID()")
 
 	vid := AttachTxID(txid, env, opts...)
+	if strings.Contains(vid.IDShortString(), "4f8349") {
+		fmt.Printf(">>>>>>>>>>>>>>>>>>>>\n%s\n", vid.Lines("        ").String())
+	}
 	if err := vid.EnsureSequencerOutputs(seqOut, stemOut); err != nil {
 		return vertex.WrappedOutput{}, vertex.WrappedOutput{}, err
 	}
