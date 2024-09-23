@@ -545,46 +545,6 @@ func (vid *WrappedTx) EnsureOutputWithID(o *ledger.OutputWithID) (err error) {
 	return err
 }
 
-// EnsureSequencerOutputs
-// Deprecated:
-func (vid *WrappedTx) EnsureSequencerOutputs(seqOut, stemOut *ledger.OutputWithID) (err error) {
-	if !vid.IsSequencerMilestone() {
-		return fmt.Errorf("not sequencer transaction: %s", vid.IDShortString())
-	}
-
-	vid.Unwrap(UnwrapOptions{
-		Vertex: func(v *Vertex) {
-			// just enforcing consistency
-			if *v.Tx.ID() != seqOut.ID.TransactionID() {
-				err = fmt.Errorf("EnsureSequencerOutputs: wrong sequencer output %s", seqOut.String())
-				return
-			}
-			existingSeqOut := v.Tx.SequencerOutput()
-			if !ledger.EqualOutputs(seqOut, existingSeqOut) {
-				err = fmt.Errorf("EnsureSequencerOutputs: wrong sequencer output %s", seqOut.String())
-				return
-			}
-			if stemOut != nil {
-				util.Assertf(vid.IsBranchTransaction(), "vid.IsBranchTransaction()")
-				util.Assertf(seqOut.ID.TransactionID() == stemOut.ID.TransactionID(), "seqOut.ID.TransactionID() == stemOut.ID.TransactionID()")
-
-				existingStemOut := v.Tx.StemOutput()
-				if !ledger.EqualOutputs(stemOut, existingStemOut) {
-					err = fmt.Errorf("EnsureSequencerOutputs: wrong stem output %s", seqOut.String())
-				}
-			}
-		},
-		VirtualTx: func(v *VirtualTransaction) {
-			if err = v.addSequencerOutputs(seqOut, stemOut); err != nil {
-				err = fmt.Errorf("EnsureSequencerOutputs in %s: %w", vid.IDShortString(), err)
-			}
-
-		},
-		Deleted: vid.PanicAccessDeleted,
-	})
-	return err
-}
-
 // AttachConsumer stores consumer of the vid[outputIndex] consumed output.
 // Function checkConflicts checks if new consumer conflicts with already existing ones
 func (vid *WrappedTx) AttachConsumer(outputIndex byte, consumer *WrappedTx, checkConflicts func(existingConsumers set.Set[*WrappedTx]) (conflict *WrappedTx)) (conflict *WrappedTx) {
