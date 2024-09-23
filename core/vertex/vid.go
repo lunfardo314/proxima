@@ -429,6 +429,11 @@ func (vid *WrappedTx) Lines(prefix ...string) *lines.Lines {
 		},
 		VirtualTx: func(v *VirtualTransaction) {
 			ret.Add("== virtual tx %s", vid.IDShortString())
+			if v.sequencerOutputIndices == nil {
+				ret.Add("seq output indices: <nil>")
+			} else {
+				ret.Add("seq output indices: (%d, %d)", (v.sequencerOutputIndices)[0], (v.sequencerOutputIndices)[1])
+			}
 			idxs := util.KeysSorted(v.outputs, func(k1, k2 byte) bool {
 				return k1 < k2
 			})
