@@ -79,7 +79,8 @@ func (v *VirtualTransaction) _addSequencerIndices(seqIdx, stemIdx byte) {
 	indices := &[2]byte{seqIdx, stemIdx}
 	util.Assertf(seqIdx != 0xff, "seqIdx != 0xff")
 	if v.sequencerOutputIndices != nil {
-		util.Assertf(*v.sequencerOutputIndices == *indices, "_addSequencerIndices: inconsistent indices")
+		util.Assertf(*v.sequencerOutputIndices == *indices, "_addSequencerIndices: inconsistent indices: expected (%d,%d), got (%d,%d)",
+			seqIdx, stemIdx, (*v.sequencerOutputIndices)[0], (*v.sequencerOutputIndices)[1])
 		return
 	}
 	v.sequencerOutputIndices = indices
