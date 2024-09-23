@@ -6,43 +6,44 @@ import (
 	"github.com/lunfardo314/proxima/core/attacher"
 )
 
-const TraceTagEndorse2Proposer = "propose-endorse2"
+const TraceTagEndorse2RndProposer = "propose-endorse2rnd"
 
 func init() {
 	registerProposerStrategy(&Strategy{
-		Name:             "endorse2",
-		ShortName:        "e2",
-		GenerateProposal: endorse2ProposeGenerator,
+		Name:             "endorse2rnd",
+		ShortName:        "r2",
+		GenerateProposal: endorse2RndProposeGenerator,
 	})
 }
 
-func endorse2ProposeGenerator(p *Proposer) (*attacher.IncrementalAttacher, bool) {
+func endorse2RndProposeGenerator(p *Proposer) (*attacher.IncrementalAttacher, bool) {
 	if p.targetTs.IsSlotBoundary() {
 		// the proposer does not generate branch transactions
 		return nil, true
 	}
 
-	// Check all pairs, in descending order
-	a := p.ChooseFirstExtendEndorsePair(false, nil)
+	// Check peers in RANDOM order
+	a := p.ChooseFirstExtendEndorsePair(true, nil)
 	if a == nil {
-		p.Tracef(TraceTagEndorse2Proposer, "propose: ChooseFirstExtendEndorsePair returned nil")
+		p.Tracef(TraceTagEndorse2RndProposer, "propose: ChooseFirstExtendEndorsePair returned nil")
 		return nil, false
 	}
 	endorsing := a.Endorsing()[0]
 	extending := a.Extending()
 	if !a.Completed() {
 		a.Close()
-		p.Tracef(TraceTagEndorse2Proposer, "proposal [extend=%s, endorsing=%s] not complete 1", extending.IDShortString, endorsing.IDShortString)
+		p.Tracef(TraceTagEndorse2RndProposer, "proposal [extend=%s, endorsing=%s] not complete 1", extending.IDShortString, endorsing.IDShortString)
 		return nil, false
 	}
 
-	newOutputArrived := p.Backlog().ArrivedOutputsSince(p.slotData.lastTimeBacklogCheckedE2)
-	p.slotData.lastTimeBacklogCheckedE2 = time.Now()
+	newOutputArrived := p.Backlog().ArrivedOutputsSince(p.slotData.lastTimeBacklogCheckedR2)
+	p.slotData.lastTimeBacklogCheckedR2 = time.Now()
 
 	// then try to add one endorsement more
 	addedSecond := false
 	endorsing0 := a.Endorsing()[0]
-	for _, endorsementCandidate := range p.Backlog().CandidatesToEndorseSorted(p.targetTs) {
+	// RANDOM order
+	for _, endorsementCandidate := range p.Backlog().CandidatesToEndorseShuffled(p.targetTs) {
 		select {
 		case <-p.ctx.Done():
 			a.Close()
@@ -86,7 +87,7 @@ func endorse2ProposeGenerator(p *Proposer) (*attacher.IncrementalAttacher, bool)
 			addedSecond = true
 			break //>>>> return attacher
 		}
-		p.Tracef(TraceTagEndorse2Proposer, "failed to include endorsement target %s", endorsementCandidate.IDShortString)
+		p.Tracef(TraceTagEndorse2RndProposer, "failed to include endorsement target %s", endorsementCandidate.IDShortString)
 	}
 	if !addedSecond {
 		// no need to repeat job of endorse1
