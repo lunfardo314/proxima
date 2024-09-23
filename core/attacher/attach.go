@@ -190,7 +190,8 @@ func AttachSequencerOutputs(seqOut, stemOut *ledger.OutputWithID, env Environmen
 
 	vid := AttachTxID(txid, env, opts...)
 	if strings.Contains(vid.IDShortString(), "4f8349") {
-		fmt.Printf(">>>>>>>>>>>>>>>>>>>>\n%s\n", vid.Lines("        ").String())
+		fmt.Printf(">>>>>>>>>>>>>>>>>>>>\n%s\n>>>>>>>>>>>>>>%s>>>>>>>>>>>>>>>>%s\n",
+			vid.Lines("        ").String(), seqOut.String(), stemOut.String())
 	}
 	if err := vid.EnsureSequencerOutputs(seqOut, stemOut); err != nil {
 		return vertex.WrappedOutput{}, vertex.WrappedOutput{}, err
