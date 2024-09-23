@@ -200,7 +200,7 @@ func AttachSequencerOutputs(seqOut, stemOut *ledger.OutputWithID, env Environmen
 			if stemOut != nil {
 				stemOutStr = stemOut.String()
 			}
-			fmt.Printf(">>>>>>>>>>>>>>>>>>>>\n%s\n>>>>>>>>>>>>>>%s>>>>>>>>>>>>>>>>%s\n",
+			fmt.Printf(">>>>>>>>>>>>>>>>>>>>\n%s\n>>>>>>>>>>>>>>\n%s\n>>>>>>>>>>>>>>>>\n%s\n",
 				vid.Lines("        ").String(), seqOutStr, stemOutStr)
 		}
 	}
