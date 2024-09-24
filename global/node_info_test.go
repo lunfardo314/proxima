@@ -39,7 +39,6 @@ func randomPeerID() peer.ID {
 func TestPeerInfo(t *testing.T) {
 	t.Run("1", func(t *testing.T) {
 		pi := &NodeInfo{
-			Name:            "peerName",
 			ID:              randomPeerID(),
 			NumStaticAlive:  5,
 			NumDynamicAlive: 3,
@@ -51,28 +50,19 @@ func TestPeerInfo(t *testing.T) {
 		var piBack NodeInfo
 		err = json.Unmarshal(jsonData, &piBack)
 		require.NoError(t, err)
-		require.EqualValues(t, pi.Name, piBack.Name)
 		require.EqualValues(t, pi.ID, piBack.ID)
 		require.EqualValues(t, pi.NumStaticAlive, piBack.NumStaticAlive)
 		require.EqualValues(t, pi.NumDynamicAlive, piBack.NumDynamicAlive)
 
 		require.True(t, pi.Sequencer == piBack.Sequencer) // Sequencer is nil
-		require.True(t, util.EqualSlices(pi.Branches, piBack.Branches))
 	})
 	t.Run("2", func(t *testing.T) {
-		branches := []ledger.TransactionID{
-			ledger.RandomTransactionID(true),
-			ledger.RandomTransactionID(true),
-			ledger.RandomTransactionID(true),
-		}
 		sequencer := ledger.RandomChainID()
 		pi := &NodeInfo{
-			Name:            "peerName",
 			ID:              randomPeerID(),
 			NumStaticAlive:  5,
 			NumDynamicAlive: 3,
 			Sequencer:       &sequencer,
-			Branches:        branches,
 		}
 		jsonData, err := json.MarshalIndent(pi, "", "  ")
 		require.NoError(t, err)
@@ -81,12 +71,10 @@ func TestPeerInfo(t *testing.T) {
 		var piBack NodeInfo
 		err = json.Unmarshal(jsonData, &piBack)
 		require.NoError(t, err)
-		require.EqualValues(t, pi.Name, piBack.Name)
 		require.EqualValues(t, pi.ID, piBack.ID)
 		require.EqualValues(t, pi.NumStaticAlive, piBack.NumStaticAlive)
 		require.EqualValues(t, pi.NumDynamicAlive, piBack.NumDynamicAlive)
 
 		require.True(t, pi.Sequencer.String() == piBack.Sequencer.String())
-		require.True(t, util.EqualSlices(pi.Branches, piBack.Branches))
 	})
 }

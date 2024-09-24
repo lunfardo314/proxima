@@ -37,6 +37,10 @@ func (d *workflowDummyEnvironment) PullFromRandomPeers(nPeers int, txid *ledger.
 	panic("not implemented")
 }
 
+func (d *workflowDummyEnvironment) GetOwnSequencerID() *ledger.ChainID {
+	panic("not implemented")
+}
+
 func newWorkflowDummyEnvironment() *workflowDummyEnvironment {
 	return &workflowDummyEnvironment{
 		Global:       global.NewDefault(),

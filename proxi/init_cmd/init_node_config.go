@@ -113,6 +113,9 @@ peering:
   # max_dynamic_peers > 0 means automatic peer discovery (autopeering) is enabled, otherwise disabled
   max_dynamic_peers: {{.MaxDynamicPeers}}
 
+  # defines if local IPs are allowed to be used for autopeering.
+  allow_local_ips: false
+
 # Node's API config
 api:
     # server port
