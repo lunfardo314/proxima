@@ -46,7 +46,7 @@ func runTransferCmd(_ *cobra.Command, args []string) {
 		tagAlongSeqID = GetTagAlongSequencerID()
 		glb.Assertf(tagAlongSeqID != nil, "tag-along sequencer not specified")
 
-		md, err := glb.GetClient().GetMilestoneDataFromHeaviestState(*tagAlongSeqID)
+		md, err := glb.GetClient().GetMilestoneData(*tagAlongSeqID)
 		glb.AssertNoError(err)
 
 		if md != nil && md.MinimumFee > feeAmount {

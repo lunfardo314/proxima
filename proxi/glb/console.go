@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/spf13/viper"
 )
 
@@ -77,4 +78,9 @@ func YesNoPrompt(label string, def bool, force ...bool) bool {
 			return false
 		}
 	}
+}
+
+func PrintLRB(lrbid *ledger.TransactionID) {
+	Infof("Latest reliable branch (LRB) ID: %s", lrbid.String())
+	Infof("   %d slots from now", lrbid.Slot()-ledger.TimeNow().Slot())
 }

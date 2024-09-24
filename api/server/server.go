@@ -26,7 +26,7 @@ type (
 		GetNodeInfo() *global.NodeInfo
 		GetSyncInfo() *api.SyncInfo
 		GetPeersInfo() *api.PeersInfo
-		HeaviestStateForLatestTimeSlot() multistate.SugaredStateReader
+		LatestReliableState() (multistate.SugaredStateReader, error)
 		SubmitTxBytesFromAPI(txBytes []byte, trace bool)
 		QueryTxIDStatusJSONAble(txid *ledger.TransactionID) vertex.TxIDStatusJSONAble
 		GetTxInclusion(txid *ledger.TransactionID, slotsBack int) *multistate.TxInclusion
@@ -107,16 +107,18 @@ func (srv *Server) getAccountOutputs(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var oData []*ledger.OutputDataWithID
-	err = util.CatchPanicOrError(func() error {
-		var err1 error
-		oData, err1 = srv.HeaviestStateForLatestTimeSlot().GetUTXOsLockedInAccount(accountable.AccountID())
-		return err1
+
+	resp := &api.OutputList{}
+	err = srv.withLRB(func(rdr multistate.SugaredStateReader) (errRet error) {
+		oData, errRet = rdr.GetUTXOsLockedInAccount(accountable.AccountID())
+		lrbid := rdr.GetStemOutput().ID.TransactionID()
+		resp.LRBID = lrbid.StringHex()
+		return
 	})
 	if err != nil {
 		writeErr(w, err.Error())
 		return
 	}
-	resp := &api.OutputList{}
 	if len(oData) > 0 {
 		resp.Outputs = make(map[string]string)
 		for _, o := range oData {
@@ -147,20 +149,19 @@ func (srv *Server) getChainOutput(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err.Error())
 		return
 	}
-	var out *ledger.OutputWithID
-	err = util.CatchPanicOrError(func() error {
-		var err1 error
-		out, err1 = srv.HeaviestStateForLatestTimeSlot().GetChainOutput(&chainID)
-		return err1
+
+	resp := &api.ChainOutput{}
+	err = srv.withLRB(func(rdr multistate.SugaredStateReader) error {
+		o, err1 := rdr.GetChainOutput(&chainID)
+		if err1 != nil {
+			return err1
+		}
+		resp.OutputID = o.ID.StringHex()
+		resp.OutputData = hex.EncodeToString(o.Output.Bytes())
+		lrbid := rdr.GetStemOutput().ID.TransactionID()
+		resp.LRBID = lrbid.StringHex()
+		return nil
 	})
-	if err != nil {
-		writeErr(w, err.Error())
-		return
-	}
-	resp := &api.ChainOutput{
-		OutputID:   out.ID.StringHex(),
-		OutputData: hex.EncodeToString(out.Output.Bytes()),
-	}
 
 	respBin, err := json.MarshalIndent(resp, "", "  ")
 	if err != nil {
@@ -185,21 +186,21 @@ func (srv *Server) getOutput(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err.Error())
 		return
 	}
-	var oData []byte
-	err = util.CatchPanicOrError(func() error {
-		var found bool
-		oData, found = srv.HeaviestStateForLatestTimeSlot().GetUTXO(&oid)
+
+	resp := &api.OutputData{}
+	err = srv.withLRB(func(rdr multistate.SugaredStateReader) error {
+		oData, found := rdr.GetUTXO(&oid)
 		if !found {
 			return errors.New(api.ErrGetOutputNotFound)
 		}
+		resp.OutputData = hex.EncodeToString(oData)
+		lrbid := rdr.GetStemOutput().ID.TransactionID()
+		resp.LRBID = lrbid.StringHex()
 		return nil
 	})
 	if err != nil {
 		writeErr(w, api.ErrGetOutputNotFound)
 		return
-	}
-	resp := &api.OutputData{
-		OutputData: hex.EncodeToString(oData),
 	}
 
 	respBin, err := json.MarshalIndent(resp, "", "  ")
@@ -506,4 +507,14 @@ func RunOn(addr string, env environment) {
 func setHeader(w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
+}
+
+func (srv *Server) withLRB(fun func(rdr multistate.SugaredStateReader) error) error {
+	return util.CatchPanicOrError(func() error {
+		rdr, err1 := srv.LatestReliableState()
+		if err1 != nil {
+			return err1
+		}
+		return fun(rdr)
+	})
 }

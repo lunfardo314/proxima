@@ -119,20 +119,25 @@ func (c *APIClient) GetLedgerID() (*ledger.IdentityData, error) {
 }
 
 // getAccountOutputs fetches all outputs of the account
-func (c *APIClient) getAccountOutputs(accountable ledger.Accountable) ([]*ledger.OutputDataWithID, error) {
+func (c *APIClient) getAccountOutputs(accountable ledger.Accountable) ([]*ledger.OutputDataWithID, *ledger.TransactionID, error) {
 	path := fmt.Sprintf(api.PathGetAccountOutputs+"?accountable=%s", accountable.String())
 	body, err := c.getBody(path)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	var res api.OutputList
 	err = json.Unmarshal(body, &res)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if res.Error.Error != "" {
-		return nil, fmt.Errorf("from server: %s", res.Error.Error)
+		return nil, nil, fmt.Errorf("from server: %s", res.Error.Error)
+	}
+
+	retLRBID, err := ledger.TransactionIDFromHexString(res.LRBID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("while parsing transaction ID: %s", res.Error.Error)
 	}
 
 	ret := make([]*ledger.OutputDataWithID, 0, len(res.Outputs))
@@ -140,11 +145,11 @@ func (c *APIClient) getAccountOutputs(accountable ledger.Accountable) ([]*ledger
 	for idStr, dataStr := range res.Outputs {
 		id, err := ledger.OutputIDFromHexString(idStr)
 		if err != nil {
-			return nil, fmt.Errorf("wrong output ID data from server: %s", idStr)
+			return nil, nil, fmt.Errorf("wrong output ID data from server: %s", idStr)
 		}
 		oData, err := hex.DecodeString(dataStr)
 		if err != nil {
-			return nil, fmt.Errorf("wrong output data from server: %s", dataStr)
+			return nil, nil, fmt.Errorf("wrong output data from server: %s", dataStr)
 		}
 		ret = append(ret, &ledger.OutputDataWithID{
 			ID:         id,
@@ -155,7 +160,7 @@ func (c *APIClient) getAccountOutputs(accountable ledger.Accountable) ([]*ledger
 	sort.Slice(ret, func(i, j int) bool {
 		return bytes.Compare(ret[i].ID[:], ret[j].ID[:]) < 0
 	})
-	return ret, nil
+	return ret, &retLRBID, nil
 }
 
 func (c *APIClient) GetChainOutputData(chainID ledger.ChainID) (*ledger.OutputDataWithID, error) {
@@ -189,8 +194,8 @@ func (c *APIClient) GetChainOutputData(chainID ledger.ChainID) (*ledger.OutputDa
 	}, nil
 }
 
-// GetChainOutputFromHeaviestState returns parsed output for the chain ID and index of the chain constraint in it
-func (c *APIClient) GetChainOutputFromHeaviestState(chainID ledger.ChainID) (*ledger.OutputWithChainID, byte, error) {
+// GetChainOutput returns parsed output for the chain ID and index of the chain constraint in it
+func (c *APIClient) GetChainOutput(chainID ledger.ChainID) (*ledger.OutputWithChainID, byte, error) {
 	oData, err := c.GetChainOutputData(chainID)
 	if err != nil {
 		return nil, 0, err
@@ -198,8 +203,8 @@ func (c *APIClient) GetChainOutputFromHeaviestState(chainID ledger.ChainID) (*le
 	return oData.ParseAsChainOutput()
 }
 
-func (c *APIClient) GetMilestoneDataFromHeaviestState(chainID ledger.ChainID) (*ledger.MilestoneData, error) {
-	o, _, err := c.GetChainOutputFromHeaviestState(chainID)
+func (c *APIClient) GetMilestoneData(chainID ledger.ChainID) (*ledger.MilestoneData, error) {
+	o, _, err := c.GetChainOutput(chainID)
 	if err != nil {
 		return nil, fmt.Errorf("error while retrieving milestone for sequencer %s: %w", chainID.StringShort(), err)
 	}
@@ -209,9 +214,9 @@ func (c *APIClient) GetMilestoneDataFromHeaviestState(chainID ledger.ChainID) (*
 	return ledger.ParseMilestoneData(o.Output), nil
 }
 
-// GetOutputDataFromHeaviestState returns output data from the latest heaviest state, if it exists there
+// GetOutputData returns output data from the LRB state, if it exists there
 // Returns nil, nil if output does not exist
-func (c *APIClient) GetOutputDataFromHeaviestState(oid *ledger.OutputID) ([]byte, error) {
+func (c *APIClient) GetOutputData(oid *ledger.OutputID) ([]byte, error) {
 	path := fmt.Sprintf(api.PathGetOutput+"?id=%s", oid.StringHex())
 	body, err := c.getBody(path)
 	if err != nil {
@@ -236,31 +241,6 @@ func (c *APIClient) GetOutputDataFromHeaviestState(oid *ledger.OutputID) ([]byte
 	}
 
 	return oData, nil
-}
-
-const waitOutputFinalPollPeriod = 1 * time.Second
-
-// WaitOutputInTheHeaviestState return true once output is found in the latest heaviest branch.
-// Polls node until success or timeout
-func (c *APIClient) WaitOutputInTheHeaviestState(oid *ledger.OutputID, timeout time.Duration) error {
-	deadline := time.Now().Add(timeout)
-	if timeout == 0 {
-		deadline = time.Now().Add(1 * time.Hour)
-	}
-	var res []byte
-	var err error
-	for {
-		if res, err = c.GetOutputDataFromHeaviestState(oid); err != nil {
-			return err
-		}
-		if len(res) > 0 {
-			return nil
-		}
-		if time.Now().After(deadline) {
-			return fmt.Errorf("WaitOutputInTheHeaviestState %s: timeout %v", oid.StringShort(), timeout)
-		}
-		time.Sleep(waitOutputFinalPollPeriod)
-	}
 }
 
 func (c *APIClient) SubmitTransaction(txBytes []byte, trace ...bool) error {
@@ -294,21 +274,21 @@ func (c *APIClient) SubmitTransaction(txBytes []byte, trace ...bool) error {
 	return nil
 }
 
-func (c *APIClient) GetAccountOutputs(account ledger.Accountable, filter ...func(oid *ledger.OutputID, o *ledger.Output) bool) ([]*ledger.OutputWithID, error) {
+func (c *APIClient) GetAccountOutputs(account ledger.Accountable, filter ...func(oid *ledger.OutputID, o *ledger.Output) bool) ([]*ledger.OutputWithID, *ledger.TransactionID, error) {
 	filterFun := func(oid *ledger.OutputID, o *ledger.Output) bool { return true }
 	if len(filter) > 0 {
 		filterFun = filter[0]
 	}
-	oData, err := c.getAccountOutputs(account)
+	oData, lrbid, err := c.getAccountOutputs(account)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	outs, err := txutils.ParseAndSortOutputData(oData, filterFun, true)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return outs, nil
+	return outs, lrbid, nil
 }
 
 func (c *APIClient) QueryTxIDStatus(txid ledger.TransactionID, slotSpan int) (*vertex.TxIDStatus, *multistate.TxInclusion, error) {
@@ -402,15 +382,15 @@ func (c *APIClient) GetPeersInfo() (*api.PeersInfo, error) {
 }
 
 // GetTransferableOutputs does the same as GetTransferableOutputs but cuts to the maximum outputs provided and returns total
-func (c *APIClient) GetTransferableOutputs(account ledger.Accountable, maxOutputs ...int) ([]*ledger.OutputWithID, uint64, error) {
-	ret, err := c.GetAccountOutputs(account, func(_ *ledger.OutputID, o *ledger.Output) bool {
+func (c *APIClient) GetTransferableOutputs(account ledger.Accountable, maxOutputs ...int) ([]*ledger.OutputWithID, *ledger.TransactionID, uint64, error) {
+	ret, lrbid, err := c.GetAccountOutputs(account, func(_ *ledger.OutputID, o *ledger.Output) bool {
 		return o.NumConstraints() == 2
 	})
 	if err != nil {
-		return nil, 0, err
+		return nil, nil, 0, err
 	}
 	if len(ret) == 0 {
-		return nil, 0, nil
+		return nil, nil, 0, nil
 	}
 	maxOut := 256
 	if len(maxOutputs) > 0 && maxOutputs[0] > 0 && maxOutputs[0] < 256 {
@@ -423,7 +403,7 @@ func (c *APIClient) GetTransferableOutputs(account ledger.Accountable, maxOutput
 	for _, o := range ret {
 		sum += o.Output.Amount()
 	}
-	return ret, sum, nil
+	return ret, lrbid, sum, nil
 }
 
 // MakeCompactTransaction requests server and creates a compact transaction for ED25519 outputs in the form of transaction context. Does not submit it
@@ -433,7 +413,7 @@ func (c *APIClient) MakeCompactTransaction(walletPrivateKey ed25519.PrivateKey, 
 	nowisTs := ledger.TimeNow()
 	inTotal := uint64(0)
 
-	walletOutputs, inTotal, err := c.GetTransferableOutputs(walletAccount, maxInputs...)
+	walletOutputs, _, inTotal, err := c.GetTransferableOutputs(walletAccount, maxInputs...)
 	if len(walletOutputs) <= 1 {
 		return nil, nil
 	}
@@ -479,7 +459,7 @@ func (c *APIClient) TransferFromED25519Wallet(par TransferFromED25519WalletParam
 	walletAccount := ledger.AddressED25519FromPrivateKey(par.WalletPrivateKey)
 	nowisTs := ledger.TimeNow()
 
-	walletOutputs, _, err := c.GetTransferableOutputs(walletAccount, par.MaxOutputs)
+	walletOutputs, _, _, err := c.GetTransferableOutputs(walletAccount, par.MaxOutputs)
 
 	txBytes, err := MakeTransferTransaction(MakeTransferTransactionParams{
 		Inputs:        walletOutputs,
@@ -527,7 +507,7 @@ func (c *APIClient) MakeChainOrigin(par TransferFromED25519WalletParams) (*trans
 	walletAccount := ledger.AddressED25519FromPrivateKey(par.WalletPrivateKey)
 
 	ts := ledger.TimeNow()
-	inps, totalInputs, err := c.GetTransferableOutputs(walletAccount)
+	inps, _, totalInputs, err := c.GetTransferableOutputs(walletAccount)
 	if err != nil {
 		return nil, [32]byte{}, err
 	}
@@ -618,7 +598,7 @@ func (c *APIClient) DeleteChainOrigin(par DeleteChainOriginParams) (*transaction
 	}
 
 	chainId := *par.ChainID
-	chainIN, _, err := c.GetChainOutputFromHeaviestState(chainId)
+	chainIN, _, err := c.GetChainOutput(chainId)
 	util.AssertNoError(err)
 
 	ts := ledger.TimeNow()

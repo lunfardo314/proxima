@@ -47,11 +47,12 @@ func runSeqWithdrawCmd(_ *cobra.Command, args []string) {
 	glb.Infof("amount: %s", util.Th(amount))
 
 	glb.Infof("querying wallet's outputs..")
-	walletOutputs, err := getClient().GetAccountOutputs(walletData.Account, func(_ *ledger.OutputID, o *ledger.Output) bool {
+	walletOutputs, lrbid, err := getClient().GetAccountOutputs(walletData.Account, func(_ *ledger.OutputID, o *ledger.Output) bool {
 		return o.NumConstraints() == 2
 	})
 	glb.AssertNoError(err)
 
+	glb.PrintLRB(lrbid)
 	glb.Infof("will be using %d tokens as tag-along fee. Outputs in the wallet:", ownSequencerCmdFee)
 	for i, o := range walletOutputs {
 		glb.Infof("%d : %s : %s", i, o.ID.StringShort(), util.Th(o.Output.Amount()))

@@ -24,12 +24,13 @@ func runChainsCmd(_ *cobra.Command, args []string) {
 	glb.InitLedgerFromNode()
 	wallet := glb.GetWalletData()
 
-	outs, err := glb.GetClient().GetAccountOutputs(wallet.Account, func(_ *ledger.OutputID, o *ledger.Output) bool {
+	outs, lrbid, err := glb.GetClient().GetAccountOutputs(wallet.Account, func(_ *ledger.OutputID, o *ledger.Output) bool {
 		_, idx := o.ChainConstraint()
 		return idx != 0xff
 	})
 	glb.AssertNoError(err)
 
+	glb.PrintLRB(lrbid)
 	if len(outs) == 0 {
 		glb.Infof("no chains have been found controlled by %s", wallet.Account.String())
 		os.Exit(0)

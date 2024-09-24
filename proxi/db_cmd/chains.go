@@ -14,7 +14,7 @@ import (
 func initChainsCmd() *cobra.Command {
 	dbChainsCmd := &cobra.Command{
 		Use:   "chains",
-		Short: "list all chain outputs in the LRB state",
+		Short: "list all chain outputs in the LRBID state",
 		Args:  cobra.NoArgs,
 		Run:   runChainsCmd,
 	}
@@ -36,11 +36,11 @@ func runChainsCmd(_ *cobra.Command, args []string) {
 
 	accountInfo := multistate.MustCollectAccountInfo(glb.StateStore(), branchData.Root)
 
-	glb.Infof("---------------- global LRB state ------------------")
+	glb.Infof("---------------- global LRBID state ------------------")
 	glb.Infof("supply:   %s     coverage: %s     slot inflation: %s", util.Th(branchData.Supply), util.Th(branchData.LedgerCoverage),
 		util.Th(branchData.SlotInflation))
 
-	glb.Infof("---------------- chain infos in the LRB state ------------------")
+	glb.Infof("---------------- chain infos in the LRBID state ------------------")
 	glb.Infof("Chains: %d", len(accountInfo.ChainRecords))
 	chainIDSSorted := util.KeysSorted(accountInfo.ChainRecords, func(k1, k2 ledger.ChainID) bool {
 		return bytes.Compare(k1[:], k2[:]) < 0

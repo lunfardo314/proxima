@@ -591,7 +591,7 @@ func FindLatestReliableBranch(store global.StateStoreReader, fraction global.Fra
 	return branchFound
 }
 
-// FindLatestReliableBranchWithSequencerID finds first branch with the given sequencerID in the main LRB chain
+// FindLatestReliableBranchWithSequencerID finds first branch with the given sequencerID in the main LRBID chain
 func FindLatestReliableBranchWithSequencerID(store global.StateStoreReader, seqID ledger.ChainID, fraction global.Fraction) (ret *BranchData) {
 	lrb := FindLatestReliableBranch(store, fraction)
 	if lrb == nil {

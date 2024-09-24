@@ -29,7 +29,7 @@ func runNodeInfoCmd(_ *cobra.Command, _ []string) {
 
 	rootRecord, branchID, err := glb.GetClient().GetLatestReliableBranch()
 	glb.AssertNoError(err)
-	glb.Infof("\nLatest reliable branch (LRB):")
+	glb.Infof("\nLatest reliable branch (LRBID):")
 
 	ln := lines.New("    ")
 	ln.Add("branch ID: %s", branchID.String()).

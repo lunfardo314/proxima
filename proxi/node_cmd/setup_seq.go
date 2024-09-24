@@ -67,7 +67,7 @@ func runSeqSetupCmd(_ *cobra.Command, args []string) {
 func waitForFunds(accountable ledger.Accountable, amount uint64) {
 	for {
 		sumOutsideChains := uint64(0)
-		outs, err := glb.GetClient().GetAccountOutputs(accountable)
+		outs, _, err := glb.GetClient().GetAccountOutputs(accountable)
 		glb.AssertNoError(err)
 		for _, o := range outs {
 			if _, idx := o.Output.ChainConstraint(); idx != 0xff {

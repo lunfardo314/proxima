@@ -84,8 +84,8 @@ func (p *ProximaNode) GetPeersInfo() *api.PeersInfo {
 	return ret
 }
 
-func (p *ProximaNode) HeaviestStateForLatestTimeSlot() multistate.SugaredStateReader {
-	return p.workflow.HeaviestStateForLatestTimeSlot()
+func (p *ProximaNode) LatestReliableState() (multistate.SugaredStateReader, error) {
+	return p.workflow.LatestReliableState()
 }
 
 func (p *ProximaNode) SubmitTxBytesFromAPI(txBytes []byte, trace bool) {

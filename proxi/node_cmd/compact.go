@@ -45,7 +45,7 @@ func runCompactCmd(_ *cobra.Command, args []string) {
 		tagAlongSeqID = GetTagAlongSequencerID()
 		glb.Assertf(tagAlongSeqID != nil, "tag-along sequencer not specified")
 
-		md, err := glb.GetClient().GetMilestoneDataFromHeaviestState(*tagAlongSeqID)
+		md, err := glb.GetClient().GetMilestoneData(*tagAlongSeqID)
 		glb.AssertNoError(err)
 
 		if md != nil && md.MinimumFee > feeAmount {
@@ -53,11 +53,12 @@ func runCompactCmd(_ *cobra.Command, args []string) {
 		}
 	}
 	walletData := glb.GetWalletData()
-	walletOutputs, err := glb.GetClient().GetAccountOutputs(walletData.Account, func(_ *ledger.OutputID, o *ledger.Output) bool {
+	walletOutputs, lrbid, err := glb.GetClient().GetAccountOutputs(walletData.Account, func(_ *ledger.OutputID, o *ledger.Output) bool {
 		return o.NumConstraints() == 2
 	})
 	glb.AssertNoError(err)
 
+	glb.PrintLRB(lrbid)
 	glb.Infof("%d ED25519 output(s) are in the wallet account %s", len(walletOutputs), walletData.Account.String())
 	if len(walletOutputs) <= 1 {
 		glb.Infof("no need for compacting")

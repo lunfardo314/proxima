@@ -243,7 +243,7 @@ func (b *InputBacklog) LoadSequencerStartTips(seqID ledger.ChainID) error {
 		branchData = multistate.FindLatestReliableBranch(b.StateStore(), global.FractionHealthyBranch)
 	}
 	if branchData == nil {
-		return fmt.Errorf("LoadSequencerStartTips: can't find latest reliable branch (LRB) with franction %s", global.FractionHealthyBranch.String())
+		return fmt.Errorf("LoadSequencerStartTips: can't find latest reliable branch (LRBID) with franction %s", global.FractionHealthyBranch.String())
 	}
 	loadedTxs := set.New[*vertex.WrappedTx]()
 	nowSlot := ledger.TimeNow().Slot()

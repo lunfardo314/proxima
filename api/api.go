@@ -38,6 +38,8 @@ type (
 		// key is hex-encoded outputID bytes
 		// value is hex-encoded raw output data
 		Outputs map[string]string `json:"outputs,omitempty"`
+		// latest reliable branch used to extract outputs
+		LRBID string `json:"lrb_id"`
 	}
 
 	// ChainOutput is returned by 'get_chain_output'
@@ -47,6 +49,8 @@ type (
 		OutputID string `json:"output_id,omitempty"`
 		// hex-encoded output data
 		OutputData string `json:"output_data,omitempty"`
+		// latest reliable branch used to extract chain ID
+		LRBID string `json:"lrb_id"`
 	}
 
 	// OutputData is returned by 'get_output'
@@ -54,7 +58,8 @@ type (
 		Error
 		// hex-encoded output data
 		OutputData string `json:"output_data,omitempty"`
-		//Inclusion  []InclusionDataEncoded `json:"inclusion,omitempty"`
+		// latest reliable branch used to extract output
+		LRBID string `json:"lrb_id"`
 	}
 
 	QueryTxStatus struct {

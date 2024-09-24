@@ -134,7 +134,7 @@ func ReportTxInclusion(txid ledger.TransactionID, poll time.Duration) {
 		AssertNoError(err)
 
 		slotsBack := ledger.TimeNow().Slot() - lrbid.Slot()
-		Infof("   weak score: %d%%, strong score: %d%%, slot span %d - %d (%d), included in LRB: %v, LRB is slots back: %d",
+		Infof("   weak score: %d%%, strong score: %d%%, slot span %d - %d (%d), included in LRBID: %v, LRBID is slots back: %d",
 			score.WeakScore, score.StrongScore, score.EarliestSlot, score.LatestSlot, score.LatestSlot-score.EarliestSlot+1,
 			score.IncludedInLRB, slotsBack)
 

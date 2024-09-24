@@ -40,7 +40,7 @@ func MakeChain(onChainAmount uint64) (*transaction.TxContext, ledger.ChainID, er
 		tagAlongSeqID = GetTagAlongSequencerID()
 		glb.Assertf(tagAlongSeqID != nil, "tag-along sequencer not specified")
 
-		md, err := glb.GetClient().GetMilestoneDataFromHeaviestState(*tagAlongSeqID)
+		md, err := glb.GetClient().GetMilestoneData(*tagAlongSeqID)
 		glb.AssertNoError(err)
 
 		if md != nil && md.MinimumFee > feeAmount {
@@ -61,10 +61,11 @@ func MakeChain(onChainAmount uint64) (*transaction.TxContext, ledger.ChainID, er
 		os.Exit(0)
 	}
 
-	inps, totalInputs, err := glb.GetClient().GetTransferableOutputs(walletData.Account)
+	inps, lrbid, totalInputs, err := glb.GetClient().GetTransferableOutputs(walletData.Account)
 	glb.AssertNoError(err)
 	glb.Assertf(totalInputs >= onChainAmount+feeAmount, "not enough source balance %s", util.Th(totalInputs))
 
+	glb.PrintLRB(lrbid)
 	totalInputs = 0
 	inps = util.PurgeSlice(inps, func(o *ledger.OutputWithID) bool {
 		if totalInputs < onChainAmount+feeAmount {

@@ -26,8 +26,6 @@ func initDeleteChainCmd() *cobra.Command {
 }
 
 func DeleteChain(chainId *ledger.ChainID) (*transaction.TxContext, error) {
-	//cmd.DebugFlags()
-
 	walletData := glb.GetWalletData()
 
 	target := glb.MustGetTarget()
@@ -39,7 +37,7 @@ func DeleteChain(chainId *ledger.ChainID) (*transaction.TxContext, error) {
 		tagAlongSeqID = GetTagAlongSequencerID()
 		glb.Assertf(tagAlongSeqID != nil, "tag-along sequencer not specified")
 
-		md, err := glb.GetClient().GetMilestoneDataFromHeaviestState(*tagAlongSeqID)
+		md, err := glb.GetClient().GetMilestoneData(*tagAlongSeqID)
 		glb.AssertNoError(err)
 
 		if md != nil && md.MinimumFee > feeAmount {

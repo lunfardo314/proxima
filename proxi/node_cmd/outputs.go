@@ -24,9 +24,10 @@ func runGetOutputsCmd(_ *cobra.Command, _ []string) {
 
 	accountable := glb.MustGetTarget()
 
-	outs, err := glb.GetClient().GetAccountOutputs(accountable)
+	outs, lrbid, err := glb.GetClient().GetAccountOutputs(accountable)
 	glb.AssertNoError(err)
 
+	glb.PrintLRB(lrbid)
 	glb.Infof("%d outputs locked in the account %s", len(outs), accountable.String())
 	for i, o := range outs {
 		glb.Infof("-- output %d --", i)
