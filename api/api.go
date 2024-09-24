@@ -64,12 +64,14 @@ type (
 	}
 
 	TxInclusionScore struct {
-		ThresholdNumerator   int `json:"threshold_numerator"`
-		ThresholdDenominator int `json:"threshold_denominator"`
-		LatestSlot           int `json:"latest_slot"`
-		EarliestSlot         int `json:"earliest_slot"`
-		StrongScore          int `json:"strong_score"`
-		WeakScore            int `json:"weak_score"`
+		ThresholdNumerator   int    `json:"threshold_numerator"`
+		ThresholdDenominator int    `json:"threshold_denominator"`
+		LatestSlot           int    `json:"latest_slot"`
+		EarliestSlot         int    `json:"earliest_slot"`
+		StrongScore          int    `json:"strong_score"`
+		WeakScore            int    `json:"weak_score"`
+		LRBID                string `json:"lrb_id"`
+		IncludedInLRB        bool   `json:"included_in_lrb"`
 	}
 
 	QueryTxInclusionScore struct {

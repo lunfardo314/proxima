@@ -470,7 +470,10 @@ func (srv *Server) getLatestReliableBranch(w http.ResponseWriter, r *http.Reques
 func (srv *Server) calcTxInclusionScore(inclusion *multistate.TxInclusion, thresholdNumerator, thresholdDenominator int) api.TxInclusionScore {
 	srv.Tracef(TraceTagQueryInclusion, "calcTxInclusionScore: %s, threshold: %d/%d", inclusion.String(), thresholdNumerator, thresholdDenominator)
 
-	return api.CalcTxInclusionScore(inclusion, thresholdNumerator, thresholdDenominator)
+	ret := api.CalcTxInclusionScore(inclusion, thresholdNumerator, thresholdDenominator)
+	ret.LRBID = inclusion.LRBID.StringHex()
+	ret.IncludedInLRB = inclusion.IncludedInLRB
+	return ret
 }
 
 func writeErr(w http.ResponseWriter, errStr string) {

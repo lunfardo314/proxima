@@ -21,17 +21,22 @@ type (
 	}
 
 	TxInclusion struct {
-		TxID         ledger.TransactionID
-		LatestSlot   ledger.Slot
-		EarliestSlot ledger.Slot
-		Inclusion    []RootInclusion
+		TxID          ledger.TransactionID
+		LatestSlot    ledger.Slot
+		EarliestSlot  ledger.Slot
+		Inclusion     []RootInclusion
+		LRBID         ledger.TransactionID
+		LRBRoot       RootRecord
+		IncludedInLRB bool
 	}
 
 	TxInclusionJSONAble struct {
-		TxID         string                  `json:"txid"`
-		LatestSlot   ledger.Slot             `json:"latest_slot"`
-		EarliestSlot ledger.Slot             `json:"earliest_slot"`
-		Inclusion    []RootInclusionJSONAble `json:"inclusion"`
+		TxID          string                  `json:"txid"`
+		LatestSlot    ledger.Slot             `json:"latest_slot"`
+		EarliestSlot  ledger.Slot             `json:"earliest_slot"`
+		Inclusion     []RootInclusionJSONAble `json:"inclusion"`
+		LRBID         string                  `json:"lrbid"`
+		IncludedInLRB bool                    `json:"included_in_lrb"`
 	}
 )
 
@@ -44,10 +49,12 @@ func (r *RootInclusion) JSONAble() RootInclusionJSONAble {
 }
 func (i *TxInclusion) JSONAble() *TxInclusionJSONAble {
 	ret := &TxInclusionJSONAble{
-		TxID:         i.TxID.StringHex(),
-		LatestSlot:   i.LatestSlot,
-		EarliestSlot: i.EarliestSlot,
-		Inclusion:    make([]RootInclusionJSONAble, len(i.Inclusion)),
+		TxID:          i.TxID.StringHex(),
+		LatestSlot:    i.LatestSlot,
+		EarliestSlot:  i.EarliestSlot,
+		Inclusion:     make([]RootInclusionJSONAble, len(i.Inclusion)),
+		LRBID:         i.LRBID.StringHex(),
+		IncludedInLRB: i.IncludedInLRB,
 	}
 	for j := range i.Inclusion {
 		ret.Inclusion[j] = i.Inclusion[j].JSONAble()
@@ -58,11 +65,19 @@ func (i *TxInclusion) JSONAble() *TxInclusionJSONAble {
 // GetTxInclusion return information about transaction's inclusion into all branches some slots back from the latest.
 func GetTxInclusion(store global.StateStoreReader, txid *ledger.TransactionID, slotsBack ...int) *TxInclusion {
 	latestSlot := FetchLatestCommittedSlot(store)
+	lrb := FindLatestReliableBranch(store, global.FractionHealthyBranch)
+
 	ret := &TxInclusion{
 		TxID:         *txid,
 		LatestSlot:   latestSlot,
 		EarliestSlot: latestSlot,
 		Inclusion:    nil,
+		LRBID:        lrb.Stem.ID.TransactionID(),
+		LRBRoot:      lrb.RootRecord,
+	}
+	if lrb != nil {
+		ret.LRBID = lrb.Stem.ID.TransactionID()
+		ret.IncludedInLRB = RootHasTransaction(store, lrb.Root, txid)
 	}
 	back := 1
 	if len(slotsBack) > 0 && slotsBack[0] > 1 {
