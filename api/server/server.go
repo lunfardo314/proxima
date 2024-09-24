@@ -49,34 +49,39 @@ func New(env environment) *Server {
 	return &Server{environment: env}
 }
 
+func addHandler(pattern string, handler func(http.ResponseWriter, *http.Request)) {
+	http.HandleFunc(pattern, func(w http.ResponseWriter, r *http.Request) {
+		handler(w, r)
+		_ = r.Body.Close()
+	})
+}
+
 func (srv *Server) registerHandlers() {
 	// GET request format: '/get_ledger_id'
-	http.HandleFunc(api.PathGetLedgerID, srv.getLedgerID)
+	addHandler(api.PathGetLedgerID, srv.getLedgerID)
 	// GET request format: '/get_account_outputs?accountable=<EasyFL source form of the accountable lock constraint>'
-	http.HandleFunc(api.PathGetAccountOutputs, srv.getAccountOutputs)
+	addHandler(api.PathGetAccountOutputs, srv.getAccountOutputs)
 	// GET request format: '/get_chain_output?chainid=<hex-encoded chain ID>'
-	http.HandleFunc(api.PathGetChainOutput, srv.getChainOutput)
+	addHandler(api.PathGetChainOutput, srv.getChainOutput)
 	// GET request format: '/get_output?id=<hex-encoded output ID>'
-	http.HandleFunc(api.PathGetOutput, srv.getOutput)
+	addHandler(api.PathGetOutput, srv.getOutput)
 	// GET request format: '/query_txid_status?txid=<hex-encoded transaction ID>[&slots=<slot span>]'
-	http.HandleFunc(api.PathQueryTxStatus, srv.queryTxStatus)
+	addHandler(api.PathQueryTxStatus, srv.queryTxStatus)
 	// GET request format: '/query_inclusion_score?txid=<hex-encoded transaction ID>&threshold=N-D[&slots=<slot span>]'
-	http.HandleFunc(api.PathQueryInclusionScore, srv.queryTxInclusionScore)
+	addHandler(api.PathQueryInclusionScore, srv.queryTxInclusionScore)
 	// POST request format '/submit_nowait'. Feedback only on parsing error, otherwise async posting
-	http.HandleFunc(api.PathSubmitTransaction, srv.submitTx)
+	addHandler(api.PathSubmitTransaction, srv.submitTx)
 	// GET sync info from the node
-	http.HandleFunc(api.PathGetSyncInfo, srv.getSyncInfo)
+	addHandler(api.PathGetSyncInfo, srv.getSyncInfo)
 	// GET sync info from the node
-	http.HandleFunc(api.PathGetNodeInfo, srv.getNodeInfo)
+	addHandler(api.PathGetNodeInfo, srv.getNodeInfo)
 	// GET peers info from the node
-	http.HandleFunc(api.PathGetPeersInfo, srv.getPeersInfo)
+	addHandler(api.PathGetPeersInfo, srv.getPeersInfo)
 	// GET latest reliable branch '/get_latest_reliable_branch'
-	http.HandleFunc(api.PathGetLatestReliableBranch, srv.getLatestReliableBranch)
+	addHandler(api.PathGetLatestReliableBranch, srv.getLatestReliableBranch)
 }
 
 func (srv *Server) getLedgerID(w http.ResponseWriter, r *http.Request) {
-	defer r.Body.Close()
-
 	setHeader(w)
 
 	srv.Tracef(TraceTag, "getLedgerID invoked")
@@ -94,8 +99,6 @@ func (srv *Server) getLedgerID(w http.ResponseWriter, r *http.Request) {
 }
 
 func (srv *Server) getAccountOutputs(w http.ResponseWriter, r *http.Request) {
-	defer r.Body.Close()
-
 	srv.Tracef(TraceTag, "getAccountOutputs invoked")
 	setHeader(w)
 
@@ -140,8 +143,6 @@ func (srv *Server) getAccountOutputs(w http.ResponseWriter, r *http.Request) {
 }
 
 func (srv *Server) getChainOutput(w http.ResponseWriter, r *http.Request) {
-	defer r.Body.Close()
-
 	srv.Tracef(TraceTag, "getChainOutput invoked")
 	setHeader(w)
 
@@ -179,8 +180,6 @@ func (srv *Server) getChainOutput(w http.ResponseWriter, r *http.Request) {
 }
 
 func (srv *Server) getOutput(w http.ResponseWriter, r *http.Request) {
-	defer r.Body.Close()
-
 	srv.Tracef(TraceTag, "getOutput invoked")
 	setHeader(w)
 
@@ -227,8 +226,6 @@ const (
 )
 
 func (srv *Server) submitTx(w http.ResponseWriter, r *http.Request) {
-	defer r.Body.Close()
-
 	srv.Tracef(TraceTag, "submitTx invoked")
 	setHeader(w)
 
@@ -279,8 +276,6 @@ func (srv *Server) submitTx(w http.ResponseWriter, r *http.Request) {
 }
 
 func (srv *Server) getSyncInfo(w http.ResponseWriter, r *http.Request) {
-	defer r.Body.Close()
-
 	setHeader(w)
 
 	syncInfo := srv.GetSyncInfo()
@@ -294,8 +289,6 @@ func (srv *Server) getSyncInfo(w http.ResponseWriter, r *http.Request) {
 }
 
 func (srv *Server) getPeersInfo(w http.ResponseWriter, r *http.Request) {
-	defer r.Body.Close()
-
 	setHeader(w)
 
 	peersInfo := srv.GetPeersInfo()
@@ -309,8 +302,6 @@ func (srv *Server) getPeersInfo(w http.ResponseWriter, r *http.Request) {
 }
 
 func (srv *Server) getNodeInfo(w http.ResponseWriter, r *http.Request) {
-	defer r.Body.Close()
-
 	setHeader(w)
 
 	nodeInfo := srv.GetNodeInfo()
@@ -326,8 +317,6 @@ func (srv *Server) getNodeInfo(w http.ResponseWriter, r *http.Request) {
 const maxSlotsSpan = 10
 
 func (srv *Server) queryTxStatus(w http.ResponseWriter, r *http.Request) {
-	defer r.Body.Close()
-
 	srv.Tracef(TraceTag, "queryTxStatus invoked")
 	setHeader(w)
 
@@ -400,8 +389,6 @@ func decodeThreshold(par string) (int, int, error) {
 const TraceTagQueryInclusion = "inclusion"
 
 func (srv *Server) queryTxInclusionScore(w http.ResponseWriter, r *http.Request) {
-	defer r.Body.Close()
-
 	srv.Tracef(TraceTagQueryInclusion, "queryTxInclusionScore invoked")
 	setHeader(w)
 
@@ -466,8 +453,6 @@ func (srv *Server) queryTxInclusionScore(w http.ResponseWriter, r *http.Request)
 }
 
 func (srv *Server) getLatestReliableBranch(w http.ResponseWriter, r *http.Request) {
-	defer r.Body.Close()
-
 	srv.Tracef(TraceTag, "getLatestReliableBranch invoked")
 
 	bd := srv.GetLatestReliableBranch()
