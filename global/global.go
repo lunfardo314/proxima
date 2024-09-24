@@ -45,8 +45,7 @@ type Global struct {
 	countersMutex sync.RWMutex
 	counters      map[string]int
 	// metrics
-	numAttachersMetrics        prometheus.Gauge
-	numWaitingMetrics          prometheus.Gauge
+	generalPurposeCollectors   map[string]prometheus.Gauge
 	attachmentTimeMilliseconds prometheus.Gauge
 	attachmentsCounter         prometheus.Counter
 	// transaction pull parameters
@@ -54,6 +53,8 @@ type Global struct {
 	txPullMaxAttempts     int
 	txPullFromRandomPeers int
 }
+
+var knownGeneralPurposeGauges = set.New[string]().Insert("att", "wait", "call", "store")
 
 // PullTimeout maximum time allowed for the virtual txid become transaction (full vertex)
 const (
@@ -440,11 +441,8 @@ func (l *Global) IncCounter(name string) {
 	l.countersMutex.Lock()
 	defer l.countersMutex.Unlock()
 
-	switch name {
-	case "att":
-		l.numAttachersMetrics.Inc()
-	case "wait":
-		l.numWaitingMetrics.Inc()
+	if collector, found := l.generalPurposeCollectors[name]; found {
+		collector.Inc()
 	}
 	l.counters[name] = l.counters[name] + 1
 }
@@ -453,11 +451,8 @@ func (l *Global) DecCounter(name string) {
 	l.countersMutex.Lock()
 	defer l.countersMutex.Unlock()
 
-	switch name {
-	case "att":
-		l.numAttachersMetrics.Dec()
-	case "wait":
-		l.numWaitingMetrics.Dec()
+	if collector, found := l.generalPurposeCollectors[name]; found {
+		collector.Dec()
 	}
 	l.counters[name] = l.counters[name] - 1
 }
@@ -482,14 +477,6 @@ func (l *Global) CounterLines(prefix ...string) *lines.Lines {
 }
 
 func (l *Global) registerMetrics() {
-	l.numAttachersMetrics = prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "proxima_glb_numAttacher",
-		Help: "number of attachers running",
-	})
-	l.numWaitingMetrics = prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "proxima_glb_numWaiting",
-		Help: "number of transaction waiting the clock",
-	})
 	l.attachmentTimeMilliseconds = prometheus.NewGauge(prometheus.GaugeOpts{
 		Name: "proxima_glb_attachmentDurationMs",
 		Help: "attachment time in milliseconds",
@@ -499,7 +486,16 @@ func (l *Global) registerMetrics() {
 		Help: "total number of attachments",
 	})
 
-	l.MetricsRegistry().MustRegister(l.numAttachersMetrics, l.numWaitingMetrics, l.attachmentsCounter, l.attachmentTimeMilliseconds)
+	l.MetricsRegistry().MustRegister(l.attachmentsCounter, l.attachmentTimeMilliseconds)
+
+	l.generalPurposeCollectors = make(map[string]prometheus.Gauge)
+	knownGeneralPurposeGauges.ForEach(func(name string) bool {
+		l.generalPurposeCollectors[name] = prometheus.NewGauge(prometheus.GaugeOpts{
+			Name: "proxima_general_gauge_" + name,
+			Help: fmt.Sprintf("value of the general purpose gauge '%s'", name),
+		})
+		return true
+	})
 }
 
 func (l *Global) AttachmentFinished(started ...time.Time) {
