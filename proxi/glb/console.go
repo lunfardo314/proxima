@@ -82,5 +82,5 @@ func YesNoPrompt(label string, def bool, force ...bool) bool {
 
 func PrintLRB(lrbid *ledger.TransactionID) {
 	Infof("Latest reliable branch (LRB) ID: %s", lrbid.String())
-	Infof("   %d slots from now", lrbid.Slot()-ledger.TimeNow().Slot())
+	Infof("   %d slots from now", ledger.TimeNow().Slot()-lrbid.Slot())
 }
