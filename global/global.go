@@ -494,6 +494,7 @@ func (l *Global) registerMetrics() {
 			Name: "proxima_general_gauge_" + name,
 			Help: fmt.Sprintf("value of the general purpose gauge '%s'", name),
 		})
+		l.MetricsRegistry().MustRegister(l.generalPurposeCollectors[name])
 		return true
 	})
 }
