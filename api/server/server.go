@@ -75,6 +75,8 @@ func (srv *Server) registerHandlers() {
 }
 
 func (srv *Server) getLedgerID(w http.ResponseWriter, r *http.Request) {
+	defer r.Body.Close()
+
 	setHeader(w)
 
 	srv.Tracef(TraceTag, "getLedgerID invoked")
@@ -92,6 +94,8 @@ func (srv *Server) getLedgerID(w http.ResponseWriter, r *http.Request) {
 }
 
 func (srv *Server) getAccountOutputs(w http.ResponseWriter, r *http.Request) {
+	defer r.Body.Close()
+
 	srv.Tracef(TraceTag, "getAccountOutputs invoked")
 	setHeader(w)
 
@@ -136,6 +140,8 @@ func (srv *Server) getAccountOutputs(w http.ResponseWriter, r *http.Request) {
 }
 
 func (srv *Server) getChainOutput(w http.ResponseWriter, r *http.Request) {
+	defer r.Body.Close()
+
 	srv.Tracef(TraceTag, "getChainOutput invoked")
 	setHeader(w)
 
@@ -173,6 +179,8 @@ func (srv *Server) getChainOutput(w http.ResponseWriter, r *http.Request) {
 }
 
 func (srv *Server) getOutput(w http.ResponseWriter, r *http.Request) {
+	defer r.Body.Close()
+
 	srv.Tracef(TraceTag, "getOutput invoked")
 	setHeader(w)
 
@@ -219,6 +227,8 @@ const (
 )
 
 func (srv *Server) submitTx(w http.ResponseWriter, r *http.Request) {
+	defer r.Body.Close()
+
 	srv.Tracef(TraceTag, "submitTx invoked")
 	setHeader(w)
 
@@ -269,6 +279,8 @@ func (srv *Server) submitTx(w http.ResponseWriter, r *http.Request) {
 }
 
 func (srv *Server) getSyncInfo(w http.ResponseWriter, r *http.Request) {
+	defer r.Body.Close()
+
 	setHeader(w)
 
 	syncInfo := srv.GetSyncInfo()
@@ -282,6 +294,8 @@ func (srv *Server) getSyncInfo(w http.ResponseWriter, r *http.Request) {
 }
 
 func (srv *Server) getPeersInfo(w http.ResponseWriter, r *http.Request) {
+	defer r.Body.Close()
+
 	setHeader(w)
 
 	peersInfo := srv.GetPeersInfo()
@@ -295,6 +309,8 @@ func (srv *Server) getPeersInfo(w http.ResponseWriter, r *http.Request) {
 }
 
 func (srv *Server) getNodeInfo(w http.ResponseWriter, r *http.Request) {
+	defer r.Body.Close()
+
 	setHeader(w)
 
 	nodeInfo := srv.GetNodeInfo()
@@ -310,6 +326,8 @@ func (srv *Server) getNodeInfo(w http.ResponseWriter, r *http.Request) {
 const maxSlotsSpan = 10
 
 func (srv *Server) queryTxStatus(w http.ResponseWriter, r *http.Request) {
+	defer r.Body.Close()
+
 	srv.Tracef(TraceTag, "queryTxStatus invoked")
 	setHeader(w)
 
@@ -382,6 +400,8 @@ func decodeThreshold(par string) (int, int, error) {
 const TraceTagQueryInclusion = "inclusion"
 
 func (srv *Server) queryTxInclusionScore(w http.ResponseWriter, r *http.Request) {
+	defer r.Body.Close()
+
 	srv.Tracef(TraceTagQueryInclusion, "queryTxInclusionScore invoked")
 	setHeader(w)
 
@@ -446,6 +466,8 @@ func (srv *Server) queryTxInclusionScore(w http.ResponseWriter, r *http.Request)
 }
 
 func (srv *Server) getLatestReliableBranch(w http.ResponseWriter, r *http.Request) {
+	defer r.Body.Close()
+
 	srv.Tracef(TraceTag, "getLatestReliableBranch invoked")
 
 	bd := srv.GetLatestReliableBranch()
