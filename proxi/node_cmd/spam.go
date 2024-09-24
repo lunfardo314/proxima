@@ -14,17 +14,14 @@ import (
 )
 
 type spammerConfig struct {
-	scenario          string
 	outputAmount      uint64
 	bundleSize        int
 	pace              int
-	submitNowait      bool
 	maxTransactions   int
 	maxDuration       time.Duration
 	tagAlongSequencer ledger.ChainID
 	tagAlongFee       uint64
 	target            ledger.Accountable
-	traceOnNode       bool
 }
 
 func initSpamCmd() *cobra.Command {
@@ -35,12 +32,8 @@ func initSpamCmd() *cobra.Command {
 		Run:   runSpamCmd,
 	}
 
-	spamCmd.PersistentFlags().String("spammer.scenario", "default", "spamming scenario")
-	err := viper.BindPFlag("spammer.scenario", spamCmd.PersistentFlags().Lookup("spammer.scenario"))
-	glb.AssertNoError(err)
-
 	spamCmd.PersistentFlags().Int("spammer.max_transactions", 0, "number of transaction limit")
-	err = viper.BindPFlag("spammer.max_transactions", spamCmd.PersistentFlags().Lookup("spammer.max_transactions"))
+	err := viper.BindPFlag("spammer.max_transactions", spamCmd.PersistentFlags().Lookup("spammer.max_transactions"))
 	glb.AssertNoError(err)
 
 	spamCmd.PersistentFlags().Int("spammer.max_duration_minutes", 0, "time limit in minutes")
@@ -59,10 +52,6 @@ func initSpamCmd() *cobra.Command {
 	err = viper.BindPFlag("spammer.pace", spamCmd.PersistentFlags().Lookup("spammer.pace"))
 	glb.AssertNoError(err)
 
-	spamCmd.PersistentFlags().Bool("spammer.submit_nowait", false, "submit transaction without waiting for validation result")
-	err = viper.BindPFlag("spammer.submit_nowait", spamCmd.PersistentFlags().Lookup("spammer.submit_nowait"))
-	glb.AssertNoError(err)
-
 	spamCmd.PersistentFlags().String("spammer.tag_along.sequencer", "", "spammer.tag_along.sequencer")
 	err = viper.BindPFlag("spammer.tag_along.sequencer", spamCmd.PersistentFlags().Lookup("spammer.tag_along.sequencer"))
 	glb.AssertNoError(err)
@@ -75,16 +64,13 @@ func initSpamCmd() *cobra.Command {
 }
 
 func readSpammerConfigIn(sub *viper.Viper) (ret spammerConfig) {
-	glb.Assertf(sub != nil, "spammer configuration unavailable")
-	ret.scenario = sub.GetString("scenario")
+	glb.Assertf(sub != nil, "spammer configuration is not available")
 	ret.outputAmount = sub.GetUint64("output_amount")
 	ret.bundleSize = sub.GetInt("bundle_size")
 	ret.pace = sub.GetInt("pace")
-	ret.submitNowait = sub.GetBool("submit_nowait")
 	ret.maxTransactions = sub.GetInt("max_transactions")
 	ret.maxDuration = time.Duration(sub.GetInt("max_duration_minutes")) * time.Minute
 	ret.tagAlongFee = sub.GetUint64("tag_along.fee")
-	ret.traceOnNode = sub.GetBool("trace_on_node")
 	seqStr := sub.GetString("tag_along.sequencer")
 	var err error
 	ret.tagAlongSequencer, err = ledger.ChainIDFromHexString(seqStr)
@@ -96,16 +82,13 @@ func readSpammerConfigIn(sub *viper.Viper) (ret spammerConfig) {
 
 func displaySpammerConfig() spammerConfig {
 	cfg := readSpammerConfigIn(viper.Sub("spammer"))
-	glb.Infof("scenario: %s", cfg.scenario)
 	glb.Infof("output amount: %d", cfg.outputAmount)
 	glb.Infof("bundle size: %d", cfg.bundleSize)
 	glb.Infof("pace: %d", cfg.pace)
-	glb.Infof("submit nowait: %v", cfg.submitNowait)
 	glb.Infof("max transactions: %d", cfg.maxTransactions)
 	glb.Infof("max duration: %v", cfg.maxDuration)
 	glb.Infof("tag-along sequencer: %s", cfg.tagAlongSequencer.String())
 	glb.Infof("tag-along fee: %d", cfg.tagAlongFee)
-	glb.Infof("trace_on_node: %v", cfg.traceOnNode)
 
 	walletData := glb.GetWalletData()
 	glb.Infof("source account (wallet): %s", walletData.Account.String())
@@ -119,17 +102,12 @@ func displaySpammerConfig() spammerConfig {
 func runSpamCmd(_ *cobra.Command, args []string) {
 	glb.InitLedgerFromNode()
 	cfg := displaySpammerConfig()
-	switch cfg.scenario {
-	case "standard":
-		standardScenario(cfg)
-	default:
-		standardScenario(cfg)
-	}
+	doSpamming(cfg)
 }
 
 const minimumBalance = 1000
 
-func standardScenario(cfg spammerConfig) {
+func doSpamming(cfg spammerConfig) {
 	walletData := glb.GetWalletData()
 
 	txCounter := 0
@@ -164,7 +142,7 @@ func standardScenario(cfg spammerConfig) {
 		glb.Infof("submitting bundle of %d transactions, total duration %d ticks, %v", len(bundle), bundlePace, bundleDuration)
 
 		for i, txBytes := range bundle {
-			err = glb.GetClient().SubmitTransaction(txBytes, cfg.traceOnNode)
+			err = glb.GetClient().SubmitTransaction(txBytes, false)
 			glb.AssertNoError(err)
 			txid, err := transaction.IDFromTransactionBytes(txBytes)
 			glb.AssertNoError(err)

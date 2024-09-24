@@ -292,7 +292,7 @@ func (id *IdentityData) Lines(prefix ...string) *lines.Lines {
 		Add("Description: '%s'", id.Description).
 		Add("Initial supply: %s", util.Th(id.InitialSupply)).
 		Add("Genesis controller public key: %s", hex.EncodeToString(id.GenesisControllerPublicKey)).
-		Add("Genesis controller address: %s (calculated)", id.GenesisControlledAddress().String()).
+		Add("Genesis controller address (calculated): %s", id.GenesisControlledAddress().String()).
 		Add("Genesis Unix time: %d (%s)", id.GenesisTimeUnix, id.GenesisTime().Format(time.RFC3339)).
 		Add("Time tick duration: %v", id.TickDuration).
 		Add("Chain inflation per tick base: %s", util.Th(id.ChainInflationPerTickBase)).
