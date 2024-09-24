@@ -52,7 +52,7 @@ func New(env environment) *Server {
 func addHandler(pattern string, handler func(http.ResponseWriter, *http.Request)) {
 	http.HandleFunc(pattern, func(w http.ResponseWriter, r *http.Request) {
 		handler(w, r)
-		_ = r.Body.Close()
+		_ = r.Body.Close() // TODO no need? Who leaks goroutines then?
 	})
 }
 
