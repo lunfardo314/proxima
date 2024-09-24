@@ -115,10 +115,14 @@ func NoWait() bool {
 
 const slotSpan = 2
 
-func ReportTxInclusion(txid ledger.TransactionID, poll time.Duration) {
+func ReportTxInclusion(txid ledger.TransactionID, poll time.Duration, maxSlots ...ledger.Slot) {
 	weakFinality := GetIsWeakFinality()
 
-	Infof("Tracking inclusion of %s (hex=%s):", txid.String(), txid.StringHex())
+	if len(maxSlots) > 0 {
+		Infof("Tracking inclusion of %s (hex=%s) for at most %d slots:", txid.String(), txid.StringHex(), maxSlots[0])
+	} else {
+		Infof("Tracking inclusion of %s (hex=%s):", txid.String(), txid.StringHex())
+	}
 	inclusionThresholdNumerator, inclusionThresholdDenominator := GetInclusionThreshold()
 	fin := "strong"
 	if weakFinality {
@@ -126,6 +130,8 @@ func ReportTxInclusion(txid ledger.TransactionID, poll time.Duration) {
 	}
 	Infof("  finality criterion: %s, slot span: %d, strong inclusion threshold: %d/%d",
 		fin, slotSpan, inclusionThresholdNumerator, inclusionThresholdDenominator)
+
+	startSlot := ledger.TimeNow().Slot()
 	for {
 		score, err := GetClient().QueryTxInclusionScore(txid, inclusionThresholdNumerator, inclusionThresholdDenominator, slotSpan)
 		AssertNoError(err)
@@ -148,6 +154,12 @@ func ReportTxInclusion(txid ledger.TransactionID, poll time.Duration) {
 			}
 		}
 		time.Sleep(poll)
+
+		slotNow := ledger.TimeNow().Slot()
+		if len(maxSlots) > 0 && maxSlots[0] < slotNow-startSlot {
+			Infof("----- failed to reach finality in %s slots", maxSlots[0])
+			return
+		}
 	}
 }
 
