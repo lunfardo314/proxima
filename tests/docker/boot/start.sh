@@ -51,7 +51,19 @@ if [ ! -f "$INITIALIZED_FILE" ]; then
         sleep 5  # let process start
 
         echo "node init sequencer"
-        ./proxi node setup_seq --finality.weak seq$NODE_NAME 140000000000000
+        # Loop until the command succeeds
+        while true; do
+            ./proxi node setup_seq --finality.weak seq$NODE_NAME 140000000000000
+            
+            # Check if the command was successful
+            if [ $? -eq 0 ]; then
+                echo "Command executed successfully."
+                break
+            else
+                echo "Command failed, retrying in 5 seconds..."
+                sleep 5
+            fi
+        done
 
         kill_proxima
         sleep 2  # let process die
