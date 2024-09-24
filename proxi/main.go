@@ -22,7 +22,7 @@ func main() {
 		Short: "a simple CLI for the Proxima project",
 		Long: `proxi is a CLI tool for the Proxima project. It provides:
       - initialization of the ledger, node and wallet
-      - database level access to the Proxima ledger for admin purposes, including genesis creation
+      - database level access to the Proxima ledger for admin purposes, including genesis creation and snapshots
       - access to ledger via the Proxima node API. This includes simple wallet functions to access usual accounts 
 and withdraw funds from the sequencer chain
 `,

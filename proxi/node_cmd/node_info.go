@@ -1,7 +1,9 @@
 package node_cmd
 
 import (
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/proxi/glb"
+	"github.com/lunfardo314/proxima/util/lines"
 	"github.com/spf13/cobra"
 )
 
@@ -22,5 +24,19 @@ func runNodeInfoCmd(_ *cobra.Command, _ []string) {
 
 	nodeInfo, err := glb.GetClient().GetNodeInfo()
 	glb.AssertNoError(err)
+	glb.Infof("\nNode:")
 	glb.Infof(nodeInfo.Lines("    ").String())
+
+	rootRecord, branchID, err := glb.GetClient().GetLatestReliableBranch()
+	glb.AssertNoError(err)
+	glb.Infof("\nLatest reliable branch (LRB):")
+
+	ln := lines.New("    ")
+	ln.Add("branch ID: %s", branchID.String()).
+		Add("root record:").
+		Append(rootRecord.Lines("    "))
+	glb.Infof(ln.String())
+
+	glb.Infof("\nLedger ID:")
+	glb.Infof(ledger.L().ID.Lines("    ").String())
 }

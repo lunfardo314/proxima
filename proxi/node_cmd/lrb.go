@@ -8,10 +8,11 @@ import (
 
 func initReliableBranchCmd() *cobra.Command {
 	reliableBranchCmd := &cobra.Command{
-		Use:   "reliable_branch",
-		Short: `retrieves latest reliable branch info from the node`,
-		Args:  cobra.NoArgs,
-		Run:   runReliableBranchCmd,
+		Use:     "lrb",
+		Aliases: []string{"reliable_branch"},
+		Short:   `retrieves latest reliable branch (lrb) info from the node`,
+		Args:    cobra.NoArgs,
+		Run:     runReliableBranchCmd,
 	}
 
 	reliableBranchCmd.InitDefaultHelpCmd()

@@ -9,7 +9,6 @@ import (
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/multistate"
-	"github.com/lunfardo314/proxima/util"
 	"github.com/spf13/viper"
 )
 
@@ -34,20 +33,13 @@ func (p *ProximaNode) stopAPIServer() {
 func (p *ProximaNode) GetNodeInfo() *global.NodeInfo {
 	aliveStaticPeers, aliveDynamicPeers := p.peers.NumAlive()
 
-	var seqID *ledger.ChainID
-	if p.sequencer != nil {
-		seqID = util.Ref(p.sequencer.SequencerID())
-	}
 	ret := &global.NodeInfo{
-		Name:            "a Proxima node",
 		ID:              p.peers.SelfID(),
 		Version:         global.Version,
 		NumStaticAlive:  uint16(aliveStaticPeers),
 		NumDynamicAlive: uint16(aliveDynamicPeers),
-		Sequencer:       seqID,
-		Branches:        make([]ledger.TransactionID, 0),
+		Sequencer:       p.GetOwnSequencerID(),
 	}
-
 	return ret
 }
 
