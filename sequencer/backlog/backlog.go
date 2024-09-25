@@ -13,6 +13,7 @@ import (
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/set"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 type (
@@ -38,6 +39,8 @@ type (
 		outputCount              int
 		removedOutputsSinceReset int
 		lastOutputArrived        time.Time
+		// metrics
+		backlogSize prometheus.Gauge
 	}
 
 	Stats struct {
@@ -65,20 +68,20 @@ func New(env Environment) (*InputBacklog, error) {
 		env.Tracef(TraceTag, "[%s] output IN: %s", ret.SequencerName, wOut.IDShortString)
 		env.TraceTx(&wOut.VID.ID, "[%s] backlog: output #%d IN", ret.SequencerName, wOut.Index)
 
-		if !ret.checkAndReferenceCandidate(wOut) {
-			// failed to reference -> ignore
-			return
-		}
-		// referenced
 		ret.mutex.Lock()
 		defer ret.mutex.Unlock()
 
 		if _, already := ret.outputs[wOut]; already {
-			wOut.VID.UnReference()
 			env.Tracef(TraceTag, "repeating output %s", wOut.IDShortString)
 			env.TraceTx(&wOut.VID.ID, "[%s] output #%d is already in the backlog", ret.SequencerName, wOut.Index)
 			return
 		}
+		// reference it
+		if !ret.checkAndReferenceCandidate(wOut) {
+			// failed to reference -> ignore
+			return
+		}
+		// new referenced output -> put it into the map
 		nowis := time.Now()
 		ret.outputs[wOut] = nowis
 		ret.lastOutputArrived = nowis
@@ -87,10 +90,13 @@ func New(env Environment) (*InputBacklog, error) {
 		env.TraceTx(&wOut.VID.ID, "[%s] output #%d stored in the backlog", ret.SequencerName, wOut.Index)
 	})
 
+	ret.registerMetrics()
+
+	// start periodic cleanup in background
 	ttlInBacklog := time.Duration(env.BacklogTTLSlots()) * ledger.L().ID.SlotDuration()
-	env.RepeatInBackground(env.SequencerName()+"_backlogPurge", time.Second, func() bool {
+	env.RepeatInBackground(env.SequencerName()+"_backlogCleanup", time.Second, func() bool {
 		if n := ret.purgeBacklog(ttlInBacklog); n > 0 {
-			ret.Log().Infof("purged %d outputs from the backlog", n)
+			ret.Log().Infof("deleted %d outputs from the backlog", n)
 		}
 		return true
 	})
@@ -113,7 +119,7 @@ func (b *InputBacklog) ChangedSince(t time.Time) bool {
 func (b *InputBacklog) checkAndReferenceCandidate(wOut vertex.WrappedOutput) bool {
 	if wOut.VID.IsBranchTransaction() {
 		// outputs of branch transactions are filtered out
-		// TODO probably ordinary outputs must not be allowed at ledger constraints level
+		// TODO probably ordinary outputs must not be allowed at the ledger constraints level
 		b.TraceTx(&wOut.VID.ID, "[%s] backlog::checkAndReferenceCandidate: is branch", b.SequencerName, wOut.Index)
 		return false
 	}
@@ -231,6 +237,8 @@ func (b *InputBacklog) purgeBacklog(ttl time.Duration) int {
 		delete(b.outputs, wOut)
 		b.TraceTx(&wOut.VID.ID, "[%s] output #%d has been deleted from the backlog", b.SequencerName, wOut.Index)
 	}
+
+	b.backlogSize.Set(float64(len(b.outputs)))
 	return len(toDelete)
 }
 
@@ -287,4 +295,12 @@ func (b *InputBacklog) LoadSequencerStartTips(seqID ledger.ChainID) error {
 		b.PostEventNewTransaction(vid)
 	}
 	return nil
+}
+
+func (b *InputBacklog) registerMetrics() {
+	b.backlogSize = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "proxima_seq_backlog_size",
+		Help: "number of outputs in the own sequencer's backlog",
+	})
+	b.MetricsRegistry().MustRegister(b.backlogSize)
 }
