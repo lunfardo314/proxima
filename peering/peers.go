@@ -45,6 +45,8 @@ type (
 		// Node info
 		IgnoreAllPullRequests                 bool
 		AcceptPullRequestsFromStaticPeersOnly bool
+		// AllowLocalIPs defines if local IPs are allowed to be used for autopeering.
+		AllowLocalIPs bool `default:"false" usage:"allow local IPs to be used for autopeering"`
 	}
 
 	Peers struct {
@@ -175,6 +177,8 @@ func New(env environment, cfg *Config) (*Peers, error) {
 		libp2p.ListenAddrStrings(fmt.Sprintf("/ip4/0.0.0.0/tcp/%d", cfg.HostPort)),
 		libp2p.Transport(tcp.NewTCPTransport),
 		libp2p.NoSecurity,
+		libp2p.DisableRelay(),
+		libp2p.AddrsFactory(FilterAddresses(cfg.AllowLocalIPs)),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("unable create libp2p host: %w", err)
@@ -298,6 +302,7 @@ func readPeeringConfig() (*Config, error) {
 
 	cfg.IgnoreAllPullRequests = viper.GetBool("peering.ignore_pull_requests")
 	cfg.AcceptPullRequestsFromStaticPeersOnly = viper.GetBool("peering.pull_requests_from_static_peers_only")
+	cfg.AllowLocalIPs = viper.GetBool("peering.allow_local_ips")
 	return cfg, nil
 }
 

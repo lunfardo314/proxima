@@ -1,6 +1,8 @@
 module github.com/lunfardo314/proxima
 
-go 1.21.0
+go 1.22
+
+toolchain go1.23.1
 
 require (
 	github.com/dgraph-io/badger/v4 v4.2.0
@@ -15,6 +17,7 @@ require (
 	github.com/spf13/cobra v1.8.1
 	github.com/spf13/viper v1.19.0
 	github.com/stretchr/testify v1.9.0
+	github.com/whyrusleeping/multiaddr-filter v0.0.0-20160516205228-e903e4adabd7
 	github.com/yoseplee/vrf v0.0.0-20210814110709-d1caf509310b
 	go.uber.org/atomic v1.11.0
 	go.uber.org/zap v1.27.0
