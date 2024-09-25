@@ -302,6 +302,8 @@ func (a *attacher) attachVertexUnwrapped(v *vertex.Vertex, vidUnwrapped *vertex.
 }
 
 func (a *attacher) finalTouchNonSequencer(v *vertex.Vertex, vid *vertex.WrappedTx) (ok bool) {
+	a.Assertf(!vid.IsSequencerMilestone(), "non-sequencer tx expected, got %s", vid.IDShortString)
+
 	glbFlags := vid.FlagsNoLock()
 	if !glbFlags.FlagsUp(vertex.FlagVertexConstraintsValid) {
 		// constraints are not validated yet
@@ -311,7 +313,8 @@ func (a *attacher) finalTouchNonSequencer(v *vertex.Vertex, vid *vertex.WrappedT
 			a.Tracef(TraceTagAttachVertex, "constraint validation failed in %s: '%v'", vid.IDShortString(), err)
 			return false
 		}
-		vid.SetFlagsUpNoLock(vertex.FlagVertexConstraintsValid)
+		// for non-sequencer transactions attachment is over
+		vid.SetFlagsUpNoLock(vertex.FlagVertexConstraintsValid | vertex.FlagVertexTxAttachmentFinished)
 
 		a.Tracef(TraceTagAttachVertex, "constraints has been validated OK: %s", v.Tx.IDShortString)
 		a.PokeAllWith(vid)
