@@ -56,6 +56,7 @@ func (srv *Server) addHandler(pattern string, handler func(http.ResponseWriter, 
 		handler(w, r)
 		_ = r.Body.Close() // TODO no need? Who leaks goroutines then?
 		srv.metrics.totalRequests.Inc()
+		srv.Log().Infof(">>>>>>>>>>>>>>>> request %s", r.URL.String())
 
 		go func() {
 			<-r.Context().Done()
