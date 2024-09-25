@@ -14,6 +14,7 @@ type sequencerMetrics struct {
 	targets                 prometheus.Counter
 	proposalsByStrategy     map[string]prometheus.Counter
 	bestProposalsByStrategy map[string]prometheus.Counter
+	backlogSize             prometheus.Gauge
 }
 
 func (seq *Sequencer) registerMetrics() {
@@ -61,6 +62,13 @@ func (seq *Sequencer) registerMetrics() {
 	for _, m := range seq.metrics.bestProposalsByStrategy {
 		seq.MetricsRegistry().MustRegister(m)
 	}
+
+	seq.metrics.backlogSize = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "proxima_seq_backlog_size",
+		Help: "number of outputs in the own sequencer's backlog",
+	})
+	seq.MetricsRegistry().MustRegister(seq.metrics.backlogSize)
+
 }
 
 func (seq *Sequencer) onMilestoneSubmittedMetrics(vid *vertex.WrappedTx) {
@@ -92,4 +100,11 @@ func (seq *Sequencer) EvidenceBestProposalForTheTarget(strategyShortName string)
 		return
 	}
 	seq.metrics.bestProposalsByStrategy[strategyShortName].Inc()
+}
+
+func (seq *Sequencer) EvidenceBacklogSize(size int) {
+	if seq.metrics == nil {
+		return
+	}
+	seq.metrics.backlogSize.Set(float64(size))
 }
