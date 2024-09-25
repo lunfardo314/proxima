@@ -35,6 +35,7 @@ type (
 	}
 
 	Server struct {
+		*http.Server
 		environment
 		metrics
 	}
@@ -47,8 +48,16 @@ type (
 
 const TraceTag = "apiServer"
 
-func New(env environment) *Server {
-	return &Server{environment: env}
+func New(addr string, env environment) *Server {
+	return &Server{
+		Server: &http.Server{
+			Addr:         addr,
+			ReadTimeout:  10 * time.Second,
+			WriteTimeout: 10 * time.Second,
+			IdleTimeout:  30 * time.Second,
+		},
+		environment: env,
+	}
 }
 
 func (srv *Server) addHandler(pattern string, handler func(http.ResponseWriter, *http.Request)) {
@@ -56,12 +65,12 @@ func (srv *Server) addHandler(pattern string, handler func(http.ResponseWriter, 
 		handler(w, r)
 		_ = r.Body.Close() // TODO no need? Who leaks goroutines then?
 		srv.metrics.totalRequests.Inc()
-		srv.Log().Infof(">>>>>>>>>>>>>>>> request %s", r.URL.String())
-
-		go func() {
-			<-r.Context().Done()
-			srv.Log().Infof(">>>>>>>>>>>>>>>> request was cancelled or client disconnected: %s", r.URL.String())
-		}()
+		//srv.Log().Infof(">>>>>>>>>>>>>>>> request %s", r.URL.String())
+		//
+		//go func() {
+		//	<-r.Context().Done()
+		//	srv.Log().Infof(">>>>>>>>>>>>>>>> request was cancelled or client disconnected: %s", r.URL.String())
+		//}()
 
 	})
 }
@@ -515,10 +524,11 @@ func writeOk(w http.ResponseWriter) {
 }
 
 func RunOn(addr string, env environment) {
-	srv := New(env)
+	srv := New(addr, env)
 	srv.registerHandlers()
 	srv.registerMetrics()
-	err := http.ListenAndServe(addr, nil)
+
+	err := srv.ListenAndServe()
 	util.AssertNoError(err)
 }
 
