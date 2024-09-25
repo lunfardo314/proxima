@@ -17,6 +17,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/util"
+	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/exp/slices"
 )
 
@@ -44,36 +45,13 @@ type (
 		vertex.TxIDStatus
 		*multistate.TxInclusion
 	}
+
+	metrics struct {
+		totalRequests prometheus.Counter
+	}
 )
 
 const TraceTag = "apiServer"
-
-func New(addr string, env environment) *Server {
-	return &Server{
-		Server: &http.Server{
-			Addr:         addr,
-			ReadTimeout:  10 * time.Second,
-			WriteTimeout: 10 * time.Second,
-			IdleTimeout:  30 * time.Second,
-		},
-		environment: env,
-	}
-}
-
-func (srv *Server) addHandler(pattern string, handler func(http.ResponseWriter, *http.Request)) {
-	http.HandleFunc(pattern, func(w http.ResponseWriter, r *http.Request) {
-		handler(w, r)
-		_ = r.Body.Close() // TODO no need? Who leaks goroutines then?
-		srv.metrics.totalRequests.Inc()
-		//srv.Log().Infof(">>>>>>>>>>>>>>>> request %s", r.URL.String())
-		//
-		//go func() {
-		//	<-r.Context().Done()
-		//	srv.Log().Infof(">>>>>>>>>>>>>>>> request was cancelled or client disconnected: %s", r.URL.String())
-		//}()
-
-	})
-}
 
 func (srv *Server) registerHandlers() {
 	// GET request format: '/get_ledger_id'
@@ -523,15 +501,6 @@ func writeOk(w http.ResponseWriter) {
 	util.AssertNoError(err)
 }
 
-func RunOn(addr string, env environment) {
-	srv := New(addr, env)
-	srv.registerHandlers()
-	srv.registerMetrics()
-
-	err := srv.ListenAndServe()
-	util.AssertNoError(err)
-}
-
 func setHeader(w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -544,5 +513,37 @@ func (srv *Server) withLRB(fun func(rdr multistate.SugaredStateReader) error) er
 			return err1
 		}
 		return fun(rdr)
+	})
+}
+
+func Run(addr string, env environment) {
+	srv := &Server{
+		Server: &http.Server{
+			Addr:         addr,
+			ReadTimeout:  5 * time.Second,
+			WriteTimeout: 5 * time.Second,
+			IdleTimeout:  5 * time.Second,
+		},
+		environment: env,
+	}
+	srv.registerHandlers()
+	srv.registerMetrics()
+
+	err := srv.ListenAndServe()
+	util.AssertNoError(err)
+}
+
+func (srv *Server) registerMetrics() {
+	srv.metrics.totalRequests = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "proxima_api_totalRequests",
+		Help: "total API requests",
+	})
+	srv.MetricsRegistry().MustRegister(srv.metrics.totalRequests)
+}
+
+func (srv *Server) addHandler(pattern string, handler func(http.ResponseWriter, *http.Request)) {
+	http.HandleFunc(pattern, func(w http.ResponseWriter, r *http.Request) {
+		handler(w, r)
+		srv.metrics.totalRequests.Inc()
 	})
 }

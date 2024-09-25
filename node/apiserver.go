@@ -17,7 +17,7 @@ func (p *ProximaNode) startAPIServer() {
 	addr := fmt.Sprintf(":%d", port)
 	p.Log().Infof("starting API server on %s", addr)
 
-	go server.RunOn(addr, p)
+	go server.Run(addr, p)
 	go func() {
 		<-p.Ctx().Done()
 		p.stopAPIServer()
