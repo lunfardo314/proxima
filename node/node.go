@@ -20,23 +20,29 @@ import (
 	"github.com/spf13/viper"
 )
 
-type ProximaNode struct {
-	*global.Global
-	multiStateDB              *badger_adaptor.DB
-	txStoreDB                 *badger_adaptor.DB
-	txBytesStore              global.TxBytesStore
-	peers                     *peering.Peers
-	sequencer                 *sequencer.Sequencer
-	workflow                  *workflow.Workflow
-	stopOnce                  sync.Once
-	workProcessesStopStepChan chan struct{}
-	dbClosedWG                sync.WaitGroup
-	started                   time.Time
-	// metrics
-	lrbSlotsBehind prometheus.Gauge
-	lrbCoverage    prometheus.Gauge
-	lrbSupply      prometheus.Gauge
-}
+type (
+	ProximaNode struct {
+		*global.Global
+		multiStateDB              *badger_adaptor.DB
+		txStoreDB                 *badger_adaptor.DB
+		txBytesStore              global.TxBytesStore
+		peers                     *peering.Peers
+		sequencer                 *sequencer.Sequencer
+		workflow                  *workflow.Workflow
+		stopOnce                  sync.Once
+		workProcessesStopStepChan chan struct{}
+		dbClosedWG                sync.WaitGroup
+		started                   time.Time
+		metrics
+	}
+
+	metrics struct {
+		lrbSlotsBehind prometheus.Gauge
+		lrbCoverage    prometheus.Gauge
+		lrbSupply      prometheus.Gauge
+		lrbNumTx       prometheus.Gauge
+	}
+)
 
 func init() {
 	viper.SetConfigName("proxima")
@@ -251,8 +257,10 @@ func (p *ProximaNode) goLoggingSync() {
 			} else {
 				p.Log().Warn(msg)
 			}
+
 			p.lrbCoverage.Set(float64(lrb.LedgerCoverage))
 			p.lrbSupply.Set(float64(lrb.Supply))
+			p.lrbNumTx.Set(float64(lrb.NumTransactions))
 		}
 		return true
 	})
@@ -272,5 +280,9 @@ func (p *ProximaNode) registerMetrics() {
 		Help: "total supply on the latest reliable branch (LRBID)",
 	})
 
-	p.MetricsRegistry().MustRegister(p.lrbCoverage, p.lrbSlotsBehind, p.lrbSupply)
+	p.lrbNumTx = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "proxima_lrb_num_tx",
+		Help: "number of transactions committed on the latest reliable branch (LRBID)",
+	})
+	p.MetricsRegistry().MustRegister(p.lrbCoverage, p.lrbSlotsBehind, p.lrbSupply, p.lrbNumTx)
 }
