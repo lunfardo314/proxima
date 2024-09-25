@@ -23,6 +23,7 @@ import (
 type (
 	environment interface {
 		global.Logging
+		global.Metrics
 		GetNodeInfo() *global.NodeInfo
 		GetSyncInfo() *api.SyncInfo
 		GetPeersInfo() *api.PeersInfo
@@ -35,6 +36,7 @@ type (
 
 	Server struct {
 		environment
+		metrics
 	}
 
 	TxStatus struct {
@@ -49,39 +51,40 @@ func New(env environment) *Server {
 	return &Server{environment: env}
 }
 
-func addHandler(pattern string, handler func(http.ResponseWriter, *http.Request)) {
+func (srv *Server) addHandler(pattern string, handler func(http.ResponseWriter, *http.Request)) {
 	http.HandleFunc(pattern, func(w http.ResponseWriter, r *http.Request) {
 		handler(w, r)
 		_ = r.Body.Close() // TODO no need? Who leaks goroutines then?
+		srv.metrics.totalRequests.Inc()
 	})
 }
 
 func (srv *Server) registerHandlers() {
 	// GET request format: '/get_ledger_id'
-	addHandler(api.PathGetLedgerID, srv.getLedgerID)
+	srv.addHandler(api.PathGetLedgerID, srv.getLedgerID)
 	// GET request format: '/get_account_outputs?accountable=<EasyFL source form of the accountable lock constraint>'
-	addHandler(api.PathGetAccountOutputs, srv.getAccountOutputs)
+	srv.addHandler(api.PathGetAccountOutputs, srv.getAccountOutputs)
 	// GET request format: '/get_chain_output?chainid=<hex-encoded chain ID>'
-	addHandler(api.PathGetChainOutput, srv.getChainOutput)
+	srv.addHandler(api.PathGetChainOutput, srv.getChainOutput)
 	// GET request format: '/get_output?id=<hex-encoded output ID>'
-	addHandler(api.PathGetOutput, srv.getOutput)
+	srv.addHandler(api.PathGetOutput, srv.getOutput)
 	// GET request format: '/query_txid_status?txid=<hex-encoded transaction ID>[&slots=<slot span>]'
-	addHandler(api.PathQueryTxStatus, srv.queryTxStatus)
+	srv.addHandler(api.PathQueryTxStatus, srv.queryTxStatus)
 	// GET request format: '/query_inclusion_score?txid=<hex-encoded transaction ID>&threshold=N-D[&slots=<slot span>]'
-	addHandler(api.PathQueryInclusionScore, srv.queryTxInclusionScore)
+	srv.addHandler(api.PathQueryInclusionScore, srv.queryTxInclusionScore)
 	// POST request format '/submit_nowait'. Feedback only on parsing error, otherwise async posting
-	addHandler(api.PathSubmitTransaction, srv.submitTx)
+	srv.addHandler(api.PathSubmitTransaction, srv.submitTx)
 	// GET sync info from the node
-	addHandler(api.PathGetSyncInfo, srv.getSyncInfo)
+	srv.addHandler(api.PathGetSyncInfo, srv.getSyncInfo)
 	// GET sync info from the node
-	addHandler(api.PathGetNodeInfo, srv.getNodeInfo)
+	srv.addHandler(api.PathGetNodeInfo, srv.getNodeInfo)
 	// GET peers info from the node
-	addHandler(api.PathGetPeersInfo, srv.getPeersInfo)
+	srv.addHandler(api.PathGetPeersInfo, srv.getPeersInfo)
 	// GET latest reliable branch '/get_latest_reliable_branch'
-	addHandler(api.PathGetLatestReliableBranch, srv.getLatestReliableBranch)
+	srv.addHandler(api.PathGetLatestReliableBranch, srv.getLatestReliableBranch)
 }
 
-func (srv *Server) getLedgerID(w http.ResponseWriter, r *http.Request) {
+func (srv *Server) getLedgerID(w http.ResponseWriter, _ *http.Request) {
 	setHeader(w)
 
 	srv.Tracef(TraceTag, "getLedgerID invoked")
@@ -507,6 +510,7 @@ func writeOk(w http.ResponseWriter) {
 func RunOn(addr string, env environment) {
 	srv := New(env)
 	srv.registerHandlers()
+	srv.registerMetrics()
 	err := http.ListenAndServe(addr, nil)
 	util.AssertNoError(err)
 }
