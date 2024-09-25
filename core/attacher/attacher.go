@@ -306,6 +306,10 @@ func (a *attacher) finalTouchNonSequencer(v *vertex.Vertex, vid *vertex.WrappedT
 
 	glbFlags := vid.FlagsNoLock()
 	if !glbFlags.FlagsUp(vertex.FlagVertexConstraintsValid) {
+		// in either case, for non-sequencer transaction validation makes attachment
+		// finished and transaction ready to be pruned from the memDAG
+		vid.SetFlagsUpNoLock(vertex.FlagVertexTxAttachmentFinished)
+
 		// constraints are not validated yet
 		if err := v.ValidateConstraints(); err != nil {
 			v.UnReferenceDependencies()
@@ -313,8 +317,8 @@ func (a *attacher) finalTouchNonSequencer(v *vertex.Vertex, vid *vertex.WrappedT
 			a.Tracef(TraceTagAttachVertex, "constraint validation failed in %s: '%v'", vid.IDShortString(), err)
 			return false
 		}
-		// for non-sequencer transactions attachment is over
-		vid.SetFlagsUpNoLock(vertex.FlagVertexConstraintsValid | vertex.FlagVertexTxAttachmentFinished)
+		// mark transaction validated
+		vid.SetFlagsUpNoLock(vertex.FlagVertexConstraintsValid)
 
 		a.Tracef(TraceTagAttachVertex, "constraints has been validated OK: %s", v.Tx.IDShortString)
 		a.PokeAllWith(vid)

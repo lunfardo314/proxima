@@ -58,8 +58,9 @@ func runMilestoneAttacher(
 		} else {
 			env.Infof1(a.logFinalStatusString(msData))
 		}
-		vid.SetSequencerAttachmentFinished()
 	}
+	// finished either way: good or bad
+	vid.SetSequencerAttachmentFinished()
 
 	env.PokeAllWith(vid)
 	if metadata != nil &&
