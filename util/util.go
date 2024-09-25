@@ -19,25 +19,22 @@ import (
 )
 
 type Integer interface {
-	int | uint16 | uint32 | uint64 | int16 | int32 | int64
+	int | uint8 | uint16 | uint32 | uint64 | int8 | int16 | int32 | int64
 }
 
 var prn = message.NewPrinter(language.English)
 
+const defaultThousandsSeparator = "_"
+
 // Th makes string representation of the integer with thousands separator
-// Default separator is "_"
 func Th[T Integer](v T, separator ...string) string {
-	sep := "_"
+	var sep string
 	if len(separator) > 0 {
 		sep = separator[0]
+	} else {
+		sep = defaultThousandsSeparator
 	}
 	return strings.Replace(prn.Sprintf("%d", v), ",", sep, -1)
-}
-
-func ThLazy[T Integer](v T, separator ...string) func() string {
-	return func() string {
-		return Th(v, separator...)
-	}
 }
 
 func ForEachUniquePair[T any](sl []T, fun func(a1, a2 T) bool) {
@@ -50,20 +47,16 @@ func ForEachUniquePair[T any](sl []T, fun func(a1, a2 T) bool) {
 	}
 }
 
-func KeysFiltered[K comparable, V any](m map[K]V, filter func(k K) bool) []K {
-	ret := make([]K, 0, len(m))
-	for k := range m {
-		if filter(k) {
-			ret = append(ret, k)
-		}
-	}
-	return ret
+func KeysFiltered[K comparable, V any](m map[K]V, cond func(k K) bool) []K {
+	return KeysFilteredByValues(m, func(k K, _ V) bool {
+		return cond(k)
+	})
 }
 
-func KeysFilteredByValues[K comparable, V any](m map[K]V, filter func(k K, v V) bool) []K {
+func KeysFilteredByValues[K comparable, V any](m map[K]V, cond func(k K, v V) bool) []K {
 	ret := make([]K, 0, len(m))
 	for k, v := range m {
-		if filter(k, v) {
+		if cond(k, v) {
 			ret = append(ret, k)
 		}
 	}
@@ -127,32 +120,8 @@ func IndexOfMaximum[T any](lst []T, less func(i1, i2 int) bool) int {
 	return ret
 }
 
-func Minimum[T any](lst []T, less func(el1, el2 T) bool) T {
-	var ret T
-	first := true
-	for _, el := range lst {
-		if first {
-			ret = el
-			first = false
-			continue
-		}
-		if less(el, ret) {
-			ret = el
-		}
-	}
-	return ret
-}
-
-func RangeReverse[T any](slice []T, fun func(i int, elem T) bool) {
-	for i := len(slice) - 1; i >= 0; i-- {
-		if !fun(i, slice[i]) {
-			return
-		}
-	}
-}
-
 // PurgeSlice filters elements on the same underlying array
-// Element remains in the array only if 'filter' function return true
+// Element remains in the array only if 'filter' function returns true
 // The elements of the array which are not covered by slice are nullified.
 // This may be important when slice contains pointers, which, in turn, may lead to hidden
 // memory leak because GC can't remove them
@@ -172,10 +141,6 @@ func PurgeSlice[T any](slice []T, filter func(el T) bool) []T {
 		slice[i] = nul
 	}
 	return ret
-}
-
-func ClearSlice[T any](slice []T) []T {
-	return PurgeSlice[T](slice, func(_ T) bool { return false })
 }
 
 func EqualSlices[T comparable](s1, s2 []T) bool {
@@ -198,13 +163,6 @@ func AppendUnique[T comparable](slice []T, elems ...T) []T {
 		}
 	}
 	return slice
-}
-
-func RandomElement[T any](elems ...T) (ret T) {
-	if len(elems) > 0 {
-		ret = elems[rand.Intn(len(elems))]
-	}
-	return
 }
 
 // RandomElements selects n random elements from a slice, which has more elements than n
@@ -231,28 +189,6 @@ func MustLastElement[T any](sl []T) T {
 	return sl[len(sl)-1]
 }
 
-func FindFirstKeyInMap[K comparable, V any](m map[K]V, cond ...func(k K) bool) (K, bool) {
-	var fun func(k K) bool
-	if len(cond) > 0 {
-		fun = cond[0]
-	} else {
-		fun = func(_ K) bool { return true }
-	}
-	for k := range m {
-		if fun(k) {
-			return k, true
-		}
-	}
-	var nilK K
-	return nilK, false
-}
-
-func MustTakeFirstKeyInMap[K comparable, V any](m map[K]V) K {
-	ret, ok := FindFirstKeyInMap(m)
-	Assertf(ok, "MustTakeFirstKeyInMap: empty map")
-	return ret
-}
-
 func MakeRange[T constraints.Integer](from, toIncl T) []T {
 	Assertf(from <= toIncl, "from<=toIncl")
 	ret := make([]T, toIncl-from+1)
@@ -260,15 +196,6 @@ func MakeRange[T constraints.Integer](from, toIncl T) []T {
 		ret[i] = from + T(i)
 	}
 	return ret
-}
-
-func Find[T comparable](lst []T, el T) int {
-	for i, e := range lst {
-		if e == el {
-			return i
-		}
-	}
-	return -1
 }
 
 func ED25519PrivateKeyFromHexString(str string) (ed25519.PrivateKey, error) {
@@ -280,12 +207,6 @@ func ED25519PrivateKeyFromHexString(str string) (ed25519.PrivateKey, error) {
 		return nil, fmt.Errorf("wrong private key size")
 	}
 	return privateKey, nil
-}
-
-func CloneExactCap(data []byte) []byte {
-	ret := make([]byte, len(data))
-	copy(ret, data)
-	return ret
 }
 
 func MakeErrFuncForPrefix(prefix string) func(err interface{}, args ...interface{}) error {
