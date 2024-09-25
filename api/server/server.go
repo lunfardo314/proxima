@@ -35,7 +35,7 @@ type (
 		GetLatestReliableBranch() *multistate.BranchData
 	}
 
-	Server struct {
+	server struct {
 		*http.Server
 		environment
 		metrics
@@ -53,7 +53,7 @@ type (
 
 const TraceTag = "apiServer"
 
-func (srv *Server) registerHandlers() {
+func (srv *server) registerHandlers() {
 	// GET request format: '/get_ledger_id'
 	srv.addHandler(api.PathGetLedgerID, srv.getLedgerID)
 	// GET request format: '/get_account_outputs?accountable=<EasyFL source form of the accountable lock constraint>'
@@ -78,7 +78,7 @@ func (srv *Server) registerHandlers() {
 	srv.addHandler(api.PathGetLatestReliableBranch, srv.getLatestReliableBranch)
 }
 
-func (srv *Server) getLedgerID(w http.ResponseWriter, _ *http.Request) {
+func (srv *server) getLedgerID(w http.ResponseWriter, _ *http.Request) {
 	setHeader(w)
 
 	srv.Tracef(TraceTag, "getLedgerID invoked")
@@ -95,7 +95,7 @@ func (srv *Server) getLedgerID(w http.ResponseWriter, _ *http.Request) {
 	util.AssertNoError(err)
 }
 
-func (srv *Server) getAccountOutputs(w http.ResponseWriter, r *http.Request) {
+func (srv *server) getAccountOutputs(w http.ResponseWriter, r *http.Request) {
 	srv.Tracef(TraceTag, "getAccountOutputs invoked")
 	setHeader(w)
 
@@ -139,7 +139,7 @@ func (srv *Server) getAccountOutputs(w http.ResponseWriter, r *http.Request) {
 	util.AssertNoError(err)
 }
 
-func (srv *Server) getChainOutput(w http.ResponseWriter, r *http.Request) {
+func (srv *server) getChainOutput(w http.ResponseWriter, r *http.Request) {
 	srv.Tracef(TraceTag, "getChainOutput invoked")
 	setHeader(w)
 
@@ -176,7 +176,7 @@ func (srv *Server) getChainOutput(w http.ResponseWriter, r *http.Request) {
 	util.AssertNoError(err)
 }
 
-func (srv *Server) getOutput(w http.ResponseWriter, r *http.Request) {
+func (srv *server) getOutput(w http.ResponseWriter, r *http.Request) {
 	srv.Tracef(TraceTag, "getOutput invoked")
 	setHeader(w)
 
@@ -222,7 +222,7 @@ const (
 	maxTxAppendWaitTimeout     = 2 * time.Minute
 )
 
-func (srv *Server) submitTx(w http.ResponseWriter, r *http.Request) {
+func (srv *server) submitTx(w http.ResponseWriter, r *http.Request) {
 	srv.Tracef(TraceTag, "submitTx invoked")
 	setHeader(w)
 
@@ -272,7 +272,7 @@ func (srv *Server) submitTx(w http.ResponseWriter, r *http.Request) {
 	writeOk(w)
 }
 
-func (srv *Server) getSyncInfo(w http.ResponseWriter, r *http.Request) {
+func (srv *server) getSyncInfo(w http.ResponseWriter, r *http.Request) {
 	setHeader(w)
 
 	syncInfo := srv.GetSyncInfo()
@@ -285,7 +285,7 @@ func (srv *Server) getSyncInfo(w http.ResponseWriter, r *http.Request) {
 	util.AssertNoError(err)
 }
 
-func (srv *Server) getPeersInfo(w http.ResponseWriter, r *http.Request) {
+func (srv *server) getPeersInfo(w http.ResponseWriter, r *http.Request) {
 	setHeader(w)
 
 	peersInfo := srv.GetPeersInfo()
@@ -298,7 +298,7 @@ func (srv *Server) getPeersInfo(w http.ResponseWriter, r *http.Request) {
 	util.AssertNoError(err)
 }
 
-func (srv *Server) getNodeInfo(w http.ResponseWriter, r *http.Request) {
+func (srv *server) getNodeInfo(w http.ResponseWriter, r *http.Request) {
 	setHeader(w)
 
 	nodeInfo := srv.GetNodeInfo()
@@ -313,7 +313,7 @@ func (srv *Server) getNodeInfo(w http.ResponseWriter, r *http.Request) {
 
 const maxSlotsSpan = 10
 
-func (srv *Server) queryTxStatus(w http.ResponseWriter, r *http.Request) {
+func (srv *server) queryTxStatus(w http.ResponseWriter, r *http.Request) {
 	srv.Tracef(TraceTag, "queryTxStatus invoked")
 	setHeader(w)
 
@@ -385,7 +385,7 @@ func decodeThreshold(par string) (int, int, error) {
 
 const TraceTagQueryInclusion = "inclusion"
 
-func (srv *Server) queryTxInclusionScore(w http.ResponseWriter, r *http.Request) {
+func (srv *server) queryTxInclusionScore(w http.ResponseWriter, r *http.Request) {
 	srv.Tracef(TraceTagQueryInclusion, "queryTxInclusionScore invoked")
 	setHeader(w)
 
@@ -449,7 +449,7 @@ func (srv *Server) queryTxInclusionScore(w http.ResponseWriter, r *http.Request)
 	util.AssertNoError(err)
 }
 
-func (srv *Server) getLatestReliableBranch(w http.ResponseWriter, r *http.Request) {
+func (srv *server) getLatestReliableBranch(w http.ResponseWriter, r *http.Request) {
 	srv.Tracef(TraceTag, "getLatestReliableBranch invoked")
 
 	bd := srv.GetLatestReliableBranch()
@@ -472,7 +472,7 @@ func (srv *Server) getLatestReliableBranch(w http.ResponseWriter, r *http.Reques
 }
 
 // calcTxInclusionScore calculates inclusion score response from inclusion data
-func (srv *Server) calcTxInclusionScore(inclusion *multistate.TxInclusion, thresholdNumerator, thresholdDenominator int) api.TxInclusionScore {
+func (srv *server) calcTxInclusionScore(inclusion *multistate.TxInclusion, thresholdNumerator, thresholdDenominator int) api.TxInclusionScore {
 	srv.Tracef(TraceTagQueryInclusion, "calcTxInclusionScore: %s, threshold: %d/%d", inclusion.String(), thresholdNumerator, thresholdDenominator)
 
 	ret := api.CalcTxInclusionScore(inclusion, thresholdNumerator, thresholdDenominator)
@@ -506,7 +506,7 @@ func setHeader(w http.ResponseWriter) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 }
 
-func (srv *Server) withLRB(fun func(rdr multistate.SugaredStateReader) error) error {
+func (srv *server) withLRB(fun func(rdr multistate.SugaredStateReader) error) error {
 	return util.CatchPanicOrError(func() error {
 		rdr, err1 := srv.LatestReliableState()
 		if err1 != nil {
@@ -517,7 +517,7 @@ func (srv *Server) withLRB(fun func(rdr multistate.SugaredStateReader) error) er
 }
 
 func Run(addr string, env environment) {
-	srv := &Server{
+	srv := &server{
 		Server: &http.Server{
 			Addr:         addr,
 			ReadTimeout:  5 * time.Second,
@@ -533,7 +533,7 @@ func Run(addr string, env environment) {
 	util.AssertNoError(err)
 }
 
-func (srv *Server) registerMetrics() {
+func (srv *server) registerMetrics() {
 	srv.metrics.totalRequests = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "proxima_api_totalRequests",
 		Help: "total API requests",
@@ -541,7 +541,7 @@ func (srv *Server) registerMetrics() {
 	srv.MetricsRegistry().MustRegister(srv.metrics.totalRequests)
 }
 
-func (srv *Server) addHandler(pattern string, handler func(http.ResponseWriter, *http.Request)) {
+func (srv *server) addHandler(pattern string, handler func(http.ResponseWriter, *http.Request)) {
 	http.HandleFunc(pattern, func(w http.ResponseWriter, r *http.Request) {
 		handler(w, r)
 		srv.metrics.totalRequests.Inc()
