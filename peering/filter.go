@@ -3,12 +3,11 @@ package peering
 import (
 	"fmt"
 
-	"github.com/iotaledger/hive.go/lo"
+	"github.com/lunfardo314/proxima/util"
 	"github.com/multiformats/go-multiaddr"
 	mamask "github.com/whyrusleeping/multiaddr-filter"
 )
 
-// copied from https://github.com/iotaledger/iota-core
 // Based on https://github.com/ipfs/kubo/blob/master/config/profile.go
 // defaultServerFilters has is a list of IPv4 and IPv6 prefixes that are private, local only, or unrouteable.
 // according to https://www.iana.org/assignments/iana-ipv4-special-registry/iana-ipv4-special-registry.xhtml
@@ -64,7 +63,7 @@ func publicOnlyAddressesFilter(allowLocalNetworks bool) AddressFilter {
 	}
 
 	return func(addresses []multiaddr.Multiaddr) []multiaddr.Multiaddr {
-		return lo.Filter(addresses, func(m multiaddr.Multiaddr) bool {
+		return util.PurgeSlice(addresses, func(m multiaddr.Multiaddr) bool {
 			return !filters.AddrBlocked(m)
 		})
 	}

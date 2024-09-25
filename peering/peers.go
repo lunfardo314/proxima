@@ -302,11 +302,7 @@ func readPeeringConfig() (*Config, error) {
 
 	cfg.IgnoreAllPullRequests = viper.GetBool("peering.ignore_pull_requests")
 	cfg.AcceptPullRequestsFromStaticPeersOnly = viper.GetBool("peering.pull_requests_from_static_peers_only")
-	if viper.IsSet("peering.allow_local_ips") {
-		cfg.AllowLocalIPs = viper.GetBool("peering.allow_local_ips")
-	} else {
-		cfg.AllowLocalIPs = false
-	}
+	cfg.AllowLocalIPs = viper.GetBool("peering.allow_local_ips")
 	return cfg, nil
 }
 

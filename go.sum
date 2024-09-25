@@ -181,12 +181,6 @@ github.com/huin/goupnp v1.3.0/go.mod h1:gnGPsThkYa7bFi/KWmEysQRf48l2dvR5bxr2OFck
 github.com/inconshreveable/mousetrap v1.0.0/go.mod h1:PxqpIevigyE2G7u3NXJIT2ANytuPF1OarO4DADm73n8=
 github.com/inconshreveable/mousetrap v1.1.0 h1:wN+x4NVGpMsO7ErUn/mUI3vEoE6Jt13X2s0bqwp9tc8=
 github.com/inconshreveable/mousetrap v1.1.0/go.mod h1:vpF70FUmC8bwa3OWnCshd2FqLfsEA9PFc4w1p2J65bw=
-github.com/iotaledger/hive.go/constraints v0.0.0-20240517131232-748f1ce3a2d2 h1:5s73eiIv88KICanZK2mKSXXE/k0GrqE1tkint9nijds=
-github.com/iotaledger/hive.go/constraints v0.0.0-20240517131232-748f1ce3a2d2/go.mod h1:JF7jjkL6tSUOXm23SWadBzBrl7eJk1DQRLc/fNoVZ+o=
-github.com/iotaledger/hive.go/ierrors v0.0.0-20240517131232-748f1ce3a2d2 h1:Qci9UOR7NUkmtMGce8QFkdUDvPlQRWNjiEjzsO8bQtk=
-github.com/iotaledger/hive.go/ierrors v0.0.0-20240517131232-748f1ce3a2d2/go.mod h1:GQY0/35sjgT9Poi1Vrs9kFVvAkuKzGXfVh4j6CBXsAA=
-github.com/iotaledger/hive.go/lo v0.0.0-20240520064018-c635e5900894 h1:b3r0G8WQ1HBQeObTg2j7hbgJjb2oCgSVaIWazFZgVSQ=
-github.com/iotaledger/hive.go/lo v0.0.0-20240520064018-c635e5900894/go.mod h1:AJRiMLXVOLKvtuuCKBqe3zBeIB6qbp1vZrU1rPHm1CU=
 github.com/ipfs/boxo v0.10.0 h1:tdDAxq8jrsbRkYoF+5Rcqyeb91hgWe2hp7iLu7ORZLY=
 github.com/ipfs/boxo v0.10.0/go.mod h1:Fg+BnfxZ0RPzR0nOodzdIq3A7KgoWAOWsEIImrIQdBM=
 github.com/ipfs/go-cid v0.4.1 h1:A/T3qGvxi4kpKWWcPC/PgbvDA2bjVLO7n4UeVwnbs/s=
