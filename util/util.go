@@ -153,7 +153,10 @@ func RangeReverse[T any](slice []T, fun func(i int, elem T) bool) {
 
 // PurgeSlice filters elements on the same underlying array
 // Element remains in the array only if 'filter' function return true
-func PurgeSlice[T any](slice []T, filter func(el T) bool, maxElems ...int) []T {
+// The elements of the array which are not covered by slice are nullified.
+// This may be important when slice contains pointers, which, in turn, may lead to hidden
+// memory leak because GC can't remove them
+func PurgeSlice[T any](slice []T, filter func(el T) bool) []T {
 	if len(slice) == 0 {
 		return slice
 	}
@@ -162,23 +165,17 @@ func PurgeSlice[T any](slice []T, filter func(el T) bool, maxElems ...int) []T {
 		if filter(el) {
 			ret = append(ret, el)
 		}
-		if len(maxElems) > 0 && len(ret) >= maxElems[0] {
-			break
-		}
 	}
-	var nilElem T
+	// please the GC
+	var nul T
 	for i := len(ret); i < len(slice); i++ {
-		slice[i] = nilElem
+		slice[i] = nul
 	}
 	return ret
 }
 
 func ClearSlice[T any](slice []T) []T {
-	var nul T
-	for i := range slice {
-		slice[i] = nul
-	}
-	return slice[:0]
+	return PurgeSlice[T](slice, func(_ T) bool { return false })
 }
 
 func EqualSlices[T comparable](s1, s2 []T) bool {
