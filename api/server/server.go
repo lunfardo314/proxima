@@ -161,7 +161,7 @@ func (srv *server) getAccountOutputs(w http.ResponseWriter, r *http.Request) {
 	if !doSorting {
 		if len(oData) > 0 {
 			for _, o := range oData {
-				if maxOutputs > 0 && len(resp.Outputs) > maxOutputs {
+				if maxOutputs > 0 && len(resp.Outputs) >= maxOutputs {
 					break
 				}
 				resp.Outputs[o.ID.StringHex()] = hex.EncodeToString(o.OutputData)
@@ -184,7 +184,7 @@ func (srv *server) getAccountOutputs(w http.ResponseWriter, r *http.Request) {
 			return sorted[k1].Amount() < sorted[k2].Amount()
 		})
 		for _, id := range idsSorted {
-			if maxOutputs > 0 && len(resp.Outputs) > maxOutputs {
+			if maxOutputs > 0 && len(resp.Outputs) >= maxOutputs {
 				break
 			}
 			resp.Outputs[id] = hex.EncodeToString(sorted[id].Bytes())
