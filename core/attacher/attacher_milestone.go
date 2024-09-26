@@ -16,8 +16,6 @@ import (
 	"github.com/lunfardo314/proxima/util/checkpoints"
 )
 
-// TODO handle attaching timeout otherwise attackable
-
 const (
 	TraceTagAttachMilestone = "milestone"
 	periodicCheckEach       = 50 * time.Millisecond
@@ -63,12 +61,6 @@ func runMilestoneAttacher(
 	vid.SetSequencerAttachmentFinished()
 
 	env.PokeAllWith(vid)
-	if metadata != nil &&
-		vid.IsBranchTransaction() &&
-		metadata.PortionInfo != nil &&
-		metadata.PortionInfo.LastIndex > 0 &&
-		metadata.PortionInfo.Index == metadata.PortionInfo.LastIndex {
-	}
 }
 
 func newMilestoneAttacher(vid *vertex.WrappedTx, env Environment, metadata *txmetadata.TransactionMetadata, providedCtx context.Context) *milestoneAttacher {

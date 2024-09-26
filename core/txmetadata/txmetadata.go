@@ -12,10 +12,6 @@ import (
 	"github.com/lunfardo314/unitrie/common"
 )
 
-// TODO breaking:
-//  -- remove PortionInfo
-//  -- remove flagReserved
-
 // TransactionMetadata optional data which may be attached to the transaction
 // Wrong metadata or absence of it entirely or in parts cannot damage the network
 // When present, metadata is used for consistency checking and workflow optimization
@@ -26,8 +22,6 @@ type (
 		LedgerCoverage *uint64            // not nil may be for sequencer transactions
 		SlotInflation  *uint64            // not nil may be for sequencer transactions
 		Supply         *uint64            // not nil may be for branch transactions
-		// Deprecated:
-		PortionInfo *PortionInfo // persistent. May be not nil when transaction is part of the portion
 		// non-persistent
 		SourceTypeNonPersistent SourceType // non-persistent, used for internal workflow
 		TxBytesReceived         *time.Time // not-persistent, used for metrics
@@ -60,12 +54,10 @@ var allSourceTypes = map[SourceType]string{
 
 // persistent flags for (de)serialization
 const (
-	flagReserved              = 0b00000001 // for compatibility
-	flagRootProvided          = 0b00000010
-	flagCoverageDeltaProvided = 0b00000100
-	flagSlotInflationProvided = 0b00001000
-	flagSupplyProvided        = 0b00010000
-	flagPortionInfo           = 0b00100000
+	flagRootProvided          = 0b00000001
+	flagCoverageDeltaProvided = 0b00000010
+	flagSlotInflationProvided = 0b00000100
+	flagSupplyProvided        = 0b00001000
 )
 
 func (s SourceType) String() string {
@@ -86,9 +78,6 @@ func (m *TransactionMetadata) flags() (ret byte) {
 	}
 	if m.Supply != nil {
 		ret |= flagSupplyProvided
-	}
-	if m.PortionInfo != nil {
-		ret |= flagPortionInfo
 	}
 	return
 }
@@ -125,13 +114,6 @@ func (m *TransactionMetadata) Bytes() []byte {
 		var supplyBin [8]byte
 		binary.BigEndian.PutUint64(supplyBin[:], *m.Supply)
 		buf.Write(supplyBin[:])
-	}
-	if m.PortionInfo != nil {
-		var u16bin [2]byte
-		binary.BigEndian.PutUint16(u16bin[:], m.PortionInfo.LastIndex)
-		buf.Write(u16bin[:])
-		binary.BigEndian.PutUint16(u16bin[:], m.PortionInfo.Index)
-		buf.Write(u16bin[:])
 	}
 	ret := buf.Bytes()
 	util.Assertf(len(ret) <= 256, "too big TransactionMetadata")
@@ -191,15 +173,6 @@ func TransactionMetadataFromBytes(data []byte) (*TransactionMetadata, error) {
 			return nil, err
 		}
 	}
-	if flags&flagPortionInfo != 0 {
-		ret.PortionInfo = new(PortionInfo)
-		if ret.PortionInfo.LastIndex, err = _readUint16(rdr); err != nil {
-			return nil, err
-		}
-		if ret.PortionInfo.Index, err = _readUint16(rdr); err != nil {
-			return nil, err
-		}
-	}
 	return ret, nil
 }
 
@@ -241,10 +214,6 @@ func (m *TransactionMetadata) String() string {
 	if m.SlotInflation != nil {
 		inflationStr = util.Th(*m.SlotInflation)
 	}
-	portionStr := "<nil>"
-	if m.PortionInfo != nil {
-		portionStr = fmt.Sprintf("%d/%d", m.PortionInfo.Index, m.PortionInfo.LastIndex)
-	}
-	return fmt.Sprintf("coverage: %s, slot inflation: %s, root: %s, source type: '%s', portion: %s",
-		lcStr, inflationStr, rootStr, m.SourceTypeNonPersistent.String(), portionStr)
+	return fmt.Sprintf("coverage: %s, slot inflation: %s, root: %s, source type: '%s'",
+		lcStr, inflationStr, rootStr, m.SourceTypeNonPersistent.String())
 }

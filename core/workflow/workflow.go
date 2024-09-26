@@ -81,8 +81,8 @@ func Start(env Environment, peers *peering.Peers, opts ...ConfigOption) *Workflo
 		ret.TxBytesInFromPeerQueued(txBytes, metadata, from)
 	})
 
-	ret.peers.OnReceivePullTxRequest(func(from peer.ID, txids []ledger.TransactionID) {
-		ret.SendTx(from, txids...)
+	ret.peers.OnReceivePullTxRequest(func(from peer.ID, txid ledger.TransactionID) {
+		ret.SendTx(from, txid)
 	})
 
 	return ret
@@ -99,15 +99,9 @@ func StartFromConfig(env Environment, peers *peering.Peers) *Workflow {
 	return Start(env, peers, opts...)
 }
 
-func (w *Workflow) SendTx(sendTo peer.ID, txids ...ledger.TransactionID) {
-	for i := range txids {
-		w.pullTxServer.Push(&pull_tx_server.Input{
-			TxID:   txids[i],
-			PeerID: sendTo,
-			PortionInfo: txmetadata.PortionInfo{
-				LastIndex: uint16(len(txids) - 1),
-				Index:     uint16(i),
-			},
-		})
-	}
+func (w *Workflow) SendTx(sendTo peer.ID, txid ledger.TransactionID) {
+	w.pullTxServer.Push(&pull_tx_server.Input{
+		TxID:   txid,
+		PeerID: sendTo,
+	})
 }

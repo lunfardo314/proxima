@@ -71,10 +71,6 @@ func TestTxMetadata(t *testing.T) {
 			LedgerCoverage:          &coverage,
 			SlotInflation:           &inflation,
 			Supply:                  &supply,
-			PortionInfo: &PortionInfo{
-				LastIndex: 100,
-				Index:     5,
-			},
 		}
 		mBack, err := TransactionMetadataFromBytes(m.Bytes())
 		require.NoError(t, err)
@@ -85,7 +81,5 @@ func TestTxMetadata(t *testing.T) {
 		require.EqualValues(t, 1337, *mBack.LedgerCoverage)
 		require.EqualValues(t, 31415, *mBack.SlotInflation)
 		require.EqualValues(t, 2718281828, *mBack.Supply)
-		require.EqualValues(t, 100, mBack.PortionInfo.LastIndex)
-		require.EqualValues(t, 5, mBack.PortionInfo.Index)
 	})
 }

@@ -20,9 +20,8 @@ type (
 	}
 
 	Input struct {
-		TxID        ledger.TransactionID
-		PeerID      peer.ID
-		PortionInfo txmetadata.PortionInfo
+		TxID   ledger.TransactionID
+		PeerID peer.ID
 	}
 
 	PullTxServer struct {
@@ -57,11 +56,6 @@ func (d *PullTxServer) consume(inp *Input) {
 	util.AssertNoError(err)
 	metadata, err := txmetadata.TransactionMetadataFromBytes(metadataBytes)
 	util.AssertNoError(err)
-	if metadata == nil {
-		metadata = &txmetadata.TransactionMetadata{}
-	}
-	// setting persistent 'response to pull' flag in metadata
-	metadata.PortionInfo = &inp.PortionInfo
 
 	d.SendTxBytesWithMetadataToPeer(inp.PeerID, txBytes, metadata)
 	d.responseToPullCounter.Inc()

@@ -2,7 +2,6 @@ package peering
 
 import (
 	"bytes"
-	"math/rand"
 	"sync"
 	"testing"
 	"time"
@@ -288,16 +287,14 @@ func TestSendMsg(t *testing.T) {
 
 		for _, h := range hosts {
 			h1 := h
-			h1.OnReceivePullTxRequest(func(from peer.ID, txids []ledger.TransactionID) {
+			h1.OnReceivePullTxRequest(func(from peer.ID, txid ledger.TransactionID) {
 				txSetMutex.Lock()
 				defer txSetMutex.Unlock()
 
 				counter.Tick()
 
-				for i := range txids {
-					require.True(t, txSet.Contains(txids[i]))
-					go h1.SendTxBytesWithMetadataToPeer(from, txids[i][:], nil)
-				}
+				require.True(t, txSet.Contains(txid))
+				go h1.SendTxBytesWithMetadataToPeer(from, txid[:], nil)
 			})
 
 			h1.OnReceiveTxBytes(func(from peer.ID, txBytes []byte, _ *txmetadata.TransactionMetadata) {
@@ -317,12 +314,12 @@ func TestSendMsg(t *testing.T) {
 		time.Sleep(4 * time.Second)
 
 		for i := 0; i < numMsg; i++ {
-			txids := rndTxIDs()
+			txid := ledger.RandomTransactionID(false)
 			txSetMutex.Lock()
-			txSet.Insert(txids...)
+			txSet.Insert(txid)
 			txSetMutex.Unlock()
 
-			n := hosts[i%numHosts].PullTransactionsFromRandomPeers(1, txids...)
+			n := hosts[i%numHosts].PullTransactionsFromRandomPeers(1, txid)
 			require.EqualValues(t, 1, n)
 		}
 		err := counter.Wait()
@@ -334,14 +331,4 @@ func TestSendMsg(t *testing.T) {
 		}
 		require.EqualValues(t, 0, len(txSet))
 	})
-}
-
-func rndTxIDs() []ledger.TransactionID {
-	rnd := rand.Intn(5) + 1
-	ret := make([]ledger.TransactionID, rnd)
-
-	for i := range ret {
-		ret[i] = ledger.RandomTransactionID(false)
-	}
-	return ret
 }

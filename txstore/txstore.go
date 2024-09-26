@@ -79,11 +79,6 @@ func (s *SimpleTxBytesStore) PersistTxBytesWithMetadata(txBytes []byte, metadata
 	if s.s.Has(txid[:]) {
 		return txid, nil
 	}
-	if metadata != nil {
-		mdTmp := *metadata
-		mdTmp.PortionInfo = nil
-		metadata = &mdTmp
-	}
 
 	s.s.Set(txid[:], common.ConcatBytes(metadata.Bytes(), txBytes))
 

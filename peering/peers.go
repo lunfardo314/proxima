@@ -62,7 +62,7 @@ type (
 		blacklist        map[peer.ID]time.Time
 		// on receive handlers
 		onReceiveTx     func(from peer.ID, txBytes []byte, mdata *txmetadata.TransactionMetadata)
-		onReceivePullTx func(from peer.ID, txids []ledger.TransactionID)
+		onReceivePullTx func(from peer.ID, txid ledger.TransactionID)
 		// lpp protocol names
 		lppProtocolGossip    protocol.ID
 		lppProtocolPull      protocol.ID
@@ -160,7 +160,7 @@ func NewPeersDummy() *Peers {
 		peers:           make(map[peer.ID]*Peer),
 		blacklist:       make(map[peer.ID]time.Time),
 		onReceiveTx:     func(_ peer.ID, _ []byte, _ *txmetadata.TransactionMetadata) {},
-		onReceivePullTx: func(_ peer.ID, _ []ledger.TransactionID) {},
+		onReceivePullTx: func(_ peer.ID, _ ledger.TransactionID) {},
 	}
 	ret.outQueue = queue.New[outMsgData](ret.sendMsgOut)
 	//ret.registerMetrics()
@@ -194,7 +194,7 @@ func New(env environment, cfg *Config) (*Peers, error) {
 		peers:                make(map[peer.ID]*Peer),
 		blacklist:            make(map[peer.ID]time.Time),
 		onReceiveTx:          func(_ peer.ID, _ []byte, _ *txmetadata.TransactionMetadata) {},
-		onReceivePullTx:      func(_ peer.ID, _ []ledger.TransactionID) {},
+		onReceivePullTx:      func(_ peer.ID, _ ledger.TransactionID) {},
 		lppProtocolGossip:    protocol.ID(fmt.Sprintf(lppProtocolGossip, rendezvousNumber)),
 		lppProtocolPull:      protocol.ID(fmt.Sprintf(lppProtocolPull, rendezvousNumber)),
 		lppProtocolHeartbeat: protocol.ID(fmt.Sprintf(lppProtocolHeartbeat, rendezvousNumber)),
@@ -447,7 +447,7 @@ func (ps *Peers) OnReceiveTxBytes(fun func(from peer.ID, txBytes []byte, metadat
 	ps.onReceiveTx = fun
 }
 
-func (ps *Peers) OnReceivePullTxRequest(fun func(from peer.ID, txids []ledger.TransactionID)) {
+func (ps *Peers) OnReceivePullTxRequest(fun func(from peer.ID, txid ledger.TransactionID)) {
 	ps.mutex.Lock()
 	defer ps.mutex.Unlock()
 
