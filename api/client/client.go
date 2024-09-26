@@ -133,8 +133,6 @@ func (c *APIClient) getAccountOutputs(accountable ledger.Accountable, maxOutputs
 			path += "&sort=desc"
 		case strings.HasPrefix(sort[0], "asc"):
 			path += "&sort=asc"
-		default:
-			return nil, nil, fmt.Errorf("wrong 'sort' option")
 		}
 	}
 	body, err := c.getBody(path)
