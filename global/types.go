@@ -22,7 +22,9 @@ type (
 	}
 
 	StateIndexReader interface {
+		// GetIDsLockedInAccount TODO limit maximum number of output
 		GetIDsLockedInAccount(addr ledger.AccountID) ([]ledger.OutputID, error)
+		// GetUTXOsLockedInAccount TODO limit maximum number of output
 		GetUTXOsLockedInAccount(accountID ledger.AccountID) ([]*ledger.OutputDataWithID, error)
 		GetUTXOForChainID(id *ledger.ChainID) (*ledger.OutputDataWithID, error)
 		Root() common.VCommitment

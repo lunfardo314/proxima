@@ -95,19 +95,53 @@ func (srv *server) getLedgerID(w http.ResponseWriter, _ *http.Request) {
 	util.AssertNoError(err)
 }
 
+const absoluteMaximumOfReturnedOutputs = 2000
+
+// getAccountOutputs return in general non-deterministic set of outputs because of random ordering and limits
 func (srv *server) getAccountOutputs(w http.ResponseWriter, r *http.Request) {
 	srv.Tracef(TraceTag, "getAccountOutputs invoked")
 	setHeader(w)
 
+	// parse parameters
+
 	lst, ok := r.URL.Query()["accountable"]
 	if !ok || len(lst) != 1 {
-		writeErr(w, "wrong parameters in request 'get_account_outputs'")
+		writeErr(w, "wrong parameter 'accountable' in request 'get_account_outputs'")
 		return
 	}
 	accountable, err := ledger.AccountableFromSource(lst[0])
 	if err != nil {
 		writeErr(w, err.Error())
 		return
+	}
+
+	maxOutputs := 0
+	lst, ok = r.URL.Query()["max_outputs"]
+	if ok {
+		if len(lst) != 1 {
+			writeErr(w, "wrong parameter 'max_outputs' in request 'get_account_outputs'")
+			return
+		}
+		maxOutputs, err = strconv.Atoi(lst[0])
+		if err != nil {
+			writeErr(w, err.Error())
+			return
+		}
+		if maxOutputs > absoluteMaximumOfReturnedOutputs {
+			maxOutputs = absoluteMaximumOfReturnedOutputs
+		}
+	}
+
+	doSorting := false
+	sortDesc := false
+	lst, ok = r.URL.Query()["sort"]
+	if ok {
+		if len(lst) != 1 || (lst[0] != "asc" && lst[0] != "desc") {
+			writeErr(w, "wrong parameter 'sort' in request 'get_account_outputs'")
+			return
+		}
+		doSorting = true
+		sortDesc = lst[0] == "desc"
 	}
 
 	var oData []*ledger.OutputDataWithID
@@ -123,10 +157,37 @@ func (srv *server) getAccountOutputs(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err.Error())
 		return
 	}
-	if len(oData) > 0 {
-		resp.Outputs = make(map[string]string)
+	resp.Outputs = make(map[string]string)
+	if !doSorting {
+		if len(oData) > 0 {
+			for _, o := range oData {
+				if maxOutputs > 0 && len(resp.Outputs) > maxOutputs {
+					break
+				}
+				resp.Outputs[o.ID.StringHex()] = hex.EncodeToString(o.OutputData)
+			}
+		}
+	} else {
+		// return first max number of sorted outputs
+		sorted := make(map[string]*ledger.Output)
 		for _, o := range oData {
-			resp.Outputs[o.ID.StringHex()] = hex.EncodeToString(o.OutputData)
+			sorted[o.ID.StringHex()], err = ledger.OutputFromBytesReadOnly(o.OutputData)
+			if err != nil {
+				writeErr(w, "server error while parsing UTXO: "+err.Error())
+				return
+			}
+		}
+		idsSorted := util.KeysSorted(sorted, func(k1, k2 string) bool {
+			if sortDesc {
+				return sorted[k1].Amount() > sorted[k2].Amount()
+			}
+			return sorted[k1].Amount() < sorted[k2].Amount()
+		})
+		for _, id := range idsSorted {
+			if maxOutputs > 0 && len(resp.Outputs) > maxOutputs {
+				break
+			}
+			resp.Outputs[id] = hex.EncodeToString(sorted[id].Bytes())
 		}
 	}
 
@@ -520,9 +581,9 @@ func Run(addr string, env environment) {
 	srv := &server{
 		Server: &http.Server{
 			Addr:         addr,
-			ReadTimeout:  5 * time.Second,
-			WriteTimeout: 5 * time.Second,
-			IdleTimeout:  5 * time.Second,
+			ReadTimeout:  10 * time.Second,
+			WriteTimeout: 10 * time.Second,
+			IdleTimeout:  10 * time.Second,
 		},
 		environment: env,
 	}

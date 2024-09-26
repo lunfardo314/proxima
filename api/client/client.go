@@ -10,7 +10,7 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"sort"
+	"strings"
 	"time"
 
 	"github.com/lunfardo314/proxima/api"
@@ -118,9 +118,25 @@ func (c *APIClient) GetLedgerID() (*ledger.IdentityData, error) {
 	return ret, nil
 }
 
-// getAccountOutputs fetches all outputs of the account
-func (c *APIClient) getAccountOutputs(accountable ledger.Accountable) ([]*ledger.OutputDataWithID, *ledger.TransactionID, error) {
+// getAccountOutputs fetches all outputs of the account. Optionally sorts them on the server
+func (c *APIClient) getAccountOutputs(accountable ledger.Accountable, maxOutputs int, sort ...string) ([]*ledger.OutputDataWithID, *ledger.TransactionID, error) {
+	if maxOutputs < 0 {
+		maxOutputs = 0
+	}
 	path := fmt.Sprintf(api.PathGetAccountOutputs+"?accountable=%s", accountable.String())
+	if maxOutputs > 0 {
+		path += fmt.Sprintf("&max_outputs=%d", maxOutputs)
+	}
+	if len(sort) > 0 {
+		switch {
+		case strings.HasPrefix(sort[0], "desc"):
+			path += "&sort=desc"
+		case strings.HasPrefix(sort[0], "asc"):
+			path += "&sort=asc"
+		default:
+			return nil, nil, fmt.Errorf("wrong 'sort' option")
+		}
+	}
 	body, err := c.getBody(path)
 	if err != nil {
 		return nil, nil, err
@@ -156,10 +172,6 @@ func (c *APIClient) getAccountOutputs(accountable ledger.Accountable) ([]*ledger
 			OutputData: oData,
 		})
 	}
-
-	sort.Slice(ret, func(i, j int) bool {
-		return bytes.Compare(ret[i].ID[:], ret[j].ID[:]) < 0
-	})
 	return ret, &retLRBID, nil
 }
 
@@ -275,16 +287,20 @@ func (c *APIClient) SubmitTransaction(txBytes []byte, trace ...bool) error {
 }
 
 func (c *APIClient) GetAccountOutputs(account ledger.Accountable, filter ...func(oid *ledger.OutputID, o *ledger.Output) bool) ([]*ledger.OutputWithID, *ledger.TransactionID, error) {
+	return c.GetAccountOutputsExt(account, 0, "", filter...)
+}
+
+func (c *APIClient) GetAccountOutputsExt(account ledger.Accountable, maxOutputs int, sortOption string, filter ...func(oid *ledger.OutputID, o *ledger.Output) bool) ([]*ledger.OutputWithID, *ledger.TransactionID, error) {
 	filterFun := func(oid *ledger.OutputID, o *ledger.Output) bool { return true }
 	if len(filter) > 0 {
 		filterFun = filter[0]
 	}
-	oData, lrbid, err := c.getAccountOutputs(account)
+	oData, lrbid, err := c.getAccountOutputs(account, maxOutputs, sortOption)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	outs, err := txutils.ParseAndSortOutputData(oData, filterFun, true)
+	outs, err := txutils.ParseOutputDataAndFilter(oData, filterFun)
 	if err != nil {
 		return nil, nil, err
 	}

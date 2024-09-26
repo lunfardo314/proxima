@@ -9,6 +9,23 @@ import (
 )
 
 func ParseAndSortOutputData(outs []*ledger.OutputDataWithID, filter func(oid *ledger.OutputID, o *ledger.Output) bool, desc ...bool) ([]*ledger.OutputWithID, error) {
+	ret, err := ParseOutputDataAndFilter(outs, filter)
+	if err != nil {
+		return nil, err
+	}
+	if len(desc) > 0 && desc[0] {
+		sort.Slice(ret, func(i, j int) bool {
+			return ret[i].Output.Amount() > ret[j].Output.Amount()
+		})
+	} else {
+		sort.Slice(ret, func(i, j int) bool {
+			return ret[i].Output.Amount() < ret[j].Output.Amount()
+		})
+	}
+	return ret, nil
+}
+
+func ParseOutputDataAndFilter(outs []*ledger.OutputDataWithID, filter func(oid *ledger.OutputID, o *ledger.Output) bool) ([]*ledger.OutputWithID, error) {
 	ret := make([]*ledger.OutputWithID, 0, len(outs))
 	for _, od := range outs {
 		out, err := ledger.OutputFromBytesReadOnly(od.OutputData)
@@ -21,15 +38,6 @@ func ParseAndSortOutputData(outs []*ledger.OutputDataWithID, filter func(oid *le
 		ret = append(ret, &ledger.OutputWithID{
 			ID:     od.ID,
 			Output: out,
-		})
-	}
-	if len(desc) > 0 && desc[0] {
-		sort.Slice(ret, func(i, j int) bool {
-			return ret[i].Output.Amount() > ret[j].Output.Amount()
-		})
-	} else {
-		sort.Slice(ret, func(i, j int) bool {
-			return ret[i].Output.Amount() < ret[j].Output.Amount()
 		})
 	}
 	return ret, nil

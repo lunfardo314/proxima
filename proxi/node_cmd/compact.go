@@ -53,17 +53,17 @@ func runCompactCmd(_ *cobra.Command, args []string) {
 		}
 	}
 	walletData := glb.GetWalletData()
-	walletOutputs, lrbid, err := glb.GetClient().GetAccountOutputs(walletData.Account, func(_ *ledger.OutputID, o *ledger.Output) bool {
+	walletOutputs, lrbid, err := glb.GetClient().GetAccountOutputsExt(walletData.Account, 250, "asc", func(_ *ledger.OutputID, o *ledger.Output) bool {
 		return o.NumConstraints() == 2
 	})
 	glb.AssertNoError(err)
 
 	glb.PrintLRB(lrbid)
-	glb.Infof("%d ED25519 output(s) are in the wallet account %s", len(walletOutputs), walletData.Account.String())
 	if len(walletOutputs) <= 1 {
-		glb.Infof("no need for compacting")
+		glb.Infof("only one output -> no need for compacting")
 		os.Exit(0)
 	}
+	glb.Infof("%d ED25519 output(s) from account %s will be compacted into one", len(walletOutputs), walletData.Account.String())
 
 	var prompt string
 	glb.Assertf(feeAmount > 0, "tag-along fee is configured 0. Fee-less option not supported yet")
@@ -80,8 +80,10 @@ func runCompactCmd(_ *cobra.Command, args []string) {
 		glb.Verbosef("------- the compacting transaction -------- \n%s\n--------------------------", txCtx.String())
 	}
 	glb.AssertNoError(err)
-	glb.Infof("Submitting compacting transaction with %d inputs..", txCtx.NumInputs())
-	err = glb.GetClient().SubmitTransaction(txCtx.TransactionBytes(), glb.TraceTx())
+	glb.Assertf(txCtx != nil, "something wrong: transaction context is nil")
+	txBytes := txCtx.TransactionBytes()
+	glb.Infof("Submitting compacting transaction with %d inputs (%d bytes)..", txCtx.NumInputs(), len(txBytes))
+	err = glb.GetClient().SubmitTransaction(txBytes, glb.TraceTx())
 	glb.AssertNoError(err)
 
 	if !glb.NoWait() {
