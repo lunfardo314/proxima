@@ -13,6 +13,11 @@ import (
 )
 
 func (p *ProximaNode) startAPIServer() {
+	if viper.GetBool("api.disable") {
+		// default is enabled API
+		p.Log().Infof("API server is disabled")
+		return
+	}
 	port := viper.GetInt("api.port")
 	addr := fmt.Sprintf(":%d", port)
 	p.Log().Infof("starting API server on %s", addr)
