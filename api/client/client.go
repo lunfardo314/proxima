@@ -395,9 +395,15 @@ func (c *APIClient) GetPeersInfo() (*api.PeersInfo, error) {
 	return &res, nil
 }
 
-// GetTransferableOutputs does the same as GetTransferableOutputs but cuts to the maximum outputs provided and returns total
+// GetTransferableOutputs returns reasonable maximum number of outputs with only 2 constraints and returns total
 func (c *APIClient) GetTransferableOutputs(account ledger.Accountable, maxOutputs ...int) ([]*ledger.OutputWithID, *ledger.TransactionID, uint64, error) {
-	ret, lrbid, err := c.GetAccountOutputs(account, func(_ *ledger.OutputID, o *ledger.Output) bool {
+	maxO := 256
+	if len(maxOutputs) > 0 && maxOutputs[0] < 256 && maxOutputs[0] > 0 {
+		maxO = maxOutputs[0]
+	}
+
+	// ask a bit more descending outputs from server and the filter them out
+	ret, lrbid, err := c.GetAccountOutputsExt(account, maxO*2, "desc", func(_ *ledger.OutputID, o *ledger.Output) bool {
 		return o.NumConstraints() == 2
 	})
 	if err != nil {
@@ -406,13 +412,7 @@ func (c *APIClient) GetTransferableOutputs(account ledger.Accountable, maxOutput
 	if len(ret) == 0 {
 		return nil, nil, 0, nil
 	}
-	maxOut := 256
-	if len(maxOutputs) > 0 && maxOutputs[0] > 0 && maxOutputs[0] < 256 {
-		maxOut = maxOutputs[0]
-	}
-	if len(ret) > maxOut {
-		ret = ret[:maxOut]
-	}
+	ret = util.TrimSlice(ret, maxO)
 	sum := uint64(0)
 	for _, o := range ret {
 		sum += o.Output.Amount()

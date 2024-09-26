@@ -143,6 +143,18 @@ func PurgeSlice[T any](slice []T, filter func(el T) bool) []T {
 	return ret
 }
 
+// TrimSlice trims slice on the same underlying array. Nullifies trimmed elements
+func TrimSlice[T any](slice []T, maxLen int) []T {
+	if len(slice) <= maxLen {
+		return slice
+	}
+	ret := slice[:maxLen]
+	var nul T
+	for i := maxLen; i < len(slice); i++ {
+		slice[i] = nul
+	}
+	return ret
+}
 func EqualSlices[T comparable](s1, s2 []T) bool {
 	if len(s1) != len(s2) {
 		return false
