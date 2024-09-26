@@ -24,6 +24,7 @@ type (
 		directory            string
 		keepLatest           int
 		lastSnapshotBranchID ledger.TransactionID
+		sequencerID          *ledger.ChainID
 	}
 )
 
@@ -35,14 +36,14 @@ const (
 	defaultKeepLatest            = 3
 )
 
-func Start(env environment) *Snapshot {
+func Start(env environment) {
 	ret := &Snapshot{
 		environment: env,
 	}
 	if !viper.GetBool("snapshot.enable") {
 		// will not have any effect
 		env.Log().Infof("[snapshot] is disabled")
-		return ret
+		return
 	}
 	env.Log().Infof("[snapshot] is enabled")
 
@@ -64,6 +65,17 @@ func Start(env environment) *Snapshot {
 		ret.keepLatest = defaultKeepLatest
 	}
 
+	seqIDHex := viper.GetString("snapshot.sequencer_id")
+	seqID, err := ledger.ChainIDFromHexString(seqIDHex)
+	if err == nil {
+		ret.sequencerID = &seqID
+	} else {
+		if seqIDHex != "" {
+			env.Log().Errorf("wrong chain ID in config key 'snapshot.sequencer_id'. Using default")
+		}
+		ret.sequencerID = env.GetOwnSequencerID()
+	}
+
 	ret.registerMetrics()
 
 	env.RepeatInBackground(Name, period, func() bool {
@@ -74,8 +86,7 @@ func Start(env environment) *Snapshot {
 
 	ret.Log().Infof("[snapshot] work process STARTED\n        target directory: %s\n        period: %v (%d slots)\n        keep latest: %d",
 		ret.directory, period, periodInSlots, ret.keepLatest)
-
-	return ret
+	return
 }
 
 func (s *Snapshot) registerMetrics() {
@@ -91,8 +102,8 @@ func (s *Snapshot) doSnapshot() {
 	var lrb *multistate.BranchData
 
 	// if node has own sequencer running,
-	if ownSeqID := s.GetOwnSequencerID(); ownSeqID != nil {
-		lrb = multistate.FindLatestReliableBranchWithSequencerID(s.StateStore(), *ownSeqID, global.FractionHealthyBranch)
+	if s.sequencerID != nil {
+		lrb = multistate.FindLatestReliableBranchWithSequencerID(s.StateStore(), *s.sequencerID, global.FractionHealthyBranch)
 	} else {
 		lrb = multistate.FindLatestReliableBranch(s.StateStore(), global.FractionHealthyBranch)
 	}
