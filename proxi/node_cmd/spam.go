@@ -123,7 +123,7 @@ func doSpamming(cfg spammerConfig) {
 		glb.Assertf(cfg.maxTransactions == 0 || txCounter < cfg.maxTransactions, "maximum transaction limit %d has been reached", cfg.maxTransactions)
 		glb.Assertf(time.Now().Before(deadline), "spam duration limit has been reached")
 
-		outs, _, balance, err := glb.GetClient().GetTransferableOutputs(walletData.Account, cfg.bundleSize)
+		outs, _, balance, err := glb.GetClient().GetTransferableOutputs(walletData.Account, 256)
 		glb.AssertNoError(err)
 
 		glb.Verbosef("Fetched inputs from account %s:\n%s", walletData.Account.String(), glb.LinesOutputsWithIDs(outs).String())
