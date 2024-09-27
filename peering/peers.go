@@ -23,6 +23,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/queue"
+	"github.com/lunfardo314/proxima/util/set"
 	"github.com/multiformats/go-multiaddr"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/spf13/viper"
@@ -63,6 +64,7 @@ type (
 		kademliaDHT      *dht.IpfsDHT // not nil if autopeering is enabled
 		routingDiscovery *routing.RoutingDiscovery
 		peers            map[peer.ID]*Peer // except self/host
+		staticPeers      set.Set[peer.ID]
 		blacklist        map[peer.ID]time.Time
 		// on receive handlers
 		onReceiveTx     func(from peer.ID, txBytes []byte, mdata *txmetadata.TransactionMetadata)
@@ -96,15 +98,14 @@ type (
 	}
 
 	Peer struct {
-		id                                     peer.ID
-		name                                   string
-		isStatic                               bool // statically pre-configured (manual peering)
-		ignoresAllPullRequests                 bool // from hb info
-		acceptsPullRequestsFromStaticPeersOnly bool // from hb info
-		whenAdded                              time.Time
-		lastMsgReceived                        time.Time
-		lastMsgReceivedFrom                    string
-		lastLoggedConnected                    bool // toggle
+		id                  peer.ID
+		name                string
+		isStatic            bool // statically pre-configured (manual peering)
+		ignoresPullRequests bool // from hb info
+		whenAdded           time.Time
+		lastMsgReceived     time.Time
+		lastMsgReceivedFrom string
+		lastLoggedConnected bool // toggle
 		//
 		errorCounter int
 		// ring buffer with last clock differences
@@ -196,6 +197,7 @@ func New(env environment, cfg *Config) (*Peers, error) {
 		cfg:                  cfg,
 		host:                 lppHost,
 		peers:                make(map[peer.ID]*Peer),
+		staticPeers:          set.New[peer.ID](),
 		blacklist:            make(map[peer.ID]time.Time),
 		onReceiveTx:          func(_ peer.ID, _ []byte, _ *txmetadata.TransactionMetadata) {},
 		onReceivePullTx:      func(_ peer.ID, _ ledger.TransactionID) {},
@@ -378,6 +380,7 @@ func (ps *Peers) addStaticPeer(maddr multiaddr.Multiaddr, name, addrString strin
 	}
 	ps.Log().Infof("[peering] added pre-configured peer %s as '%s'", addrString, name)
 	ps.addPeer(info, name, true)
+	ps.staticPeers.Insert(info.ID)
 	return nil
 }
 

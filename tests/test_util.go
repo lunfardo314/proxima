@@ -44,7 +44,7 @@ func (w *workflowDummyEnvironment) TxBytesStore() global.TxBytesStore {
 }
 
 func (w *workflowDummyEnvironment) PullFromRandomPeers(nPeers int, txid *ledger.TransactionID) int {
-	w.Log().Warnf(">>>>>> PullFromPeers not implemented: %s", txid.StringShort())
+	w.Log().Warnf(">>>>>> PullFromRandomPeers not implemented: %s", txid.StringShort())
 	return 0
 }
 

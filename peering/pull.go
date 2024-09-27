@@ -111,14 +111,6 @@ func (ps *Peers) PullTransactionsFromRandomPeers(nPeers int, txid ledger.Transac
 	}
 	return len(targets)
 }
-func (ps *Peers) PullTransactionsFromAllPeers(txid ledger.TransactionID) {
-	msg := &_pullTransactions{txid: txid}
-	pullTargets := ps.pullTxTargets()
-	for _, id := range pullTargets {
-		ps.sendMsgOutQueued(msg, id, ps.lppProtocolPull)
-	}
-	ps.pullRequestsOut.Add(float64(len(pullTargets)))
-}
 
 func encodePullTransactionMsg(txid ledger.TransactionID) []byte {
 	var buf bytes.Buffer
@@ -139,15 +131,10 @@ func (ps *Peers) _isPullTarget(p *Peer) bool {
 	if _, inBlackList := ps.blacklist[p.id]; inBlackList {
 		return false
 	}
-	if p.ignoresAllPullRequests {
+	if p.ignoresPullRequests {
 		return false
 	}
 	if p._isDead() {
-		return false
-	}
-	if p.acceptsPullRequestsFromStaticPeersOnly && !p.isStatic {
-		// not completely correct because the peer may list current node as static
-		// here we assume that static peering must be mutual
 		return false
 	}
 	return true

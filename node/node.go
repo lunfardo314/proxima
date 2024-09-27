@@ -87,10 +87,6 @@ func (p *ProximaNode) TxBytesStore() global.TxBytesStore {
 	return p.txBytesStore
 }
 
-func (p *ProximaNode) PullFromPeers(txid *ledger.TransactionID) {
-	p.peers.PullTransactionsFromAllPeers(*txid)
-}
-
 func (p *ProximaNode) PullFromRandomPeers(nPeers int, txid *ledger.TransactionID) int {
 	return p.peers.PullTransactionsFromRandomPeers(nPeers, *txid)
 }

@@ -15,19 +15,14 @@ import (
 )
 
 type heartbeatInfo struct {
-	clock                                  time.Time
-	ignoresAllPullRequests                 bool
-	acceptsPullRequestsFromStaticPeersOnly bool
+	clock               time.Time
+	ignoresPullRequests bool
 }
 
 // flags of the heartbeat message. Information for the peer about the node
-
 const (
-	// flagIgnoresAllPullRequests node ignores all pull requests
-	flagIgnoresAllPullRequests = byte(0b00000001)
-	// flagAcceptsPullRequestsFromStaticPeersOnly node ignores pull requests from automatic peers
-	// only effective if flagIgnoresAllPullRequests is false
-	flagAcceptsPullRequestsFromStaticPeersOnly = byte(0x00000010)
+	// flagIgnoresPullRequests node ignores all pull requests from the message target
+	flagIgnoresPullRequests = byte(0b00000001)
 )
 
 func heartbeatInfoFromBytes(data []byte) (heartbeatInfo, error) {
@@ -162,18 +157,16 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 			return
 		}
 		p._evidenceActivity("hb")
-		p.ignoresAllPullRequests = hbInfo.ignoresAllPullRequests
-		p.acceptsPullRequestsFromStaticPeersOnly = hbInfo.acceptsPullRequestsFromStaticPeersOnly
-
+		p.ignoresPullRequests = hbInfo.ignoresPullRequests
 		p._evidenceClockDifference(time.Since(hbInfo.clock))
 	})
 }
 
 func (ps *Peers) sendHeartbeatToPeer(id peer.ID) {
+	ignore := (ps.cfg.AcceptPullRequestsFromStaticPeersOnly && !ps.staticPeers.Contains(id)) || ps.cfg.IgnoreAllPullRequests
 	ps.sendMsgOutQueued(&heartbeatInfo{
 		// time now will be set in the queue consumer
-		ignoresAllPullRequests:                 ps.cfg.IgnoreAllPullRequests,
-		acceptsPullRequestsFromStaticPeersOnly: ps.cfg.AcceptPullRequestsFromStaticPeersOnly,
+		ignoresPullRequests: ignore,
 	}, id, ps.lppProtocolHeartbeat)
 }
 
@@ -249,18 +242,14 @@ func (ps *Peers) checkClockDiffs() {
 }
 
 func (hi *heartbeatInfo) flags() (ret byte) {
-	if hi.ignoresAllPullRequests {
-		ret |= flagIgnoresAllPullRequests
-	}
-	if hi.acceptsPullRequestsFromStaticPeersOnly {
-		ret |= flagAcceptsPullRequestsFromStaticPeersOnly
+	if hi.ignoresPullRequests {
+		ret |= flagIgnoresPullRequests
 	}
 	return
 }
 
 func (hi *heartbeatInfo) setFromFlags(fl byte) {
-	hi.ignoresAllPullRequests = (fl & flagIgnoresAllPullRequests) != 0
-	hi.acceptsPullRequestsFromStaticPeersOnly = (fl & flagAcceptsPullRequestsFromStaticPeersOnly) != 0
+	hi.ignoresPullRequests = (fl & flagIgnoresPullRequests) != 0
 }
 
 func (hi *heartbeatInfo) Bytes() []byte {
