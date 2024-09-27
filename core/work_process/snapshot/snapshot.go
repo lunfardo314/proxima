@@ -9,6 +9,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/proxima/util/lines"
 	"github.com/spf13/viper"
 )
 
@@ -84,8 +85,16 @@ func Start(env environment) {
 		return true
 	}, true)
 
-	ret.Log().Infof("[snapshot] work process STARTED\n        target directory: %s\n        frequency: %v (%d slots)\n        keep latest: %d",
-		ret.directory, period, periodInSlots, ret.keepLatest)
+	ln := lines.New("          ").
+		Add("target directory: %s", ret.directory).
+		Add("frequency: %v (%d slots)", period, periodInSlots).
+		Add("keep latest: %d", ret.keepLatest)
+	if ret.sequencerID != nil {
+		ln.Add("sequencer ID: %s", ret.sequencerID.String())
+	} else {
+		ln.Add("sequencer ID: N/A")
+	}
+	ret.Log().Infof("[snapshot] work process STARTED\n%s", ln.String())
 	return
 }
 
