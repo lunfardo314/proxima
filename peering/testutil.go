@@ -51,16 +51,20 @@ func MakeConfigFor(n, hostIdx int) *Config {
 		HostIDPrivateKey:   pk,
 		HostID:             hid,
 		HostPort:           BeginPort + hostIdx,
-		PreConfiguredPeers: make(map[string]multiaddr.Multiaddr),
+		PreConfiguredPeers: make(map[string]_multiaddr),
 	}
 	ids := hostID[:n]
 	for i := range ids {
 		if i == hostIdx {
 			continue
 		}
-		ma, err := multiaddr.NewMultiaddr(MultiAddrString(i, BeginPort+i))
+		addrString := MultiAddrString(i, BeginPort+i)
+		ma, err := multiaddr.NewMultiaddr(addrString)
 		util.AssertNoError(err)
-		cfg.PreConfiguredPeers[fmt.Sprintf("peer%d", i)] = ma
+		cfg.PreConfiguredPeers[fmt.Sprintf("peer%d", i)] = _multiaddr{
+			addrString: addrString,
+			Multiaddr:  ma,
+		}
 	}
 	return cfg
 }

@@ -100,9 +100,9 @@ func (r *RootRecord) Lines(prefix ...string) *lines.Lines {
 
 func (br *BranchData) LinesVerbose(prefix ...string) *lines.Lines {
 	ret := br.RootRecord.Lines(prefix...)
-	ret.Add("Stem:").
+	ret.Add("---- Stem ----").
 		Append(br.Stem.Lines(prefix...)).
-		Add("Sequencer output:").
+		Add("---- Sequencer output ----").
 		Append(br.SequencerOutput.Lines(prefix...))
 	return ret
 }

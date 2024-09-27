@@ -38,7 +38,7 @@ type (
 		HostIDPrivateKey   ed25519.PrivateKey
 		HostID             peer.ID
 		HostPort           int
-		PreConfiguredPeers map[string]multiaddr.Multiaddr // name -> PeerAddr. Static peers used also for bootstrap
+		PreConfiguredPeers map[string]_multiaddr // name -> PeerAddr. Static peers used also for bootstrap
 		// MaxDynamicPeers if MaxDynamicPeers <= len(PreConfiguredPeers), autopeering is disabled, otherwise up to
 		// MaxDynamicPeers - len(PreConfiguredPeers) will be auto-peered
 		MaxDynamicPeers int
@@ -49,6 +49,10 @@ type (
 		AllowLocalIPs bool `default:"false" usage:"allow local IPs to be used for autopeering"`
 	}
 
+	_multiaddr struct {
+		addrString string
+		multiaddr.Multiaddr
+	}
 	Peers struct {
 		environment
 
@@ -204,13 +208,12 @@ func New(env environment, cfg *Config) (*Peers, error) {
 
 	env.Log().Infof("[peering] rendezvous number is %d", rendezvousNumber)
 	for name, maddr := range cfg.PreConfiguredPeers {
-		if err = ret.addStaticPeer(maddr, name); err != nil {
+		if err = ret.addStaticPeer(maddr.Multiaddr, name, maddr.addrString); err != nil {
 			return nil, err
 		}
 	}
 	env.Log().Infof("[peering] number of statically pre-configured peers (manual peering): %d", len(cfg.PreConfiguredPeers))
 
-	//if env.IsBootstrapMode() || ret.isAutopeeringEnabled() {
 	if ret.isAutopeeringEnabled() {
 		// autopeering enabled. The node also acts as a bootstrap node
 		bootstrapPeers := peerstore.AddrInfos(ret.host.Peerstore(), maps.Keys(ret.peers))
@@ -254,7 +257,7 @@ func New(env environment, cfg *Config) (*Peers, error) {
 
 func readPeeringConfig() (*Config, error) {
 	cfg := &Config{
-		PreConfiguredPeers: make(map[string]multiaddr.Multiaddr),
+		PreConfiguredPeers: make(map[string]_multiaddr),
 	}
 	cfg.HostPort = viper.GetInt("peering.host.port")
 	if cfg.HostPort == 0 {
@@ -290,8 +293,13 @@ func readPeeringConfig() (*Config, error) {
 
 	for _, peerName := range peerNames {
 		addrString := viper.GetString("peering.peers." + peerName)
-		if cfg.PreConfiguredPeers[peerName], err = multiaddr.NewMultiaddr(addrString); err != nil {
+		maddr, err := multiaddr.NewMultiaddr(addrString)
+		if err != nil {
 			return nil, fmt.Errorf("can't parse multiaddress: %w", err)
+		}
+		cfg.PreConfiguredPeers[peerName] = _multiaddr{
+			addrString: addrString,
+			Multiaddr:  maddr,
 		}
 	}
 
@@ -363,12 +371,12 @@ func (ps *Peers) Stop() {
 }
 
 // addStaticPeer adds preconfigured peer to the list. It will never be deleted
-func (ps *Peers) addStaticPeer(maddr multiaddr.Multiaddr, name string) error {
+func (ps *Peers) addStaticPeer(maddr multiaddr.Multiaddr, name, addrString string) error {
 	info, err := peer.AddrInfoFromP2pAddr(maddr)
 	if err != nil {
 		return fmt.Errorf("can't get multiaddress info: %v", err)
 	}
-
+	ps.Log().Infof("[peering] added pre-configured peer %s as '%s'", addrString, name)
 	ps.addPeer(info, name, true)
 	return nil
 }
