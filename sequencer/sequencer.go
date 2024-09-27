@@ -384,10 +384,7 @@ func (seq *Sequencer) getNextTargetTime() ledger.Time {
 	var targetAbsoluteMinimum ledger.Time
 
 	if seq.lastSubmittedTs.IsSlotBoundary() {
-		// TODO breaking. Put into the ledger ID. Top avoid closeness bias. Put constant into the ledger ID
-
-		const afterBranchPaceMultiplier = 3
-		targetAbsoluteMinimum = seq.lastSubmittedTs.AddTicks(afterBranchPaceMultiplier * seq.config.Pace)
+		targetAbsoluteMinimum = seq.lastSubmittedTs.AddTicks(int(ledger.L().ID.PostBranchConsolidationTicks))
 	} else {
 		targetAbsoluteMinimum = ledger.MaximumTime(
 			seq.lastSubmittedTs.AddTicks(seq.config.Pace),

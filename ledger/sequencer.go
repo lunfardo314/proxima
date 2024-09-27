@@ -83,6 +83,15 @@ or(
    )
 )
 
+func checkPostBranchConsolidationTicks :
+   require(
+       or(
+          isBranchTransaction,
+          lessOrEqualThan(constPostBranchConsolidationTicks, uint64Bytes(txTimeTick))
+	   ),
+       !!!sequencer_transaction_violates_post_branch_consolidation_ticks_constraint
+   )
+
 // $0 is chain constraint sibling index. 0xff value means it is genesis output. 
 // $1 is total produced amount by transaction, 8 bytes big-endian
 func sequencer: and(
@@ -98,6 +107,7 @@ func sequencer: and(
             require(zeroTickOnBranchOnly, !!!non-branch_sequencer_transaction_cant_be_on_slot_boundary), 
             require(equal($1, txTotalProducedAmount), !!!wrong_total_amount_on_sequencer_output),
 			checkPreBranchConsolidationTicks,
+			checkPostBranchConsolidationTicks,
                 // check chain's past'
 			_sequencer( chainPredecessorInputIndex($0) )
 		)

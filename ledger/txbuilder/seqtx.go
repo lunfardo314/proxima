@@ -2,7 +2,6 @@ package txbuilder
 
 import (
 	"crypto/ed25519"
-	"errors"
 
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util"
@@ -41,8 +40,6 @@ func MakeSequencerTransaction(par MakeSequencerTransactionParams) ([]byte, error
 	return ret, err
 }
 
-var ErrBranchInflationAmountInvalid = errors.New("branch inflation amount invalid")
-
 func MakeSequencerTransactionWithInputLoader(par MakeSequencerTransactionParams) ([]byte, func(i byte) (*ledger.Output, error), error) {
 	var consumedOutputs []*ledger.Output
 	if par.ReturnInputLoader {
@@ -50,6 +47,9 @@ func MakeSequencerTransactionWithInputLoader(par MakeSequencerTransactionParams)
 	}
 	errP := util.MakeErrFuncForPrefix("MakeSequencerTransaction")
 
+	if !par.Timestamp.IsSlotBoundary() && !ledger.L().ID.IsPostBranchConsolidationTimestamp(par.Timestamp) {
+		return nil, nil, errP("timestamp violates post-branch timestamp constraint: %s", par.Timestamp.String())
+	}
 	nIn := len(par.AdditionalInputs) + 1
 	if par.StemInput != nil {
 		nIn++

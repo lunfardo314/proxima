@@ -263,7 +263,7 @@ func upgrade0BaseConstants(id *IdentityData) []*easyfl.ExtendedFunctionData {
 		{"constMinimumAmountOnSequencer", fmt.Sprintf("u64/%d", id.MinimumAmountOnSequencer)},
 		{"constMaxNumberOfEndorsements", fmt.Sprintf("u64/%d", id.MaxNumberOfEndorsements)},
 		{"constPreBranchConsolidationTicks", fmt.Sprintf("u64/%d", id.PreBranchConsolidationTicks)},
-		// TODO breaking: add 'constPostBranchConsolidationTicks'
+		{"constPostBranchConsolidationTicks", fmt.Sprintf("u64/%d", id.PostBranchConsolidationTicks)},
 
 		{"constTransactionPace", fmt.Sprintf("u64/%d", id.TransactionPace)},
 		{"constTransactionPaceSequencer", fmt.Sprintf("u64/%d", id.TransactionPaceSequencer)},

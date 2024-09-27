@@ -60,7 +60,6 @@ func (v *Vertex) UnReferenceDependencies() {
 		}
 	}
 	v.BaselineBranch = nil
-	v.Tx = nil
 }
 
 // InputLoaderByIndex returns consumed output at index i or nil (if input is orphaned or inaccessible in the virtualTx)

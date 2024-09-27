@@ -313,10 +313,12 @@ func TestConflicts1Attacher(t *testing.T) {
 		for _, o := range testData.conflictingOutputs {
 			inTS = append(inTS, o.Timestamp())
 		}
+		ts := ledger.MaximumTime(inTS...).AddTicks(ledger.TransactionPaceSequencer())
+		ts = ledger.L().ID.EnsurePostBranchConsolidationConstraintTimestamp(ts)
 		txBytes, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
 			SeqName:          "test",
 			ChainInput:       chainOut,
-			Timestamp:        ledger.MaximumTime(inTS...).AddTicks(ledger.TransactionPaceSequencer()),
+			Timestamp:        ts,
 			AdditionalInputs: testData.conflictingOutputs,
 			PrivateKey:       testData.privKey,
 		})
@@ -377,10 +379,12 @@ func TestConflicts1Attacher(t *testing.T) {
 
 		outToConsume := vidConflicting.MustOutputWithIDAt(0)
 		chainOut := branches[0].SequencerOutput.MustAsChainOutput()
+		ts := outToConsume.Timestamp().AddTicks(ledger.TransactionPaceSequencer())
+		ts = ledger.L().ID.EnsurePostBranchConsolidationConstraintTimestamp(ts)
 		txBytes, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
 			SeqName:          "test",
 			ChainInput:       chainOut,
-			Timestamp:        outToConsume.Timestamp().AddTicks(ledger.TransactionPaceSequencer()),
+			Timestamp:        ts,
 			AdditionalInputs: []*ledger.OutputWithID{&outToConsume},
 			PrivateKey:       testData.privKey,
 		})
@@ -544,7 +548,7 @@ func TestConflictsNAttachersSeqStartTx(t *testing.T) {
 	testData.logDAGInfo()
 
 	for _, vid := range submitted {
-		require.EqualValues(t, vertex.Good, vid.GetTxStatus())
+		require.EqualValues(t, vertex.Good.String(), vid.GetTxStatus().String())
 	}
 }
 
@@ -814,7 +818,7 @@ func TestConflictsNAttachersOneForkBranchesConflict(t *testing.T) {
 	txBytesConflicting, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
 		SeqName:      "dummy",
 		ChainInput:   tx0.SequencerOutput().MustAsChainOutput(),
-		Timestamp:    ts.AddTicks(ledger.TransactionPaceSequencer()),
+		Timestamp:    ledger.L().ID.EnsurePostBranchConsolidationConstraintTimestamp(ts.AddTicks(ledger.TransactionPaceSequencer())),
 		Endorsements: util.List(tx1.ID()),
 		PrivateKey:   testData.privKeyAux,
 	})

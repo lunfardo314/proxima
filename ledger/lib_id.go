@@ -60,9 +60,10 @@ const (
 	DefaultTransactionPace          = 25
 	DefaultTransactionPaceSequencer = 3
 	// DefaultMinimumAmountOnSequencer Reasonable limit could be 1/1000 of initial supply
-	DefaultMinimumAmountOnSequencer    = 1_000 * PRXI
-	DefaultMaxNumberOfEndorsements     = 8
-	DefaultPreBranchConsolidationTicks = 50
+	DefaultMinimumAmountOnSequencer     = 1_000 * PRXI
+	DefaultMaxNumberOfEndorsements      = 8
+	DefaultPreBranchConsolidationTicks  = 50
+	DefaultPostBranchConsolidationTicks = 25
 )
 
 func init() {
@@ -74,6 +75,29 @@ func init() {
 		"wrong constants: first year inflation cap %s does not satisfy lower (%s) and upper (%s) bound conditions for target inflation from %d%% to %d%%",
 		util.Th(inflationCapFirstYear), util.Th(targetChainInflationFirstYearLower), util.Th(targetChainInflationFirstYearUpper),
 		TargetAnnualChainInflationRateLower, TargetAnnualChainInflationRateUpper)
+}
+
+func DefaultIdentityData(privateKey ed25519.PrivateKey) *IdentityData {
+	genesisTimeUnix := uint32(time.Now().Unix())
+
+	return &IdentityData{
+		GenesisTimeUnix:                genesisTimeUnix,
+		GenesisControllerPublicKey:     privateKey.Public().(ed25519.PublicKey),
+		InitialSupply:                  DefaultInitialSupply,
+		TickDuration:                   DefaultTickDuration,
+		VBCost:                         DefaultVBCost,
+		TransactionPace:                DefaultTransactionPace,
+		TransactionPaceSequencer:       DefaultTransactionPaceSequencer,
+		BranchInflationBonusBase:       DefaultBranchInflationBonusBase,
+		ChainInflationPerTickBase:      DefaultChainInflationPerTickBase,
+		ChainInflationOpportunitySlots: DefaultChainInflationOpportunitySlots,
+		TicksPerInflationEpoch:         DefaultTicksPerInflationEpoch,
+		MinimumAmountOnSequencer:       DefaultMinimumAmountOnSequencer,
+		MaxNumberOfEndorsements:        DefaultMaxNumberOfEndorsements,
+		PreBranchConsolidationTicks:    DefaultPreBranchConsolidationTicks,
+		PostBranchConsolidationTicks:   DefaultPostBranchConsolidationTicks,
+		Description:                    "Proxima test ledger",
+	}
 }
 
 func newBaseLibrary() *Library {
@@ -97,28 +121,6 @@ func GetTestingIdentityData(seed ...int) (*IdentityData, ed25519.PrivateKey) {
 	}
 	pk := testutil.GetTestingPrivateKey(1, s)
 	return DefaultIdentityData(pk), pk
-}
-
-func DefaultIdentityData(privateKey ed25519.PrivateKey) *IdentityData {
-	genesisTimeUnix := uint32(time.Now().Unix())
-
-	return &IdentityData{
-		GenesisTimeUnix:                genesisTimeUnix,
-		GenesisControllerPublicKey:     privateKey.Public().(ed25519.PublicKey),
-		InitialSupply:                  DefaultInitialSupply,
-		TickDuration:                   DefaultTickDuration,
-		VBCost:                         DefaultVBCost,
-		TransactionPace:                DefaultTransactionPace,
-		TransactionPaceSequencer:       DefaultTransactionPaceSequencer,
-		BranchInflationBonusBase:       DefaultBranchInflationBonusBase,
-		ChainInflationPerTickBase:      DefaultChainInflationPerTickBase,
-		ChainInflationOpportunitySlots: DefaultChainInflationOpportunitySlots,
-		TicksPerInflationEpoch:         DefaultTicksPerInflationEpoch,
-		MinimumAmountOnSequencer:       DefaultMinimumAmountOnSequencer,
-		MaxNumberOfEndorsements:        DefaultMaxNumberOfEndorsements,
-		PreBranchConsolidationTicks:    DefaultPreBranchConsolidationTicks,
-		Description:                    "Proxima test ledger. Ver 0.1",
-	}
 }
 
 func (id *IdentityData) SetTickDuration(d time.Duration) {

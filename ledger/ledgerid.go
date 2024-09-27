@@ -54,9 +54,8 @@ type (
 		// before the slot boundary. It means, sequencer transaction can have only one input, its own predecessor
 		// for any transaction with timestamp ticks > MaxTickValueInSlot - PreBranchConsolidationTicks
 		// value 0 of PreBranchConsolidationTicks effectively means no constraint
-		PreBranchConsolidationTicks uint8
-		// TODO breaking: add PostBranchConsolidationTicks, search also 'afterBranchPaceMultiplier'
-		// PostBranchConsolidationTicks uint8
+		PreBranchConsolidationTicks  uint8
+		PostBranchConsolidationTicks uint8
 	}
 
 	// IdentityDataYAMLAble structure for canonical YAMLAble marshaling
@@ -75,6 +74,7 @@ type (
 		MinimumAmountOnSequencer       uint64 `yaml:"minimum_amount_on_sequencer"`
 		MaxNumberOfEndorsements        uint64 `yaml:"max_number_of_endorsements"`
 		PreBranchConsolidationTicks    uint8  `yaml:"pre_branch_consolidation_ticks"`
+		PostBranchConsolidationTicks   uint8  `yaml:"post_branch_consolidation_ticks"`
 		Description                    string `yaml:"description"`
 		// non-persistent, for control
 		GenesisControllerAddress string `yaml:"genesis_controller_address"`
@@ -107,6 +107,7 @@ func (id *IdentityData) Bytes() []byte {
 	_ = binary.Write(&buf, binary.BigEndian, id.MinimumAmountOnSequencer)
 	_ = binary.Write(&buf, binary.BigEndian, id.MaxNumberOfEndorsements)
 	_ = binary.Write(&buf, binary.BigEndian, id.PreBranchConsolidationTicks)
+	_ = binary.Write(&buf, binary.BigEndian, id.PostBranchConsolidationTicks)
 
 	return buf.Bytes()
 }
@@ -222,6 +223,11 @@ func IdentityDataFromBytes(data []byte) (*IdentityData, error) {
 		return nil, mkerr(err)
 	}
 
+	err = binary.Read(rdr, binary.BigEndian, &ret.PostBranchConsolidationTicks)
+	if err != nil {
+		return nil, mkerr(err)
+	}
+
 	if rdr.Len() > 0 {
 		return nil, mkerr(errors.New("not all bytes have been read"))
 	}
@@ -282,6 +288,17 @@ func (id *IdentityData) IsPreBranchConsolidationTimestamp(ts Time) bool {
 	return ts.Tick() > MaxTick-id.PreBranchConsolidationTicks
 }
 
+func (id *IdentityData) IsPostBranchConsolidationTimestamp(ts Time) bool {
+	return ts.Tick() >= id.PostBranchConsolidationTicks
+}
+
+func (id *IdentityData) EnsurePostBranchConsolidationConstraintTimestamp(ts Time) Time {
+	if id.IsPostBranchConsolidationTimestamp(ts) {
+		return ts
+	}
+	return NewLedgerTime(ts.Slot(), id.PostBranchConsolidationTicks)
+}
+
 func (id *IdentityData) String() string {
 	return string(id.YAMLAble().YAML())
 }
@@ -300,6 +317,7 @@ func (id *IdentityData) Lines(prefix ...string) *lines.Lines {
 		Add("Chain inflation opportunity slots: %v", id.ChainInflationOpportunitySlots).
 		Add("Ticks per inflation epoch: %s", util.Th(id.TicksPerInflationEpoch)).
 		Add("Pre-branch consolidation ticks: %v", id.PreBranchConsolidationTicks).
+		Add("Post-branch consolidation ticks: %v", id.PostBranchConsolidationTicks).
 		Add("Minimum amount on sequencer: %s", util.Th(id.MinimumAmountOnSequencer)).
 		Add("Transaction pace: %d", id.TransactionPace).
 		Add("Sequencer pace: %d", id.TransactionPaceSequencer).
@@ -326,6 +344,7 @@ func (id *IdentityData) YAMLAble() *IdentityDataYAMLAble {
 		MinimumAmountOnSequencer:       id.MinimumAmountOnSequencer,
 		MaxNumberOfEndorsements:        id.MaxNumberOfEndorsements,
 		PreBranchConsolidationTicks:    id.PreBranchConsolidationTicks,
+		PostBranchConsolidationTicks:   id.PostBranchConsolidationTicks,
 		BootstrapChainID:               chainID.StringHex(),
 		Description:                    id.Description,
 	}
@@ -406,6 +425,7 @@ func (id *IdentityDataYAMLAble) stateIdentityData() (*IdentityData, error) {
 	ret.MinimumAmountOnSequencer = id.MinimumAmountOnSequencer
 	ret.MaxNumberOfEndorsements = id.MaxNumberOfEndorsements
 	ret.PreBranchConsolidationTicks = id.PreBranchConsolidationTicks
+	ret.PostBranchConsolidationTicks = id.PostBranchConsolidationTicks
 	ret.Description = id.Description
 
 	// control
