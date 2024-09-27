@@ -117,7 +117,7 @@ func (s *Snapshot) doSnapshot() {
 	if err != nil {
 		s.Log().Errorf("[snapshot] failed to save snapshot: %v", err)
 	} else {
-		s.Log().Infof("[snapshot] snapshot has been saved to %s.\n%s\nBranch data: %s",
+		s.Log().Infof("[snapshot] snapshot has been saved to %s.\n%s\nBranch data:\n%s",
 			fname, stats.Lines("             ").String(), snapshotBranch.Lines("             ").String())
 		s.lastSnapshotBranchID = snapshotBranch.Stem.ID.TransactionID()
 	}
