@@ -123,7 +123,7 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 			ID:    id,
 			Addrs: []multiaddr.Multiaddr{remote},
 		}
-		ps.Log().Infof("[peering] incoming peer request from %s. Add new dynamic peer", ShortPeerIDString(id))
+		ps.Log().Infof("[peering] incoming peer request. Add new dynamic peer %s", id.String())
 		ps._addPeer(addrInfo, "", false)
 	})
 	if exit {

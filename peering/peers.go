@@ -401,7 +401,6 @@ func (ps *Peers) _addPeer(addrInfo *peer.AddrInfo, name string, static bool) {
 	for _, a := range addrInfo.Addrs {
 		ps.host.Peerstore().AddAddr(addrInfo.ID, a, peerstore.PermanentAddrTTL)
 	}
-	ps.Log().Infof("[peering] added %s peer %s (name='%s')", p.staticOrDynamic(), ShortPeerIDString(addrInfo.ID), name)
 }
 
 // dropPeer removes dynamic peer and blacklists for 1 min. Ignores otherwise
