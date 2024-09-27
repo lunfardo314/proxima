@@ -107,10 +107,16 @@ type (
 		lastMsgReceivedFrom string
 		lastLoggedConnected bool // toggle
 		//
+		msgCounter   int
 		errorCounter int
 		// ring buffer with last clock differences
-		clockDifferences    [10]time.Duration
-		clockDifferencesIdx int
+		clockDifferences      [10]time.Duration
+		clockDifferencesIdx   int
+		clockDifferenceMedian time.Duration
+		// ranks
+		rankByLastMsgReceived int
+		rankByMsgCounter      int
+		rankByClockDifference int
 	}
 
 	outMsgData struct {
@@ -243,13 +249,18 @@ func New(env environment, cfg *Config) (*Peers, error) {
 
 	ret.registerMetrics()
 
-	env.RepeatInBackground(Name+"_blacklist_cleanup", time.Second, func() bool {
+	env.RepeatInBackground(Name+"_blacklist_cleanup", 2*time.Second, func() bool {
 		ret.cleanBlacklist()
 		return true
 	})
 
 	env.RepeatInBackground(Name+"_update_peer_metrics", 2*time.Second, func() bool {
 		ret.updatePeerMetrics(ret.peerStats())
+		return true
+	})
+
+	env.RepeatInBackground(Name+"_adjust_ranks", 1*time.Second, func() bool {
+		ret.adjustRanks()
 		return true
 	})
 
@@ -560,20 +571,11 @@ func (p *Peer) staticOrDynamic() string {
 func (p *Peer) _evidenceActivity(src string) {
 	p.lastMsgReceived = time.Now()
 	p.lastMsgReceivedFrom = src
+	p.msgCounter++
 }
 
 func (p *Peer) _evidenceClockDifference(diff time.Duration) {
 	p.clockDifferences[p.clockDifferencesIdx] = diff
 	p.clockDifferencesIdx = (p.clockDifferencesIdx + 1) % len(p.clockDifferences)
-}
-
-// avgClockDifference calculates average over latest clock differences
-// In the beginning it is 0
-func (p *Peer) avgClockDifference() time.Duration {
-	var ret time.Duration
-
-	for _, d := range p.clockDifferences {
-		ret += d
-	}
-	return ret / time.Duration(len(p.clockDifferences))
+	p.clockDifferenceMedian = util.Median(p.clockDifferences[:])
 }

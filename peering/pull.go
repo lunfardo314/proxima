@@ -134,9 +134,9 @@ func (ps *Peers) _isPullTarget(p *Peer) bool {
 	if p.ignoresPullRequests {
 		return false
 	}
-	if p._isDead() {
-		return false
-	}
+	//if p._isDead() {
+	//	return false
+	//}
 	return true
 }
 

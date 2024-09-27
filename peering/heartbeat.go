@@ -8,7 +8,6 @@ import (
 
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
-	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
 	"github.com/multiformats/go-multiaddr"
 	"golang.org/x/exp/maps"
@@ -223,18 +222,17 @@ func (ps *Peers) checkClockDiffs() {
 	logLines := lines.New()
 	warn := false
 	for _, p := range ps.peers {
-		d := util.Median(p.clockDifferences[:])
 		a := "static"
 		if !p.isStatic {
 			a = "dynamic"
 		}
-		if d > clockTolerance/2 {
-			logLines.Add("%s(%s): %v", ShortPeerIDString(p.id), a, d)
+		if p.clockDifferenceMedian > clockTolerance/2 {
+			logLines.Add("%s(%s): %v", ShortPeerIDString(p.id), a, p.clockDifferenceMedian)
 			warn = true
 		}
-		if d > clockTolerance {
-			ps._dropPeer(p, "clock tolerance")
-		}
+		//if p.clockDifferenceMedian > clockTolerance {
+		//	ps._dropPeer(p, "clock tolerance")
+		//}
 	}
 	if warn {
 		ps.Log().Warnf("peers with clock difference median > 1/2 tolerance (%d): {%s}", clockTolerance, logLines.Join(", "))
