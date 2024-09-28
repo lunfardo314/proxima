@@ -28,7 +28,7 @@ type (
 		global.NodeGlobal
 		StateStore() global.StateStore
 		TxBytesStore() global.TxBytesStore
-		PullFromRandomPeers(nPeers int, txid *ledger.TransactionID) int
+		PullFromNPeers(nPeers int, txid *ledger.TransactionID) int
 		GetOwnSequencerID() *ledger.ChainID
 	}
 	Workflow struct {

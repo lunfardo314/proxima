@@ -105,8 +105,6 @@ type (
 		whenAdded             time.Time
 		lastHeartbeatReceived time.Time
 		lastLoggedConnected   bool // toggle
-		//
-		errorCounter int
 		// ring buffer with last clock differences
 		clockDifferences      [10]time.Duration
 		clockDifferencesIdx   int
@@ -256,7 +254,7 @@ func New(env environment, cfg *Config) (*Peers, error) {
 		return true
 	})
 
-	env.RepeatInBackground(Name+"_adjust_ranks", 1*time.Second, func() bool {
+	env.RepeatInBackground(Name+"_adjust_ranks", 500*time.Millisecond, func() bool {
 		ret.adjustRanks()
 		return true
 	})

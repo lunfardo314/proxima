@@ -48,7 +48,6 @@ func (ps *Peers) pullStreamHandler(stream network.Stream) {
 		if err != nil {
 			err = fmt.Errorf("pull: error while reading message from peer %s: %v", id.String(), err)
 			ps.Log().Error(err)
-			p.errorCounter++
 			_ = stream.Close()
 			return
 		}
@@ -99,13 +98,12 @@ func (ps *Peers) sendPullTransactionToPeer(id peer.ID, txid ledger.TransactionID
 	}, id, ps.lppProtocolPull)
 }
 
-// PullTransactionsFromRandomPeers sends pull request to the random peer which has txStore
+// PullTransactionsFromNPeers sends pull request to the random peer which has txStore
 // Return number of peer pull request was sent to
-func (ps *Peers) PullTransactionsFromRandomPeers(nPeers int, txid ledger.TransactionID) int {
+func (ps *Peers) PullTransactionsFromNPeers(nPeers int, txid ledger.TransactionID) int {
 	util.Assertf(nPeers >= 1, "nPeers")
 
-	//targets := ps.randomPullTargets(nPeers)
-	targets := ps.choosePullTargets(nPeers)
+	targets := ps.chooseBestNPullTargets(nPeers)
 	for _, rndPeerID := range targets {
 		ps.sendPullTransactionToPeer(rndPeerID, txid)
 	}

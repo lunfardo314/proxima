@@ -49,18 +49,18 @@ type Global struct {
 	attachmentTimeMilliseconds prometheus.Gauge
 	attachmentsCounter         prometheus.Counter
 	// transaction pull parameters
-	txPullRepeatPeriod    time.Duration
-	txPullMaxAttempts     int
-	txPullFromRandomPeers int
+	txPullRepeatPeriod time.Duration
+	txPullMaxAttempts  int
+	txPullFromPeers    int
 }
 
 var knownGeneralPurposeGauges = set.New[string]().Insert("att", "wait", "call", "store", "prop", "close")
 
 // PullTimeout maximum time allowed for the virtual txid become transaction (full vertex)
 const (
-	PullRepeatPeriodDefault       = 2 * time.Second
-	PullMaxAttemptsDefault        = 60
-	PullFromNumRandomPeersDefault = 2
+	PullRepeatPeriodDefault = 2 * time.Second
+	PullMaxAttemptsDefault  = 60
+	PullFromNumPeersDefault = 2
 )
 
 const TraceTag = "global"
@@ -120,7 +120,7 @@ func NewFromConfig() *Global {
 		ret.txPullMaxAttempts = v
 	}
 	if v := viper.GetInt("transaction_pull.from_random_peers"); v > 0 {
-		ret.txPullFromRandomPeers = v
+		ret.txPullFromPeers = v
 	}
 	return ret
 }
@@ -132,21 +132,21 @@ func NewDefault() *Global {
 func _new(logLevel zapcore.Level, outputs []string, bootstrap bool) *Global {
 	ctx, cancelFun := context.WithCancel(context.Background())
 	ret := &Global{
-		ctx:                   ctx,
-		logVerbosity:          1,
-		metrics:               prometheus.NewRegistry(),
-		stopFun:               cancelFun,
-		SugaredLogger:         NewLogger("", logLevel, outputs, ""),
-		traceTags:             set.New[string](),
-		stopOnce:              &sync.Once{},
-		logStopOnce:           &sync.Once{},
-		components:            set.New[string](),
-		txTraceIDs:            make(map[ledger.TransactionID]time.Time),
-		bootstrapMode:         bootstrap,
-		counters:              make(map[string]int),
-		txPullRepeatPeriod:    PullRepeatPeriodDefault,
-		txPullMaxAttempts:     PullMaxAttemptsDefault,
-		txPullFromRandomPeers: PullFromNumRandomPeersDefault,
+		ctx:                ctx,
+		logVerbosity:       1,
+		metrics:            prometheus.NewRegistry(),
+		stopFun:            cancelFun,
+		SugaredLogger:      NewLogger("", logLevel, outputs, ""),
+		traceTags:          set.New[string](),
+		stopOnce:           &sync.Once{},
+		logStopOnce:        &sync.Once{},
+		components:         set.New[string](),
+		txTraceIDs:         make(map[ledger.TransactionID]time.Time),
+		bootstrapMode:      bootstrap,
+		counters:           make(map[string]int),
+		txPullRepeatPeriod: PullRepeatPeriodDefault,
+		txPullMaxAttempts:  PullMaxAttemptsDefault,
+		txPullFromPeers:    PullFromNumPeersDefault,
 	}
 	ret.registerMetrics()
 	return ret
@@ -507,5 +507,5 @@ func (l *Global) AttachmentFinished(started ...time.Time) {
 }
 
 func (l *Global) TxPullParameters() (time.Duration, int, int) {
-	return l.txPullRepeatPeriod, l.txPullMaxAttempts, l.txPullFromRandomPeers
+	return l.txPullRepeatPeriod, l.txPullMaxAttempts, l.txPullFromPeers
 }

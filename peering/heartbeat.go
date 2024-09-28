@@ -132,11 +132,6 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 	if msgData, err = readFrame(stream); err != nil {
 		ps.Log().Errorf("[peering] hb: error while reading message from peer %s: err='%v'. Ignore", ShortPeerIDString(id), err)
 		// ignore
-		ps.withPeer(id, func(p *Peer) {
-			if p != nil {
-				p.errorCounter++
-			}
-		})
 		_ = stream.Close()
 		return
 	}

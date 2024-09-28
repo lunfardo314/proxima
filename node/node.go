@@ -87,8 +87,8 @@ func (p *ProximaNode) TxBytesStore() global.TxBytesStore {
 	return p.txBytesStore
 }
 
-func (p *ProximaNode) PullFromRandomPeers(nPeers int, txid *ledger.TransactionID) int {
-	return p.peers.PullTransactionsFromRandomPeers(nPeers, *txid)
+func (p *ProximaNode) PullFromNPeers(nPeers int, txid *ledger.TransactionID) int {
+	return p.peers.PullTransactionsFromNPeers(nPeers, *txid)
 }
 
 func (p *ProximaNode) GetOwnSequencerID() *ledger.ChainID {

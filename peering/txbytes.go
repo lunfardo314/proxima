@@ -34,8 +34,6 @@ func (ps *Peers) gossipStreamHandler(stream network.Stream) {
 			//_ = stream.Reset()
 			err = fmt.Errorf("gossip: error while reading message from peer %s: %v", id.String(), err)
 			ps.Log().Error(err)
-			p.errorCounter++
-			//ps._dropPeer(p, err.Error())
 			_ = stream.Close()
 			return
 		}

@@ -86,7 +86,7 @@ type (
 		CounterLines(prefix ...string) *lines.Lines
 		AttachmentFinished(started ...time.Time)
 
-		// TxPullParameters repeat after period, max attempts, num random peers
+		// TxPullParameters repeat after period, max attempts, num peers
 		TxPullParameters() (time.Duration, int, int)
 	}
 
