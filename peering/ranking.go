@@ -33,19 +33,13 @@ func (p *Peer) rank() int {
 	return p.rankByLastHBReceived + p.rankByClockDifference
 }
 
-func (ps *Peers) _pullTargets() []*Peer {
+func (ps *Peers) _pullTargetsByRankDesc() []*Peer {
 	ret := make([]*Peer, 0)
-	ps.forEachPeerRLock(func(p *Peer) bool {
+	for _, p := range ps.peers {
 		if ps._isPullTarget(p) {
 			ret = append(ret, p)
 		}
-		return true
-	})
-	return ret
-}
-
-func (ps *Peers) _pullTargetsByRankDesc() []*Peer {
-	ret := ps._pullTargets()
+	}
 	sort.Slice(ret, func(i, j int) bool {
 		return ret[i].rank() > ret[j].rank()
 	})
