@@ -57,14 +57,14 @@ func (ps *Peers) logConnectionStatusIfNeeded(id peer.ID) {
 		}
 		if p._isDead() && p.lastLoggedConnected {
 			ps.Log().Infof("[peering] LOST CONNECTION with %s peer %s ('%s'). Host (self): %s",
-				p.staticOrDynamic(), ShortPeerIDString(id), p.name, ShortPeerIDString(ps.host.ID()))
+				util.Cond(p.isStatic, "static", "dynamic"), ShortPeerIDString(id), p.name, ShortPeerIDString(ps.host.ID()))
 			p.lastLoggedConnected = false
 			return
 		}
 
 		if p._isAlive() && !p.lastLoggedConnected {
-			ps.Log().Infof("[peering] CONNECTED to %s peer %s ('%s'), msg src '%s'. Host (self): %s",
-				p.staticOrDynamic(), ShortPeerIDString(id), p.name, p.lastMsgReceivedFrom, ShortPeerIDString(ps.host.ID()))
+			ps.Log().Infof("[peering] CONNECTED to %s peer %s ('%s'). Host (self): %s",
+				util.Cond(p.isStatic, "static", "dynamic"), ShortPeerIDString(id), p.name, ShortPeerIDString(ps.host.ID()))
 			p.lastLoggedConnected = true
 		}
 
@@ -156,7 +156,7 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 		if p == nil {
 			return
 		}
-		p._evidenceActivity("hb")
+		p.lastHeartbeatReceived = time.Now()
 		p.ignoresPullRequests = hbInfo.ignoresPullRequests
 		p._evidenceClockDifference(time.Since(hbInfo.clock))
 	})

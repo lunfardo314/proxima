@@ -81,7 +81,6 @@ func (ps *Peers) processPullFrame(msgData []byte, p *Peer) (func(), error) {
 		if err != nil {
 			return nil, err
 		}
-		p._evidenceActivity("pullTx")
 		fun := ps.onReceivePullTx
 		callAfter = func() {
 			fun(p.id, txLst)
@@ -105,7 +104,8 @@ func (ps *Peers) sendPullTransactionToPeer(id peer.ID, txid ledger.TransactionID
 func (ps *Peers) PullTransactionsFromRandomPeers(nPeers int, txid ledger.TransactionID) int {
 	util.Assertf(nPeers >= 1, "nPeers")
 
-	targets := ps.randomPullTargets(nPeers)
+	//targets := ps.randomPullTargets(nPeers)
+	targets := ps.choosePullTargets(nPeers)
 	for _, rndPeerID := range targets {
 		ps.sendPullTransactionToPeer(rndPeerID, txid)
 	}

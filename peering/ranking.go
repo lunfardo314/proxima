@@ -15,21 +15,21 @@ func (ps *Peers) adjustRanks() {
 
 	sorted := maps.Values(ps.peers)
 
-	// by lastMsgReceived
+	// by lastHeartbeatReceived
 	sort.Slice(sorted, func(i, j int) bool {
-		return sorted[i].lastMsgReceived.Before(sorted[j].lastMsgReceived)
+		return sorted[i].lastHeartbeatReceived.Before(sorted[j].lastHeartbeatReceived)
 	})
 	for i, p := range sorted {
-		p.rankByLastMsgReceived = i
+		p.rankByLastHBReceived = i
 	}
 
-	// by msg counter
-	sort.Slice(sorted, func(i, j int) bool {
-		return sorted[i].msgCounter < sorted[j].msgCounter
-	})
-	for i, p := range sorted {
-		p.rankByMsgCounter = i
-	}
+	//// by msg counter
+	//sort.Slice(sorted, func(i, j int) bool {
+	//	return sorted[i].msgCounter < sorted[j].msgCounter
+	//})
+	//for i, p := range sorted {
+	//	p.rankByMsgCounter = i
+	//}
 
 	// by clockDifferenceMedian
 	sort.Slice(sorted, func(i, j int) bool {
@@ -40,18 +40,53 @@ func (ps *Peers) adjustRanks() {
 	}
 
 	// by errors
-	sort.Slice(sorted, func(i, j int) bool {
-		return sorted[i].errorCounter > sorted[j].errorCounter
-	})
-	for i, p := range sorted {
-		p.rankByErrors = i
-	}
+	//sort.Slice(sorted, func(i, j int) bool {
+	//	return sorted[i].errorCounter > sorted[j].errorCounter
+	//})
+	//for i, p := range sorted {
+	//	p.rankByErrors = i
+	//}
 
 }
 
 func (p *Peer) rank() int {
-	//return p.rankByLastMsgReceived + p.rankByMsgCounter + p.rankByErrors + (3*p.rankByClockDifference)/2
-	return p.rankByLastMsgReceived + p.rankByClockDifference
+	//return p.rankByLastHBReceived + p.rankByMsgCounter + p.rankByErrors + (3*p.rankByClockDifference)/2
+	return p.rankByLastHBReceived + p.rankByClockDifference
+}
+
+func (ps *Peers) _pullTargets() []*Peer {
+	ret := make([]*Peer, 0)
+	ps.forEachPeerRLock(func(p *Peer) bool {
+		if ps._isPullTarget(p) {
+			ret = append(ret, p)
+		}
+		return true
+	})
+	return ret
+}
+
+func (ps *Peers) _pullTargetsByRankDesc() []*Peer {
+	ret := ps._pullTargets()
+	sort.Slice(ret, func(i, j int) bool {
+		return ret[i].rank() > ret[j].rank()
+	})
+	return ret
+}
+
+func (ps *Peers) choosePullTargets(n int) []peer.ID {
+	ps.mutex.RLock()
+	defer ps.mutex.RUnlock()
+
+	candidates := ps._pullTargetsByRankDesc()
+	if len(candidates) > n {
+		candidates = candidates[:n]
+	}
+
+	ret := make([]peer.ID, 0)
+	for _, p := range candidates {
+		ret = append(ret, p.id)
+	}
+	return ret
 }
 
 func (ps *Peers) randomPullTargets(n int) []peer.ID {

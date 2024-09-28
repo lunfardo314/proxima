@@ -60,7 +60,6 @@ func (ps *Peers) gossipStreamHandler(stream network.Stream) {
 
 		_ = stream.Close()
 
-		p._evidenceActivity("gossip")
 		callAfter = func() { ps.onReceiveTx(id, txBytes, metadata) }
 	})
 

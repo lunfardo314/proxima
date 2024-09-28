@@ -98,26 +98,22 @@ type (
 	}
 
 	Peer struct {
-		id                  peer.ID
-		name                string
-		isStatic            bool // statically pre-configured (manual peering)
-		ignoresPullRequests bool // from hb info
-		whenAdded           time.Time
-		lastMsgReceived     time.Time
-		lastMsgReceivedFrom string
-		lastLoggedConnected bool // toggle
+		id                    peer.ID
+		name                  string
+		isStatic              bool // statically pre-configured (manual peering)
+		ignoresPullRequests   bool // from hb info
+		whenAdded             time.Time
+		lastHeartbeatReceived time.Time
+		lastLoggedConnected   bool // toggle
 		//
-		msgCounter   int
 		errorCounter int
 		// ring buffer with last clock differences
 		clockDifferences      [10]time.Duration
 		clockDifferencesIdx   int
 		clockDifferenceMedian time.Duration
 		// ranks
-		rankByLastMsgReceived int
-		rankByMsgCounter      int
+		rankByLastHBReceived  int
 		rankByClockDifference int
-		rankByErrors          int
 	}
 
 	outMsgData struct {
@@ -553,20 +549,7 @@ func (ps *Peers) IsAlive(id peer.ID) (isAlive bool) {
 }
 
 func (p *Peer) _isAlive() bool {
-	return time.Since(p.lastMsgReceived) < aliveDuration
-}
-
-func (p *Peer) staticOrDynamic() string {
-	if p.isStatic {
-		return "static"
-	}
-	return "dynamic"
-}
-
-func (p *Peer) _evidenceActivity(src string) {
-	p.lastMsgReceived = time.Now()
-	p.lastMsgReceivedFrom = src
-	p.msgCounter++
+	return time.Since(p.lastHeartbeatReceived) < aliveDuration
 }
 
 func (p *Peer) _evidenceClockDifference(diff time.Duration) {
