@@ -61,16 +61,15 @@ func (ps *Peers) randomPullTargets(n int) []peer.ID {
 func (ps *Peers) pullTargetsRanked() ([]peer.ID, []int) {
 	ret := make([]peer.ID, 0)
 	retRankCumulative := make([]int, 0)
-	i := 0
 	ps.forEachPeerRLock(func(p *Peer) bool {
 		if !ps._isPullTarget(p) {
 			return true
 		}
 		r := p.rank()
-		if i == 0 {
+		if l := len(retRankCumulative); l == 0 {
 			retRankCumulative = append(retRankCumulative, r)
 		} else {
-			retRankCumulative = append(retRankCumulative, retRankCumulative[i-1]+r)
+			retRankCumulative = append(retRankCumulative, retRankCumulative[l-1]+r)
 		}
 		ret = append(ret, p.id)
 		return true
