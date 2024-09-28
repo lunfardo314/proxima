@@ -50,7 +50,8 @@ func (ps *Peers) adjustRanks() {
 }
 
 func (p *Peer) rank() int {
-	return p.rankByLastMsgReceived + p.rankByMsgCounter + p.rankByErrors + (3*p.rankByClockDifference)/2
+	//return p.rankByLastMsgReceived + p.rankByMsgCounter + p.rankByErrors + (3*p.rankByClockDifference)/2
+	return p.rankByLastMsgReceived + p.rankByClockDifference
 }
 
 func (ps *Peers) randomPullTargets(n int) []peer.ID {
