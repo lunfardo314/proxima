@@ -157,7 +157,7 @@ func ReportTxInclusion(txid ledger.TransactionID, poll time.Duration, maxSlots .
 
 		slotNow := ledger.TimeNow().Slot()
 		if len(maxSlots) > 0 && maxSlots[0] < slotNow-startSlot {
-			Infof("----- failed to reach finality in %s slots", maxSlots[0])
+			Infof("----- failed to reach finality in %d slots", maxSlots[0])
 			return
 		}
 	}
