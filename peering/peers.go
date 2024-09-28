@@ -260,10 +260,10 @@ func New(env environment, cfg *Config) (*Peers, error) {
 		return true
 	})
 
-	//env.RepeatInBackground(Name+"_adjust_ranks", 1*time.Second, func() bool {
-	//	ret.adjustRanks()
-	//	return true
-	//})
+	env.RepeatInBackground(Name+"_adjust_ranks", 1*time.Second, func() bool {
+		ret.adjustRanks()
+		return true
+	})
 
 	env.RepeatInBackground("peering_clock_tolerance_loop", 2*clockTolerance, func() bool {
 		ret.logBigClockDiffs()
