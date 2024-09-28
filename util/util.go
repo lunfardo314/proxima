@@ -298,3 +298,10 @@ func CallWithTimeout(ctx context.Context, timeout time.Duration, fun, onTimeout 
 	fun()
 	cancel()
 }
+
+func Cond[T any](cond bool, ifTrue, ifFalse T) T {
+	if cond {
+		return ifTrue
+	}
+	return ifFalse
+}

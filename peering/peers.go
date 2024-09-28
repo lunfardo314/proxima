@@ -117,6 +117,7 @@ type (
 		rankByLastMsgReceived int
 		rankByMsgCounter      int
 		rankByClockDifference int
+		rankByErrors          int
 	}
 
 	outMsgData struct {
@@ -150,7 +151,7 @@ const (
 	// positive heartbeat message latency between peers
 	// In any case nodes has interest to sync their clocks with global reference.
 	// This constant indicates when to drop the peer
-	clockTolerance = 8 * time.Second
+	clockTolerance = 4 * time.Second
 
 	// if the node is bootstrap, and it has configured less than numMaxDynamicPeersForBootNodeAtLeast
 	// of dynamic peer cap, use this instead
@@ -264,6 +265,11 @@ func New(env environment, cfg *Config) (*Peers, error) {
 		return true
 	})
 
+	env.RepeatInBackground("peering_clock_tolerance_loop", 2*clockTolerance, func() bool {
+		ret.logBigClockDiffs()
+		return true
+	}, true)
+
 	env.Log().Infof("[peering] initialized successfully")
 	return ret, nil
 }
@@ -352,11 +358,6 @@ func (ps *Peers) Run() {
 	ps.host.SetStreamHandler(ps.lppProtocolHeartbeat, ps.heartbeatStreamHandler)
 
 	ps.startHeartbeat()
-
-	ps.RepeatInBackground("peering_clock_tolerance_loop", 2*clockTolerance, func() bool {
-		ps.checkClockDiffs()
-		return true
-	}, true)
 
 	if ps.isAutopeeringEnabled() {
 		ps.startAutopeering()
@@ -536,12 +537,6 @@ func (ps *Peers) cleanBlacklist() {
 	for _, id := range toDelete {
 		delete(ps.blacklist, id)
 	}
-}
-
-func (ps *Peers) _isDead(id peer.ID) bool {
-	p := ps._getPeer(id)
-	util.Assertf(p != nil, "_isDead: peer %s bot found", func() string { return ShortPeerIDString(id) })
-	return p._isDead()
 }
 
 func (p *Peer) _isDead() bool {

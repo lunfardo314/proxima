@@ -20,7 +20,7 @@ func (ps *Peers) startAutopeering() {
 
 	ps.RepeatInBackground("autopeering_loop", checkPeersEvery, func() bool {
 		ps.discoverPeersIfNeeded()
-		ps.drop1ExcessPeerIfNeeded() // dropping excess dynamic peers one-by-one
+		ps.dropExcessPeersIfNeeded() // dropping excess dynamic peers one-by-one
 		return true
 	}, true)
 }
@@ -77,45 +77,27 @@ func (ps *Peers) discoverPeersIfNeeded() {
 	}
 }
 
-func (ps *Peers) deadDynamicPeers() []peer.ID {
-	ret := make([]peer.ID, 0)
-	ps.forEachPeerRLock(func(p *Peer) bool {
-		if !p.isStatic && p._isDead() {
-			ret = append(ret, p.id)
-		}
-		return true
-	})
-	return ret
-}
-
-func (ps *Peers) drop1ExcessPeerIfNeeded() {
-	if _, aliveDynamic := ps.NumAlive(); aliveDynamic <= ps.cfg.MaxDynamicPeers {
-		return
-	}
-
+func (ps *Peers) dropExcessPeersIfNeeded() {
 	ps.mutex.Lock()
 	defer ps.mutex.Unlock()
 
-	sortedPeers := ps._sortedDynamicPeersByActivityAsc()
-	for _, p := range sortedPeers {
-		if p._isDead() {
-			// drop the oldest dead
-			ps._dropPeer(p, "excess peer (dead)")
-			return
-		}
+	sortedDynamicPeers := ps._sortedDynamicPeersByRankAsc()
+	if len(sortedDynamicPeers) <= ps.cfg.MaxDynamicPeers {
+		return
 	}
-	if len(sortedPeers) > 0 {
-		// just drop the oldest
-		ps._dropPeer(sortedPeers[0], "excess peer (errors/oldest)")
+	for _, p := range sortedDynamicPeers[:len(sortedDynamicPeers)-ps.cfg.MaxDynamicPeers] {
+		if time.Since(p.whenAdded) > gracePeriodAfterAdded {
+			ps._dropPeer(p, "excess peer (by rank)")
+		}
 	}
 }
 
-func (ps *Peers) _sortedDynamicPeersByActivityAsc() []*Peer {
+func (ps *Peers) _sortedDynamicPeersByRankAsc() []*Peer {
 	peers := util.ValuesFiltered(ps.peers, func(p *Peer) bool {
 		return !p.isStatic
 	})
 	sort.Slice(peers, func(i, j int) bool {
-		return peers[i].errorCounter > peers[j].errorCounter || peers[i].whenAdded.Before(peers[j].whenAdded)
+		return peers[i].rank() < peers[j].rank()
 	})
 	return peers
 }

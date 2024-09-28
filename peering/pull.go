@@ -105,7 +105,7 @@ func (ps *Peers) sendPullTransactionToPeer(id peer.ID, txid ledger.TransactionID
 func (ps *Peers) PullTransactionsFromRandomPeers(nPeers int, txid ledger.TransactionID) int {
 	util.Assertf(nPeers >= 1, "nPeers")
 
-	targets := ps.randomPullPeers(nPeers)
+	targets := ps.randomPullTargets(nPeers)
 	for _, rndPeerID := range targets {
 		ps.sendPullTransactionToPeer(rndPeerID, txid)
 	}
@@ -128,41 +128,14 @@ func decodePullTransactionMsg(data []byte) (ledger.TransactionID, error) {
 }
 
 func (ps *Peers) _isPullTarget(p *Peer) bool {
-	if _, inBlackList := ps.blacklist[p.id]; inBlackList {
-		return false
-	}
-	if p.ignoresPullRequests {
-		return false
-	}
-	//if p._isDead() {
-	//	return false
-	//}
-	return true
-}
-
-func (ps *Peers) pullTxTargets() []peer.ID {
-	ret := make([]peer.ID, 0)
-	ps.forEachPeerRLock(func(p *Peer) bool {
-		if ps._isPullTarget(p) {
-			ret = append(ret, p.id)
-		}
-		return true
-	})
-	return ret
-}
-
-func (ps *Peers) randomPullPeers(nPeers int) []peer.ID {
-	util.Assertf(nPeers >= 1, "nPeers >= 1")
-	targets := ps.pullTxTargets()
-	return util.RandomElements(nPeers, targets...)
+	_, inBlackList := ps.blacklist[p.id]
+	return !inBlackList && !p.ignoresPullRequests
 }
 
 // out message wrappers
-type (
-	_pullTransactions struct {
-		txid ledger.TransactionID
-	}
-)
+type _pullTransactions struct {
+	txid ledger.TransactionID
+}
 
 func (pt *_pullTransactions) Bytes() []byte { return encodePullTransactionMsg(pt.txid) }
 func (pt *_pullTransactions) SetNow()       {}

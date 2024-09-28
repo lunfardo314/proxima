@@ -11,11 +11,8 @@ import (
 
 func (ps *Peers) adjustRanks() {
 	ps.mutex.Lock()
-	ps._adjustRanks()
-	ps.mutex.Unlock()
-}
+	defer ps.mutex.Unlock()
 
-func (ps *Peers) _adjustRanks() {
 	sorted := maps.Values(ps.peers)
 
 	// by lastMsgReceived
@@ -41,10 +38,19 @@ func (ps *Peers) _adjustRanks() {
 	for i, p := range sorted {
 		p.rankByClockDifference = i
 	}
+
+	// by errors
+	sort.Slice(sorted, func(i, j int) bool {
+		return sorted[i].errorCounter > sorted[j].errorCounter
+	})
+	for i, p := range sorted {
+		p.rankByErrors = i
+	}
+
 }
 
 func (p *Peer) rank() int {
-	return p.rankByLastMsgReceived + p.rankByMsgCounter + p.rankByClockDifference
+	return p.rankByLastMsgReceived + p.rankByMsgCounter + p.rankByClockDifference + p.rankByErrors
 }
 
 func (ps *Peers) randomPullTargets(n int) []peer.ID {
@@ -72,7 +78,7 @@ func (ps *Peers) pullTargetsRanked() ([]peer.ID, []int) {
 	return ret, retRankCumulative
 }
 
-// random selection algorithm proportional to rank taken from https://en.wikipedia.org/wiki/Fitness_proportionate_selection
+// random selection algorithm proportional to the rank taken from https://en.wikipedia.org/wiki/Fitness_proportionate_selection
 
 func chooseRandomRankedPeers(n int, rankedPeers []peer.ID, cumulativeRank []int) []peer.ID {
 	util.Assertf(len(rankedPeers) == len(cumulativeRank), "len(rankedPeers)==len(cumulativeRank)")
@@ -81,7 +87,9 @@ func chooseRandomRankedPeers(n int, rankedPeers []peer.ID, cumulativeRank []int)
 		return rankedPeers
 	}
 	util.Assertf(n < len(rankedPeers), "n < len(rankedPeers)")
+
 	rndIdx := chooseRandomIndex(cumulativeRank)
+
 	util.Assertf(rndIdx < len(cumulativeRank), "rndIdx < len(cumulativeRank)")
 	if rndIdx+n > len(rankedPeers) {
 		rndIdx = len(rankedPeers) - n
