@@ -170,13 +170,12 @@ func New(env environment, cfg *Config) (*Peers, error) {
 	}
 	lppHost, err := libp2p.New(
 		libp2p.Identity(hostIDPrivateKey),
-		libp2p.ListenAddrStrings(fmt.Sprintf("/ip4/0.0.0.0/tcp/%d", cfg.HostPort)),
+
+		libp2p.ListenAddrStrings(fmt.Sprintf("/ip4/0.0.0.0/udp/%d/quic-v1", cfg.HostPort)),
 		libp2p.Transport(p2pquic.NewTransport),
-		libp2p.NoTransports, // disable TCP and other default transports
-		//libp2p.Transport(tcp.NewTCPTransport),
 		libp2p.NoSecurity,
 		libp2p.DisableRelay(),
-		libp2p.AddrsFactory(FilterAddresses(cfg.AllowLocalIPs)),
+		//libp2p.AddrsFactory(FilterAddresses(cfg.AllowLocalIPs)),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("unable create libp2p host: %w", err)
