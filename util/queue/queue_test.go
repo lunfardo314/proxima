@@ -151,3 +151,33 @@ func TestPriority(t *testing.T) {
 		require.EqualValues(t, 1, v)
 	}
 }
+
+func TestTwoQueues(t *testing.T) {
+	var q1, q2, q3 *Queue[int]
+
+	const limit = 999999
+
+	var counter atomic.Int32
+
+	stop := make(chan bool)
+	q1 = New[int](func(e int) {
+		if e+1 < limit {
+			q2.Push(e + 1)
+			counter.Inc()
+		} else {
+			close(stop)
+		}
+	})
+	q2 = New[int](func(e int) {
+		counter.Inc()
+		q3.Push(e + 1)
+	})
+	q3 = New[int](func(e int) {
+		counter.Inc()
+		q1.Push(e + 1)
+	})
+	q1.Push(0)
+	<-stop
+	t.Logf("----------\n%d", counter.Load())
+	require.EqualValues(t, limit, counter.Load())
+}
