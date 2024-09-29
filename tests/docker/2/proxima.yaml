@@ -23,8 +23,8 @@ peering:
   # for more info see https://docs.libp2p.io/concepts/fundamentals/addressing/
   peers:
     # Example -> boot: /ip4/127.0.0.1/tcp/4000/p2p/12D3KooWL32QkXc8ZuraMJkLaoZjRXBkJVjRz7sxGWYwmzBFig3M
-    boot: /ip4/172.16.238.10/tcp/4000/p2p/12D3KooWSEDuiViLCgy6RvzQWeziKk79aAMikGPFnMKjnLzv9TVi
-    friendlyPeer: /ip4/172.16.238.10/tcp/4000/p2p/12D3KooWSEDuiViLCgy6RvzQWeziKk79aAMikGPFnMKjnLzv9TVi
+    boot: /ip4/172.16.238.10/udp/4000/quic-v1/p2p/12D3KooWSEDuiViLCgy6RvzQWeziKk79aAMikGPFnMKjnLzv9TVi
+    friendlyPeer: /ip4/172.16.238.10/udp/4000/quic-v1/p2p/12D3KooWSEDuiViLCgy6RvzQWeziKk79aAMikGPFnMKjnLzv9TVi
 
   # Maximum number of peers which may be connected to via the automatic peer discovery
   # max_dynamic_peers > 0 means automatic peer discovery (autopeering) is enabled, otherwise disabled
