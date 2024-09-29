@@ -82,7 +82,7 @@ func Start(env Environment, peers *peering.Peers, opts ...ConfigOption) *Workflo
 	})
 
 	ret.peers.OnReceivePullTxRequest(func(from peer.ID, txid ledger.TransactionID) {
-		ret.SendTx(from, txid)
+		ret.SendTxQueued(from, txid)
 	})
 
 	return ret
@@ -99,7 +99,7 @@ func StartFromConfig(env Environment, peers *peering.Peers) *Workflow {
 	return Start(env, peers, opts...)
 }
 
-func (w *Workflow) SendTx(sendTo peer.ID, txid ledger.TransactionID) {
+func (w *Workflow) SendTxQueued(sendTo peer.ID, txid ledger.TransactionID) {
 	w.pullTxServer.Push(&pull_tx_server.Input{
 		TxID:   txid,
 		PeerID: sendTo,
