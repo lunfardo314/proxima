@@ -82,7 +82,10 @@ func Start(env Environment, peers *peering.Peers, opts ...ConfigOption) *Workflo
 	})
 
 	ret.peers.OnReceivePullTxRequest(func(from peer.ID, txid ledger.TransactionID) {
-		ret.SendTxQueued(from, txid)
+		ret.pullTxServer.Push(&pull_tx_server.Input{
+			TxID:   txid,
+			PeerID: from,
+		})
 	})
 
 	return ret
@@ -97,11 +100,4 @@ func StartFromConfig(env Environment, peers *peering.Peers) *Workflow {
 		opts = append(opts, OptionEnableSyncManager)
 	}
 	return Start(env, peers, opts...)
-}
-
-func (w *Workflow) SendTxQueued(sendTo peer.ID, txid ledger.TransactionID) {
-	w.pullTxServer.Push(&pull_tx_server.Input{
-		TxID:   txid,
-		PeerID: sendTo,
-	})
 }
