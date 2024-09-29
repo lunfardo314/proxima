@@ -157,7 +157,7 @@ func (a *milestoneAttacher) lazyRepeat(loopName string, fun func() vertex.Status
 	checkName := a.Name() + "_" + loopName
 	if enableDeadlockCatching {
 		checkpoint = checkpoints.New(func(name string) {
-			buf := make([]byte, math.MaxUint16)
+			buf := make([]byte, 2*math.MaxUint16)
 			runtime.Stack(buf, true)
 			a.Log().Fatalf(">>>>>>>> DEADLOCK suspected in the loop '%s' (stuck for %v):\n%s",
 				checkName, deadlockIndicationThreshold, string(buf))
