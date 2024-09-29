@@ -4,6 +4,7 @@ import (
 	"sort"
 
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/lunfardo314/proxima/util"
 	"golang.org/x/exp/maps"
 )
 
@@ -47,17 +48,25 @@ func (ps *Peers) _pullTargetsByRankDesc() []*Peer {
 }
 
 func (ps *Peers) chooseBestNPullTargets(n int) []peer.ID {
+	if n <= 0 {
+		return nil
+	}
 	ps.mutex.RLock()
 	defer ps.mutex.RUnlock()
 
 	candidates := ps._pullTargetsByRankDesc()
-	if len(candidates) > n {
-		candidates = candidates[:n]
-	}
 
 	ret := make([]peer.ID, 0)
-	for _, p := range candidates {
-		ret = append(ret, p.id)
+	if len(candidates) > n {
+		// first the best one, the rest random
+		ret = append(ret, candidates[0].id)
+		for _, p := range util.RandomElements(n-1, candidates[1:]...) {
+			ret = append(ret, p.id)
+		}
+	} else {
+		for _, p := range candidates {
+			ret = append(ret, p.id)
+		}
 	}
 	return ret
 }

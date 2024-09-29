@@ -16,31 +16,20 @@ all types of transactions, highlighting chains, stems, branches, orphanage, etc
 * Ledger explorer
   - Concept: web browser-based explorer. Mostly interacts with **TxStore**. 
 Search and explore UTXO tangle along various links, view each all kinds of transactions down to individual decompiled _EasyFL constraint source level_
-  - Implementation: 0%. Also lacks proper API
+  - Implementation: 0%. Also lacks proper API. Another problem is that currently transaction can be fully parsed only in Go environment, Because of EasyFL.
+EasyFL library needs rewrite to Rust and use as binary library or Wasm in other projects
 
 * Docker-ize
-  * Implementation ongoing. Significant progress
+  * Significant progress
 
 ## Node components
-* Auto-peering
-  * Implementation: 95% (mostly done, base version)
-* Metrics subsystem
-  * Concept: Prometheus metrics for node, ledger and sequencer. 
-  * Implementation: basic framework implemented, only few basic metrics
 * RocksDB database
   * Currently, Badger is used. Suboptimal. Replace it with RocksDB
 * Spam prevention
   * Concept: in head plus described in WP, 30%. Needs experimental development and design
   * Implementation: 10-20% (transaction pace constraints in the ledger is fully implemented)
-* TxStore as separate server 
-  * Concept: currently, TxStore is behind a very simple interface. The whole txStore can be put into separate 
-server to be shared by several nodes and ledger explorer. In head 60%
-  * Implementation: 0%. <-- low priority
-* Multi-state snapshots
-  * Concept: saving multi state DB starting from given slot. Restoring it and starting node from it as a baseline
-  * Implementation: 90%
 * Multi-state pruning
-  * Concept: most of the branch roots quickly become orphaned -> can be deleted from DB. In head 50%
+  * Concept: most of the branch roots quickly become orphaned -> can be deleted from DB
   * Implementation: 0%
 * Transaction store pruning
   * Concept: most of the transactions are not present into the final state -> can be deleted 
@@ -85,8 +74,7 @@ with backward compatibility via soft forks.
 
 * More advanced sequencer strategies with multiple endorsements
   * Concept: multi-endorsement strategies would contribute to the consensus convergence speed. In head 40%
-  * Implementation: 30% (implemented proposer strategy with 2 endorsements)
-
+  * Implementation: 60%. Currently, 4 different proposer strategies are used 
 ## Docs
 - Whitepaper 90%
 - How to run small testnet with outopeering: 80% 
