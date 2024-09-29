@@ -37,6 +37,10 @@ func (ps *Peers) gossipStreamHandler(stream network.Stream) {
 			_ = stream.Close()
 			return
 		}
+
+		ps.transactionsReceivedCounter.Inc()
+		ps.txBytesReceivedCounter.Add(float64(len(txBytesWithMetadata)))
+
 		metadataBytes, txBytes, err := txmetadata.SplitTxBytesWithMetadata(txBytesWithMetadata)
 		if err != nil {
 			// protocol violation

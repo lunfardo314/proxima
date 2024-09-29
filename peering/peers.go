@@ -25,7 +25,6 @@ import (
 	"github.com/lunfardo314/proxima/util/queue"
 	"github.com/lunfardo314/proxima/util/set"
 	"github.com/multiformats/go-multiaddr"
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/spf13/viper"
 	"golang.org/x/exp/maps"
 )
@@ -76,17 +75,8 @@ type (
 		rendezvousString     string
 		// queued message sender to peers
 		outQueue *queue.Queue[outMsgData]
-		// msg metrics
-		inMsgCounter    prometheus.Counter
-		outMsgCounter   prometheus.Counter
-		pullRequestsIn  prometheus.Counter
-		pullRequestsOut prometheus.Counter
-		// peers metrics
-		peersAll         prometheus.Gauge
-		peersStatic      prometheus.Gauge
-		peersDead        prometheus.Gauge
-		peersAlive       prometheus.Gauge
-		peersPullTargets prometheus.Gauge
+
+		metrics
 	}
 
 	peersStats struct {

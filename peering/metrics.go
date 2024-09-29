@@ -2,6 +2,25 @@ package peering
 
 import "github.com/prometheus/client_golang/prometheus"
 
+type metrics struct {
+	// msg metrics
+	inMsgCounter    prometheus.Counter
+	outMsgCounter   prometheus.Counter
+	pullRequestsIn  prometheus.Counter
+	pullRequestsOut prometheus.Counter
+
+	// peers metrics
+	peersAll         prometheus.Gauge
+	peersStatic      prometheus.Gauge
+	peersDead        prometheus.Gauge
+	peersAlive       prometheus.Gauge
+	peersPullTargets prometheus.Gauge
+
+	// txMsg metrics
+	transactionsReceivedCounter prometheus.Counter
+	txBytesReceivedCounter      prometheus.Counter
+}
+
 func (ps *Peers) registerMetrics() {
 	ps.inMsgCounter = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "proxima_peering_inMsgCounter",
@@ -43,6 +62,18 @@ func (ps *Peers) registerMetrics() {
 		Help: "number of possible pull targets",
 	})
 	ps.MetricsRegistry().MustRegister(ps.peersAll, ps.peersStatic, ps.peersDead, ps.peersAlive, ps.peersPullTargets)
+
+	// tx counters
+	ps.transactionsReceivedCounter = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "proxima_peering_txReceived",
+		Help: "counts number of received transaction messages",
+	})
+
+	ps.txBytesReceivedCounter = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "proxima_peering_txBytesReceived",
+		Help: "counts number of received transaction bytes",
+	})
+	ps.MetricsRegistry().MustRegister(ps.transactionsReceivedCounter, ps.txBytesReceivedCounter)
 }
 
 func (ps *Peers) peerStats() (ret peersStats) {
