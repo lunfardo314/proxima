@@ -17,7 +17,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/libp2p/go-libp2p/p2p/discovery/routing"
 	p2putil "github.com/libp2p/go-libp2p/p2p/discovery/util"
-	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
+	p2pquic "github.com/libp2p/go-libp2p/p2p/transport/quic"
 	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
@@ -171,7 +171,9 @@ func New(env environment, cfg *Config) (*Peers, error) {
 	lppHost, err := libp2p.New(
 		libp2p.Identity(hostIDPrivateKey),
 		libp2p.ListenAddrStrings(fmt.Sprintf("/ip4/0.0.0.0/tcp/%d", cfg.HostPort)),
-		libp2p.Transport(tcp.NewTCPTransport),
+		libp2p.Transport(p2pquic.NewTransport),
+		libp2p.NoTransports, // disable TCP and other default transports
+		//libp2p.Transport(tcp.NewTCPTransport),
 		libp2p.NoSecurity,
 		libp2p.DisableRelay(),
 		libp2p.AddrsFactory(FilterAddresses(cfg.AllowLocalIPs)),
