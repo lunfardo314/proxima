@@ -151,7 +151,7 @@ func (ps *Peers) sendHeartbeatToPeer(id peer.ID) {
 			respondsToPull = ps.staticPeers.Contains(id)
 		}
 	}
-	ps.Tracef(TraceTagHeartBeatSend, ">>>>> send to %s QUEUED", ShortPeerIDString(id))
+	//ps.Tracef(TraceTagHeartBeatSend, ">>>>> send to %s QUEUED", ShortPeerIDString(id))
 	ps.sendMsgOutQueued(&heartbeatInfo{
 		// time now will be set in the queue consumer
 		respondsToPullRequests: respondsToPull,
