@@ -25,6 +25,8 @@ const (
 	flagRespondsToPullRequests = byte(0b00000001)
 )
 
+const TraceTagHeartBeat = "peering_hb_recv"
+
 func heartbeatInfoFromBytes(data []byte) (heartbeatInfo, error) {
 	if len(data) != 8+1 {
 		return heartbeatInfo{}, fmt.Errorf("heartbeatInfoFromBytes: wrong data len")
@@ -123,16 +125,20 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 		return
 	}
 	_ = stream.Close()
-	p._evidenceHeartBeat(hbInfo)
+	ps._evidenceHeartBeat(p, hbInfo)
 }
 
-func (p *Peer) _evidenceHeartBeat(hbInfo heartbeatInfo) {
+func (ps *Peers) _evidenceHeartBeat(p *Peer, hbInfo heartbeatInfo) {
 	nowis := time.Now()
 	p.lastHeartbeatReceived = nowis
-	p.clockDifferences[p.clockDifferencesIdx] = nowis.Sub(hbInfo.clock)
+	diff := nowis.Sub(hbInfo.clock)
+	p.clockDifferences[p.clockDifferencesIdx] = diff
 	p.clockDifferencesIdx = (p.clockDifferencesIdx + 1) % len(p.clockDifferences)
-	p.clockDifferenceMedian = util.Median(p.clockDifferences[:])
+	m := util.Median(p.clockDifferences[:])
+	p.clockDifferenceMedian = m
 	p.respondsToPullRequests = hbInfo.respondsToPullRequests
+
+	ps.Tracef(TraceTagHeartBeat, "from %s: clock diff: %v, median: %v, alive: %v", ShortPeerIDString(p.id), diff, m, p._isAlive())
 }
 
 func (ps *Peers) sendHeartbeatToPeer(id peer.ID) {
