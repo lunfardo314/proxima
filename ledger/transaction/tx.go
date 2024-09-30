@@ -413,7 +413,7 @@ func (tx *Transaction) IDShortString() string {
 	return ledger.TransactionIDStringShort(tx.timestamp, tx.txHash, tx.sequencerMilestoneFlag)
 }
 
-func (tx *Transaction) IDVeryShort() string {
+func (tx *Transaction) IDVeryShortString() string {
 	return ledger.TransactionIDStringVeryShort(tx.timestamp, tx.txHash, tx.sequencerMilestoneFlag)
 }
 

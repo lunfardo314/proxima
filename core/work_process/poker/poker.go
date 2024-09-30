@@ -147,11 +147,11 @@ func (d *Poker) PokeAllWith(vid *vertex.WrappedTx) {
 //	for _, vid := range vids {
 //		lst := d.m[vid].waiting
 //		n := depdag.Node{
-//			ID:           vid.IDVeryShort(),
+//			ID:           vid.IDVeryShortString(),
 //			Dependencies: make([]string, 0, len(lst)),
 //		}
 //		for _, vidWaiting := range lst {
-//			n.Dependencies = append(n.Dependencies, vidWaiting.IDVeryShort())
+//			n.Dependencies = append(n.Dependencies, vidWaiting.IDVeryShortString())
 //		}
 //		nodes = append(nodes, n)
 //		if len(nodes) >= max {

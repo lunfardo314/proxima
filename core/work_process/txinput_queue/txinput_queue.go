@@ -9,7 +9,6 @@ import (
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/transaction"
-	"github.com/lunfardo314/proxima/util/bloomfilter"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -35,14 +34,8 @@ type (
 	TxInputQueue struct {
 		environment
 		*work_process.WorkProcess[Input]
-		// bloomFilterIncoming filters repeating transactions (with some probability of false positives)
-		bloomFilterIncoming *bloomfilter.Filter[ledger.TransactionIDVeryShort4]
-		// bloomFilterWanted is needed to prevent pulled transactions from being gossiped.
-		// It also prevents attack vector of defining wanted transaction by the pulling side,
-		// not by responding one
-		// Has small probability of false positives. In that case transaction will not be gossiped,
-		// so it will have to be pulled by nodes
-		bloomFilterWanted *bloomfilter.Filter[ledger.TransactionIDVeryShort4]
+		// bloom filter
+		inGate *inGate[ledger.TransactionIDVeryShort4]
 		// metrics
 		inputTxCounter        prometheus.Counter
 		pulledTxCounter       prometheus.Counter
@@ -60,20 +53,28 @@ const (
 )
 
 const (
-	Name                           = "txInputQueue"
-	bloomFilterIncomingTTLInSlots  = 120 // 20 min
-	bloomFilterRequestedTTLInSlots = 12  // 2 min
-	purgePeriod                    = 10 * time.Second
+	Name = "txInputQueue"
+
+	inGateBlackListTTLSlots = 60 // 10 min
+	inGateWhiteListTTLSlots = 6  // 1 min
+	inGateCleanupPeriod     = 10 * time.Second
 )
 
 func New(env environment) *TxInputQueue {
 	ret := &TxInputQueue{
-		environment:         env,
-		bloomFilterIncoming: bloomfilter.New[ledger.TransactionIDVeryShort4](env.Ctx(), bloomFilterIncomingTTLInSlots*ledger.L().ID.SlotDuration(), purgePeriod),
-		bloomFilterWanted:   bloomfilter.New[ledger.TransactionIDVeryShort4](env.Ctx(), bloomFilterRequestedTTLInSlots*ledger.L().ID.SlotDuration(), purgePeriod),
+		environment: env,
+		inGate: newInGate[ledger.TransactionIDVeryShort4](
+			inGateWhiteListTTLSlots*ledger.L().ID.SlotDuration(),
+			inGateBlackListTTLSlots*ledger.L().ID.SlotDuration(),
+		),
 	}
 	ret.WorkProcess = work_process.New[Input](env, Name, ret.consume)
 	ret.WorkProcess.Start()
+
+	ret.RepeatInBackground(Name+"_inFilterCleanup", inGateCleanupPeriod, func() bool {
+		ret.inGate.purge()
+		return true
+	})
 
 	ret.registerMetrics()
 	return ret
@@ -99,41 +100,32 @@ func (q *TxInputQueue) fromPeer(inp *Input) {
 		q.Log().Warn("TxInputQueue: %v", err)
 		return
 	}
-	metaData := inp.TxMetaData
-	if metaData == nil {
-		metaData = &txmetadata.TransactionMetadata{}
-	}
-
-	if hit := q.bloomFilterWanted.CheckAndDelete(tx.ID().VeryShortID4()); hit {
-		// pulled transaction arrived
-		q.bloomFilterIncoming.Add(tx.ID().VeryShortID4())
-		metaData.SourceTypeNonPersistent = txmetadata.SourceTypePulled
-		q.pulledTxCounter.Inc()
-
-		if err = q.TxInFromPeer(tx, metaData, inp.FromPeer); err != nil {
-			q.badTxCounter.Inc()
-			q.Log().Warn("TxInputQueue from peer %s: %v", inp.FromPeer.String(), err)
-		}
-		return
-	}
-
-	// check and update bloom filter
-	if hit := q.bloomFilterIncoming.CheckAndUpdate(tx.ID().VeryShortID4()); hit {
-		// filter hit, ignore transaction. May be rare false positive!!
+	pass, wanted := q.inGate.checkPass(tx.ID().VeryShortID4())
+	if !pass {
+		// repeating transaction
 		q.filterHitCounter.Inc()
 		return
 	}
 
-	// not in filter -> definitely new transaction
-
+	metaData := inp.TxMetaData
+	if metaData == nil {
+		metaData = &txmetadata.TransactionMetadata{}
+	}
+	if wanted {
+		// requested transaction
+		metaData.SourceTypeNonPersistent = txmetadata.SourceTypePulled
+	}
+	// new or pulled transaction
 	if err = q.TxInFromPeer(tx, metaData, inp.FromPeer); err != nil {
 		q.badTxCounter.Inc()
 		q.Log().Warn("TxInputQueue from peer %s: %v", inp.FromPeer.String(), err)
 		return
 	}
-	// gossiping all new pre-validated and not pulled transactions from peers
-	q.GossipTxBytesToPeers(inp.TxBytes, inp.TxMetaData, inp.FromPeer)
-	q.gossipedCounter.Inc()
+	if !wanted {
+		// gossiping all new pre-validated and not pulled transactions from peers
+		q.GossipTxBytesToPeers(inp.TxBytes, inp.TxMetaData, inp.FromPeer)
+		q.gossipedCounter.Inc()
+	}
 }
 
 func (q *TxInputQueue) fromAPI(inp *Input) {
@@ -141,6 +133,12 @@ func (q *TxInputQueue) fromAPI(inp *Input) {
 	if err != nil {
 		q.badTxCounter.Inc()
 		q.Log().Warn("TxInputQueue from API: %v", err)
+		return
+	}
+	pass, _ := q.inGate.checkPass(tx.ID().VeryShortID4())
+	if !pass {
+		// repeating transaction
+		q.filterHitCounter.Inc()
 		return
 	}
 	if err = q.TxInFromAPI(tx, inp.TraceFlag); err != nil {
@@ -189,7 +187,7 @@ func (q *TxInputQueue) registerMetrics() {
 // AddWantedTransaction adds transaction short id to the wanted filter.
 // It makes the transaction go directly for attachment without checking other filters and without gossiping
 func (q *TxInputQueue) AddWantedTransaction(txid *ledger.TransactionID) {
-	q.bloomFilterWanted.Add(txid.VeryShortID4())
+	q.inGate.addWanted(txid.VeryShortID4())
 }
 
 func (q *TxInputQueue) EvidenceNonSequencerTx() {
