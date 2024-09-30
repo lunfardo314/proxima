@@ -61,6 +61,8 @@ func (ps *Peers) discoverPeersIfNeeded() {
 	}
 	for _, a := range candidates {
 		ps.addPeer(&a, "", false)
+		ps.Log().Infof("[peering] added dynamic peer %s", a.ID.String())
+		ps.Tracef(TraceTagAutopeering, "added dynamic peer %s", a.String())
 	}
 }
 
