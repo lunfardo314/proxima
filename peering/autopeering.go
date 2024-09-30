@@ -60,9 +60,10 @@ func (ps *Peers) discoverPeersIfNeeded() {
 		candidates = candidates[:maxToAdd]
 	}
 	for _, a := range candidates {
-		ps.addPeer(&a, "", false)
-		ps.Log().Infof("[peering] added dynamic peer %s", a.ID.String())
-		ps.Tracef(TraceTagAutopeering, "added dynamic peer %s", a.String())
+		if ps.addPeer(&a, "", false) {
+			ps.Log().Infof("[peering] added dynamic peer %s", a.ID.String())
+			ps.Tracef(TraceTagAutopeering, "added dynamic peer %s", a.String())
+		}
 	}
 }
 

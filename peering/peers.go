@@ -289,13 +289,14 @@ func (ps *Peers) addStaticPeer(maddr multiaddr.Multiaddr, name, addrString strin
 	return nil
 }
 
-func (ps *Peers) addPeer(addrInfo *peer.AddrInfo, name string, static bool) {
+func (ps *Peers) addPeer(addrInfo *peer.AddrInfo, name string, static bool) (success bool) {
 	ps.withPeer(addrInfo.ID, func(p *Peer) {
-		if p != nil {
-			return
+		if p == nil {
+			ps._addPeer(addrInfo, name, static)
+			success = true
 		}
-		ps._addPeer(addrInfo, name, static)
 	})
+	return
 }
 
 func (ps *Peers) _addPeer(addrInfo *peer.AddrInfo, name string, static bool) *Peer {
