@@ -20,7 +20,7 @@ func (ps *Peers) isCandidateToConnect(id peer.ID) (yes bool) {
 		return
 	}
 	ps.withPeer(id, func(p *Peer) {
-		yes = p != nil && !ps._isInBlacklist(id)
+		yes = p == nil && !ps._isInBlacklist(id)
 	})
 	return
 }
