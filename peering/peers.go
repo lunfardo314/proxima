@@ -103,6 +103,8 @@ func New(env environment, cfg *Config) (*Peers, error) {
 		p2putil.Advertise(env.Ctx(), ret.routingDiscovery, ret.rendezvousString)
 
 		env.Log().Infof("[peering] autopeering is enabled with max dynamic peers = %d", cfg.MaxDynamicPeers)
+		env.Tracef(TraceTagAutopeering, "autopeering is enabled")
+
 	} else {
 		env.Log().Infof("[peering] autopeering is disabled")
 	}
@@ -226,8 +228,10 @@ func (ps *Peers) Run() {
 
 	if ps.isAutopeeringEnabled() {
 		ps.RepeatInBackground("autopeering_loop", checkPeersEvery, func() bool {
+			ps.Tracef(TraceTagAutopeering, "loop start")
 			ps.discoverPeersIfNeeded()
 			ps.dropExcessPeersIfNeeded() // dropping excess dynamic peers one-by-one
+			ps.Tracef(TraceTagAutopeering, "loop end")
 			return true
 		}, true)
 	}
