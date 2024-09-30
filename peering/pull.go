@@ -103,7 +103,7 @@ func (ps *Peers) sendPullTransactionToPeer(id peer.ID, txid ledger.TransactionID
 func (ps *Peers) PullTransactionsFromNPeers(nPeers int, txid ledger.TransactionID) int {
 	util.Assertf(nPeers >= 1, "nPeers")
 
-	targets := ps.chooseBestNPullTargets(nPeers)
+	targets := ps.chooseNPullTargets(nPeers)
 	for _, rndPeerID := range targets {
 		ps.sendPullTransactionToPeer(rndPeerID, txid)
 	}

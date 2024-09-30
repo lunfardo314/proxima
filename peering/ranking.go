@@ -34,20 +34,45 @@ func (p *Peer) rank() int {
 	return p.rankByLastHBReceived + p.rankByClockDifference
 }
 
-func (ps *Peers) _pullTargetsByRankDesc() []*Peer {
+func (ps *Peers) _pullTargets() []*Peer {
 	ret := make([]*Peer, 0)
 	for _, p := range ps.peers {
 		if ps._isPullTarget(p) {
 			ret = append(ret, p)
 		}
 	}
+	return ret
+}
+
+func (ps *Peers) _pullTargetsByRankDesc() []*Peer {
+	ret := ps._pullTargets()
 	sort.Slice(ret, func(i, j int) bool {
 		return ret[i].rank() > ret[j].rank()
 	})
 	return ret
 }
 
-func (ps *Peers) chooseBestNPullTargets(n int) []peer.ID {
+func (ps *Peers) chooseNPullTargets(n int) []peer.ID {
+	return ps.chooseBestNPullTargetsBestAndRandom(n)
+}
+
+// chooseBestNPullTargetsRandom just select random n out of all pull targets
+func (ps *Peers) chooseBestNPullTargetsRandom(n int) []peer.ID {
+	if n <= 0 {
+		return nil
+	}
+	ps.mutex.RLock()
+	defer ps.mutex.RUnlock()
+
+	ret := make([]peer.ID, 0)
+	targets := ps._pullTargets()
+	for _, i := range util.RandomNOutOfMPractical(n, len(targets)) {
+		ret = append(ret, targets[i].id)
+	}
+	return ret
+}
+
+func (ps *Peers) chooseBestNPullTargetsBestAndRandom(n int) []peer.ID {
 	if n <= 0 {
 		return nil
 	}

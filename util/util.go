@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/lunfardo314/proxima/util/set"
 	"golang.org/x/exp/constraints"
 	"golang.org/x/exp/maps"
 	"golang.org/x/text/language"
@@ -195,6 +196,24 @@ func RandomElements[T any](n int, elems ...T) []T {
 	})
 
 	return slices.Clone(perm[:n])
+}
+
+// RandomNOutOfMPractical tries to generate n different random numbers from [0:m].
+// Only makes 2 * n attempts, so result may be less than n numbers
+func RandomNOutOfMPractical(n, m int) []int {
+	if n >= m {
+		ret := make([]int, m)
+		for i := range ret {
+			ret[i] = i
+		}
+		return ret
+	}
+	s := set.New[int]()
+
+	for i := 0; i < 2*n && len(s) < n; i++ {
+		s.Insert(rand.Intn(m))
+	}
+	return maps.Keys(s)
 }
 
 func MustLastElement[T any](sl []T) T {
