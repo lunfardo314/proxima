@@ -5,6 +5,20 @@ import (
 	"github.com/libp2p/go-libp2p/core/protocol"
 )
 
+func (ps *Peers) sendMsgBytesOut(peerID peer.ID, protocolID protocol.ID, data []byte) bool {
+	stream, err := ps.host.NewStream(ps.Ctx(), peerID, protocolID)
+	if err != nil {
+		return false
+	}
+	defer func() { _ = stream.Close() }()
+
+	if err = writeFrame(stream, data); err != nil {
+		ps.Log().Errorf("[peering] error while sending message to peer %s", ShortPeerIDString(peerID))
+	}
+	ps.outMsgCounter.Inc()
+	return err == nil
+}
+
 // sendMsgOut is the output queue consumer callback
 func (ps *Peers) sendMsgOut(inp outMsgData) {
 	// message is wrapped into the interface specifically to set right time in heartbeat messages

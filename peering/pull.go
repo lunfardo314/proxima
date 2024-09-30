@@ -92,7 +92,14 @@ func (ps *Peers) processPullFrame(msgData []byte, p *Peer) (callAfter func(), er
 }
 
 func (ps *Peers) sendPullTransactionToPeer(id peer.ID, txid ledger.TransactionID) {
-	ps.sendMsgOutQueued(&_pullTransactions{
+	msg := _pullTransaction{
+		txid: txid,
+	}
+	ps.sendMsgBytesOut(id, ps.lppProtocolPull, msg.Bytes())
+}
+
+func (ps *Peers) sendPullTransactionToPeerQueued(id peer.ID, txid ledger.TransactionID) {
+	ps.sendMsgOutQueued(&_pullTransaction{
 		txid: txid,
 	}, id, ps.lppProtocolPull)
 }
@@ -129,10 +136,10 @@ func (ps *Peers) _isPullTarget(p *Peer) bool {
 }
 
 // out message wrappers
-type _pullTransactions struct {
+type _pullTransaction struct {
 	txid ledger.TransactionID
 }
 
-func (pt *_pullTransactions) Bytes() []byte   { return encodePullTransactionMsg(pt.txid) }
-func (pt *_pullTransactions) SetNow()         {}
-func (pt *_pullTransactions) Counter() uint32 { return 0 }
+func (pt *_pullTransaction) Bytes() []byte   { return encodePullTransactionMsg(pt.txid) }
+func (pt *_pullTransaction) SetNow()         {}
+func (pt *_pullTransaction) Counter() uint32 { return 0 }
