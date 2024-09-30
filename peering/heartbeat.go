@@ -25,7 +25,10 @@ const (
 	flagRespondsToPullRequests = byte(0b00000001)
 )
 
-const TraceTagHeartBeat = "peering_hb_recv"
+const (
+	TraceTagHeartBeatRecv = "peering_hb_recv"
+	TraceTagHeartBeatSend = "peering_hb_send"
+)
 
 func heartbeatInfoFromBytes(data []byte) (heartbeatInfo, error) {
 	if len(data) != 8+1 {
@@ -138,7 +141,7 @@ func (ps *Peers) _evidenceHeartBeat(p *Peer, hbInfo heartbeatInfo) {
 	p.clockDifferenceMedian = m
 	p.respondsToPullRequests = hbInfo.respondsToPullRequests
 
-	ps.Tracef(TraceTagHeartBeat, "from %s: clock diff: %v, median: %v, alive: %v", ShortPeerIDString(p.id), diff, m, p._isAlive())
+	ps.Tracef(TraceTagHeartBeatRecv, ">>>>> from %s: clock diff: %v, median: %v, alive: %v", ShortPeerIDString(p.id), diff, m, p._isAlive())
 }
 
 func (ps *Peers) sendHeartbeatToPeer(id peer.ID) {
@@ -148,6 +151,7 @@ func (ps *Peers) sendHeartbeatToPeer(id peer.ID) {
 			respondsToPull = ps.staticPeers.Contains(id)
 		}
 	}
+	ps.Tracef(TraceTagHeartBeatSend, ">>>>> send to %s QUEUED", ShortPeerIDString(id))
 	ps.sendMsgOutQueued(&heartbeatInfo{
 		// time now will be set in the queue consumer
 		respondsToPullRequests: respondsToPull,
