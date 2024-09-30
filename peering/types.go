@@ -66,7 +66,6 @@ type (
 		rendezvousString     string
 		// queued message sender to peers
 		outQueue *queue.Queue[outMsgData]
-
 		metrics
 	}
 
@@ -105,6 +104,7 @@ type (
 	outMessageWrapper interface {
 		Bytes() []byte
 		SetNow() // specifically for heartbeat
+		Counter() uint32
 	}
 )
 

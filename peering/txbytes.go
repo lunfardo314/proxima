@@ -99,4 +99,5 @@ type _gossipMsgWrapper struct {
 func (gm _gossipMsgWrapper) Bytes() []byte {
 	return common.ConcatBytes(gm.metadata.Bytes(), gm.txBytes)
 }
-func (gm _gossipMsgWrapper) SetNow() {}
+func (gm _gossipMsgWrapper) SetNow()         {}
+func (gm _gossipMsgWrapper) Counter() uint32 { return 0 }

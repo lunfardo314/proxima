@@ -133,5 +133,6 @@ type _pullTransactions struct {
 	txid ledger.TransactionID
 }
 
-func (pt *_pullTransactions) Bytes() []byte { return encodePullTransactionMsg(pt.txid) }
-func (pt *_pullTransactions) SetNow()       {}
+func (pt *_pullTransactions) Bytes() []byte   { return encodePullTransactionMsg(pt.txid) }
+func (pt *_pullTransactions) SetNow()         {}
+func (pt *_pullTransactions) Counter() uint32 { return 0 }

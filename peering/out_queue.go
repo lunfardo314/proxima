@@ -19,7 +19,9 @@ func (ps *Peers) sendMsgOut(inp outMsgData) {
 	if err = writeFrame(stream, inp.msg.Bytes()); err != nil {
 		ps.Log().Errorf("[peering] error while sending message to peer %s", ShortPeerIDString(inp.peerID))
 	}
-	ps.Tracef(TraceTagHeartBeatSend, ">>>>> sent to %s", ShortPeerIDString(inp.peerID))
+	if inp.protocol == ps.lppProtocolHeartbeat {
+		ps.Tracef(TraceTagHeartBeatSend, ">>>>> sent #%d to %s", inp.msg.Counter, ShortPeerIDString(inp.peerID))
+	}
 	ps.outMsgCounter.Inc()
 }
 

@@ -16,6 +16,7 @@ import (
 
 type heartbeatInfo struct {
 	clock                  time.Time
+	counter                uint32
 	respondsToPullRequests bool
 }
 
@@ -29,17 +30,6 @@ const (
 	TraceTagHeartBeatRecv = "peering_hb_recv"
 	TraceTagHeartBeatSend = "peering_hb_send"
 )
-
-func heartbeatInfoFromBytes(data []byte) (heartbeatInfo, error) {
-	if len(data) != 8+1 {
-		return heartbeatInfo{}, fmt.Errorf("heartbeatInfoFromBytes: wrong data len")
-	}
-	ret := heartbeatInfo{
-		clock: time.Unix(0, int64(binary.BigEndian.Uint64(data[:8]))),
-	}
-	ret.setFromFlags(data[8])
-	return ret, nil
-}
 
 func (ps *Peers) NumAlive() (aliveStatic, aliveDynamic int) {
 	ps.forEachPeerRLock(func(p *Peer) bool {
@@ -141,10 +131,11 @@ func (ps *Peers) _evidenceHeartBeat(p *Peer, hbInfo heartbeatInfo) {
 	p.clockDifferenceMedian = m
 	p.respondsToPullRequests = hbInfo.respondsToPullRequests
 
-	ps.Tracef(TraceTagHeartBeatRecv, ">>>>> from %s: clock diff: %v, median: %v, alive: %v", ShortPeerIDString(p.id), diff, m, p._isAlive())
+	ps.Tracef(TraceTagHeartBeatRecv, ">>>>> received #%d from %s: clock diff: %v, median: %v, alive: %v",
+		hbInfo.counter, ShortPeerIDString(p.id), diff, m, p._isAlive())
 }
 
-func (ps *Peers) sendHeartbeatToPeer(id peer.ID) {
+func (ps *Peers) sendHeartbeatToPeer(id peer.ID, hbCounter uint32) {
 	respondsToPull := false
 	if !ps.cfg.IgnoreAllPullRequests {
 		if ps.cfg.AcceptPullRequestsFromStaticPeersOnly {
@@ -155,6 +146,7 @@ func (ps *Peers) sendHeartbeatToPeer(id peer.ID) {
 	ps.sendMsgOutQueued(&heartbeatInfo{
 		// time now will be set in the queue consumer
 		respondsToPullRequests: respondsToPull,
+		counter:                hbCounter,
 	}, id, ps.lppProtocolHeartbeat)
 }
 
@@ -180,13 +172,15 @@ func (ps *Peers) peerIDs() []peer.ID {
 func (ps *Peers) startHeartbeat() {
 	var logNumPeersDeadline time.Time
 
+	hbCounter := uint32(0)
 	ps.RepeatInBackground("peering_heartbeat_loop", heartbeatRate, func() bool {
 		nowis := time.Now()
 		peerIDs := ps.peerIDs()
 
 		for _, id := range peerIDs {
 			ps.logConnectionStatusIfNeeded(id)
-			ps.sendHeartbeatToPeer(id)
+			ps.sendHeartbeatToPeer(id, hbCounter)
+			hbCounter++
 		}
 
 		if nowis.After(logNumPeersDeadline) {
@@ -233,14 +227,29 @@ func (hi *heartbeatInfo) setFromFlags(fl byte) {
 
 func (hi *heartbeatInfo) Bytes() []byte {
 	var buf bytes.Buffer
-	var timeNanoBin [8]byte
 
-	binary.BigEndian.PutUint64(timeNanoBin[:], uint64(hi.clock.UnixNano()))
-	buf.Write(timeNanoBin[:])
 	buf.WriteByte(hi.flags())
+	_ = binary.Write(&buf, binary.BigEndian, uint64(hi.clock.UnixNano()))
+	_ = binary.Write(&buf, binary.BigEndian, hi.counter)
 	return buf.Bytes()
 }
 
 func (hi *heartbeatInfo) SetNow() {
 	hi.clock = time.Now()
+}
+
+func (hi *heartbeatInfo) Counter() uint32 {
+	return hi.counter
+}
+
+func heartbeatInfoFromBytes(data []byte) (heartbeatInfo, error) {
+	if len(data) != 1+8+4 {
+		return heartbeatInfo{}, fmt.Errorf("heartbeatInfoFromBytes: wrong data len")
+	}
+	ret := heartbeatInfo{
+		clock:   time.Unix(0, int64(binary.BigEndian.Uint64(data[1:9]))),
+		counter: binary.BigEndian.Uint32(data[9 : 9+4]),
+	}
+	ret.setFromFlags(data[0])
+	return ret, nil
 }
