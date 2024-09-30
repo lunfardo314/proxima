@@ -185,35 +185,6 @@ func (ps *Peers) peerIDs() []peer.ID {
 	return maps.Keys(ps.peers)
 }
 
-// startHeartbeat periodically sends HB message to each known peer
-func (ps *Peers) startHeartbeat() {
-	var logNumPeersDeadline time.Time
-
-	hbCounter := uint32(0)
-	ps.RepeatInBackground("peering_heartbeat_loop", heartbeatRate, func() bool {
-		nowis := time.Now()
-		peerIDs := ps.peerIDs()
-
-		for _, id := range peerIDs {
-			ps.logConnectionStatusIfNeeded(id)
-			ps.sendHeartbeatToPeer(id, hbCounter)
-			hbCounter++
-		}
-
-		if nowis.After(logNumPeersDeadline) {
-			aliveStatic, aliveDynamic := ps.NumAlive()
-
-			ps.Log().Infof("[peering] node is connected to %d peer(s). Static: %d/%d, dynamic %d/%d) (took %v)",
-				aliveStatic+aliveDynamic, aliveStatic, len(ps.cfg.PreConfiguredPeers),
-				aliveDynamic, ps.cfg.MaxDynamicPeers, time.Since(nowis))
-
-			logNumPeersDeadline = nowis.Add(logPeersEvery)
-		}
-
-		return true
-	}, true)
-}
-
 func (ps *Peers) logBigClockDiffs() {
 	ps.mutex.Lock()
 	defer ps.mutex.Unlock()

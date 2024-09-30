@@ -111,26 +111,6 @@ func New(env environment, cfg *Config) (*Peers, error) {
 
 	ret.registerMetrics()
 
-	env.RepeatInBackground(Name+"_blacklist_cleanup", 2*time.Second, func() bool {
-		ret.cleanBlacklist()
-		return true
-	})
-
-	env.RepeatInBackground(Name+"_update_peer_metrics", 2*time.Second, func() bool {
-		ret.updatePeerMetrics(ret.peerStats())
-		return true
-	})
-
-	env.RepeatInBackground(Name+"_adjust_ranks", 500*time.Millisecond, func() bool {
-		ret.adjustRanks()
-		return true
-	})
-
-	env.RepeatInBackground("peering_clock_tolerance_loop", 2*clockTolerance, func() bool {
-		ret.logBigClockDiffs()
-		return true
-	}, true)
-
 	env.Log().Infof("[peering] initialized successfully")
 	return ret, nil
 }
@@ -218,11 +198,59 @@ func (ps *Peers) Run() {
 	ps.host.SetStreamHandler(ps.lppProtocolPull, ps.pullStreamHandler)
 	ps.host.SetStreamHandler(ps.lppProtocolHeartbeat, ps.heartbeatStreamHandler)
 
-	ps.startHeartbeat()
+	//ps.startHeartbeat()
+	var logNumPeersDeadline time.Time
+	hbCounter := uint32(0)
+	ps.RepeatInBackground("peering_heartbeat_loop", heartbeatRate, func() bool {
+		nowis := time.Now()
+		peerIDs := ps.peerIDs()
+
+		for _, id := range peerIDs {
+			ps.logConnectionStatusIfNeeded(id)
+			ps.sendHeartbeatToPeer(id, hbCounter)
+			hbCounter++
+		}
+
+		if nowis.After(logNumPeersDeadline) {
+			aliveStatic, aliveDynamic := ps.NumAlive()
+
+			ps.Log().Infof("[peering] node is connected to %d peer(s). Static: %d/%d, dynamic %d/%d) (took %v)",
+				aliveStatic+aliveDynamic, aliveStatic, len(ps.cfg.PreConfiguredPeers),
+				aliveDynamic, ps.cfg.MaxDynamicPeers, time.Since(nowis))
+
+			logNumPeersDeadline = nowis.Add(logPeersEvery)
+		}
+
+		return true
+	}, true)
 
 	if ps.isAutopeeringEnabled() {
-		ps.startAutopeering()
+		ps.RepeatInBackground("autopeering_loop", checkPeersEvery, func() bool {
+			ps.discoverPeersIfNeeded()
+			ps.dropExcessPeersIfNeeded() // dropping excess dynamic peers one-by-one
+			return true
+		}, true)
 	}
+
+	ps.RepeatInBackground(Name+"_blacklist_cleanup", 2*time.Second, func() bool {
+		ps.cleanBlacklist()
+		return true
+	})
+
+	ps.RepeatInBackground(Name+"_update_peer_metrics", 2*time.Second, func() bool {
+		ps.updatePeerMetrics(ps.peerStats())
+		return true
+	})
+
+	ps.RepeatInBackground(Name+"_adjust_ranks", 500*time.Millisecond, func() bool {
+		ps.adjustRanks()
+		return true
+	})
+
+	ps.RepeatInBackground("peering_clock_tolerance_loop", 2*clockTolerance, func() bool {
+		ps.logBigClockDiffs()
+		return true
+	}, true)
 
 	ps.Log().Infof("[peering] libp2p host %s (self) started on %v with %d pre-configured peers, maximum dynamic peers: %d, autopeering enabled: %v",
 		ShortPeerIDString(ps.host.ID()), ps.host.Addrs(), len(ps.cfg.PreConfiguredPeers), ps.cfg.MaxDynamicPeers, ps.isAutopeeringEnabled())

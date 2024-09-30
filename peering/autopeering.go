@@ -15,16 +15,6 @@ const (
 	checkPeersEvery     = 3 * time.Second
 )
 
-func (ps *Peers) startAutopeering() {
-	util.Assertf(ps.isAutopeeringEnabled(), "ps.isAutopeeringEnabled()")
-
-	ps.RepeatInBackground("autopeering_loop", checkPeersEvery, func() bool {
-		ps.discoverPeersIfNeeded()
-		ps.dropExcessPeersIfNeeded() // dropping excess dynamic peers one-by-one
-		return true
-	}, true)
-}
-
 func (ps *Peers) isCandidateToConnect(id peer.ID) (yes bool) {
 	if id == ps.host.ID() {
 		return
@@ -90,11 +80,11 @@ func (ps *Peers) dropExcessPeersIfNeeded() {
 }
 
 func (ps *Peers) _sortedDynamicPeersByRankAsc() []*Peer {
-	peers := util.ValuesFiltered(ps.peers, func(p *Peer) bool {
+	dynamicPeers := util.ValuesFiltered(ps.peers, func(p *Peer) bool {
 		return !p.isStatic
 	})
-	sort.Slice(peers, func(i, j int) bool {
-		return peers[i].rank() < peers[j].rank()
+	sort.Slice(dynamicPeers, func(i, j int) bool {
+		return dynamicPeers[i].rank() < dynamicPeers[j].rank()
 	})
-	return peers
+	return dynamicPeers
 }
