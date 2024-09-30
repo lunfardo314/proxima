@@ -8,6 +8,7 @@ import (
 	"github.com/lunfardo314/proxima/util/countdown"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
+	"golang.org/x/exp/rand"
 )
 
 func TestBasic(t *testing.T) {
@@ -127,7 +128,7 @@ func TestClose(t *testing.T) {
 	require.EqualValues(t, nMessages/2, int(counter.Load()))
 }
 
-func TestPriority(t *testing.T) {
+func TestPriority1(t *testing.T) {
 	const nMessages = 100
 
 	var counter atomic.Int32
@@ -150,6 +151,22 @@ func TestPriority(t *testing.T) {
 	for _, v := range all {
 		require.EqualValues(t, 1, v)
 	}
+}
+
+func TestPriority2(t *testing.T) {
+	const nMessages = 100
+
+	q := New[int](func(i int) {
+		t.Logf(">> %d", i)
+		rnd := rand.Intn(10)
+		time.Sleep(time.Duration(rnd) * time.Millisecond)
+	})
+
+	for i := 0; i < nMessages; i++ {
+		q.Push(i, i%3 == 0)
+		time.Sleep(time.Millisecond)
+	}
+	time.Sleep(2 * time.Second)
 }
 
 func TestTwoQueues(t *testing.T) {

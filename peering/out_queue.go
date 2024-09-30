@@ -31,5 +31,5 @@ func (ps *Peers) sendMsgOutQueued(msg outMessageWrapper, id peer.ID, prot protoc
 		msg:      msg,
 		peerID:   id,
 		protocol: prot,
-	}, prot == ps.lppProtocolHeartbeat)
+	}) // priorities are bad  // prot == ps.lppProtocolHeartbeat)
 }
