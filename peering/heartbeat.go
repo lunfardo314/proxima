@@ -148,23 +148,9 @@ func (ps *Peers) sendHeartbeatToPeer(id peer.ID, hbCounter uint32) {
 		counter:                hbCounter,
 		clock:                  time.Now(),
 	}
-	ps.sendMsgBytesOut(id, ps.lppProtocolHeartbeat, msg.Bytes())
-
-	ps.Tracef(TraceTagHeartBeatSend, ">>>>>>> sent #%d to %s", hbCounter, ShortPeerIDString(id))
-}
-
-func (ps *Peers) sendHeartbeatToPeerQueued(id peer.ID, hbCounter uint32) {
-	respondsToPull := false
-	if !ps.cfg.IgnoreAllPullRequests {
-		if ps.cfg.AcceptPullRequestsFromStaticPeersOnly {
-			respondsToPull = ps.staticPeers.Contains(id)
-		}
+	if ps.sendMsgBytesOut(id, ps.lppProtocolHeartbeat, msg.Bytes()) {
+		ps.Tracef(TraceTagHeartBeatSend, ">>>>>>> sent #%d to %s", hbCounter, ShortPeerIDString(id))
 	}
-	ps.sendMsgOutQueued(&heartbeatInfo{
-		// time now will be set in the queue consumer
-		respondsToPullRequests: respondsToPull,
-		counter:                hbCounter,
-	}, id, ps.lppProtocolHeartbeat)
 }
 
 func (ps *Peers) peerIDsAlive() []peer.ID {

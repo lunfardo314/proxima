@@ -13,7 +13,6 @@ import (
 	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
-	"github.com/lunfardo314/proxima/util/queue"
 	"github.com/lunfardo314/proxima/util/set"
 	"github.com/multiformats/go-multiaddr"
 )
@@ -64,8 +63,6 @@ type (
 		lppProtocolPull      protocol.ID
 		lppProtocolHeartbeat protocol.ID
 		rendezvousString     string
-		// queued message sender to peers
-		outQueue *queue.Queue[outMsgData]
 		metrics
 	}
 

@@ -81,23 +81,6 @@ func (ps *Peers) SendTxBytesWithMetadataToPeer(id peer.ID, txBytes []byte, metad
 	return ps.sendMsgBytesOut(id, ps.lppProtocolGossip, msg.Bytes())
 }
 
-func (ps *Peers) SendTxBytesWithMetadataToPeerQueued(id peer.ID, txBytes []byte, metadata *txmetadata.TransactionMetadata) bool {
-	ps.Tracef(TraceTag, "SendTxBytesWithMetadataToPeer to %s, length: %d (host %s)",
-		func() any { return ShortPeerIDString(id) },
-		len(txBytes),
-		func() any { return ShortPeerIDString(ps.host.ID()) },
-	)
-	if p := ps.getPeer(id); p == nil {
-		return false
-	}
-
-	ps.sendMsgOutQueued(&_gossipMsgWrapper{
-		metadata: metadata,
-		txBytes:  txBytes,
-	}, id, ps.lppProtocolGossip)
-	return true
-}
-
 // message wrapper
 type _gossipMsgWrapper struct {
 	metadata *txmetadata.TransactionMetadata

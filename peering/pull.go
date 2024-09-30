@@ -98,12 +98,6 @@ func (ps *Peers) sendPullTransactionToPeer(id peer.ID, txid ledger.TransactionID
 	ps.sendMsgBytesOut(id, ps.lppProtocolPull, msg.Bytes())
 }
 
-func (ps *Peers) sendPullTransactionToPeerQueued(id peer.ID, txid ledger.TransactionID) {
-	ps.sendMsgOutQueued(&_pullTransaction{
-		txid: txid,
-	}, id, ps.lppProtocolPull)
-}
-
 // PullTransactionsFromNPeers sends pull request to the random peer which has txStore
 // Return number of peer pull request was sent to
 func (ps *Peers) PullTransactionsFromNPeers(nPeers int, txid ledger.TransactionID) int {

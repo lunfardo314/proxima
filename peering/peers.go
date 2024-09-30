@@ -20,7 +20,6 @@ import (
 	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util"
-	"github.com/lunfardo314/proxima/util/queue"
 	"github.com/lunfardo314/proxima/util/set"
 	"github.com/multiformats/go-multiaddr"
 	"github.com/spf13/viper"
@@ -34,7 +33,6 @@ func NewPeersDummy() *Peers {
 		onReceiveTx:     func(_ peer.ID, _ []byte, _ *txmetadata.TransactionMetadata) {},
 		onReceivePullTx: func(_ peer.ID, _ ledger.TransactionID) {},
 	}
-	ret.outQueue = queue.New[outMsgData](ret.sendMsgOut)
 	//ret.registerMetrics()
 	return ret
 }
@@ -74,7 +72,6 @@ func New(env environment, cfg *Config) (*Peers, error) {
 		lppProtocolHeartbeat: protocol.ID(fmt.Sprintf(lppProtocolHeartbeat, rendezvousNumber)),
 		rendezvousString:     fmt.Sprintf("%d", rendezvousNumber),
 	}
-	ret.outQueue = queue.New[outMsgData](ret.sendMsgOut)
 
 	env.Log().Infof("[peering] rendezvous number is %d", rendezvousNumber)
 	for name, maddr := range cfg.PreConfiguredPeers {
@@ -270,7 +267,6 @@ func (ps *Peers) Stop() {
 		ps.environment.MarkWorkProcessStopped(Name)
 
 		ps.Log().Infof("[peering] stopping libp2p host %s (self)..", ShortPeerIDString(ps.host.ID()))
-		ps.outQueue.Close(false)
 		_ = ps.Log().Sync()
 		_ = ps.host.Close()
 		ps.Log().Infof("[peering] libp2p host %s (self) has been stopped", ShortPeerIDString(ps.host.ID()))
@@ -444,4 +440,18 @@ func (ps *Peers) IsAlive(id peer.ID) (isAlive bool) {
 
 func (p *Peer) _isAlive() bool {
 	return time.Since(p.lastHeartbeatReceived) < aliveDuration
+}
+
+func (ps *Peers) sendMsgBytesOut(peerID peer.ID, protocolID protocol.ID, data []byte) bool {
+	stream, err := ps.host.NewStream(ps.Ctx(), peerID, protocolID)
+	if err != nil {
+		return false
+	}
+	defer func() { _ = stream.Close() }()
+
+	if err = writeFrame(stream, data); err != nil {
+		ps.Log().Errorf("[peering] error while sending message to peer %s", ShortPeerIDString(peerID))
+	}
+	ps.outMsgCounter.Inc()
+	return err == nil
 }
