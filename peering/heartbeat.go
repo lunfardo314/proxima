@@ -15,14 +15,14 @@ import (
 )
 
 type heartbeatInfo struct {
-	clock               time.Time
-	ignoresPullRequests bool
+	clock                  time.Time
+	respondsToPullRequests bool
 }
 
 // flags of the heartbeat message. Information for the peer about the node
 const (
-	// flagIgnoresPullRequests node ignores all pull requests from the message target
-	flagIgnoresPullRequests = byte(0b00000001)
+	// flagRespondsToPullRequests if false, node ignores all pull requests from the message target
+	flagRespondsToPullRequests = byte(0b00000001)
 )
 
 func heartbeatInfoFromBytes(data []byte) (heartbeatInfo, error) {
@@ -71,59 +71,38 @@ func (ps *Peers) logConnectionStatusIfNeeded(id peer.ID) {
 	})
 }
 
-// heartbeat protocol is used to monitor
-// - if peer is alive and
-// - to ensure clocks difference is within tolerance interval. Clock difference is
-// sum of difference between local clocks plus communication delay
-// Clock difference is perceived differently by two connected peers. If one of them
-// goes out of tolerance interval, connection is dropped from one, then from the other side
-
 func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
+	// received heartbeat message from peer
 	ps.inMsgCounter.Inc()
-
 	id := stream.Conn().RemotePeer()
 
-	if ps.isInBlacklist(id) {
+	ps.mutex.Lock()
+	defer ps.mutex.Unlock()
+
+	if ps._isInBlacklist(id) {
 		// ignore
-		//_ = stream.Reset()
 		_ = stream.Close()
 		return
 	}
-
-	exit := false
-
-	ps.withPeer(id, func(p *Peer) {
-		if p != nil {
-			// known peer, static or dynamic
-			return
-		}
-		// incoming heartbeat from new peer
+	p := ps._getPeer(id)
+	if p == nil {
+		// unknown peer, peering request
 		if !ps.isAutopeeringEnabled() {
 			// node does not take any incoming dynamic peers
 			ps.Tracef(TraceTag, "autopeering disabled: unknown peer %s", id.String)
-
-			//  do not be harsh, just ignore
-			//_ = stream.Reset()
 			_ = stream.Close()
-			exit = true
 			return
 		}
-		// Add new incoming dynamic peer and then let the autopeering handle if too many
-
-		// does not work -> addrInfo, err := peer.AddrInfoFromP2pAddr(remote)
-		// for some reason peer.AddrInfoFromP2pAddr does not work -> compose AddrInfo from parts
-
+		// add new peer
 		remote := stream.Conn().RemoteMultiaddr()
 		addrInfo := &peer.AddrInfo{
 			ID:    id,
 			Addrs: []multiaddr.Multiaddr{remote},
 		}
 		ps.Log().Infof("[peering] incoming peer request. Add new dynamic peer %s", id.String())
-		ps._addPeer(addrInfo, "", false)
-	})
-	if exit {
-		return
+		p = ps._addPeer(addrInfo, "", false)
 	}
+	util.Assertf(p != nil, "p != nil")
 
 	var hbInfo heartbeatInfo
 	var err error
@@ -131,37 +110,41 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 
 	if msgData, err = readFrame(stream); err != nil {
 		ps.Log().Errorf("[peering] hb: error while reading message from peer %s: err='%v'. Ignore", ShortPeerIDString(id), err)
-		// ignore
 		_ = stream.Close()
 		return
 	}
 
 	if hbInfo, err = heartbeatInfoFromBytes(msgData); err != nil {
 		// protocol violation
-		err = fmt.Errorf("[peering] hb: error while serializing message from peer %s: %v. Reset stream", ShortPeerIDString(id), err)
+		err = fmt.Errorf("[peering] hb: error while serializing message from peer %s: %v. Reset connection", ShortPeerIDString(id), err)
 		ps.Log().Error(err)
-		ps.dropPeer(id, err.Error())
+		ps._dropPeer(p, err.Error())
 		_ = stream.Reset()
 		return
 	}
-
 	_ = stream.Close()
+	p._evidenceHeartBeat(hbInfo)
+}
 
-	ps.withPeer(id, func(p *Peer) {
-		if p == nil {
-			return
-		}
-		p.lastHeartbeatReceived = time.Now()
-		p.ignoresPullRequests = hbInfo.ignoresPullRequests
-		p._evidenceClockDifference(time.Since(hbInfo.clock))
-	})
+func (p *Peer) _evidenceHeartBeat(hbInfo heartbeatInfo) {
+	nowis := time.Now()
+	p.lastHeartbeatReceived = nowis
+	p.clockDifferences[p.clockDifferencesIdx] = nowis.Sub(hbInfo.clock)
+	p.clockDifferencesIdx = (p.clockDifferencesIdx + 1) % len(p.clockDifferences)
+	p.clockDifferenceMedian = util.Median(p.clockDifferences[:])
+	p.respondsToPullRequests = hbInfo.respondsToPullRequests
 }
 
 func (ps *Peers) sendHeartbeatToPeer(id peer.ID) {
-	ignore := (ps.cfg.AcceptPullRequestsFromStaticPeersOnly && !ps.staticPeers.Contains(id)) || ps.cfg.IgnoreAllPullRequests
+	respondsToPull := false
+	if !ps.cfg.IgnoreAllPullRequests {
+		if ps.cfg.AcceptPullRequestsFromStaticPeersOnly {
+			respondsToPull = ps.staticPeers.Contains(id)
+		}
+	}
 	ps.sendMsgOutQueued(&heartbeatInfo{
 		// time now will be set in the queue consumer
-		ignoresPullRequests: ignore,
+		respondsToPullRequests: respondsToPull,
 	}, id, ps.lppProtocolHeartbeat)
 }
 
@@ -228,14 +211,14 @@ func (ps *Peers) logBigClockDiffs() {
 }
 
 func (hi *heartbeatInfo) flags() (ret byte) {
-	if hi.ignoresPullRequests {
-		ret |= flagIgnoresPullRequests
+	if hi.respondsToPullRequests {
+		ret |= flagRespondsToPullRequests
 	}
 	return
 }
 
 func (hi *heartbeatInfo) setFromFlags(fl byte) {
-	hi.ignoresPullRequests = (fl & flagIgnoresPullRequests) != 0
+	hi.respondsToPullRequests = (fl & flagRespondsToPullRequests) != 0
 }
 
 func (hi *heartbeatInfo) Bytes() []byte {

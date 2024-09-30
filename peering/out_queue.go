@@ -5,6 +5,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/protocol"
 )
 
+// sendMsgOut is the output queue consumer callback
 func (ps *Peers) sendMsgOut(inp outMsgData) {
 	// message is wrapped into the interface specifically to set right time in heartbeat messages
 	inp.msg.SetNow()

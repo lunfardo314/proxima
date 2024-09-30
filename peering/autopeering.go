@@ -25,17 +25,14 @@ func (ps *Peers) startAutopeering() {
 	}, true)
 }
 
-func (ps *Peers) isCandidateToConnect(id peer.ID) bool {
+func (ps *Peers) isCandidateToConnect(id peer.ID) (yes bool) {
 	if id == ps.host.ID() {
-		return false
+		return
 	}
-	if ps.isInBlacklist(id) {
-		return false
-	}
-	if ps.getPeer(id) != nil {
-		return false
-	}
-	return true
+	ps.withPeer(id, func(p *Peer) {
+		yes = p != nil && !ps._isInBlacklist(id)
+	})
+	return
 }
 
 func (ps *Peers) discoverPeersIfNeeded() {
@@ -48,7 +45,7 @@ func (ps *Peers) discoverPeersIfNeeded() {
 	maxToAdd := ps.cfg.MaxDynamicPeers - aliveDynamic
 	util.Assertf(maxToAdd > 0, "maxToAdd > 0")
 
-	const peerDiscoveryLimit = 10
+	const peerDiscoveryLimit = 20
 	peerChan, err := ps.routingDiscovery.FindPeers(ps.Ctx(), ps.rendezvousString, discovery.Limit(peerDiscoveryLimit))
 	if err != nil {
 		ps.Log().Errorf("[peering] unexpected error while trying to discover peers")

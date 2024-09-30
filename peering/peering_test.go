@@ -57,27 +57,26 @@ func newEnvironment() environment {
 	return &peeringEnvForTesting{global.NewDefault()}
 }
 
-func TestBasic(t *testing.T) {
-	t.Run("1", func(t *testing.T) {
-		const hostIndex = 2
-		cfg := MakeConfigFor(5, hostIndex)
-		t.Logf("host index: %d, host port: %d", hostIndex, BeginPort+hostIndex)
-		for name, ma := range cfg.PreConfiguredPeers {
-			t.Logf("%s : %s", name, ma.String())
-		}
-		env := newEnvironment()
-		_, err := New(env, cfg)
-		require.NoError(t, err)
-	})
-	t.Run("2", func(t *testing.T) {
-		const hostIndex = 2
-		cfg := MakeConfigFor(5, hostIndex)
-		env := newEnvironment()
-		peers, err := New(env, cfg)
-		require.NoError(t, err)
-		peers.Run()
-		peers.Stop()
-	})
+func TestBasic1(t *testing.T) {
+	const hostIndex = 2
+	cfg := MakeConfigFor(5, hostIndex)
+	t.Logf("host index: %d, host port: %d", hostIndex, BeginPort+hostIndex)
+	for name, ma := range cfg.PreConfiguredPeers {
+		t.Logf("%s : %s", name, ma.String())
+	}
+	env := newEnvironment()
+	_, err := New(env, cfg)
+	require.NoError(t, err)
+}
+
+func TestBasic2(t *testing.T) {
+	const hostIndex = 2
+	cfg := MakeConfigFor(5, hostIndex)
+	env := newEnvironment()
+	peers, err := New(env, cfg)
+	require.NoError(t, err)
+	peers.Run()
+	peers.Stop()
 }
 
 func makeHosts(t *testing.T, nHosts int, trace bool) []*Peers {
@@ -273,7 +272,7 @@ func TestSendMsg(t *testing.T) {
 		require.NoError(t, err)
 	})
 	t.Run("pull", func(t *testing.T) {
-		// TODO fails with timeout. Most likely related to the deadlocks in the same process
+		// TODO fails with timeout
 		const (
 			numHosts = 5
 			trace    = false

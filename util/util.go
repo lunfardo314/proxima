@@ -180,8 +180,6 @@ func AppendUnique[T comparable](slice []T, elems ...T) []T {
 
 // RandomElements selects n random elements from a slice, which has more elements than n
 func RandomElements[T any](n int, elems ...T) []T {
-	Assertf(n > 0, "n>0")
-
 	switch {
 	case n >= len(elems):
 		return elems

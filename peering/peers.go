@@ -5,7 +5,6 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/libp2p/go-libp2p"
@@ -19,7 +18,6 @@ import (
 	p2putil "github.com/libp2p/go-libp2p/p2p/discovery/util"
 	p2pquic "github.com/libp2p/go-libp2p/p2p/transport/quic"
 	"github.com/lunfardo314/proxima/core/txmetadata"
-	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/queue"
@@ -27,128 +25,6 @@ import (
 	"github.com/multiformats/go-multiaddr"
 	"github.com/spf13/viper"
 	"golang.org/x/exp/maps"
-)
-
-type (
-	environment interface {
-		global.NodeGlobal
-	}
-
-	Config struct {
-		HostIDPrivateKey   ed25519.PrivateKey
-		HostID             peer.ID
-		HostPort           int
-		PreConfiguredPeers map[string]_multiaddr // name -> PeerAddr. Static peers used also for bootstrap
-		// MaxDynamicPeers if MaxDynamicPeers <= len(PreConfiguredPeers), autopeering is disabled, otherwise up to
-		// MaxDynamicPeers - len(PreConfiguredPeers) will be auto-peered
-		MaxDynamicPeers int
-		// Node info
-		IgnoreAllPullRequests                 bool
-		AcceptPullRequestsFromStaticPeersOnly bool
-		// AllowLocalIPs defines if local IPs are allowed to be used for autopeering.
-		AllowLocalIPs bool `default:"false" usage:"allow local IPs to be used for autopeering"`
-	}
-
-	_multiaddr struct {
-		addrString string
-		multiaddr.Multiaddr
-	}
-	Peers struct {
-		environment
-
-		mutex            sync.RWMutex
-		cfg              *Config
-		stopOnce         sync.Once
-		host             host.Host
-		kademliaDHT      *dht.IpfsDHT // not nil if autopeering is enabled
-		routingDiscovery *routing.RoutingDiscovery
-		peers            map[peer.ID]*Peer // except self/host
-		staticPeers      set.Set[peer.ID]
-		blacklist        map[peer.ID]time.Time
-		// on receive handlers
-		onReceiveTx     func(from peer.ID, txBytes []byte, mdata *txmetadata.TransactionMetadata)
-		onReceivePullTx func(from peer.ID, txid ledger.TransactionID)
-		// lpp protocol names
-		lppProtocolGossip    protocol.ID
-		lppProtocolPull      protocol.ID
-		lppProtocolHeartbeat protocol.ID
-		rendezvousString     string
-		// queued message sender to peers
-		outQueue *queue.Queue[outMsgData]
-
-		metrics
-	}
-
-	peersStats struct {
-		peersAll         int
-		peersStatic      int
-		peersDead        int
-		peersAlive       int
-		peersPullTargets int
-	}
-
-	Peer struct {
-		id                    peer.ID
-		name                  string
-		isStatic              bool // statically pre-configured (manual peering)
-		ignoresPullRequests   bool // from hb info
-		whenAdded             time.Time
-		lastHeartbeatReceived time.Time
-		lastLoggedConnected   bool // toggle
-		// ring buffer with last clock differences
-		clockDifferences      [10]time.Duration
-		clockDifferencesIdx   int
-		clockDifferenceMedian time.Duration
-		// ranks
-		rankByLastHBReceived  int
-		rankByClockDifference int
-	}
-
-	outMsgData struct {
-		msg      outMessageWrapper
-		peerID   peer.ID
-		protocol protocol.ID
-	}
-
-	// outMessageWrapper is needed for the outQueue. In order to avoid timing problems
-	outMessageWrapper interface {
-		Bytes() []byte
-		SetNow() // specifically for heartbeat
-	}
-)
-
-const (
-	Name     = "peers"
-	TraceTag = Name
-)
-
-const (
-	// protocol name templates. Last component is first 8 bytes of ledger constraint library hash, interpreted as bigendian uint64
-	// Peering is only possible between same versions of the ledger.
-	// Nodes with different versions of the ledger constraints will just ignore each other
-	lppProtocolGossip    = "/proxima/gossip/%d"
-	lppProtocolPull      = "/proxima/pull/%d"
-	lppProtocolHeartbeat = "/proxima/heartbeat/%d"
-
-	// clockTolerance is how big the difference between local and remote clocks is tolerated.
-	// The difference includes difference between local clocks (positive or negative) plus
-	// positive heartbeat message latency between peers
-	// In any case nodes has interest to sync their clocks with global reference.
-	// This constant indicates when to drop the peer
-	clockTolerance = 4 * time.Second
-
-	// if the node is bootstrap, and it has configured less than numMaxDynamicPeersForBootNodeAtLeast
-	// of dynamic peer cap, use this instead
-	//numMaxDynamicPeersForBootNodeAtLeast = 10
-
-	// heartbeatRate heartbeat issued every period
-	heartbeatRate      = 2 * time.Second
-	aliveNumHeartbeats = 10 // if no hb over this period, it means not-alive -> dynamic peer will be dropped
-	aliveDuration      = time.Duration(aliveNumHeartbeats) * heartbeatRate
-	blacklistTTL       = 2 * time.Minute
-	// gracePeriodAfterAdded period of time peer is considered not dead after added even if messages are not coming
-	gracePeriodAfterAdded = 15 * heartbeatRate
-	logPeersEvery         = 5 * time.Second
 )
 
 func NewPeersDummy() *Peers {
@@ -390,7 +266,7 @@ func (ps *Peers) addPeer(addrInfo *peer.AddrInfo, name string, static bool) {
 	})
 }
 
-func (ps *Peers) _addPeer(addrInfo *peer.AddrInfo, name string, static bool) {
+func (ps *Peers) _addPeer(addrInfo *peer.AddrInfo, name string, static bool) *Peer {
 	p := &Peer{
 		id:        addrInfo.ID,
 		name:      name,
@@ -401,29 +277,28 @@ func (ps *Peers) _addPeer(addrInfo *peer.AddrInfo, name string, static bool) {
 	for _, a := range addrInfo.Addrs {
 		ps.host.Peerstore().AddAddr(addrInfo.ID, a, peerstore.PermanentAddrTTL)
 	}
+	return p
 }
 
 // dropPeer removes dynamic peer and blacklists for 1 min. Ignores otherwise
 func (ps *Peers) dropPeer(id peer.ID, reason string) {
 	ps.withPeer(id, func(p *Peer) {
-		if p != nil && !p.isStatic {
-			// ignore static
+		if p != nil {
 			ps._dropPeer(p, reason)
 		}
 	})
 }
 
 func (ps *Peers) _dropPeer(p *Peer, reason string) {
+	if p.isStatic {
+		ps._addToBlacklist(p.id)
+		return
+	}
+
 	why := ""
 	if len(reason) > 0 {
 		why = fmt.Sprintf(". Drop reason: '%s'", reason)
 	}
-
-	if p.isStatic {
-		ps.Log().Warnf("[peering] cannot drop static peer %s - %s%s", ShortPeerIDString(p.id), p.name, why)
-		return
-	}
-	util.Assertf(!p.isStatic, "_dropPeer: must not be pre-configured")
 
 	ps.host.Peerstore().RemovePeer(p.id)
 	ps.kademliaDHT.RoutingTable().RemovePeer(p.id)
@@ -439,10 +314,7 @@ func (ps *Peers) _addToBlacklist(id peer.ID) {
 	ps.blacklist[id] = time.Now().Add(blacklistTTL)
 }
 
-func (ps *Peers) isInBlacklist(id peer.ID) bool {
-	ps.mutex.RLock()
-	defer ps.mutex.RUnlock()
-
+func (ps *Peers) _isInBlacklist(id peer.ID) bool {
 	_, yes := ps.blacklist[id]
 	return yes
 }
@@ -539,10 +411,4 @@ func (ps *Peers) IsAlive(id peer.ID) (isAlive bool) {
 
 func (p *Peer) _isAlive() bool {
 	return time.Since(p.lastHeartbeatReceived) < aliveDuration
-}
-
-func (p *Peer) _evidenceClockDifference(diff time.Duration) {
-	p.clockDifferences[p.clockDifferencesIdx] = diff
-	p.clockDifferencesIdx = (p.clockDifferencesIdx + 1) % len(p.clockDifferences)
-	p.clockDifferenceMedian = util.Median(p.clockDifferences[:])
 }

@@ -11,61 +11,53 @@ import (
 
 func (ps *Peers) gossipStreamHandler(stream network.Stream) {
 	ps.inMsgCounter.Inc()
-
 	id := stream.Conn().RemotePeer()
 
-	if ps.isInBlacklist(id) {
-		//_ = stream.Reset()
+	ps.mutex.Lock()
+	defer ps.mutex.Unlock()
+
+	if ps._isInBlacklist(id) {
+		// ignore
+		_ = stream.Close()
+		return
+	}
+	p := ps._getPeer(id)
+	if p == nil {
+		// from unknown peer -> ignore
 		_ = stream.Close()
 		return
 	}
 
-	callAfter := func() {}
-
-	ps.withPeer(id, func(p *Peer) {
-		if p == nil {
-			// from unknown peer
-			//_ = stream.Reset()
-			_ = stream.Close()
-			return
-		}
-		txBytesWithMetadata, err := readFrame(stream)
-		if err != nil {
-			//_ = stream.Reset()
-			err = fmt.Errorf("gossip: error while reading message from peer %s: %v", id.String(), err)
-			ps.Log().Error(err)
-			_ = stream.Close()
-			return
-		}
-
-		ps.transactionsReceivedCounter.Inc()
-		ps.txBytesReceivedCounter.Add(float64(len(txBytesWithMetadata)))
-
-		metadataBytes, txBytes, err := txmetadata.SplitTxBytesWithMetadata(txBytesWithMetadata)
-		if err != nil {
-			// protocol violation
-			err = fmt.Errorf("gossip: error while parsing tx message from peer %s: %v", id.String(), err)
-			ps.Log().Error(err)
-			ps._dropPeer(p, err.Error())
-			_ = stream.Reset()
-			return
-		}
-		metadata, err := txmetadata.TransactionMetadataFromBytes(metadataBytes)
-		if err != nil {
-			// protocol violation
-			err = fmt.Errorf("gossip: error while parsing tx message metadata from peer %s: %v", id.String(), err)
-			ps.Log().Error(err)
-			ps.dropPeer(p.id, err.Error())
-			_ = stream.Reset()
-			return
-		}
-
+	txBytesWithMetadata, err := readFrame(stream)
+	if err != nil {
+		ps.Log().Errorf("gossip: error while reading message from peer %s: %v", id.String(), err)
 		_ = stream.Close()
+		return
+	}
 
-		callAfter = func() { ps.onReceiveTx(id, txBytes, metadata) }
-	})
+	ps.transactionsReceivedCounter.Inc()
+	ps.txBytesReceivedCounter.Add(float64(len(txBytesWithMetadata)))
 
-	callAfter()
+	metadataBytes, txBytes, err := txmetadata.SplitTxBytesWithMetadata(txBytesWithMetadata)
+	if err != nil {
+		// protocol violation
+		err = fmt.Errorf("gossip: error while parsing tx message from peer %s: %v", id.String(), err)
+		ps.Log().Error(err)
+		ps._dropPeer(p, err.Error())
+		_ = stream.Reset()
+		return
+	}
+	metadata, err := txmetadata.TransactionMetadataFromBytes(metadataBytes)
+	if err != nil {
+		// protocol violation
+		err = fmt.Errorf("gossip: error while parsing tx message metadata from peer %s: %v", id.String(), err)
+		ps.Log().Error(err)
+		ps._dropPeer(p, err.Error())
+		_ = stream.Reset()
+		return
+	}
+	_ = stream.Close()
+	ps.onReceiveTx(id, txBytes, metadata)
 }
 
 func (ps *Peers) GossipTxBytesToPeers(txBytes []byte, metadata *txmetadata.TransactionMetadata, except ...peer.ID) int {
@@ -87,10 +79,6 @@ func (ps *Peers) SendTxBytesWithMetadataToPeer(id peer.ID, txBytes []byte, metad
 		len(txBytes),
 		func() any { return ShortPeerIDString(ps.host.ID()) },
 	)
-
-	if ps.isInBlacklist(id) {
-		return false
-	}
 	if p := ps.getPeer(id); p == nil {
 		return false
 	}

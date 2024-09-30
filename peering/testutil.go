@@ -29,11 +29,11 @@ var (
 )
 
 func MultiAddrString(i int, port int) string {
-	return fmt.Sprintf("/ip4/127.0.0.1/tcp/%d/p2p/%s", port, hostID[i])
+	return fmt.Sprintf("/ip4/127.0.0.1/udp/%d/quic-v1/p2p/%s", port, hostID[i])
 }
 
 func TestMultiAddrString(peerID peer.ID, port int) string {
-	return fmt.Sprintf("/ip4/127.0.0.1/tcp/%d/p2p/%s", port, peerID.String())
+	return fmt.Sprintf("/ip4/127.0.0.1/udp/%d/quic-v1/p2p/%s", port, peerID.String())
 }
 
 func MakeConfigFor(n, hostIdx int) *Config {
@@ -48,10 +48,11 @@ func MakeConfigFor(n, hostIdx int) *Config {
 	util.AssertNoError(err)
 
 	cfg := &Config{
-		HostIDPrivateKey:   pk,
-		HostID:             hid,
-		HostPort:           BeginPort + hostIdx,
-		PreConfiguredPeers: make(map[string]_multiaddr),
+		HostIDPrivateKey:      pk,
+		HostID:                hid,
+		HostPort:              BeginPort + hostIdx,
+		PreConfiguredPeers:    make(map[string]_multiaddr),
+		ForcePullFromAllPeers: true,
 	}
 	ids := hostID[:n]
 	for i := range ids {

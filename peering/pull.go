@@ -16,80 +16,79 @@ const PullTransactions = byte(iota)
 
 func (ps *Peers) pullStreamHandler(stream network.Stream) {
 	ps.inMsgCounter.Inc()
-
 	if ps.cfg.IgnoreAllPullRequests {
 		// ignore all pull requests
 		_ = stream.Close()
 		return
 	}
 
+	ps.mutex.Lock()
+	defer ps.mutex.Unlock()
+
 	id := stream.Conn().RemotePeer()
-	if ps.isInBlacklist(id) {
+	if ps._isInBlacklist(id) {
 		// just ignore
 		_ = stream.Close()
 		return
 	}
+
+	p := ps._getPeer(id)
+	if p == nil {
+		// ignore
+		_ = stream.Close()
+		return
+	}
+
+	if !p.isStatic && ps.cfg.AcceptPullRequestsFromStaticPeersOnly {
+		// ignore pull requests from automatic peers
+		_ = stream.Close()
+		return
+	}
+
 	var err error
 	var callAfter func()
 	var msgData []byte
 
-	ps.withPeer(id, func(p *Peer) {
-		if p == nil {
-			// just ignore
-			_ = stream.Close()
-			return
-		}
-		if !p.isStatic && ps.cfg.AcceptPullRequestsFromStaticPeersOnly {
-			// ignore pull requests from automatic peers
-			_ = stream.Close()
-			return
-		}
-		msgData, err = readFrame(stream)
-		if err != nil {
-			err = fmt.Errorf("pull: error while reading message from peer %s: %v", id.String(), err)
-			ps.Log().Error(err)
-			_ = stream.Close()
-			return
-		}
-		callAfter, err = ps.processPullFrame(msgData, p)
-		if err != nil {
-			// protocol violation
-			err = fmt.Errorf("pull: error while decoding message from peer %s: %v", id.String(), err)
-			ps.Log().Error(err)
-			ps._dropPeer(p, err.Error())
-			_ = stream.Reset()
-			return
-		}
+	msgData, err = readFrame(stream)
+	if err != nil {
+		ps.Log().Error("pull: error while reading message from peer %s: %v", id.String(), err)
 		_ = stream.Close()
-	})
-
-	if callAfter != nil {
-		// call outside lock
-		callAfter()
+		return
 	}
+	callAfter, err = ps.processPullFrame(msgData, p)
+	if err != nil {
+		// protocol violation
+		err = fmt.Errorf("pull: error while decoding message from peer %s: %v", id.String(), err)
+		ps.Log().Error(err)
+		ps._dropPeer(p, err.Error())
+		_ = stream.Reset()
+		return
+	}
+	_ = stream.Close()
+	callAfter()
 }
 
-func (ps *Peers) processPullFrame(msgData []byte, p *Peer) (func(), error) {
-	callAfter := func() {}
+func (ps *Peers) processPullFrame(msgData []byte, p *Peer) (callAfter func(), err error) {
+	callAfter = func() {}
 	if len(msgData) == 0 {
 		return nil, fmt.Errorf("expected pull message, got empty frame")
 	}
 	switch msgData[0] {
 	case PullTransactions:
-		txLst, err := decodePullTransactionMsg(msgData)
+		var txid ledger.TransactionID
+		txid, err = decodePullTransactionMsg(msgData)
 		if err != nil {
-			return nil, err
+			return
 		}
 		fun := ps.onReceivePullTx
 		callAfter = func() {
-			fun(p.id, txLst)
+			fun(p.id, txid)
 			ps.pullRequestsIn.Inc()
 		}
-
 	default:
-		return nil, fmt.Errorf("unsupported type of the pull message %d", msgData[0])
+		err = fmt.Errorf("unsupported type of the pull message %d", msgData[0])
 	}
-	return callAfter, nil
+	return
 }
 
 func (ps *Peers) sendPullTransactionToPeer(id peer.ID, txid ledger.TransactionID) {
@@ -126,8 +125,7 @@ func decodePullTransactionMsg(data []byte) (ledger.TransactionID, error) {
 }
 
 func (ps *Peers) _isPullTarget(p *Peer) bool {
-	_, inBlackList := ps.blacklist[p.id]
-	return !inBlackList && !p.ignoresPullRequests
+	return p.respondsToPullRequests || ps.cfg.ForcePullFromAllPeers
 }
 
 // out message wrappers
