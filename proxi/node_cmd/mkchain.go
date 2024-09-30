@@ -63,6 +63,10 @@ func MakeChain(onChainAmount uint64) (*transaction.TxContext, ledger.ChainID, er
 
 	inps, lrbid, totalInputs, err := glb.GetClient().GetTransferableOutputs(walletData.Account)
 	glb.AssertNoError(err)
+	if onChainAmount == 0 {
+		// transfer maximum possible amount on chain
+		onChainAmount = totalInputs - feeAmount
+	}
 	glb.Assertf(totalInputs >= onChainAmount+feeAmount, "not enough source balance %s", util.Th(totalInputs))
 
 	glb.PrintLRB(lrbid)

@@ -243,6 +243,20 @@ type (
 		TagAlong          *TagAlongData
 	}
 
+	// MakeChainSuccTransactionParams contains parameters for building a chain transaction
+	MakeChainSuccTransactionParams struct {
+		// predecessor
+		ChainInput *ledger.OutputWithChainID
+		// timestamp of the transaction
+		Timestamp ledger.Time
+		// minimum fee
+		MinimumFee        uint64
+		TagAlongSequencer ledger.ChainID
+		// chain controller
+		PrivateKey        ed25519.PrivateKey
+		ReturnInputLoader bool
+	}
+
 	TagAlongData struct {
 		SeqID  ledger.ChainID
 		Amount uint64
@@ -547,6 +561,105 @@ func MakeSimpleTransferTransactionWithRemainder(par *TransferData, disableEndors
 		}
 	}
 	return txBytes, rem, nil
+}
+
+// function to create a transaction to continue a chain to earn inflation
+func MakeChainSuccTransaction(par MakeChainSuccTransactionParams) ([]byte, func(i byte) (*ledger.Output, error), error) {
+	var consumedOutputs []*ledger.Output
+	if par.ReturnInputLoader {
+		consumedOutputs = make([]*ledger.Output, 0)
+	}
+	errP := util.MakeErrFuncForPrefix("MakeChainSuccTransaction")
+
+	chainInConstraint, chainInConstraintIdx := par.ChainInput.Output.ChainConstraint()
+	if chainInConstraintIdx == 0xff {
+		return nil, nil, errP("not a chain output: %s", par.ChainInput.ID.StringShort())
+	}
+
+	txb := NewTransactionBuilder()
+	// count sums
+	chainInAmount := par.ChainInput.Output.Amount()
+
+	totalInAmount := chainInAmount
+
+	var inflationAmount uint64
+	var inflationConstraint *ledger.InflationConstraint
+
+	if true /*par.PutInflation*/ {
+		inflationConstraint = &ledger.InflationConstraint{}
+		inflationConstraint.ChainInflation, inflationConstraint.DelayedInflationIndex = calcChainInflationAmount(&MakeSequencerTransactionParams{
+			ChainInput: par.ChainInput,
+			Timestamp:  par.Timestamp,
+		})
+
+		// calculate inflation value allowed in the context
+		// non-branch transaction
+		inflationAmount = inflationConstraint.ChainInflation
+	}
+
+	chainOutAmount := totalInAmount + inflationAmount - par.MinimumFee // >= 0
+
+	// make chain input/output
+	chainPredIdx, err := txb.ConsumeOutput(par.ChainInput.Output, par.ChainInput.ID)
+	if err != nil {
+		return nil, nil, errP(err)
+	}
+	if par.ReturnInputLoader {
+		consumedOutputs = append(consumedOutputs, par.ChainInput.Output)
+	}
+	txb.PutSignatureUnlock(chainPredIdx)
+
+	seqID := chainInConstraint.ID
+	if chainInConstraint.IsOrigin() {
+		seqID = ledger.MakeOriginChainID(&par.ChainInput.ID)
+	}
+
+	var chainOutConstraintIdx byte
+
+	chainOut := ledger.NewOutput(func(o *ledger.Output) {
+		o.PutAmount(chainOutAmount)
+		o.PutLock(par.ChainInput.Output.Lock())
+		// put chain constraint
+		chainOutConstraint := ledger.NewChainConstraint(seqID, chainPredIdx, chainInConstraintIdx, 0)
+		chainOutConstraintIdx, _ = o.PushConstraint(chainOutConstraint.Bytes())
+
+		if inflationConstraint != nil {
+			inflationConstraint.ChainConstraintIndex = chainOutConstraintIdx
+			_, _ = o.PushConstraint(inflationConstraint.Bytes())
+			//fmt.Printf(">>>>>>>>>>>>>>> push %s\n", inflationConstraint.String())
+		}
+	})
+
+	chainOutIndex, err := txb.ProduceOutput(chainOut)
+	if err != nil {
+		return nil, nil, errP(err)
+	}
+	// unlock chain input (chain constraint unlock + inflation (optionally)
+	txb.PutUnlockParams(chainPredIdx, chainInConstraintIdx, ledger.NewChainUnlockParams(chainOutIndex, chainOutConstraintIdx, 0))
+
+	tagAlongOut := ledger.NewOutput(func(o *ledger.Output) {
+		o.WithAmount(par.MinimumFee).
+			WithLock(ledger.ChainLockFromChainID(par.TagAlongSequencer))
+	})
+	if tagAlongOut != nil {
+		if _, err = txb.ProduceOutput(tagAlongOut); err != nil {
+			return nil, nil, errP(err)
+		}
+	}
+
+	txb.TransactionData.Timestamp = par.Timestamp
+	txb.TransactionData.InputCommitment = txb.InputCommitment()
+	txb.SignED25519(par.PrivateKey)
+
+	inputLoader := func(i byte) (*ledger.Output, error) {
+		panic("MakeSequencerTransactionWithInputLoader: par.ReturnInputLoader parameter must be set to true")
+	}
+	if par.ReturnInputLoader {
+		inputLoader = func(i byte) (*ledger.Output, error) {
+			return consumedOutputs[i], nil
+		}
+	}
+	return txb.TransactionData.Bytes(), inputLoader, nil
 }
 
 func MakeChainTransferTransaction(par *TransferData, disableEndorsementChecking ...bool) ([]byte, error) {
