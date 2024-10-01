@@ -461,7 +461,7 @@ func (p *Peer) _isAlive() bool {
 
 // for QUIC timeout 'NewStream' is necessary, otherwise it may hang if peer is unavailable
 
-const defaultSendTimeout = 100 * time.Millisecond
+const defaultSendTimeout = 1 * time.Second
 
 const TraceTagSendMsg = "sendMsg"
 
@@ -476,15 +476,10 @@ func (ps *Peers) sendMsgBytesOut(peerID peer.ID, protocolID protocol.ID, data []
 
 	stream, err := ps.host.NewStream(ctx, peerID, protocolID)
 	if err != nil {
+		ps.Tracef(TraceTagSendMsg, "sendMsgBytesOut %s: NewStream returned '%v'", ShortPeerIDString(peerID), ctx.Err())
 		return false
 	}
 	<-ctx.Done()
-
-	//if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-	//	ps.Tracef(TraceTagSendMsg, "context returned '%v'", err)
-	//	return false
-	//}
-	//util.AssertNoError(ctx.Err())
 
 	if ctx.Err() != nil {
 		ps.Tracef(TraceTagSendMsg, "sendMsgBytesOut %s: context returned '%v'", ShortPeerIDString(peerID), ctx.Err())
