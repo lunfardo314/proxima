@@ -446,7 +446,7 @@ func (seq *Sequencer) submitMilestone(tx *transaction.Transaction, meta *txmetad
 	{
 		nm := "submit_" + tx.IDShortString()
 		check := checkpoints.New(func(name string) {
-			seq.Log().Errorf("submitMilestone @ %s", name)
+			seq.Log().Errorf("STUCK: submitMilestone @ %s", name)
 		})
 		check.Check(nm, submitTimeout)
 		defer check.CheckAndClose(nm)

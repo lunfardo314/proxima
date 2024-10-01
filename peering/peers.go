@@ -1,9 +1,11 @@
 package peering
 
 import (
+	"context"
 	"crypto/ed25519"
 	"encoding/binary"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"time"
 
@@ -20,7 +22,6 @@ import (
 	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util"
-	"github.com/lunfardo314/proxima/util/checkpoints"
 	"github.com/lunfardo314/proxima/util/set"
 	"github.com/multiformats/go-multiaddr"
 	"github.com/spf13/viper"
@@ -204,14 +205,7 @@ func (ps *Peers) Run() {
 	var logNumPeersDeadline time.Time
 	hbCounter := uint32(0)
 
-	const deadlockThreshold = heartbeatRate * 15
-	checkHB := checkpoints.New(func(name string) {
-		checkpoints.ReportDeadlockFatal(name, deadlockThreshold, ps.Log())
-	})
-
 	ps.RepeatInBackground("peering_heartbeat_loop", heartbeatRate, func() bool {
-		checkHB.Check("peering_heartbeat_loop", deadlockThreshold)
-
 		nowis := time.Now()
 		peerIDs := ps.peerIDs()
 
@@ -466,11 +460,29 @@ func (p *Peer) _isAlive() bool {
 	return time.Since(p.lastHeartbeatReceived) < aliveDuration
 }
 
-func (ps *Peers) sendMsgBytesOut(peerID peer.ID, protocolID protocol.ID, data []byte) bool {
-	stream, err := ps.host.NewStream(ps.Ctx(), peerID, protocolID)
+// for QUIC timeout 'NewStream' is necessary, otherwise it may hang if peer is unavailable
+
+const defaultSendTimeout = 100 * time.Second
+
+func (ps *Peers) sendMsgBytesOut(peerID peer.ID, protocolID protocol.ID, data []byte, timeout ...time.Duration) bool {
+	to := defaultSendTimeout
+	if len(timeout) > 0 {
+		to = timeout[0]
+	}
+
+	ctx, cancel := context.WithTimeoutCause(ps.Ctx(), to, context.DeadlineExceeded)
+	defer cancel()
+
+	stream, err := ps.host.NewStream(ctx, peerID, protocolID)
 	if err != nil {
 		return false
 	}
+	<-ctx.Done()
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		return false
+	}
+
+	util.Assertf(stream != nil, "stream != nil")
 	defer func() { _ = stream.Close() }()
 
 	if err = writeFrame(stream, data); err != nil {
