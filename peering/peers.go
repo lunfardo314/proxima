@@ -204,7 +204,7 @@ func (ps *Peers) Run() {
 	var logNumPeersDeadline time.Time
 	hbCounter := uint32(0)
 
-	const deadlockThreshold = heartbeatRate * 5
+	const deadlockThreshold = heartbeatRate * 15
 	checkHB := checkpoints.New(func(name string) {
 		checkpoints.ReportDeadlockFatal(name, deadlockThreshold, ps.Log())
 	})
