@@ -19,6 +19,7 @@ import (
 	"github.com/lunfardo314/proxima/sequencer/backlog"
 	"github.com/lunfardo314/proxima/sequencer/task"
 	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/proxima/util/checkpoints"
 	"github.com/lunfardo314/proxima/util/set"
 	"go.uber.org/zap"
 )
@@ -441,6 +442,11 @@ func (seq *Sequencer) submitMilestone(tx *transaction.Transaction, meta *txmetad
 	}
 
 	const submitTimeout = 5 * time.Second
+
+	check := checkpoints.New(func(name string) {
+		seq.Log().Errorf("submitMilestone @ %s", name)
+	})
+	defer check.Check("submit_"+tx.IDShortString(), submitTimeout)
 
 	deadline := time.Now().Add(submitTimeout)
 	vid, err := seq.SequencerMilestoneAttachWait(tx.Bytes(), meta, submitTimeout)
