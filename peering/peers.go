@@ -204,12 +204,14 @@ func (ps *Peers) Run() {
 	var logNumPeersDeadline time.Time
 	hbCounter := uint32(0)
 
+	const deadlockThreshold = heartbeatRate * 5
 	checkHB := checkpoints.New(func(name string) {
-		checkpoints.ReportDeadlockFatal(name, heartbeatRate*3, ps.Log())
+		checkpoints.ReportDeadlockFatal(name, deadlockThreshold, ps.Log())
 	})
+	checkHB.Check("peering_heartbeat_loop", deadlockThreshold)
 
 	ps.RepeatInBackground("peering_heartbeat_loop", heartbeatRate, func() bool {
-		checkHB.Check("peering_heartbeat_loop", heartbeatRate*3)
+		checkHB.Check("peering_heartbeat_loop", deadlockThreshold)
 
 		nowis := time.Now()
 		peerIDs := ps.peerIDs()
