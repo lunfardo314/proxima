@@ -5,7 +5,6 @@ import (
 	"crypto/ed25519"
 	"encoding/binary"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"time"
 
@@ -462,7 +461,7 @@ func (p *Peer) _isAlive() bool {
 
 // for QUIC timeout 'NewStream' is necessary, otherwise it may hang if peer is unavailable
 
-const defaultSendTimeout = 100 * time.Second
+const defaultSendTimeout = 100 * time.Millisecond
 
 const TraceTagSendMsg = "sendMsg"
 
@@ -481,12 +480,15 @@ func (ps *Peers) sendMsgBytesOut(peerID peer.ID, protocolID protocol.ID, data []
 	}
 	<-ctx.Done()
 
-	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-		ps.Tracef(TraceTagSendMsg, "context returned '%v'", err)
+	//if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+	//	ps.Tracef(TraceTagSendMsg, "context returned '%v'", err)
+	//	return false
+	//}
+	//util.AssertNoError(ctx.Err())
+
+	if ctx.Err() != nil {
 		return false
 	}
-	util.AssertNoError(ctx.Err())
-
 	util.Assertf(stream != nil, "stream != nil")
 	defer func() { _ = stream.Close() }()
 
