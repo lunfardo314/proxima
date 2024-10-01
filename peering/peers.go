@@ -211,11 +211,11 @@ func (ps *Peers) Run() {
 		}
 
 		if nowis.After(logNumPeersDeadline) {
-			aliveStatic, aliveDynamic := ps.NumAlive()
+			aliveStatic, aliveDynamic, pullTargets := ps.NumAlive()
 
-			ps.Log().Infof("[peering] node is connected to %d peer(s). Static: %d/%d, dynamic %d/%d) (took %v)",
+			ps.Log().Infof("[peering] node is connected to %d peer(s). Static: %d/%d, dynamic %d/%d, pull targets: %d (%v)",
 				aliveStatic+aliveDynamic, aliveStatic, len(ps.cfg.PreConfiguredPeers),
-				aliveDynamic, ps.cfg.MaxDynamicPeers, time.Since(nowis))
+				aliveDynamic, ps.cfg.MaxDynamicPeers, pullTargets, time.Since(nowis))
 
 			logNumPeersDeadline = nowis.Add(logPeersEvery)
 		}

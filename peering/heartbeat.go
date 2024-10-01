@@ -31,7 +31,7 @@ const (
 	TraceTagHeartBeatSend = "peering_hb_send"
 )
 
-func (ps *Peers) NumAlive() (aliveStatic, aliveDynamic int) {
+func (ps *Peers) NumAlive() (aliveStatic, aliveDynamic, pullTargets int) {
 	ps.forEachPeerRLock(func(p *Peer) bool {
 		if p._isAlive() {
 			if p.isStatic {
@@ -39,6 +39,9 @@ func (ps *Peers) NumAlive() (aliveStatic, aliveDynamic int) {
 			} else {
 				aliveDynamic++
 			}
+		}
+		if ps._isPullTarget(p) {
+			pullTargets++
 		}
 		return true
 	})
