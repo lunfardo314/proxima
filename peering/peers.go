@@ -464,6 +464,8 @@ func (p *Peer) _isAlive() bool {
 
 const defaultSendTimeout = 100 * time.Second
 
+const TraceTagSendMsg = "sendMsg"
+
 func (ps *Peers) sendMsgBytesOut(peerID peer.ID, protocolID protocol.ID, data []byte, timeout ...time.Duration) bool {
 	to := defaultSendTimeout
 	if len(timeout) > 0 {
@@ -478,9 +480,12 @@ func (ps *Peers) sendMsgBytesOut(peerID peer.ID, protocolID protocol.ID, data []
 		return false
 	}
 	<-ctx.Done()
+
 	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		ps.Tracef(TraceTagSendMsg, "context returned '%v'", err)
 		return false
 	}
+	util.AssertNoError(ctx.Err())
 
 	util.Assertf(stream != nil, "stream != nil")
 	defer func() { _ = stream.Close() }()
