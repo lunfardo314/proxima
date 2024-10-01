@@ -487,6 +487,7 @@ func (ps *Peers) sendMsgBytesOut(peerID peer.ID, protocolID protocol.ID, data []
 	//util.AssertNoError(ctx.Err())
 
 	if ctx.Err() != nil {
+		ps.Tracef(TraceTagSendMsg, "sendMsgBytesOut %s: context returned '%v'", ShortPeerIDString(peerID), err)
 		return false
 	}
 	util.Assertf(stream != nil, "stream != nil")
