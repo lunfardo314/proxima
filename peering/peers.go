@@ -466,6 +466,11 @@ const defaultSendTimeout = 10 * time.Second
 const TraceTagSendMsg = "sendMsg"
 
 func (ps *Peers) sendMsgBytesOut(peerID peer.ID, protocolID protocol.ID, data []byte, timeout ...time.Duration) bool {
+	start := time.Now()
+	defer func() {
+		ps.Tracef(TraceTagSendMsg, "sendMsgBytesOut %s took: %v", ShortPeerIDString(peerID), time.Since(start))
+	}()
+
 	to := defaultSendTimeout
 	if len(timeout) > 0 {
 		to = timeout[0]
