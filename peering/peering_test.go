@@ -100,6 +100,7 @@ func TestHeartbeat(t *testing.T) {
 		trace    = false
 	)
 	hosts := makeHosts(t, numHosts, trace)
+	hosts[0].StartTracingTags(TraceTagSendMsg)
 	for _, h := range hosts {
 		h.Run()
 	}
