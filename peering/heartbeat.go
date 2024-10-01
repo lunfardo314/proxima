@@ -133,12 +133,13 @@ func (ps *Peers) _evidenceHeartBeat(p *Peer, hbInfo heartbeatInfo) {
 }
 
 func (ps *Peers) sendHeartbeatToPeer(id peer.ID, hbCounter uint32) {
-	respondsToPull := false
-	if !ps.cfg.IgnoreAllPullRequests {
-		if ps.cfg.AcceptPullRequestsFromStaticPeersOnly {
-			respondsToPull = ps.staticPeers.Contains(id)
-		}
+	respondsToPull := true
+	if ps.cfg.IgnoreAllPullRequests {
+		respondsToPull = false
+	} else if ps.cfg.AcceptPullRequestsFromStaticPeersOnly {
+		respondsToPull = ps.staticPeers.Contains(id)
 	}
+
 	msg := &heartbeatInfo{
 		// time now will be set in the queue consumer
 		respondsToPullRequests: respondsToPull,
