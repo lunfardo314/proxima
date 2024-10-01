@@ -376,6 +376,18 @@ func (ps *Peers) getPeer(id peer.ID) *Peer {
 	return ps._getPeer(id)
 }
 
+func (ps *Peers) knownPeer(id peer.ID) (known, blacklisted, static bool) {
+	ps.mutex.RLock()
+	defer ps.mutex.RUnlock()
+
+	_, blacklisted = ps.blacklist[id]
+	var p *Peer
+	if p, known = ps.peers[id]; known {
+		static = p.isStatic
+	}
+	return
+}
+
 func (ps *Peers) withPeer(id peer.ID, fun func(p *Peer)) {
 	ps.mutex.Lock()
 	defer ps.mutex.Unlock()

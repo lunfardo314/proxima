@@ -13,38 +13,26 @@ func (ps *Peers) gossipStreamHandler(stream network.Stream) {
 	ps.inMsgCounter.Inc()
 	id := stream.Conn().RemotePeer()
 
-	ps.mutex.Lock()
-	defer ps.mutex.Unlock()
-
-	if ps._isInBlacklist(id) {
+	known, blacklisted, _ := ps.knownPeer(id)
+	if !known || blacklisted {
 		// ignore
 		_ = stream.Close()
 		return
 	}
-	p := ps._getPeer(id)
-	if p == nil {
-		// from unknown peer -> ignore
-		_ = stream.Close()
-		return
-	}
-
 	txBytesWithMetadata, err := readFrame(stream)
+	_ = stream.Close()
+
 	if err != nil {
 		ps.Log().Errorf("gossip: error while reading message from peer %s: %v", id.String(), err)
-		_ = stream.Close()
 		return
 	}
-
-	ps.transactionsReceivedCounter.Inc()
-	ps.txBytesReceivedCounter.Add(float64(len(txBytesWithMetadata)))
 
 	metadataBytes, txBytes, err := txmetadata.SplitTxBytesWithMetadata(txBytesWithMetadata)
 	if err != nil {
 		// protocol violation
 		err = fmt.Errorf("gossip: error while parsing tx message from peer %s: %v", id.String(), err)
 		ps.Log().Error(err)
-		ps._dropPeer(p, err.Error())
-		_ = stream.Reset()
+		ps.dropPeer(id, err.Error())
 		return
 	}
 	metadata, err := txmetadata.TransactionMetadataFromBytes(metadataBytes)
@@ -52,11 +40,13 @@ func (ps *Peers) gossipStreamHandler(stream network.Stream) {
 		// protocol violation
 		err = fmt.Errorf("gossip: error while parsing tx message metadata from peer %s: %v", id.String(), err)
 		ps.Log().Error(err)
-		ps._dropPeer(p, err.Error())
-		_ = stream.Reset()
+		ps.dropPeer(id, err.Error())
 		return
 	}
-	_ = stream.Close()
+
+	ps.transactionsReceivedCounter.Inc()
+	ps.txBytesReceivedCounter.Add(float64(len(txBytesWithMetadata)))
+
 	ps.onReceiveTx(id, txBytes, metadata)
 }
 
@@ -74,7 +64,7 @@ func (ps *Peers) GossipTxBytesToPeers(txBytes []byte, metadata *txmetadata.Trans
 }
 
 func (ps *Peers) SendTxBytesWithMetadataToPeer(id peer.ID, txBytes []byte, metadata *txmetadata.TransactionMetadata) bool {
-	msg := _gossipMsgWrapper{
+	msg := gossipMsgWrapper{
 		metadata: metadata,
 		txBytes:  txBytes,
 	}
@@ -82,13 +72,11 @@ func (ps *Peers) SendTxBytesWithMetadataToPeer(id peer.ID, txBytes []byte, metad
 }
 
 // message wrapper
-type _gossipMsgWrapper struct {
+type gossipMsgWrapper struct {
 	metadata *txmetadata.TransactionMetadata
 	txBytes  []byte
 }
 
-func (gm _gossipMsgWrapper) Bytes() []byte {
+func (gm gossipMsgWrapper) Bytes() []byte {
 	return common.ConcatBytes(gm.metadata.Bytes(), gm.txBytes)
 }
-func (gm _gossipMsgWrapper) SetNow()         {}
-func (gm _gossipMsgWrapper) Counter() uint32 { return 0 }

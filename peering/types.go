@@ -90,19 +90,6 @@ type (
 		rankByLastHBReceived  int
 		rankByClockDifference int
 	}
-
-	outMsgData struct {
-		msg      outMessageWrapper
-		peerID   peer.ID
-		protocol protocol.ID
-	}
-
-	// outMessageWrapper is needed for the outQueue. In order to avoid timing problems
-	outMessageWrapper interface {
-		Bytes() []byte
-		SetNow() // specifically for heartbeat
-		Counter() uint32
-	}
 )
 
 const (

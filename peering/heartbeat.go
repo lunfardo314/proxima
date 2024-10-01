@@ -70,55 +70,49 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 	// received heartbeat message from peer
 	ps.inMsgCounter.Inc()
 	id := stream.Conn().RemotePeer()
+	remote := stream.Conn().RemoteMultiaddr()
 
-	ps.mutex.Lock()
-	defer ps.mutex.Unlock()
-
-	if ps._isInBlacklist(id) {
+	known, blacklisted, _ := ps.knownPeer(id)
+	if blacklisted {
 		// ignore
 		_ = stream.Close()
 		return
 	}
-	p := ps._getPeer(id)
-	if p == nil {
-		// unknown peer, peering request
+	if !known {
 		if !ps.isAutopeeringEnabled() {
 			// node does not take any incoming dynamic peers
-			ps.Tracef(TraceTag, "autopeering disabled: unknown peer %s", id.String)
 			_ = stream.Close()
 			return
 		}
-		// add new peer
-		remote := stream.Conn().RemoteMultiaddr()
-		addrInfo := &peer.AddrInfo{
-			ID:    id,
-			Addrs: []multiaddr.Multiaddr{remote},
-		}
 		ps.Log().Infof("[peering] incoming peer request. Add new dynamic peer %s", id.String())
-		p = ps._addPeer(addrInfo, "", false)
 	}
-	util.Assertf(p != nil, "p != nil")
 
 	var hbInfo heartbeatInfo
-	var err error
-	var msgData []byte
+	msgData, err := readFrame(stream)
+	_ = stream.Close()
 
-	if msgData, err = readFrame(stream); err != nil {
+	if err != nil {
 		ps.Log().Errorf("[peering] hb: error while reading message from peer %s: err='%v'. Ignore", ShortPeerIDString(id), err)
-		_ = stream.Close()
 		return
 	}
-
 	if hbInfo, err = heartbeatInfoFromBytes(msgData); err != nil {
 		// protocol violation
 		err = fmt.Errorf("[peering] hb: error while serializing message from peer %s: %v. Reset connection", ShortPeerIDString(id), err)
 		ps.Log().Error(err)
-		ps._dropPeer(p, err.Error())
-		_ = stream.Reset()
+		ps.dropPeer(id, err.Error())
 		return
 	}
-	_ = stream.Close()
-	ps._evidenceHeartBeat(p, hbInfo)
+
+	ps.withPeer(id, func(p *Peer) {
+		if p == nil {
+			addrInfo := &peer.AddrInfo{
+				ID:    id,
+				Addrs: []multiaddr.Multiaddr{remote},
+			}
+			p = ps._addPeer(addrInfo, "", false)
+		}
+		ps._evidenceHeartBeat(p, hbInfo)
+	})
 }
 
 func (ps *Peers) _evidenceHeartBeat(p *Peer, hbInfo heartbeatInfo) {
@@ -206,14 +200,6 @@ func (hi *heartbeatInfo) Bytes() []byte {
 	_ = binary.Write(&buf, binary.BigEndian, uint64(hi.clock.UnixNano()))
 	_ = binary.Write(&buf, binary.BigEndian, hi.counter)
 	return buf.Bytes()
-}
-
-func (hi *heartbeatInfo) SetNow() {
-	hi.clock = time.Now()
-}
-
-func (hi *heartbeatInfo) Counter() uint32 {
-	return hi.counter
 }
 
 func heartbeatInfoFromBytes(data []byte) (heartbeatInfo, error) {
