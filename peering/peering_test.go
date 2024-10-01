@@ -104,7 +104,7 @@ func TestHeartbeat(t *testing.T) {
 	for _, h := range hosts {
 		h.Run()
 	}
-	time.Sleep(30 * time.Second)
+	time.Sleep(10 * time.Second)
 	for _, ps := range hosts {
 		for _, id := range ps.getPeerIDs() {
 			require.True(t, ps.IsAlive(id))

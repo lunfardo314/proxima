@@ -461,15 +461,15 @@ func (p *Peer) _isAlive() bool {
 
 // for QUIC timeout 'NewStream' is necessary, otherwise it may hang if peer is unavailable
 
-const defaultSendTimeout = 10 * time.Second
+const defaultSendTimeout = 200 * time.Millisecond
 
 const TraceTagSendMsg = "sendMsg"
 
 func (ps *Peers) sendMsgBytesOut(peerID peer.ID, protocolID protocol.ID, data []byte, timeout ...time.Duration) bool {
-	start := time.Now()
-	defer func() {
-		ps.Tracef(TraceTagSendMsg, "sendMsgBytesOut %s took: %v", ShortPeerIDString(peerID), time.Since(start))
-	}()
+	//start := time.Now()
+	//defer func() {
+	//	ps.Tracef(TraceTagSendMsg, "sendMsgBytesOut %s took: %v", ShortPeerIDString(peerID), time.Since(start))
+	//}()
 
 	to := defaultSendTimeout
 	if len(timeout) > 0 {
@@ -478,17 +478,17 @@ func (ps *Peers) sendMsgBytesOut(peerID peer.ID, protocolID protocol.ID, data []
 
 	ctx, cancel := context.WithTimeoutCause(ps.Ctx(), to, context.DeadlineExceeded)
 	defer cancel()
-	ps.Tracef(TraceTagSendMsg, "sendMsgBytesOut %s, protocol: %s: timeout = %v", ShortPeerIDString(peerID), protocolID, to)
+	//ps.Tracef(TraceTagSendMsg, "sendMsgBytesOut %s, protocol: %s: timeout = %v", ShortPeerIDString(peerID), protocolID, to)
 
+	// the NewStream waits until context is done
 	stream, err := ps.host.NewStream(ctx, peerID, protocolID)
 	if err != nil {
-		ps.Tracef(TraceTagSendMsg, "sendMsgBytesOut %s: NewStream returned '%v'", ShortPeerIDString(peerID), err)
+		//ps.Tracef(TraceTagSendMsg, "sendMsgBytesOut %s: NewStream returned '%v'", ShortPeerIDString(peerID), err)
 		return false
 	}
-	<-ctx.Done()
 
 	if ctx.Err() != nil {
-		ps.Tracef(TraceTagSendMsg, "sendMsgBytesOut %s: context returned '%v'", ShortPeerIDString(peerID), ctx.Err())
+		//ps.Tracef(TraceTagSendMsg, "sendMsgBytesOut %s: context returned '%v'", ShortPeerIDString(peerID), ctx.Err())
 		return false
 	}
 	util.Assertf(stream != nil, "stream != nil")
@@ -497,7 +497,7 @@ func (ps *Peers) sendMsgBytesOut(peerID peer.ID, protocolID protocol.ID, data []
 	if err = writeFrame(stream, data); err != nil {
 		ps.Log().Errorf("[peering] error while sending message to peer %s", ShortPeerIDString(peerID))
 	}
-	ps.Tracef(TraceTagSendMsg, "sendMsgBytesOut %s: succeeded: err = '%v'", ShortPeerIDString(peerID), err)
+	//ps.Tracef(TraceTagSendMsg, "sendMsgBytesOut %s: succeeded: err = '%v'", ShortPeerIDString(peerID), err)
 	ps.outMsgCounter.Inc()
 	return err == nil
 }
