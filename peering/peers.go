@@ -208,7 +208,6 @@ func (ps *Peers) Run() {
 	checkHB := checkpoints.New(func(name string) {
 		checkpoints.ReportDeadlockFatal(name, deadlockThreshold, ps.Log())
 	})
-	checkHB.Check("peering_heartbeat_loop", deadlockThreshold)
 
 	ps.RepeatInBackground("peering_heartbeat_loop", heartbeatRate, func() bool {
 		checkHB.Check("peering_heartbeat_loop", deadlockThreshold)
