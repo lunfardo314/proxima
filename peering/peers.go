@@ -20,6 +20,7 @@ import (
 	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/proxima/util/checkpoints"
 	"github.com/lunfardo314/proxima/util/set"
 	"github.com/multiformats/go-multiaddr"
 	"github.com/spf13/viper"
@@ -202,7 +203,14 @@ func (ps *Peers) Run() {
 	//ps.startHeartbeat()
 	var logNumPeersDeadline time.Time
 	hbCounter := uint32(0)
+
+	checkHB := checkpoints.New(func(name string) {
+		checkpoints.ReportDeadlockFatal(name, heartbeatRate*3, ps.Log())
+	})
+
 	ps.RepeatInBackground("peering_heartbeat_loop", heartbeatRate, func() bool {
+		checkHB.Check("peering_heartbeat_loop", heartbeatRate*3)
+
 		nowis := time.Now()
 		peerIDs := ps.peerIDs()
 
