@@ -478,8 +478,7 @@ func (ps *Peers) sendMsgBytesOut(peerID peer.ID, protocolID protocol.ID, data []
 
 	ctx, cancel := context.WithTimeoutCause(ps.Ctx(), to, context.DeadlineExceeded)
 	defer cancel()
-
-	ps.Tracef(TraceTagSendMsg, "sendMsgBytesOut %s: timeout = %v", ShortPeerIDString(peerID), to)
+	ps.Tracef(TraceTagSendMsg, "sendMsgBytesOut %s, protocol: %s: timeout = %v", ShortPeerIDString(peerID), protocolID, to)
 
 	stream, err := ps.host.NewStream(ctx, peerID, protocolID)
 	if err != nil {
