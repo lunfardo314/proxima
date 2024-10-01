@@ -51,16 +51,16 @@ func (ps *Peers) gossipStreamHandler(stream network.Stream) {
 }
 
 func (ps *Peers) GossipTxBytesToPeers(txBytes []byte, metadata *txmetadata.TransactionMetadata, except ...peer.ID) int {
-	countSent := 0
-	for _, id := range ps.peerIDsAlive() {
-		if len(except) > 0 && id == except[0] {
-			continue
-		}
-		if ps.SendTxBytesWithMetadataToPeer(id, txBytes, metadata) {
-			countSent++
-		}
+	targets := ps.peerIDsAlive(except...)
+	return ps.sendTxBytesWithMetadataToPeers(targets, txBytes, metadata)
+}
+
+func (ps *Peers) sendTxBytesWithMetadataToPeers(ids []peer.ID, txBytes []byte, metadata *txmetadata.TransactionMetadata) int {
+	msg := gossipMsgWrapper{
+		metadata: metadata,
+		txBytes:  txBytes,
 	}
-	return countSent
+	return ps.sendMsgBytesOutMulti(ids, ps.lppProtocolGossip, msg.Bytes())
 }
 
 func (ps *Peers) SendTxBytesWithMetadataToPeer(id peer.ID, txBytes []byte, metadata *txmetadata.TransactionMetadata) bool {

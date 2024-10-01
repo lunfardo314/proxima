@@ -151,9 +151,12 @@ func (ps *Peers) sendHeartbeatToPeer(id peer.ID, hbCounter uint32) {
 	}
 }
 
-func (ps *Peers) peerIDsAlive() []peer.ID {
+func (ps *Peers) peerIDsAlive(except ...peer.ID) []peer.ID {
 	ret := make([]peer.ID, 0)
 	ps.forEachPeerRLock(func(p *Peer) bool {
+		if len(except) > 0 && p.id == except[0] {
+			return true
+		}
 		if p._isAlive() {
 			ret = append(ret, p.id)
 		}

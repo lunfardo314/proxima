@@ -6,6 +6,8 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/libp2p/go-libp2p"
@@ -491,4 +493,23 @@ func (ps *Peers) sendMsgBytesOut(peerID peer.ID, protocolID protocol.ID, data []
 	}
 	ps.outMsgCounter.Inc()
 	return err == nil
+}
+
+// sendMsgBytesOutMulti send to multiple peers in parallel
+func (ps *Peers) sendMsgBytesOutMulti(peerIDs []peer.ID, protocolID protocol.ID, data []byte, timeout ...time.Duration) int {
+	var successCounter atomic.Uint32
+	var wg sync.WaitGroup
+
+	wg.Add(len(peerIDs))
+	for _, id := range peerIDs {
+		go func(idCopy peer.ID) {
+			if ps.sendMsgBytesOut(idCopy, protocolID, data, timeout...) {
+				successCounter.Add(1)
+			}
+			wg.Done()
+		}(id)
+	}
+	wg.Wait()
+
+	return int(successCounter.Load())
 }

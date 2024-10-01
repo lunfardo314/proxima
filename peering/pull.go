@@ -61,11 +61,11 @@ func (ps *Peers) pullStreamHandler(stream network.Stream) {
 	ps.pullRequestsIn.Inc()
 }
 
-func (ps *Peers) sendPullTransactionToPeer(id peer.ID, txid ledger.TransactionID) {
+func (ps *Peers) sendPullTransactionToPeers(ids []peer.ID, txid ledger.TransactionID) {
 	msg := _pullTransaction{
 		txid: txid,
 	}
-	ps.sendMsgBytesOut(id, ps.lppProtocolPull, msg.Bytes())
+	ps.sendMsgBytesOutMulti(ids, ps.lppProtocolPull, msg.Bytes())
 }
 
 // PullTransactionsFromNPeers sends pull request to the random peer which has txStore
@@ -74,9 +74,7 @@ func (ps *Peers) PullTransactionsFromNPeers(nPeers int, txid ledger.TransactionI
 	util.Assertf(nPeers >= 1, "nPeers")
 
 	targets := ps.chooseNPullTargets(nPeers)
-	for _, rndPeerID := range targets {
-		ps.sendPullTransactionToPeer(rndPeerID, txid)
-	}
+	ps.sendPullTransactionToPeers(targets, txid)
 	return len(targets)
 }
 
