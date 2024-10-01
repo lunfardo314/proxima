@@ -36,12 +36,21 @@ func New(callback func(name string), checkPeriod ...time.Duration) *Checkpoints 
 }
 
 // Check is nextExpectedAfter == 0 cancels checkpoint
-func (c *Checkpoints) Check(name string, nextExpectedAfter time.Duration) {
+func (c *Checkpoints) Check(name string, nextExpectedAfter ...time.Duration) {
+	next := time.Duration(0)
+	if len(nextExpectedAfter) > 0 {
+		next = nextExpectedAfter[0]
+	}
 	c.ch <- &check{
-		nextExpectedAfter: nextExpectedAfter,
+		nextExpectedAfter: next,
 		name:              name,
 		nowis:             time.Now(),
 	}
+}
+
+func (c *Checkpoints) CheckAndClose(name string) {
+	c.Check(name)
+	c.Close()
 }
 
 func (c *Checkpoints) Close() {

@@ -444,13 +444,12 @@ func (seq *Sequencer) submitMilestone(tx *transaction.Transaction, meta *txmetad
 	const submitTimeout = 5 * time.Second
 
 	{
+		nm := "submit_" + tx.IDShortString()
 		check := checkpoints.New(func(name string) {
 			seq.Log().Errorf("submitMilestone @ %s", name)
 		})
-		defer func() {
-			check.Check("submit_"+tx.IDShortString(), submitTimeout)
-			check.Close()
-		}()
+		check.Check(nm, submitTimeout)
+		defer check.CheckAndClose(nm)
 	}
 
 	deadline := time.Now().Add(submitTimeout)
