@@ -246,7 +246,7 @@ func (p *ProximaNode) goLoggingSync() {
 			curSlot := ledger.TimeNow().Slot()
 			slotsBehind := curSlot - lrb.Stem.ID.Slot()
 			p.lrbSlotsBehind.Set(float64(slotsBehind))
-			msg := fmt.Sprintf("[sync] latest reliable branch is %d slots behind from now, current slot: %d, coverage: %s (took: %v)",
+			msg := fmt.Sprintf("[sync] latest reliable branch is %d slots behind from now, current slot: %d, coverage: %s (%v)",
 				slotsBehind, curSlot, util.Th(lrb.LedgerCoverage), time.Since(start))
 			if slotsBehind <= slotSyncThreshold {
 				p.Log().Info(msg)

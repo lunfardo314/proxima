@@ -229,7 +229,7 @@ func OpenSnapshotFileStream(fname string) (*SnapshotFileStream, error) {
 
 func (s *SnapshotStats) Lines(prefix ...string) *lines.Lines {
 	ret := lines.New(prefix...)
-	ret.Add("Took to traverse: %v", s.DurationTraverse)
+	ret.Add("Traversed state in %v", s.DurationTraverse)
 	partitions := util.KeysSorted(s.ByPartition, func(k1, k2 byte) bool {
 		return k1 < k2
 	})
