@@ -5,6 +5,7 @@ import (
 
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/proxima/util/lines"
 	"golang.org/x/exp/maps"
 )
 
@@ -49,6 +50,17 @@ func (ps *Peers) _pullTargetsByRankDesc() []*Peer {
 	sort.Slice(ret, func(i, j int) bool {
 		return ret[i].rank() > ret[j].rank()
 	})
+	return ret
+}
+
+func (ps *Peers) pullTargetsByRankDescLines(prefix ...string) *lines.Lines {
+	ret := lines.New(prefix...)
+	ps.mutex.RLock()
+	defer ps.mutex.RUnlock()
+
+	for _, p := range ps._pullTargetsByRankDesc() {
+		ret.Add("%s: %d", ShortPeerIDString(p.id), p.rank())
+	}
 	return ret
 }
 

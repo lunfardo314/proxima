@@ -190,6 +190,8 @@ func (ps *Peers) Host() host.Host {
 	return ps.host
 }
 
+const TraceTagPullTargets = "peering_pull_targets"
+
 func (ps *Peers) Run() {
 	ps.environment.MarkWorkProcessStarted(Name)
 
@@ -218,6 +220,9 @@ func (ps *Peers) Run() {
 				aliveDynamic, ps.cfg.MaxDynamicPeers, pullTargets, time.Since(nowis))
 
 			logNumPeersDeadline = nowis.Add(logPeersEvery)
+			{
+				ps.Tracef(TraceTagPullTargets, "pull targets: {%s}", func() string { return ps.pullTargetsByRankDescLines().Join(", ") })
+			}
 		}
 
 		return true
