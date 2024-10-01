@@ -225,10 +225,8 @@ func (ps *Peers) Run() {
 
 	if ps.isAutopeeringEnabled() {
 		ps.RepeatInBackground("autopeering_loop", checkPeersEvery, func() bool {
-			ps.Tracef(TraceTagAutopeering, "loop start")
 			ps.discoverPeersIfNeeded()
 			ps.dropExcessPeersIfNeeded() // dropping excess dynamic peers one-by-one
-			ps.Tracef(TraceTagAutopeering, "loop end")
 			return true
 		}, true)
 	}
