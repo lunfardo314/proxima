@@ -128,8 +128,8 @@ func (ps *Peers) _evidenceHeartBeat(p *Peer, hbInfo heartbeatInfo) {
 	p.clockDifferenceMedian = m
 	p.respondsToPullRequests = hbInfo.respondsToPullRequests
 
-	ps.Tracef(TraceTagHeartBeatRecv, ">>>>> received #%d from %s: clock diff: %v, median: %v, alive: %v",
-		hbInfo.counter, ShortPeerIDString(p.id), diff, m, p._isAlive())
+	ps.Tracef(TraceTagHeartBeatRecv, ">>>>> received #%d from %s: clock diff: %v, median: %v, responds to pull: %v, alive: %v",
+		hbInfo.counter, ShortPeerIDString(p.id), diff, m, p.respondsToPullRequests, p._isAlive())
 }
 
 func (ps *Peers) sendHeartbeatToPeer(id peer.ID, hbCounter uint32) {
