@@ -596,7 +596,7 @@ func (srv *server) registerMetrics() {
 
 func (srv *server) addHandler(pattern string, handler func(http.ResponseWriter, *http.Request)) {
 	http.HandleFunc(pattern, func(w http.ResponseWriter, r *http.Request) {
-		srv.Tracef(TraceTag, "API request: %s", r.URL.String())
+		srv.Tracef(TraceTag, "API request: %s from %s", r.URL.String(), r.RemoteAddr)
 		handler(w, r)
 		srv.metrics.totalRequests.Inc()
 	})
