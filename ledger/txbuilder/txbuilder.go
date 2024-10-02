@@ -249,8 +249,10 @@ type (
 		ChainInput *ledger.OutputWithChainID
 		// timestamp of the transaction
 		Timestamp ledger.Time
+		// check if transaction is profitable
+		EnforceProfitability bool
 		// minimum fee
-		MinimumFee        uint64
+		TagAlongFee       uint64
 		TagAlongSequencer ledger.ChainID
 		// chain controller
 		PrivateKey        ed25519.PrivateKey
@@ -571,33 +573,55 @@ func MakeChainSuccTransaction(par MakeChainSuccTransactionParams) ([]byte, func(
 	}
 	errP := util.MakeErrFuncForPrefix("MakeChainSuccTransaction")
 
+	if !ledger.ValidTime(par.Timestamp) {
+		return nil, nil, errP("wrong timestamp bytes 0x%s", hex.EncodeToString(par.Timestamp[:]))
+	}
+	if par.Timestamp.IsSlotBoundary() {
+		return nil, nil, errP("timestamp is on slot boundary")
+	}
+	if par.ChainInput == nil {
+		return nil, nil, errP("ChainInput is nil")
+	}
+
 	chainInConstraint, chainInConstraintIdx := par.ChainInput.Output.ChainConstraint()
 	if chainInConstraintIdx == 0xff {
 		return nil, nil, errP("not a chain output: %s", par.ChainInput.ID.StringShort())
 	}
-
-	txb := NewTransactionBuilder()
-	// count sums
-	chainInAmount := par.ChainInput.Output.Amount()
-
-	totalInAmount := chainInAmount
-
-	var inflationAmount uint64
-	var inflationConstraint *ledger.InflationConstraint
-
-	if true /*par.PutInflation*/ {
-		inflationConstraint = &ledger.InflationConstraint{}
-		inflationConstraint.ChainInflation, inflationConstraint.DelayedInflationIndex = calcChainInflationAmount(&MakeSequencerTransactionParams{
-			ChainInput: par.ChainInput,
-			Timestamp:  par.Timestamp,
-		})
-
-		// calculate inflation value allowed in the context
-		// non-branch transaction
-		inflationAmount = inflationConstraint.ChainInflation
+	if int(par.TagAlongFee) < 0 {
+		return nil, nil, errP("tag along fee is negative: %d", par.TagAlongFee)
 	}
 
-	chainOutAmount := totalInAmount + inflationAmount - par.MinimumFee // >= 0
+	txb := NewTransactionBuilder()
+
+	tsIn := par.ChainInput.ID.Timestamp()
+	adjustedTs := ledger.MaximumTime(tsIn, par.Timestamp).AddTicks(ledger.TransactionPace())
+	// transaction pace constraint
+	if !ledger.ValidTransactionPace(tsIn, adjustedTs) {
+		return nil, nil, errP("timestamp %s is inconsistent with latest input timestamp %s", par.Timestamp.String(), tsIn.String())
+	}
+
+	var inflationAmount uint64
+	var inflationConstraint *ledger.InflationConstraint = &ledger.InflationConstraint{}
+
+	inflationConstraint.ChainInflation, inflationConstraint.DelayedInflationIndex = calcChainInflationAmount(&MakeSequencerTransactionParams{
+		ChainInput: par.ChainInput,
+		Timestamp:  adjustedTs,
+	})
+
+	chainInAmount := par.ChainInput.Output.Amount()
+	// calculate inflation value allowed in the context
+	// non-branch transaction
+	inflationAmount = inflationConstraint.ChainInflation
+	if chainInAmount+inflationAmount < par.TagAlongFee {
+		return nil, nil, errP("total amount not enough for fee")
+	}
+
+	chainOutAmount := chainInAmount + inflationAmount - par.TagAlongFee // >= 0
+	if par.EnforceProfitability {
+		if chainOutAmount < chainInAmount {
+			return nil, nil, errP("transaction is not profitable")
+		}
+	}
 
 	// make chain input/output
 	chainPredIdx, err := txb.ConsumeOutput(par.ChainInput.Output, par.ChainInput.ID)
@@ -615,7 +639,6 @@ func MakeChainSuccTransaction(par MakeChainSuccTransactionParams) ([]byte, func(
 	}
 
 	var chainOutConstraintIdx byte
-
 	chainOut := ledger.NewOutput(func(o *ledger.Output) {
 		o.PutAmount(chainOutAmount)
 		o.PutLock(par.ChainInput.Output.Lock())
@@ -638,7 +661,7 @@ func MakeChainSuccTransaction(par MakeChainSuccTransactionParams) ([]byte, func(
 	txb.PutUnlockParams(chainPredIdx, chainInConstraintIdx, ledger.NewChainUnlockParams(chainOutIndex, chainOutConstraintIdx, 0))
 
 	tagAlongOut := ledger.NewOutput(func(o *ledger.Output) {
-		o.WithAmount(par.MinimumFee).
+		o.WithAmount(par.TagAlongFee).
 			WithLock(ledger.ChainLockFromChainID(par.TagAlongSequencer))
 	})
 	if tagAlongOut != nil {
@@ -647,7 +670,7 @@ func MakeChainSuccTransaction(par MakeChainSuccTransactionParams) ([]byte, func(
 		}
 	}
 
-	txb.TransactionData.Timestamp = par.Timestamp
+	txb.TransactionData.Timestamp = adjustedTs
 	txb.TransactionData.InputCommitment = txb.InputCommitment()
 	txb.SignED25519(par.PrivateKey)
 
