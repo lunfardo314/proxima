@@ -107,7 +107,12 @@ peering:
   # -- <multiaddr> is the libp2p multi-address in the form '/ip4/<IPaddr ir URL>/<port>/tcp/p2p/<hostID>'
   # for more info see https://docs.libp2p.io/concepts/fundamentals/addressing/
   peers:
-    # Example -> boot: /ip4/127.0.0.1/tcp/4000/p2p/12D3KooWL32QkXc8ZuraMJkLaoZjRXBkJVjRz7sxGWYwmzBFig3M
+    # Example -> boot: /ip4/113.30.191.219/udp/4001/quic-v1/p2p/12D3KooWGSnqWgYcMTKyQfqCnXCjvKMBLpN57jUN8WhbgnSnSRRx
+	# nodes for testnet:
+    boot: /ip4/113.30.191.219/udp/4001/quic-v1/p2p/12D3KooWGSnqWgYcMTKyQfqCnXCjvKMBLpN57jUN8WhbgnSnSRRx
+    acc1: /ip4/63.250.56.190/udp/4001/quic-v1/p2p/12D3KooWN35e2ikeiJAUpotsmD6YTmHrmypHk9QgKo3QAotF4G2a
+    acc2: /ip4/83.229.84.197/udp/4001/quic-v1/p2p/12D3KooWB4JtN4266XqLhKLo3c8SS4aTdD32dnsrqfWyrLfbwFw3
+    acc3: /ip4/5.180.181.103/udp/4001/quic-v1/p2p/12D3KooWQEJybYc7pnpuM2vTn4QbU26GK1LUMML6if6JjHSVjjMS
 
   # Maximum number of peers which may be connected to via the automatic peer discovery
   # max_dynamic_peers > 0 means automatic peer discovery (autopeering) is enabled, otherwise disabled

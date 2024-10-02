@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # URL of the directory (without the trailing slash)
-URL="http://83.229.84.197/shared"
+URL="http://83.229.84.197/downloads"
 LOCAL_SAVE_PATH="./data/"
 
 # Fetch the directory listing, sort by modification date, and extract the most recent file

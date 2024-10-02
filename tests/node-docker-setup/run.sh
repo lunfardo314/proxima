@@ -11,6 +11,7 @@ fi
 
 if [ ! -d "./data/config" ]; then
     mkdir ./data/config
+    sudo chmod -R 766 ./data/config
 fi
 
 docker compose up
