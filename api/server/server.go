@@ -99,7 +99,6 @@ const absoluteMaximumOfReturnedOutputs = 2000
 
 // getAccountOutputs return in general non-deterministic set of outputs because of random ordering and limits
 func (srv *server) getAccountOutputs(w http.ResponseWriter, r *http.Request) {
-	srv.Tracef(TraceTag, "getAccountOutputs invoked")
 	setHeader(w)
 
 	// parse parameters
@@ -201,7 +200,6 @@ func (srv *server) getAccountOutputs(w http.ResponseWriter, r *http.Request) {
 }
 
 func (srv *server) getChainOutput(w http.ResponseWriter, r *http.Request) {
-	srv.Tracef(TraceTag, "getChainOutput invoked")
 	setHeader(w)
 
 	lst, ok := r.URL.Query()["chainid"]
@@ -238,7 +236,6 @@ func (srv *server) getChainOutput(w http.ResponseWriter, r *http.Request) {
 }
 
 func (srv *server) getOutput(w http.ResponseWriter, r *http.Request) {
-	srv.Tracef(TraceTag, "getOutput invoked")
 	setHeader(w)
 
 	lst, ok := r.URL.Query()["id"]
@@ -284,7 +281,6 @@ const (
 )
 
 func (srv *server) submitTx(w http.ResponseWriter, r *http.Request) {
-	srv.Tracef(TraceTag, "submitTx invoked")
 	setHeader(w)
 
 	if r.Method != "POST" {
@@ -375,7 +371,6 @@ func (srv *server) getNodeInfo(w http.ResponseWriter, r *http.Request) {
 const maxSlotsSpan = 10
 
 func (srv *server) queryTxStatus(w http.ResponseWriter, r *http.Request) {
-	srv.Tracef(TraceTag, "queryTxStatus invoked")
 	setHeader(w)
 
 	var txid ledger.TransactionID
@@ -447,7 +442,6 @@ func decodeThreshold(par string) (int, int, error) {
 const TraceTagQueryInclusion = "inclusion"
 
 func (srv *server) queryTxInclusionScore(w http.ResponseWriter, r *http.Request) {
-	srv.Tracef(TraceTagQueryInclusion, "queryTxInclusionScore invoked")
 	setHeader(w)
 
 	var txid ledger.TransactionID
@@ -511,8 +505,6 @@ func (srv *server) queryTxInclusionScore(w http.ResponseWriter, r *http.Request)
 }
 
 func (srv *server) getLatestReliableBranch(w http.ResponseWriter, r *http.Request) {
-	srv.Tracef(TraceTag, "getLatestReliableBranch invoked")
-
 	bd := srv.GetLatestReliableBranch()
 	if bd == nil {
 		writeErr(w, "latest reliable branch has not been found")
@@ -604,6 +596,7 @@ func (srv *server) registerMetrics() {
 
 func (srv *server) addHandler(pattern string, handler func(http.ResponseWriter, *http.Request)) {
 	http.HandleFunc(pattern, func(w http.ResponseWriter, r *http.Request) {
+		srv.Tracef(TraceTag, "%s invoked", pattern)
 		handler(w, r)
 		srv.metrics.totalRequests.Inc()
 	})
