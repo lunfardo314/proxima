@@ -69,24 +69,8 @@ func (p *ProximaNode) GetSyncInfo() *api.SyncInfo {
 	return ret
 }
 
-// GetPeersInfo TODO not finished
 func (p *ProximaNode) GetPeersInfo() *api.PeersInfo {
-	ps := p.peers
-	ids := ps.Host().Peerstore().PeersWithAddrs()
-	peers := make([]api.PeerInfo, len(ids))
-	for i := 0; i < len(ids); i++ {
-		peers[i].ID = ids[i].String()
-		addrs := ps.Host().Peerstore().Addrs(ids[i])
-		peers[i].MultiAddresses = make([]string, len(addrs))
-		for a := 0; a < len(addrs); a++ {
-			peers[i].MultiAddresses[a] = addrs[a].String()
-		}
-	}
-	ret := &api.PeersInfo{
-		Peers: peers,
-	}
-
-	return ret
+	return p.peers.GetPeersInfo()
 }
 
 func (p *ProximaNode) LatestReliableState() (multistate.SugaredStateReader, error) {

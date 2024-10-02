@@ -24,7 +24,9 @@ func (ps *Peers) pullStreamHandler(stream network.Stream) {
 
 	id := stream.Conn().RemotePeer()
 
-	known, blacklisted, static := ps.knownPeer(id)
+	known, blacklisted, static := ps.knownPeer(id, func(p *Peer) {
+		p.numIncomingPull++
+	})
 	if !known || blacklisted {
 		// just ignore
 		_ = stream.Close()

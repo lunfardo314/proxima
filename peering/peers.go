@@ -20,6 +20,7 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/discovery/routing"
 	p2putil "github.com/libp2p/go-libp2p/p2p/discovery/util"
 	p2pquic "github.com/libp2p/go-libp2p/p2p/transport/quic"
+	"github.com/lunfardo314/proxima/api"
 	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util"
@@ -383,14 +384,17 @@ func (ps *Peers) getPeer(id peer.ID) *Peer {
 	return ps._getPeer(id)
 }
 
-func (ps *Peers) knownPeer(id peer.ID) (known, blacklisted, static bool) {
-	ps.mutex.RLock()
-	defer ps.mutex.RUnlock()
+func (ps *Peers) knownPeer(id peer.ID, ifExists func(p *Peer)) (known, blacklisted, static bool) {
+	ps.mutex.Lock()
+	defer ps.mutex.Unlock()
 
 	_, blacklisted = ps.blacklist[id]
 	var p *Peer
 	if p, known = ps.peers[id]; known {
 		static = p.isStatic
+		if ifExists != nil {
+			ifExists(p)
+		}
 	}
 	return
 }
@@ -512,4 +516,40 @@ func (ps *Peers) sendMsgBytesOutMulti(peerIDs []peer.ID, protocolID protocol.ID,
 	wg.Wait()
 
 	return int(successCounter.Load())
+}
+
+func (ps *Peers) GetPeersInfo() *api.PeersInfo {
+	ret := &api.PeersInfo{
+		HostID:    ps.host.ID().String(),
+		Blacklist: make([]string, 0),
+		Peers:     make([]api.PeerInfo, 0),
+	}
+
+	ps.mutex.RUnlock()
+	defer ps.mutex.RUnlock()
+
+	for _, p := range ps.peers {
+		pi := api.PeerInfo{
+			ID:                     p.id.String(),
+			IsStatic:               p.isStatic,
+			RespondsToPull:         p.respondsToPullRequests,
+			IsAlive:                p._isAlive(),
+			WhenAdded:              p.whenAdded.UnixNano(),
+			LastHeartbeatReceived:  p.lastHeartbeatReceived.UnixNano(),
+			ClockDifferencesMedian: p.clockDifferenceMedian.Nanoseconds(),
+			NumIncomingHB:          p.numIncomingHB,
+			NumIncomingPull:        p.numIncomingPull,
+			NumIncomingTx:          p.numIncomingTx,
+		}
+		pi.MultiAddresses = make([]string, 0)
+		for _, ma := range ps.host.Peerstore().Addrs(p.id) {
+			pi.MultiAddresses = append(pi.MultiAddresses, ma.String())
+		}
+		ret.Peers = append(ret.Peers, pi)
+	}
+
+	for id := range ps.blacklist {
+		ret.Blacklist = append(ret.Blacklist, id.String())
+	}
+	return ret
 }

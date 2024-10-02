@@ -100,14 +100,25 @@ type (
 
 	PeersInfo struct {
 		Error
-		Peers []PeerInfo `json:"peers,omitempty"`
+		HostID    string     `json:"host_id"`
+		Peers     []PeerInfo `json:"peers,omitempty"`
+		Blacklist []string   `json:"blacklist,omitempty"`
 	}
 
 	PeerInfo struct {
 		// The libp2p identifier of the peer.
 		ID string `json:"id"`
 		// The libp2p multi addresses of the peer.
-		MultiAddresses []string `json:"multiAddresses,omitempty"`
+		MultiAddresses         []string `json:"multiAddresses,omitempty"`
+		IsStatic               bool     `json:"is_static"`
+		RespondsToPull         bool     `json:"responds_to_pull"`
+		IsAlive                bool     `json:"is_alive"`
+		WhenAdded              int64    `json:"when_added"`
+		LastHeartbeatReceived  int64    `json:"last_heartbeat_received"`
+		ClockDifferencesMedian int64    `json:"clock_differences_median"`
+		NumIncomingHB          int      `json:"num_incoming_hb"`
+		NumIncomingPull        int      `json:"num_incoming_pull"`
+		NumIncomingTx          int      `json:"num_incoming_tx"`
 	}
 
 	// LatestReliableBranch returned by get_latest_reliable_branch

@@ -13,7 +13,9 @@ func (ps *Peers) gossipStreamHandler(stream network.Stream) {
 	ps.inMsgCounter.Inc()
 	id := stream.Conn().RemotePeer()
 
-	known, blacklisted, _ := ps.knownPeer(id)
+	known, blacklisted, _ := ps.knownPeer(id, func(p *Peer) {
+		p.numIncomingTx++
+	})
 	if !known || blacklisted {
 		// ignore
 		_ = stream.Close()

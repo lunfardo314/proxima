@@ -89,6 +89,10 @@ type (
 		// ranks
 		rankByLastHBReceived  int
 		rankByClockDifference int
+		// msg counters
+		numIncomingHB   int
+		numIncomingPull int
+		numIncomingTx   int
 	}
 )
 
