@@ -5,7 +5,7 @@ import (
 )
 
 // Version is the version of the Proxima node
-const Version = "0.1-alpha"
+const Version = "0.1.0-alpha"
 
 //const bannerTemplate = `
 //---------------------------------------------------
