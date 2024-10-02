@@ -48,6 +48,11 @@ General status: the Proxima ledger definitions are based on standard _EasyFL_ sc
 [EasyFL](https://github.com/lunfardo314/easyfl) itself is essentially completed, however its extension in the Proxima ledger requires improvement in several areas, 
 mostly related to the soft upgradability of the ledger definitions.
 
+* Write Rust version of the _EasyFL_ library (compiler, interpreter). It is needed in order to be able to compose, parse and validate transactions in other than Go environments.
+This is an important step for the wallet and front-end development (Wasm). 
+All the ledger validity scripts are platform independent and can be downloaded from the node. Interpretation of those scripts
+in the wallet/front-end environment is needed for parsing/serialization and validation of raw transaction data. 
+
 * Make ledger library upgradable  
   - Concept: currently any library modifications are breaking. The goal would be to make it incrementally extendable 
 with backward compatibility via soft forks. 

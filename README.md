@@ -30,37 +30,38 @@ but without unreasonable energy consumption.
 Sybil protection is achieved similarly to proof-of-stake blockchains, using tokens native to the ledger, 
 yet the architecture operates in a leaderless manner without block proposers and committee selection.
 
-Currently, the project is in an **experimental development stage**. 
+Currently, the project is in an **ongoing development stage**. 
 
 The repository contains Proxima node prototype intended for experimental research and development. 
 It also contains some tools, which includes basic wallet functionality.
 
 ## Highlights of the system's architecture
 * **Fully permissionless**, unbounded, and globally unknown set of pseudonymous participants. 
-Participation in the ledger as a user is equivalent to participation as "validator", it is fully open. 
+Participation in the ledger as a user is fully open, and it is equivalent to participation as "validator". 
 There is no need for any kind of permissions, registration, committee selection or voting processes. Nobody tracks existing participants nor a category of it.
-* **Token holders are the only actors** authorized to write to the ledger (issue transactions). No miners, no validators, no committees.
-* **Influence of the participant** is proportional to the amount of its holdings, i.e. to it's _skin-in-the-game_. Being a _malicious token holder_ becomes an oxymoron.
+* **Token holders are the only actors** authorized to update the ledger. No miners, no validators, no committees nor any other third parties with their interest.
+* **Influence of the participant** is proportional to the amount of its holdings, i.e. to it's _skin-in-the-game_. Being a _malicious token holder_ is an oxymoron.
 * **Liquidity of the token** is the only condition for the system to be fully permissionless. Ownership of tokens is the only prerequisite for participation in any role. 
 **No ASICs, no GPUs, no mining rigs**
 * **Leaderless determinism**. The system operates without a consensus leader or block proposers, providing a more decentralized approach.
-* **Nash equilibrium**. It is achieved with the optimal strategy of **biggest ledger coverage rule**, which is analogous to the _longest chain rule_ in PoW blockchains.
+* **Nash equilibrium**. It is achieved with the optimal strategy of **biggest ledger coverage rule**, which is analogous to the Bitcoin's _longest chain rule_ in PoW blockchains.
 * Unlike in blockchains, the optimal strategy is **cooperative**, rather than **competitive**. This facilitates social consensus among participants
 * **Auto-healing after network partitioning**. Network partitioning usually leads to forking to several branches with less coverage. 
-After network connections will be restored, the fork with the biggest ledger coverage will prevail, others will be orphaned. Similarly to Bitcoin's _longest chain_.      
+After network connections is restored, the fork with the biggest ledger coverage prevails, while other forks will be orphaned. Similarly to Bitcoin's _longest chain_.      
 * **High throughput**, as a result of **massive parallelism** and **absence of global bottlenecks**
 * **High level of decentralization**, probably the highest achievable in distributed ledgers 
 * **Low energy requirements**, unlike PoW. 
 * **Low cost per transaction**, like PoS
-* **Asynchrony**. The architecture relies only on weak assumptions of synchronicity.
-* **Probabilistic finality**. Depends on subjective assumptions, similar to 6-block rule in Bitcoin. Normally 1-3 slots (10-30 sec) is enough. 
-Due to the determinism, there's no need to wait for confirmation of the previous transaction, therefore transactions can be issued in batches or streams.
+* **Asynchrony**. The architecture relies only on weak assumptions of synchronicity. The only essential assumption is existence of the global time reference. 
+Participants are incentivized to maintain their clock approximately synchronized with the global clock. 
+* **Probabilistic finality**. Depends on subjective assumptions, similar to 6-block rule in Bitcoin. Normally 1-4 slots (10-40 sec) is enough. 
+Due to the UTXO transaction determinism, there's no need to wait for confirmation of the previous transaction, therefore transactions can be issued in batches or streams.
 * **Consensus rule is local**, it does not require any global knowledge of the dynamic system state, such as composition of the committee, assumptions about node weights/stakes, or other registries.
 * **1-tier trust assumptions**. Only token holders are involved in the process, as opposed to the multiple layers of trust required in other 
 blockchain systems such as PoW (which includes users and miners) and PoS (which includes at least users, block proposers, committee selection procedure and the committee).
 * **Absence of the deterministic global state**. Due to the non-determinism of the ledger account (a set of outputs controlled by a particular entity), 
 it cannot be used as a single global liquidity pool in the smart contract.
-* **Parallelism at the distributed consensus level**. Assets converge to their finality states in parallel.
+* **Parallelism at the distributed consensus level**. Assets converge to their finality states in parallel, yet cooperating with each other.
 * **Parallelism** at the node level. All transactions are processed in parallel on each node.
 * **Spamming prevention** is based on the transaction rate limits per user (token holder): at the ledger level and at the pre-ledger buffer (_memDAG_) level
 * **Simpler than most**, except Bitcoin. The above facilitates clear and relatively simple overall concept and node architecture, 
@@ -69,7 +70,7 @@ much simpler than most PoS systems, which are usually complex in their consensus
 ## Further information
 * [Technical whitepaper (pdf)](docs/Proxima_WP.pdf) contains detailed description of the *cooperative ledger* concept
 * [Simplified presentation of Proxima concepts](https://hackmd.io/@Evaldas/Sy4Gka1DC) skips many technical details and adds more pictures
-* Tutorials and instructions:
+* Tutorials and instructions (outdated somehow):
   * [CLI wallet program `proxi`](docs/proxi.md)
   * [Running first node in the network](docs/run_boot.md)
   * [Running access node](docs/run_access.md)
