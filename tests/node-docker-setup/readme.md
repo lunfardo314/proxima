@@ -13,7 +13,7 @@ To start the node execute the command
 ./run.sh
 ```
 
-This will install and run a node in access mode. It also downloads the most recent snapshot file if run for the first time.
+This will install and run a node in access mode. It also downloads the most recent snapshot file if run for the first time. It will ask for sudo pwd when run for the first time.
 To manually download the snapshot and create the DB from it use
 
 ```bash
@@ -28,9 +28,9 @@ Now lets setup a sequencer.
 
 We don't have a faucet yet, so try to get funds from someone, e.g. ask in proxima discord (Discord Invite Link: discord.gg/UfFcFDy38j) with your wallet address.
 
-The address can be found in the wallet file `proxi.yaml` in the local directory in `./data/config` and has the following format, e.g. `addressED25519(0x0efcab0fa7441f8bbcb592d5f8350648dfa73c42eba926c56a66d5997a38e278)`. This file also contains the private key. The wallet is created during initialization of the node.
+The address can be found in the wallet file `proxi.yaml` in the local directory in `./data/config` and has the following format, e.g. `a(0x0efcab0fa7441f8bbcb592d5f8350648dfa73c42eba926c56a66d5997a38e278)`. This file also contains the private key. The wallet is created during initialization of the node.
 
-The directory `./data/config` also contains the config file `proxima.yaml` for the node. Both config files are created during the first start of the node and copied to this directory. Changes in the config files are activated after a restart of the node.
+The directory `./data/config` also contains the config file `proxima.yaml` for the node to configure peers, sequencer, etc. Both config files are created during the first start of the node and copied to this directory. Changes in the config files are activated after a restart of the node.
 
 
 Make sure your address has received the funds. To check open a command shell on the docker node in the directory `/app` and issue this command:

@@ -252,8 +252,8 @@ type (
 		// check if transaction is profitable
 		EnforceProfitability bool
 		// minimum fee
-		TagAlongFee       uint64
-		TagAlongSequencer ledger.ChainID
+		TargetFee uint64
+		Target    ledger.Lock
 		// chain controller
 		PrivateKey        ed25519.PrivateKey
 		ReturnInputLoader bool
@@ -566,7 +566,7 @@ func MakeSimpleTransferTransactionWithRemainder(par *TransferData, disableEndors
 }
 
 // function to create a transaction to continue a chain to earn inflation
-func MakeChainSuccTransaction(par MakeChainSuccTransactionParams) ([]byte, func(i byte) (*ledger.Output, error), error) {
+func MakeChainSuccTransaction(par *MakeChainSuccTransactionParams) ([]byte, func(i byte) (*ledger.Output, error), error) {
 	var consumedOutputs []*ledger.Output
 	if par.ReturnInputLoader {
 		consumedOutputs = make([]*ledger.Output, 0)
@@ -587,8 +587,8 @@ func MakeChainSuccTransaction(par MakeChainSuccTransactionParams) ([]byte, func(
 	if chainInConstraintIdx == 0xff {
 		return nil, nil, errP("not a chain output: %s", par.ChainInput.ID.StringShort())
 	}
-	if int(par.TagAlongFee) < 0 {
-		return nil, nil, errP("tag along fee is negative: %d", par.TagAlongFee)
+	if int(par.TargetFee) < 0 {
+		return nil, nil, errP("tag along fee is negative: %d", par.TargetFee)
 	}
 
 	txb := NewTransactionBuilder()
@@ -612,11 +612,11 @@ func MakeChainSuccTransaction(par MakeChainSuccTransactionParams) ([]byte, func(
 	// calculate inflation value allowed in the context
 	// non-branch transaction
 	inflationAmount = inflationConstraint.ChainInflation
-	if chainInAmount+inflationAmount < par.TagAlongFee {
+	if chainInAmount+inflationAmount < par.TargetFee {
 		return nil, nil, errP("total amount not enough for fee")
 	}
 
-	chainOutAmount := chainInAmount + inflationAmount - par.TagAlongFee // >= 0
+	chainOutAmount := chainInAmount + inflationAmount - par.TargetFee // >= 0
 	if par.EnforceProfitability {
 		if chainOutAmount < chainInAmount {
 			return nil, nil, errP("transaction is not profitable")
@@ -661,8 +661,8 @@ func MakeChainSuccTransaction(par MakeChainSuccTransactionParams) ([]byte, func(
 	txb.PutUnlockParams(chainPredIdx, chainInConstraintIdx, ledger.NewChainUnlockParams(chainOutIndex, chainOutConstraintIdx, 0))
 
 	tagAlongOut := ledger.NewOutput(func(o *ledger.Output) {
-		o.WithAmount(par.TagAlongFee).
-			WithLock(ledger.ChainLockFromChainID(par.TagAlongSequencer))
+		o.WithAmount(par.TargetFee).
+			WithLock(par.Target)
 	})
 	if tagAlongOut != nil {
 		if _, err = txb.ProduceOutput(tagAlongOut); err != nil {

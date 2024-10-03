@@ -26,7 +26,7 @@ kill_proxima() {
 }
 
 boot_param=""
-if [ "$NODE_NAME" == "boot" ]; then
+if [ "$NODE_NAME" = "boot" ]; then
 boot_param="boot"
 fi
 if [ ! -f "$INITIALIZED_FILE" ]; then
@@ -39,12 +39,12 @@ if [ ! -f "$INITIALIZED_FILE" ]; then
     echo "init genesis_db"
     ./proxi init genesis_db
 
-    if [ "$NODE_NAME" == "boot" ]; then
+    if [ "$NODE_NAME" = "boot" ]; then
         # 
         echo "init bootstrap_account"
         ./proxi init bootstrap_account
     fi
-    if [ "$NODE_NAME" == "1" ] || [ "$NODE_NAME" == "2" ] || [ "$NODE_NAME" == "4" ]; then
+    if [ "$NODE_NAME" = "1" ] || [ "$NODE_NAME" = "2" ] || [ "$NODE_NAME" = "4" ]; then
         echo "setup sequencer"
 
         ./proxima &

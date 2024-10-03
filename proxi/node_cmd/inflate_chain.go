@@ -37,7 +37,6 @@ func InflateChain(chainTransitionPeriod uint64, tagAlongFee uint64, chainId ledg
 
 	// Goroutine to listen for key press
 	go func() {
-		glb.Infof("Press 'Enter' to stop the loop...")
 		bufio.NewReader(os.Stdin).ReadBytes('\n') // Wait for Enter key
 		stopPressed = true
 		glb.Infof("'Enter' pressed. stopping...")
@@ -76,12 +75,12 @@ func InflateChain(chainTransitionPeriod uint64, tagAlongFee uint64, chainId ledg
 		}
 
 		// create origin branch transaction at the next slot after genesis time slot
-		txBytes, _, err := txb.MakeChainSuccTransaction(txb.MakeChainSuccTransactionParams{
+		txBytes, _, err := txb.MakeChainSuccTransaction(&txb.MakeChainSuccTransactionParams{
 			ChainInput:           chainOutput,
 			Timestamp:            ts,
 			EnforceProfitability: true,
-			TagAlongFee:          tagAlongFee,
-			TagAlongSequencer:    *tagAlongSequ,
+			TargetFee:            tagAlongFee,
+			Target:               ledger.ChainLockFromChainID(*tagAlongSequ),
 			PrivateKey:           walletData.PrivateKey,
 		})
 		if err != nil {
@@ -138,9 +137,9 @@ func runInflateChainCmd(_ *cobra.Command, args []string) {
 
 	InflateChain(chainTransitionPeriod, tagAlongFee, chainID)
 
-	_, err = DeleteChain(&chainID)
+	txCtx, err = DeleteChain(&chainID)
 	glb.AssertNoError(err)
-	// if !glb.NoWait() {
-	// 	glb.ReportTxInclusion(*txCtx.TransactionID(), time.Second)
-	// }
+	if !glb.NoWait() {
+		glb.ReportTxInclusion(*txCtx.TransactionID(), time.Second)
+	}
 }
