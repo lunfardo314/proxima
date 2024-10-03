@@ -528,7 +528,7 @@ func (ps *Peers) GetPeersInfo() *api.PeersInfo {
 		Peers:     make([]api.PeerInfo, 0),
 	}
 
-	ps.mutex.RUnlock()
+	ps.mutex.RLock()
 	defer ps.mutex.RUnlock()
 
 	for _, p := range ps.peers {
