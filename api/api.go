@@ -100,9 +100,9 @@ type (
 
 	PeersInfo struct {
 		Error
-		HostID    string     `json:"host_id"`
-		Peers     []PeerInfo `json:"peers,omitempty"`
-		Blacklist []string   `json:"blacklist,omitempty"`
+		HostID    string            `json:"host_id"`
+		Peers     []PeerInfo        `json:"peers,omitempty"`
+		Blacklist map[string]string `json:"blacklist,omitempty"` // map: peerID -> reason why it is in the blacklist
 	}
 
 	PeerInfo struct {

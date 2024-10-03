@@ -33,7 +33,7 @@ import (
 func NewPeersDummy() *Peers {
 	ret := &Peers{
 		peers:           make(map[peer.ID]*Peer),
-		blacklist:       make(map[peer.ID]time.Time),
+		blacklist:       make(map[peer.ID]_deadlineWithReason),
 		onReceiveTx:     func(_ peer.ID, _ []byte, _ *txmetadata.TransactionMetadata) {},
 		onReceivePullTx: func(_ peer.ID, _ ledger.TransactionID) {},
 	}
@@ -68,7 +68,7 @@ func New(env environment, cfg *Config) (*Peers, error) {
 		host:                 lppHost,
 		peers:                make(map[peer.ID]*Peer),
 		staticPeers:          set.New[peer.ID](),
-		blacklist:            make(map[peer.ID]time.Time),
+		blacklist:            make(map[peer.ID]_deadlineWithReason),
 		onReceiveTx:          func(_ peer.ID, _ []byte, _ *txmetadata.TransactionMetadata) {},
 		onReceivePullTx:      func(_ peer.ID, _ ledger.TransactionID) {},
 		lppProtocolGossip:    protocol.ID(fmt.Sprintf(lppProtocolGossip, rendezvousNumber)),
@@ -328,7 +328,7 @@ func (ps *Peers) dropPeer(id peer.ID, reason string) {
 
 func (ps *Peers) _dropPeer(p *Peer, reason string) {
 	if p.isStatic {
-		ps._addToBlacklist(p.id)
+		ps._addToBlacklist(p.id, reason)
 		return
 	}
 
@@ -342,13 +342,16 @@ func (ps *Peers) _dropPeer(p *Peer, reason string) {
 	_ = ps.host.Network().ClosePeer(p.id)
 	delete(ps.peers, p.id)
 
-	ps._addToBlacklist(p.id)
+	ps._addToBlacklist(p.id, reason)
 
 	ps.Log().Infof("[peering] dropped dynamic peer %s - %s%s", ShortPeerIDString(p.id), p.name, why)
 }
 
-func (ps *Peers) _addToBlacklist(id peer.ID) {
-	ps.blacklist[id] = time.Now().Add(blacklistTTL)
+func (ps *Peers) _addToBlacklist(id peer.ID, reason string) {
+	ps.blacklist[id] = _deadlineWithReason{
+		Time:   time.Now().Add(blacklistTTL),
+		reason: reason,
+	}
 }
 
 func (ps *Peers) _isInBlacklist(id peer.ID) bool {
@@ -521,7 +524,7 @@ func (ps *Peers) sendMsgBytesOutMulti(peerIDs []peer.ID, protocolID protocol.ID,
 func (ps *Peers) GetPeersInfo() *api.PeersInfo {
 	ret := &api.PeersInfo{
 		HostID:    ps.host.ID().String(),
-		Blacklist: make([]string, 0),
+		Blacklist: make(map[string]string),
 		Peers:     make([]api.PeerInfo, 0),
 	}
 
@@ -548,8 +551,8 @@ func (ps *Peers) GetPeersInfo() *api.PeersInfo {
 		ret.Peers = append(ret.Peers, pi)
 	}
 
-	for id := range ps.blacklist {
-		ret.Blacklist = append(ret.Blacklist, id.String())
+	for id, r := range ps.blacklist {
+		ret.Blacklist[id.String()] = r.reason
 	}
 	return ret
 }

@@ -54,7 +54,7 @@ type (
 		routingDiscovery *routing.RoutingDiscovery
 		peers            map[peer.ID]*Peer // except self/host
 		staticPeers      set.Set[peer.ID]
-		blacklist        map[peer.ID]time.Time
+		blacklist        map[peer.ID]_deadlineWithReason
 		// on receive handlers
 		onReceiveTx     func(from peer.ID, txBytes []byte, mdata *txmetadata.TransactionMetadata)
 		onReceivePullTx func(from peer.ID, txid ledger.TransactionID)
@@ -66,6 +66,10 @@ type (
 		metrics
 	}
 
+	_deadlineWithReason struct {
+		time.Time
+		reason string
+	}
 	peersStats struct {
 		peersAll         int
 		peersStatic      int
