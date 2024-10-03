@@ -1,6 +1,7 @@
 ## CLI wallet program `proxi`
 
-`proxi` is a small CLI program with basic tools for Proxima.
+`proxi` is a small CLI program with basic tools for Proxima. Please, do not expect perfect UX :) 
+
 The program can be compiled by typing `go install` in the `<root>/proxi` directory of the Proxima source.
 
 Commands `proxi -h`, `proxi db -h`, `proxi node -h`, etc. will display help text. 
@@ -12,16 +13,17 @@ Most of the commands require configuration profile in the working directory.
 with another name, say `proxi2.yaml`, we have to specify it explicitly in the command line with flag `-c` 
 and profile file mame without extension, for example `proxi node balance -c proxi2`.
 
-`proxi` commands has a form `proxi <cmd group> <other args and flags>`, where `<cmd group>` is one of the following:
+`proxi` commands has a form `proxi <cmd group> <subcommand> <args and flags>`, where `<cmd group>` is one of the following:
 
-* `proxi init` for admin commands, for example the ones needed to start a node 
-* `proxi db`  for commands which access multi-state database directly. They all will fail if node is running
-* `proxi node` for commands which access node via API. They all require configuration profile and a running node
-* `proxi gen` generating privare keys (only for testing!)
+* `proxi init` is for admin subcommands, for initialization of the database. config profiles and similar 
+* `proxi db`  for admin subcommands which access multi-state database directly. They will all fail if node is running
+* `proxi snapshot` for subcommands related to snapshots
+* `proxi gen` helper subcommands which needs generation of private keys (only for testing!) used in genesis, hostIDs and wallets.
+* `proxi node` many subcommands which accesses node via API. They all require configuration profile and an endpoint in the running node
 
 ### 1. Create configuration profile and the wallet
 
-The command `proxi init wallet` generates private key from the provided seed and system randomness.
+The command `proxi init wallet` asks for entropy and generates private key from the provided seed and system randomness.
 It also creates configuration profile `proxi.yaml`.
 
 The file will contain something like this (with comments):
@@ -42,16 +44,12 @@ finality:
   weak: false
 spammer:
   bundle_size: 5
-  max_duration_minutes: 0
-  max_transactions: 0
   output_amount: 1000
-  pace: 10
-  scenario: standard
-  submit_nowait: false
+  pace: 25
   tag_along:
     fee: 500
+    sequencer_id: <sequencer ID hex encoded>
   target: <target address in EasyFL format>
-  trace_on_node: false
 ```
 
 Usually some adjustments are needed to complete the profile. 
@@ -67,9 +65,9 @@ It is necessary in order to access sequencer controlled by this private key with
 `api.endpoint` must contain endpoint for the node's API
 
 `tag_along.sequencer_id` is a mandatory field for any commands which issue transactions, such as `proxi node transfer`.
-It must contain sequencer which is used as tag-along sequencer. Each issued transaction will contain so-called _tag-along output_
-which simply sends amount of tokens specified in `tag_along.fee` to the sequencer in `tag_along.sequencer_id`. 
-The sequencer will consume the fee input and this will pull the transaction into the next ledger state. 
+It must contain sequencer which is used as tag-along sequencer. Each issued transaction will contain so-called _tag-along output_.
+The *tag-along output* simply sends amount of tokens specified in `tag_along.fee` to the sequencer in `tag_along.sequencer_id`. 
+The sequencer will consume the fee in its transaction. This will pull the transaction into the next ledger state. 
 By default, `proxi.yaml` is initialized with the static constant of 
 bootstrap sequencer ID `af7bedde1fea222230b82d63d5b665ac75afbe4ad3f75999bb3386cf994a6963`. 
 
@@ -80,6 +78,8 @@ Spammer is run with the command `proxi node spam`.
 It periodically sends tokens to the target address in bundles of transactions. It waits each bundle of transactions 
 reaches finality before sending the next one.
 
-The bundle of transactions is a chain of transactions where only the last one (tip) contains tag-along output.
+The bundle of transactions is a chain of transactions which consumes output of the previous. 
+Only the last one (tip of the batch) contains tag-along output.
 
-Configure tag-along sequencer consumes the output and this way pull the whole bundle into the ledger state.  
+Configured tag-along sequencer consumes the output (the tip of the batch). 
+This way pull the whole bundle of transactions into the ledger state with one tag-along fee amount.  

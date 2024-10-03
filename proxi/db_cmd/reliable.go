@@ -14,9 +14,9 @@ import (
 
 func initReliableBranchCmd() *cobra.Command {
 	snapshotCmd := &cobra.Command{
-		Use:     "reliable_branch",
-		Aliases: []string{"lrb"},
-		Short:   "finds and displays lates reliable branch in the multi-state DB",
+		Use:     "lrb",
+		Aliases: []string{"reliable_branch"},
+		Short:   "finds and displays latest reliable branch in the multi-state DB",
 		Args:    cobra.NoArgs,
 		Run:     runReliableBranchCmd,
 	}

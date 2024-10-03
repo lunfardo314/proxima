@@ -71,7 +71,7 @@ func readSpammerConfigIn(sub *viper.Viper) (ret spammerConfig) {
 	ret.maxTransactions = sub.GetInt("max_transactions")
 	ret.maxDuration = time.Duration(sub.GetInt("max_duration_minutes")) * time.Minute
 	ret.tagAlongFee = sub.GetUint64("tag_along.fee")
-	seqStr := sub.GetString("tag_along.sequencer")
+	seqStr := sub.GetString("tag_along.sequencer_id")
 	var err error
 	ret.tagAlongSequencer, err = ledger.ChainIDFromHexString(seqStr)
 	glb.AssertNoError(err)

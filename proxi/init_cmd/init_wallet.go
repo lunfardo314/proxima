@@ -32,7 +32,8 @@ func runInitWalletCommand(_ *cobra.Command, args []string) {
 	profileFname := profileName + ".yaml"
 	glb.Assertf(!glb.FileExists(profileFname), "file %s already exists", profileFname)
 
-	privateKey := glb.AskEntropyGenEd25519PrivateKey("enter at least 10 seed symbols:", 10)
+	privateKey := glb.AskEntropyGenEd25519PrivateKey(
+		"we need some entropy from you for the private key of the account\nPlease enter at least 10 seed symbols as randomly as possible and press ENTER:", 10)
 
 	data := struct {
 		PrivateKey string
@@ -55,30 +56,30 @@ wallet:
     private_key: {{.PrivateKey}}
     account: {{.Account}}
     # <own sequencer ID> must be own sequencer ID, i.e. controlled by the private key of the wallet.
-    # The controller wallet can withdraw tokens from the sequencer chain with command
-    # 'proxi node seq withdraw'
+    # The controller wallet can withdraw tokens from the sequencer chain with command 'proxi node seq withdraw'
     sequencer_id: <own sequencer ID>
 api:
-    # API endpoint  
+    # API endpoint of the node 
     endpoint: http://127.0.0.1:8000
 
 tag_along:
-    # ID of the tag-along sequencer. Currently only one
-    # In the bootstrap phase it normally is bootstrap chain ID: af7bedde1fea222230b82d63d5b665ac75afbe4ad3f75999bb3386cf994a6963
+    # ID of the tag-along sequencer. Currently only one is supported
+    # In the bootstrap phase it normally is pre-defined bootstrap chain ID: af7bedde1fea222230b82d63d5b665ac75afbe4ad3f75999bb3386cf994a6963
     # Later it is up to the wallet owner to set the preferred tag-along sequencer
     sequencer_id: af7bedde1fea222230b82d63d5b665ac75afbe4ad3f75999bb3386cf994a6963
     fee: 500
 finality:
-    # finality rule used by the wallet. It has no effect on the way transaction is treated by the network
+    # finality rule used by the wallet. It has no effect on the way transaction is treated by the network, 
+    # only used by the proxi to determine when to consider transaction final
     inclusion_threshold:
-        # numerator / denominator is the 'theta' in the WP.
-        # with strong finality, the wallet waits until all branches in last 2 slots with coverage > numerator / denominator
-        # contains the transaction
+        # numerator / denominator is the 'theta' of the WP.
+        # with strong finality, the wallet waits until all branches in last 2 slots 
+        # with coverage > (numerator / denominator) * supply contains the transaction
         # With weak finality inclusion_threshold has no effect
         numerator: 2
         denominator: 3
-        # strong: based on ledger coverage and inclusion_threshold (see above)
-        # weak: wait until all branches in last 2 slots contains the transaction.
+        # strong: based on ledger coverage and inclusion_threshold
+        # weak: wait until all branches in the last 2 slots contains the transaction.
         # The weak finality may be used when less than totalSupply/2 of sequencers are active,
         # for example during bootstrap
     weak: false
@@ -88,18 +89,13 @@ finality:
 # Before sending next bundle, the spammer waits for the finality of the previous according to the provided criterion
 spammer:
     bundle_size: 5
-    max_duration_minutes: 0
-    max_transactions: 0
     output_amount: 1000
     pace: 25
-    scenario: standard
-    submit_nowait: false
     tag_along:
         fee: 500
         # <sequencer ID hex encoded> is tag-along sequencer ID for the tip transaction in the bundle
         # For example the bootstrap sequencer af7bedde1fea222230b82d63d5b665ac75afbe4ad3f75999bb3386cf994a6963
-        sequencer: <sequencer ID hex encoded>
+        sequencer_id: <sequencer ID hex encoded>
     # target address
-    target: <target address in EasyFL format>
-    trace_on_node: false
+    target: <target lock in EasyFL format>
 `
