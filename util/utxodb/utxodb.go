@@ -452,12 +452,12 @@ func (u *UTXODB) TxToString(txbytes []byte) string {
 }
 
 // CreateChainOrigin takes all tokens from controller address and puts them on the chain output
-func (u *UTXODB) CreateChainOrigin(controllerPrivateKey ed25519.PrivateKey, ts ledger.Time) (ledger.ChainID, error) {
+func (u *UTXODB) CreateChainOrigin(controllerPrivateKey ed25519.PrivateKey, ts ledger.Time) (*ledger.OutputWithChainID, error) {
 	controllerAddress := ledger.AddressED25519FromPrivateKey(controllerPrivateKey)
 	amount := u.Balance(controllerAddress)
 	td, err := u.MakeTransferInputData(controllerPrivateKey, controllerAddress, ts)
 	if err != nil {
-		return [32]byte{}, err
+		return nil, err
 	}
 	outs, err := u.DoTransferOutputs(td.
 		WithAmount(amount).
@@ -465,13 +465,13 @@ func (u *UTXODB) CreateChainOrigin(controllerPrivateKey ed25519.PrivateKey, ts l
 		WithConstraint(ledger.NewChainOrigin()),
 	)
 	if err != nil {
-		return [32]byte{}, err
+		return nil, err
 	}
 	chains, err := txutils.FilterChainOutputs(outs)
 	if err != nil {
-		return [32]byte{}, err
+		return nil, err
 	}
-	return chains[0].ChainID, nil
+	return chains[0], nil
 
 }
 

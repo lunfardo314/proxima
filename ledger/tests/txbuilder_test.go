@@ -1,10 +1,12 @@
 package tests
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/proxima/ledger"
+	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/utxodb"
@@ -210,4 +212,108 @@ func TestManyInputs(t *testing.T) {
 	require.EqualValues(t, numAddr*initAmount, tx.TotalAmount())
 
 	require.EqualValues(t, 1, u.NumUTXOs(addr0))
+}
+
+func TestChainSuccTransaction(t *testing.T) {
+	t.Run("wrong input parameters", func(t *testing.T) {
+		u := utxodb.NewUTXODB(genesisPrivateKey, true)
+		const (
+			numAddr    = 2
+			initAmount = 100_000_000_000
+		)
+		privKeys, _, _ := u.GenerateAddressesWithFaucetAmount(1, numAddr, initAmount)
+
+		chainInput, err := u.CreateChainOrigin(privKeys[0], ledger.TimeNow())
+		require.NoError(t, err)
+
+		target, err := u.CreateChainOrigin(privKeys[1], ledger.TimeNow())
+		require.NoError(t, err)
+		par := txbuilder.MakeChainSuccTransactionParams{
+			ChainInput:           chainInput,
+			Timestamp:            ledger.TimeNow().AddSlots(1),
+			EnforceProfitability: true,
+			TargetFee:            100,
+			Target:               ledger.ChainLockFromChainID(target.ChainID),
+			PrivateKey:           privKeys[0],
+		}
+		_, _, err = txbuilder.MakeChainSuccTransaction(&par)
+		require.NoError(t, err)
+
+		par.Timestamp = ledger.NewLedgerTime(100000, 0)
+		_, _, err = txbuilder.MakeChainSuccTransaction(&par)
+		require.Error(t, err, "should fail  because wrong timestamp")
+		par.Timestamp = ledger.TimeNow().AddSlots(1)
+
+		par.ChainInput = nil
+		_, _, err = txbuilder.MakeChainSuccTransaction(&par)
+		require.Error(t, err, "should fail because ChainInput is nil")
+		par.ChainInput = chainInput
+
+		par.TargetFee = 1000000000000
+		_, _, err = txbuilder.MakeChainSuccTransaction(&par)
+		require.Error(t, err, "should fail because target fee too high")
+		par.TargetFee = 100
+	})
+	t.Run("normal run", func(t *testing.T) {
+		u := utxodb.NewUTXODB(genesisPrivateKey, true)
+		const (
+			numAddr    = 2
+			initAmount = 100_000_000_000
+		)
+		privKeys, _, addrs := u.GenerateAddressesWithFaucetAmount(1, numAddr, initAmount)
+
+		chainInput, err := u.CreateChainOrigin(privKeys[0], ledger.TimeNow())
+		require.NoError(t, err)
+
+		target, err := u.CreateChainOrigin(privKeys[1], ledger.TimeNow())
+		require.NoError(t, err)
+
+		par := txbuilder.MakeChainSuccTransactionParams{
+			ChainInput:           chainInput,
+			Timestamp:            ledger.TimeNow().AddSlots(1),
+			EnforceProfitability: true,
+			TargetFee:            100,
+			Target:               ledger.ChainLockFromChainID(target.ChainID),
+			PrivateKey:           privKeys[0],
+		}
+		txBytes, _, err := txbuilder.MakeChainSuccTransaction(&par)
+		require.NoError(t, err)
+		err = u.AddTransaction(txBytes, func(ctx *transaction.TxContext, err error) error {
+			if err != nil {
+				return fmt.Errorf("Error: %v\n%s", err, ctx.String())
+			}
+			return nil
+		})
+		require.NoError(t, err)
+		require.EqualValues(t, initAmount+300, u.Balance(addrs[0]))
+		require.EqualValues(t, initAmount, u.Balance(addrs[1]))
+	})
+	t.Run("test enforce profitability", func(t *testing.T) {
+		u := utxodb.NewUTXODB(genesisPrivateKey, true)
+		const (
+			numAddr    = 256
+			initAmount = 10_000 // low amount so inflation == 0
+		)
+		privKeys, _, _ := u.GenerateAddressesWithFaucetAmount(1, 2, initAmount)
+
+		chainInput, err := u.CreateChainOrigin(privKeys[0], ledger.TimeNow())
+		require.NoError(t, err)
+
+		target, err := u.CreateChainOrigin(privKeys[1], ledger.TimeNow())
+		require.NoError(t, err)
+		par := txbuilder.MakeChainSuccTransactionParams{
+			ChainInput:           chainInput,
+			Timestamp:            ledger.TimeNow().AddSlots(1),
+			EnforceProfitability: false,
+			TargetFee:            100,
+			Target:               ledger.ChainLockFromChainID(target.ChainID),
+			PrivateKey:           privKeys[0],
+		}
+		_, _, err = txbuilder.MakeChainSuccTransaction(&par)
+		require.NoError(t, err)
+
+		par.EnforceProfitability = true
+		_, _, err = txbuilder.MakeChainSuccTransaction(&par)
+		require.Error(t, err, "should fail because not profitable")
+	})
 }
