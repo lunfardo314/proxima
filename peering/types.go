@@ -87,9 +87,13 @@ type (
 		lastHeartbeatReceived  time.Time
 		lastLoggedConnected    bool // toggle
 		// ring buffer with last clock differences
-		clockDifferences      [10]time.Duration
-		clockDifferencesIdx   int
-		clockDifferenceMedian time.Duration
+		clockDifferences         [10]time.Duration
+		clockDifferencesIdx      int
+		clockDifferenceQuartiles [3]time.Duration
+		// ring buffer with durations between subsequent HB messages
+		hbMsgDifferences         [10]time.Duration
+		hbMsgDifferencesIdx      int
+		hbMsgDifferenceQuartiles [3]time.Duration
 		// ranks
 		rankByLastHBReceived  int
 		rankByClockDifference int

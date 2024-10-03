@@ -531,18 +531,29 @@ func (ps *Peers) GetPeersInfo() *api.PeersInfo {
 	ps.mutex.RLock()
 	defer ps.mutex.RUnlock()
 
+	var qClock, qHB [3]int64
+
 	for _, p := range ps.peers {
+		qClock[0] = p.clockDifferenceQuartiles[0].Nanoseconds()
+		qClock[1] = p.clockDifferenceQuartiles[1].Nanoseconds()
+		qClock[2] = p.clockDifferenceQuartiles[2].Nanoseconds()
+
+		qHB[0] = p.hbMsgDifferenceQuartiles[0].Nanoseconds()
+		qHB[1] = p.hbMsgDifferenceQuartiles[1].Nanoseconds()
+		qHB[2] = p.hbMsgDifferenceQuartiles[2].Nanoseconds()
+
 		pi := api.PeerInfo{
-			ID:                     p.id.String(),
-			IsStatic:               p.isStatic,
-			RespondsToPull:         p.respondsToPullRequests,
-			IsAlive:                p._isAlive(),
-			WhenAdded:              p.whenAdded.UnixNano(),
-			LastHeartbeatReceived:  p.lastHeartbeatReceived.UnixNano(),
-			ClockDifferencesMedian: p.clockDifferenceMedian.Nanoseconds(),
-			NumIncomingHB:          p.numIncomingHB,
-			NumIncomingPull:        p.numIncomingPull,
-			NumIncomingTx:          p.numIncomingTx,
+			ID:                        p.id.String(),
+			IsStatic:                  p.isStatic,
+			RespondsToPull:            p.respondsToPullRequests,
+			IsAlive:                   p._isAlive(),
+			WhenAdded:                 p.whenAdded.UnixNano(),
+			LastHeartbeatReceived:     p.lastHeartbeatReceived.UnixNano(),
+			ClockDifferencesQuartiles: qClock,
+			HBMsgDifferencesQuartiles: qHB,
+			NumIncomingHB:             p.numIncomingHB,
+			NumIncomingPull:           p.numIncomingPull,
+			NumIncomingTx:             p.numIncomingTx,
 		}
 		pi.MultiAddresses = make([]string, 0)
 		for _, ma := range ps.host.Peerstore().Addrs(p.id) {

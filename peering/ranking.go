@@ -22,9 +22,10 @@ func (ps *Peers) adjustRanks() {
 	for i, p := range sorted {
 		p.rankByLastHBReceived = i
 	}
-	// by clockDifferenceMedian
+	// by clockDifferenceQuartiles
 	sort.Slice(sorted, func(i, j int) bool {
-		return sorted[i].clockDifferenceMedian > sorted[j].clockDifferenceMedian
+		// by median
+		return sorted[i].clockDifferenceQuartiles[1] > sorted[j].clockDifferenceQuartiles[1]
 	})
 	for i, p := range sorted {
 		p.rankByClockDifference = i

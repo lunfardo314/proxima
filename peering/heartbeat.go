@@ -123,15 +123,27 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 func (ps *Peers) _evidenceHeartBeat(p *Peer, hbInfo heartbeatInfo) {
 	nowis := time.Now()
 	p.lastHeartbeatReceived = nowis
+
+	// clock differences
 	diff := nowis.Sub(hbInfo.clock)
 	p.clockDifferences[p.clockDifferencesIdx] = diff
 	p.clockDifferencesIdx = (p.clockDifferencesIdx + 1) % len(p.clockDifferences)
-	m := util.Median(p.clockDifferences[:])
-	p.clockDifferenceMedian = m
+	q := util.Quartiles(p.clockDifferences[:])
+	p.clockDifferenceQuartiles = q
+
+	if p.lastHeartbeatReceived.UnixNano() != 0 {
+		// differences between heart beats
+		diff = nowis.Sub(p.lastHeartbeatReceived)
+		p.hbMsgDifferences[p.hbMsgDifferencesIdx] = diff
+		p.hbMsgDifferencesIdx = (p.hbMsgDifferencesIdx + 1) % len(p.hbMsgDifferenceQuartiles)
+		q = util.Quartiles(p.hbMsgDifferenceQuartiles[:])
+		p.hbMsgDifferenceQuartiles = q
+	}
+
 	p.respondsToPullRequests = hbInfo.respondsToPullRequests
 
 	ps.Tracef(TraceTagHeartBeatRecv, ">>>>> received #%d from %s: clock diff: %v, median: %v, responds to pull: %v, alive: %v",
-		hbInfo.counter, ShortPeerIDString(p.id), diff, m, p.respondsToPullRequests, p._isAlive())
+		hbInfo.counter, ShortPeerIDString(p.id), diff, q[1], p.respondsToPullRequests, p._isAlive())
 }
 
 func (ps *Peers) sendHeartbeatToPeer(id peer.ID, hbCounter uint32) {
@@ -181,8 +193,8 @@ func (ps *Peers) logBigClockDiffs() {
 	logLines := lines.New()
 	warn := false
 	for _, p := range ps.peers {
-		if p.clockDifferenceMedian > clockTolerance {
-			logLines.Add("%s(%s): %v", ShortPeerIDString(p.id), util.Cond(p.isStatic, "static", "dynamic"), p.clockDifferenceMedian)
+		if p.clockDifferenceQuartiles[1] > clockTolerance {
+			logLines.Add("%s(%s): %v", ShortPeerIDString(p.id), util.Cond(p.isStatic, "static", "dynamic"), p.clockDifferenceQuartiles)
 			warn = true
 		}
 	}
