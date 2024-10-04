@@ -73,6 +73,11 @@ bootstrap sequencer ID `af7bedde1fea222230b82d63d5b665ac75afbe4ad3f75999bb3386cf
 
 Other default values can be left as is in the beginning.
 
+### Useful `proxi node` commands
+
+* `proxi node balance` displays token balance on your usual (ED25519) account and on chains, controlled by this private key
+* `proxi node chains`
+
 ### 2. Run spammer from the wallet
 Spammer is run with the command `proxi node spam`. 
 It periodically sends tokens to the target address in bundles of transactions. It waits each bundle of transactions 
