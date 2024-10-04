@@ -46,7 +46,7 @@ It must be deleted deterministically, i.e. the same way in all nodes
 ## Ledger
 General status: the Proxima ledger definitions are based on standard _EasyFL_ script library and its extensions.  
 [EasyFL](https://github.com/lunfardo314/easyfl) itself is essentially completed, however its extension in the Proxima ledger requires improvement in several areas, 
-mostly related to the soft upgradability of the ledger definitions.
+mostly related to the soft upgrade-ability of the ledger definitions.
 
 * Write Rust version of the _EasyFL_ library (compiler, interpreter). It is needed in order to be able to compose, parse and validate transactions in other than Go environments.
 This is an important step for the wallet and front-end development (Wasm). 
