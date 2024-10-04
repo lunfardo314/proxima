@@ -14,7 +14,7 @@ import (
 func initChainsCmd() *cobra.Command {
 	dbChainsCmd := &cobra.Command{
 		Use:   "chains",
-		Short: "list all chain outputs in the LRBID state",
+		Short: "list all chain outputs in the LRB state",
 		Args:  cobra.NoArgs,
 		Run:   runChainsCmd,
 	}

@@ -265,20 +265,20 @@ func (p *ProximaNode) goLoggingSync() {
 func (p *ProximaNode) registerMetrics() {
 	p.lrbCoverage = prometheus.NewGauge(prometheus.GaugeOpts{
 		Name: "proxima_lrb_coverage",
-		Help: "ledger coverage of the latest reliable branch (LRBID)",
+		Help: "ledger coverage of the latest reliable branch (LRB)",
 	})
 	p.lrbSlotsBehind = prometheus.NewGauge(prometheus.GaugeOpts{
 		Name: "proxima_lrb_slots_behind",
-		Help: "latest reliable branch (LRBID) slots behind the current slot",
+		Help: "latest reliable branch (LRB) slots behind the current slot",
 	})
 	p.lrbSupply = prometheus.NewGauge(prometheus.GaugeOpts{
 		Name: "proxima_lrb_supply",
-		Help: "total supply on the latest reliable branch (LRBID)",
+		Help: "total supply on the latest reliable branch (LRB)",
 	})
 
 	p.lrbNumTx = prometheus.NewGauge(prometheus.GaugeOpts{
 		Name: "proxima_lrb_num_tx",
-		Help: "number of transactions committed on the latest reliable branch (LRBID)",
+		Help: "number of transactions committed on the latest reliable branch (LRB)",
 	})
 	p.MetricsRegistry().MustRegister(p.lrbCoverage, p.lrbSlotsBehind, p.lrbSupply, p.lrbNumTx)
 }
