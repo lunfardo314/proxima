@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -283,6 +284,11 @@ func (ps *Peers) Stop() {
 
 // addStaticPeer adds preconfigured peer to the list. It will never be deleted
 func (ps *Peers) addStaticPeer(maddr multiaddr.Multiaddr, name, addrString string) error {
+	if slices.Index(ps.host.Addrs(), maddr) > 0 {
+		ps.Log().Warnf("[peering] ignore static peer with the multiaddress of the host")
+		return nil
+	}
+
 	info, err := peer.AddrInfoFromP2pAddr(maddr)
 	if err != nil {
 		return fmt.Errorf("can't get multiaddress info: %v", err)
@@ -294,6 +300,9 @@ func (ps *Peers) addStaticPeer(maddr multiaddr.Multiaddr, name, addrString strin
 }
 
 func (ps *Peers) addPeer(addrInfo *peer.AddrInfo, name string, static bool) (success bool) {
+	if addrInfo.ID == ps.host.ID() {
+		return false
+	}
 	ps.withPeer(addrInfo.ID, func(p *Peer) {
 		if p == nil {
 			ps._addPeer(addrInfo, name, static)
