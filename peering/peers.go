@@ -54,7 +54,7 @@ func New(env environment, cfg *Config) (*Peers, error) {
 		libp2p.Transport(p2pquic.NewTransport),
 		libp2p.NoSecurity,
 		libp2p.DisableRelay(),
-		//libp2p.AddrsFactory(FilterAddresses(cfg.AllowLocalIPs)),
+		libp2p.AddrsFactory(FilterAddresses(cfg.AllowLocalIPs)),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("unable create libp2p host: %w", err)
