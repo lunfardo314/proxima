@@ -146,10 +146,10 @@ It waits each bundle of transactions reaches finality before sending the next on
 Spammer is run with the command `proxi node spam`.
 
 The bundle of transactions is a chain of transactions which consumes output of the previous. 
-Only the last one (tip of the batch) contains tag-along output.
+Only the last one (tip of the batch) contains tag-along output. 
 
 Configured tag-along sequencer consumes the output (the tip of the batch). 
-This way pull the whole bundle of transactions into the ledger state with one tag-along fee amount.
+This way it pulls the whole bundle of transactions into the ledger state with one tag-along fee amount.
 
 As per current ledger constraints one spammer can achieve maximum 1 TPS of the transfer transactions. 
 In Proxima rate is limited per address (per user) and it is 1 TPS for non-sequencers (assuming no conflicting transactions are issued).
