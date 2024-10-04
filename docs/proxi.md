@@ -121,14 +121,13 @@ by all the current healthy ledger states, i.e. it is the **consensus ledger stat
 * `proxi node balance` displays token balance on the usual (ED25519) address and on chains, controlled by the account in the LRB branch.  
    Token balance is sum of tokens contained in non-chain outputs plus sum of balances contained in chain outputs. 
 
-* `proxi node chains` displays all chain output controlled by the account on LRB state
+* `proxi node chains` displays all chain outputs controlled by the account on LRB state
 
-* `proxi node transfer <amount> -t "<target address>"` sends tokens from the wallet's accounts to the target address.
+* `proxi node transfer <amount> -t "<target address>"` sends tokens from the wallet's account to the target address.
   For example command `proxi node transfer 1000 -t "a(0x370563b1f08fcc06fa250c59034acfd4ab5a29b60640f751d644e9c3b84004d0)"`
-  sends 1000 tokens to the specified address. The transfer transaction will contain so called **tag-along** output with *tag-along fee*
+  sends 1000 tokens to the specified address. The transfer transaction will contain so called **tag-along** output with **tag-along fee**
   paid to the **tag-along sequencer** configured in the `proxi.yaml`.
-  Flag  `-v` (or `--verbose`) will make command to display the whole transfer transaction. It is a good chance to get acquainted with the  
-  Proxima's UTXO transaction model.
+  Flag  `-v` (or `--verbose`) will make command to display the whole transfer transaction. It is a good chance to get acquainted with the Proxima's UTXO transaction model.
 
 * `proxi node compact` transfers tokens to itself by compacting outputs in the account. It is useful when account contains too much outputs. 
    This often happens as a result of the spamming. 
@@ -136,15 +135,22 @@ by all the current healthy ledger states, i.e. it is the **consensus ledger stat
 
 * `proxi node outputs` displays outputs (UTXOs) in the account
 
-* `proxi node info` displays info of the node 
+* `proxi node info` displays info of the node
 
 ### 2. Run spammer from the wallet
-Spammer is run with the command `proxi node spam`. 
-It periodically sends tokens to the target address in bundles of transactions. It waits each bundle of transactions 
-reaches finality before sending the next one.
+
+Spammer is used as a testing tool and to study behavior of the system. 
+Spammer periodically sends tokens from the wallet's account to the target address in bundles of transactions. 
+It waits each bundle of transactions reaches finality before sending the next one.
+
+Spammer is run with the command `proxi node spam`.
 
 The bundle of transactions is a chain of transactions which consumes output of the previous. 
 Only the last one (tip of the batch) contains tag-along output.
 
 Configured tag-along sequencer consumes the output (the tip of the batch). 
-This way pull the whole bundle of transactions into the ledger state with one tag-along fee amount.  
+This way pull the whole bundle of transactions into the ledger state with one tag-along fee amount.
+
+As per current ledger constraints one spammer can achieve maximum 1 TPS of the transfer transactions. 
+In Proxima rate is limited per address (per user) and it is 1 TPS for non-sequencers (assuming no conflicting transactions are issued).
+Higher TPS can be reached only by multiple users. 
