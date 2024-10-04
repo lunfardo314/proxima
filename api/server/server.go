@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"text/template"
 	"time"
 
 	"github.com/lunfardo314/proxima/api"
@@ -18,6 +19,7 @@ import (
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/spf13/viper"
 	"golang.org/x/exp/slices"
 )
 
@@ -370,24 +372,6 @@ func (srv *server) getNodeInfo(w http.ResponseWriter, r *http.Request) {
 	util.AssertNoError(err)
 }
 
-func (srv *server) getDashboard(w http.ResponseWriter, r *http.Request) {
-	//setHeader(w)
-
-	//w.Header().Set("Content-Type", "text/html")
-	//w.Write([]byte(dashboardHTML))
-
-	http.ServeFile(w, r, "dashboard.html")
-
-	// peersInfo := srv.GetPeersInfo()
-	// respBin, err := json.MarshalIndent(peersInfo, "", "  ")
-	// if err != nil {
-	// 	writeErr(w, err.Error())
-	// 	return
-	// }
-	// _, err = w.Write(respBin)
-	// util.AssertNoError(err)
-}
-
 const maxSlotsSpan = 10
 
 func (srv *server) queryTxStatus(w http.ResponseWriter, r *http.Request) {
@@ -622,49 +606,153 @@ func (srv *server) addHandler(pattern string, handler func(http.ResponseWriter, 
 	})
 }
 
+func (srv *server) getDashboard(w http.ResponseWriter, r *http.Request) {
+	type HtmlData struct {
+		Port int
+		// Message string
+	}
+
+	// Parse the template string
+	tmpl := template.Must(template.New("webpage").Parse(dashboardHTML))
+
+	// Data to pass into the template
+	port := viper.GetInt("api.port")
+	data := HtmlData{
+		Port: port,
+	}
+
+	// Execute the template
+	tmpl.Execute(w, data)
+}
+
 const dashboardHTML = `
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard</title>
-</head>
-<body>
+    <title>Dashboard for Proxima node</title>
+    <script>
+        const port = {{.Port}}
+        const pollingPeriod = 5000  // in ms
+        function convertTimestamp(ts) {
+            const date = new Date(ts / 1e6); // Convert nanoseconds to milliseconds
+            return date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
+        }
+        function getMapSize(map) {
+            if (map) {
+                Object.keys(map).length
+            }
+            return 0
+        }
+    </script></head>
+    <style>
+        li {
+        margin-bottom: 8px; /* Adjust the spacing as needed */
+        }
+    </style>
+  <body>
     <h1>Node Dashboard</h1>
+    <div id="node-info">
+        <p>Loading node info...</p>
+    </div>
+    <div id="sync-info">
+        <p>Loading sync info...</p>
+    </div>
     <div id="peers-info">
         <p>Loading peer info...</p>
     </div>
 
     <script>
+        // Function to fetch peers info and update the UI
         async function fetchPeersInfo() {
             try {
-                const response = await fetch('http://127.0.0.1:8000/peers_info');
+                const response = await fetch('http://localhost:'+port+'/peers_info');
                 const data = await response.json();
                 updatePeersInfo(data);
             } catch (error) {
                 console.error('Error fetching peers info:', error);
             }
         }
+        async function fetchNodeInfo() {
+            try {
+                const response = await fetch('http://localhost:'+port+'/node_info');
+                const data = await response.json();
+                updateNodeInfo(data);
+            } catch (error) {
+                console.error('Error fetching node info:', error);
+            }
+        }
+        async function fetchSyncInfo() {
+            try {
+                const response = await fetch('http://localhost:'+port+'/sync_info');
+                const data = await response.json();
+                updateSyncInfo(data);
+            } catch (error) {
+                console.error('Error fetching sync info:', error);
+            }
+        }
 
+        // Function to update the page with node info
+        function updateNodeInfo(data) {
+            const nodeInfoDiv = document.getElementById('node-info');
+            let htmlContent = "<h2>Node Info</h2>" +
+                "<strong>Node ID:</strong>" + data.id + "<br>" +
+                "<strong>Num static alive:</strong>" + data.num_static_peers + "<br>" +
+                "<strong>Num dynamic alive:</strong>" + data.num_dynamic_alive + "<br>";
+
+            nodeInfoDiv.innerHTML = htmlContent;
+        }
+
+        // Function to update the page with sync info
+        function updateSyncInfo(data) {
+            const syncInfoDiv = document.getElementById('sync-info');
+            let htmlContent = 
+                "<strong>Synced:</strong>" + data.synced +  "<br>" +
+                "<strong>In sync window:</strong>" + data.in_sync_window +"<br>";
+            syncInfoDiv.innerHTML = htmlContent;
+        }
+
+        // Function to update the page with peer info
         function updatePeersInfo(data) {
             const peersInfoDiv = document.getElementById('peers-info');
-            let htmlContent = '<h2>Host ID: ' + data.host_id + '</h2><ul>';
+            let htmlContent = "<h2>Peers Info</h2><ul>";
 
             data.peers.forEach(peer => {
-                htmlContent += '<li><strong>Peer ID:</strong> ' + peer.id + '<br>' +
-                    '<strong>Multi Addresses:</strong> ' + peer.multiAddresses.join(', ') + '<br>' +
-                    '<strong>Is Alive:</strong> ' + peer.is_alive + '<br>' +
-                    '<strong>Number of Incoming Transactions:</strong> ' + peer.num_incoming_tx + '<br>' +
-                    '</li>';
+                htmlContent += "<li><strong>Peer ID:</strong>" + peer.id + "<br>" +
+                    "<strong>Multi Addresses:</strong>" + peer.multiAddresses.join(', ') + "<br>" +
+                    "<strong>Is Alive:</strong>" + peer.is_alive + "<br>" +
+                    "<strong>Is Static:</strong>" + peer.is_static + "<br>" +
+                    "<strong>Responds to pull:</strong>" + peer.responds_to_pull + "<br>" +
+                    "<strong>Added:</strong>" + convertTimestamp(peer.when_added) + "<br>" +
+                    "<strong>Last HB:</strong>" + convertTimestamp(peer.last_heartbeat_received) + "<br>" +
+                    "<strong>Clock Diff Qu:</strong>" + peer.clock_differences_quartiles[0] + " " + 
+                peer.clock_differences_quartiles[1] + " " + 
+                peer.clock_differences_quartiles[2] + "<br>" +
+                    "<strong>HB Diff Qu:</strong>" + peer.hb_differences_quartiles[0] + " " +
+                peer.hb_differences_quartiles[1] + " " + 
+                peer.hb_differences_quartiles[2] + "<br>" + 
+                    "<strong>Number of Incoming Transactions:</strong>" + peer.num_incoming_tx + "<br>" +
+                    "<strong>Number of Incoming HB:</strong>" +  peer.num_incoming_hb + "<br>" +
+                    "<strong>Number of Incoming Tx:</strong>" +  peer.num_incoming_tx + "<br>" +
+                    "<strong>Blacklist size:</strong>" + getMapSize(peer.blacklist) + "<br>" +
+                    "</li>";
             });
 
-            htmlContent += '</ul>';
+            htmlContent += "</ul>";
             peersInfoDiv.innerHTML = htmlContent;
         }
 
-        setInterval(fetchPeersInfo, 5000);
+        // Fetch info every 5 seconds
+        setInterval(fetchNodeInfo, pollingPeriod);
+        setInterval(fetchSyncInfo, pollingPeriod);
+        setInterval(fetchPeersInfo, pollingPeriod);
+
+        // Initial load
+        fetchNodeInfo()
+        fetchSyncInfo()
         fetchPeersInfo();
     </script>
 </body>

@@ -38,7 +38,7 @@ WORKDIR /app
 RUN ./proxi gen ledger_id
 
 # Start a new stage from scratch
-FROM busybox:latest
+FROM busybox:stable
 
 RUN mkdir /app
 
