@@ -18,6 +18,7 @@ const (
 	PathGetNodeInfo             = "/node_info"
 	PathGetPeersInfo            = "/peers_info"
 	PathGetLatestReliableBranch = "/get_latest_reliable_branch"
+	PathGetDashboard            = "/dashboard"
 )
 
 type (

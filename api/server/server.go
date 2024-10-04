@@ -76,6 +76,8 @@ func (srv *server) registerHandlers() {
 	srv.addHandler(api.PathGetPeersInfo, srv.getPeersInfo)
 	// GET latest reliable branch '/get_latest_reliable_branch'
 	srv.addHandler(api.PathGetLatestReliableBranch, srv.getLatestReliableBranch)
+	// GET dashboard for node
+	srv.addHandler(api.PathGetDashboard, srv.getDashboard)
 }
 
 func (srv *server) getLedgerID(w http.ResponseWriter, _ *http.Request) {
@@ -368,6 +370,24 @@ func (srv *server) getNodeInfo(w http.ResponseWriter, r *http.Request) {
 	util.AssertNoError(err)
 }
 
+func (srv *server) getDashboard(w http.ResponseWriter, r *http.Request) {
+	//setHeader(w)
+
+	//w.Header().Set("Content-Type", "text/html")
+	//w.Write([]byte(dashboardHTML))
+
+	http.ServeFile(w, r, "dashboard.html")
+
+	// peersInfo := srv.GetPeersInfo()
+	// respBin, err := json.MarshalIndent(peersInfo, "", "  ")
+	// if err != nil {
+	// 	writeErr(w, err.Error())
+	// 	return
+	// }
+	// _, err = w.Write(respBin)
+	// util.AssertNoError(err)
+}
+
 const maxSlotsSpan = 10
 
 func (srv *server) queryTxStatus(w http.ResponseWriter, r *http.Request) {
@@ -601,3 +621,52 @@ func (srv *server) addHandler(pattern string, handler func(http.ResponseWriter, 
 		srv.metrics.totalRequests.Inc()
 	})
 }
+
+const dashboardHTML = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard</title>
+</head>
+<body>
+    <h1>Node Dashboard</h1>
+    <div id="peers-info">
+        <p>Loading peer info...</p>
+    </div>
+
+    <script>
+        async function fetchPeersInfo() {
+            try {
+                const response = await fetch('http://127.0.0.1:8000/peers_info');
+                const data = await response.json();
+                updatePeersInfo(data);
+            } catch (error) {
+                console.error('Error fetching peers info:', error);
+            }
+        }
+
+        function updatePeersInfo(data) {
+            const peersInfoDiv = document.getElementById('peers-info');
+            let htmlContent = '<h2>Host ID: ' + data.host_id + '</h2><ul>';
+
+            data.peers.forEach(peer => {
+                htmlContent += '<li><strong>Peer ID:</strong> ' + peer.id + '<br>' +
+                    '<strong>Multi Addresses:</strong> ' + peer.multiAddresses.join(', ') + '<br>' +
+                    '<strong>Is Alive:</strong> ' + peer.is_alive + '<br>' +
+                    '<strong>Number of Incoming Transactions:</strong> ' + peer.num_incoming_tx + '<br>' +
+                    '</li>';
+            });
+
+            htmlContent += '</ul>';
+            peersInfoDiv.innerHTML = htmlContent;
+        }
+
+        setInterval(fetchPeersInfo, 5000);
+        fetchPeersInfo();
+    </script>
+</body>
+</html>
+`
