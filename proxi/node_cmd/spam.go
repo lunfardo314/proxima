@@ -22,6 +22,7 @@ type spammerConfig struct {
 	tagAlongSequencer ledger.ChainID
 	tagAlongFee       uint64
 	target            ledger.Accountable
+	finalitySlots     int
 }
 
 func initSpamCmd() *cobra.Command {
@@ -77,6 +78,10 @@ func readSpammerConfigIn(sub *viper.Viper) (ret spammerConfig) {
 	glb.AssertNoError(err)
 	ret.target, err = ledger.AddressED25519FromSource(sub.GetString("target"))
 	glb.AssertNoError(err)
+	ret.finalitySlots = sub.GetInt("finality_slots")
+	if ret.finalitySlots <= 1 {
+		ret.finalitySlots = 5
+	}
 	return
 }
 
@@ -89,6 +94,7 @@ func displaySpammerConfig() spammerConfig {
 	glb.Infof("max duration: %v", cfg.maxDuration)
 	glb.Infof("tag-along sequencer: %s", cfg.tagAlongSequencer.String())
 	glb.Infof("tag-along fee: %d", cfg.tagAlongFee)
+	glb.Infof("finality slots: %d", cfg.finalitySlots)
 
 	walletData := glb.GetWalletData()
 	glb.Infof("source account (wallet): %s", walletData.Account.String())
@@ -153,7 +159,7 @@ func doSpamming(cfg spammerConfig) {
 			}
 		}
 
-		glb.ReportTxInclusion(oid.TransactionID(), time.Second, 4)
+		glb.ReportTxInclusion(oid.TransactionID(), time.Second, ledger.Slot(cfg.finalitySlots))
 
 		txCounter += len(bundle)
 		timeSinceBeginning := time.Since(beginTime)
