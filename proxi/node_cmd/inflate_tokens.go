@@ -4,17 +4,17 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/spf13/cobra"
 )
 
 func initInflateTokensCmd() *cobra.Command {
 	inflateChainCmd := &cobra.Command{
-		Use:     "inflate_tokens [<period>] [<fee>] [<amount>]",
-		Aliases: []string{"inflate"},
-		Short:   `inflates the <amount> tokens on a newly created chain with the given chain transaction <period in slots> and <tag-along fee>. If amount not provided all funds in the account will be used`,
-		Args:    cobra.MaximumNArgs(3),
-		Run:     runInflateTokensCmd,
+		Use:   "inflate_tokens [<period in slots>] [<fee>] [<amount>]",
+		Short: `inflates the <amount> tokens on a newly created chain with the given chain transaction <period in slots> and <tag-along fee>. If amount not provided all funds in the account will be used`,
+		Args:  cobra.MaximumNArgs(3),
+		Run:   runInflateTokensCmd,
 	}
 	glb.AddFlagTraceTx(inflateChainCmd)
 	inflateChainCmd.InitDefaultHelpCmd()
@@ -23,7 +23,6 @@ func initInflateTokensCmd() *cobra.Command {
 }
 
 func runInflateTokensCmd(_ *cobra.Command, args []string) {
-	//cmd.DebugFlags()
 	glb.InitLedgerFromNode()
 
 	tagAlongFee := getTagAlongFee()
@@ -45,16 +44,14 @@ func runInflateTokensCmd(_ *cobra.Command, args []string) {
 		onChainAmount = amount
 	}
 
-	glb.Infof("starting chain inflation of %d [0:all tokens] with period %d [slots] and fee %d", onChainAmount, chainTransitionPeriod, tagAlongFee)
+	glb.Infof("starting chain inflation of %d tokens with period %d slots and tag-along fee %d", onChainAmount, chainTransitionPeriod, tagAlongFee)
 
 	txCtx, chainID, err := MakeChain(onChainAmount)
 	glb.AssertNoError(err)
 	glb.Infof("new chain ID is %s", chainID.String())
-	if !glb.NoWait() {
-		glb.ReportTxInclusion(*txCtx.TransactionID(), time.Second)
-	}
+	glb.ReportTxInclusion(*txCtx.TransactionID(), time.Second)
 
-	InflateChain(chainTransitionPeriod, tagAlongFee, chainID)
+	inflateChain(ledger.Slot(chainTransitionPeriod), chainID)
 
 	txCtx, err = DeleteChain(&chainID)
 	glb.AssertNoError(err)
