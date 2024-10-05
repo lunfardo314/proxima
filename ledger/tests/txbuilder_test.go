@@ -214,7 +214,7 @@ func TestManyInputs(t *testing.T) {
 	require.EqualValues(t, 1, u.NumUTXOs(addr0))
 }
 
-func TestChainSuccTransaction(t *testing.T) {
+func TestChainSuccessorTransaction(t *testing.T) {
 	t.Run("wrong input parameters", func(t *testing.T) {
 		u := utxodb.NewUTXODB(genesisPrivateKey, true)
 		const (
@@ -230,35 +230,30 @@ func TestChainSuccTransaction(t *testing.T) {
 		require.NoError(t, err)
 		par := txbuilder.MakeChainSuccTransactionParams{
 			ChainInput:           chainInput,
-			Timestamp:            ledger.TimeNow().AddSlots(1),
+			Timestamp:            chainInput.Timestamp().AddSlots(1),
 			EnforceProfitability: true,
-			TargetFee:            100,
-			Target:               ledger.ChainLockFromChainID(target.ChainID),
+			WithdrawAmount:       100,
+			WithdrawTarget:       ledger.ChainLockFromChainID(target.ChainID),
 			PrivateKey:           privKeys[0],
 		}
-		_, _, err = txbuilder.MakeChainSuccTransaction(&par)
+		_, _, _, err = txbuilder.MakeChainSuccessorTransaction(&par)
 		require.NoError(t, err)
 
 		par.Timestamp = ledger.NewLedgerTime(100000, 0)
-		_, _, err = txbuilder.MakeChainSuccTransaction(&par)
-		require.Error(t, err, "should fail  because wrong timestamp")
-		par.Timestamp = ledger.TimeNow().AddSlots(1)
+		_, _, _, err = txbuilder.MakeChainSuccessorTransaction(&par)
+		util.RequireErrorWith(t, err, "timestamp is on slot boundary")
 
-		par.ChainInput = nil
-		_, _, err = txbuilder.MakeChainSuccTransaction(&par)
-		require.Error(t, err, "should fail because ChainInput is nil")
-		par.ChainInput = chainInput
+		par.Timestamp = par.ChainInput.Timestamp()
+		_, _, _, err = txbuilder.MakeChainSuccessorTransaction(&par)
+		util.RequireErrorWith(t, err, "is inconsistent with latest chain output timestamp")
 
-		par.TargetFee = 1000000000000
-		_, _, err = txbuilder.MakeChainSuccTransaction(&par)
-		require.Error(t, err, "should fail because target fee too high")
-		par.TargetFee = 100
 	})
 	t.Run("normal run", func(t *testing.T) {
 		u := utxodb.NewUTXODB(genesisPrivateKey, true)
 		const (
 			numAddr    = 2
 			initAmount = 100_000_000_000
+			fee        = 300
 		)
 		privKeys, _, addrs := u.GenerateAddressesWithFaucetAmount(1, numAddr, initAmount)
 
@@ -270,13 +265,13 @@ func TestChainSuccTransaction(t *testing.T) {
 
 		par := txbuilder.MakeChainSuccTransactionParams{
 			ChainInput:           chainInput,
-			Timestamp:            ledger.TimeNow().AddSlots(1),
+			Timestamp:            chainInput.Timestamp().AddSlots(1),
 			EnforceProfitability: true,
-			TargetFee:            100,
-			Target:               ledger.ChainLockFromChainID(target.ChainID),
+			WithdrawAmount:       fee,
+			WithdrawTarget:       target.ChainID.AsChainLock(),
 			PrivateKey:           privKeys[0],
 		}
-		txBytes, _, err := txbuilder.MakeChainSuccTransaction(&par)
+		txBytes, inflation, _, err := txbuilder.MakeChainSuccessorTransaction(&par)
 		require.NoError(t, err)
 		err = u.AddTransaction(txBytes, func(ctx *transaction.TxContext, err error) error {
 			if err != nil {
@@ -285,16 +280,16 @@ func TestChainSuccTransaction(t *testing.T) {
 			return nil
 		})
 		require.NoError(t, err)
-		require.EqualValues(t, initAmount+300, u.Balance(addrs[0]))
+		require.EqualValues(t, util.Th(initAmount+inflation-fee), util.Th(u.Balance(addrs[0])))
 		require.EqualValues(t, initAmount, u.Balance(addrs[1]))
 	})
 	t.Run("test enforce profitability", func(t *testing.T) {
 		u := utxodb.NewUTXODB(genesisPrivateKey, true)
 		const (
-			numAddr    = 256
-			initAmount = 10_000 // low amount so inflation == 0
+			initAmount = 100_000_000_000
+			fee        = 100
 		)
-		privKeys, _, _ := u.GenerateAddressesWithFaucetAmount(1, 2, initAmount)
+		privKeys, _, addrs := u.GenerateAddressesWithFaucetAmount(1, 2, initAmount)
 
 		chainInput, err := u.CreateChainOrigin(privKeys[0], ledger.TimeNow())
 		require.NoError(t, err)
@@ -303,17 +298,86 @@ func TestChainSuccTransaction(t *testing.T) {
 		require.NoError(t, err)
 		par := txbuilder.MakeChainSuccTransactionParams{
 			ChainInput:           chainInput,
-			Timestamp:            ledger.TimeNow().AddSlots(1),
+			Timestamp:            chainInput.Timestamp().AddSlots(1),
 			EnforceProfitability: false,
-			TargetFee:            100,
-			Target:               ledger.ChainLockFromChainID(target.ChainID),
+			WithdrawAmount:       fee,
+			WithdrawTarget:       target.ChainID.AsChainLock(),
 			PrivateKey:           privKeys[0],
 		}
-		_, _, err = txbuilder.MakeChainSuccTransaction(&par)
+		_, inflationAmount, _, err := txbuilder.MakeChainSuccessorTransaction(&par)
 		require.NoError(t, err)
 
+		par.WithdrawAmount = inflationAmount
+		_, inflationAmount1, _, err := txbuilder.MakeChainSuccessorTransaction(&par)
+		require.NoError(t, err)
+		require.EqualValues(t, inflationAmount, inflationAmount1)
+
+		par.WithdrawAmount = inflationAmount + initAmount + fee
+		_, _, _, err = txbuilder.MakeChainSuccessorTransaction(&par)
+		util.RequireErrorWith(t, err, "not enough tokens")
+
+		par.WithdrawAmount = inflationAmount + initAmount - 1
+		_, inflationAmount1, _, err = txbuilder.MakeChainSuccessorTransaction(&par)
+		require.NoError(t, err)
+		require.EqualValues(t, inflationAmount, inflationAmount1)
+
+		par.WithdrawAmount = inflationAmount + 1
 		par.EnforceProfitability = true
-		_, _, err = txbuilder.MakeChainSuccTransaction(&par)
-		require.Error(t, err, "should fail because not profitable")
+		_, _, _, err = txbuilder.MakeChainSuccessorTransaction(&par)
+		util.RequireErrorWith(t, err, "not profitable")
+
+		par.WithdrawAmount = inflationAmount
+		par.EnforceProfitability = true
+		txBytes, _, _, err := txbuilder.MakeChainSuccessorTransaction(&par)
+		require.NoError(t, err)
+
+		err = u.AddTransaction(txBytes)
+		require.NoError(t, err)
+		require.EqualValues(t, initAmount, u.Balance(addrs[0]))
+
+		lockedOnChain, _, err := u.BalanceOnChain(target.ChainID)
+		require.NoError(t, err)
+
+		require.EqualValues(t, inflationAmount, lockedOnChain)
+	})
+	t.Run("small amount", func(t *testing.T) {
+		u := utxodb.NewUTXODB(genesisPrivateKey, true)
+		const (
+			numAddr    = 2
+			initAmount = 1_000_000_000
+			fee        = 50
+			slots      = 10
+		)
+		privKeys, _, addrs := u.GenerateAddressesWithFaucetAmount(1, numAddr, initAmount)
+
+		chainInput, err := u.CreateChainOrigin(privKeys[0], ledger.TimeNow())
+		require.NoError(t, err)
+
+		target, err := u.CreateChainOrigin(privKeys[1], ledger.TimeNow())
+		require.NoError(t, err)
+
+		par := txbuilder.MakeChainSuccTransactionParams{
+			ChainInput:           chainInput,
+			Timestamp:            chainInput.Timestamp().AddSlots(slots),
+			EnforceProfitability: true,
+			WithdrawAmount:       fee,
+			WithdrawTarget:       target.ChainID.AsChainLock(),
+			PrivateKey:           privKeys[0],
+		}
+		txBytes, inflation, _, err := txbuilder.MakeChainSuccessorTransaction(&par)
+		require.NoError(t, err)
+		profit := int64(inflation) - fee
+		t.Logf("inflation of %s tokens over %d slots is %s, profit is %s",
+			util.Th(chainInput.Output.Amount()), slots, util.Th(inflation), util.Th(profit))
+
+		err = u.AddTransaction(txBytes, func(ctx *transaction.TxContext, err error) error {
+			if err != nil {
+				return fmt.Errorf("Error: %v\n%s", err, ctx.String())
+			}
+			return nil
+		})
+		require.NoError(t, err)
+		require.EqualValues(t, util.Th(initAmount+inflation-fee), util.Th(u.Balance(addrs[0])))
+		require.EqualValues(t, initAmount, u.Balance(addrs[1]))
 	})
 }

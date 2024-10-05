@@ -247,15 +247,16 @@ type (
 	MakeChainSuccTransactionParams struct {
 		// predecessor
 		ChainInput *ledger.OutputWithChainID
-		// timestamp of the transaction
+		// timestamp of the target transaction
 		Timestamp ledger.Time
-		// check if transaction is profitable
-		EnforceProfitability bool
-		// minimum fee
-		TargetFee uint64
-		Target    ledger.Lock
+		// some amount sent to the target lock. It can be a tag-along output. Remainder goes to the chain
+		WithdrawTarget ledger.Lock
+		WithdrawAmount uint64
 		// chain controller
-		PrivateKey        ed25519.PrivateKey
+		PrivateKey ed25519.PrivateKey
+		// enforce transaction is profitable
+		EnforceProfitability bool
+		// return input loader function
 		ReturnInputLoader bool
 	}
 
@@ -263,6 +264,7 @@ type (
 		SeqID  ledger.ChainID
 		Amount uint64
 	}
+
 	UnlockData struct {
 		OutputIndex     byte
 		ConstraintIndex byte
@@ -565,112 +567,109 @@ func MakeSimpleTransferTransactionWithRemainder(par *TransferData, disableEndors
 	return txBytes, rem, nil
 }
 
-// function to create a transaction to continue a chain to earn inflation
-func MakeChainSuccTransaction(par *MakeChainSuccTransactionParams) ([]byte, func(i byte) (*ledger.Output, error), error) {
+// MakeChainSuccessorTransaction creates a transaction to continue a non-sequencer chain with inflation.
+// Optionally withdraws some amount to the target lock, which can be used as a tag-along output
+// Returns transaction adn inflation amount
+func MakeChainSuccessorTransaction(par *MakeChainSuccTransactionParams) ([]byte, uint64, func(i byte) (*ledger.Output, error), error) {
 	var consumedOutputs []*ledger.Output
 	if par.ReturnInputLoader {
 		consumedOutputs = make([]*ledger.Output, 0)
 	}
-	errP := util.MakeErrFuncForPrefix("MakeChainSuccTransaction")
+	errP := util.MakeErrFuncForPrefix("MakeChainSuccessorTransaction")
 
-	if !ledger.ValidTime(par.Timestamp) {
-		return nil, nil, errP("wrong timestamp bytes 0x%s", hex.EncodeToString(par.Timestamp[:]))
+	if par.ChainInput.ID.IsSequencerTransaction() {
+		// refuse to transition sequencer transactions
+		return nil, 0, nil, errP("cannot extend sequencer output")
 	}
 	if par.Timestamp.IsSlotBoundary() {
-		return nil, nil, errP("timestamp is on slot boundary")
-	}
-	if par.ChainInput == nil {
-		return nil, nil, errP("ChainInput is nil")
+		// refuse to produce transaction on the slot boundary
+		return nil, 0, nil, errP("timestamp is on slot boundary")
 	}
 
+	// enforce validity time constraints taking into account transaction pace constraint
+	if tsIn := par.ChainInput.ID.Timestamp(); par.Timestamp.Before(par.ChainInput.ID.Timestamp().AddTicks(ledger.TransactionPace())) {
+		return nil, 0, nil, errP("timestamp %s is inconsistent with latest chain output timestamp %s", par.Timestamp.String(), tsIn.String())
+	}
+
+	// find chain constraint in the predecessor
 	chainInConstraint, chainInConstraintIdx := par.ChainInput.Output.ChainConstraint()
 	if chainInConstraintIdx == 0xff {
-		return nil, nil, errP("not a chain output: %s", par.ChainInput.ID.StringShort())
+		return nil, 0, nil, errP("not a chain output: %s", par.ChainInput.ID.StringShort())
 	}
-	if int(par.TargetFee) < 0 {
-		return nil, nil, errP("tag along fee is negative: %d", par.TargetFee)
+	// calculate inflation amount and create inflation constraint
+	inflationAmount, _ := calcChainInflationAmount(par.ChainInput, par.Timestamp)
+	chainInAmount := par.ChainInput.Output.Amount()
+	if chainInAmount+inflationAmount <= par.WithdrawAmount {
+		// we do not handle complete withdrawal of funds from the chain
+		return nil, 0, nil, errP("not enough tokens to withdraw specified amount %d", par.WithdrawAmount)
+	}
+	var inflationConstraint *ledger.InflationConstraint
+	if inflationAmount > 0 {
+		inflationConstraint = &ledger.InflationConstraint{
+			ChainInflation:       inflationAmount,
+			ChainConstraintIndex: chainInConstraintIdx,
+		}
+	}
+
+	chainOutAmount := chainInAmount + inflationAmount - par.WithdrawAmount
+	util.Assertf(chainOutAmount > 0, "chainOutAmount > 0")
+
+	if par.EnforceProfitability {
+		if chainOutAmount < chainInAmount {
+			return nil, 0, nil, errP("chain transition is not profitable")
+		}
 	}
 
 	txb := NewTransactionBuilder()
 
-	tsIn := par.ChainInput.ID.Timestamp()
-	adjustedTs := ledger.MaximumTime(tsIn, par.Timestamp).AddTicks(ledger.TransactionPace())
-	// transaction pace constraint
-	if !ledger.ValidTransactionPace(tsIn, adjustedTs) {
-		return nil, nil, errP("timestamp %s is inconsistent with latest input timestamp %s", par.Timestamp.String(), tsIn.String())
-	}
-
-	var inflationAmount uint64
-	var inflationConstraint *ledger.InflationConstraint = &ledger.InflationConstraint{}
-
-	inflationConstraint.ChainInflation, inflationConstraint.DelayedInflationIndex = calcChainInflationAmount(&MakeSequencerTransactionParams{
-		ChainInput: par.ChainInput,
-		Timestamp:  adjustedTs,
-	})
-
-	chainInAmount := par.ChainInput.Output.Amount()
-	// calculate inflation value allowed in the context
-	// non-branch transaction
-	inflationAmount = inflationConstraint.ChainInflation
-	if chainInAmount+inflationAmount < par.TargetFee {
-		return nil, nil, errP("total amount not enough for fee")
-	}
-
-	chainOutAmount := chainInAmount + inflationAmount - par.TargetFee // >= 0
-	if par.EnforceProfitability {
-		if chainOutAmount < chainInAmount {
-			return nil, nil, errP("transaction is not profitable")
-		}
-	}
-
-	// make chain input/output
+	// consume predecessor
 	chainPredIdx, err := txb.ConsumeOutput(par.ChainInput.Output, par.ChainInput.ID)
 	if err != nil {
-		return nil, nil, errP(err)
+		return nil, 0, nil, errP(err)
 	}
 	if par.ReturnInputLoader {
 		consumedOutputs = append(consumedOutputs, par.ChainInput.Output)
 	}
 	txb.PutSignatureUnlock(chainPredIdx)
 
-	seqID := chainInConstraint.ID
+	chainID := chainInConstraint.ID
 	if chainInConstraint.IsOrigin() {
-		seqID = ledger.MakeOriginChainID(&par.ChainInput.ID)
+		chainID = ledger.MakeOriginChainID(&par.ChainInput.ID)
 	}
 
+	// make chain output
 	var chainOutConstraintIdx byte
 	chainOut := ledger.NewOutput(func(o *ledger.Output) {
 		o.PutAmount(chainOutAmount)
 		o.PutLock(par.ChainInput.Output.Lock())
 		// put chain constraint
-		chainOutConstraint := ledger.NewChainConstraint(seqID, chainPredIdx, chainInConstraintIdx, 0)
+		chainOutConstraint := ledger.NewChainConstraint(chainID, chainPredIdx, chainInConstraintIdx, 0)
 		chainOutConstraintIdx, _ = o.PushConstraint(chainOutConstraint.Bytes())
 
 		if inflationConstraint != nil {
 			inflationConstraint.ChainConstraintIndex = chainOutConstraintIdx
 			_, _ = o.PushConstraint(inflationConstraint.Bytes())
-			//fmt.Printf(">>>>>>>>>>>>>>> push %s\n", inflationConstraint.String())
 		}
 	})
 
 	chainOutIndex, err := txb.ProduceOutput(chainOut)
 	if err != nil {
-		return nil, nil, errP(err)
+		return nil, 0, nil, errP(err)
 	}
 	// unlock chain input (chain constraint unlock + inflation (optionally)
 	txb.PutUnlockParams(chainPredIdx, chainInConstraintIdx, ledger.NewChainUnlockParams(chainOutIndex, chainOutConstraintIdx, 0))
 
-	tagAlongOut := ledger.NewOutput(func(o *ledger.Output) {
-		o.WithAmount(par.TargetFee).
-			WithLock(par.Target)
-	})
-	if tagAlongOut != nil {
-		if _, err = txb.ProduceOutput(tagAlongOut); err != nil {
-			return nil, nil, errP(err)
+	if par.WithdrawAmount > 0 {
+		withdrawOut := ledger.NewOutput(func(o *ledger.Output) {
+			o.WithAmount(par.WithdrawAmount).
+				WithLock(par.WithdrawTarget)
+		})
+		if _, err = txb.ProduceOutput(withdrawOut); err != nil {
+			return nil, 0, nil, errP(err)
 		}
 	}
 
-	txb.TransactionData.Timestamp = adjustedTs
+	txb.TransactionData.Timestamp = par.Timestamp
 	txb.TransactionData.InputCommitment = txb.InputCommitment()
 	txb.SignED25519(par.PrivateKey)
 
@@ -682,7 +681,7 @@ func MakeChainSuccTransaction(par *MakeChainSuccTransactionParams) ([]byte, func
 			return consumedOutputs[i], nil
 		}
 	}
-	return txb.TransactionData.Bytes(), inputLoader, nil
+	return txb.TransactionData.Bytes(), inflationAmount, inputLoader, nil
 }
 
 func MakeChainTransferTransaction(par *TransferData, disableEndorsementChecking ...bool) ([]byte, error) {
