@@ -115,6 +115,6 @@ func inflateChain(chainTransitionPeriodSlots ledger.Slot, chainId ledger.ChainID
 		glb.Assertf(chainOutput.ID.TransactionID() == txid, "unexpected chain output ID")
 		tsIN = chainOutput.Timestamp()
 		tsOut = tsIN.AddSlots(chainTransitionPeriodSlots)
-		glb.Infof("amount of chain: %s", util.Th(chainOutput.Output.Amount()))
+		glb.Infof("amount on chain: %s", util.Th(chainOutput.Output.Amount()))
 	}
 }
