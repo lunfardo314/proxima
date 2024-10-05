@@ -744,6 +744,10 @@ const dashboardHTML = `
         // Function to update the page with peer info
         function updatePeersInfo(data) {
             const peersInfoDiv = document.getElementById('peers-info');
+            
+            // Sort the peers array by peer ID
+            data.peers.sort((a, b) => a.id.localeCompare(b.id));
+
             let htmlContent = "<h2>Peers Info</h2><ul>";
 
             data.peers.forEach(peer => {
@@ -755,21 +759,21 @@ const dashboardHTML = `
                     "<div class='info-row'><span class='label'>Added:</span><span>" + convertTimestamp(peer.when_added) + "</span></div>" +
                     "<div class='info-row'><span class='label'>Last HB:</span><span>" + convertTimestamp(peer.last_heartbeat_received) + "</span></div>" +
                     "<div class='info-row'><span class='label'>Clock Diff Qu:</span><span>" + peer.clock_differences_quartiles[0] + " " + 
-                peer.clock_differences_quartiles[1] + " " + 
-                peer.clock_differences_quartiles[2] + "</span></div>" +
+                    peer.clock_differences_quartiles[1] + " " + 
+                    peer.clock_differences_quartiles[2] + "</span></div>" +
                     "<div class='info-row'><span class='label'>HB Diff Qu:</span><span>" + peer.hb_differences_quartiles[0] + " " +
-                peer.hb_differences_quartiles[1] + " " + 
-                peer.hb_differences_quartiles[2] + "</span></div>" + 
-                "<div class='info-row'><span class='label'># Incoming Tx:</span><span>" +  peer.num_incoming_tx + "</span></div>" +
-                "<div class='info-row'><span class='label'># Incoming HB:</span><span>" +  peer.num_incoming_hb + "</span></div>" +
-                "<div class='info-row'><span class='label'># Incoming Pull:</span><span>" +  peer.num_incoming_pull + "</span></div>" +
+                    peer.hb_differences_quartiles[1] + " " + 
+                    peer.hb_differences_quartiles[2] + "</span></div>" + 
+                    "<div class='info-row'><span class='label'># Incoming Tx:</span><span>" +  peer.num_incoming_tx + "</span></div>" +
+                    "<div class='info-row'><span class='label'># Incoming HB:</span><span>" +  peer.num_incoming_hb + "</span></div>" +
+                    "<div class='info-row'><span class='label'># Incoming Pull:</span><span>" +  peer.num_incoming_pull + "</span></div>" +
                     "<div class='info-row'><span class='label'>Blacklist size:</span><span>" + getMapSize(peer.blacklist) + "</span></div>" +
                     "</li>";
             });
 
             htmlContent += "</ul>";
             peersInfoDiv.innerHTML = htmlContent;
-        }
+        }        
 
         // Fetch info every 5 seconds
         setInterval(fetchNodeInfo, pollingPeriod);
