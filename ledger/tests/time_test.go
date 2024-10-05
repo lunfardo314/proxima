@@ -120,29 +120,31 @@ func TestRealTime(t *testing.T) {
 	}
 }
 
-func TestRealTimeValues(t *testing.T) {
-	nowis := time.Now()
-	ledgerTimeNow := ledger.TimeFromClockTime(nowis)
-	slotNow := ledgerTimeNow.Slot()
-	t.Logf("nowis: %s, ledger time now: %s", nowis.Format(time.StampNano), ledgerTimeNow.String())
-
-	t.Run("1", func(t *testing.T) {
-		for i := 0; i < 256; i++ {
-			ts := ledger.NewLedgerTime(slotNow, byte(i))
-			t.Logf("   %s -> %s", ts.String(), ts.Time().Format(time.StampNano))
-		}
-	})
-
-	t.Run("2", func(t *testing.T) {
-		now := nowis
-		for i := 0; i < 256; i++ {
-			ts := ledger.TimeFromClockTime(now)
-			t.Logf("   %s -> %s", now.Format(time.StampNano), ts.String())
-			now = now.Add(ledger.DefaultTickDuration)
-		}
-	})
-
-}
+// TODO sometimes hangs IDE due to too much console output
+//func TestRealTimeValues(t *testing.T) {
+//	nowis := time.Now()
+//	ledgerTimeNow := ledger.TimeFromClockTime(nowis)
+//	slotNow := ledgerTimeNow.Slot()
+//	t.Logf("nowis: %s, ledger time now: %s", nowis.Format(time.StampNano), ledgerTimeNow.String())
+//
+//
+//	t.Run("1", func(t *testing.T) {
+//		for i := 0; i < 256; i++ {
+//			ts := ledger.NewLedgerTime(slotNow, byte(i))
+//			t.Logf("   %s -> %s", ts.String(), ts.Time().Format(time.StampNano))
+//		}
+//	})
+//
+//	t.Run("2", func(t *testing.T) {
+//		now := nowis
+//		for i := 0; i < 256; i++ {
+//			ts := ledger.TimeFromClockTime(now)
+//			t.Logf("   %s -> %s", now.Format(time.StampNano), ts.String())
+//			now = now.Add(ledger.DefaultTickDuration)
+//		}
+//	})
+//
+//}
 
 func TestArithmetics(t *testing.T) {
 	b := byte(0xff)

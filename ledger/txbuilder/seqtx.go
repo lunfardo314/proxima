@@ -92,7 +92,7 @@ func MakeSequencerTransactionWithInputLoader(par MakeSequencerTransactionParams)
 
 	if par.PutInflation {
 		inflationConstraint = &ledger.InflationConstraint{}
-		inflationConstraint.ChainInflation, inflationConstraint.DelayedInflationIndex = calcChainInflationAmount(&par)
+		inflationConstraint.ChainInflation, inflationConstraint.DelayedInflationIndex = calcChainInflationAmount(par.ChainInput, par.Timestamp)
 
 		if par.StemInput == nil {
 			// calculate inflation value allowed in the context
@@ -264,18 +264,18 @@ func MakeSequencerTransactionWithInputLoader(par MakeSequencerTransactionParams)
 	return txb.TransactionData.Bytes(), inputLoader, nil
 }
 
-func calcChainInflationAmount(par *MakeSequencerTransactionParams) (uint64, byte) {
+func calcChainInflationAmount(chainInput *ledger.OutputWithChainID, ts ledger.Time) (uint64, byte) {
 	delayedInflation := uint64(0)
 	delayedInflationIdx := byte(0xff)
-	if par.ChainInput.ID.IsBranchTransaction() {
+	if chainInput.ID.IsBranchTransaction() {
 		// take delayed inflation from predecessor
 		var inflationConstraint *ledger.InflationConstraint
-		inflationConstraint, delayedInflationIdx = par.ChainInput.Output.InflationConstraint()
+		inflationConstraint, delayedInflationIdx = chainInput.Output.InflationConstraint()
 		if delayedInflationIdx != 0xff {
 			delayedInflation = inflationConstraint.ChainInflation
 		}
 	}
-	ret, idx := ledger.L().CalcChainInflationAmount(par.ChainInput.Timestamp(), par.Timestamp, par.ChainInput.Output.Amount(), delayedInflation), delayedInflationIdx
+	ret, idx := ledger.L().CalcChainInflationAmount(chainInput.Timestamp(), ts, chainInput.Output.Amount(), delayedInflation), delayedInflationIdx
 
 	//fmt.Printf(">>>>>>>> [%s]: pred: %s, target: %s (ticks: %d), pred amount: %s, delayed amount: %s, less delayed: %s, return: %s\n",
 	//	par.SeqName,
