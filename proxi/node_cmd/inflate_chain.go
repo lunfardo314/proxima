@@ -74,6 +74,10 @@ func inflateChain(chainTransitionPeriodSlots ledger.Slot, chainId ledger.ChainID
 		tsOut = ledger.TimeNow()
 		ignoreProfitability = true
 	}
+	if tsOut.IsSlotBoundary() {
+		tsOut = tsOut.AddTicks(1)
+	}
+
 	for {
 		glb.Assertf(!tsOut.IsSlotBoundary(), "can't be on slot boundary")
 
@@ -110,11 +114,20 @@ func inflateChain(chainTransitionPeriodSlots ledger.Slot, chainId ledger.ChainID
 
 		glb.ReportTxInclusion(txid, time.Second)
 
-		chainOutput, _, err = glb.GetClient().GetChainOutput(chainId)
-		glb.AssertNoError(err)
-		glb.Assertf(chainOutput.ID.TransactionID() == txid, "unexpected chain output ID")
-		tsIN = chainOutput.Timestamp()
-		tsOut = tsIN.AddSlots(chainTransitionPeriodSlots)
-		glb.Infof("amount of chain: %s", util.Th(chainOutput.Output.Amount()))
+		for i := 0; ; i++ {
+			chainOutput, _, err = glb.GetClient().GetChainOutput(chainId)
+			glb.AssertNoError(err)
+
+			if chainOutput.ID.TransactionID() == txid {
+				break
+			}
+			time.Sleep(time.Second)
+			if i >= 10 {
+				glb.Infof(">>>> warning: failed to reach finality")
+				break
+			}
+		}
+		tsOut = chainOutput.Timestamp().AddSlots(chainTransitionPeriodSlots)
+		glb.Infof("amount on chain: %s", util.Th(chainOutput.Output.Amount()))
 	}
 }
