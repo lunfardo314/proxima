@@ -612,6 +612,8 @@ func (srv *server) getDashboard(w http.ResponseWriter, r *http.Request) {
 		// Message string
 	}
 
+	// http.ServeFile(w, r, "./config/dashboard.html")
+
 	// Parse the template string
 	tmpl := template.Must(template.New("webpage").Parse(dashboardHTML))
 
@@ -649,10 +651,35 @@ const dashboardHTML = `
         }
     </script></head>
     <style>
-        li {
-        margin-bottom: 8px; /* Adjust the spacing as needed */
+        ul {
+            list-style-type: none; /* Remove bullet points */
+            padding: 0; /* Remove padding */
         }
-    </style>
+        li {
+            background-color: #f0f0f0;
+            margin: 10px 0; /* Add spacing between list items */
+            padding: 10px; /* Add padding inside list items */
+            border-radius: 2px; /* Round the corners */
+            font-family: Arial, sans-serif;
+        }
+        li:hover {
+            background-color: #dddddd; /* Change background on hover */
+        }
+        .info-row {
+            display: flex;
+            gap: 10px;
+
+            margin: 5px 0;
+            padding: 5px;
+            background-color: #f8f9fa; /* Light background for separation */
+            border: 1px solid #ddd;
+            border-radius: 5px;            
+        }
+        .label {
+            font-weight: bold;
+            width: 150px; /* Set a width to align the values */
+        }    
+  </style>
   <body>
     <h1>Node Dashboard</h1>
     <div id="node-info">
@@ -698,11 +725,10 @@ const dashboardHTML = `
         // Function to update the page with node info
         function updateNodeInfo(data) {
             const nodeInfoDiv = document.getElementById('node-info');
-            let htmlContent = "<h2>Node Info</h2>" +
-                "<strong>Node ID:</strong>" + data.id + "<br>" +
-                "<strong>Num static alive:</strong>" + data.num_static_peers + "<br>" +
-                "<strong>Num dynamic alive:</strong>" + data.num_dynamic_alive + "<br>";
-
+                    let htmlContent = "<h2>Node Info</h2>" +
+        "<div class='info-row'><span class='label'>Node ID:</span><span>" + data.id + "</span></div>" +
+        "<div class='info-row'><span class='label'>Num static alive:</span><span>" + data.num_static_peers + "</span></div>" +
+        "<div class='info-row'><span class='label'>Num dynamic alive:</span><span>" + data.num_dynamic_alive + "</span></div>";
             nodeInfoDiv.innerHTML = htmlContent;
         }
 
@@ -710,8 +736,8 @@ const dashboardHTML = `
         function updateSyncInfo(data) {
             const syncInfoDiv = document.getElementById('sync-info');
             let htmlContent = 
-                "<strong>Synced:</strong>" + data.synced +  "<br>" +
-                "<strong>In sync window:</strong>" + data.in_sync_window +"<br>";
+                "<div class='info-row'><span class='label'>Synced:</span><span>" + data.synced +  "</span></div>" +
+                "<div class='info-row'><span class='label'>In sync window:</span><span>" + data.in_sync_window +"</span></div>";
             syncInfoDiv.innerHTML = htmlContent;
         }
 
@@ -721,23 +747,23 @@ const dashboardHTML = `
             let htmlContent = "<h2>Peers Info</h2><ul>";
 
             data.peers.forEach(peer => {
-                htmlContent += "<li><strong>Peer ID:</strong>" + peer.id + "<br>" +
-                    "<strong>Multi Addresses:</strong>" + peer.multiAddresses.join(', ') + "<br>" +
-                    "<strong>Is Alive:</strong>" + peer.is_alive + "<br>" +
-                    "<strong>Is Static:</strong>" + peer.is_static + "<br>" +
-                    "<strong>Responds to pull:</strong>" + peer.responds_to_pull + "<br>" +
-                    "<strong>Added:</strong>" + convertTimestamp(peer.when_added) + "<br>" +
-                    "<strong>Last HB:</strong>" + convertTimestamp(peer.last_heartbeat_received) + "<br>" +
-                    "<strong>Clock Diff Qu:</strong>" + peer.clock_differences_quartiles[0] + " " + 
+                htmlContent += "<li><div class='info-row'><span class='label'>Peer ID:</span><span>" + peer.id + "</span></div>" +
+                    "<div class='info-row'><span class='label'>Multi Addresses:</span><span>" + peer.multiAddresses.join(', ') + "</span></div>" +
+                    "<div class='info-row'><span class='label'>Is Alive:</span><span>" + peer.is_alive + "</span></div>" +
+                    "<div class='info-row'><span class='label'>Is Static:</span><span>" + peer.is_static + "</span></div>" +
+                    "<div class='info-row'><span class='label'>Responds to pull:</span><span>" + peer.responds_to_pull + "</span></div>" +
+                    "<div class='info-row'><span class='label'>Added:</span><span>" + convertTimestamp(peer.when_added) + "</span></div>" +
+                    "<div class='info-row'><span class='label'>Last HB:</span><span>" + convertTimestamp(peer.last_heartbeat_received) + "</span></div>" +
+                    "<div class='info-row'><span class='label'>Clock Diff Qu:</span><span>" + peer.clock_differences_quartiles[0] + " " + 
                 peer.clock_differences_quartiles[1] + " " + 
-                peer.clock_differences_quartiles[2] + "<br>" +
-                    "<strong>HB Diff Qu:</strong>" + peer.hb_differences_quartiles[0] + " " +
+                peer.clock_differences_quartiles[2] + "</span></div>" +
+                    "<div class='info-row'><span class='label'>HB Diff Qu:</span><span>" + peer.hb_differences_quartiles[0] + " " +
                 peer.hb_differences_quartiles[1] + " " + 
-                peer.hb_differences_quartiles[2] + "<br>" + 
-                    "<strong>Number of Incoming Transactions:</strong>" + peer.num_incoming_tx + "<br>" +
-                    "<strong>Number of Incoming HB:</strong>" +  peer.num_incoming_hb + "<br>" +
-                    "<strong>Number of Incoming Tx:</strong>" +  peer.num_incoming_tx + "<br>" +
-                    "<strong>Blacklist size:</strong>" + getMapSize(peer.blacklist) + "<br>" +
+                peer.hb_differences_quartiles[2] + "</span></div>" + 
+                "<div class='info-row'><span class='label'># Incoming Tx:</span><span>" +  peer.num_incoming_tx + "</span></div>" +
+                "<div class='info-row'><span class='label'># Incoming HB:</span><span>" +  peer.num_incoming_hb + "</span></div>" +
+                "<div class='info-row'><span class='label'># Incoming Pull:</span><span>" +  peer.num_incoming_pull + "</span></div>" +
+                    "<div class='info-row'><span class='label'>Blacklist size:</span><span>" + getMapSize(peer.blacklist) + "</span></div>" +
                     "</li>";
             });
 
