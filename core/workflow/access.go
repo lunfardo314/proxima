@@ -42,8 +42,8 @@ func (w *Workflow) GossipAttachedTransaction(tx *transaction.Transaction, metada
 	w.GossipTxBytesToPeers(tx.Bytes(), metadata)
 }
 
-func (w *Workflow) GossipTxBytesToPeers(txBytes []byte, metadata *txmetadata.TransactionMetadata, except ...peer.ID) int {
-	return w.peers.GossipTxBytesToPeers(txBytes, metadata, except...)
+func (w *Workflow) GossipTxBytesToPeers(txBytes []byte, metadata *txmetadata.TransactionMetadata, except ...peer.ID) {
+	w.peers.GossipTxBytesToPeers(txBytes, metadata, except...)
 }
 
 func (w *Workflow) MustPersistTxBytesWithMetadata(txBytes []byte, metadata *txmetadata.TransactionMetadata) {
