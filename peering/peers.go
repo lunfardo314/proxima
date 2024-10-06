@@ -477,7 +477,7 @@ func (p *Peer) _isAlive() bool {
 
 // for QUIC timeout 'NewStream' is necessary, otherwise it may hang if peer is unavailable
 
-const defaultSendTimeout = 300 * time.Millisecond
+const defaultSendTimeout = 500 * time.Millisecond
 
 //const TraceTagSendMsg = "sendMsg"
 
