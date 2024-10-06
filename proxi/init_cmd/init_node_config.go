@@ -60,7 +60,7 @@ func runNodeConfigCommand(_ *cobra.Command, _ []string) {
 	glb.Assertf(!glb.FileExists(proximaNodeProfile), "file %s already exists", proximaNodeProfile)
 	var buf bytes.Buffer
 
-	privateKey := glb.AskEntropyGenEd25519PrivateKey("enter at least 10 seed symbols:", 10)
+	privateKey := glb.AskEntropyGenEd25519PrivateKey("please enter at least 10 random seed symbols for the private key and ID of the peering host and press ENTER:", 10)
 	pklpp, err := p2pcrypto.UnmarshalEd25519PrivateKey(privateKey)
 	util.AssertNoError(err)
 	hid, err := peer.IDFromPrivateKey(pklpp)
@@ -109,10 +109,10 @@ peering:
   peers:
     # Example -> boot: /ip4/113.30.191.219/udp/4001/quic-v1/p2p/12D3KooWGSnqWgYcMTKyQfqCnXCjvKMBLpN57jUN8WhbgnSnSRRx
 	# nodes for testnet:
-    boot: /ip4/113.30.191.219/udp/4001/quic-v1/p2p/12D3KooWGSnqWgYcMTKyQfqCnXCjvKMBLpN57jUN8WhbgnSnSRRx
-    acc1: /ip4/63.250.56.190/udp/4001/quic-v1/p2p/12D3KooWN35e2ikeiJAUpotsmD6YTmHrmypHk9QgKo3QAotF4G2a
-    acc2: /ip4/83.229.84.197/udp/4001/quic-v1/p2p/12D3KooWB4JtN4266XqLhKLo3c8SS4aTdD32dnsrqfWyrLfbwFw3
-    acc3: /ip4/5.180.181.103/udp/4001/quic-v1/p2p/12D3KooWQEJybYc7pnpuM2vTn4QbU26GK1LUMML6if6JjHSVjjMS
+    boot-acc: /ip4/113.30.191.219/udp/4001/quic-v1/p2p/12D3KooWGSnqWgYcMTKyQfqCnXCjvKMBLpN57jUN8WhbgnSnSRRx
+    loc0-acc: /ip4/63.250.56.190/udp/4001/quic-v1/p2p/12D3KooWN35e2ikeiJAUpotsmD6YTmHrmypHk9QgKo3QAotF4G2a
+    seq1-acc: /ip4/83.229.84.197/udp/4001/quic-v1/p2p/12D3KooWB4JtN4266XqLhKLo3c8SS4aTdD32dnsrqfWyrLfbwFw3
+    loc1-acc: /ip4/5.180.181.103/udp/4001/quic-v1/p2p/12D3KooWQEJybYc7pnpuM2vTn4QbU26GK1LUMML6if6JjHSVjjMS
 
   # Maximum number of peers which may be connected to via the automatic peer discovery
   # max_dynamic_peers > 0 means automatic peer discovery (autopeering) is enabled, otherwise disabled
@@ -126,7 +126,6 @@ api:
     # server port
   port: {{.APIPort}}
 
-snapshot:
   enable: false
     # where to put snapshot files. Directory must exist at startup
   directory: snapshot

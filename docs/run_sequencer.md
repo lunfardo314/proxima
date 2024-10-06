@@ -1,3 +1,7 @@
+**OUTDATED!!!**
+
+---
+
 ## Running node with the sequencer
 
 **Sequencer** is the following:
