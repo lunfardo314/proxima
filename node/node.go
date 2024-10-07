@@ -217,17 +217,21 @@ func (p *ProximaNode) goLoggingMemStats() {
 		runtime.ReadMemStats(&memStats)
 		_, availableHDD, _ := diskusage.GetDiskUsage("/")
 		availableGB := float64(availableHDD) / (1024 * 1024 * 1024)
-		p.Log().Infof("[memstats] current slot: %d, [%s], uptime: %v, allocated memory: %.1f MB, GC counter: %d, Goroutines: %d, available disk: %.2f GB",
+		diskSpace := ""
+		if availableGB > 0 {
+			diskSpace = fmt.Sprintf(", available disk space: %.2f GB", availableGB)
+		}
+		p.Log().Infof("[memstats] current slot: %d, [%s], uptime: %v, allocated memory: %.1f MB, GC counter: %d, Goroutines: %d%s",
 			ledger.TimeNow().Slot(),
 			p.CounterLines().Join(","),
 			time.Since(p.started).Round(time.Second),
 			float32(memStats.Alloc*10/(1024*1024))/10,
 			memStats.NumGC,
 			runtime.NumGoroutine(),
-			availableGB,
+			diskSpace,
 		)
 
-		if availableGB < 2 {
+		if availableGB > 0 && availableGB < 2 {
 			p.Log().Warnf("------- available disk space is < 2 GB !!! ----------")
 		}
 		return true
