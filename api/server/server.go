@@ -316,7 +316,6 @@ func (srv *server) submitTx(w http.ResponseWriter, r *http.Request) {
 	}
 	// tx tracing on server parameter
 	_, trace := r.URL.Query()["trace"]
-	var txid *ledger.TransactionID
 	err = util.CatchPanicOrError(func() error {
 		srv.SubmitTxBytesFromAPI(slices.Clip(txBytes), trace)
 		return nil
@@ -326,8 +325,6 @@ func (srv *server) submitTx(w http.ResponseWriter, r *http.Request) {
 		srv.Tracef(TraceTag, "submit transaction: '%v'", err)
 		return
 	}
-	srv.Tracef(TraceTag, "submitted transaction %s, trace = %v", txid.StringShort, trace)
-
 	writeOk(w)
 }
 
