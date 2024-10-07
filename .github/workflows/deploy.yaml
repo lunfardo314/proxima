@@ -10,7 +10,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ ubuntu-latest, windows-latest, macos-latest ]
-    name: Building, ${{ matrix.os }}
+    name: Build ${{ matrix.os }}
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4
