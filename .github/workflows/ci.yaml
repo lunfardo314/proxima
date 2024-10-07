@@ -10,7 +10,7 @@ jobs:
       - name: Checkout sources
         uses: actions/checkout@v4
 
-      - name: Setup Environment
+      - name: Setup environment
         shell: bash
         run: echo "SHORT_SHA=`git rev-parse --short HEAD`" >> $GITHUB_ENV
 
@@ -23,5 +23,9 @@ jobs:
         run: |
           cd proxi
           go install
-          cd ~/go/bin
-          ls
+
+      - name: Upload Proxi build to GitHub 
+        uses: actions/upload-artifact@v4
+        with: 
+          name: proxi-${{ env.SHORT_SHA }}
+          path: ~/go/bin/proxi
