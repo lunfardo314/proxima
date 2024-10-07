@@ -122,7 +122,6 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 
 func (ps *Peers) _evidenceHeartBeat(p *Peer, hbInfo heartbeatInfo) {
 	nowis := time.Now()
-	p.lastHeartbeatReceived = nowis
 
 	// clock differences
 	diff := nowis.Sub(hbInfo.clock)
@@ -135,10 +134,11 @@ func (ps *Peers) _evidenceHeartBeat(p *Peer, hbInfo heartbeatInfo) {
 		// differences between heart beats
 		diff = nowis.Sub(p.lastHeartbeatReceived)
 		p.hbMsgDifferences[p.hbMsgDifferencesIdx] = diff
-		p.hbMsgDifferencesIdx = (p.hbMsgDifferencesIdx + 1) % len(p.hbMsgDifferenceQuartiles)
-		q = util.Quartiles(p.hbMsgDifferenceQuartiles[:])
+		p.hbMsgDifferencesIdx = (p.hbMsgDifferencesIdx + 1) % len(p.hbMsgDifferences)
+		q = util.Quartiles(p.hbMsgDifferences[:])
 		p.hbMsgDifferenceQuartiles = q
 	}
+	p.lastHeartbeatReceived = nowis
 
 	p.respondsToPullRequests = hbInfo.respondsToPullRequests
 
