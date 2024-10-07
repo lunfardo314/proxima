@@ -215,7 +215,7 @@ func (p *ProximaNode) goLoggingMemStats() {
 	p.RepeatInBackground("logging_memStats", memStatsPeriod, func() bool {
 		runtime.ReadMemStats(&memStats)
 		_, availableHDD, _ := util.GetDiskUsage("/")
-		availableGB := availableHDD / (1024 * 1024 * 1024)
+		availableGB := float64(availableHDD) / (1024 * 1024 * 1024)
 		p.Log().Infof("[memstats] current slot: %d, [%s], uptime: %v, allocated memory: %.1f MB, GC counter: %d, Goroutines: %d, available disk: %.2f GB",
 			ledger.TimeNow().Slot(),
 			p.CounterLines().Join(","),
