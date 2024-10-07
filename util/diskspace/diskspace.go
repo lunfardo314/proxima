@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"os"
 	"syscall"
 )
 
@@ -29,13 +28,7 @@ func getDiskUsage(path string) (uint64, uint64, uint64) {
 }
 
 func main() {
-	path := "/"
-	if len(os.Args) > 1 {
-		path = os.Args[1]
-	}
-	total, available, free := getDiskUsage(path)
-
-	fmt.Printf("path: %s\n", path)
+	total, available, free := getDiskUsage("/")
 	fmt.Printf("Total space: %.2f GB\n", float64(total)/(1024*1024*1024))
 	fmt.Printf("Available space: %.2f GB\n", float64(available)/(1024*1024*1024))
 	fmt.Printf("Free space: %.2f GB\n", float64(free)/(1024*1024*1024))
