@@ -20,7 +20,7 @@ type (
 		global.NodeGlobal
 		TxInFromPeer(tx *transaction.Transaction, metaData *txmetadata.TransactionMetadata, from peer.ID) error
 		TxInFromAPI(tx *transaction.Transaction, trace bool) error
-		GossipTxBytesToPeers(txBytes []byte, metadata *txmetadata.TransactionMetadata, except ...peer.ID) int
+		GossipTxBytesToPeers(txBytes []byte, metadata *txmetadata.TransactionMetadata, except ...peer.ID)
 	}
 
 	Input struct {

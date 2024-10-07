@@ -76,6 +76,8 @@ func (srv *server) registerHandlers() {
 	srv.addHandler(api.PathGetPeersInfo, srv.getPeersInfo)
 	// GET latest reliable branch '/get_latest_reliable_branch'
 	srv.addHandler(api.PathGetLatestReliableBranch, srv.getLatestReliableBranch)
+	// GET dashboard for node
+	srv.addHandler(api.PathGetDashboard, srv.getDashboard)
 }
 
 func (srv *server) getLedgerID(w http.ResponseWriter, _ *http.Request) {

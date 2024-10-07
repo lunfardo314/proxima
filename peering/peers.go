@@ -7,8 +7,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"slices"
-	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/libp2p/go-libp2p"
@@ -479,7 +477,7 @@ func (p *Peer) _isAlive() bool {
 
 // for QUIC timeout 'NewStream' is necessary, otherwise it may hang if peer is unavailable
 
-const defaultSendTimeout = 200 * time.Millisecond
+const defaultSendTimeout = 500 * time.Millisecond
 
 //const TraceTagSendMsg = "sendMsg"
 
@@ -512,22 +510,11 @@ func (ps *Peers) sendMsgBytesOut(peerID peer.ID, protocolID protocol.ID, data []
 }
 
 // sendMsgBytesOutMulti send to multiple peers in parallel
-func (ps *Peers) sendMsgBytesOutMulti(peerIDs []peer.ID, protocolID protocol.ID, data []byte, timeout ...time.Duration) int {
-	var successCounter atomic.Uint32
-	var wg sync.WaitGroup
-
-	wg.Add(len(peerIDs))
+func (ps *Peers) sendMsgBytesOutMulti(peerIDs []peer.ID, protocolID protocol.ID, data []byte, timeout ...time.Duration) {
 	for _, id := range peerIDs {
-		go func(idCopy peer.ID) {
-			if ps.sendMsgBytesOut(idCopy, protocolID, data, timeout...) {
-				successCounter.Add(1)
-			}
-			wg.Done()
-		}(id)
+		idCopy := id
+		go ps.sendMsgBytesOut(idCopy, protocolID, data, timeout...)
 	}
-	wg.Wait()
-
-	return int(successCounter.Load())
 }
 
 func (ps *Peers) GetPeersInfo() *api.PeersInfo {

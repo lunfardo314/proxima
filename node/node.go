@@ -214,14 +214,21 @@ func (p *ProximaNode) goLoggingMemStats() {
 	var memStats runtime.MemStats
 	p.RepeatInBackground("logging_memStats", memStatsPeriod, func() bool {
 		runtime.ReadMemStats(&memStats)
-		p.Log().Infof("[memstats] current slot: %d, [%s], uptime: %v, allocated memory: %.1f MB, GC counter: %d, Goroutines: %d",
+		_, availableHDD, _ := util.GetDiskUsage("/")
+		availableGB := float64(availableHDD) / (1024 * 1024 * 1024)
+		p.Log().Infof("[memstats] current slot: %d, [%s], uptime: %v, allocated memory: %.1f MB, GC counter: %d, Goroutines: %d, available disk: %.2f GB",
 			ledger.TimeNow().Slot(),
 			p.CounterLines().Join(","),
 			time.Since(p.started).Round(time.Second),
 			float32(memStats.Alloc*10/(1024*1024))/10,
 			memStats.NumGC,
 			runtime.NumGoroutine(),
+			availableGB,
 		)
+
+		if availableGB < 2 {
+			p.Log().Warnf("------- available disk space is < 2 GB !!! ----------")
+		}
 		return true
 	})
 }
