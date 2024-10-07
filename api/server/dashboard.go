@@ -3,29 +3,27 @@ package server
 import (
 	"net/http"
 	"text/template"
-
-	"github.com/spf13/viper"
 )
 
 func (srv *server) getDashboard(w http.ResponseWriter, r *http.Request) {
 	type HtmlData struct {
-		Port int
+		Host string
 		// Message string
 	}
 
 	// http.ServeFile(w, r, "./config/dashboard.html")
+	//host := strings.Replace(r.Host, "localhost", "127.0.0.1", 1)
 
 	// Parse the template string
 	tmpl := template.Must(template.New("webpage").Parse(dashboardHTML))
 
 	// Data to pass into the template
-	port := viper.GetInt("api.port")
 	data := HtmlData{
-		Port: port,
+		Host: r.Host,
 	}
 
 	// Execute the template
-	_ = tmpl.Execute(w, data)
+	tmpl.Execute(w, data)
 }
 
 const dashboardHTML = `
@@ -37,8 +35,9 @@ const dashboardHTML = `
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dashboard for Proxima node</title>
+	<link rel="icon" href="data:,">
     <script>
-        const port = {{.Port}}
+        const host = '{{.Host}}'
         const pollingPeriod = 5000  // in ms
         function convertTimestamp(ts) {
             const date = new Date(ts / 1e6); // Convert nanoseconds to milliseconds
@@ -97,7 +96,7 @@ const dashboardHTML = `
         // Function to fetch peers info and update the UI
         async function fetchPeersInfo() {
             try {
-                const response = await fetch('http://localhost:'+port+'/peers_info');
+                const response = await fetch('http://'+host+'/peers_info');
                 const data = await response.json();
                 updatePeersInfo(data);
             } catch (error) {
@@ -106,7 +105,7 @@ const dashboardHTML = `
         }
         async function fetchNodeInfo() {
             try {
-                const response = await fetch('http://localhost:'+port+'/node_info');
+                const response = await fetch('http://'+host+'/node_info');
                 const data = await response.json();
                 updateNodeInfo(data);
             } catch (error) {
@@ -115,7 +114,7 @@ const dashboardHTML = `
         }
         async function fetchSyncInfo() {
             try {
-                const response = await fetch('http://localhost:'+port+'/sync_info');
+                const response = await fetch('http://'+host+'/sync_info');
                 const data = await response.json();
                 updateSyncInfo(data);
             } catch (error) {
