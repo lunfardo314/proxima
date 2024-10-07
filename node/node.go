@@ -13,6 +13,7 @@ import (
 	"github.com/lunfardo314/proxima/peering"
 	"github.com/lunfardo314/proxima/sequencer"
 	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/proxima/util/diskusage"
 	"github.com/lunfardo314/unitrie/adaptors/badger_adaptor"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
@@ -214,7 +215,7 @@ func (p *ProximaNode) goLoggingMemStats() {
 	var memStats runtime.MemStats
 	p.RepeatInBackground("logging_memStats", memStatsPeriod, func() bool {
 		runtime.ReadMemStats(&memStats)
-		_, availableHDD, _ := util.GetDiskUsage("/")
+		_, availableHDD, _ := diskusage.GetDiskUsage("/")
 		availableGB := float64(availableHDD) / (1024 * 1024 * 1024)
 		p.Log().Infof("[memstats] current slot: %d, [%s], uptime: %v, allocated memory: %.1f MB, GC counter: %d, Goroutines: %d, available disk: %.2f GB",
 			ledger.TimeNow().Slot(),
