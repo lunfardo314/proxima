@@ -7,7 +7,11 @@ import (
 	"syscall"
 )
 
-func GetDiskUsage(path string) (total uint64, available uint64, free uint64) {
+func init() {
+	_getDiskUsage = getDiskUsage
+}
+
+func getDiskUsage(path string) (total uint64, available uint64, free uint64) {
 	var stat syscall.Statfs_t
 
 	// Get file system statistics
