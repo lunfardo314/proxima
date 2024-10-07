@@ -212,7 +212,11 @@ func (ps *Peers) Run() {
 
 		for _, id := range peerIDs {
 			ps.logConnectionStatusIfNeeded(id)
-			ps.sendHeartbeatToPeer(id, hbCounter)
+
+			idCopy := id
+			hbCounterCopy := hbCounter
+			go ps.sendHeartbeatToPeer(idCopy, hbCounterCopy)
+
 			hbCounter++
 		}
 
