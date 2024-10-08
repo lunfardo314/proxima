@@ -127,8 +127,8 @@ const dashboardHTML = `
             const nodeInfoDiv = document.getElementById('node-info');
                     let htmlContent = "<h2>Node Info</h2>" +
         "<div class='info-row'><span class='label'>Node ID:</span><span>" + data.id + "</span></div>" +
-        "<div class='info-row'><span class='label'>Num static alive:</span><span>" + data.num_static_peers + "</span></div>" +
-        "<div class='info-row'><span class='label'>Num dynamic alive:</span><span>" + data.num_dynamic_alive + "</span></div>";
+        "<div class='info-row'><span class='label'>Peers static alive:</span><span>" + data.num_static_peers + "</span></div>" +
+        "<div class='info-row'><span class='label'>Peers dynamic alive:</span><span>" + data.num_dynamic_alive + "</span></div>";
             nodeInfoDiv.innerHTML = htmlContent;
         }
 
@@ -137,7 +137,7 @@ const dashboardHTML = `
             const syncInfoDiv = document.getElementById('sync-info');
             let htmlContent = 
                 "<div class='info-row'><span class='label'>Synced:</span><span>" + data.synced +  "</span></div>" +
-                "<div class='info-row'><span class='label'>In sync window:</span><span>" + data.in_sync_window +"</span></div>";
+                "<div class='info-row'><span class='label'>Slots (lrb / current):</span><span>" + data.lrb_slot +" / " + data.current_slot +"</span></div>";
             syncInfoDiv.innerHTML = htmlContent;
         }
 

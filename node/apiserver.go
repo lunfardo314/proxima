@@ -9,6 +9,7 @@ import (
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/multistate"
+	"github.com/lunfardo314/proxima/util"
 	"github.com/spf13/viper"
 )
 
@@ -51,9 +52,20 @@ func (p *ProximaNode) GetNodeInfo() *global.NodeInfo {
 // GetSyncInfo TODO not finished
 func (p *ProximaNode) GetSyncInfo() *api.SyncInfo {
 	latestSlot, latestHealthySlot, synced := p.workflow.LatestBranchSlots()
+	lrb := p.GetLatestReliableBranch()
+	lrbSlot := uint32(0)
+	curSlot := uint32(ledger.TimeNow().Slot())
+	if lrb == nil {
+		p.Log().Warnf("[sync] can't find latest reliable branch")
+	} else {
+		lrbSlot = uint32(lrb.Stem.ID.Slot())
+	}
 	ret := &api.SyncInfo{
-		Synced:       synced,
-		PerSequencer: make(map[string]api.SequencerSyncInfo),
+		Synced:         synced,
+		CurrentSlot:    curSlot,
+		LrbSlot:        lrbSlot,
+		LedgerCoverage: util.Th(lrb.LedgerCoverage),
+		PerSequencer:   make(map[string]api.SequencerSyncInfo),
 	}
 	if p.sequencer != nil {
 		seqInfo := p.sequencer.Info()

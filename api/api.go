@@ -87,9 +87,12 @@ type (
 
 	SyncInfo struct {
 		Error
-		Synced       bool                         `json:"synced"`
-		InSyncWindow bool                         `json:"in_sync_window,omitempty"`
-		PerSequencer map[string]SequencerSyncInfo `json:"per_sequencer,omitempty"`
+		Synced         bool                         `json:"synced"`
+		InSyncWindow   bool                         `json:"in_sync_window,omitempty"`
+		CurrentSlot    uint32                       `json:"current_slot"`
+		LrbSlot        uint32                       `json:"lrb_slot"`
+		LedgerCoverage string                       `json:"ledger_coverage"`
+		PerSequencer   map[string]SequencerSyncInfo `json:"per_sequencer,omitempty"`
 	}
 
 	SequencerSyncInfo struct {

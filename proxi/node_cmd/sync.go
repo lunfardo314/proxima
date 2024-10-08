@@ -22,7 +22,10 @@ func runSyncInfoCmd(_ *cobra.Command, _ []string) {
 	//
 	syncInfo, err := glb.GetClient().GetSyncInfo()
 	glb.AssertNoError(err)
-	glb.Infof("  node synced: %v", syncInfo.Synced)
+	glb.Infof("  node synced:  %v", syncInfo.Synced)
+	glb.Infof("  current slot: %v", syncInfo.CurrentSlot)
+	glb.Infof("  LRB slot:     %v", syncInfo.LrbSlot)
+	glb.Infof("  ledger coverage:     %s", syncInfo.LedgerCoverage)
 	//glb.Infof("  in the sync window: %v", syncInfo.InSyncWindow)
 	//glb.Infof("  activity by sequencer:")
 	//sorted := util.KeysSorted(syncInfo.PerSequencer, func(k1, k2 ledger.ChainID) bool {
