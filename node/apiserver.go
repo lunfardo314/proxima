@@ -59,12 +59,6 @@ func (p *ProximaNode) GetSyncInfo() *api.SyncInfo {
 		p.Log().Warnf("[sync] can't find latest reliable branch")
 	} else {
 		lrbSlot = uint32(lrb.Stem.ID.Slot())
-		//p.lrbSlotsBehind.Set(float64(slotsBehind))
-		// if slotsBehind <= slotSyncThreshold {
-		// 	p.Log().Info(msg)
-		// } else {
-		// 	p.Log().Warn(msg)
-		// }
 	}
 	ret := &api.SyncInfo{
 		Synced:         synced,
