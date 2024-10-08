@@ -2,9 +2,7 @@ package peering
 
 import (
 	"context"
-	"crypto/ed25519"
 	"encoding/binary"
-	"encoding/hex"
 	"fmt"
 	"slices"
 	"time"
@@ -25,7 +23,6 @@ import (
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/set"
 	"github.com/multiformats/go-multiaddr"
-	"github.com/spf13/viper"
 	"golang.org/x/exp/maps"
 )
 
@@ -115,65 +112,6 @@ func New(env environment, cfg *Config) (*Peers, error) {
 
 	env.Log().Infof("[peering] initialized successfully")
 	return ret, nil
-}
-
-func readPeeringConfig() (*Config, error) {
-	cfg := &Config{
-		PreConfiguredPeers: make(map[string]_multiaddr),
-	}
-	cfg.HostPort = viper.GetInt("peering.host.port")
-	if cfg.HostPort == 0 {
-		return nil, fmt.Errorf("peering.host.port: wrong port")
-	}
-	pkStr := viper.GetString("peering.host.id_private_key")
-	pkBin, err := hex.DecodeString(pkStr)
-	if err != nil {
-		return nil, fmt.Errorf("host.id_private_key: wrong id private key: %v", err)
-	}
-	if len(pkBin) != ed25519.PrivateKeySize {
-		return nil, fmt.Errorf("host.private_key: wrong host id private key size")
-	}
-	cfg.HostIDPrivateKey = pkBin
-
-	encodedHostID := viper.GetString("peering.host.id")
-	cfg.HostID, err = peer.Decode(encodedHostID)
-	if err != nil {
-		return nil, fmt.Errorf("can't decode host ID: %v", err)
-	}
-	privKey, err := p2pcrypto.UnmarshalEd25519PrivateKey(cfg.HostIDPrivateKey)
-	if err != nil {
-		return nil, fmt.Errorf("UnmarshalEd25519PrivateKey: %v", err)
-	}
-
-	if !cfg.HostID.MatchesPrivateKey(privKey) {
-		return nil, fmt.Errorf("config: host private key does not match hostID")
-	}
-
-	peerNames := util.KeysSorted(viper.GetStringMap("peering.peers"), func(k1, k2 string) bool {
-		return k1 < k2
-	})
-
-	for _, peerName := range peerNames {
-		addrString := viper.GetString("peering.peers." + peerName)
-		maddr, err := multiaddr.NewMultiaddr(addrString)
-		if err != nil {
-			return nil, fmt.Errorf("can't parse multiaddress: %w", err)
-		}
-		cfg.PreConfiguredPeers[peerName] = _multiaddr{
-			addrString: addrString,
-			Multiaddr:  maddr,
-		}
-	}
-
-	cfg.MaxDynamicPeers = viper.GetInt("peering.max_dynamic_peers")
-	if cfg.MaxDynamicPeers < 0 {
-		cfg.MaxDynamicPeers = 0
-	}
-
-	cfg.IgnoreAllPullRequests = viper.GetBool("peering.ignore_pull_requests")
-	cfg.AcceptPullRequestsFromStaticPeersOnly = viper.GetBool("peering.pull_requests_from_static_peers_only")
-	cfg.AllowLocalIPs = viper.GetBool("peering.allow_local_ips")
-	return cfg, nil
 }
 
 func NewPeersFromConfig(env environment) (*Peers, error) {
@@ -481,12 +419,10 @@ func (p *Peer) _isAlive() bool {
 
 // for QUIC timeout 'NewStream' is necessary, otherwise it may hang if peer is unavailable
 
-const defaultSendTimeout = time.Second
-
 //const TraceTagSendMsg = "sendMsg"
 
 func (ps *Peers) sendMsgBytesOut(peerID peer.ID, protocolID protocol.ID, data []byte, timeout ...time.Duration) bool {
-	to := defaultSendTimeout
+	to := sendTimeout
 	if len(timeout) > 0 {
 		to = timeout[0]
 	}

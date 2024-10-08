@@ -2,10 +2,13 @@ package peering
 
 import (
 	"crypto/ed25519"
+	"encoding/hex"
+	"fmt"
 	"sync"
 	"time"
 
 	dht "github.com/libp2p/go-libp2p-kad-dht"
+	p2pcrypto "github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/protocol"
@@ -13,8 +16,10 @@ import (
 	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
+	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/set"
 	"github.com/multiformats/go-multiaddr"
+	"github.com/spf13/viper"
 )
 
 type (
@@ -37,6 +42,8 @@ type (
 		AllowLocalIPs bool `default:"false" usage:"allow local IPs to be used for autopeering"`
 		// used for testing only. Otherwise, remote peer sets the pull flags
 		ForcePullFromAllPeers bool
+		// timeout for heartbeat. If not set, used special defaultSendHeartbeatTimeout
+		SendTimeoutHeartbeat time.Duration
 	}
 
 	_multiaddr struct {
@@ -136,4 +143,89 @@ const (
 	// gracePeriodAfterAdded period of time peer is considered not dead after added even if messages are not coming
 	gracePeriodAfterAdded = 15 * heartbeatRate
 	logPeersEvery         = 5 * time.Second
+
+	/*
+	   ChatGPT:
+	   For Quick UDP Internet Connections (QUIC), the dial timeout can vary depending on the network environment and application requirements.
+	   Typically, the recommended dial timeout is in the range of 10 to 60 seconds. A shorter timeout (e.g., 10-15 seconds) is
+	   common for applications where responsiveness is critical, while longer timeouts (e.g., 30-60 seconds) may be suitable
+	   for more stable or less time-sensitive environments.
+
+	   In some scenarios, particularly when using QUIC in environments like Cloudflare Tunnels,
+	   the timeout for failed connections is reported to be around 60 seconds (GitHub). For OPC UA (which isn't QUIC but a
+	   similar protocol for different purposes), various timeouts are set between 10-60 seconds depending on the
+	   operation being performed (OPC Labs Knowledge Base). This suggests a reasonable ballpark range for QUIC timeouts too.
+
+	   However, the ideal timeout depends on how tolerant the system is to network latency and connection delays.
+	*/
+
+	// default timeouts for QUIC
+	// HB must dial usually
+	defaultSendHeartbeatTimeout = 15 * time.Second
+	// gossip, pull sends usually do not do dial
+	sendTimeout = time.Second
 )
+
+func readPeeringConfig() (*Config, error) {
+	cfg := &Config{
+		PreConfiguredPeers: make(map[string]_multiaddr),
+	}
+	cfg.HostPort = viper.GetInt("peering.host.port")
+	if cfg.HostPort == 0 {
+		return nil, fmt.Errorf("peering.host.port: wrong port")
+	}
+	pkStr := viper.GetString("peering.host.id_private_key")
+	pkBin, err := hex.DecodeString(pkStr)
+	if err != nil {
+		return nil, fmt.Errorf("host.id_private_key: wrong id private key: %v", err)
+	}
+	if len(pkBin) != ed25519.PrivateKeySize {
+		return nil, fmt.Errorf("host.private_key: wrong host id private key size")
+	}
+	cfg.HostIDPrivateKey = pkBin
+
+	encodedHostID := viper.GetString("peering.host.id")
+	cfg.HostID, err = peer.Decode(encodedHostID)
+	if err != nil {
+		return nil, fmt.Errorf("can't decode host ID: %v", err)
+	}
+	privKey, err := p2pcrypto.UnmarshalEd25519PrivateKey(cfg.HostIDPrivateKey)
+	if err != nil {
+		return nil, fmt.Errorf("UnmarshalEd25519PrivateKey: %v", err)
+	}
+
+	if !cfg.HostID.MatchesPrivateKey(privKey) {
+		return nil, fmt.Errorf("config: host private key does not match hostID")
+	}
+
+	peerNames := util.KeysSorted(viper.GetStringMap("peering.peers"), func(k1, k2 string) bool {
+		return k1 < k2
+	})
+
+	for _, peerName := range peerNames {
+		addrString := viper.GetString("peering.peers." + peerName)
+		maddr, err := multiaddr.NewMultiaddr(addrString)
+		if err != nil {
+			return nil, fmt.Errorf("can't parse multiaddress: %w", err)
+		}
+		cfg.PreConfiguredPeers[peerName] = _multiaddr{
+			addrString: addrString,
+			Multiaddr:  maddr,
+		}
+	}
+
+	cfg.MaxDynamicPeers = viper.GetInt("peering.max_dynamic_peers")
+	if cfg.MaxDynamicPeers < 0 {
+		cfg.MaxDynamicPeers = 0
+	}
+
+	cfg.IgnoreAllPullRequests = viper.GetBool("peering.ignore_pull_requests")
+	cfg.AcceptPullRequestsFromStaticPeersOnly = viper.GetBool("peering.pull_requests_from_static_peers_only")
+	cfg.AllowLocalIPs = viper.GetBool("peering.allow_local_ips")
+
+	cfg.SendTimeoutHeartbeat = time.Duration(viper.GetInt("peering.send_timeout_hb_millis")) * time.Millisecond
+	if cfg.SendTimeoutHeartbeat == 0 {
+		cfg.SendTimeoutHeartbeat = defaultSendHeartbeatTimeout
+	}
+	return cfg, nil
+}
