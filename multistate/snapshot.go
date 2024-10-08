@@ -91,22 +91,18 @@ func snapshotFileName(branchID ledger.TransactionID) string {
 }
 
 // SaveSnapshot writes latest reliable state into snapshot. Returns snapshot file name
-func SaveSnapshot(state global.StateStoreReader, ctx context.Context, dir string, out ...io.Writer) (*BranchData, string, *SnapshotStats, error) {
-	makeErr := func(errStr string) (*BranchData, string, *SnapshotStats, error) {
-		return nil, "", nil, fmt.Errorf("SaveSnapshot: %s", errStr)
+func SaveSnapshot(state global.StateStoreReader, branch *BranchData, ctx context.Context, dir string, out ...io.Writer) (string, *SnapshotStats, error) {
+	makeErr := func(errStr string) (string, *SnapshotStats, error) {
+		return "", nil, fmt.Errorf("SaveSnapshot: %s", errStr)
 	}
 
 	console := io.Discard
 	if len(out) > 0 {
 		console = out[0]
 	}
-	lrb := FindLatestReliableBranch(state, global.FractionHealthyBranch)
-	if lrb == nil {
-		return makeErr("the reliable branch has not been found: cannot proceed with snapshot")
-	}
-	_, _ = fmt.Fprintf(console, "[SaveSnapshot] latest reliable branch: %s\n", lrb.Stem.IDShort())
+	_, _ = fmt.Fprintf(console, "[SaveSnapshot] latest reliable branch: %s\n", branch.Stem.IDShort())
 
-	fname := snapshotFileName(lrb.Stem.ID.TransactionID())
+	fname := snapshotFileName(branch.Stem.ID.TransactionID())
 	tmpfname := TmpSnapshotFileNamePrefix + fname
 
 	fpath := filepath.Join(dir, fname)
@@ -138,15 +134,15 @@ func SaveSnapshot(state global.StateStoreReader, ctx context.Context, dir string
 	_, _ = fmt.Fprintf(console, "[SaveSnapshot] header: %s\n", string(headerBin))
 
 	// write root record
-	branchID := lrb.Stem.ID.TransactionID()
-	err = outFileStream.Write(branchID[:], lrb.RootRecord.Bytes())
+	branchID := branch.Stem.ID.TransactionID()
+	err = outFileStream.Write(branchID[:], branch.RootRecord.Bytes())
 	if err != nil {
 		return makeErr(err.Error())
 	}
-	_, _ = fmt.Fprintf(console, "[SaveSnapshot] root record:\n%s\n", lrb.RootRecord.Lines("     ").String())
+	_, _ = fmt.Fprintf(console, "[SaveSnapshot] root record:\n%s\n", branch.RootRecord.Lines("     ").String())
 
 	// write ledger identity record
-	ledgerIDBytes := LedgerIdentityBytesFromRoot(state, lrb.Root)
+	ledgerIDBytes := LedgerIdentityBytesFromRoot(state, branch.Root)
 	err = outFileStream.Write(nil, ledgerIDBytes)
 	if err != nil {
 		return makeErr(err.Error())
@@ -159,7 +155,7 @@ func SaveSnapshot(state global.StateStoreReader, ctx context.Context, dir string
 
 	// write trie
 	var stats *SnapshotStats
-	stats, err = writeState(state, outFileStream, lrb.Root, ctx, console)
+	stats, err = writeState(state, outFileStream, branch.Root, ctx, console)
 	if err != nil {
 		return makeErr(err.Error())
 	}
@@ -173,7 +169,7 @@ func SaveSnapshot(state global.StateStoreReader, ctx context.Context, dir string
 	if err != nil {
 		return makeErr(err.Error())
 	}
-	return lrb, fpath, stats, nil
+	return fpath, stats, nil
 }
 
 // OpenSnapshotFileStream reads first 3 records in the snapshot file and returns

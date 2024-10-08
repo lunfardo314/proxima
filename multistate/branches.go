@@ -591,6 +591,21 @@ func FindLatestReliableBranch(store global.StateStoreReader, fraction global.Fra
 	return branchFound
 }
 
+// FindLatestReliableBranchAndNSlotsBack finds LRB and iterates n slots back along the main chain from LRB.
+// It is a precaution if LRB will be orphaned later
+func FindLatestReliableBranchAndNSlotsBack(store global.StateStoreReader, n int, fraction global.Fraction) (ret *BranchData) {
+	lrb := FindLatestReliableBranch(store, fraction)
+	if lrb == nil {
+		return
+	}
+	IterateBranchChainBack(store, lrb, func(_ *ledger.TransactionID, branch *BranchData) bool {
+		ret = branch
+		n--
+		return n > 0
+	})
+	return
+}
+
 // FindLatestReliableBranchWithSequencerID finds first branch with the given sequencerID in the main LRBID chain
 func FindLatestReliableBranchWithSequencerID(store global.StateStoreReader, seqID ledger.ChainID, fraction global.Fraction) (ret *BranchData) {
 	lrb := FindLatestReliableBranch(store, fraction)

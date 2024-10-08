@@ -22,10 +22,9 @@ type (
 
 	Snapshot struct {
 		environment
-		directory            string
-		keepLatest           int
-		lastSnapshotBranchID ledger.TransactionID
-		sequencerID          *ledger.ChainID
+		directory     string
+		keepLatest    int
+		safeSlotsBack int
 	}
 )
 
@@ -35,6 +34,7 @@ const (
 	defaultSnapshotDirectory     = "snapshot"
 	defaultSnapshotPeriodInSlots = 30
 	defaultKeepLatest            = 3
+	defaultSafetySlots           = 20
 )
 
 func Start(env environment) {
@@ -66,15 +66,9 @@ func Start(env environment) {
 		ret.keepLatest = defaultKeepLatest
 	}
 
-	seqIDHex := viper.GetString("snapshot.sequencer_id")
-	seqID, err := ledger.ChainIDFromHexString(seqIDHex)
-	if err == nil {
-		ret.sequencerID = &seqID
-	} else {
-		if seqIDHex != "" {
-			env.Log().Errorf("wrong chain ID in config key 'snapshot.sequencer_id'. Using default")
-		}
-		ret.sequencerID = env.GetOwnSequencerID()
+	ret.safeSlotsBack = viper.GetInt("snapshot.safety_slots")
+	if ret.safeSlotsBack == 0 {
+		ret.safeSlotsBack = defaultSafetySlots
 	}
 
 	ret.registerMetrics()
@@ -88,12 +82,8 @@ func Start(env environment) {
 	ln := lines.New("          ").
 		Add("target directory: %s", ret.directory).
 		Add("frequency: %v (%d slots)", period, periodInSlots).
-		Add("keep latest: %d", ret.keepLatest)
-	if ret.sequencerID != nil {
-		ln.Add("sequencer ID: %s", ret.sequencerID.String())
-	} else {
-		ln.Add("sequencer ID: N/A")
-	}
+		Add("keep latest: %d", ret.keepLatest).
+		Add("safety slot back: %d", ret.safeSlotsBack)
 	ret.Log().Infof("[snapshot] work process STARTED\n%s", ln.String())
 	return
 }
@@ -108,27 +98,17 @@ func directoryExists(dir string) bool {
 }
 
 func (s *Snapshot) doSnapshot() {
-	var lrb *multistate.BranchData
-
-	// if node has own sequencer running,
-	if s.sequencerID != nil {
-		lrb = multistate.FindLatestReliableBranchWithSequencerID(s.StateStore(), *s.sequencerID, global.FractionHealthyBranch)
-	} else {
-		lrb = multistate.FindLatestReliableBranch(s.StateStore(), global.FractionHealthyBranch)
-	}
-	if lrb.Stem.ID.TransactionID() == s.lastSnapshotBranchID {
-		// no need to repeat snapshots
-		s.Log().Infof("[snapshot] skip repeating branch %s. Snapshot has not been saved", s.lastSnapshotBranchID.StringShort())
+	snapshotBranch := multistate.FindLatestReliableBranchAndNSlotsBack(s.StateStore(), s.safeSlotsBack, global.FractionHealthyBranch)
+	if snapshotBranch == nil {
+		s.Log().Errorf("[snapshot] can't find latest reliable branch")
 		return
 	}
-
-	snapshotBranch, fname, stats, err := multistate.SaveSnapshot(s.StateStore(), s.Ctx(), s.directory, io.Discard)
+	fname, stats, err := multistate.SaveSnapshot(s.StateStore(), snapshotBranch, s.Ctx(), s.directory, io.Discard)
 	if err != nil {
 		s.Log().Errorf("[snapshot] failed to save snapshot: %v", err)
 	} else {
 		s.Log().Infof("[snapshot] snapshot has been saved to %s.\n%s\nBranch data:\n%s",
 			fname, stats.Lines("             ").String(), snapshotBranch.Lines("             ").String())
-		s.lastSnapshotBranchID = snapshotBranch.Stem.ID.TransactionID()
 	}
 }
 
