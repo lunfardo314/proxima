@@ -164,6 +164,8 @@ func (ps *Peers) sendHeartbeatToPeer(id peer.ID, hbCounter uint32) {
 	}
 	if ps.sendMsgBytesOut(id, ps.lppProtocolHeartbeat, msg.Bytes(), sendHeartbeatTimeout) {
 		ps.Tracef(TraceTagHeartBeatSend, ">>>>>>> sent #%d to %s", hbCounter, ShortPeerIDString(id))
+	} else {
+		ps.Tracef(TraceTagHeartBeatSend, ">>>>>>> failed to sent #%d to %s", hbCounter, ShortPeerIDString(id))
 	}
 }
 
