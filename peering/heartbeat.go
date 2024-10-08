@@ -146,7 +146,22 @@ func (ps *Peers) _evidenceHeartBeat(p *Peer, hbInfo heartbeatInfo) {
 		hbInfo.counter, ShortPeerIDString(p.id), diff, q[1], p.respondsToPullRequests, p._isAlive())
 }
 
-const sendHeartbeatTimeout = time.Second
+/*
+ChatGPT:
+For Quick UDP Internet Connections (QUIC), the dial timeout can vary depending on the network environment and application requirements.
+Typically, the recommended dial timeout is in the range of 10 to 60 seconds. A shorter timeout (e.g., 10-15 seconds) is
+common for applications where responsiveness is critical, while longer timeouts (e.g., 30-60 seconds) may be suitable
+for more stable or less time-sensitive environments.
+
+In some scenarios, particularly when using QUIC in environments like Cloudflare Tunnels,
+the timeout for failed connections is reported to be around 60 seconds (GitHub). For OPC UA (which isn't QUIC but a
+similar protocol for different purposes), various timeouts are set between 10-60 seconds depending on the
+operation being performed (OPC Labs Knowledge Base). This suggests a reasonable ballpark range for QUIC timeouts too.
+
+However, the ideal timeout depends on how tolerant the system is to network latency and connection delays.
+*/
+
+const sendHeartbeatTimeout = 15 * time.Second
 
 func (ps *Peers) sendHeartbeatToPeer(id peer.ID, hbCounter uint32) {
 	respondsToPull := true
