@@ -137,7 +137,7 @@ const dashboardHTML = `
             const syncInfoDiv = document.getElementById('sync-info');
             let htmlContent = 
                 "<div class='info-row'><span class='label'>Synced:</span><span>" + data.synced +  "</span></div>" +
-                "<div class='info-row'><span class='label'>In sync window:</span><span>" + data.in_sync_window +"</span></div>";
+                "<div class='info-row'><span class='label'>Slots (lrb/current):</span><span>" + data.lrb_slot +"/" + data.current_slot +"</span></div>";
             syncInfoDiv.innerHTML = htmlContent;
         }
 
