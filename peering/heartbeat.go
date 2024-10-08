@@ -146,6 +146,8 @@ func (ps *Peers) _evidenceHeartBeat(p *Peer, hbInfo heartbeatInfo) {
 		hbInfo.counter, ShortPeerIDString(p.id), diff, q[1], p.respondsToPullRequests, p._isAlive())
 }
 
+const sendHeartbeatTimeout = time.Second
+
 func (ps *Peers) sendHeartbeatToPeer(id peer.ID, hbCounter uint32) {
 	respondsToPull := true
 	if ps.cfg.IgnoreAllPullRequests {
@@ -160,7 +162,7 @@ func (ps *Peers) sendHeartbeatToPeer(id peer.ID, hbCounter uint32) {
 		counter:                hbCounter,
 		clock:                  time.Now(),
 	}
-	if ps.sendMsgBytesOut(id, ps.lppProtocolHeartbeat, msg.Bytes()) {
+	if ps.sendMsgBytesOut(id, ps.lppProtocolHeartbeat, msg.Bytes(), sendHeartbeatTimeout) {
 		ps.Tracef(TraceTagHeartBeatSend, ">>>>>>> sent #%d to %s", hbCounter, ShortPeerIDString(id))
 	}
 }

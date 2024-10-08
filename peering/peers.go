@@ -481,7 +481,7 @@ func (p *Peer) _isAlive() bool {
 
 // for QUIC timeout 'NewStream' is necessary, otherwise it may hang if peer is unavailable
 
-const defaultSendTimeout = time.Second /// = 500 * time.Millisecond
+const defaultSendTimeout = 500 * time.Millisecond
 
 //const TraceTagSendMsg = "sendMsg"
 
@@ -514,10 +514,10 @@ func (ps *Peers) sendMsgBytesOut(peerID peer.ID, protocolID protocol.ID, data []
 }
 
 // sendMsgBytesOutMulti send to multiple peers in parallel
-func (ps *Peers) sendMsgBytesOutMulti(peerIDs []peer.ID, protocolID protocol.ID, data []byte, timeout ...time.Duration) {
+func (ps *Peers) sendMsgBytesOutMulti(peerIDs []peer.ID, protocolID protocol.ID, data []byte) {
 	for _, id := range peerIDs {
 		idCopy := id
-		go ps.sendMsgBytesOut(idCopy, protocolID, data, timeout...)
+		go ps.sendMsgBytesOut(idCopy, protocolID, data)
 	}
 }
 
