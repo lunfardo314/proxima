@@ -5,14 +5,10 @@ import (
 )
 
 // Version is the version of the Proxima node
-const Version = "0.1.1-alpha"
-
-//const bannerTemplate = `
-//---------------------------------------------------
-//          Proxima node version %s
-//---------------------------------------------------`
-
-const bannerTemplate = "starting Proxima node version %s"
+const (
+	Version        = "v0.1.2-alpha"
+	bannerTemplate = "starting Proxima node version %s"
+)
 
 func BannerString() string {
 	return fmt.Sprintf(bannerTemplate, Version)

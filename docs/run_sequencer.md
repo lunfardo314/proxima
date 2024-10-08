@@ -1,68 +1,64 @@
-**OUTDATED!!!**
-
----
-
 ## Running node with the sequencer
 
-**Sequencer** is the following:
-1. a token holder who choose to run a sequencer program. Sequencer is active participant in the cooperative consensus    
-2. a program, which performs sequencer chain building strategy on behalf of the token holder
-3. a chain of transactions constantly produced by the sequencer program
+**Sequencer** is a program run as a part of a node. It is building **sequencer chain** by consolidating chains of
+other sequencers and by consuming tag-along outputs sent to it. 
 
-In general, token holder can issue transaction any preferred way. 
-For example, token holder can access the UTXO tangle and submit sequencer transactions to the network through API.
+Other users send tag-along fees to sequencers in their transactions in order those transactions to be pulled into
+the state after sequencer consumes tag-along output.
 
-However, for performance and convenience reasons we developed a _sequencer program_ as part of the node. 
-By the choice of the node owner, the sequencer can be started and run on the node by enabling it in the node's configuration. 
-This way the whole node can be seen as an automated wallet, which periodically issues transactions to the network.
+The core of the node supports multi-sequencer mode, however, in current version we are limiting number of sequencers in the node to one.
 
-Each node can even be configured to run several sequencers, however running one sequencer is the most practical approach.
+- if node runs a sequencer, it is a _sequencer node_ 
+- if node does not run a sequencer, it is an _access node_ 
 
-The following are step-by-step instructions how to initialize and start Proxima node with one sequencer on it.
+To run a sequencer in the testnet, one needs at least 1.000.000.000 tokens (1 millionth of the initial supply). 
+This amount is intentionally made smaller for the testnet. 
+Reasonable amount for the real network would be 1/1000 of the initial supply in order to limit number of sequencers on the network. 
 
-### 1. Start the node as access node
-Follow instructions provided in [Running access node](run_access.md).
+### Steps to run the sequencer:
 
-After node is started and synced with the network, sequencer can be configured and started.
+- make your access node running and synced. See instructions in [Running access node](run_access.md)
+- create a new chain origin with `proxi node mkchain <amount>`. Make sure you don't use the whole amount balance for the chain.
+It is recommended to leave at least 1 mil or so tokens for tag-along fees, spamming and other purposes.
+- once you created chain origin, you can check it with `proxi node chains`
+- configure `sequencer` section in the node configuration profile `proxima.yaml` of your access node the following way:
 
-### 2. Create sequencer controller's wallet
-Create `proxi` wallet profile as described in [CLI wallet program](proxi.md).
-Do not change `wallet.sequencer_id` yet. The `tag_along.sequencer_id` may need adjustment to another preferred sequencer.
+```yaml
+sequencer:
+  enable: true
+  name: <sequencer name>
+  chain_id: <chain ID>
+  controller_key: <private key hex>
+  pace: 12
+```
 
-Now any other token holder can transfer `1.000.001.000.000` tokens to your account with the 
-command `proxi node transfer 1000001000000 -t "addressED25519(<your address data>)"`. 
+With `enable: true/false` you can enable or disable start of the sequencer at the startup of the node. With `enable: false`
+node is just an access node.
 
-Let's assume we already have at least `1.000.001.000.000` tokens in your account at `addressED25519(<your address data>)`. 
-This can be checked with the command `proxi node balance` run in the working directory which contain wallet profile.  
+_sequencer name_ is any mnemonic name used for the sequencer. It will appear in the logs and in the sequencer transactions.
+It is recommended to have it no longer than 4-6 characters. 
 
-### 3. Create sequencer chain origin
-Command `proxi node mkchain 1000000000000` will create output which is the sequencer chain origin, with `1000000000000` tokens on it.
-`500` tokens will go as tag-along fee to the tag-along sequencer configured in the wallet. 
-The remaining `999500` tokens will stay in the `addressED25519(<address data>)`.
+_chain ID_ is the ID of the newly created chain (hex encoded, no `$/` prefix). It is also called _sequencer ID_.
 
-You can check your balances with `proxi node balance`. It will show the balance of the chain output controlled
-by the private key of the wallet.
+_private key hex_ is the controlling private key. Sequencer will use it to sign transactions. Copy it from your wallet config
+profile `proxi.yaml`
 
-You can list all chains controlled by your wallet by `proxi node chains`. There you can find respective chain IDs. 
+`pace` parameter is minimum number of ticks between two subsequent sequencers transactions. In the testnet version 
+it should not be less than `3` and not exceed `20` or so. 1 tick is 40 milliseconds on the clock-time scale.
 
-### 4. Adjust wallet profile
-Set `wallet.sequencer_id` to the `chain ID` of the newly created chain. 
+- start the node as usually. Node will log details of the sequencer. It will take 10-15 seconds until sequencer will start
+issuing sequencer transactions and earning inflation with branch inflation bonus (if lucky).
 
-This will enable the wallet to withdraw tokens from the sequencer with `proxi node seq withdraw` command.
+- adjust your wallet profile `proxi.yaml` by putting your _sequencer ID_ as own (controlled) sequencer in `wallet.sequencer_id`. 
+With this configured properly, you will be able to withdraw part of your funds from the running sequencer chain 
+without stopping the sequencer with command `proxi node seq withdraw <amount> [-t <options targe address>]`.
+Note, that every transaction costs fees. So, it is smart to configure you wallet's tag-along sequencer to you own sequencer.
+This way all the fees will go to yourself: essentially fee-less. 
 
-### 5. Configure the sequencer
-Sequencer is configured in the `sequencers` section of the `proxima.yaml`.
-If template of the section wasn't generated by the `proxi init node -s` command, it must be added manually.
+### Useful 
+Configuration key `logger.verbosity` specifies logging level for the sequencer transaction:
 
-* Replace the placeholder `<local_seq_name>` with your given name of the sequencer. Let's say it is `mySeq`
-* Run the command `proxi node chains` to display the `chain ID` of the chain origin created in the previous step.
-* Copy the `chain ID` of the newly created chain from the terminal output of the previous command
-* Replace the placeholder `<sequencer ID hex encoded>` in the  YAML key `sequncers.mySeq.sequencer_id` with the chain 
-ID copied in the previous step
-* Put private key of your wallet into the YAML key `sequencers.mySeq.controller_key`
-* Put value `true` into the key `sequencers.mySeq.enable`
+`logger.verbosity: 0` only branch transactions are displayed in the log
 
-### 6. Run node with the sequencer
-Stop the node with `ctrl-C` if necessary. Then start it again. Sequencer will start automatically after approx 10 sec. 
+`logger.verbosity: 1` branch and other sequencer transactions are displayed in the log
 
-Check the logs to make sure everything is ok.

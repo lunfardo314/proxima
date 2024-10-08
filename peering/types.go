@@ -161,7 +161,7 @@ const (
 
 	// default timeouts for QUIC
 	// HB must dial usually
-	defaultSendHeartbeatTimeout = 15 * time.Second
+	defaultSendHeartbeatTimeout = 10 * time.Second
 	// gossip, pull sends usually do not do dial
 	sendTimeout = time.Second
 )

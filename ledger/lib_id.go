@@ -60,7 +60,7 @@ const (
 	DefaultTransactionPace          = 25
 	DefaultTransactionPaceSequencer = 3
 	// DefaultMinimumAmountOnSequencer Reasonable limit could be 1/1000 of initial supply
-	DefaultMinimumAmountOnSequencer     = 1_000 * PRXI
+	DefaultMinimumAmountOnSequencer     = 1_000 * PRXI // this is testnet default
 	DefaultMaxNumberOfEndorsements      = 8
 	DefaultPreBranchConsolidationTicks  = 50
 	DefaultPostBranchConsolidationTicks = 25
