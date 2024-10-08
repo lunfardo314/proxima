@@ -421,7 +421,7 @@ func (p *Peer) _isAlive() bool {
 
 //const TraceTagSendMsg = "sendMsg"
 
-func (ps *Peers) sendMsgBytesOut(peerID peer.ID, protocolID protocol.ID, data []byte, timeout ...time.Duration) bool {
+func (ps *Peers) sendMsgBytesOut(peerID peer.ID, protocolID protocol.ID, data []byte, timeout ...time.Duration) error {
 	to := sendTimeout
 	if len(timeout) > 0 {
 		to = timeout[0]
@@ -433,11 +433,11 @@ func (ps *Peers) sendMsgBytesOut(peerID peer.ID, protocolID protocol.ID, data []
 	// the NewStream waits until context is done
 	stream, err := ps.host.NewStream(ctx, peerID, protocolID)
 	if err != nil {
-		return false
+		return err
 	}
 
 	if ctx.Err() != nil {
-		return false
+		return err
 	}
 	util.Assertf(stream != nil, "stream != nil")
 	defer func() { _ = stream.Close() }()
@@ -446,7 +446,7 @@ func (ps *Peers) sendMsgBytesOut(peerID peer.ID, protocolID protocol.ID, data []
 		ps.Log().Errorf("[peering] error while sending message to peer %s", ShortPeerIDString(peerID))
 	}
 	ps.outMsgCounter.Inc()
-	return err == nil
+	return err
 }
 
 // sendMsgBytesOutMulti send to multiple peers in parallel

@@ -70,7 +70,7 @@ func (ps *Peers) SendTxBytesWithMetadataToPeer(id peer.ID, txBytes []byte, metad
 		metadata: metadata,
 		txBytes:  txBytes,
 	}
-	return ps.sendMsgBytesOut(id, ps.lppProtocolGossip, msg.Bytes())
+	return ps.sendMsgBytesOut(id, ps.lppProtocolGossip, msg.Bytes()) == nil
 }
 
 // message wrapper

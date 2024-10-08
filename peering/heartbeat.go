@@ -160,10 +160,10 @@ func (ps *Peers) sendHeartbeatToPeer(id peer.ID, hbCounter uint32) {
 		counter:                hbCounter,
 		clock:                  time.Now(),
 	}
-	if ps.sendMsgBytesOut(id, ps.lppProtocolHeartbeat, msg.Bytes(), ps.cfg.SendTimeoutHeartbeat) {
-		ps.Tracef(TraceTagHeartBeatSend, ">>>>>>> sent #%d to %s", hbCounter, ShortPeerIDString(id))
+	if err := ps.sendMsgBytesOut(id, ps.lppProtocolHeartbeat, msg.Bytes(), ps.cfg.SendTimeoutHeartbeat); err != nil {
+		ps.Tracef(TraceTagHeartBeatSend, ">>>>>>> failed to sent #%d to %s: %v", hbCounter, ShortPeerIDString(id), err)
 	} else {
-		ps.Tracef(TraceTagHeartBeatSend, ">>>>>>> failed to sent #%d to %s", hbCounter, ShortPeerIDString(id))
+		ps.Tracef(TraceTagHeartBeatSend, ">>>>>>> sent #%d to %s", hbCounter, ShortPeerIDString(id))
 	}
 }
 
