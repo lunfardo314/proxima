@@ -47,7 +47,7 @@ func FetchLatestCommittedSlot(store common.KVReader) ledger.Slot {
 }
 
 // FetchEarliestSlot return earliest slot among roots in the multi-state DB.
-// It is set when multi-state DB is initialized and then remains immutable. For genesis databse it is 0,
+// It is set when multi-state DB is initialized and then remains immutable. For genesis database it is 0,
 // For DB created from snapshot it is slot of the snapshot
 func FetchEarliestSlot(store common.KVReader) ledger.Slot {
 	bin := store.Get([]byte{earliestSlotDBPartition})
@@ -620,21 +620,4 @@ func FindLatestReliableBranchWithSequencerID(store global.StateStoreReader, seqI
 		return true
 	})
 	return
-}
-
-// FindFirstSlot finds earliest slot in the state.
-// It will return snapshot slot. It will be 0 if it starts from genesis
-// It can return nil in case of time or DB inconsistency
-func FindFirstSlot(store global.StateStoreReader) *ledger.Slot {
-	slot := ledger.TimeNow().Slot()
-	store.Iterator([]byte{rootRecordDBPartition}).IterateKeys(func(k []byte) bool {
-		txid, err := ledger.TransactionIDFromBytes(k[1:])
-		util.AssertNoError(err)
-
-		if txid.Slot() < slot {
-			slot = txid.Slot()
-		}
-		return true
-	})
-	return &slot
 }

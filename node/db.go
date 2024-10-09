@@ -30,11 +30,8 @@ func (p *ProximaNode) initMultiStateLedger() {
 	h := ledger.L().LibraryHash()
 	p.Log().Infof("ledger constraint library hash: %s", hex.EncodeToString(h[:]))
 
-	start := time.Now()
-	pSlot := multistate.FindFirstSlot(p.multiStateDB)
-	p.Assertf(pSlot != nil, "inconsistency: cannot find first slot")
-	p.firstSlot = *pSlot
-	p.Log().Infof("current slot is %d, earliest committed slot in the state is %d (%v)", ledger.TimeNow().Slot(), p.firstSlot, time.Since(start))
+	p.firstSlot = multistate.FetchEarliestSlot(p.multiStateDB)
+	p.Log().Infof("current slot is %d, earliest committed slot in the state is %d", ledger.TimeNow().Slot(), p.firstSlot)
 
 	p.RepeatInBackground("Badger_DB_GC_loop", 5*time.Minute, func() bool {
 		p.databaseGC()

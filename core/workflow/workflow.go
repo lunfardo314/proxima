@@ -30,7 +30,6 @@ type (
 		TxBytesStore() global.TxBytesStore
 		PullFromNPeers(nPeers int, txid *ledger.TransactionID) int
 		GetOwnSequencerID() *ledger.ChainID
-		EarliestCommittedSlot() ledger.Slot
 	}
 
 	Workflow struct {

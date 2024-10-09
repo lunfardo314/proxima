@@ -85,10 +85,6 @@ func (p *ProximaNode) StateStore() global.StateStore {
 	return p.multiStateDB
 }
 
-func (p *ProximaNode) EarliestCommittedSlot() ledger.Slot {
-	return p.firstSlot
-}
-
 func (p *ProximaNode) TxBytesStore() global.TxBytesStore {
 	return p.txBytesStore
 }
