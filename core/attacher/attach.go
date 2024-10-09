@@ -67,7 +67,12 @@ func AttachTxID(txid ledger.TransactionID, env Environment, opts ...AttachTxOpti
 			// the corresponding state is not in the multistate DB -> put virtualTx to the utangle -> pull is up to attacher
 			vid = vertex.WrapTxID(txid)
 			env.AddVertexNoLock(vid)
-			vid.SetAttachmentDepthNoLock(options.depth)
+			if txid.Slot() > env.EarliestCommittedSlot() {
+				vid.SetAttachmentDepthNoLock(options.depth)
+			} else {
+				// new branch is at or before the earliest slot in the state. Invalidate the transaction
+				vid.SetTxStatusBad(fmt.Errorf("branch solidification error: transaction is before the snapshot slot %d", env.EarliestCommittedSlot()))
+			}
 
 			env.Tracef(TraceTagAttach, "AttachTxID: added new branch vertex and pulled %s%s", txid.StringShort(), by)
 			env.TraceTx(&txid, "AttachTxID: added new branch vertex and pulled")

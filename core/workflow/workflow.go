@@ -24,15 +24,17 @@ import (
 )
 
 type (
-	Environment interface {
+	environment interface {
 		global.NodeGlobal
 		StateStore() global.StateStore
 		TxBytesStore() global.TxBytesStore
 		PullFromNPeers(nPeers int, txid *ledger.TransactionID) int
 		GetOwnSequencerID() *ledger.ChainID
+		EarliestCommittedSlot() ledger.Slot
 	}
+
 	Workflow struct {
-		Environment
+		environment
 		*memdag.MemDAG
 		cfg   *ConfigParams
 		peers *peering.Peers
@@ -55,7 +57,7 @@ var (
 	EventNewTx     = eventtype.RegisterNew[*vertex.WrappedTx]("new tx") // event may be posted more than once for the transaction
 )
 
-func Start(env Environment, peers *peering.Peers, opts ...ConfigOption) *Workflow {
+func Start(env environment, peers *peering.Peers, opts ...ConfigOption) *Workflow {
 	cfg := defaultConfigParams()
 	for _, opt := range opts {
 		opt(&cfg)
@@ -63,7 +65,7 @@ func Start(env Environment, peers *peering.Peers, opts ...ConfigOption) *Workflo
 	cfg.log(env.Log())
 
 	ret := &Workflow{
-		Environment: env,
+		environment: env,
 		MemDAG:      memdag.New(env),
 		cfg:         &cfg,
 		peers:       peers,
@@ -91,7 +93,7 @@ func Start(env Environment, peers *peering.Peers, opts ...ConfigOption) *Workflo
 	return ret
 }
 
-func StartFromConfig(env Environment, peers *peering.Peers) *Workflow {
+func StartFromConfig(env environment, peers *peering.Peers) *Workflow {
 	opts := make([]ConfigOption, 0)
 	if viper.GetBool("workflow.do_not_start_pruner") {
 		opts = append(opts, OptionDoNotStartPruner)
