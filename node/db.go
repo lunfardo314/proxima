@@ -24,6 +24,12 @@ func (p *ProximaNode) initMultiStateLedger() {
 	p.multiStateDB = badger_adaptor.New(bdb)
 	p.Log().Infof("opened multi-state DB '%s'", dbname)
 
+	start := time.Now()
+	pSlot := multistate.FindFirstSlot(p.multiStateDB)
+	p.Assertf(pSlot != nil, "inconsistency: cannot find first slot")
+	p.firstSlot = *pSlot
+	p.Log().Infof("earliest committed slot in the state is %d (%v)", p.firstSlot, time.Since(start))
+
 	// initialize global ledger object with the ledger ID data from DB
 	multistate.InitLedgerFromStore(p.multiStateDB)
 	p.Log().Infof("ledger identity:\n%s", ledger.L().ID.Lines("       ").String())

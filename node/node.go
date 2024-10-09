@@ -25,6 +25,7 @@ type (
 	ProximaNode struct {
 		*global.Global
 		multiStateDB              *badger_adaptor.DB
+		firstSlot                 ledger.Slot
 		txStoreDB                 *badger_adaptor.DB
 		txBytesStore              global.TxBytesStore
 		peers                     *peering.Peers
@@ -82,6 +83,10 @@ func (p *ProximaNode) WaitAllDBClosed() {
 
 func (p *ProximaNode) StateStore() global.StateStore {
 	return p.multiStateDB
+}
+
+func (p *ProximaNode) EarliestCommittedSlot() ledger.Slot {
+	return p.firstSlot
 }
 
 func (p *ProximaNode) TxBytesStore() global.TxBytesStore {
