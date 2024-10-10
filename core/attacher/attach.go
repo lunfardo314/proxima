@@ -69,7 +69,7 @@ func AttachTxID(txid ledger.TransactionID, env Environment, opts ...AttachTxOpti
 			env.AddVertexNoLock(vid)
 
 			earliestSlot := multistate.FetchEarliestSlot(env.StateStore())
-			if txid.Slot() >= earliestSlot {
+			if txid.Slot() >= earliestSlot-1 {
 				vid.SetAttachmentDepthNoLock(options.depth)
 			} else {
 				// new branch is at or before the earliest slot in the state. Invalidate the transaction
