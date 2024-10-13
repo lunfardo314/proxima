@@ -5,12 +5,14 @@ import (
 	"encoding/binary"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/libp2p/go-libp2p"
 	dht "github.com/libp2p/go-libp2p-kad-dht"
 	p2pcrypto "github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/host"
+	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/peerstore"
 	"github.com/libp2p/go-libp2p/core/protocol"
@@ -153,7 +155,7 @@ func (ps *Peers) Run() {
 
 			idCopy := id
 			hbCounterCopy := hbCounter
-			go ps.sendHeartbeatToPeer(idCopy, hbCounterCopy)
+			ps.sendHeartbeatToPeer(idCopy, hbCounterCopy)
 
 			hbCounter++
 		}
@@ -252,6 +254,48 @@ func (ps *Peers) addPeer(addrInfo *peer.AddrInfo, name string, static bool) (suc
 	return
 }
 
+func (ps *Peers) NewStream(peerID peer.ID, pID protocol.ID, timeout time.Duration) (network.Stream, error) {
+	ctx, cancel := context.WithTimeoutCause(ps.Ctx(), timeout, context.DeadlineExceeded)
+	defer cancel()
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+
+	return ps.host.NewStream(ctx, peerID, pID)
+}
+
+func (ps *Peers) dialPeer(peerID peer.ID, static bool) ([]network.Stream, error) {
+	// ctx, cancel := context.WithTimeoutCause(ps.Ctx(), 5*time.Second, context.DeadlineExceeded)
+	// defer cancel()
+	timeout := 2 * time.Second
+
+	var err error
+	streams := make([]network.Stream, 3)
+	for {
+		// the NewStream waits until context is done
+		streams[lppHeartBeatIdx], err = ps.NewStream(peerID, ps.lppProtocolHeartbeat, timeout)
+		if err != nil {
+			if static {
+				continue
+			} else {
+				return streams, err
+			}
+		}
+
+		streams[lppGossipIdx], err = ps.NewStream(peerID, ps.lppProtocolGossip, timeout)
+		if err != nil {
+			return nil, err
+		}
+
+		streams[lppPullIdx], err = ps.NewStream(peerID, ps.lppProtocolPull, timeout)
+		if err != nil {
+			return nil, err
+		}
+		break
+	}
+	return streams, err
+}
+
 func (ps *Peers) _addPeer(addrInfo *peer.AddrInfo, name string, static bool) *Peer {
 	p := &Peer{
 		id:        addrInfo.ID,
@@ -259,10 +303,23 @@ func (ps *Peers) _addPeer(addrInfo *peer.AddrInfo, name string, static bool) *Pe
 		isStatic:  static,
 		whenAdded: time.Now(),
 	}
-	ps.peers[addrInfo.ID] = p
+
 	for _, a := range addrInfo.Addrs {
 		ps.host.Peerstore().AddAddr(addrInfo.ID, a, peerstore.PermanentAddrTTL)
 	}
+	go func() {
+		time.Sleep(1000 * time.Millisecond)
+		streams, err := ps.dialPeer(addrInfo.ID, static)
+		if err != nil {
+			ps.host.Peerstore().RemovePeer(addrInfo.ID)
+			return
+		}
+		for i, _ := range streams {
+			util.Assertf(streams[i] != nil, "stream != nil")
+			p.streams[i] = streams[i]
+		}
+		ps.peers[addrInfo.ID] = p
+	}()
 	return p
 }
 
@@ -276,18 +333,23 @@ func (ps *Peers) dropPeer(id peer.ID, reason string) {
 }
 
 func (ps *Peers) _dropPeer(p *Peer, reason string) {
-	if p.isStatic {
-		ps._addToBlacklist(p.id, reason)
-		return
-	}
+	//?? if p.isStatic {
+	// 	ps._addToBlacklist(p.id, reason)
+	// 	return
+	// }
 
 	why := ""
 	if len(reason) > 0 {
 		why = fmt.Sprintf(". Drop reason: '%s'", reason)
 	}
 
+	for _, s := range p.streams {
+		s.Close()
+	}
 	ps.host.Peerstore().RemovePeer(p.id)
-	ps.kademliaDHT.RoutingTable().RemovePeer(p.id)
+	if ps.kademliaDHT != nil {
+		ps.kademliaDHT.RoutingTable().RemovePeer(p.id)
+	}
 	_ = ps.host.Network().ClosePeer(p.id)
 	delete(ps.peers, p.id)
 
@@ -297,6 +359,7 @@ func (ps *Peers) _dropPeer(p *Peer, reason string) {
 }
 
 func (ps *Peers) _addToBlacklist(id peer.ID, reason string) {
+	return //??
 	ps.blacklist[id] = _deadlineWithReason{
 		Time:   time.Now().Add(blacklistTTL),
 		reason: reason,
@@ -421,29 +484,41 @@ func (p *Peer) _isAlive() bool {
 
 //const TraceTagSendMsg = "sendMsg"
 
-func (ps *Peers) sendMsgBytesOut(peerID peer.ID, protocolID protocol.ID, data []byte, timeout ...time.Duration) error {
-	to := sendTimeout
-	if len(timeout) > 0 {
-		to = timeout[0]
+func (ps *Peers) sendMsgBytesOut(peerID peer.ID, protocolID protocol.ID, data []byte, timeout ...time.Duration) bool {
+	// to := sendTimeout
+	// if len(timeout) > 0 {
+	// 	to = timeout[0]
+	// }
+
+	// ctx, cancel := context.WithTimeoutCause(ps.Ctx(), to, context.DeadlineExceeded)
+	// defer cancel()
+
+	// // the NewStream waits until context is done
+	// stream, err := ps.host.NewStream(ctx, peerID, protocolID)
+	// if err != nil {
+	// 	return err
+	// }
+
+	// if ctx.Err() != nil {
+	// 	return err
+	// }
+	// util.Assertf(stream != nil, "stream != nil")
+	// defer func() { _ = stream.Close() }()
+
+	idx := lppHeartBeatIdx
+	if strings.Contains(string(protocolID), "gossip") {
+		idx = lppGossipIdx
+	}
+	if strings.Contains(string(protocolID), "pull") {
+		idx = lppPullIdx
 	}
 
-	ctx, cancel := context.WithTimeoutCause(ps.Ctx(), to, context.DeadlineExceeded)
-	defer cancel()
-
-	// the NewStream waits until context is done
-	stream, err := ps.host.NewStream(ctx, peerID, protocolID)
-	if err != nil {
-		return err
-	}
-
-	if ctx.Err() != nil {
-		return err
-	}
+	var err error
+	stream := ps.peers[peerID].streams[idx]
 	util.Assertf(stream != nil, "stream != nil")
-	defer func() { _ = stream.Close() }()
-
 	if err = writeFrame(stream, data); err != nil {
 		ps.Log().Errorf("[peering] error while sending message to peer %s", ShortPeerIDString(peerID))
+		//ps.dropPeer(peerID, "stream reset")
 	}
 	ps.outMsgCounter.Inc()
 	return err
@@ -453,7 +528,7 @@ func (ps *Peers) sendMsgBytesOut(peerID peer.ID, protocolID protocol.ID, data []
 func (ps *Peers) sendMsgBytesOutMulti(peerIDs []peer.ID, protocolID protocol.ID, data []byte) {
 	for _, id := range peerIDs {
 		idCopy := id
-		go ps.sendMsgBytesOut(idCopy, protocolID, data)
+		ps.sendMsgBytesOut(idCopy, protocolID, data, timeout...)
 	}
 }
 

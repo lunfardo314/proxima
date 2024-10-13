@@ -10,6 +10,7 @@ import (
 	dht "github.com/libp2p/go-libp2p-kad-dht"
 	p2pcrypto "github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/host"
+	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/libp2p/go-libp2p/p2p/discovery/routing"
@@ -88,6 +89,7 @@ type (
 	Peer struct {
 		id                     peer.ID
 		name                   string
+		streams                [3]network.Stream
 		isStatic               bool // statically pre-configured (manual peering)
 		respondsToPullRequests bool // from hb info
 		whenAdded              time.Time
@@ -123,6 +125,9 @@ const (
 	lppProtocolGossip    = "/proxima/gossip/%d"
 	lppProtocolPull      = "/proxima/pull/%d"
 	lppProtocolHeartbeat = "/proxima/heartbeat/%d"
+	lppGossipIdx         = 0
+	lppPullIdx           = 1
+	lppHeartBeatIdx      = 2
 
 	// clockTolerance is how big the difference between local and remote clocks is tolerated.
 	// The difference includes difference between local clocks (positive or negative) plus

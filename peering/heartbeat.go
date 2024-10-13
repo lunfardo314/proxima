@@ -71,7 +71,6 @@ func (ps *Peers) logConnectionStatusIfNeeded(id peer.ID) {
 
 func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 	// received heartbeat message from peer
-	ps.inMsgCounter.Inc()
 	id := stream.Conn().RemotePeer()
 	remote := stream.Conn().RemoteMultiaddr()
 
@@ -80,44 +79,51 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 	})
 	if blacklisted {
 		// ignore
-		_ = stream.Close()
+		//_ = stream.Close()
 		return
 	}
 	if !known {
 		if !ps.isAutopeeringEnabled() {
 			// node does not take any incoming dynamic peers
-			_ = stream.Close()
+			//_ = stream.Close()
 			return
 		}
 		ps.Log().Infof("[peering] incoming peer request. Add new dynamic peer %s", id.String())
 	}
 
-	var hbInfo heartbeatInfo
-	msgData, err := readFrame(stream)
-	_ = stream.Close()
+	go func() {
+		defer stream.Close()
+		for {
+			var hbInfo heartbeatInfo
+			msgData, err := readFrame(stream)
+			//_ = stream.Close()
+			ps.inMsgCounter.Inc()
 
-	if err != nil {
-		ps.Log().Errorf("[peering] hb: error while reading message from peer %s: err='%v'. Ignore", ShortPeerIDString(id), err)
-		return
-	}
-	if hbInfo, err = heartbeatInfoFromBytes(msgData); err != nil {
-		// protocol violation
-		err = fmt.Errorf("[peering] hb: error while serializing message from peer %s: %v. Reset connection", ShortPeerIDString(id), err)
-		ps.Log().Error(err)
-		ps.dropPeer(id, err.Error())
-		return
-	}
-
-	ps.withPeer(id, func(p *Peer) {
-		if p == nil {
-			addrInfo := &peer.AddrInfo{
-				ID:    id,
-				Addrs: []multiaddr.Multiaddr{remote},
+			if err != nil {
+				ps.Log().Errorf("[peering] hb: error while reading message from peer %s: err='%v'. Ignore", ShortPeerIDString(id), err)
+				ps.dropPeer(id, err.Error())
+				return
 			}
-			p = ps._addPeer(addrInfo, "", false)
+			if hbInfo, err = heartbeatInfoFromBytes(msgData); err != nil {
+				// protocol violation
+				err = fmt.Errorf("[peering] hb: error while serializing message from peer %s: %v. Reset connection", ShortPeerIDString(id), err)
+				ps.Log().Error(err)
+				ps.dropPeer(id, err.Error())
+				return
+			}
+
+			ps.withPeer(id, func(p *Peer) {
+				if p == nil {
+					addrInfo := &peer.AddrInfo{
+						ID:    id,
+						Addrs: []multiaddr.Multiaddr{remote},
+					}
+					p = ps._addPeer(addrInfo, "", false)
+				}
+				ps._evidenceHeartBeat(p, hbInfo)
+			})
 		}
-		ps._evidenceHeartBeat(p, hbInfo)
-	})
+	}()
 }
 
 func (ps *Peers) _evidenceHeartBeat(p *Peer, hbInfo heartbeatInfo) {
