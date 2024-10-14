@@ -55,12 +55,10 @@ type (
 
 	attacher struct {
 		Environment
-		name                string
-		err                 error
-		baseline            *vertex.WrappedTx
-		vertices            map[*vertex.WrappedTx]Flags
-		rooted              map[*vertex.WrappedTx]set.Set[byte]
-		referenced          referencedSet
+		name     string
+		err      error
+		baseline *vertex.WrappedTx
+		*pastCone
 		closed              bool
 		pokeMe              func(vid *vertex.WrappedTx)
 		accumulatedCoverage uint64 // accumulated accumulatedCoverage

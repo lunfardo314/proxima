@@ -19,9 +19,7 @@ func newPastConeAttacher(env Environment, name string) attacher {
 	ret := attacher{
 		Environment: env,
 		name:        name,
-		rooted:      make(map[*vertex.WrappedTx]set.Set[byte]),
-		vertices:    make(map[*vertex.WrappedTx]Flags),
-		referenced:  newReferencedSet(),
+		pastCone:    newPastCone(),
 		pokeMe:      func(_ *vertex.WrappedTx) {},
 	}
 	// standard conflict checker
