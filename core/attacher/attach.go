@@ -14,29 +14,29 @@ import (
 // AttachTxID ensures the txid is on the MemDAG
 // It load existing branches but does not pull anything
 func AttachTxID(txid ledger.TransactionID, env Environment, opts ...AttachTxOption) (vid *vertex.WrappedTx) {
-	env.TraceTx(&txid, "AttachTxID")
+	//env.TraceTx(&txid, "AttachTxID")
 
 	options := &_attacherOptions{}
 	for _, opt := range opts {
 		opt(options)
 	}
 
-	by := ""
-	if options.calledBy != "" {
-		by = " by " + options.calledBy
-	}
-	env.Tracef(TraceTagAttach, "AttachTxID: %s%s", txid.StringShort, by)
+	//by := ""
+	//if options.calledBy != "" {
+	//	by = " by " + options.calledBy
+	//}
+	//env.Tracef(TraceTagAttach, "AttachTxID: %s%s", txid.StringShort, by)
 
 	env.WithGlobalWriteLock(func() {
 		vid = env.GetVertexNoLock(&txid)
 		if vid != nil {
 			// found existing -> return it
-			env.Tracef(TraceTagAttach, "AttachTxID: found existing %s%s", txid.StringShort, by)
-			env.TraceTx(&txid, "AttachTxID: found existing")
+			//env.Tracef(TraceTagAttach, "AttachTxID: found existing %s%s", txid.StringShort, by)
+			//env.TraceTx(&txid, "AttachTxID: found existing")
 			return
 		}
-		env.Tracef(TraceTagAttach, "AttachTxID: new ID %s%s", txid.StringShort, by)
-		env.TraceTx(&txid, "AttachTxID: new ID")
+		//env.Tracef(TraceTagAttach, "AttachTxID: new ID %s%s", txid.StringShort, by)
+		//env.TraceTx(&txid, "AttachTxID: new ID")
 
 		if options.depth > 0 && options.depth%100 == 0 {
 			env.Log().Warnf("AttachTxID: solidification reached depth %d with %s", options.depth, txid.StringShort())
@@ -48,38 +48,50 @@ func AttachTxID(txid ledger.TransactionID, env Environment, opts ...AttachTxOpti
 			vid = vertex.WrapTxID(txid)
 			vid.SetAttachmentDepthNoLock(options.depth)
 			env.AddVertexNoLock(vid)
+		}
+	})
+	if vid != nil {
+		// already on the memDAG
+		return
+	}
+	util.Assertf(txid.IsBranchTransaction(), "txid.IsBranchTransaction()")
+
+	// new branch transaction. DB look up outside the global lock -> prevent congestion
+	branchData, branchAvailable := multistate.FetchBranchData(env.StateStore(), txid)
+
+	env.WithGlobalWriteLock(func() {
+		if vid = env.GetVertexNoLock(&txid); vid != nil {
 			return
 		}
-		// it is a branch transaction
-		// look up for the corresponding state
-		if branchData, branchAvailable := multistate.FetchBranchData(env.StateStore(), txid); branchAvailable {
+		if branchAvailable {
 			// corresponding state has been found, it is solid -> put virtual branch tx to the memDAG
 			vid = vertex.WrapBranchDataAsVirtualTx(&branchData)
 			env.AddVertexNoLock(vid)
 			env.PostEventNewGood(vid)
 			env.SendToTippool(vid)
 
-			env.Tracef(TraceTagAttach, "AttachTxID: branch fetched from the state: %s%s, accumulatedCoverage: %s",
-				txid.StringShort, by, func() string { return util.Th(vid.GetLedgerCoverage()) })
-			env.TraceTx(&txid, "AttachTxID: branch fetched from the state")
-
-		} else {
-			// the corresponding state is not in the multistate DB -> put virtualTx to the utangle -> pull is up to attacher
-			vid = vertex.WrapTxID(txid)
-			env.AddVertexNoLock(vid)
-
-			earliestSlot := multistate.FetchEarliestSlot(env.StateStore())
-			if txid.Slot() >= earliestSlot {
-				vid.SetAttachmentDepthNoLock(options.depth)
-			} else {
-				// new branch is at or before the earliest slot in the state. Invalidate the transaction
-				// This prevents from never ending solidification against wrong orphaned snapshot
-				vid.SetTxStatusBad(fmt.Errorf("branch solidification error: transaction is before the snapshot slot %d", earliestSlot))
-			}
-
-			env.Tracef(TraceTagAttach, "AttachTxID: added new branch vertex and pulled %s%s", txid.StringShort(), by)
-			env.TraceTx(&txid, "AttachTxID: added new branch vertex and pulled")
+			//env.Tracef(TraceTagAttach, "AttachTxID: branch fetched from the state: %s%s, accumulatedCoverage: %s",
+			//	txid.StringShort, by, func() string { return util.Th(vid.GetLedgerCoverage()) })
+			//env.TraceTx(&txid, "AttachTxID: branch fetched from the state")
+			return
 		}
+		// the corresponding state is not in the multistate DB
+		//   -> put virtualTx to the utangle
+		//   -> pull is up to the attacher
+		vid = vertex.WrapTxID(txid)
+		env.AddVertexNoLock(vid)
+
+		if txid.Slot() < env.EarliestSlot() {
+			// new branch is at or before the earliest slot in the state. Invalidate the transaction
+			// This prevents from never ending solidification against wrong orphaned snapshot
+			vid.SetTxStatusBad(fmt.Errorf("branch solidification error: transaction is before the snapshot slot %d", env.EarliestSlot()))
+			return
+		}
+		// all ok
+		vid.SetAttachmentDepthNoLock(options.depth)
+
+		//env.Tracef(TraceTagAttach, "AttachTxID: added new branch vertex and pulled %s%s", txid.StringShort(), by)
+		//env.TraceTx(&txid, "AttachTxID: added new branch vertex and pulled")
 	})
 	return
 }

@@ -16,6 +16,7 @@ import (
 	"github.com/lunfardo314/proxima/core/work_process/txinput_queue"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
+	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/peering"
 	"github.com/lunfardo314/proxima/util/eventtype"
 	"github.com/lunfardo314/proxima/util/set"
@@ -35,8 +36,9 @@ type (
 	Workflow struct {
 		environment
 		*memdag.MemDAG
-		cfg   *ConfigParams
-		peers *peering.Peers
+		cfg          *ConfigParams
+		peers        *peering.Peers
+		earliestSlot ledger.Slot // cached, immutable
 		// queues and daemons
 		pullTxServer *pull_tx_server.PullTxServer
 		poker        *poker.Poker
@@ -64,11 +66,12 @@ func Start(env environment, peers *peering.Peers, opts ...ConfigOption) *Workflo
 	cfg.log(env.Log())
 
 	ret := &Workflow{
-		environment: env,
-		MemDAG:      memdag.New(env),
-		cfg:         &cfg,
-		peers:       peers,
-		traceTags:   set.New[string](),
+		environment:  env,
+		MemDAG:       memdag.New(env),
+		cfg:          &cfg,
+		peers:        peers,
+		traceTags:    set.New[string](),
+		earliestSlot: multistate.FetchEarliestSlot(env.StateStore()),
 	}
 	ret.poker = poker.New(ret)
 	ret.events = events.New(ret)

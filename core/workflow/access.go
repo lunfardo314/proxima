@@ -122,3 +122,7 @@ func (w *Workflow) EvidenceNonSequencerTx() {
 func (w *Workflow) MilestoneArrivedSince(when time.Time) bool {
 	return w.tippool.MilestoneArrivedSince(when)
 }
+
+func (w *Workflow) EarliestSlot() ledger.Slot {
+	return w.earliestSlot
+}
