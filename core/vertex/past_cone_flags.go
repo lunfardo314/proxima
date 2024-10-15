@@ -73,7 +73,7 @@ func (pc *PastConeExt) SetFlagsUp(vid *WrappedTx, f FlagsPastCone) {
 func (pc *PastConeExt) UndefinedList() []*WrappedTx {
 	ret := make([]*WrappedTx, 0)
 	for vid, flags := range pc.Vertices {
-		if !FlagsPastCone(flags).FlagsUp(FlagAttachedVertexDefined) {
+		if !flags.FlagsUp(FlagAttachedVertexDefined) {
 			ret = append(ret, vid)
 		}
 	}
@@ -111,7 +111,6 @@ func (pc *PastConeExt) MarkVertexDefinedDoNotEnforceRootedCheck(vid *WrappedTx) 
 		pc.Assertf(flags.FlagsUp(FlagAttachedVertexInputsSolid), "flags.FlagsUp(FlagAttachedVertexInputsSolid): %s\n     %s", vid.IDShortString, flags.String)
 		pc.Assertf(flags.FlagsUp(FlagAttachedVertexEndorsementsSolid), "flags.FlagsUp(FlagAttachedVertexInputsSolid): %s\n     %s", vid.IDShortString, flags.String)
 	}
-	pc.MustReference(vid)
 	pc.Vertices[vid] = pc.Flags(vid) | FlagAttachedVertexKnown | FlagAttachedVertexDefined
 }
 
@@ -123,18 +122,22 @@ func (pc *PastConeExt) MarkVertexDefined(vid *WrappedTx) {
 
 // MarkVertexUndefined vertex becomes 'known' but undefined
 func (pc *PastConeExt) MarkVertexUndefined(vid *WrappedTx) bool {
-	if !pc.Reference(vid) {
-		return false
-	}
 	f := pc.Flags(vid)
 	pc.Assertf(!f.FlagsUp(FlagAttachedVertexDefined), "!f.FlagsUp(FlagDefined)")
+	if !f.FlagsUp(FlagAttachedVertexKnown) {
+		if !vid.Reference() {
+			return false
+		}
+	}
 	pc.Vertices[vid] = f | FlagAttachedVertexKnown
 	return true
 }
 
 // MustMarkVertexRooted vertex becomes 'known' and marked Rooted and 'defined'
 func (pc *PastConeExt) MustMarkVertexRooted(vid *WrappedTx) {
-	pc.MustReference(vid)
+	if !pc.IsKnown(vid) {
+		vid.MustReference()
+	}
 	pc.Vertices[vid] = pc.Flags(vid) | FlagAttachedVertexKnown | FlagAttachedVertexCheckedIfRooted | FlagAttachedVertexDefined
 	// creates entry in Rooted, probably empty, i.e. with or without output indices
 	pc.Rooted[vid] = pc.Rooted[vid]
@@ -143,7 +146,9 @@ func (pc *PastConeExt) MustMarkVertexRooted(vid *WrappedTx) {
 
 // MustMarkVertexNotRooted is marked definitely not Rooted
 func (pc *PastConeExt) MustMarkVertexNotRooted(vid *WrappedTx) {
-	pc.MustReference(vid)
+	if !pc.IsKnown(vid) {
+		vid.MustReference()
+	}
 	f := pc.Flags(vid)
 	pc.Vertices[vid] = f | FlagAttachedVertexKnown | FlagAttachedVertexCheckedIfRooted
 	pc.Assertf(pc.IsKnownNotRooted(vid), "pc.IsKnownNotRooted(vid)")
