@@ -345,7 +345,7 @@ func (d *MemDAG) loadPastConeFromTxStore(txid ledger.TransactionID, txStore glob
 		v.Endorsements[i] = d.loadPastConeFromTxStore(endID, txStore, oldestSlot)
 	}
 	vid := v.Wrap()
-	vid.SetTxStatusGood()
+	vid.SetTxStatusGood(nil)
 	d.AddVertexNoLock(vid)
 	return vid
 }

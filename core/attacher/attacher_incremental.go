@@ -181,10 +181,10 @@ func (a *IncrementalAttacher) insertOutput(wOut vertex.WrappedOutput) error {
 	return nil
 }
 
-// saving attacher state to be able to restore in case it becomes inconsistent when
+// saving attacher's past cone state to be able to restore in case it becomes inconsistent when
 // attempting to adding conflicting outputs or endorsements
 
-// TODO refactor mess with delta commit/rollback
+// TODO refactor the mess with delta commit/rollback
 
 type _pastConeSnapshot struct {
 	vertices map[*vertex.WrappedTx]byte

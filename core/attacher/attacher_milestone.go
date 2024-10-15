@@ -137,7 +137,7 @@ func (a *milestoneAttacher) run() error {
 		a.vid.ConvertVertexToVirtualTx()
 	}
 
-	a.vid.SetTxStatusGood()
+	a.vid.SetTxStatusGood(a.pastCone.PastCone)
 	a.PostEventNewGood(a.vid)
 	a.SendToTippool(a.vid)
 

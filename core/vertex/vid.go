@@ -96,16 +96,33 @@ func (vid *WrappedTx) GetTxStatusNoLock() Status {
 	if vid.err != nil {
 		return Bad
 	}
+	if !vid.flags.FlagsUp(FlagVertexIgnoreAbsenceOfPastCone) {
+		util.Assertf(vid.IsBranchTransaction() || vid.pastCone != nil, "vid.IsBranchTransaction() || vid.pastCone!= nil")
+	}
 	return Good
 }
 
-func (vid *WrappedTx) SetTxStatusGood() {
+// GetTxStatusExt returns status and past cone. If vertex is 'good', past cone is not nil
+func (vid *WrappedTx) GetTxStatusExt() (Status, *PastCone) {
+	vid.mutex.RLock()
+	defer vid.mutex.RUnlock()
+
+	return vid.GetTxStatusNoLock(), vid.pastCone
+}
+
+// SetTxStatusGood sets 'good' status and past cone
+func (vid *WrappedTx) SetTxStatusGood(pastCone *PastCone) {
 	vid.mutex.Lock()
 	defer vid.mutex.Unlock()
 
 	util.Assertf(vid.GetTxStatusNoLock() != Bad, "vid.GetTxStatusNoLock() != Bad (%s)", vid.StringNoLock)
 
 	vid.flags.SetFlagsUp(FlagVertexDefined)
+	if pastCone == nil {
+		vid.flags.SetFlagsUp(FlagVertexIgnoreAbsenceOfPastCone)
+	} else {
+		vid.pastCone = pastCone
+	}
 }
 
 func (vid *WrappedTx) SetSequencerAttachmentFinished() {
