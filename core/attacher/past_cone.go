@@ -97,7 +97,7 @@ func (pc *_pastCone) markVertexDefinedDoNotEnforceRootedCheck(vid *vertex.Wrappe
 		pc.Assertf(flags.flagsUp(flagAttachedVertexInputsSolid), "flags.FlagsUp(flagAttachedVertexInputsSolid): %s\n     %s", vid.IDShortString, flags.String)
 		pc.Assertf(flags.flagsUp(flagAttachedVertexEndorsementsSolid), "flags.FlagsUp(flagAttachedVertexInputsSolid): %s\n     %s", vid.IDShortString, flags.String)
 	}
-	pc.Referenced.MustReference(vid)
+	pc.MustReference(vid)
 	pc.Vertices[vid] = byte(pc.flags(vid) | flagAttachedVertexKnown | flagAttachedVertexDefined)
 
 	pc.Tracef(TraceTagMarkDefUndef, "markVertexDefinedDoNotEnforceRootedCheck in %s: %s is DEFINED", pc.name, vid.IDShortString)
@@ -111,7 +111,7 @@ func (pc *_pastCone) markVertexDefined(vid *vertex.WrappedTx) {
 
 // markVertexUndefined vertex becomes 'known' but undefined
 func (pc *_pastCone) markVertexUndefined(vid *vertex.WrappedTx) bool {
-	if !pc.Referenced.Reference(vid) {
+	if !pc.Reference(vid) {
 		return false
 	}
 	f := pc.flags(vid)
@@ -124,7 +124,7 @@ func (pc *_pastCone) markVertexUndefined(vid *vertex.WrappedTx) bool {
 
 // mustMarkVertexRooted vertex becomes 'known' and marked Rooted and 'defined'
 func (pc *_pastCone) mustMarkVertexRooted(vid *vertex.WrappedTx) {
-	pc.Referenced.MustReference(vid)
+	pc.MustReference(vid)
 	pc.Vertices[vid] = byte(pc.flags(vid) | flagAttachedVertexKnown | flagAttachedVertexCheckedIfRooted | flagAttachedVertexDefined)
 	// creates entry in Rooted, probably empty, i.e. with or without output indices
 	pc.Rooted[vid] = pc.Rooted[vid]
@@ -133,7 +133,7 @@ func (pc *_pastCone) mustMarkVertexRooted(vid *vertex.WrappedTx) {
 
 // mustMarkVertexNotRooted is marked definitely not Rooted
 func (pc *_pastCone) mustMarkVertexNotRooted(vid *vertex.WrappedTx) {
-	pc.Referenced.MustReference(vid)
+	pc.MustReference(vid)
 	f := pc.flags(vid)
 	pc.Vertices[vid] = byte(f | flagAttachedVertexKnown | flagAttachedVertexCheckedIfRooted)
 	pc.Assertf(pc.isKnownNotRooted(vid), "pc.isKnownNotRooted(vid)")

@@ -141,7 +141,7 @@ func (a *attacher) solidifySequencerBaseline(v *vertex.Vertex, vidUnwrapped *ver
 		a.Assertf(baseline.IsBranchTransaction(), "baseline.IsBranchTransaction()")
 
 		// referencing the baseline from the attacher
-		if !a.pastCone.Referenced.Reference(baseline) {
+		if !a.pastCone.Reference(baseline) {
 			// means it is pruned, it is fine, will come later. v.BaselineBranch remains nil
 			return true
 		}
@@ -663,7 +663,7 @@ func (a *attacher) setBaseline(baselineVID *vertex.WrappedTx, currentTS ledger.T
 	a.Assertf(baselineVID.IsBranchTransaction(), "setBaseline: baselineVID.IsBranchTransaction()")
 
 	// it may already be referenced but this ensures it is done only once
-	if !a.pastCone.Referenced.Reference(baselineVID) {
+	if !a.pastCone.Reference(baselineVID) {
 		return false
 	}
 

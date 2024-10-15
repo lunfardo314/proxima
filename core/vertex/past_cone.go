@@ -6,15 +6,15 @@ import (
 )
 
 type (
-	ReferencedSet struct {
-		Committed set.Set[*WrappedTx]
-		Delta     set.Set[*WrappedTx]
+	referencedSet struct {
+		committed set.Set[*WrappedTx]
+		delta     set.Set[*WrappedTx]
 	}
 
 	PastCone struct {
 		Vertices   map[*WrappedTx]byte // byte is used by attacher for flags
 		Rooted     map[*WrappedTx]set.Set[byte]
-		Referenced ReferencedSet
+		referenced referencedSet
 	}
 )
 
@@ -22,65 +22,65 @@ func NewPastCone() *PastCone {
 	return &PastCone{
 		Vertices:   make(map[*WrappedTx]byte),
 		Rooted:     make(map[*WrappedTx]set.Set[byte]),
-		Referenced: NewReferencedSet(),
+		referenced: newReferencedSet(),
 	}
 }
 
-func NewReferencedSet() ReferencedSet {
-	return ReferencedSet{Committed: set.New[*WrappedTx]()}
+func newReferencedSet() referencedSet {
+	return referencedSet{committed: set.New[*WrappedTx]()}
 }
 
-func (r *ReferencedSet) BeginDelta() {
-	util.Assertf(r.Delta == nil, "r.Delta == nil")
-	r.Delta = set.New[*WrappedTx]()
+func (pc *PastCone) BeginDelta() {
+	util.Assertf(pc.referenced.delta == nil, "pc.referenced.delta == nil")
+	pc.referenced.delta = set.New[*WrappedTx]()
 }
 
-func (r *ReferencedSet) CommitDelta() {
-	r.Delta.ForEach(func(vid *WrappedTx) bool {
-		r.Committed.Insert(vid)
+func (pc *PastCone) CommitDelta() {
+	pc.referenced.delta.ForEach(func(vid *WrappedTx) bool {
+		pc.referenced.committed.Insert(vid)
 		return true
 	})
-	r.Delta = nil
+	pc.referenced.delta = nil
 }
 
-func (r *ReferencedSet) RollbackDelta() {
-	r.Delta.ForEach(func(vid *WrappedTx) bool {
+func (pc *PastCone) RollbackDelta() {
+	pc.referenced.delta.ForEach(func(vid *WrappedTx) bool {
 		vid.UnReference()
 		return true
 	})
-	r.Delta = nil
+	pc.referenced.delta = nil
 }
 
 // Reference references transaction and ensures it is referenced once or none
-func (r *ReferencedSet) Reference(vid *WrappedTx) bool {
-	if r.Committed.Contains(vid) {
+func (pc *PastCone) Reference(vid *WrappedTx) bool {
+	if pc.referenced.committed.Contains(vid) {
 		return true
 	}
-	if r.Delta != nil && r.Delta.Contains(vid) {
+	if pc.referenced.delta != nil && pc.referenced.delta.Contains(vid) {
 		return true
 	}
 	if !vid.Reference() {
 		// failed to reference
 		return false
 	}
-	if r.Delta != nil {
+	if pc.referenced.delta != nil {
 		// Delta buffer is open
-		r.Delta.Insert(vid)
+		pc.referenced.delta.Insert(vid)
 	} else {
-		r.Committed.Insert(vid)
+		pc.referenced.committed.Insert(vid)
 	}
 	return true
 }
 
-func (r *ReferencedSet) MustReference(vid *WrappedTx) {
-	util.Assertf(r.Reference(vid), "r.reference(vid)")
+func (pc *PastCone) MustReference(vid *WrappedTx) {
+	util.Assertf(pc.Reference(vid), "pc.Reference(vid)")
 }
 
-func (r *ReferencedSet) UnReferenceAll() {
-	r.RollbackDelta()
-	r.Committed.ForEach(func(vid *WrappedTx) bool {
+func (pc *PastCone) UnReferenceAll() {
+	pc.RollbackDelta()
+	pc.referenced.committed.ForEach(func(vid *WrappedTx) bool {
 		vid.UnReference()
 		return true
 	})
-	r.Committed = set.New[*WrappedTx]()
+	pc.referenced.committed = set.New[*WrappedTx]()
 }

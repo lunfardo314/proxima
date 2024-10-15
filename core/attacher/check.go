@@ -44,7 +44,7 @@ func (a *milestoneAttacher) _checkMonotonicityOfEndorsements(v *vertex.Vertex) (
 		}
 		if a.accumulatedCoverage < *lc {
 			diff := *lc - a.accumulatedCoverage
-			err = fmt.Errorf("accumulatedCoverage should not decrease along endorsement.\nGot: Delta(%s) at %s <= Delta(%s) in %s. diff: %s",
+			err = fmt.Errorf("accumulatedCoverage should not decrease along endorsement.\nGot: delta(%s) at %s <= delta(%s) in %s. diff: %s",
 				util.Th(a.accumulatedCoverage), a.vid.Timestamp().String(), util.Th(*lc), vidEndorsed.IDShortString(), util.Th(diff))
 			return false
 		}
@@ -69,7 +69,7 @@ func (a *milestoneAttacher) _checkMonotonicityOfInputTransactions(v *vertex.Vert
 		}
 		if a.accumulatedCoverage < *lc {
 			diff := *lc - a.accumulatedCoverage
-			err = fmt.Errorf("accumulatedCoverage should not decrease along consumed transactions on the same slot.\nGot: Delta(%s) at %s <= Delta(%s) in %s. diff: %s",
+			err = fmt.Errorf("accumulatedCoverage should not decrease along consumed transactions on the same slot.\nGot: delta(%s) at %s <= delta(%s) in %s. diff: %s",
 				util.Th(a.accumulatedCoverage), a.vid.Timestamp().String(), util.Th(*lc), vidInp.IDShortString(), util.Th(diff))
 			return false
 		}
