@@ -55,7 +55,7 @@ type (
 
 	attacher struct {
 		Environment
-		*_pastCone
+		pastCone            *_pastCone
 		name                string
 		err                 error
 		baseline            *vertex.WrappedTx

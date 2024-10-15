@@ -16,6 +16,11 @@ type (
 		Rooted     map[*WrappedTx]set.Set[byte]
 		Referenced ReferencedSet
 	}
+
+	PastConeSnapshot struct {
+		PastCone
+		Coverage uint64
+	}
 )
 
 func NewPastCone() *PastCone {

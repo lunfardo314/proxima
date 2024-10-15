@@ -95,7 +95,7 @@ func newMilestoneAttacher(vid *vertex.WrappedTx, env Environment, metadata *txme
 		},
 		Deleted: vid.PanicAccessDeleted,
 	})
-	ret.markVertexUndefined(vid)
+	ret.pastCone.markVertexUndefined(vid)
 	return ret
 }
 
@@ -177,7 +177,7 @@ func (a *milestoneAttacher) lazyRepeat(loopName string, fun func() vertex.Status
 			a.Tracef(TraceTagAttachMilestone, "poked")
 
 		case <-a.ctx.Done():
-			a.setError(fmt.Errorf("%w. Undefined past cone: %s", global.ErrInterrupted, a.undefinedListLines().Join(", ")))
+			a.setError(fmt.Errorf("%w. Undefined past cone: %s", global.ErrInterrupted, a.pastCone.undefinedListLines().Join(", ")))
 			return vertex.Bad
 
 		case <-time.After(periodicCheckEach):
@@ -193,7 +193,7 @@ func (a *milestoneAttacher) lazyRepeat(loopName string, fun func() vertex.Status
 
 func (a *milestoneAttacher) close() {
 	a.closeOnce.Do(func() {
-		a.Referenced.UnReferenceAll()
+		a.pastCone.Referenced.UnReferenceAll()
 
 		a.pokeClosingMutex.Lock()
 		defer a.pokeClosingMutex.Unlock()
@@ -264,7 +264,7 @@ func (a *milestoneAttacher) solidifyPastCone() vertex.Status {
 		case !ok:
 			return vertex.Bad
 		case finalSuccess:
-			util.Assertf(!a.containsUndefinedExcept(a.vid),
+			util.Assertf(!a.pastCone.containsUndefinedExcept(a.vid),
 				"inconsistency: attacher %s is 'finalSuccess' but still contains undefined Vertices. LinesVerbose:\n%s",
 				a.name, a.dumpLinesString)
 			return vertex.Good
@@ -275,10 +275,10 @@ func (a *milestoneAttacher) solidifyPastCone() vertex.Status {
 }
 
 func (a *milestoneAttacher) validateSequencerTxUnwrapped(v *vertex.Vertex) (ok, finalSuccess bool) {
-	if a.containsUndefinedExcept(a.vid) {
+	if a.pastCone.containsUndefinedExcept(a.vid) {
 		return true, false
 	}
-	flags := a.flags(a.vid)
+	flags := a.pastCone.flags(a.vid)
 	if !flags.flagsUp(flagAttachedVertexEndorsementsSolid) || !flags.flagsUp(flagAttachedVertexInputsSolid) {
 		return true, false
 	}
@@ -314,12 +314,12 @@ func (a *milestoneAttacher) _doPoke() {
 }
 
 func (a *milestoneAttacher) pokeMe(with *vertex.WrappedTx) {
-	flags := a.flags(with)
+	flags := a.pastCone.flags(with)
 	util.Assertf(flags.flagsUp(flagAttachedVertexKnown), "must be marked known %s", with.IDShortString)
 	if !flags.flagsUp(flagAttachedVertexAskedForPoke) {
 		a.Tracef(TraceTagAttachMilestone, "pokeMe with %s", with.IDShortString())
 		a.PokeMe(a.vid, with)
-		a.setFlagsUp(with, flagAttachedVertexAskedForPoke)
+		a.pastCone.setFlagsUp(with, flagAttachedVertexAskedForPoke)
 	}
 }
 

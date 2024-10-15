@@ -110,7 +110,7 @@ func (a *IncrementalAttacher) checkConflictsWithInputs(consumerVertex *vertex.Ve
 // TODO some kind of checking if it is closed after some time
 func (a *IncrementalAttacher) Close() {
 	if a != nil && !a.IsClosed() {
-		a.Referenced.UnReferenceAll()
+		a.pastCone.Referenced.UnReferenceAll()
 		a.closed = true
 	}
 }
@@ -148,7 +148,7 @@ func (a *IncrementalAttacher) initIncrementalAttacher(baseline *vertex.WrappedTx
 		if a.stemOutput.VID == nil {
 			return fmt.Errorf("NewIncrementalAttacher: stem output is not available for baseline %s", baseline.IDShortString())
 		}
-		if !a.Referenced.Reference(a.stemOutput.VID) {
+		if !a.pastCone.Referenced.Reference(a.stemOutput.VID) {
 			return fmt.Errorf("NewIncrementalAttacher: failed to reference stem output %s", a.stemOutput.IDShortString())
 		}
 		if err := a.insertOutput(a.stemOutput); err != nil {
@@ -174,7 +174,7 @@ func (a *IncrementalAttacher) insertOutput(wOut vertex.WrappedOutput) error {
 	if !defined {
 		return fmt.Errorf("insertOutput: %w", ErrPastConeNotSolidYet)
 	}
-	if !a.Referenced.Reference(wOut.VID) {
+	if !a.pastCone.Referenced.Reference(wOut.VID) {
 		return fmt.Errorf("insertOutput: failed to reference output %s", wOut.IDShortString())
 	}
 	a.inputs = append(a.inputs, wOut)
@@ -184,41 +184,43 @@ func (a *IncrementalAttacher) insertOutput(wOut vertex.WrappedOutput) error {
 // saving attacher state to be able to restore in case it becomes inconsistent when
 // attempting to adding conflicting outputs or endorsements
 
-type _stateSnapshot struct {
+// TODO refactor mess with delta commit/rollback
+
+type _pastConeSnapshot struct {
 	vertices map[*vertex.WrappedTx]byte
 	rooted   map[*vertex.WrappedTx]set.Set[byte]
 	coverage uint64
 }
 
-func (a *IncrementalAttacher) beginStateDelta() *_stateSnapshot {
-	ret := &_stateSnapshot{
-		vertices: maps.Clone(a.attacher.Vertices),
-		rooted:   maps.Clone(a.attacher.Rooted),
+func (a *IncrementalAttacher) beginStateDelta() *_pastConeSnapshot {
+	ret := &_pastConeSnapshot{
+		vertices: maps.Clone(a.attacher.pastCone.Vertices),
+		rooted:   maps.Clone(a.attacher.pastCone.Rooted),
 		coverage: a.accumulatedCoverage,
 	}
 	// deep clone
 	for vid, outputIdxSet := range ret.rooted {
 		ret.rooted[vid] = outputIdxSet.Clone()
 	}
-	a.Referenced.BeginDelta()
+	a.pastCone.Referenced.BeginDelta()
 	return ret
 }
 
-func (a *IncrementalAttacher) rollbackStateDelta(saved *_stateSnapshot) {
-	a.attacher.Vertices = saved.vertices
-	a.attacher.Rooted = saved.rooted
+func (a *IncrementalAttacher) rollbackStateDelta(saved *_pastConeSnapshot) {
+	a.attacher.pastCone.Vertices = saved.vertices
+	a.attacher.pastCone.Rooted = saved.rooted
 	a.accumulatedCoverage = saved.coverage
-	a.Referenced.RollbackDelta()
+	a.pastCone.Referenced.RollbackDelta()
 }
 
 func (a *IncrementalAttacher) commitStateDelta() {
-	a.Referenced.CommitDelta()
+	a.pastCone.Referenced.CommitDelta()
 }
 
 // InsertEndorsement preserves consistency in case of failure
 func (a *IncrementalAttacher) InsertEndorsement(endorsement *vertex.WrappedTx) error {
 	util.Assertf(!a.IsClosed(), "a.IsClosed()")
-	if a.isKnown(endorsement) {
+	if a.pastCone.isKnown(endorsement) {
 		return fmt.Errorf("endorsing makes no sense: %s is already in the past cone", endorsement.IDShortString())
 	}
 
@@ -244,7 +246,7 @@ func (a *IncrementalAttacher) insertEndorsement(endorsement *vertex.WrappedTx) e
 	}
 	if endorsement.IsBranchTransaction() {
 		// branch is compatible with the baseline
-		a.mustMarkVertexRooted(endorsement)
+		a.pastCone.mustMarkVertexRooted(endorsement)
 	} else {
 		ok, defined := a.attachVertexNonBranch(endorsement)
 		a.Assertf(ok || a.err != nil, "ok || a.err != nil")
@@ -257,7 +259,7 @@ func (a *IncrementalAttacher) insertEndorsement(endorsement *vertex.WrappedTx) e
 			return fmt.Errorf("insertEndorsement: %w", ErrPastConeNotSolidYet)
 		}
 	}
-	if !a.Referenced.Reference(endorsement) {
+	if !a.pastCone.Referenced.Reference(endorsement) {
 		return fmt.Errorf("insertEndorsement: failed to reference endorsement %s", endorsement.IDShortString())
 	}
 	a.endorse = append(a.endorse, endorsement)
@@ -395,7 +397,7 @@ func (a *IncrementalAttacher) NumInputs() int {
 // if unlucky. The owner of the attacher will have to dismiss the attacher
 // and try again later
 func (a *IncrementalAttacher) Completed() bool {
-	return !a.containsUndefinedExcept(nil) && len(a.Rooted) > 0
+	return !a.pastCone.containsUndefinedExcept(nil) && len(a.pastCone.Rooted) > 0
 }
 
 func (a *IncrementalAttacher) Extending() vertex.WrappedOutput {
