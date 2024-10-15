@@ -19,7 +19,7 @@ func newPastConeAttacher(env Environment, name string) attacher {
 		Environment: env,
 		name:        name,
 		pokeMe:      func(_ *vertex.WrappedTx) {},
-		pastCone:    _newPastCone(env, name),
+		pastCone:    vertex.NewPastConeExt(env, name),
 	}
 	// standard conflict checker
 	ret.checkConflictsFunc = func(_ *vertex.Vertex, consumerTx *vertex.WrappedTx) checkConflictingConsumersFunc {
@@ -48,8 +48,6 @@ func (a *attacher) setError(err error) {
 	a.err = err
 }
 
-const TraceTagMarkDefUndef = "markDefUndef"
-
 // solidifyBaselineVertex directs attachment process down the MemDAG to reach the deterministically known baseline state
 // for a sequencer milestone. Existence of it is guaranteed by the ledger constraints
 // Success of the baseline solidification is when function returns true and v.BaselineBranch != nil
@@ -73,7 +71,7 @@ func (a *attacher) solidifyStemOfTheVertex(v *vertex.Vertex, vidUnwrapped *verte
 	)
 
 	// here it is referenced from the attacher
-	if !a.pastCone.markVertexUndefined(stemVid) {
+	if !a.pastCone.MarkVertexUndefined(stemVid) {
 		// failed to reference (pruned), but it is ok (rare event)
 		return true
 	}
@@ -126,7 +124,7 @@ func (a *attacher) solidifySequencerBaseline(v *vertex.Vertex, vidUnwrapped *ver
 		a.Tracef(TraceTagSolidifySequencerBaseline, "follow the predecessor %s", baselineDirection.IDShortString)
 	}
 	// here we reference baseline direction
-	if !a.pastCone.markVertexUndefined(baselineDirection) {
+	if !a.pastCone.MarkVertexUndefined(baselineDirection) {
 		// wasn't able to reference baseline direction (pruned) but it is ok
 		return true
 	}
@@ -167,10 +165,10 @@ func (a *attacher) solidifySequencerBaseline(v *vertex.Vertex, vidUnwrapped *ver
 func (a *attacher) attachVertexNonBranch(vid *vertex.WrappedTx) (ok, defined bool) {
 	a.Assertf(!vid.IsBranchTransaction(), "!vid.IsBranchTransaction(): %s", vid.IDShortString)
 
-	if a.pastCone.isKnownDefined(vid) {
+	if a.pastCone.IsKnownDefined(vid) {
 		return true, true
 	}
-	a.pastCone.markVertexUndefined(vid)
+	a.pastCone.MarkVertexUndefined(vid)
 
 	vid.Unwrap(vertex.UnwrapOptions{
 		Vertex: func(v *vertex.Vertex) {
@@ -183,16 +181,16 @@ func (a *attacher) attachVertexNonBranch(vid *vertex.WrappedTx) (ok, defined boo
 				}
 				// non-sequencer transaction
 				ok = a.attachVertexUnwrapped(v, vid)
-				if ok && vid.FlagsUpNoLock(vertex.FlagVertexConstraintsValid) && a.pastCone.flags(vid).flagsUp(flagAttachedVertexInputsSolid|flagAttachedVertexEndorsementsSolid) {
-					a.pastCone.markVertexDefinedDoNotEnforceRootedCheck(vid)
+				if ok && vid.FlagsUpNoLock(vertex.FlagVertexConstraintsValid) && a.pastCone.Flags(vid).FlagsUp(vertex.FlagAttachedVertexInputsSolid|vertex.FlagAttachedVertexEndorsementsSolid) {
+					a.pastCone.MarkVertexDefinedDoNotEnforceRootedCheck(vid)
 					defined = true
 				}
 			case vertex.Good:
 				a.Assertf(vid.IsSequencerMilestone(), "vid.IsSequencerMilestone()")
 				ok = a.attachVertexUnwrapped(v, vid)
 				if ok {
-					if a.pastCone.flags(vid).flagsUp(flagAttachedVertexInputsSolid | flagAttachedVertexEndorsementsSolid) {
-						a.pastCone.markVertexDefinedDoNotEnforceRootedCheck(vid)
+					if a.pastCone.Flags(vid).FlagsUp(vertex.FlagAttachedVertexInputsSolid | vertex.FlagAttachedVertexEndorsementsSolid) {
+						a.pastCone.MarkVertexDefinedDoNotEnforceRootedCheck(vid)
 						defined = true
 					}
 				}
@@ -233,7 +231,7 @@ func (a *attacher) attachVertexUnwrapped(v *vertex.Vertex, vidUnwrapped *vertex.
 	a.Tracef(TraceTagAttachVertex, " %s IN: %s", a.name, vidUnwrapped.IDShortString)
 	a.Assertf(!util.IsNil(a.baselineStateReader), "!util.IsNil(a.baselineStateReader)")
 
-	if !a.pastCone.flags(vidUnwrapped).flagsUp(flagAttachedVertexEndorsementsSolid) {
+	if !a.pastCone.Flags(vidUnwrapped).FlagsUp(vertex.FlagAttachedVertexEndorsementsSolid) {
 		a.Tracef(TraceTagAttachVertex, "endorsements not all solidified in %s -> attachEndorsements", v.Tx.IDShortString)
 		// depth-first along endorsements
 		if !a.attachEndorsements(v, vidUnwrapped) { // <<< recursive
@@ -243,7 +241,7 @@ func (a *attacher) attachVertexUnwrapped(v *vertex.Vertex, vidUnwrapped *vertex.
 		}
 	}
 	// check consistency
-	if a.pastCone.flags(vidUnwrapped).flagsUp(flagAttachedVertexEndorsementsSolid) {
+	if a.pastCone.Flags(vidUnwrapped).FlagsUp(vertex.FlagAttachedVertexEndorsementsSolid) {
 		err := a.allEndorsementsDefined(v)
 		a.Assertf(err == nil, "%w:\nVertices: %s", err, func() string { return a.linesVertices("       ").String() })
 
@@ -258,7 +256,7 @@ func (a *attacher) attachVertexUnwrapped(v *vertex.Vertex, vidUnwrapped *vertex.
 		return false
 	}
 
-	if !v.Tx.IsSequencerMilestone() && a.pastCone.flags(vidUnwrapped).flagsUp(flagAttachedVertexInputsSolid) {
+	if !v.Tx.IsSequencerMilestone() && a.pastCone.Flags(vidUnwrapped).FlagsUp(vertex.FlagAttachedVertexInputsSolid) {
 		if !a.finalTouchNonSequencer(v, vidUnwrapped) {
 			a.Assertf(a.err != nil, "a.err!=nil")
 			return false
@@ -294,7 +292,7 @@ func (a *attacher) finalTouchNonSequencer(v *vertex.Vertex, vid *vertex.WrappedT
 	a.Assertf(glbFlags.FlagsUp(vertex.FlagVertexConstraintsValid), "glbFlags.FlagsUp(vertex.FlagConstraintsValid)")
 
 	// non-sequencer, all inputs solid, constraints valid -> we can mark it 'defined' in the attacher
-	a.pastCone.markVertexDefinedDoNotEnforceRootedCheck(vid)
+	a.pastCone.MarkVertexDefinedDoNotEnforceRootedCheck(vid)
 	return true
 }
 
@@ -306,7 +304,7 @@ func (a *attacher) attachEndorsements(v *vertex.Vertex, vid *vertex.WrappedTx) b
 	a.Tracef(TraceTagAttachEndorsements, "attachEndorsements IN: of %s, num endorsements %d", vid.IDShortString, v.Tx.NumEndorsements)
 	defer a.Tracef(TraceTagAttachEndorsements, "attachEndorsements OUT: of %s, num endorsements %d", vid.IDShortString, v.Tx.NumEndorsements)
 
-	a.Assertf(!a.pastCone.flags(vid).flagsUp(flagAttachedVertexEndorsementsSolid), "!v.FlagsUp(vertex.FlagAttachedvertexEndorsementsSolid)")
+	a.Assertf(!a.pastCone.Flags(vid).FlagsUp(vertex.FlagAttachedVertexEndorsementsSolid), "!v.FlagsUp(vertex.FlagAttachedvertexEndorsementsSolid)")
 
 	numUndefined := len(v.Endorsements)
 	for i := range v.Endorsements {
@@ -324,7 +322,7 @@ func (a *attacher) attachEndorsements(v *vertex.Vertex, vid *vertex.WrappedTx) b
 
 	if numUndefined == 0 {
 		a.AssertNoError(a.allEndorsementsDefined(v))
-		a.pastCone.setFlagsUp(vid, flagAttachedVertexEndorsementsSolid)
+		a.pastCone.SetFlagsUp(vid, vertex.FlagAttachedVertexEndorsementsSolid)
 		a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s): endorsements are all good in %s", a.name, v.Tx.IDShortString)
 	} else {
 		a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s): endorsements are NOT all good in %s", a.name, v.Tx.IDShortString)
@@ -349,7 +347,7 @@ func (a *attacher) attachEndorsement(v *vertex.Vertex, vidUnwrapped *vertex.Wrap
 	a.Assertf(vidEndorsed != nil, "vidEndorsed != nil")
 	a.Tracef(TraceTagAttachEndorsements, "attachEndorsement: attaching endorsement %s of %s", vidEndorsed.IDShortString, vidUnwrapped.IDShortString)
 
-	if a.pastCone.isKnownDefined(vidEndorsed) {
+	if a.pastCone.IsKnownDefined(vidEndorsed) {
 		a.Tracef(TraceTagAttachEndorsements, "attachEndorsement: attaching endorsement %s of %s: is already known 'defined'",
 			vidEndorsed.IDShortString, vidUnwrapped.IDShortString)
 		return true, true
@@ -362,13 +360,13 @@ func (a *attacher) attachEndorsement(v *vertex.Vertex, vidUnwrapped *vertex.Wrap
 		return false, false
 	}
 
-	a.pastCone.markVertexUndefined(vidEndorsed)
+	a.pastCone.MarkVertexUndefined(vidEndorsed)
 
 	a.checkRootedStatus(vidEndorsed)
 
-	if a.pastCone.isKnownRooted(vidEndorsed) {
+	if a.pastCone.IsKnownRooted(vidEndorsed) {
 		// definitely in the state -> fully defined
-		a.pastCone.markVertexDefined(vidEndorsed)
+		a.pastCone.MarkVertexDefined(vidEndorsed)
 		return true, true
 	}
 
@@ -412,7 +410,7 @@ func (a *attacher) attachEndorsement(v *vertex.Vertex, vidUnwrapped *vertex.Wrap
 
 // checkRootedStatus checks if dependency is Rooted and marks it Rooted when defined
 func (a *attacher) checkRootedStatus(vidDep *vertex.WrappedTx) (defined bool) {
-	if a.pastCone.flags(vidDep).flagsUp(flagAttachedVertexCheckedIfRooted) {
+	if a.pastCone.Flags(vidDep).FlagsUp(vertex.FlagAttachedVertexCheckedIfRooted) {
 		// already checked
 		return true
 	}
@@ -421,9 +419,9 @@ func (a *attacher) checkRootedStatus(vidDep *vertex.WrappedTx) (defined bool) {
 	}
 
 	if a.baselineStateReader().KnowsCommittedTransaction(&vidDep.ID) {
-		a.pastCone.mustMarkVertexRooted(vidDep)
+		a.pastCone.MustMarkVertexRooted(vidDep)
 	} else {
-		a.pastCone.mustMarkVertexNotRooted(vidDep)
+		a.pastCone.MustMarkVertexNotRooted(vidDep)
 	}
 	return true
 }
@@ -442,7 +440,7 @@ func (a *attacher) attachInputsOfTheVertex(v *vertex.Vertex, vidUnwrapped *verte
 		}
 	}
 	if numUndefined == 0 {
-		a.pastCone.setFlagsUp(vidUnwrapped, flagAttachedVertexInputsSolid)
+		a.pastCone.SetFlagsUp(vidUnwrapped, vertex.FlagAttachedVertexInputsSolid)
 	}
 	return true
 }
@@ -489,7 +487,7 @@ func (a *attacher) attachRooted(wOut vertex.WrappedOutput) (ok bool, isRooted bo
 		return true, false, false
 	}
 
-	if a.pastCone.isKnownNotRooted(wOut.VID) {
+	if a.pastCone.IsKnownNotRooted(wOut.VID) {
 		// it is definitely not Rooted bt it is fine
 		return true, false, true
 	}
@@ -528,7 +526,7 @@ func (a *attacher) attachRooted(wOut vertex.WrappedOutput) (ok bool, isRooted bo
 		consumedRooted.Insert(wOut.Index)
 	}
 
-	a.pastCone.mustMarkVertexRooted(wOut.VID) // also marks it 'defined'
+	a.pastCone.MustMarkVertexRooted(wOut.VID) // also marks it 'defined'
 	a.pastCone.Rooted[wOut.VID] = consumedRooted
 
 	// this is new Rooted output -> add to the accumulatedCoverage
@@ -650,7 +648,7 @@ func (a *attacher) stdCheckConflictsFunc(consumerTx *vertex.WrappedTx) checkConf
 
 func (a *attacher) isKnownConsumed(wOut vertex.WrappedOutput) (isConsumed bool) {
 	wOut.VID.ConsumersOf(wOut.Index).ForEach(func(consumer *vertex.WrappedTx) bool {
-		isConsumed = a.pastCone.isKnown(consumer)
+		isConsumed = a.pastCone.IsKnown(consumer)
 		return !isConsumed
 	})
 	return
@@ -692,7 +690,7 @@ func (a *attacher) adjustCoverage() {
 	a.coverageAdjusted = true
 
 	baseSeqOut := a.baseline.SequencerWrappedOutput()
-	if a.pastCone.isRootedOutput(baseSeqOut) {
+	if a.pastCone.IsRootedOutput(baseSeqOut) {
 		// the baseline branch sequencer output is Rooted -> it is already included -> no need for adjustment
 		return
 	}
@@ -732,14 +730,14 @@ func (a *attacher) linesVertices(prefix ...string) *lines.Lines {
 	ret := lines.New(prefix...)
 	for vid, flags := range a.pastCone.Vertices {
 		_, rooted := a.pastCone.Rooted[vid]
-		ret.Add("%s (Rooted = %v, seq: %s) local flags: %s", vid.IDShortString(), rooted, vid.SequencerIDStringVeryShort(), flagsPastCone(flags).String())
+		ret.Add("%s (Rooted = %v, seq: %s) local flags: %s", vid.IDShortString(), rooted, vid.SequencerIDStringVeryShort(), util.Ref(vertex.Flags(flags)).String())
 	}
 	return ret
 }
 
 func (a *attacher) allEndorsementsDefined(v *vertex.Vertex) (err error) {
 	v.ForEachEndorsement(func(i byte, vidEndorsed *vertex.WrappedTx) bool {
-		if !a.pastCone.isKnownDefined(vidEndorsed) {
+		if !a.pastCone.IsKnownDefined(vidEndorsed) {
 			err = fmt.Errorf("attacher %s: endorsement by %s must be 'defined' %s", a.name, v.Tx.IDShortString(), vidEndorsed.String())
 		}
 		return err == nil
@@ -749,7 +747,7 @@ func (a *attacher) allEndorsementsDefined(v *vertex.Vertex) (err error) {
 
 func (a *attacher) allInputsDefined(v *vertex.Vertex) (err error) {
 	v.ForEachInputDependency(func(i byte, vidInput *vertex.WrappedTx) bool {
-		if !a.pastCone.isKnownDefined(vidInput) {
+		if !a.pastCone.IsKnownDefined(vidInput) {
 			err = fmt.Errorf("attacher %s: input #%d must be 'defined' in the tx:\n   %s\nVertices:\n%s",
 				a.name, i, vidInput.String(), a.linesVertices("   "))
 		}

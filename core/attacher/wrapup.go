@@ -72,7 +72,7 @@ func (a *milestoneAttacher) commitBranch() {
 	a.finals.numNewTransactions = uint32(0)
 	allVerticesSet := set.NewFromKeys(a.pastCone.Vertices)
 	for vid := range a.pastCone.Vertices {
-		if a.pastCone.isKnownRooted(vid) {
+		if a.pastCone.IsKnownRooted(vid) {
 			continue
 		}
 		muts.InsertAddTxMutation(vid.ID, a.vid.Slot(), byte(vid.NumProducedOutputs()-1))

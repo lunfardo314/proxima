@@ -220,7 +220,7 @@ func (a *IncrementalAttacher) commitStateDelta() {
 // InsertEndorsement preserves consistency in case of failure
 func (a *IncrementalAttacher) InsertEndorsement(endorsement *vertex.WrappedTx) error {
 	util.Assertf(!a.IsClosed(), "a.IsClosed()")
-	if a.pastCone.isKnown(endorsement) {
+	if a.pastCone.IsKnown(endorsement) {
 		return fmt.Errorf("endorsing makes no sense: %s is already in the past cone", endorsement.IDShortString())
 	}
 
@@ -246,7 +246,7 @@ func (a *IncrementalAttacher) insertEndorsement(endorsement *vertex.WrappedTx) e
 	}
 	if endorsement.IsBranchTransaction() {
 		// branch is compatible with the baseline
-		a.pastCone.mustMarkVertexRooted(endorsement)
+		a.pastCone.MustMarkVertexRooted(endorsement)
 	} else {
 		ok, defined := a.attachVertexNonBranch(endorsement)
 		a.Assertf(ok || a.err != nil, "ok || a.err != nil")
@@ -397,7 +397,7 @@ func (a *IncrementalAttacher) NumInputs() int {
 // if unlucky. The owner of the attacher will have to dismiss the attacher
 // and try again later
 func (a *IncrementalAttacher) Completed() bool {
-	return !a.pastCone.containsUndefinedExcept(nil) && len(a.pastCone.Rooted) > 0
+	return !a.pastCone.ContainsUndefinedExcept(nil) && len(a.pastCone.Rooted) > 0
 }
 
 func (a *IncrementalAttacher) Extending() vertex.WrappedOutput {

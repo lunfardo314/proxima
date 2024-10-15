@@ -20,7 +20,7 @@ func (a *milestoneAttacher) _checkConsistencyBeforeFinalization() (err error) {
 	if a.vid.GetTxStatus() == vertex.Bad {
 		return fmt.Errorf("vertex %s is BAD", a.vid.IDShortString())
 	}
-	if err = a.pastCone._checkPastCone(a.vid); err != nil {
+	if err = a.pastCone.CheckPastCone(a.vid); err != nil {
 		return
 	}
 	a.vid.Unwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {

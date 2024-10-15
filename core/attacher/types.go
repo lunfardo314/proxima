@@ -3,7 +3,6 @@ package attacher
 import (
 	"context"
 	"errors"
-	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -55,7 +54,7 @@ type (
 
 	attacher struct {
 		Environment
-		pastCone            *_pastCone
+		pastCone            *vertex.PastConeExt
 		name                string
 		err                 error
 		baseline            *vertex.WrappedTx
@@ -140,22 +139,6 @@ type (
 )
 
 var ErrSolidificationDeadline = errors.New("solidification deadline")
-
-func (f flagsPastCone) flagsUp(fl flagsPastCone) bool {
-	return f&fl == fl
-}
-
-func (f flagsPastCone) String() string {
-	return fmt.Sprintf("%08b known: %v, defined: %v, checkedRooted: %v, endorsementsOk: %v, inputsOk: %v, asked for poke: %v",
-		f,
-		f.flagsUp(flagAttachedVertexKnown),
-		f.flagsUp(flagAttachedVertexDefined),
-		f.flagsUp(flagAttachedVertexCheckedIfRooted),
-		f.flagsUp(flagAttachedVertexEndorsementsSolid),
-		f.flagsUp(flagAttachedVertexInputsSolid),
-		f.flagsUp(flagAttachedVertexAskedForPoke),
-	)
-}
 
 func WithTransactionMetadata(metadata *txmetadata.TransactionMetadata) AttachTxOption {
 	return func(options *_attacherOptions) {
