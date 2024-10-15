@@ -54,7 +54,7 @@ func (a *attacher) pullIfNeededUnwrapped(virtualTx *vertex.VirtualTransaction, d
 		return true
 	}
 
-	// wasn't checked root status yet or not rooted transaction
+	// wasn't checked root status yet or not Rooted transaction
 	// define pull rules by setting pull deadline and pull
 	a.Tracef(TraceTagPull, "pullIfNeededUnwrapped: %s. Set pull timeout and pull", deptVID.IDShortString)
 	virtualTx.SetPullNeeded()

@@ -55,10 +55,10 @@ type (
 
 	attacher struct {
 		Environment
-		name     string
-		err      error
-		baseline *vertex.WrappedTx
-		*pastCone
+		*_pastCone
+		name                string
+		err                 error
+		baseline            *vertex.WrappedTx
 		closed              bool
 		pokeMe              func(vid *vertex.WrappedTx)
 		accumulatedCoverage uint64 // accumulated accumulatedCoverage
@@ -127,8 +127,6 @@ type (
 		numRooted          int
 	}
 
-	Flags uint8
-
 	checkConflictingConsumersFunc func(existingConsumers set.Set[*vertex.WrappedTx]) (conflict *vertex.WrappedTx)
 
 	SequencerCommandParser interface {
@@ -143,19 +141,19 @@ type (
 
 var ErrSolidificationDeadline = errors.New("solidification deadline")
 
-func (f Flags) FlagsUp(fl Flags) bool {
+func (f flagsPastCone) flagsUp(fl flagsPastCone) bool {
 	return f&fl == fl
 }
 
-func (f Flags) String() string {
+func (f flagsPastCone) String() string {
 	return fmt.Sprintf("%08b known: %v, defined: %v, checkedRooted: %v, endorsementsOk: %v, inputsOk: %v, asked for poke: %v",
 		f,
-		f.FlagsUp(flagAttachedVertexKnown),
-		f.FlagsUp(flagAttachedVertexDefined),
-		f.FlagsUp(flagAttachedVertexCheckedIfRooted),
-		f.FlagsUp(flagAttachedVertexEndorsementsSolid),
-		f.FlagsUp(flagAttachedVertexInputsSolid),
-		f.FlagsUp(flagAttachedVertexAskedForPoke),
+		f.flagsUp(flagAttachedVertexKnown),
+		f.flagsUp(flagAttachedVertexDefined),
+		f.flagsUp(flagAttachedVertexCheckedIfRooted),
+		f.flagsUp(flagAttachedVertexEndorsementsSolid),
+		f.flagsUp(flagAttachedVertexInputsSolid),
+		f.flagsUp(flagAttachedVertexAskedForPoke),
 	)
 }
 

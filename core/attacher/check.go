@@ -18,22 +18,22 @@ func (a *milestoneAttacher) checkConsistencyBeforeWrapUp() error {
 
 func (a *milestoneAttacher) _checkConsistencyBeforeFinalization() (err error) {
 	if a.containsUndefinedExcept(a.vid) {
-		return fmt.Errorf("still contains undefined vertices")
+		return fmt.Errorf("still contains undefined Vertices")
 	}
-	// should be at least one rooted output ( ledger baselineCoverage must be > 0)
-	if len(a.rooted) == 0 {
-		return fmt.Errorf("at least one rooted output is expected")
+	// should be at least one Rooted output ( ledger baselineCoverage must be > 0)
+	if len(a.Rooted) == 0 {
+		return fmt.Errorf("at least one Rooted output is expected")
 	}
-	for vid := range a.rooted {
+	for vid := range a.Rooted {
 		if !a.isKnownDefined(vid) {
-			return fmt.Errorf("all rooted must be defined. This one is not: %s", vid.IDShortString())
+			return fmt.Errorf("all Rooted must be defined. This one is not: %s", vid.IDShortString())
 		}
 	}
-	if len(a.vertices) == 0 {
-		return fmt.Errorf("vertices is empty")
+	if len(a.Vertices) == 0 {
+		return fmt.Errorf("Vertices is empty")
 	}
 	sumRooted := uint64(0)
-	for vid, consumed := range a.rooted {
+	for vid, consumed := range a.Rooted {
 		var o *ledger.Output
 		consumed.ForEach(func(idx byte) bool {
 			o, err = vid.OutputAt(idx)
@@ -48,14 +48,14 @@ func (a *milestoneAttacher) _checkConsistencyBeforeFinalization() (err error) {
 		return
 	}
 	if sumRooted == 0 {
-		err = fmt.Errorf("sum of rooted cannot be 0")
+		err = fmt.Errorf("sum of Rooted cannot be 0")
 		return
 	}
-	for vid, flags := range a.vertices {
-		if !flags.FlagsUp(flagAttachedVertexKnown) {
+	for vid, flags := range a.Vertices {
+		if !flagsPastCone(flags).flagsUp(flagAttachedVertexKnown) {
 			return fmt.Errorf("wrong flags 1 %08b in %s", flags, vid.IDShortString())
 		}
-		if !flags.FlagsUp(flagAttachedVertexDefined) && vid != a.vid {
+		if !flagsPastCone(flags).flagsUp(flagAttachedVertexDefined) && vid != a.vid {
 			return fmt.Errorf("wrong flags 2 %08b in %s", flags, vid.IDShortString())
 		}
 		if vid == a.vid {
@@ -71,7 +71,7 @@ func (a *milestoneAttacher) _checkConsistencyBeforeFinalization() (err error) {
 		// transaction can be undefined in the past cone (virtual, non-sequencer etc)
 
 		if a.isKnownRooted(vid) {
-			// do not check dependencies if transaction is rooted
+			// do not check dependencies if transaction is Rooted
 			continue
 		}
 		vid.Unwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {

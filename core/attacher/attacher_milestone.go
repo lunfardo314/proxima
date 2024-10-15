@@ -193,7 +193,7 @@ func (a *milestoneAttacher) lazyRepeat(loopName string, fun func() vertex.Status
 
 func (a *milestoneAttacher) close() {
 	a.closeOnce.Do(func() {
-		a.referenced.unReferenceAll()
+		a.Referenced.unReferenceAll()
 
 		a.pokeClosingMutex.Lock()
 		defer a.pokeClosingMutex.Unlock()
@@ -265,7 +265,7 @@ func (a *milestoneAttacher) solidifyPastCone() vertex.Status {
 			return vertex.Bad
 		case finalSuccess:
 			util.Assertf(!a.containsUndefinedExcept(a.vid),
-				"inconsistency: attacher %s is 'finalSuccess' but still contains undefined vertices. LinesVerbose:\n%s",
+				"inconsistency: attacher %s is 'finalSuccess' but still contains undefined Vertices. LinesVerbose:\n%s",
 				a.name, a.dumpLinesString)
 			return vertex.Good
 		default:
@@ -279,7 +279,7 @@ func (a *milestoneAttacher) validateSequencerTxUnwrapped(v *vertex.Vertex) (ok, 
 		return true, false
 	}
 	flags := a.flags(a.vid)
-	if !flags.FlagsUp(flagAttachedVertexEndorsementsSolid) || !flags.FlagsUp(flagAttachedVertexInputsSolid) {
+	if !flags.flagsUp(flagAttachedVertexEndorsementsSolid) || !flags.flagsUp(flagAttachedVertexInputsSolid) {
 		return true, false
 	}
 	// inputs solid
@@ -315,8 +315,8 @@ func (a *milestoneAttacher) _doPoke() {
 
 func (a *milestoneAttacher) pokeMe(with *vertex.WrappedTx) {
 	flags := a.flags(with)
-	util.Assertf(flags.FlagsUp(flagAttachedVertexKnown), "must be marked known %s", with.IDShortString)
-	if !flags.FlagsUp(flagAttachedVertexAskedForPoke) {
+	util.Assertf(flags.flagsUp(flagAttachedVertexKnown), "must be marked known %s", with.IDShortString)
+	if !flags.flagsUp(flagAttachedVertexAskedForPoke) {
 		a.Tracef(TraceTagAttachMilestone, "pokeMe with %s", with.IDShortString())
 		a.PokeMe(a.vid, with)
 		a.setFlagsUp(with, flagAttachedVertexAskedForPoke)

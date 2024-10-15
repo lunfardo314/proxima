@@ -16,7 +16,7 @@ func (a *milestoneAttacher) wrapUpAttacher() {
 	a.checkConsistencyWithMetadata()
 
 	a.finals.baseline = &a.baseline.ID
-	a.finals.numVertices = len(a.vertices)
+	a.finals.numVertices = len(a.Vertices)
 
 	a.finals.coverage = a.accumulatedCoverage
 	//a.Assertf(a.finals.accumulatedCoverage > 0, "final accumulatedCoverage must be positive")
@@ -60,7 +60,7 @@ func (a *milestoneAttacher) commitBranch() {
 	bsName := a.baseline.ID.StringShort
 
 	// generate DEL mutations
-	for vid, consumed := range a.rooted {
+	for vid, consumed := range a.Rooted {
 		for idx := range consumed {
 			out := vid.MustOutputWithIDAt(idx)
 			muts.InsertDelOutputMutation(out.ID)
@@ -70,8 +70,8 @@ func (a *milestoneAttacher) commitBranch() {
 	}
 	// generate ADD TX and ADD OUTPUT mutations
 	a.finals.numNewTransactions = uint32(0)
-	allVerticesSet := set.NewFromKeys(a.vertices)
-	for vid := range a.vertices {
+	allVerticesSet := set.NewFromKeys(a.Vertices)
+	for vid := range a.Vertices {
 		if a.isKnownRooted(vid) {
 			continue
 		}
