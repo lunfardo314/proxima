@@ -12,14 +12,9 @@ type (
 	}
 
 	PastCone struct {
-		Vertices   map[*WrappedTx]byte // byte is usd by attacher for flags
+		Vertices   map[*WrappedTx]byte // byte is used by attacher for flags
 		Rooted     map[*WrappedTx]set.Set[byte]
 		Referenced ReferencedSet
-	}
-
-	PastConeSnapshot struct {
-		PastCone
-		Coverage uint64
 	}
 )
 
