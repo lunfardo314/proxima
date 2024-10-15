@@ -11,8 +11,10 @@ type (
 		delta     set.Set[*WrappedTx]
 	}
 
+	FlagsPastCone byte
+
 	PastCone struct {
-		Vertices   map[*WrappedTx]byte // byte is used by attacher for flags
+		Vertices   map[*WrappedTx]FlagsPastCone // byte is used by attacher for flags
 		Rooted     map[*WrappedTx]set.Set[byte]
 		referenced referencedSet
 	}
@@ -20,7 +22,7 @@ type (
 
 func NewPastCone() *PastCone {
 	return &PastCone{
-		Vertices:   make(map[*WrappedTx]byte),
+		Vertices:   make(map[*WrappedTx]FlagsPastCone),
 		Rooted:     make(map[*WrappedTx]set.Set[byte]),
 		referenced: newReferencedSet(),
 	}

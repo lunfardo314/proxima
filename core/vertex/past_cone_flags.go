@@ -9,7 +9,7 @@ import (
 	"github.com/lunfardo314/proxima/util/lines"
 )
 
-// Attacher keeps list of past cone vertices which are important in order to determine if the sequencer transactions is valid.
+// Attacher keeps list of past cone vertices.
 // The vertices of consideration are all Vertices in the past cone back to the 'Rooted' ones, i.e. those which belong
 // to the baseline state.
 // each vertex in the attacher has local flags, which defines its status in the scope of the attacher
@@ -18,7 +18,6 @@ import (
 // Flags (except 'asked for poke') become final and immutable after they are set 'ON'
 
 type (
-	FlagsPastCone byte
 
 	// PastConeExt past cone data augmented with logging and flag interpretation
 	PastConeExt struct {
@@ -67,7 +66,7 @@ func (pc *PastConeExt) Flags(vid *WrappedTx) FlagsPastCone {
 
 func (pc *PastConeExt) SetFlagsUp(vid *WrappedTx, f FlagsPastCone) {
 	flags := pc.Flags(vid) | f
-	pc.Vertices[vid] = byte(flags)
+	pc.Vertices[vid] = flags
 	pc.Assertf(flags.FlagsUp(FlagAttachedVertexKnown) && !flags.FlagsUp(FlagAttachedVertexDefined), "flags.FlagsUp(FlagKnown) && !flags.FlagsUp(FlagDefined)")
 }
 
@@ -113,7 +112,7 @@ func (pc *PastConeExt) MarkVertexDefinedDoNotEnforceRootedCheck(vid *WrappedTx) 
 		pc.Assertf(flags.FlagsUp(FlagAttachedVertexEndorsementsSolid), "flags.FlagsUp(FlagAttachedVertexInputsSolid): %s\n     %s", vid.IDShortString, flags.String)
 	}
 	pc.MustReference(vid)
-	pc.Vertices[vid] = byte(pc.Flags(vid) | FlagAttachedVertexKnown | FlagAttachedVertexDefined)
+	pc.Vertices[vid] = pc.Flags(vid) | FlagAttachedVertexKnown | FlagAttachedVertexDefined
 }
 
 // MarkVertexDefined marks 'defined' and enforces rooting has been checked
@@ -129,14 +128,14 @@ func (pc *PastConeExt) MarkVertexUndefined(vid *WrappedTx) bool {
 	}
 	f := pc.Flags(vid)
 	pc.Assertf(!f.FlagsUp(FlagAttachedVertexDefined), "!f.FlagsUp(FlagDefined)")
-	pc.Vertices[vid] = byte(f | FlagAttachedVertexKnown)
+	pc.Vertices[vid] = f | FlagAttachedVertexKnown
 	return true
 }
 
 // MustMarkVertexRooted vertex becomes 'known' and marked Rooted and 'defined'
 func (pc *PastConeExt) MustMarkVertexRooted(vid *WrappedTx) {
 	pc.MustReference(vid)
-	pc.Vertices[vid] = byte(pc.Flags(vid) | FlagAttachedVertexKnown | FlagAttachedVertexCheckedIfRooted | FlagAttachedVertexDefined)
+	pc.Vertices[vid] = pc.Flags(vid) | FlagAttachedVertexKnown | FlagAttachedVertexCheckedIfRooted | FlagAttachedVertexDefined
 	// creates entry in Rooted, probably empty, i.e. with or without output indices
 	pc.Rooted[vid] = pc.Rooted[vid]
 	pc.Assertf(pc.IsKnownRooted(vid), "pc.IsKnownNotRooted(vid)")
@@ -146,7 +145,7 @@ func (pc *PastConeExt) MustMarkVertexRooted(vid *WrappedTx) {
 func (pc *PastConeExt) MustMarkVertexNotRooted(vid *WrappedTx) {
 	pc.MustReference(vid)
 	f := pc.Flags(vid)
-	pc.Vertices[vid] = byte(f | FlagAttachedVertexKnown | FlagAttachedVertexCheckedIfRooted)
+	pc.Vertices[vid] = f | FlagAttachedVertexKnown | FlagAttachedVertexCheckedIfRooted
 	pc.Assertf(pc.IsKnownNotRooted(vid), "pc.IsKnownNotRooted(vid)")
 }
 
@@ -234,10 +233,10 @@ func (pc *PastConeExt) CheckPastCone(rootVid *WrappedTx) (err error) {
 		return
 	}
 	for vid, flags := range pc.Vertices {
-		if !FlagsPastCone(flags).FlagsUp(FlagAttachedVertexKnown) {
+		if !flags.FlagsUp(FlagAttachedVertexKnown) {
 			return fmt.Errorf("wrong flags 1 %08b in %s", flags, vid.IDShortString())
 		}
-		if !FlagsPastCone(flags).FlagsUp(FlagAttachedVertexDefined) && vid != rootVid {
+		if !flags.FlagsUp(FlagAttachedVertexDefined) && vid != rootVid {
 			return fmt.Errorf("wrong flags 2 %08b in %s", flags, vid.IDShortString())
 		}
 		if vid == rootVid {

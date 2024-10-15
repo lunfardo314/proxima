@@ -187,7 +187,7 @@ func (a *IncrementalAttacher) insertOutput(wOut vertex.WrappedOutput) error {
 // TODO refactor the mess with delta commit/rollback
 
 type _pastConeSnapshot struct {
-	vertices map[*vertex.WrappedTx]byte
+	vertices map[*vertex.WrappedTx]vertex.FlagsPastCone
 	rooted   map[*vertex.WrappedTx]set.Set[byte]
 	coverage uint64
 }
