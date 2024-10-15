@@ -1,43 +1,33 @@
 package attacher
 
 import (
+	"fmt"
 	"sort"
 
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/global"
-	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util/lines"
-	"github.com/lunfardo314/proxima/util/set"
 )
 
+// Attacher keeps list of past cone vertices which are important in order to determine if the sequencer transactions is valid.
+// The vertices of consideration are all Vertices in the past cone back to the 'Rooted' ones, i.e. those which belong
+// to the baseline state.
+// each vertex in the attacher has local flags, which defines its status in the scope of the attacher.
+// The goal of the attacher is to make all vertices marked as 'defined', i.e. either 'Rooted' or with its past cone checked
+// and valid
+// Flags (except 'asked for poke') become final and immutable after they are set 'ON'
+
 type (
-	referencedSet struct {
-		committed set.Set[*vertex.WrappedTx]
-		delta     set.Set[*vertex.WrappedTx]
-	}
+	flagsPastCone byte
 
-	flagsPastCone uint8
-
-	PastCone struct {
-		Vertices   map[*vertex.WrappedTx]byte
-		Rooted     map[*vertex.WrappedTx]set.Set[byte]
-		Referenced referencedSet
-	}
-
+	// past cone data augmented with logging and flag interpretation
 	_pastCone struct {
-		*PastCone
+		*vertex.PastCone
 		global.Logging
 		name string
 	}
 )
-
-// Attacher keeps list of Vertices which are important in order to determine if the sequencer transactions is valid.
-// The Vertices of consideration are all Vertices in the past cone back to the 'Rooted' ones, i.e. those which belong
-// to the baseline state.
-// each vertex in the attacher has local flags, which defines its status in the scope of the attacher.
-// The goal of the attacher is to make all Vertices marked as 'defined', i.e. either 'Rooted' or with its past cone checked
-// and valid
-// Flags (except 'asked for poke') become final and immutable after they are set 'ON'
 
 const (
 	flagAttachedVertexKnown             = flagsPastCone(0b00000001) // each vertex of consideration has this flag on
@@ -48,23 +38,15 @@ const (
 	flagAttachedVertexAskedForPoke      = flagsPastCone(0b00100000) //
 )
 
-func newPastCone() *PastCone {
-	return &PastCone{
-		Vertices:   make(map[*vertex.WrappedTx]byte),
-		Rooted:     make(map[*vertex.WrappedTx]set.Set[byte]),
-		Referenced: newReferencedSet(),
-	}
-}
-
 func _newPastCone(env global.Logging, name string) *_pastCone {
 	return &_pastCone{
 		Logging:  env,
 		name:     name,
-		PastCone: newPastCone(),
+		PastCone: vertex.NewPastCone(),
 	}
 }
 
-func (pc *PastCone) flags(vid *vertex.WrappedTx) flagsPastCone {
+func (pc *_pastCone) flags(vid *vertex.WrappedTx) flagsPastCone {
 	return flagsPastCone(pc.Vertices[vid])
 }
 
@@ -115,7 +97,7 @@ func (pc *_pastCone) markVertexDefinedDoNotEnforceRootedCheck(vid *vertex.Wrappe
 		pc.Assertf(flags.flagsUp(flagAttachedVertexInputsSolid), "flags.FlagsUp(flagAttachedVertexInputsSolid): %s\n     %s", vid.IDShortString, flags.String)
 		pc.Assertf(flags.flagsUp(flagAttachedVertexEndorsementsSolid), "flags.FlagsUp(flagAttachedVertexInputsSolid): %s\n     %s", vid.IDShortString, flags.String)
 	}
-	pc.Referenced.mustReference(vid)
+	pc.Referenced.MustReference(vid)
 	pc.Vertices[vid] = byte(pc.flags(vid) | flagAttachedVertexKnown | flagAttachedVertexDefined)
 
 	pc.Tracef(TraceTagMarkDefUndef, "markVertexDefinedDoNotEnforceRootedCheck in %s: %s is DEFINED", pc.name, vid.IDShortString)
@@ -129,7 +111,7 @@ func (pc *_pastCone) markVertexDefined(vid *vertex.WrappedTx) {
 
 // markVertexUndefined vertex becomes 'known' but undefined
 func (pc *_pastCone) markVertexUndefined(vid *vertex.WrappedTx) bool {
-	if !pc.Referenced.reference(vid) {
+	if !pc.Referenced.Reference(vid) {
 		return false
 	}
 	f := pc.flags(vid)
@@ -142,7 +124,7 @@ func (pc *_pastCone) markVertexUndefined(vid *vertex.WrappedTx) bool {
 
 // mustMarkVertexRooted vertex becomes 'known' and marked Rooted and 'defined'
 func (pc *_pastCone) mustMarkVertexRooted(vid *vertex.WrappedTx) {
-	pc.Referenced.mustReference(vid)
+	pc.Referenced.MustReference(vid)
 	pc.Vertices[vid] = byte(pc.flags(vid) | flagAttachedVertexKnown | flagAttachedVertexCheckedIfRooted | flagAttachedVertexDefined)
 	// creates entry in Rooted, probably empty, i.e. with or without output indices
 	pc.Rooted[vid] = pc.Rooted[vid]
@@ -151,7 +133,7 @@ func (pc *_pastCone) mustMarkVertexRooted(vid *vertex.WrappedTx) {
 
 // mustMarkVertexNotRooted is marked definitely not Rooted
 func (pc *_pastCone) mustMarkVertexNotRooted(vid *vertex.WrappedTx) {
-	pc.Referenced.mustReference(vid)
+	pc.Referenced.MustReference(vid)
 	f := pc.flags(vid)
 	pc.Vertices[vid] = byte(f | flagAttachedVertexKnown | flagAttachedVertexCheckedIfRooted)
 	pc.Assertf(pc.isKnownNotRooted(vid), "pc.isKnownNotRooted(vid)")
@@ -195,61 +177,81 @@ func (pc *_pastCone) isKnownRooted(vid *vertex.WrappedTx) (yes bool) {
 	return
 }
 
-func newReferencedSet() referencedSet {
-	return referencedSet{committed: set.New[*vertex.WrappedTx]()}
-}
-
-func (r *referencedSet) beginDelta() {
-	util.Assertf(r.delta == nil, "r.delta == nil")
-	r.delta = set.New[*vertex.WrappedTx]()
-}
-
-func (r *referencedSet) commitDelta() {
-	r.delta.ForEach(func(vid *vertex.WrappedTx) bool {
-		r.committed.Insert(vid)
-		return true
-	})
-	r.delta = nil
-}
-
-func (r *referencedSet) rollbackDelta() {
-	r.delta.ForEach(func(vid *vertex.WrappedTx) bool {
-		vid.UnReference()
-		return true
-	})
-	r.delta = nil
-}
-
-// reference references transaction and ensures it is referenced once or none
-func (r *referencedSet) reference(vid *vertex.WrappedTx) bool {
-	if r.committed.Contains(vid) {
-		return true
+func (pc *_pastCone) containsUndefinedExcept(except *vertex.WrappedTx) bool {
+	for vid, flags := range pc.Vertices {
+		if !flagsPastCone(flags).flagsUp(flagAttachedVertexDefined) && vid != except {
+			return true
+		}
 	}
-	if r.delta != nil && r.delta.Contains(vid) {
-		return true
-	}
-	if !vid.Reference() {
-		// failed to reference
-		return false
-	}
-	if r.delta != nil {
-		// delta buffer is open
-		r.delta.Insert(vid)
-	} else {
-		r.committed.Insert(vid)
-	}
-	return true
+	return false
 }
 
-func (r *referencedSet) mustReference(vid *vertex.WrappedTx) {
-	util.Assertf(r.reference(vid), "r.reference(vid)")
-}
+func (pc *_pastCone) _checkPastCone(rootVid *vertex.WrappedTx) (err error) {
+	if pc.containsUndefinedExcept(rootVid) {
+		return fmt.Errorf("still contains undefined Vertices")
+	}
 
-func (r *referencedSet) unReferenceAll() {
-	r.rollbackDelta()
-	r.committed.ForEach(func(vid *vertex.WrappedTx) bool {
-		vid.UnReference()
-		return true
-	})
-	r.committed = set.New[*vertex.WrappedTx]()
+	// should be at least one Rooted output ( ledger baselineCoverage must be > 0)
+	if len(pc.Rooted) == 0 {
+		return fmt.Errorf("at least one Rooted output is expected")
+	}
+	for vid := range pc.Rooted {
+		if !pc.isKnownDefined(vid) {
+			return fmt.Errorf("all Rooted must be defined. This one is not: %s", vid.IDShortString())
+		}
+	}
+	if len(pc.Vertices) == 0 {
+		return fmt.Errorf("'vertices' is empty")
+	}
+	sumRooted := uint64(0)
+	for vid, consumed := range pc.Rooted {
+		var o *ledger.Output
+		consumed.ForEach(func(idx byte) bool {
+			o, err = vid.OutputAt(idx)
+			if err != nil {
+				return false
+			}
+			sumRooted += o.Amount()
+			return true
+		})
+	}
+	if err != nil {
+		return
+	}
+	if sumRooted == 0 {
+		err = fmt.Errorf("sum of Rooted cannot be 0")
+		return
+	}
+	for vid, flags := range pc.Vertices {
+		if !flagsPastCone(flags).flagsUp(flagAttachedVertexKnown) {
+			return fmt.Errorf("wrong flags 1 %08b in %s", flags, vid.IDShortString())
+		}
+		if !flagsPastCone(flags).flagsUp(flagAttachedVertexDefined) && vid != rootVid {
+			return fmt.Errorf("wrong flags 2 %08b in %s", flags, vid.IDShortString())
+		}
+		if vid == rootVid {
+			continue
+		}
+		status := vid.GetTxStatus()
+		if status == vertex.Bad {
+			return fmt.Errorf("BAD vertex in the past cone: %s", vid.IDShortString())
+		}
+		// transaction can be undefined in the past cone (virtual, non-sequencer etc)
+
+		if pc.isKnownRooted(vid) {
+			// do not check dependencies if transaction is Rooted
+			continue
+		}
+		vid.Unwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
+			missingInputs, missingEndorsements := v.NumMissingInputs()
+			if missingInputs+missingEndorsements > 0 {
+				err = fmt.Errorf("not all dependencies solid in %s\n      missing inputs: %d\n      missing endorsements: %d,\n      missing input txs: [%s]",
+					vid.IDShortString(), missingInputs, missingEndorsements, v.MissingInputTxIDString())
+			}
+		}})
+		if err != nil {
+			return
+		}
+	}
+	return nil
 }

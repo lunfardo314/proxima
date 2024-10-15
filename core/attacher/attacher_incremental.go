@@ -110,7 +110,7 @@ func (a *IncrementalAttacher) checkConflictsWithInputs(consumerVertex *vertex.Ve
 // TODO some kind of checking if it is closed after some time
 func (a *IncrementalAttacher) Close() {
 	if a != nil && !a.IsClosed() {
-		a.Referenced.unReferenceAll()
+		a.Referenced.UnReferenceAll()
 		a.closed = true
 	}
 }
@@ -148,7 +148,7 @@ func (a *IncrementalAttacher) initIncrementalAttacher(baseline *vertex.WrappedTx
 		if a.stemOutput.VID == nil {
 			return fmt.Errorf("NewIncrementalAttacher: stem output is not available for baseline %s", baseline.IDShortString())
 		}
-		if !a.Referenced.reference(a.stemOutput.VID) {
+		if !a.Referenced.Reference(a.stemOutput.VID) {
 			return fmt.Errorf("NewIncrementalAttacher: failed to reference stem output %s", a.stemOutput.IDShortString())
 		}
 		if err := a.insertOutput(a.stemOutput); err != nil {
@@ -174,7 +174,7 @@ func (a *IncrementalAttacher) insertOutput(wOut vertex.WrappedOutput) error {
 	if !defined {
 		return fmt.Errorf("insertOutput: %w", ErrPastConeNotSolidYet)
 	}
-	if !a.Referenced.reference(wOut.VID) {
+	if !a.Referenced.Reference(wOut.VID) {
 		return fmt.Errorf("insertOutput: failed to reference output %s", wOut.IDShortString())
 	}
 	a.inputs = append(a.inputs, wOut)
@@ -200,7 +200,7 @@ func (a *IncrementalAttacher) beginStateDelta() *_stateSnapshot {
 	for vid, outputIdxSet := range ret.rooted {
 		ret.rooted[vid] = outputIdxSet.Clone()
 	}
-	a.Referenced.beginDelta()
+	a.Referenced.BeginDelta()
 	return ret
 }
 
@@ -208,11 +208,11 @@ func (a *IncrementalAttacher) rollbackStateDelta(saved *_stateSnapshot) {
 	a.attacher.Vertices = saved.vertices
 	a.attacher.Rooted = saved.rooted
 	a.accumulatedCoverage = saved.coverage
-	a.Referenced.rollbackDelta()
+	a.Referenced.RollbackDelta()
 }
 
 func (a *IncrementalAttacher) commitStateDelta() {
-	a.Referenced.commitDelta()
+	a.Referenced.CommitDelta()
 }
 
 // InsertEndorsement preserves consistency in case of failure
@@ -257,7 +257,7 @@ func (a *IncrementalAttacher) insertEndorsement(endorsement *vertex.WrappedTx) e
 			return fmt.Errorf("insertEndorsement: %w", ErrPastConeNotSolidYet)
 		}
 	}
-	if !a.Referenced.reference(endorsement) {
+	if !a.Referenced.Reference(endorsement) {
 		return fmt.Errorf("insertEndorsement: failed to reference endorsement %s", endorsement.IDShortString())
 	}
 	a.endorse = append(a.endorse, endorsement)

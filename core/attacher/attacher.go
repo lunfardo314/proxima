@@ -141,7 +141,7 @@ func (a *attacher) solidifySequencerBaseline(v *vertex.Vertex, vidUnwrapped *ver
 		a.Assertf(baseline.IsBranchTransaction(), "baseline.IsBranchTransaction()")
 
 		// referencing the baseline from the attacher
-		if !a.Referenced.reference(baseline) {
+		if !a.Referenced.Reference(baseline) {
 			// means it is pruned, it is fine, will come later. v.BaselineBranch remains nil
 			return true
 		}
@@ -663,7 +663,7 @@ func (a *attacher) setBaseline(baselineVID *vertex.WrappedTx, currentTS ledger.T
 	a.Assertf(baselineVID.IsBranchTransaction(), "setBaseline: baselineVID.IsBranchTransaction()")
 
 	// it may already be referenced but this ensures it is done only once
-	if !a.Referenced.reference(baselineVID) {
+	if !a.Referenced.Reference(baselineVID) {
 		return false
 	}
 
@@ -756,15 +756,6 @@ func (a *attacher) allInputsDefined(v *vertex.Vertex) (err error) {
 		return err == nil
 	})
 	return
-}
-
-func (a *attacher) containsUndefinedExcept(except *vertex.WrappedTx) bool {
-	for vid, flags := range a.Vertices {
-		if !flagsPastCone(flags).flagsUp(flagAttachedVertexDefined) && vid != except {
-			return true
-		}
-	}
-	return false
 }
 
 func (a *attacher) calculateSlotInflation() {

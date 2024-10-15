@@ -17,75 +17,12 @@ func (a *milestoneAttacher) checkConsistencyBeforeWrapUp() error {
 }
 
 func (a *milestoneAttacher) _checkConsistencyBeforeFinalization() (err error) {
-	if a.containsUndefinedExcept(a.vid) {
-		return fmt.Errorf("still contains undefined Vertices")
+	if a.vid.GetTxStatus() == vertex.Bad {
+		return fmt.Errorf("vertex %s is BAD", a.vid.IDShortString())
 	}
-	// should be at least one Rooted output ( ledger baselineCoverage must be > 0)
-	if len(a.Rooted) == 0 {
-		return fmt.Errorf("at least one Rooted output is expected")
-	}
-	for vid := range a.Rooted {
-		if !a.isKnownDefined(vid) {
-			return fmt.Errorf("all Rooted must be defined. This one is not: %s", vid.IDShortString())
-		}
-	}
-	if len(a.Vertices) == 0 {
-		return fmt.Errorf("Vertices is empty")
-	}
-	sumRooted := uint64(0)
-	for vid, consumed := range a.Rooted {
-		var o *ledger.Output
-		consumed.ForEach(func(idx byte) bool {
-			o, err = vid.OutputAt(idx)
-			if err != nil {
-				return false
-			}
-			sumRooted += o.Amount()
-			return true
-		})
-	}
-	if err != nil {
+	if err = a._checkPastCone(a.vid); err != nil {
 		return
 	}
-	if sumRooted == 0 {
-		err = fmt.Errorf("sum of Rooted cannot be 0")
-		return
-	}
-	for vid, flags := range a.Vertices {
-		if !flagsPastCone(flags).flagsUp(flagAttachedVertexKnown) {
-			return fmt.Errorf("wrong flags 1 %08b in %s", flags, vid.IDShortString())
-		}
-		if !flagsPastCone(flags).flagsUp(flagAttachedVertexDefined) && vid != a.vid {
-			return fmt.Errorf("wrong flags 2 %08b in %s", flags, vid.IDShortString())
-		}
-		if vid == a.vid {
-			if vid.GetTxStatus() == vertex.Bad {
-				return fmt.Errorf("vertex %s is BAD", vid.IDShortString())
-			}
-			continue
-		}
-		status := vid.GetTxStatus()
-		if status == vertex.Bad {
-			return fmt.Errorf("BAD vertex in the past cone: %s", vid.IDShortString())
-		}
-		// transaction can be undefined in the past cone (virtual, non-sequencer etc)
-
-		if a.isKnownRooted(vid) {
-			// do not check dependencies if transaction is Rooted
-			continue
-		}
-		vid.Unwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
-			missingInputs, missingEndorsements := v.NumMissingInputs()
-			if missingInputs+missingEndorsements > 0 {
-				err = fmt.Errorf("not all dependencies solid in %s\n      missing inputs: %d\n      missing endorsements: %d,\n      missing input txs: [%s]",
-					vid.IDShortString(), missingInputs, missingEndorsements, v.MissingInputTxIDString())
-			}
-		}})
-		if err != nil {
-			return
-		}
-	}
-
 	a.vid.Unwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
 		if err = a._checkMonotonicityOfInputTransactions(v); err != nil {
 			return
@@ -107,7 +44,7 @@ func (a *milestoneAttacher) _checkMonotonicityOfEndorsements(v *vertex.Vertex) (
 		}
 		if a.accumulatedCoverage < *lc {
 			diff := *lc - a.accumulatedCoverage
-			err = fmt.Errorf("accumulatedCoverage should not decrease along endorsement.\nGot: delta(%s) at %s <= delta(%s) in %s. diff: %s",
+			err = fmt.Errorf("accumulatedCoverage should not decrease along endorsement.\nGot: Delta(%s) at %s <= Delta(%s) in %s. diff: %s",
 				util.Th(a.accumulatedCoverage), a.vid.Timestamp().String(), util.Th(*lc), vidEndorsed.IDShortString(), util.Th(diff))
 			return false
 		}
@@ -132,7 +69,7 @@ func (a *milestoneAttacher) _checkMonotonicityOfInputTransactions(v *vertex.Vert
 		}
 		if a.accumulatedCoverage < *lc {
 			diff := *lc - a.accumulatedCoverage
-			err = fmt.Errorf("accumulatedCoverage should not decrease along consumed transactions on the same slot.\nGot: delta(%s) at %s <= delta(%s) in %s. diff: %s",
+			err = fmt.Errorf("accumulatedCoverage should not decrease along consumed transactions on the same slot.\nGot: Delta(%s) at %s <= Delta(%s) in %s. diff: %s",
 				util.Th(a.accumulatedCoverage), a.vid.Timestamp().String(), util.Th(*lc), vidInp.IDShortString(), util.Th(diff))
 			return false
 		}
