@@ -11,7 +11,6 @@ import (
 	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/set"
-	"golang.org/x/exp/maps"
 )
 
 const TraceTagIncrementalAttacher = "incAttach"
@@ -140,7 +139,7 @@ func (a *IncrementalAttacher) initIncrementalAttacher(baseline *vertex.WrappedTx
 		return err
 	}
 
-	if targetTs.Tick() == 0 {
+	if targetTs.IsSlotBoundary() {
 		// stem input, if any, will be at index 1
 		// for branches, include stem input
 		a.Tracef(TraceTagIncrementalAttacher, "NewIncrementalAttacher(%s). insertStemInput", a.name)
@@ -148,9 +147,9 @@ func (a *IncrementalAttacher) initIncrementalAttacher(baseline *vertex.WrappedTx
 		if a.stemOutput.VID == nil {
 			return fmt.Errorf("NewIncrementalAttacher: stem output is not available for baseline %s", baseline.IDShortString())
 		}
-		if !a.pastCone.Reference(a.stemOutput.VID) {
-			return fmt.Errorf("NewIncrementalAttacher: failed to reference stem output %s", a.stemOutput.IDShortString())
-		}
+		//if !a.pastCone.Reference(a.stemOutput.VID) {
+		//	return fmt.Errorf("NewIncrementalAttacher: failed to reference stem output %s", a.stemOutput.IDShortString())
+		//}
 		if err := a.insertOutput(a.stemOutput); err != nil {
 			return err
 		}
@@ -174,9 +173,9 @@ func (a *IncrementalAttacher) insertOutput(wOut vertex.WrappedOutput) error {
 	if !defined {
 		return fmt.Errorf("insertOutput: %w", ErrPastConeNotSolidYet)
 	}
-	if !a.pastCone.Reference(wOut.VID) {
-		return fmt.Errorf("insertOutput: failed to reference output %s", wOut.IDShortString())
-	}
+	//if !a.pastCone.Reference(wOut.VID) {
+	//	return fmt.Errorf("insertOutput: failed to reference output %s", wOut.IDShortString())
+	//}
 	a.inputs = append(a.inputs, wOut)
 	return nil
 }
@@ -192,31 +191,6 @@ type _pastConeSnapshot struct {
 	coverage uint64
 }
 
-func (a *IncrementalAttacher) beginStateDelta() *_pastConeSnapshot {
-	ret := &_pastConeSnapshot{
-		vertices: maps.Clone(a.attacher.pastCone.Vertices),
-		rooted:   maps.Clone(a.attacher.pastCone.Rooted),
-		coverage: a.accumulatedCoverage,
-	}
-	// deep clone
-	for vid, outputIdxSet := range ret.rooted {
-		ret.rooted[vid] = outputIdxSet.Clone()
-	}
-	a.pastCone.BeginDelta()
-	return ret
-}
-
-func (a *IncrementalAttacher) rollbackStateDelta(saved *_pastConeSnapshot) {
-	a.attacher.pastCone.Vertices = saved.vertices
-	a.attacher.pastCone.Rooted = saved.rooted
-	a.accumulatedCoverage = saved.coverage
-	a.pastCone.RollbackDelta()
-}
-
-func (a *IncrementalAttacher) commitStateDelta() {
-	a.pastCone.CommitDelta()
-}
-
 // InsertEndorsement preserves consistency in case of failure
 func (a *IncrementalAttacher) InsertEndorsement(endorsement *vertex.WrappedTx) error {
 	util.Assertf(!a.IsClosed(), "a.IsClosed()")
@@ -224,13 +198,13 @@ func (a *IncrementalAttacher) InsertEndorsement(endorsement *vertex.WrappedTx) e
 		return fmt.Errorf("endorsing makes no sense: %s is already in the past cone", endorsement.IDShortString())
 	}
 
-	saved := a.beginStateDelta()
+	a.pastCone.BeginDelta()
 	if err := a.insertEndorsement(endorsement); err != nil {
-		a.rollbackStateDelta(saved)
+		a.pastCone.RollbackDelta()
 		a.setError(nil)
 		return err
 	}
-	a.commitStateDelta()
+	a.pastCone.CommitDelta()
 	return nil
 }
 
@@ -259,9 +233,9 @@ func (a *IncrementalAttacher) insertEndorsement(endorsement *vertex.WrappedTx) e
 			return fmt.Errorf("insertEndorsement: %w", ErrPastConeNotSolidYet)
 		}
 	}
-	if !a.pastCone.Reference(endorsement) {
-		return fmt.Errorf("insertEndorsement: failed to reference endorsement %s", endorsement.IDShortString())
-	}
+	//if !a.pastCone.Reference(endorsement) {
+	//	return fmt.Errorf("insertEndorsement: failed to reference endorsement %s", endorsement.IDShortString())
+	//}
 	a.endorse = append(a.endorse, endorsement)
 	return nil
 }
@@ -273,14 +247,12 @@ func (a *IncrementalAttacher) InsertTagAlongInput(wOut vertex.WrappedOutput) (bo
 	util.AssertNoError(a.err)
 
 	// save state for possible rollback because in case of fail the side effect makes attacher inconsistent
-	// TODO a better way than cloning potentially big maps with each new input?
-	saved := a.beginStateDelta()
-
+	a.pastCone.BeginDelta()
 	ok, defined := a.attachOutput(wOut)
 	if !ok || !defined {
 		// it is either conflicting, or not solid yet
 		// in either case rollback
-		a.rollbackStateDelta(saved)
+		a.pastCone.RollbackDelta()
 		var retErr error
 		if !ok {
 			retErr = a.err
@@ -294,7 +266,7 @@ func (a *IncrementalAttacher) InsertTagAlongInput(wOut vertex.WrappedOutput) (bo
 	a.inputs = append(a.inputs, wOut)
 	util.AssertNoError(a.err)
 
-	a.commitStateDelta()
+	a.pastCone.CommitDelta()
 	return true, nil
 }
 

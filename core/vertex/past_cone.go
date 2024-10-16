@@ -110,7 +110,9 @@ func (pc *PastCone) CommitDelta() {
 }
 
 func (pc *PastCone) RollbackDelta() {
-	util.Assertf(pc.delta != nil, "pc.delta != nil")
+	if pc.delta == nil {
+		return
+	}
 	for vid := range pc.delta.Vertices {
 		vid.UnReference()
 	}
@@ -153,7 +155,7 @@ func (pc *PastCone) SetFlagsUp(vid *WrappedTx, f FlagsPastCone) {
 	} else {
 		pc.delta.Vertices[vid] = flags
 	}
-	pc.Assertf(flags.FlagsUp(FlagAttachedVertexKnown) && !flags.FlagsUp(FlagAttachedVertexDefined), "flags.FlagsUp(FlagKnown) && !flags.FlagsUp(FlagDefined)")
+	//pc.Assertf(flags.FlagsUp(FlagAttachedVertexKnown) && !flags.FlagsUp(FlagAttachedVertexDefined), "flags.FlagsUp(FlagKnown) && !flags.FlagsUp(FlagDefined)")
 }
 
 func (pc *PastCone) IsKnown(vid *WrappedTx) bool {

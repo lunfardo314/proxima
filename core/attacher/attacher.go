@@ -138,11 +138,6 @@ func (a *attacher) solidifySequencerBaseline(v *vertex.Vertex, vidUnwrapped *ver
 		a.Assertf(baseline != nil, "baseline != nil\n%s", func() string { return baselineDirection.Lines("    ").String() })
 		a.Assertf(baseline.IsBranchTransaction(), "baseline.IsBranchTransaction()")
 
-		// referencing the baseline from the attacher
-		if !a.pastCone.ReferenceBaseline(baseline) {
-			// means it is pruned, it is fine, will come later. v.BaselineBranch remains nil
-			return true
-		}
 		v.BaselineBranch = baseline
 		return true
 
@@ -408,7 +403,7 @@ func (a *attacher) attachEndorsement(v *vertex.Vertex, vidUnwrapped *vertex.Wrap
 	return true, defined
 }
 
-// checkRootedStatus checks if dependency is Rooted and marks it Rooted when defined
+// checkRootedStatus checks if dependency is rooted and marks it 'rooted' if defined
 func (a *attacher) checkRootedStatus(vidDep *vertex.WrappedTx) (defined bool) {
 	if a.pastCone.Flags(vidDep).FlagsUp(vertex.FlagAttachedVertexCheckedIfRooted) {
 		// already checked

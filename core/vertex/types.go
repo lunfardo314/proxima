@@ -66,7 +66,7 @@ type (
 		consumed         map[byte]set.Set[*WrappedTx]
 		attachmentDepth  int
 
-		pastCone *PastCone
+		pastCone *PastConeBase
 	}
 
 	WrappedOutput struct {

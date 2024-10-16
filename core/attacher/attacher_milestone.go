@@ -137,7 +137,7 @@ func (a *milestoneAttacher) run() error {
 		a.vid.ConvertVertexToVirtualTx()
 	}
 
-	a.vid.SetTxStatusGood(a.pastCone.PastCone)
+	a.vid.SetTxStatusGood(a.pastCone.PastConeBase)
 	a.PostEventNewGood(a.vid)
 	a.SendToTippool(a.vid)
 
@@ -218,7 +218,6 @@ func (a *milestoneAttacher) solidifyBaseline() vertex.Status {
 				ok = a.solidifyBaselineVertex(v, a.vid)
 				if ok && v.BaselineBranch != nil {
 					finalSuccess = a.setBaseline(v.BaselineBranch, a.vid.Timestamp())
-					a.Assertf(finalSuccess, "solidifyBaseline %s: failed to set baseline", a.name)
 				}
 			},
 			VirtualTx: func(_ *vertex.VirtualTransaction) {
