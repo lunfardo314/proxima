@@ -29,7 +29,9 @@ type (
 		name string
 
 		*PastConeBase
-		delta *PastConeBase
+		delta      *PastConeBase
+		refCounter int
+		traceLines *lines.Lines
 	}
 
 	PastConeBase struct {
@@ -61,6 +63,8 @@ func NewPastCone(env global.Logging, name string) *PastCone {
 		Logging:      env,
 		name:         name,
 		PastConeBase: newPastConeBase(nil),
+		//traceLines:   lines.NewDummy(),
+		traceLines: lines.New("     "),
 	}
 }
 
@@ -73,21 +77,34 @@ func (pb *PastConeBase) referenceBaseline(vid *WrappedTx) bool {
 	return true
 }
 
-func (pc *PastCone) ReferenceBaseline(vid *WrappedTx) bool {
+func (pc *PastCone) ReferenceBaseline(vid *WrappedTx) (ret bool) {
 	if pc.delta == nil {
-		return pc.referenceBaseline(vid)
+		ret = pc.referenceBaseline(vid)
+	} else {
+		ret = pc.delta.referenceBaseline(vid)
 	}
-	return pc.delta.referenceBaseline(vid)
+	if ret {
+		pc.refCounter++
+		pc.traceLines.Add("ref baseline: %s", vid.IDShortString())
+	}
+	return
 }
 
 func (pc *PastCone) UnReferenceAll() {
-	pc.RollbackDelta()
+	pc.Assertf(pc.delta == nil, "pc.delta == nil")
+	unrefCounter := 0
 	if pc.baseline != nil {
 		pc.baseline.UnReference()
+		unrefCounter++
+		pc.traceLines.Add("unref baseline: %s", pc.baseline.IDShortString())
 	}
 	for vid := range pc.Vertices {
 		vid.UnReference()
+		unrefCounter++
+		pc.traceLines.Add("unref %s", vid.IDShortString())
 	}
+	pc.Assertf(unrefCounter == pc.refCounter, "unrefCounter(%d) not equal to pc.refCounter(%d) in %s\n%s",
+		unrefCounter, pc.refCounter, pc.name, pc.traceLines.String)
 }
 
 func (pc *PastCone) BeginDelta() {
@@ -113,12 +130,20 @@ func (pc *PastCone) RollbackDelta() {
 	if pc.delta == nil {
 		return
 	}
+	unrefCounter := 0
 	for vid := range pc.delta.Vertices {
-		vid.UnReference()
+		if _, ok := pc.Vertices[vid]; !ok {
+			vid.UnReference()
+			unrefCounter++
+		}
+		pc.traceLines.Add("unref (rollback) %s", vid.IDShortString())
 	}
 	if pc.delta.baseline != nil && pc.baseline == nil {
 		pc.delta.baseline.UnReference()
+		pc.traceLines.Add("unref baseline (rollback) %s", pc.delta.baseline.IDShortString())
 	}
+	pc.refCounter -= unrefCounter
+	pc.Assertf(pc.refCounter >= 0, "pc.unrefCounter == %d", pc.refCounter)
 	pc.delta = nil
 }
 
@@ -156,6 +181,23 @@ func (pc *PastCone) SetFlagsUp(vid *WrappedTx, f FlagsPastCone) {
 		pc.delta.Vertices[vid] = flags
 	}
 	//pc.Assertf(flags.FlagsUp(FlagAttachedVertexKnown) && !flags.FlagsUp(FlagAttachedVertexDefined), "flags.FlagsUp(FlagKnown) && !flags.FlagsUp(FlagDefined)")
+}
+
+func (pc *PastCone) mustReference(vid *WrappedTx) {
+	util.Assertf(pc.reference(vid), "pb.reference(vid): %s", vid.IDShortString)
+}
+
+func (pc *PastCone) reference(vid *WrappedTx) bool {
+	if !vid.Reference() {
+		return false
+	}
+	pc.refCounter++
+	if pc.delta == nil {
+		pc.traceLines.Add("ref %s", vid.IDShortString())
+	} else {
+		pc.traceLines.Add("ref (buff) %s", vid.IDShortString())
+	}
+	return true
 }
 
 func (pc *PastCone) IsKnown(vid *WrappedTx) bool {
@@ -220,7 +262,7 @@ func (pc *PastCone) IsKnownRooted(vid *WrappedTx) (rooted bool) {
 // MustMarkVertexRooted vertex becomes 'known' and marked Rooted and 'defined'
 func (pc *PastCone) MustMarkVertexRooted(vid *WrappedTx) {
 	if !pc.IsKnown(vid) {
-		vid.MustReference()
+		pc.mustReference(vid)
 	}
 	pc.SetFlagsUp(vid, FlagAttachedVertexKnown|FlagAttachedVertexCheckedIfRooted|FlagAttachedVertexDefined)
 	// creates entry, probably empty, i.e. with or without output indices
@@ -270,7 +312,7 @@ func (pc *PastCone) MustMarkOutputRooted(wOut WrappedOutput) {
 // MustMarkVertexNotRooted is marked definitely not Rooted
 func (pc *PastCone) MustMarkVertexNotRooted(vid *WrappedTx) {
 	if !pc.IsKnown(vid) {
-		vid.MustReference()
+		pc.mustReference(vid)
 	}
 	pc.SetFlagsUp(vid, FlagAttachedVertexKnown|FlagAttachedVertexCheckedIfRooted)
 	pc.Assertf(pc.IsKnownNotRooted(vid), "pc.IsKnownNotRooted(vid)")
@@ -301,7 +343,7 @@ func (pc *PastCone) MarkVertexUndefined(vid *WrappedTx) bool {
 	f := pc.Flags(vid)
 	pc.Assertf(!f.FlagsUp(FlagAttachedVertexDefined), "!f.FlagsUp(FlagDefined)")
 	if !pc.IsKnown(vid) {
-		if !vid.Reference() {
+		if !pc.reference(vid) {
 			return false
 		}
 	}
@@ -409,28 +451,3 @@ func (pc *PastCone) UndefinedListLines(prefix ...string) *lines.Lines {
 	}
 	return ret
 }
-
-//// Reference references transaction and ensures it is referenced once or none
-//func (pc *PastCone) Reference(vid *WrappedTx) bool {
-//	if pc.referenced.committed.Contains(vid) {
-//		return true
-//	}
-//	if pc.referenced.delta != nil && pc.referenced.delta.Contains(vid) {
-//		return true
-//	}
-//	if !vid.Reference() {
-//		// failed to reference
-//		return false
-//	}
-//	if pc.referenced.delta != nil {
-//		// Delta buffer is open
-//		pc.referenced.delta.Insert(vid)
-//	} else {
-//		pc.referenced.committed.Insert(vid)
-//	}
-//	return true
-//}
-//
-//func (pc *PastCone) MustReference(vid *WrappedTx) {
-//	util.Assertf(pc.Reference(vid), "pc.Reference(vid)")
-//}

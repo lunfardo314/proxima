@@ -8,6 +8,7 @@ import (
 type Lines struct {
 	prefix string
 	l      []string
+	dummy  bool
 }
 
 func New(prefix ...string) *Lines {
@@ -21,21 +22,37 @@ func New(prefix ...string) *Lines {
 	}
 }
 
+func NewDummy() *Lines {
+	return &Lines{dummy: true}
+}
+
 func (l *Lines) Add(format string, args ...any) *Lines {
+	if l.dummy {
+		return l
+	}
 	l.l = append(l.l, fmt.Sprintf(l.prefix+format, args...))
 	return l
 }
 
 func (l *Lines) Append(ln *Lines) *Lines {
+	if l.dummy {
+		return l
+	}
 	l.l = append(l.l, ln.l...)
 	return l
 }
 
 func (l *Lines) Join(sep string) string {
+	if l.dummy {
+		return ""
+	}
 	return strings.Join(l.l, sep)
 }
 
 func (l *Lines) String() string {
+	if l.dummy {
+		return ""
+	}
 	return l.Join("\n")
 }
 
