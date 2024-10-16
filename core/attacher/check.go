@@ -96,9 +96,9 @@ func (a *milestoneAttacher) checkConsistencyWithMetadata() {
 	var err error
 	switch {
 	case a.metadata.LedgerCoverage != nil && *a.metadata.LedgerCoverage != a.accumulatedCoverage:
-		err = fmt.Errorf("checkConsistencyWithMetadata %s: major inconsistency:\n   computed accumulatedCoverage (%s) not equal to the\n   ledger overage provided in the metadata (%s).\n   Diff=%s\n   Adjustment = %s",
+		err = fmt.Errorf("checkConsistencyWithMetadata %s: major inconsistency:\n   computed accumulatedCoverage (%s) not equal to the\n   ledger overage provided in the metadata (%s).\n   Diff=%s\n   Adjustment = %s, adjusted = %v",
 			a.vid.IDShortString(), util.Th(a.accumulatedCoverage), util.Th(*a.metadata.LedgerCoverage),
-			util.Th(int64(a.accumulatedCoverage)-int64(*a.metadata.LedgerCoverage)), util.Th(a.coverageAdjustment))
+			util.Th(int64(a.accumulatedCoverage)-int64(*a.metadata.LedgerCoverage)), util.Th(a.coverageAdjustment), a.coverageAdjusted)
 	case a.metadata.SlotInflation != nil && *a.metadata.SlotInflation != a.slotInflation:
 		err = fmt.Errorf("checkConsistencyWithMetadata %s: major inconsistency: computed slot inflation (%s) not equal to the slot inflation provided in the metadata (%s)",
 			a.vid.IDShortString(), util.Th(a.slotInflation), util.Th(*a.metadata.SlotInflation))

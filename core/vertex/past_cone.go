@@ -103,8 +103,8 @@ func (pc *PastCone) CommitDelta() {
 	for vid, flags := range pc.delta.Vertices {
 		pc.Vertices[vid] = flags
 	}
-	for vid, consumed := range pc.delta.Rooted {
-		pc.Rooted[vid] = consumed
+	for vid, rootedIndices := range pc.delta.Rooted {
+		pc.Rooted[vid] = rootedIndices
 	}
 	pc.delta = nil
 }
@@ -227,11 +227,44 @@ func (pc *PastCone) MustMarkVertexRooted(vid *WrappedTx) {
 	if pc.delta == nil {
 		pc.Rooted[vid] = pc.Rooted[vid]
 	} else {
-		if _, ok := pc.Rooted[vid]; !ok {
-			pc.delta.Rooted[vid] = pc.delta.Rooted[vid]
+		if _, ok := pc.delta.Rooted[vid]; !ok {
+			if rootedIndices, ok1 := pc.Rooted[vid]; ok1 {
+				pc.delta.Rooted[vid] = rootedIndices.Clone()
+			} else {
+				pc.delta.Rooted[vid] = nil
+			}
 		}
 	}
 	pc.Assertf(pc.IsKnownRooted(vid), "pc.IsKnownNotRooted(vid)")
+}
+
+func (pc *PastCone) MustMarkOutputRooted(wOut WrappedOutput) {
+	pc.MustMarkVertexRooted(wOut.VID)
+
+	if pc.delta == nil {
+		rootedIndices := pc.Rooted[wOut.VID]
+		if len(rootedIndices) > 0 {
+			rootedIndices.Insert(wOut.Index)
+		} else {
+			pc.Rooted[wOut.VID] = set.New[byte](wOut.Index)
+		}
+		return
+	}
+	rootedIndices := pc.delta.Rooted[wOut.VID]
+	if len(rootedIndices) > 0 {
+		rootedIndices.Insert(wOut.Index)
+		return
+	}
+	// element in delta does not exist. Copy it from committed part
+	rootedIndices = pc.Rooted[wOut.VID]
+	if len(rootedIndices) > 0 {
+		rootedIndices = rootedIndices.Clone()
+	} else {
+		rootedIndices = set.New[byte]()
+		pc.delta.Rooted[wOut.VID] = rootedIndices
+	}
+	rootedIndices.Insert(wOut.Index)
+	// now delta contains copy of the committed part
 }
 
 // MustMarkVertexNotRooted is marked definitely not Rooted

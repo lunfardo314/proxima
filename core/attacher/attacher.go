@@ -357,7 +357,7 @@ func (a *attacher) attachEndorsement(v *vertex.Vertex, vidUnwrapped *vertex.Wrap
 
 	a.pastCone.MarkVertexUndefined(vidEndorsed)
 
-	a.checkRootedStatus(vidEndorsed)
+	a.checkTransactionRootedStatus(vidEndorsed)
 
 	if a.pastCone.IsKnownRooted(vidEndorsed) {
 		// definitely in the state -> fully defined
@@ -403,8 +403,8 @@ func (a *attacher) attachEndorsement(v *vertex.Vertex, vidUnwrapped *vertex.Wrap
 	return true, defined
 }
 
-// checkRootedStatus checks if dependency is rooted and marks it 'rooted' if defined
-func (a *attacher) checkRootedStatus(vidDep *vertex.WrappedTx) (defined bool) {
+// checkTransactionRootedStatus checks if dependency is rooted and marks it 'rooted' if defined
+func (a *attacher) checkTransactionRootedStatus(vidDep *vertex.WrappedTx) (defined bool) {
 	if a.pastCone.Flags(vidDep).FlagsUp(vertex.FlagAttachedVertexCheckedIfRooted) {
 		// already checked
 		return true
@@ -476,7 +476,7 @@ func (a *attacher) attachRooted(wOut vertex.WrappedOutput) (ok bool, isRooted bo
 		return true, false, true
 	}
 
-	defined = a.checkRootedStatus(wOut.VID)
+	defined = a.checkTransactionRootedStatus(wOut.VID)
 	if !defined {
 		a.Tracef(TraceTagAttachOutput, "attachRooted %s Rooted status undefined", wOut.IDShortString)
 		return true, false, false
@@ -521,8 +521,7 @@ func (a *attacher) attachRooted(wOut vertex.WrappedOutput) (ok bool, isRooted bo
 		consumedRooted.Insert(wOut.Index)
 	}
 
-	a.pastCone.MustMarkVertexRooted(wOut.VID) // also marks it 'defined'
-	a.pastCone.Rooted[wOut.VID] = consumedRooted
+	a.pastCone.MustMarkOutputRooted(wOut) // also marks it 'defined'
 
 	// this is new Rooted output -> add to the accumulatedCoverage
 	a.accumulatedCoverage += out.Output.Amount()
