@@ -19,7 +19,7 @@ func newPastConeAttacher(env Environment, name string) attacher {
 		Environment: env,
 		name:        name,
 		pokeMe:      func(_ *vertex.WrappedTx) {},
-		pastCone:    vertex.NewPastConeExt(env, name),
+		pastCone:    vertex.NewPastCone(env, name),
 	}
 	// standard conflict checker
 	ret.checkConflictsFunc = func(_ *vertex.Vertex, consumerTx *vertex.WrappedTx) checkConflictingConsumersFunc {
