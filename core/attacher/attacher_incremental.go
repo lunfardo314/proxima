@@ -147,9 +147,6 @@ func (a *IncrementalAttacher) initIncrementalAttacher(baseline *vertex.WrappedTx
 		if a.stemOutput.VID == nil {
 			return fmt.Errorf("NewIncrementalAttacher: stem output is not available for baseline %s", baseline.IDShortString())
 		}
-		//if !a.pastCone.Reference(a.stemOutput.VID) {
-		//	return fmt.Errorf("NewIncrementalAttacher: failed to reference stem output %s", a.stemOutput.IDShortString())
-		//}
 		if err := a.insertOutput(a.stemOutput); err != nil {
 			return err
 		}
@@ -173,23 +170,12 @@ func (a *IncrementalAttacher) insertOutput(wOut vertex.WrappedOutput) error {
 	if !defined {
 		return fmt.Errorf("insertOutput: %w", ErrPastConeNotSolidYet)
 	}
-	//if !a.pastCone.Reference(wOut.VID) {
-	//	return fmt.Errorf("insertOutput: failed to reference output %s", wOut.IDShortString())
-	//}
 	a.inputs = append(a.inputs, wOut)
 	return nil
 }
 
 // saving attacher's past cone state to be able to restore in case it becomes inconsistent when
 // attempting to adding conflicting outputs or endorsements
-
-// TODO refactor the mess with delta commit/rollback
-
-type _pastConeSnapshot struct {
-	vertices map[*vertex.WrappedTx]vertex.FlagsPastCone
-	rooted   map[*vertex.WrappedTx]set.Set[byte]
-	coverage uint64
-}
 
 // InsertEndorsement preserves consistency in case of failure
 func (a *IncrementalAttacher) InsertEndorsement(endorsement *vertex.WrappedTx) error {
