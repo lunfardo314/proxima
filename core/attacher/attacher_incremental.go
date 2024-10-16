@@ -185,8 +185,10 @@ func (a *IncrementalAttacher) InsertEndorsement(endorsement *vertex.WrappedTx) e
 	}
 
 	a.pastCone.BeginDelta()
+	saveCoverage := a.accumulatedCoverage
 	if err := a.insertEndorsement(endorsement); err != nil {
 		a.pastCone.RollbackDelta()
+		a.accumulatedCoverage = saveCoverage
 		a.setError(nil)
 		return err
 	}
@@ -234,11 +236,13 @@ func (a *IncrementalAttacher) InsertTagAlongInput(wOut vertex.WrappedOutput) (bo
 
 	// save state for possible rollback because in case of fail the side effect makes attacher inconsistent
 	a.pastCone.BeginDelta()
+	saveCoverage := a.accumulatedCoverage
 	ok, defined := a.attachOutput(wOut)
 	if !ok || !defined {
 		// it is either conflicting, or not solid yet
 		// in either case rollback
 		a.pastCone.RollbackDelta()
+		a.accumulatedCoverage = saveCoverage
 		var retErr error
 		if !ok {
 			retErr = a.err

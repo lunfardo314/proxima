@@ -165,7 +165,7 @@ func Test5SequencersIdlePruner(t *testing.T) {
 	const (
 		maxSlots    = 500 // 300
 		nSequencers = 4   // in addition to bootstrap
-		runTime     = 20 * time.Second
+		runTime     = 40 * time.Second
 	)
 	testData := initMultiSequencerTest(t, nSequencers, true)
 
