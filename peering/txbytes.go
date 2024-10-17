@@ -17,13 +17,18 @@ func (ps *Peers) gossipStreamHandler(stream network.Stream) {
 	})
 	if !known || blacklisted {
 		// ignore
-		//_ = stream.Close()
+		//stream.Close()
 		return
 	}
 	go func() {
-		defer stream.Close()
+		defer func() {
+			stream.Close()
+			ps.Log().Errorf("[peering] gossip: streamHandler exit")
+		}()
 		for {
+			//ps.Log().Warnf("[peering] gossip: readFrame")
 			txBytesWithMetadata, err := readFrame(stream)
+			//ps.Log().Warnf("[peering] gossip: readFrame len=%d", len(txBytesWithMetadata))
 			//_ = stream.Close()
 			ps.inMsgCounter.Inc()
 			known, blacklisted, _ := ps.knownPeer(id, func(p *Peer) {
@@ -31,7 +36,7 @@ func (ps *Peers) gossipStreamHandler(stream network.Stream) {
 			})
 			if !known || blacklisted {
 				// ignore
-				//_ = stream.Close()
+				//stream.Close()
 				return
 			}
 			if err != nil {
@@ -44,7 +49,6 @@ func (ps *Peers) gossipStreamHandler(stream network.Stream) {
 				// protocol violation
 				err = fmt.Errorf("gossip: error while parsing tx message from peer %s: %v", id.String(), err)
 				ps.Log().Error(err)
-				ps.dropPeer(id, err.Error())
 				return
 			}
 			metadata, err := txmetadata.TransactionMetadataFromBytes(metadataBytes)
@@ -52,14 +56,13 @@ func (ps *Peers) gossipStreamHandler(stream network.Stream) {
 				// protocol violation
 				err = fmt.Errorf("gossip: error while parsing tx message metadata from peer %s: %v", id.String(), err)
 				ps.Log().Error(err)
-				ps.dropPeer(id, err.Error())
 				return
 			}
 
 			ps.transactionsReceivedCounter.Inc()
 			ps.txBytesReceivedCounter.Add(float64(len(txBytesWithMetadata)))
 
-			ps.onReceiveTx(id, txBytes, metadata)
+			go ps.onReceiveTx(id, txBytes, metadata)
 		}
 	}()
 }

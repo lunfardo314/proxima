@@ -92,7 +92,10 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 	}
 
 	go func() {
-		defer stream.Close()
+		defer func() {
+			stream.Close()
+			ps.Log().Errorf("[peering] hb: streamHandler exit")
+		}()
 		for {
 			var hbInfo heartbeatInfo
 			msgData, err := readFrame(stream)

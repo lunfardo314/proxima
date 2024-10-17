@@ -38,7 +38,10 @@ func (ps *Peers) pullStreamHandler(stream network.Stream) {
 	}
 
 	go func() {
-		defer stream.Close()
+		defer func() {
+			stream.Close()
+			ps.Log().Errorf("[peering] pull: streamHandler exit")
+		}()
 		for {
 			msgData, err := readFrame(stream)
 			known, blacklisted, static := ps.knownPeer(id, func(p *Peer) {

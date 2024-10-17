@@ -52,7 +52,7 @@ func writeFrame(stream network.Stream, payload []byte) error {
 		if err == nil {
 			err = fmt.Errorf("expected %d bytes written", len(payload))
 		}
-		return fmt.Errorf("failed to write size prefix: %v", err)
+		return fmt.Errorf("failed to write paylod: %v", err)
 	}
 	return nil
 }

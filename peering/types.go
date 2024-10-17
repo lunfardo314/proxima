@@ -86,10 +86,15 @@ type (
 		peersPullTargets int
 	}
 
+	peerStream struct {
+		mutex  sync.RWMutex
+		stream network.Stream
+	}
+
 	Peer struct {
 		id                     peer.ID
 		name                   string
-		streams                [3]network.Stream
+		streams                [3]peerStream
 		isStatic               bool // statically pre-configured (manual peering)
 		respondsToPullRequests bool // from hb info
 		whenAdded              time.Time

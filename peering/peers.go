@@ -18,7 +18,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/libp2p/go-libp2p/p2p/discovery/routing"
 	p2putil "github.com/libp2p/go-libp2p/p2p/discovery/util"
-	p2pquic "github.com/libp2p/go-libp2p/p2p/transport/quic"
+	quic "github.com/libp2p/go-libp2p/p2p/transport/quic"
 	"github.com/lunfardo314/proxima/api"
 	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/ledger"
@@ -48,10 +48,12 @@ func New(env environment, cfg *Config) (*Peers, error) {
 		libp2p.Identity(hostIDPrivateKey),
 
 		libp2p.ListenAddrStrings(fmt.Sprintf("/ip4/0.0.0.0/udp/%d/quic-v1", cfg.HostPort)),
-		libp2p.Transport(p2pquic.NewTransport),
+		libp2p.Transport(quic.NewTransport),
+		//libp2p.ListenAddrStrings(fmt.Sprintf("/ip4/0.0.0.0/tcp/%d", cfg.HostPort)),
+		//libp2p.Transport(tcp.NewTCPTransport),
 		libp2p.NoSecurity,
 		libp2p.DisableRelay(),
-		libp2p.AddrsFactory(FilterAddresses(cfg.AllowLocalIPs)),
+		//		libp2p.AddrsFactory(FilterAddresses(cfg.AllowLocalIPs)),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("unable create libp2p host: %w", err)
@@ -113,6 +115,14 @@ func New(env environment, cfg *Config) (*Peers, error) {
 	ret.registerMetrics()
 
 	env.Log().Infof("[peering] initialized successfully")
+	// log.SetAllLoggers(log.LevelDebug) // Set log level to debug for all components
+	// log.SetLogLevel("quic", "debug")
+	// log.SetLogLevel("mplex", "debug")
+	// log.SetLogLevel("yamux", "debug")
+	// log.SetLogLevel("quic-transport", "debug")
+	// log.SetLogLevel("basichost", "debug")
+	// log.SetLogLevel("swarm", "debug")
+
 	return ret, nil
 }
 
@@ -308,7 +318,7 @@ func (ps *Peers) _addPeer(addrInfo *peer.AddrInfo, name string, static bool) *Pe
 		ps.host.Peerstore().AddAddr(addrInfo.ID, a, peerstore.PermanentAddrTTL)
 	}
 	go func() {
-		time.Sleep(1000 * time.Millisecond)
+		time.Sleep(100 * time.Millisecond) //??
 		streams, err := ps.dialPeer(addrInfo.ID, static)
 		if err != nil {
 			ps.host.Peerstore().RemovePeer(addrInfo.ID)
@@ -316,10 +326,11 @@ func (ps *Peers) _addPeer(addrInfo *peer.AddrInfo, name string, static bool) *Pe
 		}
 		for i, _ := range streams {
 			util.Assertf(streams[i] != nil, "stream != nil")
-			p.streams[i] = streams[i]
+			p.streams[i].stream = streams[i]
 		}
 		ps.peers[addrInfo.ID] = p
 	}()
+	//?? loop here infinitly if statis
 	return p
 }
 
@@ -344,7 +355,9 @@ func (ps *Peers) _dropPeer(p *Peer, reason string) {
 	}
 
 	for _, s := range p.streams {
-		s.Close()
+		if s.stream != nil {
+			s.stream.Close()
+		}
 	}
 	ps.host.Peerstore().RemovePeer(p.id)
 	if ps.kademliaDHT != nil {
@@ -359,7 +372,6 @@ func (ps *Peers) _dropPeer(p *Peer, reason string) {
 }
 
 func (ps *Peers) _addToBlacklist(id peer.ID, reason string) {
-	return //??
 	ps.blacklist[id] = _deadlineWithReason{
 		Time:   time.Now().Add(blacklistTTL),
 		reason: reason,
@@ -514,11 +526,17 @@ func (ps *Peers) sendMsgBytesOut(peerID peer.ID, protocolID protocol.ID, data []
 	}
 
 	var err error
-	stream := ps.peers[peerID].streams[idx]
+	ps.peers[peerID].streams[idx].mutex.Lock()
+	defer ps.peers[peerID].streams[idx].mutex.Unlock()
+	stream := ps.peers[peerID].streams[idx].stream
+	if stream == nil {
+		ps.Log().Errorf("[peering] error while sending message to peer %s len=%d idx=%d stream==nil", ShortPeerIDString(peerID), len(data), idx)
+		return false
+	}
 	util.Assertf(stream != nil, "stream != nil")
+	//ps.Log().Warnf("[peering] sending message to peer %s len=%d idx=%d", ShortPeerIDString(peerID), len(data), idx)
 	if err = writeFrame(stream, data); err != nil {
-		ps.Log().Errorf("[peering] error while sending message to peer %s", ShortPeerIDString(peerID))
-		//ps.dropPeer(peerID, "stream reset")
+		//ps.Log().Errorf("[peering] error while sending message to peer %s len=%d idx=%d err=%v", ShortPeerIDString(peerID), len(data), idx, err)
 	}
 	ps.outMsgCounter.Inc()
 	return err
