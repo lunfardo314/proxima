@@ -8,6 +8,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/proxima/util/lazyargs"
 	"github.com/lunfardo314/proxima/util/lines"
 	"github.com/lunfardo314/proxima/util/set"
 	"github.com/lunfardo314/unitrie/common"
@@ -767,7 +768,7 @@ func (a *attacher) SetTraceAttacher(name string) {
 
 func (a *attacher) Tracef(traceLabel string, format string, args ...any) {
 	if a.forceTrace != "" {
-		lazyArgs := fmt.Sprintf(format, util.EvalLazyArgs(args...)...)
+		lazyArgs := fmt.Sprintf(format, lazyargs.Eval(args...)...)
 		a.Log().Infof("LOCAL TRACE(%s//%s) %s", traceLabel, a.forceTrace, lazyArgs)
 		return
 	}

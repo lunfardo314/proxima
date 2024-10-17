@@ -12,6 +12,7 @@ import (
 
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/proxima/util/lazyargs"
 	"github.com/lunfardo314/proxima/util/lines"
 	"github.com/lunfardo314/proxima/util/set"
 	"github.com/prometheus/client_golang/prometheus"
@@ -237,7 +238,7 @@ func (l *Global) WaitAllWorkProcessesStop(timeout ...time.Duration) bool {
 
 func (l *Global) Assertf(cond bool, format string, args ...any) {
 	if !l.isShuttingDown.Load() && !cond {
-		l.SugaredLogger.Fatalf("assertion failed:: "+format, util.EvalLazyArgs(args...)...)
+		l.SugaredLogger.Fatalf("assertion failed:: "+format, lazyargs.Eval(args...)...)
 	}
 }
 
@@ -300,7 +301,7 @@ func (l *Global) Tracef(tag string, format string, args ...any) {
 
 	for _, t := range strings.Split(tag, ",") {
 		if l.traceTags.Contains(t) {
-			l.SugaredLogger.Infof("TRACE(%s) %s", t, fmt.Sprintf(format, util.EvalLazyArgs(args...)...))
+			l.SugaredLogger.Infof("TRACE(%s) %s", t, fmt.Sprintf(format, lazyargs.Eval(args...)...))
 			return
 		}
 	}
@@ -340,7 +341,7 @@ func (l *Global) TraceTx(txid *ledger.TransactionID, format string, args ...any)
 		return
 	}
 
-	l.SugaredLogger.Infof("TRACE_TX(%s) %s", txid.StringShort(), fmt.Sprintf(format, util.EvalLazyArgs(args...)...))
+	l.SugaredLogger.Infof("TRACE_TX(%s) %s", txid.StringShort(), fmt.Sprintf(format, lazyargs.Eval(args...)...))
 }
 
 const txIDPurgeLoopPeriod = time.Second

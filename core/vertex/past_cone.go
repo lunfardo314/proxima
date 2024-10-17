@@ -50,6 +50,22 @@ const (
 	FlagAttachedVertexAskedForPoke      = FlagsPastCone(0b00100000) //
 )
 
+func (f FlagsPastCone) FlagsUp(fl FlagsPastCone) bool {
+	return f&fl == fl
+}
+
+func (f FlagsPastCone) String() string {
+	return fmt.Sprintf("%08b known: %v, defined: %v, checkedRooted: %v, endorsementsOk: %v, inputsOk: %v, asked for poke: %v",
+		f,
+		f.FlagsUp(FlagAttachedVertexKnown),
+		f.FlagsUp(FlagAttachedVertexDefined),
+		f.FlagsUp(FlagAttachedVertexCheckedIfRooted),
+		f.FlagsUp(FlagAttachedVertexEndorsementsSolid),
+		f.FlagsUp(FlagAttachedVertexInputsSolid),
+		f.FlagsUp(FlagAttachedVertexAskedForPoke),
+	)
+}
+
 func newPastConeBase(baseline *WrappedTx) *PastConeBase {
 	return &PastConeBase{
 		Vertices: make(map[*WrappedTx]FlagsPastCone),
@@ -69,7 +85,7 @@ func NewPastCone(env global.Logging, name string) *PastCone {
 }
 
 func (pb *PastConeBase) referenceBaseline(vid *WrappedTx) bool {
-	util.Assertf(pb.baseline == nil, "pc.baseline == nil")
+	util.Assertf(pb.baseline == nil, "referenceBaseline: pc.baseline == nil")
 	if !vid.Reference() {
 		return false
 	}
@@ -78,6 +94,7 @@ func (pb *PastConeBase) referenceBaseline(vid *WrappedTx) bool {
 }
 
 func (pc *PastCone) ReferenceBaseline(vid *WrappedTx) (ret bool) {
+	util.Assertf(pc.baseline == nil, "ReferenceBaseline: pc.baseline == nil")
 	if pc.delta == nil {
 		ret = pc.referenceBaseline(vid)
 	} else {
@@ -85,35 +102,35 @@ func (pc *PastCone) ReferenceBaseline(vid *WrappedTx) (ret bool) {
 	}
 	if ret {
 		pc.refCounter++
-		pc.traceLines.Add("ref baseline: %s", vid.IDShortString())
+		pc.traceLines.Trace("ref baseline: %s", vid.IDShortString)
 	}
 	return
 }
 
 func (pc *PastCone) UnReferenceAll() {
-	pc.Assertf(pc.delta == nil, "pc.delta == nil")
+	pc.Assertf(pc.delta == nil, "UnReferenceAll: pc.delta == nil")
 	unrefCounter := 0
 	if pc.baseline != nil {
 		pc.baseline.UnReference()
 		unrefCounter++
-		pc.traceLines.Add("unref baseline: %s", pc.baseline.IDShortString())
+		pc.traceLines.Trace("UnReferenceAll: unref baseline: %s", pc.baseline.IDShortString)
 	}
 	for vid := range pc.Vertices {
 		vid.UnReference()
 		unrefCounter++
-		pc.traceLines.Add("unref %s", vid.IDShortString())
+		pc.traceLines.Trace("UnReferenceAll: unref tx %s", vid.IDShortString)
 	}
-	pc.Assertf(unrefCounter == pc.refCounter, "unrefCounter(%d) not equal to pc.refCounter(%d) in %s\n%s",
+	pc.Assertf(unrefCounter == pc.refCounter, "UnReferenceAll: unrefCounter(%d) not equal to pc.refCounter(%d) in %s\n%s",
 		unrefCounter, pc.refCounter, pc.name, pc.traceLines.String)
 }
 
 func (pc *PastCone) BeginDelta() {
-	util.Assertf(pc.delta == nil, "pc.delta == nil")
+	util.Assertf(pc.delta == nil, "BeginDelta: pc.delta == nil")
 	pc.delta = newPastConeBase(pc.baseline)
 }
 
 func (pc *PastCone) CommitDelta() {
-	util.Assertf(pc.delta != nil, "pc.delta != nil")
+	util.Assertf(pc.delta != nil, "CommitDelta: pc.delta != nil")
 	util.Assertf(pc.baseline == nil || pc.baseline == pc.delta.baseline, "pc.baseline==nil || pc.baseline == pc.delta.baseline")
 
 	pc.baseline = pc.delta.baseline
@@ -136,31 +153,19 @@ func (pc *PastCone) RollbackDelta() {
 			vid.UnReference()
 			unrefCounter++
 		}
-		pc.traceLines.Add("unref (rollback) %s", vid.IDShortString())
+		pc.traceLines.Add("RollbackDelta: unref %s", vid.IDShortString())
 	}
 	if pc.delta.baseline != nil && pc.baseline == nil {
 		pc.delta.baseline.UnReference()
-		pc.traceLines.Add("unref baseline (rollback) %s", pc.delta.baseline.IDShortString())
+		pc.traceLines.Add("RollbackDelta: unref baseline %s", pc.delta.baseline.IDShortString())
 	}
 	pc.refCounter -= unrefCounter
-	pc.Assertf(pc.refCounter >= 0, "pc.unrefCounter == %d", pc.refCounter)
+	expected := len(pc.Vertices)
+	if pc.baseline != nil {
+		expected++
+	}
+	pc.Assertf(pc.refCounter == expected, "RollbackDelta: pc.refCounter(%d) not equal to expected(%d)", pc.refCounter, expected)
 	pc.delta = nil
-}
-
-func (f FlagsPastCone) FlagsUp(fl FlagsPastCone) bool {
-	return f&fl == fl
-}
-
-func (f FlagsPastCone) String() string {
-	return fmt.Sprintf("%08b known: %v, defined: %v, checkedRooted: %v, endorsementsOk: %v, inputsOk: %v, asked for poke: %v",
-		f,
-		f.FlagsUp(FlagAttachedVertexKnown),
-		f.FlagsUp(FlagAttachedVertexDefined),
-		f.FlagsUp(FlagAttachedVertexCheckedIfRooted),
-		f.FlagsUp(FlagAttachedVertexEndorsementsSolid),
-		f.FlagsUp(FlagAttachedVertexInputsSolid),
-		f.FlagsUp(FlagAttachedVertexAskedForPoke),
-	)
 }
 
 func (pc *PastCone) Flags(vid *WrappedTx) FlagsPastCone {
@@ -174,13 +179,11 @@ func (pc *PastCone) Flags(vid *WrappedTx) FlagsPastCone {
 }
 
 func (pc *PastCone) SetFlagsUp(vid *WrappedTx, f FlagsPastCone) {
-	flags := pc.Flags(vid) | f
 	if pc.delta == nil {
-		pc.Vertices[vid] = flags
+		pc.Vertices[vid] = pc.Flags(vid) | f
 	} else {
-		pc.delta.Vertices[vid] = flags
+		pc.delta.Vertices[vid] = pc.Flags(vid) | f
 	}
-	//pc.Assertf(flags.FlagsUp(FlagAttachedVertexKnown) && !flags.FlagsUp(FlagAttachedVertexDefined), "flags.FlagsUp(FlagKnown) && !flags.FlagsUp(FlagDefined)")
 }
 
 func (pc *PastCone) mustReference(vid *WrappedTx) {
@@ -193,9 +196,9 @@ func (pc *PastCone) reference(vid *WrappedTx) bool {
 	}
 	pc.refCounter++
 	if pc.delta == nil {
-		pc.traceLines.Add("ref %s", vid.IDShortString())
+		pc.traceLines.Trace("ref %s", vid.IDShortString)
 	} else {
-		pc.traceLines.Add("ref (buff) %s", vid.IDShortString())
+		pc.traceLines.Trace("ref (delta) %s", vid.IDShortString)
 	}
 	return true
 }
@@ -244,9 +247,8 @@ func (pc *PastCone) IsKnownNotRooted(vid *WrappedTx) bool {
 		return false
 	}
 	// it was checked already
-	known := pc.IsKnownDefined(vid) || pc.IsKnownUndefined(vid)
 	rooted, _ := pc.isRootedVertex(vid)
-	return known && !rooted
+	return pc.IsKnown(vid) && !rooted
 }
 
 func (pc *PastCone) IsKnownRooted(vid *WrappedTx) (rooted bool) {
@@ -255,8 +257,40 @@ func (pc *PastCone) IsKnownRooted(vid *WrappedTx) (rooted bool) {
 		return false
 	}
 	rooted, _ = pc.isRootedVertex(vid)
-	pc.Assertf(!rooted || pc.IsKnownDefined(vid) || pc.IsKnownUndefined(vid), "!rooted || pc.IsKnownDefined(vid) || pc.IsKnownUndefined(vid)")
+	pc.Assertf(!rooted || pc.IsKnown(vid), "!rooted || pc.IsKnown(vid)")
 	return
+}
+
+// MarkVertexUndefined vertex becomes 'known' but undefined and 'referenced'
+func (pc *PastCone) MarkVertexUndefined(vid *WrappedTx) bool {
+	pc.Assertf(!pc.IsKnownDefined(vid), "!pc.IsKnownDefined(vid)")
+	// prevent repeated referencing
+	if !pc.IsKnown(vid) {
+		if !pc.reference(vid) {
+			return false
+		}
+	}
+	pc.SetFlagsUp(vid, FlagAttachedVertexKnown)
+	return true
+}
+
+// MarkVertexDefined marks 'defined' and enforces rooting has been checked
+func (pc *PastCone) MarkVertexDefined(vid *WrappedTx) {
+	pc.Assertf(pc.Flags(vid).FlagsUp(FlagAttachedVertexCheckedIfRooted), "flags.FlagsUp(FlagAttachedVertexCheckedIfRooted): %s", vid.IDShortString)
+	pc.MarkVertexDefinedDoNotEnforceRootedCheck(vid)
+}
+
+func (pc *PastCone) MarkVertexDefinedDoNotEnforceRootedCheck(vid *WrappedTx) {
+	flags := pc.Flags(vid)
+	if pc.IsKnownRooted(vid) {
+		pc.Assertf(!flags.FlagsUp(FlagAttachedVertexInputsSolid), "!flags.FlagsUp(FlagAttachedVertexInputsSolid): %s\n     %s", vid.IDShortString, flags.String)
+		pc.Assertf(!flags.FlagsUp(FlagAttachedVertexEndorsementsSolid), "!flags.FlagsUp(FlagAttachedVertexInputsSolid): %s\n     %s", vid.IDShortString, flags.String)
+	}
+	if pc.IsKnownNotRooted(vid) {
+		pc.Assertf(flags.FlagsUp(FlagAttachedVertexInputsSolid), "flags.FlagsUp(FlagAttachedVertexInputsSolid): %s\n     %s", vid.IDShortString, flags.String)
+		pc.Assertf(flags.FlagsUp(FlagAttachedVertexEndorsementsSolid), "flags.FlagsUp(FlagAttachedVertexInputsSolid): %s\n     %s", vid.IDShortString, flags.String)
+	}
+	pc.SetFlagsUp(vid, FlagAttachedVertexKnown|FlagAttachedVertexDefined)
 }
 
 // MustMarkVertexRooted vertex becomes 'known' and marked Rooted and 'defined'
@@ -265,7 +299,7 @@ func (pc *PastCone) MustMarkVertexRooted(vid *WrappedTx) {
 		pc.mustReference(vid)
 	}
 	pc.SetFlagsUp(vid, FlagAttachedVertexKnown|FlagAttachedVertexCheckedIfRooted|FlagAttachedVertexDefined)
-	// creates entry, probably empty, i.e. with or without output indices
+	// creates rooted entry if it does not exist yet, probably empty, i.e. with or without output indices
 	if pc.delta == nil {
 		pc.Rooted[vid] = pc.Rooted[vid]
 	} else {
@@ -292,6 +326,7 @@ func (pc *PastCone) MustMarkOutputRooted(wOut WrappedOutput) {
 		}
 		return
 	}
+	// delta
 	rootedIndices := pc.delta.Rooted[wOut.VID]
 	if len(rootedIndices) > 0 {
 		rootedIndices.Insert(wOut.Index)
@@ -309,46 +344,14 @@ func (pc *PastCone) MustMarkOutputRooted(wOut WrappedOutput) {
 	// now delta contains copy of the committed part
 }
 
-// MustMarkVertexNotRooted is marked definitely not Rooted
+// MustMarkVertexNotRooted is marked definitely not rooted
 func (pc *PastCone) MustMarkVertexNotRooted(vid *WrappedTx) {
+	pc.Assertf(!pc.IsKnownRooted(vid), "!pc.IsKnownRooted(vid)")
 	if !pc.IsKnown(vid) {
 		pc.mustReference(vid)
 	}
 	pc.SetFlagsUp(vid, FlagAttachedVertexKnown|FlagAttachedVertexCheckedIfRooted)
 	pc.Assertf(pc.IsKnownNotRooted(vid), "pc.IsKnownNotRooted(vid)")
-}
-
-func (pc *PastCone) MarkVertexDefinedDoNotEnforceRootedCheck(vid *WrappedTx) {
-	flags := pc.Flags(vid)
-	if pc.IsKnownRooted(vid) {
-		pc.Assertf(!flags.FlagsUp(FlagAttachedVertexInputsSolid), "!flags.FlagsUp(FlagAttachedVertexInputsSolid): %s\n     %s", vid.IDShortString, flags.String)
-		pc.Assertf(!flags.FlagsUp(FlagAttachedVertexEndorsementsSolid), "!flags.FlagsUp(FlagAttachedVertexInputsSolid): %s\n     %s", vid.IDShortString, flags.String)
-	}
-	if pc.IsKnownNotRooted(vid) {
-		pc.Assertf(flags.FlagsUp(FlagAttachedVertexInputsSolid), "flags.FlagsUp(FlagAttachedVertexInputsSolid): %s\n     %s", vid.IDShortString, flags.String)
-		pc.Assertf(flags.FlagsUp(FlagAttachedVertexEndorsementsSolid), "flags.FlagsUp(FlagAttachedVertexInputsSolid): %s\n     %s", vid.IDShortString, flags.String)
-	}
-	pc.SetFlagsUp(vid, FlagAttachedVertexKnown|FlagAttachedVertexDefined)
-}
-
-// MarkVertexDefined marks 'defined' and enforces rooting has been checked
-func (pc *PastCone) MarkVertexDefined(vid *WrappedTx) {
-	pc.Assertf(pc.Flags(vid).FlagsUp(FlagAttachedVertexCheckedIfRooted), "flags.FlagsUp(FlagAttachedVertexCheckedIfRooted): %s", vid.IDShortString)
-	pc.MarkVertexDefinedDoNotEnforceRootedCheck(vid)
-}
-
-// MarkVertexUndefined vertex becomes 'known' but undefined
-func (pc *PastCone) MarkVertexUndefined(vid *WrappedTx) bool {
-	pc.Assertf(!pc.IsKnownDefined(vid), "!pc.IsKnownDefined(vid)")
-	f := pc.Flags(vid)
-	pc.Assertf(!f.FlagsUp(FlagAttachedVertexDefined), "!f.FlagsUp(FlagDefined)")
-	if !pc.IsKnown(vid) {
-		if !pc.reference(vid) {
-			return false
-		}
-	}
-	pc.SetFlagsUp(vid, FlagAttachedVertexKnown)
-	return true
 }
 
 func (pc *PastCone) ContainsUndefinedExcept(except *WrappedTx) bool {

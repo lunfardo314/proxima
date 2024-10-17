@@ -3,6 +3,8 @@ package lines
 import (
 	"fmt"
 	"strings"
+
+	"github.com/lunfardo314/proxima/util/lazyargs"
 )
 
 type Lines struct {
@@ -32,6 +34,13 @@ func (l *Lines) Add(format string, args ...any) *Lines {
 	}
 	l.l = append(l.l, fmt.Sprintf(l.prefix+format, args...))
 	return l
+}
+
+func (l *Lines) Trace(format string, lazyArgs ...any) *Lines {
+	if l.dummy {
+		return l
+	}
+	return l.Add(format, lazyargs.Eval(lazyArgs...)...)
 }
 
 func (l *Lines) Append(ln *Lines) *Lines {

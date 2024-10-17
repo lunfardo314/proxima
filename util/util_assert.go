@@ -7,40 +7,20 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/lunfardo314/proxima/util/lazyargs"
 	"github.com/stretchr/testify/require"
 )
-
-func EvalLazyArgs(args ...any) []any {
-	ret := make([]any, len(args))
-	for i, arg := range args {
-		switch funArg := arg.(type) {
-		case func() any:
-			ret[i] = funArg()
-		case func() string:
-			ret[i] = funArg()
-		case func() bool:
-			ret[i] = funArg()
-		case func() int:
-			ret[i] = funArg()
-		case func() byte:
-			ret[i] = funArg()
-		default:
-			ret[i] = arg
-		}
-	}
-	return ret
-}
 
 // Assertf with optionally deferred evaluation of arguments
 func Assertf(cond bool, format string, args ...any) {
 	if !cond {
-		panic(fmt.Errorf("assertion failed:: "+format, EvalLazyArgs(args...)...))
+		panic(fmt.Errorf("assertion failed:: "+format, lazyargs.Eval(args...)...))
 	}
 }
 
 func ErrorConditionf(cond bool, format string, args ...any) error {
 	if !cond {
-		return fmt.Errorf("assertion failed:: "+format, EvalLazyArgs(args...)...)
+		return fmt.Errorf("assertion failed:: "+format, lazyargs.Eval(args...)...)
 	}
 	return nil
 }
