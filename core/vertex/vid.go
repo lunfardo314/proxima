@@ -235,6 +235,10 @@ func (vid *WrappedTx) Timestamp() ledger.Time {
 	return vid.ID.Timestamp()
 }
 
+func (vid *WrappedTx) Before(vid1 *WrappedTx) bool {
+	return vid.Timestamp().Before(vid1.Timestamp())
+}
+
 func (vid *WrappedTx) Slot() ledger.Slot {
 	return vid.ID.Slot()
 }

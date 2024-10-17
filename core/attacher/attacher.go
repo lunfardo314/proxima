@@ -413,7 +413,11 @@ func (a *attacher) checkTransactionRootedStatus(vidDep *vertex.WrappedTx) (defin
 	if a.baseline == nil {
 		return false
 	}
-
+	if vidDep.Timestamp().After(a.baseline.Timestamp()) {
+		// output is later than baseline -> can't be Rooted in it
+		a.pastCone.MustMarkVertexNotRooted(vidDep)
+		return true
+	}
 	if a.baselineStateReader().KnowsCommittedTransaction(&vidDep.ID) {
 		a.pastCone.MustMarkVertexRooted(vidDep)
 	} else {
@@ -465,18 +469,24 @@ func (a *attacher) attachInput(v *vertex.Vertex, inputIdx byte, vidUnwrapped *ve
 		return false, false
 	}
 	if defined {
+		a.Assertf(a.pastCone.Flags(wOut.VID).FlagsUp(vertex.FlagAttachedVertexDefined|vertex.FlagAttachedVertexCheckedIfRooted), "must be checked 'rooted' status")
 		a.Tracef(TraceTagAttachVertex, "input #%d (%s) has been solidified", inputIdx, wOut.IDShortString)
 	}
 	return true, defined
 }
 
 func (a *attacher) attachRooted(wOut vertex.WrappedOutput) (ok bool, isRooted bool, defined bool) {
-	a.Tracef(TraceTagAttachOutput, "attachRooted %s IN", wOut.IDShortString)
-	if wOut.Timestamp().After(a.baseline.Timestamp()) {
-		// output is later than baseline -> can't be Rooted in it
-		return true, false, true
-	}
+	defer func() {
+		if defined && isRooted {
+			if isRooted {
+				a.Assertf(a.pastCone.IsRootedOutput(wOut), "a.pastCone.IsRootedOutput(wOut)")
+				a.Assertf(a.pastCone.IsKnownRooted(wOut.VID), "a.pastCone.IsRootedOutput(wOut)")
+			}
+			a.pastCone.Flags(wOut.VID).FlagsUp(vertex.FlagAttachedVertexCheckedIfRooted)
+		}
+	}()
 
+	a.Tracef(TraceTagAttachOutput, "attachRooted %s IN", wOut.IDShortString)
 	defined = a.checkTransactionRootedStatus(wOut.VID)
 	if !defined {
 		a.Tracef(TraceTagAttachOutput, "attachRooted %s Rooted status undefined", wOut.IDShortString)
@@ -488,8 +498,7 @@ func (a *attacher) attachRooted(wOut vertex.WrappedOutput) (ok bool, isRooted bo
 		return true, false, true
 	}
 	// transaction is known in the state
-	consumedRooted := a.pastCone.Rooted[wOut.VID]
-	if consumedRooted.Contains(wOut.Index) {
+	if a.pastCone.IsRootedOutput(wOut) {
 		// it means it is already covered. The double-spend checks are done by attachInputID
 		return true, true, true
 	}
@@ -516,14 +525,8 @@ func (a *attacher) attachRooted(wOut vertex.WrappedOutput) (ok bool, isRooted bo
 		return false, false, true
 	}
 
-	if len(consumedRooted) == 0 {
-		consumedRooted = set.New[byte](wOut.Index)
-	} else {
-		consumedRooted.Insert(wOut.Index)
-	}
-
+	// mark output definitely rooted
 	a.pastCone.MustMarkOutputRooted(wOut) // also marks it 'defined'
-
 	// this is new Rooted output -> add to the accumulatedCoverage
 	a.accumulatedCoverage += out.Output.Amount()
 	return true, true, true
@@ -539,6 +542,7 @@ func (a *attacher) attachOutput(wOut vertex.WrappedOutput) (ok, defined bool) {
 	if !ok {
 		return false, false
 	}
+	a.Assertf(!isRooted || a.pastCone.IsRootedOutput(wOut), "!isRooted || a.pastCone.IsRootedOutput(wOut)")
 	if isRooted {
 		a.Tracef(TraceTagAttachOutput, "%s is Rooted", wOut.IDShortString)
 		return true, true

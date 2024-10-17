@@ -110,6 +110,10 @@ func (a *milestoneAttacher) checkConsistencyWithMetadata() {
 		return
 	}
 	if enforceConsistencyWithTxMetadata {
+		//go memdag.SaveGraphPastCone(a.vid, "checkConsistencyWithMetadata.gv")
+		//time.Sleep(10 * time.Second)
+		//
+		err = fmt.Errorf("%v\n================\n%s", err, a.pastCone.Lines("        ").Join("\n"))
 		a.Log().Fatal(err)
 	} else {
 		a.Log().Error(err)

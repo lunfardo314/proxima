@@ -249,7 +249,7 @@ func (w *Workflow) SequencerMilestoneAttachWait(txBytes []byte, meta *txmetadata
 		if txid != nil {
 			txidStr = txid.StringShort()
 		}
-		return nil, fmt.Errorf("SequencerMilestoneAttachWait: %w, txid=%s", err, txidStr)
+		return vid, fmt.Errorf("SequencerMilestoneAttachWait: %w, txid=%s", err, txidStr)
 	}
 	return vid, nil
 }

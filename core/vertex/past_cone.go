@@ -3,6 +3,7 @@ package vertex
 import (
 	"fmt"
 	"sort"
+	"strconv"
 
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
@@ -79,8 +80,8 @@ func NewPastCone(env global.Logging, name string) *PastCone {
 		Logging:      env,
 		name:         name,
 		PastConeBase: newPastConeBase(nil),
-		//traceLines:   lines.NewDummy(),
-		traceLines: lines.New("     "),
+		traceLines:   lines.NewDummy(),
+		//traceLines: lines.New("     "),
 	}
 }
 
@@ -314,6 +315,16 @@ func (pc *PastCone) MustMarkVertexRooted(vid *WrappedTx) {
 	pc.Assertf(pc.IsKnownRooted(vid), "pc.IsKnownNotRooted(vid)")
 }
 
+// MustMarkVertexNotRooted is marked definitely not rooted
+func (pc *PastCone) MustMarkVertexNotRooted(vid *WrappedTx) {
+	pc.Assertf(!pc.IsKnownRooted(vid), "!pc.IsKnownRooted(vid)")
+	if !pc.IsKnown(vid) {
+		pc.mustReference(vid)
+	}
+	pc.SetFlagsUp(vid, FlagAttachedVertexKnown|FlagAttachedVertexCheckedIfRooted)
+	pc.Assertf(pc.IsKnownNotRooted(vid), "pc.IsKnownNotRooted(vid)")
+}
+
 func (pc *PastCone) MustMarkOutputRooted(wOut WrappedOutput) {
 	pc.MustMarkVertexRooted(wOut.VID)
 
@@ -342,16 +353,6 @@ func (pc *PastCone) MustMarkOutputRooted(wOut WrappedOutput) {
 	}
 	rootedIndices.Insert(wOut.Index)
 	// now delta contains copy of the committed part
-}
-
-// MustMarkVertexNotRooted is marked definitely not rooted
-func (pc *PastCone) MustMarkVertexNotRooted(vid *WrappedTx) {
-	pc.Assertf(!pc.IsKnownRooted(vid), "!pc.IsKnownRooted(vid)")
-	if !pc.IsKnown(vid) {
-		pc.mustReference(vid)
-	}
-	pc.SetFlagsUp(vid, FlagAttachedVertexKnown|FlagAttachedVertexCheckedIfRooted)
-	pc.Assertf(pc.IsKnownNotRooted(vid), "pc.IsKnownNotRooted(vid)")
 }
 
 func (pc *PastCone) ContainsUndefinedExcept(except *WrappedTx) bool {
@@ -434,7 +435,32 @@ func (pc *PastCone) CheckPastCone(rootVid *WrappedTx) (err error) {
 	return nil
 }
 
+func (pc *PastCone) Lines(prefix ...string) *lines.Lines {
+	pc.Assertf(pc.delta == nil, "pc.delta==nil")
+	ret := lines.New(prefix...)
+	ret.Add("------ baseline: %s", util.Cond(pc.baseline == nil, "<nil>", pc.baseline.IDShortString()))
+	sorted := util.KeysSorted(pc.Vertices, func(vid1, vid2 *WrappedTx) bool {
+		return vid1.Before(vid2)
+	})
+	for i, vid := range sorted {
+		ret.Add("#%d %s : %s", i, vid.IDShortString(), pc.Vertices[vid].String())
+	}
+	ret.Add("------ rooted:")
+	sorted = util.KeysSorted(pc.Rooted, func(vid1, vid2 *WrappedTx) bool {
+		return vid1.Before(vid2)
+	})
+	for i, vid := range sorted {
+		ln := pc.Rooted[vid].Lines(func(key byte) string {
+			return strconv.Itoa(int(key))
+		})
+		ret.Add("#%d %s : %s", i, vid.IDShortString(), ln.Join(","))
+	}
+	return ret
+}
+
 func (pc *PastCone) UndefinedList() []*WrappedTx {
+	pc.Assertf(pc.delta == nil, "pc.delta==nil")
+
 	ret := make([]*WrappedTx, 0)
 	for vid, flags := range pc.Vertices {
 		if !flags.FlagsUp(FlagAttachedVertexDefined) {

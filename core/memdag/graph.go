@@ -187,16 +187,16 @@ func (d *MemDAG) SaveGraph(fname string) {
 func MakeGraphPastCone(vid *vertex.WrappedTx, maxVertices ...int) graph.Graph[string, string] {
 	ret := graph.New(graph.StringHash, graph.Directed(), graph.Acyclic())
 
-	max := math.MaxUint16
+	maxx := math.MaxUint16
 	if len(maxVertices) > 0 && maxVertices[0] < math.MaxUint16 {
-		max = maxVertices[0]
+		maxx = maxVertices[0]
 	}
 
 	seqDict := make(map[ledger.ChainID]int)
 	count := 0
 
 	mkNode := func(vidCur *vertex.WrappedTx) bool {
-		if count > max {
+		if count > maxx {
 			return false
 		}
 		count++
