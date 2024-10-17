@@ -632,7 +632,7 @@ func (a *attacher) stdCheckConflictsFunc(consumerTx *vertex.WrappedTx) checkConf
 			if potentialConflicts == consumerTx {
 				return true
 			}
-			if _, found := a.pastCone.Vertices[potentialConflicts]; found {
+			if a.pastCone.IsKnown(potentialConflicts) {
 				conflict = potentialConflicts
 			}
 			return conflict == nil
@@ -676,6 +676,8 @@ func (a *attacher) setBaseline(baselineVID *vertex.WrappedTx, currentTS ledger.T
 	return true
 }
 
+const TraceTagAdjustCoverage = "adjustCoverage"
+
 // adjustCoverage for accumulatedCoverage. Adjustment ensures that branch inflation bonus on the chain output
 // of the baseline branch is always included into the coverage exactly once.
 // Details and motivation see Proxima WP
@@ -685,14 +687,20 @@ func (a *attacher) adjustCoverage() {
 	a.coverageAdjusted = true
 
 	baseSeqOut := a.baseline.SequencerWrappedOutput()
+	a.Tracef(TraceTagAdjustCoverage, "base seq out: %s", baseSeqOut.IDShortString)
+
 	if a.pastCone.IsRootedOutput(baseSeqOut) {
 		// the baseline branch sequencer output is Rooted -> it is already included -> no need for adjustment
+		a.Tracef(TraceTagAdjustCoverage, " is rooted %s", baseSeqOut.IDShortString)
 		return
 	}
+	a.Tracef(TraceTagAdjustCoverage, " is NOT rooted %s", baseSeqOut.IDShortString)
+
 	// sequencer output is not Rooted (branch is just endorsed) -> add its inflation to the accumulatedCoverage
 	seqOut := multistate.MustSequencerOutputOfBranch(a.StateStore(), baseSeqOut.VID.ID).Output
 
 	a.coverageAdjustment = seqOut.Inflation(true)
+	a.Tracef(TraceTagAdjustCoverage, "coverage adjustment: %s", util.Th(a.coverageAdjustment))
 	a.accumulatedCoverage += a.coverageAdjustment
 }
 

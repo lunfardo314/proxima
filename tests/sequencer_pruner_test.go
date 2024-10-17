@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/lunfardo314/proxima/core/attacher"
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/multistate"
@@ -169,6 +170,7 @@ func Test5SequencersIdlePruner(t *testing.T) {
 	)
 	testData := initMultiSequencerTest(t, nSequencers, true)
 
+	testData.env.StartTracingTags(attacher.TraceTagAdjustCoverage)
 	testData.startSequencersWithTimeout(maxSlots)
 	t.Logf("after start sequencers")
 	time.Sleep(runTime)
