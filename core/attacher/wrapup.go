@@ -6,17 +6,16 @@ import (
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/util"
-	"github.com/lunfardo314/proxima/util/set"
 )
 
 func (a *milestoneAttacher) wrapUpAttacher() {
 	a.Tracef(TraceTagAttachMilestone, "wrapUpAttacher")
 
-	a.calculateSlotInflation()
+	a.slotInflation = a.pastCone.CalculateSlotInflation()
 	a.checkConsistencyWithMetadata()
 
 	a.finals.baseline = &a.baseline.ID
-	a.finals.numVertices = len(a.pastCone.Vertices)
+	a.finals.numVertices = a.pastCone.NumVertices()
 
 	a.finals.coverage = a.accumulatedCoverage
 	//a.Assertf(a.finals.accumulatedCoverage > 0, "final accumulatedCoverage must be positive")
@@ -56,36 +55,8 @@ func (a *milestoneAttacher) wrapUpAttacher() {
 func (a *milestoneAttacher) commitBranch() {
 	a.Assertf(a.vid.IsBranchTransaction(), "a.vid.IsBranchTransaction()")
 
-	muts := multistate.NewMutations()
-	bsName := a.baseline.ID.StringShort
-
-	// generate DEL mutations
-	for vid, consumed := range a.pastCone.Rooted {
-		for idx := range consumed {
-			out := vid.MustOutputWithIDAt(idx)
-			muts.InsertDelOutputMutation(out.ID)
-			a.finals.numDeletedOutputs++
-			a.TraceTx(&vid.ID, "commitBranch in attacher %s: output #%d consumed in the baseline state %s", a.name, idx, bsName)
-		}
-	}
-	// generate ADD TX and ADD OUTPUT mutations
-	a.finals.numNewTransactions = uint32(0)
-	allVerticesSet := set.NewFromKeys(a.pastCone.Vertices)
-	for vid := range a.pastCone.Vertices {
-		if a.pastCone.IsKnownRooted(vid) {
-			continue
-		}
-		muts.InsertAddTxMutation(vid.ID, a.vid.Slot(), byte(vid.NumProducedOutputs()-1))
-		a.finals.numNewTransactions++
-
-		a.TraceTx(&vid.ID, "commitBranch in attacher %s: added to the baseline state %s", a.name, bsName)
-		// ADD OUTPUT mutations only for not consumed outputs
-		producedOutputIndices := vid.NotConsumedOutputIndices(allVerticesSet)
-		for _, idx := range producedOutputIndices {
-			muts.InsertAddOutputMutation(vid.OutputID(idx), vid.MustOutputAt(idx))
-			a.finals.numCreatedOutputs++
-		}
-	}
+	muts, stats := a.pastCone.Mutations(a.vid.Slot())
+	a.finals.numNewTransactions, a.finals.numDeletedOutputs, a.finals.numCreatedOutputs = uint32(stats.NumTransactions), stats.NumDeleted, stats.NumCreated
 
 	seqID, stemOID := a.vid.MustSequencerIDAndStemID()
 	upd := multistate.MustNewUpdatable(a.StateStore(), a.baselineStateReader().Root())
