@@ -12,7 +12,6 @@ import (
 	"github.com/lunfardo314/proxima/util/lines"
 	"github.com/lunfardo314/proxima/util/set"
 	"github.com/lunfardo314/unitrie/common"
-	"golang.org/x/exp/maps"
 )
 
 func newPastConeAttacher(env Environment, name string) attacher {
@@ -239,7 +238,7 @@ func (a *attacher) attachVertexUnwrapped(v *vertex.Vertex, vidUnwrapped *vertex.
 	// check consistency
 	if a.pastCone.Flags(vidUnwrapped).FlagsUp(vertex.FlagAttachedVertexEndorsementsSolid) {
 		err := a.allEndorsementsDefined(v)
-		a.Assertf(err == nil, "%w:\nVertices: %s", err, func() string { return a.linesVertices("       ").String() })
+		a.Assertf(err == nil, "%w:\nVertices: %s", err, func() string { return a.pastCone.Lines("       ").String() })
 
 		a.Tracef(TraceTagAttachVertex, "endorsements are all solid in %s", v.Tx.IDShortString)
 	} else {
@@ -720,26 +719,13 @@ func (a *attacher) dumpLines(prefix ...string) *lines.Lines {
 	ret.Add("   baseline: %s", a.baseline.IDShortString())
 	ret.Add("   accumulatedCoverage: %s", util.Th(a.accumulatedCoverage))
 	ret.Add("   baselineSupply: %s", util.Th(a.baselineSupply))
-	ret.Add("   Vertices:")
-	ret.Append(a.linesVertices(prefix...))
-	ret.Add("   Rooted tx (%d):", len(a.pastCone.Rooted))
-	for vid, consumed := range a.pastCone.Rooted {
-		ret.Add("           tx: %s, outputs: %v", vid.IDShortString(), maps.Keys(consumed))
-	}
+	ret.Add("   Past cone:")
+	//ret.Append(a.pastCone.Lines(prefix...))
 	return ret
 }
 
 func (a *attacher) dumpLinesString(prefix ...string) string {
 	return a.dumpLines(prefix...).String()
-}
-
-func (a *attacher) linesVertices(prefix ...string) *lines.Lines {
-	ret := lines.New(prefix...)
-	for vid, flags := range a.pastCone.Vertices {
-		_, rooted := a.pastCone.Rooted[vid]
-		ret.Add("%s (Rooted = %v, seq: %s) local flags: %s", vid.IDShortString(), rooted, vid.SequencerIDStringVeryShort(), util.Ref(vertex.Flags(flags)).String())
-	}
-	return ret
 }
 
 func (a *attacher) allEndorsementsDefined(v *vertex.Vertex) (err error) {
@@ -750,28 +736,6 @@ func (a *attacher) allEndorsementsDefined(v *vertex.Vertex) (err error) {
 		return err == nil
 	})
 	return
-}
-
-func (a *attacher) allInputsDefined(v *vertex.Vertex) (err error) {
-	v.ForEachInputDependency(func(i byte, vidInput *vertex.WrappedTx) bool {
-		if !a.pastCone.IsKnownDefined(vidInput) {
-			err = fmt.Errorf("attacher %s: input #%d must be 'defined' in the tx:\n   %s\nVertices:\n%s",
-				a.name, i, vidInput.String(), a.linesVertices("   "))
-		}
-		return err == nil
-	})
-	return
-}
-
-func (a *attacher) calculateSlotInflation() {
-	a.slotInflation = 0
-	for vid := range a.pastCone.Vertices {
-		if _, isRooted := a.pastCone.Rooted[vid]; !isRooted {
-			if vid.IsSequencerMilestone() {
-				a.slotInflation += vid.InflationAmountOfSequencerMilestone()
-			}
-		}
-	}
 }
 
 func (a *attacher) SetTraceAttacher(name string) {
