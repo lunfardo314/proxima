@@ -3,9 +3,6 @@ package tests
 import (
 	"context"
 	"fmt"
-	"math"
-	"os"
-	"runtime"
 	"testing"
 	"time"
 
@@ -248,12 +245,7 @@ func initMultiSequencerTest(t *testing.T, nSequencers int, startPruner ...bool) 
 
 	testData.bootstrapSeq.Start()
 
-	baseline, err := testData.wrk.WaitUntilTransactionInHeaviestState(*chainOriginsTxID, 5*time.Minute) //5*time.Second)
-	if err != nil {
-		buf := make([]byte, 2*math.MaxUint16)
-		runtime.Stack(buf, true)
-		os.WriteFile("dumppp.txt", buf, 0666)
-	}
+	baseline, err := testData.wrk.WaitUntilTransactionInHeaviestState(*chainOriginsTxID, 5*time.Second)
 	require.NoError(t, err)
 	t.Logf("chain origins transaction %s has been created and finalized in baseline %s", chainOriginsTxID.StringShort(), baseline.IDShortString())
 	return testData
