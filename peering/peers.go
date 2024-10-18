@@ -328,6 +328,8 @@ func (ps *Peers) _addPeer(addrInfo *peer.AddrInfo, name string, static bool) *Pe
 			util.Assertf(streams[i] != nil, "stream != nil")
 			p.streams[i].stream = streams[i]
 		}
+		ps.mutex.Lock()
+		defer ps.mutex.Unlock()
 		ps.peers[addrInfo.ID] = p
 	}()
 	//?? loop here infinitly if statis
@@ -344,10 +346,10 @@ func (ps *Peers) dropPeer(id peer.ID, reason string) {
 }
 
 func (ps *Peers) _dropPeer(p *Peer, reason string) {
-	//?? if p.isStatic {
-	// 	ps._addToBlacklist(p.id, reason)
-	// 	return
-	// }
+	if p.isStatic {
+		ps._addToBlacklist(p.id, reason)
+		return
+	}
 
 	why := ""
 	if len(reason) > 0 {
@@ -372,6 +374,7 @@ func (ps *Peers) _dropPeer(p *Peer, reason string) {
 }
 
 func (ps *Peers) _addToBlacklist(id peer.ID, reason string) {
+	return //??
 	ps.blacklist[id] = _deadlineWithReason{
 		Time:   time.Now().Add(blacklistTTL),
 		reason: reason,
@@ -497,25 +500,6 @@ func (p *Peer) _isAlive() bool {
 //const TraceTagSendMsg = "sendMsg"
 
 func (ps *Peers) sendMsgBytesOut(peerID peer.ID, protocolID protocol.ID, data []byte, timeout ...time.Duration) bool {
-	// to := sendTimeout
-	// if len(timeout) > 0 {
-	// 	to = timeout[0]
-	// }
-
-	// ctx, cancel := context.WithTimeoutCause(ps.Ctx(), to, context.DeadlineExceeded)
-	// defer cancel()
-
-	// // the NewStream waits until context is done
-	// stream, err := ps.host.NewStream(ctx, peerID, protocolID)
-	// if err != nil {
-	// 	return err
-	// }
-
-	// if ctx.Err() != nil {
-	// 	return err
-	// }
-	// util.Assertf(stream != nil, "stream != nil")
-	// defer func() { _ = stream.Close() }()
 
 	idx := lppHeartBeatIdx
 	if strings.Contains(string(protocolID), "gossip") {
@@ -526,6 +510,8 @@ func (ps *Peers) sendMsgBytesOut(peerID peer.ID, protocolID protocol.ID, data []
 	}
 
 	var err error
+	// ps.mutex.RLock()
+	// defer ps.mutex.RUnlock()
 	ps.peers[peerID].streams[idx].mutex.Lock()
 	defer ps.peers[peerID].streams[idx].mutex.Unlock()
 	stream := ps.peers[peerID].streams[idx].stream
@@ -537,6 +523,7 @@ func (ps *Peers) sendMsgBytesOut(peerID peer.ID, protocolID protocol.ID, data []
 	//ps.Log().Warnf("[peering] sending message to peer %s len=%d idx=%d", ShortPeerIDString(peerID), len(data), idx)
 	if err = writeFrame(stream, data); err != nil {
 		//ps.Log().Errorf("[peering] error while sending message to peer %s len=%d idx=%d err=%v", ShortPeerIDString(peerID), len(data), idx, err)
+		//time.Sleep(10 * time.Millisecond)
 	}
 	ps.outMsgCounter.Inc()
 	return err
