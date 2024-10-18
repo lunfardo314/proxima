@@ -536,5 +536,5 @@ func (pc *PastCone) Mutations(slot ledger.Slot) (muts *multistate.Mutations, sta
 }
 
 func (pc *PastCone) IsComplete() bool {
-	return pc.delta != nil && !pc.ContainsUndefinedExcept(nil) && len(pc.rooted) > 0
+	return pc.delta == nil && !pc.ContainsUndefinedExcept(nil) && len(pc.rooted) > 0
 }

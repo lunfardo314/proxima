@@ -328,6 +328,7 @@ func (seq *Sequencer) doSequencerStep() bool {
 	seq.Tracef(TraceTag, "target ts: %s. Now is: %s", targetTs, ledger.TimeNow())
 
 	msTx, meta, err := seq.generateMilestoneForTarget(targetTs)
+
 	switch {
 	case errors.Is(err, task.ErrNotGoodEnough):
 		seq.slotData.NotGoodEnough()
