@@ -182,6 +182,9 @@ func (a *attacher) attachVertexNonBranch(vid *vertex.WrappedTx) (ok, defined boo
 				}
 			case vertex.Good:
 				a.Assertf(vid.IsSequencerMilestone(), "vid.IsSequencerMilestone()")
+
+				// TODO here cut the recursion and merge 'good' past cone
+
 				ok = a.attachVertexUnwrapped(v, vid)
 				if ok {
 					if a.pastCone.Flags(vid).FlagsUp(vertex.FlagAttachedVertexInputsSolid | vertex.FlagAttachedVertexEndorsementsSolid) {

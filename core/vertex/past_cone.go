@@ -538,3 +538,18 @@ func (pc *PastCone) Mutations(slot ledger.Slot) (muts *multistate.Mutations, sta
 func (pc *PastCone) IsComplete() bool {
 	return pc.delta == nil && !pc.ContainsUndefinedExcept(nil) && len(pc.rooted) > 0
 }
+
+func (pc *PastCone) hasBaseline() bool {
+	if pc.delta == nil {
+		return pc.baseline != nil
+	}
+	return pc.baseline != nil || pc.delta.baseline != nil
+
+}
+
+func (pc *PastCone) Append(pc1 *PastConeBase) *WrappedOutput {
+	pc.Assertf(pc.hasBaseline(), "pc.hasBaseline()")
+	pc.Assertf(pc1.baseline != nil, "pc1.baseline != nil")
+
+	panic("not implemented")
+}
