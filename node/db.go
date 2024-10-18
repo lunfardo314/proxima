@@ -18,7 +18,7 @@ func (p *ProximaNode) initMultiStateLedger() {
 	dbname := global.MultiStateDBName
 	bdb, err := badger_adaptor.OpenBadgerDB(dbname)
 	if err != nil {
-		p.Log().Fatalf("can't open '%s'", dbname)
+		p.Log().Fatalf("can't open '%s': %v", dbname, err)
 	}
 	p.dbClosedWG.Add(1)
 	p.multiStateDB = badger_adaptor.New(bdb)
