@@ -241,13 +241,13 @@ func (b *InputBacklog) purgeBacklog(ttl time.Duration) int {
 // LoadSequencerStartTips loads tip transactions relevant to the sequencer startup from persistent state to the memDAG
 func (b *InputBacklog) LoadSequencerStartTips(seqID ledger.ChainID) error {
 	var branchData *multistate.BranchData
-	if b.IsBootstrapMode() {
-		branchData = multistate.FindLatestReliableBranchWithSequencerID(b.StateStore(), b.SequencerID(), global.FractionHealthyBranch)
-	} else {
-		branchData = multistate.FindLatestReliableBranch(b.StateStore(), global.FractionHealthyBranch)
-	}
+	//if b.IsBootstrapMode() {
+	//	branchData = multistate.FindLatestReliableBranchWithSequencerID(b.StateStore(), b.SequencerID(), global.FractionHealthyBranch)
+	//} else {
+	//}
+	branchData = multistate.FindLatestReliableBranch(b.StateStore(), global.FractionHealthyBranch)
 	if branchData == nil {
-		return fmt.Errorf("LoadSequencerStartTips: can't find latest reliable branch (LRBID) with franction %s", global.FractionHealthyBranch.String())
+		return fmt.Errorf("LoadSequencerStartTips: can't find latest reliable branch (LRB) with franction %s", global.FractionHealthyBranch.String())
 	}
 	loadedTxs := set.New[*vertex.WrappedTx]()
 	nowSlot := ledger.TimeNow().Slot()
