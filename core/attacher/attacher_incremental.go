@@ -325,7 +325,7 @@ func (a *IncrementalAttacher) MakeSequencerTransaction(seqName string, privateKe
 		a.Log().Fatalf("IncrementalAttacher.MakeSequencerTransaction: %v", err) // should produce correct transaction
 		//return nil, err
 	}
-	a.calculateSlotInflation()
+	a.slotInflation = a.pastCone.CalculateSlotInflation()
 	// in the incremental attacher we must add inflation on the branch
 	a.slotInflation += tx.InflationAmount()
 
@@ -359,7 +359,7 @@ func (a *IncrementalAttacher) NumInputs() int {
 // if unlucky. The owner of the attacher will have to dismiss the attacher
 // and try again later
 func (a *IncrementalAttacher) Completed() bool {
-	return !a.pastCone.ContainsUndefinedExcept(nil) && len(a.pastCone.Rooted) > 0
+	return a.pastCone.IsComplete()
 }
 
 func (a *IncrementalAttacher) Extending() vertex.WrappedOutput {
