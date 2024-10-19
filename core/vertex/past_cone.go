@@ -11,6 +11,8 @@ import (
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
 	"github.com/lunfardo314/proxima/util/set"
+	"github.com/lunfardo314/unitrie/common"
+	"golang.org/x/exp/maps"
 )
 
 // Attacher keeps list of past cone vertices.
@@ -327,33 +329,33 @@ func (pc *PastCone) MustMarkVertexNotRooted(vid *WrappedTx) {
 }
 
 func (pc *PastCone) MustMarkOutputRooted(wOut WrappedOutput) {
-	pc.MustMarkVertexRooted(wOut.VID)
+	pc.MustMarkOutputsRooted(wOut.VID, wOut.Index)
+}
 
+func (pc *PastCone) MustMarkOutputsRooted(vid *WrappedTx, rootedIndices ...byte) {
+	pc.MustMarkVertexRooted(vid)
 	if pc.delta == nil {
-		rootedIndices := pc.rooted[wOut.VID]
-		if len(rootedIndices) > 0 {
-			rootedIndices.Insert(wOut.Index)
+		oldRootedIndices := pc.rooted[vid]
+		if len(oldRootedIndices) > 0 {
+			oldRootedIndices.Insert(rootedIndices...)
 		} else {
-			pc.rooted[wOut.VID] = set.New[byte](wOut.Index)
+			pc.rooted[vid] = set.New[byte](rootedIndices...)
 		}
 		return
 	}
 	// delta
-	rootedIndices := pc.delta.rooted[wOut.VID]
-	if len(rootedIndices) > 0 {
-		rootedIndices.Insert(wOut.Index)
+	oldRootedIndices := pc.delta.rooted[vid]
+	if len(oldRootedIndices) > 0 {
+		oldRootedIndices.Insert(rootedIndices...)
 		return
 	}
 	// element in delta does not exist. Copy it from committed part
-	rootedIndices = pc.rooted[wOut.VID]
-	if len(rootedIndices) > 0 {
-		rootedIndices = rootedIndices.Clone()
+	oldRootedIndices = pc.rooted[vid]
+	if len(oldRootedIndices) > 0 {
+		oldRootedIndices.Insert(rootedIndices...)
 	} else {
-		rootedIndices = set.New[byte]()
-		pc.delta.rooted[wOut.VID] = rootedIndices
+		oldRootedIndices = set.New[byte](rootedIndices...)
 	}
-	rootedIndices.Insert(wOut.Index)
-	// now delta contains copy of the committed part
 }
 
 func (pc *PastCone) ContainsUndefinedExcept(except *WrappedTx) bool {
@@ -539,17 +541,40 @@ func (pc *PastCone) IsComplete() bool {
 	return pc.delta == nil && !pc.ContainsUndefinedExcept(nil) && len(pc.rooted) > 0
 }
 
-func (pc *PastCone) hasBaseline() bool {
-	if pc.delta == nil {
-		return pc.baseline != nil
+func (pc *PastCone) getBaseline() *WrappedTx {
+	if pc.baseline != nil {
+		return pc.baseline
 	}
-	return pc.baseline != nil || pc.delta.baseline != nil
-
+	if pc.delta != nil {
+		return pc.delta.baseline
+	}
+	return nil
 }
 
-func (pc *PastCone) Append(pc1 *PastConeBase) *WrappedOutput {
-	pc.Assertf(pc.hasBaseline(), "pc.hasBaseline()")
-	pc.Assertf(pc1.baseline != nil, "pc1.baseline != nil")
+// Append appends deterministic past cone to the current one. Returns conflict info if any
+func (pc *PastCone) Append(pcb *PastConeBase, getStore func() common.KVReader) *WrappedOutput {
+	baseline := pc.getBaseline()
+	pc.Assertf(baseline != nil, "pc.hasBaseline()")
+	pc.Assertf(pcb.baseline != nil, "pcb.baseline != nil")
 
+	// we require baselines must be compatible (on the same chain) of pcb should not be younger than pc
+	if !baseline.IsContainingBranchOf(pcb.baseline, getStore) {
+		// baselines not compatible
+		return &WrappedOutput{}
+	}
+
+	for vid, rootedIndices := range pcb.rooted {
+		pc.MustMarkOutputsRooted(vid, maps.Keys(rootedIndices)...)
+	}
+	// TODO
 	panic("not implemented")
+}
+
+func (pc *PastCone) appendRooted(vid *WrappedTx, rootedIndices set.Set[byte]) {
+	for idx := range rootedIndices {
+		pc.MustMarkOutputRooted(WrappedOutput{
+			VID:   vid,
+			Index: idx,
+		})
+	}
 }

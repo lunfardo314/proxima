@@ -384,18 +384,18 @@ func FetchHeaviestBranchChainNSlotsBack(store global.StateStoreReader, nBack int
 	return ret
 }
 
-// BranchIsDescendantOf returns true if predecessor txid is known in the descendents state
-func BranchIsDescendantOf(descendant, predecessor *ledger.TransactionID, getStore func() common.KVReader) bool {
-	util.Assertf(descendant.IsBranchTransaction(), "must be a branch ts")
+// BranchKnowsTransaction returns true if predecessor txid is known in the descendents state
+func BranchKnowsTransaction(branchID, txid *ledger.TransactionID, getStore func() common.KVReader) bool {
+	util.Assertf(branchID.IsBranchTransaction(), "must be a branch tx: %s", branchID.StringShort)
 
-	if ledger.EqualTransactionIDs(descendant, predecessor) {
+	if ledger.EqualTransactionIDs(branchID, txid) {
 		return true
 	}
-	if descendant.Timestamp().Before(predecessor.Timestamp()) {
+	if branchID.Timestamp().Before(txid.Timestamp()) {
 		return false
 	}
 	store := getStore()
-	rr, found := FetchRootRecord(store, *descendant)
+	rr, found := FetchRootRecord(store, *branchID)
 	if !found {
 		return false
 	}
@@ -404,7 +404,7 @@ func BranchIsDescendantOf(descendant, predecessor *ledger.TransactionID, getStor
 		return false
 	}
 
-	return rdr.KnowsCommittedTransaction(predecessor)
+	return rdr.KnowsCommittedTransaction(txid)
 }
 
 // MustSequencerOutputOfBranch fetches and returns sequencer output of the branch. Panics if fails for any reason

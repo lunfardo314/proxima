@@ -9,9 +9,11 @@ import (
 
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
+	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
 	"github.com/lunfardo314/proxima/util/set"
+	"github.com/lunfardo314/unitrie/common"
 )
 
 // ErrDeletedVertexAccessed exception is raised by PanicAccessDeleted handler of RUnwrap vertex so that could be caught if necessary
@@ -842,4 +844,14 @@ func (vid *WrappedTx) SetAttachmentDepthNoLock(depth int) {
 
 func (vid *WrappedTx) GetAttachmentDepthNoLock() int {
 	return vid.attachmentDepth
+}
+
+func (vid *WrappedTx) IsContainingBranchOf(vid1 *WrappedTx, getStore func() common.KVReader) bool {
+	util.Assertf(vid.IsBranchTransaction(), "descendant must be a branch: %s", vid.IDShortString)
+	util.Assertf(vid1.IsBranchTransaction(), "predecessor must be a branch: %s", vid1.IDShortString)
+
+	if vid == vid1 {
+		return true
+	}
+	return multistate.BranchKnowsTransaction(&vid.ID, &vid1.ID, getStore)
 }

@@ -583,9 +583,9 @@ func (a *attacher) branchesCompatible(txid1, txid2 *ledger.TransactionID) bool {
 		// two different branches on the same slot conflicts
 		return false
 	case txid1.Slot() < txid2.Slot():
-		return multistate.BranchIsDescendantOf(txid2, txid1, func() common.KVReader { return a.StateStore() })
+		return multistate.BranchKnowsTransaction(txid2, txid1, func() common.KVReader { return a.StateStore() })
 	default:
-		return multistate.BranchIsDescendantOf(txid1, txid2, func() common.KVReader { return a.StateStore() })
+		return multistate.BranchKnowsTransaction(txid1, txid2, func() common.KVReader { return a.StateStore() })
 	}
 }
 
