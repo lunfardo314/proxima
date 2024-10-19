@@ -19,6 +19,7 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/discovery/routing"
 	p2putil "github.com/libp2p/go-libp2p/p2p/discovery/util"
 	quic "github.com/libp2p/go-libp2p/p2p/transport/quic"
+	reuse "github.com/libp2p/go-libp2p/p2p/transport/quicreuse"
 	"github.com/lunfardo314/proxima/api"
 	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/ledger"
@@ -32,6 +33,7 @@ func NewPeersDummy() *Peers {
 	ret := &Peers{
 		peers:           make(map[peer.ID]*Peer),
 		blacklist:       make(map[peer.ID]_deadlineWithReason),
+		cooloffList:     make(map[peer.ID]time.Time),
 		onReceiveTx:     func(_ peer.ID, _ []byte, _ *txmetadata.TransactionMetadata) {},
 		onReceivePullTx: func(_ peer.ID, _ ledger.TransactionID) {},
 	}
@@ -49,11 +51,10 @@ func New(env environment, cfg *Config) (*Peers, error) {
 
 		libp2p.ListenAddrStrings(fmt.Sprintf("/ip4/0.0.0.0/udp/%d/quic-v1", cfg.HostPort)),
 		libp2p.Transport(quic.NewTransport),
-		//libp2p.ListenAddrStrings(fmt.Sprintf("/ip4/0.0.0.0/tcp/%d", cfg.HostPort)),
-		//libp2p.Transport(tcp.NewTCPTransport),
 		libp2p.NoSecurity,
 		libp2p.DisableRelay(),
-		//		libp2p.AddrsFactory(FilterAddresses(cfg.AllowLocalIPs)),
+		libp2p.AddrsFactory(FilterAddresses(cfg.AllowLocalIPs)),
+		libp2p.QUICReuse(reuse.NewConnManager), //??
 	)
 	if err != nil {
 		return nil, fmt.Errorf("unable create libp2p host: %w", err)
@@ -69,6 +70,7 @@ func New(env environment, cfg *Config) (*Peers, error) {
 		peers:                make(map[peer.ID]*Peer),
 		staticPeers:          set.New[peer.ID](),
 		blacklist:            make(map[peer.ID]_deadlineWithReason),
+		cooloffList:          make(map[peer.ID]time.Time),
 		onReceiveTx:          func(_ peer.ID, _ []byte, _ *txmetadata.TransactionMetadata) {},
 		onReceivePullTx:      func(_ peer.ID, _ ledger.TransactionID) {},
 		lppProtocolGossip:    protocol.ID(fmt.Sprintf(lppProtocolGossip, rendezvousNumber)),
@@ -196,6 +198,7 @@ func (ps *Peers) Run() {
 
 	ps.RepeatInBackground(Name+"_blacklist_cleanup", 2*time.Second, func() bool {
 		ps.cleanBlacklist()
+		ps.cleanCoolofflist()
 		return true
 	})
 
@@ -275,8 +278,6 @@ func (ps *Peers) NewStream(peerID peer.ID, pID protocol.ID, timeout time.Duratio
 }
 
 func (ps *Peers) dialPeer(peerID peer.ID, static bool) ([]network.Stream, error) {
-	// ctx, cancel := context.WithTimeoutCause(ps.Ctx(), 5*time.Second, context.DeadlineExceeded)
-	// defer cancel()
 	timeout := 2 * time.Second
 
 	var err error
@@ -346,10 +347,10 @@ func (ps *Peers) dropPeer(id peer.ID, reason string) {
 }
 
 func (ps *Peers) _dropPeer(p *Peer, reason string) {
-	if p.isStatic {
-		ps._addToBlacklist(p.id, reason)
-		return
-	}
+	//?? if p.isStatic {
+	// 	ps._addToBlacklist(p.id, reason)
+	// 	return
+	// }
 
 	why := ""
 	if len(reason) > 0 {
@@ -358,7 +359,7 @@ func (ps *Peers) _dropPeer(p *Peer, reason string) {
 
 	for _, s := range p.streams {
 		if s.stream != nil {
-			s.stream.Close()
+			s.stream.Reset()
 		}
 	}
 	ps.host.Peerstore().RemovePeer(p.id)
@@ -374,11 +375,32 @@ func (ps *Peers) _dropPeer(p *Peer, reason string) {
 }
 
 func (ps *Peers) _addToBlacklist(id peer.ID, reason string) {
-	return //??
 	ps.blacklist[id] = _deadlineWithReason{
 		Time:   time.Now().Add(blacklistTTL),
 		reason: reason,
 	}
+}
+
+func (ps *Peers) restartBlacklistTime(id peer.ID) {
+	ps.mutex.Lock()
+	defer ps.mutex.Unlock()
+
+	if entry, exists := ps.blacklist[id]; exists {
+		entry.Time = time.Now().Add(blacklistTTL)
+		ps.blacklist[id] = entry
+	}
+}
+
+func (ps *Peers) _addToCoolOfflist(id peer.ID) {
+	//ps.Log().Infof("[peering] node is connected to %d peer(s). Static: %d/%d, dynamic %d/%d, pull targets: %d (%v)",
+	ps.Log().Infof("[peering] ****** add to coooloff list peer %s", ShortPeerIDString(id))
+
+	ps.cooloffList[id] = time.Now().Add(cooloffTTL)
+}
+
+func (ps *Peers) _isInCoolOffList(id peer.ID) bool {
+	_, yes := ps.cooloffList[id]
+	return yes
 }
 
 func (ps *Peers) _isInBlacklist(id peer.ID) bool {
@@ -475,6 +497,23 @@ func (ps *Peers) cleanBlacklist() {
 	}
 	for _, id := range toDelete {
 		delete(ps.blacklist, id)
+		ps._addToCoolOfflist(id)
+	}
+}
+
+func (ps *Peers) cleanCoolofflist() {
+	ps.mutex.Lock()
+	defer ps.mutex.Unlock()
+
+	toDelete := make([]peer.ID, 0, len(ps.cooloffList))
+	nowis := time.Now()
+	for id, deadline := range ps.cooloffList {
+		if deadline.Before(nowis) {
+			toDelete = append(toDelete, id)
+		}
+	}
+	for _, id := range toDelete {
+		delete(ps.cooloffList, id)
 	}
 }
 

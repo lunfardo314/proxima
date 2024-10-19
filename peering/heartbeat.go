@@ -71,6 +71,11 @@ func (ps *Peers) logConnectionStatusIfNeeded(id peer.ID) {
 
 func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 	// received heartbeat message from peer
+	defer func() {
+		stream.Close()
+		ps.Log().Errorf("[peering] hb: streamHandler exit")
+	}()
+
 	id := stream.Conn().RemotePeer()
 	remote := stream.Conn().RemoteMultiaddr()
 
@@ -79,54 +84,52 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 	})
 	if blacklisted {
 		// ignore
-		//_ = stream.Close()
+		ps.Log().Errorf("[peering] node %s blacklisted", id.String())
+		// extend blacklisting
+		ps.restartBlacklistTime(id)
 		return
 	}
 	if !known {
 		if !ps.isAutopeeringEnabled() {
 			// node does not take any incoming dynamic peers
-			//_ = stream.Close()
+			ps.Log().Errorf("[peering] node does not take any incoming dynamic peers")
 			return
 		}
 		ps.Log().Infof("[peering] incoming peer request. Add new dynamic peer %s", id.String())
 	}
 
-	go func() {
-		defer func() {
-			stream.Close()
-			ps.Log().Errorf("[peering] hb: streamHandler exit")
-		}()
-		for {
-			var hbInfo heartbeatInfo
-			msgData, err := readFrame(stream)
-			//_ = stream.Close()
-			ps.inMsgCounter.Inc()
+	for {
+		var hbInfo heartbeatInfo
+		msgData, err := readFrame(stream)
+		ps.inMsgCounter.Inc()
+		ps.knownPeer(id, func(p *Peer) {
+			p.numIncomingHB++
+		})
 
-			if err != nil {
-				ps.Log().Errorf("[peering] hb: error while reading message from peer %s: err='%v'. Ignore", ShortPeerIDString(id), err)
-				ps.dropPeer(id, err.Error())
-				return
-			}
-			if hbInfo, err = heartbeatInfoFromBytes(msgData); err != nil {
-				// protocol violation
-				err = fmt.Errorf("[peering] hb: error while serializing message from peer %s: %v. Reset connection", ShortPeerIDString(id), err)
-				ps.Log().Error(err)
-				ps.dropPeer(id, err.Error())
-				return
-			}
-
-			ps.withPeer(id, func(p *Peer) {
-				if p == nil {
-					addrInfo := &peer.AddrInfo{
-						ID:    id,
-						Addrs: []multiaddr.Multiaddr{remote},
-					}
-					p = ps._addPeer(addrInfo, "", false)
-				}
-				ps._evidenceHeartBeat(p, hbInfo)
-			})
+		if err != nil {
+			ps.Log().Errorf("[peering] hb: error while reading message from peer %s: err='%v'. Ignore", ShortPeerIDString(id), err)
+			ps.dropPeer(id, err.Error())
+			return
 		}
-	}()
+		if hbInfo, err = heartbeatInfoFromBytes(msgData); err != nil {
+			// protocol violation
+			err = fmt.Errorf("[peering] hb: error while serializing message from peer %s: %v. Reset connection", ShortPeerIDString(id), err)
+			ps.Log().Error(err)
+			ps.dropPeer(id, err.Error())
+			return
+		}
+
+		ps.withPeer(id, func(p *Peer) {
+			if p == nil {
+				addrInfo := &peer.AddrInfo{
+					ID:    id,
+					Addrs: []multiaddr.Multiaddr{remote},
+				}
+				p = ps._addPeer(addrInfo, "", false)
+			}
+			ps._evidenceHeartBeat(p, hbInfo)
+		})
+	}
 }
 
 func (ps *Peers) _evidenceHeartBeat(p *Peer, hbInfo heartbeatInfo) {
@@ -162,6 +165,15 @@ func (ps *Peers) sendHeartbeatToPeer(id peer.ID, hbCounter uint32) {
 	} else if ps.cfg.AcceptPullRequestsFromStaticPeersOnly {
 		respondsToPull = ps.staticPeers.Contains(id)
 	}
+	peer := ps.getPeer(id)
+	_, blacklisted, _ := ps.knownPeer(id, func(p *Peer) {
+	})
+	if blacklisted {
+		// ignore
+		ps.Tracef(TraceTagHeartBeatSend, "node #%d blacklisted. Ignore", ShortPeerIDString(id))
+		peer.numHBSendErr = 0
+		return
+	}
 
 	msg := &heartbeatInfo{
 		// time now will be set in the queue consumer
@@ -173,6 +185,13 @@ func (ps *Peers) sendHeartbeatToPeer(id peer.ID, hbCounter uint32) {
 		ps.Tracef(TraceTagHeartBeatSend, ">>>>>>> failed to sent #%d to %s: %v", hbCounter, ShortPeerIDString(id), err)
 	} else {
 		ps.Tracef(TraceTagHeartBeatSend, ">>>>>>> sent #%d to %s", hbCounter, ShortPeerIDString(id))
+	} else {
+		peer.numHBSendErr++
+		if peer.numHBSendErr > 2 {
+			ps.Log().Errorf("[peering] error sending heartbeat. Drop peer.")
+			ps.dropPeer(id, "hb send error")
+			peer.numHBSendErr = 0
+		}
 	}
 }
 
