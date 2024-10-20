@@ -137,6 +137,7 @@ func (a *milestoneAttacher) run() error {
 		a.vid.ConvertVertexToVirtualTx()
 	}
 
+	a.pastCone.MarkVertexDefinedDoNotEnforceRootedCheck(a.vid)
 	a.vid.SetTxStatusGood(a.pastCone.PastConeBase)
 	a.PostEventNewGood(a.vid)
 	a.SendToTippool(a.vid)

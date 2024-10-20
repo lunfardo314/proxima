@@ -337,7 +337,7 @@ func TestConflicts1Attacher(t *testing.T) {
 		if nConflicts > 1 {
 			require.True(t, vertex.Bad == vid.GetTxStatus())
 			t.Logf("reason: %v", vid.GetError())
-			util.RequireErrorWith(t, vid.GetError(), "conflicts with another consumer", testData.forkOutput.IDShort())
+			util.RequireErrorWith(t, vid.GetError(), "past cones conflicting", testData.forkOutput.IDShort())
 		} else {
 			require.True(t, vertex.Good == vid.GetTxStatus())
 		}

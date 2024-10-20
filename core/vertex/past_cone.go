@@ -124,6 +124,9 @@ func (pc *PastCone) UnReferenceAll() {
 		unrefCounter++
 		pc.traceLines.Trace("UnReferenceAll: unref tx %s", vid.IDShortString)
 	}
+	if unrefCounter != pc.refCounter {
+		fmt.Printf("\n")
+	}
 	pc.Assertf(unrefCounter == pc.refCounter, "UnReferenceAll: unrefCounter(%d) not equal to pc.refCounter(%d) in %s\n%s",
 		unrefCounter, pc.refCounter, pc.name, pc.traceLines.String)
 }
@@ -290,9 +293,11 @@ func (pc *PastCone) MarkVertexDefinedDoNotEnforceRootedCheck(vid *WrappedTx) {
 		pc.Assertf(!flags.FlagsUp(FlagAttachedVertexInputsSolid), "!flags.FlagsUp(FlagAttachedVertexInputsSolid): %s\n     %s", vid.IDShortString, flags.String)
 		pc.Assertf(!flags.FlagsUp(FlagAttachedVertexEndorsementsSolid), "!flags.FlagsUp(FlagAttachedVertexInputsSolid): %s\n     %s", vid.IDShortString, flags.String)
 	}
-	if pc.IsKnownNotRooted(vid) {
-		pc.Assertf(flags.FlagsUp(FlagAttachedVertexInputsSolid), "flags.FlagsUp(FlagAttachedVertexInputsSolid): %s\n     %s", vid.IDShortString, flags.String)
-		pc.Assertf(flags.FlagsUp(FlagAttachedVertexEndorsementsSolid), "flags.FlagsUp(FlagAttachedVertexInputsSolid): %s\n     %s", vid.IDShortString, flags.String)
+	if !vid.IsSequencerMilestone() {
+		if pc.IsKnownNotRooted(vid) {
+			pc.Assertf(flags.FlagsUp(FlagAttachedVertexInputsSolid), "flags.FlagsUp(FlagAttachedVertexInputsSolid): %s\n     %s", vid.IDShortString, flags.String)
+			pc.Assertf(flags.FlagsUp(FlagAttachedVertexEndorsementsSolid), "flags.FlagsUp(FlagAttachedVertexInputsSolid): %s\n     %s", vid.IDShortString, flags.String)
+		}
 	}
 	pc.SetFlagsUp(vid, FlagAttachedVertexKnown|FlagAttachedVertexDefined)
 }
@@ -332,30 +337,58 @@ func (pc *PastCone) MustMarkOutputRooted(wOut WrappedOutput) {
 	pc.MustMarkOutputsRooted(wOut.VID, wOut.Index)
 }
 
-func (pc *PastCone) MustMarkOutputsRooted(vid *WrappedTx, rootedIndices ...byte) {
+// MustMarkOutputsRooted marks outputs rooted and returns resulting coverage delta
+// returns indices of outputs which are new for the target past cone
+func (pc *PastCone) MustMarkOutputsRooted(vid *WrappedTx, rootedIndices ...byte) (newIndices []byte) {
 	pc.MustMarkVertexRooted(vid)
 	if pc.delta == nil {
-		oldRootedIndices := pc.rooted[vid]
-		if len(oldRootedIndices) > 0 {
-			oldRootedIndices.Insert(rootedIndices...)
+		if oldRootedIndices := pc.rooted[vid]; len(oldRootedIndices) > 0 {
+			newIndices = make([]byte, 0, len(rootedIndices))
+			for _, idx := range rootedIndices {
+				if !oldRootedIndices.Contains(idx) {
+					// new output index
+					oldRootedIndices.Insert(idx)
+					newIndices = append(newIndices, idx)
+				}
+			}
 		} else {
 			pc.rooted[vid] = set.New[byte](rootedIndices...)
+			newIndices = rootedIndices
 		}
 		return
 	}
-	// delta
-	oldRootedIndices := pc.delta.rooted[vid]
-	if len(oldRootedIndices) > 0 {
-		oldRootedIndices.Insert(rootedIndices...)
+	// delta != nil
+
+	if oldRootedIndices := pc.delta.rooted[vid]; len(oldRootedIndices) > 0 {
+		// found in delta
+		newIndices = make([]byte, 0, len(rootedIndices))
+		for _, idx := range rootedIndices {
+			if !oldRootedIndices.Contains(idx) {
+				// new output index
+				oldRootedIndices.Insert(idx)
+				newIndices = append(newIndices, idx)
+			}
+		}
 		return
 	}
+
 	// element in delta does not exist. Copy it from committed part
-	oldRootedIndices = pc.rooted[vid]
-	if len(oldRootedIndices) > 0 {
-		oldRootedIndices.Insert(rootedIndices...)
+	if oldRootedIndices := pc.rooted[vid]; len(oldRootedIndices) > 0 {
+		oldRootedIndicesClone := oldRootedIndices.Clone()
+		for _, idx := range rootedIndices {
+			if !oldRootedIndicesClone.Contains(idx) {
+				// new output index
+				oldRootedIndicesClone.Insert(idx)
+				newIndices = append(newIndices, idx)
+			}
+		}
+		pc.delta.rooted[vid] = oldRootedIndicesClone
 	} else {
 		oldRootedIndices = set.New[byte](rootedIndices...)
+		newIndices = rootedIndices
+		pc.delta.rooted[vid] = oldRootedIndices
 	}
+	return
 }
 
 func (pc *PastCone) ContainsUndefinedExcept(except *WrappedTx) bool {
@@ -552,7 +585,7 @@ func (pc *PastCone) getBaseline() *WrappedTx {
 }
 
 // AppendPastCone appends deterministic past cone to the current one. Returns conflict info if any
-func (pc *PastCone) AppendPastCone(pcb *PastConeBase, getStore func() common.KVReader) *WrappedOutput {
+func (pc *PastCone) AppendPastCone(pcb *PastConeBase, getStore func() common.KVReader) (*WrappedOutput, uint64) {
 	baseline := pc.getBaseline()
 	pc.Assertf(baseline != nil, "pc.hasBaseline()")
 	pc.Assertf(pcb.baseline != nil, "pcb.baseline != nil")
@@ -560,8 +593,10 @@ func (pc *PastCone) AppendPastCone(pcb *PastConeBase, getStore func() common.KVR
 	// we require baselines must be compatible (on the same chain) of pcb should not be younger than pc
 	if !baseline.IsContainingBranchOf(pcb.baseline, getStore) {
 		// baselines not compatible
-		return &WrappedOutput{} // >>>>>>>>>>>>>>>> conflict
+		return &WrappedOutput{}, 0 // >>>>>>>>>>>>>>>> conflict
 	}
+
+	coverageDelta := uint64(0)
 	// pcb must be deterministic, i.e. immutable and all vertices in it must be 'known defined'
 	// it does not need locking anymore
 	for vid, flags := range pcb.vertices {
@@ -571,17 +606,24 @@ func (pc *PastCone) AppendPastCone(pcb *PastConeBase, getStore func() common.KVR
 			// it already exists in the target past cone. Check for conflicts
 			if conflict := pc.checkConflicts(vid, pcb); conflict != nil {
 				// past cones are conflicting
-				return conflict //>>>>>>>>>>>>>>>>>>>>> conflict/double spend
+				return conflict, 0 //>>>>>>>>>>>>>>>>>>>>> conflict/double spend
 			}
 		}
 		// no conflict
 		if rootedIndices, rooted := pcb.rooted[vid]; rooted {
-			pc.MustMarkOutputsRooted(vid, maps.Keys(rootedIndices)...)
+			newRootedIndices := pc.MustMarkOutputsRooted(vid, maps.Keys(rootedIndices)...)
+			for _, idx := range newRootedIndices {
+				o := vid.MustOutputAt(idx)
+				coverageDelta += o.Amount()
+			}
 		} else {
+			if !pc.IsKnown(vid) {
+				pc.mustReference(vid)
+			}
 			pc.MarkVertexDefinedDoNotEnforceRootedCheck(vid)
 		}
 	}
-	return nil
+	return nil, coverageDelta
 }
 
 func (pc *PastCone) checkConflicts(vid *WrappedTx, pcb *PastConeBase) *WrappedOutput {

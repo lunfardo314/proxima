@@ -104,12 +104,8 @@ func (vid *WrappedTx) GetTxStatusNoLock() Status {
 	return Good
 }
 
-// GetTxStatusExt returns status and past cone. If vertex is 'good', past cone is not nil
-func (vid *WrappedTx) GetTxStatusExt() (Status, *PastConeBase) {
-	vid.mutex.RLock()
-	defer vid.mutex.RUnlock()
-
-	return vid.GetTxStatusNoLock(), vid.pastCone
+func (vid *WrappedTx) GetPastConeNoLock() *PastConeBase {
+	return vid.pastCone
 }
 
 // SetTxStatusGood sets 'good' status and past cone

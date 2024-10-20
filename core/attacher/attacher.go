@@ -165,6 +165,8 @@ func (a *attacher) attachVertexNonBranch(vid *vertex.WrappedTx) (ok, defined boo
 	}
 	a.pastCone.MarkVertexUndefined(vid)
 
+	var deterministicPastCone *vertex.PastConeBase
+
 	vid.Unwrap(vertex.UnwrapOptions{
 		Vertex: func(v *vertex.Vertex) {
 			switch vid.GetTxStatusNoLock() {
@@ -183,15 +185,18 @@ func (a *attacher) attachVertexNonBranch(vid *vertex.WrappedTx) (ok, defined boo
 			case vertex.Good:
 				a.Assertf(vid.IsSequencerMilestone(), "vid.IsSequencerMilestone()")
 
-				// TODO here cut the recursion and merge 'good' past cone
+				// here cut the recursion and merge 'good' past cone
 
-				ok = a.attachVertexUnwrapped(v, vid)
-				if ok {
-					if a.pastCone.Flags(vid).FlagsUp(vertex.FlagAttachedVertexInputsSolid | vertex.FlagAttachedVertexEndorsementsSolid) {
-						a.pastCone.MarkVertexDefinedDoNotEnforceRootedCheck(vid)
-						defined = true
-					}
-				}
+				deterministicPastCone = vid.GetPastConeNoLock()
+				a.Assertf(deterministicPastCone != nil, "deterministicPastCone!=nil")
+
+				//ok = a.attachVertexUnwrapped(v, vid)
+				//if ok {
+				//	if a.pastCone.Flags(vid).FlagsUp(vertex.FlagAttachedVertexInputsSolid | vertex.FlagAttachedVertexEndorsementsSolid) {
+				//		a.pastCone.MarkVertexDefinedDoNotEnforceRootedCheck(vid)
+				//		defined = true
+				//	}
+				//}
 			case vertex.Bad:
 				a.setError(vid.GetErrorNoLock())
 
@@ -203,6 +208,19 @@ func (a *attacher) attachVertexNonBranch(vid *vertex.WrappedTx) (ok, defined boo
 			ok = a.pullIfNeededUnwrapped(v, vid)
 		},
 	})
+	if deterministicPastCone != nil {
+		conflict, coverageDelta := a.pastCone.AppendPastCone(deterministicPastCone, func() common.KVReader {
+			return a.StateStore()
+		})
+		if conflict != nil {
+			a.setError(fmt.Errorf("past cones conflicting due to %s", conflict.DecodeID().StringShort()))
+			return false, false
+		}
+		a.accumulatedCoverage += coverageDelta
+		ok = true
+		defined = true
+	}
+
 	if ok && !defined {
 		a.pokeMe(vid)
 	}
