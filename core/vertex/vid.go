@@ -849,8 +849,14 @@ func (vid *WrappedTx) GetAttachmentDepthNoLock() int {
 func (vid *WrappedTx) IsContainingBranchOf(vid1 *WrappedTx, getStore func() common.KVReader) bool {
 	util.Assertf(vid.IsBranchTransaction(), "descendant must be a branch: %s", vid.IDShortString)
 	util.Assertf(vid1.IsBranchTransaction(), "predecessor must be a branch: %s", vid1.IDShortString)
-
 	if vid == vid1 {
+		return true
+	}
+	if vid1.Slot() == vid.Slot() {
+		// branches on the same slot are conflicting
+		return false
+	}
+	if base := vid.BaselineBranch(); base == vid1 || (base != nil && base.BaselineBranch() == vid1) {
 		return true
 	}
 	return multistate.BranchKnowsTransaction(&vid.ID, &vid1.ID, getStore)

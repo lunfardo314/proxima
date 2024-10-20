@@ -551,8 +551,8 @@ func (pc *PastCone) getBaseline() *WrappedTx {
 	return nil
 }
 
-// Append appends deterministic past cone to the current one. Returns conflict info if any
-func (pc *PastCone) Append(pcb *PastConeBase, getStore func() common.KVReader) *WrappedOutput {
+// AppendPastCone appends deterministic past cone to the current one. Returns conflict info if any
+func (pc *PastCone) AppendPastCone(pcb *PastConeBase, getStore func() common.KVReader) *WrappedOutput {
 	baseline := pc.getBaseline()
 	pc.Assertf(baseline != nil, "pc.hasBaseline()")
 	pc.Assertf(pcb.baseline != nil, "pcb.baseline != nil")
@@ -560,21 +560,49 @@ func (pc *PastCone) Append(pcb *PastConeBase, getStore func() common.KVReader) *
 	// we require baselines must be compatible (on the same chain) of pcb should not be younger than pc
 	if !baseline.IsContainingBranchOf(pcb.baseline, getStore) {
 		// baselines not compatible
-		return &WrappedOutput{}
+		return &WrappedOutput{} // >>>>>>>>>>>>>>>> conflict
 	}
+	// pcb must be deterministic, i.e. immutable and all vertices in it must be 'known defined'
+	// it does not need locking anymore
+	for vid, flags := range pcb.vertices {
+		pc.Assertf(flags.FlagsUp(FlagAttachedVertexKnown|FlagAttachedVertexDefined), "must be 'known defined': %s", vid.IDShortString)
 
-	for vid, rootedIndices := range pcb.rooted {
-		pc.MustMarkOutputsRooted(vid, maps.Keys(rootedIndices)...)
+		if pc.IsKnown(vid) {
+			// it already exists in the target past cone. Check for conflicts
+			if conflict := pc.checkConflicts(vid, pcb); conflict != nil {
+				// past cones are conflicting
+				return conflict //>>>>>>>>>>>>>>>>>>>>> conflict/double spend
+			}
+		}
+		// no conflict
+		if rootedIndices, rooted := pcb.rooted[vid]; rooted {
+			pc.MustMarkOutputsRooted(vid, maps.Keys(rootedIndices)...)
+		} else {
+			pc.MarkVertexDefinedDoNotEnforceRootedCheck(vid)
+		}
 	}
-	// TODO
-	panic("not implemented")
+	return nil
 }
 
-func (pc *PastCone) appendRooted(vid *WrappedTx, rootedIndices set.Set[byte]) {
-	for idx := range rootedIndices {
-		pc.MustMarkOutputRooted(WrappedOutput{
-			VID:   vid,
-			Index: idx,
-		})
+func (pc *PastCone) checkConflicts(vid *WrappedTx, pcb *PastConeBase) *WrappedOutput {
+	vid.mutexDescendants.RLock()
+	defer vid.mutexDescendants.RUnlock()
+
+	for outputIndex, consumers := range vid.consumed {
+		var consumerInPastCone *WrappedTx
+		for consumer := range consumers {
+			_, consumed := pcb.vertices[consumer]
+			if consumed || pc.IsKnown(consumer) {
+				if consumerInPastCone == nil {
+					consumerInPastCone = consumer
+				} else {
+					if consumerInPastCone != consumer {
+						// it is consumed in both past cones by different transactions -> conflict/double spend
+						return &WrappedOutput{VID: vid, Index: outputIndex}
+					}
+				}
+			}
+		}
 	}
+	return nil
 }
