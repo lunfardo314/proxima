@@ -201,6 +201,14 @@ func (pc *PastCone) SetFlagsUp(vid *WrappedTx, f FlagsPastCone) {
 	}
 }
 
+func (pc *PastCone) SetFlagsDown(vid *WrappedTx, f FlagsPastCone) {
+	if pc.delta == nil {
+		pc.vertices[vid] = pc.Flags(vid) & ^f
+	} else {
+		pc.delta.vertices[vid] = pc.Flags(vid) & ^f
+	}
+}
+
 func (pc *PastCone) mustReference(vid *WrappedTx) {
 	util.Assertf(pc.reference(vid), "pb.reference(vid): %s", vid.IDShortString)
 }
@@ -299,6 +307,14 @@ func (pc *PastCone) MarkVertexUndefined(vid *WrappedTx) bool {
 func (pc *PastCone) MarkVertexDefined(vid *WrappedTx) {
 	pc.Assertf(pc.Flags(vid).FlagsUp(FlagAttachedVertexCheckedIfRooted), "flags.FlagsUp(FlagAttachedVertexCheckedIfRooted): %s", vid.IDShortString)
 	pc.MarkVertexDefinedDoNotEnforceRootedCheck(vid)
+}
+
+func (pc *PastCone) MustMarkVertexWithFlags(vid *WrappedTx, flags FlagsPastCone) {
+	flags &= ^FlagAttachedVertexAskedForPoke
+	if !pc.IsKnown(vid) {
+		pc.mustReference(vid)
+	}
+	pc.SetFlagsUp(vid, flags)
 }
 
 func (pc *PastCone) MarkVertexDefinedDoNotEnforceRootedCheck(vid *WrappedTx) {
@@ -555,8 +571,6 @@ func (pc *PastCone) AppendPastCone(pcb *PastConeBase, getStateReader func(branch
 	// pcb must be deterministic, i.e. immutable and all vertices in it must be 'known defined'
 	// it does not need locking anymore
 	for vid, flags := range pcb.vertices {
-		pc.Assertf(flags.FlagsUp(FlagAttachedVertexKnown|FlagAttachedVertexDefined), "must be 'known defined': %s", vid.IDShortString)
-
 		if pc.IsKnown(vid) {
 			// it already exists in the target past cone. Check for conflicts
 			if conflict := pc.checkConflicts(vid, pcb); conflict != nil {
@@ -564,6 +578,8 @@ func (pc *PastCone) AppendPastCone(pcb *PastConeBase, getStateReader func(branch
 				return conflict, 0 //>>>>>>>>>>>>>>>>>>>>> conflict/double spend
 			}
 		}
+		// set same flags, except poke. Reference is necessary
+		pc.MustMarkVertexWithFlags(vid, flags)
 		// no conflict
 		if rootedIndices, rooted := pcb.rooted[vid]; rooted {
 			newRootedIndices := pc.MustMarkOutputsRooted(vid, maps.Keys(rootedIndices)...)
@@ -578,7 +594,7 @@ func (pc *PastCone) AppendPastCone(pcb *PastConeBase, getStateReader func(branch
 			if !pc.IsKnown(vid) {
 				pc.mustReference(vid)
 			}
-			pc.MarkVertexDefinedDoNotEnforceRootedCheck(vid)
+			pc.MarkVertexDefined(vid)
 		}
 	}
 	return nil, coverageDelta

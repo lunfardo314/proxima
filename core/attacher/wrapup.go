@@ -78,6 +78,7 @@ func (a *milestoneAttacher) commitBranch() {
 		NumTransactions: a.finals.numNewTransactions,
 	})
 	if err != nil {
+		err = fmt.Errorf("%w:\n-------- past cone --------\n%s", err, a.pastCone.Lines("     ").Join("\n"))
 		memdag.SaveGraphPastCone(a.vid, fmt.Sprintf("failed_update"))
 	}
 	a.AssertNoError(err)
