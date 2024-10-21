@@ -566,7 +566,7 @@ func (pc *PastCone) AppendPastCone(pcb *PastConeBase, getStateReader func(branch
 	}
 
 	coverageDelta := uint64(0)
-	//baselineStateReader := getStateReader(baseline)
+	baselineStateReader := getStateReader(baseline)
 
 	// pcb must be deterministic, i.e. immutable and all vertices in it must be 'known defined'
 	// it does not need locking anymore
@@ -578,24 +578,20 @@ func (pc *PastCone) AppendPastCone(pcb *PastConeBase, getStateReader func(branch
 				return conflict, 0 //>>>>>>>>>>>>>>>>>>>>> conflict/double spend
 			}
 		}
-		// set same flags, except poke. Reference is necessary
-		pc.MustMarkVertexWithFlags(vid, flags)
-		// no conflict
+		if baselineStateReader.KnowsCommittedTransaction(&vid.ID) {
+			// identify rooted
+			fmt.Printf(">>>>>>>>>>>>>>> knows %s\n", vid.IDShortString())
+		} else {
+			pc.MustMarkVertexWithFlags(vid, flags)
+		}
 		if rootedIndices, rooted := pcb.rooted[vid]; rooted {
 			newRootedIndices := pc.MustMarkOutputsRooted(vid, maps.Keys(rootedIndices)...)
 			for _, idx := range newRootedIndices {
 				o := vid.MustOutputAt(idx)
 				coverageDelta += o.Amount()
 			}
-			//if conflict := checkRooted(vid, newRootedIndices, baselineStateReader); conflict != nil {
-			//	return conflict, 0 //>>>>>>>>>>>>>>>>>>>>> conflict output already consumed
-			//}
-		} else {
-			if !pc.IsKnown(vid) {
-				pc.mustReference(vid)
-			}
-			pc.MarkVertexDefined(vid)
 		}
+		// TODO
 	}
 	return nil, coverageDelta
 }
