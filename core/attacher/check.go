@@ -8,20 +8,9 @@ import (
 	"github.com/lunfardo314/proxima/util"
 )
 
-func (a *milestoneAttacher) checkConsistencyBeforeWrapUp() error {
-	err := a._checkConsistencyBeforeFinalization()
-	if err != nil {
-		err = fmt.Errorf("checkConsistencyBeforeWrapUp in attacher %s: %v\n---- attacher lines ----\n%s", a.name, err, a.dumpLinesString("       "))
-	}
-	return err
-}
-
-func (a *milestoneAttacher) _checkConsistencyBeforeFinalization() (err error) {
+func (a *milestoneAttacher) checkConsistencyBeforeWrapUp() (err error) {
 	if a.vid.GetTxStatus() == vertex.Bad {
-		return fmt.Errorf("vertex %s is BAD", a.vid.IDShortString())
-	}
-	if err = a.pastCone.CheckPastCone(a.vid); err != nil {
-		return
+		return fmt.Errorf("checkConsistencyBeforeWrapUp: vertex %s is BAD", a.vid.IDShortString())
 	}
 	a.vid.Unwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
 		if err = a._checkMonotonicityOfInputTransactions(v); err != nil {
@@ -29,7 +18,10 @@ func (a *milestoneAttacher) _checkConsistencyBeforeFinalization() (err error) {
 		}
 		err = a._checkMonotonicityOfEndorsements(v)
 	}})
-	return
+	if err != nil {
+		err = fmt.Errorf("checkConsistencyBeforeWrapUp in attacher %s: %v\n---- attacher lines ----\n%s", a.name, err, a.dumpLinesString("       "))
+	}
+	return err
 }
 
 func (a *milestoneAttacher) _checkMonotonicityOfEndorsements(v *vertex.Vertex) (err error) {

@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"math"
 	"runtime"
+	"strings"
 	"time"
 
+	"github.com/lunfardo314/proxima/core/memdag"
 	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/global"
@@ -139,8 +141,17 @@ func (a *milestoneAttacher) run() error {
 
 	a.pastCone.MarkVertexDefinedDoNotEnforceRootedCheck(a.vid)
 
-	a.AssertNoError(a.pastCone.PastConeBase.CheckPastConeBaseDeterministic())
+	err := a.pastCone.CheckFinalPastCone()
+	if err != nil {
+		err = fmt.Errorf("%w\n------ past cone of %s ------\n%s",
+			err, a.vid.IDShortString(), a.pastCone.Lines("     ").Join("\n"))
+		memdag.SaveGraphPastCone(a.vid, "past_cone")
+	}
+	a.AssertNoError(err)
 
+	if strings.Contains(a.vid.IDShortString(), "92376a") {
+		fmt.Printf(">>>>>>>>>>>>>> %s past cone\n%s\n--------------", a.vid.IDShortString(), a.pastCone.PastConeBase.Lines("     ").Join("\n"))
+	}
 	a.vid.SetTxStatusGood(a.pastCone.PastConeBase)
 	a.PostEventNewGood(a.vid)
 	a.SendToTippool(a.vid)
@@ -318,7 +329,7 @@ func (a *milestoneAttacher) _doPoke() {
 
 func (a *milestoneAttacher) pokeMe(with *vertex.WrappedTx) {
 	flags := a.pastCone.Flags(with)
-	util.Assertf(flags.FlagsUp(vertex.FlagAttachedVertexKnown), "must be marked known %s", with.IDShortString)
+	util.Assertf(a.pastCone.IsKnown(with), "must be marked known %s", with.IDShortString)
 	if !flags.FlagsUp(vertex.FlagAttachedVertexAskedForPoke) {
 		a.Tracef(TraceTagAttachMilestone, "pokeMe with %s", with.IDShortString())
 		a.PokeMe(a.vid, with)

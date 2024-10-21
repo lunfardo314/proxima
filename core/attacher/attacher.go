@@ -427,6 +427,13 @@ func (a *attacher) attachEndorsement(v *vertex.Vertex, vidUnwrapped *vertex.Wrap
 
 // checkTransactionRootedStatus checks if dependency is rooted and marks it 'rooted' if defined
 func (a *attacher) checkTransactionRootedStatus(vidDep *vertex.WrappedTx) (defined bool) {
+	defer func() {
+		if defined {
+			a.Assertf(a.pastCone.Flags(vidDep).FlagsUp(vertex.FlagAttachedVertexCheckedIfRooted),
+				"a.pastCone.Flags(vidDep).FlagsUp(vertex.FlagAttachedVertexCheckedIfRooted)")
+		}
+	}()
+
 	if a.pastCone.Flags(vidDep).FlagsUp(vertex.FlagAttachedVertexCheckedIfRooted) {
 		// already checked
 		return true
@@ -498,12 +505,13 @@ func (a *attacher) attachInput(v *vertex.Vertex, inputIdx byte, vidUnwrapped *ve
 
 func (a *attacher) attachRooted(wOut vertex.WrappedOutput) (ok bool, isRooted bool, defined bool) {
 	defer func() {
-		if defined && isRooted {
-			if isRooted {
-				a.Assertf(a.pastCone.IsRootedOutput(wOut), "a.pastCone.IsRootedOutput(wOut)")
-				a.Assertf(a.pastCone.IsKnownRooted(wOut.VID), "a.pastCone.IsRootedOutput(wOut)")
-			}
+		if defined {
 			a.pastCone.Flags(wOut.VID).FlagsUp(vertex.FlagAttachedVertexCheckedIfRooted)
+			if isRooted {
+				a.Assertf(a.pastCone.IsKnownRooted(wOut.VID), "a.pastCone.IsKnownRootedOutput")
+			} else {
+				a.Assertf(a.pastCone.IsKnownNotRooted(wOut.VID), "a.pastCone.IsKnownRootedOutput")
+			}
 		}
 	}()
 

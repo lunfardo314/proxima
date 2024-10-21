@@ -49,9 +49,10 @@ const (
 	FlagAttachedVertexKnown             = FlagsPastCone(0b00000001) // each vertex of consideration has this flag on
 	FlagAttachedVertexDefined           = FlagsPastCone(0b00000010) // means vertex is 'defined', i.e. its validity is checked
 	FlagAttachedVertexCheckedIfRooted   = FlagsPastCone(0b00000100) // means vertex has been checked if it is Rooted (it may or may not be Rooted)
-	FlagAttachedVertexEndorsementsSolid = FlagsPastCone(0b00001000) // means all endorsements were validated
-	FlagAttachedVertexInputsSolid       = FlagsPastCone(0b00010000) // means all consumed inputs are checked and valid
-	FlagAttachedVertexAskedForPoke      = FlagsPastCone(0b00100000) //
+	FlagAttachedVertexIsRooted          = FlagsPastCone(0b00001000) // means vertex has been checked if it is Rooted (it may or may not be Rooted)
+	FlagAttachedVertexEndorsementsSolid = FlagsPastCone(0b00010000) // means all endorsements were validated
+	FlagAttachedVertexInputsSolid       = FlagsPastCone(0b00100000) // means all consumed inputs are checked and valid
+	FlagAttachedVertexAskedForPoke      = FlagsPastCone(0b01000000) //
 )
 
 func (f FlagsPastCone) FlagsUp(fl FlagsPastCone) bool {
@@ -59,11 +60,12 @@ func (f FlagsPastCone) FlagsUp(fl FlagsPastCone) bool {
 }
 
 func (f FlagsPastCone) String() string {
-	return fmt.Sprintf("%08b known: %v, defined: %v, checkedRooted: %v, endorsementsOk: %v, inputsOk: %v, asked for poke: %v",
+	return fmt.Sprintf("%08b known: %v, defined: %v, rooted: (%v,%v), endorsementsOk: %v, inputsOk: %v, poke: %v",
 		f,
 		f.FlagsUp(FlagAttachedVertexKnown),
 		f.FlagsUp(FlagAttachedVertexDefined),
 		f.FlagsUp(FlagAttachedVertexCheckedIfRooted),
+		f.FlagsUp(FlagAttachedVertexIsRooted),
 		f.FlagsUp(FlagAttachedVertexEndorsementsSolid),
 		f.FlagsUp(FlagAttachedVertexInputsSolid),
 		f.FlagsUp(FlagAttachedVertexAskedForPoke),
@@ -132,9 +134,6 @@ func (pc *PastCone) UnReferenceAll() {
 		vid.UnReference()
 		unrefCounter++
 		pc.traceLines.Trace("UnReferenceAll: unref tx %s", vid.IDShortString)
-	}
-	if unrefCounter != pc.refCounter {
-		fmt.Printf("\n")
 	}
 	pc.Assertf(unrefCounter == pc.refCounter, "UnReferenceAll: unrefCounter(%d) not equal to pc.refCounter(%d) in %s\n%s",
 		unrefCounter, pc.refCounter, pc.name, pc.traceLines.String)
@@ -236,6 +235,10 @@ func (pc *PastCone) IsKnownUndefined(vid *WrappedTx) bool {
 }
 
 func (pc *PastCone) isRootedVertex(vid *WrappedTx) (rooted bool, rootedIndices set.Set[byte]) {
+	if !pc.Flags(vid).FlagsUp(FlagAttachedVertexIsRooted) {
+		return false, nil
+	}
+
 	if pc.delta == nil {
 		rootedIndices, rooted = pc.rooted[vid]
 		return
@@ -258,23 +261,25 @@ func (pc *PastCone) IsRootedOutput(wOut WrappedOutput) bool {
 
 // IsKnownNotRooted is definitely known it is not Rooted
 func (pc *PastCone) IsKnownNotRooted(vid *WrappedTx) bool {
-	if !pc.Flags(vid).FlagsUp(FlagAttachedVertexCheckedIfRooted) {
-		// not checked yet
-		return false
-	}
-	// it was checked already
-	rooted, _ := pc.isRootedVertex(vid)
-	return pc.IsKnown(vid) && !rooted
+	return pc.IsKnown(vid) &&
+		pc.Flags(vid).FlagsUp(FlagAttachedVertexCheckedIfRooted) &&
+		!pc.Flags(vid).FlagsUp(FlagAttachedVertexIsRooted)
 }
 
 func (pc *PastCone) IsKnownRooted(vid *WrappedTx) (rooted bool) {
-	if !pc.Flags(vid).FlagsUp(FlagAttachedVertexCheckedIfRooted) {
-		// not checked yet
-		return false
+	if pc.Flags(vid).FlagsUp(FlagAttachedVertexIsRooted) {
+		pc.Assertf(pc.IsKnown(vid), "pc.IsKnown(vid)")
+		pc.Assertf(pc.Flags(vid).FlagsUp(FlagAttachedVertexCheckedIfRooted), "pc.Flags(vid).FlagsUp(FlagAttachedVertexCheckedIfRooted)")
+		if pc.delta == nil {
+			_, found := pc.rooted[vid]
+			util.Assertf(found, "inconsistency: rooted flag 1 in %s", vid.IDShortString)
+		} else {
+			_, found := pc.delta.rooted[vid]
+			util.Assertf(found, "inconsistency: rooted flag 2 in %s", vid.IDShortString)
+		}
+		return true
 	}
-	rooted, _ = pc.isRootedVertex(vid)
-	pc.Assertf(!rooted || pc.IsKnown(vid), "!rooted || pc.IsKnown(vid)")
-	return
+	return false
 }
 
 // MarkVertexUndefined vertex becomes 'known' but undefined and 'referenced'
@@ -320,7 +325,8 @@ func (pc *PastCone) MustMarkVertexRooted(vid *WrappedTx) {
 	if !pc.IsKnown(vid) {
 		pc.mustReference(vid)
 	}
-	pc.SetFlagsUp(vid, FlagAttachedVertexKnown|FlagAttachedVertexCheckedIfRooted|FlagAttachedVertexDefined)
+	util.Assertf(!pc.IsKnownNotRooted(vid), "!pc.IsKnownNotRooted(vid)")
+	pc.SetFlagsUp(vid, FlagAttachedVertexKnown|FlagAttachedVertexCheckedIfRooted|FlagAttachedVertexDefined|FlagAttachedVertexIsRooted)
 	// creates rooted entry if it does not exist yet, probably empty, i.e. with or without output indices
 	if pc.delta == nil {
 		pc.rooted[vid] = pc.rooted[vid]
@@ -412,76 +418,6 @@ func (pc *PastCone) ContainsUndefinedExcept(except *WrappedTx) bool {
 		}
 	}
 	return false
-}
-
-func (pc *PastCone) CheckPastCone(rootVid *WrappedTx) (err error) {
-	if pc.ContainsUndefinedExcept(rootVid) {
-		return fmt.Errorf("still contains undefined Vertices")
-	}
-
-	// should be at least one Rooted output ( ledger baselineCoverage must be > 0)
-	if len(pc.rooted) == 0 {
-		return fmt.Errorf("at least one Rooted output is expected")
-	}
-	for vid := range pc.rooted {
-		if !pc.IsKnownDefined(vid) {
-			return fmt.Errorf("all Rooted must be defined. This one is not: %s", vid.IDShortString())
-		}
-	}
-	if len(pc.vertices) == 0 {
-		return fmt.Errorf("'vertices' is empty")
-	}
-	sumRooted := uint64(0)
-	for vid, consumed := range pc.rooted {
-		var o *ledger.Output
-		consumed.ForEach(func(idx byte) bool {
-			o, err = vid.OutputAt(idx)
-			if err != nil {
-				return false
-			}
-			sumRooted += o.Amount()
-			return true
-		})
-	}
-	if err != nil {
-		return
-	}
-	if sumRooted == 0 {
-		err = fmt.Errorf("sum of Rooted cannot be 0")
-		return
-	}
-	for vid, flags := range pc.vertices {
-		if !flags.FlagsUp(FlagAttachedVertexKnown) {
-			return fmt.Errorf("wrong flags 1 %08b in %s", flags, vid.IDShortString())
-		}
-		if !flags.FlagsUp(FlagAttachedVertexDefined) && vid != rootVid {
-			return fmt.Errorf("wrong flags 2 %08b in %s", flags, vid.IDShortString())
-		}
-		if vid == rootVid {
-			continue
-		}
-		status := vid.GetTxStatus()
-		if status == Bad {
-			return fmt.Errorf("BAD vertex in the past cone: %s", vid.IDShortString())
-		}
-		// transaction can be undefined in the past cone (virtual, non-sequencer etc)
-
-		if pc.IsKnownRooted(vid) {
-			// do not check dependencies if transaction is Rooted
-			continue
-		}
-		vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
-			missingInputs, missingEndorsements := v.NumMissingInputs()
-			if missingInputs+missingEndorsements > 0 {
-				err = fmt.Errorf("not all dependencies solid in %s\n      missing inputs: %d\n      missing endorsements: %d,\n      missing input txs: [%s]",
-					vid.IDShortString(), missingInputs, missingEndorsements, v.MissingInputTxIDString())
-			}
-		}})
-		if err != nil {
-			return
-		}
-	}
-	return nil
 }
 
 func (pc *PastCone) CalculateSlotInflation() (ret uint64) {
@@ -685,30 +621,105 @@ func checkRooted(vid *WrappedTx, rootedIndices []byte, baselineStateReader globa
 	return nil
 }
 
-func (pcb *PastConeBase) CheckPastConeBaseDeterministic() error {
-	for vid, flags := range pcb.vertices {
-		if !flags.FlagsUp(FlagAttachedVertexKnown) {
-			return fmt.Errorf("CheckPastConeBaseDeterministic: must be FlagAttachedVertexKnown in %s:\n%s",
-				vid.IDShortString(), pcb.Lines("      ").Join("\n"))
+// CheckFinalPastCone check determinism consistency of the past cone
+// If rootVid == nil, past cone must be fully deterministic
+func (pc *PastCone) CheckFinalPastCone() (err error) {
+	if pc.delta != nil {
+		return fmt.Errorf("CheckFinalPastCone: past cone has uncommitted delta")
+	}
+	if pc.ContainsUndefinedExcept(nil) {
+		return fmt.Errorf("CheckFinalPastCone: still contains undefined Vertices")
+	}
+
+	// should be at least one Rooted output ( ledger baselineCoverage must be > 0)
+	if len(pc.rooted) == 0 {
+		return fmt.Errorf("CheckFinalPastCone: at least one rooted output is expected")
+	}
+	for vid := range pc.rooted {
+		if !pc.IsKnownDefined(vid) {
+			return fmt.Errorf("CheckFinalPastCone: all Rooted must be defined. This one is not: %s", vid.IDShortString())
 		}
-		if !flags.FlagsUp(FlagAttachedVertexDefined) {
-			return fmt.Errorf("CheckPastConeBaseDeterministic: must be FlagAttachedVertexDefined in %s:\n%s",
-				vid.IDShortString(), pcb.Lines("      ").Join("\n"))
+	}
+	if len(pc.vertices) == 0 {
+		return fmt.Errorf("CheckFinalPastCone: 'vertices' is empty")
+	}
+	sum := uint64(0)
+	for vid, consumed := range pc.rooted {
+		var o *ledger.Output
+		consumed.ForEach(func(idx byte) bool {
+			o, err = vid.OutputAt(idx)
+			if err != nil {
+				return false
+			}
+			sum += o.Amount()
+			return true
+		})
+	}
+	if err != nil {
+		return
+	}
+	if sum == 0 {
+		err = fmt.Errorf("CheckFinalPastCone: sum of rooted cannot be 0")
+		return
+	}
+	for vid := range pc.vertices {
+		if err = pc.checkFinalFlags(vid); err != nil {
+			return
 		}
-		if !vid.IsBranchTransaction() {
-			if !flags.FlagsUp(FlagAttachedVertexEndorsementsSolid) {
-				return fmt.Errorf("CheckPastConeBaseDeterministic: must be FlagAttachedVertexEndorsementsSolid in %s:\n%s",
-					vid.IDShortString(), pcb.Lines("      ").Join("\n"))
-			}
-			if !flags.FlagsUp(FlagAttachedVertexInputsSolid) {
-				return fmt.Errorf("CheckPastConeBaseDeterministic: must be FlagAttachedVertexInputsSolid in %s:\n%s",
-					vid.IDShortString(), pcb.Lines("      ").Join("\n"))
-			}
-			if !flags.FlagsUp(FlagAttachedVertexCheckedIfRooted) {
-				return fmt.Errorf("CheckPastConeBaseDeterministic: must be FlagAttachedVertexCheckedIfRooted in %s:\n%s",
-					vid.IDShortString(), pcb.Lines("      ").Join("\n"))
-			}
+		status := vid.GetTxStatus()
+		if status == Bad {
+			return fmt.Errorf("BAD vertex in the past cone: %s", vid.IDShortString())
 		}
+		if pc.IsKnownRooted(vid) {
+			// do not check dependencies if transaction is Rooted
+			continue
+		}
+		vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
+			missingInputs, missingEndorsements := v.NumMissingInputs()
+			if missingInputs+missingEndorsements > 0 {
+				err = fmt.Errorf("not all dependencies solid in %s\n      missing inputs: %d\n      missing endorsements: %d,\n      missing input txs: [%s]",
+					vid.IDShortString(), missingInputs, missingEndorsements, v.MissingInputTxIDString())
+			}
+		}})
+		if err != nil {
+			return
+		}
+	}
+	return nil
+}
+
+func (pc *PastCone) checkFinalFlags(vid *WrappedTx) error {
+	flags := pc.Flags(vid)
+	wrongFlag := ""
+
+	pc.Assertf(pc.baseline != nil, "checkFinalFlags: pc.baseline != nil")
+
+	switch {
+	case !flags.FlagsUp(FlagAttachedVertexKnown):
+		wrongFlag = "FlagAttachedVertexKnown"
+	case !flags.FlagsUp(FlagAttachedVertexDefined):
+		wrongFlag = "FlagAttachedVertexDefined"
+	case flags.FlagsUp(FlagAttachedVertexIsRooted):
+		if !flags.FlagsUp(FlagAttachedVertexCheckedIfRooted) {
+			wrongFlag = "FlagAttachedVertexCheckedIfRooted"
+		}
+	case vid.IsBranchTransaction():
+		switch {
+		case pc.baseline == vid:
+			return fmt.Errorf("checkFinalFlags: must be baseline")
+		case flags.FlagsUp(FlagAttachedVertexCheckedIfRooted):
+			wrongFlag = "FlagAttachedVertexCheckedIfRooted"
+		}
+	default:
+		switch {
+		case !flags.FlagsUp(FlagAttachedVertexInputsSolid):
+			wrongFlag = "FlagAttachedVertexEndorsementsSolid"
+		case !flags.FlagsUp(FlagAttachedVertexEndorsementsSolid):
+			wrongFlag = "FlagAttachedVertexEndorsementsSolid"
+		}
+	}
+	if wrongFlag != "" {
+		return fmt.Errorf("checkFinalFlags: wrong %s flag  %08b in %s", wrongFlag, flags, vid.IDShortString())
 	}
 	return nil
 }
