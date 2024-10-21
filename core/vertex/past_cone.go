@@ -2,6 +2,7 @@ package vertex
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"strconv"
 
@@ -11,7 +12,6 @@ import (
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
 	"github.com/lunfardo314/proxima/util/set"
-	"github.com/lunfardo314/unitrie/common"
 	"golang.org/x/exp/maps"
 )
 
@@ -95,6 +95,15 @@ func (pb *PastConeBase) referenceBaseline(vid *WrappedTx) bool {
 	}
 	pb.baseline = vid
 	return true
+}
+
+func (pc *PastCone) Assertf(cond bool, format string, args ...any) {
+	if cond {
+		return
+	}
+	pcStr := pc.Lines("      ").Join("\n")
+	argsExt := append(slices.Clone(args), pcStr)
+	pc.Logging.Assertf(cond, format+"\n---- past cone ----\n%s", argsExt...)
 }
 
 func (pc *PastCone) ReferenceBaseline(vid *WrappedTx) (ret bool) {
@@ -290,13 +299,17 @@ func (pc *PastCone) MarkVertexDefined(vid *WrappedTx) {
 func (pc *PastCone) MarkVertexDefinedDoNotEnforceRootedCheck(vid *WrappedTx) {
 	flags := pc.Flags(vid)
 	if pc.IsKnownRooted(vid) {
-		pc.Assertf(!flags.FlagsUp(FlagAttachedVertexInputsSolid), "!flags.FlagsUp(FlagAttachedVertexInputsSolid): %s\n     %s", vid.IDShortString, flags.String)
-		pc.Assertf(!flags.FlagsUp(FlagAttachedVertexEndorsementsSolid), "!flags.FlagsUp(FlagAttachedVertexInputsSolid): %s\n     %s", vid.IDShortString, flags.String)
+		pc.Assertf(!flags.FlagsUp(FlagAttachedVertexInputsSolid), "MarkVertexDefinedDoNotEnforceRootedCheck: !flags.FlagsUp(FlagAttachedVertexInputsSolid): %s\n     %s",
+			vid.IDShortString, flags.String)
+		pc.Assertf(!flags.FlagsUp(FlagAttachedVertexEndorsementsSolid), "MarkVertexDefinedDoNotEnforceRootedCheck: !flags.FlagsUp(FlagAttachedVertexInputsSolid): %s\n     %s",
+			vid.IDShortString, flags.String)
 	}
 	if !vid.IsSequencerMilestone() {
 		if pc.IsKnownNotRooted(vid) {
-			pc.Assertf(flags.FlagsUp(FlagAttachedVertexInputsSolid), "flags.FlagsUp(FlagAttachedVertexInputsSolid): %s\n     %s", vid.IDShortString, flags.String)
-			pc.Assertf(flags.FlagsUp(FlagAttachedVertexEndorsementsSolid), "flags.FlagsUp(FlagAttachedVertexInputsSolid): %s\n     %s", vid.IDShortString, flags.String)
+			pc.Assertf(flags.FlagsUp(FlagAttachedVertexInputsSolid), "MarkVertexDefinedDoNotEnforceRootedCheck: flags.FlagsUp(FlagAttachedVertexInputsSolid): %s\n     %s",
+				vid.IDShortString, flags.String)
+			pc.Assertf(flags.FlagsUp(FlagAttachedVertexEndorsementsSolid), "MarkVertexDefinedDoNotEnforceRootedCheck: flags.FlagsUp(FlagAttachedVertexInputsSolid): %s\n     %s",
+				vid.IDShortString, flags.String)
 		}
 	}
 	pc.SetFlagsUp(vid, FlagAttachedVertexKnown|FlagAttachedVertexDefined)
@@ -485,20 +498,24 @@ func (pc *PastCone) CalculateSlotInflation() (ret uint64) {
 
 func (pc *PastCone) Lines(prefix ...string) *lines.Lines {
 	pc.Assertf(pc.delta == nil, "pc.delta==nil")
+	return pc.PastConeBase.Lines(prefix...)
+}
+
+func (pcb *PastConeBase) Lines(prefix ...string) *lines.Lines {
 	ret := lines.New(prefix...)
-	ret.Add("------ baseline: %s", util.Cond(pc.baseline == nil, "<nil>", pc.baseline.IDShortString()))
-	sorted := util.KeysSorted(pc.vertices, func(vid1, vid2 *WrappedTx) bool {
+	ret.Add("------ baseline: %s", util.Cond(pcb.baseline == nil, "<nil>", pcb.baseline.IDShortString()))
+	sorted := util.KeysSorted(pcb.vertices, func(vid1, vid2 *WrappedTx) bool {
 		return vid1.Before(vid2)
 	})
 	for i, vid := range sorted {
-		ret.Add("#%d %s : %s", i, vid.IDShortString(), pc.vertices[vid].String())
+		ret.Add("#%d %s : %s", i, vid.IDShortString(), pcb.vertices[vid].String())
 	}
 	ret.Add("------ rooted:")
-	sorted = util.KeysSorted(pc.rooted, func(vid1, vid2 *WrappedTx) bool {
+	sorted = util.KeysSorted(pcb.rooted, func(vid1, vid2 *WrappedTx) bool {
 		return vid1.Before(vid2)
 	})
 	for i, vid := range sorted {
-		ln := pc.rooted[vid].Lines(func(key byte) string {
+		ln := pcb.rooted[vid].Lines(func(key byte) string {
 			return strconv.Itoa(int(key))
 		})
 		ret.Add("#%d %s : %s", i, vid.IDShortString(), ln.Join(","))
@@ -585,18 +602,20 @@ func (pc *PastCone) getBaseline() *WrappedTx {
 }
 
 // AppendPastCone appends deterministic past cone to the current one. Returns conflict info if any
-func (pc *PastCone) AppendPastCone(pcb *PastConeBase, getStore func() common.KVReader) (*WrappedOutput, uint64) {
+func (pc *PastCone) AppendPastCone(pcb *PastConeBase, getStateReader func(branch *WrappedTx) global.IndexedStateReader) (*WrappedOutput, uint64) {
 	baseline := pc.getBaseline()
 	pc.Assertf(baseline != nil, "pc.hasBaseline()")
 	pc.Assertf(pcb.baseline != nil, "pcb.baseline != nil")
 
 	// we require baselines must be compatible (on the same chain) of pcb should not be younger than pc
-	if !baseline.IsContainingBranchOf(pcb.baseline, getStore) {
+	if !baseline.IsContainingBranchOf(pcb.baseline, getStateReader) {
 		// baselines not compatible
 		return &WrappedOutput{}, 0 // >>>>>>>>>>>>>>>> conflict
 	}
 
 	coverageDelta := uint64(0)
+	//baselineStateReader := getStateReader(baseline)
+
 	// pcb must be deterministic, i.e. immutable and all vertices in it must be 'known defined'
 	// it does not need locking anymore
 	for vid, flags := range pcb.vertices {
@@ -616,6 +635,9 @@ func (pc *PastCone) AppendPastCone(pcb *PastConeBase, getStore func() common.KVR
 				o := vid.MustOutputAt(idx)
 				coverageDelta += o.Amount()
 			}
+			//if conflict := checkRooted(vid, newRootedIndices, baselineStateReader); conflict != nil {
+			//	return conflict, 0 //>>>>>>>>>>>>>>>>>>>>> conflict output already consumed
+			//}
 		} else {
 			if !pc.IsKnown(vid) {
 				pc.mustReference(vid)
@@ -643,6 +665,48 @@ func (pc *PastCone) checkConflicts(vid *WrappedTx, pcb *PastConeBase) *WrappedOu
 						return &WrappedOutput{VID: vid, Index: outputIndex}
 					}
 				}
+			}
+		}
+	}
+	return nil
+}
+
+func checkRooted(vid *WrappedTx, rootedIndices []byte, baselineStateReader global.IndexedStateReader) *WrappedOutput {
+	if len(rootedIndices) == 0 {
+		return nil
+	}
+	var oid ledger.OutputID
+	for _, idx := range rootedIndices {
+		oid = vid.OutputID(idx)
+		if !baselineStateReader.HasUTXO(&oid) {
+			return &WrappedOutput{vid, idx}
+		}
+	}
+	return nil
+}
+
+func (pcb *PastConeBase) CheckPastConeBaseDeterministic() error {
+	for vid, flags := range pcb.vertices {
+		if !flags.FlagsUp(FlagAttachedVertexKnown) {
+			return fmt.Errorf("CheckPastConeBaseDeterministic: must be FlagAttachedVertexKnown in %s:\n%s",
+				vid.IDShortString(), pcb.Lines("      ").Join("\n"))
+		}
+		if !flags.FlagsUp(FlagAttachedVertexDefined) {
+			return fmt.Errorf("CheckPastConeBaseDeterministic: must be FlagAttachedVertexDefined in %s:\n%s",
+				vid.IDShortString(), pcb.Lines("      ").Join("\n"))
+		}
+		if !vid.IsBranchTransaction() {
+			if !flags.FlagsUp(FlagAttachedVertexEndorsementsSolid) {
+				return fmt.Errorf("CheckPastConeBaseDeterministic: must be FlagAttachedVertexEndorsementsSolid in %s:\n%s",
+					vid.IDShortString(), pcb.Lines("      ").Join("\n"))
+			}
+			if !flags.FlagsUp(FlagAttachedVertexInputsSolid) {
+				return fmt.Errorf("CheckPastConeBaseDeterministic: must be FlagAttachedVertexInputsSolid in %s:\n%s",
+					vid.IDShortString(), pcb.Lines("      ").Join("\n"))
+			}
+			if !flags.FlagsUp(FlagAttachedVertexCheckedIfRooted) {
+				return fmt.Errorf("CheckPastConeBaseDeterministic: must be FlagAttachedVertexCheckedIfRooted in %s:\n%s",
+					vid.IDShortString(), pcb.Lines("      ").Join("\n"))
 			}
 		}
 	}

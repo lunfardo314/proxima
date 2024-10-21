@@ -138,6 +138,9 @@ func (a *milestoneAttacher) run() error {
 	}
 
 	a.pastCone.MarkVertexDefinedDoNotEnforceRootedCheck(a.vid)
+
+	a.AssertNoError(a.pastCone.PastConeBase.CheckPastConeBaseDeterministic())
+
 	a.vid.SetTxStatusGood(a.pastCone.PastConeBase)
 	a.PostEventNewGood(a.vid)
 	a.SendToTippool(a.vid)

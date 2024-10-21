@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/lunfardo314/proxima/core/vertex"
+	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/util"
@@ -209,8 +210,8 @@ func (a *attacher) attachVertexNonBranch(vid *vertex.WrappedTx) (ok, defined boo
 		},
 	})
 	if deterministicPastCone != nil {
-		conflict, coverageDelta := a.pastCone.AppendPastCone(deterministicPastCone, func() common.KVReader {
-			return a.StateStore()
+		conflict, coverageDelta := a.pastCone.AppendPastCone(deterministicPastCone, func(branch *vertex.WrappedTx) global.IndexedStateReader {
+			return a.GetStateReaderForTheBranch(&branch.ID)
 		})
 		if conflict != nil {
 			a.setError(fmt.Errorf("past cones conflicting due to %s", conflict.DecodeID().StringShort()))

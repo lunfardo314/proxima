@@ -1,6 +1,9 @@
 package attacher
 
 import (
+	"fmt"
+
+	"github.com/lunfardo314/proxima/core/memdag"
 	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/global"
@@ -66,7 +69,7 @@ func (a *milestoneAttacher) commitBranch() {
 	util.Assertf(a.slotInflation == a.finals.slotInflation, "a.slotInflation == a.finals.slotInflation")
 	supply := a.FinalSupply()
 
-	upd.MustUpdate(muts, &multistate.RootRecordParams{
+	err := upd.Update(muts, &multistate.RootRecordParams{
 		StemOutputID:    stemOID,
 		SeqID:           seqID,
 		Coverage:        coverage,
@@ -74,6 +77,11 @@ func (a *milestoneAttacher) commitBranch() {
 		Supply:          supply,
 		NumTransactions: a.finals.numNewTransactions,
 	})
+	if err != nil {
+		memdag.SaveGraphPastCone(a.vid, fmt.Sprintf("failed_update"))
+	}
+	a.AssertNoError(err)
+
 	a.finals.root = upd.Root()
 
 	a.EvidenceBranchSlot(a.vid.Slot(), global.IsHealthyCoverage(coverage, supply, global.FractionHealthyBranch))

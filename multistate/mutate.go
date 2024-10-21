@@ -2,6 +2,7 @@ package multistate
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 
 	"github.com/lunfardo314/proxima/ledger"
@@ -16,6 +17,7 @@ type (
 		mutate(trie *immutable.TrieUpdatable) error
 		text() string
 		sortOrder() byte
+		timestamp() ledger.Time
 	}
 
 	mutationAddOutput struct {
@@ -50,6 +52,10 @@ func (m *mutationDelOutput) sortOrder() byte {
 	return 0
 }
 
+func (m *mutationDelOutput) timestamp() ledger.Time {
+	return m.ID.Timestamp()
+}
+
 func (m *mutationAddOutput) mutate(trie *immutable.TrieUpdatable) error {
 	return addOutputToTrie(trie, &m.ID, m.Output)
 }
@@ -62,6 +68,10 @@ func (m *mutationAddOutput) sortOrder() byte {
 	return 1
 }
 
+func (m *mutationAddOutput) timestamp() ledger.Time {
+	return m.ID.Timestamp()
+}
+
 func (m *mutationAddTx) mutate(trie *immutable.TrieUpdatable) error {
 	return addTxToTrie(trie, &m.ID, m.TimeSlot, m.LastOutputIndex)
 }
@@ -72,6 +82,10 @@ func (m *mutationAddTx) text() string {
 
 func (m *mutationAddTx) sortOrder() byte {
 	return 2
+}
+
+func (m *mutationAddTx) timestamp() ledger.Time {
+	return m.ID.Timestamp()
 }
 
 func (m *mutationAddTx) valueBytes() []byte {
@@ -127,7 +141,17 @@ func (mut *Mutations) InsertAddTxMutation(id ledger.TransactionID, slot ledger.S
 
 func (mut *Mutations) Lines(prefix ...string) *lines.Lines {
 	ret := lines.New(prefix...)
-	for _, m := range mut.mut {
+	mutClone := slices.Clone(mut.mut)
+	sort.Slice(mutClone, func(i, j int) bool {
+		if mutClone[i].sortOrder() < mutClone[j].sortOrder() {
+			return true
+		}
+		if mutClone[i].sortOrder() == mutClone[j].sortOrder() {
+			return mutClone[i].timestamp().Before(mutClone[j].timestamp())
+		}
+		return false
+	})
+	for _, m := range mutClone {
 		ret.Add(m.text())
 	}
 	return ret
