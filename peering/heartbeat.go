@@ -171,7 +171,9 @@ func (ps *Peers) sendHeartbeatToPeer(id peer.ID, hbCounter uint32) {
 	if blacklisted {
 		// ignore
 		ps.Tracef(TraceTagHeartBeatSend, "node #%d blacklisted. Ignore", ShortPeerIDString(id))
-		peer.numHBSendErr = 0
+		if peer != nil {
+			peer.numHBSendErr = 0
+		}
 		return
 	}
 

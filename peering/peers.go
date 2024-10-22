@@ -71,6 +71,7 @@ func New(env environment, cfg *Config) (*Peers, error) {
 		staticPeers:          set.New[peer.ID](),
 		blacklist:            make(map[peer.ID]_deadlineWithReason),
 		cooloffList:          make(map[peer.ID]time.Time),
+		connectList:          set.New[peer.ID](),
 		onReceiveTx:          func(_ peer.ID, _ []byte, _ *txmetadata.TransactionMetadata) {},
 		onReceivePullTx:      func(_ peer.ID, _ ledger.TransactionID) {},
 		lppProtocolGossip:    protocol.ID(fmt.Sprintf(lppProtocolGossip, rendezvousNumber)),
@@ -278,7 +279,7 @@ func (ps *Peers) NewStream(peerID peer.ID, pID protocol.ID, timeout time.Duratio
 }
 
 func (ps *Peers) dialPeer(peerID peer.ID, static bool) ([]network.Stream, error) {
-	timeout := 2 * time.Second
+	timeout := 15 * time.Second
 
 	var err error
 	streams := make([]network.Stream, 3)
@@ -315,24 +316,35 @@ func (ps *Peers) _addPeer(addrInfo *peer.AddrInfo, name string, static bool) *Pe
 		whenAdded: time.Now(),
 	}
 
+	ps._addToConnectList(addrInfo.ID)
 	for _, a := range addrInfo.Addrs {
 		ps.host.Peerstore().AddAddr(addrInfo.ID, a, peerstore.PermanentAddrTTL)
 	}
+
 	go func() {
-		time.Sleep(100 * time.Millisecond) //??
+		time.Sleep(100 * time.Millisecond) // ?? Delay
 		streams, err := ps.dialPeer(addrInfo.ID, static)
 		if err != nil {
+			ps.Log().Errorf("[peering] dialPeer err %s", err.Error())
 			ps.host.Peerstore().RemovePeer(addrInfo.ID)
+			ps.mutex.Lock()
+			ps._removeFromConnectList(addrInfo.ID)
+			ps.mutex.Unlock()
 			return
 		}
+
+		ps.mutex.Lock()
+		defer ps.mutex.Unlock()
+
 		for i, _ := range streams {
 			util.Assertf(streams[i] != nil, "stream != nil")
 			p.streams[i].stream = streams[i]
 		}
-		ps.mutex.Lock()
-		defer ps.mutex.Unlock()
+
+		ps._removeFromConnectList(addrInfo.ID)
 		ps.peers[addrInfo.ID] = p
 	}()
+
 	return p
 }
 
@@ -393,6 +405,13 @@ func (ps *Peers) _addToCoolOfflist(id peer.ID) {
 	ps.cooloffList[id] = time.Now().Add(cooloffTTL)
 }
 
+func (ps *Peers) _addToConnectList(id peer.ID) {
+	//ps.Log().Infof("[peering] node is connected to %d peer(s). Static: %d/%d, dynamic %d/%d, pull targets: %d (%v)",
+	ps.Log().Infof("[peering] ****** add to connect list peer %s", ShortPeerIDString(id))
+
+	ps.connectList.Insert(id)
+}
+
 func (ps *Peers) _isInCoolOffList(id peer.ID) bool {
 	_, yes := ps.cooloffList[id]
 	return yes
@@ -400,6 +419,11 @@ func (ps *Peers) _isInCoolOffList(id peer.ID) bool {
 
 func (ps *Peers) _isInBlacklist(id peer.ID) bool {
 	_, yes := ps.blacklist[id]
+	return yes
+}
+
+func (ps *Peers) _isInConnectList(id peer.ID) bool {
+	yes := ps.connectList.Contains(id)
 	return yes
 }
 
@@ -510,6 +534,10 @@ func (ps *Peers) cleanCoolofflist() {
 	for _, id := range toDelete {
 		delete(ps.cooloffList, id)
 	}
+}
+
+func (ps *Peers) _removeFromConnectList(id peer.ID) {
+	ps.connectList.Remove(id)
 }
 
 func (p *Peer) _isDead() bool {
