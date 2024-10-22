@@ -66,7 +66,7 @@ func (v *Vertex) UnReferenceDependencies() {
 func (v *Vertex) InputLoaderByIndex(i byte) (*ledger.Output, error) {
 	o := v.GetConsumedOutput(i)
 	if o == nil {
-		return nil, fmt.Errorf("consumed output at index %d is not available", i)
+		return nil, fmt.Errorf("InputLoaderByIndex: consumed output at index %d is not available", i)
 	}
 	return o, nil
 }
@@ -96,7 +96,7 @@ func (v *Vertex) ValidateConstraints(traceOption ...int) error {
 	}
 	ctx, err := transaction.TxContextFromTransaction(v.Tx, v.InputLoaderByIndex, traceOpt)
 	if err != nil {
-		return err
+		return fmt.Errorf("ValidateConstraints of %s: %w", v.Tx.IDShortString(), err)
 	}
 	err = ctx.Validate()
 

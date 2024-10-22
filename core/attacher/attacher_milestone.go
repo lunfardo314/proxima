@@ -160,7 +160,7 @@ func (a *milestoneAttacher) run() error {
 }
 
 const (
-	enableDeadlockCatching      = true
+	enableDeadlockCatching      = false
 	deadlockIndicationThreshold = 10 * time.Second
 )
 

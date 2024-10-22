@@ -266,7 +266,6 @@ func (a *attacher) attachVertexUnwrapped(v *vertex.Vertex, vidUnwrapped *vertex.
 	} else {
 		a.Tracef(TraceTagAttachVertex, "endorsements NOT marked solid in %s", v.Tx.IDShortString)
 	}
-
 	inputsOk := a.attachInputsOfTheVertex(v, vidUnwrapped) // deep recursion
 	if !inputsOk {
 		a.Assertf(a.err != nil, "a.err!=nil")
@@ -510,10 +509,11 @@ func (a *attacher) attachIfRooted(wOut vertex.WrappedOutput) (ok bool, defined b
 	a.Tracef(TraceTagAttachOutput, "attachIfRooted %s IN", wOut.IDShortString)
 	a.checkTransactionInTheState(wOut.VID)
 
-	if a.pastCone.IsNotInTheState(wOut.VID) || a.pastCone.IsRootedOutput(wOut) {
+	if a.pastCone.IsNotInTheState(wOut.VID) {
 		// it is definitely not in the state
 		return true, true
 	}
+
 	a.Assertf(a.pastCone.IsKnownInTheState(wOut.VID), "a.pastCone.IsKnownInTheState(wOut.VID)")
 
 	// transaction is known in the state -> check if output is in the state (i.e. not consumed yet)
@@ -531,6 +531,7 @@ func (a *attacher) attachIfRooted(wOut vertex.WrappedOutput) (ok bool, defined b
 		a.Tracef(TraceTagAttachOutput, "%v", err)
 		return false, false
 	}
+
 	// output has been found in the state -> Good
 	if err = wOut.VID.EnsureOutputWithID(out); err != nil {
 		a.setError(err)
@@ -554,6 +555,7 @@ func (a *attacher) attachOutput(wOut vertex.WrappedOutput) (ok, defined bool) {
 		return false, false
 	}
 	if a.pastCone.IsRootedOutput(wOut) {
+		a.Assertf(wOut.IsAvailable(), "wOut.IsAvailable(): %s", wOut.IDShortString)
 		a.Tracef(TraceTagAttachOutput, "%s is 'rooted'", wOut.IDShortString)
 		return true, true
 	}

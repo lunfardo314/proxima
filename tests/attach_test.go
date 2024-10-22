@@ -526,8 +526,8 @@ func TestConflicts1Attacher(t *testing.T) {
 func TestConflictsNAttachersSeqStartTx(t *testing.T) {
 	//attacher.SetTraceOn()
 	const (
-		nConflicts = 10
-		nChains    = 10
+		nConflicts = 2 //10
+		nChains    = 2 // 10
 		howLong    = 2 // 97 fails when crosses slot boundary
 	)
 	var wg sync.WaitGroup

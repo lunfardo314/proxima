@@ -139,7 +139,7 @@ func initWorkflowTest(t *testing.T, nChains int, startPruner ...bool) *workflowT
 	t.Logf("distribution txID: %s", ret.distributionBranchTxID.StringShort())
 
 	ret.faucetOutput = ret.distributionBranchTx.MustProducedOutputWithIDAt(4)
-	const printDistributionTx = false
+	const printDistributionTx = true
 	if printDistributionTx {
 		tx, err := transaction.FromBytes(txBytes, transaction.MainTxValidationOptions...)
 		require.NoError(t, err)
@@ -211,6 +211,8 @@ func (td *workflowTestData) makeChainOrigins(n int) {
 	txBytes := txb.TransactionData.Bytes()
 	td.chainOriginsTx, err = transaction.FromBytes(txBytes, transaction.MainTxValidationOptions...)
 	require.NoError(td.t, err)
+	td.t.Logf("chain origins transaction:\n%s", td.chainOriginsTx.String())
+
 	td.chainOrigins = make([]*ledger.OutputWithChainID, n)
 	td.chainOriginsTx.ForEachProducedOutput(func(idx byte, o *ledger.Output, oid *ledger.OutputID) bool {
 		if int(idx) >= n {
