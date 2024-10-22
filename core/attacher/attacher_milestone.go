@@ -97,7 +97,7 @@ func newMilestoneAttacher(vid *vertex.WrappedTx, env Environment, metadata *txme
 		},
 		Deleted: vid.PanicAccessDeleted,
 	})
-	ret.pastCone.MarkVertexUndefined(vid)
+	ret.pastCone.MustMarkVertexNotInTheState(vid)
 	return ret
 }
 
@@ -265,6 +265,7 @@ func (a *milestoneAttacher) solidifyPastCone() vertex.Status {
 					return
 				}
 				if ok, finalSuccess = a.validateSequencerTxUnwrapped(v); !ok {
+					a.Tracef(TraceTagValidateSequencer, "validateSequencerTxUnwrapped: ok = %v, finalSuccess = %v", ok, finalSuccess)
 					a.Assertf(a.err != nil, "a.err != nil")
 					// dispose vertex
 					v.UnReferenceDependencies()
@@ -288,8 +289,11 @@ func (a *milestoneAttacher) solidifyPastCone() vertex.Status {
 	})
 }
 
+const TraceTagValidateSequencer = "validateSeq"
+
 func (a *milestoneAttacher) validateSequencerTxUnwrapped(v *vertex.Vertex) (ok, finalSuccess bool) {
 	if a.pastCone.ContainsUndefinedExcept(a.vid) {
+		a.Tracef(TraceTagValidateSequencer, "contains undefined in the past cone")
 		return true, false
 	}
 	flags := a.pastCone.Flags(a.vid)
@@ -302,11 +306,11 @@ func (a *milestoneAttacher) validateSequencerTxUnwrapped(v *vertex.Vertex) (ok, 
 
 	if err := v.ValidateConstraints(); err != nil {
 		a.setError(err)
-		a.Tracef(TraceTagAttachVertex, "constraint validation failed in %s: '%v'", a.vid.IDShortString, err)
+		a.Tracef(TraceTagValidateSequencer, "constraint validation failed in %s: '%v'", a.vid.IDShortString, err)
 		return false, false
 	}
 	a.vid.SetFlagsUpNoLock(vertex.FlagVertexConstraintsValid)
-	a.Tracef(TraceTagAttachVertex, "constraints has been validated OK: %s", v.Tx.IDShortString)
+	a.Tracef(TraceTagValidateSequencer, "constraints has been validated OK: %s", v.Tx.IDShortString)
 	return true, true
 }
 

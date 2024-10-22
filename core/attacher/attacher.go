@@ -427,6 +427,9 @@ func (a *attacher) attachEndorsement(v *vertex.Vertex, vidUnwrapped *vertex.Wrap
 
 // checkTransactionInTheState checks if dependency is rooted and marks it 'rooted' if defined
 func (a *attacher) checkTransactionInTheState(vid *vertex.WrappedTx) {
+	defer func() {
+		a.Assertf(a.pastCone.Flags(vid).FlagsUp(vertex.FlagAttachedVertexCheckedInTheState), "a.pastCone.Flags(vid).FlagsUp(vertex.FlagAttachedVertexCheckedInTheState)")
+	}()
 	if a.pastCone.Flags(vid).FlagsUp(vertex.FlagAttachedVertexCheckedInTheState) {
 		// already checked
 		return
@@ -446,15 +449,22 @@ func (a *attacher) checkTransactionInTheState(vid *vertex.WrappedTx) {
 	}
 }
 
+const TraceTagAttachInputs = "attachInputs"
+
 func (a *attacher) attachInputsOfTheVertex(v *vertex.Vertex, vidUnwrapped *vertex.WrappedTx) (ok bool) {
+	a.Tracef(TraceTagAttachInputs, "attachInputsOfTheVertex IN: %s", vidUnwrapped.IDShortString)
+
 	numUndefined := v.Tx.NumInputs()
 	var success bool
 	for i := range v.Inputs {
+		//a.Tracef(TraceTagAttachInputs, "attachInput #%d BEFORE: %s", i, vidUnwrapped.IDShortString)
 		ok, success = a.attachInput(v, byte(i), vidUnwrapped)
 		if !ok {
 			a.Assertf(a.err != nil, "a.err != nil")
+			a.Tracef(TraceTagAttachInputs, "attachInputs NOT-OK: %s", vidUnwrapped.IDShortString)
 			return false
 		}
+		//a.Tracef(TraceTagAttachInputs, "attachInput #%d AFTER: %s", i, vidUnwrapped.IDShortString)
 		if success {
 			numUndefined--
 		}
@@ -462,6 +472,7 @@ func (a *attacher) attachInputsOfTheVertex(v *vertex.Vertex, vidUnwrapped *verte
 	if numUndefined == 0 {
 		a.pastCone.SetFlagsUp(vidUnwrapped, vertex.FlagAttachedVertexInputsSolid)
 	}
+	a.Tracef(TraceTagAttachInputs, "attachInputs OK: %s", vidUnwrapped.IDShortString)
 	return true
 }
 
@@ -498,19 +509,12 @@ func (a *attacher) attachInput(v *vertex.Vertex, inputIdx byte, vidUnwrapped *ve
 func (a *attacher) attachIfRooted(wOut vertex.WrappedOutput) (ok bool, defined bool) {
 	a.Tracef(TraceTagAttachOutput, "attachIfRooted %s IN", wOut.IDShortString)
 	a.checkTransactionInTheState(wOut.VID)
-	if a.pastCone.IsKnownInTheState(wOut.VID) {
-		a.Tracef(TraceTagAttachOutput, "attachIfRooted %s Rooted status undefined", wOut.IDShortString)
-		return true, false
-	}
 
-	if a.pastCone.IsNotInTheState(wOut.VID) {
+	if a.pastCone.IsNotInTheState(wOut.VID) || a.pastCone.IsRootedOutput(wOut) {
 		// it is definitely not in the state
 		return true, true
 	}
-	if a.pastCone.IsRootedOutput(wOut) {
-		// transaction is known in the state and output is consumed in the state
-		return true, true
-	}
+	a.Assertf(a.pastCone.IsKnownInTheState(wOut.VID), "a.pastCone.IsKnownInTheState(wOut.VID)")
 
 	// transaction is known in the state -> check if output is in the state (i.e. not consumed yet)
 	stateReader := a.baselineStateReader()
@@ -536,8 +540,6 @@ func (a *attacher) attachIfRooted(wOut vertex.WrappedOutput) (ok bool, defined b
 
 	// this is new rooted output -> add to the accumulatedCoverage
 	a.accumulatedCoverage += out.Output.Amount()
-	a.pastCone.MustMarkVertexInTheState(wOut.VID)
-
 	return true, true
 }
 
@@ -552,15 +554,15 @@ func (a *attacher) attachOutput(wOut vertex.WrappedOutput) (ok, defined bool) {
 		return false, false
 	}
 	if a.pastCone.IsRootedOutput(wOut) {
-		a.Tracef(TraceTagAttachOutput, "%s is Rooted", wOut.IDShortString)
+		a.Tracef(TraceTagAttachOutput, "%s is 'rooted'", wOut.IDShortString)
 		return true, true
 	}
 	// not Rooted
-	a.Tracef(TraceTagAttachOutput, "%s is NOT Rooted", wOut.IDShortString)
+	a.Tracef(TraceTagAttachOutput, "%s is NOT 'rooted'", wOut.IDShortString)
 
 	if wOut.VID.IsBranchTransaction() {
-		// not Rooted branch output -> BAD
-		err := fmt.Errorf("attachOutput: branch output %s is expected to be Rooted in the baseline %s", wOut.IDShortString(), a.baseline.IDShortString())
+		// branch output not in the state -> BAD
+		err := fmt.Errorf("attachOutput: branch output %s is expected to be in the baseline %s", wOut.IDShortString(), a.baseline.IDShortString())
 		a.setError(err)
 		return false, false
 	}

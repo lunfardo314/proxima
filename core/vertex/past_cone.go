@@ -412,33 +412,40 @@ func (pc *PastCone) _findConsumer(consumers set.Set[*WrappedTx]) (ret *WrappedTx
 	return
 }
 
-func (pc *PastCone) outputIndices(vid *WrappedTx) (consumedIndices, notConsumedIndices []byte) {
-	numProduced := vid.NumProducedOutputs()
-	pc.Assertf(numProduced > 0, "numProduced > 0")
-	consumedIndices, notConsumedIndices = make([]byte, 0, numProduced), make([]byte, 0, numProduced)
+func (pc *PastCone) consumedIndices(vid *WrappedTx) []byte {
+	ret := make([]byte, 0)
 
 	vid.mutexDescendants.RLock()
 	defer vid.mutexDescendants.RUnlock()
 
-	for idx := 0; idx < numProduced; idx++ {
-		if consumers, isConsumed := vid.consumed[byte(idx)]; isConsumed {
-			if pc._findConsumer(consumers) != nil {
-				consumedIndices = append(consumedIndices, byte(idx))
-			} else {
-				notConsumedIndices = append(notConsumedIndices, byte(idx))
-			}
-		} else {
-			notConsumedIndices = append(notConsumedIndices, byte(idx))
+	for idx, consumers := range vid.consumed {
+		if pc._findConsumer(consumers) != nil {
+			ret = append(ret, idx)
 		}
 	}
-	if len(consumedIndices) == 0 {
-		consumedIndices = nil
+	return ret
+}
+
+func (pc *PastCone) notConsumedIndices(vid *WrappedTx) ([]byte, int) {
+	numProduced := vid.NumProducedOutputs()
+	if numProduced == 0 {
+		return nil, 0
 	}
-	if len(notConsumedIndices) == 0 {
-		notConsumedIndices = nil
+	ret := make([]byte, 0, numProduced)
+
+	vid.mutexDescendants.RLock()
+	defer vid.mutexDescendants.RUnlock()
+
+	for i := 0; i < numProduced; i++ {
+		if consumers, found := vid.consumed[byte(i)]; found {
+			if pc._findConsumer(consumers) == nil {
+				ret = append(ret, byte(i))
+			}
+		} else {
+			ret = append(ret, byte(i))
+		}
 	}
-	pc.Assertf(len(notConsumedIndices)+len(consumedIndices) == numProduced, "len(notConsumedIndices)+len(consumedIndices) == numProduced")
-	return
+	return ret, numProduced
 }
 
 type MutationStats struct {
@@ -452,17 +459,17 @@ func (pc *PastCone) Mutations(slot ledger.Slot) (muts *multistate.Mutations, sta
 
 	// generate ADD TX and ADD OUTPUT mutations
 	for vid := range pc.vertices {
-		consumedIndices, notConsumedIndices := pc.outputIndices(vid)
 		if pc.IsKnownInTheState(vid) {
 			// generate DEL mutations
-			for _, idx := range consumedIndices {
+			for _, idx := range pc.consumedIndices(vid) {
 				if pc.IsRootedOutput(WrappedOutput{VID: vid, Index: idx}) {
 					muts.InsertDelOutputMutation(vid.OutputID(idx))
 					stats.NumDeleted++
 				}
 			}
 		} else {
-			muts.InsertAddTxMutation(vid.ID, slot, byte(len(consumedIndices)+len(notConsumedIndices)-1))
+			notConsumedIndices, numProduced := pc.notConsumedIndices(vid)
+			muts.InsertAddTxMutation(vid.ID, slot, byte(numProduced-1))
 			stats.NumTransactions++
 
 			// ADD OUTPUT mutations only for not consumed outputs
@@ -476,11 +483,20 @@ func (pc *PastCone) Mutations(slot ledger.Slot) (muts *multistate.Mutations, sta
 }
 
 func (pc *PastCone) IsRootedOutput(wOut WrappedOutput) bool {
-	if pc.IsNotInTheState(wOut.VID) {
+	if !pc.IsKnownInTheState(wOut.VID) {
 		return false
 	}
+	// it is in the state
 	consumer := pc.findConsumerOf(wOut)
-	return consumer != nil && pc.IsNotInTheState(consumer)
+	if consumer == nil {
+		return true
+	}
+	if pc.IsNotInTheState(consumer) {
+		return true
+	}
+	fmt.Printf(">>>>>>>>>>>>>> %s\n%s\n", wOut.DecodeID().StringShort(), pc.Lines("     ").Join("\n"))
+	panic(">>>>>>>>>>>>>>")
+	return false
 }
 
 func (pc *PastCone) hasRooted() bool {
@@ -624,8 +640,6 @@ func (pc *PastCone) checkFinalFlags(vid *WrappedTx) error {
 		switch {
 		case pc.baseline == vid:
 			return fmt.Errorf("checkFinalFlags: must be baseline")
-		case flags.FlagsUp(FlagAttachedVertexCheckedInTheState):
-			wrongFlag = "FlagAttachedVertexCheckedInTheState"
 		}
 	default:
 		switch {
