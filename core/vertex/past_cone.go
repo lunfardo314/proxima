@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"slices"
 	"sort"
-	"strconv"
 
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
@@ -12,7 +11,6 @@ import (
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
 	"github.com/lunfardo314/proxima/util/set"
-	"golang.org/x/exp/maps"
 )
 
 // Attacher keeps list of past cone vertices.
@@ -41,7 +39,6 @@ type (
 	PastConeBase struct {
 		baseline *WrappedTx
 		vertices map[*WrappedTx]FlagsPastCone // byte is used by attacher for flags
-		rooted   map[*WrappedTx]set.Set[byte]
 	}
 )
 
@@ -75,7 +72,6 @@ func (f FlagsPastCone) String() string {
 func newPastConeBase(baseline *WrappedTx) *PastConeBase {
 	return &PastConeBase{
 		vertices: make(map[*WrappedTx]FlagsPastCone),
-		rooted:   make(map[*WrappedTx]set.Set[byte]),
 		baseline: baseline,
 	}
 }
@@ -91,7 +87,7 @@ func NewPastCone(env global.Logging, name string) *PastCone {
 }
 
 func (pb *PastConeBase) referenceBaseline(vid *WrappedTx) bool {
-	util.Assertf(pb.baseline == nil, "referenceBaseline: pc.baseline == nil")
+	util.Assertf(pb.baseline == nil, "referenceBaseline: pb.baseline == nil")
 	if !vid.Reference() {
 		return false
 	}
@@ -151,9 +147,6 @@ func (pc *PastCone) CommitDelta() {
 	pc.baseline = pc.delta.baseline
 	for vid, flags := range pc.delta.vertices {
 		pc.vertices[vid] = flags
-	}
-	for vid, rootedIndices := range pc.delta.rooted {
-		pc.rooted[vid] = rootedIndices
 	}
 	pc.delta = nil
 }
@@ -242,29 +235,11 @@ func (pc *PastCone) IsKnownUndefined(vid *WrappedTx) bool {
 	return !f.FlagsUp(FlagAttachedVertexDefined)
 }
 
-func (pc *PastCone) isRootedVertex(vid *WrappedTx) (rooted bool, rootedIndices set.Set[byte]) {
-	if !pc.Flags(vid).FlagsUp(FlagAttachedVertexIsRooted) {
-		return false, nil
+func (pc *PastCone) isRootedVertex(vid *WrappedTx) (rooted bool) {
+	if rooted = pc.Flags(vid).FlagsUp(FlagAttachedVertexIsRooted); rooted {
+		pc.Assertf(pc.Flags(vid).FlagsUp(FlagAttachedVertexCheckedIfRooted), "pc.Flags(vid).FlagsUp(FlagAttachedVertexCheckedIfRooted)")
 	}
-
-	if pc.delta == nil {
-		rootedIndices, rooted = pc.rooted[vid]
-		return
-	}
-	if rootedIndices, rooted = pc.delta.rooted[vid]; rooted {
-		return true, rootedIndices
-	}
-	rootedIndices, rooted = pc.rooted[vid]
-	return rooted, rootedIndices
-}
-
-func (pc *PastCone) IsRootedOutput(wOut WrappedOutput) bool {
-	rootedVertex, rootedIndices := pc.isRootedVertex(wOut.VID)
-	if !rootedVertex || len(rootedIndices) == 0 {
-		return false
-	}
-	pc.Assertf(!pc.IsKnownNotRooted(wOut.VID), "!a.IsKnownNotRooted(wOut.VID)")
-	return rootedIndices.Contains(wOut.Index)
+	return
 }
 
 // IsKnownNotRooted is definitely known it is not Rooted
@@ -275,19 +250,7 @@ func (pc *PastCone) IsKnownNotRooted(vid *WrappedTx) bool {
 }
 
 func (pc *PastCone) IsKnownRooted(vid *WrappedTx) (rooted bool) {
-	if pc.Flags(vid).FlagsUp(FlagAttachedVertexIsRooted) {
-		pc.Assertf(pc.IsKnown(vid), "pc.IsKnown(vid)")
-		pc.Assertf(pc.Flags(vid).FlagsUp(FlagAttachedVertexCheckedIfRooted), "pc.Flags(vid).FlagsUp(FlagAttachedVertexCheckedIfRooted)")
-		if pc.delta == nil {
-			_, found := pc.rooted[vid]
-			util.Assertf(found, "inconsistency: rooted flag 1 in %s", vid.IDShortString)
-		} else {
-			_, found := pc.delta.rooted[vid]
-			util.Assertf(found, "inconsistency: rooted flag 2 in %s", vid.IDShortString)
-		}
-		return true
-	}
-	return false
+	return pc.IsKnown(vid) && pc.isRootedVertex(vid)
 }
 
 // MarkVertexUndefined vertex becomes 'known' but undefined and 'referenced'
@@ -343,18 +306,6 @@ func (pc *PastCone) MustMarkVertexRooted(vid *WrappedTx) {
 	}
 	util.Assertf(!pc.IsKnownNotRooted(vid), "!pc.IsKnownNotRooted(vid)")
 	pc.SetFlagsUp(vid, FlagAttachedVertexKnown|FlagAttachedVertexCheckedIfRooted|FlagAttachedVertexDefined|FlagAttachedVertexIsRooted)
-	// creates rooted entry if it does not exist yet, probably empty, i.e. with or without output indices
-	if pc.delta == nil {
-		pc.rooted[vid] = pc.rooted[vid]
-	} else {
-		if _, ok := pc.delta.rooted[vid]; !ok {
-			if rootedIndices, ok1 := pc.rooted[vid]; ok1 {
-				pc.delta.rooted[vid] = rootedIndices.Clone()
-			} else {
-				pc.delta.rooted[vid] = nil
-			}
-		}
-	}
 	pc.Assertf(pc.IsKnownRooted(vid), "pc.IsKnownNotRooted(vid)")
 }
 
@@ -366,64 +317,6 @@ func (pc *PastCone) MustMarkVertexNotRooted(vid *WrappedTx) {
 	}
 	pc.SetFlagsUp(vid, FlagAttachedVertexKnown|FlagAttachedVertexCheckedIfRooted)
 	pc.Assertf(pc.IsKnownNotRooted(vid), "pc.IsKnownNotRooted(vid)")
-}
-
-func (pc *PastCone) MustMarkOutputRooted(wOut WrappedOutput) {
-	pc.MustMarkOutputsRooted(wOut.VID, wOut.Index)
-}
-
-// MustMarkOutputsRooted marks outputs rooted and returns resulting coverage delta
-// returns indices of outputs which are new for the target past cone
-func (pc *PastCone) MustMarkOutputsRooted(vid *WrappedTx, rootedIndices ...byte) (newIndices []byte) {
-	pc.MustMarkVertexRooted(vid)
-	if pc.delta == nil {
-		if oldRootedIndices := pc.rooted[vid]; len(oldRootedIndices) > 0 {
-			newIndices = make([]byte, 0, len(rootedIndices))
-			for _, idx := range rootedIndices {
-				if !oldRootedIndices.Contains(idx) {
-					// new output index
-					oldRootedIndices.Insert(idx)
-					newIndices = append(newIndices, idx)
-				}
-			}
-		} else {
-			pc.rooted[vid] = set.New[byte](rootedIndices...)
-			newIndices = rootedIndices
-		}
-		return
-	}
-	// delta != nil
-
-	if oldRootedIndices := pc.delta.rooted[vid]; len(oldRootedIndices) > 0 {
-		// found in delta
-		newIndices = make([]byte, 0, len(rootedIndices))
-		for _, idx := range rootedIndices {
-			if !oldRootedIndices.Contains(idx) {
-				// new output index
-				oldRootedIndices.Insert(idx)
-				newIndices = append(newIndices, idx)
-			}
-		}
-		return
-	}
-
-	// element in delta does not exist. Copy it from committed part
-	if oldRootedIndices := pc.rooted[vid]; len(oldRootedIndices) > 0 {
-		oldRootedIndicesClone := oldRootedIndices.Clone()
-		for _, idx := range rootedIndices {
-			if !oldRootedIndicesClone.Contains(idx) {
-				// new output index
-				oldRootedIndicesClone.Insert(idx)
-				newIndices = append(newIndices, idx)
-			}
-		}
-		pc.delta.rooted[vid] = oldRootedIndicesClone
-	} else {
-		oldRootedIndices = set.New[byte](rootedIndices...)
-		newIndices = rootedIndices
-		pc.delta.rooted[vid] = oldRootedIndices
-	}
-	return
 }
 
 func (pc *PastCone) ContainsUndefinedExcept(except *WrappedTx) bool {
@@ -439,10 +332,8 @@ func (pc *PastCone) ContainsUndefinedExcept(except *WrappedTx) bool {
 func (pc *PastCone) CalculateSlotInflation() (ret uint64) {
 	pc.Assertf(pc.delta == nil, "pc.delta == nil")
 	for vid := range pc.vertices {
-		if _, isRooted := pc.rooted[vid]; !isRooted {
-			if vid.IsSequencerMilestone() {
-				ret += vid.InflationAmountOfSequencerMilestone()
-			}
+		if pc.IsKnownRooted(vid) && vid.IsSequencerMilestone() {
+			ret += vid.InflationAmountOfSequencerMilestone()
 		}
 	}
 	return
@@ -453,24 +344,14 @@ func (pc *PastCone) Lines(prefix ...string) *lines.Lines {
 	return pc.PastConeBase.Lines(prefix...)
 }
 
-func (pcb *PastConeBase) Lines(prefix ...string) *lines.Lines {
+func (pb *PastConeBase) Lines(prefix ...string) *lines.Lines {
 	ret := lines.New(prefix...)
-	ret.Add("------ baseline: %s", util.Cond(pcb.baseline == nil, "<nil>", pcb.baseline.IDShortString()))
-	sorted := util.KeysSorted(pcb.vertices, func(vid1, vid2 *WrappedTx) bool {
+	ret.Add("------ baseline: %s", util.Cond(pb.baseline == nil, "<nil>", pb.baseline.IDShortString()))
+	sorted := util.KeysSorted(pb.vertices, func(vid1, vid2 *WrappedTx) bool {
 		return vid1.Before(vid2)
 	})
 	for i, vid := range sorted {
-		ret.Add("#%d %s : %s", i, vid.IDShortString(), pcb.vertices[vid].String())
-	}
-	ret.Add("------ rooted:")
-	sorted = util.KeysSorted(pcb.rooted, func(vid1, vid2 *WrappedTx) bool {
-		return vid1.Before(vid2)
-	})
-	for i, vid := range sorted {
-		ln := pcb.rooted[vid].Lines(func(key byte) string {
-			return strconv.Itoa(int(key))
-		})
-		ret.Add("#%d %s : %s", i, vid.IDShortString(), ln.Join(","))
+		ret.Add("#%d %s : %s", i, vid.IDShortString(), pb.vertices[vid].String())
 	}
 	return ret
 }
@@ -503,6 +384,47 @@ func (pc *PastCone) NumVertices() int {
 	return len(pc.vertices)
 }
 
+// findKnownConsumer selects 0 or 1 consumer from the set which is known in the past cone
+// It panics if there's more than one consumer (double spends are not allowed in the past cone),
+func (pc *PastCone) findKnownConsumer(consumers set.Set[*WrappedTx]) (ret *WrappedTx) {
+	for vid := range consumers {
+		if pc.IsKnown(vid) {
+			pc.Assertf(ret == nil, "inconsistency: double-spend in the past cone %s", pc.name)
+			ret = vid
+		}
+	}
+	return
+}
+
+func (pc *PastCone) outputIndices(vid *WrappedTx) (consumedIndices, notConsumedIndices []byte) {
+	numProduced := vid.NumProducedOutputs()
+	pc.Assertf(numProduced > 0, "numProduced > 0")
+	consumedIndices, notConsumedIndices = make([]byte, 0, numProduced), make([]byte, 0, numProduced)
+
+	vid.mutexDescendants.RLock()
+	defer vid.mutexDescendants.RUnlock()
+
+	for idx := 0; idx < numProduced; idx++ {
+		if consumers, isConsumed := vid.consumed[byte(idx)]; isConsumed {
+			if pc.findKnownConsumer(consumers) != nil {
+				consumedIndices = append(consumedIndices, byte(idx))
+			} else {
+				notConsumedIndices = append(notConsumedIndices, byte(idx))
+			}
+		} else {
+			notConsumedIndices = append(notConsumedIndices, byte(idx))
+		}
+	}
+	if len(consumedIndices) == 0 {
+		consumedIndices = nil
+	}
+	if len(notConsumedIndices) == 0 {
+		notConsumedIndices = nil
+	}
+	pc.Assertf(len(notConsumedIndices)+len(consumedIndices) == numProduced, "len(notConsumedIndices)+len(consumedIndices) == numProduced")
+	return
+}
+
 type MutationStats struct {
 	NumTransactions int
 	NumDeleted      int
@@ -512,35 +434,40 @@ type MutationStats struct {
 func (pc *PastCone) Mutations(slot ledger.Slot) (muts *multistate.Mutations, stats MutationStats) {
 	muts = multistate.NewMutations()
 
-	// generate DEL mutations
-	for vid, consumed := range pc.rooted {
-		for idx := range consumed {
-			out := vid.MustOutputWithIDAt(idx)
-			muts.InsertDelOutputMutation(out.ID)
-			stats.NumDeleted++
-		}
-	}
 	// generate ADD TX and ADD OUTPUT mutations
-	allVerticesSet := set.NewFromKeys(pc.vertices)
 	for vid := range pc.vertices {
+		consumedIndices, notConsumedIndices := pc.outputIndices(vid)
 		if pc.IsKnownRooted(vid) {
-			continue
-		}
-		muts.InsertAddTxMutation(vid.ID, slot, byte(vid.NumProducedOutputs()-1))
-		stats.NumTransactions++
+			// generate DEL mutations
+			for _, idx := range consumedIndices {
+				muts.InsertDelOutputMutation(vid.OutputID(idx))
+				stats.NumDeleted++
+			}
+		} else {
+			muts.InsertAddTxMutation(vid.ID, slot, byte(len(consumedIndices)+len(notConsumedIndices)-1))
+			stats.NumTransactions++
 
-		// ADD OUTPUT mutations only for not consumed outputs
-		producedOutputIndices := vid.NotConsumedOutputIndices(allVerticesSet)
-		for _, idx := range producedOutputIndices {
-			muts.InsertAddOutputMutation(vid.OutputID(idx), vid.MustOutputAt(idx))
-			stats.NumCreated++
+			// ADD OUTPUT mutations only for not consumed outputs
+			for _, idx := range notConsumedIndices {
+				muts.InsertAddOutputMutation(vid.OutputID(idx), vid.MustOutputAt(idx))
+				stats.NumCreated++
+			}
 		}
 	}
 	return
 }
 
+func (pc *PastCone) hasRooted() bool {
+	for _, flags := range pc.vertices {
+		if flags.FlagsUp(FlagAttachedVertexIsRooted) {
+			return true
+		}
+	}
+	return false
+}
+
 func (pc *PastCone) IsComplete() bool {
-	return pc.delta == nil && !pc.ContainsUndefinedExcept(nil) && len(pc.rooted) > 0
+	return pc.delta == nil && !pc.ContainsUndefinedExcept(nil) && pc.hasRooted()
 }
 
 func (pc *PastCone) getBaseline() *WrappedTx {
@@ -578,20 +505,10 @@ func (pc *PastCone) AppendPastCone(pcb *PastConeBase, getStateReader func(branch
 				return conflict, 0 //>>>>>>>>>>>>>>>>>>>>> conflict/double spend
 			}
 		}
-		if baselineStateReader.KnowsCommittedTransaction(&vid.ID) {
-			// identify rooted
-			fmt.Printf(">>>>>>>>>>>>>>> knows %s\n", vid.IDShortString())
-		} else {
-			pc.MustMarkVertexWithFlags(vid, flags)
+		pc.MustMarkVertexWithFlags(vid, flags)
+		if !pc.IsKnownRooted(vid) && baselineStateReader.KnowsCommittedTransaction(&vid.ID) {
+			pc.SetFlagsUp(vid, FlagAttachedVertexCheckedIfRooted|FlagAttachedVertexIsRooted)
 		}
-		if rootedIndices, rooted := pcb.rooted[vid]; rooted {
-			newRootedIndices := pc.MustMarkOutputsRooted(vid, maps.Keys(rootedIndices)...)
-			for _, idx := range newRootedIndices {
-				o := vid.MustOutputAt(idx)
-				coverageDelta += o.Amount()
-			}
-		}
-		// TODO
 	}
 	return nil, coverageDelta
 }
@@ -619,20 +536,6 @@ func (pc *PastCone) checkConflicts(vid *WrappedTx, pcb *PastConeBase) *WrappedOu
 	return nil
 }
 
-func checkRooted(vid *WrappedTx, rootedIndices []byte, baselineStateReader global.IndexedStateReader) *WrappedOutput {
-	if len(rootedIndices) == 0 {
-		return nil
-	}
-	var oid ledger.OutputID
-	for _, idx := range rootedIndices {
-		oid = vid.OutputID(idx)
-		if !baselineStateReader.HasUTXO(&oid) {
-			return &WrappedOutput{vid, idx}
-		}
-	}
-	return nil
-}
-
 // CheckFinalPastCone check determinism consistency of the past cone
 // If rootVid == nil, past cone must be fully deterministic
 func (pc *PastCone) CheckFinalPastCone() (err error) {
@@ -644,35 +547,11 @@ func (pc *PastCone) CheckFinalPastCone() (err error) {
 	}
 
 	// should be at least one Rooted output ( ledger baselineCoverage must be > 0)
-	if len(pc.rooted) == 0 {
+	if !pc.hasRooted() {
 		return fmt.Errorf("CheckFinalPastCone: at least one rooted output is expected")
-	}
-	for vid := range pc.rooted {
-		if !pc.IsKnownDefined(vid) {
-			return fmt.Errorf("CheckFinalPastCone: all Rooted must be defined. This one is not: %s", vid.IDShortString())
-		}
 	}
 	if len(pc.vertices) == 0 {
 		return fmt.Errorf("CheckFinalPastCone: 'vertices' is empty")
-	}
-	sum := uint64(0)
-	for vid, consumed := range pc.rooted {
-		var o *ledger.Output
-		consumed.ForEach(func(idx byte) bool {
-			o, err = vid.OutputAt(idx)
-			if err != nil {
-				return false
-			}
-			sum += o.Amount()
-			return true
-		})
-	}
-	if err != nil {
-		return
-	}
-	if sum == 0 {
-		err = fmt.Errorf("CheckFinalPastCone: sum of rooted cannot be 0")
-		return
 	}
 	for vid := range pc.vertices {
 		if err = pc.checkFinalFlags(vid); err != nil {
