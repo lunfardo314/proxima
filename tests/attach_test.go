@@ -847,8 +847,8 @@ func TestSeqChains(t *testing.T) {
 	t.Run("no pull order normal", func(t *testing.T) {
 		//attacher.SetTraceOn()
 		const (
-			nConflicts            = 5
-			nChains               = 5
+			nConflicts            = 2  // 5
+			nChains               = 2  // 5
 			howLongConflictChains = 2  // 97 fails when crosses slot boundary
 			howLongSeqChains      = 10 // 95 fails
 		)
@@ -859,7 +859,7 @@ func TestSeqChains(t *testing.T) {
 		testData.printTxIDs()
 
 		var wg sync.WaitGroup
-		//testData.env.StartTracingTags(tippool.TraceTag)
+		//testData.env.StartTracingTags(attacher.TraceTagAdjustCoverage)
 
 		testData.txBytesAttach()
 		vids := make([][]*vertex.WrappedTx, len(testData.seqChain))

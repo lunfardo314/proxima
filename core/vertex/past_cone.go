@@ -341,19 +341,49 @@ func (pc *PastCone) CalculateSlotInflation() (ret uint64) {
 
 func (pc *PastCone) Lines(prefix ...string) *lines.Lines {
 	pc.Assertf(pc.delta == nil, "pc.delta==nil")
-	return pc.PastConeBase.Lines(prefix...)
-}
-
-func (pb *PastConeBase) Lines(prefix ...string) *lines.Lines {
 	ret := lines.New(prefix...)
-	ret.Add("------ baseline: %s", util.Cond(pb.baseline == nil, "<nil>", pb.baseline.IDShortString()))
-	sorted := util.KeysSorted(pb.vertices, func(vid1, vid2 *WrappedTx) bool {
+	ret.Add("------ baseline: %s", util.Cond(pc.baseline == nil, "<nil>", pc.baseline.IDShortString()))
+	sorted := util.KeysSorted(pc.vertices, func(vid1, vid2 *WrappedTx) bool {
 		return vid1.Before(vid2)
 	})
+	rooted := make([]WrappedOutput, 0)
 	for i, vid := range sorted {
-		ret.Add("#%d %s : %s", i, vid.IDShortString(), pb.vertices[vid].String())
+		consumedIndices := pc.consumedIndices(vid)
+		ret.Add("#%d %s : %s, consumed: %+v", i, vid.IDShortString(), pc.vertices[vid].String(), consumedIndices)
+		for _, idx := range consumedIndices {
+			wOut := WrappedOutput{VID: vid, Index: idx}
+			if pc.IsRootedOutput(wOut) {
+				rooted = append(rooted, wOut)
+			}
+		}
+	}
+	ret.Add("----- rooted ----")
+	for _, wOut := range rooted {
+		covStr := "n/a"
+		o, err := wOut.VID.OutputAt(wOut.Index)
+		if err == nil && o != nil {
+			covStr = util.Th(o.Amount())
+		}
+		ret.Add("   %s: coverage delta = %s", wOut.IDShortString(), covStr)
 	}
 	return ret
+}
+
+func (pc *PastCone) CoverageDelta() (ret uint64) {
+	pc.Assertf(pc.delta == nil, "pc.delta == nil")
+
+	for vid := range pc.vertices {
+		consumedIndices := pc.consumedIndices(vid)
+		for _, idx := range consumedIndices {
+			wOut := WrappedOutput{VID: vid, Index: idx}
+			if pc.IsRootedOutput(wOut) {
+				o, err := wOut.VID.OutputAt(wOut.Index)
+				pc.AssertNoError(err)
+				ret += o.Amount()
+			}
+		}
+	}
+	return
 }
 
 func (pc *PastCone) UndefinedList() []*WrappedTx {

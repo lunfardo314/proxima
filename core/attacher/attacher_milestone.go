@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"math"
 	"runtime"
-	"strings"
 	"time"
 
 	"github.com/lunfardo314/proxima/core/memdag"
@@ -126,7 +125,11 @@ func (a *milestoneAttacher) run() error {
 
 	a.AdjustCoverage()
 
-	a.AssertNoError(a.checkConsistencyBeforeWrapUp())
+	err := a.checkConsistencyBeforeWrapUp()
+	if err != nil {
+		memdag.SaveGraphPastCone(a.vid, "inconsistent_before_wrapup")
+	}
+	a.AssertNoError(err)
 
 	// finalizing touches
 	a.wrapUpAttacher()
@@ -141,7 +144,7 @@ func (a *milestoneAttacher) run() error {
 
 	a.pastCone.MarkVertexDefinedDoNotEnforceRootedCheck(a.vid)
 
-	err := a.pastCone.CheckFinalPastCone()
+	err = a.pastCone.CheckFinalPastCone()
 	if err != nil {
 		err = fmt.Errorf("%w\n------ past cone of %s ------\n%s",
 			err, a.vid.IDShortString(), a.pastCone.Lines("     ").Join("\n"))
@@ -149,10 +152,14 @@ func (a *milestoneAttacher) run() error {
 	}
 	a.AssertNoError(err)
 
-	if strings.Contains(a.vid.IDShortString(), "92376a") {
-		fmt.Printf(">>>>>>>>>>>>>> %s past cone\n%s\n--------------", a.vid.IDShortString(), a.pastCone.PastConeBase.Lines("     ").Join("\n"))
-	}
 	a.vid.SetTxStatusGood(a.pastCone.PastConeBase)
+
+	const printPastCone = true
+	if printPastCone {
+		a.Log().Infof(">>>>>>>>>>>>> past cone of attacher %s\n%s", a.Name(), a.pastCone.Lines("      ").String())
+		a.Log().Infof(">>>>> directly calculated coverage delta: %s", util.Th(a.pastCone.CoverageDelta()))
+	}
+
 	a.PostEventNewGood(a.vid)
 	a.SendToTippool(a.vid)
 

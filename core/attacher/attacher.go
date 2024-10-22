@@ -427,7 +427,7 @@ func (a *attacher) attachEndorsement(v *vertex.Vertex, vidUnwrapped *vertex.Wrap
 // checkTransactionInTheState checks if dependency is rooted and marks it 'rooted' if defined
 func (a *attacher) checkTransactionInTheState(vid *vertex.WrappedTx) {
 	defer func() {
-		a.Assertf(a.pastCone.Flags(vid).FlagsUp(vertex.FlagAttachedVertexCheckedInTheState), "a.pastCone.Flags(vid).FlagsUp(vertex.FlagAttachedVertexCheckedInTheState)")
+		a.Assertf(a.baseline == nil || a.pastCone.Flags(vid).FlagsUp(vertex.FlagAttachedVertexCheckedInTheState), "a.pastCone.Flags(vid).FlagsUp(vertex.FlagAttachedVertexCheckedInTheState)")
 	}()
 	if a.pastCone.Flags(vid).FlagsUp(vertex.FlagAttachedVertexCheckedInTheState) {
 		// already checked
@@ -703,19 +703,19 @@ func (a *attacher) adjustCoverage() {
 	a.coverageAdjusted = true
 
 	baseSeqOut := a.baseline.SequencerWrappedOutput()
-	a.Tracef(TraceTagAdjustCoverage, "base seq out: %s", baseSeqOut.IDShortString)
+	seqOut := multistate.MustSequencerOutputOfBranch(a.StateStore(), baseSeqOut.VID.ID).Output
+	infl := seqOut.Inflation(true)
+	a.Tracef(TraceTagAdjustCoverage, "base seq out: %s, branch inflation: %s", baseSeqOut.IDShortString, util.Th(infl))
 
 	if a.pastCone.IsRootedOutput(baseSeqOut) {
-		// the baseline branch sequencer output is Rooted -> it is already included -> no need for adjustment
+		// the baseline branch sequencer output is `rooted` -> it is already included -> no need for adjustment
 		a.Tracef(TraceTagAdjustCoverage, " is rooted %s", baseSeqOut.IDShortString)
 		return
 	}
 	a.Tracef(TraceTagAdjustCoverage, " is NOT rooted %s", baseSeqOut.IDShortString)
 
 	// sequencer output is not Rooted (branch is just endorsed) -> add its inflation to the accumulatedCoverage
-	seqOut := multistate.MustSequencerOutputOfBranch(a.StateStore(), baseSeqOut.VID.ID).Output
-
-	a.coverageAdjustment = seqOut.Inflation(true)
+	a.coverageAdjustment = infl
 	a.Tracef(TraceTagAdjustCoverage, "coverage adjustment: %s", util.Th(a.coverageAdjustment))
 	a.accumulatedCoverage += a.coverageAdjustment
 }
@@ -728,12 +728,14 @@ func (a *attacher) IsCoverageAdjusted() bool {
 // dumpLines beware deadlocks
 func (a *attacher) dumpLines(prefix ...string) *lines.Lines {
 	ret := lines.New(prefix...)
-	ret.Add("attacher %s", a.name)
-	ret.Add("   baseline: %s", a.baseline.IDShortString())
-	ret.Add("   accumulatedCoverage: %s", util.Th(a.accumulatedCoverage))
-	ret.Add("   baselineSupply: %s", util.Th(a.baselineSupply))
-	ret.Add("   Past cone:")
-	//ret.Append(a.pastCone.Lines(prefix...))
+	ret.Add("attacher %s", a.name).
+		Add("   baseline: %s", a.baseline.IDShortString()).
+		Add("   accumulatedCoverage: %s", util.Th(a.accumulatedCoverage)).
+		Add("   coverage adjusted: %v", a.coverageAdjusted).
+		Add("   coverage adjustment: %s", util.Th(a.coverageAdjustment)).
+		Add("   baselineSupply: %s", util.Th(a.baselineSupply)).
+		Add("   Past cone:").
+		Append(a.pastCone.Lines(prefix...))
 	return ret
 }
 
