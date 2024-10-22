@@ -379,9 +379,9 @@ func (a *attacher) attachEndorsement(v *vertex.Vertex, vidUnwrapped *vertex.Wrap
 
 	a.pastCone.MarkVertexUndefined(vidEndorsed)
 
-	a.checkTransactionRootedStatus(vidEndorsed)
+	a.checkTransactionInTheState(vidEndorsed)
 
-	if a.pastCone.IsKnownRooted(vidEndorsed) {
+	if a.pastCone.IsKnownInTheState(vidEndorsed) {
 		// definitely in the state -> fully defined
 		a.pastCone.MarkVertexDefined(vidEndorsed)
 		return true, true
@@ -425,33 +425,25 @@ func (a *attacher) attachEndorsement(v *vertex.Vertex, vidUnwrapped *vertex.Wrap
 	return true, defined
 }
 
-// checkTransactionRootedStatus checks if dependency is rooted and marks it 'rooted' if defined
-func (a *attacher) checkTransactionRootedStatus(vidDep *vertex.WrappedTx) (defined bool) {
-	defer func() {
-		if defined {
-			a.Assertf(a.pastCone.Flags(vidDep).FlagsUp(vertex.FlagAttachedVertexCheckedIfRooted),
-				"a.pastCone.Flags(vidDep).FlagsUp(vertex.FlagAttachedVertexCheckedIfRooted)")
-		}
-	}()
-
-	if a.pastCone.Flags(vidDep).FlagsUp(vertex.FlagAttachedVertexCheckedIfRooted) {
+// checkTransactionInTheState checks if dependency is rooted and marks it 'rooted' if defined
+func (a *attacher) checkTransactionInTheState(vid *vertex.WrappedTx) {
+	if a.pastCone.Flags(vid).FlagsUp(vertex.FlagAttachedVertexCheckedInTheState) {
 		// already checked
-		return true
+		return
 	}
 	if a.baseline == nil {
-		return false
+		return
 	}
-	if vidDep.Timestamp().After(a.baseline.Timestamp()) {
+	if vid.Timestamp().After(a.baseline.Timestamp()) {
 		// output is later than baseline -> can't be Rooted in it
-		a.pastCone.MustMarkVertexNotRooted(vidDep)
-		return true
+		a.pastCone.MustMarkVertexNotInTheState(vid)
+		return
 	}
-	if a.baselineStateReader().KnowsCommittedTransaction(&vidDep.ID) {
-		a.pastCone.MustMarkVertexRooted(vidDep)
+	if a.baselineStateReader().KnowsCommittedTransaction(&vid.ID) {
+		a.pastCone.MustMarkVertexInTheState(vid)
 	} else {
-		a.pastCone.MustMarkVertexNotRooted(vidDep)
+		a.pastCone.MustMarkVertexNotInTheState(vid)
 	}
-	return true
 }
 
 func (a *attacher) attachInputsOfTheVertex(v *vertex.Vertex, vidUnwrapped *vertex.WrappedTx) (ok bool) {
@@ -497,39 +489,27 @@ func (a *attacher) attachInput(v *vertex.Vertex, inputIdx byte, vidUnwrapped *ve
 		return false, false
 	}
 	if defined {
-		a.Assertf(a.pastCone.Flags(wOut.VID).FlagsUp(vertex.FlagAttachedVertexDefined|vertex.FlagAttachedVertexCheckedIfRooted), "must be checked 'rooted' status")
+		a.Assertf(a.pastCone.Flags(wOut.VID).FlagsUp(vertex.FlagAttachedVertexDefined|vertex.FlagAttachedVertexCheckedInTheState), "must be checked 'rooted' status")
 		a.Tracef(TraceTagAttachVertex, "input #%d (%s) has been solidified", inputIdx, wOut.IDShortString)
 	}
 	return true, defined
 }
 
-func (a *attacher) attachRooted(wOut vertex.WrappedOutput) (ok bool, isRooted bool, defined bool) {
-	defer func() {
-		if defined {
-			a.pastCone.Flags(wOut.VID).FlagsUp(vertex.FlagAttachedVertexCheckedIfRooted)
-			if isRooted {
-				a.Assertf(a.pastCone.IsKnownRooted(wOut.VID), "a.pastCone.IsKnownRootedOutput")
-			} else {
-				a.Assertf(a.pastCone.IsKnownNotRooted(wOut.VID), "a.pastCone.IsKnownRootedOutput")
-			}
-		}
-	}()
-
-	a.Tracef(TraceTagAttachOutput, "attachRooted %s IN", wOut.IDShortString)
-	defined = a.checkTransactionRootedStatus(wOut.VID)
-	if !defined {
-		a.Tracef(TraceTagAttachOutput, "attachRooted %s Rooted status undefined", wOut.IDShortString)
-		return true, false, false
+func (a *attacher) attachIfRooted(wOut vertex.WrappedOutput) (ok bool, defined bool) {
+	a.Tracef(TraceTagAttachOutput, "attachIfRooted %s IN", wOut.IDShortString)
+	a.checkTransactionInTheState(wOut.VID)
+	if a.pastCone.IsKnownInTheState(wOut.VID) {
+		a.Tracef(TraceTagAttachOutput, "attachIfRooted %s Rooted status undefined", wOut.IDShortString)
+		return true, false
 	}
 
-	if a.pastCone.IsKnownNotRooted(wOut.VID) {
-		// it is definitely not Rooted bt it is fine
-		return true, false, true
+	if a.pastCone.IsNotInTheState(wOut.VID) {
+		// it is definitely not in the state
+		return true, true
 	}
-	// transaction is known in the state
 	if a.pastCone.IsRootedOutput(wOut) {
-		// it means it is already covered. The double-spend checks are done by attachInputID
-		return true, true, true
+		// transaction is known in the state and output is consumed in the state
+		return true, true
 	}
 
 	// transaction is known in the state -> check if output is in the state (i.e. not consumed yet)
@@ -540,39 +520,38 @@ func (a *attacher) attachRooted(wOut vertex.WrappedOutput) (ok bool, isRooted bo
 		err = fmt.Errorf("output %s is already consumed in the baseline state %s", wOut.IDShortString(), a.baseline.IDShortString())
 		a.setError(err)
 		a.Tracef(TraceTagAttachOutput, "%v", err)
-		return false, false, true
+		return false, true
 	}
 	if err != nil {
 		a.setError(err)
 		a.Tracef(TraceTagAttachOutput, "%v", err)
-		return false, false, false
+		return false, false
 	}
 	// output has been found in the state -> Good
 	if err = wOut.VID.EnsureOutputWithID(out); err != nil {
 		a.setError(err)
 		a.Tracef(TraceTagAttachOutput, "%v", err)
-		return false, false, true
+		return false, true
 	}
 
-	// mark output definitely rooted
-	a.pastCone.MustMarkOutputRooted(wOut) // also marks it 'defined'
-	// this is new Rooted output -> add to the accumulatedCoverage
+	// this is new rooted output -> add to the accumulatedCoverage
 	a.accumulatedCoverage += out.Output.Amount()
-	return true, true, true
+	a.pastCone.MustMarkVertexInTheState(wOut.VID)
+
+	return true, true
 }
 
 func (a *attacher) attachOutput(wOut vertex.WrappedOutput) (ok, defined bool) {
 	a.Tracef(TraceTagAttachOutput, "IN %s", wOut.IDShortString)
 
-	ok, isRooted, definedRootedStatus := a.attachRooted(wOut)
+	ok, definedRootedStatus := a.attachIfRooted(wOut)
 	if !definedRootedStatus {
 		return true, false
 	}
 	if !ok {
 		return false, false
 	}
-	a.Assertf(!isRooted || a.pastCone.IsRootedOutput(wOut), "!isRooted || a.pastCone.IsRootedOutput(wOut)")
-	if isRooted {
+	if a.pastCone.IsRootedOutput(wOut) {
 		a.Tracef(TraceTagAttachOutput, "%s is Rooted", wOut.IDShortString)
 		return true, true
 	}

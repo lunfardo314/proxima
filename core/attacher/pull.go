@@ -46,10 +46,10 @@ func (a *attacher) pullIfNeededUnwrapped(virtualTx *vertex.VirtualTransaction, d
 		return true
 	}
 	// pull rules have not been defined yet
-	a.checkTransactionRootedStatus(deptVID)
+	a.checkTransactionInTheState(deptVID)
 
 	a.Tracef(TraceTagPull, "pullIfNeededUnwrapped: %s. Pull rules not defined", deptVID.IDShortString)
-	if a.pastCone.IsKnownRooted(deptVID) {
+	if a.pastCone.IsKnownInTheState(deptVID) {
 		virtualTx.SetPullNotNeeded()
 		return true
 	}

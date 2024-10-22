@@ -208,7 +208,7 @@ func (a *IncrementalAttacher) insertEndorsement(endorsement *vertex.WrappedTx) e
 	}
 	if endorsement.IsBranchTransaction() {
 		// branch is compatible with the baseline
-		a.pastCone.MustMarkVertexRooted(endorsement)
+		a.pastCone.MustMarkVertexInTheState(endorsement)
 	} else {
 		ok, defined := a.attachVertexNonBranch(endorsement)
 		a.Assertf(ok || a.err != nil, "ok || a.err != nil")
