@@ -57,7 +57,7 @@ func (d *PullTxServer) consume(inp *Input) {
 	metadata, err := txmetadata.TransactionMetadataFromBytes(metadataBytes)
 	util.AssertNoError(err)
 
-	d.SendTxBytesWithMetadataToPeer(inp.PeerID, txBytes, metadata)
+	go d.SendTxBytesWithMetadataToPeer(inp.PeerID, txBytes, metadata)
 	d.responseToPullCounter.Inc()
 
 	d.Tracef(TraceTag, "FOUND %s -> %s", inp.TxID.StringShort, peering.ShortPeerIDString(inp.PeerID))
