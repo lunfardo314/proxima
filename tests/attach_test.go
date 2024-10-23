@@ -348,7 +348,7 @@ func TestConflicts1Attacher(t *testing.T) {
 	})
 	t.Run("conflicting tx consumed", func(t *testing.T) {
 		//attacher.SetTraceOn()
-		const nConflicts = 2
+		const nConflicts = 10
 		testData := initWorkflowTestWithConflicts(t, nConflicts, 1, false)
 		for _, txBytes := range testData.txBytesConflicting {
 			_, err := attacher.AttachTransactionFromBytes(txBytes, testData.wrk)
@@ -526,9 +526,9 @@ func TestConflicts1Attacher(t *testing.T) {
 func TestConflictsNAttachersSeqStartTx(t *testing.T) {
 	//attacher.SetTraceOn()
 	const (
-		nConflicts = 2 //10
-		nChains    = 2 // 10
-		howLong    = 2 // 97 fails when crosses slot boundary
+		nConflicts = 10
+		nChains    = 10
+		howLong    = 10 // 2 // 97 fails when crosses slot boundary
 	)
 	var wg sync.WaitGroup
 	testData := initLongConflictTestData(t, nConflicts, nChains, howLong)
@@ -614,9 +614,9 @@ func TestConflictsNAttachersSeqStartTxFee(t *testing.T) {
 
 func TestConflictsNAttachersOneFork(t *testing.T) {
 	const (
-		nConflicts = 2
-		nChains    = 2
-		howLong    = 2 // 20 // 97 fails when crosses slot boundary
+		nConflicts = 5  // 2
+		nChains    = 5  // 2
+		howLong    = 20 // 97 fails when crosses slot boundary
 		pullYN     = true
 	)
 	var err error
@@ -687,9 +687,9 @@ func TestConflictsNAttachersOneFork(t *testing.T) {
 
 func TestConflictsNAttachersOneForkBranches(t *testing.T) {
 	const (
-		nConflicts = 2
-		nChains    = 2
-		howLong    = 5 // 97 fails when crosses slot boundary
+		nConflicts = 5  // 2
+		nChains    = 5  // 2
+		howLong    = 50 // 5 // 97 fails when crosses slot boundary
 		pullYN     = true
 	)
 
@@ -755,7 +755,7 @@ func TestConflictsNAttachersOneForkBranchesConflict(t *testing.T) {
 	const (
 		nConflicts = 5
 		nChains    = 5
-		howLong    = 5 // 97 fails when crosses slot boundary
+		howLong    = 50 // 5 // 97 fails when crosses slot boundary
 		pullYN     = true
 	)
 
@@ -847,9 +847,9 @@ func TestSeqChains(t *testing.T) {
 	t.Run("no pull order normal", func(t *testing.T) {
 		//attacher.SetTraceOn()
 		const (
-			nConflicts            = 2  // 5
-			nChains               = 2  // 5
-			howLongConflictChains = 2  // 97 fails when crosses slot boundary
+			nConflicts            = 5
+			nChains               = 5
+			howLongConflictChains = 5  // 2  // 97 fails when crosses slot boundary
 			howLongSeqChains      = 10 // 95 fails
 		)
 
@@ -1001,7 +1001,7 @@ func TestSeqChains(t *testing.T) {
 			nConflicts            = 5
 			nChains               = 5
 			howLongConflictChains = 2  // 97 fails when crosses slot boundary
-			howLongSeqChains      = 10 // 90 // 95 fails
+			howLongSeqChains      = 30 // 90 // 95 fails
 		)
 
 		testData := initLongConflictTestData(t, nConflicts, nChains, howLongConflictChains)
@@ -1091,10 +1091,10 @@ func TestSeqChains(t *testing.T) {
 	t.Run("with N branches pull", func(t *testing.T) {
 		//attacher.SetTraceOn()
 		const (
-			nConflicts            = 2 // 5
-			nChains               = 2 // 5
-			howLongConflictChains = 5 // 97 fails when crosses slot boundary
-			howLongSeqChains      = 3 // 10 // 10 // 95 fails
+			nConflicts            = 5
+			nChains               = 5
+			howLongConflictChains = 5  // 97 fails when crosses slot boundary
+			howLongSeqChains      = 10 // 10 // 95 fails
 			nSlots                = 5
 		)
 
