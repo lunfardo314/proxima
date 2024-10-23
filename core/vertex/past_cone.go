@@ -384,6 +384,13 @@ func (pc *PastCone) CoverageDelta() (coverage, delta uint64) {
 			}
 		}
 	}
+	// adjustment with baseline sequencer output inflation, if necessary
+	wOut := pc.baseline.SequencerWrappedOutput()
+	if !pc.IsRootedOutput(wOut) {
+		o, err := pc.baseline.OutputAt(wOut.Index)
+		pc.AssertNoError(err)
+		delta += o.Inflation(true)
+	}
 	coverage = pc.baseline.GetLedgerCoverage()/2 + delta
 	return
 }
