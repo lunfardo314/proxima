@@ -592,11 +592,11 @@ func (ps *Peers) sendMsgBytesOut(peerID peer.ID, protocolID protocol.ID, data []
 		//time.Sleep(10 * time.Millisecond)
 	}
 	ps.outMsgCounter.Inc()
-	return err
+	return err == nil
 }
 
 // sendMsgBytesOutMulti send to multiple peers in parallel
-func (ps *Peers) sendMsgBytesOutMulti(peerIDs []peer.ID, protocolID protocol.ID, data []byte) {
+func (ps *Peers) sendMsgBytesOutMulti(peerIDs []peer.ID, protocolID protocol.ID, data []byte, timeout ...time.Duration) {
 	for _, id := range peerIDs {
 		idCopy := id
 		go ps.sendMsgBytesOut(idCopy, protocolID, data, timeout...)
