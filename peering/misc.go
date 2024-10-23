@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"sync"
 
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -38,7 +39,12 @@ func readFrame(stream network.Stream) ([]byte, error) {
 	return msgBuf, nil
 }
 
+var writeMutex sync.Mutex
+
 func writeFrame(stream network.Stream, payload []byte) error {
+	writeMutex.Lock()
+	defer writeMutex.Unlock()
+
 	if len(payload) > MaxPayloadSize {
 		return fmt.Errorf("payload size %d exceeds maximum %d bytes", len(payload), MaxPayloadSize)
 	}
