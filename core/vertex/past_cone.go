@@ -369,8 +369,9 @@ func (pc *PastCone) Lines(prefix ...string) *lines.Lines {
 	return ret
 }
 
-func (pc *PastCone) CoverageDelta() (ret uint64) {
+func (pc *PastCone) CoverageDelta() (coverage, delta uint64) {
 	pc.Assertf(pc.delta == nil, "pc.delta == nil")
+	pc.Assertf(pc.baseline != nil, "pc.baseline != nil")
 
 	for vid := range pc.vertices {
 		consumedIndices := pc.consumedIndices(vid)
@@ -379,10 +380,11 @@ func (pc *PastCone) CoverageDelta() (ret uint64) {
 			if pc.IsRootedOutput(wOut) {
 				o, err := wOut.VID.OutputAt(wOut.Index)
 				pc.AssertNoError(err)
-				ret += o.Amount()
+				delta += o.Amount()
 			}
 		}
 	}
+	coverage = pc.baseline.GetLedgerCoverage()/2 + delta
 	return
 }
 

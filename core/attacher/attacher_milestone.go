@@ -157,7 +157,8 @@ func (a *milestoneAttacher) run() error {
 	const printPastCone = true
 	if printPastCone {
 		a.Log().Infof(">>>>>>>>>>>>> past cone of attacher %s\n%s", a.Name(), a.pastCone.Lines("      ").String())
-		a.Log().Infof(">>>>> directly calculated coverage delta: %s", util.Th(a.pastCone.CoverageDelta()))
+		coverage, delta := a.pastCone.CoverageDelta()
+		a.Log().Infof(">>>>> directly calculated coverage: %s, delta: %s", util.Th(coverage), util.Th(delta))
 	}
 
 	a.PostEventNewGood(a.vid)
