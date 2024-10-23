@@ -51,7 +51,7 @@ func (p *Proposer) run() {
 			continue
 		}
 		// attacher has been created and it is complete. Propose it
-		p.Assertf(a.IsCoverageAdjusted(), "coverage must be adjusted")
+		//p.Assertf(a.IsCoverageAdjusted(), "coverage must be adjusted")
 		if err = p.propose(a); err != nil {
 			p.Log().Warnf("%v", err)
 			return
@@ -74,7 +74,7 @@ func (p *Proposer) propose(a *attacher.IncrementalAttacher) error {
 	if err != nil {
 		return err
 	}
-	coverage := a.AccumulatedCoverage()
+	coverage := a.LedgerCoverage()
 	_proposal := &proposal{
 		tx: tx,
 		txMetadata: &txmetadata.TransactionMetadata{
@@ -180,7 +180,7 @@ func (p *Proposer) chooseEndorseExtendPairAttacher(endorse *vertex.WrappedTx, ex
 			a.Close()
 		case ret == nil:
 			ret = a
-		case a.AccumulatedCoverage() > ret.AccumulatedCoverage():
+		case a.LedgerCoverage() > ret.LedgerCoverage():
 			ret.Close()
 			ret = a
 		default:

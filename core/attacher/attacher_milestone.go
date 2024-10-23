@@ -123,7 +123,7 @@ func (a *milestoneAttacher) run() error {
 	a.Tracef(TraceTagAttachMilestone, "past cone OK")
 	a.AssertNoError(a.err)
 
-	a.AdjustCoverage()
+	//a.AdjustCoverage()
 
 	err := a.checkConsistencyBeforeWrapUp()
 	if err != nil {
@@ -152,7 +152,7 @@ func (a *milestoneAttacher) run() error {
 	}
 	a.AssertNoError(err)
 
-	a.vid.SetTxStatusGood(a.pastCone.PastConeBase)
+	a.vid.SetTxStatusGood(a.pastCone.PastConeBase, a.pastCone.LedgerCoverage())
 
 	const printPastCone = true
 	if printPastCone {
@@ -394,10 +394,10 @@ func (a *milestoneAttacher) logErrorStatusString(err error) string {
 	return fmt.Sprintf("ATTACH %s -> BAD(%v)", a.vid.ID.StringShort(), err)
 }
 
-func (a *milestoneAttacher) AdjustCoverage() {
-	a.adjustCoverage()
-	if a.coverageAdjustment > 0 {
-		a.Tracef(TraceTagCoverageAdjustment, " milestoneAttacher: accumulatedCoverage has been adjusted by %s, ms: %s, baseline: %s",
-			func() string { return util.Th(a.coverageAdjustment) }, a.vid.IDShortString, a.baseline.IDShortString)
-	}
-}
+//func (a *milestoneAttacher) AdjustCoverage() {
+//	a.adjustCoverage()
+//	if a.coverageAdjustment > 0 {
+//		a.Tracef(TraceTagCoverageAdjustment, " milestoneAttacher: accumulatedCoverage has been adjusted by %s, ms: %s, baseline: %s",
+//			func() string { return util.Th(a.coverageAdjustment) }, a.vid.IDShortString, a.baseline.IDShortString)
+//	}
+//}

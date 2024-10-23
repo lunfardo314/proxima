@@ -123,9 +123,11 @@ func (a *IncrementalAttacher) initIncrementalAttacher(baseline *vertex.WrappedTx
 	if !a.setBaseline(baseline, targetTs) {
 		return fmt.Errorf("NewIncrementalAttacher: failed to set baseline branch of %s", extend.IDShortString())
 	}
-	a.Tracef(TraceTagIncrementalAttacher, "NewIncrementalAttacher(%s). baseline: %s, start with accumulatedCoverage: %s",
-		a.name, baseline.IDShortString,
-		func() string { return util.Th(a.accumulatedCoverage) })
+	//a.Tracef(TraceTagIncrementalAttacher, "NewIncrementalAttacher(%s). baseline: %s, start with accumulatedCoverage: %s",
+	//	a.name, baseline.IDShortString,
+	//	func() string { return util.Th(a.accumulatedCoverage) })
+	a.Tracef(TraceTagIncrementalAttacher, "NewIncrementalAttacher(%s). baseline: %s",
+		a.name, baseline.IDShortString)
 
 	// attach endorsements
 	for _, endorsement := range endorse {
@@ -185,10 +187,10 @@ func (a *IncrementalAttacher) InsertEndorsement(endorsement *vertex.WrappedTx) e
 	}
 
 	a.pastCone.BeginDelta()
-	saveCoverage := a.accumulatedCoverage
+	//saveCoverage := a.accumulatedCoverage
 	if err := a.insertEndorsement(endorsement); err != nil {
 		a.pastCone.RollbackDelta()
-		a.accumulatedCoverage = saveCoverage
+		//a.accumulatedCoverage = saveCoverage
 		a.setError(nil)
 		return err
 	}
@@ -236,13 +238,13 @@ func (a *IncrementalAttacher) InsertTagAlongInput(wOut vertex.WrappedOutput) (bo
 
 	// save state for possible rollback because in case of fail the side effect makes attacher inconsistent
 	a.pastCone.BeginDelta()
-	saveCoverage := a.accumulatedCoverage
+	//saveCoverage := a.accumulatedCoverage
 	ok, defined := a.attachOutput(wOut)
 	if !ok || !defined {
 		// it is either conflicting, or not solid yet
 		// in either case rollback
 		a.pastCone.RollbackDelta()
-		a.accumulatedCoverage = saveCoverage
+		//a.accumulatedCoverage = saveCoverage
 		var retErr error
 		if !ok {
 			retErr = a.err
@@ -333,18 +335,18 @@ func (a *IncrementalAttacher) MakeSequencerTransaction(seqName string, privateKe
 	return tx, nil
 }
 
-func (a *IncrementalAttacher) AdjustCoverage() {
-	a.adjustCoverage()
-	if a.coverageAdjustment > 0 {
-		ext := a.Extending()
-		a.Tracef(TraceTagCoverageAdjustment, " IncrementalAttacher: accumulatedCoverage has been adjusted by %s, extending: %s, baseline: %s",
-			func() string { return util.Th(a.coverageAdjustment) }, ext.IDShortString, a.baseline.IDShortString)
-	}
-}
-
-func (a *IncrementalAttacher) AccumulatedCoverage() uint64 {
-	return a.accumulatedCoverage
-}
+//func (a *IncrementalAttacher) AdjustCoverage() {
+//	a.adjustCoverage()
+//	if a.coverageAdjustment > 0 {
+//		ext := a.Extending()
+//		a.Tracef(TraceTagCoverageAdjustment, " IncrementalAttacher: accumulatedCoverage has been adjusted by %s, extending: %s, baseline: %s",
+//			func() string { return util.Th(a.coverageAdjustment) }, ext.IDShortString, a.baseline.IDShortString)
+//	}
+//}
+//
+//func (a *IncrementalAttacher) AccumulatedCoverage() uint64 {
+//	return a.accumulatedCoverage
+//}
 
 func (a *IncrementalAttacher) TargetTs() ledger.Time {
 	return a.targetTs

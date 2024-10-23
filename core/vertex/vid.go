@@ -107,7 +107,7 @@ func (vid *WrappedTx) GetPastConeNoLock() *PastConeBase {
 }
 
 // SetTxStatusGood sets 'good' status and past cone
-func (vid *WrappedTx) SetTxStatusGood(pastCone *PastConeBase) {
+func (vid *WrappedTx) SetTxStatusGood(pastCone *PastConeBase, coverage uint64) {
 	vid.mutex.Lock()
 	defer vid.mutex.Unlock()
 
@@ -118,6 +118,9 @@ func (vid *WrappedTx) SetTxStatusGood(pastCone *PastConeBase) {
 		vid.flags.SetFlagsUp(FlagVertexIgnoreAbsenceOfPastCone)
 	} else {
 		vid.pastCone = pastCone
+		if coverage > 0 {
+			vid.coverage = util.Ref(coverage)
+		}
 	}
 }
 
@@ -594,14 +597,6 @@ func (vid *WrappedTx) GetLedgerCoverage() uint64 {
 
 func (vid *WrappedTx) GetLedgerCoverageString() string {
 	return util.Th(vid.GetLedgerCoverage())
-}
-
-func (vid *WrappedTx) SetLedgerCoverage(coverage uint64) {
-	vid.mutex.Lock()
-	defer vid.mutex.Unlock()
-
-	vid.coverage = new(uint64)
-	*vid.coverage = coverage
 }
 
 // NumConsumers returns:

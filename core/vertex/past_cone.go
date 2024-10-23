@@ -364,7 +364,7 @@ func (pc *PastCone) Lines(prefix ...string) *lines.Lines {
 		if err == nil && o != nil {
 			covStr = util.Th(o.Amount())
 		}
-		ret.Add("   %s: coverage delta = %s", wOut.IDShortString(), covStr)
+		ret.Add("   %s: amount: %s", wOut.IDShortString(), covStr)
 	}
 	return ret
 }
@@ -393,6 +393,11 @@ func (pc *PastCone) CoverageDelta() (coverage, delta uint64) {
 	}
 	coverage = pc.baseline.GetLedgerCoverage()/2 + delta
 	return
+}
+
+func (pc *PastCone) LedgerCoverage() uint64 {
+	ret, _ := pc.CoverageDelta()
+	return ret
 }
 
 func (pc *PastCone) UndefinedList() []*WrappedTx {
@@ -530,12 +535,7 @@ func (pc *PastCone) IsRootedOutput(wOut WrappedOutput) bool {
 	if consumer == nil {
 		return true
 	}
-	if pc.IsNotInTheState(consumer) {
-		return true
-	}
-	fmt.Printf(">>>>>>>>>>>>>> %s\n%s\n", wOut.DecodeID().StringShort(), pc.Lines("     ").Join("\n"))
-	panic(">>>>>>>>>>>>>>")
-	return false
+	return pc.IsNotInTheState(consumer)
 }
 
 func (pc *PastCone) hasRooted() bool {
@@ -562,7 +562,7 @@ func (pc *PastCone) getBaseline() *WrappedTx {
 }
 
 // AppendPastCone appends deterministic past cone to the current one. Returns conflict info if any
-func (pc *PastCone) AppendPastCone(pcb *PastConeBase, getStateReader func(branch *WrappedTx) global.IndexedStateReader) (*WrappedOutput, uint64) {
+func (pc *PastCone) AppendPastCone(pcb *PastConeBase, getStateReader func(branch *WrappedTx) global.IndexedStateReader) *WrappedOutput {
 	baseline := pc.getBaseline()
 	pc.Assertf(baseline != nil, "pc.hasBaseline()")
 	pc.Assertf(pcb.baseline != nil, "pcb.baseline != nil")
@@ -570,10 +570,9 @@ func (pc *PastCone) AppendPastCone(pcb *PastConeBase, getStateReader func(branch
 	// we require baselines must be compatible (on the same chain) of pcb should not be younger than pc
 	if !baseline.IsContainingBranchOf(pcb.baseline, getStateReader) {
 		// baselines not compatible
-		return &WrappedOutput{}, 0 // >>>>>>>>>>>>>>>> conflict
+		return &WrappedOutput{} // >>>>>>>>>>>>>>>> conflict
 	}
 
-	coverageDelta := uint64(0)
 	baselineStateReader := getStateReader(baseline)
 
 	// pcb must be deterministic, i.e. immutable and all vertices in it must be 'known defined'
@@ -583,7 +582,7 @@ func (pc *PastCone) AppendPastCone(pcb *PastConeBase, getStateReader func(branch
 			// it already exists in the target past cone. Check for conflicts
 			if conflict := pc.checkConflicts(vid, pcb); conflict != nil {
 				// past cones are conflicting
-				return conflict, 0 //>>>>>>>>>>>>>>>>>>>>> conflict/double spend
+				return conflict //>>>>>>>>>>>>>>>>>>>>> conflict/double spend
 			}
 		}
 		pc.MustMarkVertexWithFlags(vid, flags)
@@ -591,7 +590,7 @@ func (pc *PastCone) AppendPastCone(pcb *PastConeBase, getStateReader func(branch
 			pc.SetFlagsUp(vid, FlagAttachedVertexCheckedInTheState|FlagAttachedVertexInTheState)
 		}
 	}
-	return nil, coverageDelta
+	return nil
 }
 
 func (pc *PastCone) checkConflicts(vid *WrappedTx, pcb *PastConeBase) *WrappedOutput {

@@ -34,10 +34,11 @@ func (a *milestoneAttacher) _checkMonotonicityOfEndorsements(v *vertex.Vertex) (
 			err = fmt.Errorf("accumulatedCoverage not set in the endorsed %s", vidEndorsed.IDShortString())
 			return false
 		}
-		if a.accumulatedCoverage < *lc {
-			diff := *lc - a.accumulatedCoverage
+		lcCalc := a.LedgerCoverage()
+		if lcCalc < *lc {
+			diff := *lc - lcCalc
 			err = fmt.Errorf("accumulatedCoverage should not decrease along endorsement.\nGot: delta(%s) at %s <= delta(%s) in %s. diff: %s",
-				util.Th(a.accumulatedCoverage), a.vid.Timestamp().String(), util.Th(*lc), vidEndorsed.IDShortString(), util.Th(diff))
+				util.Th(lcCalc), a.vid.Timestamp().String(), util.Th(*lc), vidEndorsed.IDShortString(), util.Th(diff))
 			return false
 		}
 		return true
@@ -59,10 +60,11 @@ func (a *milestoneAttacher) _checkMonotonicityOfInputTransactions(v *vertex.Vert
 			err = fmt.Errorf("accumulatedCoverage not set in the input tx %s", vidInp.IDShortString())
 			return false
 		}
-		if a.accumulatedCoverage < *lc {
-			diff := *lc - a.accumulatedCoverage
+		lcCalc := a.LedgerCoverage()
+		if lcCalc < *lc {
+			diff := *lc - lcCalc
 			err = fmt.Errorf("accumulatedCoverage should not decrease along consumed transactions on the same slot.\nGot: delta(%s) at %s <= delta(%s) in %s. diff: %s",
-				util.Th(a.accumulatedCoverage), a.vid.Timestamp().String(), util.Th(*lc), vidInp.IDShortString(), util.Th(diff))
+				util.Th(lcCalc), a.vid.Timestamp().String(), util.Th(*lc), vidInp.IDShortString(), util.Th(diff))
 			return false
 		}
 		return true
@@ -86,11 +88,12 @@ func (a *milestoneAttacher) checkConsistencyWithMetadata() {
 		return
 	}
 	var err error
+	lcCalc := a.LedgerCoverage()
 	switch {
-	case a.metadata.LedgerCoverage != nil && *a.metadata.LedgerCoverage != a.accumulatedCoverage:
-		err = fmt.Errorf("checkConsistencyWithMetadata %s: major inconsistency:\n   computed accumulatedCoverage (%s) not equal to the\n   ledger overage provided in the metadata (%s).\n   Diff=%s\n   Adjustment = %s, adjusted = %v",
-			a.vid.IDShortString(), util.Th(a.accumulatedCoverage), util.Th(*a.metadata.LedgerCoverage),
-			util.Th(int64(a.accumulatedCoverage)-int64(*a.metadata.LedgerCoverage)), util.Th(a.coverageAdjustment), a.coverageAdjusted)
+	case a.metadata.LedgerCoverage != nil && *a.metadata.LedgerCoverage != lcCalc:
+		err = fmt.Errorf("checkConsistencyWithMetadata %s: major inconsistency:\n   computed accumulatedCoverage (%s) not equal to the\n   ledger overage provided in the metadata (%s).\n   Diff=%s",
+			a.vid.IDShortString(), util.Th(lcCalc), util.Th(*a.metadata.LedgerCoverage),
+			util.Th(int64(lcCalc)-int64(*a.metadata.LedgerCoverage)))
 	case a.metadata.SlotInflation != nil && *a.metadata.SlotInflation != a.slotInflation:
 		err = fmt.Errorf("checkConsistencyWithMetadata %s: major inconsistency: computed slot inflation (%s) not equal to the slot inflation provided in the metadata (%s)",
 			a.vid.IDShortString(), util.Th(a.slotInflation), util.Th(*a.metadata.SlotInflation))

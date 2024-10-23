@@ -71,13 +71,13 @@ func baseProposeGenerator(p *Proposer) (*attacher.IncrementalAttacher, bool) {
 		return nil, true
 	}
 	p.Tracef(TraceTagBaseProposer, "%s created attacher with baseline %s, cov: %s",
-		p.Name, a.BaselineBranch().IDShortString, func() string { return util.Th(a.AccumulatedCoverage()) },
+		p.Name, a.BaselineBranch().IDShortString, func() string { return util.Th(a.LedgerCoverage()) },
 	)
 	if p.targetTs.IsSlotBoundary() {
 		p.Tracef(TraceTagBaseProposer, "%s making branch, no tag-along, extending %s cov: %s, attacher %s cov: %s",
 			p.Name,
 			extend.IDShortString, func() string { return util.Th(extend.VID.GetLedgerCoverage()) },
-			a.Name(), func() string { return util.Th(a.AccumulatedCoverage()) },
+			a.Name(), func() string { return util.Th(a.LedgerCoverage()) },
 		)
 	} else {
 		p.Tracef(TraceTagBaseProposer, "%s making non-branch, extending %s, collecting and inserting tag-along inputs", p.Name, extend.IDShortString)
@@ -85,7 +85,7 @@ func baseProposeGenerator(p *Proposer) (*attacher.IncrementalAttacher, bool) {
 		numInserted := p.InsertTagAlongInputs(a)
 		p.Tracef(TraceTagBaseProposer, "%s inserted %d tag-along inputs", p.Name, numInserted)
 	}
-	a.AdjustCoverage()
+	//a.AdjustCoverage()
 
 	p.slotData.lastExtendedOutputB0 = extend
 	// only need one proposal when extending a branch
