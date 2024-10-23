@@ -572,11 +572,15 @@ func (ps *Peers) sendMsgBytesOut(peerID peer.ID, protocolID protocol.ID, data []
 	}
 
 	var err error
-	// ps.mutex.RLock()
-	// defer ps.mutex.RUnlock()
-	ps.peers[peerID].streams[idx].mutex.Lock()
-	defer ps.peers[peerID].streams[idx].mutex.Unlock()
-	stream := ps.peers[peerID].streams[idx].stream
+	var stream network.Stream
+	ps.withPeer(peerID, func(p *Peer) {
+		if p != nil {
+			ps.peers[peerID].streams[idx].mutex.Lock()
+			stream = ps.peers[peerID].streams[idx].stream
+			ps.peers[peerID].streams[idx].mutex.Unlock() // let send fail when stream gets invalid, with defer a crash could happen
+		}
+	})
+
 	if stream == nil {
 		ps.Log().Errorf("[peering] error while sending message to peer %s len=%d idx=%d stream==nil", ShortPeerIDString(peerID), len(data), idx)
 		return false
