@@ -737,3 +737,7 @@ func (a *attacher) CoverageDelta(currentTs ledger.Time) (coverage, delta uint64)
 func (a *attacher) LedgerCoverage(currentTs ledger.Time) uint64 {
 	return a.pastCone.LedgerCoverage(currentTs)
 }
+
+func (a *attacher) PastConeForDebugOnly(env global.Logging, name string) *vertex.PastCone {
+	return a.pastCone.CloneForDebugOnly(env, name)
+}

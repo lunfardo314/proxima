@@ -60,6 +60,7 @@ type (
 		coverage          uint64
 		attacherName      string
 		strategyShortName string
+		pastConeForDebug  *vertex.PastCone
 	}
 
 	Proposer struct {
@@ -165,6 +166,11 @@ func Run(env environment, targetTs ledger.Time, slotData *SlotData) (*transactio
 	best := util.Maximum(proposalsSlice, func(p1, p2 *proposal) bool {
 		return p1.coverage < p2.coverage
 	})
+
+	const printBestProposal = true
+	if printBestProposal {
+		task.Log().Infof(">>>>>> best proposal past cone:\n%s", best.pastConeForDebug.Lines("      ").Join("\n"))
+	}
 
 	// check if newly generated non-branch transaction has coverage strongly bigger than previously generated
 	// non-branch transaction on the same slot

@@ -11,6 +11,7 @@ import (
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
 	"github.com/lunfardo314/proxima/util/set"
+	"golang.org/x/exp/maps"
 )
 
 // Attacher keeps list of past cone vertices.
@@ -342,10 +343,11 @@ func (pc *PastCone) CalculateSlotInflation() (ret uint64) {
 func (pc *PastCone) Lines(prefix ...string) *lines.Lines {
 	pc.Assertf(pc.delta == nil, "pc.delta==nil")
 	ret := lines.New(prefix...)
-	ret.Add("------ baseline: %s, coverage: %s",
-		util.Cond(pc.baseline == nil, "<nil>", pc.baseline.IDShortString()),
-		pc.baseline.GetLedgerCoverageString(),
-	)
+	ret.Add("------ past cone: '%s'", pc.name).
+		Add("------ baseline: %s, coverage: %s",
+			util.Cond(pc.baseline == nil, "<nil>", pc.baseline.IDShortString()),
+			pc.baseline.GetLedgerCoverageString(),
+		)
 	sorted := util.KeysSorted(pc.vertices, func(vid1, vid2 *WrappedTx) bool {
 		return vid1.Before(vid2)
 	})
@@ -695,4 +697,12 @@ func (pc *PastCone) checkFinalFlags(vid *WrappedTx) error {
 		return fmt.Errorf("checkFinalFlags: wrong %s flag  %08b in %s", wrongFlag, flags, vid.IDShortString())
 	}
 	return nil
+}
+
+func (pc *PastCone) CloneForDebugOnly(env global.Logging, name string) *PastCone {
+	pc.Assertf(pc.delta == nil, "pc.delta == nil")
+	ret := NewPastCone(env, name+"_debug_clone")
+	ret.baseline = pc.baseline
+	ret.vertices = maps.Clone(pc.vertices)
+	return ret
 }
