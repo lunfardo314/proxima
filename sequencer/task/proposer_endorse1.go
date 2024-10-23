@@ -63,6 +63,5 @@ func endorse1ProposeGenerator(p *Proposer) (*attacher.IncrementalAttacher, bool)
 		return nil, false
 	}
 
-	//a.AdjustCoverage()
 	return a, false
 }

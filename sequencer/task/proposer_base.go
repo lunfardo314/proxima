@@ -85,7 +85,6 @@ func baseProposeGenerator(p *Proposer) (*attacher.IncrementalAttacher, bool) {
 		numInserted := p.InsertTagAlongInputs(a)
 		p.Tracef(TraceTagBaseProposer, "%s inserted %d tag-along inputs", p.Name, numInserted)
 	}
-	//a.AdjustCoverage()
 
 	p.slotData.lastExtendedOutputB0 = extend
 	// only need one proposal when extending a branch

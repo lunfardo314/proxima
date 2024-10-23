@@ -859,7 +859,6 @@ func TestSeqChains(t *testing.T) {
 		testData.printTxIDs()
 
 		var wg sync.WaitGroup
-		//testData.env.StartTracingTags(attacher.TraceTagAdjustCoverage)
 
 		testData.txBytesAttach()
 		vids := make([][]*vertex.WrappedTx, len(testData.seqChain))

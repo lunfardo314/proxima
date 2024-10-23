@@ -69,10 +69,6 @@ func AttachTxID(txid ledger.TransactionID, env Environment, opts ...AttachTxOpti
 			env.AddVertexNoLock(vid)
 			env.PostEventNewGood(vid)
 			env.SendToTippool(vid)
-
-			//env.Tracef(TraceTagAttach, "AttachTxID: branch fetched from the state: %s%s, accumulatedCoverage: %s",
-			//	txid.StringShort, by, func() string { return util.Th(vid.GetLedgerCoverage()) })
-			//env.TraceTx(&txid, "AttachTxID: branch fetched from the state")
 			return
 		}
 		// the corresponding state is not in the multistate DB

@@ -30,10 +30,9 @@ func newPastConeAttacher(env Environment, name string) attacher {
 }
 
 const (
-	TraceTagAttach             = "attach"
-	TraceTagAttachOutput       = "attachOutput"
-	TraceTagAttachVertex       = "attachVertexUnwrapped"
-	TraceTagCoverageAdjustment = "adjust"
+	TraceTagAttach       = "attach"
+	TraceTagAttachOutput = "attachOutput"
+	TraceTagAttachVertex = "attachVertexUnwrapped"
 )
 
 func (a *attacher) Name() string {
@@ -217,7 +216,6 @@ func (a *attacher) attachVertexNonBranch(vid *vertex.WrappedTx) (ok, defined boo
 			a.setError(fmt.Errorf("past cones conflicting due to %s", conflict.DecodeID().StringShort()))
 			return false, false
 		}
-		//a.accumulatedCoverage += coverageDelta
 		ok = true
 		defined = true
 	}
@@ -538,9 +536,6 @@ func (a *attacher) attachIfRooted(wOut vertex.WrappedOutput) (ok bool, defined b
 		a.Tracef(TraceTagAttachOutput, "%v", err)
 		return false, true
 	}
-
-	// this is new rooted output -> add to the accumulatedCoverage
-	//a.accumulatedCoverage += out.Output.Amount()
 	return true, true
 }
 
@@ -665,8 +660,7 @@ func (a *attacher) isKnownConsumed(wOut vertex.WrappedOutput) (isConsumed bool) 
 	return
 }
 
-// setBaseline sets baseline, references it from the attacher, fetches its baseline accumulatedCoverage
-// and initializes attacher's accumulatedCoverage according to the currentTS
+// setBaseline sets baseline, references it from the attacher
 // For sequencer transaction baseline will be on the same slot, for branch transactions it can be further in the past
 func (a *attacher) setBaseline(baselineVID *vertex.WrappedTx, currentTS ledger.Time) bool {
 	a.Assertf(baselineVID.IsBranchTransaction(), "setBaseline: baselineVID.IsBranchTransaction()")
@@ -681,58 +675,20 @@ func (a *attacher) setBaseline(baselineVID *vertex.WrappedTx, currentTS ledger.T
 
 	a.baseline = baselineVID
 	a.baselineSupply = rr.Supply
-	//a.accumulatedCoverage = rr.LedgerCoverage >> (int(currentTS.Slot() - baselineVID.Slot()))
 
 	if currentTS.IsSlotBoundary() {
 		a.Assertf(baselineVID.Slot() < currentTS.Slot(), "baselineVID.Slot() < currentTS.Slot()")
 	} else {
 		a.Assertf(baselineVID.Slot() == currentTS.Slot(), "baselineVID.Slot() == currentTS.Slot()")
-		//a.accumulatedCoverage >>= 1
 	}
 	return true
 }
-
-const TraceTagAdjustCoverage = "adjustCoverage"
-
-// adjustCoverage for accumulatedCoverage. Adjustment ensures that branch inflation bonus on the chain output
-// of the baseline branch is always included into the coverage exactly once.
-// Details and motivation see Proxima WP
-//func (a *attacher) adjustCoverage() {
-//	// adjustCoverage must be called exactly once
-//	a.Assertf(!a.coverageAdjusted, "adjustCoverage: already adjusted")
-//	a.coverageAdjusted = true
-//
-//	baseSeqOut := a.baseline.SequencerWrappedOutput()
-//	seqOut := multistate.MustSequencerOutputOfBranch(a.StateStore(), baseSeqOut.VID.ID).Output
-//	infl := seqOut.Inflation(true)
-//	a.Tracef(TraceTagAdjustCoverage, "base seq out: %s, branch inflation: %s", baseSeqOut.IDShortString, util.Th(infl))
-//
-//	if a.pastCone.IsRootedOutput(baseSeqOut) {
-//		// the baseline branch sequencer output is `rooted` -> it is already included -> no need for adjustment
-//		a.Tracef(TraceTagAdjustCoverage, " is rooted %s", baseSeqOut.IDShortString)
-//		return
-//	}
-//	a.Tracef(TraceTagAdjustCoverage, " is NOT rooted %s", baseSeqOut.IDShortString)
-//
-//	// sequencer output is not Rooted (branch is just endorsed) -> add its inflation to the accumulatedCoverage
-//	a.coverageAdjustment = infl
-//	a.Tracef(TraceTagAdjustCoverage, "coverage adjustment: %s", util.Th(a.coverageAdjustment))
-//	a.accumulatedCoverage += a.coverageAdjustment
-//}
-
-// IsCoverageAdjusted for consistency assertions
-//func (a *attacher) IsCoverageAdjusted() bool {
-//	return a.coverageAdjusted
-//}
 
 // dumpLines beware deadlocks
 func (a *attacher) dumpLines(prefix ...string) *lines.Lines {
 	ret := lines.New(prefix...)
 	ret.Add("attacher %s", a.name).
 		Add("   baseline: %s", a.baseline.IDShortString()).
-		//Add("   accumulatedCoverage: %s", util.Th(a.accumulatedCoverage)).
-		//Add("   coverage adjusted: %v", a.coverageAdjusted).
-		//Add("   coverage adjustment: %s", util.Th(a.coverageAdjustment)).
 		Add("   baselineSupply: %s", util.Th(a.baselineSupply)).
 		Add("   Past cone:").
 		Append(a.pastCone.Lines(prefix...))

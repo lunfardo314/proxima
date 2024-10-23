@@ -169,7 +169,6 @@ func Test5SequencersIdlePruner(t *testing.T) {
 	)
 	testData := initMultiSequencerTest(t, nSequencers, true)
 
-	//testData.env.StartTracingTags(attacher.TraceTagAdjustCoverage)
 	testData.startSequencersWithTimeout(maxSlots)
 	t.Logf("after start sequencers")
 	time.Sleep(runTime)

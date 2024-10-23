@@ -20,9 +20,7 @@ func (a *milestoneAttacher) wrapUpAttacher() {
 	a.finals.baseline = &a.baseline.ID
 	a.finals.numVertices = a.pastCone.NumVertices()
 
-	//a.finals.coverage = a.accumulatedCoverage
 	a.finals.coverage = a.LedgerCoverage()
-	//a.Assertf(a.finals.accumulatedCoverage > 0, "final accumulatedCoverage must be positive")
 	a.finals.slotInflation = a.slotInflation
 
 	a.Tracef(TraceTagAttachMilestone, "set ledger baselineCoverage in %s to %s",

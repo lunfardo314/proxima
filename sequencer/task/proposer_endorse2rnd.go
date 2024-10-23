@@ -105,6 +105,5 @@ func endorse2RndProposeGenerator(p *Proposer) (*attacher.IncrementalAttacher, bo
 		return nil, false
 	}
 
-	//a.AdjustCoverage()
 	return a, false
 }

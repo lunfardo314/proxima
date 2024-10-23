@@ -78,7 +78,6 @@ func newMilestoneAttacher(vid *vertex.WrappedTx, env Environment, metadata *txme
 	if ret.ctx == nil {
 		ret.ctx = env.Ctx()
 	}
-	ret.Tracef(TraceTagCoverageAdjustment, "newMilestoneAttacher: metadata of %s: %s", vid.IDShortString, metadata.String)
 
 	ret.attacher.pokeMe = func(vid *vertex.WrappedTx) {
 		ret.pokeMe(vid)
@@ -123,8 +122,6 @@ func (a *milestoneAttacher) run() error {
 	a.Tracef(TraceTagAttachMilestone, "past cone OK")
 	a.AssertNoError(a.err)
 
-	//a.AdjustCoverage()
-
 	err := a.checkConsistencyBeforeWrapUp()
 	if err != nil {
 		memdag.SaveGraphPastCone(a.vid, "inconsistent_before_wrapup")
@@ -154,7 +151,7 @@ func (a *milestoneAttacher) run() error {
 
 	a.vid.SetTxStatusGood(a.pastCone.PastConeBase, a.pastCone.LedgerCoverage())
 
-	const printPastCone = true
+	const printPastCone = false
 	if printPastCone {
 		a.Log().Infof(">>>>>>>>>>>>> past cone of attacher %s\n%s", a.Name(), a.pastCone.Lines("      ").String())
 		coverage, delta := a.pastCone.CoverageDelta()
@@ -168,7 +165,7 @@ func (a *milestoneAttacher) run() error {
 }
 
 const (
-	enableDeadlockCatching      = false
+	enableDeadlockCatching      = true
 	deadlockIndicationThreshold = 10 * time.Second
 )
 
@@ -393,11 +390,3 @@ func (a *milestoneAttacher) logFinalStatusString(msData *ledger.MilestoneData) s
 func (a *milestoneAttacher) logErrorStatusString(err error) string {
 	return fmt.Sprintf("ATTACH %s -> BAD(%v)", a.vid.ID.StringShort(), err)
 }
-
-//func (a *milestoneAttacher) AdjustCoverage() {
-//	a.adjustCoverage()
-//	if a.coverageAdjustment > 0 {
-//		a.Tracef(TraceTagCoverageAdjustment, " milestoneAttacher: accumulatedCoverage has been adjusted by %s, ms: %s, baseline: %s",
-//			func() string { return util.Th(a.coverageAdjustment) }, a.vid.IDShortString, a.baseline.IDShortString)
-//	}
-//}
