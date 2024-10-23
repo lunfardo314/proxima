@@ -19,10 +19,15 @@ import (
 func Test1SequencerPruner(t *testing.T) {
 	t.Run("idle", func(t *testing.T) {
 		const (
-			maxSlots = 20
+			maxSlots = 5 // 20
 		)
 		testData := initWorkflowTest(t, 1, true)
 		t.Logf("%s", testData.wrk.Info())
+
+		//testData.env.StartTracingTags(task.TraceTagBaseProposer)
+		//testData.env.StartTracingTags(tippool.TraceTag)
+		//testData.env.StartTracingTags(task.TraceTagEndorse1Proposer)
+		//testData.env.StartTracingTags(task.TraceTagChooseFirstExtendEndorsePair)
 
 		seq, err := sequencer.New(testData.wrk, testData.bootstrapChainID, testData.genesisPrivKey,
 			sequencer.WithMaxBranches(maxSlots))

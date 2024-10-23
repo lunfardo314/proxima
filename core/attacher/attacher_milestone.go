@@ -149,12 +149,13 @@ func (a *milestoneAttacher) run() error {
 	}
 	a.AssertNoError(err)
 
-	a.vid.SetTxStatusGood(a.pastCone.PastConeBase, a.pastCone.LedgerCoverage())
+	a.vid.SetTxStatusGood(a.pastCone.PastConeBase, a.pastCone.LedgerCoverage(a.vid.Timestamp()))
+	fmt.Printf(">>>>>>>>>>>> SetTxStatusGood to %s, cov = %s\n", a.vid.IDShortString(), util.Th(a.pastCone.LedgerCoverage(a.vid.Timestamp())))
 
 	const printPastCone = false
 	if printPastCone {
 		a.Log().Infof(">>>>>>>>>>>>> past cone of attacher %s\n%s", a.Name(), a.pastCone.Lines("      ").String())
-		coverage, delta := a.pastCone.CoverageDelta()
+		coverage, delta := a.pastCone.CoverageAndDelta(a.vid.Timestamp())
 		a.Log().Infof(">>>>> directly calculated coverage: %s, delta: %s", util.Th(coverage), util.Th(delta))
 	}
 

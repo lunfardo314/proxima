@@ -342,7 +342,10 @@ func (pc *PastCone) CalculateSlotInflation() (ret uint64) {
 func (pc *PastCone) Lines(prefix ...string) *lines.Lines {
 	pc.Assertf(pc.delta == nil, "pc.delta==nil")
 	ret := lines.New(prefix...)
-	ret.Add("------ baseline: %s", util.Cond(pc.baseline == nil, "<nil>", pc.baseline.IDShortString()))
+	ret.Add("------ baseline: %s, coverage: %s",
+		util.Cond(pc.baseline == nil, "<nil>", pc.baseline.IDShortString()),
+		pc.baseline.GetLedgerCoverageString(),
+	)
 	sorted := util.KeysSorted(pc.vertices, func(vid1, vid2 *WrappedTx) bool {
 		return vid1.Before(vid2)
 	})
@@ -369,10 +372,10 @@ func (pc *PastCone) Lines(prefix ...string) *lines.Lines {
 	return ret
 }
 
-func (pc *PastCone) CoverageDelta() (coverage, delta uint64) {
+func (pc *PastCone) CoverageAndDelta(currentTs ledger.Time) (coverage, delta uint64) {
 	pc.Assertf(pc.delta == nil, "pc.delta == nil")
 	pc.Assertf(pc.baseline != nil, "pc.baseline != nil")
-
+	pc.Assertf(currentTs.After(pc.baseline.Timestamp()), "currentTs.After(pc.baseline.Timestamp())")
 	for vid := range pc.vertices {
 		consumedIndices := pc.consumedIndices(vid)
 		for _, idx := range consumedIndices {
@@ -391,12 +394,13 @@ func (pc *PastCone) CoverageDelta() (coverage, delta uint64) {
 		pc.AssertNoError(err)
 		delta += o.Inflation(true)
 	}
-	coverage = pc.baseline.GetLedgerCoverage()/2 + delta
+	diffSlots := currentTs.Slot() - pc.baseline.Slot()
+	coverage = (pc.baseline.GetLedgerCoverage() >> diffSlots) + delta
 	return
 }
 
-func (pc *PastCone) LedgerCoverage() uint64 {
-	ret, _ := pc.CoverageDelta()
+func (pc *PastCone) LedgerCoverage(currentTs ledger.Time) uint64 {
+	ret, _ := pc.CoverageAndDelta(currentTs)
 	return ret
 }
 

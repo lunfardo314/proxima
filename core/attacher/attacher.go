@@ -730,10 +730,10 @@ func (a *attacher) FinalSupply() uint64 {
 	return a.baselineSupply + a.slotInflation
 }
 
-func (a *attacher) CoverageDelta() (coverage, delta uint64) {
-	return a.pastCone.CoverageDelta()
+func (a *attacher) CoverageDelta(currentTs ledger.Time) (coverage, delta uint64) {
+	return a.pastCone.CoverageAndDelta(currentTs)
 }
 
-func (a *attacher) LedgerCoverage() uint64 {
-	return a.pastCone.LedgerCoverage()
+func (a *attacher) LedgerCoverage(currentTs ledger.Time) uint64 {
+	return a.pastCone.LedgerCoverage(currentTs)
 }

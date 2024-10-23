@@ -74,7 +74,7 @@ func (p *Proposer) propose(a *attacher.IncrementalAttacher) error {
 	if err != nil {
 		return err
 	}
-	coverage := a.LedgerCoverage()
+	coverage := a.LedgerCoverage(p.targetTs)
 	_proposal := &proposal{
 		tx: tx,
 		txMetadata: &txmetadata.TransactionMetadata{
@@ -106,11 +106,15 @@ func (p *Proposer) makeTxProposal(a *attacher.IncrementalAttacher) (*transaction
 	return tx, err
 }
 
+const TraceTagChooseFirstExtendEndorsePair = "chooseFirstPair"
+
 // ChooseFirstExtendEndorsePair returns incremental attacher which corresponds to the first
 // extend-endorse pair encountered while traversing endorse candidates.
 // Endorse candidates are either sorted descending by coverage, or randomly shuffled
 // Pairs are filtered before checking. It allows to exclude repeating pairs
 func (p *Proposer) ChooseFirstExtendEndorsePair(shuffleEndorseCandidates bool, pairFilter func(extend vertex.WrappedOutput, endorse *vertex.WrappedTx) bool) *attacher.IncrementalAttacher {
+	p.Tracef(TraceTagChooseFirstExtendEndorsePair, "IN")
+
 	p.Assertf(!p.targetTs.IsSlotBoundary(), "!p.targetTs.IsSlotBoundary()")
 	var endorseCandidates []*vertex.WrappedTx
 	if shuffleEndorseCandidates {
@@ -118,10 +122,12 @@ func (p *Proposer) ChooseFirstExtendEndorsePair(shuffleEndorseCandidates bool, p
 	} else {
 		endorseCandidates = p.Backlog().CandidatesToEndorseSorted(p.targetTs)
 	}
+	p.Tracef(TraceTagChooseFirstExtendEndorsePair, "endorse candidates: %d", len(endorseCandidates))
 
 	seqID := p.SequencerID()
 	var ret *attacher.IncrementalAttacher
 	for _, endorse := range endorseCandidates {
+		p.Tracef(TraceTagChooseFirstExtendEndorsePair, "check endorse candidate: %s", endorse.IDShortString)
 		select {
 		case <-p.ctx.Done():
 			return nil
@@ -129,13 +135,13 @@ func (p *Proposer) ChooseFirstExtendEndorsePair(shuffleEndorseCandidates bool, p
 		}
 		if !ledger.ValidTransactionPace(endorse.Timestamp(), p.targetTs) {
 			// cannot endorse candidate because of ledger time constraint
-			p.Tracef(TraceTagTask, ">>>>>>>>>>>>>>> !ledger.ValidTransactionPace")
+			p.Tracef(TraceTagChooseFirstExtendEndorsePair, ">>>>>>>>>>>>>>> !ledger.ValidTransactionPace")
 			continue
 		}
 		rdr := multistate.MakeSugared(p.GetStateReaderForTheBranch(&endorse.BaselineBranch().ID))
 		seqOut, err := rdr.GetChainOutput(&seqID)
 		if errors.Is(err, multistate.ErrNotFound) {
-			p.Tracef(TraceTagTask, ">>>>>>>>>>>>>>> GetChainOutput not found")
+			p.Tracef(TraceTagChooseFirstExtendEndorsePair, ">>>>>>>>>>>>>>> GetChainOutput not found")
 			continue
 		}
 		p.AssertNoError(err)
@@ -144,15 +150,15 @@ func (p *Proposer) ChooseFirstExtendEndorsePair(shuffleEndorseCandidates bool, p
 		p.AddOwnMilestone(extendRoot.VID) // to ensure it is in the pool of own milestones
 		futureConeMilestones := p.FutureConeOwnMilestonesOrdered(extendRoot, p.targetTs)
 
-		p.Tracef(TraceTagTask, ">>>>>>>>>>>>>>> check endorsement candidate %s against future cone of extension candidates {%s}",
+		p.Tracef(TraceTagChooseFirstExtendEndorsePair, ">>>>>>>>>>>>>>> check endorsement candidate %s against future cone of extension candidates {%s}",
 			endorse.IDShortString, func() string { return vertex.WrappedOutputsShortLines(futureConeMilestones).Join(", ") })
 
 		if ret = p.chooseEndorseExtendPairAttacher(endorse, futureConeMilestones, pairFilter); ret != nil {
-			p.Tracef(TraceTagTask, ">>>>>>>>>>>>>>> chooseEndorseExtendPairAttacher return %s", ret.Name)
+			p.Tracef(TraceTagChooseFirstExtendEndorsePair, ">>>>>>>>>>>>>>> chooseEndorseExtendPairAttacher return %s", ret.Name)
 			return ret
 		}
 	}
-	p.Tracef(TraceTagTask, ">>>>>>>>>>>>>>> chooseEndorseExtendPairAttacher nil")
+	p.Tracef(TraceTagChooseFirstExtendEndorsePair, ">>>>>>>>>>>>>>> chooseEndorseExtendPairAttacher nil")
 	return nil
 }
 
@@ -165,25 +171,37 @@ func (p *Proposer) chooseEndorseExtendPairAttacher(endorse *vertex.WrappedTx, ex
 	var ret, a *attacher.IncrementalAttacher
 	var err error
 	for _, extend := range extendCandidates {
+		p.Tracef(TraceTagChooseFirstExtendEndorsePair, "%s filtered out: extend %s and endorse %s: %v", p.targetTs.String, extend.IDShortString, endorse.IDShortString, err)
 		if !pairFilter(extend, endorse) {
 			continue
 		}
 		a, err = attacher.NewIncrementalAttacher(p.Name, p, p.targetTs, extend, endorse)
 		if err != nil {
-			p.Tracef(TraceTagTask, "%s can't extend %s and endorse %s: %v", p.targetTs.String, extend.IDShortString, endorse.IDShortString, err)
+			p.Tracef(TraceTagChooseFirstExtendEndorsePair, "%s can't extend %s and endorse %s: %v", p.targetTs.String, extend.IDShortString, endorse.IDShortString, err)
 			continue
 		}
 		// we must carefully dispose unused references, otherwise pruning does not work
 		// we dispose all attachers with their references, except the one with the biggest coverage
 		switch {
 		case !a.Completed():
+			p.Tracef(TraceTagChooseFirstExtendEndorsePair, "%s can't extend %s and endorse %s: NOT COMPLETED", p.targetTs.String, extend.IDShortString, endorse.IDShortString)
 			a.Close()
 		case ret == nil:
 			ret = a
-		case a.LedgerCoverage() > ret.LedgerCoverage():
+			p.Tracef(TraceTagChooseFirstExtendEndorsePair,
+				"first proposal: %s, extend %s, endorse %s, cov: %s",
+				p.targetTs.String, extend.IDShortString, endorse.IDShortString, util.Th(a.LedgerCoverage(p.targetTs)))
+
+		case a.LedgerCoverage(p.targetTs) > ret.LedgerCoverage(p.targetTs):
+			p.Tracef(TraceTagChooseFirstExtendEndorsePair,
+				"new proposal: %s, extend %s, endorse %s, cov: %s",
+				p.targetTs.String, extend.IDShortString, endorse.IDShortString, util.Th(a.LedgerCoverage(p.targetTs)))
 			ret.Close()
 			ret = a
 		default:
+			p.Tracef(TraceTagChooseFirstExtendEndorsePair,
+				"discard proposal: %s, extend %s, endorse %s, cov: %s",
+				p.targetTs.String, extend.IDShortString, endorse.IDShortString, util.Th(a.LedgerCoverage(p.targetTs)))
 			a.Close()
 		}
 	}

@@ -54,7 +54,7 @@ func (w *workflowDummyEnvironment) GetOwnSequencerID() *ledger.ChainID {
 
 func newWorkflowDummyEnvironment(stateStore global.StateStore, txStore global.TxBytesStore) *workflowDummyEnvironment {
 	return &workflowDummyEnvironment{
-		Global:       global.NewDefault(),
+		Global:       global.NewDefault(true),
 		stateStore:   stateStore,
 		txBytesStore: txStore,
 	}

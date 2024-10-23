@@ -173,6 +173,7 @@ func (t *SequencerTips) LatestMilestonesDescending(filter ...func(seqID ledger.C
 	sort.Slice(ret, func(i, j int) bool {
 		return vertex.IsPreferredMilestoneAgainstTheOther(ret[i], ret[j], false)
 	})
+	t.Tracef(TraceTag, "LatestMilestonesDescending: len(ret) = %d", len(ret))
 	return ret
 }
 

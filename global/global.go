@@ -126,7 +126,10 @@ func NewFromConfig() *Global {
 	return ret
 }
 
-func NewDefault() *Global {
+func NewDefault(bootstrap ...bool) *Global {
+	if len(bootstrap) > 0 && bootstrap[0] {
+		return _new(zapcore.DebugLevel, []string{"stderr"}, true)
+	}
 	return _new(zapcore.DebugLevel, []string{"stderr"}, false)
 }
 

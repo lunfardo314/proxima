@@ -596,6 +596,9 @@ func (vid *WrappedTx) GetLedgerCoverage() uint64 {
 }
 
 func (vid *WrappedTx) GetLedgerCoverageString() string {
+	if vid == nil {
+		return "n/a"
+	}
 	return util.Th(vid.GetLedgerCoverage())
 }
 
