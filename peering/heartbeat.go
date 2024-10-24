@@ -166,14 +166,16 @@ func (ps *Peers) sendHeartbeatToPeer(id peer.ID, hbCounter uint32) {
 		respondsToPull = ps.staticPeers.Contains(id)
 	}
 	peer := ps.getPeer(id)
+	if peer == nil {
+		ps.Tracef(TraceTagHeartBeatSend, "peer for node #%d nil. Ignore", ShortPeerIDString(id))
+		return
+	}
 	_, blacklisted, _ := ps.knownPeer(id, func(p *Peer) {
 	})
 	if blacklisted {
 		// ignore
-		ps.Tracef(TraceTagHeartBeatSend, "node #%d blacklisted. Ignore", ShortPeerIDString(id))
-		if peer != nil {
-			peer.numHBSendErr = 0
-		}
+		ps.Tracef(TraceTagHeartBeatSend, "node #%s blacklisted. Ignore", ShortPeerIDString(id))
+		peer.numHBSendErr = 0
 		return
 	}
 
