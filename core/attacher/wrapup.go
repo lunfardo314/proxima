@@ -56,6 +56,12 @@ func (a *milestoneAttacher) commitBranch() {
 	a.Assertf(a.vid.IsBranchTransaction(), "a.vid.IsBranchTransaction()")
 
 	muts, stats := a.pastCone.Mutations(a.vid.Slot())
+
+	{
+		fmt.Printf("----------- %s\n", a.vid.IDShortString())
+		fmt.Printf("%s\n%s\n", a.pastCone.Lines("      ").Join("\n"), muts.Lines("      ").Join("\n"))
+
+	}
 	a.finals.numNewTransactions, a.finals.numDeletedOutputs, a.finals.numCreatedOutputs = uint32(stats.NumTransactions), stats.NumDeleted, stats.NumCreated
 
 	seqID, stemOID := a.vid.MustSequencerIDAndStemID()

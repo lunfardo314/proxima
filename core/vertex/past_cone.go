@@ -399,7 +399,7 @@ func (pc *PastCone) Lines(prefix ...string) *lines.Lines {
 	rooted := make([]WrappedOutput, 0)
 	for i, vid := range sorted {
 		consumedIndices := pc.consumedIndices(vid)
-		ret.Add("#%d %s : %s, consumed: %+v", i, vid.IDShortString(), pc.vertices[vid].String(), consumedIndices)
+		ret.Add("#%d %s : %s, consumed: %+v", i, vid.IDShortString(), pc.vertices[vid].String(), maps.Keys(consumedIndices))
 		for idx := range consumedIndices {
 			wOut := WrappedOutput{VID: vid, Index: idx}
 			if pc.IsRootedOutput(wOut) {
@@ -564,10 +564,6 @@ func (pc *PastCone) notConsumedIndices(vid *WrappedTx) ([]byte, int) {
 		return nil, 0
 	}
 	consumedIndices := pc.consumedIndices(vid)
-
-	if len(consumedIndices) == 0 {
-		return nil, numProduced
-	}
 	ret := make([]byte, 0, numProduced-len(consumedIndices))
 
 	for i := 0; i < numProduced; i++ {
