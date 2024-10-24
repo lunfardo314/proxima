@@ -625,13 +625,27 @@ func (a *attacher) attachInputID(consumerVertex *vertex.Vertex, consumerTxUnwrap
 
 	// not pulling, no need for the transaction to check double-spends of its outputs
 
-	// conflict detection. We check if input is not consumed by some known transaction in the attacher scope
-	if conflict := vidInputTx.AttachConsumer(inputOid.Index(), consumerTxUnwrapped, a.checkConflictsFunc(consumerVertex, consumerTxUnwrapped)); conflict != nil {
+	// check conflicts
+
+	consumer, found := a.pastCone.FindConsumerOf(vertex.WrappedOutput{VID: vidInputTx, Index: inputOid.Index()})
+	a.Assertf(consumer != nil || !found, "consumer!=nil || !found")
+	if found && consumer != consumerTxUnwrapped {
 		err := fmt.Errorf("input %s of consumer %s conflicts with another consumer %s in the baseline state %s (double spend)",
-			inputOid.StringShort(), consumerTxUnwrapped.IDShortString(), conflict.IDShortString(), a.baseline.IDShortString())
+			inputOid.StringShort(), consumerTxUnwrapped.IDShortString(), consumer.IDShortString(), a.baseline.IDShortString())
 		a.setError(err)
 		return nil, false
 	}
+
+	conflict := vidInputTx.AddConsumer(inputOid.Index(), consumerTxUnwrapped, a.checkConflictsFunc(consumerVertex, consumerTxUnwrapped))
+	a.Assertf(conflict == nil, "conflict==nil")
+
+	// conflict detection. We check if input is not consumed by some known transaction in the attacher scope
+	//if conflict := vidInputTx.AddConsumer(inputOid.Index(), consumerTxUnwrapped, a.checkConflictsFunc(consumerVertex, consumerTxUnwrapped)); conflict != nil {
+	//	err := fmt.Errorf("input %s of consumer %s conflicts with another consumer %s in the baseline state %s (double spend)",
+	//		inputOid.StringShort(), consumerTxUnwrapped.IDShortString(), conflict.IDShortString(), a.baseline.IDShortString())
+	//	a.setError(err)
+	//	return nil, false
+	//}
 	return vidInputTx, true
 }
 
