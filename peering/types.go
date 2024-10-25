@@ -97,7 +97,7 @@ type (
 	Peer struct {
 		id                     peer.ID
 		name                   string
-		streams                [3]peerStream
+		streams                map[protocol.ID]*peerStream
 		isStatic               bool // statically pre-configured (manual peering)
 		respondsToPullRequests bool // from hb info
 		whenAdded              time.Time
@@ -135,9 +135,6 @@ const (
 	lppProtocolGossip    = "/proxima/gossip/%d"
 	lppProtocolPull      = "/proxima/pull/%d"
 	lppProtocolHeartbeat = "/proxima/heartbeat/%d"
-	lppGossipIdx         = 0
-	lppPullIdx           = 1
-	lppHeartBeatIdx      = 2
 
 	// clockTolerance is how big the difference between local and remote clocks is tolerated.
 	// The difference includes difference between local clocks (positive or negative) plus

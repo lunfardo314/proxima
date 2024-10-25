@@ -5,7 +5,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"slices"
-	"strings"
 	"time"
 
 	"github.com/libp2p/go-libp2p"
@@ -263,47 +262,49 @@ func (ps *Peers) addPeer(addrInfo *peer.AddrInfo, name string, static bool) (suc
 }
 
 func (ps *Peers) NewStream(peerID peer.ID, pID protocol.ID, timeout time.Duration) (network.Stream, error) {
-	ctx, cancel := context.WithTimeoutCause(ps.Ctx(), timeout, context.DeadlineExceeded)
+	ctx, cancel := context.WithTimeout(ps.Ctx(), timeout)
 	defer cancel()
-	if ctx.Err() != nil {
-		return nil, ctx.Err()
-	}
-
 	return ps.host.NewStream(ctx, peerID, pID)
 }
 
-func (ps *Peers) dialPeer(peerID peer.ID, static bool) ([]network.Stream, error) {
+func (ps *Peers) dialPeer(peerID peer.ID, peer *Peer, static bool) error {
 	timeout := 15 * time.Second
 
-	var err error
-	streams := make([]network.Stream, 3)
-	for {
-		// the NewStream waits until context is done
-		streams[lppHeartBeatIdx], err = ps.NewStream(peerID, ps.lppProtocolHeartbeat, timeout)
-		if err != nil {
-			if static {
-				time.Sleep(1 * time.Second)
-				continue
-			} else {
-				return streams, err
-			}
-		}
-
-		streams[lppGossipIdx], err = ps.NewStream(peerID, ps.lppProtocolGossip, timeout)
-		if err != nil {
-			streams[lppHeartBeatIdx].Close()
-			return nil, err
-		}
-
-		streams[lppPullIdx], err = ps.NewStream(peerID, ps.lppProtocolPull, timeout)
-		if err != nil {
-			streams[lppHeartBeatIdx].Close()
-			streams[lppGossipIdx].Close()
-			return nil, err
-		}
-		break
+	peer.streams = make(map[protocol.ID]*peerStream)
+	// the NewStream waits until context is done
+	stream, err := ps.NewStream(peerID, ps.lppProtocolHeartbeat, timeout)
+	if err != nil {
+		return err
 	}
-	return streams, err
+	peer.streams[ps.lppProtocolHeartbeat] = &peerStream{
+		stream: stream,
+	}
+	time.Sleep(1000 * time.Millisecond) //?? Delay
+	stream, err = ps.NewStream(peerID, ps.lppProtocolPull, timeout)
+	if err != nil {
+		// if static {
+		// 	time.Sleep(1 * time.Second)
+		// 	continue
+		// } else {
+		peer.streams[ps.lppProtocolHeartbeat].stream.Close()
+		return err
+		//}
+	}
+	peer.streams[ps.lppProtocolPull] = &peerStream{
+		stream: stream,
+	}
+	time.Sleep(1000 * time.Millisecond) //?? Delay
+	stream, err = ps.NewStream(peerID, ps.lppProtocolGossip, timeout)
+	if err != nil {
+		peer.streams[ps.lppProtocolHeartbeat].stream.Close()
+		peer.streams[ps.lppProtocolPull].stream.Close()
+		return err
+	}
+	peer.streams[ps.lppProtocolGossip] = &peerStream{
+		stream: stream,
+	}
+
+	return err
 }
 
 func (ps *Peers) _addPeer(addrInfo *peer.AddrInfo, name string, static bool) *Peer {
@@ -320,8 +321,9 @@ func (ps *Peers) _addPeer(addrInfo *peer.AddrInfo, name string, static bool) *Pe
 	}
 
 	go func() {
-		time.Sleep(100 * time.Millisecond) // ?? Delay
-		streams, err := ps.dialPeer(addrInfo.ID, static)
+		time.Sleep(1000 * time.Millisecond) //?? Delay
+		time.Sleep(100 * time.Millisecond)  //?? Delay
+		err := ps.dialPeer(addrInfo.ID, p, static)
 		if err != nil {
 			ps.Log().Errorf("[peering] dialPeer err %s", err.Error())
 			ps.host.Peerstore().RemovePeer(addrInfo.ID)
@@ -334,11 +336,6 @@ func (ps *Peers) _addPeer(addrInfo *peer.AddrInfo, name string, static bool) *Pe
 
 		ps.mutex.Lock()
 		defer ps.mutex.Unlock()
-
-		for i, _ := range streams {
-			util.Assertf(streams[i] != nil, "stream != nil")
-			p.streams[i].stream = streams[i]
-		}
 
 		ps._removeFromConnectList(addrInfo.ID)
 		ps.peers[addrInfo.ID] = p
@@ -375,7 +372,7 @@ func (ps *Peers) _dropPeer(p *Peer, reason string) {
 	_ = ps.host.Network().ClosePeer(p.id)
 	delete(ps.peers, p.id)
 
-	//ps._addToBlacklist(p.id, reason)
+	ps._addToCoolOfflist(p.id)
 
 	ps.Log().Infof("[peering] dropped dynamic peer %s - %s%s", ShortPeerIDString(p.id), p.name, why)
 }
@@ -404,9 +401,10 @@ func (ps *Peers) _addToCoolOfflist(id peer.ID) {
 }
 
 func (ps *Peers) _addToConnectList(id peer.ID) {
-	ps.Log().Infof("[peering] ****** add to connect list peer %s", ShortPeerIDString(id))
-
-	ps.connectList.Insert(id)
+	if !ps.connectList.Contains(id) {
+		ps.Log().Infof("[peering] ****** add to connect list peer %s", ShortPeerIDString(id))
+		ps.connectList.Insert(id)
+	}
 }
 
 func (ps *Peers) _isInCoolOffList(id peer.ID) bool {
@@ -560,31 +558,26 @@ func (p *Peer) _isAlive() bool {
 
 func (ps *Peers) sendMsgBytesOut(peerID peer.ID, protocolID protocol.ID, data []byte, timeout ...time.Duration) bool {
 
-	idx := lppHeartBeatIdx
-	if strings.Contains(string(protocolID), "gossip") {
-		idx = lppGossipIdx
-	}
-	if strings.Contains(string(protocolID), "pull") {
-		idx = lppPullIdx
-	}
-
 	var err error
 	var stream network.Stream
+
 	ps.withPeer(peerID, func(p *Peer) {
 		if p != nil {
-			ps.peers[peerID].streams[idx].mutex.Lock()
-			stream = ps.peers[peerID].streams[idx].stream
-			ps.peers[peerID].streams[idx].mutex.Unlock() // let send fail when stream gets invalid, with defer a crash could happen
+			if peerStream, ok := p.streams[protocolID]; ok {
+				peerStream.mutex.RLock()
+				defer peerStream.mutex.RUnlock()
+				stream = peerStream.stream
+			}
 		}
 	})
 
 	if stream == nil {
-		ps.Log().Errorf("[peering] error while sending message to peer %s len=%d idx=%d stream==nil", ShortPeerIDString(peerID), len(data), idx)
+		ps.Log().Errorf("[peering] error while sending message to peer %s len=%d id=%s stream==nil", ShortPeerIDString(peerID), len(data), protocolID)
 		return false
 	}
 	util.Assertf(stream != nil, "stream != nil")
 	if err = writeFrame(stream, data); err != nil {
-		ps.Log().Errorf("[peering] error while sending message to peer %s len=%d idx=%d err=%v", ShortPeerIDString(peerID), len(data), idx, err)
+		ps.Log().Errorf("[peering] error while sending message to peer %s len=%d id=%s err=%v", ShortPeerIDString(peerID), len(data), protocolID, err)
 	}
 	ps.outMsgCounter.Inc()
 	return err == nil
